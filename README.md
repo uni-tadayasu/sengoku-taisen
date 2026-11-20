@@ -151,6 +151,7 @@ node tests/test-cloud-sync.cjs
 node tests/test-world-clock.cjs
 node tests/test-world-map.cjs
 node tests/test-desktop-fit.cjs
+node tests/test-release-assets.cjs
 node tests/test-kamon.cjs
 node tests/test-field.cjs
 node tests/test-field-bridge.cjs
