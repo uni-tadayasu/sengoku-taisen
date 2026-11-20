@@ -5,8 +5,11 @@ import worker from './index.js';
 
 const database=new DatabaseSync(':memory:');
 database.exec('PRAGMA foreign_keys=ON');
-const migration=readFileSync(new URL('./drizzle/0000_social.sql',import.meta.url),'utf8');
-for(const sql of migration.split('--> statement-breakpoint').map(s=>s.trim()).filter(Boolean)) database.exec(sql);
+const journal=JSON.parse(readFileSync(new URL('./drizzle/meta/_journal.json',import.meta.url),'utf8'));
+for(const entry of journal.entries){
+  const migration=readFileSync(new URL('./drizzle/'+entry.tag+'.sql',import.meta.url),'utf8');
+  for(const sql of migration.split('--> statement-breakpoint').map(s=>s.trim()).filter(Boolean))database.exec(sql);
+}
 const db={
   lastError:null,
   prepare(sql){return this.statement(sql,[]);},
@@ -121,6 +124,7 @@ try{
   await api('/api/v1/admin/mail',{...auth(nonAdmin,campaign),expected:403});
   const sent=await api('/api/v1/admin/mail',auth(admin,campaign));
   const sentAgain=await api('/api/v1/admin/mail',auth(admin,campaign));assert.equal(sentAgain.data.mailId,sent.data.mailId);assert.equal(sentAgain.data.alreadySent,true);
+  const legacyZeroRetry=await api('/api/v1/admin/mail',auth(admin,{...campaign,gift:{...campaign.gift,magatama:0}}));assert.equal(legacyZeroRetry.data.mailId,sent.data.mailId);assert.equal(legacyZeroRetry.data.alreadySent,true,'zero magatama preserves the old four-resource send hash');
   await api('/api/v1/admin/mail',{...auth(admin,{...campaign,title:'別内容'}),expected:409});
   const future=await session('新たな領主');assert.equal((await api('/api/v1/mail',{token:future.token})).data.mail.length,1);
   const mailbox=await api('/api/v1/mail',{token:c.token});assert.equal(mailbox.data.mail[0].claimed,false);assert.equal((await api('/api/v1/me',{token:c.token})).data.unreadMail,1);
@@ -129,7 +133,7 @@ try{
   const giftAgain=await api('/api/v1/mail/claim',auth(c,claimBody));assert.equal(giftAgain.data.alreadyClaimed,true);assert.equal(giftAgain.data.receiptId,gift.data.receiptId);assert.deepEqual(giftAgain.data.gift,campaign.gift);
   await api('/api/v1/mail/claim',{...auth(c,{...claimBody,requestId:'claim-test-0002'}),expected:409});
   assert.equal((await api('/api/v1/me',{token:c.token})).data.unreadMail,0);
-  const personal=await api('/api/v1/admin/mail',auth(admin,{target:d.user.id,title:'個別書状',body:'この領主だけに届けます。',gift:{gold:30},requestId:'send-test-0002'}));
+  const personal=await api('/api/v1/admin/mail',auth(admin,{target:d.user.id,title:'個別書状',body:'この領主だけに届けます。',gift:{gold:30,magatama:700},requestId:'send-test-0002'}));
   await api('/api/v1/mail/claim',{...auth(c,{mailId:personal.data.mailId,requestId:'stolen-gift'}),expected:404});
   await api('/api/v1/mail/read',{...auth(c,{mailId:personal.data.mailId}),expected:404});
   assert.equal((await api('/api/v1/mail',{token:d.token})).data.mail.length,2);
@@ -137,9 +141,30 @@ try{
   const raceBodies=['one','two'].map(id=>new Request('https://communications.example/api/v1/mail/claim',{method:'POST',headers:{Authorization:'Bearer '+d.token,'Content-Type':'application/json'},body:JSON.stringify({mailId:personal.data.mailId,requestId:'concurrent-'+id})}));
   const race=await Promise.all(raceBodies.map(r=>worker.fetch(r,env,{})));calls+=raceBodies.length;assert.deepEqual(race.map(r=>r.status).sort(),[200,409]);
   assert.equal(database.prepare('SELECT COUNT(*) AS n FROM mail_receipts WHERE mail_id=? AND user_id=?').get(personal.data.mailId,d.user.id).n,1);
+  const raceGift=JSON.parse(database.prepare('SELECT gift_json FROM mail_receipts WHERE mail_id=? AND user_id=?').get(personal.data.mailId,d.user.id).gift_json);assert.deepEqual(raceGift,{gold:30,rice:0,wood:0,stone:0,magatama:700});
+
+  const magatamaMail={target:'all',title:'勾玉の贈り物',body:'登用にお役立てください。',gift:{magatama:3000},requestId:'send-magatama-only'};
+  const magatamaSent=await api('/api/v1/admin/mail',auth(admin,magatamaMail)),magatamaGift={gold:0,rice:0,wood:0,stone:0,magatama:3000};
+  const magatamaAgain=await api('/api/v1/admin/mail',auth(admin,{...magatamaMail,gift:magatamaGift}));assert.equal(magatamaAgain.data.mailId,magatamaSent.data.mailId);assert(magatamaAgain.data.alreadySent);
+  const magatamaInbox=(await api('/api/v1/mail',{token:c.token})).data.mail.find(m=>m.id===magatamaSent.data.mailId);assert.deepEqual(magatamaInbox.gift,magatamaGift);
+  const magatamaClaim={mailId:magatamaSent.data.mailId,requestId:'claim-magatama-once'};
+  const magatamaReceived=await api('/api/v1/mail/claim',auth(c,magatamaClaim));assert.deepEqual(magatamaReceived.data.gift,magatamaGift);assert(!magatamaReceived.data.alreadyClaimed);
+  const magatamaReplayed=await api('/api/v1/mail/claim',auth(c,magatamaClaim));assert.deepEqual(magatamaReplayed.data.gift,magatamaGift);assert.equal(magatamaReplayed.data.receiptId,magatamaReceived.data.receiptId);assert(magatamaReplayed.data.alreadyClaimed);
+  await api('/api/v1/mail/claim',{...auth(c,{...magatamaClaim,requestId:'claim-magatama-second-id'}),expected:409});
+  assert.equal(database.prepare('SELECT COUNT(*) AS n FROM mail_receipts WHERE mail_id=? AND user_id=?').get(magatamaSent.data.mailId,c.user.id).n,1);
+  for(const amount of [-1,1.5,1000001,'3000',{}])await api('/api/v1/admin/mail',{...auth(admin,{...magatamaMail,gift:{magatama:amount},requestId:crypto.randomUUID()}),expected:400});
+  await api('/api/v1/admin/mail',{...auth(admin,{...magatamaMail,gift:{magatama:1,isAdmin:true},requestId:crypto.randomUUID()}),expected:400});
+  const maxMail=await api('/api/v1/admin/mail',auth(admin,{...magatamaMail,target:d.user.id,gift:{magatama:1000000},requestId:'send-max-magatama'}));
+  const maxGift=await api('/api/v1/mail/claim',auth(d,{mailId:maxMail.data.mailId,requestId:'claim-max-magatama'}));assert.equal(maxGift.data.gift.magatama,1000000);
+  const zeroMail=await api('/api/v1/admin/mail',auth(admin,{...magatamaMail,gift:{magatama:0},requestId:'send-zero-magatama'}));
+  assert.equal((await api('/api/v1/mail',{token:c.token})).data.mail.find(m=>m.id===zeroMail.data.mailId).gift,null);
+  await api('/api/v1/mail/claim',{...auth(c,{mailId:zeroMail.data.mailId,requestId:'claim-zero-magatama'}),expected:400});
+  const support=await api('/api/v1/admin/staff',auth(admin,{targetPlayerId:nonAdmin.user.id,action:'appoint',requestId:'appoint-gift-support'}));assert(support.data.user.isStaff);assert(!support.data.user.isAdmin);
+  await api('/api/v1/admin/mail',{...auth(nonAdmin,{...magatamaMail,requestId:'staff-cannot-send-magatama'}),expected:403});
+  const staffGift=await api('/api/v1/mail/claim',auth(nonAdmin,{mailId:magatamaSent.data.mailId,requestId:'staff-can-receive-magatama'}));assert.equal(staffGift.data.gift.magatama,3000);
   const storedSettings=database.prepare('SELECT * FROM settings').all();assert(!JSON.stringify(storedSettings).includes(env.SENGOKU_ADMIN_KEY));
-  assert.equal((await api('/api/v1/config')).data.onlineCount,7);
-  console.log(JSON.stringify({ok:true,calls,checks:['schema migration','hashed bearer auth','CORS and input limits','identity and name uniqueness','shared world chat','5-second chat throttle','guild membership isolation and deterministic ownership transfer','mutual friendship authorization','admin rate limit and concurrent single claim','admin-only endpoints','broadcast and personal mail isolation','atomic gift receipts and retry idempotency','no stored plaintext key/token']},null,2));
+  assert.equal((await api('/api/v1/config')).data.onlineCount,0,'authenticated requests alone do not create foreground presence');
+  console.log(JSON.stringify({ok:true,calls,checks:['schema migration','hashed bearer auth','CORS and input limits','identity and name uniqueness','shared world chat','5-second chat throttle','guild membership isolation and deterministic ownership transfer','mutual friendship authorization','admin rate limit and concurrent single claim','admin-only endpoints','broadcast and personal mail isolation','atomic gift receipts and retry idempotency','old four-resource gift hash compatibility','magatama-only and mixed gifts with integer/cap validation','magatama replay and concurrent claim safety','staff cannot send but can receive magatama','no stored plaintext key/token']},null,2));
 } finally {
   Date.now=originalNow;
   database.close();

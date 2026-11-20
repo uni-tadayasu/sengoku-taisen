@@ -1,0 +1,8 @@
+/* Clan crests share one geometry across the map, cards and crest catalogue. */
+.sengoku-kamon{--kamon-size:40px;display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;flex:0 0 auto;width:var(--kamon-size);height:var(--kamon-size);line-height:1;isolation:isolate}
+.sengoku-kamon>img{display:block;width:var(--kamon-size);height:var(--kamon-size);max-width:none;object-fit:contain;filter:drop-shadow(0 1px 2px #0008);user-select:none}
+.sengoku-kamon--label{height:auto;width:auto;gap:10px;line-height:1.3}
+.sengoku-kamon__caption{display:flex;flex-direction:column;gap:3px;text-align:left;color:inherit}
+.sengoku-kamon__caption b{font-size:.9em}.sengoku-kamon__caption small{font-size:.75em;opacity:.75}
+.kamon-entry .sengoku-kamon{margin:auto}.crest-detail-art .sengoku-kamon{margin:10px auto 16px}
+@media(prefers-reduced-motion:reduce){.sengoku-kamon{animation:none;transition:none}}

@@ -1,0 +1,19 @@
+{
+  "sources": [
+    {
+      "url": "https://naturalearth.s3.amazonaws.com/10m_cultural/ne_10m_admin_0_countries.zip",
+      "sha256": "ce1ac7036499a0edd641fbc093cd209a98f96a49d2eca8480aaacad35138a7f6",
+      "bytes": 4930492,
+      "retrievedAt": "2026-11-20T21:52:23.718516+00:00"
+    },
+    {
+      "url": "https://naturalearth.s3.amazonaws.com/10m_cultural/ne_10m_admin_1_states_provinces.zip",
+      "sha256": "efc59726337323058f9446210adc96673179cd344e053666ee3d28cb58ba2b05",
+      "bytes": 14909524,
+      "retrievedAt": "2026-11-20T21:52:23.819458+00:00"
+    }
+  ],
+  "landFeatures": 1,
+  "prefectureFeatures": 47,
+  "processing": "Decoded original Natural Earth shapefile coordinates with no simplification; selected Japan; retained only display properties. Polygon rings grouped by shapefile winding and containment."
+}

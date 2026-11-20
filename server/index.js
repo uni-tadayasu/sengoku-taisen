@@ -1,7 +1,15 @@
 const API = '/api/v1';
 const MAX_BODY = 16 * 1024;
+const MAX_SAVE_BODY = 2 * 1024 * 1024;
 const MAX_GUILD_MEMBERS = 50;
-const ONLINE_WINDOW = 5 * 60 * 1000;
+const ONLINE_WINDOW = 90 * 1000;
+const SYNC_LEASE = 30 * 1000;
+const PAIR_CODE_LIFETIME = 10 * 60 * 1000;
+const IEYASU_ID = 'of_b0616adde162';
+const WORLD_CLOCK_ID = 'world-v1';
+const MAX_TURN = 999999999;
+const WORLD_MONTH_MS = 60000;
+const WORLD_CYCLE_MONTHS = 56 * 12;
 const WELCOME = '戦国大戦へようこそ。城を育て、仲間と語らい、天下統一を目指しましょう。';
 const BASE_ORIGINS = new Set(['https://uni-tadayasu.github.io', 'http://127.0.0.1:4173', 'null']);
 const encoder = new TextEncoder();
@@ -32,10 +40,10 @@ function idField(value, name = '識別子') {
   if (!/^[a-zA-Z0-9_-]+$/.test(text)) fail(400, 'INVALID_INPUT', `${name}の形式が正しくありません。`);
   return text;
 }
-async function readBody(request) {
+async function readBody(request, limit = MAX_BODY) {
   if (!request.headers.get('content-type')?.toLowerCase().startsWith('application/json')) fail(415, 'JSON_REQUIRED', 'JSON形式で送信してください。');
   const declared = Number(request.headers.get('content-length'));
-  if (Number.isFinite(declared) && declared > MAX_BODY) fail(413, 'BODY_TOO_LARGE', '送信内容が大きすぎます。');
+  if (Number.isFinite(declared) && declared > limit) fail(413, 'BODY_TOO_LARGE', '送信内容が大きすぎます。');
   const reader = request.body?.getReader();
   if (!reader) return {};
   const chunks = []; let size = 0;
@@ -43,7 +51,7 @@ async function readBody(request) {
     const {done, value} = await reader.read();
     if (done) break;
     size += value.byteLength;
-    if (size > MAX_BODY) { await reader.cancel(); fail(413, 'BODY_TOO_LARGE', '送信内容が大きすぎます。'); }
+    if (size > limit) { await reader.cancel(); fail(413, 'BODY_TOO_LARGE', '送信内容が大きすぎます。'); }
     chunks.push(value);
   }
   const joined = new Uint8Array(size); let offset = 0;
@@ -84,14 +92,16 @@ function response(data, status = 200, origin = null, retryAfter) {
 }
 function mapUser(row, now = Date.now()) {
   return {
-    id: row.id, name: row.name, clan: row.clan, isAdmin: !!row.is_admin,
+    id: row.id, name: row.name, clan: row.clan, isAdmin: !!row.is_admin, isStaff: !!row.is_staff && !row.is_admin,
     guildId: row.guild_id || null, guildName: row.guild_name || null,
     guildRole: row.guild_id ? (row.owner_id === row.id ? 'owner' : 'member') : null,
-    online: Number(row.last_seen) >= now - ONLINE_WINDOW,
+    online: row.presence_seen !== null && row.presence_seen !== undefined && Number(row.presence_seen) > now - ONLINE_WINDOW,
   };
 }
 const USER_SELECT = `SELECT u.id,u.name,u.clan,u.last_seen,gm.guild_id,g.name AS guild_name,g.owner_id,
-  CASE WHEN u.id=(SELECT value FROM settings WHERE key='adminUserId') THEN 1 ELSE 0 END AS is_admin
+  (SELECT MAX(p.last_seen) FROM player_presence p WHERE p.user_id=u.id AND p.online=1) AS presence_seen,
+  CASE WHEN u.id=(SELECT value FROM settings WHERE key='adminUserId') THEN 1 ELSE 0 END AS is_admin,
+  EXISTS(SELECT 1 FROM staff_members sm WHERE sm.user_id=u.id) AS is_staff
   FROM users u LEFT JOIN guild_members gm ON gm.user_id=u.id LEFT JOIN guilds g ON g.id=gm.guild_id`;
 async function getUser(db, id) { return stmt(db, USER_SELECT + ' WHERE u.id=?', id).first(); }
 async function authenticate(request, db, now) {
@@ -99,7 +109,7 @@ async function authenticate(request, db, now) {
   const match = /^Bearer ([A-Za-z0-9_-]{43})$/.exec(header);
   if (!match) fail(401, 'AUTH_REQUIRED', '通信プレイヤーを登録してからご利用ください。');
   const tokenHash = await hash(match[1]);
-  const row = await stmt(db, USER_SELECT + ' WHERE u.token_hash=?', tokenHash).first();
+  const row = await stmt(db, USER_SELECT + ' WHERE u.token_hash=? OR u.id=(SELECT user_id FROM user_sessions WHERE token_hash=? AND revoked_at IS NULL)', tokenHash, tokenHash).first();
   if (!row) fail(401, 'INVALID_TOKEN', '通信プレイヤーの認証に失敗しました。保存済みの接続データをご確認ください。');
   if (Number(row.last_seen) <= now - 60000) {
     await stmt(db, 'UPDATE users SET last_seen=? WHERE id=? AND last_seen<=?', now, row.id, now - 60000).run();
@@ -108,6 +118,8 @@ async function authenticate(request, db, now) {
   return row;
 }
 function requireAdmin(user) { if (!user.is_admin) fail(403, 'ADMIN_REQUIRED', '運営専用の機能です。'); }
+function requireStaffChat(user) { if(!user.is_admin&&!user.is_staff)fail(403,'STAFF_CHAT_REQUIRED','運営・スタッフ専用のチャットです。'); }
+const STAFF_CHAT_GUARD="(EXISTS(SELECT 1 FROM settings WHERE key='adminUserId' AND value=?) OR EXISTS(SELECT 1 FROM staff_members WHERE user_id=?))";
 async function budget(db, scope, limit, windowMs, now) {
   const result = await stmt(db, `INSERT INTO rate_limits(scope,window_start,count,last_at) VALUES(?,?,1,?)
     ON CONFLICT(scope) DO UPDATE SET
@@ -131,7 +143,7 @@ async function userExists(db, id) {
 }
 async function roomFor(db, user, channel, target) {
   if (channel === 'world') return 'world';
-  if (channel === 'admin') { requireAdmin(user); return 'admin'; }
+  if (channel === 'admin') { requireStaffChat(user); return 'admin'; }
   if (channel === 'guild') {
     if (!user.guild_id || (target && target !== user.guild_id)) fail(403, 'GUILD_REQUIRED', '所属ギルドのチャットだけを利用できます。');
     return 'guild:' + user.guild_id;
@@ -147,10 +159,11 @@ async function roomFor(db, user, channel, target) {
   fail(400, 'INVALID_CHANNEL', 'チャットの種類が正しくありません。');
 }
 function mapMessage(row) {
-  return {id:Number(row.id),userId:row.user_id,name:row.name,text:row.body,createdAt:iso(row.created_at),isAdmin:!!row.is_admin};
+  return {id:Number(row.id),userId:row.user_id,name:row.name,text:row.body,createdAt:iso(row.created_at),isAdmin:!!row.is_admin,isStaff:!!row.is_staff&&!row.is_admin};
 }
 const MESSAGE_SELECT = `SELECT m.id,m.user_id,m.body,m.created_at,u.name,
- CASE WHEN m.user_id=(SELECT value FROM settings WHERE key='adminUserId') THEN 1 ELSE 0 END AS is_admin
+ CASE WHEN m.user_id=(SELECT value FROM settings WHERE key='adminUserId') THEN 1 ELSE 0 END AS is_admin,
+ EXISTS(SELECT 1 FROM staff_members sm WHERE sm.user_id=m.user_id) AS is_staff
  FROM messages m JOIN users u ON u.id=m.user_id`;
 const GUILD_SELECT = `SELECT g.id,g.name,g.owner_id,u.name AS owner_name,g.created_at,
  (SELECT COUNT(*) FROM guild_members gm WHERE gm.guild_id=g.id) AS member_count FROM guilds g JOIN users u ON u.id=g.owner_id`;
@@ -158,13 +171,15 @@ function mapGuild(row) { return {id:row.id,name:row.name,ownerId:row.owner_id,ow
 function giftField(value) {
   if (value === null || value === undefined) return null;
   if (!value || typeof value !== 'object' || Array.isArray(value)) fail(400, 'INVALID_GIFT', '贈り物の形式が正しくありません。');
-  const keys = ['gold','rice','wood','stone'];
+  const keys = ['gold','rice','wood','stone','magatama'];
   if (Object.keys(value).some(k => !keys.includes(k))) fail(400, 'INVALID_GIFT', '使用できない贈り物の種類です。');
   const gift = {};
   for (const k of keys) {
     const n = value[k] ?? 0;
-    if (!Number.isSafeInteger(n) || n < 0 || n > 1000000) fail(400, 'INVALID_GIFT', '資源は0～1,000,000の整数にしてください。');
-    gift[k] = n;
+    if (!Number.isSafeInteger(n) || n < 0 || n > 1000000) fail(400, 'INVALID_GIFT', '贈り物は0～1,000,000の整数にしてください。');
+    // Preserve the canonical JSON/hash of previously sent four-resource gifts.
+    // A missing or zero magatama amount must not invalidate an old send retry.
+    if(k!=='magatama'||n>0)gift[k] = n;
   }
   if (Object.values(gift).every(n => n === 0)) return null;
   return gift;
@@ -175,6 +190,407 @@ async function visibleMail(db, userId, mailId) {
   return mail;
 }
 
+// Version-2 save definitions mirror the game data. Keep the validation contract aligned
+// when adding a castle, facility or officer; only these known fields can enter cloud saves.
+const BUILDINGS = [{"id":"keep","core":true},{"id":"farm","core":true},{"id":"market","core":true},{"id":"lumber","core":true},{"id":"quarry","core":true},{"id":"barracks","core":true},{"id":"wall","core":true},{"id":"academy","core":true},{"id":"gold_mine","core":false},{"id":"silver_mine","core":false},{"id":"trade_port","core":false},{"id":"wholesale","core":false},{"id":"artisan_town","core":false},{"id":"post_town","core":false},{"id":"mint","core":false},{"id":"rice_paddy","core":false},{"id":"dry_field","core":false},{"id":"orchard","core":false},{"id":"fishery","core":false},{"id":"ranch","core":false},{"id":"granary","core":false},{"id":"irrigation","core":false},{"id":"cedar_forest","core":false},{"id":"bamboo_grove","core":false},{"id":"sawmill","core":false},{"id":"timber_market","core":false},{"id":"charcoal_kiln","core":false},{"id":"forest_office","core":false},{"id":"water_sawmill","core":false},{"id":"stoneworks","core":false},{"id":"clay_pit","core":false},{"id":"lime_kiln","core":false},{"id":"tile_kiln","core":false},{"id":"iron_mine","core":false},{"id":"copper_mine","core":false},{"id":"stone_depot","core":false},{"id":"dojo","core":false},{"id":"stable","core":false},{"id":"gunsmith","core":false},{"id":"spear_workshop","core":false},{"id":"armory","core":false},{"id":"drill_ground","core":false},{"id":"war_school","core":false},{"id":"main_gate","core":false},{"id":"moat","core":false},{"id":"watchtower","core":false},{"id":"guardhouse","core":false},{"id":"earthworks","core":false},{"id":"outpost","core":false},{"id":"herb_garden","core":false},{"id":"library","core":false},{"id":"observatory","core":false},{"id":"craft_lab","core":false},{"id":"engineering_shop","core":false},{"id":"medical_school","core":false},{"id":"school","core":false},{"id":"foreign_studies","core":false},{"id":"envoy_house","core":false},{"id":"tea_house","core":false},{"id":"temple","core":false},{"id":"shrine","core":false},{"id":"guest_house","core":false},{"id":"relay_station","core":false},{"id":"intelligence_office","core":false}];
+const CASTLES = [{"id":"ishikawa","clan":"津軽家","name":"石川城"},{"id":"sannohe","clan":"南部家","name":"三戸城"},{"id":"minato","clan":"安東家","name":"湊城"},{"id":"kakunodate","clan":"戸沢家","name":"角館城"},{"id":"yamagata","clan":"最上家","name":"山形城"},{"id":"yonezawa","clan":"伊達家","name":"米沢城"},{"id":"kurokawa","clan":"蘆名家","name":"黒川城"},{"id":"odaka","clan":"相馬家","name":"小高城"},{"id":"ota","clan":"佐竹家","name":"太田城"},{"id":"utsunomiya","clan":"宇都宮家","name":"宇都宮城"},{"id":"mayabashi","clan":"長野家","name":"厩橋城"},{"id":"oshi","clan":"成田家","name":"忍城"},{"id":"odawara","clan":"北条家","name":"小田原城"},{"id":"kasugayama","clan":"上杉家","name":"春日山城"},{"id":"ueda","clan":"真田家","name":"上田城"},{"id":"tsutsujigasaki","clan":"武田家","name":"躑躅ヶ崎館"},{"id":"nanao","clan":"畠山家","name":"七尾城"},{"id":"kanazawa","clan":"本願寺勢","name":"金沢御坊"},{"id":"ichijodani","clan":"朝倉家","name":"一乗谷城"},{"id":"sunpu","clan":"今川家","name":"駿府城"},{"id":"hikuma","clan":"飯尾家","name":"引馬城"},{"id":"okazaki","clan":"徳川家","name":"岡崎城"},{"id":"kiyosu","clan":"織田家","name":"清洲城"},{"id":"inabayama","clan":"斎藤家","name":"稲葉山城"},{"id":"odani","clan":"浅井家","name":"小谷城"},{"id":"kannonji","clan":"六角家","name":"観音寺城"},{"id":"sakamoto","clan":"明智家","name":"坂本城"},{"id":"nijo","clan":"足利家","name":"二条御所"},{"id":"akutagawa","clan":"三好家","name":"芥川山城"},{"id":"takaya","clan":"畠山家","name":"高屋城"},{"id":"tottori","clan":"山名家","name":"鳥取城"},{"id":"gassan","clan":"尼子家","name":"月山富田城"},{"id":"okayama","clan":"宇喜多家","name":"岡山城"},{"id":"yoshida","clan":"毛利家","name":"吉田郡山城"},{"id":"yamaguchi","clan":"大内家","name":"山口館"},{"id":"takamatsu","clan":"清水家","name":"備中高松城"},{"id":"oko","clan":"長宗我部家","name":"岡豊城"},{"id":"yuzuki","clan":"河野家","name":"湯築城"},{"id":"shozui","clan":"三好家","name":"勝瑞城"},{"id":"sogo","clan":"十河家","name":"十河城"},{"id":"akizuki","clan":"秋月家","name":"秋月城"},{"id":"tachibana","clan":"立花家","name":"立花城"},{"id":"funai","clan":"大友家","name":"府内館"},{"id":"saga","clan":"龍造寺家","name":"佐賀城"},{"id":"hitoyoshi","clan":"相良家","name":"人吉城"},{"id":"kumamoto","clan":"城家","name":"隈本城"},{"id":"obi","clan":"伊東家","name":"飫肥城"},{"id":"uchijo","clan":"島津家","name":"内城"},{"id":"hirosaki","clan":"津軽家","name":"弘前城"},{"id":"nejo","clan":"南部家","name":"根城"},{"id":"morioka","clan":"南部家","name":"盛岡城"},{"id":"sendai","clan":"伊達家","name":"仙台城"},{"id":"kubota","clan":"佐竹家","name":"久保田城"},{"id":"nihonmatsu","clan":"畠山家","name":"二本松城"},{"id":"shirakawa","clan":"結城家","name":"白河小峰城"},{"id":"kunohe","clan":"九戸家","name":"九戸城"},{"id":"miharu","clan":"田村家","name":"三春城"},{"id":"mukaihaguroyama","clan":"蘆名家","name":"向羽黒山城"},{"id":"mito","clan":"佐竹家","name":"水戸城"},{"id":"minowa","clan":"長野家","name":"箕輪城"},{"id":"nitta_kanayama","clan":"由良家","name":"新田金山城"},{"id":"hachigata","clan":"北条家","name":"鉢形城"},{"id":"kawagoe","clan":"太田家","name":"川越城"},{"id":"edo","clan":"太田家","name":"江戸城"},{"id":"hachioji","clan":"北条家","name":"八王子城"},{"id":"motosakura","clan":"千葉家","name":"本佐倉城"},{"id":"otaki","clan":"本多家","name":"大多喜城"},{"id":"numata","clan":"真田家","name":"沼田城"},{"id":"kofu","clan":"浅野家","name":"甲府城"},{"id":"kaizu","clan":"武田家","name":"海津城"},{"id":"komoro","clan":"仙石家","name":"小諸城"},{"id":"matsumoto","clan":"小笠原家","name":"松本城"},{"id":"takato","clan":"仁科家","name":"高遠城"},{"id":"shibata","clan":"新発田家","name":"新発田城"},{"id":"murakami","clan":"本庄家","name":"村上城"},{"id":"shinpu","clan":"武田家","name":"新府城"},{"id":"toyama","clan":"神保家","name":"富山城"},{"id":"takaoka","clan":"前田家","name":"高岡城"},{"id":"maruoka","clan":"柴田家","name":"丸岡城"},{"id":"echizen_ono","clan":"金森家","name":"越前大野城"},{"id":"kuniyoshi","clan":"粟屋家","name":"佐柿国吉城"},{"id":"iwamura","clan":"遠山家","name":"岩村城"},{"id":"yamanaka","clan":"北条家","name":"山中城"},{"id":"kakegawa","clan":"朝比奈家","name":"掛川城"},{"id":"inuyama","clan":"織田家","name":"犬山城"},{"id":"nagoya","clan":"徳川家","name":"名古屋城"},{"id":"nagashino","clan":"奥平家","name":"長篠城"},{"id":"gujo_hachiman","clan":"遠藤家","name":"郡上八幡城"},{"id":"naegi","clan":"遠山家","name":"苗木城"},{"id":"ogaki","clan":"氏家家","name":"大垣城"},{"id":"takatenjin","clan":"小笠原家","name":"高天神城"},{"id":"iga_ueno","clan":"藤堂家","name":"伊賀上野城"},{"id":"matsusaka","clan":"蒲生家","name":"松阪城"},{"id":"hikone","clan":"井伊家","name":"彦根城"},{"id":"azuchi","clan":"織田家","name":"安土城"},{"id":"osaka","clan":"豊臣家","name":"大坂城"},{"id":"himeji","clan":"黒田家","name":"姫路城"},{"id":"takeda_castle","clan":"赤松家","name":"竹田城"},{"id":"takatori","clan":"筒井家","name":"高取城"},{"id":"wakayama","clan":"浅野家","name":"和歌山城"},{"id":"fukuchiyama","clan":"明智家","name":"福知山城"},{"id":"kishiwada","clan":"小出家","name":"岸和田城"},{"id":"yamato_koriyama","clan":"筒井家","name":"大和郡山城"},{"id":"sumoto","clan":"脇坂家","name":"洲本城"},{"id":"bitchu_matsuyama","clan":"三村家","name":"備中松山城"},{"id":"tsuyama","clan":"森家","name":"津山城"},{"id":"hiroshima","clan":"毛利家","name":"広島城"},{"id":"iwakuni","clan":"吉川家","name":"岩国城"},{"id":"hagi","clan":"毛利家","name":"萩城"},{"id":"matsue","clan":"堀尾家","name":"松江城"},{"id":"yonago","clan":"中村家","name":"米子城"},{"id":"mihara","clan":"小早川家","name":"三原城"},{"id":"shintakayama","clan":"小早川家","name":"新高山城"},{"id":"tsuwano","clan":"吉見家","name":"津和野城"},{"id":"tokushima","clan":"蜂須賀家","name":"徳島城"},{"id":"sanuki_takamatsu","clan":"生駒家","name":"高松城"},{"id":"marugame","clan":"生駒家","name":"丸亀城"},{"id":"imabari","clan":"藤堂家","name":"今治城"},{"id":"uwajima","clan":"伊達家","name":"宇和島城"},{"id":"kochi","clan":"山内家","name":"高知城"},{"id":"kokura","clan":"細川家","name":"小倉城"},{"id":"fukuoka","clan":"黒田家","name":"福岡城"},{"id":"nakatsu","clan":"黒田家","name":"中津城"},{"id":"oka","clan":"中川家","name":"岡城"},{"id":"hizen_nagoya","clan":"豊臣家","name":"名護屋城"},{"id":"hirado","clan":"松浦家","name":"平戸城"},{"id":"shimabara","clan":"松倉家","name":"島原城"},{"id":"kagoshima","clan":"島津家","name":"鹿児島城"}];
+const CLANS = [{"name":"織田家"},{"name":"武田家"},{"name":"上杉家"},{"name":"徳川家"},{"name":"毛利家"},{"name":"島津家"},{"name":"伊達家"},{"name":"北条家"}];
+const TECHS = [{"id":"cultivation","max":5},{"id":"commerce","max":5},{"id":"forestry","max":5},{"id":"masonry","max":5},{"id":"conscription","max":5},{"id":"discipline","max":5},{"id":"gunnery","max":5},{"id":"siege","max":5}];
+const QUESTS = [{"id":"first_upgrade"},{"id":"first_recruit"},{"id":"first_battle"},{"id":"three_castles"},{"id":"five_officers"},{"id":"technology"},{"id":"ten_castles"},{"id":"unify"}];
+const TACTICS = [{"id":"balanced"},{"id":"assault"},{"id":"siege"},{"id":"ambush"}];
+const OFFICERS = [{"id":"of_a0e6e90cdb05","rank":"U","rarity":"U"},{"id":"of_ff3fd6bd6780","rank":"C","rarity":"C"},{"id":"of_aba61a9a6025","rank":"C","rarity":"C"},{"id":"of_63a558a01fd3","rank":"B","rarity":"B"},{"id":"of_68fd404eb737","rank":"B","rarity":"B"},{"id":"of_70318db415bd","rank":"B","rarity":"B"},{"id":"of_fb96738747b0","rank":"S","rarity":"S"},{"id":"of_38034cc3665c","rank":"S","rarity":"S"},{"id":"of_115e83112cb8","rank":"S","rarity":"S"},{"id":"of_72d0819cf996","rank":"B","rarity":"B"},{"id":"of_68e1472d2f81","rank":"D","rarity":"D"},{"id":"of_3e7e5a5ac434","rank":"C","rarity":"C"},{"id":"of_c871ba3fd72e","rank":"B","rarity":"B"},{"id":"of_e6f97b11d393","rank":"C","rarity":"C"},{"id":"of_70900a980301","rank":"D","rarity":"D"},{"id":"of_65f241a7a971","rank":"B","rarity":"B"},{"id":"of_b63f0fd4cd9f","rank":"B","rarity":"B"},{"id":"of_df3c4c3ee00a","rank":"B","rarity":"B"},{"id":"of_9212d6e7a5a1","rank":"SSS","rarity":"SSS"},{"id":"of_26d0f3c61efa","rank":"A","rarity":"A"},{"id":"of_5cc202f5486e","rank":"A","rarity":"A"},{"id":"of_fcde9260c619","rank":"D","rarity":"D"},{"id":"of_de135070c994","rank":"D","rarity":"D"},{"id":"of_441a416ebe71","rank":"U","rarity":"U"},{"id":"of_cb3739e8e3fd","rank":"D","rarity":"D"},{"id":"of_e9ffab493694","rank":"B","rarity":"B"},{"id":"of_e626334229d1","rank":"C","rarity":"C"},{"id":"of_07f743b2e701","rank":"A","rarity":"A"},{"id":"of_986ea36278e9","rank":"S","rarity":"S"},{"id":"of_776f46526cfb","rank":"D","rarity":"D"},{"id":"of_fe2924f04d99","rank":"C","rarity":"C"},{"id":"of_b7a41a01acc5","rank":"D","rarity":"D"},{"id":"of_59bd20a977f4","rank":"C","rarity":"C"},{"id":"of_62f865553259","rank":"B","rarity":"B"},{"id":"of_e09eb5d7517d","rank":"B","rarity":"B"},{"id":"of_3a536a5b88eb","rank":"B","rarity":"B"},{"id":"of_3bf24fbe1342","rank":"D","rarity":"D"},{"id":"of_8ae31bfcfea4","rank":"C","rarity":"C"},{"id":"of_e000b74e89ff","rank":"C","rarity":"C"},{"id":"of_d50b3328a869","rank":"C","rarity":"C"},{"id":"of_8667cb59427b","rank":"C","rarity":"C"},{"id":"of_d505821e1efb","rank":"A","rarity":"A"},{"id":"of_84d55a1e0510","rank":"C","rarity":"C"},{"id":"of_19ce96d56e7b","rank":"B","rarity":"B"},{"id":"of_b0616adde162","rank":"U","rarity":"U"},{"id":"of_c64fed5fd5ee","rank":"A","rarity":"A"},{"id":"of_bca8a1ab2ecc","rank":"B","rarity":"B"},{"id":"of_d5a1a07c899c","rank":"D","rarity":"D"},{"id":"of_d7ab8bacd2e8","rank":"C","rarity":"C"},{"id":"of_eb499d679a99","rank":"SS","rarity":"SS"},{"id":"of_1c414956c845","rank":"S","rarity":"S"},{"id":"of_4c9679c21dd9","rank":"A","rarity":"A"},{"id":"of_4aa00632c729","rank":"A","rarity":"A"},{"id":"of_80df2a3f71b4","rank":"SS","rarity":"SS"},{"id":"of_e382c64b6788","rank":"SS","rarity":"SS"},{"id":"of_7c68086fcf17","rank":"A","rarity":"A"},{"id":"of_01a2a64d574c","rank":"B","rarity":"B"},{"id":"of_3bfeb0818ad5","rank":"C","rarity":"C"},{"id":"of_600cadfc51ca","rank":"B","rarity":"B"},{"id":"of_cc39e1eb73ee","rank":"C","rarity":"C"},{"id":"of_92e643c24157","rank":"D","rarity":"D"},{"id":"of_49065f7eda69","rank":"C","rarity":"C"},{"id":"of_6439efdd41f2","rank":"A","rarity":"A"},{"id":"of_cd91877875f7","rank":"D","rarity":"D"},{"id":"of_1fad4e56084f","rank":"U","rarity":"U"},{"id":"of_5404c8f64020","rank":"B","rarity":"B"},{"id":"of_b769f98eaa15","rank":"S","rarity":"S"},{"id":"of_cc0c8bafb62f","rank":"D","rarity":"D"},{"id":"of_2d70c8739bf3","rank":"C","rarity":"C"},{"id":"of_032fa1823fb5","rank":"C","rarity":"C"},{"id":"of_4b1a5e96b7f9","rank":"B","rarity":"B"},{"id":"of_55d8eb4239b8","rank":"A","rarity":"A"},{"id":"of_9dfb615bceb1","rank":"A","rarity":"A"},{"id":"of_062ca2f22403","rank":"S","rarity":"S"},{"id":"of_854f873dc880","rank":"SS","rarity":"SS"},{"id":"of_37fbba464252","rank":"S","rarity":"S"},{"id":"of_a6d944a0b8dd","rank":"S","rarity":"S"},{"id":"of_e5db16d76d2a","rank":"A","rarity":"A"},{"id":"of_8ce312832bb1","rank":"D","rarity":"D"},{"id":"of_d9f8aaa5f139","rank":"C","rarity":"C"},{"id":"of_be400ef00f79","rank":"S","rarity":"S"},{"id":"of_036c6a0d3c67","rank":"SSS","rarity":"SSS"},{"id":"of_f293cee967b2","rank":"D","rarity":"D"},{"id":"of_8274869a411a","rank":"SS","rarity":"SS"},{"id":"of_8476285072de","rank":"SSS","rarity":"SSS"},{"id":"of_b6d28937a602","rank":"A","rarity":"A"},{"id":"of_186a41753745","rank":"C","rarity":"C"},{"id":"of_11c55ba657ee","rank":"A","rarity":"A"},{"id":"of_7de31f2d25f6","rank":"U","rarity":"U"},{"id":"of_25b61f479447","rank":"SS","rarity":"SS"},{"id":"of_f0c747d0ad85","rank":"B","rarity":"B"},{"id":"of_1f19a1a4d3f7","rank":"A","rarity":"A"},{"id":"of_e753692df8e8","rank":"B","rarity":"B"},{"id":"of_ad3d8b2a7e0d","rank":"SS","rarity":"SS"},{"id":"of_32a8cb2e5f11","rank":"C","rarity":"C"},{"id":"of_7bcaec901ece","rank":"C","rarity":"C"},{"id":"of_2b32358fba73","rank":"A","rarity":"A"},{"id":"of_08cee1a59d84","rank":"C","rarity":"C"},{"id":"of_e107bfbbfede","rank":"B","rarity":"B"},{"id":"of_8ffef76897b9","rank":"C","rarity":"C"},{"id":"of_e57ff26eefde","rank":"S","rarity":"S"},{"id":"of_1d10e43049ce","rank":"D","rarity":"D"},{"id":"of_f336ba2bd3ee","rank":"A","rarity":"A"},{"id":"of_f8fb97928a1c","rank":"C","rarity":"C"},{"id":"of_acf66881b90c","rank":"SSS","rarity":"SSS"},{"id":"of_7dae42f38b81","rank":"SS","rarity":"SS"},{"id":"of_39a447fa235f","rank":"SSS","rarity":"SSS"},{"id":"of_6fe7588efd44","rank":"S","rarity":"S"},{"id":"of_4c8b553249ac","rank":"A","rarity":"A"},{"id":"of_2b44824e5bc3","rank":"D","rarity":"D"},{"id":"of_96d126220271","rank":"B","rarity":"B"},{"id":"of_bd10e718c45b","rank":"B","rarity":"B"},{"id":"of_b9e3f348417b","rank":"B","rarity":"B"},{"id":"of_9f74a74a8a25","rank":"D","rarity":"D"},{"id":"of_ff4b86826567","rank":"C","rarity":"C"},{"id":"of_583a3f2fa1e1","rank":"B","rarity":"B"},{"id":"of_ad7ae9ce689b","rank":"A","rarity":"A"},{"id":"of_41fbffeae316","rank":"SSS","rarity":"SSS"},{"id":"of_c9a600d3041b","rank":"S","rarity":"S"},{"id":"of_90912dd40b7b","rank":"A","rarity":"A"},{"id":"of_d6ad06cde8c6","rank":"C","rarity":"C"},{"id":"of_6e26fbe9810c","rank":"D","rarity":"D"},{"id":"of_0da39e61030f","rank":"D","rarity":"D"},{"id":"of_99ca6b415f83","rank":"D","rarity":"D"},{"id":"of_fe07656642cd","rank":"SS","rarity":"SS"},{"id":"of_090229fe8f24","rank":"A","rarity":"A"},{"id":"of_32504e876cb4","rank":"D","rarity":"D"},{"id":"of_977d48d38a8c","rank":"SSS","rarity":"SSS"},{"id":"of_a961c8d748c3","rank":"U","rarity":"U"},{"id":"of_c60164551831","rank":"D","rarity":"D"},{"id":"of_34ca3b71c757","rank":"D","rarity":"D"},{"id":"of_76ba4c469340","rank":"B","rarity":"B"},{"id":"of_40f097f094f0","rank":"A","rarity":"A"},{"id":"of_2c772492d8de","rank":"S","rarity":"S"},{"id":"of_a2aa5d651062","rank":"A","rarity":"A"},{"id":"of_a5509b34c24d","rank":"A","rarity":"A"},{"id":"of_0811d329ea42","rank":"B","rarity":"B"},{"id":"of_cba19a00d667","rank":"SSS","rarity":"SSS"},{"id":"of_b1727b5f01cd","rank":"B","rarity":"B"},{"id":"of_645bf9b96b5b","rank":"A","rarity":"A"},{"id":"of_9e0e9ff9b24f","rank":"S","rarity":"S"},{"id":"of_634b91971ec5","rank":"S","rarity":"S"},{"id":"of_044f75deb75a","rank":"A","rarity":"A"},{"id":"of_d1ebd2af507c","rank":"SS","rarity":"SS"},{"id":"of_d451b69f0d8e","rank":"C","rarity":"C"},{"id":"of_8cb9010edbd6","rank":"B","rarity":"B"},{"id":"of_ea149c8008f6","rank":"C","rarity":"C"},{"id":"of_37f879a6fe0e","rank":"A","rarity":"A"},{"id":"of_d5f58007e8b8","rank":"C","rarity":"C"},{"id":"of_e454f951652b","rank":"S","rarity":"S"},{"id":"of_5d45193db675","rank":"D","rarity":"D"},{"id":"of_0f1fa57bd563","rank":"B","rarity":"B"},{"id":"of_423a1775b219","rank":"S","rarity":"S"},{"id":"of_42089d2a1e06","rank":"A","rarity":"A"},{"id":"of_4f6e17715f37","rank":"D","rarity":"D"},{"id":"of_d1c22f1c278a","rank":"SS","rarity":"SS"},{"id":"of_eb4ea696f69c","rank":"B","rarity":"B"},{"id":"of_65cfd50910ff","rank":"C","rarity":"C"},{"id":"of_7a1d5b662842","rank":"A","rarity":"A"},{"id":"of_e9f337d06d0a","rank":"S","rarity":"S"},{"id":"of_62dfb7599436","rank":"D","rarity":"D"},{"id":"of_63f34d7bd399","rank":"D","rarity":"D"},{"id":"of_8f88e36931d0","rank":"D","rarity":"D"},{"id":"of_2776078a4d43","rank":"C","rarity":"C"},{"id":"of_2fb26a1f22ce","rank":"SS","rarity":"SS"},{"id":"of_52288d93a163","rank":"C","rarity":"C"},{"id":"of_24681edc66a0","rank":"SS","rarity":"SS"},{"id":"of_34e6a58a6be0","rank":"A","rarity":"A"},{"id":"of_9f13178fc263","rank":"A","rarity":"A"},{"id":"of_2797326caa72","rank":"A","rarity":"A"},{"id":"of_c790c12cf4f8","rank":"C","rarity":"C"},{"id":"of_18e33e84a750","rank":"U","rarity":"U"},{"id":"of_a24e7055cc3b","rank":"B","rarity":"B"},{"id":"of_b1b3364da00f","rank":"C","rarity":"C"},{"id":"of_dc2a18db20b8","rank":"C","rarity":"C"},{"id":"of_25d64953b8c0","rank":"S","rarity":"S"},{"id":"of_295dc6ca2683","rank":"C","rarity":"C"},{"id":"of_2ae7106cafd2","rank":"SS","rarity":"SS"},{"id":"of_92db45b97c25","rank":"D","rarity":"D"},{"id":"of_726f653695fa","rank":"D","rarity":"D"},{"id":"of_6ea2ed8ce73f","rank":"D","rarity":"D"},{"id":"of_1b1261e4072f","rank":"C","rarity":"C"},{"id":"of_5777a4c6c166","rank":"S","rarity":"S"},{"id":"of_26dec57f0ce7","rank":"C","rarity":"C"},{"id":"of_b7f1c5e96d34","rank":"SS","rarity":"SS"},{"id":"of_2443932b7b16","rank":"S","rarity":"S"},{"id":"of_fe7333233ad7","rank":"B","rarity":"B"},{"id":"of_5c7df800327b","rank":"C","rarity":"C"},{"id":"of_3d6e5bcd584d","rank":"A","rarity":"A"},{"id":"of_0e90997b6a74","rank":"B","rarity":"B"},{"id":"of_e2cc6d8494e9","rank":"D","rarity":"D"},{"id":"of_a4d79d64a696","rank":"C","rarity":"C"},{"id":"of_66a413fe47c6","rank":"B","rarity":"B"},{"id":"of_ed1a354ead5c","rank":"S","rarity":"S"},{"id":"of_ef6125582de3","rank":"A","rarity":"A"},{"id":"of_90794256e769","rank":"B","rarity":"B"},{"id":"of_a3ebd9305b77","rank":"C","rarity":"C"},{"id":"of_4ad219b05727","rank":"SSS","rarity":"SSS"},{"id":"of_a8b1942fd6f0","rank":"B","rarity":"B"},{"id":"of_43f44f231033","rank":"B","rarity":"B"},{"id":"of_661b4ef8d271","rank":"B","rarity":"B"},{"id":"of_2e565690c108","rank":"B","rarity":"B"},{"id":"of_b2f7a04e1314","rank":"D","rarity":"D"},{"id":"of_193478300c9f","rank":"SSS","rarity":"SSS"},{"id":"of_0fd91e531288","rank":"C","rarity":"C"},{"id":"of_7b83b025a229","rank":"C","rarity":"C"},{"id":"of_b0d484afc5fd","rank":"S","rarity":"S"},{"id":"of_6ebba6d98baf","rank":"D","rarity":"D"},{"id":"of_69c8d30858dd","rank":"B","rarity":"B"},{"id":"of_9bc7c977b15f","rank":"C","rarity":"C"},{"id":"of_bc24d0094d1b","rank":"A","rarity":"A"},{"id":"of_07de980ca260","rank":"D","rarity":"D"},{"id":"of_37848027b2a9","rank":"C","rarity":"C"},{"id":"of_09b324fab073","rank":"A","rarity":"A"},{"id":"of_0dc991571235","rank":"S","rarity":"S"},{"id":"of_d67ec86d5302","rank":"S","rarity":"S"},{"id":"of_7cf3b4336dd7","rank":"SS","rarity":"SS"},{"id":"of_dd9ac0fef8ab","rank":"SSS","rarity":"SSS"},{"id":"of_4e7128f8bec8","rank":"SS","rarity":"SS"},{"id":"of_2aa671cb189a","rank":"SS","rarity":"SS"},{"id":"of_03f1e4c48a76","rank":"S","rarity":"S"},{"id":"of_068d4841b859","rank":"B","rarity":"B"},{"id":"of_772916618907","rank":"C","rarity":"C"},{"id":"of_7f990e567f78","rank":"SS","rarity":"SS"},{"id":"of_9a78742407de","rank":"C","rarity":"C"},{"id":"of_08375b880242","rank":"A","rarity":"A"},{"id":"of_d746190a4fb5","rank":"B","rarity":"B"},{"id":"of_68d00bd24e3b","rank":"D","rarity":"D"},{"id":"of_7ea1bb66f553","rank":"B","rarity":"B"},{"id":"of_45e0f4cb36ad","rank":"SS","rarity":"SS"},{"id":"of_667635446894","rank":"U","rarity":"U"},{"id":"of_5db6a9b5d30b","rank":"S","rarity":"S"},{"id":"of_3e8734a81e23","rank":"SS","rarity":"SS"},{"id":"of_5a065fb2318b","rank":"D","rarity":"D"},{"id":"of_4b0e32ed2304","rank":"B","rarity":"B"},{"id":"of_e34b3b0bb3b3","rank":"B","rarity":"B"},{"id":"of_a9a216007a85","rank":"A","rarity":"A"},{"id":"of_f9b885b2fedb","rank":"C","rarity":"C"},{"id":"of_0fe1c738e675","rank":"A","rarity":"A"},{"id":"of_2a3709362b54","rank":"A","rarity":"A"},{"id":"of_cbba00d253b2","rank":"C","rarity":"C"},{"id":"of_0e53a4c4fa63","rank":"C","rarity":"C"},{"id":"of_9e3085a0f721","rank":"A","rarity":"A"},{"id":"of_e3e7cedcc8ff","rank":"SSS","rarity":"SSS"},{"id":"of_31b173ed3827","rank":"S","rarity":"S"},{"id":"of_6fb552fd670b","rank":"SSS","rarity":"SSS"},{"id":"of_3ef9c0ad17c2","rank":"SS","rarity":"SS"},{"id":"of_998be9ba7fda","rank":"S","rarity":"S"},{"id":"of_29846053ddca","rank":"C","rarity":"C"},{"id":"of_15af9682bb34","rank":"SSS","rarity":"SSS"},{"id":"of_cf279a58e2d7","rank":"B","rarity":"B"},{"id":"of_ac24e4255779","rank":"D","rarity":"D"},{"id":"of_e70c0742e2f0","rank":"A","rarity":"A"},{"id":"of_9015c61c1eab","rank":"D","rarity":"D"},{"id":"of_cc7ff75f69df","rank":"D","rarity":"D"},{"id":"of_c3e1f225f038","rank":"B","rarity":"B"}];
+const RANKS = ["D","C","B","A","S","SS","SSS","U"];
+const RESOURCES = ["gold","rice","wood","stone"];
+const GACHA = {"initial":3000,"duplicateRefund":50};
+const CASTLE_BY_ID = Object.assign(Object.create(null), Object.fromEntries(CASTLES.map(v => [v.id,v])));
+const OFFICER_BY_ID = Object.assign(Object.create(null), Object.fromEntries(OFFICERS.map(v => [v.id,v])));
+const CLAN_HOMES = {'織田家':'kiyosu','武田家':'tsutsujigasaki','上杉家':'kasugayama','徳川家':'okazaki','毛利家':'yoshida','島津家':'uchijo','伊達家':'yonezawa','北条家':'odawara'};
+const copy = value => JSON.parse(JSON.stringify(value));
+const pick = (object, keys) => Object.fromEntries(keys.map(key => [key,object[key]]));
+
+function normalizeGameSave(raw, user, now, {reading=false,clock=null}={}) {
+  let obj;try{obj=typeof raw==='string'?JSON.parse(raw):copy(raw);}catch(e){fail(400,'INVALID_SAVE','セーブデータを読み取れません。');}
+  const s=obj?.state||obj;
+  const invalid=()=>{fail(400,'INVALID_SAVE','セーブデータの形式または内容が正しくありません。');};
+  const isObj=v=>v&&typeof v==='object'&&!Array.isArray(v);
+  const num=(v,min=0,max=999999999)=>typeof v==='number'&&Number.isFinite(v)&&Number.isInteger(v)&&v>=min&&v<=max;
+  if(!isObj(s)||s.version!==2||obj?.game&&obj.game!=='sengoku-tento')invalid();
+  if(!CLANS.some(c=>c.name===s.clan)||!CASTLE_BY_ID[s.home]||!['easy','normal','hard'].includes(s.difficulty))invalid();
+  const g={state:{version:2},roster:OFFICERS,officer:id=>OFFICER_BY_ID[id],baseOfficer:id=>OFFICER_BY_ID[id]};
+  if(!num(s.turn,0,MAX_TURN)||!num(s.troops,0,1000000)||!num(s.morale,0,100)||!num(s.prestige)||!num(s.command,0,7)||!num(s.seed,0,4294967295))invalid();
+  if(!isObj(s.resources)||!RESOURCES.every(k=>num(s.resources[k])))invalid();
+  if(!isObj(s.buildings)||Object.keys(s.buildings).length!==BUILDINGS.length||!BUILDINGS.every(b=>num(s.buildings[b.id],b.core?1:0,32)))invalid();
+  if(s.command>3+Math.floor(s.buildings.keep/8))invalid();
+  if(!isObj(s.tech)||!TECHS.every(t=>num(s.tech[t.id],0,t.max)))invalid();
+  const validOwner=new Set([...CASTLES.map(c=>c.clan),'在地衆']);for(const c of CLANS)validOwner.add(c.name);
+  if(!isObj(s.castles)||Object.keys(s.castles).length!==CASTLES.length||!CASTLES.every(c=>{const v=s.castles[c.id];if(isObj(v)&&v.level===undefined)v.level=1;return isObj(v)&&validOwner.has(v.owner)&&num(v.troops,0,1000000)&&num(v.wall,1,32)&&num(v.level,1,32);}))invalid();
+  if(!Array.isArray(s.officers)||s.officers.length>g.roster.length||new Set(s.officers).size!==s.officers.length||s.officers.some(id=>typeof id!=='string'||!g.officer(id)))invalid();
+  if(!Array.isArray(s.army)||s.army.length>3||new Set(s.army).size!==s.army.length||s.army.some(id=>!s.officers.includes(id)))invalid();
+  if(!isObj(s.governors)||Object.keys(s.governors).some(id=>!BUILDINGS.some(b=>b.id===id)||s.buildings[id]<1)||Object.values(s.governors).some(id=>!s.officers.includes(id)||s.army.includes(id))||new Set(Object.values(s.governors)).size!==Object.values(s.governors).length)invalid();
+  const scalar=(v,min,max)=>typeof v==='number'&&Number.isFinite(v)&&v>=min&&v<=max;
+  if(s.realtime===undefined)s.realtime={running:true,speed:1,elapsed:0,commandProgress:0,incomeRemainders:{gold:0,rice:0,wood:0,stone:0}};
+  const rt=s.realtime;
+  if(!isObj(rt)||typeof rt.running!=='boolean'||![1,2,4].includes(rt.speed)||!scalar(rt.elapsed,0,59.99999999)||!scalar(rt.commandProgress,0,19.99999999)||!isObj(rt.incomeRemainders)||Object.keys(rt.incomeRemainders).length!==4||!RESOURCES.every(k=>scalar(rt.incomeRemainders[k],-1,1)&&Math.abs(rt.incomeRemainders[k])<1))invalid();
+  if(s.worldClock!==undefined) {
+    if(!isObj(s.worldClock)||s.worldClock.id!==WORLD_CLOCK_ID||!Number.isSafeInteger(s.worldClock.elapsedMs)||s.worldClock.elapsedMs<0||s.worldClock.elapsedMs>WORLD_MONTH_MS*(MAX_TURN+1)-1)fail(400,'INVALID_CLOCK_ANCHOR','共通時計の保存位置が正しくありません。');
+    if(s.turn!==Math.floor(s.worldClock.elapsedMs/WORLD_MONTH_MS)||Math.abs(rt.elapsed-(s.worldClock.elapsedMs%WORLD_MONTH_MS)/1000)>1e-5)fail(400,'INVALID_CLOCK_ANCHOR','ゲーム年月と共通時計の保存位置が一致しません。');
+    if(!reading&&clock&&s.worldClock.elapsedMs>clock.elapsedMs+5000)fail(400,'CLOCK_AHEAD','保存時刻が世界の共通時計より先です。共通時計を再確認してください。');
+  }
+  if(!Array.isArray(s.jobs)||s.jobs.length>7)invalid();
+  for(const j of s.jobs){if(!isObj(j))invalid();if(j.remainingSeconds===undefined)j.remainingSeconds=j.remaining*60;if(j.totalSeconds===undefined)j.totalSeconds=j.total*60;if(!scalar(j.remainingSeconds,.00000001,180)||!num(j.totalSeconds,60,180)||j.totalSeconds!==j.total*60||j.remainingSeconds>j.totalSeconds||j.remaining!==Math.ceil((j.remainingSeconds-1e-8)/60))invalid();}
+
+  const jobkeys=new Set();for(const j of s.jobs){if(!isObj(j)||!['building','castle','research'].includes(j.kind)||!num(j.remaining,1,3)||!num(j.total,1,3)||j.remaining>j.total)invalid();const defs=j.kind==='building'?BUILDINGS:j.kind==='castle'?CASTLES:TECHS,current=j.kind==='castle'?s.castles[j.id]?.level:(j.kind==='building'?s.buildings:s.tech)[j.id];if(!defs.some(d=>d.id===j.id)||j.targetLevel!==current+1||j.targetLevel>(j.kind==='research'?5:32)||j.kind==='castle'&&s.castles[j.id]?.owner!==s.clan)invalid();const key=j.kind+':'+j.id;if(jobkeys.has(key))invalid();jobkeys.add(key);}
+  if(s.jobs.filter(j=>j.kind==='research').length>1||s.jobs.filter(j=>j.kind!=='research').length>2+Math.floor(s.buildings.keep/8))invalid();
+  if(!isObj(s.treaties)||Object.entries(s.treaties).some(([k,v])=>!validOwner.has(k)||k===s.clan||!num(v,0,MAX_TURN+6)))invalid();
+  if(!isObj(s.scouted)||Object.entries(s.scouted).some(([k,v])=>!CASTLE_BY_ID[k]||!num(v,0,MAX_TURN+6)))invalid();
+  if(!Array.isArray(s.claimedQuests)||new Set(s.claimedQuests).size!==s.claimedQuests.length||s.claimedQuests.some(id=>!QUESTS.some(q=>q.id===id)))invalid();
+  if(s.giftReceipts===undefined)s.giftReceipts=[];
+  if(!Array.isArray(s.giftReceipts)||s.giftReceipts.length>2000||new Set(s.giftReceipts).size!==s.giftReceipts.length||s.giftReceipts.some(id=>typeof id!=='string'||id.length<1||id.length>128))invalid();
+  if(s.magatama===undefined)s.magatama=GACHA.initial;if(!num(s.magatama))invalid();
+  if(s.captureRewards===undefined)s.captureRewards=CASTLES.filter(c=>s.castles[c.id].owner===s.clan).map(c=>c.id);
+  if(!Array.isArray(s.captureRewards)||s.captureRewards.length>CASTLES.length||new Set(s.captureRewards).size!==s.captureRewards.length||s.captureRewards.some(id=>typeof id!=='string'||!CASTLE_BY_ID[id]))invalid();
+  if(!isObj(s.stats)||!['battles','wins','upgrades','recruited'].every(k=>num(s.stats[k],0,10000000))||s.stats.wins>s.stats.battles)invalid();
+  for(const key of ['gachaDraws','gachaDuplicates','castleUpgrades']){if(s.stats[key]===undefined)s.stats[key]=0;if(!num(s.stats[key],0,10000000))invalid();}if(s.stats.gachaDuplicates>s.stats.gachaDraws)invalid();
+  if(s.gachaHistory===undefined)s.gachaHistory=[];
+  if(!Array.isArray(s.gachaHistory)||s.gachaHistory.length>50||s.gachaHistory.length>s.stats.gachaDraws||s.gachaHistory.some(v=>!isObj(v)||!g.baseOfficer(v.officerId)||!s.officers.includes(v.officerId)||!RANKS.includes(v.rank)||typeof v.isNew!=='boolean'||v.duplicateRefund!==(v.isNew?0:GACHA.duplicateRefund)||!num(v.turn,0,s.turn)))invalid();
+  s.gachaHistory=s.gachaHistory.map(v=>({officerId:v.officerId,rank:v.rank,isNew:v.isNew,isNewOfficer:v.isNewOfficer===undefined?v.isNew:v.isNewOfficer,upgraded:v.upgraded===undefined?false:v.upgraded,duplicateRefund:v.duplicateRefund,turn:v.turn}));
+  if(s.gachaHistory.some(v=>typeof v.isNewOfficer!=='boolean'||typeof v.upgraded!=='boolean'||v.isNewOfficer&&!v.isNew||v.upgraded&&(!v.isNew||v.isNewOfficer)))invalid();
+  if(s.officerVariants===undefined){const variants=new Set(s.officers.map(id=>`${id}:${g.baseOfficer(id).rank||g.baseOfficer(id).rarity}`));for(const v of s.gachaHistory)variants.add(`${v.officerId}:${v.rank}`);s.officerVariants=[...variants];}
+  const validVariants=new Map(g.roster.flatMap(o=>RANKS.map(rank=>[`${o.id}:${rank}`,o.id])));
+  if(!Array.isArray(s.officerVariants)||s.officerVariants.length>g.roster.length*RANKS.length||new Set(s.officerVariants).size!==s.officerVariants.length||s.officerVariants.some(key=>typeof key!=='string'||!validVariants.has(key)||!s.officers.includes(validVariants.get(key)))||s.officers.some(id=>!RANKS.some(rank=>s.officerVariants.includes(`${id}:${rank}`)))||s.gachaHistory.some(v=>!s.officerVariants.includes(`${v.officerId}:${v.rank}`)))invalid();
+  if(!num(s.stats.researches??0,0,10000000))invalid();s.stats.researches=s.stats.researches??Object.values(s.tech).reduce((a,b)=>a+b,0);
+  if(!Array.isArray(s.log)||s.log.length>200||s.log.some(l=>!isObj(l)||!num(l.turn,0,MAX_TURN)||typeof l.text!=='string'||l.text.length>2000||typeof l.kind!=='string'||l.kind.length>30))invalid();
+  // Only retain known, validated fields; do not merge arbitrary imported object keys.
+  const n=g.state;for(const k of ['clan','home','turn','difficulty','resources','troops','morale','prestige','command','buildings','jobs','officers','officerVariants','army','governors','tech','castles','treaties','scouted','log','claimedQuests','giftReceipts','magatama','captureRewards','gachaHistory','seed','stats','realtime'])n[k]=copy(s[k]);
+  if(s.worldClock!==undefined)n.worldClock={id:WORLD_CLOCK_ID,elapsedMs:s.worldClock.elapsedMs};
+  n.won=CASTLES.every(c=>!user.is_admin&&c.id==='edo'||n.castles[c.id].owner===n.clan);n.gameOver=!CASTLES.some(c=>n.castles[c.id].owner===n.clan);
+  if(!n.gameOver&&n.castles[n.home].owner!==n.clan)invalid();if(n.gameOver)n.realtime.running=false;
+  n.lastBattle=null;
+  if(s.lastBattle!==null&&s.lastBattle!==undefined){const b=s.lastBattle;if(!isObj(b)||typeof b.won!=='boolean'||!CASTLE_BY_ID[b.castleId]||!num(b.ourBefore)||!num(b.ourLost)||!num(b.enemyBefore)||!num(b.enemyLost)||!Array.isArray(b.phases)||b.phases.length>10||b.phases.some(p=>!isObj(p)||typeof p.title!=='string'||p.title.length>50||typeof p.text!=='string'||p.text.length>1000)||!isObj(b.rewards)||!num(b.rewards.gold)||!num(b.rewards.rice)||!num(b.rewards.magatama??0)||b.capturedOfficer!==null&&b.capturedOfficer!==undefined&&!g.officer(b.capturedOfficer))invalid();n.lastBattle={won:b.won,castleId:b.castleId,castleName:CASTLE_BY_ID[b.castleId].name,ourBefore:b.ourBefore,ourLost:b.ourLost,enemyBefore:b.enemyBefore,enemyLost:b.enemyLost,phases:copy(b.phases),rewards:{gold:b.rewards.gold,rice:b.rewards.rice,magatama:b.rewards.magatama??0},capturedOfficer:b.capturedOfficer||null,garrison:num(b.garrison)?b.garrison:0,tactic:TACTICS.some(t=>t.id===b.tactic)?b.tactic:'balanced',turn:num(b.turn,0,MAX_TURN)?b.turn:n.turn};}
+  // A read after an administrative identity change must still be recoverable.
+  // Match the client's legacy migration, without granting permission to upload
+  // exclusive assets and without mutating the stored revision during a GET.
+  if (reading && !user.is_admin) {
+    n.officerVariants=[...new Set(n.officerVariants.map(key=>key===IEYASU_ID+':U'?IEYASU_ID+':SSS':key))];
+    n.gachaHistory=n.gachaHistory.map(entry=>entry.officerId===IEYASU_ID&&entry.rank==='U'?{...entry,rank:'SSS'}:entry);
+    const edo=n.castles.edo,wasHome=n.home==='edo',ownedEdo=edo.owner===n.clan;
+    if(wasHome||ownedEdo) {
+      const canonical=CLAN_HOMES[n.clan],other=CASTLES.filter(c=>c.id!=='edo'&&n.castles[c.id].owner===n.clan);
+      const fallback=other.find(c=>c.id===canonical)?.id||other[0]?.id||canonical;
+      if(ownedEdo&&!other.length) {
+        n.castles[fallback]={...edo,owner:n.clan};
+        if(!n.captureRewards.includes(fallback))n.captureRewards.push(fallback);
+      }
+      if(wasHome)n.home=fallback;
+      if(ownedEdo)n.castles.edo={owner:'太田家',troops:3320,wall:4,level:1};
+    }
+    n.jobs=n.jobs.filter(job=>job.kind!=='castle'||job.id!=='edo');
+    n.captureRewards=n.captureRewards.filter(id=>id!=='edo');
+    n.won=CASTLES.every(c=>c.id==='edo'||n.castles[c.id].owner===n.clan);
+    n.gameOver=!CASTLES.some(c=>c.id!=='edo'&&n.castles[c.id].owner===n.clan);
+    if(n.gameOver)n.realtime.running=false;
+  }
+  if (!user.is_admin && (n.home==='edo' || n.castles.edo.owner===n.clan || n.officerVariants.includes(IEYASU_ID+':U'))) {
+    fail(403,'ADMIN_ENTITLEMENT_REQUIRED','江戸城と德川家康のUランクは運営専用です。');
+  }
+  // Entitlements belong to the authenticated identity, never imported flags. Restoring
+  // the exclusive officer does not touch currency, army assignments or gacha history.
+  if (user.is_admin) {
+    if (!n.officers.includes(IEYASU_ID)) n.officers.push(IEYASU_ID);
+    if (!n.officerVariants.includes(IEYASU_ID+':U')) n.officerVariants.push(IEYASU_ID+':U');
+    const oldHome=n.home,edo=n.castles.edo;
+    if(oldHome!=='edo') {
+      const previous=n.castles[oldHome];
+      for(const key of ['troops','wall','level'])edo[key]=Math.max(edo[key],previous[key]);
+      n.jobs=n.jobs.flatMap(job=>job.kind==='castle'&&job.id==='edo'
+        ?edo.level>=32?[]:[{...job,targetLevel:edo.level+1}]:[job]);
+    }
+    edo.owner=n.clan;n.home='edo';
+    if(!n.captureRewards.includes('edo'))n.captureRewards.push('edo');
+    n.won=CASTLES.every(c=>n.castles[c.id].owner===n.clan);n.gameOver=false;
+  }
+  n.resources=pick(n.resources,RESOURCES);
+  n.buildings=pick(n.buildings,BUILDINGS.map(v=>v.id));
+  n.tech=pick(n.tech,TECHS.map(v=>v.id));
+  n.castles=Object.fromEntries(CASTLES.map(v=>[v.id,pick(n.castles[v.id],['owner','troops','wall','level'])]));
+  n.jobs=n.jobs.map(v=>pick(v,['kind','id','remaining','total','remainingSeconds','totalSeconds','targetLevel']));
+  n.log=n.log.map(v=>pick(v,['turn','text','kind']));
+  n.stats=pick(n.stats,['battles','wins','upgrades','recruited','researches','gachaDraws','gachaDuplicates','castleUpgrades']);
+  n.realtime=pick(n.realtime,['running','speed','elapsed','commandProgress','incomeRemainders']);
+  n.realtime.incomeRemainders=pick(n.realtime.incomeRemainders,RESOURCES);
+  // Only writes normalize these legacy control fields. Reads at the same save
+  // revision must have stable content even when the separate global clock changes.
+  if(clock&&!reading){n.realtime.running=clock.running&&!n.gameOver;n.realtime.speed=clock.speed;}
+  if(n.lastBattle)n.lastBattle.phases=n.lastBattle.phases.map(v=>pick(v,['title','text']));
+  const savedAt=typeof obj.savedAt==='string'&&obj.savedAt.length<=64&&Number.isFinite(Date.parse(obj.savedAt))?new Date(obj.savedAt).toISOString():iso(now);
+  return {game:'sengoku-tento',version:2,savedAt,state:n};
+}
+
+function pairingCode() {
+  const alphabet='0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+  return Array.from(crypto.getRandomValues(new Uint8Array(12)),value=>alphabet[value&31]).join('');
+}
+function codeField(value) {
+  if(typeof value!=='string'||value.length>32)fail(400,'INVALID_PAIR_CODE','12文字の端末連携コードを入力してください。');
+  const code=value.replace(/[\s-]/g,'').toUpperCase();
+  if(!/^[0-9A-HJKMNP-TV-Z]{12}$/.test(code))fail(400,'INVALID_PAIR_CODE','端末連携コードの形式が正しくありません。');
+  return code;
+}
+async function getSyncRow(db,userId) {
+  return stmt(db,'SELECT * FROM player_saves WHERE user_id=?',userId).first();
+}
+async function getWorldClockRow(db,now) {
+  const existing=await stmt(db,'SELECT * FROM world_clock WHERE id=?',WORLD_CLOCK_ID).first();
+  if(existing)return existing;
+  // Schema migration contains no data writes. The fixed primary key makes the
+  // initial epoch a single atomic event even for simultaneous first visitors.
+  await stmt(db,`INSERT INTO world_clock(id,base_elapsed_ms,anchor_real_ms,running,speed,revision)
+    VALUES(?,0,?,1,1,0) ON CONFLICT(id) DO NOTHING`,WORLD_CLOCK_ID,now).run();
+  return stmt(db,'SELECT * FROM world_clock WHERE id=?',WORLD_CLOCK_ID).first();
+}
+function mapWorldClock(row,now) {
+  const elapsedMs=Number(row.base_elapsed_ms)+(row.running?Math.max(0,now-Number(row.anchor_real_ms))*Number(row.speed):0);
+  const turn=Math.floor(elapsedMs/WORLD_MONTH_MS),position=turn%WORLD_CYCLE_MONTHS;
+  return {id:WORLD_CLOCK_ID,elapsedMs,running:!!row.running,speed:Number(row.speed),revision:Number(row.revision),serverTime:iso(now),
+    calendar:{startYear:1560,yearsPerCycle:56,monthsPerCycle:WORLD_CYCLE_MONTHS,secondsPerMonth:60,cycle:Math.floor(turn/WORLD_CYCLE_MONTHS)+1,year:1560+Math.floor(position/12),month:position%12+1}};
+}
+async function getWorldClock(db,now) { return mapWorldClock(await getWorldClockRow(db,now),now); }
+async function syncSnapshot(db,row,user,deviceId,now) {
+  const clock=await getWorldClock(db,now);
+  return {ok:true,user:mapUser(user,now),save:row?.save_json?normalizeGameSave(JSON.parse(row.save_json),user,now,{reading:true,clock}):null,clock,
+    revision:Number(row?.revision||0),updatedAt:row?.updated_at?iso(row.updated_at):null,
+    writerDeviceId:row?.writer_device_id||null,writerDeviceName:row?.writer_device_name||null,
+    leaseExpiresAt:row?.lease_expires_at?iso(row.lease_expires_at):null,serverTime:iso(now),
+    writable:!!deviceId&&row?.writer_device_id===deviceId&&Number(row.lease_expires_at)>now,
+    entitlements:{edo:!!user.is_admin,ieyasuU:!!user.is_admin}};
+}
+
+const FIELD_RULES=Object.freeze({minTroops:300,maxTroops:100000,commandCost:1,foodBase:150,foodPerTroop:.3,attackCooldownMs:60000,defenderProtectionMs:60000,proposalLifetimeMs:600000,allianceDurationMs:360000,maxLootPerResource:500,maxLootFraction:.05,maxDefenderLossFraction:.1,operatorProtected:true,
+  tactics:[{id:'balanced',name:'正攻法',food:1,modifier:1,loss:1},{id:'assault',name:'総攻撃',food:1.25,modifier:1.18,loss:1.35},{id:'siege',name:'包囲戦',food:1.65,modifier:.97,loss:.8},{id:'ambush',name:'伏兵',food:1.1,modifier:1.06,loss:.95}]});
+const FIELD_SELECT=`SELECT u.id,u.name,u.clan,u.last_seen,s.revision,
+  CASE WHEN u.id=(SELECT value FROM settings WHERE key='adminUserId') THEN 1 ELSE 0 END AS is_admin,
+  EXISTS(SELECT 1 FROM staff_members sm WHERE sm.user_id=u.id) AS is_staff,
+  (SELECT MAX(p.last_seen) FROM player_presence p WHERE p.user_id=u.id AND p.online=1) AS presence_seen,
+  (SELECT MAX(b.occurred_elapsed_ms) FROM field_battles b WHERE b.attacker_id=u.id) AS last_attack_ms,
+  (SELECT MAX(b.occurred_elapsed_ms) FROM field_battles b WHERE b.defender_id=u.id) AS last_defended_ms,
+  json_extract(s.save_json,'$.state.clan') AS game_clan,json_extract(s.save_json,'$.state.home') AS home_id,
+  json_extract(s.save_json,'$.state.troops') AS troops,json_extract(s.save_json,'$.state.castles') AS castles_json,
+  json_extract(s.save_json,'$.state.buildings.wall') AS wall,json_extract(s.save_json,'$.state.tech.discipline') AS discipline,
+  json_extract(s.save_json,'$.state.army') AS army_json,json_extract(s.save_json,'$.state.officerVariants') AS variants_json
+  FROM users u JOIN player_saves s ON s.user_id=u.id
+  WHERE s.save_json IS NOT NULL AND (COALESCE(json_extract(s.save_json,'$.state.gameOver'),0)=0 OR u.id=(SELECT value FROM settings WHERE key='adminUserId'))`;
+function fieldArmy(army,variants) {
+  const powers=[.9,.95,1,1.08,1.16,1.25,1.35,1.5];
+  const scores=army.map(id=>Math.max(...RANKS.map((rank,i)=>variants.includes(id+':'+rank)?powers[i]:0))||1);
+  return {officerCount:army.length,rankPower:army.length?Math.round(scores.reduce((a,b)=>a+b,0)/army.length*1000)/1000:.75};
+}
+function fieldDefense(s,tactic='balanced',siege=0) {
+  const home=s.castles[s.home],force=home.troops+Math.floor(s.troops*.45),army=fieldArmy(s.army,s.officerVariants);
+  const wallFactor=Math.max(.2,1-siege*.12)*(tactic==='siege'?.5:1);
+  return {force,power:Math.max(1,Math.round((force+200)*(1+s.buildings.wall*.11*wallFactor)*(1+s.tech.discipline*.06)*(1+(home.level-1)*.04)*army.rankPower)),army};
+}
+function fieldRelationStatus(row,userId,elapsed) {
+  if(!row||Number(row.expires_elapsed_ms)<=elapsed)return 'neutral';
+  if(row.status==='allied')return 'allied';
+  if(row.status==='pending')return row.proposed_by===userId?'outgoing':'incoming';
+  return 'neutral';
+}
+function mapFieldRelationship(row,userId,elapsed,targetName='') {
+  const status=fieldRelationStatus(row,userId,elapsed);
+  if(status==='neutral')return null;
+  return {targetPlayerId:row.user_a===userId?row.user_b:row.user_a,targetName,status,expiresElapsedMs:Number(row.expires_elapsed_ms),remainingMs:Math.max(0,Number(row.expires_elapsed_ms)-elapsed),proposedBy:row.proposed_by,revision:Number(row.revision)};
+}
+function mapFieldPlayer(row,viewer,relationship,clock,now) {
+  const castles=JSON.parse(row.castles_json),storedHome=row.home_id;
+  const alternatives=CASTLES.filter(c=>c.id!=='edo'&&castles[c.id].owner===row.game_clan),canonical=CLAN_HOMES[row.game_clan]||'kiyosu';
+  const replacement=alternatives.find(c=>c.id===canonical)?.id||alternatives[0]?.id||canonical;
+  const home=row.is_admin?'edo':storedHome==='edo'?replacement:storedHome;
+  const castle={...(!row.is_admin&&storedHome==='edo'&&!alternatives.length&&castles.edo.owner===row.game_clan?castles.edo:castles[home])};
+  if(row.is_admin&&storedHome!=='edo')for(const key of ['troops','wall','level'])castle[key]=Math.max(castle[key],castles[storedHome][key]);
+  const state={home,troops:Number(row.troops),castles:{[home]:castle},buildings:{wall:Number(row.wall)},tech:{discipline:Number(row.discipline)},army:JSON.parse(row.army_json||'[]'),officerVariants:JSON.parse(row.variants_json||'[]')};
+  const defense=fieldDefense(state),self=viewer?.id===row.id,relation=self?'self':fieldRelationStatus(relationship,viewer?.id,clock.elapsedMs);
+  const protectedUntil=row.last_defended_ms===null?0:Number(row.last_defended_ms)+FIELD_RULES.defenderProtectionMs;
+  const reason=!viewer?'領主として接続してください。':self?'自分の本拠です。':row.is_admin?'運営の江戸城は保護されています。':relation==='allied'?'同盟の期間中です。':protectedUntil>clock.elapsedMs?'襲撃後の保護期間です。':!clock.running?'世界の共通時間が停止中です。':'';
+  return {playerId:row.id,name:row.name,clan:row.game_clan,homeCastleId:home,homeCastleName:CASTLE_BY_ID[home].name,level:castle.level,defenseTroops:defense.force,defensePower:defense.power,armySummary:defense.army,isAdmin:!!row.is_admin,isStaff:!!row.is_staff&&!row.is_admin,self,online:row.presence_seen!==null&&Number(row.presence_seen)>now-ONLINE_WINDOW,relationship:relation,protectedUntilElapsedMs:protectedUntil,attackable:!reason,attackReason:reason};
+}
+async function fieldRelation(db,a,b) {const [first,second]=pair(a,b);return stmt(db,'SELECT * FROM field_relations WHERE user_a=? AND user_b=?',first,second).first();}
+async function fieldOwnRelations(db,userId,elapsed) {
+  return rows(await stmt(db,`SELECT r.*,u.name AS target_name FROM field_relations r JOIN users u ON u.id=CASE WHEN r.user_a=? THEN r.user_b ELSE r.user_a END
+    WHERE (r.user_a=? OR r.user_b=?) AND r.status IN ('pending','allied') AND r.expires_elapsed_ms>? ORDER BY r.updated_elapsed_ms DESC LIMIT 100`,userId,userId,userId,elapsed).all());
+}
+async function getFieldList(db,viewer,url,now) {
+  const cursor=url.searchParams.get('cursor')||'',limitText=url.searchParams.get('limit')||'50';
+  if(cursor)idField(cursor,'共有地図の続き');
+  if(!/^\d{1,3}$/.test(limitText)||Number(limitText)<1||Number(limitText)>100)fail(400,'INVALID_INPUT','一覧の件数は1～100件で指定してください。');
+  const limit=Number(limitText),clock=await getWorldClock(db,now),relations=viewer?await fieldOwnRelations(db,viewer.id,clock.elapsedMs):[];
+  const result=await db.batch([stmt(db,FIELD_SELECT+' AND u.id>? ORDER BY u.id LIMIT ?',cursor,limit+1),stmt(db,"SELECT COUNT(*) AS count FROM player_saves WHERE save_json IS NOT NULL AND (COALESCE(json_extract(save_json,'$.state.gameOver'),0)=0 OR user_id=(SELECT value FROM settings WHERE key='adminUserId'))")]);
+  const found=rows(result[0]),players=found.slice(0,limit).map(row=>mapFieldPlayer(row,viewer,relations.find(r=>r.user_a===row.id||r.user_b===row.id),clock,now));
+  return {ok:true,players,total:Number(rows(result[1])[0].count),nextCursor:found.length>limit?players.at(-1).playerId:null,clock,rules:FIELD_RULES};
+}
+function fieldWriter(row,deviceId,revision,now) {
+  if(!row?.save_json)fail(409,'SAVE_REQUIRED','先に本拠をクラウドへ保存してください。');
+  if(row.writer_device_id!==deviceId||Number(row.lease_expires_at)<=now)fail(409,'LEASE_REQUIRED','この端末を操作端末にしてからお試しください。');
+  if(Number(row.revision)!==revision)fail(409,'REVISION_CONFLICT','本拠の保存が更新されています。同期してからお試しください。');
+}
+function fieldRequestBody(body,kind) {
+  const allowed=kind==='attack'?['targetPlayerId','troops','tactic','requestId','deviceId','expectedRevision']:['targetPlayerId','action','requestId','deviceId','expectedRevision'];
+  if(Object.keys(body).some(key=>!allowed.includes(key)))fail(400,'INVALID_INPUT','送信できない操作項目が含まれています。');
+  const targetPlayerId=idField(body.targetPlayerId,'相手の領主'),requestId=idField(body.requestId,'操作番号'),deviceId=idField(body.deviceId,'端末');
+  if(!Number.isSafeInteger(body.expectedRevision)||body.expectedRevision<0)fail(400,'INVALID_INPUT','保存の更新番号が正しくありません。');
+  if(kind==='attack'&&(!Number.isInteger(body.troops)||body.troops<FIELD_RULES.minTroops||body.troops>FIELD_RULES.maxTroops||!FIELD_RULES.tactics.some(t=>t.id===body.tactic)))fail(400,'INVALID_INPUT','兵数と戦法を正しく指定してください。');
+  if(kind==='diplomacy'&&!['propose','accept','reject','cancel'].includes(body.action))fail(400,'INVALID_INPUT','外交操作が正しくありません。');
+  return {...body,targetPlayerId,requestId,deviceId};
+}
+async function priorFieldRequest(db,userId,body,kind,digest) {
+  const prior=await stmt(db,'SELECT * FROM field_requests WHERE actor_id=? AND request_id=?',userId,body.requestId).first();
+  if(prior&&(prior.kind!==kind||prior.request_hash!==digest))fail(409,'REQUEST_ID_REUSED','この操作番号は別の操作に使われています。');
+  return prior;
+}
+async function fieldMe(db,user,url,now) {
+  const deviceId=url.searchParams.get('deviceId')||'';if(deviceId)idField(deviceId,'端末');
+  const clock=await getWorldClock(db,now),row=await getSyncRow(db,user.id),base=await stmt(db,FIELD_SELECT+' AND u.id=?',user.id).first();
+  const save=row?.save_json?normalizeGameSave(JSON.parse(row.save_json),user,now,{reading:true,clock}):null,s=save?.state;
+  const cooldownUntil=base?.last_attack_ms!==null&&base?.last_attack_ms!==undefined?Number(base.last_attack_ms)+FIELD_RULES.attackCooldownMs:0;
+  let reason=!s?'先に本拠をクラウドへ保存してください。':s.gameOver?'本拠を復元してください。':!s.worldClock?'共通時計へ同期してください。':!clock.running?'世界の共通時間が停止中です。':row.lease_expires_at<=now||deviceId&&row.writer_device_id!==deviceId?'この端末を操作端末にしてください。':cooldownUntil>clock.elapsedMs?'次の出陣までお待ちください。':s.command<1?'指示の回復をお待ちください。':s.troops<FIELD_RULES.minTroops?'出陣できる兵が足りません。':s.resources.rice<240?'兵糧が足りません。':'';
+  if(!reason&&clock.elapsedMs-s.worldClock.elapsedMs>15000)reason='共通時計と本拠を同期してください。';
+  const relations=await fieldOwnRelations(db,user.id,clock.elapsedMs),battles=rows(await stmt(db,'SELECT result_json FROM field_battles WHERE attacker_id=? OR defender_id=? ORDER BY occurred_elapsed_ms DESC,id DESC LIMIT 20',user.id,user.id).all()).map(b=>JSON.parse(b.result_json));
+  return {ok:true,self:base?mapFieldPlayer(base,user,null,clock,now):null,revision:row?Number(row.revision):null,clock,rules:FIELD_RULES,attack:{ready:!reason,reason,availableTroops:s?.troops||0,minTroops:FIELD_RULES.minTroops,maxTroops:Math.min(s?.troops||0,FIELD_RULES.maxTroops),command:s?.command||0,rice:s?.resources.rice||0,cooldownUntilElapsedMs:cooldownUntil,remainingCooldownMs:Math.max(0,cooldownUntil-clock.elapsedMs)},relationships:relations.map(r=>mapFieldRelationship(r,user.id,clock.elapsedMs,r.target_name)),battles};
+}
+async function fieldReplayAttack(db,user,body,prior,now) {return {...await syncSnapshot(db,await getSyncRow(db,user.id),user,body.deviceId,now),battle:JSON.parse(prior.result_json),idempotent:true};}
+async function fieldCommitFailure(db,user,body,kind,digest,clock,now) {
+  const prior=await priorFieldRequest(db,user.id,body,kind,digest);if(prior)return prior;
+  fieldWriter(await getSyncRow(db,user.id),body.deviceId,body.expectedRevision,now);
+  if((await getWorldClock(db,now)).revision!==clock.revision)fail(409,'WORLD_CLOCK_CHANGED','運営が共通時計を更新しました。同期してからお試しください。');
+  fail(409,'FIELD_CHANGED','相手の本拠または外交関係が更新されました。共有地図を更新してからお試しください。');
+}
+async function fieldAttack(db,user,raw,now) {
+  const body=fieldRequestBody(raw,'attack'),digest=await hash(JSON.stringify(['attack',body.targetPlayerId,body.troops,body.tactic]));
+  const prior=await priorFieldRequest(db,user.id,body,'attack',digest);if(prior)return fieldReplayAttack(db,user,body,prior,now);
+  if(body.targetPlayerId===user.id)fail(400,'INVALID_TARGET','自分の本拠には出陣できません。');
+  await budget(db,'field-attack:'+user.id,30,60000,now);
+  const target=await getUser(db,body.targetPlayerId);if(!target)fail(404,'FIELD_PLAYER_NOT_FOUND','相手の本拠が見つかりません。');
+  if(target.is_admin)fail(403,'TARGET_PROTECTED','運営の江戸城は保護されています。');
+  const attackerRow=await getSyncRow(db,user.id);fieldWriter(attackerRow,body.deviceId,body.expectedRevision,now);
+  const defenderRow=await getSyncRow(db,target.id);if(!defenderRow?.save_json)fail(404,'FIELD_PLAYER_NOT_FOUND','相手の本拠はまだ共有されていません。');
+  const clock=await getWorldClock(db,now);if(!clock.running)fail(409,'WORLD_PAUSED','世界の共通時間が停止中です。');
+  const attacker=normalizeGameSave(JSON.parse(attackerRow.save_json),user,now,{reading:true,clock}),defender=normalizeGameSave(JSON.parse(defenderRow.save_json),target,now,{reading:true,clock}),a=attacker.state,d=defender.state;
+  if(a.gameOver||d.gameOver)fail(409,'BASE_UNAVAILABLE','本拠を失っている領主とは戦えません。');
+  if(!a.worldClock)fail(409,'CLOCK_ANCHOR_REQUIRED','先に共通時計へ同期してください。');
+  if(clock.elapsedMs-a.worldClock.elapsedMs>15000)fail(409,'CLOCK_STALE','共通時計と本拠を同期してから出陣してください。');
+  const relation=await fieldRelation(db,user.id,target.id);if(fieldRelationStatus(relation,user.id,clock.elapsedMs)==='allied')fail(409,'ALLIED_TARGET','同盟期間中の相手には出陣できません。');
+  const cooldown=await stmt(db,'SELECT MAX(occurred_elapsed_ms) AS last FROM field_battles WHERE attacker_id=?',user.id).first();
+  if(cooldown.last!==null&&Number(cooldown.last)+FIELD_RULES.attackCooldownMs>clock.elapsedMs)fail(409,'ATTACK_COOLDOWN','次の出陣まで共通時間で60秒お待ちください。');
+  const shield=await stmt(db,'SELECT MAX(occurred_elapsed_ms) AS last FROM field_battles WHERE defender_id=?',target.id).first();
+  if(shield.last!==null&&Number(shield.last)+FIELD_RULES.defenderProtectionMs>clock.elapsedMs)fail(409,'TARGET_PROTECTED','相手は襲撃後の保護期間です。');
+  const tactic=FIELD_RULES.tactics.find(t=>t.id===body.tactic),foodCost=Math.ceil(body.troops*FIELD_RULES.foodPerTroop*tactic.food)+FIELD_RULES.foodBase;
+  if(body.troops>a.troops||a.command<1||a.resources.rice<foodCost)fail(409,'INSUFFICIENT_FORCE','兵数・指示・兵糧が足りません。');
+  const attackPower=Math.max(1,Math.round(body.troops*(.7+.5*a.morale/100)*(1+a.tech.discipline*.06+a.tech.gunnery*.05)*fieldArmy(a.army,a.officerVariants).rankPower*tactic.modifier));
+  const defense=fieldDefense(d,tactic.id,a.tech.siege),ratio=attackPower/defense.power,chance=Math.max(.05,Math.min(.95,.5+Math.log(ratio)*.6));
+  const won=crypto.getRandomValues(new Uint32Array(1))[0]/4294967296<chance;
+  const attackerLost=Math.min(body.troops,Math.max(1,Math.floor(body.troops*Math.min(.35,(won?.08+.06/Math.max(.3,ratio):.2+.06/Math.max(.3,ratio))*tactic.loss))));
+  const home=d.castles[d.home],defenderLost={troops:Math.min(Math.floor(d.troops*.1),Math.floor(body.troops*(won?.04:.015))),garrison:Math.min(Math.floor(home.troops*.1),Math.floor(body.troops*(won?.08:.03)))};
+  a.troops-=attackerLost;a.resources.rice-=foodCost;a.command-=1;d.troops-=defenderLost.troops;home.troops-=defenderLost.garrison;
+  const loot=Object.fromEntries(RESOURCES.map(key=>{const amount=won?Math.min(500,Math.floor(d.resources[key]*.05),999999999-a.resources[key]):0;d.resources[key]-=amount;a.resources[key]+=amount;return [key,amount];}));
+  a.stats.battles=Math.min(10000000,a.stats.battles+1);if(won)a.stats.wins=Math.min(a.stats.battles,a.stats.wins+1);
+  a.morale=Math.max(0,Math.min(100,a.morale+(won?3:-5)));d.morale=Math.max(0,d.morale-2);
+  const battle={id:uid('fb_'),requestId:body.requestId,attackerPlayerId:user.id,attackerName:user.name,defenderPlayerId:target.id,defenderName:target.name,castleId:d.home,castleName:CASTLE_BY_ID[d.home].name,won,tactic:body.tactic,troops:body.troops,attackerLost,defenderLost,foodCost,loot,attackPower,defensePower:defense.power,winChance:Math.round(chance*100),occurredElapsedMs:clock.elapsedMs,createdAt:iso(now),attackerRevision:Number(attackerRow.revision)+1,defenderRevision:Number(defenderRow.revision)+1,nextAttackElapsedMs:clock.elapsedMs+FIELD_RULES.attackCooldownMs,defenderProtectedUntilElapsedMs:clock.elapsedMs+FIELD_RULES.defenderProtectionMs};
+  a.log.unshift({turn:a.turn,text:`${target.name}の${battle.castleName}へ襲撃。${won?'戦利品を得て帰還':'撤退'}、兵${attackerLost}人を失いました。`,kind:'pvp'});a.log=a.log.slice(0,200);
+  d.log.unshift({turn:d.turn,text:`${user.name}の襲撃を受け、兵${defenderLost.troops+defenderLost.garrison}人を失いました。本拠の領有は継続しています。`,kind:'pvp'});d.log=d.log.slice(0,200);
+  attacker.savedAt=iso(now);defender.savedAt=iso(now);
+  const attackerJson=JSON.stringify(normalizeGameSave(attacker,user,now,{clock})),defenderJson=JSON.stringify(normalizeGameSave(defender,target,now,{clock})),resultJson=JSON.stringify(battle),nonce=crypto.randomUUID(),[first,second]=pair(user.id,target.id);
+  // The operation row is a transaction-local gate. A D1 batch is atomic: both
+  // saves and the battle record are changed only if this exact nonce was inserted.
+  const result=await db.batch([
+    stmt(db,`INSERT INTO field_requests(actor_id,request_id,kind,request_hash,commit_token,result_json,created_at)
+      SELECT ?,?,'attack',?,?,?,? FROM player_saves a JOIN player_saves d ON d.user_id=?
+      WHERE a.user_id=? AND a.revision=? AND a.writer_device_id=? AND a.lease_expires_at>?
+      AND d.revision=? AND d.save_json IS NOT NULL
+      AND NOT EXISTS(SELECT 1 FROM settings WHERE key='adminUserId' AND value=?)
+      AND EXISTS(SELECT 1 FROM world_clock WHERE id=? AND revision=? AND running=1)
+      AND NOT EXISTS(SELECT 1 FROM field_relations WHERE user_a=? AND user_b=? AND status='allied' AND expires_elapsed_ms>?)
+      AND NOT EXISTS(SELECT 1 FROM field_battles WHERE attacker_id=? AND occurred_elapsed_ms>?)
+      AND NOT EXISTS(SELECT 1 FROM field_battles WHERE defender_id=? AND occurred_elapsed_ms>?)
+      ON CONFLICT(actor_id,request_id) DO NOTHING RETURNING request_id`,user.id,body.requestId,digest,nonce,resultJson,now,target.id,user.id,body.expectedRevision,body.deviceId,now,defenderRow.revision,target.id,WORLD_CLOCK_ID,clock.revision,first,second,clock.elapsedMs,user.id,clock.elapsedMs-FIELD_RULES.attackCooldownMs,target.id,clock.elapsedMs-FIELD_RULES.defenderProtectionMs),
+    stmt(db,`UPDATE player_saves SET save_json=?,revision=revision+1,updated_at=?,lease_expires_at=? WHERE user_id=? AND EXISTS(SELECT 1 FROM field_requests WHERE actor_id=? AND request_id=? AND commit_token=?)`,attackerJson,now,now+SYNC_LEASE,user.id,user.id,body.requestId,nonce),
+    stmt(db,`UPDATE player_saves SET save_json=?,revision=revision+1,updated_at=? WHERE user_id=? AND EXISTS(SELECT 1 FROM field_requests WHERE actor_id=? AND request_id=? AND commit_token=?)`,defenderJson,now,target.id,user.id,body.requestId,nonce),
+    stmt(db,`INSERT INTO field_battles(id,attacker_id,defender_id,occurred_elapsed_ms,result_json,created_at) SELECT ?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM field_requests WHERE actor_id=? AND request_id=? AND commit_token=?)`,battle.id,user.id,target.id,clock.elapsedMs,resultJson,now,user.id,body.requestId,nonce)
+  ]);
+  if(!rows(result[0]).length){const replay=await fieldCommitFailure(db,user,body,'attack',digest,clock,now);return fieldReplayAttack(db,user,body,replay,now);}
+  return {...await syncSnapshot(db,await getSyncRow(db,user.id),user,body.deviceId,now),battle,idempotent:false};
+}
+async function fieldDiplomacy(db,user,raw,now) {
+  const body=fieldRequestBody(raw,'diplomacy'),digest=await hash(JSON.stringify(['diplomacy',body.targetPlayerId,body.action]));
+  let prior=await priorFieldRequest(db,user.id,body,'diplomacy',digest);
+  if(body.targetPlayerId===user.id)fail(400,'INVALID_TARGET','自分自身へ外交を申し込むことはできません。');
+  const target=await getUser(db,body.targetPlayerId);if(!target)fail(404,'FIELD_PLAYER_NOT_FOUND','相手の領主が見つかりません。');
+  const clock=await getWorldClock(db,now);
+  const respond=async idempotent=>({ok:true,relationship:mapFieldRelationship(await fieldRelation(db,user.id,target.id),user.id,clock.elapsedMs,target.name),idempotent,clock});
+  if(prior)return respond(true);
+  await budget(db,'field-diplomacy:'+user.id,20,60000,now);
+  const own=await getSyncRow(db,user.id);fieldWriter(own,body.deviceId,body.expectedRevision,now);
+  const other=await getSyncRow(db,target.id);if(!other?.save_json)fail(404,'FIELD_PLAYER_NOT_FOUND','相手の本拠はまだ共有されていません。');
+  const relation=await fieldRelation(db,user.id,target.id),status=fieldRelationStatus(relation,user.id,clock.elapsedMs);
+  if(body.action==='propose'&&status!=='neutral'||['accept','reject'].includes(body.action)&&status!=='incoming'||body.action==='cancel'&&status!=='outgoing')fail(409,'DIPLOMACY_STATE','外交関係が変わっています。申し込みは相手だけが承認でき、成立した同盟は期限まで継続します。');
+  if(body.action==='propose') {
+    const active=await stmt(db,`SELECT
+      (SELECT COUNT(*) FROM field_relations WHERE (user_a=? OR user_b=?) AND status IN ('pending','allied') AND expires_elapsed_ms>?) AS actor_count,
+      (SELECT COUNT(*) FROM field_relations WHERE (user_a=? OR user_b=?) AND status IN ('pending','allied') AND expires_elapsed_ms>?) AS target_count`,user.id,user.id,clock.elapsedMs,target.id,target.id,clock.elapsedMs).first();
+    if(Number(active.actor_count)>=20||Number(active.target_count)>=20)fail(409,'DIPLOMACY_LIMIT','各領主が同時に進められる外交は20件までです。');
+  }
+  const nextStatus={propose:'pending',accept:'allied',reject:'rejected',cancel:'cancelled'}[body.action],proposedBy=body.action==='propose'?user.id:relation.proposed_by;
+  const expiry=clock.elapsedMs+(body.action==='propose'?FIELD_RULES.proposalLifetimeMs:body.action==='accept'?FIELD_RULES.allianceDurationMs:0),nonce=crypto.randomUUID(),[first,second]=pair(user.id,target.id),relationRevision=relation?Number(relation.revision):-1;
+  const result=await db.batch([
+    stmt(db,`INSERT INTO field_requests(actor_id,request_id,kind,request_hash,commit_token,result_json,created_at)
+      SELECT ?,?,'diplomacy',?,?,?,? FROM player_saves a JOIN player_saves d ON d.user_id=?
+      WHERE a.user_id=? AND a.revision=? AND a.writer_device_id=? AND a.lease_expires_at>? AND d.revision=? AND d.save_json IS NOT NULL
+      AND EXISTS(SELECT 1 FROM world_clock WHERE id=? AND revision=?)
+      AND ((?=-1 AND NOT EXISTS(SELECT 1 FROM field_relations WHERE user_a=? AND user_b=?)) OR EXISTS(SELECT 1 FROM field_relations WHERE user_a=? AND user_b=? AND revision=?))
+      AND (?<>'propose' OR ((SELECT COUNT(*) FROM field_relations WHERE (user_a=? OR user_b=?) AND status IN ('pending','allied') AND expires_elapsed_ms>?)<20
+        AND (SELECT COUNT(*) FROM field_relations WHERE (user_a=? OR user_b=?) AND status IN ('pending','allied') AND expires_elapsed_ms>?)<20))
+      ON CONFLICT(actor_id,request_id) DO NOTHING RETURNING request_id`,user.id,body.requestId,digest,nonce,JSON.stringify({targetPlayerId:target.id,action:body.action}),now,target.id,user.id,body.expectedRevision,body.deviceId,now,other.revision,WORLD_CLOCK_ID,clock.revision,relationRevision,first,second,first,second,relationRevision,body.action,user.id,user.id,clock.elapsedMs,target.id,target.id,clock.elapsedMs),
+    stmt(db,`INSERT INTO field_relations(user_a,user_b,status,proposed_by,expires_elapsed_ms,updated_elapsed_ms,revision,updated_at)
+      SELECT ?,?,?,?,?,?,0,? WHERE EXISTS(SELECT 1 FROM field_requests WHERE actor_id=? AND request_id=? AND commit_token=?)
+      ON CONFLICT(user_a,user_b) DO UPDATE SET status=excluded.status,proposed_by=excluded.proposed_by,expires_elapsed_ms=excluded.expires_elapsed_ms,updated_elapsed_ms=excluded.updated_elapsed_ms,revision=field_relations.revision+1,updated_at=excluded.updated_at`,first,second,nextStatus,proposedBy,expiry,clock.elapsedMs,now,user.id,body.requestId,nonce)
+  ]);
+  if(!rows(result[0]).length){prior=await fieldCommitFailure(db,user,body,'diplomacy',digest,clock,now);return respond(!!prior);}
+  return respond(false);
+}
+
+async function staffRoster(db,now) {
+  const found=rows(await stmt(db,`SELECT member.*,sm.appointed_at,sm.appointed_by FROM (${USER_SELECT}) member
+    JOIN staff_members sm ON sm.user_id=member.id WHERE member.is_admin=0 ORDER BY sm.appointed_at,member.id`).all());
+  return found.map(row=>({...mapUser(row,now),appointedAt:iso(row.appointed_at),appointedBy:row.appointed_by}));
+}
+async function staffOperation(db,user,body,now) {
+  requireAdmin(user);
+  if(Object.keys(body).some(key=>!['targetPlayerId','action','requestId'].includes(key))||!['appoint','dismiss'].includes(body.action))fail(400,'INVALID_INPUT','スタッフの任命または解除を指定してください。');
+  const targetId=idField(body.targetPlayerId,'対象の領主'),requestId=idField(body.requestId,'操作番号');
+  if(targetId===user.id)fail(400,'INVALID_TARGET','運営本人をスタッフに変更することはできません。');
+  await userExists(db,targetId);
+  const check=prior=>{if(prior&&(prior.target_id!==targetId||prior.action!==body.action))fail(409,'REQUEST_ID_REUSED','この操作番号は別のスタッフ操作に使われています。');return prior;};
+  const prior=check(await stmt(db,'SELECT target_id,action FROM staff_role_requests WHERE actor_id=? AND request_id=?',user.id,requestId).first());
+  const respond=async idempotent=>({ok:true,user:mapUser(await getUser(db,targetId),now),staff:await staffRoster(db,now),action:body.action,idempotent});
+  if(prior)return respond(true);
+  await budget(db,'staff-role:'+user.id,30,60000,now);
+  const nonce=crypto.randomUUID(),guard='EXISTS(SELECT 1 FROM staff_role_requests WHERE actor_id=? AND request_id=? AND commit_token=?)';
+  const mutation=body.action==='appoint'
+    ?stmt(db,`INSERT INTO staff_members(user_id,appointed_by,appointed_at) SELECT ?,?,? WHERE ${guard} ON CONFLICT(user_id) DO NOTHING RETURNING user_id`,targetId,user.id,now,user.id,requestId,nonce)
+    :stmt(db,`DELETE FROM staff_members WHERE user_id=? AND ${guard} RETURNING user_id`,targetId,user.id,requestId,nonce);
+  const result=await db.batch([
+    stmt(db,`INSERT INTO staff_role_requests(actor_id,request_id,target_id,action,commit_token,created_at)
+      SELECT ?,?,?,?,?,? FROM users target WHERE target.id=? AND target.id<>?
+      AND EXISTS(SELECT 1 FROM settings WHERE key='adminUserId' AND value=?)
+      ON CONFLICT(actor_id,request_id) DO NOTHING RETURNING request_id`,user.id,requestId,targetId,body.action,nonce,now,targetId,user.id,user.id),
+    mutation
+  ]);
+  if(!rows(result[0]).length) {
+    const current=check(await stmt(db,'SELECT target_id,action FROM staff_role_requests WHERE actor_id=? AND request_id=?',user.id,requestId).first());
+    if(!current){requireAdmin(await getUser(db,user.id));await userExists(db,targetId);fail(409,'STAFF_CHANGED','役職が更新されました。もう一度確認してください。');}
+    return respond(true);
+  }
+  return respond(!rows(result[1]).length);
+}
+
 async function route(request, env, now) {
   const url = new URL(request.url), path = url.pathname.slice(API.length), method = request.method;
   const db = env.DB;
@@ -183,13 +599,48 @@ async function route(request, env, now) {
     await stmt(db, 'SELECT COUNT(*) AS count FROM users').first();
     return {ok:true,status:'ready'};
   }
+  if (path === '/world-clock' && method === 'GET') {
+    return {ok:true,clock:await getWorldClock(db,now)};
+  }
+  if (path === '/field' && method === 'GET') {
+    const viewer=request.headers.has('authorization')?await authenticate(request,db,now):null;
+    return getFieldList(db,viewer,url,now);
+  }
   if (path === '/config' && method === 'GET') {
     const result = await db.batch([
       stmt(db, `SELECT key,value FROM settings WHERE key IN ('announcement','adminUserId')`),
-      stmt(db, 'SELECT COUNT(*) AS count FROM users WHERE last_seen>=?', now-ONLINE_WINDOW),
+      stmt(db, 'SELECT COUNT(DISTINCT user_id) AS count FROM player_presence WHERE online=1 AND last_seen>?', now-ONLINE_WINDOW),
     ]);
     const settings = Object.fromEntries(rows(result[0]).map(r => [r.key,r.value]));
-    return {ok:true,announcement:settings.announcement ?? WELCOME,adminClaimed:!!settings.adminUserId,onlineCount:Number(rows(result[1])[0]?.count || 0)};
+    return {ok:true,announcement:settings.announcement ?? WELCOME,adminClaimed:!!settings.adminUserId,onlineCount:Number(rows(result[1])[0]?.count || 0),clock:await getWorldClock(db,now)};
+  }
+  if (path === '/online' && method === 'GET') {
+    const cursor=url.searchParams.get('cursor')||'',limitText=url.searchParams.get('limit')||'50';
+    if(cursor)idField(cursor,'接続一覧の続き');
+    if(!/^\d{1,3}$/.test(limitText)||Number(limitText)<1||Number(limitText)>100)fail(400,'INVALID_INPUT','一覧の件数は1～100件で指定してください。');
+    const limit=Number(limitText);
+    const result=await db.batch([
+      stmt(db,USER_SELECT+' WHERE u.id>? AND EXISTS(SELECT 1 FROM player_presence ap WHERE ap.user_id=u.id AND ap.online=1 AND ap.last_seen>?) ORDER BY u.id LIMIT ?',cursor,now-ONLINE_WINDOW,limit+1),
+      stmt(db,'SELECT COUNT(DISTINCT user_id) AS count FROM player_presence WHERE online=1 AND last_seen>?',now-ONLINE_WINDOW),
+    ]);
+    const found=rows(result[0]),players=found.slice(0,limit).map(row=>mapUser(row,now));
+    return {ok:true,players,total:Number(rows(result[1])[0]?.count||0),nextCursor:found.length>limit?players.at(-1).id:null,onlineWindowSeconds:ONLINE_WINDOW/1000};
+  }
+  if (path === '/devices/link' && method === 'POST') {
+    const scope=await ipScope(request,env,'pair-link-ip');
+    await budget(db,scope||'pair-link-unattributed',12,15*60*1000,now);
+    const body=await readBody(request),code=codeField(body.code),deviceName=textField(body.deviceName,'端末名',64,{optional:true})||'連携した端末';
+    const codeHash=await hash('pair:v1:'+code),token=gameToken(),tokenHash=await hash(token);
+    // D1 batches are transactions: exactly one redemption can both create a token
+    // and consume this code. A failed batch leaves the code usable for a retry.
+    const result=await db.batch([
+      stmt(db,`INSERT INTO user_sessions(token_hash,user_id,device_name,created_at,last_seen)
+        SELECT ?,user_id,?,?,? FROM pairing_codes WHERE code_hash=? AND expires_at>?`,tokenHash,deviceName,now,now,codeHash,now),
+      stmt(db,'DELETE FROM pairing_codes WHERE code_hash=? AND expires_at>? RETURNING user_id',codeHash,now),
+    ]);
+    const linked=rows(result[1])[0];
+    if(!linked)fail(410,'PAIR_CODE_EXPIRED','連携コードは使用済みか、有効期限が切れています。元の端末で新しく発行してください。');
+    return {ok:true,token,user:mapUser(await getUser(db,linked.user_id),now)};
   }
   if (path === '/session' && method === 'POST') {
     const body = await readBody(request);
@@ -204,6 +655,88 @@ async function route(request, env, now) {
   }
 
   const user = await authenticate(request,db,now);
+  if (path === '/admin/staff' && method === 'GET') { requireAdmin(user);return {ok:true,staff:await staffRoster(db,now)}; }
+  if (path === '/admin/staff' && method === 'POST') return staffOperation(db,user,await readBody(request),now);
+  if (path === '/field/me' && method === 'GET') return fieldMe(db,user,url,now);
+  if (path === '/field/attack' && method === 'POST') return fieldAttack(db,user,await readBody(request),now);
+  if (path === '/field/diplomacy' && method === 'POST') return fieldDiplomacy(db,user,await readBody(request),now);
+  if (path === '/world-clock' && method === 'PATCH') {
+    requireAdmin(user);
+    const body=await readBody(request);
+    if(Object.keys(body).some(key=>!['revision','running','speed'].includes(key))||!Number.isSafeInteger(body.revision)||body.revision<0||body.running===undefined&&body.speed===undefined||body.running!==undefined&&typeof body.running!=='boolean'||body.speed!==undefined&&![1,2,4].includes(body.speed))fail(400,'INVALID_INPUT','共通時計の更新番号と、一時停止・速度（1・2・4）の変更を指定してください。');
+    await budget(db,'world-clock-control:'+user.id,60,60000,now);
+    const prior=await getWorldClockRow(db,now),current=mapWorldClock(prior,now);
+    if(current.revision!==body.revision)fail(409,'CLOCK_REVISION_CONFLICT','共通時計が別の端末で更新されました。最新の時計を確認してください。');
+    const changed=await stmt(db,`UPDATE world_clock SET base_elapsed_ms=?,anchor_real_ms=?,running=?,speed=?,revision=revision+1
+      WHERE id=? AND revision=? RETURNING *`,current.elapsedMs,now,(body.running??current.running)?1:0,body.speed??current.speed,WORLD_CLOCK_ID,body.revision).first();
+    if(!changed)fail(409,'CLOCK_REVISION_CONFLICT','共通時計が別の端末で更新されました。最新の時計を確認してください。');
+    return {ok:true,clock:mapWorldClock(changed,now)};
+  }
+  if (path === '/devices/pair-code' && method === 'POST') {
+    await readBody(request);
+    await budget(db,'pair-code:'+user.id,5,10*60*1000,now);
+    const code=pairingCode(),expiresAt=now+PAIR_CODE_LIFETIME;
+    await db.batch([
+      stmt(db,'DELETE FROM pairing_codes WHERE user_id=? OR expires_at<=?',user.id,now),
+      stmt(db,'INSERT INTO pairing_codes(code_hash,user_id,created_at,expires_at) VALUES(?,?,?,?)',await hash('pair:v1:'+code),user.id,now,expiresAt),
+    ]);
+    return {ok:true,code,expiresAt:iso(expiresAt)};
+  }
+  if (path === '/presence' && method === 'POST') {
+    const body=await readBody(request),deviceId=idField(body.deviceId,'端末識別子'),deviceName=textField(body.deviceName,'端末名',64,{optional:true})||'接続中の端末';
+    if(typeof body.online!=='boolean')fail(400,'INVALID_INPUT','接続状態を指定してください。');
+    await budget(db,'presence:'+user.id,180,60000,now);
+    await stmt(db,`INSERT INTO player_presence(user_id,device_id,device_name,online,last_seen) VALUES(?,?,?,?,?)
+      ON CONFLICT(user_id,device_id) DO UPDATE SET device_name=excluded.device_name,online=excluded.online,last_seen=excluded.last_seen`,user.id,deviceId,deviceName,body.online?1:0,now).run();
+    // A browser session can leave many random tab IDs over time; retain only recent
+    // presence. This affects neither identity tokens nor cloud saves.
+    await stmt(db,'DELETE FROM player_presence WHERE user_id=? AND last_seen<?',user.id,now-24*60*60*1000).run();
+    return {ok:true,user:mapUser(await getUser(db,user.id),now),onlineWindowSeconds:ONLINE_WINDOW/1000};
+  }
+  if (path === '/sync' && method === 'GET') {
+    const deviceId=url.searchParams.get('deviceId');
+    if(deviceId)idField(deviceId,'端末識別子');
+    return syncSnapshot(db,await getSyncRow(db,user.id),user,deviceId,now);
+  }
+  if (path === '/sync/lease' && method === 'POST') {
+    const body=await readBody(request),deviceId=idField(body.deviceId,'端末識別子'),deviceName=textField(body.deviceName,'端末名',64,{optional:true})||'プレイ中の端末';
+    if(body.takeOver!==undefined&&typeof body.takeOver!=='boolean')fail(400,'INVALID_INPUT','端末の切替方法が正しくありません。');
+    await budget(db,'sync-lease:'+user.id,120,60000,now);
+    const result=await db.batch([
+      stmt(db,'INSERT INTO player_saves(user_id) VALUES(?) ON CONFLICT(user_id) DO NOTHING',user.id),
+      stmt(db,`UPDATE player_saves SET writer_device_id=?,writer_device_name=?,lease_expires_at=?
+        WHERE user_id=? AND (writer_device_id IS NULL OR writer_device_id=? OR lease_expires_at<=? OR ?=1) RETURNING *`,deviceId,deviceName,now+SYNC_LEASE,user.id,deviceId,now,body.takeOver?1:0),
+    ]);
+    const row=rows(result[1])[0];
+    if(!row)fail(409,'LEASE_HELD','別の端末がプレイ中です。続ける場合は「この端末でプレイ」を選んでください。');
+    return syncSnapshot(db,row,user,deviceId,now);
+  }
+  if (path === '/sync/release' && method === 'POST') {
+    const body=await readBody(request),deviceId=idField(body.deviceId,'端末識別子');
+    await stmt(db,'UPDATE player_saves SET writer_device_id=NULL,writer_device_name=NULL,lease_expires_at=0 WHERE user_id=? AND writer_device_id=?',user.id,deviceId).run();
+    return syncSnapshot(db,await getSyncRow(db,user.id),user,deviceId,now);
+  }
+  if (path === '/sync' && method === 'PUT') {
+    const body=await readBody(request,MAX_SAVE_BODY),deviceId=idField(body.deviceId,'端末識別子');
+    if(!Number.isSafeInteger(body.revision)||body.revision<0)fail(400,'INVALID_INPUT','セーブの更新番号が正しくありません。');
+    if(!body.save||typeof body.save!=='object'||Array.isArray(body.save))fail(400,'INVALID_SAVE','セーブデータを送信してください。');
+    const clock=await getWorldClock(db,now),save=normalizeGameSave(body.save,user,now,{clock}),serialized=JSON.stringify(save);
+    await budget(db,'sync-write:'+user.id,120,60000,now);
+    const row=await stmt(db,`UPDATE player_saves SET save_json=?,revision=revision+1,updated_at=?,lease_expires_at=?
+      WHERE user_id=? AND revision=? AND writer_device_id=? AND lease_expires_at>?
+      AND (?=1 OR json_type(save_json,'$.state.worldClock') IS NULL) RETURNING *`,serialized,now,now+SYNC_LEASE,user.id,body.revision,deviceId,now,save.state.worldClock?1:0).first();
+    if(!row) {
+      const current=await getSyncRow(db,user.id);
+      if(!current||current.writer_device_id!==deviceId||Number(current.lease_expires_at)<=now)fail(409,'LEASE_REQUIRED','プレイ端末の同期権限が切れました。接続状態を確認してください。');
+      if(Number(current.revision)===body.revision&&!save.state.worldClock&&current.save_json&&JSON.parse(current.save_json).state?.worldClock)fail(409,'CLOCK_ANCHOR_REQUIRED','この領主は共通時計へ移行済みです。共通時計に対応した最新版から保存してください。');
+      fail(409,'REVISION_CONFLICT','新しいセーブが届いています。最新データを読み込んでから再開してください。');
+    }
+    if(user.clan!==save.state.clan) {
+      await stmt(db,'UPDATE users SET clan=? WHERE id=?',save.state.clan,user.id).run();
+      user.clan=save.state.clan;
+    }
+    return syncSnapshot(db,row,user,deviceId,now);
+  }
   if (path === '/me' && method === 'GET') {
     const result = await db.batch([
       stmt(db, USER_SELECT + ` WHERE u.id IN (SELECT CASE WHEN user_a=? THEN user_b ELSE user_a END FROM friendships WHERE (user_a=? OR user_b=?) AND status='accepted') ORDER BY u.name`,user.id,user.id,user.id),
@@ -230,8 +763,15 @@ async function route(request, env, now) {
     const afterText = url.searchParams.get('after') || '0';
     if (!/^\d{1,15}$/.test(afterText)) fail(400,'INVALID_CURSOR','読み込み位置が正しくありません。');
     const after = Number(afterText);
-    const query = after>0 ? MESSAGE_SELECT+' WHERE m.room_key=? AND m.id>? ORDER BY m.id ASC LIMIT 100' : MESSAGE_SELECT+' WHERE m.room_key=? ORDER BY m.id DESC LIMIT 100';
-    let messages = rows(await stmt(db,query,...(after>0?[room,after]:[room])).all()).map(mapMessage);
+    const restricted=channel==='admin',params=[room,...(restricted?[user.id,user.id]:[]),...(after>0?[after]:[])];
+    const query=MESSAGE_SELECT+' WHERE m.room_key=?'+(restricted?' AND '+STAFF_CHAT_GUARD:'')+(after>0?' AND m.id>? ORDER BY m.id ASC LIMIT 100':' ORDER BY m.id DESC LIMIT 100');
+    let result;
+    if(restricted) {
+      const read=await db.batch([stmt(db,'SELECT 1 AS allowed WHERE '+STAFF_CHAT_GUARD,user.id,user.id),stmt(db,query,...params)]);
+      if(!rows(read[0]).length)fail(403,'STAFF_CHAT_REQUIRED','運営チャットの参加権限がありません。');
+      result=read[1];
+    }else result=await stmt(db,query,...params).all();
+    let messages=rows(result).map(mapMessage);
     if (!after) messages.reverse();
     return {ok:true,channel,messages,nextAfter:messages.at(-1)?.id || after,hasMore:messages.length===100};
   }
@@ -239,7 +779,10 @@ async function route(request, env, now) {
     const body=await readBody(request), channel=textField(body.channel,'チャット種別',12), text=textField(body.text,'メッセージ',300);
     const room=await roomFor(db,user,channel,body.target);
     await budget(db,'chat:'+user.id,1,5000,now);
-    const inserted=await stmt(db,'INSERT INTO messages(room_key,channel,user_id,body,created_at) VALUES(?,?,?,?,?) RETURNING id',room,channel,user.id,text,now).first();
+    const inserted=channel==='admin'
+      ?await stmt(db,'INSERT INTO messages(room_key,channel,user_id,body,created_at) SELECT ?,?,?,?,? WHERE '+STAFF_CHAT_GUARD+' RETURNING id',room,channel,user.id,text,now,user.id,user.id).first()
+      :await stmt(db,'INSERT INTO messages(room_key,channel,user_id,body,created_at) VALUES(?,?,?,?,?) RETURNING id',room,channel,user.id,text,now).first();
+    if(!inserted)fail(403,'STAFF_CHAT_REQUIRED','運営チャットの参加権限がありません。');
     const message=await stmt(db,MESSAGE_SELECT+' WHERE m.id=?',inserted.id).first();
     return {ok:true,message:mapMessage(message)};
   }
@@ -388,12 +931,12 @@ export default {
     try {
       const path=new URL(request.url).pathname;
       if(path==='/' && (request.method==='GET'||request.method==='HEAD')) {
-        return new Response(request.method==='HEAD'?null:'<!doctype html><html lang="ja"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>戦国大戦 通信局</title><body style="font-family:system-ui;background:#101318;color:#eee;padding:3rem"><h1>戦国大戦 通信局</h1><p>領主たちの交流とお知らせを支える通信サービスです。</p></body></html>',{headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'"}});
+        return new Response(request.method==='HEAD'?null:'<!doctype html><html lang="ja"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>戦国大戦 通信局</title><body style="font-family:system-ui;background:#101318;color:#eee;padding:3rem"><h1>戦国大戦 通信局</h1><p>領主たちの交流・端末同期・接続一覧を支える通信サービスです。</p><footer>© KASAI SOLUTIONS</footer></body></html>',{headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'"}});
       }
       if(!path.startsWith(API+'/')) fail(404,'NOT_FOUND','その通信機能は見つかりませんでした。');
       origin=allowedOrigin(request,env);
       if(request.method==='OPTIONS') {
-        const headers=new Headers({'Access-Control-Allow-Methods':'GET,POST,PATCH,DELETE,OPTIONS','Access-Control-Allow-Headers':'Authorization,Content-Type','Access-Control-Max-Age':'600','Cache-Control':'no-store','Vary':'Origin','X-Content-Type-Options':'nosniff'});
+        const headers=new Headers({'Access-Control-Allow-Methods':'GET,POST,PUT,PATCH,DELETE,OPTIONS','Access-Control-Allow-Headers':'Authorization,Content-Type','Access-Control-Max-Age':'600','Cache-Control':'no-store','Vary':'Origin','X-Content-Type-Options':'nosniff'});
         if(origin!==null) headers.set('Access-Control-Allow-Origin',origin);
         return new Response(null,{status:204,headers});
       }

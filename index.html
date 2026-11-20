@@ -4,6 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#13171b">
+  <meta name="author" content="KASAI SOLUTIONS">
+  <meta name="copyright" content="KASAI SOLUTIONS">
   <meta name="description" content="戦国大戦。256武将×8ランク、128城×32段階・64施設×32段階、8,192点の描き起こしイラスト。和風BGM16曲、リアルタイム内政・合戦・ガチャ・交流で、あなただけの天下へ。PC・スマホ対応。">
   <meta property="og:title" content="戦国大戦｜城と群雄の戦記">
   <meta property="og:description" content="一城の志が、天下を動かす。256武将・8ランク・128城・64施設・8,192点のイラストで彩る、オリジナル戦国ストラテジー。">
@@ -22,10 +24,15 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="social.css">
+  <link rel="stylesheet" href="cloud-sync.css">
   <link rel="stylesheet" href="readability.css">
   <link rel="stylesheet" href="gacha.css">
   <link rel="stylesheet" href="artwork.css">
   <link rel="stylesheet" href="boot.css">
+  <link rel="stylesheet" href="world-map.css">
+  <link rel="stylesheet" href="kamon.css">
+  <link rel="stylesheet" href="field.css">
+  <link rel="stylesheet" href="desktop-fit.css">
   <script>window.SENGOKU_AT_TITLE=true;window.SENGOKU_OFFLINE=location.protocol==="file:";</script>
 </head>
 <body class="at-title">
@@ -40,6 +47,7 @@
       <button id="launch-enter" class="launch-enter" disabled>いざ、戦国へ</button>
       <p class="launch-status" data-title-status>城下への支度をしています…</p>
       <p class="launch-footnote">PC・スマートフォン対応 · 本体は登録不要 · 自動保存</p>
+      <p class="launch-copyright">© KASAI SOLUTIONS</p>
     </div>
   </section>
   <dialog id="game-loading" class="game-loading" role="status" aria-live="polite" hidden><div class="loading-card"><div class="loading-mon"><img src="assets/emblem.webp" alt=""></div><h2 data-loading-label>読み込み中…</h2><progress data-loading-progress hidden></progress><p data-loading-detail>画面を整えています</p></div></dialog>
@@ -48,12 +56,12 @@
       <a class="brand" href="#town" aria-label="戦国大戦 城下町"><span class="brand-crest"><img src="assets/emblem.webp" alt=""></span><span><b>戦国大戦</b><small>SENGOKU TAISEN</small></span></a>
       <div id="clan-panel" class="clan-panel"></div>
       <nav id="navigation" class="navigation"></nav>
-      <div class="sidebar-bottom"><button class="nav-item" data-action="title-screen"><span data-icon="castle"></span><span>タイトルへ</span></button><div class="side-quote">一城から、天下へ。</div><button class="nav-item" data-action="help"><span data-icon="help"></span><span>遊び方</span></button><button class="nav-item" data-action="settings"><span data-icon="settings"></span><span>保存・設定</span></button><div class="version-label">群雄集結 · Ver. 3.0</div></div>
+      <div class="sidebar-bottom"><button class="nav-item" data-action="title-screen"><span data-icon="castle"></span><span>タイトルへ</span></button><div class="side-quote">一城から、天下へ。</div><button class="nav-item" data-action="help"><span data-icon="help"></span><span>遊び方</span></button><button class="nav-item" data-action="settings"><span data-icon="settings"></span><span>保存・設定</span></button><div class="version-label">群雄集結 · Ver. 3.2</div></div>
     </aside>
     <div class="workspace">
       <header class="topbar"><div class="mobile-brand"><img src="assets/icon-192.png" alt="">戦国大戦</div><div id="calendar" class="calendar"></div><div id="resources" class="resources"></div><div class="header-actions"><button class="icon-button" data-action="sound" aria-label="音を有効にする" id="sound-button"></button><button class="icon-button" data-action="settings" aria-label="保存・設定"><span data-icon="settings"></span></button></div></header>
       <main id="main" tabindex="-1"></main>
-      <footer class="game-footer"><span id="save-indicator">自動保存</span><span>戦国大戦 · 城と群雄の戦記</span><button data-action="about">収録・出典について</button></footer>
+      <footer class="game-footer"><span id="save-indicator">自動保存</span><span>© KASAI SOLUTIONS</span><button data-action="about">収録・出典について</button></footer>
     </div>
   </div>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
@@ -65,7 +73,14 @@
   <script src="engine.js"></script>
   <script src="music.js"></script>
   <script src="artwork.js"></script>
+  <script src="map-data.js"></script>
+  <script src="kamon.js"></script>
+  <script src="world-map.js"></script>
+  <script src="desktop-fit.js"></script>
+  <script src="world-clock.js"></script>
+  <script src="field.js"></script>
   <script src="app.js"></script>
+  <script src="cloud-sync.js"></script>
   <script src="social.js"></script>
   <script src="boot.js"></script>
 </body>

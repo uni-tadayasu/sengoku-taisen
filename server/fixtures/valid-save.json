@@ -1,0 +1,939 @@
+{
+  "game": "sengoku-tento",
+  "version": 2,
+  "savedAt": "2026-11-20T21:34:12.002Z",
+  "state": {
+    "version": 2,
+    "clan": "織田家",
+    "home": "kiyosu",
+    "turn": 0,
+    "difficulty": "normal",
+    "resources": {
+      "gold": 3200,
+      "rice": 5400,
+      "wood": 1800,
+      "stone": 1200
+    },
+    "troops": 3400,
+    "morale": 80,
+    "prestige": 0,
+    "command": 3,
+    "magatama": 3000,
+    "captureRewards": [
+      "kiyosu"
+    ],
+    "gachaHistory": [],
+    "realtime": {
+      "running": true,
+      "speed": 1,
+      "elapsed": 0,
+      "commandProgress": 0,
+      "incomeRemainders": {
+        "gold": 0,
+        "rice": 0,
+        "wood": 0,
+        "stone": 0
+      }
+    },
+    "buildings": {
+      "gold_mine": 0,
+      "silver_mine": 0,
+      "trade_port": 0,
+      "wholesale": 0,
+      "artisan_town": 0,
+      "post_town": 0,
+      "mint": 0,
+      "rice_paddy": 0,
+      "dry_field": 0,
+      "orchard": 0,
+      "fishery": 0,
+      "ranch": 0,
+      "granary": 0,
+      "irrigation": 0,
+      "cedar_forest": 0,
+      "bamboo_grove": 0,
+      "sawmill": 0,
+      "timber_market": 0,
+      "charcoal_kiln": 0,
+      "forest_office": 0,
+      "water_sawmill": 0,
+      "stoneworks": 0,
+      "clay_pit": 0,
+      "lime_kiln": 0,
+      "tile_kiln": 0,
+      "iron_mine": 0,
+      "copper_mine": 0,
+      "stone_depot": 0,
+      "dojo": 0,
+      "stable": 0,
+      "gunsmith": 0,
+      "spear_workshop": 0,
+      "armory": 0,
+      "drill_ground": 0,
+      "war_school": 0,
+      "main_gate": 0,
+      "moat": 0,
+      "watchtower": 0,
+      "guardhouse": 0,
+      "earthworks": 0,
+      "outpost": 0,
+      "herb_garden": 0,
+      "library": 0,
+      "observatory": 0,
+      "craft_lab": 0,
+      "engineering_shop": 0,
+      "medical_school": 0,
+      "school": 0,
+      "foreign_studies": 0,
+      "envoy_house": 0,
+      "tea_house": 0,
+      "temple": 0,
+      "shrine": 0,
+      "guest_house": 0,
+      "relay_station": 0,
+      "intelligence_office": 0,
+      "keep": 2,
+      "farm": 2,
+      "market": 2,
+      "lumber": 1,
+      "quarry": 1,
+      "barracks": 2,
+      "wall": 1,
+      "academy": 1
+    },
+    "jobs": [],
+    "officers": [
+      "of_a0e6e90cdb05",
+      "of_fb96738747b0",
+      "of_38034cc3665c",
+      "of_115e83112cb8"
+    ],
+    "officerVariants": [
+      "of_a0e6e90cdb05:U",
+      "of_fb96738747b0:S",
+      "of_38034cc3665c:S",
+      "of_115e83112cb8:S"
+    ],
+    "army": [
+      "of_a0e6e90cdb05",
+      "of_fb96738747b0",
+      "of_38034cc3665c"
+    ],
+    "governors": {},
+    "tech": {
+      "cultivation": 0,
+      "commerce": 0,
+      "forestry": 0,
+      "masonry": 0,
+      "conscription": 0,
+      "discipline": 0,
+      "gunnery": 0,
+      "siege": 0
+    },
+    "castles": {
+      "ishikawa": {
+        "owner": "津軽家",
+        "troops": 1700,
+        "wall": 1,
+        "level": 1
+      },
+      "sannohe": {
+        "owner": "南部家",
+        "troops": 2100,
+        "wall": 2,
+        "level": 1
+      },
+      "minato": {
+        "owner": "安東家",
+        "troops": 1500,
+        "wall": 1,
+        "level": 1
+      },
+      "kakunodate": {
+        "owner": "戸沢家",
+        "troops": 1500,
+        "wall": 1,
+        "level": 1
+      },
+      "yamagata": {
+        "owner": "最上家",
+        "troops": 2200,
+        "wall": 2,
+        "level": 1
+      },
+      "yonezawa": {
+        "owner": "伊達家",
+        "troops": 2600,
+        "wall": 2,
+        "level": 1
+      },
+      "kurokawa": {
+        "owner": "蘆名家",
+        "troops": 2200,
+        "wall": 2,
+        "level": 1
+      },
+      "odaka": {
+        "owner": "相馬家",
+        "troops": 1600,
+        "wall": 1,
+        "level": 1
+      },
+      "ota": {
+        "owner": "佐竹家",
+        "troops": 2200,
+        "wall": 2,
+        "level": 1
+      },
+      "utsunomiya": {
+        "owner": "宇都宮家",
+        "troops": 1900,
+        "wall": 2,
+        "level": 1
+      },
+      "mayabashi": {
+        "owner": "長野家",
+        "troops": 1600,
+        "wall": 1,
+        "level": 1
+      },
+      "oshi": {
+        "owner": "成田家",
+        "troops": 1700,
+        "wall": 2,
+        "level": 1
+      },
+      "odawara": {
+        "owner": "北条家",
+        "troops": 2800,
+        "wall": 3,
+        "level": 1
+      },
+      "kasugayama": {
+        "owner": "上杉家",
+        "troops": 2600,
+        "wall": 3,
+        "level": 1
+      },
+      "ueda": {
+        "owner": "真田家",
+        "troops": 1900,
+        "wall": 2,
+        "level": 1
+      },
+      "tsutsujigasaki": {
+        "owner": "武田家",
+        "troops": 2600,
+        "wall": 2,
+        "level": 1
+      },
+      "nanao": {
+        "owner": "畠山家",
+        "troops": 2000,
+        "wall": 2,
+        "level": 1
+      },
+      "kanazawa": {
+        "owner": "本願寺勢",
+        "troops": 2100,
+        "wall": 2,
+        "level": 1
+      },
+      "ichijodani": {
+        "owner": "朝倉家",
+        "troops": 2100,
+        "wall": 2,
+        "level": 1
+      },
+      "sunpu": {
+        "owner": "今川家",
+        "troops": 2300,
+        "wall": 2,
+        "level": 1
+      },
+      "hikuma": {
+        "owner": "飯尾家",
+        "troops": 1400,
+        "wall": 1,
+        "level": 1
+      },
+      "okazaki": {
+        "owner": "徳川家",
+        "troops": 2400,
+        "wall": 2,
+        "level": 1
+      },
+      "kiyosu": {
+        "owner": "織田家",
+        "troops": 1200,
+        "wall": 1,
+        "level": 1
+      },
+      "inabayama": {
+        "owner": "斎藤家",
+        "troops": 2100,
+        "wall": 2,
+        "level": 1
+      },
+      "odani": {
+        "owner": "浅井家",
+        "troops": 1800,
+        "wall": 2,
+        "level": 1
+      },
+      "kannonji": {
+        "owner": "六角家",
+        "troops": 1900,
+        "wall": 2,
+        "level": 1
+      },
+      "sakamoto": {
+        "owner": "明智家",
+        "troops": 1700,
+        "wall": 1,
+        "level": 1
+      },
+      "nijo": {
+        "owner": "足利家",
+        "troops": 1900,
+        "wall": 2,
+        "level": 1
+      },
+      "akutagawa": {
+        "owner": "三好家",
+        "troops": 2400,
+        "wall": 2,
+        "level": 1
+      },
+      "takaya": {
+        "owner": "畠山家",
+        "troops": 1800,
+        "wall": 2,
+        "level": 1
+      },
+      "tottori": {
+        "owner": "山名家",
+        "troops": 1800,
+        "wall": 2,
+        "level": 1
+      },
+      "gassan": {
+        "owner": "尼子家",
+        "troops": 2400,
+        "wall": 3,
+        "level": 1
+      },
+      "okayama": {
+        "owner": "宇喜多家",
+        "troops": 2100,
+        "wall": 2,
+        "level": 1
+      },
+      "yoshida": {
+        "owner": "毛利家",
+        "troops": 2600,
+        "wall": 3,
+        "level": 1
+      },
+      "yamaguchi": {
+        "owner": "大内家",
+        "troops": 1900,
+        "wall": 2,
+        "level": 1
+      },
+      "takamatsu": {
+        "owner": "清水家",
+        "troops": 1500,
+        "wall": 1,
+        "level": 1
+      },
+      "oko": {
+        "owner": "長宗我部家",
+        "troops": 2200,
+        "wall": 2,
+        "level": 1
+      },
+      "yuzuki": {
+        "owner": "河野家",
+        "troops": 1600,
+        "wall": 2,
+        "level": 1
+      },
+      "shozui": {
+        "owner": "三好家",
+        "troops": 2000,
+        "wall": 2,
+        "level": 1
+      },
+      "sogo": {
+        "owner": "十河家",
+        "troops": 1600,
+        "wall": 1,
+        "level": 1
+      },
+      "akizuki": {
+        "owner": "秋月家",
+        "troops": 1800,
+        "wall": 2,
+        "level": 1
+      },
+      "tachibana": {
+        "owner": "立花家",
+        "troops": 2100,
+        "wall": 2,
+        "level": 1
+      },
+      "funai": {
+        "owner": "大友家",
+        "troops": 2400,
+        "wall": 2,
+        "level": 1
+      },
+      "saga": {
+        "owner": "龍造寺家",
+        "troops": 2100,
+        "wall": 2,
+        "level": 1
+      },
+      "hitoyoshi": {
+        "owner": "相良家",
+        "troops": 1800,
+        "wall": 2,
+        "level": 1
+      },
+      "kumamoto": {
+        "owner": "城家",
+        "troops": 1600,
+        "wall": 1,
+        "level": 1
+      },
+      "obi": {
+        "owner": "伊東家",
+        "troops": 1900,
+        "wall": 2,
+        "level": 1
+      },
+      "uchijo": {
+        "owner": "島津家",
+        "troops": 2600,
+        "wall": 2,
+        "level": 1
+      },
+      "hirosaki": {
+        "owner": "津軽家",
+        "troops": 2080,
+        "wall": 3,
+        "level": 1
+      },
+      "nejo": {
+        "owner": "南部家",
+        "troops": 2100,
+        "wall": 2,
+        "level": 1
+      },
+      "morioka": {
+        "owner": "南部家",
+        "troops": 2440,
+        "wall": 3,
+        "level": 1
+      },
+      "sendai": {
+        "owner": "伊達家",
+        "troops": 2620,
+        "wall": 3,
+        "level": 1
+      },
+      "kubota": {
+        "owner": "佐竹家",
+        "troops": 2640,
+        "wall": 2,
+        "level": 1
+      },
+      "nihonmatsu": {
+        "owner": "畠山家",
+        "troops": 2820,
+        "wall": 2,
+        "level": 1
+      },
+      "shirakawa": {
+        "owner": "結城家",
+        "troops": 3000,
+        "wall": 2,
+        "level": 1
+      },
+      "kunohe": {
+        "owner": "九戸家",
+        "troops": 3180,
+        "wall": 2,
+        "level": 1
+      },
+      "miharu": {
+        "owner": "田村家",
+        "troops": 3360,
+        "wall": 2,
+        "level": 1
+      },
+      "mukaihaguroyama": {
+        "owner": "蘆名家",
+        "troops": 1920,
+        "wall": 2,
+        "level": 1
+      },
+      "mito": {
+        "owner": "佐竹家",
+        "troops": 2260,
+        "wall": 3,
+        "level": 1
+      },
+      "minowa": {
+        "owner": "長野家",
+        "troops": 2280,
+        "wall": 2,
+        "level": 1
+      },
+      "nitta_kanayama": {
+        "owner": "由良家",
+        "troops": 2460,
+        "wall": 2,
+        "level": 1
+      },
+      "hachigata": {
+        "owner": "北条家",
+        "troops": 2640,
+        "wall": 2,
+        "level": 1
+      },
+      "kawagoe": {
+        "owner": "太田家",
+        "troops": 2820,
+        "wall": 2,
+        "level": 1
+      },
+      "edo": {
+        "owner": "太田家",
+        "troops": 3320,
+        "wall": 4,
+        "level": 1
+      },
+      "hachioji": {
+        "owner": "北条家",
+        "troops": 3340,
+        "wall": 3,
+        "level": 1
+      },
+      "motosakura": {
+        "owner": "千葉家",
+        "troops": 3360,
+        "wall": 2,
+        "level": 1
+      },
+      "otaki": {
+        "owner": "本多家",
+        "troops": 1920,
+        "wall": 2,
+        "level": 1
+      },
+      "numata": {
+        "owner": "真田家",
+        "troops": 2100,
+        "wall": 2,
+        "level": 1
+      },
+      "kofu": {
+        "owner": "浅野家",
+        "troops": 2440,
+        "wall": 3,
+        "level": 1
+      },
+      "kaizu": {
+        "owner": "武田家",
+        "troops": 2460,
+        "wall": 2,
+        "level": 1
+      },
+      "komoro": {
+        "owner": "仙石家",
+        "troops": 2640,
+        "wall": 2,
+        "level": 1
+      },
+      "matsumoto": {
+        "owner": "小笠原家",
+        "troops": 2980,
+        "wall": 3,
+        "level": 1
+      },
+      "takato": {
+        "owner": "仁科家",
+        "troops": 3000,
+        "wall": 2,
+        "level": 1
+      },
+      "shibata": {
+        "owner": "新発田家",
+        "troops": 3180,
+        "wall": 2,
+        "level": 1
+      },
+      "murakami": {
+        "owner": "本庄家",
+        "troops": 3360,
+        "wall": 2,
+        "level": 1
+      },
+      "shinpu": {
+        "owner": "武田家",
+        "troops": 1920,
+        "wall": 2,
+        "level": 1
+      },
+      "toyama": {
+        "owner": "神保家",
+        "troops": 2100,
+        "wall": 2,
+        "level": 1
+      },
+      "takaoka": {
+        "owner": "前田家",
+        "troops": 2280,
+        "wall": 2,
+        "level": 1
+      },
+      "maruoka": {
+        "owner": "柴田家",
+        "troops": 2460,
+        "wall": 2,
+        "level": 1
+      },
+      "echizen_ono": {
+        "owner": "金森家",
+        "troops": 2640,
+        "wall": 2,
+        "level": 1
+      },
+      "kuniyoshi": {
+        "owner": "粟屋家",
+        "troops": 2820,
+        "wall": 2,
+        "level": 1
+      },
+      "iwamura": {
+        "owner": "遠山家",
+        "troops": 3160,
+        "wall": 3,
+        "level": 1
+      },
+      "yamanaka": {
+        "owner": "北条家",
+        "troops": 3180,
+        "wall": 2,
+        "level": 1
+      },
+      "kakegawa": {
+        "owner": "朝比奈家",
+        "troops": 3360,
+        "wall": 2,
+        "level": 1
+      },
+      "inuyama": {
+        "owner": "在地衆",
+        "troops": 1920,
+        "wall": 2,
+        "level": 1
+      },
+      "nagoya": {
+        "owner": "徳川家",
+        "troops": 2420,
+        "wall": 4,
+        "level": 1
+      },
+      "nagashino": {
+        "owner": "奥平家",
+        "troops": 2280,
+        "wall": 2,
+        "level": 1
+      },
+      "gujo_hachiman": {
+        "owner": "遠藤家",
+        "troops": 2460,
+        "wall": 2,
+        "level": 1
+      },
+      "naegi": {
+        "owner": "遠山家",
+        "troops": 2640,
+        "wall": 2,
+        "level": 1
+      },
+      "ogaki": {
+        "owner": "氏家家",
+        "troops": 2820,
+        "wall": 2,
+        "level": 1
+      },
+      "takatenjin": {
+        "owner": "小笠原家",
+        "troops": 3000,
+        "wall": 2,
+        "level": 1
+      },
+      "iga_ueno": {
+        "owner": "藤堂家",
+        "troops": 3340,
+        "wall": 3,
+        "level": 1
+      },
+      "matsusaka": {
+        "owner": "蒲生家",
+        "troops": 3360,
+        "wall": 2,
+        "level": 1
+      },
+      "hikone": {
+        "owner": "井伊家",
+        "troops": 2080,
+        "wall": 3,
+        "level": 1
+      },
+      "azuchi": {
+        "owner": "在地衆",
+        "troops": 2420,
+        "wall": 4,
+        "level": 1
+      },
+      "osaka": {
+        "owner": "豊臣家",
+        "troops": 2600,
+        "wall": 4,
+        "level": 1
+      },
+      "himeji": {
+        "owner": "黒田家",
+        "troops": 2620,
+        "wall": 3,
+        "level": 1
+      },
+      "takeda_castle": {
+        "owner": "赤松家",
+        "troops": 2800,
+        "wall": 3,
+        "level": 1
+      },
+      "takatori": {
+        "owner": "筒井家",
+        "troops": 2980,
+        "wall": 3,
+        "level": 1
+      },
+      "wakayama": {
+        "owner": "浅野家",
+        "troops": 3160,
+        "wall": 3,
+        "level": 1
+      },
+      "fukuchiyama": {
+        "owner": "明智家",
+        "troops": 3180,
+        "wall": 2,
+        "level": 1
+      },
+      "kishiwada": {
+        "owner": "小出家",
+        "troops": 3360,
+        "wall": 2,
+        "level": 1
+      },
+      "yamato_koriyama": {
+        "owner": "筒井家",
+        "troops": 1920,
+        "wall": 2,
+        "level": 1
+      },
+      "sumoto": {
+        "owner": "脇坂家",
+        "troops": 2100,
+        "wall": 2,
+        "level": 1
+      },
+      "bitchu_matsuyama": {
+        "owner": "三村家",
+        "troops": 2440,
+        "wall": 3,
+        "level": 1
+      },
+      "tsuyama": {
+        "owner": "森家",
+        "troops": 2620,
+        "wall": 3,
+        "level": 1
+      },
+      "hiroshima": {
+        "owner": "毛利家",
+        "troops": 2800,
+        "wall": 3,
+        "level": 1
+      },
+      "iwakuni": {
+        "owner": "吉川家",
+        "troops": 2980,
+        "wall": 3,
+        "level": 1
+      },
+      "hagi": {
+        "owner": "毛利家",
+        "troops": 3160,
+        "wall": 3,
+        "level": 1
+      },
+      "matsue": {
+        "owner": "堀尾家",
+        "troops": 3340,
+        "wall": 3,
+        "level": 1
+      },
+      "yonago": {
+        "owner": "中村家",
+        "troops": 3360,
+        "wall": 2,
+        "level": 1
+      },
+      "mihara": {
+        "owner": "小早川家",
+        "troops": 1920,
+        "wall": 2,
+        "level": 1
+      },
+      "shintakayama": {
+        "owner": "小早川家",
+        "troops": 2100,
+        "wall": 2,
+        "level": 1
+      },
+      "tsuwano": {
+        "owner": "吉見家",
+        "troops": 2280,
+        "wall": 2,
+        "level": 1
+      },
+      "tokushima": {
+        "owner": "蜂須賀家",
+        "troops": 2620,
+        "wall": 3,
+        "level": 1
+      },
+      "sanuki_takamatsu": {
+        "owner": "生駒家",
+        "troops": 2800,
+        "wall": 3,
+        "level": 1
+      },
+      "marugame": {
+        "owner": "生駒家",
+        "troops": 2980,
+        "wall": 3,
+        "level": 1
+      },
+      "imabari": {
+        "owner": "藤堂家",
+        "troops": 3160,
+        "wall": 3,
+        "level": 1
+      },
+      "uwajima": {
+        "owner": "伊達家",
+        "troops": 3340,
+        "wall": 3,
+        "level": 1
+      },
+      "kochi": {
+        "owner": "山内家",
+        "troops": 3520,
+        "wall": 3,
+        "level": 1
+      },
+      "kokura": {
+        "owner": "細川家",
+        "troops": 2080,
+        "wall": 3,
+        "level": 1
+      },
+      "fukuoka": {
+        "owner": "黒田家",
+        "troops": 2260,
+        "wall": 3,
+        "level": 1
+      },
+      "nakatsu": {
+        "owner": "黒田家",
+        "troops": 2440,
+        "wall": 3,
+        "level": 1
+      },
+      "oka": {
+        "owner": "中川家",
+        "troops": 2620,
+        "wall": 3,
+        "level": 1
+      },
+      "hizen_nagoya": {
+        "owner": "豊臣家",
+        "troops": 2960,
+        "wall": 4,
+        "level": 1
+      },
+      "hirado": {
+        "owner": "松浦家",
+        "troops": 2820,
+        "wall": 2,
+        "level": 1
+      },
+      "shimabara": {
+        "owner": "松倉家",
+        "troops": 3160,
+        "wall": 3,
+        "level": 1
+      },
+      "kagoshima": {
+        "owner": "島津家",
+        "troops": 3340,
+        "wall": 3,
+        "level": 1
+      }
+    },
+    "treaties": {},
+    "scouted": {},
+    "log": [
+      {
+        "turn": 0,
+        "text": "門出の贈り物として勾玉3,000を受け取りました。武将招集に使えます。",
+        "kind": "gacha"
+      },
+      {
+        "turn": 0,
+        "text": "1倍速では60秒で1か月進みます。指示は20秒ごとに1回復。一時停止で軍議を開けます。",
+        "kind": "guide"
+      },
+      {
+        "turn": 0,
+        "text": "織田家、清洲城より天下への歩みを始める。",
+        "kind": "story"
+      }
+    ],
+    "claimedQuests": [],
+    "giftReceipts": [],
+    "seed": 1234,
+    "lastBattle": null,
+    "stats": {
+      "battles": 0,
+      "wins": 0,
+      "upgrades": 0,
+      "recruited": 0,
+      "researches": 0,
+      "gachaDraws": 0,
+      "gachaDuplicates": 0,
+      "castleUpgrades": 0
+    },
+    "won": false,
+    "gameOver": false
+  }
+}

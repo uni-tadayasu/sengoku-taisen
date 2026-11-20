@@ -1,51 +1,74 @@
-# 戦国大戦 通信局
+# 戦国大戦 ― 交流・同期・共通時計サーバー
 
-Dependency-free Cloudflare Worker ESM with a D1 database. The API contract is in `API_CONTRACT.md`.
+© KASAI SOLUTIONS
 
-## Files to deploy
+依存パッケージを使わないCloudflare Worker ESMとD1データベースです。APIの形式・競合時の動作は `API_CONTRACT.md` を参照してください。このフォルダーは公開フロントエンドに同梱する参照ソースです。実際のAPIは専用のSitesプロジェクトから公開します。
 
-- Copy `index.js` into the selected project's `worker/index.js`; build it to `dist/server/index.js`.
-- Preserve the root `drizzle/0000_social.sql` and `drizzle/meta/_journal.json` for the Sites migration workflow.
-- Set the logical hosting binding `d1: "DB"` and leave `r2: null`; omit static deployment configuration.
-- Store the first-registration key only in the secret runtime variable `SENGOKU_ADMIN_KEY`.
-- When the frontend and API have different origins, add the exact frontend origin to `SENGOKU_ALLOWED_ORIGINS`. Multiple exact origins are comma-separated.
+## 配置と移行
 
-Do not edit a migration after it has been applied. Add later migrations for later schema changes. The request handler performs no schema creation or mutation.
+- `index.js` をAPIプロジェクトの `worker/index.js` とし、ビルドで `dist/server/index.js` へ配置します。
+- `drizzle/0000_social.sql`、`0001_cloud_sync.sql`、`0002_world_clock.sql`、`0003_shared_field.sql`、`0004_staff_roles.sql` と `drizzle/meta/_journal.json` を、APIプロジェクトのルートに維持します。
+- hostingの論理バインディングは `d1: "DB"`、`r2: null`。static設定は不要です。
+- 初回運営キーは秘密の実行時環境変数 `SENGOKU_ADMIN_KEY` にだけ設定します。
+- 別Originのフロントエンドは `SENGOKU_ALLOWED_ORIGINS` に正確なOriginをカンマ区切りで設定します。
 
-## Local verification
+適用済みの移行ファイルは編集せず、新しいSQLファイルを追加します。リクエストハンドラーはDDLを実行しません。共通時計のテーブルは移行で作成し、時計を初めて読む際に一行の初期値を排他的に作成します。
+
+## 保存と同期
+
+ユーザー、トークンのハッシュ、ギルド、フレンド、メッセージ、お知らせ、郵便、ギフト受取記録、クラウドセーブ、操作権、端末連携コード、接続状況、共通時計をD1へ保存します。
+
+同じ領主IDにつき一つの操作権リースを持ち、セーブの版番号による比較更新を行います。同時操作による上書きを防ぎ、別端末へ切り替えた場合は古い端末の書き込みを拒否します。連携コードは一回限り・10分間有効、サーバーにはハッシュだけを保存します。連携後には新しい端末用のトークンを発行します。
+
+運営権限はユーザー行で確認します。非運営の江戸城所持・德川家康U所持を保存時に拒否します。旧バージョンの非運営セーブを読む場合は通常用に移行します。運営のU復元は重複しません。
+
+セーブ形式は厳密に検証しますが、すべての戦闘・内政をサーバーだけで計算する方式ではありません。ローカル編集可能なゲームの全経済に対する不正防止を保証するものではありません。
+
+システム便の贈り物は、金・兵糧・木材・石材と勾玉に対応します。`gift.magatama` は任意の0〜1,000,000の整数で、勾玉のみの添付も可能です。省略・0は従来の4資源のJSON形式を維持し、過去の送信要求の再送と互換性を保ちます。受取クライアントは勾玉を `state.magatama` に加算し、同じ保存で受取台帳を更新します。保存失敗時は資産と台帳の両方を戻し、同じ記録で再試行できます。
+
+## 共通のループ時計
+
+`GET /api/v1/world-clock` は認証不要です。サーバーの経過時間、進行中かどうか、速度、設定の版番号、サーバー時刻を返します。`PATCH` は運営のみ、版番号が一致した場合にだけ変更します。クライアントが任意の年月を送って世界時計を巻き戻す操作は受け付けません。
+
+暦は672か月で一周し、1560年1月から1615年12月の後に次の周へ進みます。内部の経過ミリ秒は増え続けます。停止・再開や速度変更では、それまでに経過した時間を確定してから新しい設定へ切り替えます。
+
+新しいセーブは `state.worldClock` に適用済みの経過時間を保存します。年月・月内秒との整合性と、サーバーより過度に未来でないことを検証します。移行済みのクラウドセーブを、時計位置のない旧形式で上書きすることはできません。古い有効な保存位置からの再接続はクライアントが追いつくため許容します。
+
+## 接続一覧とプライバシー
+
+端末は約20秒ごとに接続を確認し、90秒以内に確認できた領主をオンラインとします。同じ領主の複数端末は集約します。公開一覧は表示名・公開ID・所属・運営表示のみを返し、IPアドレス、トークン、内部端末IDを公開しません。
+
+生の認証トークンは端末で保持し、領主データの書き出し・読み込みと端末連携で引き継ぎます。すべてのコピーを失った領主IDの復元機能はありません。最初の運営IDを、別IDがキーだけで取り直すこともできません。
+
+## 検証
 
 ```sh
 node test-social.mjs
+node test-sync.mjs
+node test-world-clock.mjs
+node test-field.mjs
+node test-staff.mjs
 ```
 
-Uses Node's built-in SQLite, creates an in-memory database, and applies the actual migration. The admin test key is generated in memory. No production connection or production message is involved.
+Node.js 24以降の組み込みSQLiteへ実際の移行SQLを適用し、メモリー上だけで実行します。運営キー・プレイヤー・通信はテスト環境内で作成し、本番の登録・チャット・郵便を変更しません。
 
-Verified result: **83 HTTP requests passed**, including two concurrent admin registrations (only one succeeds) and two concurrent claims of one gift (only one succeeds).
+認証、CORS、サイズ制限、運営の排他登録、ギルド・フレンドの隔離、ギフト二重受取、セーブ検証、端末操作権、CAS競合、連携コード、接続の失効、共通時計の制御・周回・保存位置を検証します。フロントエンドの `tests/test-sync-integration.mjs` は実際のエンジン・同期処理・Workerを合わせて検証します。
 
-Coverage includes bearer authorization, stored token hashes, CORS, body limits, chat rate limits, guild/friend/admin isolation, deterministic guild ownership transfer, admin claim throttling, mail targeting, gift idempotency, and unique receipts.
+公開確認では `/api/v1/health`、`/api/v1/config`、`/api/v1/world-clock`、`/api/v1/online` の読み取りを使い、運営登録やテストメールは行いません。
 
-## Production verification
+## サポートスタッフ
 
-Use read-only requests to `/api/v1/health` and `/api/v1/config`. Do not claim the production administrator or send chat/mail as part of deployment verification.
+スタッフは `staff_members` に保存し、`isStaff` と `isAdmin` を区別します。主運営のみ `GET/POST /admin/staff` を使用でき、登録済みの対象領主を任命・解任できます。役職変更と再送台帳は同じトランザクションで確定します。解任後に古い任命要求を再送しても、役職を巻き戻しません。
 
-## Persistence boundaries
+スタッフの追加権限は運営チャットの閲覧・送信です。江戸城・德川家康U・共通時計の管理・告知・配布・スタッフ管理には運営権限を要求します。運営チャットは読み取り・送信を実行するSQLでも参加権限を再確認し、解除済みのトークンで利用できないようにします。任命・解任でセーブや認証トークンを作り直すことはありません。
 
-- Users, hashed tokens, memberships, accepted friendships, messages, announcements, mail campaigns, and gift receipts are in D1.
-- Game progress and the raw anonymous identity token are managed by the frontend. Offer identity export/import; losing every copy of a token loses that identity.
-- The first administrator is a single server-side identity. Another identity cannot reclaim it with the key once registered.
-- The frontend must persist a pending gift claim's `requestId` before requesting it. Retry with the same request ID after a network error.
-- Apply a returned gift only after checking its server `receiptId` against a save-backed receipt ledger. Persist the resource change and receipt entry together. This API does not make an offline editable game save authoritative.
-- Broadcast mail targets current and future players. No mass fan-out is performed.
-- Online count means active within five minutes. Chat is polled HTTP, not a WebSocket presence service.
+## 実装上の境界
 
-## Runtime review
+SQL値はバインドします。各prepareは一つのSQL文、複数操作のトランザクションは `DB.batch()` を使います。セーブとギフトの受取台帳はクライアントでも同時に永続化し、再送時の重複を防ぎます。
 
-The Worker uses only web-platform APIs and D1; it does not depend on Node APIs. Every SQL value from a request is bound. Each `prepare()` contains one statement. Multi-step operations use `DB.batch()` for atomicity. Direct `env.DB` queries use the primary database; no read-replica session is enabled.
+Cookieは使用せず、非公開APIにはゲームのBearerトークンが必要です。CORSは正確な許可Originだけに応答し、資格情報付きワイルドカードを使いません。秘密の環境変数、運営キー、生トークンをログに出力しません。
 
-Cloudflare's current documentation confirms that D1 batches are transactions and roll back when a statement fails, and that read replication requires the Sessions API:
+D1の一次資料:
 
 - https://developers.cloudflare.com/d1/worker-api/d1-database/
 - https://developers.cloudflare.com/d1/worker-api/prepared-statements/
-- https://developers.cloudflare.com/d1/best-practices/read-replication/
-
-No cookies are used. All private calls require the game bearer token. CORS allows exact configured origins, including literal `null` for downloaded offline HTML; it does not expose cookies or use credentialed wildcards. The server never logs environment secrets, raw bearer tokens, or the admin key.
