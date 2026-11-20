@@ -1,0 +1,39 @@
+#!/usr/bin/env node
+'use strict';
+// Deterministic correspondence of 8,192 original illustration cells to 256 files.
+const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),crypto=require('node:crypto'),assert=require('node:assert/strict');
+const root=path.resolve(__dirname,'..'),context={};context.window=context;context.globalThis=context;vm.createContext(context);
+for(const f of ['officers-data.js','engine.js'])vm.runInContext(fs.readFileSync(path.join(root,f),'utf8'),context);
+const data=context.SENGOKU_DATA,roster=context.SENGOKU_OFFICERS,ranks=['D','C','B','A','S','SS','SSS','U'];
+assert.equal(roster.length,256);assert.equal(data.castles.length,128);assert.equal(data.buildings.length,64);
+function dimensions(b){
+ assert.equal(b.toString('ascii',0,4),'RIFF');assert.equal(b.toString('ascii',8,12),'WEBP');
+ for(let p=12;p+8<=b.length;){const tag=b.toString('ascii',p,p+4),length=b.readUInt32LE(p+4),d=p+8;
+  if(tag==='VP8X')return [b.readUIntLE(d+4,3)+1,b.readUIntLE(d+7,3)+1];
+  if(tag==='VP8 ')return [b.readUInt16LE(d+6)&16383,b.readUInt16LE(d+8)&16383];
+  if(tag==='VP8L'){const bits=b.readUInt32LE(d+1);return [(bits&16383)+1,((bits>>>14)&16383)+1];}
+  p=d+length+(length%2);
+ }throw new Error('Unsupported WebP dimensions');
+}
+const atlases=[],illustrations=[],digests=new Set(),ids=new Set();
+function atlas(file,kind,variants){
+ const absolute=path.join(root,file);assert.ok(fs.existsSync(absolute),'Missing illustration sheet: '+file);
+ const bytes=fs.readFileSync(absolute),[width,height]=dimensions(bytes),sha256=crypto.createHash('sha256').update(bytes).digest('hex');
+ assert.ok(width>=1200&&height>=700,'Unexpected low resolution: '+file);
+ const portrait=kind==='officer'||(kind==='facility'&&data.buildings.slice(0,32).some(b=>b.id===variants[0].subjectId));
+ assert.equal(width/height,portrait?1.5:2,'Wrong sheet geometry: '+file);
+ assert.ok(!digests.has(sha256),'Identical duplicate illustration sheet: '+file);digests.add(sha256);
+ assert.equal(variants.length,32);
+ atlases.push({file,kind,width,height,columns:8,rows:4,bytes:bytes.length,sha256});
+ variants.forEach((v,i)=>{assert.ok(!ids.has(v.id),'Duplicate cell identity: '+v.id);ids.add(v.id);const column=i%8,row=Math.floor(i/8);illustrations.push({...v,file,column,row,x:column*width/8,y:row*height/4,width:width/8,height:height/4});});
+}
+for(const rank of ranks)for(let sheet=0;sheet<8;sheet++)atlas(`assets/illustrations/officers-${rank}-${String(sheet+1).padStart(2,'0')}.webp`,'officer',roster.slice(sheet*32,(sheet+1)*32).map(o=>({id:`officer:${o.id}:${rank}`,kind:'officer',subjectId:o.id,name:o.name,rank})));
+for(const [kind,list,folder] of [['castle',data.castles,'castles'],['facility',data.buildings,'facilities']])for(const item of list)atlas(`assets/${folder}/${item.id}.webp`,kind,Array.from({length:32},(_,i)=>({id:`${kind}:${item.id}:${i+1}`,kind,subjectId:item.id,name:item.name,level:i+1})));
+assert.equal(atlases.length,256);assert.equal(illustrations.length,8192);
+for(const kind of ['officer','castle','facility'])assert.equal(illustrations.filter(i=>i.kind===kind).length,kind==='castle'?4096:2048);
+const atlasIndex=new Map(atlases.map((a,i)=>[a.file,i]));
+const manifest={schemaVersion:1,title:'戦国大戦',layout:'8 columns by 4 rows, row-major',totals:{officers:2048,castles:4096,facilities:2048,illustrations:8192,atlases:256},subjects:{officer:roster.map(o=>({id:o.id,name:o.name})),castle:data.castles.map(o=>({id:o.id,name:o.name})),facility:data.buildings.map(o=>({id:o.id,name:o.name}))},atlases,illustrationFields:['kind','subjectId','rankOrLevel','atlasIndex','column','row'],cellBounds:{x:'column * atlas.width / 8',y:'row * atlas.height / 4',width:'atlas.width / 8',height:'atlas.height / 4'},illustrations:illustrations.map(i=>[i.kind,i.subjectId,i.rank??i.level,atlasIndex.get(i.file),i.column,i.row])};
+const file=path.join(root,'assets/art-manifest.json'),serialized=JSON.stringify(manifest);
+if(process.argv.includes('--check')){assert.ok(fs.existsSync(file),'Run this command without --check to build the manifest');assert.equal(fs.readFileSync(file,'utf8').trim(),serialized,'Manifest differs from actual artwork. Rebuild before publishing.');}
+else fs.writeFileSync(file,serialized+'\n');
+console.log(JSON.stringify({ok:true,...manifest.totals,bytes:atlases.reduce((n,a)=>n+a.bytes,0),mode:process.argv.includes('--check')?'verified':'generated'}));

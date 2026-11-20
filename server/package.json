@@ -1,0 +1,6 @@
+{
+  "name": "sengoku-tento-social-worker",
+  "private": true,
+  "type": "module",
+  "scripts": {"test": "node test-social.mjs"}
+}

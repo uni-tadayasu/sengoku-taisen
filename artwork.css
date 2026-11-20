@@ -1,0 +1,32 @@
+/* 戦国大戦の原画、階級別の額装、透かし絵。 */
+.painted-art{display:block;position:relative;background-color:#213637;background-size:800% 400%;background-position:var(--tile-x) var(--tile-y);background-repeat:no-repeat;overflow:hidden;isolation:isolate}
+.art-loading{position:absolute;inset:0;display:grid;place-items:center;color:#c5b57b;background:radial-gradient(ellipse at center,#2e4645,#142225);animation:art-breathe 1.5s ease-in-out infinite}
+.art-loading .item-icon{width:35px;height:35px}.art-ready>.art-loading{display:none}.art-error>.art-loading{animation:none;opacity:.4}
+@keyframes art-breathe{50%{opacity:.5}}
+.portrait-frame{display:block;position:relative;width:100%;height:100%;overflow:hidden;border-radius:6px}
+.painted-portrait{width:100%;height:100%;aspect-ratio:3/4}.rank-frame{position:absolute;inset:0;width:100%;height:100%;max-width:none;pointer-events:none;z-index:3;object-fit:fill}
+.officer-art{height:auto!important;aspect-ratio:3/4;background:#19272a}.officer-art .portrait-frame{position:absolute;inset:0}.officer-art .clan-script{display:none}.officer-art .rarity,.officer-art .owned-tag{z-index:4}
+.officer-card{border-color:var(--rank-color,#637578);overflow:hidden}.officer-card[data-rank="D"]{--rank-color:#74868a}.officer-card[data-rank="C"]{--rank-color:#b78b69}.officer-card[data-rank="B"]{--rank-color:#9ebed4}.officer-card[data-rank="A"]{--rank-color:#70bd9a}.officer-card[data-rank="S"]{--rank-color:#d7b76b}.officer-card[data-rank="SS"]{--rank-color:#b39cdd}.officer-card[data-rank="SSS"]{--rank-color:#df8b75}.officer-card[data-rank="U"]{--rank-color:#f6df9a;box-shadow:0 0 0 1px #d5b77755,0 7px 30px #dda75418}
+.officer-detail-top{align-items:center;gap:24px}.officer-detail-portrait{width:180px;flex:0 0 180px;height:auto;aspect-ratio:3/4}.officer-detail-portrait .portrait-frame{height:100%}
+.building-art{height:auto;aspect-ratio:1;min-width:0;border-radius:4px;margin:0 0 12px;opacity:.92}
+.facility-art{aspect-ratio:1;border-radius:5px;margin:-3px -3px 17px;max-height:320px}
+.facility-modal-art{aspect-ratio:1;width:min(100%,350px);margin:0 auto 24px;border:1px solid #c9ae6d66;border-radius:5px}
+.castle-detail-art{width:100%;height:100%;aspect-ratio:1}
+.castle-detail:has(.castle-detail-art){grid-template-columns:minmax(0,1fr)}.castle-detail .castle-banner:has(.castle-detail-art){position:relative;display:block;overflow:hidden;width:100%;max-width:360px;height:auto;aspect-ratio:1;border:1px solid var(--line);border-radius:5px;margin:0 auto 20px}.castle-banner:has(.castle-detail-art)>.icon{display:none}
+.territory-art{width:58px;height:58px;min-width:58px;border:1px solid #c8b17c55;border-radius:4px}.territory-row{gap:12px}.territory-row>div:first-of-type{min-width:0;flex:1}.territory-numbers{flex-shrink:0}
+.item-icon{width:21px;height:21px;display:inline-block;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;vertical-align:middle;flex-shrink:0;margin-right:8px;color:#c8b17d}
+.illustrated-item{position:relative;isolation:isolate;overflow:hidden}.illustrated-item::before{content:"";position:absolute;inset:0;z-index:-1;background-image:var(--item-art);background-size:800% 400%;background-position:var(--item-x,50%) var(--item-y,50%);opacity:.075;filter:saturate(.65);pointer-events:none}
+.nav-item.illustrated-item::before{opacity:.14;mask-image:linear-gradient(90deg,transparent 20%,#000)}
+.resource.illustrated-item::before{opacity:.045}.officer-content.illustrated-item::before{opacity:.045}.notice.illustrated-item::before{opacity:.055}
+.officer-content{background:#182226eb}.building-card,.facility-entry,.research-card,.panel{background-color:#182125}
+.section-heading h2,.panel-heading h2{display:flex;align-items:center}.section-heading h2>.item-icon,.panel-heading h2>.item-icon{margin-right:0}
+.rank-preview-strip{display:flex;gap:7px;flex-wrap:wrap}.rank-preview-strip button{min-width:38px}
+@media(min-width:1200px){.officers-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
+@media(max-width:600px){.officer-detail-top{gap:16px;align-items:start}.officer-detail-portrait{width:125px;flex-basis:125px}.officer-detail-top h3{font-size:23px}.territory-art{width:48px;height:48px;min-width:48px}.building-art{margin-bottom:10px}.facility-art{max-height:none}.facility-modal-art{width:100%}.officers-grid{gap:12px}.officer-content{padding:12px}.officer-content h3{font-size:20px}.item-icon{width:19px;height:19px}.navigation .nav-item>.item-icon{margin-right:0}.gacha-result-grid .officer-art{aspect-ratio:3/4}}
+@media(prefers-reduced-motion:reduce){.art-loading{animation:none}}
+
+.brand-crest img{display:block;width:42px;height:42px;border-radius:12px}.mobile-brand img{width:24px;height:24px;vertical-align:middle;margin-right:7px;border-radius:6px}
+
+.title-feature>.item-icon{display:block;margin:0 auto 7px;color:var(--gold);width:23px;height:23px}.launch-enter>.item-icon{width:24px;height:24px;margin-right:12px;vertical-align:middle}button>.item-icon{flex-shrink:0} .art-level-controls .item-icon{width:16px;height:16px}
+
+.art-surface{display:block;position:absolute;inset:0;background-size:800% 400%;background-position:var(--tile-x) var(--tile-y);background-repeat:no-repeat}.portrait-cell{background:linear-gradient(90deg,#172726,#2f3b30 50%,#172726)}.portrait-cell>.art-surface{left:12.5%;right:12.5%;box-shadow:0 0 0 1px #d6b97440}

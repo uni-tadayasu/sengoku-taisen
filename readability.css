@@ -1,0 +1,42 @@
+/* 小さな画面でも采配に必要な情報を読みやすく保つ。 */
+.subtitle,.commands,.resource-label,.resource-gain,.building-level,.text-link,.section-heading small,.scene-label,.hotspot .label,.scene-caption small,.progress-meta,.cost,.stat-row,.skill-tag,.mini-stats span,.territory-row,.territory-row small,.realtime-strip,.speed-select{font-size:14px}
+.building-card h3,.building-card p,.objective p,.tip-bar,.research-card p,.quest-row p,.modal-body>p,.notice,.tactic-card p,.facility-entry>p,.facility-effect,.activity-item p{font-size:16px}
+.building-card p{white-space:normal;line-height:1.65;min-height:2.7em}
+.hotspot .label{font-size:12px}
+.scene-caption small,.clan-line small,.clan-progress-label,.army-summary small{font-size:12px}
+.live-state{white-space:normal}
+.social-announcement{position:sticky;top:0;z-index:40;font-size:14px}
+.social-dialog p,.social-message-content p,.social-letter-body,.social-notice,.social-feedback,.social-profile-section p{font-size:16px}
+.social-dialog label,.social-button,.social-tabs button,.social-message-meta strong,.social-chat-form-bottom>span,.social-small,.social-subtabs button{font-size:14px}
+.social-message-meta time,.social-mail-row small,.social-letter-date{font-size:12px}
+@media(max-width:600px){
+  .subtitle,.commands,.resource-label,.resource-gain,.building-level,.section-heading small,.text-link,.progress-meta,.cost,.stat-row,.skill-tag,.mini-stats span,.territory-row,.territory-row small,.realtime-strip,.speed-select{font-size:12px}
+  .resource-amount{font-size:16px}.resource .icon{width:15px}.resource{gap:5px}
+  .page-heading{flex-wrap:wrap;row-gap:12px}.page-heading-actions>.button{font-size:14px}.commands{min-width:48px}
+  .page-heading .eyebrow{font-size:10px}.page-heading h1{font-size:26px}
+  .live-state{max-width:70%}.realtime-strip{align-items:center;gap:9px}
+  .buildings-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+  .building-card{padding:14px}.building-card h3{font-size:17px}.building-card p{font-size:14px}
+  .building-level{font-size:12px}.building-symbol{width:30px;height:30px}.building-symbol .icon{width:19px;height:19px}
+  .hotspot .label{font-size:11px}.scene-caption strong{font-size:18px}.scene-caption small{font-size:11px}
+  .scene-caption .weather{display:none}.hotspot[data-id=farm]{top:70%!important}
+  .right-column{grid-template-columns:1fr}.panel-heading h2{font-size:17px}.objective p,.tip-bar{font-size:16px}
+  .objective .button,.castle-detail .button,.research-card .button,.quest-row .button,.facility-entry .button{font-size:14px}
+  .stat-row,.army-summary strong,.army-summary small,.quest-row p,.research-card p,.log-panel .activity-item p,.facility-entry>p,.facility-effect,.notice{font-size:14px}
+  .facility-entry>p,.facility-effect,.research-card p{min-height:0}.facility-entry-heading small{font-size:12px}
+  .facility-catalog,.research-grid{grid-template-columns:1fr}.facility-entry{padding:19px}
+  .facility-entry .cost{font-size:14px}.facility-banner p{font-size:14px;max-width:230px}
+  .toolbar .select,.tabs button,.nav-item{font-size:14px}.navigation .nav-item{font-size:12px}
+  .modal-header p,.modal-body>p,.modal-body .notice{font-size:16px}.modal-body label{font-size:14px}
+  .army-slot small,.army-slot .slot-label{font-size:12px}.army-slot .button{font-size:12px}
+  .tactic-card h3{font-size:16px}.tactic-card p{font-size:14px}.officer-content small,.skill-tag,.mini-stats span{font-size:12px}
+  .track-title small,.track-duration,.track-state,.music-mode span{font-size:12px}
+  .social-announcement,.social-announcement-label{font-size:13px}.social-announcement{padding-left:12px;padding-right:12px}
+  .social-dialog p,.social-welcome p,.social-message-content p,.social-letter-body,.social-notice{font-size:16px}
+  .social-chat-form-bottom>span,.social-message-meta time,.social-player-id{font-size:12px}
+}
+@media(max-width:360px){
+  .page-heading-actions{width:100%;justify-content:space-between}.page-heading .subtitle{max-width:none}
+  .scene-label{font-size:10px}.scene-caption small{display:none}.scene-caption strong{font-size:17px}
+  .territory-list{grid-template-columns:1fr}.social-tabs button{font-size:14px;padding:12px 10px}
+}
