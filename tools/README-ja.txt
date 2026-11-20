@@ -1,7 +1,7 @@
 戦国大戦 ― 城と群雄の戦記
 © KASAI SOLUTIONS
 
-公開URL: https://uni-tadayasu.github.io/sengoku-taisen/
+公開URL: https://www.kasai-solutions-inc.com/
 PC・スマートフォンとも公開URLをブラウザで開いてください。
 
 時間は全プレイヤー共通です。1倍速で60秒が1か月。

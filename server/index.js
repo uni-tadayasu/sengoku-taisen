@@ -11,7 +11,7 @@ const MAX_TURN = 999999999;
 const WORLD_MONTH_MS = 60000;
 const WORLD_CYCLE_MONTHS = 56 * 12;
 const WELCOME = '戦国大戦へようこそ。城を育て、仲間と語らい、天下統一を目指しましょう。';
-const BASE_ORIGINS = new Set(['https://uni-tadayasu.github.io', 'http://127.0.0.1:4173', 'null']);
+const BASE_ORIGINS = new Set(['https://uni-tadayasu.github.io', 'https://www.kasai-solutions-inc.com', 'http://127.0.0.1:4173', 'null']);
 const encoder = new TextEncoder();
 
 class ApiError extends Error {

@@ -555,7 +555,7 @@
       }
       if(s.gameOver)rt.running=false;
       const calendar=this.calendar();
-      return{ok:true,message:monthChanged?`第${calendar.cycle}周 ${calendar.year}年${calendar.month}月になりました。`:completed.length?events[0]:'',events,completed,changed:seconds>0,monthChanged};
+      return{ok:true,message:monthChanged?`${calendar.year}年${calendar.month}月になりました。`:completed.length?events[0]:'',events,completed,changed:seconds>0,monthChanged};
     }
     _advanceMonth(){
       const s=this.state,events=[];s.turn++;
@@ -567,7 +567,7 @@
       for(const [clan,until]of Object.entries(s.treaties)){if(until<=s.turn){delete s.treaties[clan];events.push(`${clan}との同盟期間が終了しました。`);}}
       for(const [id,until]of Object.entries(s.scouted))if(until<=s.turn)delete s.scouted[id];
       if(s.turn%4===0){const roll=this.random();if(roll<.25){const gain=350+s.buildings.market*70;this._gain({gold:gain});events.push(`城下で市が賑わい、臨時収入${gain}を得ました。`);}else if(roll<.5){const gain=500+s.buildings.farm*80;this._gain({rice:gain});events.push(`豊作により兵糧${gain}を追加で収穫しました。`);}else if(roll<.7){this._gain({wood:300,stone:200});events.push('領民の協力により木材300・石材200が集まりました。');}else if(roll<.85){s.morale=clamp(s.morale+8,15,100);events.push('軍中に結束が広がり、士気が8上昇しました。');}else{const loss=Math.min(250,s.resources.rice);s.resources.rice-=loss;events.push(`長雨により兵糧${loss}を失いました。`);}}
-      const calendar=this.calendar();this.log(`第${calendar.cycle}周 ${calendar.year}年${calendar.month}月。領内の月次報告が届きました。`,'calendar');
+      const calendar=this.calendar();this.log(`${calendar.year}年${calendar.month}月。領内の月次報告が届きました。`,'calendar');
       for(const e of events)this.log(e,'event');events.push(...this._cpuTurn());return events;
     }
     // Compatibility/testing helper. The game UI uses tick(), pause and speed controls only.

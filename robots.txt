@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+Disallow: /server/
+Disallow: /tests/
+Disallow: /tools/
+Disallow: /qa-
+
+Sitemap: https://www.kasai-solutions-inc.com/sitemap.xml

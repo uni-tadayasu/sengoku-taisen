@@ -58,6 +58,11 @@ try{
   await api('/api/v1/me',{expected:401});
   await api('/api/v1/session',{method:'POST',body:{name:'禁止された接続'},origin:'https://untrusted.example',expected:403});
   const nullCors=await api('/api/v1/config',{origin:'null'});assert.equal(nullCors.res.headers.get('access-control-allow-origin'),'null');
+  const domainCors=await api('/api/v1/config',{origin:'https://www.kasai-solutions-inc.com'});assert.equal(domainCors.res.headers.get('access-control-allow-origin'),'https://www.kasai-solutions-inc.com');
+  const domainPreflight=await api('/api/v1/me',{method:'OPTIONS',origin:'https://www.kasai-solutions-inc.com',expected:204});assert.equal(domainPreflight.res.headers.get('access-control-allow-origin'),'https://www.kasai-solutions-inc.com');
+  await api('/api/v1/config',{origin:'https://www.kasai-solutions-inc.com.attacker.example',expected:403});
+  await api('/api/v1/config',{origin:'http://www.kasai-solutions-inc.com',expected:403});
+  const oldDomainCors=await api('/api/v1/config',{origin:'https://uni-tadayasu.github.io'});assert.equal(oldDomainCors.res.headers.get('access-control-allow-origin'),'https://uni-tadayasu.github.io');
   const preflight=await api('/api/v1/config',{method:'OPTIONS',expected:204});assert.equal(preflight.res.headers.get('access-control-allow-credentials'),null);
   await api('/api/v1/session',{method:'POST',rawBody:'x'.repeat(17000),expected:413});
 

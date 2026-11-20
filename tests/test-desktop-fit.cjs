@@ -1,64 +1,69 @@
 'use strict';
 const assert=require('node:assert/strict');
 const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path');
-const {computeFit,planViewport}=require('../desktop-fit.js');
-const isolated={module:{exports:{}}};
-vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../desktop-fit.js'),'utf8').replace('const api={refresh','const api={fitDialog,refresh'),isolated);
-const {fitDialog}=isolated.module.exports;
-function socialDialog(height=760){
-  const body={scrollTop:70},style={},dialog={open:true,hidden:false,style,dataset:{},confirmation:null,classList:{contains:name=>name==='social-dialog'},querySelector:selector=>selector==='.social-body'?body:selector==='.social-confirm-card'?dialog.confirmation:null,getBoundingClientRect(){throw Error('Transformed measurements would create a scale feedback loop');}};
-  Object.defineProperties(dialog,{offsetWidth:{get:()=>940},scrollWidth:{get:()=>940},offsetHeight:{get:()=>Math.max(height,parseFloat(style.minHeight)||0)},scrollHeight:{get:()=>dialog.offsetHeight}});
-  return{dialog,body};
+const {planViewport,desktopMode}=require('../desktop-fit.js');
+const source=fs.readFileSync(path.join(__dirname,'../desktop-fit.js'),'utf8');
+const css=fs.readFileSync(path.join(__dirname,'../desktop-fit.css'),'utf8'),responsive=fs.readFileSync(path.join(__dirname,'../responsive-layout.css'),'utf8');
+let count=0;function test(name,fn){fn();count++;console.log('PASS '+name);}
+function harness({width=1366,height=936,touch=0,fine=true,coarse=false,announcement=37}={}){
+ const classes=new Set(),vars=new Map(),frames=new Map();let nextFrame=0;
+ const classList={contains:name=>classes.has(name),toggle(name,on){if(on)classes.add(name);else classes.delete(name);},remove(name){classes.delete(name);}};
+ const root={classList,style:{getPropertyValue:name=>vars.get(name)||'',setProperty:(name,value)=>vars.set(name,value)}};
+ const makeNode=()=>({style:{left:'125px',top:'70px',transform:'scale(.37)',minHeight:'1400px'},dataset:{desktopScale:'.370'}});
+ const app=makeNode(),launch=makeNode(),dialog=makeNode(),bodyPane={scrollTop:170};
+ // Long forms and hundreds of messages must never determine the scale factor.
+ for(const node of [app,launch,dialog])for(const property of ['offsetWidth','offsetHeight','scrollWidth','scrollHeight'])Object.defineProperty(node,property,{get(){throw Error('Natural-content measurement would shrink readable UI');}});
+ dialog.open=true;dialog.querySelector=()=>bodyPane;
+ const queries=[];
+ const document={documentElement:root,body:{classList:{contains:()=>false}},readyState:'loading',addEventListener(){},removeEventListener(){},getElementById:id=>id==='app'?app:id==='announcement-bar'?{hidden:false,offsetHeight:announcement}:null,querySelectorAll(selector){queries.push(selector);if(selector.startsWith('#app,'))return[app,launch,dialog];if(selector.startsWith('dialog[open]'))return[dialog];return[];}};
+ const media={matches:fine,addEventListener(){},removeEventListener(){}},coarseMedia={...media,matches:coarse};
+ const environment={document,navigator:{maxTouchPoints:touch},innerWidth:width,innerHeight:height,visualViewport:{width,height,offsetLeft:0,offsetTop:0,addEventListener(){},removeEventListener(){}},matchMedia:q=>q==='(any-pointer: coarse)'?coarseMedia:media,addEventListener(){},removeEventListener(){},requestAnimationFrame(callback){frames.set(++nextFrame,callback);return nextFrame;},cancelAnimationFrame:id=>frames.delete(id),module:{exports:{}}};
+ vm.runInNewContext(source,environment);const api=environment.module.exports;
+ function flush(){let turns=0;while(frames.size){assert(++turns<10,'Responsive refresh must settle without a feedback loop');const queued=[...frames.values()];frames.clear();queued.forEach(callback=>callback());}}
+ function refresh(){api.refresh();flush();}
+ return{api,environment,app,launch,dialog,bodyPane,vars,classes,media,coarseMedia,refresh};
 }
-let count=0;const test=(name,fn)=>{fn();count++;console.log('PASS '+name);};
-test('desktop virtual layout survives browser zoom through 200 percent',()=>{
-  for(const [physicalWidth,physicalHeight]of [[1920,1080],[1440,900],[1366,768],[1280,720]])for(const zoom of [1,1.25,1.5,1.75,2]){
-    const plan=planViewport(physicalWidth/zoom,physicalHeight/zoom,34);
-    assert.ok(plan.layoutWidth>=1100);assert.ok(plan.layoutHeight>=720);
-    const fit=computeFit(plan.layoutWidth,Math.max(plan.layoutHeight,950),plan.availableWidth,plan.availableHeight);
-    assert.ok(fit.width<=plan.availableWidth+1e-8);assert.ok(fit.height<=plan.availableHeight+1e-8);
-    assert.ok(fit.scale>0&&fit.scale<=1);assert.ok(fit.left>=0&&fit.top>=0);
-  }
+test('desktop uses every available CSS pixel through 200 percent browser zoom',()=>{
+ for(const [w,h]of [[1920,1080],[1440,900],[1366,936],[1280,720]])for(const zoom of [1,1.25,1.5,1.75,2]){
+  const p=planViewport(w/zoom,h/zoom,37);assert.equal(p.layoutWidth,w/zoom);assert.equal(p.layoutHeight,h/zoom-37);assert.equal(p.availableWidth,p.viewportWidth);assert.equal(p.availableHeight,p.layoutHeight);
+ }
+ assert.equal(planViewport(683,468,37).layoutWidth,683,'A zoomed PC must not keep an invisible 1100px canvas');
 });
-test('map and town budgets follow available height without oversized fixed minima',()=>{
-  const short=planViewport(680,360,34),tall=planViewport(1920,1200,34);
-  assert.ok(short.mapHeight>=260&&short.mapHeight<400);assert.ok(tall.mapHeight>short.mapHeight);
-  assert.ok(short.townHeight>=255&&tall.townHeight>short.townHeight);
+test('announcement cannot produce a negative or offscreen content rectangle',()=>{
+ assert.equal(planViewport(320,240,800).layoutHeight,1);assert.equal(planViewport(320,240,-8).top,0);
+ const p=planViewport(1366,936,37);assert.equal(p.top+p.layoutHeight,p.viewportHeight);
 });
-test('full modal contents stay inside the viewport without cropping',()=>{
-  for(const size of [[780,500],[780,1100],[780,1750]])for(const viewport of [[1920,1080],[960,540],[640,360]]){
-    const fit=computeFit(...size,viewport[0]-24,viewport[1]-24);
-    assert.ok(12+fit.left+fit.width<=viewport[0]-12+1e-8);assert.ok(12+fit.top+fit.height<=viewport[1]-12+1e-8);
-  }
+test('touch tablets retain document flow with an attached fine pointer',()=>{
+ assert.equal(desktopMode(true,0,false),true);assert.equal(desktopMode(false,0,false),false);assert.equal(desktopMode(true,5,false),false);assert.equal(desktopMode(true,0,true),false);assert.equal(desktopMode(false,5,true),false);
 });
-test('already fitted rectangles are never needed for the fit calculation',()=>{
-  const initial=computeFit(1400,1000,1000,650),again=computeFit(1400,1000,1000,650);
-  assert.deepEqual(initial,again);assert.equal(initial.scale,.65);
+test('actual runtime removes a legacy scale without reading long-page dimensions',()=>{
+ const h=harness();h.refresh();const s=h.api.getStatus();assert.equal(s.active,true);assert.equal(s.mode,'desktop');assert.equal(s.scale,1);assert.equal(s.visibleWidth,1366);assert.equal(s.visibleHeight,899);assert.equal(h.vars.get('--desktop-layout-width'),'1366.000px');assert.equal(h.vars.get('--desktop-offset-top'),'37.000px');
+ for(const n of [h.app,h.launch,h.dialog]){assert.equal(n.style.transform,'');assert.equal(n.style.left,'');assert.equal(n.style.top,'');assert.equal(n.style.minHeight,'');}assert.equal(h.app.dataset.desktopScale,'1.000');assert.equal(h.dialog.dataset.desktopScale,'1.000');assert.equal(h.bodyPane.scrollTop,170,'Refreshing the viewport must not reset a form/history reader');
 });
-test('large displays keep natural pixel scale and do not enlarge the interface',()=>{
-  const fit=computeFit(1100,720,2200,1440);assert.equal(fit.scale,1);assert.equal(fit.left,550);assert.equal(fit.top,360);
+test('zoom, viewport offsets, and repeated refresh keep native scale',()=>{
+ const h=harness();h.refresh();h.environment.innerWidth=683;h.environment.innerHeight=468;Object.assign(h.environment.visualViewport,{width:683,height:468,offsetLeft:7,offsetTop:9});h.refresh();const first=JSON.stringify(h.api.getStatus());
+ assert.equal(h.vars.get('--desktop-layout-width'),'683.000px');assert.equal(h.vars.get('--desktop-layout-height'),'431.000px');assert.equal(h.vars.get('--desktop-offset-left'),'7.000px');assert.equal(h.vars.get('--desktop-offset-top'),'46.000px');assert.equal(h.api.getStatus().scale,1);
+ for(let i=0;i<10;i++)h.refresh();assert.equal(JSON.stringify(h.api.getStatus()),first);
 });
-test('the actual social dialog is fitted at stable desktop width through 200 percent zoom',()=>{
-  for(const [physicalWidth,physicalHeight]of [[1920,1080],[1440,900],[1366,768],[1280,720]])for(const zoom of [1,1.25,1.5,1.75,2]){
-    const {dialog,body}=socialDialog(),viewport={viewportWidth:physicalWidth/zoom,viewportHeight:physicalHeight/zoom};fitDialog(dialog,viewport);
-    const scale=Number(dialog.style.transform.match(/^scale\((.+)\)$/)[1]),left=parseFloat(dialog.style.left),top=parseFloat(dialog.style.top);
-    assert(scale>0&&scale<=1);assert(left>=12-.001&&top>=12-.001);assert(left+940*scale<=viewport.viewportWidth-12+.001);assert(top+760*scale<=viewport.viewportHeight-12+.001);
-    assert.equal(body.scrollTop,0,'The form body has no retained scroll position');assert.equal(dialog.offsetWidth,940,'Browser zoom does not switch the virtual dialog to mobile width');
-  }
+test('switching to touch clears desktop geometry and retains keyboard viewport height',()=>{
+ const h=harness();h.refresh();h.environment.navigator.maxTouchPoints=5;h.environment.visualViewport.height=310;h.refresh();assert(!h.classes.has('sengoku-desktop-fit'));assert.equal(h.api.getStatus().mode,'flow');assert.equal(h.vars.get('--visible-height'),'310.000px');assert.equal(h.app.dataset.desktopScale,undefined);assert.equal(h.app.style.transform,'');
 });
-test('confirmation height contributes to social fit and is cleared after confirmation closes',()=>{
-  const {dialog}=socialDialog(380),viewport={viewportWidth:657,viewportHeight:444};dialog.confirmation={offsetWidth:580,scrollWidth:580,offsetHeight:630,scrollHeight:630};
-  fitDialog(dialog,viewport,7,9);assert.equal(dialog.style.minHeight,'678px');
-  const scale=Number(dialog.style.transform.match(/^scale\((.+)\)$/)[1]);assert(parseFloat(dialog.style.top)+dialog.offsetHeight*scale<=9+444-12+.001);assert(parseFloat(dialog.style.left)>=7+12);
-  const first=JSON.stringify(dialog.style);fitDialog(dialog,viewport,7,9);assert.equal(JSON.stringify(dialog.style),first,'Repeated fit uses unscaled dimensions without compounding');
-  dialog.confirmation=null;fitDialog(dialog,viewport);assert.equal(dialog.style.minHeight,'');assert.equal(dialog.offsetHeight,380);
+test('destroy removes legacy geometry and releases desktop overflow mode',()=>{
+ const h=harness();h.refresh();h.api.destroy();assert(!h.classes.has('sengoku-desktop-fit'));assert.equal(h.app.dataset.desktopScale,undefined);assert.equal(h.api.getStatus().active,false);h.api.refresh();assert.equal(h.api.getStatus().active,false);
 });
-test('desktop social CSS keeps finite forms visible and bounds long record histories',()=>{
-  const css=fs.readFileSync(path.join(__dirname,'../desktop-fit.css'),'utf8');
-  const block=selector=>{const escaped=selector.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),match=css.match(new RegExp(escaped+'\\{([^}]+)\\}'));assert(match,'Missing scoped rule '+selector);return match[1];};
-  const dialog=block('.sengoku-desktop-fit .social-dialog');assert(dialog.includes('width:940px'));assert(dialog.includes('height:auto'));assert(dialog.includes('max-height:none'));assert(dialog.includes('transform-origin:0 0'));
-  assert(block('.sengoku-desktop-fit .social-body').includes('overflow:visible'));assert(block('.sengoku-desktop-fit .social-staff-layout').includes('grid-template-columns:repeat(2,minmax(0,1fr))'));
-  for(const selector of ['.sengoku-desktop-fit .social-message-list','.sengoku-desktop-fit .social-body>.social-card-list','.sengoku-desktop-fit .social-letter-body']){const declarations=block(selector);assert(declarations.includes('max-height:'));assert(declarations.includes('overflow-y:auto'),'Long records must retain bounded scrolling instead of shrinking the whole dialog');}
-  assert(block('.sengoku-desktop-fit .social-body:has(>#social-device-name-form)').includes('grid-template-columns:repeat(2,minmax(0,1fr))'));
+function block(text,selector){const escaped=selector.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),match=text.match(new RegExp(escaped+'\\{([^}]+)\\}'));assert(match,'Missing rule: '+selector);return match[1];}
+test('desktop shell fixes the viewport while main content can scroll at readable size',()=>{
+ const app=block(css,'.sengoku-desktop-fit #app.game-shell');assert(app.includes('height:var(--desktop-layout-height,100dvh)'));assert(app.includes('grid-template-rows:auto minmax(0,1fr) auto'));assert(app.includes('transform:none'));
+ assert(block(css,'.sengoku-desktop-fit .workspace').includes('display:contents'));assert(block(css,'.sengoku-desktop-fit .topbar').includes('grid-column:1/-1'));const main=block(css,'.sengoku-desktop-fit #main');assert(main.includes('overflow-y:auto'));assert(main.includes('min-height:0'));assert(main.includes('container-type:inline-size'));
+ assert(block(css,'.sengoku-desktop-fit .input,.sengoku-desktop-fit .select').includes('font-size:16px'));
 });
-console.log(count+' desktop viewport-fit checks passed.');
+test('dialogs have bounded middle panes and never scale long histories',()=>{
+ for(const selector of ['.sengoku-desktop-fit .modal','.sengoku-desktop-fit .social-dialog']){const b=block(css,selector);assert(b.includes('transform:none'));assert(b.includes('max-height:calc(var(--visible-height'));assert(b.includes('overflow:hidden'));assert(b.includes('margin:auto'));}
+ assert(block(css,'.sengoku-desktop-fit .modal-body').includes('overflow-y:auto'));assert(block(css,'.sengoku-desktop-fit .social-body').includes('overflow-y:auto'));assert(block(css,'.sengoku-desktop-fit .social-message-list').includes('overflow-y:auto'));assert(block(css,'.sengoku-desktop-fit .social-confirm-card .social-actions').includes('position:sticky'));
+ assert(responsive.includes('.sengoku-desktop-fit .social-staff-layout{grid-template-columns:1fr}'),'Narrow dialogs must reflow instead of scaling a 940px form');
+});
+test('touch navigation, map controls, and footer reserve safe touch areas',()=>{
+ assert(block(responsive,'html:not(.sengoku-desktop-fit) #app.game-shell').includes('flex-direction:column'));assert(block(responsive,'html:not(.sengoku-desktop-fit) #main').includes('overflow:visible'));const nav=block(responsive,'html:not(.sengoku-desktop-fit) .navigation .nav-item');assert(nav.includes('min-height:54px'));
+ const map=block(responsive,'html:not(.sengoku-desktop-fit) .sg-map-control');assert(map.includes('height:44px!important'));assert(map.includes('width:44px!important'));assert(block(responsive,'html:not(.sengoku-desktop-fit) .sidebar-bottom').includes('env(safe-area-inset-bottom)'));assert(block(responsive,'html:not(.sengoku-desktop-fit) .game-footer').includes('92px + env(safe-area-inset-bottom)'));
+});
+console.log(count+' responsive viewport checks passed.');

@@ -34,7 +34,7 @@ function setup({admin=false}={}) {
     queueWorldProgress:()=>{},preserveInteraction:()=>{}, closeModal:()=>{}, updateBattlePreview:()=>{}
   };
   vm.createContext(context);
-  vm.runInContext(['confirmedWorldClock','clockIsApplied','canMutate','syncMessage','save','backupCurrentSave','applyCloudSave','applyDurableGift','restoreAdminAssets'].map(fn).join('\n'),context);
+  vm.runInContext(['confirmedWorldClock','clockIsApplied','canMutate','syncMessage','save','backupCurrentSave','applyCloudSave','prepareRecoverySave','applyRecoverySave','applyDurableGift','restoreAdminAssets'].map(fn).join('\n'),context);
   return {c:context,stored,events};
 }
 let count=0;
@@ -114,4 +114,30 @@ test('magatama gift, resources and receipt persist atomically and a reloaded ret
   const saved=JSON.parse(stored.get('save')).state,initial=JSON.parse(original).state;assert.equal(saved.magatama,initial.magatama+500);assert.equal(saved.resources.gold,initial.resources.gold+100);assert.deepEqual(saved.giftReceipts,['magatama-durable']);assert.equal(events.length,1);
   c.game=SengokuEngine.fromSave(stored.get('save'),roster);const stable=JSON.stringify(c.game.state);assert.equal(c.applyDurableGift({gold:100,magatama:500},'magatama-durable').already,true);assert.equal(JSON.stringify(c.game.state),stable);assert.equal(events.length,1,'Receipt replay requires no second durable write');
 });
+test('recovery preview validates a save without replacing the current game or storage',()=>{
+  const {c,stored,events}=setup();const before=JSON.stringify(c.game.state),raw=stored.get('save');
+  const backup=JSON.parse(raw);backup.state.resources.gold+=321;
+  const preview=c.prepareRecoverySave(backup,{isAdmin:false});
+  assert.equal(preview.ok,true);assert.equal(preview.save.state.resources.gold,backup.state.resources.gold);
+  assert.equal(JSON.stringify(c.game.state),before);assert.equal(stored.get('save'),raw);assert.equal(events.length,0);
+  assert.equal(c.prepareRecoverySave({game:'wrong',version:2,state:{}},{isAdmin:true}).ok,false);
+  assert.equal(stored.get('save'),raw);
+});
+test('recovery trusts verified operator metadata rather than role fields inside a backup',()=>{
+  const {c}=setup();const backup=JSON.parse(new SengokuEngine({officers:roster,isAdmin:true,seed:77}).exportSave());
+  backup.state.isAdmin=true;
+  const ordinary=c.prepareRecoverySave(backup,{isAdmin:false});assert.equal(ordinary.ok,true);
+  assert.notEqual(ordinary.save.state.home,'edo');assert(!ordinary.save.state.officerVariants.includes('of_b0616adde162:U'));
+  const operator=c.prepareRecoverySave(backup,{isAdmin:true});assert.equal(operator.ok,true);
+  assert.equal(operator.save.state.home,'edo');assert(operator.save.state.officerVariants.includes('of_b0616adde162:U'));
+});
+test('domain recovery checkpoints existing progress and rolls back when durable storage is unavailable',()=>{
+  const {c,stored,events}=setup();const raw=stored.get('save');const backup=JSON.parse(raw);backup.state.resources.gold+=654;
+  const original=c.localStorage.setItem;c.localStorage.setItem=()=>{throw Error('storage full');};
+  assert.equal(c.applyRecoverySave(backup,{isAdmin:false}).ok,false);assert.equal(stored.get('save'),raw);
+  c.localStorage.setItem=original;assert.equal(c.applyRecoverySave(backup,{isAdmin:false}).ok,true);
+  assert.equal(JSON.parse(stored.get('backups'))[0].save,raw);assert.equal(JSON.parse(stored.get('backups'))[0].reason,'domain-recovery');
+  assert.equal(JSON.parse(stored.get('save')).state.resources.gold,backup.state.resources.gold);assert.equal(events.length,0);
+});
+
 console.log(`${count} app/cloud bridge checks passed.`);

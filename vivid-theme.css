@@ -1,0 +1,602 @@
+/* Section colours for the Sengoku interface.
+   Loaded after the layout sheets: colours and surfaces only, with no sizing
+   overrides. Existing artwork, geography, and responsive behaviour stay intact. */
+
+:root {
+  --bg: #0c141f;
+  --panel: #172431;
+  --panel-2: #243448;
+  --line: #b8cdea29;
+  --text: #f3f4ee;
+  --muted: #b1bfca;
+  --gold: #f1cb82;
+  --green: #8fdbb5;
+  --blue: #94caff;
+  --red: #be4d61;
+  --red-dark: #7c2e40;
+  --section-accent: #f5bd63;
+  --section-rgb: 245, 189, 99;
+  --section-solid: #91511c;
+  --section-deep: #2c211b;
+  --section-secondary: #f2d995;
+  --ink-surface: #13202e;
+  --success: #8fdfb5;
+  --danger: #ffafb1;
+}
+
+body:has(#main[data-view="map"]) {
+  --section-accent: #67dbaf;
+  --section-rgb: 103, 219, 175;
+  --section-solid: #146350;
+  --section-deep: #102d2a;
+  --section-secondary: #acd6a4;
+}
+body:has(#main[data-view="field"]) {
+  --section-accent: #70bfff;
+  --section-rgb: 112, 191, 255;
+  --section-solid: #215c96;
+  --section-deep: #142b43;
+  --section-secondary: #8ee0e5;
+}
+body:has(#main[data-view="officers"]),
+body:has(#main[data-view="gacha"]) {
+  --section-accent: #c8a0ff;
+  --section-rgb: 200, 160, 255;
+  --section-solid: #684294;
+  --section-deep: #2b2040;
+  --section-secondary: #efacca;
+}
+body:has(#main[data-view="crests"]) {
+  --section-accent: #ffac86;
+  --section-rgb: 255, 172, 134;
+  --section-solid: #934530;
+  --section-deep: #36211e;
+  --section-secondary: #f4d28a;
+}
+body:has(#main[data-view="army"]) {
+  --section-accent: #ff939f;
+  --section-rgb: 255, 147, 159;
+  --section-solid: #9c3b50;
+  --section-deep: #361d2b;
+  --section-secondary: #f6c490;
+}
+body:has(#main[data-view="research"]) {
+  --section-accent: #71dbe5;
+  --section-rgb: 113, 219, 229;
+  --section-solid: #176274;
+  --section-deep: #102c37;
+  --section-secondary: #a6c8ff;
+}
+body:has(#main[data-view="council"]) {
+  --section-accent: #a9b4ff;
+  --section-rgb: 169, 180, 255;
+  --section-solid: #49578e;
+  --section-deep: #1d2542;
+  --section-secondary: #e0b8ed;
+}
+
+/* The shared frame follows the current section. */
+body {
+  background: #0c141f;
+  color: var(--text);
+  accent-color: var(--section-accent);
+}
+::selection { background: #47567e; color: #fff; }
+.workspace {
+  background:
+    radial-gradient(ellipse at 85% 0%, rgba(var(--section-rgb), .12), transparent 55%),
+    linear-gradient(155deg, #121e2c, #101822 72%);
+}
+.sidebar {
+  background: linear-gradient(160deg, #192639, #101a28 62%, #111d2b);
+  border-color: #a3bde12e;
+  box-shadow: 8px 0 30px #030b151f;
+}
+.brand b { color: #fff0ce; text-shadow: 0 2px 16px #f4bd5b18; }
+.brand small, .version-label, .side-quote { color: #a5b4c5; }
+.clan-panel {
+  background: linear-gradient(125deg, rgba(var(--section-rgb), .16), #162539 90%);
+  border-color: rgba(var(--section-rgb), .3);
+  box-shadow: inset 0 1px #ffffff08;
+}
+.clan-line b { color: #fff3da; }
+.mon { color: #f5d596; border-color: #f1cb826b; background: #e9bd6712; }
+.clan-progress { background: #e8d6b117; }
+.clan-progress i { background: linear-gradient(90deg, #ac733c, #f4d38b); }
+.topbar {
+  background: linear-gradient(100deg, #172337f5, #172537f5 60%, #142332f5);
+  border-color: rgba(var(--section-rgb), .28);
+  box-shadow: 0 5px 25px #030c161a;
+}
+.calendar b { color: #f4e5c5; }
+.season-symbol { color: var(--section-accent); }
+.page-heading h1 { color: #fff5e1; text-shadow: 0 3px 24px rgba(var(--section-rgb), .1); }
+.eyebrow, .section-heading h2 .icon, .panel-heading .icon { color: var(--section-accent); }
+.subtitle, .commands, .section-heading small, .panel-heading small { color: #b5c1cd; }
+.command-pips i { background: #9db2cf26; }
+.command-pips i.filled { background: var(--section-accent); box-shadow: 0 0 8px rgba(var(--section-rgb), .15); }
+.game-footer, .game-footer button { color: #a3b2c2; }
+.game-footer button:hover { color: var(--section-accent); }
+
+/* Each destination has a recognisable colour even before it is selected. */
+.navigation [data-view="town"] { --nav-accent: #f5bd63; --nav-rgb: 245, 189, 99; }
+.navigation [data-view="map"] { --nav-accent: #67dbaf; --nav-rgb: 103, 219, 175; }
+.navigation [data-view="field"] { --nav-accent: #70bfff; --nav-rgb: 112, 191, 255; }
+.navigation [data-view="officers"] { --nav-accent: #c8a0ff; --nav-rgb: 200, 160, 255; }
+.navigation [data-view="crests"] { --nav-accent: #ffac86; --nav-rgb: 255, 172, 134; }
+.navigation [data-view="army"] { --nav-accent: #ff939f; --nav-rgb: 255, 147, 159; }
+.navigation [data-view="research"] { --nav-accent: #71dbe5; --nav-rgb: 113, 219, 229; }
+.navigation [data-view="council"] { --nav-accent: #a9b4ff; --nav-rgb: 169, 180, 255; }
+.navigation .nav-item {
+  color: #c7d1de;
+  background: linear-gradient(100deg, rgba(var(--nav-rgb), .055), transparent 90%);
+  box-shadow: inset 1px 0 rgba(var(--nav-rgb), .2);
+}
+.navigation .nav-item > .icon { color: var(--nav-accent); }
+.navigation .nav-item:hover {
+  color: #fff8ed;
+  background: linear-gradient(100deg, rgba(var(--nav-rgb), .18), rgba(var(--nav-rgb), .04));
+  box-shadow: inset 3px 0 rgba(var(--nav-rgb), .6);
+}
+.navigation .nav-item.active {
+  color: #fff8ee;
+  background: linear-gradient(105deg, rgba(var(--nav-rgb), .28), rgba(var(--nav-rgb), .08));
+  box-shadow: inset 3px 0 var(--nav-accent), inset 0 0 0 1px rgba(var(--nav-rgb), .28), 0 4px 14px #030c1526;
+}
+.navigation .nav-item.active::before { background-color: transparent; }
+.navigation .nav-item.active > .icon { color: var(--nav-accent); filter: drop-shadow(0 0 5px rgba(var(--nav-rgb), .2)); }
+.sidebar-bottom .nav-item { color: #aebed0; }
+.sidebar-bottom .nav-item:hover { color: #fff1d5; background: #d0dfff0b; }
+.nav-count { border-color: rgba(var(--nav-rgb), .35); color: var(--nav-accent); background: #0c182555; }
+
+/* Resources retain their colour in the header, costs and gift form. */
+.resource:has(.gold), [data-cost-resource="gold"] { --resource-color: #f6cb75; --resource-rgb: 246, 203, 117; }
+.resource:has(.rice), [data-cost-resource="rice"] { --resource-color: #f0dfa0; --resource-rgb: 240, 223, 160; }
+.resource:has(.wood), [data-cost-resource="wood"] { --resource-color: #8fdbb0; --resource-rgb: 143, 219, 176; }
+.resource:has(.stone), [data-cost-resource="stone"] { --resource-color: #9fc8ff; --resource-rgb: 159, 200, 255; }
+.resource {
+  background: linear-gradient(110deg, rgba(var(--resource-rgb), .1), rgba(var(--resource-rgb), .025));
+  box-shadow: inset 0 -2px rgba(var(--resource-rgb), .3);
+}
+.resource .icon { color: var(--resource-color); }
+.resource-label { color: var(--resource-color); }
+.resource-amount { color: #f4f5ed; }
+.resource-gain { color: #9be3b7; }
+.cost > [data-cost-resource] { color: var(--resource-color); }
+.cost > .insufficient { color: #ffaaaa; }
+.currency-chip {
+  color: #b5f5d3;
+  background: linear-gradient(110deg, #296c513b, #193a3938);
+  border-color: #7ee3b45e;
+  box-shadow: inset 0 1px #c0ffe313;
+}
+.currency-chip .icon, .magatama-cost, .currency-chip b { color: #a8efcb; }
+.currency-chip:hover { background: #28735366; border-color: #9af2c7; }
+
+/* Reusable surfaces and controls; geometry belongs to the layout sheets. */
+.panel {
+  background: linear-gradient(145deg, rgba(var(--section-rgb), .075), #14212f 82%), #172431;
+  border-color: rgba(var(--section-rgb), .23);
+  box-shadow: inset 0 1px #ffffff07, 0 8px 24px #020b151c;
+}
+.panel-heading h2, .section-heading h2 { color: #eef2f7; }
+.panel.illustrated-item::before,
+.notice.illustrated-item::before,
+.research-card.illustrated-item::before,
+.quest-row.illustrated-item::before,
+.tactic-card.illustrated-item::before { opacity: .025; }
+.building-card.illustrated-item::before, .facility-entry.illustrated-item::before { opacity: .025; }
+.navigation .nav-item.illustrated-item::before { opacity: .09; }
+.stat-row span { color: #b7c5d1; }
+.stat-row b { color: #edf3fb; }
+.stat-row .icon { color: var(--section-secondary); }
+.button {
+  background: linear-gradient(140deg, #293a4e, #203044);
+  border-color: #b6c8e13d;
+  color: #ecf1f7;
+  box-shadow: inset 0 1px #ffffff08;
+}
+.button:hover:not(:disabled) { background: #354a61; border-color: #c5d7f174; }
+.button.primary {
+  color: #fffaf3;
+  background: linear-gradient(125deg, var(--section-solid), var(--section-solid));
+  border-color: rgba(var(--section-rgb), .65);
+  box-shadow: inset 0 1px #ffffff18, 0 4px 14px rgba(var(--section-rgb), .08);
+}
+.button.primary:hover:not(:disabled) {
+  background: linear-gradient(#ffffff0c, #ffffff0c), var(--section-solid);
+  border-color: var(--section-accent);
+}
+.button.gold {
+  color: var(--section-accent);
+  border-color: rgba(var(--section-rgb), .45);
+  background: linear-gradient(130deg, rgba(var(--section-rgb), .16), rgba(var(--section-rgb), .07));
+}
+.button.gold:hover:not(:disabled) { background: rgba(var(--section-rgb), .23); border-color: var(--section-accent); }
+.button.ghost { color: #b8c8d9; background: transparent; border-color: transparent; box-shadow: none; }
+.button.ghost:hover:not(:disabled) { background: #acc9ef0c; color: #f4f7ff; }
+.button.danger, .button[data-action="attack"] {
+  color: #ffe3df;
+  border-color: #ff909b80;
+  background: linear-gradient(120deg, #8a3544, #7c3040);
+}
+.button.danger:hover:not(:disabled), .button[data-action="attack"]:hover:not(:disabled) { background: #a44051; border-color: #ffacb4; }
+.icon-button { color: #b9cfe2; background: #23354b55; border-color: #b1cbe13b; }
+.icon-button:hover { color: var(--section-accent); background: rgba(var(--section-rgb), .12); border-color: rgba(var(--section-rgb), .6); }
+.text-link { color: var(--section-accent); }
+.text-link:hover { border-color: var(--section-accent); color: #fff6e4; }
+.input, .select, .search-box {
+  color: #edf3fa;
+  background-color: #111e2b;
+  border-color: #a9c1db45;
+}
+.input::placeholder, .search-box input::placeholder { color: #92a6bc; }
+.search-box .input { background: transparent; }
+.search-box:focus-within { border-color: var(--section-accent); box-shadow: 0 0 0 2px rgba(var(--section-rgb), .15); }
+.tabs { background: #101d2b; border-color: rgba(var(--section-rgb), .25); }
+.tabs button { color: #b4c2d2; }
+.tabs button:hover { color: var(--section-accent); background: rgba(var(--section-rgb), .08); }
+.tabs button.active { color: var(--section-accent); background: rgba(var(--section-rgb), .17); box-shadow: inset 0 -2px var(--section-accent); }
+.progress { background: #a1b4cd1f; }
+.progress > i { background: linear-gradient(90deg, var(--section-solid), var(--section-accent)); }
+.notice, .tip-bar {
+  color: #d8d2bd;
+  border-color: #e0bc7140;
+  background: linear-gradient(120deg, #77602a24, #40382318);
+}
+.tip-bar .icon, .tip-bar button { color: #f2d38e; }
+.empty { color: #adbdce; border-color: rgba(var(--section-rgb), .32); background: rgba(var(--section-rgb), .025); }
+.empty .icon { color: var(--section-accent); }
+.realtime-strip { background: #25544524; color: #bed2ce; border-color: #7cc7af30; }
+.live-state.running { color: #ade5c6; }
+.live-state.running::before { background: #8ee3b7; box-shadow: 0 0 8px #8ee3b75c; }
+.time-track { background: #b5e1d31a; }
+.time-track i { background: linear-gradient(90deg, #68b3b5, #9fe1b6); }
+.shared-time-speed { color: #ceded5; }
+.sync-access-notice { color: #cae6d4; border-color: #79cba762; background: #153b32; }
+.sync-access-notice.sync-readonly { color: #f6dfaf; border-color: #e2b66e70; background: #3c2e1d; }
+
+/* Castle town and eight facility families. */
+.town-scene { border-color: #e8b96f69; box-shadow: 0 14px 36px #060d1826, inset 0 0 0 1px #f3d5a21a; }
+.scene-label { color: #fff0d2; background: #172934e8; border-color: #f5c77870; }
+.scene-label i { background: #95e4af; }
+.scene-caption small { color: #edf0d8; text-shadow: 0 1px 5px #071013; }
+.hotspot .pin { background: #263548ef; border-color: #f4cf85; }
+.hotspot .pin svg { color: #ffe1a2; }
+.hotspot .label { color: #fff2d5; background: #182737ef; border-color: #edc47b80; }
+.hotspot .label i { color: #e4cba0; }
+.hotspot:hover .pin, .hotspot:focus-visible .pin { background: #8a5423; }
+.hotspot.has-job .pin { border-color: #8eebbb; background: #245645e8; }
+.scene-topright button { color: #fff2d4; background: #182b3be8; border-color: #efce8b5c; }
+.objective {
+  background: linear-gradient(145deg, #60481e4d, #1a2733 78%);
+  border-color: #edc1734d;
+  border-top-color: #f4c979;
+}
+.objective .eyebrow, .objective .progress-meta { color: #e5cf9e; }
+.objective h3 { color: #fff0c9; }
+.objective .progress > i { background: linear-gradient(90deg, #bc8743, #f4d484); }
+.activity-item p { color: #c9d4df; }
+.activity-item small { color: #9bafc2; }
+.activity-item .dot { background: #86d8bc; }
+.activity-item .dot.battle { background: #ff91a1; }
+.activity-item .dot.building { background: #f0bf6a; }
+.facility-banner { border-color: #efbd7157; box-shadow: 0 8px 24px #040a151f; }
+.building-card, .facility-entry { --facility-color: #f5bd63; --facility-rgb: 245, 189, 99; }
+:is(.building-card, .facility-entry)[data-category="gold"] { --facility-color: #f5bd63; --facility-rgb: 245, 189, 99; }
+:is(.building-card, .facility-entry)[data-category="rice"] { --facility-color: #cbe696; --facility-rgb: 203, 230, 150; }
+:is(.building-card, .facility-entry)[data-category="wood"] { --facility-color: #83d5ac; --facility-rgb: 131, 213, 172; }
+:is(.building-card, .facility-entry)[data-category="stone"] { --facility-color: #a2bff2; --facility-rgb: 162, 191, 242; }
+:is(.building-card, .facility-entry)[data-category="military"] { --facility-color: #fa96a0; --facility-rgb: 250, 150, 160; }
+:is(.building-card, .facility-entry)[data-category="defense"] { --facility-color: #91c8ff; --facility-rgb: 145, 200, 255; }
+:is(.building-card, .facility-entry)[data-category="research"] { --facility-color: #85e1e8; --facility-rgb: 133, 225, 232; }
+:is(.building-card, .facility-entry)[data-category="diplomacy"] { --facility-color: #d3aff8; --facility-rgb: 211, 175, 248; }
+.building-card, .facility-entry {
+  background: linear-gradient(145deg, rgba(var(--facility-rgb), .145), #172534 85%);
+  border-color: rgba(var(--facility-rgb), .35);
+  box-shadow: inset 0 2px rgba(var(--facility-rgb), .65), 0 7px 19px #050d1626;
+}
+.building-card:hover {
+  background: linear-gradient(145deg, rgba(var(--facility-rgb), .24), #1b2c3e 85%);
+  border-color: var(--facility-color);
+  box-shadow: inset 0 2px var(--facility-color), 0 9px 25px #030c1633;
+}
+.building-card h3, .facility-entry-heading h3 { color: #f3f5ed; }
+.building-card p, .facility-effect { color: #b1e6c4; }
+.building-symbol { color: var(--facility-color, #f5bd63); background: rgba(var(--facility-rgb, 245, 189, 99), .12); border-color: rgba(var(--facility-rgb, 245, 189, 99), .35); }
+.building-level { color: #c0cbd5; }
+.building-track i { background: #b9cee11c; }
+.building-track i.on { background: var(--facility-color); }
+.building-card .job-label { color: #c7f2d7; background: #12382ccb; }
+.facility-entry-heading { border-color: rgba(var(--facility-rgb), .25); }
+.facility-entry-heading small, .facility-seal, .facility-seal small { color: var(--facility-color); }
+.facility-seal { background: rgba(var(--facility-rgb), .1); border-color: rgba(var(--facility-rgb), .4); }
+.facility-entry .button.gold {
+  color: var(--facility-color);
+  border-color: rgba(var(--facility-rgb), .5);
+  background: rgba(var(--facility-rgb), .12);
+}
+.facility-entry .button.gold:hover:not(:disabled) { background: rgba(var(--facility-rgb), .22); border-color: var(--facility-color); }
+.locked-building { border-color: #a3b0be35; box-shadow: inset 0 2px #a3b0be3b; }
+
+/* Map chrome stays separate from real terrain and player markers. */
+.geographic-map-panel { border-color: #76cdb767; box-shadow: 0 16px 36px #04131942; }
+.sg-map-heading { border-left-color: #99e7c3; }
+.sg-map-heading-label { color: #c0e4d2; }
+.sg-map-heading strong { color: #fff4d8; }
+.sg-map-heading-detail { color: #d0e5d9; }
+.sg-map-zoom, .sg-map-layers { border-color: #8cddc564; background-color: #10333ce8; }
+.sg-map-control:hover:not(:disabled), .sg-map-control[aria-pressed="true"] {
+  background: #6bd8b32d !important;
+  color: #c0ffe0 !important;
+  border-color: #9fe9c774 !important;
+}
+.castle-detail { background: linear-gradient(145deg, #26534b57, #142631 78%); border-color: #73cdb351; }
+.castle-detail h2 { color: #f0f5df; }
+.castle-detail .castle-status { color: #b1edca; background: #65c99618; border-color: #89d7b35b; }
+.castle-detail .castle-status.enemy { color: #ffb2ad; background: #d95a5b17; border-color: #fa9c9263; }
+.territory-row { background: linear-gradient(130deg, #233f3c, #162932); border-color: #8fc5b23b; color: #e0ece3; }
+.territory-row:hover:not(:disabled) { background: #284b43; border-color: #86d6b7; }
+.territory-row.active { color: #e4ffe9; background: #285447; border-color: #9ae5b8; box-shadow: inset 3px 0 #98e3b3; }
+.territory-row:disabled .territory-label { color: #efd493; }
+
+/* Officers and collection ranks: colour supports, never replaces, the rank label. */
+.officer-card[data-rank="D"] { --rank-rgb: 145, 166, 181; }
+.officer-card[data-rank="C"] { --rank-rgb: 223, 165, 124; }
+.officer-card[data-rank="B"] { --rank-rgb: 146, 201, 250; }
+.officer-card[data-rank="A"] { --rank-rgb: 124, 225, 179; }
+.officer-card[data-rank="S"] { --rank-rgb: 244, 205, 116; }
+.officer-card[data-rank="SS"] { --rank-rgb: 197, 154, 251; }
+.officer-card[data-rank="SSS"] { --rank-rgb: 255, 147, 155; }
+.officer-card[data-rank="U"] { --rank-rgb: 255, 226, 151; }
+.officer-card { border-color: rgba(var(--rank-rgb, 200, 160, 255), .55); background-color: #191f31; }
+.officer-card:hover { border-color: rgb(var(--rank-rgb, 200, 160, 255)); box-shadow: 0 8px 28px rgba(var(--rank-rgb, 200, 160, 255), .13); }
+.officer-content { background: linear-gradient(155deg, rgba(var(--rank-rgb, 200, 160, 255), .13), #172336f5 90%), #172132; }
+.officer-content h3 { color: #fff4e1; }
+.officer-content > small { color: #c5ccd6; }
+.officer-card[data-rank="U"] { box-shadow: 0 0 0 1px #f4d38445, 0 7px 26px #e6bd451c; }
+.owned-tag { background: #164832eb; border-color: #91dfae99; color: #cbf6db; }
+.owned-tag.unowned-variant { background: #152333e8; color: #c0cddd; border-color: #aac1d752; }
+.mini-stats span { color: #b7c5d3; }
+.mini-stats span:nth-child(1) b { color: #99cfff; }
+.mini-stats span:nth-child(2) b { color: #ffafb2; }
+.mini-stats span:nth-child(3) b { color: #d5b7ff; }
+.mini-stats span:nth-child(4) b { color: #a5e4bc; }
+.skill-tag { color: #e0d3ee; border-color: #b59ac33b; }
+.skill-tag .icon { color: #ddb8ff; }
+.variant-tabs button { color: #dae3f0; background: #172333; border-color: #9fb3cb42; }
+.variant-tabs button:hover { border-color: #c9a2f4; background: #332c48; }
+.variant-tabs button.variant-owned { border-color: #9ad7b064; }
+.variant-tabs button.variant-owned small { color: #b7e3c4; }
+.variant-tabs button.active { background: #6240834d; border-color: #d5b1ff; box-shadow: inset 0 -2px #d5b1ff; }
+.gacha-sanctuary { background: radial-gradient(ellipse at 88% 50%, #b47bc42b, transparent 58%), linear-gradient(120deg, #31233d, #16263b); border-color: #d5a1ed6b; }
+.gacha-sanctuary::before { border-color: #e7b2ee3b; }
+.gacha-hero-copy h2 { color: #ffe7d2; }
+.gacha-hero-copy > p { color: #c6c5da; }
+.gacha-hero-copy > .gacha-smallprint { color: #aeb5ca; }
+.gacha-balance, .gacha-balance > span, .gacha-balance b { color: #b8f2cf; }
+.gacha-rates > div { background: #b391d40c; border-color: #c9a3e03d; }
+.gacha-source span { color: #d9ddeb; }
+.gacha-source b { color: #a6e6c1; }
+.gacha-history-row { background: #1d2a3a; border-color: #c0a2dd3b; }
+.gacha-history-row:hover { background: #332c47; border-color: #c3a0eb91; }
+.gacha-history-row .new-officer, .gacha-result-label.new-officer { color: #aee8c3; }
+
+/* Heraldry, armies, learning, and the council each have their own surfaces. */
+.kamon-entry { --crest-rgb: 245, 164, 123; background: linear-gradient(145deg, rgba(var(--crest-rgb), .15), #212b36 85%); border-color: rgba(var(--crest-rgb), .42); box-shadow: inset 0 2px rgba(var(--crest-rgb), .45); }
+.kamon-entry:nth-child(3n+2) { --crest-rgb: 241, 204, 128; }
+.kamon-entry:nth-child(3n) { --crest-rgb: 238, 147, 151; }
+.kamon-entry:hover { background: linear-gradient(145deg, rgba(var(--crest-rgb), .24), #2a303a); border-color: rgb(var(--crest-rgb)); }
+.kamon-entry b { color: #fff0d4; }
+.kamon-entry small { color: #d4c9bc; }
+.crest-detail-art { background: radial-gradient(ellipse, #ad6b3e29, transparent 70%); }
+.crest-sources a { color: #f0c38d; }
+.army-slot { --unit-rgb: 255, 147, 159; background: linear-gradient(145deg, rgba(var(--unit-rgb), .16), #1a2637 88%); border-color: rgba(var(--unit-rgb), .45); box-shadow: inset 0 2px rgba(var(--unit-rgb), .6); }
+.army-slot:nth-child(2) { --unit-rgb: 245, 196, 134; }
+.army-slot:nth-child(3) { --unit-rgb: 164, 187, 245; }
+.army-slot .slot-label { color: rgb(var(--unit-rgb)); }
+.avatar { color: #f7dfb2; background: linear-gradient(140deg, #68492380, #293349); border-color: #e4b57966; }
+.tactic-card { background: linear-gradient(135deg, #79394928, #172536); border-color: #eea7b23b; }
+.tactic-card.selected { background: #74334555; border-color: #ffa0ad; }
+.tactic-card h3 { color: #f4d4da; }
+.research-card { --study-rgb: 113, 219, 229; background: linear-gradient(145deg, rgba(var(--study-rgb), .13), #142739 87%); border-color: rgba(var(--study-rgb), .4); box-shadow: inset 0 2px rgba(var(--study-rgb), .65), 0 9px 22px #06101a26; }
+.research-card:nth-child(3n+2) { --study-rgb: 144, 189, 255; }
+.research-card:nth-child(3n) { --study-rgb: 166, 225, 180; }
+.research-card > .icon { color: rgb(var(--study-rgb)); filter: drop-shadow(0 1px 8px rgba(var(--study-rgb), .15)); }
+.research-card h3 { color: #e3f7fc; }
+.research-card .progress > i { background: linear-gradient(90deg, #427f9d, rgb(var(--study-rgb))); }
+.quest-row { background: linear-gradient(140deg, #4b517a42, #19273a 80%); border-color: #9ca8e94a; }
+.quest-row .quest-emblem { color: #c5caff; border-color: #b1b7fb61; background: #7e89dc1a; }
+.quest-row .quest-content h3 { color: #eef0ff; }
+.quest-row .quest-reward { color: #f4d693; }
+.council-grid .log-panel { background: linear-gradient(145deg, #3c426440, #142434); border-color: #9dace84a; }
+
+/* The shared player field uses blue, with green alliances and red attacks. */
+.field-search, .field-filter { background-color: #13273a; border-color: #85b8ee52; color: #deecfb; }
+.field-search svg { color: #a5d0f3; }
+.field-search input { color: #edf5ff; }
+.field-search:focus-within { border-color: #91cdff; box-shadow: 0 0 0 2px #79c2ff26; }
+.field-player-row { color: #e3eef9; background: linear-gradient(130deg, #233c55, #1b2c40); border-color: #90bbe33b; }
+.field-player-row:hover, .field-player-row.is-selected { background: #285075; border-color: #86c8ff; }
+.field-player-row.is-selected { box-shadow: inset 3px 0 #91d7ff; }
+.field-player-row.is-self { border-color: #eed3938a; }
+.field-player-mon { background-color: #172e43; border-color: #b0d8fa4d; }
+.field-player-copy small, .field-player-tag, .field-caption, .field-footnote { color: #b7cbdc; }
+.field-player-tag.is-online, .field-online.is-online { color: #ace6c2; }
+.field-online.is-online::before { background: #9ceaba; box-shadow: 0 0 6px #9ceaba45; }
+.field-sidebar { background: linear-gradient(145deg, #1b3650, #182b3d); border-color: #85b9eb61; }
+.field-tabs { background: #10283d; border-color: #9cc8ed3b; }
+.field-tabs button { color: #b5cadd; }
+.field-tabs button[aria-selected="true"] { color: #bee3ff; background: #6dbbff1c; }
+.field-tabs button[aria-selected="true"]::after { background: #84ceff; }
+.field-tabs [data-field-incoming] { color: #ffdb91; }
+.field-base-heading h3 { color: #eff7ff; }
+.field-base-stats { border-color: #b3d8f335; }
+.field-base-stats > div { border-color: #b3d8f335; }
+.field-base-stats span { color: #bed2e4; }
+.field-base-stats b { color: #b8dfff; }
+.field-button { color: #e4f2ff; background: #29445f; border-color: #9ac6ef63; }
+.field-button:hover:not(:disabled) { background: #355e85; border-color: #a9d9ff; }
+.field-button.is-gold { color: #ffe1a6; background: #6f542b3d; border-color: #efcc826e; }
+.field-button.is-gold:hover:not(:disabled) { background: #7b623c61; border-color: #f4d18d; }
+.field-button.is-danger { color: #fff0e8; background: #963d4d; border-color: #f49ca66b; }
+.field-button.is-danger:hover:not(:disabled) { background: #ad4657; border-color: #ffb9c0; }
+.field-button.is-subtle { color: #bdd4e9; background: transparent; }
+.field-relationship.is-allied { color: #b4f1cf; background: #19523e7a; border-color: #8be0b45e; }
+.field-feedback, .field-notice { color: #f3d9a3; background-color: #73592c24; border-color: #e6bf725e; }
+.field-battle-report { background-color: #43273780; border-color: #f29aa74f; }
+.field-battle-report.is-victory { background-color: #1c4a3c73; border-color: #a1d9b64f; }
+
+/* Dialogs inherit the section; destructive actions keep their warning colour. */
+.modal { color: #f0f3f4; background: linear-gradient(150deg, var(--section-deep), #162331 65%); border-color: rgba(var(--section-rgb), .55); box-shadow: 0 28px 100px #020815b3, 0 0 0 1px rgba(var(--section-rgb), .08); }
+.modal::backdrop, .social-dialog::backdrop { background: #070d18cf; }
+.modal-header { background: rgba(var(--section-rgb), .06); border-color: rgba(var(--section-rgb), .2); }
+.modal-header h2 { color: #fff1d7; }
+.modal-header p, .modal label { color: #bac9d4; }
+.modal-body > p { color: #cad6df; }
+.modal-footer { background: #0f1c284d; border-color: rgba(var(--section-rgb), .2); }
+.toast { color: #e2f9e8; background: #214536f5; border-color: #87d7aa88; }
+.toast.error { color: #ffe0df; background: #572c37f5; border-color: #f0a1a580; }
+
+/* The community room has its own tab palette, independent of the game view. */
+.social-dialog {
+  --social-accent: #9cbfff;
+  --social-rgb: 156, 191, 255;
+  --social-solid: #365788;
+  --sc-bg: #13202f;
+  --sc-panel: #1e3044;
+  --sc-line: #abc9eb30;
+  --sc-gold: #eacb94;
+  --sc-muted: #b7c6d6;
+  --sc-red: #9a4255;
+  color: #eef3f9;
+  background: linear-gradient(145deg, rgba(var(--social-rgb), .08), #142131 72%), #13202f;
+  border-color: rgba(var(--social-rgb), .55);
+}
+.social-dialog:has([data-social-tab="online"][aria-selected="true"]) { --social-accent: #91dfb4; --social-rgb: 145, 223, 180; --social-solid: #236548; }
+.social-dialog:has([data-social-tab="sync"][aria-selected="true"]) { --social-accent: #80dfeb; --social-rgb: 128, 223, 235; --social-solid: #1b6178; }
+.social-dialog:has([data-social-tab="guild"][aria-selected="true"]) { --social-accent: #c7a8ff; --social-rgb: 199, 168, 255; --social-solid: #654590; }
+.social-dialog:has([data-social-tab="friends"][aria-selected="true"]) { --social-accent: #f4acce; --social-rgb: 244, 172, 206; --social-solid: #8c3e69; }
+.social-dialog:has([data-social-tab="mail"][aria-selected="true"]) { --social-accent: #f5cd84; --social-rgb: 245, 205, 132; --social-solid: #865722; }
+.social-dialog:has([data-social-tab="profile"][aria-selected="true"]) { --social-accent: #b1c6fc; --social-rgb: 177, 198, 252; --social-solid: #475d8f; }
+.social-dialog:has([data-social-tab="admin"][aria-selected="true"]) { --social-accent: #f7b192; --social-rgb: 247, 177, 146; --social-solid: #8d4a38; }
+.social-header { background: linear-gradient(120deg, rgba(var(--social-rgb), .14), #182b40); border-color: rgba(var(--social-rgb), .28); }
+.social-header h1 { color: #fff2d8; }
+.social-header-mon { color: var(--social-accent); background: rgba(var(--social-rgb), .08); border-color: rgba(var(--social-rgb), .5); }
+.social-header-status small, .social-footer { color: #a8bacb; }
+.social-header-status span.online { color: #a3e9c2; }
+.social-footer { background: #101e2b7d; }
+.social-footer span:first-child { color: #d6c9ae; }
+.social-tabs { background: #14243873; }
+.social-tabs [data-social-tab="world"] { --tab-accent: #9cbfff; --tab-rgb: 156, 191, 255; }
+.social-tabs [data-social-tab="online"] { --tab-accent: #91dfb4; --tab-rgb: 145, 223, 180; }
+.social-tabs [data-social-tab="sync"] { --tab-accent: #80dfeb; --tab-rgb: 128, 223, 235; }
+.social-tabs [data-social-tab="guild"] { --tab-accent: #c7a8ff; --tab-rgb: 199, 168, 255; }
+.social-tabs [data-social-tab="friends"] { --tab-accent: #f4acce; --tab-rgb: 244, 172, 206; }
+.social-tabs [data-social-tab="mail"] { --tab-accent: #f5cd84; --tab-rgb: 245, 205, 132; }
+.social-tabs [data-social-tab="profile"] { --tab-accent: #b1c6fc; --tab-rgb: 177, 198, 252; }
+.social-tabs [data-social-tab="admin"] { --tab-accent: #f7b192; --tab-rgb: 247, 177, 146; }
+.social-tabs button { color: #b8c9db; }
+.social-tabs button svg { color: var(--tab-accent); }
+.social-tabs button:hover { color: var(--tab-accent); background: rgba(var(--tab-rgb), .07); }
+.social-tabs button.active { color: var(--tab-accent); background: rgba(var(--tab-rgb), .1); }
+.social-tabs button.active::after { background: var(--tab-accent); }
+.social-eyebrow { color: var(--social-accent); }
+.social-dialog h2, .social-dialog h3 { color: #f0f2f7; }
+.social-dialog label { color: #c1d0df; }
+.social-dialog input:not([type="hidden"]), .social-dialog textarea, .social-dialog select { color: #eff4fc; background-color: #0f1d2c; border-color: #aac5df4d; }
+.social-dialog input::placeholder, .social-dialog textarea::placeholder { color: #93a9bd; }
+.social-dialog input:focus, .social-dialog textarea:focus, .social-dialog select:focus { border-color: var(--social-accent); box-shadow: 0 0 0 2px rgba(var(--social-rgb), .13); }
+.social-button { color: #e6eff8; background: #2a4056; border-color: #b6cbe14d; }
+.social-button:hover:not(:disabled) { background: #38536e; border-color: #bddcf18c; }
+.social-button.primary { color: #fff8f0; background: var(--social-solid); border-color: rgba(var(--social-rgb), .66); box-shadow: inset 0 1px #ffffff18; }
+.social-button.primary:hover:not(:disabled) { background: linear-gradient(#ffffff0d, #ffffff0d), var(--social-solid); border-color: var(--social-accent); }
+.social-button.subtle { background: transparent; color: #b7ccdf; }
+.social-button.danger { color: #ffe5e0; background: #823544; border-color: #f1939b85; }
+.social-button.danger:hover:not(:disabled) { background: #a44052; border-color: #ffb4b9; }
+.social-text-button { color: var(--social-accent); }
+.social-text-button.danger { color: #ffb1b6; }
+.social-icon-button { color: #d5e2ee; border-color: #bad0e449; background-color: #20364b; }
+.social-icon-button:hover { color: var(--social-accent); border-color: var(--social-accent); }
+.social-notice { color: #d8d9c9; background: #b5a3570d; border-color: #d5c08a48; }
+.social-feedback { color: #bcf0d1; background: #2052385c; border-color: #8ed0aa6b; }
+.social-feedback.is-error { color: #ffc3be; background: #733a4659; border-color: #efa7a65c; }
+.social-list-card { background: linear-gradient(135deg, rgba(var(--social-rgb), .075), #1b2d40); border-color: rgba(var(--social-rgb), .27); }
+.social-avatar { color: #d7e8ff; background: linear-gradient(140deg, #3a5171, #243249); border-color: #a6caeb5b; }
+.social-message-meta strong { color: #e1e8f3; }
+.social-message-meta time { color: #a2b6ca; }
+.social-message-content p { color: #e3edf6; background: #263c51; border-color: #a1bddb39; }
+.social-message.own .social-avatar { color: var(--social-accent); background: rgba(var(--social-rgb), .16); border-color: rgba(var(--social-rgb), .45); }
+.social-message.own .social-message-content p { color: #f2f4fc; background: rgba(var(--social-rgb), .16); border-color: rgba(var(--social-rgb), .35); }
+.social-friend { color: #dce7f5; }
+.social-friend.selected { color: #f8e3f0; background: #c67fa629; border-color: #eda5cd70; }
+.social-role { color: #ffe0a0; background: #ba8c301c; border-color: #edc8787a; }
+.social-role.is-staff { color: #b4e4ff; background: #4da4e719; border-color: #8bcaee80; }
+.social-staff-scope { background: #4284a419; border-color: #8ac6e653; }
+.social-staff-scope > div:first-child { color: #a4ddf6; }
+.social-staff-scope h3 { color: #d3efff; }
+.social-profile-mon { color: #ebdfc1; background: linear-gradient(140deg, #4c4c6a, #26384b); border-color: #d7b98173; }
+.social-profile-id { color: #aec1d5; background: #0e1e2e; border-color: #aac5df3b; }
+.social-profile-id code { color: #d0dff0; }
+.social-subtabs button { color: #b4c4d6; }
+.social-subtabs button:hover { color: var(--social-accent); background: rgba(var(--social-rgb), .07); }
+.social-subtabs button.active { color: var(--social-accent); border-color: var(--social-accent); background: rgba(var(--social-rgb), .05); }
+.social-mail-row { color: #dce7f3; background: #203347; border-color: #adc5df3b; }
+.social-mail-row.unread { background: linear-gradient(110deg, #7253224f, #233449); border-left-color: #f2c977; }
+.social-mail-row small, .social-letter-date { color: #b4c4d3; }
+.social-mail-row.unread .social-mail-state, .social-mail-symbol { color: #f2d090; }
+.social-letter-body { color: #d6e2ed; }
+.social-gift { background: linear-gradient(115deg, #76602726, #194c3830); border-color: #e7c9846b; }
+.social-gift b { color: #f4d898; }
+.social-gift-fields { background: #101f2d42; border-color: #d5bc8254; }
+.social-gift-fields label:has([name="gold"]) { color: #f6cb75; }
+.social-gift-fields label:has([name="rice"]) { color: #f0dfa0; }
+.social-gift-fields label:has([name="wood"]) { color: #8fdbb0; }
+.social-gift-fields label:has([name="stone"]) { color: #9fc8ff; }
+.social-gift-fields label:has([name="magatama"]) { color: #a8efcb; }
+.social-sync-status { background-color: #2a4a5b24; border-color: #91c7dc54; }
+.social-sync-status > strong { color: #c3e7fa; }
+.social-sync-status > small { color: #b3cbda; }
+.social-sync-status.is-writer { background: #1f553737; border-color: #8ed8ab70; }
+.social-sync-status.is-writer > strong { color: #b2edc8; }
+.social-pair-code { background: #102539; border-color: #90d4eb6e; }
+.social-pair-code code { color: #bceeff; }
+.social-confirm { background: #0b1421e6; }
+.social-confirm-card { background: linear-gradient(145deg, rgba(var(--social-rgb), .09), #1c2d40), #192a3b; border-color: rgba(var(--social-rgb), .58); }
+.social-confirm-preview { color: #dce7f5; background: #111f31; }
+.social-confirm-details dt { color: #afc3d8; }
+.social-confirm-details dd { color: #efe0bf; }
+.social-launcher { color: #d7eaff; background: linear-gradient(120deg, #294267f5, #223b56f5); border-color: #9ebfe799; box-shadow: 0 8px 28px #030b1859, inset 0 1px #c3e1ff17; }
+.social-launcher:hover { color: #f6f8ff; background: #365a80; border-color: #c8e6ff; }
+.social-unread { color: #fff5ed; background: #b73c56; border-color: #182b43; }
+.social-announcement { background: linear-gradient(100deg, #433521, #22354a); color: #e5d9bc; border-color: #e1bc6557; }
+.social-announcement-label, .social-announcement-toggle { color: #f6d891; }
+
+/* Title page keeps the painted key visual and adds colour to its feature cards. */
+.launch-screen { background: radial-gradient(ellipse at 50% 8%, #25465c 0%, #152337 45%, #0c1827 90%); }
+.launch-screen::after { border-color: #e5bd696b; }
+.launch-topline { color: #e7cc92; }
+.launch-keyvisual { border-color: #e6bf786e; box-shadow: 0 25px 75px #0208158c, 0 0 35px #f1c36d0a; }
+.launch-subtitle { color: #fff0d1; }
+.title-feature { --feature-color: #e3ca91; --feature-rgb: 227, 202, 145; color: #c3d0dc; background: linear-gradient(180deg, rgba(var(--feature-rgb), .075), transparent); border-color: #bfcee233; }
+.title-feature[data-art-theme="officers"] { --feature-color: #d1b0ff; --feature-rgb: 209, 176, 255; }
+.title-feature[data-art-theme="map"] { --feature-color: #99e4bd; --feature-rgb: 153, 228, 189; }
+.title-feature[data-art-theme="facilities"] { --feature-color: #f7d28d; --feature-rgb: 247, 210, 141; }
+.title-feature[data-art-theme="music"] { --feature-color: #a7cbff; --feature-rgb: 167, 203, 255; }
+.title-feature strong, .title-feature > .item-icon { color: var(--feature-color); }
+.launch-enter { background: linear-gradient(125deg, #9a334a, #ad4c3b); border-color: #ffda94; color: #fff4d5; box-shadow: 0 0 0 4px #f1c7751c, 0 11px 30px #020a175c; }
+.launch-status, .launch-footnote, .launch-copyright { color: #b9c7d6; }
+.game-loading { background: #0b1b2ced; color: #f9de9e; }
+.loading-card p { color: #b6cadd; }
+
+/* Keyboard cues use a consistent light ring. No focus or status relies on hue alone. */
+:is(button, a, input, select, textarea, summary):focus-visible {
+  outline-color: #f6dfa0;
+}
+.navigation .nav-item:focus-visible { outline-color: var(--nav-accent); }
+.social-dialog :is(button, input, textarea, select, summary):focus-visible {
+  outline: 2px solid #f6dfa0;
+  outline-offset: 3px;
+}
+.field-search input:focus-visible { outline: 2px solid #c8e6ff; outline-offset: 4px; }
+.social-launcher:focus-visible { outline-color: #d8e9ff; }
