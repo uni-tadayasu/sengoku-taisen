@@ -39,14 +39,15 @@ html.sengoku-desktop-fit[data-layout-townheight] #main .town-panel .town-scene {
 #main .town-scene-board .hotspot:is(:hover,:focus-visible) .label { border-color: #fff0be; background: #234137; outline: 2px solid #f0d38566; outline-offset: 1px; }
 #main .town-scene-board .hotspot.has-job .label { border-color: #96dcbb; }
 #main .town-scene[data-town-art-small] .hotspot { display: none; }
-#main .town-scene-legend { display: none; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; padding: 10px; border-top: 1px solid #d9bd7821; }
+#main .town-scene-legend { display: none; grid-template-columns: minmax(0, 1fr); gap: 7px; padding: 10px; border-top: 1px solid #d9bd7821; }
+#main .town-legend-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; min-width: 0; }
 #main .town-panel[data-town-compact] .town-scene-legend { display: grid; }
 #main .town-facility-button { display: flex; align-items: center; gap: 6px; min-width: 0; min-height: 44px; padding: 8px; border: 1px solid #c4ac7052; border-radius: 7px; background: #263b3a; color: #f5ead5; font-size: 14px; line-height: 1.4; }
 #main .town-facility-button .icon { flex: none; width: 18px; height: 18px; color: #eed193; }
 #main .town-facility-button > span { min-width: 0; overflow-wrap: anywhere; }
 #main .town-facility-button > small { margin-left: auto; color: #e6d4aa; font-size: 14px; white-space: nowrap; }
 #main .town-facility-button:is(:hover, :focus-visible) { border-color: #edcd8b; background: #35524a; outline: 2px solid #edcd8b66; outline-offset: 1px; }
-@container town-panel (min-width: 580px) { #main .town-scene-legend { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@container town-panel (min-width: 580px) { #main .town-legend-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 #main .town-panel > .scene-caption {
   position: static; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
   gap: 7px 14px; min-width: 0; padding: 13px 16px; border-top: 1px solid #d9bd7821; pointer-events: auto;
@@ -212,6 +213,26 @@ html:not(.sengoku-desktop-fit) #main .town-status-panels > .panel:last-child { g
 #main .town-facilities-toggle { min-height: 44px; white-space: normal; text-align: center; scroll-margin-top: calc(var(--touch-header-height, 0px) + var(--touch-announcement-height, 0px) + 12px); }
 #main .town-facilities-toggle > span { min-width: 0; overflow-wrap: anywhere; }
 #main .town-facilities-toggle[hidden] { display: none; }
-#main #town-facilities-toggle-bottom { margin-top: 12px; }
+#main :is(#town-facilities-toggle-bottom, #town-legend-toggle-bottom) { margin-top: 12px; }
 #main .town-facility-console .buildings-grid { grid-auto-flow: row; grid-auto-columns: auto; overflow: visible; }
 #main .town-facility-console .building-card { min-width: 0; }
+
+/* The home castle can be upgraded beside its name without leaving the town. */
+#main .town-castle-heading { width: 100%; min-width: 0; }
+#main .town-castle-heading-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 10px; }
+#main .town-castle-heading-copy { min-width: 0; }
+#main .town-castle-heading .eyebrow, #main .town-castle-heading .subtitle { overflow-wrap: anywhere; }
+#main .town-castle-level-up { min-width: 86px; min-height: 64px; padding: 9px 10px; gap: 5px; font-size: 14px; font-weight: 600; white-space: normal; }
+#main .town-castle-level-up .icon { width: 16px; height: 16px; }
+#main .town-castle-level-up > span { min-width: 0; }
+#main .town-castle-level-up small { display: block; margin-top: 3px; font-size: 12px; font-weight: 400; }
+#main .town-castle-upgrade-state { display: flex; flex-direction: column; align-items: center; justify-content: center; min-width: 86px; min-height: 64px; padding: 8px; border: 1px solid #d9bd7852; border-radius: 7px; background: #d9bd7814; color: #f5db9f; text-align: center; }
+#main .town-castle-upgrade-state b { font-size: 16px; }
+#main .town-castle-upgrade-state small { font-size: 12px; }
+#main .town-castle-upgrade-state.is-building { color: #bde7c8; border-color: #96dcbb55; }
+#main .town-castle-upgrade-detail { margin-top: 10px; padding-top: 9px; border-top: 1px solid #d9bd7830; }
+#main .town-castle-upgrade-label, #main .town-castle-upgrade-note { display: block; margin: 0; color: var(--muted); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+#main .town-castle-upgrade-detail .cost { display: flex; flex-wrap: wrap; gap: 5px 10px; margin: 5px 0; font-size: 13px; }
+#main .town-castle-upgrade-detail .cost > span { white-space: nowrap; }
+#main .town-castle-upgrade-detail .progress { margin-top: 7px; }
+#main .town-castle-heading-row + .town-castle-upgrade-note { margin-top: 8px; }
