@@ -4,8 +4,8 @@
   "name": "戦国VS",
   "alternateName": "SENGOKU VS",
   "publisher": "KASAI SOLUTIONS",
-  "release": "3.19.0-20261122",
-  "version": "3.19.0",
+  "release": "3.20.0-20261122",
+  "version": "3.20.0",
   "dateModified": "2026-11-22",
   "language": "ja",
   "locale": "ja_JP",
@@ -82,7 +82,7 @@
     "guide": {
       "path": "/guide/",
       "title": "戦国VSの遊び方｜城育成・武将編成・対人戦・派遣部隊",
-      "description": "戦国VSの開始城、城下町と城郭の育成、武将編成、対人戦、兵士の交易・野良兵戦を解説。大都市拠点からの部隊の雇用・偵察・駐留・反撃、スマホ・タブレットの操作、保存と端末同期も案内します。",
+      "description": "戦国VSの開始城、城下町と城郭の育成、武将編成、対人戦、兵士の交易を解説。全国の拡大マップから選ぶ野良兵戦、派遣部隊の偵察・駐留・反撃、保存と端末同期も案内します。",
       "dateModified": "2026-11-22"
     },
     "recovery": {

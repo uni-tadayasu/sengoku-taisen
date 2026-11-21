@@ -5,10 +5,11 @@ import {handleModeration} from './moderation.js';
 import {handlePremium,handlePremiumWebhook,resolvePremiumAppearances} from './premium.js';
 import {handleEvents} from './events.js';
 import {handleRoaming,reconcileRoamingProgress} from './roaming.js';
+import {handleRoamingDeployment} from './roaming-deployment.js';
 import {handleCovert,reconcileCovertProgress,covertIncidentStatements} from './covert.js';
 const API = '/api/v1';
-const API_VERSION = '3.19.0';
-const API_FEATURES = Object.freeze({trades:true,moderation:true,premium:true,timedEvents:true,troopTrades:true,roamingBattles:true,covertDispatch:true,privatePlayerRoles:true});
+const API_VERSION = '3.20.0';
+const API_FEATURES = Object.freeze({trades:true,moderation:true,premium:true,timedEvents:true,troopTrades:true,roamingBattles:true,roamingDeployment:true,covertDispatch:true,privatePlayerRoles:true});
 const MAX_BODY = 16 * 1024;
 const MAX_SAVE_BODY = 2 * 1024 * 1024;
 const MAX_AVATAR_BYTES = 48 * 1024;
@@ -1767,7 +1768,7 @@ async function route(request, env, now) {
   if(path==='/premium/stripe/webhook'&&method==='POST')return handlePremiumWebhook({db,env,now,request,helpers:{fail}});
   if (path === '/health' && method === 'GET') {
     try {
-      await stmt(db, 'SELECT (SELECT COUNT(*) FROM users) AS count,EXISTS(SELECT 1 FROM trades) AS trade_schema,EXISTS(SELECT 1 FROM trade_requests) AS trade_request_schema,EXISTS(SELECT 1 FROM trade_deliveries) AS trade_delivery_schema,EXISTS(SELECT 1 FROM player_bans) AS ban_schema,EXISTS(SELECT 1 FROM moderation_requests) AS moderation_schema,(SELECT content_revision FROM moderation_state WHERE id=1) AS content_revision,EXISTS(SELECT 1 FROM premium_orders) AS premium_order_schema,EXISTS(SELECT 1 FROM premium_events) AS premium_event_schema,EXISTS(SELECT 1 FROM premium_grants) AS premium_grant_schema,EXISTS(SELECT 1 FROM premium_appearances) AS premium_appearance_schema,EXISTS(SELECT 1 FROM timed_events) AS timed_event_schema,EXISTS(SELECT 1 FROM timed_event_requests) AS timed_event_request_schema,EXISTS(SELECT 1 FROM timed_event_participants) AS timed_event_participant_schema,EXISTS(SELECT 1 FROM timed_event_rewards) AS timed_event_reward_schema,EXISTS(SELECT 1 FROM roaming_battles) AS roaming_battle_schema,EXISTS(SELECT 1 FROM covert_states) AS covert_state_schema,EXISTS(SELECT 1 FROM covert_requests) AS covert_request_schema,EXISTS(SELECT 1 FROM covert_battles) AS covert_battle_schema,EXISTS(SELECT 1 FROM covert_incidents) AS covert_incident_schema').first();
+      await stmt(db, 'SELECT (SELECT COUNT(*) FROM users) AS count,EXISTS(SELECT 1 FROM trades) AS trade_schema,EXISTS(SELECT 1 FROM trade_requests) AS trade_request_schema,EXISTS(SELECT 1 FROM trade_deliveries) AS trade_delivery_schema,EXISTS(SELECT 1 FROM player_bans) AS ban_schema,EXISTS(SELECT 1 FROM moderation_requests) AS moderation_schema,(SELECT content_revision FROM moderation_state WHERE id=1) AS content_revision,EXISTS(SELECT 1 FROM premium_orders) AS premium_order_schema,EXISTS(SELECT 1 FROM premium_events) AS premium_event_schema,EXISTS(SELECT 1 FROM premium_grants) AS premium_grant_schema,EXISTS(SELECT 1 FROM premium_appearances) AS premium_appearance_schema,EXISTS(SELECT 1 FROM timed_events) AS timed_event_schema,EXISTS(SELECT 1 FROM timed_event_requests) AS timed_event_request_schema,EXISTS(SELECT 1 FROM timed_event_participants) AS timed_event_participant_schema,EXISTS(SELECT 1 FROM timed_event_rewards) AS timed_event_reward_schema,EXISTS(SELECT 1 FROM roaming_battles) AS roaming_battle_schema,EXISTS(SELECT 1 FROM covert_states) AS covert_state_schema,EXISTS(SELECT 1 FROM covert_requests) AS covert_request_schema,EXISTS(SELECT 1 FROM covert_battles) AS covert_battle_schema,EXISTS(SELECT 1 FROM covert_incidents) AS covert_incident_schema,EXISTS(SELECT 1 FROM roaming_deployment) AS roaming_deployment_schema,EXISTS(SELECT 1 FROM roaming_deployment_proposals) AS roaming_deployment_proposal_schema,EXISTS(SELECT 1 FROM roaming_deployment_requests) AS roaming_deployment_request_schema,EXISTS(SELECT 1 FROM roaming_unit_cooldowns) AS roaming_unit_cooldown_schema').first();
     } catch { fail(503, 'SERVICE_UNAVAILABLE', '通信サービスの準備中です。'); }
     return {ok:true,status:'ready',version:API_VERSION,features:API_FEATURES};
   }
@@ -1775,6 +1776,7 @@ async function route(request, env, now) {
     const clock=await getWorldClock(db,now);await cyclePolicy(db,clock,now);return {ok:true,clock};
   }
   if (path === '/achievements' && method === 'GET') return publicAchievements(db,url,now);
+  if (method === 'GET' && (path === '/roaming/deployment' || path === '/roaming/map')) return handleRoamingDeployment({db,now,path,method,url,request,helpers:{fail,idField}});
   if (path === '/guild/rankings' && method === 'GET') return guildRankings(db,url,now);
   if (path === '/field' && method === 'GET') {
     const viewer=request.headers.has('authorization')?await authenticate(request,db,now):null;
@@ -1862,6 +1864,7 @@ async function route(request, env, now) {
     return handleEvents({db,user,now,path,method,url,request,helpers:{fail,readBody,budget,idField,textField,uid,hash,getUser,getSyncRow,requireAdmin,requireAccountAccess,roleCommitGuard,evaluationRef,fieldWriter,settleWriterCycle,getWorldClock,normalizeGameSave,syncSnapshot,syncLease:SYNC_LEASE,worldClockId:WORLD_CLOCK_ID}});
   }
   let user = await authenticate(request,db,now);
+  if (path === '/staff/roaming' || path.startsWith('/staff/roaming/') || path === '/admin/roaming' || path.startsWith('/admin/roaming/')) return handleRoamingDeployment({db,user,now,path,method,url,request,helpers:{fail,readBody,budget,idField,textField,hash,getUser,requireAccountAccess,roleCommitGuard}});
   if(path==='/premium'||path.startsWith('/premium/')||path==='/admin/premium/reviews')return handlePremium({db,env,user,now,path,method,request,helpers:{fail,readBody,budget,accountCommitGuard,requireAccountAccess,requireAdmin,getUser,textField,idField,hash,uid,evaluationRef}});
   if(path==='/admin/moderation'||path.startsWith('/admin/moderation/'))return handleModeration({db,user,now,path,method,url,request,helpers:{fail,readBody,budget,idField,textField,uid,hash,mapUser,getUser,requireAdmin,userSelect:USER_SELECT}});
   if (path === '/me/avatar' && method === 'PUT') return putAvatar(request,env,user,now);

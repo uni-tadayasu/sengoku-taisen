@@ -41,7 +41,7 @@ function rename(user){const id=String(user?.id||'');if(!PLAYER.test(id)||typeof 
 function refresh(root=global.document){
  const nodes=[...(root?.matches?.('[data-player-avatar]')?[root]:[]),...(root?.querySelectorAll?.('[data-player-avatar]')||[])];
  for(const node of nodes){const person=people.get(String(node.dataset.playerAvatar));if(!person)continue;const version=person.avatarVersion||'';if(node.dataset.avatarVersion===version&&node.dataset.playerAvatarName===person.name)continue;
-  node.dataset.avatarVersion=version;node.dataset.playerAvatarName=person.name;const user={id:node.dataset.playerAvatar,...person};node.classList?.toggle('has-photo',Boolean(imageURL(user)));node.innerHTML=contents(user);
+  node.dataset.avatarVersion=version;node.dataset.playerAvatarName=person.name;const user={id:node.dataset.playerAvatar,...person};node.classList?.toggle('has-photo',Boolean(imageURL(user)));if(global.SengokuStableDOM)global.SengokuStableDOM.patch(node,contents(user));else node.innerHTML=contents(user);
  }
 }
 function cropRect(width,height,zoom=1,x=50,y=50){

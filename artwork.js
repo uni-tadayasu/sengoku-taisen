@@ -12,7 +12,7 @@ const portraitFacilities=new Set((data.buildings||[]).slice(0,32).map(b=>b.id));
 const facilityArtRevision='scenery-20261122';
 const frames=Object.fromEntries(ranks.map(r=>[r,`assets/frames/rank-${r}.svg`]));
 const operatorPortrait={id:'of_b0616adde162',rank:'U',url:'assets/operator-ieyasu-u.webp?v=3.8.1-20261121'};
-const cache=new Map();let observer,scheduled=false;
+const cache=new Map(),paintRequests=new WeakMap();let observer,scheduled=false;
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const icons={
  town:'M3 20h18M5 20V10l7-5 7 5v10M3 10h18M6 5l6-3 6 3M8 13h2v3H8m6-3h2v3h-2M10 20v-3h4v3',
@@ -47,7 +47,20 @@ function tile(kind,id,className='',variant=1){const t=tileInfo(kind,id,variant);
 }
 function portrait(o){if(!o)return'';const rank=ranks.includes(o.rank)?o.rank:'D',special=o.id===operatorPortrait.id&&rank===operatorPortrait.rank;const painting=special?`<span class="painted-art painted-portrait operator-portrait" data-art-url="${operatorPortrait.url}" data-art-x="50" data-art-y="50" role="img" aria-label="徳川家康 Uランクの特別イラスト" aria-busy="true"><span class="art-surface" aria-hidden="true"></span><span class="art-loading" aria-hidden="true">${icon('officers')}</span></span>`:tile('officer',o.id,'painted-portrait',rank);return `<span class="portrait-frame" data-rank="${rank}">${painting}<img class="rank-frame" src="${frames[rank]}" alt="" aria-hidden="true" loading="lazy"></span>`;}
 function load(url){if(cache.has(url))return cache.get(url);const promise=new Promise((resolve,reject)=>{const img=new Image();img.onload=()=>resolve(url);img.onerror=()=>{cache.delete(url);reject(Error('画像を読み込めませんでした'));};img.src=url;});cache.set(url,promise);return promise;}
-async function reveal(el){if(el.dataset.artReady||el.dataset.artLoading)return;const url=el.dataset.artUrl||el.dataset.ghostUrl;if(!url)return;if(global.SENGOKU_AT_TITLE&&!el.closest('#launch-screen'))return;el.dataset.artLoading='1';try{await load(url);if(!el.isConnected)return;if(el.dataset.ghostUrl)el.style.setProperty('--item-art',`url("${url}")`);else (el.querySelector(':scope > .art-surface')||el).style.backgroundImage=`url("${url}")`;el.dataset.artReady='1';el.classList.add('art-ready');el.setAttribute('aria-busy','false');}catch(_){el.classList.add('art-error');el.setAttribute('aria-busy','false');}finally{delete el.dataset.artLoading;}}
+async function reveal(el){
+ const url=el.dataset.artUrl||el.dataset.ghostUrl;if(!url||el.dataset.artReady)return;
+ const active=paintRequests.get(el);if(el.dataset.artLoading&&active?.url===url)return;
+ if(global.SENGOKU_AT_TITLE&&!el.closest('#launch-screen'))return;
+ const request={url};paintRequests.set(el,request);el.dataset.artLoading='1';
+ const current=()=>paintRequests.get(el)===request&&(el.dataset.artUrl||el.dataset.ghostUrl)===url;
+ try{
+  await load(url);if(!el.isConnected||!current())return;
+  if(el.dataset.ghostUrl)el.style.setProperty('--item-art',`url("${url}")`);else (el.querySelector(':scope > .art-surface')||el).style.backgroundImage=`url("${url}")`;
+  el.dataset.artReady='1';el.classList.add('art-ready');el.classList.remove('art-error');el.setAttribute('aria-busy','false');
+ }catch(_){if(el.isConnected&&current()){el.classList.add('art-error');el.setAttribute('aria-busy','false');}}
+ finally{if(paintRequests.get(el)===request){paintRequests.delete(el);delete el.dataset.artLoading;}}
+}
+
 const backgrounds={town:['facility','keep'],map:['castle','kiyosu'],field:['castle','kiyosu'],officers:['officer',roster[0]?.id,'S'],army:['facility','barracks'],roaming:['facility','barracks'],trade:['facility','trade_port'],research:['facility','academy'],council:['facility','envoy_house'],facilities:['facility','market'],gacha:['officer',roster[1]?.id,'U'],settings:['facility','library'],save:['facility','library'],music:['facility','tea_house'],mail:['facility','relay_station']};
 const buttonSelector='button,[role="button"],[role="tab"],[role="switch"],input[type="button"],input[type="submit"],input[type="reset"],summary,a.button,a.action-link,a.nav-play,.decision-list a';
 function buttonArtwork(el){
@@ -92,6 +105,6 @@ function schedule(){if(scheduled)return;scheduled=true;requestAnimationFrame(dec
 function currentAssets(){const h=innerHeight,w=innerWidth;return [...new Set(Array.from(document.querySelectorAll('[data-art-url],[data-ghost-url]')).filter(el=>{const r=el.getBoundingClientRect();return r.bottom>0&&r.top<h+180&&r.right>0&&r.left<w&&r.width>0;}).map(el=>el.dataset.artUrl||el.dataset.ghostUrl))];}
 async function readyCurrent(onProgress){decorate();const urls=currentAssets();let done=0;await Promise.allSettled(urls.map(url=>load(url).finally(()=>onProgress?.(++done,urls.length))));document.querySelectorAll('[data-art-url],[data-ghost-url]').forEach(el=>{if(urls.includes(el.dataset.artUrl||el.dataset.ghostUrl))reveal(el);});}
 function init(){if('IntersectionObserver'in global)observer=new IntersectionObserver(entries=>entries.forEach(entry=>{if(entry.isIntersecting){reveal(entry.target);observer.unobserve(entry.target);}}),{rootMargin:'180px'});new MutationObserver(schedule).observe(document.body,{childList:true,subtree:true});decorate();}
-global.SengokuArt={portrait,castle:(id,c='',level=1)=>tile('castle',id,c,level),facility:(id,c='',level=1)=>tile('facility',id,c,level),icon,tileInfo,load,readyCurrent,decorate,totalIllustrations:8192};
+global.SengokuArt={portrait,castle:(id,c='',level=1)=>tile('castle',id,c,level),facility:(id,c='',level=1)=>tile('facility',id,c,level),icon,tileInfo,load,readyCurrent,decorate,schedule,totalIllustrations:8192};
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init,{once:true});else init();
 })(window);

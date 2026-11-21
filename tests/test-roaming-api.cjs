@@ -82,4 +82,20 @@ test('server conflict codes survive transport so the controller can reconcile it
  assert.equal(h.calls.length,1);
 });
 
+test('public national map can be read by guests without sending private authentication',async()=>{
+ for(const roles of [{guest:true},{},{staff:true},{admin:true}]){const h=harness(roles);await h.api.roamingRequest('/roaming/deployment');await h.api.roamingRequest('/roaming/map?castleId=edo');assert.equal(h.calls.length,2);assert(h.calls.every(c=>!c.headers.Authorization));}
+});
+test('ordinary users cannot read proposals or attempt any management write',async()=>{
+ const h=harness();for(const [route,method]of [['/staff/roaming','GET'],['/staff/roaming/proposals','POST'],['/admin/roaming/deployment','POST'],['/admin/roaming/proposals/rp_test/approve','POST'],['/staff/roaming/proposals/rp_test/cancel','POST']])await assert.rejects(h.api.roamingRequest(route,{method,data:{}}),e=>e.status===403);assert.equal(h.calls.length,0);
+});
+test('staff transport allows proposals and own-cancel route but never admin apply or approval',async()=>{
+ const h=harness({staff:true});await h.api.roamingRequest('/staff/roaming');await h.api.roamingRequest('/staff/roaming/proposals',{method:'POST',data:{requestId:'proposal-one'}});await h.api.roamingRequest('/staff/roaming/proposals/rp_test/cancel',{method:'POST',data:{requestId:'cancel-one'}});for(const route of ['/admin/roaming/deployment','/admin/roaming/proposals/rp_test/approve','/admin/roaming/proposals/rp_test/reject'])await assert.rejects(h.api.roamingRequest(route,{method:'POST',data:{}}),e=>e.status===403);assert.equal(h.calls.length,3);assert(h.calls.every(c=>c.headers.Authorization==='Bearer '+TOKEN));
+});
+test('admin management uses verified actor and stale private results are discarded on demotion',async()=>{
+ const h=harness({admin:true});await h.api.roamingRequest('/admin/roaming/deployment',{method:'POST',data:{requestId:'apply-one'}});assert.equal(h.calls.length,1);const wait=deferred();h.setTransport(()=>wait.promise);const read=h.api.roamingRequest('/staff/roaming');h.test.changeRole();h.test.s.user.isAdmin=false;wait.resolve({data:{ok:true,proposals:[{id:'private'}]}});await assert.rejects(read,e=>e.code==='STALE_IDENTITY');
+});
+test('map query and management method whitelist reject caller-selected arbitrary routes',async()=>{
+ const h=harness({admin:true});for(const [route,method]of [['/roaming/map?castleId=edo&admin=true','GET'],['/roaming/map?castleId=../admin','GET'],['/staff/roaming','POST'],['/admin/roaming/deployment','GET'],['/admin/roaming/proposals/rp_test/apply','POST']])await assert.rejects(h.api.roamingRequest(route,{method,data:{}}),e=>e.status===400);assert.equal(h.calls.length,0);
+});
+
 (async()=>{for(const {name,run}of tests){await run();console.log('PASS '+name);}console.log(tests.length+' real social CPU transport checks passed; no live requests.');})().catch(error=>{console.error(error);process.exitCode=1;});

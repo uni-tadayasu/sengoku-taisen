@@ -232,3 +232,12 @@ html:not(.sengoku-desktop-fit) .modal-footer .button { min-height: 44px; }
 @media (prefers-reduced-motion: reduce) {
   #app .navigation { scroll-behavior: auto; }
 }
+
+/* Live counters keep their glyph width while text updates in place. */
+#calendar, .resource-amount, .resource-gain, .clan-progress-label,
+#command-count, #touch-command-count, #touch-command-limit,
+#touch-magatama-balance, [data-magatama-balance], [data-job-timer] {
+  font-variant-numeric: tabular-nums;
+}
+#month-countdown { display: inline-block; min-width: 2ch; text-align: right; }
+#app .resource-amount { white-space: nowrap; }

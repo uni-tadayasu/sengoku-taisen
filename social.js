@@ -716,20 +716,21 @@ async function eventRequest(route,options={}){
  return result;
 }
 async function roamingRequest(route,options={}){
- const method=options.method||'GET',read=method==='GET'&&route==='/roaming/history',battle=method==='POST'&&route==='/roaming/battle';
- if(!read&&!battle)throw Object.assign(Error('野良兵戦の操作を確認してください。'),{status:400});
- const initial=getEventContext();
- if(!initial.user)throw Object.assign(Error(initial.banned?'この領主は利用停止中です。':'接続中の領主を確認してから利用してください。'),{status:403});
- const verify=()=>{const current=getEventContext();if(initial.epoch!==current.epoch||initial.accountEpoch!==current.accountEpoch||initial.privilegeEpoch!==current.privilegeEpoch||initial.playerId!==current.playerId||!current.user||current.pending||current.banned)throw staleIdentity();};
+ const method=options.method||'GET',publicRead=method==='GET'&&(route==='/roaming/deployment'||/^\/roaming\/map\?castleId=[A-Za-z0-9_-]{1,90}$/.test(route)),read=method==='GET'&&route==='/roaming/history',battle=method==='POST'&&route==='/roaming/battle',manageRead=method==='GET'&&route==='/staff/roaming',staffWrite=method==='POST'&&(route==='/staff/roaming/proposals'||/^\/staff\/roaming\/proposals\/[A-Za-z0-9_-]{1,90}\/cancel$/.test(route)),adminWrite=method==='POST'&&(route==='/admin/roaming/deployment'||/^\/admin\/roaming\/proposals\/[A-Za-z0-9_-]{1,90}\/(?:approve|reject)$/.test(route));
+ if(!publicRead&&!read&&!battle&&!manageRead&&!staffWrite&&!adminWrite)throw Object.assign(Error('野良兵戦の操作を確認してください。'),{status:400});
+ const initial=getEventContext(),management=manageRead||staffWrite||adminWrite;
+ if(!publicRead&&!initial.user)throw Object.assign(Error(initial.banned?'この領主は利用停止中です。':'接続中の領主を確認してから利用してください。'),{status:403,code:'ROAMING_IDENTITY_REQUIRED',retryable:true});
+ const permitted=context=>!management||Boolean(context.user?.isAdmin||!adminWrite&&context.user?.isStaff);
+ if(!permitted(initial))throw Object.assign(Error('この操作に必要な管理権限を確認してください。'),{status:403});
+ const verify=()=>{if(publicRead)return;const current=getEventContext();if(initial.epoch!==current.epoch||initial.accountEpoch!==current.accountEpoch||initial.privilegeEpoch!==current.privilegeEpoch||initial.playerId!==current.playerId||!current.user||current.pending||current.banned||!permitted(current))throw Object.assign(staleIdentity(),{retryable:true});};
  if(battle){
-  if(global.SengokuBridge?.hasStarted?.()===false)throw Object.assign(Error('はじめに本拠を選び、領主の進行を保存してください。'),{status:409});
+  if(global.SengokuBridge?.hasStarted?.()===false)throw Object.assign(Error('はじめに本拠を選び、領主の進行を保存してください。'),{status:409,code:'ROAMING_CAMPAIGN_REQUIRED',retryable:true});
   const sync=global.SengokuCloudSync,status=sync?.getStatus?.();
   // The campaign transaction bridge owns freezing, flushing and reconciliation.
-  // Keep direct callers from bypassing its authenticated writer metadata.
-  if(!status?.linked||!status.ready||!status.writable||typeof options.data?.deviceId!=='string'||options.data.deviceId!==sync?.getDevice?.().id||!Number.isSafeInteger(options.data?.expectedRevision)||options.data.expectedRevision!==status.revision)throw Object.assign(Error('指令の同期を確認してから出陣してください。画面が古い場合は再読み込みしてください。'),{status:409,code:'ROAMING_SYNC_REQUIRED'});
+  if(!status?.linked||!status.ready||!status.writable||typeof options.data?.deviceId!=='string'||options.data.deviceId!==sync?.getDevice?.().id||!Number.isSafeInteger(options.data?.expectedRevision)||options.data.expectedRevision!==status.revision)throw Object.assign(Error('指令の同期を確認してから出陣してください。画面が古い場合は再読み込みしてください。'),{status:409,code:'ROAMING_SYNC_REQUIRED',retryable:true});
  }
  verify();
- const result=await api(route,{method,data:options.data,background:true,identityEpoch:initial.epoch});verify();
+ const result=await api(route,{method,data:options.data,auth:!publicRead,background:true,identityEpoch:initial.epoch});verify();
  return result;
 }
 async function covertRequest(route,options={}){

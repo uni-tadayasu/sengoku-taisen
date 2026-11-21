@@ -43,7 +43,7 @@ function setup(options={}) {
     getUser:()=>control.user?{...control.user}:null,
     roamingRequest:async(route,opts)=>{
       const call={route,options:clone(opts)};
-      if(opts.method==='GET'){gets.push(call);trace.push('get');return control.onGet?control.onGet(call):{ok:true,players:[]};}
+      if(opts.method==='GET'){gets.push(call);trace.push('get');return control.onGet?control.onGet(call):route.startsWith('/roaming/map?')?{ok:true,deployment:SengokuEngine.roamingDeploymentDefaults(),units:SengokuEngine.roamingDeploymentUnits(SengokuEngine.roamingDeploymentDefaults(),new URLSearchParams(route.split('?')[1]).get('castleId')),serverNow:Date.now()}:{ok:true,players:[]};}
       posts.push(call);trace.push('send');return control.onPost?control.onPost(call):{ok:true,revision:control.status.revision,report:{id:'report-1'}};
     }
   };
@@ -54,7 +54,7 @@ function setup(options={}) {
   };
   social.guildRequest=async(route,opts)=>{const call={route,options:clone(opts)};posts.push(call);trace.push('send-guild');return control.onPost?control.onPost(call):{ok:true,receipt:{id:'guild-transfer-1'}};};
   context={
-    game,roster,SengokuEngine,URLSearchParams,Date,JSON,Math,Promise,
+    game,roster,SengokuEngine,data:game.data,URLSearchParams,Date,JSON,Math,Promise,
     state:()=>context.game.state,
     syncAccess:{...control.status},saveKey:'save',backupKey:'backups',saveEnabled:true,saveWarning:'',
     worldCatchingUp:false,worldSettlementPending:false,worldSettlementRetryAt:0,worldCatchupTimer:null,worldClockStatusKey:'',fieldActionPending:false,walkingActionPending:false,strategyActionPending:false,startPending:false,roleEpoch:1,
@@ -78,7 +78,7 @@ function setup(options={}) {
 
 const tests=[];
 const test=(name,run)=>tests.push({name,run});
-const payload=h=>({encounterId:'road_scouts',tactic:'balanced',troops:1000,requestId:'roaming-first',campaignId:h.c.game.state.walking.campaignId,sequence:h.c.game.state.roaming.sequence});
+const payload=h=>{const unit=SengokuEngine.roamingDeploymentUnits(SengokuEngine.roamingDeploymentDefaults(),h.c.game.data.castles[0].id)[0];return{encounterId:unit.encounterId,unitId:unit.unitId,castleId:unit.castleId,deploymentRevision:unit.deploymentRevision,tactic:'balanced',troops:1000,requestId:'roaming-first',campaignId:h.c.game.state.walking.campaignId,sequence:h.c.game.state.roaming.sequence};};
 
 test('CPU access follows campaign, clock, owner and writer without treating empty commands as lost-receipt failure',()=>{
  const h=setup();let a=h.c.getRoamingAccess();assert.equal(a.writable,true);assert.equal(a.linked,true);assert.equal(a.ownerId,'player-a');
@@ -149,6 +149,19 @@ test('local CPU battle saves real command, casualty, reward and history exactly 
 test('failed local saving restores all CPU campaign state before reporting an error',async()=>{
  const h=setup();h.c.syncAccess.linked=false;const before=clone(h.c.game.state);h.c.localStorage.setItem=()=>{throw Error('storage full');};
  await assert.rejects(h.c.requestRoamingBattle(payload(h)),/保存できなかった/);assert.deepEqual(clone(h.c.game.state),before);assert.equal(h.posts.length,0);
+});
+
+test('map identity survives the durable command bridge without accepting client soldier edits',async()=>{
+ const h=setup(),body=payload(h);h.control.onPost=async()=>({ok:true,revision:7,battle:{unitId:body.unitId}});await h.c.requestRoamingBattle(body);const sent=h.posts[0].options.data;assert.equal(sent.unitId,body.unitId);assert.equal(sent.castleId,body.castleId);assert.equal(sent.deploymentRevision,body.deploymentRevision);assert.equal(sent.enemyTroops,undefined);
+});
+test('local stale deployment and absent map target fail before consuming',async()=>{
+ const h=setup();h.c.syncAccess.linked=false;const body=payload(h),before=clone(h.c.game.state);await assert.rejects(h.c.requestRoamingBattle({...body,deploymentRevision:2}),e=>e.code==='ROAMING_DEPLOYMENT_CHANGED');await assert.rejects(h.c.requestRoamingBattle({...body,unitId:undefined}),e=>e.code==='ROAMING_MAP_REQUIRED');assert.deepEqual(clone(h.c.game.state),before);
+});
+test('local victory observes respawn cooldown while a recorded retry stays readable',async()=>{
+ const h=setup();h.c.syncAccess.linked=false;const body=payload(h),result=await h.c.requestRoamingBattle(body);assert(result.battle.won);assert(result.battle.respawnAt>Date.now());const before=clone(h.c.game.state);await assert.rejects(h.c.requestRoamingBattle({...body,requestId:'second-at-same-unit',sequence:1}),e=>e.code==='ROAMING_UNIT_UNAVAILABLE');assert.deepEqual(clone(h.c.game.state),before);assert((await h.c.requestRoamingBattle(body)).idempotent);
+});
+test('temporary preflight failure retains the same uncertain operation for later receipt lookup',async()=>{
+ const h=setup(),body=payload(h);h.control.onPost=async()=>{throw Error('lost response');};await assert.rejects(h.c.requestRoamingBattle(body));const id=roamingPending(h).requestId;h.control.onPost=async()=>{throw Object.assign(Error('writer refreshing'),{status:409,code:'ROAMING_SYNC_REQUIRED',retryable:true});};await assert.rejects(h.c.requestRoamingBattle(body));assert.equal(roamingPending(h).requestId,id);
 });
 
 (async()=>{for(const {name,run}of tests){await run();console.log('PASS '+name);}console.log(tests.length+' CPU transaction bridge scenarios passed; no live requests.');})().catch(error=>{console.error(error);process.exitCode=1;});

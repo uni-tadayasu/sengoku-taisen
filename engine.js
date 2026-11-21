@@ -139,6 +139,36 @@
     {id:'hill_muskets',name:'丘陵の鉄砲衆',terrain:'丘陵',units:'鉄砲兵',description:'丘に陣を敷く熟練の鉄砲衆。包囲して射線を分断する。',tier:5,troops:8000,power:1.25,preferred:'encircle',art:'gunsmith',rewards:{gold:2200,rice:750,wood:200,stone:180,magatama:12},prestige:18},
     {id:'ronin_vanguard',name:'荒野の浪人精鋭軍',terrain:'荒野',units:'混成精鋭',description:'足軽・騎馬・鉄砲を備える歴戦の一団。十分な兵と軍団を整えよう。',tier:6,troops:14000,power:1.35,preferred:'encircle',art:'drill_ground',rewards:{gold:3600,rice:1100,wood:250,stone:300,magatama:18},prestige:30}
   ].map(v=>Object.freeze({...v,rewards:Object.freeze(v.rewards)})));
+  const ROAMING_DEPLOYMENT_DEFAULTS=Object.freeze({revision:1,totalTroops:384000,squadSize:1000,respawnSeconds:300});
+  function validateRoamingDeployment(raw){
+    const bad=message=>({ok:false,message});
+    if(!raw||typeof raw!=='object'||Array.isArray(raw))return bad('野良兵の配置内容を確認してください。');
+    const {totalTroops,squadSize,respawnSeconds}=raw,revision=raw.revision??1;
+    if(!Number.isSafeInteger(revision)||revision<1||revision>1000000000)return bad('配置の更新番号を確認してください。');
+    if(!Number.isSafeInteger(totalTroops)||totalTroops<0||totalTroops>20000000)return bad('全国の総兵数は0〜20,000,000人の整数で指定してください。');
+    if(!Number.isSafeInteger(squadSize)||squadSize<300||squadSize>20000)return bad('1部隊の兵数は300〜20,000人の整数で指定してください。');
+    if(!Number.isSafeInteger(respawnSeconds)||respawnSeconds<60||respawnSeconds>3600)return bad('再出現までの時間は60〜3,600秒の整数で指定してください。');
+    if(Math.ceil(totalTroops/squadSize)>4096)return bad('全国の部隊数が4,096部隊以内になるよう、総兵数か1部隊の兵数を調整してください。');
+    return{ok:true,config:{revision,totalTroops,squadSize,respawnSeconds}};
+  }
+  function roamingDeploymentUnits(raw,castleId){
+    const parsed=validateRoamingDeployment(raw);if(!parsed.ok)return[];
+    const config=parsed.config,castleIndex=CASTLES.findIndex(c=>c.id===castleId);if(castleIndex<0)return[];
+    const count=Math.ceil(config.totalTroops/config.squadSize),units=[];
+    for(let index=castleIndex,slot=0;index<count;index+=CASTLES.length,slot++){
+      const encounter=ROAMING_ENCOUNTERS[(castleIndex+slot)%ROAMING_ENCOUNTERS.length];
+      units.push({unitId:`wild_${config.revision}_${castleId}_${slot}`,encounterId:encounter.id,castleId,troops:Math.min(config.squadSize,config.totalTroops-index*config.squadSize),slot,deploymentRevision:config.revision});
+    }
+    return units;
+  }
+  function roamingDeploymentSummary(raw){
+    const parsed=validateRoamingDeployment(raw);if(!parsed.ok)return null;
+    const config=parsed.config;
+    return{...config,totalSquads:Math.ceil(config.totalTroops/config.squadSize),castles:CASTLES.map(c=>{const units=roamingDeploymentUnits(config,c.id);return{castleId:c.id,squads:units.length,troops:units.reduce((sum,u)=>sum+u.troops,0)};})};
+  }
+  function validRoamingUnit(unit,encounterId){
+    return !!unit&&typeof unit==='object'&&!Array.isArray(unit)&&!!CASTLE_BY_ID[unit.castleId]&&unit.encounterId===encounterId&&Number.isSafeInteger(unit.deploymentRevision)&&unit.deploymentRevision>=1&&unit.deploymentRevision<=1000000000&&Number.isSafeInteger(unit.slot)&&unit.slot>=0&&unit.slot<32&&unit.unitId===`wild_${unit.deploymentRevision}_${unit.castleId}_${unit.slot}`&&Number.isSafeInteger(unit.troops)&&unit.troops>=1&&unit.troops<=20000;
+  }
   const QUESTS = [
     {id:'first_upgrade',name:'城下の礎',description:'施設の増築を1回完成させる。',target:1,reward:{gold:600,rice:500},prestige:10},
     {id:'first_recruit',name:'人こそ城',description:'武将を1名、新たに登用する。',target:1,reward:{gold:450,wood:300},prestige:10},
@@ -301,7 +331,13 @@
       ids.add(b.requestId);seqs.add(b.sequence);
       for(const key of ['deployed','ourLost','survivors','enemyTroops','enemyLost','foodCost','commandBefore','commandAfter','prestigeGain','turn'])if(!num(b[key]))invalid();
       if(b.deployed<300||b.deployed>1000000||b.ourLost>b.deployed||b.survivors!==b.deployed-b.ourLost||b.enemyTroops<1||b.enemyLost>b.enemyTroops||b.commandCost!==1||b.commandBefore<1||b.commandBefore>7||b.commandAfter!==b.commandBefore-1||b.prestigeGain>encounter.prestige||!num(b.attackPower,1000000000000)||!num(b.enemyPower,1000000000000)||!obj(b.rewards)||Object.keys(b.rewards).length!==5||!GIFT_FIELDS.every(k=>num(b.rewards[k],encounter.rewards[k])&&(b.won||b.rewards[k]===0)))invalid();
-      return {requestId:b.requestId,campaignId,sequence:b.sequence,encounterId:encounter.id,encounterName:encounter.name,tactic:tactic.id,tacticName:tactic.name,won:b.won,deployed:b.deployed,ourLost:b.ourLost,survivors:b.survivors,enemyTroops:b.enemyTroops,enemyLost:b.enemyLost,attackPower:b.attackPower,enemyPower:b.enemyPower,foodCost:b.foodCost,commandCost:1,commandBefore:b.commandBefore,commandAfter:b.commandAfter,rewards:copy(b.rewards),prestigeGain:b.prestigeGain,turn:b.turn};
+      let placement={};
+      if(b.unitId!==undefined||b.castleId!==undefined||b.deploymentRevision!==undefined){
+        if(!walkingId(b.unitId)||b.unitId.length>90||!CASTLE_BY_ID[b.castleId]||!num(b.deploymentRevision,1000000000)||b.deploymentRevision<1||!new RegExp('^wild_'+b.deploymentRevision+'_'+b.castleId+'_(?:[0-9]|[12][0-9]|3[01])$').test(b.unitId))invalid();
+        placement={unitId:b.unitId,castleId:b.castleId,deploymentRevision:b.deploymentRevision};
+        if(b.respawnAt!==undefined){if(b.respawnAt!==null&&!num(b.respawnAt,Number.MAX_SAFE_INTEGER))invalid();placement.respawnAt=b.respawnAt;}
+      }
+      return {requestId:b.requestId,campaignId,sequence:b.sequence,encounterId:encounter.id,encounterName:encounter.name,tactic:tactic.id,tacticName:tactic.name,won:b.won,deployed:b.deployed,ourLost:b.ourLost,survivors:b.deployed-b.ourLost,enemyTroops:b.enemyTroops,enemyLost:b.enemyLost,attackPower:b.attackPower,enemyPower:b.enemyPower,foodCost:b.foodCost,commandCost:1,commandBefore:b.commandBefore,commandAfter:b.commandAfter,rewards:copy(b.rewards),prestigeGain:b.prestigeGain,turn:b.turn,...placement};
     });
     if(history.some((b,i)=>i&&b.sequence>=history[i-1].sequence))invalid();
     return{version:1,campaignId,sequence:raw.sequence,wins:raw.wins,history};
@@ -590,6 +626,10 @@
     _gain(reward){for(const k of RESOURCES)this.state.resources[k]=Math.min(999999999,this.state.resources[k]+(reward[k]||0));if(reward.magatama)this.state.magatama=Math.min(999999999,this.state.magatama+reward.magatama);}
     static normalizeWalkingState(raw){return walkingState(raw);}
     static normalizeRoamingState(raw,campaignId){return roamingState(raw,campaignId);}
+    static roamingDeploymentDefaults(){return{...ROAMING_DEPLOYMENT_DEFAULTS};}
+    static validateRoamingDeployment(raw){return validateRoamingDeployment(raw);}
+    static roamingDeploymentSummary(raw){return roamingDeploymentSummary(raw);}
+    static roamingDeploymentUnits(raw,castleId){return roamingDeploymentUnits(raw,castleId);}
     static normalizeCovertState(raw,campaignId){return covertState(raw,campaignId);}
     static normalizeCovertTarget(raw){return covertTarget(raw);}
     static normalizeCovertSnapshot(raw){return covertSnapshot(raw);}
@@ -850,8 +890,16 @@
       return this._covertCommit(start,{sourceCastleId:station.sourceCastleId,target:station.target,count:deployed,foodCost,commandCost:1,battle},target.name+'の常駐部隊が反撃しました。'+(won?'戦闘に勝利。':'戦闘に敗北。')+'生存兵は現地に駐留。'+'損失'+ourLost.toLocaleString()+'人。');
     }
     roamingEncounters(){const scale={easy:.85,normal:1,hard:1.15}[this.state.difficulty];return ROAMING_ENCOUNTERS.map(e=>({...copy(e),enemyTroops:Math.round(e.troops*scale),enemyPower:Math.round(e.troops*scale*e.power)}));}
-    previewRoamingBattle(encounterId,tactic='balanced',troops=Math.min(this.state.troops,this.troopCapacity())){
-      const s=this.state,e=this.roamingEncounters().find(e=>e.id===encounterId),t=ROAMING_TACTICS.find(t=>t.id===tactic),maxTroops=Math.max(0,Math.min(s.troops,this.troopCapacity(),1000000));
+    previewRoamingBattle(encounterId,tactic='balanced',troops=Math.min(this.state.troops,this.troopCapacity()),options={}){
+      const s=this.state,t=ROAMING_TACTICS.find(t=>t.id===tactic),maxTroops=Math.max(0,Math.min(s.troops,this.troopCapacity(),1000000));
+      let e=this.roamingEncounters().find(e=>e.id===encounterId);
+      if(options.deploymentUnit!==undefined){
+        const unit=options.deploymentUnit;
+        if(!validRoamingUnit(unit,encounterId)||!e)return{ok:false,message:'地図の配置部隊を選び直してください。',maxTroops};
+        if(unit.available===false)return{ok:false,message:'この部隊は再出現を待っています。別の部隊を選んでください。',maxTroops};
+        const factor=Math.min(1,unit.troops/e.troops),scale={easy:.85,normal:1,hard:1.15}[s.difficulty];
+        e={...e,enemyTroops:unit.troops,enemyPower:Math.max(1,Math.round(unit.troops*e.power*scale)),rewards:Object.fromEntries(GIFT_FIELDS.map(k=>[k,Math.floor(e.rewards[k]*factor)])),prestige:Math.floor(e.prestige*factor),unitId:unit.unitId,castleId:unit.castleId,deploymentRevision:unit.deploymentRevision};
+      }
       if(!e||!t)return{ok:false,message:'戦う野良兵と戦術を選んでください。',maxTroops};
       if(!Number.isSafeInteger(troops)||troops<300||troops>maxTroops)return{ok:false,message:`出陣兵数は300〜${maxTroops.toLocaleString()}人の整数で指定してください。`,maxTroops,encounter:e};
       const a=this.armyStats(),skills=s.army.map(id=>this.officer(id)?.skill),foodCost=Math.ceil(troops*.24*t.food)+120;
@@ -878,14 +926,16 @@
       const s=this.state,r=s.roaming,{requestId,campaignId,sequence}=options;
       if(!walkingId(requestId)||requestId.length>90||campaignId!==s.walking.campaignId||campaignId!==r.campaignId||!Number.isSafeInteger(sequence)||sequence<0)return{ok:false,code:'ROAMING_SCOPE_CHANGED',message:'物語と出陣の操作番号を確認してください。'};
       const prior=r.history.find(b=>b.requestId===requestId);
-      if(prior){if(prior.encounterId!==encounterId||prior.tactic!==tactic||prior.deployed!==troops||prior.sequence!==sequence)return{ok:false,code:'REQUEST_ID_REUSED',message:'この操作番号は別の出陣に使われています。'};return{ok:true,idempotent:true,battle:copy(prior),message:'記録済みの戦果を表示しました。'};}
+      if(prior){if(prior.encounterId!==encounterId||prior.tactic!==tactic||prior.deployed!==troops||prior.sequence!==sequence||(prior.unitId||null)!==(options.deploymentUnit?.unitId||options.unitId||null)||(prior.castleId||null)!==(options.deploymentUnit?.castleId||options.castleId||null)||(prior.deploymentRevision||null)!==(options.deploymentUnit?.deploymentRevision||options.deploymentRevision||null))return{ok:false,code:'REQUEST_ID_REUSED',message:'この操作番号は別の出陣に使われています。'};return{ok:true,idempotent:true,battle:copy(prior),message:'記録済みの戦果を表示しました。'};}
       if(sequence!==r.sequence)return{ok:false,code:'ROAMING_SEQUENCE_CHANGED',message:'出陣記録が更新されています。最新の内容を確認してください。'};
-      const p=this.previewRoamingBattle(encounterId,tactic,troops);if(!p.ok)return fail(p.message);
+      if((options.unitId!==undefined||options.castleId!==undefined||options.deploymentRevision!==undefined)&&(!validRoamingUnit(options.deploymentUnit,encounterId)||options.unitId!==options.deploymentUnit.unitId||options.castleId!==options.deploymentUnit.castleId||options.deploymentRevision!==options.deploymentUnit.deploymentRevision))return{ok:false,code:'ROAMING_MAP_REQUIRED',message:'地図の配置部隊を選び直してください。'};
+      const p=this.previewRoamingBattle(encounterId,tactic,troops,options);if(!p.ok)return fail(p.message);
       const e=p.encounter,won=p.predictedWin,commandBefore=s.command,prestigeBefore=s.prestige;
       this._pay({rice:p.foodCost});s.troops-=p.expectedLoss;s.morale=clamp(s.morale+(won?3:-8),15,100);
       const paid={...s.resources,magatama:s.magatama};if(won){this._gain(e.rewards);s.prestige=Math.min(999999999,s.prestige+e.prestige);r.wins++;}
       const rewards=Object.fromEntries(GIFT_FIELDS.map(k=>[k,(k==='magatama'?s.magatama:s.resources[k])-paid[k]]));
       const battle={requestId,campaignId,sequence,encounterId:e.id,encounterName:e.name,tactic,tacticName:p.tacticName,won,deployed:troops,ourLost:p.expectedLoss,survivors:troops-p.expectedLoss,enemyTroops:p.enemyTroops,enemyLost:won?p.enemyTroops:Math.min(p.enemyTroops-1,Math.floor(p.enemyTroops*clamp(p.ratio*.5,.05,.8))),attackPower:p.attackPower,enemyPower:p.enemyPower,foodCost:p.foodCost,commandCost:1,commandBefore,commandAfter:commandBefore-1,rewards,prestigeGain:s.prestige-prestigeBefore,turn:s.turn};
+      if(e.unitId)Object.assign(battle,{unitId:e.unitId,castleId:e.castleId,deploymentRevision:e.deploymentRevision});
       r.sequence++;r.history.unshift(copy(battle));r.history=r.history.slice(0,20);
       return this._action(`野良兵「${e.name}」に${won?'勝利':'敗北'}。兵${p.expectedLoss.toLocaleString()}人を失い、${won?`金銭${rewards.gold.toLocaleString()}・勾玉${rewards.magatama.toLocaleString()}などを獲得。`:'生存兵は本拠へ帰還。'}`,won?'victory':'defeat',{battle,idempotent:false});
     }

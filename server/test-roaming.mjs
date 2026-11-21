@@ -14,7 +14,7 @@ async function player(h,name='野良兵検証',change=()=>{}){
  change(save.state);save.state.worldClock={id:lease.clock.id,elapsedMs:lease.clock.elapsedMs};save.state.turn=Math.floor(lease.clock.elapsedMs/60000);save.state.realtime.elapsed=lease.clock.elapsedMs%60000/1000;
  await h.api('/sync',{method:'PUT',token:p.token,body:{deviceId:p.deviceId,revision:lease.revision,save}});return p;
 }
-function input(h,p,extra={}){const r=row(h,p),s=JSON.parse(r.save_json).state;return{deviceId:p.deviceId,expectedRevision:r.revision,campaignId:s.walking.campaignId,sequence:s.roaming.sequence,requestId:crypto.randomUUID(),encounterId:'road_scouts',tactic:'balanced',troops:1000,...extra};}
+function input(h,p,extra={}){const r=row(h,p),s=JSON.parse(r.save_json).state,d=GameEngine.roamingDeploymentDefaults(),desired=extra.encounterId||'road_scouts',available=GameEngine.roamingDeploymentSummary(d).castles.flatMap(c=>GameEngine.roamingDeploymentUnits(d,c.castleId)).filter(u=>!h.sql.prepare('SELECT 1 FROM roaming_unit_cooldowns WHERE deployment_revision=? AND unit_id=? AND respawn_at>?').get(d.revision,u.unitId,h.now)),unit=available.find(u=>u.encounterId===desired)||available[0];return{deviceId:p.deviceId,expectedRevision:r.revision,campaignId:s.walking.campaignId,sequence:s.roaming.sequence,requestId:crypto.randomUUID(),encounterId:unit.encounterId,unitId:unit.unitId,castleId:unit.castleId,deploymentRevision:d.revision,tactic:'balanced',troops:1000,...extra};}
 const battle=(h,p,body=input(h,p),expected=200)=>h.api('/roaming/battle',post(p,body,expected));
 const originalFetch=globalThis.fetch;globalThis.fetch=async()=>{throw Error('CPU battle tests must never use a real network');};
 try{
