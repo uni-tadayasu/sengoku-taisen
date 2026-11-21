@@ -40,8 +40,24 @@ await test('late restoration yields to a new user scroll or navigation',()=>{
 await test('a second redraw invalidates old animation-frame callbacks for the same pane',()=>{
   const s=surface();s.draw();s.main.scrollTop=418;s.c.preserveInteraction(s.main,s.draw);s.main.scrollTop=230;s.c.preserveInteraction(s.main,s.draw);s.frames.shift()();assert.equal(s.main.scrollTop,230);s.frames.shift()();s.frames.shift()();assert.equal(s.main.scrollTop,230);assert.equal(s.main.style.overflowAnchor,'');
 });
+await test('five consecutive town sync redraws carry the console position through temporary zero-height layout',()=>{
+  const s=surface();s.c.currentView='town';let pane,layoutReady=true;
+  const draw=()=>{s.main.children=[];pane=s.main.append(new Node('ASIDE','town-console'));let offset=0;Object.defineProperty(pane,'scrollTop',{get:()=>offset,set:value=>{offset=layoutReady?value:0;}});return pane;};
+  draw().scrollTop=592;layoutReady=false;
+  for(let i=0;i<5;i++)s.c.preserveInteraction(s.main,draw);
+  assert.equal(pane.scrollTop,0,'The browser clamps offsets while the new console has no scroll range');
+  layoutReady=true;while(s.frames.length)s.frames.shift()();
+  assert.equal(pane.scrollTop,592,'Only the latest restoration runs, using the position from before the sync batch');
+  assert.equal(s.main.scrollTop,0);assert.equal(s.main.style.overflowAnchor,'');
+});
+await test('a user gesture invalidates a pending town console position between sync redraws',()=>{
+  const s=surface();s.c.currentView='town';let pane;
+  const draw=()=>{s.main.children=[];pane=s.main.append(new Node('ASIDE','town-console'));return pane;};
+  draw().scrollTop=592;s.c.preserveInteraction(s.main,draw);pane.scrollTop=0;s.c.interactionEpoch++;
+  s.c.preserveInteraction(s.main,draw);while(s.frames.length)s.frames.shift()();assert.equal(pane.scrollTop,0);
+});
 await test('unchanged verified operator role does not rebuild the page or modal',()=>{
-  let renders=0,modalRefresh=0;const c=load(context({game:{isAdmin:true,setAdminAccess(){return{ok:true,changed:false};}},syncAccess:{linked:true,ready:true},selectedCastle:'edo',activeModal:'building',preserveInteraction(){renders++;},refreshActiveModal(){modalRefresh++;}}),'setAdminAccess');
+  let renders=0,modalRefresh=0;const c=load(context({game:{isAdmin:true,setAdminAccess(){return{ok:true,changed:false};}},syncAccess:{linked:true,ready:true},selectedCastle:'edo',activeModal:'building',preserveInteraction(){renders++;},refreshActiveModal(){modalRefresh++;}}),'setRoleAccess','setAdminAccess');
   for(let i=0;i<20;i++)assert(c.setAdminAccess(true).ok);assert.equal(renders,0);assert.equal(modalRefresh,0);
 });
 await test('map synchronization updates the existing controller and retains its camera',()=>{

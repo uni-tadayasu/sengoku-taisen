@@ -26,7 +26,12 @@
     const remaining = Math.max(1, (Number(viewportHeight) || 0) - Math.max(0, Number(sceneOffset) || 0) - Math.max(0, Number(bottomPadding) || 0) - 8);
     return Math.min(preferred, remaining);
   }
-  const api = { fitRect, labelRect, sceneHeight };
+  function panelSceneHeight(panelHeight, headingHeight, captionHeight, preferred = null) {
+    const available = Math.max(1, (Number(panelHeight) || 0) - Math.max(0, Number(headingHeight) || 0) - Math.max(0, Number(captionHeight) || 0));
+    const requested = Number(preferred);
+    return Number.isFinite(requested) && requested > 0 ? Math.min(requested, available) : available;
+  }
+  const api = { fitRect, labelRect, sceneHeight, panelSceneHeight };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   const doc = global.document;
   if (!doc || global.SengokuTownFit) return;
@@ -45,19 +50,26 @@
     const next = main?.querySelector('.town-scene');
     if (scene !== next) {
       observer?.disconnect(); scene = next; board = scene?.querySelector('.town-scene-board');
-      if (scene) for (const node of [main, scene, ...main.querySelectorAll('.page-heading,.realtime-strip,.sync-access-notice,.town-scene-heading')]) observer?.observe(node);
+      if (scene) for (const node of [main, scene, ...main.querySelectorAll('.town-panel,.town-visual,.page-heading,.realtime-strip,.sync-access-notice,.town-scene-heading,.scene-caption')]) observer?.observe(node);
     }
     if (!scene || !board || !scene.isConnected) return;
     const root = doc.documentElement;
     if (root.classList.contains('sengoku-desktop-fit')) {
-      const mainBox = main.getBoundingClientRect(), sceneBox = scene.getBoundingClientRect();
       const rootStyle = global.getComputedStyle(root);
-      const preferred = (root.hasAttribute('data-layout-townheight') ? parseFloat(rootStyle.getPropertyValue('--layout-town-height')) : 0) || parseFloat(rootStyle.getPropertyValue('--desktop-town-height')) || 460;
-      const padding = parseFloat(global.getComputedStyle(main).paddingBottom) || 0;
-      // Measure from the scroll origin: scrolling through the rest of the page
-      // must not resize the town or push the player's reading position around.
-      const offset = sceneBox.top - mainBox.top + main.scrollTop;
-      const height = sceneHeight(preferred, main.clientHeight, offset, padding);
+      const manualHeight = root.hasAttribute('data-layout-townheight') ? parseFloat(rootStyle.getPropertyValue('--layout-town-height')) : null;
+      const panel = scene.closest('.town-panel');
+      let height;
+      if (scene.closest('.town-workspace') && panel) {
+        // The artwork gets the whole independent PC canvas. The command pane
+        // may scroll or grow internally without changing this available height.
+        height = panelSceneHeight(panel.clientHeight, panel.querySelector('.town-scene-heading')?.offsetHeight, panel.querySelector('.scene-caption')?.offsetHeight, manualHeight);
+      } else {
+        const mainBox = main.getBoundingClientRect(), sceneBox = scene.getBoundingClientRect();
+        const preferred = manualHeight || parseFloat(rootStyle.getPropertyValue('--desktop-town-height')) || 460;
+        const padding = parseFloat(global.getComputedStyle(main).paddingBottom) || 0;
+        const offset = sceneBox.top - mainBox.top + main.scrollTop;
+        height = sceneHeight(preferred, main.clientHeight, offset, padding);
+      }
       style(scene, '--town-auto-height', height.toFixed(3) + 'px');
     } else scene.style.removeProperty('--town-auto-height');
     const image = board.querySelector('.town-scene-image');

@@ -8,7 +8,7 @@ const castles=new Map((data.castles||[]).map(c=>[c.id,c]));
 const facilities=new Map((data.buildings||[]).map(b=>[b.id,b]));
 const portraitFacilities=new Set((data.buildings||[]).slice(0,32).map(b=>b.id));
 const frames=Object.fromEntries(ranks.map(r=>[r,`assets/frames/rank-${r}.svg`]));
-const operatorPortrait={id:'of_b0616adde162',rank:'U',url:'assets/operator-ieyasu-u.webp?v=3.6.0-20261121'};
+const operatorPortrait={id:'of_b0616adde162',rank:'U',url:'assets/operator-ieyasu-u.webp?v=3.7.0-20261121'};
 const cache=new Map();let observer,scheduled=false;
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const icons={
@@ -35,11 +35,12 @@ function tileInfo(kind,id,variant){
   const cell=o.index%32;return{url:`assets/illustrations/officers-${rank}-${String(Math.floor(o.index/32)+1).padStart(2,'0')}.webp`,x:(cell%8)/7*100,y:Math.floor(cell/8)/3*100,name:o.name,rank};
  }
  const item=(kind==='castle'?castles:facilities).get(id);if(!item)return null;
- const level=Math.max(1,Math.min(32,Math.round(Number(variant)||1))),cell=level-1;
- return{url:`assets/${kind==='castle'?'castles':'facilities'}/${id}.webp`,x:(cell%8)/7*100,y:Math.floor(cell/8)/3*100,name:item.name,level,portraitCell:kind==='facility'&&portraitFacilities.has(id)};
+ const limit=kind==='castle'&&(data.majorCityIds||['edo','sunpu','nijo','osaka','nagoya']).includes(id)?64:32;
+ const level=Math.max(1,Math.min(limit,Math.round(Number(variant)||1))),artLevel=Math.min(32,level),cell=artLevel-1;
+ return{url:`assets/${kind==='castle'?'castles':'facilities'}/${id}.webp`,x:(cell%8)/7*100,y:Math.floor(cell/8)/3*100,name:item.name,level,artLevel,finalStage:level>32,portraitCell:kind==='facility'&&portraitFacilities.has(id)};
 }
 function tile(kind,id,className='',variant=1){const t=tileInfo(kind,id,variant);if(!t)return'';
- return `<span class="painted-art ${kind}-painting${t.portraitCell?' portrait-cell':''} ${esc(className)}" data-art-url="${esc(t.url)}" data-art-x="${t.x}" data-art-y="${t.y}" style="--tile-x:${t.x}%;--tile-y:${t.y}%" role="img" aria-label="${esc(t.name)} ${t.level?'Lv.'+t.level:t.rank+'ランク'}のオリジナルイラスト" aria-busy="true"><span class="art-surface" aria-hidden="true"></span><span class="art-loading" aria-hidden="true">${icon(kind==='officer'?'officers':kind==='castle'?'town':'facilities')}</span></span>`;
+ return `<span class="painted-art ${kind}-painting${t.portraitCell?' portrait-cell':''} ${esc(className)}" data-art-url="${esc(t.url)}" data-art-x="${t.x}" data-art-y="${t.y}" style="--tile-x:${t.x}%;--tile-y:${t.y}%" role="img" aria-label="${esc(t.name)} ${t.level?'Lv.'+t.level+(t.finalStage?'・最終形態':''):t.rank+'ランク'}のオリジナルイラスト" aria-busy="true"><span class="art-surface" aria-hidden="true"></span><span class="art-loading" aria-hidden="true">${icon(kind==='officer'?'officers':kind==='castle'?'town':'facilities')}</span></span>`;
 }
 function portrait(o){if(!o)return'';const rank=ranks.includes(o.rank)?o.rank:'D',special=o.id===operatorPortrait.id&&rank===operatorPortrait.rank;const painting=special?`<span class="painted-art painted-portrait operator-portrait" data-art-url="${operatorPortrait.url}" data-art-x="50" data-art-y="50" role="img" aria-label="德川家康 Uランク・運営専用の特別イラスト" aria-busy="true"><span class="art-surface" aria-hidden="true"></span><span class="art-loading" aria-hidden="true">${icon('officers')}</span></span>`:tile('officer',o.id,'painted-portrait',rank);return `<span class="portrait-frame${special?' operator-portrait-frame':''}" data-rank="${rank}">${painting}<img class="rank-frame" src="${frames[rank]}" alt="" aria-hidden="true" loading="lazy">${special?'<span class="operator-art-seal">運営専用・特別絵巻</span>':''}</span>`;}
 function load(url){if(cache.has(url))return cache.get(url);const promise=new Promise((resolve,reject)=>{const img=new Image();img.onload=()=>resolve(url);img.onerror=()=>{cache.delete(url);reject(Error('画像を読み込めませんでした'));};img.src=url;});cache.set(url,promise);return promise;}

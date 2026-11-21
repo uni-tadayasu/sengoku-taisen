@@ -7,6 +7,7 @@ const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;
 const number=value=>Number.isFinite(Number(value))?Number(value):0;
 const integer=value=>Math.max(0,Math.floor(number(value)));
 const num=value=>integer(value).toLocaleString('ja-JP');
+const castleLevelLimit=id=>(global.SENGOKU_DATA?.majorCityIds||['edo','sunpu','nijo','osaka','nagoya']).includes(id)?64:32;
 const DEFAULT_RULES={minTroops:300,maxTroops:100000,commandCost:1,foodBase:150,foodPerTroop:.3,attackCooldownMs:60000,defenderProtectionMs:60000,allianceDurationMs:360000,tactics:[{id:'balanced',name:'正攻法',food:1},{id:'assault',name:'総攻撃',food:1.25},{id:'siege',name:'兵糧攻め',food:1.65},{id:'ambush',name:'伏兵',food:1.1}]};
 const icons={refresh:'M20 8a9 9 0 1 0 1 7M20 3v5h-5',search:'M10 17a7 7 0 1 0 0-14 7 7 0 0 0 0 14m5-2 6 6',castle:'M3 20h18M5 20V10l7-5 7 5v10M3 10h18M9 5l3-3 3 3M10 20v-5h4v5',swords:'m4 3 7 7-3 3-7-7 3-3Zm9 10 7 7M15 18l3-3M20 3l-7 7 3 3 7-7-3-3ZM11 13l-7 7M9 18l-3-3',flag:'M4 22V3m0 1c6-5 10 5 16 0v10c-6 5-10-5-16 0',check:'m4 12 5 5L20 6',shield:'m12 2 9 4v6c0 5-9 10-9 10S3 17 3 12V6l9-4ZM8 12l3 3 5-6',clock:'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Zm0 4v6l4 2',users:'M9 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM2 21v-3c0-3 3-5 7-5s7 2 7 5v3M17 4c5-1 6 7 1 8m1 2c3 1 4 3 4 7',close:'m6 6 12 12M6 18 18 6'};
 const icon=name=>`<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${icons[name]||icons.castle}"/></svg>`;
@@ -14,7 +15,7 @@ function normalizePlayers(payload){
   const input=Array.isArray(payload)?payload:payload?.players;if(!Array.isArray(input))return[];
   const seen=new Set();return input.flatMap(player=>{
     if(!player||typeof player.playerId!=='string'||!player.playerId||typeof player.name!=='string'||typeof player.homeCastleId!=='string'||seen.has(player.playerId))return[];
-    seen.add(player.playerId);return[{...player,level:Math.max(1,Math.min(32,integer(player.level)||1)),defenseTroops:integer(player.defenseTroops),defensePower:Math.max(0,number(player.defensePower)),isAdmin:player.isAdmin===true,isStaff:player.isStaff===true&&player.isAdmin!==true,self:player.self===true,online:player.online===true,attackable:player.attackable===true}];
+    seen.add(player.playerId);return[{...player,level:Math.max(1,Math.min(castleLevelLimit(player.homeCastleId),integer(player.level)||1)),defenseTroops:integer(player.defenseTroops),defensePower:Math.max(0,number(player.defensePower)),isAdmin:player.isAdmin===true,isStaff:player.isStaff===true&&player.isAdmin!==true,self:player.self===true,online:player.online===true,attackable:player.attackable===true}];
   });
 }
 function rulesFor(rules){return{...DEFAULT_RULES,...rules,tactics:Array.isArray(rules?.tactics)&&rules.tactics.length?rules.tactics:DEFAULT_RULES.tactics};}
@@ -40,6 +41,7 @@ function attackValidation({player,me,identity,access={},state={},troops,tactic,r
   if(!player)return{ok:false,message:'相手の領主を選んでください。'};
   if(player.self||player.playerId===identity.id)return{ok:false,message:'自分の本拠には出陣できません。'};
   if(player.isAdmin||player.homeCastleId==='edo')return{ok:false,message:'運営の本拠・江戸城は保護され、襲撃・占領の対象になりません。'};
+  if(player.isStaff||player.homeCastleId==='sunpu')return{ok:false,message:'スタッフ共同拠点・駿府城は保護され、襲撃・占領の対象になりません。'};
   if(relationshipFor(player,me,identity)==='allied')return{ok:false,message:'同盟中の領主には出陣できません。'};
   if(!player.attackable)return{ok:false,message:player.attackReason||'この本拠は現在保護されています。'};
   if(!me?.attack?.ready)return{ok:false,message:me?.attack?.reason||'本拠と出陣の準備を確認しています。'};
@@ -93,12 +95,14 @@ function mount(container,options={}){
     const coLocated=cache.players.filter(p=>p.homeCastleId===player.homeCastleId).length;
     const protection=Math.max(0,number(player.protectedUntilElapsedMs)-elapsed());
     let result=`<div class="field-base-heading">${art}<div><span class="field-eyebrow">${esc(player.homeCastleName||player.homeCastleId)} · Lv.${player.level}</span><h3 class="field-lord-heading">${playerPhoto(player)}<span>${esc(player.name)}</span></h3><p>${esc(player.clan||'')}${own?' · あなたの本拠':player.isAdmin?' · 運営の本拠':''}</p><span class="field-online ${player.online?'is-online':''}">${player.online?'接続中':'現在は不在'}</span></div></div><div class="field-base-stats"><div><span>守備兵</span><b>${num(player.defenseTroops)}</b></div><div><span>防衛力</span><b>${num(Math.round(player.defensePower))}</b></div><div><span>軍団</span><b>${num(player.armySummary?.officerCount)}<small>名</small></b></div></div>${coLocated>1?`<p class="field-caption">この城には${coLocated}人の領主の本拠があります。</p>`:''}`;
-    if(global.SENGOKU_DATA?.majorCityIds?.includes(player.homeCastleId))result+=`<div class="major-city-badge">${icon('castle')}大都市拠点${player.homeCastleId==='edo'?' · 運営専用 · 占領不可':''}</div>`;
+    if(castleLevelLimit(player.homeCastleId)===64)result+=`<div class="major-city-badge">${icon('castle')}大都市拠点 · 城郭上限 Lv.64${player.homeCastleId==='edo'?' · 運営専用 · 占領不可':player.homeCastleId==='sunpu'?' · スタッフ共同 · 占領不可':''}</div>`;
+    if(player.isStaff||player.homeCastleId==='sunpu')result+='<p class="field-caption">駿府城の城郭と城下町施設は、スタッフ全員で共同成長させます。</p>';
     if(!opts.identity?.id)return result+'<div class="field-notice">襲撃と外交は、領主登録後に利用できます。</div><button class="field-button is-gold is-full" data-field-action="register">領主登録・ログイン</button>';
     if(!canAct()&&!cache.busy)result+=`<div class="field-notice">${esc(access().fieldPending?'前の采配を反映しています。':'操作端末と共通時刻を確認すると采配できます。')}<button class="field-inline-button" data-field-action="sync">端末同期を確認</button></div>`;
     if(own){const cooldown=Math.max(0,number(cache.me?.attack?.cooldownUntilElapsedMs)-elapsed());return result+`<div class="field-self-note">${icon('shield')}<div><strong>あなたの旗が、この城に掲がっています。</strong><p>ほかの領主を選ぶと、襲撃や同盟の申し出ができます。</p></div></div><div class="field-key-value"><span>出陣できる兵</span><b>${num(state().troops??cache.me?.attack?.availableTroops)}人</b></div>${cooldown?`<div class="field-key-value"><span>襲撃の再準備</span><b>あと${remainingLabel(cooldown)}</b></div>`:''}${protection?`<div class="field-notice">襲撃後の保護 · あと${remainingLabel(protection)}</div>`:''}`;}
     result+=`<section class="field-diplomacy-box"><h4>外交</h4>${diplomacyControls(player)}</section>`;
     if(player.isAdmin||player.homeCastleId==='edo')return result+`<div class="field-notice">${icon('shield')}運営の本拠・江戸城は保護され、襲撃・占領の対象になりません。</div>`;
+    if(player.isStaff||player.homeCastleId==='sunpu')return result+`<div class="field-notice">${icon('shield')}スタッフ共同拠点・駿府城は保護され、襲撃・占領の対象になりません。</div>`;
     if(protection)return result+`<div class="field-notice">襲撃後の保護期間です。あと${remainingLabel(protection)}で再び対象になります。</div>`;
     if(relation==='allied')return result;
     const attack=cache.me?.attack||{},r=cache.rules,max=Math.min(integer(attack.availableTroops),integer(attack.maxTroops)||r.maxTroops,state().troops===undefined?Infinity:integer(state().troops));

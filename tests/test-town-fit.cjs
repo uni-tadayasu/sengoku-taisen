@@ -1,6 +1,6 @@
 'use strict';
 const assert = require('node:assert/strict');
-const {fitRect, labelRect, sceneHeight} = require('../town-fit.js');
+const {fitRect, labelRect, sceneHeight, panelSceneHeight} = require('../town-fit.js');
 const kamon = require('../kamon.js');
 const points = [[39,27],[24,76],[51,62],[87,41],[86,79],[17,44],[68,43],[57,27]];
 let cases = 0;
@@ -39,7 +39,29 @@ for (const [height, offset] of [[400, 180], [230, 63], [160, 63], [100, 53]]) {
   assert(offset + chosen <= height - 10, 'Short/zoomed desktop art stays above the main viewport bottom');
   const fitted = fitRect(540, chosen); assert(fitted.height <= chosen);
 }
+// The PC town and its console now share the full main-pane height. A long
+// construction queue, status message or Lv.64 title cannot shrink the scene.
+for(const geometry of [
+  {width:822,panel:569,heading:42,caption:0},
+  {width:1326,panel:902,heading:42,caption:0},
+  {width:779,panel:422,heading:42,caption:0},
+  {width:345,panel:244,heading:42,caption:0},
+  {width:290,panel:216,heading:64,caption:0}
+]){
+  const {width,panel,heading,caption}=geometry,available=panel-heading-caption;
+  const height=panelSceneHeight(panel,heading,caption),fit=fitRect(width,height);
+  assert.equal(height,available,'Uncustomized PC canvas consumes the full available height');
+  assert(fit.width<=width+1e-8&&fit.height<=available+1e-8,'The entire source image remains contained');
+  assert(Math.abs(fit.width-width)<1e-8||Math.abs(fit.height-available)<1e-8,'No artificial preferred height leaves avoidable empty space');
+  assert.equal(panelSceneHeight(panel,heading,caption,10000),available,'An oversized saved drag height is capped');
+  assert.equal(panelSceneHeight(panel,heading,caption,100),Math.min(100,available),'A smaller height remains adjustable');
+}
+const largerTown=fitRect(822,panelSceneHeight(569,42,0));
+assert(largerTown.width>=790&&largerTown.height>=527,'1366×768 geometry has a much larger complete town');
+assert(largerTown.width*largerTown.height>3*(438*292),'Artwork area exceeds three times the previous 438×292 result');
+assert.equal(panelSceneHeight(569,60,0),509,'Long labels and larger system text use their actual measured height');
+assert.equal(panelSceneHeight(0,42,0),1,'Hidden or not-yet-sized panels remain finite');
 assert.equal(kamon.url('德川家'), kamon.url('徳川家'));
 assert.match(kamon.render('德川家'), /aria-label="德川家：/);
 assert.match(kamon.render('徳川家'), /aria-label="徳川家：/);
-console.log(`PASS ${cases} town fit/label geometries, zero-size startup, and the two Tokugawa crest labels.`);
+console.log(`PASS ${cases} town fit/label geometries, full-height PC canvas/maximized image, drag limits, zero-size startup, and the two Tokugawa crest labels.`);

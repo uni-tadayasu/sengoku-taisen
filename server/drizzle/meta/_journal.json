@@ -57,6 +57,13 @@
       "when": 1795737600000,
       "tag": "0007_world_cycles",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1795824000000,
+      "tag": "0008_staff_base",
+      "breakpoints": true
     }
   ]
 }

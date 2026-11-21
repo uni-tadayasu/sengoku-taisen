@@ -53,30 +53,6 @@ html.sengoku-desktop-fit[data-layout-townheight] #main .town-panel .town-scene {
   #main .town-scene-heading { padding: 8px 10px; }
   #main .town-panel > .scene-caption { padding: 11px 12px; }
 }
-/* Short desktop screens spend their height on the artwork, without shrinking
-   text or touch targets. The rest of the page remains reachable in main. */
-@media (max-height: 650px) {
-  html.sengoku-desktop-fit #main[data-view="town"] { padding-top: 10px; padding-bottom: 10px; }
-  html.sengoku-desktop-fit #main[data-view="town"] > .page-heading { gap: 8px 14px; margin-bottom: 8px; }
-  html.sengoku-desktop-fit #main[data-view="town"] > .page-heading h1 { font-size: 24px; line-height: 1.25; }
-  html.sengoku-desktop-fit #main[data-view="town"] > .page-heading .eyebrow { margin-bottom: 2px; }
-  html.sengoku-desktop-fit #main[data-view="town"] > .realtime-strip { margin-bottom: 10px; padding-block: 6px; gap: 6px 10px; }
-  html.sengoku-desktop-fit #main[data-view="town"] .town-scene-heading { padding-block: 4px; }
-}
-@media (max-width: 1000px) and (max-height: 600px) {
-  html.sengoku-desktop-fit #main[data-view="town"] { display: flex; flex-direction: column; gap: 0; }
-  html.sengoku-desktop-fit #main[data-view="town"] > * { flex: none; }
-  html.sengoku-desktop-fit #main[data-view="town"] .dashboard-grid,
-  html.sengoku-desktop-fit #main[data-view="town"] .dashboard-grid > .left-column { display: contents; }
-  html.sengoku-desktop-fit #main[data-view="town"] .town-panel { order: -10; flex: none; margin-bottom: 14px; }
-  html.sengoku-desktop-fit #main[data-view="town"] > .page-heading { order: 0; }
-  html.sengoku-desktop-fit #main[data-view="town"] > .realtime-strip { order: 1; }
-  html.sengoku-desktop-fit #main[data-view="town"] > .sync-access-notice { order: 2; }
-  html.sengoku-desktop-fit #main[data-view="town"] .left-column > .section-heading { order: 3; flex: none; }
-  html.sengoku-desktop-fit #main[data-view="town"] .left-column > .buildings-grid { order: 4; flex: none; }
-  html.sengoku-desktop-fit #main[data-view="town"] .left-column > .tip-bar { order: 5; flex: none; }
-  html.sengoku-desktop-fit #main[data-view="town"] .dashboard-grid > .right-column { order: 6; flex: none; margin-top: 14px; }
-}
 .major-city-badge { display: inline-flex; align-items: center; gap: 6px; width: fit-content; max-width: 100%; margin: 0 0 10px; padding: 5px 9px; border: 1px solid #edc57565; border-radius: 5px; background: #83622630; color: #f2d59b; font-size: 14px; line-height: 1.5; }
 .major-city-badge .icon { flex: none; width: 16px; height: 16px; }
 
@@ -85,3 +61,138 @@ html.sengoku-desktop-fit[data-layout-townheight] #main .town-panel .town-scene {
 .job-top { flex-wrap: wrap; gap: 4px 10px; }
 .job-top small[data-job-clock] { display: block; flex-basis: 100%; font-size: 14px; line-height: 1.55; }
 .building-job-clock { display: block; margin-top: 9px; color: #bde7c8; font-size: 14px; line-height: 1.5; white-space: normal; }
+
+/* The town itself owns the PC canvas. Controls have their own scroll pane so
+   opening a longer notice or building queue never shortens the illustration. */
+html.sengoku-desktop-fit #main[data-view="town"] {
+  display: flex; flex-direction: column; gap: 10px; padding: 12px;
+  overflow: hidden; scrollbar-gutter: auto; scroll-padding: 0;
+}
+html.sengoku-desktop-fit #main[data-view="town"] > :not(.town-workspace) { flex: none; margin: 0; }
+html.sengoku-desktop-fit #main[data-view="town"] > :is(.notice,.banner) { max-height: 118px; overflow-y: auto; }
+html.sengoku-desktop-fit #main .town-workspace.dashboard-grid {
+  display: grid; grid-template-columns: minmax(0,1fr) clamp(264px,27%,360px);
+  flex: 1 1 0; min-height: 0; height: 100%; gap: 14px; align-items: stretch;
+}
+html.sengoku-desktop-fit[data-layout-townratio] #main .town-workspace.dashboard-grid {
+  grid-template-columns: minmax(0,var(--layout-town-left)) minmax(0,var(--layout-town-right));
+}
+html.sengoku-desktop-fit #main .town-workspace > .town-visual {
+  display: block; min-width: 0; min-height: 0; height: 100%;
+}
+html.sengoku-desktop-fit #main .town-workspace .town-panel {
+  display: grid; grid-template-rows: auto minmax(0,1fr); align-content: stretch;
+  height: 100%; min-height: 0; margin: 0; border-radius: 12px;
+}
+html.sengoku-desktop-fit #main .town-workspace .town-scene-heading {
+  grid-row: 1; min-height: 42px; padding: 3px 10px; gap: 8px;
+}
+html.sengoku-desktop-fit #main .town-workspace .town-scene-heading .scene-label {
+  font-size: 14px; line-height: 1.45; overflow-wrap: anywhere; letter-spacing: .02em;
+}
+html.sengoku-desktop-fit #main .town-workspace .scene-topright { gap: 5px; }
+html.sengoku-desktop-fit #main .town-workspace .scene-topright button { width: 36px; min-width: 36px; height: 36px; }
+html.sengoku-desktop-fit #main .town-workspace .town-panel .town-scene {
+  grid-row: 2; align-self: center; height: var(--town-auto-height,100%); min-height: 0;
+  width: 100%; max-height: 100%; aspect-ratio: auto;
+}
+html.sengoku-desktop-fit #main .town-workspace .town-scene-legend { display: none; }
+html.sengoku-desktop-fit #main .town-workspace .town-panel > .scene-caption {
+  display: none;
+}
+html.sengoku-desktop-fit #main .town-workspace .scene-caption strong { font-size: 16px; line-height: 1.45; letter-spacing: .03em; }
+html.sengoku-desktop-fit #main .town-workspace .scene-caption small { display: none; }
+html.sengoku-desktop-fit #main .town-workspace .scene-caption .weather { display: inline-flex; font-size: 14px; }
+html.sengoku-desktop-fit #main .town-workspace > .town-console {
+  display: flex; flex-direction: column; align-content: start; gap: 14px;
+  height: 100%; min-height: 0; min-width: 0; padding: 0 7px 8px 0;
+  overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain;
+  scrollbar-gutter: stable; scrollbar-width: thin; scroll-padding: 8px;
+}
+html.sengoku-desktop-fit #main .town-console > * { flex: none; min-width: 0; }
+html.sengoku-desktop-fit #main .town-overview {
+  padding: 12px; border: 1px solid #d9bd7838; border-radius: 10px;
+  background: linear-gradient(145deg,#24383f,#182831);
+}
+html.sengoku-desktop-fit #main .town-overview .page-heading { display: block; margin: 0 0 10px; }
+html.sengoku-desktop-fit #main .town-overview .page-heading h1 { font-size: 25px; line-height: 1.4; letter-spacing: .04em; overflow-wrap: anywhere; }
+html.sengoku-desktop-fit #main .town-overview .page-heading .eyebrow { font-size: 11px; line-height: 1.5; margin: 0 0 3px; }
+html.sengoku-desktop-fit #main .town-overview .subtitle { font-size: 14px; line-height: 1.6; margin: 4px 0 0; }
+html.sengoku-desktop-fit #main .town-overview .page-heading-actions { display: flex; justify-content: space-between; width: 100%; gap: 8px; margin-top: 10px; }
+html.sengoku-desktop-fit #main .town-overview .page-heading-actions > .button { min-height: 38px; padding: 7px 9px; font-size: 14px; }
+html.sengoku-desktop-fit #main .town-overview .command-pips { gap: 3px; }
+html.sengoku-desktop-fit #main .town-overview .command-pips i { width: 13px; }
+html.sengoku-desktop-fit #main .town-overview .realtime-strip { margin: 0; padding: 9px 0 0; border-width: 1px 0 0; border-radius: 0; background: none; gap: 7px 10px; }
+html.sengoku-desktop-fit #main .town-overview .live-state { flex-basis: 100%; font-size: 14px; line-height: 1.5; }
+html.sengoku-desktop-fit #main .town-overview .currency-chip { min-height: 36px; padding: 5px 8px; font-size: 14px; }
+html.sengoku-desktop-fit #main .town-overview .shared-time-speed { margin-left: 0; font-size: 14px; }
+html.sengoku-desktop-fit #main .town-overview .sync-access-notice { margin: 10px 0 0; padding: 9px; font-size: 14px; gap: 8px; flex-wrap: wrap; }
+html.sengoku-desktop-fit #main .town-overview .sync-access-notice > span { min-width: 0; }
+html.sengoku-desktop-fit #main .town-overview .sync-access-notice .button { margin-left: auto; }
+html.sengoku-desktop-fit #main .town-facility-console .section-heading { margin: 0 0 9px; gap: 7px; }
+html.sengoku-desktop-fit #main .town-facility-console .section-heading h2 { font-size: 18px; }
+html.sengoku-desktop-fit #main .town-facility-console .text-link { font-size: 14px; min-height: 36px; text-align: left; }
+html.sengoku-desktop-fit #main .town-facility-console .buildings-grid {
+  display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); grid-auto-flow: row; grid-auto-columns: auto;
+  gap: 8px; padding: 0; overflow: visible; scroll-snap-type: none;
+}
+html.sengoku-desktop-fit #main .town-facility-console .building-card { display: block; min-width: 0; padding: 9px; text-align: left; }
+html.sengoku-desktop-fit #main .town-facility-console .building-art { width: 100%; height: 58px; margin: 0 0 7px; }
+html.sengoku-desktop-fit #main .town-facility-console .building-top { margin: 0 0 3px; }
+html.sengoku-desktop-fit #main .town-facility-console .building-card h3 { font-size: 17px; line-height: 1.45; }
+html.sengoku-desktop-fit #main .town-facility-console .building-card p { margin-top: 4px; font-size: 14px; line-height: 1.45; white-space: normal; }
+html.sengoku-desktop-fit #main .town-facility-console .building-track { margin-top: 8px; }
+html.sengoku-desktop-fit #main .town-facility-console .building-level { font-size: 14px; }
+html.sengoku-desktop-fit #main .town-facility-console .tip-bar { margin: 10px 0 0; padding: 10px; font-size: 14px; }
+html.sengoku-desktop-fit #main .town-status-panels { display: grid; grid-template-columns: minmax(0,1fr); gap: 12px; }
+html.sengoku-desktop-fit #main .town-status-panels > .panel { min-width: 0; margin: 0; padding: 13px; }
+html.sengoku-desktop-fit #main .town-status-panels .panel-heading { margin-bottom: 10px; }
+html.sengoku-desktop-fit #main .town-status-panels .panel-heading h2 { font-size: 18px; }
+html.sengoku-desktop-fit #main .town-status-panels .stat-row { margin: 8px 0; font-size: 14px; }
+html.sengoku-desktop-fit #main .town-status-panels .objective h3 { font-size: 23px; line-height: 1.45; }
+html.sengoku-desktop-fit #main .town-status-panels .objective p { font-size: 16px; }
+
+/* A smaller header leaves more height for the scene without reducing text. */
+@media (min-width: 1001px) {
+  html.sengoku-desktop-fit:not([data-layout-header]) body:has(#main[data-view="town"]) .topbar { min-height: 78px; padding-top: 8px; padding-bottom: 8px; }
+  html.sengoku-desktop-fit body:has(#main[data-view="town"]) .resource-gain { display: inline; margin-left: 5px; }
+}
+@container game-content (max-width: 700px) {
+  html.sengoku-desktop-fit #main .town-workspace.dashboard-grid { grid-template-columns: minmax(0,1fr) 220px; gap: 10px; }
+  html.sengoku-desktop-fit[data-layout-townratio] #main .town-workspace.dashboard-grid { grid-template-columns: minmax(0,var(--layout-town-left)) minmax(0,var(--layout-town-right)); }
+  html.sengoku-desktop-fit #main .town-console { padding-right: 3px; }
+  html.sengoku-desktop-fit #main .town-overview { padding: 10px; }
+  html.sengoku-desktop-fit #main .town-facility-console .buildings-grid { grid-template-columns: minmax(0,1fr); }
+  html.sengoku-desktop-fit #main .town-workspace .scene-caption .weather { display: none; }
+}
+@container game-content (max-width: 460px) {
+  html.sengoku-desktop-fit #main .town-workspace.dashboard-grid { grid-template-columns: minmax(0,1fr) minmax(130px,44%); gap: 8px; }
+  html.sengoku-desktop-fit #main .town-overview .page-heading h1 { font-size: 22px; }
+  html.sengoku-desktop-fit #main .town-overview .page-heading-actions { flex-direction: column; align-items: flex-start; }
+  html.sengoku-desktop-fit #main .town-workspace .scene-topright { display: none; }
+}
+
+/* The same semantic controls return to document flow on phones and tablets. */
+html:not(.sengoku-desktop-fit) #main .town-workspace.dashboard-grid { display: flex; flex-direction: column; gap: 0; }
+html:not(.sengoku-desktop-fit) #main .town-workspace > .town-visual,
+html:not(.sengoku-desktop-fit) #main .town-workspace > .town-console { display: contents; }
+html:not(.sengoku-desktop-fit) #main .town-overview { order: 0; }
+html:not(.sengoku-desktop-fit) #main .town-workspace .town-panel { order: 1; }
+html:not(.sengoku-desktop-fit) #main .town-facility-console { order: 2; }
+html:not(.sengoku-desktop-fit) #main .town-status-panels { order: 3; display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 16px; margin-top: 18px; }
+html:not(.sengoku-desktop-fit) #main .town-status-panels > .panel { margin: 0; min-width: 0; }
+html:not(.sengoku-desktop-fit) #main .town-status-panels > .panel:last-child { grid-column: 1 / -1; }
+@media (max-width: 600px) {
+  html:not(.sengoku-desktop-fit) #main .town-status-panels { grid-template-columns: minmax(0,1fr); }
+}
+
+.staff-base-notice strong { display: block; font-size: 18px; line-height: 1.5; }
+.staff-base-notice p,.staff-base-note { font-size: 16px; line-height: 1.65; overflow-wrap: anywhere; }
+.staff-base-notice small { display: block; margin-top: 7px; font-size: 14px; line-height: 1.5; }
+.staff-base-jobs { display: grid; gap: 12px; }
+.staff-base-job { min-width: 0; padding: 10px 0; border-bottom: 1px solid #d9bd7828; }
+.staff-base-job:last-child { border-bottom: 0; }
+.staff-base-job :is(strong,b) { overflow-wrap: anywhere; }
+.staff-base-job small { display: block; font-size: 14px; line-height: 1.55; }
+.staff-base-job .progress { margin-top: 7px; }
+.staff-base-upgrade { white-space: normal; overflow-wrap: anywhere; }

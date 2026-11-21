@@ -184,6 +184,7 @@ All four routes return this snapshot shape on success:
   serverTime: "2026-11-21T00:00:00.000Z",
   writable: true,
   entitlements: {edo: false, ieyasuU: false},
+  staffBase: null, // current staff receive the separate shared base DTO below
   clock // current shared world clock, as specified above
 }
 ```
@@ -210,12 +211,12 @@ The client polls snapshots every five seconds while the document is visible, sch
 
 The sole authority is `settings.adminUserId`, established by the existing one-time `/admin/claim` flow. Every authenticated request resolves the current role from the server; the save file, device name, browser settings and request body cannot grant it. `entitlements.edo` and `entitlements.ieyasuU` are both true only for that identity.
 
-General-player writes containing `home:"edo"`, ownership of Edo under their own clan, or the variant `of_b0616adde162:U` are rejected with HTTP 403 `ADMIN_ENTITLEMENT_REQUIRED`. Other ranks of that officer remain usable. A general player completes unification over 127 eligible castles; an operator has all 128 available.
+General-player writes containing `home:"edo"`, ownership of Edo under their own clan, or the variant `of_b0616adde162:U` are rejected with HTTP 403 `ADMIN_ENTITLEMENT_REQUIRED`. Other ranks of that officer remain usable. A general player completes unification over 126 eligible castles; staff and the operator each have 127 available because the other reserved base is excluded.
 
-For the operator, reading or writing a valid save idempotently includes Tokugawa Ieyasu (`of_b0616adde162`) and its U variant, fixes `state.clan` to the reserved `德川家`, and fixes the home at Edo (`home:"edo"`, `castles.edo.owner=state.clan`). Only castles owned by the save's previous clan are renamed; ordinary `徳川家` NPC holdings are not automatically added when the previous clan was different. An older operator save based elsewhere moves to Edo while retaining its former territory, resources, buildings and collection. On that initial move only, each of Edo's troop, wall and castle levels becomes the maximum of its old value and the former home's value. A pending Edo castle job is adjusted to the next level, or completed/removed if Edo is already level 32. Other jobs and their remaining time are preserved. Edo is included once in `captureRewards`; repeated restoration never replenishes troops or duplicates rewards. Both the client and backend enforce this same deterministic migration, and the public field always locates an operator at Edo. No extra restore endpoint or second administrator-registration key is required on linked devices.
+For the operator, reading or writing a valid save idempotently includes Tokugawa Ieyasu (`of_b0616adde162`) and its U variant, fixes `state.clan` to the reserved `德川家`, and fixes the home at Edo (`home:"edo"`, `castles.edo.owner=state.clan`). Only castles owned by the save's previous clan are renamed; ordinary `徳川家` NPC holdings are not automatically added when the previous clan was different. An older operator save based elsewhere moves to Edo while retaining its former territory, resources, buildings and collection. On that initial move only, each of Edo's troop, wall and castle levels becomes the maximum of its old value and the former home's value. A pending Edo castle job is adjusted to the next level, or completed/removed if Edo is already level 64. Other jobs and their remaining time are preserved. Edo is included once in `captureRewards`; repeated restoration never replenishes troops or duplicates rewards. Both the client and backend enforce this same deterministic migration, and the public field always locates an operator at Edo. No extra restore endpoint or second administrator-registration key is required on linked devices.
 
 If an account has a previously stored operator save but is no longer the operator, reads remain recoverable: Ieyasu U becomes SSS; Edo ownership and its castle jobs are removed; Edo as the home is relocated to the clan's usual owned home or another owned castle. For an Edo-only campaign its castle level and garrison move to the clan's original home, preserving the rest of the progress. This read-time migration does not increment the stored revision or renew the lease. The next write is still subject to full general-player validation. There is no public role-reassignment endpoint.
-When that legacy save has `clan:"德川家"`, read migration first neutralizes ordinary `徳川家` NPC holdings, then renames the old reserved holdings to ordinary `徳川家`. This preserves the old ownership set; it never grants the whole ordinary Tokugawa territory. Any now-self treaty is removed. A new ordinary save with the reserved clan is rejected with 403 `ADMIN_CLAN_REQUIRED`, regardless of imported role flags. The first-start UI excludes Edo, Nijo, Osaka and Nagoya, while existing ordinary saves at Nijo/Osaka/Nagoya remain valid; the sync API does not treat a historical imported home as proof of a new-start selection. Edo stays operator-only in every save and is protected from public-field raids. Field summaries include `majorCity:boolean` for these four homes. `node scripts/test-clans.mjs` verifies the character distinction, migration, ordinary metropolitan save compatibility and protected Edo attacks.
+When that legacy save has `clan:"德川家"`, read migration first neutralizes ordinary `徳川家` NPC holdings, then renames the old reserved holdings to ordinary `徳川家`. This preserves the old ownership set; it never grants the whole ordinary Tokugawa territory. Any now-self treaty is removed. A new ordinary save with the reserved clan is rejected with 403 `ADMIN_CLAN_REQUIRED`, regardless of imported role flags. The first-start UI excludes Edo, Sunpu, Nijo, Osaka and Nagoya, while existing ordinary saves at Nijo/Osaka/Nagoya remain valid; the sync API does not treat a historical imported home as proof of a new-start selection. Edo stays operator-only in every save and is protected from public-field raids. Field summaries include `majorCity:boolean` for these five homes. `node scripts/test-clans.mjs` verifies the character distinction, migration, ordinary metropolitan save compatibility and protected Edo attacks.
 
 ## Global online player list
 
@@ -481,7 +482,7 @@ The existing `users_last_seen_idx` supplies the time range scan; no schema migra
 
 ### Role management
 
-The primary operator can appoint existing player identities as support staff. The additional role grants access to the `admin` chat room and the private recent-connections list. It does not grant Edo, Ieyasu U, a protected field base, world-clock control, announcement editing, system mail/gift sending, staff management or another primary-operator registration. All those checks continue to require `isAdmin`. A staff member remains an ordinary player for campaign and field permissions.
+The primary operator can appoint existing player identities as support staff. The additional role grants access to the `admin` chat room, the private recent-connections list and the protected shared Sunpu base described below. It does not grant Edo, Ieyasu U, world-clock control, announcement editing, system mail/gift sending, staff management or another primary-operator registration. Those checks continue to require `isAdmin`.
 
 | Method / path | Authentication and body | Result |
 |---|---|---|
@@ -490,7 +491,7 @@ The primary operator can appoint existing player identities as support staff. Th
 
 `staffMember` contains the public `user` fields plus `appointedAt:ISO` and `appointedBy:operatorPlayerId`. The roster is sorted by appointment time and player ID. The POST response's `user` is the **target** player's current public identity, not the operator who made the request. A client must not replace its logged-in identity with this object. Resolve candidates using the existing authenticated `GET /players?q=…` search (2–24 characters), then submit the exact returned ID.
 
-The operator cannot appoint/dismiss itself. A target must already exist, and unknown action/authority fields are rejected. The initial operator registration remains single-owner; staff cannot appoint others, dismiss themselves through this endpoint or become the primary operator by submitting the registration key after a claim exists. Staff appointments do not require a game save or a writer lease because they change server identity permissions, not game progress.
+The operator cannot appoint/dismiss itself. A target must already exist, and unknown action/authority fields are rejected. The initial operator registration remains single-owner; staff cannot appoint others, dismiss themselves through this endpoint or become the primary operator by submitting the registration key after a claim exists. Staff appointments do not require a game save or a writer lease because they first change server identity permissions; the next authoritative synchronization safely migrates or restores the campaign.
 
 Every public `user` object, including `/me`, `/sync`, linked-device results, `/players` and `/online`, includes `isStaff:boolean`. Public field player summaries and chat messages also include it. `isAdmin` and `isStaff` are separate; the primary operator is represented with `isAdmin:true,isStaff:false`. Staff badges disclose only the role, not device or private account data. Imported save flags, profile changes and request-body flags cannot set either role.
 
@@ -519,10 +520,84 @@ Claim is atomic with a unique `(mailId,userId)` receipt. A second claim with the
 
 **Frontend receipt requirement:** persist pending claim request IDs before the fetch. On success, pass `gift,receiptId` to the game's save-backed gift application function. It must check and persist an applied-receipts ledger atomically with the local gift change: the four resources go to `state.resources`, while magatama goes to `state.magatama`. Replayed identical receipts must never add resources or magatama twice. A failed network response should retry with the same request ID. Mail claims cannot independently make an offline editable game save authoritative.
 
+## Shared staff base and protected metropolitan castles (v3.7)
+
+Every authenticated support staff member has a fixed, protected home at **駿府城 (`sunpu`)**. They retain their chosen ordinary clan and individual resources, officers, research, governors, army, gifts and guild balances. The primary operator takes precedence over staff membership: it remains **德川家 at 江戸城**, with the exclusive 德川家康 U. Sunpu is unavailable to ordinary players and the operator for initial selection, capture or relocation; ordinary players cannot raid a staff member's Sunpu on the shared field. Ordinary unification covers 126 eligible castles, while a staff member and the operator each cover 127. Public field and guild ranking projections apply current roles even before the player's next save.
+
+The five major cities are Edo, Sunpu, Nijo, Osaka and Nagoya. Their **castle** limit is 64; other castles are limited to 32. All 64 **facility** types remain limited to level 32. The starting selector excludes these five cities (123 ordinary choices). Existing ordinary Nijo/Osaka/Nagoya campaigns remain valid. Artwork has 32 development stages and retains stage 32 for castle levels 33–64; numeric levels and gameplay benefits continue to 64.
+
+### Source and commands
+
+| Method / path | Authorization | Result |
+|---|---|---|
+| GET `/staff/base` | Current staff or primary operator | `{ok,staffBase,clock}` |
+| POST `/staff/base/upgrade` | Current non-operator staff; own active writer | Full sync snapshot, `staffBase`, `receipt`, `idempotent` |
+
+Every normal sync snapshot also includes `staffBase` for current non-operator staff, otherwise `null`. Shared progress has its **own revision**. A completion or another staff member's construction does not increment an uninvolved player's personal save revision. The client must apply shared updates as an overlay while preserving locally dirty personal gameplay and its current screen.
+
+```js
+staffBase = {
+  id:"sunpu", revision:12, protected:true,
+  castleLevel:4,
+  buildings:{ /* all 64 known facility IDs, server-owned levels */ },
+  initial:{castleLevel:1,buildings:{ /* server-owned initial levels */ }},
+  history:[{
+    jobId:"sb_…",kind:"building",id:"farm",level:3,effectiveElapsedMs:123000
+  }],
+  jobs:[{
+    jobId:"sb_…",kind:"castle",id:"sunpu",targetLevel:5,totalSeconds:60,
+    startedElapsedMs:140000,completesElapsedMs:200000,
+    startedBy:{id:"u_…",name:"担当スタッフ"}
+  }],
+  createdElapsedMs:0,updatedElapsedMs:140000,
+  accessSinceElapsedMs:30000,
+  // Personalized timeline metadata; never included in public field summaries.
+  personalHome:"himeji",personalCycleHome:"himeji",
+  personalHomeCastle:{owner:"織田家",troops:1200,wall:1,level:12},
+  personalSunpu:{owner:"今川家",troops:3000,wall:4,level:1}
+}
+// POST /staff/base/upgrade
+{
+  kind:"building",id:"farm", // or kind:"castle",id:"sunpu"
+  requestId:"stable-uuid",deviceId:"current-document-id",
+  expectedRevision:18,baseRevision:12
+}
+receipt = {
+  requestId:"stable-uuid",jobId:"sb_…",kind:"building",id:"farm",targetLevel:4,
+  cost:{gold:0,rice:0,wood:0,stone:0}, // actual individual cost
+  startedElapsedMs:200000,completesElapsedMs:260000,
+  baseRevision:13,playerRevision:19
+}
+```
+
+The singleton starts from the engine's fixed initial facilities and castle level 1, independently of imported or existing personal saves. It is created lazily, without editing existing saves in a migration. No request accepts shared levels, resources, arbitrary job deadlines or history. A shared construction consumes the initiating staff member's individual resources and one command. The command checks the shared facility unlock, shared capacity (`2 + floor(sharedKeep / 8)`), target level and no existing job for that same target. Castle jobs and facility jobs compete for the same shared slots; other castles and pre-appointment personal jobs remain individual. Shared facility jobs do not use another member's resources or individual job slots.
+
+A conditional request insert checks, in the same D1 batch, the current staff membership **term**, absence of operator priority, exact personal revision, active device lease, shared base revision, and running shared-clock revision. Its unique per-attempt nonce gates the personal debit/save update and shared job update. One competing same-target job can succeed; rejected races cause no debit or receipt. SQL failure rolls back every part. Each staff account keeps its own writer lease; there is no single global staff writer.
+
+Persist a request ID and the **original `baseRevision`** before sending. After an uncertain response, retry the same kind, target, ID and original base revision, using the current device and flushed personal revision. A completed request is found before save/lease/base revision checks, but only after current staff authorization. Replaying returns the same receipt and current snapshot without another payment. Reusing an ID with a different target or base revision returns `REQUEST_ID_REUSED`. A dismissed member cannot read the shared source or replay a staff construction response. Completed jobs remain part of the shared base after their initiator leaves.
+
+New construction attempts are limited to 30 per real minute per player. Common errors are 403 `STAFF_BASE_REQUIRED`, 409 `STAFF_BASE_CHANGED`, `STAFF_BUILDING_BUSY`, `STAFF_BUILDING_SLOTS`, `BUILDING_LOCKED`, `BUILDING_MAX`, `COMMAND_REQUIRED`, `INSUFFICIENT_ASSETS`, `WORLD_PAUSED`, `CLOCK_STALE`, `LEASE_REQUIRED`, `REVISION_CONFLICT`, and 400 `INVALID_INPUT`. After success, refresh until both personal and shared revisions are at least the receipt revisions before clearing the pending operation. On source failure, disable shared commands; do not invent an offline shared job.
+
+### Historical progression and individual campaign restoration
+
+Shared jobs use the monotonic world elapsed time. Pause/resume and speed changes therefore affect every staff member consistently. Completed jobs append immutable effective-time level changes; pending authoritative deadlines may be projected locally at the same instant. Bounded history (at most the finite facility/castle upgrades, under 2,200 entries) is delivered separately from the two-MiB personal save. Offline progression integrates the old level up to each effective time and the new level afterward, including exact monthly boundaries. It also uses personal facilities and ownership before the member's admission time. Latest shared levels are never applied retroactively to an entire offline period.
+
+The engine receives roles only through trusted `fromSave`/constructor options `{isAdmin,isStaff,staffBase}` or atomic `setRoleAccess({isAdmin,isStaff})`. `applyStaffBase(base)` returns `{ok,changed}`; older or identical shared revisions cannot rewind the overlay. `exportSave()` writes personal facility/Sunpu development, not projected shared levels/history. `state.staffService={baseId:"sunpu"}` is a compatibility marker for old personal jobs and cleanup, never an entitlement. Forged `isStaff`, `isAdmin`, `role` and `staffBase` save fields cannot grant protected castles or alter shared progress.
+
+On the first authoritative save read after appointment, a guarded transaction preserves a full canonical personal campaign, the membership term and its admission time, then fixes the live home at Sunpu. Before capture reset and after accepted personal castle progress, the preserved original home's development is updated in the same successful save transaction. Personal construction started before appointment continues to complete into the personal facility copy. A shared completion cannot overwrite it.
+
+Dismissal records the world elapsed time atomically with the role change. Restoration advances the staff period only up to that exact time using historical shared levels, then returns to the original personal home with its retained development. Current individual currencies, officers, research, jobs, gifts and remaining territory are retained; invalid governors are removed and command capacity is clamped to the restored personal keep. Shared-only castle ownership is removed. Reappointment has a new unique term even in the same real millisecond, preventing a previous term's delayed requests from committing into it. Operator promotion restores the personal campaign before applying operator Edo/德川家 assets. A staff period that spans world cycles keeps exactly-once cycle receipts and the shared base's growth.
+
+Long disconnected departures are processed in bounded chunks of at most 86,400 world seconds per sync request. A saved intermediate checkpoint returns 409 `STAFF_TRANSITION_PENDING`; visible automatic sync continues from that checkpoint without replaying rewards. Shared permission is already revoked. No unbounded simulation or synthetic retroactive cycle grants occur in one request.
+
+An existing ordinary Sunpu home is relocated to its clan's eligible owned home, otherwise another eligible owned castle, otherwise its ordinary clan home. Garrison, wall and castle growth are retained within the destination's cap. A pending Sunpu castle job follows the moved home; existing destination jobs are rebased and deduplicated, so an old save can be loaded and exported again safely. Ordinary writes claiming new Sunpu ownership return 403 `STAFF_ENTITLEMENT_REQUIRED`. An old Sunpu home appointed to staff is first preserved as this ordinary migrated campaign, ensuring later dismissal cannot leave an ordinary player at protected Sunpu.
+
+Public achievements are emitted once per authoritative shared-job completion, naming the initiating staff member, the Sunpu facility/castle and achieved level. Completion history, private campaign backups, costs and resource totals are not public. The shared source is private to staff and the operator.
+
 ## Deployment
 
 Use a dependency-free Cloudflare Worker ESM with `env.DB` and private `env.BUCKET`. Required manifest bindings: `d1:"DB"`, `r2:"BUCKET"`, no `static` field. Sites provisions the R2 bucket; no public object bucket URL is required.
-Run `node scripts/build.mjs` to copy `worker/index.js` to `dist/server/index.js`; preserve `drizzle/` in source so Sites packages and applies the schema migrations. Apply `0000_social`, `0001_cloud_sync`, `0002_world_clock`, `0003_shared_field`, `0004_staff_roles`, `0005_user_avatars` and `0006_guild_assets` using the append-only journal. The previously recorded migration files and journal entries are unchanged. `0001_cloud_sync` creates `user_sessions`, `pairing_codes`, `player_saves`, `player_presence` and their indexes; `0002_world_clock` adds the singleton clock table; `0003_shared_field` adds the operation ledger, player relations and battle records with their indexes; `0004_staff_roles` adds support-staff membership and its role-operation ledger; `0005_user_avatars` adds image metadata only; `0006_guild_assets` adds deputy roles, pooled balances and durable asset/management operation ledgers with indexes; `0007_world_cycles` adds save cycle markers, immutable settlement receipts and public achievement events. These migrations are schema-only, with no data mutations. No table creation or schema alterations occur inside request handling.
+After any frontend engine change, run `node scripts/sync-game-runtime.mjs <absolute frontend dist>` and verify exact engine parity. Run `node scripts/build.mjs` to concatenate `worker/game-officers.js`, `worker/game-engine.js` and `worker/index.js` into one deployable `dist/server/index.js` Worker ESM; `worker/game-runtime.js` remains the source/test import adapter. Do not deploy a raw copy of `worker/index.js` without its runtime modules; preserve `drizzle/` in source so Sites packages and applies the schema migrations. Apply `0000_social`, `0001_cloud_sync`, `0002_world_clock`, `0003_shared_field`, `0004_staff_roles`, `0005_user_avatars`, `0006_guild_assets`, `0007_world_cycles` and `0008_staff_base` using the append-only journal. The previously recorded migration files and journal entries are unchanged. `0001_cloud_sync` creates `user_sessions`, `pairing_codes`, `player_saves`, `player_presence` and their indexes; `0002_world_clock` adds the singleton clock table; `0003_shared_field` adds the operation ledger, player relations and battle records with their indexes; `0004_staff_roles` adds support-staff membership and its role-operation ledger; `0005_user_avatars` adds image metadata only; `0006_guild_assets` adds deputy roles, pooled balances and durable asset/management operation ledgers with indexes; `0007_world_cycles` adds save cycle markers, immutable settlement receipts and public achievement events; `0008_staff_base` adds membership terms/world admission times, shared Sunpu state and request receipts, and private campaign backups with exact departure times. These migrations are schema-only, with no data mutations. No table creation or schema alterations occur inside request handling.
 
 Default CORS origins: the API's own origin, `https://www.kasai-solutions-inc.com`, the previous `https://uni-tadayasu.github.io` origin, `http://127.0.0.1:4173`, and the literal `null` origin for offline file HTML. No credentials/cookies are allowed. The custom-domain allowance is an exact HTTPS origin match, not a suffix or wildcard. Keeping the previous origin allows an existing signed-in device there to issue its own pairing code during migration.
 For a different hosted frontend, set `SENGOKU_ALLOWED_ORIGINS` to its exact origin, or comma-separated exact origins. Do not include paths or wildcards.
@@ -534,7 +609,7 @@ The Worker uses D1 `prepare`, `bind`, `first`, `run`, `all` and `batch` APIs. It
 
 ## Local verification
 
-Run `node scripts/test-social.mjs`, `node scripts/test-sync.mjs`, `node scripts/test-world-clock.mjs`, `node scripts/test-field.mjs`, `node scripts/test-staff.mjs`, `node scripts/test-admin-recovery.mjs`, `node scripts/test-recent-logins.mjs`, `node scripts/test-avatar-jpeg.mjs`, `node scripts/test-avatars.mjs`, `node scripts/test-clans.mjs`, `node scripts/test-guild-assets.mjs` and `node scripts/test-guild-roles.mjs` using Node 24 or a Node version providing `node:sqlite`. Run `node --check worker/index.js` for the Worker syntax check.
+Run `node scripts/test-social.mjs`, `node scripts/test-sync.mjs`, `node scripts/test-world-clock.mjs`, `node scripts/test-field.mjs`, `node scripts/test-staff.mjs`, `node scripts/test-admin-recovery.mjs`, `node scripts/test-recent-logins.mjs`, `node scripts/test-avatar-jpeg.mjs`, `node scripts/test-avatars.mjs`, `node scripts/test-clans.mjs`, `node scripts/test-guild-assets.mjs` `node scripts/test-guild-roles.mjs`, `node scripts/test-world-cycles.mjs`, `node scripts/test-staff-base.mjs` and `node scripts/test-staff-campaigns.mjs` using Node 24 or a Node version providing `node:sqlite`. Run `node --check worker/index.js` for the Worker syntax check.
 
 The avatar parser fixtures include baseline/progressive RGB/grayscale, restart markers and the actual Chrome canvas output; API tests use an isolated R2 map to cover cleanup races and uncertain DB responses. Recent-connection tests verify current-role SQL guards and rolling-window privacy. Clan tests verify reserved/ordinary character variants and deterministic migration. Guild suites inject mid-transaction SQL failures and post-commit response loss, concurrent duplicate/competing transfers, competing users' withdrawals, stale writers/revisions, membership/role revocation, promoted targets, protected private chat/history, preserved final funds and safe public ranking aggregation. All tests use local fixtures and do not modify production accounts, roles, saves, photos or messages.
 

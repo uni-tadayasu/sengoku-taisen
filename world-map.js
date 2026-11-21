@@ -57,7 +57,9 @@ function castlePoints(castles,coordinates,options={}){
     const lon=Number(Array.isArray(source)?source[0]:source.lon??source.lng??source.longitude),lat=Number(Array.isArray(source)?source[1]:source.lat??source.latitude);
     if(!Number.isFinite(lon)||!Number.isFinite(lat)||lon<120||lon>151||lat<20||lat>48)return[];
     const [x,y]=project(lon,lat),own=castle.owner===options.clan,ally=(options.treaties?.[castle.owner]||0)>(options.turn||0);
-    return[{...castle,lon,lat,x,y,own,ally,selected:castle.id===options.selectedId,home:castle.id===options.homeId,disabled:castle.id==='edo'&&options.isAdmin!==true&&options.allowRestrictedSelection!==true,accuracy:source.accuracy||castle.accuracy||'',sourceURL:source.sourceURL||source.sourceUrl||''}];
+    const restrictedLabel=castle.id==='edo'?'運営専用':castle.id==='sunpu'?'スタッフ専用':'';
+    const restricted=castle.id==='edo'&&options.isAdmin!==true||castle.id==='sunpu'&&(options.isStaff!==true||options.isAdmin===true);
+    return[{...castle,lon,lat,x,y,own,ally,selected:castle.id===options.selectedId,home:castle.id===options.homeId,restrictedLabel,disabled:restricted&&options.allowRestrictedSelection!==true,accuracy:source.accuracy||castle.accuracy||'',sourceURL:source.sourceURL||source.sourceUrl||''}];
   });
 }
 function layoutMarkers(points,view,width,height,{distance=27,labels=true}={}){
@@ -104,7 +106,7 @@ function mount(container,options={}){
   if(!container||typeof container.querySelector!=='function')return null;
   const previous=mounted.get(container);if(previous){previous.update(options);return previous;}
   const key=options.stateKey||'campaign-map';activeKeys.get(key)?.destroy();
-  let opts={region:'all',clan:'',isAdmin:false,turn:0,...options},geography=opts.geography||global.SENGOKU_GEOGRAPHY;
+  let opts={region:'all',clan:'',isAdmin:false,isStaff:false,turn:0,...options},geography=opts.geography||global.SENGOKU_GEOGRAPHY;
   const coordinates=()=>opts.coordinates||global.SENGOKU_CASTLE_COORDS||geography?.castles||{};
   const countryBounds=projectBounds(geography?.bounds||[122,24,149,46]),landPath=geometryPath(geography?.land);
   if(!landPath){container.innerHTML='<div class="sg-map-unavailable"><strong>地形データを読み込めませんでした</strong><p>ページを再読み込みしてください。拠点一覧からは城を選べます。</p></div>';return null;}
@@ -159,13 +161,13 @@ function mount(container,options={}){
     let crest='';if(!marker.cluster&&typeof opts.crestFor==='function'){const url=safeUrl(opts.crestFor(marker.owner));if(url)crest=`<img class="sg-map-tooltip-crest" src="${esc(url)}" alt="">`;}
     let custom=null;try{if(!marker.cluster&&typeof opts.markerTooltip==='function')custom=opts.markerTooltip(marker);}catch(_){}
     if(custom&&typeof custom==='object')tooltip.innerHTML=`<strong>${esc(custom.title||marker.name)}</strong>${custom.description?`<p>${esc(custom.description)}</p>`:''}${custom.detail?`<small>${esc(custom.detail)}</small>`:''}`;
-    else tooltip.innerHTML=marker.cluster?`<strong>${marker.points.length}${esc(opts.countUnit||'城')}がこの地域にあります</strong><p>${esc(marker.points.slice(0,5).map(p=>p.name).join('・'))}${marker.points.length>5?' ほか':''}</p><small>クリック・タップで拡大</small>`:`<div class="sg-map-tooltip-heading">${crest}<div><strong>${esc(marker.name)}</strong><p>${esc(marker.owner||'')} · Lv.${Number(marker.level)||1}${marker.disabled?' · 運営専用':''}</p></div></div><small>${Number(marker.troops||0).toLocaleString('ja-JP')}兵 · ${marker.lat.toFixed(4)}°N ${marker.lon.toFixed(4)}°E</small>`;
+    else tooltip.innerHTML=marker.cluster?`<strong>${marker.points.length}${esc(opts.countUnit||'城')}がこの地域にあります</strong><p>${esc(marker.points.slice(0,5).map(p=>p.name).join('・'))}${marker.points.length>5?' ほか':''}</p><small>クリック・タップで拡大</small>`:`<div class="sg-map-tooltip-heading">${crest}<div><strong>${esc(marker.name)}</strong><p>${esc(marker.owner||'')} · Lv.${Number(marker.level)||1}${marker.disabled?' · '+esc(marker.restrictedLabel):''}</p></div></div><small>${Number(marker.troops||0).toLocaleString('ja-JP')}兵 · ${marker.lat.toFixed(4)}°N ${marker.lon.toFixed(4)}°E</small>`;
     tooltip.hidden=false;const box=tooltip.getBoundingClientRect(),surfaceBounds=surface.getBoundingClientRect(),sx=width/Math.max(1,surfaceBounds.width),sy=height/Math.max(1,surfaceBounds.height),x=clamp(marker.sx+16,8,Math.max(8,width-box.width*sx-8)),y=clamp(marker.sy+24,64,Math.max(64,height-box.height*sy-70));tooltip.style.left=x+'px';tooltip.style.top=y+'px';
   }
   function selectMarker(marker){
     if(!marker||destroyed)return;
     if(marker.cluster){hideTooltip();setView(fitBounds(marker.bounds,width,height,100),{animate:true});return;}
-    if(marker.disabled){container.querySelector('[data-map-live]').textContent='江戸城は運営専用です。';return;}
+    if(marker.disabled){container.querySelector('[data-map-live]').textContent=marker.name+'は'+(marker.restrictedLabel||'専用拠点')+'です。';return;}
     opts.selectedId=marker.id;opts.onSelect?.(marker.id);
     if(!destroyed){points=castlePoints(opts.castles,coordinates(),opts);schedule();}
   }
@@ -178,7 +180,7 @@ function mount(container,options={}){
       entry.marker=marker;const button=entry.node,symbol=button.firstElementChild,label=button.lastElementChild;
       button.style.left=marker.sx+'px';button.style.top=marker.sy+'px';button.style.zIndex=String(marker.priority);
       button.className='sg-map-marker '+(marker.cluster?'is-cluster ':'')+(marker.own?'is-own ':marker.ally?'is-ally ':'is-other ')+(marker.reachable?'is-reachable ':'')+(marker.selected?'is-selected ':'')+(marker.home?'is-home ':'')+(marker.disabled?'is-disabled':'');
-      button.disabled=Boolean(marker.disabled);button.setAttribute('aria-label',marker.cluster?`${marker.points.length}城の地域を拡大：${marker.points.map(p=>p.name).join('、')}`:`${marker.name} ${marker.owner||''} ${marker.home?'本拠 ':''}${marker.disabled?'運営専用 ':''}${marker.reachable?'進軍可能 ':''}Lv.${marker.level||1}`);
+      button.disabled=Boolean(marker.disabled);button.setAttribute('aria-label',marker.cluster?`${marker.points.length}城の地域を拡大：${marker.points.map(p=>p.name).join('、')}`:`${marker.name} ${marker.owner||''} ${marker.home?'本拠 ':''}${marker.disabled?(marker.restrictedLabel||'専用拠点')+' ':''}${marker.reachable?'進軍可能 ':''}Lv.${marker.level||1}`);
       if(!marker.cluster)button.setAttribute('aria-pressed',String(marker.selected));else button.removeAttribute('aria-pressed');
       const content=marker.cluster?`<b>${marker.points.length}</b>`:marker.home?icon('home'):icon('castle');if(symbol.innerHTML!==content)symbol.innerHTML=content;
       label.hidden=!marker.label;

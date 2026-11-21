@@ -82,13 +82,13 @@ try{
   await assign(operator,b,'appoint',appointId,409);await assign(operator,a,'dismiss',appointId,409);
   const staffLease=await lease(a.token,'staff-device');assert.equal(staffLease.user.isStaff,true);assert.deepEqual(staffLease.entitlements,{edo:false,ieyasuU:false});
   const saved=(await api('/sync',write(a.token,'staff-device',0,fresh()))).data;
-  assert.equal(saved.user.isAdmin,false);assert.equal(saved.user.isStaff,true);assert.equal(saved.save.state.home,'kiyosu');assert(!saved.save.state.officerVariants.includes(ieyasu+':U'));
+  assert.equal(saved.user.isAdmin,false);assert.equal(saved.user.isStaff,true);assert.equal(saved.save.state.home,'sunpu');assert(saved.staffBase?.protected);assert(!saved.save.state.officerVariants.includes(ieyasu+':U'));
   const edo=fresh();edo.state.home='edo';edo.state.castles.edo.owner=edo.state.clan;
   assert.equal((await api('/sync',write(a.token,'staff-device',1,edo,403))).data.error.code,'ADMIN_ENTITLEMENT_REQUIRED');
   const exclusive=fresh();exclusive.state.officers.push(ieyasu);exclusive.state.officerVariants.push(ieyasu+':U');
   await api('/sync',write(a.token,'staff-device',1,exclusive,403));
   const forged=fresh();forged.state.isStaff=true;forged.state.isAdmin=true;forged.state.role='admin';
-  const stripped=(await api('/sync',write(a.token,'staff-device',1,forged))).data;assert.equal(stripped.save.state.isStaff,undefined);assert.equal(stripped.save.state.role,undefined);assert.equal(stripped.user.isAdmin,false);
+  const stripped=(await api('/sync',write(a.token,'staff-device',saved.revision,forged))).data;assert.equal(stripped.save.state.isStaff,undefined);assert.equal(stripped.save.state.role,undefined);assert.equal(stripped.user.isAdmin,false);
   await api('/admin/staff',{token:a.token,expected:403});await assign(a,b,'appoint',crypto.randomUUID(),403);await assign(a,a,'dismiss',crypto.randomUUID(),403);
   await api('/admin/announcement',post(a.token,{text:'権限なし'},403));
   await api('/admin/mail',post(a.token,{target:'all',title:'権限なし',body:'送信不可',gift:null,requestId:crypto.randomUUID()},403));
@@ -104,7 +104,7 @@ try{
   await presence(a.token,'staff-device',true);
   const online=(await api('/online')).data.players.find(p=>p.id===a.user.id);assert(online.isStaff);assert(!online.isAdmin);
   const found=(await api('/players?q='+encodeURIComponent('支援スタッフ'),{token:operator.token})).data.players.find(p=>p.id===a.user.id);assert(found.isStaff);
-  const field=(await api('/field',{token:b.token})).data.players.find(p=>p.playerId===a.user.id);assert(field.isStaff);assert(!field.isAdmin);assert.equal(field.homeCastleId,'kiyosu');
+  const field=(await api('/field',{token:b.token})).data.players.find(p=>p.playerId===a.user.id);assert(field.isStaff);assert(!field.isAdmin);assert.equal(field.homeCastleId,'sunpu');assert.equal(field.attackable,false);
   const code=(await api('/devices/pair-code',post(a.token,{}))).data.code;
   const linked=(await api('/devices/link',post(null,{code,deviceName:'スタッフの別端末'}))).data;assert(linked.user.isStaff);assert(!linked.user.isAdmin);await adminRead(linked);
   const dismissId=crypto.randomUUID(),dismissed=await assign(operator,a,'dismiss',dismissId);assert.equal(dismissed.idempotent,false);assert.equal(dismissed.user.isStaff,false);assert.equal(dismissed.staff.length,0);assert.equal(memberCount(a.user.id),0);

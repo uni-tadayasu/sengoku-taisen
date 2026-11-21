@@ -23,7 +23,7 @@ test('ordinary Tokugawa starts with Ieyasu SSS and cannot choose Edo',()=>{
   assert.equal(g.canOwnCastle('edo'),false);
   assert.equal(g.canOwnOfficerVariant(IEYASU,'U'),false);
   assert.equal(g.collection().totalVariants,2047);
-  assert.equal(g.unificationTarget(),127);
+  assert.equal(g.unificationTarget(),126);
   const before=structuredClone(g.state);
   assert.equal(g.selectAdminCastle().ok,false);
   assert.equal(g.restoreAdminAssets().ok,false);
@@ -92,7 +92,7 @@ test('every authenticated operator starts at fixed Edo and receives Ieyasu U onc
   assert(g.ownsVariant(IEYASU,'U'));
   assert.equal(g.gachaPool('U').length,256);
   assert.equal(g.collection().totalVariants,2048);
-  assert.equal(g.unificationTarget(),128);
+  assert.equal(g.unificationTarget(),127);
   const before=structuredClone(g.state);
   assert.equal(g.restoreAdminAssets().changed,false);
   assert.equal(g.restoreAdminAssets().changed,false);
@@ -145,8 +145,8 @@ test('operator authentication fixes Edo while retaining both castle progress and
 });
 
 test('legacy operator loads migrate to Edo and retain valid in-progress castle work',()=>{
-  for(const oldLevel of [19,32]){
-    const g=create({isAdmin:true}),home='kiyosu';
+  for(const oldLevel of [19,32,64]){
+    const g=create({isAdmin:true}),home=oldLevel===64?'nijo':'kiyosu';
     g.state.home=home;
     Object.assign(g.state.castles[home],{owner:g.state.clan,level:oldLevel,wall:9,troops:8765});
     Object.assign(g.state.castles.edo,{level:4,wall:6,troops:500});
@@ -162,7 +162,7 @@ test('legacy operator loads migrate to Edo and retain valid in-progress castle w
     assert.deepEqual(loaded.state.resources,g.state.resources);
     assert.deepEqual(loaded.state.jobs.find(j=>j.kind==='building'),g.state.jobs.find(j=>j.kind==='building'));
     const job=loaded.state.jobs.find(j=>j.kind==='castle'&&j.id==='edo');
-    if(oldLevel===32)assert.equal(job,undefined);
+    if(oldLevel===64)assert.equal(job,undefined);
     else assert.deepEqual(job,{...oldJob,targetLevel:oldLevel+1});
     assert.deepEqual(E.fromSave(loaded.exportSave(),roster,{isAdmin:true}).state,loaded.state,'Migrated jobs must remain saveable');
   }
@@ -255,15 +255,15 @@ test('legacy Ieyasu U history migrates to valid SSS history without duplicate ow
   assert.deepEqual(E.fromSave(migrated.exportSave(),roster).state,migrated.state);
 });
 
-test('ordinary campaign can conquer all 127 eligible castles and claim unification',()=>{
+test('ordinary campaign can conquer all 126 eligible castles and claim unification',()=>{
   const g=create();g.state.resources.rice=9999999;
-  while(g.ownedCastles().length<127){
-    const target=g.adjacentTargets()[0];assert(target);assert.notEqual(target.id,'edo');
+  while(g.ownedCastles().length<126){
+    const target=g.adjacentTargets()[0];assert(target);assert.notEqual(target.id,'edo');assert.notEqual(target.id,'sunpu');
     g.state.command=3;g.state.troops=50000;g.state.seed=1;
     const result=g.attack(target.id);assert(result.ok&&result.battle.won);
   }
   assert.equal(g.state.won,true);
-  assert.equal(g.questStatus('unify').target,127);
+  assert.equal(g.questStatus('unify').target,126);
   assert(g.claimQuest('unify').ok);
   assert.equal(g.adjacentTargets().length,0);
   const before=structuredClone(g.state);
