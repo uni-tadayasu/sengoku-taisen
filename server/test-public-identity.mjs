@@ -24,13 +24,30 @@ function publicOnly(value,{self=null}={}){
   if(!value||typeof value!=='object')return;
   if(value===self)return;
   for(const [key,child]of Object.entries(value)){
-    assert(!['isAdmin','isStaff','is_admin','is_staff','staffTitle','siteRole','operatorProtected','staffProtected'].includes(key),'Public role field '+key);
+    assert(!['isAdmin','isStaff','isOperator','is_admin','is_staff','is_operator','staffTitle','siteRole','roleTitle','operatorProtected','staffProtected','adminPlayerId','adminUserId','operatorPlayerId','operatorUserId'].includes(key),'Public role field '+key);
+    if(key==='role')assert(!['admin','staff','operator'].includes(child),'Public role value '+child);
     if(key==='clan')assert.notEqual(child,'德川家');
     if(key==='kind')assert.notEqual(child,'staff-building');
     if(key==='ownedProducts')assert.deepEqual(child,[],'Site privileges never grant paid purchase marks');
     publicOnly(child,{self});
   }
 }
+
+await scope('public configuration never advertises management state and self recovery remains private',async h=>{
+  const before=(await h.api('/config')).data,{admin,staff,viewer}=await people(h);
+  for(const token of [undefined,admin.token,staff.token,viewer.token]){
+    const config=(await h.api('/config',{token})).data;
+    assert.deepEqual(config,before,'Public configuration is independent of management registration');
+    for(const key of ['adminClaimed','adminRecoveryAvailable','adminPlayerId','adminUserId','management'])assert(!Object.hasOwn(config,key));
+    publicOnly(config);
+  }
+  const owner=(await h.api('/me',{token:admin.token})).data;
+  assert.equal(owner.user.isAdmin,true);assert.equal(owner.management.recoveryAvailable,true);
+  for(const actor of [staff,viewer])assert(!Object.hasOwn((await h.api('/me',{token:actor.token})).data,'management'));
+  delete h.env.SENGOKU_ADMIN_KEY;
+  assert.equal((await h.api('/me',{token:admin.token})).data.management.recoveryAvailable,false);
+  assert.deepEqual((await h.api('/config')).data,before);
+});
 
 await scope('public lists, friends, guild members, chats and field targets conceal site roles',async h=>{
   const {admin,staff,viewer}=await people(h);
@@ -52,6 +69,40 @@ await scope('public lists, friends, guild members, chats and field targets conce
   const field=(await h.api('/field',{token:viewer.token})).data;publicOnly(field);
   for(const actor of [admin,staff])assert(field.players.some(player=>player.playerId===actor.user.id));
   assert.equal(field.rules.targetCastles,true,'Public combat mechanics remain available');
+});
+
+await scope('nested historical battle objects are projected while identities, stats and stored records survive',async h=>{
+  const {admin,staff,viewer}=await people(h),id='fb_'+crypto.randomUUID().replaceAll('-','');
+  const legacy={playerId:staff.user.id,name:staff.user.name,clan:'德川家',isAdmin:false,isStaff:true,role:'staff',roleTitle:'スタッフ',adminPlayerId:admin.user.id,defensePower:4321};
+  const battle={id,attackerPlayerId:viewer.user.id,attackerName:viewer.user.name,defenderPlayerId:staff.user.id,defenderName:staff.user.name,castleId:'sunpu',castleName:'駿府城',battleMode:'reward',won:true,troops:500,defensePower:4321,history:{state:legacy,save:{state:legacy},entitlements:{owner:legacy},staffBase:{startedBy:legacy}},createdAt:new Date(h.now).toISOString()};
+  const raw=JSON.stringify(battle);
+  h.sql.prepare('INSERT INTO field_battles(id,attacker_id,defender_id,occurred_elapsed_ms,result_json,created_at) VALUES(?,?,?,?,?,?)').run(id,viewer.user.id,staff.user.id,0,raw,h.now);
+  const result=(await h.api('/field/me',{token:viewer.token})).data;publicOnly(result);
+  const projected=result.battles.find(item=>item.id===id);
+  assert.equal(projected.defenderPlayerId,staff.user.id);assert.equal(projected.defenderName,staff.user.name);assert.equal(projected.defensePower,4321);assert.equal(projected.battleMode,'reward');
+  for(const person of [projected.history.state,projected.history.save.state,projected.history.entitlements.owner,projected.history.staffBase.startedBy]){assert.equal(person.playerId,staff.user.id);assert.equal(person.name,staff.user.name);assert.equal(person.clan,'徳川家');assert.equal(person.defensePower,4321);}
+  assert.equal(h.sql.prepare('SELECT result_json FROM field_battles WHERE id=?').get(id).result_json,raw);
+  const own=(await h.api('/sync',{token:staff.token})).data;
+  assert.equal(own.user.isStaff,true);assert.equal(own.save.state.clan,'德川家');assert.equal(own.staffBase.id,'sunpu','Private shared base remains available to its authorized member');
+});
+
+await scope('site mail and event publication omit the managing player identity',async h=>{
+  const {admin,staff,viewer}=await people(h),body='本人が入力した運営・スタッフという言葉は書き換えません。';
+  const sent=(await h.api('/admin/mail',post(admin,{target:viewer.user.id,title:'催事のお知らせ',body,gift:{gold:5},requestId:'identity-site-mail'}))).data;
+  const inbox=(await h.api('/mail',{token:viewer.token})).data;publicOnly(inbox);
+  const mail=inbox.mail.find(item=>item.id===sent.mailId);
+  assert.equal(mail.source,'site');assert.equal(mail.body,body);assert.equal(mail.gift.gold,5);assert.equal(mail.event,null);
+  for(const key of ['senderId','sender_id','authorId','authorName','authorAvatarVersion','authorEvaluation','authorAppearance','createdBy','creatorId'])assert(!Object.hasOwn(mail,key));
+  assert(!JSON.stringify(mail).includes(admin.user.id));assert(!JSON.stringify(mail).includes(admin.user.name));
+  const planned=(await h.api('/admin/events/generate',post(admin,{name:'桶狭間の戦い',durationDays:1,requestId:crypto.randomUUID()}))).data;
+  await h.api('/admin/events/'+planned.event.id+'/publish',post(admin,{requestId:crypto.randomUUID()}));
+  for(const path of ['/events','/events/'+planned.event.id]){
+    const event=(await h.api(path,{token:viewer.token})).data;publicOnly(event);
+    for(const field of ['creatorId','creator_id','createdBy','authorId','authorName'])assert(!JSON.stringify(event).includes('"'+field+'"'));
+    assert(!JSON.stringify(event).includes(admin.user.id));
+  }
+  await h.api('/admin/events/generate',post(staff,{name:'桶狭間の戦い',durationDays:1,requestId:crypto.randomUUID()},403));
+  await h.api('/admin/mail',post(viewer,{target:'all',title:'偽装',body:'本文',requestId:'identity-forged-mail'},403));
 });
 
 await scope('letter profiles and old shared-building news use ordinary public identity without rewriting stored history',async h=>{

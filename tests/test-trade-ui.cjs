@@ -3,7 +3,7 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const path=require('node:path');
 const vm=require('node:vm');
-const {createController,cleanTrade,tradeCard,confirmationMarkup,escape}=require('../trade.js');
+const {createController,cleanTrade,tradeCard,confirmationMarkup,assetText,escape}=require('../trade.js');
 const ME='u_me',PEER='u_peer',ID='tr_'+'1'.repeat(32);
 const zero=()=>({gold:0,rice:0,wood:0,stone:0,magatama:0});
 const basket=values=>({...zero(),...values});
@@ -11,8 +11,8 @@ const trade=(extra={})=>({id:ID,revision:1,status:'pending',sender:{playerId:PEE
 const deferred=()=>{let resolve,reject;const promise=new Promise((yes,no)=>{resolve=yes;reject=no;});return{promise,resolve,reject};};
 const drain=async()=>{for(let i=0;i<12;i++)await Promise.resolve();};
 const tests=[];const test=(name,run)=>tests.push({name,run});
-function setup({storage=new Map(),records=[trade()],writable=true}={}){
-  let user={id:ME,name:'自分'},serial=0,handler=null,writeHandler=null,canWrite=writable,timer=0;
+function setup({storage=new Map(),records=[trade()],writable=true,troopCapacity=4000}={}){
+  let user={id:ME,name:'自分'},serial=0,handler=null,writeHandler=null,canWrite=writable,timer=0,capacity=troopCapacity;
   const balances=basket({gold:5000,rice:5000,wood:5000,stone:5000,magatama:1000}),calls=[],changes=[],timers=new Map(),receipts=new Map();
   const base=async(route,options={})=>{
     const url=new URL(route,'https://local.invalid');
@@ -36,9 +36,9 @@ function setup({storage=new Map(),records=[trade()],writable=true}={}){
     throw Error('Unexpected local route: '+route);
   };
   const storageAPI={getItem:key=>storage.get(key)??null,setItem:(key,value)=>storage.set(key,value),removeItem:key=>storage.delete(key)};
-  const options={getUser:()=>user,getAccess:()=>({writable:canWrite,message:'別の端末を操作中です。'}),getAssets:()=>balances,storage:storageAPI,uuid:()=> 'request_'+(++serial),onChange:value=>changes.push(value),setTimeout:(fn,ms)=>{timers.set(++timer,{fn,ms});return timer;},clearTimeout:id=>timers.delete(id),request:async(route,value)=>{calls.push({route,options:structuredClone(value)});return handler?handler(route,value,base):base(route,value);},mutate:(route,value)=>{calls.push({route,options:structuredClone(value)});return writeHandler?writeHandler(route,value,base):base(route,value);}};
+  const options={getUser:()=>user,getAccess:()=>({writable:canWrite,message:'別の端末を操作中です。'}),getAssets:()=>balances,getTroopCapacity:()=>capacity,storage:storageAPI,uuid:()=> 'request_'+(++serial),onChange:value=>changes.push(value),setTimeout:(fn,ms)=>{timers.set(++timer,{fn,ms});return timer;},clearTimeout:id=>timers.delete(id),request:async(route,value)=>{calls.push({route,options:structuredClone(value)});return handler?handler(route,value,base):base(route,value);},mutate:(route,value)=>{calls.push({route,options:structuredClone(value)});return writeHandler?writeHandler(route,value,base):base(route,value);}};
   const controller=createController(options);
-  return{controller,options,storage,storageAPI,balances,calls,changes,records,receipts,timers,base,setUser:value=>user=value,setWritable:value=>canWrite=value,setRead:fn=>handler=fn,setWrite:fn=>writeHandler=fn,posts:()=>calls.filter(call=>call.options.method==='POST')};
+  return{controller,options,storage,storageAPI,balances,calls,changes,records,receipts,timers,base,setUser:value=>user=value,setWritable:value=>canWrite=value,setTroopCapacity:value=>capacity=value,setRead:fn=>handler=fn,setWrite:fn=>writeHandler=fn,posts:()=>calls.filter(call=>call.options.method==='POST')};
 }
 
 test('a proposal requires a verified recipient and an explicit immutable confirmation',async()=>{
@@ -147,6 +147,57 @@ test('hostile names and invalid asset keys cannot become executable trade markup
   assert.equal(cleanTrade(trade({offer:{gold:1,unknown:5}})),null);assert.equal(cleanTrade(trade({want:{gold:1.2}})),null);
   const h=setup(),value=cleanTrade(trade({sender:{playerId:PEER,name:'<img src=x onerror="bad()">'}}));await h.controller.openBox();const html=tradeCard(value,h.controller.getState());
   assert(!html.includes('<img'));assert(html.includes('&lt;img'));assert.equal(escape('<script>'), '&lt;script&gt;');h.controller.dispose();
+});
+test('soldier exports and import requests use explicit people units and immutable terms',async()=>{
+  const h=setup({records:[]});h.balances.troops=1800;await h.controller.openCompose({playerId:PEER,asset:'troops'});
+  assert.equal(h.controller.getState().draft.offerAsset,'troops');assert.equal(h.controller.getState().draft.wantAsset,'gold');
+  h.controller.setDraft('offerAsset','troops');h.controller.setDraft('offerAmount','450');h.controller.setDraft('wantAsset','gold');h.controller.setDraft('wantAmount','300');h.controller.prepareCreate();
+  const reviewed=h.controller.getState().confirm;assert.equal(reviewed.give.troops,450);assert.equal(reviewed.receive.gold,300);
+  assert.match(confirmationMarkup(reviewed),/兵士（輸出入） 450人/);assert.equal(h.posts().length,0);
+  assert(await h.controller.confirm());assert.equal(h.posts()[0].options.data.offer.troops,450);assert(!Object.hasOwn(h.posts()[0].options.data.want,'troops'));
+  await h.controller.openCompose({playerId:PEER});h.controller.setDraft('wantAsset','troops');h.controller.setDraft('wantAmount','600');h.controller.prepareCreate();
+  assert.equal(h.controller.getState().confirm.receive.troops,600);assert.match(assetText({troops:1234}),/兵士（輸出入） 1,234人/);h.controller.dispose();
+});
+test('mixed soldier imports use net payment and the live troop capacity',async()=>{
+  const h=setup({troopCapacity:2000,records:[trade({offer:basket({troops:200,wood:30}),want:basket({troops:100,rice:50})})]});h.balances.troops=1901;
+  await h.controller.openBox();await h.controller.prepareAction(ID,'accept');assert.equal(h.controller.getState().confirm,null);assert.match(h.controller.getState().error,/兵数.*上限/);
+  let card=tradeCard(cleanTrade(h.records[0]),h.controller.getState());assert.match(card,/data-kind="accept" disabled/);assert.match(card,/所持 1,901人 \/ 兵数上限 2,000人/);
+  h.balances.troops=1900;await h.controller.prepareAction(ID,'accept');assert(h.controller.getState().confirm);assert.equal(h.controller.getState().confirm.receive.troops,200);assert(await h.controller.confirm());
+  assert.equal(h.posts().length,1);h.controller.dispose();
+});
+test('soldier insufficiency, invalid quantities, unknown capacity and hard save limit block unsafe actions',async()=>{
+  const h=setup({records:[trade({offer:basket({troops:1}),want:zero()})],troopCapacity:null});h.balances.troops=100;
+  await h.controller.openCompose({playerId:PEER});h.controller.setDraft('offerAsset','troops');
+  for(const amount of ['0','-1','1.5','101','1000001','NaN','Infinity']){h.controller.setDraft('offerAmount',amount);h.controller.prepareCreate();assert.equal(h.controller.getState().confirm,null);}
+  await h.controller.openBox();await h.controller.prepareAction(ID,'accept');assert.equal(h.controller.getState().confirm,null);assert.match(h.controller.getState().error,/兵数上限を確認/);
+  h.setTroopCapacity(2000000);h.balances.troops=1000000;assert.equal(h.controller.getState().troopCapacity,1000000);
+  await h.controller.prepareAction(ID,'accept');assert.equal(h.controller.getState().confirm,null);
+  h.records[0].want=basket({troops:1000001});await h.controller.prepareAction(ID,'accept');assert.equal(h.controller.getState().confirm,null);
+  h.records[0].want=basket({troops:101});h.balances.troops=100;await h.controller.prepareAction(ID,'accept');assert.match(h.controller.getState().error,/不足/);assert.equal(h.posts().length,0);h.controller.dispose();
+});
+test('unclaimed soldier refunds remain intact until the whole delivery fits capacity',async()=>{
+  const refund={kind:'refund',recipientPlayerId:ME,assets:basket({troops:400,gold:30}),claimedAt:null};
+  const h=setup({troopCapacity:4000,records:[trade({sender:{playerId:ME,name:'自分'},recipient:{playerId:PEER,name:'相手'},status:'cancelled',delivery:refund,canAccept:false,canReject:false,canClaim:true})]});h.balances.troops=3700;
+  await h.controller.openBox('claimable');await h.controller.prepareAction(ID,'claim');assert.equal(h.controller.getState().confirm,null);assert.equal(refund.claimedAt,null);assert.match(h.controller.getState().error,/保管/);
+  const card=tradeCard(cleanTrade(h.records[0]),h.controller.getState());assert.match(card,/data-kind="claim" disabled/);assert.match(card,/兵士（輸出入） 400人/);
+  h.setTroopCapacity(4100);await h.controller.prepareAction(ID,'claim');assert(h.controller.getState().confirm);assert(await h.controller.confirm());assert.equal(h.posts().length,1);h.controller.dispose();
+});
+test('old resource trades and soldier exports still work above a reduced troop capacity',async()=>{
+  const h=setup({troopCapacity:1000});h.balances.troops=5000;await h.controller.openBox();await h.controller.prepareAction(ID,'accept');assert(h.controller.getState().confirm);h.controller.cancelConfirm();
+  h.records[0].offer=basket({troops:100});h.records[0].want=basket({troops:200});await h.controller.prepareAction(ID,'accept');assert(h.controller.getState().confirm);h.controller.cancelConfirm();
+  await h.controller.openCompose({playerId:PEER});h.controller.setDraft('offerAsset','troops');h.controller.setDraft('offerAmount','250');h.controller.prepareCreate();assert(h.controller.getState().confirm);h.controller.dispose();
+});
+test('legacy zero-troop retries keep their exact five-asset payload and soldier retries keep exact terms',async()=>{
+  for(const soldiers of [false,true]){
+    const h=setup({records:[]});h.balances.troops=1000;await h.controller.openCompose({playerId:PEER});
+    if(soldiers){h.controller.setDraft('offerAsset','troops');h.controller.setDraft('offerAmount','275');}
+    h.controller.prepareCreate();h.setWrite(async(route,options,base)=>{await base(route,options);throw Error('reply lost');});
+    assert.equal(await h.controller.confirm(),false);const pending=h.controller.getState().pending,expected=structuredClone(pending.data);
+    if(!soldiers){assert(!Object.hasOwn(expected.offer,'troops'));assert(!Object.hasOwn(expected.want,'troops'));const key=[...h.storage.keys()][0],stored=JSON.parse(h.storage.get(key));stored.data.offer.troops=0;stored.data.want.troops=0;h.storage.set(key,JSON.stringify(stored));}
+    h.controller.dispose();const resumed=setup({storage:h.storage,records:h.records});resumed.setWrite((route,options)=>{assert.deepEqual(options.data,expected);return structuredClone(h.receipts.get(options.data.requestId));});
+    await resumed.controller.openBox();assert(await resumed.controller.retry());assert.equal(resumed.storage.size,0);assert.equal(resumed.posts().length,1);resumed.controller.dispose();
+  }
+  for(const troops of [null,-1,1.5,'5',1000001,Number.MAX_SAFE_INTEGER+1])assert.equal(cleanTrade(trade({offer:basket({troops})})),null);
 });
 test('social transport permits only trade endpoints and authenticated player-name reads',async()=>{
   const source=fs.readFileSync(path.join(__dirname,'../social.js'),'utf8'),match=source.match(/function tradeRequest\(route,options=\{\}\)\{[\s\S]*?\n\}/);assert(match);

@@ -234,17 +234,29 @@ function guideContent(p) {
       <h3>ゲームから届く便りと贈り物</h3>
       <p>届いた便りは「交流」→「郵便」で開き、贈り物が同封されている場合は「受け取る」で受領します。同じ贈り物を重複して受け取ることはできません。合戦から自動で届く知らせは、<a href="#system-mail">システムメールの案内</a>をご覧ください。</p>
     `, 'section-community'),
-    section('trade', '他国との資産の輸出・輸入', '領主同士で条件を決めて交易する', `
-      <p class="lead-paragraph"><strong>「交流」→「交易」</strong>から、ほかのプレイヤーと金銭・兵糧・木材・石材・勾玉を交換できます。共通フィールドで相手の本拠を選び、「この領主に交易を申し出る」からも始められます。領主登録と端末同期が必要です。</p>
+    section('trade', '兵士・資産の輸出・輸入', '領主同士で条件を決めて交易する', `
+      <p class="lead-paragraph"><strong>「交流」→「交易」</strong>から、ほかのプレイヤーと兵士・金銭・兵糧・木材・石材・勾玉を交換できます。兵士の移送は<strong>「軍団編成」→「兵士を輸出入」</strong>からも始められます。共通フィールドで相手の本拠を選び、「この領主に交易を申し出る」こともできます。領主登録と端末同期が必要です。</p>
       ${table('交易の進め方', ['操作', '資産の動き'], [
         ['条件を決めて申し込む', '相手の領主名・公開ID、提供する資産と数量、受け取りたい資産と数量を確認します。申出時に提供分を預けます。希望する対価をなしにすると、無償で輸出できます。'],
         ['届いた申出を承認する', '輸入する内容と支払う対価を確認して承認します。対価の支払いと輸入分の受け取りが一緒に確定します。資産が足りない場合は成立しません。'],
         ['対価・返還分を受け取る', '申出を送った領主は、成立した交易の対価を「受取待ち」から受け取ります。承認前に取り消した場合や、相手が辞退した場合の預けた資産も、同じ「受取待ち」から回収します。']
       ])}
       <p>1回の申出では、各資産を最大<strong>1,000,000</strong>まで指定できます。同時に送れる承認待ちの申出は<strong>20件</strong>です。交易に指令や手数料は使いません。相手が画面を閉じていても、申出は保存されます。</p>
+      <p><strong>兵士は本隊の人数を輸出入します。</strong>城の守備兵や武将は移送しません。兵士の輸入・返還分の受取には、兵舎や施設・奉行などで決まる実際の兵数上限に空きが必要です。上限を超える場合は切り捨てず、承認前または受取待ちのまま保管します。兵士を対価に指定したり、対価なしで無償移送したりすることもできます。</p>
       <p>「届いた申出」「送った申出」「受取待ち」「履歴」の4つの一覧を切り替えられます。古い取引の未受取分も「受取待ち」で確認できます。受け取ると所持上限を超える場合は、全額を受取待ちのまま保管します。資産を使って空きを作ってから受け取ってください。未受取分や預けた資産は、端末の切り替えや暦の周回後も同じ領主に保持されます。</p>
       <p>取引の内容と数量は当事者だけが確認できます。相手の公開IDを照合してから申し込み、同じ城名の別の領主と取り違えないようにしてください。天下地図のCPU勢力との取引は対象外です。</p>
     `, 'section-community'),
+    section('roaming', '野良兵士とのCPU戦', '6部隊に繰り返し挑む野戦', `
+      <p class="lead-paragraph"><strong>「野良兵戦」</strong>を開き、街道・山野などに現れるCPU部隊を選びます。「軍団編成」からも移動できます。城を奪う戦役とは別の合戦で、同じ部隊に繰り返し挑戦できます。</p>
+      ${table('野良兵戦の進め方', ['準備', '確認する内容'], [
+        ['相手を選ぶ', '兵種・地形・強さの異なる6部隊から、敵兵数と勝利時の基本報酬を確認して選びます。'],
+        ['軍団と兵数を整える', '軍団に武将を1名以上編成し、300人以上から現在の出陣可能数まで兵士を指定します。武将の能力・技能、士気、研究や施設が戦力に反映されます。'],
+        ['戦術を選ぶ', '4つの戦術から選び、戦力比較・勝敗見込み・予想損失・兵糧を確認します。部隊ごとに有効な戦術があります。'],
+        ['内容を確認して出陣する', '指令1と表示された兵糧を消費します。勝敗に応じて兵を失い、生存兵は本隊に残ります。勝利時は資源・勾玉・威信を獲得します。']
+      ])}
+      <p>指令の回復は通常の共通時間に従います。共通時間の停止中も、残っている指令で出陣できます。報酬は所持上限まで反映し、実際に獲得した数量と兵の損失を戦果・最新20戦の記録に残します。</p>
+      <p>この合戦で城の所有は変わりません。攻城戦の任務や軍師AIの出陣回数にも加算しません。通信が途切れたときは「同じ出陣の結果を確認」で再確認でき、同じ出陣の消費や報酬は重複しません。</p>
+    `, 'section-military'),
     section('letters', '本拠から届ける書状', '領主本人・所属ギルドへ書状を送る', `
       <p class="lead-paragraph">共通フィールドで相手の本拠と領主を選び、<strong>領主本人</strong>または<strong>その領主が所属するギルド</strong>へメッセージを送れます。フレンドになっていなくても利用できます。書状の送受信には領主登録・接続が必要です。</p>
       ${table('本拠からの書状の宛先', ['宛先', '読める人・返信できる人'], [
@@ -285,7 +297,7 @@ function guideContent(p) {
         ['報酬を受け取る', '戦功が達成条件へ届くと、対象の領主へ報酬付きのシステム便が自動で届きます。「交流」→「郵便」で贈り物を受け取ってください。同じ達成報酬の便は1回だけ発行されます。']
       ])}
       <p>終了日時になると新しい出陣はできなくなります。終了後も結果と順位を確認でき、すでに届いた報酬の便は郵便から受け取れます。順位表には領主名・設定したアイコン・位階バッジを表示します。</p>
-      <p>イベントは、戦い名の語句から戦場候補を評価する<strong>内蔵のゲームAI</strong>で構成します。テーマ、敵軍、戦術の適性、開催日数に合う達成条件と報酬を組み合わせる方式です。運営は「交流」→「運営」→「催事・合戦」で戦い名と日数を入力し、生成案を確認して開催します。同時開催は1件です。</p>
+      <p>イベントは、戦い名の語句から戦場候補を評価する<strong>内蔵のゲームAI</strong>で構成します。テーマ、敵軍、戦術の適性、開催日数に合う達成条件と報酬を組み合わせる方式です。開催される戦場・期間・達成条件・報酬は、催事・合戦の画面で確認できます。同時開催は1件です。</p>
     `, 'section-field'),
     section('walking', '端末を持って歩く', 'ウォーキング報酬の受け取り方と計測条件', `
       <p class="lead-paragraph">城下町または「保存・設定」から<strong>「ウォーキング」</strong>を開き、計測を開始します。端末の動きから検知した<strong>1歩につき、金銭・兵糧・木材・石材・勾玉をそれぞれ2</strong>獲得します。100歩なら各200です。すべてのプレイヤーで同じルールです。</p>
@@ -410,8 +422,8 @@ function aboutContent(p) {
       <p>領主を登録すると、世界チャット、オンラインの接続一覧、ギルドなどを利用できます。ギルドでは役職を設け、共有金庫に納めた資産をメンバーで使えます。共通フィールドの本拠からは、相手本人か所属ギルドを宛先に選び、書状を送って返信できます。ギルド宛ての書状は送った領主と、そのギルドの現在のメンバーに共有されます。</p>
       <p><a href="${p.dir('guide')}#community">ギルドの役職・共有金庫・ランキング</a>と、<a href="${p.dir('guide')}#letters">書状の宛先・閲覧範囲</a>を確認できます。</p>
       <h3>他国との資産の輸出・輸入</h3>
-      <p>「交流」から交易を開き、ほかの領主へ金銭・兵糧・木材・石材・勾玉の交換を申し込めます。提供する数量と受け取りたい対価を示し、相手が承認すると成立します。無償の輸出にも対応し、申出・取引履歴・対価や返還分の受け取りを端末間で共有します。詳しい流れは<a href="${p.dir('guide')}#trade">交易の案内</a>をご覧ください。</p>
-      <h3>共通フィールドの報酬戦と大都市の占領戦</h3>
+      <p>「交流」から交易を開き、ほかの領主へ兵士・金銭・兵糧・木材・石材・勾玉の交換を申し込めます。提供する数量と受け取りたい対価を示し、相手が承認すると成立します。無償の輸出にも対応し、申出・取引履歴・対価や返還分の受け取りを端末間で共有します。詳しい流れは<a href="${p.dir('guide')}#trade">交易の案内</a>をご覧ください。</p>
+      <h3>野良兵士とのCPU戦</h3><p>街道や山野の6部隊に繰り返し挑戦できます。軍団と出陣兵数、4つの戦術を組み合わせ、指令1と兵糧を使って出陣します。勝敗による兵の損失と、勝利時の資源・勾玉・威信を戦果に記録します。<a href="${p.dir('guide')}#roaming">野良兵戦の案内</a>で準備と費用を確認できます。</p><h3>共通フィールドの報酬戦と大都市の占領戦</h3>
       <p>江戸城・駿府城は、占領せず勝利報酬を得る対人戦です。城郭はLv.64まで育ちます。二条城・大坂城・名古屋城は城郭Lv.48までの占領対象で、勝利すると選んだ領主の城を自分の所領に加えます。通常の本拠はLv.32までで、領有を移さない限定襲撃です。<a href="${p.dir('guide')}#field-battles">各城の報酬・占領・保護期間</a>を確認して出陣できます。</p>
       <h3>勝敗と本拠移転を伝えるシステムメール</h3>
       <p>対人戦の確定後、攻撃側と守備側の双方にゲーム内の郵便が届きます。勝敗・被攻撃・実際の戦利品や報酬、占領の結果を残し、本拠が移った場合は移転先も伝えます。次に接続したときにも未読の知らせを確認できます。閲覧の手順は<a href="${p.dir('guide')}#system-mail">システムメールの案内</a>にまとめています。</p>
@@ -483,7 +495,7 @@ const pages = [
     image: 'assets/castle-town.webp', imageWidth: 1536, imageHeight: 1024, imageAlt: '山々と川に囲まれ、田畑や商家が広がる戦国VSの城下町イラスト', imageCaption: '城下町から始まる、あなたの領国。', imageTag: '城と群雄の戦記',
     heroAction: 'ゲームを開く', secondary: ['データ復元の案内', 'guide/data-recovery'],
     notes: [['遊ぶ場所', 'PC・スマホ・タブレットのブラウザ'], ['世界の時間', '全プレイヤーで共通']],
-    toc: [['first-steps','城選び・初めての進め方'],['next-hints','次の一手・上へ戻る'],['castle-upgrades','本拠・城郭のレベル上げ'],['resources','城下町と資源'],['construction','施設Lv・連続増築'],['officers','武将・軍団・勾玉'],['maps','二つの地図と外交'],['field-battles','報酬戦・占領戦・襲撃'],['player-evaluation','総合評価・位階の称号'],['world-clock','共通時間・拠点リセット'],['community','ギルド・接続一覧・役職'],['trade','他国との輸出・輸入・交易'],['letters','領主・ギルドへの書状'],['system-mail','勝敗・移転のシステムメール'],['strategy','軍師AI・自動進軍'],['timed-events','期間限定合戦・報酬'],['walking','ウォーキング報酬'],['save-and-sync','保存と端末同期'],['questions','よくある質問']],
+    toc: [['first-steps','城選び・初めての進め方'],['next-hints','次の一手・上へ戻る'],['castle-upgrades','本拠・城郭のレベル上げ'],['resources','城下町と資源'],['construction','施設Lv・連続増築'],['officers','武将・軍団・勾玉'],['maps','二つの地図と外交'],['field-battles','報酬戦・占領戦・襲撃'],['player-evaluation','総合評価・位階の称号'],['world-clock','共通時間・拠点リセット'],['community','ギルド・接続一覧・役職'],['trade','兵士・資産の輸出入'],['roaming','野良兵士とのCPU戦'],['letters','領主・ギルドへの書状'],['system-mail','勝敗・移転のシステムメール'],['strategy','軍師AI・自動進軍'],['timed-events','期間限定合戦・報酬'],['walking','ウォーキング報酬'],['save-and-sync','保存と端末同期'],['questions','よくある質問']],
     content: guideContent, closingTitle: 'さあ、城下町へ。', closingText: '最初の普請を選び、あなたの一手から戦記を始めましょう。'
   },
   {
@@ -588,6 +600,10 @@ function withSelectionAssets(html, prefix = '') {
   return found ? html : html.replace('</head>', `  ${script}\n</head>`);
 }
 
+function withButtonArtwork(html, href) {
+  return replaceHeadTag(html, 'link', attrs => attrs.rel === 'stylesheet' && /(?:^|\/)button-artwork\.css(?:\?|$)/.test(attrs.href || ''), `<link rel="stylesheet" href="${href}?v=${release}">`);
+}
+
 function updateHome() {
   let html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
   const page = site.pages.home;
@@ -622,7 +638,7 @@ function updateNotFound() {
   // A 404 document can be served at an unknown nested URL. Its assets must
   // always resolve at the site root rather than below that missing path.
   html = html.replace(/(\b(?:src|href)=["'])\/?(image-protect|interaction-motion)\.(css|js)(?:\?[^"']*)?/g, (_, before, name, extension) => `${before}/${name}.${extension}?v=${release}`);
-  return withSelectionAssets(html, '/');
+  return withButtonArtwork(withSelectionAssets(html, '/'), '/button-artwork.css');
 }
 
 function updateManifest() {
@@ -642,7 +658,7 @@ function sitemap() {
 
 // Compute everything before writing so malformed metadata cannot leave a
 // partially regenerated public surface. Unchanged files keep their mtime.
-const outputs = new Map(pages.map(page => [page.file, render(page)]));
+const outputs = new Map(pages.map(page => [page.file, withButtonArtwork(render(page), paths(page.file).file('button-artwork.css'))]));
 outputs.set('index.html', updateHome());
 outputs.set('404.html', updateNotFound());
 outputs.set('manifest.webmanifest', updateManifest());

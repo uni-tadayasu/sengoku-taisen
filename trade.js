@@ -1,21 +1,32 @@
 /* Player-to-player trade. The server settles assets; this UI only submits terms. */
 (function(global){
 'use strict';
-const ASSETS={gold:'金銭',rice:'兵糧',wood:'木材',stone:'石材',magatama:'勾玉'};
+const ASSETS={gold:'金銭',rice:'兵糧',wood:'木材',stone:'石材',magatama:'勾玉',troops:'兵士（輸出入）'};
 const PLAYER=/^[A-Za-z0-9_-]{1,90}$/,TRADE=/^tr_[a-f0-9]{32}$/,REQUEST=/^[A-Za-z0-9_-]{1,90}$/;
-const STORE='sengoku-trade-ui-pending-v1:',MAX_AMOUNT=1000000,BALANCE_LIMIT=999999999;
+const STORE='sengoku-trade-ui-pending-v1:',MAX_AMOUNT=1000000,BALANCE_LIMIT=999999999,TROOP_BALANCE_LIMIT=1000000;
 const clone=value=>JSON.parse(JSON.stringify(value));
 const esc=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const num=value=>Math.max(0,Math.floor(Number(value)||0)).toLocaleString('ja-JP');
-const blankAssets=()=>Object.fromEntries(Object.keys(ASSETS).map(key=>[key,0]));
+// Omit zero troops so persisted five-asset proposals keep the same identity.
+const blankAssets=()=>Object.fromEntries(Object.keys(ASSETS).filter(key=>key!=='troops').map(key=>[key,0]));
 function assets(value,max=MAX_AMOUNT){
   if(!value||typeof value!=='object'||Array.isArray(value)||Object.keys(value).some(key=>!Object.hasOwn(ASSETS,key)))return null;
   const result=blankAssets();
-  for(const key of Object.keys(ASSETS)){const n=value[key]??0;if(!Number.isSafeInteger(n)||n<0||n>max)return null;result[key]=n;}
+  for(const key of Object.keys(ASSETS)){const n=value[key]??0;if(!Number.isSafeInteger(n)||n<0||n>Math.min(max,key==='troops'?TROOP_BALANCE_LIMIT:max)||Object.hasOwn(value,key)&&value[key]===null)return null;if(key!=='troops'||n>0)result[key]=n;}
   return result;
 }
 const nonempty=value=>value&&Object.values(value).some(n=>n>0);
-const assetText=value=>Object.entries(ASSETS).filter(([key])=>Number(value?.[key])>0).map(([key,label])=>label+' '+num(value[key])).join('・')||'なし（無償）';
+const assetText=value=>Object.entries(ASSETS).filter(([key])=>Number(value?.[key])>0).map(([key,label])=>label+' '+num(value[key])+(key==='troops'?'人':'')).join('・')||'なし（無償）';
+function overflowAsset(state,incoming,outgoing=blankAssets()){
+  return Object.keys(ASSETS).find(key=>{
+    const added=incoming[key]??0,spent=outgoing[key]??0;
+    if(key==='troops'&&added<=spent)return false;
+    const limit=key==='troops'?state.troopCapacity:state.rules.balanceLimit;
+    return limit===null||limit===undefined||(state.balances[key]??0)-spent+added>limit;
+  });
+}
+const troopCapacityText=state=>'兵士：所持 '+num(state.balances.troops)+'人 / 兵数上限 '+(state.troopCapacity===null?'確認中':num(state.troopCapacity)+'人');
+const overflowText=(key,claim=false)=>key==='troops'?'受取後の兵数が上限を超えるか、兵数上限を確認できません。兵士を減らすか兵舎などを増築し、同期してからお試しください。'+(claim?'未受取の資産は保管されます。':''): '受取後の所持数が上限を超えます。資産を使用してから受け取ってください。'+(claim?'未受取の資産は保管されます。':'');
 function publicEvaluation(value){
   if(!value||value.version!==1||!Number.isSafeInteger(value.score)||value.score<0||value.score>100000||value.maxScore!==100000||!Number.isSafeInteger(value.rankIndex)||value.rankIndex<0||value.rankIndex>=17||typeof value.rankId!=='string'||!value.rankId||value.rankId.length>64||typeof value.rankName!=='string'||!value.rankName.trim()||value.rankName.length>32)return null;
   return{version:1,score:value.score,maxScore:100000,rankIndex:value.rankIndex,rankId:value.rankId,rankName:value.rankName};
@@ -40,7 +51,7 @@ function createController(options={}){
   const read=options.request||((route,value)=>global.SengokuSocial.tradeRequest(route,value));
   const mutate=options.mutate||((route,value)=>global.SengokuBridge.tradeRequest(route,value));
   const getUser=options.getUser||(()=>global.SengokuSocial?.getUser?.());
-  const getAccess=options.getAccess||defaultAccess,getAssets=options.getAssets||(()=>global.SengokuBridge?.spendableAssets?.()||blankAssets());
+  const getAccess=options.getAccess||defaultAccess,getAssets=options.getAssets||(()=>global.SengokuBridge?.spendableAssets?.()||blankAssets()),getTroopCapacity=options.getTroopCapacity||(()=>global.SengokuBridge?.troopCapacity?.());
   const notify=options.onChange||(()=>{}),uuid=options.uuid||(()=>global.crypto.randomUUID());
   const later=options.setTimeout||global.setTimeout.bind(global),cancel=options.clearTimeout||global.clearTimeout.bind(global),visible=options.isVisible||(()=>!global.document?.hidden);
   let storage=options.storage;try{if(!storage)storage=global.localStorage;}catch{}
@@ -49,8 +60,8 @@ function createController(options={}){
   const s={ownerId:null,open:false,view:'incoming',trades:[],nextCursor:null,summary:{incomingPending:0,outgoingPending:0,claimable:0},rules:{maxAmount:MAX_AMOUNT,balanceLimit:BALANCE_LIMIT,maxPending:20},loaded:false,loading:false,loadingMore:false,searchBusy:false,sending:false,query:'',searchResults:[],target:null,draft:draftDefaults(),confirm:null,pending:null,error:'',status:'',change:'init'};
   const storageKey=owner=>STORE+encodeURIComponent(owner);
   function snapshot(){
-    const balances=assets(getAssets(),BALANCE_LIMIT)||blankAssets(),access=getAccess()||{};
-    return clone({...s,balances,access:{writable:access.writable===true,message:String(access.message||'操作端末と共通時刻を確認してください。')}});
+    const balances=assets(getAssets(),BALANCE_LIMIT)||blankAssets(),access=getAccess()||{},capacity=getTroopCapacity(),troopCapacity=Number.isSafeInteger(capacity)&&capacity>=0?Math.min(capacity,TROOP_BALANCE_LIMIT):null;
+    return clone({...s,balances,troopCapacity,access:{writable:access.writable===true,message:String(access.message||'操作端末と共通時刻を確認してください。')}});
   }
   function emit(change='status'){if(disposed)return;s.change=change;notify(snapshot());}
   function validPending(record,owner){
@@ -79,8 +90,7 @@ function createController(options={}){
     if(s.pending&&!retry)throw Error('先の交易の結果を確認してから、新しい操作を行ってください。');
     const access=getAccess();if(!access?.writable)throw Error(access?.message||'操作端末と保存・同期の状態を確認してください。');
   }
-  function sufficient(value){const own=assets(getAssets(),BALANCE_LIMIT)||blankAssets();return Object.keys(ASSETS).every(key=>own[key]>=value[key]);}
-  function fits(value){const own=assets(getAssets(),BALANCE_LIMIT)||blankAssets();return Object.keys(ASSETS).every(key=>own[key]+value[key]<=s.rules.balanceLimit);}
+  function sufficient(value){const own=assets(getAssets(),BALANCE_LIMIT)||blankAssets();return Object.keys(ASSETS).every(key=>(own[key]??0)>=(value[key]??0));}
   async function request(route){
     const e=epoch,owner=s.ownerId,result=await read(route,{method:'GET'});
     if(!current(e,owner)){const error=Error('接続する領主が変わりました。');error.code='STALE_IDENTITY';throw error;}
@@ -112,8 +122,8 @@ function createController(options={}){
     identity();s.open=true;if(s.sending){emit();return;}s.view=['incoming','outgoing','claimable','history'].includes(box)?box:'incoming';
     viewEpoch++;searchEpoch++;s.loading=s.loadingMore=s.searchBusy=false;s.trades=[];s.nextCursor=null;s.loaded=false;s.confirm=null;s.error='';s.status='';emit('navigation');await loadList();schedule();
   }
-  async function openCompose({playerId}={}){
-    identity();s.open=true;if(s.sending){emit();return;}s.view='compose';viewEpoch++;searchEpoch++;s.loading=s.loadingMore=s.searchBusy=false;s.confirm=null;s.target=null;s.query='';s.searchResults=[];s.error='';s.status='';s.draft=draftDefaults();emit('navigation');
+  async function openCompose({playerId,asset}={}){
+    identity();s.open=true;if(s.sending){emit();return;}s.view='compose';viewEpoch++;searchEpoch++;s.loading=s.loadingMore=s.searchBusy=false;s.confirm=null;s.target=null;s.query='';s.searchResults=[];s.error='';s.status='';s.draft=asset==='troops'?{offerAsset:'troops',offerAmount:'100',wantAsset:'gold',wantAmount:'100'}:draftDefaults();emit('navigation');
     if(s.ownerId&&playerId)await selectRecipient(playerId);schedule();
   }
   function setQuery(value){s.query=String(value||'').slice(0,90);}
@@ -171,7 +181,8 @@ function createController(options={}){
       requireAccess();
       const give=action==='accept'?trade.want:blankAssets(),receive=action==='accept'?trade.offer:action==='claim'?trade.delivery.assets:blankAssets();
       if(action==='accept'&&!sufficient(give))throw Error('相手に渡す資産の所持数が不足しています。');
-      if(action==='claim'&&!fits(receive))throw Error('受取後の所持数が上限を超えます。資産を使用してから受け取ってください。未受取の資産は保管されます。');
+      const overflow=overflowAsset(snapshot(),receive,give);
+      if((action==='accept'||action==='claim')&&overflow)throw Error(overflowText(overflow,action==='claim'));
       s.confirm={ownerId:s.ownerId,action,route:'/trades/'+id+'/'+action,data:{requestId:uuid()},trade,target:trade.sender.playerId===s.ownerId?trade.recipient:trade.sender,give,receive};s.status='';emit('confirm');
     }catch(error){if(v===viewEpoch&&error.code!=='STALE_IDENTITY'){s.error=error.message;emit();}}
     finally{if(v===viewEpoch){s.loading=false;emit();}}
@@ -183,7 +194,7 @@ function createController(options={}){
     // The bridge may recover an older request ID for the same terms after the
     // UI record was lost. Validate the actual operation instead of that ID.
     if(record.action!=='propose')return record.route==='/trades/'+trade.id+'/'+record.action;
-    return trade.sender.playerId===record.ownerId&&trade.recipient.playerId===record.data.targetPlayerId&&Object.keys(ASSETS).every(key=>trade.offer[key]===record.data.offer[key]&&trade.want[key]===record.data.want[key]);
+    return trade.sender.playerId===record.ownerId&&trade.recipient.playerId===record.data.targetPlayerId&&Object.keys(ASSETS).every(key=>(trade.offer[key]??0)===(record.data.offer[key]??0)&&(trade.want[key]??0)===(record.data.want[key]??0));
   }
   function sendRecord(record){
     if(writePromise)return writePromise;
@@ -231,14 +242,18 @@ const peerMarkup=player=>'<strong class="player-evaluation-person">'+(player?.pl
 function tradeCard(trade,state){
   const sent=trade.sender.playerId===state.ownerId,peer=sent?trade.recipient:trade.sender;
   const blocked=!state.access.writable||state.sending||!!state.pending||state.loading,controls=[];
-  if(trade.canAccept&&!sent)controls.push(button('条件を確認して承認','action','data-id="'+trade.id+'" data-kind="accept"'+disabled(blocked),true));
+  const acceptOverflow=trade.canAccept&&!sent?overflowAsset(state,trade.offer,trade.want):null;
+  const insufficient=trade.canAccept&&!sent&&Object.keys(ASSETS).some(key=>(state.balances[key]??0)<(trade.want[key]??0));
+  if(trade.canAccept&&!sent)controls.push(button('条件を確認して承認','action','data-id="'+trade.id+'" data-kind="accept"'+disabled(blocked||acceptOverflow||insufficient),true));
   if(trade.canReject&&!sent)controls.push(button('辞退する','action','data-id="'+trade.id+'" data-kind="reject"'+disabled(blocked)));
   if(trade.canCancel&&sent)controls.push(button('申出を取り消す','action','data-id="'+trade.id+'" data-kind="cancel"'+disabled(blocked)));
   const delivery=trade.delivery?.recipientPlayerId===state.ownerId?trade.delivery:null;
-  const overflow=delivery&&Object.keys(ASSETS).some(key=>state.balances[key]+delivery.assets[key]>state.rules.balanceLimit);
+  const overflow=delivery&&overflowAsset(state,delivery.assets);
   if(trade.canClaim&&delivery&&!delivery.claimedAt)controls.push(button('受け取る','action','data-id="'+trade.id+'" data-kind="claim"'+disabled(blocked||overflow),true));
-  const deliveryHTML=delivery?'<div class="trade-delivery'+(!delivery.claimedAt?' is-unclaimed':'')+'"><strong>'+(delivery.kind==='refund'?'返還資産':'交易の対価')+' · '+(delivery.claimedAt?'受取済み':'受取待ち')+'</strong><span>'+esc(assetText(delivery.assets))+'</span>'+(!delivery.claimedAt?'<p>'+(overflow?'所持上限を超えるため、資産を使ってから受け取ってください。未受取の資産は保管されます。':'「受け取る」で所持数に加わります。')+'</p>':'')+'</div>':'';
-  return '<article class="trade-card" data-trade-row="'+trade.id+'"><header><div class="trade-peer"><span class="trade-eyebrow">'+(sent?'輸出の申出先':'輸入の申出元')+'</span>'+peerMarkup(peer)+'</div><div class="trade-card-meta"><span class="trade-status is-'+trade.status+'">'+STATUS[trade.status]+'</span><time datetime="'+esc(trade.createdAt)+'">'+esc(date(trade.createdAt))+'</time></div></header><dl class="trade-terms"><div><dt>あなたが渡す'+(sent&&trade.status==='pending'?'（預り中）':'')+'</dt><dd>'+esc(assetText(sent?trade.offer:trade.want))+'</dd></div><div><dt>あなたが受け取る</dt><dd>'+esc(assetText(sent?trade.want:trade.offer))+'</dd></div></dl>'+deliveryHTML+(controls.length?'<div class="trade-card-actions">'+controls.join('')+'</div>':'')+'</article>';
+  const deliveryHTML=delivery?'<div class="trade-delivery'+(!delivery.claimedAt?' is-unclaimed':'')+'"><strong>'+(delivery.kind==='refund'?'返還資産':'交易の対価')+' · '+(delivery.claimedAt?'受取済み':'受取待ち')+'</strong><span>'+esc(assetText(delivery.assets))+'</span>'+(!delivery.claimedAt?'<p>'+(overflow?overflowText(overflow,true):'「受け取る」で所持数に加わります。')+'</p>':'')+'</div>':'';
+  const troopHTML=trade.offer.troops||trade.want.troops||delivery?.assets.troops?'<p class="trade-troop-capacity">'+esc(troopCapacityText(state))+'</p>':'';
+  const acceptNote=insufficient?'相手に渡す資産の所持数が不足しています。':acceptOverflow?overflowText(acceptOverflow):'';
+  return '<article class="trade-card" data-trade-row="'+trade.id+'"><header><div class="trade-peer"><span class="trade-eyebrow">'+(sent?'輸出の申出先':'輸入の申出元')+'</span>'+peerMarkup(peer)+'</div><div class="trade-card-meta"><span class="trade-status is-'+trade.status+'">'+STATUS[trade.status]+'</span><time datetime="'+esc(trade.createdAt)+'">'+esc(date(trade.createdAt))+'</time></div></header><dl class="trade-terms"><div><dt>あなたが渡す'+(sent&&trade.status==='pending'?'（預り中）':'')+'</dt><dd>'+esc(assetText(sent?trade.offer:trade.want))+'</dd></div><div><dt>あなたが受け取る</dt><dd>'+esc(assetText(sent?trade.want:trade.offer))+'</dd></div></dl>'+troopHTML+deliveryHTML+(acceptNote?'<p class="trade-capacity-note">'+esc(acceptNote)+'</p>':'')+(controls.length?'<div class="trade-card-actions">'+controls.join('')+'</div>':'')+'</article>';
 }
 function confirmationMarkup(record){
   if(!record)return'';
@@ -248,7 +263,7 @@ function confirmationMarkup(record){
     accept:'承認すると、渡す資産が所持数から引かれ、輸入する資産が加わります。成立した交易は取り消せません。',
     reject:'この申出を辞退します。相手が預けた資産は、相手の受取待ちになります。',
     cancel:'この申出を取り消します。預けた資産は、この後「受取待ち」から受け取ってください。',
-    claim:'保管されている資産を所持数へ加えます。所持上限を超える場合は受取待ちのまま保管されます。'
+    claim:'保管されている資産・兵士を所持数へ加えます。資産の所持上限や兵数上限を超える場合は、受取待ちのまま全量が保管されます。'
   })[record.action]||'内容を確認してください。';
   let terms='<dl class="trade-terms"><div><dt>今回あなたが渡す</dt><dd>'+esc(assetText(give))+'</dd></div><div><dt>'+(record.action==='propose'?'相手の承認後に受け取る':'今回あなたが受け取る')+'</dt><dd>'+esc(assetText(receive))+'</dd></div></dl>';
   if(record.action==='cancel'||record.action==='reject')terms='<dl class="trade-terms"><div><dt>申出の提供資産</dt><dd>'+esc(assetText(record.trade?.offer))+'</dd></div><div><dt>申出の希望資産</dt><dd>'+esc(assetText(record.trade?.want))+'</dd></div></dl>';
@@ -256,7 +271,7 @@ function confirmationMarkup(record){
 }
 function composeMarkup(state){
   const options=Object.entries(ASSETS).map(([key,label])=>'<option value="'+key+'">'+label+'</option>').join('');
-  return '<section class="trade-compose"><div class="trade-section-heading"><h2>新しい交易の申出</h2><p>交易先と交換する資産を選びます。希望する資産を「なし」にすると、無償で提供できます。</p></div><form data-trade-form="search" class="trade-search"><label for="trade-recipient-query">相手の領主名、または公開ID</label><div><input id="trade-recipient-query" type="search" maxlength="90" autocomplete="off" spellcheck="false" placeholder="領主名で検索、または u_… を入力"><button type="submit" class="trade-button" data-trade-search>探す</button></div></form><div class="trade-search-results" data-trade-results></div><div class="trade-target" data-trade-target></div><form data-trade-form="compose"><div class="trade-asset-columns"><fieldset><legend>あなたが提供する資産</legend><label for="trade-offer-asset">資産</label><select id="trade-offer-asset" data-trade-draft="offerAsset">'+options+'</select><label for="trade-offer-amount">数量</label><input id="trade-offer-amount" data-trade-draft="offerAmount" type="number" inputmode="numeric" min="1" max="'+state.rules.maxAmount+'" step="1" required><p data-trade-available></p></fieldset><fieldset><legend>相手に希望する資産</legend><label for="trade-want-asset">資産</label><select id="trade-want-asset" data-trade-draft="wantAsset"><option value="none">なし（無償で提供）</option>'+options+'</select><label for="trade-want-amount">数量</label><input id="trade-want-amount" data-trade-draft="wantAmount" type="number" inputmode="numeric" min="1" max="'+state.rules.maxAmount+'" step="1" required><p>各資産1〜'+num(state.rules.maxAmount)+'。交換条件はあなたが決められます。</p></fieldset></div><p class="trade-compose-note">提供資産は送信時に預けます。相手の承認後、対価を「受け取る」で受領してください。相手の承認前なら取り消せます。</p><button type="submit" class="trade-button is-primary" data-trade-prepare>申出を確認</button></form></section>';
+  return '<section class="trade-compose"><div class="trade-section-heading"><h2>新しい交易の申出</h2><p>金銭・兵糧・木材・石材・勾玉に加え、兵士（輸出入）も交易できます。希望する資産を「なし」にすると、無償で提供できます。</p></div><form data-trade-form="search" class="trade-search"><label for="trade-recipient-query">相手の領主名、または公開ID</label><div><input id="trade-recipient-query" type="search" maxlength="90" autocomplete="off" spellcheck="false" placeholder="領主名で検索、または u_… を入力"><button type="submit" class="trade-button" data-trade-search>探す</button></div></form><div class="trade-search-results" data-trade-results></div><div class="trade-target" data-trade-target></div><form data-trade-form="compose"><div class="trade-asset-columns"><fieldset><legend>あなたが提供する資産</legend><label for="trade-offer-asset">資産</label><select id="trade-offer-asset" data-trade-draft="offerAsset">'+options+'</select><label for="trade-offer-amount">数量</label><input id="trade-offer-amount" data-trade-draft="offerAmount" type="number" inputmode="numeric" min="1" max="'+state.rules.maxAmount+'" step="1" required><p data-trade-available></p></fieldset><fieldset><legend>相手に希望する資産</legend><label for="trade-want-asset">資産</label><select id="trade-want-asset" data-trade-draft="wantAsset"><option value="none">なし（無償で提供）</option>'+options+'</select><label for="trade-want-amount">数量</label><input id="trade-want-amount" data-trade-draft="wantAmount" type="number" inputmode="numeric" min="1" max="'+state.rules.maxAmount+'" step="1" required><p>各資産1〜'+num(state.rules.maxAmount)+'。兵士の単位は人です。交換条件はあなたが決められます。</p></fieldset></div><p class="trade-troop-capacity" data-trade-troop-capacity hidden></p><p class="trade-compose-note">提供する資産・兵士は送信時に所持数から引かれ、一時預りになります。相手の承認後、対価を「受取待ち」から受領してください。兵士の輸入・返還には兵数上限内の空きが必要です。相手の承認前なら取り消せます。</p><button type="submit" class="trade-button is-primary" data-trade-prepare>申出を確認</button></form></section>';
 }
 
 let instance=null;
@@ -264,7 +279,7 @@ function ensureView(){
   if(instance)return instance;
   const doc=global.document;if(!doc?.body)return null;
   const dialog=doc.createElement('dialog');dialog.id='trade-modal';dialog.className='trade-dialog';dialog.setAttribute('aria-labelledby','trade-dialog-title');
-  dialog.innerHTML='<header class="trade-header"><div class="trade-emblem" aria-hidden="true">交</div><div><p>領主どうしの資産交換</p><h1 id="trade-dialog-title">交易の間</h1></div>'+button('更新','refresh','aria-label="交易一覧を更新"')+button('閉じる','close','aria-label="交易の間を閉じる"')+'</header><div class="trade-navigation"><nav class="trade-tabs" aria-label="交易の一覧" role="tablist">'+Object.entries(LABELS).map(([key,label])=>'<button type="button" role="tab" id="trade-tab-'+key+'" aria-controls="trade-content" aria-selected="false" data-trade="tab" data-box="'+key+'">'+label+'<span data-trade-count="'+key+'" hidden></span></button>').join('')+'</nav>'+button('新しい申出','new','',true)+'</div><div class="trade-main"><div class="trade-feedback" data-trade-feedback role="status" aria-live="polite" hidden></div><div class="trade-access" data-trade-access hidden></div><div class="trade-pending" data-trade-pending hidden></div><div id="trade-content" data-trade-content></div><section class="trade-confirm" data-trade-confirm aria-labelledby="trade-confirm-title" hidden></section></div><footer class="trade-footer">資産は一時預り · 対価・返還資産は受取操作 · 日時は日本標準時（JST）</footer>';
+  dialog.innerHTML='<header class="trade-header"><div class="trade-emblem" aria-hidden="true">交</div><div><p>領主どうしの資産交換・兵士の輸出入</p><h1 id="trade-dialog-title">交易の間</h1></div>'+button('更新','refresh','aria-label="交易一覧を更新"')+button('閉じる','close','aria-label="交易の間を閉じる"')+'</header><div class="trade-navigation"><nav class="trade-tabs" aria-label="交易の一覧" role="tablist">'+Object.entries(LABELS).map(([key,label])=>'<button type="button" role="tab" id="trade-tab-'+key+'" aria-controls="trade-content" aria-selected="false" data-trade="tab" data-box="'+key+'">'+label+'<span data-trade-count="'+key+'" hidden></span></button>').join('')+'</nav>'+button('新しい申出','new','',true)+'</div><div class="trade-main"><div class="trade-feedback" data-trade-feedback role="status" aria-live="polite" hidden></div><div class="trade-access" data-trade-access hidden></div><div class="trade-pending" data-trade-pending hidden></div><div id="trade-content" data-trade-content></div><section class="trade-confirm" data-trade-confirm aria-labelledby="trade-confirm-title" hidden></section></div><footer class="trade-footer">資産は一時預り · 対価・返還資産は受取操作 · 日時は日本標準時（JST）</footer>';
   doc.body.append(dialog);
   const content=dialog.querySelector('[data-trade-content]'),feedback=dialog.querySelector('[data-trade-feedback]'),pending=dialog.querySelector('[data-trade-pending]'),access=dialog.querySelector('[data-trade-access]'),confirmHost=dialog.querySelector('[data-trade-confirm]'),main=dialog.querySelector('.trade-main');
   let controller,viewKey='',returnFocus=null,confirmFocus=null,lastConfirmation='',unsubscribe=null;
@@ -292,7 +307,9 @@ function ensureView(){
       html(content.querySelector('[data-trade-results]'),state.searchResults.map(player=>'<button type="button" class="trade-recipient" data-trade="recipient" data-player-id="'+esc(player.playerId)+'"'+disabled(locked||state.searchBusy)+'>'+peerMarkup(player)+(player.clan?'<span>'+esc(player.clan)+'</span>':'')+'</button>').join(''));
       html(content.querySelector('[data-trade-target]'),state.target?'<span class="trade-eyebrow">選択した交易先</span>'+peerMarkup(state.target):'<p>'+(state.searchBusy?'交易先を確認しています…':'交易先を検索して選んでください。')+'</p>');
       for(const input of content.querySelectorAll('[data-trade-draft]')){const field=input.dataset.tradeDraft;if(doc.activeElement!==input&&input.value!==state.draft[field])input.value=state.draft[field];input.disabled=locked||!!state.pending||field==='wantAmount'&&state.draft.wantAsset==='none';}
-      content.querySelector('[data-trade-available]').textContent='現在の所持数：'+(ASSETS[state.draft.offerAsset]||'資産')+' '+num(state.balances[state.draft.offerAsset]);
+      content.querySelector('[data-trade-available]').textContent='現在の所持数：'+(ASSETS[state.draft.offerAsset]||'資産')+' '+num(state.balances[state.draft.offerAsset])+(state.draft.offerAsset==='troops'?'人':'');
+      for(const side of ['offer','want'])content.querySelector('label[for="trade-'+side+'-amount"]').textContent=state.draft[side+'Asset']==='troops'?'人数（人）':'数量';
+      const troopNote=content.querySelector('[data-trade-troop-capacity]');troopNote.hidden=state.draft.offerAsset!=='troops'&&state.draft.wantAsset!=='troops';troopNote.textContent=troopCapacityText(state);
       content.querySelector('[data-trade-prepare]').disabled=locked||state.searchBusy||!!state.pending||!state.target||!state.access.writable;
     }else if(state.ownerId){
       const list=content.querySelector('[data-trade-list]'),focused=doc.activeElement,focusId=focused?.dataset?.id,focusKind=focused?.dataset?.kind;
@@ -349,7 +366,7 @@ function ensureView(){
   instance={controller,openBox:box=>open(()=>controller.openBox(box)),openCompose:target=>open(()=>controller.openCompose(target)),dispose(){unsubscribe?.();doc.removeEventListener('visibilitychange',onVisibility);controller.dispose();dialog.remove();instance=null;}};
   return instance;
 }
-const api={createController,cleanTrade,assetText,escape:esc,tradeCard,confirmationMarkup,openBox:box=>ensureView()?.openBox(box),openCompose:target=>ensureView()?.openCompose(target),close:()=>instance?.controller.close(),refreshIdentity:()=>instance?.controller.refreshIdentity(),getState:()=>instance?.controller.getState(),dispose:()=>instance?.dispose()};
+const api={createController,cleanTrade,assetText,escape:esc,tradeCard,confirmationMarkup,openBox:box=>ensureView()?.openBox(box),openCompose:target=>ensureView()?.openCompose(target),openTroops:target=>ensureView()?.openCompose({...target,asset:'troops'}),close:()=>instance?.controller.close(),refreshIdentity:()=>instance?.controller.refreshIdentity(),getState:()=>instance?.controller.getState(),dispose:()=>instance?.dispose()};
 if(typeof module!=='undefined'&&module.exports)module.exports=api;
 global.SengokuTrade=api;
 })(typeof window!=='undefined'?window:globalThis);

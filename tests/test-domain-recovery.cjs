@@ -51,7 +51,7 @@ function fixture({existing=true,cloud=null,isAdmin=true,operator=false}={}){
  vm.runInContext(fs.readFileSync(path.join(__dirname,'../domain-recovery.js'),'utf8'),context);
  let source=fs.readFileSync(path.join(__dirname,'../social.js'),'utf8');source=source.replace('global.SengokuSocial={open','global.__recoveryTest={s,verifyRecovery,recoveryConfirmation,recoveryView,submit,installIdentity,importRecoveryFiles,exportRecoveryBackup,restoreStoredIdentity,startCloud,acceptUser,canShowOperatorRecovery,refreshOperatorRecoveryAccess,connected,setUI:d=>{dialog=d;},setEpoch:v=>{authEpoch=v;},getRecovery:()=>recovery};global.SengokuSocial={open');vm.runInContext(source,context);
  const t=context.__recoveryTest;if(existing){t.s.identity={...oldIdentity};t.s.user={id:oldIdentity.id,name:'以前の接続',isAdmin:false};}
- if(operator){t.s.identity={id:identity.id,token:oldIdentity.token};t.s.user={...user(),isAdmin:true,isStaff:false};t.s.configLoaded=true;t.s.config={...t.s.config,adminClaimed:true,adminRecoveryAvailable:true};t.s.connected=true;storage.set(IDKEY,JSON.stringify(t.s.identity));}
+ if(operator){t.s.identity={id:identity.id,token:oldIdentity.token};t.s.user={...user(),isAdmin:true,isStaff:false};t.s.configLoaded=true;t.s.management={playerId:identity.id,recoveryAvailable:true};t.s.connected=true;storage.set(IDKEY,JSON.stringify(t.s.identity));}
  return{t,context,storage,calls,starts,stops,roles,prepared,applied,feedback,blobs,user,flags:options=>{if('blockIdentity'in options)blockIdentity=options.blockIdentity;if('blockRollback'in options)blockRollback=options.blockRollback;if('finalizeFailure'in options)finalizeFailure=options.finalizeFailure;if('applyFailure'in options)applyFailure=options.applyFailure;if('prepareFailure'in options)prepareFailure=options.prepareFailure;if('apiFailure'in options)apiFailure=options.apiFailure;if('delayMe'in options)delayMe=options.delayMe;if('ready'in options)ready=options.ready;},remote:(value,admin=remoteAdmin)=>{remote=value;remoteAdmin=admin;},handler:value=>{handler=value;},release:()=>releaseMe?.()};
 }
 
@@ -64,11 +64,10 @@ for(const scenario of [
  ['staff',f=>{f.t.s.user={...f.t.s.user,isAdmin:false,isStaff:true};}],
  ['unverified',f=>{f.t.s.user=null;}],
  ['different identity',f=>{f.t.s.user={...f.t.s.user,id:'another-operator'};}],
- ['unknown config',f=>{f.t.s.configLoaded=false;}],
- ['unknown claim',f=>{delete f.t.s.config.adminClaimed;}],
- ['unknown recovery availability',f=>{delete f.t.s.config.adminRecoveryAvailable;}],
- ['not registered',f=>{f.t.s.config.adminClaimed=false;}],
- ['unavailable',f=>{f.t.s.config.adminRecoveryAvailable=false;}],
+ ['unknown capabilities',f=>{f.t.s.management=null;}],
+ ['different capability identity',f=>{f.t.s.management.playerId='another-operator';}],
+ ['unknown recovery availability',f=>{delete f.t.s.management.recoveryAvailable;}],
+ ['unavailable',f=>{f.t.s.management.recoveryAvailable=false;}],
  ['offline',f=>{f.t.s.connected=false;}],
  ['interrupted recovery',f=>{f.storage.set(IDKEY,JSON.stringify({...identity,pendingRecovery:true}));f.t.restoreStoredIdentity();}],
 ]){

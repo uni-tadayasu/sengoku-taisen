@@ -3,21 +3,25 @@
 const tradeStmt=(db,sql,...params)=>db.prepare(sql).bind(...params);
 const tradeRows=result=>result?.results||[];
 const tradeIso=value=>new Date(Number(value)).toISOString();
-const TRADE_ASSETS=Object.freeze(['gold','rice','wood','stone','magatama']);
-const TRADE_NAMES={gold:'金銭',rice:'兵糧',wood:'木材',stone:'石材',magatama:'勾玉'};
-const TRADE_RULES=Object.freeze({assets:TRADE_ASSETS,maxAmount:1000000,balanceLimit:999999999,maxPending:20});
+const TRADE_ASSETS=Object.freeze(['gold','rice','wood','stone','magatama','troops']);
+const TRADE_NAMES={gold:'金銭',rice:'兵糧',wood:'木材',stone:'石材',magatama:'勾玉',troops:'兵士'};
+// Troops also have the engine's building/governor capacity. The save format
+// separately validates state.troops at no more than one million.
+const TRADE_RULES=Object.freeze({assets:TRADE_ASSETS,maxAmount:1000000,balanceLimit:999999999,troopBalanceLimit:1000000,maxPending:20});
 const TRADE_GATE='EXISTS(SELECT 1 FROM trade_requests WHERE actor_id=? AND request_id=? AND commit_token=?)';
 const TRADE_SELECT=`SELECT t.*,d.recipient_id AS delivery_recipient_id,d.kind AS delivery_kind,d.assets_json AS delivery_assets_json,d.claimed_at
   FROM trades t LEFT JOIN trade_deliveries d ON d.trade_id=t.id`;
 const tradeVisible='(t.sender_id=? OR t.recipient_id=?)';
-const tradeEmpty=()=>Object.fromEntries(TRADE_ASSETS.map(key=>[key,0]));
+// Keep zero-troop bundles byte-for-byte compatible with existing request
+// hashes, receipts, escrows, and browser retries from the five-asset client.
+const tradeEmpty=()=>Object.fromEntries(TRADE_ASSETS.filter(key=>key!=='troops').map(key=>[key,0]));
 const tradeHasAssets=bundle=>TRADE_ASSETS.some(key=>bundle[key]>0);
-const tradeLabel=bundle=>TRADE_ASSETS.filter(key=>bundle[key]>0).map(key=>TRADE_NAMES[key]+bundle[key].toLocaleString('ja-JP')).join('・')||'対価なし';
+const tradeLabel=bundle=>TRADE_ASSETS.filter(key=>bundle[key]>0).map(key=>TRADE_NAMES[key]+bundle[key].toLocaleString('ja-JP')+(key==='troops'?'人':'')).join('・')||'対価なし';
 
 function tradeBundle(value,required,h){
-  if(!value||typeof value!=='object'||Array.isArray(value)||Object.keys(value).some(key=>!TRADE_ASSETS.includes(key)))h.fail(400,'INVALID_INPUT','交易の資産は金銭・兵糧・木材・石材・勾玉で指定してください。');
+  if(!value||typeof value!=='object'||Array.isArray(value)||Object.keys(value).some(key=>!TRADE_ASSETS.includes(key)))h.fail(400,'INVALID_INPUT','交易の資産は金銭・兵糧・木材・石材・勾玉・兵士で指定してください。');
   const result=tradeEmpty();
-  for(const key of TRADE_ASSETS){const amount=value[key]??0;if(!Number.isSafeInteger(amount)||amount<0||amount>TRADE_RULES.maxAmount||Object.hasOwn(value,key)&&value[key]===null)h.fail(400,'INVALID_INPUT','交易数量は0〜1,000,000の整数で指定してください。');result[key]=amount;}
+  for(const key of TRADE_ASSETS){const amount=value[key]??0;if(!Number.isSafeInteger(amount)||amount<0||amount>TRADE_RULES.maxAmount||Object.hasOwn(value,key)&&value[key]===null)h.fail(400,'INVALID_INPUT','交易数量は0〜1,000,000の整数で指定してください。');if(key!=='troops'||amount>0)result[key]=amount;}
   if(required&&!tradeHasAssets(result))h.fail(400,'INVALID_INPUT','輸出する資産を1つ以上指定してください。');
   return result;
 }
@@ -76,10 +80,22 @@ async function tradeActor(ctx,body){
   if(clock.elapsedMs-save.state.worldClock.elapsedMs>15000)h.fail(409,'CLOCK_STALE','共通時計と本拠を同期してから交易してください。');
   return {row,clock,save};
 }
-function tradeMove(save,outgoing,incoming,h){
+async function tradeMove(ctx,actor,outgoing,incoming){
+  const {db,user,now,helpers:h}=ctx,save=actor.save;
+  const importsTroops=(incoming.troops??0)>(outgoing.troops??0);
+  const troopCapacity=importsTroops?await h.tradeTroopCapacity(db,user,save,actor.clock,now):TRADE_RULES.troopBalanceLimit;
+  if(!Number.isSafeInteger(troopCapacity)||troopCapacity<0)h.fail(409,'TROOP_CAPACITY_UNAVAILABLE','兵数上限を確認できません。同期してから再度お試しください。');
   const values={};
-  for(const key of TRADE_ASSETS){const balance=key==='magatama'?save.state.magatama:save.state.resources[key];if(balance<outgoing[key])h.fail(409,'INSUFFICIENT_ASSETS','支払う資産が足りません。');values[key]=balance-outgoing[key]+incoming[key];if(values[key]>TRADE_RULES.balanceLimit)h.fail(409,'ASSET_LIMIT','所持上限を超えるため全額を受け取れません。資産を使ってから再度お試しください。');}
-  for(const key of TRADE_ASSETS)if(key==='magatama')save.state.magatama=values[key];else save.state.resources[key]=values[key];
+  for(const key of TRADE_ASSETS){
+    const balance=key==='magatama'||key==='troops'?save.state[key]:save.state.resources[key],paid=outgoing[key]??0,received=incoming[key]??0;
+    if(balance<paid)h.fail(409,'INSUFFICIENT_ASSETS',key==='troops'?'輸出する兵士が足りません。':'支払う資産が足りません。');
+    values[key]=balance-paid+received;
+    // A lowered capacity must not prevent spending/exporting existing troops,
+    // or accepting an unrelated legacy resource trade.
+    const limit=key==='troops'?Math.min(TRADE_RULES.troopBalanceLimit,troopCapacity):TRADE_RULES.balanceLimit;
+    if(values[key]>limit)h.fail(409,key==='troops'?'TROOP_LIMIT':'ASSET_LIMIT',key==='troops'?`兵数上限は${limit.toLocaleString('ja-JP')}人です。兵士を減らすか兵舎などを増築してから再度お試しください。受取待ちの兵士は保管されます。`:'所持上限を超えるため全額を受け取れません。資産を使ってから再度お試しください。');
+  }
+  for(const key of TRADE_ASSETS)if(key==='magatama'||key==='troops')save.state[key]=values[key];else save.state.resources[key]=values[key];
 }
 function tradeSaveStatements(ctx,actor,body,gateArgs,text){
   const {db,user,now,helpers:h}=ctx,save=actor.save;save.state.log.unshift({turn:save.state.turn,text,kind:'trade'});save.state.log=save.state.log.slice(0,200);save.savedAt=tradeIso(now);
@@ -121,9 +137,9 @@ async function tradeMutate(ctx,id=null,action='propose'){
   }else{row=await tradeRequireRow(ctx,id);tradeAuthorize(row,user.id,action,h);}
   const actor=await tradeActor(ctx,body),changesSave=propose||action==='accept'||action==='claim',offer=propose?body.offer:JSON.parse(row.offer_json),want=propose?body.want:JSON.parse(row.want_json);
   let delivery=null,log='';
-  if(propose){tradeMove(actor.save,offer,tradeEmpty(),h);log=`${target.name}へ交易を提案。輸出する${tradeLabel(offer)}を預けました。`;}
-  else if(action==='accept'){tradeMove(actor.save,want,offer,h);if(tradeHasAssets(want))delivery={kind:'proceeds',assets:want};log=`${row.sender_name}との交易が成立。${tradeLabel(want)}と引き換えに${tradeLabel(offer)}を輸入しました。`;}
-  else if(action==='claim'){const assets=JSON.parse(row.delivery_assets_json);tradeMove(actor.save,tradeEmpty(),assets,h);log=`交易の${row.delivery_kind==='refund'?'返還資産':'対価'}として${tradeLabel(assets)}を受け取りました。`;}
+  if(propose){await tradeMove(ctx,actor,offer,tradeEmpty());log=`${target.name}へ交易を提案。輸出する${tradeLabel(offer)}を預けました。`;}
+  else if(action==='accept'){await tradeMove(ctx,actor,want,offer);if(tradeHasAssets(want))delivery={kind:'proceeds',assets:want};log=`${row.sender_name}との交易が成立。${tradeLabel(want)}と引き換えに${tradeLabel(offer)}を輸入しました。`;}
+  else if(action==='claim'){const assets=JSON.parse(row.delivery_assets_json);await tradeMove(ctx,actor,tradeEmpty(),assets);log=`交易の${row.delivery_kind==='refund'?'返還資産':'対価'}として${tradeLabel(assets)}を受け取りました。`;}
   else delivery={kind:'refund',assets:offer};
   const nonce=crypto.randomUUID(),gateArgs=[user.id,body.requestId,nonce],role=h.roleCommitGuard(user),tradeRevision=propose?1:Number(row.revision)+1;
   const receipt={id:h.uid('tx_'),requestId:body.requestId,tradeId:id,action,playerId:user.id,playerRevision:Number(actor.row.revision)+(changesSave?1:0),tradeRevision,createdAt:tradeIso(now)};

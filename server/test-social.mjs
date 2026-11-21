@@ -54,7 +54,7 @@ const auth=(s,body)=>({method:'POST',token:s.token,body});
 
 try{
   await api('/api/v1/health');
-  const initial=await api('/api/v1/config');assert.equal(initial.data.adminClaimed,false);
+  const initial=await api('/api/v1/config');assert(!Object.hasOwn(initial.data,'adminClaimed'));
   await api('/api/v1/me',{expected:401});
   await api('/api/v1/session',{method:'POST',body:{name:'禁止された接続'},origin:'https://untrusted.example',expected:403});
   const nullCors=await api('/api/v1/config',{origin:'null'});assert.equal(nullCors.res.headers.get('access-control-allow-origin'),'null');
@@ -119,7 +119,7 @@ try{
   await api('/api/v1/admin/claim',{...auth(c,{key:env.SENGOKU_ADMIN_KEY}),expected:409});
   await api('/api/v1/admin/announcement',{...auth(nonAdmin,{text:'偽のお知らせ'}),expected:403});
   await api('/api/v1/admin/announcement',auth(admin,{text:'初陣のお知らせ'}));
-  const updatedConfig=await api('/api/v1/config');assert.equal(updatedConfig.data.adminClaimed,true);assert.equal(updatedConfig.data.announcement,'初陣のお知らせ');
+  const updatedConfig=await api('/api/v1/config');assert(!Object.hasOwn(updatedConfig.data,'adminClaimed'));assert.equal(updatedConfig.data.announcement,'初陣のお知らせ');
   await api('/api/v1/admin/announcement',auth(admin,{text:''}));assert.equal((await api('/api/v1/config')).data.announcement,'');
   await api('/api/v1/chat?channel=admin',{token:nonAdmin.token,expected:403});
   tick();await api('/api/v1/chat',auth(admin,{channel:'admin',text:'運営軍議'}));

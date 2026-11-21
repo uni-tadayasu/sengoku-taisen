@@ -34,7 +34,7 @@ function noPrivate(value){const json=JSON.stringify(value);for(const key of ['cr
 
 try{
  await scope('health advertises timed events only when all four event tables are available',async h=>{
-  const ready=await get(h,'/health');assert.equal(ready.status,'ready');assert.equal(ready.version,'3.17.1');assert.equal(ready.features.timedEvents,true);
+  const ready=await get(h,'/health');assert.equal(ready.status,'ready');assert.equal(ready.version,'3.18.0');assert.equal(ready.features.timedEvents,true);
   for(const table of ['timed_events','timed_event_requests','timed_event_participants','timed_event_rewards']){
    h.sql.exec('ALTER TABLE '+table+' RENAME TO fixture_hidden');
    const unavailable=(await h.api('/health',{expected:503})).data;assert.equal(unavailable.error.code,'SERVICE_UNAVAILABLE');assert.equal(unavailable.features,undefined);

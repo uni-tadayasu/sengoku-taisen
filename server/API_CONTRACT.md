@@ -53,7 +53,7 @@ Chat GET and letter inbox/thread GET responses additionally include `playerEvalu
 | Method / path | Body / query | Result fields, in addition to `ok` |
 |---|---|---|
 | GET `/health` | none | `status:"ready"`, `version:"3.15.0"`, `features:{trades:true,moderation:true,premium:true}` |
-| GET `/config` | none | `version:"3.15.0"`, `features:{trades:true,moderation:true,premium:true}`, `announcement:string`, `adminClaimed:boolean`, `adminRecoveryAvailable:boolean`, `onlineCount:number`, `clock` |
+| GET `/config` | none | `version:"3.18.0"`, `features:{trades:true,moderation:true,premium:true,timedEvents:true,troopTrades:true,roamingBattles:true,privatePlayerRoles:true}`, `announcement:string`, `onlineCount:number`, `clock` |
 | POST `/session` | `{name?,clan?}` | `token:string`, `user` |
 | GET `/me` | none | `user`, `friends:user[]`, `requests:[{id,name,clan,avatarVersion,evaluation,direction:"incoming"|"outgoing",createdAt}]`, `unreadMail:number` |
 | PATCH `/profile` | `{name,expectedName?}` | `user` |
@@ -314,7 +314,7 @@ When that legacy save has `clan:"德川家"`, read migration first neutralizes o
 
 Send `online:true` every twenty seconds only while the game document is visible. Send `online:false` when hidden, leaving or disconnecting when possible. A player is online if any device for that identity has an explicit true heartbeat newer than ninety seconds. The boundary is strict: exactly ninety seconds old is expired. Closing a tab without a final heartbeat therefore clears naturally within that window. Multiple devices are deduplicated into one player; hiding one does not hide a second visible device.
 
-`/online` returns public user ID, display name, clan, current operator badge and public guild information with `online:true`. It never returns tokens, pairing codes, IP addresses, device IDs/names or per-device activity times. It is sorted by user ID and paginated with an opaque user-ID cursor. The default page size is 50; `limit` accepts 1 through 100. `total` covers all currently online identities, and `/config.onlineCount` uses the same presence rule. Pagination is a current live view, so presence changes between pages can change the total.
+`/online` returns public user ID, display name, clan and public guild information without management roles with `online:true`. It never returns tokens, pairing codes, IP addresses, device IDs/names or per-device activity times. It is sorted by user ID and paginated with an opaque user-ID cursor. The default page size is 50; `limit` accepts 1 through 100. `total` covers all currently online identities, and `/config.onlineCount` uses the same presence rule. Pagination is a current live view, so presence changes between pages can change the total.
 
 `GET /me`, chat, sync reads and other background authenticated requests do not create presence. Foreground presence writes are limited to 180 per identity per minute. Per-device presence records older than 24 hours are removed on that identity's next presence update; this cleanup does not touch sessions or cloud saves.
 
@@ -495,7 +495,7 @@ On owner departure, ownership transfers to the earliest-joined remaining deputy,
 
 ### Shared treasury
 
-All current members, including ordinary members, can contribute and withdraw shared **gold, rice, wood, stone and magatama**. There is no role-based withdrawal limit beyond the common amount/balance bounds and rate limit below. Treasury balances and transaction history are visible only to current members.
+All current members, including ordinary members, can contribute and withdraw shared **gold, rice, wood, stone, magatama and troops**. There is no role-based withdrawal limit beyond the common amount/balance bounds and rate limit below. Treasury balances and transaction history are visible only to current members.
 
 `GET /guild/treasury?limit=50&cursor=…` returns:
 
@@ -542,7 +542,7 @@ Default/maximum page size is 50. The opaque cursor stores the last prestige tota
 
 ## Player trades: exports, imports and escrow
 
-Trade is private to its two authenticated player IDs. Clan names, home castle IDs and guild membership do not select a wallet or grant access. A participant may offer any combination of **gold, rice, wood, stone and magatama** in exchange for another combination. An empty requested bundle is a free export. Trade charges no command or additional fee and remains available while the common clock is paused.
+Trade is private to its two authenticated player IDs. Clan names, home castle IDs and guild membership do not select a wallet or grant access. A participant may offer any combination of **gold, rice, wood, stone, magatama and troops** in exchange for another combination. An empty requested bundle is a free export. Trade charges no command or additional fee and remains available while the common clock is paused.
 
 The server holds the sender's offered assets as escrow when a proposal is created. Acceptance subtracts the recipient's requested payment and credits the offered assets to that recipient in the same transaction. The sender's proceeds are recorded as an unclaimed delivery. Cancellation or rejection instead records the original offered bundle as a refund delivery. Only the delivery owner can explicitly claim it into their own current save. The other player's save, revision and writer lease are never changed by any trade operation, so a trader who is online with unsaved gameplay is not forced to replace that gameplay when the other participant accepts or rejects a proposal.
 
@@ -648,7 +648,7 @@ Comparison hashes both strings and compares fixed-size hash strings without earl
 Registration attempts are limited to five per ten minutes per identity and per hashed Cloudflare source IP where available.
 The first successful claim atomically reserves the single `adminUserId` setting. Concurrent correct claims can produce only one admin.
 After registration another identity cannot claim, even with the key. The already registered identity can retry using its own bearer token. Use the separate `/admin/recover` flow to authenticate as the original identity after losing its local token; never retry `/admin/claim` on a replacement account as a recovery method.
-Use `/config.adminClaimed` to hide the first-registration form for other players. Use `/me.user.isAdmin` to show admin tools.
+Never advertise management enrollment to ordinary players. Public `/config` does not expose registration or recovery capabilities. Only the authenticated admin receives `/me.management.recoveryAvailable`; bind it to that same `/me.user.id` and clear it on identity or role changes. Use the private `/me.user.isAdmin` to show authorized admin tools.
 Announcements are plain text, at most 300 characters; an empty string clears the announcement.
 
 ## Support staff appointment and removal
@@ -1346,3 +1346,14 @@ Run the `scripts/test-*.mjs` suites (excluding the `test-support.mjs` harness) u
 The avatar parser fixtures include baseline/progressive RGB/grayscale, restart markers and the actual Chrome canvas output; API tests use an isolated R2 map to cover cleanup races and uncertain DB responses. Recent-connection tests verify current-role SQL guards and rolling-window privacy. Clan tests verify reserved/ordinary character variants and deterministic migration. Guild suites inject mid-transaction SQL failures and post-commit response loss, concurrent duplicate/competing transfers, competing users' withdrawals, stale writers/revisions, membership/role revocation, promoted targets, protected private chat/history, preserved final funds and safe public ranking aggregation. All tests use local fixtures and do not modify production accounts, roles, saves, photos or messages.
 
 The suites create an in-memory SQLite database, apply every journaled migration in order, generate a random test-only admin key in memory, and exercise the actual Worker. The D1 adapter runs each batch as an ordered SQLite transaction, matching D1's batch atomicity contract. Promise-based concurrent calls check revision conflicts, single-use pairing redemption, the single-operator claim, clock controls, repeated field requests, competing raids and consent-versus-attack races. The field suite injects a failing statement into an attack batch and verifies that both saves, the battle and the request record roll back, followed by a safe retry. The staff suite checks role separation, paired-device removal, appointment replay after dismissal, concurrent role operations and revocation between authentication and private chat SQL; it also tests transaction rollback and the primary-operator guard at commit time. A controlled server clock verifies disconnected elapsed time, equal time for different identities, pause/resume, speed changes, cooldown/alliance expiry and calendar wrap without resetting absolute time. The tests do not simulate network latency, a browser's lifecycle or the production deployment; those are separate integration checks. They do not contact a deployed service or send production messages.
+
+
+## CPU roaming battles (3.18.0)
+
+Authenticated `POST /roaming/battle` accepts `{encounterId,tactic,troops,requestId,campaignId,sequence,deviceId,expectedRevision}`. No other fields are accepted. `campaignId` is the current `state.walking.campaignId`; `sequence` is `state.roaming.sequence`. Troops are safe integers from300 through the smaller of actual current troops, calculated troop capacity and1,000,000. At least one army officer, sufficient rice and one command are required. Paused common time stops command recovery but still permits spending already available commands.
+
+The response includes the full authoritative sync snapshot plus `{battle,idempotent}`. The battle contains its matching request/campaign/sequence and encounter/tactic, deployed/lost/surviving troops, enemy losses, attack/enemy power, food/command costs, actual capped reward increments, prestige gain and game turn. The common engine computes6 fixed CPU encounter types with4 tactics; castles, garrisons, conquest quest counters and automatic campaign counters do not change.
+
+`0015_roaming_battles` stores one immutable receipt per actor/request and per actor/campaign/sequence. Receipt creation and personal save revision increment are conditional parts of one batch. Account access, writer lease, save revision, common clock revision, role term and shared-base revision must still match at commit. Retry returns the prior receipt with current sync data and never reapplies costs or rewards. `GET /roaming/history` returns the authenticated player's latest20 durable reports; it cannot select another player. Local-only play uses the identical engine and rolls the full mutation back when local saving fails.
+
+For soldier trades, positive `troops` values participate in the existing escrow/proceeds/refund transaction. They debit or credit `state.troops`, never a castle garrison. Troops0 are omitted from canonical vectors and request hashes for historical retry compatibility. Net incoming troops must fit the authoritative dynamic capacity and1,000,000 hard limit. Already-over-capacity exports and trades with no net troop increase remain permitted. Unreceivable imports/refunds remain wholly pending; no soldier is silently discarded.

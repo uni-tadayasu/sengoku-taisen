@@ -1,0 +1,63 @@
+/* Original painted scenery on every action control, including dynamically
+   mounted dialogs and the public guides. Backgrounds do not cover text,
+   change positioning, intercept taps, or replace existing focus indicators. */
+:is(button, [role="button"], [role="tab"], [role="switch"],
+    input[type="button"], input[type="submit"], input[type="reset"], summary,
+    .button, .action-link, .nav-play, .decision-list a, .guide-actions a,
+    .share-actions a, .premium-buy) {
+  --button-wash-start: rgba(12, 23, 34, .82);
+  --button-wash-end: rgba(14, 26, 34, .64);
+  background-image:
+    linear-gradient(105deg, var(--button-wash-start), var(--button-wash-end)),
+    var(--item-art, url("assets/castle-town.webp")) !important;
+  background-size: 100% 100%, var(--button-art-size, cover) !important;
+  background-position: center, var(--item-x, 50%) var(--item-y, 50%) !important;
+  background-repeat: no-repeat !important;
+}
+
+/* Keep the existing color meanings while making the illustrations visible. */
+:is(.button.primary, .social-button.primary, .field-button.primary,
+    .launch-enter, .action-link.primary, .nav-play) {
+  --button-wash-start: rgba(104, 37, 44, .88);
+  --button-wash-end: rgba(100, 35, 36, .68);
+}
+:is(.button.gold, .social-button.gold, .field-button.gold,
+    .action-link.gold, .premium-buy) {
+  --button-wash-start: rgba(56, 43, 23, .86);
+  --button-wash-end: rgba(60, 46, 23, .64);
+}
+/* These actions originally had a pale gold fill and dark lettering. The new
+   dark scenery needs light lettering in default, hover and focused states. */
+:is(.events-button, .trade-button, .letters-button, .moderation-button,
+    .premium-admin-button).is-primary,
+:is(.events-button, .trade-button, .letters-button, .moderation-button,
+    .premium-admin-button).is-primary:not(:disabled):is(:hover, :focus-visible),
+.hints-card:first-child.is-recommended .hints-action,
+.hints-card:first-child.is-recommended .hints-action:not(:disabled):is(:hover, :focus-visible) {
+  color: #fff5d8;
+  --button-wash-start: rgba(65, 48, 22, .85);
+  --button-wash-end: rgba(53, 41, 24, .64);
+}
+:is(.button.danger, .social-button.danger, [data-action="attack"]) {
+  --button-wash-start: rgba(107, 31, 45, .88);
+  --button-wash-end: rgba(92, 26, 34, .68);
+}
+:is(.nav-item.active, [role="tab"][aria-selected="true"],
+    button[aria-pressed="true"], .social-tabs button.active) {
+  --button-wash-start: rgba(65, 33, 44, .87);
+  --button-wash-end: rgba(64, 37, 29, .66);
+}
+
+/* Small glyph buttons get the same scenery, with a darker center for clarity. */
+:is(.icon-button, .social-icon-button, .modal-close, .scroll-top-button,
+    .art-level-controls button, .rank-preview-strip button) {
+  --button-wash-start: rgba(10, 23, 33, .83);
+  --button-wash-end: rgba(10, 23, 33, .64);
+}
+
+@media (forced-colors: active) {
+  :is(button, [role="button"], [role="tab"], [role="switch"],
+      input[type="button"], input[type="submit"], input[type="reset"], summary,
+      .button, .action-link, .nav-play, .decision-list a, .guide-actions a,
+      .share-actions a, .premium-buy) { background-image: none !important; }
+}

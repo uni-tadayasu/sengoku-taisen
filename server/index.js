@@ -4,9 +4,10 @@ import {handleTrades} from './trade.js';
 import {handleModeration} from './moderation.js';
 import {handlePremium,handlePremiumWebhook,resolvePremiumAppearances} from './premium.js';
 import {handleEvents} from './events.js';
+import {handleRoaming,reconcileRoamingProgress} from './roaming.js';
 const API = '/api/v1';
-const API_VERSION = '3.17.1';
-const API_FEATURES = Object.freeze({trades:true,moderation:true,premium:true,timedEvents:true});
+const API_VERSION = '3.18.0';
+const API_FEATURES = Object.freeze({trades:true,moderation:true,premium:true,timedEvents:true,troopTrades:true,roamingBattles:true,privatePlayerRoles:true});
 const MAX_BODY = 16 * 1024;
 const MAX_SAVE_BODY = 2 * 1024 * 1024;
 const MAX_AVATAR_BYTES = 48 * 1024;
@@ -393,14 +394,17 @@ function publicIdentities(payload,request){
   const linked=['/session','/devices/link','/admin/recover'].includes(path)&&typeof payload?.token==='string';
   const self=payload?.user&&(payload.user.id===actor?.id||linked)?payload.user:null;
   const privateKeys=new Set(['save','state','entitlements','staffBase']);
-  const roleKeys=new Set(['isAdmin','isStaff','is_admin','is_staff','staffTitle','siteRole','roleTitle','operatorProtected','staffProtected']);
+  const roleKeys=new Set(['isAdmin','isStaff','isOperator','is_admin','is_staff','is_operator','staffTitle','siteRole','roleTitle','operatorProtected','staffProtected','adminPlayerId','adminUserId','operatorPlayerId','operatorUserId']);
   function visit(value){
     if(!value||typeof value!=='object')return value;
     if(Array.isArray(value))return value.map(visit);
     const visibleRoles=management||value===self,result={};
     for(const [key,child]of Object.entries(value)){
       if(!visibleRoles&&(roleKeys.has(key)||key==='role'&&['admin','staff','operator'].includes(child)))continue;
-      result[key]=key==='clan'&&child===ADMIN_CLAN&&!visibleRoles?ORDINARY_TOKUGAWA_CLAN:privateKeys.has(key)?child:visit(child);
+      // Only the authenticated account's top-level snapshot is private. A
+      // public history entry named "state" or "save" must still be projected.
+      const privateSnapshot=value===payload&&(self||management)&&privateKeys.has(key);
+      result[key]=key==='clan'&&child===ADMIN_CLAN&&!visibleRoles?ORDINARY_TOKUGAWA_CLAN:privateSnapshot?child:visit(child);
     }
     if(!management&&value.kind==='staff-building'){
       result.kind='building';
@@ -429,7 +433,7 @@ const USER_SELECT = `SELECT u.id,u.name,u.clan,u.last_seen,gm.guild_id,g.name AS
   FROM users u LEFT JOIN guild_members gm ON gm.user_id=u.id LEFT JOIN guilds g ON g.id=gm.guild_id`;
 async function getUser(db, id) { return stmt(db, USER_SELECT + ' WHERE u.id=?', id).first(); }
 function accountCommitGuard(user){return {sql:"NOT EXISTS(SELECT 1 FROM player_bans WHERE user_id=? AND active=1) AND COALESCE((SELECT revision FROM player_bans WHERE user_id=?),0)=?",args:[user.id,user.id,Number(user.moderation_epoch||0)]};}
-async function requireAccountAccess(db,user){const row=await stmt(db,'SELECT active,revision FROM player_bans WHERE user_id=?',user.id).first();if(row?.active)fail(403,'ACCOUNT_BANNED','この領主のオンライン利用は運営により停止されています。解除後に再接続できます。');if(Number(row?.revision||0)!==Number(user.moderation_epoch||0))fail(409,'ACCOUNT_ACCESS_CHANGED','この領主の利用状態が変更されました。最新の接続状態を確認してください。');}
+async function requireAccountAccess(db,user){const row=await stmt(db,'SELECT active,revision FROM player_bans WHERE user_id=?',user.id).first();if(row?.active)fail(403,'ACCOUNT_BANNED','この領主のオンライン利用は停止されています。解除後に再接続できます。');if(Number(row?.revision||0)!==Number(user.moderation_epoch||0))fail(409,'ACCOUNT_ACCESS_CHANGED','この領主の利用状態が変更されました。最新の接続状態を確認してください。');}
 function contentRevisionInput(url){const raw=url.searchParams.get('contentRevision');if(raw===null)return 0;if(!/^\d{1,16}$/.test(raw)||!Number.isSafeInteger(Number(raw)))fail(400,'INVALID_CURSOR','投稿の更新番号が正しくありません。');return Number(raw);}
 function avatarBucket(env) {
   if(!env.BUCKET?.put||!env.BUCKET?.get||!env.BUCKET?.delete)fail(503,'AVATAR_STORAGE_UNAVAILABLE','写真の保存サービスの準備中です。少し時間をおいて再度お試しください。');
@@ -516,7 +520,7 @@ async function authenticate(request, db, now) {
   const tokenHash = await hash(match[1]);
   const row = await stmt(db, USER_SELECT + ' WHERE u.token_hash=? OR u.id=(SELECT user_id FROM user_sessions WHERE token_hash=? AND revoked_at IS NULL)', tokenHash, tokenHash).first();
   if (!row) fail(401, 'INVALID_TOKEN', '通信プレイヤーの認証に失敗しました。保存済みの接続データをご確認ください。');
-  if(row.ban_active)fail(403,'ACCOUNT_BANNED','この領主のオンライン利用は運営により停止されています。解除後に再接続できます。');
+  if(row.ban_active)fail(403,'ACCOUNT_BANNED','この領主のオンライン利用は停止されています。解除後に再接続できます。');
   if (Number(row.last_seen) <= now - 60000) {
     const access=accountCommitGuard(row);await stmt(db, 'UPDATE users SET last_seen=? WHERE id=? AND last_seen<=? AND '+access.sql, now, row.id, now - 60000,...access.args).run();
     row.last_seen = now;
@@ -525,9 +529,9 @@ async function authenticate(request, db, now) {
   authenticatedRequests.set(request,row);
   return row;
 }
-function requireAdmin(user) { if (!user.is_admin) fail(403, 'ADMIN_REQUIRED', '運営専用の機能です。'); }
-function requireStaffChat(user) { if(!user.is_admin&&!user.is_staff)fail(403,'STAFF_CHAT_REQUIRED','運営・スタッフ専用のチャットです。'); }
-function requireStaff(user) { if(!user.is_admin&&!user.is_staff)fail(403,'STAFF_REQUIRED','運営・スタッフ専用の一覧です。'); }
+function requireAdmin(user) { if (!user.is_admin) fail(403, 'ADMIN_REQUIRED', 'この機能を利用する権限がありません。'); }
+function requireStaffChat(user) { if(!user.is_admin&&!user.is_staff)fail(403,'STAFF_CHAT_REQUIRED','この会話を利用する権限がありません。'); }
+function requireStaff(user) { if(!user.is_admin&&!user.is_staff)fail(403,'STAFF_REQUIRED','この一覧を表示する権限がありません。'); }
 const STAFF_CHAT_GUARD="(EXISTS(SELECT 1 FROM settings WHERE key='adminUserId' AND value=?) OR EXISTS(SELECT 1 FROM staff_members WHERE user_id=?))";
 function recentLoginCursor(value,now) {
   const invalid=()=>fail(400,'INVALID_CURSOR','接続一覧の続きが無効です。最初から読み込み直してください。');
@@ -551,7 +555,7 @@ async function recentLogins(db,user,url,now) {
     stmt(db,USER_SELECT+' WHERE u.last_seen>=? AND u.last_seen<=? AND '+STAFF_CHAT_GUARD+continuation+' ORDER BY u.last_seen DESC,u.id ASC LIMIT ?',...params),
     stmt(db,'SELECT COUNT(*) AS count FROM users WHERE last_seen>=? AND last_seen<=? AND '+STAFF_CHAT_GUARD,windowStart,asOf,user.id,user.id),
   ]);
-  if(!rows(result[0]).length)fail(403,'STAFF_REQUIRED','運営・スタッフの閲覧権限がありません。');
+  if(!rows(result[0]).length)fail(403,'STAFF_REQUIRED','この一覧を表示する権限がありません。');
   const found=rows(result[1]),page=found.slice(0,limit),players=page.map(row=>({...mapUser(row,now),lastSeen:iso(row.last_seen)})),last=page.at(-1);
   return{ok:true,players,total:Number(rows(result[2])[0]?.count||0),serverNow:iso(now),windowStart:iso(windowStart),nextCursor:found.length>limit?encodeRecentLoginCursor(asOf,Number(last.last_seen),last.id):null};
 }
@@ -925,6 +929,7 @@ function normalizeGameSave(raw, user, now, {reading=false,clock=null}={}) {
   if(s.giftReceipts===undefined)s.giftReceipts=[];
   if(!Array.isArray(s.giftReceipts)||s.giftReceipts.length>2000||new Set(s.giftReceipts).size!==s.giftReceipts.length||s.giftReceipts.some(id=>typeof id!=='string'||id.length<1||id.length>128))invalid();
   try{s.walking=GameEngine.normalizeWalkingState(s.walking);}catch{invalid();}
+  try{s.roaming=GameEngine.normalizeRoamingState(s.roaming,s.walking.campaignId);}catch{invalid();}
   if(s.magatama===undefined)s.magatama=GACHA.initial;if(!num(s.magatama))invalid();
   if(s.captureRewards===undefined)s.captureRewards=CASTLES.filter(c=>s.castles[c.id].owner===s.clan).map(c=>c.id);
   if(!Array.isArray(s.captureRewards)||s.captureRewards.length>CASTLES.length||new Set(s.captureRewards).size!==s.captureRewards.length||s.captureRewards.some(id=>typeof id!=='string'||!CASTLE_BY_ID[id]))invalid();
@@ -940,7 +945,7 @@ function normalizeGameSave(raw, user, now, {reading=false,clock=null}={}) {
   if(!num(s.stats.researches??0,0,10000000))invalid();s.stats.researches=s.stats.researches??Object.values(s.tech).reduce((a,b)=>a+b,0);
   if(!Array.isArray(s.log)||s.log.length>200||s.log.some(l=>!isObj(l)||!num(l.turn,0,MAX_TURN)||typeof l.text!=='string'||l.text.length>2000||typeof l.kind!=='string'||l.kind.length>30))invalid();
   // Only retain known, validated fields; do not merge arbitrary imported object keys.
-  const n=g.state;for(const k of ['clan','home','turn','difficulty','resources','troops','morale','prestige','command','buildings','jobs','officers','officerVariants','army','governors','tech','castles','treaties','scouted','log','claimedQuests','giftReceipts','walking','magatama','captureRewards','gachaHistory','seed','stats','realtime'])n[k]=copy(s[k]);
+  const n=g.state;for(const k of ['clan','home','turn','difficulty','resources','troops','morale','prestige','command','buildings','jobs','officers','officerVariants','army','governors','tech','castles','treaties','scouted','log','claimedQuests','giftReceipts','walking','roaming','magatama','captureRewards','gachaHistory','seed','stats','realtime'])n[k]=copy(s[k]);
   if(s.worldClock!==undefined)n.worldClock={id:WORLD_CLOCK_ID,elapsedMs:s.worldClock.elapsedMs};
   if(s.cycle!==undefined){const c=s.cycle,r=c?.latestReward;if(!isObj(c)||!num(c.index,0,Math.floor(MAX_TURN/WORLD_CYCLE_MONTHS))||!CASTLE_BY_ID[c.home]||r!==null&&(!isObj(r)||!num(r.cycle,0,c.index-1)||!num(r.captured,0,127)||r.gold!==r.captured*1000||r.rice!==r.captured*1000||r.magatama!==r.captured*100))invalid();n.cycle={index:c.index,home:c.home,latestReward:r===null?null:pick(r,['cycle','captured','gold','rice','magatama'])};}
   n.won=CASTLES.every(c=>!user.is_admin&&c.id==='edo'||n.castles[c.id].owner===n.clan);n.gameOver=!CASTLES.some(c=>n.castles[c.id].owner===n.clan);
@@ -1136,6 +1141,11 @@ async function staffBaseDto(db,user,clock,now,row=undefined) {
   const personalHomeCastle=personal?copy(personal.castles[personal.home]):null;
   if(personalHomeCastle&&FIELD_CAPTURE_CASTLES.includes(personal.home)&&Number.isInteger(personalHomeCastle.level)&&personalHomeCastle.level>=49&&personalHomeCastle.level<=64)personalHomeCastle.level=48;
   return {id:'sunpu',revision:Number(row.revision),protected:true,...state,accessSinceElapsedMs:accessSince,clanSinceElapsedMs:clanSince,...(personal?{personalClan:personal.clan,personalHome:personal.home,personalCycleHome:personal.cycle?.home||personal.home,personalHomeCastle,personalSunpu:copy(personal.castles.sunpu)}:{})};
+}
+async function tradeTroopCapacity(db,user,save,clock,now) {
+  const staffBase=user.is_staff&&!user.is_admin?await staffBaseDto(db,user,clock,now):null;
+  const game=GameEngine.fromSave(save,GAME_OFFICERS,{isAdmin:!!user.is_admin,isStaff:!!user.is_staff,staffBase});
+  return Math.max(0,Math.min(1000000,Math.floor(game.troopCapacity())));
 }
 function renameCampaignClan(state,clan) {if(state.clan===clan)return;const previous=state.clan;for(const castle of Object.values(state.castles)){if(castle.owner===previous)castle.owner=clan;else if(castle.owner===clan)castle.owner='在地衆';}state.clan=clan;delete state.treaties[clan];}
 function restorePersonalCampaign(save,backup,user) {
@@ -1540,7 +1550,7 @@ async function fieldReplayAttack(db,user,body,prior,now) {return {...await syncS
 async function fieldCommitFailure(db,user,body,kind,digest,clock,now) {
   const prior=await priorFieldRequest(db,user.id,body,kind,digest);if(prior)return prior;
   fieldWriter(await getSyncRow(db,user.id),body.deviceId,body.expectedRevision,now);
-  if((await getWorldClock(db,now)).revision!==clock.revision)fail(409,'WORLD_CLOCK_CHANGED','運営が共通時計を更新しました。同期してからお試しください。');
+  if((await getWorldClock(db,now)).revision!==clock.revision)fail(409,'WORLD_CLOCK_CHANGED','共通時計が更新されました。同期してからお試しください。');
   fail(409,'FIELD_CHANGED','相手の本拠または外交関係が更新されました。共有地図を更新してからお試しください。');
 }
 function fieldFallbackHome(s,preferred=null) {
@@ -1745,7 +1755,7 @@ async function route(request, env, now) {
   if(path==='/premium/stripe/webhook'&&method==='POST')return handlePremiumWebhook({db,env,now,request,helpers:{fail}});
   if (path === '/health' && method === 'GET') {
     try {
-      await stmt(db, 'SELECT (SELECT COUNT(*) FROM users) AS count,EXISTS(SELECT 1 FROM trades) AS trade_schema,EXISTS(SELECT 1 FROM trade_requests) AS trade_request_schema,EXISTS(SELECT 1 FROM trade_deliveries) AS trade_delivery_schema,EXISTS(SELECT 1 FROM player_bans) AS ban_schema,EXISTS(SELECT 1 FROM moderation_requests) AS moderation_schema,(SELECT content_revision FROM moderation_state WHERE id=1) AS content_revision,EXISTS(SELECT 1 FROM premium_orders) AS premium_order_schema,EXISTS(SELECT 1 FROM premium_events) AS premium_event_schema,EXISTS(SELECT 1 FROM premium_grants) AS premium_grant_schema,EXISTS(SELECT 1 FROM premium_appearances) AS premium_appearance_schema,EXISTS(SELECT 1 FROM timed_events) AS timed_event_schema,EXISTS(SELECT 1 FROM timed_event_requests) AS timed_event_request_schema,EXISTS(SELECT 1 FROM timed_event_participants) AS timed_event_participant_schema,EXISTS(SELECT 1 FROM timed_event_rewards) AS timed_event_reward_schema').first();
+      await stmt(db, 'SELECT (SELECT COUNT(*) FROM users) AS count,EXISTS(SELECT 1 FROM trades) AS trade_schema,EXISTS(SELECT 1 FROM trade_requests) AS trade_request_schema,EXISTS(SELECT 1 FROM trade_deliveries) AS trade_delivery_schema,EXISTS(SELECT 1 FROM player_bans) AS ban_schema,EXISTS(SELECT 1 FROM moderation_requests) AS moderation_schema,(SELECT content_revision FROM moderation_state WHERE id=1) AS content_revision,EXISTS(SELECT 1 FROM premium_orders) AS premium_order_schema,EXISTS(SELECT 1 FROM premium_events) AS premium_event_schema,EXISTS(SELECT 1 FROM premium_grants) AS premium_grant_schema,EXISTS(SELECT 1 FROM premium_appearances) AS premium_appearance_schema,EXISTS(SELECT 1 FROM timed_events) AS timed_event_schema,EXISTS(SELECT 1 FROM timed_event_requests) AS timed_event_request_schema,EXISTS(SELECT 1 FROM timed_event_participants) AS timed_event_participant_schema,EXISTS(SELECT 1 FROM timed_event_rewards) AS timed_event_reward_schema,EXISTS(SELECT 1 FROM roaming_battles) AS roaming_battle_schema').first();
     } catch { fail(503, 'SERVICE_UNAVAILABLE', '通信サービスの準備中です。'); }
     return {ok:true,status:'ready',version:API_VERSION,features:API_FEATURES};
   }
@@ -1760,11 +1770,11 @@ async function route(request, env, now) {
   }
   if (path === '/config' && method === 'GET') {
     const result = await db.batch([
-      stmt(db, `SELECT key,value FROM settings WHERE key IN ('announcement','adminUserId')`),
+      stmt(db, `SELECT key,value FROM settings WHERE key='announcement'`),
       stmt(db, 'SELECT COUNT(DISTINCT user_id) AS count FROM player_presence WHERE online=1 AND last_seen>? AND NOT EXISTS(SELECT 1 FROM player_bans pb WHERE pb.user_id=player_presence.user_id AND pb.active=1)', now-ONLINE_WINDOW),
     ]);
     const settings = Object.fromEntries(rows(result[0]).map(r => [r.key,r.value]));
-    return {ok:true,version:API_VERSION,features:API_FEATURES,announcement:settings.announcement ?? WELCOME,adminClaimed:!!settings.adminUserId,adminRecoveryAvailable:!!settings.adminUserId&&typeof env.SENGOKU_ADMIN_KEY==='string'&&env.SENGOKU_ADMIN_KEY.length>0,onlineCount:Number(rows(result[1])[0]?.count || 0),clock:await getWorldClock(db,now)};
+    return {ok:true,version:API_VERSION,features:API_FEATURES,announcement:settings.announcement ?? WELCOME,onlineCount:Number(rows(result[1])[0]?.count || 0),clock:await getWorldClock(db,now)};
   }
   if (path === '/online' && method === 'GET') {
     const cursor=url.searchParams.get('cursor')||'',limitText=url.searchParams.get('limit')||'50';
@@ -1857,8 +1867,9 @@ async function route(request, env, now) {
   if (path === '/staff/base/upgrade' && method === 'POST') return staffBaseUpgrade(db,user,await readBody(request),now);
   if (path === '/walking/start' && method === 'POST') return walkingStart(db,user,await readBody(request),now);
   if (path === '/walking/claim' && method === 'POST') return walkingClaim(db,user,await readBody(request),now);
+  if (path === '/roaming/battle' && method === 'POST' || path === '/roaming/history' && method === 'GET') return handleRoaming({db,user,now,path,method,url,request,helpers:{fail,readBody,budget,idField,hash,getUser,getSyncRow,fieldWriter,settleWriterCycle,getWorldClock,normalizeGameSave,roleCommitGuard,syncSnapshot,requireAccountAccess,staffBaseDto,syncLease:SYNC_LEASE,worldClockId:WORLD_CLOCK_ID}});
   if (path === '/letters' || path.startsWith('/letters/')) return handleLetters({db,user,now,path,method,url,request,helpers:{fail,readBody,budget,idField,textField,uid,mapUser,getUser,evaluationRef,evaluationUpdates,accountCommitGuard,requireAccountAccess,contentRevisionInput}});
-  if (path === '/trades' || path.startsWith('/trades/')) return handleTrades({db,user,now,path,method,url,request,helpers:{fail,readBody,budget,idField,uid,mapUser,getUser,getSyncRow,hash,fieldWriter,settleWriterCycle,getWorldClock,normalizeGameSave,roleCommitGuard,syncSnapshot,requireAccountAccess,syncLease:SYNC_LEASE,worldClockId:WORLD_CLOCK_ID}});
+  if (path === '/trades' || path.startsWith('/trades/')) return handleTrades({db,user,now,path,method,url,request,helpers:{fail,readBody,budget,idField,uid,mapUser,getUser,getSyncRow,hash,fieldWriter,settleWriterCycle,getWorldClock,normalizeGameSave,roleCommitGuard,syncSnapshot,requireAccountAccess,tradeTroopCapacity,syncLease:SYNC_LEASE,worldClockId:WORLD_CLOCK_ID}});
   if (path === '/field/me' && method === 'GET') return fieldMe(db,user,url,now);
   if (path === '/field/attack' && method === 'POST') return fieldAttack(db,user,await readBody(request),now);
   if (path === '/field/diplomacy' && method === 'POST') return fieldDiplomacy(db,user,await readBody(request),now);
@@ -1954,6 +1965,7 @@ async function route(request, env, now) {
     // never tops up currency or rewinds previously credited online steps.
     const walkingLedger=await stmt(db,'SELECT total_steps FROM walking_accounts WHERE user_id=?',user.id).first();
     save.state.walking.serverSteps=Number(walkingLedger?.total_steps||0);
+    await reconcileRoamingProgress(db,user.id,save,before);
     const serialized=JSON.stringify(save),nonce=crypto.randomUUID(),roleGuard=roleCommitGuard(user);
     const statements=[stmt(db,`UPDATE player_saves SET save_json=?,revision=revision+1,updated_at=?,lease_expires_at=?,cycle_index=?,cycle_home=?,cycle_commit=?
       WHERE user_id=? AND revision=? AND writer_device_id=? AND lease_expires_at>?
@@ -1986,7 +1998,7 @@ async function route(request, env, now) {
         FROM friendships f JOIN users u ON u.id=CASE WHEN f.user_a=? THEN f.user_b ELSE f.user_a END WHERE (f.user_a=? OR f.user_b=?) AND f.status='pending' ORDER BY f.created_at DESC`,user.id,user.id,user.id),
       stmt(db, `SELECT COUNT(*) AS count FROM mail_campaigns m WHERE (m.target_user_id IS NULL OR m.target_user_id=?) AND NOT EXISTS(SELECT 1 FROM mail_reads r WHERE r.mail_id=m.id AND r.user_id=?)`,user.id,user.id),
     ]);
-    return {ok:true,user:mapUser(user,now),friends:rows(result[0]).map(r=>mapUser(r,now)),requests:rows(result[1]).map(r=>({id:r.id,name:r.name,clan:publicClan(r.clan,r.is_admin,r.is_staff,r.personal_clan),avatarVersion:r.avatar_version||null,evaluation:evaluationRef(r.id),direction:r.requested_by===user.id?'outgoing':'incoming',createdAt:iso(r.created_at)})),unreadMail:Number(rows(result[2])[0]?.count || 0)};
+    return {ok:true,user:mapUser(user,now),...(user.is_admin?{management:{recoveryAvailable:typeof env.SENGOKU_ADMIN_KEY==='string'&&env.SENGOKU_ADMIN_KEY.length>0}}:{}),friends:rows(result[0]).map(r=>mapUser(r,now)),requests:rows(result[1]).map(r=>({id:r.id,name:r.name,clan:publicClan(r.clan,r.is_admin,r.is_staff,r.personal_clan),avatarVersion:r.avatar_version||null,evaluation:evaluationRef(r.id),direction:r.requested_by===user.id?'outgoing':'incoming',createdAt:iso(r.created_at)})),unreadMail:Number(rows(result[2])[0]?.count || 0)};
   }
   if (path === '/profile' && method === 'PATCH') {
     const body = await readBody(request), name = textField(body.name,'領主名',24),expectedName=Object.hasOwn(body,'expectedName')?textField(body.expectedName,'変更前の領主名',24):null;
@@ -2141,7 +2153,7 @@ async function route(request, env, now) {
   }
   if (path === '/mail' && method === 'GET') {
     const result=await stmt(db,`SELECT m.id,m.title,m.body,m.gift_json,m.request_id,m.created_at,r.read_at,c.receipt_id,b.result_json AS battle_json FROM mail_campaigns m LEFT JOIN mail_reads r ON r.mail_id=m.id AND r.user_id=? LEFT JOIN mail_receipts c ON c.mail_id=m.id AND c.user_id=? LEFT JOIN field_battles b ON b.id=substr(m.request_id,14,35) AND (b.attacker_id=m.target_user_id OR b.defender_id=m.target_user_id) WHERE m.target_user_id IS NULL OR m.target_user_id=? ORDER BY m.created_at DESC,m.id DESC LIMIT 200`,user.id,user.id,user.id).all();
-    return {ok:true,mail:rows(result).map(r=>{const event=systemMailEvent(r.request_id),battle=event&&r.battle_json?JSON.parse(r.battle_json):null;return {id:r.id,title:r.title,body:r.body,gift:r.gift_json?JSON.parse(r.gift_json):null,read:r.read_at!==null,claimed:!!r.receipt_id,createdAt:iso(r.created_at),source:event?'system':'operator',event,...(event?{participants:battle?['attacker','defender'].map(side=>({playerId:battle[side+'PlayerId'],name:battle[side+'Name'],side,evaluation:evaluationRef(battle[side+'PlayerId'])})):[]}:{} )};})};
+    return {ok:true,mail:rows(result).map(r=>{const event=systemMailEvent(r.request_id),battle=event&&r.battle_json?JSON.parse(r.battle_json):null;return {id:r.id,title:r.title,body:r.body,gift:r.gift_json?JSON.parse(r.gift_json):null,read:r.read_at!==null,claimed:!!r.receipt_id,createdAt:iso(r.created_at),source:event?'system':'site',event,...(event?{participants:battle?['attacker','defender'].map(side=>({playerId:battle[side+'PlayerId'],name:battle[side+'Name'],side,evaluation:evaluationRef(battle[side+'PlayerId'])})):[]}:{} )};})};
   }
   if (path === '/mail/read' && method === 'POST') {
     const body=await readBody(request),mailId=idField(body.mailId,'メール識別子');

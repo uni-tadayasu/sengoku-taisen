@@ -89,7 +89,7 @@ await scope('role-conflicted and invalid attempts never create a battle notifica
 
 await scope('operator mail cannot impersonate the reserved system source and retains its gift flow',async h=>{
   const operator=await fixture(h,'送信元の運営',{admin:true}),recipient=await fixture(h,'送信元の受取'),body={target:recipient.user.id,title:'【戦闘勝利】江戸城',body:'自動通知に似た件名でも運営のお知らせです。',gift:{gold:3},requestId:'manual-mail',source:'system',event:{kind:'field-battle',battleId:'fb_fake',side:'defender'}};
-  const sent=(await h.api('/admin/mail',post(operator,body))).data,mail=(await inbox(h,recipient))[0];assert.equal(mail.id,sent.mailId);assert.equal(mail.source,'operator');assert.equal(mail.event,null);assert.equal(mail.gift.gold,3);
+  const sent=(await h.api('/admin/mail',post(operator,body))).data,mail=(await inbox(h,recipient))[0];assert.equal(mail.id,sent.mailId);assert.equal(mail.source,'site');assert.equal(mail.event,null);assert.equal(mail.gift.gold,3);
   const claim=(await h.api('/mail/claim',post(recipient,{mailId:mail.id,requestId:'manual-gift-claim'}))).data;assert.equal(claim.gift.gold,3);assert.equal(claim.alreadyClaimed,false);
   await h.api('/admin/mail',post(operator,{...body,requestId:'system:field:fb_'+ 'a'.repeat(32)+':attacker'},400));assert.equal(count(h,'mail_campaigns'),1);
   await h.api('/admin/mail',post(recipient,{...body,requestId:'user-cannot-send'},403));assert.equal(count(h,'mail_campaigns'),1);

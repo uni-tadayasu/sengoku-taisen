@@ -52,6 +52,8 @@
 .trade-delivery{display:flex;flex-direction:column;gap:3px;margin-top:12px;padding:11px 13px;border:1px solid #85b79e35;border-radius:9px;background:#80be9608;color:#b9cebd;font-size:14px}
 .trade-delivery.is-unclaimed{border-color:#d3bb7857;background:#c7a6520a;color:#eadba9}
 .trade-delivery p{margin:3px 0 0;color:var(--trade-muted);font-size:14px}
+.trade-troop-capacity{margin:12px 0 0;padding:10px 12px;border:1px solid #91bca43d;border-radius:9px;background:#79b7990a;color:#c3e4cf;font-size:14px;overflow-wrap:anywhere}
+.trade-capacity-note{margin:12px 0 0;color:#efd5a2;font-size:14px;line-height:1.7}
 .trade-pagination{display:flex;justify-content:center;padding:6px 22px 22px}
 .trade-empty{display:flex;align-items:center;justify-content:center;flex-direction:column;gap:9px;min-height:220px;padding:28px 20px;text-align:center}
 .trade-empty h2,.trade-empty h3{margin:0;font-size:20px}

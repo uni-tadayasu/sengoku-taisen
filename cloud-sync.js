@@ -54,7 +54,7 @@ function create(options={}){
   if(!session||playerId!==undefined&&String(playerId)!==String(session.id))return false;
   const changed=!banned;
   if(changed){checkpoint();generation++;queue=Promise.resolve();refreshPending=null;initialized=false;applying=false;attempt=null;}
-  banned=true;accessRefreshPending=false;banMessage=message||'この領主は運営により利用を停止されています。解除後に接続を再確認してください。';leaseDeadline=0;clearTimers();emit();roleAccess({},true);
+  banned=true;accessRefreshPending=false;banMessage=message||'この領主は利用を停止されています。解除後に接続を再確認してください。';leaseDeadline=0;clearTimers();emit();roleAccess({},true);
   if(changed)session.onUser?.({id:session.id,isBanned:true,isAdmin:false,isStaff:false});
   schedulePoll();return true;
  }

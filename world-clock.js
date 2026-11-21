@@ -12,7 +12,7 @@
    if(!sample)return{ready:false,mode:offline?'offline':'shared',message:lastError||'共通時刻を確認しています。',clock:null};
    const age=Math.max(0,now()-received),ready=offline||(isOnline()&&age<=15000),elapsedMs=Math.floor(sample.elapsedMs+(sample.running?age*sample.speed:0));
    const clock={...sample,elapsedMs,confirmedElapsedMs:offline?elapsedMs:sample.elapsedMs,calendar:calendar(elapsedMs)};
-   return{ready,mode:offline?'offline':'shared',message:offline?'オフライン版の時間です。':ready?(sample.running?'全プレイヤー共通の時間で進行中':'運営が共通時間を停止中'):lastError||'共通時刻へ再接続しています。',clock,ageMs:age};
+   return{ready,mode:offline?'offline':'shared',message:offline?'オフライン版の時間です。':ready?(sample.running?'全プレイヤー共通の時間で進行中':'共通時間は停止中'):lastError||'共通時刻へ再接続しています。',clock,ageMs:age};
   }
   function emit(){const state=snapshot();for(const listener of listeners){try{listener(state);}catch(_){}}}
   function accept(clock,{roundTripMs=0}={}){

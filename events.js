@@ -447,7 +447,7 @@
       dialog.addEventListener('close', () => { if (!dialog.open && controller.getState().open) controller.close(); }); doc.body.append(dialog);
     }
     controller = createController({ ...options, onChange: render });
-    async function open(settings = {}) { if (disposed || settings.admin && !controller.getState().authorized) { global.SengokuBridge?.toast?.('開催の準備には運営権限が必要です。', true); return false; } ensureDialog(); if (!dialog) return false; if (!dialog.open) returnFocus = doc.activeElement; return controller.open(settings); }
+    async function open(settings = {}) { if (disposed || settings.admin && !controller.getState().authorized) { global.SengokuBridge?.toast?.('この操作を利用する権限がありません。', true); return false; } ensureDialog(); if (!dialog) return false; if (!dialog.open) returnFocus = doc.activeElement; return controller.open(settings); }
     const launcher = event => { const node = event.target?.closest?.('[data-events-open],[data-events-admin]'); if (!node || node.disabled) return; event.preventDefault(); open({ admin: node.hasAttribute('data-events-admin') }); };
     async function poll() {
       if (disposed || polling) return; polling = true;

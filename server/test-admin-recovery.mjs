@@ -25,7 +25,7 @@ function fixture(){
 // and incorrect key use the same generic failure without disclosing credentials.
 {
   const f=fixture();const absent=await f.api('/admin/recover',{body:f.body(),expected:403});const invalid=await f.api('/admin/recover',{body:{...f.body(),key:'wrong-key'},expected:403});assert.deepEqual(absent.data.error,invalid.data.error);
-  assert.equal(f.database.prepare('SELECT COUNT(*) AS n FROM users').get().n,0);assert.equal(f.database.prepare('SELECT COUNT(*) AS n FROM user_sessions').get().n,0);assert.equal((await f.api('/config')).data.adminRecoveryAvailable,false);f.database.close();
+  assert.equal(f.database.prepare('SELECT COUNT(*) AS n FROM users').get().n,0);assert.equal(f.database.prepare('SELECT COUNT(*) AS n FROM user_sessions').get().n,0);assert(!Object.hasOwn((await f.api('/config')).data,'adminRecoveryAvailable'));f.database.close();
 }
 // The target is always the sole existing admin. Old tokens, user records, role
 // membership and a byte-for-byte existing game save remain unchanged.
@@ -34,7 +34,7 @@ function fixture(){
   f.database.prepare('INSERT INTO player_saves(user_id,save_json,revision,updated_at) VALUES(?,?,?,?)').run(admin.user.id,'{"preserved":"original-save"}',7,12345);
   f.database.prepare('INSERT INTO staff_members(user_id,appointed_by,appointed_at) VALUES(?,?,?)').run(ordinary.user.id,admin.user.id,12345);
   const before={users:f.database.prepare('SELECT * FROM users ORDER BY id').all(),settings:f.database.prepare('SELECT * FROM settings').all(),saves:f.database.prepare('SELECT * FROM player_saves').all(),staff:f.database.prepare('SELECT * FROM staff_members').all()};
-  assert.equal((await f.api('/config')).data.adminRecoveryAvailable,true);
+  assert(!Object.hasOwn((await f.api('/config')).data,'adminRecoveryAvailable'));assert.equal((await f.api('/me',{token:admin.token})).data.management.recoveryAvailable,true);
   const request=f.body();const recovered=(await f.api('/admin/recover',{body:request,token:ordinary.token})).data;
   assert.equal(recovered.recovered,true);assert.equal(recovered.user.id,admin.user.id);assert.equal(recovered.user.isAdmin,true);assert.equal(recovered.user.name,'元の運営');assert.match(recovered.token,/^[A-Za-z0-9_-]{43}$/);assert.notEqual(recovered.token,admin.token);
   assert.deepEqual(f.database.prepare('SELECT * FROM users ORDER BY id').all(),before.users);assert.deepEqual(f.database.prepare('SELECT * FROM settings').all(),before.settings);assert.deepEqual(f.database.prepare('SELECT * FROM player_saves').all(),before.saves);assert.deepEqual(f.database.prepare('SELECT * FROM staff_members').all(),before.staff);
@@ -93,6 +93,6 @@ function fixture(){
 }
 // A hidden/missing server secret is unavailable, never a bypass for empty keys.
 {
-  const f=fixture();await f.owner();delete f.env.SENGOKU_ADMIN_KEY;assert.equal((await f.api('/config')).data.adminRecoveryAvailable,false);await f.api('/admin/recover',{body:{key:'anything',requestId:crypto.randomUUID()},expected:503});assert.equal(f.database.prepare('SELECT COUNT(*) AS n FROM user_sessions').get().n,0);f.database.close();
+  const f=fixture();await f.owner();delete f.env.SENGOKU_ADMIN_KEY;assert(!Object.hasOwn((await f.api('/config')).data,'adminRecoveryAvailable'));await f.api('/admin/recover',{body:{key:'anything',requestId:crypto.randomUUID()},expected:503});assert.equal(f.database.prepare('SELECT COUNT(*) AS n FROM user_sessions').get().n,0);f.database.close();
 }
 console.log(`Admin recovery backend tests passed (${calls} local HTTP calls): existing-owner-only authentication, immutable old credentials/save/roles, hash-only session persistence, HMAC retry idempotence, atomic concurrency/rollback, revocation, fresh role guard, staff denial, CORS, per-source/verified-owner throttling without global invalid-key lockout and missing-secret behavior. No production requests were made.`);

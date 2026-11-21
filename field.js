@@ -74,7 +74,7 @@ function attackValidation({player,me,identity,access={},state={},troops,tactic,r
   if(!identity?.id)return{ok:false,message:'領主登録・ログインが必要です。'};
   if(access.fieldPending)return{ok:false,message:'前の采配を反映しています。'};
   if(!access.writable)return{ok:false,message:'この端末を操作端末にすると出陣できます。'};
-  if(clock&&(!clock.ready||clock.clock?.running===false))return{ok:false,message:clock.ready?'運営が共通時間を停止しています。':'共通時刻の確認を待っています。'};
+  if(clock&&(!clock.ready||clock.clock?.running===false))return{ok:false,message:clock.ready?'共通時間が停止しています。':'共通時刻の確認を待っています。'};
   if(!player)return{ok:false,message:'相手の領主を選んでください。'};
   if(player.self||player.playerId===identity.id)return{ok:false,message:'自分の領地には出陣できません。'};
   const policy=battlePolicy(player,rules);if(policy.mode==='protected')return{ok:false,message:policy.description};

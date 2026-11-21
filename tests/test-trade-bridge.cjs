@@ -44,8 +44,8 @@ function setup({stored=new Map()}={}){
 let checks=0;async function test(name,run){await run();checks++;console.log('PASS '+name);}
 
 (async()=>{
-await test('the public trade facade allows only the five precise POST routes and returns copied personal balances',async()=>{
-  const h=setup(),balances=h.c.spendableAssets();assert.deepEqual(Object.keys(balances).sort(),['gold','rice','wood','stone','magatama'].sort());
+await test('the public trade facade allows only the five precise POST routes and returns copied personal resources and troop balances',async()=>{
+  const h=setup(),balances=h.c.spendableAssets();assert.deepEqual(Object.keys(balances).sort(),['gold','rice','wood','stone','magatama','troops'].sort());
   assert.equal(balances.gold,h.c.game.state.resources.gold);assert.equal(balances.magatama,h.c.game.state.magatama);balances.gold=0;assert.notEqual(h.c.game.state.resources.gold,0);
   for(const [route,method]of [['/trades','GET'],['/trades/'+ID,'POST'],['/trades/'+ID+'/accept?admin=1','POST'],['/trades/'+ID+'/accept/extra','POST'],['/trades/'+ID+'/claim','DELETE'],['/trades/tr_invalid/claim','POST'],['/trades/recipient','POST'],['/admin/claim','POST']])await assert.rejects(h.c.requestTrade(route,{method,data:{}}));
   assert.equal(h.posts.length,0);assert.equal(h.control.flushes,0);
