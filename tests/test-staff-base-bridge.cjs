@@ -29,7 +29,7 @@ async function until(predicate) {
   for(let i=0;i<50;i++){if(predicate())return;await Promise.resolve();}
   assert(predicate(), 'Async checkpoint was not reached');
 }
-function base(game,revision=1){const buildings=clone(game.state.buildings);return{id:'sunpu',revision,castleLevel:1,buildings,initial:{castleLevel:1,buildings:clone(buildings)},history:[],jobs:[],accessSinceElapsedMs:0,updatedElapsedMs:100000,protected:true};}
+function base(game,revision=1){const buildings=clone(game.state.buildings);return{id:'kyoto_gosho',revision,castleLevel:1,buildings,initial:{castleLevel:1,buildings:clone(buildings)},history:[],jobs:[],accessSinceElapsedMs:0,updatedElapsedMs:100000,protected:true};}
 function pending(h){return [...h.stored].filter(([key])=>key.startsWith('sengoku-staff-upgrade-pending-v1:'));}
 function revoke(h){h.c.roleEpoch++;h.c.game.setRoleAccess({isAdmin:false,isStaff:false});h.control.user.isStaff=false;h.c.staffBaseReady=false;}
 function setup(options={}) {
@@ -75,7 +75,7 @@ function setup(options={}) {
     queueWorldProgress:()=>control.queued++,preserveInteraction:()=>{},closeModal:()=>{},updateBattlePreview:()=>{},syncMusic:()=>{},
   };
   vm.createContext(context);
-  vm.runInContext(['staffConstructionReady','confirmedWorldClock','clockIsApplied','canMutate','syncMessage','requireWritable','save','backupCurrentSave','applyCloudSave','applyDurableGift','restoreAdminAssets','processWorldClock','requestField'].map(fn).join('\n'),context);
+  vm.runInContext(['staffConstructionReady','confirmedWorldClock','clockIsApplied','canMutate','syncMessage','requireWritable','save','backupCurrentSave','trustedBranchAuthority','applyBranchAuthority','applyCloudSave','applyDurableGift','restoreAdminAssets','processWorldClock','requestField'].map(fn).join('\n'),context);
   return {c:context,control,stored,trace,posts,gets,events,clockAccepts};
 }
 
@@ -97,11 +97,11 @@ await test('uncertain response replay keeps the first base revision and request 
   const h=setup(),shared=base(h.c.game,4),receipts=new Map();let executions=0;
   h.control.onPost=async call=>{executions++;receipts.set(call.options.data.requestId,{ok:true,revision:15,staffBase:shared});throw Error('lost response');};
   h.control.onRefresh=async()=>{h.control.status.revision=15;h.c.game.applyStaffBase(shared);return{ok:true};};
-  await assert.rejects(h.c.requestField('/staff/base/upgrade',{method:'POST',data:{kind:'castle',id:'sunpu'}}),/lost response/);
+  await assert.rejects(h.c.requestField('/staff/base/upgrade',{method:'POST',data:{kind:'castle',id:'kyoto_gosho'}}),/lost response/);
   const original=h.posts[0].options.data;assert.equal(pending(h).length,1);
   const resumed=setup({stored:h.stored,base:shared});resumed.control.status.revision=15;resumed.control.deviceId='tab-reopened';
   resumed.control.onPost=async call=>{assert.equal(call.options.data.baseRevision,original.baseRevision);assert.equal(call.options.data.requestId,original.requestId);assert.equal(call.options.data.expectedRevision,15);assert.equal(call.options.data.deviceId,'tab-reopened');return receipts.get(call.options.data.requestId);};
-  await resumed.c.requestField('/staff/base/upgrade',{method:'POST',data:{kind:'castle',id:'sunpu'}});
+  await resumed.c.requestField('/staff/base/upgrade',{method:'POST',data:{kind:'castle',id:'kyoto_gosho'}});
   assert.equal(executions,1);assert.equal(pending(resumed).length,0);assert.equal(resumed.c.fieldActionPending,false);
 });
 await test('role revocation at every awaited stage prevents old staff results from being applied',async()=>{

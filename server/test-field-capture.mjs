@@ -7,7 +7,7 @@ const post=(p,body,expected=200)=>({method:'POST',token:p?.token,body,expected})
 const row=(h,p)=>h.sql.prepare('SELECT * FROM player_saves WHERE user_id=?').get(p.user.id);
 const save=(h,p)=>JSON.parse(row(h,p).save_json);
 const backup=(h,p)=>h.sql.prepare('SELECT * FROM staff_campaign_backups WHERE user_id=?').get(p.user.id);
-const baseRow=h=>h.sql.prepare("SELECT * FROM staff_base WHERE id='sunpu'").get();
+const baseRow=h=>h.sql.prepare("SELECT * FROM staff_base WHERE id='kyoto_gosho'").get();
 const count=(h,table)=>h.sql.prepare('SELECT COUNT(*) AS n FROM '+table).get().n;
 const job=(kind,id,targetLevel,remainingSeconds=47)=>({kind,id,targetLevel,total:1,remaining:1,totalSeconds:60,remainingSeconds});
 async function scope(name,run){const h=harness();try{await run(h);checks.push(name);console.log('PASS '+name);}finally{calls+=h.calls;h.close();}}
@@ -40,7 +40,7 @@ await scope('public target identities contain homes and owned major outposts onl
   assert.equal(targets[0].battleMode,'raid');for(const t of targets.slice(1)){assert.equal(t.homeCastleId,'kiyosu');assert.equal(t.isHome,false);assert.equal(t.battleMode,'capture');assert.equal(t.capturable,true);assert.equal(t.keepLevel,9);assert.equal(t.level,9);}
   assert.equal(new Set(list.targets.map(t=>t.playerId+':'+t.targetCastleId)).size,list.targets.length);
   const page=(await h.api('/field?limit=1',{token:a.token})).data;assert(page.targets.every(t=>t.playerId===page.players[0].playerId));assert.equal(page.total,2);
-  for(const id of ['azuchi','odani','edo','sunpu'])assert.equal((await attack(h,a,body(h,a,b,id),409)).error.code,'FIELD_TARGET_CHANGED');
+  for(const id of ['azuchi','odani','edo','kyoto_gosho'])assert.equal((await attack(h,a,body(h,a,b,id),409)).error.code,'FIELD_TARGET_CHANGED');
   await attack(h,a,body(h,a,b,'unknown'),400);assert.equal(count(h,'field_battles'),0);
 });
 
@@ -89,14 +89,14 @@ await scope('a victor already owning the same historical city keeps its level, g
 
 for(const role of ['admin','staff'])await scope(role+' attacker captures an outpost without moving its fixed base',async h=>{
   const operator=await fixture(h,'役職戦の運営',{admin:true}),actor=role==='admin'?operator:await fixture(h,'役職戦のスタッフ');if(role==='staff')await appoint(h,operator,actor);
-  const defender=await fixture(h,'役職戦の守備',{holdings:['osaka']}),before=save(h,actor),home=role==='admin'?'edo':'sunpu';
+  const defender=await fixture(h,'役職戦の守備',{holdings:['osaka']}),before=save(h,actor),home=role==='admin'?'edo':'kyoto_gosho';
   const result=await outcome(true,()=>attack(h,actor,body(h,actor,defender,'osaka'))),after=save(h,actor);assert.equal(result.battle.capture.captured,true);assert.equal(after.state.home,home);assert.equal(after.state.cycle.home,home);assert.equal(row(h,actor).cycle_home,home);assert.equal(after.state.castles.osaka.owner,after.state.clan);unchangedDevelopment(before,after);
   const loaded=(await h.api('/sync?deviceId='+actor.deviceId,{token:actor.token})).data;assert.equal(loaded.save.state.home,home);assert.equal(loaded.save.state.castles.osaka.owner,loaded.save.state.clan);
 });
 
 for(const role of ['admin','staff'])await scope(role+' owned major outpost can be captured while its role base remains',async h=>{
   const operator=await fixture(h,'所領守備の運営',{admin:true,holdings:role==='admin'?['nagoya']:[]}),defender=role==='admin'?operator:await fixture(h,'所領守備のスタッフ',{holdings:['nagoya']});if(role==='staff')await appoint(h,operator,defender);
-  const actor=await fixture(h,'所領を攻める領主'),before=save(h,defender),shared=baseRow(h),home=role==='admin'?'edo':'sunpu';
+  const actor=await fixture(h,'所領を攻める領主'),before=save(h,defender),shared=baseRow(h),home=role==='admin'?'edo':'kyoto_gosho';
   const result=await outcome(true,()=>attack(h,actor,body(h,actor,defender,'nagoya'))),after=save(h,defender);assert.equal(result.battle.battleMode,'capture');assert.equal(result.battle.capture.captured,true);assert.equal(after.state.home,home);assert.equal(after.state.cycle.home,home);assert.equal(row(h,defender).cycle_home,home);assert.notEqual(after.state.castles.nagoya.owner,after.state.clan);unchangedDevelopment(before,after);assert.deepEqual(baseRow(h),shared);
 });
 
@@ -105,7 +105,7 @@ await scope('capturing a staff original home updates its backup atomically and d
   assert.equal(JSON.parse(backup(h,defender).save_json).state.home,'osaka');const actor=await fixture(h,'スタッフ所領の攻撃者'),before=save(h,defender),request=body(h,actor,defender,'osaka'),beforeActor=row(h,actor),beforeDefender=row(h,defender),beforeBackup=backup(h,defender);
   h.sql.exec("CREATE TRIGGER reject_capture BEFORE INSERT ON field_battles BEGIN SELECT RAISE(ABORT,'test capture rollback'); END");
   await outcome(true,()=>attack(h,actor,request,500));assert.deepEqual(row(h,actor),beforeActor);assert.deepEqual(row(h,defender),beforeDefender);assert.deepEqual(backup(h,defender),beforeBackup);assert.equal(count(h,'field_requests'),0);h.sql.exec('DROP TRIGGER reject_capture');
-  const result=await outcome(true,()=>attack(h,actor,request));assert.equal(result.battle.capture.captured,true);const personal=JSON.parse(backup(h,defender).save_json).state;assert.equal(personal.home,'kiyosu');assert.equal(personal.cycle.home,'kiyosu');assert.equal(personal.castles.kiyosu.troops,before.state.castles.osaka.troops-result.battle.defenderLost.garrison,'staff backup retains the actual surviving garrison');assert.notEqual(personal.castles.osaka.owner,personal.clan);assert.equal(row(h,defender).cycle_home,'sunpu');assert.equal(save(h,defender).state.home,'sunpu');
+  const result=await outcome(true,()=>attack(h,actor,request));assert.equal(result.battle.capture.captured,true);const personal=JSON.parse(backup(h,defender).save_json).state;assert.equal(personal.home,'kiyosu');assert.equal(personal.cycle.home,'kiyosu');assert.equal(personal.castles.kiyosu.troops,before.state.castles.osaka.troops-result.battle.defenderLost.garrison,'staff backup retains the actual surviving garrison');assert.notEqual(personal.castles.osaka.owner,personal.clan);assert.equal(row(h,defender).cycle_home,'kyoto_gosho');assert.equal(save(h,defender).state.home,'kyoto_gosho');
   await h.api('/admin/staff',post(operator,{targetPlayerId:defender.user.id,action:'dismiss',requestId:crypto.randomUUID()}));const restored=(await h.api('/sync?deviceId='+defender.deviceId,{token:defender.token})).data;
   assert.equal(restored.save.state.home,'kiyosu');assert.equal(restored.save.state.cycle.home,'kiyosu');assert.equal(row(h,defender).cycle_home,'kiyosu');assert.notEqual(restored.save.state.castles.osaka.owner,restored.save.state.clan);assert.equal(restored.save.state.castles.kiyosu.troops,before.state.castles.osaka.troops-result.battle.defenderLost.garrison,'dismissal does not resurrect the lost garrison');unchangedDevelopment(before,restored.save);
 });
@@ -116,20 +116,20 @@ await scope('server reward amounts respect caps and do not borrow defender resou
   for(const key of resources)assert.equal(save(h,actor).state.resources[key],beforeActor.state.resources[key]+result.battle.rewards[key]-(key==='rice'?result.battle.foodCost:0));
 });
 
-await scope('Sunpu defense projects completed shared jobs without changing defender or shared data',async h=>{
+await scope('Kyoto palace defense projects completed shared jobs without changing defender or shared data',async h=>{
   const operator=await fixture(h,'共通防御の運営',{admin:true}),defender=await fixture(h,'共通防御のスタッフ');await appoint(h,operator,defender);const actor=await fixture(h,'共通防御への攻撃者');
   const publicBase=(await h.api('/field?limit=100',{token:actor.token})).data.players.find(p=>p.playerId===defender.user.id),shared=JSON.parse(baseRow(h).state_json);
-  shared.castleLevel=63;shared.buildings.wall=31;shared.jobs=[{kind:'castle',id:'sunpu',targetLevel:64,completesElapsedMs:0},{kind:'building',id:'wall',targetLevel:32,completesElapsedMs:0}];h.sql.prepare("UPDATE staff_base SET state_json=?,revision=revision+1 WHERE id='sunpu'").run(JSON.stringify(shared));
+  shared.castleLevel=63;shared.buildings.wall=31;shared.jobs=[{kind:'castle',id:'kyoto_gosho',targetLevel:64,completesElapsedMs:0},{kind:'building',id:'wall',targetLevel:32,completesElapsedMs:0}];h.sql.prepare("UPDATE staff_base SET state_json=?,revision=revision+1 WHERE id='kyoto_gosho'").run(JSON.stringify(shared));
   const beforeBase=baseRow(h),before=row(h,defender),beforeBackup=backup(h,defender),privateState=save(h,defender).state;
-  const result=await outcome(true,()=>attack(h,actor,body(h,actor,defender,'sunpu')));
+  const result=await outcome(true,()=>attack(h,actor,body(h,actor,defender,'kyoto_gosho')));
   const expected=Math.round((publicBase.defenseTroops+200)*(1+32*.11)*(1+privateState.tech.discipline*.06)*(1+63*.04)*publicBase.armySummary.rankPower);
   assert.equal(result.battle.defensePower,expected);assert.deepEqual(baseRow(h),beforeBase);assert.deepEqual(row(h,defender),before);assert.deepEqual(backup(h,defender),beforeBackup);
 });
 
 await scope('shared defense revision changes cancel the whole reward operation',async h=>{
   const operator=await fixture(h,'競合防御の運営',{admin:true}),defender=await fixture(h,'競合防御のスタッフ');await appoint(h,operator,defender);const actor=await fixture(h,'競合防御の攻撃者'),before=row(h,actor),other=row(h,defender);let invoked=false;
-  beforeFieldCommit(h,()=>{invoked=true;h.sql.prepare("UPDATE staff_base SET revision=revision+1 WHERE id='sunpu'").run();});
-  const result=await outcome(true,()=>attack(h,actor,body(h,actor,defender,'sunpu'),409));assert(invoked);assert.equal(result.error.code,'FIELD_CHANGED');assert.deepEqual(row(h,actor),before);assert.deepEqual(row(h,defender),other);assert.equal(count(h,'field_requests'),0);assert.equal(count(h,'field_battles'),0);
+  beforeFieldCommit(h,()=>{invoked=true;h.sql.prepare("UPDATE staff_base SET revision=revision+1 WHERE id='kyoto_gosho'").run();});
+  const result=await outcome(true,()=>attack(h,actor,body(h,actor,defender,'kyoto_gosho'),409));assert(invoked);assert.equal(result.error.code,'FIELD_CHANGED');assert.deepEqual(row(h,actor),before);assert.deepEqual(row(h,defender),other);assert.equal(count(h,'field_requests'),0);assert.equal(count(h,'field_battles'),0);
 });
 
 await scope('a staff term change at commit cancels a major outpost capture',async h=>{

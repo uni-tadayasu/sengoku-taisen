@@ -34,7 +34,7 @@ const originalFetch=globalThis.fetch;globalThis.fetch=async()=>{throw Error('Dep
 try{
  await scope('public deployment and local maps expose exact counts, cooldowns and no management identities',async h=>{
   const {admin,staff,ordinary}=await roles(h),d=(await h.api('/roaming/deployment')).data;
-  assert.equal(d.deployment.revision,1);assert.equal(d.deployment.totalTroops,384000);assert.equal(d.deployment.totalSquads,384);assert.equal(d.castles.length,128);
+  assert.equal(d.deployment.revision,1);assert.equal(d.deployment.totalTroops,384000);assert.equal(d.deployment.totalSquads,384);assert.equal(d.castles.length,129);
   assert.equal(d.castles.reduce((n,c)=>n+c.squads,0),384);assert.equal(d.castles.reduce((n,c)=>n+c.troops,0),384000);
   const map=(await h.api('/roaming/map?castleId=edo')).data;assert.equal(map.units.length,3);assert(map.units.every(u=>u.castleId==='edo'&&u.available&&u.respawnAt===null));
   for(const source of [d,map]){const json=JSON.stringify(source);for(const hidden of ['requester','isAdmin','isStaff',admin.user.id,staff.user.id])assert(!json.includes(hidden),hidden);}
@@ -47,7 +47,7 @@ try{
   const {admin}=await roles(h),body=payload(),first=(await h.api('/admin/roaming/deployment',post(admin,body))).data;
   assert.equal(first.deployment.revision,2);assert.equal(first.deployment.totalTroops,256123);assert.equal(first.deployment.totalSquads,257);assert.equal(first.receipt.action,'apply');assert.equal(first.receipt.requestId,body.requestId);assert.equal(first.receipt.proposalId,null);assert.equal(count(h,'roaming_deployment_proposals'),0);
   const pub=(await h.api('/roaming/deployment')).data;assert.equal(pub.castles.reduce((n,c)=>n+c.troops,0),256123);
-  const map=(await h.api('/roaming/map?castleId=ishikawa')).data;assert(map.units.some(u=>u.troops===123));
+  const remainder=pub.castles.find(c=>c.troops%1000===123);assert(remainder);const map=(await h.api('/roaming/map?castleId='+remainder.castleId)).data;assert(map.units.some(u=>u.troops===123));
   const replay=(await h.api('/admin/roaming/deployment',post(admin,body))).data;assert(replay.idempotent);assert.deepEqual(replay.receipt,first.receipt);assert.equal(replay.deployment.revision,2);
   await h.api('/admin/roaming/deployment',post(admin,{...body,totalTroops:1000},409));assert.equal(deployment(h).revision,2);
  });

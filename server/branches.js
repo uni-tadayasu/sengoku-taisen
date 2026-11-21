@@ -1,0 +1,133 @@
+// Authoritative branch construction and siege condition. A branch is attached
+// to its parent city; it never becomes an additional territory or reward city.
+import {GameEngine,GAME_OFFICERS} from './game-runtime.js';
+const stmt=(db,sql,...args)=>db.prepare(sql).bind(...args);
+const GATE='EXISTS(SELECT 1 FROM branch_requests WHERE actor_id=? AND request_id=? AND commit_token=?)';
+const PARENTS=['edo','nijo','osaka','nagoya'];
+const DIRECTIONS=['north','east','south','west'];
+const EMPTY='{"branches":[],"jobs":[]}';
+const clone=value=>JSON.parse(JSON.stringify(value));
+const elapsed=save=>Math.max(0,Math.round(Number(save?.state?.worldClock?.elapsedMs??((save?.state?.turn||0)*60000+(save?.state?.realtime?.elapsed||0)*1000))));
+
+export async function branchStateGuard(db,userId,campaignId){
+ const row=await stmt(db,'SELECT * FROM branch_states WHERE actor_id=? AND campaign_id=?',userId,campaignId).first();
+ const state=row?JSON.parse(row.state_json):{branches:[],jobs:[]},sequence=Number(row?.sequence||0),resolvedElapsedMs=Number(row?.resolved_elapsed_ms||0);
+ const guard=row?{sql:'EXISTS(SELECT 1 FROM branch_states WHERE actor_id=? AND campaign_id=? AND sequence=? AND resolved_elapsed_ms=?)',args:[userId,campaignId,sequence,resolvedElapsedMs]}:{sql:'NOT EXISTS(SELECT 1 FROM branch_states WHERE actor_id=? AND campaign_id=?)',args:[userId,campaignId]};
+ return{row,sequence,state,resolvedElapsedMs,guard};
+}
+function projected(raw,at,anchor=at){
+ const state=clone(raw),jobs=[];
+ for(const job of state.jobs){
+  const branch=state.branches.find(item=>item.id===job.id);if(!branch)continue;
+  const due=job.completesElapsedMs<=at;
+  const remainingSeconds=Math.min(job.totalSeconds,Math.max(.001,(job.completesElapsedMs-anchor)/1000));
+  if(due){branch.level=job.targetLevel;if(job.repair)branch.fallen=false;continue;}
+  jobs.push({...job,remainingSeconds,remaining:Math.max(1,Math.ceil((remainingSeconds-1e-8)/60))});
+ }
+ return{branches:state.branches,jobs};
+}
+export function applyBranchProgress(save,state,clock,options={}){
+ const anchor=Math.min(elapsed(save),Number.isSafeInteger(clock?.elapsedMs)?clock.elapsedMs:elapsed(save)),at=options.projectToClock&&Number.isSafeInteger(clock?.elapsedMs)?clock.elapsedMs:anchor;
+ const model=projected(state,at,anchor);
+ // Role migration, a completed capture or a new cycle may have legitimately
+ // removed the parent. Its old ledger must never restore orphaned defenses.
+ // Uploads must establish ownership against the trusted prior checkpoint first.
+ // Only server-resolved role/capture/cycle paths may prune by save ownership.
+ const owned=options.pruneOwners===false?model.branches:model.branches.filter(branch=>save.state.castles[branch.parentCastleId]?.owner===save.state.clan),ids=new Set(owned.map(branch=>branch.id));
+ save.state.branches=owned;
+ save.state.jobs=[...(save.state.jobs||[]).filter(job=>job.kind!=='branch'),...model.jobs.filter(job=>ids.has(job.id))];
+ return save;
+}
+export async function reconcileBranchProgress(db,userId,save,clock,options={}){
+ const found=await branchStateGuard(db,userId,save.state.walking.campaignId);
+ return applyBranchProgress(save,found.state,clock,options);
+}
+function durable(save){
+ const at=elapsed(save),branches=clone(save.state.branches||[]).sort((a,b)=>a.id.localeCompare(b.id));
+ const jobs=(save.state.jobs||[]).filter(job=>job.kind==='branch').map(job=>{
+  const {remainingSeconds,remaining,...rest}=job;
+  return{...rest,completesElapsedMs:Number.isSafeInteger(job.completesElapsedMs)?job.completesElapsedMs:at+Math.round(Number(remainingSeconds??Number(remaining)*60)*1000)};
+ }).sort((a,b)=>a.id.localeCompare(b.id));
+ return JSON.stringify({branches,jobs});
+}
+// Use only for a server-resolved action/progression, inside its transaction.
+// An unchanged absolute deadline does not bump the sequence on ordinary ticks.
+export function branchProgressStatements(db,userId,save,now,parentGate,parentArgs,{resolvedElapsedMs=elapsed(save)}={}){
+ const campaignId=save.state.walking.campaignId,json=durable(save);
+ return[stmt(db,`INSERT INTO branch_states(actor_id,campaign_id,sequence,state_json,resolved_elapsed_ms,updated_at)
+  SELECT ?,?,1,?,?,? WHERE (${parentGate}) AND (?<>? OR EXISTS(SELECT 1 FROM branch_states WHERE actor_id=? AND campaign_id=?))
+  ON CONFLICT(actor_id,campaign_id) DO UPDATE SET sequence=branch_states.sequence+CASE WHEN branch_states.state_json<>excluded.state_json THEN 1 ELSE 0 END,state_json=excluded.state_json,resolved_elapsed_ms=MAX(branch_states.resolved_elapsed_ms,excluded.resolved_elapsed_ms),updated_at=excluded.updated_at
+  WHERE branch_states.state_json<>excluded.state_json OR branch_states.resolved_elapsed_ms<excluded.resolved_elapsed_ms`,userId,campaignId,json,resolvedElapsedMs,now,...parentArgs,json,EMPTY,userId,campaignId)];
+}
+async function status(ctx,snapshot=null){
+ const{db,user,helpers:h,url}=ctx,now=Date.now(),current=await h.getUser(db,user.id);
+ h.registerResponseGuard?.(h.roleCommitGuard(user));
+ snapshot=snapshot||await h.syncSnapshot(db,await h.getSyncRow(db,user.id),current,url.searchParams.get('deviceId')||null,now);
+ if(!snapshot.save)return{...snapshot,campaignId:null,sequence:0,branchState:{branches:[],jobs:[]},parents:[]};
+ const campaignId=snapshot.save.state.walking.campaignId,found=await branchStateGuard(db,user.id,campaignId);applyBranchProgress(snapshot.save,found.state,snapshot.clock);
+ const shared=current.is_staff&&!current.is_admin?await h.staffBaseDto(db,current,snapshot.clock,now):null;
+ const game=GameEngine.fromSave(snapshot.save,GAME_OFFICERS,{isAdmin:!!current.is_admin,isStaff:!!current.is_staff,staffBase:shared});
+ await h.requireAccountAccess(db,user);
+ return{...snapshot,campaignId,sequence:found.sequence,branchResolvedElapsedMs:found.resolvedElapsedMs,branchState:{branches:clone(snapshot.save.state.branches),jobs:clone(snapshot.save.state.jobs.filter(job=>job.kind==='branch'))},parents:PARENTS.map(id=>game.branchStatus(id))};
+}
+async function prior(ctx,requestId,digest){
+ const row=await stmt(ctx.db,'SELECT * FROM branch_requests WHERE actor_id=? AND request_id=?',ctx.user.id,requestId).first();
+ if(row&&row.request_hash!==digest)ctx.helpers.fail(409,'REQUEST_ID_REUSED','この操作番号は別の支拠点操作に使用されています。');return row;
+}
+async function response(ctx,record,deviceId,idempotent){
+ const{db,user,helpers:h}=ctx;await h.requireAccountAccess(db,user);
+ const snapshot=await h.syncSnapshot(db,await h.getSyncRow(db,user.id),await h.getUser(db,user.id),deviceId,Date.now());
+ return{...await status(ctx,snapshot),result:JSON.parse(record.result_json),idempotent};
+}
+function input(raw,action,h){
+ const common=['requestId','deviceId','expectedRevision','campaignId','sequence'],extra=action==='build'?['parentCastleId','direction']:['branchId'];
+ if(!raw||typeof raw!=='object'||Array.isArray(raw)||Object.keys(raw).some(key=>!common.includes(key)&&!extra.includes(key)))h.fail(400,'INVALID_INPUT','支拠点操作の送信項目を確認してください。');
+ const body={};for(const key of ['requestId','deviceId','campaignId']){body[key]=h.idField(raw[key],key);if(body[key].length>90)h.fail(400,'INVALID_INPUT','操作番号が長すぎます。');}
+ for(const key of ['sequence','expectedRevision']){if(!Number.isSafeInteger(raw[key])||raw[key]<0||raw[key]>1000000000)h.fail(400,'INVALID_INPUT','更新番号が正しくありません。');body[key]=raw[key];}
+ if(action==='build'){
+  if(!PARENTS.includes(raw.parentCastleId)||!DIRECTIONS.includes(raw.direction))h.fail(400,'INVALID_BRANCH_PARENT','江戸・二条・大坂・名古屋の拠点と東西南北の方角を選んでください。京都御所には支拠点を建設できません。');
+  body.parentCastleId=raw.parentCastleId;body.direction=raw.direction;
+ }else body.branchId=h.idField(raw.branchId,'支拠点');
+ return body;
+}
+async function mutation(ctx,action){
+ const{db,user,helpers:h}=ctx,body=input(await h.readBody(ctx.request),action,h);
+ const intent={action,campaignId:body.campaignId,sequence:body.sequence,...Object.fromEntries(Object.entries(body).filter(([key])=>!['requestId','deviceId','expectedRevision','campaignId','sequence'].includes(key)))};
+ const digest=await h.hash(JSON.stringify(intent)),previous=await prior(ctx,body.requestId,digest);if(previous)return response(ctx,previous,body.deviceId,true);
+ const row=await h.settleWriterCycle(db,user,body.deviceId,body.expectedRevision,ctx.now),clock=await h.getWorldClock(db,ctx.now);
+ const save=h.normalizeGameSave(JSON.parse(row.save_json),user,ctx.now,{reading:true,clock});
+ if(save.state.walking.campaignId!==body.campaignId)h.fail(409,'BRANCH_SCOPE_CHANGED','物語が切り替わりました。支拠点を確認してください。');
+ if(!save.state.worldClock||save.state.worldClock.id!==clock.id)h.fail(409,'CLOCK_ANCHOR_REQUIRED','先に本拠を共通時計へ同期してください。');
+ if(Math.abs(clock.elapsedMs-save.state.worldClock.elapsedMs)>15000)h.fail(409,'CLOCK_STALE','共通時計と本拠を同期してから操作してください。');
+ if(!clock.running)h.fail(409,'WORLD_PAUSED','共通時間が停止中です。');
+ const found=await branchStateGuard(db,user.id,body.campaignId);if(found.sequence!==body.sequence)h.fail(409,'BRANCH_STATE_CHANGED','支拠点が更新されました。最新の状態を確認してください。');applyBranchProgress(save,found.state,clock);
+ const shared=user.is_staff&&!user.is_admin?await h.staffBaseDto(db,user,clock,ctx.now):null;
+ const game=GameEngine.fromSave(save,GAME_OFFICERS,{isAdmin:!!user.is_admin,isStaff:!!user.is_staff,staffBase:shared,branchAuthority:{resolvedElapsedMs:found.resolvedElapsedMs}});
+ game.applyWorldClock(clock,{maxSeconds:60});
+ const result=action==='build'?game.buildBranch(body.parentCastleId,body.direction):action==='upgrade'?game.upgradeBranch(body.branchId):game.repairBranch(body.branchId);
+ if(!result.ok)h.fail(409,result.code||'BRANCH_UNAVAILABLE',result.message);
+ const createdJob=game.state.jobs.find(job=>job.kind==='branch'&&job.id===result.branchId);
+ if(createdJob)createdJob.completesElapsedMs=clock.elapsedMs+createdJob.totalSeconds*1000;
+ await h.budget(db,'branches:'+user.id,60,60000,ctx.now);
+ const now=Date.now(),next=h.normalizeGameSave(JSON.parse(game.exportSave()),user,now,{clock}),nonce=crypto.randomUUID(),role=h.roleCommitGuard(user),gateArgs=[user.id,body.requestId,nonce];
+ const sharedGuard=shared?{sql:"EXISTS(SELECT 1 FROM staff_base WHERE id='kyoto_gosho' AND revision=?)",args:[shared.revision]}:{sql:'1=1',args:[]};
+ const statements=[stmt(db,`INSERT INTO branch_requests(actor_id,request_id,campaign_id,sequence,action,request_hash,commit_token,result_json,created_at)
+  SELECT ?,?,?,?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM player_saves WHERE user_id=? AND revision=? AND writer_device_id=? AND lease_expires_at>? AND COALESCE(json_extract(save_json,'$.state.walking.campaignId'),'legacy_v1')=?)
+  AND EXISTS(SELECT 1 FROM world_clock WHERE id=? AND revision=?) AND ${role.sql} AND ${found.guard.sql} AND ${sharedGuard.sql}
+  ON CONFLICT(actor_id,request_id) DO NOTHING`,user.id,body.requestId,body.campaignId,body.sequence,action,digest,nonce,JSON.stringify(result),now,user.id,body.expectedRevision,body.deviceId,now,body.campaignId,h.worldClockId,clock.revision,...role.args,...found.guard.args,...sharedGuard.args),
+  stmt(db,`UPDATE player_saves SET save_json=?,revision=revision+1,updated_at=?,lease_expires_at=? WHERE user_id=? AND ${GATE}`,JSON.stringify(next),now,now+h.syncLease,user.id,...gateArgs),
+  ...branchProgressStatements(db,user.id,next,now,GATE,gateArgs,{resolvedElapsedMs:clock.elapsedMs}),
+  ...(h.covertIncidentStatements?h.covertIncidentStatements(db,user.id,next,now,GATE,gateArgs):[])
+ ];
+ const personal=h.staffPersonalProgressStatement?await h.staffPersonalProgressStatement(db,user,next,now,GATE,gateArgs,game.getStaffPersonalProgress?.()):null;
+ if(personal)statements.push(personal);
+ await db.batch(statements);const committed=await prior(ctx,body.requestId,digest);
+ if(!committed){await h.requireAccountAccess(db,user);h.fieldWriter(await h.getSyncRow(db,user.id),body.deviceId,body.expectedRevision,Date.now());h.fail(409,'BRANCH_STATE_CHANGED','支拠点・保存・利用資格が更新されました。最新の状態を確認してください。');}
+ return response(ctx,committed,body.deviceId,committed.commit_token!==nonce);
+}
+export async function handleBranches(ctx){
+ const{db,user,helpers:h,path,method,url}=ctx;await h.requireAccountAccess(db,user);
+ if(path==='/branches'&&method==='GET'){if([...url.searchParams.keys()].some(key=>key!=='deviceId'))h.fail(400,'INVALID_INPUT','支拠点一覧の指定を確認してください。');return status(ctx);}
+ const action=path.slice('/branches/'.length);if(method==='POST'&&['build','upgrade','repair'].includes(action))return mutation(ctx,action);
+ h.fail(404,'NOT_FOUND','その支拠点操作は見つかりませんでした。');
+}

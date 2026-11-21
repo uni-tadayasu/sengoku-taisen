@@ -91,12 +91,12 @@ await scope('empty private-letter deltas update both participants while outsider
 await scope('shared staff facilities and due jobs affect the title through read-only projection, then demotion restores personal development',async h=>{
   const admin=await operator(h),staff=await fixture(h,'共同評価のスタッフ',s=>{s.buildings.keep=3;s.castles[s.home].level=7;});
   const personal=json(saved(h,staff));await appoint(h,admin,staff);await h.api('/sync?deviceId='+staff.deviceId,{token:staff.token});
-  const sharedRow=h.sql.prepare("SELECT * FROM staff_base WHERE id='sunpu'").get(),shared=JSON.parse(sharedRow.state_json);
+  const sharedRow=h.sql.prepare("SELECT * FROM staff_base WHERE id='kyoto_gosho'").get(),shared=JSON.parse(sharedRow.state_json);
   shared.castleLevel=shared.initial.castleLevel=64;shared.buildings.keep=shared.initial.buildings.keep=8;shared.buildings.gold_mine=shared.initial.buildings.gold_mine=4;
   shared.jobs=[{jobId:'eval-job',kind:'building',id:'keep',targetLevel:9,totalSeconds:60,queuedAtElapsedMs:0,startedElapsedMs:0,completesElapsedMs:60000,startedBy:{id:staff.user.id,name:staff.user.name}}];
-  h.sql.prepare("UPDATE staff_base SET state_json=?,revision=revision+1 WHERE id='sunpu'").run(JSON.stringify(shared));
+  h.sql.prepare("UPDATE staff_base SET state_json=?,revision=revision+1 WHERE id='kyoto_gosho'").run(JSON.stringify(shared));
   const backup=JSON.parse(h.sql.prepare('SELECT save_json FROM staff_campaign_backups WHERE user_id=?').get(staff.user.id).save_json).state;
-  const base={...shared,id:'sunpu',revision:sharedRow.revision+1,accessSinceElapsedMs:0,clanSinceElapsedMs:0,personalClan:backup.clan,personalHome:backup.home,personalCycleHome:backup.cycle.home,personalSunpu:backup.castles.sunpu,personalHomeCastle:backup.castles[backup.home]};
+  const base={...shared,id:'kyoto_gosho',revision:sharedRow.revision+1,accessSinceElapsedMs:0,clanSinceElapsedMs:0,personalClan:backup.clan,personalHome:backup.home,personalCycleHome:backup.cycle.home,personalBaseCastle:backup.castles.kyoto_gosho,personalHomeCastle:backup.castles[backup.home]};
   const game=E.fromSave(saved(h,staff),officers,{isStaff:true,staffBase:base}),before=gameplay(h),current=(await me(h,staff)).user;
   assert.deepEqual(current.evaluation,evaluate(game.state));assert.notDeepEqual(current.evaluation,evaluate(saved(h,staff).state));assert.equal(gameplay(h),before);
   h.now+=60000;game._projectStaffAt(60000);const due=(await me(h,staff)).user;assert.deepEqual(due.evaluation,evaluate(game.state));assert(due.evaluation.score>current.evaluation.score);assert.equal(gameplay(h),before,'A title read never settles the shared construction row');

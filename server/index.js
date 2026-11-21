@@ -7,9 +7,11 @@ import {handleEvents} from './events.js';
 import {handleRoaming,reconcileRoamingProgress} from './roaming.js';
 import {handleRoamingDeployment} from './roaming-deployment.js';
 import {handleCovert,reconcileCovertProgress,covertIncidentStatements} from './covert.js';
+import {handleCourt} from './court.js';
+import {handleBranches,applyBranchProgress,reconcileBranchProgress,branchProgressStatements,branchStateGuard} from './branches.js';
 const API = '/api/v1';
-const API_VERSION = '3.21.0';
-const API_FEATURES = Object.freeze({trades:true,moderation:true,premium:true,timedEvents:true,troopTrades:true,roamingBattles:true,roamingDeployment:true,covertDispatch:true,privatePlayerRoles:true,guildIcons:true});
+const API_VERSION = '3.22.0';
+const API_FEATURES = Object.freeze({trades:true,moderation:true,premium:true,timedEvents:true,troopTrades:true,roamingBattles:true,roamingDeployment:true,covertDispatch:true,privatePlayerRoles:true,guildIcons:true,court:true,kyotoGosho:true,branches:true,branchBattles:true});
 const MAX_BODY = 16 * 1024;
 const MAX_SAVE_BODY = 2 * 1024 * 1024;
 const MAX_AVATAR_BYTES = 48 * 1024;
@@ -23,9 +25,9 @@ const MAX_WALKING_STEPS=Math.floor(Number.MAX_SAFE_INTEGER/2);
 const PAIR_CODE_LIFETIME = 10 * 60 * 1000;
 const IEYASU_ID = 'of_b0616adde162';
 const ADMIN_CLAN = '德川家';
-const MAJOR_CITIES=['edo','sunpu','nijo','osaka','nagoya'];
+const MAJOR_CITIES=['edo','kyoto_gosho','nijo','osaka','nagoya'];
 const FIELD_CAPTURE_CASTLES=['nijo','osaka','nagoya'];
-const castleLevelLimit=id=>id==='edo'||id==='sunpu'?64:FIELD_CAPTURE_CASTLES.includes(id)?48:32;
+const castleLevelLimit=id=>id==='kyoto_gosho'?128:id==='edo'?64:FIELD_CAPTURE_CASTLES.includes(id)?48:32;
 const ORDINARY_TOKUGAWA_CLAN = '徳川家';
 const WORLD_CLOCK_ID = 'world-v1';
 const MAX_TURN = 999999999;
@@ -36,6 +38,7 @@ const WELCOME = '戦国VSへようこそ。城を育て、仲間と語らい、�
 const BASE_ORIGINS = new Set(['https://uni-tadayasu.github.io', 'https://www.kasai-solutions-inc.com', 'http://127.0.0.1:4173', 'null']);
 const encoder = new TextEncoder();
 const authenticatedRequests = new WeakMap();
+const courtResponseGuards = new WeakMap();
 
 class ApiError extends Error {
   constructor(status, code, message, retryAfter) {
@@ -302,14 +305,14 @@ function evaluationState(row,meta,now){
     for(const job of shared.jobs.filter(job=>job.completesElapsedMs<=(clock?.elapsedMs||0)).sort((a,b)=>a.completesElapsedMs-b.completesElapsedMs)){
       if(job.kind==='castle')shared.castleLevel=job.targetLevel;else shared.buildings[job.id]=job.targetLevel;
     }
-    state.buildings=copy(shared.buildings);state.castles.sunpu.level=shared.castleLevel;state.castles.sunpu.wall=shared.buildings.wall;
+    state.buildings=copy(shared.buildings);state.castles.kyoto_gosho.level=shared.castleLevel;state.castles.kyoto_gosho.wall=shared.buildings.wall;
   }
   const savedCycle=row.cycle_index??Math.max(Number(meta.cycle_start||0),Math.floor((state.worldClock?.elapsedMs??state.turn*WORLD_MONTH_MS)/WORLD_CYCLE_MS));
   if(clock&&Number(savedCycle)<Math.floor(clock.elapsedMs/WORLD_CYCLE_MS)){
     // Match the public field's pending-cycle view without advancing months,
     // granting rewards, changing leases or settling anyone's persisted save.
-    let home=row.is_admin?'edo':staff?'sunpu':(restored?state.cycle?.home:row.cycle_home)||state.cycle?.home||state.home;
-    if(!CASTLE_BY_ID[home]||!row.is_admin&&home==='edo'||!staff&&home==='sunpu')home=state.home;
+    let home=row.is_admin?'edo':staff?'kyoto_gosho':(restored?state.cycle?.home:row.cycle_home)||state.cycle?.home||state.home;
+    if(!CASTLE_BY_ID[home]||!row.is_admin&&home==='edo'||!staff&&home==='kyoto_gosho')home=state.home;
     for(const [id,castle]of Object.entries(state.castles))if(id!==home&&castle.owner===state.clan)castle.owner='在地衆';
     state.castles[home].owner=state.clan;state.home=home;
   }
@@ -336,7 +339,7 @@ async function resolvePlayerEvaluations(db,payload,now){
   visit(payload,null,null);if(!ids.size&&!nameRefs.length&&!avatarRefs.length)return payload;
   const selected=[...ids],queries=[stmt(db,`SELECT
     (SELECT json_object('base_elapsed_ms',base_elapsed_ms,'anchor_real_ms',anchor_real_ms,'running',running,'speed',speed,'revision',revision) FROM world_clock WHERE id=?) AS clock_json,
-    (SELECT state_json FROM staff_base WHERE id='sunpu') AS shared_json,
+    (SELECT state_json FROM staff_base WHERE id='kyoto_gosho') AS shared_json,
     (SELECT value FROM settings WHERE key='cyclePolicyStart') AS cycle_start`,WORLD_CLOCK_ID)];
   for(let offset=0;offset<selected.length;offset+=80){
     const page=selected.slice(offset,offset+80);
@@ -375,6 +378,28 @@ async function resolvePlayerEvaluations(db,payload,now){
   for(const ref of avatarRefs)ref.value[ref.key]=avatars.get(ref.id)||null;
   return payload;
 }
+
+async function courtAccess(db,user,now){
+  await requireAccountAccess(db,user);
+  const clock=await getWorldClock(db,now),shared=await sharedStaffBaseRow(db,clock,now);
+  const result=await db.batch([
+    stmt(db,`SELECT (SELECT json_object('base_elapsed_ms',base_elapsed_ms,'anchor_real_ms',anchor_real_ms,'running',running,'speed',speed,'revision',revision) FROM world_clock WHERE id=?) AS clock_json,(SELECT value FROM settings WHERE key='cyclePolicyStart') AS cycle_start`,WORLD_CLOCK_ID),
+    stmt(db,`SELECT u.id,u.name,u.clan,ps.save_json,ps.revision AS save_revision,ps.cycle_index,ps.cycle_home,
+      CASE WHEN u.id=(SELECT value FROM settings WHERE key='adminUserId') THEN 1 ELSE 0 END AS is_admin,
+      CASE WHEN sm.user_id IS NOT NULL THEN 1 ELSE 0 END AS is_staff,COALESCE(sm.term_id,'legacy:'||sm.appointed_at) AS staff_term,
+      b.active AS backup_active,b.term_id AS backup_term,b.save_json AS backup_json,b.transition_token AS backup_token
+      FROM users u LEFT JOIN player_saves ps ON ps.user_id=u.id LEFT JOIN staff_members sm ON sm.user_id=u.id LEFT JOIN staff_campaign_backups b ON b.user_id=u.id WHERE u.id=?`,user.id),
+  ]);
+  const row=rows(result[1])[0];
+  if(!row||!!row.is_admin!==!!user.is_admin||(row.staff_term||'')!==(user.staff_term||''))fail(403,'COURT_ACCESS_CHANGED','朝廷への入場資格が変わりました。最新の状態を確認してください。');
+  const meta={...rows(result[0])[0],shared_json:shared.state_json};let evaluation=null;
+  try{evaluation=GameEngine.publicEvaluation(evaluationState(row,meta,now),{officers:GAME_OFFICERS});}catch{}
+  const privileged=!!row.is_admin||!!row.is_staff,eligible=privileged||Number(evaluation?.score)>=35000,guard=roleCommitGuard(user);
+  if(!privileged){guard.sql+=` AND COALESCE((SELECT revision FROM player_saves WHERE user_id=?),-1)=? AND COALESCE((SELECT transition_token FROM staff_campaign_backups WHERE user_id=?),'')=? AND EXISTS(SELECT 1 FROM world_clock WHERE id=? AND revision=?)`;guard.args.push(user.id,row.save_revision??-1,user.id,row.backup_token||'',WORLD_CLOCK_ID,clock.revision);}
+  const emperor=await courtEmperorAuthority(db,user);
+  return{user,eligible,privileged,evaluation,guard,clock,emperor,shared:JSON.parse(shared.state_json),accessStamp:await hash(JSON.stringify([user.id,user.moderation_epoch||0,!!row.is_admin,row.staff_term||'',eligible,emperor.token]))};
+}
+async function verifyCourtResponse(db,request){const guard=courtResponseGuards.get(request);if(!guard)return;if(!await stmt(db,'SELECT 1 AS allowed WHERE '+guard.sql,...guard.args).first())fail(409,guard.code||'COURT_ACCESS_CHANGED',guard.message||'朝廷の利用資格または会話の状態が変わりました。最新の内容を確認してください。');}
 
 function mapUser(row, now = Date.now()) {
   return {
@@ -428,8 +453,8 @@ const USER_SELECT = `SELECT u.id,u.name,u.clan,u.last_seen,gm.guild_id,g.name AS
   (SELECT json_extract(b.save_json,'$.state.clan') FROM staff_campaign_backups b WHERE b.user_id=u.id AND b.active=1) AS personal_clan,
   (SELECT json_extract(b.save_json,'$.state.home') FROM staff_campaign_backups b WHERE b.user_id=u.id AND b.active=1) AS personal_home,
   (SELECT json_extract(b.save_json,'$.state.castles.'||json_extract(b.save_json,'$.state.home')) FROM staff_campaign_backups b WHERE b.user_id=u.id AND b.active=1) AS personal_castle_json,
-  (SELECT json_extract(sb.state_json,'$.castleLevel') FROM staff_base sb WHERE sb.id='sunpu') AS staff_castle_level,
-  (SELECT json_extract(sb.state_json,'$.buildings.wall') FROM staff_base sb WHERE sb.id='sunpu') AS staff_wall,
+  (SELECT json_extract(sb.state_json,'$.castleLevel') FROM staff_base sb WHERE sb.id='kyoto_gosho') AS staff_castle_level,
+  (SELECT json_extract(sb.state_json,'$.buildings.wall') FROM staff_base sb WHERE sb.id='kyoto_gosho') AS staff_wall,
   EXISTS(SELECT 1 FROM staff_members sm WHERE sm.user_id=u.id) AS is_staff,
   (SELECT COALESCE(sm.term_id,'legacy:'||sm.appointed_at) FROM staff_members sm WHERE sm.user_id=u.id) AS staff_term,
   (SELECT sm.appointed_elapsed_ms FROM staff_members sm WHERE sm.user_id=u.id) AS staff_since_ms
@@ -863,13 +888,13 @@ const GUILD_RANKINGS=`WITH totals AS (
       (SELECT COUNT(*) FROM json_each(s.save_json,'$.state.castles') c
         WHERE json_extract(c.value,'$.owner')=json_extract(s.save_json,'$.state.clan')
         AND (c.key<>'edo' OR gm.user_id=(SELECT value FROM settings WHERE key='adminUserId'))
-        AND (c.key<>'sunpu' OR gm.user_id<>COALESCE((SELECT value FROM settings WHERE key='adminUserId'),'') AND EXISTS(SELECT 1 FROM staff_members sm WHERE sm.user_id=gm.user_id)))
+        AND (c.key<>'kyoto_gosho' OR gm.user_id<>COALESCE((SELECT value FROM settings WHERE key='adminUserId'),'') AND EXISTS(SELECT 1 FROM staff_members sm WHERE sm.user_id=gm.user_id)))
       +CASE WHEN gm.user_id=(SELECT value FROM settings WHERE key='adminUserId')
         AND json_extract(s.save_json,'$.state.castles.edo.owner')<>json_extract(s.save_json,'$.state.clan') THEN 1 ELSE 0 END
-      +CASE WHEN gm.user_id<>COALESCE((SELECT value FROM settings WHERE key='adminUserId'),'') AND EXISTS(SELECT 1 FROM staff_members sm WHERE sm.user_id=gm.user_id) AND json_extract(s.save_json,'$.state.castles.sunpu.owner')<>json_extract(s.save_json,'$.state.clan') THEN 1 ELSE 0 END
+      +CASE WHEN gm.user_id<>COALESCE((SELECT value FROM settings WHERE key='adminUserId'),'') AND EXISTS(SELECT 1 FROM staff_members sm WHERE sm.user_id=gm.user_id) AND json_extract(s.save_json,'$.state.castles.kyoto_gosho.owner')<>json_extract(s.save_json,'$.state.clan') THEN 1 ELSE 0 END
       +CASE WHEN gm.user_id<>COALESCE((SELECT value FROM settings WHERE key='adminUserId'),'')
-        AND (json_extract(s.save_json,'$.state.castles.edo.owner')=json_extract(s.save_json,'$.state.clan') OR json_extract(s.save_json,'$.state.castles.sunpu.owner')=json_extract(s.save_json,'$.state.clan') AND NOT EXISTS(SELECT 1 FROM staff_members sm WHERE sm.user_id=gm.user_id))
-        AND NOT EXISTS(SELECT 1 FROM json_each(s.save_json,'$.state.castles') c WHERE c.key NOT IN ('edo','sunpu') AND json_extract(c.value,'$.owner')=json_extract(s.save_json,'$.state.clan')) THEN 1 ELSE 0 END END),0) AS owned_castles
+        AND (json_extract(s.save_json,'$.state.castles.edo.owner')=json_extract(s.save_json,'$.state.clan') OR json_extract(s.save_json,'$.state.castles.kyoto_gosho.owner')=json_extract(s.save_json,'$.state.clan') AND NOT EXISTS(SELECT 1 FROM staff_members sm WHERE sm.user_id=gm.user_id))
+        AND NOT EXISTS(SELECT 1 FROM json_each(s.save_json,'$.state.castles') c WHERE c.key NOT IN ('edo','kyoto_gosho') AND json_extract(c.value,'$.owner')=json_extract(s.save_json,'$.state.clan')) THEN 1 ELSE 0 END END),0) AS owned_castles
   FROM guilds g JOIN users owner ON owner.id=g.owner_id LEFT JOIN guild_members gm ON gm.guild_id=g.id
   LEFT JOIN player_saves s ON s.user_id=gm.user_id GROUP BY g.id
 ), ranked AS (SELECT *,ROW_NUMBER() OVER(ORDER BY total_prestige DESC,id ASC) AS rank FROM totals)
@@ -912,6 +937,12 @@ function systemMailEvent(requestId) {
 }
 function fieldBattleMailContent(battle,side,homes) {
   const attacker=side==='attacker',won=attacker?battle.won:!battle.won,captured=!!battle.capture?.captured,moved=homes.defenderBefore!==homes.defenderAfter;
+  if(battle.battleMode==='branch'){
+    const name=battle.branchName||battle.castleName,title=`【${attacker?won?'支拠点攻略':'支拠点攻撃・撤退':won?'支拠点防衛':'支拠点陥落'}】${name}`;
+    const lines=[attacker?`${battle.defenderName}の${name}へ出陣しました。`:`${name}が${battle.attackerName}の攻撃を受けました。`,battle.branchFallen?'支拠点は陥落しました。修復が完了するまで親拠点を守る効果はありません。':'支拠点は攻撃を退けました。',`${battle.castleName}の領有・守備兵・資源は維持しています。支拠点の戦いでは、城の占領や戦利品・勝利報酬の獲得はありません。`];
+    if(attacker)lines.push(`出陣兵${battle.troops.toLocaleString('ja-JP')}人、損失${battle.attackerLost.toLocaleString('ja-JP')}人、消費兵糧${battle.foodCost.toLocaleString('ja-JP')}。`);
+    lines.push('結果はすでに保存へ反映済みです。共有地図で残りの支拠点と本城の状態を確認できます。');return{title,body:lines.join('\n')};
+  }
   const labels={gold:'金銭',rice:'兵糧',wood:'木材',stone:'石材'},amounts=value=>RESOURCES.map(key=>`${labels[key]}${Number(value?.[key]||0).toLocaleString('ja-JP')}`).join('・');
   const mode={reward:'報酬戦（占領なし）',capture:'占領戦',raid:'襲撃（占領なし）'}[battle.battleMode];
   const lines=[attacker?`${battle.defenderName}の${battle.castleName}へ出陣しました。`:`${battle.attackerName}から${battle.castleName}を攻撃されました。`,
@@ -962,7 +993,7 @@ async function visibleMail(db, userId, mailId) {
 // Version-2 save definitions mirror the game data. Keep the validation contract aligned
 // when adding a castle, facility or officer; only these known fields can enter cloud saves.
 const BUILDINGS = [{"id":"keep","core":true},{"id":"farm","core":true},{"id":"market","core":true},{"id":"lumber","core":true},{"id":"quarry","core":true},{"id":"barracks","core":true},{"id":"wall","core":true},{"id":"academy","core":true},{"id":"gold_mine","core":false},{"id":"silver_mine","core":false},{"id":"trade_port","core":false},{"id":"wholesale","core":false},{"id":"artisan_town","core":false},{"id":"post_town","core":false},{"id":"mint","core":false},{"id":"rice_paddy","core":false},{"id":"dry_field","core":false},{"id":"orchard","core":false},{"id":"fishery","core":false},{"id":"ranch","core":false},{"id":"granary","core":false},{"id":"irrigation","core":false},{"id":"cedar_forest","core":false},{"id":"bamboo_grove","core":false},{"id":"sawmill","core":false},{"id":"timber_market","core":false},{"id":"charcoal_kiln","core":false},{"id":"forest_office","core":false},{"id":"water_sawmill","core":false},{"id":"stoneworks","core":false},{"id":"clay_pit","core":false},{"id":"lime_kiln","core":false},{"id":"tile_kiln","core":false},{"id":"iron_mine","core":false},{"id":"copper_mine","core":false},{"id":"stone_depot","core":false},{"id":"dojo","core":false},{"id":"stable","core":false},{"id":"gunsmith","core":false},{"id":"spear_workshop","core":false},{"id":"armory","core":false},{"id":"drill_ground","core":false},{"id":"war_school","core":false},{"id":"main_gate","core":false},{"id":"moat","core":false},{"id":"watchtower","core":false},{"id":"guardhouse","core":false},{"id":"earthworks","core":false},{"id":"outpost","core":false},{"id":"herb_garden","core":false},{"id":"library","core":false},{"id":"observatory","core":false},{"id":"craft_lab","core":false},{"id":"engineering_shop","core":false},{"id":"medical_school","core":false},{"id":"school","core":false},{"id":"foreign_studies","core":false},{"id":"envoy_house","core":false},{"id":"tea_house","core":false},{"id":"temple","core":false},{"id":"shrine","core":false},{"id":"guest_house","core":false},{"id":"relay_station","core":false},{"id":"intelligence_office","core":false}];
-const CASTLES = [{"id":"ishikawa","clan":"津軽家","name":"石川城"},{"id":"sannohe","clan":"南部家","name":"三戸城"},{"id":"minato","clan":"安東家","name":"湊城"},{"id":"kakunodate","clan":"戸沢家","name":"角館城"},{"id":"yamagata","clan":"最上家","name":"山形城"},{"id":"yonezawa","clan":"伊達家","name":"米沢城"},{"id":"kurokawa","clan":"蘆名家","name":"黒川城"},{"id":"odaka","clan":"相馬家","name":"小高城"},{"id":"ota","clan":"佐竹家","name":"太田城"},{"id":"utsunomiya","clan":"宇都宮家","name":"宇都宮城"},{"id":"mayabashi","clan":"長野家","name":"厩橋城"},{"id":"oshi","clan":"成田家","name":"忍城"},{"id":"odawara","clan":"北条家","name":"小田原城"},{"id":"kasugayama","clan":"上杉家","name":"春日山城"},{"id":"ueda","clan":"真田家","name":"上田城"},{"id":"tsutsujigasaki","clan":"武田家","name":"躑躅ヶ崎館"},{"id":"nanao","clan":"畠山家","name":"七尾城"},{"id":"kanazawa","clan":"本願寺勢","name":"金沢御坊"},{"id":"ichijodani","clan":"朝倉家","name":"一乗谷城"},{"id":"sunpu","clan":"今川家","name":"駿府城"},{"id":"hikuma","clan":"飯尾家","name":"引馬城"},{"id":"okazaki","clan":"徳川家","name":"岡崎城"},{"id":"kiyosu","clan":"織田家","name":"清洲城"},{"id":"inabayama","clan":"斎藤家","name":"稲葉山城"},{"id":"odani","clan":"浅井家","name":"小谷城"},{"id":"kannonji","clan":"六角家","name":"観音寺城"},{"id":"sakamoto","clan":"明智家","name":"坂本城"},{"id":"nijo","clan":"足利家","name":"二条御所"},{"id":"akutagawa","clan":"三好家","name":"芥川山城"},{"id":"takaya","clan":"畠山家","name":"高屋城"},{"id":"tottori","clan":"山名家","name":"鳥取城"},{"id":"gassan","clan":"尼子家","name":"月山富田城"},{"id":"okayama","clan":"宇喜多家","name":"岡山城"},{"id":"yoshida","clan":"毛利家","name":"吉田郡山城"},{"id":"yamaguchi","clan":"大内家","name":"山口館"},{"id":"takamatsu","clan":"清水家","name":"備中高松城"},{"id":"oko","clan":"長宗我部家","name":"岡豊城"},{"id":"yuzuki","clan":"河野家","name":"湯築城"},{"id":"shozui","clan":"三好家","name":"勝瑞城"},{"id":"sogo","clan":"十河家","name":"十河城"},{"id":"akizuki","clan":"秋月家","name":"秋月城"},{"id":"tachibana","clan":"立花家","name":"立花城"},{"id":"funai","clan":"大友家","name":"府内館"},{"id":"saga","clan":"龍造寺家","name":"佐賀城"},{"id":"hitoyoshi","clan":"相良家","name":"人吉城"},{"id":"kumamoto","clan":"城家","name":"隈本城"},{"id":"obi","clan":"伊東家","name":"飫肥城"},{"id":"uchijo","clan":"島津家","name":"内城"},{"id":"hirosaki","clan":"津軽家","name":"弘前城"},{"id":"nejo","clan":"南部家","name":"根城"},{"id":"morioka","clan":"南部家","name":"盛岡城"},{"id":"sendai","clan":"伊達家","name":"仙台城"},{"id":"kubota","clan":"佐竹家","name":"久保田城"},{"id":"nihonmatsu","clan":"畠山家","name":"二本松城"},{"id":"shirakawa","clan":"結城家","name":"白河小峰城"},{"id":"kunohe","clan":"九戸家","name":"九戸城"},{"id":"miharu","clan":"田村家","name":"三春城"},{"id":"mukaihaguroyama","clan":"蘆名家","name":"向羽黒山城"},{"id":"mito","clan":"佐竹家","name":"水戸城"},{"id":"minowa","clan":"長野家","name":"箕輪城"},{"id":"nitta_kanayama","clan":"由良家","name":"新田金山城"},{"id":"hachigata","clan":"北条家","name":"鉢形城"},{"id":"kawagoe","clan":"太田家","name":"川越城"},{"id":"edo","clan":"太田家","name":"江戸城"},{"id":"hachioji","clan":"北条家","name":"八王子城"},{"id":"motosakura","clan":"千葉家","name":"本佐倉城"},{"id":"otaki","clan":"本多家","name":"大多喜城"},{"id":"numata","clan":"真田家","name":"沼田城"},{"id":"kofu","clan":"浅野家","name":"甲府城"},{"id":"kaizu","clan":"武田家","name":"海津城"},{"id":"komoro","clan":"仙石家","name":"小諸城"},{"id":"matsumoto","clan":"小笠原家","name":"松本城"},{"id":"takato","clan":"仁科家","name":"高遠城"},{"id":"shibata","clan":"新発田家","name":"新発田城"},{"id":"murakami","clan":"本庄家","name":"村上城"},{"id":"shinpu","clan":"武田家","name":"新府城"},{"id":"toyama","clan":"神保家","name":"富山城"},{"id":"takaoka","clan":"前田家","name":"高岡城"},{"id":"maruoka","clan":"柴田家","name":"丸岡城"},{"id":"echizen_ono","clan":"金森家","name":"越前大野城"},{"id":"kuniyoshi","clan":"粟屋家","name":"佐柿国吉城"},{"id":"iwamura","clan":"遠山家","name":"岩村城"},{"id":"yamanaka","clan":"北条家","name":"山中城"},{"id":"kakegawa","clan":"朝比奈家","name":"掛川城"},{"id":"inuyama","clan":"織田家","name":"犬山城"},{"id":"nagoya","clan":"徳川家","name":"名古屋城"},{"id":"nagashino","clan":"奥平家","name":"長篠城"},{"id":"gujo_hachiman","clan":"遠藤家","name":"郡上八幡城"},{"id":"naegi","clan":"遠山家","name":"苗木城"},{"id":"ogaki","clan":"氏家家","name":"大垣城"},{"id":"takatenjin","clan":"小笠原家","name":"高天神城"},{"id":"iga_ueno","clan":"藤堂家","name":"伊賀上野城"},{"id":"matsusaka","clan":"蒲生家","name":"松阪城"},{"id":"hikone","clan":"井伊家","name":"彦根城"},{"id":"azuchi","clan":"織田家","name":"安土城"},{"id":"osaka","clan":"豊臣家","name":"大坂城"},{"id":"himeji","clan":"黒田家","name":"姫路城"},{"id":"takeda_castle","clan":"赤松家","name":"竹田城"},{"id":"takatori","clan":"筒井家","name":"高取城"},{"id":"wakayama","clan":"浅野家","name":"和歌山城"},{"id":"fukuchiyama","clan":"明智家","name":"福知山城"},{"id":"kishiwada","clan":"小出家","name":"岸和田城"},{"id":"yamato_koriyama","clan":"筒井家","name":"大和郡山城"},{"id":"sumoto","clan":"脇坂家","name":"洲本城"},{"id":"bitchu_matsuyama","clan":"三村家","name":"備中松山城"},{"id":"tsuyama","clan":"森家","name":"津山城"},{"id":"hiroshima","clan":"毛利家","name":"広島城"},{"id":"iwakuni","clan":"吉川家","name":"岩国城"},{"id":"hagi","clan":"毛利家","name":"萩城"},{"id":"matsue","clan":"堀尾家","name":"松江城"},{"id":"yonago","clan":"中村家","name":"米子城"},{"id":"mihara","clan":"小早川家","name":"三原城"},{"id":"shintakayama","clan":"小早川家","name":"新高山城"},{"id":"tsuwano","clan":"吉見家","name":"津和野城"},{"id":"tokushima","clan":"蜂須賀家","name":"徳島城"},{"id":"sanuki_takamatsu","clan":"生駒家","name":"高松城"},{"id":"marugame","clan":"生駒家","name":"丸亀城"},{"id":"imabari","clan":"藤堂家","name":"今治城"},{"id":"uwajima","clan":"伊達家","name":"宇和島城"},{"id":"kochi","clan":"山内家","name":"高知城"},{"id":"kokura","clan":"細川家","name":"小倉城"},{"id":"fukuoka","clan":"黒田家","name":"福岡城"},{"id":"nakatsu","clan":"黒田家","name":"中津城"},{"id":"oka","clan":"中川家","name":"岡城"},{"id":"hizen_nagoya","clan":"豊臣家","name":"名護屋城"},{"id":"hirado","clan":"松浦家","name":"平戸城"},{"id":"shimabara","clan":"松倉家","name":"島原城"},{"id":"kagoshima","clan":"島津家","name":"鹿児島城"}];
+const CASTLES = globalThis.SENGOKU_DATA.castles.map(({id,clan,name})=>({id,clan,name}));
 const CLANS = [{"name":"織田家"},{"name":"武田家"},{"name":"上杉家"},{"name":"徳川家"},{"name":"毛利家"},{"name":"島津家"},{"name":"伊達家"},{"name":"北条家"}];
 const TECHS = [{"id":"cultivation","max":5},{"id":"commerce","max":5},{"id":"forestry","max":5},{"id":"masonry","max":5},{"id":"conscription","max":5},{"id":"discipline","max":5},{"id":"gunnery","max":5},{"id":"siege","max":5}];
 const QUESTS = [{"id":"first_upgrade"},{"id":"first_recruit"},{"id":"first_battle"},{"id":"three_castles"},{"id":"five_officers"},{"id":"technology"},{"id":"ten_castles"},{"id":"unify"}];
@@ -976,17 +1007,35 @@ const OFFICER_BY_ID = Object.assign(Object.create(null), Object.fromEntries(OFFI
 const CLAN_HOMES = {'織田家':'kiyosu','武田家':'tsutsujigasaki','上杉家':'kasugayama','徳川家':'okazaki','毛利家':'yoshida','島津家':'uchijo','伊達家':'yonezawa','北条家':'odawara'};
 const copy = value => JSON.parse(JSON.stringify(value));
 const pick = (object, keys) => Object.fromEntries(keys.map(key => [key,object[key]]));
+const jobDto=job=>({...pick(job,['kind','id','remaining','total','remainingSeconds','totalSeconds','targetLevel']),...(job.kind==='branch'&&job.repair===true?{repair:true}:{}),...(job.kind==='branch'&&job.completesElapsedMs!==undefined?{completesElapsedMs:job.completesElapsedMs}:{})});
+function branchSite(id){for(const parent of globalThis.SENGOKU_DATA.branchRules.parents)for(const direction of globalThis.SENGOKU_DATA.branchRules.directions)if(id===parent.id+'_'+direction.id)return{id,parentCastleId:parent.id,direction:direction.id,name:CASTLE_BY_ID[parent.id].name+'・'+direction.name+'支拠点',maxLevel:parent.maxLevel};return null;}
+function initialCastle(id){const castle=globalThis.SENGOKU_DATA.castles.find(item=>item.id===id);return{owner:castle.clan,troops:castle.initialTroops,wall:castle.wall,level:1};}
 
 function normalizeGameSave(raw, user, now, {reading=false,clock=null}={}) {
   let obj;try{obj=typeof raw==='string'?JSON.parse(raw):copy(raw);}catch(e){fail(400,'INVALID_SAVE','セーブデータを読み取れません。');}
-  const s=obj?.state||obj,staff=!!user.is_staff&&!user.is_admin,serviceSave=s?.staffService?.baseId==='sunpu';
+  const s=obj?.state||obj,staff=!!user.is_staff&&!user.is_admin,serviceSave=['sunpu','kyoto_gosho'].includes(s?.staffService?.baseId);
   if(serviceSave&&!staff&&s?.buildings){s.command=Math.min(Number(s.command),3+Math.floor(s.buildings.keep/8));if(s.governors&&typeof s.governors==='object')s.governors=Object.fromEntries(Object.entries(s.governors).filter(([id])=>!BUILDINGS.some(b=>b.id===id)||s.buildings[id]>0));}
   const invalid=()=>{fail(400,'INVALID_SAVE','セーブデータの形式または内容が正しくありません。');};
   const isObj=v=>v&&typeof v==='object'&&!Array.isArray(v);
   const num=(v,min=0,max=999999999)=>typeof v==='number'&&Number.isFinite(v)&&Number.isInteger(v)&&v>=min&&v<=max;
+  const legacyMap=isObj(s?.castles)&&!Object.hasOwn(s.castles,'kyoto_gosho')&&Object.keys(s.castles).length===CASTLES.length-1&&CASTLES.every(c=>c.id==='kyoto_gosho'||Object.hasOwn(s.castles,c.id));
+  if(legacyMap)s.castles.kyoto_gosho=initialCastle('kyoto_gosho');
+  // Validate the old protected castle before moving it. This is a one-time
+  // schema migration, never a reason to relax current entitlement validation.
+  if(isObj(s?.castles)&&(s.staffService?.baseId==='sunpu'||staff&&legacyMap&&s.home==='sunpu')){
+    const prior=s.castles.sunpu;
+    if(s.home==='sunpu'||prior?.owner===s.clan){
+      if(!isObj(prior)||!num(prior.level??1,1,64)||!num(prior.troops,0,1000000)||!num(prior.wall,1,32))invalid();
+      s.castles.kyoto_gosho={...prior,level:prior.level??1};s.castles.sunpu=initialCastle('sunpu');if(s.castles.sunpu.owner===s.clan)s.castles.sunpu.owner='在地衆';
+      if(s.home==='sunpu')s.home='kyoto_gosho';if(s.cycle?.home==='sunpu')s.cycle.home='kyoto_gosho';
+      if(Array.isArray(s.jobs))for(const job of s.jobs)if(job?.kind==='castle'&&job.id==='sunpu'){if(!num(job.targetLevel,1,64))invalid();job.id='kyoto_gosho';}
+      if(Array.isArray(s.captureRewards))s.captureRewards=s.captureRewards.map(id=>id==='sunpu'?'kyoto_gosho':id);
+    }
+    s.staffService={baseId:'kyoto_gosho'};
+  }
   // Validate historical saves against their old limit before migrating them.
   // New uploads must already obey the current limit. Invalid old jobs still fail.
-  const incomingCastleLimit=id=>reading&&FIELD_CAPTURE_CASTLES.includes(id)?64:castleLevelLimit(id);
+  const incomingCastleLimit=id=>(reading&&FIELD_CAPTURE_CASTLES.includes(id)||(reading||legacyMap)&&id==='sunpu')?64:castleLevelLimit(id);
   if(!isObj(s)||s.version!==2||obj?.game&&obj.game!=='sengoku-tento')invalid();
   if(s.clan===ADMIN_CLAN&&!user.is_admin&&!staff&&!reading)fail(403,'ADMIN_CLAN_REQUIRED','この家名は選択できません。徳川家を選択してください。');
   if(s.clan!==ADMIN_CLAN&&!CLANS.some(c=>c.name===s.clan)||!CASTLE_BY_ID[s.home]||!['easy','normal','hard'].includes(s.difficulty))invalid();
@@ -1011,12 +1060,12 @@ function normalizeGameSave(raw, user, now, {reading=false,clock=null}={}) {
     if(!reading&&clock&&s.worldClock.elapsedMs>clock.elapsedMs+5000)fail(400,'CLOCK_AHEAD','保存時刻が世界の共通時計より先です。共通時計を再確認してください。');
   }
   if(!Array.isArray(s.jobs)||s.jobs.length>193)invalid();
-  for(const j of s.jobs){if(!isObj(j))invalid();if(j.remainingSeconds===undefined)j.remainingSeconds=j.remaining*60;if(j.totalSeconds===undefined)j.totalSeconds=j.total*60;if(!scalar(j.remainingSeconds,.00000001,180)||!num(j.totalSeconds,60,180)||j.totalSeconds!==j.total*60||j.remainingSeconds>j.totalSeconds||j.remaining!==Math.ceil((j.remainingSeconds-1e-8)/60))invalid();}
-
-  const jobkeys=new Map();for(const j of s.jobs){if(!isObj(j)||!['building','castle','research'].includes(j.kind)||!num(j.remaining,1,3)||!num(j.total,1,3)||j.remaining>j.total)invalid();const defs=j.kind==='building'?BUILDINGS:j.kind==='castle'?CASTLES:TECHS,current=j.kind==='castle'?s.castles[j.id]?.level:(j.kind==='building'?s.buildings:s.tech)[j.id],key=j.kind+':'+j.id,count=jobkeys.get(key)||0;if(!defs.some(d=>d.id===j.id)||j.targetLevel!==current+count+1||j.targetLevel>(j.kind==='research'?5:j.kind==='castle'?incomingCastleLimit(j.id):32)||j.kind==='castle'&&s.castles[j.id]?.owner!==s.clan||count&&(j.kind!=='building'||j.remainingSeconds!==j.totalSeconds))invalid();jobkeys.set(key,count+1);}
+  for(const j of s.jobs){if(!isObj(j))invalid();if(j.remainingSeconds===undefined)j.remainingSeconds=j.remaining*60;if(j.totalSeconds===undefined)j.totalSeconds=j.total*60;if(!scalar(j.remainingSeconds,.00000001,180)||!num(j.totalSeconds,60,180)||j.totalSeconds!==j.total*60||j.remainingSeconds>j.totalSeconds||j.remaining!==Math.ceil((j.remainingSeconds-1e-8)/60)||j.kind==='branch'&&j.completesElapsedMs!==undefined&&!num(j.completesElapsedMs,0,WORLD_MONTH_MS*(MAX_TURN+1)-1))invalid();}
+  try{s.branches=GameEngine.normalizeBranchState(s.branches,{castles:s.castles,clan:s.clan,jobs:s.jobs,isAdmin:!!user.is_admin,validateRole:!reading});}catch{invalid();}
+  const jobkeys=new Map();for(const j of s.jobs){if(!isObj(j)||!['building','castle','research','branch'].includes(j.kind)||!num(j.remaining,1,3)||!num(j.total,1,3)||j.remaining>j.total||j.kind!=='branch'&&j.repair!==undefined)invalid();const branch=j.kind==='branch'?s.branches.find(b=>b.id===j.id):null,defs=j.kind==='branch'?s.branches:j.kind==='building'?BUILDINGS:j.kind==='castle'?CASTLES:TECHS,current=j.kind==='branch'?branch?.level-(j.repair===true?1:0):j.kind==='castle'?s.castles[j.id]?.level:(j.kind==='building'?s.buildings:s.tech)[j.id],key=j.kind+':'+j.id,count=jobkeys.get(key)||0;if(!defs.some(d=>d.id===j.id)||j.targetLevel!==current+count+1||j.targetLevel>(j.kind==='branch'?branchSite(j.id).maxLevel:j.kind==='research'?5:j.kind==='castle'?incomingCastleLimit(j.id):32)||j.kind==='castle'&&s.castles[j.id]?.owner!==s.clan||count&&(j.kind!=='building'||j.remainingSeconds!==j.totalSeconds))invalid();jobkeys.set(key,count+1);}
   if(s.jobs.filter(j=>j.kind==='research').length>1||[...jobkeys.keys()].filter(key=>!key.startsWith('research:')).length>(staff||serviceSave?6:2+Math.floor(s.buildings.keep/8)))invalid();
-  if(reading){for(const id of FIELD_CAPTURE_CASTLES)s.castles[id].level=Math.min(48,s.castles[id].level);s.jobs=s.jobs.filter(job=>job.kind!=='castle'||job.targetLevel<=castleLevelLimit(job.id));}
-  s.jobs=s.jobs.map(job=>pick(job,['kind','id','remaining','total','remainingSeconds','totalSeconds','targetLevel']));
+  if(reading||legacyMap){if(reading)for(const id of FIELD_CAPTURE_CASTLES)s.castles[id].level=Math.min(48,s.castles[id].level);s.castles.sunpu.level=Math.min(32,s.castles.sunpu.level);s.jobs=s.jobs.filter(job=>job.kind!=='castle'||job.targetLevel<=castleLevelLimit(job.id));}
+  s.jobs=s.jobs.map(jobDto);
   if(!isObj(s.treaties)||Object.entries(s.treaties).some(([k,v])=>!validOwner.has(k)||k===s.clan||!num(v,0,MAX_TURN+6)))invalid();
   if(!isObj(s.scouted)||Object.entries(s.scouted).some(([k,v])=>!CASTLE_BY_ID[k]||!num(v,0,MAX_TURN+6)))invalid();
   if(!Array.isArray(s.claimedQuests)||new Set(s.claimedQuests).size!==s.claimedQuests.length||s.claimedQuests.some(id=>!QUESTS.some(q=>q.id===id)))invalid();
@@ -1039,13 +1088,14 @@ function normalizeGameSave(raw, user, now, {reading=false,clock=null}={}) {
   if(!num(s.stats.researches??0,0,10000000))invalid();s.stats.researches=s.stats.researches??Object.values(s.tech).reduce((a,b)=>a+b,0);
   if(!Array.isArray(s.log)||s.log.length>200||s.log.some(l=>!isObj(l)||!num(l.turn,0,MAX_TURN)||typeof l.text!=='string'||l.text.length>2000||typeof l.kind!=='string'||l.kind.length>30))invalid();
   // Only retain known, validated fields; do not merge arbitrary imported object keys.
-  const n=g.state;for(const k of ['clan','home','turn','difficulty','resources','troops','morale','prestige','command','buildings','jobs','officers','officerVariants','army','governors','tech','castles','treaties','scouted','log','claimedQuests','giftReceipts','walking','roaming','covert','magatama','captureRewards','gachaHistory','seed','stats','realtime'])n[k]=copy(s[k]);
+  const n=g.state;for(const k of ['clan','home','turn','difficulty','resources','troops','morale','prestige','command','buildings','jobs','branches','officers','officerVariants','army','governors','tech','castles','treaties','scouted','log','claimedQuests','giftReceipts','walking','roaming','covert','magatama','captureRewards','gachaHistory','seed','stats','realtime'])n[k]=copy(s[k]);
   if(s.worldClock!==undefined)n.worldClock={id:WORLD_CLOCK_ID,elapsedMs:s.worldClock.elapsedMs};
   if(s.cycle!==undefined){const c=s.cycle,r=c?.latestReward;if(!isObj(c)||!num(c.index,0,Math.floor(MAX_TURN/WORLD_CYCLE_MONTHS))||!CASTLE_BY_ID[c.home]||r!==null&&(!isObj(r)||!num(r.cycle,0,c.index-1)||!num(r.captured,0,127)||r.gold!==r.captured*1000||r.rice!==r.captured*1000||r.magatama!==r.captured*100))invalid();n.cycle={index:c.index,home:c.home,latestReward:r===null?null:pick(r,['cycle','captured','gold','rice','magatama'])};}
   n.won=CASTLES.every(c=>!user.is_admin&&c.id==='edo'||n.castles[c.id].owner===n.clan);n.gameOver=!CASTLES.some(c=>n.castles[c.id].owner===n.clan);
   if(!n.gameOver&&n.castles[n.home].owner!==n.clan)invalid();if(n.gameOver)n.realtime.running=false;
   n.lastBattle=null;
   if(s.lastBattle!==null&&s.lastBattle!==undefined){const b=s.lastBattle;if(!isObj(b)||typeof b.won!=='boolean'||!CASTLE_BY_ID[b.castleId]||!num(b.ourBefore)||!num(b.ourLost)||!num(b.enemyBefore)||!num(b.enemyLost)||!Array.isArray(b.phases)||b.phases.length>10||b.phases.some(p=>!isObj(p)||typeof p.title!=='string'||p.title.length>50||typeof p.text!=='string'||p.text.length>1000)||!isObj(b.rewards)||!num(b.rewards.gold)||!num(b.rewards.rice)||!num(b.rewards.magatama??0)||b.capturedOfficer!==null&&b.capturedOfficer!==undefined&&!g.officer(b.capturedOfficer))invalid();n.lastBattle={won:b.won,castleId:b.castleId,castleName:CASTLE_BY_ID[b.castleId].name,ourBefore:b.ourBefore,ourLost:b.ourLost,enemyBefore:b.enemyBefore,enemyLost:b.enemyLost,phases:copy(b.phases),rewards:{gold:b.rewards.gold,rice:b.rewards.rice,magatama:b.rewards.magatama??0},capturedOfficer:b.capturedOfficer||null,garrison:num(b.garrison)?b.garrison:0,tactic:TACTICS.some(t=>t.id===b.tactic)?b.tactic:'balanced',turn:num(b.turn,0,MAX_TURN)?b.turn:n.turn};}
+  if(n.lastBattle&&s.lastBattle.branchId!==undefined){const site=branchSite(s.lastBattle.branchId);if(!site||site.parentCastleId!==n.lastBattle.castleId||RESOURCES.some(key=>Number(n.lastBattle.rewards[key]||0)!==0)||Number(n.lastBattle.rewards.magatama||0)!==0)invalid();n.lastBattle.branchId=site.id;n.lastBattle.castleName=site.name;n.lastBattle.captured=false;n.lastBattle.capturedOfficer=null;}
   // A read after an administrative identity change must still be recoverable.
   // Match the client's legacy migration, without granting permission to upload
   // exclusive assets and without mutating the stored revision during a GET.
@@ -1061,7 +1111,7 @@ function normalizeGameSave(raw, user, now, {reading=false,clock=null}={}) {
     n.gachaHistory=n.gachaHistory.map(entry=>entry.officerId===IEYASU_ID&&entry.rank==='U'?{...entry,rank:'SSS'}:entry);
     const edo=n.castles.edo,wasHome=n.home==='edo',ownedEdo=edo.owner===n.clan;
     if(wasHome||ownedEdo) {
-      const canonical=staff?'sunpu':CLAN_HOMES[n.clan]||'okazaki',other=CASTLES.filter(c=>c.id!=='edo'&&n.castles[c.id].owner===n.clan);
+      const canonical=staff?'kyoto_gosho':CLAN_HOMES[n.clan]||'okazaki',other=CASTLES.filter(c=>c.id!=='edo'&&n.castles[c.id].owner===n.clan);
       const fallback=other.find(c=>c.id===canonical)?.id||other[0]?.id||canonical;
       if(ownedEdo&&!other.length) {
         n.castles[fallback]={...edo,owner:n.clan,level:Math.min(edo.level,castleLevelLimit(fallback))};
@@ -1070,7 +1120,7 @@ function normalizeGameSave(raw, user, now, {reading=false,clock=null}={}) {
       if(wasHome)n.home=fallback;
       if(ownedEdo)n.castles.edo={owner:'太田家',troops:3320,wall:4,level:1};
     }
-    n.jobs=n.jobs.filter(job=>job.kind!=='castle'||job.id!=='edo');
+    n.jobs=n.jobs.filter(job=>job.kind==='branch'?branchSite(job.id)?.parentCastleId!=='edo':job.kind!=='castle'||job.id!=='edo');n.branches=n.branches.filter(branch=>branch.parentCastleId!=='edo');
     n.captureRewards=n.captureRewards.filter(id=>id!=='edo');
     n.won=CASTLES.every(c=>c.id==='edo'||n.castles[c.id].owner===n.clan);
     n.gameOver=!CASTLES.some(c=>c.id!=='edo'&&n.castles[c.id].owner===n.clan);
@@ -1093,6 +1143,7 @@ function normalizeGameSave(raw, user, now, {reading=false,clock=null}={}) {
     if(oldHome!=='edo') {
       const previous=n.castles[oldHome];
       for(const key of ['troops','wall','level'])edo[key]=Math.max(edo[key],previous[key]);
+      edo.level=Math.min(64,edo.level);
       n.jobs=n.jobs.flatMap(job=>job.kind==='castle'&&job.id==='edo'
         ?edo.level>=64?[]:[{...job,targetLevel:edo.level+1}]:[job]);
     }
@@ -1101,8 +1152,8 @@ function normalizeGameSave(raw, user, now, {reading=false,clock=null}={}) {
     n.won=CASTLES.every(c=>n.castles[c.id].owner===n.clan);n.gameOver=false;
   }
   if(n.cycle){if(user.is_admin)n.cycle.home='edo';else if(n.cycle.home==='edo')n.cycle.home=n.home;}
-  if(!reading&&!staff&&(n.home==='sunpu'||n.castles.sunpu.owner===n.clan))fail(403,'STAFF_ENTITLEMENT_REQUIRED','この拠点は現在の利用権では使用できません。');
-  if(staff||serviceSave)n.staffService={baseId:'sunpu'};
+  if(!reading&&!staff&&(n.home==='kyoto_gosho'||n.castles.kyoto_gosho.owner===n.clan))fail(403,'STAFF_ENTITLEMENT_REQUIRED','この拠点は現在の利用権では使用できません。');
+  if(staff||serviceSave)n.staffService={baseId:'kyoto_gosho'};
   const roleState=GameEngine.fromSave({game:'sengoku-tento',version:2,state:n},GAME_OFFICERS,{isAdmin:!!user.is_admin,isStaff:staff}).state;
   for(const key of Object.keys(roleState))n[key]=roleState[key];
   if(s.cycle===undefined)delete n.cycle;
@@ -1110,7 +1161,7 @@ function normalizeGameSave(raw, user, now, {reading=false,clock=null}={}) {
   n.buildings=pick(n.buildings,BUILDINGS.map(v=>v.id));
   n.tech=pick(n.tech,TECHS.map(v=>v.id));
   n.castles=Object.fromEntries(CASTLES.map(v=>[v.id,pick(n.castles[v.id],['owner','troops','wall','level'])]));
-  n.jobs=n.jobs.map(v=>pick(v,['kind','id','remaining','total','remainingSeconds','totalSeconds','targetLevel']));
+  n.jobs=n.jobs.map(jobDto);
   n.log=n.log.map(v=>pick(v,['turn','text','kind']));
   n.stats=pick(n.stats,['battles','wins','upgrades','recruited','researches','gachaDraws','gachaDuplicates','castleUpgrades']);
   n.realtime=pick(n.realtime,['running','speed','elapsed','commandProgress','incomeRemainders']);
@@ -1168,8 +1219,9 @@ async function settlePlayerCycle(db,row,user,now,clock=undefined,{deferActive=tr
     save.state.cycle={index,home,latestReward:save.state.cycle?.latestReward||null};
     if(!save.state.worldClock){const elapsed=index*WORLD_CYCLE_MS+(save.state.turn%WORLD_CYCLE_MONTHS)*WORLD_MONTH_MS+Math.floor(save.state.realtime.elapsed*1000);save.state.turn=Math.floor(elapsed/WORLD_MONTH_MS);save.state.realtime.elapsed=(elapsed%WORLD_MONTH_MS)/1000;save.state.worldClock={id:WORLD_CLOCK_ID,elapsedMs:elapsed};}
     await reconcileCovertProgress(db,user.id,save);
+    const branchAccess=await branchStateGuard(db,user.id,save.state.walking.campaignId);await reconcileBranchProgress(db,user.id,save,clock);
     const staffBase=user.is_staff&&!user.is_admin?await staffBaseDto(db,user,clock,now):null;
-    const game=GameEngine.fromSave(save,GAME_OFFICERS,{isAdmin:!!user.is_admin,isStaff:!!user.is_staff,staffBase});
+    const game=GameEngine.fromSave(save,GAME_OFFICERS,{isAdmin:!!user.is_admin,isStaff:!!user.is_staff,staffBase,branchAuthority:{resolvedElapsedMs:branchAccess.resolvedElapsedMs}});
     const target=Math.min(current*WORLD_CYCLE_MS,(index+2)*WORLD_CYCLE_MS);
     const result=game.applyWorldClock({...clock,elapsedMs:target},{maxSeconds:86400});
     if(!result.ok||!result.changed)return row;
@@ -1180,9 +1232,10 @@ async function settlePlayerCycle(db,row,user,now,clock=undefined,{deferActive=tr
       WHERE user_id=? AND revision=? AND cycle_index=?
       AND ((? IS NOT NULL AND writer_device_id=? AND lease_expires_at>?) OR (? IS NULL AND lease_expires_at<=?))
       AND (SELECT revision FROM world_clock WHERE id=?)=?
-      AND ${roleGuard.sql}
-      AND NOT EXISTS(SELECT 1 FROM cycle_receipts WHERE user_id=? AND cycle_index>=? AND cycle_index<?) RETURNING *`,serialized,now,next.state.cycle.index,next.state.cycle.home,nonce,user.id,row.revision,index,writerDeviceId,writerDeviceId,now,writerDeviceId,now,WORLD_CLOCK_ID,clock.revision,...roleGuard.args,user.id,index,next.state.cycle.index)];
+      AND ${roleGuard.sql} AND ${branchAccess.guard.sql}
+      AND NOT EXISTS(SELECT 1 FROM cycle_receipts WHERE user_id=? AND cycle_index>=? AND cycle_index<?) RETURNING *`,serialized,now,next.state.cycle.index,next.state.cycle.home,nonce,user.id,row.revision,index,writerDeviceId,writerDeviceId,now,writerDeviceId,now,WORLD_CLOCK_ID,clock.revision,...roleGuard.args,...branchAccess.guard.args,user.id,index,next.state.cycle.index)];
     batch.push(...covertIncidentStatements(db,user.id,next,now,gate,gateParams));
+    batch.push(...branchProgressStatements(db,user.id,next,now,gate,gateParams));
     const personal=await staffPersonalProgressStatement(db,user,next,now,gate,gateParams,game.getStaffPersonalProgress?.());if(personal)batch.push(personal);
     for(const event of saveAchievements(save,next))batch.push(achievementStatement(db,user.id,event,now,gate,gateParams));
     for(const reward of rewards){batch.push(stmt(db,`INSERT INTO cycle_receipts(user_id,cycle_index,captured,gold,rice,magatama,commit_token,created_at) SELECT ?,?,?,?,?,?,?,? WHERE ${gate}`,user.id,reward.cycle,reward.captured,reward.gold,reward.rice,reward.magatama,nonce,now,...gateParams));if(reward.captured)batch.push(achievementStatement(db,user.id,cycleEvent(reward),now,gate,gateParams));}
@@ -1206,23 +1259,34 @@ function roleCommitGuard(user) {
 async function requireCurrentStaffBase(db,user,{allowAdmin=false}={}) {await requireAccountAccess(db,user);const current=await getUser(db,user.id);if(!current||!(allowAdmin?current.is_admin||current.is_staff:current.is_staff&&!current.is_admin)||current.staff_term!==user.staff_term||!!current.is_admin!==!!user.is_admin)fail(403,'STAFF_BASE_REQUIRED','スタッフの役職が変更されました。');return current;}
 const STAFF_TERM_SQL="COALESCE(sm.term_id,'legacy:'||sm.appointed_at)";
 const STAFF_MEMBER_GUARD=`EXISTS(SELECT 1 FROM staff_members sm WHERE sm.user_id=? AND ${STAFF_TERM_SQL}=?) AND NOT EXISTS(SELECT 1 FROM settings WHERE key='adminUserId' AND value=?)`;
+const COURT_EDO_REASON='京都御所から江戸城へ出陣できるのは、在任中の天皇だけです。';
+async function courtEmperorAuthority(db,user){
+  const role=roleCommitGuard(user),found=user.is_staff&&!user.is_admin?await stmt(db,`SELECT l.appointment_token FROM court_leader l JOIN staff_members sm ON sm.user_id=l.user_id WHERE l.id=1 AND l.user_id=? AND l.term_id=${STAFF_TERM_SQL} AND ${role.sql}`,user.id,...role.args).first():null;
+  const token=found?.appointment_token||null;
+  return{isCourtEmperor:!!token,token,guard:{sql:`${role.sql} AND EXISTS(SELECT 1 FROM court_leader l JOIN staff_members sm ON sm.user_id=l.user_id WHERE l.id=1 AND l.user_id=? AND l.term_id=${STAFF_TERM_SQL} AND l.appointment_token=?)`,args:[...role.args,user.id,token||'']}};
+}
+async function courtAttackAuthority(db,user,sourceCastleId,targetCastleId){
+  if(sourceCastleId!=='kyoto_gosho'||targetCastleId!=='edo')return{sql:'1=1',args:[]};
+  const access=await courtEmperorAuthority(db,user);if(!access.isCourtEmperor)fail(403,'COURT_EDO_ATTACK_REQUIRED',COURT_EDO_REASON);
+  return access.guard;
+}
 function staffInitialState(elapsed) {
   const game=new GameEngine({officers:GAME_OFFICERS,isStaff:true,seed:1});
   const initial={castleLevel:1,buildings:copy(game.state.buildings)};
   return {initial,castleLevel:1,buildings:copy(initial.buildings),jobs:[],history:[],createdElapsedMs:elapsed,updatedElapsedMs:elapsed};
 }
 async function sharedStaffBaseRow(db,clock,now) {
-  let row=await stmt(db,"SELECT * FROM staff_base WHERE id='sunpu'").first();
-  if(!row){await stmt(db,"INSERT INTO staff_base(id,state_json,updated_at) VALUES('sunpu',?,?) ON CONFLICT(id) DO NOTHING",JSON.stringify(staffInitialState(clock.elapsedMs)),now).run();row=await stmt(db,"SELECT * FROM staff_base WHERE id='sunpu'").first();}
+  let row=await stmt(db,"SELECT * FROM staff_base WHERE id='kyoto_gosho'").first();
+  if(!row){await stmt(db,"INSERT INTO staff_base(id,state_json,updated_at) VALUES('kyoto_gosho',?,?) ON CONFLICT(id) DO NOTHING",JSON.stringify(staffInitialState(clock.elapsedMs)),now).run();row=await stmt(db,"SELECT * FROM staff_base WHERE id='kyoto_gosho'").first();}
   for(let attempt=0;attempt<3;attempt++){
     const state=JSON.parse(row.state_json),due=state.jobs.filter(job=>job.completesElapsedMs<=clock.elapsedMs).sort((a,b)=>a.completesElapsedMs-b.completesElapsedMs);
     if(!due.length)return row;
-    for(const job of due){if(job.kind==='castle')state.castleLevel=job.targetLevel;else state.buildings[job.id]=job.targetLevel;state.history.push({jobId:job.jobId,kind:job.kind,id:job.id,level:job.targetLevel,effectiveElapsedMs:job.completesElapsedMs});state.updatedElapsedMs=job.completesElapsedMs;}
+    for(const job of due){if(job.kind==='castle')state.castleLevel=job.targetLevel;else state.buildings[job.id]=job.targetLevel;state.history.push({jobId:job.jobId,kind:job.kind,id:job.id,level:job.targetLevel,effectiveElapsedMs:job.completesElapsedMs,startedBy:job.startedBy});state.updatedElapsedMs=job.completesElapsedMs;}
     state.history.sort((a,b)=>a.effectiveElapsedMs-b.effectiveElapsedMs);state.jobs=state.jobs.filter(job=>job.completesElapsedMs>clock.elapsedMs);
-    const nonce=crypto.randomUUID(),gate="EXISTS(SELECT 1 FROM staff_base WHERE id='sunpu' AND commit_token=?)";
-    const statements=[stmt(db,"UPDATE staff_base SET state_json=?,revision=revision+1,commit_token=?,updated_at=? WHERE id='sunpu' AND revision=? AND EXISTS(SELECT 1 FROM world_clock WHERE id=? AND revision=?) RETURNING *",JSON.stringify(state),nonce,now,row.revision,WORLD_CLOCK_ID,clock.revision)];
-    for(const job of due){const name=job.kind==='castle'?'駿府城':globalThis.SENGOKU_DATA.buildings.find(b=>b.id===job.id).name;statements.push(achievementStatement(db,job.startedBy.id,{key:'staff-build:'+job.jobId,kind:'staff-building',targetId:job.id,targetName:name,value:job.targetLevel,title:`駿府城の${job.kind==='castle'?'城郭':name} Lv.${job.targetLevel}の共同普請を達成`,detail:'全スタッフの共同拠点へ成長が反映されました。'},now,gate,[nonce]));}
-    const result=await db.batch(statements);if(rows(result[0])[0])return rows(result[0])[0];row=await stmt(db,"SELECT * FROM staff_base WHERE id='sunpu'").first();clock=await getWorldClock(db,now);
+    const nonce=crypto.randomUUID(),gate="EXISTS(SELECT 1 FROM staff_base WHERE id='kyoto_gosho' AND commit_token=?)";
+    const statements=[stmt(db,"UPDATE staff_base SET state_json=?,revision=revision+1,commit_token=?,updated_at=? WHERE id='kyoto_gosho' AND revision=? AND EXISTS(SELECT 1 FROM world_clock WHERE id=? AND revision=?) RETURNING *",JSON.stringify(state),nonce,now,row.revision,WORLD_CLOCK_ID,clock.revision)];
+    for(const job of due){const name=job.kind==='castle'?'京都御所':globalThis.SENGOKU_DATA.buildings.find(b=>b.id===job.id).name;statements.push(achievementStatement(db,job.startedBy.id,{key:'staff-build:'+job.jobId,kind:'staff-building',targetId:job.id,targetName:name,value:job.targetLevel,title:`京都御所の${job.kind==='castle'?'城郭':name} Lv.${job.targetLevel}の共同普請を達成`,detail:'全スタッフの共同拠点へ成長が反映されました。'},now,gate,[nonce]));statements.push(stmt(db,`INSERT INTO court_contributions(job_id,actor_id,staff_term,kind,target_id,target_level,points,completed_elapsed_ms,created_at) SELECT ?,?,?,?,?,?,?,?,? WHERE ${gate} ON CONFLICT(job_id) DO NOTHING`,job.jobId,job.startedBy.id,job.startedBy.termId||null,job.kind,job.id,job.targetLevel,job.targetLevel,job.completesElapsedMs,now,nonce));}
+    const result=await db.batch(statements);if(rows(result[0])[0])return rows(result[0])[0];row=await stmt(db,"SELECT * FROM staff_base WHERE id='kyoto_gosho'").first();clock=await getWorldClock(db,now);
   }
   return row;
 }
@@ -1236,7 +1300,7 @@ async function staffBaseDto(db,user,clock,now,row=undefined) {
   const personal=backup?.save_json?JSON.parse(backup.save_json).state:null,accessSince=Number(backup?.joined_elapsed_ms??user.staff_since_ms??clock.elapsedMs),clanSince=Math.max(accessSince,await staffClanPolicy(db,clock,now));
   const personalHomeCastle=personal?copy(personal.castles[personal.home]):null;
   if(personalHomeCastle&&FIELD_CAPTURE_CASTLES.includes(personal.home)&&Number.isInteger(personalHomeCastle.level)&&personalHomeCastle.level>=49&&personalHomeCastle.level<=64)personalHomeCastle.level=48;
-  return {id:'sunpu',revision:Number(row.revision),protected:true,...state,accessSinceElapsedMs:accessSince,clanSinceElapsedMs:clanSince,...(personal?{personalClan:personal.clan,personalHome:personal.home,personalCycleHome:personal.cycle?.home||personal.home,personalHomeCastle,personalSunpu:copy(personal.castles.sunpu)}:{})};
+  return {id:'kyoto_gosho',revision:Number(row.revision),protected:true,...state,accessSinceElapsedMs:accessSince,clanSinceElapsedMs:clanSince,...(personal?{personalClan:personal.clan,personalHome:personal.home,personalCycleHome:personal.cycle?.home||personal.home,personalHomeCastle,personalBaseCastle:copy(personal.castles.kyoto_gosho||initialCastle('kyoto_gosho'))}:{})};
 }
 async function tradeTroopCapacity(db,user,save,clock,now) {
   const staffBase=user.is_staff&&!user.is_admin?await staffBaseDto(db,user,clock,now):null;
@@ -1246,13 +1310,13 @@ async function tradeTroopCapacity(db,user,save,clock,now) {
 function renameCampaignClan(state,clan) {if(state.clan===clan)return;const previous=state.clan;for(const castle of Object.values(state.castles)){if(castle.owner===previous)castle.owner=clan;else if(castle.owner===clan)castle.owner='在地衆';}state.clan=clan;delete state.treaties[clan];}
 function restorePersonalCampaign(save,backup,user) {
   const s=save.state,original=JSON.parse(backup.save_json).state;renameCampaignClan(s,CLAN_HOMES[original.clan]?original.clan:ORDINARY_TOKUGAWA_CLAN);
-  let home=original.home;if(['edo','sunpu'].includes(home))home=CLAN_HOMES[s.clan]||'kiyosu';
+  let home=original.home;if(['edo','kyoto_gosho'].includes(home))home=CLAN_HOMES[s.clan]||'kiyosu';
   const oldCastle=original.castles[original.home],current=s.castles[home];
   s.castles[home]={owner:s.clan,troops:Math.max(current.troops,oldCastle.troops),wall:Math.max(current.wall,oldCastle.wall,s.buildings.wall),level:Math.min(castleLevelLimit(home),Math.max(current.level,oldCastle.level))};
-  s.home=home;if(s.cycle)s.cycle.home=['edo','sunpu'].includes(original.cycle?.home)?home:original.cycle?.home||home;
-  const def=globalThis.SENGOKU_DATA.castles.find(c=>c.id==='sunpu');s.castles.sunpu={owner:def.clan===s.clan?'在地衆':def.clan,troops:def.initialTroops,wall:def.wall,level:1};
-  s.captureRewards=[...new Set([...s.captureRewards.filter(id=>id!=='sunpu'),home])];
-  s.jobs=s.jobs.filter(job=>job.kind!=='castle'||job.id!=='sunpu');
+  s.home=home;if(s.cycle)s.cycle.home=['edo','kyoto_gosho'].includes(original.cycle?.home)?home:original.cycle?.home||home;
+  const def=globalThis.SENGOKU_DATA.castles.find(c=>c.id==='kyoto_gosho');s.castles.kyoto_gosho={owner:def.clan===s.clan?'在地衆':def.clan,troops:def.initialTroops,wall:def.wall,level:1};
+  s.captureRewards=[...new Set([...s.captureRewards.filter(id=>id!=='kyoto_gosho'),home])];
+  s.jobs=s.jobs.filter(job=>job.kind!=='castle'||job.id!=='kyoto_gosho');
   for(const job of s.jobs)if(job.kind==='castle'&&job.id===home)job.targetLevel=s.castles[home].level+1;
   s.jobs=s.jobs.filter(job=>job.kind!=='castle'||job.targetLevel<=castleLevelLimit(job.id));
   s.governors=Object.fromEntries(Object.entries(s.governors).filter(([id])=>s.buildings[id]>0));s.command=Math.min(s.command,3+Math.floor(s.buildings.keep/8));s.gameOver=false;
@@ -1278,15 +1342,17 @@ async function advanceDepartingStaff(db,row,user,backup,now,clock) {
   const historical={...user,is_admin:false,is_staff:1,staff_term:backup.term_id},save=normalizeGameSave(JSON.parse(row.save_json),historical,now,{reading:true,clock});
   if(save.state.worldClock&&save.state.worldClock.elapsedMs>=until)return row;
   await reconcileCovertProgress(db,user.id,save);
-  const base=await staffBaseDto(db,historical,clock,now),game=GameEngine.fromSave(save,GAME_OFFICERS,{isStaff:true,staffBase:base});
+  const branchAccess=await branchStateGuard(db,user.id,save.state.walking.campaignId);await reconcileBranchProgress(db,user.id,save,{...clock,elapsedMs:until});
+  const base=await staffBaseDto(db,historical,clock,now),game=GameEngine.fromSave(save,GAME_OFFICERS,{isStaff:true,staffBase:base,branchAuthority:{resolvedElapsedMs:branchAccess.resolvedElapsedMs}});
   const result=game.applyWorldClock({...clock,elapsedMs:until},{maxSeconds:86400});if(!result.ok||!result.changed)return row;
   const next=normalizeGameSave(JSON.parse(game.exportSave()),historical,now,{reading:true,clock}),nonce=crypto.randomUUID(),roleGuard=roleCommitGuard(user),rewards=result.cycleRewards||[];
   const gate='EXISTS(SELECT 1 FROM player_saves WHERE user_id=? AND cycle_commit=?)',args=[user.id,nonce];
   const statements=[stmt(db,`UPDATE player_saves SET save_json=?,revision=revision+1,updated_at=?,cycle_index=?,cycle_home=?,cycle_commit=?
-    WHERE user_id=? AND revision=? AND ${roleGuard.sql} AND EXISTS(SELECT 1 FROM staff_campaign_backups WHERE user_id=? AND active=1 AND term_id=?)
+    WHERE user_id=? AND revision=? AND ${roleGuard.sql} AND ${branchAccess.guard.sql} AND EXISTS(SELECT 1 FROM staff_campaign_backups WHERE user_id=? AND active=1 AND term_id=?)
     AND EXISTS(SELECT 1 FROM world_clock WHERE id=? AND revision=?)
-    AND NOT EXISTS(SELECT 1 FROM cycle_receipts WHERE user_id=? AND cycle_index>=? AND cycle_index<?) RETURNING *`,JSON.stringify(next),now,next.state.cycle.index,next.state.cycle.home,nonce,user.id,row.revision,...roleGuard.args,user.id,backup.term_id,WORLD_CLOCK_ID,clock.revision,user.id,save.state.cycle.index,next.state.cycle.index)];
+    AND NOT EXISTS(SELECT 1 FROM cycle_receipts WHERE user_id=? AND cycle_index>=? AND cycle_index<?) RETURNING *`,JSON.stringify(next),now,next.state.cycle.index,next.state.cycle.home,nonce,user.id,row.revision,...roleGuard.args,...branchAccess.guard.args,user.id,backup.term_id,WORLD_CLOCK_ID,clock.revision,user.id,save.state.cycle.index,next.state.cycle.index)];
   statements.push(...covertIncidentStatements(db,user.id,next,now,gate,args));
+  statements.push(...branchProgressStatements(db,user.id,next,now,gate,args));
   const personal=await staffPersonalProgressStatement(db,user,next,now,gate,args,game.getStaffPersonalProgress?.());if(personal)statements.push(personal);
   for(const event of saveAchievements(save,next))statements.push(achievementStatement(db,user.id,event,now,gate,args));
   for(const reward of rewards){statements.push(stmt(db,`INSERT INTO cycle_receipts(user_id,cycle_index,captured,gold,rice,magatama,commit_token,created_at) SELECT ?,?,?,?,?,?,?,? WHERE ${gate}`,user.id,reward.cycle,reward.captured,reward.gold,reward.rice,reward.magatama,nonce,now,...args));if(reward.captured)statements.push(achievementStatement(db,user.id,cycleEvent(reward),now,gate,args));}
@@ -1313,15 +1379,15 @@ async function ensureStaffCampaign(db,user,now,clock=undefined,{deferClanMigrati
     if(backup?.active){row=await advanceDepartingStaff(db,row,user,backup,now,clock);backup=await stmt(db,'SELECT * FROM staff_campaign_backups WHERE user_id=?',user.id).first();}
     const raw=JSON.parse(row.save_json),nonce=crypto.randomUUID();let saved,personal;
     if(staff){
-      if(!backup?.active&&raw.state.clan===ADMIN_CLAN&&raw.state.home==='sunpu')renameCampaignClan(raw.state,CLAN_HOMES[user.clan]?user.clan:ORDINARY_TOKUGAWA_CLAN);
+      if(!backup?.active&&raw.state.clan===ADMIN_CLAN&&raw.state.home==='kyoto_gosho')renameCampaignClan(raw.state,CLAN_HOMES[user.clan]?user.clan:ORDINARY_TOKUGAWA_CLAN);
       personal=backup?.active?restorePersonalCampaign(normalizeGameSave(raw,{...user,is_admin:false,is_staff:true},now,{reading:true,clock}),backup,user):normalizeGameSave(raw,{...user,is_staff:false},now,{reading:true,clock});
-      saved=normalizeGameSave(personal,user,now,{reading:true,clock});saved.state.staffService={baseId:'sunpu'};saved.savedAt=iso(now);
+      saved=normalizeGameSave(personal,user,now,{reading:true,clock});saved.state.staffService={baseId:'kyoto_gosho'};saved.savedAt=iso(now);
       const joined=Math.max(Number(user.staff_since_ms??clock.elapsedMs),Number(personal.state.worldClock?.elapsedMs||0));
       const result=await db.batch([
         stmt(db,`INSERT INTO staff_campaign_backups(user_id,term_id,save_json,joined_elapsed_ms,left_elapsed_ms,active,transition_token,updated_at)
           SELECT ?,?,?,?,NULL,1,?,? WHERE ${STAFF_MEMBER_GUARD} AND EXISTS(SELECT 1 FROM player_saves WHERE user_id=? AND revision=?) AND ${access.sql}
           ON CONFLICT(user_id) DO UPDATE SET term_id=excluded.term_id,save_json=excluded.save_json,joined_elapsed_ms=excluded.joined_elapsed_ms,left_elapsed_ms=NULL,active=1,transition_token=excluded.transition_token,updated_at=excluded.updated_at`,user.id,user.staff_term,JSON.stringify(personal),joined,nonce,now,user.id,user.staff_term,user.id,user.id,row.revision,...access.args),
-        stmt(db,`UPDATE player_saves SET save_json=?,revision=revision+1,updated_at=?,cycle_home='sunpu' WHERE user_id=? AND revision=? AND EXISTS(SELECT 1 FROM staff_campaign_backups WHERE user_id=? AND transition_token=?) RETURNING *`,JSON.stringify(saved),now,user.id,row.revision,user.id,nonce)
+        stmt(db,`UPDATE player_saves SET save_json=?,revision=revision+1,updated_at=?,cycle_home='kyoto_gosho' WHERE user_id=? AND revision=? AND EXISTS(SELECT 1 FROM staff_campaign_backups WHERE user_id=? AND transition_token=?) RETURNING *`,JSON.stringify(saved),now,user.id,row.revision,user.id,nonce)
       ]);if(rows(result[1])[0])return rows(result[1])[0];
     }else{
       saved=restorePersonalCampaign(normalizeGameSave(raw,{...user,is_admin:false,is_staff:true},now,{reading:true,clock}),backup,user);saved=normalizeGameSave(saved,user,now,{reading:true,clock});saved.savedAt=iso(now);
@@ -1338,41 +1404,41 @@ async function ensureStaffCampaign(db,user,now,clock=undefined,{deferClanMigrati
   fail(409,'STAFF_ROLE_CHANGED','スタッフの役職と本拠を再確認してください。');
 }
 async function staffBaseUpgrade(db,user,raw,now) {
-  if(!user.is_staff||user.is_admin)fail(403,'STAFF_BASE_REQUIRED','スタッフとして駿府城へ接続してください。');
+  if(!user.is_staff||user.is_admin)fail(403,'STAFF_BASE_REQUIRED','スタッフとして京都御所へ接続してください。');
   if(Object.keys(raw).some(k=>!['kind','id','requestId','deviceId','expectedRevision','baseRevision'].includes(k))||!['building','castle'].includes(raw.kind))fail(400,'INVALID_INPUT','共同普請の指定が正しくありません。');
-  const body={...raw,id:idField(raw.id,'普請する施設'),requestId:idField(raw.requestId,'操作番号'),deviceId:idField(raw.deviceId,'端末')};
-  if(!Number.isSafeInteger(body.expectedRevision)||body.expectedRevision<0||!Number.isSafeInteger(body.baseRevision)||body.baseRevision<0||body.kind==='castle'&&body.id!=='sunpu'||body.kind==='building'&&!BUILDINGS.some(b=>b.id===body.id))fail(400,'INVALID_INPUT','共同普請の対象と更新番号を確認してください。');
-  const digest=await hash(JSON.stringify([body.kind,body.id,body.baseRevision]));
+  const body={...raw,id:idField(raw.kind==='castle'&&raw.id==='sunpu'?'kyoto_gosho':raw.id,'普請する施設'),requestId:idField(raw.requestId,'操作番号'),deviceId:idField(raw.deviceId,'端末')};
+  if(!Number.isSafeInteger(body.expectedRevision)||body.expectedRevision<0||!Number.isSafeInteger(body.baseRevision)||body.baseRevision<0||body.kind==='castle'&&body.id!=='kyoto_gosho'||body.kind==='building'&&!BUILDINGS.some(b=>b.id===body.id))fail(400,'INVALID_INPUT','共同普請の対象と更新番号を確認してください。');
+  const digest=await hash(JSON.stringify([body.kind,body.id,body.baseRevision])),legacyDigest=body.kind==='castle'?await hash(JSON.stringify([body.kind,'sunpu',body.baseRevision])):digest;
   const prior=await stmt(db,'SELECT * FROM staff_base_requests WHERE actor_id=? AND request_id=?',user.id,body.requestId).first();
-  if(prior){user=await requireCurrentStaffBase(db,user);if(prior.request_hash!==digest)fail(409,'REQUEST_ID_REUSED','この操作番号は別の共同普請に使われています。');return {...await syncSnapshot(db,await getSyncRow(db,user.id),user,body.deviceId,now),receipt:JSON.parse(prior.result_json),idempotent:true};}
+  if(prior){user=await requireCurrentStaffBase(db,user);if(![digest,legacyDigest].includes(prior.request_hash))fail(409,'REQUEST_ID_REUSED','この操作番号は別の共同普請に使われています。');return {...await syncSnapshot(db,await getSyncRow(db,user.id),user,body.deviceId,now),receipt:JSON.parse(prior.result_json),idempotent:true};}
   await budget(db,'staff-build:'+user.id,30,60000,now);
   const row=await settleWriterCycle(db,user,body.deviceId,body.expectedRevision,now),clock=await getWorldClock(db,now);
   if(!clock.running)fail(409,'WORLD_PAUSED','共通時間を再開してから普請してください。');
-  const shared=await sharedStaffBaseRow(db,clock,now);if(Number(shared.revision)!==body.baseRevision)fail(409,'STAFF_BASE_CHANGED','別のスタッフが共同拠点を更新しました。最新の駿府城を確認してください。');
+  const shared=await sharedStaffBaseRow(db,clock,now);if(Number(shared.revision)!==body.baseRevision)fail(409,'STAFF_BASE_CHANGED','別のスタッフが共同拠点を更新しました。最新の京都御所を確認してください。');
   const base=await staffBaseDto(db,user,clock,now,shared),save=normalizeGameSave(JSON.parse(row.save_json),user,now,{reading:true,clock});
   if(!save.state.worldClock||clock.elapsedMs-save.state.worldClock.elapsedMs>15000)fail(409,'CLOCK_STALE','共通時刻と個人資源へ同期してから普請してください。');
   const game=GameEngine.fromSave(save,GAME_OFFICERS,{isStaff:true,staffBase:base});game._projectStaffAt(clock.elapsedMs);
-  const state=JSON.parse(shared.state_json),chain=state.jobs.filter(j=>j.kind===body.kind&&j.id===body.id).sort((a,b)=>a.targetLevel-b.targetLevel),tail=chain.at(-1),level=body.kind==='castle'?state.castleLevel:tail?.targetLevel??state.buildings[body.id],max=body.kind==='castle'?64:32;
+  const state=JSON.parse(shared.state_json),chain=state.jobs.filter(j=>j.kind===body.kind&&j.id===body.id).sort((a,b)=>a.targetLevel-b.targetLevel),tail=chain.at(-1),level=body.kind==='castle'?state.castleLevel:tail?.targetLevel??state.buildings[body.id],max=body.kind==='castle'?128:32;
   if(level>=max)fail(409,'BUILDING_MAX','最高レベルに到達しています。');
   if(body.kind==='castle'&&chain.length)fail(409,'STAFF_BUILDING_BUSY','この城郭の共同普請は進行中です。');
   if(!chain.length&&new Set(state.jobs.map(j=>j.kind+':'+j.id)).size>=2+Math.floor(state.buildings.keep/8))fail(409,'STAFF_BUILDING_SLOTS','共同普請の枠が埋まっています。');
   if(body.kind==='building'&&!game.buildingUnlock(body.id).ok)fail(409,'BUILDING_LOCKED',game.buildingUnlock(body.id).reason);
-  const cost=body.kind==='castle'?game.castleUpgradeCost('sunpu'):game.costs(body.id,level);if(game.state.command<1)fail(409,'COMMAND_REQUIRED','指示の回復をお待ちください。');
+  const cost=body.kind==='castle'?game.castleUpgradeCost('kyoto_gosho'):game.costs(body.id,level);if(game.state.command<1)fail(409,'COMMAND_REQUIRED','指示の回復をお待ちください。');
   if(RESOURCES.some(k=>game.state.resources[k]<(cost[k]||0)))fail(409,'INSUFFICIENT_ASSETS','共同普請に必要な個人資源が足りません。');
   const startedElapsedMs=tail?Math.max(clock.elapsedMs,tail.completesElapsedMs):clock.elapsedMs;
-  game._pay(cost);game.state.command--;const job={jobId:uid('sb_'),kind:body.kind,id:body.id,targetLevel:level+1,totalSeconds:cost.seconds,queuedAtElapsedMs:clock.elapsedMs,startedElapsedMs,completesElapsedMs:startedElapsedMs+cost.seconds*1000,startedBy:{id:user.id,name:user.name}};
+  game._pay(cost);game.state.command--;const job={jobId:uid('sb_'),kind:body.kind,id:body.id,targetLevel:level+1,totalSeconds:cost.seconds,queuedAtElapsedMs:clock.elapsedMs,startedElapsedMs,completesElapsedMs:startedElapsedMs+cost.seconds*1000,startedBy:{id:user.id,name:user.name,termId:user.staff_term}};
   state.jobs.push(job);state.updatedElapsedMs=clock.elapsedMs;
-  const receipt={requestId:body.requestId,jobId:job.jobId,kind:body.kind,id:body.id,targetLevel:job.targetLevel,cost:pick(cost,RESOURCES),queued:job.startedElapsedMs>clock.elapsedMs,queuePosition:chain.length,queuedAtElapsedMs:clock.elapsedMs,startedElapsedMs:job.startedElapsedMs,completesElapsedMs:job.completesElapsedMs,baseRevision:Number(shared.revision)+1,playerRevision:Number(row.revision)+1};
-  game.log(`駿府城の${body.kind==='castle'?'城郭':globalThis.SENGOKU_DATA.buildings.find(b=>b.id===body.id).name} Lv.${job.targetLevel}へ共同普請を${receipt.queued?'予約':'開始'}しました。`,'staff-build');
+  const receipt={requestId:body.requestId,jobId:job.jobId,staffTerm:user.staff_term,kind:body.kind,id:body.id,targetLevel:job.targetLevel,cost:pick(cost,RESOURCES),queued:job.startedElapsedMs>clock.elapsedMs,queuePosition:chain.length,queuedAtElapsedMs:clock.elapsedMs,startedElapsedMs:job.startedElapsedMs,completesElapsedMs:job.completesElapsedMs,baseRevision:Number(shared.revision)+1,playerRevision:Number(row.revision)+1};
+  game.log(`京都御所の${body.kind==='castle'?'城郭':globalThis.SENGOKU_DATA.buildings.find(b=>b.id===body.id).name} Lv.${job.targetLevel}へ共同普請を${receipt.queued?'予約':'開始'}しました。`,'staff-build');
   const next=normalizeGameSave(JSON.parse(game.exportSave()),user,now,{clock}),nonce=crypto.randomUUID(),gate='EXISTS(SELECT 1 FROM staff_base_requests WHERE actor_id=? AND request_id=? AND commit_token=?)',gateArgs=[user.id,body.requestId,nonce],access=accountCommitGuard(user);
   const result=await db.batch([
     stmt(db,`INSERT INTO staff_base_requests(actor_id,request_id,request_hash,commit_token,result_json,created_at)
-      SELECT ?,?,?,?,?,? FROM player_saves ps JOIN staff_base sb ON sb.id='sunpu'
+      SELECT ?,?,?,?,?,? FROM player_saves ps JOIN staff_base sb ON sb.id='kyoto_gosho'
       WHERE ps.user_id=? AND ps.revision=? AND ps.writer_device_id=? AND ps.lease_expires_at>? AND sb.revision=?
       AND ${STAFF_MEMBER_GUARD} AND ${access.sql} AND EXISTS(SELECT 1 FROM world_clock WHERE id=? AND revision=? AND running=1)
       ON CONFLICT(actor_id,request_id) DO NOTHING RETURNING request_id`,user.id,body.requestId,digest,nonce,JSON.stringify(receipt),now,user.id,row.revision,body.deviceId,now,shared.revision,user.id,user.staff_term,user.id,...access.args,WORLD_CLOCK_ID,clock.revision),
     stmt(db,`UPDATE player_saves SET save_json=?,revision=revision+1,updated_at=?,lease_expires_at=? WHERE user_id=? AND ${gate}`,JSON.stringify(next),now,now+SYNC_LEASE,user.id,...gateArgs),
-    stmt(db,`UPDATE staff_base SET state_json=?,revision=revision+1,commit_token=?,updated_at=? WHERE id='sunpu' AND ${gate}`,JSON.stringify(state),nonce,now,...gateArgs)
+    stmt(db,`UPDATE staff_base SET state_json=?,revision=revision+1,commit_token=?,updated_at=? WHERE id='kyoto_gosho' AND ${gate}`,JSON.stringify(state),nonce,now,...gateArgs)
   ]);
   if(!rows(result[0]).length){const accepted=await stmt(db,'SELECT * FROM staff_base_requests WHERE actor_id=? AND request_id=?',user.id,body.requestId).first();if(accepted&&accepted.request_hash===digest){await requireCurrentStaffBase(db,user);return {...await syncSnapshot(db,await getSyncRow(db,user.id),await getUser(db,user.id),body.deviceId,now),receipt:JSON.parse(accepted.result_json),idempotent:true};}const current=await getUser(db,user.id);if(!current.is_staff||current.is_admin||current.staff_term!==user.staff_term)fail(403,'STAFF_BASE_REQUIRED','スタッフの役職が変更されました。');fieldWriter(await getSyncRow(db,user.id),body.deviceId,body.expectedRevision,now);fail(409,'STAFF_BASE_CHANGED','共同拠点が更新されました。最新の状態を確認してください。');}
   return {...await syncSnapshot(db,await getSyncRow(db,user.id),user,body.deviceId,now),receipt,idempotent:false};
@@ -1505,6 +1571,59 @@ function mapWorldClock(row,now) {
     calendar:{startYear:1560,yearsPerCycle:56,monthsPerCycle:WORLD_CYCLE_MONTHS,secondsPerMonth:60,cycle:Math.floor(turn/WORLD_CYCLE_MONTHS)+1,year:1560+Math.floor(position/12),month:position%12+1}};
 }
 async function getWorldClock(db,now) { return mapWorldClock(await getWorldClockRow(db,now),now); }
+// Only a trusted prior checkpoint may prove CPU damage or parent loss. Imported
+// branch flags, RNG seeds and ownership changes are never combat evidence.
+async function resolveSyncBranches(db,user,save,before,clock,now){
+  const access=await branchStateGuard(db,user.id,save.state.walking.campaignId);
+  let model=copy(access.state),resolvedElapsedMs=access.resolvedElapsedMs,replayed=null,shared=null;
+  const parentLosses=new Map();let ownershipCorrected=false;
+  const incomingElapsed=Math.min(clock.elapsedMs,Number(save.state.worldClock?.elapsedMs||0));
+  if(access.row&&model.branches.length&&before?.state.walking.campaignId===save.state.walking.campaignId&&before.state.worldClock){
+    const trusted=copy(before);
+    await reconcileCovertProgress(db,user.id,trusted);
+    // A later field transaction can change a defense while its owner's ordinary
+    // checkpoint remains older. Rebase this branch-only simulation at that last
+    // authoritative transition; never apply today's fallen state to past raids.
+    // The branch cursor also survives an ordinary import's older timestamp or
+    // permitted +5s prediction. Neither may replay a raid twice or skip it.
+    const start=resolvedElapsedMs,target=Math.max(start,incomingElapsed);
+    trusted.state.worldClock={id:WORLD_CLOCK_ID,elapsedMs:start};trusted.state.turn=Math.floor(start/WORLD_MONTH_MS);trusted.state.realtime.elapsed=start%WORLD_MONTH_MS/1000;
+    applyBranchProgress(trusted,model,{...clock,elapsedMs:start});
+    shared=user.is_staff&&!user.is_admin?await staffBaseDto(db,user,clock,now):null;
+    const game=GameEngine.fromSave(trusted,GAME_OFFICERS,{isAdmin:!!user.is_admin,isStaff:!!user.is_staff,staffBase:shared});
+    const result=game.applyWorldClock({...clock,elapsedMs:target},{maxSeconds:86400,deferCycleSettlement:true});
+    if(!result.ok||result.pending||result.settlementRequired)fail(409,'BRANCH_CLOCK_STALE','支拠点の時間経過を同期しています。最新の保存へ同期してください。');
+    replayed=JSON.parse(game.exportSave());
+    for(const loss of game.takeBranchParentLosses())parentLosses.set(loss.parentCastleId,loss);
+    model={branches:copy(replayed.state.branches),jobs:copy(replayed.state.jobs.filter(job=>job.kind==='branch'))};
+    resolvedElapsedMs=Math.max(resolvedElapsedMs,Math.min(clock.elapsedMs,replayed.state.worldClock.elapsedMs));
+  }else resolvedElapsedMs=Math.max(resolvedElapsedMs,incomingElapsed);
+  // Correct only the branch/parent relationship; preserve ordinary imported
+  // progress. Local actions can consume RNG between saves, so conflicting CPU
+  // predictions must not leave the writer retrying an unchanged old snapshot.
+  if(!user.is_admin){model.branches=model.branches.filter(branch=>branch.parentCastleId!=='edo');const ids=new Set(model.branches.map(branch=>branch.id));model.jobs=model.jobs.filter(job=>ids.has(job.id));}
+  const parents=new Set(access.state.branches.filter(branch=>user.is_admin||branch.parentCastleId!=='edo').map(branch=>branch.parentCastleId));
+  for(const parent of parents){
+    const retained=model.branches.some(branch=>branch.parentCastleId===parent),trustedOwned=retained||!!replayed&&replayed.state.castles[parent].owner===replayed.state.clan,incomingOwned=save.state.castles[parent].owner===save.state.clan;
+    if(trustedOwned&&!incomingOwned){save.state.castles[parent].owner=save.state.clan;ownershipCorrected=true;}
+    else if(!trustedOwned&&incomingOwned){
+      // Retain a client's independently progressed parent only with the exact
+      // already-fallen defenses observed immediately before the proved CPU
+      // capture. Never reconstruct an earlier intact branch/canceled upgrade.
+      const loss=parentLosses.get(parent);
+      if(!loss||loss.branches.some(branch=>branch.level>0&&!branch.fallen))fail(409,'BRANCH_PARENT_CHANGED','この支拠点の領有状態を確認できません。現在の役職と最新データへ同期してください。');
+      model.branches.push(...copy(loss.branches));model.jobs.push(...copy(loss.jobs));ownershipCorrected=true;
+    }
+  }
+  if(ownershipCorrected){
+    const owned=CASTLES.filter(c=>save.state.castles[c.id].owner===save.state.clan);
+    if(owned.length&&save.state.castles[save.state.home].owner!==save.state.clan)save.state.home=owned.find(c=>c.id===before?.state.home)?.id||owned[0].id;
+    save.state.gameOver=!owned.length;save.state.realtime.running=clock.running&&!save.state.gameOver;
+  }
+  applyBranchProgress(save,model,clock,{pruneOwners:false});
+  const guard=access.row?{sql:`EXISTS(SELECT 1 FROM world_clock WHERE id=? AND revision=?)${shared?" AND EXISTS(SELECT 1 FROM staff_base WHERE id='kyoto_gosho' AND revision=?)":''}`,args:[WORLD_CLOCK_ID,clock.revision,...(shared?[shared.revision]:[])]}:{sql:'1=1',args:[]};
+  return{access,resolvedElapsedMs,replayed,guard};
+}
 async function syncSnapshot(db,row,user,deviceId,now,{settle=false}={}) {
   const authenticated=user;await requireAccountAccess(db,authenticated);
   const clock=await getWorldClock(db,now);
@@ -1515,8 +1634,9 @@ async function syncSnapshot(db,row,user,deviceId,now,{settle=false}={}) {
   const current=await getUser(db,user.id);if(current.is_admin!==user.is_admin||current.staff_term!==user.staff_term)fail(409,'STAFF_ROLE_CHANGED','役職が更新されました。もう一度同期してください。');
   await requireAccountAccess(db,authenticated);
   const privateSave=row?.save_json?normalizeGameSave(JSON.parse(row.save_json),user,now,{reading:true,clock}):null;
-  if(privateSave)await reconcileCovertProgress(db,user.id,privateSave);
-  return {ok:true,user:mapUser(user,now),staffBase:publicStaffBase(staffBase),save:privateSave,clock,
+  let branchResolvedElapsedMs=0;
+  if(privateSave){await reconcileCovertProgress(db,user.id,privateSave);const branches=await branchStateGuard(db,user.id,privateSave.state.walking.campaignId);applyBranchProgress(privateSave,branches.state,clock);branchResolvedElapsedMs=branches.resolvedElapsedMs;}
+  return {ok:true,user:mapUser(user,now),staffBase:publicStaffBase(staffBase),save:privateSave,clock,branchResolvedElapsedMs,
     revision:Number(row?.revision||0),updatedAt:row?.updated_at?iso(row.updated_at):null,
     writerDeviceId:row?.writer_device_id||null,writerDeviceName:row?.writer_device_name||null,
     leaseExpiresAt:row?.lease_expires_at?iso(row.lease_expires_at):null,serverTime:iso(now),
@@ -1524,22 +1644,23 @@ async function syncSnapshot(db,row,user,deviceId,now,{settle=false}={}) {
     entitlements:{edo:!!user.is_admin,ieyasuU:!!user.is_admin}};
 }
 
-const FIELD_RULES=Object.freeze({minTroops:300,maxTroops:100000,commandCost:1,foodBase:150,foodPerTroop:.3,attackCooldownMs:60000,defenderProtectionMs:60000,proposalLifetimeMs:600000,allianceDurationMs:360000,maxLootPerResource:500,maxLootFraction:.05,maxDefenderLossFraction:.1,operatorProtected:false,staffProtected:false,targetCastles:true,specialBaseBattles:true,captureCastles:FIELD_CAPTURE_CASTLES,uncapturableCastles:['edo','sunpu'],victoryRewards:{gold:500,rice:500,wood:500,stone:500},
+const FIELD_RULES=Object.freeze({minTroops:300,maxTroops:100000,commandCost:1,foodBase:150,foodPerTroop:.3,attackCooldownMs:60000,defenderProtectionMs:60000,proposalLifetimeMs:600000,allianceDurationMs:360000,maxLootPerResource:500,maxLootFraction:.05,maxDefenderLossFraction:.1,operatorProtected:false,staffProtected:false,targetCastles:true,specialBaseBattles:true,branchBattles:true,captureCastles:FIELD_CAPTURE_CASTLES,uncapturableCastles:['edo','kyoto_gosho'],victoryRewards:{gold:500,rice:500,wood:500,stone:500},
   tactics:[{id:'balanced',name:'正攻法',food:1,modifier:1,loss:1},{id:'assault',name:'総攻撃',food:1.25,modifier:1.18,loss:1.35},{id:'siege',name:'包囲戦',food:1.65,modifier:.97,loss:.8},{id:'ambush',name:'伏兵',food:1.1,modifier:1.06,loss:.95}]});
-const FIELD_SELECT=`SELECT u.id,u.name,u.clan,u.last_seen,s.revision,s.lease_expires_at,s.cycle_home,${EFFECTIVE_CYCLE_SQL} AS cycle_index,json_extract(s.save_json,'$.state.cycle.home') AS original_home,
+const FIELD_SELECT=`SELECT u.id,u.name,u.clan,u.last_seen,s.revision,s.lease_expires_at,s.cycle_home,${EFFECTIVE_CYCLE_SQL} AS cycle_index,json_extract(s.save_json,'$.state.cycle.home') AS original_home,json_extract(s.save_json,'$.state.staffService.baseId') AS service_base_id,
   (SELECT a.version FROM user_avatars a WHERE a.user_id=u.id) AS avatar_version,
+  (SELECT bs.state_json FROM branch_states bs WHERE bs.actor_id=u.id AND bs.campaign_id=COALESCE(json_extract(s.save_json,'$.state.walking.campaignId'),'legacy_v1')) AS branches_json,
   CASE WHEN u.id=(SELECT value FROM settings WHERE key='adminUserId') THEN 1 ELSE 0 END AS is_admin,
   (SELECT json_extract(b.save_json,'$.state.clan') FROM staff_campaign_backups b WHERE b.user_id=u.id AND b.active=1) AS personal_clan,
   (SELECT json_extract(b.save_json,'$.state.home') FROM staff_campaign_backups b WHERE b.user_id=u.id AND b.active=1) AS personal_home,
   (SELECT json_extract(b.save_json,'$.state.castles.'||json_extract(b.save_json,'$.state.home')) FROM staff_campaign_backups b WHERE b.user_id=u.id AND b.active=1) AS personal_castle_json,
-  (SELECT json_extract(sb.state_json,'$.castleLevel') FROM staff_base sb WHERE sb.id='sunpu') AS staff_castle_level,
-  (SELECT json_extract(sb.state_json,'$.buildings.keep') FROM staff_base sb WHERE sb.id='sunpu') AS staff_keep_level,
-  (SELECT json_extract(sb.state_json,'$.buildings.wall') FROM staff_base sb WHERE sb.id='sunpu') AS staff_wall,
+  (SELECT json_extract(sb.state_json,'$.castleLevel') FROM staff_base sb WHERE sb.id='kyoto_gosho') AS staff_castle_level,
+  (SELECT json_extract(sb.state_json,'$.buildings.keep') FROM staff_base sb WHERE sb.id='kyoto_gosho') AS staff_keep_level,
+  (SELECT json_extract(sb.state_json,'$.buildings.wall') FROM staff_base sb WHERE sb.id='kyoto_gosho') AS staff_wall,
   EXISTS(SELECT 1 FROM staff_members sm WHERE sm.user_id=u.id) AS is_staff,
   (SELECT MAX(p.last_seen) FROM player_presence p WHERE p.user_id=u.id AND p.online=1) AS presence_seen,
   (SELECT MAX(b.occurred_elapsed_ms) FROM field_battles b WHERE b.attacker_id=u.id) AS last_attack_ms,
   (SELECT MAX(b.occurred_elapsed_ms) FROM field_battles b WHERE b.defender_id=u.id) AS last_defended_ms,
-  (SELECT MAX(b.occurred_elapsed_ms) FROM field_battles b WHERE json_extract(b.result_json,'$.castleId')='sunpu') AS last_sunpu_defended_ms,
+  (SELECT MAX(b.occurred_elapsed_ms) FROM field_battles b WHERE json_extract(b.result_json,'$.castleId')='kyoto_gosho') AS last_kyoto_gosho_defended_ms,
   json_extract(s.save_json,'$.state.clan') AS game_clan,json_extract(s.save_json,'$.state.home') AS home_id,
   json_extract(s.save_json,'$.state.troops') AS troops,json_extract(s.save_json,'$.state.castles') AS castles_json,
   json_extract(s.save_json,'$.state.buildings.keep') AS keep_level,
@@ -1557,7 +1678,18 @@ function fieldDefense(s,tactic='balanced',siege=0,castleId=s.home) {
   const wallFactor=Math.max(.2,1-siege*.12)*(tactic==='siege'?.5:1);
   return {force,power:Math.max(1,Math.round((force+200)*(1+(isHome?s.buildings.wall:home.wall)*.11*wallFactor)*(1+s.tech.discipline*.06)*(1+(home.level-1)*.04)*army.rankPower)),army};
 }
-function fieldBattleMode(user,castleId,{legacy=false}={}) {return castleId==='edo'&&user.is_admin||castleId==='sunpu'&&user.is_staff&&!user.is_admin?'reward':!legacy&&FIELD_CAPTURE_CASTLES.includes(castleId)?'capture':'raid';}
+function fieldBranchDefense(state,branch,tactic='balanced',siege=0){return GameEngine.prototype.branchDefense.call({branch:id=>id===branch.id?branch:null,castle:id=>state.castles[id]},branch.id,tactic,siege);}
+function fieldBranches(row,castleId,castle,clock,cyclePending,home,baseReason){
+  const stored=row.branches_json?JSON.parse(row.branches_json):{branches:[],jobs:[]};
+  if(cyclePending&&castleId!==home)return[];
+  return stored.branches.filter(branch=>branch.parentCastleId===castleId).map(branch=>{
+    const projected={...branch},job=stored.jobs.find(job=>job.id===branch.id);
+    if(job&&job.completesElapsedMs<=clock.elapsedMs){projected.level=job.targetLevel;if(job.repair)projected.fallen=false;}
+    const site=branchSite(branch.id),defense=fieldBranchDefense({castles:{[castleId]:castle}},projected),reason=baseReason||(!projected.level?'建設中の支拠点です。':projected.fallen?'この支拠点はすでに陥落しています。':'');
+    return{...projected,name:site.name,maxLevel:site.maxLevel,building:!!job&&job.completesElapsedMs>clock.elapsedMs,repairing:!!job?.repair&&job.completesElapsedMs>clock.elapsedMs,defenseTroops:defense?.force||0,defensePower:defense?.power||0,attackable:!reason,attackReason:reason};
+  });
+}
+function fieldBattleMode(user,castleId,{legacy=false}={}) {return castleId==='edo'&&user.is_admin||castleId==='kyoto_gosho'&&user.is_staff&&!user.is_admin?'reward':!legacy&&FIELD_CAPTURE_CASTLES.includes(castleId)?'capture':'raid';}
 function fieldRelationStatus(row,userId,elapsed) {
   if(!row||Number(row.expires_elapsed_ms)<=elapsed||Number(row.updated_elapsed_ms)<Math.floor(elapsed/WORLD_CYCLE_MS)*WORLD_CYCLE_MS)return 'neutral';
   if(row.status==='allied')return 'allied';
@@ -1570,15 +1702,19 @@ function mapFieldRelationship(row,userId,elapsed,targetName='') {
   return {targetPlayerId:row.user_a===userId?row.user_b:row.user_a,targetName,targetEvaluation:evaluationRef(row.user_a===userId?row.user_b:row.user_a),status,expiresElapsedMs:Number(row.expires_elapsed_ms),remainingMs:Math.max(0,Number(row.expires_elapsed_ms)-elapsed),proposedBy:row.proposed_by,revision:Number(row.revision)};
 }
 function mapFieldPlayer(row,viewer,relationship,clock,now,targetCastleId=null) {
-  const castles=JSON.parse(row.castles_json),cyclePending=Number(row.cycle_index)<Math.floor(clock.elapsedMs/WORLD_CYCLE_MS),storedHome=cyclePending?(row.cycle_home||row.original_home||row.home_id):row.home_id;
+  const castles=JSON.parse(row.castles_json),cyclePending=Number(row.cycle_index)<Math.floor(clock.elapsedMs/WORLD_CYCLE_MS),rawHome=cyclePending?(row.cycle_home||row.original_home||row.home_id):row.home_id;
+  const legacyService=rawHome==='sunpu'&&(row.service_base_id==='sunpu'||!!row.personal_home),storedHome=legacyService?'kyoto_gosho':rawHome;
+  // Old saves remain untouched until their own synchronization. Project the
+  // new palace defensively so a legacy 128-castle map is still readable.
+  if(!castles.kyoto_gosho){castles.kyoto_gosho=initialCastle('kyoto_gosho');if((row.is_staff&&!row.is_admin||legacyService)&&row.home_id==='sunpu'){castles.kyoto_gosho={...castles.sunpu};castles.sunpu=initialCastle('sunpu');}}
   const clan=publicClan(row.game_clan,row.is_admin,row.is_staff,row.personal_clan);
-  const alternatives=CASTLES.filter(c=>!['edo','sunpu'].includes(c.id)&&castles[c.id].owner===row.game_clan),canonical=CLAN_HOMES[clan]||'kiyosu';
+  const alternatives=CASTLES.filter(c=>!['edo','kyoto_gosho'].includes(c.id)&&castles[c.id].owner===row.game_clan),canonical=CLAN_HOMES[clan]||'kiyosu';
   const replacement=alternatives.find(c=>c.id===canonical)?.id||alternatives[0]?.id||canonical;
-  const home=row.is_admin?'edo':row.is_staff?'sunpu':['edo','sunpu'].includes(storedHome)?row.personal_home&&!['edo','sunpu'].includes(row.personal_home)?row.personal_home:replacement:storedHome;
+  const home=row.is_admin?'edo':row.is_staff?'kyoto_gosho':['edo','kyoto_gosho'].includes(storedHome)?row.personal_home&&!['edo','kyoto_gosho'].includes(row.personal_home)?row.personal_home:replacement:storedHome;
   const castleId=targetCastleId||home,isHome=castleId===home,battleMode=fieldBattleMode(row,castleId);
   const castle={...(!isHome?castles[castleId]:!row.is_admin&&storedHome==='edo'&&!alternatives.length&&castles.edo.owner===row.game_clan?castles.edo:castles[home])};
   if(isHome&&row.is_admin&&storedHome!=='edo')for(const key of ['troops','wall','level'])castle[key]=Math.max(castle[key],castles[storedHome][key]);
-  if(isHome&&!row.is_admin&&!row.is_staff&&storedHome==='sunpu'){const personal=row.personal_castle_json?JSON.parse(row.personal_castle_json):castles.sunpu;for(const key of ['troops','wall','level'])castle[key]=Math.max(castle[key],personal[key]);}
+  if(isHome&&!row.is_admin&&!row.is_staff&&storedHome==='kyoto_gosho'){const personal=row.personal_castle_json?JSON.parse(row.personal_castle_json):castles.kyoto_gosho;for(const key of ['troops','wall','level'])castle[key]=Math.max(castle[key],personal[key]);}
   if(isHome&&row.is_staff&&!row.is_admin){castle.level=Number(row.staff_castle_level||1);castle.wall=Number(row.staff_wall||1);}
   castle.level=Math.min(castleLevelLimit(castleId),castle.level);
   const rawKeepLevel=!isHome?castle.level:row.is_staff&&!row.is_admin?row.staff_keep_level:row.keep_level;
@@ -1586,9 +1722,10 @@ function mapFieldPlayer(row,viewer,relationship,clock,now,targetCastleId=null) {
   if(cyclePending&&isHome&&battleMode!=='reward'){castle.troops=Math.max(1200,castle.troops);castle.wall=Math.max(castle.wall,Number(row.wall));}
   const state={home,troops:Number(row.troops),castles:{[castleId]:castle},buildings:{wall:isHome&&row.is_staff&&!row.is_admin?castle.wall:Number(row.wall)},tech:{discipline:Number(row.discipline)},army:JSON.parse(row.army_json||'[]'),officerVariants:JSON.parse(row.variants_json||'[]')};
   const defense=fieldDefense(state,'balanced',0,castleId),self=viewer?.id===row.id,relation=self?'self':fieldRelationStatus(relationship,viewer?.id,clock.elapsedMs);
-  const lastDefended=Math.max(row.last_defended_ms??-Infinity,battleMode==='reward'&&castleId==='sunpu'?(row.last_sunpu_defended_ms??-Infinity):-Infinity),protectedUntil=Number.isFinite(lastDefended)?lastDefended+FIELD_RULES.defenderProtectionMs:0;
-  const reason=!viewer?'領主として接続してください。':self?'自分の城です。':cyclePending&&battleMode!=='reward'&&Number(row.lease_expires_at)>now?'この領主は領地を精算中です。':relation==='allied'?'同盟の期間中です。':protectedUntil>clock.elapsedMs?'襲撃後の保護期間です。':!clock.running?'世界の共通時間が停止中です。':'';
-  return {playerId:row.id,name:row.name,clan,evaluation:evaluationRef(row.id),avatarVersion:row.avatar_version||null,homeCastleId:home,homeCastleName:CASTLE_BY_ID[home].name,targetCastleId:castleId,targetCastleName:CASTLE_BY_ID[castleId].name,isHome,battleMode,capturable:battleMode==='capture',majorCity:MAJOR_CITIES.includes(castleId),level:castle.level,keepLevel,defenseTroops:defense.force,defensePower:defense.power,armySummary:defense.army,isAdmin:!!row.is_admin,isStaff:!!row.is_staff&&!row.is_admin,self,online:row.presence_seen!==null&&Number(row.presence_seen)>now-ONLINE_WINDOW,relationship:relation,protectedUntilElapsedMs:protectedUntil,attackable:!reason,attackReason:reason};
+  const lastDefended=Math.max(row.last_defended_ms??-Infinity,battleMode==='reward'&&castleId==='kyoto_gosho'?(row.last_kyoto_gosho_defended_ms??-Infinity):-Infinity),protectedUntil=Number.isFinite(lastDefended)?lastDefended+FIELD_RULES.defenderProtectionMs:0;
+  const baseReason=!viewer?'領主として接続してください。':self?'自分の城です。':castleId==='edo'&&viewer.courtEdoDenied?COURT_EDO_REASON:cyclePending&&battleMode!=='reward'&&Number(row.lease_expires_at)>now?'この領主は領地を精算中です。':relation==='allied'?'同盟の期間中です。':protectedUntil>clock.elapsedMs?'襲撃後の保護期間です。':!clock.running?'世界の共通時間が停止中です。':'';
+  const branches=fieldBranches(row,castleId,castle,clock,cyclePending,home,baseReason),reason=baseReason||(branches.some(branch=>branch.level>0&&!branch.fallen)?'大都市拠点へ攻めるには、残っている支拠点をすべて先に陥落させてください。':'');
+  return {playerId:row.id,name:row.name,clan,evaluation:evaluationRef(row.id),avatarVersion:row.avatar_version||null,homeCastleId:home,homeCastleName:CASTLE_BY_ID[home].name,targetCastleId:castleId,targetCastleName:CASTLE_BY_ID[castleId].name,isHome,battleMode,capturable:battleMode==='capture',majorCity:MAJOR_CITIES.includes(castleId),level:castle.level,keepLevel,defenseTroops:defense.force,defensePower:defense.power,armySummary:defense.army,branches,isAdmin:!!row.is_admin,isStaff:!!row.is_staff&&!row.is_admin,self,online:row.presence_seen!==null&&Number(row.presence_seen)>now-ONLINE_WINDOW,relationship:relation,protectedUntilElapsedMs:protectedUntil,attackable:!reason,attackReason:reason};
 }
 function mapFieldTargets(row,viewer,relationship,clock,now) {
   const home=mapFieldPlayer(row,viewer,relationship,clock,now),castles=JSON.parse(row.castles_json);
@@ -1604,6 +1741,7 @@ async function getFieldList(db,viewer,url,now) {
   const cursor=url.searchParams.get('cursor')||'',limitText=url.searchParams.get('limit')||'50';
   if(cursor)idField(cursor,'共有地図の続き');
   if(!/^\d{1,3}$/.test(limitText)||Number(limitText)<1||Number(limitText)>100)fail(400,'INVALID_INPUT','一覧の件数は1～100件で指定してください。');
+  if(viewer)viewer={...viewer,courtEdoDenied:!!viewer.is_staff&&!viewer.is_admin&&!(await courtEmperorAuthority(db,viewer)).isCourtEmperor};
   const limit=Number(limitText),clock=await getWorldClock(db,now),relations=viewer?await fieldOwnRelations(db,viewer.id,clock.elapsedMs):[];await cyclePolicy(db,clock,now);const currentCycle=Math.floor(clock.elapsedMs/WORLD_CYCLE_MS);await sharedStaffBaseRow(db,clock,now);
   const result=await db.batch([stmt(db,FIELD_SELECT+' AND u.id>? ORDER BY u.id LIMIT ?',currentCycle,cursor,limit+1),stmt(db,`SELECT COUNT(*) AS count FROM player_saves s WHERE save_json IS NOT NULL AND NOT EXISTS(SELECT 1 FROM player_bans pb WHERE pb.user_id=s.user_id AND pb.active=1) AND (COALESCE(json_extract(save_json,'$.state.gameOver'),0)=0 OR user_id=(SELECT value FROM settings WHERE key='adminUserId') OR EXISTS(SELECT 1 FROM staff_members sm WHERE sm.user_id=s.user_id) OR ${EFFECTIVE_CYCLE_SQL}<?)`,currentCycle)]);
   const found=rows(result[0]),players=found.slice(0,limit).map(row=>mapFieldPlayer(row,viewer,relations.find(r=>r.user_a===row.id||r.user_b===row.id),clock,now));
@@ -1622,12 +1760,13 @@ async function settleWriterCycle(db,user,deviceId,revision,now) {
   const settled=await settlePlayerCycle(db,prior,user,now,undefined,{deferActive:false,writerDeviceId:deviceId});fieldWriter(settled,deviceId,revision,now);return settled;
 }
 function fieldRequestBody(body,kind) {
-  const allowed=kind==='attack'?['targetPlayerId','targetCastleId','troops','tactic','requestId','deviceId','expectedRevision']:['targetPlayerId','action','requestId','deviceId','expectedRevision'];
+  const allowed=kind==='attack'?['targetPlayerId','targetCastleId','targetBranchId','troops','tactic','requestId','deviceId','expectedRevision']:['targetPlayerId','action','requestId','deviceId','expectedRevision'];
   if(Object.keys(body).some(key=>!allowed.includes(key)))fail(400,'INVALID_INPUT','送信できない操作項目が含まれています。');
   const targetPlayerId=idField(body.targetPlayerId,'相手の領主'),requestId=idField(body.requestId,'操作番号'),deviceId=idField(body.deviceId,'端末');
   if(!Number.isSafeInteger(body.expectedRevision)||body.expectedRevision<0)fail(400,'INVALID_INPUT','保存の更新番号が正しくありません。');
   if(kind==='attack'&&(!Number.isInteger(body.troops)||body.troops<FIELD_RULES.minTroops||body.troops>FIELD_RULES.maxTroops||!FIELD_RULES.tactics.some(t=>t.id===body.tactic)))fail(400,'INVALID_INPUT','兵数と戦法を正しく指定してください。');
   if(kind==='attack'&&body.targetCastleId!==undefined&&(typeof body.targetCastleId!=='string'||!CASTLE_BY_ID[body.targetCastleId]))fail(400,'INVALID_INPUT','攻撃する城を確認してください。');
+  if(kind==='attack'&&body.targetBranchId!==undefined&&(!branchSite(body.targetBranchId)||branchSite(body.targetBranchId).parentCastleId!==body.targetCastleId))fail(400,'INVALID_BRANCH_TARGET','親拠点に属する支拠点を選んでください。');
   if(kind==='diplomacy'&&!['propose','accept','reject','cancel'].includes(body.action))fail(400,'INVALID_INPUT','外交操作が正しくありません。');
   return {...body,targetPlayerId,requestId,deviceId};
 }
@@ -1636,15 +1775,16 @@ async function priorFieldRequest(db,userId,body,kind,digest) {
   if(prior&&(prior.kind!==kind||prior.request_hash!==digest))fail(409,'REQUEST_ID_REUSED','この操作番号は別の操作に使われています。');
   return prior;
 }
-async function fieldMe(db,user,url,now) {
+async function fieldMe(db,user,url,now,request) {
   const deviceId=url.searchParams.get('deviceId')||'';if(deviceId)idField(deviceId,'端末');
   const clock=await getWorldClock(db,now);await sharedStaffBaseRow(db,clock,now);const row=await settlePlayerCycle(db,await getSyncRow(db,user.id),user,now,clock,{deferActive:true}),base=await stmt(db,FIELD_SELECT+' AND u.id=?',Math.floor(clock.elapsedMs/WORLD_CYCLE_MS),user.id).first();
   const save=row?.save_json?normalizeGameSave(JSON.parse(row.save_json),user,now,{reading:true,clock}):null,s=save?.state;
+  const emperor=await courtEmperorAuthority(db,user);if(emperor.isCourtEmperor)courtResponseGuards.set(request,emperor.guard);
   const cooldownUntil=base?.last_attack_ms!==null&&base?.last_attack_ms!==undefined?Number(base.last_attack_ms)+FIELD_RULES.attackCooldownMs:0;
   let reason=!s?'先に本拠をクラウドへ保存してください。':s.gameOver?'本拠を復元してください。':Number(row.cycle_index)<Math.floor(clock.elapsedMs/WORLD_CYCLE_MS)?'領地の精算を同期しています。':!s.worldClock?'共通時計へ同期してください。':!clock.running?'世界の共通時間が停止中です。':row.lease_expires_at<=now||deviceId&&row.writer_device_id!==deviceId?'この端末を操作端末にしてください。':cooldownUntil>clock.elapsedMs?'次の出陣までお待ちください。':s.command<1?'指示の回復をお待ちください。':s.troops<FIELD_RULES.minTroops?'出陣できる兵が足りません。':s.resources.rice<240?'兵糧が足りません。':'';
   if(!reason&&clock.elapsedMs-s.worldClock.elapsedMs>15000)reason='共通時計と本拠を同期してください。';
   const relations=await fieldOwnRelations(db,user.id,clock.elapsedMs),battles=rows(await stmt(db,'SELECT result_json FROM field_battles WHERE attacker_id=? OR defender_id=? ORDER BY occurred_elapsed_ms DESC,id DESC LIMIT 20',user.id,user.id).all()).map(b=>publicBattle(JSON.parse(b.result_json)));
-  return {ok:true,self:base?mapFieldPlayer(base,user,null,clock,now):null,revision:row?Number(row.revision):null,clock,rules:FIELD_RULES,attack:{ready:!reason,reason,availableTroops:s?.troops||0,minTroops:FIELD_RULES.minTroops,maxTroops:Math.min(s?.troops||0,FIELD_RULES.maxTroops),command:s?.command||0,rice:s?.resources.rice||0,cooldownUntilElapsedMs:cooldownUntil,remainingCooldownMs:Math.max(0,cooldownUntil-clock.elapsedMs)},relationships:relations.map(r=>mapFieldRelationship(r,user.id,clock.elapsedMs,r.target_name)),battles};
+  return {ok:true,self:base?mapFieldPlayer(base,user,null,clock,now):null,revision:row?Number(row.revision):null,clock,rules:FIELD_RULES,attack:{ready:!reason,reason,canAttackEdoFromKyoto:emperor.isCourtEmperor,availableTroops:s?.troops||0,minTroops:FIELD_RULES.minTroops,maxTroops:Math.min(s?.troops||0,FIELD_RULES.maxTroops),command:s?.command||0,rice:s?.resources.rice||0,cooldownUntilElapsedMs:cooldownUntil,remainingCooldownMs:Math.max(0,cooldownUntil-clock.elapsedMs)},relationships:relations.map(r=>mapFieldRelationship(r,user.id,clock.elapsedMs,r.target_name)),battles};
 }
 async function fieldReplayAttack(db,user,body,prior,now) {return {...await syncSnapshot(db,await getSyncRow(db,user.id),user,body.deviceId,now),battle:publicBattle(JSON.parse(prior.result_json)),idempotent:true};}
 async function fieldCommitFailure(db,user,body,kind,digest,clock,now) {
@@ -1675,6 +1815,8 @@ function fieldLoseCastle(s,castleId,preferred=null) {
   }else s.jobs=s.jobs.filter(j=>j.kind!=='castle'||j.id!==castleId);
   // Clan names are not player identities; same-clan opponents must still lose
   // this individual holding. The next public target belongs to the victor.
+  const lostBranches=new Set((s.branches||[]).filter(branch=>branch.parentCastleId===castleId).map(branch=>branch.id));
+  s.branches=(s.branches||[]).filter(branch=>branch.parentCastleId!==castleId);s.jobs=s.jobs.filter(job=>job.kind!=='branch'||!lostBranches.has(job.id));
   castle.owner='在地衆';s.gameOver=false;
   return fallback;
 }
@@ -1692,62 +1834,71 @@ function fieldCaptureCastle(a,d,castleId,sent,attackerLost) {
 async function fieldStaffDefense(db,state,clock) {
   // Read the real shared fortification without settling its queue or writing
   // any defender state. Due jobs are projected only for this battle snapshot.
-  const row=await stmt(db,"SELECT * FROM staff_base WHERE id='sunpu'").first(),shared=row?JSON.parse(row.state_json):staffInitialState(clock.elapsedMs);
+  const row=await stmt(db,"SELECT * FROM staff_base WHERE id='kyoto_gosho'").first(),shared=row?JSON.parse(row.state_json):staffInitialState(clock.elapsedMs);
   for(const job of shared.jobs.filter(j=>j.completesElapsedMs<=clock.elapsedMs).sort((a,b)=>a.completesElapsedMs-b.completesElapsedMs)){if(job.kind==='castle')shared.castleLevel=job.targetLevel;else shared.buildings[job.id]=job.targetLevel;}
-  state.castles.sunpu.level=shared.castleLevel;state.castles.sunpu.wall=shared.buildings.wall;state.buildings.wall=shared.buildings.wall;
-  return row?{sql:"EXISTS(SELECT 1 FROM staff_base WHERE id='sunpu' AND revision=?)",args:[row.revision]}:{sql:"NOT EXISTS(SELECT 1 FROM staff_base WHERE id='sunpu')",args:[]};
+  state.castles.kyoto_gosho.level=shared.castleLevel;state.castles.kyoto_gosho.wall=shared.buildings.wall;state.buildings.wall=shared.buildings.wall;
+  return row?{sql:"EXISTS(SELECT 1 FROM staff_base WHERE id='kyoto_gosho' AND revision=?)",args:[row.revision]}:{sql:"NOT EXISTS(SELECT 1 FROM staff_base WHERE id='kyoto_gosho')",args:[]};
 }
 async function fieldAttack(db,user,raw,now) {
   const body=fieldRequestBody(raw,'attack'),intent=['attack',body.targetPlayerId,body.troops,body.tactic];
   if(body.targetCastleId!==undefined)intent.push(body.targetCastleId);
+  if(body.targetBranchId!==undefined)intent.push(body.targetBranchId);
   const digest=await hash(JSON.stringify(intent)),prior=await priorFieldRequest(db,user.id,body,'attack',digest);if(prior)return fieldReplayAttack(db,user,body,prior,now);
   if(body.targetPlayerId===user.id)fail(400,'INVALID_TARGET','自分の城には出陣できません。');
   await budget(db,'field-attack:'+user.id,30,60000,now);
   const target=await getUser(db,body.targetPlayerId);if(!target||target.ban_active)fail(404,'FIELD_PLAYER_NOT_FOUND','相手の本拠が見つかりません。');
   const attackerRow=await settleWriterCycle(db,user,body.deviceId,body.expectedRevision,now);
   let defenderRow=await getSyncRow(db,target.id);if(!defenderRow?.save_json)fail(404,'FIELD_PLAYER_NOT_FOUND','相手の本拠はまだ共有されていません。');
-  const initialHome=target.is_admin?'edo':target.is_staff?'sunpu':JSON.parse(defenderRow.save_json).state.home;
+  const initialHome=target.is_admin?'edo':target.is_staff?'kyoto_gosho':JSON.parse(defenderRow.save_json).state.home;
   const requestedCastle=body.targetCastleId||initialHome,rewardOnly=fieldBattleMode(target,requestedCastle)==='reward';
   if(!rewardOnly)defenderRow=await settlePlayerCycle(db,defenderRow,target,now,undefined,{deferActive:true});
   const clock=await getWorldClock(db,now);if(!clock.running)fail(409,'WORLD_PAUSED','世界の共通時間が停止中です。');
   const attacker=normalizeGameSave(JSON.parse(attackerRow.save_json),user,now,{reading:true,clock}),defender=normalizeGameSave(JSON.parse(defenderRow.save_json),target,now,{reading:true,clock}),a=attacker.state,d=defender.state;
-  const defenderHomeBefore=d.home,castleId=body.targetCastleId||d.home,battleMode=fieldBattleMode(target,castleId,{legacy:body.targetCastleId===undefined});
+  const attackerBranches=await branchStateGuard(db,user.id,a.walking.campaignId),defenderBranches=await branchStateGuard(db,target.id,d.walking.campaignId);
+  await reconcileBranchProgress(db,user.id,attacker,clock);await reconcileBranchProgress(db,target.id,defender,clock,{projectToClock:true});
+  const defenderHomeBefore=d.home,castleId=body.targetCastleId||d.home,battleMode=body.targetBranchId?'branch':fieldBattleMode(target,castleId,{legacy:body.targetCastleId===undefined});
+  const courtGuard=await courtAttackAuthority(db,user,a.home,castleId);
   if(castleId!==d.home&&(!FIELD_CAPTURE_CASTLES.includes(castleId)||d.castles[castleId].owner!==d.clan))fail(409,'FIELD_TARGET_CHANGED','この領主の攻撃可能な城ではありません。共有地図を更新してください。');
-  if(Number(attackerRow.cycle_index)<Math.floor(clock.elapsedMs/WORLD_CYCLE_MS)||battleMode!=='reward'&&Number(defenderRow.cycle_index)<Math.floor(clock.elapsedMs/WORLD_CYCLE_MS))fail(409,'CYCLE_SETTLEMENT_REQUIRED','領地の精算中です。共有地図を更新してください。');
+  const branch=body.targetBranchId?d.branches.find(branch=>branch.id===body.targetBranchId&&branch.parentCastleId===castleId):null;
+  if(body.targetBranchId&&(!branch||branch.level<1||branch.fallen))fail(409,'BRANCH_TARGET_CHANGED','この支拠点は建設中、陥落済み、または配置が変更されています。地図を更新してください。');
+  if(!body.targetBranchId&&d.branches.some(branch=>branch.parentCastleId===castleId&&branch.level>0&&!branch.fallen))fail(409,'BRANCHES_REQUIRED','大都市拠点へ攻めるには、残っている支拠点をすべて先に陥落させてください。');
+  if(Number(attackerRow.cycle_index)<Math.floor(clock.elapsedMs/WORLD_CYCLE_MS)||!rewardOnly&&Number(defenderRow.cycle_index)<Math.floor(clock.elapsedMs/WORLD_CYCLE_MS))fail(409,'CYCLE_SETTLEMENT_REQUIRED','領地の精算中です。共有地図を更新してください。');
   if(a.gameOver||d.gameOver)fail(409,'BASE_UNAVAILABLE','本拠を失っている領主とは戦えません。');
   if(!a.worldClock)fail(409,'CLOCK_ANCHOR_REQUIRED','先に共通時計へ同期してください。');
   if(clock.elapsedMs-a.worldClock.elapsedMs>15000)fail(409,'CLOCK_STALE','共通時計と本拠を同期してから出陣してください。');
   const relation=await fieldRelation(db,user.id,target.id);if(fieldRelationStatus(relation,user.id,clock.elapsedMs)==='allied')fail(409,'ALLIED_TARGET','同盟期間中の相手には出陣できません。');
   const cooldown=await stmt(db,'SELECT MAX(occurred_elapsed_ms) AS last FROM field_battles WHERE attacker_id=?',user.id).first();
   if(cooldown.last!==null&&Number(cooldown.last)+FIELD_RULES.attackCooldownMs>clock.elapsedMs)fail(409,'ATTACK_COOLDOWN','次の出陣まで共通時間で60秒お待ちください。');
-  const sharedShield=battleMode==='reward'&&castleId==='sunpu';
-  const shield=await stmt(db,"SELECT MAX(occurred_elapsed_ms) AS last FROM field_battles WHERE defender_id=? OR (?=1 AND json_extract(result_json,'$.castleId')='sunpu')",target.id,sharedShield?1:0).first();
+  const sharedShield=battleMode==='reward'&&castleId==='kyoto_gosho';
+  const shield=await stmt(db,"SELECT MAX(occurred_elapsed_ms) AS last FROM field_battles WHERE defender_id=? OR (?=1 AND json_extract(result_json,'$.castleId')='kyoto_gosho')",target.id,sharedShield?1:0).first();
   if(shield.last!==null&&Number(shield.last)+FIELD_RULES.defenderProtectionMs>clock.elapsedMs)fail(409,'TARGET_PROTECTED','相手は襲撃後の保護期間です。');
-  const covertShield=await stmt(db,"SELECT MAX(occurred_elapsed_ms) AS last FROM covert_battles WHERE defender_id=? OR (?=1 AND json_extract(result_json,'$.castleId')='sunpu')",target.id,sharedShield?1:0).first();
+  const covertShield=await stmt(db,"SELECT MAX(occurred_elapsed_ms) AS last FROM covert_battles WHERE defender_id=? OR (?=1 AND json_extract(result_json,'$.castleId')='kyoto_gosho')",target.id,sharedShield?1:0).first();
   if(covertShield.last!==null&&Number(covertShield.last)+FIELD_RULES.defenderProtectionMs>clock.elapsedMs)fail(409,'TARGET_PROTECTED','相手は襲撃後の保護期間です。');
   const tactic=FIELD_RULES.tactics.find(t=>t.id===body.tactic),foodCost=Math.ceil(body.troops*FIELD_RULES.foodPerTroop*tactic.food)+FIELD_RULES.foodBase;
   if(body.troops>a.troops||a.command<1||a.resources.rice<foodCost)fail(409,'INSUFFICIENT_FORCE','兵数・指示・兵糧が足りません。');
   const sharedGuard=sharedShield?await fieldStaffDefense(db,d,clock):{sql:'1=1',args:[]};
   const attackerBefore=copy(attacker),attackPower=Math.max(1,Math.round(body.troops*(.7+.5*a.morale/100)*(1+a.tech.discipline*.06+a.tech.gunnery*.05)*fieldArmy(a.army,a.officerVariants).rankPower*tactic.modifier));
-  const defense=fieldDefense(d,tactic.id,a.tech.siege,castleId),ratio=attackPower/defense.power,chance=Math.max(.05,Math.min(.95,.5+Math.log(ratio)*.6));
+  const defense=branch?fieldBranchDefense(d,branch,tactic.id,a.tech.siege):fieldDefense(d,tactic.id,a.tech.siege,castleId),ratio=attackPower/defense.power,chance=Math.max(.05,Math.min(.95,.5+Math.log(ratio)*.6));
   const won=crypto.getRandomValues(new Uint32Array(1))[0]/4294967296<chance;
   const attackerLost=Math.min(body.troops,Math.max(1,Math.floor(body.troops*Math.min(.35,(won?.08+.06/Math.max(.3,ratio):.2+.06/Math.max(.3,ratio))*tactic.loss))));
-  const castle=d.castles[castleId],defenderLost=battleMode==='reward'?{troops:0,garrison:0}:{troops:Math.min(Math.floor(d.troops*.1),Math.floor(body.troops*(won?.04:.015))),garrison:Math.min(Math.floor(castle.troops*.1),Math.floor(body.troops*(won?.08:.03)))};
+  const castle=d.castles[castleId],protectedAssets=battleMode==='reward'||!!branch,defenderLost=protectedAssets?{troops:0,garrison:0}:{troops:Math.min(Math.floor(d.troops*.1),Math.floor(body.troops*(won?.04:.015))),garrison:Math.min(Math.floor(castle.troops*.1),Math.floor(body.troops*(won?.08:.03)))};
   a.troops-=attackerLost;a.resources.rice-=foodCost;a.command-=1;
-  if(battleMode!=='reward'){d.troops-=defenderLost.troops;castle.troops-=defenderLost.garrison;d.morale=Math.max(0,d.morale-2);}
+  if(!protectedAssets){d.troops-=defenderLost.troops;castle.troops-=defenderLost.garrison;d.morale=Math.max(0,d.morale-2);}
+  if(branch&&won){branch.fallen=true;d.jobs=d.jobs.filter(job=>job.kind!=='branch'||job.id!==branch.id);}
   const loot={},rewards={};
   for(const key of RESOURCES){
-    loot[key]=won&&battleMode!=='reward'?Math.min(FIELD_RULES.maxLootPerResource,Math.floor(d.resources[key]*FIELD_RULES.maxLootFraction),999999999-a.resources[key]):0;
+    loot[key]=won&&!protectedAssets?Math.min(FIELD_RULES.maxLootPerResource,Math.floor(d.resources[key]*FIELD_RULES.maxLootFraction),999999999-a.resources[key]):0;
     rewards[key]=won&&battleMode==='reward'?Math.min(FIELD_RULES.victoryRewards[key],999999999-a.resources[key]):0;
     if(loot[key])d.resources[key]-=loot[key];a.resources[key]+=loot[key]+rewards[key];
   }
   const captured=won&&battleMode==='capture',captureChange=captured?fieldCaptureCastle(a,d,castleId,body.troops,attackerLost):null;
   const capture={captured,castleId,castleName:CASTLE_BY_ID[castleId].name,attackerPlayerId:user.id,defenderPlayerId:target.id,defenderHomeCastleId:d.home,defenderHomeCastleName:CASTLE_BY_ID[d.home].name,newlyOwned:!!captureChange?.newlyOwned,garrison:captureChange?.garrison||0};
-  a.stats.battles=Math.min(10000000,a.stats.battles+1);if(won)a.stats.wins=Math.min(a.stats.battles,a.stats.wins+1);
+  if(battleMode!=='branch'){a.stats.battles=Math.min(10000000,a.stats.battles+1);if(won)a.stats.wins=Math.min(a.stats.battles,a.stats.wins+1);}
   a.morale=Math.max(0,Math.min(100,a.morale+(won?3:-5)));
   const battle={id:uid('fb_'),requestId:body.requestId,attackerPlayerId:user.id,attackerName:user.name,defenderPlayerId:target.id,defenderName:target.name,castleId,castleName:CASTLE_BY_ID[castleId].name,battleMode,won,tactic:body.tactic,troops:body.troops,attackerLost,defenderLost,foodCost,loot,rewards,capture,attackPower,defensePower:defense.power,winChance:Math.round(chance*100),occurredElapsedMs:clock.elapsedMs,createdAt:iso(now),attackerRevision:Number(attackerRow.revision)+1,defenderRevision:Number(defenderRow.revision)+(battleMode==='reward'?0:1),nextAttackElapsedMs:clock.elapsedMs+FIELD_RULES.attackCooldownMs,defenderProtectedUntilElapsedMs:clock.elapsedMs+FIELD_RULES.defenderProtectionMs};
-  a.log.unshift({turn:a.turn,text:`${target.name}の${battle.castleName}へ出陣。${won?captured?'城を占領':battleMode==='reward'?'勝利報酬を獲得':'戦利品を得て帰還':'撤退'}、兵${attackerLost}人を失いました。`,kind:'pvp'});a.log=a.log.slice(0,200);attacker.savedAt=iso(now);
-  if(battleMode!=='reward'){d.log.unshift({turn:d.turn,text:`${user.name}の襲撃を受け、兵${defenderLost.troops+defenderLost.garrison}人を失いました。${captured?battle.castleName+'を失い、'+capture.defenderHomeCastleName+'を本拠として継続します。':'本拠の領有は継続しています。'}`,kind:'pvp'});d.log=d.log.slice(0,200);defender.savedAt=iso(now);}
+  if(branch)Object.assign(battle,{branchId:branch.id,branchName:branchSite(branch.id).name,branchFallen:!!branch.fallen});
+  a.log.unshift({turn:a.turn,text:`${target.name}の${battle.branchName||battle.castleName}へ出陣。${won?branch?'支拠点を陥落':captured?'城を占領':battleMode==='reward'?'勝利報酬を獲得':'戦利品を得て帰還':'撤退'}、兵${attackerLost}人を失いました。`,kind:'pvp'});a.log=a.log.slice(0,200);attacker.savedAt=iso(now);
+  if(battleMode!=='reward'){d.log.unshift({turn:d.turn,text:branch?`${battle.branchName}が${user.name}の攻撃を${won?'受けて陥落':'撃退'}しました。親拠点の領有・守備兵・資源は維持しています。`:`${user.name}の襲撃を受け、兵${defenderLost.troops+defenderLost.garrison}人を失いました。${captured?battle.castleName+'を失い、'+capture.defenderHomeCastleName+'を本拠として継続します。':'本拠の領有は継続しています。'}`,kind:'pvp'});d.log=d.log.slice(0,200);defender.savedAt=iso(now);}
   const attackerNext=normalizeGameSave(attacker,user,now,{clock}),defenderNext=battleMode==='reward'?null:normalizeGameSave(defender,target,now,{clock});
   const attackerJson=JSON.stringify(attackerNext),defenderJson=defenderNext?JSON.stringify(defenderNext):null,resultJson=JSON.stringify(battle),nonce=crypto.randomUUID(),[first,second]=pair(user.id,target.id),roleGuard=roleCommitGuard(user),targetRoleGuard=roleCommitGuard(target);
   const gate='EXISTS(SELECT 1 FROM field_requests WHERE actor_id=? AND request_id=? AND commit_token=?)',gateArgs=[user.id,body.requestId,nonce];
@@ -1757,16 +1908,17 @@ async function fieldAttack(db,user,raw,now) {
     stmt(db,`INSERT INTO field_requests(actor_id,request_id,kind,request_hash,commit_token,result_json,created_at)
       SELECT ?,?,'attack',?,?,?,? FROM player_saves a JOIN player_saves d ON d.user_id=?
       WHERE a.user_id=? AND a.revision=? AND a.writer_device_id=? AND a.lease_expires_at>?
-      AND d.revision=? AND d.save_json IS NOT NULL AND ${roleGuard.sql} AND ${targetRoleGuard.sql} AND ${sharedGuard.sql}
+      AND d.revision=? AND d.save_json IS NOT NULL AND ${roleGuard.sql} AND ${targetRoleGuard.sql} AND ${sharedGuard.sql} AND ${courtGuard.sql} AND ${attackerBranches.guard.sql} AND ${defenderBranches.guard.sql}
       AND EXISTS(SELECT 1 FROM world_clock WHERE id=? AND revision=? AND running=1)
       AND NOT EXISTS(SELECT 1 FROM field_relations WHERE user_a=? AND user_b=? AND status='allied' AND expires_elapsed_ms>? AND updated_elapsed_ms>=?)
       AND NOT EXISTS(SELECT 1 FROM field_battles WHERE attacker_id=? AND occurred_elapsed_ms>?)
-      AND NOT EXISTS(SELECT 1 FROM field_battles WHERE (defender_id=? OR (?=1 AND json_extract(result_json,'$.castleId')='sunpu')) AND occurred_elapsed_ms>?)
-      AND NOT EXISTS(SELECT 1 FROM covert_battles WHERE (defender_id=? OR (?=1 AND json_extract(result_json,'$.castleId')='sunpu')) AND occurred_elapsed_ms>?)
-      ON CONFLICT(actor_id,request_id) DO NOTHING RETURNING request_id`,user.id,body.requestId,digest,nonce,resultJson,now,target.id,user.id,body.expectedRevision,body.deviceId,now,defenderRow.revision,...roleGuard.args,...targetRoleGuard.args,...sharedGuard.args,WORLD_CLOCK_ID,clock.revision,first,second,clock.elapsedMs,Math.floor(clock.elapsedMs/WORLD_CYCLE_MS)*WORLD_CYCLE_MS,user.id,clock.elapsedMs-FIELD_RULES.attackCooldownMs,target.id,sharedShield?1:0,clock.elapsedMs-FIELD_RULES.defenderProtectionMs,target.id,sharedShield?1:0,clock.elapsedMs-FIELD_RULES.defenderProtectionMs),
+      AND NOT EXISTS(SELECT 1 FROM field_battles WHERE (defender_id=? OR (?=1 AND json_extract(result_json,'$.castleId')='kyoto_gosho')) AND occurred_elapsed_ms>?)
+      AND NOT EXISTS(SELECT 1 FROM covert_battles WHERE (defender_id=? OR (?=1 AND json_extract(result_json,'$.castleId')='kyoto_gosho')) AND occurred_elapsed_ms>?)
+      ON CONFLICT(actor_id,request_id) DO NOTHING RETURNING request_id`,user.id,body.requestId,digest,nonce,resultJson,now,target.id,user.id,body.expectedRevision,body.deviceId,now,defenderRow.revision,...roleGuard.args,...targetRoleGuard.args,...sharedGuard.args,...courtGuard.args,...attackerBranches.guard.args,...defenderBranches.guard.args,WORLD_CLOCK_ID,clock.revision,first,second,clock.elapsedMs,Math.floor(clock.elapsedMs/WORLD_CYCLE_MS)*WORLD_CYCLE_MS,user.id,clock.elapsedMs-FIELD_RULES.attackCooldownMs,target.id,sharedShield?1:0,clock.elapsedMs-FIELD_RULES.defenderProtectionMs,target.id,sharedShield?1:0,clock.elapsedMs-FIELD_RULES.defenderProtectionMs),
     stmt(db,`UPDATE player_saves SET save_json=?,revision=revision+1,updated_at=?,lease_expires_at=?,cycle_home=? WHERE user_id=? AND ${gate}`,attackerJson,now,now+SYNC_LEASE,attackerNext.state.cycle?.home||attackerNext.state.home,user.id,...gateArgs)
   ];
-  if(defenderNext)statements.push(stmt(db,`UPDATE player_saves SET save_json=?,revision=revision+1,updated_at=?,cycle_home=? WHERE user_id=? AND ${gate}`,defenderJson,now,defenderNext.state.cycle?.home||defenderNext.state.home,target.id,...gateArgs));
+  statements.push(...branchProgressStatements(db,user.id,attackerNext,now,gate,gateArgs,{resolvedElapsedMs:Math.min(clock.elapsedMs,attackerNext.state.worldClock?.elapsedMs||0)}));
+  if(defenderNext){statements.push(stmt(db,`UPDATE player_saves SET save_json=?,revision=revision+1,updated_at=?,cycle_home=? WHERE user_id=? AND ${gate}`,defenderJson,now,defenderNext.state.cycle?.home||defenderNext.state.home,target.id,...gateArgs));statements.push(...branchProgressStatements(db,target.id,defenderNext,now,gate,gateArgs,{resolvedElapsedMs:clock.elapsedMs}));}
   const attackerPersonal=await staffPersonalProgressStatement(db,user,attackerNext,now,gate,gateArgs);if(attackerPersonal)statements.push(attackerPersonal);
   if(defenderNext){const personal=await staffPersonalProgressStatement(db,target,defenderNext,now,gate,gateArgs,null,captureChange);if(personal)statements.push(personal);}
   for(const event of saveAchievements(attackerBefore,attackerNext))statements.push(achievementStatement(db,user.id,event,now,gate,gateArgs));
@@ -1858,7 +2010,7 @@ async function route(request, env, now) {
   if(path==='/premium/stripe/webhook'&&method==='POST')return handlePremiumWebhook({db,env,now,request,helpers:{fail}});
   if (path === '/health' && method === 'GET') {
     try {
-      await stmt(db, 'SELECT (SELECT COUNT(*) FROM users) AS count,EXISTS(SELECT 1 FROM trades) AS trade_schema,EXISTS(SELECT 1 FROM trade_requests) AS trade_request_schema,EXISTS(SELECT 1 FROM trade_deliveries) AS trade_delivery_schema,EXISTS(SELECT 1 FROM player_bans) AS ban_schema,EXISTS(SELECT 1 FROM moderation_requests) AS moderation_schema,(SELECT content_revision FROM moderation_state WHERE id=1) AS content_revision,EXISTS(SELECT 1 FROM premium_orders) AS premium_order_schema,EXISTS(SELECT 1 FROM premium_events) AS premium_event_schema,EXISTS(SELECT 1 FROM premium_grants) AS premium_grant_schema,EXISTS(SELECT 1 FROM premium_appearances) AS premium_appearance_schema,EXISTS(SELECT 1 FROM timed_events) AS timed_event_schema,EXISTS(SELECT 1 FROM timed_event_requests) AS timed_event_request_schema,EXISTS(SELECT 1 FROM timed_event_participants) AS timed_event_participant_schema,EXISTS(SELECT 1 FROM timed_event_rewards) AS timed_event_reward_schema,EXISTS(SELECT 1 FROM roaming_battles) AS roaming_battle_schema,EXISTS(SELECT 1 FROM covert_states) AS covert_state_schema,EXISTS(SELECT 1 FROM covert_requests) AS covert_request_schema,EXISTS(SELECT 1 FROM covert_battles) AS covert_battle_schema,EXISTS(SELECT 1 FROM covert_incidents) AS covert_incident_schema,EXISTS(SELECT 1 FROM roaming_deployment) AS roaming_deployment_schema,EXISTS(SELECT 1 FROM roaming_deployment_proposals) AS roaming_deployment_proposal_schema,EXISTS(SELECT 1 FROM roaming_deployment_requests) AS roaming_deployment_request_schema,EXISTS(SELECT 1 FROM roaming_unit_cooldowns) AS roaming_unit_cooldown_schema').first();
+      await stmt(db, 'SELECT (SELECT COUNT(*) FROM users) AS count,EXISTS(SELECT 1 FROM trades) AS trade_schema,EXISTS(SELECT 1 FROM trade_requests) AS trade_request_schema,EXISTS(SELECT 1 FROM trade_deliveries) AS trade_delivery_schema,EXISTS(SELECT 1 FROM player_bans) AS ban_schema,EXISTS(SELECT 1 FROM moderation_requests) AS moderation_schema,(SELECT content_revision FROM moderation_state WHERE id=1) AS content_revision,EXISTS(SELECT 1 FROM premium_orders) AS premium_order_schema,EXISTS(SELECT 1 FROM premium_events) AS premium_event_schema,EXISTS(SELECT 1 FROM premium_grants) AS premium_grant_schema,EXISTS(SELECT 1 FROM premium_appearances) AS premium_appearance_schema,EXISTS(SELECT 1 FROM timed_events) AS timed_event_schema,EXISTS(SELECT 1 FROM timed_event_requests) AS timed_event_request_schema,EXISTS(SELECT 1 FROM timed_event_participants) AS timed_event_participant_schema,EXISTS(SELECT 1 FROM timed_event_rewards) AS timed_event_reward_schema,EXISTS(SELECT 1 FROM roaming_battles) AS roaming_battle_schema,EXISTS(SELECT 1 FROM covert_states) AS covert_state_schema,EXISTS(SELECT 1 FROM covert_requests) AS covert_request_schema,EXISTS(SELECT 1 FROM covert_battles) AS covert_battle_schema,EXISTS(SELECT 1 FROM covert_incidents) AS covert_incident_schema,EXISTS(SELECT 1 FROM roaming_deployment) AS roaming_deployment_schema,EXISTS(SELECT 1 FROM roaming_deployment_proposals) AS roaming_deployment_proposal_schema,EXISTS(SELECT 1 FROM roaming_deployment_requests) AS roaming_deployment_request_schema,EXISTS(SELECT 1 FROM roaming_unit_cooldowns) AS roaming_unit_cooldown_schema,EXISTS(SELECT 1 FROM court_contributions) AS court_contribution_schema,EXISTS(SELECT 1 FROM court_leader) AS court_leader_schema,EXISTS(SELECT 1 FROM court_chat) AS court_chat_schema,EXISTS(SELECT 1 FROM court_audience_threads) AS court_audience_schema,EXISTS(SELECT 1 FROM court_audience_messages) AS court_audience_message_schema,EXISTS(SELECT 1 FROM court_requests) AS court_request_schema,EXISTS(SELECT 1 FROM branch_states) AS branch_state_schema,EXISTS(SELECT 1 FROM branch_requests) AS branch_request_schema').first();
     } catch { fail(503, 'SERVICE_UNAVAILABLE', '通信サービスの準備中です。'); }
     return {ok:true,status:'ready',version:API_VERSION,features:API_FEATURES};
   }
@@ -1954,6 +2106,7 @@ async function route(request, env, now) {
     return handleEvents({db,user,now,path,method,url,request,helpers:{fail,readBody,budget,idField,textField,uid,hash,getUser,getSyncRow,requireAdmin,requireAccountAccess,roleCommitGuard,evaluationRef,fieldWriter,settleWriterCycle,getWorldClock,normalizeGameSave,syncSnapshot,syncLease:SYNC_LEASE,worldClockId:WORLD_CLOCK_ID}});
   }
   let user = await authenticate(request,db,now);
+  if(path==='/court'||path.startsWith('/court/')||path==='/staff/court'||path==='/admin/court/leader')return handleCourt({db,user,now,path,method,url,request,helpers:{fail,readBody,budget,idField,textField,uid,hash,getUser,requireAccountAccess,roleCommitGuard,accountCommitGuard,evaluationRef,courtAccess,registerGuard:guard=>courtResponseGuards.set(request,guard)}});
   if (path === '/staff/roaming' || path.startsWith('/staff/roaming/') || path === '/admin/roaming' || path.startsWith('/admin/roaming/')) return handleRoamingDeployment({db,user,now,path,method,url,request,helpers:{fail,readBody,budget,idField,textField,hash,getUser,requireAccountAccess,roleCommitGuard}});
   if(path==='/premium'||path.startsWith('/premium/')||path==='/admin/premium/reviews')return handlePremium({db,env,user,now,path,method,request,helpers:{fail,readBody,budget,accountCommitGuard,requireAccountAccess,requireAdmin,getUser,textField,idField,hash,uid,evaluationRef}});
   if(path==='/admin/moderation'||path.startsWith('/admin/moderation/'))return handleModeration({db,user,now,path,method,url,request,helpers:{fail,readBody,budget,idField,textField,uid,hash,mapUser,getUser,requireAdmin,userSelect:USER_SELECT}});
@@ -1972,13 +2125,14 @@ async function route(request, env, now) {
     user=await requireCurrentStaffBase(db,user,{allowAdmin:true});const clock=await getWorldClock(db,now);await ensureStaffCampaign(db,user,now,clock);const staffBase=await staffBaseDto(db,user,clock,now);await requireCurrentStaffBase(db,user,{allowAdmin:true});return {ok:true,staffBase:publicStaffBase(staffBase),clock};
   }
   if (path === '/staff/base/upgrade' && method === 'POST') return staffBaseUpgrade(db,user,await readBody(request),now);
+  if (path === '/branches' || path.startsWith('/branches/')) return handleBranches({db,user,now,path,method,url,request,helpers:{fail,readBody,budget,idField,hash,getUser,getSyncRow,fieldWriter,settleWriterCycle,getWorldClock,normalizeGameSave,roleCommitGuard,syncSnapshot,requireAccountAccess,staffBaseDto,covertIncidentStatements,staffPersonalProgressStatement,registerResponseGuard:guard=>courtResponseGuards.set(request,{...guard,code:'BRANCH_ACCESS_CHANGED',message:'支拠点の利用資格が変わりました。最新の拠点と接続状態を確認してください。'}),syncLease:SYNC_LEASE,worldClockId:WORLD_CLOCK_ID}});
   if (path === '/walking/start' && method === 'POST') return walkingStart(db,user,await readBody(request),now);
   if (path === '/walking/claim' && method === 'POST') return walkingClaim(db,user,await readBody(request),now);
-  if (path === '/covert' || path.startsWith('/covert/')) return handleCovert({db,user,now,path,method,url,request,helpers:{fail,readBody,budget,idField,hash,getUser,getSyncRow,fieldWriter,settleWriterCycle,getWorldClock,normalizeGameSave,roleCommitGuard,syncSnapshot,requireAccountAccess,staffBaseDto,getFieldList,fieldStaffDefense,fieldDefense,fieldRelation,fieldRelationStatus,syncLease:SYNC_LEASE,worldClockId:WORLD_CLOCK_ID}});
+  if (path === '/covert' || path.startsWith('/covert/')) return handleCovert({db,user,now,path,method,url,request,helpers:{fail,readBody,budget,idField,hash,getUser,getSyncRow,fieldWriter,settleWriterCycle,getWorldClock,normalizeGameSave,roleCommitGuard,syncSnapshot,requireAccountAccess,staffBaseDto,getFieldList,fieldStaffDefense,fieldDefense,fieldRelation,fieldRelationStatus,courtEmperorAuthority,courtAttackAuthority,reconcileBranchProgress,branchStateGuard,branchProgressStatements,registerCourtGuard:guard=>courtResponseGuards.set(request,guard),syncLease:SYNC_LEASE,worldClockId:WORLD_CLOCK_ID}});
   if (path === '/roaming/battle' && method === 'POST' || path === '/roaming/history' && method === 'GET') return handleRoaming({db,user,now,path,method,url,request,helpers:{fail,readBody,budget,idField,hash,getUser,getSyncRow,fieldWriter,settleWriterCycle,getWorldClock,normalizeGameSave,roleCommitGuard,syncSnapshot,requireAccountAccess,staffBaseDto,syncLease:SYNC_LEASE,worldClockId:WORLD_CLOCK_ID}});
   if (path === '/letters' || path.startsWith('/letters/')) return handleLetters({db,user,now,path,method,url,request,helpers:{fail,readBody,budget,idField,textField,uid,mapUser,getUser,evaluationRef,evaluationUpdates,accountCommitGuard,requireAccountAccess,contentRevisionInput}});
   if (path === '/trades' || path.startsWith('/trades/')) return handleTrades({db,user,now,path,method,url,request,helpers:{fail,readBody,budget,idField,uid,mapUser,getUser,getSyncRow,hash,fieldWriter,settleWriterCycle,getWorldClock,normalizeGameSave,roleCommitGuard,syncSnapshot,requireAccountAccess,tradeTroopCapacity,syncLease:SYNC_LEASE,worldClockId:WORLD_CLOCK_ID}});
-  if (path === '/field/me' && method === 'GET') return fieldMe(db,user,url,now);
+  if (path === '/field/me' && method === 'GET') return fieldMe(db,user,url,now,request);
   if (path === '/field/attack' && method === 'POST') return fieldAttack(db,user,await readBody(request),now);
   if (path === '/field/diplomacy' && method === 'POST') return fieldDiplomacy(db,user,await readBody(request),now);
   if (path === '/world-clock' && method === 'PATCH') {
@@ -2053,7 +2207,7 @@ async function route(request, env, now) {
     if(!body.save||typeof body.save!=='object'||Array.isArray(body.save))fail(400,'INVALID_SAVE','セーブデータを送信してください。');
     // Covert units, reports and response opportunities belong to the server ledger.
     // Ignore that entire client section, including malformed or forged imports.
-    const imported=copy(body.save);delete (imported.state||imported).covert;
+    const imported=copy(body.save),importedState=imported.state||imported;delete importedState.covert;delete importedState.branches;if(Array.isArray(importedState.jobs))importedState.jobs=importedState.jobs.filter(job=>job?.kind!=='branch');
     const clock=await getWorldClock(db,now),save=normalizeGameSave(imported,user,now,{clock});
     await budget(db,'sync-write:'+user.id,120,60000,now);
     let previous=await getSyncRow(db,user.id);if(previous?.save_json){fieldWriter(previous,deviceId,body.revision,now);previous=await ensureStaffCampaign(db,user,now,clock,{deferClanMigration:true});fieldWriter(previous,deviceId,body.revision,now);}
@@ -2062,7 +2216,7 @@ async function route(request, env, now) {
     if(Number(previous.revision)!==body.revision)fail(409,'REVISION_CONFLICT','最新の保存へ同期してください。');
     if(before?.state.worldClock&&!save.state.worldClock)fail(409,'CLOCK_ANCHOR_REQUIRED','この領主は共通時計へ移行済みです。共通時計に対応した最新版から保存してください。');
     const policy=await cyclePolicy(db,clock,now),currentCycle=Math.floor(clock.elapsedMs/WORLD_CYCLE_MS);
-    let cycleIndex=previous?.cycle_index??Math.max(policy,currentCycle),cycleHome=user.is_admin?'edo':user.is_staff?'sunpu':previous?.cycle_home&&!['edo','sunpu'].includes(previous.cycle_home)?previous.cycle_home:save.state.cycle?.home||save.state.home;
+    let cycleIndex=previous?.cycle_index??Math.max(policy,currentCycle),cycleHome=user.is_admin?'edo':user.is_staff?'kyoto_gosho':previous?.cycle_home&&!['edo','kyoto_gosho'].includes(previous.cycle_home)?previous.cycle_home:save.state.cycle?.home||save.state.home;
     if(previous?.cycle_index!==null&&previous?.cycle_index!==undefined){
       if(save.state.cycle&&save.state.cycle.index!==Number(cycleIndex)||save.state.worldClock&&Math.floor(save.state.worldClock.elapsedMs/WORLD_CYCLE_MS)>Number(cycleIndex)){
         await settlePlayerCycle(db,previous,user,now,clock,{deferActive:false,writerDeviceId:deviceId});fail(409,'CYCLE_SETTLEMENT_REQUIRED','領地の精算を同期しています。最新データを読み込んでください。');
@@ -2078,11 +2232,15 @@ async function route(request, env, now) {
     save.state.walking.serverSteps=Number(walkingLedger?.total_steps||0);
     await reconcileRoamingProgress(db,user.id,save,before);
     await reconcileCovertProgress(db,user.id,save);
+    const branchProgress=await resolveSyncBranches(db,user,save,before,clock,now),branchAccess=branchProgress.access;
+    Object.assign(save,normalizeGameSave(save,user,now,{clock}));
     const serialized=JSON.stringify(save),nonce=crypto.randomUUID(),roleGuard=roleCommitGuard(user);
     const statements=[stmt(db,`UPDATE player_saves SET save_json=?,revision=revision+1,updated_at=?,lease_expires_at=?,cycle_index=?,cycle_home=?,cycle_commit=?
       WHERE user_id=? AND revision=? AND writer_device_id=? AND lease_expires_at>?
-      AND (?=1 OR json_type(save_json,'$.state.worldClock') IS NULL) AND ${roleGuard.sql} RETURNING *`,serialized,now,now+SYNC_LEASE,cycleIndex,cycleHome,nonce,user.id,body.revision,deviceId,now,save.state.worldClock?1:0,...roleGuard.args)];
+      AND (?=1 OR json_type(save_json,'$.state.worldClock') IS NULL) AND ${roleGuard.sql} AND ${branchAccess.guard.sql} AND ${branchProgress.guard.sql} RETURNING *`,serialized,now,now+SYNC_LEASE,cycleIndex,cycleHome,nonce,user.id,body.revision,deviceId,now,save.state.worldClock?1:0,...roleGuard.args,...branchAccess.guard.args,...branchProgress.guard.args)];
     const gate='EXISTS(SELECT 1 FROM player_saves WHERE user_id=? AND cycle_commit=?)';
+    statements.push(...branchProgressStatements(db,user.id,save,now,gate,[user.id,nonce],{resolvedElapsedMs:branchProgress.resolvedElapsedMs}));
+    if(branchProgress.replayed)statements.push(...covertIncidentStatements(db,user.id,branchProgress.replayed,now,gate,[user.id,nonce]));
     const personal=await staffPersonalProgressStatement(db,user,save,now,gate,[user.id,nonce]);if(personal)statements.push(personal);
     for(const event of saveAchievements(before,save))statements.push(achievementStatement(db,user.id,event,now,gate,[user.id,nonce]));
     const changed=await db.batch(statements),row=rows(changed[0])[0];
@@ -2313,6 +2471,7 @@ export default {
       if(path.startsWith(API+'/guild-icons/')&&request.method==='GET')return await getGuildIcon(request,env,origin);
       const now=Date.now(),payload=await route(request,env,now),evaluated=await resolvePlayerEvaluations(env.DB,payload,now),resolved=await resolvePremiumAppearances(env.DB,evaluated,now),authenticated=authenticatedRequests.get(request);
       if(authenticated)await requireAccountAccess(env.DB,authenticated);
+      await verifyCourtResponse(env.DB,request);
       return response(publicIdentities(resolved,request),200,origin);
     }catch(error){
       const authenticated=authenticatedRequests.get(request);if(authenticated)try{await requireAccountAccess(env.DB,authenticated);}catch(accessError){error=accessError;}

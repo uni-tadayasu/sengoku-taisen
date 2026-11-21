@@ -70,7 +70,7 @@ async function battle(ctx){
  await h.budget(db,'roaming-battle:'+user.id,30,60000,ctx.now);
  const now=Date.now();result.battle.respawnAt=result.battle.won?now+deployment.respawnSeconds*1000:null;game.state.roaming.history[0].respawnAt=result.battle.respawnAt;
  const next=h.normalizeGameSave(JSON.parse(game.exportSave()),user,now,{clock}),nonce=crypto.randomUUID(),role=h.roleCommitGuard(user),args=[user.id,body.requestId,nonce];
- const sharedGuard=shared?{sql:"EXISTS(SELECT 1 FROM staff_base WHERE id='sunpu' AND revision=?)",args:[shared.revision]}:{sql:'1=1',args:[]};
+ const sharedGuard=shared?{sql:"EXISTS(SELECT 1 FROM staff_base WHERE id='kyoto_gosho' AND revision=?)",args:[shared.revision]}:{sql:'1=1',args:[]};
  await db.batch([
   stmt(db,`INSERT INTO roaming_battles(actor_id,request_id,campaign_id,sequence,request_hash,commit_token,result_json,created_at)
    SELECT ?,?,?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM player_saves ps WHERE ps.user_id=? AND ps.revision=? AND ps.writer_device_id=? AND ps.lease_expires_at>? AND ps.save_json IS NOT NULL

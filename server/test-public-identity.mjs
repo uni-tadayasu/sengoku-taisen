@@ -74,7 +74,7 @@ await scope('public lists, friends, guild members, chats and field targets conce
 await scope('nested historical battle objects are projected while identities, stats and stored records survive',async h=>{
   const {admin,staff,viewer}=await people(h),id='fb_'+crypto.randomUUID().replaceAll('-','');
   const legacy={playerId:staff.user.id,name:staff.user.name,clan:'德川家',isAdmin:false,isStaff:true,role:'staff',roleTitle:'スタッフ',adminPlayerId:admin.user.id,defensePower:4321};
-  const battle={id,attackerPlayerId:viewer.user.id,attackerName:viewer.user.name,defenderPlayerId:staff.user.id,defenderName:staff.user.name,castleId:'sunpu',castleName:'駿府城',battleMode:'reward',won:true,troops:500,defensePower:4321,history:{state:legacy,save:{state:legacy},entitlements:{owner:legacy},staffBase:{startedBy:legacy}},createdAt:new Date(h.now).toISOString()};
+  const battle={id,attackerPlayerId:viewer.user.id,attackerName:viewer.user.name,defenderPlayerId:staff.user.id,defenderName:staff.user.name,castleId:'kyoto_gosho',castleName:'京都御所城',battleMode:'reward',won:true,troops:500,defensePower:4321,history:{state:legacy,save:{state:legacy},entitlements:{owner:legacy},staffBase:{startedBy:legacy}},createdAt:new Date(h.now).toISOString()};
   const raw=JSON.stringify(battle);
   h.sql.prepare('INSERT INTO field_battles(id,attacker_id,defender_id,occurred_elapsed_ms,result_json,created_at) VALUES(?,?,?,?,?,?)').run(id,viewer.user.id,staff.user.id,0,raw,h.now);
   const result=(await h.api('/field/me',{token:viewer.token})).data;publicOnly(result);
@@ -83,7 +83,7 @@ await scope('nested historical battle objects are projected while identities, st
   for(const person of [projected.history.state,projected.history.save.state,projected.history.entitlements.owner,projected.history.staffBase.startedBy]){assert.equal(person.playerId,staff.user.id);assert.equal(person.name,staff.user.name);assert.equal(person.clan,'徳川家');assert.equal(person.defensePower,4321);}
   assert.equal(h.sql.prepare('SELECT result_json FROM field_battles WHERE id=?').get(id).result_json,raw);
   const own=(await h.api('/sync',{token:staff.token})).data;
-  assert.equal(own.user.isStaff,true);assert.equal(own.save.state.clan,'德川家');assert.equal(own.staffBase.id,'sunpu','Private shared base remains available to its authorized member');
+  assert.equal(own.user.isStaff,true);assert.equal(own.save.state.clan,'德川家');assert.equal(own.staffBase.id,'kyoto_gosho','Private shared base remains available to its authorized member');
 });
 
 await scope('site mail and event publication omit the managing player identity',async h=>{
@@ -109,7 +109,7 @@ await scope('letter profiles and old shared-building news use ordinary public id
   const {admin,staff,viewer}=await people(h);
   const sent=(await h.api('/letters',post(admin,{requestId:'identity-letter',destination:'player',targetPlayerId:viewer.user.id,text:'以前の書状本文'}))).data;
   for(const path of ['/letters','/letters/'+sent.thread.id,'/letters/recipient?playerId='+staff.user.id,'/trades/recipient?playerId='+admin.user.id])publicOnly((await h.api(path,{token:viewer.token})).data);
-  const id='ach_'+crypto.randomUUID().replaceAll('-',''),title='駿府城の水田 Lv.3の共同普請を達成',detail='全スタッフの共同拠点へ成長が反映されました。';
+  const id='ach_'+crypto.randomUUID().replaceAll('-',''),title='京都御所城の水田 Lv.3の共同普請を達成',detail='全スタッフの共同拠点へ成長が反映されました。';
   h.sql.prepare('INSERT INTO achievement_events(id,user_id,event_key,kind,target_id,target_name,value,title,detail,occurred_at) VALUES(?,?,?,?,?,?,?,?,?,?)').run(id,staff.user.id,'identity-legacy-build','staff-building','farm','水田',3,title,detail,h.now);
   const before=h.sql.prepare('SELECT * FROM achievement_events WHERE id=?').get(id),feed=(await h.api('/achievements')).data,event=feed.events.find(item=>item.id===id);
   publicOnly(feed);assert.equal(event.kind,'building');assert.equal(event.clan,'徳川家');assert(!event.title.includes('共同'));assert(!event.detail.includes('スタッフ'));

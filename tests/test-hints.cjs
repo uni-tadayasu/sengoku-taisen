@@ -45,7 +45,7 @@ function developed(game = make()) {
 function staff({keep = 2, castleLevel = 1, jobs = []} = {}) {
   const game = rich(make({isStaff: true}));
   const buildings = {...game.state.buildings, keep};
-  assert.equal(game.applyStaffBase({id: 'sunpu', revision: 1, castleLevel,
+  assert.equal(game.applyStaffBase({id: 'kyoto_gosho', revision: 1, castleLevel,
     buildings, initial: {buildings: {...buildings}, castleLevel}, history: [], jobs,
     createdElapsedMs: 0, updatedElapsedMs: 0, accessSinceElapsedMs: 0, clanSinceElapsedMs: 0}).ok, true);
   return game;
@@ -370,16 +370,16 @@ test('home-castle recommendations stop at the real ordinary, metropolitan and op
   }
 });
 
-test('staff Sunpu guidance counts shared construction slots separately and caps its castle at 64', () => {
-  const game = staff({castleLevel: 63});
+test('staff Kyoto Gosho guidance counts shared construction slots separately and caps its castle at 128', () => {
+  const game = staff({castleLevel: 127});
   game.state.jobs = ['farm', 'market'].map(id => ({kind: 'building', id, targetLevel: 3,
     remaining: 1, total: 1, remainingSeconds: 60, totalSeconds: 60}));
-  assert(has(build(game), 'castle:sunpu'), 'personal pre-appointment jobs do not fill shared slots');
+  assert(has(build(game), 'castle:kyoto_gosho'), 'personal pre-appointment jobs do not fill shared slots');
   const jobs = ['farm', 'market'].map((id, i) => ({jobId: 'shared-' + i, kind: 'building', id,
     targetLevel: 3, totalSeconds: 60, startedElapsedMs: 0, completesElapsedMs: 60000}));
-  const full = staff({castleLevel: 63, jobs});
-  assert.equal(has(build(full), 'castle:sunpu'), false);
-  assert.equal(has(build(staff({castleLevel: 64})), 'castle:sunpu'), false);
+  const full = staff({castleLevel: 127, jobs});
+  assert.equal(has(build(full), 'castle:kyoto_gosho'), false);
+  assert.equal(has(build(staff({castleLevel: 128})), 'castle:kyoto_gosho'), false);
 });
 
 test('training respects morale and reserves, and an optimized governor plan stops prompting reassignment', () => {
@@ -409,7 +409,7 @@ test('battle advice is an affordable adjacent preview with reserves, a real prob
   const result = build(game), battle = result.items.find(item => item.id.startsWith('battle:'));
   assert(battle);
   assert(game.adjacentTargets().some(castle => castle.id === battle.action.id));
-  assert(!['edo', 'sunpu'].includes(battle.action.id));
+  assert(!['edo', 'kyoto_gosho'].includes(battle.action.id));
   assert(Number.isSafeInteger(battle.troops) && battle.troops >= 300);
   assert(game.state.troops - battle.troops >= Math.max(300, Math.ceil(game.state.troops * .2)));
   const preview = game.previewBattle(battle.action.id, 'balanced', battle.troops);

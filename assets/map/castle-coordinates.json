@@ -393,6 +393,22 @@
     "retrievedAt": "2026-11-21"
   },
   {
+    "id": "kyoto_gosho",
+    "name": "京都御所",
+    "lat": 35.024098,
+    "lon": 135.762144,
+    "accuracy": "京都御所の公開代表点。施設・地点データによる位置で、測量中心ではない。",
+    "sourceURL": "https://geoshape.ex.nii.ac.jp/nrct-poi/resource/27/270000202000.html",
+    "sourceTitle": "京都御所 [270000202000]",
+    "sourceOrganization": "人文学オープンデータ共同利用センター（CODH）",
+    "sourceType": "codh-poi",
+    "coordinateBasis": "published-representative-point",
+    "license": "CC BY 4.0",
+    "attribution": "『日本歴史地名大系』施設・地点項目データセット（CODH作成） doi:10.20676/00000456",
+    "retrievedAt": "2026-11-22",
+    "note": "京都市上京区京都御苑。二条御所の旧二条城跡とは別の施設。"
+  },
+  {
     "id": "akutagawa",
     "name": "芥川山城",
     "lat": 34.881,

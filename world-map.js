@@ -57,8 +57,8 @@ function castlePoints(castles,coordinates,options={}){
     const lon=Number(Array.isArray(source)?source[0]:source.lon??source.lng??source.longitude),lat=Number(Array.isArray(source)?source[1]:source.lat??source.latitude);
     if(!Number.isFinite(lon)||!Number.isFinite(lat)||lon<120||lon>151||lat<20||lat>48)return[];
     const [x,y]=project(lon,lat),own=castle.owner===options.clan,ally=(options.treaties?.[castle.owner]||0)>(options.turn||0);
-    const restrictedLabel=['edo','sunpu'].includes(castle.id)?'選択不可':'';
-    const restricted=castle.id==='edo'&&options.isAdmin!==true||castle.id==='sunpu'&&(options.isStaff!==true||options.isAdmin===true);
+    const restrictedLabel=['edo',global.SENGOKU_DATA?.staffBaseId||'kyoto_gosho'].includes(castle.id)?'選択不可':'';
+    const restricted=castle.id==='edo'&&options.isAdmin!==true||castle.id===(global.SENGOKU_DATA?.staffBaseId||'kyoto_gosho')&&(options.isStaff!==true||options.isAdmin===true);
     return[{...castle,lon,lat,x,y,own,ally,selected:castle.id===options.selectedId,home:castle.id===options.homeId,restrictedLabel,disabled:castle.disabled===true||restricted&&options.allowRestrictedSelection!==true,accuracy:source.accuracy||castle.accuracy||'',sourceURL:source.sourceURL||source.sourceUrl||''}];
   });
 }
@@ -95,6 +95,10 @@ function layoutMarkers(points,view,width,height,{distance=27,labels=true,markerS
     if(box){marker.label={x:box.x-marker.sx,y:box.y-marker.sy,width:box.width,height:box.height};occupied.push(box);}
   }
   return markers;
+}
+function layoutBranches(markers,branches,{distance=84}={}){
+  const vectors={north:[0,-1,90],east:[1,0,180],south:[0,1,270],west:[-1,0,0]},parents=new Map(markers.filter(marker=>!marker.cluster).map(marker=>[marker.id,marker])),seen=new Set(),offset=Math.max(64,Math.min(120,Number(distance)||84));
+  return(Array.isArray(branches)?branches:[]).flatMap(branch=>{const parent=parents.get(branch.parentCastleId),vector=vectors[branch.direction];if(!parent||!vector||typeof branch.id!=='string'||seen.has(branch.id)||!['edo','nijo','osaka','nagoya'].includes(branch.parentCastleId))return[];seen.add(branch.id);return[{id:'branch:'+branch.id,key:'branch:'+branch.id,branchId:branch.id,branch:true,parentCastleId:branch.parentCastleId,direction:branch.direction,name:String(branch.name||'支拠点'),level:Math.max(0,Number(branch.level)||0),fallen:branch.fallen===true,building:branch.building===true,own:parent.own,ally:parent.ally,disabled:parent.disabled,restrictedLabel:parent.restrictedLabel,reachable:false,cluster:false,home:false,selected:false,priority:parent.priority-1,sx:parent.sx+vector[0]*offset,sy:parent.sy+vector[1]*offset,branchDistance:offset,branchAngle:vector[2]}];});
 }
 function scaleForView(view,pixels){
   const [,lat]=unproject(view.x+view.width/2,view.y+view.height/2),metersPerPixel=view.width/Math.max(1,pixels)/100*EARTH*RAD*Math.cos(lat*RAD);
@@ -174,6 +178,7 @@ function mount(container,options={}){
     let crest='';if(!marker.cluster&&typeof opts.crestFor==='function'){const url=safeUrl(opts.crestFor(marker.owner));if(url)crest=`<img class="sg-map-tooltip-crest" src="${esc(url)}" alt="">`;}
     let custom=null;try{if(!marker.cluster&&typeof opts.markerTooltip==='function')custom=opts.markerTooltip(marker);}catch(_){}
     if(custom&&typeof custom==='object')tooltip.innerHTML=`<strong>${esc(custom.title||marker.name)}</strong>${custom.description?`<p>${esc(custom.description)}</p>`:''}${custom.detail?`<small>${esc(custom.detail)}</small>`:''}`;
+    else if(marker.branch)tooltip.innerHTML=`<strong>${esc(marker.name)}</strong><p>Lv.${Number(marker.level)||0} · ${marker.fallen?'陥落':marker.building?'普請中':'防衛中'}</p><small>本城の方位を示す配置です。史実の所在地・距離ではありません。</small>`;
     else tooltip.innerHTML=marker.cluster?`<strong>${marker.points.length}${esc(opts.countUnit||'城')}がこの地域にあります</strong><p>${esc(marker.points.slice(0,5).map(p=>p.name).join('・'))}${marker.points.length>5?' ほか':''}</p><small>クリック・タップで拡大</small>`:`<div class="sg-map-tooltip-heading">${crest}<div><strong>${esc(marker.name)}</strong><p>${esc(marker.owner==='德川家'?'徳川家':marker.owner||'')} · Lv.${Number(marker.level)||1}${marker.disabled?' · '+esc(marker.restrictedLabel):''}</p></div></div><small>${Number(marker.troops||0).toLocaleString('ja-JP')}兵 · ${marker.lat.toFixed(4)}°N ${marker.lon.toFixed(4)}°E</small>`;
     tooltip.hidden=false;const box=tooltip.getBoundingClientRect(),surfaceBounds=surface.getBoundingClientRect(),sx=width/Math.max(1,surfaceBounds.width),sy=height/Math.max(1,surfaceBounds.height),x=clamp(marker.sx+16,8,Math.max(8,width-box.width*sx-8)),y=clamp(marker.sy+24,64,Math.max(64,height-box.height*sy-70));tooltip.style.left=x+'px';tooltip.style.top=y+'px';
   }
@@ -181,19 +186,21 @@ function mount(container,options={}){
     if(!marker||destroyed)return;
     if(marker.cluster){hideTooltip();setView(fitBounds(marker.bounds,width,height,100),{animate:true});return;}
     if(marker.disabled){container.querySelector('[data-map-live]').textContent=marker.name+'は'+(marker.restrictedLabel||'専用拠点')+'です。';return;}
+    if(marker.branch){opts.onBranchSelect?.(marker.parentCastleId,marker.branchId);return;}
     opts.selectedId=marker.id;opts.onSelect?.(marker.id);
     if(!destroyed){points=castlePoints(opts.castles,coordinates(),opts);schedule();}
   }
   function renderMarkers(){
     const active=opts.region==='all'?points:points.filter(p=>p.region===opts.region||p.selected||p.home);
     const markerSize=Math.max(20,Math.min(80,Number(opts.markerSize)||20));
-    const layout=layoutMarkers(active,view,width,height,{labels,markerSize,distance:baseView.width/view.width>38?0:Math.max(27,markerSize+4)}),keys=new Set();
+    const layout=layoutMarkers(active,view,width,height,{labels,markerSize,distance:baseView.width/view.width>38?0:Math.max(27,markerSize+4)}),keys=new Set();layout.push(...layoutBranches(layout,opts.branches,{distance:markerSize+28}));
     for(const marker of layout){
       keys.add(marker.key);let entry=markersByKey.get(marker.key);
       if(!entry){const button=global.document.createElement('button');button.type='button';button.className='sg-map-marker';button.dataset.mapMarker=marker.key;button.innerHTML='<span class="sg-map-marker-symbol"></span><span class="sg-map-marker-label"></span>';markerLayer.appendChild(button);entry={node:button,marker};markersByKey.set(marker.key,entry);}
       entry.marker=marker;const button=entry.node,symbol=button.firstElementChild,label=button.lastElementChild;
       button.style.left=marker.sx+'px';button.style.top=marker.sy+'px';button.style.zIndex=String(marker.priority);
       button.className='sg-map-marker '+(marker.cluster?'is-cluster ':'')+(marker.own?'is-own ':marker.ally?'is-ally ':'is-other ')+(marker.reachable?'is-reachable ':'')+(marker.selected?'is-selected ':'')+(marker.home?'is-home ':'')+(marker.disabled?'is-disabled':'');
+      if(marker.branch){button.className+=' is-branch';button.style.setProperty('--branch-distance',marker.branchDistance+'px');button.style.setProperty('--branch-link-angle',marker.branchAngle+'deg');}
       const presentation=markerPresentation(marker,opts);if(presentation.custom)button.className+=' has-custom-art';
       button.disabled=Boolean(marker.disabled);button.setAttribute('aria-label',presentation.label);
       if(!marker.cluster)button.setAttribute('aria-pressed',String(marker.selected));else button.removeAttribute('aria-pressed');
@@ -290,7 +297,7 @@ function mount(container,options={}){
   if(stored&&stored.region!==opts.region)lastView=null;
   resize();return controller;
 }
-const api={mount,project,unproject,projectBounds,geometryPath,fitBounds,zoomAt,castlePoints,layoutMarkers,markerPresentation,scaleForView};
+const api={mount,project,unproject,projectBounds,geometryPath,fitBounds,zoomAt,castlePoints,layoutMarkers,layoutBranches,markerPresentation,scaleForView};
 if(typeof module!=='undefined'&&module.exports)module.exports=api;
 global.SengokuWorldMap=api;
 })(typeof window!=='undefined'?window:globalThis);

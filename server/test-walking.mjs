@@ -17,7 +17,7 @@ const claimBody=(p,session,more={})=>({deviceId:p.deviceId,expectedRevision:row(
 const claim=(p,body,expected=200)=>api('/walking/claim',post(p,body,expected));
 async function fixture(name,{legacy=false}={}){
  h.resetRates();const p=await h.session(name);p.deviceId='device-'+p.user.id;const l=await lease(p);
- const g=new GameEngine({clan:'織田家',officers:GAME_OFFICERS,seed:7});g.applyWorldClock((await api('/world-clock')).data.clock);const save=JSON.parse(g.exportSave());if(legacy)delete save.state.walking;
+ const g=new GameEngine({clan:'織田家',officers:GAME_OFFICERS,seed:7});g.applyWorldClock((await api('/world-clock')).data.clock);const save=JSON.parse(g.exportSave());if(legacy){delete save.state.walking;delete save.state.roaming;delete save.state.covert;}
  await api('/sync',{method:'PUT',token:p.token,body:{deviceId:p.deviceId,revision:l.revision,save}});return p;
 }
 function paid(before,after,steps){for(const k of ['gold','rice','wood','stone'])assert.equal(after.resources[k],Math.min(999999999,before.resources[k]+steps*2),k);assert.equal(after.magatama,Math.min(999999999,before.magatama+steps*2));assert.equal(after.revision,before.revision+(steps>0?1:0));}
@@ -132,7 +132,7 @@ try{
 
  const operator=await fixture('歩く運営');await api('/admin/claim',post(operator,{key:h.env.SENGOKU_ADMIN_KEY}));await api('/sync',{token:operator.token});
  const staff=await fixture('歩くスタッフ');await api('/admin/staff',post(operator,{targetPlayerId:staff.user.id,action:'appoint',requestId:crypto.randomUUID()}));await api('/sync',{token:staff.token});
- for(const [lord,home,isAdmin] of [[operator,'edo',true],[staff,'sunpu',false]]){const started=(await start(lord)).data,ws=started.walkingSession,before=balances(lord),protectedState=started.save.state;h.now+=5000;const result=(await claim(lord,claimBody(lord,ws,{totalSteps:10,activeMs:5000}))).data;paid(before,balances(lord),10);assert.equal(result.save.state.home,home);assert.equal(result.save.state.clan,'德川家');assert.deepEqual(result.save.state.officerVariants,protectedState.officerVariants);assert.equal(result.save.state.officerVariants.includes('of_b0616adde162:U'),isAdmin);assert.deepEqual(result.save.state.castles,protectedState.castles);}
+ for(const [lord,home,isAdmin] of [[operator,'edo',true],[staff,'kyoto_gosho',false]]){const started=(await start(lord)).data,ws=started.walkingSession,before=balances(lord),protectedState=started.save.state;h.now+=5000;const result=(await claim(lord,claimBody(lord,ws,{totalSteps:10,activeMs:5000}))).data;paid(before,balances(lord),10);assert.equal(result.save.state.home,home);assert.equal(result.save.state.clan,'德川家');assert.deepEqual(result.save.state.officerVariants,protectedState.officerVariants);assert.equal(result.save.state.officerVariants.includes('of_b0616adde162:U'),isAdmin);assert.deepEqual(result.save.state.castles,protectedState.castles);}
  checks.push('operator and staff receive the same reward without changing protected homes or officer entitlements');
  console.log(JSON.stringify({ok:true,calls:h.calls,checks},null,2));
 }finally{h.close();}

@@ -1,4 +1,4 @@
-/* 戦国VS：8,192点の原画を、表示するセルだけ遅延読込する。 */
+/* 戦国VS：8,224点の原画を、表示するセルだけ遅延読込する。 */
 (function(global){
 'use strict';
 const ranks=['D','C','B','A','S','SS','SSS','U'];
@@ -38,7 +38,7 @@ function tileInfo(kind,id,variant){
   const cell=o.index%32;return{url:`assets/illustrations/officers-${rank}-${String(Math.floor(o.index/32)+1).padStart(2,'0')}.webp`,x:(cell%8)/7*100,y:Math.floor(cell/8)/3*100,name:o.name==='德川家康'?'徳川家康':o.name,rank};
  }
  const item=(kind==='castle'?castles:facilities).get(id);if(!item)return null;
- const limit=kind!=='castle'?32:['edo','sunpu'].includes(id)?64:(data.majorCityIds||['edo','sunpu','nijo','osaka','nagoya']).includes(id)?48:32;
+ const limit=kind!=='castle'?32:id==='kyoto_gosho'?128:id==='edo'?64:(data.majorCityIds||['edo','kyoto_gosho','nijo','osaka','nagoya']).includes(id)?48:32;
  const level=Math.max(1,Math.min(limit,Math.round(Number(variant)||1))),artLevel=Math.min(32,level),cell=artLevel-1;
  return{url:`assets/${kind==='castle'?'castles':'facilities'}/${id}.webp${kind==='facility'?'?v='+facilityArtRevision:''}`,x:(cell%8)/7*100,y:Math.floor(cell/8)/3*100,name:item.name,level,artLevel,finalStage:level>32,portraitCell:kind==='facility'&&portraitFacilities.has(id)};
 }
@@ -61,7 +61,7 @@ async function reveal(el){
  finally{if(paintRequests.get(el)===request){paintRequests.delete(el);delete el.dataset.artLoading;}}
 }
 
-const backgrounds={town:['facility','keep'],map:['castle','kiyosu'],field:['castle','kiyosu'],officers:['officer',roster[0]?.id,'S'],army:['facility','barracks'],roaming:['facility','barracks'],trade:['facility','trade_port'],research:['facility','academy'],council:['facility','envoy_house'],facilities:['facility','market'],gacha:['officer',roster[1]?.id,'U'],settings:['facility','library'],save:['facility','library'],music:['facility','tea_house'],mail:['facility','relay_station']};
+const backgrounds={court:['castle','kyoto_gosho'],town:['facility','keep'],map:['castle','kiyosu'],field:['castle','kiyosu'],officers:['officer',roster[0]?.id,'S'],army:['facility','barracks'],roaming:['facility','barracks'],trade:['facility','trade_port'],research:['facility','academy'],council:['facility','envoy_house'],facilities:['facility','market'],gacha:['officer',roster[1]?.id,'U'],settings:['facility','library'],save:['facility','library'],music:['facility','tea_house'],mail:['facility','relay_station']};
 const buttonSelector='button,[role="button"],[role="tab"],[role="switch"],input[type="button"],input[type="submit"],input[type="reset"],summary,a.button,a.action-link,a.nav-play,.decision-list a';
 function buttonArtwork(el){
  if(el.dataset.buttonArtEnhanced)return;
@@ -105,6 +105,6 @@ function schedule(){if(scheduled)return;scheduled=true;requestAnimationFrame(dec
 function currentAssets(){const h=innerHeight,w=innerWidth;return [...new Set(Array.from(document.querySelectorAll('[data-art-url],[data-ghost-url]')).filter(el=>{const r=el.getBoundingClientRect();return r.bottom>0&&r.top<h+180&&r.right>0&&r.left<w&&r.width>0;}).map(el=>el.dataset.artUrl||el.dataset.ghostUrl))];}
 async function readyCurrent(onProgress){decorate();const urls=currentAssets();let done=0;await Promise.allSettled(urls.map(url=>load(url).finally(()=>onProgress?.(++done,urls.length))));document.querySelectorAll('[data-art-url],[data-ghost-url]').forEach(el=>{if(urls.includes(el.dataset.artUrl||el.dataset.ghostUrl))reveal(el);});}
 function init(){if('IntersectionObserver'in global)observer=new IntersectionObserver(entries=>entries.forEach(entry=>{if(entry.isIntersecting){reveal(entry.target);observer.unobserve(entry.target);}}),{rootMargin:'180px'});new MutationObserver(schedule).observe(document.body,{childList:true,subtree:true});decorate();}
-global.SengokuArt={portrait,castle:(id,c='',level=1)=>tile('castle',id,c,level),facility:(id,c='',level=1)=>tile('facility',id,c,level),icon,tileInfo,load,readyCurrent,decorate,schedule,totalIllustrations:8192};
+global.SengokuArt={portrait,castle:(id,c='',level=1)=>tile('castle',id,c,level),facility:(id,c='',level=1)=>tile('facility',id,c,level),icon,tileInfo,load,readyCurrent,decorate,schedule,totalIllustrations:8224};
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init,{once:true});else init();
 })(window);

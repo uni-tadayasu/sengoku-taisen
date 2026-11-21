@@ -30,7 +30,7 @@ function harness(game=create()){
     batches.push({options,points,rendered:new Map(points.map(point=>[point.id,{...M.markerPresentation(point,options),tooltip:options.markerTooltip(point)}]))});
   }
   const controller={camera,update(options){counts.updates++;draw(options);},destroy(){counts.destroys++;}};
-  const c={game,data:D,state:()=>c.game.state,currentView:'map',selectedCastle:game.state.home,mapRegion:'all',worldMapController:null,worldMapElement:null,
+  const c={game,data:D,staffBaseId:D.staffBaseId,state:()=>c.game.state,currentView:'map',selectedCastle:game.state.home,mapRegion:'all',worldMapController:null,worldMapElement:null,
     window:{SengokuArt:art,SengokuWorldMap:{mount(container,options){assert.equal(container,map);counts.mounts++;draw(options);return controller;}}},
     $:selector=>selector==='#world-map'?map:{},preserveInteraction:(_node,render)=>render(),render(){counts.renders++;},save(){assert.fail('Map rendering must not save game data');}};
   vm.createContext(c);vm.runInContext(['campaignCastleAppearance','campaignCastleTooltip','syncWorldMap'].map(fn).join('\n'),c);
@@ -48,7 +48,7 @@ let checks=0;
 function test(name,run){run();checks++;console.log('PASS '+name);}
 
 test('campaign mount supplies all castles, castle levels, home badges and accessible battle context without changing saves',()=>{
-  const h=harness(),s=h.c.game.state,batch=h.sync();assert.equal(batch.options.markerSize,56);assert.equal(batch.points.length,128);
+  const h=harness(),s=h.c.game.state,batch=h.sync();assert.equal(batch.options.markerSize,56);assert.equal(batch.points.length,129);
   assert.equal(h.counts.mounts,1);assert.equal(s.army.length,3);assert(s.governors.keep);
   const home=h.appearance(s.home);assert(home.custom);assert(home.html.includes('class="campaign-map-castle-art"')||home.html.includes(' campaign-map-castle-art"'));
   assert(home.html.includes('data-castle-level="1"'));assert(home.html.includes('data-castle-expanded="false"'));assert(home.html.includes('campaign-map-home-mark'));
@@ -58,7 +58,7 @@ test('campaign mount supplies all castles, castle levels, home badges and access
   assert.equal(enemy.tooltip.title,target.name);assert(enemy.tooltip.description.includes('城郭 Lv.'+target.level));
   assert(enemy.tooltip.detail.includes(target.troops.toLocaleString('ja-JP')+'兵'));
   assert(enemy.tooltip.detail.includes(point.lat.toFixed(4)+'°N '+point.lon.toFixed(4)+'°E'));
-  for(const id of ['edo','sunpu']){assert(h.appearance(id).label.includes('選択不可'));assert(!/運営|スタッフ/.test(h.appearance(id).label));assert(batch.points.find(point=>point.id===id).disabled);}
+  for(const id of ['edo','kyoto_gosho']){assert(h.appearance(id).label.includes('選択不可'));assert(!/運営|スタッフ/.test(h.appearance(id).label));assert(batch.points.find(point=>point.id===id).disabled);}
 });
 
 test('real castle construction keeps the current cell until completion and updates it through the existing controller',()=>{
@@ -87,14 +87,14 @@ test('a validated replacement save refreshes castle art while retaining the map 
   assert.equal(h.c.selectedCastle,selection);assert.deepEqual(h.controller.camera,camera);assert.equal(h.counts.mounts,1);assert.equal(h.counts.updates,1);
 });
 
-test('all 32 cells and the actual 48/64 levels use the canonical artwork cap without modifying marker input',()=>{
+test('all 32 cells and the actual 48/64/128 levels use the canonical artwork cap without modifying marker input',()=>{
   const h=harness(),cells=new Set();
   for(let level=1;level<=32;level++){
     const marker=Object.freeze({id:'kiyosu',name:'清洲城',owner:'織田家',level}),before=JSON.stringify(marker),result=h.c.campaignCastleAppearance(marker);
     cells.add(tilePosition(result.html).join(','));assert(result.html.includes(`data-castle-level="${level}"`));assert.equal(JSON.stringify(marker),before);
   }
   assert.equal(cells.size,32);
-  for(const [id,limit]of [['nijo',48],['osaka',48],['nagoya',48],['edo',64],['sunpu',64]]){
+  for(const [id,limit]of [['nijo',48],['osaka',48],['nagoya',48],['edo',64],['kyoto_gosho',128]]){
     for(const level of [33,limit]){
       const marker=Object.freeze({id,name:id,level}),result=h.c.campaignCastleAppearance(marker),last=art.tileInfo('castle',id,32);
       assert(result.html.includes(`data-castle-level="${level}"`));assert(result.html.includes(`>Lv.${level}</span>`));assert(result.html.includes('data-castle-expanded="true"'));
@@ -105,17 +105,17 @@ test('all 32 cells and the actual 48/64 levels use the canonical artwork cap wit
   assert(h.c.campaignCastleAppearance(Object.freeze({id:'kiyosu',level:999})).html.includes('data-castle-level="32"'));
 });
 
-test('staff campaign art follows the shared Sunpu castle projection and preserves the private durable save',()=>{
-  const personal=create(),s=personal.state,buildings={...s.buildings,keep:8},base={id:'sunpu',revision:1,accessSinceElapsedMs:0,updatedElapsedMs:0,castleLevel:64,buildings,initial:{buildings:plain(buildings),castleLevel:64},history:[],jobs:[],personalClan:s.clan,personalHome:s.home,personalCycleHome:s.cycle.home,personalSunpu:plain(s.castles.sunpu),personalHomeCastle:plain(s.castles[s.home])};
-  const staff=E.fromSave(personal.exportSave(),roster,{isStaff:true,staffBase:base});assert(staff);assert.equal(staff.castle('sunpu').level,64);
-  const saved=savedState(staff),h=harness(staff);h.sync();assert(h.appearance('sunpu').html.includes('data-castle-level="64"'));assert(h.appearance('sunpu').html.includes('campaign-map-home-mark'));
-  assert(h.appearance('sunpu').label.includes('本拠'));assert.equal(savedState(staff),saved);assert.equal(JSON.parse(saved).state.buildings.keep,s.buildings.keep);
+test('staff campaign art follows the shared Kyoto palace castle projection and preserves the private durable save',()=>{
+  const personal=create(),s=personal.state,buildings={...s.buildings,keep:8},base={id:'kyoto_gosho',revision:1,accessSinceElapsedMs:0,updatedElapsedMs:0,castleLevel:128,buildings,initial:{buildings:plain(buildings),castleLevel:128},history:[],jobs:[],personalClan:s.clan,personalHome:s.home,personalCycleHome:s.cycle.home,personalBaseCastle:plain(s.castles.kyoto_gosho),personalHomeCastle:plain(s.castles[s.home])};
+  const staff=E.fromSave(personal.exportSave(),roster,{isStaff:true,staffBase:base});assert(staff);assert.equal(staff.castle('kyoto_gosho').level,128);
+  const saved=savedState(staff),h=harness(staff);h.sync();assert(h.appearance('kyoto_gosho').html.includes('data-castle-level="128"'));assert(h.appearance('kyoto_gosho').html.includes('campaign-map-home-mark'));
+  assert(h.appearance('kyoto_gosho').label.includes('本拠'));assert.equal(savedState(staff),saved);assert.equal(JSON.parse(saved).state.buildings.keep,s.buildings.keep);
 });
 
 test('clusters and unavailable artwork retain normal map symbols, castle coverage and tooltips',()=>{
   const h=harness(),batch=h.sync(),bounds=M.projectBounds(geography.bounds),view=M.fitBounds(bounds,800,500,28);
   const layout=M.layoutMarkers(batch.points,view,800,500,{markerSize:batch.options.markerSize,distance:60}),cluster=layout.find(marker=>marker.cluster);assert(cluster);
-  assert.equal(layout.flatMap(marker=>marker.points).length,128);
+  assert.equal(layout.flatMap(marker=>marker.points).length,129);
   const clustered=M.markerPresentation(cluster,batch.options);assert.equal(clustered.custom,false);assert.equal(clustered.html,`<b>${cluster.points.length}</b>`);
   assert.equal(h.c.campaignCastleAppearance(cluster),null);assert.equal(h.c.campaignCastleAppearance({id:'missing',level:5}),null);
   const home=batch.points.find(point=>point.home);h.c.window.SengokuArt=undefined;
@@ -126,7 +126,7 @@ test('clusters and unavailable artwork retain normal map symbols, castle coverag
 });
 
 test('artwork leaves restricted selection, ordinary selection and controller cleanup unchanged',()=>{
-  const h=harness(),batch=h.sync(),selected=h.c.selectedCastle;batch.options.onSelect('edo');batch.options.onSelect('sunpu');
+  const h=harness(),batch=h.sync(),selected=h.c.selectedCastle;batch.options.onSelect('edo');batch.options.onSelect('kyoto_gosho');
   assert.equal(h.c.selectedCastle,selected);assert.equal(h.counts.renders,0);
   const target=h.c.game.adjacentTargets()[0];batch.options.onSelect(target.id);assert.equal(h.c.selectedCastle,target.id);assert.equal(h.counts.renders,1);
   h.c.currentView='town';h.c.syncWorldMap();assert.equal(h.counts.destroys,1);assert.equal(h.c.worldMapController,null);assert.equal(h.c.worldMapElement,null);

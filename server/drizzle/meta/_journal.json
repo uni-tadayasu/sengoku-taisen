@@ -134,6 +134,20 @@
       "when": 1796688000000,
       "tag": "0018_guild_icons",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "6",
+      "when": 1796774400000,
+      "tag": "0019_kyoto_gosho_court",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "6",
+      "when": 1796860800000,
+      "tag": "0020_branch_states",
+      "breakpoints": true
     }
   ]
 }

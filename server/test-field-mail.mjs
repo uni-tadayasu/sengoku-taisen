@@ -95,11 +95,11 @@ await scope('operator mail cannot impersonate the reserved system source and ret
   await h.api('/admin/mail',post(recipient,{...body,requestId:'user-cannot-send'},403));assert.equal(count(h,'mail_campaigns'),1);
 });
 
-await scope('Sunpu notice is private to the attacked staff member and does not modify protected progress',async h=>{
-  const operator=await fixture(h,'駿府通知の運営',{admin:true}),staff=await fixture(h,'駿府通知のスタッフ'),otherStaff=await fixture(h,'別の駿府スタッフ'),actor=await fixture(h,'駿府通知の攻撃');
+await scope('Kyoto palace notice is private to the attacked staff member and does not modify protected progress',async h=>{
+  const operator=await fixture(h,'京都御所通知の運営',{admin:true}),staff=await fixture(h,'京都御所通知のスタッフ'),otherStaff=await fixture(h,'別の京都御所スタッフ'),actor=await fixture(h,'京都御所通知の攻撃');
   for(const p of [staff,otherStaff]){await h.api('/admin/staff',post(operator,{targetPlayerId:p.user.id,action:'appoint',requestId:crypto.randomUUID()}));await h.api('/sync?deviceId='+p.deviceId,{token:p.token});}
-  const before=row(h,staff),other=row(h,otherStaff),shared=h.sql.prepare("SELECT * FROM staff_base WHERE id='sunpu'").get();
-  const result=await outcome(true,()=>attack(h,actor,request(h,actor,staff,'sunpu')));assert.equal(result.battle.battleMode,'reward');assert.deepEqual(row(h,staff),before);assert.deepEqual(row(h,otherStaff),other);assert.deepEqual(h.sql.prepare("SELECT * FROM staff_base WHERE id='sunpu'").get(),shared);
+  const before=row(h,staff),other=row(h,otherStaff),shared=h.sql.prepare("SELECT * FROM staff_base WHERE id='kyoto_gosho'").get();
+  const result=await outcome(true,()=>attack(h,actor,request(h,actor,staff,'kyoto_gosho')));assert.equal(result.battle.battleMode,'reward');assert.deepEqual(row(h,staff),before);assert.deepEqual(row(h,otherStaff),other);assert.deepEqual(h.sql.prepare("SELECT * FROM staff_base WHERE id='kyoto_gosho'").get(),shared);
   assert.equal((await inbox(h,staff)).length,1);assert.equal((await inbox(h,otherStaff)).length,0);assert.equal((await inbox(h,operator)).length,0);assert((await inbox(h,staff))[0].body.includes('通常の時刻進行・共同普請は継続'));
 });
 

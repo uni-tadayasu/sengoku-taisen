@@ -24,7 +24,7 @@ function harness({linked=false,pending=false,game=new E({officers:roster,seed:17
   const nodes=Object.fromEntries(names.map(name=>[name,new Node()]));
   const dialog=nodes.modal;dialog.open=false;dialog.showModal=()=>{dialog.open=true;};dialog.close=()=>{dialog.open=false;};dialog.classList={toggle(name,on){if(on)classes.add(name);else classes.delete(name);}};
   const buttons=()=>Object.values(nodes).flatMap(node=>node.buttons);
-  const c={game,roster,data:D,SengokuEngine:E,state:()=>c.game.state,console,Date,Number,String,JSON,Math,Set,
+  const c={game,roster,staffBaseId:'kyoto_gosho',data:D,SengokuEngine:E,state:()=>c.game.state,console,Date,Number,String,JSON,Math,Set,
     syncAccess:{linked,ready:!linked,writable:!linked,rolePending:pending},evaluationOwnerId:'',startPending:false,activeModal:'',activeModalContext:null,gachaPresentation:null,settings:{sound:false},worldCatchingUp:false,renderedSyncBanner:'',lastRealtime:0,saveCounter:0,saveKey:'save',saveEnabled:true,saveWarning:'',staffBaseReady:false,pendingRoleSave:null,selectedCastle:'',importedGame:null,
     document:{addEventListener:(name,handler)=>handlers.set(name,handler),querySelectorAll:selector=>selector==='[data-player-evaluation-self]'?buttons().filter(node=>node.attrs.has('data-player-evaluation-self')):selector==='[data-action]'?buttons():[]},
     $:selector=>selector==='#player-evaluation-ranks'?nodes['modal-content'].details:nodes[selector.slice(1)]||null,
@@ -35,7 +35,7 @@ function harness({linked=false,pending=false,game=new E({officers:roster,seed:17
   };
   vm.createContext(c);
   const declaration=source.slice(source.indexOf('  const mutationActions='),source.indexOf('\n',source.indexOf('  const mutationActions=')));
-  vm.runInContext([declaration,...['patchHTML','date','clanInfo','getEvaluation','evaluationEntryContent','evaluationEntry','evaluationModalKey','refreshEvaluationUI','showEvaluation','modal','closeModal','refreshTouchHeaderStatus','renderHeader','heading','refreshActiveModal','setSyncAccess','applyCloudSave','applyStaffBase','constructionJobs','jobKey','jobDuration','jobClockText','sharedJobAttribution','jobsHtml'].map(fn)].join('\n'),c);
+  vm.runInContext([declaration,...['patchHTML','date','clanInfo','getEvaluation','evaluationEntryContent','evaluationEntry','evaluationModalKey','refreshEvaluationUI','showEvaluation','modal','closeModal','refreshTouchHeaderStatus','renderHeader','heading','refreshActiveModal','setSyncAccess','trustedBranchAuthority','applyBranchAuthority','applyCloudSave','applyStaffBase','constructionJobs','jobKey','jobDuration','jobClockText','sharedJobAttribution','jobsHtml'].map(fn)].join('\n'),c);
   const start=source.indexOf("  document.addEventListener('click',async event=>"),end=source.indexOf("  document.addEventListener('input'",start);vm.runInContext(source.slice(start,end),c);
   function draw(){c.renderHeader();nodes.main.innerHTML=c.heading('城下町','CASTLE TOWN','領国を育てる');}
   async function click(action){const node=buttons().find(node=>node.dataset.action===action);assert(node,action);await handlers.get('click')({target:node});}
@@ -85,7 +85,7 @@ await test('shared construction shows each confirmed actor rank while preserving
   const h=harness(),g=h.c.game,evaluation={version:1,score:60000,maxScore:100000,rankId:'court-11',rankName:'従三位',rankIndex:11};
   h.c.window.SengokuPremiumRuntime=require('../premium-runtime.js');const appearance={ownedProducts:['gold-banner','moonlit-castle','supporter']};
   g.setRoleAccess({isStaff:true});g.state.turn=0;g.state.realtime.elapsed=0;
-  const buildings={...g.state.buildings,farm:5,keep:8},base={id:'sunpu',revision:1,castleLevel:6,buildings,initial:{castleLevel:6,buildings:{...buildings}},history:[],updatedElapsedMs:0,accessSinceElapsedMs:0,jobs:[
+  const buildings={...g.state.buildings,farm:5,keep:8},base={id:'kyoto_gosho',revision:1,castleLevel:6,buildings,initial:{castleLevel:6,buildings:{...buildings}},history:[],updatedElapsedMs:0,accessSinceElapsedMs:0,jobs:[
     {jobId:'shared-a',kind:'building',id:'farm',targetLevel:6,totalSeconds:60,startedElapsedMs:0,completesElapsedMs:60000,startedBy:{id:'PRIVATE-ACTOR-A',name:'<staff>',evaluation,appearance}},
     {jobId:'shared-b',kind:'building',id:'farm',targetLevel:7,totalSeconds:120,startedElapsedMs:60000,completesElapsedMs:180000,startedBy:{id:'PRIVATE-ACTOR-B',name:'担当二',evaluation}}
   ]};

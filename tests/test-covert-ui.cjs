@@ -23,8 +23,8 @@ const tests=[],test=(name,fn)=>tests.push([name,fn]);
 async function hire(h,count=20){h.controller.update('hireInput',count);assert(h.controller.prepare('hire'));assert(await h.controller.submit());return h.controller.snapshot();}
 async function station(h,count=10){await hire(h,count);h.controller.update('targetId',targetKey(h.controller.snapshot().covert.targets.find(t=>t.castleId==='odawara')));h.controller.update('mode','station');h.controller.update('countInput',count);assert(h.controller.prepare('dispatch'));assert(await h.controller.submit());return h.controller.snapshot().stations[0];}
 
-test('owned major-city sources expose exact ninja costs and all 128 destinations',()=>{
- const h=setup(),s=h.controller.snapshot();assert.equal(s.source.castleId,'edo');assert.equal(s.source.unitName,'忍者');assert.deepEqual(s.hirePreview.costs,{gold:30,rice:20,command:1});assert.equal(s.totalTargets,128);assert.equal(s.targets.length,12);assert.equal(s.pages,11);
+test('owned major-city sources expose exact ninja costs and all 129 destinations',()=>{
+ const h=setup(),s=h.controller.snapshot();assert.equal(s.source.castleId,'edo');assert.equal(s.source.unitName,'忍者');assert.deepEqual(s.hirePreview.costs,{gold:30,rice:20,command:1});assert.equal(s.totalTargets,129);assert.equal(s.targets.length,12);assert.equal(s.pages,11);
  const ordinary=setup({game:new E({seed:1})});assert.equal(ordinary.controller.snapshot().source,undefined);const html=markup(ordinary.controller.snapshot());assert.match(html,/大都市拠点の確保が必要/);assert.match(html,/data-view="map"/);assert.doesNotMatch(html,/data-covert-action="prepare-hire"/);assert.doesNotMatch(html,/運営|スタッフ|isAdmin|isStaff/);
  h.game.state.castles.nijo.owner=h.game.state.clan;h.controller.refresh();assert(h.controller.update('sourceId','nijo'));assert.equal(h.controller.snapshot().source.unitName,'足軽');assert.deepEqual(h.controller.snapshot().hirePreview.costs,{gold:10,rice:10,command:1});
 });
@@ -38,7 +38,7 @@ test('recruitment validates amounts, paid costs and capacity before a confirmed 
 test('all destinations remain searchable and selectable through pagination and filters',()=>{
  const h=setup();h.controller.setPage(11);assert(h.controller.snapshot().targets.length>0);const last=h.controller.snapshot().targets.at(-1);assert(h.controller.update('targetId',targetKey(last)));assert.equal(h.controller.snapshot().target.castleId,last.castleId);
  h.controller.update('query','名古屋');assert.equal(h.controller.snapshot().page,1);assert.equal(h.controller.snapshot().targetCount,1);h.controller.update('filter','player');assert.equal(h.controller.snapshot().targetCount,0);assert.match(markup(h.controller.snapshot()),/交流から領主を登録/);
- h.controller.update('query','');h.controller.update('filter','castle');assert.equal(h.controller.snapshot().targetCount,128);h.controller.update('sort','owner');assert.equal(h.controller.snapshot().targetCount,128);
+ h.controller.update('query','');h.controller.update('filter','castle');assert.equal(h.controller.snapshot().targetCount,129);h.controller.update('sort','owner');assert.equal(h.controller.snapshot().targetCount,129);
 });
 
 test('scouting records private intelligence and returns the same reserve',async()=>{
@@ -54,6 +54,14 @@ test('station eligibility honors server stationIds and never enables retroactive
  const h=setup(),st=await station(h,10);h.game.state.command=4;const value=h.game.covertStatus();value.incidents=[{id:'incident-old',sourceCastleId:'edo',kind:'field',occurredElapsedMs:st.createdElapsedMs,available:true,stationIds:['different-station'],expiresElapsedMs:null}];
  h.status={...h.status,linked:true,stamp:'online'};h.loadHook=async()=>({ok:true,covert:value});await h.controller.reload();assert.equal(h.controller.snapshot().stations[0].incidents.length,0);assert.equal(h.controller.prepare('retaliate',{stationId:st.id}),false);
  value.incidents[0].stationIds=[st.id];await h.controller.reload();assert.equal(h.controller.snapshot().stations[0].incidents.length,1);assert(h.controller.prepare('retaliate',{stationId:st.id}));assert.deepEqual(h.controller.snapshot().confirmation.data,{stationId:st.id,incidentId:'incident-old'});
+});
+
+test('Kyoto-origin retaliation at Edo uses the private Emperor capability while scouting and stationing remain available',async()=>{
+ const h=setup(),st=await station(h,10);h.game.state.command=10;const value=h.game.covertStatus(),source=value.sources[0];source.castleId='kyoto_gosho';source.name='京都御所';source.reserve=20;source.unitType='ashigaru';source.unitName='足軽';value.stations[0].sourceCastleId='kyoto_gosho';value.stations[0].target={kind:'player',playerId:'operator',castleId:'edo',name:'江戸城',playerName:'領主'};value.incidents=[{id:'incident-kyoto',sourceCastleId:'kyoto_gosho',kind:'field',occurredElapsedMs:st.createdElapsedMs,available:true,stationIds:[st.id],expiresElapsedMs:null}];value.rules.canAttackEdoFromKyoto=false;
+ h.status={...h.status,linked:true,stamp:'online'};h.loadHook=async()=>({ok:true,covert:value});await h.controller.reload();h.controller.update('sourceId','kyoto_gosho');h.controller.update('targetId',targetKey(value.targets.find(t=>t.castleId==='edo')));h.controller.update('countInput','5');
+ for(const mode of ['scout','station']){h.controller.update('mode',mode);assert(h.controller.prepare('dispatch'));h.controller.cancel();}
+ assert.equal(h.controller.prepare('retaliate',{stationId:st.id}),false);assert.match(h.controller.snapshot().stations[0].retaliatePreview.message,/在任中の天皇だけ/);assert(h.controller.prepare('recall',{stationId:st.id}));h.controller.cancel();
+ value.rules.canAttackEdoFromKyoto=true;await h.controller.reload();assert(h.controller.prepare('retaliate',{stationId:st.id}));h.controller.cancel();value.rules.canAttackEdoFromKyoto=false;value.stations[0].target.castleId='odawara';await h.controller.reload();assert(h.controller.prepare('retaliate',{stationId:st.id}));
 });
 
 test('a lost source disables new hire and dispatch while existing forces can return',async()=>{
@@ -101,7 +109,7 @@ test('account/campaign/dispose changes suppress an old result and keep its owner
 test('registered target pagination drains all pages, deduplicates NPCs and searches later players',async()=>{
  const h=setup({status:{linked:true}}),first=h.game.covertStatus(),second=clone(first),cursors=[];
  first.targets.push({kind:'player',playerId:'lord-b',castleId:'nijo',name:'二条城',playerName:'先の領主'});first.targetCursor='lord-b';second.targets.push({kind:'player',playerId:'lord-c',castleId:'nagoya',name:'名古屋城',playerName:'最後の領主'});second.targetCursor=null;
- h.loadHook=async cursor=>{cursors.push(cursor);return{ok:true,covert:cursor?second:first};};assert.equal(await h.controller.reload(),true);assert.deepEqual(cursors,[undefined,'lord-b']);assert.equal(h.controller.snapshot().totalTargets,130);h.controller.update('query','最後の領主');assert.equal(h.controller.snapshot().targetCount,1);assert.equal(h.controller.snapshot().targets[0].playerId,'lord-c');
+ h.loadHook=async cursor=>{cursors.push(cursor);return{ok:true,covert:cursor?second:first};};assert.equal(await h.controller.reload(),true);assert.deepEqual(cursors,[undefined,'lord-b']);assert.equal(h.controller.snapshot().totalTargets,131);h.controller.update('query','最後の領主');assert.equal(h.controller.snapshot().targetCount,1);assert.equal(h.controller.snapshot().targets[0].playerId,'lord-c');
  const g=setup({game:h.game,status:{linked:true}});g.loadHook=async()=>({ok:true,covert:first});assert.equal(await g.controller.reload(),false);assert.equal(g.controller.snapshot().covert,null);assert.match(g.controller.snapshot().error,/続きを確認/);
 });
 

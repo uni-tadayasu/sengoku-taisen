@@ -53,14 +53,14 @@ test('clustering retains every castle and selected/home positions stay exact',()
   assert(markers.some(m=>m.cluster));
   assert.equal(M.layoutMarkers(points,view,500,500,{distance:0}).length,20);
 });
-test('Sunpu is reserved for staff and shared field selection is independent of attack permission',()=>{
-  const castles=[{id:'sunpu',name:'駿府城',owner:'織田家',level:64}],coords={sunpu:{lon:138.3828,lat:34.9798}};
+test('Kyoto palace is reserved for staff and shared field selection is independent of attack permission',()=>{
+  const castles=[{id:'kyoto_gosho',name:'京都御所',owner:'織田家',level:128}],coords={kyoto_gosho:{lon:135.762144,lat:35.024098}};
   const point=options=>M.castlePoints(castles,coords,options)[0];
   assert.equal(point({}).disabled,true);assert.equal(point({}).restrictedLabel,'選択不可');
   assert.equal(point({isAdmin:true}).disabled,true);assert.equal(point({isStaff:true}).disabled,false);
   assert.equal(point({isStaff:true,isAdmin:true}).disabled,true,'Operator Edo takes precedence over staff flags');
   assert.equal(point({allowRestrictedSelection:true}).disabled,false,'Public field markers remain inspectable');
-  assert.equal(point({isStaff:true}).level,64);
+  assert.equal(point({isStaff:true}).level,128);
 });
 test('dense chains never merge distant provinces into one unbounded cluster',()=>{
   const points=Array.from({length:50},(_,i)=>({id:'chain'+i,name:'城'+i,x:40+i*12,y:200}));
@@ -126,15 +126,15 @@ test('map scale uses latitude-correct ground distance and useful metric units',(
   const expectedPerPixel=6378137*Math.PI/180*Math.cos(36*Math.PI/180)/100;
   near(scale.meters/scale.pixels,expectedPerPixel,1e-7);
 });
-test('the shipped geography provides all 128 actual castle positions and offline terrain',()=>{
+test('the shipped geography provides all 129 actual castle positions and offline terrain',()=>{
   const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),scope={};
   vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../map-data.js'),'utf8'),scope);
   const geography=scope.SENGOKU_GEOGRAPHY,{SENGOKU_DATA:data}=require('../engine.js');
   const points=M.castlePoints(data.castles,geography.castles,{clan:'織田家'});
-  assert.equal(points.length,128);assert.equal(new Set(points.map(p=>p.id)).size,128);assert.equal(geography.prefectures.features.length,47);
+  assert.equal(points.length,129);assert.equal(new Set(points.map(p=>p.id)).size,129);assert.equal(geography.prefectures.features.length,47);
   const coast=M.geometryPath(geography.land);assert(coast.length>10000);assert(!coast.includes('NaN'));assert.equal(geography.terrain.kind,'color');assert(fs.existsSync(path.join(__dirname,'..',geography.terrain.url)));
   const bounds=M.projectBounds(geography.bounds),view=M.fitBounds(bounds,800,400,28),markers=M.layoutMarkers(points,view,800,400);
-  assert.equal(markers.flatMap(m=>m.points).length,128);assert(markers.length>8,'Japan must retain regional detail at its initial overview');
+  assert.equal(markers.flatMap(m=>m.points).length,129);assert(markers.length>8,'Japan must retain regional detail at its initial overview');
   assert(markers.every(m=>m.points.length<32),'no cluster should span most of the country');
 });
 console.log(`${count} real-geography projection, interaction and layout checks passed.`);

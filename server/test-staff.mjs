@@ -83,7 +83,7 @@ try{
   await assign(operator,b,'appoint',appointId,409);await assign(operator,a,'dismiss',appointId,409);
   const staffLease=await lease(a.token,'staff-device');assert.equal(staffLease.user.isStaff,true);assert.deepEqual(staffLease.entitlements,{edo:false,ieyasuU:false});
   const saved=(await api('/sync',write(a.token,'staff-device',0,fresh()))).data;
-  assert.equal(saved.user.isAdmin,false);assert.equal(saved.user.isStaff,true);assert.equal(saved.save.state.home,'sunpu');assert(saved.staffBase?.protected);assert(!saved.save.state.officerVariants.includes(ieyasu+':U'));
+  assert.equal(saved.user.isAdmin,false);assert.equal(saved.user.isStaff,true);assert.equal(saved.save.state.home,'kyoto_gosho');assert(saved.staffBase?.protected);assert(!saved.save.state.officerVariants.includes(ieyasu+':U'));
   const edo=fresh();edo.state.home='edo';edo.state.castles.edo.owner=edo.state.clan;
   assert.equal((await api('/sync',write(a.token,'staff-device',1,edo,403))).data.error.code,'ADMIN_ENTITLEMENT_REQUIRED');
   const exclusive=fresh();exclusive.state.officers.push(ieyasu);exclusive.state.officerVariants.push(ieyasu+':U');
@@ -105,18 +105,18 @@ try{
   await presence(a.token,'staff-device',true);
   const online=(await api('/online')).data.players.find(p=>p.id===a.user.id);assert.equal(Object.hasOwn(online,'isStaff'),false);assert.equal(Object.hasOwn(online,'isAdmin'),false);
   const found=(await api('/players?q='+encodeURIComponent('支援スタッフ'),{token:operator.token})).data.players.find(p=>p.id===a.user.id);assert.equal(Object.hasOwn(found,'isStaff'),false);
-  const field=(await api('/field',{token:b.token})).data.players.find(p=>p.playerId===a.user.id);assert.equal(Object.hasOwn(field,'isStaff'),false);assert.equal(Object.hasOwn(field,'isAdmin'),false);assert.equal(field.homeCastleId,'sunpu');assert.equal(field.attackable,true);assert.equal(field.battleMode,'reward');assert.equal(field.capturable,false);
+  const field=(await api('/field',{token:b.token})).data.players.find(p=>p.playerId===a.user.id);assert.equal(Object.hasOwn(field,'isStaff'),false);assert.equal(Object.hasOwn(field,'isAdmin'),false);assert.equal(field.homeCastleId,'kyoto_gosho');assert.equal(field.attackable,true);assert.equal(field.battleMode,'reward');assert.equal(field.capturable,false);
   await lease(b.token,'ordinary-device');
   const attackerGame=GameEngine.fromSave(fresh(),GAME_OFFICERS);attackerGame.applyWorldClock((await api('/world-clock')).data.clock);
   const attackerSaved=(await api('/sync',write(b.token,'ordinary-device',0,JSON.parse(attackerGame.exportSave())))).data;
-  const defenderBefore=database.prepare('SELECT * FROM player_saves WHERE user_id=?').get(a.user.id),sharedBefore=database.prepare("SELECT * FROM staff_base WHERE id='sunpu'").get(),backupBefore=database.prepare('SELECT * FROM staff_campaign_backups WHERE user_id=?').get(a.user.id);
+  const defenderBefore=database.prepare('SELECT * FROM player_saves WHERE user_id=?').get(a.user.id),sharedBefore=database.prepare("SELECT * FROM staff_base WHERE id='kyoto_gosho'").get(),backupBefore=database.prepare('SELECT * FROM staff_campaign_backups WHERE user_id=?').get(a.user.id);
   let defeat;const random=crypto.getRandomValues;crypto.getRandomValues=array=>array.fill(0xffffffff);
-  try{defeat=(await api('/field/attack',post(b.token,{targetPlayerId:a.user.id,targetCastleId:'sunpu',troops:300,tactic:'balanced',requestId:crypto.randomUUID(),deviceId:'ordinary-device',expectedRevision:attackerSaved.revision}))).data;}finally{crypto.getRandomValues=random;}
+  try{defeat=(await api('/field/attack',post(b.token,{targetPlayerId:a.user.id,targetCastleId:'kyoto_gosho',troops:300,tactic:'balanced',requestId:crypto.randomUUID(),deviceId:'ordinary-device',expectedRevision:attackerSaved.revision}))).data;}finally{crypto.getRandomValues=random;}
   assert.equal(defeat.battle.battleMode,'reward');assert.equal(defeat.battle.won,false);assert.equal(defeat.battle.defenderRevision,defenderBefore.revision);assert.deepEqual(defeat.battle.defenderLost,{troops:0,garrison:0});
   assert.deepEqual(defeat.battle.loot,{gold:0,rice:0,wood:0,stone:0});assert.deepEqual(defeat.battle.rewards,{gold:0,rice:0,wood:0,stone:0});
-  assert.equal(defeat.save.state.home,attackerSaved.save.state.home);assert.notEqual(defeat.save.state.castles.sunpu.owner,defeat.save.state.clan);
-  assert.deepEqual(database.prepare('SELECT * FROM player_saves WHERE user_id=?').get(a.user.id),defenderBefore,'Sunpu combat preserves the staff save and revision');
-  assert.deepEqual(database.prepare("SELECT * FROM staff_base WHERE id='sunpu'").get(),sharedBefore);assert.deepEqual(database.prepare('SELECT * FROM staff_campaign_backups WHERE user_id=?').get(a.user.id),backupBefore);
+  assert.equal(defeat.save.state.home,attackerSaved.save.state.home);assert.notEqual(defeat.save.state.castles.kyoto_gosho.owner,defeat.save.state.clan);
+  assert.deepEqual(database.prepare('SELECT * FROM player_saves WHERE user_id=?').get(a.user.id),defenderBefore,'Kyoto palace combat preserves the staff save and revision');
+  assert.deepEqual(database.prepare("SELECT * FROM staff_base WHERE id='kyoto_gosho'").get(),sharedBefore);assert.deepEqual(database.prepare('SELECT * FROM staff_campaign_backups WHERE user_id=?').get(a.user.id),backupBefore);
   const code=(await api('/devices/pair-code',post(a.token,{}))).data.code;
   const linked=(await api('/devices/link',post(null,{code,deviceName:'スタッフの別端末'}))).data;assert(linked.user.isStaff);assert(!linked.user.isAdmin);await adminRead(linked);
   const dismissId=crypto.randomUUID(),dismissed=await assign(operator,a,'dismiss',dismissId);assert.equal(dismissed.idempotent,false);assert.equal(dismissed.user.isStaff,false);assert.equal(dismissed.staff.length,0);assert.equal(memberCount(a.user.id),0);
@@ -156,6 +156,6 @@ try{
   assert.equal((await me(b)).isStaff,memberCount(b.user.id)===1);assert.equal((await me(b)).isAdmin,false);
   const roster=(await api('/admin/staff',{token:operator.token})).data.staff;assert(roster.every(p=>p.isStaff&&!p.isAdmin));assert(!JSON.stringify(roster).includes('token'));
   assert.equal(database.prepare("SELECT value FROM settings WHERE key='adminUserId'").get().value,operator.user.id);
-  console.log(JSON.stringify({ok:true,calls,checks:['separate server-owned staff and operator roles','operator-only appoint and dismiss','no self appointment or authority-field escalation','idempotent and concurrent role operations','old retry cannot reverse later dismissal','staff chat read/write without public role badges','no privileged assets or administrative controls for staff','Sunpu reward-combat defeat leaves staff save, revision, shared base and personal backup untouched','paired devices inherit and lose staff access','private roles on me/sync and concealed roles on online/search/field','revocation between authentication and SQL read/write','transactional primary-operator guard','rollback and safe role-operation retry','single primary operator preserved']},null,2));
+  console.log(JSON.stringify({ok:true,calls,checks:['separate server-owned staff and operator roles','operator-only appoint and dismiss','no self appointment or authority-field escalation','idempotent and concurrent role operations','old retry cannot reverse later dismissal','staff chat read/write without public role badges','no privileged assets or administrative controls for staff','Kyoto palace reward-combat defeat leaves staff save, revision, shared base and personal backup untouched','paired devices inherit and lose staff access','private roles on me/sync and concealed roles on online/search/field','revocation between authentication and SQL read/write','transactional primary-operator guard','rollback and safe role-operation retry','single primary operator preserved']},null,2));
 }finally{Date.now=originalNow;database.close();}
 

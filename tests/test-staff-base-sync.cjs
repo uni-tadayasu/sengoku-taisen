@@ -6,7 +6,7 @@ const roster=scope.window.SENGOKU_OFFICERS,clone=v=>JSON.parse(JSON.stringify(v)
 const memory=()=>{const map=new Map();return{getItem:k=>map.get(k)||null,setItem:(k,v)=>map.set(k,v),removeItem:k=>map.delete(k)};};
 function deferred(){let resolve;return{promise:new Promise(done=>{resolve=done;}),resolve};}
 async function until(fn){for(let i=0;i<80;i++){if(fn())return;await Promise.resolve();}assert(fn(),'Expected asynchronous checkpoint');}
-function fixture(revision=1){const g=new SengokuEngine({officers:roster,seed:12}),buildings=clone(g.state.buildings);buildings.farm=5;return{id:'sunpu',revision,castleLevel:1,buildings,initial:{castleLevel:1,buildings:clone(buildings)},history:[],jobs:[],updatedElapsedMs:100000,accessSinceElapsedMs:0,personalClan:'伊達家',protected:true};}
+function fixture(revision=1){const g=new SengokuEngine({officers:roster,seed:12}),buildings=clone(g.state.buildings);buildings.farm=5;return{id:'kyoto_gosho',revision,castleLevel:1,buildings,initial:{castleLevel:1,buildings:clone(buildings)},history:[],jobs:[],updatedElapsedMs:100000,accessSinceElapsedMs:0,personalClan:'伊達家',protected:true};}
 function harness(){
  const time=2000000000000,timers=new Map(),localStorage=memory();let timerId=0,epoch=0,ready=false,game=new SengokuEngine({clan:'伊達家',startCastle:'himeji',officers:roster,seed:14});
  const log=[],applied=[],bases=[],roles=[],server={role:{isAdmin:false,isStaff:true},save:JSON.parse(SengokuEngine.fromSave(game.exportSave(),roster,{isStaff:true}).exportSave()),revision:10,base:fixture(),writer:null,until:0,hook:null};
@@ -36,12 +36,12 @@ function harness(){
 let count=0;async function test(name,run){await run();count++;console.log('PASS '+name);}
 (async()=>{
 await test('staff role and source arrive together, and a base-only revision never writes the personal save',async()=>{
- const h=harness();await h.start();assert.equal(h.game().isStaff,true);assert.equal(h.game().state.home,'sunpu');assert.equal(h.game().state.buildings.farm,5);
- assert.equal(h.game().isAdmin,false);assert.equal(h.game().state.clan,'德川家');assert.equal(h.game().castle('sunpu').owner,'德川家');assert.equal(h.game().canOwnCastle('edo'),false);assert.equal(h.game().ownsVariant('of_b0616adde162','U'),false);
+ const h=harness();await h.start();assert.equal(h.game().isStaff,true);assert.equal(h.game().state.home,'kyoto_gosho');assert.equal(h.game().state.buildings.farm,5);
+ assert.equal(h.game().isAdmin,false);assert.equal(h.game().state.clan,'德川家');assert.equal(h.game().castle('kyoto_gosho').owner,'德川家');assert.equal(h.game().canOwnCastle('edo'),false);assert.equal(h.game().ownsVariant('of_b0616adde162','U'),false);
  const count=h.applied.length,puts=h.puts().length,personal=clone(h.bridge.getSave().state);
  h.server.base=fixture(2);h.server.base.initial.buildings.farm=6;h.server.base.buildings.farm=6;await h.sync.refresh();
  assert.equal(h.game().state.buildings.farm,6);assert.equal(h.applied.length,count);assert.equal(h.puts().length,puts);assert.deepEqual(clone(h.bridge.getSave().state),personal);
- assert.equal(h.applied[0].meta.isStaff,true);assert.equal(h.applied[0].meta.isAdmin,false);assert.equal(h.applied[0].meta.staffBase.id,'sunpu');h.sync.stop();
+ assert.equal(h.applied[0].meta.isStaff,true);assert.equal(h.applied[0].meta.isAdmin,false);assert.equal(h.applied[0].meta.staffBase.id,'kyoto_gosho');h.sync.stop();
 });
 await test('same-revision shared growth preserves dirty personal resource changes before flushing them',async()=>{
  const h=harness();await h.start();const applied=h.applied.length,before=h.game().state.resources.gold,personalFarm=h.bridge.getSave().state.buildings.farm;

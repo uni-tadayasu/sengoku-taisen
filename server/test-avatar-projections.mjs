@@ -38,9 +38,9 @@ try{
  await h.api('/field/diplomacy',post(actor,{requestId:'avatar-alliance',targetPlayerId:viewer.user.id,action:'propose',deviceId:actor.deviceId,expectedRevision:revision()}));
  await h.api('/admin/staff',post(operator,{targetPlayerId:staff.user.id,action:'appoint',requestId:crypto.randomUUID()}));
  await get('/sync?deviceId='+staff.deviceId,staff);
- const base=JSON.parse(h.sql.prepare("SELECT state_json FROM staff_base WHERE id='sunpu'").get().state_json);
+ const base=JSON.parse(h.sql.prepare("SELECT state_json FROM staff_base WHERE id='kyoto_gosho'").get().state_json);
  base.jobs=[{jobId:'avatar-job',kind:'building',id:'farm',targetLevel:base.buildings.farm+1,totalSeconds:600,queuedAtElapsedMs:0,startedElapsedMs:0,completesElapsedMs:600000,startedBy:{id:staff.user.id,name:staff.user.name}}];
- h.sql.prepare("UPDATE staff_base SET state_json=? WHERE id='sunpu'").run(JSON.stringify(base));
+ h.sql.prepare("UPDATE staff_base SET state_json=? WHERE id='kyoto_gosho'").run(JSON.stringify(base));
  const pair=(await h.api('/devices/pair-code',post(actor,{}))).data,linked=(await h.api('/devices/link',post(null,{code:pair.code,deviceName:'写真の別端末'}))).data;
  const first=await upload(actor,'baseline'),other=await upload(viewer,'progressive'),staffPhoto=await upload(staff,'grayscale');
  const records=['player_saves','staff_base','user_sessions','messages','base_letter_messages','field_battles','field_requests','guild_asset_requests','trade_requests','mail_campaigns','guild_members'],before=tables(records);

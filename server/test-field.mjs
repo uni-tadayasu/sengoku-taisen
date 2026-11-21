@@ -173,16 +173,16 @@ try {
   database.prepare('UPDATE player_saves SET save_json=? WHERE user_id=?').run(JSON.stringify(validKeeper),keeper.user.id);
   await api('/admin/staff',post(admin.token,{targetPlayerId:staffKeeper.user.id,action:'appoint',requestId:crypto.randomUUID()}));
   const staffSnapshot=await snapshot(staffKeeper);assert.equal(staffSnapshot.save.state.buildings.keep,23,'the staff save retains individual development');
-  const sharedBase=JSON.parse(database.prepare("SELECT state_json FROM staff_base WHERE id='sunpu'").get().state_json);
+  const sharedBase=JSON.parse(database.prepare("SELECT state_json FROM staff_base WHERE id='kyoto_gosho'").get().state_json);
   sharedBase.castleLevel=41;sharedBase.initial.castleLevel=41;sharedBase.buildings.keep=18;sharedBase.initial.buildings.keep=18;
-  database.prepare("UPDATE staff_base SET state_json=?,revision=revision+1 WHERE id='sunpu'").run(JSON.stringify(sharedBase));
+  database.prepare("UPDATE staff_base SET state_json=?,revision=revision+1 WHERE id='kyoto_gosho'").run(JSON.stringify(sharedBase));
   for(const projection of [await publicBase(staffKeeper),(await me(staffKeeper)).self]){
-    assert.equal(projection.homeCastleId,'sunpu');assert.equal(projection.keepLevel,18,'staff use the shared keep, not private development');assert.equal(projection.level,41);
+    assert.equal(projection.homeCastleId,'kyoto_gosho');assert.equal(projection.keepLevel,18,'staff use the shared keep, not private development');assert.equal(projection.level,41);
   }
   const incompleteShared=structuredClone(sharedBase);delete incompleteShared.buildings.keep;
-  database.prepare("UPDATE staff_base SET state_json=? WHERE id='sunpu'").run(JSON.stringify(incompleteShared));
+  database.prepare("UPDATE staff_base SET state_json=? WHERE id='kyoto_gosho'").run(JSON.stringify(incompleteShared));
   assert.equal((await publicBase(staffKeeper)).keepLevel,1,'a missing shared keep never falls back to private staff development');
-  database.prepare("UPDATE staff_base SET state_json=? WHERE id='sunpu'").run(JSON.stringify(sharedBase));
+  database.prepare("UPDATE staff_base SET state_json=? WHERE id='kyoto_gosho'").run(JSON.stringify(sharedBase));
   await developBase(admin,32,64);
   const operatorPublic=await publicBase(admin),operatorSelf=(await me(admin)).self;
   for(const projection of [operatorPublic,operatorSelf]){assert.equal(projection.homeCastleId,'edo');assert.equal(projection.keepLevel,32);assert.equal(projection.level,64);}

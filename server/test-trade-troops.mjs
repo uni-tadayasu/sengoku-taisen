@@ -155,9 +155,9 @@ await scope('staff imports use projected shared-base capacity instead of persona
   const a=await fixture(h,'兵共同輸出',50000),b=await fixture(h,'兵共同輸入',0);
   await h.api('/admin/staff',post(operator,{targetPlayerId:b.user.id,action:'appoint',requestId:crypto.randomUUID()}));
   await h.api('/sync?deviceId='+b.deviceId,{token:b.token});
-  const base=JSON.parse(h.sql.prepare("SELECT state_json FROM staff_base WHERE id='sunpu'").get().state_json);
+  const base=JSON.parse(h.sql.prepare("SELECT state_json FROM staff_base WHERE id='kyoto_gosho'").get().state_json);
   base.initial.buildings.barracks=16;base.buildings.barracks=16;
-  h.sql.prepare("UPDATE staff_base SET state_json=?,revision=revision+1 WHERE id='sunpu'").run(JSON.stringify(base));
+  h.sql.prepare("UPDATE staff_base SET state_json=?,revision=revision+1 WHERE id='kyoto_gosho'").run(JSON.stringify(base));
   const snapshot=(await h.api('/sync?deviceId='+b.deviceId,{token:b.token})).data;
   const personal=GameEngine.fromSave(snapshot.save,GAME_OFFICERS,{isStaff:true}).troopCapacity(),projected=GameEngine.fromSave(snapshot.save,GAME_OFFICERS,{isStaff:true,staffBase:snapshot.staffBase}).troopCapacity();
   assert(projected>personal,'the shared barracks must provide capacity absent from the personal save');

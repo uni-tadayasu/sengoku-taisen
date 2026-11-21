@@ -28,7 +28,7 @@ function setup({stored=new Map()}={}){
     flush:async()=>{control.flushes++;trace.push('flush');return control.onFlush?control.onFlush():{ok:true};},
     refresh:async()=>{control.refreshes++;trace.push('refresh');return control.onRefresh?control.onRefresh():{ok:true};}};
   let c;c={
-    game,roster,SengokuEngine,URLSearchParams,Date,JSON,Math,Promise,state:()=>c.game.state,
+    game,roster,SengokuEngine,staffBaseId:'kyoto_gosho',URLSearchParams,Date,JSON,Math,Promise,state:()=>c.game.state,
     syncAccess:{...control.status},saveKey:'save',backupKey:'backups',saveEnabled:true,saveWarning:'',
     worldCatchingUp:false,worldSettlementPending:false,worldSettlementRetryAt:0,worldCatchupTimer:null,worldClockStatusKey:'',fieldActionPending:false,walkingActionPending:false,strategyActionPending:false,startPending:false,roleEpoch:1,
     selectedCastle:'',lastRealtime:0,saveCounter:0,importedGame:null,activeModal:'',
@@ -38,7 +38,7 @@ function setup({stored=new Map()}={}){
     CustomEvent:class{constructor(type){this.type=type;}},performance:{now:()=>1000},document:{hidden:false},$:()=>null,
     setTimeout:()=>1,clearTimeout(){},toast(){},render(){},renderHeader(){},refreshLiveControls(){},refreshJobTimers(){},refreshActiveModal(){},queueWorldProgress:()=>control.queued++,preserveInteraction(){},closeModal(){},updateBattlePreview(){},syncMusic(){},
   };
-  vm.createContext(c);vm.runInContext(['confirmedWorldClock','clockIsApplied','canMutate','syncMessage','requireWritable','save','backupCurrentSave','applyCloudSave','applyDurableGift','processWorldClock','requestField','requestTrade','spendableAssets'].map(fn).join('\n'),c);
+  vm.createContext(c);vm.runInContext(['confirmedWorldClock','clockIsApplied','canMutate','syncMessage','requireWritable','save','backupCurrentSave','trustedBranchAuthority','applyBranchAuthority','applyCloudSave','applyDurableGift','processWorldClock','requestField','requestTrade','spendableAssets'].map(fn).join('\n'),c);
   return{c,control,stored,trace,posts,events,acceptedClocks};
 }
 let checks=0;async function test(name,run){await run();checks++;console.log('PASS '+name);}

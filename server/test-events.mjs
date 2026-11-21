@@ -34,7 +34,7 @@ function noPrivate(value){const json=JSON.stringify(value);for(const key of ['cr
 
 try{
  await scope('health advertises timed events only when all four event tables are available',async h=>{
-  const ready=await get(h,'/health');assert.equal(ready.status,'ready');assert.equal(ready.version,'3.19.0');assert.equal(ready.features.timedEvents,true);
+  const ready=await get(h,'/health');assert.equal(ready.status,'ready');assert.equal(ready.version,'3.22.0');assert.equal(ready.features.timedEvents,true);
   for(const table of ['timed_events','timed_event_requests','timed_event_participants','timed_event_rewards']){
    h.sql.exec('ALTER TABLE '+table+' RENAME TO fixture_hidden');
    const unavailable=(await h.api('/health',{expected:503})).data;assert.equal(unavailable.error.code,'SERVICE_UNAVAILABLE');assert.equal(unavailable.features,undefined);
@@ -179,7 +179,7 @@ try{
  await scope('staff command capacity uses shared keep levels without overwriting personal buildings',async h=>victory(async()=>{
   const op=await operator(h),event=await publish(h,op),p=await player(h,'共同城の領主');
   await h.api('/admin/staff',post(op,{targetPlayerId:p.user.id,action:'appoint',requestId:'command-staff'}));await get(h,'/sync?deviceId='+p.deviceId,p);
-  const base=JSON.parse(h.sql.prepare("SELECT state_json FROM staff_base WHERE id='sunpu'").get().state_json);base.buildings.keep=32;h.sql.prepare("UPDATE staff_base SET state_json=?,revision=revision+1 WHERE id='sunpu'").run(JSON.stringify(base));
+  const base=JSON.parse(h.sql.prepare("SELECT state_json FROM staff_base WHERE id='kyoto_gosho'").get().state_json);base.buildings.keep=32;h.sql.prepare("UPDATE staff_base SET state_json=?,revision=revision+1 WHERE id='kyoto_gosho'").run(JSON.stringify(base));
   const save=JSON.parse(row(h,p).save_json),personalKeep=save.state.buildings.keep;save.state.command=7;h.sql.prepare('UPDATE player_saves SET save_json=?,revision=revision+1 WHERE user_id=?').run(JSON.stringify(save),p.user.id);
   assert.deepEqual((await get(h,'/events/'+event.id,p)).progress.command,{available:7,max:7,cost:1});
   const result=(await battle(h,p,event)).data;assert.deepEqual(result.progress.command,{available:6,max:7,cost:1});assert.equal(result.save.state.command,6);assert.equal(JSON.parse(row(h,p).save_json).state.buildings.keep,personalKeep);assert.equal(result.staffBase.buildings.keep,32);

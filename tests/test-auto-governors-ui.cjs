@@ -19,7 +19,7 @@ function create({all=false}={}){
 function staffFixture({projected=true}={}){
   const personal=create(),s=personal.state;
   for(const officer of roster.slice(20,36))personal._grantOfficerVariant(officer.id,'S');
-  const buildings={...s.buildings,gold_mine:1},base={id:'sunpu',revision:1,accessSinceElapsedMs:0,castleLevel:1,buildings,initial:{buildings:plain(buildings),castleLevel:1},history:[],jobs:[],personalClan:s.clan,personalHome:s.home,personalCycleHome:s.cycle.home,personalSunpu:plain(s.castles.sunpu),personalHomeCastle:plain(s.castles[s.home])};
+  const buildings={...s.buildings,gold_mine:1},base={id:'kyoto_gosho',revision:1,accessSinceElapsedMs:0,castleLevel:1,buildings,initial:{buildings:plain(buildings),castleLevel:1},history:[],jobs:[],personalClan:s.clan,personalHome:s.home,personalCycleHome:s.cycle.home,personalBaseCastle:plain(s.castles.kyoto_gosho),personalHomeCastle:plain(s.castles[s.home])};
   const game=E.fromSave(personal.exportSave(),roster,{isStaff:true,...(projected?{staffBase:base}:{})});
   return{game,base};
 }
@@ -27,7 +27,7 @@ function harness(game=create()){
   const stored=new Map([['save',game.exportSave()]]),writes=[],events=[],modals=[],toasts=[],handlers=new Map();
   const flags={failSave:false},calls={render:0,header:0,sound:0},nodes=new Map([['#main',{}],['#save-indicator',{textContent:''}]]);
   const controls=[0,1].map(index=>({id:`governor-button-${index}`,dataset:{action:'auto-governors'},disabled:false,closest(){return this;}}));
-  const c={game,data:D,roster,state:()=>c.game.state,console,Date,Math,JSON,Number,String,Set,
+  const c={game,staffBaseId:'kyoto_gosho',data:D,roster,state:()=>c.game.state,console,Date,Math,JSON,Number,String,Set,
     syncAccess:{linked:false,ready:true,writable:true,rolePending:false},saveKey:'save',saveEnabled:true,saveWarning:'',
     worldCatchingUp:false,worldSettlementPending:false,fieldActionPending:false,walkingActionPending:false,strategyActionPending:false,startPending:false,
     staffBaseReady:game.isStaff&&Boolean(game.getStaffBase()),settings:{tips:false},currentView:'town',facilityCategory:'all',facilityQuery:'',facilityPage:1,

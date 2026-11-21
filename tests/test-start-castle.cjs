@@ -52,12 +52,12 @@ function browser(initialSave) {
 
 (async()=>{
 await test('every ordinary castle can be the sole first home, independently of the house',()=>{
-  const available=SENGOKU_DATA.castles.filter(c=>!c.majorCity);assert.equal(available.length,123);
+  const available=SENGOKU_DATA.castles.filter(c=>!c.majorCity);assert.equal(available.length,124);
   for(const castle of available){const g=new SengokuEngine({clan:'織田家',startCastle:castle.id,officers:roster,seed:7});assert.equal(g.state.home,castle.id);assert.deepEqual(g.ownedCastles().map(c=>c.id),[castle.id]);assert.deepEqual(g.state.captureRewards,[castle.id]);assert.equal(g.state.castles[castle.id].troops,1200);}
   for(const clan of SENGOKU_DATA.clans){const g=new SengokuEngine({clan:clan.name,startCastle:'himeji',officers:roster});assert.equal(g.state.clan,clan.name);assert.equal(g.state.home,'himeji');assert(g.state.officers.every(id=>g.officer(id).clan===clan.name));}
 });
 await test('ordinary players cannot start at the five major cities or unknown/inherited castle keys',()=>{
-  for(const id of ['edo','sunpu','nijo','osaka','nagoya','missing','',null,123,{},'toString','__proto__','constructor'])assert.throws(()=>new SengokuEngine({startCastle:id,officers:roster}));
+  for(const id of ['edo','kyoto_gosho','nijo','osaka','nagoya','missing','',null,123,{},'toString','__proto__','constructor'])assert.throws(()=>new SengokuEngine({startCastle:id,officers:roster}));
 });
 await test('verified operators always begin with Edo and the exclusive Ieyasu U',()=>{
   for(const request of ['himeji','kiyosu','edo','toString']){const g=new SengokuEngine({clan:'武田家',startCastle:request,officers:roster,isAdmin:true});assert.equal(g.state.home,'edo');assert.deepEqual(g.ownedCastles().map(c=>c.id),['edo']);assert(g.ownsVariant('of_b0616adde162','U'));assert.equal(g.officer('of_b0616adde162','U').name,'德川家康');}
@@ -69,17 +69,17 @@ await test('selected homes round-trip and existing legacy campaigns keep their h
   const result=SengokuEngine.fromSave(legacy.exportSave(),roster);assert.deepEqual(plain(result.state),plain(legacy.state));assert.equal(result.state.home,'kiyosu');assert.equal(result.ownedCastles().length,2);
 });
 await test('the five major-city flags restrict only new starts and preserve existing metropolitan campaigns',()=>{
-  assert.deepEqual(SENGOKU_DATA.majorCityIds,['edo','sunpu','nijo','osaka','nagoya']);
+  assert.deepEqual(SENGOKU_DATA.majorCityIds,['edo','kyoto_gosho','nijo','osaka','nagoya']);
   assert.deepEqual(SENGOKU_DATA.castles.filter(c=>c.majorCity).map(c=>c.id).sort(),[...SENGOKU_DATA.majorCityIds].sort());
   for(const id of ['nijo','osaka','nagoya']){
     const legacy=new SengokuEngine({clan:'徳川家',officers:roster,seed:43});legacy.state.home=id;legacy.state.castles[id].owner=legacy.state.clan;legacy.state.castles[id].level=13;legacy.state.resources.gold=662211;
     const loaded=SengokuEngine.fromSave(legacy.exportSave(),roster);assert.deepEqual(plain(loaded.state),plain(legacy.state));assert(loaded.canOwnCastle(id));
   }
 });
-await test('first bootstrap remains unsaved and opens an explicit 123-castle choice with recovery access',async()=>{
+await test('first bootstrap remains unsaved and opens an explicit 124-castle choice with recovery access',async()=>{
   const b=browser();assert.equal(b.c.SengokuBridge.hasStarted(),false);assert.equal(b.c.SengokuBridge.getSave(),null);assert(!b.stored.has(SAVE));assert.equal(b.events.length,0);
   assert.match(b.nodes.get('main').innerHTML,/はじまりの城を選ぶ/);b.c.SengokuBridge.openStartSelection();
-  const html=b.nodes.get('modal-content').innerHTML;assert.match(html,/以前の領主を復元/);assert.match(html,/data-action="open-recovery"/);assert.equal(b.query('#new-start-castle').value,'');for(const id of SENGOKU_DATA.majorCityIds)assert(!html.includes(`<option value="${id}"`));assert.match(html,/全123城/);
+  const html=b.nodes.get('modal-content').innerHTML;assert.match(html,/以前の領主を復元/);assert.match(html,/data-action="open-recovery"/);assert.equal(b.query('#new-start-castle').value,'');for(const id of SENGOKU_DATA.majorCityIds)assert(!html.includes(`<option value="${id}"`));assert.match(html,/全124城/);
   await b.click('start-new');assert.equal(b.c.SengokuBridge.hasStarted(),false);assert(!b.stored.has(SAVE));
 });
 await test('confirmed first start persists the selected castle before exposing a save to sync',async()=>{

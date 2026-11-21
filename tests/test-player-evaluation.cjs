@@ -28,7 +28,7 @@ test('an unstarted account is unranked; every documented boundary is inclusive',
 });
 test('castle tier limits and only held castles count toward territory',()=>{
   const value=evaluate({clan:'織田家',castles:{kiyosu:{owner:'織田家',level:999},osaka:{owner:'織田家',level:999},sunpu:{owner:'織田家',level:999},edo:{owner:'徳川家',level:64},invented:{owner:'織田家',level:64}}});
-  assert.equal(category(value,'territory'),8100); // 3×600 + (32+48+64)×43.75
+  assert.equal(category(value,'territory'),6700); // 3×600 + (32+48+32)×43.75
   assert.equal(category(evaluate({castles:{kiyosu:{level:32}}}),'territory'),0);
 });
 test('completed facilities/research count, queued construction and balances do not',()=>{

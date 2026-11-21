@@ -1,0 +1,15 @@
+{
+  "asset": "assets/castles/kyoto_gosho.webp",
+  "name": "京都御所の成長絵",
+  "createdAt": "2026-11-22",
+  "generator": "Built-in image_gen tool",
+  "width": 1774,
+  "height": 887,
+  "columns": 8,
+  "rows": 4,
+  "artStages": 32,
+  "castleLevelCap": 128,
+  "levelMapping": "Levels 1–32 use individual growth tiles; levels 33–128 retain the final art stage while statistics keep growing.",
+  "description": "ゲーム用の創作イラスト。現存建物や特定年代の正確な復元図ではありません。",
+  "prompt": "Use case: stylized-concept. Asset type: production game building growth sprite atlas for SENGOKU VS. Create one 2:1 landscape image with EXACTLY 8 columns and 4 rows, 32 equally sized square tiles, edge to edge, no gutters or borders, no text or numbers. Each tile is an original richly painted colorful Japanese strategy-game illustration of Kyoto Imperial Palace (京都御所), growing progressively left to right then top to bottom. Fixed elevated three-quarter camera and stable framing in every cell. The architecture must be a low, sprawling imperial palace with broad dark cypress-bark roofs, cream walls, vermilion posts, Shishinden ceremonial hall, graceful gates and courtyard gardens; never a tall castle keep or Chinese pagoda. Stages 1–8 start from a modest graceful palace hall and gate; 9–16 add walled courtyards and additional low halls; 17–24 add refined galleries, an expanded ceremonial court and gardens; 25–32 become a grand coherent imperial palace compound with golden accents, flowering trees and a landscaped pond. Every tile has a complete natural setting: blue sky with soft white clouds, distant green Kyoto mountains, lush mature trees, flowers and a curving garden stream. Bright clean afternoon light, saturated turquoise, leaf green and warm ivory, crisp fine dark contour lines, detailed hand-painted illustrated mobile strategy game style, appealing small thumbnail legibility. Keep the same visual scale and all buildings inside each square; leave small natural space around main palace roofs. This is fantasy game growth artwork inspired by Kyoto palace, not a historical reconstruction or a technical blueprint. No people, no lettering, no watermark. Output a high quality 2048x1024 image."
+}

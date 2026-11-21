@@ -8,13 +8,13 @@ const h=harness(),{api,sql}=h,checks=[];
 const post=(token,body,expected=200)=>({method:'POST',token,body,expected});
 const player=p=>sql.prepare('SELECT * FROM player_saves WHERE user_id=?').get(p.user.id);
 const save=p=>JSON.parse(player(p).save_json);
-const baseRow=()=>sql.prepare("SELECT * FROM staff_base WHERE id='sunpu'").get();
+const baseRow=()=>sql.prepare("SELECT * FROM staff_base WHERE id='kyoto_gosho'").get();
 const baseState=()=>JSON.parse(baseRow().state_json);
 const requests=()=>Number(sql.prepare('SELECT COUNT(*) n FROM staff_base_requests').get().n);
 const staffBase=async p=>(await api('/staff/base',{token:p.token})).data.staffBase;
 const sync=async p=>(await api('/sync?deviceId='+encodeURIComponent(p.deviceId),{token:p.token})).data;
 const setClock=elapsed=>sql.prepare("UPDATE world_clock SET base_elapsed_ms=?,anchor_real_ms=?,running=1,speed=1,revision=revision+1 WHERE id='world-v1'").run(elapsed,h.now);
-const setBase=change=>{const state=baseState();change(state);sql.prepare("UPDATE staff_base SET state_json=?,revision=revision+1,updated_at=? WHERE id='sunpu'").run(JSON.stringify(state),h.now);};
+const setBase=change=>{const state=baseState();change(state);sql.prepare("UPDATE staff_base SET state_json=?,revision=revision+1,updated_at=? WHERE id='kyoto_gosho'").run(JSON.stringify(state),h.now);};
 const assign=async(p,action='appoint')=>(await api('/admin/staff',post(operator.token,{targetPlayerId:p.user.id,action,requestId:crypto.randomUUID()}))).data;
 async function fixture(name,{staff=false,clan='織田家',rich=false}={}){
  const p=await h.session(name,clan);p.deviceId=p.user.id+'-writer';
@@ -47,15 +47,15 @@ try{
  operator=await h.session('共同普請の運営');await api('/admin/claim',post(operator.token,{key:h.env.SENGOKU_ADMIN_KEY}));
  const a=await fixture('共同普請A',{staff:true,clan:'伊達家',rich:true}),b=await fixture('共同普請B',{staff:true,clan:'武田家'}),ordinary=await fixture('共同普請の一般領主');
  const initial=await staffBase(a),aSync=await sync(a),bSync=await sync(b);
- assert.equal(initial.id,'sunpu');assert.equal(initial.protected,true);assert.equal(initial.castleLevel,1);assert.equal(Object.keys(initial.buildings).length,64);
+ assert.equal(initial.id,'kyoto_gosho');assert.equal(initial.protected,true);assert.equal(initial.castleLevel,1);assert.equal(Object.keys(initial.buildings).length,64);
  assert.notEqual(initial.buildings.farm,22);assert.notEqual(initial.buildings.keep,24);assert.deepEqual(initial.initial.buildings,initial.buildings);
- assert.equal(aSync.save.state.home,'sunpu');assert.equal(aSync.save.state.clan,'德川家');assert.equal(aSync.staffBase.personalClan,'伊達家');assert.equal(bSync.save.state.home,'sunpu');assert.equal(bSync.save.state.clan,'德川家');assert.equal(bSync.staffBase.personalClan,'武田家');
+ assert.equal(aSync.save.state.home,'kyoto_gosho');assert.equal(aSync.save.state.clan,'德川家');assert.equal(aSync.staffBase.personalClan,'伊達家');assert.equal(bSync.save.state.home,'kyoto_gosho');assert.equal(bSync.save.state.clan,'德川家');assert.equal(bSync.staffBase.personalClan,'武田家');
  assert.deepEqual(aSync.staffBase.buildings,bSync.staffBase.buildings);assert.equal(aSync.save.state.buildings.farm,22,'Personal building baseline remains separate from shared development');
- assert.equal((await api('/staff/base',{token:operator.token})).data.staffBase.id,'sunpu');
+ assert.equal((await api('/staff/base',{token:operator.token})).data.staffBase.id,'kyoto_gosho');
  await api('/staff/base',{expected:401});await api('/staff/base',{token:ordinary.token,expected:403});await upgrade(operator,body(a),403);
  assert.equal((await sync(ordinary)).staffBase,null);assert.equal((await api('/sync',{token:operator.token})).data.staffBase,null);
  for(const secret of ['commit_token','request_hash','transition_token','token_hash','save_json'])assert(!JSON.stringify(initial).includes(secret));
- checks.push('server-owned seed, fixed Sunpu/德川家, preserved personal houses and private source permissions');
+ checks.push('server-owned seed, fixed Kyoto palace/德川家, preserved personal houses and private source permissions');
 
  const firstBody=body(a),beforeA=balances(a),beforeB=balances(b),first=(await upgrade(a,firstBody)).data;
  assert.equal(first.idempotent,false);assert.equal(first.staffBase.jobs.length,1);assert.equal(first.staffBase.jobs[0].startedBy.id,a.user.id);assert.equal(first.staffBase.jobs[0].startedBy.name,a.user.name);
@@ -84,7 +84,7 @@ try{
  for(let i=0;i<2;i++)assertPaid(differentBefore[i],balances(players[i]),i===retryIndex?retry.receipt:different[i].data.receipt);
  await finish(a,b);checks.push('concurrent duplicate, same facility and independent writers on different facilities');
 
- const lost=body(a,'castle','sunpu'),lostBefore=balances(a);h.afterBatch=statements=>{if(statements.some(s=>s.sql.includes('INSERT INTO staff_base_requests'))){h.afterBatch=null;throw Error('local lost response after atomic commit');}};
+ const lost=body(a,'castle','kyoto_gosho'),lostBefore=balances(a);h.afterBatch=statements=>{if(statements.some(s=>s.sql.includes('INSERT INTO staff_base_requests'))){h.afterBatch=null;throw Error('local lost response after atomic commit');}};
  await upgrade(a,lost,500);const committed=sql.prepare('SELECT * FROM staff_base_requests WHERE actor_id=? AND request_id=?').get(a.user.id,lost.requestId);assert(committed);const receipt=JSON.parse(committed.result_json);assertPaid(lostBefore,balances(a),receipt);
  const recovered=(await upgrade(a,{...lost,deviceId:'reconnected-device',expectedRevision:0})).data;assert(recovered.idempotent);assert.equal(recovered.receipt.jobId,receipt.jobId);assertPaid(lostBefore,balances(a),receipt);
  await finish(a,b);
@@ -100,7 +100,7 @@ try{
      if(kind==='reappoint')sql.prepare('UPDATE staff_members SET term_id=? WHERE user_id=?').run('replacement-term-'+crypto.randomUUID(),b.user.id);
      if(kind==='lease')sql.prepare('UPDATE player_saves SET writer_device_id=? WHERE user_id=?').run('replacement-writer',b.user.id);
      if(kind==='personal-revision')sql.prepare('UPDATE player_saves SET revision=revision+1 WHERE user_id=?').run(b.user.id);
-     if(kind==='base-revision')sql.exec("UPDATE staff_base SET revision=revision+1 WHERE id='sunpu'");
+     if(kind==='base-revision')sql.exec("UPDATE staff_base SET revision=revision+1 WHERE id='kyoto_gosho'");
      if(kind==='clock')sql.exec("UPDATE world_clock SET running=0,revision=revision+1 WHERE id='world-v1'");
    };
    const result=await upgrade(b,operation,['dismiss','reappoint'].includes(kind)?403:409);assert.equal(requests(),before.count);assert.deepEqual(save(b),before.save);assert.equal(baseRow().state_json,before.base.state_json);
@@ -113,28 +113,28 @@ try{
  }
  checks.push('commit-time role term, dismissal, writer lease, personal/shared revision and world-clock guards');
 
- const protectedBefore=baseRow(),forged=(await sync(a)).save;forged.state.buildings.farm=32;forged.state.castles.sunpu.level=64;forged.state.staffBase={revision:999,castleLevel:64,buildings:{farm:32}};forged.state.isStaff=true;
+ const protectedBefore=baseRow(),forged=(await sync(a)).save;forged.state.buildings.farm=32;forged.state.castles.kyoto_gosho.level=64;forged.state.staffBase={revision:999,castleLevel:64,buildings:{farm:32}};forged.state.isStaff=true;
  await api('/sync',{method:'PUT',token:a.token,body:{deviceId:a.deviceId,revision:player(a).revision,save:forged}});
  assert.deepEqual(baseRow(),protectedBefore);assert.notEqual((await staffBase(a)).castleLevel,64);assert.notEqual((await staffBase(a)).buildings.farm,32);
- const illegal=(await sync(ordinary)).save;illegal.state.home='sunpu';illegal.state.castles.sunpu.owner=illegal.state.clan;
+ const illegal=(await sync(ordinary)).save;illegal.state.home='kyoto_gosho';illegal.state.castles.kyoto_gosho.owner=illegal.state.clan;
  assert.equal((await api('/sync',{method:'PUT',token:ordinary.token,body:{deviceId:ordinary.deviceId,revision:player(ordinary).revision,save:illegal},expected:403})).data.error.code,'STAFF_ENTITLEMENT_REQUIRED');
  for(const extra of [{kind:'research'},{id:'edo',kind:'castle'},{id:'missing'},{baseRevision:-1},{baseRevision:'1'},{expectedRevision:1.5},{requestId:undefined},{cost:{gold:0}},{staffBase:{castleLevel:64}}])await upgrade(a,{...body(a),...extra},400);
  checks.push('untrusted personal saves, role fields and upgrade payloads cannot change shared growth');
 
- setBase(state=>{state.initial.castleLevel=63;state.castleLevel=63;state.history=[];state.jobs=[];});await align(a);
- const finalCastle=(await upgrade(a,body(a,'castle','sunpu'))).data;assert.equal(finalCastle.receipt.targetLevel,64);await finish(a,b);assert.equal((await staffBase(a)).castleLevel,64);
- const maxBefore=balances(a);assert.equal((await upgrade(a,body(a,'castle','sunpu'),409)).data.error.code,'BUILDING_MAX');assert.deepEqual(balances(a),maxBefore);
+ setBase(state=>{state.initial.castleLevel=127;state.castleLevel=127;state.history=[];state.jobs=[];});await align(a);
+ const finalCastle=(await upgrade(a,body(a,'castle','kyoto_gosho'))).data;assert.equal(finalCastle.receipt.targetLevel,128);await finish(a,b);assert.equal((await staffBase(a)).castleLevel,128);
+ const maxBefore=balances(a);assert.equal((await upgrade(a,body(a,'castle','kyoto_gosho'),409)).data.error.code,'BUILDING_MAX');assert.deepEqual(balances(a),maxBefore);
  setBase(state=>{state.initial.buildings.farm=31;state.buildings.farm=31;state.history=[];state.jobs=[];});await align(a);
  const finalFacility=(await upgrade(a,body(a,'building','farm'))).data;assert.equal(finalFacility.receipt.targetLevel,32);await finish(a,b);assert.equal((await staffBase(b)).buildings.farm,32);
  const capBefore=balances(a);assert.equal((await upgrade(a,body(a,'building','farm'),409)).data.error.code,'BUILDING_MAX');assert.deepEqual(balances(a),capBefore);
- checks.push('shared castle level 64, facility level 32 and completed jobs advance for every member');
+ checks.push('shared castle level 128, facility level 32 and completed jobs advance for every member');
 
  const visible=(await api('/field?limit=100',{token:ordinary.token})).data;
- for(const p of [a,b]){const row=visible.players.find(row=>row.playerId===p.user.id);assert(row);assert.equal(row.homeCastleId,'sunpu');assert.equal(row.level,64);assert.equal(Object.hasOwn(row,'isStaff'),false);assert.equal(row.attackable,true);assert.equal(row.battleMode,'reward');assert.equal(row.capturable,false);}
- for(const privateKey of ['staffBase','personalHome','personalSunpu','requestId','request_hash','resources'])assert(!JSON.stringify(visible).includes(privateKey));
+ for(const p of [a,b]){const row=visible.players.find(row=>row.playerId===p.user.id);assert(row);assert.equal(row.homeCastleId,'kyoto_gosho');assert.equal(row.level,128);assert.equal(Object.hasOwn(row,'isStaff'),false);assert.equal(row.attackable,true);assert.equal(row.battleMode,'reward');assert.equal(row.capturable,false);}
+ for(const privateKey of ['staffBase','personalHome','personalBaseCastle','requestId','request_hash','resources'])assert(!JSON.stringify(visible).includes(privateKey));
  await align(ordinary);
  const protectedBeforeAttack={base:baseRow(),a:player(a),b:player(b),backups:sql.prepare('SELECT * FROM staff_campaign_backups ORDER BY user_id').all()};
- const rewardAttack={targetPlayerId:a.user.id,targetCastleId:'sunpu',troops:300,tactic:'balanced',requestId:crypto.randomUUID(),deviceId:ordinary.deviceId,expectedRevision:player(ordinary).revision};
+ const rewardAttack={targetPlayerId:a.user.id,targetCastleId:'kyoto_gosho',troops:300,tactic:'balanced',requestId:crypto.randomUUID(),deviceId:ordinary.deviceId,expectedRevision:player(ordinary).revision};
  let reward;const random=crypto.getRandomValues;crypto.getRandomValues=array=>array.fill(0);
  try{reward=(await api('/field/attack',post(ordinary.token,rewardAttack))).data;}finally{crypto.getRandomValues=random;}
  assert.equal(reward.battle.battleMode,'reward');assert.equal(reward.battle.won,true);assert.equal(reward.battle.defenderRevision,protectedBeforeAttack.a.revision);
@@ -142,13 +142,13 @@ try{
  assert.equal(reward.battle.defenderProtectedUntilElapsedMs,reward.battle.occurredElapsedMs+60000);
  assert.deepEqual({base:baseRow(),a:player(a),b:player(b),backups:sql.prepare('SELECT * FROM staff_campaign_backups ORDER BY user_id').all()},protectedBeforeAttack,'Victory cannot change either staff save, the shared base, its revision or personal backups');
  const afterReward=(await api('/field?limit=100',{token:ordinary.token})).data;
- for(const p of [a,b]){const target=afterReward.players.find(row=>row.playerId===p.user.id);assert.equal(target.attackable,false);assert.equal(target.protectedUntilElapsedMs,reward.battle.defenderProtectedUntilElapsedMs,'The Sunpu protection period also covers another staff member');}
+ for(const p of [a,b]){const target=afterReward.players.find(row=>row.playerId===p.user.id);assert.equal(target.attackable,false);assert.equal(target.protectedUntilElapsedMs,reward.battle.defenderProtectedUntilElapsedMs,'The Kyoto palace protection period also covers another staff member');}
  const actorBefore=balances(a),targetBefore=player(ordinary),battleCount=sql.prepare('SELECT COUNT(*) n FROM field_battles').get().n,fieldRequestCount=sql.prepare('SELECT COUNT(*) n FROM field_requests').get().n;
  h.beforeBatch=statements=>{if(!statements.some(s=>s.sql.includes('INSERT INTO field_requests')))return;h.beforeBatch=null;sql.prepare('INSERT INTO staff_members(user_id,appointed_by,appointed_at,term_id,appointed_elapsed_ms) VALUES(?,?,?,?,?)').run(ordinary.user.id,operator.user.id,h.now,'target-promoted-before-attack',baseState().updatedElapsedMs);};
  const promotedRace=await api('/field/attack',post(a.token,{targetPlayerId:ordinary.user.id,troops:300,tactic:'balanced',requestId:crypto.randomUUID(),deviceId:a.deviceId,expectedRevision:player(a).revision},409));
  assert.equal(h.beforeBatch,null,'The target is promoted at the actual attack commit boundary');assert.equal(promotedRace.data.error.code,'FIELD_CHANGED');
  assert.deepEqual(balances(a),actorBefore);assert.deepEqual(player(ordinary),targetBefore);assert.equal(sql.prepare('SELECT COUNT(*) n FROM field_battles').get().n,battleCount);assert.equal(sql.prepare('SELECT COUNT(*) n FROM field_requests').get().n,fieldRequestCount);sql.prepare('DELETE FROM staff_members WHERE user_id=?').run(ordinary.user.id);
- checks.push('Sunpu reward victory preserves both staff saves/shared base/backups, shares its protection period, and rejects a mid-attack staff promotion with 409');
+ checks.push('Kyoto palace reward victory preserves both staff saves/shared base/backups, shares its protection period, and rejects a mid-attack staff promotion with 409');
 
  const oldSource=await staffBase(b),oldReplay=body(b,'building','market'),accepted=(await upgrade(b,oldReplay)).data;await assign(b,'dismiss');
  await api('/staff/base',{token:b.token,expected:403});await upgrade(b,oldReplay,403);const dismissed=await sync(b);assert.equal(dismissed.user.isStaff,false);assert.equal(dismissed.staffBase,null);assert.equal(dismissed.save.state.home,'himeji');

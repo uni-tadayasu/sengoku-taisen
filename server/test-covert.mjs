@@ -28,10 +28,10 @@ async function armed(h,source,target={kind:'castle',castleId:'kagoshima'}){
 }
 const originalFetch=globalThis.fetch;globalThis.fetch=async()=>{throw Error('Covert tests must not use a real network');};
 try{
- await scope('hire pays exact costs once, validates rights/capacity and returns all128 NPC plus shared bases',async h=>{
+ await scope('hire pays exact costs once, validates rights/capacity and returns all129 NPC plus shared bases',async h=>{
   const p=await fixture(h,'派遣元',{admin:true}),other=await fixture(h,'共有の領主',{holdings:['nijo','osaka','nagoya']}),before=save(h,p),request=body(h,p,{sourceCastleId:'edo',count:400});
   const r=(await h.api('/covert/hire',post(p,request))).data,after=save(h,p);
-  assert.equal(r.result.goldCost,1200);assert.equal(r.result.foodCost,800);assert.equal(after.state.command,before.state.command-1);assert.equal(after.state.resources.gold,before.state.resources.gold-1200);assert.equal(after.state.resources.rice,before.state.resources.rice-800);assert.equal(after.state.covert.reserves.edo,400);assert.equal(r.covert.sources[0].unitType,'ninja');assert.equal(r.covert.targets.filter(t=>t.kind==='castle').length,128);assert.equal(r.covert.targets.filter(t=>t.kind==='player'&&t.playerId===other.user.id).length,4);assert.equal(count(h,'covert_requests'),1);
+  assert.equal(r.result.goldCost,1200);assert.equal(r.result.foodCost,800);assert.equal(after.state.command,before.state.command-1);assert.equal(after.state.resources.gold,before.state.resources.gold-1200);assert.equal(after.state.resources.rice,before.state.resources.rice-800);assert.equal(after.state.covert.reserves.edo,400);assert.equal(r.covert.sources[0].unitType,'ninja');assert.equal(r.covert.targets.filter(t=>t.kind==='castle').length,129);assert.equal(r.covert.targets.filter(t=>t.kind==='player'&&t.playerId===other.user.id).length,4);assert.equal(count(h,'covert_requests'),1);
   const stored=row(h,p).save_json,again=(await h.api('/covert/hire',post(p,request))).data;assert(again.idempotent);assert.deepEqual(again.result,r.result);assert.equal(row(h,p).save_json,stored);
   await h.api('/covert/hire',post(p,{...request,count:401},409));assert.equal(count(h,'covert_requests'),1);
   await op(h,other,'hire',{sourceCastleId:'edo',count:1},409);const ordinary=await op(h,other,'hire',{sourceCastleId:'nijo',count:100});assert.equal(ordinary.result.goldCost,100);assert.equal(ordinary.covert.sources.find(s=>s.castleId==='nijo').unitType,'ashigaru');
@@ -82,8 +82,8 @@ try{
   assert.equal(save(h,p).state.covert.stations[0].count,beforeP.state.covert.stations[0].count-b.ourLost);
   const third=await fixture(h,'保護検証');await h.api('/field/attack',post(third,{targetPlayerId:d.user.id,targetCastleId:'kiyosu',troops:1000,tactic:'balanced',requestId:crypto.randomUUID(),deviceId:third.deviceId,expectedRevision:row(h,third).revision},409));
  });
- await scope('Edo and Sunpu remain uncapturable and keep defender assets during counterattacks',async h=>{
-  const opPlayer=await fixture(h,'江戸防衛',{admin:true}),staff=await fixture(h,'駿府防衛'),attacker=await fixture(h,'反撃側',{holdings:['nijo']}),raider=await fixture(h,'機会作成');
+ await scope('Edo and Kyoto palace remain uncapturable and keep defender assets during counterattacks',async h=>{
+  const opPlayer=await fixture(h,'江戸防衛',{admin:true}),staff=await fixture(h,'京都御所防衛'),attacker=await fixture(h,'反撃側',{holdings:['nijo']}),raider=await fixture(h,'機会作成');
   await h.api('/admin/staff',post(opPlayer,{targetPlayerId:staff.user.id,action:'appoint',requestId:crypto.randomUUID()}));await h.api('/sync?deviceId='+staff.deviceId,{token:staff.token});
   await op(h,attacker,'hire',{sourceCastleId:'nijo',count:300});
   const station=(await op(h,attacker,'dispatch',{sourceCastleId:'nijo',target:{kind:'player',playerId:opPlayer.user.id,castleId:'edo'},count:100,mode:'station'})).result.stationId;
@@ -92,12 +92,12 @@ try{
   const before=row(h,opPlayer).save_json,revision=row(h,opPlayer).revision,r=await op(h,attacker,'retaliate',{stationId:station,incidentId:hit.id});assert.deepEqual(r.result.battle.defenderLost,{troops:0,garrison:0});assert.equal(row(h,opPlayer).save_json,before);assert.equal(row(h,opPlayer).revision,revision);
   // The same invariant is exercised directly against the current staff source.
   const remaining=save(h,attacker);remaining.state.command=5;h.sql.prepare('UPDATE player_saves SET save_json=? WHERE user_id=?').run(JSON.stringify(remaining),attacker.user.id);
-  const other=(await op(h,attacker,'dispatch',{sourceCastleId:'nijo',target:{kind:'player',playerId:staff.user.id,castleId:'sunpu'},count:100,mode:'station'})).result.stationId;
+  const other=(await op(h,attacker,'dispatch',{sourceCastleId:'nijo',target:{kind:'player',playerId:staff.user.id,castleId:'kyoto_gosho'},count:100,mode:'station'})).result.stationId;
   const clock=h.sql.prepare('SELECT * FROM world_clock').get();h.sql.prepare('UPDATE world_clock SET base_elapsed_ms=base_elapsed_ms+60000,revision=revision+1').run();
   for(const p of [attacker,raider]){const v=save(h,p);v.state.turn++;v.state.worldClock.elapsedMs+=60000;v.state.command=5;h.sql.prepare('UPDATE player_saves SET save_json=? WHERE user_id=?').run(JSON.stringify(v),p.user.id);}
   crypto.getRandomValues=function(array){return array instanceof Uint32Array&&array.length===1?array.fill(0xffffffff):original.call(crypto,array);};try{hit=await incoming(h,raider,attacker,'nijo');}finally{crypto.getRandomValues=original;}
-  const staffBefore=row(h,staff).save_json,staffRevision=row(h,staff).revision,sharedBefore=h.sql.prepare("SELECT state_json FROM staff_base WHERE id='sunpu'").get().state_json;
-  const counter=await op(h,attacker,'retaliate',{stationId:other,incidentId:hit.id});assert.deepEqual(counter.result.battle.defenderLost,{troops:0,garrison:0});assert.equal(row(h,staff).save_json,staffBefore);assert.equal(row(h,staff).revision,staffRevision);assert.equal(h.sql.prepare("SELECT state_json FROM staff_base WHERE id='sunpu'").get().state_json,sharedBefore);
+  const staffBefore=row(h,staff).save_json,staffRevision=row(h,staff).revision,sharedBefore=h.sql.prepare("SELECT state_json FROM staff_base WHERE id='kyoto_gosho'").get().state_json;
+  const counter=await op(h,attacker,'retaliate',{stationId:other,incidentId:hit.id});assert.deepEqual(counter.result.battle.defenderLost,{troops:0,garrison:0});assert.equal(row(h,staff).save_json,staffBefore);assert.equal(row(h,staff).revision,staffRevision);assert.equal(h.sql.prepare("SELECT state_json FROM staff_base WHERE id='kyoto_gosho'").get().state_json,sharedBefore);
  });
  await scope('concurrent requests spend one inventory sequence and one incoming opportunity only',async h=>{
   const p=await fixture(h,'同時指示',{admin:true}),a=await fixture(h,'同時襲撃'),d=await fixture(h,'同時反撃先'),stationId=await armed(h,p,{kind:'player',playerId:d.user.id,castleId:'kiyosu'}),hit=await incoming(h,a,p),one=body(h,p,{stationId,incidentId:hit.id}),two={...one,requestId:crypto.randomUUID()};

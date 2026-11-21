@@ -13,7 +13,7 @@ try{
  assert.equal((await api('/profile',{method:'PATCH',token:ordinary.token,body:{name:ordinary.user.name,clan:'德川家'},expected:403})).data.error.code,'ADMIN_CLAN_REQUIRED');const staffProfile=(await api('/profile',{method:'PATCH',token:staff.token,body:{name:staff.user.name,clan:'德川家'}})).data.user;assert.equal(staffProfile.clan,'德川家');assert(staffProfile.isStaff&&!staffProfile.isAdmin);
  await lease(ordinary);const old=await write(ordinary,0,freshAt('徳川家','himeji'));assert.equal(old.data.save.state.clan,'徳川家');assert.equal(old.data.save.state.home,'himeji');assert.equal(Object.values(old.data.save.state.castles).filter(c=>c.owner==='徳川家').length,1);
  const forged=freshAt('德川家','himeji');forged.state.isAdmin=true;forged.isAdmin=true;assert.equal((await write(ordinary,1,forged,403)).data.error.code,'ADMIN_CLAN_REQUIRED');
- await lease(staff);const staffSave=(await write(staff,0,forged)).data;assert.equal(staffSave.save.state.clan,'德川家');assert.equal(staffSave.save.state.home,'sunpu');assert(!staffSave.user.isAdmin);assert.deepEqual(staffSave.entitlements,{edo:false,ieyasuU:false});assert(!staffSave.save.state.officerVariants.includes('of_b0616adde162:U'));
+ await lease(staff);const staffSave=(await write(staff,0,forged)).data;assert.equal(staffSave.save.state.clan,'德川家');assert.equal(staffSave.save.state.home,'kyoto_gosho');assert(!staffSave.user.isAdmin);assert.deepEqual(staffSave.entitlements,{edo:false,ieyasuU:false});assert(!staffSave.save.state.officerVariants.includes('of_b0616adde162:U'));
  // Metropolitan castles are excluded by the first-start selector only. Existing
  // ordinary cloud campaigns at Osaka, Nijo and Nagoya must remain importable.
  let revision=1;for(const city of ['osaka','nijo','nagoya']){const saved=await write(ordinary,revision++,freshAt('徳川家',city));assert.equal(saved.data.save.state.home,city);assert((await api('/field')).data.players.find(p=>p.playerId===ordinary.user.id).majorCity);}
@@ -29,7 +29,7 @@ try{
  const latest=(await api('/sync',{token:ordinary.token})).data,clock=(await api('/world-clock')).data.clock;
  const alignedGame=GameEngine.fromSave(latest.save,GAME_OFFICERS);alignedGame.applyWorldClock(clock);
  const aligned=(await write(ordinary,latest.revision,JSON.parse(alignedGame.exportSave()))).data;revision=aligned.revision;
- const defenderBefore=sql.prepare('SELECT * FROM player_saves WHERE user_id=?').get(admin.user.id),sharedBefore=sql.prepare("SELECT * FROM staff_base WHERE id='sunpu'").get();
+ const defenderBefore=sql.prepare('SELECT * FROM player_saves WHERE user_id=?').get(admin.user.id),sharedBefore=sql.prepare("SELECT * FROM staff_base WHERE id='kyoto_gosho'").get();
  const attack={targetPlayerId:admin.user.id,targetCastleId:'edo',deviceId:ordinary.user.id+'-device',expectedRevision:revision,requestId:crypto.randomUUID(),troops:300,tactic:'balanced'};
  let reward;const random=crypto.getRandomValues;crypto.getRandomValues=array=>array.fill(0);
  try{reward=(await api('/field/attack',{method:'POST',token:ordinary.token,body:attack})).data;}finally{crypto.getRandomValues=random;}
@@ -37,7 +37,7 @@ try{
  assert.deepEqual(reward.battle.defenderLost,{troops:0,garrison:0});assert.deepEqual(reward.battle.loot,{gold:0,rice:0,wood:0,stone:0});assert.deepEqual(reward.battle.rewards,{gold:500,rice:500,wood:500,stone:500});
  for(const key of ['gold','rice','wood','stone'])assert.equal(reward.save.state.resources[key],aligned.save.state.resources[key]+500-(key==='rice'?reward.battle.foodCost:0));
  assert.equal(reward.save.state.home,aligned.save.state.home);assert.notEqual(reward.save.state.castles.edo.owner,reward.save.state.clan);
- assert.deepEqual(sql.prepare('SELECT * FROM player_saves WHERE user_id=?').get(admin.user.id),defenderBefore,'Edo reward combat preserves the entire defender row, including save and revision');assert.deepEqual(sql.prepare("SELECT * FROM staff_base WHERE id='sunpu'").get(),sharedBefore);
+ assert.deepEqual(sql.prepare('SELECT * FROM player_saves WHERE user_id=?').get(admin.user.id),defenderBefore,'Edo reward combat preserves the entire defender row, including save and revision');assert.deepEqual(sql.prepare("SELECT * FROM staff_base WHERE id='kyoto_gosho'").get(),sharedBefore);
  await api('/field/attack',{method:'POST',token:ordinary.token,body:{...attack,isAdmin:true,castleId:'edo',won:true},expected:400});assert.equal(Number(sql.prepare('SELECT COUNT(*) n FROM field_battles').get().n),1);
  assert.equal(JSON.parse(sql.prepare('SELECT save_json FROM player_saves WHERE user_id=?').get(admin.user.id).save_json).state.castles.edo.owner,'德川家');
  // Revocation converts only the old holdings; same-spelling ordinary AI castles

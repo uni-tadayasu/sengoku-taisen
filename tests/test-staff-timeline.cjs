@@ -12,7 +12,7 @@ const cycleMs=D.worldCalendar.monthsPerCycle*60000;
 const raw=game=>JSON.parse(game.exportSave());
 function baseFor(game,accessSinceElapsedMs=0,options={}){
   const state=game.state,buildings={...state.buildings,...options.buildings};
-  return {id:'sunpu',revision:1,accessSinceElapsedMs,castleLevel:options.castleLevel||1,buildings,initial:{buildings,castleLevel:options.castleLevel||1},history:[],jobs:[],personalHome:state.home,personalCycleHome:state.cycle.home,personalSunpu:structuredClone(state.castles.sunpu),personalHomeCastle:structuredClone(state.castles[state.home]),...options};
+  return {id:'kyoto_gosho',revision:1,accessSinceElapsedMs,castleLevel:options.castleLevel||1,buildings,initial:{buildings,castleLevel:options.castleLevel||1},history:[],jobs:[],personalHome:state.home,personalCycleHome:state.cycle.home,personalBaseCastle:structuredClone(state.castles.kyoto_gosho),personalHomeCastle:structuredClone(state.castles[state.home]),...options};
 }
 function staffFrom(game,base){return E.fromSave(game.exportSave(),officers,{isStaff:true,staffBase:base});}
 let count=0;
@@ -32,11 +32,11 @@ test('pre-appointment catch-up retains personal ownership, home, facilities and 
   const personal=create({startCastle:'nanao'});personal.applyWorldClock(clock(0));
   const base=baseFor(personal,100000,{buildings:{...personal.state.buildings,market:20,keep:16},castleLevel:48});
   const game=staffFrom(personal,base);
-  assert.equal(game.state.home,'nanao');assert.equal(game.state.castles.sunpu.owner,personal.state.castles.sunpu.owner);
+  assert.equal(game.state.home,'nanao');assert.equal(game.state.castles.kyoto_gosho.owner,personal.state.castles.kyoto_gosho.owner);
   personal.applyWorldClock(clock(99999));game.applyWorldClock(clock(99999));sameResources(personal,game);
   assert.deepEqual(game.state.buildings,personal.state.buildings);assert.equal(game.state.cycle.home,'nanao');
   personal.applyWorldClock(clock(100000));game.applyWorldClock(clock(100000));sameResources(personal,game);
-  assert.equal(game.state.home,'sunpu');assert.equal(game.state.castles.sunpu.owner,game.state.clan);assert.equal(game.state.castles.sunpu.level,48);
+  assert.equal(game.state.home,'kyoto_gosho');assert.equal(game.state.castles.kyoto_gosho.owner,game.state.clan);assert.equal(game.state.castles.kyoto_gosho.level,48);
   assert.equal(game.state.buildings.market,20);assert.equal(raw(game).state.buildings.market,personal.state.buildings.market);
   personal.applyWorldClock(clock(160000));game.applyWorldClock(clock(160000));assert(game.state.resources.gold>personal.state.resources.gold);
 });
@@ -56,15 +56,15 @@ test('a cycle boundary before appointment preserves the original campaign home',
   const personal=create({startCastle:'nanao'});personal.state.castles.kiyosu.owner=personal.state.clan;personal.applyWorldClock(clock(cycleMs-1000));
   const base=baseFor(personal,cycleMs+2000,{buildings:{...personal.state.buildings,keep:20},castleLevel:64});
   const game=staffFrom(personal,base);personal.applyWorldClock(clock(cycleMs+1000));game.applyWorldClock(clock(cycleMs+1000));
-  assert.equal(game.state.home,'nanao');assert.equal(game.state.cycle.home,'nanao');assert.notEqual(game.state.castles.sunpu.owner,game.state.clan);
+  assert.equal(game.state.home,'nanao');assert.equal(game.state.cycle.home,'nanao');assert.notEqual(game.state.castles.kyoto_gosho.owner,game.state.clan);
   assert.deepEqual(game.state.cycle.latestReward,personal.state.cycle.latestReward);sameResources(personal,game);
-  game.applyWorldClock(clock(cycleMs+2000));assert.equal(game.state.home,'sunpu');assert.equal(game.state.castles.sunpu.level,64);
+  game.applyWorldClock(clock(cycleMs+2000));assert.equal(game.state.home,'kyoto_gosho');assert.equal(game.state.castles.kyoto_gosho.level,64);
 });
 
 test('appointment exactly at a cycle boundary uses the shared home for the new cycle',()=>{
   const personal=create({startCastle:'nanao'});personal.applyWorldClock(clock(cycleMs-1000));
   const base=baseFor(personal,cycleMs,{castleLevel:64});const game=staffFrom(personal,base);
-  game.applyWorldClock(clock(cycleMs));assert.equal(game.state.home,'sunpu');assert.equal(game.state.cycle.home,'sunpu');assert.equal(game.state.castles.sunpu.level,64);
+  game.applyWorldClock(clock(cycleMs));assert.equal(game.state.home,'kyoto_gosho');assert.equal(game.state.cycle.home,'kyoto_gosho');assert.equal(game.state.castles.kyoto_gosho.level,64);
   assert.equal(game.state.cycle.latestReward.captured,1);assert.notEqual(game.state.castles.nanao.owner,game.state.clan);
 });
 
@@ -74,7 +74,7 @@ test('a linked client waiting for pre-appointment cycle settlement keeps the per
   const pending=game.applyWorldClock(clock(cycleMs+5000),{deferCycleSettlement:true});
   assert.equal(pending.settlementRequired,true);assert.equal(game.state.worldClock.elapsedMs,cycleMs-1);assert.equal(game.state.home,'nanao');assert.equal(game.state.cycle.home,'nanao');
   const settled=E.fromSave(game.exportSave(),officers,{isStaff:true,staffBase:base});settled.applyWorldClock(clock(cycleMs+5000));
-  assert.equal(settled.state.home,'sunpu');assert.equal(settled.state.cycle.latestReward.captured,0);assert.equal(settled.state.cycle.index,1);
+  assert.equal(settled.state.home,'kyoto_gosho');assert.equal(settled.state.cycle.latestReward.captured,0);assert.equal(settled.state.cycle.index,1);
 });
 
 test('a defeated personal campaign resumes only at the appointment timestamp',()=>{
@@ -84,7 +84,7 @@ test('a defeated personal campaign resumes only at the appointment timestamp',()
   const expectedRaw=raw(personal);expectedRaw.state.turn=1;expectedRaw.state.worldClock.elapsedMs=60000;expectedRaw.state.realtime.elapsed=0;
   const expected=E.fromSave(expectedRaw,officers,{isStaff:true,staffBase:base});
   game.applyWorldClock(clock(120000));expected.applyWorldClock(clock(120000));sameResources(game,expected);
-  assert.equal(game.state.home,'sunpu');assert.equal(game.state.gameOver,false);assert.equal(game.state.realtime.running,true);
+  assert.equal(game.state.home,'kyoto_gosho');assert.equal(game.state.gameOver,false);assert.equal(game.state.realtime.running,true);
 });
 
 test('former home construction completed at rollover survives in personal progress',()=>{
@@ -99,19 +99,19 @@ test('former home construction completed at rollover survives in personal progre
 test('personal wall jobs improve personal progress while shared walls remain independent',()=>{
   const personal=create();assert(personal.upgrade('wall').ok);personal.applyWorldClock(clock(0));
   const base=baseFor(personal,30000,{buildings:{...personal.state.buildings,wall:15}}),game=staffFrom(personal,base);
-  game.applyWorldClock(clock(60000));assert.equal(game.state.buildings.wall,15);assert.equal(game.state.castles.sunpu.wall,15);
+  game.applyWorldClock(clock(60000));assert.equal(game.state.buildings.wall,15);assert.equal(game.state.castles.kyoto_gosho.wall,15);
   assert.equal(raw(game).state.buildings.wall,2);assert.equal(game.getStaffPersonalProgress().castle.wall,2);
 });
 
 test('a same-revision personalized progress update is retained without changing shared levels',()=>{
   const personal=create(),base=baseFor(personal),game=staffFrom(personal,base),next=structuredClone(base);next.personalHomeCastle.level=7;
-  assert.equal(game.applyStaffBase(next).changed,true);assert.equal(game.getStaffPersonalProgress().castle.level,7);assert.equal(game.state.castles.sunpu.level,1);
+  assert.equal(game.applyStaffBase(next).changed,true);assert.equal(game.getStaffPersonalProgress().castle.level,7);assert.equal(game.state.castles.kyoto_gosho.level,1);
   assert.equal(game.applyStaffBase(next).changed,false);
 });
 
 test('invalid personal timeline metadata cannot replace a valid projection',()=>{
   const personal=create(),base=baseFor(personal),game=staffFrom(personal,base),before=raw(game);
-  for(const patch of [{accessSinceElapsedMs:-1},{personalHome:'edo'},{personalCycleHome:'sunpu'},{personalSunpu:{...base.personalSunpu,level:65}},{personalHomeCastle:{...base.personalHomeCastle,level:33}}]){
+  for(const patch of [{accessSinceElapsedMs:-1},{personalHome:'edo'},{personalCycleHome:'kyoto_gosho'},{personalBaseCastle:{...base.personalBaseCastle,level:129}},{personalHomeCastle:{...base.personalHomeCastle,level:33}}]){
     assert.equal(game.applyStaffBase({...base,revision:2,...patch}).ok,false);assert.deepEqual(raw(game).state,before.state);
   }
 });

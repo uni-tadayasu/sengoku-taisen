@@ -898,6 +898,12 @@
         "troops": 3340,
         "wall": 3,
         "level": 1
+      },
+      "kyoto_gosho": {
+        "owner": "朝廷",
+        "troops": 1900,
+        "wall": 2,
+        "level": 1
       }
     },
     "treaties": {},

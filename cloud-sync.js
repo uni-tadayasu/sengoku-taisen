@@ -8,6 +8,37 @@ function fingerprint(save){
  return JSON.stringify(sorted(save.state));
 }
 function hash(value){let a=2166136261,b=3339675911;for(let i=0;i<value.length;i++){a=Math.imul(a^value.charCodeAt(i),16777619);b=Math.imul(b^value.charCodeAt(i),2246822519);}return(a>>>0).toString(16)+':'+(b>>>0).toString(16);}
+// Reconcile only the authoritative branch/parent delta. A resource tick or a
+// new ordinary action must not prevent that delta, or be rolled back by it.
+function mergeBranchCorrection(sent,canonical,current){
+ const a=sent?.state,b=canonical?.state,c=current?.state,copy=value=>JSON.parse(JSON.stringify(value)),same=(left,right)=>fingerprint({state:left})===fingerprint({state:right});
+ if(!a||!b||!c)return{changed:false,pending:false};
+ const parents=[...new Set([...(a.branches||[]),...(b.branches||[])].map(row=>row.parentCastleId))].filter(id=>['edo','nijo','osaka','nagoya'].includes(id));
+ if(!parents.length)return{changed:false,pending:false};
+ if(!a.walking?.campaignId||a.walking.campaignId!==b.walking?.campaignId||a.walking.campaignId!==c.walking?.campaignId||a.clan!==b.clan||a.clan!==c.clan||a.worldClock?.id!==b.worldClock?.id||a.worldClock?.id!==c.worldClock?.id)return{changed:false,pending:true};
+ const elapsed=state=>Number.isFinite(state.worldClock?.elapsedMs)?state.worldClock.elapsedMs:(state.turn||0)*60000+(state.realtime?.elapsed||0)*1000,at=elapsed(c);
+ function parts(state,parent){
+  const branches=copy((state.branches||[]).filter(row=>row.parentCastleId===parent)).sort((x,y)=>x.id.localeCompare(y.id)),byId=new Map(branches.map(row=>[row.id,row])),jobs=[];
+  for(const job of state.jobs||[]){if(job.kind!=='branch'||!byId.has(job.id))continue;const deadline=Number.isSafeInteger(job.completesElapsedMs)?job.completesElapsedMs:Math.round(elapsed(state)+job.remainingSeconds*1000),remainingSeconds=Math.min(job.totalSeconds,Math.max(0,(deadline-at)/1000));
+   if(remainingSeconds<=1e-8){const branch=byId.get(job.id);branch.level=job.targetLevel;branch.fallen=false;}
+   else jobs.push({...copy(job),completesElapsedMs:deadline,remainingSeconds,remaining:Math.ceil((remainingSeconds-1e-8)/60)});
+  }
+  jobs.sort((x,y)=>x.id.localeCompare(y.id));return{owner:state.castles?.[parent]?.owner,branches,jobs};
+ }
+ const semantic=part=>({...part,jobs:part.jobs.map(({remaining,remainingSeconds,...job})=>job)}),changes=[];let hasDelta=false;
+ for(const parent of parents){const before=parts(a,parent),after=parts(b,parent),live=parts(c,parent);if(same(semantic(before),semantic(after)))continue;hasDelta=true;if(same(semantic(live),semantic(after)))continue;
+  // A later branch action or CPU transition needs its own authoritative reply.
+  if(!same(semantic(live),semantic(before)))return{changed:false,pending:true};changes.push({parent,after});
+ }
+ if(!hasDelta)return{changed:false,pending:false};
+ const paths=[['home'],['cycle','home'],['gameOver'],['won'],['realtime','running']],read=(state,path)=>path.reduce((value,key)=>value?.[key],state),summary=[];
+ for(const path of paths){const before=read(a,path),after=read(b,path),live=read(c,path);if(before===after||live===after||after===undefined)continue;if(live!==before)return{changed:false,pending:true};summary.push({path,value:after});}
+ if(!changes.length&&!summary.length)return{changed:false,pending:false};
+ const merged=copy(current),state=merged.state;
+ for(const {parent,after}of changes){if(!state.castles?.[parent])return{changed:false,pending:true};state.castles[parent].owner=after.owner;state.branches=(state.branches||[]).filter(row=>row.parentCastleId!==parent).concat(after.branches);state.jobs=(state.jobs||[]).filter(job=>job.kind!=='branch'||!job.id.startsWith(parent+'_')).concat(after.jobs);}
+ for(const {path,value}of summary){let target=state;for(const key of path.slice(0,-1))target=target[key];target[path.at(-1)]=value;}
+ return{changed:true,pending:false,save:merged};
+}
 function makeDevice(){
  const random=()=>global.crypto?.randomUUID?.()||'device-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2);
  // A fresh document suffix also separates duplicated tabs, whose sessionStorage is copied.
@@ -20,7 +51,7 @@ function create(options={}){
  const device={...(options.device||makeDevice())},deviceStem=device.id.slice(0,36),now=options.now||(()=>Date.now()),hidden=options.hidden||(()=>Boolean(global.document?.hidden)),online=options.online||(()=>global.navigator?.onLine!==false),bridge=options.bridge||(()=>global.SengokuBridge),storage=options.storage||global.localStorage;
  const later=options.setTimeout||global.setTimeout.bind(global),cancel=options.clearTimeout||global.clearTimeout.bind(global);
  const listeners=new Set();let session=null,generation=0,queue=Promise.resolve(),initialized=false,applying=false,dirty=false,ack='',revision=0,leaseDeadline=0,lastLeaseAt=0,refreshPending=null,attempt=null,banned=false,banMessage='',accessRefreshPending=false;
- let pollTimer=null,saveTimer=null,presenceTimer=null,expiryTimer=null;
+ let pollTimer=null,saveTimer=null,presenceTimer=null,expiryTimer=null,branchAuthoritySnapshot=null,branchCorrectionPending=null;
  let status={linked:false,ready:true,writable:true,banned:false,reason:'local',message:'この端末に自動保存しています。',revision:0,updatedAt:null,leaseExpiresAt:null,writerDeviceName:null,deviceName:device.name};
  const valid=g=>Boolean(session&&g===generation);
  const rolePending=()=>bridge()?.getRoleAccess?.().pending===true;
@@ -31,10 +62,10 @@ function create(options={}){
   // A clock tick can advance the runtime after the primary local save. Keep the
   // exact pending snapshot and the durable source it belongs to in one write.
   // A failed storage write leaves the previous checkpoint and game save intact.
-  try{if(dirty){const save=local(),durable=stored();if(!save||!fingerprint(durable))return;storage?.setItem(PENDING_KEY,JSON.stringify({id:String(session.id),revision,ack:hash(ack),local:hash(fingerprint(save)),durable:hash(fingerprint(durable)),snapshot:save,attempt}));}else{const old=JSON.parse(storage?.getItem(PENDING_KEY)||'null');if(old?.id===String(session.id))storage?.removeItem(PENDING_KEY);}}catch(_){}
+  try{if(dirty){const save=local(),durable=stored();if(!save||!fingerprint(durable))return;storage?.setItem(PENDING_KEY,JSON.stringify({id:String(session.id),revision,ack:hash(ack),local:hash(fingerprint(save)),durable:hash(fingerprint(durable)),snapshot:save,attempt,...(branchCorrectionPending?{branchCorrectionPending:true}:{})}));}else{const old=JSON.parse(storage?.getItem(PENDING_KEY)||'null');if(old?.id===String(session.id))storage?.removeItem(PENDING_KEY);}}catch(_){}
  }
  function canResume(remoteKey,remoteRevision){
-  try{const pending=JSON.parse(storage?.getItem(PENDING_KEY)||'null');if(pending?.id!==String(session.id))return null;
+  try{const pending=JSON.parse(storage?.getItem(PENDING_KEY)||'null');if(pending?.id!==String(session.id)||pending.branchCorrectionPending===true)return null;
    const baseline=pending.revision===remoteRevision&&pending.ack===hash(remoteKey)||pending.attempt?.revision+1===remoteRevision&&pending.attempt?.key===hash(remoteKey);if(!baseline)return null;
    const durable=stored(),durableKey=fingerprint(durable),savedKey=fingerprint(pending.snapshot);
    if(savedKey&&pending.local===hash(savedKey)&&durableKey&&pending.durable===hash(durableKey))return pending.snapshot;
@@ -63,8 +94,25 @@ function create(options={}){
   checkpoint();generation++;queue=Promise.resolve();refreshPending=null;initialized=false;applying=false;attempt=null;leaseDeadline=0;accessRefreshPending=true;clearTimers();roleAccess({},true);session?.onUser?.(null);
   emit({linked:true,ready:false,writable:false,reason:'access-changed',message:message||'領主の利用状態が更新されました。最新の接続状態を確認しています。',leaseExpiresAt:null});schedulePoll();return true;
  }
- function roleAccess(user={},pending=false){const current=bridge(),roles={isAdmin:user.isAdmin===true,isStaff:user.isStaff===true&&user.isAdmin!==true,pending};if(current?.setRoleAccess)current.setRoleAccess(roles);else current?.setAdminAccess?.(roles.isAdmin);}
+ function roleAccess(user={},pending=false){if(pending){branchAuthoritySnapshot=null;branchCorrectionPending=null;}const current=bridge(),roles={isAdmin:user.isAdmin===true,isStaff:user.isStaff===true&&user.isAdmin!==true,pending};if(current?.setRoleAccess)current.setRoleAccess(roles);else current?.setAdminAccess?.(roles.isAdmin);}
  function applyStaffBase(snapshot,g){if(!valid(g)||snapshot.user?.isStaff!==true||snapshot.user?.isAdmin===true)return;const result=bridge()?.applyStaffBase?.(snapshot.staffBase||null);if(result?.ok===false)throw Error(result.message||'スタッフ共同拠点を確認できませんでした。');}
+ function branchAuthorityMeta(snapshot){
+  const meta={source:'cloud',playerId:String(snapshot.user?.id||''),branchCampaignId:String(snapshot.save?.state?.walking?.campaignId||''),branchResolvedElapsedMs:Number.isSafeInteger(snapshot.branchResolvedElapsedMs)&&snapshot.branchResolvedElapsedMs>=0?snapshot.branchResolvedElapsedMs:0},previous=branchAuthoritySnapshot;
+  if(previous&&previous.meta.playerId===meta.playerId&&previous.meta.branchCampaignId===meta.branchCampaignId){
+   // A direct authenticated command/read can finish before an older queued sync.
+   // Keep its authority through that save replacement, including an older zero.
+   if(previous.revision>snapshot.revision)return{...previous.meta};
+   if(meta.branchResolvedElapsedMs>0)meta.branchResolvedElapsedMs=Math.max(meta.branchResolvedElapsedMs,previous.meta.branchResolvedElapsedMs);
+  }
+  branchAuthoritySnapshot={revision:snapshot.revision,meta};return{...meta};
+ }
+ function applyBranchAuthority(snapshot,g){if(!valid(g)||String(snapshot.user?.id)!==String(session.id))return;return bridge()?.applyBranchAuthority?.(branchAuthorityMeta(snapshot));}
+ function olderBranchSnapshot(snapshot){const previous=branchAuthoritySnapshot;return Boolean(previous&&previous.meta.playerId===String(snapshot.user?.id)&&previous.meta.branchCampaignId===snapshot.save?.state?.walking?.campaignId&&previous.revision>snapshot.revision);}
+ function observeBranchSnapshot(snapshot){
+  const current=bridge(),role=current?.getRoleAccess?.(),campaignId=current?.getState?.()?.walking?.campaignId;
+  if(!session||!initialized||banned||accessRefreshPending||role?.pending||!snapshot?.user||snapshot.user.isBanned||String(snapshot.user.id)!==String(session.id)||!Number.isSafeInteger(snapshot.revision)||snapshot.revision<revision||branchAuthoritySnapshot&&snapshot.revision<branchAuthoritySnapshot.revision||!campaignId||snapshot.save?.state?.walking?.campaignId!==campaignId||role&&(Boolean(snapshot.user.isAdmin)!==role.isAdmin||Boolean(snapshot.user.isStaff&&!snapshot.user.isAdmin)!==role.isStaff))return{ok:false,ignored:true};
+  return applyBranchAuthority(snapshot,generation)||{ok:true};
+ }
  function setRole(snapshot){
   const user=snapshot?.user;if(!user||String(user.id)!==String(session?.id))throw Error('同期する領主を確認できませんでした。');
   roleAccess(user);session.onUser?.(user);
@@ -94,9 +142,9 @@ function create(options={}){
   if(before&&current&&before.epoch!==current.epoch&&result?.user&&(Boolean(result.user.isAdmin)!==current.isAdmin||Boolean(result.user.isStaff&&!result.user.isAdmin)!==current.isStaff)){const error=Error('役職が更新されたため、最新の権限と共同拠点を再確認しています。');error.code='STALE_ROLE';throw error;}
   return result;
  }
- async function apply(save,snapshot,g,{reason='remote',backup=false}={}){
+ async function apply(save,snapshot,g,{reason='remote',backup=false,backupRuntime=false}={}){
   if(!valid(g))return false;emit({writable:false,reason:'applying',message:'最新の進行を反映しています…'});applying=true;
-  try{const result=await bridge()?.applyCloudSave?.(save,{isAdmin:snapshot.user.isAdmin===true,isStaff:snapshot.user.isStaff===true&&snapshot.user.isAdmin!==true,staffBase:snapshot.staffBase||null,entitlements:snapshot.entitlements||{},source:'cloud',reason,backup});if(!valid(g))return false;if(result!==true&&result?.ok!==true)throw Error(result?.message||'最新データをこの端末に保存できませんでした。');return true;}
+  try{const result=await bridge()?.applyCloudSave?.(save,{isAdmin:snapshot.user.isAdmin===true,isStaff:snapshot.user.isStaff===true&&snapshot.user.isAdmin!==true,staffBase:snapshot.staffBase||null,entitlements:snapshot.entitlements||{},...branchAuthorityMeta(snapshot),reason,backup,backupRuntime});if(!valid(g))return false;if(result!==true&&result?.ok!==true)throw Error(result?.message||'最新データをこの端末に保存できませんでした。');return true;}
   finally{if(valid(g))applying=false;}
  }
  async function snapshot(result,g,{force=false,reason='remote'}={}){
@@ -104,8 +152,10 @@ function create(options={}){
   if(!Number.isSafeInteger(result.revision)||result.revision<0||result.revision<revision)throw Error('同期データの更新番号を確認できませんでした。再接続して確認します。');
   if(result.user?.isBanned===true){suspendAccount({playerId:session.id});return false;}
   if(!result.user||String(result.user.id)!==String(session.id))throw Error('同期する領主を確認できませんでした。');
+  if(olderBranchSnapshot(result))throw Error('支拠点の新しい更新を確認しています。最新の保存へ同期します。');
   if(banned){banned=false;banMessage='';status.banned=false;initialized=false;}
-  setRole(result);if(result.clock)global.SengokuWorldClock?.accept(result.clock);const remote=result.save,remoteKey=remote?fingerprint(remote):'';
+  setRole(result);const remote=result.save,remoteKey=remote?fingerprint(remote):'';
+  if(branchCorrectionPending&&result.writerDeviceId!==device.id){force=true;reason='branch-canonical';}
   if(remote&&!remoteKey)throw Error('同期データの形式を確認できませんでした。');
   if(remote&&(!initialized||force||result.revision>revision||remoteKey!==ack)){
    let before='',unreadable=false;try{before=fingerprint(local());}catch(_){unreadable=true;}
@@ -113,9 +163,13 @@ function create(options={}){
    // Reopen only an unsent save whose exact server baseline is still authoritative.
    // A changed baseline always goes through the bridge's local-backup path.
    const resume=!force&&canResume(remoteKey,result.revision);
-   if(!await apply(resume||remote,result,g,{reason:resume?'resume':!initialized?'initial':reason,backup:resume?Boolean(before)&&before!==fingerprint(resume):backup}))return false;
-   ack=remoteKey;dirty=fingerprint(local())!==ack;
+   if(!await apply(resume||remote,result,g,{reason:resume?'resume':!initialized?'initial':reason,backup:resume?Boolean(before)&&before!==fingerprint(resume):backup,backupRuntime:Boolean(branchCorrectionPending)}))return false;
+   branchCorrectionPending=null;ack=remoteKey;dirty=fingerprint(local())!==ack;
   }else if(!remote&&!initialized){ack='';dirty=Boolean(local());}
+  else if(remote&&branchCorrectionPending){const corrected=mergeBranchCorrection(branchCorrectionPending,remote,local());if(corrected.changed){if(!await apply(corrected.save,result,g,{reason:'branch-canonical'}))return false;}if(!corrected.pending)branchCorrectionPending=null;dirty=fingerprint(local())!==ack;}
+  // The branch ledger may be newer than the player's economic checkpoint. Its
+  // trusted cursor must reach the engine before a clock notification can catch up.
+  applyBranchAuthority(result,g);if(result.clock)global.SengokuWorldClock?.accept(result.clock);
   applyStaffBase(result,g);revision=result.revision;initialized=true;attempt=null;checkpoint();status.updatedAt=result.updatedAt||null;lease(result);access();return true;
  }
  function fail(error,g){
@@ -140,10 +194,12 @@ function create(options={}){
   try{
    const result=await request(g,'/sync',{method:'PUT',data:{deviceId:device.id,revision,save},keepalive});if(!result)return{ok:false};
    if(!Number.isSafeInteger(result.revision)||result.revision<=revision||!fingerprint(result.save))throw Error('自動保存の結果を確認できませんでした。');
-   setRole(result);if(result.clock)global.SengokuWorldClock?.accept(result.clock);const canonical=fingerprint(result.save),current=fingerprint(local());
+   setRole(result);const canonical=fingerprint(result.save),currentSave=local(),current=fingerprint(currentSave),staleBranch=olderBranchSnapshot(result);
    // A save response must never erase actions performed while that request was in flight.
-   if(current===sent&&canonical!==current){if(!await apply(result.save,result,g,{reason:'canonical',backup:false}))return{ok:false};}
-   if(!valid(g))return{ok:false};applyStaffBase(result,g);revision=result.revision;ack=canonical;dirty=fingerprint(local())!==ack;initialized=true;attempt=null;checkpoint();status.updatedAt=result.updatedAt||null;lease(result);access();if(dirty&&!suspended)scheduleSave();return{ok:true};
+   if(staleBranch)branchCorrectionPending=save;
+   else if(current===sent&&canonical!==current){if(!await apply(result.save,result,g,{reason:'canonical',backup:false}))return{ok:false};branchCorrectionPending=null;}
+   else{const corrected=mergeBranchCorrection(save,result.save,currentSave);branchCorrectionPending=corrected.pending?save:null;if(corrected.changed&&!await apply(corrected.save,result,g,{reason:'branch-canonical',backup:false}))return{ok:false};}
+   if(!valid(g))return{ok:false};applyBranchAuthority(result,g);if(result.clock)global.SengokuWorldClock?.accept(result.clock);applyStaffBase(result,g);revision=result.revision;ack=canonical;dirty=fingerprint(local())!==ack;initialized=true;attempt=null;checkpoint();status.updatedAt=result.updatedAt||null;lease(result);access();if(dirty&&!suspended)scheduleSave();return{ok:true};
   }catch(error){if(!valid(g))return{ok:false};if(['REVISION_CONFLICT','LEASE_REQUIRED','CYCLE_SETTLEMENT_REQUIRED','CLOCK_REWIND'].includes(error.code)){await recoverConflict(g);return{ok:false,conflict:true};}throw error;}
  }
  async function refreshCore(g,{takeOver=false,settleCycle=false}={}){
@@ -179,7 +235,7 @@ function create(options={}){
   if(!hidden()){presence(true);schedulePresence();return refresh();}access();return Promise.resolve({ok:false,hidden:true});
  }
  function stop({pending=false}={}){
-  checkpoint();const previous=banned?null:session;generation++;session=null;clearTimers();queue=Promise.resolve();refreshPending=null;initialized=false;applying=false;dirty=false;ack='';revision=0;leaseDeadline=0;banned=false;banMessage='';accessRefreshPending=false;
+  checkpoint();const previous=banned?null:session;generation++;session=null;clearTimers();queue=Promise.resolve();refreshPending=null;initialized=false;applying=false;dirty=false;ack='';revision=0;leaseDeadline=0;banned=false;banMessage='';accessRefreshPending=false;branchAuthoritySnapshot=null;branchCorrectionPending=null;
   emit({linked:pending,ready:!pending,writable:!pending,reason:pending?'initializing':'local',message:pending?'領主と最新の保存を確認しています…':'この端末に自動保存しています。',revision:0,updatedAt:null,leaseExpiresAt:null,writerDeviceName:null});roleAccess({},pending);
   if(previous){for(const [route,data]of [['/presence',{deviceId:device.id,deviceName:device.name,online:false}],['/sync/release',{deviceId:device.id}]]){try{Promise.resolve(previous.request(route,{method:'POST',data,background:true,keepalive:true})).catch(()=>{});}catch(_){}}}
  }
@@ -197,7 +253,7 @@ function create(options={}){
   return enqueue(async g=>{try{const final=await flushCore(g,{suspended:true,keepalive:true});if(!valid(g)||!final?.ok)return;await request(g,'/sync/release',{method:'POST',data:{deviceId:device.id},keepalive:true});if(valid(g)){leaseDeadline=0;emit({writable:false,leaseExpiresAt:null});}}catch(e){fail(e,g);}});
  }
  function setDeviceName(value){const name=Array.from(String(value||'').trim()).slice(0,40).join('');if(!name)throw Error('端末名を入力してください。');try{localStorage.setItem(NAME_KEY,name);}catch(_){throw Error('端末名を保存できませんでした。');}device.name=name;emit();if(session&&!hidden())presence(true);return name;}
- return{start,stop,refresh,suspendAccount,invalidateAccountAccess,takeOver:()=>refresh({takeOver:true}),flush,notifySave,visibilityChanged,connectionChanged,pageHidden,setDeviceName,getStatus:()=>({...status}),getDevice:()=>({...device}),subscribe:fn=>{listeners.add(fn);fn({...status});return()=>listeners.delete(fn);}};
+ return{start,stop,refresh,observeBranchSnapshot,suspendAccount,invalidateAccountAccess,takeOver:()=>refresh({takeOver:true}),flush,notifySave,visibilityChanged,connectionChanged,pageHidden,setDeviceName,getStatus:()=>({...status}),getDevice:()=>({...device}),subscribe:fn=>{listeners.add(fn);fn({...status});return()=>listeners.delete(fn);}};
 }
 const sync=create();sync.create=create;sync.fingerprint=fingerprint;global.SengokuCloudSync=sync;
 global.addEventListener?.('sengoku:game-saved',()=>sync.notifySave());

@@ -24,7 +24,7 @@ async function eventCommand(ctx,raw,now,snapshot=null){
   const save=typeof raw==='string'?JSON.parse(raw):raw,clock=snapshot?.clock||await h.getWorldClock(db,now);
   const game=GameEngine.fromSave(h.normalizeGameSave(save,current,now,{reading:true,clock}),GAME_OFFICERS,{isAdmin:!!current.is_admin,isStaff:!!current.is_staff});
   if(current.is_staff&&!current.is_admin){
-   const shared=snapshot?.staffBase||(await eventStmt(db,"SELECT state_json FROM staff_base WHERE id='sunpu'").first())?.state_json;
+   const shared=snapshot?.staffBase||(await eventStmt(db,"SELECT state_json FROM staff_base WHERE id='kyoto_gosho'").first())?.state_json;
    const base=typeof shared==='string'?JSON.parse(shared):shared;
    if(base?.buildings){let keep=base.buildings.keep;for(const job of base.jobs||[])if(job.kind==='building'&&job.id==='keep'&&job.completesElapsedMs<=clock.elapsedMs)keep=Math.max(keep,job.targetLevel);game.state.buildings.keep=keep;}
   }

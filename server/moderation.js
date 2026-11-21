@@ -13,10 +13,10 @@ async function moderationTarget(ctx,id){
     moderationStmt(db,'SELECT 1 AS allowed WHERE '+MODERATION_ADMIN,user.id),
     moderationStmt(db,h.userSelect+' WHERE u.id=? AND '+MODERATION_ADMIN,id,user.id),
     moderationStmt(db,'SELECT * FROM player_bans WHERE user_id=? AND '+MODERATION_ADMIN,id,user.id),
-    moderationStmt(db,`SELECT (SELECT COUNT(*) FROM messages WHERE user_id=?) AS chat_messages,
-      (SELECT COUNT(*) FROM base_letter_messages WHERE sender_id=?) AS letter_messages,
+    moderationStmt(db,`SELECT ((SELECT COUNT(*) FROM messages WHERE user_id=?)+(SELECT COUNT(*) FROM court_chat WHERE author_id=?)) AS chat_messages,
+      ((SELECT COUNT(*) FROM base_letter_messages WHERE sender_id=?)+(SELECT COUNT(*) FROM court_audience_messages WHERE author_id=?)) AS letter_messages,
       (SELECT COUNT(*) FROM trades WHERE status='pending' AND (sender_id=? OR recipient_id=?)) AS pending_trades,
-      (SELECT content_revision FROM moderation_state WHERE id=1) AS content_revision WHERE ${MODERATION_ADMIN}`,id,id,id,id,user.id)
+      (SELECT content_revision FROM moderation_state WHERE id=1) AS content_revision WHERE ${MODERATION_ADMIN}`,id,id,id,id,id,id,user.id)
   ]);
   if(!moderationRows(result[0]).length)h.fail(403,'ADMIN_REQUIRED','運営専用の機能です。');
   const player=moderationRows(result[1])[0];if(!player)h.fail(404,'PLAYER_NOT_FOUND','対象の領主が見つかりません。');
@@ -61,7 +61,7 @@ async function moderationChange(ctx){
   const id=h.uid('mod_'),nonce=crypto.randomUUID(),gateArgs=[user.id,requestId,nonce],ban=action==='ban',revision=raw.expectedRevision+1;
   const statements=[moderationStmt(db,`INSERT INTO moderation_requests(id,actor_id,request_id,target_id,action,request_hash,commit_token,result_json,created_at)
     SELECT ?,?,?,?,?,?,?,json_object('id',?,'requestId',?,'action',?,'targetPlayerId',target.id,'targetName',target.name,'actorPlayerId',?,'reason',?,'moderationRevision',?,'contentRevision',(SELECT content_revision FROM moderation_state WHERE id=1)+?,
-      'deleted',json_object('chatMessages',CASE WHEN ?=1 THEN (SELECT COUNT(*) FROM messages WHERE user_id=target.id) ELSE 0 END,'letterMessages',CASE WHEN ?=1 THEN (SELECT COUNT(*) FROM base_letter_messages WHERE sender_id=target.id) ELSE 0 END),
+      'deleted',json_object('chatMessages',CASE WHEN ?=1 THEN ((SELECT COUNT(*) FROM messages WHERE user_id=target.id)+(SELECT COUNT(*) FROM court_chat WHERE author_id=target.id)) ELSE 0 END,'letterMessages',CASE WHEN ?=1 THEN ((SELECT COUNT(*) FROM base_letter_messages WHERE sender_id=target.id)+(SELECT COUNT(*) FROM court_audience_messages WHERE author_id=target.id)) ELSE 0 END),
       'cancelledTrades',CASE WHEN ?=1 THEN (SELECT COUNT(*) FROM trades WHERE status='pending' AND (sender_id=target.id OR recipient_id=target.id)) ELSE 0 END,'createdAt',?),?
     FROM users target WHERE target.id=? AND target.id<>? AND target.id<>COALESCE((SELECT value FROM settings WHERE key='adminUserId'),'') AND ${MODERATION_ADMIN}
     AND COALESCE((SELECT revision FROM player_bans WHERE user_id=target.id),0)=? AND COALESCE((SELECT active FROM player_bans WHERE user_id=target.id),0)=?
@@ -74,6 +74,10 @@ async function moderationChange(ctx){
     moderationStmt(db,`UPDATE base_letter_threads SET last_seq=COALESCE((SELECT MAX(seq) FROM base_letter_messages remaining WHERE remaining.thread_id=base_letter_threads.id AND remaining.sender_id<>?),0),updated_at=? WHERE id IN (SELECT thread_id FROM base_letter_messages WHERE sender_id=?) AND ${MODERATION_GATE}`,targetId,now,targetId,...gateArgs),
     moderationStmt(db,`DELETE FROM messages WHERE user_id=? AND ${MODERATION_GATE}`,targetId,...gateArgs),
     moderationStmt(db,`DELETE FROM base_letter_messages WHERE sender_id=? AND ${MODERATION_GATE}`,targetId,...gateArgs),
+    moderationStmt(db,`UPDATE court_audience_threads SET title=CASE WHEN requester_id=? THEN '削除された謁見' ELSE title END,updated_at=? WHERE (requester_id=? OR id IN (SELECT thread_id FROM court_audience_messages WHERE author_id=?)) AND ${MODERATION_GATE}`,targetId,now,targetId,targetId,...gateArgs),
+    moderationStmt(db,`DELETE FROM court_chat WHERE author_id=? AND ${MODERATION_GATE}`,targetId,...gateArgs),
+    moderationStmt(db,`DELETE FROM court_audience_messages WHERE author_id=? AND ${MODERATION_GATE}`,targetId,...gateArgs),
+    moderationStmt(db,`DELETE FROM court_leader WHERE user_id=? AND ${MODERATION_GATE}`,targetId,...gateArgs),
     moderationStmt(db,`DELETE FROM pairing_codes WHERE user_id=? AND ${MODERATION_GATE}`,targetId,...gateArgs),
     moderationStmt(db,`UPDATE player_saves SET writer_device_id=NULL,writer_device_name=NULL,lease_expires_at=0 WHERE user_id=? AND ${MODERATION_GATE}`,targetId,...gateArgs),
     moderationStmt(db,`UPDATE player_presence SET online=0 WHERE user_id=? AND ${MODERATION_GATE}`,targetId,...gateArgs),

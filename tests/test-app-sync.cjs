@@ -22,7 +22,7 @@ function setup({admin=false}={}) {
   const stored = new Map([['save',game.exportSave()]]);
   const events = [];
   const context = {
-    game, roster, SengokuEngine,
+    game, roster, SengokuEngine, staffBaseId:'kyoto_gosho',
     state:()=>context.game.state,
     syncAccess:{linked:true,ready:true,writable:true,leaseExpiresAt:new Date(Date.now()+30000).toISOString()},
     saveKey:'save', backupKey:'backups', saveEnabled:true, saveWarning:'',worldCatchingUp:false,worldSettlementPending:false,worldSettlementRetryAt:0,fieldActionPending:false,walkingActionPending:false,strategyActionPending:false,startPending:false,
@@ -34,7 +34,7 @@ function setup({admin=false}={}) {
     queueWorldProgress:()=>{},preserveInteraction:()=>{}, closeModal:()=>{}, updateBattlePreview:()=>{}
   };
   vm.createContext(context);
-  vm.runInContext(['confirmedWorldClock','clockIsApplied','canMutate','syncMessage','save','backupCurrentSave','applyCloudSave','prepareRecoverySave','applyRecoverySave','applyDurableGift','restoreAdminAssets'].map(fn).join('\n'),context);
+  vm.runInContext(['confirmedWorldClock','clockIsApplied','canMutate','syncMessage','save','backupCurrentSave','trustedBranchAuthority','applyBranchAuthority','applyCloudSave','prepareRecoverySave','applyRecoverySave','applyDurableGift','restoreAdminAssets'].map(fn).join('\n'),context);
   return {c:context,stored,events};
 }
 let count=0;

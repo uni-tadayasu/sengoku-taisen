@@ -6,7 +6,7 @@ const checks=[];let calls=0;
 const post=(p,body,expected=200)=>({method:'POST',token:p.token,body,expected});
 async function scope(name,run){
   const h=harness(),{api,sql}=h;
-  const row=p=>sql.prepare('SELECT * FROM player_saves WHERE user_id=?').get(p.user.id),save=p=>JSON.parse(row(p).save_json),baseRow=()=>sql.prepare("SELECT * FROM staff_base WHERE id='sunpu'").get(),baseState=()=>JSON.parse(baseRow().state_json);
+  const row=p=>sql.prepare('SELECT * FROM player_saves WHERE user_id=?').get(p.user.id),save=p=>JSON.parse(row(p).save_json),baseRow=()=>sql.prepare("SELECT * FROM staff_base WHERE id='kyoto_gosho'").get(),baseState=()=>JSON.parse(baseRow().state_json);
   const clock=async()=> (await api('/world-clock')).data.clock;
   const at=elapsed=>sql.prepare("UPDATE world_clock SET base_elapsed_ms=?,anchor_real_ms=?,running=1,speed=1,revision=revision+1 WHERE id='world-v1'").run(elapsed,h.now);
   const sync=async p=>(await api('/sync?deviceId='+p.device,{token:p.token})).data;
@@ -15,7 +15,7 @@ async function scope(name,run){
   const balances=p=>({resources:structuredClone(save(p).state.resources),command:save(p).state.command,revision:row(p).revision});
   const request=(p,id='farm',kind='building')=>({id,kind,requestId:crypto.randomUUID(),deviceId:p.device,expectedRevision:row(p).revision,baseRevision:baseRow().revision});
   const upgrade=async(p,body=request(p),expected=200)=>(await api('/staff/base/upgrade',post(p,body,expected)));
-  const setupBase=(change)=>{const state=baseState();change(state);sql.prepare("UPDATE staff_base SET state_json=?,revision=revision+1,updated_at=? WHERE id='sunpu'").run(JSON.stringify(state),h.now);};
+  const setupBase=(change)=>{const state=baseState();change(state);sql.prepare("UPDATE staff_base SET state_json=?,revision=revision+1,updated_at=? WHERE id='kyoto_gosho'").run(JSON.stringify(state),h.now);};
   let admin;
   const role=async(p,action='appoint')=>(await api('/admin/staff',post(admin,{targetPlayerId:p.user.id,action,requestId:crypto.randomUUID()}))).data;
   const create=async(name,{staff=false,personalFarm=5}={})=>{const p=await h.session(name,'伊達家');p.device=p.user.id+'-writer';await api('/sync/lease',post(p,{deviceId:p.device}));const game=new Engine({clan:'伊達家',startCastle:'himeji',officers,seed:17});game.state.resources={gold:9000000,rice:9000000,wood:9000000,stone:9000000};game.state.buildings.farm=personalFarm;game.applyWorldClock(await clock());await put(p,JSON.parse(game.exportSave()));if(staff){await role(p);await sync(p);}return p;};
@@ -56,7 +56,7 @@ await scope('pending level32 is the cap, resources are paid per stage, and castl
   setupBase(s=>{s.initial.buildings.farm=s.buildings.farm=30;s.jobs=[];s.history=[];});await upgrade(a);const final=(await upgrade(a)).data;assert.equal(final.receipt.targetLevel,32);const before=balances(a),jobs=structuredClone(baseState().jobs);assert.equal((await upgrade(a,request(a),409)).data.error.code,'BUILDING_MAX');assert.deepEqual(balances(a),before);assert.deepEqual(baseState().jobs,jobs);
   at(final.receipt.completesElapsedMs);await base(a);await align(a);assert.equal((await base(a)).buildings.farm,32);
   const poor=save(a);poor.state.resources.wood=0;sql.prepare('UPDATE player_saves SET save_json=?,revision=revision+1 WHERE user_id=?').run(JSON.stringify(poor),a.user.id);const noMoney=balances(a);assert.equal((await upgrade(a,request(a,'market'),409)).data.error.code,'INSUFFICIENT_ASSETS');assert.deepEqual(balances(a),noMoney);assert.equal(baseState().jobs.length,0);
-  poor.state.resources.wood=9000000;poor.state.command=3;sql.prepare('UPDATE player_saves SET save_json=?,revision=revision+1 WHERE user_id=?').run(JSON.stringify(poor),a.user.id);const castle=(await upgrade(a,request(a,'sunpu','castle'))).data;assert.equal(castle.receipt.targetLevel,2);const castleBefore=balances(a);assert.equal((await upgrade(a,request(a,'sunpu','castle'),409)).data.error.code,'STAFF_BUILDING_BUSY');assert.deepEqual(balances(a),castleBefore);assert.equal(baseState().jobs.length,1);assert(row(a));
+  poor.state.resources.wood=9000000;poor.state.command=3;sql.prepare('UPDATE player_saves SET save_json=?,revision=revision+1 WHERE user_id=?').run(JSON.stringify(poor),a.user.id);const castle=(await upgrade(a,request(a,'kyoto_gosho','castle'))).data;assert.equal(castle.receipt.targetLevel,2);const castleBefore=balances(a);assert.equal((await upgrade(a,request(a,'kyoto_gosho','castle'),409)).data.error.code,'STAFF_BUILDING_BUSY');assert.deepEqual(balances(a),castleBefore);assert.equal(baseState().jobs.length,1);assert(row(a));
 });
 
 await scope('appointment preserves a personal facility chain and dismissal restores its exact progress',async c=>{

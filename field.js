@@ -9,17 +9,21 @@ const integer=value=>Math.max(0,Math.floor(number(value)));
 const num=value=>integer(value).toLocaleString('ja-JP');
 const playerName=(name,evaluation,appearance=null,playerId='',avatarVersion,showAvatar=true)=>`<span class="player-evaluation-person">${showAvatar&&playerId?global.SengokuAvatar?.markup?.({id:playerId,name,avatarVersion},'inline')||'':''}<span class="player-evaluation-name" data-premium-player="${esc(playerId)}" data-premium-player-name="${esc(name)}">${global.SengokuPremiumRuntime?.nameMarkup?.(name,appearance)||esc(name)}</span>${global.SengokuEvaluationUI?.badge?.(evaluation)||''}</span>`;
 const playerText=(name,evaluation,appearance=null)=>{const label=global.SengokuEvaluationUI?.label?.(evaluation),owned=global.SengokuPremiumRuntime?.ownershipLabel?.(appearance);return String(name||'領主')+(label?`（${label}）`:'')+(owned?`［${owned}］`:'');};
-const castleLevelLimit=id=>['edo','sunpu'].includes(id)?64:['nijo','osaka','nagoya'].includes(id)?48:32;
-const REWARD_CASTLES=['edo','sunpu'],CAPTURE_CASTLES=['nijo','osaka','nagoya'];
+const STAFF_BASE_ID=global.SENGOKU_DATA?.staffBaseId||'kyoto_gosho';
+const castleLevelLimit=id=>id===STAFF_BASE_ID?128:id==='edo'?64:['nijo','osaka','nagoya'].includes(id)?48:32;
+const REWARD_CASTLES=['edo',STAFF_BASE_ID],CAPTURE_CASTLES=['nijo','osaka','nagoya'];
 const targetCastleId=player=>player?.targetCastleId||player?.homeCastleId||'';
-const targetCastleName=player=>{const id=targetCastleId(player);return(typeof player?.targetCastleName==='string'&&player.targetCastleName)||(id===player?.homeCastleId&&typeof player?.homeCastleName==='string'&&player.homeCastleName)||global.SENGOKU_DATA?.castles?.find(c=>c.id===id)?.name||id;};
+const targetCastleName=player=>{if(player?.targetBranchId&&typeof player?.targetBranchName==='string')return player.targetBranchName;const id=targetCastleId(player);return(typeof player?.targetCastleName==='string'&&player.targetCastleName)||(id===player?.homeCastleId&&typeof player?.homeCastleName==='string'&&player.homeCastleName)||global.SENGOKU_DATA?.castles?.find(c=>c.id===id)?.name||id;};
 const targetKey=player=>String(player?.playerId||'')+':'+targetCastleId(player);
-const isHomeTarget=player=>targetCastleId(player)===player?.homeCastleId;
+const isHomeTarget=player=>!player?.targetBranchId&&targetCastleId(player)===player?.homeCastleId;
+function normalizeBranches(rows,parentId){const names={north:'北',east:'東',south:'南',west:'西'},seen=new Set(),limit=global.SENGOKU_DATA?.branchRules?.parents?.find(row=>row.id===parentId)?.maxLevel||(parentId==='edo'?8:24);return(Array.isArray(rows)?rows:[]).flatMap(row=>{if(!row||!['edo','nijo','osaka','nagoya'].includes(parentId)||!Object.hasOwn(names,row.direction)||row.id!==parentId+'_'+row.direction||row.parentCastleId!==parentId||seen.has(row.id))return[];seen.add(row.id);const level=Math.min(limit,integer(row.level));return[{id:row.id,parentCastleId:parentId,direction:row.direction,name:typeof row.name==='string'?row.name:names[row.direction]+'支拠点',level,fallen:row.fallen===true,building:row.building===true,attackable:row.attackable===true&&level>0&&row.fallen!==true,attackReason:typeof row.attackReason==='string'?row.attackReason:'',defenseTroops:integer(row.defenseTroops),defensePower:Math.max(0,number(row.defensePower))}];});}
+function branchTarget(player,branchId){const branch=player?.branches?.find(row=>row.id===branchId);return branch?{...player,targetBranchId:branch.id,targetBranchName:branch.name,level:branch.level,keepLevel:Math.max(1,branch.level),keepLevelKnown:true,attackable:branch.attackable,attackReason:branch.attackReason,capturable:false,battleMode:'branch',defenseTroops:branch.defenseTroops,defensePower:branch.defensePower,armySummary:null}:player;}
 function battlePolicy(player,rules={}){
   const id=targetCastleId(player),modern=rules.targetCastles===true;
+  if(player?.targetBranchId)return modern&&rules.branchBattles===true&&player.battleMode==='branch'&&player.capturable===false?{mode:'branch',label:'支拠点戦',tag:'支拠点を攻略・占領なし',description:'勝利すると支拠点が陥落します。残る支拠点をすべて落とすと、本城へ進軍できます。領地と資源の獲得はありません。'}:{mode:'protected',label:'出陣不可',tag:'支拠点戦を確認中',description:'支拠点の出陣条件を確認してください。'};
   if(modern&&rules.specialBaseBattles===true&&REWARD_CASTLES.includes(id)&&player?.battleMode==='reward'&&player?.capturable===false)return{mode:'reward',label:'報酬戦',tag:'報酬戦・占領不可',description:'勝利すると報酬を獲得します。この城は占領できません。守備側の領地と資源は維持されます。'};
   if(modern&&CAPTURE_CASTLES.includes(id)&&player?.battleMode==='capture'&&player?.capturable===true)return{mode:'capture',label:'占領戦',tag:'占領戦',description:'勝利するとこの城を自分の領地に加えます。あなたの本拠は変わりません。新たに得た城には帰還兵の15%を守備兵として残します。相手の本拠だった場合、相手は通常の城へ移ります。'};
-  if(REWARD_CASTLES.includes(id)||modern&&CAPTURE_CASTLES.includes(id)||player?.isAdmin||player?.isStaff||!isHomeTarget(player))return{mode:'protected',label:'出陣不可',tag:'出陣条件を確認中',description:player?.attackReason||`${id==='edo'?'江戸城':id==='sunpu'?'駿府城':targetCastleName(player)}の出陣条件を確認できません。共有フィールドを更新してください。`};
+  if(REWARD_CASTLES.includes(id)||modern&&CAPTURE_CASTLES.includes(id)||player?.isAdmin||player?.isStaff||!isHomeTarget(player))return{mode:'protected',label:'出陣不可',tag:'出陣条件を確認中',description:player?.attackReason||`${id==='edo'?'江戸城':id===STAFF_BASE_ID?'京都御所':targetCastleName(player)}の出陣条件を確認できません。共有フィールドを更新してください。`};
   return{mode:'raid',label:'襲撃',tag:'資源をめぐる合戦',description:'勝利すると相手の資源を獲得します。本拠の占領は行いません。守備側には戦後の保護期間があります。'};
 }
 function keepLevelInfo(player){
@@ -27,7 +31,7 @@ function keepLevelInfo(player){
   const known=player?.keepLevelKnown!==false&&Number.isFinite(level)&&Number.isInteger(level)&&level>=1;
   return{level:known?Math.min(32,level):1,known};
 }
-const keepLabel=player=>{if(!isHomeTarget(player))return`城郭 Lv.${Math.max(1,integer(player.level))}`;const keep=keepLevelInfo(player);return keep.known?`天守 Lv.${keep.level}`:'天守 未取得';};
+const keepLabel=player=>{if(player?.targetBranchId)return`支拠点 Lv.${integer(player.level)}`;if(!isHomeTarget(player))return`城郭 Lv.${Math.max(1,integer(player.level))}`;const keep=keepLevelInfo(player);return keep.known?`天守 Lv.${keep.level}`:'天守 未取得';};
 function castleAppearance(player,{marker=false}={}){
   const keep=keepLevelInfo(player),className=marker?'field-map-castle-art':'field-castle-art';
   const art=global.SengokuArt?.castle?.(targetCastleId(player),className,keep.level)||`<span class="field-castle-fallback">${icon('castle')}</span>`;
@@ -35,6 +39,7 @@ function castleAppearance(player,{marker=false}={}){
   return`<span class="field-castle-visual ${isHomeTarget(player)&&player.appearance?.town==='moonlit-castle'?'is-moonlit':''} ${marker?'field-map-castle':''}" data-field-keep-level="${keep.level}" data-field-keep-known="${keep.known}" role="img" aria-label="${esc(targetCastleName(player))}・${esc(keepLabel(player))}">${art}<span class="field-castle-level" aria-hidden="true">${label}</span>${marker&&player.playerId?`<span class="field-map-owner-avatar">${global.SengokuAvatar?.markup?.({id:player.playerId,name:player.name,avatarVersion:player.avatarVersion},'inline')||''}</span>`:''}</span>`;
 }
 function markerAppearance(marker){
+  if(marker?.branch)return global.SengokuBranches?.mapAppearance?.(marker)||null;
   const player=marker.players?.find(p=>targetKey(p)===marker.displayTargetId);if(!player)return null;
   return{html:castleAppearance(player,{marker:true}),label:`${marker.name} ${playerText(player.name,player.evaluation,player.appearance)}の${isHomeTarget(player)?'本拠':'所領'} ${keepLabel(player)}${isHomeTarget(player)?' 城郭 Lv.'+player.level:''}${marker.players.length>1?'・'+marker.players.length+'人の領主':''}`};
 }
@@ -47,7 +52,7 @@ function normalizePlayers(payload){
     if(!player||typeof player.playerId!=='string'||!player.playerId||typeof player.name!=='string'||typeof player.homeCastleId!=='string'||!player.homeCastleId||player.targetCastleId!==undefined&&(typeof player.targetCastleId!=='string'||!player.targetCastleId))return[];
     const key=targetKey(player);if(seen.has(key))return[];
     const keep=keepLevelInfo(player),castleId=targetCastleId(player);
-    seen.add(key);return[{...player,targetCastleId:castleId,targetCastleName:targetCastleName(player),isHome:castleId===player.homeCastleId,level:Math.max(1,Math.min(castleLevelLimit(castleId),integer(player.level)||1)),keepLevel:keep.level,keepLevelKnown:keep.known,defenseTroops:integer(player.defenseTroops),defensePower:Math.max(0,number(player.defensePower)),isAdmin:player.isAdmin===true,isStaff:player.isStaff===true&&player.isAdmin!==true,self:player.self===true,online:player.online===true,attackable:player.attackable===true,capturable:typeof player.capturable==='boolean'?player.capturable:null,battleMode:['reward','capture','raid'].includes(player.battleMode)?player.battleMode:null}];
+    seen.add(key);return[{...player,targetCastleId:castleId,targetCastleName:targetCastleName(player),isHome:castleId===player.homeCastleId,level:Math.max(1,Math.min(castleLevelLimit(castleId),integer(player.level)||1)),branches:normalizeBranches(player.branches,castleId),keepLevel:keep.level,keepLevelKnown:keep.known,defenseTroops:integer(player.defenseTroops),defensePower:Math.max(0,number(player.defensePower)),isAdmin:player.isAdmin===true,isStaff:player.isStaff===true&&player.isAdmin!==true,self:player.self===true,online:player.online===true,attackable:player.attackable===true,capturable:typeof player.capturable==='boolean'?player.capturable:null,battleMode:['reward','capture','raid'].includes(player.battleMode)?player.battleMode:null}];
   });
 }
 function rulesFor(rules){return{...DEFAULT_RULES,...rules,tactics:Array.isArray(rules?.tactics)&&rules.tactics.length?rules.tactics:DEFAULT_RULES.tactics};}
@@ -79,6 +84,8 @@ function attackValidation({player,me,identity,access={},state={},troops,tactic,r
   if(player.self||player.playerId===identity.id)return{ok:false,message:'自分の領地には出陣できません。'};
   const policy=battlePolicy(player,rules);if(policy.mode==='protected')return{ok:false,message:policy.description};
   if(relationshipFor(player,me,identity)==='allied')return{ok:false,message:'同盟中の領主には出陣できません。'};
+  if(me?.self?.homeCastleId===STAFF_BASE_ID&&targetCastleId(player)==='edo'&&me.attack?.canAttackEdoFromKyoto!==true)return{ok:false,message:player.attackReason||'京都御所から江戸城へ出陣できるのは、在任中の天皇だけです。'};
+  if(!player.targetBranchId&&rules?.branchBattles===true&&player.branches?.some(branch=>branch.level>0&&!branch.fallen))return{ok:false,message:player.attackReason||'本城へ攻める前に、防衛中の支拠点をすべて陥落させてください。'};
   if(!player.attackable)return{ok:false,message:player.attackReason||'この拠点は現在保護されています。'};
   if(!me?.attack?.ready)return{ok:false,message:me?.attack?.reason||'本拠と出陣の準備を確認しています。'};
   const r=rulesFor(rules),amount=Number(troops),min=Math.max(1,integer(me.attack.minTroops)||integer(r.minTroops)),max=Math.min(integer(me.attack.maxTroops)||integer(r.maxTroops),integer(me.attack.availableTroops),state.troops===undefined?Infinity:integer(state.troops));
@@ -86,7 +93,7 @@ function attackValidation({player,me,identity,access={},state={},troops,tactic,r
   const cost=foodCost(amount,tactic,r);if(cost===null)return{ok:false,message:'戦法を選んでください。'};
   if(integer(state.command??me.attack.command)<integer(r.commandCost))return{ok:false,message:'出陣に必要な指令がありません。'};
   if(integer(state.resources?.rice??me.attack.rice)<cost)return{ok:false,message:`兵糧が${num(cost)}必要です。`};
-  const payload={targetPlayerId:player.playerId,troops:amount,tactic};if(r.targetCastles===true)payload.targetCastleId=targetCastleId(player);
+  const payload={targetPlayerId:player.playerId,troops:amount,tactic};if(r.targetCastles===true)payload.targetCastleId=targetCastleId(player);if(player.targetBranchId&&r.branchBattles===true)payload.targetBranchId=player.targetBranchId;
   return{ok:true,foodCost:cost,battleMode:policy.mode,payload};
 }
 function playerPhoto(player){const user={...player,id:player.playerId};return global.SengokuAvatar?.markup?.(user,'small')||'';}
@@ -97,12 +104,14 @@ function publicRow(player,{selectedId='',identity,relationship=player.relationsh
 }
 function battleSummary(battle={},viewerId){
   const attacker=Boolean(viewerId&&battle.attackerPlayerId===viewerId),defender=Boolean(viewerId&&battle.defenderPlayerId===viewerId),confirmed=typeof battle.won==='boolean',won=battle.won===true;
-  const mode=['reward','capture','raid'].includes(battle.battleMode)?battle.battleMode:'raid';
+  const mode=['reward','capture','raid','branch'].includes(battle.battleMode)?battle.battleMode:'raid';
   const captured=confirmed&&won&&mode==='capture'&&battle.capture?.captured===true&&CAPTURE_CASTLES.includes(battle.castleId)&&battle.capture.castleId===battle.castleId;
   const positive=confirmed&&(attacker?won:defender?!won:false),loss=attacker?integer(battle.attackerLost):defender?integer(battle.defenderLost?.troops)+integer(battle.defenderLost?.garrison):0;
   let title='合戦結果を確認中',effect='勝敗が確定した記録を読み込み直してください。';
   if(confirmed){
-    if(mode==='reward'){
+    if(mode==='branch'){
+      title=attacker?(won?'支拠点戦に勝利':'支拠点から撤退'):defender?(won?'支拠点が陥落':'支拠点を防衛'):(won?'攻撃側の勝利':'守備側の勝利');effect=won&&battle.branchFallen===true?'支拠点が陥落しました。残る支拠点をすべて落とすと本城へ進軍できます。領地の占領・資源の移動はありません。':won?'支拠点の陥落状態を最新の報告で確認してください。領地の占領はありません。':'支拠点の守りは維持されています。領地の占領・資源の移動はありません。';
+    }else if(mode==='reward'){
       title=attacker?(won?'報酬戦に勝利':'報酬戦から撤退'):defender?(won?'報酬戦で敗北':'報酬戦を防衛'):(won?'攻撃側の勝利':'守備側の勝利');
       effect=attacker?(won?'勝利報酬を獲得しました。この城の占領は行われません。':'勝利報酬はありません。この城の占領は行われません。'):'守備側の本拠・領地・資源は維持されています。この城の占領は行われません。';
     }else if(mode==='capture'){
@@ -119,13 +128,13 @@ function battleReportHtml(battle,viewerId){
   const summary=battleSummary(battle,viewerId),when=global.SengokuWorldClock?.calendar?.(battle.occurredElapsedMs),loot=battle.loot||{},rewards=battle.rewards||{};
   const values=[['gold','金銭'],['rice','兵糧'],['wood','木材'],['stone','石材']],rewardValues=[...values,...(rewards.magatama!==undefined?[['magatama','勾玉']]:[])];
   const resourceBox=(heading,assets,fields,kind)=>`<div class="field-loot" data-field-reward-kind="${kind}"><span>${heading}</span><div>${fields.map(([key,label])=>`<small>${label}<b>${num(assets[key])}</b></small>`).join('')}</div></div>`;
-  const lootBox=summary.mode!=='reward'||values.some(([key])=>integer(loot[key])>0)?resourceBox(summary.attacker?'獲得した戦利品':summary.defender?'失った資源':'移動した資源',loot,values,'loot'):'';
-  const rewardBox=summary.mode==='reward'||rewardValues.some(([key])=>integer(rewards[key])>0)?resourceBox(summary.attacker?'勝利報酬':'攻撃側の勝利報酬',rewards,rewardValues,'reward'):'';
+  const lootBox=summary.mode!=='branch'&&(summary.mode!=='reward'||values.some(([key])=>integer(loot[key])>0))?resourceBox(summary.attacker?'獲得した戦利品':summary.defender?'失った資源':'移動した資源',loot,values,'loot'):'';
+  const rewardBox=summary.mode!=='branch'&&(summary.mode==='reward'||rewardValues.some(([key])=>integer(rewards[key])>0))?resourceBox(summary.attacker?'勝利報酬':'攻撃側の勝利報酬',rewards,rewardValues,'reward'):'';
   const relocated=summary.captured&&battle.capture?.defenderHomeCastleName?`<p>守備側の本拠：${esc(battle.capture.defenderHomeCastleName)}</p>`:'';
   const garrison=summary.captured&&battle.capture?.newlyOwned!==false&&integer(battle.capture?.garrison)>0?`<p>${summary.attacker?'帰還兵から':'攻撃側の帰還兵から'}${num(battle.capture.garrison)}人を、この城の守備兵として配置しました。</p>`:'';
-  return`<article class="field-battle-report ${summary.positive?'is-victory':''}" data-field-battle-mode="${summary.mode}"><span class="field-eyebrow">${summary.attacker?'出陣の記録':summary.defender?'拠点の防衛':'合戦の記録'} · ${summary.mode==='reward'?'報酬戦・占領不可':summary.mode==='capture'?'占領戦':'襲撃'}</span><h3>${summary.title}</h3><p>${playerName(battle.attackerName,battle.attackerEvaluation,battle.attackerAppearance,battle.attackerPlayerId,battle.attackerAvatarVersion)} → ${playerName(battle.defenderName,battle.defenderEvaluation,battle.defenderAppearance,battle.defenderPlayerId,battle.defenderAvatarVersion)}</p><strong>${esc(battle.castleName||'')}</strong><p class="field-battle-effect">${summary.effect}</p>${relocated}${garrison}<div class="field-report-stats"><div><span>出陣</span><b>${num(battle.troops)}人</b></div><div><span>${summary.attacker||summary.defender?'自軍の損失':'攻撃側の損失'}</span><b>${num(summary.attacker||summary.defender?summary.loss:battle.attackerLost)}人</b></div></div>${lootBox}${rewardBox}<small class="field-report-date">${when?`${when.year}年${when.month}月`:'共通時間の合戦記録'}</small></article>`;
+  return`<article class="field-battle-report ${summary.positive?'is-victory':''}" data-field-battle-mode="${summary.mode}"><span class="field-eyebrow">${summary.attacker?'出陣の記録':summary.defender?'拠点の防衛':'合戦の記録'} · ${summary.mode==='reward'?'報酬戦・占領不可':summary.mode==='capture'?'占領戦':summary.mode==='branch'?'支拠点戦・占領なし':'襲撃'}</span><h3>${summary.title}</h3><p>${playerName(battle.attackerName,battle.attackerEvaluation,battle.attackerAppearance,battle.attackerPlayerId,battle.attackerAvatarVersion)} → ${playerName(battle.defenderName,battle.defenderEvaluation,battle.defenderAppearance,battle.defenderPlayerId,battle.defenderAvatarVersion)}</p><strong>${esc(battle.branchName||battle.castleName||'')}</strong><p class="field-battle-effect">${summary.effect}</p>${relocated}${garrison}<div class="field-report-stats"><div><span>出陣</span><b>${num(battle.troops)}人</b></div><div><span>${summary.attacker||summary.defender?'自軍の損失':'攻撃側の損失'}</span><b>${num(summary.attacker||summary.defender?summary.loss:battle.attackerLost)}人</b></div></div>${lootBox}${rewardBox}<small class="field-report-date">${when?`${when.year}年${when.month}月`:'共通時間の合戦記録'}</small></article>`;
 }
-function makeCache(){return{players:[],total:0,nextCursor:null,me:null,rules:rulesFor(),clock:null,lastFetched:0,loading:false,promise:null,busy:false,error:'',selectedId:'',castleFilter:'',query:'',filter:'all',page:1,tab:'base',relationshipPage:1,battlePage:1,troops:'',tactic:'balanced',confirm:null,lastBattle:null,watchers:new Set()};}
+function makeCache(){return{players:[],total:0,nextCursor:null,me:null,rules:rulesFor(),clock:null,lastFetched:0,loading:false,promise:null,busy:false,error:'',selectedId:'',selectedBranchId:'',castleFilter:'',query:'',filter:'all',page:1,tab:'base',relationshipPage:1,battlePage:1,troops:'',tactic:'balanced',confirm:null,lastBattle:null,watchers:new Set()};}
 function mount(container,options={}){
   if(!container?.querySelector)return null;if(mounted.has(container)){const existing=mounted.get(container);existing.update(options);return existing;}
   let opts={stateKey:'shared-field',...options},key='',cache=null,map=null,destroyed=false,timer=null,detailHost=null,detailMarkup=null;
@@ -133,7 +142,8 @@ function mount(container,options={}){
   const getKey=()=>opts.stateKey+':'+(opts.identity?.id||'guest');
   const clockSnapshot=()=>global.SengokuWorldClock?.snapshot?.()||{ready:true,clock:cache.clock};
   const elapsed=()=>clockSnapshot().clock?.confirmedElapsedMs??clockSnapshot().clock?.elapsedMs??cache.clock?.elapsedMs??0;
-  const current=()=>cache.players.find(p=>targetKey(p)===cache.selectedId)||null;
+  const parentCurrent=()=>cache.players.find(p=>targetKey(p)===cache.selectedId)||null;
+  const current=()=>branchTarget(parentCurrent(),cache.selectedBranchId);
   const access=()=>opts.getSyncStatus?.()||{};
   const state=()=>opts.getState?.()||{};
   const canAct=()=>Boolean(opts.identity?.id&&access().writable&&!access().fieldPending&&!cache.busy);
@@ -147,7 +157,7 @@ function mount(container,options={}){
   }
   function selectedRelation(){return cache.me?.relationships?.find(r=>r.targetPlayerId===current()?.playerId);}
   function validation(){return attackValidation({player:current(),me:cache.me,identity:opts.identity,access:access(),state:state(),troops:cache.troops,tactic:cache.tactic,rules:cache.rules,clock:clockSnapshot()});}
-  function confirmationKey(player=current()){return JSON.stringify([targetKey(player),battlePolicy(player,cache.rules).mode,String(cache.troops),cache.tactic]);}
+  function confirmationKey(player=current()){return JSON.stringify([targetKey(player),player?.targetBranchId||'',battlePolicy(player,cache.rules).mode,String(cache.troops),cache.tactic]);}
   function diplomacyControls(player){
     const relation=relationshipFor(player,cache.me,opts.identity),disabled=!canAct()?' disabled':'';
     if(relation==='self')return'';
@@ -161,12 +171,13 @@ function mount(container,options={}){
     if(!player)return`<div class="field-empty"><span>${icon('castle')}</span><h3>${cache.loading?'拠点を確認しています':'領主の拠点を選んでください'}</h3><p>${cache.players.length?'地図の拠点か、下の領主一覧から選べます。':'クラウドへ保存された本拠と所領が、ここに表示されます。'}</p>${!opts.identity?'<button class="field-button is-gold" data-field-action="register">領主登録・ログイン</button>':''}</div>`;
     const relation=relationshipFor(player,cache.me,opts.identity),own=relation==='self',home=isHomeTarget(player),castleId=targetCastleId(player),castleName=targetCastleName(player),policy=battlePolicy(player,cache.rules),art=castleAppearance(player);
     const coLocated=cache.players.filter(p=>targetCastleId(p)===castleId).length,protection=Math.max(0,number(player.protectedUntilElapsedMs)-elapsed());
-    let result=`<div class="field-base-heading">${art}<div><span class="field-eyebrow">${esc(castleName)} · 城郭 Lv.${player.level}</span><h3 class="field-lord-heading">${playerPhoto(player)}${playerName(player.name,player.evaluation,player.appearance,player.playerId,player.avatarVersion,false)}</h3><p>${esc(player.clan==='德川家'?'徳川家':player.clan||'')} · ${own?'あなたの':''}${home?'本拠':'所領'}</p><span class="field-online ${player.online?'is-online':''}">${player.online?'接続中':'現在は不在'}</span></div></div><div class="field-base-stats"><div><span>守備兵</span><b>${num(player.defenseTroops)}</b></div><div><span>防衛力</span><b>${num(Math.round(player.defensePower))}</b></div><div><span>軍団</span><b>${num(player.armySummary?.officerCount)}<small>名</small></b></div></div>`;
-    if(castleLevelLimit(castleId)>32)result+=`<div class="major-city-badge">${icon('castle')}大都市拠点 · 城郭上限 Lv.${castleLevelLimit(castleId)}</div>`;
-    if(['reward','capture'].includes(policy.mode))result+=`<div class="field-battle-mode is-${policy.mode}" data-field-battle-mode="${policy.mode}">${icon(policy.mode==='reward'?'shield':'flag')}<strong>${policy.tag}</strong></div>`;
-    if(!home)result+=`<p class="field-caption">領主の本拠：${esc(player.homeCastleName||player.homeCastleId)}。この城は所領です。</p>`;
+    let result=`<div class="field-base-heading">${art}<div><span class="field-eyebrow">${esc(castleName)} · ${player.targetBranchId?'支拠点':'城郭'} Lv.${player.level}</span><h3 class="field-lord-heading">${playerPhoto(player)}${playerName(player.name,player.evaluation,player.appearance,player.playerId,player.avatarVersion,false)}</h3><p>${esc(player.clan==='德川家'?'徳川家':player.clan||'')} · ${own?'あなたの':''}${player.targetBranchId?'支拠点':home?'本拠':'所領'}</p><span class="field-online ${player.online?'is-online':''}">${player.online?'接続中':'現在は不在'}</span></div></div><div class="field-base-stats"><div><span>守備兵</span><b>${num(player.defenseTroops)}</b></div><div><span>防衛力</span><b>${num(Math.round(player.defensePower))}</b></div><div><span>軍団</span><b>${num(player.armySummary?.officerCount)}<small>名</small></b></div></div>`;
+    if(!player.targetBranchId&&castleLevelLimit(castleId)>32)result+=`<div class="major-city-badge">${icon('castle')}大都市拠点 · 城郭上限 Lv.${castleLevelLimit(castleId)}</div>`;
+    if(['reward','capture','branch'].includes(policy.mode))result+=`<div class="field-battle-mode is-${policy.mode}" data-field-battle-mode="${policy.mode}">${icon(policy.mode==='reward'?'shield':'flag')}<strong>${policy.tag}</strong></div>`;
+    if(!home&&!player.targetBranchId)result+=`<p class="field-caption">領主の本拠：${esc(player.homeCastleName||player.homeCastleId)}。この城は所領です。</p>`;
     if(coLocated>1)result+=`<p class="field-caption">この城には${coLocated}人の領主の拠点があります。一覧で守備する領主を選べます。</p>`;
-    if(castleId==='sunpu')result+='<p class="field-caption">駿府城は共同で成長する拠点です。戦後の保護期間も共通です。</p>';
+    if(castleId===STAFF_BASE_ID)result+='<p class="field-caption">京都御所は共同で成長する拠点です。戦後の保護期間も共通です。</p>';
+    if(player.branches?.length){const parent=parentCurrent(),intact=player.branches.filter(branch=>branch.level>0&&!branch.fallen);result+=`<section class="field-branches"><h4>本城と支拠点</h4><p class="field-caption">${intact.length?'本城への出陣には、残る支拠点 '+intact.length+'か所の攻略が必要です。':'防衛中の支拠点はありません。'}</p><div class="field-branch-list"><button class="field-branch-choice" data-field-action="select-branch" data-branch-id="" aria-pressed="${!player.targetBranchId}"><span>${esc(targetCastleName(parent))} · 本城</span><small>${intact.length?'支拠点を先に攻略':'本城を選ぶ'}</small></button>${player.branches.map(branch=>`<button class="field-branch-choice" data-field-action="select-branch" data-branch-id="${esc(branch.id)}" data-stable-key="field-branch-${esc(branch.id)}" aria-pressed="${player.targetBranchId===branch.id}"><span>${esc(branch.name)} · ${branch.level?'Lv.'+num(branch.level):'建設中'}</span><small>${branch.fallen?'陥落':branch.level<1?'未完成':branch.building?'増築中・防衛中':'防衛中'}</small></button>`).join('')}</div></section>`;}
     if(!opts.identity?.id)return result+'<div class="field-notice">出陣・外交・書状・交易は、領主登録後に利用できます。</div><button class="field-button is-gold is-full" data-field-action="register">領主登録・ログイン</button>';
     if(!canAct()&&!cache.busy)result+=`<div class="field-notice">${esc(access().fieldPending?'前の采配を反映しています。':'操作端末と共通時刻を確認すると采配できます。')}<button class="field-inline-button" data-field-action="sync">端末同期を確認</button></div>`;
     if(own){const cooldown=Math.max(0,number(cache.me?.attack?.cooldownUntilElapsedMs)-elapsed());return result+`<div class="field-self-note">${icon('shield')}<div><strong>あなたの旗が、この城に掲がっています。</strong><p>ほかの領主の拠点を選ぶと、出陣や同盟の申し出ができます。</p></div></div><div class="field-key-value"><span>出陣できる兵</span><b>${num(state().troops??cache.me?.attack?.availableTroops)}人</b></div>${cooldown?`<div class="field-key-value"><span>出陣の再準備</span><b>あと${remainingLabel(cooldown)}</b></div>`:''}${protection?`<div class="field-notice">戦後の保護 · あと${remainingLabel(protection)}</div>`:''}`;}
@@ -201,7 +212,7 @@ function mount(container,options={}){
     // when the underlying detail has not changed during a shared refresh.
     if(host!==detailHost||markup!==detailMarkup){
       const focused=doc.activeElement,focusedKind=container.contains(focused)?focused?.dataset?.fieldInput:null,selection=focusedKind==='troops'?[focused.selectionStart,focused.selectionEnd]:null;
-      host.innerHTML=markup;detailHost=host;detailMarkup=markup;
+      if(global.SengokuStableDOM){const changed=global.SengokuStableDOM.patch(host,markup,{key:['field-detail',key,cache.tab,cache.selectedId,cache.selectedBranchId]});if(changed.artwork)global.SengokuArt?.schedule?.();}else host.innerHTML=markup;detailHost=host;detailMarkup=markup;
       if(focusedKind==='troops'||focusedKind==='tactic'){const next=host.querySelector(`[data-field-input="${focusedKind}"]`);next?.focus({preventScroll:true});if(selection?.[0]!=null)try{next?.setSelectionRange(...selection);}catch(_){}}
     }
     for(const button of container.querySelectorAll('[data-tab]'))button.setAttribute('aria-selected',String(button.dataset.tab===cache.tab));
@@ -223,7 +234,7 @@ function mount(container,options={}){
     const incoming=cache.me?.relationships?.filter(r=>r.status==='incoming').length||0;container.querySelector('[data-field-incoming]').textContent=incoming?' '+incoming:'';
     renderDetail();decorateCrests();
     const geography=opts.geography||global.SENGOKU_GEOGRAPHY,groups=groupBases(cache.players,geography?.castles||{},global.SENGOKU_DATA?.castles||[],opts.identity,cache.selectedId,cache.rules),self=cache.players.find(p=>p.playerId===opts.identity?.id&&isHomeTarget(p));
-    const mapOptions={stateKey:opts.stateKey+':map:'+String(opts.identity?.id||'guest'),castles:groups,selectedId:targetCastleId(current()),homeId:self?.homeCastleId,clan:'あなたの領地',treaties:{'同盟の領地':1},turn:0,isAdmin:opts.identity?.isAdmin===true,allowRestrictedSelection:true,region:'all',geography,title:'群雄の領地',eyebrow:'SHARED FIELD · JAPAN',countUnit:'拠点',hideRoutes:true,markerSize:48,markerAppearance,legend:{own:'あなた',ally:'同盟',reachable:'出陣可能',other:'ほかの領主'},markerTooltip:marker=>({title:marker.name,description:`表示中：${playerText(marker.displayPlayerName,marker.displayPlayerEvaluation,marker.displayPlayerAppearance)} · ${marker.displayLevelLabel||keepLabel(marker)}`,detail:marker.players?.slice(0,5).map(p=>`${playerText(p.name,p.evaluation,p.appearance)}（${keepLabel(p)}）`).join('・')}),onSelect:castleId=>{cache.castleFilter=castleId;cache.query='';cache.filter='all';cache.page=1;cache.tab='base';cache.confirm=null;const occupants=cache.players.filter(p=>targetCastleId(p)===castleId);if(!occupants.some(p=>targetKey(p)===cache.selectedId))cache.selectedId=occupants[0]?targetKey(occupants[0]):'';render();}};
+    const mapOptions={stateKey:opts.stateKey+':map:'+String(opts.identity?.id||'guest'),castles:groups,selectedId:targetCastleId(current()),homeId:self?.homeCastleId,clan:'あなたの領地',treaties:{'同盟の領地':1},turn:0,isAdmin:opts.identity?.isAdmin===true,allowRestrictedSelection:true,region:'all',geography,title:'群雄の領地',eyebrow:'SHARED FIELD · JAPAN',countUnit:'拠点',hideRoutes:true,markerSize:48,branches:(parentCurrent()?.branches||[]).map(branch=>({...branch,own:parentCurrent()?.playerId===opts.identity?.id})),onBranchSelect:(_parentId,branchId)=>{cache.selectedBranchId=branchId;cache.tab='base';cache.confirm=null;render();},markerAppearance,legend:{own:'あなた',ally:'同盟',reachable:'出陣可能',other:'ほかの領主'},markerTooltip:marker=>marker.branch?{title:marker.name,description:`支拠点 Lv.${marker.level} · ${marker.fallen?'陥落':marker.building?'普請中':'防衛中'}`,detail:'本城の方位を示す配置です。史実の所在地・距離ではありません。'}:({title:marker.name,description:`表示中：${playerText(marker.displayPlayerName,marker.displayPlayerEvaluation,marker.displayPlayerAppearance)} · ${marker.displayLevelLabel||keepLabel(marker)}`,detail:marker.players?.slice(0,5).map(p=>`${playerText(p.name,p.evaluation,p.appearance)}（${keepLabel(p)}）`).join('・')}),onSelect:castleId=>{cache.castleFilter=castleId;cache.selectedBranchId='';cache.query='';cache.filter='all';cache.page=1;cache.tab='base';cache.confirm=null;const occupants=cache.players.filter(p=>targetCastleId(p)===castleId);if(!occupants.some(p=>targetKey(p)===cache.selectedId))cache.selectedId=occupants[0]?targetKey(occupants[0]):'';render();}};
     if(map)map.update(mapOptions);else map=global.SengokuWorldMap?.mount?.(container.querySelector('[data-field-map]'),mapOptions)||null;
     global.SengokuDesktopFit?.refresh?.();
   }
@@ -255,7 +266,8 @@ function mount(container,options={}){
     if(action==='letter-player'||action==='letter-guild'){if(!opts.identity?.id){opts.onRegister?.();return;}if(global.SengokuLetters?.openCompose)await global.SengokuLetters.openCompose({playerId:button.dataset.playerId,destination:action==='letter-guild'?'guild':'player'});else message('書状を読み込めませんでした。画面を再読み込みしてください。',true);return;}
     if(action==='trade-player'){if(!opts.identity?.id){opts.onRegister?.();return;}if(global.SengokuTrade?.openCompose)await global.SengokuTrade.openCompose({playerId:button.dataset.playerId});else message('交易を読み込めませんでした。画面を再読み込みしてください。',true);return;}
     if(action==='register'){opts.onRegister?.();return;}if(action==='sync'){(opts.onSync||opts.onRegister)?.();return;}
-    if(action==='select-player'){const selected=cache.players.find(p=>button.dataset.targetId?targetKey(p)===button.dataset.targetId:p.playerId===button.dataset.playerId&&isHomeTarget(p));if(!selected)return;cache.selectedId=targetKey(selected);cache.tab='base';cache.confirm=null;cache.troops='';render();return;}
+    if(action==='select-player'){const selected=cache.players.find(p=>button.dataset.targetId?targetKey(p)===button.dataset.targetId:p.playerId===button.dataset.playerId&&isHomeTarget(p));if(!selected)return;cache.selectedId=targetKey(selected);cache.selectedBranchId='';cache.tab='base';cache.confirm=null;cache.troops='';render();return;}
+    if(action==='select-branch'){const id=button.dataset.branchId;if(id&&!parentCurrent()?.branches?.some(branch=>branch.id===id))return;cache.selectedBranchId=id||'';cache.confirm=null;cache.lastBattle=null;renderDetail();return;}
     if(action==='clear-castle'){cache.castleFilter='';cache.page=1;render();return;}
     if(action==='tab'){cache.tab=button.dataset.tab;cache.confirm=null;renderDetail();global.SengokuDesktopFit?.refresh?.();return;}
     if(action==='page'||action==='relationship-page'||action==='battle-page'){const key=action==='page'?'page':action==='relationship-page'?'relationshipPage':'battlePage';cache[key]+=Number(button.dataset.delta)||0;render();return;}
@@ -274,5 +286,5 @@ function mount(container,options={}){
   const controller={refresh,update(next={}){if(destroyed)return;const old=key;opts={...opts,...next};bindCache();if(old!==key){map?.destroy();map=null;}render();if(old!==key||Date.now()-cache.lastFetched>15000)refresh();},destroy(){if(destroyed)return;destroyed=true;if(timer!==null)global.clearTimeout(timer);timer=null;map?.destroy();cache.watchers.delete(render);for(const remove of listeners)remove();mounted.delete(container);}};
   mounted.set(container,controller);render();if(Date.now()-cache.lastFetched>15000||!cache.lastFetched)refresh();schedule();return controller;
 }
-const api={mount,normalizePlayers,groupBases,targetKey,targetCastleId,targetCastleName,isHomeTarget,battlePolicy,battleSummary,battleReportHtml,keepLevelInfo,castleAppearance,markerAppearance,foodCost,remainingLabel,relationshipFor,attackValidation,publicRow};global.SengokuField=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;
+const api={mount,normalizePlayers,normalizeBranches,branchTarget,groupBases,targetKey,targetCastleId,targetCastleName,isHomeTarget,battlePolicy,battleSummary,battleReportHtml,keepLevelInfo,castleAppearance,markerAppearance,foodCost,remainingLabel,relationshipFor,attackValidation,publicRow};global.SengokuField=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;
 })(typeof window!=='undefined'?window:globalThis);

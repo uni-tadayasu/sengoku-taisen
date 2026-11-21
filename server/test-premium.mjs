@@ -371,7 +371,7 @@ await scope('unequipped purchases appear on every public name and refresh histor
   const construction=(await h.api('/staff/base/upgrade',post(actor,{kind:'building',id:'farm',requestId:'premium-shared-build',deviceId:actor.deviceId,expectedRevision:shared.revision,baseRevision:shared.staffBase.revision}))).data;
   const attribution=construction.staffBase.jobs.find(job=>job.startedBy?.id===actor.user.id).startedBy;
   assert.deepEqual(attribution.appearance,expected,'Server-owned construction attribution carries the actual buyer marks');
-  assert(!JSON.parse(h.sql.prepare("SELECT state_json FROM staff_base WHERE id='sunpu'").get().state_json).jobs[0].startedBy.appearance,'Display state is never written back to shared jobs');
+  assert(!JSON.parse(h.sql.prepare("SELECT state_json FROM staff_base WHERE id='kyoto_gosho'").get().state_json).jobs[0].startedBy.appearance,'Display state is never written back to shared jobs');
 });
 
 await scope('historical names lose purchase marks on holds, refunds, BAN and exact subscription expiry',async h=>{

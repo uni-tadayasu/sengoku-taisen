@@ -37,7 +37,7 @@
       return single('blocked','sync-pending','保存データを確認しています',context.syncMessage || '連携先の保存を確認してから、次の行動を案内します。',{kind:'sync',label:'連携状態を確認'});
     }
     if (game.isStaff && (context.staffReady === false || !game.getStaffBase?.())) {
-      return single('blocked','staff-pending','駿府城の共同拠点を確認しています','共同普請と施設レベルの確認が終わるまでお待ちください。',{kind:'sync',label:'連携状態を確認'});
+      return single('blocked','staff-pending','京都御所の共同拠点を確認しています','共同普請と施設レベルの確認が終わるまでお待ちください。',{kind:'sync',label:'連携状態を確認'});
     }
     if (context.saveEnabled === false) {
       return single('blocked','save-pending','保存状態を確認してください','保存が有効になってから、領国の状況に合うヒントを表示します。',{kind:'settings',label:'設定を確認'});
