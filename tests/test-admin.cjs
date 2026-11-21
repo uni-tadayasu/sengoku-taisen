@@ -157,13 +157,15 @@ test('legacy operator loads migrate to Edo and retain valid in-progress castle w
     const loaded=E.fromSave(raw,roster,{isAdmin:true});
     assert.deepEqual(raw,original,'Load must not edit caller input');
     assert.equal(loaded.state.home,'edo');
-    assert.deepEqual(loaded.state.castles.edo,{owner:g.state.clan,level:oldLevel,wall:9,troops:8765});
-    assert.deepEqual(loaded.state.castles[home],original.state.castles[home]);
+    // Legacy Nijo Lv.64 normalizes to the documented metropolitan cap of 48
+    // before its progress moves to Edo; the remaining Edo job then targets 49.
+    const expectedLevel=oldLevel===64?48:oldLevel;
+    assert.deepEqual(loaded.state.castles.edo,{owner:g.state.clan,level:expectedLevel,wall:9,troops:8765});
+    assert.deepEqual(loaded.state.castles[home],{...original.state.castles[home],level:expectedLevel});
     assert.deepEqual(loaded.state.resources,g.state.resources);
     assert.deepEqual(loaded.state.jobs.find(j=>j.kind==='building'),g.state.jobs.find(j=>j.kind==='building'));
     const job=loaded.state.jobs.find(j=>j.kind==='castle'&&j.id==='edo');
-    if(oldLevel===64)assert.equal(job,undefined);
-    else assert.deepEqual(job,{...oldJob,targetLevel:oldLevel+1});
+    assert.deepEqual(job,{...oldJob,targetLevel:expectedLevel+1});
     assert.deepEqual(E.fromSave(loaded.exportSave(),roster,{isAdmin:true}).state,loaded.state,'Migrated jobs must remain saveable');
   }
 });

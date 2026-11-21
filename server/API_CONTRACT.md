@@ -1255,6 +1255,85 @@ subscription duplication guards, risk review, cross-surface ownership marks, pub
 independence. `scripts/test-public-identity.mjs` verifies role-free general DTOs,
 neutral historical notices and unchanged self/management authorization. It does not make real payments or modify production customers.
 
+## Timed NPC battle events (Ver.3.17.0)
+
+The `timedEvents:true` health feature exposes a separate event system. The current primary operator supplies a battle name and a duration of 1–7 days, reviews the generated draft, and explicitly publishes it. Staff membership does not grant event administration. The planner is the built-in, bounded `game-ai-v1` game AI: it selects and evaluates fixed battle templates and tactics. It does not contact an external language model, interpret executable prompts, or accept client-supplied enemy strengths, scores, reward bundles or plans.
+
+### Routes and visibility
+
+All routes are under `/api/v1`. Event list/detail GETs accept optional authentication. Other routes require authentication, and `/admin/events` routes additionally require the current primary operator.
+
+| Method/path | Body | Success response |
+| --- | --- | --- |
+| GET `/events` | — | `{ok,serverNow,events:[event]}` |
+| GET `/events/:eventId` | — | `{ok,serverNow,event,progress,leaderboard}` |
+| GET `/admin/events` | — | `{ok,serverNow,events:[event]}` |
+| POST `/admin/events/generate` | `{name,durationDays,requestId}` | `{ok,serverNow,event,idempotent}` |
+| POST `/admin/events/:eventId/publish` | `{requestId}` | `{ok,serverNow,event,idempotent}` |
+| POST `/admin/events/:eventId/end` | `{requestId}` | `{ok,serverNow,event,idempotent}` |
+| POST `/admin/events/:eventId/discard` | `{requestId}` | `{ok,serverNow,event,idempotent}` |
+| POST `/events/:eventId/battle` | `{stageId,tactic,requestId}` | `{ok,serverNow,event,progress,battle,rewardMailIds,idempotent}` |
+
+`eventId` is `ev_` followed by 32 lowercase hexadecimal characters. A name is trimmed, NFC-normalized and limited to 1–60 Unicode code points; embedded newlines and control characters are rejected. `durationDays` must be an integer, not a numeric string. Extra body fields are rejected. An operator may retain up to 30 unpublished drafts; `discard` frees a slot and can only act on an unpublished draft. Draft generation is limited to 20 requests per minute per operator, management mutations to 30 per minute, and new battle requests to 30 per minute per identity. Successful replays bypass these new-operation budgets.
+
+Public lists contain at most 20 published events with the currently active event first. Drafts and discarded plans return `EVENT_NOT_FOUND` (404) through public details, including when the viewer is the operator. The operator list contains at most 50 rows, prioritizes active events and drafts, and omits discarded plans. A stored discard receipt remains replayable and returns the current discarded DTO. A second publish request cannot restart or modify a published plan.
+
+```js
+event = {
+  id:"ev_…", name:"桶狭間の戦い", durationDays:2,
+  status:"draft" | "active" | "ended" | "discarded",
+  startsAt:null | "ISO-8601", endsAt:null | "ISO-8601",
+  endedAt:null | "ISO-8601", createdAt:"ISO-8601",
+  plan:{
+    schemaVersion:1, generator:"game-ai-v1", name:"桶狭間の戦い", durationDays:2,
+    theme:{id,label,description}, synopsis, rules:[string], dailyAttempts:3,
+    tactics:[{id,name,description}],
+    stages:[{id,name,description,enemyName,enemyPower,basePoints,
+      recommendedTactic,tacticHint,tacticMultipliers}],
+    milestones:[{id,title,points,gift:{gold,rice,wood,stone,magatama}}]
+  }
+}
+```
+
+Every plan has three immediately selectable stages (`stage-1` through `stage-3`), five allowed tactics (`balanced`, `charge`, `raid`, `siege`, `defend`), and three milestone rewards (`milestone-1` through `milestone-3`). Names, descriptions and battle logs are ordinary text and must be escaped when rendered. The generated plan is saved once and remains unchanged after publication. The seed and creator identity are private; event DTOs do not disclose operator/staff identities, roles, generation internals or request hashes.
+
+### Clock, progress and battle results
+
+Publishing starts the event at the server's real UTC epoch time. Its scheduled end is exactly `durationDays * 86,400,000` milliseconds later. The virtual world clock, pause, speed settings and world cycles do not affect event duration or attempts. Only one non-ended, unexpired event may be active, enforced in the publishing transaction. Expiry is derived on reads and writes, so an event ends on time without a scheduled job or an open browser. The operator may end it early; scheduled `endsAt` remains unchanged and `endedAt` records the early stop. An event which expires naturally reports `endedAt` equal to `endsAt`.
+
+An event day begins at publication and each successive 24-hour boundary, not at midnight. Each identity receives three attempts per event day across all its devices and local stories. Anonymous details return `progress:null`; signed-in players receive zero-valued progress before their first battle. Ended events have `attemptsLeft:0` and `nextResetAt:null`. The final event day also has no next reset.
+
+```js
+progress = {
+  points:0, wins:0, battles:0, attemptsToday:0, attemptsLeft:3,
+  dayIndex:1, nextResetAt:null | "ISO-8601",
+  rewards:[{milestoneId:"milestone-1",mailId:"m_ev_…",awardedAt:"ISO-8601"}]
+}
+battle = {
+  id:"eb_…", requestId:"client-operation-id", dayIndex:1, createdAt:"ISO-8601",
+  won:true, points:120, stageId:"stage-3", stageName, tactic, tacticName,
+  enemyName, playerPower, enemyPower, winChance:52, summary, log:[string]
+}
+```
+
+`dayIndex` is one-based; `winChance` is an integer percentage. The server reads the most recently saved army and morale and computes `GameEngine.armyStats()` using the shared officer runtime. A missing/unreadable save returns `SAVE_REQUIRED` (409); a game-over campaign returns `BASE_UNAVAILABLE` (409). The client cannot supply army abilities or a random roll. The server generates the roll and saves the complete outcome in the operation receipt. Losing still earns the plan's small defeat award. All stages are available from the first attempt.
+
+Event battles do not mutate `player_saves`, consume command/food/troops, capture castles, alter main campaign statistics or acquire/replace a device writer lease. They validate the save revision, current account access generation and current identity role at commit time. If any changes while the battle is being computed, the whole battle is rejected without consuming an attempt or sending a gift. Unsaved local army changes are not used.
+
+The leaderboard contains at most 20 players, ordered by points descending, wins descending, update time and stable identity. Entries are `{rank,playerId,name,points,wins,battles,evaluation,avatarVersion,appearance?}`. Active BANs are excluded. Current names, rank evaluations, photos and safe premium appearances are resolved by the existing common response projection; no operator or staff permissions are exposed.
+
+### Atomic rewards and retry behavior
+
+Migration `0014_timed_events` adds `timed_events`, `timed_event_requests`, `timed_event_participants` and `timed_event_rewards`. No event progress is stored in the offline-editable campaign save. A shared `(actor_id,request_id)` ledger covers generation, publishing, ending, discarding and battles. The request hash includes the canonical action, event and submitted choices. Reusing a request ID for different content returns `REQUEST_ID_REUSED` (409). A valid retry returns the original battle and reward mail IDs with `idempotent:true`, plus current event/progress, even after the event has ended. The same request ID must be retained after an unknown network outcome.
+
+For battles, one atomic D1 batch checks the active event, real-time daily quota, saved army revision and live identity guard; inserts a private commit receipt; adds points/wins/attempts; and creates any newly earned reward mail. Every write is gated by the newly inserted commit nonce. Concurrent attempts cannot exceed three per day, and each `(event,player,milestone)` has at most one award. A failing mail or award insert rolls back the entire battle. A lost response can be retried without rerolling or issuing duplicate rewards.
+
+Milestone gifts are delivered through the existing personal system inbox as `source:"system"` and `event:{kind:"timed-event",eventId,milestoneId}`. They use the reserved server-only `system:event:<eventId>:<milestoneId>` request namespace. The internal sender is the participating identity, which is not exposed as a human author or given mail-sending permissions. Battle responses list only the mail IDs first awarded by that battle. Event gifts remain receivable through ordinary `/mail/claim` after the event ends; the existing pending claim and save-backed `giftReceipts` rules still apply. This feature guarantees durable single issuance of the reward mail, and does not change the existing client-side gift application contract.
+
+Other relevant conflicts are `EVENT_ALREADY_ACTIVE`, `EVENT_ALREADY_PUBLISHED`, `EVENT_DRAFT_LIMIT`, `EVENT_CHANGED`, `EVENT_ENDED`, `EVENT_DAILY_LIMIT` and `EVENT_STATE_CHANGED` (409). Existing `ADMIN_REQUIRED` (403), `ACCOUNT_BANNED` (403) and `ACCOUNT_ACCESS_CHANGED` (409) apply. Rejected battles create no attempt, score, award or mail.
+
+`server/test-event-planner.mjs` checks bounded deterministic plans and combat resolution without network calls. `server/test-events.mjs` exercises real Worker routes on local SQLite: authority, draft privacy and discard, single-active publication races, daily quotas, world-clock independence, current saved-army reads, no save/lease mutations, reward delivery, replay, lost responses, fault rollback, expiry/end races, save/role/BAN generation races, current avatars/ranks and leaderboard exclusions. These tests create no production events or accounts.
+
 ## Local verification (existing systems)
 
 Run the `scripts/test-*.mjs` suites (excluding the `test-support.mjs` harness) using Node 24 or a Node version providing `node:sqlite`. In addition to social/sync/field/guild/avatar/staff/cycle coverage, `test-walking.mjs` verifies cumulative grants, real-time envelopes, delayed network delivery, simultaneous reports, response loss, reloads, account/campaign isolation, import handling and atomic rollback. `test-letters.mjs` verifies private/guild correspondence permissions, current membership, retry receipts and message/read cursors. `test-trade.mjs` exercises escrowed bundles, free exports, actor-only save updates, pending refunds/proceeds, authorization, limits, replay, races and rollback. `test-moderation.mjs` verifies sole-operator authorization, author-only text removal, bans and unbans using existing tokens, private access generations, in-flight operation races, atomic rollback, content-cache invalidation and trade refunds without touching production players. `test-construction-queues.mjs` verifies shared reservations, per-stage charging, conflicting requests, lost responses, caps, stage deadlines and personal staff-transition progress. Run the syntax checks for all Worker modules and the built Worker. Frontend `tests/test-walking-engine.cjs` verifies durable local grants and save migration separately from browser motion/controller tests; `tests/test-construction-queue-engine.cjs` verifies head-only progress and save/reload timing; `tests/test-strategy-engine.cjs` and the independent `tests/test-strategy-contract.cjs` cover parsing, exclusions, resources, decision replay, scope changes and stop conditions.
