@@ -18,6 +18,13 @@
     ownedProducts: productIds.filter(id => Array.isArray(value?.ownedProducts) && value.ownedProducts.includes(id))
   });
   const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  function publicEvaluation(value) {
+    if (!value || value.version !== 1 || !Number.isSafeInteger(value.score) || value.score < 0 || value.score > 100000 || value.maxScore !== 100000 || !Number.isSafeInteger(value.rankIndex) || value.rankIndex < 0 || value.rankIndex >= 17 || typeof value.rankId !== 'string' || !value.rankId || value.rankId.length > 64 || typeof value.rankName !== 'string' || !value.rankName.trim() || value.rankName.length > 32) return null;
+    return { version: 1, score: value.score, maxScore: 100000, rankIndex: value.rankIndex, rankId: value.rankId, rankName: value.rankName };
+  }
+  function publicUser(value) {
+    return value && typeof value.id === 'string' ? { id: value.id, name: String(value.name || '領主'), avatarVersion: typeof value.avatarVersion === 'string' && /^[a-f0-9]{64}$/.test(value.avatarVersion) ? value.avatarVersion : null, evaluation: publicEvaluation(value.evaluation) } : null;
+  }
   function isoTime(value) {
     if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(value)) return NaN;
     const time = Date.parse(value);
@@ -36,7 +43,7 @@
     }
     function currentIdentity() {
       const value = social()?.getPremiumContext?.() || {};
-      const user = value.user && typeof value.user.id === 'string' ? { id: value.user.id, name: String(value.user.name || '領主') } : null;
+      const user = publicUser(value.user);
       return { key: `${value.epoch ?? 0}:${value.playerId || user?.id || ''}`, user, banned: value.banned === true, connected: value.connected === true, pending: value.pending === true };
     }
     function safePortal(value) {
@@ -44,7 +51,7 @@
     }
     function elapsedServerTime() { return serverTime + Math.max(0, monotonic() - receivedAt); }
     function snapshot() {
-      const result = { ...context, user: context.user ? { ...context.user } : null, products: context.products.map(item => ({ ...item })), appearance: cleanAppearance(context.appearance) };
+      const result = { ...context, user: publicUser(context.user), products: context.products.map(item => ({ ...item })), appearance: cleanAppearance(context.appearance) };
       if (result.status === 'ready') {
         for (const product of result.products) {
           if (product.expiresAt && Date.parse(product.expiresAt) <= elapsedServerTime()) {
@@ -99,7 +106,7 @@
       appearance.ownedProducts = productIds.filter(id => products.some(p => p.id === id && p.owned));
       for (const [id, slot] of Object.entries(slots)) if (!products.some(p => p.id === id && p.owned && p.equipped)) appearance[slot] = null;
       serverTime = now; receivedAt = monotonic();
-      context = { status: 'ready', user: { id: who.user.id, name: String(result.player.name || who.user.name) }, ready: result.ready === true, products, appearance, portalUrl: safePortal(result.portalUrl), serverNow: result.serverNow, error: result.ready === true ? '' : '購入機能を準備しています。時間をおいて更新してください。' };
+      context = { status: 'ready', user: publicUser({ ...who.user, ...result.player, id: who.user.id, name: String(result.player.name || who.user.name) }), ready: result.ready === true, products, appearance, portalUrl: safePortal(result.portalUrl), serverNow: result.serverNow, error: result.ready === true ? '' : '購入機能を準備しています。時間をおいて更新してください。' };
       notify(); schedule(); return snapshot();
     }
     async function refresh() {

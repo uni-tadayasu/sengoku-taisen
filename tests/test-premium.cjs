@@ -214,6 +214,28 @@ test('Escape restores the settings opener and queued close does not erase a reop
   dialog.deferCloseEvent = false; s.ui.dispose(); assert.equal(s.get('#premium-modal'), null); assert.equal(s.listeners.size, 0);
 });
 
+test('the account and purchase confirmation show the matching portrait before the name and rank after it', async () => {
+  const savedAvatar = global.SengokuAvatar, savedRank = global.SengokuEvaluationUI;
+  global.SengokuAvatar = { markup: (user, size) => `<span class="test-avatar" data-player-avatar="${user.id}" data-avatar-version="${user.avatarVersion || ''}" data-avatar-size="${size}"></span>` };
+  global.SengokuEvaluationUI = require('../player-evaluation.js');
+  const rank = { version: 1, score: 22000, maxScore: 100000, rankIndex: 4, rankId: 'rank-four', rankName: '正七位' };
+  let s;
+  try {
+    const owner = { ...userA, name: '<領主 & 旗>', avatarVersion: 'a'.repeat(64), evaluation: { ...rank, privateSave: 'secret' } };
+    const normalized = normalizeContext(ready({ user: owner })); assert.deepEqual(normalized.user.evaluation, rank); assert(!JSON.stringify(normalized).includes('privateSave'));
+    s = setup(ready({ user: owner })); s.ui.open(); await drain(); s.click('[data-premium-purchase="gold-banner"]');
+    for (const host of [s.get('[data-premium-account]'), s.get('[data-premium-confirm-user]')]) {
+      const identity = host.querySelector('.player-evaluation-person'); assert(identity); assert.equal(identity.children[0].getAttribute('data-player-avatar'), userA.id); assert.equal(identity.children[0].getAttribute('data-avatar-version'), 'a'.repeat(64)); assert.equal(identity.children[1].textContent, owner.name); assert.equal(identity.children[2].getAttribute('data-evaluation-rank'), rank.rankId);
+    }
+    const confirmation = s.get('[data-premium-confirm]'), checkout = s.get('[data-premium-ui="checkout"]'); checkout.focus();
+    s.set(ready({ user: { ...owner, avatarVersion: null, evaluation: null } }));
+    assert.equal(s.get('[data-premium-confirm]'), confirmation); assert.equal(s.get('[data-premium-ui="checkout"]'), checkout); assert.equal(s.doc.activeElement, checkout);
+    for (const host of [s.get('[data-premium-account]'), s.get('[data-premium-confirm-user]')]) { assert.equal(host.querySelector('[data-player-avatar]').getAttribute('data-avatar-version'), ''); assert.equal(host.querySelector('[data-evaluation-rank]'), null); }
+    const invalid = normalizeContext(ready({ user: { ...owner, avatarVersion: '" onerror="bad', evaluation: { ...rank, score: -1 } } })); assert.equal(invalid.user.avatarVersion, null); assert.equal(invalid.user.evaluation, null);
+    s.set(ready({ user: { ...userB, avatarVersion: 'b'.repeat(64), evaluation: rank } })); assert.equal(confirmation.hidden, true); assert.equal(s.get('[data-premium-account]').querySelector('[data-player-avatar]').getAttribute('data-player-avatar'), userB.id); assert(!s.calls.some(call => call[0] === 'checkout'));
+  } finally { s?.ui.dispose(); global.SengokuAvatar = savedAvatar; global.SengokuEvaluationUI = savedRank; }
+});
+
 test('forged success parameters and local storage never grant ownership or mutate a game save', async () => {
   const { doc } = documentFixture(), effects = [], reads = [], game = { resources: { gold: 10, magatama: 25 }, premium: [] }, before = JSON.stringify(game);
   const storage = { getItem(key) { reads.push(key); return JSON.stringify({ owned: true, premium: ['gold-banner'], success: true }); }, setItem(...args) { effects.push(['write', ...args]); }, removeItem(...args) { effects.push(['remove', ...args]); } };

@@ -2,13 +2,13 @@
 
 ## 設定・公開の状況（2026年11月22日 JST）
 
-フロントエンドはVer.3.15.0、実APIはSites version 24です。3商品の価格・購入URL・完成アート・外観管理・署名通知に加え、未装備の購入商品を他の領主にも示す印、公開する役職情報の整理、同じ領主IDのまま名前を変更する機能を実装しました。
+フロントエンドはVer.3.16.0、実APIはSites version 25です。3商品の価格・購入URL・完成アート・外観管理・署名通知に加え、未装備の購入商品を他の領主にも示す印、公開する役職情報の整理、同じ領主IDのまま名前を変更する機能を実装しました。
 
 Stripeの接続認証を再確認し、LiveのWebhook `we_1UeFufL3ZjL9QUmfA3vQjPP4` を保存しました。状態は `enabled`、API versionは `2026-09-30.endive`、対象は23イベントです。契約管理Portal `bpc_1UeFsLL3ZjL9QUmfCKVGnsnG` も保存済みで、[契約管理URL](https://billing.stripe.com/p/login/4gM3cw92Q6NP4gj1Ia9MY00)を設定しました。解約は契約期間末に適用し、返金按分は行わない設定です。
 
-Sitesの環境設定 revision 3に署名鍵をsecretとして保存し、`SENGOKU_PREMIUM_ENABLED=true` と契約管理URLを設定しています。version 24のデプロイ `appgdep_6b01bb64824c8191a199d14b4c03be95` は `succeeded`、反映された `env_set_revision` は `3` です。今回の更新で決済設定・署名鍵・購入先は変更していません。
+Sitesの環境設定 revision 3に署名鍵をsecretとして保存し、`SENGOKU_PREMIUM_ENABLED=true` と契約管理URLを設定しています。署名通知・購入連携はversion 24で公開確認済みです。version 25は同じ環境設定を保持し、領主アイコンと位階を購入確認にも表示するための人物情報を追加しています。今回の更新で決済設定・署名鍵・購入先は変更していません。
 
-既存3商品のStripe画像・説明を完成アートに更新し、Payment Linkの決済完了後の戻り先を `https://www.kasai-solutions-inc.com/?premium=<商品ID>` に設定しています。価格・税込設定・商品構成を維持し、公開APIは `status:"ready"`・`version:"3.15.0"`・`features.premium:true` を返します。契約管理ページの表示は3.14.0の公開時に確認しました。
+既存3商品のStripe画像・説明を完成アートに更新し、Payment Linkの決済完了後の戻り先を `https://www.kasai-solutions-inc.com/?premium=<商品ID>` に設定しています。価格・税込設定・商品構成を維持し、公開APIは `status:"ready"`・`version:"3.16.0"`・`features.premium:true` を返します。契約管理ページの表示は3.14.0の公開時に確認しました。
 
 実決済と本番Stripeイベントの受信は未実施です。購入から有料権利の反映までの本番確認は、ローカルの署名付きfixtureによる検証とは区別しています。
 

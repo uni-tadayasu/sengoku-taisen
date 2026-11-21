@@ -4,14 +4,45 @@
 const SIZE=256,MAX_BYTES=49152,MAX_FILE_BYTES=20*1024*1024;
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const clamp=(n,min,max)=>Math.max(min,Math.min(max,n));
+const people=new Map(),VERSION=/^[a-f0-9]{64}$/,PLAYER=/^[A-Za-z0-9_-]{1,150}$/;
+let sequence=0;
+const cleanVersion=value=>typeof value==='string'&&VERSION.test(value)?value:null;
+function beginRequest(){return ++sequence;}
+function current(user){const id=String(user?.playerId||user?.userId||user?.id||''),known=people.get(id);return {id,name:known?.name||String(user?.name||'領主'),avatarVersion:known?known.avatarVersion:cleanVersion(user?.avatarVersion)};}
 function imageURL(user){
  if(!user?.id||typeof user.avatarVersion!=='string'||!/^[a-f0-9]{64}$/.test(user.avatarVersion))return '';
  try{const base=new URL(String(global.SENGOKU_API_BASE||''));if(!['https:','http:'].includes(base.protocol)||base.username||base.password)return '';return base.href.replace(/\/+$/,'').replace(/\/api\/v1$/,'')+'/api/v1/avatars/'+encodeURIComponent(user.id)+'?v='+user.avatarVersion;}catch(_){return '';}
 }
+function contents(user){const letter=esc(Array.from(String(user?.name||'領主'))[0]),url=imageURL(user);return `<span class="social-avatar-initial" aria-hidden="true">${letter}</span>${url?`<img data-avatar-image src="${esc(url)}" width="256" height="256" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" draggable="false">`:''}`;}
 function markup(user,size=''){
- const cls=size==='small'?' small':size==='profile'?' social-avatar-profile':'';
- const letter=esc(Array.from(String(user?.name||'領主'))[0]),url=imageURL(user);
- return `<span class="social-avatar${cls}${url?' has-photo':''}"><span class="social-avatar-initial" aria-hidden="true">${letter}</span>${url?`<img data-avatar-image src="${esc(url)}" width="256" height="256" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">`:''}</span>`;
+ const person=current(user),kind=['small','profile','inline'].includes(size)?size:'',cls=kind==='small'?' small':kind==='profile'?' social-avatar-profile':kind==='inline'?' social-avatar-inline':'',url=imageURL(person);
+ return `<span class="social-avatar${cls}${url?' has-photo':''}" data-player-avatar="${esc(person.id)}" data-player-avatar-name="${esc(person.name)}" data-avatar-version="${esc(person.avatarVersion||'')}" data-avatar-size="${kind}" aria-hidden="true">${contents(person)}</span>`;
+}
+// Every accepted API response supplies the current public icon. A request that
+// began before a newer response or a local upload cannot restore an old image.
+function observe(payload,{requestSequence,pinnedUser}={}){
+ const order=Number.isSafeInteger(requestSequence)?requestSequence:beginRequest(),seen=new Set(),skip=new Set(['save','state','entitlements','appearance']),pin=String(pinnedUser?.id||'');
+ const take=(value,id,nameKey,versionKey)=>{
+  id=String(id||'');if(!PLAYER.test(id)||!Object.hasOwn(value,versionKey))return;
+  const prior=people.get(id),pinned=pin===id;
+  const avatarVersion=prior&&order<prior.sequence?prior.avatarVersion:cleanVersion(pinned?pinnedUser.avatarVersion:value[versionKey]);
+  const nameSequence=prior?.nameSequence??prior?.sequence??0,name=prior&&order<nameSequence?prior.name:String((pinned?pinnedUser.name:null)||value[nameKey]||prior?.name||'領主');
+  value[versionKey]=avatarVersion;people.set(id,{name,avatarVersion,sequence:Math.max(order,prior?.sequence||0),nameSequence:Math.max(order,nameSequence)});
+  if(people.size>4096)people.delete(people.keys().next().value);
+ };
+ const visit=value=>{if(!value||typeof value!=='object'||seen.has(value))return;seen.add(value);
+  take(value,value.playerId||value.userId||value.id,typeof value.name==='string'?'name':'playerName','avatarVersion');
+  for(const [idKey,nameKey,versionKey]of [['playerId','playerName','playerAvatarVersion'],['ownerId','ownerName','ownerAvatarVersion'],['authorId','authorName','authorAvatarVersion'],['targetPlayerId','targetName','targetAvatarVersion'],['attackerPlayerId','attackerName','attackerAvatarVersion'],['defenderPlayerId','defenderName','defenderAvatarVersion'],['actorPlayerId','actorName','actorAvatarVersion']])take(value,value[idKey],nameKey,versionKey);
+  for(const [key,child]of Object.entries(value))if(!skip.has(key))visit(child);
+ };
+ visit(payload);refresh();return payload;
+}
+function rename(user){const id=String(user?.id||'');if(!PLAYER.test(id)||typeof user.name!=='string')return;const prior=people.get(id);people.set(id,{name:user.name,avatarVersion:prior?prior.avatarVersion:cleanVersion(user.avatarVersion),sequence:prior?.sequence||0,nameSequence:beginRequest()});refresh();}
+function refresh(root=global.document){
+ const nodes=[...(root?.matches?.('[data-player-avatar]')?[root]:[]),...(root?.querySelectorAll?.('[data-player-avatar]')||[])];
+ for(const node of nodes){const person=people.get(String(node.dataset.playerAvatar));if(!person)continue;const version=person.avatarVersion||'';if(node.dataset.avatarVersion===version&&node.dataset.playerAvatarName===person.name)continue;
+  node.dataset.avatarVersion=version;node.dataset.playerAvatarName=person.name;const user={id:node.dataset.playerAvatar,...person};node.classList?.toggle('has-photo',Boolean(imageURL(user)));node.innerHTML=contents(user);
+ }
 }
 function cropRect(width,height,zoom=1,x=50,y=50){
  const side=Math.min(width,height)/clamp(Number(zoom)||1,1,3);
@@ -69,5 +100,5 @@ function mount(host,{user,request,onUser}={}){
  };
 }
 document.addEventListener('error',event=>{const image=event.target;if(image?.matches?.('img[data-avatar-image]')){image.hidden=true;image.parentElement?.classList.remove('has-photo');}},true);
-global.SengokuAvatar=Object.freeze({markup,mount,imageURL});
+global.SengokuAvatar=Object.freeze({markup,mount,imageURL,observe,refresh,beginRequest,resolve:current,rename});
 })(window);

@@ -4,7 +4,7 @@ import {handleTrades} from './trade.js';
 import {handleModeration} from './moderation.js';
 import {handlePremium,handlePremiumWebhook,resolvePremiumAppearances} from './premium.js';
 const API = '/api/v1';
-const API_VERSION = '3.15.0';
+const API_VERSION = '3.16.0';
 const API_FEATURES = Object.freeze({trades:true,moderation:true,premium:true});
 const MAX_BODY = 16 * 1024;
 const MAX_SAVE_BODY = 2 * 1024 * 1024;
@@ -312,15 +312,24 @@ function evaluationState(row,meta,now){
   return state;
 }
 async function resolvePlayerEvaluations(db,payload,now){
-  const refs=[],ids=new Set(),nameRefs=[],skip=new Set(['save','state','entitlements','appearance']);
+  const refs=[],ids=new Set(),nameRefs=[],avatarRefs=[],avatarIds=new Set(),skip=new Set(['save','state','entitlements','appearance']);
+  const isPlayerId=id=>typeof id==='string'&&/^u_[A-Za-z0-9_]{1,96}$/.test(id);
+  const avatarRef=(value,id,key='avatarVersion')=>{if(isPlayerId(id)){avatarRefs.push({value,id,key});avatarIds.add(id);}};
   function visit(value,parent,key){
     if(!value||typeof value!=='object')return;
     if(value[EVALUATION_PLAYER]){refs.push({parent,key,id:value[EVALUATION_PLAYER]});ids.add(value[EVALUATION_PLAYER]);return;}
     const playerId=value.playerId||value.userId||value.id;
-    if(typeof value.name==='string'&&typeof playerId==='string'&&/^u_[A-Za-z0-9_]{1,96}$/.test(playerId))nameRefs.push({value,id:playerId});
+    if(typeof value.name==='string'&&isPlayerId(playerId))nameRefs.push({value,id:playerId});
+    avatarRef(value,playerId);
+    for(const [idKey,versionKey]of [
+      ['ownerId','ownerAvatarVersion'],['authorId','authorAvatarVersion'],
+      ['targetPlayerId','targetAvatarVersion'],['attackerPlayerId','attackerAvatarVersion'],
+      ['defenderPlayerId','defenderAvatarVersion'],['actorPlayerId','actorAvatarVersion']
+    ])avatarRef(value,value[idKey],versionKey);
+    if(typeof value.playerName==='string')avatarRef(value,value.playerId,'playerAvatarVersion');
     for(const [child,node]of Object.entries(value))if(!skip.has(child))visit(node,value,child);
   }
-  visit(payload,null,null);if(!ids.size&&!nameRefs.length)return payload;
+  visit(payload,null,null);if(!ids.size&&!nameRefs.length&&!avatarRefs.length)return payload;
   const selected=[...ids],queries=[stmt(db,`SELECT
     (SELECT json_object('base_elapsed_ms',base_elapsed_ms,'anchor_real_ms',anchor_real_ms,'running',running,'speed',speed,'revision',revision) FROM world_clock WHERE id=?) AS clock_json,
     (SELECT state_json FROM staff_base WHERE id='sunpu') AS shared_json,
@@ -328,17 +337,20 @@ async function resolvePlayerEvaluations(db,payload,now){
   for(let offset=0;offset<selected.length;offset+=80){
     const page=selected.slice(offset,offset+80);
     queries.push(stmt(db,`/* player-evaluation */ SELECT u.id,u.name,u.clan,ps.save_json,ps.cycle_index,ps.cycle_home,
+      (SELECT a.version FROM user_avatars a WHERE a.user_id=u.id AND NOT EXISTS(SELECT 1 FROM player_bans ban WHERE ban.user_id=u.id AND ban.active=1)) AS avatar_version,
       CASE WHEN u.id=(SELECT value FROM settings WHERE key='adminUserId') THEN 1 ELSE 0 END AS is_admin,
       CASE WHEN sm.user_id IS NOT NULL THEN 1 ELSE 0 END AS is_staff,COALESCE(sm.term_id,'legacy:'||sm.appointed_at) AS staff_term,
       b.active AS backup_active,b.term_id AS backup_term,b.save_json AS backup_json
       FROM users u LEFT JOIN player_saves ps ON ps.user_id=u.id LEFT JOIN staff_members sm ON sm.user_id=u.id
       LEFT JOIN staff_campaign_backups b ON b.user_id=u.id WHERE u.id IN (${page.map(()=>'?').join(',')})`,...page));
   }
-  const otherNames=[...new Set(nameRefs.map(ref=>ref.id).filter(id=>!ids.has(id)))];
-  for(let offset=0;offset<otherNames.length;offset+=80){const page=otherNames.slice(offset,offset+80);queries.push(stmt(db,`SELECT id,name FROM users WHERE id IN (${page.map(()=>'?').join(',')})`,...page));}
-  const results=await db.batch(queries),meta=rows(results[0])[0]||{},values=new Map(),names=new Map(),empty=GameEngine.publicEvaluation(null,{officers:GAME_OFFICERS});
+  const otherNames=[...new Set([...nameRefs.map(ref=>ref.id),...avatarIds])].filter(id=>!ids.has(id));
+  for(let offset=0;offset<otherNames.length;offset+=80){const page=otherNames.slice(offset,offset+80);queries.push(stmt(db,`SELECT u.id,u.name,
+    (SELECT a.version FROM user_avatars a WHERE a.user_id=u.id AND NOT EXISTS(SELECT 1 FROM player_bans ban WHERE ban.user_id=u.id AND ban.active=1)) AS avatar_version
+    FROM users u WHERE u.id IN (${page.map(()=>'?').join(',')})`,...page));}
+  const results=await db.batch(queries),meta=rows(results[0])[0]||{},values=new Map(),names=new Map(),avatars=new Map(),empty=GameEngine.publicEvaluation(null,{officers:GAME_OFFICERS});
   for(const result of results.slice(1))for(const row of rows(result)){
-    names.set(row.id,row.name);
+    names.set(row.id,row.name);avatars.set(row.id,row.avatar_version||null);
     if(!ids.has(row.id))continue;
     if(!row.save_json){values.set(row.id,empty);continue;}
     let evaluation=null;
@@ -353,6 +365,10 @@ async function resolvePlayerEvaluations(db,payload,now){
     if(nameField&&names.has(ref.id))ref.parent[nameField]=names.get(ref.id);
   }
   for(const ref of nameRefs)if(names.has(ref.id))ref.value.name=names.get(ref.id);
+  // Project current photos into every participant surface, including empty
+  // chat/letter deltas and immutable historical receipts. Null also clears a
+  // previously displayed photo after deletion, missing accounts or a BAN.
+  for(const ref of avatarRefs)ref.value[ref.key]=avatars.get(ref.id)||null;
   return payload;
 }
 
@@ -1815,7 +1831,7 @@ async function route(request, env, now) {
   }
 
   let user = await authenticate(request,db,now);
-  if(path==='/premium'||path.startsWith('/premium/')||path==='/admin/premium/reviews')return handlePremium({db,env,user,now,path,method,request,helpers:{fail,readBody,budget,accountCommitGuard,requireAccountAccess,requireAdmin,getUser,textField,idField,hash,uid}});
+  if(path==='/premium'||path.startsWith('/premium/')||path==='/admin/premium/reviews')return handlePremium({db,env,user,now,path,method,request,helpers:{fail,readBody,budget,accountCommitGuard,requireAccountAccess,requireAdmin,getUser,textField,idField,hash,uid,evaluationRef}});
   if(path==='/admin/moderation'||path.startsWith('/admin/moderation/'))return handleModeration({db,user,now,path,method,url,request,helpers:{fail,readBody,budget,idField,textField,uid,hash,mapUser,getUser,requireAdmin,userSelect:USER_SELECT}});
   if (path === '/me/avatar' && method === 'PUT') return putAvatar(request,env,user,now);
   if (path === '/me/avatar' && method === 'DELETE') return deleteAvatar(request,env,user,now);

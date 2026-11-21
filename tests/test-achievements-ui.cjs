@@ -41,9 +41,9 @@ await test('untrusted fields are escaped, bounded and projected without private 
  await b.t.loadAchievements();const html=b.list.innerHTML,state=JSON.stringify(b.t.s.achievements.events);
  assert(html.includes('&lt;img'));assert(html.includes('&lt;script&gt;title&lt;/script&gt;'));assert(html.includes('&lt;svg'));assert(!html.includes('<script>'));assert(!html.includes('<img src=x'));
  for(const secret of ['SECRET_AUTH','SECRET_EMAIL','PRIVATE_LOGIN','PRIVATE_GOLD','PRIVATE_CHAT']){assert(!html.includes(secret));assert(!state.includes(secret));assert(!b.line.textContent.includes(secret));}
- assert.deepEqual(Object.keys(b.t.s.achievements.events[0]).sort(),['clan','detail','id','kind','occurredAt','playerAppearance','playerEvaluation','playerId','playerName','title']);
+ assert.deepEqual(Object.keys(b.t.s.achievements.events[0]).sort(),['avatarVersion','clan','detail','id','kind','occurredAt','playerAppearance','playerEvaluation','playerId','playerName','title']);
  const clean=b.t.cleanAchievement(event(2,{playerName:'名'.repeat(100),clan:'家'.repeat(100),kind:'k'.repeat(100),title:'達'.repeat(250),detail:'詳'.repeat(400)}));assert.equal(clean.playerName.length,40);assert.equal(clean.clan.length,30);assert.equal(clean.kind.length,40);assert.equal(clean.title.length,180);assert.equal(clean.detail.length,300);
- assert.equal(b.line.htmlWrites,0,'ticker uses textContent, never server HTML');assert(b.line.textContent.includes('<script>NOTICE_SECRET</script>'));
+ assert.equal(b.line.htmlWrites,1,'ticker uses escaped structured identity markup');assert(b.line.innerHTML.includes('&lt;script&gt;NOTICE_SECRET&lt;/script&gt;'));assert(!b.line.innerHTML.includes('<script>'));assert(!b.line.innerHTML.includes('<img src=x'));assert(b.line.innerHTML.includes('&lt;img'));
 });
 await test('malformed IDs, required names, titles and invalid dates cannot become public rows',()=>{
  const b=setup();for(const id of ['', '   ', NaN, Infinity, {}, null, 'x'.repeat(181)])assert.equal(b.t.cleanAchievement(event(1,{id})),null,'reject id '+String(id));
@@ -83,7 +83,7 @@ await test('polling leaves the open tab, active element and outer page untouched
  const b=setup(),active={value:'入力中',selectionStart:2,selectionEnd:2};b.c.document.activeElement=active;b.body.scrollTop=147;b.t.s.tab='profile';b.t.s.config.announcement='お知らせ';
  b.setHandler(async()=>({ok:true,events:[event(1)],nextCursor:null}));await b.t.loadAchievements();await b.runPoll();
  assert.equal(b.t.s.tab,'profile');assert.equal(b.body.htmlWrites,0);assert.equal(b.body.scrollTop,147);assert.equal(b.c.document.activeElement,active);assert.equal(active.value,'入力中');assert.equal(b.focusCalls.length,0);assert.equal(b.navigation.length,0);
- assert.equal(b.line.textWrites,1,'same ticker text does not restart its DOM content every poll');
+ assert.equal(b.line.htmlWrites,1,'same ticker identity markup does not restart its DOM content every poll');
  b.t.s.open=false;await b.runPoll();assert.equal(b.t.s.open,false);assert.equal(b.body.htmlWrites,0);assert.equal(b.t.s.tab,'profile');
 });
 await test('reading position in the news list follows the visible row when new rows arrive',async()=>{

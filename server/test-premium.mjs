@@ -91,7 +91,7 @@ await scope('readiness and account authentication are required before issuing a 
   assert.equal((await premium(h,actor)).ready,false);
   await deliver(h,event(h,'unhandled.fixture',{id:id('fixture_')}),{expected:503});
   h.env.STRIPE_WEBHOOK_SECRET=SECRET;
-  const current=await premium(h,actor);assert.equal(current.player.id,actor.user.id);assert.equal(current.ready,true);assert.equal(current.serverNow,new Date(h.now).toISOString());
+  const current=await premium(h,actor);assert.equal(current.player.id,actor.user.id);assert.deepEqual(current.player.evaluation,actor.user.evaluation);assert.equal(current.ready,true);assert.equal(current.serverNow,new Date(h.now).toISOString());
   assert.deepEqual(current.products.map(p=>p.id).sort(),Object.keys(PRODUCTS).sort());assert(current.products.every(p=>!p.owned));
 });
 
@@ -260,12 +260,14 @@ await scope('an in-flight checkout or equipment request cannot survive a BAN and
 
 await scope('only the operator can review soft holds and hard refund facts cannot be weakened or released',async h=>{
   const admin=await administrator(h),actor=await h.session('警告確認対象'),staff=await h.session('確認できないスタッフ');
+  const reviewSave=h.fresh();reviewSave.state.prestige=10000;const saved=await savePlayer(h,actor,reviewSave),evaluation=saved.user.evaluation;assert(evaluation.score>0);assert.deepEqual((await premium(h,actor)).player.evaluation,evaluation);
   await h.api('/admin/staff',post(admin,{targetPlayerId:staff.user.id,action:'appoint',requestId:crypto.randomUUID()}));
   const p=purchase(h,'gold-banner',(await order(h,actor,'gold-banner')).reference);await complete(h,p);await deliver(h,warning(h,p));
   const first=await reviews(h,admin,'?limit=1');assert.equal(first.holds.length,1);assert(first.nextCursor);
   const second=await reviews(h,admin,'?limit=1&cursor='+encodeURIComponent(first.nextCursor));assert.equal(second.holds.length,1);
   const holds=[...first.holds,...second.holds];assert.equal(new Set(holds.map(row=>row.scope+row.objectId)).size,2);
   assert(holds.every(row=>row.canRelease&&row.reason==='fraud_review'&&row.players.some(player=>player.id===actor.user.id)));
+  for(const hold of holds)assert.deepEqual(hold.players.find(player=>player.id===actor.user.id).evaluation,evaluation);
   await h.api('/admin/premium/reviews',{expected:401});await release(h,null,reviewBody(holds[0]),401);
   for(const other of [actor,staff]){await h.api('/admin/premium/reviews',{token:other.token,expected:403});await release(h,other,reviewBody(holds[0]),403);}
   await release(h,admin,{...reviewBody(holds[0]),reason:'短い'},400);

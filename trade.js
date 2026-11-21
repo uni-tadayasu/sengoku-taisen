@@ -16,9 +16,13 @@ function assets(value,max=MAX_AMOUNT){
 }
 const nonempty=value=>value&&Object.values(value).some(n=>n>0);
 const assetText=value=>Object.entries(ASSETS).filter(([key])=>Number(value?.[key])>0).map(([key,label])=>label+' '+num(value[key])).join('・')||'なし（無償）';
+function publicEvaluation(value){
+  if(!value||value.version!==1||!Number.isSafeInteger(value.score)||value.score<0||value.score>100000||value.maxScore!==100000||!Number.isSafeInteger(value.rankIndex)||value.rankIndex<0||value.rankIndex>=17||typeof value.rankId!=='string'||!value.rankId||value.rankId.length>64||typeof value.rankName!=='string'||!value.rankName.trim()||value.rankName.length>32)return null;
+  return{version:1,score:value.score,maxScore:100000,rankIndex:value.rankIndex,rankId:value.rankId,rankName:value.rankName};
+}
 function person(value){
   const id=String(value?.playerId??value?.id??'');
-  return PLAYER.test(id)&&typeof value?.name==='string'?{playerId:id,name:value.name.slice(0,80),clan:String(value.clan==='德川家'?'徳川家':value.clan||'').slice(0,60),appearance:global.SengokuPremiumRuntime?.cleanAppearance?.(value.appearance)||null}:null;
+  return PLAYER.test(id)&&typeof value?.name==='string'?{playerId:id,name:value.name.slice(0,80),clan:String(value.clan==='德川家'?'徳川家':value.clan||'').slice(0,60),avatarVersion:typeof value.avatarVersion==='string'&&/^[a-f0-9]{64}$/.test(value.avatarVersion)?value.avatarVersion:null,evaluation:publicEvaluation(value.evaluation),appearance:global.SengokuPremiumRuntime?.cleanAppearance?.(value.appearance)||null}:null;
 }
 function cleanTrade(value){
   const sender=person(value?.sender),recipient=person(value?.recipient),offer=assets(value?.offer),want=assets(value?.want);
@@ -223,7 +227,7 @@ const STATUS={pending:'承認待ち',accepted:'成立',cancelled:'取消済み',
 const date=value=>{const time=new Date(value);return Number.isFinite(time.getTime())?time.toLocaleString('ja-JP',{timeZone:'Asia/Tokyo',year:'numeric',month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}):'';};
 const button=(label,action,extra='',primary=false)=>'<button type="button" class="trade-button'+(primary?' is-primary':'')+'" data-trade="'+action+'" '+extra+'>'+label+'</button>';
 const disabled=value=>value?' disabled':'';
-const peerMarkup=player=>'<strong><span class="player-evaluation-name" data-premium-player="'+esc(player?.playerId||'')+'" data-premium-player-name="'+esc(player?.name||'交易先の領主')+'">'+(global.SengokuPremiumRuntime?.nameMarkup?.(player?.name||'交易先の領主',player?.appearance)||esc(player?.name||'交易先の領主'))+'</span></strong><code>'+esc(player?.playerId||'')+'</code>';
+const peerMarkup=player=>'<strong class="player-evaluation-person">'+(player?.playerId?global.SengokuAvatar?.markup?.({id:player.playerId,name:player.name,avatarVersion:player.avatarVersion},'inline')||'':'')+'<span class="player-evaluation-name" data-premium-player="'+esc(player?.playerId||'')+'" data-premium-player-name="'+esc(player?.name||'交易先の領主')+'">'+(global.SengokuPremiumRuntime?.nameMarkup?.(player?.name||'交易先の領主',player?.appearance)||esc(player?.name||'交易先の領主'))+'</span>'+(global.SengokuEvaluationUI?.badge?.(player?.evaluation)||'')+'</strong><code>'+esc(player?.playerId||'')+'</code>';
 function tradeCard(trade,state){
   const sent=trade.sender.playerId===state.ownerId,peer=sent?trade.recipient:trade.sender;
   const blocked=!state.access.writable||state.sending||!!state.pending||state.loading,controls=[];

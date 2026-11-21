@@ -183,6 +183,23 @@ test('logout and BAN immediately clear rights and discard late GET and mutation 
   }
 });
 
+test('the authenticated purchaser retains only public avatar and rank data without changing ownership', async () => {
+  const rank = { version: 1, score: 22000, maxScore: 100000, rankIndex: 4, rankId: 'rank-four', rankName: '正七位' };
+  const who = identity(); who.user = { ...who.user, avatarVersion: 'a'.repeat(64), evaluation: { ...rank, privateSave: 'never expose' }, isAdmin: true };
+  const f = fixture({ user: who }), initial = f.runtime.getContext();
+  assert.equal(initial.user.avatarVersion, 'a'.repeat(64)); assert.deepEqual(clone(initial.user.evaluation), rank); assert(!JSON.stringify(initial.user).includes('privateSave')); assert(!Object.hasOwn(initial.user, 'isAdmin'));
+  const value = response('player-a'); value.player = { ...value.player, avatarVersion: 'b'.repeat(64), evaluation: { ...rank, privateSave: 'secret' }, isStaff: true };
+  await f.load(value); const ready = f.runtime.getContext();
+  assert.equal(ready.user.avatarVersion, 'b'.repeat(64)); assert.deepEqual(clone(ready.user.evaluation), rank); assert(!Object.hasOwn(ready.user, 'isStaff')); assert(ready.products.every(product => !product.owned));
+  ready.user.evaluation.score = 99999; ready.user.avatarVersion = 'c'.repeat(64);
+  assert.equal(f.runtime.getContext().user.evaluation.score, rank.score); assert.equal(f.runtime.getContext().user.avatarVersion, 'b'.repeat(64));
+  const removed = response('player-a'); removed.player = { ...removed.player, avatarVersion: null, evaluation: null }; await f.load(removed);
+  assert.equal(f.runtime.getContext().user.avatarVersion, null); assert.equal(f.runtime.getContext().user.evaluation, null);
+  const invalid = response('player-a'); invalid.player = { ...invalid.player, avatarVersion: '" onerror="bad', evaluation: { ...rank, score: -1 } }; await f.load(invalid);
+  assert.equal(f.runtime.getContext().user.avatarVersion, null); assert.equal(f.runtime.getContext().user.evaluation, null); assert(f.runtime.getContext().products.every(product => !product.owned));
+  assert.equal(f.effects.length, 0); f.runtime.dispose();
+});
+
 test('missing, malformed or wrong-owner server snapshots fail closed', async () => {
   const cases = [
     ['missing response', () => null], ['failed response', p => ({ ...p, ok: false })],

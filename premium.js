@@ -37,9 +37,17 @@
       art: { src: assetPath(product.art?.src), width: Number(product.art?.width) || 1024, height: Number(product.art?.height) || 1024, alt: text(product.art?.alt, 300) || text(product.name, 120) }
     }));
   }
+  function publicEvaluation(value) {
+    if (!value || value.version !== 1 || !Number.isSafeInteger(value.score) || value.score < 0 || value.score > 100000 || value.maxScore !== 100000 || !Number.isSafeInteger(value.rankIndex) || value.rankIndex < 0 || value.rankIndex >= 17 || typeof value.rankId !== 'string' || !value.rankId || value.rankId.length > 64 || typeof value.rankName !== 'string' || !value.rankName.trim() || value.rankName.length > 32) return null;
+    return { version: 1, score: value.score, maxScore: 100000, rankIndex: value.rankIndex, rankId: value.rankId, rankName: value.rankName };
+  }
+  function playerMarkup(user) {
+    if (!user) return '';
+    return `<span class="player-evaluation-person">${global.SengokuAvatar?.markup?.(user, 'inline') || ''}<span class="player-evaluation-name">${esc(user.name)}</span>${global.SengokuEvaluationUI?.badge?.(user.evaluation) || ''}</span>`;
+  }
   function normalizeContext(raw) {
     const status = ['loading', 'ready', 'anonymous', 'offline', 'error', 'banned'].includes(raw?.status) ? raw.status : 'offline';
-    const user = raw?.user && text(raw.user.id, 100) ? { id: text(raw.user.id, 100), name: text(raw.user.name, 180) || '領主' } : null;
+    const user = raw?.user && text(raw.user.id, 100) ? { id: text(raw.user.id, 100), name: text(raw.user.name, 180) || '領主', avatarVersion: typeof raw.user.avatarVersion === 'string' && /^[a-f0-9]{64}$/.test(raw.user.avatarVersion) ? raw.user.avatarVersion : null, evaluation: publicEvaluation(raw.user.evaluation) } : null;
     const ready = status === 'ready' && raw?.ready === true && Boolean(user);
     const products = ids.map(id => {
       const item = (Array.isArray(raw?.products) ? raw.products : []).find(product => product?.id === id);
@@ -64,7 +72,7 @@
       error: context.error || '購入状態を確認できませんでした。接続を確かめて再確認してください。', banned: 'この領主は現在、購入と装備変更を利用できません。',
       ready: context.ready ? '「ゲームに適用」で装備し、「通常に戻す」で解除できます。見本の切り替えだけでは装備は変わりません。' : context.error || '購入サービスを確認しています。利用できる状態になってから、購入と装備変更を行えます。'
     };
-    return `<div class="premium-account-heading"><h2>自分の外観</h2><button type="button" class="premium-account-refresh" data-premium-ui="refresh"${context.status === 'loading' || context.status === 'banned' ? ' disabled' : ''}>購入状態を再確認</button></div>${context.user ? `<p class="premium-account-user"><span>接続中の領主</span><strong>${esc(context.user.name)}</strong><code>${esc(context.user.id)}</code></p>` : ''}<p class="premium-account-message">${esc(descriptions[context.status])}</p>${context.status === 'anonymous' ? '<button type="button" class="premium-primary" data-premium-ui="register">領主を登録・確認する</button>' : ''}${context.portalUrl ? `<a class="premium-contract-link" href="${esc(context.portalUrl)}" target="_blank" rel="noopener noreferrer">支援の契約・解約を確認</a>` : ''}`;
+    return `<div class="premium-account-heading"><h2>自分の外観</h2><button type="button" class="premium-account-refresh" data-premium-ui="refresh"${context.status === 'loading' || context.status === 'banned' ? ' disabled' : ''}>購入状態を再確認</button></div>${context.user ? `<p class="premium-account-user"><span>接続中の領主</span><strong>${playerMarkup(context.user)}</strong><code>${esc(context.user.id)}</code></p>` : ''}<p class="premium-account-message">${esc(descriptions[context.status])}</p>${context.status === 'anonymous' ? '<button type="button" class="premium-primary" data-premium-ui="register">領主を登録・確認する</button>' : ''}${context.portalUrl ? `<a class="premium-contract-link" href="${esc(context.portalUrl)}" target="_blank" rel="noopener noreferrer">支援の契約・解約を確認</a>` : ''}`;
   }
   function productStateMarkup(product, surface, context, gamePrefix) {
     if (surface === 'public') return `<a class="premium-purchase" href="${esc(gamePrefix)}?premium=${product.id}" data-premium-purchase="${product.id}">ゲームで購入する</a><p class="premium-availability">受け取る領主をゲーム内で確認してから、購入手続きへ進みます。</p>`;
@@ -130,6 +138,7 @@
       scope = nextScope; context = value;
       if (confirmation && (!value.ready || !stateFor(value, confirmation.product.id)?.canPurchase || confirmation.owner !== value.user?.id)) { accessEpoch++; busy = ''; closeEmptyWindow(); clearConfirmation(); }
       setMarkup(body.querySelector('[data-premium-account]'), accountMarkup(value));
+      if (confirmation && value.user?.id === confirmation.owner) setMarkup(body.querySelector('[data-premium-confirm-user]'), playerMarkup(value.user));
       for (const product of productsFrom(readCatalog())) setMarkup(body.querySelector(`[data-premium-product-state="${product.id}"]`), productStateMarkup(product, 'game', value, ''));
       for (const node of body.querySelectorAll('[data-premium-purchase]')) node.disabled = Boolean(busy) || !stateFor(value, node.getAttribute('data-premium-purchase'))?.canPurchase;
       for (const node of body.querySelectorAll('[data-premium-equip]')) node.disabled = Boolean(busy);
@@ -179,7 +188,7 @@
       if (!product || !context.ready || !stateFor(context, productId)?.canPurchase) { feedback('現在の領主と購入状態を確認してください。', true); return; }
       confirmation = { product, owner: context.user.id };
       const node = body.querySelector('[data-premium-confirm]');
-      node.innerHTML = `<h2 tabindex="-1">購入する領主を確認</h2><p class="premium-confirm-product">${esc(product.name)} <strong>${priceLabel(product)}（税込）</strong></p><dl><div><dt>受け取る領主</dt><dd>${esc(context.user.name)}</dd></div><div><dt>領主ID</dt><dd><code>${esc(context.user.id)}</code></dd></div></dl><p>${product.kind === 'subscription' ? periodText : '買い切りの商品です。確認した領主に外観が紐付きます。別の領主への譲渡・交易はできません。'}</p><p>Stripeの購入画面へ進みます。支払い後はこの画面に戻り、購入状態を再確認してください。</p><div class="premium-confirm-actions"><button type="button" class="premium-primary" data-premium-ui="checkout">購入手続きへ</button><button type="button" class="premium-dismiss" data-premium-ui="cancel-checkout">戻る</button></div>`;
+      node.innerHTML = `<h2 tabindex="-1">購入する領主を確認</h2><p class="premium-confirm-product">${esc(product.name)} <strong>${priceLabel(product)}（税込）</strong></p><dl><div><dt>受け取る領主</dt><dd data-premium-confirm-user>${playerMarkup(context.user)}</dd></div><div><dt>領主ID</dt><dd><code>${esc(context.user.id)}</code></dd></div></dl><p>${product.kind === 'subscription' ? periodText : '買い切りの商品です。確認した領主に外観が紐付きます。別の領主への譲渡・交易はできません。'}</p><p>Stripeの購入画面へ進みます。支払い後はこの画面に戻り、購入状態を再確認してください。</p><div class="premium-confirm-actions"><button type="button" class="premium-primary" data-premium-ui="checkout">購入手続きへ</button><button type="button" class="premium-dismiss" data-premium-ui="cancel-checkout">戻る</button></div>`;
       node.hidden = false; feedback(); node.scrollIntoView?.({ block: 'nearest', behavior: 'auto' }); node.querySelector('h2')?.focus?.({ preventScroll: true });
     }
     async function checkout() {

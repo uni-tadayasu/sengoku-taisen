@@ -123,13 +123,27 @@ fixtures only.
 
 Every player, including support staff and the operator, may replace only their own photo. PUT accepts exactly the `image` field; target IDs, filenames, external URLs, data URLs, content types and authority flags are rejected. The browser crops/resizes to exactly **256×256 JPEG**. The server bounds the entire JSON request at 70 KiB and the decoded input at **49,152 bytes (48 KiB)**, requires canonical padded standard base64, and structurally validates 8-bit baseline or progressive Huffman JPEG with one or three components. Incorrect dimensions, unsupported image formats, inconsistent markers/tables/scans, truncation and trailing bytes are rejected. All APP0–APP15 and COM segments, including EXIF/GPS, XMP, ICC, thumbnails and comments, are removed server-side before persistence. This is bounded JPEG structure validation, not a general image transcoder or full entropy decoder. The parser follows [ITU-T T.81 Annex B/E](https://www.w3.org/Graphics/JPEG/itu-t81.pdf).
 
-The returned `user.avatarVersion` is a lowercase 64-character SHA-256 hash of the sanitized JPEG, or `null` when no photo exists. Safe user projections, friend requests, chat messages and public field summaries include this version only. They never carry image bytes, base64, storage keys or metadata. Clients construct a URL from their fixed API base, encoded user ID and version; arbitrary image URLs are not accepted. A version mismatch or deleted/missing photo returns 404 `AVATAR_NOT_FOUND`. Omitting `v` reads the current photo. All successful and unsuccessful reads use `Cache-Control:no-store`; re-uploading the same image hash cannot revive a cached older photo.
+The returned `user.avatarVersion` is a lowercase 64-character SHA-256 hash of the sanitized JPEG, or `null` when no photo exists. Every API response resolves current photos for referenced players in the same batched projection as names and evaluations. This includes profile/sync, friends and requests, online/search, chat, private/guild letters, guild membership/owners/rankings/treasury, trades, field targets/diplomacy/battle history, system-mail participants, achievements, shared-construction authors and authorized administration/recent-login screens.
+
+| Participant identity | Current photo field |
+|---|---|
+| `id`, `userId` or `playerId` | `avatarVersion` |
+| `ownerId` | `ownerAvatarVersion` |
+| `authorId` | `authorAvatarVersion` |
+| `targetPlayerId` | `targetAvatarVersion` |
+| `attackerPlayerId` / `defenderPlayerId` | `attackerAvatarVersion` / `defenderAvatarVersion` |
+| `actorPlayerId` | `actorAvatarVersion` |
+| Achievement-style `playerId` + `playerName` | `avatarVersion` and matching `playerAvatarVersion` |
+
+`playerEvaluations` rows also include `avatarVersion`, even when a chat or letter delta contains no new messages. Clients must apply explicit `null` values, so replacement or removal on a linked device clears an old image. Deleted/missing players and currently banned players receive `null` across both public and authorized projections. This read-time projection does not rewrite saved games, stored message bodies or historical financial/battle receipts. No new schema or per-player query is required: current photos are read in batches alongside existing player identity queries.
+
+Responses never carry image bytes, base64, storage keys or metadata. Clients construct a URL from their fixed API base, encoded user ID and version; arbitrary image URLs are not accepted. A version mismatch or deleted/missing photo returns 404 `AVATAR_NOT_FOUND`. Omitting `v` reads the current photo. All successful and unsuccessful reads use `Cache-Control:no-store`; re-uploading the same image hash cannot revive a cached older photo.
 
 Files are stored in the private R2 binding `BUCKET`; D1 `user_avatars` stores only user ID, version, unique object key, MIME type, byte length and update time. Migration `0005_user_avatars` is schema-only. Each upload writes a newly randomized R2 object before a D1 transaction switches the account's metadata; previous-object cleanup never shares a key with a replacement. A failed or uncertain D1 response does not delete an object that may already be current. Delete removes the metadata atomically, then attempts bounded object cleanup. A failed cleanup can leave an unreachable storage object, but cannot expose a deleted photo. Reads verify the current metadata both before and after the asynchronous object read to reject an intervening deletion/replacement.
 
 JPEG responses set `Content-Type:image/jpeg`, `X-Content-Type-Options:nosniff`, `Referrer-Policy:no-referrer` and a restrictive Content-Security-Policy; the existing exact-origin CORS policy applies. Replacing a photo on a linked device changes the same account's version without changing roles, progress or other players' photos. Simultaneous updates use the last committed metadata; they do not require the gameplay writer lease.
 
-PUT and DELETE share a per-account limit of **10 attempts per real ten minutes**. Missing/invalid authentication returns 401; malformed image/body returns 400 `INVALID_AVATAR`; decoded oversize returns 413 `AVATAR_TOO_LARGE`; oversized JSON returns 413 `BODY_TOO_LARGE`; unavailable R2 returns 503 `AVATAR_STORAGE_UNAVAILABLE`; rate exhaustion returns 429 `RATE_LIMITED`. `node scripts/test-avatar-jpeg.mjs` covers the exact shipped parser with seven real JPEG profiles, including Chrome canvas output. `node scripts/test-avatars.mjs` covers the API, ownership, metadata stripping, storage races, failures, deletion, privacy and limits using local D1/R2 doubles.
+PUT and DELETE share a per-account limit of **10 attempts per real ten minutes**. Missing/invalid authentication returns 401; malformed image/body returns 400 `INVALID_AVATAR`; decoded oversize returns 413 `AVATAR_TOO_LARGE`; oversized JSON returns 413 `BODY_TOO_LARGE`; unavailable R2 returns 503 `AVATAR_STORAGE_UNAVAILABLE`; rate exhaustion returns 429 `RATE_LIMITED`. `node scripts/test-avatar-jpeg.mjs` covers the exact shipped parser with seven real JPEG profiles, including Chrome canvas output. `node scripts/test-avatars.mjs` covers the API, ownership, metadata stripping, storage races, failures, deletion, privacy and limits using local D1/R2 doubles. `node scripts/test-avatar-projections.mjs` exercises current-photo replacement/removal through linked devices, all participant surfaces and empty deltas, immutable saved records and BAN/unban projections without external requests.
 
 ## Device linking and identity recovery
 
@@ -1042,7 +1056,7 @@ accepted. Each mutating SQL operation rechecks the account-access generation.
 {
   ok: true,
   ready: false,
-  player: {id: "u_…", name: "領主名"},
+  player: {id: "u_…", name: "領主名", avatarVersion: null, evaluation},
   products: [{
     id: "gold-banner",
     owned: false,
@@ -1057,6 +1071,8 @@ accepted. Each mutating SQL operation rechecks the account-access generation.
   serverNow: "2026-11-21T00:00:00.000Z"
 }
 ```
+
+`player.evaluation` uses the same current public rank projection as other player screens, and `player.avatarVersion` resolves the current photo. Both fields are presentation data and do not grant payment rights.
 
 `products` always contains the three catalog IDs. Expired monthly coverage may
 retain its past `expiresAt`, but `owned` and the displayed badge become false.
@@ -1208,9 +1224,11 @@ replace that investigation or create payment facts.
 {ok:true,holds:[{
   scope:"charge",objectId:"ch_…",revision:1,eventId:"evt_…",
   reason:"fraud_review",createdAt:"…",updatedAt:"…",canRelease:true,
-  players:[{id:"u_…",name:"領主名"}]
+  players:[{id:"u_…",name:"領主名",avatarVersion:null,evaluation}]
 }],nextCursor:null,serverNow:"…"}
 ```
+
+The players attached to each hold carry current `evaluation`, `avatarVersion` and safe `appearance` projections. Reading their rank or icon does not change a hold or entitlement.
 
 The maximum page size is 50. `POST /admin/premium/reviews` accepts
 `{scope,objectId,expectedRevision,expectedEventId,reason,requestId}`. `reason` is

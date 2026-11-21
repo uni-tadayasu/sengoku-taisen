@@ -1,6 +1,6 @@
 'use strict';
 const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),path=require('node:path');
-const text=fs.readFileSync(path.join(__dirname,'../avatar.js'),'utf8').replace('global.SengokuAvatar=Object.freeze({markup,mount,imageURL});','global.SengokuAvatar=Object.freeze({markup,mount,imageURL});global.testAvatar={cropRect,encode};');
+const text=fs.readFileSync(path.join(__dirname,'../avatar.js'),'utf8').replace('global.SengokuAvatar=Object.freeze({','global.testAvatar={cropRect,encode};global.SengokuAvatar=Object.freeze({');
 class Element {
  constructor(){this.handlers=new Map();this.value='';this.hidden=false;this.disabled=false;this.innerHTML='';this.textContent='';this.classList={toggle(){},remove(){}};this.dataset={};}
  addEventListener(type,handler){this.handlers.set(type,handler);}
