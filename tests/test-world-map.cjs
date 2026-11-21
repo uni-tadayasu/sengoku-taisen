@@ -75,6 +75,25 @@ test('ordinary castle labels do not overlap other chosen label boxes',()=>{
   assert(boxes.length>=4);
   for(let i=0;i<boxes.length;i++)for(let j=i+1;j<boxes.length;j++){const a=boxes[i],b=boxes[j];assert(!(a.x<b.x+b.width&&a.x+a.width>b.x&&a.y<b.y+b.height&&a.y+a.height>b.y));}
 });
+test('shared-field castle artwork is opt-in and clustered or campaign markers keep their normal symbols',()=>{
+  const marker={name:'清洲城',owner:'あなたの本拠',home:true,level:32,keepLevel:4},normal=M.markerPresentation(marker);
+  assert.equal(normal.custom,false);assert(normal.html.includes('<svg'));assert(normal.label.includes('Lv.32'));
+  let calls=0;const options={markerAppearance:m=>{calls++;return{html:`<span data-keep="${m.keepLevel}">castle</span>`,label:'清洲城 天守 Lv.'+m.keepLevel};}};
+  const appearance=M.markerPresentation(marker,options);assert.equal(appearance.custom,true);assert.equal(appearance.label,'清洲城 天守 Lv.4');assert(appearance.html.includes('data-keep="4"'));
+  const updated=M.markerPresentation({...marker,keepLevel:32},options);assert(updated.html.includes('data-keep="32"'));assert.notEqual(updated.html,appearance.html);
+  const clustered=M.markerPresentation({cluster:true,points:[{name:'清洲城'},{name:'岐阜城'}]},options);assert.equal(clustered.custom,false);assert.equal(clustered.html,'<b>2</b>');assert.equal(calls,2);
+  assert.equal(M.markerPresentation(marker,{markerAppearance:()=>{throw Error('missing art');}}).html,normal.html);
+  assert.equal(M.markerPresentation(marker,{markerAppearance:()=>null}).html,normal.html);
+});
+test('larger shared castle symbols reserve enough room for map labels',()=>{
+  const points=Array.from({length:8},(_,i)=>({id:'p'+i,name:'城'+i,x:100+i*80,y:210+(i%2)*90}));
+  const markers=M.layoutMarkers(points,{x:0,y:0,width:800,height:600},800,600,{distance:0,markerSize:48});
+  const boxes=markers.filter(m=>m.label).map(m=>({x:m.sx+m.label.x,y:m.sy+m.label.y,width:m.label.width,height:m.label.height}));
+  assert(boxes.length>=4);
+  const overlaps=(a,b)=>a.x<b.x+b.width&&a.x+a.width>b.x&&a.y<b.y+b.height&&a.y+a.height>b.y;
+  for(const label of boxes)for(const marker of markers)assert(!overlaps(label,{x:marker.sx-24,y:marker.sy-24,width:48,height:48}));
+  assert.equal(markers.flatMap(m=>m.points).length,8,'Artwork size must not lose any castle');
+});
 test('map scale uses latitude-correct ground distance and useful metric units',()=>{
   const view={x:-500,y:-300,width:1000,height:600},scale=M.scaleForView(view,1000);
   near(scale.latitude,36);assert(scale.pixels>20&&scale.pixels<=100);assert(scale.label.endsWith(' km'));

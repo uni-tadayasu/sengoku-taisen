@@ -45,4 +45,72 @@ test('all five major cities retain level64 while ordinary castle levels remain b
   const shared=F.groupBases(F.normalizePlayers([player('a','sunpu',{level:64,isStaff:true,attackable:false}),player('b','sunpu',{level:64,isStaff:true,attackable:false})]),{sunpu:{lon:138.3828,lat:34.9798}});
   assert.equal(shared.length,1);assert.equal(shared[0].level,64);assert.equal(shared[0].players.length,2);assert.equal(shared[0].reachable,false);
 });
-console.log(count+' shared-field presentation and action-guard checks passed.');
+test('keep levels are distinct from castle levels and old or malformed data uses the first artwork safely',()=>{
+  for(const [keepLevel,expected]of [[1,1],[8,8],[16,16],[32,32],[64,32],['24',24]]){
+    const p=F.normalizePlayers([player('a','edo',{level:64,keepLevel})])[0];assert.equal(p.level,64);assert.equal(p.keepLevel,expected);assert.equal(p.keepLevelKnown,true);
+    assert(F.publicRow(p).includes(`天守 Lv.${expected} · 城郭 Lv.64`));
+  }
+  for(const keepLevel of [undefined,null,0,-4,NaN,Infinity,'bad',{},true,2.5]){
+    const p=F.normalizePlayers([player('a','edo',{level:64,keepLevel})])[0];assert.equal(p.keepLevel,1);assert.equal(p.keepLevelKnown,false);
+    assert(F.publicRow(p).includes('天守 未取得'));assert.equal(F.normalizePlayers([p])[0].keepLevelKnown,false);
+  }
+});
+test('co-located marker artwork follows selection, then the owner, then the strongest keep with stable ties',()=>{
+  const people=F.normalizePlayers([player('b','kiyosu',{keepLevel:24,level:2}),player('a','kiyosu',{keepLevel:4,level:32}),player('c','kiyosu',{keepLevel:24,level:8})]);
+  const coords={kiyosu:{lon:136.8432,lat:35.2162}},group=(who,selected='',list=people)=>F.groupBases(list,coords,[],who,selected)[0];
+  assert.equal(group({id:'a'}).keepLevel,4);assert.equal(group({id:'a'}).displayPlayerId,'a');
+  assert.equal(group({id:'a'},'b').keepLevel,24);assert.equal(group({id:'a'},'b').displayPlayerId,'b');
+  assert.equal(group(null).displayPlayerId,'b');assert.equal(group(null,'',[...people].reverse()).displayPlayerId,'b');
+  assert.equal(group(null).level,32,'The aggregate castle level remains separate from the keep artwork');
+});
+test('all 32 keep levels select different cells from the existing per-castle atlas',()=>{
+  const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),{SENGOKU_DATA}=require('../engine.js');
+  const scope={SENGOKU_DATA,document:{readyState:'loading',addEventListener(){}}};scope.window=scope;
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../artwork.js'),'utf8'),scope);
+  const old=global.SengokuArt;global.SengokuArt=scope.SengokuArt;
+  try{
+    for(const homeCastleId of ['kiyosu','edo','sunpu']){
+      const cells=new Set();
+      for(let keepLevel=1;keepLevel<=32;keepLevel++){
+        const p=F.normalizePlayers([player('a',homeCastleId,{level:64,keepLevel})])[0],html=F.castleAppearance(p),tile=scope.SengokuArt.tileInfo('castle',homeCastleId,keepLevel);
+        assert(html.includes(`data-art-url="assets/castles/${homeCastleId}.webp"`));assert(html.includes(`data-field-keep-level="${keepLevel}"`));
+        assert(html.includes(`data-art-x="${tile.x}"`));assert(html.includes(`data-art-y="${tile.y}"`));cells.add(tile.x+':'+tile.y);
+      }
+      assert.equal(cells.size,32,'Each keep level has its own existing artwork cell');
+    }
+    const missing=F.castleAppearance(player('a','edo',{level:64}));assert(missing.includes('data-field-keep-level="1"'));assert(missing.includes('天守 未取得'));
+    const unsafe=F.castleAppearance(player('a','missing" onclick="alert(1)',{name:'<script>',keepLevel:3}));assert(!unsafe.includes('onclick="alert'));assert(unsafe.includes('field-castle-fallback'));
+  }finally{if(old===undefined)delete global.SengokuArt;else global.SengokuArt=old;}
+});
+
+async function liveRefreshTest(){
+  const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),{SENGOKU_DATA}=require('../engine.js'),nodes=new Map(),listeners=new Map(),maps=[];
+  const node=()=>{let markup='';return{htmlWrites:0,get innerHTML(){return markup;},set innerHTML(value){markup=value;this.htmlWrites++;},textContent:'',value:'',hidden:false,disabled:false,querySelector:()=>null,setAttribute(){}};};
+  const doc={hidden:false,activeElement:null,readyState:'loading',addEventListener(){},removeEventListener(){}};
+  const host={ownerDocument:doc,innerHTML:'',contains:()=>true,querySelector(selector){if(!nodes.has(selector))nodes.set(selector,node());return nodes.get(selector);},querySelectorAll:()=>[],addEventListener(type,handler){listeners.set(type,handler);},removeEventListener(){}};
+  let people=[player('me','kiyosu',{keepLevel:4,level:32}),player('other','kiyosu',{keepLevel:24,level:2})];
+  const scope={SENGOKU_DATA,document:doc,setTimeout:()=>1,clearTimeout(){},SENGOKU_GEOGRAPHY:{castles:{kiyosu:{lon:136.8432,lat:35.2162}}},SengokuWorldMap:{mount(container,options){maps.push(options);return{update(next){maps.push(next);},destroy(){}};}}};scope.window=scope;
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../artwork.js'),'utf8'),scope);
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../field.js'),'utf8'),scope);
+  const controller=scope.SengokuField.mount(host,{stateKey:'keep-refresh-test',identity:{id:'me'},getSyncStatus:()=>({writable:true}),request:async route=>route.startsWith('/field/me')?{relationships:[],attack:{ready:false}}:{players:people,total:people.length}});
+  try{
+    await controller.refresh();assert.equal(maps.at(-1).castles[0].keepLevel,4);assert(nodes.get('[data-field-detail]').innerHTML.includes('data-field-keep-level="4"'));
+    const button={dataset:{fieldAction:'select-player',playerId:'other'}};await listeners.get('click')({target:{closest:()=>button},stopPropagation(){}});
+    assert.equal(maps.at(-1).castles[0].keepLevel,24);assert(nodes.get('[data-field-detail]').innerHTML.includes('data-field-keep-level="24"'));
+    const detail=nodes.get('[data-field-detail]');detail.innerHTML=detail.innerHTML.replace('aria-busy="true"','aria-busy="false" data-art-ready="1"');
+    let focusCalls=0,selection=null;const input={dataset:{fieldInput:'troops'},selectionStart:1,selectionEnd:3,focus(){focusCalls++;},setSelectionRange(...range){selection=range;}};
+    doc.activeElement=input;detail.querySelector=selector=>selector==='[data-field-input="troops"]'?input:null;
+    const unchangedWrites=detail.htmlWrites;await controller.refresh();
+    assert.equal(detail.htmlWrites,unchangedWrites,'An unchanged shared refresh must preserve the loaded artwork DOM');
+    assert(detail.innerHTML.includes('data-art-ready="1"'));assert.equal(focusCalls,0,'The existing focused input is retained without refocusing');
+    people=[people[0],{...people[1],keepLevel:32}];await controller.refresh();
+    const current=maps.at(-1),marker=current.castles[0];assert.equal(marker.displayPlayerId,'other');assert.equal(marker.keepLevel,32);
+    assert(current.markerAppearance(marker).html.includes('data-field-keep-level="32"'));assert(current.markerTooltip(marker).description.includes('天守 Lv.32'));
+    assert(nodes.get('[data-field-detail]').innerHTML.includes('data-field-keep-level="32"'));assert(nodes.get('[data-field-players]').innerHTML.includes('天守 Lv.32 · 城郭 Lv.2'));
+    assert.equal(detail.htmlWrites,unchangedWrites+1,'A changed keep level must replace the detail once');assert.equal(focusCalls,1);assert.deepEqual(selection,[1,3]);
+    people=[people[0],{...people[1],keepLevel:undefined}];await controller.refresh();assert.equal(maps.at(-1).castles[0].keepLevel,1);
+    assert(nodes.get('[data-field-detail]').innerHTML.includes('天守 未取得'));
+  }finally{controller.destroy();}
+  count++;console.log('PASS a shared-information refresh updates selected self/other castle artwork without losing selection');
+}
+liveRefreshTest().then(()=>console.log(count+' shared-field presentation and action-guard checks passed.')).catch(error=>{console.error(error);process.exitCode=1;});

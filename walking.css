@@ -20,3 +20,6 @@
 @media(max-width:680px){.walking-entry{align-items:flex-start;flex-direction:column}.walking-entry>.button{width:100%}.walking-header{padding:18px}.walking-body{padding:18px 18px 12px}.walking-actions{padding:14px 18px 16px}.walking-lead{margin-top:18px;font-size:29px}.walking-rewards{gap:6px}.walking-reward{padding:11px 3px}.walking-stats>div{padding:0 5px}.walking-stats span{font-size:10px}.walking-status-row{font-size:10px}}
 @media(max-width:380px){.walking-dialog{width:calc(100% - 14px);max-width:calc(100% - 14px);max-height:calc(100dvh - 14px);border-radius:14px}.walking-shell{max-height:calc(100dvh - 16px)}.walking-header{padding:15px 14px}.walking-body{padding:16px 13px 10px}.walking-actions{padding:13px}.walking-emblem{width:41px;height:41px}.walking-lead{font-size:26px}.walking-intro{font-size:12px}.walking-reward>span{font-size:10px}.walking-actions .button{font-size:12px;padding:10px}.walking-actions .subtle{margin-left:0}}
 @media(prefers-reduced-motion:reduce){.walking-dialog,.walking-dialog *,.walking-entry,.walking-entry *{animation:none!important;transition:none!important}}
+
+.walking-dialog[data-running="true"][data-phase="waiting"] .walking-status,.walking-dialog[data-running="true"][data-phase="paused"] .walking-status{color:#d5dba5;border-color:#b4c28e55}
+.walking-actions [data-walking-close]{margin-left:0}

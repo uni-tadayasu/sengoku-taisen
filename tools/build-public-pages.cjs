@@ -109,6 +109,7 @@ function guideContent(p) {
       <p>1回・10回招集には、絵巻が開く演出が入ります。<strong>「演出をスキップ」</strong>ですぐに獲得結果へ進めます。結果は演出前に保存し、演出を省略しても獲得内容や消費勾玉は変わりません。端末で動きを減らす設定を有効にしている場合は、演出を省略します。</p>
       <h3>軍団と奉行の役割を分ける</h3>
       <p>軍団の能力は戦いに、奉行の能力は施設の働きに関わります。兵数だけでなく、統率・武勇・知略や特技を見て編成します。奉行に任命した武将は軍団から外れるため、任せたい役目を選んでください。</p>
+      <p>城下町と「全64施設を管理」の<strong>「奉行をお任せ配置」</strong>では、軍団の武将を除いた家臣を、建設済みの全施設へまとめて配置できます。所持する最高ランクの政治と、施設に合う特技による奉行補正を比較します。現在の奉行も組み直し、同じ効果なら現任を優先します。一人一施設で重複させず、人数が足りない施設は未任命にします。指令・資源は消費せず、結果一覧から任命先を確認できます。</p>
       ${callout('運営専用の武将', '運営が所持するUランクは「德川家康 U」と表記し、専用の特別イラストで表示します。このUランクは通常の招集対象に含まれません。')}
     `, 'section-officers'),
     section('maps', '天下地図と共通フィールド', 'CPU勢力との戦役・領主同士の襲撃と外交', `
@@ -118,6 +119,7 @@ function guideContent(p) {
         ['共通フィールド', 'クラウド保存済みの実際のプレイヤーの本拠を表示します。領主を個別に選び、限定襲撃や同盟の提案を行います。']
       ])}
       <p>通常プレイヤーは、運営専用の江戸城とスタッフ専用の駿府城を除く<strong>126城</strong>の統一を目指します。運営の本拠は江戸城、スタッフの本拠は駿府城に固定されます。この二つの専用拠点は一般プレイヤーが開始城に選べず、攻略・所持もできません。江戸・駿府・二条（京）・大坂・名古屋は大都市拠点に指定され、最初の城には選べません。二条・大坂・名古屋は、開始後に攻略できます。</p>
+      <p>共通フィールドの城の外観は、その領主の<strong>天守 Lv.1〜32</strong>に合わせて変わります。城郭レベルは別に表示します。同じ城に複数の領主がいる場合は、一覧で領主を選ぶとその人の天守の見た目へ切り替わります。スタッフ共同拠点は、共有して育てている天守を反映します。</p>
       <h3>共通フィールドの限定襲撃</h3>
       <p>出陣兵数と戦法を選び、確認して襲撃します。指令1回と兵糧を消費し、結果は双方の保存と戦報へ反映されます。現在の対人戦では本拠や武将の所有権は移りません。守備側の兵損は各兵数の10%以内、勝利時の略奪は各資源の5%以内かつ500以内です。</p>
       <p>攻撃後の待機と被襲撃後の保護は、共通時間で60秒。運営の江戸城、スタッフの駿府城、保護中の拠点には攻撃できず、世界時計の停止中も襲撃は行えません。</p>
@@ -188,9 +190,10 @@ function guideContent(p) {
       ${steps([
         ['計測を開始する', 'モーションセンサーのあるスマートフォン・タブレットで、ウォーキングの開始ボタンを押します。動きの利用許可が表示された場合は、許可してください。'],
         ['端末を持って歩く', 'このサイトを表示した状態で端末を携帯します。連続した歩行の揺れを確認して歩数を数えます。位置情報や移動経路は取得しません。'],
-        ['資産の反映を確認する', '歩数と獲得分をウォーキング画面で確認できます。連携済みの領主は検知分をまとめてサーバーへ反映し、同じ領主の端末へ同期します。計測を終えるときは停止ボタンを押します。']
+        ['資産の反映を確認する', '歩数と獲得分をウォーキング画面で確認できます。連携済みの領主は検知分をまとめてサーバーへ反映し、同じ領主の端末へ同期します。計測を終えるときは「計測を終了する」を押します。「閉じる」やゲーム内の画面移動では計測を続けます。']
       ])}
       <p>報酬は実際の端末の動きをもとに数えます。ゲーム内の時間が停止していても、計測できる状態なら歩行分を獲得でき、世界時計の倍速によって歩行報酬が増えることはありません。資産の所持上限は通常どおり適用されます。</p>
+      <p>「計測を終了する」を押すまで、同じ計測の継続意思を保存します。通信やセンサーが一時的に止まった場合は記録を保留し、画面に戻って利用できる状態になれば再開します。再読み込み後に端末が動きの許可を再確認する場合は、表示される再接続ボタンを押してください。</p>
       ${callout('画面を表示している間に計測します', 'ブラウザーの制約により、画面ロック中、別アプリ・別タブの表示中、ページを閉じている間の歩数は計測できません。対応端末では計測中の画面消灯を抑えます。省電力設定などで解除される場合があります。')}
       <p>歩数は加速度センサーからの推定です。端末の持ち方や振動によって、専用の歩数計と差が出ることがあります。センサーがないPC、権限が拒否された端末、センサー値を取得できない環境では、その理由を画面に表示します。</p>
       <p>連携済みの計測は現在の操作端末で行い、報酬の確定履歴を保存します。通信の再送で同じ検知分を重ねて受け取ることはありません。対応条件の資料は<a href="${p.file('SOURCES-WALKING.md')}">ウォーキングの仕様と資料</a>にまとめています。</p>
@@ -426,8 +429,8 @@ function render(page) {
   ${metadataEntries(page.key).map(metaTag).join('\n  ')}
   <meta name="theme-color" content="#0c141f">
   <link rel="canonical" href="${url}">
-  <link rel="icon" href="${p.file(site.favicon.path)}" sizes="${esc(site.favicon.sizes)}" type="${esc(site.favicon.type)}">
-  <link rel="apple-touch-icon" href="${p.file('assets/apple-touch-icon.png')}">
+  <link rel="icon" href="${p.file(site.favicon.path)}?v=${release}" sizes="${esc(site.favicon.sizes)}" type="${esc(site.favicon.type)}">
+  <link rel="apple-touch-icon" href="${p.file('assets/apple-touch-icon.png')}?v=${release}">
   <link rel="stylesheet" href="${p.file('guide.css')}?v=${release}">
   <link rel="stylesheet" href="${p.file('interaction-motion.css')}?v=${release}">
   <script defer src="${p.file('interaction-motion.js')}?v=${release}"></script>
@@ -472,8 +475,8 @@ function updateHome() {
   html = html.replace(/<title>[\s\S]*?<\/title>/i, `<title>${esc(page.title)}</title>`);
   for (const entry of metadataEntries('home')) html = replaceHeadTag(html, 'meta', attrs => attrs[entry[0]] === entry[1], metaTag(entry));
   html = replaceHeadTag(html, 'link', attrs => attrs.rel === 'canonical', `<link rel="canonical" href="${canonical('home')}">`);
-  html = replaceHeadTag(html, 'link', attrs => attrs.rel === 'icon', `<link rel="icon" type="${esc(site.favicon.type)}" sizes="${esc(site.favicon.sizes)}" href="${site.favicon.path}">`);
-  html = replaceHeadTag(html, 'link', attrs => attrs.rel === 'apple-touch-icon', '<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">');
+  html = replaceHeadTag(html, 'link', attrs => attrs.rel === 'icon', `<link rel="icon" type="${esc(site.favicon.type)}" sizes="${esc(site.favicon.sizes)}" href="${site.favicon.path}?v=${release}">`);
+  html = replaceHeadTag(html, 'link', attrs => attrs.rel === 'apple-touch-icon', `<link rel="apple-touch-icon" href="assets/apple-touch-icon.png?v=${release}">`);
   const graph = `<script type="application/ld+json">${jsonScript(structuredData('home'))}</script>`;
   let hasGraph = false;
   html = html.replace(/<script\b([^>]*)>[\s\S]*?<\/script>/gi, (tag, attributes) => {
@@ -498,7 +501,7 @@ function updateManifest() {
   manifest.short_name = site.name;
   manifest.description = site.pages.home.description;
   manifest.lang = site.language;
-  manifest.icons = manifest.icons.map(icon => ({...icon, src:icon.src.split('?')[0]}));
+  manifest.icons = manifest.icons.map(icon => ({...icon, src:icon.src.split('?')[0]+'?v='+release}));
   return JSON.stringify(manifest, null, 2) + '\n';
 }
 

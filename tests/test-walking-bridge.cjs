@@ -57,6 +57,15 @@ await test('account and campaign changes during a response prevent reconciliatio
   gate.resolve({ok:true,revision:12,walkingSession:{id:'session-one'}});await assert.rejects(task,error=>error.code==='STALE_IDENTITY');assert.equal(h.control.refreshes,0);assert.equal(h.c.walkingActionPending,false);
  }
 });
+await test('a verified writer keeps sensor counting during canonical save application, but cannot claim or bypass role/lease checks',()=>{
+ const h=harness({linked:true});h.c.syncAccess={...h.c.syncAccess,writable:false,reason:'applying'};
+ assert.equal(h.c.getWalkingAccess().canCount,true);assert.equal(h.c.getWalkingAccess().canClaim,false);
+ h.c.syncAccess.rolePending=true;assert.equal(h.c.getWalkingAccess().canCount,false);
+ h.c.syncAccess.rolePending=false;h.c.syncAccess.ready=false;assert.equal(h.c.getWalkingAccess().canCount,false);
+ h.c.syncAccess.ready=true;h.c.syncAccess.leaseExpiresAt=new Date(Date.now()-1000).toISOString();assert.equal(h.c.getWalkingAccess().canCount,false);
+ h.c.syncAccess.leaseExpiresAt=null;assert.equal(h.c.getWalkingAccess().canCount,false);
+ h.c.syncAccess.leaseExpiresAt=new Date(Date.now()+30000).toISOString();h.c.syncAccess.reason='follower';assert.equal(h.c.getWalkingAccess().canCount,false);
+});
 await test('follower, offline and expired-lease states block walking requests without touching the network',async()=>{
  for(const issue of ['follower','offline','expired']){const h=harness({linked:true});if(issue==='follower')h.c.syncAccess.writable=false;if(issue==='offline')h.c.navigator.onLine=false;if(issue==='expired')h.c.syncAccess.leaseExpiresAt=new Date(Date.now()-1000).toISOString();assert.equal(h.c.getWalkingAccess().canCount,false);await assert.rejects(h.c.requestWalking('/walking/start',{campaignId:h.c.game.state.walking.campaignId}));assert.equal(h.posts.length,0);}
 });

@@ -51,17 +51,16 @@ function harness(options={}){
  });
  await test('losing a committed response retries the identical pending sequence without a second credit',async()=>{
   let balance=0,lost=true;const receipts=new Map();const h=harness({access:{mode:'remote',ownerId:'cloud_player'},claim:async body=>{const key=body.sessionId+':'+body.seq,existing=receipts.get(key);if(existing){assert.deepEqual(body,existing.body);return clone(existing.result);}const before=[...receipts.values()].reduce((max,x)=>Math.max(max,x.body.totalSteps),0);balance+=(body.totalSteps-before)*2;const result={ok:true,receipt:{seq:body.seq,totalSteps:body.totalSteps}};receipts.set(key,{body:clone(body),result});if(lost&&body.totalSteps>0){lost=false;throw Error('response was lost after commit');}return result;}});
-  await h.controller.startFromGesture();await h.walk(5800);assert(h.calls.claim.some(v=>v.totalSteps>0));const credited=balance;assert(credited>0);const first=clone(h.calls.claim.find(v=>v.totalSteps>0));await h.controller.retry();await drain();assert(h.calls.claim.filter(v=>v.seq===first.seq).length>=2);assert.equal(balance,credited);assert.equal(h.controller.getState().pendingSteps,0);assert.equal(h.controller.getState().closed,true);assert(!JSON.stringify(h.controller.getState()).includes('private_test_token'));h.controller.dispose();
+  await h.controller.startFromGesture();await h.walk(5800);assert(h.calls.claim.some(v=>v.totalSteps>0));const credited=balance;assert(credited>0);const first=clone(h.calls.claim.find(v=>v.totalSteps>0));await h.controller.retry();await drain();assert(h.calls.claim.filter(v=>v.seq===first.seq).length>=2);assert.equal(balance,credited);assert.equal(h.controller.getState().pendingSteps,0);assert.equal(h.controller.getState().closed,false);assert.equal(h.controller.getState().running,true);assert(!JSON.stringify(h.controller.getState()).includes('private_test_token'));h.controller.dispose();
  });
- await test('a delayed original receipt during expired-session finalization is recovered before the next final sequence',async()=>{
-  let original=null,credited=0,accepted=false;
+ await test('an old-server expiry retains the exact report and only an explicit Stop finalizes it',async()=>{
+  let original=null,credited=0;
   const h=harness({access:{mode:'remote',ownerId:'late_receipt_player'},claim:async body=>{
-   if(body.seq===1&&!body.finish&&!original){original=clone(body);const e=Error('expired before this retry was accepted');e.code='WALKING_EXPIRED';throw e;}
-   if(body.seq===1&&body.finish){if(!accepted){credited=original.totalSteps*2;accepted=true;}const e=Error('an earlier non-final request committed');e.code='WALKING_SEQUENCE_REUSED';throw e;}
-   if(body.seq===1){assert.deepEqual(body,original);return{ok:true,receipt:{seq:1,totalSteps:original.totalSteps}};}
+   if(body.seq===1&&!original){original=clone(body);const e=Error('expired before this retry was accepted');e.code='WALKING_EXPIRED';throw e;}
+   if(body.seq===1){assert.deepEqual(body,original);assert.equal(body.finish,false);credited=body.totalSteps*2;return{ok:true,receipt:{seq:1,totalSteps:body.totalSteps}};}
    assert.equal(body.seq,2);assert.equal(body.finish,true);assert(body.totalSteps>=original.totalSteps);credited+=(body.totalSteps-original.totalSteps)*2;return{ok:true,receipt:{seq:2,totalSteps:body.totalSteps}};
   }});
-  await h.controller.startFromGesture();await h.walk(5800);await h.controller.retry();await drain();assert(original&&original.totalSteps>0);assert.equal(h.controller.getState().closed,true);assert.equal(h.controller.getState().pendingSteps,0);assert.equal(credited,h.controller.getState().confirmedSteps*2);h.controller.dispose();
+  await h.controller.startFromGesture();await h.walk(5800);assert(original&&original.totalSteps>0);assert(h.calls.claim.every(body=>!body.finish));await h.controller.retry();await drain();assert.equal(h.controller.getState().closed,false);assert.equal(h.controller.getState().running,true);assert.equal(h.controller.getState().pendingSteps,0);await h.controller.stop();assert.equal(h.controller.getState().closed,true);assert.equal(credited,h.controller.getState().confirmedSteps*2);h.controller.dispose();
  });
  console.log(`${passed} independent walking lifecycle contracts passed.`);
 })().catch(error=>{console.error(error);process.exitCode=1;});

@@ -1128,7 +1128,8 @@ async function walkingClaim(db,user,raw,now){
   if(walkingCampaign(row)!==session.campaign_id)fail(409,'WALKING_CAMPAIGN_CHANGED','物語が切り替わったため、前の歩数は追加できません。');
   if(session.closed||account.active_session_id!==session.id)fail(409,'WALKING_SESSION_CLOSED','この歩行計測は終了しています。');
   if(body.seq!==Number(session.last_seq)+1||body.totalSteps<Number(session.total_steps)||body.activeMs<Number(session.active_ms))fail(409,'WALKING_SEQUENCE_CONFLICT','受取済みの歩数と送信番号を確認してください。');
-  if(!body.finish&&now>Number(session.expires_at))fail(409,'WALKING_EXPIRED','歩行計測の接続が切れました。最後の歩数を精算してから開始し直してください。');
+  // A quiet sensor or suspended page keeps its session. The active-session
+  // binding and current writer lease still prevent a replaced session resuming.
   const delta=body.totalSteps-Number(session.total_steps),activeDelta=body.activeMs-Number(session.active_ms),realDelta=Math.max(0,now-Number(session.last_seen_at)),realTotal=Math.max(0,now-Number(session.started_at));
   // Session-wide limits have no jitter allowance: start/finish loops and zero
   // duration heartbeats cannot manufacture extra steps. Jitter applies only to
@@ -1143,9 +1144,9 @@ async function walkingClaim(db,user,raw,now){
   const statements=[stmt(db,`INSERT INTO walking_receipts(session_id,seq,request_hash,commit_token,result_json,created_at)
     SELECT ?,?,?,?,?,? FROM player_saves ps JOIN walking_accounts wa ON wa.user_id=ps.user_id JOIN walking_sessions ws ON ws.id=wa.active_session_id
     WHERE ps.user_id=? AND ps.revision=? AND ps.writer_device_id=? AND ps.lease_expires_at>? AND wa.revision=?
-    AND ws.id=? AND ws.last_seq=? AND ws.total_steps=? AND ws.active_ms=? AND ws.closed=0 AND (?=1 OR ws.expires_at>=?)
+    AND ws.id=? AND ws.last_seq=? AND ws.total_steps=? AND ws.active_ms=? AND ws.closed=0
     AND COALESCE(json_extract(ps.save_json,'$.state.walking.campaignId'),'legacy_v1')=? AND ${role.sql}
-    ON CONFLICT(session_id,seq) DO NOTHING RETURNING seq`,session.id,body.seq,digest,nonce,JSON.stringify(receipt),now,user.id,row.revision,body.deviceId,commitNow,account.revision,session.id,session.last_seq,session.total_steps,session.active_ms,body.finish?1:0,commitNow,session.campaign_id,...role.args)];
+    ON CONFLICT(session_id,seq) DO NOTHING RETURNING seq`,session.id,body.seq,digest,nonce,JSON.stringify(receipt),now,user.id,row.revision,body.deviceId,commitNow,account.revision,session.id,session.last_seq,session.total_steps,session.active_ms,session.campaign_id,...role.args)];
   if(delta>0)statements.push(stmt(db,`UPDATE player_saves SET save_json=?,revision=revision+1,updated_at=?,lease_expires_at=? WHERE user_id=? AND ${gate}`,JSON.stringify(save),now,now+SYNC_LEASE,user.id,...gateArgs));
   statements.push(stmt(db,`UPDATE walking_sessions SET total_steps=?,active_ms=?,last_seq=?,closed=?,last_seen_at=?,expires_at=?,commit_token=? WHERE id=? AND ${gate}`,body.totalSteps,body.activeMs,body.seq,body.finish?1:0,now,now+WALKING_RULES.windowMs,nonce,session.id,...gateArgs));
   statements.push(stmt(db,`UPDATE walking_accounts SET total_steps=total_steps+?,revision=revision+1 WHERE user_id=? AND ${gate}`,delta,user.id,...gateArgs));
@@ -1208,6 +1209,7 @@ const FIELD_SELECT=`SELECT u.id,u.name,u.clan,u.last_seen,s.revision,s.lease_exp
   (SELECT json_extract(b.save_json,'$.state.home') FROM staff_campaign_backups b WHERE b.user_id=u.id AND b.active=1) AS personal_home,
   (SELECT json_extract(b.save_json,'$.state.castles.'||json_extract(b.save_json,'$.state.home')) FROM staff_campaign_backups b WHERE b.user_id=u.id AND b.active=1) AS personal_castle_json,
   (SELECT json_extract(sb.state_json,'$.castleLevel') FROM staff_base sb WHERE sb.id='sunpu') AS staff_castle_level,
+  (SELECT json_extract(sb.state_json,'$.buildings.keep') FROM staff_base sb WHERE sb.id='sunpu') AS staff_keep_level,
   (SELECT json_extract(sb.state_json,'$.buildings.wall') FROM staff_base sb WHERE sb.id='sunpu') AS staff_wall,
   EXISTS(SELECT 1 FROM staff_members sm WHERE sm.user_id=u.id) AS is_staff,
   (SELECT MAX(p.last_seen) FROM player_presence p WHERE p.user_id=u.id AND p.online=1) AS presence_seen,
@@ -1215,6 +1217,7 @@ const FIELD_SELECT=`SELECT u.id,u.name,u.clan,u.last_seen,s.revision,s.lease_exp
   (SELECT MAX(b.occurred_elapsed_ms) FROM field_battles b WHERE b.defender_id=u.id) AS last_defended_ms,
   json_extract(s.save_json,'$.state.clan') AS game_clan,json_extract(s.save_json,'$.state.home') AS home_id,
   json_extract(s.save_json,'$.state.troops') AS troops,json_extract(s.save_json,'$.state.castles') AS castles_json,
+  json_extract(s.save_json,'$.state.buildings.keep') AS keep_level,
   json_extract(s.save_json,'$.state.buildings.wall') AS wall,json_extract(s.save_json,'$.state.tech.discipline') AS discipline,
   json_extract(s.save_json,'$.state.army') AS army_json,json_extract(s.save_json,'$.state.officerVariants') AS variants_json
   FROM users u JOIN player_saves s ON s.user_id=u.id
@@ -1250,13 +1253,15 @@ function mapFieldPlayer(row,viewer,relationship,clock,now) {
   if(row.is_admin&&storedHome!=='edo')for(const key of ['troops','wall','level'])castle[key]=Math.max(castle[key],castles[storedHome][key]);
   if(!row.is_admin&&!row.is_staff&&storedHome==='sunpu'){const personal=row.personal_castle_json?JSON.parse(row.personal_castle_json):castles.sunpu;for(const key of ['troops','wall','level'])castle[key]=Math.max(castle[key],personal[key]);}
   if(row.is_staff&&!row.is_admin){castle.level=Number(row.staff_castle_level||1);castle.wall=Number(row.staff_wall||1);row.wall=castle.wall;}
+  const rawKeepLevel=row.is_staff&&!row.is_admin?row.staff_keep_level:row.keep_level;
+  const keepLevel=Number.isFinite(rawKeepLevel)?Math.max(1,Math.min(32,Math.floor(rawKeepLevel))):1;
   castle.level=Math.min(castleLevelLimit(home),castle.level);
   if(cyclePending){castle.troops=Math.max(1200,castle.troops);castle.wall=Math.max(castle.wall,Number(row.wall));}
   const state={home,troops:Number(row.troops),castles:{[home]:castle},buildings:{wall:Number(row.wall)},tech:{discipline:Number(row.discipline)},army:JSON.parse(row.army_json||'[]'),officerVariants:JSON.parse(row.variants_json||'[]')};
   const defense=fieldDefense(state),self=viewer?.id===row.id,relation=self?'self':fieldRelationStatus(relationship,viewer?.id,clock.elapsedMs);
   const protectedUntil=row.last_defended_ms===null?0:Number(row.last_defended_ms)+FIELD_RULES.defenderProtectionMs;
   const reason=!viewer?'領主として接続してください。':self?'自分の本拠です。':row.is_admin?'運営の江戸城は保護されています。':row.is_staff?'スタッフの駿府城は保護されています。':cyclePending&&Number(row.lease_expires_at)>now?'この領主は領地を精算中です。':relation==='allied'?'同盟の期間中です。':protectedUntil>clock.elapsedMs?'襲撃後の保護期間です。':!clock.running?'世界の共通時間が停止中です。':'';
-  return {playerId:row.id,name:row.name,clan,avatarVersion:row.avatar_version||null,homeCastleId:home,homeCastleName:CASTLE_BY_ID[home].name,majorCity:MAJOR_CITIES.includes(home),level:castle.level,defenseTroops:defense.force,defensePower:defense.power,armySummary:defense.army,isAdmin:!!row.is_admin,isStaff:!!row.is_staff&&!row.is_admin,self,online:row.presence_seen!==null&&Number(row.presence_seen)>now-ONLINE_WINDOW,relationship:relation,protectedUntilElapsedMs:protectedUntil,attackable:!reason,attackReason:reason};
+  return {playerId:row.id,name:row.name,clan,avatarVersion:row.avatar_version||null,homeCastleId:home,homeCastleName:CASTLE_BY_ID[home].name,majorCity:MAJOR_CITIES.includes(home),level:castle.level,keepLevel,defenseTroops:defense.force,defensePower:defense.power,armySummary:defense.army,isAdmin:!!row.is_admin,isStaff:!!row.is_staff&&!row.is_admin,self,online:row.presence_seen!==null&&Number(row.presence_seen)>now-ONLINE_WINDOW,relationship:relation,protectedUntilElapsedMs:protectedUntil,attackable:!reason,attackReason:reason};
 }
 async function fieldRelation(db,a,b) {const [first,second]=pair(a,b);return stmt(db,'SELECT * FROM field_relations WHERE user_a=? AND user_b=?',first,second).first();}
 async function fieldOwnRelations(db,userId,elapsed) {

@@ -149,6 +149,39 @@
   const copy=o=>JSON.parse(JSON.stringify(o));
   const int=n=>Math.floor(Number(n)||0);
   const fail=message=>({ok:false,message});
+  function governorBonusForCategory(category,officer){
+    if(!officer)return 1;
+    const specialty=(officer.skill==='farmer'&&category==='rice')||(officer.skill==='merchant'&&category==='gold')||(officer.skill==='engineer'&&['wood','stone','defense','research'].includes(category));
+    return 1+(officer.politics||0)/400+(specialty?.1:officer.skill==='administrator'?.05:0);
+  }
+  // Rectangular Hungarian assignment. Rows and columns have a fixed order so
+  // equal optima are deterministic; zero-weight columns represent vacancies.
+  function maximumGovernorAssignment(weights){
+    const rowCount=weights.length;if(!rowCount)return[];
+    const columnCount=weights[0].length,u=Array(rowCount+1).fill(0),v=Array(columnCount+1).fill(0),rowAt=Array(columnCount+1).fill(0),previous=Array(columnCount+1).fill(0);
+    for(let row=1;row<=rowCount;row++){
+      rowAt[0]=row;let column=0;
+      const minimum=Array(columnCount+1).fill(Infinity),used=Array(columnCount+1).fill(false);
+      do{
+        used[column]=true;const currentRow=rowAt[column];let delta=Infinity,next=0;
+        for(let candidate=1;candidate<=columnCount;candidate++){
+          if(used[candidate])continue;
+          const reduced=-weights[currentRow-1][candidate-1]-u[currentRow]-v[candidate];
+          if(reduced<minimum[candidate]){minimum[candidate]=reduced;previous[candidate]=column;}
+          if(minimum[candidate]<delta){delta=minimum[candidate];next=candidate;}
+        }
+        for(let candidate=0;candidate<=columnCount;candidate++){
+          if(used[candidate]){u[rowAt[candidate]]+=delta;v[candidate]-=delta;}
+          else minimum[candidate]-=delta;
+        }
+        column=next;
+      }while(rowAt[column]!==0);
+      do{const next=previous[column];rowAt[column]=rowAt[next];column=next;}while(column!==0);
+    }
+    const assigned=Array(rowCount).fill(-1);
+    for(let column=1;column<=columnCount;column++)if(rowAt[column])assigned[rowAt[column]-1]=column-1;
+    return assigned;
+  }
   const MAX_WALKING_STEPS=Math.floor(Number.MAX_SAFE_INTEGER/2);
   const walkingId=value=>typeof value==='string'&&/^[a-zA-Z0-9_-]{1,90}$/.test(value);
   const newWalkingCampaign=()=>root.crypto?.randomUUID?.()||'walk_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2);
@@ -460,7 +493,8 @@
       return{ok:true,already:false,message:'贈り物を受け取りました。',rewards:reward};
     }
     _action(text,kind='info',extra={}){this.state.command--;this.log(text,kind);return{ok:true,message:text,...extra};}
-    _governorBonus(id){const o=this.officer(this.state.governors[id]);if(!o)return 1;const category=BUILDINGS.find(b=>b.id===id)?.category;const specialty=(o.skill==='farmer'&&category==='rice')||(o.skill==='merchant'&&category==='gold')||(o.skill==='engineer'&&['wood','stone','defense','research'].includes(category));return 1+(o.politics||0)/400+(specialty?.1:o.skill==='administrator'?.05:0);}
+    governorBonusFor(buildingId,officerId){return governorBonusForCategory(BUILDINGS.find(b=>b.id===buildingId)?.category,this.officer(officerId));}
+    _governorBonus(id){return this.governorBonusFor(id,this.state.governors[id]);}
     _facilityEffect(category){return EXTRA_FACILITIES.filter(b=>b.category===category).reduce((a,b)=>a+this.state.buildings[b.id]*b.effect*this._governorBonus(b.id),0);}
     buildingUnlock(id){const b=BUILDINGS.find(b=>b.id===id);if(!b)return{ok:false,requiredLevel:1,reason:'施設が見つかりません。'};const ok=this.state.buildings.keep>=b.requiredKeep;return{ok,requiredLevel:b.requiredKeep,reason:ok?'建設・増築できます。':`天守 Lv.${b.requiredKeep}が必要です。`};}
     governorDescription(id){const category=BUILDINGS.find(b=>b.id===id)?.category;const named={keep:'政治力に応じて武将の登用費用を軽減します。',barracks:'政治力に応じて兵数上限を増やし募兵費用を軽減します。',wall:'政治力に応じて本拠の防衛力を高めます。',academy:'政治力に応じて研究費用を軽減します。'};return named[id]||({gold:'政治力に応じてこの施設の金銭生産を増やします。',rice:'政治力に応じてこの施設の兵糧生産を増やします。',wood:'政治力に応じてこの施設の木材生産を増やします。',stone:'政治力に応じてこの施設の石材生産を増やします。',military:'政治力に応じてこの施設の攻撃力・兵数上限の効果を高めます。',defense:'政治力に応じてこの施設の防衛補正を高めます。',research:'政治力に応じてこの施設の研究費軽減を強化します。',diplomacy:'政治力に応じてこの施設の交渉・偵察・登用費軽減を強化します。'})[category]||'';}
@@ -534,6 +568,29 @@
       this.state.army=this.state.army.filter(id=>id!==officerId);this.state.governors[buildingId]=officerId;
       return{ok:true,message:`${this.officer(officerId).name}を${BUILDINGS.find(b=>b.id===buildingId).name}の奉行に任命しました。`};
     }
+    planGovernorAssignments(){
+      if(this.isStaff&&!STAFF_VIEW.get(this))return fail('駿府城の共同拠点を確認してから、奉行を配置してください。');
+      const s=this.state,facilities=BUILDINGS.filter(b=>s.buildings[b.id]>0),army=new Set(s.army);
+      const officers=[...new Set(s.officers)].filter(id=>!army.has(id)).sort().map(id=>this.officer(id)).filter(Boolean);
+      const facilityCount=facilities.length,candidateCount=officers.length,columnCount=Math.max(facilityCount,candidateCount),bonuses=facilities.map(b=>officers.map(o=>governorBonusForCategory(b.category,o)));
+      // One point of actual suitability outweighs every possible retention
+      // tie-break. Integer scores avoid rounding-dependent reassignment.
+      const weights=facilities.map((b,row)=>Array.from({length:columnCount},(_,column)=>column<candidateCount?Math.round(bonuses[row][column]*400)*(facilityCount+1)+(s.governors[b.id]===officers[column].id?1:0):0));
+      const choices=maximumGovernorAssignment(weights),governors={},officerById=new Map(officers.map(o=>[o.id,o]));
+      const assignments=facilities.map((b,row)=>{
+        const chosen=officers[choices[row]],officerId=chosen?.id||null,previousOfficerId=s.governors[b.id]||null;
+        if(officerId)governors[b.id]=officerId;
+        return{buildingId:b.id,officerId,previousOfficerId,bonus:governorBonusForCategory(b.category,chosen),previousBonus:governorBonusForCategory(b.category,officerById.get(previousOfficerId)||this.officer(previousOfficerId))};
+      });
+      // An explicit reassignment also returns dormant staff appointments on
+      // unbuilt facilities to the candidate pool; saves and reloads never do so.
+      const changedCount=[...new Set([...Object.keys(s.governors),...Object.keys(governors)])].filter(id=>(s.governors[id]||null)!==(governors[id]||null)).length;
+      const clearedCount=Object.keys(s.governors).filter(id=>s.governors[id]&&!governors[id]).length,assignedCount=Object.keys(governors).length,vacantCount=facilityCount-assignedCount,changed=changedCount>0;
+      const totalBonus=assignments.reduce((sum,a)=>sum+a.bonus,0),previousTotalBonus=assignments.reduce((sum,a)=>sum+a.previousBonus,0);
+      const message=!facilityCount?'建設済みの施設がありません。':!candidateCount?'軍団に編成されていない武将がいません。':changed?`奉行を${assignedCount}施設へ配置しました。${vacantCount?`残り${vacantCount}施設は未任命です。`:''}`:'奉行はすでに適性に合う配置です。';
+      return{ok:true,changed,governors,assignments,facilityCount,candidateCount,assignedCount,vacantCount,changedCount,clearedCount,totalBonus,previousTotalBonus,message};
+    }
+    autoAssignGovernors(){const plan=this.planGovernorAssignments();if(plan.ok&&plan.changed)this.state.governors={...plan.governors};return plan;}
     recruitTroopCost(amount){const n=int(amount),m=(1-this.state.tech.conscription*.08)*(this.state.clan==='伊達家'?.85:1)/this._governorBonus('barracks');return{gold:Math.ceil(n*.32*m),rice:Math.ceil(n*.45*m),wood:0,stone:0};}
     recruitTroops(amount){
       const g=this._guard();if(g)return g;const n=int(amount);if(!Number.isFinite(Number(amount))||n<100||n>20000)return fail('募兵数は100〜20,000人で指定してください。');

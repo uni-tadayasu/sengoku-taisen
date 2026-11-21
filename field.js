@@ -8,6 +8,22 @@ const number=value=>Number.isFinite(Number(value))?Number(value):0;
 const integer=value=>Math.max(0,Math.floor(number(value)));
 const num=value=>integer(value).toLocaleString('ja-JP');
 const castleLevelLimit=id=>(global.SENGOKU_DATA?.majorCityIds||['edo','sunpu','nijo','osaka','nagoya']).includes(id)?64:32;
+function keepLevelInfo(player){
+  const value=player?.keepLevel,level=typeof value==='number'||typeof value==='string'&&value.trim()?Number(value):NaN;
+  const known=player?.keepLevelKnown!==false&&Number.isFinite(level)&&Number.isInteger(level)&&level>=1;
+  return{level:known?Math.min(32,level):1,known};
+}
+const keepLabel=player=>{const keep=keepLevelInfo(player);return keep.known?`天守 Lv.${keep.level}`:'天守 未取得';};
+function castleAppearance(player,{marker=false}={}){
+  const keep=keepLevelInfo(player),className=marker?'field-map-castle-art':'field-castle-art';
+  const art=global.SengokuArt?.castle?.(player.homeCastleId,className,keep.level)||`<span class="field-castle-fallback">${icon('castle')}</span>`;
+  const label=marker?(keep.known?`Lv.${keep.level}`:'Lv.?'):keepLabel(player);
+  return`<span class="field-castle-visual ${marker?'field-map-castle':''}" data-field-keep-level="${keep.level}" data-field-keep-known="${keep.known}" role="img" aria-label="${esc(player.homeCastleName||player.homeCastleId)}・${esc(keepLabel(player))}">${art}<span class="field-castle-level" aria-hidden="true">${label}</span></span>`;
+}
+function markerAppearance(marker){
+  const player=marker.players?.find(p=>p.playerId===marker.displayPlayerId);if(!player)return null;
+  return{html:castleAppearance(player,{marker:true}),label:`${marker.name} ${player.name}の本拠 ${keepLabel(player)} 城郭 Lv.${player.level}${marker.players.length>1?'・'+marker.players.length+'人の領主':''}`};
+}
 const DEFAULT_RULES={minTroops:300,maxTroops:100000,commandCost:1,foodBase:150,foodPerTroop:.3,attackCooldownMs:60000,defenderProtectionMs:60000,allianceDurationMs:360000,tactics:[{id:'balanced',name:'正攻法',food:1},{id:'assault',name:'総攻撃',food:1.25},{id:'siege',name:'兵糧攻め',food:1.65},{id:'ambush',name:'伏兵',food:1.1}]};
 const icons={refresh:'M20 8a9 9 0 1 0 1 7M20 3v5h-5',search:'M10 17a7 7 0 1 0 0-14 7 7 0 0 0 0 14m5-2 6 6',castle:'M3 20h18M5 20V10l7-5 7 5v10M3 10h18M9 5l3-3 3 3M10 20v-5h4v5',swords:'m4 3 7 7-3 3-7-7 3-3Zm9 10 7 7M15 18l3-3M20 3l-7 7 3 3 7-7-3-3ZM11 13l-7 7M9 18l-3-3',flag:'M4 22V3m0 1c6-5 10 5 16 0v10c-6 5-10-5-16 0',check:'m4 12 5 5L20 6',shield:'m12 2 9 4v6c0 5-9 10-9 10S3 17 3 12V6l9-4ZM8 12l3 3 5-6',clock:'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Zm0 4v6l4 2',users:'M9 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM2 21v-3c0-3 3-5 7-5s7 2 7 5v3M17 4c5-1 6 7 1 8m1 2c3 1 4 3 4 7',close:'m6 6 12 12M6 18 18 6'};
 const icon=name=>`<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${icons[name]||icons.castle}"/></svg>`;
@@ -15,7 +31,8 @@ function normalizePlayers(payload){
   const input=Array.isArray(payload)?payload:payload?.players;if(!Array.isArray(input))return[];
   const seen=new Set();return input.flatMap(player=>{
     if(!player||typeof player.playerId!=='string'||!player.playerId||typeof player.name!=='string'||typeof player.homeCastleId!=='string'||seen.has(player.playerId))return[];
-    seen.add(player.playerId);return[{...player,level:Math.max(1,Math.min(castleLevelLimit(player.homeCastleId),integer(player.level)||1)),defenseTroops:integer(player.defenseTroops),defensePower:Math.max(0,number(player.defensePower)),isAdmin:player.isAdmin===true,isStaff:player.isStaff===true&&player.isAdmin!==true,self:player.self===true,online:player.online===true,attackable:player.attackable===true}];
+    const keep=keepLevelInfo(player);
+    seen.add(player.playerId);return[{...player,level:Math.max(1,Math.min(castleLevelLimit(player.homeCastleId),integer(player.level)||1)),keepLevel:keep.level,keepLevelKnown:keep.known,defenseTroops:integer(player.defenseTroops),defensePower:Math.max(0,number(player.defensePower)),isAdmin:player.isAdmin===true,isStaff:player.isStaff===true&&player.isAdmin!==true,self:player.self===true,online:player.online===true,attackable:player.attackable===true}];
   });
 }
 function rulesFor(rules){return{...DEFAULT_RULES,...rules,tactics:Array.isArray(rules?.tactics)&&rules.tactics.length?rules.tactics:DEFAULT_RULES.tactics};}
@@ -25,13 +42,18 @@ function relationshipFor(player,me,identity){
   if(player?.self||player?.playerId===identity?.id)return'self';
   return me?.relationships?.find(item=>item.targetPlayerId===player?.playerId)?.status||player?.relationship||'neutral';
 }
-function groupBases(players,coordinates={},castles=[],identity){
+function groupBases(players,coordinates={},castles=[],identity,selectedPlayerId=''){
   const defs=new Map(castles.map(c=>[c.id,c])),groups=new Map();
   for(const player of players){const point=coordinates[player.homeCastleId];if(!point||!Number.isFinite(Number(point.lon))||!Number.isFinite(Number(point.lat)))continue;
     if(!groups.has(player.homeCastleId)){const def=defs.get(player.homeCastleId)||{};groups.set(player.homeCastleId,{id:player.homeCastleId,name:player.homeCastleName||def.name||player.homeCastleId,region:def.region||'',geo:point,players:[],level:1,troops:0,neighbors:[]});}
     const group=groups.get(player.homeCastleId);group.players.push(player);group.level=Math.max(group.level,player.level);group.troops+=player.defenseTroops;
   }
-  return[...groups.values()].map(group=>{const own=group.players.some(p=>p.self||p.playerId===identity?.id),allied=group.players.some(p=>p.relationship==='allied');return{...group,name:group.name+(group.players.length>1?` · ${group.players.length}領主`:''),owner:own?'あなたの本拠':allied?'同盟の本拠':`${group.players.length}領主の本拠`,reachable:group.players.some(p=>p.attackable),own};});
+  return[...groups.values()].map(group=>{
+    const own=group.players.some(p=>p.self||p.playerId===identity?.id),allied=group.players.some(p=>p.relationship==='allied');
+    const representative=group.players.find(p=>p.playerId===selectedPlayerId)||group.players.find(p=>p.self||p.playerId===identity?.id)||[...group.players].sort((a,b)=>keepLevelInfo(b).level-keepLevelInfo(a).level||a.playerId.localeCompare(b.playerId))[0];
+    const keep=keepLevelInfo(representative);
+    return{...group,name:group.name+(group.players.length>1?` · ${group.players.length}領主`:''),owner:own?'あなたの本拠':allied?'同盟の本拠':`${group.players.length}領主の本拠`,reachable:group.players.some(p=>p.attackable),own,keepLevel:keep.level,keepLevelKnown:keep.known,displayPlayerId:representative.playerId,displayPlayerName:representative.name};
+  });
 }
 function attackValidation({player,me,identity,access={},state={},troops,tactic,rules,clock}){
   if(!identity?.id)return{ok:false,message:'領主登録・ログインが必要です。'};
@@ -56,12 +78,12 @@ function playerPhoto(player){const user={...player,id:player.playerId};return gl
 function publicRow(player,{selectedId='',identity,relationship=player.relationship}={}){
   const own=player.self||player.playerId===identity?.id,label=own?'あなた':relationship==='allied'?'同盟':relationship==='incoming'?'申請あり':relationship==='outgoing'?'申請中':player.isAdmin?'運営':player.isStaff?'スタッフ':player.online?'接続中':'領主';
   const photo=playerPhoto(player);
-  return`<button type="button" class="field-player-row ${selectedId===player.playerId?'is-selected':''} ${own?'is-self':''}" data-field-action="select-player" data-player-id="${esc(player.playerId)}" aria-pressed="${selectedId===player.playerId}">${photo?`<span class="field-player-mon field-player-photo">${photo}</span>`:`<span class="field-player-mon" data-field-crest="${esc(player.clan||'')}">${icon('flag')}</span>`}<span class="field-player-copy"><strong>${esc(player.name)}</strong><small>${esc(player.homeCastleName||player.homeCastleId)} · ${esc(player.clan||'')}</small></span><span class="field-player-meta"><span class="field-player-tag ${player.online?'is-online':''}">${esc(label)}</span><small>Lv.${player.level} · ${num(player.defenseTroops)}兵</small></span></button>`;
+  return`<button type="button" class="field-player-row ${selectedId===player.playerId?'is-selected':''} ${own?'is-self':''}" data-field-action="select-player" data-player-id="${esc(player.playerId)}" aria-pressed="${selectedId===player.playerId}">${photo?`<span class="field-player-mon field-player-photo">${photo}</span>`:`<span class="field-player-mon" data-field-crest="${esc(player.clan||'')}">${icon('flag')}</span>`}<span class="field-player-copy"><strong>${esc(player.name)}</strong><small>${esc(player.homeCastleName||player.homeCastleId)} · ${esc(player.clan||'')}</small></span><span class="field-player-meta"><span class="field-player-tag ${player.online?'is-online':''}">${esc(label)}</span><small>${keepLabel(player)} · 城郭 Lv.${player.level}</small><small>${num(player.defenseTroops)}兵</small></span></button>`;
 }
 function makeCache(){return{players:[],total:0,nextCursor:null,me:null,rules:rulesFor(),clock:null,lastFetched:0,loading:false,promise:null,busy:false,error:'',selectedId:'',castleFilter:'',query:'',filter:'all',page:1,tab:'base',relationshipPage:1,battlePage:1,troops:'',tactic:'balanced',confirm:null,lastBattle:null,watchers:new Set()};}
 function mount(container,options={}){
   if(!container?.querySelector)return null;if(mounted.has(container)){const existing=mounted.get(container);existing.update(options);return existing;}
-  let opts={stateKey:'shared-field',...options},key='',cache=null,map=null,destroyed=false,timer=null;
+  let opts={stateKey:'shared-field',...options},key='',cache=null,map=null,destroyed=false,timer=null,detailHost=null,detailMarkup=null;
   const listeners=[],doc=container.ownerDocument||global.document;
   const getKey=()=>opts.stateKey+':'+(opts.identity?.id||'guest');
   const clockSnapshot=()=>global.SengokuWorldClock?.snapshot?.()||{ready:true,clock:cache.clock};
@@ -76,7 +98,7 @@ function mount(container,options={}){
   function listen(node,type,fn){node.addEventListener(type,fn);listeners.push(()=>node.removeEventListener(type,fn));}
   function structure(){
     map?.destroy();map=null;
-    container.innerHTML=`<div class="sengoku-field"><div class="field-toolbar"><div class="field-world-count"><span>SHARED WORLD</span><strong data-field-summary>領主の本拠を確認中</strong></div><label class="field-search">${icon('search')}<input type="search" data-field-input="search" aria-label="領主・本拠・勢力を検索" placeholder="領主・本拠・勢力を検索"></label><select data-field-input="filter" class="field-filter" aria-label="表示する領主"><option value="all">すべての領主</option><option value="online">接続中</option><option value="allied">同盟中</option></select><button type="button" class="field-icon-button" data-field-action="refresh" aria-label="共有フィールドを更新" title="更新">${icon('refresh')}</button></div><div class="field-feedback" data-field-feedback role="status" hidden></div><div class="field-workspace"><section class="field-map-column"><div class="geographic-map-panel field-map-panel"><div class="geographic-map-host" data-field-map></div></div><div class="field-list-heading"><h2>領主の本拠</h2><span data-field-filter-label></span></div><div class="field-player-grid" data-field-players></div><div class="field-pagination" data-field-pagination></div></section><aside class="field-sidebar"><nav class="field-tabs" role="tablist" aria-label="共有フィールドの情報"><button type="button" data-field-action="tab" data-tab="base" role="tab">本拠</button><button type="button" data-field-action="tab" data-tab="diplomacy" role="tab">外交<span data-field-incoming></span></button><button type="button" data-field-action="tab" data-tab="reports" role="tab">合戦報告</button></nav><div class="field-detail" data-field-detail role="tabpanel"></div></aside></div><p class="field-footnote">登録された領主の本拠を、実際の城跡の位置に表示しています。同じ城を本拠にする領主も、一覧から個別に選べます。</p></div>`;
+    container.innerHTML=`<div class="sengoku-field"><div class="field-toolbar"><div class="field-world-count"><span>SHARED WORLD</span><strong data-field-summary>領主の本拠を確認中</strong></div><label class="field-search">${icon('search')}<input type="search" data-field-input="search" aria-label="領主・本拠・勢力を検索" placeholder="領主・本拠・勢力を検索"></label><select data-field-input="filter" class="field-filter" aria-label="表示する領主"><option value="all">すべての領主</option><option value="online">接続中</option><option value="allied">同盟中</option></select><button type="button" class="field-icon-button" data-field-action="refresh" aria-label="共有フィールドを更新" title="更新">${icon('refresh')}</button></div><div class="field-feedback" data-field-feedback role="status" hidden></div><div class="field-workspace"><section class="field-map-column"><div class="geographic-map-panel field-map-panel"><div class="geographic-map-host" data-field-map></div></div><div class="field-list-heading"><h2>領主の本拠</h2><span data-field-filter-label></span></div><div class="field-player-grid" data-field-players></div><div class="field-pagination" data-field-pagination></div></section><aside class="field-sidebar"><nav class="field-tabs" role="tablist" aria-label="共有フィールドの情報"><button type="button" data-field-action="tab" data-tab="base" role="tab">本拠</button><button type="button" data-field-action="tab" data-tab="diplomacy" role="tab">外交<span data-field-incoming></span></button><button type="button" data-field-action="tab" data-tab="reports" role="tab">合戦報告</button></nav><div class="field-detail" data-field-detail role="tabpanel"></div></aside></div><p class="field-footnote">登録された領主の本拠を、実際の城跡の位置に表示しています。城の絵は天守レベルに連動します。同じ城を本拠にする領主は、一覧で切り替えられます。</p></div>`;
   }
   function selectedRelation(){return cache.me?.relationships?.find(r=>r.targetPlayerId===cache.selectedId);}
   function validation(){return attackValidation({player:current(),me:cache.me,identity:opts.identity,access:access(),state:state(),troops:cache.troops,tactic:cache.tactic,rules:cache.rules,clock:clockSnapshot()});}
@@ -91,10 +113,10 @@ function mount(container,options={}){
   function baseDetail(){
     const player=current();
     if(!player)return`<div class="field-empty"><span>${icon('castle')}</span><h3>${cache.loading?'本拠を確認しています':'領主を選んでください'}</h3><p>${cache.players.length?'地図の拠点か、下の領主一覧から選べます。':'クラウドへ保存された本拠が、ここに表示されます。'}</p>${!opts.identity?'<button class="field-button is-gold" data-field-action="register">領主登録・ログイン</button>':''}</div>`;
-    const relation=relationshipFor(player,cache.me,opts.identity),own=relation==='self',art=global.SengokuArt?.castle?.(player.homeCastleId,'field-castle-art',player.level)||`<div class="field-castle-fallback">${icon('castle')}</div>`;
+    const relation=relationshipFor(player,cache.me,opts.identity),own=relation==='self',art=castleAppearance(player);
     const coLocated=cache.players.filter(p=>p.homeCastleId===player.homeCastleId).length;
     const protection=Math.max(0,number(player.protectedUntilElapsedMs)-elapsed());
-    let result=`<div class="field-base-heading">${art}<div><span class="field-eyebrow">${esc(player.homeCastleName||player.homeCastleId)} · Lv.${player.level}</span><h3 class="field-lord-heading">${playerPhoto(player)}<span>${esc(player.name)}</span></h3><p>${esc(player.clan||'')}${own?' · あなたの本拠':player.isAdmin?' · 運営の本拠':''}</p><span class="field-online ${player.online?'is-online':''}">${player.online?'接続中':'現在は不在'}</span></div></div><div class="field-base-stats"><div><span>守備兵</span><b>${num(player.defenseTroops)}</b></div><div><span>防衛力</span><b>${num(Math.round(player.defensePower))}</b></div><div><span>軍団</span><b>${num(player.armySummary?.officerCount)}<small>名</small></b></div></div>${coLocated>1?`<p class="field-caption">この城には${coLocated}人の領主の本拠があります。</p>`:''}`;
+    let result=`<div class="field-base-heading">${art}<div><span class="field-eyebrow">${esc(player.homeCastleName||player.homeCastleId)} · 城郭 Lv.${player.level}</span><h3 class="field-lord-heading">${playerPhoto(player)}<span>${esc(player.name)}</span></h3><p>${esc(player.clan||'')}${own?' · あなたの本拠':player.isAdmin?' · 運営の本拠':''}</p><span class="field-online ${player.online?'is-online':''}">${player.online?'接続中':'現在は不在'}</span></div></div><div class="field-base-stats"><div><span>守備兵</span><b>${num(player.defenseTroops)}</b></div><div><span>防衛力</span><b>${num(Math.round(player.defensePower))}</b></div><div><span>軍団</span><b>${num(player.armySummary?.officerCount)}<small>名</small></b></div></div>${coLocated>1?`<p class="field-caption">この城には${coLocated}人の領主の本拠があります。</p>`:''}`;
     if(castleLevelLimit(player.homeCastleId)===64)result+=`<div class="major-city-badge">${icon('castle')}大都市拠点 · 城郭上限 Lv.64${player.homeCastleId==='edo'?' · 運営専用 · 占領不可':player.homeCastleId==='sunpu'?' · スタッフ共同 · 占領不可':''}</div>`;
     if(player.isStaff||player.homeCastleId==='sunpu')result+='<p class="field-caption">駿府城の城郭と城下町施設は、スタッフ全員で共同成長させます。</p>';
     if(!opts.identity?.id)return result+'<div class="field-notice">襲撃・外交・書状は、領主登録後に利用できます。</div><button class="field-button is-gold is-full" data-field-action="register">領主登録・ログイン</button>';
@@ -129,9 +151,15 @@ function mount(container,options={}){
   function pagination(action,page,pages){return`<div class="field-pager"><button class="field-button" data-field-action="${action}" data-delta="-1"${page<=1?' disabled':''}>前へ</button><span>${page} / ${pages}</span><button class="field-button" data-field-action="${action}" data-delta="1"${page>=pages?' disabled':''}>次へ</button></div>`;}
   function decorateCrests(){for(const node of container.querySelectorAll('[data-field-crest]')){const src=global.SengokuKamon?.url?.(node.dataset.fieldCrest);if(typeof src==='string'&&/^(data:image\/|assets\/)/.test(src))node.innerHTML=`<img src="${esc(src)}" alt="">`;}}
   function renderDetail(){
-    const host=container.querySelector('[data-field-detail]');if(!host)return;const focused=doc.activeElement,focusedKind=container.contains(focused)?focused?.dataset?.fieldInput:null,selection=focusedKind==='troops'?[focused.selectionStart,focused.selectionEnd]:null;
-    host.innerHTML=cache.tab==='diplomacy'?diplomacyDetail():cache.tab==='reports'?reportsDetail():baseDetail();
-    if(focusedKind==='troops'||focusedKind==='tactic'){const next=host.querySelector(`[data-field-input="${focusedKind}"]`);next?.focus({preventScroll:true});if(selection?.[0]!=null)try{next?.setSelectionRange(...selection);}catch(_){}}
+    const host=container.querySelector('[data-field-detail]');if(!host)return;
+    const markup=cache.tab==='diplomacy'?diplomacyDetail():cache.tab==='reports'?reportsDetail():baseDetail();
+    // Loaded artwork mutates its own DOM. Keep that DOM and any focused input
+    // when the underlying detail has not changed during a shared refresh.
+    if(host!==detailHost||markup!==detailMarkup){
+      const focused=doc.activeElement,focusedKind=container.contains(focused)?focused?.dataset?.fieldInput:null,selection=focusedKind==='troops'?[focused.selectionStart,focused.selectionEnd]:null;
+      host.innerHTML=markup;detailHost=host;detailMarkup=markup;
+      if(focusedKind==='troops'||focusedKind==='tactic'){const next=host.querySelector(`[data-field-input="${focusedKind}"]`);next?.focus({preventScroll:true});if(selection?.[0]!=null)try{next?.setSelectionRange(...selection);}catch(_){}}
+    }
     for(const button of container.querySelectorAll('[data-tab]'))button.setAttribute('aria-selected',String(button.dataset.tab===cache.tab));
   }
   function render(){
@@ -150,8 +178,8 @@ function mount(container,options={}){
     const incoming=cache.me?.relationships?.filter(r=>r.status==='incoming').length||0;container.querySelector('[data-field-incoming]').textContent=incoming?' '+incoming:'';
     if(!current()&&cache.players.length)cache.selectedId=(cache.players.find(p=>p.playerId===opts.identity?.id)||cache.players[0]).playerId;
     renderDetail();decorateCrests();
-    const geography=opts.geography||global.SENGOKU_GEOGRAPHY,groups=groupBases(cache.players,geography?.castles||{},global.SENGOKU_DATA?.castles||[],opts.identity),self=cache.players.find(p=>p.playerId===opts.identity?.id);
-    const mapOptions={stateKey:opts.stateKey+':map:'+String(opts.identity?.id||'guest'),castles:groups,selectedId:current()?.homeCastleId,homeId:self?.homeCastleId,clan:'あなたの本拠',treaties:{'同盟の本拠':1},turn:0,isAdmin:opts.identity?.isAdmin===true,allowRestrictedSelection:true,region:'all',geography,title:'群雄の本拠',eyebrow:'SHARED FIELD · JAPAN',countUnit:'拠点',hideRoutes:true,legend:{own:'あなた',ally:'同盟',reachable:'襲撃可能',other:'ほかの領主'},markerTooltip:marker=>({title:marker.name,description:`${marker.players?.length||0}人の領主が本拠を構えています。`,detail:marker.players?.slice(0,5).map(p=>p.name).join('・')}),onSelect:castleId=>{cache.castleFilter=castleId;cache.query='';cache.filter='all';cache.page=1;cache.tab='base';cache.confirm=null;const occupants=cache.players.filter(p=>p.homeCastleId===castleId);if(!occupants.some(p=>p.playerId===cache.selectedId))cache.selectedId=occupants[0]?.playerId||'';render();}};
+    const geography=opts.geography||global.SENGOKU_GEOGRAPHY,groups=groupBases(cache.players,geography?.castles||{},global.SENGOKU_DATA?.castles||[],opts.identity,cache.selectedId),self=cache.players.find(p=>p.playerId===opts.identity?.id);
+    const mapOptions={stateKey:opts.stateKey+':map:'+String(opts.identity?.id||'guest'),castles:groups,selectedId:current()?.homeCastleId,homeId:self?.homeCastleId,clan:'あなたの本拠',treaties:{'同盟の本拠':1},turn:0,isAdmin:opts.identity?.isAdmin===true,allowRestrictedSelection:true,region:'all',geography,title:'群雄の本拠',eyebrow:'SHARED FIELD · JAPAN',countUnit:'拠点',hideRoutes:true,markerSize:48,markerAppearance,legend:{own:'あなた',ally:'同盟',reachable:'襲撃可能',other:'ほかの領主'},markerTooltip:marker=>({title:marker.name,description:`表示中：${marker.displayPlayerName||''} · ${keepLabel(marker)}`,detail:marker.players?.slice(0,5).map(p=>`${p.name}（${keepLabel(p)}）`).join('・')}),onSelect:castleId=>{cache.castleFilter=castleId;cache.query='';cache.filter='all';cache.page=1;cache.tab='base';cache.confirm=null;const occupants=cache.players.filter(p=>p.homeCastleId===castleId);if(!occupants.some(p=>p.playerId===cache.selectedId))cache.selectedId=occupants[0]?.playerId||'';render();}};
     if(map)map.update(mapOptions);else map=global.SengokuWorldMap?.mount?.(container.querySelector('[data-field-map]'),mapOptions)||null;
     global.SengokuDesktopFit?.refresh?.();
   }
@@ -201,5 +229,5 @@ function mount(container,options={}){
   const controller={refresh,update(next={}){if(destroyed)return;const old=key;opts={...opts,...next};bindCache();if(old!==key){map?.destroy();map=null;}render();if(old!==key||Date.now()-cache.lastFetched>15000)refresh();},destroy(){if(destroyed)return;destroyed=true;if(timer!==null)global.clearTimeout(timer);timer=null;map?.destroy();cache.watchers.delete(render);for(const remove of listeners)remove();mounted.delete(container);}};
   mounted.set(container,controller);render();if(Date.now()-cache.lastFetched>15000||!cache.lastFetched)refresh();schedule();return controller;
 }
-const api={mount,normalizePlayers,groupBases,foodCost,remainingLabel,relationshipFor,attackValidation,publicRow};global.SengokuField=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;
+const api={mount,normalizePlayers,groupBases,keepLevelInfo,castleAppearance,markerAppearance,foodCost,remainingLabel,relationshipFor,attackValidation,publicRow};global.SengokuField=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;
 })(typeof window!=='undefined'?window:globalThis);

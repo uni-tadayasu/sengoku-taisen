@@ -71,15 +71,27 @@ try{
  const rebound=(await claim(starts,{...unseen,deviceId:starts.deviceId})).data;assert.equal(rebound.receipt.deltaSteps,5);assert.equal(account(starts).total_steps,15);
  checks.push('lost start/claim responses, authenticated document reload and current-writer unacknowledged tail');
 
- const expiry=await fixture('離席の最終精算'),es=(await start(expiry)).data.walkingSession;h.now+=100000;await lease(expiry);
- const expired=claimBody(expiry,es,{totalSteps:12,activeMs:6000});assert.equal((await claim(expiry,expired,409)).data.error.code,'WALKING_EXPIRED');
- const tail=(await claim(expiry,{...expired,finish:true})).data;assert.equal(tail.receipt.deltaSteps,12);assert(tail.walkingSession.closed);
- h.now+=100000;await lease(expiry);const retried=(await claim(expiry,{...expired,finish:true,expectedRevision:0})).data;assert(retried.idempotent);assert.equal(account(expiry).total_steps,12);
+ const expiry=await fixture('離席後も継続する歩行'),es=(await start(expiry)).data.walkingSession,beforeExpiry=balances(expiry);h.now+=100000;
+ const expired=claimBody(expiry,es,{totalSteps:12,activeMs:6000});assert.equal((await claim(expiry,expired,409)).data.error.code,'LEASE_REQUIRED');assert.equal(account(expiry).total_steps,0);
+ await lease(expiry);const resumedBody={...expired,expectedRevision:row(expiry).revision},resumed=(await claim(expiry,resumedBody)).data;
+ assert.equal(resumed.receipt.deltaSteps,12);assert.equal(resumed.walkingSession.closed,false);assert.equal(resumed.walkingSession.id,es.id);assert.equal(account(expiry).active_session_id,es.id);paid(beforeExpiry,balances(expiry),12);
+ const resumedReplay=(await claim(expiry,resumedBody)).data;assert(resumedReplay.idempotent);assert.equal(account(expiry).total_steps,12);
+ h.now+=100000;await lease(expiry);const secondResume=(await claim(expiry,claimBody(expiry,resumed.walkingSession,{totalSteps:20,activeMs:10000}))).data;
+ assert.equal(secondResume.walkingSession.id,es.id);assert.equal(secondResume.receipt.deltaSteps,8);assert.equal(secondResume.walkingSession.closed,false);
+ const finishBody=claimBody(expiry,secondResume.walkingSession,{finish:true}),tail=(await claim(expiry,finishBody)).data;assert.equal(tail.receipt.deltaSteps,0);assert(tail.walkingSession.closed);
+ h.now+=100000;await lease(expiry);const retried=(await claim(expiry,{...finishBody,expectedRevision:0})).data;assert(retried.idempotent);assert.equal(account(expiry).total_steps,20);
  const ns=(await start(expiry)).data.walkingSession;h.now+=40000;await lease(expiry);
- assert.equal((await claim(expiry,claimBody(expiry,ns,{totalSteps:121,activeMs:31000,finish:true}),400)).data.error.code,'WALKING_RATE_EXCEEDED');
+ assert.equal((await claim(expiry,claimBody(expiry,ns,{totalSteps:121,activeMs:31000}),400)).data.error.code,'WALKING_RATE_EXCEEDED');
  const replacement=(await start(expiry)).data.walkingSession;
- assert.equal((await claim(expiry,claimBody(expiry,ns,{totalSteps:10,activeMs:5000,finish:true}),409)).data.error.code,'WALKING_SESSION_CLOSED');assert.notEqual(replacement.id,ns.id);
- checks.push('bounded expired finish, expired receipt replay and replacement session isolation');
+ for(const finish of [false,true])assert.equal((await claim(expiry,claimBody(expiry,ns,{totalSteps:10,activeMs:5000,finish}),409)).data.error.code,'WALKING_SESSION_CLOSED');assert.notEqual(replacement.id,ns.id);
+ checks.push('same-session resume after inactivity, writer lease requirement, exact-once replay, explicit finish and replaced-session isolation');
+
+ const resumeRace=await fixture('再開と新規開始の競合'),raceSession=(await start(resumeRace)).data.walkingSession;h.now+=100000;await lease(resumeRace);
+ barrier('INSERT INTO walking_');
+ const competing=await Promise.all([start(resumeRace,startBody(resumeRace),null),claim(resumeRace,claimBody(resumeRace,raceSession,{totalSteps:10,activeMs:5000}),null)]);
+ assert.deepEqual(competing.map(r=>r.response.status).sort(),[200,409]);
+ if(competing[1].response.status===200){assert.equal(account(resumeRace).active_session_id,raceSession.id);assert.equal(account(resumeRace).total_steps,10);}else{assert.notEqual(account(resumeRace).active_session_id,raceSession.id);assert.equal(account(resumeRace).total_steps,0);assert.equal(count(resumeRace),0);}
+ checks.push('expired-session resume and replacement start are mutually exclusive at commit');
 
  const identities=await fixture('歩行の物語分離'),other=await fixture('別の領主'),ids=(await start(identities)).data.walkingSession;
  await claim(other,claimBody(other,ids),403);await claim(identities,{...claimBody(identities,ids),sessionToken:'forged'},403);

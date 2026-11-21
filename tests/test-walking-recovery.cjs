@@ -23,8 +23,8 @@ await test('denied permissions, insecure contexts and unsupported hardware never
 await test('repeated Start clicks share one permission request and a Stop cancels its eventual result',async()=>{
  const pending=deferred(),h=harness({permission:()=>pending.promise}),first=h.controller.startFromGesture(),second=h.controller.startFromGesture();assert.equal(first,second);assert.equal(h.calls.permission,1);await h.controller.stop();pending.resolve('granted');await first;assert.equal(h.listeners('devicemotion'),0);assert.equal(h.controller.getState().active,false);h.controller.dispose();
 });
-await test('missing sensor data times out honestly and pagehide stops even before visibility changes',async()=>{
- const h=harness();await h.controller.startFromGesture();await h.advance(9000);assert.equal(h.controller.getState().active,false);assert.equal(h.controller.getState().reason,'sensor');assert.equal(h.controller.getState().estimatedSteps,0);
+await test('missing sensor data waits without ending and pagehide suspends acquisition before visibility changes',async()=>{
+ const h=harness();await h.controller.startFromGesture();await h.advance(9000);assert.equal(h.controller.getState().active,true);assert.equal(h.controller.getState().running,true);assert.equal(h.controller.getState().reason,'sensor');assert.equal(h.controller.getState().estimatedSteps,0);
  await h.controller.startFromGesture();await h.walk(3000);h.fire('pagehide');const elapsed=h.controller.getState().activeMs;assert.equal(h.controller.getState().active,false);assert.equal(h.listeners('devicemotion'),0);await h.advance(20000);assert.equal(h.controller.getState().activeMs,elapsed);h.controller.dispose();
 });
 await test('a rejected rate report stays visibly uncredited until an explicit zero-delta close, then restarts cleanly',async()=>{
@@ -43,9 +43,9 @@ await test('late cloud receipts cannot become local rewards after logout',async(
  h.access.mode='local';h.access.ownerId='guest';h.controller.refreshAccess();pending.resolve({ok:true,receipt:{seq:1,totalSteps:h.calls.claim[0].totalSteps}});await drain();assert.equal(h.controller.getState().confirmedSteps,0);assert.equal(h.controller.getState().estimatedSteps,0);assert.equal(h.calls.local.length,0);
  assert.equal((await h.controller.startFromGesture()).ok,true);assert.equal(h.controller.getState().estimatedSteps,0);h.controller.dispose();
 });
-await test('an advanced server sequence is reconciled before a new final cumulative receipt',async()=>{
- let oldSession;const h=harness({remote:true,claim:async body=>{if(body.seq===1)throw Object.assign(Error('sequence already advanced'),{code:'WALKING_SEQUENCE_CONFLICT'});assert.equal(body.seq,4);assert.equal(body.finish,true);return{ok:true,receipt:{seq:4,totalSteps:body.totalSteps}};}});
- await h.controller.startFromGesture();oldSession={id:'session-request-1',token:'private-token',campaignId:'campaign-one',lastSeq:3,totalSteps:4,activeMs:2500,closed:false};h.control.start=()=>({ok:true,walkingSession:oldSession});await h.walk();assert.equal(h.controller.getState().closed,true);assert(h.controller.getState().confirmedSteps>=4);assert.equal(h.calls.claim.at(-1).seq,4);h.controller.dispose();
+await test('an advanced server sequence is reconciled before a continued cumulative receipt',async()=>{
+ let oldSession;const h=harness({remote:true,claim:async body=>{if(body.seq===1)throw Object.assign(Error('sequence already advanced'),{code:'WALKING_SEQUENCE_CONFLICT'});assert.equal(body.seq,4);assert.equal(body.finish,false);return{ok:true,receipt:{seq:4,totalSteps:body.totalSteps}};}});
+ await h.controller.startFromGesture();oldSession={id:'session-request-1',token:'private-token',campaignId:'campaign-one',lastSeq:3,totalSteps:4,activeMs:2500,closed:false};h.control.start=()=>({ok:true,walkingSession:oldSession});await h.walk();assert.equal(h.controller.getState().closed,false);assert.equal(h.controller.getState().running,true);assert(h.controller.getState().confirmedSteps>=4);assert.equal(h.calls.claim.at(-1).seq,4);h.controller.dispose();
 });
 await test('a local save ahead of its pending queue reports the durable cumulative receipt and closes old tracking',async()=>{
  const h=harness();h.bridge.applyLocalWalkingProgress=async()=>({ok:true,totalSteps:9,closed:true});await h.controller.startFromGesture();await h.walk(3200);

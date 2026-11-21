@@ -62,7 +62,8 @@ function castlePoints(castles,coordinates,options={}){
     return[{...castle,lon,lat,x,y,own,ally,selected:castle.id===options.selectedId,home:castle.id===options.homeId,restrictedLabel,disabled:restricted&&options.allowRestrictedSelection!==true,accuracy:source.accuracy||castle.accuracy||'',sourceURL:source.sourceURL||source.sourceUrl||''}];
   });
 }
-function layoutMarkers(points,view,width,height,{distance=27,labels=true}={}){
+function layoutMarkers(points,view,width,height,{distance=27,labels=true,markerSize=20}={}){
+  const symbolSize=Math.max(20,Math.min(80,Number(markerSize)||20));
   const visible=points.map(point=>({...point,sx:(point.x-view.x)/view.width*width,sy:(point.y-view.y)/view.height*height})).filter(p=>p.sx>-30&&p.sx<width+30&&p.sy>-30&&p.sy<height+30);
   // Complete-link groups have a bounded on-screen diameter. A chain of nearby
   // castles must never merge distant provinces into a single nation-wide cluster.
@@ -81,12 +82,12 @@ function layoutMarkers(points,view,width,height,{distance=27,labels=true}={}){
     if(group.length===1)return{...group[0],key:group[0].id,points:group,cluster:false,priority:group[0].selected?100:group[0].home?90:group[0].own?60:group[0].reachable?40:20};
     const ids=group.map(p=>p.id).sort();return{key:'group-'+ids.join('-'),points:group,cluster:true,sx:group.reduce((n,p)=>n+p.sx,0)/group.length,sy:group.reduce((n,p)=>n+p.sy,0)/group.length,own:group.some(p=>p.own),reachable:group.some(p=>p.reachable),priority:30,bounds:pointsBounds(group)};
   }).sort((a,b)=>b.priority-a.priority||a.key.localeCompare(b.key));
-  const occupied=markers.map(m=>({x:m.sx-(m.cluster?18:10),y:m.sy-(m.cluster?18:10),width:m.cluster?36:20,height:m.cluster?36:20}));
+  const occupied=markers.map(m=>{const size=m.cluster?36:symbolSize;return{x:m.sx-size/2,y:m.sy-size/2,width:size,height:size};});
   const overlaps=(a,b)=>a.x<b.x+b.width&&a.x+a.width>b.x&&a.y<b.y+b.height&&a.y+a.height>b.y;
   for(const marker of markers){
     if(marker.cluster||!labels&&!marker.selected&&!marker.home)continue;
     const w=Math.min(196,Math.max(44,Array.from(marker.name||'').length*13+14)),h=25;
-    const choices=[{x:marker.sx+15,y:marker.sy-h/2,width:w,height:h},{x:marker.sx-w-15,y:marker.sy-h/2,width:w,height:h},{x:marker.sx-w/2,y:marker.sy-37,width:w,height:h},{x:marker.sx-w/2,y:marker.sy+19,width:w,height:h}];
+    const half=symbolSize/2,choices=[{x:marker.sx+half+5,y:marker.sy-h/2,width:w,height:h},{x:marker.sx-w-half-5,y:marker.sy-h/2,width:w,height:h},{x:marker.sx-w/2,y:marker.sy-half-h-2,width:w,height:h},{x:marker.sx-w/2,y:marker.sy+half+9,width:w,height:h}];
     let box=choices.find(r=>r.x>8&&r.x+r.width<width-8&&r.y>54&&r.y+r.height<height-66&&!occupied.some(o=>overlaps(r,o)));
     if(!box&&(marker.selected||marker.home))box=choices.find(r=>r.x>3&&r.x+r.width<width-3&&r.y>4&&r.y+r.height<height-4);
     if(box){marker.label={x:box.x-marker.sx,y:box.y-marker.sy,width:box.width,height:box.height};occupied.push(box);}
@@ -101,6 +102,15 @@ function scaleForView(view,pixels){
 }
 const iconPaths={plus:'M12 5v14M5 12h14',minus:'M5 12h14',fit:'M8 3H3v5M16 3h5v5M3 16v5h5M21 16v5h-5',home:'m3 11 9-8 9 8M5 9v12h14V9M10 21v-7h4v7',castle:'M3 20h18M5 20V10l7-5 7 5v10M3 10h18M9 5l3-3 3 3M9 14h6M10 20v-3h4v3',layers:'m3 7 9-5 9 5-9 5-9-5Zm0 5 9 5 9-5M3 17l9 5 9-5',route:'M4 5a2 2 0 1 0 0 .01M20 19a2 2 0 1 0 0 .01M6 5h9a4 4 0 0 1 0 8H9a3 3 0 0 0 0 6h9',label:'M3 5h18M12 5v15M8 20h8',focus:'M3 8V3h5M16 3h5v5M21 16v5h-5M8 21H3v-5M12 8v8M8 12h8',north:'m12 2 7 18-7-4-7 4 7-18Z'};
 const icon=name=>`<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${iconPaths[name]||iconPaths.castle}"/></svg>`;
+function markerPresentation(marker,options={}){
+  let appearance=null;
+  // Presentation is supplied by a trusted local view; public text must be
+  // escaped by that renderer. Campaign maps keep their original symbols.
+  try{if(!marker.cluster&&typeof options.markerAppearance==='function')appearance=options.markerAppearance(marker);}catch(_){}
+  const custom=Boolean(appearance&&typeof appearance.html==='string'&&appearance.html);
+  const label=marker.cluster?`${marker.points.length}城の地域を拡大：${marker.points.map(p=>p.name).join('、')}`:`${marker.name} ${marker.owner||''} ${marker.home?'本拠 ':''}${marker.disabled?(marker.restrictedLabel||'専用拠点')+' ':''}${marker.reachable?'進軍可能 ':''}Lv.${marker.level||1}`;
+  return{custom,html:custom?appearance.html:marker.cluster?`<b>${marker.points.length}</b>`:marker.home?icon('home'):icon('castle'),label:custom&&typeof appearance.label==='string'?appearance.label:label};
+}
 function safeUrl(value){return typeof value==='string'&&/^(?:https?:\/\/|(?:\.\/)?assets\/|data:image\/)/i.test(value)?value:'';}
 function mount(container,options={}){
   if(!container||typeof container.querySelector!=='function')return null;
@@ -173,21 +183,25 @@ function mount(container,options={}){
   }
   function renderMarkers(){
     const active=opts.region==='all'?points:points.filter(p=>p.region===opts.region||p.selected||p.home);
-    const layout=layoutMarkers(active,view,width,height,{labels,distance:baseView.width/view.width>38?0:27}),keys=new Set();
+    const markerSize=Math.max(20,Math.min(80,Number(opts.markerSize)||20));
+    const layout=layoutMarkers(active,view,width,height,{labels,markerSize,distance:baseView.width/view.width>38?0:Math.max(27,markerSize+4)}),keys=new Set();
     for(const marker of layout){
       keys.add(marker.key);let entry=markersByKey.get(marker.key);
       if(!entry){const button=global.document.createElement('button');button.type='button';button.className='sg-map-marker';button.dataset.mapMarker=marker.key;button.innerHTML='<span class="sg-map-marker-symbol"></span><span class="sg-map-marker-label"></span>';markerLayer.appendChild(button);entry={node:button,marker};markersByKey.set(marker.key,entry);}
       entry.marker=marker;const button=entry.node,symbol=button.firstElementChild,label=button.lastElementChild;
       button.style.left=marker.sx+'px';button.style.top=marker.sy+'px';button.style.zIndex=String(marker.priority);
       button.className='sg-map-marker '+(marker.cluster?'is-cluster ':'')+(marker.own?'is-own ':marker.ally?'is-ally ':'is-other ')+(marker.reachable?'is-reachable ':'')+(marker.selected?'is-selected ':'')+(marker.home?'is-home ':'')+(marker.disabled?'is-disabled':'');
-      button.disabled=Boolean(marker.disabled);button.setAttribute('aria-label',marker.cluster?`${marker.points.length}城の地域を拡大：${marker.points.map(p=>p.name).join('、')}`:`${marker.name} ${marker.owner||''} ${marker.home?'本拠 ':''}${marker.disabled?(marker.restrictedLabel||'専用拠点')+' ':''}${marker.reachable?'進軍可能 ':''}Lv.${marker.level||1}`);
+      const presentation=markerPresentation(marker,opts);if(presentation.custom)button.className+=' has-custom-art';
+      button.disabled=Boolean(marker.disabled);button.setAttribute('aria-label',presentation.label);
       if(!marker.cluster)button.setAttribute('aria-pressed',String(marker.selected));else button.removeAttribute('aria-pressed');
-      const content=marker.cluster?`<b>${marker.points.length}</b>`:marker.home?icon('home'):icon('castle');if(symbol.innerHTML!==content)symbol.innerHTML=content;
+      // Artwork loading adds attributes and a background to the live DOM.
+      // Compare the source markup so panning/refreshing does not restart it.
+      if(entry.symbolContent!==presentation.html){symbol.innerHTML=presentation.html;entry.symbolContent=presentation.html;}
       label.hidden=!marker.label;
       if(marker.label){label.textContent=marker.name;label.style.left=`calc(50% + ${marker.label.x}px)`;label.style.top=`calc(50% + ${marker.label.y}px)`;}
     }
     for(const [key,entry]of markersByKey)if(!keys.has(key)){if(global.document.activeElement===entry.node)surface.focus({preventScroll:true});entry.node.remove();markersByKey.delete(key);}
-    if(tooltipKey&&!markersByKey.has(tooltipKey))hideTooltip();
+    if(tooltipKey){const entry=markersByKey.get(tooltipKey);if(entry)showTooltip(entry.marker);else hideTooltip();}
   }
   function render(){
     if(destroyed)return;frame=0;svg.setAttribute('viewBox',`${view.x} ${view.y} ${view.width} ${view.height}`);
@@ -273,7 +287,7 @@ function mount(container,options={}){
   if(stored&&stored.region!==opts.region)lastView=null;
   resize();return controller;
 }
-const api={mount,project,unproject,projectBounds,geometryPath,fitBounds,zoomAt,castlePoints,layoutMarkers,scaleForView};
+const api={mount,project,unproject,projectBounds,geometryPath,fitBounds,zoomAt,castlePoints,layoutMarkers,markerPresentation,scaleForView};
 if(typeof module!=='undefined'&&module.exports)module.exports=api;
 global.SengokuWorldMap=api;
 })(typeof window!=='undefined'?window:globalThis);

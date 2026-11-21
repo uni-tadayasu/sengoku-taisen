@@ -73,7 +73,14 @@ const attack=async (actor,body,expected=200)=>(await api('/field/attack',post(ac
 const diplomacyBody=(actor,target,revision,action,requestId=crypto.randomUUID())=>({targetPlayerId:target.user.id,deviceId:actor.deviceId,expectedRevision:revision,requestId,action});
 const diplomacy=async (actor,body,expected=200)=>(await api('/field/diplomacy',post(actor.token,body,expected))).data;
 const me=async p=>(await api('/field/me?deviceId='+p.deviceId,{token:p.token})).data;
+const publicBase=async p=>(await api('/field?limit=100')).data.players.find(row=>row.playerId===p.user.id);
 const dbSave=p=>JSON.parse(database.prepare('SELECT save_json FROM player_saves WHERE user_id=?').get(p.user.id).save_json);
+async function developBase(player,keepLevel,castleLevel) {
+  await lease(player.token,player.deviceId);
+  const prior=await snapshot(player),save=prior.save;
+  save.state.buildings.keep=keepLevel;save.state.castles[save.state.home].level=castleLevel;
+  return (await api('/sync',write(player.token,player.deviceId,prior.revision,save))).data;
+}
 const battles=()=>Number(database.prepare('SELECT COUNT(*) AS n FROM field_battles').get().n);
 try {
   const a=await player('共有領主A'),b=await player('共有領主B'),c=await player('共有領主C'),admin=await session('共有地図の運営');admin.deviceId='operator-device';
@@ -88,6 +95,7 @@ try {
   assert.equal(all.players.find(p=>p.playerId===admin.user.id).homeCastleId,'edo');assert.equal(all.players.find(p=>p.playerId===admin.user.id).attackable,false);
   assert(all.players.find(p=>p.playerId===a.user.id).self);assert(all.players.find(p=>p.playerId===a.user.id).online);
   assert.equal(all.players.find(p=>p.playerId===b.user.id).online,false);assert(all.players.find(p=>p.playerId===b.user.id).attackable);
+  assert(all.players.every(p=>p.keepLevel===base.state.buildings.keep),'initial uploaded bases publish their completed keep level');
   const publicText=JSON.stringify(publicList);for(const secret of ['token','writer_device','deviceName','resources','save_json','request_hash','commit_token'])assert(!publicText.includes(secret));
   assert((await me(a)).attack.ready);assert.equal((await me(missing)).self,null);assert.equal((await me(missing)).attack.ready,false);
   await api('/field?limit=101',{expected:400});await api('/field/me',{expected:401});
@@ -152,7 +160,45 @@ try {
   assert.deepEqual(dbSave(x),beforeX);assert.deepEqual(dbSave(y),beforeY);assert.equal(battles(),beforeRollback);assert.equal(database.prepare('SELECT COUNT(*) AS n FROM field_requests WHERE actor_id=? AND request_id=?').get(x.user.id,rollbackRequest.requestId).n,0);
   const duplicateRetries=await Promise.all([attack(x,rollbackRequest),attack(x,rollbackRequest)]);
   assert.deepEqual(duplicateRetries.map(r=>r.idempotent).sort(),[false,true]);assert.deepEqual(duplicateRetries[0].battle,duplicateRetries[1].battle);assert.equal(battles(),beforeRollback+1);
-  const large=672*60000+1;tick(large-(await getClock()).elapsedMs);await upload(a);await upload(b);
+  // Public artwork follows facility development, independently of castle growth.
+  const keeper=await player('天守と城郭を区別する領主'),staffKeeper=await player('共同天守を表示するスタッフ');
+  await developBase(keeper,17,6);await developBase(staffKeeper,23,12);
+  const keeperPublic=await publicBase(keeper),keeperSelf=(await me(keeper)).self;
+  for(const projection of [keeperPublic,keeperSelf]){assert.equal(projection.keepLevel,17);assert.equal(projection.level,6);}
+  const validKeeper=dbSave(keeper);
+  for(const [keep,expected] of [[undefined,1],[null,1],['25',1],[-3,1],[100,32],[12.8,12]]){
+    const legacy=structuredClone(validKeeper);if(keep===undefined)delete legacy.state.buildings.keep;else legacy.state.buildings.keep=keep;
+    database.prepare('UPDATE player_saves SET save_json=? WHERE user_id=?').run(JSON.stringify(legacy),keeper.user.id);
+    const projected=await publicBase(keeper);assert.equal(projected.keepLevel,expected,'legacy keep values have a bounded numeric projection');assert.equal(projected.level,6);
+  }
+  database.prepare('UPDATE player_saves SET save_json=? WHERE user_id=?').run(JSON.stringify(validKeeper),keeper.user.id);
+  await api('/admin/staff',post(admin.token,{targetPlayerId:staffKeeper.user.id,action:'appoint',requestId:crypto.randomUUID()}));
+  const staffSnapshot=await snapshot(staffKeeper);assert.equal(staffSnapshot.save.state.buildings.keep,23,'the staff save retains individual development');
+  const sharedBase=JSON.parse(database.prepare("SELECT state_json FROM staff_base WHERE id='sunpu'").get().state_json);
+  sharedBase.castleLevel=41;sharedBase.initial.castleLevel=41;sharedBase.buildings.keep=18;sharedBase.initial.buildings.keep=18;
+  database.prepare("UPDATE staff_base SET state_json=?,revision=revision+1 WHERE id='sunpu'").run(JSON.stringify(sharedBase));
+  for(const projection of [await publicBase(staffKeeper),(await me(staffKeeper)).self]){
+    assert.equal(projection.homeCastleId,'sunpu');assert.equal(projection.keepLevel,18,'staff use the shared keep, not private development');assert.equal(projection.level,41);
+  }
+  const incompleteShared=structuredClone(sharedBase);delete incompleteShared.buildings.keep;
+  database.prepare("UPDATE staff_base SET state_json=? WHERE id='sunpu'").run(JSON.stringify(incompleteShared));
+  assert.equal((await publicBase(staffKeeper)).keepLevel,1,'a missing shared keep never falls back to private staff development');
+  database.prepare("UPDATE staff_base SET state_json=? WHERE id='sunpu'").run(JSON.stringify(sharedBase));
+  await developBase(admin,32,64);
+  const operatorPublic=await publicBase(admin),operatorSelf=(await me(admin)).self;
+  for(const projection of [operatorPublic,operatorSelf]){assert.equal(projection.homeCastleId,'edo');assert.equal(projection.keepLevel,32);assert.equal(projection.level,64);}
+  database.prepare("UPDATE settings SET value=? WHERE key='adminUserId'").run(staffKeeper.user.id);
+  const promoted=await publicBase(staffKeeper);assert.equal(promoted.isAdmin,true);assert.equal(promoted.isStaff,false);assert.equal(promoted.keepLevel,23,'operator priority uses the personal keep even when a staff membership row exists');
+  database.prepare("UPDATE settings SET value=? WHERE key='adminUserId'").run(admin.user.id);
+  await api('/admin/staff',post(admin.token,{targetPlayerId:staffKeeper.user.id,action:'dismiss',requestId:crypto.randomUUID()}));
+  assert.equal((await publicBase(staffKeeper)).keepLevel,23,'dismissal immediately returns the public keep to individual development');
+
+  const large=672*60000+1;tick(large-(await getClock()).elapsedMs);
+  const keeperBeforeSettlement=JSON.stringify(dbSave(keeper));
+  assert.equal((await publicBase(keeper)).keepLevel,17,'cycle-pending public summaries preserve facility development');
+  assert.equal(JSON.stringify(dbSave(keeper)),keeperBeforeSettlement,'public keep projection does not rewrite a player save');
+  await upload(a);await upload(b);await upload(keeper);
+  assert.equal((await publicBase(keeper)).keepLevel,17);assert.equal((await me(keeper)).self.keepLevel,17,'settlement retains the same completed keep');
   const expired=(await me(a)).relationships;assert(!expired.some(r=>r.targetPlayerId===b.user.id),'alliances expire using monotonic elapsed time across the calendar loop');
   assert.equal((await getClock()).calendar.cycle,2);assert.equal((await me(a)).attack.remainingCooldownMs,0);
   const shared=await getClock();await api('/world-clock',{method:'PATCH',token:admin.token,body:{running:false,revision:shared.revision}});
@@ -165,6 +211,6 @@ try {
   const publicRecovered=(await api('/field',{token:a.token})).data.players.find(p=>p.playerId===admin.user.id);
   assert.equal(recovered.home,'okazaki');assert.equal(publicRecovered.homeCastleId,recovered.home,'revoked-operator map location matches the same owned-castle migration as sync');
   database.prepare("UPDATE settings SET value=? WHERE key='adminUserId'").run(admin.user.id);
-  console.log(JSON.stringify({ok:true,calls,battles:battles(),checks:['real co-located bases and public privacy','operator always based at protected Edo','active writer and revision checks','server-owned outcome and bounded losses/loot','atomic updates of both saves','replay idempotence and payload reuse rejection','defender stale-save rejection','common-clock cooldown and protection','two-sided consent, rejection, cancellation and expiry','attack-versus-consent race','competing raids on one defender','transaction rollback and safe retry','current snapshot on delayed replay','looping calendar settles territory and clears prior diplomacy','global pause blocks attacks','revoked-role public base agrees with sync migration']},null,2));
+  console.log(JSON.stringify({ok:true,calls,battles:battles(),checks:['real co-located bases and public privacy','operator always based at protected Edo','independent public/self keep and castle levels','safe keep fallback and 1–32 bounds','shared staff keep, role changes and operator priority','keep development preserved before and after cycle settlement','active writer and revision checks','server-owned outcome and bounded losses/loot','atomic updates of both saves','replay idempotence and payload reuse rejection','defender stale-save rejection','common-clock cooldown and protection','two-sided consent, rejection, cancellation and expiry','attack-versus-consent race','competing raids on one defender','transaction rollback and safe retry','current snapshot on delayed replay','looping calendar settles territory and clears prior diplomacy','global pause blocks attacks','revoked-role public base agrees with sync migration']},null,2));
 }finally{Date.now=originalNow;database.close();}
 
