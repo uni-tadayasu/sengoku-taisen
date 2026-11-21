@@ -63,7 +63,7 @@
   }
   function status(message) { if (feedback && feedback.textContent !== message) feedback.textContent = message; }
   function desktopActive() {
-    return root.classList.contains('sengoku-desktop-fit') && !(Number(global.navigator?.maxTouchPoints) > 0) && !global.matchMedia?.('(any-pointer: coarse)').matches;
+    return root.classList.contains('sengoku-desktop-fit') && !root.classList.contains('sengoku-touch-locked') && !(Number(global.navigator?.maxTouchPoints) > 0) && !global.matchMedia?.('(any-pointer: coarse)').matches;
   }
   function blocked() { return doc.body.classList.contains('at-title') || doc.body.classList.contains('is-loading') || Boolean(doc.querySelector('dialog[open]')); }
   function viewport() {
@@ -98,7 +98,14 @@
     if (!present) { root.style.removeProperty(cssName); return; }
     style(root, cssName, preference(key, fallback, container).toFixed(2) + suffix);
   }
+  function clearAppliedPreferences() {
+    // Retain personal PC preferences on disk, but never apply them to a phone
+    // or tablet after an input-mode change or restoration from the page cache.
+    for (const key of KEYS) attr(root, 'data-layout-' + key.toLowerCase(), null);
+    for (const name of ['sidebar-width', 'header-height', 'town-left', 'town-right', 'map-left', 'map-right', 'field-left', 'field-right', 'town-height', 'map-height', 'field-height']) root.style.removeProperty('--layout-' + name);
+  }
   function applyPreferences() {
+    if (!desktopActive()) { clearAppliedPreferences(); return; }
     readHeaderMinimum();
     applyPreference('sidebar', '--layout-sidebar-width', 196);
     applyPreference('header', '--layout-header-height', minimumHeader);
@@ -192,7 +199,7 @@
     const active = desktopActive();
     if (!active && drag) finishDrag(false);
     if (!active) editing = false;
-    if (active) applyPreferences();
+    if (active) applyPreferences(); else clearAppliedPreferences();
     if (desktopWasActive !== active) { desktopWasActive = active; headerWidth = 0; }
     attr(root, 'data-layout-editing', editing && active ? 'true' : null);
     button.hidden = !active;
@@ -204,6 +211,7 @@
   }
   function schedule() { if (initialized && !pending) pending = raf(refresh); }
   function setValue(key, value, descriptor) {
+    if (!desktopActive()) return;
     const bounds = descriptor?.bounds || limits(key, descriptor?.container);
     prefs[key] = Math.round(clamp(value, bounds.min, bounds.max) * 100) / 100;
     applyPreferences(); global.SengokuDesktopFit?.refresh(); schedule();
@@ -237,7 +245,7 @@
   function resetOne(key) { delete prefs[key]; applyPreferences(); savePreferences(); global.SengokuDesktopFit?.refresh(); schedule(); }
   function keyHandle(event) {
     const handle = event.target.closest?.('[data-layout-handle]'), descriptor = handle && descriptors.get(handle.dataset.layoutHandle);
-    if (!descriptor || blocked()) return;
+    if (!descriptor || blocked() || !desktopActive()) return;
     const negative = descriptor.orientation === 'vertical' ? 'ArrowLeft' : 'ArrowUp', positive = descriptor.orientation === 'vertical' ? 'ArrowRight' : 'ArrowDown';
     const step = descriptor.key.endsWith('Ratio') ? (event.shiftKey ? 5 : 2) : (event.shiftKey ? 40 : 10);
     let next;
@@ -256,6 +264,7 @@
   }
   function close() { finishDrag(true); editing = false; schedule(); button?.focus({ preventScroll: true }); }
   function reset() {
+    if (!desktopActive()) return false;
     finishDrag(false); prefs = {}; applyPreferences(); savePreferences();
     global.SengokuDesktopFit?.refresh(); schedule();
     status(storageFailed ? '初期配置に戻しました。保存はできませんでした。' : '初期配置に戻しました。');
@@ -276,7 +285,8 @@
     listen(button, 'click', () => editing ? close() : open());
     listen(toolbar.querySelector('[data-layout-reset]'), 'click', reset); listen(toolbar.querySelector('[data-layout-done]'), 'click', close);
     listen(overlay, 'pointerdown', startDrag); listen(overlay, 'pointermove', moveDrag); listen(overlay, 'pointerup', endDrag); listen(overlay, 'pointercancel', cancelDrag); listen(overlay, 'lostpointercapture', cancelDrag);
-    listen(overlay, 'keydown', keyHandle); listen(overlay, 'dblclick', event => { const handle = event.target.closest?.('[data-layout-handle]'); if (handle) resetOne(handle.dataset.layoutHandle); });
+    listen(overlay, 'keydown', keyHandle); listen(overlay, 'dblclick', event => { const handle = event.target.closest?.('[data-layout-handle]'); if (handle && desktopActive()) resetOne(handle.dataset.layoutHandle); });
+    listen(global.matchMedia?.('(any-pointer: coarse)'), 'change', schedule);
     listen(global, 'blur', () => finishDrag(false));
     listen(global, 'resize', () => { finishDrag(false); headerWidth = 0; schedule(); });
     listen(global.visualViewport, 'resize', () => { finishDrag(false); headerWidth = 0; schedule(); });
@@ -300,6 +310,7 @@
     for (const observer of dialogObservers.values()) observer.disconnect(); dialogObservers.clear();
     button?.remove(); overlay?.remove(); toolbar?.remove();
     attr(root, 'data-layout-editing', null); attr(root, 'data-layout-dragging', null);
+    clearAppliedPreferences();
   }
   global.SengokuLayout = { open, close, reset, refresh: schedule, destroy };
   if (doc.readyState === 'loading') doc.addEventListener('DOMContentLoaded', init, { once: true }); else init();

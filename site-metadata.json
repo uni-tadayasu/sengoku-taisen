@@ -4,8 +4,8 @@
   "name": "戦国大戦",
   "alternateName": "SENGOKU TAISEN",
   "publisher": "KASAI SOLUTIONS",
-  "release": "3.8.1-20261121",
-  "version": "3.8.1",
+  "release": "3.9.0-20261121",
+  "version": "3.9.0",
   "dateModified": "2026-11-21",
   "language": "ja",
   "locale": "ja_JP",
@@ -46,7 +46,7 @@
     "recovery": {
       "path": "/guide/data-recovery/",
       "title": "戦国大戦のデータ復元・引き継ぎ｜機種変更とドメイン移行",
-      "description": "KASAI SOLUTIONSの戦国大戦で、機種変更・URL変更後に続きを遊ぶための復元ガイド。接続コード、領主データとセーブ、統合バックアップ、運営登録キーによる本人確認とクラウド保存の復旧手順を案内します。",
+      "description": "KASAI SOLUTIONSの戦国大戦で、機種変更・URL変更後に続きを遊ぶための復元ガイド。接続コード、領主データとセーブ、統合バックアップ、運営本人向けの復旧表示とクラウド保存の確認手順を案内します。",
       "dateModified": "2026-11-21"
     },
     "about": {

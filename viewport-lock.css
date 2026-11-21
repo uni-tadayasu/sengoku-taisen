@@ -1,0 +1,20 @@
+/* Browser page zoom stays fixed on phones/tablets. Map zoom changes only its
+   camera; native single-finger scrolling and responsive reflow remain intact. */
+html.sengoku-touch-locked,
+html.sengoku-touch-locked body,
+html.sengoku-touch-locked body * {
+  touch-action: pan-x pan-y;
+}
+html.sengoku-touch-locked {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+html.sengoku-touch-locked :is(input, select, textarea) {
+  font-size: max(16px, 1rem) !important;
+}
+html.sengoku-touch-locked textarea { resize: none !important; }
+html.sengoku-touch-locked .sg-map-surface,
+html.sengoku-touch-locked .sg-map-surface * { touch-action: none; }
+html.sengoku-touch-locked :is(.layout-editor-button, #layout-resize-overlay, #layout-resize-toolbar) {
+  display: none !important;
+}

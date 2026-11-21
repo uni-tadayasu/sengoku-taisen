@@ -18,7 +18,8 @@ html.sengoku-desktop-fit[data-layout-fieldheight] #main .sengoku-field { --map-h
 
 .layout-editor-button,
 html:not(.sengoku-desktop-fit) #app .sidebar-bottom .layout-editor-button { display: none !important; }
-html.sengoku-desktop-fit #app .sidebar-bottom .layout-editor-button { display: flex !important; }
+html.sengoku-desktop-fit:not(.sengoku-touch-locked) #app .sidebar-bottom .layout-editor-button:not([hidden]) { display: flex !important; }
+.layout-editor-button[hidden], html.sengoku-touch-locked #app .sidebar-bottom .layout-editor-button { display: none !important; }
 .layout-editor-button[aria-pressed="true"] { color: #ffe1a3; border-color: #d6b66c; background: #79603942; }
 .layout-editor-button .icon { flex: none; width: 22px; height: 22px; }
 

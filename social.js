@@ -4,7 +4,7 @@
 const IDKEY='sengoku-online-identity-v1', CLAIMKEY='sengoku-mail-claims-v1';
 const DEFAULT='戦国大戦へようこそ。一城を育て、武将とともに、あなたの天下を描いてください。';
 const RES={gold:'金',rice:'兵糧',wood:'木材',stone:'石材',magatama:'勾玉'};
-const s={identity:null,user:null,friends:[],requests:[],unreadMail:0,unreadLetters:0,config:{announcement:DEFAULT,adminClaimed:true,onlineCount:0},configLoaded:false,connected:false,tab:'world',friendId:null,chats:new Map(),guilds:[],guild:null,members:[],mail:[],players:[],adminPlayers:[],adminSection:'chat',staff:[],staffCandidates:[],staffLoaded:false,staffQuery:'',staffPage:1,staffCandidatePage:1,openedMail:null,open:false,meLoading:false,error:'',paused:false,pending:{},confirm:null,onlinePlayers:[],onlineTotal:0,onlineCursor:null,onlineLoaded:false,onlineError:'',pairCode:null,syncStatus:null};
+const s={identity:null,user:null,friends:[],requests:[],unreadMail:0,unreadLetters:0,config:{announcement:DEFAULT,adminClaimed:true,adminRecoveryAvailable:false,onlineCount:0},configLoaded:false,connected:false,tab:'world',friendId:null,chats:new Map(),guilds:[],guild:null,members:[],mail:[],players:[],adminPlayers:[],adminSection:'chat',staff:[],staffCandidates:[],staffLoaded:false,staffQuery:'',staffPage:1,staffCandidatePage:1,openedMail:null,open:false,meLoading:false,error:'',paused:false,pending:{},confirm:null,onlinePlayers:[],onlineTotal:0,onlineCursor:null,onlineLoaded:false,onlineError:'',pairCode:null,syncStatus:null};
 let dialog,body,launcher,announcement,configTimer=null,pollTimer=null,configBusy=false,pollBusy=false,disposed=false,authEpoch=0,privilegeEpoch=0,onlineTimer=null,onlineEpoch=0,onlineBusy=false,syncUnsubscribe=null,recentLoginTimer=null,recentLoginGeneration=0,recentLoginBusy=false,avatarEditor=null,avatarGeneration=0,avatarMutationEpoch=0;
 s.recentLogins={players:[],total:0,cursor:null,serverNow:null,windowStart:null,loaded:false,error:''};
 let guildEpoch=0,guildListGeneration=0,guildListTimer=null,treasuryBusy=false,rankingsBusy=false;
@@ -37,9 +37,15 @@ function pauseRecentLogins(){recentLoginGeneration++;recentLoginBusy=false;clear
 function clearRecentLogins(){pauseRecentLogins();s.recentLogins={players:[],total:0,cursor:null,serverNow:null,windowStart:null,loaded:false,error:''};for(const selector of ['#social-recent-login-results','#social-recent-login-count','#social-recent-login-window','#social-recent-login-status']){const node=$(selector);if(node)node.textContent='';}}
 function pauseGuildLists(){guildListGeneration++;treasuryBusy=rankingsBusy=false;clearTimeout(guildListTimer);guildListTimer=null;}
 function clearGuildData({resetSection=true}={}){guildEpoch++;pauseGuildLists();s.guild=null;s.members=[];s.guildTreasury={guildId:null,balance:null,ledger:[],cursor:null,loaded:false,error:'',serverNow:null};if(resetSection)s.guildSection='chat';for(const key of s.chats.keys())if(key.startsWith('guild:'))s.chats.delete(key);for(const selector of ['#social-guild-ledger','#social-guild-balances','#social-guild-members']){const node=$(selector);if(node)node.textContent='';}if(s.confirm?.scope==='guild')clearConfirm();}
-function clearAdminData(){privilegeEpoch++;destroyAvatarEditor();clearRecentLogins();for(const key of s.chats.keys())if(key.startsWith('admin:'))s.chats.delete(key);s.adminPlayers=[];s.staff=[];s.staffCandidates=[];s.staffLoaded=false;s.staffQuery='';s.staffPage=1;s.staffCandidatePage=1;s.adminSection='chat';if(s.confirm)clearConfirm();}
+function clearAdminData(){privilegeEpoch++;refreshOperatorRecoveryAccess();destroyAvatarEditor();clearRecentLogins();for(const key of s.chats.keys())if(key.startsWith('admin:'))s.chats.delete(key);s.adminPlayers=[];s.staff=[];s.staffCandidates=[];s.staffLoaded=false;s.staffQuery='';s.staffPage=1;s.staffCandidatePage=1;s.adminSection='chat';if(s.confirm)clearConfirm();}
 function clearPrivate(){clearAdminData();clearGuildData();s.mail=[];s.openedMail=null;s.guilds=[];s.players=[];s.friendId=null;s.chats.clear();s.confirm=null;s.pairCode=null;}
-function connected(value){s.connected=value;header();}
+function canShowOperatorRecovery(){return s.configLoaded&&s.config.adminClaimed===true&&s.config.adminRecoveryAvailable===true&&s.connected===true&&!recoveryHeld&&Boolean(s.identity)&&s.user?.isAdmin===true&&String(s.user.id)===String(s.identity.id);}
+function refreshOperatorRecoveryAccess(){
+ const allowed=canShowOperatorRecovery(),host=$('[data-operator-recovery]');
+ if(!allowed){const input=host?.querySelector('[name=key]');if(input)input.value='';if(host)host.textContent='';if(!s.identity||s.user?.isAdmin!==true||String(s.user.id)!==String(s.identity.id)||recoveryHeld)adminRecoveryRequestId=null;}
+ else if(host&&!host.querySelector('#social-admin-recovery-form'))host.innerHTML=recoveryTools().operatorRecoveryForm();
+}
+function connected(value){s.connected=value;refreshOperatorRecoveryAccess();header();}
 async function api(route,{method='GET',data,auth=true,token,background=false,keepalive=false,identityEpoch}={}){
  const origin=base();if(!origin)throw Error('通信機能は現在利用できません。ゲーム本体は引き続き遊べます。');
  const loadingId=!background&&method!=='GET'?global.SengokuLoading?.begin('通信を届けています…'):null;
@@ -265,7 +271,7 @@ function startCloud(){
  if(!global.SengokuCloudSync){s.error='同期機能を読み込めませんでした。画面を再読み込みしてください。';return;}
  global.SengokuCloudSync.start({id:identity.id,request:(route,options)=>api(route,{...options,token:identity.token,identityEpoch:epoch,background:true}),onUser:user=>{if(epoch===authEpoch)acceptUser(user,{fromSync:true});}});
 }
-function installIdentity(identity,user){global.SengokuCloudSync?.stop?.({pending:true});authEpoch++;recoveryEpoch++;recovery=null;recoveryHeld=false;clearPrivate();s.identity=identity;s.user=user?{...user,isAdmin:false,isStaff:false}:null;s.friends=[];s.requests=[];s.unreadMail=0;s.unreadLetters=0;global.SengokuLetters?.refreshIdentity?.();s.error='';if(s.tab==='recent-logins'){s.tab='profile';render();}applyRoleAccess();startCloud();}
+function installIdentity(identity,user){global.SengokuCloudSync?.stop?.({pending:true});authEpoch++;recoveryEpoch++;recovery=null;recoveryHeld=false;clearPrivate();s.identity=identity;s.user=user?{...user,isAdmin:false,isStaff:false}:null;s.friends=[];s.requests=[];s.unreadMail=0;s.unreadLetters=0;global.SengokuLetters?.refreshIdentity?.();s.error='';refreshOperatorRecoveryAccess();if(s.tab==='recent-logins'){s.tab='profile';render();}applyRoleAccess();startCloud();}
 async function loadOnline({more=false}={}){
  if(disposed||document.hidden||!s.open||s.tab!=='online'||onlineBusy)return;onlineBusy=true;clearTimeout(onlineTimer);const epoch=++onlineEpoch;
  try{const cursor=more?s.onlineCursor:null,r=await api('/online'+(cursor?'?cursor='+encodeURIComponent(cursor):''),{auth:false,background:true});if(epoch!==onlineEpoch||disposed)return;const incoming=Array.isArray(r.players)?r.players:[];s.onlinePlayers=more?[...new Map([...s.onlinePlayers,...incoming].map(p=>[String(p.id),p])).values()]:incoming;s.onlineTotal=Number(r.total)||0;s.onlineCursor=r.nextCursor||null;s.onlineLoaded=true;s.onlineError='';s.config.onlineCount=s.onlineTotal;header();if(s.open&&s.tab==='online'&&!s.confirm)render();}
@@ -328,8 +334,8 @@ function clearConfirm(){const focus=s.confirm?.returnFocus;s.confirm=null;if(bod
 async function loadMe({token,commit=true}={}){const epoch=authEpoch,roleEpoch=privilegeEpoch,r=await api('/me',{token});if(commit&&epoch===authEpoch&&roleEpoch===privilegeEpoch&&s.identity){acceptUser(r.user);s.friends=r.friends||[];s.requests=r.requests||[];s.unreadMail=Number(r.unreadMail)||0;header();}return r;}
 async function loadConfig(){
  if(configBusy||disposed||document.hidden)return;configBusy=true;clearTimeout(configTimer);
- try{const r=await api('/config',{auth:false});s.config={announcement:typeof r.announcement==='string'?r.announcement:DEFAULT,adminClaimed:Boolean(r.adminClaimed),onlineCount:Number(r.onlineCount)||0};s.configLoaded=true;refreshAchievementView();header();if(s.config.adminClaimed){const claim=$('#social-admin-claim');if(claim){const key=claim.querySelector('input');if(key)key.value='';claim.remove();}}}
- catch(_){connected(false);}finally{configBusy=false;if(!disposed&&!document.hidden)configTimer=setTimeout(loadConfig,30000);}
+ try{const r=await api('/config',{auth:false});s.config={announcement:typeof r.announcement==='string'?r.announcement:DEFAULT,adminClaimed:r.adminClaimed!==false,adminRecoveryAvailable:r.adminRecoveryAvailable===true,onlineCount:Number(r.onlineCount)||0};s.configLoaded=true;refreshOperatorRecoveryAccess();refreshAchievementView();header();if(s.config.adminClaimed){const claim=$('#social-admin-claim');if(claim){const key=claim.querySelector('input');if(key)key.value='';claim.remove();}}}
+ catch(_){s.config.adminRecoveryAvailable=false;connected(false);}finally{configBusy=false;if(!disposed&&!document.hidden)configTimer=setTimeout(loadConfig,30000);}
 }
 async function loadChat(){
  const c=channel();if(!c)return;const owner=s.identity?.id,epoch=privilegeEpoch,membershipEpoch=guildEpoch,key=chatKey(c),cache=s.chats.get(key)||{messages:[],after:0,rendered:false},params=new URLSearchParams({channel:c.channel});if(cache.after>0)params.set('after',String(cache.after));if(c.target)params.set('target',c.target);
@@ -430,11 +436,12 @@ async function submit(event){
   }
   if(form.id==='social-device-name-form'){global.SengokuCloudSync?.setDeviceName?.(String(data.get('name')||''));toast('この端末の名前を保存しました。');}
   if(form.id==='social-admin-recovery-form'){
-   const epoch=authEpoch,selection=recoveryEpoch;let key=String(data.get('key')||'');const input=form.querySelector('[name=key]');if(input)input.value='';data.delete?.('key');
+   const epoch=authEpoch,selection=recoveryEpoch,roleEpoch=privilegeEpoch;let key=String(data.get('key')||'');const input=form.querySelector('[name=key]');if(input)input.value='';data.delete?.('key');
+   if(!canShowOperatorRecovery()){key='';refreshOperatorRecoveryAccess();throw Error('この端末では運営の復旧操作を利用できません。');}
    if(!key||key.length>256)throw Error('初回に使用した運営登録キーを入力してください。');
    const requestId=adminRecoveryRequestId||(adminRecoveryRequestId=crypto.randomUUID()),payload={key,requestId,deviceName:global.SengokuCloudSync?.getDevice?.().name||'運営を復旧する端末'};key='';
    const pending=api('/admin/recover',{auth:false,method:'POST',data:payload});payload.key='';const r=await pending;
-   if(epoch!==authEpoch||selection!==recoveryEpoch)throw staleIdentity();const identity={id:r.user?.id,token:r.token};if(!validIdentity(identity)||r.recovered!==true)throw Error('元の運営の領主情報を確認できませんでした。');
+   if(epoch!==authEpoch||selection!==recoveryEpoch||roleEpoch!==privilegeEpoch||!canShowOperatorRecovery())throw staleIdentity();const identity={id:r.user?.id,token:r.token};if(!validIdentity(identity)||r.recovered!==true)throw Error('元の運営の領主情報を確認できませんでした。');
    adminRecoveryRequestId=null;form.reset();await verifyRecovery({identity,save:null,kind:'admin-key'});
   }
   if(form.id==='social-device-link-form'){
@@ -478,7 +485,7 @@ function recoveryView(){
   pending=`<section class="domain-recovery-card domain-recovery-pending"><div class="domain-recovery-status-row"><span class="domain-recovery-step">${r.checking?'領主と保存を確認中':verified?'領主の認証を確認しました':'引き継ぎの確認を再開'}</span>${verified?role(r.user):''}</div><h3>${esc(verified?r.user.name:'選択した領主')}</h3>${verified&&r.kind==='admin-key'?'<p class="domain-recovery-status">元の運営の登録を確認しました。使うゲーム進行を選ぶと、元の領主として接続が完了します。</p>':''}${verified?`<p>領主ID <code>${esc(r.user.id)}</code></p>`:''}${r.error?`<p class="social-feedback is-error">${esc(r.error)}</p>`:''}${r.checking?'<p>サーバーにある領主と進行を確認しています。現在の保存は変更しません。</p>':!verified?'<p>この画面を閉じず、通信を確認してから続けてください。</p><button class="social-button primary" data-social="recovery-retry">認証と保存を再確認</button>':cloud?`<p>サーバーに保存された進行があります。この進行を読み込み、同じ領主として接続します。${r.save?'選んだファイルの進行は自動で上書き送信しません。':''}</p><p class="social-small">最終保存 ${esc(date(r.snapshot.updatedAt)||'日時未記録')}</p><button class="social-button primary" data-social="recovery-connect" data-id="cloud">サーバーの進行で接続</button>`:r.prepared?`<p>サーバーにはまだゲームの進行が保存されていません。選んだゲームセーブを読み込み、この領主の進行として同期します。</p>${helper.summaryHtml(r.prepared.summary)}<button class="social-button primary" data-social="recovery-connect" data-id="file">このセーブを引き継ぐ</button>`:`<p><strong>領主の登録は確認できましたが、サーバーにゲームの進行は未保存です。</strong>以前の城・武将・資源を戻すには、以前の端末から書き出したゲームセーブも必要です。</p><button class="social-button primary" data-social="recovery-files">ゲームセーブを追加する</button>${localRecoveryChoice(r.user)}`}<div class="social-right"><button class="social-text-button" data-social="recovery-clear" ${r.checking?'disabled':''}>選んだ引き継ぎを取り消す</button></div></section>`;
  }
  const interrupted=recoveryHeld?`<div class="social-notice"><strong>前回の引き継ぎの保存が完了していません。</strong><br>自動同期を停止しています。サーバーの保存を確認し、ゲームセーブを選び直すか、この端末の進行を確認してから接続してください。${!recovery?'<div class="social-actions"><button class="social-button primary" data-social="recovery-retry">認証と保存を再確認</button></div>':''}</div>`:'';
- return interrupted+helper.guidance({adminRegistered:s.configLoaded&&s.config.adminClaimed,hasIdentity:Boolean(s.identity)&&!recoveryHeld})+pending+linkForm();
+ return interrupted+helper.guidance({adminRegistered:canShowOperatorRecovery(),hasIdentity:Boolean(s.identity)&&!recoveryHeld,operatorRecoveryAllowed:canShowOperatorRecovery()})+pending+linkForm();
 }
 function recoveryGuard(stage,epoch){if(epoch!==authEpoch||recovery!==stage)throw staleIdentity();}
 function prepareRecovery(save,user,staffBase=null){

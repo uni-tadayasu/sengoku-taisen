@@ -17,3 +17,54 @@
 /* 全武将8ランク / 城郭・施設32段階の絵巻 */
 .variant-tabs{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:7px;margin:0 0 23px}.variant-tabs button{border:1px solid #ffffff18;background:#ffffff03;border-radius:4px;padding:10px 4px;text-align:center}.variant-tabs button b{display:block;font-family:Georgia,serif;font-size:19px;line-height:1.25}.variant-tabs button small{display:block;color:var(--muted);font-size:9px;margin-top:5px}.variant-tabs button.variant-owned{border-color:#96b79f44}.variant-tabs button.variant-owned small{color:#b4ccb7}.variant-tabs button.active{border-color:#ddc18a;background:#c8aa7520;box-shadow:inset 0 -2px #c8aa75}.owned-tag.unowned-variant{background:#152025c9;color:#9aa8a5;border-color:#ffffff18}.collection-count{text-align:right;line-height:1.8}.castle-expansion{margin:17px 0;padding-top:17px;border-top:1px solid var(--line);grid-column:1/-1}.castle-expansion h3{display:flex;align-items:center;gap:7px;font-size:15px}.castle-expansion h3 .icon{width:17px;height:17px;color:var(--gold)}.castle-expansion p{font-size:11px;line-height:1.9;color:var(--muted);margin:9px 0}.castle-expansion>small{display:block;font-size:10px;line-height:1.8;color:var(--muted);margin-top:11px}.castle-expansion .cost{font-size:11px;gap:9px}.castle-expansion .cost .icon{width:13px;height:13px}.castle-detail>[data-action="preview-art"]{grid-column:1/-1;margin:10px 0 4px}.art-preview-stage{position:relative;width:min(100%,460px);aspect-ratio:1;margin:0 auto 18px;border:1px solid #d2b47736;border-radius:5px;overflow:hidden;background:radial-gradient(ellipse at center,#26312d,#152125)}.art-preview-stage>div,.art-preview-stage>.level-preview-art{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;opacity:1!important;border-radius:0!important;mask-image:none!important;-webkit-mask-image:none!important}.art-preview-stage>.icon{position:absolute;left:30%;top:30%;width:40%;height:40%;color:var(--gold);opacity:.3}.art-level-controls{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:8px 0 22px}.art-level-controls strong{font-family:Georgia,serif;font-size:22px;font-weight:400;color:var(--gold);white-space:nowrap}.art-level-controls .button{font-size:12px}.art-level-controls+label{font-size:12px}
 @media(max-width:600px){.variant-tabs{grid-template-columns:repeat(4,minmax(0,1fr));gap:7px;margin-bottom:18px}.variant-tabs button{padding:8px 4px}.variant-tabs button b{font-size:17px}.variant-tabs button small{font-size:8px;margin-top:3px}.collection-count{font-size:9px}.castle-expansion h3{font-size:14px}.castle-expansion>small{font-size:9px}.art-level-controls{gap:8px}.art-level-controls strong{font-size:20px}.art-level-controls .button{font-size:11px;padding:8px 10px}.art-preview-stage{margin-bottom:15px}}
+
+/* Officer filters stay separate from campaign progress and cloud saves. */
+.officer-filter-bar{margin:0 0 20px;padding:18px;border:1px solid #d4b68155;border-radius:10px;background:linear-gradient(135deg,#172c32ed,#18232aee);min-width:0}
+.officer-filter-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:14px}
+.officer-filter-heading>b{display:flex;align-items:center;gap:8px;font-size:16px;color:#f4e8cd;font-weight:600}
+.officer-filter-heading .icon{width:18px;height:18px;color:var(--gold)}
+.officer-filter-heading .text-link{font-size:14px;line-height:1.5;padding:6px 0;white-space:nowrap}
+.officer-filter-fields{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.officer-filter-field{display:flex;flex-direction:column;gap:6px;min-width:0;margin:0;font-size:14px;line-height:1.5;color:#c9d4d2}
+.officer-filter-search{grid-column:span 2}
+.officer-filter-field .input,.officer-filter-field .select{width:100%;min-width:0;min-height:43px;margin:0;font-size:16px;line-height:1.45;color:#f4f5e9;background-color:#13232be6;border-color:#d2b57755;border-radius:6px}
+.officer-filter-field .select{padding-right:32px}
+.officer-filter-field .input:focus-visible,.officer-filter-field .select:focus-visible{outline:2px solid #e5c98c;outline-offset:2px}
+.officer-ownership-tabs{display:flex;flex-wrap:wrap;gap:7px;margin-top:14px}
+.officer-ownership-tabs button{min-height:40px;padding:8px 16px;font-size:14px}
+.officer-filter-hint{margin:12px 0 0;font-size:13px;line-height:1.6;color:#c1cfc9}
+.officer-choice-count{margin:4px 0 12px;font-size:14px;font-variant-numeric:tabular-nums;color:#dfcc9f}
+.officer-choice-description{min-width:0}
+.officer-choice-description small{display:block;white-space:normal;font-size:13px;line-height:1.75}
+.officer-choice-list .empty .button{margin-top:12px}
+.modal .officer-filter-bar{padding:15px;margin-bottom:17px}
+.modal .officer-filter-fields{grid-template-columns:repeat(2,minmax(0,1fr))}
+/* Saved results drive every part of this presentation; it performs no draws. */
+.gacha-reveal-stage{--reveal-gold:#d9be81;position:relative;isolation:isolate;overflow:hidden;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:390px;padding:28px 18px;border:1px solid #d7b87a66;border-radius:10px;background:radial-gradient(ellipse at 50% 40%,#34554e8c 0,#0f202a 56%,#0b141c 100%);text-align:center}
+.gacha-reveal-stage[data-rank="SS"],.gacha-reveal-stage[data-rank="SSS"]{--reveal-gold:#d8aaff}
+.gacha-reveal-stage[data-rank="U"]{--reveal-gold:#a9f0d6}
+.gacha-reveal-halo{position:absolute;z-index:-1;top:50%;left:50%;width:min(72vw,420px);aspect-ratio:1;border:1px solid var(--reveal-gold);border-radius:50%;opacity:.35;transform:translate(-50%,-60%) scale(.82);box-shadow:0 0 0 18px #d9be8108,0 0 0 19px #d9be8130,0 0 75px #c7a86d22;animation:gacha-halo-arrive 3.2s ease-out both}
+.gacha-reveal-halo:before,.gacha-reveal-halo:after{content:"";position:absolute;inset:13%;border:1px solid var(--reveal-gold);transform:rotate(45deg);opacity:.45}
+.gacha-reveal-halo:after{transform:rotate(75deg);inset:8%}
+.gacha-reveal-emblem{width:54px;height:54px;object-fit:contain;filter:drop-shadow(0 0 18px #e2c99355);margin-bottom:23px}
+.gacha-reveal-cards{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;width:min(100%,480px);perspective:700px}
+.gacha-sealed-scroll{position:relative;display:grid;place-items:center;aspect-ratio:3/4;border:1px solid var(--reveal-gold);border-radius:5px;background:linear-gradient(145deg,#435448,#182c2b 54%,#121d22);box-shadow:inset 0 0 0 4px #112020,inset 0 0 0 5px #ddc78c44,0 10px 28px #0005;animation:gacha-scroll-arrive .55s cubic-bezier(.2,.7,.2,1) both;animation-delay:calc(var(--reveal-index)*.07s)}
+.gacha-sealed-scroll:before{content:"";position:absolute;inset:13%;border:1px solid #dfc48344;border-radius:50%;transform:rotate(20deg);opacity:.65}
+.gacha-sealed-scroll i{font:normal clamp(21px,3.4vw,36px) var(--serif);color:#edddb9;animation:gacha-seal-open 1s ease-out 1.7s both}
+.gacha-sealed-scroll b{position:absolute;font:600 clamp(19px,3vw,32px) Georgia,serif;letter-spacing:.02em;color:#f3e3b6;animation:gacha-rank-arrive .65s ease-out both;animation-delay:calc(1.95s + var(--reveal-index)*.045s);text-shadow:0 0 16px #d7b77055}
+.gacha-sealed-scroll[data-rank="SS"] b,.gacha-sealed-scroll[data-rank="SSS"] b{color:#e4c4ff}
+.gacha-sealed-scroll[data-rank="U"] b{color:#bff9e1}
+.gacha-reveal-cards.single-draw{display:flex;justify-content:center}
+.gacha-reveal-cards.single-draw .gacha-sealed-scroll{width:125px;height:166px;flex:none}
+.gacha-reveal-title{margin-top:24px;color:#f1dfb7;font-family:var(--serif);font-size:26px;letter-spacing:.13em;line-height:1.5}
+.gacha-reveal-stage>p{margin:9px 0 0;font-size:14px;color:#d0dfd8;line-height:1.7}
+.gacha-reveal-progress{width:140px;height:2px;margin-top:18px;background:#d3bc8030;overflow:hidden}
+.gacha-reveal-progress span{display:block;height:100%;width:100%;background:var(--reveal-gold);transform-origin:left;animation:gacha-progress 3.2s linear both}
+@keyframes gacha-scroll-arrive{from{opacity:0;transform:translateY(16px) rotateY(-30deg) scale(.92)}to{opacity:1;transform:none}}
+@keyframes gacha-seal-open{0%{opacity:1;transform:none}55%,100%{opacity:0;transform:scale(1.35)}}
+@keyframes gacha-rank-arrive{from{opacity:0;transform:translateY(5px) scale(.9)}to{opacity:1;transform:none}}
+@keyframes gacha-halo-arrive{from{opacity:.1;transform:translate(-50%,-60%) scale(.82)}to{opacity:.4;transform:translate(-50%,-60%) scale(1.08)}}
+@keyframes gacha-progress{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+@media(max-width:1100px){.officer-filter-fields{grid-template-columns:repeat(3,minmax(0,1fr))}.officer-filter-search{grid-column:span 2}}
+@media(max-width:650px){.officer-filter-bar{padding:14px}.officer-filter-fields{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.officer-filter-heading{gap:10px}.officer-filter-heading>b{font-size:15px}.officer-filter-heading .text-link{font-size:13px}.officer-filter-search{grid-column:1/-1}.officer-filter-field{font-size:13px}.officer-filter-field .input,.officer-filter-field .select{font-size:16px;padding-left:10px}.officer-ownership-tabs{gap:5px}.officer-ownership-tabs button{flex:1;min-width:0;font-size:13px;padding:8px 9px}.gacha-reveal-stage{min-height:350px;padding:23px 12px}.gacha-reveal-cards{gap:7px}.gacha-reveal-title{font-size:23px;margin-top:21px}.gacha-reveal-emblem{width:45px;height:45px;margin-bottom:19px}.officer-choice-description small{font-size:12px}.modal .officer-filter-bar{padding:12px}}
+@media(prefers-reduced-motion:reduce){.gacha-reveal-stage *{animation:none!important;transition:none!important}.gacha-sealed-scroll i{display:none}.gacha-sealed-scroll b{opacity:1;transform:none}}
