@@ -265,19 +265,20 @@ function normalizeAvatarJpeg(input) {
 
 function mapUser(row, now = Date.now()) {
   return {
-    id: row.id, name: row.name, clan: publicClan(row.clan,row.is_admin), isAdmin: !!row.is_admin, isStaff: !!row.is_staff && !row.is_admin,
+    id: row.id, name: row.name, clan: publicClan(row.clan,row.is_admin,row.is_staff,row.personal_clan), isAdmin: !!row.is_admin, isStaff: !!row.is_staff && !row.is_admin,
     avatarVersion: row.avatar_version || null,
     guildId: row.guild_id || null, guildName: row.guild_name || null,
     guildRole: row.guild_id ? (row.owner_id === row.id ? 'owner' : row.is_guild_officer ? 'officer' : 'member') : null,
     online: row.presence_seen !== null && row.presence_seen !== undefined && Number(row.presence_seen) > now - ONLINE_WINDOW,
   };
 }
-function publicClan(clan,isAdmin) { return isAdmin?ADMIN_CLAN:clan===ADMIN_CLAN?ORDINARY_TOKUGAWA_CLAN:clan; }
+function publicClan(clan,isAdmin,isStaff=false,personalClan=null) { return isAdmin||isStaff?ADMIN_CLAN:clan===ADMIN_CLAN?CLAN_HOMES[personalClan]?personalClan:ORDINARY_TOKUGAWA_CLAN:clan; }
 const USER_SELECT = `SELECT u.id,u.name,u.clan,u.last_seen,gm.guild_id,g.name AS guild_name,g.owner_id,
   (SELECT a.version FROM user_avatars a WHERE a.user_id=u.id) AS avatar_version,
   EXISTS(SELECT 1 FROM guild_officers go WHERE go.user_id=u.id AND go.guild_id=gm.guild_id) AS is_guild_officer,
   (SELECT MAX(p.last_seen) FROM player_presence p WHERE p.user_id=u.id AND p.online=1) AS presence_seen,
   CASE WHEN u.id=(SELECT value FROM settings WHERE key='adminUserId') THEN 1 ELSE 0 END AS is_admin,
+  (SELECT json_extract(b.save_json,'$.state.clan') FROM staff_campaign_backups b WHERE b.user_id=u.id AND b.active=1) AS personal_clan,
   (SELECT json_extract(b.save_json,'$.state.home') FROM staff_campaign_backups b WHERE b.user_id=u.id AND b.active=1) AS personal_home,
   (SELECT json_extract(b.save_json,'$.state.castles.'||json_extract(b.save_json,'$.state.home')) FROM staff_campaign_backups b WHERE b.user_id=u.id AND b.active=1) AS personal_castle_json,
   (SELECT json_extract(sb.state_json,'$.castleLevel') FROM staff_base sb WHERE sb.id='sunpu') AS staff_castle_level,
@@ -551,7 +552,7 @@ async function guildTransfer(db,user,raw,now) {
       ON CONFLICT(actor_id,request_id) DO NOTHING RETURNING id`,id,user.id,body.requestId,body.guildId,digest,nonce,body.direction,key,body.amount,JSON.stringify(receipt),now,clock.elapsedMs,user.id,body.guildId,body.expectedRevision,body.deviceId,now,Number(treasury.revision),WORLD_CLOCK_ID,clock.revision,...roleGuard.args),
     stmt(db,'UPDATE player_saves SET save_json=?,revision=revision+1,updated_at=?,lease_expires_at=? WHERE user_id=? AND '+GUILD_ASSET_COMMIT,serialized,now,now+SYNC_LEASE,user.id,...guard),
     stmt(db,'UPDATE guild_treasuries SET '+key+'=?,revision=revision+1 WHERE guild_id=? AND '+GUILD_ASSET_COMMIT,pooled-delta,body.guildId,...guard),
-    stmt(db,'UPDATE users SET clan=? WHERE id=? AND '+GUILD_ASSET_COMMIT,normalized.state.clan,user.id,...guard),
+    stmt(db,"UPDATE users SET clan=CASE WHEN EXISTS(SELECT 1 FROM staff_members sm WHERE sm.user_id=users.id) AND users.id<>COALESCE((SELECT value FROM settings WHERE key='adminUserId'),'') THEN clan ELSE ? END WHERE id=? AND "+GUILD_ASSET_COMMIT,normalized.state.clan,user.id,...guard),
   ]);
   if(!rows(result[0]).length) {
     const concurrent=await priorGuildTransfer(db,user,body,digest);if(concurrent)return guildTransferResult(db,user,body,JSON.parse(concurrent.result_json),true,now);
@@ -686,7 +687,7 @@ function normalizeGameSave(raw, user, now, {reading=false,clock=null}={}) {
   const isObj=v=>v&&typeof v==='object'&&!Array.isArray(v);
   const num=(v,min=0,max=999999999)=>typeof v==='number'&&Number.isFinite(v)&&Number.isInteger(v)&&v>=min&&v<=max;
   if(!isObj(s)||s.version!==2||obj?.game&&obj.game!=='sengoku-tento')invalid();
-  if(s.clan===ADMIN_CLAN&&!user.is_admin&&!reading)fail(403,'ADMIN_CLAN_REQUIRED','德川家は運営専用です。一般の領主は徳川家を選択できます。');
+  if(s.clan===ADMIN_CLAN&&!user.is_admin&&!staff&&!reading)fail(403,'ADMIN_CLAN_REQUIRED','德川家は運営・スタッフ専用です。一般の領主は徳川家を選択できます。');
   if(s.clan!==ADMIN_CLAN&&!CLANS.some(c=>c.name===s.clan)||!CASTLE_BY_ID[s.home]||!['easy','normal','hard'].includes(s.difficulty))invalid();
   const g={state:{version:2},roster:OFFICERS,officer:id=>OFFICER_BY_ID[id],baseOfficer:id=>OFFICER_BY_ID[id]};
   if(!num(s.turn,0,MAX_TURN)||!num(s.troops,0,1000000)||!num(s.morale,0,100)||!num(s.prestige)||!num(s.command,0,7)||!num(s.seed,0,4294967295))invalid();
@@ -744,7 +745,7 @@ function normalizeGameSave(raw, user, now, {reading=false,clock=null}={}) {
   // Match the client's legacy migration, without granting permission to upload
   // exclusive assets and without mutating the stored revision during a GET.
   if (reading && !user.is_admin) {
-    if(n.clan===ADMIN_CLAN) {
+    if(n.clan===ADMIN_CLAN&&!staff) {
       // Preserve the old ownership set: the distinct ordinary Tokugawa AI
       // castles must not become newly owned merely because the clan is renamed.
       for(const castle of Object.values(n.castles))if(castle.owner===ORDINARY_TOKUGAWA_CLAN)castle.owner='在地衆';
@@ -755,7 +756,7 @@ function normalizeGameSave(raw, user, now, {reading=false,clock=null}={}) {
     n.gachaHistory=n.gachaHistory.map(entry=>entry.officerId===IEYASU_ID&&entry.rank==='U'?{...entry,rank:'SSS'}:entry);
     const edo=n.castles.edo,wasHome=n.home==='edo',ownedEdo=edo.owner===n.clan;
     if(wasHome||ownedEdo) {
-      const canonical=CLAN_HOMES[n.clan],other=CASTLES.filter(c=>c.id!=='edo'&&n.castles[c.id].owner===n.clan);
+      const canonical=staff?'sunpu':CLAN_HOMES[n.clan]||'okazaki',other=CASTLES.filter(c=>c.id!=='edo'&&n.castles[c.id].owner===n.clan);
       const fallback=other.find(c=>c.id===canonical)?.id||other[0]?.id||canonical;
       if(ownedEdo&&!other.length) {
         n.castles[fallback]={...edo,owner:n.clan,level:Math.min(edo.level,castleLevelLimit(fallback))};
@@ -886,8 +887,8 @@ async function publicAchievements(db,url,now) {
   const raw=url.searchParams.get('limit')||'20',cursor=url.searchParams.get('cursor');
   if(!/^\d{1,2}$/.test(raw)||Number(raw)<1||Number(raw)>50)fail(400,'INVALID_INPUT','お知らせの件数は1〜50件で指定してください。');
   let point=null;if(cursor){if(cursor.length>512)fail(400,'INVALID_CURSOR','お知らせの続きが長すぎます。');try{point=JSON.parse(atob(cursor.replaceAll('-','+').replaceAll('_','/')));}catch{fail(400,'INVALID_CURSOR','お知らせの続きが正しくありません。');}if(!Array.isArray(point)||point.length!==2||!Number.isSafeInteger(point[0])||point[0]<0||typeof point[1]!=='string'||!/^ach_[a-f0-9]{32}$/.test(point[1]))fail(400,'INVALID_CURSOR','お知らせの続きが正しくありません。');}
-  const limit=Number(raw),found=rows(await stmt(db,`SELECT e.*,u.name,u.clan,CASE WHEN u.id=(SELECT value FROM settings WHERE key='adminUserId') THEN 1 ELSE 0 END AS is_admin FROM achievement_events e JOIN users u ON u.id=e.user_id ${point?'WHERE (e.occurred_at<? OR (e.occurred_at=? AND e.id<?))':''} ORDER BY e.occurred_at DESC,e.id DESC LIMIT ?`,...(point?[point[0],point[0],point[1]]:[]),limit+1).all()),page=found.slice(0,limit),last=page.at(-1);
-  return {ok:true,events:page.map(row=>({id:row.id,playerId:row.user_id,playerName:row.name,clan:publicClan(row.clan,row.is_admin),kind:row.kind,title:row.title,detail:row.detail,targetId:row.target_id,targetName:row.target_name,value:row.value,occurredAt:iso(row.occurred_at)})),nextCursor:found.length>limit?btoa(JSON.stringify([Number(last.occurred_at),last.id])).replaceAll('+','-').replaceAll('/','_').replaceAll('=',''):null,serverNow:iso(now)};
+  const limit=Number(raw),found=rows(await stmt(db,`SELECT e.*,u.name,u.clan,CASE WHEN u.id=(SELECT value FROM settings WHERE key='adminUserId') THEN 1 ELSE 0 END AS is_admin,EXISTS(SELECT 1 FROM staff_members sm WHERE sm.user_id=u.id) AS is_staff,(SELECT json_extract(b.save_json,'$.state.clan') FROM staff_campaign_backups b WHERE b.user_id=u.id AND b.active=1) AS personal_clan FROM achievement_events e JOIN users u ON u.id=e.user_id ${point?'WHERE (e.occurred_at<? OR (e.occurred_at=? AND e.id<?))':''} ORDER BY e.occurred_at DESC,e.id DESC LIMIT ?`,...(point?[point[0],point[0],point[1]]:[]),limit+1).all()),page=found.slice(0,limit),last=page.at(-1);
+  return {ok:true,events:page.map(row=>({id:row.id,playerId:row.user_id,playerName:row.name,clan:publicClan(row.clan,row.is_admin,row.is_staff,row.personal_clan),kind:row.kind,title:row.title,detail:row.detail,targetId:row.target_id,targetName:row.target_name,value:row.value,occurredAt:iso(row.occurred_at)})),nextCursor:found.length>limit?btoa(JSON.stringify([Number(last.occurred_at),last.id])).replaceAll('+','-').replaceAll('/','_').replaceAll('=',''):null,serverNow:iso(now)};
 }
 
 function roleCommitGuard(user) {
@@ -916,13 +917,19 @@ async function sharedStaffBaseRow(db,clock,now) {
   }
   return row;
 }
+async function staffClanPolicy(db,clock,now) {
+  const prior=await stmt(db,"SELECT value FROM settings WHERE key='staffClanPolicyStart'").first();if(prior)return Number(prior.value);
+  await stmt(db,"INSERT INTO settings(key,value,updated_at) VALUES('staffClanPolicyStart',?,?) ON CONFLICT(key) DO NOTHING",String(clock.elapsedMs),now).run();
+  return Number((await stmt(db,"SELECT value FROM settings WHERE key='staffClanPolicyStart'").first()).value);
+}
 async function staffBaseDto(db,user,clock,now,row=undefined) {
   row=row||await sharedStaffBaseRow(db,clock,now);const state=JSON.parse(row.state_json),backup=await stmt(db,'SELECT joined_elapsed_ms,save_json FROM staff_campaign_backups WHERE user_id=? AND active=1',user.id).first();
-  const personal=backup?.save_json?JSON.parse(backup.save_json).state:null;
-  return {id:'sunpu',revision:Number(row.revision),protected:true,...state,accessSinceElapsedMs:Number(backup?.joined_elapsed_ms??user.staff_since_ms??clock.elapsedMs),...(personal?{personalHome:personal.home,personalCycleHome:personal.cycle?.home||personal.home,personalHomeCastle:copy(personal.castles[personal.home]),personalSunpu:copy(personal.castles.sunpu)}:{})};
+  const personal=backup?.save_json?JSON.parse(backup.save_json).state:null,accessSince=Number(backup?.joined_elapsed_ms??user.staff_since_ms??clock.elapsedMs),clanSince=Math.max(accessSince,await staffClanPolicy(db,clock,now));
+  return {id:'sunpu',revision:Number(row.revision),protected:true,...state,accessSinceElapsedMs:accessSince,clanSinceElapsedMs:clanSince,...(personal?{personalClan:personal.clan,personalHome:personal.home,personalCycleHome:personal.cycle?.home||personal.home,personalHomeCastle:copy(personal.castles[personal.home]),personalSunpu:copy(personal.castles.sunpu)}:{})};
 }
+function renameCampaignClan(state,clan) {if(state.clan===clan)return;const previous=state.clan;for(const castle of Object.values(state.castles)){if(castle.owner===previous)castle.owner=clan;else if(castle.owner===clan)castle.owner='在地衆';}state.clan=clan;delete state.treaties[clan];}
 function restorePersonalCampaign(save,backup,user) {
-  const s=save.state,original=JSON.parse(backup.save_json).state;
+  const s=save.state,original=JSON.parse(backup.save_json).state;renameCampaignClan(s,CLAN_HOMES[original.clan]?original.clan:ORDINARY_TOKUGAWA_CLAN);
   let home=original.home;if(['edo','sunpu'].includes(home))home=CLAN_HOMES[s.clan]||'kiyosu';
   const oldCastle=original.castles[original.home],current=s.castles[home];
   s.castles[home]={owner:s.clan,troops:Math.max(current.troops,oldCastle.troops),wall:Math.max(current.wall,oldCastle.wall,s.buildings.wall),level:Math.min(castleLevelLimit(home),Math.max(current.level,oldCastle.level))};
@@ -942,7 +949,7 @@ async function staffPersonalProgressStatement(db,user,save,now,gate,gateArgs,pro
   const backup=await stmt(db,'SELECT * FROM staff_campaign_backups WHERE user_id=? AND active=1',user.id).first();if(!backup)return null;
   const personal=JSON.parse(backup.save_json),home=personal.state.home,old=personal.state.castles[home];
   const current=progress?.home===home?progress.castle:save.state.castles[home];
-  if(current&&current.owner===save.state.clan)for(const key of ['level','wall','troops'])old[key]=Math.max(old[key],current[key]);
+  if(current&&(current.owner===save.state.clan||progress&&current.owner===personal.state.clan))for(const key of ['level','wall','troops'])old[key]=Math.max(old[key],current[key]);
   old.level=Math.min(castleLevelLimit(home),old.level);
   return stmt(db,`UPDATE staff_campaign_backups SET save_json=?,updated_at=? WHERE user_id=? AND active=1 AND term_id=? AND ${gate}`,JSON.stringify(personal),now,user.id,backup.term_id,...gateArgs);
 }
@@ -968,15 +975,21 @@ async function advanceDepartingStaff(db,row,user,backup,now,clock) {
   return changed;
 }
 
-async function ensureStaffCampaign(db,user,now,clock=undefined) {
+async function ensureStaffCampaign(db,user,now,clock=undefined,{deferClanMigration=false}={}) {
   clock=clock||await getWorldClock(db,now);let row=await getSyncRow(db,user.id);if(!row?.save_json)return row;
   for(let attempt=0;attempt<3;attempt++){
     const staff=!!user.is_staff&&!user.is_admin;let backup=await stmt(db,'SELECT * FROM staff_campaign_backups WHERE user_id=?',user.id).first();
-    if(staff&&backup?.active&&backup.term_id===user.staff_term)return row;
+    if(staff&&backup?.active&&backup.term_id===user.staff_term){
+      if(deferClanMigration||JSON.parse(row.save_json).state.clan===ADMIN_CLAN)return row;
+      const next=normalizeGameSave(JSON.parse(row.save_json),user,now,{reading:true,clock}),guard=roleCommitGuard(user);
+      const changed=await stmt(db,`UPDATE player_saves SET save_json=?,revision=revision+1,updated_at=? WHERE user_id=? AND revision=? AND ${guard.sql} RETURNING *`,JSON.stringify(next),now,user.id,row.revision,...guard.args).first();
+      if(changed)return changed;user=await getUser(db,user.id);row=await getSyncRow(db,user.id);continue;
+    }
     if(!staff&&!backup?.active)return row;
     if(backup?.active){row=await advanceDepartingStaff(db,row,user,backup,now,clock);backup=await stmt(db,'SELECT * FROM staff_campaign_backups WHERE user_id=?',user.id).first();}
     const raw=JSON.parse(row.save_json),nonce=crypto.randomUUID();let saved,personal;
     if(staff){
+      if(!backup?.active&&raw.state.clan===ADMIN_CLAN&&raw.state.home==='sunpu')renameCampaignClan(raw.state,CLAN_HOMES[user.clan]?user.clan:ORDINARY_TOKUGAWA_CLAN);
       personal=backup?.active?restorePersonalCampaign(normalizeGameSave(raw,{...user,is_admin:false,is_staff:true},now,{reading:true,clock}),backup,user):normalizeGameSave(raw,{...user,is_staff:false},now,{reading:true,clock});
       saved=normalizeGameSave(personal,user,now,{reading:true,clock});saved.state.staffService={baseId:'sunpu'};saved.savedAt=iso(now);
       const joined=Math.max(Number(user.staff_since_ms??clock.elapsedMs),Number(personal.state.worldClock?.elapsedMs||0));
@@ -992,7 +1005,8 @@ async function ensureStaffCampaign(db,user,now,clock=undefined) {
         stmt(db,`UPDATE staff_campaign_backups SET active=0,transition_token=?,updated_at=? WHERE user_id=? AND active=1 AND term_id=?
           AND (NOT EXISTS(SELECT 1 FROM staff_members WHERE user_id=?) OR EXISTS(SELECT 1 FROM settings WHERE key='adminUserId' AND value=?))
           AND EXISTS(SELECT 1 FROM player_saves WHERE user_id=? AND revision=?)`,nonce,now,user.id,backup.term_id,user.id,user.id,user.id,row.revision),
-        stmt(db,`UPDATE player_saves SET save_json=?,revision=revision+1,updated_at=?,cycle_home=? WHERE user_id=? AND revision=? AND EXISTS(SELECT 1 FROM staff_campaign_backups WHERE user_id=? AND transition_token=?) RETURNING *`,JSON.stringify(saved),now,saved.state.cycle?.home||saved.state.home,user.id,row.revision,user.id,nonce)
+        stmt(db,`UPDATE player_saves SET save_json=?,revision=revision+1,updated_at=?,cycle_home=? WHERE user_id=? AND revision=? AND EXISTS(SELECT 1 FROM staff_campaign_backups WHERE user_id=? AND transition_token=?) RETURNING *`,JSON.stringify(saved),now,saved.state.cycle?.home||saved.state.home,user.id,row.revision,user.id,nonce),
+        stmt(db,`UPDATE users SET clan=? WHERE id=? AND EXISTS(SELECT 1 FROM staff_campaign_backups WHERE user_id=? AND transition_token=?)`,saved.state.clan,user.id,user.id,nonce)
       ]);if(rows(result[1])[0])return rows(result[1])[0];
     }
     user=await getUser(db,user.id);row=await getSyncRow(db,user.id);
@@ -1087,6 +1101,7 @@ const FIELD_RULES=Object.freeze({minTroops:300,maxTroops:100000,commandCost:1,fo
 const FIELD_SELECT=`SELECT u.id,u.name,u.clan,u.last_seen,s.revision,s.lease_expires_at,s.cycle_home,${EFFECTIVE_CYCLE_SQL} AS cycle_index,json_extract(s.save_json,'$.state.cycle.home') AS original_home,
   (SELECT a.version FROM user_avatars a WHERE a.user_id=u.id) AS avatar_version,
   CASE WHEN u.id=(SELECT value FROM settings WHERE key='adminUserId') THEN 1 ELSE 0 END AS is_admin,
+  (SELECT json_extract(b.save_json,'$.state.clan') FROM staff_campaign_backups b WHERE b.user_id=u.id AND b.active=1) AS personal_clan,
   (SELECT json_extract(b.save_json,'$.state.home') FROM staff_campaign_backups b WHERE b.user_id=u.id AND b.active=1) AS personal_home,
   (SELECT json_extract(b.save_json,'$.state.castles.'||json_extract(b.save_json,'$.state.home')) FROM staff_campaign_backups b WHERE b.user_id=u.id AND b.active=1) AS personal_castle_json,
   (SELECT json_extract(sb.state_json,'$.castleLevel') FROM staff_base sb WHERE sb.id='sunpu') AS staff_castle_level,
@@ -1124,7 +1139,7 @@ function mapFieldRelationship(row,userId,elapsed,targetName='') {
 }
 function mapFieldPlayer(row,viewer,relationship,clock,now) {
   const castles=JSON.parse(row.castles_json),cyclePending=Number(row.cycle_index)<Math.floor(clock.elapsedMs/WORLD_CYCLE_MS),storedHome=cyclePending?(row.cycle_home||row.original_home||row.home_id):row.home_id;
-  const clan=publicClan(row.game_clan,row.is_admin);
+  const clan=publicClan(row.game_clan,row.is_admin,row.is_staff,row.personal_clan);
   const alternatives=CASTLES.filter(c=>!['edo','sunpu'].includes(c.id)&&castles[c.id].owner===row.game_clan),canonical=CLAN_HOMES[clan]||'kiyosu';
   const replacement=alternatives.find(c=>c.id===canonical)?.id||alternatives[0]?.id||canonical;
   const home=row.is_admin?'edo':row.is_staff?'sunpu':['edo','sunpu'].includes(storedHome)?row.personal_home&&!['edo','sunpu'].includes(row.personal_home)?row.personal_home:replacement:storedHome;
@@ -1411,7 +1426,7 @@ async function route(request, env, now) {
     if (scope) await budget(db, scope, 30, 60*60*1000, now);
     const name = textField(body.name, '領主名', 24, {optional:true}) || '旅の領主' + crypto.randomUUID().slice(0,6);
     const clan = textField(body.clan, '勢力名', 24, {optional:true}) || '織田家';
-    if(clan===ADMIN_CLAN)fail(403,'ADMIN_CLAN_REQUIRED','德川家は運営専用です。一般の領主は徳川家を選択できます。');
+    if(clan===ADMIN_CLAN)fail(403,'ADMIN_CLAN_REQUIRED','德川家は運営・スタッフ専用です。一般の領主は徳川家を選択できます。');
     const id = uid('u_'), token = gameToken();
     try { await stmt(db,'INSERT INTO users(id,name,name_key,clan,token_hash,created_at,last_seen) VALUES(?,?,?,?,?,?,?)',id,name,nameKey(name),clan,await hash(token),now,now).run(); }
     catch (error) { if (/unique/i.test(String(error))) fail(409,'NAME_TAKEN','その領主名はすでに使われています。別の名前をお選びください。'); throw error; }
@@ -1504,7 +1519,7 @@ async function route(request, env, now) {
     if(!body.save||typeof body.save!=='object'||Array.isArray(body.save))fail(400,'INVALID_SAVE','セーブデータを送信してください。');
     const clock=await getWorldClock(db,now),save=normalizeGameSave(body.save,user,now,{clock});
     await budget(db,'sync-write:'+user.id,120,60000,now);
-    let previous=await getSyncRow(db,user.id);if(previous?.save_json){fieldWriter(previous,deviceId,body.revision,now);previous=await ensureStaffCampaign(db,user,now,clock);fieldWriter(previous,deviceId,body.revision,now);}
+    let previous=await getSyncRow(db,user.id);if(previous?.save_json){fieldWriter(previous,deviceId,body.revision,now);previous=await ensureStaffCampaign(db,user,now,clock,{deferClanMigration:true});fieldWriter(previous,deviceId,body.revision,now);}
     const before=previous?.save_json?normalizeGameSave(JSON.parse(previous.save_json),user,now,{reading:true,clock}):null;
     if(!previous||previous.writer_device_id!==deviceId||Number(previous.lease_expires_at)<=now)fail(409,'LEASE_REQUIRED','プレイ端末の同期権限が切れました。');
     if(Number(previous.revision)!==body.revision)fail(409,'REVISION_CONFLICT','最新の保存へ同期してください。');
@@ -1534,7 +1549,7 @@ async function route(request, env, now) {
       if(Number(current.revision)===body.revision&&!save.state.worldClock&&current.save_json&&JSON.parse(current.save_json).state?.worldClock)fail(409,'CLOCK_ANCHOR_REQUIRED','この領主は共通時計へ移行済みです。共通時計に対応した最新版から保存してください。');
       fail(409,'REVISION_CONFLICT','新しいセーブが届いています。最新データを読み込んでから再開してください。');
     }
-    if(user.clan!==save.state.clan) {
+    if(!user.is_staff&&user.clan!==save.state.clan||user.is_admin&&user.clan!==save.state.clan) {
       await stmt(db,'UPDATE users SET clan=? WHERE id=?',save.state.clan,user.id).run();
       user.clan=save.state.clan;
     }
@@ -1545,15 +1560,17 @@ async function route(request, env, now) {
       stmt(db, USER_SELECT + ` WHERE u.id IN (SELECT CASE WHEN user_a=? THEN user_b ELSE user_a END FROM friendships WHERE (user_a=? OR user_b=?) AND status='accepted') ORDER BY u.name`,user.id,user.id,user.id),
       stmt(db, `SELECT f.requested_by,f.created_at,u.id,u.name,u.clan,
         (SELECT a.version FROM user_avatars a WHERE a.user_id=u.id) AS avatar_version,
-        CASE WHEN u.id=(SELECT value FROM settings WHERE key='adminUserId') THEN 1 ELSE 0 END AS is_admin
+        CASE WHEN u.id=(SELECT value FROM settings WHERE key='adminUserId') THEN 1 ELSE 0 END AS is_admin,
+        EXISTS(SELECT 1 FROM staff_members sm WHERE sm.user_id=u.id) AS is_staff,
+        (SELECT json_extract(b.save_json,'$.state.clan') FROM staff_campaign_backups b WHERE b.user_id=u.id AND b.active=1) AS personal_clan
         FROM friendships f JOIN users u ON u.id=CASE WHEN f.user_a=? THEN f.user_b ELSE f.user_a END WHERE (f.user_a=? OR f.user_b=?) AND f.status='pending' ORDER BY f.created_at DESC`,user.id,user.id,user.id),
       stmt(db, `SELECT COUNT(*) AS count FROM mail_campaigns m WHERE (m.target_user_id IS NULL OR m.target_user_id=?) AND NOT EXISTS(SELECT 1 FROM mail_reads r WHERE r.mail_id=m.id AND r.user_id=?)`,user.id,user.id),
     ]);
-    return {ok:true,user:mapUser(user,now),friends:rows(result[0]).map(r=>mapUser(r,now)),requests:rows(result[1]).map(r=>({id:r.id,name:r.name,clan:publicClan(r.clan,r.is_admin),avatarVersion:r.avatar_version||null,direction:r.requested_by===user.id?'outgoing':'incoming',createdAt:iso(r.created_at)})),unreadMail:Number(rows(result[2])[0]?.count || 0)};
+    return {ok:true,user:mapUser(user,now),friends:rows(result[0]).map(r=>mapUser(r,now)),requests:rows(result[1]).map(r=>({id:r.id,name:r.name,clan:publicClan(r.clan,r.is_admin,r.is_staff,r.personal_clan),avatarVersion:r.avatar_version||null,direction:r.requested_by===user.id?'outgoing':'incoming',createdAt:iso(r.created_at)})),unreadMail:Number(rows(result[2])[0]?.count || 0)};
   }
   if (path === '/profile' && method === 'PATCH') {
     const body = await readBody(request), name = textField(body.name,'領主名',24);
-    if(!user.is_admin&&typeof body.clan==='string'&&body.clan.normalize('NFC').trim()===ADMIN_CLAN)fail(403,'ADMIN_CLAN_REQUIRED','德川家は運営専用です。一般の領主は徳川家を選択できます。');
+    if(!user.is_admin&&!user.is_staff&&typeof body.clan==='string'&&body.clan.normalize('NFC').trim()===ADMIN_CLAN)fail(403,'ADMIN_CLAN_REQUIRED','德川家は運営・スタッフ専用です。一般の領主は徳川家を選択できます。');
     try { await stmt(db,'UPDATE users SET name=?,name_key=? WHERE id=?',name,nameKey(name),user.id).run(); }
     catch (error) { if (/unique/i.test(String(error))) fail(409,'NAME_TAKEN','その領主名はすでに使われています。'); throw error; }
     return {ok:true,user:mapUser(await getUser(db,user.id),now)};

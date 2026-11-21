@@ -49,13 +49,13 @@ try{
  const initial=await staffBase(a),aSync=await sync(a),bSync=await sync(b);
  assert.equal(initial.id,'sunpu');assert.equal(initial.protected,true);assert.equal(initial.castleLevel,1);assert.equal(Object.keys(initial.buildings).length,64);
  assert.notEqual(initial.buildings.farm,22);assert.notEqual(initial.buildings.keep,24);assert.deepEqual(initial.initial.buildings,initial.buildings);
- assert.equal(aSync.save.state.home,'sunpu');assert.equal(aSync.save.state.clan,'伊達家');assert.equal(bSync.save.state.home,'sunpu');assert.equal(bSync.save.state.clan,'武田家');
+ assert.equal(aSync.save.state.home,'sunpu');assert.equal(aSync.save.state.clan,'德川家');assert.equal(aSync.staffBase.personalClan,'伊達家');assert.equal(bSync.save.state.home,'sunpu');assert.equal(bSync.save.state.clan,'德川家');assert.equal(bSync.staffBase.personalClan,'武田家');
  assert.deepEqual(aSync.staffBase.buildings,bSync.staffBase.buildings);assert.equal(aSync.save.state.buildings.farm,22,'Personal building baseline remains separate from shared development');
  assert.equal((await api('/staff/base',{token:operator.token})).data.staffBase.id,'sunpu');
  await api('/staff/base',{expected:401});await api('/staff/base',{token:ordinary.token,expected:403});await upgrade(operator,body(a),403);
  assert.equal((await sync(ordinary)).staffBase,null);assert.equal((await api('/sync',{token:operator.token})).data.staffBase,null);
  for(const secret of ['commit_token','request_hash','transition_token','token_hash','save_json'])assert(!JSON.stringify(initial).includes(secret));
- checks.push('server-owned seed, fixed Sunpu, distinct houses and private source permissions');
+ checks.push('server-owned seed, fixed Sunpu/德川家, preserved personal houses and private source permissions');
 
  const firstBody=body(a),beforeA=balances(a),beforeB=balances(b),first=(await upgrade(a,firstBody)).data;
  assert.equal(first.idempotent,false);assert.equal(first.staffBase.jobs.length,1);assert.equal(first.staffBase.jobs[0].startedBy.id,a.user.id);assert.equal(first.staffBase.jobs[0].startedBy.name,a.user.name);

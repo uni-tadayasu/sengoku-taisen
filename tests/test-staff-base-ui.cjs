@@ -7,7 +7,7 @@ const roster=rosterContext.window.SENGOKU_OFFICERS,SAVE='sengoku-tento-save-v2',
 const clock={id:'staff-test-world',elapsedMs:120000,confirmedElapsedMs:120000,running:true,speed:1,revision:1,calendar:{turn:2,year:1560,month:3,cycle:0,elapsed:0}};
 let count=0;async function test(name,run){await run();count++;console.log('PASS '+name);}
 function personal(){const g=new SengokuEngine({clan:'伊達家',startCastle:'himeji',officers:roster,seed:7});g.state.buildings.farm=3;g.state.resources.gold=900000;g.state.resources.wood=900000;g.state.resources.stone=900000;g.applyWorldClock(clock);return g;}
-function base(revision=1){const buildings=plain(personal().state.buildings);buildings.farm=5;buildings.keep=10;return {id:'sunpu',revision,castleLevel:63,buildings,initial:{castleLevel:63,buildings:plain(buildings)},history:[],jobs:[],updatedElapsedMs:120000,accessSinceElapsedMs:0,protected:true};}
+function base(revision=1){const buildings=plain(personal().state.buildings);buildings.farm=5;buildings.keep=10;return {id:'sunpu',revision,castleLevel:63,buildings,initial:{castleLevel:63,buildings:plain(buildings)},history:[],jobs:[],updatedElapsedMs:120000,accessSinceElapsedMs:0,personalClan:'伊達家',protected:true};}
 function browser(initialSave) {
   const stored = new Map(initialSave === undefined ? [] : [[SAVE, initialSave]]);
   const nodes = new Map(), handlers = new Map(), events = [];
@@ -38,19 +38,25 @@ function browser(initialSave) {
     setInterval:()=>1,setTimeout:()=>1,clearTimeout(){},scrollTo(){},scrollX:0,scrollY:0,
     addEventListener(){},dispatchEvent:event=>events.push(event.type),CustomEvent:class{constructor(type){this.type=type;}}
   };
-  c.window=c;vm.createContext(c);vm.runInContext(source,c);
+  c.window=c;vm.createContext(c);vm.runInContext(fs.readFileSync(path.join(__dirname,'../kamon.js'),'utf8'),c);vm.runInContext(source,c);
   async function event(type,target){for(const listener of handlers.get(type)||[])await listener({target});}
   async function click(action,id){const node={disabled:false,dataset:{action,id},closest(){return this;}};await event('click',node);}
   return {c,stored,events,nodes,query,click,event,failNextSave:()=>{failSave=true;}};
 }
 
 (async()=>{
-await test('verified staff metadata fixes Sunpu, retains the house, and shares growth without exporting it',()=>{
+await test('verified staff metadata fixes the house and Sunpu, preserves officers, and shares growth without exporting it',()=>{
   const g=personal(),b=browser(g.exportSave()),bridge=b.c.SengokuBridge,shared=base();
-  const forged=JSON.parse(g.exportSave());forged.state.isStaff=true;
-  assert(bridge.applyCloudSave(forged,{isStaff:false}).ok);assert.notEqual(bridge.getState().home,'sunpu');
+  const forged=JSON.parse(SengokuEngine.fromSave(g.exportSave(),roster,{isAdmin:true}).exportSave());Object.assign(forged.state,{isStaff:true,isAdmin:true});
+  assert(bridge.applyCloudSave(forged,{isStaff:false}).ok);assert.notEqual(bridge.getState().home,'sunpu');assert.notEqual(bridge.getState().home,'edo');assert.notEqual(bridge.getState().clan,'德川家');assert(!bridge.getState().officerVariants.includes('of_b0616adde162:U'));assert.equal(bridge.getRoleAccess().isAdmin,false);assert.equal(bridge.getRoleAccess().isStaff,false);
   assert(bridge.applyCloudSave(g.exportSave(),{isStaff:true,staffBase:shared}).ok);
-  assert.equal(bridge.getState().home,'sunpu');assert.equal(bridge.getState().clan,'伊達家');
+  assert.equal(bridge.getState().home,'sunpu');assert.equal(bridge.getState().clan,'德川家');assert.equal(bridge.getState().castles.sunpu.owner,'德川家');
+  assert.equal(bridge.getRoleAccess().isAdmin,false);assert.equal(bridge.getRoleAccess().isStaff,true);
+  assert.deepEqual(plain(bridge.getState().officers),plain(g.state.officers));assert.deepEqual(plain(bridge.getState().officerVariants),plain(g.state.officerVariants));
+  assert(!bridge.getState().officerVariants.includes('of_b0616adde162:U'));
+  const header=b.nodes.get('clan-panel').innerHTML;
+  assert.match(header,/<b>德川家<\/b>/);assert.match(header,/徳川家康 の治世/);assert.match(header,/assets\/kamon\/tokugawa\.svg/);assert.match(header,/aria-label="德川家：三つ葉葵"/);
+  assert(!header.includes('織田信長'));assert(!header.includes('德川家康 の治世'));
   assert.equal(bridge.getState().buildings.farm,5);assert.equal(bridge.getState().castles.sunpu.level,63);
   assert.equal(bridge.getSave().state.buildings.farm,3);const before=plain(bridge.getSave().state),events=b.events.length;
   const next=base(2);next.buildings.farm=6;next.initial.buildings.farm=6;next.castleLevel=64;next.initial.castleLevel=64;
@@ -68,12 +74,16 @@ await test('role revocation removes the shared view and rejects late base replie
   bridge.setRoleAccess({isAdmin:true,isStaff:true});assert.equal(bridge.getState().home,'edo');assert.equal(bridge.getRoleAccess().isStaff,false);
   assert(bridge.getSave().state.officerVariants.includes('of_b0616adde162:U'));assert.equal(bridge.getStaffBase(),null);
 });
-await test('a staff first start waits for the shared source and offers house selection with fixed Sunpu',async()=>{
+await test('a staff first start waits for the shared source and fixes both 德川家 and Sunpu',async()=>{
   const b=browser(),bridge=b.c.SengokuBridge;bridge.setRoleAccess({isStaff:true});bridge.openStartSelection();
-  assert.match(b.nodes.get('modal-content').innerHTML,/スタッフ共同本拠 · 駿府城固定/);assert.equal(b.query('#new-start-castle'),null);
+  const chooser=b.nodes.get('modal-content').innerHTML;
+  assert.match(chooser,/スタッフ共同本拠 · 駿府城固定/);assert.match(chooser,/スタッフの家は德川家に固定/);assert.equal(b.query('#new-start-castle'),null);
+  assert.equal((chooser.match(/data-action="choose-clan"/g)||[]).length,1);assert.match(chooser,/data-id="德川家"/);assert.match(chooser,/<small>徳川家康<\/small>/);
+  assert(!chooser.includes('data-id="武田家"'));assert(!chooser.includes('data-id="徳川家"'));assert(!chooser.includes('德川家康 U の特別イラスト'));
   await b.click('start-new');assert.equal(bridge.hasStarted(),false);assert(!b.stored.has(SAVE));
   bridge.applyStaffBase(base());await b.click('choose-clan','武田家');await b.click('start-new');
-  assert.equal(bridge.hasStarted(),true);assert.equal(bridge.getState().home,'sunpu');assert.equal(bridge.getState().clan,'武田家');
+  assert.equal(bridge.hasStarted(),true);assert.equal(bridge.getState().home,'sunpu');assert.equal(bridge.getState().clan,'德川家');
+  assert.equal(bridge.getRoleAccess().isAdmin,false);assert(!bridge.getState().officerVariants.includes('of_b0616adde162:U'));
   assert.equal(bridge.getState().buildings.farm,5);assert.equal(b.nodes.get('modal').open,false);
 });
 await test('shared construction names are escaped and separate timers distinguish personal work on the same facility',()=>{
@@ -97,6 +107,7 @@ await test('staff castle UI allows level 64 while facilities retain level 32',as
   const b=browser(personal().exportSave()),bridge=b.c.SengokuBridge;bridge.setRoleAccess({isStaff:true});bridge.applyStaffBase(base());
   await b.click('staff-base-detail');let html=b.nodes.get('modal-content').innerHTML;
   assert.match(html,/Lv\.63 \/ 64/);assert.match(html,/Lv\.64へ共同普請する/);assert(!html.includes('最高のLv.32'));
+  assert.match(html,/自領 · 德川家/);assert.match(html,/aria-label="德川家：三つ葉葵"/);assert(!html.includes('江戸城を本拠'));
   const complete=base(2);complete.castleLevel=64;complete.initial.castleLevel=64;bridge.applyStaffBase(complete);
   html=b.nodes.get('modal-content').innerHTML;assert.match(html,/最高のLv\.64/);assert(!html.includes('data-action="upgrade-castle"'));
   await b.click('building','farm');html=b.nodes.get('modal-content').innerHTML;assert.match(html,/Lv\.5 \/ 32/);assert.match(html,/共同普請する/);
@@ -108,6 +119,21 @@ await test('independent base polls retain the current view and an open facility 
   const next=base(2);next.buildings.farm=6;next.initial.buildings.farm=6;bridge.applyStaffBase(next);
   assert.equal(b.nodes.get('modal').open,beforeModal);assert.equal(b.c.location.hash,location);assert.match(b.nodes.get('modal-content').innerHTML,/Lv\.6 \/ 32/);
   assert.match(b.nodes.get('main').innerHTML,/town-workspace/);
+});
+await test('a staff house name never enables operator recovery, Edo ownership, or the exclusive U officer',async()=>{
+  const b=browser(personal().exportSave()),bridge=b.c.SengokuBridge;
+  bridge.applyCloudSave(personal().exportSave(),{isStaff:true,staffBase:base()});
+  await b.click('settings');assert(!b.nodes.get('modal-content').innerHTML.includes('data-action="restore-admin-assets"'));
+  const before=plain(bridge.getState());await b.click('restore-admin-assets');assert.deepEqual(plain(bridge.getState()),before);
+  assert.equal(bridge.getRoleAccess().isAdmin,false);assert.equal(bridge.getState().home,'sunpu');assert.notEqual(bridge.getState().castles.edo.owner,'德川家');
+});
+await test('ordinary 徳川家 remains selectable without staff or operator access',async()=>{
+  const b=browser(),bridge=b.c.SengokuBridge;bridge.openStartSelection();
+  let html=b.nodes.get('modal-content').innerHTML;assert(html.includes('data-id="徳川家"'));assert(!html.includes('data-id="德川家"'));
+  b.query('#new-start-castle').value='himeji';await b.click('choose-clan','徳川家');await b.click('choose-clan','德川家');await b.click('start-new');
+  assert.equal(bridge.getState().clan,'徳川家');assert.equal(bridge.getState().home,'himeji');assert.equal(bridge.getRoleAccess().isStaff,false);assert.equal(bridge.getRoleAccess().isAdmin,false);
+  assert(!bridge.getState().officerVariants.includes('of_b0616adde162:U'));assert.match(b.nodes.get('clan-panel').innerHTML,/aria-label="徳川家：三つ葉葵"/);
+  html=b.nodes.get('main').innerHTML;assert(!html.includes('staff-base-notice'));
 });
 console.log(`${count} staff-base application UI scenarios passed. No network requests.`);
 })().catch(error=>{console.error(error);process.exitCode=1;});

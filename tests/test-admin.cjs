@@ -285,7 +285,7 @@ test('the exclusive U uses 德川家 while ordinary Tokugawa variants and select
 });
 
 test('the reserved house cannot be selected by ordinary players, whose Tokugawa choice still round-trips',()=>{
-  assert.throws(()=>create({clan:'德川家'}),/運営専用/);
+  assert.throws(()=>create({clan:'德川家'}),/運営・スタッフ専用/);
   assert(!D.clans.some(c=>c.name==='德川家'));assert(D.clans.some(c=>c.name==='徳川家'));
   const ordinary=create({clan:'徳川家',startCastle:'himeji'});assert.equal(ordinary.state.home,'himeji');assert.equal(ordinary.state.clan,'徳川家');
   assert.deepEqual(ordinary.ownedCastles().map(c=>c.id),['himeji']);assert.deepEqual(E.fromSave(ordinary.exportSave(),roster).state,ordinary.state);

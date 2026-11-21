@@ -9,10 +9,10 @@ try{
  assert.equal(ordinary.user.clan,'徳川家');for(const clan of ['德川家',' 德川家 '])assert.equal((await api('/session',{method:'POST',body:{name:'偽の運営',clan},expected:403})).data.error.code,'ADMIN_CLAN_REQUIRED');
  await api('/admin/claim',{method:'POST',token:admin.token,body:{key:h.env.SENGOKU_ADMIN_KEY}});await api('/admin/staff',{method:'POST',token:admin.token,body:{targetPlayerId:staff.user.id,action:'appoint',requestId:crypto.randomUUID()}});
  const identity=(await api('/me',{token:admin.token})).data.user;assert.equal(identity.name,'自由な領主名');assert.equal(identity.clan,'德川家');assert(identity.isAdmin);
- for(const player of [ordinary,staff])assert.equal((await api('/profile',{method:'PATCH',token:player.token,body:{name:player.user.name,clan:'德川家'},expected:403})).data.error.code,'ADMIN_CLAN_REQUIRED');
+ assert.equal((await api('/profile',{method:'PATCH',token:ordinary.token,body:{name:ordinary.user.name,clan:'德川家'},expected:403})).data.error.code,'ADMIN_CLAN_REQUIRED');const staffProfile=(await api('/profile',{method:'PATCH',token:staff.token,body:{name:staff.user.name,clan:'德川家'}})).data.user;assert.equal(staffProfile.clan,'德川家');assert(staffProfile.isStaff&&!staffProfile.isAdmin);
  await lease(ordinary);const old=await write(ordinary,0,freshAt('徳川家','himeji'));assert.equal(old.data.save.state.clan,'徳川家');assert.equal(old.data.save.state.home,'himeji');assert.equal(Object.values(old.data.save.state.castles).filter(c=>c.owner==='徳川家').length,1);
  const forged=freshAt('德川家','himeji');forged.state.isAdmin=true;forged.isAdmin=true;assert.equal((await write(ordinary,1,forged,403)).data.error.code,'ADMIN_CLAN_REQUIRED');
- await lease(staff);assert.equal((await write(staff,0,forged,403)).data.error.code,'ADMIN_CLAN_REQUIRED');
+ await lease(staff);const staffSave=(await write(staff,0,forged)).data;assert.equal(staffSave.save.state.clan,'德川家');assert.equal(staffSave.save.state.home,'sunpu');assert(!staffSave.user.isAdmin);assert.deepEqual(staffSave.entitlements,{edo:false,ieyasuU:false});assert(!staffSave.save.state.officerVariants.includes('of_b0616adde162:U'));
  // Metropolitan castles are excluded by the first-start selector only. Existing
  // ordinary cloud campaigns at Osaka, Nijo and Nagoya must remain importable.
  let revision=1;for(const city of ['osaka','nijo','nagoya']){const saved=await write(ordinary,revision++,freshAt('徳川家',city));assert.equal(saved.data.save.state.home,city);assert((await api('/field')).data.players.find(p=>p.playerId===ordinary.user.id).majorCity);}
