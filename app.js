@@ -56,7 +56,8 @@
   const skillIcons={commander:'flag',cavalry:'swords',infantry:'shield',ranged:'target',strategist:'book',administrator:'scroll',farmer:'wheat',merchant:'coins',engineer:'castle',medic:'plus'};
   const saveKey='sengoku-tento-save-v2', settingsKey='sengoku-tento-settings-v1', backupKey='sengoku-cloud-backups-v1';
   let linkedAtStart=false;try{linkedAtStart=!!JSON.parse(localStorage.getItem('sengoku-online-identity-v1')||'null')?.token;}catch(_){}
-  let syncAccess={linked:linkedAtStart,ready:!linkedAtStart,writable:!linkedAtStart,reason:linkedAtStart?'pending':'local',message:linkedAtStart?'クラウドの最新データを確認しています。':'この端末に保存しています。'};
+  let syncAccess={linked:linkedAtStart,ready:!linkedAtStart,writable:!linkedAtStart,rolePending:linkedAtStart,reason:linkedAtStart?'pending':'local',message:linkedAtStart?'クラウドの最新データを確認しています。':'この端末に保存しています。'};
+  let pendingRoleSave=null;
   const mutationActions=new Set(['toggle-time','upgrade','upgrade-castle','claim-quest','draw-officers','recruit-officer','scout','diplomacy','attack','assign-army','remove-army','assign-governor','remove-governor','recruit-troops','train','research','confirm-import','restore-admin-assets']);
   const roster=window.SENGOKU_OFFICERS||[], data=window.SENGOKU_DATA;
   let worldCatchingUp=false,worldCatchupTimer=null,worldClockStatusKey='',fieldActionPending=false,walkingActionPending=false,strategyActionPending=false,startPending=false,interactionEpoch=0,worldSettlementPending=false,worldSettlementRetryAt=0,renderedNavigation='',renderedSyncBanner='',staffBaseReady=false,roleEpoch=0,localWalkingContext=null,strategyEpoch=0,strategyRun=null;
@@ -70,7 +71,7 @@
   let settings={sound:false,volume:10,tips:true,musicMode:'auto',track:''};
   try{settings={...settings,...JSON.parse(localStorage.getItem(settingsKey)||'{}')};}catch(_){}
   settings.sound=false;
-  try{const raw=localStorage.getItem(saveKey);startPending=raw===null;game=raw!==null?SengokuEngine.fromSave(raw,roster):new SengokuEngine({clan:'織田家',officers:roster});}catch(e){game=new SengokuEngine({clan:'織田家',officers:roster});saveWarning='保存を読み込めなかったため、自動保存を止めて仮プレイを開始しました。既存の保存データは上書きしていません。新しい物語やセーブ読込を確定すると置き換わります。';saveEnabled=false;}
+  try{const raw=localStorage.getItem(saveKey);startPending=raw===null;if(linkedAtStart&&raw!==null)pendingRoleSave=raw;game=raw!==null?SengokuEngine.fromSave(raw,roster):new SengokuEngine({clan:'織田家',officers:roster});}catch(e){game=new SengokuEngine({clan:'織田家',officers:roster});saveWarning='保存を読み込めなかったため、自動保存を止めて仮プレイを開始しました。既存の保存データは上書きしていません。新しい物語やセーブ読込を確定すると置き換わります。';saveEnabled=false;}
   if(!game?.state){$('#main').innerHTML='<div class="loading-screen">ゲームの読み込みに失敗しました。再読み込みしてください。</div>';return;}
   const state=()=>game.state;
   function clanInfo(){return game.isAdmin?data.adminClan:game.isStaff?data.staffClan:data.clans.find(c=>c.name===state().clan)||data.clans[0];}
@@ -88,11 +89,13 @@
   function confirmedWorldClock(){const shared=window.SengokuWorldClock?.snapshot();return shared?.ready&&shared.clock?{...shared.clock,elapsedMs:shared.clock.confirmedElapsedMs??shared.clock.elapsedMs}:null;}
   function clockIsApplied(){if(!window.SengokuWorldClock)return true;const clock=confirmedWorldClock(),anchor=game?.state?.worldClock;return Boolean(clock&&anchor?.id===clock.id&&anchor.elapsedMs>=clock.elapsedMs&&anchor.elapsedMs<=clock.elapsedMs+5000);}
   function queueWorldProgress(){if(worldCatchupTimer===null)worldCatchupTimer=setTimeout(processWorldClock,0);}
-  function canMutate(ignoreClock=false,allowSetup=false,allowStrategy=false){const lease=!syncAccess.linked||(syncAccess.ready&&syncAccess.writable&&(!syncAccess.leaseExpiresAt||Date.parse(syncAccess.leaseExpiresAt)>Date.now()+1000));return lease&&!fieldActionPending&&!walkingActionPending&&(!strategyActionPending||allowStrategy)&&!worldSettlementPending&&(allowSetup||!startPending)&&(ignoreClock||!worldCatchingUp&&clockIsApplied());}
+  function canMutate(ignoreClock=false,allowSetup=false,allowStrategy=false){const lease=!syncAccess.linked||(syncAccess.ready&&syncAccess.writable&&(!syncAccess.leaseExpiresAt||Date.parse(syncAccess.leaseExpiresAt)>Date.now()+1000));return lease&&!syncAccess.rolePending&&!fieldActionPending&&!walkingActionPending&&(!strategyActionPending||allowStrategy)&&!worldSettlementPending&&(allowSetup||!startPending)&&(ignoreClock||!worldCatchingUp&&clockIsApplied());}
   function canStartNew(){return canMutate(true,true)&&!worldCatchingUp&&(!game.isStaff||staffConstructionReady())&&(!window.SengokuWorldClock||Boolean(confirmedWorldClock()));}
-  function syncMessage(){return worldSettlementPending?'占領した拠点の集計と報酬を同期しています。':syncAccess.message||(syncAccess.writable?'この端末で進行中 · 自動同期しています。':'他端末の進行を表示中です。「端末同期」から操作端末を切り替えられます。');}
+  function syncMessage(){return syncAccess.rolePending?'領主の権限を確認しています。確認が終わるまで操作と保存を待機しています。':worldSettlementPending?'占領した拠点の集計と報酬を同期しています。':syncAccess.message||(syncAccess.writable?'この端末で進行中 · 自動同期しています。':'他端末の進行を表示中です。「端末同期」から操作端末を切り替えられます。');}
   function requireWritable(){if(canMutate())return true;toast(worldSettlementPending?'占領した拠点の集計と報酬を同期しています。':startPending?'はじめに本拠の城を一つ選んでください。以前の進行がある場合は、引き継ぎ・復元から再接続できます。':fieldActionPending?'共通フィールド・資産・共同普請の結果を同期しています。':worldCatchingUp||window.SengokuWorldClock?.snapshot().ready&&!clockIsApplied()?'共通時刻までの進行を反映しています。':window.SengokuWorldClock&&!window.SengokuWorldClock.snapshot().ready?window.SengokuWorldClock.snapshot().message:syncMessage(),true);return false;}
   function save({allowClockCatchup=false,allowStrategy=false}={}){const indicator=$('#save-indicator');if(startPending){if(indicator)indicator.textContent='開始する城を選択してください';return false;}if(!canMutate(allowClockCatchup,false,allowStrategy)){if(indicator)indicator.textContent=syncAccess.ready?'クラウドの進行を表示中':'クラウドを確認中';return false;}if(!saveEnabled){if(indicator)indicator.textContent='自動保存できません';return false;}try{localStorage.setItem(saveKey,game.exportSave());if(indicator)indicator.textContent=syncAccess.linked?'端末に保存 · 同期中':'端末に自動保存済み';window.dispatchEvent(new CustomEvent('sengoku:game-saved'));return true;}catch(e){saveEnabled=false;saveWarning='このブラウザでは保存領域を利用できません。「保存・設定」でセーブを書き出してください。';if(indicator)indicator.textContent='セーブ書き出しを推奨';toast(saveWarning,true);return false;}}
+  function getGameSave(){if(startPending)return null;if(!saveEnabled)throw Error('元のセーブを読み込み・保存できないため、仮の進行は同期しません。');return JSON.parse(syncAccess.rolePending&&pendingRoleSave?pendingRoleSave:game.exportSave());}
+  function getStoredSave(){const raw=localStorage.getItem(saveKey);return raw===null?null:JSON.parse(raw);}
   function syncBanner(){return syncAccess.linked?`<div id="sync-access-notice" class="sync-access-notice ${canMutate()?'sync-writable':'sync-readonly'}" role="status"><span>${icon(canMutate()?'check':'lock')}<span>${esc(syncMessage())}</span></span><button class="button small" data-action="open-sync">端末同期</button></div>`:'';}
   function backupCurrentSave(reason='cloud'){const raw=localStorage.getItem(saveKey)||(startPending?null:game.exportSave());if(!raw)return;const entries=JSON.parse(localStorage.getItem(backupKey)||'[]');const list=Array.isArray(entries)?entries:[];if(list[0]?.save===raw)return;list.unshift({savedAt:new Date().toISOString(),reason,save:raw});localStorage.setItem(backupKey,JSON.stringify(list.slice(0,5)));}
   function exportSyncBackup(){try{const list=JSON.parse(localStorage.getItem(backupKey)||'[]');if(!list.length){toast('同期前のバックアップはまだありません。');return;}downloadBlob(new Blob([list[0].save],{type:'application/json'}),'sengoku-taisen-before-sync.json');toast('直近の同期・読込前のセーブを書き出しました。「セーブデータを読み込む」から復元できます。');}catch(_){toast('バックアップを読み出せませんでした。',true);}}
@@ -702,13 +705,21 @@
     finally{strategyActionPending=false;refreshLiveControls();window.SengokuStrategy?.refreshAccess?.();queueWorldProgress();}
   }
   function setSyncAccess(access){const wasWritable=canMutate();syncAccess={...syncAccess,...access};if(wasWritable!==canMutate()){lastRealtime=performance.now();saveCounter=0;}const banner=$('#sync-access-notice'),markup=syncBanner();if(markup!==renderedSyncBanner||Boolean(banner)!==Boolean(markup)){preserveInteraction($('#main'),()=>{if(banner)banner.outerHTML=markup;else if(markup){const host=$('#town-overview')||$('#main');host.insertAdjacentHTML(host.id==='town-overview'?'beforeend':'afterbegin',markup);}});renderedSyncBanner=markup;}const indicator=$('#save-indicator');if(indicator)indicator.textContent=startPending?'本拠の選択待ち':syncAccess.linked?(syncAccess.ready?(syncAccess.writable?'クラウド自動同期':'同期データを表示中'):'クラウドを確認中'):'端末に自動保存';refreshLiveControls();if(syncAccess.ready&&syncAccess.writable)queueWorldProgress();window.SengokuStrategy?.refreshAccess?.();}
-  function setRoleAccess({isAdmin=false,isStaff=false}={}){
-    isAdmin=isAdmin===true;isStaff=isStaff===true&&!isAdmin;
+  function setRoleAccess({isAdmin=false,isStaff=false,pending=false}={}){
+    pending=pending===true;isAdmin=!pending&&isAdmin===true;isStaff=!pending&&isStaff===true&&!isAdmin;
+    const wasPending=syncAccess.rolePending===true;
+    // Unknown authentication is a read-only view, not a confirmed demotion.
+    // Preserve the exact campaign before removing privileged projections.
+    if(pending&&!wasPending&&!startPending&&saveEnabled){try{pendingRoleSave=game.exportSave();}catch(_){pendingRoleSave=null;saveEnabled=false;saveWarning='元のセーブを保護するため保存を停止しました。クラウドの進行を確認してください。';}}
+    syncAccess.rolePending=pending;
     const changed=game.isAdmin!==isAdmin||Boolean(game.isStaff)!==isStaff;
-    if(changed){roleEpoch++;staffBaseReady=false;stopStrategy();}
-    if((isAdmin||isStaff)&&changed&&syncAccess.linked&&!syncAccess.ready){try{const raw=localStorage.getItem(saveKey);if(raw)game=SengokuEngine.fromSave(raw,roster,{isAdmin,isStaff});}catch(_){}}
+    if(changed||wasPending!==pending){roleEpoch++;staffBaseReady=false;stopStrategy();}
+    if(!pending&&wasPending&&pendingRoleSave){
+      try{game=SengokuEngine.fromSave(pendingRoleSave,roster,{isAdmin,isStaff});pendingRoleSave=null;}
+      catch(_){syncAccess.rolePending=true;return{ok:false,message:'元のセーブを確認できるまで、操作と保存を待機しています。'};}
+    }else if(!pending&&(isAdmin||isStaff)&&changed&&syncAccess.linked&&!syncAccess.ready){try{const raw=localStorage.getItem(saveKey);if(raw)game=SengokuEngine.fromSave(raw,roster,{isAdmin,isStaff});}catch(_){}}
     const result=game.setRoleAccess?game.setRoleAccess({isAdmin,isStaff}):game.setAdminAccess(isAdmin);
-    if(!changed&&!result.changed)return result;
+    if(!changed&&!result.changed&&wasPending===pending)return result;
     if(selectedCastle==='edo'&&!isAdmin||selectedCastle==='sunpu'&&!isStaff)selectedCastle='';
     preserveInteraction($('#main'),render);
     if(activeModal==='new'){newStartCastle=isAdmin?'edo':isStaff?'sunpu':['edo','sunpu'].includes(newStartCastle)?'':newStartCastle;preserveInteraction($('#modal-content'),drawNewGame);}else refreshActiveModal();
@@ -729,7 +740,7 @@
       const candidate=SengokuEngine.fromSave(typeof snapshot==='string'?snapshot:JSON.stringify(snapshot),roster,{isAdmin:meta.isAdmin===true,isStaff:meta.isStaff===true,staffBase:meta.staffBase||null});
       if(meta.backup===true)backupCurrentSave(meta.reason||'cloud');
       localStorage.setItem(saveKey,candidate.exportSave());
-      const wasPending=startPending;game=candidate;staffBaseReady=game.isStaff===true&&Boolean(game.getStaffBase?.());startPending=false;saveEnabled=true;saveWarning='';lastRealtime=performance.now();saveCounter=0;
+      const wasPending=startPending;game=candidate;staffBaseReady=game.isStaff===true&&Boolean(game.getStaffBase?.());pendingRoleSave=null;syncAccess.rolePending=false;startPending=false;saveEnabled=true;saveWarning='';lastRealtime=performance.now();saveCounter=0;
       if(selectedCastle==='edo'&&!game.isAdmin||selectedCastle==='sunpu'&&!game.isStaff)selectedCastle='';
       if(meta.reason==='initial'||meta.reason==='conflict')importedGame=null;
       if(wasPending&&activeModal==='new'||activeModal==='import'&&!importedGame)closeModal();
@@ -762,7 +773,7 @@
     if(!save()){game.state=before;return{ok:false,message:'保存できなかったため、復元を取り消しました。'};}
     preserveInteraction($('#main'),render);refreshActiveModal();return result;
   }
-  window.SengokuBridge={getStrategyAccess,previewStrategy,beginStrategy,stepStrategy,stopStrategy,getState:()=>state(),hasStarted:()=>!startPending,getSave:()=>startPending?null:JSON.parse(game.exportSave()),toast,canReceiveGifts:()=>saveEnabled&&canMutate(),applyGift:applyDurableGift,getWalkingAccess,beginLocalWalkingSession:payload=>localWalkingOperation('begin',payload),applyLocalWalkingProgress:payload=>localWalkingOperation('progress',payload),endLocalWalkingSession:payload=>localWalkingOperation('end',payload),startWalkingSession:payload=>requestWalking('/walking/start',payload),claimWalkingSteps:payload=>requestWalking('/walking/claim',payload),guildTransfer:payload=>requestField('/guild/treasury/transfer',{method:'POST',data:payload}),openSettings:settingsModal,openStartSelection,setSyncAccess,setRoleAccess,setAdminAccess,getRoleAccess:()=>({isAdmin:game.isAdmin===true,isStaff:game.isStaff===true,epoch:roleEpoch}),applyStaffBase,getStaffBase:()=>staffConstructionReady()?game.getStaffBase():null,applyCloudSave,prepareRecoverySave,prepareNewRecoverySave,applyRecoverySave,restoreAdminAssets};
+  window.SengokuBridge={getStrategyAccess,previewStrategy,beginStrategy,stepStrategy,stopStrategy,getState:()=>state(),hasStarted:()=>!startPending,getSave:getGameSave,getStoredSave,toast,canReceiveGifts:()=>saveEnabled&&canMutate(),applyGift:applyDurableGift,getWalkingAccess,beginLocalWalkingSession:payload=>localWalkingOperation('begin',payload),applyLocalWalkingProgress:payload=>localWalkingOperation('progress',payload),endLocalWalkingSession:payload=>localWalkingOperation('end',payload),startWalkingSession:payload=>requestWalking('/walking/start',payload),claimWalkingSteps:payload=>requestWalking('/walking/claim',payload),guildTransfer:payload=>requestField('/guild/treasury/transfer',{method:'POST',data:payload}),openSettings:settingsModal,openStartSelection,setSyncAccess,setRoleAccess,setAdminAccess,getRoleAccess:()=>({isAdmin:game.isAdmin===true,isStaff:game.isStaff===true,pending:syncAccess.rolePending===true,epoch:roleEpoch}),applyStaffBase,getStaffBase:()=>staffConstructionReady()?game.getStaffBase():null,applyCloudSave,prepareRecoverySave,prepareNewRecoverySave,applyRecoverySave,restoreAdminAssets};
   let lastRealtime=performance.now(),saveCounter=0;
   document.addEventListener('visibilitychange',()=>{lastRealtime=performance.now();if(document.hidden)save();else{window.SengokuWorldClock?.refresh();processWorldClock();}});
   window.addEventListener('pagehide',()=>save());

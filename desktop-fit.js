@@ -45,6 +45,7 @@ function update(){
   const touchHeader=!active&&!atTitle?doc.querySelector?.('#app .topbar'):null;
   const touchHeaderHeight=Math.max(0,Number(touchHeader?.getBoundingClientRect?.().height)||0);
   setVar('--touch-header-height',touchHeaderHeight.toFixed(3)+'px');
+  setVar('--touch-announcement-height',(!active&&!atTitle?announcementHeight:0).toFixed(3)+'px');
   const app=doc.getElementById('app');if(active&&app)app.dataset.desktopScale='1.000';
   for(const dialog of doc.querySelectorAll('dialog[open]:not(.game-loading)'))if(active)dialog.dataset.desktopScale='1.000';
   status={active,mode:active?'desktop':'flow',...plan,scale:1,naturalWidth:plan.layoutWidth,naturalHeight:plan.layoutHeight,visibleWidth:plan.availableWidth,visibleHeight:plan.availableHeight,atTitle};
@@ -67,6 +68,7 @@ function destroy(){
   destroyed=true;if(pending)caf(pending);pending=0;for(const remove of listeners)remove();listeners=[];resizeObserver?.disconnect();mutationObserver?.disconnect();root?.classList.remove('sengoku-desktop-fit');
   for(const node of doc?.querySelectorAll?.('#app,.launch-card,dialog[data-desktop-scale]')||[])clearLegacyGeometry(node);
   if(root)setVar('--touch-header-height','0px');
+  if(root)setVar('--touch-announcement-height','0px');
   status={active:false,mode:'flow',scale:1};
 }
 const api={refresh,getStatus:()=>({...status}),destroy,computeFit,planViewport,desktopMode};

@@ -1,0 +1,360 @@
+/* Touch conversations use the visible area above the software keyboard.
+   No whole-dialog scaling: only history scrolls while a chat is composed. */
+html:not(.sengoku-desktop-fit) :is(.social-dialog, .letters-dialog) {
+  position: fixed;
+  inset: auto;
+  left: calc(var(--social-viewport-left, 0px) + 4px);
+  top: calc(var(--social-viewport-top, 0px) + 4px);
+  width: calc(var(--social-viewport-width, 100vw) - 8px);
+  height: calc(var(--social-viewport-height, var(--visible-height, 100dvh)) - 8px);
+  min-width: 0;
+  min-height: 0;
+  max-width: calc(var(--social-viewport-width, 100vw) - 8px);
+  max-height: calc(var(--social-viewport-height, var(--visible-height, 100dvh)) - 8px);
+  margin: 0;
+  padding: 0;
+  border-radius: 11px;
+  overflow: hidden;
+  transform: none;
+}
+html:not(.sengoku-desktop-fit) :is(.social-dialog, .letters-dialog)[open] {
+  display: flex;
+  flex-direction: column;
+}
+html:not(.sengoku-desktop-fit) .social-dialog .social-header {
+  flex: none;
+  gap: 10px;
+  min-width: 0;
+  padding: max(7px, env(safe-area-inset-top, 0px)) 12px 7px;
+}
+html:not(.sengoku-desktop-fit) .social-dialog .social-header-mon,
+html:not(.sengoku-desktop-fit) .social-dialog .social-header .social-eyebrow { display: none; }
+html:not(.sengoku-desktop-fit) .social-dialog .social-header h1 {
+  font-size: 22px;
+  line-height: 1.25;
+  letter-spacing: .06em;
+}
+html:not(.sengoku-desktop-fit) .social-dialog .social-header-status {
+  min-width: 0;
+  max-width: none;
+  margin-left: auto;
+  overflow-wrap: anywhere;
+}
+html:not(.sengoku-desktop-fit) .social-dialog .social-header-status span { font-size: 13px; }
+html:not(.sengoku-desktop-fit) .social-dialog .social-header-status small { display: none; }
+html:not(.sengoku-desktop-fit) .social-dialog .social-header .social-icon-button {
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  flex: none;
+}
+html:not(.sengoku-desktop-fit) .social-dialog .social-tabs {
+  display: flex;
+  flex: none;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  gap: 2px;
+  min-width: 0;
+  max-width: 100%;
+  padding: 0 6px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scroll-padding-inline: 8px;
+  scrollbar-width: thin;
+}
+html:not(.sengoku-desktop-fit) .social-dialog .social-tabs button {
+  flex: 0 0 auto;
+  min-height: 44px;
+  gap: 6px;
+  padding: 8px 11px;
+  font-size: 14px;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+html:not(.sengoku-desktop-fit) .social-dialog .social-tabs button svg { width: 17px; height: 17px; }
+html:not(.sengoku-desktop-fit) .social-dialog .social-body {
+  flex: 1 1 0;
+  min-height: 0;
+  min-width: 0;
+  padding: 14px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+html:not(.sengoku-desktop-fit) .social-dialog .social-footer {
+  flex: none;
+  gap: 8px;
+  padding: 6px 12px max(6px, env(safe-area-inset-bottom, 0px));
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+/* Non-chat forms keep the body scroller above. Only marked chat paths become
+   a bounded column, so friend search and registration do not get clipped. */
+html:not(.sengoku-desktop-fit) .social-dialog .social-body[data-touch-chat-layout] {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 10px 12px;
+  overflow: hidden;
+}
+html:not(.sengoku-desktop-fit) .social-dialog .social-body[data-touch-chat-layout] > :not(.social-chat):not([data-touch-chat-path]) {
+  flex: none;
+}
+html:not(.sengoku-desktop-fit) .social-dialog .social-body[data-touch-chat-layout] .social-chat,
+html:not(.sengoku-desktop-fit) .social-dialog [data-touch-chat-path] {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  gap: 0;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  height: auto;
+  max-height: none;
+  margin: 0;
+  overflow: hidden;
+}
+html:not(.sengoku-desktop-fit) .social-dialog .social-body[data-touch-chat-layout] .social-chat > .social-section-heading {
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  margin: 0 0 7px;
+}
+html:not(.sengoku-desktop-fit) .social-dialog .social-body[data-touch-chat-layout] .social-chat > .social-section-heading > div { min-width: 0; }
+html:not(.sengoku-desktop-fit) .social-dialog .social-chat > .social-section-heading h3 {
+  font-size: 17px;
+  line-height: 1.35;
+  letter-spacing: .02em;
+  overflow-wrap: anywhere;
+}
+html:not(.sengoku-desktop-fit) .social-dialog .social-chat > .social-section-heading p {
+  margin-top: 2px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+html:not(.sengoku-desktop-fit) .social-dialog .social-chat > .social-section-heading > .social-small { display: none; }
+html:not(.sengoku-desktop-fit) .social-dialog .social-body[data-touch-chat-layout] .social-message-list {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  height: auto;
+  max-height: none;
+  padding: 4px 2px 8px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+html:not(.sengoku-desktop-fit) .social-dialog .social-body[data-touch-chat-layout] .social-chat-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  flex: none;
+  gap: 8px;
+  min-width: 0;
+  margin: 6px 0 0;
+  padding: 8px 0 0;
+}
+html:not(.sengoku-desktop-fit) .social-dialog .social-body[data-touch-chat-layout] .social-chat-form textarea {
+  grid-column: 1;
+  grid-row: 1;
+  width: 100%;
+  min-width: 0;
+  height: 78px;
+  min-height: 68px;
+  max-height: 120px;
+  margin: 0;
+  padding: 9px 10px;
+  font-size: 16px;
+  line-height: 1.5;
+  resize: none;
+  overflow-y: auto;
+}
+html:not(.sengoku-desktop-fit) .social-dialog .social-body[data-touch-chat-layout] .social-chat-form-bottom {
+  grid-column: 2;
+  grid-row: 1;
+  display: flex;
+  align-items: flex-end;
+  margin: 0;
+  padding: 0;
+}
+html:not(.sengoku-desktop-fit) .social-dialog .social-body[data-touch-chat-layout] .social-chat-form-bottom > span { display: none; }
+html:not(.sengoku-desktop-fit) .social-dialog .social-body[data-touch-chat-layout] .social-chat-form-bottom .social-button {
+  min-width: 74px;
+  min-height: 46px;
+  padding: 10px;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+/* Keep the actual conversation title (including the recipient) in view.
+   Hide only sibling navigation/decorative material while composing. */
+html:not(.sengoku-desktop-fit) .social-dialog[data-touch-composing] .social-body[data-touch-chat-layout] > :not(.social-chat):not([data-touch-chat-path]):not(.social-feedback),
+html:not(.sengoku-desktop-fit) .social-dialog[data-touch-composing] [data-touch-chat-path] > :not(.social-chat):not([data-touch-chat-path]):not(.social-feedback) {
+  display: none !important;
+}
+html:not(.sengoku-desktop-fit) .social-dialog[data-touch-compact] .social-footer,
+html:not(.sengoku-desktop-fit) .social-dialog[data-touch-composing] .social-footer,
+html:not(.sengoku-desktop-fit) .social-dialog[data-touch-compact] .social-chat > .social-section-heading p { display: none; }
+html:not(.sengoku-desktop-fit) .social-dialog[data-touch-compact] .social-header {
+  padding-top: max(4px, env(safe-area-inset-top, 0px));
+  padding-bottom: 4px;
+}
+html:not(.sengoku-desktop-fit) .social-dialog[data-touch-compact] .social-header h1 { font-size: 20px; }
+html:not(.sengoku-desktop-fit) .social-dialog[data-touch-compact] .social-header-status span {
+  font-size: 12px;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+html:not(.sengoku-desktop-fit) .social-dialog[data-touch-compact] .social-body { padding: 10px 12px; }
+html:not(.sengoku-desktop-fit) .social-dialog[data-touch-compact] .social-body[data-touch-chat-layout] { padding: 7px 10px; }
+html:not(.sengoku-desktop-fit) .social-dialog[data-touch-compact] .social-body[data-touch-chat-layout] .social-chat-form textarea {
+  height: 68px;
+  min-height: 68px;
+  max-height: 92px;
+}
+html:not(.sengoku-desktop-fit) .social-dialog[data-touch-compact] .social-body[data-touch-chat-layout] .social-feedback {
+  max-height: 64px;
+  margin: 0 0 6px;
+  padding: 6px 10px;
+  overflow-y: auto;
+}
+
+/* Letters retain their native thread model and the existing unsent draft. */
+html:not(.sengoku-desktop-fit) .letters-dialog .letters-header {
+  flex: none;
+  gap: 10px;
+  padding: max(7px, env(safe-area-inset-top, 0px)) 12px 7px;
+}
+html:not(.sengoku-desktop-fit) .letters-dialog .letters-seal,
+html:not(.sengoku-desktop-fit) .letters-dialog .letters-header p { display: none; }
+html:not(.sengoku-desktop-fit) .letters-dialog .letters-header h1 { font-size: 22px; line-height: 1.3; }
+html:not(.sengoku-desktop-fit) .letters-dialog .letters-icon { width: 44px; height: 44px; }
+html:not(.sengoku-desktop-fit) .letters-dialog .letters-toolbar {
+  flex: none;
+  gap: 8px;
+  padding: 4px 12px;
+}
+html:not(.sengoku-desktop-fit) .letters-dialog .letters-toolbar .letters-button { min-height: 44px; padding: 7px 11px; }
+html:not(.sengoku-desktop-fit) .letters-dialog .letters-toolbar-note { font-size: 13px; }
+html:not(.sengoku-desktop-fit) .letters-dialog .letters-toolbar > .letters-icon { margin-left: auto; }
+html:not(.sengoku-desktop-fit) .letters-dialog .letters-main {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-y: auto;
+}
+html:not(.sengoku-desktop-fit) .letters-dialog .letters-main:has(.letters-thread) { overflow: hidden; }
+html:not(.sengoku-desktop-fit) .letters-dialog .letters-thread { min-height: 0; height: 100%; overflow: hidden; }
+html:not(.sengoku-desktop-fit) .letters-dialog .letters-thread-heading {
+  flex: none;
+  max-height: 110px;
+  padding: 8px 12px;
+  overflow-y: auto;
+}
+html:not(.sengoku-desktop-fit) .letters-dialog .letters-thread-heading h2 { font-size: 18px; line-height: 1.35; }
+html:not(.sengoku-desktop-fit) .letters-dialog .letters-thread-heading .letters-visibility { font-size: 13px; line-height: 1.4; }
+html:not(.sengoku-desktop-fit) .letters-dialog .letters-message-scroll {
+  flex: 1 1 0;
+  min-height: 0;
+  padding: 10px 12px;
+  overflow-y: auto;
+}
+html:not(.sengoku-desktop-fit) .letters-dialog .letters-compose {
+  flex: none;
+  gap: 5px;
+  margin: 0;
+  padding: 8px 12px max(8px, env(safe-area-inset-bottom, 0px));
+}
+html:not(.sengoku-desktop-fit) .letters-dialog .letters-compose label { font-size: 13px; line-height: 1.4; }
+html:not(.sengoku-desktop-fit) .letters-dialog .letters-compose textarea {
+  height: 78px;
+  min-height: 68px;
+  max-height: 120px;
+  margin: 0;
+  padding: 9px 10px;
+  font-size: 16px;
+  line-height: 1.5;
+  resize: none;
+  overflow-y: auto;
+}
+html:not(.sengoku-desktop-fit) .letters-dialog .letters-compose-footer { min-height: 44px; }
+html:not(.sengoku-desktop-fit) .letters-dialog .letters-compose-footer .letters-button { min-height: 44px; padding: 8px 12px; }
+html:not(.sengoku-desktop-fit) .letters-dialog .letters-new { padding: 12px; }
+html:not(.sengoku-desktop-fit) .letters-dialog .letters-new .letters-compose {
+  margin-top: 12px;
+  padding-inline: 0;
+}
+html:not(.sengoku-desktop-fit) .letters-dialog .letters-footer {
+  flex: none;
+  padding: 6px 12px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+html:not(.sengoku-desktop-fit) .letters-dialog[data-touch-compact] .letters-header {
+  padding-top: max(4px, env(safe-area-inset-top, 0px));
+  padding-bottom: 4px;
+}
+html:not(.sengoku-desktop-fit) .letters-dialog[data-touch-compact] .letters-header h1 { font-size: 20px; }
+html:not(.sengoku-desktop-fit) .letters-dialog[data-touch-compact] .letters-toolbar { padding-block: 2px; }
+html:not(.sengoku-desktop-fit) .letters-dialog[data-touch-compact] .letters-toolbar-note,
+html:not(.sengoku-desktop-fit) .letters-dialog[data-touch-compact] .letters-footer,
+html:not(.sengoku-desktop-fit) .letters-dialog[data-touch-compact] .letters-thread-heading .letters-visibility { display: none; }
+html:not(.sengoku-desktop-fit) .letters-dialog[data-touch-compact] .letters-thread-heading {
+  max-height: 72px;
+  padding: 5px 12px;
+}
+html:not(.sengoku-desktop-fit) .letters-dialog[data-touch-compact] .letters-thread-heading h2 { font-size: 16px; }
+html:not(.sengoku-desktop-fit) .letters-dialog[data-touch-compact] .letters-thread-heading .letters-eyebrow { font-size: 12px; }
+html:not(.sengoku-desktop-fit) .letters-dialog[data-touch-compact] .letters-compose {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 8px;
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+html:not(.sengoku-desktop-fit) .letters-dialog[data-touch-compact] .letters-compose textarea {
+  grid-column: 1;
+  grid-row: 1;
+  height: 68px;
+  min-height: 68px;
+  max-height: 92px;
+}
+html:not(.sengoku-desktop-fit) .letters-dialog[data-touch-compact] .letters-compose-footer {
+  grid-column: 2;
+  grid-row: 1;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: end;
+  gap: 3px;
+  height: 68px;
+}
+html:not(.sengoku-desktop-fit) .letters-dialog[data-touch-compact] [data-letter-counter] {
+  font-size: 12px;
+  line-height: 1.4;
+  text-align: right;
+  white-space: nowrap;
+}
+html:not(.sengoku-desktop-fit) .letters-dialog[data-touch-compact] .letters-compose-footer .letters-button {
+  flex: none;
+  padding: 8px 10px;
+  font-size: 14px;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+html:not(.sengoku-desktop-fit) .letters-dialog[data-touch-compact] .letters-compose > label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+html:not(.sengoku-desktop-fit) .letters-dialog[data-touch-compact] .letters-pending,
+html:not(.sengoku-desktop-fit) .letters-dialog[data-touch-compact] .letters-feedback {
+  max-height: 66px;
+  padding: 6px 12px;
+  font-size: 13px;
+}

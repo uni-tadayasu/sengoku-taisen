@@ -73,6 +73,40 @@
  const old=c.start('admin');await settle();await c.start('other');staleResolve();await old;check(c.sync.getStatus().writable&&c.role()===false&&staleServer.get('other').save!==null,'stale privileged identity response cannot replace a new identity');c.sync.stop();
  // A failed unload retains a small checkpoint; only the same baseline may resume it.
  const resumeClock=new Clock(),resumeServer=server(resumeClock),store=memory(),r1=client(resumeClock,resumeServer,'resume',{storage:store});await r1.start();r1.mutate(s=>{s.resources.gold=444;});resumeServer.intercept(async call=>{if(call.opts?.method==='PUT')throw Error('page closed');return call.process();});r1.hidden(true);await r1.sync.pageHidden();const pendingState=r1.state();check(store.getItem('sengoku-sync-pending-v1')!==null,'unsent local progress has a recovery checkpoint');r1.sync.stop();await settle();resumeServer.intercept(null);const r2=client(resumeClock,resumeServer,'resume',{storage:store,state:pendingState});await r2.start();check(resumeServer.get('resume').save.state.resources.gold===444,'reopening resumes unsent local progress only against matching server baseline');check(store.getItem('sengoku-sync-pending-v1')===null,'checkpoint clears after confirmed cloud save');r2.sync.stop();
+ // Reload can see an older durable snapshot than the runtime that was checkpointed.
+ // Keep the precise unsent formation even when time advanced after the last local write.
+ const formationClock=new Clock(),formationServer=server(formationClock),formationStore=memory(),f1=client(formationClock,formationServer,'formation',{storage:formationStore});
+ await f1.start();let durable=f1.state();f1.bridge.getStoredSave=()=>({state:clone(durable)});
+ f1.mutate(s=>{s.army=['officer-c','officer-a'];s.governors={farm:'officer-b'};});durable=f1.state();
+ f1.mutate(s=>{s.resources.gold+=7;s.month=2;});const unsent=f1.state();
+ formationServer.intercept(async call=>{if(call.opts?.method==='PUT')throw Error('page closed before upload');return call.process();});f1.hidden(true);await f1.sync.pageHidden();f1.sync.stop();await settle();formationServer.intercept(null);
+ const f2=client(formationClock,formationServer,'formation',{storage:formationStore,state:durable});f2.bridge.getStoredSave=()=>({state:clone(durable)});await f2.start();
+ check(JSON.stringify(f2.state())===JSON.stringify(unsent),'reload resumes the exact unsent snapshot when runtime and durable hashes differ');
+ check(JSON.stringify(formationServer.get('formation').save.state.army)===JSON.stringify(unsent.army)&&formationServer.get('formation').save.state.governors.farm==='officer-b','reload never replaces custom army and governors with the old cloud formation');f2.sync.stop();await settle();
+ // Saved snapshots never bypass identity, revision, original-save or integrity checks.
+ for(const mismatch of ['identity','remote','durable','snapshot']){
+  const guardedClock=new Clock(),guardedServer=server(guardedClock),guardedStore=memory(),g1=client(guardedClock,guardedServer,'guarded',{storage:guardedStore});await g1.start();
+  const baseline=clone(guardedServer.get('guarded').save);let onDisk=g1.state();g1.bridge.getStoredSave=()=>({state:clone(onDisk)});
+  g1.mutate(s=>{s.army=['custom-b','custom-a'];s.governors={farm:'custom-c'};});onDisk=g1.state();g1.mutate(s=>{s.resources.gold++;});
+  const pending=guardedStore.getItem('sengoku-sync-pending-v1');g1.sync.stop();await settle();guardedStore.setItem('sengoku-sync-pending-v1',pending);
+  const id=mismatch==='identity'?'different':'guarded',remote=guardedServer.get(id);if(mismatch==='identity'){remote.save=clone(baseline);remote.revision=1;}
+  if(mismatch==='remote'){remote.save.state.army=['authoritative'];remote.save.state.governors={farm:'authoritative-governor'};remote.revision++;}
+  if(mismatch==='durable')onDisk.army=['later-unrelated-save'];
+  if(mismatch==='snapshot'){const corrupt=JSON.parse(pending);corrupt.snapshot.state.army=['tampered'];guardedStore.setItem('sengoku-sync-pending-v1',JSON.stringify(corrupt));}
+  const expected=clone(remote.save.state),writes=guardedServer.puts().length,g2=client(guardedClock,guardedServer,id,{storage:guardedStore,state:onDisk});g2.bridge.getStoredSave=()=>({state:clone(onDisk)});await g2.start();
+  check(JSON.stringify(g2.state())===JSON.stringify(expected)&&guardedServer.puts().length===writes,`${mismatch} mismatch cannot replay a pending formation over the authoritative cloud save`);
+  check(g2.applied.some(x=>x.meta.backup),`${mismatch} mismatch retains the local replacement-backup path`);g2.sync.stop();await settle();
+ }
+ // Unknown roles must neither upload a sanitized projection nor replace its checkpoint.
+ const authClock=new Clock(),authServer=server(authClock),authStore=memory(),auth=client(authClock,authServer,'auth-pending',{storage:authStore});let rolePending=false;
+ auth.bridge.getRoleAccess=()=>({pending:rolePending});auth.bridge.setRoleAccess=role=>{rolePending=role.pending===true;};await auth.start();
+ auth.mutate(s=>{s.army=['pending-a'];s.governors={gold_mine:'pending-b'};});const protectedPending=authStore.getItem('sengoku-sync-pending-v1'),authWrites=authServer.puts().length;
+ rolePending=true;auth.mutate(s=>{s.governors={};});await auth.sync.flush();auth.hidden(true);await auth.sync.pageHidden();
+ check(authServer.puts().length===authWrites&&authStore.getItem('sengoku-sync-pending-v1')===protectedPending,'unverified role blocks normal and suspended PUTs and preserves the pre-sanitization checkpoint');auth.sync.stop();check(!rolePending,'explicit logout clears the pending-role gate');
+ // Storage failure is non-destructive, including when an earlier checkpoint exists.
+ const quotaClock=new Clock(),quotaServer=server(quotaClock),quotaStore=memory(),quota=client(quotaClock,quotaServer,'quota',{storage:quotaStore});await quota.start();quota.mutate(s=>{s.army=['kept-a'];});
+ const previousPending=quotaStore.getItem('sengoku-sync-pending-v1');quotaStore.setItem=()=>{throw Error('QuotaExceededError');};quota.mutate(s=>{s.army=['kept-b'];});
+ check(quota.state().army[0]==='kept-b'&&quotaStore.getItem('sengoku-sync-pending-v1')===previousPending,'checkpoint storage errors retain the live formation and prior durable checkpoint');quota.sync.stop();await settle();
  // Same-identity restart uses a distinct lease ID, protecting against late cleanup.
  const restartClock=new Clock(),restartServer=server(restartClock),restart=client(restartClock,restartServer);await restart.start();const oldId=restart.sync.getDevice().id;await restart.start();const newId=restart.sync.getDevice().id;check(oldId!==newId&&newId.length<=90,'identity generation restart has a fresh bounded device ID');restart.sync.stop();await settle();
  // A first-start draft never becomes a server save just because identity links.

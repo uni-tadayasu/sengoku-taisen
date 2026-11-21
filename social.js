@@ -255,7 +255,7 @@ async function loadRecentLogins({more=false}={}){
  finally{if(current()){recentLoginBusy=false;refreshRecentLoginView();scheduleRecentLogins();}}
 }
 function staleIdentity(){const e=Error('接続する領主が変わったため、以前の処理を取り消しました。');e.code='STALE_IDENTITY';return e;}
-function applyRoleAccess(user={}){const bridge=global.SengokuBridge,roles={isAdmin:user?.isAdmin===true,isStaff:user?.isStaff===true&&user?.isAdmin!==true};if(bridge?.setRoleAccess)bridge.setRoleAccess(roles);else bridge?.setAdminAccess?.(roles.isAdmin);}
+function applyRoleAccess(user={}){const bridge=global.SengokuBridge,roles={isAdmin:user?.isAdmin===true,isStaff:user?.isStaff===true&&user?.isAdmin!==true,pending:!user?.id&&Boolean(s.identity)};if(bridge?.setRoleAccess)bridge.setRoleAccess(roles);else bridge?.setAdminAccess?.(roles.isAdmin);}
 function acceptUser(user,{fromSync=false}={}){
  if(!user){const wasAdminTab=['admin','recent-logins'].includes(s.tab);s.user=null;s.unreadLetters=0;global.SengokuLetters?.refreshIdentity?.();clearAdminData();clearGuildData();if(wasAdminTab)s.tab='profile';if(!fromSync)applyRoleAccess();if(body&&(wasAdminTab||s.open)){clearConfirm();render();}return;}
  if(!s.identity||String(user.id)!==String(s.identity.id))throw staleIdentity();
@@ -533,7 +533,7 @@ async function commitRecovery(stage,epoch,mode,selected){
  const prepared=mode==='cloud'?null:prepareRecovery(selected,latest.user,latest.staffBase),identity={id:stage.identity.id,token:stage.identity.token};
  let previous;try{previous=localStorage.getItem(IDKEY);}catch(_){throw Error('このブラウザの保存領域を確認できません。現在の接続は変更していません。');}
  global.SengokuCloudSync?.stop?.({pending:true});
- const rollback=()=>{try{if(previous===null)localStorage.removeItem(IDKEY);else localStorage.setItem(IDKEY,previous);if(localStorage.getItem(IDKEY)!==previous)throw Error();if(s.identity)startCloud();else global.SengokuBridge?.setSyncAccess?.({linked:false,ready:true,writable:true,reason:'local',message:''});return true;}catch(_){return false;}};
+ const rollback=()=>{try{if(previous===null)localStorage.removeItem(IDKEY);else localStorage.setItem(IDKEY,previous);if(localStorage.getItem(IDKEY)!==previous)throw Error();if(s.identity)startCloud();else{global.SengokuBridge?.setSyncAccess?.({linked:false,ready:true,writable:true,reason:'local',message:''});applyRoleAccess();}return true;}catch(_){return false;}};
  if(!saveJSON(IDKEY,{...identity,pendingRecovery:true})){const restored=rollback();if(!restored)holdRecovery(identity);throw Error(restored?'領主情報を保存できませんでした。現在の接続を保持しています。':'保存領域を復元できなかったため同期を停止しています。引き継ぎ画面から再確認してください。');}
  if(prepared){let applied;try{applied=global.SengokuBridge?.applyRecoverySave?.(prepared.save,{isAdmin:latest.user.isAdmin===true,isStaff:latest.user.isStaff===true&&latest.user.isAdmin!==true,staffBase:latest.staffBase||null});}catch(_){applied={ok:false,message:'ゲームの進行を保存できませんでした。'};}if(!applied?.ok){const restored=rollback();if(!restored)holdRecovery(identity);throw Error((applied?.message||'ゲームの進行を保存できませんでした。')+(restored?' 現在の接続を保持しています。':' 同期を停止しています。引き継ぎ画面から再確認してください。'));}}
  if(!saveJSON(IDKEY,identity)){

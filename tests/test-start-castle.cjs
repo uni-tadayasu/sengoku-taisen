@@ -97,6 +97,22 @@ await test('opening or cancelling a new story preserves the existing save, and a
 await test('a failed first durable write leaves the player in the unconfirmed selection',async()=>{
   const b=browser();b.c.SengokuBridge.openStartSelection();b.query('#new-start-castle').value='himeji';b.failNextSave();await b.click('start-new');assert.equal(b.c.SengokuBridge.hasStarted(),false);assert.equal(b.c.SengokuBridge.getSave(),null);assert(!b.stored.has(SAVE));assert.equal(b.events.length,0);
 });
+await test('an unreadable local save never uploads its starter fallback and a verified cloud save can recover it',async()=>{
+  for(const hasRemote of [false,true]){
+    const original='{unreadable-old-save',b=browser(original),bridge=b.c.SengokuBridge;
+    assert.throws(()=>bridge.getSave(),/仮の進行は同期しません/);assert.equal(b.stored.get(SAVE),original);
+    const g=new SengokuEngine({clan:'伊達家',officers:roster,seed:32});g.assignArmy([g.state.officers[2],g.state.officers[0]]);g.assignGovernor('farm',g.state.officers[3]);
+    const remote=hasRemote?JSON.parse(g.exportSave()):null,requests=[];let writer=null;
+    const snapshot=()=>({ok:true,user:{id:'recovery-fixture',isAdmin:false,isStaff:false},save:plain(remote),revision:remote?4:0,serverTime:new Date().toISOString(),writerDeviceId:writer,leaseExpiresAt:writer?new Date(Date.now()+30000).toISOString():null,writable:Boolean(writer)});
+    const request=async(route,options={})=>{requests.push({route,method:options.method||'GET'});if(route==='/presence'||route==='/sync/release')return{ok:true};if(route==='/sync/lease'){writer=options.data.deviceId;return snapshot();}if(route.startsWith('/sync?'))return snapshot();throw Error('Unexpected save write '+route);};
+    vm.runInContext(fs.readFileSync(path.join(__dirname,'../cloud-sync.js'),'utf8'),b.c);
+    const sync=b.c.SengokuCloudSync.create({bridge:()=>bridge,storage:b.c.localStorage,device:{id:'recovery-fixture-tab',name:'test'},setTimeout:()=>1,clearTimeout(){}});
+    await sync.start({id:'recovery-fixture',request});assert.equal(requests.filter(r=>r.method==='PUT').length,0,'A starter fallback can never replace a cloud campaign');
+    if(hasRemote){assert.equal(sync.getStatus().writable,true);assert.deepEqual(plain(bridge.getState().army),plain(g.state.army));assert.deepEqual(plain(bridge.getState().governors),plain(g.state.governors));assert.equal(JSON.parse(b.stored.get(BACKUP))[0].save,original);}
+    else{assert.equal(sync.getStatus().writable,false);assert.equal(b.stored.get(SAVE),original);}
+    sync.stop();
+  }
+});
 await test('a cloud campaign replaces only the provisional draft and ends first-start selection',()=>{
   const b=browser();b.c.SengokuBridge.openStartSelection();const remote=new SengokuEngine({clan:'毛利家',startCastle:'himeji',officers:roster,seed:22});remote.state.resources.gold=21119;
   assert.equal(b.c.SengokuBridge.applyCloudSave(remote.exportSave(),{reason:'initial',backup:true}).ok,true);assert.equal(b.c.SengokuBridge.hasStarted(),true);assert.equal(b.c.SengokuBridge.getSave().state.resources.gold,21119);assert.equal(b.c.SengokuBridge.getState().home,'himeji');assert.equal(b.nodes.get('modal').open,false);assert(!b.stored.has(BACKUP));assert.equal(b.events.length,0);

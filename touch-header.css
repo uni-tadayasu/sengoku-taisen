@@ -4,11 +4,19 @@
 #touch-header-status[hidden] { display: none !important; }
 
 html:not(.sengoku-desktop-fit) {
-  scroll-padding-top: calc(var(--touch-header-height, 0px) + 10px);
+  scroll-padding-top: calc(var(--touch-announcement-height, 0px) + var(--touch-header-height, 0px) + 10px);
+}
+html:not(.sengoku-desktop-fit) body:not(.at-title) #announcement-bar {
+  position: sticky;
+  top: 0;
+  z-index: 42;
+  box-sizing: border-box;
+  height: calc(48px + env(safe-area-inset-top, 0px));
+  padding-top: env(safe-area-inset-top, 0px);
 }
 html:not(.sengoku-desktop-fit) #app .topbar {
   position: sticky;
-  top: 0;
+  top: var(--touch-announcement-height, 48px);
   z-index: 40;
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
@@ -19,7 +27,7 @@ html:not(.sengoku-desktop-fit) #app .topbar {
   min-width: 0;
   min-height: 0;
   height: auto;
-  padding: calc(7px + env(safe-area-inset-top, 0px)) max(12px, env(safe-area-inset-right, 0px)) 9px max(12px, env(safe-area-inset-left, 0px));
+  padding: 7px max(12px, env(safe-area-inset-right, 0px)) 9px max(12px, env(safe-area-inset-left, 0px));
   background: linear-gradient(110deg, #172337, #142332);
   border-bottom: 1px solid #a9bfd748;
   box-shadow: 0 5px 18px #030c1626;

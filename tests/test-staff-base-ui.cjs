@@ -8,8 +8,9 @@ const clock={id:'staff-test-world',elapsedMs:120000,confirmedElapsedMs:120000,ru
 let count=0;async function test(name,run){await run();count++;console.log('PASS '+name);}
 function personal(){const g=new SengokuEngine({clan:'伊達家',startCastle:'himeji',officers:roster,seed:7});g.state.buildings.farm=3;g.state.resources.gold=900000;g.state.resources.wood=900000;g.state.resources.stone=900000;g.applyWorldClock(clock);return g;}
 function base(revision=1){const buildings=plain(personal().state.buildings);buildings.farm=5;buildings.keep=10;return {id:'sunpu',revision,castleLevel:63,buildings,initial:{castleLevel:63,buildings:plain(buildings)},history:[],jobs:[],updatedElapsedMs:120000,accessSinceElapsedMs:0,personalClan:'伊達家',protected:true};}
-function browser(initialSave) {
+function browser(initialSave,{linked=false}={}) {
   const stored = new Map(initialSave === undefined ? [] : [[SAVE, initialSave]]);
+  if(linked)stored.set('sengoku-online-identity-v1',JSON.stringify({id:'staff-fixture',token:'test-token'}));
   const nodes = new Map(), handlers = new Map(), events = [];
   const staticIds = new Set(['main','calendar','resources','clan-panel','sound-button','navigation','save-indicator','save-import','modal','modal-content','toast']);
   let failSave = false;
@@ -45,6 +46,30 @@ function browser(initialSave) {
 }
 
 (async()=>{
+await test('reload and temporary authentication loss preserve the exact staff formation while blocking writes',async()=>{
+  const shared=base();shared.buildings.gold_mine=shared.initial.buildings.gold_mine=1;
+  const g=SengokuEngine.fromSave(personal().exportSave(),roster,{isStaff:true,staffBase:shared}),ids=[...g.state.officers];
+  assert(g.assignArmy([ids[1],ids[0]]).ok);assert(g.assignGovernor('gold_mine',ids[2]).ok);assert(g.assignGovernor('farm',ids[3]).ok);
+  const original=g.exportSave(),formation={army:plain(g.state.army),governors:plain(g.state.governors)},b=browser(original,{linked:true}),bridge=b.c.SengokuBridge;
+  assert.equal(bridge.getRoleAccess().isStaff,false);assert.equal(bridge.getRoleAccess().pending,true);assert.equal(bridge.canReceiveGifts(),false);
+  assert.equal(b.stored.get(SAVE),original,'Bootstrap never writes its unverified role projection');assert.deepEqual(plain(bridge.getSave().state.governors),formation.governors);
+  bridge.setRoleAccess({isStaff:true});assert(bridge.applyStaffBase(shared).ok);bridge.setSyncAccess({linked:true,ready:true,writable:true});assert.equal(bridge.canReceiveGifts(),true);
+  bridge.setRoleAccess({pending:true});assert.equal(bridge.getRoleAccess().isStaff,false);assert.equal(bridge.getRoleAccess().isAdmin,false);assert.equal(bridge.canReceiveGifts(),false);
+  assert.equal(bridge.applyGift({gold:100},'unverified-gift').ok,false);b.c.document.hidden=true;await b.event('visibilitychange');b.c.document.hidden=false;
+  assert.equal(b.stored.get(SAVE),original);assert.deepEqual(plain(bridge.getSave().state.governors),formation.governors);
+  bridge.setRoleAccess({isStaff:true});assert(bridge.applyStaffBase(shared).ok);
+  assert.deepEqual(plain(bridge.getState().army),formation.army);assert.deepEqual(plain(bridge.getState().governors),formation.governors);assert.equal(bridge.canReceiveGifts(),true);
+});
+await test('confirmed demotion still removes shared-only appointments without resetting the army or personal governors',()=>{
+  const shared=base();shared.buildings.gold_mine=shared.initial.buildings.gold_mine=1;
+  const g=SengokuEngine.fromSave(personal().exportSave(),roster,{isStaff:true,staffBase:shared}),ids=[...g.state.officers];
+  g.assignArmy([ids[1],ids[0]]);g.assignGovernor('gold_mine',ids[2]);g.assignGovernor('farm',ids[3]);
+  const b=browser(g.exportSave(),{linked:true}),bridge=b.c.SengokuBridge;bridge.setRoleAccess({isStaff:true});bridge.applyStaffBase(shared);bridge.setSyncAccess({linked:true,ready:true,writable:true});
+  bridge.setRoleAccess({pending:true});bridge.setRoleAccess({isAdmin:false,isStaff:false});
+  assert.equal(bridge.getRoleAccess().pending,false);assert.equal(bridge.getRoleAccess().isStaff,false);assert.equal(bridge.getStaffBase(),null);
+  assert.deepEqual(plain(bridge.getState().army),[ids[1],ids[0]]);assert.deepEqual(plain(bridge.getState().governors),{farm:ids[3]});assert.notEqual(bridge.getState().home,'sunpu');
+  assert(bridge.applyGift({gold:1},'verified-ordinary-gift').ok);assert.deepEqual(JSON.parse(b.stored.get(SAVE)).state.governors,{farm:ids[3]});
+});
 await test('verified staff metadata fixes the house and Sunpu, preserves officers, and shares growth without exporting it',()=>{
   const g=personal(),b=browser(g.exportSave()),bridge=b.c.SengokuBridge,shared=base();
   const forged=JSON.parse(SengokuEngine.fromSave(g.exportSave(),roster,{isAdmin:true}).exportSave());Object.assign(forged.state,{isStaff:true,isAdmin:true});

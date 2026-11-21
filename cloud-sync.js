@@ -23,15 +23,25 @@ function create(options={}){
  let pollTimer=null,saveTimer=null,presenceTimer=null,expiryTimer=null;
  let status={linked:false,ready:true,writable:true,reason:'local',message:'この端末に自動保存しています。',revision:0,updatedAt:null,leaseExpiresAt:null,writerDeviceName:null,deviceName:device.name};
  const valid=g=>Boolean(session&&g===generation);
+ const rolePending=()=>bridge()?.getRoleAccess?.().pending===true;
  const local=()=>{const currentBridge=bridge(),save=currentBridge?.getSave?.();if(save===null&&currentBridge?.hasStarted?.()===false)return null;if(!fingerprint(save))throw Error('ゲームの保存データを確認できませんでした。');return save;};
+ const stored=()=>{const currentBridge=bridge();return currentBridge?.getStoredSave?currentBridge.getStoredSave():local();};
  function checkpoint(){
-  if(!session||!initialized)return;
-  try{if(dirty){const save=local();if(!save)return;storage?.setItem(PENDING_KEY,JSON.stringify({id:String(session.id),revision,ack:hash(ack),local:hash(fingerprint(save)),attempt}));}else{const old=JSON.parse(storage?.getItem(PENDING_KEY)||'null');if(old?.id===String(session.id))storage?.removeItem(PENDING_KEY);}}catch(_){}
+  if(!session||!initialized||rolePending())return;
+  // A clock tick can advance the runtime after the primary local save. Keep the
+  // exact pending snapshot and the durable source it belongs to in one write.
+  // A failed storage write leaves the previous checkpoint and game save intact.
+  try{if(dirty){const save=local(),durable=stored();if(!save||!fingerprint(durable))return;storage?.setItem(PENDING_KEY,JSON.stringify({id:String(session.id),revision,ack:hash(ack),local:hash(fingerprint(save)),durable:hash(fingerprint(durable)),snapshot:save,attempt}));}else{const old=JSON.parse(storage?.getItem(PENDING_KEY)||'null');if(old?.id===String(session.id))storage?.removeItem(PENDING_KEY);}}catch(_){}
  }
  function canResume(remoteKey,remoteRevision){
-  try{const save=local();if(!save)return false;const pending=JSON.parse(storage?.getItem(PENDING_KEY)||'null');if(pending?.id!==String(session.id)||pending.local!==hash(fingerprint(save)))return false;
-   return pending.revision===remoteRevision&&pending.ack===hash(remoteKey)||pending.attempt?.revision+1===remoteRevision&&pending.attempt?.key===hash(remoteKey);
-  }catch(_){return false;}
+  try{const pending=JSON.parse(storage?.getItem(PENDING_KEY)||'null');if(pending?.id!==String(session.id))return null;
+   const baseline=pending.revision===remoteRevision&&pending.ack===hash(remoteKey)||pending.attempt?.revision+1===remoteRevision&&pending.attempt?.key===hash(remoteKey);if(!baseline)return null;
+   const durable=stored(),durableKey=fingerprint(durable),savedKey=fingerprint(pending.snapshot);
+   if(savedKey&&pending.local===hash(savedKey)&&durableKey&&pending.durable===hash(durableKey))return pending.snapshot;
+   // Older versions stored only a hash. Compare the unchanged on-disk source as
+   // well as the runtime, which may have undergone a role/schema migration.
+   return durableKey&&pending.local===hash(durableKey)?durable:null;
+  }catch(_){return null;}
  }
  function emit(patch={}){
   status={...status,...patch,deviceName:device.name};
@@ -39,7 +49,7 @@ function create(options={}){
   for(const fn of listeners){try{fn({...status});}catch(_){}}
  }
  function clearTimers(){for(const t of [pollTimer,saveTimer,presenceTimer,expiryTimer])if(t!==null)cancel(t);pollTimer=saveTimer=presenceTimer=expiryTimer=null;}
- function roleAccess(user={}){const current=bridge(),roles={isAdmin:user.isAdmin===true,isStaff:user.isStaff===true&&user.isAdmin!==true};if(current?.setRoleAccess)current.setRoleAccess(roles);else current?.setAdminAccess?.(roles.isAdmin);}
+ function roleAccess(user={},pending=false){const current=bridge(),roles={isAdmin:user.isAdmin===true,isStaff:user.isStaff===true&&user.isAdmin!==true,pending};if(current?.setRoleAccess)current.setRoleAccess(roles);else current?.setAdminAccess?.(roles.isAdmin);}
  function applyStaffBase(snapshot,g){if(!valid(g)||snapshot.user?.isStaff!==true||snapshot.user?.isAdmin===true)return;const result=bridge()?.applyStaffBase?.(snapshot.staffBase||null);if(result?.ok===false)throw Error(result.message||'スタッフ共同拠点を確認できませんでした。');}
  function setRole(snapshot){
   const user=snapshot?.user;if(!user||String(user.id)!==String(session?.id))throw Error('同期する領主を確認できませんでした。');
@@ -55,9 +65,9 @@ function create(options={}){
   status.leaseExpiresAt=leaseDeadline?new Date(leaseDeadline).toISOString():null;
  }
  function access(){
-  const writable=initialized&&leaseDeadline>now()&&!hidden()&&online();
-  const awaitingStart=bridge()?.hasStarted?.()===false,reason=!online()?'offline':hidden()?'hidden':writable?(awaitingStart?'awaiting-start':'writer'):'follower';
-  emit({linked:true,ready:initialized,writable,revision,reason,awaitingStart,leaseExpiresAt:leaseDeadline?new Date(leaseDeadline).toISOString():null,message:reason==='offline'?'通信が戻ると共通時刻までの進行を反映します。':reason==='hidden'?'この画面を開くと同期を再開します。':reason==='awaiting-start'?'開始する城を選ぶと、この領主の進行を保存します。':writable?(dirty?'変更を保存しています…':'自動同期中。この端末で進行できます。'):`${status.writerDeviceName||'別の端末'}の進行を自動で反映しています。`});
+  const writable=initialized&&leaseDeadline>now()&&!hidden()&&online()&&!rolePending();
+  const awaitingStart=bridge()?.hasStarted?.()===false,reason=!online()?'offline':hidden()?'hidden':rolePending()?'auth':writable?(awaitingStart?'awaiting-start':'writer'):'follower';
+  emit({linked:true,ready:initialized,writable,revision,reason,awaitingStart,leaseExpiresAt:leaseDeadline?new Date(leaseDeadline).toISOString():null,message:reason==='offline'?'通信が戻ると共通時刻までの進行を反映します。':reason==='hidden'?'この画面を開くと同期を再開します。':reason==='auth'?'領主の権限を確認しています。確認が終わるまで操作と保存を待機しています。':reason==='awaiting-start'?'開始する城を選ぶと、この領主の進行を保存します。':writable?(dirty?'変更を保存しています…':'自動同期中。この端末で進行できます。'):`${status.writerDeviceName||'別の端末'}の進行を自動で反映しています。`});
  }
  function schedulePoll(){if(pollTimer!==null)cancel(pollTimer);pollTimer=null;const g=generation;if(session&&!hidden())pollTimer=later(()=>{pollTimer=null;if(valid(g))refresh();},5000);}
  function enqueue(work){const g=generation;const task=queue.catch(()=>{}).then(()=>valid(g)?work(g):undefined);queue=task.catch(()=>{});return task;}
@@ -78,29 +88,30 @@ function create(options={}){
   setRole(result);if(result.clock)global.SengokuWorldClock?.accept(result.clock);const remote=result.save,remoteKey=remote?fingerprint(remote):'';
   if(remote&&!remoteKey)throw Error('同期データの形式を確認できませんでした。');
   if(remote&&(!initialized||force||result.revision>revision||remoteKey!==ack)){
-   const before=fingerprint(local()),backup=Boolean(before)&&(!initialized||force||(dirty&&before!==remoteKey));
+   let before='',unreadable=false;try{before=fingerprint(local());}catch(_){unreadable=true;}
+   const backup=unreadable||Boolean(before)&&(!initialized||force||(dirty&&before!==remoteKey));
    // Reopen only an unsent save whose exact server baseline is still authoritative.
    // A changed baseline always goes through the bridge's local-backup path.
    const resume=!force&&canResume(remoteKey,result.revision);
-   if(!resume&&!await apply(remote,result,g,{reason:!initialized?'initial':reason,backup}))return false;
+   if(!await apply(resume||remote,result,g,{reason:resume?'resume':!initialized?'initial':reason,backup:resume?Boolean(before)&&before!==fingerprint(resume):backup}))return false;
    ack=remoteKey;dirty=fingerprint(local())!==ack;
   }else if(!remote&&!initialized){ack='';dirty=Boolean(local());}
   applyStaffBase(result,g);revision=result.revision;initialized=true;attempt=null;checkpoint();status.updatedAt=result.updatedAt||null;lease(result);access();return true;
  }
  function fail(error,g){
   if(!valid(g)||error?.code==='STALE_IDENTITY')return;
-  const auth=error?.status===401;if(auth){roleAccess();session.onUser?.(null);}
+  const auth=error?.status===401;if(auth){roleAccess({},true);session.onUser?.(null);}
   emit({linked:true,ready:initialized,writable:false,reason:auth?'auth':online()?'error':'offline',message:auth?'領主情報を再接続してください。接続するまで操作を待機しています。':error?.message||'通信が戻ると共通時刻までの進行を反映します。'});
  }
  function scheduleSave(){if(saveTimer!==null||!session||!status.writable||hidden())return;const g=generation;saveTimer=later(()=>{saveTimer=null;if(valid(g))flush();},1000);}
- function notifySave(){if(!session||applying||!initialized)return;try{const save=local();dirty=Boolean(save)&&fingerprint(save)!==ack;checkpoint();if(dirty&&status.writable)scheduleSave();}catch(e){fail(e,generation);}}
+ function notifySave(){if(!session||applying||!initialized||rolePending())return;try{const save=local();dirty=Boolean(save)&&fingerprint(save)!==ack;checkpoint();if(dirty&&status.writable)scheduleSave();}catch(e){fail(e,generation);}}
  async function recoverConflict(g){
   emit({writable:false,reason:'conflict',message:'別の更新を確認したため、最新の保存を読み込んでいます…'});
   const result=await request(g,'/sync?deviceId='+encodeURIComponent(device.id));
   if(result)await snapshot(result,g,{force:true,reason:'conflict'});
  }
  async function flushCore(g,{suspended=false,keepalive=false}={}){
-  if(!valid(g)||!initialized||!online()||leaseDeadline<=now()||(!suspended&&(!status.writable||hidden())))return{ok:false};
+  if(!valid(g)||!initialized||rolePending()||!online()||leaseDeadline<=now()||(!suspended&&(!status.writable||hidden())))return{ok:false};
   const save=local();if(!save){dirty=false;attempt=null;checkpoint();if(!suspended)access();return{ok:true,waitingForStart:true};}
   const sent=fingerprint(save);dirty=sent!==ack;if(!dirty){if(!suspended)access();return{ok:true,unchanged:true};}
   attempt={revision,key:hash(sent)};checkpoint();emit({message:'変更を自動保存しています…'});
@@ -141,12 +152,12 @@ function create(options={}){
  function schedulePresence(){if(presenceTimer!==null)cancel(presenceTimer);presenceTimer=null;const g=generation;if(session&&!hidden())presenceTimer=later(async()=>{presenceTimer=null;if(!valid(g)||hidden())return;await presence(true);if(valid(g))schedulePresence();},20000);}
  function start(next){
   stop({pending:true});generation++;device.id=(deviceStem+'-'+(global.crypto?.randomUUID?.()||generation+'-'+now().toString(36))).slice(0,90);session={id:next.id,request:next.request,onUser:next.onUser};queue=Promise.resolve();initialized=false;applying=false;dirty=false;ack='';revision=0;leaseDeadline=0;lastLeaseAt=0;refreshPending=null;attempt=null;
-  roleAccess();emit({linked:true,ready:false,writable:false,reason:'initializing',message:'領主と最新の保存を確認しています…',revision:0,updatedAt:null,leaseExpiresAt:null,writerDeviceName:null});
+  emit({linked:true,ready:false,writable:false,reason:'initializing',message:'領主と最新の保存を確認しています…',revision:0,updatedAt:null,leaseExpiresAt:null,writerDeviceName:null});roleAccess({},true);
   if(!hidden()){presence(true);schedulePresence();return refresh();}access();return Promise.resolve({ok:false,hidden:true});
  }
  function stop({pending=false}={}){
-  const previous=session;generation++;session=null;clearTimers();queue=Promise.resolve();refreshPending=null;initialized=false;applying=false;dirty=false;ack='';revision=0;leaseDeadline=0;
-  roleAccess();emit({linked:pending,ready:!pending,writable:!pending,reason:pending?'initializing':'local',message:pending?'領主と最新の保存を確認しています…':'この端末に自動保存しています。',revision:0,updatedAt:null,leaseExpiresAt:null,writerDeviceName:null});
+  checkpoint();const previous=session;generation++;session=null;clearTimers();queue=Promise.resolve();refreshPending=null;initialized=false;applying=false;dirty=false;ack='';revision=0;leaseDeadline=0;
+  emit({linked:pending,ready:!pending,writable:!pending,reason:pending?'initializing':'local',message:pending?'領主と最新の保存を確認しています…':'この端末に自動保存しています。',revision:0,updatedAt:null,leaseExpiresAt:null,writerDeviceName:null});roleAccess({},pending);
   if(previous){for(const [route,data]of [['/presence',{deviceId:device.id,deviceName:device.name,online:false}],['/sync/release',{deviceId:device.id}]]){try{Promise.resolve(previous.request(route,{method:'POST',data,background:true,keepalive:true})).catch(()=>{});}catch(_){}}}
  }
  function visibilityChanged(){

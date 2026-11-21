@@ -160,6 +160,14 @@ for(const failure of ['blockIdentity','applyFailure']){
 {
  const f=fixture({existing:false});await f.t.verifyRecovery({identity});const confirm=f.t.recoveryConfirmation('local');check(()=>assert(confirm.description.includes('以前の未保存の進行は復元されません')));await confirm.onConfirm();check(()=>assert.equal(f.applied.length,1));check(()=>assert.equal(f.starts.length,1));
 }
+// Failed identity storage restores an unlinked campaign's normal mutation gate.
+{
+ const f=fixture({existing:false}),original=f.storage.get(GAMEKEY);let rolePending=false;
+ f.context.SengokuCloudSync.stop=options=>{f.stops.push(options);rolePending=options?.pending===true;};
+ f.context.SengokuBridge.setRoleAccess=role=>{rolePending=role.pending===true;};
+ await f.t.verifyRecovery({identity,save});f.flags({blockIdentity:true});await assert.rejects(f.t.recoveryConfirmation('file').onConfirm(),/領主情報を保存できません/);checks++;
+ check(()=>assert.equal(rolePending,false));check(()=>assert.equal(f.storage.get(GAMEKEY),original));check(()=>assert.equal(f.storage.has(IDKEY),false));check(()=>assert.equal(f.applied.length,0));
+}
 // Replacing identity during read-only verification discards the late response.
 {
  const f=fixture();f.flags({delayMe:true});const pending=f.t.verifyRecovery({identity,save});f.t.setEpoch(2);f.release();await assert.rejects(pending,error=>error.code==='STALE_IDENTITY');checks++;check(()=>assert.equal(f.starts.length,0));check(()=>assert.equal(f.applied.length,0));
