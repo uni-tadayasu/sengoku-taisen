@@ -8,7 +8,7 @@ const castles=new Map((data.castles||[]).map(c=>[c.id,c]));
 const facilities=new Map((data.buildings||[]).map(b=>[b.id,b]));
 const portraitFacilities=new Set((data.buildings||[]).slice(0,32).map(b=>b.id));
 const frames=Object.fromEntries(ranks.map(r=>[r,`assets/frames/rank-${r}.svg`]));
-const operatorPortrait={id:'of_b0616adde162',rank:'U',url:'assets/operator-ieyasu-u.webp?v=3.8.0-20261121'};
+const operatorPortrait={id:'of_b0616adde162',rank:'U',url:'assets/operator-ieyasu-u.webp?v=3.8.1-20261121'};
 const cache=new Map();let observer,scheduled=false;
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const icons={

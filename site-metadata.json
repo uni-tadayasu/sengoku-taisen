@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 1,
+  "origin": "https://www.kasai-solutions-inc.com",
+  "name": "戦国大戦",
+  "alternateName": "SENGOKU TAISEN",
+  "publisher": "KASAI SOLUTIONS",
+  "release": "3.8.1-20261121",
+  "version": "3.8.1",
+  "dateModified": "2026-11-21",
+  "language": "ja",
+  "locale": "ja_JP",
+  "tagline": "一城の志が、天下を動かす。",
+  "launchIntroduction": [
+    "城下町を育て、武将を編成し、共通の年月を歩む。",
+    "PC・スマホ・タブレットで遊ぶ戦国ブラウザゲーム。"
+  ],
+  "ogImage": {
+    "path": "assets/ogp.jpg",
+    "width": 1774,
+    "height": 887,
+    "alt": "戦国大戦の武将と城郭を描いたKASAI SOLUTIONSのオリジナルタイトルビジュアル"
+  },
+  "logo": {
+    "path": "assets/icon-512.png",
+    "width": 512,
+    "height": 512
+  },
+  "favicon": {
+    "path": "assets/icon-192.png",
+    "sizes": "192x192",
+    "type": "image/png"
+  },
+  "pages": {
+    "home": {
+      "path": "/",
+      "title": "戦国大戦｜城育成・武将編成のブラウザゲーム - KASAI SOLUTIONS",
+      "description": "戦国大戦はKASAI SOLUTIONSの戦国ブラウザゲーム。選んだ一城から城下町を育て、武将を編成し、共通の年月で領国を広げます。ギルドや書状での交流、軍師AI、ウォーキング報酬に対応。同じ領主を端末連携すれば、PC・スマホ・タブレットで進行を自動同期できます。",
+      "dateModified": "2026-11-21"
+    },
+    "guide": {
+      "path": "/guide/",
+      "title": "戦国大戦の遊び方｜城選び・育成・交流・自動進軍",
+      "description": "戦国大戦の遊び方を、城選びから城下町の連続増築、武将編成、共通時間、ギルド・書状まで案内。軍師AIとウォーキング報酬の条件、端末同期・データ復元も確認できます。KASAI SOLUTIONSによるゲームガイドです。",
+      "dateModified": "2026-11-21"
+    },
+    "recovery": {
+      "path": "/guide/data-recovery/",
+      "title": "戦国大戦のデータ復元・引き継ぎ｜機種変更とドメイン移行",
+      "description": "KASAI SOLUTIONSの戦国大戦で、機種変更・URL変更後に続きを遊ぶための復元ガイド。接続コード、領主データとセーブ、統合バックアップ、運営登録キーによる本人確認とクラウド保存の復旧手順を案内します。",
+      "dateModified": "2026-11-21"
+    },
+    "about": {
+      "path": "/about/",
+      "title": "戦国大戦とは｜城下町育成・武将・領主交流｜KASAI SOLUTIONS",
+      "description": "KASAI SOLUTIONSの戦国ブラウザゲーム「戦国大戦」を紹介。城下町を育て、武将を編成し、共通の年月で領国を発展。ギルド、書状、軍師AI、ウォーキング報酬と、地図・人物・家紋の制作方針を案内します。",
+      "dateModified": "2026-11-21"
+    }
+  }
+}

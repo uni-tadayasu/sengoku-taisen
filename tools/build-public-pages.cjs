@@ -1,15 +1,23 @@
 'use strict';
 
-// The three public reading pages are static HTML. This build helper is never
-// required by a visitor and deliberately touches no game or hosting metadata.
+// Static reading pages and public discovery metadata share one source of truth.
+// No game state, server settings or deployment operation is part of this build.
 const fs = require('node:fs');
 const path = require('node:path');
 const root = path.resolve(__dirname, '..');
-const origin = 'https://www.kasai-solutions-inc.com';
-const release = '3.8.0-20261121';
-// Update only for substantive content changes; never replace this with build time.
-const modified = '2026-11-21';
+const site = JSON.parse(fs.readFileSync(path.join(root, 'site-metadata.json'), 'utf8'));
+const {origin, release} = site;
+// Dates are editorial inputs. A new build or deployment must not change them.
+if (site.schemaVersion !== 1 || new URL(origin).origin !== origin || !origin.startsWith('https://')) throw Error('site-metadata.json: canonical HTTPS origin is required');
+for (const key of ['home', 'guide', 'recovery', 'about']) {
+  const page = site.pages[key];
+  if (!page || !/^\/(?:[a-z0-9-]+\/)*$/.test(page.path) || !page.title || !page.description || !/^\d{4}-\d{2}-\d{2}$/.test(page.dateModified)) throw Error(`site-metadata.json: invalid ${key} page`);
+}
 const esc = value => String(value).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+const absolute = relative => new URL(relative, `${origin}/`).href;
+const canonical = key => absolute(site.pages[key].path);
+const modifiedLabel = value => value.replace(/^(\d{4})-(\d{2})-(\d{2})$/, (_, year, month, day) => `${year}年${Number(month)}月${Number(day)}日`);
+const jsonScript = value => JSON.stringify(value).replace(/</g, '\\u003c');
 const section = (id, kicker, title, body, theme = '') => `<section id="${id}" class="article-section ${theme}"><div class="section-kicker">${kicker}</div><h2>${title}</h2>${body}</section>`;
 const callout = (title, body, warm = false) => `<aside class="callout${warm ? ' callout--warm' : ''}"><h3>${title}</h3><p>${body}</p></aside>`;
 const steps = items => `<ol class="step-list">${items.map(([title, text], index) => `<li><span class="step-marker" aria-hidden="true">${index + 1}</span><div><h3>${title}</h3><p>${text}</p></div></li>`).join('')}</ol>`;
@@ -23,9 +31,50 @@ function paths(file) {
   };
 }
 
+function metadataEntries(key) {
+  const page = site.pages[key], image = site.ogImage;
+  return [
+    ['name', 'author', site.publisher], ['name', 'copyright', site.publisher],
+    ['name', 'application-name', site.name], ['name', 'description', page.description],
+    ['name', 'robots', 'index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1'],
+    ['property', 'og:type', 'website'], ['property', 'og:locale', site.locale],
+    ['property', 'og:site_name', site.name], ['property', 'og:title', page.title],
+    ['property', 'og:description', page.description], ['property', 'og:url', canonical(key)],
+    ['property', 'og:image', absolute(image.path)], ['property', 'og:image:width', image.width],
+    ['property', 'og:image:height', image.height], ['property', 'og:image:alt', image.alt],
+    ['name', 'twitter:card', 'summary_large_image'], ['name', 'twitter:title', page.title],
+    ['name', 'twitter:description', page.description], ['name', 'twitter:image', absolute(image.path)],
+    ['name', 'twitter:image:alt', image.alt]
+  ];
+}
+const metaTag = ([attribute, name, value]) => `<meta ${attribute}="${esc(name)}" content="${esc(value)}">`;
+
+function structuredData(key, breadcrumbItems = [], pageImage = site.ogImage.path) {
+  const url = canonical(key), home = canonical('home'), page = site.pages[key];
+  const organizationId = `${home}#organization`, websiteId = `${home}#website`, gameId = `${home}#game`;
+  const webPage = {
+    '@type':'WebPage', '@id':`${url}#webpage`, url, name:page.title,
+    description:page.description, inLanguage:site.language, dateModified:page.dateModified,
+    isPartOf:{'@id':websiteId}, publisher:{'@id':organizationId},
+    about:{'@id':gameId}, primaryImageOfPage:{'@type':'ImageObject',url:absolute(pageImage)}
+  };
+  if (key === 'home' || key === 'about') webPage.mainEntity = {'@id':gameId};
+  const graph = [
+    {'@type':'Organization','@id':organizationId,name:site.publisher,url:home,logo:{'@type':'ImageObject',url:absolute(site.logo.path),width:site.logo.width,height:site.logo.height}},
+    {'@type':'WebSite','@id':websiteId,name:site.name,alternateName:site.alternateName,url:home,inLanguage:site.language,publisher:{'@id':organizationId}},
+    {'@type':'VideoGame','@id':gameId,name:site.name,url:home,description:site.pages.home.description,image:absolute(site.ogImage.path),inLanguage:site.language,genre:['ストラテジー','戦国シミュレーション'],gamePlatform:'Web browser',applicationCategory:'GameApplication',operatingSystem:'Windows, macOS, Android, iOS',softwareVersion:site.version,browserRequirements:'JavaScript and an internet connection are required.',playMode:['https://schema.org/SinglePlayer','https://schema.org/MultiPlayer'],author:{'@id':organizationId},publisher:{'@id':organizationId},softwareHelp:{'@type':'WebPage',url:canonical('guide')},dateModified:site.dateModified,mainEntityOfPage:{'@id':`${home}#webpage`}},
+    webPage
+  ];
+  if (breadcrumbItems.length) {
+    webPage.breadcrumb = {'@id':`${url}#breadcrumb`};
+    graph.push({'@type':'BreadcrumbList','@id':`${url}#breadcrumb`,itemListElement:breadcrumbItems.map((item,i)=>({'@type':'ListItem',position:i+1,name:item.name,item:item.url}))});
+  }
+  return {'@context':'https://schema.org','@graph':graph};
+}
+
 function guideContent(p) {
   return [
-    section('first-steps', '初めての領主へ', '城下を育て、将を迎え、領国を広げる。', `
+    section('first-steps', '初めての領主へ', '開始城を選ぶ・最初の進め方', `
       <p class="lead-paragraph">「いざ、戦国へ」から始まる、あなただけの戦記。初めて遊ぶときは、はじまりの城を選びます。年月は、ほかのプレイヤーと同じ世界時計で動きます。</p>
       ${steps([
         ['はじまりの城を選ぶ', '初回の「いざ、戦国へ」で「はじまりの城を選ぶ」を開き、家・難易度・開始城を選びます。通常プレイヤーは大都市拠点（江戸・駿府・二条・大坂・名古屋）を除く123城から選び、「この城から始める」で確定します。最初に所持するのは選んだ1城だけです。認証済みの運営は江戸城、スタッフは德川家・駿府城に固定されます。'],
@@ -36,7 +85,7 @@ function guideContent(p) {
       <p>以前の続きへ戻る場合は、初回画面の<strong>「以前の領主・運営を復元」</strong>から引き継げます。城を確定する前の状態は保存・自動送信しません。すでに保存されている進行は、開始城選択の追加によって変わりません。</p>
       <p>通常城の城郭と城下町施設は<strong>Lv.32</strong>まで、大都市拠点（江戸・駿府・二条・大坂・名古屋）の城郭はその2倍の<strong>Lv.64</strong>まで発展します。城の強化に応じて費用と効果が変わります。詳細画面では32段階の絵姿を見比べられ、Lv.33以降は最終形態の絵を使います。イラストの閲覧だけで資源やレベルが変わることはありません。</p>
     `, 'section-town'),
-    section('resources', '城下町と資源', '日々の生産が、次の一手を支える。', `
+    section('resources', '城下町と資源', '城下町で生産する資源と使い道', `
       <p>資源の所持数と収支を確認しながら、内政と軍備の配分を考えます。兵を増やすと維持する兵糧も必要です。普請・研究の完成を待つ間は、武将や地図を確認できます。普請・研究の進行欄には、経過時間・残り時間・進捗率を表示します。経過はゲーム内の進行時間、残りは現在の世界速度での待ち時間です。</p>
       ${table('5つの資源・通貨と主な用途', ['種類', '使い道'], [
         ['<span class="resource-gold">金</span>', '普請、武将の登用、募兵などに使う基本資源。'],
@@ -47,24 +96,12 @@ function guideContent(p) {
       ], 'resource-table')}
       <p>各施設の詳細には必要資源と効果が表示されます。普請枠は城郭と施設で共通です。着工前に、何を先に完成させたいかを決めておくと進めやすくなります。</p>
     `, 'section-town'),
-    section('construction', '施設のレベルと連続普請', '一つの施設を、続けて育てる。', `
+    section('construction', '施設のレベルと連続普請', '施設の増築・現在レベル・連続予約', `
       <p>城下町に見える8施設には、名前と<strong>現在のLv</strong>を常に表示します。PCの小さな画面やスマートフォンでも、施設の位置とレベルを一緒に確認できます。「全64施設を管理」では、ほかの施設も現在レベル付きで表示します。</p>
       <p>同じ施設を続けて増築したいときは、施設の詳細から<strong>次の増築を予約</strong>します。いまの工事が終わると、次のレベルの工事を順に開始します。現在のレベル、工事中の目標、予約した段階数を確認して追加できます。</p>
       <p>資源と指令は予約の確定時に支払います。同じ施設の連続工事は一つの普請枠として扱い、別の施設との同時工事には通常の枠数を適用します。施設の上限はLv.32です。スタッフの駿府城では、予約した普請も全スタッフで共有します。</p>
     `, 'section-town'),
-    section('walking', '端末を持って歩く', 'あなたの一歩が、五つの資産になる。', `
-      <p class="lead-paragraph">城下町または「保存・設定」から<strong>「ウォーキング」</strong>を開き、計測を開始します。端末の動きから検知した<strong>1歩につき、金銭・兵糧・木材・石材・勾玉をそれぞれ2</strong>獲得します。100歩なら各200です。一般プレイヤー・スタッフ・運営で同じルールです。</p>
-      ${steps([
-        ['計測を開始する', 'モーションセンサーのあるスマートフォン・タブレットで、ウォーキングの開始ボタンを押します。動きの利用許可が表示された場合は、許可してください。'],
-        ['端末を持って歩く', 'このサイトを表示した状態で端末を携帯します。連続した歩行の揺れを確認して歩数を数えます。位置情報や移動経路は取得しません。'],
-        ['資産の反映を確認する', '歩数と獲得分をウォーキング画面で確認できます。連携済みの領主は検知分をまとめてサーバーへ反映し、同じ領主の端末へ同期します。計測を終えるときは停止ボタンを押します。']
-      ])}
-      <p>報酬は実際の端末の動きをもとに数えます。ゲーム内の時間が停止していても、計測できる状態なら歩行分を獲得でき、世界時計の倍速によって歩行報酬が増えることはありません。資産の所持上限は通常どおり適用されます。</p>
-      ${callout('画面を表示している間に計測します', 'ブラウザーの制約により、画面ロック中、別アプリ・別タブの表示中、ページを閉じている間の歩数は計測できません。対応端末では計測中の画面消灯を抑えます。省電力設定などで解除される場合があります。')}
-      <p>歩数は加速度センサーからの推定です。端末の持ち方や振動によって、専用の歩数計と差が出ることがあります。センサーがないPC、権限が拒否された端末、センサー値を取得できない環境では、その理由を画面に表示します。</p>
-      <p>連携済みの計測は現在の操作端末で行い、報酬の確定履歴を保存します。通信の再送で同じ検知分を重ねて受け取ることはありません。対応条件の資料は<a href="${p.file('SOURCES-WALKING.md')}">ウォーキングの仕様と資料</a>にまとめています。</p>
-    `, 'section-town'),
-    section('officers', '武将・軍団・勾玉', '256名の武将に、8つの姿。', `
+    section('officers', '武将・軍団・勾玉', '武将の登用・招集と軍団編成', `
       <p>武将名鑑では人物・所属・能力・特技を確認できます。各人物にDからUまでの8ランクがあり、衣装や装飾、構図の異なるイラストを収録しています。能力とランクはゲーム独自の設定です。</p>
       <ul class="rank-strip" aria-label="武将の8ランク"><li>D</li><li>C</li><li>B</li><li>A</li><li>S</li><li>SS</li><li>SSS</li><li>U</li></ul>
       <p>勾玉による武将招集は<strong>1回300、10回2,700</strong>です。現実のお金による勾玉の購入はありません。排出率と対象は招集画面で確認でき、10回招集の最低ランク保証・天井はありません。同じ人物・同じランクを重複して迎えたときは勾玉50に変わります。</p>
@@ -72,7 +109,7 @@ function guideContent(p) {
       <p>軍団の能力は戦いに、奉行の能力は施設の働きに関わります。兵数だけでなく、統率・武勇・知略や特技を見て編成します。奉行に任命した武将は軍団から外れるため、任せたい役目を選んでください。</p>
       ${callout('運営専用の武将', '運営が所持するUランクは「德川家康 U」と表記し、専用の特別イラストで表示します。このUランクは通常の招集対象に含まれません。')}
     `, 'section-officers'),
-    section('maps', '天下地図と共通フィールド', '領国を広げる戦役。領主と向き合う戦場。', `
+    section('maps', '天下地図と共通フィールド', 'CPU勢力との戦役・領主同士の襲撃と外交', `
       <p>二つの地図は目的が異なります。天下地図ではCPU勢力との戦役を進め、共通フィールドではほかのプレイヤーの本拠を選んで交流・襲撃・外交を行います。</p>
       ${table('二つの地図の使い分け', ['画面', '相手と主な操作'], [
         ['天下地図', 'CPU勢力の城を選び、偵察・外交・出陣で領国を広げます。日本の地理データと128城の代表地点を用いて表示します。'],
@@ -85,28 +122,7 @@ function guideContent(p) {
       <h3>同盟は相手の承諾で成立</h3>
       <p>外交の提案を相手が承諾すると、<strong>ゲーム内の6か月間</strong>、互いに攻撃できなくなります。届いた提案の拒否や、未承諾の自分の提案の取消もできます。暦が一周して拠点をリセットするときは、前の暦で結んだ同盟・未承諾の外交提案も終了します。</p>
     `, 'section-field'),
-    section('strategy', '軍師AIと自動進軍', '作戦を記し、次の一手を軍師に託す。', `
-      <p class="lead-paragraph">「軍議」または「天下地図」から軍師AIを開き、作戦を文章で入力します。例えば、<strong>「兵を温存して弱い城から攻める」</strong>、<strong>「兵糧を1000残して清洲城を目指す」</strong>など、方針と目標を伝えます。</p>
-      ${steps([
-        ['作戦案を確認する', '軍師が読み取った方針、攻撃先、兵数、戦法、予測勝率、判断理由を確認します。理解できない指示はそのまま実行せず、入力の見直しを案内します。'],
-        ['自動進軍を始める', '開始操作後、現在の戦況を見直しながら隣接する城へ順番に出陣します。指令と兵糧は通常の戦闘と同じように消費します。'],
-        ['戦況と停止理由を確認する', '出陣の履歴と次の判断を確認できます。敗戦、目標達成、指定した出陣回数への到達で停止します。自分で停止することもできます。']
-      ])}
-      <p>対象は<strong>天下地図のCPU勢力の城</strong>です。隣接関係と目標への経路を調べ、江戸城・駿府城などの保護された拠点と同盟中の城を候補から除きます。兵数不足や兵糧不足の場合は、攻撃を待機します。</p>
-      <p>軍師はゲーム内の作戦文と戦況を評価する判断AIです。外部の生成AIサービスに作戦文を送らず、城・戦法・出陣兵数の候補を比較します。予測勝率は勝利の保証ではなく、合戦は通常の戦闘ルールで判定します。</p>
-      ${callout('自動進軍の実行条件', '画面を表示し、共通時間が進んでいる操作端末で実行します。画面を閉じたり、別の端末へ操作権を移したりしたときは停止します。離れていた間の攻撃をまとめて実行せず、次に開始するときに現在の戦況を確認します。')}
-    `, 'section-field'),
-    section('letters', '本拠から届ける書状', '領主へ、そしてその仲間へ。', `
-      <p class="lead-paragraph">共通フィールドで相手の本拠と領主を選び、<strong>領主本人</strong>または<strong>その領主が所属するギルド</strong>へメッセージを送れます。フレンドになっていなくても利用できます。書状の送受信には領主登録・接続が必要です。</p>
-      ${table('本拠からの書状の宛先', ['宛先', '読める人・返信できる人'], [
-        ['領主本人', '送った領主と宛先の領主だけが、二人の書状を読んで返信できます。'],
-        ['所属ギルド', '送った領主と、そのギルドに現在所属しているメンバーで書状を共有して返信できます。']
-      ])}
-      <p>同じ城に複数の領主がいる場合も、領主名を確認して宛先を選びます。ギルド宛ての場合は、送信画面に共有先を表示します。ギルド未所属の領主には個人宛ての書状を送れます。</p>
-      <p>届いた書状は「交流」の書状入口から確認できます。未読を表示し、過去のやり取りを読みながら返信できます。ギルド宛ての外部書状は、既存のギルド内部チャットとは別の会話です。</p>
-      <p>送信前に相手の所属が変わった場合は、宛先を再確認します。送信の二度押しや通信の再試行で、同じ書状が重複して届かないようにしています。</p>
-    `, 'section-field'),
-    section('world-clock', '全プレイヤー共通の年月', '暦はめぐり、積み重ねは続いていく。', `
+    section('world-clock', '全プレイヤー共通の年月', '共通時間・拠点リセット・占領報酬', `
       <p class="lead-paragraph">世界時計は全プレイヤー共通です。1560年1月から1615年12月まで進むと、再び1560年1月へ戻ります。次の暦に入ると占領した拠点をリセットし、開始時に選んだ本拠から再出発します。運営は德川家・江戸城、スタッフは德川家・駿府城を維持します。駿府城の共有成長、武将・施設・所持資源は引き継ぎます。</p>
       <p>1倍速では<strong>実時間60秒がゲーム内の1か月</strong>に相当し、20秒ごとに指令が1回復します。世界全体の速度と停止・再開は運営が管理します。プレイヤー個人で年月を進めたり、一人だけ停止したりする操作はありません。</p>
       <p>画面を閉じている間も世界の時間は進み、再接続すると生産・普請・研究などを共通時刻まで反映します。通信を確認できない間は操作を待機し、接続が戻ったときに追いつきます。</p>
@@ -115,7 +131,7 @@ function guideContent(p) {
       <p>連携済みの領主の報酬はサーバーで一度だけ確定します。同じ領主を複数端末で開いた場合や通信を再試行した場合も、同じ区切りの報酬を重ねて加算しません。留守中に区切りをまたいだ場合は、再接続時に進行と報酬を確認します。</p>
       <p>占領地の城郭・守備兵と占領地で未完了の増築はリセットされます。本拠の城郭、城下の施設・研究・武将・資源は残ります。天下地図のCPU勢力との同盟・偵察、共通フィールドの前の暦から続く外交関係は区切りで終了します。</p>
     `, 'section-clock'),
-    section('community', '領主たちの交流', '世界の会話、仲間との軍議、友への文。', `
+    section('community', '領主たちの交流', 'ギルドの役職・共有金庫・ランキング', `
       <p>「交流」で領主名を登録すると、世界チャット、ギルド、フレンド、システム便などを使えます。「接続一覧」では現在オンラインの領主と所属・役職を確認できます。同じ領主の複数端末は一人にまとめて表示されます。</p>
       <p>接続状態は定期的に更新され、直近90秒以内に接続確認のあった領主をオンラインとして表示します。端末を閉じた直後などは、表示が変わるまで少し時間がかかります。</p>
       <h3>御触書と領主の達成</h3>
@@ -144,13 +160,46 @@ function guideContent(p) {
       <p>「德川家」は運営・スタッフの家名です。運営は德川家・江戸城、スタッフは德川家・駿府城に固定されます。通常の「徳川家」は一般プレイヤーも選べます。</p>
       <p>スタッフ任命だけでは、江戸城・德川家康U・時間操作・贈り物の配布・ほかのスタッフの任命権限は付与されません。役職はサーバーが確認し、同じ領主IDの端末へ反映します。</p>
     `, 'section-community'),
-    section('save-and-sync', '端末同期とデータ保存', 'どの端末でも、同じ領主として。', `
+    section('letters', '本拠から届ける書状', '領主本人・所属ギルドへ書状を送る', `
+      <p class="lead-paragraph">共通フィールドで相手の本拠と領主を選び、<strong>領主本人</strong>または<strong>その領主が所属するギルド</strong>へメッセージを送れます。フレンドになっていなくても利用できます。書状の送受信には領主登録・接続が必要です。</p>
+      ${table('本拠からの書状の宛先', ['宛先', '読める人・返信できる人'], [
+        ['領主本人', '送った領主と宛先の領主だけが、二人の書状を読んで返信できます。'],
+        ['所属ギルド', '送った領主と、そのギルドに現在所属しているメンバーで書状を共有して返信できます。']
+      ])}
+      <p>同じ城に複数の領主がいる場合も、領主名を確認して宛先を選びます。ギルド宛ての場合は、送信画面に共有先を表示します。ギルド未所属の領主には個人宛ての書状を送れます。</p>
+      <p>届いた書状は「交流」の書状入口から確認できます。未読を表示し、過去のやり取りを読みながら返信できます。ギルド宛ての外部書状は、既存のギルド内部チャットとは別の会話です。</p>
+      <p>送信前に相手の所属が変わった場合は、宛先を再確認します。送信の二度押しや通信の再試行で、同じ書状が重複して届かないようにしています。</p>
+    `, 'section-field'),
+    section('strategy', '軍師AIと自動進軍', '軍師AIの使い方・自動進軍の開始と停止', `
+      <p class="lead-paragraph">「軍議」または「天下地図」から軍師AIを開き、作戦を文章で入力します。例えば、<strong>「兵を温存して弱い城から攻める」</strong>、<strong>「兵糧を1000残して清洲城を目指す」</strong>など、方針と目標を伝えます。</p>
+      ${steps([
+        ['作戦案を確認する', '軍師が読み取った方針、攻撃先、兵数、戦法、予測勝率、判断理由を確認します。理解できない指示はそのまま実行せず、入力の見直しを案内します。'],
+        ['自動進軍を始める', '開始操作後、現在の戦況を見直しながら隣接する城へ順番に出陣します。指令と兵糧は通常の戦闘と同じように消費します。'],
+        ['戦況と停止理由を確認する', '出陣の履歴と次の判断を確認できます。敗戦、目標達成、指定した出陣回数への到達で停止します。自分で停止することもできます。']
+      ])}
+      <p>対象は<strong>天下地図のCPU勢力の城</strong>です。隣接関係と目標への経路を調べ、江戸城・駿府城などの保護された拠点と同盟中の城を候補から除きます。兵数不足や兵糧不足の場合は、攻撃を待機します。</p>
+      <p>軍師はゲーム内の作戦文と戦況を評価する判断AIです。外部の生成AIサービスに作戦文を送らず、城・戦法・出陣兵数の候補を比較します。予測勝率は勝利の保証ではなく、合戦は通常の戦闘ルールで判定します。</p>
+      ${callout('自動進軍の実行条件', '画面を表示し、共通時間が進んでいる操作端末で実行します。画面を閉じたり、別の端末へ操作権を移したりしたときは停止します。離れていた間の攻撃をまとめて実行せず、次に開始するときに現在の戦況を確認します。')}
+    `, 'section-field'),
+    section('walking', '端末を持って歩く', 'ウォーキング報酬の受け取り方と計測条件', `
+      <p class="lead-paragraph">城下町または「保存・設定」から<strong>「ウォーキング」</strong>を開き、計測を開始します。端末の動きから検知した<strong>1歩につき、金銭・兵糧・木材・石材・勾玉をそれぞれ2</strong>獲得します。100歩なら各200です。一般プレイヤー・スタッフ・運営で同じルールです。</p>
+      ${steps([
+        ['計測を開始する', 'モーションセンサーのあるスマートフォン・タブレットで、ウォーキングの開始ボタンを押します。動きの利用許可が表示された場合は、許可してください。'],
+        ['端末を持って歩く', 'このサイトを表示した状態で端末を携帯します。連続した歩行の揺れを確認して歩数を数えます。位置情報や移動経路は取得しません。'],
+        ['資産の反映を確認する', '歩数と獲得分をウォーキング画面で確認できます。連携済みの領主は検知分をまとめてサーバーへ反映し、同じ領主の端末へ同期します。計測を終えるときは停止ボタンを押します。']
+      ])}
+      <p>報酬は実際の端末の動きをもとに数えます。ゲーム内の時間が停止していても、計測できる状態なら歩行分を獲得でき、世界時計の倍速によって歩行報酬が増えることはありません。資産の所持上限は通常どおり適用されます。</p>
+      ${callout('画面を表示している間に計測します', 'ブラウザーの制約により、画面ロック中、別アプリ・別タブの表示中、ページを閉じている間の歩数は計測できません。対応端末では計測中の画面消灯を抑えます。省電力設定などで解除される場合があります。')}
+      <p>歩数は加速度センサーからの推定です。端末の持ち方や振動によって、専用の歩数計と差が出ることがあります。センサーがないPC、権限が拒否された端末、センサー値を取得できない環境では、その理由を画面に表示します。</p>
+      <p>連携済みの計測は現在の操作端末で行い、報酬の確定履歴を保存します。通信の再送で同じ検知分を重ねて受け取ることはありません。対応条件の資料は<a href="${p.file('SOURCES-WALKING.md')}">ウォーキングの仕様と資料</a>にまとめています。</p>
+    `, 'section-town'),
+    section('save-and-sync', '端末同期とデータ保存', '自動保存・端末間の同期・データ復元', `
       <p>城を選んで開始した後の未連携の進行は、そのブラウザに自動保存されます。未確定の城選択は保存・自動送信しません。領主登録・端末連携後はクラウドにも保存し、同じ領主IDの端末へ自動同期します。世界時計・同期・交流にはインターネット接続が必要です。</p>
       <p>進行を操作する端末は同時に1台です。ほかの端末は最新状態を表示し、操作権を切り替えて続きを遊べます。自動同期では開いている画面・スクロール位置・入力途中の内容を保ちます。通信が切れた場合や別の端末へ操作権が移った場合は、保存の競合を防ぐため操作を待機します。</p>
       ${callout('機種変更・URL変更の前に', '「領主データ」は同じ領主へ接続するための本人情報、「セーブデータ」は城・武将・資源などの進行です。「統合バックアップ」では両方をまとめて保管できます。')}
       <a class="chapter-link" href="${p.dir('guide/data-recovery')}">端末変更・データ復元の手順を読む</a>
     `),
-    section('questions', 'よくある質問', '遊び始める前に知っておきたいこと。', `
+    section('questions', 'よくある質問', '対応端末・画面表示・音楽について', `
       <div class="faq"><h3>PCとスマートフォンの両方で遊べますか？</h3><p>ブラウザから利用できます。PCでは画面全体の表示領域に合わせ、スマートフォンではタッチ操作向けに配置を調整します。同じ領主IDを連携すれば、端末を変えて続けられます。</p>
       <h3>開始する城を選べますか？</h3><p>初回の「はじまりの城を選ぶ」で、家・難易度・大都市拠点（江戸・駿府・二条・大坂・名古屋）を除く123城から開始城を選び、「この城から始める」で確定します。選んだ1城のみを所持して始まり、認証済みの運営は江戸城、スタッフは德川家・駿府城が固定本拠です。以前の続きは「以前の領主・運営を復元」から戻せます。</p>
       <h3>今の進行を別の城から始め直せますか？</h3><p>「保存・設定」から「新しい物語を始める」を選ぶと、開始城を選び直せます。確定すると現在の進行を新しい進行へ置き換え、置き換え前のセーブをバックアップとして保管します。今までの続きで遊ぶ場合は、この操作は不要です。</p>
@@ -255,14 +304,33 @@ function recoveryContent(p) {
 
 function aboutContent(p) {
   return [
-    section('world', '作品について', '城を育て、将を集め、世界と時を重ねる。', `
-      <p class="lead-paragraph">「戦国大戦」は、PC・スマートフォンのブラウザで遊ぶ戦国ストラテジーゲームです。城下町の内政、武将の登用、軍団の編成、天下地図の戦役を通じて、自分の領国を育てていきます。</p>
-      <p>戦国期から近世初頭の人物と城を、年代を横断した「群雄集結」の設定で収録しています。歴史上の全武将を網羅した名簿ではなく、能力・特技・ランク・所属や勢力配置はゲーム向けの創作です。</p>
+    section('world', '作品について', '戦国大戦とは：一城から領国を育てるブラウザゲーム', `
+      <p class="lead-paragraph">「戦国大戦」は、<strong>KASAI SOLUTIONS</strong>による戦国ブラウザゲームです。はじまりの一城を選び、城下町の施設を増築し、武将を迎えて軍団を編成。内政と戦役を進めながら、自分の領国を育てます。PC・スマートフォン・タブレットから遊べます。</p>
+      <p>年月は全プレイヤー共通で進みます。天下地図ではCPU勢力の城を攻略し、共通フィールドではほかの領主の本拠を選んで交流や外交を行います。ギルドで資産を共有したり、領主本人や所属ギルドへ書状を送ったりできます。</p>
+      <p>軍師AIでは、入力した方針と現在の戦況から出陣案を確認し、自動進軍を始められます。対応するスマートフォン・タブレットでは、画面を表示して歩くと、検知した歩数に応じた資産を獲得できます。領主を連携すれば、進行を端末間で自動同期できます。</p>
       <p class="quote-line">一城の志が、天下を動かす。</p>
-      <p>全プレイヤーが共通の年月を歩み、世界チャットやギルド、共通フィールドで領主同士が出会います。世界時計は1560年1月から1615年12月までを繰り返します。区切りには占領拠点をリセットし、終わりに保有した本拠以外の城数に応じた報酬を受け取ります。選んだ本拠、武将・施設・所持資源は引き継ぎます。</p>
       <a class="chapter-link" href="${p.dir('guide')}">戦国大戦の遊び方を読む</a>
     `),
-    section('collection', '収録内容', '一人の武将、一つの城に、重なる姿。', `
+    section('gameplay', '城下町・武将・領主交流', '選んだ城を育て、仲間と戦記を重ねる', `
+      <h3>一城から始める内政と武将編成</h3>
+      <p>最初は、大都市拠点を除く城から本拠を一つ選びます。田畑や商業施設で資源を生産し、増築や研究、募兵へ配分します。同じ施設の次のレベルを予約すると、費用と指令を支払った順に工事が進みます。城下町では施設名と現在レベルを確認でき、天守から町並みまでの全景を見ながら操作できます。</p>
+      <p>武将は登用・招集で迎え、軍団と内政を支える奉行に配置します。人物の能力・特技・ランクを見て、戦い方や城下町の育て方を考えます。始め方と操作は、<a href="${p.dir('guide')}#first-steps">開始城と序盤の進め方</a>、<a href="${p.dir('guide')}#construction">施設の連続増築</a>、<a href="${p.dir('guide')}#officers">武将と軍団の編成</a>で案内しています。</p>
+      <h3>全プレイヤー共通の年月と占領報酬</h3>
+      <p>世界時計は1560年1月から1615年12月までを繰り返します。区切りには占領拠点をリセットし、直前に保有した本拠以外の城数に応じて報酬を受け取ります。選んだ本拠の成長、武将・施設・研究・所持資源は引き継ぎます。留守中の生産や普請は、再接続時に共通時刻まで反映します。詳しくは<a href="${p.dir('guide')}#world-clock">共通時間と拠点リセットのルール</a>をご覧ください。</p>
+      <h3>ギルドの資産共有と領主への書状</h3>
+      <p>領主を登録すると、世界チャット、オンラインの接続一覧、ギルドなどを利用できます。ギルドでは役職を設け、共有金庫に納めた資産をメンバーで使えます。共通フィールドの本拠からは、相手本人か所属ギルドを宛先に選び、書状を送って返信できます。ギルド宛ての書状は送った領主と、そのギルドの現在のメンバーに共有されます。</p>
+      <p><a href="${p.dir('guide')}#community">ギルドの役職・共有金庫・ランキング</a>と、<a href="${p.dir('guide')}#letters">書状の宛先・閲覧範囲</a>を確認できます。天下地図の領国はプレイヤーごとのCPU戦で、共通フィールドの対人戦では本拠の所有権は移りません。</p>
+    `, 'section-community'),
+    section('strategy-and-walking', '自動進軍と端末の動き', '軍師AIとウォーキングの遊び方', `
+      <h3>作戦文から次の出陣を評価する軍師AI</h3>
+      <p>「兵を温存して弱い城から攻める」などの作戦文を入力すると、ゲーム内の軍師AIが城・戦法・出陣兵数を比較し、候補と予測勝率を示します。内容を確認して自動進軍を開始し、いつでも停止できます。対象は天下地図の隣接するCPU勢力の城で、保護城や同盟中の城を除きます。</p>
+      <p>自動進軍は画面を表示し、共通時間が進んでいる操作端末で動きます。敗戦、目標達成、出陣回数の上限などで停止し、画面を閉じている間の攻撃をまとめて実行することはありません。作戦文を外部の生成AIサービスへ送信しません。<a href="${p.dir('guide')}#strategy">軍師AIの使い方と停止条件</a>を確認してから始められます。</p>
+      <h3>検知した歩数に応じて五つの資産を獲得</h3>
+      <p>モーションセンサーに対応したスマートフォン・タブレットでウォーキングを開始すると、検知した<strong>1歩につき金銭・兵糧・木材・石材・勾玉をそれぞれ2</strong>獲得します。位置情報は使わず、ゲーム画面を表示している間の端末の動きから歩数を推定します。</p>
+      <p>画面ロック中や別アプリの表示中は計測できず、端末の持ち方や振動によって専用の歩数計と差が出る場合があります。世界時計の倍速で歩行報酬が増えることはありません。<a href="${p.dir('guide')}#walking">ウォーキングの開始手順と対応条件</a>に詳しくまとめています。</p>
+    `, 'section-field'),
+    section('collection', '収録内容と作品の設定', '武将・城郭・施設の収録と成長段階', `
+      <p>戦国期から近世初頭の人物と城を、年代を横断した「群雄集結」の設定で収録しています。歴史上の全武将を網羅した名簿ではなく、能力・特技・ランク・所属や勢力配置はゲーム向けの創作です。</p>
       ${table('人物・城郭・施設の収録規模', ['対象', '種類と段階', '基本画像数'], [
         ['武将', '256名 × 8ランク', '2,048'],
         ['城郭', '128城 × Lv.1〜32', '4,096'],
@@ -270,7 +338,8 @@ function aboutContent(p) {
         ['オリジナルBGM', '16曲', '—']
       ])}
       <div class="collection-total"><b>8,192</b><span>武将・城郭・施設の基本イラスト</span></div>
-      <p>8,192点は、配信用の画像シートに収めた各イラストの単位で数えています。画像ファイル数は256枚です。武将にはD・C・B・A・S・SS・SSS・Uの8ランク、城郭と施設には32段階の成長があります。</p>
+      <p>8,192点は、配信用の画像シートに収めた各イラストの単位で数えています。画像ファイル数は256枚です。武将にはD・C・B・A・S・SS・SSS・Uの8ランクがあります。</p>
+      <p>ゲーム内の施設と通常城の城郭は<strong>Lv.32</strong>まで、大都市拠点（江戸・駿府・二条・大坂・名古屋）の城郭は<strong>Lv.64</strong>まで育成できます。城郭と施設の絵姿はそれぞれ32段階で、大都市のLv.33以降は最終形態のイラストを使います。</p>
       <p>音楽は箏・三味線・笛・笙・太鼓などをイメージして構成した、本作オリジナルの16曲。ブラウザ内で音を合成し、場面に合わせた自動選曲と音楽帳からの手動選曲に対応しています。</p>
     `),
     section('artwork', 'イラストと運営専用武将', 'ゲームの世界を描く、独自の表現。', `
@@ -302,22 +371,20 @@ function aboutContent(p) {
 
 const pages = [
   {
+    ...site.pages.guide,
     file: 'guide/index.html', slug: 'guide', key: 'guide', label: '遊び方',
-    title: '戦国大戦の遊び方｜城下町・武将・共通フィールド・自動同期',
-    description: '戦国大戦の公式ガイド。城下町の育成、武将と軍団、天下地図、共通フィールド、周回時の拠点リセットと占領報酬、御触書、ギルド共有金庫・ランキング、端末同期と音声設定を説明します。',
-    eyebrow: '戦国大戦の遊び方', heading: '一城から、<br><span>天下を描く。</span>',
-    lead: '内政を整え、将を迎え、城を拓く。はじめての一歩から、世界の領主たちとの交流まで。あなたの戦記を進めるための案内です。',
+    eyebrow: 'KASAI SOLUTIONSのゲームガイド', heading: '戦国大戦の<br><span>遊び方</span>',
+    lead: 'はじまりの城を選び、城下町を育て、武将を編成する。共通の年月で進む戦役と領主交流、軍師AI、ウォーキングまで、操作とルールを案内します。',
     image: 'assets/castle-town.webp', imageWidth: 1536, imageHeight: 1024, imageAlt: '山々と川に囲まれ、田畑や商家が広がる戦国大戦の城下町イラスト', imageCaption: '城下町から始まる、あなたの領国。', imageTag: '城と群雄の戦記',
     heroAction: 'ゲームを開く', secondary: ['データ復元の案内', 'guide/data-recovery'],
-    notes: [['遊ぶ場所', 'PC・スマートフォンのブラウザ'], ['世界の時間', '全プレイヤーで共通']],
-    toc: [['first-steps','初めての進め方'],['resources','城下町と資源'],['construction','施設Lv・連続普請'],['walking','ウォーキング報酬'],['officers','武将・軍団・勾玉'],['maps','二つの地図と外交'],['strategy','軍師AI・自動進軍'],['letters','領主・ギルドへの書状'],['world-clock','共通の年月'],['community','接続一覧・交流・役職'],['save-and-sync','保存と端末同期'],['questions','よくある質問']],
+    notes: [['遊ぶ場所', 'PC・スマホ・タブレットのブラウザ'], ['世界の時間', '全プレイヤーで共通']],
+    toc: [['first-steps','城選び・初めての進め方'],['resources','城下町と資源'],['construction','施設Lv・連続増築'],['officers','武将・軍団・勾玉'],['maps','二つの地図と外交'],['world-clock','共通時間・拠点リセット'],['community','ギルド・接続一覧・役職'],['letters','領主・ギルドへの書状'],['strategy','軍師AI・自動進軍'],['walking','ウォーキング報酬'],['save-and-sync','保存と端末同期'],['questions','よくある質問']],
     content: guideContent, closingTitle: 'さあ、城下町へ。', closingText: '最初の普請を選び、あなたの一手から戦記を始めましょう。'
   },
   {
+    ...site.pages.recovery,
     file: 'guide/data-recovery/index.html', slug: 'guide/data-recovery', key: 'recovery', label: 'データ復元',
-    title: '戦国大戦のデータ復元・引き継ぎ｜機種変更とドメイン移行',
-    description: '戦国大戦の機種変更・URL変更後のデータ復元を案内。接続コード、領主データとセーブ、統合バックアップ、運営登録キーによる元の運営IDの復旧とクラウド保存の確認を説明します。',
-    eyebrow: '引き継ぎ・データ復元', heading: '同じ領主へ。<br><span>その歩みへ。</span>',
+    eyebrow: '同じ領主で続きを遊ぶ', heading: '戦国大戦の<br><span>引き継ぎ・復元</span>',
     lead: '端末を変えても、サイトのURLが変わっても。以前の領主と積み重ねた進行へ戻るために、手元のデータに合う手順を選びます。',
     image: 'assets/castle-town.webp', imageWidth: 1536, imageHeight: 1024, imageAlt: '城と町、田畑が一体になった戦国大戦の領国イラスト', imageCaption: '城・武将・資源の記録を、次の端末へ。', imageTag: '戦記を引き継ぐ',
     heroAction: 'ゲームを開いて引き継ぐ', secondary: ['手元のデータから選ぶ', '#choose'],
@@ -326,69 +393,45 @@ const pages = [
     content: recoveryContent, closingTitle: '以前の領主で、再接続する。', closingText: 'ゲームを開き、「交流」から「引き継ぎ」を選んでください。'
   },
   {
-    file: 'about/index.html', slug: 'about', key: 'about', label: '作品情報',
-    title: '戦国大戦について｜収録内容・地図と家紋の出典｜KASAI SOLUTIONS',
-    description: 'KASAI SOLUTIONSの戦国大戦。256武将・8ランク・128城・64施設・8,192点の基本イラスト・16曲のBGMを収録。作品方針、実地形の地図、家紋と人物資料の出典を案内します。',
-    eyebrow: '作品情報・収録・出典', heading: '城と群雄を、<br><span>ひとつの戦記に。</span>',
-    lead: '山河に城を置き、諸家の旗を掲げる。戦国の題材と独自の表現を組み合わせた、本作の世界、収録内容、参考資料を紹介します。',
+    ...site.pages.about,
+    file: 'about/index.html', slug: 'about', key: 'about', label: 'ゲーム概要',
+    eyebrow: 'KASAI SOLUTIONSの戦国ブラウザゲーム', heading: '戦国大戦とは<br><span>城と群雄の戦記</span>',
+    lead: '選んだ一城から城下町を育て、武将を集め、共通の年月を歩む。ギルドや書状で領主とつながる、本作の遊び方と制作方針を紹介します。',
     image: 'assets/title-keyvisual.webp', imageWidth: 1774, imageHeight: 887, imageAlt: '二人の武将と日本の城郭を描いた戦国大戦のタイトルイラスト', imageCaption: '戦国大戦 — 城と群雄の戦記', imageTag: 'KASAI SOLUTIONS', wide: true,
     heroAction: 'ゲームを開く', secondary: ['遊び方を読む', 'guide'],
-    notes: [['基本イラスト', '8,192点の武将・城郭・施設'], ['オリジナル音楽', '場面を彩る16曲']],
-    toc: [['world','作品について'],['collection','収録内容'],['artwork','イラスト・德川家康U'],['geography','地図の資料と出典'],['crests','家紋と識別章'],['copyright','著作権・引き継ぎ']],
+    notes: [['ゲームの基本', '一城からの内政・武将編成・戦役'], ['領主同士の交流', 'ギルド・書状・端末同期']],
+    toc: [['world','戦国大戦とは'],['gameplay','城下町・武将・領主交流'],['strategy-and-walking','軍師AI・ウォーキング'],['collection','収録内容と成長段階'],['artwork','イラスト・德川家康U'],['geography','地図の資料と出典'],['crests','家紋と識別章'],['copyright','著作権・引き継ぎ']],
     content: aboutContent, closingTitle: '一城の志を、ここから。', closingText: '城下町の営みと、群雄たちの戦記をブラウザで。'
   }
 ];
 
 function render(page) {
   const p = paths(page.file);
-  const url = `${origin}/${page.slug}/`;
-  const breadcrumbItems = [{name:'戦国大戦',url:`${origin}/`,href:p.dir('')}];
-  if (page.key === 'recovery') breadcrumbItems.push({name:'遊び方',url:`${origin}/guide/`,href:p.dir('guide')});
+  const url = canonical(page.key);
+  const breadcrumbItems = [{name:site.name,url:canonical('home'),href:p.dir('')}];
+  if (page.key === 'recovery') breadcrumbItems.push({name:'遊び方',url:canonical('guide'),href:p.dir('guide')});
   breadcrumbItems.push({name:page.label,url});
-  const jsonld = {
-    '@context':'https://schema.org',
-    '@graph':[
-      {'@type':'WebPage','@id':`${url}#webpage`,url,name:page.title,description:page.description,inLanguage:'ja',dateModified:modified,about:{'@id':`${origin}/#game`},isPartOf:{'@id':`${origin}/#website`},publisher:{'@type':'Organization',name:'KASAI SOLUTIONS',url:`${origin}/`},breadcrumb:{'@id':`${url}#breadcrumb`},primaryImageOfPage:{'@type':'ImageObject',url:`${origin}/${page.image}`}},
-      {'@type':'BreadcrumbList','@id':`${url}#breadcrumb`,itemListElement:breadcrumbItems.map((item,i)=>({'@type':'ListItem',position:i+1,name:item.name,item:item.url}))}
-    ]
-  };
-  const nav = [['guide','遊び方','guide'],['recovery','データ復元','guide/data-recovery'],['about','作品情報','about']].map(([key,label,slug])=>`<a href="${p.dir(slug)}"${page.key===key?' aria-current="page"':''}>${label}</a>`).join('');
+  const jsonld = structuredData(page.key, breadcrumbItems, page.image);
+  const nav = pages.map(({key,label,slug})=>`<a href="${p.dir(slug)}"${page.key===key?' aria-current="page"':''}>${label}</a>`).join('');
   const secondaryHref = page.secondary[1].startsWith('#') ? page.secondary[1] : p.dir(page.secondary[1]);
   const imageFigure = `<figure class="hero-figure${page.wide?' hero-figure--wide':''}"><div class="hero-image-frame"><img src="${p.file(page.image)}" alt="${esc(page.imageAlt)}" width="${page.imageWidth}" height="${page.imageHeight}" fetchpriority="high" decoding="async"></div><figcaption><span>${page.imageCaption}</span><b>${page.imageTag}</b></figcaption><dl class="hero-note">${page.notes.map(([title,text])=>`<div><dt>${title}</dt><dd>${text}</dd></div>`).join('')}</dl></figure>`;
   return `<!doctype html>
-<html lang="ja">
+<html lang="${esc(site.language)}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${esc(page.title)}</title>
-  <meta name="description" content="${esc(page.description)}">
-  <meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1">
+  ${metadataEntries(page.key).map(metaTag).join('\n  ')}
   <meta name="theme-color" content="#0c141f">
-  <meta name="author" content="KASAI SOLUTIONS">
   <link rel="canonical" href="${url}">
-  <meta property="og:type" content="website">
-  <meta property="og:locale" content="ja_JP">
-  <meta property="og:site_name" content="戦国大戦｜KASAI SOLUTIONS">
-  <meta property="og:title" content="${esc(page.title)}">
-  <meta property="og:description" content="${esc(page.description)}">
-  <meta property="og:url" content="${url}">
-  <meta property="og:image" content="${origin}/assets/ogp.jpg">
-  <meta property="og:image:width" content="1774">
-  <meta property="og:image:height" content="887">
-  <meta property="og:image:alt" content="戦国大戦の武将と城郭を描いたタイトルイラスト">
-  <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="${esc(page.title)}">
-  <meta name="twitter:description" content="${esc(page.description)}">
-  <meta name="twitter:image" content="${origin}/assets/ogp.jpg">
-  <meta name="twitter:image:alt" content="戦国大戦 — 城と群雄の戦記">
-  <link rel="icon" href="${p.file('assets/favicon-32.png')}?v=${release}" sizes="32x32" type="image/png">
-  <link rel="apple-touch-icon" href="${p.file('assets/apple-touch-icon.png')}?v=${release}">
+  <link rel="icon" href="${p.file(site.favicon.path)}" sizes="${esc(site.favicon.sizes)}" type="${esc(site.favicon.type)}">
+  <link rel="apple-touch-icon" href="${p.file('assets/apple-touch-icon.png')}">
   <link rel="stylesheet" href="${p.file('guide.css')}?v=${release}">
   <link rel="stylesheet" href="${p.file('interaction-motion.css')}?v=${release}">
   <script defer src="${p.file('interaction-motion.js')}?v=${release}"></script>
   <link rel="stylesheet" href="${p.file('image-protect.css')}?v=${release}">
   <script defer src="${p.file('image-protect.js')}?v=${release}"></script>
-  <script type="application/ld+json">${JSON.stringify(jsonld).replace(/</g,'\\u003c')}</script>
+  <script type="application/ld+json">${jsonScript(jsonld)}</script>
 </head>
 <body data-page="${page.key}">
   <a class="skip-link" href="#content">本文へ移動</a>
@@ -396,18 +439,84 @@ function render(page) {
   <main id="content" class="page-width">
     <nav aria-label="パンくず"><ol class="breadcrumbs">${breadcrumbItems.map((item,i)=>`<li>${i===breadcrumbItems.length-1?`<span aria-current="page">${item.name}</span>`:`<a href="${item.href}">${item.name}</a>`}</li>`).join('')}</ol></nav>
     <section class="hero" aria-labelledby="page-title"><div class="hero-copy"><p class="eyebrow">${page.eyebrow}</p><h1 id="page-title">${page.heading}</h1><p class="hero-lead">${page.lead}</p><div class="hero-actions"><a class="action-link" href="${p.dir('')}">${page.heroAction}</a><a class="text-link" href="${secondaryHref}">${page.secondary[0]}</a></div></div>${imageFigure}</section>
-    <div class="reading-layout"><aside class="toc"><nav aria-label="このページの目次"><p class="toc-title">このページの案内</p><ul>${page.toc.map(([id,label])=>`<li><a href="#${id}">${label}</a></li>`).join('')}</ul></nav><div class="toc-foot"><p>ブラウザで読む公式ガイド。</p><a href="${p.dir('')}">戦国大戦を開く</a></div></aside><article class="article" aria-label="${page.label}の本文"><p class="article-updated">内容更新：<time datetime="${modified}">2026年11月21日</time></p>${page.content(p)}</article></div>
+    <div class="reading-layout"><aside class="toc"><nav aria-label="このページの目次"><p class="toc-title">このページの案内</p><ul>${page.toc.map(([id,label])=>`<li><a href="#${id}">${label}</a></li>`).join('')}</ul></nav><div class="toc-foot"><p>${esc(site.publisher)}のゲームガイド。</p><a href="${p.dir('')}">戦国大戦を開く</a></div></aside><article class="article" aria-label="${page.label}の本文"><p class="article-updated">内容更新：<time datetime="${page.dateModified}">${modifiedLabel(page.dateModified)}</time></p>${page.content(p)}</article></div>
     <section class="closing"><div><h2>${page.closingTitle}</h2><p>${page.closingText}</p></div><a class="action-link" href="${p.dir('')}">ゲームを開く</a></section>
   </main>
-  <footer class="site-footer"><div class="footer-inner page-width"><p class="footer-brand">戦国大戦 <span>城と群雄の戦記</span></p><nav class="footer-nav" aria-label="フッターの案内">${nav}</nav><p class="copyright">© KASAI SOLUTIONS</p><p class="footer-note">地図・人物・家紋の資料は作品情報に記載しています。</p></div></footer>
+  <footer class="site-footer"><div class="footer-inner page-width"><p class="footer-brand">${esc(site.name)} <span>城と群雄の戦記</span></p><nav class="footer-nav" aria-label="フッターの案内">${nav}</nav><p class="copyright">© ${esc(site.publisher)}</p><p class="footer-note">地図・人物・家紋の資料はゲーム概要に記載しています。</p></div></footer>
 </body>
 </html>
 `;
 }
 
-for (const page of pages) {
-  const file = path.join(root, page.file);
-  fs.mkdirSync(path.dirname(file), {recursive:true});
-  fs.writeFileSync(file, render(page), 'utf8');
-  console.log(`Wrote ${page.file}`);
+function tagAttributes(tag) {
+  return Object.fromEntries([...tag.matchAll(/([\w:-]+)\s*=\s*(["'])(.*?)\2/g)].map(match => [match[1], match[3]]));
 }
+
+function replaceHeadTag(html, tagName, matches, replacement) {
+  let found = false;
+  html = html.replace(new RegExp(`<${tagName}\\b[^>]*>`, 'gi'), tag => {
+    if (!matches(tagAttributes(tag))) return tag;
+    if (found) return '';
+    found = true;
+    return replacement;
+  });
+  return found ? html : html.replace('</head>', `  ${replacement}\n</head>`);
+}
+
+function updateHome() {
+  let html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
+  const page = site.pages.home;
+  if (!/<title>[\s\S]*?<\/title>/i.test(html)) throw Error('The game document needs an existing title element');
+  html = html.replace(/<title>[\s\S]*?<\/title>/i, `<title>${esc(page.title)}</title>`);
+  for (const entry of metadataEntries('home')) html = replaceHeadTag(html, 'meta', attrs => attrs[entry[0]] === entry[1], metaTag(entry));
+  html = replaceHeadTag(html, 'link', attrs => attrs.rel === 'canonical', `<link rel="canonical" href="${canonical('home')}">`);
+  html = replaceHeadTag(html, 'link', attrs => attrs.rel === 'icon', `<link rel="icon" type="${esc(site.favicon.type)}" sizes="${esc(site.favicon.sizes)}" href="${site.favicon.path}">`);
+  html = replaceHeadTag(html, 'link', attrs => attrs.rel === 'apple-touch-icon', '<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">');
+  const graph = `<script type="application/ld+json">${jsonScript(structuredData('home'))}</script>`;
+  let hasGraph = false;
+  html = html.replace(/<script\b([^>]*)>[\s\S]*?<\/script>/gi, (tag, attributes) => {
+    if (tagAttributes(attributes).type !== 'application/ld+json') return tag;
+    if (hasGraph) return '';
+    hasGraph = true;
+    return graph;
+  });
+  if (!hasGraph) html = html.replace('</head>', `  ${graph}\n</head>`);
+  // Keep the two-line launch layout. No new cards, rows or navigation bands.
+  html = html.replace(/(<p class="launch-introduction">)[\s\S]*?(<\/p>)/, (_, before, after) => before + site.launchIntroduction.map(esc).join('<br>') + after);
+  html = html.replace(/<p class="launch-copyright">[\s\S]*?<\/p>/, `<p class="launch-copyright">© <a href="about/" aria-label="${esc(site.publisher)}の戦国大戦について">${esc(site.publisher)}</a></p>`);
+  html = html.replace(/(<a href="about\/" data-action="about">)[^<]*(<\/a>)/, '$1ゲーム概要・出典$2');
+  html = html.replace(/(<div class="version-label">)群雄集結 · Ver\. [^<]+(<\/div>)/, `$1群雄集結 · Ver. ${esc(site.version)}$2`);
+  html = html.replace(/(\b(?:src|href)=["'][^"']*[?&]v=)[^&"']+/g, (_, prefix) => prefix + release);
+  return html;
+}
+
+function updateManifest() {
+  const manifest = JSON.parse(fs.readFileSync(path.join(root, 'manifest.webmanifest'), 'utf8'));
+  manifest.name = `${site.name}｜${site.tagline}`;
+  manifest.short_name = site.name;
+  manifest.description = site.pages.home.description;
+  manifest.lang = site.language;
+  manifest.icons = manifest.icons.map(icon => ({...icon, src:icon.src.split('?')[0]}));
+  return JSON.stringify(manifest, null, 2) + '\n';
+}
+
+function sitemap() {
+  const entries = Object.keys(site.pages).map(key => `  <url><loc>${esc(canonical(key))}</loc><lastmod>${site.pages[key].dateModified}</lastmod></url>`);
+  return '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' + entries.join('\n') + '\n</urlset>\n';
+}
+
+// Compute everything before writing so malformed metadata cannot leave a
+// partially regenerated public surface. Unchanged files keep their mtime.
+const outputs = new Map(pages.map(page => [page.file, render(page)]));
+outputs.set('index.html', updateHome());
+outputs.set('manifest.webmanifest', updateManifest());
+outputs.set('sitemap.xml', sitemap());
+let changed = 0;
+for (const [relative, contents] of outputs) {
+  const file = path.join(root, relative);
+  if (fs.existsSync(file) && fs.readFileSync(file, 'utf8') === contents) continue;
+  fs.mkdirSync(path.dirname(file), {recursive:true});
+  fs.writeFileSync(file, contents, 'utf8');
+  changed++;
+}
+console.log(`Generated ${outputs.size} public documents from site-metadata.json; ${changed} changed.`);
