@@ -9,19 +9,41 @@ No cookies are used. Never put a token or pairing code in a URL. POST/PUT/PATCH/
 ```js
 user = {
   id: "u_…", name: "領主名", clan: "織田家", isAdmin: false, isStaff: false,
-  guildId: null, guildName: null, guildRole: null, online: true, avatarVersion: null
+  guildId: null, guildName: null, guildRole: null, online: true, avatarVersion: null,
+  evaluation: {version:1,score:0,maxScore:100000,rankId:"court-0",rankName:"無位",rankIndex:0}
 }
 // guildRole is null, "owner", "officer", or "member".
 // online means at least one explicitly foreground device heartbeat is newer than 90 seconds.
 // Authenticated reads and save writes alone never make a player online.
-message = {id: 1, userId: "u_…", name: "領主名", avatarVersion: null, text: "…", createdAt: "2026-11-21T00:00:00.000Z", isAdmin: false, isStaff: false}
-guild = {id:"g_…", name:"…", ownerId:"u_…", ownerName:"…", memberCount:1, maxMembers:50, createdAt:"…"}
+message = {id: 1, userId: "u_…", name: "領主名", avatarVersion: null, text: "…", createdAt: "2026-11-21T00:00:00.000Z", isAdmin: false, isStaff: false, evaluation}
+guild = {id:"g_…", name:"…", ownerId:"u_…", ownerName:"…", ownerEvaluation:evaluation, memberCount:1, maxMembers:50, createdAt:"…"}
 gift = {gold: 100, rice: 200, wood: 50, stone: 50, magatama: 3000}
 error = {ok:false, error:{code:"AUTH_REQUIRED", message:"日本語の説明", retryAfter:5}}
 ```
 
 `retryAfter` exists only on rate limits. HTTP status is meaningful (400, 401, 403, 404, 409, 410, 413, 415, 429, 500, 503).
 All returned timestamps are ISO strings. Treat names, messages, mail, and announcements as plain text, never HTML.
+
+### Player evaluation and court-rank titles
+
+`evaluation` is the compact current projection `{version:1,score,maxScore:100000,rankId,rankName,rankIndex}` from the shared `GameEngine.publicEvaluation` function. It assigns seventeen ranks, `court-0` (無位) through `court-16` (正一位). The score combines territory/castles, completed facilities, distinct officers and their strongest owned rarities, army/governor assignments, research, prestige and recorded attack wins, and walking progress. It is independent of operator, staff and guild permissions. Clients cannot upload an authoritative score or title.
+
+| Player display | Additional field |
+|---|---|
+| User, online/search/recent-login/staff lists, friends and pending requests, guild members, field home/outpost, chat message | `evaluation` |
+| Guild owner | `ownerEvaluation` |
+| Achievement author or guild asset receipt/ledger actor | `playerEvaluation` |
+| Field relationship target | `targetEvaluation` |
+| Field battle participants | `attackerEvaluation`, `defenderEvaluation` |
+| Letter `peer`, `sender`, `contextPlayer`; shared construction `startedBy` | Nested `evaluation` |
+| Letter message and thread `lastMessage` author | `authorEvaluation` |
+| Automatic field-battle mail | `participants:[{playerId,name,side:"attacker"\|"defender",evaluation}]` |
+
+An existing identity without a saved game receives score `0` and 無位. An unreadable saved game or an unavailable historical identity yields `null`; clients hide the unverified badge instead of inventing a demotion. Missing fields from older servers are also not authoritative zeroes. The compact object exposes no resource balances, officer IDs, formations, raw saves, tokens or backups.
+
+The server reads the latest committed normalized save, applies current roles and completed shared staff facilities/castle growth, and projects a pending cycle's retained home. This calculation performs no gameplay writes, monthly simulation, reward grants, lease renewal or formation changes. Ordinary personal progress becomes public after save synchronization. One response batches and deduplicates its referenced player IDs; repeated mentions of one player receive one calculated value. No schema migration or saved title cache is required.
+
+Chat GET and letter inbox/thread GET responses additionally include `playerEvaluations:[{playerId,evaluation}]`, even when a message delta is empty. Clients use these entries to refresh already rendered authors. Chat covers recent authors in the selected room's latest 100 messages; a letter thread covers its explicit participants and recent authors in its latest 100 messages, with existing access checks. Neither scans unrelated conversations. Receipt, battle and mail bodies remain immutable; the added evaluation fields describe current titles, including on retries and historical views. A system-mail sender remains the system, while its participant row identifies the two actual lords.
 
 ## Identity and public configuration
 
@@ -30,7 +52,7 @@ All returned timestamps are ISO strings. Treat names, messages, mail, and announ
 | GET `/health` | none | `status:"ready"` |
 | GET `/config` | none | `announcement:string`, `adminClaimed:boolean`, `adminRecoveryAvailable:boolean`, `onlineCount:number`, `clock` |
 | POST `/session` | `{name?,clan?}` | `token:string`, `user` |
-| GET `/me` | none | `user`, `friends:user[]`, `requests:[{id,name,clan,avatarVersion,direction:"incoming"|"outgoing",createdAt}]`, `unreadMail:number` |
+| GET `/me` | none | `user`, `friends:user[]`, `requests:[{id,name,clan,avatarVersion,evaluation,direction:"incoming"|"outgoing",createdAt}]`, `unreadMail:number` |
 | PATCH `/profile` | `{name}` | `user` |
 | GET `/players` | `?q=検索語` (2–24 chars) | `players:user[]` (up to 30, excludes requester) |
 
@@ -370,7 +392,7 @@ Requests are limited to 30 new raid attempts and 20 new diplomatic attempts per 
 
 | Method / path | Body / query | Result |
 |---|---|---|
-| GET `/chat` | `?channel=world|guild|friend|admin&target=…&after=…` | `{messages:message[],channel,nextAfter:number,hasMore:boolean}` |
+| GET `/chat` | `?channel=world|guild|friend|admin&target=…&after=…` | `{messages:message[],channel,nextAfter:number,hasMore:boolean,playerEvaluations}` |
 | POST `/chat` | `{channel,target?,text}` | `{message}` |
 
 Messages are limited to 300 Unicode characters. Sending is limited to one message per player per five seconds across channels. Reads return at most 100 messages.
@@ -533,7 +555,7 @@ Errors include HTTP 401 for missing authentication, 403 `ADMIN_REQUIRED` for any
 | Method / path | Body | Result |
 |---|---|---|
 | POST `/admin/mail` | `{target:"all"|userId,title,body,gift:null|gift,requestId}` | `{mailId,alreadySent:boolean}` |
-| GET `/mail` | — | `{mail:[{id,title,body,gift,read,claimed,createdAt,source,event}]}` (newest 200) |
+| GET `/mail` | — | `{mail:[{id,title,body,gift,read,claimed,createdAt,source,event,participants?}]}` (newest 200) |
 | POST `/mail/read` | `{mailId}` | `{read:true}` |
 | POST `/mail/claim` | `{mailId,requestId}` | `{gift,receiptId,alreadyClaimed:boolean}` |
 
@@ -718,9 +740,9 @@ Selecting another player's base can open a private conversation with that player
 |---|---|---|
 | GET `/letters/recipient` | `?playerId=u_…` | Current safe `player` projection, including current guild |
 | GET `/letters/summary` | none | `unreadCount`, `unreadThreads` |
-| GET `/letters` | `?limit=30&cursor=…` (max 50) | `threads`, `unreadCount`, `unreadThreads`, `nextCursor` |
+| GET `/letters` | `?limit=30&cursor=…` (max 50) | `threads`, `unreadCount`, `unreadThreads`, `nextCursor`, `playerEvaluations` |
 | POST `/letters` | `{requestId,targetPlayerId,destination:"player"|"guild",guildId?,text}` | `thread`, `message`, `idempotent` |
-| GET `/letters/:threadId` | `?before=seq&limit=40` or `?after=seq&limit=40` (exclusive cursors; max 100) | `thread`, chronological `messages`, `hasOlder`, `nextBefore`, `hasNewer`, `nextAfter`, `readCursor` |
+| GET `/letters/:threadId` | `?before=seq&limit=40` or `?after=seq&limit=40` (exclusive cursors; max 100) | `thread`, chronological `messages`, `hasOlder`, `nextBefore`, `hasNewer`, `nextAfter`, `readCursor`, `playerEvaluations` |
 | POST `/letters/:threadId/messages` | `{requestId,text}` | `thread`, `message`, `idempotent` |
 | POST `/letters/:threadId/read` | `{through:seq}` | Accepted `through`, `unreadCount`, `unreadThreads` |
 

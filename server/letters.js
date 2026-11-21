@@ -14,16 +14,16 @@ const LETTER_SELECT=`SELECT t.*,a.name AS a_name,b.name AS b_name,s.name AS send
   LEFT JOIN users s ON s.id=t.sender_id LEFT JOIN guilds g ON g.id=t.guild_id LEFT JOIN users c ON c.id=t.context_player_id
   LEFT JOIN base_letter_messages lm ON lm.seq=t.last_seq LEFT JOIN users author ON author.id=lm.sender_id
   LEFT JOIN base_letter_reads r ON r.thread_id=t.id AND r.user_id=?`;
-function letterThread(row,viewer){
-  const player=row.kind==='player',peer=player?(row.user_a===viewer?{id:row.user_b,name:row.b_name}:{id:row.user_a,name:row.a_name}):null;
+function letterThread(row,viewer,evaluationRef){
+  const player=row.kind==='player',peer=player?(row.user_a===viewer?{id:row.user_b,name:row.b_name,evaluation:evaluationRef(row.user_b)}:{id:row.user_a,name:row.a_name,evaluation:evaluationRef(row.user_a)}):null;
   return {id:row.id,kind:row.kind,title:player?peer.name:row.sender_id===viewer?row.guild_name:`${row.sender_name} → ${row.guild_name}`,
-    peer,guild:player?null:{id:row.guild_id,name:row.guild_name},sender:player?null:{id:row.sender_id,name:row.sender_name},
-    contextPlayer:row.context_player_id?{id:row.context_player_id,name:row.context_name}:null,
+    peer,guild:player?null:{id:row.guild_id,name:row.guild_name},sender:player?null:{id:row.sender_id,name:row.sender_name,evaluation:evaluationRef(row.sender_id)},
+    contextPlayer:row.context_player_id?{id:row.context_player_id,name:row.context_name,evaluation:evaluationRef(row.context_player_id)}:null,
     visibility:player?'領主本人同士だけが閲覧できます。':'送り主と、所属ギルドの現在のメンバーに共有されます。',
     unreadCount:Number(row.unread_count||0),lastSeq:Number(row.last_seq),updatedAt:letterIso(row.updated_at),canReply:true,
-    lastMessage:row.message_id?{id:row.message_id,seq:Number(row.last_seq),authorId:row.last_sender_id,authorName:row.last_sender_name,text:Array.from(row.last_body||'').slice(0,120).join(''),createdAt:letterIso(row.last_created_at)}:null};
+    lastMessage:row.message_id?{id:row.message_id,seq:Number(row.last_seq),authorId:row.last_sender_id,authorName:row.last_sender_name,authorEvaluation:evaluationRef(row.last_sender_id),text:Array.from(row.last_body||'').slice(0,120).join(''),createdAt:letterIso(row.last_created_at)}:null};
 }
-const letterMessage=row=>({id:row.id,seq:Number(row.seq),threadId:row.thread_id,authorId:row.sender_id,authorName:row.name,text:row.body,createdAt:letterIso(row.created_at)});
+const letterMessage=(row,evaluationRef)=>({id:row.id,seq:Number(row.seq),threadId:row.thread_id,authorId:row.sender_id,authorName:row.name,authorEvaluation:evaluationRef(row.sender_id),text:row.body,createdAt:letterIso(row.created_at)});
 function letterLimit(raw,fallback,max,fail){if(raw===null||raw===undefined)return fallback;if(!/^\d{1,3}$/.test(raw)||Number(raw)<1||Number(raw)>max)fail(400,'INVALID_INPUT',`書状の件数は1～${max}件にしてください。`);return Number(raw);}
 function letterId(value,helpers){const id=helpers.idField(value,'書状の識別子');if(!/^lt_[a-f0-9]{32}$/.test(id))helpers.fail(404,'LETTER_NOT_FOUND','この書状は見つからないか、閲覧できません。');return id;}
 function letterKeys(body,allowed,fail){if(Object.keys(body).some(key=>!allowed.includes(key)))fail(400,'INVALID_INPUT','書状の送信内容を確認してください。');}
@@ -39,7 +39,7 @@ async function letterInbox(ctx){
   const {db,user,url,helpers:h}=ctx,limit=letterLimit(url.searchParams.get('limit'),30,50,h.fail),cursor=url.searchParams.get('cursor');let point=null;
   if(cursor){if(cursor.length>512)h.fail(400,'INVALID_CURSOR','書状一覧の続きが正しくありません。');try{point=JSON.parse(atob(cursor.replaceAll('-','+').replaceAll('_','/')));}catch{h.fail(400,'INVALID_CURSOR','書状一覧の続きが正しくありません。');}if(!Array.isArray(point)||point.length!==2||!Number.isSafeInteger(point[0])||point[0]<0||!/^lt_[a-f0-9]{32}$/.test(point[1]))h.fail(400,'INVALID_CURSOR','書状一覧の続きが正しくありません。');}
   const found=letterRows(await letterStmt(db,LETTER_SELECT+` WHERE ${letterAccess()}${point?' AND (t.updated_at<? OR (t.updated_at=? AND t.id<?))':''} ORDER BY t.updated_at DESC,t.id DESC LIMIT ?`,user.id,user.id,...letterActor(user.id),...(point?[point[0],point[0],point[1]]:[]),limit+1).all()),page=found.slice(0,limit),last=page.at(-1);
-  return {ok:true,threads:page.map(row=>letterThread(row,user.id)),...await letterSummary(db,user.id),nextCursor:found.length>limit?btoa(JSON.stringify([Number(last.updated_at),last.id])).replaceAll('+','-').replaceAll('/','_').replaceAll('=',''):null};
+  return {ok:true,threads:page.map(row=>letterThread(row,user.id,h.evaluationRef)),playerEvaluations:h.evaluationUpdates(page.flatMap(row=>[row.user_a,row.user_b,row.sender_id,row.context_player_id,row.last_sender_id])),...await letterSummary(db,user.id),nextCursor:found.length>limit?btoa(JSON.stringify([Number(last.updated_at),last.id])).replaceAll('+','-').replaceAll('/','_').replaceAll('=',''):null};
 }
 async function letterRead(ctx,id){
   const {db,user,url,helpers:h}=ctx,limit=letterLimit(url.searchParams.get('limit'),40,100,h.fail),beforeRaw=url.searchParams.get('before'),afterRaw=url.searchParams.get('after');let before=null,after=null;
@@ -50,9 +50,11 @@ async function letterRead(ctx,id){
   const result=await db.batch([
     letterStmt(db,LETTER_SELECT+` WHERE t.id=? AND ${letterAccess()}`,user.id,user.id,id,...letterActor(user.id)),
     letterStmt(db,`SELECT m.*,u.name FROM base_letter_messages m JOIN users u ON u.id=m.sender_id JOIN base_letter_threads t ON t.id=m.thread_id
-      WHERE t.id=? AND ${letterAccess()}${before!==null?' AND m.seq<?':after!==null?' AND m.seq>?':''} ORDER BY m.seq ${after!==null?'ASC':'DESC'} LIMIT ?`,id,...letterActor(user.id),...(before!==null?[before]:after!==null?[after]:[]),limit+1)
+      WHERE t.id=? AND ${letterAccess()}${before!==null?' AND m.seq<?':after!==null?' AND m.seq>?':''} ORDER BY m.seq ${after!==null?'ASC':'DESC'} LIMIT ?`,id,...letterActor(user.id),...(before!==null?[before]:after!==null?[after]:[]),limit+1),
+    letterStmt(db,`SELECT DISTINCT sender_id FROM (SELECT m.sender_id FROM base_letter_messages m JOIN base_letter_threads t ON t.id=m.thread_id
+      WHERE t.id=? AND ${letterAccess()} ORDER BY m.seq DESC LIMIT 100)`,id,...letterActor(user.id))
   ]),row=letterRows(result[0])[0];if(!row)h.fail(404,'LETTER_NOT_FOUND','この書状は見つからないか、閲覧できません。');
-  const all=letterRows(result[1]),messages=all.slice(0,limit);if(after===null)messages.reverse();return {ok:true,thread:letterThread(row,user.id),messages:messages.map(letterMessage),hasOlder:after===null&&all.length>limit,nextBefore:after===null&&all.length>limit?Number(messages[0].seq):null,hasNewer:after!==null&&all.length>limit,nextAfter:after!==null&&all.length>limit?Number(messages.at(-1).seq):null,readCursor:messages.length?Number(messages.at(-1).seq):0};
+  const all=letterRows(result[1]),messages=all.slice(0,limit);if(after===null)messages.reverse();return {ok:true,thread:letterThread(row,user.id,h.evaluationRef),messages:messages.map(message=>letterMessage(message,h.evaluationRef)),playerEvaluations:h.evaluationUpdates([row.user_a,row.user_b,row.sender_id,row.context_player_id,...messages.map(message=>message.sender_id),...letterRows(result[2]).map(author=>author.sender_id)]),hasOlder:after===null&&all.length>limit,nextBefore:after===null&&all.length>limit?Number(messages[0].seq):null,hasNewer:after!==null&&all.length>limit,nextAfter:after!==null&&all.length>limit?Number(messages.at(-1).seq):null,readCursor:messages.length?Number(messages.at(-1).seq):0};
 }
 async function letterMarkRead(ctx,id){
   const {db,user,request,now,helpers:h}=ctx,body=await h.readBody(request);letterKeys(body,['through'],h.fail);
@@ -67,7 +69,7 @@ async function letterSentResponse(ctx,receipt,idempotent){
     letterStmt(db,LETTER_SELECT+` WHERE t.id=? AND ${letterAccess()}`,user.id,user.id,receipt.thread_id,...letterActor(user.id)),
     letterStmt(db,`SELECT m.*,u.name FROM base_letter_messages m JOIN users u ON u.id=m.sender_id JOIN base_letter_threads t ON t.id=m.thread_id WHERE m.id=? AND t.id=? AND ${letterAccess()}`,receipt.message_id,receipt.thread_id,...letterActor(user.id))
   ]),thread=letterRows(result[0])[0],message=letterRows(result[1])[0];
-  if(!thread||!message)h.fail(404,'LETTER_NOT_FOUND','この書状は見つからないか、閲覧できません。');return {ok:true,thread:letterThread(thread,user.id),message:letterMessage(message),idempotent};
+  if(!thread||!message)h.fail(404,'LETTER_NOT_FOUND','この書状は見つからないか、閲覧できません。');return {ok:true,thread:letterThread(thread,user.id,h.evaluationRef),message:letterMessage(message,h.evaluationRef),idempotent};
 }
 async function letterSend(ctx,replyId=null){
   const {db,user,request,now,helpers:h}=ctx,body=await h.readBody(request);letterKeys(body,replyId?['requestId','text']:['requestId','targetPlayerId','destination','guildId','text'],h.fail);

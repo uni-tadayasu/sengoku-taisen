@@ -189,7 +189,7 @@ async function pvpUiTest(){
   try{
     await controller.refresh();await select('enemy:nijo');assert(detail().includes('二条城'));assert(detail().includes('所領'));assert(detail().includes('城郭上限 Lv.48'));
     await send('attack');assert.equal(requests.length,0,'An attack always needs a confirmation for this exact target');
-    await send('confirm-attack');assert(detail().includes('二条城へ出陣しますか'));assert(detail().includes('守備する領主：領主enemy · 占領戦'));
+    await send('confirm-attack');assert(detail().includes('二条城へ出陣しますか'));assert(detail().replace(/<[^>]*>/g,'').includes('守備する領主：領主enemy · 占領戦'));
     await select('enemy:osaka');await send('attack');assert.equal(requests.length,0,'A confirmation for one city cannot authorize another city of the same lord');
     await send('confirm-attack');let resolve;nextReply=()=>new Promise(done=>{resolve=done;});const pending=send('attack');
     await Promise.resolve();await send('attack');assert.equal(requests.length,1,'Double activation during the pending request cannot send another battle');

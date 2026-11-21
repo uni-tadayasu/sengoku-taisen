@@ -1,0 +1,60 @@
+/* One noninteractive rank badge works inside player links, cards and buttons. */
+.player-evaluation-person { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; max-width: 100%; vertical-align: middle; }
+.player-evaluation-name { min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.player-evaluation-slot { display: inline-flex; align-items: center; flex: none; }
+.player-evaluation-slot:empty { display: none; }
+.player-evaluation-badge { display: inline-flex; align-items: center; flex: none; max-width: 100%; padding: 1px 6px; border: 1px solid #a8b3b04d; border-radius: 4px; color: #d1dcd7; background: #212b2b; font-size: 14px; font-weight: 600; line-height: 1.65; letter-spacing: .025em; white-space: nowrap; vertical-align: middle; }
+.player-evaluation-badge[data-evaluation-tier="1"] { color: #c7d8bd; border-color: #91af724f; background: #273028; }
+.player-evaluation-badge[data-evaluation-tier="2"] { color: #dfcfac; border-color: #cfaa615e; background: #302c22; }
+.player-evaluation-badge[data-evaluation-tier="3"] { color: #e6c9ed; border-color: #b78dc35e; background: #302537; }
+.player-evaluation-badge[data-evaluation-tier="4"] { color: #ffe2a1; border-color: #e8ba646e; background: #382e1e; }
+.letters-destination .player-evaluation-person, .field-report-row .player-evaluation-person,
+.letters-destination .player-evaluation-slot, .field-report-row .player-evaluation-slot,
+.letters-destination .player-evaluation-badge, .field-report-row .player-evaluation-badge { display: inline-flex; }
+.letters-destination .player-evaluation-slot:empty, .field-report-row .player-evaluation-slot:empty { display: none; }
+.field-report-row .player-evaluation-badge { font-size: 14px; }
+.social-friend > span:not(.social-avatar), .social-profile-heading > div, .letters-destination > span { min-width: 0; }
+
+/* These entries stay in normal page flow, outside the six-cell fixed topbar. */
+.player-evaluation-entry { display: inline-flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 6px; max-width: 100%; min-height: 38px; padding: 7px 10px; border: 1px solid #c4ad7240; border-radius: 5px; background: #bca15e0c; color: #e8d9b4; font-size: 14px; line-height: 1.5; cursor: pointer; }
+.player-evaluation-entry[hidden] { display: none !important; }
+.player-evaluation-entry:hover { border-color: #dfc48699; background: #bca15e19; }
+.player-evaluation-entry:focus-visible { outline: 2px solid #e6c784; outline-offset: 3px; }
+.player-evaluation-entry-label { white-space: nowrap; }
+.player-evaluation-entry-pending { color: var(--muted, #aab3b1); font-size: 14px; }
+.clan-panel .player-evaluation-entry { margin-top: 10px; width: 100%; }
+.page-heading-actions .player-evaluation-entry { flex: none; }
+html:not(.sengoku-desktop-fit) .player-evaluation-entry { min-height: 44px; font-size: 14px; }
+html:not(.sengoku-desktop-fit) .clan-panel .player-evaluation-entry { width: auto; margin: 0 0 0 auto; }
+
+.player-evaluation-modal { width: min(720px, calc(100vw - 24px)); }
+.player-evaluation-body { min-width: 0; color: #c9d0cb; font-size: 16px; line-height: 1.8; overflow-wrap: anywhere; }
+.player-evaluation-summary { padding: 17px; border: 1px solid #c4ad7245; border-radius: 8px; background: linear-gradient(135deg, #34312688, #1d2826); }
+.player-evaluation-summary-top { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
+.player-evaluation-summary .player-evaluation-badge { font-size: 18px; padding: 3px 11px; }
+.player-evaluation-score { color: #f5e2b7; font-size: 30px; font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1.4; }
+.player-evaluation-score small { color: #b8c2ba; font-size: 14px; font-weight: 400; white-space: nowrap; }
+.player-evaluation-next { margin: 10px 0 7px; }
+.player-evaluation-meter { height: 7px; overflow: hidden; border-radius: 5px; background: #ffffff12; }
+.player-evaluation-meter > i { display: block; height: 100%; border-radius: inherit; background: #d1b77b; }
+.player-evaluation-notice { margin: 16px 0; color: #b5c1b8; font-size: 14px; }
+.player-evaluation-breakdown { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.player-evaluation-category { min-width: 0; padding: 13px; border: 1px solid #ffffff13; border-radius: 6px; background: #ffffff03; }
+.player-evaluation-body .player-evaluation-category h3 { margin: 0 0 7px; color: #e7dcc5; font-size: 15px; }
+.player-evaluation-category-score { margin-bottom: 8px; font-variant-numeric: tabular-nums; color: #d9c392; }
+.player-evaluation-category-score small { color: #aebcb3; }
+.player-evaluation-category p { margin: 9px 0 0; font-size: 14px; color: #adb9b2; line-height: 1.75; }
+.player-evaluation-ranks { margin-top: 18px; border-top: 1px solid #ffffff1b; }
+.player-evaluation-ranks summary { min-height: 44px; padding: 12px 2px; color: #e7d2a6; font-weight: 600; cursor: pointer; }
+.player-evaluation-rank-list { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px 14px; }
+.player-evaluation-rank-list li { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 10px; padding: 7px 8px; border-bottom: 1px solid #ffffff0e; font-size: 14px; }
+.player-evaluation-rank-list li[aria-current="step"] { border-radius: 4px; color: #f3d79c; background: #cfad6320; }
+.player-evaluation-rank-list b { font-weight: 500; }
+.player-evaluation-rank-list span { color: #b9c6bc; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.player-evaluation-pending { padding: 12px 0; }
+@media (max-width: 560px) {
+  .player-evaluation-breakdown { grid-template-columns: minmax(0, 1fr); }
+  .player-evaluation-rank-list { grid-template-columns: minmax(0, 1fr); }
+  .player-evaluation-summary { padding: 13px; }
+  .player-evaluation-score { font-size: 27px; }
+}

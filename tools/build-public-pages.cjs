@@ -6,6 +6,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const root = path.resolve(__dirname, '..');
 const site = JSON.parse(fs.readFileSync(path.join(root, 'site-metadata.json'), 'utf8'));
+const {SengokuEngine, SENGOKU_DATA} = require(path.join(root, 'engine.js'));
 const {origin, release} = site;
 // Dates are editorial inputs. A new build or deployment must not change them.
 if (site.schemaVersion !== 1 || new URL(origin).origin !== origin || !origin.startsWith('https://')) throw Error('site-metadata.json: canonical HTTPS origin is required');
@@ -172,6 +173,15 @@ function guideContent(p) {
       <h3>同盟は相手の承諾で成立</h3>
       <p>外交の提案を相手が承諾すると、<strong>ゲーム内の6か月間</strong>、互いに攻撃できなくなります。届いた提案の拒否や、未承諾の自分の提案の取消もできます。暦が一周して拠点をリセットするときは、前の暦で結んだ同盟・未承諾の外交提案も終了します。</p>
     `, 'section-field'),
+    section('player-evaluation', '領主の成長と称号', '総合評価から自動で授かる位階', `
+      <p class="lead-paragraph">各プレイヤーの領国・育成・編成・実績を、7項目、合計100,000点で評価します。現在の点数に応じて<strong>無位から正一位まで17段階の位階</strong>を自動で付与します。</p>
+      <p>ゲームのヘッダーや各画面見出しの「総合評価」、交流の領主プロフィールから、自分の位階・総合評価・内訳・次の位階までの必要点を確認できます。他の領主の位階は、交流、フレンド、ギルド、書状、共通フィールドの城主表示などに名前と一緒に表示します。</p>
+      ${table('総合評価の7項目', ['項目','上限','評価する成長'], SengokuEngine.evaluateState({}).breakdown.map(item=>[esc(item.name),`${item.maxScore.toLocaleString('ja-JP')}点`,esc(item.description)]))}
+      <p>各項目の端数は切り捨て、合計点から位階を決めます。軍団は最高所有レア度を反映した能力、奉行は建設済み施設への政治力・特技の適性を使います。所持資源や残兵、発言数は得点に含めません。</p>
+      ${table('位階と必要な総合評価', ['位階','必要点'], SENGOKU_DATA.evaluationRanks.map(rank=>[esc(rank.name),`${rank.minScore.toLocaleString('ja-JP')}点以上`]))}
+      ${callout('現在の進行に合わせて更新します', '位階は現在の総合評価から決まります。育成や実績で上がり、領地の喪失・周回による所領精算・編成変更などで下がる場合もあります。自分の変更は保存・同期後にほかの領主への表示へ反映されます。スタッフは現在の共有拠点を反映します。')}
+      <p>位階は領主の称号です。運営・スタッフ・ギルド役職の権限とは別に扱います。称号の追加や表示のために、軍団・奉行・施設などの保存済み進行を初期化することはありません。</p>
+    `),
     section('world-clock', '全プレイヤー共通の年月', '共通時間・拠点リセット・占領報酬', `
       <p class="lead-paragraph">世界時計は全プレイヤー共通です。1560年1月から1615年12月まで進むと、再び1560年1月へ戻ります。次の暦に入ると占領した拠点をリセットし、開始時に選んだ本拠から再出発します。運営は德川家・江戸城、スタッフは德川家・駿府城を維持します。駿府城の共有成長、武将・施設・所持資源は引き継ぎます。</p>
       <p>1倍速では<strong>実時間60秒がゲーム内の1か月</strong>に相当し、20秒ごとに指令が1回復します。世界全体の速度と停止・再開は運営が管理します。プレイヤー個人で年月を進めたり、一人だけ停止したりする操作はありません。</p>
@@ -446,7 +456,7 @@ const pages = [
     image: 'assets/castle-town.webp', imageWidth: 1536, imageHeight: 1024, imageAlt: '山々と川に囲まれ、田畑や商家が広がる戦国VSの城下町イラスト', imageCaption: '城下町から始まる、あなたの領国。', imageTag: '城と群雄の戦記',
     heroAction: 'ゲームを開く', secondary: ['データ復元の案内', 'guide/data-recovery'],
     notes: [['遊ぶ場所', 'PC・スマホ・タブレットのブラウザ'], ['世界の時間', '全プレイヤーで共通']],
-    toc: [['first-steps','城選び・初めての進め方'],['castle-upgrades','本拠・城郭のレベル上げ'],['resources','城下町と資源'],['construction','施設Lv・連続増築'],['officers','武将・軍団・勾玉'],['maps','二つの地図と外交'],['field-battles','報酬戦・占領戦・襲撃'],['world-clock','共通時間・拠点リセット'],['community','ギルド・接続一覧・役職'],['letters','領主・ギルドへの書状'],['system-mail','勝敗・移転のシステムメール'],['strategy','軍師AI・自動進軍'],['walking','ウォーキング報酬'],['save-and-sync','保存と端末同期'],['questions','よくある質問']],
+    toc: [['first-steps','城選び・初めての進め方'],['castle-upgrades','本拠・城郭のレベル上げ'],['resources','城下町と資源'],['construction','施設Lv・連続増築'],['officers','武将・軍団・勾玉'],['maps','二つの地図と外交'],['field-battles','報酬戦・占領戦・襲撃'],['player-evaluation','総合評価・位階の称号'],['world-clock','共通時間・拠点リセット'],['community','ギルド・接続一覧・役職'],['letters','領主・ギルドへの書状'],['system-mail','勝敗・移転のシステムメール'],['strategy','軍師AI・自動進軍'],['walking','ウォーキング報酬'],['save-and-sync','保存と端末同期'],['questions','よくある質問']],
     content: guideContent, closingTitle: 'さあ、城下町へ。', closingText: '最初の普請を選び、あなたの一手から戦記を始めましょう。'
   },
   {

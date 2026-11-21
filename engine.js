@@ -144,7 +144,16 @@
   const ADMIN_ACCESS=new WeakMap(),STAFF_ACCESS=new WeakMap(),STAFF_VIEW=new WeakMap(),STAFF_ORIGIN=new WeakMap();
   const WORLD_CALENDAR=Object.freeze({startYear:1560,yearsPerCycle:56,monthsPerCycle:672,secondsPerMonth:60});
   const MAX_TURN=999999999;
-  const DATA = {version:2,gacha:GACHA,rankBonuses:RANK_BONUSES,adminAssets:ADMIN_ASSETS,adminClan:ADMIN_CLAN,staffClan:STAFF_CLAN,majorCityIds:MAJOR_CITY_IDS,worldCalendar:WORLD_CALENDAR,secondsPerMonth:60,secondsPerCommand:20,buildingLimit:32,ranks:RANKS,categories:CATEGORY_LABELS,clans:CLANS,buildings:BUILDINGS,techs:TECHS,castles:CASTLES,tactics:TACTICS,quests:QUESTS,resources:RESOURCES};
+  // Court titles are game progression, independent of account/guild permissions.
+  // Keep this single scoring contract in the shared browser/Worker engine.
+  const EVALUATION_MAX=100000;
+  const EVALUATION_RANKS=Object.freeze([
+    ['無位',0],['従八位',5000],['正八位',10000],['従七位',15000],['正七位',20000],
+    ['従六位',25000],['正六位',30000],['従五位',35000],['正五位',40000],
+    ['従四位',45000],['正四位',50000],['従三位',60000],['正三位',70000],
+    ['従二位',80000],['正二位',90000],['従一位',95000],['正一位',98000]
+  ].map(([name,minScore],index)=>Object.freeze({id:`court-${index}`,name,index,minScore})));
+  const DATA = {version:2,gacha:GACHA,rankBonuses:RANK_BONUSES,adminAssets:ADMIN_ASSETS,adminClan:ADMIN_CLAN,staffClan:STAFF_CLAN,majorCityIds:MAJOR_CITY_IDS,worldCalendar:WORLD_CALENDAR,secondsPerMonth:60,secondsPerCommand:20,buildingLimit:32,ranks:RANKS,evaluationRanks:EVALUATION_RANKS,evaluationMax:EVALUATION_MAX,categories:CATEGORY_LABELS,clans:CLANS,buildings:BUILDINGS,techs:TECHS,castles:CASTLES,tactics:TACTICS,quests:QUESTS,resources:RESOURCES};
   const clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
   const copy=o=>JSON.parse(JSON.stringify(o));
   const int=n=>Math.floor(Number(n)||0);
@@ -153,6 +162,60 @@
     if(!officer)return 1;
     const specialty=(officer.skill==='farmer'&&category==='rice')||(officer.skill==='merchant'&&category==='gold')||(officer.skill==='engineer'&&['wood','stone','defense','research'].includes(category));
     return 1+(officer.politics||0)/400+(specialty?.1:officer.skill==='administrator'?.05:0);
+  }
+  const evaluationNumber=(value,max=Number.MAX_SAFE_INTEGER)=>typeof value==='number'&&Number.isFinite(value)?Math.max(0,Math.min(max,value)):0;
+  function evaluationRank(score){
+    const points=Math.floor(evaluationNumber(score,EVALUATION_MAX));
+    return {...EVALUATION_RANKS.findLast(rank=>points>=rank.minScore)};
+  }
+  function evaluateState(state,options={}){
+    // Callers pass their authorized, normalized current projection. This reader
+    // never advances time, edits formations, exports a save, or trusts a supplied
+    // evaluation/title. Public servers additionally project current roles/cycles.
+    const s=state&&typeof state==='object'?state:{};
+    const roster=Array.isArray(options.officers)?options.officers:root.SENGOKU_OFFICERS||[];
+    const officerMap=new Map(roster.map(officer=>[officer.id,officer]));
+    const owned=[...new Set(Array.isArray(s.officers)?s.officers:[])].filter(id=>officerMap.has(id));
+    const ownedSet=new Set(owned),highestRanks=new Map();
+    for(const key of Array.isArray(s.officerVariants)?s.officerVariants:[]){
+      if(typeof key!=='string')continue;
+      const at=key.lastIndexOf(':'),id=key.slice(0,at),rank=key.slice(at+1),index=RANKS.indexOf(rank);
+      if(at<1||!ownedSet.has(id)||index<0)continue;
+      highestRanks.set(id,Math.max(index,highestRanks.get(id)??-1));
+    }
+    const officers=new Map(owned.map(id=>{
+      const base=officerMap.get(id),rankIndex=highestRanks.get(id)??Math.max(0,RANKS.indexOf(base.rank||base.rarity));
+      const bonus=RANK_BONUSES[RANKS[rankIndex]];
+      return [id,{...base,rankIndex,...Object.fromEntries(['lead','valor','intellect','politics'].map(stat=>[stat,evaluationNumber(evaluationNumber(base[stat],100)+bonus,100)]))}];
+    }));
+    const holdings=typeof s.clan==='string'&&s.clan?CASTLES.filter(c=>s.castles?.[c.id]?.owner===s.clan):[];
+    const castleLevels=holdings.reduce((sum,c)=>sum+evaluationNumber(s.castles[c.id].level,['edo','sunpu'].includes(c.id)?64:MAJOR_CITY_IDS.includes(c.id)?48:32),0);
+    const buildingLevels=BUILDINGS.reduce((sum,b)=>sum+evaluationNumber(s.buildings?.[b.id],32),0);
+    const rarityTotal=[...officers.values()].map(o=>o.rankIndex+1).sort((a,b)=>b-a).slice(0,30).reduce((sum,n)=>sum+n,0);
+    const army=[...new Set(Array.isArray(s.army)?s.army:[])].filter(id=>officers.has(id)).slice(0,3);
+    const armyAbility=army.reduce((sum,id)=>{const o=officers.get(id);return sum+o.lead+o.valor+o.intellect;},0);
+    const assigned=new Set(army);let governorQuality=0;
+    for(const building of BUILDINGS){
+      const id=s.governors?.[building.id],officer=officers.get(id);
+      if(!officer||assigned.has(id)||evaluationNumber(s.buildings?.[building.id],32)<1)continue;
+      assigned.add(id);governorQuality+=Math.min(1,Math.max(0,(governorBonusForCategory(building.category,officer)-1)/.35));
+    }
+    const techLevels=TECHS.reduce((sum,t)=>sum+evaluationNumber(s.tech?.[t.id],t.max),0);
+    const walkingSteps=evaluationNumber(s.walking?.localSteps,1000000)+evaluationNumber(s.walking?.serverSteps,1000000);
+    const section=(id,name,value,maxScore,description)=>({id,name,score:Math.min(maxScore,Math.floor(Math.max(0,value)+1e-8)),maxScore,description});
+    const breakdown=[
+      section('territory','領国・城郭',Math.min(6000,holdings.length*600)+Math.min(14000,castleLevels*43.75),20000,'領有城1城につき600点（最大6,000点）と、完成した城郭Lv合計×43.75点（最大14,000点）。'),
+      section('buildings','内政施設',buildingLevels/(BUILDINGS.length*32)*20000,20000,'天守を含む64施設の完成済みLv合計で評価。全施設Lv32で20,000点。建設予約は完成後に加算。'),
+      section('officers','武将',Math.min(12000,owned.length*60)+rarityTotal*25,18000,'異なる武将1名につき60点（最大200名）と、上位30名の最高所有レア度を評価。D=1〜U=8として各25点。重複入手では増えません。'),
+      section('formation','軍団・奉行',armyAbility/900*6000+governorQuality/BUILDINGS.length*6000,12000,'軍団3名の統率・武勇・知略で最大6,000点。奉行は政治力と施設への適性で最大6,000点。軍団との兼任・重複・未建築施設は数えません。'),
+      section('research','研究',techLevels*250,10000,'8技術の研究済みLvを1段階につき250点で評価。全技術Lv5で10,000点。'),
+      section('merit','戦功',evaluationNumber(s.prestige,20000)/2+evaluationNumber(s.stats?.wins,100)*50,15000,'威信2につき1点（最大10,000点）と、記録された合戦の勝利1回につき50点（最大5,000点）。'),
+      section('walking','歩行',Math.min(1000000,walkingSteps)/200,5000,'記録された累計歩数200歩につき1点。100万歩で最大5,000点。')
+    ];
+    const score=breakdown.reduce((sum,item)=>sum+item.score,0),rank=evaluationRank(score),next=EVALUATION_RANKS[rank.index+1];
+    return {version:1,score,maxScore:EVALUATION_MAX,rankId:rank.id,rankName:rank.name,rankIndex:rank.index,rankMinScore:rank.minScore,
+      nextRank:next?{...next}:null,toNext:next?next.minScore-score:0,
+      progressPercent:next?Math.floor((score-rank.minScore)/(next.minScore-rank.minScore)*100):100,breakdown};
   }
   // Rectangular Hungarian assignment. Rows and columns have a fixed order so
   // equal optima are deterministic; zero-weight columns represent vacancies.
@@ -245,6 +308,13 @@
       if(options.staffBase&&this.isStaff)this.applyStaffBase(options.staffBase);
     }
     get data(){return DATA;}
+    evaluation(){return evaluateState(this.state,{officers:this.roster});}
+    static evaluateState(state,options={}){return evaluateState(state,options);}
+    static evaluationRank(score){return evaluationRank(score);}
+    static publicEvaluation(state,options={}){
+      const {version,score,maxScore,rankId,rankName,rankIndex}=evaluateState(state,options);
+      return {version,score,maxScore,rankId,rankName,rankIndex};
+    }
     get isAdmin(){return ADMIN_ACCESS.get(this)===true;}
     get isStaff(){return !this.isAdmin&&STAFF_ACCESS.get(this)===true;}
     castleLevelLimit(id){return ['edo','sunpu'].includes(id)?64:MAJOR_CITY_IDS.includes(id)?48:32;}
@@ -357,7 +427,14 @@
       for(const job of base.jobs){const key=job.kind+':'+job.id,previous=chains.get(key),level=previous?.targetLevel??(job.kind==='castle'?base.castleLevel:base.buildings[job.id]);if(typeof job.jobId!=='string'||!job.jobId||jobIds.has(job.jobId)||!Number.isInteger(job.totalSeconds)||job.totalSeconds<60||job.totalSeconds>180||!Number.isSafeInteger(job.startedElapsedMs)||job.startedElapsedMs<0||job.completesElapsedMs-job.startedElapsedMs!==job.totalSeconds*1000||job.targetLevel!==level+1||previous&&(job.kind!=='building'||job.startedElapsedMs<previous.completesElapsedMs))return fail('共同普請の予約順を確認できません。');jobIds.add(job.jobId);chains.set(key,job);}
       if(chains.size>2+Math.floor(base.buildings.keep/8))return fail('共同普請の工事枠を確認できません。');
       const personalKey=value=>JSON.stringify([value.accessSinceElapsedMs,value.clanSinceElapsedMs,value.personalClan,value.personalHome,value.personalCycleHome,value.personalSunpu,value.personalHomeCastle]);
-      let view=STAFF_VIEW.get(this);if(view&&base.revision<view.base.revision)return {ok:true,changed:false};if(view&&base.revision===view.base.revision&&personalKey(base)===personalKey(view.base))return {ok:true,changed:false};
+      let view=STAFF_VIEW.get(this);if(view&&base.revision<view.base.revision)return {ok:true,changed:false};
+      if(view&&base.revision===view.base.revision&&personalKey(base)===personalKey(view.base)){
+        // A participant's name/title can change without a construction revision.
+        // Refresh only that display metadata, preserving every job and progress.
+        const incoming=new Map(base.jobs.map(job=>[job.jobId,job.startedBy]));let changed=false;
+        for(const job of view.base.jobs){const author=incoming.get(job.jobId);if(author?.id&&author.id===job.startedBy?.id&&JSON.stringify(author)!==JSON.stringify(job.startedBy)){job.startedBy=copy(author);changed=true;}}
+        return {ok:true,changed,...(changed?{displayOnly:true}:{})};
+      }
       if(!view){const personalHome=base.personalHome||this.state.home,personalSunpu=base.personalSunpu||this.state.castles.sunpu;view={personalClan:base.personalClan||STAFF_ORIGIN.get(this)?.clan||'徳川家',personalBuildings:copy(this.state.buildings),personalSunpuLevel:personalSunpu.level,personalSunpuWall:personalSunpu.wall,personalSunpu:copy(personalSunpu),staffSunpuTroops:this.state.castles.sunpu.troops,personalHome,personalCycleHome:base.personalCycleHome||this.state.cycle.home,personalHomeCastle:copy(base.personalHomeCastle||this.state.castles[personalHome]),phase:null};}
       if(base.personalHome&&base.personalHome!==view.personalHome){view.personalHome=base.personalHome;view.personalHomeCastle=copy(base.personalHomeCastle||this.state.castles[base.personalHome]);}
       if(base.personalCycleHome)view.personalCycleHome=base.personalCycleHome;if(base.personalClan)view.personalClan=base.personalClan;STAFF_ORIGIN.set(this,{clan:view.personalClan,home:view.personalHome,cycleHome:view.personalCycleHome});
