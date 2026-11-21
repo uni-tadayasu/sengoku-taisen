@@ -205,3 +205,13 @@ html:not(.sengoku-desktop-fit) #main .town-status-panels > .panel:last-child { g
 .staff-base-job small { display: block; font-size: 14px; line-height: 1.55; }
 .staff-base-job .progress { margin-top: 7px; }
 .staff-base-upgrade { white-space: normal; overflow-wrap: anywhere; }
+
+/* The facility list expands in normal rows on every device. */
+#main .town-facility-controls { display: grid; gap: 8px; margin: 0 0 12px; }
+#main .town-facility-count { color: var(--muted); font-size: 14px; line-height: 1.5; }
+#main .town-facilities-toggle { min-height: 44px; white-space: normal; text-align: center; scroll-margin-top: calc(var(--touch-header-height, 0px) + var(--touch-announcement-height, 0px) + 12px); }
+#main .town-facilities-toggle > span { min-width: 0; overflow-wrap: anywhere; }
+#main .town-facilities-toggle[hidden] { display: none; }
+#main #town-facilities-toggle-bottom { margin-top: 12px; }
+#main .town-facility-console .buildings-grid { grid-auto-flow: row; grid-auto-columns: auto; overflow: visible; }
+#main .town-facility-console .building-card { min-width: 0; }
