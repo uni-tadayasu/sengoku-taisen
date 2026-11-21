@@ -6,7 +6,7 @@ const root=path.resolve(__dirname,'..'),origin='https://www.kasai-solutions-inc.
 const site=JSON.parse(fs.readFileSync(path.join(root,'site-metadata.json'),'utf8'));
 const sitemap=fs.readFileSync(path.join(root,'sitemap.xml'),'utf8');
 const urls=[...sitemap.matchAll(/<loc>([^<]+)<\/loc>/g)].map(m=>m[1]);
-assert.equal(urls.length,5);assert.equal(new Set(urls).size,5);
+assert.equal(urls.length,6);assert.equal(new Set(urls).size,6);
 assert.equal(fs.readFileSync(path.join(root,'CNAME'),'utf8').trim(),new URL(origin).hostname);
 const titles=new Set(),descriptions=new Set(),connections=new Map(),renderAssets=new Set();let links=0,graphs=0;
 function decode(value){return value.replace(/&(?:amp|lt|gt|quot|#39);/g,entity=>({'&amp;':'&','&lt;':'<','&gt;':'>','&quot;':'"','&#39;':"'"}[entity]));}
@@ -55,7 +55,7 @@ for(const agent of ['googlebot','bingbot']){
   assert(!matches.length||matches[0].allow,agent+' cannot crawl '+pathname);
  }
 }
-const seen=new Set(),pending=[origin+'/'];for(let i=0;i<pending.length;i++){const url=pending[i];if(seen.has(url))continue;seen.add(url);pending.push(...connections.get(url)||[]);}assert.equal(seen.size,5,'All sitemap pages need static links from the public site');
+const seen=new Set(),pending=[origin+'/'];for(let i=0;i<pending.length;i++){const url=pending[i];if(seen.has(url))continue;seen.add(url);pending.push(...connections.get(url)||[]);}assert.equal(seen.size,6,'All sitemap pages need static links from the public site');
 const notFound=fs.readFileSync(path.join(root,'404.html'),'utf8');assert(/content="noindex,follow"/.test(notFound));
 for(const name of ['selection-lock.css','selection-lock.js'])assert(notFound.includes('/'+name+'?v='+site.release));
 assert(/<script\b[^>]*\bdefer\b[^>]*src="\/selection-lock\.js\?v=/.test(notFound));

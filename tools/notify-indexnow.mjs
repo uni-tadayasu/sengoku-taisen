@@ -20,7 +20,7 @@ const SITE_ROOT=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 export const HOST='www.kasai-solutions-inc.com';
 export const ORIGIN=`https://${HOST}`;
 export const ENDPOINT='https://api.indexnow.org/indexnow';
-export const URLS=Object.freeze(['/', '/guide/', '/guide/data-recovery/', '/about/', '/sengoku-vs/'].map(p=>ORIGIN+p));
+export const URLS=Object.freeze(['/', '/guide/', '/guide/data-recovery/', '/about/', '/sengoku-vs/', '/premium/'].map(p=>ORIGIN+p));
 const TIMEOUT_MS=12000;
 const NOTICE='IndexNow は対応検索エンジンへの更新通知です。Google は未対応です。受理は検索掲載や順位を保証しません。';
 
@@ -37,10 +37,10 @@ export function parseSitemap(xml){
   if(root[1].replace(/<url>\s*[\s\S]*?\s*<\/url>/gu,'').trim())invalid('INVALID_SITEMAP','サイトマップに未対応の項目があります。');
   const urls=blocks.map(([,body])=>{
     const match=body.match(/^<loc>([^<]+)<\/loc>\s*<lastmod>(\d{4}-\d{2}-\d{2})<\/lastmod>$/u);
-    if(!match||!URLS.includes(match[1])||Number.isNaN(Date.parse(match[2]))||new Date(match[2]).toISOString().slice(0,10)!==match[2])invalid('INVALID_SITEMAP','サイトマップはこのサイトの正規 5 URL と正しい更新日のみに限定してください。');
+    if(!match||!URLS.includes(match[1])||Number.isNaN(Date.parse(match[2]))||new Date(match[2]).toISOString().slice(0,10)!==match[2])invalid('INVALID_SITEMAP','サイトマップはこのサイトの正規 6 URL と正しい更新日のみに限定してください。');
     return match[1];
   });
-  if(urls.length!==URLS.length||new Set(urls).size!==URLS.length||URLS.some(url=>!urls.includes(url)))invalid('INVALID_SITEMAP','正規 5 URL の不足・重複・追加を確認してください。');
+  if(urls.length!==URLS.length||new Set(urls).size!==URLS.length||URLS.some(url=>!urls.includes(url)))invalid('INVALID_SITEMAP','正規 6 URL の不足・重複・追加を確認してください。');
   return [...URLS];
 }
 
@@ -95,7 +95,7 @@ export async function verifyPublished(plan,{fetchImpl=globalThis.fetch,timeoutMs
   },timeoutMs);
   await get(plan.payload.keyLocation,256,text=>{if(text.trim()!==plan.payload.key)invalid('PUBLISHED_KEY_MISMATCH','公開された確認テキストの本文が一致しません。');});
   await get(`${ORIGIN}/sitemap.xml`,65536,xml=>{const urls=parseSitemap(xml);if(JSON.stringify(urls)!==JSON.stringify(plan.payload.urlList))invalid('PUBLISHED_SITEMAP_CHANGED','公開されたサイトマップが送信予定と一致しません。');});
-  // All five page checks must complete before the one possible POST.
+  // All six page checks must complete before the one possible POST.
   await Promise.all(plan.payload.urlList.map(url=>get(url,2*1024*1024,(html,headers)=>validatePage(html,url,headers))));
   return {keyVerified:true,sitemapVerified:true,pagesVerified:plan.payload.urlList.length};
 }
@@ -103,7 +103,7 @@ export async function verifyPublished(plan,{fetchImpl=globalThis.fetch,timeoutMs
 export async function run({argv=[],root=SITE_ROOT,fetchImpl=globalThis.fetch,timeoutMs=TIMEOUT_MS}={}){
   let mode='dry-run',stage='local',attempted=false,summary={host:HOST,notice:NOTICE};
   try{
-    if(argv.length===1&&argv[0]==='--help')return{ok:true,mode:'help',message:'node tools/notify-indexnow.mjs\n  ローカル設定・確認ファイル・正規 5 URL を検証するだけで、外部通信しません。\nnode tools/notify-indexnow.mjs --submit\n  公開後のみ実行。公開 key・sitemap・5 ページを検証して 1 回通知します。\n200: 受理。202: 受領・キー検証待ち。429/通信失敗: 非成功、自動再送なし。\n'+NOTICE};
+    if(argv.length===1&&argv[0]==='--help')return{ok:true,mode:'help',message:'node tools/notify-indexnow.mjs\n  ローカル設定・確認ファイル・正規 6 URL を検証するだけで、外部通信しません。\nnode tools/notify-indexnow.mjs --submit\n  公開後のみ実行。公開 key・sitemap・6 ページを検証して 1 回通知します。\n200: 受理。202: 受領・キー検証待ち。429/通信失敗: 非成功、自動再送なし。\n'+NOTICE};
     if(argv.length>1||argv.length===1&&argv[0]!=='--submit')invalid('INVALID_ARGUMENT','引数は --submit または --help のみです。任意 URL・ホストは指定できません。');
     mode=argv[0]==='--submit'?'submit':'dry-run';
     const plan=await loadPlan(root);

@@ -33,7 +33,7 @@ function renderSharePage({ site, metadataHtml, jsonLd, iconHtml }) {
   <header class="site-header">
     <div class="site-header-inner page-width">
       <a class="site-brand" href="../" aria-label="戦国VS ゲームのトップへ"><img src="../${esc(site.favicon.path)}" alt="" width="44" height="44"><span><b>戦国VS</b><small>SENGOKU VS</small></span></a>
-      <nav class="header-navigation" aria-label="サイトの案内"><a href="../guide/">遊び方</a><a href="../about/">ゲーム概要</a><a href="../guide/data-recovery/">データ復元</a><a class="nav-play" href="../">ゲームを開く</a></nav>
+      <nav class="header-navigation" aria-label="サイトの案内"><a href="../guide/">遊び方</a><a href="../about/">ゲーム概要</a><a href="../premium/">有料版・支援</a><a href="../guide/data-recovery/">データ復元</a><a class="nav-play" href="../">ゲームを開く</a></nav>
     </div>
   </header>
   <main id="content" class="page-width">
@@ -72,7 +72,7 @@ function renderSharePage({ site, metadataHtml, jsonLd, iconHtml }) {
 
     <section class="closing share-closing" aria-labelledby="share-closing-title"><div><h2 id="share-closing-title">あなたの一城から、始めましょう。</h2><p>城下町を育て、群雄とともに、次の戦記へ。</p></div><a class="action-link" href="../">戦国VSを遊ぶ</a></section>
   </main>
-  <footer class="site-footer"><div class="footer-inner page-width"><p class="footer-brand">戦国VS <span>城と群雄の戦記</span></p><nav class="footer-nav" aria-label="フッターの案内"><a href="../guide/">遊び方</a><a href="../about/">ゲーム概要・出典</a><a href="../guide/data-recovery/">データ復元</a></nav><p class="copyright">© ${esc(site.publisher || 'KASAI SOLUTIONS')}</p><p class="footer-note">地図・人物・家紋の資料はゲーム概要に記載しています。</p><p class="share-updated">更新日：<time datetime="${esc(modified)}">${esc(modifiedLabel)}</time></p></div></footer>
+  <footer class="site-footer"><div class="footer-inner page-width"><p class="footer-brand">戦国VS <span>城と群雄の戦記</span></p><nav class="footer-nav" aria-label="フッターの案内"><a href="../guide/">遊び方</a><a href="../about/">ゲーム概要・出典</a><a href="../premium/">有料版・支援</a><a href="../guide/data-recovery/">データ復元</a></nav><p class="copyright">© ${esc(site.publisher || 'KASAI SOLUTIONS')}</p><p class="footer-note">地図・人物・家紋の資料はゲーム概要に記載しています。</p><p class="share-updated">更新日：<time datetime="${esc(modified)}">${esc(modifiedLabel)}</time></p></div></footer>
 </body>
 </html>
 `;

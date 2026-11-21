@@ -2,6 +2,10 @@
 
 確認日：2026年11月21日。正規の公開ドメインは `https://www.kasai-solutions-inc.com/`、運営者・著作権者の表記は **KASAI SOLUTIONS** です。
 
+## v3.13.0 の有料版案内
+
+販売準備中の `/premium/` を公開ページへ追加します。外観アイテムとサポーターの予定内容・税込予定価格を紹介し、全商品を購入不可で表示します。self canonical、OGP、Twitter Card、パンくず、更新日を公開ページに合わせ、サイトマップとIndexNowの対象は6ページに統一します。販売中であると誤認させないよう、予定価格を `Offer` として構造化データへ出力しません。
+
 ## v3.12.2 の共有URL・旧ゲーム情報の整理
 
 戦国VS固有の `/sengoku-vs/` を公開5ページへ追加し、canonical・og:url・サイトマップをこのページ自身のURLにそろえます。ゲーム本体と保存・同期の場所は既存トップURLです。旧トップURLに保存されているXのカードとは別の取得先を用意する対応であり、Xのキャッシュ消去完了を意味しません。
@@ -26,12 +30,13 @@
 
 機能説明は [共通フィールドの表示](field.js)、[ゲームの状態と成長上限](engine.js)、[サーバーの合戦確定・通知](server/index.js) と照合します。自動メールの説明対象は共通フィールドの対人戦です。天下地図のCPU戦は既存の戦報と履歴で確認します。個々の領主の私信や合戦通知そのものを公開ページに載せることはありません。
 
-## 対象となる公開5ページ
+## 対象となる公開6ページ
 
 | ページ | 正規URL | 内容 |
 | --- | --- | --- |
 | 作品トップ | https://www.kasai-solutions-inc.com/ | ゲームの概要と開始入口 |
 | 紹介・共有 | https://www.kasai-solutions-inc.com/sengoku-vs/ | 戦国VS固有の共有URLと作品紹介 |
+| 有料版・支援 | https://www.kasai-solutions-inc.com/premium/ | 外観アイテム・サポーターの予定内容（販売準備中） |
 | 遊び方 | https://www.kasai-solutions-inc.com/guide/ | 操作・成長・同期・追加機能の説明 |
 | 引き継ぎ・復元 | https://www.kasai-solutions-inc.com/guide/data-recovery/ | 端末変更、領主データ、権限の復元手順 |
 | 作品情報 | https://www.kasai-solutions-inc.com/about/ | 作品・運営者・対応環境について |
@@ -87,7 +92,7 @@ Googleは正確な `lastmod` を利用し、`priority` と `changefreq` は使�
 
 ### Bing等へのIndexNow
 
-既存の [IndexNow通知CLI](tools/notify-indexnow.mjs) は、**既定では送信しないdry-run**です。引数なしの実行はローカル設定・検証ファイル・サイトマップの5URLだけを調べ、ネットワーク通信を行いません。今回の内容変更対象は上記5URLです。**公開前の検証ではdry-runのみ実施し、送信結果は公開後に別途確認します。**
+既存の [IndexNow通知CLI](tools/notify-indexnow.mjs) は、**既定では送信しないdry-run**です。引数なしの実行はローカル設定・検証ファイル・サイトマップの6URLだけを調べ、ネットワーク通信を行いません。今回の内容変更対象は上記6URLです。**公開前の検証ではdry-runのみ実施し、送信結果は公開後に別途確認します。**
 
 `--submit` を明示した場合だけ、公開された検証キーファイル、サイトマップ、公開5ページを取得します。HTTP 200、HTML形式、自己参照canonical、検索除外指定がないことを確認してから、`https://api.indexnow.org/indexnow` へ5URLをまとめて1回POSTします。ホストと対象URLは固定し、転送先には追従せず、失敗時の自動再送もしません。
 

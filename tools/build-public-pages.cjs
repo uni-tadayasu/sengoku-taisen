@@ -5,13 +5,14 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const renderSharePage = require('./share-page.cjs');
+const renderPremiumPage = require('./premium-page.cjs');
 const root = path.resolve(__dirname, '..');
 const site = JSON.parse(fs.readFileSync(path.join(root, 'site-metadata.json'), 'utf8'));
 const {SengokuEngine, SENGOKU_DATA} = require(path.join(root, 'engine.js'));
 const {origin, release} = site;
 // Dates are editorial inputs. A new build or deployment must not change them.
 if (site.schemaVersion !== 1 || new URL(origin).origin !== origin || !origin.startsWith('https://')) throw Error('site-metadata.json: canonical HTTPS origin is required');
-for (const key of ['home', 'share', 'guide', 'recovery', 'about']) {
+for (const key of ['home', 'share', 'premium', 'guide', 'recovery', 'about']) {
   const page = site.pages[key];
   if (!page || !/^\/(?:[a-z0-9-]+\/)*$/.test(page.path) || !page.title || !page.description || !/^\d{4}-\d{2}-\d{2}$/.test(page.dateModified)) throw Error(`site-metadata.json: invalid ${key} page`);
 }
@@ -77,7 +78,7 @@ function structuredData(key, breadcrumbItems = [], pageImage = site.ogImage.path
     isPartOf:{'@id':websiteId}, publisher:{'@id':organizationId},
     about:{'@id':gameId}, primaryImageOfPage:{'@type':'ImageObject',url:absolute(pageImage)}
   };
-  if (['home', 'share', 'about'].includes(key)) webPage.mainEntity = {'@id':gameId};
+  if (['home', 'share', 'premium', 'about'].includes(key)) webPage.mainEntity = {'@id':gameId};
   const graph = [
     {'@type':'Organization','@id':organizationId,name:site.publisher,url:home,logo:{'@type':'ImageObject',url:absolute(site.logo.path),width:site.logo.width,height:site.logo.height}},
     {'@type':'WebSite','@id':websiteId,name:site.name,alternateName:site.alternateName,url:home,inLanguage:site.language,publisher:{'@id':organizationId}},
@@ -495,6 +496,11 @@ const pages = [
     image: 'assets/title-sengoku-vs.webp'
   },
   {
+    ...site.pages.premium,
+    file: 'premium/index.html', slug: 'premium', key: 'premium', label: '有料版・支援',
+    image: 'assets/castle-town.webp'
+  },
+  {
     ...site.pages.guide,
     file: 'guide/index.html', slug: 'guide', key: 'guide', label: '遊び方',
     eyebrow: 'KASAI SOLUTIONSのゲームガイド', heading: '戦国VSの<br><span>遊び方</span>',
@@ -536,9 +542,9 @@ function render(page) {
   if (page.key === 'recovery') breadcrumbItems.push({name:'遊び方',url:canonical('guide'),href:p.dir('guide')});
   breadcrumbItems.push({name:page.label,url});
   const jsonld = structuredData(page.key, breadcrumbItems, page.image);
-  if (page.key === 'share') return renderSharePage({
+  if (['share', 'premium'].includes(page.key)) return (page.key === 'share' ? renderSharePage : renderPremiumPage)({
     site,
-    metadataHtml: metadataEntries('share').map(metaTag).join('\n  ') + `\n  <link rel="canonical" href="${url}">`,
+    metadataHtml: metadataEntries(page.key).map(metaTag).join('\n  ') + `\n  <link rel="canonical" href="${url}">`,
     jsonLd: jsonScript(jsonld),
     iconHtml: brandLinks(p.file).join('\n  ')
   });
