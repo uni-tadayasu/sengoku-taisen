@@ -87,6 +87,12 @@ function guideContent(p) {
       <p>通常城の城郭と城下町施設は<strong>Lv.32</strong>まで、二条城・大坂城・名古屋城の城郭は<strong>Lv.48</strong>まで、江戸城・駿府城の城郭は<strong>Lv.64</strong>まで発展します。城の強化に応じて費用と効果が変わります。詳細画面では32段階の絵姿を見比べられ、Lv.33以降は最終形態の絵を使います。イラストの閲覧だけで資源やレベルが変わることはありません。</p>
       <a class="chapter-link" href="#castle-upgrades">本拠・城郭のレベルの上げ方を確認する</a>
     `, 'section-town'),
+    section('next-hints', '迷ったときの道しるべ', '次に何をするか、ヒントで確認', `
+      <p class="lead-paragraph">メニューの<strong>「ヒント」</strong>、または城下町の<strong>「次の一手」</strong>から、現在の領国に合うおすすめを確認できます。資源・兵糧収支・指令・普請・軍団・任務などの状況に応じて、優先する行動を並べます。</p>
+      <p>まず上位3件を表示し、ほかの候補は展開できます。おすすめの理由と、必要な資産・不足分・待機時間を読み、それぞれのボタンから施設や軍団などの画面を開いてください。ヒントを開いたり案内先へ移動したりするだけで、資源の消費や出陣は行いません。</p>
+      <p>兵糧が足りないときは生産の立て直し、達成した任務があるときは報酬の確認などを案内します。募兵は追加後の維持費も見て判断し、攻城の予測は勝利を保証しません。同期・権限確認中や利用停止中は、その状態に応じた案内を表示します。</p>
+      <p>長い施設一覧などを下へスクロールすると、<strong>「一番上へ」</strong>ボタンが表示されます。PCの城下町の操作欄、PC・スマホのページとも、表示中の内容を先頭へ戻せます。スマホの下部メニューや交流ボタンを避けた位置に表示します。</p>
+    `, 'section-town'),
     section('castle-upgrades', '初めての普請', '本拠・城郭のレベルの上げ方', `
       <p class="lead-paragraph">本拠には、城下町の施設である<strong>「天守」</strong>と、城全体の強さを表す<strong>「城郭レベル」</strong>があります。それぞれ別の工事で育てます。まず、どちらを上げたいかを選んでください。</p>
       ${table('天守と城郭の違い', ['育てるもの', '開く画面', '主な働き'], [
@@ -473,7 +479,7 @@ const pages = [
     image: 'assets/castle-town.webp', imageWidth: 1536, imageHeight: 1024, imageAlt: '山々と川に囲まれ、田畑や商家が広がる戦国VSの城下町イラスト', imageCaption: '城下町から始まる、あなたの領国。', imageTag: '城と群雄の戦記',
     heroAction: 'ゲームを開く', secondary: ['データ復元の案内', 'guide/data-recovery'],
     notes: [['遊ぶ場所', 'PC・スマホ・タブレットのブラウザ'], ['世界の時間', '全プレイヤーで共通']],
-    toc: [['first-steps','城選び・初めての進め方'],['castle-upgrades','本拠・城郭のレベル上げ'],['resources','城下町と資源'],['construction','施設Lv・連続増築'],['officers','武将・軍団・勾玉'],['maps','二つの地図と外交'],['field-battles','報酬戦・占領戦・襲撃'],['player-evaluation','総合評価・位階の称号'],['world-clock','共通時間・拠点リセット'],['community','ギルド・接続一覧・役職'],['trade','他国との輸出・輸入・交易'],['letters','領主・ギルドへの書状'],['system-mail','勝敗・移転のシステムメール'],['strategy','軍師AI・自動進軍'],['walking','ウォーキング報酬'],['save-and-sync','保存と端末同期'],['questions','よくある質問']],
+    toc: [['first-steps','城選び・初めての進め方'],['next-hints','次の一手・上へ戻る'],['castle-upgrades','本拠・城郭のレベル上げ'],['resources','城下町と資源'],['construction','施設Lv・連続増築'],['officers','武将・軍団・勾玉'],['maps','二つの地図と外交'],['field-battles','報酬戦・占領戦・襲撃'],['player-evaluation','総合評価・位階の称号'],['world-clock','共通時間・拠点リセット'],['community','ギルド・接続一覧・役職'],['trade','他国との輸出・輸入・交易'],['letters','領主・ギルドへの書状'],['system-mail','勝敗・移転のシステムメール'],['strategy','軍師AI・自動進軍'],['walking','ウォーキング報酬'],['save-and-sync','保存と端末同期'],['questions','よくある質問']],
     content: guideContent, closingTitle: 'さあ、城下町へ。', closingText: '最初の普請を選び、あなたの一手から戦記を始めましょう。'
   },
   {

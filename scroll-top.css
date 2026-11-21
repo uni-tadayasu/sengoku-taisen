@@ -1,0 +1,12 @@
+.scroll-top-button {
+ position:fixed;right:max(16px,env(safe-area-inset-right));bottom:var(--scroll-top-bottom,calc(100px + env(safe-area-inset-bottom)));z-index:49;
+ display:flex;align-items:center;justify-content:center;gap:8px;min-width:116px;min-height:46px;padding:10px 14px;
+ border:1px solid #ddc589ad;border-radius:10px;background:#1d3339f5;color:#fff0cb;box-shadow:0 6px 22px #07131770;
+ font:600 14px/1.5 "Noto Sans JP","Yu Gothic",sans-serif;cursor:pointer;touch-action:manipulation;
+}
+.scroll-top-button[hidden],body.at-title .scroll-top-button {display:none!important}
+.scroll-top-button svg {width:21px;height:21px;flex:none;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.scroll-top-button:hover {background:#294952;border-color:#ffe0a0}
+.scroll-top-button:focus-visible {outline:3px solid #f1d18d;outline-offset:3px}
+@media(max-width:420px){.scroll-top-button{right:12px;min-width:106px;padding:9px 12px}}
+@media(prefers-reduced-motion:reduce){.scroll-top-button{scroll-behavior:auto}}
