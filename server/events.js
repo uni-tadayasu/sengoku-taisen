@@ -1,10 +1,10 @@
-// Timed NPC battles are independent of the editable campaign save. A private
-// receipt gates quota, points and reward mail inside one atomic D1 batch.
+// Timed NPC battles spend the campaign's shared command through its current
+// writer revision. The save, battle receipt, points and mail commit together.
 import {GameEngine,GAME_OFFICERS} from './game-runtime.js';
-import {generateEventPlan,resolveEventBattle} from './event-planner.js';
+import {generateEventPlan,normalizeEventPlan,resolveEventBattle} from './event-planner.js';
 
 const DAY_MS=86400000;
-const DAILY_ATTEMPTS=3;
+const COMMAND_COST=1;
 const MAX_DRAFTS=30;
 const eventStmt=(db,sql,...params)=>db.prepare(sql).bind(...params);
 const eventRows=result=>result?.results||[];
@@ -15,25 +15,32 @@ const eventStatus=(row,now)=>['draft','discarded'].includes(row.status)?row.stat
 
 function eventDto(row,now){
  const status=eventStatus(row,now);
- return {id:row.id,name:row.name,durationDays:Number(row.duration_days),status,startsAt:eventIso(row.starts_at),endsAt:eventIso(row.ends_at),endedAt:eventIso(row.ended_at??(status==='ended'?row.ends_at:null)),createdAt:eventIso(row.created_at),plan:JSON.parse(row.plan_json)};
+ return {id:row.id,name:row.name,durationDays:Number(row.duration_days),status,startsAt:eventIso(row.starts_at),endsAt:eventIso(row.ends_at),endedAt:eventIso(row.ended_at??(status==='ended'?row.ends_at:null)),createdAt:eventIso(row.created_at),plan:normalizeEventPlan(JSON.parse(row.plan_json))};
 }
-function eventDay(row,now){
- if(row.starts_at===null)return {dayIndex:0,start:null,end:null};
- const cutoff=Math.min(now,Number(row.ends_at)-1,row.ended_at===null?Infinity:Number(row.ended_at)-1);
- const dayIndex=Math.max(1,Math.min(Number(row.duration_days),Math.floor((cutoff-Number(row.starts_at))/DAY_MS)+1));
- const start=Number(row.starts_at)+(dayIndex-1)*DAY_MS;
- return {dayIndex,start,end:Math.min(start+DAY_MS,Number(row.ends_at))};
+async function eventCommand(ctx,raw,now,snapshot=null){
+ if(!raw)return null;
+ try{
+  const {db,user,helpers:h}=ctx,current=snapshot?.user?{...user,is_admin:snapshot.user.isAdmin,is_staff:snapshot.user.isStaff}:user;
+  const save=typeof raw==='string'?JSON.parse(raw):raw,clock=snapshot?.clock||await h.getWorldClock(db,now);
+  const game=GameEngine.fromSave(h.normalizeGameSave(save,current,now,{reading:true,clock}),GAME_OFFICERS,{isAdmin:!!current.is_admin,isStaff:!!current.is_staff});
+  if(current.is_staff&&!current.is_admin){
+   const shared=snapshot?.staffBase||(await eventStmt(db,"SELECT state_json FROM staff_base WHERE id='sunpu'").first())?.state_json;
+   const base=typeof shared==='string'?JSON.parse(shared):shared;
+   if(base?.buildings){let keep=base.buildings.keep;for(const job of base.jobs||[])if(job.kind==='building'&&job.id==='keep'&&job.completesElapsedMs<=clock.elapsedMs)keep=Math.max(keep,job.targetLevel);game.state.buildings.keep=keep;}
+  }
+  return {available:game.state.command,max:game.commandMax(),cost:COMMAND_COST};
+ }catch{return null;}
 }
-async function eventProgress(ctx,row,now){
+async function eventProgress(ctx,row,now,snapshot=null){
  if(!ctx.user)return null;
- const {db,user}=ctx,day=eventDay(row,now);
+ const {db,user}=ctx;
  const result=await db.batch([
   eventStmt(db,'SELECT points,wins,battles FROM timed_event_participants WHERE event_id=? AND user_id=?',row.id,user.id),
-  eventStmt(db,"SELECT COUNT(*) AS count FROM timed_event_requests WHERE event_id=? AND actor_id=? AND action='battle' AND created_at>=? AND created_at<?",row.id,user.id,day.start??0,day.end??0),
+  eventStmt(db,'SELECT save_json FROM player_saves WHERE user_id=?',user.id),
   eventStmt(db,'SELECT milestone_id,mail_id,awarded_at FROM timed_event_rewards WHERE event_id=? AND user_id=? ORDER BY awarded_at,milestone_id',row.id,user.id)
  ]);
- const participant=eventRows(result[0])[0],attemptsToday=Number(eventRows(result[1])[0].count),active=eventStatus(row,now)==='active';
- return {points:Number(participant?.points||0),wins:Number(participant?.wins||0),battles:Number(participant?.battles||0),attemptsToday,attemptsLeft:active?Math.max(0,DAILY_ATTEMPTS-attemptsToday):0,dayIndex:day.dayIndex,nextResetAt:active&&day.end<Number(row.ends_at)?eventIso(day.end):null,rewards:eventRows(result[2]).map(reward=>({milestoneId:reward.milestone_id,mailId:reward.mail_id,awardedAt:eventIso(reward.awarded_at)}))};
+ const participant=eventRows(result[0])[0],command=await eventCommand(ctx,snapshot?snapshot.save:eventRows(result[1])[0]?.save_json,now,snapshot);
+ return {points:Number(participant?.points||0),wins:Number(participant?.wins||0),battles:Number(participant?.battles||0),command,rewards:eventRows(result[2]).map(reward=>({milestoneId:reward.milestone_id,mailId:reward.mail_id,awardedAt:eventIso(reward.awarded_at)}))};
 }
 async function eventLeaderboard(ctx,id){
  const found=eventRows(await eventStmt(ctx.db,`SELECT p.user_id,u.name,p.points,p.wins,p.battles FROM timed_event_participants p JOIN users u ON u.id=p.user_id
@@ -59,10 +66,13 @@ async function eventPrior(ctx,requestId,digest){
  if(prior&&prior.request_hash!==digest)ctx.helpers.fail(409,'REQUEST_ID_REUSED','この操作番号は別のイベント操作に使われています。');
  return prior;
 }
-async function eventResult(ctx,receipt,idempotent){
+async function eventResult(ctx,receipt,idempotent,body=null){
  const now=Date.now(),result=JSON.parse(receipt.result_json),row=await eventRow(ctx,result.eventId);
  const response={ok:true,serverNow:eventIso(now),event:eventDto(row,now),idempotent};
- if(receipt.action==='battle')Object.assign(response,{progress:await eventProgress(ctx,row,now),battle:result.battle,rewardMailIds:result.rewardMailIds||[]});
+ if(receipt.action==='battle'){
+  const {db,helpers:h}=ctx,current=await h.getUser(db,ctx.user.id),snapshot=await h.syncSnapshot(db,await h.getSyncRow(db,ctx.user.id),current,body.deviceId,now);
+  Object.assign(response,snapshot,{progress:await eventProgress(ctx,row,now,snapshot),battle:result.battle,rewardMailIds:result.rewardMailIds||[]});
+ }
  else await requireEventAdmin(ctx);
  return response;
 }
@@ -122,30 +132,37 @@ async function eventChange(ctx,id,action){
  return eventResult(ctx,saved,saved.commit_token!==nonce);
 }
 async function eventBattle(ctx,id){
- const {db,user,request,helpers:h}=ctx,raw=await h.readBody(request),requestId=eventBody(raw,['stageId','tactic','requestId'],h);
- const stageId=h.idField(raw.stageId,'戦場'),tactic=h.idField(raw.tactic,'戦術');
+ const {db,user,request,helpers:h}=ctx,raw=await h.readBody(request),requestId=eventBody(raw,['stageId','tactic','requestId','deviceId','expectedRevision'],h);
+ const stageId=h.idField(raw.stageId,'戦場'),tactic=h.idField(raw.tactic,'戦術'),deviceId=h.idField(raw.deviceId,'端末');
+ if(!Number.isSafeInteger(raw.expectedRevision)||raw.expectedRevision<0)h.fail(400,'INVALID_INPUT','保存の更新番号が正しくありません。');
+ const body={requestId,stageId,tactic,deviceId,expectedRevision:raw.expectedRevision};
  const digest=await h.hash(JSON.stringify(['battle',id,stageId,tactic])),prior=await eventPrior(ctx,requestId,digest);
- if(prior)return eventResult(ctx,prior,true);
- const row=await eventRow(ctx,id,{publicOnly:true}),plan=JSON.parse(row.plan_json);
+ if(prior)return eventResult(ctx,prior,true,body);
+ const row=await eventRow(ctx,id,{publicOnly:true}),plan=normalizeEventPlan(JSON.parse(row.plan_json));
  if(!plan.stages.some(stage=>stage.id===stageId)||!plan.tactics.some(choice=>choice.id===tactic))h.fail(400,'INVALID_INPUT','このイベントの戦場と戦術を選択してください。');
  if(eventStatus(row,Date.now())!=='active')h.fail(409,'EVENT_ENDED','このイベントは終了しました。');
- const save=await h.getSyncRow(db,user.id);
- if(!save?.save_json)h.fail(409,'SAVE_REQUIRED','本拠を開始し、クラウドに保存してから挑戦してください。');
- let game;
- try{game=GameEngine.fromSave(JSON.parse(save.save_json),GAME_OFFICERS,{isAdmin:!!user.is_admin,isStaff:!!user.is_staff});}
- catch{h.fail(409,'SAVE_REQUIRED','最新の本拠をクラウドへ保存してから挑戦してください。');}
+ const savedRow=await h.settleWriterCycle(db,user,deviceId,body.expectedRevision,ctx.now),clock=await h.getWorldClock(db,ctx.now);
+ const save=h.normalizeGameSave(JSON.parse(savedRow.save_json),user,ctx.now,{reading:true,clock});
+ const game=GameEngine.fromSave(save,GAME_OFFICERS,{isAdmin:!!user.is_admin,isStaff:!!user.is_staff});
  if(game.state.gameOver)h.fail(409,'BASE_UNAVAILABLE','本拠を失っている間はイベントに挑戦できません。');
+ if(!save.state.worldClock)h.fail(409,'CLOCK_ANCHOR_REQUIRED','先に共通時計へ同期してください。');
+ if(clock.elapsedMs-save.state.worldClock.elapsedMs>15000)h.fail(409,'CLOCK_STALE','共通時計と本拠を同期してから出陣してください。');
+ if(save.state.command<COMMAND_COST)h.fail(409,'INSUFFICIENT_COMMAND','指令が不足しています。通常の指令が回復してから出陣してください。');
  await h.budget(db,'event-battle:'+user.id,30,60000,ctx.now);
- const now=Date.now(),day=eventDay(row,now),nonce=crypto.randomUUID(),guard=h.roleCommitGuard(user),gateArgs=[user.id,requestId,nonce];
+ const now=Date.now(),nonce=crypto.randomUUID(),guard=h.roleCommitGuard(user),gateArgs=[user.id,requestId,nonce];
  if(eventStatus(row,now)!=='active')h.fail(409,'EVENT_ENDED','このイベントは終了しました。');
  const roll=crypto.getRandomValues(new Uint32Array(1))[0]/4294967296;
- const battle={...resolveEventBattle(plan,{stageId,tactic,army:game.armyStats(),morale:game.state.morale},roll),id:h.uid('eb_'),requestId,dayIndex:day.dayIndex,createdAt:eventIso(now)};
+ const commandBefore=save.state.command;
+ const battle={...resolveEventBattle(plan,{stageId,tactic,army:game.armyStats(),morale:game.state.morale},roll),id:h.uid('eb_'),requestId,commandCost:COMMAND_COST,commandBefore,commandAfter:commandBefore-COMMAND_COST,playerRevision:Number(savedRow.revision)+1,createdAt:eventIso(now)};
+ save.state.command-=COMMAND_COST;save.savedAt=eventIso(now);
+ const updatedSave=h.normalizeGameSave(save,user,now,{clock});
  const statements=[
   eventStmt(db,`INSERT INTO timed_event_requests(actor_id,request_id,event_id,action,request_hash,commit_token,result_json,created_at)
    SELECT ?,?,?,'battle',?,?,?,? FROM timed_events e WHERE e.id=? AND e.status='active' AND e.ended_at IS NULL AND e.starts_at<=? AND e.ends_at>? AND e.revision=?
-   AND (SELECT COUNT(*) FROM timed_event_requests quota WHERE quota.event_id=e.id AND quota.actor_id=? AND quota.action='battle' AND quota.created_at>=? AND quota.created_at<?)<?
-   AND EXISTS(SELECT 1 FROM player_saves ps WHERE ps.user_id=? AND ps.revision=? AND ps.save_json IS NOT NULL) AND ${guard.sql}
-   ON CONFLICT(actor_id,request_id) DO NOTHING`,user.id,requestId,id,digest,nonce,JSON.stringify({eventId:id,battle,rewardMailIds:[]}),now,id,now,now,row.revision,user.id,day.start,day.end,DAILY_ATTEMPTS,user.id,save.revision,...guard.args),
+   AND EXISTS(SELECT 1 FROM player_saves ps WHERE ps.user_id=? AND ps.revision=? AND ps.writer_device_id=? AND ps.lease_expires_at>? AND ps.save_json IS NOT NULL AND json_extract(ps.save_json,'$.state.command')>=?)
+   AND EXISTS(SELECT 1 FROM world_clock WHERE id=? AND revision=?) AND ${guard.sql}
+   ON CONFLICT(actor_id,request_id) DO NOTHING`,user.id,requestId,id,digest,nonce,JSON.stringify({eventId:id,battle,rewardMailIds:[]}),now,id,now,now,row.revision,user.id,body.expectedRevision,deviceId,now,COMMAND_COST,h.worldClockId,clock.revision,...guard.args),
+  eventStmt(db,`UPDATE player_saves SET save_json=?,revision=revision+1,updated_at=?,lease_expires_at=? WHERE user_id=? AND ${EVENT_GATE}`,JSON.stringify(updatedSave),now,now+h.syncLease,user.id,...gateArgs),
   eventStmt(db,`INSERT INTO timed_event_participants(event_id,user_id,points,wins,battles,updated_at) SELECT ?,?,?,?,1,? WHERE ${EVENT_GATE}
    ON CONFLICT(event_id,user_id) DO UPDATE SET points=timed_event_participants.points+excluded.points,wins=timed_event_participants.wins+excluded.wins,battles=timed_event_participants.battles+1,updated_at=excluded.updated_at`,id,user.id,battle.points,battle.won?1:0,now,...gateArgs)
  ];
@@ -170,13 +187,13 @@ async function eventBattle(ctx,id){
  const saved=await eventPrior(ctx,requestId,digest);
  if(!saved){
   await h.requireAccountAccess(db,user);
+  h.fieldWriter(await h.getSyncRow(db,user.id),deviceId,body.expectedRevision,Date.now());
   const current=await eventRow(ctx,id),freshNow=Date.now();
   if(eventStatus(current,freshNow)!=='active')h.fail(409,'EVENT_ENDED','このイベントは終了しました。');
-  const progress=await eventProgress(ctx,current,freshNow);
-  if(progress.attemptsLeft===0)h.fail(409,'EVENT_DAILY_LIMIT','このイベント日の挑戦は3回までです。次の更新時刻をお待ちください。');
+  if((await h.getWorldClock(db,freshNow)).revision!==clock.revision)h.fail(409,'WORLD_CLOCK_CHANGED','共通時計が更新されました。同期してからお試しください。');
   h.fail(409,'EVENT_STATE_CHANGED','本拠または領主の状態が更新されました。最新の状態でもう一度挑戦してください。');
  }
- return eventResult(ctx,saved,saved.commit_token!==nonce);
+ return eventResult(ctx,saved,saved.commit_token!==nonce,body);
 }
 
 export async function handleEvents(ctx){

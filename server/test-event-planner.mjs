@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {generateEventPlan,resolveEventBattle} from './event-planner.js';
+import {generateEventPlan,normalizeEventPlan,resolveEventBattle} from './event-planner.js';
 
 const copy=value=>JSON.parse(JSON.stringify(value));
 const freeze=value=>{if(value&&typeof value==='object'&&!Object.isFrozen(value)){Object.freeze(value);for(const child of Object.values(value))freeze(child);}return value;};
@@ -13,7 +13,16 @@ try{
 test('identical normalized inputs reproduce a complete draft without shared mutable output',()=>{
   const a=draft(),b=draft();assert.deepEqual(a,b);assert.deepEqual(draft({name:'  Cafe\u0301の野戦  '}),draft({name:'Caféの野戦'}));
   a.tactics[0].name='changed';a.stages[0].tacticMultipliers.balanced=7;a.milestones[0].gift.gold=1;assert.deepEqual(draft(),b);
-  assert.equal(b.schemaVersion,1);assert.equal(b.generator,'game-ai-v1');assert.equal(b.dailyAttempts,3);assert(b.rules.some(rule=>rule.includes('開催開始から24時間')));assert(b.rules.every(rule=>!rule.includes('運営')&&!rule.includes('スタッフ')));
+  assert.equal(b.schemaVersion,1);assert.equal(b.generator,'game-ai-v1');assert.equal(b.commandCost,1);assert.equal(Object.hasOwn(b,'dailyAttempts'),false);assert(b.rules.some(rule=>rule.includes('指令を1消費')));assert(b.rules.every(rule=>!rule.includes('24時間')&&!rule.includes('運営')&&!rule.includes('スタッフ')));
+});
+test('legacy plans use one command while preserving approved enemies, tactics, points and rewards',()=>{
+  const current=draft({durationDays:7}),legacy=copy(current);delete legacy.commandCost;legacy.dailyAttempts=3;
+  legacy.rules[0]='開催開始から24時間ごとに、3回まで挑戦できます。未使用の回数は繰り越されません。';
+  freeze(legacy);const before=JSON.stringify(legacy),normalized=normalizeEventPlan(legacy);
+  assert.deepEqual(normalized,current);assert.deepEqual(normalizeEventPlan(normalized),normalized);assert.equal(JSON.stringify(legacy),before);
+  assert.deepEqual(normalized.stages,legacy.stages);assert.deepEqual(normalized.tactics,legacy.tactics);assert.deepEqual(normalized.milestones,legacy.milestones);
+  for(const stage of current.stages)for(const roll of [0,.5,.999999])assert.deepEqual(battle(legacy,{stageId:stage.id},roll),battle(current,{stageId:stage.id},roll));
+  normalized.stages[0].enemyPower=60;normalized.milestones[0].gift.gold=0;assert.equal(JSON.stringify(legacy),before,'normalized output must not share mutable state with the stored plan');
 });
 test('title cues score terrain candidates while seeds vary a bounded three-stage challenge',()=>{
   for(const [name,theme]of [['草原の戦い','plain'],['峠の戦い','mountain'],['河川の戦い','river'],['城砦の戦い','castle'],['森林の戦い','forest'],['海浜の戦い','coast'],['雪氷の戦い','snow'],['夜闇の戦い','night']])assert.equal(draft({name}).theme.id,theme,name);
@@ -24,7 +33,7 @@ test('one-to-seven day plans have three initially selectable stages and reachabl
   for(let days=1;days<=7;days++)for(let seed=0;seed<12;seed++){
     const plan=draft({durationDays:days,seed});assert.equal(plan.durationDays,days);assert.deepEqual(plan.stages.map(stage=>stage.id),['stage-1','stage-2','stage-3']);assert.equal(plan.milestones.length,3);
     let prior=0;for(const milestone of plan.milestones){assert(milestone.points>prior);prior=milestone.points;assert.deepEqual(Object.keys(milestone.gift).sort(),['gold','magatama','rice','stone','wood']);for(const value of Object.values(milestone.gift))assert(Number.isSafeInteger(value)&&value>=0);}
-    const attempts=days*plan.dailyAttempts;assert(attempts*Math.floor(plan.stages[0].basePoints*.25)>=plan.milestones[0].points,'even failed basic attempts can reach the first milestone');assert(attempts*plan.stages[0].basePoints>=plan.milestones.at(-1).points,'basic-stage wins can reach the highest milestone');
+    const modestCommandBudget=days*3;assert.equal(plan.commandCost,1);assert(modestCommandBudget*Math.floor(plan.stages[0].basePoints*.25)>=plan.milestones[0].points,'the first milestone remains reachable with a modest command budget even after basic defeats');assert(modestCommandBudget*plan.stages[0].basePoints>=plan.milestones.at(-1).points,'basic-stage wins can reach the unchanged highest milestone');
     assert(plan.stages[0].enemyPower<plan.stages[1].enemyPower&&plan.stages[1].enemyPower<plan.stages[2].enemyPower);
     for(const stage of plan.stages){assert.equal(battle(plan,{stageId:stage.id},0).won,true);assert.equal(battle(plan,{stageId:stage.id},.999999).won,false);assert(Number.isSafeInteger(stage.enemyPower));assert(stage.enemyPower>=60&&stage.enemyPower<=180);}
   }
@@ -60,7 +69,7 @@ test('invalid battle selections, unbounded plans and malformed stats or rolls ar
   for(const roll of [-.1,1,Infinity,NaN,'0',null,undefined])assert.throws(()=>resolveEventBattle(plan,{stageId:'stage-1',tactic:'balanced',army,morale:60},roll));
   for(const value of [NaN,Infinity,-1,'80',null,undefined])for(const key of ['lead','valor','intellect','politics','count'])assert.throws(()=>battle(plan,{army:{...army,[key]:value}}));assert.throws(()=>battle(plan,{army:{...army,count:1.5}}));
   for(const morale of [NaN,Infinity,-1,'80',null,undefined])assert.throws(()=>battle(plan,{morale}));
-  for(const mutate of [p=>{p.schemaVersion=2;},p=>{p.dailyAttempts=100;},p=>{p.stages[0].enemyPower=-1;},p=>{p.stages[0].enemyPower=1e10;},p=>{p.stages[0].basePoints=999999;},p=>{p.stages[0].tacticMultipliers.balanced=Infinity;},p=>{p.stages[0].tacticMultipliers.balanced=2;},p=>{p.stages[1].id='stage-1';},p=>{p.milestones[0].gift.magatama=1e9;},p=>{p.milestones[0].points=0;}]){const bad=copy(plan);mutate(bad);assert.throws(()=>battle(bad));}
+  for(const mutate of [p=>{p.schemaVersion=2;},p=>{p.commandCost=0;},p=>{p.commandCost=2;},p=>{delete p.commandCost;},p=>{p.dailyAttempts=100;},p=>{p.rules=null;},p=>{p.stages[0].enemyPower=-1;},p=>{p.stages[0].enemyPower=1e10;},p=>{p.stages[0].basePoints=999999;},p=>{p.stages[0].tacticMultipliers.balanced=Infinity;},p=>{p.stages[0].tacticMultipliers.balanced=2;},p=>{p.stages[1].id='stage-1';},p=>{p.milestones[0].gift.magatama=1e9;},p=>{p.milestones[0].points=0;}]){const bad=copy(plan);mutate(bad);assert.throws(()=>battle(bad));assert.throws(()=>normalizeEventPlan(bad));}
 });
 }finally{Math.random=originalRandom;Date.now=originalNow;globalThis.fetch=originalFetch;}
 console.log(`${passed} event planner groups passed. Fixtures only; no clocks, external calls, campaign writes or reward grants.`);

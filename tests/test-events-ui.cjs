@@ -16,11 +16,11 @@ function eventFixture(extra = {}) {
     { id: 'ambush', name: '奇襲', description: '霧に紛れて敵の側面を突く。' },
     { id: 'feint', name: '陽動', description: '敵の注意を引き、本隊に道を開く。' }
   ];
-  const plan = { schemaVersion: 1, generator: 'game-ai-v1', name, durationDays, theme: { id: 'mist', label: '霧中の戦場', description: '川霧に包まれた平野で、敵の動きを読み切る。' }, synopsis: '霧が覆う川辺に、敵の軍勢が布陣した。三つの戦場で采配を振るい、戦功を重ねよう。', rules: ['1日3回、保存済みの軍団で出陣できます。', '城や兵は失いません。', '達成した褒賞はシステム便に届きます。'], dailyAttempts: 3, tactics, stages: ['先陣の渡河', '濃霧の攻防', '決戦・八幡原'].map((stage, index) => ({ id: 'stage_' + (index + 1), name: stage, description: ['川岸に構える前衛を突破する。', '視界の利かない戦場で敵本隊に迫る。', '精強な本陣を崩して勝機を掴む。'][index], enemyName: ['川辺の先鋒隊', '霧中の騎馬隊', '八幡原の精鋭'][index], enemyPower: 1000 + index * 600, basePoints: 100 + index * 50, recommendedTactic: ['balanced', 'ambush', 'feint'][index], tacticHint: ['均衡を保って前進しよう。', '霧を利用した奇襲が好機。', '本陣の守りを陽動で崩そう。'][index], tacticMultipliers: { balanced: 1, charge: .9, defend: 1.05, ambush: 1.2, feint: 1.1 } })), milestones: [100, 300, 600].map((points, index) => ({ id: 'honour_' + index, title: ['初陣の功', '歴戦の証', '八幡原の誉れ'][index], points, gift: { gold: 500 * (index + 1), rice: 500, wood: 100, stone: 100, magatama: 10 * (index + 1) } })) };
+  const plan = { schemaVersion: 1, generator: 'game-ai-v1', name, durationDays, theme: { id: 'mist', label: '霧中の戦場', description: '川霧に包まれた平野で、敵の動きを読み切る。' }, synopsis: '霧が覆う川辺に、敵の軍勢が布陣した。三つの戦場で采配を振るい、戦功を重ねよう。', rules: ['出陣には通常の指令を1消費します。', '城や兵は失いません。', '達成した褒賞はシステム便に届きます。'], commandCost: 1, tactics, stages: ['先陣の渡河', '濃霧の攻防', '決戦・八幡原'].map((stage, index) => ({ id: 'stage_' + (index + 1), name: stage, description: ['川岸に構える前衛を突破する。', '視界の利かない戦場で敵本隊に迫る。', '精強な本陣を崩して勝機を掴む。'][index], enemyName: ['川辺の先鋒隊', '霧中の騎馬隊', '八幡原の精鋭'][index], enemyPower: 1000 + index * 600, basePoints: 100 + index * 50, recommendedTactic: ['balanced', 'ambush', 'feint'][index], tacticHint: ['均衡を保って前進しよう。', '霧を利用した奇襲が好機。', '本陣の守りを陽動で崩そう。'][index], tacticMultipliers: { balanced: 1, charge: .9, defend: 1.05, ambush: 1.2, feint: 1.1 } })), milestones: [100, 300, 600].map((points, index) => ({ id: 'honour_' + index, title: ['初陣の功', '歴戦の証', '八幡原の誉れ'][index], points, gift: { gold: 500 * (index + 1), rice: 500, wood: 100, stone: 100, magatama: 10 * (index + 1) } })) };
   return { id: 'ev_' + 'a'.repeat(32), name, durationDays, status: 'active', startsAt: '2026-11-22T00:00:00Z', endsAt: new Date(Date.parse('2026-11-22T00:00:00Z') + durationDays * 86400000).toISOString(), endedAt: null, createdAt: '2026-11-21T12:00:00Z', plan, ...extra };
 }
 const draftFixture = (extra = {}) => eventFixture({ status: 'draft', startsAt: null, endsAt: null, ...extra });
-const progressFixture = (extra = {}) => ({ points: 0, wins: 0, battles: 0, attemptsToday: 0, attemptsLeft: 3, dayIndex: 1, nextResetAt: '2026-11-23T00:00:00Z', rewards: [], ...extra });
+const progressFixture = (extra = {}) => ({ points: 0, wins: 0, battles: 0, command: { available: 3, max: 3, cost: 1 }, rewards: [], ...extra });
 const evaluationFixture = { version: 1, score: 32000, maxScore: 100000, rankIndex: 6, rankId: 'court-6', rankName: '従五位下' };
 const rankFixture = () => [{ rank: 1, playerId: OTHER, name: '甲斐の領主', avatarVersion: 'c'.repeat(64), evaluation: evaluationFixture, points: 350, wins: 3, battles: 3, isAdmin: true, isStaff: true }];
 const contextFixture = (admin = false) => ({ epoch: 1, privilegeEpoch: 1, accountEpoch: 1, playerId: OWNER, user: { id: OWNER, name: '越後の領主', isAdmin: admin, isStaff: false }, isAdmin: admin, connected: true, pending: false, banned: false });
@@ -44,9 +44,9 @@ function setup({ admin = false, context = contextFixture(admin), events = [event
       else if (route.endsWith('/end')) { assert.equal(event.status, 'active'); event.status = 'ended'; event.endedAt = new Date(clock).toISOString(); }
       else if (route.endsWith('/discard')) { assert.equal(event.status, 'draft'); event.status = 'discarded'; }
       else if (route.endsWith('/battle')) {
-        if (server.progress.attemptsLeft < 1) throw Object.assign(Error('今日の出陣は終了です。'), { status: 409 });
+        if (server.progress.command.available < 1) throw Object.assign(Error('指令不足です。'), { status: 409, code: 'INSUFFICIENT_COMMAND' });
         const stage = event.plan.stages.find(stage => stage.id === data.stageId), tactic = event.plan.tactics.find(tactic => tactic.id === data.tactic);
-        assert(stage && tactic); server.progress.battles++; server.progress.wins++; server.progress.points += stage.basePoints; server.progress.attemptsToday++; server.progress.attemptsLeft--;
+        assert(stage && tactic); server.progress.battles++; server.progress.wins++; server.progress.points += stage.basePoints; server.progress.command.available--;
         const mailId = 'm_' + String(server.progress.battles).padStart(32, '0'); server.progress.rewards = [{ milestoneId: 'honour_0', mailId, awardedAt: new Date(clock).toISOString() }];
         result = { progress: clone(server.progress), battle: { won: true, points: stage.basePoints, stageId: stage.id, stageName: stage.name, tactic: tactic.id, tacticName: tactic.name, enemyName: stage.enemyName, playerPower: 1450, enemyPower: stage.enemyPower, winChance: 67, summary: '敵陣を突破し、戦功を挙げました。', log: ['保存した軍団を編成。', tactic.name + 'を採用し、前進。', '敵の守りを崩し、勝利。'] }, rewardMailIds: [mailId] };
       } else assert.fail('Unknown fixture mutation: ' + route);
@@ -65,7 +65,7 @@ test('plans and progress accept the agreed bounded format and exclude private ro
   assert.equal(cleanEvent(draftFixture()), null); assert(cleanEvent(draftFixture(), true)); assert.equal(cleanEvent(draftFixture({ status: 'discarded' })), null); assert(cleanEvent(draftFixture({ status: 'discarded' }), true));
   for (const change of [{ durationDays: 8 }, { id: 'bad/id' }, { endsAt: 'invalid' }, { status: 'other' }]) assert.equal(cleanEvent(eventFixture(change)), null);
   const plan = clone(raw.plan); plan.stages[0].tacticMultipliers.charge = Infinity; assert.equal(cleanEvent({ ...raw, plan }), null);
-  assert.equal(cleanProgress(progressFixture({ attemptsLeft: 4 })), undefined); assert.equal(cleanProgress(progressFixture({ dayIndex: 0 })), undefined);
+  assert.equal(cleanProgress(progressFixture({ command: { available: 4, max: 3, cost: 1 } })), undefined); assert.equal(cleanProgress(progressFixture({ command: { available: 0, max: 0, cost: 1 } })), undefined); assert(cleanProgress(progressFixture({ command: null })));
   const ranks = cleanLeaderboard(rankFixture()); assert(ranks); assert(!('isAdmin' in ranks[0])); assert(!('isStaff' in ranks[0]));
 });
 
@@ -99,7 +99,7 @@ test('publishing, ending and discarding require their own reviewed confirmation'
 test('NPC battle sends only stage/tactic and its identity, then exposes automatic mail rewards', async () => {
   const s = setup(); await s.controller.open(); assert(s.controller.chooseStage('stage_2')); assert.equal(s.controller.getState().tactic, 'ambush'); assert(s.controller.chooseTactic('defend')); assert(await s.controller.battle());
   assert.deepEqual(Object.keys(s.posts()[0].settings.data).sort(), ['requestId', 'stageId', 'tactic']); assert.equal(s.posts()[0].settings.data.stageId, 'stage_2'); assert.equal(s.posts()[0].settings.data.tactic, 'defend');
-  const state = s.controller.getState(); assert.equal(state.progress.attemptsLeft, 2); assert.equal(state.progress.points, 150); assert.equal(state.battle.won, true); assert.equal(state.rewardMailIds.length, 1); assert(state.message.includes('システム便')); assert.equal(state.pending, null); s.controller.dispose();
+  const state = s.controller.getState(); assert.equal(state.progress.command.available, 2); assert.equal(state.commands.current, 2); assert.equal(state.progress.points, 150); assert.equal(state.battle.won, true); assert.equal(state.rewardMailIds.length, 1); assert(state.message.includes('システム便')); assert.equal(state.pending, null); s.controller.dispose();
 });
 
 test('double clicks and uncertain retries never allocate a second battle request', async () => {
@@ -155,10 +155,48 @@ test('public poll keeps selected stage/tactic and previous result while updating
   s.server.progress.points += 50; await s.controller.refresh({ quiet: true }); const state = s.controller.getState(); assert.equal(state.stageId, 'stage_3'); assert.equal(state.tactic, 'defend'); assert.deepEqual(state.battle, before); assert.equal(state.progress.points, 250); s.controller.dispose();
 });
 
-test('server-adjusted expiry and daily quota block a new battle without trusting the device calendar', async () => {
+test('server-adjusted expiry and depleted commands block a new battle without a daily quota', async () => {
   const s = setup(); await s.controller.open(); s.advance(3 * 86400000); assert.equal(await s.controller.battle(), false); assert.equal(s.posts().length, 0); s.controller.dispose();
-  const exhausted = setup({ progress: progressFixture({ attemptsToday: 3, attemptsLeft: 0, battles: 3 }) }); await exhausted.controller.open(); assert.equal(await exhausted.controller.battle(), false);
-  exhausted.server.progress = progressFixture({ dayIndex: 2 }); await exhausted.controller.refresh(); assert.equal(exhausted.controller.getState().progress.dayIndex, 2); assert(await exhausted.controller.battle()); exhausted.controller.dispose();
+  const exhausted = setup({ progress: progressFixture({ command: { available: 0, max: 3, cost: 1 }, battles: 3 }) }); await exhausted.controller.open(); assert.equal(await exhausted.controller.battle(), false);
+  exhausted.server.progress.command.available = 1; await exhausted.controller.refresh(); assert(await exhausted.controller.battle()); assert.equal(exhausted.controller.getState().progress.battles, 4); exhausted.controller.dispose();
+});
+
+test('command budget permits a fourth and later battle on the same event day', async () => {
+  const s = setup({ progress: progressFixture({ command: { available: 7, max: 7, cost: 1 } }) }); await s.controller.open();
+  for (let index = 0; index < 5; index++) assert(await s.controller.battle());
+  assert.equal(s.controller.getState().progress.battles, 5); assert.equal(s.controller.getState().commands.current, 2); assert.equal(s.posts().length, 5); s.controller.dispose();
+});
+
+test('live command availability always overrides stale progress and requires the current writer', async () => {
+  const s = setup(); await s.controller.open(); const access = s.context();
+  for (const commands of [
+    { current: 0, max: 3, cost: 1, ready: true, writable: true, message: '' },
+    { current: 3, max: 3, cost: 1, ready: false, writable: true, message: '本人の保存を確認中' },
+    { current: 3, max: 3, cost: 1, ready: true, writable: false, message: '別の端末が操作中' }
+  ]) { s.setContext({ ...access, commands }); assert.equal(await s.controller.battle(), false); }
+  assert.equal(s.posts().length, 0); s.setContext({ ...access, commands: { current: 1, max: 5, cost: 1, ready: true, writable: true, message: '' } });
+  assert.equal(s.controller.getState().commands.current, 1); assert.equal(s.controller.getState().commands.max, 5); assert(await s.controller.battle()); s.controller.dispose();
+});
+
+test('a real bridge without verified live commands cannot use server DTO values as write authority', async () => {
+  const previous = global.SengokuBridge; global.SengokuBridge = {};
+  try { const s = setup(); await s.controller.open(); assert.equal(s.controller.getState().commands.ready, false); assert.equal(await s.controller.battle(), false); assert.equal(s.posts().length, 0); s.controller.dispose(); }
+  finally { global.SengokuBridge = previous; }
+});
+
+test('the default battle path delegates to the game bridge while reads use the social facade', async () => {
+  const previous = [global.SengokuBridge, global.SengokuSocial], s = setup(), bridgeCalls = [], socialCalls = [];
+  const live = { ...contextFixture(), commands: { current: 3, max: 3, cost: 1, ready: true, writable: true, message: '' } };
+  global.SengokuBridge = { eventBattle: async (route, settings) => { bridgeCalls.push(route); const result = await s.base(route, settings); live.commands.current = result.progress.command.available; return result; } };
+  global.SengokuSocial = { eventRequest: (route, settings) => { socialCalls.push(route); return s.base(route, settings); }, getEventContext: () => clone(live) };
+  try { const controller = createController({ storage: storageFixture(), now: () => NOW, uuid: () => 'bridge_request' }); await controller.open(); assert(await controller.battle()); assert.equal(bridgeCalls.length, 1); assert(socialCalls.every(route => !route.endsWith('/battle'))); assert.equal(controller.getState().commands.current, 2); controller.dispose(); }
+  finally { [global.SengokuBridge, global.SengokuSocial] = previous; s.controller.dispose(); }
+});
+
+test('older saved plans retain their enemies and rewards while dropping obsolete daily limits', () => {
+  const old = eventFixture(); delete old.plan.commandCost; old.plan.dailyAttempts = 3; old.plan.rules.unshift('開催開始から24時間ごとに、3回まで挑戦できます。未使用の回数は繰り越されません。');
+  const event = cleanEvent(old); assert(event); assert.equal(event.plan.commandCost, 1); assert(!('dailyAttempts' in event.plan)); assert.deepEqual(event.plan.stages, old.plan.stages); assert.deepEqual(event.plan.milestones, old.plan.milestones);
+  const html = detailMarkup(event, false); assert(!/24時間ごと|1日3回|今日の残り|次の回復/.test(html)); assert(html.includes('指令の回復・上限は通常の行動と共通'));
 });
 
 test('out-of-order detail reads cannot overwrite a newly selected event', async () => {
@@ -230,6 +268,19 @@ test('live UI updates preserve focused tactic, selected battlefield and scroll p
   s.controller.chooseStage('stage_2'); s.controller.chooseTactic('defend'); select.focus(); main.scrollTop = 420; s.server.progress.points = 75; await s.ui.refresh();
   assert.equal(s.get('#events-tactic'), select); assert.equal(select.value, 'defend'); assert.equal(s.doc.activeElement, select); assert.equal(main.scrollTop, 420); assert.equal(s.controller.getState().stageId, 'stage_2'); assert(s.get('[data-event-progress]').textContent.includes('75'));
   assert.equal(s.get('[data-events-generator]').hidden, true); assert.equal(s.get('[data-events-battle-submit]').disabled, false); assert.equal(s.badge.textContent, '開催中'); s.ui.close(); assert.equal(s.doc.activeElement, s.entry); s.ui.dispose();
+});
+
+test('the one-second UI tick reflects command recovery without a fetch, form replacement or focus loss', async () => {
+  const live = { ...contextFixture(), commands: { current: 0, max: 5, cost: 1, ready: true, writable: true, message: '' } };
+  const s = setup({ context: live }), { doc } = documentFixture(), timers = new Map(); let nextTimer = 0; s.controller.dispose();
+  const ui = createUI({ ...s.options, document: doc, setTimeout(fn, delay) { const id = ++nextTimer; timers.set(id, { fn, delay }); return id; }, clearTimeout(id) { timers.delete(id); } });
+  await ui.open(); await drain(); const get = selector => doc.querySelector(selector), select = get('#events-tactic'), main = get('[data-events-main]');
+  ui.controller.chooseStage('stage_2'); ui.controller.chooseTactic('defend'); select.focus(); main.scrollTop = 420;
+  assert.equal(get('[data-event-command-current]').textContent, '0'); assert.equal(get('[data-event-command-max]').textContent, '5'); assert.equal(get('[data-events-battle-submit]').disabled, true); assert(get('[data-event-battle-access]').textContent.includes('指令不足'));
+  const requests = s.calls.length; s.setContext({ ...live, commands: { ...live.commands, current: 1 } });
+  const [timerId, timer] = [...timers].find(([, timer]) => timer.delay === 1000); timers.delete(timerId); timer.fn();
+  assert.equal(get('[data-event-command-current]').textContent, '1'); assert.equal(get('[data-events-battle-submit]').disabled, false); assert.equal(s.calls.length, requests); assert.equal(get('#events-tactic'), select); assert.equal(doc.activeElement, select); assert.equal(select.value, 'defend'); assert.equal(main.scrollTop, 420);
+  assert(!/今日の残り|次の回復|各日3回|24時間ごと/.test(get('[data-events-detail]').textContent)); ui.dispose(); assert.equal(timers.size, 0);
 });
 
 test('admin input survives refresh and the UI confirms publication without losing the draft review', async () => {

@@ -694,7 +694,8 @@ function moderationRequest(route,options={}){
 }
 function getEventContext(){
  const pending=Boolean(recoveryHeld||s.accountAccessPending||s.identity&&!s.user),banned=Boolean(s.accountBanned),ready=Boolean(s.user&&s.identity&&String(s.user.id)===String(s.identity.id)&&!pending&&!banned);
- return {epoch:authEpoch,privilegeEpoch,accountEpoch,playerId:s.identity?String(s.identity.id):'',user:ready?{id:String(s.user.id),name:s.user.name,isAdmin:s.user.isAdmin===true,isStaff:s.user.isStaff===true,isBanned:false,avatarVersion:s.user.avatarVersion||null,evaluation:publicEvaluation(s.user.evaluation)}:null,isAdmin:ready&&s.user.isAdmin===true,connected:s.connected,pending,banned};
+ const commands=ready?global.SengokuBridge?.getEventAccess?.():null;
+ return {epoch:authEpoch,privilegeEpoch,accountEpoch,playerId:s.identity?String(s.identity.id):'',user:ready?{id:String(s.user.id),name:s.user.name,isAdmin:s.user.isAdmin===true,isStaff:s.user.isStaff===true,isBanned:false,avatarVersion:s.user.avatarVersion||null,evaluation:publicEvaluation(s.user.evaluation)}:null,isAdmin:ready&&s.user.isAdmin===true,connected:s.connected,pending,banned,commands:commands?{...commands}:null};
 }
 async function eventRequest(route,options={}){
  const method=options.method||'GET',publicRead=method==='GET'&&/^\/events(?:\/ev_[a-f0-9]{32})?$/.test(route),adminRead=method==='GET'&&route==='/admin/events',adminWrite=method==='POST'&&/^\/admin\/events\/(?:generate|ev_[a-f0-9]{32}\/(?:publish|end|discard))$/.test(route),battle=method==='POST'&&/^\/events\/ev_[a-f0-9]{32}\/battle$/.test(route),admin=adminRead||adminWrite;
@@ -706,7 +707,9 @@ async function eventRequest(route,options={}){
  if(battle){
   if(global.SengokuBridge?.hasStarted?.()===false)throw Object.assign(Error('はじめに本拠を選び、領主の進行を保存してください。'),{status:409});
   const sync=global.SengokuCloudSync,status=sync?.getStatus?.();
-  if(status?.writable&&sync?.flush){const flushed=await sync.flush();verify();if(!flushed?.ok)throw Object.assign(Error('軍団の保存を確認しています。同期が完了してから出陣してください。'),{status:409});}
+  // The app transaction bridge flushes and freezes the shared command balance.
+  // A direct/old UI request must not skip its writer revision or reconciliation.
+  if(!status?.linked||!status.ready||!status.writable||typeof options.data?.deviceId!=='string'||options.data.deviceId!==sync?.getDevice?.().id||!Number.isSafeInteger(options.data?.expectedRevision)||options.data.expectedRevision!==status.revision)throw Object.assign(Error('指令の同期を確認してから出陣してください。画面が古い場合は再読み込みしてください。'),{status:409,code:'EVENT_SYNC_REQUIRED'});
  }
  verify();
  const result=await api(route,{method,data:options.data,auth:Boolean(s.identity),background:true,identityEpoch:initial.epoch});verify();

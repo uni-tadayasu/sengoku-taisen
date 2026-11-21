@@ -10,8 +10,8 @@ function harness({admin=false,staff=false,guest=false}={}){
  const scope={console,URL,URLSearchParams,AbortController,Date,Intl,setTimeout,clearTimeout,
   document:{readyState:'loading',hidden:false,addEventListener(){},removeEventListener(){}},
   localStorage:{getItem:()=>null,setItem(){},removeItem(){}},SENGOKU_API_BASE:'https://fixture.invalid',
-  SengokuBridge:{hasStarted:()=>true,setRoleAccess(){}},
-  SengokuCloudSync:{getStatus:()=>({writable}),flush:async()=>{flushes++;return flushing();}},
+  SengokuBridge:{hasStarted:()=>true,setRoleAccess(){},getEventAccess:()=>({current:2,max:3,cost:1,ready:true,writable,message:'出陣に指令を1消費します。'})},
+  SengokuCloudSync:{getStatus:()=>({linked:true,ready:true,writable,revision:7}),getDevice:()=>({id:'event-tab'}),flush:async()=>{flushes++;return flushing();}},
   fetch:async(url,options)=>{calls.push({url,method:options.method,headers:copy(options.headers),body:options.body?JSON.parse(options.body):null});const result=await transport(url,options);return{ok:true,status:200,json:async()=>result};}
  };
  scope.window=scope;vm.createContext(scope);
@@ -45,15 +45,27 @@ test('an identity switch discards public and private responses',async()=>{
 test('role revocation and account access changes discard an administrative result',async()=>{
  for(const change of ['revoke','pending']){const h=harness({admin:true}),wait=deferred();h.setTransport(()=>wait.promise);const task=h.api.eventRequest('/admin/events/'+EVENT+'/publish',{method:'POST',data:{requestId:'publish'}});h.t[change]();wait.resolve({ok:true,event:{id:EVENT}});await assert.rejects(task,e=>e.code==='STALE_IDENTITY');}
 });
-test('battle submits after the writable army has been flushed',async()=>{
- const h=harness(),wait=deferred();h.setWritable(true);h.setFlush(()=>wait.promise);
- const data={requestId:'battle-one',stageId:'vanguard',tactic:'balanced'},task=h.api.eventRequest('/events/'+EVENT+'/battle',{method:'POST',data});
- assert.equal(h.flushes(),1);assert.equal(h.calls.length,0);wait.resolve({ok:true});await task;assert.deepEqual(h.calls[0].body,data);
+test('a prepared battle uses the current writer revision without a second flush',async()=>{
+ const h=harness();h.setWritable(true);
+ const data={requestId:'battle-one',stageId:'stage-1',tactic:'balanced',deviceId:'event-tab',expectedRevision:7};
+ await h.api.eventRequest('/events/'+EVENT+'/battle',{method:'POST',data});
+ assert.equal(h.flushes(),0);assert.deepEqual(h.calls[0].body,data);
 });
-test('failed flush, identity change during flush and an unstarted campaign cannot send a battle',async()=>{
- const h=harness();h.setWritable(true);h.setFlush(async()=>({ok:false}));await assert.rejects(h.api.eventRequest('/events/'+EVENT+'/battle',{method:'POST',data:{}}),/軍団の保存/);assert.equal(h.calls.length,0);
- const wait=deferred();h.setFlush(()=>wait.promise);const task=h.api.eventRequest('/events/'+EVENT+'/battle',{method:'POST',data:{}});h.t.changeIdentity('u_'+'3'.repeat(32));wait.resolve({ok:true});await assert.rejects(task,e=>e.code==='STALE_IDENTITY');assert.equal(h.calls.length,0);
+test('old UI, stale writer metadata, follower access and an unstarted campaign cannot send a battle',async()=>{
+ const h=harness();h.setWritable(true);
+ for(const data of [{},{deviceId:'wrong',expectedRevision:7},{deviceId:'event-tab',expectedRevision:6},{deviceId:'event-tab',expectedRevision:'7'}])await assert.rejects(h.api.eventRequest('/events/'+EVENT+'/battle',{method:'POST',data}),e=>e.code==='EVENT_SYNC_REQUIRED');
+ h.setWritable(false);await assert.rejects(h.api.eventRequest('/events/'+EVENT+'/battle',{method:'POST',data:{deviceId:'event-tab',expectedRevision:7}}),e=>e.code==='EVENT_SYNC_REQUIRED');
  h.scope.SengokuBridge.hasStarted=()=>false;await assert.rejects(h.api.eventRequest('/events/'+EVENT+'/battle',{method:'POST',data:{}}),/本拠を選び/);assert.equal(h.calls.length,0);
+});
+test('an identity switch cannot receive the previous lord battle result',async()=>{
+ const h=harness(),wait=deferred();h.setWritable(true);h.setTransport(()=>wait.promise);
+ const task=h.api.eventRequest('/events/'+EVENT+'/battle',{method:'POST',data:{requestId:'battle-one',stageId:'stage-1',tactic:'balanced',deviceId:'event-tab',expectedRevision:7}});
+ h.t.changeIdentity('u_'+'3'.repeat(32));wait.resolve({ok:true,battle:{won:true}});await assert.rejects(task,e=>e.code==='STALE_IDENTITY');
+});
+test('command availability belongs to the confirmed current identity and is copied',()=>{
+ const h=harness();h.setWritable(true);const first=h.api.getEventContext().commands;
+ assert.equal(first.current,2);assert.equal(first.max,3);assert.equal(first.cost,1);assert.equal(first.writable,true);first.current=99;assert.equal(h.api.getEventContext().commands.current,2);
+ h.t.pending();assert.equal(h.api.getEventContext().commands,null);assert.equal(harness({guest:true}).api.getEventContext().commands,null);
 });
 test('recovery or account revalidation cannot use confirmed-player operations',async()=>{
  for(const change of ['pending','hold']){const h=harness({admin:true});h.t[change]();assert.equal(h.api.getEventContext().pending,true);assert.equal(h.api.getEventContext().isAdmin,false);await assert.rejects(h.api.eventRequest('/admin/events'),/接続中/);assert.equal(h.calls.length,0);}

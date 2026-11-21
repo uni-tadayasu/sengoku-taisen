@@ -3,6 +3,8 @@
  * reads a clock, calls a service, edits a campaign or grants a reward. */
 const STAGE_IDS=['stage-1','stage-2','stage-3'];
 const POINTS=[60,90,120],ENEMY_POWER=[78,112,145];
+const COMMAND_RULE='出陣ごとに通常の指令を1消費します。指令は通常の合戦・内政と同じ規則で回復します。';
+const LEGACY_DAILY_RULE='開催開始から24時間ごとに、3回まで挑戦できます。未使用の回数は繰り越されません。';
 const TACTICS=[
   {id:'balanced',name:'正攻法',description:'統率・武勇・知略を均等に生かし、崩れにくい陣で攻めます。'},
   {id:'charge',name:'突撃',description:'武勇を中心に突破力を高め、開けた場所の敵陣を崩します。'},
@@ -49,8 +51,8 @@ export function generateEventPlan({name,durationDays,seed}={}){
   const scale=1+(durationDays-1)*.15;
   return{schemaVersion:1,generator:'game-ai-v1',name,durationDays,theme:{id:selected.id,label:selected.label,description:selected.description},
     synopsis:`「${name}」を題材に、${selected.label}の特色を持つ3つの局面へ挑むイベントです。軍団の能力と戦場に合う戦術で戦功を重ねましょう。`,
-    rules:['開催開始から24時間ごとに、3回まで挑戦できます。未使用の回数は繰り越されません。','3つのステージは最初から選べます。難しいステージほど獲得できる戦功が多くなります。','敗北しても少量の戦功を獲得できます。達成報酬は各段階につき1回受け取れます。','軍団の能力と士気をもとに、イベント用の戦力でNPCと戦います。本領の兵数・資源・領土は減りません。','武将の専用効果や本拠の特例は適用せず、能力は各100・軍団は3名・士気は100を上限に評価します。'],
-    dailyAttempts:3,tactics:TACTICS.map(t=>({...t})),stages,
+    rules:[COMMAND_RULE,'3つのステージは最初から選べます。難しいステージほど獲得できる戦功が多くなります。','敗北しても少量の戦功を獲得できます。達成報酬は各段階につき1回受け取れます。','軍団の能力と士気をもとに、イベント用の戦力でNPCと戦います。本領の兵数・資源・領土は減りません。','武将の専用効果や本拠の特例は適用せず、能力は各100・軍団は3名・士気は100を上限に評価します。'],
+    commandCost:1,tactics:TACTICS.map(t=>({...t})),stages,
     milestones:[
       {id:'milestone-1',title:'初陣の戦功',points:20*durationDays,gift:gift([600,800,200,200,30],scale)},
       {id:'milestone-2',title:'奮戦の戦功',points:80*durationDays,gift:gift([1200,1400,400,400,60],scale)},
@@ -58,7 +60,7 @@ export function generateEventPlan({name,durationDays,seed}={}){
 }
 
 function validatePlan(plan){
-  if(!plan||typeof plan!=='object'||plan.schemaVersion!==1||plan.generator!=='game-ai-v1'||plan.dailyAttempts!==3)invalid('イベント計画が正しくありません。');
+  if(!plan||typeof plan!=='object'||plan.schemaVersion!==1||plan.generator!=='game-ai-v1'||plan.commandCost!==1)invalid('イベント計画が正しくありません。');
   text(plan.name,'戦いの名前',60);days(plan.durationDays);
   if(!Array.isArray(plan.stages)||plan.stages.length!==3||!Array.isArray(plan.milestones)||plan.milestones.length!==3)invalid('イベントの段階が正しくありません。');
   plan.stages.forEach((stage,index)=>{
@@ -69,10 +71,25 @@ function validatePlan(plan){
   plan.milestones.forEach((milestone,index)=>{if(!milestone||milestone.id!=='milestone-'+(index+1)||milestone.points!==[20,80,160][index]*plan.durationDays||!milestone.gift||['gold','rice','wood','stone','magatama'].some(key=>!Number.isSafeInteger(milestone.gift[key])||milestone.gift[key]<0||milestone.gift[key]>(key==='magatama'?1000:10000)))invalid('イベント報酬が正しくありません。');});
 }
 
+export function normalizeEventPlan(plan){
+  if(!plan||typeof plan!=='object'||Array.isArray(plan))invalid('イベント計画が正しくありません。');
+  const legacy=plan.commandCost===undefined&&plan.dailyAttempts===3;
+  if((!legacy&&plan.commandCost!==1)||(plan.dailyAttempts!==undefined&&plan.dailyAttempts!==null&&plan.dailyAttempts!==3))invalid('イベントの出陣条件が正しくありません。');
+  if(!Array.isArray(plan.rules)||plan.rules.length<1||plan.rules.length>12)invalid('イベントの規則が正しくありません。');
+  for(const rule of plan.rules)text(rule,'イベントの規則',1000);
+  // Stored drafts and published plans keep their exact enemies and rewards.
+  // Only the former daily quota and its explanation migrate to command use.
+  const normalized={...plan,commandCost:1,rules:[COMMAND_RULE,...plan.rules.filter(rule=>rule!==LEGACY_DAILY_RULE&&rule!==COMMAND_RULE)]};
+  delete normalized.dailyAttempts;
+  if(normalized.rules.length>12)invalid('イベントの規則が正しくありません。');
+  validatePlan(normalized);
+  return JSON.parse(JSON.stringify(normalized));
+}
+
 export function resolveEventBattle(plan,{stageId,tactic,army,morale}={},roll){
   // Only a server-stored approved plan belongs here. Request bodies contain
   // the stage/tactic selection, never an enemy, reward or claimed army stat.
-  validatePlan(plan);
+  plan=normalizeEventPlan(plan);
   const stage=plan.stages.find(item=>item.id===stageId),chosen=TACTICS.find(item=>item.id===tactic);
   if(!stage||!chosen)invalid('ステージと戦術を選んでください。');
   if(!army||typeof army!=='object'||!Number.isSafeInteger(army.count)||army.count<0)invalid('保存された軍団を確認できません。');
