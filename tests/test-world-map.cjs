@@ -75,7 +75,7 @@ test('ordinary castle labels do not overlap other chosen label boxes',()=>{
   assert(boxes.length>=4);
   for(let i=0;i<boxes.length;i++)for(let j=i+1;j<boxes.length;j++){const a=boxes[i],b=boxes[j];assert(!(a.x<b.x+b.width&&a.x+a.width>b.x&&a.y<b.y+b.height&&a.y+a.height>b.y));}
 });
-test('shared-field castle artwork is opt-in and clustered or campaign markers keep their normal symbols',()=>{
+test('castle artwork is opt-in and clusters or views without a callback keep their normal symbols',()=>{
   const marker={name:'清洲城',owner:'あなたの本拠',home:true,level:32,keepLevel:4},normal=M.markerPresentation(marker);
   assert.equal(normal.custom,false);assert(normal.html.includes('<svg'));assert(normal.label.includes('Lv.32'));
   let calls=0;const options={markerAppearance:m=>{calls++;return{html:`<span data-keep="${m.keepLevel}">castle</span>`,label:'清洲城 天守 Lv.'+m.keepLevel};}};
@@ -93,6 +93,32 @@ test('larger shared castle symbols reserve enough room for map labels',()=>{
   const overlaps=(a,b)=>a.x<b.x+b.width&&a.x+a.width>b.x&&a.y<b.y+b.height&&a.y+a.height>b.y;
   for(const label of boxes)for(const marker of markers)assert(!overlaps(label,{x:marker.sx-24,y:marker.sy-24,width:48,height:48}));
   assert.equal(markers.flatMap(m=>m.points).length,8,'Artwork size must not lose any castle');
+});
+test('selected and home labels never cover castle artwork in the narrow Kiyosu home view',()=>{
+  const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),scope={};
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../map-data.js'),'utf8'),scope);
+  const geography=scope.SENGOKU_GEOGRAPHY,{SENGOKU_DATA:data}=require('../engine.js'),width=341,height=520;
+  const points=M.castlePoints(data.castles.map(c=>({...c,owner:c.clan,level:c.id==='kiyosu'?32:1})),geography.castles,{clan:'織田家',homeId:'kiyosu',selectedId:'kannonji'});
+  const home=points.find(p=>p.id==='kiyosu'),base=M.fitBounds(M.projectBounds(geography.bounds),width,height,28);
+  // Match the real map's initial "本拠へ" camera. Kannonji is west of Kiyosu,
+  // and its old forced label covered the home castle's image and level badge.
+  const view={x:home.x-base.width/28,y:home.y-base.height/28,width:base.width/14,height:base.height/14};
+  const overlaps=(a,b)=>a.x<b.x+b.width&&a.x+a.width>b.x&&a.y<b.y+b.height&&a.y+a.height>b.y;
+  for(const markerSize of [56,48]){
+    const markers=M.layoutMarkers(points,view,width,height,{markerSize,distance:markerSize+4});
+    for(const id of ['kiyosu','kannonji']){
+      const marker=markers.find(m=>m.id===id),point=points.find(p=>p.id===id);assert(marker&&!marker.cluster);
+      near(marker.sx,(point.x-view.x)/view.width*width);near(marker.sy,(point.y-view.y)/view.height*height);
+      assert(M.markerPresentation(marker).label.includes(marker.name),'A hidden visual label keeps the accessible castle name');
+    }
+    for(const marker of markers.filter(m=>m.label)){
+      const label={x:marker.sx+marker.label.x,y:marker.sy+marker.label.y,width:marker.label.width,height:marker.label.height};
+      for(const other of markers){
+        const size=other.cluster?36:markerSize;
+        assert(!overlaps(label,{x:other.sx-size/2,y:other.sy-size/2,width:size,height:size}),`${markerSize}px ${marker.name} label must not cover ${other.name||other.key}`);
+      }
+    }
+  }
 });
 test('map scale uses latitude-correct ground distance and useful metric units',()=>{
   const view={x:-500,y:-300,width:1000,height:600},scale=M.scaleForView(view,1000);

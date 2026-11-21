@@ -89,7 +89,9 @@ function layoutMarkers(points,view,width,height,{distance=27,labels=true,markerS
     const w=Math.min(196,Math.max(44,Array.from(marker.name||'').length*13+14)),h=25;
     const half=symbolSize/2,choices=[{x:marker.sx+half+5,y:marker.sy-h/2,width:w,height:h},{x:marker.sx-w-half-5,y:marker.sy-h/2,width:w,height:h},{x:marker.sx-w/2,y:marker.sy-half-h-2,width:w,height:h},{x:marker.sx-w/2,y:marker.sy+half+9,width:w,height:h}];
     let box=choices.find(r=>r.x>8&&r.x+r.width<width-8&&r.y>54&&r.y+r.height<height-66&&!occupied.some(o=>overlaps(r,o)));
-    if(!box&&(marker.selected||marker.home))box=choices.find(r=>r.x>3&&r.x+r.width<width-3&&r.y>4&&r.y+r.height<height-4);
+    // Home/selection may relax edge margins, but large artwork and existing
+    // labels must stay clear. Preserve the original compact-symbol fallback.
+    if(!box&&(marker.selected||marker.home))box=choices.find(r=>r.x>3&&r.x+r.width<width-3&&r.y>4&&r.y+r.height<height-4&&(symbolSize<=20||!occupied.some(o=>overlaps(r,o))));
     if(box){marker.label={x:box.x-marker.sx,y:box.y-marker.sy,width:box.width,height:box.height};occupied.push(box);}
   }
   return markers;
@@ -105,7 +107,8 @@ const icon=name=>`<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${iconPat
 function markerPresentation(marker,options={}){
   let appearance=null;
   // Presentation is supplied by a trusted local view; public text must be
-  // escaped by that renderer. Campaign maps keep their original symbols.
+  // escaped by that renderer. Views without an appearance callback keep
+  // their original symbols.
   try{if(!marker.cluster&&typeof options.markerAppearance==='function')appearance=options.markerAppearance(marker);}catch(_){}
   const custom=Boolean(appearance&&typeof appearance.html==='string'&&appearance.html);
   const label=marker.cluster?`${marker.points.length}城の地域を拡大：${marker.points.map(p=>p.name).join('、')}`:`${marker.name} ${marker.owner||''} ${marker.home?'本拠 ':''}${marker.disabled?(marker.restrictedLabel||'専用拠点')+' ':''}${marker.reachable?'進軍可能 ':''}Lv.${marker.level||1}`;
