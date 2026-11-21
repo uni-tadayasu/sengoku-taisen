@@ -1,0 +1,69 @@
+/* Personal desktop regions. Each value is clamped against the current viewport. */
+html.sengoku-desktop-fit[data-layout-sidebar] { --nav-width: var(--layout-sidebar-width); }
+html.sengoku-desktop-fit[data-layout-header] #app .topbar { min-height: var(--layout-header-height); }
+html.sengoku-desktop-fit[data-layout-townheight] #main .town-scene { height: var(--layout-town-height); }
+html.sengoku-desktop-fit[data-layout-mapheight] #main .world-layout-real { --map-height: var(--layout-map-height); }
+html.sengoku-desktop-fit[data-layout-fieldheight] #main .sengoku-field { --map-height: var(--layout-field-height); }
+
+/* Leave stacked layouts stacked when the main pane is narrow. */
+@container game-content (min-width:901px) {
+  html.sengoku-desktop-fit[data-layout-townratio] #main .dashboard-grid { grid-template-columns: minmax(0, var(--layout-town-left)) minmax(0, var(--layout-town-right)); }
+  html.sengoku-desktop-fit[data-layout-mapratio] #main .world-layout-real { grid-template-columns: minmax(0, var(--layout-map-left)) minmax(0, var(--layout-map-right)); }
+  html.sengoku-desktop-fit[data-layout-fieldratio] #main .field-workspace { grid-template-columns: minmax(0, var(--layout-field-left)) minmax(0, var(--layout-field-right)); }
+}
+@media (min-width:1251px) {
+  /* A narrow menu must never shorten the separate game-title column. */
+  html.sengoku-desktop-fit[data-layout-sidebar] #app .topbar { grid-template-columns: 164px minmax(148px,.8fr) minmax(0,3.2fr) auto; }
+}
+
+.layout-editor-button,
+html:not(.sengoku-desktop-fit) #app .sidebar-bottom .layout-editor-button { display: none !important; }
+html.sengoku-desktop-fit #app .sidebar-bottom .layout-editor-button { display: flex !important; }
+.layout-editor-button[aria-pressed="true"] { color: #ffe1a3; border-color: #d6b66c; background: #79603942; }
+.layout-editor-button .icon { flex: none; width: 22px; height: 22px; }
+
+#layout-resize-overlay { position: fixed; inset: 0; z-index: 72; pointer-events: none; overflow: hidden; }
+#layout-resize-overlay[hidden], #layout-resize-toolbar[hidden], .layout-resize-handle[hidden] { display: none !important; }
+html:not(.sengoku-desktop-fit) #layout-resize-overlay,
+html:not(.sengoku-desktop-fit) #layout-resize-toolbar,
+body.at-title #layout-resize-overlay, body.at-title #layout-resize-toolbar { display: none !important; }
+.layout-resize-handle { position: absolute; pointer-events: auto; touch-action: none; user-select: none; -webkit-user-select: none; outline: none; background: #e8c37d12; border-radius: 8px; transition: background-color 120ms ease; }
+.layout-resize-handle[aria-orientation="vertical"] { cursor: col-resize; }
+.layout-resize-handle[aria-orientation="horizontal"] { cursor: row-resize; }
+.layout-resize-handle::before { content: ""; position: absolute; pointer-events: none; background: #dfc184a3; border-radius: 3px; }
+.layout-resize-handle[aria-orientation="vertical"]::before { left: 5px; width: 2px; top: 0; bottom: 0; }
+.layout-resize-handle[aria-orientation="horizontal"]::before { top: 5px; height: 2px; left: 0; right: 0; }
+.layout-grip { position: absolute; display: block; border: 1px solid #e2c38a; border-radius: 6px; background: #26374a; box-shadow: 0 2px 10px #0006; pointer-events: none; }
+.layout-resize-handle[aria-orientation="vertical"] .layout-grip { left: -4px; top: calc(50% - 24px); width: 20px; height: 48px; background: repeating-linear-gradient(90deg,transparent 0 5px,#d8bd8670 5px 6px,transparent 6px 9px),#26374a; }
+.layout-resize-handle[aria-orientation="horizontal"] .layout-grip { left: calc(50% - 24px); top: -4px; height: 20px; width: 48px; background: repeating-linear-gradient(0deg,transparent 0 5px,#d8bd8670 5px 6px,transparent 6px 9px),#26374a; }
+.layout-grip-label { position: absolute; z-index: 1; width: max-content; max-width: 180px; padding: 7px 10px; border: 1px solid #dfc184; border-radius: 6px; color: #fff0c8; background: #122030f2; font: 14px/1.5 var(--sans,system-ui,sans-serif); white-space: normal; opacity: 0; pointer-events: none; transition: opacity 120ms ease; }
+.layout-resize-handle[aria-orientation="vertical"] .layout-grip-label { left: 17px; top: calc(50% - 18px); }
+.layout-resize-handle[aria-orientation="horizontal"] .layout-grip-label { left: max(6px,calc(50% - 85px)); bottom: 22px; }
+.layout-resize-handle:hover, .layout-resize-handle:focus-visible, .layout-resize-handle[data-layout-dragging] { background: #ffd58b45; }
+.layout-resize-handle:is(:hover,:focus-visible,[data-layout-dragging]) .layout-grip-label { opacity: 1; }
+.layout-resize-handle:focus-visible .layout-grip { outline: 3px solid #8acbff; outline-offset: 3px; }
+html[data-layout-dragging] body, html[data-layout-dragging] body * { user-select: none !important; -webkit-user-select: none !important; }
+html[data-layout-dragging="vertical"] body, html[data-layout-dragging="vertical"] body * { cursor: col-resize !important; }
+html[data-layout-dragging="horizontal"] body, html[data-layout-dragging="horizontal"] body * { cursor: row-resize !important; }
+
+#layout-resize-toolbar { position: fixed; z-index: 76; left: auto; right: 18px; top: 140px; width: max-content; max-width: calc(100vw - var(--nav-width,80px) - 36px); margin: 0; display: flex; align-items: center; gap: 20px; padding: 12px 16px; border: 1px solid #d6b978; border-radius: 10px; color: #f6ead2; background: #142333f5; box-shadow: 0 7px 28px #0008; font: 14px/1.55 var(--sans,system-ui,sans-serif); }
+.layout-toolbar-copy { display: grid; gap: 2px; min-width: 0; }
+.layout-toolbar-copy strong { font-size: 16px; color: #f4cf86; }
+.layout-toolbar-copy span { font-size: 14px; color: #c1cbd4; }
+.layout-toolbar-actions { display: flex; align-items: center; gap: 8px; flex: none; }
+#layout-resize-toolbar button { min-height: 44px; padding: 8px 16px; border: 1px solid #607587; border-radius: 6px; background: #263b50; color: #f3f5f7; font: inherit; white-space: nowrap; }
+#layout-resize-toolbar button[data-layout-done] { border-color: #dcc08c; background: #8b6536; color: #fff5dc; }
+#layout-resize-toolbar button:focus-visible { outline: 3px solid #8acbff; outline-offset: 3px; }
+@media (max-width:800px) {
+  #layout-resize-toolbar { gap: 10px; padding: 10px 12px; }
+  .layout-toolbar-copy span { max-width: 260px; }
+  #layout-resize-toolbar button { padding-inline: 12px; }
+}
+@media (max-width:520px) {
+  #layout-resize-toolbar { flex-wrap: wrap; justify-content: space-between; }
+  .layout-toolbar-copy { flex: 1 1 200px; }
+  .layout-toolbar-actions { margin-left: auto; }
+}
+@media (prefers-reduced-motion:reduce) {
+  .layout-resize-handle, .layout-grip-label { transition: none; }
+}

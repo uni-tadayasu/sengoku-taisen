@@ -1,7 +1,7 @@
 # 戦国大戦 通信API
 
 Base path: `/api/v1`. UTF-8 JSON. Success always includes `ok: true`.
-All routes except GET `/config`, GET `/health`, GET `/online`, GET `/world-clock`, GET `/field`, POST `/session`, and POST `/devices/link` require `Authorization: Bearer <game-token>`.
+All routes except GET `/config`, GET `/health`, GET `/online`, GET `/world-clock`, GET `/field`, POST `/session`, POST `/devices/link`, and POST `/admin/recover` require `Authorization: Bearer <game-token>`. Administrator recovery requires the original operator registration key in its JSON body instead of an existing game token.
 No cookies are used. Never put a token or pairing code in a URL. POST/PUT/PATCH/DELETE bodies require `Content-Type: application/json`, including `{}` for an empty body.
 
 ## Common objects
@@ -28,7 +28,7 @@ All returned timestamps are ISO strings. Treat names, messages, mail, and announ
 | Method / path | Body / query | Result fields, in addition to `ok` |
 |---|---|---|
 | GET `/health` | none | `status:"ready"` |
-| GET `/config` | none | `announcement:string`, `adminClaimed:boolean`, `onlineCount:number`, `clock` |
+| GET `/config` | none | `announcement:string`, `adminClaimed:boolean`, `adminRecoveryAvailable:boolean`, `onlineCount:number`, `clock` |
 | POST `/session` | `{name?,clan?}` | `token:string`, `user` |
 | GET `/me` | none | `user`, `friends:user[]`, `requests:[{id,name,clan,direction:"incoming"|"outgoing",createdAt}]`, `unreadMail:number` |
 | PATCH `/profile` | `{name}` | `user` |
@@ -36,8 +36,8 @@ All returned timestamps are ISO strings. Treat names, messages, mail, and announ
 
 Names and clan labels have a 24-character limit. Names are unique after Unicode compatibility normalization and case folding.
 If no name is supplied, the server chooses `旅の領主` plus a random suffix.
-The 256-bit anonymous game token is a 43-character base64url string. The server stores only its SHA-256 hash. A session-creation token is returned only when creating that identity; a new per-device token is returned only after a successful pairing-code redemption.
-Store the token in localStorage and offer an explicit identity JSON export/import for recovery. An exported original token remains valid after additional devices are linked. A game save contains game progress; it does not contain the bearer identity and cannot confer operator privileges. Losing every authenticated device and every identity-token backup loses access to that identity, including the claimed operator identity. The server registration key is not a recovery token for a new identity after an operator has already been claimed.
+The 256-bit anonymous game token is a 43-character base64url string. The server stores only its SHA-256 hash. A session-creation token is returned only when creating that identity. Additional per-device tokens are issued through successful pairing or verified recovery of the original operator identity.
+Store the token in localStorage and offer an explicit identity JSON export/import for recovery. An exported original token remains valid after additional devices are linked or the operator recovers access. A game save contains game progress; it does not contain the bearer identity and cannot confer operator privileges. An ordinary identity requires a surviving authenticated device or identity-token backup. The sole existing operator can also use its original registration key through `/admin/recover`; the key never transfers operator rights to a new identity.
 
 ## Device linking and identity recovery
 
@@ -53,6 +53,24 @@ The database stores a SHA-256 hash of the code with a domain-separation prefix, 
 Link attempts are limited to 12 per 15 minutes per hashed Cloudflare source IP. A shared anonymous bucket is used if that trusted source-IP header is absent. The issuing device, original exported token and other linked devices remain authenticated after linking. The new token identifies the same user ID, so the account's cloud save, guild, friends, mail and server-owned operator role are available on the new device. No registration key is copied to the client or included in a code.
 
 `deviceName` is optional and limited to 64 Unicode characters. Names are private to that identity's sync responses and are not published in the online list. Pairing codes and token exports are secrets intended for the account holder's own devices.
+
+## Recovery of the original operator
+
+| Method / path | Authentication and body | Result fields, in addition to `ok` |
+|---|---|---|
+| POST `/admin/recover` | No existing bearer required; `{key,requestId,deviceName?}` | `token:string`, `user`, `recovered:true` |
+
+`key` is the exact original `SENGOKU_ADMIN_KEY` value, from 1 to 256 characters. It is compared using the same fixed-size digest comparison as initial registration. `requestId` is a UUIDv4 generated for this recovery attempt and retained across lost-response retries; UUID letter case is normalized. `deviceName` has the same optional 64-character limit as pairing. Unknown fields, including a target player ID or role flags, are rejected with 400 `INVALID_INPUT`.
+
+This route resolves the target only from the existing `settings.adminUserId`, then inserts an additional token hash for that same user into `user_sessions`. It cannot create or change the primary operator, register a new player, change the user's name, update a game save, or invalidate an existing original/paired/recovered token. A fresh guard in the D1 transaction verifies the same primary identity at insertion. An ordinary or staff bearer token alone does not authorize recovery; the original registration key is required on every attempt.
+
+The returned token is a purpose-separated HMAC-SHA256 of the original operator ID and request UUID, keyed by the server registration secret. The database stores only the returned token's SHA-256 hash. Repeating a verified request UUID returns the same token and creates at most one session, including concurrent requests. A new UUID creates a separate device token. A revoked matching session is never reactivated by a retry. The raw registration key, raw recovered token, and request bodies are not logged or stored in a database, URL, cookie or client bundle. Responses are `Cache-Control:no-store`.
+
+Every well-formed attempt, including a successful or duplicate one, consumes a limit of five requests per ten minutes per hashed trusted Cloudflare source IP (or a shared fallback bucket if absent). After verifying the correct key and existing operator, a second limit permits thirty verified requests per real hour for that operator across all IPs. Invalid-key attempts from unrelated addresses cannot exhaust the rightful operator's cross-device allowance. Rejections return 429 `RATE_LIMITED` with `Retry-After`; these limits use real time rather than the game clock. An incorrect key, absent original operator, changed target, or revoked retry returns the same generic 403 `ADMIN_RECOVERY_FAILED` response. A missing configured server secret returns 503 `ADMIN_RECOVERY_UNAVAILABLE`. The public `/config.adminRecoveryAvailable` is true only when an original operator is recorded and the secret is configured; it never discloses the key or identity token.
+
+The frontend presents this under **交流 → 引き継ぎ → 運営登録キーで復旧**, using a password input. It clears the input immediately, sends the key only in the HTTPS JSON request, and keeps the returned identity in memory for the existing `/me` and `/sync` verification flow. It does not persist a new identity or start synchronization solely because this endpoint succeeds. If cloud progress exists, the user can connect to it; if no cloud game save exists, the user must add an old game save or explicitly confirm use of this device's current progress. Restoring the operator role does not reconstruct unsaved game progress. The existing `pendingRecovery` local transaction marker protects interrupted identity/game imports before sync starts.
+
+This feature uses the existing `user_sessions` schema and requires no migration. Verify it with `node scripts/test-admin-recovery.mjs`; all tokens and keys in that suite are local test values.
 
 ## Shared world clock and repeating calendar
 
@@ -321,7 +339,7 @@ The registration key comes only from the server runtime secret `SENGOKU_ADMIN_KE
 Comparison hashes both strings and compares fixed-size hash strings without early exit.
 Registration attempts are limited to five per ten minutes per identity and per hashed Cloudflare source IP where available.
 The first successful claim atomically reserves the single `adminUserId` setting. Concurrent correct claims can produce only one admin.
-After registration another identity cannot claim, even with the key. The already registered identity can retry using its own bearer token.
+After registration another identity cannot claim, even with the key. The already registered identity can retry using its own bearer token. Use the separate `/admin/recover` flow to authenticate as the original identity after losing its local token; never retry `/admin/claim` on a replacement account as a recovery method.
 Use `/config.adminClaimed` to hide the first-registration form for other players. Use `/me.user.isAdmin` to show admin tools.
 Announcements are plain text, at most 300 characters; an empty string clears the announcement.
 
@@ -380,6 +398,6 @@ The Worker uses D1 `prepare`, `bind`, `first`, `run`, `all` and `batch` APIs. It
 
 ## Local verification
 
-Run `node scripts/test-social.mjs`, `node scripts/test-sync.mjs`, `node scripts/test-world-clock.mjs`, `node scripts/test-field.mjs` and `node scripts/test-staff.mjs` using Node 24 or a Node version providing `node:sqlite`. Run `node --check worker/index.js` for the Worker syntax check.
+Run `node scripts/test-social.mjs`, `node scripts/test-sync.mjs`, `node scripts/test-world-clock.mjs`, `node scripts/test-field.mjs`, `node scripts/test-staff.mjs` and `node scripts/test-admin-recovery.mjs` using Node 24 or a Node version providing `node:sqlite`. Run `node --check worker/index.js` for the Worker syntax check.
 
 The suites create an in-memory SQLite database, apply every journaled migration in order, generate a random test-only admin key in memory, and exercise the actual Worker. The D1 adapter runs each batch as an ordered SQLite transaction, matching D1's batch atomicity contract. Promise-based concurrent calls check revision conflicts, single-use pairing redemption, the single-operator claim, clock controls, repeated field requests, competing raids and consent-versus-attack races. The field suite injects a failing statement into an attack batch and verifies that both saves, the battle and the request record roll back, followed by a safe retry. The staff suite checks role separation, paired-device removal, appointment replay after dismissal, concurrent role operations and revocation between authentication and private chat SQL; it also tests transaction rollback and the primary-operator guard at commit time. A controlled server clock verifies disconnected elapsed time, equal time for different identities, pause/resume, speed changes, cooldown/alliance expiry and calendar wrap without resetting absolute time. The tests do not simulate network latency, a browser's lifecycle or the production deployment; those are separate integration checks. They do not contact a deployed service or send production messages.

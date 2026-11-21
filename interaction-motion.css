@@ -1,0 +1,249 @@
+/* One motion language for the game and its public guides.
+   This layer never changes layout dimensions or positioned map coordinates.
+   JavaScript may hold data-ui-pressed="true" until a pointer/key is released. */
+
+:root {
+  --motion-fast: 95ms;
+  --motion-time: 190ms;
+  --motion-gentle: 280ms;
+  --motion-ease: cubic-bezier(.2, .75, .25, 1);
+}
+
+:is(button, a[href], summary, input, select, textarea, [role="button"], [role="tab"],
+    [role="checkbox"], [role="radio"], .panel, .resource, .facility-entry,
+    .research-card, .tactic-card, .quest-row, .clan-panel, .field-battle-report,
+    .hero-image-frame, .callout, .comparison > section, .closing) {
+  --motion-accent: var(--nav-accent, var(--facility-color, var(--tab-accent, var(--social-accent, var(--resource-color, var(--section-color, var(--page-accent, var(--section-accent, #f1cb82))))))));
+  --motion-rgb: var(--nav-rgb, var(--facility-rgb, var(--tab-rgb, var(--social-rgb, var(--resource-rgb, var(--page-rgb, var(--section-rgb, 241, 203, 130)))))));
+}
+
+.officer-card { --motion-accent: var(--rank-color, #c8a0ff); --motion-rgb: var(--rank-rgb, 200, 160, 255); }
+.kamon-entry { --motion-rgb: var(--crest-rgb, 255, 172, 134); }
+:is(.danger, .is-danger, [data-action="attack"]) { --motion-accent: #ffabb6; --motion-rgb: 255, 171, 182; }
+
+/* Small visual responses are available even when JavaScript is disabled. */
+:is(button, a[href], summary, input, select, textarea, [role="button"], [role="tab"],
+    [role="checkbox"], [role="radio"]) {
+  -webkit-tap-highlight-color: transparent;
+  transition-property: color, background-color, border-color, box-shadow, outline-color, opacity;
+  transition-duration: var(--motion-time);
+  transition-timing-function: var(--motion-ease);
+}
+
+a[href] { transition-property: color, background-color, border-color, box-shadow, outline-color, text-decoration-color; }
+
+:is(button, a[href], summary, input, select, textarea, [role="button"], [role="tab"],
+    [role="checkbox"], [role="radio"]):focus-visible {
+  outline: 2px solid var(--motion-accent);
+  outline-offset: 3px;
+}
+
+:is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="hidden"]), select, textarea):focus {
+  border-color: var(--motion-accent);
+  box-shadow: 0 0 0 3px rgba(var(--motion-rgb), .14), inset 0 1px rgba(var(--motion-rgb), .08);
+}
+
+/* Transform animations belong only to this explicit list of ordinary controls.
+   Map markers, castle hotspots, range inputs and sprite surfaces are excluded. */
+:is(.button, .icon-button, .launch-enter, .nav-item, .building-card, .officer-card,
+    .kamon-entry, .territory-row, .officer-choice, .clan-choice, .music-track,
+    .currency-chip, .gacha-history-row, .social-button, .social-icon-button,
+    .social-launcher, .field-button, .field-player-row, .field-report-row,
+    .action-link, .nav-play, .decision-list a, .tabs button,
+    .variant-tabs button, .social-tabs button, .social-subtabs button,
+    .rank-preview-strip button, .art-level-controls button) {
+  transition-property: color, background-color, border-color, box-shadow, outline-color, opacity, translate, scale;
+  translate: 0 0;
+  scale: 1;
+}
+
+/* Replace three legacy lifts with independent properties, so touch never keeps
+   an old :hover transform after its finger has left the control. */
+.button:hover:not(:disabled), .officer-card:hover, .launch-enter:hover { transform: none; }
+.launch-enter:hover { filter: none; }
+
+:is(.panel, .resource, .facility-entry, .research-card, .tactic-card, .quest-row,
+    .clan-panel, .field-battle-report, .hero-image-frame, .callout,
+    .comparison > section, .closing) {
+  transition: border-color var(--motion-gentle) var(--motion-ease),
+    box-shadow var(--motion-gentle) var(--motion-ease),
+    background-color var(--motion-gentle) var(--motion-ease);
+}
+
+:is(.nav-item, .icon-button, .social-icon-button, .field-button, .button) > :is(.icon, .item-icon),
+.hotspot .pin, .hotspot .label, .sg-map-marker-symbol,
+.building-card .building-art, .officer-card .painted-portrait,
+.territory-row .territory-art, .kamon-entry .sengoku-kamon > img,
+.hero-image-frame > img, .site-brand > img {
+  transition: color var(--motion-time) var(--motion-ease),
+    background-color var(--motion-time) var(--motion-ease),
+    border-color var(--motion-time) var(--motion-ease),
+    box-shadow var(--motion-time) var(--motion-ease),
+    scale var(--motion-gentle) var(--motion-ease),
+    translate var(--motion-time) var(--motion-ease);
+}
+.hero-image-frame { overflow: hidden; }
+
+/* A precise pointer receives a lift and a coloured rim. Coarse/touch pointers
+   receive only the actual press response below, with no sticky hover motion. */
+@media (hover: hover) and (pointer: fine) {
+  :is(button, summary, [role="button"], [role="tab"], [role="checkbox"], [role="radio"]):not(:disabled):not([aria-disabled="true"]):not(.is-disabled):hover {
+    border-color: var(--motion-accent);
+    box-shadow: inset 0 0 0 1px rgba(var(--motion-rgb), .16), 0 4px 16px rgba(var(--motion-rgb), .13);
+  }
+
+  a[href]:not([aria-disabled="true"]):hover {
+    color: var(--motion-accent);
+    text-decoration-color: currentColor;
+  }
+  :is(.action-link, .nav-play):hover { color: #fff7e9; }
+
+  :is(input:not([type="hidden"]), select, textarea):not(:disabled):hover {
+    border-color: var(--motion-accent);
+  }
+
+  :is(.button, .icon-button, .launch-enter, .nav-item, .building-card, .officer-card,
+      .kamon-entry, .territory-row, .officer-choice, .clan-choice, .music-track,
+      .currency-chip, .gacha-history-row, .social-button, .social-icon-button,
+      .social-launcher, .field-button, .field-player-row, .field-report-row,
+      .action-link, .nav-play, .decision-list a, .tabs button, .variant-tabs button,
+      .social-tabs button, .social-subtabs button, .rank-preview-strip button,
+      .art-level-controls button):not(:disabled):not([aria-disabled="true"]):not(.is-disabled):hover {
+    translate: 0 -2px;
+  }
+
+  .launch-enter:not(:disabled):hover {
+    box-shadow: inset 0 1px #fff4d54d, 0 0 0 4px #edcb8c21, 0 9px 26px #c5913640;
+  }
+  .navigation .nav-item.active:hover {
+    box-shadow: inset 3px 0 var(--nav-accent), inset 0 0 0 1px rgba(var(--nav-rgb), .4), 0 4px 16px rgba(var(--nav-rgb), .15);
+  }
+  :is(.tabs button.active, [role="tab"][aria-selected="true"]):hover {
+    box-shadow: inset 0 -2px var(--motion-accent), 0 4px 14px rgba(var(--motion-rgb), .12);
+  }
+
+  :is(.nav-item, .icon-button, .social-icon-button, .field-button, .button):not(:disabled):not([aria-disabled="true"]):hover > :is(.icon, .item-icon) {
+    translate: 0 -1px;
+    scale: 1.07;
+  }
+
+  .building-card:not(:disabled):hover .building-art { scale: 1.035; }
+  .officer-card:not(:disabled):hover .painted-portrait { scale: 1.035; }
+  .territory-row:not(:disabled):hover .territory-art { scale: 1.035; }
+  .kamon-entry:not(:disabled):hover .sengoku-kamon > img { scale: 1.06; }
+  .hero-image-frame:hover > img { scale: 1.018; }
+  .site-brand:hover > img { scale: 1.06; }
+
+  :is(.panel, .facility-entry, .research-card, .tactic-card, .quest-row,
+      .clan-panel, .field-battle-report, .hero-image-frame, .callout,
+      .comparison > section, .closing):hover {
+    border-color: rgba(var(--motion-rgb), .52);
+    box-shadow: inset 0 1px rgba(var(--motion-rgb), .12), 0 7px 25px rgba(var(--motion-rgb), .09);
+  }
+  .resource:hover {
+    box-shadow: inset 0 -2px var(--resource-color), inset 0 0 0 1px rgba(var(--resource-rgb), .24), 0 3px 12px rgba(var(--resource-rgb), .12);
+  }
+
+  /* Coordinates stay fixed; the inner seal alone responds. */
+  .hotspot:not(:disabled):hover .pin,
+  .sg-map-marker:not(:disabled):not(.is-disabled):hover .sg-map-marker-symbol {
+    scale: 1.12;
+    border-color: #fff0c9;
+    box-shadow: 0 0 0 4px #f6d79526, 0 3px 12px #172a3970;
+  }
+  .hotspot:not(:disabled):hover .label { border-color: #f5d596b0; background-color: #283d46ed; }
+}
+
+/* Mouse, touch, pen and keyboard share one physical press response. */
+:is(button, summary, [role="button"], [role="tab"], [role="checkbox"], [role="radio"]):not(:disabled):not([aria-disabled="true"]):not(.is-disabled):is(:active, [data-ui-pressed="true"]) {
+  border-color: var(--motion-accent);
+  box-shadow: inset 0 0 0 1px rgba(var(--motion-rgb), .4), inset 0 3px 9px #00000038;
+  transition-duration: var(--motion-fast);
+}
+
+:is(a[href], summary):not([aria-disabled="true"]):is(:active, [data-ui-pressed="true"]) {
+  color: var(--motion-accent);
+  text-decoration-color: currentColor;
+  background-color: rgba(var(--motion-rgb), .1);
+}
+:is(.action-link, .nav-play):is(:active, [data-ui-pressed="true"]) { color: #fff7e9; }
+
+:is(.button, .icon-button, .launch-enter, .nav-item, .building-card, .officer-card,
+    .kamon-entry, .territory-row, .officer-choice, .clan-choice, .music-track,
+    .currency-chip, .gacha-history-row, .social-button, .social-icon-button,
+    .social-launcher, .field-button, .field-player-row, .field-report-row,
+    .action-link, .nav-play, .decision-list a, .tabs button, .variant-tabs button,
+    .social-tabs button, .social-subtabs button, .rank-preview-strip button,
+    .art-level-controls button):not(:disabled):not([aria-disabled="true"]):not(.is-disabled):is(:active, [data-ui-pressed="true"]) {
+  translate: 0 1px;
+  scale: .982;
+  transition-duration: var(--motion-fast);
+}
+
+:is(.building-card, .officer-card, .kamon-entry, .territory-row):not(:disabled):is(:active, [data-ui-pressed="true"]) { scale: .992; }
+
+.hotspot:not(:disabled):is(:active, [data-ui-pressed="true"]) .pin,
+.sg-map-marker:not(:disabled):not(.is-disabled):is(:active, [data-ui-pressed="true"]) .sg-map-marker-symbol {
+  scale: .91;
+  box-shadow: 0 0 0 5px #f6d79542, inset 0 2px 5px #0007;
+  transition-duration: var(--motion-fast);
+}
+
+/* Checkbox/radio and range values remain native and keyboard operable. */
+:is(input[type="checkbox"], input[type="radio"]):not(:disabled):is(:active, [data-ui-pressed="true"]) {
+  outline: 3px solid rgba(var(--motion-rgb), .3);
+  outline-offset: 3px;
+}
+input[type="range"]:not(:disabled):active { outline-color: var(--motion-accent); }
+details[open] > summary { color: var(--motion-accent); }
+
+/* Disabled actions never animate as available controls. */
+:is(button, input, select, textarea, [role="button"], [role="tab"]):is(:disabled, [aria-disabled="true"], .is-disabled) {
+  transition: none;
+  translate: none;
+  scale: none;
+}
+
+/* Short-lived click/tap ink lives outside controls and never intercepts input. */
+.ui-motion-layer {
+  position: fixed;
+  inset: 0;
+  pointer-events: none !important;
+  overflow: hidden;
+  z-index: 2147483000;
+  contain: strict;
+}
+.ui-motion-clip {
+  position: absolute;
+  overflow: hidden;
+  pointer-events: none;
+}
+.ui-motion-wave {
+  position: absolute;
+  pointer-events: none;
+  border-radius: 50%;
+  background: radial-gradient(circle,
+    rgba(var(--wave-rgb, 241, 203, 130), .38) 0%,
+    rgba(var(--wave-rgb, 241, 203, 130), .16) 43%,
+    transparent 72%);
+  mix-blend-mode: screen;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .ui-motion-layer { display: none; }
+  :is(button, a[href], summary, input, select, textarea, [role="button"], [role="tab"],
+      [role="checkbox"], [role="radio"], .panel, .resource, .facility-entry,
+      .research-card, .tactic-card, .quest-row, .clan-panel, .field-battle-report,
+      .hero-image-frame, .callout, .comparison > section, .closing,
+      .hotspot .pin, .hotspot .label, .sg-map-marker-symbol,
+      .building-art, .painted-portrait, .territory-art, .sengoku-kamon > img,
+      .hero-image-frame > img, .site-brand > img, .icon, .item-icon) {
+    transition: none !important;
+    animation: none !important;
+    translate: none !important;
+    scale: none !important;
+  }
+  /* Preserve a stationary visible highlight for keyboard and pointer feedback. */
+  .button:hover:not(:disabled), .officer-card:hover, .launch-enter:hover { transform: none !important; }
+}

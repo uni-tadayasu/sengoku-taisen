@@ -76,6 +76,14 @@ function gameToken() {
   const bytes = crypto.getRandomValues(new Uint8Array(32));
   return btoa(String.fromCharCode(...bytes)).replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '');
 }
+async function adminRecoveryToken(secret,userId,requestId) {
+  // The verified recovery key is never persisted. A purpose-separated HMAC lets
+  // a lost-response retry recover the same per-device token without plaintext
+  // credential storage or changes to any existing device's authentication.
+  const key=await crypto.subtle.importKey('raw',encoder.encode(secret),{name:'HMAC',hash:'SHA-256'},false,['sign']);
+  const signature=await crypto.subtle.sign('HMAC',key,encoder.encode('sengoku:admin-recovery:v1\u0000'+userId+'\u0000'+requestId));
+  return btoa(String.fromCharCode(...new Uint8Array(signature))).replaceAll('+','-').replaceAll('/','_').replaceAll('=','');
+}
 function allowedOrigin(request, env) {
   const origin = request.headers.get('origin');
   if (!origin) return null;
@@ -612,7 +620,7 @@ async function route(request, env, now) {
       stmt(db, 'SELECT COUNT(DISTINCT user_id) AS count FROM player_presence WHERE online=1 AND last_seen>?', now-ONLINE_WINDOW),
     ]);
     const settings = Object.fromEntries(rows(result[0]).map(r => [r.key,r.value]));
-    return {ok:true,announcement:settings.announcement ?? WELCOME,adminClaimed:!!settings.adminUserId,onlineCount:Number(rows(result[1])[0]?.count || 0),clock:await getWorldClock(db,now)};
+    return {ok:true,announcement:settings.announcement ?? WELCOME,adminClaimed:!!settings.adminUserId,adminRecoveryAvailable:!!settings.adminUserId&&typeof env.SENGOKU_ADMIN_KEY==='string'&&env.SENGOKU_ADMIN_KEY.length>0,onlineCount:Number(rows(result[1])[0]?.count || 0),clock:await getWorldClock(db,now)};
   }
   if (path === '/online' && method === 'GET') {
     const cursor=url.searchParams.get('cursor')||'',limitText=url.searchParams.get('limit')||'50';
@@ -641,6 +649,31 @@ async function route(request, env, now) {
     const linked=rows(result[1])[0];
     if(!linked)fail(410,'PAIR_CODE_EXPIRED','連携コードは使用済みか、有効期限が切れています。元の端末で新しく発行してください。');
     return {ok:true,token,user:mapUser(await getUser(db,linked.user_id),now)};
+  }
+  if (path === '/admin/recover' && method === 'POST') {
+    const body=await readBody(request);
+    if(Object.keys(body).some(key=>!['key','requestId','deviceName'].includes(key))||typeof body.key!=='string'||body.key.length<1||body.key.length>256||typeof body.requestId!=='string'||!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(body.requestId))fail(400,'INVALID_INPUT','運営登録キーと復旧の識別情報を確認してください。');
+    const deviceName=textField(body.deviceName,'端末名',64,{optional:true})||'運営を復旧した端末';
+    const scope=await ipScope(request,env,'admin-recovery-ip');
+    await budget(db,scope||'admin-recovery-unattributed',5,10*60*1000,now);
+    if(typeof env.SENGOKU_ADMIN_KEY!=='string'||env.SENGOKU_ADMIN_KEY.length<1)fail(503,'ADMIN_RECOVERY_UNAVAILABLE','運営の復旧を現在利用できません。');
+    const validKey=await constantEqual(body.key,env.SENGOKU_ADMIN_KEY);
+    const admin=await stmt(db,USER_SELECT+" WHERE u.id=(SELECT value FROM settings WHERE key='adminUserId')").first();
+    if(!validKey||!admin?.is_admin)fail(403,'ADMIN_RECOVERY_FAILED','運営を復旧できません。初回に使用した運営登録キーをご確認ください。');
+    // Invalid attempts from unrelated IPs must not exhaust the real owner's
+    // cross-device recovery allowance.
+    await budget(db,'admin-recovery-user:'+admin.id,30,60*60*1000,now);
+    const token=await adminRecoveryToken(env.SENGOKU_ADMIN_KEY,admin.id,body.requestId.toLowerCase()),tokenHash=await hash(token);
+    const result=await db.batch([
+      stmt(db,`INSERT INTO user_sessions(token_hash,user_id,device_name,created_at,last_seen)
+        SELECT ?,u.id,?,?,? FROM users u JOIN settings s ON s.key='adminUserId' AND s.value=u.id WHERE u.id=?
+        ON CONFLICT(token_hash) DO NOTHING`,tokenHash,deviceName,now,now,admin.id),
+      stmt(db,'SELECT user_id,revoked_at FROM user_sessions WHERE token_hash=?',tokenHash),
+      stmt(db,USER_SELECT+" WHERE u.id=(SELECT value FROM settings WHERE key='adminUserId')"),
+    ]);
+    const session=rows(result[1])[0],current=rows(result[2])[0];
+    if(!session||session.revoked_at!==null||session.user_id!==admin.id||current?.id!==admin.id||!current.is_admin)fail(403,'ADMIN_RECOVERY_FAILED','運営を復旧できません。初回に使用した運営登録キーをご確認ください。');
+    return {ok:true,token,user:mapUser(current,now),recovered:true};
   }
   if (path === '/session' && method === 'POST') {
     const body = await readBody(request);

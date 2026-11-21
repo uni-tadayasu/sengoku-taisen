@@ -23,13 +23,13 @@ function create(options={}){
  let pollTimer=null,saveTimer=null,presenceTimer=null,expiryTimer=null;
  let status={linked:false,ready:true,writable:true,reason:'local',message:'この端末に自動保存しています。',revision:0,updatedAt:null,leaseExpiresAt:null,writerDeviceName:null,deviceName:device.name};
  const valid=g=>Boolean(session&&g===generation);
- const local=()=>{const save=bridge()?.getSave?.();if(!fingerprint(save))throw Error('ゲームの保存データを確認できませんでした。');return save;};
+ const local=()=>{const currentBridge=bridge(),save=currentBridge?.getSave?.();if(save===null&&currentBridge?.hasStarted?.()===false)return null;if(!fingerprint(save))throw Error('ゲームの保存データを確認できませんでした。');return save;};
  function checkpoint(){
   if(!session||!initialized)return;
-  try{if(dirty){storage?.setItem(PENDING_KEY,JSON.stringify({id:String(session.id),revision,ack:hash(ack),local:hash(fingerprint(local())),attempt}));}else{const old=JSON.parse(storage?.getItem(PENDING_KEY)||'null');if(old?.id===String(session.id))storage?.removeItem(PENDING_KEY);}}catch(_){}
+  try{if(dirty){const save=local();if(!save)return;storage?.setItem(PENDING_KEY,JSON.stringify({id:String(session.id),revision,ack:hash(ack),local:hash(fingerprint(save)),attempt}));}else{const old=JSON.parse(storage?.getItem(PENDING_KEY)||'null');if(old?.id===String(session.id))storage?.removeItem(PENDING_KEY);}}catch(_){}
  }
  function canResume(remoteKey,remoteRevision){
-  try{const pending=JSON.parse(storage?.getItem(PENDING_KEY)||'null');if(pending?.id!==String(session.id)||pending.local!==hash(fingerprint(local())))return false;
+  try{const save=local();if(!save)return false;const pending=JSON.parse(storage?.getItem(PENDING_KEY)||'null');if(pending?.id!==String(session.id)||pending.local!==hash(fingerprint(save)))return false;
    return pending.revision===remoteRevision&&pending.ack===hash(remoteKey)||pending.attempt?.revision+1===remoteRevision&&pending.attempt?.key===hash(remoteKey);
   }catch(_){return false;}
  }
@@ -54,8 +54,8 @@ function create(options={}){
  }
  function access(){
   const writable=initialized&&leaseDeadline>now()&&!hidden()&&online();
-  const reason=!online()?'offline':hidden()?'hidden':writable?'writer':'follower';
-  emit({linked:true,ready:initialized,writable,revision,reason,leaseExpiresAt:leaseDeadline?new Date(leaseDeadline).toISOString():null,message:reason==='offline'?'通信が戻ると共通時刻までの進行を反映します。':reason==='hidden'?'この画面を開くと同期を再開します。':writable?(dirty?'変更を保存しています…':'自動同期中。この端末で進行できます。'):`${status.writerDeviceName||'別の端末'}の進行を自動で反映しています。`});
+  const awaitingStart=bridge()?.hasStarted?.()===false,reason=!online()?'offline':hidden()?'hidden':writable?(awaitingStart?'awaiting-start':'writer'):'follower';
+  emit({linked:true,ready:initialized,writable,revision,reason,awaitingStart,leaseExpiresAt:leaseDeadline?new Date(leaseDeadline).toISOString():null,message:reason==='offline'?'通信が戻ると共通時刻までの進行を反映します。':reason==='hidden'?'この画面を開くと同期を再開します。':reason==='awaiting-start'?'開始する城を選ぶと、この領主の進行を保存します。':writable?(dirty?'変更を保存しています…':'自動同期中。この端末で進行できます。'):`${status.writerDeviceName||'別の端末'}の進行を自動で反映しています。`});
  }
  function schedulePoll(){if(pollTimer!==null)cancel(pollTimer);pollTimer=null;const g=generation;if(session&&!hidden())pollTimer=later(()=>{pollTimer=null;if(valid(g))refresh();},5000);}
  function enqueue(work){const g=generation;const task=queue.catch(()=>{}).then(()=>valid(g)?work(g):undefined);queue=task.catch(()=>{});return task;}
@@ -71,13 +71,13 @@ function create(options={}){
   setRole(result);if(result.clock)global.SengokuWorldClock?.accept(result.clock);const remote=result.save,remoteKey=remote?fingerprint(remote):'';
   if(remote&&!remoteKey)throw Error('同期データの形式を確認できませんでした。');
   if(remote&&(!initialized||force||result.revision>revision||remoteKey!==ack)){
-   const before=fingerprint(local()),backup=!initialized||force||(dirty&&before!==remoteKey);
+   const before=fingerprint(local()),backup=Boolean(before)&&(!initialized||force||(dirty&&before!==remoteKey));
    // Reopen only an unsent save whose exact server baseline is still authoritative.
    // A changed baseline always goes through the bridge's local-backup path.
    const resume=!force&&canResume(remoteKey,result.revision);
    if(!resume&&!await apply(remote,result,g,{reason:!initialized?'initial':reason,backup}))return false;
    ack=remoteKey;dirty=fingerprint(local())!==ack;
-  }else if(!remote&&!initialized){ack='';dirty=true;}
+  }else if(!remote&&!initialized){ack='';dirty=Boolean(local());}
   revision=result.revision;initialized=true;attempt=null;checkpoint();status.updatedAt=result.updatedAt||null;lease(result);access();return true;
  }
  function fail(error,g){
@@ -86,7 +86,7 @@ function create(options={}){
   emit({linked:true,ready:initialized,writable:false,reason:auth?'auth':online()?'error':'offline',message:auth?'領主情報を再接続してください。接続するまで操作を待機しています。':error?.message||'通信が戻ると共通時刻までの進行を反映します。'});
  }
  function scheduleSave(){if(saveTimer!==null||!session||!status.writable||hidden())return;const g=generation;saveTimer=later(()=>{saveTimer=null;if(valid(g))flush();},1000);}
- function notifySave(){if(!session||applying||!initialized)return;try{dirty=fingerprint(local())!==ack;checkpoint();if(dirty&&status.writable)scheduleSave();}catch(e){fail(e,generation);}}
+ function notifySave(){if(!session||applying||!initialized)return;try{const save=local();dirty=Boolean(save)&&fingerprint(save)!==ack;checkpoint();if(dirty&&status.writable)scheduleSave();}catch(e){fail(e,generation);}}
  async function recoverConflict(g){
   emit({writable:false,reason:'conflict',message:'別の更新を確認したため、最新の保存を読み込んでいます…'});
   const result=await request(g,'/sync?deviceId='+encodeURIComponent(device.id));
@@ -94,7 +94,8 @@ function create(options={}){
  }
  async function flushCore(g,{suspended=false,keepalive=false}={}){
   if(!valid(g)||!initialized||!online()||leaseDeadline<=now()||(!suspended&&(!status.writable||hidden())))return{ok:false};
-  const save=local(),sent=fingerprint(save);dirty=sent!==ack;if(!dirty){if(!suspended)access();return{ok:true,unchanged:true};}
+  const save=local();if(!save){dirty=false;attempt=null;checkpoint();if(!suspended)access();return{ok:true,waitingForStart:true};}
+  const sent=fingerprint(save);dirty=sent!==ack;if(!dirty){if(!suspended)access();return{ok:true,unchanged:true};}
   attempt={revision,key:hash(sent)};checkpoint();emit({message:'変更を自動保存しています…'});
   try{
    const result=await request(g,'/sync',{method:'PUT',data:{deviceId:device.id,revision,save},keepalive});if(!result)return{ok:false};

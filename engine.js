@@ -152,7 +152,8 @@
       this.roster = options.officers || root.SENGOKU_OFFICERS || [];
       this.officerMap = Object.assign(Object.create(null),Object.fromEntries(this.roster.map(o=>[o.id,o])));
       const clan = CLANS.find(c=>c.name===options.clan) || CLANS[0];
-      const home=this.isAdmin?ADMIN_ASSETS.castleId:clan.home;
+      if(!this.isAdmin&&options.startCastle!==undefined&&(!CASTLES.some(c=>c.id===options.startCastle)||options.startCastle===ADMIN_ASSETS.castleId))throw new Error('開始する城を、江戸城以外の127城から一つ選んでください。');
+      const home=this.isAdmin?ADMIN_ASSETS.castleId:options.startCastle??clan.home;
       const difficulty=['easy','normal','hard'].includes(options.difficulty)?options.difficulty:'normal';
       const initial = this.roster.filter(o=>o.clan===clan.name).sort((a,b)=>(b.name===clan.leader?10000:b.lead+b.valor+b.politics)-(a.name===clan.leader?10000:a.lead+a.valor+a.politics)).slice(0,4).map(o=>o.id);
       if (!initial.length) initial.push(...this.roster.slice(0,4).map(o=>o.id));

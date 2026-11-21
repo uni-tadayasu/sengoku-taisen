@@ -13,7 +13,8 @@ let count=0;
 function test(name,fn){fn();count++;console.log('PASS '+name);}
 
 test('ordinary Tokugawa starts with Ieyasu SSS and cannot choose Edo',()=>{
-  const g=create({clan:'徳川家',startCastle:'edo'});
+  assert.throws(()=>create({clan:'徳川家',startCastle:'edo'}),/江戸城以外/);
+  const g=create({clan:'徳川家',startCastle:'okazaki'});
   assert.equal(g.isAdmin,false);
   assert.equal(g.state.home,'okazaki');
   assert.equal(g.officer(IEYASU).rank,'SSS');

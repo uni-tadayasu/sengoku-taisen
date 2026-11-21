@@ -1,0 +1,157 @@
+/* The complete title illustration and every line stay inside a reachable layout.
+ * Auto margins center short content; overflowing content always starts at the top.
+ * The 2:1 original contains the painted title, so it must never be cropped. */
+#launch-screen.launch-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  min-width: 0;
+  min-height: 0;
+  padding: 24px 32px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scroll-padding: 24px;
+}
+#launch-screen[hidden] { display: none; }
+#launch-screen .launch-card {
+  flex: none;
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(320px, 1fr);
+  grid-template-rows: repeat(5, auto);
+  align-items: center;
+  align-content: start;
+  gap: 12px 32px;
+  width: min(1640px, 100%);
+  max-width: 100%;
+  min-width: 0;
+  margin: auto 0;
+  text-align: left;
+}
+#launch-screen .launch-card > * { min-width: 0; max-width: 100%; }
+#launch-screen .launch-topline {
+  grid-column: 1 / -1;
+  grid-row: 1;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px 20px;
+  margin: 0 0 4px;
+  font-size: 14px;
+  line-height: 1.5;
+  letter-spacing: .14em;
+}
+#launch-screen .launch-topline span:last-child {
+  max-width: 100%;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+#launch-screen .launch-keyvisual {
+  grid-column: 1;
+  grid-row: 2 / 6;
+  align-self: center;
+  width: 100%;
+  height: auto;
+  min-height: 0;
+  max-height: none;
+  aspect-ratio: 2 / 1;
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+  border-radius: 12px;
+}
+#launch-screen .launch-subtitle {
+  grid-column: 2;
+  grid-row: 2;
+  font-size: clamp(24px, 2.2vw, 31px);
+  line-height: 1.5;
+  letter-spacing: .07em;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  margin: 0;
+}
+#launch-screen .launch-introduction {
+  grid-column: 2;
+  grid-row: 3;
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.75;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+#launch-screen .launch-enter {
+  grid-column: 2;
+  grid-row: 4;
+  justify-self: stretch;
+  width: 100%;
+  min-width: 0;
+  min-height: 56px;
+  padding: 12px 18px;
+  margin: 6px 0 0;
+  font-size: 23px;
+  line-height: 1.5;
+  letter-spacing: .12em;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+#launch-screen .launch-copyright {
+  grid-column: 2;
+  grid-row: 5;
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+/* Narrow windows, including desktop browser zoom, retain reading order and
+ * place the start control immediately after the title instead of below prose. */
+@media (max-width: 1000px) {
+  #launch-screen.launch-screen { padding: 20px; scroll-padding: 20px; }
+  #launch-screen .launch-card {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: repeat(6, auto);
+    width: min(760px, 100%);
+    gap: 12px;
+    text-align: center;
+  }
+  #launch-screen .launch-card > * { grid-column: 1; }
+  #launch-screen .launch-topline { grid-row: 1; justify-content: center; }
+  #launch-screen .launch-topline span:last-child { display: none; }
+  #launch-screen .launch-keyvisual {
+    grid-row: 2;
+    height: auto;
+    max-height: min(340px, calc(var(--visible-height, 100dvh) * .4));
+  }
+  #launch-screen .launch-subtitle { grid-row: 3; font-size: 25px; }
+  #launch-screen .launch-enter {
+    grid-row: 4;
+    width: min(440px, 100%);
+    justify-self: center;
+    margin: 0;
+  }
+  #launch-screen .launch-introduction { grid-row: 5; }
+  #launch-screen .launch-copyright { grid-row: 6; text-align: center; }
+}
+@media (min-width: 1001px) and (max-height: 700px) {
+  #launch-screen.launch-screen { padding: 16px 24px; scroll-padding: 16px; }
+  #launch-screen .launch-card { gap: 8px 28px; }
+  #launch-screen .launch-subtitle { font-size: 25px; }
+  #launch-screen .launch-enter { min-height: 50px; margin-top: 2px; padding: 9px 16px; }
+}
+@media (max-width: 1000px) and (max-height: 600px) {
+  #launch-screen.launch-screen { padding: 14px 18px; scroll-padding: 14px; }
+  #launch-screen .launch-card { gap: 10px; }
+  #launch-screen .launch-keyvisual { max-height: 150px; }
+  #launch-screen .launch-subtitle { font-size: 23px; }
+  #launch-screen .launch-enter { min-height: 50px; padding: 9px 16px; }
+}
+@media (max-width: 520px) {
+  #launch-screen.launch-screen { padding: 16px; scroll-padding: 16px; }
+  #launch-screen .launch-card { gap: 12px; }
+  #launch-screen .launch-keyvisual { aspect-ratio: 2 / 1; }
+  #launch-screen .launch-subtitle { font-size: 23px; letter-spacing: .04em; }
+  #launch-screen .launch-enter { font-size: 21px; letter-spacing: .08em; }
+}

@@ -22,6 +22,10 @@ check(()=>assert(!helper.summaryHtml({clan:'<img>',home:'edo',turn:672,officers:
 check(()=>assert(helper.summaryHtml({clan:'<img>',home:'edo',turn:672,officers:1}).includes('1560年 1月')));
 check(()=>assert(!helper.summaryHtml({clan:'<img>'}).includes('<img>')));
 check(()=>assert(!helper.guidance({adminRegistered:true,hasIdentity:true}).includes(identity.token)));
+check(()=>assert(helper.guidance({adminRegistered:true}).includes('運営登録キーで復旧')));
+check(()=>assert(helper.operatorRecoveryForm().includes('name="key" type="password" autocomplete="off"')));
+check(()=>assert(helper.operatorRecoveryForm().includes('運営権限の確認に進む')));
+check(()=>assert(helper.operatorRecoveryForm().includes('ゲームセーブだけでは運営権限は復旧できません')));
 await assert.rejects(helper.readFiles([{size:helper.MAX_FILE_BYTES+1,text:async()=>''}]),/4MB/);checks++;
 await assert.rejects(helper.readFiles([{size:3,text:async()=>'{x}'}]),/JSON/);checks++;
 const pair=await helper.readFiles([identity,save].map(value=>{const text=JSON.stringify(value);return{size:text.length,text:async()=>text};}));
@@ -36,7 +40,7 @@ function fixture({existing=true,cloud=null,isAdmin=true}={}){
  const box={innerHTML:'',inert:false},tabs={innerHTML:'',inert:false},confirm={innerHTML:'',querySelector:()=>({focus(){}})};
  const doc={readyState:'loading',hidden:false,activeElement:null,addEventListener(){},removeEventListener(){},createElement:()=>({click(){}})};
  class TestURL extends URL{}TestURL.createObjectURL=blob=>{blobs.push(blob);return'blob:test';};TestURL.revokeObjectURL=()=>{};
- const context={console,URL:TestURL,URLSearchParams,AbortController,Blob,crypto:crypto.webcrypto,FormData:class{constructor(form){this.values=form.values;}get(key){return this.values[key]??null;}},setTimeout,clearTimeout,document:doc,location:{origin:'https://www.kasai-solutions-inc.com'},
+ const context={console,URL:TestURL,URLSearchParams,AbortController,Blob,crypto:crypto.webcrypto,FormData:class{constructor(form){this.values={...form.values};}get(key){return this.values[key]??null;}delete(key){delete this.values[key];}},setTimeout,clearTimeout,document:doc,location:{origin:'https://www.kasai-solutions-inc.com'},
  localStorage:{getItem:key=>storage.get(key)??null,setItem(key,value){if(key===IDKEY&&((blockIdentity&&JSON.parse(value).id===identity.id)||(blockRollback&&JSON.parse(value).id===oldIdentity.id)||(finalizeFailure&&JSON.parse(value).id===identity.id&&JSON.parse(value).pendingRecovery!==true)))throw Error('test storage blocked');storage.set(key,value);},removeItem:key=>storage.delete(key)},SENGOKU_API_BASE:'https://local.invalid',
  fetch:async(url,options)=>{const route=new URL(url).pathname.replace('/api/v1','');calls.push({route,method:options.method,headers:options.headers});if(handler)return handler(route,options);if(apiFailure)throw Error(apiFailure);if(route==='/me'&&delayMe)await new Promise(resolve=>{releaseMe=resolve;});const payload=route==='/me'?{ok:true,user:user(),friends:[],requests:[]}:route==='/sync'?{ok:true,user:user(),save:copy(remote),revision:remote?3:0,updatedAt:'2026-11-21T00:00:00Z'}:{ok:true};return{ok:true,status:200,json:async()=>payload};},
  SengokuCloudSync:{stop:options=>stops.push(options),start:session=>starts.push(session),flush:async()=>{},getStatus:()=>({ready,linked:existing,writable:existing,message:'test'}),getDevice:()=>({id:'device-test',name:'検証端末'})},
@@ -124,5 +128,55 @@ for(const failure of ['blockIdentity','applyFailure']){
 {
  const f=fixture();f.flags({ready:false});f.t.exportRecoveryBackup();const exported=JSON.parse(await f.blobs[0].text());check(()=>assert.equal(exported.save.state.clan,'旧進行'));check(()=>assert.equal(exported.identity.id,oldIdentity.id));check(()=>assert.equal(exported.identity.isAdmin,undefined));check(()=>assert.equal(exported.format,'sengoku-complete-backup'));
 }
-console.log(`Domain recovery tests passed (${checks} assertions): origin migration guidance, complete/legacy files, authenticated role validation, cloud-first choices, no empty-cloud auto-upload, pairing retry, stale identity, storage rollback, explicit local-progress choice and private-token-free UI. No network requests were made.`);
+// The original admin key is only a transient password input/HTTPS request. The
+// returned token is staged in memory, then independently checked with /me /sync.
+{
+ const f=fixture(),TEST_KEY='synthetic-only-operator-key',previousGame=f.storage.get(GAMEKEY),operationIds=[];let attempts=0,resets=0;
+ const response=data=>({ok:true,status:200,json:async()=>data});
+ f.handler(async(route,options)=>{
+  if(route==='/admin/recover'){const payload=JSON.parse(options.body);assert.equal(payload.key,TEST_KEY);assert.equal(options.headers.Authorization,undefined);operationIds.push(payload.requestId);if(++attempts===1)throw Error('synthetic lost response');return response({ok:true,user:{id:identity.id,isAdmin:true},token:identity.token,recovered:true});}
+  if(route==='/me')return response({ok:true,user:f.user(),friends:[],requests:[]});
+  if(route==='/sync')return response({ok:true,user:f.user(),save:null,revision:0});
+  throw Error('unexpected local route');
+ });
+ const input={value:TEST_KEY},button={disabled:false,isConnected:true},form={id:'social-admin-recovery-form',values:{key:TEST_KEY},querySelector:selector=>selector==='[name=key]'?input:button,reset(){resets++;}};
+ const submit=()=>f.t.submit({target:form,submitter:button,preventDefault(){}});
+ await submit();check(()=>assert.equal(input.value,''));check(()=>assert.equal(f.starts.length,0));check(()=>assert.equal(f.t.getRecovery(),null));check(()=>assert.equal(JSON.parse(f.storage.get(IDKEY)).id,oldIdentity.id));
+ input.value=TEST_KEY;await submit();check(()=>assert.equal(input.value,''));check(()=>assert.equal(resets,1));check(()=>assert.equal(operationIds[0],operationIds[1]));check(()=>assert.match(operationIds[0],/^[0-9a-f-]{36}$/));
+ const stage=f.t.getRecovery();check(()=>assert.equal(stage.verified,true));check(()=>assert.equal(stage.kind,'admin-key'));check(()=>assert.equal(stage.user.isAdmin,true));check(()=>assert.equal(f.starts.length,0));check(()=>assert.equal(f.applied.length,0));check(()=>assert.equal(f.storage.get(GAMEKEY),previousGame));check(()=>assert.equal(JSON.parse(f.storage.get(IDKEY)).id,oldIdentity.id));
+ check(()=>assert(f.t.recoveryView().includes('元の運営の登録を確認しました')));check(()=>assert(f.t.recoveryView().includes('サーバーにゲームの進行は未保存')));check(()=>assert(!f.t.recoveryView().includes(TEST_KEY)));check(()=>assert(!f.t.recoveryView().includes(identity.token)));check(()=>assert(!JSON.stringify(stage).includes(TEST_KEY)));check(()=>assert(!JSON.stringify([...f.storage.values()]).includes(TEST_KEY)));
+}
+// A session-like response cannot by itself confer operator status; revocation
+// observed by /sync keeps the recovered identity uncommitted.
+{
+ const f=fixture({isAdmin:false}),response=data=>({ok:true,status:200,json:async()=>data});
+ f.handler(async route=>response(route==='/admin/recover'?{ok:true,user:{id:identity.id,isAdmin:true},token:identity.token,recovered:true}:route==='/me'?{ok:true,user:f.user(),friends:[],requests:[]}:{ok:true,user:f.user(),save:null,revision:0}));
+ const input={value:'synthetic'},form={id:'social-admin-recovery-form',values:{key:'synthetic'},querySelector:()=>input,reset(){}};await f.t.submit({target:form,preventDefault(){}});
+ check(()=>assert.equal(f.t.getRecovery().verified,false));check(()=>assert.equal(f.starts.length,0));check(()=>assert.equal(JSON.parse(f.storage.get(IDKEY)).id,oldIdentity.id));check(()=>assert.match(f.feedback.at(-1).message,/運営権限を確認できません/));
+}
+// Empty-key submissions clear the field and send no request.
+{
+ const f=fixture(),input={value:''},form={id:'social-admin-recovery-form',values:{key:''},querySelector:()=>input,reset(){}};await f.t.submit({target:form,preventDefault(){}});check(()=>assert.equal(f.calls.length,0));check(()=>assert.equal(f.starts.length,0));check(()=>assert.match(f.feedback.at(-1).message,/運営登録キーを入力/));
+}
+// A late recovery response cannot replace a newer identity chosen meanwhile.
+{
+ const f=fixture();let release;f.handler(()=>new Promise(resolve=>{release=resolve;}));const input={value:'synthetic'},form={id:'social-admin-recovery-form',values:{key:'synthetic'},querySelector:()=>input,reset(){}};
+ const pending=f.t.submit({target:form,preventDefault(){}});f.t.installIdentity({id:'newer-test',token:'n'.repeat(64)},{id:'newer-test',isAdmin:false});release({ok:true,status:200,json:async()=>({ok:true,user:{id:identity.id,isAdmin:true},token:identity.token,recovered:true})});await pending;
+ check(()=>assert.equal(f.t.s.identity.id,'newer-test'));check(()=>assert.equal(f.t.getRecovery(),null));check(()=>assert(f.starts.every(session=>session.id==='newer-test')));
+}
+// A verified operator with no cloud save and no committed local campaign can
+// explicitly choose a new Edo campaign. Merely preparing it writes nothing.
+{
+ const f=fixture({existing:false});let freshPrepared=0;f.context.SengokuBridge.hasStarted=()=>false;f.context.SengokuBridge.getSave=()=>null;
+ f.context.SengokuBridge.prepareNewRecoverySave=meta=>{freshPrepared++;assert.equal(meta.isAdmin,true);assert.equal(meta.clan,'徳川家');return{ok:true,save:copy(save),summary:{clan:'徳川家',home:'edo',turn:0,officers:1}};};
+ await f.t.verifyRecovery({identity,kind:'admin-key'});check(()=>assert(f.t.recoveryView().includes('江戸城から新しく始めて接続')));check(()=>assert.equal(freshPrepared,0));
+ const confirm=f.t.recoveryConfirmation('new-admin');check(()=>assert.equal(freshPrepared,1));check(()=>assert.equal(f.applied.length,0));check(()=>assert.equal(f.storage.get(IDKEY),undefined));check(()=>assert(confirm.description.includes('以前の未保存の進行は復元されません')));check(()=>assert.equal(confirm.confirmLabel,'江戸城で新規開始して接続'));
+ await confirm.onConfirm();check(()=>assert.equal(f.applied[0].value.state.home,'edo'));check(()=>assert.equal(f.applied[0].meta.isAdmin,true));check(()=>assert.equal(f.starts[0].id,identity.id));
+}
+// An ordinary identity must make its castle choice through the start screen.
+{
+ const f=fixture({existing:false,isAdmin:false});f.context.SengokuBridge.hasStarted=()=>false;f.context.SengokuBridge.getSave=()=>null;
+ await f.t.verifyRecovery({identity});check(()=>assert(!f.t.recoveryView().includes('江戸城から新しく始めて接続')));check(()=>assert(f.t.recoveryView().includes('ゲーム画面で最初の城を選んで')));check(()=>assert.throws(()=>f.t.recoveryConfirmation('new-admin'),/条件/));check(()=>assert.equal(f.starts.length,0));
+}
+console.log(`Domain recovery tests passed (${checks} assertions): origin migration guidance, complete/legacy files, authenticated role validation, cloud-first choices, no empty-cloud auto-upload, pairing/key recovery retries, transient key handling, stale identity, pending interruption/rollback, explicit local-progress choice and private-token-free UI. No network requests were made.`);
 })().catch(error=>{console.error(error);process.exitCode=1;});

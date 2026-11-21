@@ -7,7 +7,7 @@ const RES={gold:'金',rice:'兵糧',wood:'木材',stone:'石材',magatama:'勾�
 const s={identity:null,user:null,friends:[],requests:[],unreadMail:0,config:{announcement:DEFAULT,adminClaimed:true,onlineCount:0},configLoaded:false,connected:false,tab:'world',friendId:null,chats:new Map(),guilds:[],guild:null,members:[],mail:[],players:[],adminPlayers:[],adminSection:'chat',staff:[],staffCandidates:[],staffLoaded:false,staffQuery:'',staffPage:1,staffCandidatePage:1,openedMail:null,open:false,meLoading:false,error:'',paused:false,pending:{},confirm:null,onlinePlayers:[],onlineTotal:0,onlineCursor:null,onlineLoaded:false,onlineError:'',pairCode:null,syncStatus:null};
 let dialog,body,launcher,announcement,configTimer=null,pollTimer=null,configBusy=false,pollBusy=false,disposed=false,authEpoch=0,privilegeEpoch=0,onlineTimer=null,onlineEpoch=0,onlineBusy=false,syncUnsubscribe=null;
 const busy=new Set(),controllers=new Set();
-let recovery=null,recoveryEpoch=0,recoveryHeld=false;
+let recovery=null,recoveryEpoch=0,recoveryHeld=false,adminRecoveryRequestId=null;
 const recoveryTools=()=>{if(!global.SengokuDomainRecovery)throw Error('復旧機能を読み込めませんでした。画面を再読み込みしてください。');return global.SengokuDomainRecovery;};
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const $=selector=>dialog?.querySelector(selector);
@@ -34,7 +34,7 @@ async function api(route,{method='GET',data,auth=true,token,background=false,kee
  const loadingId=!background&&method!=='GET'?global.SengokuLoading?.begin('通信を届けています…'):null;
  const controller=new AbortController();controllers.add(controller);const timeout=setTimeout(()=>controller.abort(),12000);
  const headers={Accept:'application/json'};if(data!==undefined)headers['Content-Type']='application/json';
- const requestEpoch=identityEpoch??authEpoch,requestPrivilegeEpoch=privilegeEpoch,implicitIdentity=identityEpoch!==undefined||(token===undefined&&(auth||route==='/session'||route==='/devices/link'));
+ const requestEpoch=identityEpoch??authEpoch,requestPrivilegeEpoch=privilegeEpoch,implicitIdentity=identityEpoch!==undefined||(token===undefined&&(auth||route==='/session'||route==='/devices/link'||route==='/admin/recover'));
  if(implicitIdentity&&requestEpoch!==authEpoch){controllers.delete(controller);clearTimeout(timeout);if(loadingId)global.SengokuLoading?.end(loadingId);const e=Error('接続する領主が変わったため、以前の処理を取り消しました。');e.code='STALE_IDENTITY';throw e;}
  const bearer=token??(auth?s.identity?.token:null);if(bearer)headers.Authorization=`Bearer ${bearer}`;
  try{
@@ -279,6 +279,14 @@ async function submit(event){
    const saved=saveJSON(IDKEY,identity);installIdentity(identity,r.user);await loadMe();render();schedulePoll();await loadChat();toast(saved?'交流の間へようこそ。':'このブラウザに領主情報を保存できません。領主タブからデータを書き出してください。',!saved);
   }
   if(form.id==='social-device-name-form'){global.SengokuCloudSync?.setDeviceName?.(String(data.get('name')||''));toast('この端末の名前を保存しました。');}
+  if(form.id==='social-admin-recovery-form'){
+   const epoch=authEpoch,selection=recoveryEpoch;let key=String(data.get('key')||'');const input=form.querySelector('[name=key]');if(input)input.value='';data.delete?.('key');
+   if(!key||key.length>256)throw Error('初回に使用した運営登録キーを入力してください。');
+   const requestId=adminRecoveryRequestId||(adminRecoveryRequestId=crypto.randomUUID()),payload={key,requestId,deviceName:global.SengokuCloudSync?.getDevice?.().name||'運営を復旧する端末'};key='';
+   const pending=api('/admin/recover',{auth:false,method:'POST',data:payload});payload.key='';const r=await pending;
+   if(epoch!==authEpoch||selection!==recoveryEpoch)throw staleIdentity();const identity={id:r.user?.id,token:r.token};if(!validIdentity(identity)||r.recovered!==true)throw Error('元の運営の領主情報を確認できませんでした。');
+   adminRecoveryRequestId=null;form.reset();await verifyRecovery({identity,save:null,kind:'admin-key'});
+  }
   if(form.id==='social-device-link-form'){
    const code=String(data.get('code')||'').replace(/[\s-]/g,'').trim();if(!/^[A-Za-z0-9]{12}$/.test(code))throw Error('接続コードは12文字で入力してください。');
    const epoch=authEpoch,r=await api('/devices/link',{auth:false,method:'POST',data:{code,deviceName:global.SengokuCloudSync?.getDevice?.().name||'この端末'}});if(epoch!==authEpoch)throw staleIdentity();
@@ -306,11 +314,18 @@ async function submit(event){
 async function importIdentity(file){
  return importRecoveryFiles(file?[file]:[]);
 }
+function localRecoveryChoice(user){
+ if(global.SengokuBridge?.hasStarted?.()===false){
+  if(user?.isAdmin===true)return '<details class="domain-recovery-help"><summary>以前の進行を使わず、運営として新しく始める</summary><p>この端末ではまだゲームを開始していません。以前の未保存の進行は復元されませんが、運営の江戸城と德川家康Uで新しい進行を始められます。</p><button class="social-button" data-social="recovery-connect" data-id="new-admin">江戸城から新しく始めて接続</button></details>';
+  return '<div class="social-notice">この端末ではまだゲームを開始していません。以前の進行を使わず新しく始める場合は、ゲーム画面で最初の城を選んで開始してから、引き継ぎ画面へ戻ってください。<div class="social-actions"><button class="social-button" data-social="close">ゲーム画面へ戻る</button></div></div>';
+ }
+ return '<details class="domain-recovery-help"><summary>以前の進行を使わず、この端末の進行で接続する</summary><p>この選択では、以前の未保存の進行は復元されません。現在この画面にある進行を、この領主の最初のクラウド保存にします。</p><button class="social-button" data-social="recovery-connect" data-id="local">この端末の進行を確認する</button></details>';
+}
 function recoveryView(){
  const helper=global.SengokuDomainRecovery;if(!helper)return empty('引き継ぎ機能を読み込めません','画面を再読み込みしてください。','upload');
  let pending='';
  if(recovery){const r=recovery,verified=r.verified===true,cloud=Boolean(r.snapshot?.save);
-  pending=`<section class="domain-recovery-card domain-recovery-pending"><div class="domain-recovery-status-row"><span class="domain-recovery-step">${r.checking?'領主と保存を確認中':verified?'領主の認証を確認しました':'引き継ぎの確認を再開'}</span>${verified?role(r.user):''}</div><h3>${esc(verified?r.user.name:'選択した領主')}</h3>${verified?`<p>領主ID <code>${esc(r.user.id)}</code></p>`:''}${r.error?`<p class="social-feedback is-error">${esc(r.error)}</p>`:''}${r.checking?'<p>サーバーにある領主と進行を確認しています。現在の保存は変更しません。</p>':!verified?'<p>この画面を閉じず、通信を確認してから続けてください。</p><button class="social-button primary" data-social="recovery-retry">認証と保存を再確認</button>':cloud?`<p>サーバーに保存された進行があります。この進行を読み込み、同じ領主として接続します。${r.save?'選んだファイルの進行は自動で上書き送信しません。':''}</p><p class="social-small">最終保存 ${esc(date(r.snapshot.updatedAt)||'日時未記録')}</p><button class="social-button primary" data-social="recovery-connect" data-id="cloud">サーバーの進行で接続</button>`:r.prepared?`<p>サーバーにはまだゲームの進行が保存されていません。選んだゲームセーブを読み込み、この領主の進行として同期します。</p>${helper.summaryHtml(r.prepared.summary)}<button class="social-button primary" data-social="recovery-connect" data-id="file">このセーブを引き継ぐ</button>`:`<p><strong>領主の登録は確認できましたが、サーバーにゲームの進行は未保存です。</strong>以前の城・武将・資源を戻すには、以前の端末から書き出したゲームセーブも必要です。</p><button class="social-button primary" data-social="recovery-files">ゲームセーブを追加する</button><details class="domain-recovery-help"><summary>以前の進行を使わず、この端末の進行で接続する</summary><p>この選択では、以前の未保存の進行は復元されません。現在この画面にある進行を、この領主の最初のクラウド保存にします。</p><button class="social-button" data-social="recovery-connect" data-id="local">この端末の進行を確認する</button></details>`}<div class="social-right"><button class="social-text-button" data-social="recovery-clear" ${r.checking?'disabled':''}>選んだ引き継ぎを取り消す</button></div></section>`;
+  pending=`<section class="domain-recovery-card domain-recovery-pending"><div class="domain-recovery-status-row"><span class="domain-recovery-step">${r.checking?'領主と保存を確認中':verified?'領主の認証を確認しました':'引き継ぎの確認を再開'}</span>${verified?role(r.user):''}</div><h3>${esc(verified?r.user.name:'選択した領主')}</h3>${verified&&r.kind==='admin-key'?'<p class="domain-recovery-status">元の運営の登録を確認しました。使うゲーム進行を選ぶと、元の領主として接続が完了します。</p>':''}${verified?`<p>領主ID <code>${esc(r.user.id)}</code></p>`:''}${r.error?`<p class="social-feedback is-error">${esc(r.error)}</p>`:''}${r.checking?'<p>サーバーにある領主と進行を確認しています。現在の保存は変更しません。</p>':!verified?'<p>この画面を閉じず、通信を確認してから続けてください。</p><button class="social-button primary" data-social="recovery-retry">認証と保存を再確認</button>':cloud?`<p>サーバーに保存された進行があります。この進行を読み込み、同じ領主として接続します。${r.save?'選んだファイルの進行は自動で上書き送信しません。':''}</p><p class="social-small">最終保存 ${esc(date(r.snapshot.updatedAt)||'日時未記録')}</p><button class="social-button primary" data-social="recovery-connect" data-id="cloud">サーバーの進行で接続</button>`:r.prepared?`<p>サーバーにはまだゲームの進行が保存されていません。選んだゲームセーブを読み込み、この領主の進行として同期します。</p>${helper.summaryHtml(r.prepared.summary)}<button class="social-button primary" data-social="recovery-connect" data-id="file">このセーブを引き継ぐ</button>`:`<p><strong>領主の登録は確認できましたが、サーバーにゲームの進行は未保存です。</strong>以前の城・武将・資源を戻すには、以前の端末から書き出したゲームセーブも必要です。</p><button class="social-button primary" data-social="recovery-files">ゲームセーブを追加する</button>${localRecoveryChoice(r.user)}`}<div class="social-right"><button class="social-text-button" data-social="recovery-clear" ${r.checking?'disabled':''}>選んだ引き継ぎを取り消す</button></div></section>`;
  }
  const interrupted=recoveryHeld?`<div class="social-notice"><strong>前回の引き継ぎの保存が完了していません。</strong><br>自動同期を停止しています。サーバーの保存を確認し、ゲームセーブを選び直すか、この端末の進行を確認してから接続してください。${!recovery?'<div class="social-actions"><button class="social-button primary" data-social="recovery-retry">認証と保存を再確認</button></div>':''}</div>`:'';
  return interrupted+helper.guidance({adminRegistered:s.configLoaded&&s.config.adminClaimed,hasIdentity:Boolean(s.identity)&&!recoveryHeld})+pending+linkForm();
@@ -328,7 +343,9 @@ async function verifyRecovery(candidate){
   if(String(me.user?.id)!==String(stage.identity.id))throw Error('領主IDと認証情報が一致しません。');
   const snapshot=await api('/sync',{token:stage.identity.token,background:true});recoveryGuard(stage,epoch);
   if(String(snapshot.user?.id)!==String(stage.identity.id))throw Error('接続先の領主と保存データが一致しません。');
-  stage.user={...snapshot.user,isAdmin:snapshot.user.isAdmin===true,isStaff:snapshot.user.isStaff===true};stage.snapshot=snapshot;stage.verified=true;
+  stage.user={...snapshot.user,isAdmin:snapshot.user.isAdmin===true,isStaff:snapshot.user.isStaff===true};stage.snapshot=snapshot;
+  if(stage.kind==='admin-key'&&!stage.user.isAdmin)throw Error('現在の運営権限を確認できませんでした。認証と保存を再確認してください。');
+  stage.verified=true;
   if(stage.save&&!snapshot.save)stage.prepared=prepareRecovery(stage.save,stage.user);
   return stage;
  }catch(error){if(error.code==='STALE_IDENTITY')throw error;stage.error=error.message||'領主と保存を確認できませんでした。';throw error;}
@@ -340,12 +357,15 @@ async function importRecoveryFiles(files){
 }
 function recoveryConfirmation(mode){
  const stage=recovery,epoch=authEpoch;if(!stage?.verified||stage.checking)throw Error('先に領主と保存を確認してください。');
- if(mode!=='cloud'&&mode!=='file'&&mode!=='local')throw Error('引き継ぐ進行を選んでください。');
+ if(!['cloud','file','local','new-admin'].includes(mode))throw Error('引き継ぐ進行を選んでください。');
  const cloud=Boolean(stage.snapshot?.save);if(cloud&&mode!=='cloud'||!cloud&&mode==='cloud')throw Error('保存内容が変わりました。もう一度確認してください。');
  let selected=null,prepared=null;
- if(mode!=='cloud'){selected=mode==='file'?stage.save:global.SengokuBridge?.getSave?.();if(mode==='local'&&recoveryHeld){try{const raw=localStorage.getItem('sengoku-tento-save-v2');if(raw)selected=JSON.parse(raw);}catch(_){throw Error('保存済みの進行を確認できません。ゲームセーブを選び直してください。');}}prepared=prepareRecovery(selected,stage.user);}
- const label=mode==='cloud'?'サーバーの進行で接続':mode==='file'?'セーブを引き継いで接続':'この端末の進行で接続';
- return{title:'この領主として再接続しますか',description:mode==='local'?'以前の未保存の進行は復元されません。表示しているこの端末の進行を最初のクラウド保存にします。':mode==='cloud'?'サーバーの最新の進行を読み込みます。この端末の現在の進行は読み込み前にバックアップします。':'選んだゲームセーブを読み込み、同じ領主の進行として自動同期を始めます。',details:`<dl class="social-confirm-details"><dt>領主</dt><dd>${esc(stage.user.name)} ${role(stage.user)}</dd><dt>ID</dt><dd>${esc(stage.user.id)}</dd></dl>${prepared?recoveryTools().summaryHtml(prepared.summary):''}`,confirmLabel:label,onConfirm:()=>commitRecovery(stage,epoch,mode,selected)};
+ if(mode==='new-admin'){
+  if(stage.user.isAdmin!==true||global.SengokuBridge?.hasStarted?.()!==false)throw Error('新しい運営の進行を始める条件を確認してください。');
+  const fresh=global.SengokuBridge?.prepareNewRecoverySave?.({isAdmin:true,clan:stage.user.clan});if(!fresh?.ok)throw Error(fresh?.message||'新しい運営のセーブを準備できませんでした。画面を再読み込みしてください。');selected=fresh.save;prepared=prepareRecovery(selected,stage.user);
+ }else if(mode!=='cloud'){selected=mode==='file'?stage.save:global.SengokuBridge?.getSave?.();if(mode==='local'&&recoveryHeld){try{const raw=localStorage.getItem('sengoku-tento-save-v2');if(raw)selected=JSON.parse(raw);}catch(_){throw Error('保存済みの進行を確認できません。ゲームセーブを選び直してください。');}}prepared=prepareRecovery(selected,stage.user);}
+ const label=mode==='cloud'?'サーバーの進行で接続':mode==='file'?'セーブを引き継いで接続':mode==='new-admin'?'江戸城で新規開始して接続':'この端末の進行で接続';
+ return{title:'この領主として再接続しますか',description:mode==='new-admin'?'以前の未保存の進行は復元されません。運営の江戸城と德川家康Uで、新しい進行を始めます。':mode==='local'?'以前の未保存の進行は復元されません。表示しているこの端末の進行を最初のクラウド保存にします。':mode==='cloud'?'サーバーの最新の進行を読み込みます。この端末の現在の進行は読み込み前にバックアップします。':'選んだゲームセーブを読み込み、同じ領主の進行として自動同期を始めます。',details:`<dl class="social-confirm-details"><dt>領主</dt><dd>${esc(stage.user.name)} ${role(stage.user)}</dd><dt>ID</dt><dd>${esc(stage.user.id)}</dd></dl>${prepared?recoveryTools().summaryHtml(prepared.summary):''}`,confirmLabel:label,onConfirm:()=>commitRecovery(stage,epoch,mode,selected)};
 }
 async function commitRecovery(stage,epoch,mode,selected){
  recoveryGuard(stage,epoch);
