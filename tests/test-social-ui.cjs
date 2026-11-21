@@ -85,7 +85,7 @@
  handler=async()=>({ok:true,user:target,staff:[],action:'appoint',idempotent:true});await confirmation.onConfirm();assert.equal(t.s.staffCandidates[0].isStaff,false,'Replaying an older appointment displays the current dismissed state');
  t.s.staffCandidates.push({id:'staff-actor',name:'運営本人',isAdmin:true});assert.throws(()=>t.staffConfirmation('staff-actor','appoint'));
  let lateRoster;handler=()=>new Promise(resolve=>{lateRoster=resolve;});const privateRoster=t.loadStaff();const pendingConfirm=t.staffConfirmation(target.id,'appoint');t.acceptUser({id:'staff-actor',name:'連絡係',isAdmin:false,isStaff:false},{fromSync:true});lateRoster({ok:true,staff:[{...target,isStaff:true}]});await privateRoster;assert.equal(t.s.staff.length,0);const deniedCount=requests.length;await assert.rejects(pendingConfirm.onConfirm(),/運営権限/);assert.equal(requests.length,deniedCount,'A revoked owner cannot confirm an old appointment');
- assert(t.role({isStaff:true}).includes('スタッフ'));assert(t.role({isAdmin:true,isStaff:true}).includes('運営'));assert(!t.role({isAdmin:true,isStaff:true}).includes('スタッフ'));
+ assert.equal(t.role({isStaff:true}),'');assert.equal(t.role({isAdmin:true,isStaff:true}),'');assert.equal(t.role({isAdmin:false,isStaff:false}),'');
  // Exercise the real form submit and confirmation path, including lost-response
  // retries, legacy zero amounts, boundaries and staff-only permission rejection.
  t.acceptUser({id:'staff-actor',name:'運営本人',clan:'徳川家',isAdmin:true,isStaff:false});t.s.tab='admin';t.s.adminSection='mail';

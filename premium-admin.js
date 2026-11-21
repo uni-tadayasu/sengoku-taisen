@@ -14,7 +14,7 @@
   const date = value => { const d = new Date(value); return value && Number.isFinite(d.getTime()) ? d.toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', year: 'numeric', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '日時不明'; };
   function cleanHold(value) {
     if (!value || !Object.hasOwn(SCOPES, value.scope) || !identifier(value.objectId) || !value.objectId.startsWith(SCOPES[value.scope][0]) || !safeInteger(value.revision) || !identifier(value.eventId) || !value.eventId.startsWith('evt_') || typeof value.reason !== 'string' || !value.reason || value.reason.length > 200 || !Array.isArray(value.players)) return null;
-    const players = value.players.map(player => player && typeof player.id === 'string' && /^[A-Za-z0-9_-]{1,150}$/.test(player.id) && typeof player.name === 'string' ? { id: player.id, name: player.name.slice(0, 120) } : null);
+    const players = value.players.map(player => player && typeof player.id === 'string' && /^[A-Za-z0-9_-]{1,150}$/.test(player.id) && typeof player.name === 'string' ? { id: player.id, name: player.name.slice(0, 120), appearance: global.SengokuPremiumRuntime?.cleanAppearance?.(player.appearance) || null } : null);
     if (players.some(player => !player)) return null;
     return { scope: value.scope, objectId: value.objectId, revision: value.revision, eventId: value.eventId, reason: value.reason, createdAt: typeof value.createdAt === 'string' ? value.createdAt : '', updatedAt: typeof value.updatedAt === 'string' ? value.updatedAt : '', canRelease: value.canRelease === true && Object.hasOwn(SOFT, value.reason), players };
   }
@@ -135,7 +135,7 @@
     return '<dl class="premium-admin-identifiers"><div><dt>決済ID</dt><dd><code>' + esc(hold.objectId) + '</code></dd></div><div><dt>イベントID</dt><dd><code>' + esc(hold.eventId) + '</code></dd></div><div><dt>確認対象の版</dt><dd>' + esc(hold.revision) + '</dd></div></dl>';
   }
   function playersMarkup(players) {
-    return players.length ? '<ul class="premium-admin-players">' + players.map(player => '<li><strong>' + esc(player.name) + '</strong><code>' + esc(player.id) + '</code></li>').join('') + '</ul>' : '<p class="premium-admin-note">関連する領主はありません。</p>';
+    return players.length ? '<ul class="premium-admin-players">' + players.map(player => '<li><strong>' + (global.SengokuPremiumRuntime?.nameMarkup?.(player.name, player.appearance) || esc(player.name)) + '</strong><code>' + esc(player.id) + '</code></li>').join('') + '</ul>' : '<p class="premium-admin-note">関連する領主はありません。</p>';
   }
   function holdMarkup(hold, locked = false) {
     return '<article class="premium-admin-hold"><div class="premium-admin-hold-heading"><div><span class="premium-admin-label">' + esc(SCOPES[hold.scope][1]) + '</span><h2>' + esc(SOFT[hold.reason] || HARD[hold.reason] || '決済情報の確認が必要') + '</h2></div><span class="premium-admin-state' + (hold.canRelease ? ' is-reviewable' : '') + '">' + (hold.canRelease ? '運営による確認待ち' : '閲覧のみ') + '</span></div><p class="premium-admin-code"><code>' + esc(hold.reason) + '</code></p>' + identifiersMarkup(hold) + playersMarkup(hold.players) + '<div class="premium-admin-hold-footer"><p class="premium-admin-note">更新：' + esc(date(hold.updatedAt)) + ' JST</p>' + (hold.canRelease ? '<button type="button" class="premium-admin-button" data-premium-admin="select" data-hold-key="' + esc(holdKey(hold)) + '"' + (locked ? ' disabled' : '') + '>内容を確認する</button>' : '<p class="premium-admin-note">この保留はここから解除できません。</p>') + '</div></article>';

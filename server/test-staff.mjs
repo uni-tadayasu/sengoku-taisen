@@ -96,16 +96,16 @@ try{
   await api('/world-clock',{method:'PATCH',token:a.token,body:{running:false,revision:0},expected:403});
   assert.equal((await api('/admin/claim',post(a.token,{key:env.SENGOKU_ADMIN_KEY},409))).data.error.code,'ADMIN_CLAIMED');
   assert.equal(database.prepare("SELECT value FROM settings WHERE key='adminUserId'").get().value,operator.user.id);
-  const ownerMessage=(await api('/chat',post(operator.token,{channel:'admin',text:'ローカル検証用の運営軍議'}))).data.message;assert(ownerMessage.isAdmin);assert(!ownerMessage.isStaff);
+  const ownerMessage=(await api('/chat',post(operator.token,{channel:'admin',text:'ローカル検証用の運営軍議'}))).data.message;assert.equal(Object.hasOwn(ownerMessage,'isAdmin'),false);assert.equal(Object.hasOwn(ownerMessage,'isStaff'),false);
   assert.equal((await adminRead(a)).messages[0].id,ownerMessage.id);
   const staffMessage=(await api('/chat',post(a.token,{channel:'admin',text:'ローカル検証用の支援報告',isAdmin:true,userId:operator.user.id}))).data.message;
-  assert.equal(staffMessage.userId,a.user.id);assert.equal(staffMessage.isAdmin,false);assert.equal(staffMessage.isStaff,true);
+  assert.equal(staffMessage.userId,a.user.id);assert.equal(Object.hasOwn(staffMessage,'isAdmin'),false);assert.equal(Object.hasOwn(staffMessage,'isStaff'),false);
   assert.equal((await adminRead(operator)).messages.length,2);await adminRead(b,403);
   assert.equal((await api('/chat?channel=world',{token:b.token})).data.messages.length,0,'staff chat never appears in world chat');
   await presence(a.token,'staff-device',true);
-  const online=(await api('/online')).data.players.find(p=>p.id===a.user.id);assert(online.isStaff);assert(!online.isAdmin);
-  const found=(await api('/players?q='+encodeURIComponent('支援スタッフ'),{token:operator.token})).data.players.find(p=>p.id===a.user.id);assert(found.isStaff);
-  const field=(await api('/field',{token:b.token})).data.players.find(p=>p.playerId===a.user.id);assert(field.isStaff);assert(!field.isAdmin);assert.equal(field.homeCastleId,'sunpu');assert.equal(field.attackable,true);assert.equal(field.battleMode,'reward');assert.equal(field.capturable,false);
+  const online=(await api('/online')).data.players.find(p=>p.id===a.user.id);assert.equal(Object.hasOwn(online,'isStaff'),false);assert.equal(Object.hasOwn(online,'isAdmin'),false);
+  const found=(await api('/players?q='+encodeURIComponent('支援スタッフ'),{token:operator.token})).data.players.find(p=>p.id===a.user.id);assert.equal(Object.hasOwn(found,'isStaff'),false);
+  const field=(await api('/field',{token:b.token})).data.players.find(p=>p.playerId===a.user.id);assert.equal(Object.hasOwn(field,'isStaff'),false);assert.equal(Object.hasOwn(field,'isAdmin'),false);assert.equal(field.homeCastleId,'sunpu');assert.equal(field.attackable,true);assert.equal(field.battleMode,'reward');assert.equal(field.capturable,false);
   await lease(b.token,'ordinary-device');
   const attackerGame=GameEngine.fromSave(fresh(),GAME_OFFICERS);attackerGame.applyWorldClock((await api('/world-clock')).data.clock);
   const attackerSaved=(await api('/sync',write(b.token,'ordinary-device',0,JSON.parse(attackerGame.exportSave())))).data;
@@ -156,6 +156,6 @@ try{
   assert.equal((await me(b)).isStaff,memberCount(b.user.id)===1);assert.equal((await me(b)).isAdmin,false);
   const roster=(await api('/admin/staff',{token:operator.token})).data.staff;assert(roster.every(p=>p.isStaff&&!p.isAdmin));assert(!JSON.stringify(roster).includes('token'));
   assert.equal(database.prepare("SELECT value FROM settings WHERE key='adminUserId'").get().value,operator.user.id);
-  console.log(JSON.stringify({ok:true,calls,checks:['separate server-owned staff and operator roles','operator-only appoint and dismiss','no self appointment or authority-field escalation','idempotent and concurrent role operations','old retry cannot reverse later dismissal','staff chat read/write with role badges','no privileged assets or administrative controls for staff','Sunpu reward-combat defeat leaves staff save, revision, shared base and personal backup untouched','paired devices inherit and lose staff access','fresh role on me/sync/online/search/field','revocation between authentication and SQL read/write','transactional primary-operator guard','rollback and safe role-operation retry','single primary operator preserved']},null,2));
+  console.log(JSON.stringify({ok:true,calls,checks:['separate server-owned staff and operator roles','operator-only appoint and dismiss','no self appointment or authority-field escalation','idempotent and concurrent role operations','old retry cannot reverse later dismissal','staff chat read/write without public role badges','no privileged assets or administrative controls for staff','Sunpu reward-combat defeat leaves staff save, revision, shared base and personal backup untouched','paired devices inherit and lose staff access','private roles on me/sync and concealed roles on online/search/field','revocation between authentication and SQL read/write','transactional primary-operator guard','rollback and safe role-operation retry','single primary operator preserved']},null,2));
 }finally{Date.now=originalNow;database.close();}
 

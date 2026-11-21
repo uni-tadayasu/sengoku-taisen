@@ -58,7 +58,7 @@ test('campaign mount supplies all castles, castle levels, home badges and access
   assert.equal(enemy.tooltip.title,target.name);assert(enemy.tooltip.description.includes('城郭 Lv.'+target.level));
   assert(enemy.tooltip.detail.includes(target.troops.toLocaleString('ja-JP')+'兵'));
   assert(enemy.tooltip.detail.includes(point.lat.toFixed(4)+'°N '+point.lon.toFixed(4)+'°E'));
-  assert(h.appearance('edo').label.includes('運営専用'));assert(h.appearance('sunpu').label.includes('スタッフ専用'));
+  for(const id of ['edo','sunpu']){assert(h.appearance(id).label.includes('選択不可'));assert(!/運営|スタッフ/.test(h.appearance(id).label));assert(batch.points.find(point=>point.id===id).disabled);}
 });
 
 test('real castle construction keeps the current cell until completion and updates it through the existing controller',()=>{

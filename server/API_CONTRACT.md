@@ -8,15 +8,18 @@ No cookies are used. Never put a token or pairing code in a URL. POST/PUT/PATCH/
 
 ```js
 user = {
-  id: "u_…", name: "領主名", clan: "織田家", isAdmin: false, isStaff: false,
+  id: "u_…", name: "領主名", clan: "織田家",
   guildId: null, guildName: null, guildRole: null, online: true, avatarVersion: null,
-  evaluation: {version:1,score:0,maxScore:100000,rankId:"court-0",rankName:"無位",rankIndex:0}
+  evaluation: {version:1,score:0,maxScore:100000,rankId:"court-0",rankName:"無位",rankIndex:0},
+  appearance: {nameplate:null,town:null,badge:null,ownedProducts:[]}
 }
+// Self identity and authorized management add isAdmin:boolean / isStaff:boolean.
+// General user lists and messages omit site permissions.
 // guildRole is null, "owner", "officer", or "member".
 // online means at least one explicitly foreground device heartbeat is newer than 90 seconds.
 // Authenticated reads and save writes alone never make a player online.
-message = {id: 1, userId: "u_…", name: "領主名", avatarVersion: null, text: "…", createdAt: "2026-11-21T00:00:00.000Z", isAdmin: false, isStaff: false, evaluation}
-guild = {id:"g_…", name:"…", ownerId:"u_…", ownerName:"…", ownerEvaluation:evaluation, memberCount:1, maxMembers:50, createdAt:"…"}
+message = {id: 1, userId: "u_…", name: "領主名", avatarVersion: null, text: "…", createdAt: "2026-11-21T00:00:00.000Z", evaluation, appearance}
+guild = {id:"g_…", name:"…", ownerId:"u_…", ownerName:"…", ownerEvaluation:evaluation, ownerAppearance:appearance, memberCount:1, maxMembers:50, createdAt:"…"}
 gift = {gold: 100, rice: 200, wood: 50, stone: 50, magatama: 3000}
 error = {ok:false, error:{code:"AUTH_REQUIRED", message:"日本語の説明", retryAfter:5}}
 ```
@@ -43,24 +46,72 @@ An existing identity without a saved game receives score `0` and 無位. An unre
 
 The server reads the latest committed normalized save, applies current roles and completed shared staff facilities/castle growth, and projects a pending cycle's retained home. This calculation performs no gameplay writes, monthly simulation, reward grants, lease renewal or formation changes. Ordinary personal progress becomes public after save synchronization. One response batches and deduplicates its referenced player IDs; repeated mentions of one player receive one calculated value. No schema migration or saved title cache is required.
 
-Chat GET and letter inbox/thread GET responses additionally include `playerEvaluations:[{playerId,evaluation}]`, even when a message delta is empty. Clients use these entries to refresh already rendered authors. Chat covers recent authors in the selected room's latest 100 messages; a letter thread covers its explicit participants and recent authors in its latest 100 messages, with existing access checks. Neither scans unrelated conversations. Receipt, battle and mail bodies remain immutable; the added evaluation fields describe current titles, including on retries and historical views. A system-mail sender remains the system, while its participant row identifies the two actual lords.
+Chat GET and letter inbox/thread GET responses additionally include `playerEvaluations:[{playerId,name,evaluation,appearance}]`, even when a message delta is empty. Clients use these entries to refresh already rendered authors. Chat covers recent authors in the selected room's latest 100 messages; a letter thread covers its explicit participants and recent authors in its latest 100 messages, with existing access checks. Neither scans unrelated conversations. Receipt, battle and mail bodies remain immutable; the added evaluation fields describe current titles, including on retries and historical views. A system-mail sender remains the system, while its participant row identifies the two actual lords.
 
 ## Identity and public configuration
 
 | Method / path | Body / query | Result fields, in addition to `ok` |
 |---|---|---|
-| GET `/health` | none | `status:"ready"`, `version:"3.11.0"`, `features:{trades:true,moderation:true}` |
-| GET `/config` | none | `version:"3.11.0"`, `features:{trades:true,moderation:true}`, `announcement:string`, `adminClaimed:boolean`, `adminRecoveryAvailable:boolean`, `onlineCount:number`, `clock` |
+| GET `/health` | none | `status:"ready"`, `version:"3.15.0"`, `features:{trades:true,moderation:true,premium:true}` |
+| GET `/config` | none | `version:"3.15.0"`, `features:{trades:true,moderation:true,premium:true}`, `announcement:string`, `adminClaimed:boolean`, `adminRecoveryAvailable:boolean`, `onlineCount:number`, `clock` |
 | POST `/session` | `{name?,clan?}` | `token:string`, `user` |
 | GET `/me` | none | `user`, `friends:user[]`, `requests:[{id,name,clan,avatarVersion,evaluation,direction:"incoming"|"outgoing",createdAt}]`, `unreadMail:number` |
-| PATCH `/profile` | `{name}` | `user` |
+| PATCH `/profile` | `{name,expectedName?}` | `user` |
 | GET `/players` | `?q=検索語` (2–24 chars) | `players:user[]` (up to 30, excludes requester) |
 
 The health read also verifies the trade and moderation tables, without creating or changing them. Names and clan labels have a 24-character limit. Names are unique after Unicode compatibility normalization and case folding.
-The distinct clan name **`德川家`** is reserved for authenticated operators and staff. Ordinary players may use **`徳川家`**. An unauthenticated session or ordinary profile request attempting to set the reserved name returns 403 `ADMIN_CLAN_REQUIRED`. Operator and staff public identities report `德川家`, while the chosen lord name remains unchanged. The role flags remain separate: staff have Sunpu and never gain Edo or Ieyasu U from the family label. A dismissed staff identity returns to its backed-up original family; a legacy ordinary reserved label without such a backup is projected as `徳川家`.
+The distinct clan name **`德川家`** is reserved for authenticated operators and staff. Ordinary players may use **`徳川家`**. An unauthenticated session or ordinary profile request attempting to set the reserved name returns 403 `ADMIN_CLAN_REQUIRED`. Private self and authorized management identities retain `德川家`; general public identities display `徳川家`, while the chosen lord name remains unchanged. The role flags remain separate: staff have Sunpu and never gain Edo or Ieyasu U from the family label. A dismissed staff identity returns to its backed-up original family; a legacy ordinary reserved label without such a backup is projected as `徳川家`.
 If no name is supplied, the server chooses `旅の領主` plus a random suffix.
 The 256-bit anonymous game token is a 43-character base64url string. The server stores only its SHA-256 hash. A session-creation token is returned only when creating that identity. Additional per-device tokens are issued through successful pairing or verified recovery of the original operator identity.
 Store the token in localStorage and offer an explicit identity JSON export/import for recovery. An exported original token remains valid after additional devices are linked or the operator recovers access. A game save contains game progress; it does not contain the bearer identity and cannot confer operator privileges. An ordinary identity requires a surviving authenticated device or identity-token backup. The sole existing operator can also use its original registration key through `/admin/recover`; the key never transfers operator rights to a new identity.
+
+### Changing the authenticated lord name (3.15.0)
+
+`PATCH /profile` updates only `users.name` and its unique comparison key for the
+identity authenticated by the bearer token. Send `{name,expectedName}` using the
+currently displayed `user.name` as `expectedName`. Successful responses are
+`{ok:true,user}` with the same player ID and the current canonical name,
+permissions, guild, evaluation and purchase appearance. Clients must confirm
+that the returned `user.id` still matches their active identity before accepting
+it, then refresh their current identity and cached participant labels.
+
+Names use the existing registration validator: normalize to NFC, trim outer
+whitespace, then require 1–24 Unicode code points. Unsupported controls
+`U+0000–0008`, `U+000B–000C`, `U+000E–001F` and `U+007F` are rejected. Invalid
+input is 400 `INVALID_INPUT`. The unique key uses NFKC and Japanese-locale
+lowercasing, so width/case-compatible duplicates return 409 `NAME_TAKEN`.
+No name is generated for an empty rename request.
+
+The update atomically requires that the stored name still equals `expectedName`
+or already equals the requested name. A competing different edit returns 409
+`PROFILE_CHANGED`; the UI should reload the current name before asking for a new
+change. Retrying the same final name after a lost response succeeds, while an old
+retry cannot overwrite a later different name. `expectedName` remains optional
+for older clients; new clients should always send it. No request ID or new schema
+is required. Different-name attempts share a per-identity budget of 20 per real
+minute across linked devices; an unchanged-name retry does not consume that
+budget. A blocked budget returns 429 `RATE_LIMITED` with `retryAfter` seconds.
+
+This is an identity-profile edit and does not acquire or require a gameplay
+writer lease. It never updates the game save/revision, lease, tokens, player ID,
+premium facts, guild membership or financial records. Account BAN and the
+commit-time account generation remain enforced, including BAN/unban races.
+Client-supplied player IDs or role fields cannot select another account or grant
+permissions; the only updated fields are the authenticated account's name/key.
+
+Current names are projected into profiles, guild owners/members, trade parties,
+chat authors, letter authors/peers, field relationships and battle participants,
+mail participant rows, public achievements, guild ledgers and authorized shared
+construction attribution. Stored message bodies, battle/financial receipts and
+mail text remain unchanged. Chat/letter `playerEvaluations[].name` refreshes
+already cached authors even on an empty delta. A missing historical player has
+no invented current name. Display names and their existing evaluation references
+share a batched lookup; name-only identities need no game-save normalization.
+
+`node scripts/test-profile-name.mjs` checks normalization, duplicate and concurrent
+edits, lost responses, account generations, throttling, current historical labels,
+unchanged save/purchase/authentication records and linked devices using local
+fixtures only.
 
 ## Player photo avatars
 
@@ -277,7 +328,7 @@ fieldPlayer = {
   level:48, keepLevel:32,
   defenseTroops:3750, defensePower:4600,
   armySummary:{officerCount:3,rankPower:1.08},
-  isAdmin:false, isStaff:false, self:false, online:false,
+  self:false, online:false, evaluation, appearance,
   relationship:"neutral", // self | allied | incoming | outgoing | neutral
   protectedUntilElapsedMs:0, attackable:true, attackReason:""
 };
@@ -294,7 +345,7 @@ relationship = {
 
 GET `/field` sorts and paginates **players** by an opaque player-ID cursor, with a limit from 1 to 100 (default 50). `players` remains one home entry per player and `total` remains the player count. `targets` expands the same page to each home plus owned Nijo/Osaka/Nagoya, without duplicating a home. Clients must key selections by `playerId` and `targetCastleId`, use the returned cursor, and not infer a player count from `targets.length`. At a cycle boundary, pending settlement projects only the restored home; expired holdings are not attackable.
 
-Only public names, roles, clan, home/target, development levels, aggregate defense and current presence are exposed. There are no private balances, saves, devices, tokens, pairing codes or IPs. A guest sees neutral relationships, `self:false` and `attackable:false`. Optional authentication supplies the requester's relationships and eligibility. Roles come from server-owned operator and staff records. Protection from **capture** belongs to Edo and Sunpu; an operator's or staff member's other three metropolitan holdings can still be captured.
+Only public names, display clan, home/target, development levels, aggregate defense, current presence, evaluation and cosmetic appearance are exposed; site roles are omitted. There are no private balances, saves, devices, tokens, pairing codes or IPs. A guest sees neutral relationships, `self:false` and `attackable:false`. Optional authentication supplies the requester's relationships and eligibility. Internal combat permissions still come from server-owned operator and staff records. Protection from **capture** belongs to Edo and Sunpu; an operator's or staff member's other three metropolitan holdings can still be captured.
 
 `level` is the target's castle level: Edo/Sunpu up to 64, Nijo/Osaka/Nagoya up to 48, other castles up to 32. Home artwork uses the independent completed `keepLevel` from personal `state.buildings.keep`, or authoritative shared `staff_base.buildings.keep` for Sunpu. The operator role takes precedence over staff membership. Missing or invalid home keep levels project as 1; finite numeric legacy values are floored and bounded to 1–32. A missing shared value never exposes personal keep development. Holdings use their castle development for artwork, bounded to the final stage 32. Facilities persist across territory cycles.
 
@@ -311,7 +362,7 @@ rules = {
   attackCooldownMs:60000, defenderProtectionMs:60000,
   proposalLifetimeMs:600000, allianceDurationMs:360000,
   maxLootPerResource:500, maxLootFraction:0.05,
-  maxDefenderLossFraction:0.1, operatorProtected:false, staffProtected:false,
+  maxDefenderLossFraction:0.1,
   targetCastles:true, specialBaseBattles:true,
   captureCastles:["nijo","osaka","nagoya"],
   uncapturableCastles:["edo","sunpu"],
@@ -622,11 +673,11 @@ The primary operator can appoint existing player identities as support staff. Th
 | GET `/admin/staff` | Primary operator bearer token | `{ok,staff:[staffMember]}` |
 | POST `/admin/staff` | Primary operator bearer token; `{targetPlayerId,action:"appoint"\|"dismiss",requestId}` | `{ok,user,staff:[staffMember],action,idempotent}` |
 
-`staffMember` contains the public `user` fields plus `appointedAt:ISO` and `appointedBy:operatorPlayerId`. The roster is sorted by appointment time and player ID. The POST response's `user` is the **target** player's current public identity, not the operator who made the request. A client must not replace its logged-in identity with this object. Resolve candidates using the existing authenticated `GET /players?q=…` search (2–24 characters), then submit the exact returned ID.
+`staffMember` contains the user presentation fields plus private `isAdmin`/`isStaff`, `appointedAt:ISO` and `appointedBy:operatorPlayerId` on this authorized management route. The roster is sorted by appointment time and player ID. The POST response's `user` is the **target** player's current public identity, not the operator who made the request. A client must not replace its logged-in identity with this object. Resolve candidates using the existing authenticated `GET /players?q=…` search (2–24 characters), then submit the exact returned ID.
 
 The operator cannot appoint/dismiss itself. A target must already exist, and unknown action/authority fields are rejected. The initial operator registration remains single-owner; staff cannot appoint others, dismiss themselves through this endpoint or become the primary operator by submitting the registration key after a claim exists. Staff appointments do not require a game save or a writer lease because they first change server identity permissions; the next authoritative synchronization safely migrates or restores the campaign.
 
-Every public `user` object, including `/me`, `/sync`, linked-device results, `/players` and `/online`, includes `isStaff:boolean`. Public field player summaries and chat messages also include it. `isAdmin` and `isStaff` are separate; the primary operator is represented with `isAdmin:true,isStaff:false`. Staff badges disclose only the role, not device or private account data. Imported save flags, profile changes and request-body flags cannot set either role.
+The account's own `user` on `/me`, `/sync` and linked-device results retains `isStaff:boolean` and `isAdmin:boolean`; authorized management results retain them as well. General `/players`, `/online`, field, guild and chat identities omit both fields. The primary operator's private identity is represented with `isAdmin:true,isStaff:false`. Imported save flags, profile changes and request-body flags cannot set either role.
 
 A stable `requestId` is required; supply and retain a UUID for each intended role change and reuse it on retries. Omitting it returns HTTP 400 `INVALID_INPUT` without changing membership. The server atomically records the acting operator, target and action with the membership mutation. The same ID and content never repeat an action: an old appointment retried after a later dismissal returns the current `isStaff:false` and `idempotent:true`, without reappointing the player. Reusing that ID with a different target/action returns HTTP 409 `REQUEST_ID_REUSED`. A new request ID represents a new intended operation. Appointing an existing staff member or dismissing a nonmember is a safe no-op and reports `idempotent:true`; these no-ops do not reset appointment timestamps.
 
@@ -790,7 +841,7 @@ The engine receives roles only through trusted `fromSave`/constructor options `{
 
 On the first authoritative save read after appointment, a guarded transaction preserves a full canonical personal campaign, the membership term and its admission time, then fixes the live home at Sunpu. Before capture reset and after accepted personal castle progress, the preserved original home's development is updated in the same successful save transaction. Personal construction started before appointment continues to complete into the personal facility copy. A shared completion cannot overwrite it.
 
-Dismissal records the world elapsed time atomically with the role change. Restoration advances the staff period only up to that exact time using historical shared levels, then returns to the original personal **clan and home** with retained development. Ownership is renamed using the exact previously owned set in both directions. NPC castles already carrying the destination family name are neutralized before the rename, so neither ordinary Tokugawa land nor a former family's NPC land is accidentally acquired. Current-role public identity, field, online, search, friend and achievement projections use the staff family immediately; dismissal can project the original family from its private backup before the first restoration sync. Current individual currencies, officers, research, jobs, gifts and remaining territory are retained; invalid governors are removed and command capacity is clamped to the restored personal keep. Shared-only castle ownership is removed. Reappointment has a new unique term even in the same real millisecond, preventing a previous term's delayed requests from committing into it. Operator promotion restores the personal campaign before applying operator Edo/德川家 assets. A staff period that spans world cycles keeps exactly-once cycle receipts and the shared base's growth.
+Dismissal records the world elapsed time atomically with the role change. Restoration advances the staff period only up to that exact time using historical shared levels, then returns to the original personal **clan and home** with retained development. Ownership is renamed using the exact previously owned set in both directions. NPC castles already carrying the destination family name are neutralized before the rename, so neither ordinary Tokugawa land nor a former family's NPC land is accidentally acquired. Current-role identity, field, online, search, friend and achievement projections use the normalized family immediately (general public displays use `徳川家`); dismissal can project the original family from its private backup before the first restoration sync. Current individual currencies, officers, research, jobs, gifts and remaining territory are retained; invalid governors are removed and command capacity is clamped to the restored personal keep. Shared-only castle ownership is removed. Reappointment has a new unique term even in the same real millisecond, preventing a previous term's delayed requests from committing into it. Operator promotion restores the personal campaign before applying operator Edo/德川家 assets. A staff period that spans world cycles keeps exactly-once cycle receipts and the shared base's growth.
 
 Long disconnected departures are processed in bounded chunks of at most 86,400 world seconds per sync request. A saved intermediate checkpoint returns 409 `STAFF_TRANSITION_PENDING`; visible automatic sync continues from that checkpoint without replaying rewards. Shared permission is already revoked. No unbounded simulation or synthetic retroactive cycle grants occur in one request.
 
@@ -897,7 +948,7 @@ Initial sends and replies persist a sender-scoped request ID and a hash of exact
 ## Deployment
 
 Use a dependency-free Cloudflare Worker ESM with `env.DB` and private `env.BUCKET`. Required manifest bindings: `d1:"DB"`, `r2:"BUCKET"`, no `static` field. Sites provisions the R2 bucket; no public object bucket URL is required.
-After any frontend engine change, run `node scripts/sync-game-runtime.mjs <absolute frontend dist>` and verify exact engine parity. Run `node scripts/build.mjs` to combine `worker/game-officers.js`, `worker/game-engine.js`, `worker/letters.js`, `worker/trade.js`, `worker/moderation.js` and `worker/index.js` into one deployable `dist/server/index.js` Worker ESM; `worker/game-runtime.js` remains the source/test import adapter. Do not deploy a raw copy of `worker/index.js` without its modules; preserve `drizzle/` in source so Sites packages and applies the schema migrations. Apply `0000_social` through `0012_player_moderation` using the append-only journal. The previously recorded migration files and journal entries are unchanged. `0001_cloud_sync` creates the device session and cloud-save tables; `0002_world_clock` adds the singleton clock; `0003_shared_field` adds field operations, relations and battles; `0004_staff_roles` adds support membership and its operation ledger; `0005_user_avatars` adds image metadata; `0006_guild_assets` adds guild roles, pooled balances and ledgers; `0007_world_cycles` adds save cycle markers, settlement receipts and public achievements; `0008_staff_base` adds staff membership terms, shared Sunpu development and private campaign backups; `0009_walking_rewards` adds independent walking accounts, signed-session metadata and cumulative receipts; `0010_base_letters` adds private/guild correspondence threads, messages, sender request receipts and per-reader cursors; `0011_player_trades` adds escrowed proposals, operation receipts and unclaimed proceeds/refunds; `0012_player_moderation` adds account access generations, private operator receipts and the initial global content-revision row. These migrations do not change existing player data. No table creation or schema alterations occur inside request handling.
+After any frontend engine change, run `node scripts/sync-game-runtime.mjs <absolute frontend dist>` and verify exact engine parity. Run `node scripts/build.mjs` to combine `worker/game-officers.js`, `worker/game-engine.js`, `worker/letters.js`, `worker/trade.js`, `worker/moderation.js`, `worker/premium.js` and `worker/index.js` into one deployable `dist/server/index.js` Worker ESM; `worker/game-runtime.js` remains the source/test import adapter. Do not deploy a raw copy of `worker/index.js` without its modules; preserve `drizzle/` in source so Sites packages and applies the schema migrations. Apply `0000_social` through `0013_premium_purchases` using the append-only journal. The previously recorded migration files and journal entries are unchanged. `0001_cloud_sync` creates the device session and cloud-save tables; `0002_world_clock` adds the singleton clock; `0003_shared_field` adds field operations, relations and battles; `0004_staff_roles` adds support membership and its operation ledger; `0005_user_avatars` adds image metadata; `0006_guild_assets` adds guild roles, pooled balances and ledgers; `0007_world_cycles` adds save cycle markers, settlement receipts and public achievements; `0008_staff_base` adds staff membership terms, shared Sunpu development and private campaign backups; `0009_walking_rewards` adds independent walking accounts, signed-session metadata and cumulative receipts; `0010_base_letters` adds private/guild correspondence threads, messages, sender request receipts and per-reader cursors; `0011_player_trades` adds escrowed proposals, operation receipts and unclaimed proceeds/refunds; `0012_player_moderation` adds account access generations, private operator receipts and the initial global content-revision row. These migrations do not change existing player data. No table creation or schema alterations occur inside request handling.
 
 Default CORS origins: the API's own origin, `https://www.kasai-solutions-inc.com`, the previous `https://uni-tadayasu.github.io` origin, `http://127.0.0.1:4173`, and the literal `null` origin for offline file HTML. No credentials/cookies are allowed. The custom-domain allowance is an exact HTTPS origin match, not a suffix or wildcard. Keeping the previous origin allows an existing signed-in device there to issue its own pairing code during migration.
 For a different hosted frontend, set `SENGOKU_ALLOWED_ORIGINS` to its exact origin, or comma-separated exact origins. Do not include paths or wildcards.
@@ -907,7 +958,7 @@ No environment values, plaintext keys, or bearer tokens are logged. Admin state 
 
 The Worker uses D1 `prepare`, `bind`, `first`, `run`, `all` and `batch` APIs. It does not issue manual `BEGIN`/`COMMIT` statements or rely on Node APIs at runtime. D1 batches execute their prepared statements in order as one transaction and roll back on a statement failure; this is the basis of atomic pairing-code consumption. The Worker uses the ordinary D1 binding without read-replication sessions, so reads and writes address the primary database. See the [official D1 database API documentation](https://developers.cloudflare.com/d1/worker-api/d1-database/#batch).
 
-## Premium cosmetics and Stripe snapshots (3.14.0)
+## Premium cosmetics and Stripe snapshots (3.15.0)
 
 Migration `0013_premium_purchases.sql` adds opaque purchase references, verified
 event receipts, normalized checkout/invoice/payment/charge facts, risk holds,
@@ -1001,7 +1052,7 @@ accepted. Each mutating SQL operation rechecks the account-access generation.
     purchaseBlockReason: "preparing" // owned / subscription_exists /
                                     // portal_unavailable / null
   }],
-  appearance: {nameplate: null, town: null, badge: null},
+  appearance: {nameplate: null, town: null, badge: null, ownedProducts: []},
   portalUrl: null,
   serverNow: "2026-11-21T00:00:00.000Z"
 }
@@ -1040,9 +1091,54 @@ assets or transfers ownership between players.
 server-derived ownership and account epoch at commit time. Missing ownership is
 `PREMIUM_NOT_OWNED` (403). The response is the same snapshot as `GET /premium`.
 Selections are not stored in the importable save, and a revoked or expired
-selection is suppressed when read. Public identity DTOs receive only the
-`appearance` keys; no customer, invoice, charge, subscription, order reference
-or other private billing details are exposed.
+selection is suppressed when read. `appearance.ownedProducts` is a duplicate-free
+array of currently valid purchases in the fixed order `gold-banner`,
+`moonlit-castle`, `supporter`. It is independent of equipment selection: an
+unequipped purchase remains visible, including before a selection row exists.
+An account without current rights has `[]`. Holds, confirmed refunds, bans and
+exact monthly expiry suppress the corresponding marks. A ban suppresses all
+marks; after an unban only the rights still valid at read time return. Site
+privileges never grant these purchase marks. This change needs no migration.
+
+Public identity DTOs receive only presentation data; no customer, invoice,
+charge, subscription, order reference, price, email or other private billing
+details are exposed. The current-value fields are:
+
+| Identity location | Appearance field |
+| --- | --- |
+| Profile, search/online list, friends, guild members, map players, trade sender/recipient, letter peer/sender/context player, mail participants | `appearance` |
+| Chat message and guild asset ledger row | `appearance` |
+| Authorized shared construction `startedBy` | `appearance` |
+| Guild list or ranking owner | `ownerAppearance` |
+| Letter message or thread `lastMessage` | `authorAppearance` |
+| Field relationship target | `targetAppearance` |
+| Battle result, replay or history participant | `attackerAppearance`, `defenderAppearance` |
+| Achievement event player | `playerAppearance` |
+| Chat/letter `playerEvaluations` update entry | `appearance` |
+
+Read-time projection updates historical names without rewriting stored posts,
+battle/financial receipts or saves. An empty chat/letter message delta still
+returns the current appearance for its authorized recent participants in
+`playerEvaluations`; clients merge that value into cached names. Normal private
+room and letter authorization remains in force.
+
+### Public identity and private site permissions (3.15.0)
+
+General player DTOs, including chat, field and guild displays, omit site role
+fields (`isAdmin`, `isStaff` and site role labels). Public `clan` display maps the
+reserved variant `德川家` to `徳川家`. Historical `staff-building` achievement
+events are projected as ordinary `building` notices with neutral text. Public
+field rules omit `operatorProtected` and `staffProtected`; combat target IDs,
+actual combat modes, protection/capture rules and rewards remain available.
+User-authored names, message bodies and arbitrary text are not rewritten.
+
+The authenticated account's own top-level `user` retains its private permissions
+on `/me`, `/sync`, profile updates, presence, session creation and device linking
+or recovery. Already-authorized `/admin/*` and `/staff/*` management routes retain
+the roles needed for management. Authorization, private saves, entitlements,
+shared-base progression and database role records are unchanged. Public absence
+of a role field is not an authorization signal. No endpoint grants management
+access based on a client-supplied role or appearance.
 
 ### Notification validation and fulfillment
 
@@ -1137,8 +1233,9 @@ a service period, or confer operator/staff privileges.
 The independent `scripts/test-premium.mjs` suite uses only local signed fixtures,
 blocks external fetches, and checks ownership binding, raw signatures, strict
 product/quantity checks, event ordering, replay, rollback, paid periods,
-subscription duplication guards, risk review, public privacy, bans and save
-independence. It does not make real payments or modify production customers.
+subscription duplication guards, risk review, cross-surface ownership marks, public privacy, bans and save
+independence. `scripts/test-public-identity.mjs` verifies role-free general DTOs,
+neutral historical notices and unchanged self/management authorization. It does not make real payments or modify production customers.
 
 ## Local verification (existing systems)
 

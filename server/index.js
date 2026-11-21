@@ -4,7 +4,7 @@ import {handleTrades} from './trade.js';
 import {handleModeration} from './moderation.js';
 import {handlePremium,handlePremiumWebhook,resolvePremiumAppearances} from './premium.js';
 const API = '/api/v1';
-const API_VERSION = '3.14.0';
+const API_VERSION = '3.15.0';
 const API_FEATURES = Object.freeze({trades:true,moderation:true,premium:true});
 const MAX_BODY = 16 * 1024;
 const MAX_SAVE_BODY = 2 * 1024 * 1024;
@@ -312,34 +312,47 @@ function evaluationState(row,meta,now){
   return state;
 }
 async function resolvePlayerEvaluations(db,payload,now){
-  const refs=[],ids=new Set();
+  const refs=[],ids=new Set(),nameRefs=[],skip=new Set(['save','state','entitlements','appearance']);
   function visit(value,parent,key){
     if(!value||typeof value!=='object')return;
     if(value[EVALUATION_PLAYER]){refs.push({parent,key,id:value[EVALUATION_PLAYER]});ids.add(value[EVALUATION_PLAYER]);return;}
-    for(const [child,node]of Object.entries(value))visit(node,value,child);
+    const playerId=value.playerId||value.userId||value.id;
+    if(typeof value.name==='string'&&typeof playerId==='string'&&/^u_[A-Za-z0-9_]{1,96}$/.test(playerId))nameRefs.push({value,id:playerId});
+    for(const [child,node]of Object.entries(value))if(!skip.has(child))visit(node,value,child);
   }
-  visit(payload,null,null);if(!ids.size)return payload;
+  visit(payload,null,null);if(!ids.size&&!nameRefs.length)return payload;
   const selected=[...ids],queries=[stmt(db,`SELECT
     (SELECT json_object('base_elapsed_ms',base_elapsed_ms,'anchor_real_ms',anchor_real_ms,'running',running,'speed',speed,'revision',revision) FROM world_clock WHERE id=?) AS clock_json,
     (SELECT state_json FROM staff_base WHERE id='sunpu') AS shared_json,
     (SELECT value FROM settings WHERE key='cyclePolicyStart') AS cycle_start`,WORLD_CLOCK_ID)];
   for(let offset=0;offset<selected.length;offset+=80){
     const page=selected.slice(offset,offset+80);
-    queries.push(stmt(db,`/* player-evaluation */ SELECT u.id,u.clan,ps.save_json,ps.cycle_index,ps.cycle_home,
+    queries.push(stmt(db,`/* player-evaluation */ SELECT u.id,u.name,u.clan,ps.save_json,ps.cycle_index,ps.cycle_home,
       CASE WHEN u.id=(SELECT value FROM settings WHERE key='adminUserId') THEN 1 ELSE 0 END AS is_admin,
       CASE WHEN sm.user_id IS NOT NULL THEN 1 ELSE 0 END AS is_staff,COALESCE(sm.term_id,'legacy:'||sm.appointed_at) AS staff_term,
       b.active AS backup_active,b.term_id AS backup_term,b.save_json AS backup_json
       FROM users u LEFT JOIN player_saves ps ON ps.user_id=u.id LEFT JOIN staff_members sm ON sm.user_id=u.id
       LEFT JOIN staff_campaign_backups b ON b.user_id=u.id WHERE u.id IN (${page.map(()=>'?').join(',')})`,...page));
   }
-  const results=await db.batch(queries),meta=rows(results[0])[0]||{},values=new Map(),empty=GameEngine.publicEvaluation(null,{officers:GAME_OFFICERS});
+  const otherNames=[...new Set(nameRefs.map(ref=>ref.id).filter(id=>!ids.has(id)))];
+  for(let offset=0;offset<otherNames.length;offset+=80){const page=otherNames.slice(offset,offset+80);queries.push(stmt(db,`SELECT id,name FROM users WHERE id IN (${page.map(()=>'?').join(',')})`,...page));}
+  const results=await db.batch(queries),meta=rows(results[0])[0]||{},values=new Map(),names=new Map(),empty=GameEngine.publicEvaluation(null,{officers:GAME_OFFICERS});
   for(const result of results.slice(1))for(const row of rows(result)){
+    names.set(row.id,row.name);
+    if(!ids.has(row.id))continue;
     if(!row.save_json){values.set(row.id,empty);continue;}
     let evaluation=null;
     try{evaluation=GameEngine.publicEvaluation(evaluationState(row,meta,now),{officers:GAME_OFFICERS});}catch{/* Unreadable saves remain unverified, not an invented demotion. */}
     values.set(row.id,evaluation);
   }
-  for(const ref of refs)ref.parent[ref.key]=values.has(ref.id)?values.get(ref.id):null;
+  for(const ref of refs){
+    ref.parent[ref.key]=values.has(ref.id)?values.get(ref.id):null;
+    // Refresh participant labels, including empty message deltas, without
+    // rewriting historical receipts or user-authored message bodies.
+    const nameField={evaluation:'name',ownerEvaluation:'ownerName',authorEvaluation:'authorName',attackerEvaluation:'attackerName',defenderEvaluation:'defenderName',targetEvaluation:'targetName',playerEvaluation:Object.hasOwn(ref.parent,'playerName')?'playerName':Object.hasOwn(ref.parent,'name')?'name':null}[ref.key];
+    if(nameField&&names.has(ref.id))ref.parent[nameField]=names.get(ref.id);
+  }
+  for(const ref of nameRefs)if(names.has(ref.id))ref.value.name=names.get(ref.id);
   return payload;
 }
 
@@ -353,6 +366,34 @@ function mapUser(row, now = Date.now()) {
   };
 }
 function publicClan(clan,isAdmin,isStaff=false,personalClan=null) { return isAdmin||isStaff?ADMIN_CLAN:clan===ADMIN_CLAN?CLAN_HOMES[personalClan]?personalClan:ORDINARY_TOKUGAWA_CLAN:clan; }
+
+// Authorization uses database rows. Public presentation never reveals another
+// player's site privileges; self identity and authorized management routes keep
+// their controls. Save contents and role entitlements are private, not projected.
+function publicIdentities(payload,request){
+  const path=new URL(request.url).pathname.slice(API.length),actor=authenticatedRequests.get(request);
+  const management=!!(actor&&(actor.is_admin&&path.startsWith('/admin/')||(actor.is_admin||actor.is_staff)&&path.startsWith('/staff/')));
+  const linked=['/session','/devices/link','/admin/recover'].includes(path)&&typeof payload?.token==='string';
+  const self=payload?.user&&(payload.user.id===actor?.id||linked)?payload.user:null;
+  const privateKeys=new Set(['save','state','entitlements','staffBase']);
+  const roleKeys=new Set(['isAdmin','isStaff','is_admin','is_staff','staffTitle','siteRole','roleTitle','operatorProtected','staffProtected']);
+  function visit(value){
+    if(!value||typeof value!=='object')return value;
+    if(Array.isArray(value))return value.map(visit);
+    const visibleRoles=management||value===self,result={};
+    for(const [key,child]of Object.entries(value)){
+      if(!visibleRoles&&(roleKeys.has(key)||key==='role'&&['admin','staff','operator'].includes(child)))continue;
+      result[key]=key==='clan'&&child===ADMIN_CLAN&&!visibleRoles?ORDINARY_TOKUGAWA_CLAN:privateKeys.has(key)?child:visit(child);
+    }
+    if(!management&&value.kind==='staff-building'){
+      result.kind='building';
+      result.title=`${value.targetName||'拠点'} Lv.${value.value}の普請を達成`;
+      result.detail='拠点の成長が反映されました。';
+    }
+    return result;
+  }
+  return visit(payload);
+}
 const USER_SELECT = `SELECT u.id,u.name,u.clan,u.last_seen,gm.guild_id,g.name AS guild_name,g.owner_id,
   COALESCE((SELECT active FROM player_bans pb WHERE pb.user_id=u.id),0) AS ban_active,
   COALESCE((SELECT revision FROM player_bans pb WHERE pb.user_id=u.id),0) AS moderation_epoch,
@@ -830,7 +871,7 @@ function normalizeGameSave(raw, user, now, {reading=false,clock=null}={}) {
   // New uploads must already obey the current limit. Invalid old jobs still fail.
   const incomingCastleLimit=id=>reading&&FIELD_CAPTURE_CASTLES.includes(id)?64:castleLevelLimit(id);
   if(!isObj(s)||s.version!==2||obj?.game&&obj.game!=='sengoku-tento')invalid();
-  if(s.clan===ADMIN_CLAN&&!user.is_admin&&!staff&&!reading)fail(403,'ADMIN_CLAN_REQUIRED','德川家は運営・スタッフ専用です。一般の領主は徳川家を選択できます。');
+  if(s.clan===ADMIN_CLAN&&!user.is_admin&&!staff&&!reading)fail(403,'ADMIN_CLAN_REQUIRED','この家名は選択できません。徳川家を選択してください。');
   if(s.clan!==ADMIN_CLAN&&!CLANS.some(c=>c.name===s.clan)||!CASTLE_BY_ID[s.home]||!['easy','normal','hard'].includes(s.difficulty))invalid();
   const g={state:{version:2},roster:OFFICERS,officer:id=>OFFICER_BY_ID[id],baseOfficer:id=>OFFICER_BY_ID[id]};
   if(!num(s.turn,0,MAX_TURN)||!num(s.troops,0,1000000)||!num(s.morale,0,100)||!num(s.prestige)||!num(s.command,0,7)||!num(s.seed,0,4294967295))invalid();
@@ -918,7 +959,7 @@ function normalizeGameSave(raw, user, now, {reading=false,clock=null}={}) {
     if(n.gameOver)n.realtime.running=false;
   }
   if (!user.is_admin && (n.home==='edo' || n.castles.edo.owner===n.clan || n.officerVariants.includes(IEYASU_ID+':U'))) {
-    fail(403,'ADMIN_ENTITLEMENT_REQUIRED','江戸城と德川家康のUランクは運営専用です。');
+    fail(403,'ADMIN_ENTITLEMENT_REQUIRED','この拠点・武将は現在の利用権では使用できません。');
   }
   // Entitlements belong to the authenticated identity, never imported flags. Restoring
   // the exclusive officer does not touch currency, army assignments or gacha history.
@@ -942,7 +983,7 @@ function normalizeGameSave(raw, user, now, {reading=false,clock=null}={}) {
     n.won=CASTLES.every(c=>n.castles[c.id].owner===n.clan);n.gameOver=false;
   }
   if(n.cycle){if(user.is_admin)n.cycle.home='edo';else if(n.cycle.home==='edo')n.cycle.home=n.home;}
-  if(!reading&&!staff&&(n.home==='sunpu'||n.castles.sunpu.owner===n.clan))fail(403,'STAFF_ENTITLEMENT_REQUIRED','駿府城はスタッフ専用の共同本拠です。');
+  if(!reading&&!staff&&(n.home==='sunpu'||n.castles.sunpu.owner===n.clan))fail(403,'STAFF_ENTITLEMENT_REQUIRED','この拠点は現在の利用権では使用できません。');
   if(staff||serviceSave)n.staffService={baseId:'sunpu'};
   const roleState=GameEngine.fromSave({game:'sengoku-tento',version:2,state:n},GAME_OFFICERS,{isAdmin:!!user.is_admin,isStaff:staff}).state;
   for(const key of Object.keys(roleState))n[key]=roleState[key];
@@ -1766,7 +1807,7 @@ async function route(request, env, now) {
     if (scope) await budget(db, scope, 30, 60*60*1000, now);
     const name = textField(body.name, '領主名', 24, {optional:true}) || '旅の領主' + crypto.randomUUID().slice(0,6);
     const clan = textField(body.clan, '勢力名', 24, {optional:true}) || '織田家';
-    if(clan===ADMIN_CLAN)fail(403,'ADMIN_CLAN_REQUIRED','德川家は運営・スタッフ専用です。一般の領主は徳川家を選択できます。');
+    if(clan===ADMIN_CLAN)fail(403,'ADMIN_CLAN_REQUIRED','この家名は選択できません。徳川家を選択してください。');
     const id = uid('u_'), token = gameToken();
     try { await stmt(db,'INSERT INTO users(id,name,name_key,clan,token_hash,created_at,last_seen) VALUES(?,?,?,?,?,?,?)',id,name,nameKey(name),clan,await hash(token),now,now).run(); }
     catch (error) { if (/unique/i.test(String(error))) fail(409,'NAME_TAKEN','その領主名はすでに使われています。別の名前をお選びください。'); throw error; }
@@ -1923,10 +1964,13 @@ async function route(request, env, now) {
     return {ok:true,user:mapUser(user,now),friends:rows(result[0]).map(r=>mapUser(r,now)),requests:rows(result[1]).map(r=>({id:r.id,name:r.name,clan:publicClan(r.clan,r.is_admin,r.is_staff,r.personal_clan),avatarVersion:r.avatar_version||null,evaluation:evaluationRef(r.id),direction:r.requested_by===user.id?'outgoing':'incoming',createdAt:iso(r.created_at)})),unreadMail:Number(rows(result[2])[0]?.count || 0)};
   }
   if (path === '/profile' && method === 'PATCH') {
-    const body = await readBody(request), name = textField(body.name,'領主名',24);
-    if(!user.is_admin&&!user.is_staff&&typeof body.clan==='string'&&body.clan.normalize('NFC').trim()===ADMIN_CLAN)fail(403,'ADMIN_CLAN_REQUIRED','德川家は運営・スタッフ専用です。一般の領主は徳川家を選択できます。');
-    const access=accountCommitGuard(user);try { await stmt(db,'UPDATE users SET name=?,name_key=? WHERE id=? AND '+access.sql,name,nameKey(name),user.id,...access.args).run(); }
+    const body = await readBody(request), name = textField(body.name,'領主名',24),expectedName=Object.hasOwn(body,'expectedName')?textField(body.expectedName,'変更前の領主名',24):null;
+    if(!user.is_admin&&!user.is_staff&&typeof body.clan==='string'&&body.clan.normalize('NFC').trim()===ADMIN_CLAN)fail(403,'ADMIN_CLAN_REQUIRED','この家名は選択できません。徳川家を選択してください。');
+    if(name!==user.name)await budget(db,'profile-name:'+user.id,20,60000,now);
+    const access=accountCommitGuard(user);let changed;
+    try { changed=await stmt(db,'UPDATE users SET name=?,name_key=? WHERE id=? AND '+access.sql+' AND (? IS NULL OR name=? OR name=?) RETURNING id',name,nameKey(name),user.id,...access.args,expectedName,expectedName,name).all(); }
     catch (error) { if (/unique/i.test(String(error))) fail(409,'NAME_TAKEN','その領主名はすでに使われています。'); throw error; }
+    if(!rows(changed).length){await requireAccountAccess(db,user);fail(409,'PROFILE_CHANGED','別の端末で領主名が変更されました。最新の名前を確認してから、もう一度お試しください。');}
     return {ok:true,user:mapUser(await getUser(db,user.id),now)};
   }
   if (path === '/players' && method === 'GET') {
@@ -2119,7 +2163,7 @@ export default {
       if(path.startsWith(API+'/avatars/')&&request.method==='GET')return await getAvatar(request,env,origin);
       const now=Date.now(),payload=await route(request,env,now),evaluated=await resolvePlayerEvaluations(env.DB,payload,now),resolved=await resolvePremiumAppearances(env.DB,evaluated,now),authenticated=authenticatedRequests.get(request);
       if(authenticated)await requireAccountAccess(env.DB,authenticated);
-      return response(resolved,200,origin);
+      return response(publicIdentities(resolved,request),200,origin);
     }catch(error){
       const authenticated=authenticatedRequests.get(request);if(authenticated)try{await requireAccountAccess(env.DB,authenticated);}catch(accessError){error=accessError;}
       if(error instanceof ApiError){const e={code:error.code,message:error.message};if(error.retryAfter)e.retryAfter=error.retryAfter;return response({ok:false,error:e},error.status,origin,error.retryAfter);}

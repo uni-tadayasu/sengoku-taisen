@@ -77,7 +77,7 @@ try{
   const injectable=await session("木下' OR 1=1--");
   const escapedSearch=await api('/api/v1/players?q='+encodeURIComponent("' OR"),{token:a.token});assert.equal(escapedSearch.data.players.length,1);assert.equal(escapedSearch.data.players[0].id,injectable.user.id);
 
-  const post=await api('/api/v1/chat',auth(a,{channel:'world',text:'天下の皆さま、よろしく。',userId:b.user.id,isAdmin:true}));assert.equal(post.data.message.userId,a.user.id);assert.equal(post.data.message.isAdmin,false);
+  const post=await api('/api/v1/chat',auth(a,{channel:'world',text:'天下の皆さま、よろしく。',userId:b.user.id,isAdmin:true}));assert.equal(post.data.message.userId,a.user.id);assert.equal(Object.hasOwn(post.data.message,'isAdmin'),false);
   const world=await api('/api/v1/chat?channel=world',{token:b.token});assert.equal(world.data.messages[0].text,'天下の皆さま、よろしく。');
   await api('/api/v1/chat',{...auth(a,{channel:'world',text:'連投'}),expected:429});tick();
   await api('/api/v1/chat',{...auth(a,{channel:'world',text:'字'.repeat(301)}),expected:400});
@@ -123,7 +123,7 @@ try{
   await api('/api/v1/admin/announcement',auth(admin,{text:''}));assert.equal((await api('/api/v1/config')).data.announcement,'');
   await api('/api/v1/chat?channel=admin',{token:nonAdmin.token,expected:403});
   tick();await api('/api/v1/chat',auth(admin,{channel:'admin',text:'運営軍議'}));
-  const adminChat=await api('/api/v1/chat?channel=admin',{token:admin.token});assert.equal(adminChat.data.messages[0].isAdmin,true);
+  const adminChat=await api('/api/v1/chat?channel=admin',{token:admin.token});assert.equal(Object.hasOwn(adminChat.data.messages[0],'isAdmin'),false);
 
   const campaign={target:'all',title:'初陣の贈り物',body:'領国づくりにお役立てください。',gift:{gold:500,rice:700,wood:200,stone:100},requestId:'send-test-0001'};
   await api('/api/v1/admin/mail',{...auth(nonAdmin,campaign),expected:403});

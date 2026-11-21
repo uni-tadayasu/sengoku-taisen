@@ -23,7 +23,7 @@ try{
  for(const [id,castle] of Object.entries(adminSaved.save.state.castles)){if(legacy.state.castles[id].owner===legacy.state.clan||id==='edo')assert.equal(castle.owner,'德川家');else assert.equal(castle.owner,before.castles[id].owner);}
  assert.equal(adminSaved.save.state.castles.okazaki.owner,'徳川家','normal Tokugawa AI territory is not granted to an operator of another previous house');
  const again=(await write(admin,1,adminSaved.save)).data;assert.deepEqual(again.save.state,adminSaved.save.state);
- const adminBase=(await api('/field',{token:ordinary.token})).data.players.find(p=>p.playerId===admin.user.id);assert.equal(adminBase.clan,'德川家');assert.equal(adminBase.homeCastleId,'edo');assert.equal(adminBase.attackable,true);assert.equal(adminBase.battleMode,'reward');assert.equal(adminBase.capturable,false);assert(adminBase.majorCity);
+ const adminBase=(await api('/field',{token:ordinary.token})).data.players.find(p=>p.playerId===admin.user.id);assert.equal(adminBase.clan,'徳川家');assert.equal(adminBase.homeCastleId,'edo');assert.equal(adminBase.attackable,true);assert.equal(adminBase.battleMode,'reward');assert.equal(adminBase.capturable,false);assert(adminBase.majorCity);
  // Earlier import checks intentionally use legacy, unanchored saves. Prepare
  // the attack through the real engine clock path rather than forging an anchor.
  const latest=(await api('/sync',{token:ordinary.token})).data,clock=(await api('/world-clock')).data.clock;

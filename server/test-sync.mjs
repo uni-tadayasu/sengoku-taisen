@@ -173,7 +173,7 @@ try {
   await presence(alice.token,'tab-a',true);await presence(alice.token,'tab-b',true);await presence(operator.token,'op-tab',true);
   const online=(await api('/online')).data;
   assert.equal(online.total,2);assert.equal(online.players.length,2);assert(online.players.every(p=>p.online));
-  assert.equal(online.players.find(p=>p.id===operator.user.id).isAdmin,true);
+  assert.equal(Object.hasOwn(online.players.find(p=>p.id===operator.user.id),'isAdmin'),false);
   const publicJson=JSON.stringify(online);for(const secret of [alice.token,operator.token,linked.token,'token_hash','device_name','last_seen','192.0.2.'])assert(!publicJson.includes(secret));
   assert.equal((await api('/config')).data.onlineCount,2);
   const page1=(await api('/online?limit=1')).data;assert.equal(page1.players.length,1);assert(page1.nextCursor);

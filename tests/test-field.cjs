@@ -32,12 +32,12 @@ test('incoming, outgoing and accepted relationships stay distinguishable',()=>{
 test('public names and identifiers are escaped before entering clickable UI',()=>{
   const html=F.publicRow(player('a" onclick="steal()','kiyosu',{name:'<script>alert(1)</script>',clan:'<img src=x>'}));assert(!html.includes('<script>'));assert(!html.includes('<img src=x>'));assert(html.includes('&lt;script&gt;'));assert(html.includes('a&quot; onclick=&quot;steal()'));
 });
-test('staff Sunpu protection remains distinct from operator assets',()=>{
-  const staff=F.normalizePlayers([player('staff','sunpu',{isStaff:true})])[0];assert.equal(staff.isStaff,true);assert.equal(staff.isAdmin,false);assert(F.publicRow(staff).includes('スタッフ'));
+test('protected bases keep their action restrictions without disclosing operator or staff roles',()=>{
+  const staff=F.normalizePlayers([player('staff','sunpu',{isStaff:true})])[0];assert.equal(staff.isStaff,true);assert.equal(staff.isAdmin,false);assert(!F.publicRow(staff).includes('スタッフ'));assert(F.publicRow(staff).includes('領主'));
   const context=ready();context.player=staff;assert.equal(F.attackValidation(context).ok,false);assert.match(F.attackValidation(context).message,/駿府城/);
   context.player=player('staff','kiyosu',{isStaff:true});assert.equal(F.attackValidation(context).ok,false,'A stale location must not expose an appointed staff base to attack');
   context.player=player('legacy','sunpu');assert.equal(F.attackValidation(context).ok,false,'The reserved castle stays protected while a legacy player snapshot is migrating');
-  const operator=F.normalizePlayers([player('operator','edo',{isStaff:true,isAdmin:true})])[0];assert.equal(operator.isStaff,false);assert(F.publicRow(operator).includes('運営'));
+  const operator=F.normalizePlayers([player('operator','edo',{isStaff:true,isAdmin:true})])[0];assert.equal(operator.isStaff,false);assert(!F.publicRow(operator).includes('運営'));assert(F.publicRow(operator).includes('領主'));
 });
 test('Edo and Sunpu cap at 64, the three capturable cities at 48, and ordinary castles at 32',()=>{
   for(const [id,limit]of [['edo',64],['sunpu',64],['nijo',48],['osaka',48],['nagoya',48]]){const [p]=F.normalizePlayers([player(id,id,{level:999})]);assert.equal(p.level,limit);assert(F.publicRow(p).includes('城郭 Lv.'+limit));}

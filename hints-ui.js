@@ -40,6 +40,7 @@
     const now = options.now || (() => global.performance?.now?.() ?? Date.now());
     let dialog = null, main, heading, title, summary, primary, details, others, count, feedback, empty, returnFocus = null;
     let current = null, signature = '', generation = 0, navigating = false, serial = 0, lastEvaluation = null;
+    let lastStable = null, lastStableAt = 0;
     const cards = new Map();
     const setText = (node, value) => { if (node.textContent !== value) node.textContent = value; };
     const clearFeedback = () => { if (feedback) { feedback.hidden = true; setText(feedback, ''); } };
@@ -139,11 +140,27 @@
       } catch { showFeedback('ヒントを読み込めませんでした。少し待ってから、もう一度開いてください。'); }
       return { scope: 'unavailable', status: 'blocked', title: 'ヒントを準備しています', summary: '状況を確認できると、ここに次の一手が表示されます。', items: [] };
     }
+    function displayReport() {
+      const next = normalize(read());
+      if (lastStable && next.scope !== lastStable.scope) lastStable = null;
+      const clockOnly = next.status === 'blocked' && next.items.length === 1 && next.items[0].id === 'clock-pending';
+      if (clockOnly) {
+        // Applying a fresh clock sample briefly blocks actions every few seconds.
+        // Retain only the visible advice, never an action or permission decision.
+        // Identity/role changes and other blocking states clear this snapshot.
+        const age = now() - lastStableAt;
+        if (lastStable && age >= 0 && age < 30000) return lastStable;
+        return normalize({ scope: next.scope, status: 'blocked', title: '次の一手', summary: '城下町の施設、軍団の編成、任務の報酬を確認できます。', items: [{ id: 'clock-pending', category: 'system', tone: 'advice', title: '城下町から次の準備を', reason: '施設の生産や軍団の編成を見ながら、次に進めることを選びましょう。', action: { label: '城下町を見る' } }] });
+      }
+      lastStable = next.status === 'ready' ? next : null;
+      lastStableAt = now();
+      return next;
+    }
     function open() {
       if (!ensure()) return false;
       if (dialog.open) { refresh(); return true; }
       returnFocus = doc.activeElement;
-      const next = normalize(read());
+      const next = displayReport();
       updateEntries(next, doc.querySelectorAll('[data-hint-entry]'));
       render(next); dialog.showModal(); heading.focus({ preventScroll: true }); viewport();
       return true;
@@ -153,13 +170,14 @@
       if (!dialog?.open && !entries.length) return false;
       const elapsed = lastEvaluation === null ? Infinity : now() - lastEvaluation;
       if (throttled && elapsed >= 0 && elapsed < 2000) return false;
-      const next = normalize(read()), changed = updateEntries(next, entries);
+      const next = displayReport(), changed = updateEntries(next, entries);
       return dialog?.open ? render(next) || changed : changed;
     }
     function close() {
       if (!dialog?.open) return false;
       const previous = returnFocus; returnFocus = null;
       dialog.close(); reset();
+      if (!doc.querySelectorAll('[data-hint-entry]').length) lastStable = null;
       if (previous?.isConnected && typeof previous.focus === 'function') previous.focus({ preventScroll: true });
       return true;
     }
@@ -184,7 +202,7 @@
         }
       }
     }
-    function dispose() { close(); dialog?.remove(); dialog = null; }
+    function dispose() { close(); dialog?.remove(); dialog = null; lastStable = null; }
     return { open, refresh, close, dispose, isOpen: () => Boolean(dialog?.open), icon };
   }
   if (typeof module !== 'undefined' && module.exports) module.exports = { createUI, normalize, formatWait, assetsMarkup };

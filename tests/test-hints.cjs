@@ -101,7 +101,8 @@ test('BAN, followers and unverified access return only the relevant blocked guid
     [{rolePending: true}, 'role-pending'],
     [{syncLinked: true, syncReady: false, writable: false}, 'sync-pending'],
     [{syncLinked: true, writable: false}, 'read-only'],
-    [{clockReady: false}, 'clock-pending']
+    [{clockReady: false}, 'clock-pending'],
+    [{clockReady: false, saveEnabled: false}, 'save-pending']
   ];
   for (const [context, expected] of cases) {
     const game = rich(make());
@@ -126,6 +127,7 @@ test('not-started and lost-home campaigns do not offer gameplay actions', () => 
   assert.equal(lost.status, 'game-over');
   assert.deepEqual(ids(lost), ['game-over']);
   assert.equal(lost.items[0].action.kind, 'new');
+  assert.deepEqual(ids(build(game, {clockReady: false})), ['game-over']);
 });
 
 test('staff guidance requires both runtime base verification and the current bridge readiness flag', () => {

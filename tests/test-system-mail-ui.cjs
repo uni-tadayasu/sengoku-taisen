@@ -25,7 +25,7 @@ test('system battle mail has its own sender and safe text, without a duplicate r
  const h=setup();h.t.s.mail=[{id:'m1',title:'【防衛敗北】大坂城',body:'大坂城 → 清洲城\n<script>unsafe</script>',source:'system',event:{kind:'field-battle'},gift:null,read:false,createdAt:'2026-11-21T08:00:00Z'}];
  let html=h.t.mailView();assert.match(html,/合戦の自動通知/);assert.match(html,/未読/);assert.match(html,/本拠移転/);
  h.t.s.openedMail='m1';html=h.t.mailView();assert.match(html,/システムからの自動通知/);assert.match(html,/大坂城 → 清洲城/);assert.match(html,/&lt;script&gt;/);assert(!html.includes('<script>'));assert(!html.includes('data-social="mail-claim"'));
- h.t.s.mail[0]={...h.t.s.mail[0],source:undefined,gift:{gold:100},claimed:false};html=h.t.mailView();assert.match(html,/運営から/);assert.match(html,/data-social="mail-claim"/);assert.match(html,/金 100/);
+ h.t.s.mail[0]={...h.t.s.mail[0],source:undefined,gift:{gold:100},claimed:false};html=h.t.mailView();assert.match(html,/サイトからのお知らせ/);assert.match(html,/data-social="mail-claim"/);assert.match(html,/金 100/);
 });
 test('unread counts update while the community is closed and remain accessible',async()=>{
  const h=setup();h.setHandler(async()=>h.response(4));h.t.s.unreadLetters=2;await h.t.refreshMailStatus();

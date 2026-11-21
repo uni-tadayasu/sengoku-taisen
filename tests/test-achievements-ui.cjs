@@ -41,7 +41,7 @@ await test('untrusted fields are escaped, bounded and projected without private 
  await b.t.loadAchievements();const html=b.list.innerHTML,state=JSON.stringify(b.t.s.achievements.events);
  assert(html.includes('&lt;img'));assert(html.includes('&lt;script&gt;title&lt;/script&gt;'));assert(html.includes('&lt;svg'));assert(!html.includes('<script>'));assert(!html.includes('<img src=x'));
  for(const secret of ['SECRET_AUTH','SECRET_EMAIL','PRIVATE_LOGIN','PRIVATE_GOLD','PRIVATE_CHAT']){assert(!html.includes(secret));assert(!state.includes(secret));assert(!b.line.textContent.includes(secret));}
- assert.deepEqual(Object.keys(b.t.s.achievements.events[0]).sort(),['clan','detail','id','kind','occurredAt','playerEvaluation','playerId','playerName','title']);
+ assert.deepEqual(Object.keys(b.t.s.achievements.events[0]).sort(),['clan','detail','id','kind','occurredAt','playerAppearance','playerEvaluation','playerId','playerName','title']);
  const clean=b.t.cleanAchievement(event(2,{playerName:'名'.repeat(100),clan:'家'.repeat(100),kind:'k'.repeat(100),title:'達'.repeat(250),detail:'詳'.repeat(400)}));assert.equal(clean.playerName.length,40);assert.equal(clean.clan.length,30);assert.equal(clean.kind.length,40);assert.equal(clean.title.length,180);assert.equal(clean.detail.length,300);
  assert.equal(b.line.htmlWrites,0,'ticker uses textContent, never server HTML');assert(b.line.textContent.includes('<script>NOTICE_SECRET</script>'));
 });

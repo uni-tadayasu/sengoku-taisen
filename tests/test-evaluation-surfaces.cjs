@@ -4,6 +4,9 @@ const root=path.join(__dirname,'..'),evaluationSource=fs.readFileSync(path.join(
 const evaluation={version:1,score:1200,maxScore:100000,rankId:'rank-one',rankName:'従八位下',rankIndex:2};
 const promoted={version:1,score:22000,maxScore:100000,rankId:'rank-two',rankName:'従五位上',rankIndex:9};
 const copy=value=>JSON.parse(JSON.stringify(value));
+const premium=require('../premium-runtime.js'),noAppearance={nameplate:null,town:null,badge:null,ownedProducts:[]},allOwned={...noAppearance,ownedProducts:['gold-banner','moonlit-castle','supporter']};
+const premiumUI=()=>({nameMarkup:premium.nameMarkup,cleanAppearance:premium.cleanAppearance,ownershipLabel:premium.ownershipLabel,getAppearance:()=>copy(noAppearance)});
+const purchaseCount=html=>[...html.matchAll(/data-premium-product=/g)].length;
 function node(){let html='';return{htmlWrites:0,get innerHTML(){return html;},set innerHTML(value){html=String(value);this.htmlWrites++;},textContent:'',value:'',hidden:false,disabled:false,inert:false,isConnected:true,dataset:{},scrollTop:0,scrollHeight:1000,clientHeight:300,selectionStart:0,selectionEnd:0,focusCount:0,classList:{toggle(){}},setAttribute(){},focus(){this.focusCount++;},setSelectionRange(start,end){this.selectionStart=start;this.selectionEnd=end;},querySelector:()=>null,querySelectorAll:()=>[],addEventListener(){},removeEventListener(){}};}
 function noNestedButtons(html){for(const [,inside]of html.matchAll(/<button\b[^>]*>([\s\S]*?)<\/button>/g))assert(!/<button\b/.test(inside),'Player badges must be non-interactive inside existing buttons');}
 function badgeCount(html){return [...html.matchAll(/class="player-evaluation-badge"/g)].length;}
@@ -13,7 +16,7 @@ function social(){
   nodes.set('[data-social-chat-title]',node());
   const body=node(),dialog={open:true,querySelector:selector=>nodes.get(selector)||null,querySelectorAll:selector=>selector==='[data-player-evaluation]'?slots:[],close(){this.open=false;},remove(){}};
   const scope={console,URL,URLSearchParams,AbortController,Intl,Date,crypto:require('node:crypto').webcrypto,setTimeout:()=>1,clearTimeout(){},document:{readyState:'loading',hidden:false,activeElement:null,addEventListener(){},removeEventListener(){}},localStorage:{getItem:()=>null,setItem(){},removeItem(){}},SENGOKU_API_BASE:'https://fixture.invalid',
-    SengokuBridge:{setRoleAccess(){},showEvaluation(){openedEvaluation++;}},SengokuCloudSync:{stop(){},start(){}},
+    SengokuPremiumRuntime:premiumUI(),SengokuBridge:{setRoleAccess(){},showEvaluation(){openedEvaluation++;}},SengokuCloudSync:{stop(){},start(){}},
     SengokuAvatar:{markup:()=>'<span class="social-avatar"></span>',mount:(host,options)=>{const editor={host,updates:[],destroyed:false};editors.push(editor);return{update(user){editor.updates.push(user);},destroy(){editor.destroyed=true;}};}},
     fetch:async(url,options)=>{requests.push({url,options});return{ok:true,status:200,json:async()=>handler(url,options)};}};
   scope.window=scope;vm.createContext(scope);vm.runInContext(evaluationSource,scope);
@@ -69,13 +72,13 @@ test('system mail ranks actual combatants and leaves the system sender, body and
   assert.equal(badgeCount(html),2);assert.match(html,/<div class="social-letter-date">システムからの自動通知 · [^<]+<\/div>/);assert(html.includes('攻撃側：'));assert(html.includes('守備側：'));assert(html.includes('報酬は反映済みです。'));assert(!html.includes('data-social="mail-claim"'));
 });
 function letters(){
-  const nodes=new Map(),events=[],requests=[],THREAD='lt_'+'1'.repeat(32),user={id:'actor',name:'本人'},data={evaluation:copy(evaluation),refresh:false};
+  const nodes=new Map(),events=[],requests=[],THREAD='lt_'+'1'.repeat(32),user={id:'actor',name:'本人'},data={name:'相手',evaluation:copy(evaluation),appearance:copy(noAppearance),refresh:false};
   const dialog=node();dialog.open=false;dialog.querySelector=selector=>{if(!nodes.has(selector))nodes.set(selector,node());return nodes.get(selector);};dialog.showModal=function(){this.open=true;};dialog.close=function(){this.open=false;};
   const doc={body:{append(){}},hidden:false,readyState:'loading',activeElement:null,createElement:()=>dialog,addEventListener(){}};
-  const scope={console,URL,Intl,Date,setTimeout:()=>1,clearTimeout(){},requestAnimationFrame:()=>1,cancelAnimationFrame(){},document:doc,CustomEvent:class{constructor(type,options){this.type=type;this.detail=options.detail;}},dispatchEvent:event=>events.push(event)};scope.window=scope;vm.createContext(scope);vm.runInContext(evaluationSource,scope);
+  const scope={console,URL,Intl,Date,SengokuPremiumRuntime:premiumUI(),setTimeout:()=>1,clearTimeout(){},requestAnimationFrame:()=>1,cancelAnimationFrame(){},document:doc,CustomEvent:class{constructor(type,options){this.type=type;this.detail=options.detail;}},dispatchEvent:event=>events.push(event)};scope.window=scope;vm.createContext(scope);vm.runInContext(evaluationSource,scope);
   vm.runInContext(fs.readFileSync(path.join(root,'letters.js'),'utf8').replace('const api={createController','const api={createView,threadTitle,threadParticipants,createController'),scope);
   const api=scope.SengokuLetters,store=new Map();let view;
-  const controller=api.createController({getUser:()=>user,storage:{getItem:key=>store.get(key)??null,setItem:(key,value)=>store.set(key,value),removeItem:key=>store.delete(key)},request:async route=>{requests.push(route);if(route==='/letters/summary')return{unreadCount:2,unreadThreads:1};return{thread:{id:THREAD,kind:'player',title:'相手',peer:{id:'other',name:'相手',evaluation},lastSeq:2,canReply:true},messages:data.refresh?[]:[1,2].map(seq=>({id:'msg-'+seq,seq,authorId:'other',authorName:'相手',authorEvaluation:evaluation,text:'既存の書状'+seq,createdAt:'2026-11-21T00:00:00Z'})),playerEvaluations:[{playerId:'other',evaluation:data.evaluation}],hasOlder:false,hasNewer:false};},setTimeout:()=>1,clearTimeout(){},onChange:state=>view?.render(state)});
+  const controller=api.createController({getUser:()=>user,storage:{getItem:key=>store.get(key)??null,setItem:(key,value)=>store.set(key,value),removeItem:key=>store.delete(key)},request:async route=>{requests.push(route);if(route==='/letters/summary')return{unreadCount:2,unreadThreads:1};return{thread:{id:THREAD,kind:'player',title:'相手',peer:{id:'other',name:'相手',evaluation},lastSeq:2,canReply:true},messages:data.refresh?[]:[1,2].map(seq=>({id:'msg-'+seq,seq,authorId:'other',authorName:'相手',authorEvaluation:evaluation,text:'既存の書状'+seq,createdAt:'2026-11-21T00:00:00Z'})),playerEvaluations:[{playerId:'other',name:data.name,evaluation:data.evaluation,appearance:data.appearance}],hasOlder:false,hasNewer:false};},setTimeout:()=>1,clearTimeout(){},onChange:state=>view?.render(state)});
   view=api.createView(doc,controller);return{api,controller,view,nodes,doc,data,THREAD,requests};
 }
 test('letter polling refreshes old authors and the peer with no new message, preserving IME text, scroll and thread shell',async()=>{
@@ -95,6 +98,46 @@ test('field rows, battle parties and marker descriptions use the matching DTO an
   const row=field.publicRow(player);assert.equal(badgeCount(row),1);noNestedButtons(row);assert.equal(JSON.stringify(player),before);
   const group=field.groupBases([player],{kiyosu:{lon:136.84,lat:35.21}})[0];assert(field.markerAppearance(group).label.includes(evaluation.rankName));
   const battle={id:'b',battleMode:'raid',won:true,attackerPlayerId:'actor',attackerName:'本人',attackerEvaluation:promoted,defenderPlayerId:'other',defenderName:'相手',defenderEvaluation:evaluation,troops:500,attackerLost:30,defenderLost:{troops:40,garrison:0},loot:{gold:10},rewards:{}};const saved=JSON.stringify(battle),html=field.battleReportHtml(battle,'actor');assert.equal(badgeCount(html),2);assert(html.includes('襲撃に成功'));assert.equal(JSON.stringify(battle),saved);assert.equal(badgeCount(field.publicRow({...player,evaluation:null})),0);
+});
+test('non-equipped purchases appear across social people, friends, guilds, news, ranks and mail without role badges',()=>{
+  const h=social(),t=h.test,p={id:'other',name:'長い領主の名前・<甲斐の城主>',clan:'德川家',evaluation,appearance:copy(allOwned),isAdmin:true,isStaff:true,online:true};
+  t.s.onlinePlayers=[p];t.s.friends=[p];t.s.friendId=p.id;t.s.requests=[{...p,direction:'incoming'}];t.s.members=[p];
+  t.s.guildTreasury.ledger=[{id:'tx',playerId:p.id,name:p.name,playerEvaluation:evaluation,appearance:copy(allOwned),direction:'deposit',resource:'gold',amount:1,createdAt:'2026-11-21T00:00:00Z'}];
+  t.s.guilds=[{id:'guild',name:'旗の仲間',ownerId:p.id,ownerName:p.name,ownerEvaluation:evaluation,ownerAppearance:copy(allOwned),memberCount:1,maxMembers:50}];t.s.guildRankings.guilds=t.s.guilds;
+  t.s.achievements.events=[t.cleanAchievement({id:'e',playerId:p.id,playerName:p.name,playerEvaluation:evaluation,playerAppearance:copy(allOwned),title:'城郭を拡張',occurredAt:'2026-11-21T00:00:00Z'})];
+  t.s.mail=[{id:'mail',source:'system',title:'贈り物',body:'利用者の本文を保持します。',gift:{gold:1},createdAt:'2026-11-21T00:00:00Z',participants:[{playerId:p.id,name:p.name,side:'defender',evaluation,appearance:copy(allOwned)}]}];t.s.openedMail='mail';
+  const surfaces=[t.onlineView(),t.playerCards([p],'friend'),t.friendRequestRows(),t.friendsView(),t.guildView(),t.guildRankingRows(),t.guildLedgerRows(),t.achievementRows(),t.mailView(),t.chatView({player:p,caption:'本文'})];
+  t.s.user.guildId='guild';t.s.user.guildName='旗の仲間';t.s.guildSection='members';surfaces.push(t.guildView());
+  for(const html of surfaces){assert(purchaseCount(html)>=3);assert(!html.includes('class="social-role'));assert(!html.includes('>德川家<'));assert(html.includes('&lt;甲斐の城主&gt;'));noNestedButtons(html);}
+  h.scope.SengokuPremiumRuntime.getAppearance=()=>copy(allOwned);assert.equal(purchaseCount(t.profileView()),3);
+  assert.equal(purchaseCount(t.playerCards([{...p,appearance:undefined}],'friend')),0,'A role alone must not create a purchase indicator');
+});
+test('empty chat deltas add and remove all purchase icons on old posts while preserving drafts and scroll',async()=>{
+  const h=social(),t=h.test,list=h.nodes.get('#social-message-list'),input=h.nodes.get('#social-chat-input');t.s.tab='world';
+  const message={id:17,userId:'other',name:'領主',evaluation,text:'運営という言葉を含む利用者の投稿です。',createdAt:'2026-11-21T00:00:00Z',appearance:copy(noAppearance),isAdmin:true,isStaff:true};
+  t.s.chats.set('world:',{messages:[message],after:17,rendered:true});input.value='返信を変換中';input.selectionStart=2;input.selectionEnd=4;h.scope.document.activeElement=input;list.scrollTop=137;t.renderMessages();
+  let appearance=copy(allOwned);h.setHandler(async()=>({ok:true,messages:[],nextAfter:17,playerEvaluations:[{playerId:'other',name:'改名した領主',appearance}]}));await t.loadChat();
+  assert.equal(purchaseCount(list.innerHTML),3);assert(list.innerHTML.includes('改名した領主'));assert.equal(message.name,'改名した領主');assert(list.innerHTML.includes(message.text));assert(!list.innerHTML.includes('class="social-role'));assert.equal(list.scrollTop,137);assert.equal(input.value,'返信を変換中');assert.equal(h.scope.document.activeElement,input);assert.equal(input.selectionStart,2);assert.equal(input.selectionEnd,4);
+  const writes=list.htmlWrites;await t.loadChat();assert.equal(list.htmlWrites,writes);
+  appearance=copy(noAppearance);await t.loadChat();assert.equal(purchaseCount(list.innerHTML),0);assert.equal(t.s.chats.get('world:').messages.length,1);assert.equal(message.text,'運営という言葉を含む利用者の投稿です。');assert.equal(list.scrollTop,137);
+});
+test('empty letter deltas refresh current ownership on old authors and peers without replacing the composing form',async()=>{
+  const h=letters();h.data.appearance=copy(allOwned);await h.controller.openThread(h.THREAD);h.controller.setDraft('本文を変換しています');
+  const input=h.nodes.get('textarea'),main=h.nodes.get('[data-letter-main]'),scroll=h.nodes.get('[data-letter-scroll]');input.selectionStart=2;input.selectionEnd=5;input.isComposing=true;h.doc.activeElement=input;scroll.scrollTop=137;const writes=main.htmlWrites;
+  assert.equal(purchaseCount(h.nodes.get('[data-letter-messages]').innerHTML),6);assert.equal(purchaseCount(h.nodes.get('[data-letter-thread-heading]').innerHTML),3);
+  h.data.refresh=true;h.data.name='書状の新しい領主名';h.data.appearance=copy(noAppearance);await h.controller.refresh();
+  assert.equal(purchaseCount(h.nodes.get('[data-letter-messages]').innerHTML),0);assert(h.nodes.get('[data-letter-messages]').innerHTML.includes('書状の新しい領主名'));assert(h.nodes.get('[data-letter-thread-heading]').innerHTML.includes('書状の新しい領主名'));assert(h.controller.getState().messages.every(message=>message.authorName==='書状の新しい領主名'));assert.equal(purchaseCount(h.nodes.get('[data-letter-thread-heading]').innerHTML),0);assert.equal(h.controller.getState().messages.length,2);assert.equal(main.htmlWrites,writes);assert.equal(input.value,'本文を変換しています');assert.equal(input.selectionStart,2);assert.equal(input.selectionEnd,5);assert.equal(h.doc.activeElement,input);assert.equal(scroll.scrollTop,137);h.controller.dispose();
+});
+test('field and trade show current server ownership for parties and ignore role flags when rendering a name',()=>{
+  global.SengokuPremiumRuntime={...premiumUI(),getAppearance:()=>copy(noAppearance)};global.SengokuEvaluationUI=require('../player-evaluation.js');const field=require('../field.js'),trade=require('../trade.js');
+  const [p]=field.normalizePlayers([{playerId:'other',name:'相手',clan:'德川家',homeCastleId:'kiyosu',homeCastleName:'清洲城',level:4,evaluation,appearance:copy(allOwned),isAdmin:true,isStaff:true}]);
+  const row=field.publicRow(p);assert.equal(purchaseCount(row),3);assert(!/運営|スタッフ|德川家/.test(row));noNestedButtons(row);
+  const marker=field.groupBases([p],{kiyosu:{lon:136.84,lat:35.21}})[0];assert(field.markerAppearance(marker).label.includes('月影の城下を所有'));
+  const battle={attackerPlayerId:'actor',attackerName:'本人',attackerAppearance:copy(noAppearance),defenderPlayerId:'other',defenderName:'相手',defenderAppearance:copy(allOwned),won:true,battleMode:'raid'};
+  assert.equal(purchaseCount(field.battleReportHtml(battle,'actor')),3);
+  const item=trade.cleanTrade({id:'tr_'+'1'.repeat(32),status:'pending',sender:{playerId:'other',name:'相手',appearance:copy(allOwned)},recipient:{playerId:'actor',name:'本人'},offer:{gold:1},want:{},canAccept:true});
+  const state={ownerId:'actor',access:{writable:true},balances:{gold:100},rules:{balanceLimit:999999999}};assert.equal(purchaseCount(trade.tradeCard(item,state)),3);assert.equal(purchaseCount(trade.confirmationMarkup({action:'accept',target:item.sender,give:{},receive:{gold:1}})),3);
+  item.sender.appearance=copy(noAppearance);assert.equal(purchaseCount(trade.tradeCard(item,state)),0);
 });
 test('a selected older field report picks up refreshed player evaluations',async()=>{
   const nodes=new Map(),listeners=new Map(),doc={hidden:false,activeElement:null,addEventListener(){},removeEventListener(){}},host={ownerDocument:doc,contains:value=>Boolean(value),querySelector:selector=>{if(!nodes.has(selector))nodes.set(selector,node());return nodes.get(selector);},querySelectorAll:()=>[],addEventListener:(name,fn)=>listeners.set(name,fn),removeEventListener(){}};

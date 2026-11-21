@@ -83,17 +83,18 @@ await test('fixed touch header keeps its four resource and two action cells whil
 });
 await test('shared construction shows each confirmed actor rank while preserving queue clocks, escaping names and hiding private identifiers',()=>{
   const h=harness(),g=h.c.game,evaluation={version:1,score:60000,maxScore:100000,rankId:'court-11',rankName:'従三位',rankIndex:11};
+  h.c.window.SengokuPremiumRuntime=require('../premium-runtime.js');const appearance={ownedProducts:['gold-banner','moonlit-castle','supporter']};
   g.setRoleAccess({isStaff:true});g.state.turn=0;g.state.realtime.elapsed=0;
   const buildings={...g.state.buildings,farm:5,keep:8},base={id:'sunpu',revision:1,castleLevel:6,buildings,initial:{castleLevel:6,buildings:{...buildings}},history:[],updatedElapsedMs:0,accessSinceElapsedMs:0,jobs:[
-    {jobId:'shared-a',kind:'building',id:'farm',targetLevel:6,totalSeconds:60,startedElapsedMs:0,completesElapsedMs:60000,startedBy:{id:'PRIVATE-ACTOR-A',name:'<staff>',evaluation}},
+    {jobId:'shared-a',kind:'building',id:'farm',targetLevel:6,totalSeconds:60,startedElapsedMs:0,completesElapsedMs:60000,startedBy:{id:'PRIVATE-ACTOR-A',name:'<staff>',evaluation,appearance}},
     {jobId:'shared-b',kind:'building',id:'farm',targetLevel:7,totalSeconds:120,startedElapsedMs:60000,completesElapsedMs:180000,startedBy:{id:'PRIVATE-ACTOR-B',name:'担当二',evaluation}}
   ]};
   assert(h.c.applyStaffBase(base).ok);const before=JSON.stringify(g.state),jobs=g.constructionJobs(),html=h.c.jobsHtml();
-  assert.equal((html.match(/class="player-evaluation-badge"/g)||[]).length,2);assert(html.includes('従三位'));assert(html.includes('&lt;staff&gt;'));assert(!html.includes('<staff>'));assert(!html.includes('PRIVATE-ACTOR-'));assert(html.includes('が着手'));assert(html.includes('が予約'));
+  assert.equal((html.match(/class="player-evaluation-badge"/g)||[]).length,2);assert(html.includes('従三位'));assert(html.includes('&lt;staff&gt;'));assert(!html.includes('<staff>'));assert(!html.includes('PRIVATE-ACTOR-'));assert(html.includes('が着手'));assert(html.includes('が予約'));assert.equal((html.match(/data-premium-product=/g)||[]).length,3);
   for(const job of jobs){assert(html.includes(`data-job-clock="${h.c.jobKey(job)}"`));assert(html.includes(h.c.jobClockText(job)));}
   assert.equal(h.c.sharedJobAttribution({...jobs[0],shared:false}),'');assert(!h.c.sharedJobAttribution({...jobs[0],startedBy:{name:'旧記録'}}).includes('player-evaluation-badge'));assert.equal(JSON.stringify(g.state),before);assert.equal(h.writes.length,0);
-  const next=plain(base);next.jobs[0].startedBy.evaluation={...evaluation,score:70000,rankId:'court-12',rankName:'正三位',rankIndex:12};const queued=h.calls.queued,renders=h.calls.renders;
-  const updated=h.c.applyStaffBase(next);assert(updated.ok&&updated.changed&&updated.displayOnly);assert(h.c.jobsHtml().includes('正三位'));assert.equal(h.calls.renders,renders+1,'updated actor metadata redraws its attribution');assert.equal(h.calls.queued,queued,'display metadata must not request another world-clock advance');assert.equal(JSON.stringify(g.state),before);assert.equal(h.writes.length,0);
+  const next=plain(base);next.jobs[0].startedBy.evaluation={...evaluation,score:70000,rankId:'court-12',rankName:'正三位',rankIndex:12};next.jobs[0].startedBy.appearance={ownedProducts:[]};const queued=h.calls.queued,renders=h.calls.renders;
+  const updated=h.c.applyStaffBase(next);assert(updated.ok&&updated.changed&&updated.displayOnly);assert(h.c.jobsHtml().includes('正三位'));assert(!h.c.jobsHtml().includes('data-premium-product='),'Revoked purchases disappear from current construction attribution');assert.equal(h.calls.renders,renders+1,'updated actor metadata redraws its attribution');assert.equal(h.calls.queued,queued,'display metadata must not request another world-clock advance');assert.equal(JSON.stringify(g.state),before);assert.equal(h.writes.length,0);
 });
 console.log(`${checks} player evaluation UI checks passed. No external requests.`);
 })().catch(error=>{console.error(error);process.exitCode=1;});

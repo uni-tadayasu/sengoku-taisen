@@ -39,17 +39,17 @@
     if (game.isStaff && (context.staffReady === false || !game.getStaffBase?.())) {
       return single('blocked','staff-pending','駿府城の共同拠点を確認しています','共同普請と施設レベルの確認が終わるまでお待ちください。',{kind:'sync',label:'連携状態を確認'});
     }
-    if (context.clockReady === false) {
-      return single('blocked','clock-pending','共通時刻を確認しています','普請の完成や資源の増減を反映してから、次の一手を案内します。',view('town','城下町を確認'));
-    }
     if (context.saveEnabled === false) {
       return single('blocked','save-pending','保存状態を確認してください','保存が有効になってから、領国の状況に合うヒントを表示します。',{kind:'settings',label:'設定を確認'});
     }
-    if (context.writable === false) {
-      return single('blocked','read-only','操作を再開する準備を確認',context.syncMessage || '操作の同期が終わるまでお待ちください。連携画面でこの端末の状態を確認できます。',{kind:'sync',label:'連携・操作状況を確認'});
-    }
     if (s.gameOver) {
       return single('game-over','game-over','新しい物語の準備をしましょう','最後の城を失っています。これまでの記録を確認し、開始画面で次の勢力と本拠を選べます。',{kind:'new',label:'新しい物語の開始画面へ'},'advice');
+    }
+    if (context.clockReady === false) {
+      return single('blocked','clock-pending','次の一手','城下町の施設、軍団の編成、任務の報酬を確認できます。',view('town','城下町を見る'));
+    }
+    if (context.writable === false) {
+      return single('blocked','read-only','操作を再開する準備を確認',context.syncMessage || '操作の同期が終わるまでお待ちください。連携画面でこの端末の状態を確認できます。',{kind:'sync',label:'連携・操作状況を確認'});
     }
 
     const data = game.data, items = new Map();

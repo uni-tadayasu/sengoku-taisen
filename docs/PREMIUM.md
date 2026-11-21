@@ -2,13 +2,13 @@
 
 ## 設定・公開の状況（2026年11月22日 JST）
 
-フロントエンドはVer.3.14.0、実APIはSites version 23へ更新しています。3商品の価格・購入URL・完成アート・外観管理・署名通知の処理を実装しました。
+フロントエンドはVer.3.15.0、実APIはSites version 24です。3商品の価格・購入URL・完成アート・外観管理・署名通知に加え、未装備の購入商品を他の領主にも示す印、公開する役職情報の整理、同じ領主IDのまま名前を変更する機能を実装しました。
 
 Stripeの接続認証を再確認し、LiveのWebhook `we_1UeFufL3ZjL9QUmfA3vQjPP4` を保存しました。状態は `enabled`、API versionは `2026-09-30.endive`、対象は23イベントです。契約管理Portal `bpc_1UeFsLL3ZjL9QUmfCKVGnsnG` も保存済みで、[契約管理URL](https://billing.stripe.com/p/login/4gM3cw92Q6NP4gj1Ia9MY00)を設定しました。解約は契約期間末に適用し、返金按分は行わない設定です。
 
-Sitesの環境設定 revision 3に署名鍵をsecretとして保存し、`SENGOKU_PREMIUM_ENABLED=true` と契約管理URLを設定しました。保存済みversion 23の再デプロイ `appgdep_6b01b42264548191951ddc68127c3c45` は `succeeded`、反映された `env_set_revision` は `3` です。
+Sitesの環境設定 revision 3に署名鍵をsecretとして保存し、`SENGOKU_PREMIUM_ENABLED=true` と契約管理URLを設定しています。version 24のデプロイ `appgdep_6b01bb64824c8191a199d14b4c03be95` は `succeeded`、反映された `env_set_revision` は `3` です。今回の更新で決済設定・署名鍵・購入先は変更していません。
 
-既存3商品のStripe画像・説明を完成アートに更新し、Payment Linkの決済完了後の戻り先を `https://www.kasai-solutions-inc.com/?premium=<商品ID>` に設定しました。価格・税込設定・商品構成は維持しています。公開APIのヘルスチェックで `status:"ready"`・`version:"3.14.0"`・`features.premium:true` を確認し、契約管理ページの表示も確認しました。
+既存3商品のStripe画像・説明を完成アートに更新し、Payment Linkの決済完了後の戻り先を `https://www.kasai-solutions-inc.com/?premium=<商品ID>` に設定しています。価格・税込設定・商品構成を維持し、公開APIは `status:"ready"`・`version:"3.15.0"`・`features.premium:true` を返します。契約管理ページの表示は3.14.0の公開時に確認しました。
 
 実決済と本番Stripeイベントの受信は未実施です。購入から有料権利の反映までの本番確認は、ローカルの署名付きfixtureによる検証とは区別しています。
 
@@ -69,7 +69,11 @@ URLの成功パラメーター、プレビュー、ブラウザ保存、イン�
 | `POST /api/v1/admin/premium/reviews` | 確認対象の版・イベント・理由・操作番号を指定した保留解除 |
 | `POST /api/v1/premium/stripe/webhook` | Stripe署名付き通知専用。ゲームのBearerやwriter leaseは不要 |
 
-public DTOへ公開するのは検証済みの `appearance:{nameplate,town,badge}` のみです。請求書、決済ID、顧客情報を公開DTOに混ぜません。
+public DTOへ公開する外観情報は、検証済みの `appearance:{nameplate,town,badge,ownedProducts}` です。`ownedProducts` は `gold-banner`、`moonlit-castle`、`supporter` のうち現在有効な商品IDを返し、装備していない購入商品も含みます。請求書、決済ID、顧客情報を公開DTOに混ぜません。
+
+領主名の共通レンダーは、装備による名札の装飾とは別に商品ごとの小さな印を表示します。通常のチャット・接続一覧・フレンド・ギルド・ランキングに加え、書状の差出人、交易相手、地図の城主、戦歴の攻撃側・防御側、実績の領主も対象です。過去の記録は保存済みの決済情報や外観を信用せず、読み取り時の購入権利を表示します。新着のないチャット・書状の差分にも `playerEvaluations[].appearance` を返し、開いたままの過去投稿を更新します。
+
+保留・返金・BAN・月額期限切れでは対象商品の印を除き、BAN解除後はその時点で有効な商品だけ再表示します。運営・スタッフという役割に購入商品の印を付与しません。公開の名前表示には役割のバッジを付けず、一般向けAPIから他者の運営・スタッフ属性を除去します。認証済みの本人情報と認可された管理操作は維持します。領主名を変更しても購入権利の紐付けは同じ領主IDのままです。
 
 ### 環境設定
 

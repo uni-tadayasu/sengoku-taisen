@@ -32,6 +32,14 @@ test('a stale recommendation is re-evaluated before closing the dialog or naviga
   const h=setup();h.set({kind:'building',id:'farm'},'build-farm');h.c.getHints();h.model.items=[{id:'account-banned',action:{kind:'sync'}}];
   const before=JSON.stringify(h.game.state),result=h.c.followHint('build-farm');assert.equal(result.ok,false);assert.match(result.message,/状況が変わりました/);assert.deepEqual(h.calls,[]);assert.equal(JSON.stringify(h.game.state),before);
 });
+test('advice retained by the UI cannot bypass a clock or account change at navigation time',()=>{
+  const h=setup();h.c.window.SengokuHints=require('../hints.js');
+  const ready=h.c.getHints(),candidate=ready.items.find(item=>item.action?.kind==='building'||item.action?.kind==='castle'||item.action?.kind==='view');assert(candidate);
+  const before=JSON.stringify(h.game.state);h.c.window.SengokuWorldClock={snapshot:()=>({ready:true})};h.flags.clockApplied=false;h.flags.writable=false;
+  assert.equal(h.c.getHints().items[0].id,'clock-pending');assert(!JSON.stringify(h.c.getHints()).includes('共通時刻を確認しています'));
+  assert.equal(h.c.followHint(candidate.id).ok,false);assert.deepEqual(h.calls,[]);
+  h.flags.clockApplied=true;h.c.syncAccess.banned=true;assert.equal(h.c.followHint(candidate.id).ok,false);assert.deepEqual(h.calls,[]);assert.equal(JSON.stringify(h.game.state),before);
+});
 test('valid hints open existing views or details after closing the hint dialog, without saving or spending',()=>{
   const h=setup(),before=JSON.stringify(h.game.state),home=h.game.state.home;
   const cases=[

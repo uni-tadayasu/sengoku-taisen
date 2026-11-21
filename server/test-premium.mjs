@@ -315,6 +315,80 @@ await scope('review release and its audit commit atomically, with concurrent and
   h.beforeBatch=statements=>{if(statements.some(statement=>/INSERT INTO premium_reviews/.test(statement.sql))){h.beforeBatch=null;intercepted=true;h.sql.prepare("UPDATE settings SET value=? WHERE key='adminUserId'").run(actor.user.id);}};
   const denied=await release(h,admin,reviewBody(next),null);assert(intercepted);assert([403,409].includes(denied.response.status),JSON.stringify({status:denied.response.status,data:denied.data}));assert.deepEqual(tables(h),beforeRevoked);
 });
+
+await scope('unequipped purchases appear on every public name and refresh historical chat and letter authors',async h=>{
+  const actor=await h.session('購入表示の甲'),other=await h.session('購入表示の乙');
+  for(const [player,defender]of [[actor,false],[other,true]]){
+    const save=h.fresh();save.state.troops=20000;save.state.resources={gold:100000,rice:100000,wood:100000,stone:100000};
+    if(defender)save.state.castles.nijo={owner:save.state.clan,level:20,wall:4,troops:1000};
+    await savePlayer(h,player,save);
+  }
+  const chat=(await h.api('/chat',post(actor,{channel:'world',text:'購入前に書いた投稿'}))).data.message;
+  const letter=(await h.api('/letters',post(actor,{requestId:'premium-historical-letter',destination:'player',targetPlayerId:other.user.id,text:'購入前の書状'}))).data;
+  const guild=(await h.api('/guild',post(actor,{name:'購入表示の軍団'}))).data.guild;
+  await h.api('/guild/join',post(other,{guildId:guild.id}));
+  await h.api('/friends/request',post(actor,{userId:other.user.id}));await h.api('/friends/respond',post(other,{userId:actor.user.id,accept:true}));
+  await h.api('/presence',post(actor,{deviceId:actor.deviceId,online:true}));
+  const purchases=[];
+  for(const key of Object.keys(PRODUCTS)){const p=purchase(h,key,(await order(h,actor,key)).reference);await complete(h,p);purchases.push(p);}
+  const expected={nameplate:null,town:null,badge:null,ownedProducts:['gold-banner','moonlit-castle','supporter']};
+  assert.equal(h.sql.prepare('SELECT COUNT(*) n FROM premium_appearances').get().n,0,'Ownership must work before equipment is ever selected');
+  assert.deepEqual((await premium(h,actor)).appearance,expected);
+  const publicReads=[];
+  const read=async path=>{const value=(await h.api(path,{token:other.token})).data;publicReads.push(value);return value;};
+  assert.deepEqual((await read('/online')).players.find(p=>p.id===actor.user.id).appearance,expected);
+  assert.deepEqual((await read('/players?q='+encodeURIComponent('購入表示'))).players.find(p=>p.id===actor.user.id).appearance,expected);
+  assert.deepEqual((await read('/me')).friends.find(p=>p.id===actor.user.id).appearance,expected);
+  const memberList=await read('/guild');assert.deepEqual(memberList.guild.ownerAppearance,expected);assert.deepEqual(memberList.members.find(p=>p.id===actor.user.id).appearance,expected);
+  for(const path of ['/guilds','/guild/rankings'])assert.deepEqual((await read(path)).guilds[0].ownerAppearance,expected);
+  const full=await read('/chat?channel=world');assert.deepEqual(full.messages[0].appearance,expected);assert.equal(full.messages[0].text,chat.text);
+  const delta=await read('/chat?channel=world&after='+chat.id);assert.deepEqual(delta.messages,[]);assert.deepEqual(delta.playerEvaluations.find(p=>p.playerId===actor.user.id).appearance,expected);
+  const thread=await read('/letters/'+letter.thread.id);assert.deepEqual(thread.thread.peer.appearance,expected);assert.deepEqual(thread.messages[0].authorAppearance,expected);assert.deepEqual(thread.thread.lastMessage.authorAppearance,expected);
+  const letterDelta=await read('/letters/'+letter.thread.id+'?after='+letter.message.seq);assert.deepEqual(letterDelta.messages,[]);assert.deepEqual(letterDelta.playerEvaluations.find(p=>p.playerId===actor.user.id).appearance,expected);
+  const revision=()=>Number(h.sql.prepare('SELECT revision FROM player_saves WHERE user_id=?').get(actor.user.id).revision);
+  const ledger=(await h.api('/guild/treasury/transfer',post(actor,{guildId:guild.id,resource:'gold',amount:1,direction:'deposit',requestId:'premium-ledger',deviceId:actor.deviceId,expectedRevision:revision()}))).data.receipt;
+  assert.deepEqual(ledger.appearance,expected);assert.deepEqual((await read('/guild/treasury')).ledger[0].appearance,expected);
+  const proposed=(await h.api('/trades',post(actor,{targetPlayerId:other.user.id,offer:{gold:1},want:{},requestId:'premium-trade',deviceId:actor.deviceId,expectedRevision:revision()}))).data;
+  assert.deepEqual(proposed.trade.sender.appearance,expected);assert.deepEqual((await read('/trades')).trades[0].sender.appearance,expected);
+  const original=crypto.getRandomValues;crypto.getRandomValues=function(array){return array instanceof Uint32Array&&array.length===1?array.fill(0):original.call(crypto,array);};
+  let attacked;try{attacked=(await h.api('/field/attack',post(actor,{requestId:'premium-battle',targetPlayerId:other.user.id,targetCastleId:'nijo',troops:3000,tactic:'balanced',deviceId:actor.deviceId,expectedRevision:revision()}))).data;}finally{crypto.getRandomValues=original;}
+  assert.deepEqual(attacked.battle.attackerAppearance,expected);assert.deepEqual(attacked.battle.defenderAppearance.ownedProducts,[]);
+  await h.api('/field/diplomacy',post(actor,{requestId:'premium-diplomacy',targetPlayerId:other.user.id,action:'propose',deviceId:actor.deviceId,expectedRevision:revision()}));
+  const field=await read('/field');assert.deepEqual(field.players.find(p=>p.playerId===actor.user.id).appearance,expected);
+  const history=await read('/field/me');assert.deepEqual(history.battles[0].attackerAppearance,expected);assert.deepEqual(history.relationships[0].targetAppearance,expected);
+  const mail=await read('/mail');assert.deepEqual(mail.mail[0].participants.find(p=>p.playerId===actor.user.id).appearance,expected);
+  const feed=await read('/achievements');const achievement=feed.events.find(p=>p.playerId===actor.user.id);assert(achievement);assert.deepEqual(achievement.playerAppearance,expected);
+  const before=savedRows(h),stored=h.sql.prepare('SELECT result_json FROM field_battles').get().result_json;
+  await read('/field/me');await read('/letters/'+letter.thread.id);assert.deepEqual(savedRows(h),before);assert.equal(h.sql.prepare('SELECT result_json FROM field_battles').get().result_json,stored);assert(!stored.includes('Appearance'));
+  const published=JSON.stringify(publicReads);
+  for(const forbidden of [SECRET,actor.token,...purchases.flatMap(p=>[p.reference,p.session,p.intent,p.chargeId,p.customer])])assert(!published.includes(forbidden),'Public identity discloses private purchase data');
+  await equip(h,actor,'gold-banner');await h.api('/premium/appearance',{method:'PUT',token:actor.token,body:{slot:'nameplate',productId:null}});
+  assert.deepEqual((await read('/chat?channel=world')).messages[0].appearance,expected,'Removing equipment leaves the valid ownership mark');
+  const admin=await administrator(h);await h.api('/admin/staff',post(admin,{targetPlayerId:actor.user.id,action:'appoint',requestId:'premium-shared-role'}));
+  const shared=(await h.api('/sync',{token:actor.token})).data;
+  const construction=(await h.api('/staff/base/upgrade',post(actor,{kind:'building',id:'farm',requestId:'premium-shared-build',deviceId:actor.deviceId,expectedRevision:shared.revision,baseRevision:shared.staffBase.revision}))).data;
+  const attribution=construction.staffBase.jobs.find(job=>job.startedBy?.id===actor.user.id).startedBy;
+  assert.deepEqual(attribution.appearance,expected,'Server-owned construction attribution carries the actual buyer marks');
+  assert(!JSON.parse(h.sql.prepare("SELECT state_json FROM staff_base WHERE id='sunpu'").get().state_json).jobs[0].startedBy.appearance,'Display state is never written back to shared jobs');
+});
+
+await scope('historical names lose purchase marks on holds, refunds, BAN and exact subscription expiry',async h=>{
+  const admin=await administrator(h),actor=await h.session('取消表示の甲'),viewer=await h.session('取消表示の乙'),payments={};
+  for(const key of Object.keys(PRODUCTS)){const p=purchase(h,key,(await order(h,actor,key)).reference);await complete(h,p);payments[key]=p;}
+  const battle={id:id('fb_'),attackerPlayerId:actor.user.id,attackerName:actor.user.name,defenderPlayerId:viewer.user.id,defenderName:viewer.user.name,createdAt:new Date(h.now).toISOString(),battleMode:'raid'};
+  h.sql.prepare('INSERT INTO field_battles(id,attacker_id,defender_id,occurred_elapsed_ms,result_json,created_at) VALUES(?,?,?,?,?,?)').run(battle.id,actor.user.id,viewer.user.id,0,JSON.stringify(battle),h.now);
+  const appearance=async()=>(await h.api('/field/me',{token:viewer.token})).data.battles[0].attackerAppearance;
+  const all=['gold-banner','moonlit-castle','supporter'];assert.deepEqual((await appearance()).ownedProducts,all);
+  await deliver(h,warning(h,payments['gold-banner']));assert.deepEqual((await appearance()).ownedProducts,['moonlit-castle','supporter']);
+  for(const hold of (await reviews(h,admin)).holds)await release(h,admin,reviewBody(hold));assert.deepEqual((await appearance()).ownedProducts,all);
+  await deliver(h,event(h,'refund.created',{id:id('re_'),object:'refund',charge:payments['gold-banner'].chargeId,payment_intent:payments['gold-banner'].intent,amount:480,currency:'jpy',status:'succeeded'}));
+  assert.deepEqual((await appearance()).ownedProducts,['moonlit-castle','supporter']);
+  await moderate(h,admin,actor,'ban');assert.deepEqual(await appearance(),{nameplate:null,town:null,badge:null,ownedProducts:[]});
+  await moderate(h,admin,actor,'unban');assert.deepEqual((await appearance()).ownedProducts,['moonlit-castle','supporter']);
+  h.now=payments.supporter.end*1000-1;assert.deepEqual((await appearance()).ownedProducts,['moonlit-castle','supporter']);
+  h.now++;assert.deepEqual((await appearance()).ownedProducts,['moonlit-castle']);
+  assert.equal(h.sql.prepare('SELECT result_json FROM field_battles WHERE id=?').get(battle.id).result_json,JSON.stringify(battle));
+});
 }finally{globalThis.fetch=originalFetch;}
 assert.equal(externalRequests,0,'Fixture suite must never make a real payment or external network request');
 console.log(JSON.stringify({passed:checks,failed,calls,externalRequests,realPayments:0,fixtureOnly:true}));

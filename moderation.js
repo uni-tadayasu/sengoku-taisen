@@ -6,7 +6,7 @@ const clone=value=>JSON.parse(JSON.stringify(value));
 const esc=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const number=value=>Math.max(0,Math.floor(Number(value)||0)).toLocaleString('ja-JP');
 const validCount=value=>Number.isSafeInteger(value)&&value>=0;
-function player(value){const id=String(value?.id??value?.playerId??'');return ID.test(id)&&typeof value?.name==='string'?{id,name:value.name.slice(0,80),clan:String(value.clan||'').slice(0,60),isAdmin:value.isAdmin===true,isStaff:value.isStaff===true,banned:value.banned===true}:null;}
+function player(value){const id=String(value?.id??value?.playerId??'');return ID.test(id)&&typeof value?.name==='string'?{id,name:value.name.slice(0,80),clan:String(value.clan==='德川家'?'徳川家':value.clan||'').slice(0,60),isAdmin:value.isAdmin===true,isStaff:value.isStaff===true,banned:value.banned===true,appearance:global.SengokuPremiumRuntime?.cleanAppearance?.(value.appearance)||null}:null;}
 function ban(value){return value&&typeof value.active==='boolean'&&validCount(value.revision)?{active:value.active,revision:value.revision,reason:String(value.reason||'').slice(0,300),bannedAt:value.bannedAt||null,bannedBy:value.bannedBy||null,updatedAt:value.updatedAt||null}:null;}
 function target(value){const who=player(value?.player),state=ban(value?.ban),counts=value?.counts;if(!who||!state||!counts||!['chatMessages','letterMessages','pendingTrades'].every(key=>validCount(counts[key])))return null;return{player:who,ban:state,counts:{chatMessages:counts.chatMessages,letterMessages:counts.letterMessages,pendingTrades:counts.pendingTrades},canBan:value.canBan===true,canUnban:value.canUnban===true,contentRevision:validCount(value.contentRevision)?value.contentRevision:null};}
 const date=value=>{const when=new Date(value);return value&&Number.isFinite(when.getTime())?when.toLocaleString('ja-JP',{timeZone:'Asia/Tokyo',year:'numeric',month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}):'—';};
@@ -111,7 +111,7 @@ function createController(options={}){
   function dispose(){disposed=true;epoch++;viewEpoch++;Object.assign(s,{results:[],bans:[],target:null,confirm:null,pending:null,open:false});}
   return{getState(){identity();return snapshot();},open,close,setQuery,setReason,search,select,prepare,cancelConfirm,confirm,retry,loadBans,loadMore:()=>loadBans({more:true}),refreshIdentity,dispose};
 }
-const who=value=>'<strong>'+esc(value.name)+'</strong><code>'+esc(value.id)+'</code>';
+const who=value=>'<strong>'+(global.SengokuPremiumRuntime?.nameMarkup?.(value.name,value.appearance)||esc(value.name))+'</strong><code>'+esc(value.id)+'</code>';
 function targetMarkup(value){
   const p=value.player,b=value.ban,counts=value.counts;
   return '<header><span class="moderation-eyebrow">操作する領主</span>'+who(p)+'<span class="moderation-status">'+(b.active?'BAN中':p.isAdmin?'運営・操作対象外':'利用中')+'</span></header><dl class="moderation-counts"><div><dt>チャットの本文</dt><dd>'+number(counts.chatMessages)+'件</dd></div><div><dt>書状の本文</dt><dd>'+number(counts.letterMessages)+'件</dd></div><div><dt>未成立の交易</dt><dd>'+number(counts.pendingTrades)+'件</dd></div></dl>'+(b.active?'<p class="moderation-note">BAN日時：'+esc(date(b.bannedAt))+' JST'+(b.reason?'<br>理由：'+esc(b.reason):'')+'</p>':'');

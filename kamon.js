@@ -1888,7 +1888,7 @@
     options=options&&typeof options==='object'?options:{};
     const entry=get(clan),value=Number(options.size),size=Number.isFinite(value)&&value>0?Math.max(12,Math.min(512,Math.round(value))):40;
     const raw=typeof clan==='string'?clan.trim():'';
-    const clanLabel=raw==='德川家'||raw==='德川'?'德川家':entry===fallback?(raw||entry.clan):entry.clan;
+    const clanLabel=entry===fallback?(raw||entry.clan):entry.clan;
     const label=clanLabel+'：'+entry.name;
     const classes=['sengoku-kamon',options.label?'sengoku-kamon--label':'',String(options.className||'').replace(/[^a-zA-Z0-9_ -]/g,'')].filter(Boolean).join(' ');
     return '<span class="'+esc(classes)+'" style="--kamon-size:'+size+'px" role="img" aria-label="'+esc(label)+'" title="'+esc(label)+'"><img src="'+entry.url+'" width="'+size+'" height="'+size+'" alt="" loading="lazy" decoding="async" draggable="false">'+(options.label?'<span class="sengoku-kamon__caption"><b>'+esc(clanLabel)+'</b><small>'+esc(entry.name)+'</small></span>':'')+'</span>';

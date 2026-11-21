@@ -1,10 +1,15 @@
 /* These decorations are driven by verified server appearance selections. */
-.sengoku-premium-name{display:inline-flex;align-items:center;gap:.35em;max-width:100%;min-width:0;vertical-align:middle;line-height:1.5}
+.sengoku-premium-name{display:inline-flex;align-items:center;flex-wrap:wrap;gap:.2em .35em;max-width:100%;min-width:0;vertical-align:middle;line-height:1.5}
 .sengoku-premium-name>span{overflow-wrap:anywhere;min-width:0}
 .sengoku-premium-name.is-gilded{position:relative;padding:.14em .58em .14em .25em;border:1px solid #c3a461;border-radius:4px;background:linear-gradient(115deg,#263744,#101d28 52%,#384333);box-shadow:inset 0 0 0 2px #af88301a,0 1px 5px #0002;color:#ffe4a4;text-shadow:0 1px 2px #0008}
 .sengoku-premium-name.is-gilded:after{content:"";position:absolute;inset:2px;pointer-events:none;border:1px solid #e6c66e33;border-radius:2px}
 .sengoku-premium-name-flag{display:block;width:20px!important;height:30px!important;object-fit:contain;flex:0 0 20px;filter:drop-shadow(0 1px 2px #0008)}
 .sengoku-supporter-badge{display:inline-block;width:32px!important;height:32px!important;object-fit:contain;flex:0 0 32px;vertical-align:middle;filter:drop-shadow(0 1px 2px #0004)}
+.sengoku-owned-products{display:inline-flex;align-items:center;gap:3px;flex:0 0 auto;max-width:100%;vertical-align:middle;line-height:1}
+.sengoku-owned-product{display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;width:28px;height:28px;flex:0 0 28px;overflow:hidden;border:1px solid #c5ae6c7a;border-radius:6px;background:#122533;vertical-align:middle;box-shadow:0 1px 3px #0003}
+.sengoku-owned-product img{display:block;width:26px!important;height:26px!important;max-width:none!important;max-height:none!important;object-fit:contain;flex:none;pointer-events:none}
+.sengoku-owned-product.is-gold-banner img{padding:1px 4px}.sengoku-owned-product.is-moonlit-castle{border-color:#a6b8df8c}.sengoku-owned-product.is-moonlit-castle img{object-fit:cover;object-position:39% 27%}.sengoku-owned-product.is-supporter{border-color:transparent;background:transparent;box-shadow:none}.sengoku-owned-product.is-supporter.is-equipped{width:32px;height:32px;flex-basis:32px}.sengoku-owned-product.is-supporter.is-equipped img{width:32px!important;height:32px!important}
+.player-evaluation-name{min-width:0;max-width:100%;overflow-wrap:anywhere}.player-evaluation-person{flex-wrap:wrap;row-gap:3px}
 .town-premium-banner{position:absolute;left:2%;top:2%;width:10%;height:35%;pointer-events:none;z-index:1;filter:drop-shadow(2px 4px 3px #0008)}
 .town-premium-banner img{display:block;width:100%;height:100%;object-fit:contain;object-position:top}
 .town-premium-lord{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 16px;background:linear-gradient(110deg,#142831,#263941);border-top:1px solid #bc9d5144;color:#f7edd7}
@@ -15,3 +20,4 @@
 .field-castle-visual.is-moonlit:after{content:"";position:absolute;top:8%;right:10%;width:14%;aspect-ratio:1;border-radius:50%;background:#ecf2e9;box-shadow:0 0 12px #d7e8ffa6;pointer-events:none}
 .field-castle-visual.is-moonlit .field-castle-art{position:relative;z-index:1;filter:drop-shadow(0 2px 5px #8fb9e955)}
 @media(max-width:480px){.town-premium-lord{padding:8px 10px;gap:8px}.town-premium-lord .sengoku-premium-name{font-size:14px}.sengoku-premium-name.is-gilded{padding-right:.35em}.social-message-meta .sengoku-supporter-badge{width:27px!important;height:27px!important;flex-basis:27px}}
+@media(max-width:480px){.sengoku-owned-products{gap:2px}.sengoku-owned-product{width:26px;height:26px;flex-basis:26px}.sengoku-owned-product img{width:24px!important;height:24px!important}.sengoku-owned-product.is-supporter.is-equipped{width:28px;height:28px;flex-basis:28px}.sengoku-owned-product.is-supporter.is-equipped img{width:28px!important;height:28px!important}.social-message-meta strong,.field-player-copy>strong,.letters-message-name,.trade-person-name{min-width:0;max-width:100%;overflow-wrap:anywhere}}

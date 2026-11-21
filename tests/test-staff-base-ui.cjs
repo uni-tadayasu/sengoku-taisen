@@ -80,7 +80,7 @@ await test('verified staff metadata fixes the house and Sunpu, preserves officer
   assert.deepEqual(plain(bridge.getState().officers),plain(g.state.officers));assert.deepEqual(plain(bridge.getState().officerVariants),plain(g.state.officerVariants));
   assert(!bridge.getState().officerVariants.includes('of_b0616adde162:U'));
   const header=b.nodes.get('clan-panel').innerHTML;
-  assert.match(header,/<b>德川家<\/b>/);assert.match(header,/徳川家康 の治世/);assert.match(header,/assets\/kamon\/tokugawa\.svg/);assert.match(header,/aria-label="德川家：三つ葉葵"/);
+  assert.match(header,/<b>徳川家<\/b>/);assert.match(header,/徳川家康 の治世/);assert.match(header,/assets\/kamon\/tokugawa\.svg/);assert.match(header,/aria-label="徳川家：三つ葉葵"/);assert(!/運営|スタッフ/.test(header));
   assert(!header.includes('織田信長'));assert(!header.includes('德川家康 の治世'));
   assert.equal(bridge.getState().buildings.farm,5);assert.equal(bridge.getState().castles.sunpu.level,63);
   assert.equal(bridge.getSave().state.buildings.farm,3);const before=plain(bridge.getSave().state),events=b.events.length;
@@ -102,7 +102,7 @@ await test('role revocation removes the shared view and rejects late base replie
 await test('a staff first start waits for the shared source and fixes both 德川家 and Sunpu',async()=>{
   const b=browser(),bridge=b.c.SengokuBridge;bridge.setRoleAccess({isStaff:true});bridge.openStartSelection();
   const chooser=b.nodes.get('modal-content').innerHTML;
-  assert.match(chooser,/スタッフ共同本拠 · 駿府城固定/);assert.match(chooser,/スタッフの家は德川家に固定/);assert.equal(b.query('#new-start-castle'),null);
+  assert.match(chooser,/共同本拠 · 駿府城固定/);assert.match(chooser,/家は徳川家に固定/);assert(!/運営|スタッフ/.test(chooser));assert.equal(b.query('#new-start-castle'),null);
   assert.equal((chooser.match(/data-action="choose-clan"/g)||[]).length,1);assert.match(chooser,/data-id="德川家"/);assert.match(chooser,/<small>徳川家康<\/small>/);
   assert(!chooser.includes('data-id="武田家"'));assert(!chooser.includes('data-id="徳川家"'));assert(!chooser.includes('德川家康 U の特別イラスト'));
   await b.click('start-new');assert.equal(bridge.hasStarted(),false);assert(!b.stored.has(SAVE));
@@ -116,7 +116,7 @@ await test('shared construction names are escaped and separate timers distinguis
   const shared=base();shared.jobs=[{jobId:'job1',kind:'building',id:'farm',targetLevel:6,totalSeconds:60,startedElapsedMs:100000,completesElapsedMs:160000,startedBy:{id:'PRIVATE-ACTOR-ID',name:'<img src=x onerror=alert(1)>'}}];
   const b=browser(g.exportSave());assert(b.c.SengokuBridge.applyCloudSave(g.exportSave(),{isStaff:true,staffBase:shared}).ok);
   const html=b.nodes.get('main').innerHTML;
-  assert.match(html,/staff-base-notice/);assert.match(html,/スタッフ共同拠点/);assert.match(html,/farm:shared/);assert.match(html,/farm:personal/);
+  assert.match(html,/staff-base-notice/);assert.match(html,/共同拠点/);assert.match(html,/farm:shared/);assert.match(html,/farm:personal/);
   assert.match(html,/経過 20秒/);assert.match(html,/あと 40秒/);assert.match(html,/&lt;img src=x onerror=alert\(1\)&gt;/);
   assert(!html.includes('<img src=x'));assert(!html.includes('PRIVATE-ACTOR-ID'));
 });
@@ -132,7 +132,7 @@ await test('staff castle UI allows level 64 while facilities retain level 32',as
   const b=browser(personal().exportSave()),bridge=b.c.SengokuBridge;bridge.setRoleAccess({isStaff:true});bridge.applyStaffBase(base());
   await b.click('staff-base-detail');let html=b.nodes.get('modal-content').innerHTML;
   assert.match(html,/Lv\.63 \/ 64/);assert.match(html,/Lv\.64へ共同普請する/);assert(!html.includes('最高のLv.32'));
-  assert.match(html,/自領 · 德川家/);assert.match(html,/aria-label="德川家：三つ葉葵"/);assert(!html.includes('江戸城を本拠'));
+  assert.match(html,/自領 · 徳川家/);assert.match(html,/aria-label="徳川家：三つ葉葵"/);assert(!html.includes('江戸城を本拠'));
   const complete=base(2);complete.castleLevel=64;complete.initial.castleLevel=64;bridge.applyStaffBase(complete);
   html=b.nodes.get('modal-content').innerHTML;assert.match(html,/最高のLv\.64/);assert(!html.includes('data-action="upgrade-castle"'));
   await b.click('building','farm');html=b.nodes.get('modal-content').innerHTML;assert.match(html,/Lv\.5 \/ 32/);assert.match(html,/共同普請する/);

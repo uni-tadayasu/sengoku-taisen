@@ -130,7 +130,7 @@ try{
  checks.push('shared castle level 64, facility level 32 and completed jobs advance for every member');
 
  const visible=(await api('/field?limit=100',{token:ordinary.token})).data;
- for(const p of [a,b]){const row=visible.players.find(row=>row.playerId===p.user.id);assert(row);assert.equal(row.homeCastleId,'sunpu');assert.equal(row.level,64);assert.equal(row.isStaff,true);assert.equal(row.attackable,true);assert.equal(row.battleMode,'reward');assert.equal(row.capturable,false);}
+ for(const p of [a,b]){const row=visible.players.find(row=>row.playerId===p.user.id);assert(row);assert.equal(row.homeCastleId,'sunpu');assert.equal(row.level,64);assert.equal(Object.hasOwn(row,'isStaff'),false);assert.equal(row.attackable,true);assert.equal(row.battleMode,'reward');assert.equal(row.capturable,false);}
  for(const privateKey of ['staffBase','personalHome','personalSunpu','requestId','request_hash','resources'])assert(!JSON.stringify(visible).includes(privateKey));
  await align(ordinary);
  const protectedBeforeAttack={base:baseRow(),a:player(a),b:player(b),backups:sql.prepare('SELECT * FROM staff_campaign_backups ORDER BY user_id').all()};
@@ -153,7 +153,7 @@ try{
  const oldSource=await staffBase(b),oldReplay=body(b,'building','market'),accepted=(await upgrade(b,oldReplay)).data;await assign(b,'dismiss');
  await api('/staff/base',{token:b.token,expected:403});await upgrade(b,oldReplay,403);const dismissed=await sync(b);assert.equal(dismissed.user.isStaff,false);assert.equal(dismissed.staffBase,null);assert.equal(dismissed.save.state.home,'himeji');
  assert.equal((await staffBase(a)).revision,accepted.staffBase.revision);assert.equal((await staffBase(a)).castleLevel,oldSource.castleLevel);
- const feed=(await api('/achievements')).data;assert(feed.events.some(e=>e.kind==='staff-building'));
+ const feed=(await api('/achievements')).data;assert(feed.events.some(e=>e.kind==='building'));assert(!feed.events.some(e=>e.kind==='staff-building'));
  for(const privateKey of ['staffBase','personalHomeCastle','requestId','commit_token','request_hash','save_json','token_hash'])assert(!JSON.stringify(feed).includes(privateKey));
  checks.push('dismissal removes shared read/replay access without erasing growth; completion notices expose no private fields');
  await assign(b);await sync(b);h.beforeStatement=(query,params)=>{if(query.startsWith('SELECT joined_elapsed_ms,save_json FROM staff_campaign_backups')&&params[0]===b.user.id){h.beforeStatement=null;sql.prepare('DELETE FROM staff_members WHERE user_id=?').run(b.user.id);}};

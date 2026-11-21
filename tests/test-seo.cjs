@@ -196,10 +196,21 @@ test('the beginner upgrade guide gives separate keep and castle steps, actual co
   const guide=pages.find(page=>page.key==='guide'),section=guide.html.match(/<section\b([^>]*\bid="castle-upgrades"[^>]*)>([\s\S]*?)<\/section>/);
   assert(section);assert(!/\bhidden\b|aria-hidden=["']true/.test(section[1]));
   const text=normalized(section[2]);
-  for(const phrase of ['「天守」','「城郭レベル」','それぞれ別の工事','城下町で「天守」を開く','「天下地図」から「本拠へ」を押す','その後、本拠の城を押して選択','「城郭の拡張」','「Lv.Nへ拡張する」','「次の増築を予約」','予約の取り消しはできません','同じ城郭の工事中は、次の段階を予約できません','指令1回と金銭・木材・石材','120秒または180秒','60秒・120秒・180秒','Lv.8・16・24・32','最大6枠','駿府城の共同普請を開く'])assert(text.includes(phrase),phrase);
+  for(const phrase of ['「天守」','「城郭レベル」','それぞれ別の工事','城下町で「天守」を開く','「天下地図」から「本拠へ」を押す','その後、本拠の城を押して選択','「城郭の拡張」','「Lv.Nへ拡張する」','「次の増築を予約」','予約の取り消しはできません','同じ城郭の工事中は、次の段階を予約できません','指令1回と金銭・木材・石材','120秒または180秒','60秒・120秒・180秒','Lv.8・16・24・32','最大6枠'])assert(text.includes(phrase),phrase);
   for(const limit of ['Lv.32','Lv.48','Lv.64'])assert(text.includes(limit));
   assert(tags(guide.html,'a').some(link=>link.href==='#castle-upgrades'));
   const about=pages.find(page=>page.key==='about');assert(tags(about.html,'a').some(link=>link.href&&new URL(link.href,about.url).href===site.origin+'/guide/#castle-upgrades'));
+});
+
+test('public discovery identifies only Sengoku VS and does not explain privileged player identities',()=>{
+  for(const page of pages){
+    const visible=normalized(page.html.replace(/<(?:script|style)\b[\s\S]*?<\/(?:script|style)>/gi,''));
+    assert(!/双月のアルケイア|パチモン|Pachi Monsters|Archeia of the Twin Moons/i.test(visible),page.key+' contains a retired title');
+    assert(!/スタッフ|運営専用|運営の本拠|德川家|以前の領主・運営/.test(visible),page.key+' reveals privileged identity mappings');
+    assert(!tags(page.html,'a').some(link=>/#operator(?:$|[?&])/.test(link.href||'')),page.key+' advertises private role recovery');
+  }
+  const guide=pages.find(page=>page.key==='guide');
+  for(const phrase of ['購入した商品の印','外観を通常に戻しても','有効な利用期間中'])assert(guide.html.includes(phrase),phrase);
 });
 
 (async()=>{

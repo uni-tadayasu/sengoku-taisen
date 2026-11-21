@@ -56,7 +56,7 @@ test('clustering retains every castle and selected/home positions stay exact',()
 test('Sunpu is reserved for staff and shared field selection is independent of attack permission',()=>{
   const castles=[{id:'sunpu',name:'駿府城',owner:'織田家',level:64}],coords={sunpu:{lon:138.3828,lat:34.9798}};
   const point=options=>M.castlePoints(castles,coords,options)[0];
-  assert.equal(point({}).disabled,true);assert.equal(point({}).restrictedLabel,'スタッフ専用');
+  assert.equal(point({}).disabled,true);assert.equal(point({}).restrictedLabel,'選択不可');
   assert.equal(point({isAdmin:true}).disabled,true);assert.equal(point({isStaff:true}).disabled,false);
   assert.equal(point({isStaff:true,isAdmin:true}).disabled,true,'Operator Edo takes precedence over staff flags');
   assert.equal(point({allowRestrictedSelection:true}).disabled,false,'Public field markers remain inspectable');

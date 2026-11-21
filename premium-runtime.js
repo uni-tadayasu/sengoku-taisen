@@ -3,16 +3,19 @@
 (function (global) {
   'use strict';
   const slots = Object.freeze({ 'gold-banner': 'nameplate', 'moonlit-castle': 'town', supporter: 'badge' });
+  const productIds = Object.freeze(Object.keys(slots));
+  const productLabels = Object.freeze({ 'gold-banner': '金彩の旗印を所有', 'moonlit-castle': '月影の城下を所有', supporter: '戦国VSサポーター（有効）' });
   const assets = Object.freeze({
     town: 'assets/premium/moonlit-castle-v1.webp',
     banner: 'assets/premium/gold-banner-v1.webp',
     badge: 'assets/premium/supporter-badge-v1.webp'
   });
-  const emptyAppearance = () => ({ nameplate: null, town: null, badge: null });
+  const emptyAppearance = () => ({ nameplate: null, town: null, badge: null, ownedProducts: [] });
   const cleanAppearance = value => ({
     nameplate: value?.nameplate === 'gold-banner' ? 'gold-banner' : null,
     town: value?.town === 'moonlit-castle' ? 'moonlit-castle' : null,
-    badge: value?.badge === 'supporter' ? 'supporter' : null
+    badge: value?.badge === 'supporter' ? 'supporter' : null,
+    ownedProducts: productIds.filter(id => Array.isArray(value?.ownedProducts) && value.ownedProducts.includes(id))
   });
   const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   function isoTime(value) {
@@ -41,13 +44,14 @@
     }
     function elapsedServerTime() { return serverTime + Math.max(0, monotonic() - receivedAt); }
     function snapshot() {
-      const result = { ...context, user: context.user ? { ...context.user } : null, products: context.products.map(item => ({ ...item })), appearance: { ...context.appearance } };
+      const result = { ...context, user: context.user ? { ...context.user } : null, products: context.products.map(item => ({ ...item })), appearance: cleanAppearance(context.appearance) };
       if (result.status === 'ready') {
         for (const product of result.products) {
           if (product.expiresAt && Date.parse(product.expiresAt) <= elapsedServerTime()) {
             product.owned = false; product.equipped = false;
             product.canPurchase = false; // Recheck server subscription status before another checkout.
             if (result.appearance[slots[product.id]] === product.id) result.appearance[slots[product.id]] = null;
+            result.appearance.ownedProducts = result.appearance.ownedProducts.filter(id => id !== product.id);
           }
         }
       }
@@ -92,6 +96,7 @@
       });
       if (products.length !== Object.keys(slots).length) throw Error('商品情報を確認できません。もう一度更新してください。');
       const appearance = cleanAppearance(result.appearance);
+      appearance.ownedProducts = productIds.filter(id => products.some(p => p.id === id && p.owned));
       for (const [id, slot] of Object.entries(slots)) if (!products.some(p => p.id === id && p.owned && p.equipped)) appearance[slot] = null;
       serverTime = now; receivedAt = monotonic();
       context = { status: 'ready', user: { id: who.user.id, name: String(result.player.name || who.user.name) }, ready: result.ready === true, products, appearance, portalUrl: safePortal(result.portalUrl), serverNow: result.serverNow, error: result.ready === true ? '' : '購入機能を準備しています。時間をおいて更新してください。' };
@@ -168,11 +173,14 @@
   }
   function nameMarkup(name, appearance) {
     const a = cleanAppearance(appearance);
-    return `<span class="sengoku-premium-name${a.nameplate ? ' is-gilded' : ''}">${a.nameplate ? `<img class="sengoku-premium-name-flag" src="${assets.banner}" alt="" width="20" height="30" decoding="async">` : ''}<span>${esc(name)}</span>${a.badge ? `<img class="sengoku-supporter-badge" src="${assets.badge}" alt="戦国VSサポーター" title="戦国VSサポーター" width="32" height="32" decoding="async">` : ''}</span>`;
+    const pictures = { 'gold-banner': assets.banner, 'moonlit-castle': assets.town, supporter: assets.badge };
+    const owned = a.ownedProducts.map(id => `<span class="sengoku-owned-product is-${id}${id === 'supporter' && a.badge ? ' is-equipped' : ''}" data-premium-product="${id}" role="img" aria-label="${productLabels[id]}" title="${productLabels[id]}"><img src="${pictures[id]}" alt="" aria-hidden="true" width="26" height="26" decoding="async" draggable="false"></span>`).join('');
+    return `<span class="sengoku-premium-name${a.nameplate ? ' is-gilded' : ''}">${a.nameplate ? `<img class="sengoku-premium-name-flag" src="${assets.banner}" alt="" width="20" height="30" decoding="async">` : ''}<span class="sengoku-premium-name-text">${esc(name)}</span>${owned ? `<span class="sengoku-owned-products">${owned}</span>` : ''}${a.badge && !a.ownedProducts.includes('supporter') ? `<img class="sengoku-supporter-badge" src="${assets.badge}" alt="戦国VSサポーター" title="戦国VSサポーター" width="32" height="32" decoding="async">` : ''}</span>`;
   }
+  function ownershipLabel(appearance) { return cleanAppearance(appearance).ownedProducts.map(id => productLabels[id]).join('・'); }
   const runtime = createRuntime();
-  global.SengokuPremiumRuntime = Object.assign(runtime, { assets, cleanAppearance, nameMarkup });
-  if (typeof module !== 'undefined' && module.exports) module.exports = { createRuntime, cleanAppearance, nameMarkup, assets };
+  global.SengokuPremiumRuntime = Object.assign(runtime, { assets, cleanAppearance, nameMarkup, ownershipLabel });
+  if (typeof module !== 'undefined' && module.exports) module.exports = { createRuntime, cleanAppearance, nameMarkup, ownershipLabel, assets };
   if (global.document) {
     const resume = () => { if (!global.document.hidden) runtime.refresh().catch(() => {}); };
     const start = () => {

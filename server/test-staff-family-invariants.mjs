@@ -44,11 +44,11 @@ await scope('all eight personal families round-trip exact estates without acquir
     assert.equal(game.state.clan,'德川家');assert.equal(game.restoreAdminAssets().ok,false);assert.equal(game.selectAdminCastle().ok,false);
     game.state.castles.osaka={...game.state.castles.osaka,owner:game.state.clan,level:43};staff=await put(p,JSON.parse(game.exportSave()));
     const me=(await api('/me',{token:p.token})).data.user,found=(await api('/players?q='+encodeURIComponent(p.user.name),{token:admin.token})).data.players.find(x=>x.id===p.user.id),field=(await api('/field')).data.players.find(x=>x.playerId===p.user.id);
-    for(const user of [me,found]){assert.equal(user.clan,'德川家');assert.equal(user.isStaff,true);assert.equal(user.isAdmin,false);}
-    assert.equal(field.clan,'德川家');assert.equal(field.homeCastleId,'sunpu');assert.equal(field.isAdmin,false);assert.equal(field.isStaff,true);
-    const event=(await api('/achievements?limit=50')).data.events.find(x=>x.playerId===p.user.id&&x.targetId==='osaka');assert(event);assert.equal(event.clan,'德川家');
+    assert.equal(me.clan,'德川家');assert.equal(me.isStaff,true);assert.equal(me.isAdmin,false);assert.equal(found.clan,'徳川家');assert.equal(Object.hasOwn(found,'isStaff'),false);assert.equal(Object.hasOwn(found,'isAdmin'),false);
+    assert.equal(field.clan,'徳川家');assert.equal(field.homeCastleId,'sunpu');assert.equal(Object.hasOwn(field,'isAdmin'),false);assert.equal(Object.hasOwn(field,'isStaff'),false);
+    const event=(await api('/achievements?limit=50')).data.events.find(x=>x.playerId===p.user.id&&x.targetId==='osaka');assert(event);assert.equal(event.clan,'徳川家');
     if(index===0){
-      await api('/presence',post(p.token,{deviceId:p.device,deviceName:'検証端末',online:true}));const online=(await api('/online')).data.players.find(x=>x.id===p.user.id);assert.equal(online.clan,'德川家');assert.equal(online.isAdmin,false);
+      await api('/presence',post(p.token,{deviceId:p.device,deviceName:'検証端末',online:true}));const online=(await api('/online')).data.players.find(x=>x.id===p.user.id);assert.equal(online.clan,'徳川家');assert.equal(Object.hasOwn(online,'isAdmin'),false);
       const exclusive=structuredClone(staff.save);if(!exclusive.state.officers.includes('of_b0616adde162'))exclusive.state.officers.push('of_b0616adde162');exclusive.state.officerVariants.push(U);await put(p,exclusive,403);
       const edo=structuredClone(staff.save);edo.state.home='edo';edo.state.castles.edo.owner=edo.state.clan;await put(p,edo,403);
       await api('/admin/announcement',post(p.token,{text:'権限なし'},403));

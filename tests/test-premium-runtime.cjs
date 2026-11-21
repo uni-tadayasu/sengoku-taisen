@@ -19,7 +19,7 @@ const destinations = {
   supporter: 'https://buy.stripe.com/7sY8wQdj6dcdbILaeG9MY06'
 };
 const reference = 'fixture_order_0123456789abcdef';
-const noAppearance = { nameplate: null, town: null, badge: null };
+const noAppearance = { nameplate: null, town: null, badge: null, ownedProducts: [] };
 function identity(id = 'player-a', epoch = 1) {
   return { epoch, playerId: id, user: id ? { id, name: id === 'player-a' ? '甲斐の領主' : '越後の領主' } : null, connected: Boolean(id), pending: false, banned: false };
 }
@@ -132,7 +132,7 @@ test('a delayed GET for a previous identity cannot overwrite the current account
   oldCall.resolve(response('player-a', { owned: ids, equipped: ids }));
   await old;
   assert.equal(f.runtime.getContext().user.id, 'player-b');
-  assert.deepEqual(clone(f.runtime.getAppearance()), { ...noAppearance, town: 'moonlit-castle' });
+  assert.deepEqual(clone(f.runtime.getAppearance()), { ...noAppearance, town: 'moonlit-castle', ownedProducts: ['moonlit-castle'] });
   assert.equal(f.runtime.getContext().products.find(p => p.id === 'gold-banner').owned, false);
   f.runtime.dispose();
 });
@@ -206,7 +206,7 @@ test('missing, malformed or wrong-owner server snapshots fail closed', async () 
   await f.load(malformed);
   assert.equal(f.runtime.getContext().products[0].owned, false);
   assert.equal(f.runtime.getContext().products[2].owned, false);
-  assert.deepEqual(clone(f.runtime.getAppearance()), { ...noAppearance, town: 'moonlit-castle' });
+  assert.deepEqual(clone(f.runtime.getAppearance()), { ...noAppearance, town: 'moonlit-castle', ownedProducts: ['moonlit-castle'] });
   f.runtime.dispose();
 });
 
@@ -359,6 +359,32 @@ test('forged success query, saved premium flags and caller changes never grant r
   await noMutation(f, () => f.runtime.equip('supporter'));
   assert.equal(JSON.stringify(f.game), gameBefore);
   assert.deepEqual(f.reads, []); assert.deepEqual(f.effects, []); f.runtime.dispose();
+});
+
+test('verified owned products remain visible without equipment and disappear on revocation or expiry', async () => {
+  const f = fixture(); await f.load(response('player-a', { owned: ids }));
+  assert.deepEqual(clone(f.runtime.getAppearance()), { ...noAppearance, ownedProducts: ids });
+  const copy = f.runtime.getAppearance(); copy.ownedProducts.length = 0;
+  assert.deepEqual(clone(f.runtime.getAppearance().ownedProducts), ids, 'Callers cannot erase or add cached ownership');
+  f.advance(2000);
+  assert.deepEqual(clone(f.runtime.getAppearance().ownedProducts), ['gold-banner', 'moonlit-castle']);
+  const revoked = response('player-a', { owned: ['moonlit-castle'] }); revoked.appearance.ownedProducts = ids;
+  await f.load(revoked);
+  assert.deepEqual(clone(f.runtime.getAppearance().ownedProducts), ['moonlit-castle'], 'Authenticated products override a contradictory appearance array');
+  f.runtime.dispose();
+});
+
+test('public ownership icons are ordered, accessible and independent from staff roles or local flags', () => {
+  const f = fixture(), { cleanAppearance, nameMarkup, ownershipLabel } = f.sandbox.module.exports;
+  const look = { ownedProducts: ['supporter', 'gold-banner', 'moonlit-castle', 'gold-banner', 'unknown'], isAdmin: true, isStaff: true };
+  assert.deepEqual(clone(cleanAppearance(look).ownedProducts), ids);
+  const html = nameMarkup('<img src=x onerror="bad()">', look);
+  assert.equal((html.match(/data-premium-product=/g) || []).length, 3);
+  assert(!html.includes('<button')); assert(!html.includes('<img src=x')); assert(html.includes('&lt;img'));
+  for (const label of ['金彩の旗印を所有', '月影の城下を所有', '戦国VSサポーター（有効）']) assert(html.includes('aria-label="' + label + '"'));
+  assert(!/運営|スタッフ/.test(html)); assert.equal(ownershipLabel(look), '金彩の旗印を所有・月影の城下を所有・戦国VSサポーター（有効）');
+  for (const invalid of [null, { isAdmin: true, isStaff: true }, { owned: true, purchased: ids }, { ownedProducts: 'supporter' }]) assert(!nameMarkup('領主', invalid).includes('data-premium-product='));
+  f.runtime.dispose();
 });
 
 (async () => {

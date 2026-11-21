@@ -73,6 +73,7 @@ for(const width of [290,307.5,339,570,705,819]){
   }
 }
 assert.equal(kamon.url('德川家'), kamon.url('徳川家'));
-assert.match(kamon.render('德川家'), /aria-label="德川家：/);
+assert.match(kamon.render('德川家'), /aria-label="徳川家：/);
+assert.equal(kamon.render('德川家'),kamon.render('徳川家'),'Public clan labels must not distinguish verified roles');
 assert.match(kamon.render('徳川家'), /aria-label="徳川家：/);
-console.log(`PASS ${cases} town fit/label geometries, eight readable non-overlapping current-level badges, full-height PC canvas/maximized image, drag limits, zero-size startup, and the two Tokugawa crest labels.`);
+console.log(`PASS ${cases} town fit/label geometries, eight readable non-overlapping current-level badges, full-height PC canvas/maximized image, drag limits, zero-size startup, and uniform public Tokugawa crest labels.`);

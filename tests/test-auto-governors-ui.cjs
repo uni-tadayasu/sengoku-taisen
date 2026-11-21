@@ -43,7 +43,7 @@ function harness(game=create()){
     constructionJobs:()=>[],currentJob:()=>null,castleLevelLimit:id=>game.castleLevelLimit(id),date:()=>({year:1560,month:1,season:'春'}),costHtml:()=>''
   };
   vm.createContext(c);
-  vm.runInContext([declaration('mutationActions'),declaration('categoryNames'),...['confirmedWorldClock','clockIsApplied','canMutate','syncMessage','requireWritable','save','staffConstructionReady','governorAssignmentStatus','governorAssignmentEntry','facilityGovernorLabel','governorAssignmentResult','autoAssignGovernors','buildingOutput','buildingCard','facilitiesResults','renderFacilities','renderTown','refreshLiveControls'].map(fn)].join('\n'),c);
+  vm.runInContext([declaration('mutationActions'),declaration('categoryNames'),...['confirmedWorldClock','clockIsApplied','canMutate','syncMessage','requireWritable','save','staffConstructionReady','governorAssignmentStatus','governorAssignmentEntry','facilityGovernorLabel','governorAssignmentResult','autoAssignGovernors','buildingOutput','buildingCard','facilitiesResults','renderFacilities','premiumTownImage','premiumTownBanner','premiumLord','renderTown','refreshLiveControls'].map(fn)].join('\n'),c);
   const clickStart=source.indexOf("  document.addEventListener('click',async event=>"),clickEnd=source.indexOf("  document.addEventListener('input'",clickStart);
   assert(clickStart>=0&&clickEnd>clickStart);vm.runInContext(source.slice(clickStart,clickEnd),c);
   const click=async({force=false}={})=>{const target=force?{dataset:{action:'auto-governors'},disabled:false,closest(){return this;}}:controls[0];await handlers.get('click')({target});};

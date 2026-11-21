@@ -79,7 +79,7 @@ await test('the five major-city flags restrict only new starts and preserve exis
 await test('first bootstrap remains unsaved and opens an explicit 123-castle choice with recovery access',async()=>{
   const b=browser();assert.equal(b.c.SengokuBridge.hasStarted(),false);assert.equal(b.c.SengokuBridge.getSave(),null);assert(!b.stored.has(SAVE));assert.equal(b.events.length,0);
   assert.match(b.nodes.get('main').innerHTML,/はじまりの城を選ぶ/);b.c.SengokuBridge.openStartSelection();
-  const html=b.nodes.get('modal-content').innerHTML;assert.match(html,/以前の領主・運営を復元/);assert.match(html,/data-action="open-recovery"/);assert.equal(b.query('#new-start-castle').value,'');for(const id of SENGOKU_DATA.majorCityIds)assert(!html.includes(`<option value="${id}"`));assert.match(html,/全123城/);
+  const html=b.nodes.get('modal-content').innerHTML;assert.match(html,/以前の領主を復元/);assert.match(html,/data-action="open-recovery"/);assert.equal(b.query('#new-start-castle').value,'');for(const id of SENGOKU_DATA.majorCityIds)assert(!html.includes(`<option value="${id}"`));assert.match(html,/全123城/);
   await b.click('start-new');assert.equal(b.c.SengokuBridge.hasStarted(),false);assert(!b.stored.has(SAVE));
 });
 await test('confirmed first start persists the selected castle before exposing a save to sync',async()=>{
@@ -123,7 +123,7 @@ await test('operator recovery preview is non-mutating, then confirmed recovery r
   assert.equal(b.c.SengokuBridge.applyRecoverySave(preview.save,{isAdmin:true}).ok,true);assert.equal(b.c.SengokuBridge.hasStarted(),true);assert.equal(b.c.SengokuBridge.getState().home,'edo');
 });
 await test('operator identity changes an open first-start chooser to the fixed Edo choice',async()=>{
-  const b=browser();b.c.SengokuBridge.openStartSelection();b.c.SengokuBridge.setAdminAccess(true);const html=b.nodes.get('modal-content').innerHTML;assert.match(html,/運営本拠 · 江戸城固定/);assert.equal(b.query('#new-start-castle'),null);await b.click('start-new');assert.equal(b.c.SengokuBridge.getState().home,'edo');assert.equal(Object.values(b.c.SengokuBridge.getState().castles).filter(c=>c.owner===b.c.SengokuBridge.getState().clan).length,1);
+  const b=browser();b.c.SengokuBridge.openStartSelection();b.c.SengokuBridge.setAdminAccess(true);const html=b.nodes.get('modal-content').innerHTML;assert.match(html,/本拠 · 江戸城固定/);assert.equal(b.query('#new-start-castle'),null);await b.click('start-new');assert.equal(b.c.SengokuBridge.getState().home,'edo');assert.equal(Object.values(b.c.SengokuBridge.getState().castles).filter(c=>c.owner===b.c.SengokuBridge.getState().clan).length,1);
 });
 console.log(`${count} castle selection and durable-start checks passed.`);
 })().catch(error=>{console.error(error);process.exitCode=1;});

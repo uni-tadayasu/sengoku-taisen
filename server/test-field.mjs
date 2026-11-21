@@ -187,7 +187,7 @@ try {
   const operatorPublic=await publicBase(admin),operatorSelf=(await me(admin)).self;
   for(const projection of [operatorPublic,operatorSelf]){assert.equal(projection.homeCastleId,'edo');assert.equal(projection.keepLevel,32);assert.equal(projection.level,64);}
   database.prepare("UPDATE settings SET value=? WHERE key='adminUserId'").run(staffKeeper.user.id);
-  const promoted=await publicBase(staffKeeper);assert.equal(promoted.isAdmin,true);assert.equal(promoted.isStaff,false);assert.equal(promoted.keepLevel,23,'operator priority uses the personal keep even when a staff membership row exists');
+  const promoted=await publicBase(staffKeeper);assert.equal(Object.hasOwn(promoted,'isAdmin'),false);assert.equal(Object.hasOwn(promoted,'isStaff'),false);assert.equal(promoted.keepLevel,23,'operator priority uses the personal keep even when a staff membership row exists');
   database.prepare("UPDATE settings SET value=? WHERE key='adminUserId'").run(admin.user.id);
   await api('/admin/staff',post(admin.token,{targetPlayerId:staffKeeper.user.id,action:'dismiss',requestId:crypto.randomUUID()}));
   assert.equal((await publicBase(staffKeeper)).keepLevel,23,'dismissal immediately returns the public keep to individual development');

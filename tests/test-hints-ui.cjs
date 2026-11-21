@@ -98,6 +98,33 @@ async function test(name, run) { await run(); checks++; console.log('PASS ' + na
     s.setModel(report([hint('a', { waitSeconds: 90, cost: { gold: 200 }, missing: { gold: 40 } }), hint('b'), hint('c'), hint('d')])); assert(s.ui.refresh());
     assert.equal(s.$('[data-hint-follow="a"]'), button); assert.equal(s.doc.activeElement, button); assert.equal(s.$('.hints-main').scrollTop, 270); assert.equal(s.$('.hints-other').open, true); assert.match(card.querySelector('.hints-wait').textContent, /ゲーム内 1分30秒/); assert.match(card.querySelector('.hints-resources').textContent, /200/); assert.match(card.querySelector('.hints-resources').textContent, /不足している資産/); s.ui.dispose();
   });
+  await test('clock resampling keeps visible hints, focus, scroll and the town summary stable', async () => {
+    let time = 1000; const ready = report(), s = setup(ready, { now: () => time });
+    const entry = s.doc.createElement('section'); entry.setAttribute('data-hint-entry', ''); entry.innerHTML = '<strong data-hint-title></strong><p data-hint-reason></p>'; s.doc.body.append(entry);
+    const pending = report([hint('clock-pending', { title: '共通時刻を確認しています' })], { status: 'blocked', title: '共通時刻を確認しています' });
+    s.ui.open(); const card = s.$('[data-hints-primary]').children[0], button = s.$('[data-hint-follow="b"]'); button.focus();
+    s.$('.hints-main').scrollTop = 240; s.$('.hints-other').open = true;
+    const title = s.$('[data-hint-title]').textContent, summary = s.$('[data-hint-reason]').textContent;
+    for (let i = 0; i < 8; i++) {
+      time += 100; s.setModel(i % 2 ? ready : pending); assert.equal(s.ui.refresh(), false);
+      assert.equal(s.$('[data-hints-primary]').children[0], card); assert.equal(s.doc.activeElement, button);
+      assert.equal(s.$('.hints-main').scrollTop, 240); assert.equal(s.$('.hints-other').open, true);
+      assert.equal(s.$('[data-hint-title]').textContent, title); assert.equal(s.$('[data-hint-reason]').textContent, summary);
+      assert(!s.doc.body.textContent.includes('共通時刻を確認しています'));
+    }
+    s.setModel(pending); s.click('[data-hint-follow="b"]'); await drain();
+    assert.deepEqual(s.events.at(-1), { id: 'b', open: true }); assert(s.ui.isOpen());
+    assert.equal(s.$('[data-hints-primary]').children[0], card); s.ui.dispose();
+  });
+  await test('clock-only fallback never revives another identity, a blocked state, a closed dialog or expired advice', () => {
+    let time = 1000; const pending = scope => report([hint('clock-pending', { title: '共通時刻を確認しています' })], { status: 'blocked', title: '共通時刻を確認しています', scope });
+    const s = setup(report(), { now: () => time }); s.ui.open();
+    s.setModel(pending('owner:other:castle')); s.ui.refresh(); assert.equal(s.$('[data-hint-follow="a"]'), null); assert(!s.doc.body.textContent.includes('共通時刻を確認しています'));
+    s.setModel(report()); s.ui.refresh(); s.setModel(report([hint('account-banned')], { status: 'blocked', title: '利用停止中' })); s.ui.refresh(); assert.equal(s.$('[data-hint-follow="a"]'), null);
+    s.setModel(pending('owner:first:castle')); s.ui.refresh(); assert.equal(s.$('[data-hint-follow="a"]'), null);
+    s.setModel(report()); s.ui.refresh(); time = 31001; s.setModel(pending('owner:first:castle')); s.ui.refresh(); assert.equal(s.$('[data-hint-follow="a"]'), null);
+    s.setModel(report()); s.ui.refresh(); s.ui.close(); s.setModel(pending('owner:first:castle')); s.ui.open(); assert.equal(s.$('[data-hint-follow="a"]'), null); s.ui.dispose();
+  });
   await test('reordered visible candidates preserve the same focused action node', () => {
     const s = setup(); s.ui.open(); const button = s.$('[data-hint-follow="b"]'); button.focus(); s.$('.hints-main').scrollTop = 110;
     s.setModel(report(['b', 'a', 'c', 'd', 'e'].map(id => hint(id)))); s.ui.refresh(); assert.equal(s.$('[data-hints-primary]').children[0], button.parentElement); assert.equal(s.doc.activeElement, button); assert.equal(s.$('.hints-main').scrollTop, 110); s.ui.dispose();

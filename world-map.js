@@ -57,7 +57,7 @@ function castlePoints(castles,coordinates,options={}){
     const lon=Number(Array.isArray(source)?source[0]:source.lon??source.lng??source.longitude),lat=Number(Array.isArray(source)?source[1]:source.lat??source.latitude);
     if(!Number.isFinite(lon)||!Number.isFinite(lat)||lon<120||lon>151||lat<20||lat>48)return[];
     const [x,y]=project(lon,lat),own=castle.owner===options.clan,ally=(options.treaties?.[castle.owner]||0)>(options.turn||0);
-    const restrictedLabel=castle.id==='edo'?'運営専用':castle.id==='sunpu'?'スタッフ専用':'';
+    const restrictedLabel=['edo','sunpu'].includes(castle.id)?'選択不可':'';
     const restricted=castle.id==='edo'&&options.isAdmin!==true||castle.id==='sunpu'&&(options.isStaff!==true||options.isAdmin===true);
     return[{...castle,lon,lat,x,y,own,ally,selected:castle.id===options.selectedId,home:castle.id===options.homeId,restrictedLabel,disabled:restricted&&options.allowRestrictedSelection!==true,accuracy:source.accuracy||castle.accuracy||'',sourceURL:source.sourceURL||source.sourceUrl||''}];
   });
@@ -111,7 +111,7 @@ function markerPresentation(marker,options={}){
   // their original symbols.
   try{if(!marker.cluster&&typeof options.markerAppearance==='function')appearance=options.markerAppearance(marker);}catch(_){}
   const custom=Boolean(appearance&&typeof appearance.html==='string'&&appearance.html);
-  const label=marker.cluster?`${marker.points.length}城の地域を拡大：${marker.points.map(p=>p.name).join('、')}`:`${marker.name} ${marker.owner||''} ${marker.home?'本拠 ':''}${marker.disabled?(marker.restrictedLabel||'専用拠点')+' ':''}${marker.reachable?'進軍可能 ':''}Lv.${marker.level||1}`;
+  const label=marker.cluster?`${marker.points.length}城の地域を拡大：${marker.points.map(p=>p.name).join('、')}`:`${marker.name} ${marker.owner==='德川家'?'徳川家':marker.owner||''} ${marker.home?'本拠 ':''}${marker.disabled?(marker.restrictedLabel||'専用拠点')+' ':''}${marker.reachable?'進軍可能 ':''}Lv.${marker.level||1}`;
   return{custom,html:custom?appearance.html:marker.cluster?`<b>${marker.points.length}</b>`:marker.home?icon('home'):icon('castle'),label:custom&&typeof appearance.label==='string'?appearance.label:label};
 }
 function safeUrl(value){return typeof value==='string'&&/^(?:https?:\/\/|(?:\.\/)?assets\/|data:image\/)/i.test(value)?value:'';}
@@ -174,7 +174,7 @@ function mount(container,options={}){
     let crest='';if(!marker.cluster&&typeof opts.crestFor==='function'){const url=safeUrl(opts.crestFor(marker.owner));if(url)crest=`<img class="sg-map-tooltip-crest" src="${esc(url)}" alt="">`;}
     let custom=null;try{if(!marker.cluster&&typeof opts.markerTooltip==='function')custom=opts.markerTooltip(marker);}catch(_){}
     if(custom&&typeof custom==='object')tooltip.innerHTML=`<strong>${esc(custom.title||marker.name)}</strong>${custom.description?`<p>${esc(custom.description)}</p>`:''}${custom.detail?`<small>${esc(custom.detail)}</small>`:''}`;
-    else tooltip.innerHTML=marker.cluster?`<strong>${marker.points.length}${esc(opts.countUnit||'城')}がこの地域にあります</strong><p>${esc(marker.points.slice(0,5).map(p=>p.name).join('・'))}${marker.points.length>5?' ほか':''}</p><small>クリック・タップで拡大</small>`:`<div class="sg-map-tooltip-heading">${crest}<div><strong>${esc(marker.name)}</strong><p>${esc(marker.owner||'')} · Lv.${Number(marker.level)||1}${marker.disabled?' · '+esc(marker.restrictedLabel):''}</p></div></div><small>${Number(marker.troops||0).toLocaleString('ja-JP')}兵 · ${marker.lat.toFixed(4)}°N ${marker.lon.toFixed(4)}°E</small>`;
+    else tooltip.innerHTML=marker.cluster?`<strong>${marker.points.length}${esc(opts.countUnit||'城')}がこの地域にあります</strong><p>${esc(marker.points.slice(0,5).map(p=>p.name).join('・'))}${marker.points.length>5?' ほか':''}</p><small>クリック・タップで拡大</small>`:`<div class="sg-map-tooltip-heading">${crest}<div><strong>${esc(marker.name)}</strong><p>${esc(marker.owner==='德川家'?'徳川家':marker.owner||'')} · Lv.${Number(marker.level)||1}${marker.disabled?' · '+esc(marker.restrictedLabel):''}</p></div></div><small>${Number(marker.troops||0).toLocaleString('ja-JP')}兵 · ${marker.lat.toFixed(4)}°N ${marker.lon.toFixed(4)}°E</small>`;
     tooltip.hidden=false;const box=tooltip.getBoundingClientRect(),surfaceBounds=surface.getBoundingClientRect(),sx=width/Math.max(1,surfaceBounds.width),sy=height/Math.max(1,surfaceBounds.height),x=clamp(marker.sx+16,8,Math.max(8,width-box.width*sx-8)),y=clamp(marker.sy+24,64,Math.max(64,height-box.height*sy-70));tooltip.style.left=x+'px';tooltip.style.top=y+'px';
   }
   function selectMarker(marker){

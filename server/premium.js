@@ -8,7 +8,7 @@ const PREMIUM_PRODUCTS=Object.freeze([
 ]);
 const premiumStmt=(db,sql,...values)=>db.prepare(sql).bind(...values);
 const premiumRows=result=>result?.results||[];
-const premiumEmpty=()=>({nameplate:null,town:null,badge:null});
+const premiumEmpty=()=>({nameplate:null,town:null,badge:null,ownedProducts:[]});
 const premiumProduct=id=>PREMIUM_PRODUCTS.find(product=>product.id===id);
 const premiumEncoder=new TextEncoder();
 const premiumGate='EXISTS(SELECT 1 FROM premium_events WHERE event_id=? AND commit_token=?)';
@@ -42,13 +42,25 @@ async function premiumAppearanceRows(db,ids,now){
   const queries=[];
   for(let offset=0;offset<ids.length;offset+=70){
     const page=ids.slice(offset,offset+70);
-    queries.push(premiumStmt(db,`SELECT a.user_id,
-      CASE WHEN a.nameplate='gold-banner' AND EXISTS(SELECT 1 FROM premium_grants g WHERE g.user_id=a.user_id AND g.product_id=a.nameplate AND g.starts_at<=? AND (g.expires_at IS NULL OR g.expires_at>?)) THEN a.nameplate END AS nameplate,
-      CASE WHEN a.town='moonlit-castle' AND EXISTS(SELECT 1 FROM premium_grants g WHERE g.user_id=a.user_id AND g.product_id=a.town AND g.starts_at<=? AND (g.expires_at IS NULL OR g.expires_at>?)) THEN a.town END AS town,
-      CASE WHEN a.badge='supporter' AND EXISTS(SELECT 1 FROM premium_grants g WHERE g.user_id=a.user_id AND g.product_id=a.badge AND g.starts_at<=? AND (g.expires_at IS NULL OR g.expires_at>?)) THEN a.badge END AS badge
-      FROM premium_appearances a WHERE a.user_id IN (${page.map(()=>'?').join(',')}) AND NOT EXISTS(SELECT 1 FROM player_bans b WHERE b.user_id=a.user_id AND b.active=1)`,now,now,now,now,now,now,...page));
+    queries.push(premiumStmt(db,`SELECT u.id AS user_id,a.nameplate,a.town,a.badge,g.product_id
+      FROM users u LEFT JOIN premium_appearances a ON a.user_id=u.id
+      LEFT JOIN premium_grants g ON g.user_id=u.id AND g.starts_at<=? AND (g.expires_at IS NULL OR g.expires_at>?)
+      WHERE u.id IN (${page.map(()=>'?').join(',')}) AND NOT EXISTS(SELECT 1 FROM player_bans b WHERE b.user_id=u.id AND b.active=1)`,now,now,...page));
   }
-  const found=new Map();for(const result of await db.batch(queries))for(const row of premiumRows(result))found.set(row.user_id,{nameplate:row.nameplate,town:row.town,badge:row.badge});return found;
+  const found=new Map();
+  for(const result of await db.batch(queries))for(const row of premiumRows(result)){
+    if(!found.has(row.user_id))found.set(row.user_id,{selection:row,products:new Set()});
+    if(premiumProduct(row.product_id))found.get(row.user_id).products.add(row.product_id);
+  }
+  for(const [id,{selection,products}]of found){
+    const appearance=premiumEmpty();
+    for(const product of PREMIUM_PRODUCTS)if(products.has(product.id)){
+      appearance.ownedProducts.push(product.id);
+      if(selection[product.slot]===product.id)appearance[product.slot]=product.id;
+    }
+    found.set(id,appearance);
+  }
+  return found;
 }
 async function premiumSnapshot(ctx){
   const {db,user,now,env}=ctx,owned=await premiumOwnership(db,user.id,now),appearances=await premiumAppearanceRows(db,[user.id],now),appearance=appearances.get(user.id)||premiumEmpty(),ready=premiumReady(env),portalUrl=premiumPortal(env),subscriptionExists=await premiumSubscriptionExists(db,user.id,now);
@@ -135,19 +147,30 @@ export async function handlePremium(ctx){
   h.fail(404,'NOT_FOUND','その購入・外観の機能は見つかりませんでした。');
 }
 
-// Only selected appearance keys are attached to public identity objects.
-// Never traverse or add fields to imported game saves or financial records.
+// Display selections and current ownership are projected together. Historical
+// posts/receipts keep their stored bytes; no payment identifiers are exposed.
+// The evaluation update lists also refresh cached authors on an empty delta.
 export async function resolvePremiumAppearances(db,payload,now){
   const refs=[],ids=new Set(),skip=new Set(['save','state','entitlements','appearance']);
+  const playerId=id=>typeof id==='string'&&/^u_[A-Za-z0-9_]{1,96}$/.test(id);
+  function add(value,id,key){if(playerId(id)){refs.push({value,id,key});ids.add(id);}}
   function visit(value){
     if(!value||typeof value!=='object')return;
     const id=value.playerId||value.userId||value.id;
-    if(typeof value.name==='string'&&typeof id==='string'&&/^u_[a-f0-9]{32}$/.test(id)){refs.push({value,id});ids.add(id);}
+    if(typeof value.name==='string'||value.playerId&&Object.hasOwn(value,'evaluation'))add(value,id,'appearance');
+    for(const [idKey,nameKey,key]of [
+      ['playerId','playerName','playerAppearance'],
+      ['ownerId','ownerName','ownerAppearance'],
+      ['authorId','authorName','authorAppearance'],
+      ['targetPlayerId','targetName','targetAppearance'],
+      ['attackerPlayerId','attackerName','attackerAppearance'],
+      ['defenderPlayerId','defenderName','defenderAppearance']
+    ])if(typeof value[nameKey]==='string')add(value,value[idKey],key);
     for(const [key,child]of Object.entries(value))if(!skip.has(key))visit(child);
   }
   visit(payload);if(!ids.size)return payload;
   const found=await premiumAppearanceRows(db,[...ids],now);
-  for(const ref of refs)ref.value.appearance=found.get(ref.id)||premiumEmpty();
+  for(const ref of refs)ref.value[ref.key]=found.get(ref.id)||premiumEmpty();
   return payload;
 }
 
