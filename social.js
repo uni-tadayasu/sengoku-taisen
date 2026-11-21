@@ -9,6 +9,8 @@ let dialog,body,launcher,announcement,configTimer=null,pollTimer=null,configBusy
 s.recentLogins={players:[],total:0,cursor:null,serverNow:null,windowStart:null,loaded:false,error:''};
 let guildEpoch=0,guildListGeneration=0,guildListTimer=null,treasuryBusy=false,rankingsBusy=false;
 s.guildSection='chat';s.guildTreasury={guildId:null,balance:null,ledger:[],cursor:null,loaded:false,error:'',serverNow:null};s.guildRankings={guilds:[],total:0,cursor:null,loaded:false,error:'',serverNow:null};
+let achievementTimer=null,achievementBusy=false,achievementGeneration=0;
+s.achievements={events:[],cursor:null,loaded:false,error:'',serverNow:null,expanded:false};
 const guildRoleName=role=>({owner:'盟主',officer:'副盟主',member:'メンバー'})[role]||'メンバー';
 const busy=new Set(),controllers=new Set();
 let recovery=null,recoveryEpoch=0,recoveryHeld=false,adminRecoveryRequestId=null;
@@ -68,10 +70,53 @@ function header(){
  const mailBadge=$('[data-social-tab="mail"] .social-tab-count');if(mailBadge)mailBadge.textContent=s.unreadMail?String(s.unreadMail):'';
 }
 function renderAnnouncement(){
- if(!announcement)return;const text=String(s.config.announcement??DEFAULT).slice(0,300),line=announcement.querySelector('.social-announcement-text');if(line.textContent!==text)line.textContent=text;
- announcement.hidden=s.configLoaded&&text.length===0;announcement.classList.toggle('is-paused',s.paused);const button=announcement.querySelector('button');button.innerHTML=icon(s.paused?'play':'pause');button.setAttribute('aria-label',s.paused?'お知らせのスクロールを再開':'お知らせのスクロールを停止');button.setAttribute('aria-pressed',String(s.paused));
+ if(!announcement)return;const notice=String(s.config.announcement??DEFAULT).slice(0,300),news=s.achievements.events.slice(0,3).map(e=>`${e.playerName}：${e.title}`),text=[notice,...news].filter(Boolean).join('　◆　'),line=announcement.querySelector('.social-announcement-text');if(line.textContent!==text)line.textContent=text;
+ announcement.hidden=s.configLoaded&&text.length===0;announcement.classList.toggle('is-paused',s.paused);const button=announcement.querySelector('.social-announcement-toggle');button.innerHTML=icon(s.paused?'play':'pause');button.setAttribute('aria-label',s.paused?'お知らせのスクロールを再開':'お知らせのスクロールを停止');button.setAttribute('aria-pressed',String(s.paused));
 }
-function tabs(){return[{id:'world',label:'世界',icon:'chat'},{id:'online',label:'接続一覧',icon:'people'},{id:'sync',label:'端末同期',icon:'refresh'},{id:'recovery',label:'引き継ぎ',icon:'upload'},{id:'guild',label:'ギルド',icon:'flag'},{id:'guild-rankings',label:'ギルド順位',icon:'flag'},{id:'friends',label:'フレンド',icon:'people'},{id:'mail',label:'郵便',icon:'mail'},{id:'profile',label:'領主',icon:'user'},...(hasAdminChat()?[{id:'admin',label:s.user.isAdmin?'運営':'運営チャット',icon:'shield'},{id:'recent-logins',label:'ログイン履歴',icon:'people'}]:[])];}
+function tabs(){return[{id:'world',label:'世界',icon:'chat'},{id:'news',label:'御触書',icon:'flag'},{id:'online',label:'接続一覧',icon:'people'},{id:'sync',label:'端末同期',icon:'refresh'},{id:'recovery',label:'引き継ぎ',icon:'upload'},{id:'guild',label:'ギルド',icon:'flag'},{id:'guild-rankings',label:'ギルド順位',icon:'flag'},{id:'friends',label:'フレンド',icon:'people'},{id:'mail',label:'郵便',icon:'mail'},{id:'profile',label:'領主',icon:'user'},...(hasAdminChat()?[{id:'admin',label:s.user.isAdmin?'運営':'運営チャット',icon:'shield'},{id:'recent-logins',label:'ログイン履歴',icon:'people'}]:[])];}
+
+// Public records are emitted by accepted server transitions. No local log text
+// or private chat, treasury balance, or login history is ever sent to this feed.
+function cleanAchievement(event){
+ if(!event||!['string','number'].includes(typeof event.id)||typeof event.id==='number'&&(!Number.isSafeInteger(event.id)||event.id<0)||typeof event.playerName!=='string'||!event.playerName.trim()||typeof event.title!=='string'||!event.title.trim()||typeof event.occurredAt!=='string'||!Number.isFinite(Date.parse(event.occurredAt)))return null;
+ const id=String(event.id);if(!id.trim()||id.length>180||/[\u0000-\u001f\u007f]/.test(id))return null;
+ const text=(value,max)=>String(value??'').slice(0,max);
+ return{id,playerName:text(event.playerName,40),clan:text(event.clan,30),kind:text(event.kind,40),title:text(event.title,180),detail:text(event.detail,300),occurredAt:new Date(event.occurredAt).toISOString()};
+}
+function achievementTime(value){return new Intl.DateTimeFormat('ja-JP',{timeZone:'Asia/Tokyo',month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}).format(new Date(value));}
+function achievementRows(){
+ if(!s.achievements.loaded&&!s.achievements.events.length)return empty('達成の知らせを確認しています','領主たちの戦果がここに届きます。','flag');
+ if(!s.achievements.events.length)return empty('達成の知らせはまだありません','これから記録された領主の戦果や発展を表示します。','flag');
+ return s.achievements.events.map(e=>`<article class="social-achievement" data-event-id="${esc(e.id)}"><span class="social-achievement-seal" aria-hidden="true">${icon(e.kind.includes('cycle')?'gift':e.kind.includes('research')?'shield':'flag')}</span><div><div class="social-achievement-meta"><strong>${esc(e.playerName)}</strong>${e.clan?`<span>${esc(e.clan)}</span>`:''}<time datetime="${esc(e.occurredAt)}">${esc(achievementTime(e.occurredAt))}</time></div><h3>${esc(e.title)}</h3>${e.detail?`<p>${esc(e.detail)}</p>`:''}</div></article>`).join('');
+}
+function achievementsView(){return `<section class="social-news"><div class="social-section-heading"><div><span class="social-eyebrow">天下に届く知らせ</span><h2>御触書・領主の達成</h2><p>領主の名前と成し遂げたことをお届けします。30秒ごとに更新・日本時間。</p></div><button class="social-icon-button" data-social="news-refresh" aria-label="御触書を更新">${icon('refresh')}</button></div><section class="social-news-notice"><h3>運営からのお知らせ</h3><p id="social-news-notice-text">${esc(s.config.announcement||'現在、運営からのお知らせはありません。')}</p></section><p id="social-news-status" class="social-small" role="status">${esc(s.achievements.error||'')}</p><div id="social-achievement-list" class="social-achievement-list">${achievementRows()}</div><div class="social-center"><button class="social-button" id="social-news-more" data-social="news-more" ${s.achievements.cursor?'':'hidden'}>以前の知らせを見る</button></div></section>`;}
+function refreshAchievementView(){
+ renderAnnouncement();if(!s.open||s.tab!=='news')return;
+ const list=$('#social-achievement-list'),status=$('#social-news-status'),more=$('#social-news-more'),notice=$('#social-news-notice-text');
+ if(notice)notice.textContent=s.config.announcement||'現在、運営からのお知らせはありません。';
+ if(status)status.textContent=s.achievements.error||'';
+ if(more){more.hidden=!s.achievements.cursor;more.disabled=achievementBusy;}
+ if(!list)return;const html=achievementRows();if(list.innerHTML===html)return;
+ const top=body?.scrollTop||0,bodyTop=body?.getBoundingClientRect?.().top||0,anchor=top>20?[...list.querySelectorAll('[data-event-id]')].find(el=>el.getBoundingClientRect().bottom>bodyTop):null,anchorId=anchor?.dataset.eventId,anchorTop=anchor?.getBoundingClientRect().top;
+ list.innerHTML=html;
+ if(body){const replacement=anchorId?[...list.querySelectorAll('[data-event-id]')].find(el=>el.dataset.eventId===anchorId):null;body.scrollTop=top+(replacement?replacement.getBoundingClientRect().top-anchorTop:0);}
+}
+async function loadAchievements({more=false}={}){
+ if(disposed||document.hidden||achievementBusy||more&&!s.achievements.cursor)return;
+ achievementBusy=true;clearTimeout(achievementTimer);achievementTimer=null;const generation=achievementGeneration,cursor=more?s.achievements.cursor:null;
+ try{
+  const params=new URLSearchParams({limit:'20'});if(cursor)params.set('cursor',cursor);
+  const r=await api('/achievements?'+params,{auth:false,background:true});if(disposed||generation!==achievementGeneration)return;
+  if(!Array.isArray(r.events))throw Error('達成の知らせを確認できませんでした。');
+  const events=r.events.map(cleanAchievement).filter(Boolean),combined=more?[...events,...s.achievements.events]:s.achievements.expanded?[...s.achievements.events,...events]:events;
+  s.achievements.events=[...new Map(combined.map(e=>[e.id,e])).values()].sort((a,b)=>Date.parse(b.occurredAt)-Date.parse(a.occurredAt)).slice(0,200);
+  if(more||!s.achievements.expanded)s.achievements.cursor=typeof r.nextCursor==='string'?r.nextCursor:null;
+  if(more)s.achievements.expanded=true;
+  if(s.achievements.events.length>=200)s.achievements.cursor=null;
+  s.achievements.serverNow=r.serverNow||null;s.achievements.loaded=true;s.achievements.error='';
+ }catch(error){if(generation===achievementGeneration&&!disposed)s.achievements.error='知らせを更新できませんでした。通信が戻ると再確認します。';}
+ finally{if(generation===achievementGeneration&&!disposed){achievementBusy=false;refreshAchievementView();if(!document.hidden)achievementTimer=setTimeout(loadAchievements,30000);}}
+}
 function renderTabs(){const nav=$('#social-tabs');if(nav)nav.innerHTML=tabs().map(t=>`<button type="button" role="tab" aria-selected="${s.tab===t.id}" data-social-tab="${t.id}" class="${s.tab===t.id?'active':''}">${icon(t.icon)}${t.label}${t.id==='mail'?`<span class="social-tab-count">${s.unreadMail||''}</span>`:''}</button>`).join('');}
 function registerView(){
  const clan=String(global.SengokuBridge?.getState?.()?.clan||'浪人');
@@ -270,7 +315,7 @@ function adminView(){
 }
 function render(){
  if(!body)return;destroyAvatarEditor();if(['admin','recent-logins'].includes(s.tab)&&!hasAdminChat())s.tab='world';renderTabs();header();clearConfirm();
- body.innerHTML=s.tab==='online'?onlineView():s.tab==='guild-rankings'?guildRankingsView():s.tab==='sync'?syncView():s.tab==='recovery'?recoveryView():!s.user?registerView():s.tab==='recent-logins'?recentLoginsView():s.tab==='world'?chatView(channel()):s.tab==='guild'?guildView():s.tab==='friends'?friendsView():s.tab==='mail'?mailView():s.tab==='profile'?profileView():adminView();renderMessages();mountProfileAvatar();refreshGuildTreasuryView();
+ body.innerHTML=s.tab==='news'?achievementsView():s.tab==='online'?onlineView():s.tab==='guild-rankings'?guildRankingsView():s.tab==='sync'?syncView():s.tab==='recovery'?recoveryView():!s.user?registerView():s.tab==='recent-logins'?recentLoginsView():s.tab==='world'?chatView(channel()):s.tab==='guild'?guildView():s.tab==='friends'?friendsView():s.tab==='mail'?mailView():s.tab==='profile'?profileView():adminView();renderMessages();mountProfileAvatar();refreshGuildTreasuryView();
 }
 function confirmUI({title,description,details,confirmLabel='実行する',danger=false,onConfirm,scope}){
  s.confirm={onConfirm,scope,returnFocus:document.activeElement};body.inert=true;$('#social-tabs').inert=true;const host=$('#social-confirm-host');
@@ -280,7 +325,7 @@ function clearConfirm(){const focus=s.confirm?.returnFocus;s.confirm=null;if(bod
 async function loadMe({token,commit=true}={}){const epoch=authEpoch,roleEpoch=privilegeEpoch,r=await api('/me',{token});if(commit&&epoch===authEpoch&&roleEpoch===privilegeEpoch&&s.identity){acceptUser(r.user);s.friends=r.friends||[];s.requests=r.requests||[];s.unreadMail=Number(r.unreadMail)||0;header();}return r;}
 async function loadConfig(){
  if(configBusy||disposed||document.hidden)return;configBusy=true;clearTimeout(configTimer);
- try{const r=await api('/config',{auth:false});s.config={announcement:typeof r.announcement==='string'?r.announcement:DEFAULT,adminClaimed:Boolean(r.adminClaimed),onlineCount:Number(r.onlineCount)||0};s.configLoaded=true;renderAnnouncement();header();if(s.config.adminClaimed){const claim=$('#social-admin-claim');if(claim){const key=claim.querySelector('input');if(key)key.value='';claim.remove();}}}
+ try{const r=await api('/config',{auth:false});s.config={announcement:typeof r.announcement==='string'?r.announcement:DEFAULT,adminClaimed:Boolean(r.adminClaimed),onlineCount:Number(r.onlineCount)||0};s.configLoaded=true;refreshAchievementView();header();if(s.config.adminClaimed){const claim=$('#social-admin-claim');if(claim){const key=claim.querySelector('input');if(key)key.value='';claim.remove();}}}
  catch(_){connected(false);}finally{configBusy=false;if(!disposed&&!document.hidden)configTimer=setTimeout(loadConfig,30000);}
 }
 async function loadChat(){
@@ -290,8 +335,9 @@ async function loadChat(){
 }
 async function loadGuild(){if(!s.user)return null;const epoch=authEpoch,membershipEpoch=guildEpoch,owner=String(s.identity?.id),guildId=String(s.user.guildId||''),r=await api(guildId?'/guild':'/guilds');if(epoch!==authEpoch||membershipEpoch!==guildEpoch||owner!==String(s.identity?.id)||guildId!==String(s.user?.guildId||''))return null;s.guild=r.guild||null;s.members=r.members||[];if(r.guilds)s.guilds=r.guilds;refreshGuildMembers();return r;}
 async function loadMail(){const r=await api('/mail');s.mail=r.mail||[];}
-function schedulePoll(){clearTimeout(pollTimer);pollTimer=null;if(!disposed&&s.open&&s.user&&!['online','sync','recovery','recent-logins','guild-rankings'].includes(s.tab)&&!(s.tab==='guild'&&s.guildSection==='treasury')&&!document.hidden)pollTimer=setTimeout(()=>refresh({silent:true}),5000);}
+function schedulePoll(){clearTimeout(pollTimer);pollTimer=null;if(!disposed&&s.open&&s.user&&!['news','online','sync','recovery','recent-logins','guild-rankings'].includes(s.tab)&&!(s.tab==='guild'&&s.guildSection==='treasury')&&!document.hidden)pollTimer=setTimeout(()=>refresh({silent:true}),5000);}
 async function refresh({view=false,silent=false}={}){
+ if(s.tab==='news'){await loadAchievements();return;}
  if(s.tab==='guild-rankings'){await loadGuildRankings();return;}
  if(s.tab==='guild'&&s.guildSection==='treasury'){try{await loadMe();if(s.open&&!document.hidden&&s.tab==='guild'&&s.guildSection==='treasury')await loadGuildTreasury();}catch(error){if(!silent&&error.code!=='STALE_IDENTITY')toast(error.message,true);}finally{if(s.tab==='guild'&&s.guildSection==='treasury')scheduleGuildLists();else schedulePoll();}return;}
  if(s.tab==='recent-logins'){await loadRecentLogins();return;}if(s.tab==='online'){await loadOnline();return;}if(s.tab==='sync'){await global.SengokuCloudSync?.refresh?.();return;}if(s.tab==='recovery')return;if(pollBusy||disposed||!s.open||document.hidden||!s.user)return;pollBusy=true;clearTimeout(pollTimer);
@@ -337,6 +383,7 @@ async function click(event){
  if(command==='game-settings'){close();global.SengokuBridge?.openSettings?.();return;}
  if(command==='sync-refresh'){await act(command,button,()=>global.SengokuCloudSync?.refresh?.());return;}
  if(command==='sync-takeover'){await act(command,button,async()=>{const r=await global.SengokuCloudSync?.takeOver?.();if(r?.writable)toast('この端末で進行を続けられます。');else toast(global.SengokuCloudSync?.getStatus?.().message||'接続状態を確認してください。',true);});return;}
+ if(command==='news-refresh'||command==='news-more'){await loadAchievements({more:command==='news-more'});return;}
  if(command==='online-refresh'||command==='online-more'){await loadOnline({more:command==='online-more'});return;}
  if(command==='recent-logins-refresh'||command==='recent-logins-more'){await loadRecentLogins({more:command==='recent-logins-more'});return;}
  if(command==='guild-rankings-open'){await selectTab('guild-rankings');return;}
@@ -402,7 +449,7 @@ async function submit(event){
    else{s.players=r.players||[];const results=$('#social-player-results');if(results)results.innerHTML=s.players.length?playerCards(s.players,'friend'):empty('領主が見つかりません','別の名前で検索してください。','search');}
   }
   if(form.id==='social-admin-claim-form'){const key=String(data.get('key')||'');form.querySelector('[name=key]').value='';await api('/admin/claim',{method:'POST',data:{key}});global.SengokuCloudSync?.stop?.({pending:true});authEpoch++;s.config.adminClaimed=true;startCloud();await loadMe();s.tab='admin';render();await loadConfig();toast('この領主を運営として登録しました。領主データを書き出すと別端末へ引き継げます。');}
-  if(form.id==='social-announcement-form'){const text=String(data.get('text')||'').trim();confirmUI({title:'御触書を更新しますか',description:'全プレイヤーの画面上部に表示されます。',details:`<div class="social-confirm-preview">${esc(text)||'お知らせを非表示にします。'}</div>`,confirmLabel:'この内容で更新',onConfirm:async()=>{requireAdmin();await api('/admin/announcement',{method:'POST',data:{text}});s.config.announcement=text;renderAnnouncement();toast('御触書を更新しました。');}});}
+  if(form.id==='social-announcement-form'){const text=String(data.get('text')||'').trim();confirmUI({title:'御触書を更新しますか',description:'全プレイヤーの画面上部に表示されます。',details:`<div class="social-confirm-preview">${esc(text)||'運営からのお知らせを非表示にします。領主の達成記録は引き続き表示します。'}</div>`,confirmLabel:'この内容で更新',onConfirm:async()=>{requireAdmin();await api('/admin/announcement',{method:'POST',data:{text}});s.config.announcement=text;renderAnnouncement();toast('御触書を更新しました。');}});}
   if(form.id==='social-admin-mail-form'){
    const target=String(data.get('target')||''),title=String(data.get('title')||'').trim(),mailBody=String(data.get('body')||'').trim();if(!title||!mailBody)throw Error('件名と本文を入力してください。');
    const gift={};for(const k of Object.keys(RES)){const amount=Number(data.get(k)||0);if(!Number.isSafeInteger(amount)||amount<0||amount>1000000)throw Error('贈り物は0〜1,000,000の整数で入力してください。');gift[k]=amount;}
@@ -498,11 +545,11 @@ function exportRecoveryBackup(){
  const backup=recoveryTools().createBackup(s.identity,save,{name:s.user?.name||'',sourceOrigin:global.location?.origin||''});downloadJSON('sengoku-complete-backup.json',backup);toast('領主と進行の統合バックアップを書き出しました。');return{ok:true};
 }
 function pageClick(event){const button=event.target.closest('[data-action="community"]');if(button){event.preventDefault();open(button.dataset.communityTab||'world');}}
-function visibility(){pauseRecentLogins();pauseGuildLists();clearTimeout(onlineTimer);onlineTimer=null;clearTimeout(configTimer);clearTimeout(pollTimer);configTimer=pollTimer=null;if(!document.hidden&&!disposed){loadConfig();if(s.open)refresh({silent:true});}}
+function visibility(){achievementGeneration++;achievementBusy=false;clearTimeout(achievementTimer);achievementTimer=null;pauseRecentLogins();pauseGuildLists();clearTimeout(onlineTimer);onlineTimer=null;clearTimeout(configTimer);clearTimeout(pollTimer);configTimer=pollTimer=null;if(!document.hidden&&!disposed){loadConfig();loadAchievements();if(s.open)refresh({silent:true});}}
 function init(){
  if(disposed||document.getElementById('community-modal'))return;const interruptedRecovery=restoreStoredIdentity();
  const pending=readJSON(CLAIMKEY,{});if(pending&&typeof pending==='object'&&!Array.isArray(pending))s.pending=Object.fromEntries(Object.entries(pending).filter(([k,v])=>k.length<240&&typeof v==='string'&&v.length<180));
- announcement=document.getElementById('announcement-bar');if(announcement){announcement.classList.add('social-announcement');announcement.innerHTML=`<span class="social-announcement-label">御触書</span><div class="social-announcement-window"><p class="social-announcement-text"></p></div><button type="button" class="social-announcement-toggle"></button>`;announcement.querySelector('button').addEventListener('click',()=>{s.paused=!s.paused;renderAnnouncement();});renderAnnouncement();}
+ announcement=document.getElementById('announcement-bar');if(announcement){announcement.classList.add('social-announcement');announcement.innerHTML=`<button type="button" class="social-announcement-label" aria-label="御触書と領主の達成を読む">御触書</button><div class="social-announcement-window"><p class="social-announcement-text"></p></div><button type="button" class="social-announcement-toggle"></button>`;announcement.setAttribute('aria-label','御触書と領主の達成');announcement.querySelector('.social-announcement-label').addEventListener('click',()=>open('news'));announcement.querySelector('.social-announcement-toggle').addEventListener('click',()=>{s.paused=!s.paused;renderAnnouncement();});renderAnnouncement();}
  launcher=document.createElement('button');launcher.className='social-launcher';launcher.dataset.action='community';launcher.setAttribute('aria-label','交流の間を開く');launcher.innerHTML=`${icon('chat')}<span>交流</span><span class="social-unread" hidden></span>`;document.body.append(launcher);
  dialog=document.createElement('dialog');dialog.id='community-modal';dialog.className='social-dialog';dialog.setAttribute('aria-labelledby','social-dialog-title');
  dialog.innerHTML=`<header class="social-header"><div class="social-header-mon">${icon('chat')}</div><div><div class="social-eyebrow">SENGOKU COMMUNITY</div><h1 id="social-dialog-title">交流の間</h1></div><div class="social-header-status"><span id="social-connection"></span><small id="social-online-count"></small></div><button class="social-icon-button" data-social="close" aria-label="交流を閉じる">${icon('close')}</button></header><nav id="social-tabs" class="social-tabs" role="tablist" aria-label="交流のメニュー"></nav><div id="social-feedback" class="social-feedback" role="status" hidden></div><div id="social-dialog-body" class="social-body"></div><footer class="social-footer"><span>礼をもって語り、志でつながる。</span><span>ゲームは閉じずに続けられます</span></footer><div id="social-confirm-host"></div><input id="social-identity-file" type="file" accept="application/json,.json" multiple hidden>`;
@@ -510,11 +557,11 @@ function init(){
  dialog.addEventListener('close',()=>{s.open=false;destroyAvatarEditor();pauseRecentLogins();pauseGuildLists();clearTimeout(onlineTimer);onlineTimer=null;clearTimeout(pollTimer);pollTimer=null;});dialog.addEventListener('cancel',event=>{if(s.confirm){event.preventDefault();clearConfirm();}});
  dialog.addEventListener('keydown',event=>{if(s.confirm&&event.key==='Tab'){const focusable=[...$('#social-confirm-host').querySelectorAll('button:not(:disabled),input,textarea,select')];if(focusable.length){const first=focusable[0],last=focusable[focusable.length-1];if(event.shiftKey&&(document.activeElement===first||!focusable.includes(document.activeElement))){event.preventDefault();last.focus();}else if(!event.shiftKey&&(document.activeElement===last||!focusable.includes(document.activeElement))){event.preventDefault();first.focus();}}return;}if(event.target.id==='social-chat-input'&&event.key==='Enter'&&!event.shiftKey&&!event.isComposing&&event.keyCode!==229){event.preventDefault();event.target.form.requestSubmit();}});
  $('#social-identity-file').addEventListener('change',event=>{const files=Array.from(event.target.files||[]);event.target.value='';importRecoveryFiles(files);});
- document.addEventListener('click',pageClick);document.addEventListener('visibilitychange',visibility);syncUnsubscribe=global.SengokuCloudSync?.subscribe?.(renderSyncStatus);renderTabs();header();startCloud();loadConfig();
+ document.addEventListener('click',pageClick);document.addEventListener('visibilitychange',visibility);syncUnsubscribe=global.SengokuCloudSync?.subscribe?.(renderSyncStatus);renderTabs();header();startCloud();loadConfig();loadAchievements();
  if(interruptedRecovery){open('recovery');verifyRecovery({identity:s.identity,save:null,kind:'interrupted'}).catch(error=>{if(error.code!=='STALE_IDENTITY')toast(error.message,true);});return;}
  if(s.identity){const epoch=authEpoch;s.meLoading=true;loadMe().catch(e=>{if(epoch===authEpoch){s.error=e.message;acceptUser(null);}}).finally(()=>{if(epoch!==authEpoch)return;s.meLoading=false;if(s.open){render();refresh({view:true});}});}
 }
-async function dispose(){disposed=true;destroyAvatarEditor();clearRecentLogins();clearGuildData();recoveryEpoch++;recovery=null;syncUnsubscribe?.();global.SengokuCloudSync?.stop?.();clearTimeout(onlineTimer);clearTimeout(configTimer);clearTimeout(pollTimer);for(const c of controllers)c.abort();controllers.clear();document.removeEventListener('click',pageClick);document.removeEventListener('visibilitychange',visibility);dialog?.remove();launcher?.remove();}
+async function dispose(){disposed=true;achievementGeneration++;clearTimeout(achievementTimer);achievementTimer=null;destroyAvatarEditor();clearRecentLogins();clearGuildData();recoveryEpoch++;recovery=null;syncUnsubscribe?.();global.SengokuCloudSync?.stop?.();clearTimeout(onlineTimer);clearTimeout(configTimer);clearTimeout(pollTimer);for(const c of controllers)c.abort();controllers.clear();document.removeEventListener('click',pageClick);document.removeEventListener('visibilitychange',visibility);dialog?.remove();launcher?.remove();}
 global.SengokuSocial={open,close,exportRecoveryBackup,getUser:()=>s.user?{id:s.user.id,name:s.user.name,clan:s.user.clan,guildId:s.user.guildId||null,guildRole:s.user.guildRole||null,isAdmin:s.user.isAdmin===true,isStaff:s.user.isStaff===true,avatarVersion:s.user.avatarVersion||null}:null,fieldRequest:(route,options={})=>{if(!/^\/field(?:\/me|\/attack|\/diplomacy)?(?:\?[^#]*)?$/.test(route))throw Error('フィールドの操作を確認してください。');return api(route,options);},guildRequest:(route,options={})=>{if(route!=='/guild/treasury/transfer'||options.method!=='POST')throw Error('ギルド金庫の操作を確認してください。');return api(route,options);},refresh:()=>refresh({view:true}),dispose,setWorldClock:async values=>{if(!s.user?.isAdmin)throw Error('運営権限が必要です。');return api('/world-clock',{method:'PATCH',data:values});}};
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init,{once:true});else init();
 })(window);

@@ -163,7 +163,7 @@
       if (!initial.length) initial.push(...this.roster.slice(0,4).map(o=>o.id));
       const scale={easy:.8,normal:1,hard:1.2}[difficulty];
       this.state={
-        version:2,clan:clan.name,home,turn:0,difficulty,
+        version:2,clan:clan.name,home,turn:0,difficulty,cycle:{index:0,home,latestReward:null},
         resources:{gold:difficulty==='easy'?4400:3200,rice:5400,wood:1800,stone:1200},
         troops:3400,morale:80,prestige:0,command:3,magatama:GACHA.initial,captureRewards:[home],gachaHistory:[],
         realtime:{running:true,speed:1,elapsed:0,commandProgress:0,incomeRemainders:{gold:0,rice:0,wood:0,stone:0}},
@@ -175,7 +175,7 @@
         lastBattle:null,stats:{battles:0,wins:0,upgrades:0,recruited:0,researches:0,gachaDraws:0,gachaDuplicates:0,castleUpgrades:0},won:false,gameOver:false
       };
       this.log(`${clan.name}、${CASTLE_BY_ID[home].name}より天下への歩みを始める。`,'story');
-      this.log('共通の時刻は60秒で1か月進みます。1560〜1615年を周回し、城・家臣・資源は引き継ぎます。','guide');
+      this.log('共通の時刻は60秒で1か月進みます。1560〜1615年を周回し、占領拠点を精算して最初の本拠から再出発します。家臣・施設・資源は引き継ぎます。','guide');
       this.log(`門出の贈り物として勾玉${GACHA.initial.toLocaleString()}を受け取りました。武将招集に使えます。`,'gacha');
       if(this.isAdmin)this.restoreAdminAssets();
     }
@@ -209,7 +209,7 @@
         // An older Edo-only campaign keeps its garrison and castle progress at
         // the clan's normal home; no other game progress is discarded.
         if(ownedEdo&&!other.length){s.castles[fallback]={...edo,owner:s.clan};if(!s.captureRewards.includes(fallback))s.captureRewards.push(fallback);}
-        if(wasHome)s.home=fallback;
+        if(wasHome)s.home=fallback;if(s.cycle?.home==='edo')s.cycle.home=fallback;
         if(ownedEdo){const original=CASTLE_BY_ID[ADMIN_ASSETS.castleId];s.castles[ADMIN_ASSETS.castleId]={owner:original.clan===s.clan?'在地衆':original.clan,troops:original.initialTroops,wall:original.wall,level:1};}
         changed=true;
       }
@@ -237,7 +237,7 @@
         // Relocation preserves both the former holding and all campaign assets.
         // Copy progress once, without repeatedly replenishing the Edo garrison.
         for(const key of ['troops','wall','level'])edo[key]=Math.max(edo[key],previous[key]);
-        s.home=id;changed=true;
+        s.home=id;if(s.cycle)s.cycle.home=id;changed=true;
         s.jobs=s.jobs.filter(job=>{
           if(job.kind!=='castle'||job.id!==id)return true;
           if(edo.level>=32)return false;
@@ -506,7 +506,7 @@
     }
     setSpeed(speed){if(this.state.worldClock)return fail('速度は全プレイヤー共通です。');if(![1,2,4].includes(speed))return fail('速度は1・2・4倍から選んでください。');this.state.realtime.speed=speed;return{ok:true,message:`進行速度を${speed}倍にしました。`};}
     calendar(turn=this.state.turn){const absolute=Math.max(0,Math.floor(turn)),within=absolute%WORLD_CALENDAR.monthsPerCycle;return{year:WORLD_CALENDAR.startYear+Math.floor(within/12),month:within%12+1,cycle:Math.floor(absolute/WORLD_CALENDAR.monthsPerCycle)+1,turn:absolute};}
-    applyWorldClock(clock,{maxSeconds=7200}={}){
+    applyWorldClock(clock,{maxSeconds=7200,deferCycleSettlement=false}={}){
       if(!clock||typeof clock.id!=='string'||!clock.id||clock.id.length>100||!Number.isSafeInteger(clock.elapsedMs)||clock.elapsedMs<0||Math.floor(clock.elapsedMs/60000)>MAX_TURN||typeof clock.running!=='boolean'||![1,2,4].includes(clock.speed))return{...fail('共通時刻を確認できません。'),changed:false,events:[],completed:[]};
       const s=this.state,rt=s.realtime,anchor=s.worldClock;
       rt.running=clock.running&&!s.gameOver;rt.speed=clock.speed;
@@ -517,19 +517,39 @@
         for(const record of s.log)record.turn=shift(record.turn);
         for(const record of s.gachaHistory)record.turn=shift(record.turn);
         if(s.lastBattle)s.lastBattle.turn=shift(s.lastBattle.turn??s.turn);
-        s.turn=turn;rt.elapsed=(clock.elapsedMs%60000)/1000;s.worldClock={id:clock.id,elapsedMs:clock.elapsedMs};
+        s.turn=turn;rt.elapsed=(clock.elapsedMs%60000)/1000;s.worldClock={id:clock.id,elapsedMs:clock.elapsedMs};s.cycle.index=Math.floor(turn/WORLD_CALENDAR.monthsPerCycle);
         return{ok:true,changed:true,migrated:true,monthChanged:true,pending:false,events:[],completed:[]};
       }
       // Absolute time is monotonic even when the visible calendar wraps to 1560.
       // A delayed packet cannot rewind resources, jobs or treaty expiry.
       if(clock.elapsedMs<=anchor.elapsedMs)return{ok:true,changed:false,pending:false,events:[],completed:[]};
       const limit=Math.max(60,Math.min(86400,Number(maxSeconds)||7200))*1000;
-      const target=s.gameOver?clock.elapsedMs:Math.min(clock.elapsedMs,anchor.elapsedMs+limit),seconds=(target-anchor.elapsedMs)/1000;
-      const result=s.gameOver?{ok:true,changed:true,events:[],completed:[],monthChanged:Math.floor(target/60000)!==s.turn}:this._advanceRealtime(seconds);
-      // A defeated campaign still shares the same calendar; only its production stops.
-      s.turn=Math.floor(target/60000);rt.elapsed=(target%60000)/1000;anchor.elapsedMs=target;
+      const cycleMs=WORLD_CALENDAR.monthsPerCycle*60000,nextBoundary=(s.cycle.index+1)*cycleMs;
+      const settlementRequired=deferCycleSettlement&&clock.elapsedMs>=nextBoundary;
+      const target=Math.min(clock.elapsedMs,anchor.elapsedMs+limit,settlementRequired?Math.max(anchor.elapsedMs,nextBoundary-1):Infinity);
+      const events=[],completed=[],cycleRewards=[];let changed=false,monthChanged=false;
+      while(anchor.elapsedMs<target){
+        const priorCycle=s.cycle.index,boundary=(s.cycle.index+1)*cycleMs,end=Math.min(target,Math.max(anchor.elapsedMs+1,boundary));
+        const result=s.gameOver?{events:[],completed:[],monthChanged:Math.floor(end/60000)!==s.turn}:this._advanceRealtime((end-anchor.elapsedMs)/1000);
+        events.push(...result.events);completed.push(...result.completed);monthChanged=monthChanged||result.monthChanged;changed=true;
+        s.turn=Math.floor(end/60000);rt.elapsed=(end%60000)/1000;anchor.elapsedMs=end;
+        const reward=this._settleCycle(Math.floor(s.turn/WORLD_CALENDAR.monthsPerCycle))||(s.cycle.index>priorCycle?s.cycle.latestReward:null);if(reward){cycleRewards.push(reward);events.push(`占領${reward.captured}城の周回報酬を受け取りました。`);}
+      }
       rt.running=clock.running&&!s.gameOver;rt.speed=clock.speed;
-      return{...result,pending:target<clock.elapsedMs,remainingSeconds:(clock.elapsedMs-target)/1000};
+      return{ok:true,events,completed,cycleRewards,changed,monthChanged,settlementRequired:settlementRequired&&target>=nextBoundary-1,pending:target<clock.elapsedMs&&(!settlementRequired||target<nextBoundary-1),remainingSeconds:(clock.elapsedMs-target)/1000};
+    }
+    _settleCycle(index){
+      const s=this.state;if(index<=s.cycle.index)return null;
+      const home=this.isAdmin?ADMIN_ASSETS.castleId:s.cycle.home;
+      const captured=CASTLES.filter(c=>c.id!==home&&s.castles[c.id].owner===s.clan&&this.canOwnCastle(c.id)).length;
+      const reward={cycle:s.cycle.index,captured,gold:captured*1000,rice:captured*1000,magatama:captured*100};
+      const homeBefore={...s.castles[home]},scale={easy:.8,normal:1,hard:1.2}[s.difficulty];
+      s.castles=Object.fromEntries(CASTLES.map(c=>[c.id,c.id===home?{...homeBefore,owner:s.clan,troops:Math.max(1200,homeBefore.troops),wall:Math.max(homeBefore.wall,s.buildings.wall)}:{owner:c.clan===s.clan?'在地衆':c.clan,troops:Math.round(c.initialTroops*scale),wall:c.wall,level:1}]));
+      s.home=home;s.cycle={index,home,latestReward:reward};s.jobs=s.jobs.filter(job=>job.kind!=='castle'||job.id===home);
+      s.treaties={};s.scouted={};s.captureRewards=[home];s.lastBattle=null;s.won=false;s.gameOver=false;
+      this._gain({gold:reward.gold,rice:reward.rice,magatama:reward.magatama});
+      this.log(`領地を精算しました。占領${captured}城の報酬：勾玉${reward.magatama}・金銭${reward.gold}・兵糧${reward.rice}。${CASTLE_BY_ID[home].name}から再出発します。`,'cycle');
+      return reward;
     }
     constructionProgress(job){return job&&job.totalSeconds>0?clamp((1-job.remainingSeconds/job.totalSeconds)*100,0,100):0;}
     tick(deltaSeconds){
@@ -584,6 +604,7 @@
     }
     _advanceMonth(){
       const s=this.state,events=[];s.turn++;
+      const cycleReset=this._settleCycle(Math.floor(s.turn/WORLD_CALENDAR.monthsPerCycle));
       this._gain({magatama:GACHA.monthlyReward});events.push(`月次褒賞として勾玉${GACHA.monthlyReward}を受け取りました。`);
       // Production, jobs and command recovery already progressed continuously in tick().
       if(this.income().rice<0&&s.resources.rice===0){const loss=Math.min(s.troops,Math.ceil(s.troops*.08));s.troops-=loss;s.morale=clamp(s.morale-12,15,100);events.push(`兵糧不足で${loss}人が離散。兵糧施設を増築してください。`);}
@@ -593,7 +614,7 @@
       for(const [id,until]of Object.entries(s.scouted))if(until<=s.turn)delete s.scouted[id];
       if(s.turn%4===0){const roll=this.random();if(roll<.25){const gain=350+s.buildings.market*70;this._gain({gold:gain});events.push(`城下で市が賑わい、臨時収入${gain}を得ました。`);}else if(roll<.5){const gain=500+s.buildings.farm*80;this._gain({rice:gain});events.push(`豊作により兵糧${gain}を追加で収穫しました。`);}else if(roll<.7){this._gain({wood:300,stone:200});events.push('領民の協力により木材300・石材200が集まりました。');}else if(roll<.85){s.morale=clamp(s.morale+8,15,100);events.push('軍中に結束が広がり、士気が8上昇しました。');}else{const loss=Math.min(250,s.resources.rice);s.resources.rice-=loss;events.push(`長雨により兵糧${loss}を失いました。`);}}
       const calendar=this.calendar();this.log(`${calendar.year}年${calendar.month}月。領内の月次報告が届きました。`,'calendar');
-      for(const e of events)this.log(e,'event');events.push(...this._cpuTurn());return events;
+      for(const e of events)this.log(e,'event');if(!cycleReset)events.push(...this._cpuTurn());return events;
     }
     // Compatibility/testing helper. The game UI uses tick(), pause and speed controls only.
     nextTurn(){if(this.state.worldClock)return fail('年月は全プレイヤー共通の時刻で進みます。');if(this.state.gameOver)return fail('最後の城を失っています。新しい物語を始めてください。');return this._advanceRealtime(60);}
@@ -651,11 +672,12 @@
       // Only retain known, validated fields; do not merge arbitrary imported object keys.
       const n=g.state;for(const k of ['clan','home','turn','difficulty','resources','troops','morale','prestige','command','buildings','jobs','officers','officerVariants','army','governors','tech','castles','treaties','scouted','log','claimedQuests','giftReceipts','magatama','captureRewards','gachaHistory','seed','stats','realtime'])n[k]=copy(s[k]);
       if(s.worldClock)n.worldClock={id:s.worldClock.id,elapsedMs:s.worldClock.elapsedMs};
+      if(s.cycle!==undefined){const c=s.cycle,r=c?.latestReward;if(!isObj(c)||!num(c.index,0,Math.floor(MAX_TURN/WORLD_CALENDAR.monthsPerCycle))||!CASTLE_BY_ID[c.home]||r!==null&&(!isObj(r)||!num(r.cycle,0,c.index-1)||!num(r.captured,0,127)||r.gold!==r.captured*1000||r.rice!==r.captured*1000||r.magatama!==r.captured*100))invalid();n.cycle={index:c.index,home:c.home,latestReward:r===null?null:copy(r)};}else n.cycle={index:Math.floor(s.turn/WORLD_CALENDAR.monthsPerCycle),home:s.home,latestReward:null};
       n.won=CASTLES.every(c=>n.castles[c.id].owner===n.clan);n.gameOver=!CASTLES.some(c=>n.castles[c.id].owner===n.clan);
       if(!n.gameOver&&n.castles[n.home].owner!==n.clan)invalid();if(n.gameOver)n.realtime.running=false;
       n.lastBattle=null;
       if(s.lastBattle!==null&&s.lastBattle!==undefined){const b=s.lastBattle;if(!isObj(b)||typeof b.won!=='boolean'||!CASTLE_BY_ID[b.castleId]||!num(b.ourBefore)||!num(b.ourLost)||!num(b.enemyBefore)||!num(b.enemyLost)||!Array.isArray(b.phases)||b.phases.length>10||b.phases.some(p=>!isObj(p)||typeof p.title!=='string'||p.title.length>50||typeof p.text!=='string'||p.text.length>1000)||!isObj(b.rewards)||!num(b.rewards.gold)||!num(b.rewards.rice)||!num(b.rewards.magatama??0)||b.capturedOfficer!==null&&b.capturedOfficer!==undefined&&!g.officer(b.capturedOfficer))invalid();n.lastBattle={won:b.won,castleId:b.castleId,castleName:CASTLE_BY_ID[b.castleId].name,ourBefore:b.ourBefore,ourLost:b.ourLost,enemyBefore:b.enemyBefore,enemyLost:b.enemyLost,phases:copy(b.phases),rewards:{gold:b.rewards.gold,rice:b.rewards.rice,magatama:b.rewards.magatama??0},capturedOfficer:b.capturedOfficer||null,garrison:num(b.garrison)?b.garrison:0,tactic:TACTICS.some(t=>t.id===b.tactic)?b.tactic:'balanced',turn:num(b.turn,0,MAX_TURN)?b.turn:n.turn};}
-      g._enforceAdminRestrictions();if(g.isAdmin)g.restoreAdminAssets();g._updateCampaignOutcome();return g;
+      g._enforceAdminRestrictions();if(g.isAdmin)g.restoreAdminAssets();if(g.isAdmin)n.cycle.home='edo';else if(n.cycle.home==='edo')n.cycle.home=n.home;g._updateCampaignOutcome();return g;
     }
   }
   root.SENGOKU_DATA=DATA;root.SengokuEngine=SengokuEngine;

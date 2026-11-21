@@ -12,11 +12,11 @@
 }
 #main .town-panel .town-scene::before { content: none; }
 html.sengoku-desktop-fit #main .town-panel .town-scene {
-  height: var(--layout-town-height, var(--town-auto-height, var(--desktop-town-height, 460px))); min-height: 0; aspect-ratio: auto;
+  height: var(--town-auto-height, var(--layout-town-height, var(--desktop-town-height, 460px))); min-height: 0; aspect-ratio: auto;
 }
-html.sengoku-desktop-fit[data-layout-townheight] #main .town-panel .town-scene { min-height: 240px; }
+html.sengoku-desktop-fit[data-layout-townheight] #main .town-panel .town-scene { height: var(--town-auto-height, var(--layout-town-height)); min-height: 0; }
 #main .town-scene-board { position: absolute; inset: 0 auto auto 0; width: 100%; height: 100%; }
-#main .town-scene-image { display: block; width: 100%; height: 100%; max-width: none; object-fit: contain; user-select: none; pointer-events: none; }
+#main .town-scene-image { display: block; width: 100%; height: 100%; max-width: none; object-fit: contain; object-position: center; transform: none; user-select: none; pointer-events: none; }
 #main .town-scene-board:not([data-town-ready]) .hotspot { visibility: hidden; }
 #main .town-scene-board .hotspot {
   left: var(--town-marker-x) !important; top: var(--town-marker-y) !important;
@@ -79,3 +79,9 @@ html.sengoku-desktop-fit[data-layout-townheight] #main .town-panel .town-scene {
 }
 .major-city-badge { display: inline-flex; align-items: center; gap: 6px; width: fit-content; max-width: 100%; margin: 0 0 10px; padding: 5px 9px; border: 1px solid #edc57565; border-radius: 5px; background: #83622630; color: #f2d59b; font-size: 14px; line-height: 1.5; }
 .major-city-badge .icon { flex: none; width: 16px; height: 16px; }
+
+/* Timing stays legible on narrow construction cards, including long jobs. */
+[data-job-clock] { font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.job-top { flex-wrap: wrap; gap: 4px 10px; }
+.job-top small[data-job-clock] { display: block; flex-basis: 100%; font-size: 14px; line-height: 1.55; }
+.building-job-clock { display: block; margin-top: 9px; color: #bde7c8; font-size: 14px; line-height: 1.5; white-space: normal; }

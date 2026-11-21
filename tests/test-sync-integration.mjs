@@ -121,7 +121,7 @@ function makeDevice(name,initialGame){
 function applyConfirmed(device,{maxSeconds=7200}={}){
   const snapshot=device.worldClock.snapshot();assert(snapshot.ready&&snapshot.clock,'A confirmed clock sample is required');
   assert(Number.isSafeInteger(snapshot.clock.confirmedElapsedMs),'Display interpolation must expose the separately confirmed server time');
-  return device.game.applyWorldClock({...snapshot.clock,elapsedMs:snapshot.clock.confirmedElapsedMs},{maxSeconds});
+  return device.game.applyWorldClock({...snapshot.clock,elapsedMs:snapshot.clock.confirmedElapsedMs},{maxSeconds,deferCycleSettlement:device.access.linked});
 }
 
 let checks=0;
@@ -287,8 +287,9 @@ try{
     assert((await a.cloud.takeOver()).ok);await b.cloud.refresh();assert.equal(a.cloud.getStatus().writable,true);assert.equal(b.cloud.getStatus().writable,false);
     const assets={buildings:structuredClone(a.game.state.buildings),officers:[...a.game.state.officerVariants]},previousClock=a.game.state.worldClock.elapsedMs;
     clock+=2000;await a.worldClock.start();assert.equal(a.worldClock.snapshot().clock.confirmedElapsedMs,cycleMs);assert(applyConfirmed(a).ok);
+    assert.equal(a.game.state.worldClock.elapsedMs,cycleMs-1);a.persist();assert((await a.cloud.flush()).ok);assert((await a.cloud.refresh({settleCycle:true})).ok);
     assert.equal(a.game.calendar().cycle,2);assert.equal(a.game.calendar().year,1560);assert.equal(a.game.calendar().month,1);assert.equal(a.game.state.worldClock.elapsedMs,previousClock+2000);
-    stateEqual(a.game.state.buildings,assets.buildings);stateEqual(a.game.state.officerVariants,assets.officers);a.persist();assert((await a.cloud.flush()).ok);
+    stateEqual(a.game.state.buildings,assets.buildings);stateEqual(a.game.state.officerVariants,assets.officers);assert.equal(a.game.ownedCastles().length,1);
     await b.cloud.refresh();stateEqual(a.game.state,b.game.state);assert.equal(b.worldClock.snapshot().clock.calendar.cycle,2);
     const before=writes(),after=structuredClone(a.game.state);await a.worldClock.refresh();assert.equal(applyConfirmed(a).changed,false);a.cloud.notifySave();await a.cloud.flush();await b.cloud.refresh();stateEqual(a.game.state,after);assert.equal(writes(),before);
   });
@@ -374,6 +375,28 @@ try{
     assert.equal(a.game.state.magatama,before.magatama+900);assert.equal(a.game.state.resources.gold,before.resources.gold+25);assert.equal(a.game.state.giftReceipts.filter(id=>id===first.receiptId).length,1);stateEqual(a.game.state,b.game.state);
     const saved=await api('/sync',{token:alice.token});assert.equal(saved.save.state.magatama,before.magatama+900);assert(saved.save.state.giftReceipts.includes(first.receiptId));
     scope.game=a.game;const after=structuredClone(a.game.state),beforeWrites=writes(),replay=await api('/mail/claim',{method:'POST',token:alice.token,data:payload});assert.equal(scope.applyDurableGift(replay.gift,replay.receiptId).already,true);await a.cloud.flush();assert.equal(writes(),beforeWrites);stateEqual(a.game.state,after);
+  });
+
+  await test('a normal poll preserves a dirty writer’s final capture until its own save closes the cycle',async()=>{
+    const cycleMs=672*60000,current=(await api('/world-clock')).clock;
+    if(!current.running||current.speed!==1)await api('/world-clock',{method:'PATCH',token:operator.token,data:{running:true,speed:1,revision:current.revision}});
+    const start=(await api('/world-clock')).clock,boundary=(Math.floor(start.elapsedMs/cycleMs)+1)*cycleMs;
+    clock+=boundary-1000-start.elapsedMs;await a.cloud.takeOver();await a.worldClock.refresh();
+    a.game=makeGame();applyConfirmed(a);a.game.state.castles.inabayama.owner=a.game.state.clan;a.persist();assert((await a.cloud.flush()).ok);
+    a.game.state.castles.odani.owner=a.game.state.clan;a.persist();
+    clock+=1000;await a.worldClock.refresh();const result=applyConfirmed(a);assert(result.settlementRequired);a.persist();
+    const baseline=a.cloud.getStatus().revision;assert((await a.cloud.refresh()).ok);
+    assert.equal(a.game.state.cycle.latestReward.captured,2);assert.equal(a.game.ownedCastles().length,1);assert(a.cloud.getStatus().revision>=baseline+2);
+    await b.cloud.refresh();stateEqual(a.game.state,b.game.state);
+  });
+  await test('an unchanged boundary checkpoint sends an explicit settlement rather than looping forever',async()=>{
+    const cycleMs=672*60000,current=(await api('/world-clock')).clock,boundary=(Math.floor(current.elapsedMs/cycleMs)+1)*cycleMs;
+    clock+=boundary-1-current.elapsedMs;await a.cloud.refresh();await a.worldClock.refresh();
+    a.game=makeGame();applyConfirmed(a);a.persist();assert((await a.cloud.flush()).ok);const beforeWrites=writes();
+    clock+=1;await a.worldClock.refresh();const result=applyConfirmed(a);assert(result.settlementRequired);assert.equal(result.changed,false);
+    const beforeSettle=requests.filter(r=>r.route==='/sync/settle').length;
+    assert((await a.cloud.refresh({settleCycle:true})).ok);assert.equal(writes(),beforeWrites);assert(requests.filter(r=>r.route==='/sync/settle').length>beforeSettle);
+    assert.equal(a.game.state.worldClock.elapsedMs,boundary);assert.equal(a.game.state.cycle.index,Math.floor(boundary/cycleMs));
   });
 
   await settle();

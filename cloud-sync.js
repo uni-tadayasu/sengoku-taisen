@@ -104,10 +104,15 @@ function create(options={}){
    // A save response must never erase actions performed while that request was in flight.
    if(current===sent&&canonical!==current){if(!await apply(result.save,result,g,{reason:'canonical',backup:false}))return{ok:false};}
    if(!valid(g))return{ok:false};revision=result.revision;ack=canonical;dirty=fingerprint(local())!==ack;initialized=true;attempt=null;checkpoint();status.updatedAt=result.updatedAt||null;lease(result);access();if(dirty&&!suspended)scheduleSave();return{ok:true};
-  }catch(error){if(!valid(g))return{ok:false};if(error.code==='REVISION_CONFLICT'||error.code==='LEASE_REQUIRED'){await recoverConflict(g);return{ok:false,conflict:true};}throw error;}
+  }catch(error){if(!valid(g))return{ok:false};if(['REVISION_CONFLICT','LEASE_REQUIRED','CYCLE_SETTLEMENT_REQUIRED','CLOCK_REWIND'].includes(error.code)){await recoverConflict(g);return{ok:false,conflict:true};}throw error;}
  }
- async function refreshCore(g,{takeOver=false}={}){
+ async function refreshCore(g,{takeOver=false,settleCycle=false}={}){
   if(!valid(g)||hidden()||!online()){if(valid(g))access();return{ok:false};}
+  if(settleCycle&&initialized&&leaseDeadline>now()){
+   const flushed=await flushCore(g);if(!flushed.ok)return flushed;
+   try{const settled=await request(g,'/sync/settle',{method:'POST',data:{deviceId:device.id,revision}});if(!settled||!await snapshot(settled,g))return{ok:false};}
+   catch(error){if(['REVISION_CONFLICT','LEASE_REQUIRED'].includes(error.code)){await recoverConflict(g);return{ok:false,conflict:true};}throw error;}
+  }
   let result=await request(g,'/sync?deviceId='+encodeURIComponent(device.id));if(!result||!await snapshot(result,g))return{ok:false};
   const until=Date.parse(result.leaseExpiresAt),server=Date.parse(result.serverTime)||now(),other=result.writerDeviceId&&result.writerDeviceId!==device.id&&until>server;
   if(takeOver||!other&&(leaseDeadline<=now()||now()-lastLeaseAt>=10000)){
@@ -117,7 +122,7 @@ function create(options={}){
   if(!valid(g))return{ok:false};access();if(status.writable)await flushCore(g);return{ok:true,writable:status.writable};
  }
  function refresh(settings={}){
-  if(!session)return Promise.resolve({ok:false});if(refreshPending&&!settings.takeOver)return refreshPending;
+  if(!session)return Promise.resolve({ok:false});if(refreshPending&&!settings.takeOver&&!settings.settleCycle)return refreshPending;
   const g=generation,task=enqueue(async gen=>{try{return await refreshCore(gen,settings);}catch(e){fail(e,gen);return{ok:false,message:e.message};}});
   refreshPending=task;task.finally(()=>{if(valid(g)){if(refreshPending===task)refreshPending=null;schedulePoll();}});return task;
  }

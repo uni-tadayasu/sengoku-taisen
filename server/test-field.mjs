@@ -60,7 +60,9 @@ const getClock=async()=>(await api('/world-clock')).data.clock;
 const snapshot=async player=>(await api('/sync?deviceId='+player.deviceId,{token:player.token})).data;
 async function upload(player) {
   await lease(player.token,player.deviceId);
-  const prior=await snapshot(player),save=prior.save||fresh(),current=await getClock();
+  let prior=await snapshot(player);const current=await getClock();
+  while(prior.save&&prior.save.state.cycle.index<Math.floor(current.elapsedMs/(672*60000)))prior=(await api('/sync/settle',post(player.token,{deviceId:player.deviceId,revision:prior.revision}))).data;
+  const save=prior.save||fresh();
   save.state.worldClock={id:current.id,elapsedMs:current.elapsedMs};save.state.turn=Math.floor(current.elapsedMs/60000);save.state.realtime.elapsed=current.elapsedMs%60000/1000;
   if(!prior.save){save.state.resources={gold:30000,rice:50000,wood:20000,stone:20000};save.state.troops=5000;save.state.castles[save.state.home].troops=1500;save.state.command=3;}
   return (await api('/sync',write(player.token,player.deviceId,prior.revision,save))).data;
@@ -163,6 +165,6 @@ try {
   const publicRecovered=(await api('/field',{token:a.token})).data.players.find(p=>p.playerId===admin.user.id);
   assert.equal(recovered.home,'okazaki');assert.equal(publicRecovered.homeCastleId,recovered.home,'revoked-operator map location matches the same owned-castle migration as sync');
   database.prepare("UPDATE settings SET value=? WHERE key='adminUserId'").run(admin.user.id);
-  console.log(JSON.stringify({ok:true,calls,battles:battles(),checks:['real co-located bases and public privacy','operator always based at protected Edo','active writer and revision checks','server-owned outcome and bounded losses/loot','atomic updates of both saves','replay idempotence and payload reuse rejection','defender stale-save rejection','common-clock cooldown and protection','two-sided consent, rejection, cancellation and expiry','attack-versus-consent race','competing raids on one defender','transaction rollback and safe retry','current snapshot on delayed replay','looping calendar preserves deadlines','global pause blocks attacks','revoked-role public base agrees with sync migration']},null,2));
+  console.log(JSON.stringify({ok:true,calls,battles:battles(),checks:['real co-located bases and public privacy','operator always based at protected Edo','active writer and revision checks','server-owned outcome and bounded losses/loot','atomic updates of both saves','replay idempotence and payload reuse rejection','defender stale-save rejection','common-clock cooldown and protection','two-sided consent, rejection, cancellation and expiry','attack-versus-consent race','competing raids on one defender','transaction rollback and safe retry','current snapshot on delayed replay','looping calendar settles territory and clears prior diplomacy','global pause blocks attacks','revoked-role public base agrees with sync migration']},null,2));
 }finally{Date.now=originalNow;database.close();}
 

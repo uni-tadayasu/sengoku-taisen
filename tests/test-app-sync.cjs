@@ -25,7 +25,7 @@ function setup({admin=false}={}) {
     game, roster, SengokuEngine,
     state:()=>context.game.state,
     syncAccess:{linked:true,ready:true,writable:true,leaseExpiresAt:new Date(Date.now()+30000).toISOString()},
-    saveKey:'save', backupKey:'backups', saveEnabled:true, saveWarning:'',worldCatchingUp:false,fieldActionPending:false,startPending:false,
+    saveKey:'save', backupKey:'backups', saveEnabled:true, saveWarning:'',worldCatchingUp:false,worldSettlementPending:false,worldSettlementRetryAt:0,fieldActionPending:false,startPending:false,
     selectedCastle:'', lastRealtime:0, saveCounter:0, importedGame:null, activeModal:'',
     localStorage:{getItem:k=>stored.get(k)||null,setItem:(k,v)=>stored.set(k,v)},
     window:{dispatchEvent:e=>events.push(e.type)}, CustomEvent:class{constructor(type){this.type=type;}},
@@ -63,6 +63,19 @@ test('initial replacement retains the exact pre-sync save as a downloadable back
   const backups=JSON.parse(stored.get('backups'));
   assert.equal(backups[0].save,original);assert.equal(backups[0].reason,'initial');
   assert.equal(JSON.parse(stored.get('save')).state.resources.gold,remote.state.resources.gold);
+});
+test('automatic initial/conflict refresh keeps an open reading dialog and the selected map location',()=>{
+  for(const reason of ['initial','conflict','remote']){
+    const {c}=setup();let closed=0;c.activeModal='building';c.selectedCastle='himeji';c.currentView='map';c.closeModal=()=>{closed++;};
+    const remote=JSON.parse(c.game.exportSave());remote.state.resources.gold+=123;
+    assert.equal(c.applyCloudSave(remote,{isAdmin:false,reason,backup:true}).ok,true);
+    assert.equal(closed,0);assert.equal(c.activeModal,'building');assert.equal(c.selectedCastle,'himeji');assert.equal(c.currentView,'map');
+  }
+});
+test('a conflict invalidates only a stale import confirmation, not ordinary dialogs',()=>{
+  const {c}=setup();let closed=0;c.activeModal='import';c.importedGame={};c.closeModal=()=>{closed++;c.activeModal='';};
+  assert(c.applyCloudSave(JSON.parse(c.game.exportSave()),{isAdmin:false,reason:'conflict'}).ok);
+  assert.equal(closed,1);assert.equal(c.importedGame,null);
 });
 test('cloud persistence failure keeps the existing game and save untouched',()=>{
   const {c,stored}=setup();const before=JSON.stringify(c.game.state),original=stored.get('save');
@@ -105,6 +118,7 @@ test('clock catch-up and an in-flight field action block writes and gift mutatio
   c.game.applyWorldClock({...clock,elapsedMs:100000});assert.equal(c.canMutate(),true,'confirmed time, not speculative display time, enables play');
   c.fieldActionPending=true;assert.equal(c.save(),false);assert.equal(c.applyDurableGift({gold:100},'field-busy').ok,false);assert.equal(events.length,0);
   c.fieldActionPending=false;ready=false;assert.equal(c.canMutate(),false);ready=true;c.worldCatchingUp=true;assert.equal(c.canMutate(),false);
+  c.worldCatchingUp=false;c.worldSettlementPending=true;assert.equal(c.canMutate(true),false,'The settlement barrier cannot be bypassed by catch-up saves');assert.equal(c.save({allowClockCatchup:true}),false);
 });
 test('magatama gift, resources and receipt persist atomically and a reloaded retry cannot duplicate them',()=>{
   const {c,stored,events}=setup(),original=stored.get('save'),before=JSON.stringify(c.game.state),originalSet=c.localStorage.setItem;

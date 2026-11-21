@@ -30,7 +30,9 @@ const initial = sceneHeight(374, 593, 411.656 - 133, 20);
 assert(initial < 374);
 assert(411.656 + initial <= 726 - 20);
 assert.equal(sceneHeight(374, 593, (411.656 - 120) - 133 + 120, 20), initial, 'Scroll position cannot change the image height');
-assert.equal(sceneHeight(500, 593, 278.656, 20, true), 500, 'An explicit drag height remains the user choice');
+assert.equal(sceneHeight(500, 593, 278.656, 20), initial, 'A saved drag height is capped to the viewport after resize or zoom');
+assert.equal(sceneHeight(160, 593, 278.656, 20), 160, 'A smaller explicit drag height stays the user choice');
+assert.equal(sceneHeight(500, 1000, 120, 20), 500, 'The saved preference can expand again when space returns');
 for (const [height, offset] of [[400, 180], [230, 63], [160, 63], [100, 53]]) {
   const chosen = sceneHeight(240, height, offset, 10);
   assert(chosen > 0 && chosen <= 240);

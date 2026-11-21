@@ -6,7 +6,9 @@ const fs = require('node:fs');
 const path = require('node:path');
 const root = path.resolve(__dirname, '..');
 const origin = 'https://www.kasai-solutions-inc.com';
-const release = '3.5.0-20261121';
+const release = '3.6.0-20261121';
+// Update only for substantive content changes; never replace this with build time.
+const modified = '2026-11-21';
 const esc = value => String(value).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
 const section = (id, kicker, title, body, theme = '') => `<section id="${id}" class="article-section ${theme}"><div class="section-kicker">${kicker}</div><h2>${title}</h2>${body}</section>`;
 const callout = (title, body, warm = false) => `<aside class="callout${warm ? ' callout--warm' : ''}"><h3>${title}</h3><p>${body}</p></aside>`;
@@ -35,7 +37,7 @@ function guideContent(p) {
       <p>城郭と施設はそれぞれ<strong>Lv.32</strong>まで発展します。詳細画面の「32段階の姿」では、完成形を先に見比べられます。イラストの閲覧だけで資源やレベルが変わることはありません。</p>
     `, 'section-town'),
     section('resources', '城下町と資源', '日々の生産が、次の一手を支える。', `
-      <p>資源の所持数と収支を確認しながら、内政と軍備の配分を考えます。兵を増やすと維持する兵糧も必要です。普請・研究の完成を待つ間は、武将や地図を確認できます。</p>
+      <p>資源の所持数と収支を確認しながら、内政と軍備の配分を考えます。兵を増やすと維持する兵糧も必要です。普請・研究の完成を待つ間は、武将や地図を確認できます。普請・研究の進行欄には、経過時間・残り時間・進捗率を表示します。経過はゲーム内の進行時間、残りは現在の世界速度での待ち時間です。</p>
       ${table('5つの資源・通貨と主な用途', ['種類', '使い道'], [
         ['<span class="resource-gold">金</span>', '普請、武将の登用、募兵などに使う基本資源。'],
         ['<span class="resource-rice">兵糧</span>', '軍の維持や出陣に使用。収入だけでなく維持費との差引を確認します。'],
@@ -64,16 +66,23 @@ function guideContent(p) {
       <p>出陣兵数と戦法を選び、確認して襲撃します。指令1回と兵糧を消費し、結果は双方の保存と戦報へ反映されます。現在の対人戦では本拠や武将の所有権は移りません。守備側の兵損は各兵数の10%以内、勝利時の略奪は各資源の5%以内かつ500以内です。</p>
       <p>攻撃後の待機と被襲撃後の保護は、共通時間で60秒。運営の江戸城や保護中の拠点には攻撃できず、世界時計の停止中も襲撃は行えません。</p>
       <h3>同盟は相手の承諾で成立</h3>
-      <p>外交の提案を相手が承諾すると、<strong>ゲーム内の6か月間</strong>、互いに攻撃できなくなります。届いた提案の拒否や、未承諾の自分の提案の取消もできます。暦が一周しても同盟の残り期間は引き継がれます。</p>
+      <p>外交の提案を相手が承諾すると、<strong>ゲーム内の6か月間</strong>、互いに攻撃できなくなります。届いた提案の拒否や、未承諾の自分の提案の取消もできます。暦が一周して拠点をリセットするときは、前の暦で結んだ同盟・未承諾の外交提案も終了します。</p>
     `, 'section-field'),
     section('world-clock', '全プレイヤー共通の年月', '暦はめぐり、積み重ねは続いていく。', `
-      <p class="lead-paragraph">世界時計は全プレイヤー共通です。1560年1月から1615年12月まで進むと、再び1560年1月へ戻ります。城・武将・施設・資源・進行は、そのまま引き継がれます。</p>
+      <p class="lead-paragraph">世界時計は全プレイヤー共通です。1560年1月から1615年12月まで進むと、再び1560年1月へ戻ります。次の暦に入ると占領した拠点をリセットし、開始時に選んだ本拠から再出発します。運営は德川家・江戸城のままです。武将・施設・所持資源は引き継ぎます。</p>
       <p>1倍速では<strong>実時間60秒がゲーム内の1か月</strong>に相当し、20秒ごとに指令が1回復します。世界全体の速度と停止・再開は運営が管理します。プレイヤー個人で年月を進めたり、一人だけ停止したりする操作はありません。</p>
       <p>画面を閉じている間も世界の時間は進み、再接続すると生産・普請・研究などを共通時刻まで反映します。通信を確認できない間は操作を待機し、接続が戻ったときに追いつきます。</p>
+      <h3>占領した城の数に応じた報酬</h3>
+      <p>暦が切り替わる直前に保有していた<strong>本拠以外の城1つにつき、勾玉100・金銭1,000・兵糧1,000</strong>を受け取ります。たとえば対象が5城なら、勾玉500・金銭5,000・兵糧5,000です。本拠は報酬の城数に含めません。</p>
+      <p>連携済みの領主の報酬はサーバーで一度だけ確定します。同じ領主を複数端末で開いた場合や通信を再試行した場合も、同じ区切りの報酬を重ねて加算しません。留守中に区切りをまたいだ場合は、再接続時に進行と報酬を確認します。</p>
+      <p>占領地の城郭・守備兵と占領地で未完了の増築はリセットされます。本拠の城郭、城下の施設・研究・武将・資源は残ります。天下地図のCPU勢力との同盟・偵察、共通フィールドの前の暦から続く外交関係は区切りで終了します。</p>
     `, 'section-clock'),
     section('community', '領主たちの交流', '世界の会話、仲間との軍議、友への文。', `
       <p>「交流」で領主名を登録すると、世界チャット、ギルド、フレンド、システム便などを使えます。「接続一覧」では現在オンラインの領主と所属・役職を確認できます。同じ領主の複数端末は一人にまとめて表示されます。</p>
       <p>接続状態は定期的に更新され、直近90秒以内に接続確認のあった領主をオンラインとして表示します。端末を閉じた直後などは、表示が変わるまで少し時間がかかります。</p>
+      <h3>御触書と領主の達成</h3>
+      <p>画面上部の「御触書」には運営のお知らせと、領主の名前付きの達成記録を表示します。「御触書」を押すか、「交流」→「御触書」を開くと、達成内容と日本時間の日時を一覧で読めます。30秒ごとに更新し、以前の知らせも確認できます。</p>
+      <p>達成記録はサーバーに反映されたゲームの進行をもとに届けます。私信、ギルド金庫の明細、運営・スタッフ向けのログイン履歴は公開しません。</p>
       <h3>ギルドの役職と共有金庫</h3>
       <p>ギルドには「盟主」「副盟主」「メンバー」の役職があります。「交流」→「ギルド」→「役職・メンバー」で、盟主が副盟主を任命・解除できます。盟主と副盟主は通常メンバーを除名でき、副盟主は盟主や他の副盟主を除名できません。ギルド内の役職と、サイトの運営・スタッフ権限は別です。</p>
       <p>「共有金庫」では、金銭・兵糧・木材・石材・勾玉を納められます。全メンバーが「受け取って使用」で自分の所持資産へ移し、普請や募兵、武将招集などに使えます。残高と出し入れの記録は所属メンバーだけに共有されます。資産の移動には端末同期が必要です。金庫に資産を残したまま、最後のメンバーが脱退することはできません。</p>
@@ -95,7 +104,7 @@ function guideContent(p) {
     `, 'section-community'),
     section('save-and-sync', '端末同期とデータ保存', 'どの端末でも、同じ領主として。', `
       <p>城を選んで開始した後の未連携の進行は、そのブラウザに自動保存されます。未確定の城選択は保存・自動送信しません。領主登録・端末連携後はクラウドにも保存し、同じ領主IDの端末へ自動同期します。世界時計・同期・交流にはインターネット接続が必要です。</p>
-      <p>進行を操作する端末は同時に1台です。ほかの端末は最新状態を表示し、操作権を切り替えて続きを遊べます。通信が切れた場合や別の端末へ操作権が移った場合は、保存の競合を防ぐため操作を待機します。</p>
+      <p>進行を操作する端末は同時に1台です。ほかの端末は最新状態を表示し、操作権を切り替えて続きを遊べます。自動同期では開いている画面・スクロール位置・入力途中の内容を保ちます。通信が切れた場合や別の端末へ操作権が移った場合は、保存の競合を防ぐため操作を待機します。</p>
       ${callout('機種変更・URL変更の前に', '「領主データ」は同じ領主へ接続するための本人情報、「セーブデータ」は城・武将・資源などの進行です。「統合バックアップ」では両方をまとめて保管できます。')}
       <a class="chapter-link" href="${p.dir('guide/data-recovery')}">端末変更・データ復元の手順を読む</a>
     `),
@@ -106,7 +115,7 @@ function guideContent(p) {
       <h3>PCの表示領域は調節できますか？</h3><p>左メニューの「領域を調整」を押すと、金色の境界をドラッグしてメニュー幅、上部の高さ、城下町・天下地図・共通フィールドの幅配分と表示高さを変えられます。境界を選んで矢印キーでも調整でき、「初期配置」で元に戻せます。配置はそのブラウザに保存されます。</p>
       <h3>画面の動きを控えめにできますか？</h3><p>ボタンやカードには、カーソルを合わせたときやクリック・タップしたときの反応があります。端末やブラウザの「動きを減らす」設定を有効にすると、位置移動・拡縮・波紋などを自動で抑え、色や枠線で操作状態を示します。</p>
       <h3>ほかのプレイヤーと、すべての城を奪い合いますか？</h3><p>天下地図の領国と戦役はプレイヤーごとのCPU戦です。共通フィールドでは実際の領主同士の限定襲撃と外交を行います。年月・接続状況・交流は全員で共有します。</p>
-      <h3>音楽はどこで変更できますか？</h3><p>音符ボタンからBGMを有効にできます。16曲のオリジナルBGMを収録し、自動選曲、音楽帳からの手動選曲、音量調整に対応しています。</p></div>
+      <h3>音楽はどこで変更できますか？</h3><p>音符ボタンからBGMを有効にできます。16曲のオリジナルBGMを収録し、自動選曲、音楽帳からの手動選曲、音量調整に対応しています。</p><h3>スマホのマナーモード中も音を鳴らせますか？</h3><p>最初に再生ボタンをタップすると、対応するスマホ・タブレットではメディア再生としてBGMを鳴らします。端末のメディア音量を上げてください。ゲーム内で停止した音や音量0を勝手に解除することはありません。端末・ブラウザの再生制限によって音が出ない場合があります。</p></div>
       <a class="chapter-link" href="${p.dir('about')}">作品の収録内容・地図や家紋の出典を読む</a>
     `)
   ].join('\n');
@@ -208,7 +217,7 @@ function aboutContent(p) {
       <p class="lead-paragraph">「戦国大戦」は、PC・スマートフォンのブラウザで遊ぶ戦国ストラテジーゲームです。城下町の内政、武将の登用、軍団の編成、天下地図の戦役を通じて、自分の領国を育てていきます。</p>
       <p>戦国期から近世初頭の人物と城を、年代を横断した「群雄集結」の設定で収録しています。歴史上の全武将を網羅した名簿ではなく、能力・特技・ランク・所属や勢力配置はゲーム向けの創作です。</p>
       <p class="quote-line">一城の志が、天下を動かす。</p>
-      <p>全プレイヤーが共通の年月を歩み、世界チャットやギルド、共通フィールドで領主同士が出会います。世界時計は1560年1月から1615年12月までを繰り返し、城・武将・施設・資源・進行を引き継ぎます。</p>
+      <p>全プレイヤーが共通の年月を歩み、世界チャットやギルド、共通フィールドで領主同士が出会います。世界時計は1560年1月から1615年12月までを繰り返します。区切りには占領拠点をリセットし、終わりに保有した本拠以外の城数に応じた報酬を受け取ります。選んだ本拠、武将・施設・所持資源は引き継ぎます。</p>
       <a class="chapter-link" href="${p.dir('guide')}">戦国大戦の遊び方を読む</a>
     `),
     section('collection', '収録内容', '一人の武将、一つの城に、重なる姿。', `
@@ -253,7 +262,7 @@ const pages = [
   {
     file: 'guide/index.html', slug: 'guide', key: 'guide', label: '遊び方',
     title: '戦国大戦の遊び方｜城下町・武将・共通フィールド・自動同期',
-    description: '戦国大戦の遊び方を案内。城下町の育成、256名の武将と8ランク、天下地図、対人の共通フィールド、全プレイヤー共通の時間、勾玉、端末同期を紹介します。',
+    description: '戦国大戦の公式ガイド。城下町の育成、武将と軍団、天下地図、共通フィールド、周回時の拠点リセットと占領報酬、御触書、ギルド共有金庫・ランキング、端末同期と音声設定を説明します。',
     eyebrow: '戦国大戦の遊び方', heading: '一城から、<br><span>天下を描く。</span>',
     lead: '内政を整え、将を迎え、城を拓く。はじめての一歩から、世界の領主たちとの交流まで。あなたの戦記を進めるための案内です。',
     image: 'assets/castle-town.webp', imageWidth: 1536, imageHeight: 1024, imageAlt: '山々と川に囲まれ、田畑や商家が広がる戦国大戦の城下町イラスト', imageCaption: '城下町から始まる、あなたの領国。', imageTag: '城と群雄の戦記',
@@ -297,7 +306,7 @@ function render(page) {
   const jsonld = {
     '@context':'https://schema.org',
     '@graph':[
-      {'@type':'WebPage','@id':`${url}#webpage`,url,name:page.title,description:page.description,inLanguage:'ja',isPartOf:{'@id':`${origin}/#website`},publisher:{'@type':'Organization',name:'KASAI SOLUTIONS',url:`${origin}/`},breadcrumb:{'@id':`${url}#breadcrumb`},primaryImageOfPage:{'@type':'ImageObject',url:`${origin}/${page.image}`}},
+      {'@type':'WebPage','@id':`${url}#webpage`,url,name:page.title,description:page.description,inLanguage:'ja',dateModified:modified,about:{'@id':`${origin}/#game`},isPartOf:{'@id':`${origin}/#website`},publisher:{'@type':'Organization',name:'KASAI SOLUTIONS',url:`${origin}/`},breadcrumb:{'@id':`${url}#breadcrumb`},primaryImageOfPage:{'@type':'ImageObject',url:`${origin}/${page.image}`}},
       {'@type':'BreadcrumbList','@id':`${url}#breadcrumb`,itemListElement:breadcrumbItems.map((item,i)=>({'@type':'ListItem',position:i+1,name:item.name,item:item.url}))}
     ]
   };
@@ -311,7 +320,7 @@ function render(page) {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${esc(page.title)}</title>
   <meta name="description" content="${esc(page.description)}">
-  <meta name="robots" content="index,follow,max-image-preview:large">
+  <meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1">
   <meta name="theme-color" content="#0c141f">
   <meta name="author" content="KASAI SOLUTIONS">
   <link rel="canonical" href="${url}">
@@ -345,7 +354,7 @@ function render(page) {
   <main id="content" class="page-width">
     <nav aria-label="パンくず"><ol class="breadcrumbs">${breadcrumbItems.map((item,i)=>`<li>${i===breadcrumbItems.length-1?`<span aria-current="page">${item.name}</span>`:`<a href="${item.href}">${item.name}</a>`}</li>`).join('')}</ol></nav>
     <section class="hero" aria-labelledby="page-title"><div class="hero-copy"><p class="eyebrow">${page.eyebrow}</p><h1 id="page-title">${page.heading}</h1><p class="hero-lead">${page.lead}</p><div class="hero-actions"><a class="action-link" href="${p.dir('')}">${page.heroAction}</a><a class="text-link" href="${secondaryHref}">${page.secondary[0]}</a></div></div>${imageFigure}</section>
-    <div class="reading-layout"><aside class="toc"><nav aria-label="このページの目次"><p class="toc-title">このページの案内</p><ul>${page.toc.map(([id,label])=>`<li><a href="#${id}">${label}</a></li>`).join('')}</ul></nav><div class="toc-foot"><p>ブラウザで読む公式ガイド。</p><a href="${p.dir('')}">戦国大戦を開く</a></div></aside><article class="article" aria-label="${page.label}の本文">${page.content(p)}</article></div>
+    <div class="reading-layout"><aside class="toc"><nav aria-label="このページの目次"><p class="toc-title">このページの案内</p><ul>${page.toc.map(([id,label])=>`<li><a href="#${id}">${label}</a></li>`).join('')}</ul></nav><div class="toc-foot"><p>ブラウザで読む公式ガイド。</p><a href="${p.dir('')}">戦国大戦を開く</a></div></aside><article class="article" aria-label="${page.label}の本文"><p class="article-updated">内容更新：<time datetime="${modified}">2026年11月21日</time></p>${page.content(p)}</article></div>
     <section class="closing"><div><h2>${page.closingTitle}</h2><p>${page.closingText}</p></div><a class="action-link" href="${p.dir('')}">ゲームを開く</a></section>
   </main>
   <footer class="site-footer"><div class="footer-inner page-width"><p class="footer-brand">戦国大戦 <span>城と群雄の戦記</span></p><nav class="footer-nav" aria-label="フッターの案内">${nav}</nav><p class="copyright">© KASAI SOLUTIONS</p><p class="footer-note">地図・人物・家紋の資料は作品情報に記載しています。</p></div></footer>

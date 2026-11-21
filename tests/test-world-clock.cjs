@@ -40,10 +40,27 @@ test('legacy retiming preserves assets, unfinished work and remaining treaty per
   assert(g.state.log.every(item=>item.turn<=5000));assert(g.state.gachaHistory.every(item=>item.turn<=5000));assert.deepEqual(E.fromSave(g.exportSave(),roster).state,g.state);
 });
 
-test('calendar wrap increments the cycle without resetting the campaign',()=>{
+test('calendar wrap resets captured bases, awards once and preserves development',()=>{
   const g=game({isAdmin:true});for(const castle of D.castles)g.state.castles[castle.id].owner=g.state.clan;g.state.buildings.keep=20;g.state.buildings.farm=17;g.state.castles[g.state.home].level=21;g.state.resources.gold=123456;g.state.magatama=12345;
   g.applyWorldClock(sample(671*60000+59000));g.state.treaties={'武田家':675};const officers=[...g.state.officerVariants],home=g.state.home;
-  const result=g.applyWorldClock(sample(672*60000));assert(result.monthChanged);assert.equal(g.calendar().cycle,2);assert.equal(g.calendar().year,1560);assert.equal(g.calendar().month,1);assert.equal(g.state.home,home);assert.equal(g.state.buildings.keep,20);assert.equal(g.state.buildings.farm,17);assert.equal(g.state.castles[home].level,21);assert.deepEqual(g.state.officerVariants,officers);assert.equal(g.state.treaties['武田家'],675);assert(g.state.resources.gold>=123456);assert.equal(g.state.magatama,12345+D.gacha.monthlyReward);
+  const result=g.applyWorldClock(sample(672*60000));assert(result.monthChanged);assert.equal(g.calendar().cycle,2);assert.equal(g.calendar().year,1560);assert.equal(g.calendar().month,1);assert.equal(g.state.home,home);assert.equal(g.state.buildings.keep,20);assert.equal(g.state.buildings.farm,17);assert.equal(g.state.castles[home].level,21);assert.deepEqual(g.state.officerVariants,officers);assert.deepEqual(g.state.treaties,{});assert.equal(g.ownedCastles().length,1);assert.equal(result.cycleRewards.length,1);assert.equal(result.cycleRewards[0].captured,127);assert(g.state.resources.gold>=123456);assert.equal(g.state.magatama,12345+D.gacha.monthlyReward+12700);
+});
+
+
+test('linked clients stop before the boundary until an authoritative settlement arrives',()=>{
+ const g=game();g.state.castles.inabayama.owner=g.state.clan;g.applyWorldClock(sample(672*60000-2000));
+ const money=g.state.magatama,result=g.applyWorldClock(sample(672*60000+1000),{deferCycleSettlement:true});
+ assert(result.settlementRequired);assert.equal(result.pending,false);assert.equal(g.state.worldClock.elapsedMs,672*60000-1);assert.equal(g.state.cycle.index,0);assert.equal(g.state.magatama,money);assert.equal(g.ownedCastles().length,2);
+ const again=g.applyWorldClock(sample(672*60000+2000),{deferCycleSettlement:true});assert.equal(again.changed,false);assert(again.settlementRequired);
+ const authority=E.fromSave(g.exportSave(),roster),settled=authority.applyWorldClock(sample(672*60000));assert.equal(settled.cycleRewards[0].captured,1);assert.equal(authority.state.magatama,money+D.gacha.monthlyReward+100);assert.equal(authority.ownedCastles().length,1);
+ assert.deepEqual(E.fromSave(authority.exportSave(),roster).state,authority.state);
+});
+test('a defeated lord restarts at the originally selected home on the next boundary',()=>{
+ const g=game({startCastle:'inabayama'});g.applyWorldClock(sample(672*60000-1000));for(const c of Object.values(g.state.castles))if(c.owner===g.state.clan)c.owner='在地衆';g.state.gameOver=true;g.state.realtime.running=false;
+ g.applyWorldClock(sample(672*60000));assert.equal(g.state.home,'inabayama');assert.equal(g.state.gameOver,false);assert.equal(g.state.castles.inabayama.owner,g.state.clan);assert.equal(g.state.cycle.latestReward.captured,0);assert.equal(g.state.realtime.running,true);
+});
+test('bounded catch-up does not falsely signal settlement before reaching the boundary',()=>{
+ const g=game();g.applyWorldClock(sample(100000));const result=g.applyWorldClock(sample(672*60000),{deferCycleSettlement:true,maxSeconds:60});assert(result.pending);assert.equal(result.settlementRequired,false);assert.equal(g.state.worldClock.elapsedMs,160000);
 });
 
 test('continuous per-second progression and reconnect catch-up produce identical real game state',()=>{
@@ -86,7 +103,7 @@ test('malformed clock samples reject atomically and cannot create an unloadable 
 });
 
 test('defeated campaigns retain the shared calendar while their economy remains stopped',()=>{
-  const g=game();g.applyWorldClock(sample(100000));g.state.gameOver=true;const resources=structuredClone(g.state.resources);g.applyWorldClock(sample(70000000));assert.equal(g.state.turn,Math.floor(70000000/60000));assert.equal(g.state.worldClock.elapsedMs,70000000);assert.deepEqual(g.state.resources,resources);assert.equal(g.state.realtime.running,false);
+  const g=game();g.applyWorldClock(sample(100000));g.state.gameOver=true;const resources=structuredClone(g.state.resources);g.applyWorldClock(sample(120000));assert.equal(g.state.turn,2);assert.equal(g.state.worldClock.elapsedMs,120000);assert.deepEqual(g.state.resources,resources);assert.equal(g.state.realtime.running,false);
 });
 
 test('clock extrapolation uses monotonic time and becomes unready after fifteen seconds',async()=>{

@@ -166,8 +166,24 @@
       this._currentId=null;this._session=null;this._playing=false;this._auto=true;
       this._timer=null;this._pauseTimer=null;this._token=0;this._resumePosition=0;this._disposed=false;
       this._noise=null;this._pluckCache=new Map();this._sessions=new Set();
+      this._audioElement=null;this._streamDestination=null;this._audioSession=null;
+      this._previousSessionType=null;this._ownsAudioSession=false;this._outputToken=0;this._pageActive=true;
       this._visibilityHandler=()=>this._onVisibility();
+      this._pageHideHandler=()=>{this._pageActive=false;this._clearScheduler();this._suspendOutput();};
+      this._pageShowHandler=()=>{this._pageActive=true;return this._onVisibility();};
+      this._contextStateHandler=()=>{
+        if(this._context?.state==='running'&&this._playing&&!this._hidden())this._schedule();
+        else this._clearScheduler();
+      };
+      this._audioSessionHandler=()=>{
+        // Let the browser finish calls/other exclusive audio before resuming.
+        // Repeated resume() calls here would steal audio focus back from it.
+        if(this._audioSession?.state==='interrupted')this._clearScheduler();
+        else if(this._audioSession?.state==='active'){if(this._playing)this._preparePlaybackSession();this._contextStateHandler();}
+      };
       if(typeof document!=='undefined')document.addEventListener('visibilitychange',this._visibilityHandler);
+      global.addEventListener?.('pagehide',this._pageHideHandler);
+      global.addEventListener?.('pageshow',this._pageShowHandler);
     }
     get currentId(){return this._currentId;}
     get playing(){return this._playing;}
@@ -177,24 +193,100 @@
     setVolume(value){
       this._volume=clamp(Number(value)||0,0,100);
       if(this._context&&this._master)this._smoothGain(this._master.gain,this._playing?this._volume/100*.65:0,.08);
+      if(!this._playing||!this._context)return;
+      if(!this._volume){this._clearScheduler();this._suspendOutput();}
+      else if(!this._hidden())this._resumeOutput().then(ok=>{if(ok)this._schedule();}).catch(()=>{});
     }
-    _hidden(){return typeof document!=='undefined'&&document.hidden;}
+    _hidden(){return !this._pageActive||(typeof document!=='undefined'&&document.hidden);}
     _smoothGain(param,value,time){
       const now=this._context.currentTime;
       if(typeof param.cancelAndHoldAtTime==='function')param.cancelAndHoldAtTime(now);
       else {param.cancelScheduledValues(now);param.setValueAtTime(param.value,now);}
       param.linearRampToValueAtTime(value,now+time);
     }
+    _preparePlaybackSession(){
+      // A Web Audio context defaults to ambient on iOS. Music is playback:
+      // this category permits sound with the Ring/Silent switch on supported
+      // browsers, while still respecting system volume and autoplay policy.
+      try {
+        const session=global.navigator?.audioSession;
+        if(!session||typeof session.type!=='string')return false;
+        if(this._audioSession!==session){
+          this._audioSession?.removeEventListener?.('statechange',this._audioSessionHandler);
+          this._audioSession=session;
+          session.addEventListener?.('statechange',this._audioSessionHandler);
+        }
+        if(this._volume>0&&!this._hidden()&&!this._ownsAudioSession&&session.state!=='interrupted'){
+          const previous=session.type;
+          session.type='playback';
+          if(session.type!=='playback')return false;
+          this._previousSessionType=previous;this._ownsAudioSession=true;
+        }
+        return true;
+      } catch(_){return false;}
+    }
+    _releasePlaybackSession(){
+      if(!this._ownsAudioSession)return;
+      this._ownsAudioSession=false;
+      try {if(this._audioSession?.type==='playback')this._audioSession.type=this._previousSessionType||'auto';}catch(_){}
+      this._previousSessionType=null;
+    }
+    _connectOutput(ctx){
+      if(this._preparePlaybackSession()){this._master.connect(ctx.destination);return;}
+      // Older browsers can use a media playback sink for the actual score.
+      // There is no silent unlock file, microphone capture or duplicate output.
+      if(typeof ctx.createMediaStreamDestination==='function'&&global.document?.createElement){
+        let sink,element;
+        try {
+          element=global.document.createElement('audio');
+          if(!('srcObject' in element))throw new Error('MediaStream playback unavailable');
+          sink=ctx.createMediaStreamDestination();element.srcObject=sink.stream;
+          element.autoplay=false;element.controls=false;element.preload='none';
+          element.setAttribute('playsinline','');element.setAttribute('webkit-playsinline','');
+          this._master.connect(sink);this._streamDestination=sink;this._audioElement=element;
+          return;
+        } catch(_){
+          try {element?.pause();if(element)element.srcObject=null;sink?.disconnect();}catch(_){}
+          for(const track of sink?.stream?.getTracks?.()||[])track.stop();
+        }
+      }
+      this._master.connect(ctx.destination);
+    }
+    async _resumeOutput(){
+      const token=++this._outputToken;
+      if(this._disposed||!this._context||this._hidden()||!this._volume)return false;
+      this._preparePlaybackSession();
+      if(this._audioSession?.state==='interrupted')return false;
+      // Invoke both before the first await, in the initiating tap/click.
+      // A media play() delayed until after resume() can lose user activation.
+      try {
+        const resume=this._context.resume();
+        let play;try {play=this._audioElement?.play();}catch(error){play=Promise.reject(error);}
+        await Promise.all([resume,play]);
+        if(token!==this._outputToken||this._disposed||this._hidden()||!this._volume)return false;
+        return true;
+      } catch(error){
+        if(token!==this._outputToken||this._disposed)return false;
+        this._clearScheduler();this._suspendOutput();throw error;
+      }
+    }
+    _suspendOutput(){
+      ++this._outputToken;
+      try {this._audioElement?.pause();}catch(_){}
+      this._releasePlaybackSession();
+      return this._context?.suspend().catch(()=>{});
+    }
     _ensureContext(){
       if(this._context)return;
       const AC=global.AudioContext||global.webkitAudioContext;
       if(!AC)throw new Error('このブラウザではWeb Audioを利用できません。');
       const ctx=this._context=new AC({latencyHint:'playback'});
+      ctx.addEventListener?.('statechange',this._contextStateHandler);
       this._master=ctx.createGain();this._master.gain.value=0;
       this._compressor=ctx.createDynamicsCompressor();
       this._compressor.threshold.value=-18;this._compressor.knee.value=14;
       this._compressor.ratio.value=3;this._compressor.attack.value=.012;this._compressor.release.value=.25;
-      this._compressor.connect(this._master);this._master.connect(ctx.destination);
+      this._compressor.connect(this._master);this._connectOutput(ctx);
       this._reverb=ctx.createConvolver();
       const impulse=ctx.createBuffer(2,Math.ceil(ctx.sampleRate*1.25),ctx.sampleRate);
       let seed=6289;
@@ -211,12 +303,17 @@
     async play(id=this._currentId||TRACKS[0].id){
       if(this._disposed)throw new Error('Music player has been disposed.');
       if(!byId.has(id))throw new RangeError(`Unknown music track: ${id}`);
-      if(this._playing&&this._currentId===id)return;
+      if(this._playing&&this._currentId===id){
+        const token=this._token;
+        try {if(await this._resumeOutput())this._schedule();}
+        catch(error){if(token!==this._token||this._disposed)return;this.pause();throw error;}
+        return;
+      }
       const token=++this._token;
       clearTimeout(this._pauseTimer);this._pauseTimer=null;
       this._ensureContext();
-      try {if(!this._hidden())await this._context.resume();}
-      catch(error){if(token===this._token){this._playing=false;this._clearScheduler();}throw error;}
+      try {if(!this._hidden()&&this._volume)await this._resumeOutput();}
+      catch(error){if(token!==this._token||this._disposed)return;this.pause();throw error;}
       if(token!==this._token||this._disposed)return;
       this._clearScheduler();
       const same=id===this._currentId,position=same?this._resumePosition:0;
@@ -229,8 +326,8 @@
       this._session=session;this._sessions.add(session);
       bus.gain.linearRampToValueAtTime(1,ctx.currentTime+.25);
       this._smoothGain(this._master.gain,this._volume/100*.65,.1);
-      if(!this._hidden())this._schedule();
-      else await ctx.suspend();
+      if(!this._hidden()&&this._volume)this._schedule();
+      else await this._suspendOutput();
       if(typeof this._onTrackChange==='function')this._onTrackChange(TRACKS.find(t=>t.id===id));
     }
     pause(){
@@ -240,24 +337,27 @@
       if(this._session)this._resumePosition=Math.max(0,(ctx.currentTime-this._session.start)%this._session.score.duration);
       this._retire(this._session,.25);this._session=null;
       this._smoothGain(this._master.gain,0,.25);
-      if(this._hidden()){ctx.suspend().catch(()=>{});return;}
-      this._pauseTimer=setTimeout(()=>{this._pauseTimer=null;if(!this._playing&&!this._disposed)ctx.suspend().catch(()=>{});},280);
+      if(this._hidden()){this._suspendOutput();return;}
+      // Pause the playback sink now, and release the category after the short
+      // Web Audio fade. This also cancels a pending media play() promptly.
+      ++this._outputToken;try {this._audioElement?.pause();}catch(_){}
+      this._pauseTimer=setTimeout(()=>{this._pauseTimer=null;if(!this._playing&&!this._disposed)this._suspendOutput();},280);
     }
     _clearScheduler(){clearTimeout(this._timer);this._timer=null;}
     async _onVisibility(){
       if(!this._context||this._disposed)return;
       if(this._hidden()) {
         this._clearScheduler();clearTimeout(this._pauseTimer);this._pauseTimer=null;
-        await this._context.suspend().catch(()=>{});
+        await this._suspendOutput();
       } else if(this._playing) {
         const token=this._token;
-        try {await this._context.resume();if(token===this._token&&this._playing&&!this._hidden())this._schedule();}
-        catch(_){this._clearScheduler();}
+        try {const ok=await this._resumeOutput();if(ok&&token===this._token&&this._playing&&!this._hidden())this._schedule();}
+        catch(_){if(token===this._token)this._clearScheduler();}
       }
     }
     _schedule(){
       this._clearScheduler();
-      if(!this._playing||this._hidden()||this._disposed||!this._session)return;
+      if(!this._playing||!this._volume||this._hidden()||this._disposed||!this._session||this._context?.state!=='running'||this._audioSession?.state==='interrupted')return;
       const s=this._session,ctx=this._context,horizon=ctx.currentTime+.18,events=s.score.events;
       let guard=0;
       while(guard++<512) {
@@ -370,7 +470,14 @@
       if(this._disposed)return;this._disposed=true;++this._token;this._playing=false;
       this._clearScheduler();clearTimeout(this._pauseTimer);this._pauseTimer=null;
       if(typeof document!=='undefined')document.removeEventListener('visibilitychange',this._visibilityHandler);
-      if(this._context){for(const s of this._sessions)this._retire(s,0);await this._context.close().catch(()=>{});}
+      global.removeEventListener?.('pagehide',this._pageHideHandler);
+      global.removeEventListener?.('pageshow',this._pageShowHandler);
+      this._audioSession?.removeEventListener?.('statechange',this._audioSessionHandler);
+      this._releasePlaybackSession();++this._outputToken;
+      if(this._audioElement){this._audioElement.pause();this._audioElement.srcObject=null;this._audioElement=null;}
+      for(const track of this._streamDestination?.stream?.getTracks?.()||[])track.stop();
+      this._streamDestination?.disconnect();this._streamDestination=null;
+      if(this._context){this._context.removeEventListener?.('statechange',this._contextStateHandler);for(const s of this._sessions)this._retire(s,0);await this._context.close().catch(()=>{});}
       this._sessions.clear();this._pluckCache.clear();this._session=null;
     }
     // Read-only score summaries permit deterministic integrity checks without audio.

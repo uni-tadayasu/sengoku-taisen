@@ -21,9 +21,8 @@
     top = clamp(top, margin, Math.max(margin, height - margin - labelHeight));
     return { left, top, width: labelWidth, height: labelHeight, relativeLeft: left - x + half, relativeTop: top - y + half };
   }
-  function sceneHeight(preferred, viewportHeight, sceneOffset, bottomPadding = 0, explicit = false) {
+  function sceneHeight(preferred, viewportHeight, sceneOffset, bottomPadding = 0) {
     preferred = Math.max(1, Number(preferred) || 460);
-    if (explicit) return preferred;
     const remaining = Math.max(1, (Number(viewportHeight) || 0) - Math.max(0, Number(sceneOffset) || 0) - Math.max(0, Number(bottomPadding) || 0) - 8);
     return Math.min(preferred, remaining);
   }
@@ -50,9 +49,10 @@
     }
     if (!scene || !board || !scene.isConnected) return;
     const root = doc.documentElement;
-    if (root.classList.contains('sengoku-desktop-fit') && !root.hasAttribute('data-layout-townheight')) {
+    if (root.classList.contains('sengoku-desktop-fit')) {
       const mainBox = main.getBoundingClientRect(), sceneBox = scene.getBoundingClientRect();
-      const preferred = parseFloat(global.getComputedStyle(root).getPropertyValue('--desktop-town-height')) || 460;
+      const rootStyle = global.getComputedStyle(root);
+      const preferred = (root.hasAttribute('data-layout-townheight') ? parseFloat(rootStyle.getPropertyValue('--layout-town-height')) : 0) || parseFloat(rootStyle.getPropertyValue('--desktop-town-height')) || 460;
       const padding = parseFloat(global.getComputedStyle(main).paddingBottom) || 0;
       // Measure from the scroll origin: scrolling through the rest of the page
       // must not resize the town or push the player's reading position around.
@@ -91,7 +91,7 @@
       mainObserver = new global.MutationObserver(refresh);
       mainObserver.observe(main, { childList: true, attributes: true, attributeFilter: ['data-view'] });
       modeObserver = new global.MutationObserver(refresh);
-      modeObserver.observe(doc.documentElement, { attributes: true, attributeFilter: ['class', 'data-layout-townheight'] });
+      modeObserver.observe(doc.documentElement, { attributes: true, attributeFilter: ['class', 'data-layout-townheight', 'style'] });
     }
     listen(global, 'resize', refresh); listen(global.visualViewport, 'resize', refresh);
     listen(main, 'load', event => { if (event.target.matches?.('.town-scene-image')) refresh(); }, true);

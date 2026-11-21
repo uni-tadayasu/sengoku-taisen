@@ -7,6 +7,26 @@
 .social-announcement-toggle{width:28px;height:28px;flex-shrink:0;border:1px solid #bca26e35;border-radius:3px;color:#d6b87c;display:grid;place-items:center;background:transparent;cursor:pointer}
 .social-announcement svg,.social-launcher svg,.social-dialog svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
 .social-announcement-toggle svg{width:14px;height:14px}
+.social-announcement button.social-announcement-label{align-self:stretch;min-height:36px;border:0;border-right:1px solid #bca26e45;background:transparent;cursor:pointer;padding-block:0;padding-left:0;white-space:nowrap}
+.social-announcement button.social-announcement-label:is(:hover,:focus-visible){color:#fff0be;background:#c6a66618;outline-offset:-3px}
+.social-news .social-section-heading h2{margin:5px 0 7px}
+.social-news [hidden]{display:none!important}
+.social-news .social-section-heading p{max-width:38em;line-height:1.7;font-size:14px}
+.social-news-notice{padding:16px 18px;border:1px solid #d5b16b50;border-radius:10px;background:linear-gradient(120deg,#80612b26,#17282e)}
+.social-news-notice h3{margin:0 0 8px;color:#efd098;font-size:16px}
+.social-news-notice p{margin:0;color:#eee6d5;white-space:pre-wrap;overflow-wrap:anywhere;font-size:16px;line-height:1.8}
+.social-achievement-list{display:grid;gap:12px;margin-block:16px}
+.social-achievement{display:grid;grid-template-columns:42px minmax(0,1fr);gap:13px;min-width:0;padding:17px 15px;border:1px solid #81c7af32;border-radius:10px;background:linear-gradient(110deg,#254c403b,#17232e)}
+.social-achievement:nth-child(3n+2){border-color:#9eb9f13b;background:linear-gradient(110deg,#2d43643b,#17232e)}
+.social-achievement:nth-child(3n){border-color:#d1a1ed3b;background:linear-gradient(110deg,#523a5e3b,#17232e)}
+.social-achievement-seal{display:grid;place-items:center;width:42px;height:42px;border-radius:50%;background:#ba9f572a;color:#edcf86}
+.social-achievement-meta{display:flex;flex-wrap:wrap;gap:5px 10px;align-items:center;font-size:14px;line-height:1.5;overflow-wrap:anywhere}
+.social-achievement-meta strong{color:#f4e6c8;font-size:16px}
+.social-achievement-meta span{color:#a6d6c6}
+.social-achievement-meta time{margin-left:auto;color:#acb8bd;font-size:14px;font-variant-numeric:tabular-nums}
+.social-achievement h3{font-size:17px;line-height:1.6;color:#f7eedb;margin:8px 0 0;overflow-wrap:anywhere}
+.social-achievement p{font-size:14px;line-height:1.75;color:#bdcbd0;margin:5px 0 0;overflow-wrap:anywhere}
+@media(max-width:420px){.social-achievement{grid-template-columns:30px minmax(0,1fr);gap:9px;padding:13px 11px}.social-achievement-seal{width:30px;height:30px}.social-achievement-meta time{flex-basis:100%;margin-left:0}.social-news-notice{padding:13px}}
 @keyframes social-scroll{from{transform:translateX(0)}to{transform:translateX(-100%)}}
 .social-launcher{position:fixed;right:24px;bottom:22px;z-index:45;display:flex;align-items:center;gap:9px;padding:12px 19px;border:1px solid #bda27370;border-radius:7px;background:#22282bef;color:#e4d1a7;box-shadow:0 7px 28px #0006;backdrop-filter:blur(12px);font:inherit;font-size:14px;cursor:pointer}
 .social-launcher:hover{background:#30332e;border-color:#d9bb80}.social-unread{position:absolute;top:-8px;right:-8px;min-width:20px;height:20px;border-radius:20px;background:#b34a48;color:#fff;font-size:11px;display:grid;place-items:center;padding:0 5px;border:2px solid #151a1e}.social-unread[hidden]{display:none}

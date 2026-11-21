@@ -230,3 +230,5 @@ tbody tr:last-child > * { border-bottom: 0; }
   .article-section { break-inside: auto; }.article h2, .article h3 { break-after: avoid; }.callout, .data-table-wrap, .art-feature { break-inside: avoid; }
   .site-footer { background: none; }.footer-inner { display: block; }.copyright, .footer-note, .footer-brand { color: #333; }
 }
+/* Published content date is fixed by the editorial update, not the build clock. */
+.article-updated{margin:0 0 20px;color:#b5c4ce;font-size:14px;line-height:1.6}

@@ -126,7 +126,8 @@ try {
   const released=(await api('/sync/release',post(a.token,{deviceId:'a-device'}))).data;assert(released.clock);assert.equal(released.writerDeviceId,null);
   const beforeLarge=await getClock();tick(100002*60000-beforeLarge.elapsedMs);await lease(a.token,'a-device');
   const longSave=anchored(100002*60000);longSave.state.log.unshift({turn:100002,text:'世界の年月は続いています。',kind:'calendar'});longSave.state.treaties['武田家']=100008;longSave.state.scouted[Object.keys(longSave.state.castles)[1]]=100008;
-  const longResult=(await api('/sync',write(a.token,'a-device',4,longSave))).data;
+  const longUser=await session('長い年月で初参加');await lease(longUser.token,'long-device');
+  const longResult=(await api('/sync',write(longUser.token,'long-device',0,longSave))).data;
   assert.equal(longResult.save.state.turn,100002);assert.equal(longResult.save.state.log[0].turn,100002);assert.equal(longResult.save.state.treaties['武田家'],100008);
   assert.equal(longResult.save.state.worldClock.elapsedMs,100002*60000);
   assert.deepEqual((await api('/config')).data.clock,await getClock());

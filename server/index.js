@@ -1,3 +1,4 @@
+import {GameEngine, GAME_OFFICERS} from './game-runtime.js';
 const API = '/api/v1';
 const MAX_BODY = 16 * 1024;
 const MAX_SAVE_BODY = 2 * 1024 * 1024;
@@ -15,6 +16,7 @@ const WORLD_CLOCK_ID = 'world-v1';
 const MAX_TURN = 999999999;
 const WORLD_MONTH_MS = 60000;
 const WORLD_CYCLE_MONTHS = 56 * 12;
+const WORLD_CYCLE_MS = WORLD_CYCLE_MONTHS * WORLD_MONTH_MS;
 const WELCOME = '戦国大戦へようこそ。城を育て、仲間と語らい、天下統一を目指しましょう。';
 const BASE_ORIGINS = new Set(['https://uni-tadayasu.github.io', 'https://www.kasai-solutions-inc.com', 'http://127.0.0.1:4173', 'null']);
 const encoder = new TextEncoder();
@@ -517,7 +519,7 @@ async function guildTransfer(db,user,raw,now) {
   const digest=await hash(JSON.stringify([user.id,body.guildId,body.direction,body.resource,body.amount]));
   const prior=await priorGuildTransfer(db,user,body,digest);if(prior)return guildTransferResult(db,user,body,JSON.parse(prior.result_json),true,now);
   await budget(db,'guild-transfer:'+user.id,30,60000,now);
-  const row=await getSyncRow(db,user.id);fieldWriter(row,body.deviceId,body.expectedRevision,now);
+  const row=await settleWriterCycle(db,user,body.deviceId,body.expectedRevision,now);
   const clock=await getWorldClock(db,now),save=normalizeGameSave(JSON.parse(row.save_json),user,now,{reading:true,clock}),state=save.state;
   if(!state.worldClock)fail(409,'CLOCK_ANCHOR_REQUIRED','先に共通時計へ同期してください。');
   if(clock.elapsedMs-state.worldClock.elapsedMs>15000)fail(409,'CLOCK_STALE','共通時計と本拠を同期してから入出庫してください。');
@@ -599,10 +601,11 @@ async function guildLeave(db,user,body,now) {
   if(!rows(result[1]).length&&current.guild_id===guildId)fail(409,'GUILD_TREASURY_NOT_EMPTY','最後のメンバーが脱退する前に、共有資産をすべて引き出してください。');
   return {ok:true,user:mapUser(current,now)};
 }
+const EFFECTIVE_CYCLE_SQL="COALESCE(s.cycle_index,MAX(COALESCE((SELECT CAST(value AS INTEGER) FROM settings WHERE key='cyclePolicyStart'),0),CAST(COALESCE(json_extract(s.save_json,'$.state.worldClock.elapsedMs'),0)/40320000 AS INTEGER)))";
 const GUILD_RANKINGS=`WITH totals AS (
   SELECT g.id,g.name,g.owner_id,owner.name AS owner_name,g.created_at,COUNT(gm.user_id) AS member_count,
     COALESCE(SUM(COALESCE(json_extract(s.save_json,'$.state.prestige'),0)),0) AS total_prestige,
-    COALESCE(SUM(CASE WHEN s.save_json IS NULL THEN 0 ELSE
+    COALESCE(SUM(CASE WHEN s.save_json IS NULL THEN 0 WHEN ${EFFECTIVE_CYCLE_SQL}<? THEN 1 ELSE
       (SELECT COUNT(*) FROM json_each(s.save_json,'$.state.castles') c
         WHERE json_extract(c.value,'$.owner')=json_extract(s.save_json,'$.state.clan')
         AND (c.key<>'edo' OR gm.user_id=(SELECT value FROM settings WHERE key='adminUserId')))
@@ -616,9 +619,10 @@ const GUILD_RANKINGS=`WITH totals AS (
 ), ranked AS (SELECT *,ROW_NUMBER() OVER(ORDER BY total_prestige DESC,id ASC) AS rank FROM totals)
 SELECT * FROM ranked`;
 async function guildRankings(db,url,now) {
+  const clock=await getWorldClock(db,now);await cyclePolicy(db,clock,now);const currentCycle=Math.floor(clock.elapsedMs/WORLD_CYCLE_MS);
   const limit=pageLimit(url),cursor=guildCursor(url.searchParams.get('cursor'),'rank',GUILD_ASSET_LIMIT*MAX_GUILD_MEMBERS);
   const result=await db.batch([
-    stmt(db,GUILD_RANKINGS+(cursor?' WHERE (total_prestige<? OR (total_prestige=? AND id>?))':'')+' ORDER BY total_prestige DESC,id ASC LIMIT ?',...(cursor?[cursor.value,cursor.value,cursor.id]:[]),limit+1),
+    stmt(db,GUILD_RANKINGS+(cursor?' WHERE (total_prestige<? OR (total_prestige=? AND id>?))':'')+' ORDER BY total_prestige DESC,id ASC LIMIT ?',currentCycle,...(cursor?[cursor.value,cursor.value,cursor.id]:[]),limit+1),
     stmt(db,'SELECT COUNT(*) AS count FROM guilds'),
   ]);
   const found=rows(result[0]),page=found.slice(0,limit),last=page.at(-1);
@@ -720,6 +724,7 @@ function normalizeGameSave(raw, user, now, {reading=false,clock=null}={}) {
   // Only retain known, validated fields; do not merge arbitrary imported object keys.
   const n=g.state;for(const k of ['clan','home','turn','difficulty','resources','troops','morale','prestige','command','buildings','jobs','officers','officerVariants','army','governors','tech','castles','treaties','scouted','log','claimedQuests','giftReceipts','magatama','captureRewards','gachaHistory','seed','stats','realtime'])n[k]=copy(s[k]);
   if(s.worldClock!==undefined)n.worldClock={id:WORLD_CLOCK_ID,elapsedMs:s.worldClock.elapsedMs};
+  if(s.cycle!==undefined){const c=s.cycle,r=c?.latestReward;if(!isObj(c)||!num(c.index,0,Math.floor(MAX_TURN/WORLD_CYCLE_MONTHS))||!CASTLE_BY_ID[c.home]||r!==null&&(!isObj(r)||!num(r.cycle,0,c.index-1)||!num(r.captured,0,127)||r.gold!==r.captured*1000||r.rice!==r.captured*1000||r.magatama!==r.captured*100))invalid();n.cycle={index:c.index,home:c.home,latestReward:r===null?null:pick(r,['cycle','captured','gold','rice','magatama'])};}
   n.won=CASTLES.every(c=>!user.is_admin&&c.id==='edo'||n.castles[c.id].owner===n.clan);n.gameOver=!CASTLES.some(c=>n.castles[c.id].owner===n.clan);
   if(!n.gameOver&&n.castles[n.home].owner!==n.clan)invalid();if(n.gameOver)n.realtime.running=false;
   n.lastBattle=null;
@@ -778,6 +783,7 @@ function normalizeGameSave(raw, user, now, {reading=false,clock=null}={}) {
     if(!n.captureRewards.includes('edo'))n.captureRewards.push('edo');
     n.won=CASTLES.every(c=>n.castles[c.id].owner===n.clan);n.gameOver=false;
   }
+  if(n.cycle){if(user.is_admin)n.cycle.home='edo';else if(n.cycle.home==='edo')n.cycle.home=n.home;}
   n.resources=pick(n.resources,RESOURCES);
   n.buildings=pick(n.buildings,BUILDINGS.map(v=>v.id));
   n.tech=pick(n.tech,TECHS.map(v=>v.id));
@@ -793,6 +799,77 @@ function normalizeGameSave(raw, user, now, {reading=false,clock=null}={}) {
   if(n.lastBattle)n.lastBattle.phases=n.lastBattle.phases.map(v=>pick(v,['title','text']));
   const savedAt=typeof obj.savedAt==='string'&&obj.savedAt.length<=64&&Number.isFinite(Date.parse(obj.savedAt))?new Date(obj.savedAt).toISOString():iso(now);
   return {game:'sengoku-tento',version:2,savedAt,state:n};
+}
+
+// A rollout anchor prevents historical saves from receiving retroactive awards.
+async function cyclePolicy(db,clock,now) {
+  const existing=await stmt(db,"SELECT value FROM settings WHERE key='cyclePolicyStart'").first();if(existing)return Number(existing.value);
+  await stmt(db,"INSERT INTO settings(key,value,updated_at) VALUES('cyclePolicyStart',?,?) ON CONFLICT(key) DO NOTHING",String(Math.floor(clock.elapsedMs/WORLD_CYCLE_MS)),now).run();
+  const row=await stmt(db,"SELECT value FROM settings WHERE key='cyclePolicyStart'").first();
+  return Number(row.value);
+}
+function cycleEvent(reward) {
+  return {key:'cycle:'+reward.cycle,kind:'cycle',targetId:null,targetName:null,value:reward.captured,title:`占領${reward.captured}城の領地精算を達成`,detail:`周回報酬：勾玉${reward.magatama}・金銭${reward.gold}・兵糧${reward.rice}。最初の本拠から再出発しました。`};
+}
+function achievementStatement(db,userId,event,now,gate,params) {
+  return stmt(db,`INSERT INTO achievement_events(id,user_id,event_key,kind,target_id,target_name,value,title,detail,occurred_at)
+    SELECT ?,?,?,?,?,?,?,?,?,? WHERE ${gate} ON CONFLICT(user_id,event_key) DO NOTHING`,uid('ach_'),userId,event.key,event.kind,event.targetId??null,event.targetName??null,event.value??null,event.title,event.detail||'',now,...params);
+}
+function saveAchievements(before,after) {
+  if(!before)return[];const found=[],a=before.state,b=after.state,index=b.cycle?.index??Math.floor(b.turn/WORLD_CYCLE_MONTHS);
+  const add=(key,kind,targetId,targetName,value,title,detail='')=>found.push({key,kind,targetId,targetName,value,title,detail});
+  for(const castle of CASTLES)if(castle.id!==b.home&&b.castles[castle.id].owner===b.clan&&a.castles[castle.id].owner!==a.clan)add(`capture:${index}:${castle.id}`,'capture',castle.id,castle.name,null,`${castle.name}の占領を達成`);
+  for(const def of globalThis.SENGOKU_DATA.buildings){const level=b.buildings[def.id],old=a.buildings[def.id];if(level>old&&[1,4,8,16,24,32].includes(level))add(`building:${def.id}:${level}`,'building',def.id,def.name,level,`${def.name} Lv.${level}の普請を達成`);}
+  for(const def of globalThis.SENGOKU_DATA.techs){const level=b.tech[def.id];if(level>a.tech[def.id])add(`research:${def.id}:${level}`,'research',def.id,def.name,level,`${def.name} Lv.${level}の研究を達成`);}
+  for(const def of globalThis.SENGOKU_DATA.quests)if(b.claimedQuests.includes(def.id)&&!a.claimedQuests.includes(def.id))add(`quest:${def.id}`,'quest',def.id,def.name,null,`目標「${def.name}」を達成`);
+  const count=Object.values(b.castles).filter(c=>c.owner===b.clan).length,oldCount=Object.values(a.castles).filter(c=>c.owner===a.clan).length;
+  for(const n of [3,10,30,50,100])if(count>=n&&oldCount<n)add(`territory:${index}:${n}`,'territory',null,null,n,`${n}城の領有を達成`);
+  if(b.won&&!a.won)add(`unification:${index}`,'unification',null,null,count,'天下統一を達成');
+  return found;
+}
+async function settlePlayerCycle(db,row,user,now,clock=undefined,{deferActive=true,writerDeviceId=null}={}) {
+  if(!row?.save_json)return row;clock=clock||await getWorldClock(db,now);
+  const policy=await cyclePolicy(db,clock,now),current=Math.floor(clock.elapsedMs/WORLD_CYCLE_MS);
+  for(let attempt=0;attempt<3;attempt++){
+    let save=normalizeGameSave(JSON.parse(row.save_json),user,now,{reading:true,clock});
+    if(row.cycle_index===null||row.cycle_index===undefined){
+      const index=Math.max(policy,Math.floor((save.state.worldClock?.elapsedMs??clock.elapsedMs)/WORLD_CYCLE_MS)),home=user.is_admin?'edo':save.state.home;
+      save.state.cycle={index,home,latestReward:null};
+      const updated=await stmt(db,'UPDATE player_saves SET save_json=?,cycle_index=?,cycle_home=?,revision=revision+1,updated_at=? WHERE user_id=? AND revision=? AND cycle_index IS NULL RETURNING *',JSON.stringify(save),index,home,now,user.id,row.revision).first();
+      if(updated)row=updated;else{row=await getSyncRow(db,user.id);continue;}
+    }
+    if(Number(row.cycle_index)>=current||writerDeviceId&&(row.writer_device_id!==writerDeviceId||Number(row.lease_expires_at)<=now)||deferActive&&Number(row.lease_expires_at)>now)return row;
+    save=normalizeGameSave(JSON.parse(row.save_json),user,now,{reading:true,clock});
+    const index=Number(row.cycle_index),home=user.is_admin?'edo':row.cycle_home||save.state.home;
+    save.state.cycle={index,home,latestReward:save.state.cycle?.latestReward||null};
+    if(!save.state.worldClock){const elapsed=index*WORLD_CYCLE_MS+(save.state.turn%WORLD_CYCLE_MONTHS)*WORLD_MONTH_MS+Math.floor(save.state.realtime.elapsed*1000);save.state.turn=Math.floor(elapsed/WORLD_MONTH_MS);save.state.realtime.elapsed=(elapsed%WORLD_MONTH_MS)/1000;save.state.worldClock={id:WORLD_CLOCK_ID,elapsedMs:elapsed};}
+    const game=GameEngine.fromSave(save,GAME_OFFICERS,{isAdmin:!!user.is_admin});
+    const target=Math.min(current*WORLD_CYCLE_MS,(index+2)*WORLD_CYCLE_MS);
+    const result=game.applyWorldClock({...clock,elapsedMs:target},{maxSeconds:86400});
+    if(!result.ok||!result.changed)return row;
+    const next=normalizeGameSave(JSON.parse(game.exportSave()),user,now,{clock});next.savedAt=iso(now);
+    const rewards=result.cycleRewards||[],nonce=crypto.randomUUID(),serialized=JSON.stringify(next);
+    const gate='EXISTS(SELECT 1 FROM player_saves WHERE user_id=? AND cycle_commit=?)',gateParams=[user.id,nonce];
+    const batch=[stmt(db,`UPDATE player_saves SET save_json=?,revision=revision+1,updated_at=?,cycle_index=?,cycle_home=?,cycle_commit=?
+      WHERE user_id=? AND revision=? AND cycle_index=?
+      AND ((? IS NOT NULL AND writer_device_id=? AND lease_expires_at>?) OR (? IS NULL AND lease_expires_at<=?))
+      AND (SELECT revision FROM world_clock WHERE id=?)=?
+      AND (?=CASE WHEN user_id=COALESCE((SELECT value FROM settings WHERE key='adminUserId'),'') THEN 1 ELSE 0 END)
+      AND NOT EXISTS(SELECT 1 FROM cycle_receipts WHERE user_id=? AND cycle_index>=? AND cycle_index<?) RETURNING *`,serialized,now,next.state.cycle.index,next.state.cycle.home,nonce,user.id,row.revision,index,writerDeviceId,writerDeviceId,now,writerDeviceId,now,WORLD_CLOCK_ID,clock.revision,user.is_admin?1:0,user.id,index,next.state.cycle.index)];
+    for(const event of saveAchievements(save,next))batch.push(achievementStatement(db,user.id,event,now,gate,gateParams));
+    for(const reward of rewards){batch.push(stmt(db,`INSERT INTO cycle_receipts(user_id,cycle_index,captured,gold,rice,magatama,commit_token,created_at) SELECT ?,?,?,?,?,?,?,? WHERE ${gate}`,user.id,reward.cycle,reward.captured,reward.gold,reward.rice,reward.magatama,nonce,now,...gateParams));if(reward.captured)batch.push(achievementStatement(db,user.id,cycleEvent(reward),now,gate,gateParams));}
+    if(rewards.length)batch.push(stmt(db,`DELETE FROM field_relations WHERE (user_a=? OR user_b=?) AND updated_elapsed_ms<? AND ${gate}`,user.id,user.id,next.state.cycle.index*WORLD_CYCLE_MS,...gateParams));
+    const executed=await db.batch(batch),changed=rows(executed[0])[0];if(changed)return changed;
+    row=await getSyncRow(db,user.id);user=await getUser(db,user.id);clock=await getWorldClock(db,now);
+  }
+  return row;
+}
+async function publicAchievements(db,url,now) {
+  const raw=url.searchParams.get('limit')||'20',cursor=url.searchParams.get('cursor');
+  if(!/^\d{1,2}$/.test(raw)||Number(raw)<1||Number(raw)>50)fail(400,'INVALID_INPUT','お知らせの件数は1〜50件で指定してください。');
+  let point=null;if(cursor){if(cursor.length>512)fail(400,'INVALID_CURSOR','お知らせの続きが長すぎます。');try{point=JSON.parse(atob(cursor.replaceAll('-','+').replaceAll('_','/')));}catch{fail(400,'INVALID_CURSOR','お知らせの続きが正しくありません。');}if(!Array.isArray(point)||point.length!==2||!Number.isSafeInteger(point[0])||point[0]<0||typeof point[1]!=='string'||!/^ach_[a-f0-9]{32}$/.test(point[1]))fail(400,'INVALID_CURSOR','お知らせの続きが正しくありません。');}
+  const limit=Number(raw),found=rows(await stmt(db,`SELECT e.*,u.name,u.clan,CASE WHEN u.id=(SELECT value FROM settings WHERE key='adminUserId') THEN 1 ELSE 0 END AS is_admin FROM achievement_events e JOIN users u ON u.id=e.user_id ${point?'WHERE (e.occurred_at<? OR (e.occurred_at=? AND e.id<?))':''} ORDER BY e.occurred_at DESC,e.id DESC LIMIT ?`,...(point?[point[0],point[0],point[1]]:[]),limit+1).all()),page=found.slice(0,limit),last=page.at(-1);
+  return {ok:true,events:page.map(row=>({id:row.id,playerId:row.user_id,playerName:row.name,clan:publicClan(row.clan,row.is_admin),kind:row.kind,title:row.title,detail:row.detail,targetId:row.target_id,targetName:row.target_name,value:row.value,occurredAt:iso(row.occurred_at)})),nextCursor:found.length>limit?btoa(JSON.stringify([Number(last.occurred_at),last.id])).replaceAll('+','-').replaceAll('/','_').replaceAll('=',''):null,serverNow:iso(now)};
 }
 
 function pairingCode() {
@@ -824,8 +901,9 @@ function mapWorldClock(row,now) {
     calendar:{startYear:1560,yearsPerCycle:56,monthsPerCycle:WORLD_CYCLE_MONTHS,secondsPerMonth:60,cycle:Math.floor(turn/WORLD_CYCLE_MONTHS)+1,year:1560+Math.floor(position/12),month:position%12+1}};
 }
 async function getWorldClock(db,now) { return mapWorldClock(await getWorldClockRow(db,now),now); }
-async function syncSnapshot(db,row,user,deviceId,now) {
+async function syncSnapshot(db,row,user,deviceId,now,{settle=false}={}) {
   const clock=await getWorldClock(db,now);
+  row=await settlePlayerCycle(db,row,user,now,clock,{deferActive:!settle,writerDeviceId:settle?deviceId:null});
   return {ok:true,user:mapUser(user,now),save:row?.save_json?normalizeGameSave(JSON.parse(row.save_json),user,now,{reading:true,clock}):null,clock,
     revision:Number(row?.revision||0),updatedAt:row?.updated_at?iso(row.updated_at):null,
     writerDeviceId:row?.writer_device_id||null,writerDeviceName:row?.writer_device_name||null,
@@ -836,7 +914,7 @@ async function syncSnapshot(db,row,user,deviceId,now) {
 
 const FIELD_RULES=Object.freeze({minTroops:300,maxTroops:100000,commandCost:1,foodBase:150,foodPerTroop:.3,attackCooldownMs:60000,defenderProtectionMs:60000,proposalLifetimeMs:600000,allianceDurationMs:360000,maxLootPerResource:500,maxLootFraction:.05,maxDefenderLossFraction:.1,operatorProtected:true,
   tactics:[{id:'balanced',name:'正攻法',food:1,modifier:1,loss:1},{id:'assault',name:'総攻撃',food:1.25,modifier:1.18,loss:1.35},{id:'siege',name:'包囲戦',food:1.65,modifier:.97,loss:.8},{id:'ambush',name:'伏兵',food:1.1,modifier:1.06,loss:.95}]});
-const FIELD_SELECT=`SELECT u.id,u.name,u.clan,u.last_seen,s.revision,
+const FIELD_SELECT=`SELECT u.id,u.name,u.clan,u.last_seen,s.revision,s.lease_expires_at,s.cycle_home,${EFFECTIVE_CYCLE_SQL} AS cycle_index,json_extract(s.save_json,'$.state.cycle.home') AS original_home,
   (SELECT a.version FROM user_avatars a WHERE a.user_id=u.id) AS avatar_version,
   CASE WHEN u.id=(SELECT value FROM settings WHERE key='adminUserId') THEN 1 ELSE 0 END AS is_admin,
   EXISTS(SELECT 1 FROM staff_members sm WHERE sm.user_id=u.id) AS is_staff,
@@ -848,7 +926,7 @@ const FIELD_SELECT=`SELECT u.id,u.name,u.clan,u.last_seen,s.revision,
   json_extract(s.save_json,'$.state.buildings.wall') AS wall,json_extract(s.save_json,'$.state.tech.discipline') AS discipline,
   json_extract(s.save_json,'$.state.army') AS army_json,json_extract(s.save_json,'$.state.officerVariants') AS variants_json
   FROM users u JOIN player_saves s ON s.user_id=u.id
-  WHERE s.save_json IS NOT NULL AND (COALESCE(json_extract(s.save_json,'$.state.gameOver'),0)=0 OR u.id=(SELECT value FROM settings WHERE key='adminUserId'))`;
+  WHERE s.save_json IS NOT NULL AND (COALESCE(json_extract(s.save_json,'$.state.gameOver'),0)=0 OR u.id=(SELECT value FROM settings WHERE key='adminUserId') OR ${EFFECTIVE_CYCLE_SQL}<?)`;
 function fieldArmy(army,variants) {
   const powers=[.9,.95,1,1.08,1.16,1.25,1.35,1.5];
   const scores=army.map(id=>Math.max(...RANKS.map((rank,i)=>variants.includes(id+':'+rank)?powers[i]:0))||1);
@@ -860,7 +938,7 @@ function fieldDefense(s,tactic='balanced',siege=0) {
   return {force,power:Math.max(1,Math.round((force+200)*(1+s.buildings.wall*.11*wallFactor)*(1+s.tech.discipline*.06)*(1+(home.level-1)*.04)*army.rankPower)),army};
 }
 function fieldRelationStatus(row,userId,elapsed) {
-  if(!row||Number(row.expires_elapsed_ms)<=elapsed)return 'neutral';
+  if(!row||Number(row.expires_elapsed_ms)<=elapsed||Number(row.updated_elapsed_ms)<Math.floor(elapsed/WORLD_CYCLE_MS)*WORLD_CYCLE_MS)return 'neutral';
   if(row.status==='allied')return 'allied';
   if(row.status==='pending')return row.proposed_by===userId?'outgoing':'incoming';
   return 'neutral';
@@ -871,30 +949,31 @@ function mapFieldRelationship(row,userId,elapsed,targetName='') {
   return {targetPlayerId:row.user_a===userId?row.user_b:row.user_a,targetName,status,expiresElapsedMs:Number(row.expires_elapsed_ms),remainingMs:Math.max(0,Number(row.expires_elapsed_ms)-elapsed),proposedBy:row.proposed_by,revision:Number(row.revision)};
 }
 function mapFieldPlayer(row,viewer,relationship,clock,now) {
-  const castles=JSON.parse(row.castles_json),storedHome=row.home_id;
+  const castles=JSON.parse(row.castles_json),cyclePending=Number(row.cycle_index)<Math.floor(clock.elapsedMs/WORLD_CYCLE_MS),storedHome=cyclePending?(row.cycle_home||row.original_home||row.home_id):row.home_id;
   const clan=publicClan(row.game_clan,row.is_admin);
   const alternatives=CASTLES.filter(c=>c.id!=='edo'&&castles[c.id].owner===row.game_clan),canonical=CLAN_HOMES[clan]||'kiyosu';
   const replacement=alternatives.find(c=>c.id===canonical)?.id||alternatives[0]?.id||canonical;
   const home=row.is_admin?'edo':storedHome==='edo'?replacement:storedHome;
   const castle={...(!row.is_admin&&storedHome==='edo'&&!alternatives.length&&castles.edo.owner===row.game_clan?castles.edo:castles[home])};
   if(row.is_admin&&storedHome!=='edo')for(const key of ['troops','wall','level'])castle[key]=Math.max(castle[key],castles[storedHome][key]);
+  if(cyclePending){castle.troops=Math.max(1200,castle.troops);castle.wall=Math.max(castle.wall,Number(row.wall));}
   const state={home,troops:Number(row.troops),castles:{[home]:castle},buildings:{wall:Number(row.wall)},tech:{discipline:Number(row.discipline)},army:JSON.parse(row.army_json||'[]'),officerVariants:JSON.parse(row.variants_json||'[]')};
   const defense=fieldDefense(state),self=viewer?.id===row.id,relation=self?'self':fieldRelationStatus(relationship,viewer?.id,clock.elapsedMs);
   const protectedUntil=row.last_defended_ms===null?0:Number(row.last_defended_ms)+FIELD_RULES.defenderProtectionMs;
-  const reason=!viewer?'領主として接続してください。':self?'自分の本拠です。':row.is_admin?'運営の江戸城は保護されています。':relation==='allied'?'同盟の期間中です。':protectedUntil>clock.elapsedMs?'襲撃後の保護期間です。':!clock.running?'世界の共通時間が停止中です。':'';
+  const reason=!viewer?'領主として接続してください。':self?'自分の本拠です。':row.is_admin?'運営の江戸城は保護されています。':cyclePending&&Number(row.lease_expires_at)>now?'この領主は領地を精算中です。':relation==='allied'?'同盟の期間中です。':protectedUntil>clock.elapsedMs?'襲撃後の保護期間です。':!clock.running?'世界の共通時間が停止中です。':'';
   return {playerId:row.id,name:row.name,clan,avatarVersion:row.avatar_version||null,homeCastleId:home,homeCastleName:CASTLE_BY_ID[home].name,majorCity:['edo','nijo','osaka','nagoya'].includes(home),level:castle.level,defenseTroops:defense.force,defensePower:defense.power,armySummary:defense.army,isAdmin:!!row.is_admin,isStaff:!!row.is_staff&&!row.is_admin,self,online:row.presence_seen!==null&&Number(row.presence_seen)>now-ONLINE_WINDOW,relationship:relation,protectedUntilElapsedMs:protectedUntil,attackable:!reason,attackReason:reason};
 }
 async function fieldRelation(db,a,b) {const [first,second]=pair(a,b);return stmt(db,'SELECT * FROM field_relations WHERE user_a=? AND user_b=?',first,second).first();}
 async function fieldOwnRelations(db,userId,elapsed) {
   return rows(await stmt(db,`SELECT r.*,u.name AS target_name FROM field_relations r JOIN users u ON u.id=CASE WHEN r.user_a=? THEN r.user_b ELSE r.user_a END
-    WHERE (r.user_a=? OR r.user_b=?) AND r.status IN ('pending','allied') AND r.expires_elapsed_ms>? ORDER BY r.updated_elapsed_ms DESC LIMIT 100`,userId,userId,userId,elapsed).all());
+    WHERE (r.user_a=? OR r.user_b=?) AND r.status IN ('pending','allied') AND r.expires_elapsed_ms>? AND r.updated_elapsed_ms>=? ORDER BY r.updated_elapsed_ms DESC LIMIT 100`,userId,userId,userId,elapsed,Math.floor(elapsed/WORLD_CYCLE_MS)*WORLD_CYCLE_MS).all());
 }
 async function getFieldList(db,viewer,url,now) {
   const cursor=url.searchParams.get('cursor')||'',limitText=url.searchParams.get('limit')||'50';
   if(cursor)idField(cursor,'共有地図の続き');
   if(!/^\d{1,3}$/.test(limitText)||Number(limitText)<1||Number(limitText)>100)fail(400,'INVALID_INPUT','一覧の件数は1～100件で指定してください。');
-  const limit=Number(limitText),clock=await getWorldClock(db,now),relations=viewer?await fieldOwnRelations(db,viewer.id,clock.elapsedMs):[];
-  const result=await db.batch([stmt(db,FIELD_SELECT+' AND u.id>? ORDER BY u.id LIMIT ?',cursor,limit+1),stmt(db,"SELECT COUNT(*) AS count FROM player_saves WHERE save_json IS NOT NULL AND (COALESCE(json_extract(save_json,'$.state.gameOver'),0)=0 OR user_id=(SELECT value FROM settings WHERE key='adminUserId'))")]);
+  const limit=Number(limitText),clock=await getWorldClock(db,now),relations=viewer?await fieldOwnRelations(db,viewer.id,clock.elapsedMs):[];await cyclePolicy(db,clock,now);const currentCycle=Math.floor(clock.elapsedMs/WORLD_CYCLE_MS);
+  const result=await db.batch([stmt(db,FIELD_SELECT+' AND u.id>? ORDER BY u.id LIMIT ?',currentCycle,cursor,limit+1),stmt(db,`SELECT COUNT(*) AS count FROM player_saves s WHERE save_json IS NOT NULL AND (COALESCE(json_extract(save_json,'$.state.gameOver'),0)=0 OR user_id=(SELECT value FROM settings WHERE key='adminUserId') OR ${EFFECTIVE_CYCLE_SQL}<?)`,currentCycle)]);
   const found=rows(result[0]),players=found.slice(0,limit).map(row=>mapFieldPlayer(row,viewer,relations.find(r=>r.user_a===row.id||r.user_b===row.id),clock,now));
   return {ok:true,players,total:Number(rows(result[1])[0].count),nextCursor:found.length>limit?players.at(-1).playerId:null,clock,rules:FIELD_RULES};
 }
@@ -902,6 +981,10 @@ function fieldWriter(row,deviceId,revision,now) {
   if(!row?.save_json)fail(409,'SAVE_REQUIRED','先に本拠をクラウドへ保存してください。');
   if(row.writer_device_id!==deviceId||Number(row.lease_expires_at)<=now)fail(409,'LEASE_REQUIRED','この端末を操作端末にしてからお試しください。');
   if(Number(row.revision)!==revision)fail(409,'REVISION_CONFLICT','本拠の保存が更新されています。同期してからお試しください。');
+}
+async function settleWriterCycle(db,user,deviceId,revision,now) {
+  const prior=await getSyncRow(db,user.id);fieldWriter(prior,deviceId,revision,now);
+  const settled=await settlePlayerCycle(db,prior,user,now,undefined,{deferActive:false,writerDeviceId:deviceId});fieldWriter(settled,deviceId,revision,now);return settled;
 }
 function fieldRequestBody(body,kind) {
   const allowed=kind==='attack'?['targetPlayerId','troops','tactic','requestId','deviceId','expectedRevision']:['targetPlayerId','action','requestId','deviceId','expectedRevision'];
@@ -919,10 +1002,10 @@ async function priorFieldRequest(db,userId,body,kind,digest) {
 }
 async function fieldMe(db,user,url,now) {
   const deviceId=url.searchParams.get('deviceId')||'';if(deviceId)idField(deviceId,'端末');
-  const clock=await getWorldClock(db,now),row=await getSyncRow(db,user.id),base=await stmt(db,FIELD_SELECT+' AND u.id=?',user.id).first();
+  const clock=await getWorldClock(db,now),row=await settlePlayerCycle(db,await getSyncRow(db,user.id),user,now,clock,{deferActive:true}),base=await stmt(db,FIELD_SELECT+' AND u.id=?',Math.floor(clock.elapsedMs/WORLD_CYCLE_MS),user.id).first();
   const save=row?.save_json?normalizeGameSave(JSON.parse(row.save_json),user,now,{reading:true,clock}):null,s=save?.state;
   const cooldownUntil=base?.last_attack_ms!==null&&base?.last_attack_ms!==undefined?Number(base.last_attack_ms)+FIELD_RULES.attackCooldownMs:0;
-  let reason=!s?'先に本拠をクラウドへ保存してください。':s.gameOver?'本拠を復元してください。':!s.worldClock?'共通時計へ同期してください。':!clock.running?'世界の共通時間が停止中です。':row.lease_expires_at<=now||deviceId&&row.writer_device_id!==deviceId?'この端末を操作端末にしてください。':cooldownUntil>clock.elapsedMs?'次の出陣までお待ちください。':s.command<1?'指示の回復をお待ちください。':s.troops<FIELD_RULES.minTroops?'出陣できる兵が足りません。':s.resources.rice<240?'兵糧が足りません。':'';
+  let reason=!s?'先に本拠をクラウドへ保存してください。':s.gameOver?'本拠を復元してください。':Number(row.cycle_index)<Math.floor(clock.elapsedMs/WORLD_CYCLE_MS)?'領地の精算を同期しています。':!s.worldClock?'共通時計へ同期してください。':!clock.running?'世界の共通時間が停止中です。':row.lease_expires_at<=now||deviceId&&row.writer_device_id!==deviceId?'この端末を操作端末にしてください。':cooldownUntil>clock.elapsedMs?'次の出陣までお待ちください。':s.command<1?'指示の回復をお待ちください。':s.troops<FIELD_RULES.minTroops?'出陣できる兵が足りません。':s.resources.rice<240?'兵糧が足りません。':'';
   if(!reason&&clock.elapsedMs-s.worldClock.elapsedMs>15000)reason='共通時計と本拠を同期してください。';
   const relations=await fieldOwnRelations(db,user.id,clock.elapsedMs),battles=rows(await stmt(db,'SELECT result_json FROM field_battles WHERE attacker_id=? OR defender_id=? ORDER BY occurred_elapsed_ms DESC,id DESC LIMIT 20',user.id,user.id).all()).map(b=>JSON.parse(b.result_json));
   return {ok:true,self:base?mapFieldPlayer(base,user,null,clock,now):null,revision:row?Number(row.revision):null,clock,rules:FIELD_RULES,attack:{ready:!reason,reason,availableTroops:s?.troops||0,minTroops:FIELD_RULES.minTroops,maxTroops:Math.min(s?.troops||0,FIELD_RULES.maxTroops),command:s?.command||0,rice:s?.resources.rice||0,cooldownUntilElapsedMs:cooldownUntil,remainingCooldownMs:Math.max(0,cooldownUntil-clock.elapsedMs)},relationships:relations.map(r=>mapFieldRelationship(r,user.id,clock.elapsedMs,r.target_name)),battles};
@@ -941,10 +1024,11 @@ async function fieldAttack(db,user,raw,now) {
   await budget(db,'field-attack:'+user.id,30,60000,now);
   const target=await getUser(db,body.targetPlayerId);if(!target)fail(404,'FIELD_PLAYER_NOT_FOUND','相手の本拠が見つかりません。');
   if(target.is_admin)fail(403,'TARGET_PROTECTED','運営の江戸城は保護されています。');
-  const attackerRow=await getSyncRow(db,user.id);fieldWriter(attackerRow,body.deviceId,body.expectedRevision,now);
-  const defenderRow=await getSyncRow(db,target.id);if(!defenderRow?.save_json)fail(404,'FIELD_PLAYER_NOT_FOUND','相手の本拠はまだ共有されていません。');
+  const attackerRow=await settleWriterCycle(db,user,body.deviceId,body.expectedRevision,now);
+  const defenderRow=await settlePlayerCycle(db,await getSyncRow(db,target.id),target,now,undefined,{deferActive:true});if(!defenderRow?.save_json)fail(404,'FIELD_PLAYER_NOT_FOUND','相手の本拠はまだ共有されていません。');
   const clock=await getWorldClock(db,now);if(!clock.running)fail(409,'WORLD_PAUSED','世界の共通時間が停止中です。');
   const attacker=normalizeGameSave(JSON.parse(attackerRow.save_json),user,now,{reading:true,clock}),defender=normalizeGameSave(JSON.parse(defenderRow.save_json),target,now,{reading:true,clock}),a=attacker.state,d=defender.state;
+  if(Math.min(Number(attackerRow.cycle_index),Number(defenderRow.cycle_index))<Math.floor(clock.elapsedMs/WORLD_CYCLE_MS))fail(409,'CYCLE_SETTLEMENT_REQUIRED','領地の精算中です。共有地図を更新してください。');
   if(a.gameOver||d.gameOver)fail(409,'BASE_UNAVAILABLE','本拠を失っている領主とは戦えません。');
   if(!a.worldClock)fail(409,'CLOCK_ANCHOR_REQUIRED','先に共通時計へ同期してください。');
   if(clock.elapsedMs-a.worldClock.elapsedMs>15000)fail(409,'CLOCK_STALE','共通時計と本拠を同期してから出陣してください。');
@@ -998,8 +1082,9 @@ async function fieldDiplomacy(db,user,raw,now) {
   const respond=async idempotent=>({ok:true,relationship:mapFieldRelationship(await fieldRelation(db,user.id,target.id),user.id,clock.elapsedMs,target.name),idempotent,clock});
   if(prior)return respond(true);
   await budget(db,'field-diplomacy:'+user.id,20,60000,now);
-  const own=await getSyncRow(db,user.id);fieldWriter(own,body.deviceId,body.expectedRevision,now);
-  const other=await getSyncRow(db,target.id);if(!other?.save_json)fail(404,'FIELD_PLAYER_NOT_FOUND','相手の本拠はまだ共有されていません。');
+  const own=await settleWriterCycle(db,user,body.deviceId,body.expectedRevision,now);
+  const other=await settlePlayerCycle(db,await getSyncRow(db,target.id),target,now,undefined,{deferActive:true});if(!other?.save_json)fail(404,'FIELD_PLAYER_NOT_FOUND','相手の本拠はまだ共有されていません。');
+  if(Math.min(Number(own.cycle_index),Number(other.cycle_index))<Math.floor(clock.elapsedMs/WORLD_CYCLE_MS))fail(409,'CYCLE_SETTLEMENT_REQUIRED','領地の精算中です。共有地図を更新してください。');
   const relation=await fieldRelation(db,user.id,target.id),status=fieldRelationStatus(relation,user.id,clock.elapsedMs);
   if(body.action==='propose'&&status!=='neutral'||['accept','reject'].includes(body.action)&&status!=='incoming'||body.action==='cancel'&&status!=='outgoing')fail(409,'DIPLOMACY_STATE','外交関係が変わっています。申し込みは相手だけが承認でき、成立した同盟は期限まで継続します。');
   if(body.action==='propose') {
@@ -1071,8 +1156,9 @@ async function route(request, env, now) {
     return {ok:true,status:'ready'};
   }
   if (path === '/world-clock' && method === 'GET') {
-    return {ok:true,clock:await getWorldClock(db,now)};
+    const clock=await getWorldClock(db,now);await cyclePolicy(db,clock,now);return {ok:true,clock};
   }
+  if (path === '/achievements' && method === 'GET') return publicAchievements(db,url,now);
   if (path === '/guild/rankings' && method === 'GET') return guildRankings(db,url,now);
   if (path === '/field' && method === 'GET') {
     const viewer=request.headers.has('authorization')?await authenticate(request,db,now):null;
@@ -1203,6 +1289,13 @@ async function route(request, env, now) {
     if(deviceId)idField(deviceId,'端末識別子');
     return syncSnapshot(db,await getSyncRow(db,user.id),user,deviceId,now);
   }
+  if (path === '/sync/settle' && method === 'POST') {
+    const body=await readBody(request),deviceId=idField(body.deviceId,'端末識別子');
+    if(Object.keys(body).some(key=>!['deviceId','revision'].includes(key))||!Number.isSafeInteger(body.revision)||body.revision<0)fail(400,'INVALID_INPUT','保存の更新番号が正しくありません。');
+    await budget(db,'sync-settle:'+user.id,60,60000,now);
+    const row=await getSyncRow(db,user.id);fieldWriter(row,deviceId,body.revision,now);
+    return syncSnapshot(db,row,user,deviceId,now,{settle:true});
+  }
   if (path === '/sync/lease' && method === 'POST') {
     const body=await readBody(request),deviceId=idField(body.deviceId,'端末識別子'),deviceName=textField(body.deviceName,'端末名',64,{optional:true})||'プレイ中の端末';
     if(body.takeOver!==undefined&&typeof body.takeOver!=='boolean')fail(400,'INVALID_INPUT','端末の切替方法が正しくありません。');
@@ -1225,11 +1318,29 @@ async function route(request, env, now) {
     const body=await readBody(request,MAX_SAVE_BODY),deviceId=idField(body.deviceId,'端末識別子');
     if(!Number.isSafeInteger(body.revision)||body.revision<0)fail(400,'INVALID_INPUT','セーブの更新番号が正しくありません。');
     if(!body.save||typeof body.save!=='object'||Array.isArray(body.save))fail(400,'INVALID_SAVE','セーブデータを送信してください。');
-    const clock=await getWorldClock(db,now),save=normalizeGameSave(body.save,user,now,{clock}),serialized=JSON.stringify(save);
+    const clock=await getWorldClock(db,now),save=normalizeGameSave(body.save,user,now,{clock});
     await budget(db,'sync-write:'+user.id,120,60000,now);
-    const row=await stmt(db,`UPDATE player_saves SET save_json=?,revision=revision+1,updated_at=?,lease_expires_at=?
+    const previous=await getSyncRow(db,user.id),before=previous?.save_json?normalizeGameSave(JSON.parse(previous.save_json),user,now,{reading:true,clock}):null;
+    if(!previous||previous.writer_device_id!==deviceId||Number(previous.lease_expires_at)<=now)fail(409,'LEASE_REQUIRED','プレイ端末の同期権限が切れました。');
+    if(Number(previous.revision)!==body.revision)fail(409,'REVISION_CONFLICT','最新の保存へ同期してください。');
+    const policy=await cyclePolicy(db,clock,now),currentCycle=Math.floor(clock.elapsedMs/WORLD_CYCLE_MS);
+    let cycleIndex=previous?.cycle_index??Math.max(policy,currentCycle),cycleHome=user.is_admin?'edo':previous?.cycle_home||save.state.home;
+    if(previous?.cycle_index!==null&&previous?.cycle_index!==undefined){
+      if(save.state.cycle&&save.state.cycle.index!==Number(cycleIndex)||save.state.worldClock&&Math.floor(save.state.worldClock.elapsedMs/WORLD_CYCLE_MS)>Number(cycleIndex)){
+        await settlePlayerCycle(db,previous,user,now,clock,{deferActive:false,writerDeviceId:deviceId});fail(409,'CYCLE_SETTLEMENT_REQUIRED','領地の精算を同期しています。最新データを読み込んでください。');
+      }
+      if(before?.state.cycle?.latestReward&&save.state.worldClock&&save.state.worldClock.elapsedMs<Number(cycleIndex)*WORLD_CYCLE_MS)fail(409,'CLOCK_REWIND','古い時刻のセーブで上書きできません。最新データへ同期してください。');
+      // An explicit fresh campaign may choose a new ordinary starting home.
+      if(!user.is_admin&&save.state.home!==before?.state.home&&Object.values(save.state.stats).every(v=>v===0)&&Object.values(save.state.castles).filter(c=>c.owner===save.state.clan).length===1&&!['edo','nijo','osaka','nagoya'].includes(save.state.home))cycleHome=save.state.home;
+    }
+    save.state.cycle={index:Number(cycleIndex),home:cycleHome,latestReward:before?.state.cycle?.latestReward||null};
+    const serialized=JSON.stringify(save),nonce=crypto.randomUUID();
+    const statements=[stmt(db,`UPDATE player_saves SET save_json=?,revision=revision+1,updated_at=?,lease_expires_at=?,cycle_index=?,cycle_home=?,cycle_commit=?
       WHERE user_id=? AND revision=? AND writer_device_id=? AND lease_expires_at>?
-      AND (?=1 OR json_type(save_json,'$.state.worldClock') IS NULL) RETURNING *`,serialized,now,now+SYNC_LEASE,user.id,body.revision,deviceId,now,save.state.worldClock?1:0).first();
+      AND (?=1 OR json_type(save_json,'$.state.worldClock') IS NULL) RETURNING *`,serialized,now,now+SYNC_LEASE,cycleIndex,cycleHome,nonce,user.id,body.revision,deviceId,now,save.state.worldClock?1:0)];
+    const gate='EXISTS(SELECT 1 FROM player_saves WHERE user_id=? AND cycle_commit=?)';
+    for(const event of saveAchievements(before,save))statements.push(achievementStatement(db,user.id,event,now,gate,[user.id,nonce]));
+    const changed=await db.batch(statements),row=rows(changed[0])[0];
     if(!row) {
       const current=await getSyncRow(db,user.id);
       if(!current||current.writer_device_id!==deviceId||Number(current.lease_expires_at)<=now)fail(409,'LEASE_REQUIRED','プレイ端末の同期権限が切れました。接続状態を確認してください。');
@@ -1240,7 +1351,7 @@ async function route(request, env, now) {
       await stmt(db,'UPDATE users SET clan=? WHERE id=?',save.state.clan,user.id).run();
       user.clan=save.state.clan;
     }
-    return syncSnapshot(db,row,user,deviceId,now);
+    return syncSnapshot(db,row,user,deviceId,now,{settle:true});
   }
   if (path === '/me' && method === 'GET') {
     const result = await db.batch([
