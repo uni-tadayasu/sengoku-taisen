@@ -65,8 +65,9 @@ await scope('cycle reset and reverse transfer do not absorb ordinary Tokugawa CP
   let settled=(await api('/sync/settle',post(p.token,{deviceId:p.device,revision:prior.revision}))).data;
   const ordinaryTokugawa=D.castles.filter(x=>x.clan==='徳川家'&&x.id!=='edo').map(x=>x.id);
   assert(ordinaryTokugawa.some(id=>settled.save.state.castles[id].owner==='徳川家'));assert.deepEqual(owned(settled.save),['sunpu']);
-  const game=E.fromSave(settled.save,officers,{isStaff:true,staffBase:settled.staffBase});game.applyWorldClock(await clock());game.state.castles.nijo={...game.state.castles.nijo,owner:game.state.clan,level:64};settled=await put(p,JSON.parse(game.exportSave()));
-  await role(p,'dismiss');const restored=await sync(p);assert.equal(restored.save.state.clan,'徳川家');assert.deepEqual(owned(restored.save),['himeji','nijo']);assert.equal(restored.save.state.castles.himeji.level,12);assert.equal(restored.save.state.castles.nijo.level,64);
+  // Newly captured cities use the current cap, then retain that exact growth on dismissal.
+  const game=E.fromSave(settled.save,officers,{isStaff:true,staffBase:settled.staffBase});game.applyWorldClock(await clock());game.state.castles.nijo={...game.state.castles.nijo,owner:game.state.clan,level:48};settled=await put(p,JSON.parse(game.exportSave()));
+  await role(p,'dismiss');const restored=await sync(p);assert.equal(restored.save.state.clan,'徳川家');assert.deepEqual(owned(restored.save),['himeji','nijo']);assert.equal(restored.save.state.castles.himeji.level,12);assert.equal(restored.save.state.castles.nijo.level,48);
   for(const id of ordinaryTokugawa)assert.notEqual(restored.save.state.castles[id].owner,'徳川家',id);E.fromSave(restored.save,officers);
 });
 

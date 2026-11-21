@@ -10,6 +10,8 @@ vm.createContext(rosterScope);
 vm.runInContext(fs.readFileSync(path.join(__dirname, '../officers-data.js'), 'utf8'), rosterScope);
 const roster = rosterScope.window.SENGOKU_OFFICERS;
 const pendingKey = 'sengoku-field-pending-v1';
+const fieldRecords = h => [...h.stored.entries()].filter(([key])=>key.startsWith(pendingKey+':'));
+const fieldPending = h => JSON.parse(fieldRecords(h)[0]?.[1]||'null');
 const clone = value => JSON.parse(JSON.stringify(value));
 function fn(name) {
   const start = source.search(new RegExp('^  (?:async )?function '+name+'\\(', 'm'));
@@ -42,7 +44,7 @@ function setup(options={}) {
     fieldRequest:async(route,opts)=>{
       const call={route,options:clone(opts)};
       if(opts.method==='GET'){gets.push(call);trace.push('get');return control.onGet?control.onGet(call):{ok:true,players:[]};}
-      posts.push(call);trace.push('send');return control.onPost?control.onPost(call):{ok:true,report:{id:'report-1'}};
+      posts.push(call);trace.push('send');return control.onPost?control.onPost(call):{ok:true,revision:control.status.revision,report:{id:'report-1'}};
     }
   };
   const sync={
@@ -57,7 +59,7 @@ function setup(options={}) {
     syncAccess:{...control.status},saveKey:'save',backupKey:'backups',saveEnabled:true,saveWarning:'',
     worldCatchingUp:false,worldSettlementPending:false,worldSettlementRetryAt:0,worldCatchupTimer:null,worldClockStatusKey:'',fieldActionPending:false,walkingActionPending:false,strategyActionPending:false,startPending:false,
     selectedCastle:'',lastRealtime:0,saveCounter:0,importedGame:null,activeModal:'',
-    localStorage:{getItem:key=>stored.get(key)||null,setItem:(key,value)=>{if(control.storageError)throw Error('storage unavailable');stored.set(key,value);},removeItem:key=>stored.delete(key)},
+    localStorage:{get length(){return stored.size;},key:index=>[...stored.keys()][index]??null,getItem:key=>stored.get(key)||null,setItem:(key,value)=>{if(control.storageError)throw Error('storage unavailable');stored.set(key,value);},removeItem:key=>stored.delete(key)},
     crypto:{randomUUID:()=>{control.uuidCalls++;return 'test-request-'+control.uuidCalls;}},
     window:{SengokuSocial:social,SengokuCloudSync:sync,
       SengokuWorldClock:{snapshot:()=>({ready:control.clockReady,clock:control.clock,message:'clock'}),refresh:async()=>{trace.push('clock-refresh');return control.onClockRefresh?control.onClockRefresh():{ok:true};},accept:value=>{clockAccepts.push(value);trace.push('accept-clock');control.clock=value;}},
@@ -101,14 +103,14 @@ test('a writer flushes first, sends the current revision/device, and freezes mut
   h.control.status.revision=19;flush.resolve({ok:true});await until(()=>h.posts.length===1);
   const body=h.posts[0].options.data;
   assert.equal(body.expectedRevision,19);assert.equal(body.deviceId,'tab-a');assert.equal(body.targetId,'player-b');assert.equal(body.troops,900);assert(body.requestId);
-  assert.equal(JSON.parse(h.stored.get(pendingKey)).requestId,body.requestId,'Retry key persists before the command is sent');
+  assert.equal(fieldPending(h).requestId,body.requestId,'Retry key persists before the command is sent');
   await assert.rejects(h.c.requestField('/field/attack',{method:'POST',data:{targetId:'player-c',troops:1000}}));
   assert.equal(h.posts.length,1);assert.equal(h.events.length,saveEvents);assert.equal(h.c.canMutate(),false);
-  response.resolve({ok:true,report:{id:'committed'}});await until(()=>h.control.refreshes===1);
+  response.resolve({ok:true,revision:20,report:{id:'committed'}});await until(()=>h.control.refreshes===1);
   assert.equal(h.c.canMutate(),false,'A successful HTTP response remains locked until save reconciliation');
-  h.c.game.applyWorldClock(h.control.clock);refresh.resolve({ok:true});
+  h.c.game.applyWorldClock(h.control.clock);h.control.status.revision=20;refresh.resolve({ok:true});
   const result=await task;
-  assert.equal(result.report.id,'committed');assert.equal(h.c.fieldActionPending,false);assert.equal(h.c.canMutate(),true);assert.equal(h.stored.has(pendingKey),false);
+  assert.equal(result.report.id,'committed');assert.equal(h.c.fieldActionPending,false);assert.equal(h.c.canMutate(),true);assert.equal(fieldRecords(h).length,0);
 });
 
 test('confirmed shared time is reflected before flushing, without applying speculative display time',async()=>{
@@ -120,18 +122,20 @@ test('confirmed shared time is reflected before flushing, without applying specu
   assert.equal(seen.state.worldClock.elapsedMs,120000);assert.equal(seen.state.turn,2);assert.equal(h.posts.length,1);
 });
 
-test('a lost response keeps its idempotency key across reload and the retry cannot execute twice',async()=>{
+test('a lost legacy response replays its original body overnight despite a new UI request ID',async()=>{
   const h=setup(),receipts=new Map();let executions=0,firstKey;
-  const payload={targetId:'player-b',troops:700};
-  h.control.onPost=async call=>{const key=call.options.data.requestId;firstKey=key;receipts.set(key,{ok:true,report:{id:'already-committed'}});executions++;throw Error('response lost');};
+  const payload={targetPlayerId:'player-b',troops:700,tactic:'balanced',requestId:'old-ui-request'};
+  h.control.onPost=async call=>{const key=call.options.data.requestId;firstKey=key;receipts.set(key,{ok:true,revision:8,report:{id:'already-committed'}});executions++;throw Error('response lost');};
   await assert.rejects(h.c.requestField('/field/attack',{method:'POST',data:payload}),/response lost/);
   assert.equal(h.c.fieldActionPending,false);assert.equal(h.control.refreshes,1);
-  assert.equal(JSON.parse(h.stored.get(pendingKey)).requestId,firstKey);
+  assert.equal(fieldPending(h).requestId,firstKey);
+  const [scopedKey,raw]=fieldRecords(h)[0];h.stored.delete(scopedKey);
+  h.stored.set(pendingKey,JSON.stringify({...JSON.parse(raw),payload:undefined,signature:JSON.stringify({route:'/field/attack',payload}),createdAt:Date.now()-86400000}));
   const reopened=setup({stored:h.stored});reopened.control.status.revision=21;
-  reopened.control.onPost=async call=>{const key=call.options.data.requestId;if(receipts.has(key))return receipts.get(key);executions++;return{ok:true,report:{id:'new'}};};
-  const result=await reopened.c.requestField('/field/attack',{method:'POST',data:payload});
+  reopened.control.onPost=async call=>{assert.equal(Object.hasOwn(call.options.data,'targetCastleId'),false,'A legacy raid must not silently become a capture');const key=call.options.data.requestId;if(receipts.has(key))return receipts.get(key);executions++;return{ok:true,revision:22,report:{id:'new'}};};
+  const result=await reopened.c.requestField('/field/attack',{method:'POST',data:{tactic:'balanced',troops:700,targetPlayerId:'player-b',requestId:'new-ui-request',deviceId:'other',expectedRevision:0}});
   assert.equal(result.report.id,'already-committed');assert.equal(reopened.posts[0].options.data.requestId,firstKey);
-  assert.equal(reopened.posts[0].options.data.expectedRevision,21);assert.equal(reopened.control.uuidCalls,0);assert.equal(executions,1);assert.equal(reopened.stored.has(pendingKey),false);
+  assert.equal(reopened.posts[0].options.data.expectedRevision,21);assert.equal(reopened.control.uuidCalls,0);assert.equal(executions,1);assert.equal(reopened.stored.has(pendingKey),false);assert.equal(fieldRecords(reopened).length,0);
 });
 
 test('unregistered, unlinked, follower, stale-clock and expired-lease players cannot send commands',async()=>{
@@ -145,7 +149,7 @@ test('unregistered, unlinked, follower, stale-clock and expired-lease players ca
   for(const set of scenarios){
     const h=setup();set(h);const before=JSON.stringify(h.c.game.state);
     await assert.rejects(h.c.requestField('/field/attack',{method:'POST',data:{targetId:'player-b',troops:900}}));
-    assert.equal(h.posts.length,0);assert.equal(h.control.flushes,0);assert.equal(h.stored.has(pendingKey),false);assert.equal(JSON.stringify(h.c.game.state),before);assert.equal(h.c.fieldActionPending,false);
+    assert.equal(h.posts.length,0);assert.equal(h.control.flushes,0);assert.equal(fieldRecords(h).length,0);assert.equal(JSON.stringify(h.c.game.state),before);assert.equal(h.c.fieldActionPending,false);
   }
 });
 
@@ -155,14 +159,14 @@ test('failed flush and unavailable durable storage abort before the field comman
     if(kind==='flush')h.control.onFlush=async()=>({ok:false});
     else h.control.onFlush=async()=>{h.control.storageError=true;return{ok:true};};
     await assert.rejects(h.c.requestField('/field/attack',{method:'POST',data:{targetId:'player-b',troops:900}}));
-    assert.equal(h.posts.length,0);assert.equal(h.c.fieldActionPending,false);assert.equal(h.stored.has(pendingKey),false);
+    assert.equal(h.posts.length,0);assert.equal(h.c.fieldActionPending,false);assert.equal(fieldRecords(h).length,0);
   }
 });
 
 test('definitive client errors retire the key while network failures retain it',async()=>{
   const h=setup();h.control.onPost=async()=>{throw Object.assign(Error('not permitted'),{status:403});};
   await assert.rejects(h.c.requestField('/field/attack',{method:'POST',data:{targetId:'player-b',troops:900}}),/not permitted/);
-  assert.equal(h.stored.has(pendingKey),false);assert.equal(h.control.refreshes,1);assert.equal(h.c.fieldActionPending,false);
+  assert.equal(fieldRecords(h).length,0);assert.equal(h.control.refreshes,1);assert.equal(h.c.fieldActionPending,false);
 });
 
 test('identity switching during a flush prevents the old command from being sent',async()=>{
@@ -189,6 +193,72 @@ test('identity switching during reconciliation cannot deliver an old player repo
   const task=h.c.requestField('/field/attack',{method:'POST',data:{targetId:'player-b',troops:900}});
   await until(()=>h.control.refreshes===1);h.control.user={id:'player-new',name:'領主B',isAdmin:false};h.control.deviceId='tab-new';refresh.resolve({ok:true});
   await assert.rejects(task,/領主|接続|以前/);assert.equal(h.c.fieldActionPending,false);
+});
+
+test('capture waits past a stale poll and applies the cloud save without resetting army, governors or buildings',async()=>{
+  const h=setup(),gate=deferred(),s=h.c.game.state;
+  s.governors.farm=s.officers.find(id=>!s.army.includes(id));s.buildings.farm=5;
+  s.jobs.push({kind:'building',id:'farm',remaining:1,total:1,remainingSeconds:60,totalSeconds:60,targetLevel:6});
+  const retained=state=>clone(Object.fromEntries(['home','cycle','army','governors','buildings','jobs','officers','officerVariants','walking'].map(key=>[key,state[key]])));
+  const before=retained(s),remote=JSON.parse(h.c.game.exportSave());remote.state.castles.nijo.owner=s.clan;remote.state.resources.gold+=300;
+  h.control.onPost=async()=>({ok:true,revision:9,battle:{id:'captured-nijo',captured:true}});
+  h.control.onRefresh=async()=>{if(h.control.refreshes===1)return{ok:true};await gate.promise;const applied=h.c.applyCloudSave(remote,{isAdmin:false,isStaff:false});assert.equal(applied.ok,true);h.control.status.revision=9;return{ok:true};};
+  const task=h.c.requestField('/field/attack',{method:'POST',data:{targetPlayerId:'player-b',targetCastleId:'nijo',troops:900,tactic:'balanced'}});
+  await until(()=>h.control.refreshes===2);
+  assert.equal(h.c.canMutate(),false);assert.equal(fieldPending(h).committedRevision,9);assert.notEqual(h.c.game.state.castles.nijo.owner,s.clan,'Capture is not applied optimistically');
+  gate.resolve();const result=await task;
+  assert.equal(result.battle.id,'captured-nijo');assert.equal(h.c.game.state.castles.nijo.owner,s.clan);
+  assert.deepEqual(retained(h.c.game.state),before);assert.deepEqual(retained(JSON.parse(h.stored.get('save')).state),before);
+  assert.equal(fieldRecords(h).length,0);assert.equal(h.control.refreshes,2);
+});
+
+test('unconfirmed attack revisions retain their receipt even when reconciliation or a later retry returns a client error',async()=>{
+  for(const mode of ['offline','stale','missing-revision','client-error']){
+    const h=setup(),payload={targetPlayerId:'player-b',targetCastleId:'nijo',troops:900,tactic:'balanced'},before=JSON.stringify(h.c.game.state);
+    h.control.onPost=async()=>({ok:true,...(mode==='missing-revision'?{}:{revision:10}),battle:{id:'committed'}});
+    h.control.onRefresh=async()=>{if(mode==='client-error')throw Object.assign(Error('sync expired'),{status:401});return{ok:mode!=='offline'};};
+    await assert.rejects(h.c.requestField('/field/attack',{method:'POST',data:payload}),error=>mode==='client-error'?error.status===401:error.code==='FIELD_RECONCILE_PENDING');
+    const record=fieldPending(h);assert.equal(record.committed,true);assert.equal(h.c.fieldActionPending,false);assert.equal(JSON.stringify(h.c.game.state),before);
+    h.control.onPost=async()=>{throw Object.assign(Error('identity requires reconnecting'),{status:403});};
+    await assert.rejects(h.c.requestField('/field/attack',{method:'POST',data:payload}),/identity requires/);
+    assert.equal(fieldPending(h).requestId,record.requestId,'A post-commit error must not create another attack ID');
+  }
+});
+
+test('a changed castle or force waits for the original attack before sending a distinct operation',async()=>{
+  for(const priorCastle of [undefined,'nijo']){
+    const h=setup(),receipts=new Map();let executions=0;
+    const first={targetPlayerId:'player-b',...(priorCastle?{targetCastleId:priorCastle}:{}),troops:700,tactic:'balanced',requestId:'first-intent'};
+    const next={targetPlayerId:'player-b',targetCastleId:priorCastle?'osaka':'nijo',troops:priorCastle?1200:700,tactic:'balanced',requestId:'next-intent'};
+    h.control.onPost=async call=>{const key=call.options.data.requestId;if(!receipts.has(key)){executions++;receipts.set(key,{ok:true,revision:7+executions,battle:{id:key}});}return receipts.get(key);};
+    h.control.onRefresh=async()=>({ok:false});
+    await assert.rejects(h.c.requestField('/field/attack',{method:'POST',data:first}),error=>error.code==='FIELD_RECONCILE_PENDING');
+    await assert.rejects(h.c.requestField('/field/attack',{method:'POST',data:next}),error=>error.code==='FIELD_RECONCILE_PENDING');
+    assert.equal(h.posts.length,2);assert.equal(executions,1);assert.equal(fieldRecords(h).length,1);
+    assert.equal(h.posts[1].options.data.requestId,'first-intent');assert.equal(h.posts[1].options.data.targetCastleId,priorCastle);assert.equal(h.posts[1].options.data.troops,700);
+    h.control.onRefresh=async()=>{h.control.status.revision=7+executions;return{ok:true};};
+    const result=await h.c.requestField('/field/attack',{method:'POST',data:next});
+    assert.equal(h.posts[2].options.data.requestId,'first-intent');assert.equal(h.posts[2].options.data.targetCastleId,priorCastle);
+    assert.equal(h.posts[3].options.data.requestId,'next-intent');assert.equal(h.posts[3].options.data.expectedRevision,8);assert.equal(h.posts[3].options.data.targetCastleId,next.targetCastleId);assert.equal(h.posts[3].options.data.troops,next.troops);
+    assert.equal(result.battle.id,'next-intent');assert.equal(executions,2);assert.equal(fieldRecords(h).length,0);
+  }
+});
+
+test('another identity never replays or overwrites an unresolved attack and the original identity can resume it',async()=>{
+  const h=setup(),payload={targetPlayerId:'player-target',targetCastleId:'nagoya',troops:900,tactic:'balanced'};
+  h.control.onPost=async()=>{throw Error('response lost');};
+  await assert.rejects(h.c.requestField('/field/attack',{method:'POST',data:payload}));
+  const [firstKey,firstRaw]=fieldRecords(h)[0],firstRecord=JSON.parse(firstRaw);
+  h.control.user={id:'player-new',name:'領主B',isAdmin:false};h.control.deviceId='tab-new';
+  h.control.onPost=async()=>({ok:true,revision:8,battle:{id:'new-player-result'}});
+  h.control.onRefresh=async()=>{h.control.status.revision=8;return{ok:true};};
+  const result=await h.c.requestField('/field/attack',{method:'POST',data:payload});
+  assert.equal(result.battle.id,'new-player-result');assert.equal(h.posts.length,2);assert.notEqual(h.posts[1].options.data.requestId,firstRecord.requestId);assert.equal(h.stored.get(firstKey),firstRaw);
+  h.control.user={id:'player-a',name:'領主A',isAdmin:false};h.control.deviceId='tab-restored';
+  h.control.onPost=async()=>({ok:true,revision:9,battle:{id:'original-player-result'}});
+  h.control.onRefresh=async()=>{h.control.status.revision=9;return{ok:true};};
+  assert.equal((await h.c.requestField('/field/attack',{method:'POST',data:payload})).battle.id,'original-player-result');
+  assert.equal(h.posts[2].options.data.requestId,firstRecord.requestId);assert.equal(h.posts[2].options.data.deviceId,'tab-restored');assert.equal(fieldRecords(h).length,0);
 });
 
 const guildRoute='/guild/treasury/transfer';

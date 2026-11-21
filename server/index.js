@@ -15,7 +15,8 @@ const PAIR_CODE_LIFETIME = 10 * 60 * 1000;
 const IEYASU_ID = 'of_b0616adde162';
 const ADMIN_CLAN = '德川家';
 const MAJOR_CITIES=['edo','sunpu','nijo','osaka','nagoya'];
-const castleLevelLimit=id=>MAJOR_CITIES.includes(id)?64:32;
+const FIELD_CAPTURE_CASTLES=['nijo','osaka','nagoya'];
+const castleLevelLimit=id=>id==='edo'||id==='sunpu'?64:FIELD_CAPTURE_CASTLES.includes(id)?48:32;
 const ORDINARY_TOKUGAWA_CLAN = '徳川家';
 const WORLD_CLOCK_ID = 'world-v1';
 const MAX_TURN = 999999999;
@@ -689,6 +690,9 @@ function normalizeGameSave(raw, user, now, {reading=false,clock=null}={}) {
   const invalid=()=>{fail(400,'INVALID_SAVE','セーブデータの形式または内容が正しくありません。');};
   const isObj=v=>v&&typeof v==='object'&&!Array.isArray(v);
   const num=(v,min=0,max=999999999)=>typeof v==='number'&&Number.isFinite(v)&&Number.isInteger(v)&&v>=min&&v<=max;
+  // Validate historical saves against their old limit before migrating them.
+  // New uploads must already obey the current limit. Invalid old jobs still fail.
+  const incomingCastleLimit=id=>reading&&FIELD_CAPTURE_CASTLES.includes(id)?64:castleLevelLimit(id);
   if(!isObj(s)||s.version!==2||obj?.game&&obj.game!=='sengoku-tento')invalid();
   if(s.clan===ADMIN_CLAN&&!user.is_admin&&!staff&&!reading)fail(403,'ADMIN_CLAN_REQUIRED','德川家は運営・スタッフ専用です。一般の領主は徳川家を選択できます。');
   if(s.clan!==ADMIN_CLAN&&!CLANS.some(c=>c.name===s.clan)||!CASTLE_BY_ID[s.home]||!['easy','normal','hard'].includes(s.difficulty))invalid();
@@ -699,7 +703,7 @@ function normalizeGameSave(raw, user, now, {reading=false,clock=null}={}) {
   if(!staff&&s.command>3+Math.floor(s.buildings.keep/8))invalid();
   if(!isObj(s.tech)||!TECHS.every(t=>num(s.tech[t.id],0,t.max)))invalid();
   const validOwner=new Set([...CASTLES.map(c=>c.clan),'在地衆',ADMIN_CLAN]);for(const c of CLANS)validOwner.add(c.name);
-  if(!isObj(s.castles)||Object.keys(s.castles).length!==CASTLES.length||!CASTLES.every(c=>{const v=s.castles[c.id];if(isObj(v)&&v.level===undefined)v.level=1;return isObj(v)&&validOwner.has(v.owner)&&num(v.troops,0,1000000)&&num(v.wall,1,32)&&num(v.level,1,castleLevelLimit(c.id));}))invalid();
+  if(!isObj(s.castles)||Object.keys(s.castles).length!==CASTLES.length||!CASTLES.every(c=>{const v=s.castles[c.id];if(isObj(v)&&v.level===undefined)v.level=1;return isObj(v)&&validOwner.has(v.owner)&&num(v.troops,0,1000000)&&num(v.wall,1,32)&&num(v.level,1,incomingCastleLimit(c.id));}))invalid();
   if(!Array.isArray(s.officers)||s.officers.length>g.roster.length||new Set(s.officers).size!==s.officers.length||s.officers.some(id=>typeof id!=='string'||!g.officer(id)))invalid();
   if(!Array.isArray(s.army)||s.army.length>3||new Set(s.army).size!==s.army.length||s.army.some(id=>!s.officers.includes(id)))invalid();
   if(!isObj(s.governors)||Object.keys(s.governors).some(id=>!BUILDINGS.some(b=>b.id===id)||!staff&&s.buildings[id]<1)||Object.values(s.governors).some(id=>!s.officers.includes(id)||s.army.includes(id))||new Set(Object.values(s.governors)).size!==Object.values(s.governors).length)invalid();
@@ -715,8 +719,9 @@ function normalizeGameSave(raw, user, now, {reading=false,clock=null}={}) {
   if(!Array.isArray(s.jobs)||s.jobs.length>193)invalid();
   for(const j of s.jobs){if(!isObj(j))invalid();if(j.remainingSeconds===undefined)j.remainingSeconds=j.remaining*60;if(j.totalSeconds===undefined)j.totalSeconds=j.total*60;if(!scalar(j.remainingSeconds,.00000001,180)||!num(j.totalSeconds,60,180)||j.totalSeconds!==j.total*60||j.remainingSeconds>j.totalSeconds||j.remaining!==Math.ceil((j.remainingSeconds-1e-8)/60))invalid();}
 
-  const jobkeys=new Map();for(const j of s.jobs){if(!isObj(j)||!['building','castle','research'].includes(j.kind)||!num(j.remaining,1,3)||!num(j.total,1,3)||j.remaining>j.total)invalid();const defs=j.kind==='building'?BUILDINGS:j.kind==='castle'?CASTLES:TECHS,current=j.kind==='castle'?s.castles[j.id]?.level:(j.kind==='building'?s.buildings:s.tech)[j.id],key=j.kind+':'+j.id,count=jobkeys.get(key)||0;if(!defs.some(d=>d.id===j.id)||j.targetLevel!==current+count+1||j.targetLevel>(j.kind==='research'?5:j.kind==='castle'?castleLevelLimit(j.id):32)||j.kind==='castle'&&s.castles[j.id]?.owner!==s.clan||count&&(j.kind!=='building'||j.remainingSeconds!==j.totalSeconds))invalid();jobkeys.set(key,count+1);}
+  const jobkeys=new Map();for(const j of s.jobs){if(!isObj(j)||!['building','castle','research'].includes(j.kind)||!num(j.remaining,1,3)||!num(j.total,1,3)||j.remaining>j.total)invalid();const defs=j.kind==='building'?BUILDINGS:j.kind==='castle'?CASTLES:TECHS,current=j.kind==='castle'?s.castles[j.id]?.level:(j.kind==='building'?s.buildings:s.tech)[j.id],key=j.kind+':'+j.id,count=jobkeys.get(key)||0;if(!defs.some(d=>d.id===j.id)||j.targetLevel!==current+count+1||j.targetLevel>(j.kind==='research'?5:j.kind==='castle'?incomingCastleLimit(j.id):32)||j.kind==='castle'&&s.castles[j.id]?.owner!==s.clan||count&&(j.kind!=='building'||j.remainingSeconds!==j.totalSeconds))invalid();jobkeys.set(key,count+1);}
   if(s.jobs.filter(j=>j.kind==='research').length>1||[...jobkeys.keys()].filter(key=>!key.startsWith('research:')).length>(staff||serviceSave?6:2+Math.floor(s.buildings.keep/8)))invalid();
+  if(reading){for(const id of FIELD_CAPTURE_CASTLES)s.castles[id].level=Math.min(48,s.castles[id].level);s.jobs=s.jobs.filter(job=>job.kind!=='castle'||job.targetLevel<=castleLevelLimit(job.id));}
   s.jobs=s.jobs.map(job=>pick(job,['kind','id','remaining','total','remainingSeconds','totalSeconds','targetLevel']));
   if(!isObj(s.treaties)||Object.entries(s.treaties).some(([k,v])=>!validOwner.has(k)||k===s.clan||!num(v,0,MAX_TURN+6)))invalid();
   if(!isObj(s.scouted)||Object.entries(s.scouted).some(([k,v])=>!CASTLE_BY_ID[k]||!num(v,0,MAX_TURN+6)))invalid();
@@ -930,7 +935,9 @@ async function staffClanPolicy(db,clock,now) {
 async function staffBaseDto(db,user,clock,now,row=undefined) {
   row=row||await sharedStaffBaseRow(db,clock,now);const state=JSON.parse(row.state_json),backup=await stmt(db,'SELECT joined_elapsed_ms,save_json FROM staff_campaign_backups WHERE user_id=? AND active=1',user.id).first();
   const personal=backup?.save_json?JSON.parse(backup.save_json).state:null,accessSince=Number(backup?.joined_elapsed_ms??user.staff_since_ms??clock.elapsedMs),clanSince=Math.max(accessSince,await staffClanPolicy(db,clock,now));
-  return {id:'sunpu',revision:Number(row.revision),protected:true,...state,accessSinceElapsedMs:accessSince,clanSinceElapsedMs:clanSince,...(personal?{personalClan:personal.clan,personalHome:personal.home,personalCycleHome:personal.cycle?.home||personal.home,personalHomeCastle:copy(personal.castles[personal.home]),personalSunpu:copy(personal.castles.sunpu)}:{})};
+  const personalHomeCastle=personal?copy(personal.castles[personal.home]):null;
+  if(personalHomeCastle&&FIELD_CAPTURE_CASTLES.includes(personal.home)&&Number.isInteger(personalHomeCastle.level)&&personalHomeCastle.level>=49&&personalHomeCastle.level<=64)personalHomeCastle.level=48;
+  return {id:'sunpu',revision:Number(row.revision),protected:true,...state,accessSinceElapsedMs:accessSince,clanSinceElapsedMs:clanSince,...(personal?{personalClan:personal.clan,personalHome:personal.home,personalCycleHome:personal.cycle?.home||personal.home,personalHomeCastle,personalSunpu:copy(personal.castles.sunpu)}:{})};
 }
 function renameCampaignClan(state,clan) {if(state.clan===clan)return;const previous=state.clan;for(const castle of Object.values(state.castles)){if(castle.owner===previous)castle.owner=clan;else if(castle.owner===clan)castle.owner='在地衆';}state.clan=clan;delete state.treaties[clan];}
 function restorePersonalCampaign(save,backup,user) {
@@ -950,12 +957,16 @@ function restorePersonalCampaign(save,backup,user) {
 // Personal campaign development is retained separately from the shared base.
 // This metadata never grants a role, and every write is gated by the parent
 // save mutation, so failed/replayed operations cannot change either copy.
-async function staffPersonalProgressStatement(db,user,save,now,gate,gateArgs,progress=null) {
+async function staffPersonalProgressStatement(db,user,save,now,gate,gateArgs,progress=null,capture=null) {
   const backup=await stmt(db,'SELECT * FROM staff_campaign_backups WHERE user_id=? AND active=1',user.id).first();if(!backup)return null;
   const personal=JSON.parse(backup.save_json),home=personal.state.home,old=personal.state.castles[home];
   const current=progress?.home===home?progress.castle:save.state.castles[home];
   if(current&&(current.owner===save.state.clan||progress&&current.owner===personal.state.clan))for(const key of ['level','wall','troops'])old[key]=Math.max(old[key],current[key]);
   old.level=Math.min(castleLevelLimit(home),old.level);
+  // A staff member's original home can also be a public outpost. Its loss must
+  // reach the personal metadata in this same transaction, or dismissal would
+  // recreate that city from the original appointment backup.
+  if(capture){const lost=personal.state.castles[capture.castleId];if(home===capture.castleId)for(const key of ['level','wall','troops'])lost[key]=capture.castle[key];fieldLoseCastle(personal.state,capture.castleId,capture.fallbackHomeId);}
   return stmt(db,`UPDATE staff_campaign_backups SET save_json=?,updated_at=? WHERE user_id=? AND active=1 AND term_id=? AND ${gate}`,JSON.stringify(personal),now,user.id,backup.term_id,...gateArgs);
 }
 async function advanceDepartingStaff(db,row,user,backup,now,clock) {
@@ -1200,7 +1211,7 @@ async function syncSnapshot(db,row,user,deviceId,now,{settle=false}={}) {
     entitlements:{edo:!!user.is_admin,ieyasuU:!!user.is_admin}};
 }
 
-const FIELD_RULES=Object.freeze({minTroops:300,maxTroops:100000,commandCost:1,foodBase:150,foodPerTroop:.3,attackCooldownMs:60000,defenderProtectionMs:60000,proposalLifetimeMs:600000,allianceDurationMs:360000,maxLootPerResource:500,maxLootFraction:.05,maxDefenderLossFraction:.1,operatorProtected:true,staffProtected:true,
+const FIELD_RULES=Object.freeze({minTroops:300,maxTroops:100000,commandCost:1,foodBase:150,foodPerTroop:.3,attackCooldownMs:60000,defenderProtectionMs:60000,proposalLifetimeMs:600000,allianceDurationMs:360000,maxLootPerResource:500,maxLootFraction:.05,maxDefenderLossFraction:.1,operatorProtected:false,staffProtected:false,targetCastles:true,specialBaseBattles:true,captureCastles:FIELD_CAPTURE_CASTLES,uncapturableCastles:['edo','sunpu'],victoryRewards:{gold:500,rice:500,wood:500,stone:500},
   tactics:[{id:'balanced',name:'正攻法',food:1,modifier:1,loss:1},{id:'assault',name:'総攻撃',food:1.25,modifier:1.18,loss:1.35},{id:'siege',name:'包囲戦',food:1.65,modifier:.97,loss:.8},{id:'ambush',name:'伏兵',food:1.1,modifier:1.06,loss:.95}]});
 const FIELD_SELECT=`SELECT u.id,u.name,u.clan,u.last_seen,s.revision,s.lease_expires_at,s.cycle_home,${EFFECTIVE_CYCLE_SQL} AS cycle_index,json_extract(s.save_json,'$.state.cycle.home') AS original_home,
   (SELECT a.version FROM user_avatars a WHERE a.user_id=u.id) AS avatar_version,
@@ -1215,6 +1226,7 @@ const FIELD_SELECT=`SELECT u.id,u.name,u.clan,u.last_seen,s.revision,s.lease_exp
   (SELECT MAX(p.last_seen) FROM player_presence p WHERE p.user_id=u.id AND p.online=1) AS presence_seen,
   (SELECT MAX(b.occurred_elapsed_ms) FROM field_battles b WHERE b.attacker_id=u.id) AS last_attack_ms,
   (SELECT MAX(b.occurred_elapsed_ms) FROM field_battles b WHERE b.defender_id=u.id) AS last_defended_ms,
+  (SELECT MAX(b.occurred_elapsed_ms) FROM field_battles b WHERE json_extract(b.result_json,'$.castleId')='sunpu') AS last_sunpu_defended_ms,
   json_extract(s.save_json,'$.state.clan') AS game_clan,json_extract(s.save_json,'$.state.home') AS home_id,
   json_extract(s.save_json,'$.state.troops') AS troops,json_extract(s.save_json,'$.state.castles') AS castles_json,
   json_extract(s.save_json,'$.state.buildings.keep') AS keep_level,
@@ -1227,11 +1239,12 @@ function fieldArmy(army,variants) {
   const scores=army.map(id=>Math.max(...RANKS.map((rank,i)=>variants.includes(id+':'+rank)?powers[i]:0))||1);
   return {officerCount:army.length,rankPower:army.length?Math.round(scores.reduce((a,b)=>a+b,0)/army.length*1000)/1000:.75};
 }
-function fieldDefense(s,tactic='balanced',siege=0) {
-  const home=s.castles[s.home],force=home.troops+Math.floor(s.troops*.45),army=fieldArmy(s.army,s.officerVariants);
+function fieldDefense(s,tactic='balanced',siege=0,castleId=s.home) {
+  const home=s.castles[castleId],isHome=castleId===s.home,force=home.troops+Math.floor(s.troops*(isHome?.45:.18)),army=fieldArmy(s.army,s.officerVariants);
   const wallFactor=Math.max(.2,1-siege*.12)*(tactic==='siege'?.5:1);
-  return {force,power:Math.max(1,Math.round((force+200)*(1+s.buildings.wall*.11*wallFactor)*(1+s.tech.discipline*.06)*(1+(home.level-1)*.04)*army.rankPower)),army};
+  return {force,power:Math.max(1,Math.round((force+200)*(1+(isHome?s.buildings.wall:home.wall)*.11*wallFactor)*(1+s.tech.discipline*.06)*(1+(home.level-1)*.04)*army.rankPower)),army};
 }
+function fieldBattleMode(user,castleId,{legacy=false}={}) {return castleId==='edo'&&user.is_admin||castleId==='sunpu'&&user.is_staff&&!user.is_admin?'reward':!legacy&&FIELD_CAPTURE_CASTLES.includes(castleId)?'capture':'raid';}
 function fieldRelationStatus(row,userId,elapsed) {
   if(!row||Number(row.expires_elapsed_ms)<=elapsed||Number(row.updated_elapsed_ms)<Math.floor(elapsed/WORLD_CYCLE_MS)*WORLD_CYCLE_MS)return 'neutral';
   if(row.status==='allied')return 'allied';
@@ -1243,25 +1256,31 @@ function mapFieldRelationship(row,userId,elapsed,targetName='') {
   if(status==='neutral')return null;
   return {targetPlayerId:row.user_a===userId?row.user_b:row.user_a,targetName,status,expiresElapsedMs:Number(row.expires_elapsed_ms),remainingMs:Math.max(0,Number(row.expires_elapsed_ms)-elapsed),proposedBy:row.proposed_by,revision:Number(row.revision)};
 }
-function mapFieldPlayer(row,viewer,relationship,clock,now) {
+function mapFieldPlayer(row,viewer,relationship,clock,now,targetCastleId=null) {
   const castles=JSON.parse(row.castles_json),cyclePending=Number(row.cycle_index)<Math.floor(clock.elapsedMs/WORLD_CYCLE_MS),storedHome=cyclePending?(row.cycle_home||row.original_home||row.home_id):row.home_id;
   const clan=publicClan(row.game_clan,row.is_admin,row.is_staff,row.personal_clan);
   const alternatives=CASTLES.filter(c=>!['edo','sunpu'].includes(c.id)&&castles[c.id].owner===row.game_clan),canonical=CLAN_HOMES[clan]||'kiyosu';
   const replacement=alternatives.find(c=>c.id===canonical)?.id||alternatives[0]?.id||canonical;
   const home=row.is_admin?'edo':row.is_staff?'sunpu':['edo','sunpu'].includes(storedHome)?row.personal_home&&!['edo','sunpu'].includes(row.personal_home)?row.personal_home:replacement:storedHome;
-  const castle={...(!row.is_admin&&storedHome==='edo'&&!alternatives.length&&castles.edo.owner===row.game_clan?castles.edo:castles[home])};
-  if(row.is_admin&&storedHome!=='edo')for(const key of ['troops','wall','level'])castle[key]=Math.max(castle[key],castles[storedHome][key]);
-  if(!row.is_admin&&!row.is_staff&&storedHome==='sunpu'){const personal=row.personal_castle_json?JSON.parse(row.personal_castle_json):castles.sunpu;for(const key of ['troops','wall','level'])castle[key]=Math.max(castle[key],personal[key]);}
-  if(row.is_staff&&!row.is_admin){castle.level=Number(row.staff_castle_level||1);castle.wall=Number(row.staff_wall||1);row.wall=castle.wall;}
-  const rawKeepLevel=row.is_staff&&!row.is_admin?row.staff_keep_level:row.keep_level;
+  const castleId=targetCastleId||home,isHome=castleId===home,battleMode=fieldBattleMode(row,castleId);
+  const castle={...(!isHome?castles[castleId]:!row.is_admin&&storedHome==='edo'&&!alternatives.length&&castles.edo.owner===row.game_clan?castles.edo:castles[home])};
+  if(isHome&&row.is_admin&&storedHome!=='edo')for(const key of ['troops','wall','level'])castle[key]=Math.max(castle[key],castles[storedHome][key]);
+  if(isHome&&!row.is_admin&&!row.is_staff&&storedHome==='sunpu'){const personal=row.personal_castle_json?JSON.parse(row.personal_castle_json):castles.sunpu;for(const key of ['troops','wall','level'])castle[key]=Math.max(castle[key],personal[key]);}
+  if(isHome&&row.is_staff&&!row.is_admin){castle.level=Number(row.staff_castle_level||1);castle.wall=Number(row.staff_wall||1);}
+  castle.level=Math.min(castleLevelLimit(castleId),castle.level);
+  const rawKeepLevel=!isHome?castle.level:row.is_staff&&!row.is_admin?row.staff_keep_level:row.keep_level;
   const keepLevel=Number.isFinite(rawKeepLevel)?Math.max(1,Math.min(32,Math.floor(rawKeepLevel))):1;
-  castle.level=Math.min(castleLevelLimit(home),castle.level);
-  if(cyclePending){castle.troops=Math.max(1200,castle.troops);castle.wall=Math.max(castle.wall,Number(row.wall));}
-  const state={home,troops:Number(row.troops),castles:{[home]:castle},buildings:{wall:Number(row.wall)},tech:{discipline:Number(row.discipline)},army:JSON.parse(row.army_json||'[]'),officerVariants:JSON.parse(row.variants_json||'[]')};
-  const defense=fieldDefense(state),self=viewer?.id===row.id,relation=self?'self':fieldRelationStatus(relationship,viewer?.id,clock.elapsedMs);
-  const protectedUntil=row.last_defended_ms===null?0:Number(row.last_defended_ms)+FIELD_RULES.defenderProtectionMs;
-  const reason=!viewer?'領主として接続してください。':self?'自分の本拠です。':row.is_admin?'運営の江戸城は保護されています。':row.is_staff?'スタッフの駿府城は保護されています。':cyclePending&&Number(row.lease_expires_at)>now?'この領主は領地を精算中です。':relation==='allied'?'同盟の期間中です。':protectedUntil>clock.elapsedMs?'襲撃後の保護期間です。':!clock.running?'世界の共通時間が停止中です。':'';
-  return {playerId:row.id,name:row.name,clan,avatarVersion:row.avatar_version||null,homeCastleId:home,homeCastleName:CASTLE_BY_ID[home].name,majorCity:MAJOR_CITIES.includes(home),level:castle.level,keepLevel,defenseTroops:defense.force,defensePower:defense.power,armySummary:defense.army,isAdmin:!!row.is_admin,isStaff:!!row.is_staff&&!row.is_admin,self,online:row.presence_seen!==null&&Number(row.presence_seen)>now-ONLINE_WINDOW,relationship:relation,protectedUntilElapsedMs:protectedUntil,attackable:!reason,attackReason:reason};
+  if(cyclePending&&isHome&&battleMode!=='reward'){castle.troops=Math.max(1200,castle.troops);castle.wall=Math.max(castle.wall,Number(row.wall));}
+  const state={home,troops:Number(row.troops),castles:{[castleId]:castle},buildings:{wall:isHome&&row.is_staff&&!row.is_admin?castle.wall:Number(row.wall)},tech:{discipline:Number(row.discipline)},army:JSON.parse(row.army_json||'[]'),officerVariants:JSON.parse(row.variants_json||'[]')};
+  const defense=fieldDefense(state,'balanced',0,castleId),self=viewer?.id===row.id,relation=self?'self':fieldRelationStatus(relationship,viewer?.id,clock.elapsedMs);
+  const lastDefended=Math.max(row.last_defended_ms??-Infinity,battleMode==='reward'&&castleId==='sunpu'?(row.last_sunpu_defended_ms??-Infinity):-Infinity),protectedUntil=Number.isFinite(lastDefended)?lastDefended+FIELD_RULES.defenderProtectionMs:0;
+  const reason=!viewer?'領主として接続してください。':self?'自分の城です。':cyclePending&&battleMode!=='reward'&&Number(row.lease_expires_at)>now?'この領主は領地を精算中です。':relation==='allied'?'同盟の期間中です。':protectedUntil>clock.elapsedMs?'襲撃後の保護期間です。':!clock.running?'世界の共通時間が停止中です。':'';
+  return {playerId:row.id,name:row.name,clan,avatarVersion:row.avatar_version||null,homeCastleId:home,homeCastleName:CASTLE_BY_ID[home].name,targetCastleId:castleId,targetCastleName:CASTLE_BY_ID[castleId].name,isHome,battleMode,capturable:battleMode==='capture',majorCity:MAJOR_CITIES.includes(castleId),level:castle.level,keepLevel,defenseTroops:defense.force,defensePower:defense.power,armySummary:defense.army,isAdmin:!!row.is_admin,isStaff:!!row.is_staff&&!row.is_admin,self,online:row.presence_seen!==null&&Number(row.presence_seen)>now-ONLINE_WINDOW,relationship:relation,protectedUntilElapsedMs:protectedUntil,attackable:!reason,attackReason:reason};
+}
+function mapFieldTargets(row,viewer,relationship,clock,now) {
+  const home=mapFieldPlayer(row,viewer,relationship,clock,now),castles=JSON.parse(row.castles_json);
+  const outposts=Number(row.cycle_index)<Math.floor(clock.elapsedMs/WORLD_CYCLE_MS)?[]:FIELD_CAPTURE_CASTLES.filter(id=>id!==home.homeCastleId&&castles[id]?.owner===row.game_clan);
+  return [home,...outposts.map(id=>mapFieldPlayer(row,viewer,relationship,clock,now,id))];
 }
 async function fieldRelation(db,a,b) {const [first,second]=pair(a,b);return stmt(db,'SELECT * FROM field_relations WHERE user_a=? AND user_b=?',first,second).first();}
 async function fieldOwnRelations(db,userId,elapsed) {
@@ -1275,7 +1294,8 @@ async function getFieldList(db,viewer,url,now) {
   const limit=Number(limitText),clock=await getWorldClock(db,now),relations=viewer?await fieldOwnRelations(db,viewer.id,clock.elapsedMs):[];await cyclePolicy(db,clock,now);const currentCycle=Math.floor(clock.elapsedMs/WORLD_CYCLE_MS);await sharedStaffBaseRow(db,clock,now);
   const result=await db.batch([stmt(db,FIELD_SELECT+' AND u.id>? ORDER BY u.id LIMIT ?',currentCycle,cursor,limit+1),stmt(db,`SELECT COUNT(*) AS count FROM player_saves s WHERE save_json IS NOT NULL AND (COALESCE(json_extract(save_json,'$.state.gameOver'),0)=0 OR user_id=(SELECT value FROM settings WHERE key='adminUserId') OR EXISTS(SELECT 1 FROM staff_members sm WHERE sm.user_id=s.user_id) OR ${EFFECTIVE_CYCLE_SQL}<?)`,currentCycle)]);
   const found=rows(result[0]),players=found.slice(0,limit).map(row=>mapFieldPlayer(row,viewer,relations.find(r=>r.user_a===row.id||r.user_b===row.id),clock,now));
-  return {ok:true,players,total:Number(rows(result[1])[0].count),nextCursor:found.length>limit?players.at(-1).playerId:null,clock,rules:FIELD_RULES};
+  const targets=found.slice(0,limit).flatMap(row=>mapFieldTargets(row,viewer,relations.find(r=>r.user_a===row.id||r.user_b===row.id),clock,now));
+  return {ok:true,players,targets,total:Number(rows(result[1])[0].count),nextCursor:found.length>limit?players.at(-1).playerId:null,clock,rules:FIELD_RULES};
 }
 function fieldWriter(row,deviceId,revision,now) {
   if(!row?.save_json)fail(409,'SAVE_REQUIRED','先に本拠をクラウドへ保存してください。');
@@ -1288,11 +1308,12 @@ async function settleWriterCycle(db,user,deviceId,revision,now) {
   const settled=await settlePlayerCycle(db,prior,user,now,undefined,{deferActive:false,writerDeviceId:deviceId});fieldWriter(settled,deviceId,revision,now);return settled;
 }
 function fieldRequestBody(body,kind) {
-  const allowed=kind==='attack'?['targetPlayerId','troops','tactic','requestId','deviceId','expectedRevision']:['targetPlayerId','action','requestId','deviceId','expectedRevision'];
+  const allowed=kind==='attack'?['targetPlayerId','targetCastleId','troops','tactic','requestId','deviceId','expectedRevision']:['targetPlayerId','action','requestId','deviceId','expectedRevision'];
   if(Object.keys(body).some(key=>!allowed.includes(key)))fail(400,'INVALID_INPUT','送信できない操作項目が含まれています。');
   const targetPlayerId=idField(body.targetPlayerId,'相手の領主'),requestId=idField(body.requestId,'操作番号'),deviceId=idField(body.deviceId,'端末');
   if(!Number.isSafeInteger(body.expectedRevision)||body.expectedRevision<0)fail(400,'INVALID_INPUT','保存の更新番号が正しくありません。');
   if(kind==='attack'&&(!Number.isInteger(body.troops)||body.troops<FIELD_RULES.minTroops||body.troops>FIELD_RULES.maxTroops||!FIELD_RULES.tactics.some(t=>t.id===body.tactic)))fail(400,'INVALID_INPUT','兵数と戦法を正しく指定してください。');
+  if(kind==='attack'&&body.targetCastleId!==undefined&&(typeof body.targetCastleId!=='string'||!CASTLE_BY_ID[body.targetCastleId]))fail(400,'INVALID_INPUT','攻撃する城を確認してください。');
   if(kind==='diplomacy'&&!['propose','accept','reject','cancel'].includes(body.action))fail(400,'INVALID_INPUT','外交操作が正しくありません。');
   return {...body,targetPlayerId,requestId,deviceId};
 }
@@ -1318,60 +1339,122 @@ async function fieldCommitFailure(db,user,body,kind,digest,clock,now) {
   if((await getWorldClock(db,now)).revision!==clock.revision)fail(409,'WORLD_CLOCK_CHANGED','運営が共通時計を更新しました。同期してからお試しください。');
   fail(409,'FIELD_CHANGED','相手の本拠または外交関係が更新されました。共有地図を更新してからお試しください。');
 }
+function fieldFallbackHome(s,preferred=null) {
+  const ordinary=id=>!!CASTLE_BY_ID[id]&&!MAJOR_CITIES.includes(id),owned=id=>ordinary(id)&&s.castles[id].owner===s.clan;
+  return [preferred,s.cycle?.home,CLAN_HOMES[s.clan]].find(owned)||CASTLES.find(c=>owned(c.id))?.id||[preferred,s.cycle?.home,CLAN_HOMES[s.clan],'kiyosu'].find(ordinary);
+}
+function fieldLoseCastle(s,castleId,preferred=null) {
+  const castle=s.castles[castleId],lostHome=s.home===castleId,lostCycleHome=s.cycle?.home===castleId;
+  let fallback=null;
+  if(lostHome||lostCycleHome){
+    fallback=fieldFallbackHome(s,preferred);const next=s.castles[fallback],existing=next.owner===s.clan;
+    next.owner=s.clan;next.level=Math.min(castleLevelLimit(fallback),Math.max(next.level,castle.level));
+    next.wall=Math.max(next.wall,castle.wall,s.buildings.wall);
+    next.troops=Math.min(1000000,(existing?next.troops:0)+castle.troops);castle.troops=0;
+    if(lostHome)s.home=fallback;if(s.cycle)s.cycle.home=fallback;
+    if(!s.captureRewards.includes(fallback))s.captureRewards.push(fallback);
+    // Facilities and their construction queues follow the home. Preserve a
+    // surviving fallback castle job; otherwise carry the old home job across.
+    const currentJob=s.jobs.find(j=>j.kind==='castle'&&j.id===fallback),lostJob=s.jobs.find(j=>j.kind==='castle'&&j.id===castleId);
+    s.jobs=s.jobs.filter(j=>j.kind!=='castle'||j.id!==castleId&&j.id!==fallback);
+    const job=currentJob||lostJob;if(job&&next.level<castleLevelLimit(fallback))s.jobs.push({...job,id:fallback,targetLevel:next.level+1});
+  }else s.jobs=s.jobs.filter(j=>j.kind!=='castle'||j.id!==castleId);
+  // Clan names are not player identities; same-clan opponents must still lose
+  // this individual holding. The next public target belongs to the victor.
+  castle.owner='在地衆';s.gameOver=false;
+  return fallback;
+}
+function fieldCaptureCastle(a,d,castleId,sent,attackerLost) {
+  const source=copy(d.castles[castleId]),newlyOwned=a.castles[castleId].owner!==a.clan;
+  let garrison=0;
+  if(newlyOwned){
+    garrison=Math.min(a.troops,Math.floor((sent-attackerLost)*.15));a.troops-=garrison;
+    a.castles[castleId]={owner:a.clan,troops:garrison,wall:source.wall,level:Math.min(castleLevelLimit(castleId),source.level)};
+  }
+  if(!a.captureRewards.includes(castleId))a.captureRewards.push(castleId);
+  const fallbackHomeId=fieldLoseCastle(d,castleId);
+  return {newlyOwned,garrison,castleId,castle:source,fallbackHomeId};
+}
+async function fieldStaffDefense(db,state,clock) {
+  // Read the real shared fortification without settling its queue or writing
+  // any defender state. Due jobs are projected only for this battle snapshot.
+  const row=await stmt(db,"SELECT * FROM staff_base WHERE id='sunpu'").first(),shared=row?JSON.parse(row.state_json):staffInitialState(clock.elapsedMs);
+  for(const job of shared.jobs.filter(j=>j.completesElapsedMs<=clock.elapsedMs).sort((a,b)=>a.completesElapsedMs-b.completesElapsedMs)){if(job.kind==='castle')shared.castleLevel=job.targetLevel;else shared.buildings[job.id]=job.targetLevel;}
+  state.castles.sunpu.level=shared.castleLevel;state.castles.sunpu.wall=shared.buildings.wall;state.buildings.wall=shared.buildings.wall;
+  return row?{sql:"EXISTS(SELECT 1 FROM staff_base WHERE id='sunpu' AND revision=?)",args:[row.revision]}:{sql:"NOT EXISTS(SELECT 1 FROM staff_base WHERE id='sunpu')",args:[]};
+}
 async function fieldAttack(db,user,raw,now) {
-  const body=fieldRequestBody(raw,'attack'),digest=await hash(JSON.stringify(['attack',body.targetPlayerId,body.troops,body.tactic]));
-  const prior=await priorFieldRequest(db,user.id,body,'attack',digest);if(prior)return fieldReplayAttack(db,user,body,prior,now);
-  if(body.targetPlayerId===user.id)fail(400,'INVALID_TARGET','自分の本拠には出陣できません。');
+  const body=fieldRequestBody(raw,'attack'),intent=['attack',body.targetPlayerId,body.troops,body.tactic];
+  if(body.targetCastleId!==undefined)intent.push(body.targetCastleId);
+  const digest=await hash(JSON.stringify(intent)),prior=await priorFieldRequest(db,user.id,body,'attack',digest);if(prior)return fieldReplayAttack(db,user,body,prior,now);
+  if(body.targetPlayerId===user.id)fail(400,'INVALID_TARGET','自分の城には出陣できません。');
   await budget(db,'field-attack:'+user.id,30,60000,now);
   const target=await getUser(db,body.targetPlayerId);if(!target)fail(404,'FIELD_PLAYER_NOT_FOUND','相手の本拠が見つかりません。');
-  if(target.is_admin||target.is_staff)fail(403,'TARGET_PROTECTED',target.is_admin?'運営の江戸城は保護されています。':'スタッフの駿府城は保護されています。');
   const attackerRow=await settleWriterCycle(db,user,body.deviceId,body.expectedRevision,now);
-  const defenderRow=await settlePlayerCycle(db,await getSyncRow(db,target.id),target,now,undefined,{deferActive:true});if(!defenderRow?.save_json)fail(404,'FIELD_PLAYER_NOT_FOUND','相手の本拠はまだ共有されていません。');
+  let defenderRow=await getSyncRow(db,target.id);if(!defenderRow?.save_json)fail(404,'FIELD_PLAYER_NOT_FOUND','相手の本拠はまだ共有されていません。');
+  const initialHome=target.is_admin?'edo':target.is_staff?'sunpu':JSON.parse(defenderRow.save_json).state.home;
+  const requestedCastle=body.targetCastleId||initialHome,rewardOnly=fieldBattleMode(target,requestedCastle)==='reward';
+  if(!rewardOnly)defenderRow=await settlePlayerCycle(db,defenderRow,target,now,undefined,{deferActive:true});
   const clock=await getWorldClock(db,now);if(!clock.running)fail(409,'WORLD_PAUSED','世界の共通時間が停止中です。');
   const attacker=normalizeGameSave(JSON.parse(attackerRow.save_json),user,now,{reading:true,clock}),defender=normalizeGameSave(JSON.parse(defenderRow.save_json),target,now,{reading:true,clock}),a=attacker.state,d=defender.state;
-  if(Math.min(Number(attackerRow.cycle_index),Number(defenderRow.cycle_index))<Math.floor(clock.elapsedMs/WORLD_CYCLE_MS))fail(409,'CYCLE_SETTLEMENT_REQUIRED','領地の精算中です。共有地図を更新してください。');
+  const castleId=body.targetCastleId||d.home,battleMode=fieldBattleMode(target,castleId,{legacy:body.targetCastleId===undefined});
+  if(castleId!==d.home&&(!FIELD_CAPTURE_CASTLES.includes(castleId)||d.castles[castleId].owner!==d.clan))fail(409,'FIELD_TARGET_CHANGED','この領主の攻撃可能な城ではありません。共有地図を更新してください。');
+  if(Number(attackerRow.cycle_index)<Math.floor(clock.elapsedMs/WORLD_CYCLE_MS)||battleMode!=='reward'&&Number(defenderRow.cycle_index)<Math.floor(clock.elapsedMs/WORLD_CYCLE_MS))fail(409,'CYCLE_SETTLEMENT_REQUIRED','領地の精算中です。共有地図を更新してください。');
   if(a.gameOver||d.gameOver)fail(409,'BASE_UNAVAILABLE','本拠を失っている領主とは戦えません。');
   if(!a.worldClock)fail(409,'CLOCK_ANCHOR_REQUIRED','先に共通時計へ同期してください。');
   if(clock.elapsedMs-a.worldClock.elapsedMs>15000)fail(409,'CLOCK_STALE','共通時計と本拠を同期してから出陣してください。');
   const relation=await fieldRelation(db,user.id,target.id);if(fieldRelationStatus(relation,user.id,clock.elapsedMs)==='allied')fail(409,'ALLIED_TARGET','同盟期間中の相手には出陣できません。');
   const cooldown=await stmt(db,'SELECT MAX(occurred_elapsed_ms) AS last FROM field_battles WHERE attacker_id=?',user.id).first();
   if(cooldown.last!==null&&Number(cooldown.last)+FIELD_RULES.attackCooldownMs>clock.elapsedMs)fail(409,'ATTACK_COOLDOWN','次の出陣まで共通時間で60秒お待ちください。');
-  const shield=await stmt(db,'SELECT MAX(occurred_elapsed_ms) AS last FROM field_battles WHERE defender_id=?',target.id).first();
+  const sharedShield=battleMode==='reward'&&castleId==='sunpu';
+  const shield=await stmt(db,"SELECT MAX(occurred_elapsed_ms) AS last FROM field_battles WHERE defender_id=? OR (?=1 AND json_extract(result_json,'$.castleId')='sunpu')",target.id,sharedShield?1:0).first();
   if(shield.last!==null&&Number(shield.last)+FIELD_RULES.defenderProtectionMs>clock.elapsedMs)fail(409,'TARGET_PROTECTED','相手は襲撃後の保護期間です。');
   const tactic=FIELD_RULES.tactics.find(t=>t.id===body.tactic),foodCost=Math.ceil(body.troops*FIELD_RULES.foodPerTroop*tactic.food)+FIELD_RULES.foodBase;
   if(body.troops>a.troops||a.command<1||a.resources.rice<foodCost)fail(409,'INSUFFICIENT_FORCE','兵数・指示・兵糧が足りません。');
-  const attackPower=Math.max(1,Math.round(body.troops*(.7+.5*a.morale/100)*(1+a.tech.discipline*.06+a.tech.gunnery*.05)*fieldArmy(a.army,a.officerVariants).rankPower*tactic.modifier));
-  const defense=fieldDefense(d,tactic.id,a.tech.siege),ratio=attackPower/defense.power,chance=Math.max(.05,Math.min(.95,.5+Math.log(ratio)*.6));
+  const sharedGuard=sharedShield?await fieldStaffDefense(db,d,clock):{sql:'1=1',args:[]};
+  const attackerBefore=copy(attacker),attackPower=Math.max(1,Math.round(body.troops*(.7+.5*a.morale/100)*(1+a.tech.discipline*.06+a.tech.gunnery*.05)*fieldArmy(a.army,a.officerVariants).rankPower*tactic.modifier));
+  const defense=fieldDefense(d,tactic.id,a.tech.siege,castleId),ratio=attackPower/defense.power,chance=Math.max(.05,Math.min(.95,.5+Math.log(ratio)*.6));
   const won=crypto.getRandomValues(new Uint32Array(1))[0]/4294967296<chance;
   const attackerLost=Math.min(body.troops,Math.max(1,Math.floor(body.troops*Math.min(.35,(won?.08+.06/Math.max(.3,ratio):.2+.06/Math.max(.3,ratio))*tactic.loss))));
-  const home=d.castles[d.home],defenderLost={troops:Math.min(Math.floor(d.troops*.1),Math.floor(body.troops*(won?.04:.015))),garrison:Math.min(Math.floor(home.troops*.1),Math.floor(body.troops*(won?.08:.03)))};
-  a.troops-=attackerLost;a.resources.rice-=foodCost;a.command-=1;d.troops-=defenderLost.troops;home.troops-=defenderLost.garrison;
-  const loot=Object.fromEntries(RESOURCES.map(key=>{const amount=won?Math.min(500,Math.floor(d.resources[key]*.05),999999999-a.resources[key]):0;d.resources[key]-=amount;a.resources[key]+=amount;return [key,amount];}));
+  const castle=d.castles[castleId],defenderLost=battleMode==='reward'?{troops:0,garrison:0}:{troops:Math.min(Math.floor(d.troops*.1),Math.floor(body.troops*(won?.04:.015))),garrison:Math.min(Math.floor(castle.troops*.1),Math.floor(body.troops*(won?.08:.03)))};
+  a.troops-=attackerLost;a.resources.rice-=foodCost;a.command-=1;
+  if(battleMode!=='reward'){d.troops-=defenderLost.troops;castle.troops-=defenderLost.garrison;d.morale=Math.max(0,d.morale-2);}
+  const loot={},rewards={};
+  for(const key of RESOURCES){
+    loot[key]=won&&battleMode!=='reward'?Math.min(FIELD_RULES.maxLootPerResource,Math.floor(d.resources[key]*FIELD_RULES.maxLootFraction),999999999-a.resources[key]):0;
+    rewards[key]=won&&battleMode==='reward'?Math.min(FIELD_RULES.victoryRewards[key],999999999-a.resources[key]):0;
+    if(loot[key])d.resources[key]-=loot[key];a.resources[key]+=loot[key]+rewards[key];
+  }
+  const captured=won&&battleMode==='capture',captureChange=captured?fieldCaptureCastle(a,d,castleId,body.troops,attackerLost):null;
+  const capture={captured,castleId,castleName:CASTLE_BY_ID[castleId].name,attackerPlayerId:user.id,defenderPlayerId:target.id,defenderHomeCastleId:d.home,defenderHomeCastleName:CASTLE_BY_ID[d.home].name,newlyOwned:!!captureChange?.newlyOwned,garrison:captureChange?.garrison||0};
   a.stats.battles=Math.min(10000000,a.stats.battles+1);if(won)a.stats.wins=Math.min(a.stats.battles,a.stats.wins+1);
-  a.morale=Math.max(0,Math.min(100,a.morale+(won?3:-5)));d.morale=Math.max(0,d.morale-2);
-  const battle={id:uid('fb_'),requestId:body.requestId,attackerPlayerId:user.id,attackerName:user.name,defenderPlayerId:target.id,defenderName:target.name,castleId:d.home,castleName:CASTLE_BY_ID[d.home].name,won,tactic:body.tactic,troops:body.troops,attackerLost,defenderLost,foodCost,loot,attackPower,defensePower:defense.power,winChance:Math.round(chance*100),occurredElapsedMs:clock.elapsedMs,createdAt:iso(now),attackerRevision:Number(attackerRow.revision)+1,defenderRevision:Number(defenderRow.revision)+1,nextAttackElapsedMs:clock.elapsedMs+FIELD_RULES.attackCooldownMs,defenderProtectedUntilElapsedMs:clock.elapsedMs+FIELD_RULES.defenderProtectionMs};
-  a.log.unshift({turn:a.turn,text:`${target.name}の${battle.castleName}へ襲撃。${won?'戦利品を得て帰還':'撤退'}、兵${attackerLost}人を失いました。`,kind:'pvp'});a.log=a.log.slice(0,200);
-  d.log.unshift({turn:d.turn,text:`${user.name}の襲撃を受け、兵${defenderLost.troops+defenderLost.garrison}人を失いました。本拠の領有は継続しています。`,kind:'pvp'});d.log=d.log.slice(0,200);
-  attacker.savedAt=iso(now);defender.savedAt=iso(now);
-  const attackerJson=JSON.stringify(normalizeGameSave(attacker,user,now,{clock})),defenderJson=JSON.stringify(normalizeGameSave(defender,target,now,{clock})),resultJson=JSON.stringify(battle),nonce=crypto.randomUUID(),[first,second]=pair(user.id,target.id),roleGuard=roleCommitGuard(user);
-  // The operation row is a transaction-local gate. A D1 batch is atomic: both
-  // saves and the battle record are changed only if this exact nonce was inserted.
-  const result=await db.batch([
+  a.morale=Math.max(0,Math.min(100,a.morale+(won?3:-5)));
+  const battle={id:uid('fb_'),requestId:body.requestId,attackerPlayerId:user.id,attackerName:user.name,defenderPlayerId:target.id,defenderName:target.name,castleId,castleName:CASTLE_BY_ID[castleId].name,battleMode,won,tactic:body.tactic,troops:body.troops,attackerLost,defenderLost,foodCost,loot,rewards,capture,attackPower,defensePower:defense.power,winChance:Math.round(chance*100),occurredElapsedMs:clock.elapsedMs,createdAt:iso(now),attackerRevision:Number(attackerRow.revision)+1,defenderRevision:Number(defenderRow.revision)+(battleMode==='reward'?0:1),nextAttackElapsedMs:clock.elapsedMs+FIELD_RULES.attackCooldownMs,defenderProtectedUntilElapsedMs:clock.elapsedMs+FIELD_RULES.defenderProtectionMs};
+  a.log.unshift({turn:a.turn,text:`${target.name}の${battle.castleName}へ出陣。${won?captured?'城を占領':battleMode==='reward'?'勝利報酬を獲得':'戦利品を得て帰還':'撤退'}、兵${attackerLost}人を失いました。`,kind:'pvp'});a.log=a.log.slice(0,200);attacker.savedAt=iso(now);
+  if(battleMode!=='reward'){d.log.unshift({turn:d.turn,text:`${user.name}の襲撃を受け、兵${defenderLost.troops+defenderLost.garrison}人を失いました。${captured?battle.castleName+'を失い、'+capture.defenderHomeCastleName+'を本拠として継続します。':'本拠の領有は継続しています。'}`,kind:'pvp'});d.log=d.log.slice(0,200);defender.savedAt=iso(now);}
+  const attackerNext=normalizeGameSave(attacker,user,now,{clock}),defenderNext=battleMode==='reward'?null:normalizeGameSave(defender,target,now,{clock});
+  const attackerJson=JSON.stringify(attackerNext),defenderJson=defenderNext?JSON.stringify(defenderNext):null,resultJson=JSON.stringify(battle),nonce=crypto.randomUUID(),[first,second]=pair(user.id,target.id),roleGuard=roleCommitGuard(user),targetRoleGuard=roleCommitGuard(target);
+  const gate='EXISTS(SELECT 1 FROM field_requests WHERE actor_id=? AND request_id=? AND commit_token=?)',gateArgs=[user.id,body.requestId,nonce];
+  // The receipt gates both campaigns, personal staff metadata and the public
+  // battle. Revisions and roles are checked in the same atomic D1 batch.
+  const statements=[
     stmt(db,`INSERT INTO field_requests(actor_id,request_id,kind,request_hash,commit_token,result_json,created_at)
       SELECT ?,?,'attack',?,?,?,? FROM player_saves a JOIN player_saves d ON d.user_id=?
       WHERE a.user_id=? AND a.revision=? AND a.writer_device_id=? AND a.lease_expires_at>?
-      AND d.revision=? AND d.save_json IS NOT NULL
-      AND NOT EXISTS(SELECT 1 FROM settings WHERE key='adminUserId' AND value=?)
-      AND NOT EXISTS(SELECT 1 FROM staff_members WHERE user_id=d.user_id) AND ${roleGuard.sql}
+      AND d.revision=? AND d.save_json IS NOT NULL AND ${roleGuard.sql} AND ${targetRoleGuard.sql} AND ${sharedGuard.sql}
       AND EXISTS(SELECT 1 FROM world_clock WHERE id=? AND revision=? AND running=1)
-      AND NOT EXISTS(SELECT 1 FROM field_relations WHERE user_a=? AND user_b=? AND status='allied' AND expires_elapsed_ms>?)
+      AND NOT EXISTS(SELECT 1 FROM field_relations WHERE user_a=? AND user_b=? AND status='allied' AND expires_elapsed_ms>? AND updated_elapsed_ms>=?)
       AND NOT EXISTS(SELECT 1 FROM field_battles WHERE attacker_id=? AND occurred_elapsed_ms>?)
-      AND NOT EXISTS(SELECT 1 FROM field_battles WHERE defender_id=? AND occurred_elapsed_ms>?)
-      ON CONFLICT(actor_id,request_id) DO NOTHING RETURNING request_id`,user.id,body.requestId,digest,nonce,resultJson,now,target.id,user.id,body.expectedRevision,body.deviceId,now,defenderRow.revision,target.id,...roleGuard.args,WORLD_CLOCK_ID,clock.revision,first,second,clock.elapsedMs,user.id,clock.elapsedMs-FIELD_RULES.attackCooldownMs,target.id,clock.elapsedMs-FIELD_RULES.defenderProtectionMs),
-    stmt(db,`UPDATE player_saves SET save_json=?,revision=revision+1,updated_at=?,lease_expires_at=? WHERE user_id=? AND EXISTS(SELECT 1 FROM field_requests WHERE actor_id=? AND request_id=? AND commit_token=?)`,attackerJson,now,now+SYNC_LEASE,user.id,user.id,body.requestId,nonce),
-    stmt(db,`UPDATE player_saves SET save_json=?,revision=revision+1,updated_at=? WHERE user_id=? AND EXISTS(SELECT 1 FROM field_requests WHERE actor_id=? AND request_id=? AND commit_token=?)`,defenderJson,now,target.id,user.id,body.requestId,nonce),
-    stmt(db,`INSERT INTO field_battles(id,attacker_id,defender_id,occurred_elapsed_ms,result_json,created_at) SELECT ?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM field_requests WHERE actor_id=? AND request_id=? AND commit_token=?)`,battle.id,user.id,target.id,clock.elapsedMs,resultJson,now,user.id,body.requestId,nonce)
-  ]);
+      AND NOT EXISTS(SELECT 1 FROM field_battles WHERE (defender_id=? OR (?=1 AND json_extract(result_json,'$.castleId')='sunpu')) AND occurred_elapsed_ms>?)
+      ON CONFLICT(actor_id,request_id) DO NOTHING RETURNING request_id`,user.id,body.requestId,digest,nonce,resultJson,now,target.id,user.id,body.expectedRevision,body.deviceId,now,defenderRow.revision,...roleGuard.args,...targetRoleGuard.args,...sharedGuard.args,WORLD_CLOCK_ID,clock.revision,first,second,clock.elapsedMs,Math.floor(clock.elapsedMs/WORLD_CYCLE_MS)*WORLD_CYCLE_MS,user.id,clock.elapsedMs-FIELD_RULES.attackCooldownMs,target.id,sharedShield?1:0,clock.elapsedMs-FIELD_RULES.defenderProtectionMs),
+    stmt(db,`UPDATE player_saves SET save_json=?,revision=revision+1,updated_at=?,lease_expires_at=?,cycle_home=? WHERE user_id=? AND ${gate}`,attackerJson,now,now+SYNC_LEASE,attackerNext.state.cycle?.home||attackerNext.state.home,user.id,...gateArgs)
+  ];
+  if(defenderNext)statements.push(stmt(db,`UPDATE player_saves SET save_json=?,revision=revision+1,updated_at=?,cycle_home=? WHERE user_id=? AND ${gate}`,defenderJson,now,defenderNext.state.cycle?.home||defenderNext.state.home,target.id,...gateArgs));
+  const attackerPersonal=await staffPersonalProgressStatement(db,user,attackerNext,now,gate,gateArgs);if(attackerPersonal)statements.push(attackerPersonal);
+  if(defenderNext){const personal=await staffPersonalProgressStatement(db,target,defenderNext,now,gate,gateArgs,null,captureChange);if(personal)statements.push(personal);}
+  for(const event of saveAchievements(attackerBefore,attackerNext))statements.push(achievementStatement(db,user.id,event,now,gate,gateArgs));
+  statements.push(stmt(db,`INSERT INTO field_battles(id,attacker_id,defender_id,occurred_elapsed_ms,result_json,created_at) SELECT ?,?,?,?,?,? WHERE ${gate}`,battle.id,user.id,target.id,clock.elapsedMs,resultJson,now,...gateArgs));
+  const result=await db.batch(statements);
   if(!rows(result[0]).length){const replay=await fieldCommitFailure(db,user,body,'attack',digest,clock,now);return fieldReplayAttack(db,user,body,replay,now);}
   return {...await syncSnapshot(db,await getSyncRow(db,user.id),user,body.deviceId,now),battle,idempotent:false};
 }

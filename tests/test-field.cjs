@@ -4,12 +4,14 @@ const F=require('../field.js');
 let count=0;function test(name,fn){fn();count++;console.log('PASS '+name);}
 const player=(id,home='kiyosu',more={})=>({playerId:id,name:'領主'+id,clan:'織田家',homeCastleId:home,homeCastleName:'清洲城',level:3,defenseTroops:1200,defensePower:4200,attackable:true,relationship:'neutral',...more});
 const ready=()=>({identity:{id:'me'},access:{writable:true},state:{troops:5000,command:3,resources:{rice:9000}},player:player('other'),me:{attack:{ready:true,availableTroops:5000,minTroops:300,maxTroops:100000,command:3,rice:9000},relationships:[]},troops:1000,tactic:'balanced'});
+const modernRules={targetCastles:true,specialBaseBattles:true};
+const target=(id,home,castle,more={})=>player(id,home,{targetCastleId:castle,targetCastleName:{edo:'江戸城',sunpu:'駿府城',nijo:'二条城',osaka:'大坂城',nagoya:'名古屋城',kiyosu:'清洲城'}[castle],isHome:home===castle,battleMode:['edo','sunpu'].includes(castle)?'reward':['nijo','osaka','nagoya'].includes(castle)?'capture':'raid',capturable:['nijo','osaka','nagoya'].includes(castle),...more});
 test('public bases contain only real valid accounts and never fabricate empty records',()=>{
   assert.deepEqual(F.normalizePlayers({players:[]}),[]);const result=F.normalizePlayers({players:[player('a'),player('a'),{name:'no id'},player('b','edo',{isAdmin:true,attackable:false})]});assert.equal(result.length,2);assert.equal(result[1].playerId,'b');assert.equal(result[1].attackable,false);
 });
 test('co-located players share one exact marker while remaining individually selectable',()=>{
   const people=F.normalizePlayers([player('a'),player('b'),player('op','edo',{isAdmin:true,attackable:false})]),coords={kiyosu:{lon:136.8432,lat:35.2162},edo:{lon:139.7528,lat:35.6852}};
-  const groups=F.groupBases(people,coords,[],{id:'a'});assert.equal(groups.length,2);assert.deepEqual(groups[0].players.map(p=>p.playerId),['a','b']);assert.deepEqual(groups[0].geo,coords.kiyosu);assert.equal(groups[0].owner,'あなたの本拠');assert.equal(groups[1].reachable,false);assert.equal(F.groupBases(people,{},[]).length,0);
+  const groups=F.groupBases(people,coords,[],{id:'a'});assert.equal(groups.length,2);assert.deepEqual(groups[0].players.map(p=>p.playerId),['a','b']);assert.deepEqual(groups[0].geo,coords.kiyosu);assert.equal(groups[0].owner,'あなたの領地');assert.equal(groups[1].reachable,false);assert.equal(F.groupBases(people,{},[]).length,0);
 });
 test('raid food costs follow the authoritative four tactic formulas',()=>{
   assert.equal(F.foodCost(1000,'balanced'),450);assert.equal(F.foodCost(1000,'assault'),525);assert.equal(F.foodCost(1000,'siege'),645);assert.equal(F.foodCost(1000,'ambush'),480);assert.equal(F.foodCost(1000,'unknown'),null);
@@ -37,9 +39,8 @@ test('staff Sunpu protection remains distinct from operator assets',()=>{
   context.player=player('legacy','sunpu');assert.equal(F.attackValidation(context).ok,false,'The reserved castle stays protected while a legacy player snapshot is migrating');
   const operator=F.normalizePlayers([player('operator','edo',{isStaff:true,isAdmin:true})])[0];assert.equal(operator.isStaff,false);assert(F.publicRow(operator).includes('運営'));
 });
-test('all five major cities retain level64 while ordinary castle levels remain bounded',()=>{
-  const cities=['edo','sunpu','nijo','osaka','nagoya'];
-  for(const id of cities){const [p]=F.normalizePlayers([player(id,id,{level:64})]);assert.equal(p.level,64);assert.match(F.publicRow(p),/Lv\.64/);}
+test('Edo and Sunpu cap at 64, the three capturable cities at 48, and ordinary castles at 32',()=>{
+  for(const [id,limit]of [['edo',64],['sunpu',64],['nijo',48],['osaka',48],['nagoya',48]]){const [p]=F.normalizePlayers([player(id,id,{level:999})]);assert.equal(p.level,limit);assert(F.publicRow(p).includes('城郭 Lv.'+limit));}
   assert.equal(F.normalizePlayers([player('a','kiyosu',{level:64})])[0].level,32);
   assert.equal(F.normalizePlayers([player('a','sunpu',{level:999})])[0].level,64);
   const shared=F.groupBases(F.normalizePlayers([player('a','sunpu',{level:64,isStaff:true,attackable:false}),player('b','sunpu',{level:64,isStaff:true,attackable:false})]),{sunpu:{lon:138.3828,lat:34.9798}});
@@ -63,6 +64,58 @@ test('co-located marker artwork follows selection, then the owner, then the stro
   assert.equal(group(null).displayPlayerId,'b');assert.equal(group(null,'',[...people].reverse()).displayPlayerId,'b');
   assert.equal(group(null).level,32,'The aggregate castle level remains separate from the keep artwork');
 });
+test('a lord and castle jointly identify targets while old home-only responses remain readable',()=>{
+  const home=target('a','kiyosu','kiyosu'),nijo=target('a','kiyosu','nijo',{level:64}),osaka=target('a','kiyosu','osaka'),other=target('b','kiyosu','nijo');
+  const people=F.normalizePlayers({players:[home],targets:[home,nijo,nijo,osaka,other]});
+  assert.equal(people.length,4);assert.equal(new Set(people.map(F.targetKey)).size,4);assert.equal(people[1].level,48);
+  assert.deepEqual(F.normalizePlayers({players:[home]}).map(F.targetKey),['a:kiyosu']);
+  const row=F.publicRow(people[1],{selectedId:'a:nijo',rules:modernRules});assert(row.includes('aria-pressed="true"'));assert(row.includes('data-target-id="a:nijo"'));assert(row.includes('二条城 · 所領'));assert(row.includes('占領戦'));assert(!row.includes('天守'));
+  assert(!F.publicRow(people[2],{selectedId:'a:nijo'}).includes('aria-pressed="true"'));
+  assert.notEqual(F.targetCastleName({...nijo,targetCastleName:undefined}),nijo.homeCastleName,'An unnamed outpost must never be mislabeled as the home castle');
+  const coords={kiyosu:{lon:136.8432,lat:35.2162},nijo:{lon:135.748,lat:35.014},osaka:{lon:135.5259,lat:34.6873}};
+  const groups=F.groupBases(people,coords,[],{id:'a'},'a:osaka',modernRules);assert.equal(groups.length,3);
+  const city=groups.find(g=>g.id==='nijo');assert.deepEqual(city.players.map(p=>p.playerId),['a','b']);assert.equal(city.isHome,false);assert.equal(city.homeCastleId,'kiyosu');
+  const selected=F.groupBases(people,coords,[],{id:'a'},'b:nijo',modernRules).find(g=>g.id==='nijo');assert.equal(selected.level,48);assert.equal(selected.displayLevelLabel,'城郭 Lv.3','The selected lord keeps their own level in a shared-city tooltip');
+});
+test('Edo and Sunpu require both modern capabilities and an explicit non-capturable reward battle',()=>{
+  for(const castle of ['edo','sunpu']){
+    const p=target('other',castle,castle,{isAdmin:castle==='edo',isStaff:castle==='sunpu'}),context={...ready(),rules:modernRules,player:p};
+    const valid=F.attackValidation(context);assert.equal(valid.ok,true);assert.equal(valid.battleMode,'reward');assert.equal(valid.payload.targetCastleId,castle);assert.equal(valid.payload.targetPlayerId,'other');
+    for(const alter of [c=>c.rules={},c=>c.rules={targetCastles:true},c=>c.player={...p,battleMode:undefined},c=>c.player={...p,capturable:true},c=>c.player={...p,capturable:undefined},c=>c.player={...p,attackable:false}]){
+      const denied={...context};alter(denied);assert.equal(F.attackValidation(denied).ok,false);
+      denied.player=F.normalizePlayers([denied.player])[0];assert.equal(F.attackValidation(denied).ok,false,'Normalization must not create permission from a missing field');
+    }
+  }
+});
+test('the three cities are capturable under ordinary, operator and staff defenders with all common guards intact',()=>{
+  for(const castle of ['nijo','osaka','nagoya'])for(const role of [{},{isAdmin:true},{isStaff:true}]){
+    const p=target('other',role.isAdmin?'edo':role.isStaff?'sunpu':'kiyosu',castle,role),context={...ready(),rules:modernRules,player:p};
+    const valid=F.attackValidation(context);assert.equal(valid.ok,true);assert.equal(valid.battleMode,'capture');assert.equal(valid.payload.targetCastleId,castle);
+    for(const alter of [c=>c.player={...p,playerId:'me'},c=>c.access={writable:false},c=>c.access={writable:true,fieldPending:true},c=>c.me={...c.me,relationships:[{targetPlayerId:'other',status:'allied'}]},c=>c.player={...p,attackable:false,attackReason:'戦後の保護'},c=>c.rules={}]){
+      const denied={...context};alter(denied);assert.equal(F.attackValidation(denied).ok,false);
+    }
+  }
+  for(const castle of ['nijo','osaka','nagoya'])for(const missing of [{battleMode:undefined},{capturable:undefined},{battleMode:'raid',capturable:false}]){
+    const context={...ready(),rules:modernRules,player:target('other',castle,castle,missing)};
+    assert.equal(F.attackValidation(context).ok,false,'A modern capture-city home cannot silently fall back to a raid when its contract is incomplete');
+  }
+});
+test('report outcome follows the committed victory and capture fields instead of implying every victory captures a city',()=>{
+  const base={id:'battle',attackerPlayerId:'me',defenderPlayerId:'other',attackerName:'攻撃',defenderName:'守備',castleId:'nijo',castleName:'二条城',won:true,battleMode:'capture',troops:1000,attackerLost:80,defenderLost:{troops:50,garrison:20},loot:{gold:91,rice:82,wood:73,stone:64},rewards:{gold:0,rice:0,wood:0,stone:0},capture:{captured:true,castleId:'nijo',newlyOwned:true,garrison:138,defenderHomeCastleId:'kiyosu',defenderHomeCastleName:'清洲城'}};
+  const original=JSON.stringify(base),won=F.battleSummary(base,'me');assert.equal(won.captured,true);assert.equal(won.title,'城を占領');assert.equal(won.positive,true);
+  assert.equal(F.battleSummary(base,'other').title,'城を奪われました');assert.equal(F.battleSummary({...base,won:false,capture:{captured:false}},'me').title,'占領できず撤退');assert.equal(F.battleSummary({...base,won:false},'other').title,'城を守り抜きました');
+  for(const capture of [undefined,{captured:false},{captured:true,castleId:'osaka'}]){const result=F.battleSummary({...base,capture},'me');assert.equal(result.captured,false);assert(!result.title.includes('占領'));}
+  assert.equal(F.battleSummary({...base,castleId:'edo',capture:{captured:true,castleId:'edo'}},'me').captured,false);
+  assert.equal(F.battleSummary({...base,won:undefined},'me').positive,false);assert.equal(F.battleSummary({...base,won:undefined},'me').title,'合戦結果を確認中');
+  const html=F.battleReportHtml(base,'me');assert(html.includes('城を占領'));assert(html.includes('二条城'));assert(html.includes('守備側の本拠：清洲城'));assert(html.includes('data-field-reward-kind="loot"'));assert(!html.includes('data-field-reward-kind="reward"'));assert.equal(JSON.stringify(base),original);
+  assert(html.includes('帰還兵から138人を、この城の守備兵として配置しました'));assert(!F.battleReportHtml({...base,capture:{...base.capture,newlyOwned:false,garrison:0}},'me').includes('守備兵として配置しました'));
+});
+test('reward battle receipts show actual additional rewards without implying loot, occupation or defender resource loss',()=>{
+  const battle={id:'reward',attackerPlayerId:'me',defenderPlayerId:'staff',attackerName:'<script>bad</script>',defenderName:'スタッフ',castleId:'sunpu',castleName:'駿府城',won:true,battleMode:'reward',troops:1000,attackerLost:80,defenderLost:{troops:0,garrison:0},loot:{gold:0,rice:0,wood:0,stone:0},rewards:{gold:499,rice:500,wood:0,stone:37},capture:{captured:false}};
+  const attack=F.battleReportHtml(battle,'me');assert(attack.includes('報酬戦に勝利'));assert(attack.includes('報酬戦・占領不可'));assert(attack.includes('499'));assert(attack.includes('37'));assert(attack.includes('data-field-reward-kind="reward"'));assert(!attack.includes('data-field-reward-kind="loot"'));assert(!attack.includes('<script>'));
+  const defense=F.battleReportHtml(battle,'staff');assert(defense.includes('攻撃側の勝利報酬'));assert(defense.includes('資源は維持'));assert(!defense.includes('失った資源'));
+  const loss={...battle,won:false,rewards:{gold:0,rice:0,wood:0,stone:0}};assert.equal(F.battleSummary(loss,'me').title,'報酬戦から撤退');assert(F.battleReportHtml(loss,'me').includes('勝利報酬はありません'));assert.equal(F.battleSummary(loss,'staff').title,'報酬戦を防衛');
+});
 test('all 32 keep levels select different cells from the existing per-castle atlas',()=>{
   const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),{SENGOKU_DATA}=require('../engine.js');
   const scope={SENGOKU_DATA,document:{readyState:'loading',addEventListener(){}}};scope.window=scope;
@@ -79,6 +132,8 @@ test('all 32 keep levels select different cells from the existing per-castle atl
       assert.equal(cells.size,32,'Each keep level has its own existing artwork cell');
     }
     const missing=F.castleAppearance(player('a','edo',{level:64}));assert(missing.includes('data-field-keep-level="1"'));assert(missing.includes('天守 未取得'));
+    const capturedCity=F.castleAppearance(F.normalizePlayers([target('a','kiyosu','nijo',{level:48,keepLevel:32})])[0],{marker:true}),lastCell=scope.SengokuArt.tileInfo('castle','nijo',32);
+    assert(capturedCity.includes('Lv.48'));assert(capturedCity.includes('data-field-keep-level="32"'));assert(capturedCity.includes(`data-art-x="${lastCell.x}"`));assert(capturedCity.includes(`data-art-y="${lastCell.y}"`));
     const unsafe=F.castleAppearance(player('a','missing" onclick="alert(1)',{name:'<script>',keepLevel:3}));assert(!unsafe.includes('onclick="alert'));assert(unsafe.includes('field-castle-fallback'));
   }finally{if(old===undefined)delete global.SengokuArt;else global.SengokuArt=old;}
 });
@@ -113,4 +168,42 @@ async function liveRefreshTest(){
   }finally{controller.destroy();}
   count++;console.log('PASS a shared-information refresh updates selected self/other castle artwork without losing selection');
 }
-liveRefreshTest().then(()=>console.log(count+' shared-field presentation and action-guard checks passed.')).catch(error=>{console.error(error);process.exitCode=1;});
+async function pvpUiTest(){
+  const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),nodes=new Map(),listeners=new Map(),requests=[],messages=[];
+  const node=()=>({innerHTML:'',textContent:'',value:'',hidden:false,disabled:false,querySelector:()=>null,setAttribute(){}});
+  const doc={hidden:false,activeElement:null,addEventListener(){},removeEventListener(){}};
+  const host={ownerDocument:doc,innerHTML:'',contains:()=>true,querySelector(selector){if(!nodes.has(selector))nodes.set(selector,node());return nodes.get(selector);},querySelectorAll:()=>[],addEventListener(type,fn){listeners.set(type,fn);},removeEventListener(){}};
+  const local={troops:5000,command:3,resources:{gold:500,rice:9000,wood:300,stone:200},army:['third','first'],governors:{farm:'second'}},before=JSON.stringify(local);
+  let targets=[target('me','kiyosu','kiyosu'),target('enemy','odawara','odawara'),target('enemy','odawara','nijo'),target('enemy','odawara','osaka'),target('operator','edo','edo',{isAdmin:true}),target('staff','sunpu','sunpu',{isStaff:true})],rules={...modernRules},nextReply=null;
+  const scope={document:doc,setTimeout:()=>1,clearTimeout(){},SengokuWorldMap:{mount(){return{update(){},destroy(){}};}}};scope.window=scope;
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../field.js'),'utf8'),scope);
+  const controller=scope.SengokuField.mount(host,{stateKey:'target-battle-ui-test',identity:{id:'me'},getSyncStatus:()=>({writable:true}),getState:()=>local,onMessage:(message,error)=>messages.push({message,error}),request:async(route,options)=>{
+    if(options.method==='POST'){requests.push({route,data:JSON.parse(JSON.stringify(options.data))});return typeof nextReply==='function'?nextReply():nextReply;}
+    if(route.startsWith('/field/me'))return{rules,relationships:[],battles:[],attack:{ready:true,availableTroops:5000,minTroops:300,maxTroops:100000,command:3,rice:9000}};
+    return{players:targets.filter(t=>t.isHome),targets,total:5,rules};
+  }});
+  const detail=()=>nodes.get('[data-field-detail]').innerHTML;
+  const send=(action,more={})=>listeners.get('click')({target:{closest:()=>({dataset:{fieldAction:action,...more}})},stopPropagation(){}});
+  const select=key=>send('select-player',{targetId:key});
+  const receipt=(castle,mode,won=true)=>({ok:true,battle:{id:'battle-'+castle,attackerPlayerId:'me',defenderPlayerId:mode==='reward'?'operator':'enemy',attackerName:'あなた',defenderName:'相手',castleId:castle,castleName:{edo:'江戸城',sunpu:'駿府城',nijo:'二条城',osaka:'大坂城'}[castle],battleMode:mode,won,troops:1000,attackerLost:100,defenderLost:{troops:0,garrison:0},loot:{gold:mode==='capture'?70:0,rice:0,wood:0,stone:0},rewards:{gold:mode==='reward'&&won?500:0,rice:0,wood:0,stone:0},capture:{captured:mode==='capture'&&won,castleId:castle,newlyOwned:true,defenderHomeCastleId:'odawara',defenderHomeCastleName:'小田原城'}}});
+  try{
+    await controller.refresh();await select('enemy:nijo');assert(detail().includes('二条城'));assert(detail().includes('所領'));assert(detail().includes('城郭上限 Lv.48'));
+    await send('attack');assert.equal(requests.length,0,'An attack always needs a confirmation for this exact target');
+    await send('confirm-attack');assert(detail().includes('二条城へ出陣しますか'));assert(detail().includes('守備する領主：領主enemy · 占領戦'));
+    await select('enemy:osaka');await send('attack');assert.equal(requests.length,0,'A confirmation for one city cannot authorize another city of the same lord');
+    await send('confirm-attack');let resolve;nextReply=()=>new Promise(done=>{resolve=done;});const pending=send('attack');
+    await Promise.resolve();await send('attack');assert.equal(requests.length,1,'Double activation during the pending request cannot send another battle');
+    assert.equal(requests[0].data.targetPlayerId,'enemy');assert.equal(requests[0].data.targetCastleId,'osaka');assert.equal(JSON.stringify(local),before);
+    resolve(receipt('osaka','capture'));await pending;assert(detail().includes('城を占領'));assert(detail().includes('大坂城'));assert(detail().includes('data-field-reward-kind="loot"'));
+    await select('operator:edo');assert(detail().includes('報酬戦・占領不可'));assert(detail().includes('城郭上限 Lv.64'));await send('confirm-attack');assert(detail().includes('江戸城へ出陣しますか'));
+    nextReply=receipt('edo','reward',false);await send('attack');assert.equal(requests.at(-1).data.targetCastleId,'edo');assert(detail().includes('報酬戦から撤退'));assert(detail().includes('勝利報酬はありません'));
+    await select('staff:sunpu');nextReply={ok:false,error:{message:'戦後の保護期間です。'}};await send('confirm-attack');await send('attack');assert.equal(messages.at(-1).error,true);assert(!detail().includes('field-battle-report'));
+    nextReply={ok:true};await send('confirm-attack');await send('attack');assert.equal(messages.at(-1).error,true);assert(messages.at(-1).message.includes('合戦結果を確認できません'));assert(!detail().includes('報酬戦に勝利'));
+    await send('confirm-attack');const posted=requests.length;rules={...modernRules,specialBaseBattles:false};await controller.refresh();await send('attack');assert.equal(requests.length,posted,'Losing the capability invalidates the confirmation before a request');
+    rules={...modernRules};await controller.refresh();await select('enemy:nijo');await send('confirm-attack');targets=targets.filter(t=>F.targetKey(t)!=='enemy:nijo');await controller.refresh();await send('attack');assert.equal(requests.length,posted,'A target that disappeared cannot reuse an old confirmation');
+    await select('enemy:osaka');await send('confirm-attack');const remaining=targets;targets=[];await controller.refresh();targets=remaining;await controller.refresh();await send('attack');assert.equal(requests.length,posted,'An empty refresh cannot preserve a confirmation for a target that later returns');
+    assert.equal(JSON.stringify(local),before,'The field UI must never optimistically alter resources, army or governors');
+  }finally{controller.destroy();}
+  count++;console.log('PASS exact-city confirmation, reward/capture receipts, safe failures and duplicate-click protection preserve local formations');
+}
+liveRefreshTest().then(pvpUiTest).then(()=>console.log(count+' shared-field presentation and action-guard checks passed.')).catch(error=>{console.error(error);process.exitCode=1;});

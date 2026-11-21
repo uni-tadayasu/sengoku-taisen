@@ -35,7 +35,7 @@ function tileInfo(kind,id,variant){
   const cell=o.index%32;return{url:`assets/illustrations/officers-${rank}-${String(Math.floor(o.index/32)+1).padStart(2,'0')}.webp`,x:(cell%8)/7*100,y:Math.floor(cell/8)/3*100,name:o.name,rank};
  }
  const item=(kind==='castle'?castles:facilities).get(id);if(!item)return null;
- const limit=kind==='castle'&&(data.majorCityIds||['edo','sunpu','nijo','osaka','nagoya']).includes(id)?64:32;
+ const limit=kind!=='castle'?32:['edo','sunpu'].includes(id)?64:(data.majorCityIds||['edo','sunpu','nijo','osaka','nagoya']).includes(id)?48:32;
  const level=Math.max(1,Math.min(limit,Math.round(Number(variant)||1))),artLevel=Math.min(32,level),cell=artLevel-1;
  return{url:`assets/${kind==='castle'?'castles':'facilities'}/${id}.webp`,x:(cell%8)/7*100,y:Math.floor(cell/8)/3*100,name:item.name,level,artLevel,finalStage:level>32,portraitCell:kind==='facility'&&portraitFacilities.has(id)};
 }

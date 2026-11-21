@@ -247,7 +247,7 @@
     get data(){return DATA;}
     get isAdmin(){return ADMIN_ACCESS.get(this)===true;}
     get isStaff(){return !this.isAdmin&&STAFF_ACCESS.get(this)===true;}
-    castleLevelLimit(id){return MAJOR_CITY_IDS.includes(id)?64:32;}
+    castleLevelLimit(id){return ['edo','sunpu'].includes(id)?64:MAJOR_CITY_IDS.includes(id)?48:32;}
     canOwnCastle(id){return Boolean(CASTLE_BY_ID[id])&&(id!==ADMIN_ASSETS.castleId||this.isAdmin)&&(id!=='sunpu'||this.isStaff);}
     canOwnOfficerVariant(id,rank){return Boolean(this.baseOfficer(id))&&RANKS.includes(rank)&&(id!==ADMIN_ASSETS.officerId||rank!==ADMIN_ASSETS.rank||this.isAdmin);}
     _baseGrantRank(id){const o=this.baseOfficer(id),rank=o?.rank||o?.rarity;return id===ADMIN_ASSETS.officerId&&rank==='U'&&!this.isAdmin?'SSS':rank;}
@@ -346,6 +346,7 @@
     setAdminAccess(isAdmin,options={}){if(typeof isAdmin!=='boolean')return fail('運営の認証状態が正しくありません。');return this.setRoleAccess({isAdmin,isStaff:STAFF_ACCESS.get(this)===true},options);}
     applyStaffBase(base){
       if(!this.isStaff)return fail('スタッフの共同拠点へ接続してください。');
+      if(['nijo','osaka','nagoya'].includes(base?.personalHome)&&Number.isInteger(base?.personalHomeCastle?.level)&&base.personalHomeCastle.level>48&&base.personalHomeCastle.level<=64)base={...base,personalHomeCastle:{...base.personalHomeCastle,level:48}};
       const validBuildings=value=>value&&BUILDINGS.every(b=>Number.isInteger(value[b.id])&&value[b.id]>=(b.core?1:0)&&value[b.id]<=32);
       if(!base||base.id!=='sunpu'||!Number.isSafeInteger(base.revision)||base.revision<0||!validBuildings(base.buildings)||!validBuildings(base.initial?.buildings)||!Number.isInteger(base.castleLevel)||base.castleLevel<1||base.castleLevel>64||!Number.isInteger(base.initial.castleLevel)||base.initial.castleLevel<1||base.initial.castleLevel>64||!Array.isArray(base.history)||base.history.length>2200||!Array.isArray(base.jobs)||base.jobs.length>192)return fail('共同拠点の情報を確認できません。');
       const validCastle=(value,id)=>value&&typeof value==='object'&&!Array.isArray(value)&&[...CASTLES.map(c=>c.clan),...CLANS.map(c=>c.name),'在地衆',ADMIN_ASSETS.clanName].includes(value.owner)&&Number.isInteger(value.troops)&&value.troops>=0&&value.troops<=1000000&&Number.isInteger(value.wall)&&value.wall>=1&&value.wall<=32&&Number.isInteger(value.level)&&value.level>=1&&value.level<=this.castleLevelLimit(id);
@@ -940,7 +941,10 @@
       if(!g.isStaff&&s.command>3+Math.floor(s.buildings.keep/8))invalid();
       if(!isObj(s.tech)||!TECHS.every(t=>num(s.tech[t.id],0,t.max)))invalid();
       const validOwner=new Set([...CASTLES.map(c=>c.clan),'在地衆',ADMIN_ASSETS.clanName]);for(const c of CLANS)validOwner.add(c.name);
-      if(!isObj(s.castles)||Object.keys(s.castles).length!==CASTLES.length||!CASTLES.every(c=>{const v=s.castles[c.id];if(isObj(v)&&v.level===undefined)v.level=1;return isObj(v)&&validOwner.has(v.owner)&&num(v.troops,0,1000000)&&num(v.wall,1,32)&&num(v.level,1,g.castleLevelLimit(c.id));}))invalid();
+      // Legacy metropolitan saves used Lv.64. Validate that former range first,
+      // then lower only those three castle levels; retain the complete campaign.
+      const legacyCastleLevels=new Map();
+      if(!isObj(s.castles)||Object.keys(s.castles).length!==CASTLES.length||!CASTLES.every(c=>{const v=s.castles[c.id],limit=g.castleLevelLimit(c.id),legacyLimit=['nijo','osaka','nagoya'].includes(c.id)?64:limit;if(isObj(v)&&v.level===undefined)v.level=1;const valid=isObj(v)&&validOwner.has(v.owner)&&num(v.troops,0,1000000)&&num(v.wall,1,32)&&num(v.level,1,legacyLimit);if(valid&&v.level>limit){legacyCastleLevels.set(c.id,v.level);v.level=limit;}return valid;}))invalid();
       if(!Array.isArray(s.officers)||s.officers.length>g.roster.length||new Set(s.officers).size!==s.officers.length||s.officers.some(id=>typeof id!=='string'||!g.officer(id)))invalid();
       if(!Array.isArray(s.army)||s.army.length>3||new Set(s.army).size!==s.army.length||s.army.some(id=>!s.officers.includes(id)))invalid();
       if(!isObj(s.governors)||Object.keys(s.governors).some(id=>!BUILDINGS.some(b=>b.id===id)||!g.isStaff&&s.buildings[id]<1)||Object.values(s.governors).some(id=>!s.officers.includes(id)||s.army.includes(id))||new Set(Object.values(s.governors)).size!==Object.values(s.governors).length)invalid();
@@ -952,8 +956,9 @@
       if(!Array.isArray(s.jobs)||s.jobs.length>193)invalid();
       for(const j of s.jobs){if(!isObj(j))invalid();if(j.remainingSeconds===undefined)j.remainingSeconds=j.remaining*60;if(j.totalSeconds===undefined)j.totalSeconds=j.total*60;if(!scalar(j.remainingSeconds,.00000001,180)||!num(j.totalSeconds,60,180)||j.totalSeconds!==j.total*60||j.remainingSeconds>j.totalSeconds||j.remaining!==Math.ceil((j.remainingSeconds-1e-8)/60))invalid();}
 
-      const jobkeys=new Map();for(const j of s.jobs){if(!isObj(j)||!['building','castle','research'].includes(j.kind)||!num(j.remaining,1,3)||!num(j.total,1,3)||j.remaining>j.total)invalid();const defs=j.kind==='building'?BUILDINGS:j.kind==='castle'?CASTLES:TECHS,current=j.kind==='castle'?s.castles[j.id]?.level:(j.kind==='building'?s.buildings:s.tech)[j.id],key=j.kind+':'+j.id,count=jobkeys.get(key)||0;if(!defs.some(d=>d.id===j.id)||j.targetLevel!==current+count+1||j.targetLevel>(j.kind==='research'?5:j.kind==='castle'?g.castleLevelLimit(j.id):32)||j.kind==='castle'&&s.castles[j.id]?.owner!==s.clan||count&&(j.kind!=='building'||j.remainingSeconds!==j.totalSeconds))invalid();jobkeys.set(key,count+1);}
+      const jobkeys=new Map();for(const j of s.jobs){if(!isObj(j)||!['building','castle','research'].includes(j.kind)||!num(j.remaining,1,3)||!num(j.total,1,3)||j.remaining>j.total)invalid();const defs=j.kind==='building'?BUILDINGS:j.kind==='castle'?CASTLES:TECHS,current=j.kind==='castle'?(legacyCastleLevels.get(j.id)??s.castles[j.id]?.level):(j.kind==='building'?s.buildings:s.tech)[j.id],key=j.kind+':'+j.id,count=jobkeys.get(key)||0;if(!defs.some(d=>d.id===j.id)||j.targetLevel!==current+count+1||j.targetLevel>(j.kind==='research'?5:j.kind==='castle'?(['nijo','osaka','nagoya'].includes(j.id)?64:g.castleLevelLimit(j.id)):32)||j.kind==='castle'&&s.castles[j.id]?.owner!==s.clan||count&&(j.kind!=='building'||j.remainingSeconds!==j.totalSeconds))invalid();jobkeys.set(key,count+1);}
       if(s.jobs.filter(j=>j.kind==='research').length>1||[...jobkeys.keys()].filter(key=>!key.startsWith('research:')).length>(g.isStaff||serviceSave?6:2+Math.floor(s.buildings.keep/8)))invalid();
+      s.jobs=s.jobs.filter(j=>j.kind!=='castle'||j.targetLevel<=g.castleLevelLimit(j.id));
       if(!isObj(s.treaties)||Object.entries(s.treaties).some(([k,v])=>!validOwner.has(k)||k===s.clan||!num(v,0,MAX_TURN+6)))invalid();
       if(!isObj(s.scouted)||Object.entries(s.scouted).some(([k,v])=>!CASTLE_BY_ID[k]||!num(v,0,MAX_TURN+6)))invalid();
       if(!Array.isArray(s.claimedQuests)||new Set(s.claimedQuests).size!==s.claimedQuests.length||s.claimedQuests.some(id=>!QUESTS.some(q=>q.id===id)))invalid();

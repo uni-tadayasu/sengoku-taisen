@@ -30,3 +30,10 @@
 .sengoku-field .field-map-castle .field-castle-fallback svg,.sengoku-field .field-map-castle .art-loading svg{width:23px;height:23px}
 .sengoku-field .field-map-castle .field-castle-level{left:auto;min-width:30px;padding:1px 3px;border:1px solid #d7c28e70;border-right:0;border-bottom:0;border-radius:3px 0 0 0;font-size:10px;line-height:1.15}
 @media(max-width:600px){.field-castle-visual{width:94px;height:94px}.field-castle-level{font-size:11px}.field-player-meta{max-width:150px}.field-player-meta small{white-space:normal}}
+
+/* The battle kind is declared before confirmation and repeated in the receipt. */
+.field-battle-mode{display:flex;align-items:center;gap:8px;margin:10px 0;padding:9px 11px;border:1px solid #b9c5a73d;border-radius:4px;background:#b7bd7c0d;color:#d8dcbf;font-size:13px;line-height:1.6}
+.field-battle-mode>svg{width:17px;height:17px}.field-battle-mode>strong{font-weight:500}.field-battle-mode.is-reward{color:#d9cd9b;border-color:#ceb97152}.field-battle-mode.is-capture{color:#c7d9b8;border-color:#9cbd9059}
+.sengoku-field .field-battle-report .field-battle-effect{margin:11px 0 8px;padding:9px 0;border-top:1px solid #b9c5a72e;border-bottom:1px solid #b9c5a72e;color:#d1dbc3;font-size:13px;line-height:1.7}
+.field-loot+.field-loot{margin-top:12px}.field-loot[data-field-reward-kind="reward"]>span{color:#e0cb93}
+@media(max-width:600px){.field-battle-mode,.sengoku-field .field-battle-report .field-battle-effect{font-size:14px}}

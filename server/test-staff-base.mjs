@@ -130,15 +130,25 @@ try{
  checks.push('shared castle level 64, facility level 32 and completed jobs advance for every member');
 
  const visible=(await api('/field?limit=100',{token:ordinary.token})).data;
- for(const p of [a,b]){const row=visible.players.find(row=>row.playerId===p.user.id);assert(row);assert.equal(row.homeCastleId,'sunpu');assert.equal(row.level,64);assert.equal(row.isStaff,true);assert.equal(row.attackable,false);assert.match(row.attackReason,/スタッフ/);}
+ for(const p of [a,b]){const row=visible.players.find(row=>row.playerId===p.user.id);assert(row);assert.equal(row.homeCastleId,'sunpu');assert.equal(row.level,64);assert.equal(row.isStaff,true);assert.equal(row.attackable,true);assert.equal(row.battleMode,'reward');assert.equal(row.capturable,false);}
  for(const privateKey of ['staffBase','personalHome','personalSunpu','requestId','request_hash','resources'])assert(!JSON.stringify(visible).includes(privateKey));
- const protectedAttack={targetPlayerId:a.user.id,troops:300,tactic:'balanced',requestId:crypto.randomUUID(),deviceId:ordinary.deviceId,expectedRevision:player(ordinary).revision};
- assert.equal((await api('/field/attack',post(ordinary.token,protectedAttack,403))).data.error.code,'TARGET_PROTECTED');
- const actorBefore=balances(a),targetBefore=player(ordinary),battleCount=sql.prepare('SELECT COUNT(*) n FROM field_battles').get().n;
+ await align(ordinary);
+ const protectedBeforeAttack={base:baseRow(),a:player(a),b:player(b),backups:sql.prepare('SELECT * FROM staff_campaign_backups ORDER BY user_id').all()};
+ const rewardAttack={targetPlayerId:a.user.id,targetCastleId:'sunpu',troops:300,tactic:'balanced',requestId:crypto.randomUUID(),deviceId:ordinary.deviceId,expectedRevision:player(ordinary).revision};
+ let reward;const random=crypto.getRandomValues;crypto.getRandomValues=array=>array.fill(0);
+ try{reward=(await api('/field/attack',post(ordinary.token,rewardAttack))).data;}finally{crypto.getRandomValues=random;}
+ assert.equal(reward.battle.battleMode,'reward');assert.equal(reward.battle.won,true);assert.equal(reward.battle.defenderRevision,protectedBeforeAttack.a.revision);
+ assert.deepEqual(reward.battle.defenderLost,{troops:0,garrison:0});assert.deepEqual(reward.battle.loot,{gold:0,rice:0,wood:0,stone:0});assert.deepEqual(reward.battle.rewards,{gold:500,rice:500,wood:500,stone:500});
+ assert.equal(reward.battle.defenderProtectedUntilElapsedMs,reward.battle.occurredElapsedMs+60000);
+ assert.deepEqual({base:baseRow(),a:player(a),b:player(b),backups:sql.prepare('SELECT * FROM staff_campaign_backups ORDER BY user_id').all()},protectedBeforeAttack,'Victory cannot change either staff save, the shared base, its revision or personal backups');
+ const afterReward=(await api('/field?limit=100',{token:ordinary.token})).data;
+ for(const p of [a,b]){const target=afterReward.players.find(row=>row.playerId===p.user.id);assert.equal(target.attackable,false);assert.equal(target.protectedUntilElapsedMs,reward.battle.defenderProtectedUntilElapsedMs,'The Sunpu protection period also covers another staff member');}
+ const actorBefore=balances(a),targetBefore=player(ordinary),battleCount=sql.prepare('SELECT COUNT(*) n FROM field_battles').get().n,fieldRequestCount=sql.prepare('SELECT COUNT(*) n FROM field_requests').get().n;
  h.beforeBatch=statements=>{if(!statements.some(s=>s.sql.includes('INSERT INTO field_requests')))return;h.beforeBatch=null;sql.prepare('INSERT INTO staff_members(user_id,appointed_by,appointed_at,term_id,appointed_elapsed_ms) VALUES(?,?,?,?,?)').run(ordinary.user.id,operator.user.id,h.now,'target-promoted-before-attack',baseState().updatedElapsedMs);};
- await api('/field/attack',post(a.token,{targetPlayerId:ordinary.user.id,troops:300,tactic:'balanced',requestId:crypto.randomUUID(),deviceId:a.deviceId,expectedRevision:player(a).revision},409));
- assert.deepEqual(balances(a),actorBefore);assert.deepEqual(player(ordinary),targetBefore);assert.equal(sql.prepare('SELECT COUNT(*) n FROM field_battles').get().n,battleCount);sql.prepare('DELETE FROM staff_members WHERE user_id=?').run(ordinary.user.id);
- checks.push('public field shows shared level 64 without private data and protects staff even when promotion occurs during an attack');
+ const promotedRace=await api('/field/attack',post(a.token,{targetPlayerId:ordinary.user.id,troops:300,tactic:'balanced',requestId:crypto.randomUUID(),deviceId:a.deviceId,expectedRevision:player(a).revision},409));
+ assert.equal(h.beforeBatch,null,'The target is promoted at the actual attack commit boundary');assert.equal(promotedRace.data.error.code,'FIELD_CHANGED');
+ assert.deepEqual(balances(a),actorBefore);assert.deepEqual(player(ordinary),targetBefore);assert.equal(sql.prepare('SELECT COUNT(*) n FROM field_battles').get().n,battleCount);assert.equal(sql.prepare('SELECT COUNT(*) n FROM field_requests').get().n,fieldRequestCount);sql.prepare('DELETE FROM staff_members WHERE user_id=?').run(ordinary.user.id);
+ checks.push('Sunpu reward victory preserves both staff saves/shared base/backups, shares its protection period, and rejects a mid-attack staff promotion with 409');
 
  const oldSource=await staffBase(b),oldReplay=body(b,'building','market'),accepted=(await upgrade(b,oldReplay)).data;await assign(b,'dismiss');
  await api('/staff/base',{token:b.token,expected:403});await upgrade(b,oldReplay,403);const dismissed=await sync(b);assert.equal(dismissed.user.isStaff,false);assert.equal(dismissed.staffBase,null);assert.equal(dismissed.save.state.home,'himeji');

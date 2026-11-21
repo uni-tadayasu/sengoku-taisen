@@ -92,7 +92,7 @@ try {
   const next=(await api('/field?limit=2&cursor='+publicList.nextCursor)).data;assert.equal(next.players.length,2);assert.equal(next.nextCursor,null);
   const all=(await api('/field?limit=100',{token:a.token})).data;
   assert.equal(all.players.filter(p=>p.homeCastleId==='kiyosu').length,3,'co-located players retain separate identities');
-  assert.equal(all.players.find(p=>p.playerId===admin.user.id).homeCastleId,'edo');assert.equal(all.players.find(p=>p.playerId===admin.user.id).attackable,false);
+  assert.equal(all.players.find(p=>p.playerId===admin.user.id).homeCastleId,'edo');assert.equal(all.players.find(p=>p.playerId===admin.user.id).attackable,true);assert.equal(all.players.find(p=>p.playerId===admin.user.id).battleMode,'reward');assert.equal(all.players.find(p=>p.playerId===admin.user.id).capturable,false);
   assert(all.players.find(p=>p.playerId===a.user.id).self);assert(all.players.find(p=>p.playerId===a.user.id).online);
   assert.equal(all.players.find(p=>p.playerId===b.user.id).online,false);assert(all.players.find(p=>p.playerId===b.user.id).attackable);
   assert(all.players.every(p=>p.keepLevel===base.state.buildings.keep),'initial uploaded bases publish their completed keep level');
@@ -102,7 +102,6 @@ try {
   await api('/field/attack',post(null,attackBody(a,b,1),401));
   assert.equal((await attack(a,attackBody(a,a,1),400)).error.code,'INVALID_TARGET');
   assert.equal((await attack(a,{...attackBody(a,b,1),targetPlayerId:'u_absent'},404)).error.code,'FIELD_PLAYER_NOT_FOUND');
-  assert.equal((await attack(a,attackBody(a,admin,1),403)).error.code,'TARGET_PROTECTED');
   assert.equal((await attack(a,{...attackBody(a,b,1),deviceId:'other-device'},409)).error.code,'LEASE_REQUIRED');
   assert.equal((await attack(a,attackBody(a,b,0),409)).error.code,'REVISION_CONFLICT');
   await attack(a,{...attackBody(a,b,1),won:true},400);await attack(a,attackBody(a,b,1,crypto.randomUUID(),299),400);
@@ -211,6 +210,6 @@ try {
   const publicRecovered=(await api('/field',{token:a.token})).data.players.find(p=>p.playerId===admin.user.id);
   assert.equal(recovered.home,'okazaki');assert.equal(publicRecovered.homeCastleId,recovered.home,'revoked-operator map location matches the same owned-castle migration as sync');
   database.prepare("UPDATE settings SET value=? WHERE key='adminUserId'").run(admin.user.id);
-  console.log(JSON.stringify({ok:true,calls,battles:battles(),checks:['real co-located bases and public privacy','operator always based at protected Edo','independent public/self keep and castle levels','safe keep fallback and 1–32 bounds','shared staff keep, role changes and operator priority','keep development preserved before and after cycle settlement','active writer and revision checks','server-owned outcome and bounded losses/loot','atomic updates of both saves','replay idempotence and payload reuse rejection','defender stale-save rejection','common-clock cooldown and protection','two-sided consent, rejection, cancellation and expiry','attack-versus-consent race','competing raids on one defender','transaction rollback and safe retry','current snapshot on delayed replay','looping calendar settles territory and clears prior diplomacy','global pause blocks attacks','revoked-role public base agrees with sync migration']},null,2));
+  console.log(JSON.stringify({ok:true,calls,battles:battles(),checks:['real co-located bases and public privacy','operator Edo remains uncapturable and permits reward battles','independent public/self keep and castle levels','safe keep fallback and 1–32 bounds','shared staff keep, role changes and operator priority','keep development preserved before and after cycle settlement','active writer and revision checks','server-owned outcome and bounded losses/loot','atomic updates of both saves','replay idempotence and payload reuse rejection','defender stale-save rejection','common-clock cooldown and protection','two-sided consent, rejection, cancellation and expiry','attack-versus-consent race','competing raids on one defender','transaction rollback and safe retry','current snapshot on delayed replay','looping calendar settles territory and clears prior diplomacy','global pause blocks attacks','revoked-role public base agrees with sync migration']},null,2));
 }finally{Date.now=originalNow;database.close();}
 

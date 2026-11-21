@@ -216,7 +216,7 @@ General-player writes containing `home:"edo"`, ownership of Edo under their own 
 For the operator, reading or writing a valid save idempotently includes Tokugawa Ieyasu (`of_b0616adde162`) and its U variant, fixes `state.clan` to the reserved `德川家`, and fixes the home at Edo (`home:"edo"`, `castles.edo.owner=state.clan`). Only castles owned by the save's previous clan are renamed; ordinary `徳川家` NPC holdings are not automatically added when the previous clan was different. An older operator save based elsewhere moves to Edo while retaining its former territory, resources, buildings and collection. On that initial move only, each of Edo's troop, wall and castle levels becomes the maximum of its old value and the former home's value. A pending Edo castle job is adjusted to the next level, or completed/removed if Edo is already level 64. Other jobs and their remaining time are preserved. Edo is included once in `captureRewards`; repeated restoration never replenishes troops or duplicates rewards. Both the client and backend enforce this same deterministic migration, and the public field always locates an operator at Edo. No extra restore endpoint or second administrator-registration key is required on linked devices.
 
 If an account has a previously stored operator save but is no longer the operator, reads remain recoverable: Ieyasu U becomes SSS; Edo ownership and its castle jobs are removed; Edo as the home is relocated to the clan's usual owned home or another owned castle. For an Edo-only campaign its castle level and garrison move to the clan's original home, preserving the rest of the progress. This read-time migration does not increment the stored revision or renew the lease. The next write is still subject to full general-player validation. There is no public role-reassignment endpoint.
-When that legacy save has `clan:"德川家"`, read migration first neutralizes ordinary `徳川家` NPC holdings, then renames the old reserved holdings to ordinary `徳川家`. This preserves the old ownership set; it never grants the whole ordinary Tokugawa territory. Any now-self treaty is removed. A new ordinary save with the reserved clan is rejected with 403 `ADMIN_CLAN_REQUIRED`, regardless of imported role flags. The first-start UI excludes Edo, Sunpu, Nijo, Osaka and Nagoya, while existing ordinary saves at Nijo/Osaka/Nagoya remain valid; the sync API does not treat a historical imported home as proof of a new-start selection. Edo stays operator-only in every save and is protected from public-field raids. Field summaries include `majorCity:boolean` for these five homes. `node scripts/test-clans.mjs` verifies the character distinction, migration, ordinary metropolitan save compatibility and protected Edo attacks.
+When that legacy save has `clan:"德川家"`, read migration first neutralizes ordinary `徳川家` NPC holdings, then renames the old reserved holdings to ordinary `徳川家`. This preserves the old ownership set; it never grants the whole ordinary Tokugawa territory. Any now-self treaty is removed. A new ordinary save with the reserved clan is rejected with 403 `ADMIN_CLAN_REQUIRED`, regardless of imported role flags. The first-start UI excludes Edo, Sunpu, Nijo, Osaka and Nagoya, while existing ordinary saves at Nijo/Osaka/Nagoya remain valid; the sync API does not treat a historical imported home as proof of a new-start selection. Edo stays operator-only in every save and cannot be captured, but real-player reward battles are available on the shared field. Field summaries include `majorCity:boolean` for these five homes. `node scripts/test-clans.mjs` verifies the character distinction, migration, ordinary metropolitan save compatibility and Edo reward-battle invariants.
 
 ## Global online player list
 
@@ -231,25 +231,28 @@ Send `online:true` every twenty seconds only while the game document is visible.
 
 `GET /me`, chat, sync reads and other background authenticated requests do not create presence. Foreground presence writes are limited to 180 per identity per minute. Per-device presence records older than 24 hours are removed on that identity's next presence update; this cleanup does not touch sessions or cloud saves.
 
-## Shared player field, raids and diplomacy
+## Shared player field, city battles and diplomacy
 
-The shared field projects real cloud-saved player bases onto their actual home-castle locations. A base belongs to a player ID; multiple players at the same historical castle remain separate selectable accounts. A registered identity without a cloud save has no field base yet. A defeated ordinary campaign is omitted until restored or the next shared cycle restores its original home. Public views project the new home and one owned castle immediately at the boundary, even when an offline save has not yet completed bounded settlement. Field raids and player alliances are separate from the campaign's NPC castle conquest, clan treaties, friends and guilds.
+The shared field projects real cloud-saved players onto their home castles and their owned Nijo, Osaka and Nagoya holdings. A target belongs to a **player ID and castle ID**. Multiple players at the same historical castle remain separate selectable accounts; this API does not establish one exclusive worldwide owner for each historical castle. An identity without a cloud save has no field target. NPC campaigns remain separate from these player battles and alliances.
 
 | Method / path | Authentication and body / query | Result |
 |---|---|---|
-| GET `/field` | Public; optional bearer token; `?cursor=…&limit=…` | `{ok,players,total,nextCursor,clock,rules}` |
+| GET `/field` | Public; optional bearer token; `?cursor=…&limit=…` | `{ok,players,targets,total,nextCursor,clock,rules}` |
 | GET `/field/me` | Bearer token; optional `?deviceId=…` | `{ok,self,revision,clock,rules,attack,relationships,battles}` |
-| POST `/field/attack` | Bearer token; `{targetPlayerId,troops,tactic,requestId,deviceId,expectedRevision}` | Full current sync snapshot, plus `{battle,idempotent}` |
+| POST `/field/attack` | Bearer token; `{targetPlayerId,targetCastleId?,troops,tactic,requestId,deviceId,expectedRevision}` | Full current sync snapshot, plus `{battle,idempotent}` |
 | POST `/field/diplomacy` | Bearer token; `{targetPlayerId,action,requestId,deviceId,expectedRevision}` | `{ok,relationship,idempotent,clock}` |
 
-Both POSTs require the acting identity's unexpired writer lease for `deviceId` and the exact cloud-save `expectedRevision`. The client must catch up to a confirmed world-clock sample, flush pending local changes, suspend local mutations during the request and then apply the authoritative returned/refresh snapshot. A defender's old save cannot overwrite an incoming raid: the raid increments its revision, so the old PUT receives `REVISION_CONFLICT`. Preserve unsent local edits as a recovery backup; do not silently resubmit them over the new authoritative revision.
+Both POSTs require the acting identity's unexpired writer lease and exact cloud-save `expectedRevision`. The client catches up to a confirmed world clock, flushes local changes, suspends local mutations during the request and applies the authoritative snapshot before reporting completion. A stale defender PUT cannot overwrite a raid or capture because its revision has changed. Unsent local edits are preserved as a recovery backup rather than silently resubmitted over an incoming battle.
 
 ### Public and private field objects
 
 ```js
 fieldPlayer = {
   playerId:"u_…", name:"領主名", clan:"織田家",
-  homeCastleId:"kiyosu", homeCastleName:"清洲城", level:1, keepLevel:1,
+  homeCastleId:"kiyosu", homeCastleName:"清洲城",
+  targetCastleId:"nijo", targetCastleName:"二条城", isHome:false,
+  battleMode:"capture", capturable:true, majorCity:true,
+  level:48, keepLevel:32,
   defenseTroops:3750, defensePower:4600,
   armySummary:{officerCount:3,rankPower:1.08},
   isAdmin:false, isStaff:false, self:false, online:false,
@@ -267,15 +270,17 @@ relationship = {
 };
 ```
 
-GET `/field` sorts by player ID, uses an opaque player-ID cursor and accepts a limit from 1 to 100 (default 50). It includes only public names, role, clan, home, castle and keep levels, aggregate army strength and current presence. No resources, saved game, device identifiers/names, tokens, pairing codes or IP information is exposed. A guest sees `self:false`, neutral relationships and `attackable:false`. Optional authentication adds the requester's relationships and target eligibility; it does not add private resources. The role is resolved from `adminUserId`, never client flags. An operator's home is always Edo and all operator bases are protected from raids.
+GET `/field` sorts and paginates **players** by an opaque player-ID cursor, with a limit from 1 to 100 (default 50). `players` remains one home entry per player and `total` remains the player count. `targets` expands the same page to each home plus owned Nijo/Osaka/Nagoya, without duplicating a home. Clients must key selections by `playerId` and `targetCastleId`, use the returned cursor, and not infer a player count from `targets.length`. At a cycle boundary, pending settlement projects only the restored home; expired holdings are not attackable.
 
-`level` remains the home castle's development level, with its existing ordinary/metropolitan limits. The independent `keepLevel` is an integer from 1 to 32 for choosing the castle's artwork. It comes from the completed personal `state.buildings.keep` for ordinary players and the operator at Edo; staff at Sunpu use the authoritative shared `staff_base.buildings.keep`. Operator status takes priority over a remaining staff membership. Missing or nonnumeric source values project as 1, while finite numeric legacy values are floored and bounded to 1–32. A missing shared value never exposes the staff member's personal keep level. Facility development persists across territory cycles, so pending and completed cycle settlement retain the same keep level. Both public list entries and `/field/me.self` use this projection; older responses without `keepLevel` should render the level-1 artwork without deriving it from `level`.
+Only public names, roles, clan, home/target, development levels, aggregate defense and current presence are exposed. There are no private balances, saves, devices, tokens, pairing codes or IPs. A guest sees neutral relationships, `self:false` and `attackable:false`. Optional authentication supplies the requester's relationships and eligibility. Roles come from server-owned operator and staff records. Protection from **capture** belongs to Edo and Sunpu; an operator's or staff member's other three metropolitan holdings can still be captured.
 
-GET `/field/me` is private to the authenticated user. `self` and `revision` can be null if no cloud base exists. `attack` includes only that user's available troops, commands and rice. With `deviceId`, a different writer causes `ready:false`. `relationships` includes only that user's unexpired incoming/outgoing proposals and accepted alliances; `battles` contains the newest 20 raids involving that identity. A supplied query cannot select a different user's private history.
+`level` is the target's castle level: Edo/Sunpu up to 64, Nijo/Osaka/Nagoya up to 48, other castles up to 32. Home artwork uses the independent completed `keepLevel` from personal `state.buildings.keep`, or authoritative shared `staff_base.buildings.keep` for Sunpu. The operator role takes precedence over staff membership. Missing or invalid home keep levels project as 1; finite numeric legacy values are floored and bounded to 1–32. A missing shared value never exposes personal keep development. Holdings use their castle development for artwork, bounded to the final stage 32. Facilities persist across territory cycles.
 
-### Raid rules and result
+GET `/field/me` is private to the authenticated identity. `self` and `revision` can be null without a saved base. `attack` contains only that identity's available troops, commands and rice; another writer device makes `ready:false`. `relationships` includes only that identity's live proposals/alliances, and `battles` contains its newest 20 player battles. A query cannot select another identity's private history.
 
-All clients receive this `rules` object:
+### Battle rules and result
+
+All clients receive these capabilities and rules:
 
 ```js
 rules = {
@@ -284,7 +289,11 @@ rules = {
   attackCooldownMs:60000, defenderProtectionMs:60000,
   proposalLifetimeMs:600000, allianceDurationMs:360000,
   maxLootPerResource:500, maxLootFraction:0.05,
-  maxDefenderLossFraction:0.1, operatorProtected:true,
+  maxDefenderLossFraction:0.1, operatorProtected:false, staffProtected:false,
+  targetCastles:true, specialBaseBattles:true,
+  captureCastles:["nijo","osaka","nagoya"],
+  uncapturableCastles:["edo","sunpu"],
+  victoryRewards:{gold:500,rice:500,wood:500,stone:500},
   tactics:[
     {id:"balanced",name:"正攻法",food:1,modifier:1,loss:1},
     {id:"assault",name:"総攻撃",food:1.25,modifier:1.18,loss:1.35},
@@ -294,27 +303,42 @@ rules = {
 };
 ```
 
-A raid costs one command and `ceil(troops × 0.3 × tactic.food) + 150` rice. The attacker needs 300–100,000 soldiers, within its saved available force; its confirmed world-clock checkpoint must be no more than 15 simulated seconds old. Attacks are blocked while the global clock is paused, against self, an operator, a defeated base, an active ally or a recently protected defender. Attacking players wait 60 simulated seconds between raids. A defender receives 60 simulated seconds of protection after each raid, including a repelled raid. These deadlines use monotonically increasing world `elapsedMs`; calendar wrap and device clocks cannot shorten them. Offline opponents remain valid field targets, and their most recent persisted base is used.
+An attack costs one command and `ceil(troops × 0.3 × tactic.food) + 150` rice. It needs 300–100,000 troops, within the actor's saved force, and a confirmed world-clock checkpoint at most 15 simulated seconds old. Self, active allies, unavailable targets, protected defenders and a paused world are blocked. Attack cooldown and defender protection each last 60 simulated seconds, including a repelled attack. Deadlines use monotonic world `elapsedMs`, so device clocks and calendar wrap cannot shorten them. Sunpu's protection is shared across its staff defenders. Offline opponents are eligible using their most recent persisted save.
 
-The server computes battle strength from saved troops, morale, technology, castle/wall levels, selected tactics and the strongest owned rank of each equipped officer. Rank multipliers for D/C/B/A/S/SS/SSS/U are 0.90/0.95/1/1.08/1.16/1.25/1.35/1.50, averaged over the equipped army; an empty army uses 0.75. Defense includes the home garrison, 45% of mobile troops and a fixed 200-point base. Siege reduces wall effectiveness. Victory probability is clamped to 5–95%, and the result uses server cryptographic randomness. Client-supplied outcomes, strengths, losses, role flags or resource rewards are rejected as unknown fields.
+The server derives combat strength from saved troops, morale, research, castle/wall development, tactics and equipped officers' strongest owned ranks. Rank multipliers for D/C/B/A/S/SS/SSS/U are 0.90/0.95/1/1.08/1.16/1.25/1.35/1.50, averaged over the army; an empty army uses 0.75. Home defense includes its garrison, 45% of mobile troops and a fixed 200-point base. A metropolitan holding uses its garrison, 18% of mobile troops and its own wall. Sunpu uses authoritative shared castle/wall levels. Siege reduces wall effectiveness. Win chance is bounded to 5–95% and resolved using server cryptographic randomness. Client-supplied results, strengths, rewards, losses and role flags are rejected.
 
-Raids do not transfer or delete the home, other castles or officers. The attacker's loss is capped at 35% of the sent force; the defender loses at most 10% of its mobile troops and 10% of its home garrison. On victory, each resource transfer is at most 5% of the defender's saved balance and at most 500 units, limited further by the attacker's resource capacity. Resource transfers balance between both saves; rice expedition cost is consumed. Surviving attackers return immediately. This is a bounded raid system, without travel time or player-base conquest.
+| Mode | Target | On a victory |
+|---|---|---|
+| `reward` | Actual operator Edo or staff Sunpu | Grant up to 500 each of gold/rice/wood/stone, limited by capacity. `rewards` records actual grants. `loot` and defender losses are zero; the battle commit does not write the defender save or shared base. No capture. |
+| `capture` | Explicitly selected, player-owned Nijo/Osaka/Nagoya | Transfer that player's city into the winner's campaign and remove it from the defender's ownership. The winner retains its home. Ordinary bounded loot/loss rules also apply. |
+| `raid` | Other ordinary player home; legacy home-only requests | No ownership transfer. Bounded resource loot and troop losses only. |
+
+The attacker's loss is bounded to 35% of the sent force. For raid/capture, the defender loses at most 10% of mobile troops and 10% of the target garrison. Each victorious loot transfer is bounded to 5% of the saved defender balance and 500 units, then by receiver capacity; transfers balance between saves. Reward battles create the separately recorded reward without taking defender resources. Expedition rice is consumed. On a newly owned city capture, 15% of the surviving sent troops are assigned as its garrison and deducted from mobile troops; the remainder returns immediately. No extra troops are created.
+
+If the captured city was the defender's home, it retreats to an ordinary castle and updates both the saved cycle home and database cycle-home anchor atomically. Officers, army, governors, buildings, research and other campaign progress survive. The lost city's castle upgrade is removed or carried to the fallback home when valid; unrelated jobs remain. A player who already owns that historical city retains its existing higher castle development and valid upgrades. Staff personal campaign backups are updated with committed capture progress so a later dismissal cannot restore the lost holding. A newly owned city becomes a public holding target and can be attacked again.
+
+Omitting `targetCastleId` preserves the previous home-only **raid** semantics for the three capturable cities. Explicit selection is required for capture. The semantic request hash distinguishes the absence of a target castle from its explicit value. New clients require `targetCastles`, `specialBaseBattles` and an explicit `reward`/non-capturable DTO before offering Edo or Sunpu attacks; an older server response cannot be interpreted as permission.
 
 ```js
 battle = {
-  id:"fb_…",requestId:"client-uuid",attackerPlayerId:"u_…",attackerName:"…",
-  defenderPlayerId:"u_…",defenderName:"…",castleId:"kiyosu",castleName:"清洲城",
-  won:true,tactic:"balanced",troops:3000,attackerLost:300,
-  defenderLost:{troops:120,garrison:150},foodCost:1050,
+  id:"fb_…", requestId:"client-uuid", attackerPlayerId:"u_…", attackerName:"…",
+  defenderPlayerId:"u_…", defenderName:"…", castleId:"nijo", castleName:"二条城",
+  battleMode:"capture", won:true, tactic:"balanced", troops:3000, attackerLost:300,
+  defenderLost:{troops:120,garrison:150}, foodCost:1050,
   loot:{gold:500,rice:500,wood:500,stone:500},
-  attackPower:4000,defensePower:3800,winChance:53,
-  occurredElapsedMs:120000,createdAt:"2026-11-21T00:02:00.000Z",
-  attackerRevision:5,defenderRevision:8,
-  nextAttackElapsedMs:180000,defenderProtectedUntilElapsedMs:180000
+  rewards:{gold:0,rice:0,wood:0,stone:0},
+  capture:{captured:true,castleId:"nijo",castleName:"二条城",
+    attackerPlayerId:"u_…",defenderPlayerId:"u_…",
+    defenderHomeCastleId:"kiyosu",defenderHomeCastleName:"清洲城",
+    newlyOwned:true,garrison:405},
+  attackPower:4000, defensePower:3800, winChance:53,
+  occurredElapsedMs:120000, createdAt:"2026-11-21T00:02:00.000Z",
+  attackerRevision:5, defenderRevision:8,
+  nextAttackElapsedMs:180000, defenderProtectedUntilElapsedMs:180000
 };
 ```
 
-Both saved revisions increment once for a successful raid, while the defender's lease remains with its existing device. Battle logs are private to the two participants. Existing campaign resources and upgrades are still imported from validated client saves; the field service is authoritative over raid resolution, authorization and atomic settlement, but it is not a complete server simulation or a general anti-cheat validator of every campaign transition.
+`capture.captured` is false outside a confirmed capture victory; `newlyOwned:false` and `garrison:0` apply when no capture occurred. UI success must follow the committed `won` and capture fields, not merely the selected mode. Raid/capture increment both save revisions once, retaining the defender's lease. Reward battles increment only the actor's save revision. Normal time progression continues: for example, a staff actor's response snapshot may finish an already-due shared construction job. Defense projects that due job before combat, and the commit guards the observed shared revision; this natural completion is not battle damage or a battle grant. Battle records are private to the two participants. Campaign resources and upgrades still originate in validated client saves; this service is authoritative over player battle authorization, resolution and atomic settlement, not every campaign transition.
 
 ### Mutual diplomacy
 
@@ -324,16 +348,15 @@ Diplomacy changes separate relationship records and does not alter either game s
 
 ### Idempotence, atomicity and errors
 
-Retain a fresh UUID `requestId` across retries of each distinct action. IDs are scoped to the acting identity and shared across attack/diplomacy operations. A semantic hash binds the kind and target plus troops/tactic or diplomatic action. Reusing an ID for different content returns HTTP 409 `REQUEST_ID_REUSED`. Retrying the same completed raid returns the identical battle record and the **latest** attacker sync snapshot with `idempotent:true`, never an old save that could rewind later progress. A diplomacy retry returns the current relationship without repeating the action. Identity/device recovery does not make a completed operation execute again.
+Retain a fresh UUID `requestId` across retries of each distinct action. IDs are scoped to the acting identity and shared across attack/diplomacy operations. A semantic hash binds the kind, target player, optional target castle (including its absence), and troops/tactic or diplomatic action. Reusing an ID for different content returns HTTP 409 `REQUEST_ID_REUSED`. Retrying the same completed raid returns the identical battle record and the **latest** attacker sync snapshot with `idempotent:true`, never an old save that could rewind later progress. A diplomacy retry returns the current relationship without repeating the action. Identity/device recovery does not make a completed operation execute again.
 
-The server reads and validates both saves, then uses a conditional insert into `field_requests` as the gate for one D1 batch transaction. The gate atomically checks the acting lease/revision, defending revision, world-clock revision, current alliance, attack cooldown and protection. Only statements matching the newly generated private commit nonce can update the two saves and insert the battle. A duplicate request or failed condition changes neither save. An exception in any statement rolls back the complete batch. Diplomacy uses the same request gate with relation-revision comparison and consent rules. Consequently, a concurrent alliance acceptance and attack cannot both commit from the same observed state.
+The server reads and validates both saves, then uses a conditional insert into `field_requests` as the gate for one D1 batch transaction. The gate atomically checks the acting lease/revision, defending revision, world-clock revision, current alliance, attack cooldown and protection, plus current roles/staff terms and the shared Sunpu base revision when relevant. Only statements matching the newly generated private commit nonce can update the applicable saves and insert the battle. Capture also updates the cycle-home anchor and applicable personal staff backup in that transaction; reward battles omit defender writes. A duplicate request or failed condition changes neither save. An exception in any statement rolls back the complete batch. Diplomacy uses the same request gate with relation-revision comparison and consent rules. Consequently, a concurrent alliance acceptance and attack cannot both commit from the same observed state.
 
 Requests are limited to 30 new raid attempts and 20 new diplomatic attempts per identity per real minute. Successful replays do not consume another battle/cooldown or rate-limit allowance. Bodies use the general 16-KiB limit; IDs follow the normal 90-character identifier rule. Public lists are read-only and never renew a lease or foreground presence.
 
 | HTTP | Field error | Meaning |
 |---|---|---|
 | 400 | `INVALID_INPUT`, `INVALID_TARGET` | Invalid amount/tactic/action/extra authority field, or self-target |
-| 403 | `TARGET_PROTECTED` | Protected operator target |
 | 404 | `FIELD_PLAYER_NOT_FOUND` | Missing player or unsaved target base |
 | 409 | `SAVE_REQUIRED`, `BASE_UNAVAILABLE` | No usable cloud base |
 | 409 | `LEASE_REQUIRED`, `REVISION_CONFLICT` | Acting device must acquire/refresh synchronization |
@@ -341,7 +364,7 @@ Requests are limited to 30 new raid attempts and 20 new diplomatic attempts per 
 | 409 | `INSUFFICIENT_FORCE` | Not enough troops, command or rice |
 | 409 | `ALLIED_TARGET`, `ATTACK_COOLDOWN`, `TARGET_PROTECTED` | Active alliance, attack wait or defender protection |
 | 409 | `DIPLOMACY_STATE`, `DIPLOMACY_LIMIT` | Consent state changed, action not permitted, or active relationship limit |
-| 409 | `FIELD_CHANGED`, `REQUEST_ID_REUSED` | Concurrent target/relation update, or an ID reused for a different operation |
+| 409 | `FIELD_CHANGED`, `FIELD_TARGET_CHANGED`, `REQUEST_ID_REUSED` | Concurrent target/relation update, or an ID reused for a different operation |
 
 ## Chat
 
@@ -524,9 +547,11 @@ Claim is atomic with a unique `(mailId,userId)` receipt. A second claim with the
 
 ## Shared staff base and protected metropolitan castles (v3.7)
 
-Every authenticated support staff member has a fixed, protected home at **駿府城 (`sunpu`)**. Their active house is **德川家**, while their original ordinary clan is preserved in the authoritative personal campaign backup. Their individual resources, officers, research, governors, army, gifts and guild balances remain separate. New staff games also start as 德川家 at Sunpu; their displayed leader is the ordinary **徳川家康**, and ordinary officer-rank restrictions still apply. The primary operator takes precedence over staff membership: it remains **德川家 at 江戸城**, with the exclusive 德川家康 U. Sunpu is unavailable to ordinary players and the operator for initial selection, capture or relocation; ordinary players cannot raid a staff member's Sunpu on the shared field. Ordinary unification covers 126 eligible castles, while a staff member and the operator each cover 127. Public field and guild ranking projections apply current roles even before the player's next save.
+Every authenticated support staff member has a fixed, protected home at **駿府城 (`sunpu`)**. Their active house is **德川家**, while their original ordinary clan is preserved in the authoritative personal campaign backup. Their individual resources, officers, research, governors, army, gifts and guild balances remain separate. New staff games also start as 德川家 at Sunpu; their displayed leader is the ordinary **徳川家康**, and ordinary officer-rank restrictions still apply. The primary operator takes precedence over staff membership: it remains **德川家 at 江戸城**, with the exclusive 德川家康 U. Sunpu is unavailable to ordinary players and the operator for initial selection, capture or relocation; ordinary players may attack a staff member's Sunpu in a non-capturing reward battle on the shared field. Ordinary unification covers 126 eligible castles, while a staff member and the operator each cover 127. Public field and guild ranking projections apply current roles even before the player's next save.
 
-The five major cities are Edo, Sunpu, Nijo, Osaka and Nagoya. Their **castle** limit is 64; other castles are limited to 32. All 64 **facility** types remain limited to level 32. The starting selector excludes these five cities (123 ordinary choices). Existing ordinary Nijo/Osaka/Nagoya campaigns remain valid. Artwork has 32 development stages and retains stage 32 for castle levels 33–64; numeric levels and gameplay benefits continue to 64.
+The five major cities are Edo, Sunpu, Nijo, Osaka and Nagoya. Edo/Sunpu **castle** levels stop at 64, Nijo/Osaka/Nagoya at 48, and ordinary castles at 32. All 64 **facility** types remain limited to 32. The starting selector excludes all five cities (123 ordinary choices). Existing ordinary Nijo/Osaka/Nagoya campaigns remain valid. Artwork retains its final stage after level 32.
+
+Version 3.9.6 reads former Nijo/Osaka/Nagoya levels 49–64 by lowering only those castle levels to 48. It validates the former level and next-level job before removing an over-cap castle job; unrelated jobs, army, governors, officers, facilities and resources survive. A level-48 castle with a valid legacy level-49 job is handled the same way. Invalid former levels above 64 or malformed jobs remain invalid. New sync writes must satisfy the 48 cap. Personal staff backup projections follow the same normalization without changing shared Sunpu development.
 
 ### Source and commands
 
@@ -599,7 +624,7 @@ Public achievements are emitted once per authoritative shared-job completion, na
 
 ## Consecutive facility construction
 
-Ordinary facilities and the shared Sunpu facilities may reserve consecutive upgrade stages through level 32. Each action reserves exactly one level, immediately pays that level's resource cost and consumes one command. `costs(id)` quotes the next level after the existing queue tail; `costs(id,fromLevel)` explicitly quotes a given starting level. A queued level has no production or unlock benefit before its own completion. Castle upgrades remain single-stage operations and retain the ordinary/metropolitan limits of 32/64.
+Ordinary facilities and the shared Sunpu facilities may reserve consecutive upgrade stages through level 32. Each action reserves exactly one level, immediately pays that level's resource cost and consumes one command. `costs(id)` quotes the next level after the existing queue tail; `costs(id,fromLevel)` explicitly quotes a given starting level. A queued level has no production or unlock benefit before its own completion. Castle upgrades remain single-stage operations and retain the ordinary/capturable-metropolitan/reserved limits of 32/48/64.
 
 Capacity counts distinct non-research `kind:id` chains, not the number of reserved stages. Extending an existing facility chain is allowed when all slots are occupied; starting a new chain still requires a slot. A facility chain advances only its first unfinished stage. On completion, the following stage starts immediately, with costs already paid. Saved private jobs retain the existing fields `{kind,id,remaining,total,remainingSeconds,totalSeconds,targetLevel}`. Their targets must be contiguous from the completed level, and every future stage must have its full own duration remaining. At most 192 private construction stages plus one research job are accepted. Unknown presentation fields such as `shared`, `queued` or `startedBy` are stripped from personal saves.
 
