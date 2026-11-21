@@ -35,7 +35,7 @@ function setup(options={}) {
   const clock={id:'field-clock',elapsedMs:100000,confirmedElapsedMs:100000,running:true,speed:1,revision:1,calendar:{turn:1,year:1560,month:2,cycle:1,elapsed:40}};
   if(stored.has('save'))game=SengokuEngine.fromSave(stored.get('save'),roster);
   else {game.applyWorldClock(clock);stored.set('save',game.exportSave());}
-  const control={user:{id:'player-a',name:'領主A',isAdmin:false},deviceId:'tab-a',status:{linked:true,ready:true,writable:true,revision:7,leaseExpiresAt:new Date(Date.now()+30000).toISOString()},clock,clockReady:true,uuidCalls:0,flushes:0,refreshes:0,queued:0};
+  const control={user:{id:'player-a',name:'領主A',isAdmin:false,guildId:'guild-a'},deviceId:'tab-a',status:{linked:true,ready:true,writable:true,revision:7,leaseExpiresAt:new Date(Date.now()+30000).toISOString()},clock,clockReady:true,uuidCalls:0,flushes:0,refreshes:0,queued:0};
   let context;
   const social={
     getUser:()=>control.user?{...control.user}:null,
@@ -50,11 +50,12 @@ function setup(options={}) {
     flush:async()=>{control.flushes++;trace.push('flush');return control.onFlush?control.onFlush():{ok:true};},
     refresh:async()=>{control.refreshes++;trace.push('sync-refresh');return control.onRefresh?control.onRefresh():{ok:true};},
   };
+  social.guildRequest=async(route,opts)=>{const call={route,options:clone(opts)};posts.push(call);trace.push('send-guild');return control.onPost?control.onPost(call):{ok:true,receipt:{id:'guild-transfer-1'}};};
   context={
     game,roster,SengokuEngine,URLSearchParams,Date,JSON,Math,Promise,
     state:()=>context.game.state,
     syncAccess:{...control.status},saveKey:'save',backupKey:'backups',saveEnabled:true,saveWarning:'',
-    worldCatchingUp:false,worldCatchupTimer:null,worldClockStatusKey:'',fieldActionPending:false,
+    worldCatchingUp:false,worldCatchupTimer:null,worldClockStatusKey:'',fieldActionPending:false,startPending:false,
     selectedCastle:'',lastRealtime:0,saveCounter:0,importedGame:null,activeModal:'',
     localStorage:{getItem:key=>stored.get(key)||null,setItem:(key,value)=>{if(control.storageError)throw Error('storage unavailable');stored.set(key,value);},removeItem:key=>stored.delete(key)},
     crypto:{randomUUID:()=>{control.uuidCalls++;return 'test-request-'+control.uuidCalls;}},
@@ -190,8 +191,88 @@ test('identity switching during reconciliation cannot deliver an old player repo
   await assert.rejects(task,/領主|接続|以前/);assert.equal(h.c.fieldActionPending,false);
 });
 
+const guildRoute='/guild/treasury/transfer';
+const guildPayload={guildId:'guild-a',direction:'deposit',resource:'gold',amount:100};
+const guildRecords=h=>[...h.stored.entries()].filter(([key])=>key.startsWith('sengoku-guild-transfer-pending-v1:'));
+
+test('guild transfer flushes, sends the writer revision, and waits for the authoritative balance',async()=>{
+  const h=setup(),response=deferred(),refresh=deferred(),before=h.c.game.state.resources.gold;
+  h.control.onPost=()=>response.promise;h.control.onRefresh=()=>refresh.promise;
+  const task=h.c.requestField(guildRoute,{method:'POST',data:{...guildPayload,deviceId:'forged',expectedRevision:999}});
+  await until(()=>h.posts.length===1);
+  assert.equal(h.posts[0].options.data.deviceId,'tab-a');assert.equal(h.posts[0].options.data.expectedRevision,7);
+  assert.equal(h.c.game.state.resources.gold,before,'The client must not debit optimistically');assert.equal(h.c.canMutate(),false);
+  await assert.rejects(h.c.requestField('/field/attack',{method:'POST',data:{targetId:'player-b',troops:700}}));
+  response.resolve({ok:true,receipt:{id:'vault-1'},revision:8});await until(()=>h.control.refreshes===1);
+  assert.equal(guildRecords(h).length,1);assert.equal(h.c.canMutate(),false);
+  h.c.game.state.resources.gold=before-100;h.control.status.revision=8;refresh.resolve({ok:true});
+  assert.equal((await task).receipt.id,'vault-1');assert.equal(h.c.game.state.resources.gold,before-100);
+  assert.equal(guildRecords(h).length,0);assert.equal(h.c.fieldActionPending,false);
+});
+
+test('a guild response lost overnight reuses its receipt even with a new UI request ID',async()=>{
+  const h=setup(),receipts=new Map();let executions=0,key;
+  h.control.onPost=async call=>{key=call.options.data.requestId;receipts.set(key,{ok:true,receipt:{id:key}});executions++;throw Error('response lost');};
+  await assert.rejects(h.c.requestField(guildRoute,{method:'POST',data:{...guildPayload,requestId:'original'}}),/response lost/);
+  const [storedKey,raw]=guildRecords(h)[0];h.stored.set(storedKey,JSON.stringify({...JSON.parse(raw),createdAt:Date.now()-86400000}));
+  const reopened=setup({stored:h.stored});reopened.control.status.revision=22;
+  reopened.control.onPost=async call=>{const receipt=receipts.get(call.options.data.requestId);if(receipt)return receipt;executions++;return{ok:true,receipt:{id:'duplicate'}};};
+  const result=await reopened.c.requestField(guildRoute,{method:'POST',data:{...guildPayload,requestId:'new-ui-id',expectedRevision:0}});
+  assert.equal(result.receipt.id,key);assert.equal(executions,1);assert.equal(reopened.posts[0].options.data.expectedRevision,22);
+  assert.equal(guildRecords(reopened).length,0);
+});
+
+test('different uncertain guild operations keep separate retry records',async()=>{
+  const h=setup();h.control.onPost=async()=>{throw Error('response lost');};
+  await assert.rejects(h.c.requestField(guildRoute,{method:'POST',data:guildPayload}));
+  await assert.rejects(h.c.requestField(guildRoute,{method:'POST',data:{...guildPayload,resource:'rice',amount:200}}));
+  assert.equal(guildRecords(h).length,2);const firstId=h.posts[0].options.data.requestId;
+  h.control.onPost=async()=>({ok:true,receipt:{id:firstId}});
+  await h.c.requestField(guildRoute,{method:'POST',data:guildPayload});
+  assert.equal(h.posts[2].options.data.requestId,firstId);assert.equal(guildRecords(h).length,1);
+  assert.equal(JSON.parse(guildRecords(h)[0][1]).signature.includes('rice'),true);
+});
+
+test('guild membership changes while waiting for the clock or flush prevent the old transfer',async()=>{
+  for(const phase of ['clock','flush']){
+    const h=setup(),gate=deferred();if(phase==='clock')h.control.onClockRefresh=()=>gate.promise;else h.control.onFlush=()=>gate.promise;
+    const task=h.c.requestField(guildRoute,{method:'POST',data:guildPayload});
+    await until(()=>phase==='clock'?h.trace.includes('clock-refresh'):h.control.flushes===1);
+    h.control.user.guildId='guild-new';gate.resolve({ok:true});await assert.rejects(task,/所属するギルド/);
+    assert.equal(h.posts.length,0);assert.equal(guildRecords(h).length,0);assert.equal(h.c.fieldActionPending,false);
+  }
+});
+
+test('a changed guild after the server commits reconciles the player without delivering old private data',async()=>{
+  const h=setup(),response=deferred();h.control.onPost=()=>response.promise;
+  const task=h.c.requestField(guildRoute,{method:'POST',data:guildPayload});await until(()=>h.posts.length===1);
+  h.control.user.guildId='guild-new';response.resolve({ok:true,receipt:{id:'old-guild'},treasury:{gold:900}});
+  await assert.rejects(task,/所属するギルド/);assert(h.control.refreshes>=1);assert.equal(h.c.fieldActionPending,false);
+});
+
+test('an older in-flight sync poll cannot complete a newer guild operation',async()=>{
+  const h=setup();h.control.onPost=async()=>({ok:true,revision:10,receipt:{id:'current'}});
+  h.control.onRefresh=async()=>{if(h.control.refreshes===2)h.control.status.revision=10;return{ok:true};};
+  await h.c.requestField(guildRoute,{method:'POST',data:guildPayload});
+  assert.equal(h.control.refreshes,2);assert.equal(guildRecords(h).length,0);
+});
+
+test('a failed guild reconciliation retains the retry key and never reports success',async()=>{
+  const h=setup();h.control.onPost=async()=>({ok:true,revision:10,receipt:{id:'committed'}});h.control.onRefresh=async()=>({ok:false});
+  await assert.rejects(h.c.requestField(guildRoute,{method:'POST',data:guildPayload}),e=>e.code==='GUILD_RECONCILE_PENDING');
+  assert.equal(guildRecords(h).length,1);assert.equal(h.c.fieldActionPending,false);
+});
+
+test('guild gateway rejects reads, nested routes and stale membership before a mutation',async()=>{
+  const h=setup();
+  for(const [route,method,payload]of[[guildRoute,'GET',guildPayload],[guildRoute+'/other','POST',guildPayload],['/guild/members/role','POST',guildPayload],[guildRoute,'POST',{...guildPayload,guildId:'other'}],[guildRoute,'POST',{}]]){
+    await assert.rejects(h.c.requestField(route,{method,data:payload}));
+  }
+  assert.equal(h.posts.length,0);assert.equal(h.control.flushes,0);assert.equal(guildRecords(h).length,0);
+});
+
 (async()=>{
   let passed=0;
   for(const {name,run} of tests){try{await run();passed++;console.log('PASS '+name);}catch(error){console.error('FAIL '+name+'\n'+error.stack);process.exitCode=1;}}
-  console.log(`${passed}/${tests.length} shared-field bridge async scenarios passed.`);
+  console.log(`${passed}/${tests.length} shared-field / guild bridge async scenarios passed.`);
 })();

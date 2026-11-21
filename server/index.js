@@ -1,11 +1,16 @@
 const API = '/api/v1';
 const MAX_BODY = 16 * 1024;
 const MAX_SAVE_BODY = 2 * 1024 * 1024;
+const MAX_AVATAR_BYTES = 48 * 1024;
+const MAX_AVATAR_BODY = 70 * 1024;
 const MAX_GUILD_MEMBERS = 50;
 const ONLINE_WINDOW = 90 * 1000;
+const RECENT_LOGIN_WINDOW = 24 * 60 * 60 * 1000;
 const SYNC_LEASE = 30 * 1000;
 const PAIR_CODE_LIFETIME = 10 * 60 * 1000;
 const IEYASU_ID = 'of_b0616adde162';
+const ADMIN_CLAN = '德川家';
+const ORDINARY_TOKUGAWA_CLAN = '徳川家';
 const WORLD_CLOCK_ID = 'world-v1';
 const MAX_TURN = 999999999;
 const WORLD_MONTH_MS = 60000;
@@ -63,7 +68,10 @@ async function readBody(request, limit = MAX_BODY) {
   return body;
 }
 async function hash(text) {
-  const digest = await crypto.subtle.digest('SHA-256', encoder.encode(text));
+  return hashBytes(encoder.encode(text));
+}
+async function hashBytes(bytes) {
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
   return Array.from(new Uint8Array(digest), n => n.toString(16).padStart(2, '0')).join('');
 }
 async function constantEqual(a, b) {
@@ -98,20 +106,252 @@ function response(data, status = 200, origin = null, retryAfter) {
   if (retryAfter) headers.set('Retry-After', String(retryAfter));
   return new Response(JSON.stringify(data), {status, headers});
 }
+/* Structural validation for canvas-sized avatars, not an entropy decoder.
+ * Source: ITU-T T.81 Annex B (SOF/SOS/tables) and Annex E (marker control).
+ * https://www.w3.org/Graphics/JPEG/itu-t81.pdf
+ * Only 8-bit Huffman sequential/progressive DCT, exactly 256 x 256, is accepted.
+ */
+function normalizeAvatarJpeg(input) {
+  const invalid = () => { throw new Error('Invalid avatar JPEG'); };
+  if (!(input instanceof Uint8Array) || input.length < 16 || input.length > 49152) invalid();
+  if (input[0] !== 0xff || input[1] !== 0xd8 || input.at(-2) !== 0xff || input.at(-1) !== 0xd9) invalid();
+  const chunks = [new Uint8Array([0xff, 0xd8])];
+  const components = new Map(), quantization = new Map(), huffman = new Set();
+  const sequentialSeen = new Set(), progressive = new Map();
+  let position = 2, frame = 0, scans = 0, restartInterval = 0;
+  const word = at => (input[at] << 8) | input[at + 1];
+  const keep = (marker, start, end) => {
+    chunks.push(new Uint8Array([0xff, marker]), input.subarray(start, end));
+  };
+  while (position < input.length) {
+    if (input[position++] !== 0xff) invalid();
+    // T.81 permits FF fill bytes before a marker; omit these non-image bytes.
+    while (position < input.length && input[position] === 0xff) position++;
+    if (position >= input.length) invalid();
+    const marker = input[position++];
+    if (marker === 0xd9) {
+      if (position !== input.length || !frame || !scans) invalid();
+      for (const id of components.keys()) {
+        if (frame === 0xc0 ? !sequentialSeen.has(id) : progressive.get(id)[0] < 0) invalid();
+      }
+      chunks.push(new Uint8Array([0xff, 0xd9]));
+      const length = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+      const output = new Uint8Array(length); let offset = 0;
+      for (const chunk of chunks) { output.set(chunk, offset); offset += chunk.length; }
+      return output;
+    }
+    // SOI, TEM, byte stuffing and restart markers are invalid between segments.
+    if (marker === 0 || marker === 1 || marker === 0xd8 || marker >= 0xd0 && marker <= 0xd7) invalid();
+    if (position + 2 > input.length) invalid();
+    const start = position, length = word(position), end = position + length, payload = position + 2;
+    if (length < 2 || end > input.length) invalid();
+    // Remove every APP segment and COM, including EXIF/GPS, ICC, XMP, thumbnails,
+    // Adobe metadata and user comments. No filename or metadata is returned.
+    if (marker >= 0xe0 && marker <= 0xef || marker === 0xfe) { position = end; continue; }
+    if (marker === 0xc0 || marker === 0xc2) {
+      if (frame || scans || length < 8 || input[payload] !== 8 || word(payload + 1) !== 256 || word(payload + 3) !== 256) invalid();
+      const count = input[payload + 5];
+      if (![1, 3].includes(count) || length !== 8 + 3 * count) invalid();
+      let blocks = 0;
+      for (let i = 0; i < count; i++) {
+        const at = payload + 6 + i * 3, id = input[at], h = input[at + 1] >> 4, v = input[at + 1] & 15, table = input[at + 2];
+        if (components.has(id) || h < 1 || h > 4 || v < 1 || v > 4 || table > 3) invalid();
+        if (count === 1 && (h !== 1 || v !== 1)) invalid();
+        blocks += h * v; components.set(id, {table, index:i});
+        progressive.set(id, new Int8Array(64).fill(-1));
+      }
+      if (blocks > 10) invalid();
+      frame = marker; keep(marker, start, end); position = end; continue;
+    }
+    if (marker === 0xdb) {
+      let at = payload, tables = 0;
+      while (at < end) {
+        const info = input[at++], precision = info >> 4, id = info & 15;
+        if (precision > 1 || id > 3) invalid();
+        const size = precision ? 128 : 64;
+        if (at + size > end) invalid();
+        for (let i = 0; i < 64; i++) if (precision ? word(at + i * 2) === 0 : input[at + i] === 0) invalid();
+        at += size; tables++; quantization.set(id, precision);
+      }
+      if (!tables || at !== end) invalid();
+      keep(marker, start, end); position = end; continue;
+    }
+    if (marker === 0xc4) {
+      let at = payload, tables = 0;
+      while (at < end) {
+        const info = input[at++], kind = info >> 4, id = info & 15;
+        if (kind > 1 || id > 3 || at + 16 > end) invalid();
+        let symbols = 0, remainingCodes = 1;
+        for (let i = 0; i < 16; i++) {
+          const count = input[at + i]; symbols += count; remainingCodes = remainingCodes * 2 - count;
+          // Oversubscribed/all-ones Huffman codes are not valid JPEG codes.
+          if (remainingCodes <= 0) invalid();
+        }
+        at += 16;
+        if (!symbols || symbols > 256 || at + symbols > end) invalid();
+        const seen = new Set();
+        for (let i = 0; i < symbols; i++) {
+          const value = input[at + i];
+          if (seen.has(value) || (kind === 0 ? value > 11 : (value & 15) > 10)) invalid();
+          seen.add(value);
+        }
+        at += symbols; tables++; huffman.add(kind + ':' + id);
+      }
+      if (!tables || at !== end) invalid();
+      keep(marker, start, end); position = end; continue;
+    }
+    if (marker === 0xdd) {
+      if (length !== 4) invalid();
+      restartInterval = word(payload); keep(marker, start, end); position = end; continue;
+    }
+    if (marker !== 0xda || !frame || length < 6) invalid();
+    const count = input[payload];
+    if (count < 1 || count > components.size || length !== 6 + count * 2) invalid();
+    const selected = [], used = new Set(); let lastIndex = -1;
+    for (let i = 0; i < count; i++) {
+      const id = input[payload + 1 + i * 2], tables = input[payload + 2 + i * 2], component = components.get(id);
+      if (!component || used.has(id) || component.index <= lastIndex || (tables >> 4) > 3 || (tables & 15) > 3 || !quantization.has(component.table)) invalid();
+      if (frame === 0xc0 && quantization.get(component.table) !== 0) invalid();
+      used.add(id); lastIndex = component.index; selected.push({id,dc:tables >> 4,ac:tables & 15});
+    }
+    const ss = input[payload + 1 + count * 2], se = input[payload + 2 + count * 2], approximation = input[payload + 3 + count * 2], ah = approximation >> 4, al = approximation & 15;
+    if (frame === 0xc0) {
+      if (ss !== 0 || se !== 63 || ah !== 0 || al !== 0) invalid();
+      for (const component of selected) {
+        if (sequentialSeen.has(component.id) || !huffman.has('0:' + component.dc) || !huffman.has('1:' + component.ac)) invalid();
+        sequentialSeen.add(component.id);
+      }
+    } else {
+      if (ss > se || se > 63 || (ss === 0 ? se !== 0 : count !== 1) || ah > 13 || al > 13 || ah !== 0 && al !== ah - 1) invalid();
+      for (const component of selected) {
+        if (ss === 0 && ah === 0 && !huffman.has('0:' + component.dc) || ss !== 0 && !huffman.has('1:' + component.ac)) invalid();
+        const coefficients = progressive.get(component.id);
+        if (ss !== 0 && coefficients[0] < 0) invalid();
+        for (let i = ss; i <= se; i++) {
+          if (ah === 0 ? coefficients[i] !== -1 : coefficients[i] !== ah) invalid();
+          coefficients[i] = al;
+        }
+      }
+    }
+    scans++; keep(marker, start, end); position = end;
+    const entropyStart = position; let dataBytes = 0, intervalBytes = 0, expectedRestart = 0, ended = false;
+    while (position < input.length) {
+      if (input[position] !== 0xff) { position++; dataBytes++; intervalBytes++; continue; }
+      const markerStart = position++;
+      while (position < input.length && input[position] === 0xff) position++;
+      if (position >= input.length) invalid();
+      const next = input[position];
+      if (next === 0) {
+        // FF00 is one entropy byte, not a marker. Repeated FF before stuffing
+        // is deliberately rejected rather than interpreted inconsistently.
+        if (position !== markerStart + 1) invalid();
+        position++; dataBytes++; intervalBytes++; continue;
+      }
+      if (next >= 0xd0 && next <= 0xd7) {
+        if (!restartInterval || !intervalBytes || next !== 0xd0 + expectedRestart) invalid();
+        expectedRestart = (expectedRestart + 1) & 7; intervalBytes = 0; position++; continue;
+      }
+      if (!dataBytes || !intervalBytes) invalid();
+      chunks.push(input.subarray(entropyStart, markerStart)); position = markerStart; ended = true; break;
+    }
+    if (!ended) invalid();
+  }
+  invalid();
+}
+
 function mapUser(row, now = Date.now()) {
   return {
-    id: row.id, name: row.name, clan: row.clan, isAdmin: !!row.is_admin, isStaff: !!row.is_staff && !row.is_admin,
+    id: row.id, name: row.name, clan: publicClan(row.clan,row.is_admin), isAdmin: !!row.is_admin, isStaff: !!row.is_staff && !row.is_admin,
+    avatarVersion: row.avatar_version || null,
     guildId: row.guild_id || null, guildName: row.guild_name || null,
-    guildRole: row.guild_id ? (row.owner_id === row.id ? 'owner' : 'member') : null,
+    guildRole: row.guild_id ? (row.owner_id === row.id ? 'owner' : row.is_guild_officer ? 'officer' : 'member') : null,
     online: row.presence_seen !== null && row.presence_seen !== undefined && Number(row.presence_seen) > now - ONLINE_WINDOW,
   };
 }
+function publicClan(clan,isAdmin) { return isAdmin?ADMIN_CLAN:clan===ADMIN_CLAN?ORDINARY_TOKUGAWA_CLAN:clan; }
 const USER_SELECT = `SELECT u.id,u.name,u.clan,u.last_seen,gm.guild_id,g.name AS guild_name,g.owner_id,
+  (SELECT a.version FROM user_avatars a WHERE a.user_id=u.id) AS avatar_version,
+  EXISTS(SELECT 1 FROM guild_officers go WHERE go.user_id=u.id AND go.guild_id=gm.guild_id) AS is_guild_officer,
   (SELECT MAX(p.last_seen) FROM player_presence p WHERE p.user_id=u.id AND p.online=1) AS presence_seen,
   CASE WHEN u.id=(SELECT value FROM settings WHERE key='adminUserId') THEN 1 ELSE 0 END AS is_admin,
   EXISTS(SELECT 1 FROM staff_members sm WHERE sm.user_id=u.id) AS is_staff
   FROM users u LEFT JOIN guild_members gm ON gm.user_id=u.id LEFT JOIN guilds g ON g.id=gm.guild_id`;
 async function getUser(db, id) { return stmt(db, USER_SELECT + ' WHERE u.id=?', id).first(); }
+function avatarBucket(env) {
+  if(!env.BUCKET?.put||!env.BUCKET?.get||!env.BUCKET?.delete)fail(503,'AVATAR_STORAGE_UNAVAILABLE','写真の保存サービスの準備中です。少し時間をおいて再度お試しください。');
+  return env.BUCKET;
+}
+function decodeAvatarImage(body) {
+  if(Object.keys(body).length!==1||typeof body.image!=='string'||!body.image.length)fail(400,'INVALID_AVATAR','256×256のJPEG写真を選択してください。');
+  const encoded=body.image;
+  if(encoded.length>Math.ceil(MAX_AVATAR_BYTES/3)*4)fail(413,'AVATAR_TOO_LARGE','写真は48KiB以内にしてください。');
+  if(encoded.length%4!==0||!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(encoded))fail(400,'INVALID_AVATAR','写真の送信形式が正しくありません。');
+  let binary;
+  try{binary=atob(encoded);}catch{fail(400,'INVALID_AVATAR','写真の送信形式が正しくありません。');}
+  if(btoa(binary)!==encoded)fail(400,'INVALID_AVATAR','写真の送信形式が正しくありません。');
+  if(binary.length>MAX_AVATAR_BYTES)fail(413,'AVATAR_TOO_LARGE','写真は48KiB以内にしてください。');
+  try{return normalizeAvatarJpeg(Uint8Array.from(binary,c=>c.charCodeAt(0)));}
+  catch{fail(400,'INVALID_AVATAR','256×256のJPEG写真を選択してください。');}
+}
+async function removeAvatarObject(bucket,key) {
+  if(!key)return;
+  // Metadata already stopped referring to this unique key. A bounded retry can
+  // clear a transient storage failure without making a newer photo inaccessible.
+  for(let attempt=0;attempt<2;attempt++)try{await bucket.delete(key);return;}catch{}
+}
+async function putAvatar(request,env,user,now) {
+  const db=env.DB,bucket=avatarBucket(env);
+  await budget(db,'avatar-write:'+user.id,10,10*60*1000,now);
+  const bytes=decodeAvatarImage(await readBody(request,MAX_AVATAR_BODY)),version=await hashBytes(bytes);
+  // Every upload uses a new key, even for the same image hash. An older request's
+  // cleanup therefore cannot delete a concurrent replacement's current object.
+  const key='avatars/'+user.id+'/'+crypto.randomUUID()+'.jpg';
+  try{const uploaded=await bucket.put(key,bytes,{httpMetadata:{contentType:'image/jpeg',cacheControl:'no-store'}});if(!uploaded)throw new Error('Avatar upload incomplete');}
+  catch{await removeAvatarObject(bucket,key);fail(503,'AVATAR_STORAGE_UNAVAILABLE','写真を保存できませんでした。少し時間をおいて再度お試しください。');}
+  let result;
+  try {
+    result=await db.batch([
+      stmt(db,'SELECT object_key FROM user_avatars WHERE user_id=?',user.id),
+      stmt(db,`INSERT INTO user_avatars(user_id,version,object_key,content_type,byte_length,updated_at)
+        VALUES(?,?,?,'image/jpeg',?,?) ON CONFLICT(user_id) DO UPDATE SET
+        version=excluded.version,object_key=excluded.object_key,content_type=excluded.content_type,
+        byte_length=excluded.byte_length,updated_at=excluded.updated_at`,user.id,version,key,bytes.length,now),
+    ]);
+  } catch(error) {
+    // A network failure can happen after D1 committed. Never remove an object
+    // that might already be the account's current image; retain it if uncertain.
+    try{const current=await stmt(db,'SELECT object_key FROM user_avatars WHERE user_id=?',user.id).first();if(current?.object_key!==key)await removeAvatarObject(bucket,key);}catch{}
+    throw error;
+  }
+  await removeAvatarObject(bucket,rows(result[0])[0]?.object_key);
+  return {ok:true,user:mapUser(await getUser(db,user.id),now)};
+}
+async function deleteAvatar(request,env,user,now) {
+  const db=env.DB,bucket=avatarBucket(env);
+  await budget(db,'avatar-write:'+user.id,10,10*60*1000,now);
+  if(request.body!==null&&Object.keys(await readBody(request)).length)fail(400,'INVALID_AVATAR','写真の削除には追加の情報は不要です。');
+  const removed=await stmt(db,'DELETE FROM user_avatars WHERE user_id=? RETURNING object_key',user.id).first();
+  await removeAvatarObject(bucket,removed?.object_key);
+  return {ok:true,user:mapUser(await getUser(db,user.id),now)};
+}
+async function getAvatar(request,env,origin) {
+  const url=new URL(request.url),id=url.pathname.slice((API+'/avatars/').length),version=url.searchParams.get('v');
+  if(!/^[A-Za-z0-9_-]{1,90}$/.test(id)||version!==null&&!/^[0-9a-f]{64}$/.test(version))fail(400,'INVALID_AVATAR','写真の識別子が正しくありません。');
+  const db=env.DB;
+  if(!db?.prepare)fail(503,'SERVICE_UNAVAILABLE','通信サービスの準備中です。');
+  const current=await stmt(db,'SELECT version,object_key,byte_length FROM user_avatars WHERE user_id=?',id).first();
+  if(!current||version!==null&&version!==current.version)fail(404,'AVATAR_NOT_FOUND','この写真は現在使用されていません。');
+  const bucket=avatarBucket(env);let object;
+  try{object=await bucket.get(current.object_key);}catch{fail(503,'AVATAR_STORAGE_UNAVAILABLE','写真を読み込めませんでした。少し時間をおいて再度お試しください。');}
+  if(!object?.body||Number(object.size)!==Number(current.byte_length))fail(404,'AVATAR_NOT_FOUND','この写真は現在使用されていません。');
+  // Re-check after the asynchronous object read so deletion/replacement during
+  // that read cannot expose the superseded image through an old version URL.
+  const latest=await stmt(db,'SELECT object_key FROM user_avatars WHERE user_id=?',id).first();
+  if(latest?.object_key!==current.object_key){await object.body.cancel();fail(404,'AVATAR_NOT_FOUND','この写真は現在使用されていません。');}
+  const headers=new Headers({'Content-Type':'image/jpeg','Content-Length':String(current.byte_length),'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Content-Security-Policy':"default-src 'none'; sandbox; base-uri 'none'; frame-ancestors 'none'",'Vary':'Origin'});
+  if(origin!==null)headers.set('Access-Control-Allow-Origin',origin);
+  return new Response(object.body,{status:200,headers});
+}
 async function authenticate(request, db, now) {
   const header = request.headers.get('authorization') || '';
   const match = /^Bearer ([A-Za-z0-9_-]{43})$/.exec(header);
@@ -127,7 +367,34 @@ async function authenticate(request, db, now) {
 }
 function requireAdmin(user) { if (!user.is_admin) fail(403, 'ADMIN_REQUIRED', '運営専用の機能です。'); }
 function requireStaffChat(user) { if(!user.is_admin&&!user.is_staff)fail(403,'STAFF_CHAT_REQUIRED','運営・スタッフ専用のチャットです。'); }
+function requireStaff(user) { if(!user.is_admin&&!user.is_staff)fail(403,'STAFF_REQUIRED','運営・スタッフ専用の一覧です。'); }
 const STAFF_CHAT_GUARD="(EXISTS(SELECT 1 FROM settings WHERE key='adminUserId' AND value=?) OR EXISTS(SELECT 1 FROM staff_members WHERE user_id=?))";
+function recentLoginCursor(value,now) {
+  const invalid=()=>fail(400,'INVALID_CURSOR','接続一覧の続きが無効です。最初から読み込み直してください。');
+  if(typeof value!=='string'||value.length>512||!/^[A-Za-z0-9_-]+$/.test(value))invalid();
+  let cursor;try{cursor=JSON.parse(atob(value.replaceAll('-','+').replaceAll('_','/')));}catch(_){invalid();}
+  if(!Array.isArray(cursor)||cursor.length!==4||cursor[0]!==1||!Number.isSafeInteger(cursor[1])||cursor[1]<now-RECENT_LOGIN_WINDOW||cursor[1]>now||!Number.isSafeInteger(cursor[2])||cursor[2]<0||cursor[2]>cursor[1]||typeof cursor[3]!=='string'||!/^[A-Za-z0-9_-]{1,90}$/.test(cursor[3]))invalid();
+  return{asOf:cursor[1],lastSeen:cursor[2],id:cursor[3]};
+}
+const encodeRecentLoginCursor=(asOf,lastSeen,id)=>btoa(JSON.stringify([1,asOf,lastSeen,id])).replaceAll('+','-').replaceAll('/','_').replaceAll('=','');
+async function recentLogins(db,user,url,now) {
+  requireStaff(user);
+  const limitText=url.searchParams.get('limit')??'50';
+  if(!/^[1-9][0-9]?$/.test(limitText)||Number(limitText)>50)fail(400,'INVALID_INPUT','一覧の件数は1〜50件で指定してください。');
+  const limit=Number(limitText),rawCursor=url.searchParams.get('cursor'),cursor=rawCursor===null?null:recentLoginCursor(rawCursor,now),asOf=cursor?.asOf??now,windowStart=now-RECENT_LOGIN_WINDOW;
+  const continuation=cursor?' AND (u.last_seen<? OR (u.last_seen=? AND u.id>?))':'';
+  const params=[windowStart,asOf,user.id,user.id,...(cursor?[cursor.lastSeen,cursor.lastSeen,cursor.id]:[]),limit+1];
+  // Authorization and both projections share one D1 transaction. Every data
+  // SELECT independently checks the live role, including revocation after auth.
+  const result=await db.batch([
+    stmt(db,'SELECT 1 AS allowed WHERE '+STAFF_CHAT_GUARD,user.id,user.id),
+    stmt(db,USER_SELECT+' WHERE u.last_seen>=? AND u.last_seen<=? AND '+STAFF_CHAT_GUARD+continuation+' ORDER BY u.last_seen DESC,u.id ASC LIMIT ?',...params),
+    stmt(db,'SELECT COUNT(*) AS count FROM users WHERE last_seen>=? AND last_seen<=? AND '+STAFF_CHAT_GUARD,windowStart,asOf,user.id,user.id),
+  ]);
+  if(!rows(result[0]).length)fail(403,'STAFF_REQUIRED','運営・スタッフの閲覧権限がありません。');
+  const found=rows(result[1]),page=found.slice(0,limit),players=page.map(row=>({...mapUser(row,now),lastSeen:iso(row.last_seen)})),last=page.at(-1);
+  return{ok:true,players,total:Number(rows(result[2])[0]?.count||0),serverNow:iso(now),windowStart:iso(windowStart),nextCursor:found.length>limit?encodeRecentLoginCursor(asOf,Number(last.last_seen),last.id):null};
+}
 async function budget(db, scope, limit, windowMs, now) {
   const result = await stmt(db, `INSERT INTO rate_limits(scope,window_start,count,last_at) VALUES(?,?,1,?)
     ON CONFLICT(scope) DO UPDATE SET
@@ -167,15 +434,196 @@ async function roomFor(db, user, channel, target) {
   fail(400, 'INVALID_CHANNEL', 'チャットの種類が正しくありません。');
 }
 function mapMessage(row) {
-  return {id:Number(row.id),userId:row.user_id,name:row.name,text:row.body,createdAt:iso(row.created_at),isAdmin:!!row.is_admin,isStaff:!!row.is_staff&&!row.is_admin};
+  return {id:Number(row.id),userId:row.user_id,name:row.name,avatarVersion:row.avatar_version||null,text:row.body,createdAt:iso(row.created_at),isAdmin:!!row.is_admin,isStaff:!!row.is_staff&&!row.is_admin};
 }
 const MESSAGE_SELECT = `SELECT m.id,m.user_id,m.body,m.created_at,u.name,
+ (SELECT a.version FROM user_avatars a WHERE a.user_id=m.user_id) AS avatar_version,
  CASE WHEN m.user_id=(SELECT value FROM settings WHERE key='adminUserId') THEN 1 ELSE 0 END AS is_admin,
  EXISTS(SELECT 1 FROM staff_members sm WHERE sm.user_id=m.user_id) AS is_staff
  FROM messages m JOIN users u ON u.id=m.user_id`;
 const GUILD_SELECT = `SELECT g.id,g.name,g.owner_id,u.name AS owner_name,g.created_at,
  (SELECT COUNT(*) FROM guild_members gm WHERE gm.guild_id=g.id) AS member_count FROM guilds g JOIN users u ON u.id=g.owner_id`;
 function mapGuild(row) { return {id:row.id,name:row.name,ownerId:row.owner_id,ownerName:row.owner_name,memberCount:Number(row.member_count),maxMembers:MAX_GUILD_MEMBERS,createdAt:iso(row.created_at)}; }
+const GUILD_MEMBER_GUARD='EXISTS(SELECT 1 FROM guild_members WHERE user_id=? AND guild_id=?)';
+const GUILD_ASSETS=['gold','rice','wood','stone','magatama'];
+const GUILD_ASSET_NAMES={gold:'金',rice:'兵糧',wood:'木材',stone:'石材',magatama:'勾玉'};
+const GUILD_ASSET_LIMIT=999999999;
+const GUILD_ASSET_COMMIT='EXISTS(SELECT 1 FROM guild_asset_requests WHERE actor_id=? AND request_id=? AND commit_token=?)';
+const GUILD_ROLE_COMMIT='EXISTS(SELECT 1 FROM guild_role_requests WHERE actor_id=? AND request_id=? AND commit_token=?)';
+function requireGuild(user,guildId) {
+  if(!user.guild_id||guildId&&user.guild_id!==guildId)fail(403,'GUILD_REQUIRED','現在所属しているギルドで操作してください。');
+}
+function guildRoleAllowed(user,action) { return user.owner_id===user.id||action==='remove'&&!!user.is_guild_officer; }
+function requireGuildRole(user,action) {
+  if(!guildRoleAllowed(user,action))fail(403,'GUILD_ROLE_REQUIRED','この操作に必要なギルド役職がありません。');
+}
+function mapTreasury(row) { return {...Object.fromEntries(GUILD_ASSETS.map(key=>[key,Number(row?.[key]||0)])),revision:Number(row?.revision||0)}; }
+function pageLimit(url,max=50) {
+  const value=url.searchParams.get('limit')??String(max);
+  if(!/^[1-9][0-9]?$/.test(value)||Number(value)>max)fail(400,'INVALID_INPUT','一度に取得する件数は1〜'+max+'件で指定してください。');
+  return Number(value);
+}
+function encodeGuildCursor(kind,value,id) { return btoa(JSON.stringify([kind,value,id])).replaceAll('+','-').replaceAll('/','_').replaceAll('=',''); }
+function guildCursor(value,kind,max) {
+  if(value===null)return null;
+  let cursor;try{if(!/^[A-Za-z0-9_-]{1,512}$/.test(value))throw new Error();cursor=JSON.parse(atob(value.replaceAll('-','+').replaceAll('_','/')));}catch{fail(400,'INVALID_CURSOR','読み込み位置を確認して、一覧を更新してください。');}
+  if(!Array.isArray(cursor)||cursor.length!==3||cursor[0]!==kind||!Number.isSafeInteger(cursor[1])||cursor[1]<0||cursor[1]>max||typeof cursor[2]!=='string'||!/^[A-Za-z0-9_-]{1,90}$/.test(cursor[2]))fail(400,'INVALID_CURSOR','読み込み位置を確認して、一覧を更新してください。');
+  return {value:cursor[1],id:cursor[2]};
+}
+async function guildSnapshot(db,user,now,guildId=null) {
+  const current=await getUser(db,user.id);if(guildId)requireGuild(current,guildId);
+  const id=current.guild_id;
+  if(!id)return {ok:true,user:mapUser(current,now),guild:null,members:[]};
+  const result=await db.batch([
+    stmt(db,'SELECT 1 AS allowed WHERE '+GUILD_MEMBER_GUARD,user.id,id),
+    stmt(db,GUILD_SELECT+' WHERE g.id=? AND '+GUILD_MEMBER_GUARD,id,user.id,id),
+    stmt(db,USER_SELECT+' WHERE gm.guild_id=? AND '+GUILD_MEMBER_GUARD+' ORDER BY gm.joined_at,u.id',id,user.id,id),
+  ]);
+  if(!rows(result[0]).length)fail(403,'GUILD_REQUIRED','ギルドの所属が変更されました。接続を更新してください。');
+  return {ok:true,user:mapUser(current,now),guild:rows(result[1])[0]?mapGuild(rows(result[1])[0]):null,members:rows(result[2]).map(row=>mapUser(row,now))};
+}
+async function ensureTreasury(db,guildId) {
+  await stmt(db,'INSERT INTO guild_treasuries(guild_id) SELECT id FROM guilds WHERE id=? ON CONFLICT(guild_id) DO NOTHING',guildId).run();
+  return stmt(db,'SELECT * FROM guild_treasuries WHERE guild_id=?',guildId).first();
+}
+async function readTreasury(db,user,url,now) {
+  requireGuild(user);const guildId=user.guild_id,limit=pageLimit(url),cursor=guildCursor(url.searchParams.get('cursor'),'ledger',now);
+  await ensureTreasury(db,guildId);
+  const after=cursor?' AND (created_at<? OR (created_at=? AND id<?))':'';
+  const result=await db.batch([
+    stmt(db,'SELECT * FROM guild_treasuries WHERE guild_id=? AND '+GUILD_MEMBER_GUARD,guildId,user.id,guildId),
+    stmt(db,'SELECT id,result_json,created_at FROM guild_asset_requests WHERE guild_id=? AND '+GUILD_MEMBER_GUARD+after+' ORDER BY created_at DESC,id DESC LIMIT ?',guildId,user.id,guildId,...(cursor?[cursor.value,cursor.value,cursor.id]:[]),limit+1),
+  ]);
+  const treasury=rows(result[0])[0];if(!treasury)fail(403,'GUILD_REQUIRED','現在所属しているギルドで操作してください。');
+  const found=rows(result[1]),page=found.slice(0,limit),last=page.at(-1);
+  return {ok:true,guildId,treasury:mapTreasury(treasury),ledger:page.map(row=>JSON.parse(row.result_json)),nextCursor:found.length>limit?encodeGuildCursor('ledger',Number(last.created_at),last.id):null,serverNow:iso(now)};
+}
+async function priorGuildTransfer(db,user,body,digest) {
+  const prior=await stmt(db,'SELECT * FROM guild_asset_requests WHERE actor_id=? AND request_id=?',user.id,body.requestId).first();
+  if(prior&&prior.payload_hash!==digest)fail(409,'REQUEST_ID_REUSED','その操作番号は別の入出庫に使われています。');
+  return prior;
+}
+async function guildTransferResult(db,user,body,receipt,idempotent,now) {
+  const current=await getUser(db,user.id);requireGuild(current,body.guildId);
+  const treasury=await stmt(db,'SELECT * FROM guild_treasuries WHERE guild_id=? AND '+GUILD_MEMBER_GUARD,body.guildId,user.id,body.guildId).first();
+  if(!treasury)fail(403,'GUILD_REQUIRED','ギルドの所属が変更されました。');
+  return {...await syncSnapshot(db,await getSyncRow(db,user.id),current,body.deviceId,now),guildId:body.guildId,receipt,treasury:mapTreasury(treasury),idempotent};
+}
+async function guildTransfer(db,user,raw,now) {
+  if(Object.keys(raw).some(key=>!['guildId','direction','resource','amount','requestId','deviceId','expectedRevision'].includes(key)))fail(400,'INVALID_INPUT','入出庫の情報が正しくありません。');
+  const body={...raw,guildId:idField(raw.guildId,'ギルド'),requestId:idField(raw.requestId,'操作番号'),deviceId:idField(raw.deviceId,'端末')};
+  if(!['deposit','withdraw'].includes(body.direction)||!GUILD_ASSETS.includes(body.resource)||!Number.isSafeInteger(body.amount)||body.amount<1||body.amount>1000000||!Number.isSafeInteger(body.expectedRevision)||body.expectedRevision<0)fail(400,'INVALID_INPUT','入出庫は対応する資産を1〜1,000,000の整数で指定してください。');
+  requireGuild(user,body.guildId);
+  const digest=await hash(JSON.stringify([user.id,body.guildId,body.direction,body.resource,body.amount]));
+  const prior=await priorGuildTransfer(db,user,body,digest);if(prior)return guildTransferResult(db,user,body,JSON.parse(prior.result_json),true,now);
+  await budget(db,'guild-transfer:'+user.id,30,60000,now);
+  const row=await getSyncRow(db,user.id);fieldWriter(row,body.deviceId,body.expectedRevision,now);
+  const clock=await getWorldClock(db,now),save=normalizeGameSave(JSON.parse(row.save_json),user,now,{reading:true,clock}),state=save.state;
+  if(!state.worldClock)fail(409,'CLOCK_ANCHOR_REQUIRED','先に共通時計へ同期してください。');
+  if(clock.elapsedMs-state.worldClock.elapsedMs>15000)fail(409,'CLOCK_STALE','共通時計と本拠を同期してから入出庫してください。');
+  const treasury=await ensureTreasury(db,body.guildId);if(!treasury)fail(403,'GUILD_REQUIRED','ギルドの所属が変更されました。');
+  const key=body.resource,personal=key==='magatama'?state.magatama:state.resources[key],pooled=Number(treasury[key]),deposit=body.direction==='deposit',delta=deposit?-body.amount:body.amount;
+  if(deposit?personal<body.amount:pooled<body.amount)fail(409,'INSUFFICIENT_ASSETS',deposit?'手持ちの資産が足りません。':'ギルドの共有資産が足りません。');
+  if(personal+delta>GUILD_ASSET_LIMIT||pooled-delta>GUILD_ASSET_LIMIT)fail(409,'ASSET_LIMIT','保管できる資産の上限を超えます。');
+  if(key==='magatama')state.magatama=personal+delta;else state.resources[key]=personal+delta;
+  state.log.unshift({turn:state.turn,text:`${user.guild_name}の共有資産へ${GUILD_ASSET_NAMES[key]}${body.amount.toLocaleString('ja-JP')}を${deposit?'納入':'受取'}。`,kind:'guild'});state.log=state.log.slice(0,200);save.savedAt=iso(now);
+  const normalized=normalizeGameSave(save,user,now,{clock}),serialized=JSON.stringify(normalized),nonce=crypto.randomUUID(),id=uid('gt_');
+  const receipt={id,requestId:body.requestId,guildId:body.guildId,playerId:user.id,name:user.name,direction:body.direction,resource:key,amount:body.amount,createdAt:iso(now),worldElapsedMs:clock.elapsedMs,playerRevision:Number(row.revision)+1,treasuryRevision:Number(treasury.revision)+1};
+  const guard=[user.id,body.requestId,nonce];
+  const result=await db.batch([
+    stmt(db,`INSERT INTO guild_asset_requests(id,actor_id,request_id,guild_id,payload_hash,commit_token,direction,resource,amount,result_json,created_at,world_elapsed_ms)
+      SELECT ?,?,?,?,?,?,?,?,?,?,?,? WHERE EXISTS(
+        SELECT 1 FROM player_saves s JOIN guild_members gm ON gm.user_id=s.user_id
+        JOIN guild_treasuries t ON t.guild_id=gm.guild_id
+        WHERE s.user_id=? AND gm.guild_id=? AND s.revision=? AND s.writer_device_id=? AND s.lease_expires_at>?
+        AND t.revision=? AND EXISTS(SELECT 1 FROM world_clock WHERE id=? AND revision=?)
+        AND CASE WHEN s.user_id=(SELECT value FROM settings WHERE key='adminUserId') THEN 1 ELSE 0 END=?)
+      ON CONFLICT(actor_id,request_id) DO NOTHING RETURNING id`,id,user.id,body.requestId,body.guildId,digest,nonce,body.direction,key,body.amount,JSON.stringify(receipt),now,clock.elapsedMs,user.id,body.guildId,body.expectedRevision,body.deviceId,now,Number(treasury.revision),WORLD_CLOCK_ID,clock.revision,user.is_admin?1:0),
+    stmt(db,'UPDATE player_saves SET save_json=?,revision=revision+1,updated_at=?,lease_expires_at=? WHERE user_id=? AND '+GUILD_ASSET_COMMIT,serialized,now,now+SYNC_LEASE,user.id,...guard),
+    stmt(db,'UPDATE guild_treasuries SET '+key+'=?,revision=revision+1 WHERE guild_id=? AND '+GUILD_ASSET_COMMIT,pooled-delta,body.guildId,...guard),
+    stmt(db,'UPDATE users SET clan=? WHERE id=? AND '+GUILD_ASSET_COMMIT,normalized.state.clan,user.id,...guard),
+  ]);
+  if(!rows(result[0]).length) {
+    const concurrent=await priorGuildTransfer(db,user,body,digest);if(concurrent)return guildTransferResult(db,user,body,JSON.parse(concurrent.result_json),true,now);
+    const current=await getUser(db,user.id);requireGuild(current,body.guildId);
+    fieldWriter(await getSyncRow(db,user.id),body.deviceId,body.expectedRevision,now);
+    if(!!current.is_admin!==!!user.is_admin)fail(409,'AUTHORITY_CHANGED','領主の役職が更新されました。同期してからお試しください。');
+    if((await getWorldClock(db,now)).revision!==clock.revision)fail(409,'WORLD_CLOCK_CHANGED','共通時計を確認してからお試しください。');
+    fail(409,'TREASURY_CONFLICT','共有資産が更新されました。残高を更新してからお試しください。');
+  }
+  return guildTransferResult(db,user,body,receipt,false,now);
+}
+async function guildManage(db,user,raw,remove,now) {
+  if(Object.keys(raw).some(key=>!(remove?['guildId','targetPlayerId','requestId']:['guildId','targetPlayerId','role','requestId']).includes(key)))fail(400,'INVALID_INPUT','ギルド役職の指定が正しくありません。');
+  const guildId=idField(raw.guildId,'ギルド'),targetId=idField(raw.targetPlayerId,'対象の領主'),requestId=idField(raw.requestId,'操作番号'),action=remove?'remove':raw.role;
+  if(!['officer','member','remove'].includes(action)||!remove&&action==='remove')fail(400,'INVALID_INPUT','副盟主またはメンバーを指定してください。');
+  requireGuild(user,guildId);requireGuildRole(user,action);
+  if(targetId===user.id)fail(400,'INVALID_TARGET','自分自身の役職変更・除名はできません。');
+  const lookup=()=>stmt(db,'SELECT * FROM guild_role_requests WHERE actor_id=? AND request_id=?',user.id,requestId).first();
+  const matches=prior=>{if(prior&&(prior.guild_id!==guildId||prior.target_id!==targetId||prior.action!==action))fail(409,'REQUEST_ID_REUSED','その操作番号は別のギルド操作に使われています。');return prior;};
+  if(matches(await lookup()))return {...await guildSnapshot(db,user,now,guildId),idempotent:true};
+  const target=await getUser(db,targetId);if(!target||target.guild_id!==guildId)fail(404,'GUILD_MEMBER_NOT_FOUND','対象の領主はこのギルドに所属していません。');
+  if(target.owner_id===target.id||action==='remove'&&user.owner_id!==user.id&&target.is_guild_officer)fail(403,'GUILD_ROLE_REQUIRED','この役職のメンバーは変更・除名できません。');
+  const already=!remove&&(action==='officer')===!!target.is_guild_officer;
+  await budget(db,'guild-manage:'+user.id,30,60000,now);const nonce=crypto.randomUUID(),guard=[user.id,requestId,nonce];
+  const changes=[
+    stmt(db,`INSERT INTO guild_role_requests(actor_id,request_id,guild_id,target_id,action,commit_token,created_at)
+      SELECT ?,?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM guilds g
+        JOIN guild_members actor ON actor.guild_id=g.id AND actor.user_id=?
+        JOIN guild_members target ON target.guild_id=g.id AND target.user_id=?
+        WHERE g.id=? AND target.user_id<>g.owner_id AND target.user_id<>actor.user_id
+        AND (g.owner_id=? OR (?='remove'
+          AND EXISTS(SELECT 1 FROM guild_officers go WHERE go.user_id=actor.user_id AND go.guild_id=g.id)
+          AND NOT EXISTS(SELECT 1 FROM guild_officers go WHERE go.user_id=target.user_id AND go.guild_id=g.id))))
+      ON CONFLICT(actor_id,request_id) DO NOTHING RETURNING request_id`,user.id,requestId,guildId,targetId,action,nonce,now,user.id,targetId,guildId,user.id,action),
+  ];
+  if(action==='officer')changes.push(stmt(db,'INSERT INTO guild_officers(user_id,guild_id,appointed_by,appointed_at) SELECT ?,?,?,? WHERE '+GUILD_ROLE_COMMIT+' ON CONFLICT(user_id) DO NOTHING',targetId,guildId,user.id,now,...guard));
+  else changes.push(stmt(db,'DELETE FROM guild_officers WHERE user_id=? AND guild_id=? AND '+GUILD_ROLE_COMMIT,targetId,guildId,...guard));
+  if(remove)changes.push(stmt(db,'DELETE FROM guild_members WHERE user_id=? AND guild_id=? AND '+GUILD_ROLE_COMMIT,targetId,guildId,...guard));
+  const result=await db.batch(changes);
+  if(!rows(result[0]).length){if(matches(await lookup()))return {...await guildSnapshot(db,user,now,guildId),idempotent:true};const current=await getUser(db,user.id);requireGuild(current,guildId);requireGuildRole(current,action);fail(409,'GUILD_CHANGED','ギルドの役職または所属が変わりました。一覧を更新してください。');}
+  return {...await guildSnapshot(db,user,now,guildId),idempotent:already};
+}
+async function guildLeave(db,user,body,now) {
+  if(body.guildId!==undefined)requireGuild(user,idField(body.guildId,'ギルド'));
+  if(!user.guild_id)return {ok:true,user:mapUser(user,now)};
+  const guildId=user.guild_id,empty='NOT EXISTS(SELECT 1 FROM guild_treasuries WHERE guild_id=? AND (gold>0 OR rice>0 OR wood>0 OR stone>0 OR magatama>0))';
+  const result=await db.batch([
+    stmt(db,`UPDATE guilds SET owner_id=(SELECT gm.user_id FROM guild_members gm WHERE gm.guild_id=? AND gm.user_id<>?
+      ORDER BY EXISTS(SELECT 1 FROM guild_officers go WHERE go.user_id=gm.user_id AND go.guild_id=gm.guild_id) DESC,gm.joined_at,gm.user_id LIMIT 1)
+      WHERE id=? AND owner_id=? AND EXISTS(SELECT 1 FROM guild_members WHERE guild_id=? AND user_id<>?)`,guildId,user.id,guildId,user.id,guildId,user.id),
+    stmt(db,'DELETE FROM guild_members WHERE user_id=? AND guild_id=? AND (EXISTS(SELECT 1 FROM guild_members other WHERE other.guild_id=? AND other.user_id<>?) OR '+empty+') RETURNING user_id',user.id,guildId,guildId,user.id,guildId),
+    stmt(db,'DELETE FROM guilds WHERE id=? AND NOT EXISTS(SELECT 1 FROM guild_members WHERE guild_id=?) AND '+empty,guildId,guildId,guildId),
+  ]);
+  const current=await getUser(db,user.id);
+  if(!rows(result[1]).length&&current.guild_id===guildId)fail(409,'GUILD_TREASURY_NOT_EMPTY','最後のメンバーが脱退する前に、共有資産をすべて引き出してください。');
+  return {ok:true,user:mapUser(current,now)};
+}
+const GUILD_RANKINGS=`WITH totals AS (
+  SELECT g.id,g.name,g.owner_id,owner.name AS owner_name,g.created_at,COUNT(gm.user_id) AS member_count,
+    COALESCE(SUM(COALESCE(json_extract(s.save_json,'$.state.prestige'),0)),0) AS total_prestige,
+    COALESCE(SUM(CASE WHEN s.save_json IS NULL THEN 0 ELSE
+      (SELECT COUNT(*) FROM json_each(s.save_json,'$.state.castles') c
+        WHERE json_extract(c.value,'$.owner')=json_extract(s.save_json,'$.state.clan')
+        AND (c.key<>'edo' OR gm.user_id=(SELECT value FROM settings WHERE key='adminUserId')))
+      +CASE WHEN gm.user_id=(SELECT value FROM settings WHERE key='adminUserId')
+        AND json_extract(s.save_json,'$.state.castles.edo.owner')<>json_extract(s.save_json,'$.state.clan') THEN 1 ELSE 0 END
+      +CASE WHEN gm.user_id<>COALESCE((SELECT value FROM settings WHERE key='adminUserId'),'')
+        AND json_extract(s.save_json,'$.state.castles.edo.owner')=json_extract(s.save_json,'$.state.clan')
+        AND NOT EXISTS(SELECT 1 FROM json_each(s.save_json,'$.state.castles') c WHERE c.key<>'edo' AND json_extract(c.value,'$.owner')=json_extract(s.save_json,'$.state.clan')) THEN 1 ELSE 0 END END),0) AS owned_castles
+  FROM guilds g JOIN users owner ON owner.id=g.owner_id LEFT JOIN guild_members gm ON gm.guild_id=g.id
+  LEFT JOIN player_saves s ON s.user_id=gm.user_id GROUP BY g.id
+), ranked AS (SELECT *,ROW_NUMBER() OVER(ORDER BY total_prestige DESC,id ASC) AS rank FROM totals)
+SELECT * FROM ranked`;
+async function guildRankings(db,url,now) {
+  const limit=pageLimit(url),cursor=guildCursor(url.searchParams.get('cursor'),'rank',GUILD_ASSET_LIMIT*MAX_GUILD_MEMBERS);
+  const result=await db.batch([
+    stmt(db,GUILD_RANKINGS+(cursor?' WHERE (total_prestige<? OR (total_prestige=? AND id>?))':'')+' ORDER BY total_prestige DESC,id ASC LIMIT ?',...(cursor?[cursor.value,cursor.value,cursor.id]:[]),limit+1),
+    stmt(db,'SELECT COUNT(*) AS count FROM guilds'),
+  ]);
+  const found=rows(result[0]),page=found.slice(0,limit),last=page.at(-1);
+  return {ok:true,guilds:page.map(row=>({...mapGuild(row),totalPrestige:Number(row.total_prestige),ownedCastles:Number(row.owned_castles),rank:Number(row.rank)})),total:Number(rows(result[1])[0]?.count||0),nextCursor:found.length>limit?encodeGuildCursor('rank',Number(last.total_prestige),last.id):null,serverNow:iso(now)};
+}
 function giftField(value) {
   if (value === null || value === undefined) return null;
   if (!value || typeof value !== 'object' || Array.isArray(value)) fail(400, 'INVALID_GIFT', '贈り物の形式が正しくありません。');
@@ -223,14 +671,15 @@ function normalizeGameSave(raw, user, now, {reading=false,clock=null}={}) {
   const isObj=v=>v&&typeof v==='object'&&!Array.isArray(v);
   const num=(v,min=0,max=999999999)=>typeof v==='number'&&Number.isFinite(v)&&Number.isInteger(v)&&v>=min&&v<=max;
   if(!isObj(s)||s.version!==2||obj?.game&&obj.game!=='sengoku-tento')invalid();
-  if(!CLANS.some(c=>c.name===s.clan)||!CASTLE_BY_ID[s.home]||!['easy','normal','hard'].includes(s.difficulty))invalid();
+  if(s.clan===ADMIN_CLAN&&!user.is_admin&&!reading)fail(403,'ADMIN_CLAN_REQUIRED','德川家は運営専用です。一般の領主は徳川家を選択できます。');
+  if(s.clan!==ADMIN_CLAN&&!CLANS.some(c=>c.name===s.clan)||!CASTLE_BY_ID[s.home]||!['easy','normal','hard'].includes(s.difficulty))invalid();
   const g={state:{version:2},roster:OFFICERS,officer:id=>OFFICER_BY_ID[id],baseOfficer:id=>OFFICER_BY_ID[id]};
   if(!num(s.turn,0,MAX_TURN)||!num(s.troops,0,1000000)||!num(s.morale,0,100)||!num(s.prestige)||!num(s.command,0,7)||!num(s.seed,0,4294967295))invalid();
   if(!isObj(s.resources)||!RESOURCES.every(k=>num(s.resources[k])))invalid();
   if(!isObj(s.buildings)||Object.keys(s.buildings).length!==BUILDINGS.length||!BUILDINGS.every(b=>num(s.buildings[b.id],b.core?1:0,32)))invalid();
   if(s.command>3+Math.floor(s.buildings.keep/8))invalid();
   if(!isObj(s.tech)||!TECHS.every(t=>num(s.tech[t.id],0,t.max)))invalid();
-  const validOwner=new Set([...CASTLES.map(c=>c.clan),'在地衆']);for(const c of CLANS)validOwner.add(c.name);
+  const validOwner=new Set([...CASTLES.map(c=>c.clan),'在地衆',ADMIN_CLAN]);for(const c of CLANS)validOwner.add(c.name);
   if(!isObj(s.castles)||Object.keys(s.castles).length!==CASTLES.length||!CASTLES.every(c=>{const v=s.castles[c.id];if(isObj(v)&&v.level===undefined)v.level=1;return isObj(v)&&validOwner.has(v.owner)&&num(v.troops,0,1000000)&&num(v.wall,1,32)&&num(v.level,1,32);}))invalid();
   if(!Array.isArray(s.officers)||s.officers.length>g.roster.length||new Set(s.officers).size!==s.officers.length||s.officers.some(id=>typeof id!=='string'||!g.officer(id)))invalid();
   if(!Array.isArray(s.army)||s.army.length>3||new Set(s.army).size!==s.army.length||s.army.some(id=>!s.officers.includes(id)))invalid();
@@ -279,6 +728,13 @@ function normalizeGameSave(raw, user, now, {reading=false,clock=null}={}) {
   // Match the client's legacy migration, without granting permission to upload
   // exclusive assets and without mutating the stored revision during a GET.
   if (reading && !user.is_admin) {
+    if(n.clan===ADMIN_CLAN) {
+      // Preserve the old ownership set: the distinct ordinary Tokugawa AI
+      // castles must not become newly owned merely because the clan is renamed.
+      for(const castle of Object.values(n.castles))if(castle.owner===ORDINARY_TOKUGAWA_CLAN)castle.owner='在地衆';
+      for(const castle of Object.values(n.castles))if(castle.owner===ADMIN_CLAN)castle.owner=ORDINARY_TOKUGAWA_CLAN;
+      n.clan=ORDINARY_TOKUGAWA_CLAN;delete n.treaties[n.clan];
+    }
     n.officerVariants=[...new Set(n.officerVariants.map(key=>key===IEYASU_ID+':U'?IEYASU_ID+':SSS':key))];
     n.gachaHistory=n.gachaHistory.map(entry=>entry.officerId===IEYASU_ID&&entry.rank==='U'?{...entry,rank:'SSS'}:entry);
     const edo=n.castles.edo,wasHome=n.home==='edo',ownedEdo=edo.owner===n.clan;
@@ -304,6 +760,11 @@ function normalizeGameSave(raw, user, now, {reading=false,clock=null}={}) {
   // Entitlements belong to the authenticated identity, never imported flags. Restoring
   // the exclusive officer does not touch currency, army assignments or gacha history.
   if (user.is_admin) {
+    if(n.clan!==ADMIN_CLAN) {
+      const previousClan=n.clan;
+      for(const castle of Object.values(n.castles))if(castle.owner===previousClan)castle.owner=ADMIN_CLAN;
+      n.clan=ADMIN_CLAN;delete n.treaties[ADMIN_CLAN];
+    }
     if (!n.officers.includes(IEYASU_ID)) n.officers.push(IEYASU_ID);
     if (!n.officerVariants.includes(IEYASU_ID+':U')) n.officerVariants.push(IEYASU_ID+':U');
     const oldHome=n.home,edo=n.castles.edo;
@@ -376,6 +837,7 @@ async function syncSnapshot(db,row,user,deviceId,now) {
 const FIELD_RULES=Object.freeze({minTroops:300,maxTroops:100000,commandCost:1,foodBase:150,foodPerTroop:.3,attackCooldownMs:60000,defenderProtectionMs:60000,proposalLifetimeMs:600000,allianceDurationMs:360000,maxLootPerResource:500,maxLootFraction:.05,maxDefenderLossFraction:.1,operatorProtected:true,
   tactics:[{id:'balanced',name:'正攻法',food:1,modifier:1,loss:1},{id:'assault',name:'総攻撃',food:1.25,modifier:1.18,loss:1.35},{id:'siege',name:'包囲戦',food:1.65,modifier:.97,loss:.8},{id:'ambush',name:'伏兵',food:1.1,modifier:1.06,loss:.95}]});
 const FIELD_SELECT=`SELECT u.id,u.name,u.clan,u.last_seen,s.revision,
+  (SELECT a.version FROM user_avatars a WHERE a.user_id=u.id) AS avatar_version,
   CASE WHEN u.id=(SELECT value FROM settings WHERE key='adminUserId') THEN 1 ELSE 0 END AS is_admin,
   EXISTS(SELECT 1 FROM staff_members sm WHERE sm.user_id=u.id) AS is_staff,
   (SELECT MAX(p.last_seen) FROM player_presence p WHERE p.user_id=u.id AND p.online=1) AS presence_seen,
@@ -410,7 +872,8 @@ function mapFieldRelationship(row,userId,elapsed,targetName='') {
 }
 function mapFieldPlayer(row,viewer,relationship,clock,now) {
   const castles=JSON.parse(row.castles_json),storedHome=row.home_id;
-  const alternatives=CASTLES.filter(c=>c.id!=='edo'&&castles[c.id].owner===row.game_clan),canonical=CLAN_HOMES[row.game_clan]||'kiyosu';
+  const clan=publicClan(row.game_clan,row.is_admin);
+  const alternatives=CASTLES.filter(c=>c.id!=='edo'&&castles[c.id].owner===row.game_clan),canonical=CLAN_HOMES[clan]||'kiyosu';
   const replacement=alternatives.find(c=>c.id===canonical)?.id||alternatives[0]?.id||canonical;
   const home=row.is_admin?'edo':storedHome==='edo'?replacement:storedHome;
   const castle={...(!row.is_admin&&storedHome==='edo'&&!alternatives.length&&castles.edo.owner===row.game_clan?castles.edo:castles[home])};
@@ -419,7 +882,7 @@ function mapFieldPlayer(row,viewer,relationship,clock,now) {
   const defense=fieldDefense(state),self=viewer?.id===row.id,relation=self?'self':fieldRelationStatus(relationship,viewer?.id,clock.elapsedMs);
   const protectedUntil=row.last_defended_ms===null?0:Number(row.last_defended_ms)+FIELD_RULES.defenderProtectionMs;
   const reason=!viewer?'領主として接続してください。':self?'自分の本拠です。':row.is_admin?'運営の江戸城は保護されています。':relation==='allied'?'同盟の期間中です。':protectedUntil>clock.elapsedMs?'襲撃後の保護期間です。':!clock.running?'世界の共通時間が停止中です。':'';
-  return {playerId:row.id,name:row.name,clan:row.game_clan,homeCastleId:home,homeCastleName:CASTLE_BY_ID[home].name,level:castle.level,defenseTroops:defense.force,defensePower:defense.power,armySummary:defense.army,isAdmin:!!row.is_admin,isStaff:!!row.is_staff&&!row.is_admin,self,online:row.presence_seen!==null&&Number(row.presence_seen)>now-ONLINE_WINDOW,relationship:relation,protectedUntilElapsedMs:protectedUntil,attackable:!reason,attackReason:reason};
+  return {playerId:row.id,name:row.name,clan,avatarVersion:row.avatar_version||null,homeCastleId:home,homeCastleName:CASTLE_BY_ID[home].name,majorCity:['edo','nijo','osaka','nagoya'].includes(home),level:castle.level,defenseTroops:defense.force,defensePower:defense.power,armySummary:defense.army,isAdmin:!!row.is_admin,isStaff:!!row.is_staff&&!row.is_admin,self,online:row.presence_seen!==null&&Number(row.presence_seen)>now-ONLINE_WINDOW,relationship:relation,protectedUntilElapsedMs:protectedUntil,attackable:!reason,attackReason:reason};
 }
 async function fieldRelation(db,a,b) {const [first,second]=pair(a,b);return stmt(db,'SELECT * FROM field_relations WHERE user_a=? AND user_b=?',first,second).first();}
 async function fieldOwnRelations(db,userId,elapsed) {
@@ -610,6 +1073,7 @@ async function route(request, env, now) {
   if (path === '/world-clock' && method === 'GET') {
     return {ok:true,clock:await getWorldClock(db,now)};
   }
+  if (path === '/guild/rankings' && method === 'GET') return guildRankings(db,url,now);
   if (path === '/field' && method === 'GET') {
     const viewer=request.headers.has('authorization')?await authenticate(request,db,now):null;
     return getFieldList(db,viewer,url,now);
@@ -681,6 +1145,7 @@ async function route(request, env, now) {
     if (scope) await budget(db, scope, 30, 60*60*1000, now);
     const name = textField(body.name, '領主名', 24, {optional:true}) || '旅の領主' + crypto.randomUUID().slice(0,6);
     const clan = textField(body.clan, '勢力名', 24, {optional:true}) || '織田家';
+    if(clan===ADMIN_CLAN)fail(403,'ADMIN_CLAN_REQUIRED','德川家は運営専用です。一般の領主は徳川家を選択できます。');
     const id = uid('u_'), token = gameToken();
     try { await stmt(db,'INSERT INTO users(id,name,name_key,clan,token_hash,created_at,last_seen) VALUES(?,?,?,?,?,?,?)',id,name,nameKey(name),clan,await hash(token),now,now).run(); }
     catch (error) { if (/unique/i.test(String(error))) fail(409,'NAME_TAKEN','その領主名はすでに使われています。別の名前をお選びください。'); throw error; }
@@ -688,6 +1153,13 @@ async function route(request, env, now) {
   }
 
   const user = await authenticate(request,db,now);
+  if (path === '/me/avatar' && method === 'PUT') return putAvatar(request,env,user,now);
+  if (path === '/me/avatar' && method === 'DELETE') return deleteAvatar(request,env,user,now);
+  if (path === '/staff/recent-logins' && method === 'GET') return recentLogins(db,user,url,now);
+  if (path === '/guild/treasury' && method === 'GET') return readTreasury(db,user,url,now);
+  if (path === '/guild/treasury/transfer' && method === 'POST') return guildTransfer(db,user,await readBody(request),now);
+  if (path === '/guild/members/role' && method === 'POST') return guildManage(db,user,await readBody(request),false,now);
+  if (path === '/guild/members/remove' && method === 'POST') return guildManage(db,user,await readBody(request),true,now);
   if (path === '/admin/staff' && method === 'GET') { requireAdmin(user);return {ok:true,staff:await staffRoster(db,now)}; }
   if (path === '/admin/staff' && method === 'POST') return staffOperation(db,user,await readBody(request),now);
   if (path === '/field/me' && method === 'GET') return fieldMe(db,user,url,now);
@@ -773,13 +1245,17 @@ async function route(request, env, now) {
   if (path === '/me' && method === 'GET') {
     const result = await db.batch([
       stmt(db, USER_SELECT + ` WHERE u.id IN (SELECT CASE WHEN user_a=? THEN user_b ELSE user_a END FROM friendships WHERE (user_a=? OR user_b=?) AND status='accepted') ORDER BY u.name`,user.id,user.id,user.id),
-      stmt(db, `SELECT f.requested_by,f.created_at,u.id,u.name,u.clan FROM friendships f JOIN users u ON u.id=CASE WHEN f.user_a=? THEN f.user_b ELSE f.user_a END WHERE (f.user_a=? OR f.user_b=?) AND f.status='pending' ORDER BY f.created_at DESC`,user.id,user.id,user.id),
+      stmt(db, `SELECT f.requested_by,f.created_at,u.id,u.name,u.clan,
+        (SELECT a.version FROM user_avatars a WHERE a.user_id=u.id) AS avatar_version,
+        CASE WHEN u.id=(SELECT value FROM settings WHERE key='adminUserId') THEN 1 ELSE 0 END AS is_admin
+        FROM friendships f JOIN users u ON u.id=CASE WHEN f.user_a=? THEN f.user_b ELSE f.user_a END WHERE (f.user_a=? OR f.user_b=?) AND f.status='pending' ORDER BY f.created_at DESC`,user.id,user.id,user.id),
       stmt(db, `SELECT COUNT(*) AS count FROM mail_campaigns m WHERE (m.target_user_id IS NULL OR m.target_user_id=?) AND NOT EXISTS(SELECT 1 FROM mail_reads r WHERE r.mail_id=m.id AND r.user_id=?)`,user.id,user.id),
     ]);
-    return {ok:true,user:mapUser(user,now),friends:rows(result[0]).map(r=>mapUser(r,now)),requests:rows(result[1]).map(r=>({id:r.id,name:r.name,clan:r.clan,direction:r.requested_by===user.id?'outgoing':'incoming',createdAt:iso(r.created_at)})),unreadMail:Number(rows(result[2])[0]?.count || 0)};
+    return {ok:true,user:mapUser(user,now),friends:rows(result[0]).map(r=>mapUser(r,now)),requests:rows(result[1]).map(r=>({id:r.id,name:r.name,clan:publicClan(r.clan,r.is_admin),avatarVersion:r.avatar_version||null,direction:r.requested_by===user.id?'outgoing':'incoming',createdAt:iso(r.created_at)})),unreadMail:Number(rows(result[2])[0]?.count || 0)};
   }
   if (path === '/profile' && method === 'PATCH') {
     const body = await readBody(request), name = textField(body.name,'領主名',24);
+    if(!user.is_admin&&typeof body.clan==='string'&&body.clan.normalize('NFC').trim()===ADMIN_CLAN)fail(403,'ADMIN_CLAN_REQUIRED','德川家は運営専用です。一般の領主は徳川家を選択できます。');
     try { await stmt(db,'UPDATE users SET name=?,name_key=? WHERE id=?',name,nameKey(name),user.id).run(); }
     catch (error) { if (/unique/i.test(String(error))) fail(409,'NAME_TAKEN','その領主名はすでに使われています。'); throw error; }
     return {ok:true,user:mapUser(await getUser(db,user.id),now)};
@@ -796,12 +1272,12 @@ async function route(request, env, now) {
     const afterText = url.searchParams.get('after') || '0';
     if (!/^\d{1,15}$/.test(afterText)) fail(400,'INVALID_CURSOR','読み込み位置が正しくありません。');
     const after = Number(afterText);
-    const restricted=channel==='admin',params=[room,...(restricted?[user.id,user.id]:[]),...(after>0?[after]:[])];
-    const query=MESSAGE_SELECT+' WHERE m.room_key=?'+(restricted?' AND '+STAFF_CHAT_GUARD:'')+(after>0?' AND m.id>? ORDER BY m.id ASC LIMIT 100':' ORDER BY m.id DESC LIMIT 100');
+    const restricted=channel==='admin'||channel==='guild',guard=channel==='admin'?STAFF_CHAT_GUARD:GUILD_MEMBER_GUARD,guardParams=channel==='admin'?[user.id,user.id]:[user.id,user.guild_id],params=[room,...(restricted?guardParams:[]),...(after>0?[after]:[])];
+    const query=MESSAGE_SELECT+' WHERE m.room_key=?'+(restricted?' AND '+guard:'')+(after>0?' AND m.id>? ORDER BY m.id ASC LIMIT 100':' ORDER BY m.id DESC LIMIT 100');
     let result;
     if(restricted) {
-      const read=await db.batch([stmt(db,'SELECT 1 AS allowed WHERE '+STAFF_CHAT_GUARD,user.id,user.id),stmt(db,query,...params)]);
-      if(!rows(read[0]).length)fail(403,'STAFF_CHAT_REQUIRED','運営チャットの参加権限がありません。');
+      const read=await db.batch([stmt(db,'SELECT 1 AS allowed WHERE '+guard,...guardParams),stmt(db,query,...params)]);
+      if(!rows(read[0]).length)fail(403,channel==='admin'?'STAFF_CHAT_REQUIRED':'GUILD_REQUIRED','このチャットの参加権限がありません。');
       result=read[1];
     }else result=await stmt(db,query,...params).all();
     let messages=rows(result).map(mapMessage);
@@ -812,10 +1288,9 @@ async function route(request, env, now) {
     const body=await readBody(request), channel=textField(body.channel,'チャット種別',12), text=textField(body.text,'メッセージ',300);
     const room=await roomFor(db,user,channel,body.target);
     await budget(db,'chat:'+user.id,1,5000,now);
-    const inserted=channel==='admin'
-      ?await stmt(db,'INSERT INTO messages(room_key,channel,user_id,body,created_at) SELECT ?,?,?,?,? WHERE '+STAFF_CHAT_GUARD+' RETURNING id',room,channel,user.id,text,now,user.id,user.id).first()
-      :await stmt(db,'INSERT INTO messages(room_key,channel,user_id,body,created_at) VALUES(?,?,?,?,?) RETURNING id',room,channel,user.id,text,now).first();
-    if(!inserted)fail(403,'STAFF_CHAT_REQUIRED','運営チャットの参加権限がありません。');
+    const guard=channel==='admin'?STAFF_CHAT_GUARD:channel==='guild'?GUILD_MEMBER_GUARD:'1',guardParams=channel==='admin'?[user.id,user.id]:channel==='guild'?[user.id,user.guild_id]:[];
+    const inserted=await stmt(db,'INSERT INTO messages(room_key,channel,user_id,body,created_at) SELECT ?,?,?,?,? WHERE '+guard+' RETURNING id',room,channel,user.id,text,now,...guardParams).first();
+    if(!inserted)fail(403,channel==='admin'?'STAFF_CHAT_REQUIRED':'GUILD_REQUIRED','このチャットの参加権限がありません。');
     const message=await stmt(db,MESSAGE_SELECT+' WHERE m.id=?',inserted.id).first();
     return {ok:true,message:mapMessage(message)};
   }
@@ -824,12 +1299,7 @@ async function route(request, env, now) {
     return {ok:true,guilds:rows(result).map(mapGuild)};
   }
   if (path === '/guild' && method === 'GET') {
-    if (!user.guild_id) return {ok:true,guild:null,members:[]};
-    const result=await db.batch([
-      stmt(db,GUILD_SELECT+' WHERE g.id=?',user.guild_id),
-      stmt(db,USER_SELECT+' WHERE gm.guild_id=? ORDER BY gm.joined_at,u.id',user.guild_id),
-    ]);
-    return {ok:true,guild:rows(result[0])[0]?mapGuild(rows(result[0])[0]):null,members:rows(result[1]).map(r=>mapUser(r,now))};
+    return guildSnapshot(db,user,now);
   }
   if (path === '/guild' && method === 'POST') {
     const body=await readBody(request),name=textField(body.name,'ギルド名',24);
@@ -838,6 +1308,7 @@ async function route(request, env, now) {
     try { await db.batch([
       stmt(db,'INSERT INTO guilds(id,name,name_key,owner_id,created_at) VALUES(?,?,?,?,?)',id,name,nameKey(name),user.id,now),
       stmt(db,'INSERT INTO guild_members(user_id,guild_id,joined_at) VALUES(?,?,?)',user.id,id,now),
+      stmt(db,'INSERT INTO guild_treasuries(guild_id) VALUES(?)',id),
     ]); } catch(error) { if (/unique/i.test(String(error))) fail(409,'GUILD_CONFLICT','そのギルド名は使われているか、すでに別のギルドへ参加しています。'); throw error; }
     return {ok:true,guild:mapGuild(await stmt(db,GUILD_SELECT+' WHERE g.id=?',id).first()),user:mapUser(await getUser(db,user.id),now)};
   }
@@ -852,14 +1323,7 @@ async function route(request, env, now) {
     return {ok:true,user:mapUser(current,now)};
   }
   if (path === '/guild/leave' && method === 'POST') {
-    await readBody(request);
-    if (!user.guild_id) return {ok:true,user:mapUser(user,now)};
-    await db.batch([
-      stmt(db,`UPDATE guilds SET owner_id=(SELECT user_id FROM guild_members WHERE guild_id=? AND user_id<>? ORDER BY joined_at,user_id LIMIT 1) WHERE id=? AND owner_id=? AND EXISTS(SELECT 1 FROM guild_members WHERE guild_id=? AND user_id<>?)`,user.guild_id,user.id,user.guild_id,user.id,user.guild_id,user.id),
-      stmt(db,'DELETE FROM guild_members WHERE user_id=? AND guild_id=?',user.id,user.guild_id),
-      stmt(db,'DELETE FROM guilds WHERE id=? AND NOT EXISTS(SELECT 1 FROM guild_members WHERE guild_id=?)',user.guild_id,user.guild_id),
-    ]);
-    return {ok:true,user:mapUser(await getUser(db,user.id),now)};
+    return guildLeave(db,user,await readBody(request),now);
   }
   if (path === '/friends/request' && method === 'POST') {
     const body=await readBody(request),other=idField(body.userId,'領主の識別子');
@@ -973,6 +1437,7 @@ export default {
         if(origin!==null) headers.set('Access-Control-Allow-Origin',origin);
         return new Response(null,{status:204,headers});
       }
+      if(path.startsWith(API+'/avatars/')&&request.method==='GET')return await getAvatar(request,env,origin);
       return response(await route(request,env,Date.now()),200,origin);
     }catch(error){
       if(error instanceof ApiError){const e={code:error.code,message:error.message};if(error.retryAfter)e.retryAfter=error.retryAfter;return response({ok:false,error:e},error.status,origin,error.retryAfter);}

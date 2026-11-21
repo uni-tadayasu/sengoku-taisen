@@ -39,7 +39,7 @@ function attackValidation({player,me,identity,access={},state={},troops,tactic,r
   if(clock&&(!clock.ready||clock.clock?.running===false))return{ok:false,message:clock.ready?'運営が共通時間を停止しています。':'共通時刻の確認を待っています。'};
   if(!player)return{ok:false,message:'相手の領主を選んでください。'};
   if(player.self||player.playerId===identity.id)return{ok:false,message:'自分の本拠には出陣できません。'};
-  if(player.isAdmin)return{ok:false,message:'運営の本拠は保護されています。'};
+  if(player.isAdmin||player.homeCastleId==='edo')return{ok:false,message:'運営の本拠・江戸城は保護され、襲撃・占領の対象になりません。'};
   if(relationshipFor(player,me,identity)==='allied')return{ok:false,message:'同盟中の領主には出陣できません。'};
   if(!player.attackable)return{ok:false,message:player.attackReason||'この本拠は現在保護されています。'};
   if(!me?.attack?.ready)return{ok:false,message:me?.attack?.reason||'本拠と出陣の準備を確認しています。'};
@@ -50,9 +50,11 @@ function attackValidation({player,me,identity,access={},state={},troops,tactic,r
   if(integer(state.resources?.rice??me.attack.rice)<cost)return{ok:false,message:`兵糧が${num(cost)}必要です。`};
   return{ok:true,foodCost:cost,payload:{targetPlayerId:player.playerId,troops:amount,tactic}};
 }
+function playerPhoto(player){const user={...player,id:player.playerId};return global.SengokuAvatar?.imageURL?.(user)?global.SengokuAvatar.markup(user,'small'):'';}
 function publicRow(player,{selectedId='',identity,relationship=player.relationship}={}){
   const own=player.self||player.playerId===identity?.id,label=own?'あなた':relationship==='allied'?'同盟':relationship==='incoming'?'申請あり':relationship==='outgoing'?'申請中':player.isAdmin?'運営':player.isStaff?'スタッフ':player.online?'接続中':'領主';
-  return`<button type="button" class="field-player-row ${selectedId===player.playerId?'is-selected':''} ${own?'is-self':''}" data-field-action="select-player" data-player-id="${esc(player.playerId)}" aria-pressed="${selectedId===player.playerId}"><span class="field-player-mon" data-field-crest="${esc(player.clan||'')}">${icon('flag')}</span><span class="field-player-copy"><strong>${esc(player.name)}</strong><small>${esc(player.homeCastleName||player.homeCastleId)} · ${esc(player.clan||'')}</small></span><span class="field-player-meta"><span class="field-player-tag ${player.online?'is-online':''}">${esc(label)}</span><small>Lv.${player.level} · ${num(player.defenseTroops)}兵</small></span></button>`;
+  const photo=playerPhoto(player);
+  return`<button type="button" class="field-player-row ${selectedId===player.playerId?'is-selected':''} ${own?'is-self':''}" data-field-action="select-player" data-player-id="${esc(player.playerId)}" aria-pressed="${selectedId===player.playerId}">${photo?`<span class="field-player-mon field-player-photo">${photo}</span>`:`<span class="field-player-mon" data-field-crest="${esc(player.clan||'')}">${icon('flag')}</span>`}<span class="field-player-copy"><strong>${esc(player.name)}</strong><small>${esc(player.homeCastleName||player.homeCastleId)} · ${esc(player.clan||'')}</small></span><span class="field-player-meta"><span class="field-player-tag ${player.online?'is-online':''}">${esc(label)}</span><small>Lv.${player.level} · ${num(player.defenseTroops)}兵</small></span></button>`;
 }
 function makeCache(){return{players:[],total:0,nextCursor:null,me:null,rules:rulesFor(),clock:null,lastFetched:0,loading:false,promise:null,busy:false,error:'',selectedId:'',castleFilter:'',query:'',filter:'all',page:1,tab:'base',relationshipPage:1,battlePage:1,troops:'',tactic:'balanced',confirm:null,lastBattle:null,watchers:new Set()};}
 function mount(container,options={}){
@@ -90,12 +92,13 @@ function mount(container,options={}){
     const relation=relationshipFor(player,cache.me,opts.identity),own=relation==='self',art=global.SengokuArt?.castle?.(player.homeCastleId,'field-castle-art',player.level)||`<div class="field-castle-fallback">${icon('castle')}</div>`;
     const coLocated=cache.players.filter(p=>p.homeCastleId===player.homeCastleId).length;
     const protection=Math.max(0,number(player.protectedUntilElapsedMs)-elapsed());
-    let result=`<div class="field-base-heading">${art}<div><span class="field-eyebrow">${esc(player.homeCastleName||player.homeCastleId)} · Lv.${player.level}</span><h3>${esc(player.name)}</h3><p>${esc(player.clan||'')}${own?' · あなたの本拠':player.isAdmin?' · 運営の本拠':''}</p><span class="field-online ${player.online?'is-online':''}">${player.online?'接続中':'現在は不在'}</span></div></div><div class="field-base-stats"><div><span>守備兵</span><b>${num(player.defenseTroops)}</b></div><div><span>防衛力</span><b>${num(Math.round(player.defensePower))}</b></div><div><span>軍団</span><b>${num(player.armySummary?.officerCount)}<small>名</small></b></div></div>${coLocated>1?`<p class="field-caption">この城には${coLocated}人の領主の本拠があります。</p>`:''}`;
+    let result=`<div class="field-base-heading">${art}<div><span class="field-eyebrow">${esc(player.homeCastleName||player.homeCastleId)} · Lv.${player.level}</span><h3 class="field-lord-heading">${playerPhoto(player)}<span>${esc(player.name)}</span></h3><p>${esc(player.clan||'')}${own?' · あなたの本拠':player.isAdmin?' · 運営の本拠':''}</p><span class="field-online ${player.online?'is-online':''}">${player.online?'接続中':'現在は不在'}</span></div></div><div class="field-base-stats"><div><span>守備兵</span><b>${num(player.defenseTroops)}</b></div><div><span>防衛力</span><b>${num(Math.round(player.defensePower))}</b></div><div><span>軍団</span><b>${num(player.armySummary?.officerCount)}<small>名</small></b></div></div>${coLocated>1?`<p class="field-caption">この城には${coLocated}人の領主の本拠があります。</p>`:''}`;
+    if(global.SENGOKU_DATA?.majorCityIds?.includes(player.homeCastleId))result+=`<div class="major-city-badge">${icon('castle')}大都市拠点${player.homeCastleId==='edo'?' · 運営専用 · 占領不可':''}</div>`;
     if(!opts.identity?.id)return result+'<div class="field-notice">襲撃と外交は、領主登録後に利用できます。</div><button class="field-button is-gold is-full" data-field-action="register">領主登録・ログイン</button>';
     if(!canAct()&&!cache.busy)result+=`<div class="field-notice">${esc(access().fieldPending?'前の采配を反映しています。':'操作端末と共通時刻を確認すると采配できます。')}<button class="field-inline-button" data-field-action="sync">端末同期を確認</button></div>`;
     if(own){const cooldown=Math.max(0,number(cache.me?.attack?.cooldownUntilElapsedMs)-elapsed());return result+`<div class="field-self-note">${icon('shield')}<div><strong>あなたの旗が、この城に掲がっています。</strong><p>ほかの領主を選ぶと、襲撃や同盟の申し出ができます。</p></div></div><div class="field-key-value"><span>出陣できる兵</span><b>${num(state().troops??cache.me?.attack?.availableTroops)}人</b></div>${cooldown?`<div class="field-key-value"><span>襲撃の再準備</span><b>あと${remainingLabel(cooldown)}</b></div>`:''}${protection?`<div class="field-notice">襲撃後の保護 · あと${remainingLabel(protection)}</div>`:''}`;}
     result+=`<section class="field-diplomacy-box"><h4>外交</h4>${diplomacyControls(player)}</section>`;
-    if(player.isAdmin)return result+`<div class="field-notice">${icon('shield')}運営の本拠は保護されています。</div>`;
+    if(player.isAdmin||player.homeCastleId==='edo')return result+`<div class="field-notice">${icon('shield')}運営の本拠・江戸城は保護され、襲撃・占領の対象になりません。</div>`;
     if(protection)return result+`<div class="field-notice">襲撃後の保護期間です。あと${remainingLabel(protection)}で再び対象になります。</div>`;
     if(relation==='allied')return result;
     const attack=cache.me?.attack||{},r=cache.rules,max=Math.min(integer(attack.availableTroops),integer(attack.maxTroops)||r.maxTroops,state().troops===undefined?Infinity:integer(state().troops));

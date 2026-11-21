@@ -1,20 +1,20 @@
 # 戦国大戦 通信API
 
-Base path: `/api/v1`. UTF-8 JSON. Success always includes `ok: true`.
-All routes except GET `/config`, GET `/health`, GET `/online`, GET `/world-clock`, GET `/field`, POST `/session`, POST `/devices/link`, and POST `/admin/recover` require `Authorization: Bearer <game-token>`. Administrator recovery requires the original operator registration key in its JSON body instead of an existing game token.
-No cookies are used. Never put a token or pairing code in a URL. POST/PUT/PATCH/DELETE bodies require `Content-Type: application/json`, including `{}` for an empty body.
+Base path: `/api/v1`. UTF-8 JSON, except public avatar image responses. JSON success always includes `ok: true`.
+All routes except GET `/config`, GET `/health`, GET `/online`, GET `/world-clock`, GET `/field`, GET `/guild/rankings`, GET `/avatars/:userId`, POST `/session`, POST `/devices/link`, and POST `/admin/recover` require `Authorization: Bearer <game-token>`. Administrator recovery requires the original operator registration key in its JSON body instead of an existing game token.
+No cookies are used. Never put a token or pairing code in a URL. POST/PUT/PATCH/DELETE bodies require `Content-Type: application/json`, including `{}` for an empty body. DELETE `/me/avatar` also accepts no body.
 
 ## Common objects
 
 ```js
 user = {
   id: "u_…", name: "領主名", clan: "織田家", isAdmin: false, isStaff: false,
-  guildId: null, guildName: null, guildRole: null, online: true
+  guildId: null, guildName: null, guildRole: null, online: true, avatarVersion: null
 }
-// guildRole is null, "owner", or "member".
+// guildRole is null, "owner", "officer", or "member".
 // online means at least one explicitly foreground device heartbeat is newer than 90 seconds.
 // Authenticated reads and save writes alone never make a player online.
-message = {id: 1, userId: "u_…", name: "領主名", text: "…", createdAt: "2026-11-21T00:00:00.000Z", isAdmin: false, isStaff: false}
+message = {id: 1, userId: "u_…", name: "領主名", avatarVersion: null, text: "…", createdAt: "2026-11-21T00:00:00.000Z", isAdmin: false, isStaff: false}
 guild = {id:"g_…", name:"…", ownerId:"u_…", ownerName:"…", memberCount:1, maxMembers:50, createdAt:"…"}
 gift = {gold: 100, rice: 200, wood: 50, stone: 50, magatama: 3000}
 error = {ok:false, error:{code:"AUTH_REQUIRED", message:"日本語の説明", retryAfter:5}}
@@ -30,14 +30,33 @@ All returned timestamps are ISO strings. Treat names, messages, mail, and announ
 | GET `/health` | none | `status:"ready"` |
 | GET `/config` | none | `announcement:string`, `adminClaimed:boolean`, `adminRecoveryAvailable:boolean`, `onlineCount:number`, `clock` |
 | POST `/session` | `{name?,clan?}` | `token:string`, `user` |
-| GET `/me` | none | `user`, `friends:user[]`, `requests:[{id,name,clan,direction:"incoming"|"outgoing",createdAt}]`, `unreadMail:number` |
+| GET `/me` | none | `user`, `friends:user[]`, `requests:[{id,name,clan,avatarVersion,direction:"incoming"|"outgoing",createdAt}]`, `unreadMail:number` |
 | PATCH `/profile` | `{name}` | `user` |
 | GET `/players` | `?q=検索語` (2–24 chars) | `players:user[]` (up to 30, excludes requester) |
 
 Names and clan labels have a 24-character limit. Names are unique after Unicode compatibility normalization and case folding.
+The distinct clan name **`德川家`** is reserved for the authenticated operator. Ordinary players may use **`徳川家`**. A session or ordinary profile request attempting to set the reserved name returns 403 `ADMIN_CLAN_REQUIRED`. Operator public identity always reports `德川家`, while the chosen lord name remains unchanged; a legacy ordinary identity carrying the reserved label is projected as `徳川家`.
 If no name is supplied, the server chooses `旅の領主` plus a random suffix.
 The 256-bit anonymous game token is a 43-character base64url string. The server stores only its SHA-256 hash. A session-creation token is returned only when creating that identity. Additional per-device tokens are issued through successful pairing or verified recovery of the original operator identity.
 Store the token in localStorage and offer an explicit identity JSON export/import for recovery. An exported original token remains valid after additional devices are linked or the operator recovers access. A game save contains game progress; it does not contain the bearer identity and cannot confer operator privileges. An ordinary identity requires a surviving authenticated device or identity-token backup. The sole existing operator can also use its original registration key through `/admin/recover`; the key never transfers operator rights to a new identity.
+
+## Player photo avatars
+
+| Method / path | Authentication and body / query | Response |
+|---|---|---|
+| PUT `/me/avatar` | Bearer; `{image:"<raw standard base64>"}` | `{ok:true,user}` |
+| DELETE `/me/avatar` | Bearer; no body or `{}` | `{ok:true,user}` |
+| GET `/avatars/:userId?v=<avatarVersion>` | Public; optional current version query | JPEG bytes, or JSON error |
+
+Every player, including support staff and the operator, may replace only their own photo. PUT accepts exactly the `image` field; target IDs, filenames, external URLs, data URLs, content types and authority flags are rejected. The browser crops/resizes to exactly **256×256 JPEG**. The server bounds the entire JSON request at 70 KiB and the decoded input at **49,152 bytes (48 KiB)**, requires canonical padded standard base64, and structurally validates 8-bit baseline or progressive Huffman JPEG with one or three components. Incorrect dimensions, unsupported image formats, inconsistent markers/tables/scans, truncation and trailing bytes are rejected. All APP0–APP15 and COM segments, including EXIF/GPS, XMP, ICC, thumbnails and comments, are removed server-side before persistence. This is bounded JPEG structure validation, not a general image transcoder or full entropy decoder. The parser follows [ITU-T T.81 Annex B/E](https://www.w3.org/Graphics/JPEG/itu-t81.pdf).
+
+The returned `user.avatarVersion` is a lowercase 64-character SHA-256 hash of the sanitized JPEG, or `null` when no photo exists. Safe user projections, friend requests, chat messages and public field summaries include this version only. They never carry image bytes, base64, storage keys or metadata. Clients construct a URL from their fixed API base, encoded user ID and version; arbitrary image URLs are not accepted. A version mismatch or deleted/missing photo returns 404 `AVATAR_NOT_FOUND`. Omitting `v` reads the current photo. All successful and unsuccessful reads use `Cache-Control:no-store`; re-uploading the same image hash cannot revive a cached older photo.
+
+Files are stored in the private R2 binding `BUCKET`; D1 `user_avatars` stores only user ID, version, unique object key, MIME type, byte length and update time. Migration `0005_user_avatars` is schema-only. Each upload writes a newly randomized R2 object before a D1 transaction switches the account's metadata; previous-object cleanup never shares a key with a replacement. A failed or uncertain D1 response does not delete an object that may already be current. Delete removes the metadata atomically, then attempts bounded object cleanup. A failed cleanup can leave an unreachable storage object, but cannot expose a deleted photo. Reads verify the current metadata both before and after the asynchronous object read to reject an intervening deletion/replacement.
+
+JPEG responses set `Content-Type:image/jpeg`, `X-Content-Type-Options:nosniff`, `Referrer-Policy:no-referrer` and a restrictive Content-Security-Policy; the existing exact-origin CORS policy applies. Replacing a photo on a linked device changes the same account's version without changing roles, progress or other players' photos. Simultaneous updates use the last committed metadata; they do not require the gameplay writer lease.
+
+PUT and DELETE share a per-account limit of **10 attempts per real ten minutes**. Missing/invalid authentication returns 401; malformed image/body returns 400 `INVALID_AVATAR`; decoded oversize returns 413 `AVATAR_TOO_LARGE`; oversized JSON returns 413 `BODY_TOO_LARGE`; unavailable R2 returns 503 `AVATAR_STORAGE_UNAVAILABLE`; rate exhaustion returns 429 `RATE_LIMITED`. `node scripts/test-avatar-jpeg.mjs` covers the exact shipped parser with seven real JPEG profiles, including Chrome canvas output. `node scripts/test-avatars.mjs` covers the API, ownership, metadata stripping, storage races, failures, deletion, privacy and limits using local D1/R2 doubles.
 
 ## Device linking and identity recovery
 
@@ -164,9 +183,10 @@ The sole authority is `settings.adminUserId`, established by the existing one-ti
 
 General-player writes containing `home:"edo"`, ownership of Edo under their own clan, or the variant `of_b0616adde162:U` are rejected with HTTP 403 `ADMIN_ENTITLEMENT_REQUIRED`. Other ranks of that officer remain usable. A general player completes unification over 127 eligible castles; an operator has all 128 available.
 
-For the operator, reading or writing a valid save idempotently includes Tokugawa Ieyasu (`of_b0616adde162`) and its U variant, and fixes the home at Edo (`home:"edo"`, `castles.edo.owner=state.clan`). An older operator save based elsewhere moves to Edo while retaining its former territory, resources, buildings and collection. On that initial move only, each of Edo's troop, wall and castle levels becomes the maximum of its old value and the former home's value. A pending Edo castle job is adjusted to the next level, or completed/removed if Edo is already level 32. Other jobs and their remaining time are preserved. Edo is included once in `captureRewards`; repeated restoration never replenishes troops or duplicates rewards. Both the client and backend enforce this same deterministic migration, and the public field always locates an operator at Edo. No extra restore endpoint or second administrator-registration key is required on linked devices.
+For the operator, reading or writing a valid save idempotently includes Tokugawa Ieyasu (`of_b0616adde162`) and its U variant, fixes `state.clan` to the reserved `德川家`, and fixes the home at Edo (`home:"edo"`, `castles.edo.owner=state.clan`). Only castles owned by the save's previous clan are renamed; ordinary `徳川家` NPC holdings are not automatically added when the previous clan was different. An older operator save based elsewhere moves to Edo while retaining its former territory, resources, buildings and collection. On that initial move only, each of Edo's troop, wall and castle levels becomes the maximum of its old value and the former home's value. A pending Edo castle job is adjusted to the next level, or completed/removed if Edo is already level 32. Other jobs and their remaining time are preserved. Edo is included once in `captureRewards`; repeated restoration never replenishes troops or duplicates rewards. Both the client and backend enforce this same deterministic migration, and the public field always locates an operator at Edo. No extra restore endpoint or second administrator-registration key is required on linked devices.
 
 If an account has a previously stored operator save but is no longer the operator, reads remain recoverable: Ieyasu U becomes SSS; Edo ownership and its castle jobs are removed; Edo as the home is relocated to the clan's usual owned home or another owned castle. For an Edo-only campaign its castle level and garrison move to the clan's original home, preserving the rest of the progress. This read-time migration does not increment the stored revision or renew the lease. The next write is still subject to full general-player validation. There is no public role-reassignment endpoint.
+When that legacy save has `clan:"德川家"`, read migration first neutralizes ordinary `徳川家` NPC holdings, then renames the old reserved holdings to ordinary `徳川家`. This preserves the old ownership set; it never grants the whole ordinary Tokugawa territory. Any now-self treaty is removed. A new ordinary save with the reserved clan is rejected with 403 `ADMIN_CLAN_REQUIRED`, regardless of imported role flags. The first-start UI excludes Edo, Nijo, Osaka and Nagoya, while existing ordinary saves at Nijo/Osaka/Nagoya remain valid; the sync API does not treat a historical imported home as proof of a new-start selection. Edo stays operator-only in every save and is protected from public-field raids. Field summaries include `majorCity:boolean` for these four homes. `node scripts/test-clans.mjs` verifies the character distinction, migration, ordinary metropolitan save compatibility and protected Edo attacks.
 
 ## Global online player list
 
@@ -310,13 +330,73 @@ Without `after`, GET returns the newest 100 in chronological order; `after` is t
 | Method / path | Body | Result |
 |---|---|---|
 | GET `/guilds` | — | `{guilds:guild[]}` (at most 50) |
-| GET `/guild` | — | `{guild:guild|null,members:user[]}` |
+| GET `/guild` | — | `{user,guild:guild|null,members:user[]}` |
 | POST `/guild` | `{name}` | `{guild,user}` |
 | POST `/guild/join` | `{guildId}` | `{user}` |
-| POST `/guild/leave` | `{}` | `{user}` |
+| POST `/guild/leave` | `{guildId?}` | `{user}` |
 
 One guild per player, 50 members per guild, unique guild names up to 24 characters.
-When the owner leaves, ownership passes to the earliest remaining member; user ID breaks timestamp ties. An empty guild is deleted atomically.
+Guild roles are `owner` (盟主), `officer` (副盟主) and `member` (メンバー), independent of operator/support-staff roles. Public safe user objects use `guildRole` for this value. Appointing a deputy never grants `isAdmin`, `isStaff`, privileged Edo/Ieyasu assets, private staff access or operator powers.
+
+### Guild roles and membership removal
+
+| Method / path | Body | Response in addition to `ok` |
+|---|---|---|
+| POST `/guild/members/role` | `{guildId,targetPlayerId,role:"officer"|"member",requestId}` | `user,guild,members,idempotent` |
+| POST `/guild/members/remove` | `{guildId,targetPlayerId,requestId}` | `user,guild,members,idempotent` |
+
+The owner can appoint/demote deputies and remove other members, including deputies. A deputy can remove an ordinary member but cannot appoint roles, remove an owner or remove another deputy. Self-management through these endpoints is rejected; use `/guild/leave` to depart. The target must still belong to the explicitly supplied `guildId`, and the actor must currently belong to that same guild with the required role. This prevents a delayed operation from silently targeting a new guild after an account changes membership.
+
+Every intended management operation needs a stable `requestId`, retained across retries. The same actor/request ID with the same guild/target/action does not repeat an appointment, demotion or removal. An old appointment replayed after demotion does not reappoint; an old removal replayed after the target rejoins does not remove the target again. Different content under that ID returns 409 `REQUEST_ID_REUSED`. A fresh private commit nonce guards both the operation record and the exact role/membership write in one D1 transaction; the SQL verifies current actor/target membership and permissions again. New operations allow 30 per actor per real minute; completed-ID retries do not consume that allowance.
+
+On owner departure, ownership transfers to the earliest-joined remaining deputy, or the earliest remaining member if there is no deputy; user ID breaks timestamp ties. Existing shared funds stay with the guild. The final member can leave and delete the guild only when all five treasury balances are zero. A nonempty final treasury returns 409 `GUILD_TREASURY_NOT_EMPTY`, preserving both membership and funds. Successful receipt/idempotency history is retained after an empty guild dissolves. Officer records automatically disappear when their membership is removed. Guild membership lists, private treasury history and guild chat re-check current membership inside their SQL read/write, so a revocation between authentication and execution cannot disclose the former group's private information or post a message.
+
+### Shared treasury
+
+All current members, including ordinary members, can contribute and withdraw shared **gold, rice, wood, stone and magatama**. There is no role-based withdrawal limit beyond the common amount/balance bounds and rate limit below. Treasury balances and transaction history are visible only to current members.
+
+`GET /guild/treasury?limit=50&cursor=…` returns:
+
+```js
+{
+  ok:true, guildId:"g_…",
+  treasury:{gold:0,rice:0,wood:0,stone:0,magatama:0,revision:0},
+  ledger:[{
+    id:"gt_…", requestId:"operation-uuid", guildId:"g_…",
+    playerId:"u_…", name:"領主名", direction:"deposit", resource:"gold", amount:100,
+    createdAt:"2026-11-21T00:00:00.000Z", worldElapsedMs:60000,
+    playerRevision:4, treasuryRevision:2
+  }],
+  nextCursor:null, serverNow:"2026-11-21T00:00:00.000Z"
+}
+```
+
+The default/maximum page size is 50; valid limits are integers 1–50. History uses newest `created_at DESC,id DESC` keyset order and a bounded opaque cursor. Its `name` is the player's display name when the operation committed. It exposes no tokens, request hashes, private commit nonces or raw saves. An older guild without a treasury row receives a zero row lazily, without migration backfills.
+
+`POST /guild/treasury/transfer` requires exactly:
+
+```js
+{
+  guildId:"g_…", direction:"deposit", // or "withdraw"
+  resource:"gold", // gold | rice | wood | stone | magatama
+  amount:100,       // integer 1..1_000_000
+  requestId:"operation-uuid", deviceId:"current-writer", expectedRevision:3
+}
+```
+
+The response combines the full current `/sync` snapshot with `{guildId,receipt,treasury,idempotent}`. `receipt` has the same shape as a ledger entry above. Gold/rice/wood/stone modify `state.resources`; magatama modifies `state.magatama`. Each successful transfer increments both the player's save revision and the treasury revision exactly once, retains its prior common-clock checkpoint, renews the writer lease and adds a game log entry. A player needs a valid cloud save, an unexpired current writer lease, the expected save revision and a common-clock checkpoint no more than 15 simulated seconds behind the server. Transfers remain available when the shared clock is paused. Each personal/shared balance remains between zero and 999,999,999; an operation cannot mint funds through a negative, fractional, unknown-resource or out-of-range amount.
+
+The operation digest covers caller ID, explicit guild ID, direction, resource and amount. A successful `(actorId,requestId)` record has no TTL. Replaying the same content returns the original receipt with `idempotent:true` and the current account snapshot, even if the expected save revision or device ID has changed; it never reapplies the amount. The account must still belong to the requested guild to see its private balance. If membership has changed, the old operation cannot target a new guild and returns `GUILD_REQUIRED`. A changed semantic payload under a used ID returns `REQUEST_ID_REUSED`. Successful request records survive guild dissolution, preventing reuse in a replacement guild.
+
+New transfers are limited to 30 attempts per account per real minute. The conditional operation insert verifies current guild membership, exact player revision/writer/lease, treasury revision, shared clock revision and current operator status in one D1 transaction. A per-attempt private nonce gates both balance/save updates and the identity-clan projection; a competing duplicate cannot borrow the first attempt's operation record. Concurrent withdrawals cannot spend the same treasury balance twice. Any statement failure rolls back the receipt, save and treasury together. A lost response after commit is resolved by retrying the same ID. The client must flush local gameplay first, pause local mutations during the request, retain the same request ID across retries/reloads, and refresh/apply the authoritative sync snapshot afterward. It must not call a separate local gift-application function for treasury withdrawals.
+
+Errors include 401 authentication, 403 `GUILD_REQUIRED` for absent/mismatched current membership, 403 `GUILD_ROLE_REQUIRED` for management permission, 404 `GUILD_MEMBER_NOT_FOUND`, 400 invalid input/cursor, 409 `INSUFFICIENT_ASSETS`, `ASSET_LIMIT`, `SAVE_REQUIRED`, `LEASE_REQUIRED`, `REVISION_CONFLICT`, `CLOCK_ANCHOR_REQUIRED`, `CLOCK_STALE`, `WORLD_CLOCK_CHANGED`, `AUTHORITY_CHANGED`, `TREASURY_CONFLICT`, `GUILD_CHANGED`, `REQUEST_ID_REUSED` and `GUILD_TREASURY_NOT_EMPTY`. A conflict requires refreshing the relevant snapshot; it never authorizes a client-side adjustment of balances.
+
+### Public guild rankings
+
+`GET /guild/rankings?limit=50&cursor=…` is public and returns `{ok,guilds,total,nextCursor,serverNow}`. Each entry includes the normal guild summary plus `totalPrestige`, `ownedCastles` and one-based `rank`. The primary order is total saved prestige descending, with guild ID ascending for ties. Each member contributes their latest cloud save once; a member without a cloud save contributes zero prestige and zero owned castles. The castle total counts member campaign holdings, including separate players at the same historical castle, and follows the deterministic operator-Edo/read-migration ownership projection. A member/JSON castle cross-product never multiplies prestige or member count.
+
+Default/maximum page size is 50. The opaque cursor stores the last prestige total and guild ID. Rankings are a live view, so member/save changes can move entries between pages; clients should deduplicate and refresh from the first page. Only guild names, owner identity, member count, public prestige/castle totals and rank are returned. Private treasury balances, receipts, individual resources and save data are never included.
 
 ## Friends
 
@@ -345,7 +425,34 @@ Announcements are plain text, at most 300 characters; an empty string clears the
 
 ## Support staff appointment and removal
 
-The primary operator can appoint existing player identities as support staff. The additional role grants access to the `admin` chat room only. It does not grant Edo, Ieyasu U, a protected field base, world-clock control, announcement editing, system mail/gift sending, staff management or another primary-operator registration. All those checks continue to require `isAdmin`. A staff member remains an ordinary player for campaign and field permissions.
+### Recent authenticated connections
+
+`GET /staff/recent-logins?limit=50&cursor=…` is restricted to the current primary operator or appointed support staff. It returns:
+
+```js
+{
+  ok: true,
+  players: [{...user, lastSeen: "2026-11-21T00:00:00.000Z"}],
+  total: 1,
+  serverNow: "2026-11-21T00:01:00.000Z",
+  windowStart: "2026-11-20T00:01:00.000Z",
+  nextCursor: null // or an opaque string
+}
+```
+
+The list represents each identity's **last authenticated connection**, using `users.last_seen`; it is not a login-event audit trail or a count of device sessions. Authentication refreshes this value at most once every 60 seconds, including authenticated background sync/presence and a subsequently denied operation. Creating/linking a token alone does not establish a separate login event. The usual following `/me` or sync request records authenticated use. `online` remains the separate foreground-presence signal with its existing 90-second window.
+
+The server includes rows whose final connection is between its current `serverNow - 24h` and the first page's server time, inclusively. Future timestamps and rows older than the current rolling window are always excluded. Default and maximum page size are 50; callers may request an integer from 1 to 50. Results sort by `last_seen DESC, id ASC`, and return each user once regardless of additional tokens or presence rows. `total` counts the eligible users before the cursor-position filter.
+
+The opaque keyset cursor carries the first page's upper time bound and the last returned `(last_seen,id)` position. Its version, bounded encoding, integer timestamps and safe identity syntax are validated; a future or more-than-24-hour-old upper bound is rejected with 400 `INVALID_CURSOR`. The lower bound always comes from the server's current clock, so a caller cannot use a cursor to request older history. The records remain live: later authenticated use can move an identity above the original page bound. Clients should deduplicate appended pages by user ID and refresh from the first page to pick up such changes. The supplied `serverNow` and `windowStart` are ISO strings for the current request.
+
+Missing/invalid bearer authentication returns 401. An ordinary or dismissed staff member receives 403 `STAFF_REQUIRED`. Role authorization and the SELECT/COUNT queries use one D1 transaction, with an authoritative membership check in every data query, preventing a revocation between authentication and the read from disclosing rows. The response contains only the usual safe user fields plus `lastSeen`; no token hashes, device names/IDs, IP addresses or raw database rows are returned. `lastSeen` is added only to this private endpoint and never to generic `mapUser`, `/online`, `/players`, field or chat responses. All responses are `Cache-Control:no-store`.
+
+The existing `users_last_seen_idx` supplies the time range scan; no schema migration is needed for this list. `node scripts/test-recent-logins.mjs` verifies authorization, revocation races, boundaries, ordering, cursors, privacy and throttled timestamp semantics with local data only.
+
+### Role management
+
+The primary operator can appoint existing player identities as support staff. The additional role grants access to the `admin` chat room and the private recent-connections list. It does not grant Edo, Ieyasu U, a protected field base, world-clock control, announcement editing, system mail/gift sending, staff management or another primary-operator registration. All those checks continue to require `isAdmin`. A staff member remains an ordinary player for campaign and field permissions.
 
 | Method / path | Authentication and body | Result |
 |---|---|---|
@@ -385,19 +492,21 @@ Claim is atomic with a unique `(mailId,userId)` receipt. A second claim with the
 
 ## Deployment
 
-Use a dependency-free Cloudflare Worker ESM with `env.DB`. Required manifest binding: `d1:"DB"`, `r2:null`, no `static` field.
-Run `node scripts/build.mjs` to copy `worker/index.js` to `dist/server/index.js`; preserve `drizzle/` in source so Sites packages and applies the schema migrations. Apply `0000_social`, `0001_cloud_sync`, `0002_world_clock`, `0003_shared_field` and `0004_staff_roles` using the append-only journal. The previously recorded migration files and journal entries are unchanged. `0001_cloud_sync` creates `user_sessions`, `pairing_codes`, `player_saves`, `player_presence` and their indexes; `0002_world_clock` adds the singleton clock table; `0003_shared_field` adds the operation ledger, player relations and battle records with their indexes; `0004_staff_roles` adds support-staff membership and its role-operation ledger. These migrations are schema-only, with no data mutations. No table creation or schema alterations occur inside request handling.
+Use a dependency-free Cloudflare Worker ESM with `env.DB` and private `env.BUCKET`. Required manifest bindings: `d1:"DB"`, `r2:"BUCKET"`, no `static` field. Sites provisions the R2 bucket; no public object bucket URL is required.
+Run `node scripts/build.mjs` to copy `worker/index.js` to `dist/server/index.js`; preserve `drizzle/` in source so Sites packages and applies the schema migrations. Apply `0000_social`, `0001_cloud_sync`, `0002_world_clock`, `0003_shared_field`, `0004_staff_roles`, `0005_user_avatars` and `0006_guild_assets` using the append-only journal. The previously recorded migration files and journal entries are unchanged. `0001_cloud_sync` creates `user_sessions`, `pairing_codes`, `player_saves`, `player_presence` and their indexes; `0002_world_clock` adds the singleton clock table; `0003_shared_field` adds the operation ledger, player relations and battle records with their indexes; `0004_staff_roles` adds support-staff membership and its role-operation ledger; `0005_user_avatars` adds image metadata only; `0006_guild_assets` adds deputy roles, pooled balances and durable asset/management operation ledgers with indexes. These migrations are schema-only, with no data mutations. No table creation or schema alterations occur inside request handling.
 
 Default CORS origins: the API's own origin, `https://www.kasai-solutions-inc.com`, the previous `https://uni-tadayasu.github.io` origin, `http://127.0.0.1:4173`, and the literal `null` origin for offline file HTML. No credentials/cookies are allowed. The custom-domain allowance is an exact HTTPS origin match, not a suffix or wildcard. Keeping the previous origin allows an existing signed-in device there to issue its own pairing code during migration.
 For a different hosted frontend, set `SENGOKU_ALLOWED_ORIGINS` to its exact origin, or comma-separated exact origins. Do not include paths or wildcards.
 
-Every response sets `Cache-Control:no-store` and `X-Content-Type-Options:nosniff`. CORS preflight permits GET, POST, PUT, PATCH, DELETE and OPTIONS with Authorization and Content-Type headers. Bodies are stream-limited to 16 KiB except the two-MiB sync-save endpoint, and SQL values are bound parameters.
+Every response sets `Cache-Control:no-store` and `X-Content-Type-Options:nosniff`. CORS preflight permits GET, POST, PUT, PATCH, DELETE and OPTIONS with Authorization and Content-Type headers. Bodies are stream-limited to 16 KiB except the two-MiB sync-save endpoint and 70-KiB avatar JSON endpoint. SQL values are bound parameters; treasury column names come only from the fixed five-resource allowlist.
 No environment values, plaintext keys, or bearer tokens are logged. Admin state is server-owned; client flags and sender fields are ignored.
 
 The Worker uses D1 `prepare`, `bind`, `first`, `run`, `all` and `batch` APIs. It does not issue manual `BEGIN`/`COMMIT` statements or rely on Node APIs at runtime. D1 batches execute their prepared statements in order as one transaction and roll back on a statement failure; this is the basis of atomic pairing-code consumption. The Worker uses the ordinary D1 binding without read-replication sessions, so reads and writes address the primary database. See the [official D1 database API documentation](https://developers.cloudflare.com/d1/worker-api/d1-database/#batch).
 
 ## Local verification
 
-Run `node scripts/test-social.mjs`, `node scripts/test-sync.mjs`, `node scripts/test-world-clock.mjs`, `node scripts/test-field.mjs`, `node scripts/test-staff.mjs` and `node scripts/test-admin-recovery.mjs` using Node 24 or a Node version providing `node:sqlite`. Run `node --check worker/index.js` for the Worker syntax check.
+Run `node scripts/test-social.mjs`, `node scripts/test-sync.mjs`, `node scripts/test-world-clock.mjs`, `node scripts/test-field.mjs`, `node scripts/test-staff.mjs`, `node scripts/test-admin-recovery.mjs`, `node scripts/test-recent-logins.mjs`, `node scripts/test-avatar-jpeg.mjs`, `node scripts/test-avatars.mjs`, `node scripts/test-clans.mjs`, `node scripts/test-guild-assets.mjs` and `node scripts/test-guild-roles.mjs` using Node 24 or a Node version providing `node:sqlite`. Run `node --check worker/index.js` for the Worker syntax check.
+
+The avatar parser fixtures include baseline/progressive RGB/grayscale, restart markers and the actual Chrome canvas output; API tests use an isolated R2 map to cover cleanup races and uncertain DB responses. Recent-connection tests verify current-role SQL guards and rolling-window privacy. Clan tests verify reserved/ordinary character variants and deterministic migration. Guild suites inject mid-transaction SQL failures and post-commit response loss, concurrent duplicate/competing transfers, competing users' withdrawals, stale writers/revisions, membership/role revocation, promoted targets, protected private chat/history, preserved final funds and safe public ranking aggregation. All tests use local fixtures and do not modify production accounts, roles, saves, photos or messages.
 
 The suites create an in-memory SQLite database, apply every journaled migration in order, generate a random test-only admin key in memory, and exercise the actual Worker. The D1 adapter runs each batch as an ordered SQLite transaction, matching D1's batch atomicity contract. Promise-based concurrent calls check revision conflicts, single-use pairing redemption, the single-operator claim, clock controls, repeated field requests, competing raids and consent-versus-attack races. The field suite injects a failing statement into an attack batch and verifies that both saves, the battle and the request record roll back, followed by a safe retry. The staff suite checks role separation, paired-device removal, appointment replay after dismissal, concurrent role operations and revocation between authentication and private chat SQL; it also tests transaction rollback and the primary-operator guard at commit time. A controlled server clock verifies disconnected elapsed time, equal time for different identities, pause/resume, speed changes, cooldown/alliance expiry and calendar wrap without resetting absolute time. The tests do not simulate network latency, a browser's lifecycle or the production deployment; those are separate integration checks. They do not contact a deployed service or send production messages.

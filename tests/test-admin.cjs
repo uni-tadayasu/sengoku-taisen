@@ -13,7 +13,7 @@ let count=0;
 function test(name,fn){fn();count++;console.log('PASS '+name);}
 
 test('ordinary Tokugawa starts with Ieyasu SSS and cannot choose Edo',()=>{
-  assert.throws(()=>create({clan:'徳川家',startCastle:'edo'}),/江戸城以外/);
+  assert.throws(()=>create({clan:'徳川家',startCastle:'edo'}),/大都市拠点/);
   const g=create({clan:'徳川家',startCastle:'okazaki'});
   assert.equal(g.isAdmin,false);
   assert.equal(g.state.home,'okazaki');
@@ -101,7 +101,8 @@ test('every authenticated operator starts at fixed Edo and receives Ieyasu U onc
   for(const clan of D.clans){
     const admin=create({isAdmin:true,clan:clan.name,startCastle:clan.home});
     assert.equal(admin.state.home,'edo');
-    assert.equal(admin.state.castles.edo.owner,clan.name);
+    assert.equal(admin.state.clan,'德川家');
+    assert.equal(admin.state.castles.edo.owner,'德川家');
     assert.equal(admin.ownedCastles().length,1);
     assert.deepEqual(admin.state.captureRewards,['edo']);
   }
@@ -118,7 +119,7 @@ test('operator authentication fixes Edo while retaining both castle progress and
   assert(result.ok&&result.changed);
   assert.equal(g.state.home,'edo');
   assert.deepEqual(g.state.castles.edo,{owner:g.state.clan,level:19,wall:12,troops:6543});
-  assert.deepEqual(g.state.castles[home],original.castles[home]);
+  assert.deepEqual(g.state.castles[home],{...original.castles[home],owner:'德川家'});
   for(const key of ['resources','buildings','jobs','troops','army','governors','tech','magatama','realtime'])assert.deepEqual(g.state[key],original[key],key);
   assert(g.state.captureRewards.includes(home));assert(g.state.captureRewards.includes('edo'));
   assert(g.ownsVariant(IEYASU,'U'));
@@ -186,7 +187,7 @@ test('imported role flags cannot authorize U or Edo and never survive validation
   raw.isAdmin=true;raw.role='admin';raw.state.isAdmin=true;raw.state.role='admin';
   const normal=E.fromSave(raw,roster);
   assert.equal(normal.isAdmin,false);
-  assert.equal(normal.state.home,'kiyosu');
+  assert.equal(normal.state.home,'okazaki');
   assert.equal(normal.state.castles.edo.owner===normal.state.clan,false);
   assert.equal(normal.ownsVariant(IEYASU,'U'),false);
   assert(normal.ownsVariant(IEYASU,'SSS'));
@@ -209,15 +210,15 @@ test('legacy Edo-only campaign migrates its castle progress and retains the whol
   const migrated=E.fromSave(raw,roster);
   assert.deepEqual(raw,original,'import must not mutate the input object');
   assert.equal(Object.keys(migrated.state.castles).length,128);
-  assert.equal(migrated.state.home,'kiyosu');
-  assert.deepEqual(migrated.state.castles.kiyosu,source.state.castles.edo);
+  assert.equal(migrated.state.home,'okazaki');
+  assert.deepEqual(migrated.state.castles.okazaki,{...source.state.castles.edo,owner:'徳川家'});
   assert.deepEqual(migrated.state.resources,source.state.resources);
   assert.deepEqual(migrated.state.army,source.state.army);
   assert.equal(migrated.state.troops,source.state.troops);
   assert.equal(migrated.state.gameOver,false);
   assert.equal(migrated.state.jobs.some(j=>j.kind==='castle'&&j.id==='edo'),false);
   assert.equal(migrated.state.captureRewards.includes('edo'),false);
-  assert(migrated.state.captureRewards.includes('kiyosu'));
+  assert(migrated.state.captureRewards.includes('okazaki'));
   assert.deepEqual(E.fromSave(migrated.exportSave(),roster).state,migrated.state);
 });
 
@@ -227,7 +228,7 @@ test('role revocation safely moves Edo home, deduplicates SSS and is idempotent'
   g.selectAdminCastle();
   const resources=structuredClone(g.state.resources),officers=[...g.state.officers];
   assert(g.setAdminAccess(false).changed);
-  assert.equal(g.state.home,'kiyosu');
+  assert.equal(g.state.home,'okazaki');
   assert.equal(g.state.castles.edo.owner===g.state.clan,false);
   assert.deepEqual(g.ownedRanks(IEYASU),['SSS']);
   assert.deepEqual(g.state.officers,officers);
@@ -274,13 +275,48 @@ test('ordinary campaign can conquer all 127 eligible castles and claim unificati
   assert.equal(loaded.state.castles.edo.owner===loaded.state.clan,false);
 });
 
-test('only the U Ieyasu variant uses 德 while stable IDs, ordinary names and clan names remain unchanged',()=>{
+test('the exclusive U uses 德川家 while ordinary Tokugawa variants and selectable house remain unchanged',()=>{
   const ordinary=create({clan:'徳川家'}),operator=create({clan:'徳川家',isAdmin:true}),canonical=roster.find(o=>o.id===IEYASU);
   assert.equal(canonical.name,'徳川家康');assert.equal(ordinary.officer(IEYASU).name,'徳川家康');assert.equal(operator.officer(IEYASU).name,'德川家康');
-  for(const rank of D.ranks){const variant=operator.officer(IEYASU,rank);assert.equal(variant.id,IEYASU);assert.equal(variant.clan,'徳川家');assert.equal(variant.name,rank==='U'?'德川家康':'徳川家康');}
+  for(const rank of D.ranks){const variant=operator.officer(IEYASU,rank);assert.equal(variant.id,IEYASU);assert.equal(variant.clan,rank==='U'?'德川家':'徳川家');assert.equal(variant.name,rank==='U'?'德川家康':'徳川家康');}
   assert.equal(ordinary.officer(IEYASU,'U').name,'德川家康','The unowned exclusive artwork preview uses its variant name');
   assert.equal(ordinary.canOwnOfficerVariant(IEYASU,'U'),false);assert.equal(operator.baseOfficer(IEYASU).name,'徳川家康');assert.equal(D.clans.find(c=>c.name==='徳川家').leader,'徳川家康');
   const loaded=E.fromSave(operator.exportSave(),roster,{isAdmin:true});assert.equal(loaded.officer(IEYASU).name,'德川家康');loaded.setAdminAccess(false);assert.equal(loaded.officer(IEYASU).name,'徳川家康');assert.equal(loaded.highestOwnedRank(IEYASU),'SSS');
+});
+
+test('the reserved house cannot be selected by ordinary players, whose Tokugawa choice still round-trips',()=>{
+  assert.throws(()=>create({clan:'德川家'}),/運営専用/);
+  assert(!D.clans.some(c=>c.name==='德川家'));assert(D.clans.some(c=>c.name==='徳川家'));
+  const ordinary=create({clan:'徳川家',startCastle:'himeji'});assert.equal(ordinary.state.home,'himeji');assert.equal(ordinary.state.clan,'徳川家');
+  assert.deepEqual(ordinary.ownedCastles().map(c=>c.id),['himeji']);assert.deepEqual(E.fromSave(ordinary.exportSave(),roster).state,ordinary.state);
+  for(const clan of D.clans){const admin=create({isAdmin:true,clan:clan.name});assert.equal(admin.state.clan,'德川家');assert.deepEqual(admin.ownedCastles().map(c=>c.id),['edo']);assert.equal(admin.state.castles.okazaki.owner,'徳川家');}
+});
+
+test('operator house migration renames only existing holdings and never ordinary Tokugawa CPU land',()=>{
+  for(const clan of D.clans){
+    const g=create({clan:clan.name,startCastle:'himeji'});g.state.castles.kochi.owner=g.state.clan;g.state.resources.gold=778899;
+    const original=structuredClone(g.state),owned=g.ownedCastles().map(c=>c.id),unownedTokugawa=D.castles.filter(c=>!owned.includes(c.id)&&original.castles[c.id].owner==='徳川家').map(c=>c.id);
+    g.setAdminAccess(true);assert.equal(g.state.clan,'德川家');assert.deepEqual(g.ownedCastles().map(c=>c.id).sort(),[...owned,'edo'].sort());
+    for(const id of owned)assert.deepEqual(g.state.castles[id],{...original.castles[id],owner:'德川家'});
+    for(const id of unownedTokugawa)assert.deepEqual(g.state.castles[id],original.castles[id]);
+    assert.deepEqual(g.state.resources,original.resources);assert.deepEqual(g.state.army,original.army);
+    const loaded=E.fromSave(g.exportSave(),roster,{isAdmin:true});assert.deepEqual(loaded.state,g.state);assert.equal(loaded.setAdminAccess(true).changed,false);
+    assert.deepEqual(loaded.ownedCastles().map(c=>c.id).sort(),[...owned,'edo'].sort());
+  }
+});
+
+test('opening a reserved-house save without its verified role preserves only its actual non-Edo holdings',()=>{
+  const g=create({isAdmin:true});g.state.castles.himeji.owner='德川家';g.state.castles.himeji.level=17;g.state.resources.gold=192837;
+  const result=E.fromSave(g.exportSave(),roster);assert.equal(result.state.clan,'徳川家');assert.equal(result.state.home,'himeji');
+  assert.deepEqual(result.ownedCastles().map(c=>c.id),['himeji']);assert.equal(result.state.castles.himeji.level,17);assert.equal(result.state.resources.gold,192837);
+  assert.equal(result.state.castles.okazaki.owner,'在地衆');assert.deepEqual(E.fromSave(result.exportSave(),roster).state,result.state);
+});
+
+test('Edo cannot be occupied by any CPU faction, even in an ordinary campaign',()=>{
+  const g=create();const owner=g.state.castles.edo.owner;
+  for(const castle of D.castles)Object.assign(g.state.castles[castle.id],{troops:castle.id==='edo'?0:999999});
+  g.random=()=>0;
+  for(let turn=9;turn<=120;turn+=3){g.state.turn=turn;g._cpuTurn();assert.equal(g.state.castles.edo.owner,owner);}
 });
 
 console.log(`${count} operator privilege, migration and campaign tests passed.`);

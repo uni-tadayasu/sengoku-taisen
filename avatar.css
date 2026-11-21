@@ -1,0 +1,25 @@
+/* One circular identity across the community, independent of the player's role. */
+.social-avatar{position:relative;overflow:hidden;isolation:isolate}
+.social-avatar-initial{display:grid;place-items:center;width:100%;height:100%;border-radius:inherit}
+.social-avatar img[data-avatar-image]{position:absolute;inset:0;display:block;width:100%;height:100%;object-fit:cover;border-radius:inherit;background:#1b2631;z-index:1}
+.social-avatar img[data-avatar-image][hidden]{display:none}
+.social-avatar.has-photo{border-color:#c6b37d80}
+.social-avatar.social-avatar-profile{width:76px;height:76px;min-width:76px;font-size:32px;border-radius:50%}
+.avatar-editor-heading{display:flex;align-items:center;justify-content:space-between;gap:18px}
+.avatar-editor-description{max-width:640px;margin-top:12px!important}
+.avatar-editor button[hidden],.avatar-editor [hidden]{display:none!important}
+.avatar-crop{margin-top:20px;padding:20px;display:grid;grid-template-columns:minmax(160px,220px) minmax(0,1fr);gap:24px;border:1px solid #6cbaac55;background:linear-gradient(135deg,#163b365c,#1d304170);border-radius:14px;align-items:center}
+.avatar-crop-preview{text-align:center;min-width:0}
+.avatar-crop-preview canvas{display:block;width:min(100%,220px);height:auto;aspect-ratio:1;border-radius:50%;border:3px solid #a9d5c8;box-shadow:0 0 0 6px #78b4a315,0 8px 24px #0005;touch-action:none;cursor:grab;margin:0 auto 14px}
+.avatar-crop-preview canvas:active{cursor:grabbing}
+.avatar-crop-preview small{display:block;font-size:13px;color:#b7d4cd;line-height:1.6}
+.social-dialog .avatar-crop-controls label{margin:10px 0;color:#dbece6;font-size:14px}
+.avatar-crop-controls output{float:right;font-variant-numeric:tabular-nums;color:#b6decf}
+.social-dialog .avatar-crop-controls input[type=range]{padding:0;height:32px;accent-color:#8fd2b7;border:0;background:transparent;cursor:pointer;margin-top:5px}
+.avatar-crop-controls .social-actions{gap:8px}.avatar-crop-controls .social-button{white-space:normal;min-height:44px}
+.avatar-status{margin-top:14px!important;color:#afdcbf!important;min-height:1.6em}
+.avatar-status.is-error{color:#ffc3b6!important}
+.social-dialog .avatar-file-help{font-size:13px;line-height:1.7;color:#9bb0bb}
+@media(max-width:600px){.avatar-crop{grid-template-columns:1fr;padding:16px;gap:10px}.avatar-crop-preview canvas{width:180px}.avatar-crop-controls .social-actions{display:grid;grid-template-columns:1fr}.avatar-editor>.social-actions{align-items:stretch;flex-direction:column}.avatar-editor>.social-actions button{white-space:normal}.social-avatar.social-avatar-profile{width:64px;height:64px;min-width:64px}}
+
+.field-player-photo .social-avatar{width:100%;height:100%;border:0;border-radius:50%}.field-player-photo{border-radius:50%}.field-lord-heading{display:flex;align-items:center;gap:9px;min-width:0}.field-lord-heading>span:last-child{min-width:0;overflow-wrap:anywhere}.field-lord-heading .social-avatar{flex-shrink:0}

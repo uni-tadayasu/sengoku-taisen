@@ -1,0 +1,16 @@
+/* Compact officer symbols use their own house crest; full artwork is unchanged. */
+.avatar.officer-kamon {
+  display: grid; place-items: center; flex: none; aspect-ratio: 1; height: auto;
+  padding: 5px; border-radius: 50%; background: radial-gradient(circle at 40% 25%, #4b5141, #1d2928 74%);
+  border: 1px solid #d4b5757a; box-shadow: inset 0 0 0 2px #0e191b66;
+}
+.avatar.officer-kamon > span,
+.avatar.officer-kamon .officer-house-kamon { display: block; width: 100%; height: 100%; min-width: 0; padding: 0; border: 0; background: none; }
+.avatar.officer-kamon img { display: block; width: 100%; height: 100%; max-width: 100%; object-fit: contain; }
+.officer-choice > .officer-kamon { flex: none; width: 42px; }
+.officer-choice .officer-kamon span { flex: none; }
+.officer-choice > .officer-choice-description { min-width: 0; }
+.officer-rank-label { display: inline-block; font-family: Georgia, serif; font-size: .7em; vertical-align: .12em; margin-right: .2em; }
+.army-slot .officer-kamon { margin-inline: auto; }
+.officer-kamon.is-empty { border-style: dashed; opacity: .7; }
+.officer-kamon.is-empty .icon { width: 52%; height: 52%; }

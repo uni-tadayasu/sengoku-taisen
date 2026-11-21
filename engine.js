@@ -113,7 +113,8 @@
     const nearest=ROWS.filter(c=>c[0]!==r[0]&&c[0]!==r[4]&&c[3]===current[3]).sort((a,b)=>Math.hypot(a[5]-current[5],a[6]-current[6])-Math.hypot(b[5]-current[5],b[6]-current[6]))[0];
     if(nearest)EDGES.push([r[0],nearest[0]]);
   }
-  const CASTLES = ROWS.map(r=>({id:r[0],name:r[1],province:r[2],region:r[3],clan:r[4],x:r[5],y:r[6],wall:r[7],initialTroops:r[8],neighbors:[]}));
+  const MAJOR_CITY_IDS=Object.freeze(['edo','nijo','osaka','nagoya']);
+  const CASTLES = ROWS.map(r=>({id:r[0],name:r[1],province:r[2],region:r[3],clan:r[4],x:r[5],y:r[6],wall:r[7],initialTroops:r[8],majorCity:MAJOR_CITY_IDS.includes(r[0]),neighbors:[]}));
   const CASTLE_BY_ID = Object.assign(Object.create(null),Object.fromEntries(CASTLES.map(c=>[c.id,c])));
   for (const [a,b] of EDGES) { if(!CASTLE_BY_ID[a].neighbors.includes(b))CASTLE_BY_ID[a].neighbors.push(b); if(!CASTLE_BY_ID[b].neighbors.includes(a))CASTLE_BY_ID[b].neighbors.push(a); }
   const TACTICS = [
@@ -135,13 +136,14 @@
   const GACHA = {currency:'勾玉',initial:3000,singleCost:300,tenCost:2700,duplicateRefund:50,monthlyReward:30,firstCaptureReward:120,rates:[{rank:'D',rate:25},{rank:'C',rate:25},{rank:'B',rate:20},{rank:'A',rate:15},{rank:'S',rate:8},{rank:'SS',rate:4},{rank:'SSS',rate:2},{rank:'U',rate:1}]};
   [100,100,200,300,200,150,500,1000].forEach((amount,i)=>QUESTS[i].reward.magatama=amount);
   const RANK_BONUSES={D:0,C:2,B:4,A:6,S:8,SS:10,SSS:12,U:15};
-  const ADMIN_ASSETS=Object.freeze({castleId:'edo',officerId:'of_b0616adde162',rank:'U'});
+  const ADMIN_ASSETS=Object.freeze({castleId:'edo',officerId:'of_b0616adde162',rank:'U',clanName:'德川家'});
+  const ADMIN_CLAN=Object.freeze({...CLANS.find(c=>c.name==='徳川家'),name:ADMIN_ASSETS.clanName,leader:'德川家康',home:ADMIN_ASSETS.castleId,description:'江戸城を本拠とする、運営専用の家。'});
   const GIFT_FIELDS=[...RESOURCES,'magatama'];
   // Role belongs to the authenticated runtime. It is never serialized in a save.
   const ADMIN_ACCESS=new WeakMap();
   const WORLD_CALENDAR=Object.freeze({startYear:1560,yearsPerCycle:56,monthsPerCycle:672,secondsPerMonth:60});
   const MAX_TURN=999999999;
-  const DATA = {version:2,gacha:GACHA,rankBonuses:RANK_BONUSES,adminAssets:ADMIN_ASSETS,worldCalendar:WORLD_CALENDAR,secondsPerMonth:60,secondsPerCommand:20,buildingLimit:32,ranks:RANKS,categories:CATEGORY_LABELS,clans:CLANS,buildings:BUILDINGS,techs:TECHS,castles:CASTLES,tactics:TACTICS,quests:QUESTS,resources:RESOURCES};
+  const DATA = {version:2,gacha:GACHA,rankBonuses:RANK_BONUSES,adminAssets:ADMIN_ASSETS,adminClan:ADMIN_CLAN,majorCityIds:MAJOR_CITY_IDS,worldCalendar:WORLD_CALENDAR,secondsPerMonth:60,secondsPerCommand:20,buildingLimit:32,ranks:RANKS,categories:CATEGORY_LABELS,clans:CLANS,buildings:BUILDINGS,techs:TECHS,castles:CASTLES,tactics:TACTICS,quests:QUESTS,resources:RESOURCES};
   const clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
   const copy=o=>JSON.parse(JSON.stringify(o));
   const int=n=>Math.floor(Number(n)||0);
@@ -151,11 +153,13 @@
       ADMIN_ACCESS.set(this,options.isAdmin===true);
       this.roster = options.officers || root.SENGOKU_OFFICERS || [];
       this.officerMap = Object.assign(Object.create(null),Object.fromEntries(this.roster.map(o=>[o.id,o])));
-      const clan = CLANS.find(c=>c.name===options.clan) || CLANS[0];
-      if(!this.isAdmin&&options.startCastle!==undefined&&(!CASTLES.some(c=>c.id===options.startCastle)||options.startCastle===ADMIN_ASSETS.castleId))throw new Error('開始する城を、江戸城以外の127城から一つ選んでください。');
+      if(!this.isAdmin&&options.clan===ADMIN_ASSETS.clanName)throw new Error('德川家は運営専用です。通常の徳川家は選択できます。');
+      const clan = this.isAdmin?ADMIN_CLAN:CLANS.find(c=>c.name===options.clan) || CLANS[0];
+      if(!this.isAdmin&&options.startCastle!==undefined&&(!CASTLES.some(c=>c.id===options.startCastle)||MAJOR_CITY_IDS.includes(options.startCastle)))throw new Error('開始する城を、大都市拠点（江戸・二条・大坂・名古屋）以外の124城から一つ選んでください。');
       const home=this.isAdmin?ADMIN_ASSETS.castleId:options.startCastle??clan.home;
       const difficulty=['easy','normal','hard'].includes(options.difficulty)?options.difficulty:'normal';
-      const initial = this.roster.filter(o=>o.clan===clan.name).sort((a,b)=>(b.name===clan.leader?10000:b.lead+b.valor+b.politics)-(a.name===clan.leader?10000:a.lead+a.valor+a.politics)).slice(0,4).map(o=>o.id);
+      const rosterClan=this.isAdmin?'徳川家':clan.name,rosterLeader=this.isAdmin?'徳川家康':clan.leader;
+      const initial = this.roster.filter(o=>o.clan===rosterClan).sort((a,b)=>(b.name===rosterLeader?10000:b.lead+b.valor+b.politics)-(a.name===rosterLeader?10000:a.lead+a.valor+a.politics)).slice(0,4).map(o=>o.id);
       if (!initial.length) initial.push(...this.roster.slice(0,4).map(o=>o.id));
       const scale={easy:.8,normal:1,hard:1.2}[difficulty];
       this.state={
@@ -186,6 +190,15 @@
     _enforceAdminRestrictions(){
       if(this.isAdmin)return false;
       const s=this.state,forbidden=`${ADMIN_ASSETS.officerId}:U`,replacement=`${ADMIN_ASSETS.officerId}:SSS`;let changed=false;
+      if(s.clan===ADMIN_ASSETS.clanName){
+        // Keep the exact holdings when an operator save is opened without an
+        // authenticated role. Ordinary Tokugawa CPU castles are not holdings.
+        for(const castle of Object.values(s.castles)){
+          if(castle.owner===ADMIN_ASSETS.clanName)castle.owner='徳川家';
+          else if(castle.owner==='徳川家')castle.owner='在地衆';
+        }
+        s.clan='徳川家';delete s.treaties[s.clan];changed=true;
+      }
       if(s.officerVariants.includes(forbidden)){s.officerVariants=[...new Set(s.officerVariants.map(key=>key===forbidden?replacement:key))];changed=true;}
       for(const entry of s.gachaHistory)if(entry.officerId===ADMIN_ASSETS.officerId&&entry.rank==='U'){entry.rank='SSS';changed=true;}
       const edo=s.castles[ADMIN_ASSETS.castleId],wasHome=s.home===ADMIN_ASSETS.castleId,ownedEdo=edo.owner===s.clan;
@@ -210,6 +223,16 @@
     _enforceAdminHome(){
       if(!this.isAdmin)return false;
       const s=this.state,id=ADMIN_ASSETS.castleId,edo=s.castles[id],oldHome=s.home,previous=s.castles[oldHome];let changed=false;
+      if(s.clan!==ADMIN_ASSETS.clanName){
+        const previousClan=s.clan;
+        // Ownership is evaluated before changing the house. Never blanket-map
+        // ordinary Tokugawa territory into the operator's exclusive house.
+        for(const castle of Object.values(s.castles)){
+          if(castle.owner===previousClan)castle.owner=ADMIN_ASSETS.clanName;
+          else if(castle.owner===ADMIN_ASSETS.clanName)castle.owner='在地衆';
+        }
+        s.clan=ADMIN_ASSETS.clanName;delete s.treaties[s.clan];changed=true;
+      }
       if(oldHome!==id){
         // Relocation preserves both the former holding and all campaign assets.
         // Copy progress once, without repeatedly replenishing the Edo garrison.
@@ -253,7 +276,8 @@
       const base=this.baseOfficer(id);if(!base)return null;
       const chosen=rank===undefined?this.highestOwnedRank(id)||this._baseGrantRank(id):rank;if(!RANKS.includes(chosen))return null;
       const rankBonus=RANK_BONUSES[chosen],baseStats=Object.fromEntries(['lead','valor','intellect','politics'].map(k=>[k,base[k]]));
-      return{...base,name:id===ADMIN_ASSETS.officerId&&chosen==='U'?'德川家康':base.name,baseRank:base.rank||base.rarity,rank:chosen,rarity:chosen,rankBonus,baseStats,...Object.fromEntries(Object.entries(baseStats).map(([k,v])=>[k,clamp(v+rankBonus,0,100)])),variantOwned:this.ownsVariant(id,chosen)};
+      const exclusive=id===ADMIN_ASSETS.officerId&&chosen==='U';
+      return{...base,name:exclusive?'德川家康':base.name,clan:exclusive?ADMIN_ASSETS.clanName:base.clan,baseRank:base.rank||base.rarity,rank:chosen,rarity:chosen,rankBonus,baseStats,...Object.fromEntries(Object.entries(baseStats).map(([k,v])=>[k,clamp(v+rankBonus,0,100)])),variantOwned:this.ownsVariant(id,chosen)};
     }
     _grantOfficerVariant(id,rank){
       if(!this.canOwnOfficerVariant(id,rank))return null;
@@ -320,7 +344,7 @@
     scoutCost(){return{gold:Math.max(20,Math.round(120/(1+this._facilityEffect('diplomacy'))))};}
     trainingCost(){return{gold:180,rice:250};}
     trainingGain(){return 14+(this.state.clan==='上杉家'?6:0)+Math.floor(this._facilityEffect('military')*4);}
-    defensePower(id){const c=this.castle(id);if(!c)return 0;const s=this.state;if(c.owner!==s.clan)return Math.round(c.troops*(1+c.wall*.16)*(1+(c.level-1)*.04));const home=id===s.home,reinforce=Math.round(s.troops*(home?.45:.18)),wall=home?s.buildings.wall:c.wall;return Math.round((c.troops+reinforce)*(1+wall*.16)*(1+s.tech.discipline*.06)*(s.clan==='徳川家'?1.15:1)*(home?this._governorBonus('wall'):1)*(1+this._facilityEffect('defense'))*(1+(c.level-1)*.04));}
+    defensePower(id){const c=this.castle(id);if(!c)return 0;const s=this.state;if(c.owner!==s.clan)return Math.round(c.troops*(1+c.wall*.16)*(1+(c.level-1)*.04));const home=id===s.home,reinforce=Math.round(s.troops*(home?.45:.18)),wall=home?s.buildings.wall:c.wall;return Math.round((c.troops+reinforce)*(1+wall*.16)*(1+s.tech.discipline*.06)*(['徳川家',ADMIN_ASSETS.clanName].includes(s.clan)?1.15:1)*(home?this._governorBonus('wall'):1)*(1+this._facilityEffect('defense'))*(1+(c.level-1)*.04));}
 
     income(){
       const s=this.state,b=s.buildings,t=s.tech,owned=this.ownedCastles(),n=owned.length,expanded=owned.reduce((sum,c)=>sum+c.level-1,0);
@@ -452,7 +476,7 @@
     _cpuTurn(){
       const s=this.state;if(s.turn<5||s.turn%3!==0)return[];const events=[];
       const choices=[];
-      for(const c of CASTLES){const a=s.castles[c.id];if(a.owner===s.clan)continue;for(const tid of c.neighbors){const b=s.castles[tid];if(this.isAdmin&&tid===ADMIN_ASSETS.castleId&&b.owner===s.clan)continue;if(a.owner===b.owner)continue;if((s.treaties[a.owner]||0)>s.turn&&b.owner===s.clan)continue;choices.push({from:c.id,to:tid});}}
+      for(const c of CASTLES){const a=s.castles[c.id];if(a.owner===s.clan)continue;for(const tid of c.neighbors){const b=s.castles[tid];if(tid===ADMIN_ASSETS.castleId)continue;if(a.owner===b.owner)continue;if((s.treaties[a.owner]||0)>s.turn&&b.owner===s.clan)continue;choices.push({from:c.id,to:tid});}}
       if(!choices.length)return events;
       const playerThreats=choices.filter(e=>s.castles[e.to].owner===s.clan),others=choices.filter(e=>s.castles[e.to].owner!==s.clan);
       const canRaid=playerThreats.length&&s.turn>=8&&this.random()<(s.difficulty==='hard'?.45:s.difficulty==='easy'?.16:.28);
@@ -583,14 +607,14 @@
       const isObj=v=>v&&typeof v==='object'&&!Array.isArray(v);
       const num=(v,min=0,max=999999999)=>typeof v==='number'&&Number.isFinite(v)&&Number.isInteger(v)&&v>=min&&v<=max;
       if(!isObj(s)||s.version!==2||obj?.game&&obj.game!=='sengoku-tento')invalid();
-      if(!CLANS.some(c=>c.name===s.clan)||!CASTLE_BY_ID[s.home]||!['easy','normal','hard'].includes(s.difficulty))invalid();
-      const g=new SengokuEngine({clan:s.clan,difficulty:s.difficulty,officers,isAdmin:options?.isAdmin===true});
+      if(s.clan!==ADMIN_ASSETS.clanName&&!CLANS.some(c=>c.name===s.clan)||!CASTLE_BY_ID[s.home]||!['easy','normal','hard'].includes(s.difficulty))invalid();
+      const g=new SengokuEngine({clan:s.clan===ADMIN_ASSETS.clanName?'徳川家':s.clan,difficulty:s.difficulty,officers,isAdmin:options?.isAdmin===true});
       if(!num(s.turn,0,MAX_TURN)||!num(s.troops,0,1000000)||!num(s.morale,0,100)||!num(s.prestige)||!num(s.command,0,7)||!num(s.seed,0,4294967295))invalid();
       if(!isObj(s.resources)||!RESOURCES.every(k=>num(s.resources[k])))invalid();
       if(!isObj(s.buildings)||Object.keys(s.buildings).length!==BUILDINGS.length||!BUILDINGS.every(b=>num(s.buildings[b.id],b.core?1:0,32)))invalid();
       if(s.command>3+Math.floor(s.buildings.keep/8))invalid();
       if(!isObj(s.tech)||!TECHS.every(t=>num(s.tech[t.id],0,t.max)))invalid();
-      const validOwner=new Set([...CASTLES.map(c=>c.clan),'在地衆']);for(const c of CLANS)validOwner.add(c.name);
+      const validOwner=new Set([...CASTLES.map(c=>c.clan),'在地衆',ADMIN_ASSETS.clanName]);for(const c of CLANS)validOwner.add(c.name);
       if(!isObj(s.castles)||Object.keys(s.castles).length!==CASTLES.length||!CASTLES.every(c=>{const v=s.castles[c.id];if(isObj(v)&&v.level===undefined)v.level=1;return isObj(v)&&validOwner.has(v.owner)&&num(v.troops,0,1000000)&&num(v.wall,1,32)&&num(v.level,1,32);}))invalid();
       if(!Array.isArray(s.officers)||s.officers.length>g.roster.length||new Set(s.officers).size!==s.officers.length||s.officers.some(id=>typeof id!=='string'||!g.officer(id)))invalid();
       if(!Array.isArray(s.army)||s.army.length>3||new Set(s.army).size!==s.army.length||s.army.some(id=>!s.officers.includes(id)))invalid();

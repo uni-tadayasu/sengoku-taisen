@@ -18,7 +18,7 @@ test('valid attack produces only semantic fields for the guarded application fac
   const result=F.attackValidation(ready());assert.equal(result.ok,true);assert.deepEqual(result.payload,{targetPlayerId:'other',troops:1000,tactic:'balanced'});assert.equal(result.foodCost,450);assert.equal('token'in result.payload,false);assert.equal('deviceId'in result.payload,false);
 });
 test('guest, follower, pending transaction, own base, admin and allies cannot raid',()=>{
-  for(const mutate of [v=>v.identity=null,v=>v.access.writable=false,v=>v.access.fieldPending=true,v=>v.player.playerId='me',v=>v.player.isAdmin=true,v=>v.me.relationships=[{targetPlayerId:'other',status:'allied'}],v=>v.player.attackable=false,v=>v.me.attack.ready=false,v=>v.clock={ready:false},v=>v.clock={ready:true,clock:{running:false}}]){const context=ready();mutate(context);assert.equal(F.attackValidation(context).ok,false);}
+  for(const mutate of [v=>v.identity=null,v=>v.access.writable=false,v=>v.access.fieldPending=true,v=>v.player.playerId='me',v=>v.player.isAdmin=true,v=>v.player.homeCastleId='edo',v=>v.me.relationships=[{targetPlayerId:'other',status:'allied'}],v=>v.player.attackable=false,v=>v.me.attack.ready=false,v=>v.clock={ready:false},v=>v.clock={ready:true,clock:{running:false}}]){const context=ready();mutate(context);assert.equal(F.attackValidation(context).ok,false);}
 });
 test('troop bounds, commands, rice and tactics are validated before confirmation',()=>{
   for(const mutate of [v=>v.troops=299,v=>v.troops=5001,v=>v.troops=1000.5,v=>v.troops=NaN,v=>v.state.command=0,v=>v.state.resources.rice=449,v=>v.tactic='unknown']){const context=ready();mutate(context);assert.equal(F.attackValidation(context).ok,false);}

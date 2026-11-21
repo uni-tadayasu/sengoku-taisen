@@ -117,7 +117,8 @@ try {
   const opLease=await lease(operator.token,'operatorA');assert.deepEqual(opLease.entitlements,{edo:true,ieyasuU:true});
   const opSave=(await api('/sync',write(operator.token,'operatorA',0,fresh()))).data;
   assert.equal(opSave.user.isAdmin,true);assert.equal(opSave.save.state.home,'edo');
-  assert.equal(opSave.save.state.castles.edo.owner,base.state.clan);assert.equal(opSave.save.state.castles[base.state.home].owner,base.state.clan);
+  assert.equal(opSave.user.clan,'德川家');assert.equal(opSave.save.state.clan,'德川家');
+  assert.equal(opSave.save.state.castles.edo.owner,'德川家');assert.equal(opSave.save.state.castles[base.state.home].owner,'德川家');
   assert.deepEqual(opSave.save.state.resources,base.state.resources);assert.deepEqual(opSave.save.state.buildings,base.state.buildings);
   assert.equal(opSave.save.state.officers.filter(id=>id===ieyasu).length,1);
   assert.equal(opSave.save.state.officerVariants.filter(id=>id===ieyasu+':U').length,1);
@@ -133,7 +134,7 @@ try {
   const revoked=(await api('/sync?deviceId=operatorA',{token:operator.token})).data;
   assert.equal(revoked.user.isAdmin,false);assert.deepEqual(revoked.entitlements,{edo:false,ieyasuU:false});
   assert.equal(revoked.revision,3);assert.equal(revoked.writerDeviceId,'operatorA');assert.equal(revoked.leaseExpiresAt,selectedEdo.leaseExpiresAt);
-  assert.equal(revoked.save.state.home,'kiyosu');assert.equal(revoked.save.state.castles.kiyosu.level,17);assert.equal(revoked.save.state.castles.kiyosu.troops,3210);
+  assert.equal(revoked.save.state.clan,'徳川家');assert.equal(revoked.save.state.home,'okazaki');assert.equal(revoked.save.state.castles.okazaki.level,17);assert.equal(revoked.save.state.castles.okazaki.troops,3210);
   assert.notEqual(revoked.save.state.castles.edo.owner,revoked.save.state.clan);assert(!revoked.save.state.captureRewards.includes('edo'));
   assert(revoked.save.state.officerVariants.includes(ieyasu+':SSS'));assert(!revoked.save.state.officerVariants.includes(ieyasu+':U'));
   assert.deepEqual(revoked.save.state.resources,legacy.state.resources);

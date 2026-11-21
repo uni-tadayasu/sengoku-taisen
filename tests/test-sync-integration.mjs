@@ -136,7 +136,11 @@ try{
   // valid ordinary state, not gain privileges or disturb Alice's account.
   const legacy=makeGame({isAdmin:true,startCastle:'edo'});
   legacy.state.castles.edo.level=19;legacy.state.resources.gold=7777;
-  for(const [id,castle]of Object.entries(legacy.state.castles))if(id!=='edo'&&castle.owner===legacy.state.clan)castle.owner='在地衆';
+  // Recreate a pre-3.5 operator save, when the chosen clan could still be Oda.
+  // New operator construction now correctly forces 德川家, so it is not itself
+  // a legacy fixture. Keep exactly one owned castle while restoring the old shape.
+  for(const [id,castle]of Object.entries(legacy.state.castles))if(id==='edo')castle.owner='織田家';else if(castle.owner===legacy.state.clan||castle.owner==='織田家')castle.owner='在地衆';
+  legacy.state.clan='織田家';
   const c=makeDevice('other',E.fromSave(legacy.exportSave(),roster));
 
   await test('first writer uploads once and the second device pulls real engine state',async()=>{

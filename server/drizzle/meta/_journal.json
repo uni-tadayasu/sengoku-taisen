@@ -36,6 +36,20 @@
       "when": 1795478400000,
       "tag": "0004_staff_roles",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1795564800000,
+      "tag": "0005_user_avatars",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1795651200000,
+      "tag": "0006_guild_assets",
+      "breakpoints": true
     }
   ]
 }
