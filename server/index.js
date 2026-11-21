@@ -5,9 +5,10 @@ import {handleModeration} from './moderation.js';
 import {handlePremium,handlePremiumWebhook,resolvePremiumAppearances} from './premium.js';
 import {handleEvents} from './events.js';
 import {handleRoaming,reconcileRoamingProgress} from './roaming.js';
+import {handleCovert,reconcileCovertProgress,covertIncidentStatements} from './covert.js';
 const API = '/api/v1';
-const API_VERSION = '3.18.0';
-const API_FEATURES = Object.freeze({trades:true,moderation:true,premium:true,timedEvents:true,troopTrades:true,roamingBattles:true,privatePlayerRoles:true});
+const API_VERSION = '3.19.0';
+const API_FEATURES = Object.freeze({trades:true,moderation:true,premium:true,timedEvents:true,troopTrades:true,roamingBattles:true,covertDispatch:true,privatePlayerRoles:true});
 const MAX_BODY = 16 * 1024;
 const MAX_SAVE_BODY = 2 * 1024 * 1024;
 const MAX_AVATAR_BYTES = 48 * 1024;
@@ -813,6 +814,8 @@ function systemMailEvent(requestId) {
   // A title or body supplied by an operator never changes the source identity.
   const match=/^system:field:(fb_[a-f0-9]{32}):(attacker|defender)$/.exec(requestId||'');
   if(match)return {kind:'field-battle',battleId:match[1],side:match[2]};
+  const counter=/^system:covert:(cb_[a-f0-9]{32})$/.exec(requestId||'');
+  if(counter)return {kind:'field-battle',battleId:counter[1],side:'defender'};
   const timed=/^system:event:(ev_[a-f0-9]{32}):(milestone-[1-3])$/.exec(requestId||'');
   return timed?{kind:'timed-event',eventId:timed[1],milestoneId:timed[2]}:null;
 }
@@ -929,7 +932,7 @@ function normalizeGameSave(raw, user, now, {reading=false,clock=null}={}) {
   if(s.giftReceipts===undefined)s.giftReceipts=[];
   if(!Array.isArray(s.giftReceipts)||s.giftReceipts.length>2000||new Set(s.giftReceipts).size!==s.giftReceipts.length||s.giftReceipts.some(id=>typeof id!=='string'||id.length<1||id.length>128))invalid();
   try{s.walking=GameEngine.normalizeWalkingState(s.walking);}catch{invalid();}
-  try{s.roaming=GameEngine.normalizeRoamingState(s.roaming,s.walking.campaignId);}catch{invalid();}
+  try{s.roaming=GameEngine.normalizeRoamingState(s.roaming,s.walking.campaignId);s.covert=GameEngine.normalizeCovertState(s.covert,s.walking.campaignId);}catch{invalid();}
   if(s.magatama===undefined)s.magatama=GACHA.initial;if(!num(s.magatama))invalid();
   if(s.captureRewards===undefined)s.captureRewards=CASTLES.filter(c=>s.castles[c.id].owner===s.clan).map(c=>c.id);
   if(!Array.isArray(s.captureRewards)||s.captureRewards.length>CASTLES.length||new Set(s.captureRewards).size!==s.captureRewards.length||s.captureRewards.some(id=>typeof id!=='string'||!CASTLE_BY_ID[id]))invalid();
@@ -945,7 +948,7 @@ function normalizeGameSave(raw, user, now, {reading=false,clock=null}={}) {
   if(!num(s.stats.researches??0,0,10000000))invalid();s.stats.researches=s.stats.researches??Object.values(s.tech).reduce((a,b)=>a+b,0);
   if(!Array.isArray(s.log)||s.log.length>200||s.log.some(l=>!isObj(l)||!num(l.turn,0,MAX_TURN)||typeof l.text!=='string'||l.text.length>2000||typeof l.kind!=='string'||l.kind.length>30))invalid();
   // Only retain known, validated fields; do not merge arbitrary imported object keys.
-  const n=g.state;for(const k of ['clan','home','turn','difficulty','resources','troops','morale','prestige','command','buildings','jobs','officers','officerVariants','army','governors','tech','castles','treaties','scouted','log','claimedQuests','giftReceipts','walking','roaming','magatama','captureRewards','gachaHistory','seed','stats','realtime'])n[k]=copy(s[k]);
+  const n=g.state;for(const k of ['clan','home','turn','difficulty','resources','troops','morale','prestige','command','buildings','jobs','officers','officerVariants','army','governors','tech','castles','treaties','scouted','log','claimedQuests','giftReceipts','walking','roaming','covert','magatama','captureRewards','gachaHistory','seed','stats','realtime'])n[k]=copy(s[k]);
   if(s.worldClock!==undefined)n.worldClock={id:WORLD_CLOCK_ID,elapsedMs:s.worldClock.elapsedMs};
   if(s.cycle!==undefined){const c=s.cycle,r=c?.latestReward;if(!isObj(c)||!num(c.index,0,Math.floor(MAX_TURN/WORLD_CYCLE_MONTHS))||!CASTLE_BY_ID[c.home]||r!==null&&(!isObj(r)||!num(r.cycle,0,c.index-1)||!num(r.captured,0,127)||r.gold!==r.captured*1000||r.rice!==r.captured*1000||r.magatama!==r.captured*100))invalid();n.cycle={index:c.index,home:c.home,latestReward:r===null?null:pick(r,['cycle','captured','gold','rice','magatama'])};}
   n.won=CASTLES.every(c=>!user.is_admin&&c.id==='edo'||n.castles[c.id].owner===n.clan);n.gameOver=!CASTLES.some(c=>n.castles[c.id].owner===n.clan);
@@ -1073,6 +1076,7 @@ async function settlePlayerCycle(db,row,user,now,clock=undefined,{deferActive=tr
     const index=Number(row.cycle_index),home=user.is_admin?'edo':row.cycle_home||save.state.home;
     save.state.cycle={index,home,latestReward:save.state.cycle?.latestReward||null};
     if(!save.state.worldClock){const elapsed=index*WORLD_CYCLE_MS+(save.state.turn%WORLD_CYCLE_MONTHS)*WORLD_MONTH_MS+Math.floor(save.state.realtime.elapsed*1000);save.state.turn=Math.floor(elapsed/WORLD_MONTH_MS);save.state.realtime.elapsed=(elapsed%WORLD_MONTH_MS)/1000;save.state.worldClock={id:WORLD_CLOCK_ID,elapsedMs:elapsed};}
+    await reconcileCovertProgress(db,user.id,save);
     const staffBase=user.is_staff&&!user.is_admin?await staffBaseDto(db,user,clock,now):null;
     const game=GameEngine.fromSave(save,GAME_OFFICERS,{isAdmin:!!user.is_admin,isStaff:!!user.is_staff,staffBase});
     const target=Math.min(current*WORLD_CYCLE_MS,(index+2)*WORLD_CYCLE_MS);
@@ -1087,6 +1091,7 @@ async function settlePlayerCycle(db,row,user,now,clock=undefined,{deferActive=tr
       AND (SELECT revision FROM world_clock WHERE id=?)=?
       AND ${roleGuard.sql}
       AND NOT EXISTS(SELECT 1 FROM cycle_receipts WHERE user_id=? AND cycle_index>=? AND cycle_index<?) RETURNING *`,serialized,now,next.state.cycle.index,next.state.cycle.home,nonce,user.id,row.revision,index,writerDeviceId,writerDeviceId,now,writerDeviceId,now,WORLD_CLOCK_ID,clock.revision,...roleGuard.args,user.id,index,next.state.cycle.index)];
+    batch.push(...covertIncidentStatements(db,user.id,next,now,gate,gateParams));
     const personal=await staffPersonalProgressStatement(db,user,next,now,gate,gateParams,game.getStaffPersonalProgress?.());if(personal)batch.push(personal);
     for(const event of saveAchievements(save,next))batch.push(achievementStatement(db,user.id,event,now,gate,gateParams));
     for(const reward of rewards){batch.push(stmt(db,`INSERT INTO cycle_receipts(user_id,cycle_index,captured,gold,rice,magatama,commit_token,created_at) SELECT ?,?,?,?,?,?,?,? WHERE ${gate}`,user.id,reward.cycle,reward.captured,reward.gold,reward.rice,reward.magatama,nonce,now,...gateParams));if(reward.captured)batch.push(achievementStatement(db,user.id,cycleEvent(reward),now,gate,gateParams));}
@@ -1181,6 +1186,7 @@ async function advanceDepartingStaff(db,row,user,backup,now,clock) {
   const until=Math.min(clock.elapsedMs,Number(backup.left_elapsed_ms??(user.staff_term!==backup.term_id?user.staff_since_ms:null)??clock.elapsedMs));
   const historical={...user,is_admin:false,is_staff:1,staff_term:backup.term_id},save=normalizeGameSave(JSON.parse(row.save_json),historical,now,{reading:true,clock});
   if(save.state.worldClock&&save.state.worldClock.elapsedMs>=until)return row;
+  await reconcileCovertProgress(db,user.id,save);
   const base=await staffBaseDto(db,historical,clock,now),game=GameEngine.fromSave(save,GAME_OFFICERS,{isStaff:true,staffBase:base});
   const result=game.applyWorldClock({...clock,elapsedMs:until},{maxSeconds:86400});if(!result.ok||!result.changed)return row;
   const next=normalizeGameSave(JSON.parse(game.exportSave()),historical,now,{reading:true,clock}),nonce=crypto.randomUUID(),roleGuard=roleCommitGuard(user),rewards=result.cycleRewards||[];
@@ -1189,6 +1195,7 @@ async function advanceDepartingStaff(db,row,user,backup,now,clock) {
     WHERE user_id=? AND revision=? AND ${roleGuard.sql} AND EXISTS(SELECT 1 FROM staff_campaign_backups WHERE user_id=? AND active=1 AND term_id=?)
     AND EXISTS(SELECT 1 FROM world_clock WHERE id=? AND revision=?)
     AND NOT EXISTS(SELECT 1 FROM cycle_receipts WHERE user_id=? AND cycle_index>=? AND cycle_index<?) RETURNING *`,JSON.stringify(next),now,next.state.cycle.index,next.state.cycle.home,nonce,user.id,row.revision,...roleGuard.args,user.id,backup.term_id,WORLD_CLOCK_ID,clock.revision,user.id,save.state.cycle.index,next.state.cycle.index)];
+  statements.push(...covertIncidentStatements(db,user.id,next,now,gate,args));
   const personal=await staffPersonalProgressStatement(db,user,next,now,gate,args,game.getStaffPersonalProgress?.());if(personal)statements.push(personal);
   for(const event of saveAchievements(save,next))statements.push(achievementStatement(db,user.id,event,now,gate,args));
   for(const reward of rewards){statements.push(stmt(db,`INSERT INTO cycle_receipts(user_id,cycle_index,captured,gold,rice,magatama,commit_token,created_at) SELECT ?,?,?,?,?,?,?,? WHERE ${gate}`,user.id,reward.cycle,reward.captured,reward.gold,reward.rice,reward.magatama,nonce,now,...args));if(reward.captured)statements.push(achievementStatement(db,user.id,cycleEvent(reward),now,gate,args));}
@@ -1416,7 +1423,9 @@ async function syncSnapshot(db,row,user,deviceId,now,{settle=false}={}) {
   const staffBase=user.is_staff&&!user.is_admin?await staffBaseDto(db,user,clock,now):null;
   const current=await getUser(db,user.id);if(current.is_admin!==user.is_admin||current.staff_term!==user.staff_term)fail(409,'STAFF_ROLE_CHANGED','役職が更新されました。もう一度同期してください。');
   await requireAccountAccess(db,authenticated);
-  return {ok:true,user:mapUser(user,now),staffBase:publicStaffBase(staffBase),save:row?.save_json?normalizeGameSave(JSON.parse(row.save_json),user,now,{reading:true,clock}):null,clock,
+  const privateSave=row?.save_json?normalizeGameSave(JSON.parse(row.save_json),user,now,{reading:true,clock}):null;
+  if(privateSave)await reconcileCovertProgress(db,user.id,privateSave);
+  return {ok:true,user:mapUser(user,now),staffBase:publicStaffBase(staffBase),save:privateSave,clock,
     revision:Number(row?.revision||0),updatedAt:row?.updated_at?iso(row.updated_at):null,
     writerDeviceId:row?.writer_device_id||null,writerDeviceName:row?.writer_device_name||null,
     leaseExpiresAt:row?.lease_expires_at?iso(row.lease_expires_at):null,serverTime:iso(now),
@@ -1623,6 +1632,8 @@ async function fieldAttack(db,user,raw,now) {
   const sharedShield=battleMode==='reward'&&castleId==='sunpu';
   const shield=await stmt(db,"SELECT MAX(occurred_elapsed_ms) AS last FROM field_battles WHERE defender_id=? OR (?=1 AND json_extract(result_json,'$.castleId')='sunpu')",target.id,sharedShield?1:0).first();
   if(shield.last!==null&&Number(shield.last)+FIELD_RULES.defenderProtectionMs>clock.elapsedMs)fail(409,'TARGET_PROTECTED','相手は襲撃後の保護期間です。');
+  const covertShield=await stmt(db,"SELECT MAX(occurred_elapsed_ms) AS last FROM covert_battles WHERE defender_id=? OR (?=1 AND json_extract(result_json,'$.castleId')='sunpu')",target.id,sharedShield?1:0).first();
+  if(covertShield.last!==null&&Number(covertShield.last)+FIELD_RULES.defenderProtectionMs>clock.elapsedMs)fail(409,'TARGET_PROTECTED','相手は襲撃後の保護期間です。');
   const tactic=FIELD_RULES.tactics.find(t=>t.id===body.tactic),foodCost=Math.ceil(body.troops*FIELD_RULES.foodPerTroop*tactic.food)+FIELD_RULES.foodBase;
   if(body.troops>a.troops||a.command<1||a.resources.rice<foodCost)fail(409,'INSUFFICIENT_FORCE','兵数・指示・兵糧が足りません。');
   const sharedGuard=sharedShield?await fieldStaffDefense(db,d,clock):{sql:'1=1',args:[]};
@@ -1660,14 +1671,15 @@ async function fieldAttack(db,user,raw,now) {
       AND NOT EXISTS(SELECT 1 FROM field_relations WHERE user_a=? AND user_b=? AND status='allied' AND expires_elapsed_ms>? AND updated_elapsed_ms>=?)
       AND NOT EXISTS(SELECT 1 FROM field_battles WHERE attacker_id=? AND occurred_elapsed_ms>?)
       AND NOT EXISTS(SELECT 1 FROM field_battles WHERE (defender_id=? OR (?=1 AND json_extract(result_json,'$.castleId')='sunpu')) AND occurred_elapsed_ms>?)
-      ON CONFLICT(actor_id,request_id) DO NOTHING RETURNING request_id`,user.id,body.requestId,digest,nonce,resultJson,now,target.id,user.id,body.expectedRevision,body.deviceId,now,defenderRow.revision,...roleGuard.args,...targetRoleGuard.args,...sharedGuard.args,WORLD_CLOCK_ID,clock.revision,first,second,clock.elapsedMs,Math.floor(clock.elapsedMs/WORLD_CYCLE_MS)*WORLD_CYCLE_MS,user.id,clock.elapsedMs-FIELD_RULES.attackCooldownMs,target.id,sharedShield?1:0,clock.elapsedMs-FIELD_RULES.defenderProtectionMs),
+      AND NOT EXISTS(SELECT 1 FROM covert_battles WHERE (defender_id=? OR (?=1 AND json_extract(result_json,'$.castleId')='sunpu')) AND occurred_elapsed_ms>?)
+      ON CONFLICT(actor_id,request_id) DO NOTHING RETURNING request_id`,user.id,body.requestId,digest,nonce,resultJson,now,target.id,user.id,body.expectedRevision,body.deviceId,now,defenderRow.revision,...roleGuard.args,...targetRoleGuard.args,...sharedGuard.args,WORLD_CLOCK_ID,clock.revision,first,second,clock.elapsedMs,Math.floor(clock.elapsedMs/WORLD_CYCLE_MS)*WORLD_CYCLE_MS,user.id,clock.elapsedMs-FIELD_RULES.attackCooldownMs,target.id,sharedShield?1:0,clock.elapsedMs-FIELD_RULES.defenderProtectionMs,target.id,sharedShield?1:0,clock.elapsedMs-FIELD_RULES.defenderProtectionMs),
     stmt(db,`UPDATE player_saves SET save_json=?,revision=revision+1,updated_at=?,lease_expires_at=?,cycle_home=? WHERE user_id=? AND ${gate}`,attackerJson,now,now+SYNC_LEASE,attackerNext.state.cycle?.home||attackerNext.state.home,user.id,...gateArgs)
   ];
   if(defenderNext)statements.push(stmt(db,`UPDATE player_saves SET save_json=?,revision=revision+1,updated_at=?,cycle_home=? WHERE user_id=? AND ${gate}`,defenderJson,now,defenderNext.state.cycle?.home||defenderNext.state.home,target.id,...gateArgs));
   const attackerPersonal=await staffPersonalProgressStatement(db,user,attackerNext,now,gate,gateArgs);if(attackerPersonal)statements.push(attackerPersonal);
   if(defenderNext){const personal=await staffPersonalProgressStatement(db,target,defenderNext,now,gate,gateArgs,null,captureChange);if(personal)statements.push(personal);}
   for(const event of saveAchievements(attackerBefore,attackerNext))statements.push(achievementStatement(db,user.id,event,now,gate,gateArgs));
-  statements.push(stmt(db,`INSERT INTO field_battles(id,attacker_id,defender_id,occurred_elapsed_ms,result_json,created_at) SELECT ?,?,?,?,?,? WHERE ${gate}`,battle.id,user.id,target.id,clock.elapsedMs,resultJson,now,...gateArgs));
+  statements.push(stmt(db,`INSERT INTO field_battles(id,attacker_id,defender_id,defender_campaign_id,occurred_elapsed_ms,result_json,created_at) SELECT ?,?,?,?,?,?,? WHERE ${gate}`,battle.id,user.id,target.id,d.walking.campaignId,clock.elapsedMs,resultJson,now,...gateArgs));
   statements.push(...await fieldBattleMailStatements(db,battle,{attacker:a.home,defenderBefore:defenderHomeBefore,defenderAfter:d.home,defenderLevel:d.castles[d.home].level},now,gate,gateArgs));
   const result=await db.batch(statements);
   if(!rows(result[0]).length){const replay=await fieldCommitFailure(db,user,body,'attack',digest,clock,now);return fieldReplayAttack(db,user,body,replay,now);}
@@ -1755,7 +1767,7 @@ async function route(request, env, now) {
   if(path==='/premium/stripe/webhook'&&method==='POST')return handlePremiumWebhook({db,env,now,request,helpers:{fail}});
   if (path === '/health' && method === 'GET') {
     try {
-      await stmt(db, 'SELECT (SELECT COUNT(*) FROM users) AS count,EXISTS(SELECT 1 FROM trades) AS trade_schema,EXISTS(SELECT 1 FROM trade_requests) AS trade_request_schema,EXISTS(SELECT 1 FROM trade_deliveries) AS trade_delivery_schema,EXISTS(SELECT 1 FROM player_bans) AS ban_schema,EXISTS(SELECT 1 FROM moderation_requests) AS moderation_schema,(SELECT content_revision FROM moderation_state WHERE id=1) AS content_revision,EXISTS(SELECT 1 FROM premium_orders) AS premium_order_schema,EXISTS(SELECT 1 FROM premium_events) AS premium_event_schema,EXISTS(SELECT 1 FROM premium_grants) AS premium_grant_schema,EXISTS(SELECT 1 FROM premium_appearances) AS premium_appearance_schema,EXISTS(SELECT 1 FROM timed_events) AS timed_event_schema,EXISTS(SELECT 1 FROM timed_event_requests) AS timed_event_request_schema,EXISTS(SELECT 1 FROM timed_event_participants) AS timed_event_participant_schema,EXISTS(SELECT 1 FROM timed_event_rewards) AS timed_event_reward_schema,EXISTS(SELECT 1 FROM roaming_battles) AS roaming_battle_schema').first();
+      await stmt(db, 'SELECT (SELECT COUNT(*) FROM users) AS count,EXISTS(SELECT 1 FROM trades) AS trade_schema,EXISTS(SELECT 1 FROM trade_requests) AS trade_request_schema,EXISTS(SELECT 1 FROM trade_deliveries) AS trade_delivery_schema,EXISTS(SELECT 1 FROM player_bans) AS ban_schema,EXISTS(SELECT 1 FROM moderation_requests) AS moderation_schema,(SELECT content_revision FROM moderation_state WHERE id=1) AS content_revision,EXISTS(SELECT 1 FROM premium_orders) AS premium_order_schema,EXISTS(SELECT 1 FROM premium_events) AS premium_event_schema,EXISTS(SELECT 1 FROM premium_grants) AS premium_grant_schema,EXISTS(SELECT 1 FROM premium_appearances) AS premium_appearance_schema,EXISTS(SELECT 1 FROM timed_events) AS timed_event_schema,EXISTS(SELECT 1 FROM timed_event_requests) AS timed_event_request_schema,EXISTS(SELECT 1 FROM timed_event_participants) AS timed_event_participant_schema,EXISTS(SELECT 1 FROM timed_event_rewards) AS timed_event_reward_schema,EXISTS(SELECT 1 FROM roaming_battles) AS roaming_battle_schema,EXISTS(SELECT 1 FROM covert_states) AS covert_state_schema,EXISTS(SELECT 1 FROM covert_requests) AS covert_request_schema,EXISTS(SELECT 1 FROM covert_battles) AS covert_battle_schema,EXISTS(SELECT 1 FROM covert_incidents) AS covert_incident_schema').first();
     } catch { fail(503, 'SERVICE_UNAVAILABLE', '通信サービスの準備中です。'); }
     return {ok:true,status:'ready',version:API_VERSION,features:API_FEATURES};
   }
@@ -1867,6 +1879,7 @@ async function route(request, env, now) {
   if (path === '/staff/base/upgrade' && method === 'POST') return staffBaseUpgrade(db,user,await readBody(request),now);
   if (path === '/walking/start' && method === 'POST') return walkingStart(db,user,await readBody(request),now);
   if (path === '/walking/claim' && method === 'POST') return walkingClaim(db,user,await readBody(request),now);
+  if (path === '/covert' || path.startsWith('/covert/')) return handleCovert({db,user,now,path,method,url,request,helpers:{fail,readBody,budget,idField,hash,getUser,getSyncRow,fieldWriter,settleWriterCycle,getWorldClock,normalizeGameSave,roleCommitGuard,syncSnapshot,requireAccountAccess,staffBaseDto,getFieldList,fieldStaffDefense,fieldDefense,fieldRelation,fieldRelationStatus,syncLease:SYNC_LEASE,worldClockId:WORLD_CLOCK_ID}});
   if (path === '/roaming/battle' && method === 'POST' || path === '/roaming/history' && method === 'GET') return handleRoaming({db,user,now,path,method,url,request,helpers:{fail,readBody,budget,idField,hash,getUser,getSyncRow,fieldWriter,settleWriterCycle,getWorldClock,normalizeGameSave,roleCommitGuard,syncSnapshot,requireAccountAccess,staffBaseDto,syncLease:SYNC_LEASE,worldClockId:WORLD_CLOCK_ID}});
   if (path === '/letters' || path.startsWith('/letters/')) return handleLetters({db,user,now,path,method,url,request,helpers:{fail,readBody,budget,idField,textField,uid,mapUser,getUser,evaluationRef,evaluationUpdates,accountCommitGuard,requireAccountAccess,contentRevisionInput}});
   if (path === '/trades' || path.startsWith('/trades/')) return handleTrades({db,user,now,path,method,url,request,helpers:{fail,readBody,budget,idField,uid,mapUser,getUser,getSyncRow,hash,fieldWriter,settleWriterCycle,getWorldClock,normalizeGameSave,roleCommitGuard,syncSnapshot,requireAccountAccess,tradeTroopCapacity,syncLease:SYNC_LEASE,worldClockId:WORLD_CLOCK_ID}});
@@ -1943,7 +1956,10 @@ async function route(request, env, now) {
     const body=await readBody(request,MAX_SAVE_BODY),deviceId=idField(body.deviceId,'端末識別子');
     if(!Number.isSafeInteger(body.revision)||body.revision<0)fail(400,'INVALID_INPUT','セーブの更新番号が正しくありません。');
     if(!body.save||typeof body.save!=='object'||Array.isArray(body.save))fail(400,'INVALID_SAVE','セーブデータを送信してください。');
-    const clock=await getWorldClock(db,now),save=normalizeGameSave(body.save,user,now,{clock});
+    // Covert units, reports and response opportunities belong to the server ledger.
+    // Ignore that entire client section, including malformed or forged imports.
+    const imported=copy(body.save);delete (imported.state||imported).covert;
+    const clock=await getWorldClock(db,now),save=normalizeGameSave(imported,user,now,{clock});
     await budget(db,'sync-write:'+user.id,120,60000,now);
     let previous=await getSyncRow(db,user.id);if(previous?.save_json){fieldWriter(previous,deviceId,body.revision,now);previous=await ensureStaffCampaign(db,user,now,clock,{deferClanMigration:true});fieldWriter(previous,deviceId,body.revision,now);}
     const before=previous?.save_json?normalizeGameSave(JSON.parse(previous.save_json),user,now,{reading:true,clock}):null;
@@ -1966,6 +1982,7 @@ async function route(request, env, now) {
     const walkingLedger=await stmt(db,'SELECT total_steps FROM walking_accounts WHERE user_id=?',user.id).first();
     save.state.walking.serverSteps=Number(walkingLedger?.total_steps||0);
     await reconcileRoamingProgress(db,user.id,save,before);
+    await reconcileCovertProgress(db,user.id,save);
     const serialized=JSON.stringify(save),nonce=crypto.randomUUID(),roleGuard=roleCommitGuard(user);
     const statements=[stmt(db,`UPDATE player_saves SET save_json=?,revision=revision+1,updated_at=?,lease_expires_at=?,cycle_index=?,cycle_home=?,cycle_commit=?
       WHERE user_id=? AND revision=? AND writer_device_id=? AND lease_expires_at>?

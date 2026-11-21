@@ -52,8 +52,8 @@ Chat GET and letter inbox/thread GET responses additionally include `playerEvalu
 
 | Method / path | Body / query | Result fields, in addition to `ok` |
 |---|---|---|
-| GET `/health` | none | `status:"ready"`, `version:"3.15.0"`, `features:{trades:true,moderation:true,premium:true}` |
-| GET `/config` | none | `version:"3.18.0"`, `features:{trades:true,moderation:true,premium:true,timedEvents:true,troopTrades:true,roamingBattles:true,privatePlayerRoles:true}`, `announcement:string`, `onlineCount:number`, `clock` |
+| GET `/health` | none | `status:"ready"`, `version:"3.19.0"`, `features:{trades:true,moderation:true,premium:true,timedEvents:true,troopTrades:true,roamingBattles:true,covertDispatch:true,privatePlayerRoles:true}` |
+| GET `/config` | none | `version:"3.19.0"`, `features:{trades:true,moderation:true,premium:true,timedEvents:true,troopTrades:true,roamingBattles:true,covertDispatch:true,privatePlayerRoles:true}`, `announcement:string`, `onlineCount:number`, `clock` |
 | POST `/session` | `{name?,clan?}` | `token:string`, `user` |
 | GET `/me` | none | `user`, `friends:user[]`, `requests:[{id,name,clan,avatarVersion,evaluation,direction:"incoming"|"outgoing",createdAt}]`, `unreadMail:number` |
 | PATCH `/profile` | `{name,expectedName?}` | `user` |
@@ -1357,3 +1357,27 @@ The response includes the full authoritative sync snapshot plus `{battle,idempot
 `0015_roaming_battles` stores one immutable receipt per actor/request and per actor/campaign/sequence. Receipt creation and personal save revision increment are conditional parts of one batch. Account access, writer lease, save revision, common clock revision, role term and shared-base revision must still match at commit. Retry returns the prior receipt with current sync data and never reapplies costs or rewards. `GET /roaming/history` returns the authenticated player's latest20 durable reports; it cannot select another player. Local-only play uses the identical engine and rolls the full mutation back when local saving fails.
 
 For soldier trades, positive `troops` values participate in the existing escrow/proceeds/refund transaction. They debit or credit `state.troops`, never a castle garrison. Troops0 are omitted from canonical vectors and request hashes for historical retry compatibility. Net incoming troops must fit the authoritative dynamic capacity and1,000,000 hard limit. Already-over-capacity exports and trades with no net troop increase remain permitted. Unreceivable imports/refunds remain wholly pending; no soldier is silently discarded.
+
+## Private dispatch forces (3.19.0)
+
+All `/covert` endpoints require the current player's bearer token. There is no player selector for reading another player's force ledger, reports or incidents.
+
+| Method / path | Additional body or query | Behavior |
+|---|---|---|
+| GET `/covert` | Optional `deviceId`, `cursor`, `limit` (client uses 100) | Own sync snapshot and `covert:{version,campaignId,sequence,rules,sources,targets,stations,reports,incidents,history,targetCursor,playerTargetTotal,online}`. Returns all 128 campaign castles plus one page of current field targets. Follow `targetCursor` to complete the player list. |
+| POST `/covert/hire` | `sourceCastleId,count` | Pay the displayed gold/rice and one command; add units to the source reserve. |
+| POST `/covert/dispatch` | `sourceCastleId,count,mode,target` | `mode` is `scout` or `station`. Pay rice and one command; privately report the destination's game state. Scouts return to reserve; station units remain deployed. |
+| POST `/covert/recall` | `stationId` | Return surviving units to reserve without resource or command cost, including after the source is lost. |
+| POST `/covert/retaliate` | `stationId,incidentId` | Spend one eligible, unconsumed source-attack incident, rice and one command. Resolve the stationed force's attack without capture or loot. Survivors remain stationed. |
+
+Every POST also requires `{requestId,deviceId,expectedRevision,campaignId,sequence}`. `campaignId` is the current `state.walking.campaignId`; `sequence` is the canonical dispatch sequence. Reject unknown body fields, non-integer counts and invalid targets. A target is `{kind:"castle",castleId}` or `{kind:"player",castleId,playerId}`. Display labels, target intelligence, incident eligibility and battle results are always server-derived. A successful write returns the current sync snapshot, `covert`, `result`, and `idempotent`.
+
+Source ownership and applicable capabilities are checked against current authenticated roles and the saved campaign. The public player projection does not expose these capabilities. Per-source reserve plus deployed population is limited to one quarter of calculated normal troop capacity, capped at 20,000. Ninja recruitment costs 3 gold and 2 rice per unit; ashigaru costs 1 of each. Scouting rice is `20 + ceil(count * .2)`, stationing `30 + ceil(count * .3)`, retaliation `50 + ceil(count * .4)`. The current rules are included in the private snapshot so clients can show costs before confirmation.
+
+`0016_covert_dispatch` adds canonical `covert_states`, immutable `covert_requests`, `covert_battles`, server-generated `covert_incidents`, and `field_battles.defender_campaign_id`. PUT `/sync` strips the submitted dispatch section before save validation and restores canonical state. GET sync also restores canonical state. Imported or older saves cannot mint dispatch units, revive losses, fabricate reports, or rewind consumed incidents. This authority applies to dispatch state; it does not change the existing trust model for the rest of the campaign economy.
+
+A retaliation incident must belong to the actor's current campaign and source, and occur after that particular station was committed. Field incidents use immutable incoming battle rows with a campaign binding and monotonic row cursor; station commit also compares the current cursor to close the read/commit race. CPU incidents are created only while existing server-side campaign advancement runs and are inserted under that save transaction's gate; the station sequence cutoff excludes later deployments even at the same game timestamp. Client-only CPU claims in sync uploads are ignored. The returned `stationIds` is the eligibility list for each incident. One incident can fund at most one retaliation across all stations and imported saves.
+
+One D1 transaction gates the request receipt, actor save/revision, canonical force state, any defender loss and generic defender mail. It rechecks account access, actor writer lease, revisions, source roles, target roles/ownership, common clock, alliances and attack protection. Protected reward-battle targets retain their assets. Successful spying sends no target notification and performs no target mutation. Intelligence contains only numeric game resources, troop/garrison counts, castle/wall level, defensive power and aggregate army statistics; no credentials, private correspondence or site roles are returned. Retaliation uses generic battle mail and does not publish the actor's unit type or private station list.
+
+Both the UI controller and shared mutation bridge keep the original request ID when a reply is lost. A temporary synchronization preflight, authentication interruption, rate limit or network error must preserve that pending operation for later result confirmation. A definite server semantic rejection may retire its own operation. Replays return the original receipt and fresh current snapshot without applying costs or losses again. Account/campaign/role changes invalidate the displayed context and cannot redirect an old request to a different player.

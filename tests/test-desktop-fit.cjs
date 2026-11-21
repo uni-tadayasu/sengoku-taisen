@@ -11,17 +11,20 @@ function harness({width=1366,height=936,touch=0,fine=true,coarse=false,announcem
  const root={classList,style:{getPropertyValue:name=>vars.get(name)||'',setProperty:(name,value)=>vars.set(name,value)}};
  const makeNode=()=>({style:{left:'125px',top:'70px',transform:'scale(.37)',minHeight:'1400px'},dataset:{desktopScale:'.370'}});
  const app=makeNode(),launch=makeNode(),dialog=makeNode(),bodyPane={scrollTop:170};
+ const header={position:'sticky',getBoundingClientRect:()=>({height:164})},announcementNode={hidden:false,offsetHeight:announcement,position:'sticky'};
+ const selected={dataset:{view:'town'},left:0,right:100,getBoundingClientRect(){return{left:this.left-navigation.scrollLeft,right:this.right-navigation.scrollLeft};}};
+ const navigation={clientWidth:360,scrollWidth:900,scrollLeft:0,querySelector:()=>selected,getBoundingClientRect:()=>({left:0,right:360})};
  // Long forms and hundreds of messages must never determine the scale factor.
  for(const node of [app,launch,dialog])for(const property of ['offsetWidth','offsetHeight','scrollWidth','scrollHeight'])Object.defineProperty(node,property,{get(){throw Error('Natural-content measurement would shrink readable UI');}});
  dialog.open=true;dialog.querySelector=()=>bodyPane;
  const queries=[];
- const document={documentElement:root,body:{classList:{contains:()=>false}},readyState:'loading',addEventListener(){},removeEventListener(){},getElementById:id=>id==='app'?app:id==='announcement-bar'?{hidden:false,offsetHeight:announcement}:null,querySelectorAll(selector){queries.push(selector);if(selector.startsWith('#app,'))return[app,launch,dialog];if(selector.startsWith('dialog[open]'))return[dialog];return[];}};
+ const document={documentElement:root,body:{classList:{contains:()=>false}},readyState:'loading',addEventListener(){},removeEventListener(){},getElementById:id=>({app,'announcement-bar':announcementNode,navigation}[id]||null),querySelector:selector=>selector==='#app .topbar'?header:null,querySelectorAll(selector){queries.push(selector);if(selector.startsWith('#app,'))return[app,launch,dialog];if(selector.startsWith('dialog[open]'))return[dialog];return[];}};
  const media={matches:fine,addEventListener(){},removeEventListener(){}},coarseMedia={...media,matches:coarse};
- const environment={document,navigator:{maxTouchPoints:touch},innerWidth:width,innerHeight:height,visualViewport:{width,height,offsetLeft:0,offsetTop:0,addEventListener(){},removeEventListener(){}},matchMedia:q=>q==='(any-pointer: coarse)'?coarseMedia:media,addEventListener(){},removeEventListener(){},requestAnimationFrame(callback){frames.set(++nextFrame,callback);return nextFrame;},cancelAnimationFrame:id=>frames.delete(id),module:{exports:{}}};
+ const environment={document,navigator:{maxTouchPoints:touch},innerWidth:width,innerHeight:height,visualViewport:{width,height,offsetLeft:0,offsetTop:0,addEventListener(){},removeEventListener(){}},getComputedStyle:node=>({position:node.position||'static'}),matchMedia:q=>q==='(any-pointer: coarse)'?coarseMedia:media,addEventListener(){},removeEventListener(){},requestAnimationFrame(callback){frames.set(++nextFrame,callback);return nextFrame;},cancelAnimationFrame:id=>frames.delete(id),module:{exports:{}}};
  vm.runInNewContext(source,environment);const api=environment.module.exports;
  function flush(){let turns=0;while(frames.size){assert(++turns<10,'Responsive refresh must settle without a feedback loop');const queued=[...frames.values()];frames.clear();queued.forEach(callback=>callback());}}
  function refresh(){api.refresh();flush();}
- return{api,environment,app,launch,dialog,bodyPane,vars,classes,media,coarseMedia,refresh};
+ return{api,environment,app,launch,dialog,bodyPane,vars,classes,media,coarseMedia,header,announcementNode,navigation,selected,refresh};
 }
 test('desktop uses every available CSS pixel through 200 percent browser zoom',()=>{
  for(const [w,h]of [[1920,1080],[1440,900],[1366,936],[1280,720]])for(const zoom of [1,1.25,1.5,1.75,2]){
@@ -36,6 +39,12 @@ test('announcement cannot produce a negative or offscreen content rectangle',()=
 test('touch tablets retain document flow with an attached fine pointer',()=>{
  assert.equal(desktopMode(true,0,false),true);assert.equal(desktopMode(false,0,false),false);assert.equal(desktopMode(true,5,false),false);assert.equal(desktopMode(true,0,true),false);assert.equal(desktopMode(false,5,true),false);
 });
+test('phone and tablet widths use the same compact layout with a desktop mouse',()=>{
+ for(const width of [320,360,390,430,768,820,1024]){
+  const h=harness({width});h.refresh();assert.equal(h.api.getStatus().mode,'flow',width+'px');assert(!h.classes.has('sengoku-desktop-fit'));assert.equal(h.app.dataset.desktopScale,undefined);assert.equal(h.app.style.transform,'');
+ }
+ for(const width of [1025,1280,1440,1920]){const h=harness({width});h.refresh();assert.equal(h.api.getStatus().mode,'desktop',width+'px');}
+});
 test('actual runtime removes a legacy scale without reading long-page dimensions',()=>{
  const h=harness();h.refresh();const s=h.api.getStatus();assert.equal(s.active,true);assert.equal(s.mode,'desktop');assert.equal(s.scale,1);assert.equal(s.visibleWidth,1366);assert.equal(s.visibleHeight,899);assert.equal(h.vars.get('--desktop-layout-width'),'1366.000px');assert.equal(h.vars.get('--desktop-offset-top'),'37.000px');
  for(const n of [h.app,h.launch,h.dialog]){assert.equal(n.style.transform,'');assert.equal(n.style.left,'');assert.equal(n.style.top,'');assert.equal(n.style.minHeight,'');}assert.equal(h.app.dataset.desktopScale,'1.000');assert.equal(h.dialog.dataset.desktopScale,'1.000');assert.equal(h.bodyPane.scrollTop,170,'Refreshing the viewport must not reset a form/history reader');
@@ -47,6 +56,19 @@ test('zoom, viewport offsets, and repeated refresh keep native scale',()=>{
 });
 test('switching to touch clears desktop geometry and retains keyboard viewport height',()=>{
  const h=harness();h.refresh();h.environment.navigator.maxTouchPoints=5;h.environment.visualViewport.height=310;h.refresh();assert(!h.classes.has('sengoku-desktop-fit'));assert.equal(h.api.getStatus().mode,'flow');assert.equal(h.vars.get('--visible-height'),'310.000px');assert.equal(h.app.dataset.desktopScale,undefined);assert.equal(h.app.style.transform,'');
+});
+test('resizing a desktop to compact width and back preserves normal desktop geometry',()=>{
+ const h=harness();h.refresh();h.environment.innerWidth=390;h.environment.visualViewport.width=390;h.refresh();assert.equal(h.api.getStatus().mode,'flow');assert.equal(h.app.dataset.desktopScale,undefined);
+ h.environment.innerWidth=1440;h.environment.visualViewport.width=1440;h.refresh();assert.equal(h.api.getStatus().mode,'desktop');assert.equal(h.app.dataset.desktopScale,'1.000');assert.equal(h.vars.get('--desktop-layout-width'),'1440.000px');assert.equal(h.bodyPane.scrollTop,170);
+});
+test('horizontal menu reveals a new selection without resetting deliberate menu or form scrolling',()=>{
+ const h=harness({width:390});h.selected.dataset.view='army';h.selected.left=650;h.selected.right=750;h.refresh();assert.equal(h.navigation.scrollLeft,394);assert.equal(h.bodyPane.scrollTop,170);
+ h.navigation.scrollLeft=20;h.refresh();assert.equal(h.navigation.scrollLeft,20,'Periodic refresh must let the player browse other menu entries');
+ h.selected.dataset.view='covert';h.selected.left=420;h.selected.right=520;h.refresh();assert.equal(h.navigation.scrollLeft,164);
+});
+test('short-window headers reserve scroll space only while they are sticky',()=>{
+ const h=harness({width:820,height:390});h.refresh();assert.equal(h.vars.get('--touch-header-height'),'164.000px');assert.equal(h.vars.get('--touch-announcement-height'),'37.000px');
+ h.header.position='relative';h.announcementNode.position='relative';h.refresh();assert.equal(h.vars.get('--touch-header-height'),'0.000px');assert.equal(h.vars.get('--touch-announcement-height'),'0.000px');assert.equal(h.api.getStatus().mode,'flow');
 });
 test('destroy removes legacy geometry and releases desktop overflow mode',()=>{
  const h=harness();h.refresh();h.api.destroy();assert(!h.classes.has('sengoku-desktop-fit'));assert.equal(h.app.dataset.desktopScale,undefined);assert.equal(h.api.getStatus().active,false);h.api.refresh();assert.equal(h.api.getStatus().active,false);

@@ -1,4 +1,4 @@
-/* Keep touch conversations inside the visible area without recreating inputs. */
+/* Keep compact conversations inside the visible area without recreating inputs. */
 (function (global) {
   'use strict';
   function viewportBox(width, height, viewport) {
@@ -37,9 +37,9 @@
       const key = '--social-viewport-' + name, next = value.toFixed(3) + 'px';
       if (root.style.getPropertyValue(key) !== next) root.style.setProperty(key, next);
     }
-    const touch = Number(global.navigator?.maxTouchPoints) > 0 || coarse?.matches === true;
+    const compactLayout = Number(global.navigator?.maxTouchPoints) > 0 || coarse?.matches === true || box.width <= 1024;
     for (const dialog of doc.querySelectorAll(selector)) {
-      const visible = touch && dialog.open;
+      const visible = compactLayout && dialog.open;
       const compact = visible && box.height < 560;
       attr(dialog, 'data-touch-compact', compact);
       if (!dialog.matches('.social-dialog')) continue;

@@ -1,6 +1,6 @@
 /* The viewport is a layout boundary, never a scale factor for the interface.
- * Desktop retains its command deck and scrolls only content panes. Touch devices
- * use document flow, including tablets with an attached keyboard or mouse. */
+ * Wide desktops retain their command deck and scroll only content panes. Narrow
+ * windows and touch devices use document flow, including tablets with a mouse. */
 (function(global){
 'use strict';
 const clamp=(value,min,max)=>Math.max(min,Math.min(max,value));
@@ -15,9 +15,9 @@ function planViewport(width,height,announcementHeight=0){
   const availableWidth=viewportWidth,availableHeight=Math.max(1,viewportHeight-top);
   return{viewportWidth,viewportHeight,top,availableWidth,availableHeight,layoutWidth:availableWidth,layoutHeight:availableHeight,mapHeight:clamp(availableHeight-370,300,850),townHeight:clamp(availableHeight-355,240,680)};
 }
-function desktopMode(finePointer,touchPoints=0,coarsePointer=false){return Boolean(finePointer)&&!(Number(touchPoints)>0||coarsePointer);}
+function desktopMode(finePointer,touchPoints=0,coarsePointer=false,viewportWidth=Infinity){return Number(viewportWidth)>1024&&Boolean(finePointer)&&!(Number(touchPoints)>0||coarsePointer);}
 const root=global.document?.documentElement,doc=global.document;
-let initialized=false,destroyed=false,pending=0,resizeObserver=null,mutationObserver=null,media=null,coarseMedia=null,status={active:false,mode:'flow',scale:1},listeners=[];
+let initialized=false,destroyed=false,pending=0,resizeObserver=null,mutationObserver=null,media=null,coarseMedia=null,status={active:false,mode:'flow',scale:1},listeners=[],navigationState='';
 const raf=callback=>global.requestAnimationFrame?global.requestAnimationFrame(callback):global.setTimeout(callback,16);
 const caf=id=>global.cancelAnimationFrame?global.cancelAnimationFrame(id):global.clearTimeout(id);
 function setVar(name,value){if(root.style.getPropertyValue(name)!==value)root.style.setProperty(name,value);}
@@ -28,12 +28,24 @@ function clearLegacyGeometry(node){
   for(const name of ['left','top','transform','minHeight'])setStyle(node,name,'');
   if(node?.dataset)delete node.dataset.desktopScale;
 }
+function revealNavigation(active){
+  const navigation=doc.getElementById('navigation'),selected=navigation?.querySelector?.('.nav-item.active');
+  if(active||!navigation||!selected){navigationState='';return;}
+  const key=(selected.dataset?.view||'')+':'+navigation.clientWidth;
+  if(key===navigationState)return;
+  navigationState=key;
+  if(navigation.scrollWidth<=navigation.clientWidth)return;
+  // Move only the menu strip; scrollIntoView would also jump the page/header.
+  const bounds=navigation.getBoundingClientRect(),item=selected.getBoundingClientRect();
+  if(item.left<bounds.left+4)navigation.scrollLeft+=item.left-bounds.left-4;
+  else if(item.right>bounds.right-4)navigation.scrollLeft+=item.right-bounds.right+4;
+}
 function update(){
   pending=0;if(destroyed||!root||!doc.body)return;
-  const active=desktopMode(media?.matches,global.navigator?.maxTouchPoints,coarseMedia?.matches);
-  root.classList.toggle('sengoku-desktop-fit',active);
   const viewport=global.visualViewport,viewportWidth=Math.min(global.innerWidth||Infinity,viewport?.width||Infinity),viewportHeight=Math.min(global.innerHeight||Infinity,viewport?.height||Infinity);
   if(!Number.isFinite(viewportWidth)||!Number.isFinite(viewportHeight)||viewportWidth<=0||viewportHeight<=0)return;
+  const active=desktopMode(media?.matches,global.navigator?.maxTouchPoints,coarseMedia?.matches,viewportWidth);
+  root.classList.toggle('sengoku-desktop-fit',active);
   const offsetX=viewport?.offsetLeft||0,offsetY=viewport?.offsetTop||0,atTitle=doc.body.classList.contains('at-title');
   const announcement=doc.getElementById('announcement-bar'),announcementHeight=!atTitle&&announcement&&!announcement.hidden?announcement.offsetHeight:0;
   const plan=planViewport(viewportWidth,viewportHeight,announcementHeight);
@@ -43,11 +55,13 @@ function update(){
   // Sticky touch headers remain in document flow. Only their measured height
   // is needed to keep focus/anchor scrolling below the visible information.
   const touchHeader=!active&&!atTitle?doc.querySelector?.('#app .topbar'):null;
-  const touchHeaderHeight=Math.max(0,Number(touchHeader?.getBoundingClientRect?.().height)||0);
+  const isSticky=node=>Boolean(node)&&(!global.getComputedStyle||global.getComputedStyle(node).position==='sticky');
+  const touchHeaderHeight=isSticky(touchHeader)?Math.max(0,Number(touchHeader.getBoundingClientRect?.().height)||0):0;
   setVar('--touch-header-height',touchHeaderHeight.toFixed(3)+'px');
-  setVar('--touch-announcement-height',(!active&&!atTitle?announcementHeight:0).toFixed(3)+'px');
+  setVar('--touch-announcement-height',(!active&&!atTitle&&isSticky(announcement)?announcementHeight:0).toFixed(3)+'px');
   const app=doc.getElementById('app');if(active&&app)app.dataset.desktopScale='1.000';
   for(const dialog of doc.querySelectorAll('dialog[open]:not(.game-loading)'))if(active)dialog.dataset.desktopScale='1.000';
+  revealNavigation(active);
   status={active,mode:active?'desktop':'flow',...plan,scale:1,naturalWidth:plan.layoutWidth,naturalHeight:plan.layoutHeight,visibleWidth:plan.availableWidth,visibleHeight:plan.availableHeight,atTitle};
 }
 function refresh(){if(!root||destroyed)return;if(!initialized)start();if(!pending)pending=raf(update);}

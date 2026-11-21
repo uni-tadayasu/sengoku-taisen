@@ -1,0 +1,234 @@
+/* Final geometry refinements. Branding, map gestures and saved desktop sizes
+   stay with their original components. Compact mode also serves narrow PCs. */
+:root {
+  --compact-gutter-left: max(12px, env(safe-area-inset-left, 0px));
+  --compact-gutter-right: max(12px, env(safe-area-inset-right, 0px));
+  --dock-gutter-left: max(8px, env(safe-area-inset-left, 0px));
+  --dock-gutter-right: max(8px, env(safe-area-inset-right, 0px));
+  --compact-dock-height: 76px;
+  --compact-dock-slot: calc((100% - var(--dock-gutter-left) - var(--dock-gutter-right) - 16px) / 5);
+}
+
+#main :is(.page-heading > div, .page-heading-actions, .section-heading > div,
+  .covert-field, .covert-page, .roaming-page, .roaming-preparation > div,
+  .enlist-form, .recruit-amount-controls) { min-width: 0; }
+#main :is(.page-heading h1, .panel-heading h2, .section-heading h2) { overflow-wrap: anywhere; }
+#main :is(.page-heading-actions, .panel-heading, .section-heading) { flex-wrap: wrap; }
+#main .enlist-form .recruit-amount-controls { max-width: 100%; }
+#main :is(.button, .field-button, .covert-button) > span { min-width: 0; }
+
+/* Keep keyboard focus inside clipped menu/button surfaces. */
+#app .navigation .nav-item:focus-visible,
+#app .sidebar-bottom .nav-item:focus-visible,
+.social-dialog .social-tabs button:focus-visible {
+  outline: 2px solid var(--gold, #e3c58a);
+  outline-offset: -3px;
+}
+#app .navigation .nav-count[hidden] { display: none !important; }
+.modal-header > div { min-width: 0; }
+.modal-header .icon-button { flex: none; }
+.modal-body :is(input, select, textarea) { max-width: 100%; min-width: 0; }
+.modal-body :is(table, pre) { max-width: 100%; }
+
+/* All four utility buttons have their own slot. The fifth slot belongs to the
+   existing community launcher, so it never covers Save/Settings. */
+html:not(.sengoku-desktop-fit) #app .sidebar-bottom {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  align-items: stretch;
+  gap: 4px;
+  padding: 6px var(--dock-gutter-right) calc(6px + env(safe-area-inset-bottom, 0px)) var(--dock-gutter-left);
+}
+html:not(.sengoku-desktop-fit) #app .sidebar-bottom .nav-item {
+  min-width: 0;
+  min-height: 58px;
+  padding: 7px 2px;
+  gap: 4px;
+  flex-direction: column;
+  justify-content: center;
+  font-size: 12px;
+  line-height: 1.35;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+html:not(.sengoku-desktop-fit) #app .sidebar-bottom .nav-item .icon { width: 20px; height: 20px; }
+html:not(.sengoku-desktop-fit) .social-launcher {
+  right: var(--dock-gutter-right);
+  bottom: calc(6px + env(safe-area-inset-bottom, 0px));
+  width: var(--compact-dock-slot);
+  min-width: 0;
+  max-width: var(--compact-dock-slot);
+  min-height: 58px;
+  padding: 7px 2px;
+  gap: 4px;
+  flex-direction: column;
+  justify-content: center;
+  font-size: 12px;
+  line-height: 1.35;
+  border-radius: 8px;
+}
+html:not(.sengoku-desktop-fit) .social-launcher > svg { width: 20px; height: 20px; }
+html:not(.sengoku-desktop-fit) .social-launcher .social-unread { position: absolute; top: 3px; right: 4px; }
+
+html:not(.sengoku-desktop-fit) #app .sidebar {
+  padding-inline: var(--compact-gutter-left) var(--compact-gutter-right);
+}
+html:not(.sengoku-desktop-fit) #main {
+  padding-inline: var(--compact-gutter-left) var(--compact-gutter-right);
+}
+html:not(.sengoku-desktop-fit) #app .game-footer {
+  padding-inline: var(--compact-gutter-left) var(--compact-gutter-right);
+  padding-bottom: calc(var(--compact-dock-height) + 20px + env(safe-area-inset-bottom, 0px));
+}
+html:not(.sengoku-desktop-fit) .toast {
+  bottom: calc(var(--compact-dock-height) + 12px + env(safe-area-inset-bottom, 0px));
+  max-width: calc(100vw - var(--compact-gutter-left) - var(--compact-gutter-right));
+  overflow-wrap: anywhere;
+}
+html:not(.sengoku-desktop-fit) #app .clan-line { min-width: 0; flex-shrink: 1; }
+html:not(.sengoku-desktop-fit) #app .clan-line > div { min-width: 0; overflow-wrap: anywhere; }
+html:not(.sengoku-desktop-fit) #app .clan-progress-label { flex-wrap: wrap; }
+html:not(.sengoku-desktop-fit) #app .navigation .nav-count:not([hidden]) {
+  display: inline-block;
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  margin: 0;
+  padding: 0 4px;
+  font-size: 11px;
+  line-height: 17px;
+  white-space: nowrap;
+}
+html:not(.sengoku-desktop-fit) #app .navigation .nav-item:has(.nav-count:not([hidden])) > .icon {
+  align-self: flex-start;
+  margin-left: 5px;
+}
+
+/* Six columns use a tablet's width; an increasing menu never becomes a tiny
+   single-row collection of icons. The menu remains in normal document flow. */
+@media (min-width: 701px) {
+  :root {
+    --compact-gutter-left: max(22px, env(safe-area-inset-left, 0px));
+    --compact-gutter-right: max(22px, env(safe-area-inset-right, 0px));
+  }
+  html:not(.sengoku-desktop-fit) #app .navigation {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 8px;
+  }
+  html:not(.sengoku-desktop-fit) #app .navigation .nav-item {
+    flex-direction: column;
+    gap: 4px;
+    min-height: 64px;
+    padding: 8px 5px;
+    font-size: 14px;
+    line-height: 1.4;
+  }
+  html:not(.sengoku-desktop-fit) #app .sidebar-bottom .nav-item,
+  html:not(.sengoku-desktop-fit) .social-launcher { flex-direction: row; gap: 7px; font-size: 14px; }
+}
+@media (min-width: 1400px) {
+  html:not(.sengoku-desktop-fit) #app .navigation { grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); }
+}
+@media (max-width: 700px) {
+  :root { --compact-dock-height: 88px; }
+  html:not(.sengoku-desktop-fit) #app .sidebar-bottom .nav-item,
+  html:not(.sengoku-desktop-fit) .social-launcher { height: 72px; min-height: 72px; }
+  html:not(.sengoku-desktop-fit) #app .sidebar { padding-top: 10px; padding-bottom: 10px; }
+  html:not(.sengoku-desktop-fit) #app .clan-panel { margin-bottom: 9px; gap: 6px 12px; flex-wrap: wrap; }
+  html:not(.sengoku-desktop-fit) #app .clan-line { flex: 1 1 160px; }
+  html:not(.sengoku-desktop-fit) #app .clan-line > div { flex: 1 1 auto; }
+  html:not(.sengoku-desktop-fit) #app .clan-panel .player-evaluation-entry { flex: 0 1 auto; }
+  html:not(.sengoku-desktop-fit) #app .navigation {
+    grid-template-columns: none;
+    grid-template-rows: repeat(2, minmax(64px, auto));
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(96px, calc((100% - 16px) / 3));
+    gap: 8px;
+    width: 100%;
+    max-width: 100%;
+    height: auto;
+    padding: 2px 0 5px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior-x: contain;
+    scroll-padding-inline: 4px;
+    scroll-snap-type: x proximity;
+    scrollbar-width: thin;
+  }
+  html:not(.sengoku-desktop-fit) #app .navigation .nav-item {
+    min-width: 0;
+    min-height: 64px;
+    padding: 8px 5px;
+    gap: 4px;
+    font-size: 14px;
+    line-height: 1.4;
+    scroll-snap-align: start;
+  }
+  html:not(.sengoku-desktop-fit) #app .navigation .nav-item > span:not(.nav-count) { width: 100%; }
+  html:not(.sengoku-desktop-fit) #main { padding-top: 18px; padding-bottom: 18px; }
+  html:not(.sengoku-desktop-fit) #main .page-heading { gap: 10px; }
+  html:not(.sengoku-desktop-fit) #main .page-heading-actions { gap: 10px; }
+  html:not(.sengoku-desktop-fit) #main .page-heading-actions > .button { flex: 1 1 140px; }
+  html:not(.sengoku-desktop-fit) #main .field-form-row { grid-template-columns: minmax(0, 1fr); gap: 6px; }
+  html:not(.sengoku-desktop-fit) #main .field-form-row :is(input, select) { width: 100%; }
+  html:not(.sengoku-desktop-fit) #main .field-filter { max-width: none; flex: 1 1 140px; }
+  html:not(.sengoku-desktop-fit) #main .field-search { flex-basis: 180px; }
+}
+@media (max-width: 360px) {
+  html:not(.sengoku-desktop-fit) #main :is(.panel, .facility-entry, .research-card) { padding: 16px; }
+  html:not(.sengoku-desktop-fit) #main .officers-grid { gap: 8px; }
+  html:not(.sengoku-desktop-fit) #main .officer-content { padding: 11px; }
+  html:not(.sengoku-desktop-fit) #main .officer-content h3 { font-size: 20px; }
+  html:not(.sengoku-desktop-fit) #main .world-layout-real .castle-detail { grid-template-columns: 80px minmax(0, 1fr); gap: 10px; padding: 14px; }
+  html:not(.sengoku-desktop-fit) #main .world-layout-real .castle-detail .castle-banner { width: 80px; max-width: 80px; height: 80px; }
+}
+
+/* Generic forms and the two compact activity dialogs use the same measured
+   visual viewport as chat. Focused inputs are never replaced or translated. */
+html:not(.sengoku-desktop-fit) :is(#modal.modal, .strategy-dialog, .walking-dialog) {
+  --dialog-gap-top: max(10px, env(safe-area-inset-top, 0px));
+  --dialog-gap-bottom: max(10px, env(safe-area-inset-bottom, 0px));
+  --dialog-width: min(var(--dialog-preferred-width, 900px), calc(var(--social-viewport-width, 100vw) - var(--compact-gutter-left) - var(--compact-gutter-right)));
+  position: fixed;
+  inset: auto;
+  left: calc(var(--social-viewport-left, 0px) + var(--compact-gutter-left) + (var(--social-viewport-width, 100vw) - var(--compact-gutter-left) - var(--compact-gutter-right) - var(--dialog-width)) / 2);
+  top: calc(var(--social-viewport-top, 0px) + var(--dialog-gap-top));
+  width: var(--dialog-width);
+  min-width: 0;
+  max-width: var(--dialog-width);
+  max-height: calc(var(--social-viewport-height, var(--visible-height, 100dvh)) - var(--dialog-gap-top) - var(--dialog-gap-bottom));
+  margin: 0;
+}
+html:not(.sengoku-desktop-fit) .strategy-dialog { --dialog-preferred-width: 780px; }
+html:not(.sengoku-desktop-fit) .walking-dialog { --dialog-preferred-width: 720px; }
+html:not(.sengoku-desktop-fit) :is(.social-dialog, .letters-dialog, .trade-dialog,
+  .events-dialog, .hints-dialog, .moderation-dialog, .premium-admin-dialog) {
+  left: calc(var(--social-viewport-left, 0px) + max(4px, env(safe-area-inset-left, 0px)));
+  width: calc(var(--social-viewport-width, 100vw) - max(4px, env(safe-area-inset-left, 0px)) - max(4px, env(safe-area-inset-right, 0px)));
+  max-width: calc(var(--social-viewport-width, 100vw) - max(4px, env(safe-area-inset-left, 0px)) - max(4px, env(safe-area-inset-right, 0px)));
+}
+html:not(.sengoku-desktop-fit) :is(#modal-content, .strategy-shell, .walking-shell) {
+  min-height: 0;
+  max-height: calc(var(--social-viewport-height, var(--visible-height, 100dvh)) - var(--dialog-gap-top, 10px) - var(--dialog-gap-bottom, 10px) - 2px);
+}
+html:not(.sengoku-desktop-fit) .modal-header p { font-size: 14px; line-height: 1.6; }
+html:not(.sengoku-desktop-fit) :is(.modal, .strategy-dialog, .walking-dialog) :is(input, select, textarea) { font-size: 16px; }
+html:not(.sengoku-desktop-fit) .modal-footer .button { min-height: 44px; }
+
+/* Landscape phones and short windows can scroll past the information header.
+   The map keeps its own pan/zoom surface; normal pages and forms stay scrollable. */
+@media (max-height: 540px) {
+  html:not(.sengoku-desktop-fit) { scroll-padding-top: 10px; }
+  html:not(.sengoku-desktop-fit) body:not(.at-title) #announcement-bar,
+  html:not(.sengoku-desktop-fit) #app .topbar { position: relative; top: auto; }
+  html:not(.sengoku-desktop-fit) .modal-header,
+  html:not(.sengoku-desktop-fit) .modal-footer { padding-block: 10px; }
+  html:not(.sengoku-desktop-fit) .modal-header h2 { font-size: 22px; line-height: 1.35; }
+  html:not(.sengoku-desktop-fit) .modal-header p { max-height: 48px; overflow-y: auto; }
+  html:not(.sengoku-desktop-fit) .modal-body { padding-block: 14px; }
+  html:not(.sengoku-desktop-fit) :is(.strategy-header, .walking-header) { padding-block: 10px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #app .navigation { scroll-behavior: auto; }
+}

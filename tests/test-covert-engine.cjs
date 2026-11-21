@@ -1,0 +1,54 @@
+'use strict';
+const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),path=require('node:path');
+const {SengokuEngine:E,SENGOKU_DATA:D}=require('../engine.js'),context={};context.window=context;vm.createContext(context);vm.runInContext(fs.readFileSync(path.join(__dirname,'../officers-data.js'),'utf8'),context);const officers=JSON.parse(JSON.stringify(context.SENGOKU_OFFICERS));
+const create=(extra={})=>new E({officers,seed:17,...extra}),copy=v=>JSON.parse(JSON.stringify(v));
+const request=(g,extra={})=>({requestId:'covert-'+g.state.covert.sequence,campaignId:g.state.walking.campaignId,sequence:g.state.covert.sequence,...extra});
+const target={kind:'castle',castleId:'kagoshima'};
+let count=0;const test=(name,fn)=>{fn();count++;console.log('PASS '+name);};
+const hire=(g,n=100,source='edo')=>g.hireCovert(source,n,request(g));
+const station=(g,n=50,source='edo',dest=target)=>g.dispatchCovert(source,dest,n,'station',request(g));
+function invasion(g){g.state.turn=9;g.state.realtime.elapsed=0;for(const c of D.castles)if(c.id!==g.state.home)g.state.castles[c.id].owner='在地衆';g.random=()=>0;return g._cpuTurn();}
+
+test('only actual owned metropolitan sources are enabled and Edo hires ninja while other cities hire ashigaru',()=>{
+ const ordinary=create(),before=copy(ordinary.state);assert.deepEqual(ordinary.covertStatus().sources,[]);assert.equal(hire(ordinary,1).code,'COVERT_SOURCE_UNAVAILABLE');assert.deepEqual(ordinary.state,before);
+ ordinary.state.castles.nijo.owner=ordinary.state.clan;const s=ordinary.covertStatus().sources[0];assert.equal(s.castleId,'nijo');assert.equal(s.unitName,'足軽');assert.equal(s.capacity,Math.floor(ordinary.troopCapacity()/4));const r=hire(ordinary,1,'nijo');assert(r.ok);assert.equal(r.result.goldCost,1);assert.equal(r.result.foodCost,1);
+ const op=create({isAdmin:true});assert.equal(op.covertStatus().sources[0].unitName,'忍者');const old=copy(op.state),h=hire(op,100);assert(h.ok);assert.equal(op.state.resources.gold,old.resources.gold-300);assert.equal(op.state.resources.rice,old.resources.rice-200);assert.equal(op.state.troops,old.troops);assert.equal(op.state.command,old.command-1);
+});
+test('invalid count, rights, capacity, resources and commands reject without mutation',()=>{
+ for(const n of [0,-1,1.5,NaN,Infinity,'1',20001]){const g=create({isAdmin:true}),before=copy(g.state);assert.equal(hire(g,n).ok,false);assert.deepEqual(g.state,before);}
+ for(const change of [g=>g.state.command=0,g=>g.state.resources.gold=0,g=>g.state.resources.rice=0]){const g=create({isAdmin:true});change(g);const before=copy(g.state);assert.equal(hire(g).ok,false);assert.deepEqual(g.state,before);}
+ const g=create({isAdmin:true});g.state.resources.gold=999999;g.state.resources.rice=999999;const cap=g.covertStatus().sources[0].capacity;assert(hire(g,cap).ok);const before=copy(g.state);assert.equal(hire(g,1).code,'COVERT_CAPACITY');assert.deepEqual(g.state,before);
+});
+test('all128 castles can be scouted at any distance and scouts return to reserve with a bounded snapshot',()=>{
+ const g=create({isAdmin:true});assert(hire(g).ok);assert.equal(g.covertStatus().targets.length,128);assert(!g.adjacentTargets().some(c=>c.id===target.castleId));const before=copy(g.state),r=g.dispatchCovert('edo',target,10,'scout',request(g));assert(r.ok);assert.equal(r.result.foodCost,22);assert.equal(g.state.covert.reserves.edo,100);assert.equal(g.state.resources.rice,before.resources.rice-22);assert.equal(g.state.command,before.command-1);assert.deepEqual(g.state.castles,before.castles);assert.equal(g.state.scouted.kagoshima,3);assert.deepEqual(Object.keys(r.result.report.snapshot).sort(),['defensePower','garrison','level','troops','wall']);
+ const invalid=copy(g.state);assert.equal(g.dispatchCovert('edo',{kind:'player',playerId:'another',castleId:'kiyosu'},1,'scout',request(g)).code,'ONLINE_REQUIRED');assert.deepEqual(g.state,invalid);
+});
+test('stationing moves hired units and free recall restores exactly the survivors across save/load',()=>{
+ let g=create({isAdmin:true});assert(hire(g).ok);const r=station(g);assert(r.ok);const id=r.result.stationId;assert.equal(g.state.covert.reserves.edo,50);assert.equal(g.state.covert.stations[0].count,50);g=E.fromSave(g.exportSave(),officers,{isAdmin:true});const before=copy(g.state),opts=request(g),recalled=g.recallCovert(id,opts);assert(recalled.ok);assert.equal(g.state.covert.reserves.edo,100);assert.equal(g.state.covert.stations.length,0);assert.equal(g.state.command,before.command);assert.deepEqual(g.state.resources,before.resources);
+ const after=copy(g.state);assert.equal(g.recallCovert(id,opts).idempotent,true);assert.deepEqual(g.state,after);assert.equal(g.recallCovert(id,request(g)).ok,false);
+});
+test('one real CPU invasion into Edo creates one opportunity without altering protected defender assets',()=>{
+ const g=create({isAdmin:true});assert(hire(g).ok);const stationId=station(g).result.stationId,before=copy(g.state),events=invasion(g);assert(events.some(e=>e.includes('侵攻')));assert.equal(g.state.castles.edo.owner,before.castles.edo.owner);assert.deepEqual(g.state.castles.edo,before.castles.edo);assert.equal(g.state.troops,before.troops);assert.equal(g.state.covert.incidents.length,1);const incident=g.covertStatus().incidents[0];assert(incident.available);assert.deepEqual(incident.stationIds,[stationId]);invasion(g);assert.equal(g.state.covert.incidents.length,1);
+});
+test('retaliation consumes one actual incident, changes real garrison and stationed counts, and never captures or rewards',()=>{
+ const g=create({isAdmin:true});g.state.resources.gold=100000;g.state.resources.rice=100000;hire(g,1000);const stationId=station(g,800).result.stationId;invasion(g);g.state.command=3;const incidentId=g.state.covert.incidents[0].id,before=copy(g.state),options=request(g),r=g.retaliateCovert(stationId,incidentId,options),b=r.result.battle;
+ assert(r.ok&&b.won);assert.equal(g.state.castles.kagoshima.owner,before.castles.kagoshima.owner);assert.equal(g.state.castles.kagoshima.troops,before.castles.kagoshima.troops-b.defenderLost.garrison);assert(b.defenderLost.garrison<=Math.floor(before.castles.kagoshima.troops*.1));assert.equal(g.state.covert.stations[0].count,800-b.ourLost);assert.equal(g.state.resources.gold,before.resources.gold);assert.equal(g.state.resources.rice,before.resources.rice-r.result.foodCost);assert.equal(g.state.command,before.command-1);assert.equal(g.state.covert.incidents[0].used,true);assert.equal(g.covertStatus().incidents.length,0);
+ const after=copy(g.state);assert.equal(g.retaliateCovert(stationId,incidentId,options).idempotent,true);assert.deepEqual(g.state,after);assert.equal(g.retaliateCovert(stationId,incidentId,request(g)).code,'COVERT_INCIDENT_REQUIRED');assert.deepEqual(g.state,after);assert.doesNotThrow(()=>E.fromSave(g.exportSave(),officers,{isAdmin:true}));
+});
+test('fabricated, too-early or different-source incidents, lost sources and allied/own destinations fail atomically',()=>{
+ const g=create({isAdmin:true});hire(g);const stationId=station(g).result.stationId;const before=copy(g.state);assert.equal(g.retaliateCovert(stationId,'missing',request(g)).code,'COVERT_INCIDENT_REQUIRED');assert.deepEqual(g.state,before);invasion(g);g.state.command=3;const id=g.state.covert.incidents[0].id;
+ for(const change of [()=>g.state.covert.incidents[0].sourceCastleId='nijo',()=>g.state.covert.stations[0].createdElapsedMs=999999,()=>g.state.castles.edo.owner='在地衆',()=>g.state.castles.kagoshima.owner=g.state.clan,()=>g.state.treaties[g.state.castles.kagoshima.owner]=g.state.turn+3]){const saved=copy(g.state);change();const bad=copy(g.state);assert.equal(g.retaliateCovert(stationId,id,request(g)).ok,false);assert.deepEqual(g.state,bad);g.state=saved;}
+});
+test('survivors remain stationed after defeat, can be recalled from a lost source and do not hit protected castles',()=>{
+ const g=create({isAdmin:true});hire(g);const stationId=station(g,50,'edo',{kind:'castle',castleId:'sunpu'}).result.stationId;invasion(g);g.random=()=>.999;g.state.command=3;const before=copy(g.state),r=g.retaliateCovert(stationId,g.state.covert.incidents[0].id,request(g));assert(r.ok&&!r.result.battle.won);assert.deepEqual(r.result.battle.defenderLost,{troops:0,garrison:0});assert.deepEqual(g.state.castles.sunpu,before.castles.sunpu);const survivors=r.result.battle.survivors;assert.equal(g.state.covert.stations[0].count,survivors);g.state.castles.edo.owner='在地衆';g.state.command=0;assert.equal(g.recallCovert(stationId,request(g)).result.count,survivors);assert.equal(g.state.covert.reserves.edo,50+survivors);
+});
+test('legacy saves default safely, strict loading rejects malformed data and private report allowlist strips unrelated fields',()=>{
+ const g=create({isAdmin:true}),old=JSON.parse(g.exportSave());delete old.state.covert;const loaded=E.fromSave(old,officers,{isAdmin:true});assert.equal(loaded.state.covert.sequence,0);assert.deepEqual(loaded.state.covert.stations,[]);
+ hire(g);station(g);for(const change of [s=>s.covert.campaignId='wrong',s=>s.covert.reserves.edo=-1,s=>s.covert.stations.push(copy(s.covert.stations[0])),s=>s.covert.stations[0].count=20001,s=>s.covert.reports[0].snapshot.resources={gold:0},s=>s.covert.history[0].sequence=999]){const bad=JSON.parse(g.exportSave());change(bad.state);assert.throws(()=>E.fromSave(bad,officers,{isAdmin:true}));}
+ const safe=E.normalizeCovertSnapshot({level:1,troops:1,garrison:1,wall:1,defensePower:1,resources:{gold:1,rice:1,wood:1,stone:1,token:'secret'},token:'secret',email:'private',isAdmin:true});assert(!JSON.stringify(safe).includes('secret'));assert(!('email'in safe));assert(!('isAdmin'in safe));
+});
+test('local history trims at40 and old pruned request sequence cannot hire or deploy twice',()=>{
+ let g=create({isAdmin:true});g.state.resources.gold=999999;g.state.resources.rice=999999;const first=request(g);for(let i=0;i<42;i++){g.state.command=3;assert(hire(g,1).ok);}assert.equal(g.state.covert.history.length,40);g=E.fromSave(g.exportSave(),officers,{isAdmin:true});const before=copy(g.state);assert.equal(g.hireCovert('edo',1,first).code,'COVERT_STATE_CHANGED');assert.deepEqual(g.state,before);
+});
+assert.equal(fs.readFileSync(path.join(__dirname,'../engine.js'),'utf8'),fs.readFileSync(path.join(__dirname,'../server/game-engine.js'),'utf8'));
+console.log(count+' covert engine scenarios passed; browser and server engines match.');

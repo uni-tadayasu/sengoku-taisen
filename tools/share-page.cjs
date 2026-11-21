@@ -57,7 +57,7 @@ function renderSharePage({ site, metadataHtml, jsonLd, iconHtml }) {
       <div class="share-section-heading"><p class="section-kicker">育てる・備える・進む</p><h2 id="share-journey-title">一城から広がる、三つの楽しみ。</h2></div>
       <ol class="share-feature-list">
         <li><span class="share-step-number" aria-hidden="true">一</span><div><h3>城下町を育て、城を強く。</h3><p>田畑で兵糧を、商業施設で金銭を蓄え、木材や石材を使って施設を増築。城郭のレベルを上げ、奉行を配置し、技術を研究しながら、領国を支える力を少しずつ整えていきます。</p><a class="share-detail-link" href="../guide/#construction">城下町と普請の遊び方</a></div></li>
-        <li><span class="share-step-number" aria-hidden="true">二</span><div><h3>武将を迎え、自分の軍団を編成。</h3><p>武将ごとの能力や特技を見て、軍団と内政の役目を選びます。兵を集め、訓練で士気を整え、天下地図で隣接するCPU勢力の城へ。戦況を確認し、戦法と兵数を決める采配が、次の戦役につながります。</p><a class="share-detail-link" href="../guide/#officers">武将と軍団の遊び方</a></div></li>
+        <li><span class="share-step-number" aria-hidden="true">二</span><div><h3>武将を迎え、自分の軍団を編成。</h3><p>武将ごとの能力や特技を見て、軍団と内政の役目を選びます。兵を集め、訓練で士気を整え、天下地図で隣接するCPU勢力の城へ。戦況を確認し、戦法と兵数を決める采配が、次の戦役につながります。大都市拠点を確保すれば、部隊の雇用・偵察・駐留で遠方にも備えられます。</p><a class="share-detail-link" href="../guide/#officers">武将と軍団の遊び方</a><a class="share-detail-link" href="../guide/#covert">派遣部隊の使い方</a></div></li>
         <li><span class="share-step-number" aria-hidden="true">三</span><div><h3>ほかの領主と、戦記を重ねる。</h3><p>共通フィールドでは領主同士の対人戦を、ギルドや書状では交流を楽しめます。交易では、相手へ渡す資産と受け取りたい対価を示して申出を送り、承認を経て交換。領主との関わりも、国づくりの一部になります。</p><a class="share-detail-link" href="../guide/#trade">領主との交易の遊び方</a></div></li>
       </ol>
     </section>

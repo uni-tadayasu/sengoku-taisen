@@ -169,7 +169,8 @@
     ['従四位',45000],['正四位',50000],['従三位',60000],['正三位',70000],
     ['従二位',80000],['正二位',90000],['従一位',95000],['正一位',98000]
   ].map(([name,minScore],index)=>Object.freeze({id:`court-${index}`,name,index,minScore})));
-  const DATA = {version:2,gacha:GACHA,rankBonuses:RANK_BONUSES,adminAssets:ADMIN_ASSETS,adminClan:ADMIN_CLAN,staffClan:STAFF_CLAN,majorCityIds:MAJOR_CITY_IDS,worldCalendar:WORLD_CALENDAR,secondsPerMonth:60,secondsPerCommand:20,buildingLimit:32,ranks:RANKS,evaluationRanks:EVALUATION_RANKS,evaluationMax:EVALUATION_MAX,categories:CATEGORY_LABELS,clans:CLANS,buildings:BUILDINGS,techs:TECHS,castles:CASTLES,tactics:TACTICS,quests:QUESTS,resources:RESOURCES,roaming:{commandCost:1,minTroops:300,historyLimit:20,encounters:ROAMING_ENCOUNTERS,tactics:ROAMING_TACTICS}};
+  const COVERT_RULES=Object.freeze({minCount:1,maxCount:20000,commandCost:1,stationLimit:1024,historyLimit:40,reportLimit:50,capacityDivisor:4,hire:{ninja:{gold:3,rice:2},ashigaru:{gold:1,rice:1}},scout:{riceBase:20,ricePerUnit:.2},station:{riceBase:30,ricePerUnit:.3},retaliate:{riceBase:50,ricePerUnit:.4}});
+  const DATA = {version:2,gacha:GACHA,rankBonuses:RANK_BONUSES,adminAssets:ADMIN_ASSETS,adminClan:ADMIN_CLAN,staffClan:STAFF_CLAN,majorCityIds:MAJOR_CITY_IDS,worldCalendar:WORLD_CALENDAR,secondsPerMonth:60,secondsPerCommand:20,buildingLimit:32,ranks:RANKS,evaluationRanks:EVALUATION_RANKS,evaluationMax:EVALUATION_MAX,categories:CATEGORY_LABELS,clans:CLANS,buildings:BUILDINGS,techs:TECHS,castles:CASTLES,tactics:TACTICS,quests:QUESTS,resources:RESOURCES,covert:COVERT_RULES,roaming:{commandCost:1,minTroops:300,historyLimit:20,encounters:ROAMING_ENCOUNTERS,tactics:ROAMING_TACTICS}};
   const clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
   const copy=o=>JSON.parse(JSON.stringify(o));
   const int=n=>Math.floor(Number(n)||0);
@@ -305,6 +306,46 @@
     if(history.some((b,i)=>i&&b.sequence>=history[i-1].sequence))invalid();
     return{version:1,campaignId,sequence:raw.sequence,wins:raw.wins,history};
   }
+  const covertError=(code,message)=>({ok:false,code,message});
+  const covertHash=value=>{let hash=2166136261;for(const char of String(value))hash=Math.imul(hash^char.charCodeAt(0),16777619);return(hash>>>0).toString(36);};
+  function covertTarget(raw){
+    if(!raw||typeof raw!=='object'||!['castle','player'].includes(raw.kind)||!CASTLE_BY_ID[raw.castleId]||raw.kind==='player'&&!walkingId(raw.playerId))throw new Error('派遣先の保存情報が正しくありません。');
+    return{kind:raw.kind,castleId:raw.castleId,name:CASTLE_BY_ID[raw.castleId].name,...(raw.kind==='player'?{playerId:raw.playerId,playerName:typeof raw.playerName==='string'?raw.playerName.slice(0,80):''}:{})};
+  }
+  function covertSnapshot(raw){
+    const num=(value,max=999999999)=>Number.isSafeInteger(value)&&value>=0&&value<=max;
+    if(!raw||typeof raw!=='object'||!['level','troops','garrison','wall','defensePower'].every(key=>num(raw[key],key==='defensePower'?1000000000000:999999999)))throw new Error('諜報の保存情報が正しくありません。');
+    const out=Object.fromEntries(['level','troops','garrison','wall','defensePower'].map(key=>[key,raw[key]]));
+    if(raw.resources!==undefined){if(!raw.resources||!RESOURCES.every(key=>num(raw.resources[key])))throw new Error('諜報資源が正しくありません。');out.resources=Object.fromEntries(RESOURCES.map(key=>[key,raw.resources[key]]));}
+    if(raw.army!==undefined){if(!raw.army||!['count','lead','valor','intellect','politics'].every(key=>num(raw.army[key],key==='count'?3:1000000)))throw new Error('諜報軍団が正しくありません。');out.army=Object.fromEntries(['count','lead','valor','intellect','politics'].map(key=>[key,raw.army[key]]));}
+    return out;
+  }
+  function covertState(raw,campaignId){
+    const invalid=()=>{throw new Error('派遣部隊の保存情報が正しくありません。');};
+    const obj=value=>value&&typeof value==='object'&&!Array.isArray(value),num=(value,max=999999999)=>Number.isSafeInteger(value)&&value>=0&&value<=max;
+    if(raw===undefined)return{version:1,campaignId,sequence:0,reserves:Object.fromEntries(MAJOR_CITY_IDS.map(id=>[id,0])),stations:[],reports:[],incidents:[],history:[]};
+    if(!obj(raw)||raw.version!==1||raw.campaignId!==campaignId||!num(raw.sequence,10000000)||!obj(raw.reserves)||Object.keys(raw.reserves).some(id=>!MAJOR_CITY_IDS.includes(id)))invalid();
+    const reserves=Object.fromEntries(MAJOR_CITY_IDS.map(id=>[id,raw.reserves[id]??0]));if(Object.values(reserves).some(value=>!num(value,COVERT_RULES.maxCount)))invalid();
+    for(const [key,max] of [['stations',1024],['reports',50],['incidents',128],['history',40]])if(!Array.isArray(raw[key])||raw[key].length>max)invalid();
+    const unique=(values,key)=>new Set(values.map(value=>value[key])).size===values.length;
+    const stations=raw.stations.map(v=>{if(!obj(v)||!walkingId(v.id)||!MAJOR_CITY_IDS.includes(v.sourceCastleId)||!num(v.count,COVERT_RULES.maxCount)||v.count<1||!num(v.createdElapsedMs,Number.MAX_SAFE_INTEGER)||!num(v.battleCursor??0,Number.MAX_SAFE_INTEGER)||!num(v.deploymentSequence??0,raw.sequence-1))invalid();return{id:v.id,sourceCastleId:v.sourceCastleId,unitType:v.sourceCastleId==='edo'?'ninja':'ashigaru',unitName:v.sourceCastleId==='edo'?'忍者':'足軽',count:v.count,target:covertTarget(v.target),createdElapsedMs:v.createdElapsedMs,battleCursor:v.battleCursor??0,deploymentSequence:v.deploymentSequence??0};});
+    if(MAJOR_CITY_IDS.some(id=>reserves[id]+stations.filter(v=>v.sourceCastleId===id).reduce((sum,v)=>sum+v.count,0)>COVERT_RULES.maxCount))invalid();
+    const reports=raw.reports.map(v=>{if(!obj(v)||!walkingId(v.id)||!MAJOR_CITY_IDS.includes(v.sourceCastleId)||!num(v.observedElapsedMs,Number.MAX_SAFE_INTEGER))invalid();return{id:v.id,sourceCastleId:v.sourceCastleId,target:covertTarget(v.target),observedElapsedMs:v.observedElapsedMs,snapshot:covertSnapshot(v.snapshot)};});
+    const incidents=raw.incidents.map(v=>{if(!obj(v)||!walkingId(v.id)||!MAJOR_CITY_IDS.includes(v.sourceCastleId)||!['cpu','field'].includes(v.kind)||!num(v.occurredElapsedMs,Number.MAX_SAFE_INTEGER)||typeof v.used!=='boolean'||!num(v.battleCursor??0,Number.MAX_SAFE_INTEGER)||!num(v.stationSequence??0,raw.sequence))invalid();return{id:v.id,sourceCastleId:v.sourceCastleId,kind:v.kind,occurredElapsedMs:v.occurredElapsedMs,used:v.used,battleCursor:v.battleCursor??0,stationSequence:v.stationSequence??0};});
+    const history=raw.history.map(v=>{
+      if(!obj(v)||!walkingId(v.requestId)||v.campaignId!==campaignId||!num(v.sequence,raw.sequence-1)||!['hire','dispatch','recall','retaliate'].includes(v.action))invalid();
+      const result={requestId:v.requestId,campaignId,sequence:v.sequence,action:v.action};
+      for(const key of ['sourceCastleId','stationId','incidentId'])if(v[key]!==undefined){if(!walkingId(v[key])||key==='sourceCastleId'&&!MAJOR_CITY_IDS.includes(v[key]))invalid();result[key]=v[key];}
+      if(v.mode!==undefined){if(!['scout','station'].includes(v.mode))invalid();result.mode=v.mode;}
+      if(v.target!==undefined)result.target=covertTarget(v.target);
+      for(const key of ['count','foodCost','commandCost','goldCost','createdElapsedMs'])if(v[key]!==undefined){if(!num(v[key],Number.MAX_SAFE_INTEGER))invalid();result[key]=v[key];}
+      if(v.report!==undefined){const r=v.report;if(!obj(r)||!walkingId(r.id)||!num(r.observedElapsedMs,Number.MAX_SAFE_INTEGER)||!MAJOR_CITY_IDS.includes(r.sourceCastleId))invalid();result.report={id:r.id,sourceCastleId:r.sourceCastleId,target:covertTarget(r.target),observedElapsedMs:r.observedElapsedMs,snapshot:covertSnapshot(r.snapshot)};}
+      if(v.battle!==undefined){const b=v.battle;if(!obj(b)||typeof b.won!=='boolean'||b.captured!==false||!['deployed','ourLost','survivors','attackPower','defensePower'].every(key=>num(b[key],1000000000000))||b.ourLost>b.deployed||b.survivors!==b.deployed-b.ourLost||!obj(b.defenderLost)||!num(b.defenderLost.troops)||!num(b.defenderLost.garrison))invalid();result.battle={won:b.won,captured:false,deployed:b.deployed,ourLost:b.ourLost,survivors:b.survivors,attackPower:b.attackPower,defensePower:b.defensePower,defenderLost:{troops:b.defenderLost.troops,garrison:b.defenderLost.garrison}};}
+      return result;
+    });
+    if(!unique(stations,'id')||!unique(reports,'id')||!unique(incidents,'id')||!unique(history,'requestId')||!unique(history,'sequence')||history.some((v,i)=>i&&v.sequence>=history[i-1].sequence))invalid();
+    return{version:1,campaignId,sequence:raw.sequence,reserves,stations,reports,incidents,history};
+  }
   class SengokuEngine {
     constructor(options={}) {
       ADMIN_ACCESS.set(this,options.isAdmin===true);STAFF_ACCESS.set(this,options.isStaff===true);
@@ -334,6 +375,7 @@
         lastBattle:null,stats:{battles:0,wins:0,upgrades:0,recruited:0,researches:0,gachaDraws:0,gachaDuplicates:0,castleUpgrades:0},won:false,gameOver:false
       };
       this.state.roaming=roamingState(undefined,this.state.walking.campaignId);
+      this.state.covert=covertState(undefined,this.state.walking.campaignId);
       this.log(`${clan.name}、${CASTLE_BY_ID[home].name}より天下への歩みを始める。`,'story');
       this.log('共通の時刻は60秒で1か月進みます。1560〜1615年を周回し、占領拠点を精算して最初の本拠から再出発します。家臣・施設・資源は引き継ぎます。','guide');
       this.log(`門出の贈り物として勾玉${GACHA.initial.toLocaleString()}を受け取りました。武将招集に使えます。`,'gacha');
@@ -548,6 +590,9 @@
     _gain(reward){for(const k of RESOURCES)this.state.resources[k]=Math.min(999999999,this.state.resources[k]+(reward[k]||0));if(reward.magatama)this.state.magatama=Math.min(999999999,this.state.magatama+reward.magatama);}
     static normalizeWalkingState(raw){return walkingState(raw);}
     static normalizeRoamingState(raw,campaignId){return roamingState(raw,campaignId);}
+    static normalizeCovertState(raw,campaignId){return covertState(raw,campaignId);}
+    static normalizeCovertTarget(raw){return covertTarget(raw);}
+    static normalizeCovertSnapshot(raw){return covertSnapshot(raw);}
     beginLocalWalkingSession(id){
       if(!walkingId(id))return fail('歩行計測の識別子が正しくありません。');
       const w=this.state.walking,current=w.localSession;
@@ -716,6 +761,94 @@
     diplomacy(castleId){const g=this._guard();if(g)return g;const c=this.castle(castleId);if(!c||c.owner===this.state.clan)return fail('外交先の他勢力を選んでください。');if((this.state.treaties[c.owner]||0)>this.state.turn)return fail('すでに同盟を結んでいます。');const active=Object.values(this.state.treaties).filter(t=>t>this.state.turn).length;if(active>=2)return fail('同時に結べる同盟は2勢力までです。');const cost=this.diplomacyCost(castleId);if(!this._canPay(cost))return fail(`同盟には金銭${cost.gold}が必要です。`);this._pay(cost);this.state.treaties[c.owner]=this.state.turn+6;return this._action(`${c.owner}と6か月の同盟を締結しました。`,'diplomacy');}
     scout(castleId){const g=this._guard();if(g)return g;const c=this.castle(castleId);if(!c||c.owner===this.state.clan)return fail('偵察する敵城を選んでください。');if(!this.adjacentTargets().some(t=>t.id===castleId))return fail('偵察できるのは自領に隣接する敵城です。');const cost=this.scoutCost(castleId);if(!this._canPay(cost))return fail(`偵察には金銭${cost.gold}が必要です。`);this._pay(cost);this.state.scouted[castleId]=this.state.turn+3;return this._action(`${c.name}を偵察。3か月間、この城への攻撃力が10%増加します。`,'scout');}
     armyStats(){const arr=this.state.army.map(id=>this.officer(id)).filter(Boolean);if(!arr.length)return{lead:35,valor:35,intellect:35,politics:35,count:0};return{lead:Math.round(arr.reduce((a,o)=>a+o.lead,0)/arr.length),valor:Math.round(arr.reduce((a,o)=>a+o.valor,0)/arr.length),intellect:Math.round(arr.reduce((a,o)=>a+o.intellect,0)/arr.length),politics:Math.round(arr.reduce((a,o)=>a+o.politics,0)/arr.length),count:arr.length};}
+    _covertElapsed(){return Math.floor(this.state.turn*60000+this.state.realtime.elapsed*1000);}
+    _covertSourceAvailable(id){return MAJOR_CITY_IDS.includes(id)&&this.state.castles[id]?.owner===this.state.clan&&(id!=='edo'||this.isAdmin)&&(id!=='sunpu'||this.isStaff);}
+    covertStatus(){
+      const s=this.state,c=s.covert||(s.covert=covertState(undefined,s.walking.campaignId)),capacity=Math.max(1,Math.min(COVERT_RULES.maxCount,Math.floor(this.troopCapacity()/COVERT_RULES.capacityDivisor)));
+      const sources=MAJOR_CITY_IDS.filter(id=>this._covertSourceAvailable(id)||c.reserves[id]||c.stations.some(v=>v.sourceCastleId===id)).map(id=>{const unitType=id==='edo'?'ninja':'ashigaru';return{castleId:id,name:CASTLE_BY_ID[id].name,unitType,unitName:unitType==='ninja'?'忍者':'足軽',reserve:c.reserves[id],stationed:c.stations.filter(v=>v.sourceCastleId===id).reduce((sum,v)=>sum+v.count,0),capacity,hireCost:copy(COVERT_RULES.hire[unitType]),available:this._covertSourceAvailable(id)};});
+      const eligible=(incident,station)=>station.sourceCastleId===incident.sourceCastleId&&station.createdElapsedMs<=incident.occurredElapsedMs&&(incident.kind==='field'?station.battleCursor<incident.battleCursor:station.deploymentSequence<incident.stationSequence);
+      return{version:1,campaignId:c.campaignId,sequence:c.sequence,rules:copy(COVERT_RULES),sources,targets:CASTLES.map(v=>({kind:'castle',castleId:v.id,name:v.name})),stations:copy(c.stations),reports:copy(c.reports),incidents:c.incidents.filter(v=>!v.used).map(v=>({...copy(v),available:this._covertSourceAvailable(v.sourceCastleId)&&c.stations.some(st=>eligible(v,st)),stationIds:c.stations.filter(st=>eligible(v,st)).map(st=>st.id),expiresElapsedMs:null})),history:copy(c.history)};
+    }
+    _covertStart(action,intent,options={}){
+      const c=this.state.covert||(this.state.covert=covertState(undefined,this.state.walking.campaignId)),requestId=options.requestId??newWalkingCampaign();
+      if(!walkingId(requestId))return covertError('INVALID_INPUT','操作番号が正しくありません。');
+      const signature=value=>JSON.stringify([value.action,value.sourceCastleId,value.count,value.mode,value.target?.kind,value.target?.playerId,value.target?.castleId,value.stationId,value.incidentId]);
+      const old=c.history.find(v=>v.requestId===requestId);
+      if(old){const compare={...old};for(const key of ['sourceCastleId','count','mode','target','stationId','incidentId'])if(intent[key]===undefined)delete compare[key];if(signature(compare)!==signature({action,...intent}))return covertError('REQUEST_ID_REUSED','この操作番号は別の派遣に使用されています。');return{ok:true,idempotent:true,result:copy(old),message:'記録済みの結果を表示しました。'};}
+      if(options.campaignId!==undefined&&options.campaignId!==c.campaignId)return covertError('COVERT_SCOPE_CHANGED','物語が切り替わりました。派遣画面を更新してください。');
+      if(options.sequence!==undefined&&options.sequence!==c.sequence)return covertError('COVERT_STATE_CHANGED','派遣部隊が更新されました。最新の状態を確認してください。');
+      if(c.sequence>=10000000)return covertError('COVERT_LIMIT','この物語の派遣記録が上限に達しました。');
+      if(action!=='recall'){const guard=this._guard();if(guard)return{...guard,code:'COVERT_UNAVAILABLE'};}
+      return{pending:true,requestId,campaignId:c.campaignId,sequence:c.sequence,action,...intent};
+    }
+    _covertCommit(start,extra,message){
+      const {pending,...base}=start,result={...base,...extra,createdElapsedMs:this._covertElapsed()},c=this.state.covert;c.sequence++;
+      c.history.unshift(copy(result));c.history=c.history.slice(0,COVERT_RULES.historyLimit);
+      if(result.commandCost)this.state.command-=result.commandCost;this.log(message,'covert');
+      return{ok:true,idempotent:false,message,result:copy(result)};
+    }
+    hireCovert(sourceCastleId,count,options={}){
+      const start=this._covertStart('hire',{sourceCastleId,count},options);if(!start.pending)return start;
+      const source=this.covertStatus().sources.find(v=>v.castleId===sourceCastleId&&v.available);
+      if(!source)return covertError('COVERT_SOURCE_UNAVAILABLE','部隊を雇用できる大都市拠点を選んでください。');
+      if(!Number.isSafeInteger(count)||count<1||count>COVERT_RULES.maxCount)return covertError('INVALID_COUNT','雇用人数は1〜20,000人の整数で指定してください。');
+      if(source.reserve+source.stationed+count>source.capacity)return covertError('COVERT_CAPACITY','この拠点の派遣部隊上限を超えます。兵舎などを増築してください。');
+      const cost={gold:count*source.hireCost.gold,rice:count*source.hireCost.rice};if(!this._canPay(cost))return covertError('INSUFFICIENT_RESOURCES','雇用に必要な金銭・兵糧が足りません。');
+      this._pay(cost);this.state.covert.reserves[sourceCastleId]+=count;
+      return this._covertCommit(start,{goldCost:cost.gold,foodCost:cost.rice,commandCost:1},source.name+'で'+source.unitName+count.toLocaleString()+'人を雇用しました。');
+    }
+    _covertTargetSnapshot(target,options){
+      if(target.kind==='player'){if(!options.targetSnapshot)throw new Error('共有拠点への派遣はオンラインで行ってください。');return covertSnapshot(options.targetSnapshot);}
+      const c=this.state.castles[target.castleId];return covertSnapshot({level:c.level,troops:0,garrison:c.troops,wall:c.wall,defensePower:Math.round(this.defensePower(target.castleId))});
+    }
+    dispatchCovert(sourceCastleId,target,count,mode='scout',options={}){
+      let dest;try{dest=covertTarget(options.canonicalTarget||target);}catch{return covertError('INVALID_TARGET','派遣先を選んでください。');}
+      const start=this._covertStart('dispatch',{sourceCastleId,target:dest,count,mode},options);if(!start.pending)return start;
+      const c=this.state.covert,source=this.covertStatus().sources.find(v=>v.castleId===sourceCastleId&&v.available);
+      if(!source)return covertError('COVERT_SOURCE_UNAVAILABLE','派遣できる大都市拠点を選んでください。');
+      if(!['scout','station'].includes(mode)||!Number.isSafeInteger(count)||count<1||count>COVERT_RULES.maxCount)return covertError('INVALID_INPUT','派遣方法と1〜20,000人の人数を指定してください。');
+      if(count>source.reserve)return covertError('INSUFFICIENT_FORCE','拠点で待機している部隊が足りません。');
+      if(mode==='station'&&c.stations.length>=COVERT_RULES.stationLimit)return covertError('COVERT_STATION_LIMIT','常駐部隊が上限です。先に帰還させてください。');
+      let snapshot;try{snapshot=this._covertTargetSnapshot(dest,options);}catch(error){return covertError('ONLINE_REQUIRED',error.message);}
+      const rule=COVERT_RULES[mode],foodCost=rule.riceBase+Math.ceil(count*rule.ricePerUnit);if(this.state.resources.rice<foodCost)return covertError('INSUFFICIENT_RESOURCES','派遣に必要な兵糧が足りません。');
+      this._pay({rice:foodCost});const key=covertHash(c.campaignId)+'_'+c.sequence,observedElapsedMs=this._covertElapsed(),report={id:'cr_'+key,sourceCastleId,target:dest,observedElapsedMs,snapshot};
+      c.reports.unshift(report);c.reports=c.reports.slice(0,COVERT_RULES.reportLimit);
+      let stationId;
+      if(mode==='station'){stationId='cs_'+key;c.reserves[sourceCastleId]-=count;c.stations.push({id:stationId,sourceCastleId,unitType:source.unitType,unitName:source.unitName,count,target:dest,createdElapsedMs:observedElapsedMs,battleCursor:Number.isSafeInteger(options.battleCursor)?Math.max(0,options.battleCursor):0,deploymentSequence:c.sequence});}
+      else if(dest.kind==='castle')this.state.scouted[dest.castleId]=this.state.turn+3;
+      return this._covertCommit(start,{foodCost,commandCost:1,report,...(stationId?{stationId}:{})},dest.name+(mode==='station'?'に部隊を常駐させ、状況を確認しました。':'の状況を調査しました。部隊は全員帰還しました。'));
+    }
+    recallCovert(stationId,options={}){
+      const start=this._covertStart('recall',{stationId},options);if(!start.pending)return start;
+      const c=this.state.covert,station=c.stations.find(v=>v.id===stationId);if(!station)return covertError('COVERT_STATION_NOT_FOUND','常駐部隊が見つかりません。');
+      c.reserves[station.sourceCastleId]+=station.count;c.stations=c.stations.filter(v=>v.id!==stationId);
+      return this._covertCommit(start,{sourceCastleId:station.sourceCastleId,target:station.target,count:station.count,foodCost:0,commandCost:0},station.unitName+station.count.toLocaleString()+'人が'+CASTLE_BY_ID[station.sourceCastleId].name+'へ帰還しました。');
+    }
+    _recordCovertIncident(sourceCastleId,fromCastleId){
+      if(!this._covertSourceAvailable(sourceCastleId))return;
+      const c=this.state.covert,elapsed=this._covertElapsed(),id='ci_'+covertHash(c.campaignId)+'_'+this.state.turn+'_'+fromCastleId+'_'+sourceCastleId;
+      if(c.incidents.some(v=>v.id===id)||!c.stations.some(v=>v.sourceCastleId===sourceCastleId&&v.createdElapsedMs<=elapsed))return;
+      c.incidents.unshift({id,sourceCastleId,kind:'cpu',occurredElapsedMs:elapsed,used:false,battleCursor:0,stationSequence:c.sequence});c.incidents=c.incidents.slice(0,128);
+    }
+    retaliateCovert(stationId,incidentId,options={}){
+      const start=this._covertStart('retaliate',{stationId,incidentId},options);if(!start.pending)return start;
+      const c=this.state.covert,station=c.stations.find(v=>v.id===stationId),incident=c.incidents.find(v=>v.id===incidentId);
+      if(!station)return covertError('COVERT_STATION_NOT_FOUND','常駐部隊が見つかりません。');
+      if(!this._covertSourceAvailable(station.sourceCastleId))return covertError('COVERT_SOURCE_UNAVAILABLE','派遣元を現在領有している必要があります。');
+      if(!incident||incident.used||incident.sourceCastleId!==station.sourceCastleId||incident.occurredElapsedMs<station.createdElapsedMs||(incident.kind==='field'?incident.battleCursor<=station.battleCursor:station.deploymentSequence>=incident.stationSequence))return covertError('COVERT_INCIDENT_REQUIRED','常駐後に派遣元が攻撃されたとき、一度だけ反撃できます。');
+      const target=station.target,npc=target.kind==='castle'?this.state.castles[target.castleId]:null;
+      if(npc?.owner===this.state.clan)return covertError('INVALID_TARGET','自分の領地には反撃できません。');
+      if(npc&&(this.state.treaties[npc.owner]||0)>this.state.turn)return covertError('ALLIED_TARGET','同盟期間中の拠点には反撃できません。');
+      let snapshot;try{snapshot=this._covertTargetSnapshot(target,options);}catch(error){return covertError('ONLINE_REQUIRED',error.message);}
+      const rule=COVERT_RULES.retaliate,foodCost=rule.riceBase+Math.ceil(station.count*rule.ricePerUnit);if(this.state.resources.rice<foodCost)return covertError('INSUFFICIENT_RESOURCES','反撃に必要な兵糧が足りません。');
+      const deployed=station.count,attackPower=Math.max(1,Math.round(deployed*(station.unitType==='ninja'?3:2)*(1+this.state.tech.discipline*.06))),defensePower=Math.max(1,snapshot.defensePower),ratio=attackPower/defensePower;
+      const chance=clamp(.5+Math.log(ratio)*.35,.05,.95),won=this.random()<chance,ourLost=Math.min(deployed,Math.max(1,Math.ceil(deployed*(won?.08:.2)))),protectedTarget=['edo','sunpu'].includes(target.castleId);
+      const defenderLost={troops:protectedTarget?0:Math.min(Math.floor(snapshot.troops*.1),Math.floor(deployed*(won?.08:.03))),garrison:protectedTarget?0:Math.min(Math.floor(snapshot.garrison*.1),Math.max(1,Math.floor(deployed*(won?.16:.06))))};
+      if(npc)npc.troops=Math.max(0,npc.troops-defenderLost.garrison);
+      station.count-=ourLost;if(!station.count)c.stations=c.stations.filter(v=>v.id!==stationId);incident.used=true;this._pay({rice:foodCost});
+      const battle={won,captured:false,deployed,ourLost,survivors:deployed-ourLost,attackPower,defensePower,defenderLost};
+      return this._covertCommit(start,{sourceCastleId:station.sourceCastleId,target:station.target,count:deployed,foodCost,commandCost:1,battle},target.name+'の常駐部隊が反撃しました。'+(won?'戦闘に勝利。':'戦闘に敗北。')+'生存兵は現地に駐留。'+'損失'+ourLost.toLocaleString()+'人。');
+    }
     roamingEncounters(){const scale={easy:.85,normal:1,hard:1.15}[this.state.difficulty];return ROAMING_ENCOUNTERS.map(e=>({...copy(e),enemyTroops:Math.round(e.troops*scale),enemyPower:Math.round(e.troops*scale*e.power)}));}
     previewRoamingBattle(encounterId,tactic='balanced',troops=Math.min(this.state.troops,this.troopCapacity())){
       const s=this.state,e=this.roamingEncounters().find(e=>e.id===encounterId),t=ROAMING_TACTICS.find(t=>t.id===tactic),maxTroops=Math.max(0,Math.min(s.troops,this.troopCapacity(),1000000));
@@ -915,7 +1048,7 @@
     _cpuTurn(){
       const s=this.state;if(s.turn<5||s.turn%3!==0)return[];const events=[];
       const choices=[];
-      for(const c of CASTLES){const a=s.castles[c.id];if(a.owner===s.clan)continue;for(const tid of c.neighbors){const b=s.castles[tid];if(tid===ADMIN_ASSETS.castleId||tid==='sunpu')continue;if(a.owner===b.owner)continue;if((s.treaties[a.owner]||0)>s.turn&&b.owner===s.clan)continue;choices.push({from:c.id,to:tid});}}
+      for(const c of CASTLES){const a=s.castles[c.id];if(a.owner===s.clan)continue;for(const tid of c.neighbors){const b=s.castles[tid];if((tid===ADMIN_ASSETS.castleId||tid==='sunpu')&&!(b.owner===s.clan&&s.covert.stations.some(v=>v.sourceCastleId===tid)))continue;if(a.owner===b.owner)continue;if((s.treaties[a.owner]||0)>s.turn&&b.owner===s.clan)continue;choices.push({from:c.id,to:tid});}}
       if(!choices.length)return events;
       const playerThreats=choices.filter(e=>s.castles[e.to].owner===s.clan),others=choices.filter(e=>s.castles[e.to].owner!==s.clan);
       const canRaid=playerThreats.length&&s.turn>=8&&this.random()<(s.difficulty==='hard'?.45:s.difficulty==='easy'?.16:.28);
@@ -923,6 +1056,8 @@
       const move=pool[Math.floor(this.random()*pool.length)],a=s.castles[move.from],b=s.castles[move.to],ac=CASTLE_BY_ID[move.from],bc=CASTLE_BY_ID[move.to];
       if(b.owner===s.clan){
         if((s.treaties[a.owner]||0)>s.turn)return events;
+        this._recordCovertIncident(move.to,move.from);
+        if(['edo','sunpu'].includes(move.to)){events.push(a.owner+'が'+bc.name+'へ侵攻。城の領有と守備資産を維持しました。');for(const e of events)this.log(e,'world');return events;}
         const home=move.to===s.home,reinforce=home?Math.round(s.troops*.45):Math.round(s.troops*.18),wall=home?s.buildings.wall:b.wall;
         const attack=a.troops*(s.difficulty==='hard'?.85:s.difficulty==='easy'?.55:.7),defense=this.defensePower(move.to);
         const held=defense>=attack*(.84+this.random()*.32);
@@ -1117,6 +1252,7 @@
       if(!Array.isArray(s.giftReceipts)||s.giftReceipts.length>2000||new Set(s.giftReceipts).size!==s.giftReceipts.length||s.giftReceipts.some(id=>typeof id!=='string'||id.length<1||id.length>128))invalid();
       s.walking=walkingState(s.walking);
       s.roaming=roamingState(s.roaming,s.walking.campaignId);
+      s.covert=covertState(s.covert,s.walking.campaignId);
       if(s.magatama===undefined)s.magatama=GACHA.initial;if(!num(s.magatama))invalid();
       if(s.captureRewards===undefined)s.captureRewards=CASTLES.filter(c=>s.castles[c.id].owner===s.clan).map(c=>c.id);
       if(!Array.isArray(s.captureRewards)||s.captureRewards.length>CASTLES.length||new Set(s.captureRewards).size!==s.captureRewards.length||s.captureRewards.some(id=>typeof id!=='string'||!CASTLE_BY_ID[id]))invalid();
@@ -1132,7 +1268,7 @@
       if(!num(s.stats.researches??0,0,10000000))invalid();s.stats.researches=s.stats.researches??Object.values(s.tech).reduce((a,b)=>a+b,0);
       if(!Array.isArray(s.log)||s.log.length>200||s.log.some(l=>!isObj(l)||!num(l.turn,0,MAX_TURN)||typeof l.text!=='string'||l.text.length>2000||typeof l.kind!=='string'||l.kind.length>30))invalid();
       // Only retain known, validated fields; do not merge arbitrary imported object keys.
-      const n=g.state;for(const k of ['clan','home','turn','difficulty','resources','troops','morale','prestige','command','buildings','jobs','officers','officerVariants','army','governors','tech','castles','treaties','scouted','log','claimedQuests','giftReceipts','walking','roaming','magatama','captureRewards','gachaHistory','seed','stats','realtime'])n[k]=copy(s[k]);
+      const n=g.state;for(const k of ['clan','home','turn','difficulty','resources','troops','morale','prestige','command','buildings','jobs','officers','officerVariants','army','governors','tech','castles','treaties','scouted','log','claimedQuests','giftReceipts','walking','roaming','covert','magatama','captureRewards','gachaHistory','seed','stats','realtime'])n[k]=copy(s[k]);
       n.jobs=n.jobs.map(j=>Object.fromEntries(['kind','id','remaining','total','remainingSeconds','totalSeconds','targetLevel'].map(k=>[k,j[k]])));
       if(serviceSave){n.staffService={baseId:'sunpu'};if(g.isStaff&&CLANS.some(c=>c.name===s.staffService.personalClan)){const clan=s.staffService.personalClan,valid=id=>CASTLE_BY_ID[id]&&!['edo','sunpu'].includes(id),home=valid(s.staffService.personalHome)?s.staffService.personalHome:CLANS.find(c=>c.name===clan).home;STAFF_ORIGIN.set(g,{clan,home,cycleHome:valid(s.staffService.personalCycleHome)?s.staffService.personalCycleHome:home});}}
       if(s.worldClock)n.worldClock={id:s.worldClock.id,elapsedMs:s.worldClock.elapsedMs};

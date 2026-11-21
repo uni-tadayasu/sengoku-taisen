@@ -1,6 +1,16 @@
 # 検索向け公開情報・通知の方針と公式出典
 
-確認日：2026年11月21日。正規の公開ドメインは `https://www.kasai-solutions-inc.com/`、運営者・著作権者の表記は **KASAI SOLUTIONS** です。
+確認日：2026年11月22日。正規の公開ドメインは `https://www.kasai-solutions-inc.com/`、運営者・著作権者の表記は **KASAI SOLUTIONS** です。
+
+## v3.19.0 の派遣部隊・レスポンシブ更新
+
+公開されている機能に合わせ、トップ・作品紹介・共有ページ・遊び方の概要を更新します。遊び方には、通常のHTML本文と目次リンクで「派遣部隊」の節を追加し、雇用・偵察・駐留・撤収・反撃の条件を案内します。個別プレイヤーの偵察報告・部隊配置・非公開の識別情報を公開説明や構造化データへ出力しません。
+
+同じURLとHTMLを使い、画面幅に応じてメニューや操作欄を配置します。スマートフォンでも案内本文と主要リンクを維持します。参照：[Googleのモバイルサイトとモバイルファーストインデックス](https://developers.google.com/search/docs/crawling-indexing/mobile/mobile-sites-mobile-first-indexing)。
+
+`site-metadata.json` の作品情報・ページ別概要・正規URLを基に、公開6ページのタイトル・meta description・OGP・Twitter Card・JSON-LDとサイトマップを再生成します。共有ページも実際の本文を更新したため更新日を2026年11月22日へ進め、内容の変わらないページにビルド時刻だけを付けません。`#covert` は既存ガイドの節へのリンクで、独立した索引ページとしてサイトマップには追加しません。
+
+公開ソースの変更、検索エンジンへの通知、検索結果への反映はそれぞれ別の段階です。タイトルの採用・検索順位・反映時期は保証しません。以下の旧版見出しは過去の設計記録です。
 
 ## v3.13.0 の有料版案内
 
@@ -45,7 +55,7 @@
 
 ## 公開情報をそろえる実装方針
 
-- 公開5ページの概要、ページごとのmetadata・構造化データ・canonical、Web App Manifestの作品情報、サイトマップを、共通の `site-metadata.json` から生成します。機能説明や正規URLの修正は共通データへ反映し、出力の食い違いを防ぎます。
+- 公開6ページの概要、ページごとのmetadata・構造化データ・canonical、Web App Manifestの作品情報、サイトマップを、共通の `site-metadata.json` から生成します。機能説明や正規URLの修正は共通データへ反映し、出力の食い違いを防ぎます。
 - 既存のタイトル画面の構成と画面内への収まりを維持します。検索向けの説明は、利用者にも読める公開HTMLへ掲載します。
 - ゲームの概要とガイドは、現在の機能・利用条件と一致させます。ウォーキングの前景計測、軍師AIの実行条件、施設の連続増築なども、利用者が確認できる説明にします。
 - `WebSite`、`WebPage`、ゲーム、運営組織の識別子と関係をそろえ、作品名・運営者名・URLを一貫させます。架空のレビュー、評価、件数、受賞歴は追加しません。
@@ -58,7 +68,7 @@ GoogleはJavaScriptを実行できますが、クロール・レンダリング�
 
 タイトルはページごとに簡潔にし、概要はそのページの本文を要約します。検索結果のタイトルや説明文は検索エンジン側で生成され、指定文字列の採用や表示長を保証しません。参照：[タイトルリンク](https://developers.google.com/search/docs/appearance/title-link)、[スニペットとmeta description](https://developers.google.com/search/docs/appearance/snippet)。
 
-faviconは `assets/branding/sengoku-vs-icon-192-20261121.png` の戦国VSの正方形アイコンを使用します。Googleは48×48pxより大きいアイコンを推奨し、URLを頻繁に変えないよう案内しています。ゲームのリリースごとには画像URLを変更せず、公開5ページと404で同じアイコンを指します。参照：[検索結果のfavicon](https://developers.google.com/search/docs/appearance/favicon-in-search)。
+faviconは `assets/branding/sengoku-vs-icon-192-20261121.png` の戦国VSの正方形アイコンを使用します。Googleは48×48pxより大きいアイコンを推奨し、URLを頻繁に変えないよう案内しています。ゲームのリリースごとには画像URLを変更せず、公開6ページと404で同じアイコンを指します。参照：[検索結果のfavicon](https://developers.google.com/search/docs/appearance/favicon-in-search)。
 
 ## 更新日と正規URL
 
@@ -94,7 +104,7 @@ Googleは正確な `lastmod` を利用し、`priority` と `changefreq` は使�
 
 既存の [IndexNow通知CLI](tools/notify-indexnow.mjs) は、**既定では送信しないdry-run**です。引数なしの実行はローカル設定・検証ファイル・サイトマップの6URLだけを調べ、ネットワーク通信を行いません。今回の内容変更対象は上記6URLです。**公開前の検証ではdry-runのみ実施し、送信結果は公開後に別途確認します。**
 
-`--submit` を明示した場合だけ、公開された検証キーファイル、サイトマップ、公開5ページを取得します。HTTP 200、HTML形式、自己参照canonical、検索除外指定がないことを確認してから、`https://api.indexnow.org/indexnow` へ5URLをまとめて1回POSTします。ホストと対象URLは固定し、転送先には追従せず、失敗時の自動再送もしません。
+`--submit` を明示した場合だけ、公開された検証キーファイル、サイトマップ、公開6ページを取得します。HTTP 200、HTML形式、自己参照canonical、検索除外指定がないことを確認してから、`https://api.indexnow.org/indexnow` へ6URLをまとめて1回POSTします。ホストと対象URLは固定し、転送先には追従せず、失敗時の自動再送もしません。
 
 この事前確認は、公開ページの本文やリリース版まで照合するものではありません。実行者は新しい本文が公開済みであることを別途確認する必要があります。HTTP 200は受領、202は受領してキー検証待ち、429や通信失敗は別の結果として扱います。この文書は送信完了や受理を先取りして記録するものではありません。
 
