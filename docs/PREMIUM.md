@@ -1,89 +1,121 @@
-# 有料版の商品カタログと販売準備
+# プレミアム商品の実装と運用
 
-`premium-catalog.js` は、販売予定の商品情報と購入リンクの表示条件を管理します。現在は **全商品が販売準備中** です。決済、購入済み判定、ゲーム内への特典適用、継続課金は実装していません。
+## 初回公開の状態（2026年11月21日）
 
-## 予定商品
+フロントエンドはVer.3.14.0、実APIはSites version 23へ更新しています。3商品の価格・購入URL・完成アート・外観管理・署名通知の処理を実装しました。
 
-| 商品 ID | 名称 | 税込の予定価格 | 形式 | 予定する内容 |
-| --- | --- | ---: | --- | --- |
-| `gold-banner` | 金彩の旗印 | 480 円 | 買い切り | 領主表示と旗印の外観 |
-| `moonlit-castle` | 月影の城下 | 980 円 | 買い切り | 城下町と本拠の外観 |
-| `supporter` | 戦国VSサポーター | 月額 780 円 | 月額プラン | 開発・運営の応援、表示用バッジ |
+Stripeの設定保存は接続認証が完了していないため、Webhookの署名鍵と契約管理URLは未設定です。`SENGOKU_PREMIUM_ENABLED` も有効にしていません。カタログは閲覧できますが、ゲームからの購入は待機します。必要な設定を完了し、受信先を確認してから販売を有効化してください。
 
-価格、内容、外観イメージは予定です。販売開始時に確定します。いずれも戦力・資産・勾玉の特典はなく、譲渡できない商品として準備します。月額プランのバッジの利用期間や解約条件など、未確定の提供条件も販売前に確定・表示します。
+## 商品
 
-外観プレビューは販売予定のイメージです。プレビューを開いたり、購入先へ移動したりしても、所有権や特典を付与しません。
+| ID | 商品 | 価格 | 形式 | 適用先 |
+| --- | --- | --- | --- | --- |
+| `gold-banner` | 金彩の旗印 | 480円 | 買い切り | 城下町の旗、本人の金彩名札 |
+| `moonlit-castle` | 月影の城下 | 980円 | 買い切り | 城下町の専用夜景、本拠の月明かりの装飾 |
+| `supporter` | 戦国VSサポーター | 780円／月 | 月額自動更新 | 利用期間中のサポーターバッジ |
 
-## カタログの API
+2026年11月21日に、既存Stripe Payment Linkの有効状態・JPY金額・quantity=1・買い切り／month interval_count=1を照合。Stripe Taxは既存の有効設定を保持し、`tax_behavior=unspecified` はアカウントの `inferred_by_currency` によりJPY税込として扱う設定です。新しい商品・価格の作成や税務登録の変更はしていません。
 
-ブラウザでは `window.SengokuPremiumCatalog`、Node.js では `require('./premium-catalog.js')` で同じ API を利用できます。外部通信、保存領域への読み書き、ゲーム状態への変更はありません。
+| ID | Payment Link | Price |
+| --- | --- | --- |
+| `gold-banner` | `plink_1UeEdvL3ZjL9QUmfKwCpWsEI` | `price_1UeEcRL3ZjL9QUmf6snR2y5b` |
+| `moonlit-castle` | `plink_1UeEg9L3ZjL9QUmf0Jiw1Inq` | `price_1UeEfwL3ZjL9QUmfMZSVlcyg` |
+| `supporter` | `plink_1UeEiNL3ZjL9QUmf5805BE1t` | `price_1UeEiFL3ZjL9QUmfkthlf1SJ` |
 
-| API | 返り値・用途 |
+購入URLはユーザー指定の3件をカタログとサーバーの許可リストで固定しています。ゲームの戦力・資産・指令・勾玉・施設レベルには特典を付与しません。既存の運営用 `entitlements` は有料商品の所有情報とは別です。
+
+## 購入から装備まで
+
+1. 公開 `/premium/` の「ゲームで購入する」は `/?premium=<商品ID>` を開きます。直接の無紐付け決済には進めません。
+2. ゲーム内で登録領主と購入済み状態を確認します。登録がない場合は「交流の間」へ案内します。
+3. 商品、税込料金、受け取る領主名・ID、月額の場合は自動更新を確認します。
+4. 認証済み `POST /premium/checkout` が領主に固定した推測困難な `client_reference_id` を発行し、許可済みPayment Linkへ付けます。生の領主IDや認証tokenはStripe URLへ入れません。
+5. Stripeからの署名付き支払い通知をサーバーが検証し、有料権利の台帳へ記録します。
+6. 「購入状態を再確認」または画面復帰時の再確認後、「ゲームに適用」で外観を切り替えます。「通常に戻す」で解除できます。
+7. サポーターの契約・決済手段・解約はStripeの契約管理へ進みます。購入時のメールアドレスによる認証を利用します。
+
+URLの成功パラメーター、プレビュー、ブラウザ保存、インポートしたゲームセーブは購入証明として扱いません。装備状態もサーバーに保存し、同じ領主の別端末へ引き継ぎます。プレビューは装備を変更しません。
+
+## フロントエンド
+
+- `premium-catalog.js`: 表示用の商品、正式価格、実アート、購入URLの厳密な許可リスト。
+- `premium.js` / `premium.css`: 公開ページとゲーム内ダイアログ。本人・料金の確認、購入済み・装備・期限の表示。
+- `premium-runtime.js`: 認証APIのadapter。所有情報はメモリーにのみ保持し、ゲームセーブやlocalStorageに書きません。本人変更・古い応答・装備更新との競合を破棄します。
+- `premium-admin.js` / `premium-admin.css`: 運営の「購入の確認」。保留の照合、理由入力、確認後の解除、操作記録。スタッフや一般領主は利用できません。
+- `premium-appearance.css`: 本人名札、バッジ、城下町の旗、本拠の月明かり装飾。
+- `app.js`, `social.js`, `field.js`: 確認済み外観を実ゲームへ適用。チャットの変更判定には外観も含みます。
+- `assets/premium/`: 透過PNGの原本と配信用WebP。制作記録は `PREMIUM_ART.md`。
+
+サポーターの期限はサーバー時刻と経過時間から判定します。ゲーム速度、ゲーム内年月、端末の時計変更で期間が延長されることはありません。確認不能・BAN・接続解除では特典の表示と購入を停止し、次に接続できた際に再確認します。
+
+## サーバーとデプロイ
+
+本リポジトリの `server/` はAPIソースの参照用コピーです。GitHub Pagesへの反映だけでは、実際のWorkerやD1は更新されません。
+
+実APIは既存のSitesプロジェクト `appgprj_6b0062efeeb88191b65f81b63db926dc` です。URLは `https://sengoku-tento.hisa-0128-1996.chatgpt.site`。既存DB・認証・公開範囲を維持し、有料商品用の追加マイグレーションを適用します。
+
+| API | 内容 |
 | --- | --- |
-| `version` | API の版。現在は `1` |
-| `config` | 変更不可の既定設定。`launchEnabled:false`、`currency:'JPY'`、`locale:'ja-JP'` |
-| `getConfig()` | 既定設定のコピー |
-| `getProducts()` | 商品の配列。各商品と `benefits` 配列はコピー |
-| `getProduct(id)` | 該当商品のコピー。不明な ID は `null` |
-| `getPurchaseState(id)` | 既定の商品情報と設定に基づく、購入リンクの表示状態 |
-| `getPurchaseState(product, config)` | 商品・設定のコピーを使った表示条件の事前確認。既定値は変更しない |
+| `GET /api/v1/premium` | 本人の所有・装備・期限・購入可否 |
+| `POST /api/v1/premium/checkout` | `{productId}` から本人用決済URLを発行 |
+| `PUT /api/v1/premium/appearance` | `{slot,productId}`。解除は `productId:null` |
+| `GET /api/v1/admin/premium/reviews` | 運営専用の保留一覧 |
+| `POST /api/v1/admin/premium/reviews` | 確認対象の版・イベント・理由・操作番号を指定した保留解除 |
+| `POST /api/v1/premium/stripe/webhook` | Stripe署名付き通知専用。ゲームのBearerやwriter leaseは不要 |
 
-商品には次のフィールドがあります。
+public DTOへ公開するのは検証済みの `appearance:{nameplate,town,badge}` のみです。請求書、決済ID、顧客情報を公開DTOに混ぜません。
 
-| フィールド | 意味 |
-| --- | --- |
-| `id`, `name` | 固定の商品 ID と表示名 |
-| `kind` | `cosmetic` または `subscription` |
-| `priceYen`, `billingPeriod` | 円建ての価格と `one_time` または `month` |
-| `taxIncluded`, `priceIsTentative` | 現在はいずれも `true`。税込の予定価格であることを表示する |
-| `summary`, `benefits` | 商品説明と予定特典の文字列配列 |
-| `previewKey` | UI のプレビュー選択キー。現在は商品 ID と同じ |
-| `previewLabel`, `previewDescription` | プレビューの見出しと説明 |
-| `availability` | 現在は `preparing`。将来の販売開始時には明示的に `available` へ変更する |
-| `purchaseUrl` | 現在は空文字列。後で指定する購入先 |
-| `transferable`, `gameplayBenefits` | 現在はいずれも `false`。譲渡不可、戦力・資産・勾玉の追加なし |
+### 環境設定
 
-`getPurchaseState` の結果は次の形です。
+| 設定 | 種類 | 用途 |
+| --- | --- | --- |
+| `STRIPE_WEBHOOK_SECRET` | secret | このAPI宛のStripe webhook endpoint署名鍵 |
+| `SENGOKU_PREMIUM_ENABLED` | env | 本販売の有効化。明示的な `true` の場合のみ購入可 |
+| `SENGOKU_STRIPE_PORTAL_URL` | env | 契約管理の `https://billing.stripe.com/…` URL |
 
-```js
-{
-  productId: 'gold-banner',
-  status: 'preparing', // preparing / available / unavailable
-  enabled: false,
-  label: '販売準備中',
-  url: '',
-  reason: 'launch_disabled'
-}
+署名鍵はSitesの環境変数にsecretとして保存します。リポジトリ、クライアント、ログ、文書へ実値を記載しません。環境変数変更はその後のデプロイに反映します。設定不足のまま購入ボタンだけを有効にしないでください。
+
+### 署名通知と台帳
+
+WebhookはStripeのsnapshot形式、API version `2026-09-30.endive` を対象にします。署名の時刻許容と生bodyのHMACを検証し、test/live取り違え、不正署名、過大bodyを拒否します。決済通知はイベントIDと関連決済オブジェクトIDで冪等に記録し、通知の順序を前提にしません。
+
+買い切りは本人用参照・許可済みPayment Link・JPY総額・mode・支払い済み状態を照合します。Checkout Sessionの標準snapshotにline_itemsは含まれないため、Price IDは事前照合したPayment Linkの設定を通して固定しています。これらのリンクの明細を別商品へ変更しないでください。
+
+月額はInvoiceとInvoice PaymentのStripe決済相関、対象Price、数量、非proration、各lineのサービス期間を検証します。`invoice.paid` だけでは手動入金も含むため、単独で特典を延長しません。ゲーム内の1か月や一律30日を足す処理はありません。
+
+返金・争議・早期不正警告が支払い通知より先に届いても、後の古い支払い通知で復活しないよう遮断記録を保持します。警告や争議は返金確定とは区別し、安全側に利用を保留します。取消予約は既払い期間を削らず、利用期間終了を確認して失効します。
+
+### 運用上の再照合
+
+この構成は署名付きsnapshotを使用し、実行環境に広いStripe秘密APIキーを置きません。未知の明細、足りない相関、無紐付けの直接購入は自動で任意の領主に割り当てません。該当通知とStripe Dashboardを照合し、正しいイベントを再配信してください。争議解消・警告解除後は、交流の間 → 運営 → 購入の確認から対象を照合します。Stripeで確認した理由（8〜500字）を入力して解除内容を確認すると、対象の版とイベントが一致した場合だけ保留を解除し、監査記録を残します。返金確定・争議の敗訴・決済不一致は解除できません。通信失敗の再送は同じ操作番号を使い、後から新しい警告が届いた場合は改めて確認が必要です。
+
+直接共有された購入URLには領主の参照がありません。ユーザー向けの導線としては、ゲーム内の「有料版・支援」を案内してください。複数回の購入が起きた場合も、それぞれの支払い記録を保持し、1件の返金で別の有効な購入まで消さない設計です。
+
+固定Payment Linkは一度発行したURLをStripe側で再利用できます。ゲームは購入済み商品や未終了のサポーター契約への新規購入を止めますが、保存済みURLや別タブからの再決済まで無効化する構成ではありません。二重契約が発生した場合はStripe Dashboardで個々の契約と支払いを照合し、解約・返金の要否を判断してください。
+
+## 検証
+
+```sh
+node tests/test-premium.cjs
+node tests/test-premium-runtime.cjs
+node tests/test-premium-admin.cjs
+node tests/test-social-ui.cjs
+node tests/test-field.cjs
+node tests/test-player-evaluation-ui.cjs
+node tests/test-ui-continuity.cjs
+node tools/build-public-pages.cjs
+node tests/test-public-pages.cjs
+node tests/test-release-assets.cjs
 ```
 
-`reason` は実装・検証用の理由です。`unknown_product`、`launch_disabled`、`product_preparing`、`missing_url`、`invalid_url`、`ready` のいずれかを返します。不明な商品は `status:'unavailable'` となります。それ以外の無効状態は `status:'preparing'` で、`enabled:false` と空の `url` を返します。
+backendの `scripts/test-premium.mjs` は署名付きfixtureをin-memory D1へ送って検証します。実購入、実課金、実顧客の作成はテストに含めません。公開時はbackendのマイグレーションと新APIを先に更新します。署名鍵・契約管理URLの設定と通知受信を確認した後に、販売を明示的に有効化します。設定が未完了でもカタログと外観管理UIは公開できますが、購入ボタンは待機します。
 
-通常の UI は `getPurchaseState(product.id)` を使い、`enabled === true` のときだけ返された `url` をリンクに設定してください。元の `product.purchaseUrl` を直接リンクにしたり、UI から販売開始設定を上書きしたりしないでください。表示文字列はテキストとして描画し、新しいタブで開く場合は `rel="noopener noreferrer"` を付けます。
+## Stripeの仕様資料
 
-## 購入 URL の設定手順
-
-1. 運営が指定する購入先が確定してから、該当商品の `purchaseUrl` に HTTPS の絶対 URL を設定します。現在は未指定なので空のままにします。サンプルの購入先や架空の決済リンクは登録しません。
-2. 準備中は `CONFIG.launchEnabled` を `false`、商品ごとの `availability` を `preparing` に保ちます。URL を入力しただけでは購入リンクは有効になりません。
-3. 下記の購入確認・権利管理を実装し、提供内容、価格、購入者への案内、キャンセルや問い合わせへの対応を確認します。
-4. 販売を開始できる状態になった商品だけ `availability:'available'` にし、最後に共有設定の `launchEnabled:true` を明示的に設定して公開します。
-
-公開ページの HTML も商品カタログから生成されます。カタログや案内文を変更したら、リポジトリのルートで `node tools/build-public-pages.cjs` を実行し、`premium/index.html` を含む生成結果も一緒に公開してください。ゲーム内の案内は同じカタログと描画処理を使用します。検証は `node tests/test-premium.cjs`、`node tests/test-public-pages.cjs`、`node tests/test-seo.cjs` で行えます。
-
-販売開始時は予定価格・予定特典の説明と税込表示も確定内容へ更新し、商品メタデータと表示をそろえます。ページの案内、FAQ、ダイアログのフッター、検索用の説明に古い「販売準備中」が残っていないことも確認します。購入先が利用できることだけをもって、提供条件や権利付与まで完成したとは扱いません。
-
-リンクが有効になるには、**`launchEnabled === true`、商品が `available`、URL が有効**という 3 条件が必要です。値が未設定、不正、想定外の場合は無効のままです。販売停止時は共有設定を `false` にすると、全商品の購入リンクが無効になります。実際の決済サービス側での販売停止は別途必要です。
-
-URL は `https://` で始まる絶対 URL のみ受理します。HTTP、その他のスキーム、`//` から始まる URL、ユーザー情報付き URL、空白・制御文字・バックスラッシュ、ホスト名のない URL は拒否します。入力を trim したり、誤った URL を補正したりしません。URL の形式確認だけで、購入先の運営者、価格、遷移先、決済結果の正当性が証明されるわけではありません。設定する購入先の内容は運営が確認します。
-
-## 販売開始前に必要な実装
-
-**購入 URL を設定しても、販売や有料権利の仕組みが完成するわけではありません。** このカタログとブラウザの表示設定は購入の証明として利用できません。次の処理をサーバー側で用意してから販売を開始します。
-
-- **購入者と商品の確定:** 認証済みの領主 ID、商品 ID、価格、通貨、注文 ID をサーバーで確定します。ブラウザから渡された価格や自己申告の購入状態を信用しません。
-- **決済確認:** 採用する購入先の正規のサーバー通知や照会手段で支払いを確認します。通知の署名などを検証し、同じ決済イベントを再受信しても重複付与しない記録を残します。購入完了ページへの遷移や URL のパラメータだけで権利を与えません。
-- **正規の利用権:** 購入記録と、領主ごとの正規の利用権をサーバーで管理します。購入済み外観の選択・表示をその権利と照合します。現在のゲームセーブ、セーブファイルの取り込み、`localStorage`、カタログの改変だけでは購入済みにならない構成にします。
-- **月額の状態管理:** 初回支払い、更新、支払い失敗、解約、利用期限をサーバーで扱います。このカタログの `billingPeriod:'month'` だけでは継続課金も解約も実行されません。
-- **返金・利用停止・復旧:** 返金や決済取消に応じた権利の扱い、BAN への異議申し立て、端末紛失時の復旧、問い合わせ時に注文を確認する方法を決めます。購入記録は投稿本文の削除やゲームセーブの初期化と分けて保持します。既存のゲーム資産の交易返還は現金の返金とは別です。
-- **提供確認:** 購入に対応する外観・バッジの実装、複数端末での反映、重複通知、通知遅延、通信失敗、取消後の表示を検証します。商品は非譲渡とし、既存のゲーム資産交易の対象に追加しません。
-
-既存の運営・スタッフ権限は有料商品の権利ではありません。課金によってその役職、専用武将、専用城、戦力、資産、勾玉を付与しない設計を維持します。決済サービスや実際の購入先は、この段階では選定・登録していません。
+- [Payment LinksのURLパラメーター](https://docs.stripe.com/payment-links/url-parameters)
+- [Webhookの順序と重複](https://docs.stripe.com/webhooks)
+- [Checkout Session](https://docs.stripe.com/api/checkout/sessions/object?api-version=2026-09-30.endive)
+- [Invoice](https://docs.stripe.com/api/invoices/object?api-version=2026-09-30.endive)
+- [Invoice Payment](https://docs.stripe.com/api/invoice-payment/object?api-version=2026-09-30.endive)
+- [Invoice Line Item](https://docs.stripe.com/api/invoice-line-item/object?api-version=2026-09-30.endive)
+- [価格の税込・税別設定](https://docs.stripe.com/tax/products-prices-tax-codes-tax-behavior)

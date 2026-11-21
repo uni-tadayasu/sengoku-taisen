@@ -92,6 +92,13 @@
       "when": 1796169600000,
       "tag": "0012_player_moderation",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1796256000000,
+      "tag": "0013_premium_purchases",
+      "breakpoints": true
     }
   ]
 }

@@ -1,0 +1,17 @@
+/* These decorations are driven by verified server appearance selections. */
+.sengoku-premium-name{display:inline-flex;align-items:center;gap:.35em;max-width:100%;min-width:0;vertical-align:middle;line-height:1.5}
+.sengoku-premium-name>span{overflow-wrap:anywhere;min-width:0}
+.sengoku-premium-name.is-gilded{position:relative;padding:.14em .58em .14em .25em;border:1px solid #c3a461;border-radius:4px;background:linear-gradient(115deg,#263744,#101d28 52%,#384333);box-shadow:inset 0 0 0 2px #af88301a,0 1px 5px #0002;color:#ffe4a4;text-shadow:0 1px 2px #0008}
+.sengoku-premium-name.is-gilded:after{content:"";position:absolute;inset:2px;pointer-events:none;border:1px solid #e6c66e33;border-radius:2px}
+.sengoku-premium-name-flag{display:block;width:20px!important;height:30px!important;object-fit:contain;flex:0 0 20px;filter:drop-shadow(0 1px 2px #0008)}
+.sengoku-supporter-badge{display:inline-block;width:32px!important;height:32px!important;object-fit:contain;flex:0 0 32px;vertical-align:middle;filter:drop-shadow(0 1px 2px #0004)}
+.town-premium-banner{position:absolute;left:2%;top:2%;width:10%;height:35%;pointer-events:none;z-index:1;filter:drop-shadow(2px 4px 3px #0008)}
+.town-premium-banner img{display:block;width:100%;height:100%;object-fit:contain;object-position:top}
+.town-premium-lord{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 16px;background:linear-gradient(110deg,#142831,#263941);border-top:1px solid #bc9d5144;color:#f7edd7}
+.town-premium-lord>[data-town-premium-lord]{display:flex;align-items:center;flex-wrap:wrap;gap:8px;min-width:0}
+.town-lord-label{font-size:14px;color:#c4bfae;letter-spacing:.12em;white-space:nowrap}
+.town-premium-lord .text-link{color:#f5d898;flex-shrink:0;font-size:14px;min-height:36px}
+.field-castle-visual.is-moonlit{position:relative;background:radial-gradient(ellipse at 65% 22%,#d5e7ff44,transparent 48%),linear-gradient(145deg,#1b304d,#101a34);border:1px solid #9fb8d477;border-radius:12px;box-shadow:inset 0 0 24px #b2ceff22,0 0 12px #7a99d22a}
+.field-castle-visual.is-moonlit:after{content:"";position:absolute;top:8%;right:10%;width:14%;aspect-ratio:1;border-radius:50%;background:#ecf2e9;box-shadow:0 0 12px #d7e8ffa6;pointer-events:none}
+.field-castle-visual.is-moonlit .field-castle-art{position:relative;z-index:1;filter:drop-shadow(0 2px 5px #8fb9e955)}
+@media(max-width:480px){.town-premium-lord{padding:8px 10px;gap:8px}.town-premium-lord .sengoku-premium-name{font-size:14px}.sengoku-premium-name.is-gilded{padding-right:.35em}.social-message-meta .sengoku-supporter-badge{width:27px!important;height:27px!important;flex-basis:27px}}

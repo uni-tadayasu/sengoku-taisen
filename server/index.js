@@ -2,9 +2,10 @@ import {GameEngine, GAME_OFFICERS} from './game-runtime.js';
 import {handleLetters} from './letters.js';
 import {handleTrades} from './trade.js';
 import {handleModeration} from './moderation.js';
+import {handlePremium,handlePremiumWebhook,resolvePremiumAppearances} from './premium.js';
 const API = '/api/v1';
-const API_VERSION = '3.11.0';
-const API_FEATURES = Object.freeze({trades:true,moderation:true});
+const API_VERSION = '3.14.0';
+const API_FEATURES = Object.freeze({trades:true,moderation:true,premium:true});
 const MAX_BODY = 16 * 1024;
 const MAX_SAVE_BODY = 2 * 1024 * 1024;
 const MAX_AVATAR_BYTES = 48 * 1024;
@@ -1681,8 +1682,9 @@ async function route(request, env, now) {
   const url = new URL(request.url), path = url.pathname.slice(API.length), method = request.method;
   const db = env.DB;
   if (!db?.prepare || !db?.batch) fail(503, 'SERVICE_UNAVAILABLE', '通信サービスの準備中です。');
+  if(path==='/premium/stripe/webhook'&&method==='POST')return handlePremiumWebhook({db,env,now,request,helpers:{fail}});
   if (path === '/health' && method === 'GET') {
-    await stmt(db, 'SELECT (SELECT COUNT(*) FROM users) AS count,EXISTS(SELECT 1 FROM trades) AS trade_schema,EXISTS(SELECT 1 FROM trade_requests) AS trade_request_schema,EXISTS(SELECT 1 FROM trade_deliveries) AS trade_delivery_schema,EXISTS(SELECT 1 FROM player_bans) AS ban_schema,EXISTS(SELECT 1 FROM moderation_requests) AS moderation_schema,(SELECT content_revision FROM moderation_state WHERE id=1) AS content_revision').first();
+    await stmt(db, 'SELECT (SELECT COUNT(*) FROM users) AS count,EXISTS(SELECT 1 FROM trades) AS trade_schema,EXISTS(SELECT 1 FROM trade_requests) AS trade_request_schema,EXISTS(SELECT 1 FROM trade_deliveries) AS trade_delivery_schema,EXISTS(SELECT 1 FROM player_bans) AS ban_schema,EXISTS(SELECT 1 FROM moderation_requests) AS moderation_schema,(SELECT content_revision FROM moderation_state WHERE id=1) AS content_revision,EXISTS(SELECT 1 FROM premium_orders) AS premium_order_schema,EXISTS(SELECT 1 FROM premium_events) AS premium_event_schema,EXISTS(SELECT 1 FROM premium_grants) AS premium_grant_schema,EXISTS(SELECT 1 FROM premium_appearances) AS premium_appearance_schema').first();
     return {ok:true,status:'ready',version:API_VERSION,features:API_FEATURES};
   }
   if (path === '/world-clock' && method === 'GET') {
@@ -1772,6 +1774,7 @@ async function route(request, env, now) {
   }
 
   let user = await authenticate(request,db,now);
+  if(path==='/premium'||path.startsWith('/premium/')||path==='/admin/premium/reviews')return handlePremium({db,env,user,now,path,method,request,helpers:{fail,readBody,budget,accountCommitGuard,requireAccountAccess,requireAdmin,getUser,textField,idField,hash,uid}});
   if(path==='/admin/moderation'||path.startsWith('/admin/moderation/'))return handleModeration({db,user,now,path,method,url,request,helpers:{fail,readBody,budget,idField,textField,uid,hash,mapUser,getUser,requireAdmin,userSelect:USER_SELECT}});
   if (path === '/me/avatar' && method === 'PUT') return putAvatar(request,env,user,now);
   if (path === '/me/avatar' && method === 'DELETE') return deleteAvatar(request,env,user,now);
@@ -2114,7 +2117,7 @@ export default {
         return new Response(null,{status:204,headers});
       }
       if(path.startsWith(API+'/avatars/')&&request.method==='GET')return await getAvatar(request,env,origin);
-      const now=Date.now(),payload=await route(request,env,now),resolved=await resolvePlayerEvaluations(env.DB,payload,now),authenticated=authenticatedRequests.get(request);
+      const now=Date.now(),payload=await route(request,env,now),evaluated=await resolvePlayerEvaluations(env.DB,payload,now),resolved=await resolvePremiumAppearances(env.DB,evaluated,now),authenticated=authenticatedRequests.get(request);
       if(authenticated)await requireAccountAccess(env.DB,authenticated);
       return response(resolved,200,origin);
     }catch(error){

@@ -1,87 +1,17 @@
 'use strict';
-// Presentation-only premium contracts. No real checkout, storage or game save.
+// Pure fixtures only: no real checkout, account, storage or game save.
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const catalog = require('../premium-catalog.js');
-const { renderCatalog, createUI } = require('../premium.js');
+const { renderCatalog, createUI, normalizeContext, expiryLabel } = require('../premium.js');
 const root = path.resolve(__dirname, '..');
-const tests = [];
-const test = (name, run) => tests.push([name, run]);
-const validUrl = 'https://payments.example.test/packs/gold?plan=one-time#details';
-const stagedProduct = () => ({ ...catalog.getProduct('gold-banner'), availability: 'available', purchaseUrl: validUrl });
-function unavailable(state, reason) {
-  assert.equal(state.enabled, false);
-  assert.equal(state.url, '', 'A disabled result must not leak a usable checkout URL');
-  assert.notEqual(state.status, 'available');
-  if (reason) assert.equal(state.reason, reason);
-}
-
-test('the three planned products keep their prices and provide no active purchase or gameplay benefit', () => {
-  const products = catalog.getProducts();
-  assert.deepEqual(products.map(({ id, priceYen, billingPeriod, kind }) => ({ id, priceYen, billingPeriod, kind })), [
-    { id: 'gold-banner', priceYen: 480, billingPeriod: 'one_time', kind: 'cosmetic' },
-    { id: 'moonlit-castle', priceYen: 980, billingPeriod: 'one_time', kind: 'cosmetic' },
-    { id: 'supporter', priceYen: 780, billingPeriod: 'month', kind: 'subscription' }
-  ]);
-  assert.deepEqual(catalog.getConfig(), { launchEnabled: false, currency: 'JPY', locale: 'ja-JP' });
-  for (const product of products) {
-    assert.equal(product.availability, 'preparing');
-    assert.equal(product.purchaseUrl, '');
-    assert.equal(product.taxIncluded, true);
-    assert.equal(product.priceIsTentative, true);
-    assert.equal(product.transferable, false);
-    assert.equal(product.gameplayBenefits, false);
-    unavailable(catalog.getPurchaseState(product.id), 'launch_disabled');
-  }
-});
-
-test('caller changes to a product, benefit list or config cannot enable the real catalog', () => {
-  const before = JSON.stringify(catalog.getProducts()), products = catalog.getProducts(), product = catalog.getProduct('gold-banner'), config = catalog.getConfig();
-  products[0].priceYen = 1;
-  products[0].benefits[0] = '勝利を保証する';
-  products.push({ id: 'injected' });
-  Object.assign(product, { availability: 'available', purchaseUrl: validUrl });
-  product.benefits.push('有料権を付与');
-  config.launchEnabled = true;
-  assert.equal(JSON.stringify(catalog.getProducts()), before);
-  assert.equal(catalog.getConfig().launchEnabled, false);
-  unavailable(catalog.getPurchaseState('gold-banner'), 'launch_disabled');
-  assert.equal(catalog.getProduct('injected'), null);
-});
-
-test('purchase readiness needs a known product, explicit launch and available state before considering a URL', () => {
-  const product = stagedProduct();
-  for (const launchEnabled of [false, undefined, null, 0, 1, 'true']) unavailable(catalog.getPurchaseState(product, { launchEnabled }), 'launch_disabled');
-  for (const availability of ['preparing', '', undefined, true]) unavailable(catalog.getPurchaseState({ ...product, availability }, { launchEnabled: true }), 'product_preparing');
-  for (const purchaseUrl of ['', null, undefined]) unavailable(catalog.getPurchaseState({ ...product, purchaseUrl }, { launchEnabled: true }), 'missing_url');
-  unavailable(catalog.getPurchaseState({ ...product, id: 'unknown' }, { launchEnabled: true }), 'unknown_product');
-  unavailable(catalog.getPurchaseState('unknown'), 'unknown_product');
-  const ready = catalog.getPurchaseState(product, { launchEnabled: true });
-  assert.equal(ready.enabled, true);
-  assert.equal(ready.status, 'available');
-  assert.equal(ready.url, validUrl);
-  assert.equal(ready.label, '購入ページへ');
-  unavailable(catalog.getPurchaseState('gold-banner'), 'launch_disabled');
-});
-
-test('checkout validation rejects executable, relative, ambiguous and credential-bearing URLs', () => {
-  const invalidUrls = [
-    'javascript:alert(1)', 'data:text/html,checkout', 'http://payments.example.test/checkout',
-    '//payments.example.test/checkout', '/checkout', 'https:payments.example.test',
-    'https://', 'https:///payments.example.test', 'https://user:secret@payments.example.test/',
-    'https://@payments.example.test/', 'https://payments.example.test@other.example.test/',
-    ' https://payments.example.test/', 'https://payments.example.test/ ',
-    'https://payments.example.test/\n', 'https://payments.example.test/\t', 'https://payments.example.test/\u0000',
-    'https://payments.example.test/\\other', 'https://payments.example.test:99999/',
-    480, new URL(validUrl), { toString: () => validUrl }
-  ];
-  for (const purchaseUrl of invalidUrls) unavailable(catalog.getPurchaseState({ ...stagedProduct(), purchaseUrl }, { launchEnabled: true }), 'invalid_url');
-});
-
-// Only the native-dialog and preview DOM operations used by this presentation.
-// This deliberately provides no browser payment, persistence or game API.
+const tests = [], test = (name, run) => tests.push([name, run]);
+const paymentBases = { 'gold-banner': 'https://buy.stripe.com/fZu6oI3Iwdcd5kn4Um9MY04', 'moonlit-castle': 'https://buy.stripe.com/dRmdRa6UI2xz6or1Ia9MY05', supporter: 'https://buy.stripe.com/7sY8wQdj6dcdbILaeG9MY06' };
+const checkoutURL = (id, reference = 'a'.repeat(32)) => paymentBases[id] + '?client_reference_id=' + reference;
+const drain = async () => { for (let i = 0; i < 8; i++) await Promise.resolve(); };
+const deferred = () => { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
 const decode = value => String(value).replace(/&(?:amp|lt|gt|quot|#39);/g, entity => ({ '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&#39;': "'" }[entity]));
 class Element {
   constructor(tag, document) {
@@ -139,99 +69,164 @@ function documentFixture() {
   const entry = doc.createElement('button'); doc.body.append(entry); entry.focus();
   return { doc, entry };
 }
-function assertPreparing(element) {
-  const purchases = element.querySelectorAll('[data-premium-purchase]');
-  assert.equal(purchases.length, 3);
-  for (const purchase of purchases) {
-    assert.equal(purchase.tagName, 'BUTTON');
-    assert.equal(purchase.disabled, true);
-    assert.equal(purchase.getAttribute('href'), null);
-    assert.equal(purchase.textContent, '販売準備中');
+
+const userA = { id: 'u_' + '1'.repeat(32), name: '一城の領主' }, userB = { id: 'u_' + '2'.repeat(32), name: '次の領主' };
+function ready(extra = {}) {
+  return { status: 'ready', ready: true, user: userA, products: catalog.getProducts().map(product => ({ id: product.id, owned: false, equipped: false, expiresAt: null, canPurchase: true })), appearance: { nameplate: null, town: null, badge: null }, portalUrl: '', error: '', ...extra };
+}
+function setup(initial = ready(), options = {}) {
+  const { doc, entry } = documentFixture(), listeners = new Set(), windows = [], calls = [];
+  let context = initial, checkout = async id => ({ productId: id, url: checkoutURL(id) }), equip = async (id, slot) => {
+    const changed = catalog.getProducts().find(product => product.slot === slot)?.id;
+    context = { ...context, products: context.products.map(product => product.id === changed ? { ...product, equipped: Boolean(id) } : product) };
+    for (const listener of listeners) listener(context); return context;
+  };
+  const runtime = {
+    getContext: () => context,
+    refresh: async () => { calls.push(['refresh']); return context; },
+    subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
+    checkout(id) { calls.push(['checkout', id]); return checkout(id); },
+    equip(id, slot) { calls.push(['equip', id, slot]); return equip(id, slot); },
+    openRegistration() { calls.push(['register']); }
+  };
+  const openWindow = () => {
+    if (options.blockPopup) return null;
+    const win = { location: { href: 'about:blank' }, opener: {}, closed: false, close() { this.closed = true; } }; windows.push(win); return win;
+  };
+  const ui = createUI({ document: doc, catalog, runtime, openWindow });
+  const get = selector => doc.querySelector(selector);
+  function click(selector) {
+    const element = get(selector); assert(element, 'Missing UI control: ' + selector);
+    const host = element.hasAttribute('data-premium-preview') ? get('[data-premium-catalog]') : get('#premium-modal'); host.dispatch('click', element);
   }
-  assert.match(element.textContent, /予定価格・税込/);
-  assert.match(element.textContent, /現在は購入・申し込みできません/);
-  assert.doesNotMatch(element.textContent, /購入済み|支払い完了/);
+  return { doc, entry, ui, runtime, windows, calls, get, click, listeners, context: () => context,
+    set(value) { context = value; for (const listener of listeners) listener(context); },
+    onCheckout(fn) { checkout = fn; }, onEquip(fn) { equip = fn; }
+  };
+}
+function assertUnavailable(container) {
+  assert.equal(container.querySelectorAll('[data-premium-equip]').length, 0);
+  const buttons = container.querySelectorAll('[data-premium-purchase]'); assert.equal(buttons.length, 3);
+  for (const button of buttons) { assert.equal(button.tagName, 'BUTTON'); assert.equal(button.disabled, true); assert.equal(button.getAttribute('href'), null); }
 }
 
-test('static cards are honest about preparation, and mounted previews only change their own sample', () => {
-  const { doc } = documentFixture(), container = doc.createElement('section');
-  container.innerHTML = renderCatalog({ catalog, assetPrefix: '../', idPrefix: 'test-premium' }); doc.body.append(container);
-  assertPreparing(container);
-  assert.deepEqual(container.querySelectorAll('.premium-price').map(node => node.textContent), ['480円予定価格・税込', '980円予定価格・税込', '780円 / 月予定価格・税込']);
-  assert(container.querySelectorAll('[data-premium-preview]').every(button => button.disabled));
-  const ui = createUI({ document: doc, catalog }), section = container.querySelector('[data-premium-catalog]');
-  assert.equal(ui.mount(container), 1); assert.equal(ui.mount(container), 0);
-  for (const key of ['gold-banner', 'moonlit-castle', 'supporter', 'standard']) {
-    const button = section.querySelector('[data-premium-preview="' + key + '"]');
-    assert.equal(button.disabled, false); section.dispatch('click', button);
-    assert.equal(section.getAttribute('data-premium-selected'), key);
-    assert.equal(section.querySelector('[data-premium-stage]').getAttribute('data-premium-preview-mode'), key);
-    for (const candidate of section.querySelectorAll('[data-premium-preview]')) assert.equal(candidate.getAttribute('aria-pressed'), String(candidate.getAttribute('data-premium-preview') === key));
-    assertPreparing(section);
+test('the three finished products have fixed prices, real artwork and no gameplay benefit', () => {
+  assert.deepEqual(catalog.getProducts().map(product => [product.id, product.priceYen, product.billingPeriod, product.slot]), [
+    ['gold-banner', 480, 'one_time', 'nameplate'], ['moonlit-castle', 980, 'one_time', 'town'], ['supporter', 780, 'month', 'badge']
+  ]);
+  for (const product of catalog.getProducts()) {
+    assert.equal(product.taxIncluded, true); assert.equal(product.priceIsTentative, false); assert.equal(product.transferable, false); assert.equal(product.gameplayBenefits, false);
+    assert(fs.existsSync(path.join(root, product.art.src))); assert.equal(product.purchaseUrl, undefined);
+    assert.equal(catalog.getPurchaseState({ ...product, availability: 'available', purchaseUrl: checkoutURL(product.id) }, { launchEnabled: true }).enabled, false);
   }
-  ui.dispose();
-  assert(section.querySelectorAll('[data-premium-preview]').every(button => button.disabled));
-  const missing = doc.createElement('section'); missing.innerHTML = renderCatalog({ catalog: {} });
-  assert.equal(missing.querySelectorAll('[data-premium-purchase]').length, 0);
-  assert.match(missing.textContent, /現在は購入できません/);
+  const before = JSON.stringify(catalog.getProducts()), copy = catalog.getProduct('gold-banner'); copy.art.src = 'https://invalid.example/art'; copy.benefits.push('優遇'); copy.priceYen = 1;
+  assert.equal(JSON.stringify(catalog.getProducts()), before); assert.equal(catalog.getConfig().checkoutRequiresAccount, true);
 });
 
-test('the native dialog supports Escape and close controls, resets previews and returns keyboard focus', () => {
-  const { doc, entry } = documentFixture(), ui = createUI({ document: doc, catalog });
-  assert.equal(doc.querySelector('#premium-modal'), null);
-  assert.equal(ui.open(), true);
-  const dialog = doc.querySelector('#premium-modal'), heading = dialog.querySelector('#premium-dialog-title');
-  assert.equal(dialog.modalCalls, 1); assert.equal(ui.isOpen(), true);
-  assert.equal(dialog.getAttribute('aria-labelledby'), heading.id); assert.equal(heading.getAttribute('tabindex'), '-1'); assert.equal(doc.activeElement, heading);
-  assertPreparing(dialog);
-  const section = dialog.querySelector('[data-premium-catalog]'); section.dispatch('click', section.querySelector('[data-premium-preview="supporter"]'));
-  const escape = dialog.dispatch('keydown', heading, { key: 'Escape' });
-  assert(escape.prevented && escape.stopped); assert.equal(ui.isOpen(), false); assert.equal(doc.activeElement, entry);
-  assert.equal(dialog.querySelectorAll('[data-premium-catalog]').length, 0); assert.equal(ui.close(), false);
-  ui.open(); assert.equal(dialog.querySelector('[data-premium-catalog]').getAttribute('data-premium-selected'), 'standard');
-  const cancel = dialog.dispatch('cancel'); assert(cancel.prevented && cancel.stopped); assert.equal(doc.activeElement, entry);
-  ui.open(); dialog.dispatch('click', dialog.querySelector('[data-premium-close]')); assert.equal(ui.isOpen(), false); assert.equal(doc.activeElement, entry);
-  ui.open(); dialog.deferCloseEvent = true; ui.close(); ui.open();
-  const reopened = dialog.querySelector('[data-premium-catalog]'); reopened.dispatch('click', reopened.querySelector('[data-premium-preview="gold-banner"]'));
-  dialog.dispatch('close');
-  assert.equal(ui.isOpen(), true); assert.equal(dialog.querySelector('[data-premium-catalog]'), reopened); assert.equal(reopened.getAttribute('data-premium-selected'), 'gold-banner'); assert.equal(doc.activeElement, heading);
-  dialog.deferCloseEvent = false;
-  ui.dispose(); assert.equal(doc.querySelector('#premium-modal'), null);
-  const unsupported = documentFixture(), create = unsupported.doc.createElement;
-  unsupported.doc.createElement = tag => { const node = create(tag); if (tag === 'dialog') node.showModal = undefined; return node; };
-  const fallback = createUI({ document: unsupported.doc, catalog });
-  assert.equal(fallback.open(), false); assert.equal(fallback.isOpen(), false); assert.equal(unsupported.doc.activeElement, unsupported.entry); fallback.dispose();
+test('only the correct product destination with one opaque reference is accepted', () => {
+  for (const id of Object.keys(paymentBases)) assert.equal(catalog.checkoutURL(id, checkoutURL(id)), checkoutURL(id));
+  for (const value of [paymentBases['gold-banner'], checkoutURL('moonlit-castle'), checkoutURL('gold-banner') + '&email=private@example.test', checkoutURL('gold-banner') + '&client_reference_id=' + 'b'.repeat(32), checkoutURL('gold-banner') + '#success', checkoutURL('gold-banner', 'short'), checkoutURL('gold-banner', 'a'.repeat(201)), checkoutURL('gold-banner', 'user@example.test'), 'javascript:alert(1)', '/checkout', 'https://user:password@buy.stripe.com/fZu6oI3Iwdcd5kn4Um9MY04?client_reference_id=' + 'a'.repeat(32), 'https://checkout.example.test/?client_reference_id=' + 'a'.repeat(32), checkoutURL('gold-banner') + '\n', checkoutURL('gold-banner').replace('https:', 'http:')]) assert.equal(catalog.checkoutURL('gold-banner', value), '', String(value));
+  assert.equal(catalog.checkoutURL('unknown', checkoutURL('gold-banner')), '');
 });
 
-test('forged success URLs and browser storage never grant ownership, call payment APIs or alter game saves', () => {
-  const { doc } = documentFixture(), container = doc.createElement('section');
-  container.innerHTML = renderCatalog({ catalog, assetPrefix: '../' }); doc.body.append(container);
-  const game = { state: { resources: { gold: 100, magatama: 25 }, ownedPremium: [], supporter: false } }, before = JSON.stringify(game);
-  const effects = [], reads = [], stored = JSON.stringify({ launchEnabled: true, premium: true, payment_status: 'paid', purchased: ['gold-banner', 'moonlit-castle', 'supporter'] });
-  const storage = { getItem(key) { reads.push(key); return stored; }, setItem(...args) { effects.push(['storage-write', ...args]); }, removeItem(...args) { effects.push(['storage-remove', ...args]); }, clear() { effects.push(['storage-clear']); } };
-  const location = new URL('https://fixture.example.test/premium/?premium=true&success=true&payment_status=paid&productId=supporter&launchEnabled=true#purchased');
-  const blocked = name => (...args) => { effects.push([name, ...args]); throw Error('Unexpected external or save operation: ' + name); };
-  const bridge = { save: blocked('save'), grantPremium: blocked('grant-premium'), requestField: blocked('server-mutation'), state: () => game.state };
-  const window = { document: doc, location, localStorage: storage, sessionStorage: storage, URL, URLSearchParams, game, SengokuBridge: bridge, fetch: blocked('fetch'), open: blocked('open'), navigator: { sendBeacon: blocked('beacon') } };
-  const context = vm.createContext({ window, document: doc, location, localStorage: storage, sessionStorage: storage, URL, URLSearchParams, console, game, SengokuBridge: bridge, fetch: window.fetch, save: bridge.save });
-  vm.runInContext(fs.readFileSync(path.join(root, 'premium-catalog.js'), 'utf8'), context, { filename: 'premium-catalog.js' });
-  vm.runInContext(fs.readFileSync(path.join(root, 'premium.js'), 'utf8'), context, { filename: 'premium.js' });
-  const ui = window.SengokuPremium; assertPreparing(container); ui.open();
-  const dialog = doc.querySelector('#premium-modal'), section = dialog.querySelector('[data-premium-catalog]');
-  section.dispatch('click', section.querySelector('[data-premium-preview="supporter"]'));
-  section.dispatch('click', section.querySelector('[data-premium-purchase="supporter"]'));
-  assertPreparing(dialog);
-  for (const product of window.SengokuPremiumCatalog.getProducts()) unavailable(window.SengokuPremiumCatalog.getPurchaseState(product.id), 'launch_disabled');
-  ui.close(); ui.dispose();
-  assert.equal(JSON.stringify(game), before);
-  assert.deepEqual(effects, []); assert.deepEqual(reads, []);
-  assert.equal(location.search.includes('payment_status=paid'), true, 'The forged success URL was actually present');
+test('the public page renders real artwork and game entry links, without direct checkout or ownership', () => {
+  const html = renderCatalog({ catalog, surface: 'public', assetPrefix: '../', gamePrefix: '../', context: ready({ products: [{ id: 'gold-banner', owned: true, equipped: true }] }) });
+  const { doc } = documentFixture(), section = doc.createElement('section'); section.innerHTML = html; doc.body.append(section);
+  const links = section.querySelectorAll('[data-premium-purchase]'); assert.equal(links.length, 3);
+  for (const [index, product] of catalog.getProducts().entries()) { assert.equal(links[index].tagName, 'A'); assert.equal(links[index].getAttribute('href'), '../?premium=' + product.id); assert(html.includes('../' + product.art.src)); }
+  assert.doesNotMatch(html, /buy\.stripe\.com|data-premium-equip|data-premium-account|予定価格|販売準備中/);
+  assert.match(section.textContent, /月額780円（税込）で自動更新/); assert.match(section.textContent, /現在の利用期間の末日/);
+  const ui = createUI({ document: doc, catalog, runtime: { getContext() { throw Error('Public page must not read account state'); } } });
+  ui.mount(section); const preview = section.querySelector('[data-premium-catalog]');
+  preview.dispatch('click', preview.querySelector('[data-premium-preview="gold-banner"]'));
+  assert.equal(preview.getAttribute('data-premium-selected'), 'gold-banner'); assert.equal(preview.querySelector('[data-premium-landscape]').getAttribute('src'), '../assets/castle-town.webp');
+  preview.dispatch('click', preview.querySelector('[data-premium-preview="moonlit-castle"]'));
+  assert.equal(preview.querySelector('[data-premium-landscape]').getAttribute('src'), '../assets/premium/moonlit-castle-v1.webp'); ui.dispose();
+});
+
+test('loading, unready, anonymous, offline, error and banned states never allow purchase or equip', async () => {
+  for (const state of [...['loading', 'anonymous', 'offline', 'error', 'banned'].map(status => ({ status, ready: true })), { status: 'ready', ready: false }]) {
+    const s = setup(ready({ ...state, products: catalog.getProducts().map(product => ({ id: product.id, owned: true, equipped: true, canPurchase: true })) })); s.ui.open(); await drain();
+    assertUnavailable(s.get('#premium-modal')); s.click('[data-premium-preview="supporter"]'); s.click('[data-premium-purchase="supporter"]');
+    assert.equal(s.calls.some(call => ['checkout', 'equip'].includes(call[0])), false); assert.equal(s.windows.length, 0); s.ui.dispose();
+  }
+  const s = setup({ status: 'anonymous', ready: false, user: null }); s.ui.open(); await drain(); s.click('[data-premium-ui="register"]'); assert.equal(s.ui.isOpen(), false); assert(s.calls.some(call => call[0] === 'register')); s.ui.dispose();
+});
+
+test('purchase confirmation names the account and subscription terms before a checkout request', async () => {
+  const s = setup(); s.ui.open('supporter'); await drain();
+  assert.equal(s.get('[data-premium-catalog]').getAttribute('data-premium-selected'), 'supporter');
+  s.click('[data-premium-purchase="supporter"]'); const confirmation = s.get('[data-premium-confirm]');
+  assert.match(confirmation.textContent, /一城の領主/); assert(confirmation.textContent.includes(userA.id)); assert.match(confirmation.textContent, /780円 \/ 月（税込）/); assert.match(confirmation.textContent, /自動更新/); assert.match(confirmation.textContent, /期間の末日/);
+  assert.equal(s.calls.filter(call => call[0] === 'checkout').length, 0); assert.equal(s.windows.length, 0);
+  const wait = deferred(); s.onCheckout(() => wait.promise); s.click('[data-premium-ui="checkout"]');
+  assert.equal(s.windows.length, 1); assert.equal(s.windows[0].location.href, 'about:blank'); assert.equal(s.windows[0].opener, null);
+  s.click('[data-premium-ui="checkout"]'); assert.equal(s.calls.filter(call => call[0] === 'checkout').length, 1);
+  wait.resolve({ productId: 'supporter', url: checkoutURL('supporter') }); await drain();
+  assert.equal(s.windows[0].location.href, checkoutURL('supporter')); assert.equal(s.context().products.find(product => product.id === 'supporter').owned, false);
+  assert.match(s.get('[data-premium-feedback]').textContent, /購入状態を再確認/); assert.equal(s.get('[data-premium-purchase="supporter"]').disabled, false); s.ui.dispose();
+});
+
+test('blocked popups expose an explicit validated continuation link without granting anything', async () => {
+  const s = setup(ready(), { blockPopup: true }); s.ui.open(); await drain(); s.click('[data-premium-purchase="gold-banner"]'); s.click('[data-premium-ui="checkout"]'); await drain();
+  const link = s.get('.premium-checkout-continuation'); assert(link); assert.equal(link.getAttribute('href'), checkoutURL('gold-banner')); assert.equal(link.getAttribute('rel'), 'noopener noreferrer'); assert.equal(s.context().products[0].owned, false); s.ui.dispose();
+});
+
+test('incorrect checkout URLs and errors close the empty tab and leave the account unowned', async () => {
+  for (const response of [{ productId: 'gold-banner', url: paymentBases['gold-banner'] }, { productId: 'supporter', url: checkoutURL('supporter') }, new Error('購入先を確認できません')]) {
+    const s = setup(); s.onCheckout(async () => { if (response instanceof Error) throw response; return response; }); s.ui.open(); await drain(); s.click('[data-premium-purchase="gold-banner"]'); s.click('[data-premium-ui="checkout"]'); await drain();
+    assert.equal(s.windows[0].closed, true); assert.equal(s.get('.premium-checkout-continuation'), null); assert.equal(s.get('[data-premium-feedback]').getAttribute('role'), 'alert'); assert.equal(s.context().products[0].owned, false); assert.equal(s.get('[data-premium-purchase="gold-banner"]').disabled, false); s.ui.dispose();
+  }
+});
+
+test('an old checkout cannot navigate or close a newer account checkout window', async () => {
+  const s = setup(), first = deferred(), second = deferred(); let request = 0;
+  s.onCheckout(() => ++request === 1 ? first.promise : second.promise); s.ui.open(); await drain(); s.click('[data-premium-purchase="gold-banner"]'); s.click('[data-premium-ui="checkout"]');
+  s.set(ready({ user: userB })); assert.equal(s.windows[0].closed, true); assert.equal(s.get('[data-premium-confirm]').hidden, true); assert(!s.get('[data-premium-account]').textContent.includes(userA.id));
+  s.click('[data-premium-purchase="gold-banner"]'); s.click('[data-premium-ui="checkout"]'); assert.equal(s.windows.length, 2);
+  first.resolve({ productId: 'gold-banner', url: checkoutURL('gold-banner', 'x'.repeat(32)) }); await drain(); assert.equal(s.windows[1].closed, false); assert.equal(s.windows[1].location.href, 'about:blank');
+  second.resolve({ productId: 'gold-banner', url: checkoutURL('gold-banner', 'y'.repeat(32)) }); await drain(); assert.equal(s.windows[1].location.href, checkoutURL('gold-banner', 'y'.repeat(32))); s.ui.dispose();
+});
+
+test('server ownership and equip updates preserve previews and details, and no equip is optimistic', async () => {
+  const initial = ready(); initial.products[0].owned = true; initial.products[0].canPurchase = false;
+  const s = setup(initial), wait = deferred(); s.onEquip(() => wait.promise); s.ui.open(); await drain(); s.click('[data-premium-preview="moonlit-castle"]');
+  const details = s.get('.premium-product-details'); details.open = true; s.click('[data-premium-equip="gold-banner"]');
+  assert.deepEqual(s.calls.find(call => call[0] === 'equip'), ['equip', 'gold-banner', 'nameplate']); assert.equal(s.context().products[0].equipped, false);
+  s.set({ ...s.context(), products: s.context().products.map(product => product.id === 'gold-banner' ? { ...product, equipped: true } : product) }); wait.resolve(s.context()); await drain();
+  assert.equal(s.get('[data-premium-equip="gold-banner"]').hasAttribute('data-premium-remove'), true); assert.equal(s.get('[data-premium-catalog]').getAttribute('data-premium-selected'), 'moonlit-castle'); assert.equal(details.open, true);
+  s.onEquip(async (id, slot) => { assert.equal(id, null); assert.equal(slot, 'nameplate'); throw Error('装備変更を確認できません'); }); s.click('[data-premium-equip="gold-banner"]'); await drain();
+  assert.equal(s.get('[data-premium-equip="gold-banner"]').hasAttribute('data-premium-remove'), true); assert.match(s.get('[data-premium-feedback]').textContent, /装備変更を確認できません/); s.ui.dispose();
+});
+
+test('subscription expiry and revocation are presented from the current account response', async () => {
+  const initial = ready({ portalUrl: 'https://billing.stripe.com/p/session/test' }); initial.products[2] = { id: 'supporter', owned: true, equipped: true, expiresAt: '2030-01-31T15:00:00.000Z', canPurchase: false };
+  const s = setup(initial); s.ui.open('supporter'); await drain(); assert.match(s.get('.premium-expiry').textContent, /2030年2月1日/); assert.match(s.get('.premium-expiry').textContent, /日本時間/); assert(s.get('.premium-contract-link'));
+  s.set(ready()); assert.equal(s.get('[data-premium-equip="supporter"]'), null); assert.equal(s.get('[data-premium-catalog]').getAttribute('data-premium-selected'), 'supporter');
+  assert.equal(normalizeContext(ready({ portalUrl: 'javascript:alert(1)' })).portalUrl, ''); assert.equal(expiryLabel('invalid'), ''); s.ui.dispose();
+});
+
+test('Escape restores the settings opener and queued close does not erase a reopened dialog', async () => {
+  const s = setup(); s.ui.open(); await drain(); const dialog = s.get('#premium-modal'), heading = s.get('#premium-dialog-title');
+  const escape = dialog.dispatch('keydown', heading, { key: 'Escape' }); assert(escape.prevented && escape.stopped); assert.equal(s.ui.isOpen(), false); assert.equal(s.doc.activeElement, s.entry); assert.equal(s.listeners.size, 0);
+  s.ui.open(); await drain(); dialog.deferCloseEvent = true; s.ui.close(); s.ui.open('gold-banner'); await drain(); const reopened = s.get('[data-premium-catalog]'); dialog.dispatch('close');
+  assert.equal(s.ui.isOpen(), true); assert.equal(s.get('[data-premium-catalog]'), reopened); assert.equal(reopened.getAttribute('data-premium-selected'), 'gold-banner');
+  dialog.deferCloseEvent = false; s.ui.dispose(); assert.equal(s.get('#premium-modal'), null); assert.equal(s.listeners.size, 0);
+});
+
+test('forged success parameters and local storage never grant ownership or mutate a game save', async () => {
+  const { doc } = documentFixture(), effects = [], reads = [], game = { resources: { gold: 10, magatama: 25 }, premium: [] }, before = JSON.stringify(game);
+  const storage = { getItem(key) { reads.push(key); return JSON.stringify({ owned: true, premium: ['gold-banner'], success: true }); }, setItem(...args) { effects.push(['write', ...args]); }, removeItem(...args) { effects.push(['remove', ...args]); } };
+  const location = new URL('https://fixture.example.test/?premium=gold-banner&success=true&payment_status=paid'), blocked = name => (...args) => { effects.push([name, ...args]); throw Error(name); };
+  const window = { document: doc, location, URL, URLSearchParams, localStorage: storage, sessionStorage: storage, fetch: blocked('fetch'), open: blocked('open'), SengokuBridge: { getState: () => game, save: blocked('save') } };
+  const context = vm.createContext({ window, document: doc, URL, URLSearchParams, console });
+  vm.runInContext(fs.readFileSync(path.join(root, 'premium-catalog.js'), 'utf8'), context); vm.runInContext(fs.readFileSync(path.join(root, 'premium.js'), 'utf8'), context);
+  window.SengokuPremium.open('gold-banner'); await drain(); assertUnavailable(doc.querySelector('#premium-modal'));
+  const element = doc.querySelector('[data-premium-catalog]'); element.dispatch('click', element.querySelector('[data-premium-preview="supporter"]')); doc.querySelector('#premium-modal').dispatch('click', element.querySelector('[data-premium-purchase="supporter"]'));
+  assert.equal(JSON.stringify(game), before); assert.deepEqual(effects, []); assert.deepEqual(reads, []); window.SengokuPremium.dispose();
 });
 
 (async () => {
-  for (const [name, run] of tests) {
-    await run();
-    console.log('PASS ' + name);
-  }
+  for (const [name, run] of tests) { await run(); console.log('PASS ' + name); }
   console.log(JSON.stringify({ passed: tests.length, realPayments: 0, gameSaves: 0, fixtureOnly: true }));
 })().catch(error => { console.error(error); process.exitCode = 1; });

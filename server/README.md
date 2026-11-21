@@ -6,8 +6,8 @@
 
 ## 配置と移行
 
-- `index.js`・`game-engine.js`・`game-officers.js`・`game-runtime.js`・`letters.js`・`trade.js`・`moderation.js` をAPIプロジェクトの `worker/` に配置します。ビルドでは武将データ、共通エンジン、書状、交易、運営管理、APIを結合し、単一のWorker ESMを `dist/server/index.js` に出力します。この参照フォルダー内ではモジュールを隣接させたまま、テストからESMとして直接読み込めます。
-- `drizzle/0000_social.sql` から `0012_player_moderation.sql` までの移行と `drizzle/meta/_journal.json` を、APIプロジェクトのルートに維持します。0005は写真のメタデータ、0006はギルド役職・共有資産・操作記録、0007は周回の保存位置・報酬受取記録・公開達成通知、0008は駿府城の共同成長・着工記録・任命前の個人拠点、0009は歩行計測、0010は書状、0011は個人間の交易、0012はBAN状態・操作記録・投稿更新番号を追加します。
+- `index.js`・`game-engine.js`・`game-officers.js`・`game-runtime.js`・`letters.js`・`trade.js`・`moderation.js`・`premium.js` をAPIプロジェクトの `worker/` に配置します。ビルドでは武将データ、共通エンジン、書状、交易、運営管理、有料外観、APIを結合し、単一のWorker ESMを `dist/server/index.js` に出力します。この参照フォルダー内ではモジュールを隣接させたまま、テストからESMとして直接読み込めます。
+- `drizzle/0000_social.sql` から `0013_premium_purchases.sql` までの移行と `drizzle/meta/_journal.json` を、APIプロジェクトのルートに維持します。0005は写真のメタデータ、0006はギルド役職・共有資産・操作記録、0007は周回の保存位置・報酬受取記録・公開達成通知、0008は駿府城の共同成長・着工記録・任命前の個人拠点、0009は歩行計測、0010は書状、0011は個人間の交易、0012はBAN状態・操作記録・投稿更新番号、0013は有料商品の検証済み決済記録・外観・保留確認の監査を追加します。
 - hostingの論理バインディングは `d1: "DB"`、`r2: "BUCKET"`。static設定は不要です。
 - 初回運営キーは秘密の実行時環境変数 `SENGOKU_ADMIN_KEY` にだけ設定します。
 - 別Originのフロントエンドは `SENGOKU_ALLOWED_ORIGINS` に正確なOriginをカンマ区切りで設定します。
@@ -107,6 +107,7 @@ node test-field-migration.mjs
 node test-staff.mjs
 node test-staff-base.mjs
 node test-evaluation.mjs
+node test-premium.mjs
 node test-trade.mjs
 node test-moderation.mjs
 ```

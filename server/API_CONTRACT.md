@@ -907,7 +907,240 @@ No environment values, plaintext keys, or bearer tokens are logged. Admin state 
 
 The Worker uses D1 `prepare`, `bind`, `first`, `run`, `all` and `batch` APIs. It does not issue manual `BEGIN`/`COMMIT` statements or rely on Node APIs at runtime. D1 batches execute their prepared statements in order as one transaction and roll back on a statement failure; this is the basis of atomic pairing-code consumption. The Worker uses the ordinary D1 binding without read-replication sessions, so reads and writes address the primary database. See the [official D1 database API documentation](https://developers.cloudflare.com/d1/worker-api/d1-database/#batch).
 
-## Local verification
+## Premium cosmetics and Stripe snapshots (3.14.0)
+
+Migration `0013_premium_purchases.sql` adds opaque purchase references, verified
+event receipts, normalized checkout/invoice/payment/charge facts, risk holds,
+subscription end times, cosmetic selections and operator review receipts.
+`premium_grants` is a database view over those facts. It is not supplied by the
+browser or by a game save. No premium operation changes game resources,
+magatama, combat, roles, save revisions, writer leases or world-clock progress.
+
+### Configuration and deployment
+
+The public GitHub `server/` folder remains a reference copy. The actual Worker
+is deployed from the dedicated Sites API project, with `worker/premium.js`
+included in its build and migration 0013 applied through the existing journal.
+Do not expose secrets in either repository or the browser configuration.
+
+Runtime environment settings:
+
+- `STRIPE_WEBHOOK_SECRET`: the signing secret of this exact **live** endpoint.
+- `SENGOKU_PREMIUM_ENABLED`: only the literal string `true` enables new checkout
+  links. Missing/other values keep purchases unavailable.
+- `SENGOKU_STRIPE_PORTAL_URL`: an operator-configured HTTPS Stripe hosted login
+  page under `https://billing.stripe.com/p/login/`. No game bearer token or
+  identity file is sent to this page. A valid portal URL is required before a
+  monthly purchase link can be issued.
+
+The Worker does not hold a Stripe API secret key or call Stripe at runtime. It
+uses signed snapshot events for fulfillment. Setting a catalog URL alone does
+not make the service ready or grant ownership. Financial notifications continue
+to be processed while the sale switch is off and while a player is banned.
+
+Register a **snapshot** endpoint with API version `2026-09-30.endive` at:
+
+`https://sengoku-tento.hisa-0128-1996.chatgpt.site/api/v1/premium/stripe/webhook`
+
+Subscribe to these event types:
+
+```text
+checkout.session.completed
+checkout.session.async_payment_succeeded
+checkout.session.async_payment_failed
+charge.succeeded
+charge.captured
+charge.updated
+charge.refunded
+invoice.paid
+invoice.payment_failed
+invoice_payment.paid
+customer.subscription.updated
+customer.subscription.deleted
+refund.created
+refund.updated
+refund.failed
+charge.refund.updated
+charge.dispute.created
+charge.dispute.updated
+charge.dispute.closed
+charge.dispute.funds_withdrawn
+charge.dispute.funds_reinstated
+radar.early_fraud_warning.created
+radar.early_fraud_warning.updated
+```
+
+The three allowed Payment Links, Prices, Products, JPY amounts and modes are
+fixed in `worker/premium.js`. They correspond to `gold-banner` (480 JPY,
+payment), `moonlit-castle` (980 JPY, payment) and `supporter` (780 JPY,
+subscription). The links must retain fixed quantity 1, exact tax-inclusive JPY
+totals and the corresponding product/price. Additional items, quantity changes,
+discounts or currency conversion do not satisfy this fulfillment contract.
+Changes to Stripe settings require matching server validation and tests before
+sales continue.
+
+### Player API
+
+All player routes require the existing game bearer token and reject banned
+accounts. Caller-supplied player IDs, ownership, prices or redirects are not
+accepted. Each mutating SQL operation rechecks the account-access generation.
+
+`GET /premium` returns:
+
+```js
+{
+  ok: true,
+  ready: false,
+  player: {id: "u_…", name: "領主名"},
+  products: [{
+    id: "gold-banner",
+    owned: false,
+    equipped: false,
+    expiresAt: null, // ISO timestamp for monthly coverage, or null
+    canPurchase: false,
+    purchaseBlockReason: "preparing" // owned / subscription_exists /
+                                    // portal_unavailable / null
+  }],
+  appearance: {nameplate: null, town: null, badge: null},
+  portalUrl: null,
+  serverNow: "2026-11-21T00:00:00.000Z"
+}
+```
+
+`products` always contains the three catalog IDs. Expired monthly coverage may
+retain its past `expiresAt`, but `owned` and the displayed badge become false.
+An existing subscription whose actual end has not been confirmed blocks a
+second monthly checkout even after paid coverage expires. This directs failed
+renewals and delayed notifications to the portal instead of a duplicate plan.
+
+`POST /premium/checkout` accepts only `{productId}` and returns
+`{ok:true,productId,url}`. It inserts or reuses an unpredictable 256-bit reference
+bound permanently to the authenticated player and product. The reference is
+passed as `client_reference_id` to the exact permitted Payment Link. It is not a
+bearer credential and contains no player name or token. References are retained
+indefinitely so an older link does not produce an unassignable payment merely
+because a local reference expired. Completed payments use unique Stripe IDs.
+
+Checkout errors include `PREMIUM_NOT_READY` (503), `ALREADY_OWNED` (409),
+`SUBSCRIPTION_EXISTS` (409), and `INVALID_PRODUCT` (400). A successful redirect,
+email address, screenshot, imported save or query parameter alone never proves
+payment. The issue endpoint is rate-limited to 20 calls per player per minute.
+
+**Payment Link limitation:** an already-issued hosted URL is reusable outside
+the game. Rejecting a second issuance prevents accidental repeat purchases in
+the UI, but cannot revoke a browser's existing link or prevent every additional
+Stripe subscription. Reconciliation/support must handle duplicate paid orders;
+strict one-checkout enforcement would require server-created Checkout Sessions
+or an equivalent provider-side restriction. No duplicate grant creates game
+assets or transfers ownership between players.
+
+`PUT /premium/appearance` accepts only `{slot,productId}`. Valid pairings are
+`nameplate` / `gold-banner`, `town` / `moonlit-castle`, and `badge` / `supporter`.
+`productId:null` removes that slot. The SQL statement verifies the current
+server-derived ownership and account epoch at commit time. Missing ownership is
+`PREMIUM_NOT_OWNED` (403). The response is the same snapshot as `GET /premium`.
+Selections are not stored in the importable save, and a revoked or expired
+selection is suppressed when read. Public identity DTOs receive only the
+`appearance` keys; no customer, invoice, charge, subscription, order reference
+or other private billing details are exposed.
+
+### Notification validation and fulfillment
+
+`POST /premium/stripe/webhook` is handled before game authentication. It accepts
+JSON with a stream-enforced 512 KiB bound and verifies Stripe's HMAC-SHA256 over
+the **exact raw bytes**, using the `Stripe-Signature` header and a five-minute
+timestamp tolerance. It accepts live snapshots only, from the fixed API version
+and the direct account endpoint; connected-account events are not fulfilled.
+Invalid signatures return `STRIPE_SIGNATURE_INVALID` (400). Missing signing
+configuration returns 503. No key, bearer token or complete payment payload is
+logged or persisted.
+
+Successfully verified notifications return
+`{ok:true,received:true,duplicate,disposition}`. Supported, valid facts are
+`accepted`; unrelated types are `ignored`; incomplete or mismatched data is
+`quarantined`. The event ID, type, object ID, body hash, reason and server receipt
+time are stored. Invalid financial snapshots can create a fail-closed hold on
+the known object. Event receipt and all corresponding facts/holds are committed
+in one D1 batch with an event-specific nonce. Duplicate IDs cannot apply twice;
+the same ID with different content is `STRIPE_EVENT_CONFLICT` (409).
+
+- One-time ownership requires a paid, completed Session tied to an issued
+  reference, the exact allowed Payment Link/mode/currency/total, and a matching
+  paid, captured Charge. Expanded Session line items, when present, must also
+  match the allowed price and quantity. The normal unexpanded snapshot is
+  checked through its exact Payment Link and total. An unpaid completion alone
+  does not grant; a later valid async success can advance the same Session.
+- Monthly ownership requires that subscription's Session/customer association,
+  a paid invoice with the allowed Price/Product and one complete non-proration
+  subscription line, an `invoice_payment.paid` allocation of the exact amount
+  to a PaymentIntent, and its paid captured Charge. An invoice marked paid
+  outside Stripe, or an invoice lacking its actual payment allocation, is
+  insufficient. Both `quantity` and `quantity_decimal` are checked. The service
+  period comes from the line, not the invoice's general accounting window.
+- Monthly coverage starts and ends at that paid service period, using real
+  server time. A reversible period-end cancellation request does not shorten
+  coverage. Actual subscription termination caps it. A late earlier snapshot
+  cannot reverse a confirmed end. Failed-payment events record status only and
+  do not extend coverage.
+- Refunds, disputes and fraud warnings can arrive before their payment facts.
+  Holds are retained and joined after correlations become known, preventing a
+  delayed success from restoring blocked ownership. Successful refunds,
+  `charge.refunded`, lost disputes and conflicting or unverifiable financial
+  facts cannot be cleared through the operator review API. Pending/failed/
+  canceled refund notifications and unresolved or won disputes/fraud warnings
+  remain conservative review holds; their later status does not automatically
+  restore access.
+
+No event timestamp is used as a universal ordering version. Facts, unique
+resource IDs, real service periods and irreversible holds/end times determine
+the result. A missing required snapshot leaves the purchase unfulfilled until
+the corresponding verified event arrives. Operators must monitor quarantined
+events and reconcile incomplete deliveries; this keyless Worker cannot fetch
+missing Stripe objects by itself.
+
+### Operator review of soft holds
+
+Only the current `settings.adminUserId` identity may use these routes. Staff and
+ordinary players are denied. Access generation and the current operator role
+are checked in the committing SQL. This operation is for a human who has
+verified the actual Stripe payment, refund/dispute and risk state; it does not
+replace that investigation or create payment facts.
+
+`GET /admin/premium/reviews?limit=20&cursor=…` returns active holds:
+
+```js
+{ok:true,holds:[{
+  scope:"charge",objectId:"ch_…",revision:1,eventId:"evt_…",
+  reason:"fraud_review",createdAt:"…",updatedAt:"…",canRelease:true,
+  players:[{id:"u_…",name:"領主名"}]
+}],nextCursor:null,serverNow:"…"}
+```
+
+The maximum page size is 50. `POST /admin/premium/reviews` accepts
+`{scope,objectId,expectedRevision,expectedEventId,reason,requestId}`. `reason` is
+the operator's Stripe verification explanation (8–500 characters); it must not
+contain payment-card data, secrets or authentication tokens. Only `refund_review`,
+`dispute_review` and `fraud_review` can be released. All other reasons return
+`PREMIUM_REVIEW_FORBIDDEN` (403). Changed holds return `PREMIUM_REVIEW_CHANGED`
+(409). The response is `{ok:true,review:{id,scope,objectId,revision,eventId,reason,
+createdAt},idempotent}`.
+
+The operator audit receipt and the release of exactly the observed hold
+revision commit atomically. Every new risk event advances the hold revision and
+re-blocks it. An older page or replayed review request cannot clear that new
+event. A hard reason is never weakened by a later soft notification. Where both
+Charge and PaymentIntent holds exist, each must be reviewed before derived
+ownership returns. The underlying signed paid facts remain mandatory after
+release; a review cannot grant an unpaid item, revive a refunded purchase, alter
+a service period, or confer operator/staff privileges.
+
+The independent `scripts/test-premium.mjs` suite uses only local signed fixtures,
+blocks external fetches, and checks ownership binding, raw signatures, strict
+product/quantity checks, event ordering, replay, rollback, paid periods,
+subscription duplication guards, risk review, public privacy, bans and save
+independence. It does not make real payments or modify production customers.
+
+## Local verification (existing systems)
 
 Run the `scripts/test-*.mjs` suites (excluding the `test-support.mjs` harness) using Node 24 or a Node version providing `node:sqlite`. In addition to social/sync/field/guild/avatar/staff/cycle coverage, `test-walking.mjs` verifies cumulative grants, real-time envelopes, delayed network delivery, simultaneous reports, response loss, reloads, account/campaign isolation, import handling and atomic rollback. `test-letters.mjs` verifies private/guild correspondence permissions, current membership, retry receipts and message/read cursors. `test-trade.mjs` exercises escrowed bundles, free exports, actor-only save updates, pending refunds/proceeds, authorization, limits, replay, races and rollback. `test-moderation.mjs` verifies sole-operator authorization, author-only text removal, bans and unbans using existing tokens, private access generations, in-flight operation races, atomic rollback, content-cache invalidation and trade refunds without touching production players. `test-construction-queues.mjs` verifies shared reservations, per-stage charging, conflicting requests, lost responses, caps, stage deadlines and personal staff-transition progress. Run the syntax checks for all Worker modules and the built Worker. Frontend `tests/test-walking-engine.cjs` verifies durable local grants and save migration separately from browser motion/controller tests; `tests/test-construction-queue-engine.cjs` verifies head-only progress and save/reload timing; `tests/test-strategy-engine.cjs` and the independent `tests/test-strategy-contract.cjs` cover parsing, exclusions, resources, decision replay, scope changes and stop conditions.
 
