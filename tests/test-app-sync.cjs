@@ -25,7 +25,7 @@ function setup({admin=false}={}) {
     game, roster, SengokuEngine,
     state:()=>context.game.state,
     syncAccess:{linked:true,ready:true,writable:true,leaseExpiresAt:new Date(Date.now()+30000).toISOString()},
-    saveKey:'save', backupKey:'backups', saveEnabled:true, saveWarning:'',worldCatchingUp:false,worldSettlementPending:false,worldSettlementRetryAt:0,fieldActionPending:false,startPending:false,
+    saveKey:'save', backupKey:'backups', saveEnabled:true, saveWarning:'',worldCatchingUp:false,worldSettlementPending:false,worldSettlementRetryAt:0,fieldActionPending:false,walkingActionPending:false,strategyActionPending:false,startPending:false,
     selectedCastle:'', lastRealtime:0, saveCounter:0, importedGame:null, activeModal:'',
     localStorage:{getItem:k=>stored.get(k)||null,setItem:(k,v)=>stored.set(k,v)},
     window:{dispatchEvent:e=>events.push(e.type)}, CustomEvent:class{constructor(type){this.type=type;}},

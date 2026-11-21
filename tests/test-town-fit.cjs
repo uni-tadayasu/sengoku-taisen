@@ -1,6 +1,6 @@
 'use strict';
 const assert = require('node:assert/strict');
-const {fitRect, labelRect, sceneHeight, panelSceneHeight} = require('../town-fit.js');
+const {fitRect, labelRect, placeLabels, sceneHeight, panelSceneHeight} = require('../town-fit.js');
 const kamon = require('../kamon.js');
 const points = [[39,27],[24,76],[51,62],[87,41],[86,79],[17,44],[68,43],[57,27]];
 let cases = 0;
@@ -61,7 +61,18 @@ assert(largerTown.width>=790&&largerTown.height>=527,'1366×768 geometry has a m
 assert(largerTown.width*largerTown.height>3*(438*292),'Artwork area exceeds three times the previous 438×292 result');
 assert.equal(panelSceneHeight(569,60,0),509,'Long labels and larger system text use their actual measured height');
 assert.equal(panelSceneHeight(0,42,0),1,'Hidden or not-yet-sized panels remain finite');
+// All eight current facility levels stay present, including 200% desktop and
+// phones where the former compact mode hid the whole name/level label.
+for(const width of [290,307.5,339,570,705,819]){
+  const height=width/1.5,compact=width<620;
+  const labels=placeLabels(points.map(([x,y],i)=>({x:width*x/100,y:height*y/100,width:compact?61:112,height:compact?50:32,pinSize:44,above:[3,7].includes(i)})),width,height);
+  assert.equal(labels.length,8);
+  for(let i=0;i<labels.length;i++){
+    const a=labels[i];assert(a.left>=5&&a.top>=5);assert(a.left+a.width<=width-5+1e-8&&a.top+a.height<=height-5+1e-8);
+    for(const b of labels.slice(i+1))assert(a.left+a.width<=b.left||b.left+b.width<=a.left||a.top+a.height<=b.top||b.top+b.height<=a.top,'Current facility levels cannot cover each other at '+width+'px');
+  }
+}
 assert.equal(kamon.url('德川家'), kamon.url('徳川家'));
 assert.match(kamon.render('德川家'), /aria-label="德川家：/);
 assert.match(kamon.render('徳川家'), /aria-label="徳川家：/);
-console.log(`PASS ${cases} town fit/label geometries, full-height PC canvas/maximized image, drag limits, zero-size startup, and the two Tokugawa crest labels.`);
+console.log(`PASS ${cases} town fit/label geometries, eight readable non-overlapping current-level badges, full-height PC canvas/maximized image, drag limits, zero-size startup, and the two Tokugawa crest labels.`);

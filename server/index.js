@@ -1,4 +1,5 @@
 import {GameEngine, GAME_OFFICERS} from './game-runtime.js';
+import {handleLetters} from './letters.js';
 const API = '/api/v1';
 const MAX_BODY = 16 * 1024;
 const MAX_SAVE_BODY = 2 * 1024 * 1024;
@@ -8,6 +9,8 @@ const MAX_GUILD_MEMBERS = 50;
 const ONLINE_WINDOW = 90 * 1000;
 const RECENT_LOGIN_WINDOW = 24 * 60 * 60 * 1000;
 const SYNC_LEASE = 30 * 1000;
+const WALKING_RULES=Object.freeze({rewardPerStep:2,maxStepsPerSecond:4,heartbeatMs:5000,windowMs:30000,jitterSteps:2,deliveryToleranceMs:1000});
+const MAX_WALKING_STEPS=Math.floor(Number.MAX_SAFE_INTEGER/2);
 const PAIR_CODE_LIFETIME = 10 * 60 * 1000;
 const IEYASU_ID = 'of_b0616adde162';
 const ADMIN_CLAN = '德川家';
@@ -709,16 +712,18 @@ function normalizeGameSave(raw, user, now, {reading=false,clock=null}={}) {
     if(s.turn!==Math.floor(s.worldClock.elapsedMs/WORLD_MONTH_MS)||Math.abs(rt.elapsed-(s.worldClock.elapsedMs%WORLD_MONTH_MS)/1000)>1e-5)fail(400,'INVALID_CLOCK_ANCHOR','ゲーム年月と共通時計の保存位置が一致しません。');
     if(!reading&&clock&&s.worldClock.elapsedMs>clock.elapsedMs+5000)fail(400,'CLOCK_AHEAD','保存時刻が世界の共通時計より先です。共通時計を再確認してください。');
   }
-  if(!Array.isArray(s.jobs)||s.jobs.length>7)invalid();
+  if(!Array.isArray(s.jobs)||s.jobs.length>193)invalid();
   for(const j of s.jobs){if(!isObj(j))invalid();if(j.remainingSeconds===undefined)j.remainingSeconds=j.remaining*60;if(j.totalSeconds===undefined)j.totalSeconds=j.total*60;if(!scalar(j.remainingSeconds,.00000001,180)||!num(j.totalSeconds,60,180)||j.totalSeconds!==j.total*60||j.remainingSeconds>j.totalSeconds||j.remaining!==Math.ceil((j.remainingSeconds-1e-8)/60))invalid();}
 
-  const jobkeys=new Set();for(const j of s.jobs){if(!isObj(j)||!['building','castle','research'].includes(j.kind)||!num(j.remaining,1,3)||!num(j.total,1,3)||j.remaining>j.total)invalid();const defs=j.kind==='building'?BUILDINGS:j.kind==='castle'?CASTLES:TECHS,current=j.kind==='castle'?s.castles[j.id]?.level:(j.kind==='building'?s.buildings:s.tech)[j.id];if(!defs.some(d=>d.id===j.id)||j.targetLevel!==current+1||j.targetLevel>(j.kind==='research'?5:j.kind==='castle'?castleLevelLimit(j.id):32)||j.kind==='castle'&&s.castles[j.id]?.owner!==s.clan)invalid();const key=j.kind+':'+j.id;if(jobkeys.has(key))invalid();jobkeys.add(key);}
-  if(s.jobs.filter(j=>j.kind==='research').length>1||s.jobs.filter(j=>j.kind!=='research').length>(staff||serviceSave?6:2+Math.floor(s.buildings.keep/8)))invalid();
+  const jobkeys=new Map();for(const j of s.jobs){if(!isObj(j)||!['building','castle','research'].includes(j.kind)||!num(j.remaining,1,3)||!num(j.total,1,3)||j.remaining>j.total)invalid();const defs=j.kind==='building'?BUILDINGS:j.kind==='castle'?CASTLES:TECHS,current=j.kind==='castle'?s.castles[j.id]?.level:(j.kind==='building'?s.buildings:s.tech)[j.id],key=j.kind+':'+j.id,count=jobkeys.get(key)||0;if(!defs.some(d=>d.id===j.id)||j.targetLevel!==current+count+1||j.targetLevel>(j.kind==='research'?5:j.kind==='castle'?castleLevelLimit(j.id):32)||j.kind==='castle'&&s.castles[j.id]?.owner!==s.clan||count&&(j.kind!=='building'||j.remainingSeconds!==j.totalSeconds))invalid();jobkeys.set(key,count+1);}
+  if(s.jobs.filter(j=>j.kind==='research').length>1||[...jobkeys.keys()].filter(key=>!key.startsWith('research:')).length>(staff||serviceSave?6:2+Math.floor(s.buildings.keep/8)))invalid();
+  s.jobs=s.jobs.map(job=>pick(job,['kind','id','remaining','total','remainingSeconds','totalSeconds','targetLevel']));
   if(!isObj(s.treaties)||Object.entries(s.treaties).some(([k,v])=>!validOwner.has(k)||k===s.clan||!num(v,0,MAX_TURN+6)))invalid();
   if(!isObj(s.scouted)||Object.entries(s.scouted).some(([k,v])=>!CASTLE_BY_ID[k]||!num(v,0,MAX_TURN+6)))invalid();
   if(!Array.isArray(s.claimedQuests)||new Set(s.claimedQuests).size!==s.claimedQuests.length||s.claimedQuests.some(id=>!QUESTS.some(q=>q.id===id)))invalid();
   if(s.giftReceipts===undefined)s.giftReceipts=[];
   if(!Array.isArray(s.giftReceipts)||s.giftReceipts.length>2000||new Set(s.giftReceipts).size!==s.giftReceipts.length||s.giftReceipts.some(id=>typeof id!=='string'||id.length<1||id.length>128))invalid();
+  try{s.walking=GameEngine.normalizeWalkingState(s.walking);}catch{invalid();}
   if(s.magatama===undefined)s.magatama=GACHA.initial;if(!num(s.magatama))invalid();
   if(s.captureRewards===undefined)s.captureRewards=CASTLES.filter(c=>s.castles[c.id].owner===s.clan).map(c=>c.id);
   if(!Array.isArray(s.captureRewards)||s.captureRewards.length>CASTLES.length||new Set(s.captureRewards).size!==s.captureRewards.length||s.captureRewards.some(id=>typeof id!=='string'||!CASTLE_BY_ID[id]))invalid();
@@ -734,7 +739,7 @@ function normalizeGameSave(raw, user, now, {reading=false,clock=null}={}) {
   if(!num(s.stats.researches??0,0,10000000))invalid();s.stats.researches=s.stats.researches??Object.values(s.tech).reduce((a,b)=>a+b,0);
   if(!Array.isArray(s.log)||s.log.length>200||s.log.some(l=>!isObj(l)||!num(l.turn,0,MAX_TURN)||typeof l.text!=='string'||l.text.length>2000||typeof l.kind!=='string'||l.kind.length>30))invalid();
   // Only retain known, validated fields; do not merge arbitrary imported object keys.
-  const n=g.state;for(const k of ['clan','home','turn','difficulty','resources','troops','morale','prestige','command','buildings','jobs','officers','officerVariants','army','governors','tech','castles','treaties','scouted','log','claimedQuests','giftReceipts','magatama','captureRewards','gachaHistory','seed','stats','realtime'])n[k]=copy(s[k]);
+  const n=g.state;for(const k of ['clan','home','turn','difficulty','resources','troops','morale','prestige','command','buildings','jobs','officers','officerVariants','army','governors','tech','castles','treaties','scouted','log','claimedQuests','giftReceipts','walking','magatama','captureRewards','gachaHistory','seed','stats','realtime'])n[k]=copy(s[k]);
   if(s.worldClock!==undefined)n.worldClock={id:WORLD_CLOCK_ID,elapsedMs:s.worldClock.elapsedMs};
   if(s.cycle!==undefined){const c=s.cycle,r=c?.latestReward;if(!isObj(c)||!num(c.index,0,Math.floor(MAX_TURN/WORLD_CYCLE_MONTHS))||!CASTLE_BY_ID[c.home]||r!==null&&(!isObj(r)||!num(r.cycle,0,c.index-1)||!num(r.captured,0,127)||r.gold!==r.captured*1000||r.rice!==r.captured*1000||r.magatama!==r.captured*100))invalid();n.cycle={index:c.index,home:c.home,latestReward:r===null?null:pick(r,['cycle','captured','gold','rice','magatama'])};}
   n.won=CASTLES.every(c=>!user.is_admin&&c.id==='edo'||n.castles[c.id].owner===n.clan);n.gameOver=!CASTLES.some(c=>n.castles[c.id].owner===n.clan);
@@ -1028,17 +1033,18 @@ async function staffBaseUpgrade(db,user,raw,now) {
   const base=await staffBaseDto(db,user,clock,now,shared),save=normalizeGameSave(JSON.parse(row.save_json),user,now,{reading:true,clock});
   if(!save.state.worldClock||clock.elapsedMs-save.state.worldClock.elapsedMs>15000)fail(409,'CLOCK_STALE','共通時刻と個人資源へ同期してから普請してください。');
   const game=GameEngine.fromSave(save,GAME_OFFICERS,{isStaff:true,staffBase:base});game._projectStaffAt(clock.elapsedMs);
-  const state=JSON.parse(shared.state_json),level=body.kind==='castle'?state.castleLevel:state.buildings[body.id],max=body.kind==='castle'?64:32;
+  const state=JSON.parse(shared.state_json),chain=state.jobs.filter(j=>j.kind===body.kind&&j.id===body.id).sort((a,b)=>a.targetLevel-b.targetLevel),tail=chain.at(-1),level=body.kind==='castle'?state.castleLevel:tail?.targetLevel??state.buildings[body.id],max=body.kind==='castle'?64:32;
   if(level>=max)fail(409,'BUILDING_MAX','最高レベルに到達しています。');
-  if(state.jobs.some(j=>j.kind===body.kind&&j.id===body.id))fail(409,'STAFF_BUILDING_BUSY','この共同普請は進行中です。');
-  if(state.jobs.length>=2+Math.floor(state.buildings.keep/8))fail(409,'STAFF_BUILDING_SLOTS','共同普請の枠が埋まっています。');
+  if(body.kind==='castle'&&chain.length)fail(409,'STAFF_BUILDING_BUSY','この城郭の共同普請は進行中です。');
+  if(!chain.length&&new Set(state.jobs.map(j=>j.kind+':'+j.id)).size>=2+Math.floor(state.buildings.keep/8))fail(409,'STAFF_BUILDING_SLOTS','共同普請の枠が埋まっています。');
   if(body.kind==='building'&&!game.buildingUnlock(body.id).ok)fail(409,'BUILDING_LOCKED',game.buildingUnlock(body.id).reason);
-  const cost=body.kind==='castle'?game.castleUpgradeCost('sunpu'):game.costs(body.id);if(game.state.command<1)fail(409,'COMMAND_REQUIRED','指示の回復をお待ちください。');
+  const cost=body.kind==='castle'?game.castleUpgradeCost('sunpu'):game.costs(body.id,level);if(game.state.command<1)fail(409,'COMMAND_REQUIRED','指示の回復をお待ちください。');
   if(RESOURCES.some(k=>game.state.resources[k]<(cost[k]||0)))fail(409,'INSUFFICIENT_ASSETS','共同普請に必要な個人資源が足りません。');
-  game._pay(cost);game.state.command--;const job={jobId:uid('sb_'),kind:body.kind,id:body.id,targetLevel:level+1,totalSeconds:cost.seconds,startedElapsedMs:clock.elapsedMs,completesElapsedMs:clock.elapsedMs+cost.seconds*1000,startedBy:{id:user.id,name:user.name}};
+  const startedElapsedMs=tail?Math.max(clock.elapsedMs,tail.completesElapsedMs):clock.elapsedMs;
+  game._pay(cost);game.state.command--;const job={jobId:uid('sb_'),kind:body.kind,id:body.id,targetLevel:level+1,totalSeconds:cost.seconds,queuedAtElapsedMs:clock.elapsedMs,startedElapsedMs,completesElapsedMs:startedElapsedMs+cost.seconds*1000,startedBy:{id:user.id,name:user.name}};
   state.jobs.push(job);state.updatedElapsedMs=clock.elapsedMs;
-  const receipt={requestId:body.requestId,jobId:job.jobId,kind:body.kind,id:body.id,targetLevel:job.targetLevel,cost:pick(cost,RESOURCES),startedElapsedMs:job.startedElapsedMs,completesElapsedMs:job.completesElapsedMs,baseRevision:Number(shared.revision)+1,playerRevision:Number(row.revision)+1};
-  game.log(`駿府城の${body.kind==='castle'?'城郭':globalThis.SENGOKU_DATA.buildings.find(b=>b.id===body.id).name} Lv.${job.targetLevel}へ共同普請を開始しました。`,'staff-build');
+  const receipt={requestId:body.requestId,jobId:job.jobId,kind:body.kind,id:body.id,targetLevel:job.targetLevel,cost:pick(cost,RESOURCES),queued:job.startedElapsedMs>clock.elapsedMs,queuePosition:chain.length,queuedAtElapsedMs:clock.elapsedMs,startedElapsedMs:job.startedElapsedMs,completesElapsedMs:job.completesElapsedMs,baseRevision:Number(shared.revision)+1,playerRevision:Number(row.revision)+1};
+  game.log(`駿府城の${body.kind==='castle'?'城郭':globalThis.SENGOKU_DATA.buildings.find(b=>b.id===body.id).name} Lv.${job.targetLevel}へ共同普請を${receipt.queued?'予約':'開始'}しました。`,'staff-build');
   const next=normalizeGameSave(JSON.parse(game.exportSave()),user,now,{clock}),nonce=crypto.randomUUID(),gate='EXISTS(SELECT 1 FROM staff_base_requests WHERE actor_id=? AND request_id=? AND commit_token=?)',gateArgs=[user.id,body.requestId,nonce];
   const result=await db.batch([
     stmt(db,`INSERT INTO staff_base_requests(actor_id,request_id,request_hash,commit_token,result_json,created_at)
@@ -1051,6 +1057,103 @@ async function staffBaseUpgrade(db,user,raw,now) {
   ]);
   if(!rows(result[0]).length){const accepted=await stmt(db,'SELECT * FROM staff_base_requests WHERE actor_id=? AND request_id=?',user.id,body.requestId).first();if(accepted&&accepted.request_hash===digest){await requireCurrentStaffBase(db,user);return {...await syncSnapshot(db,await getSyncRow(db,user.id),await getUser(db,user.id),body.deviceId,now),receipt:JSON.parse(accepted.result_json),idempotent:true};}const current=await getUser(db,user.id);if(!current.is_staff||current.is_admin||current.staff_term!==user.staff_term)fail(403,'STAFF_BASE_REQUIRED','スタッフの役職が変更されました。');fieldWriter(await getSyncRow(db,user.id),body.deviceId,body.expectedRevision,now);fail(409,'STAFF_BASE_CHANGED','共同拠点が更新されました。最新の状態を確認してください。');}
   return {...await syncSnapshot(db,await getSyncRow(db,user.id),user,body.deviceId,now),receipt,idempotent:false};
+}
+
+async function walkingAccount(db,userId){
+  await stmt(db,'INSERT INTO walking_accounts(user_id) VALUES(?) ON CONFLICT(user_id) DO NOTHING',userId).run();
+  return stmt(db,'SELECT * FROM walking_accounts WHERE user_id=?',userId).first();
+}
+async function walkingToken(db,session){
+  let secret=await stmt(db,"SELECT value FROM settings WHERE key='walkingSigningKey'").first();
+  if(!secret){await stmt(db,"INSERT INTO settings(key,value,updated_at) VALUES('walkingSigningKey',?,?) ON CONFLICT(key) DO NOTHING",gameToken(),Date.now()).run();secret=await stmt(db,"SELECT value FROM settings WHERE key='walkingSigningKey'").first();}
+  const key=await crypto.subtle.importKey('raw',encoder.encode(secret.value),{name:'HMAC',hash:'SHA-256'},false,['sign']);
+  const message=JSON.stringify(['sengoku:walking:v1',session.user_id,session.id,session.campaign_id,Number(session.started_at)]);
+  const signed=await crypto.subtle.sign('HMAC',key,encoder.encode(message));
+  return btoa(String.fromCharCode(...new Uint8Array(signed))).replaceAll('+','-').replaceAll('/','_').replaceAll('=','');
+}
+async function walkingSessionDto(db,session,account){
+  return{id:session.id,token:await walkingToken(db,session),campaignId:session.campaign_id,startedAt:iso(session.started_at),lastSeenAt:iso(session.last_seen_at),expiresAt:iso(session.expires_at),lastSeq:Number(session.last_seq),totalSteps:Number(session.total_steps),activeMs:Number(session.active_ms),closed:!!session.closed||account.active_session_id!==session.id};
+}
+async function walkingResponse(db,user,deviceId,session,now,extra={}){
+  const account=await walkingAccount(db,user.id),current=await getUser(db,user.id);
+  return{...await syncSnapshot(db,await getSyncRow(db,user.id),current,deviceId,now),walkingSession:await walkingSessionDto(db,session,account),walkingRules:WALKING_RULES,...extra};
+}
+function walkingBody(raw,kind){
+  const allowed=kind==='start'?['requestId','deviceId','expectedRevision','campaignId']:['sessionId','sessionToken','seq','totalSteps','activeMs','finish','deviceId','expectedRevision'];
+  if(Object.keys(raw).some(k=>!allowed.includes(k))||!Number.isSafeInteger(raw.expectedRevision)||raw.expectedRevision<0)fail(400,'INVALID_INPUT','歩行計測の送信内容と更新番号を確認してください。');
+  const body={...raw,deviceId:idField(raw.deviceId,'端末')};
+  if(kind==='start')return{...body,requestId:idField(raw.requestId,'操作番号'),campaignId:idField(raw.campaignId,'物語の識別子')};
+  body.sessionId=idField(raw.sessionId,'歩行計測');body.sessionToken=idField(raw.sessionToken,'歩行計測の署名');body.finish=raw.finish??false;
+  if(!Number.isSafeInteger(body.seq)||body.seq<1||!Number.isSafeInteger(body.totalSteps)||body.totalSteps<0||body.totalSteps>MAX_WALKING_STEPS||!Number.isSafeInteger(body.activeMs)||body.activeMs<0||typeof body.finish!=='boolean')fail(400,'INVALID_INPUT','歩数・計測時間・送信番号を確認してください。');
+  return body;
+}
+function walkingCampaign(row){try{return GameEngine.normalizeWalkingState(JSON.parse(row.save_json).state.walking).campaignId;}catch{return null;}}
+async function walkingStart(db,user,raw,now){
+  const body=walkingBody(raw,'start');
+  let prior=await stmt(db,'SELECT * FROM walking_sessions WHERE user_id=? AND request_id=?',user.id,body.requestId).first();
+  if(prior){if(prior.campaign_id!==body.campaignId)fail(409,'REQUEST_ID_REUSED','この操作番号は別の物語に使われています。');return walkingResponse(db,user,body.deviceId,prior,now,{idempotent:true});}
+  await budget(db,'walking-start:'+user.id,30,60000,now);
+  const row=await settleWriterCycle(db,user,body.deviceId,body.expectedRevision,now);
+  if(walkingCampaign(row)!==body.campaignId)fail(409,'WALKING_CAMPAIGN_CHANGED','物語が切り替わりました。歩行計測を開始し直してください。');
+  const account=await walkingAccount(db,user.id),nonce=crypto.randomUUID(),id=uid('walk_'),role=roleCommitGuard(user);
+  const gate='EXISTS(SELECT 1 FROM walking_sessions WHERE id=? AND commit_token=?)';
+  const commitNow=Date.now();
+  const result=await db.batch([
+    stmt(db,`INSERT INTO walking_sessions(id,user_id,request_id,campaign_id,started_at,last_seen_at,expires_at,commit_token)
+      SELECT ?,?,?,?,?,?,?,? FROM player_saves ps JOIN walking_accounts wa ON wa.user_id=ps.user_id
+      WHERE ps.user_id=? AND ps.revision=? AND ps.writer_device_id=? AND ps.lease_expires_at>? AND wa.revision=?
+      AND COALESCE(json_extract(ps.save_json,'$.state.walking.campaignId'),'legacy_v1')=? AND ${role.sql}
+      AND NOT EXISTS(SELECT 1 FROM walking_sessions old WHERE old.id=wa.active_session_id AND old.closed=0 AND old.expires_at>? AND old.campaign_id=?)
+      ON CONFLICT(user_id,request_id) DO NOTHING RETURNING *`,id,user.id,body.requestId,body.campaignId,now,now,now+WALKING_RULES.windowMs,nonce,user.id,row.revision,body.deviceId,commitNow,account.revision,body.campaignId,...role.args,commitNow,body.campaignId),
+    stmt(db,`UPDATE walking_accounts SET active_session_id=?,revision=revision+1 WHERE user_id=? AND ${gate}`,id,user.id,id,nonce)
+  ]);
+  const session=rows(result[0])[0];
+  if(!session){prior=await stmt(db,'SELECT * FROM walking_sessions WHERE user_id=? AND request_id=?',user.id,body.requestId).first();if(prior&&prior.campaign_id===body.campaignId)return walkingResponse(db,user,body.deviceId,prior,now,{idempotent:true});
+    const current=await getSyncRow(db,user.id);fieldWriter(current,body.deviceId,body.expectedRevision,now);if(walkingCampaign(current)!==body.campaignId)fail(409,'WALKING_CAMPAIGN_CHANGED','物語が切り替わりました。');
+    const active=await stmt(db,'SELECT ws.* FROM walking_sessions ws JOIN walking_accounts wa ON wa.active_session_id=ws.id WHERE wa.user_id=?',user.id).first();
+    if(active&&!active.closed&&Number(active.expires_at)>now&&active.campaign_id===body.campaignId)fail(409,'WALKING_ACTIVE','別の歩行計測が続いています。現在の計測を終了してから開始してください。');
+    fail(409,'WALKING_CHANGED','接続や役職が更新されました。同期してから歩行計測を開始してください。');
+  }
+  return walkingResponse(db,user,body.deviceId,session,now,{idempotent:false});
+}
+async function walkingClaim(db,user,raw,now){
+  const body=walkingBody(raw,'claim');
+  let session=await stmt(db,'SELECT * FROM walking_sessions WHERE id=? AND user_id=?',body.sessionId,user.id).first();
+  if(!session||!await constantEqual(body.sessionToken,await walkingToken(db,session)))fail(403,'WALKING_SESSION_INVALID','歩行計測の接続を確認できません。');
+  const digest=await hash(JSON.stringify([body.seq,body.totalSteps,body.activeMs,body.finish]));
+  let prior=await stmt(db,'SELECT * FROM walking_receipts WHERE session_id=? AND seq=?',session.id,body.seq).first();
+  if(prior){if(prior.request_hash!==digest)fail(409,'WALKING_SEQUENCE_REUSED','この送信番号は別の歩数に使われています。');return walkingResponse(db,user,body.deviceId,session,now,{receipt:JSON.parse(prior.result_json),idempotent:true});}
+  await budget(db,'walking-claim:'+user.id,120,60000,now);
+  const row=await settleWriterCycle(db,user,body.deviceId,body.expectedRevision,now),account=await walkingAccount(db,user.id);
+  if(walkingCampaign(row)!==session.campaign_id)fail(409,'WALKING_CAMPAIGN_CHANGED','物語が切り替わったため、前の歩数は追加できません。');
+  if(session.closed||account.active_session_id!==session.id)fail(409,'WALKING_SESSION_CLOSED','この歩行計測は終了しています。');
+  if(body.seq!==Number(session.last_seq)+1||body.totalSteps<Number(session.total_steps)||body.activeMs<Number(session.active_ms))fail(409,'WALKING_SEQUENCE_CONFLICT','受取済みの歩数と送信番号を確認してください。');
+  if(!body.finish&&now>Number(session.expires_at))fail(409,'WALKING_EXPIRED','歩行計測の接続が切れました。最後の歩数を精算してから開始し直してください。');
+  const delta=body.totalSteps-Number(session.total_steps),activeDelta=body.activeMs-Number(session.active_ms),realDelta=Math.max(0,now-Number(session.last_seen_at)),realTotal=Math.max(0,now-Number(session.started_at));
+  // Session-wide limits have no jitter allowance: start/finish loops and zero
+  // duration heartbeats cannot manufacture extra steps. Jitter applies only to
+  // individual delivery intervals, bounded by the strict cumulative envelope.
+  if(body.activeMs>realTotal||activeDelta>Math.min(realDelta+WALKING_RULES.deliveryToleranceMs,WALKING_RULES.windowMs)||body.totalSteps>Math.floor(Math.min(body.activeMs,realTotal)*4/1000)||delta>Math.floor(Math.min(activeDelta,realDelta+WALKING_RULES.deliveryToleranceMs,WALKING_RULES.windowMs)*4/1000)+WALKING_RULES.jitterSteps||delta>0&&(activeDelta===0||realDelta<250))fail(400,'WALKING_RATE_EXCEEDED','歩数または計測時間が歩行の範囲を超えています。');
+  if(Number(account.total_steps)+delta>MAX_WALKING_STEPS)fail(400,'WALKING_TOTAL_EXCEEDED','歩数の累計が保存できる範囲を超えています。');
+  const clock=await getWorldClock(db,now),save=normalizeGameSave(JSON.parse(row.save_json),user,now,{reading:true,clock}),s=save.state;
+  const rewards=Object.fromEntries([...RESOURCES,'magatama'].map(k=>[k,Math.min(999999999-(k==='magatama'?s.magatama:s.resources[k]),delta*2)]));
+  for(const k of RESOURCES)s.resources[k]+=rewards[k];s.magatama+=rewards.magatama;s.walking.serverSteps=Number(account.total_steps)+delta;save.savedAt=iso(now);
+  const nonce=crypto.randomUUID(),revision=Number(row.revision)+(delta>0?1:0),receipt={id:session.id+':'+body.seq,sessionId:session.id,seq:body.seq,totalSteps:body.totalSteps,deltaSteps:delta,activeMs:body.activeMs,rewards,revision,closed:body.finish};
+  const role=roleCommitGuard(user),gate='EXISTS(SELECT 1 FROM walking_receipts WHERE session_id=? AND seq=? AND commit_token=?)',gateArgs=[session.id,body.seq,nonce],commitNow=Date.now();
+  const statements=[stmt(db,`INSERT INTO walking_receipts(session_id,seq,request_hash,commit_token,result_json,created_at)
+    SELECT ?,?,?,?,?,? FROM player_saves ps JOIN walking_accounts wa ON wa.user_id=ps.user_id JOIN walking_sessions ws ON ws.id=wa.active_session_id
+    WHERE ps.user_id=? AND ps.revision=? AND ps.writer_device_id=? AND ps.lease_expires_at>? AND wa.revision=?
+    AND ws.id=? AND ws.last_seq=? AND ws.total_steps=? AND ws.active_ms=? AND ws.closed=0 AND (?=1 OR ws.expires_at>=?)
+    AND COALESCE(json_extract(ps.save_json,'$.state.walking.campaignId'),'legacy_v1')=? AND ${role.sql}
+    ON CONFLICT(session_id,seq) DO NOTHING RETURNING seq`,session.id,body.seq,digest,nonce,JSON.stringify(receipt),now,user.id,row.revision,body.deviceId,commitNow,account.revision,session.id,session.last_seq,session.total_steps,session.active_ms,body.finish?1:0,commitNow,session.campaign_id,...role.args)];
+  if(delta>0)statements.push(stmt(db,`UPDATE player_saves SET save_json=?,revision=revision+1,updated_at=?,lease_expires_at=? WHERE user_id=? AND ${gate}`,JSON.stringify(save),now,now+SYNC_LEASE,user.id,...gateArgs));
+  statements.push(stmt(db,`UPDATE walking_sessions SET total_steps=?,active_ms=?,last_seq=?,closed=?,last_seen_at=?,expires_at=?,commit_token=? WHERE id=? AND ${gate}`,body.totalSteps,body.activeMs,body.seq,body.finish?1:0,now,now+WALKING_RULES.windowMs,nonce,session.id,...gateArgs));
+  statements.push(stmt(db,`UPDATE walking_accounts SET total_steps=total_steps+?,revision=revision+1 WHERE user_id=? AND ${gate}`,delta,user.id,...gateArgs));
+  const result=await db.batch(statements);
+  if(!rows(result[0]).length){prior=await stmt(db,'SELECT * FROM walking_receipts WHERE session_id=? AND seq=?',session.id,body.seq).first();if(prior&&prior.request_hash===digest){session=await stmt(db,'SELECT * FROM walking_sessions WHERE id=?',session.id).first();return walkingResponse(db,user,body.deviceId,session,now,{receipt:JSON.parse(prior.result_json),idempotent:true});}
+    const current=await getSyncRow(db,user.id);fieldWriter(current,body.deviceId,body.expectedRevision,now);if(walkingCampaign(current)!==session.campaign_id)fail(409,'WALKING_CAMPAIGN_CHANGED','物語が切り替わりました。');fail(409,'WALKING_CHANGED','歩行計測や役職が更新されました。同じ歩数を同期してから再送してください。');
+  }
+  session=await stmt(db,'SELECT * FROM walking_sessions WHERE id=?',session.id).first();return walkingResponse(db,user,body.deviceId,session,now,{receipt,idempotent:false});
 }
 
 function pairingCode() {
@@ -1447,6 +1550,9 @@ async function route(request, env, now) {
     user=await requireCurrentStaffBase(db,user,{allowAdmin:true});const clock=await getWorldClock(db,now);await ensureStaffCampaign(db,user,now,clock);const staffBase=await staffBaseDto(db,user,clock,now);await requireCurrentStaffBase(db,user,{allowAdmin:true});return {ok:true,staffBase,clock};
   }
   if (path === '/staff/base/upgrade' && method === 'POST') return staffBaseUpgrade(db,user,await readBody(request),now);
+  if (path === '/walking/start' && method === 'POST') return walkingStart(db,user,await readBody(request),now);
+  if (path === '/walking/claim' && method === 'POST') return walkingClaim(db,user,await readBody(request),now);
+  if (path === '/letters' || path.startsWith('/letters/')) return handleLetters({db,user,now,path,method,url,request,helpers:{fail,readBody,budget,idField,textField,uid,mapUser,getUser}});
   if (path === '/field/me' && method === 'GET') return fieldMe(db,user,url,now);
   if (path === '/field/attack' && method === 'POST') return fieldAttack(db,user,await readBody(request),now);
   if (path === '/field/diplomacy' && method === 'POST') return fieldDiplomacy(db,user,await readBody(request),now);
@@ -1535,6 +1641,10 @@ async function route(request, env, now) {
       if(!user.is_admin&&!user.is_staff&&save.state.home!==before?.state.home&&Object.values(save.state.stats).every(v=>v===0)&&Object.values(save.state.castles).filter(c=>c.owner===save.state.clan).length===1&&!MAJOR_CITIES.includes(save.state.home))cycleHome=save.state.home;
     }
     save.state.cycle={index:Number(cycleIndex),home:cycleHome,latestReward:before?.state.cycle?.latestReward||null};
+    // The receipt ledger is outside imported game saves. Restoring an older save
+    // never tops up currency or rewinds previously credited online steps.
+    const walkingLedger=await stmt(db,'SELECT total_steps FROM walking_accounts WHERE user_id=?',user.id).first();
+    save.state.walking.serverSteps=Number(walkingLedger?.total_steps||0);
     const serialized=JSON.stringify(save),nonce=crypto.randomUUID(),roleGuard=roleCommitGuard(user);
     const statements=[stmt(db,`UPDATE player_saves SET save_json=?,revision=revision+1,updated_at=?,lease_expires_at=?,cycle_index=?,cycle_home=?,cycle_commit=?
       WHERE user_id=? AND revision=? AND writer_device_id=? AND lease_expires_at>?

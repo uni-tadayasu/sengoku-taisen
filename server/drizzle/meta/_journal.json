@@ -64,6 +64,20 @@
       "when": 1795824000000,
       "tag": "0008_staff_base",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1795910400000,
+      "tag": "0009_walking_rewards",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1795996800000,
+      "tag": "0010_base_letters",
+      "breakpoints": true
     }
   ]
 }

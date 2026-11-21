@@ -21,6 +21,21 @@
     top = clamp(top, margin, Math.max(margin, height - margin - labelHeight));
     return { left, top, width: labelWidth, height: labelHeight, relativeLeft: left - x + half, relativeTop: top - y + half };
   }
+  function placeLabels(items, width, height) {
+    const placed=[];
+    return items.map(item=>{
+      const preferred=labelRect(item.x,item.y,width,height,item.width,item.height,item.pinSize,item.above),candidates=[preferred];
+      candidates.push(labelRect(item.x,item.y,width,height,item.width,item.height,item.pinSize,!item.above));
+      for(let top=5;top<=height-preferred.height-5;top+=preferred.height+5)for(let left=5;left<=width-preferred.width-5;left+=preferred.width+5)candidates.push({...preferred,left,top});
+      let best=preferred,bestScore=Infinity;
+      for(const candidate of candidates){
+        const overlap=placed.reduce((sum,p)=>sum+Math.max(0,Math.min(candidate.left+candidate.width+3,p.left+p.width+3)-Math.max(candidate.left,p.left))*Math.max(0,Math.min(candidate.top+candidate.height+3,p.top+p.height+3)-Math.max(candidate.top,p.top)),0);
+        const distance=(candidate.left-preferred.left)**2+(candidate.top-preferred.top)**2,score=overlap*100000+distance;
+        if(score<bestScore){bestScore=score;best=candidate;}
+      }
+      const half=(item.pinSize||28)/2,rect={...best,relativeLeft:best.left-item.x+half,relativeTop:best.top-item.y+half};placed.push(rect);return rect;
+    });
+  }
   function sceneHeight(preferred, viewportHeight, sceneOffset, bottomPadding = 0) {
     preferred = Math.max(1, Number(preferred) || 460);
     const remaining = Math.max(1, (Number(viewportHeight) || 0) - Math.max(0, Number(sceneOffset) || 0) - Math.max(0, Number(bottomPadding) || 0) - 8);
@@ -31,7 +46,7 @@
     const requested = Number(preferred);
     return Number.isFinite(requested) && requested > 0 ? Math.min(requested, available) : available;
   }
-  const api = { fitRect, labelRect, sceneHeight, panelSceneHeight };
+  const api = { fitRect, labelRect, placeLabels, sceneHeight, panelSceneHeight };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   const doc = global.document;
   if (!doc || global.SengokuTownFit) return;
@@ -82,14 +97,18 @@
     if (scene.hasAttribute('data-town-art-small') !== tiny) scene.toggleAttribute('data-town-art-small', tiny);
     const panel = scene.closest('.town-panel');
     if (panel && panel.hasAttribute('data-town-compact') !== compact) panel.toggleAttribute('data-town-compact', compact);
-    if (compact) { board.setAttribute('data-town-ready', ''); return; }
+    const markers=[];
     for (const marker of board.querySelectorAll('.hotspot')) {
       const label = marker.querySelector('.label'); if (!label) continue;
       style(label, 'max-width', Math.max(0, fit.width - 10).toFixed(3) + 'px');
       const x = fit.width * clamp(Number(marker.dataset.townX) || 0, 0, 100) / 100;
       const y = fit.height * clamp(Number(marker.dataset.townY) || 0, 0, 100) / 100;
       const labelBox = label.getBoundingClientRect();
-      const rect = labelRect(x, y, fit.width, fit.height, labelBox.width, labelBox.height, marker.offsetWidth, ['academy', 'lumber'].includes(marker.dataset.id));
+      markers.push({marker,label,x,y,width:labelBox.width,height:labelBox.height,pinSize:marker.offsetWidth,above:['academy','lumber'].includes(marker.dataset.id)});
+    }
+    const labels=placeLabels(markers,fit.width,fit.height);
+    for(let index=0;index<markers.length;index++){
+      const {label}=markers[index],rect=labels[index];
       style(label, '--town-label-left', rect.relativeLeft.toFixed(3) + 'px');
       style(label, '--town-label-top', rect.relativeTop.toFixed(3) + 'px');
     }

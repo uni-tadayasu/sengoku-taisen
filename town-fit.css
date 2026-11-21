@@ -27,10 +27,17 @@ html.sengoku-desktop-fit[data-layout-townheight] #main .town-panel .town-scene {
 #main .town-scene-board .hotspot .label {
   position: absolute; left: var(--town-label-left, 0); top: var(--town-label-top, 33px);
   display: block; width: max-content; min-width: 0; margin: 0; transform: none;
-  padding: 3px 6px; white-space: normal; overflow-wrap: anywhere; line-height: 1.35; font-size: 14px;
+  padding: 4px 7px; white-space: nowrap; overflow-wrap: normal; line-height: 1.35; font-size: 14px;
+  border: 1px solid #dfc37b99; border-radius: 7px; background: #102126f2; color: #fff2d2;
+  box-shadow: 0 2px 9px #07151399; font-weight: 600; pointer-events: auto;
 }
-#main .town-scene-board .hotspot .label i { display: inline-block; white-space: nowrap; }
-#main .town-scene[data-town-compact] .hotspot .label { display: none; }
+#main .town-scene-board .hotspot .label i { display: inline-block; white-space: nowrap; margin-left: 6px; padding: 1px 5px; border-radius: 4px; background: #e1bd75; color: #261f12; font-weight: 700; font-variant-numeric: tabular-nums; }
+#main .town-scene[data-town-compact] .hotspot { pointer-events: none; }
+#main .town-scene[data-town-compact] .hotspot .pin { visibility: hidden; }
+#main .town-scene[data-town-compact] .hotspot .label { display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 58px; padding: 4px 6px; font-size: 14px; }
+#main .town-scene[data-town-compact] .hotspot .label i { margin: 0; padding: 0 5px; font-size: 14px; }
+#main .town-scene-board .hotspot:is(:hover,:focus-visible) .label { border-color: #fff0be; background: #234137; outline: 2px solid #f0d38566; outline-offset: 1px; }
+#main .town-scene-board .hotspot.has-job .label { border-color: #96dcbb; }
 #main .town-scene[data-town-art-small] .hotspot { display: none; }
 #main .town-scene-legend { display: none; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; padding: 10px; border-top: 1px solid #d9bd7821; }
 #main .town-panel[data-town-compact] .town-scene-legend { display: grid; }
@@ -61,6 +68,8 @@ html.sengoku-desktop-fit[data-layout-townheight] #main .town-panel .town-scene {
 .job-top { flex-wrap: wrap; gap: 4px 10px; }
 .job-top small[data-job-clock] { display: block; flex-basis: 100%; font-size: 14px; line-height: 1.55; }
 .building-job-clock { display: block; margin-top: 9px; color: #bde7c8; font-size: 14px; line-height: 1.5; white-space: normal; }
+#main .building-card .building-level { display: inline-block; padding: 2px 6px; border: 1px solid #e1bd754a; border-radius: 5px; background: #e1bd7512; color: #f5db9f; font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+#main .building-card .building-top { flex-wrap: wrap; }
 
 /* The town itself owns the PC canvas. Controls have their own scroll pane so
    opening a longer notice or building queue never shortens the illustration. */

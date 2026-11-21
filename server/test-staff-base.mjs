@@ -61,13 +61,13 @@ try{
  assert.equal(first.idempotent,false);assert.equal(first.staffBase.jobs.length,1);assert.equal(first.staffBase.jobs[0].startedBy.id,a.user.id);assert.equal(first.staffBase.jobs[0].startedBy.name,a.user.name);
  assertPaid(beforeA,balances(a),first.receipt);assert.deepEqual(balances(b),beforeB);assert.equal(first.receipt.baseRevision,first.staffBase.revision);assert.equal(first.receipt.playerRevision,first.revision);
  assert.equal((await staffBase(b)).jobs[0].jobId,first.receipt.jobId);
- assert.equal((await upgrade(b,body(b),409)).data.error.code,'STAFF_BUILDING_BUSY');assert.deepEqual(balances(b),beforeB);
+ const nextStage=(await upgrade(b,body(b))).data;assert.equal(nextStage.receipt.targetLevel,first.receipt.targetLevel+1);assert.equal(nextStage.receipt.queued,true);assert.equal(nextStage.receipt.startedElapsedMs,first.receipt.completesElapsedMs);assertPaid(beforeB,balances(b),nextStage.receipt);
  const repeated=(await upgrade(a,{...firstBody,deviceId:'another-device',expectedRevision:0})).data;
  assert.equal(repeated.idempotent,true);assert.equal(repeated.receipt.jobId,first.receipt.jobId);assert.deepEqual(balances(a),{resources:first.save.state.resources,command:first.save.state.command,revision:first.revision});
  assert.equal((await upgrade(a,{...firstBody,baseRevision:firstBody.baseRevision+1},409)).data.error.code,'REQUEST_ID_REUSED');
  assert.equal((await upgrade(a,{...firstBody,id:'market'},409)).data.error.code,'REQUEST_ID_REUSED');
- await finish(a,b);assert.equal((await staffBase(b)).buildings.farm,first.receipt.targetLevel);assert.equal(baseState().jobs.length,0);
- checks.push('one payer, one command, shared worker attribution, duplicate facility rejection and durable same-ID replay');
+ await finish(a,b);assert.equal((await staffBase(b)).buildings.farm,nextStage.receipt.targetLevel);assert.equal(baseState().jobs.length,0);
+ checks.push('one payer per stage, one command, shared attribution, sequential facility reservation and durable same-ID replay');
 
  const same=body(a,'building','market'),duplicateBefore=balances(a),requestCount=requests(),entered=barrier();
  const duplicates=await Promise.all([upgrade(a,same),upgrade(a,same)]);assert.equal(entered(),2);assert.deepEqual(duplicates.map(r=>r.data.idempotent).sort(),[false,true]);assert.equal(duplicates[0].data.receipt.jobId,duplicates[1].data.receipt.jobId);assert.equal(requests(),requestCount+1);assertPaid(duplicateBefore,balances(a),duplicates[0].data.receipt);
@@ -75,7 +75,7 @@ try{
  const raceA=body(a,'building','farm'),raceB=body(b,'building','farm'),sameBefore=[balances(a),balances(b)],countSame=requests();barrier();
  const sameRaces=await Promise.all([upgrade(a,raceA,null),upgrade(b,raceB,null)]);assert.deepEqual(sameRaces.map(r=>r.response.status).sort(),[200,409]);assert.equal(baseState().jobs.length,1);assert.equal(requests(),countSame+1);
  const winnerIndex=sameRaces[0].response.status===200?0:1,loserIndex=1-winnerIndex,players=[a,b];assertPaid(sameBefore[winnerIndex],balances(players[winnerIndex]),sameRaces[winnerIndex].data.receipt);assert.deepEqual(balances(players[loserIndex]),sameBefore[loserIndex]);
- assert.equal((await upgrade(players[loserIndex],body(players[loserIndex]),409)).data.error.code,'STAFF_BUILDING_BUSY');
+ const nextAfterRace=(await upgrade(players[loserIndex],body(players[loserIndex]))).data;assert.equal(nextAfterRace.receipt.targetLevel,sameRaces[winnerIndex].data.receipt.targetLevel+1);assertPaid(sameBefore[loserIndex],balances(players[loserIndex]),nextAfterRace.receipt);assert.equal(baseState().jobs.length,2);
  await finish(a,b);
  const differentBefore=[balances(a),balances(b)],differentCount=requests(),ops=[body(a,'building','lumber'),body(b,'building','quarry')];barrier();
  const different=await Promise.all([upgrade(a,ops[0],null),upgrade(b,ops[1],null)]);assert.deepEqual(different.map(r=>r.response.status).sort(),[200,409]);

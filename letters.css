@@ -1,0 +1,100 @@
+/* 書状: 領主への便りは藤色、ギルドへの便りは翡翠色。 */
+.letters-dialog{--letter-line:#b1a5cc36;--letter-muted:#bab6ce;box-sizing:border-box;width:min(920px,calc(100vw - 32px));height:min(780px,calc(100dvh - 40px));max-width:none;max-height:none;margin:auto;padding:0;border:1px solid #ba9de966;border-radius:22px;background:linear-gradient(150deg,#242238,#151c2e 62%,#142c34);color:#f5f2ff;box-shadow:0 30px 100px #0009;font:400 16px/1.6 'Noto Sans JP',sans-serif;overflow:hidden;color-scheme:dark}
+.letters-dialog[open]{display:flex;flex-direction:column}
+.letters-dialog::backdrop{background:#080f20bb;backdrop-filter:blur(6px)}
+.letters-dialog *{box-sizing:border-box;min-width:0}
+.letters-dialog button,.letters-dialog textarea{font:inherit}
+.letters-dialog button{cursor:pointer;touch-action:manipulation}
+.letters-dialog button:disabled{cursor:default;opacity:.48;transform:none}
+.letters-dialog button:focus-visible,.letters-dialog textarea:focus-visible,.letters-message-scroll:focus-visible{outline:2px solid #e5c66a;outline-offset:3px}
+.letters-dialog svg,.field-letter-actions svg{width:22px;height:22px;flex-shrink:0;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.letters-header{display:flex;align-items:center;gap:16px;flex-shrink:0;padding:19px 24px;border-bottom:1px solid var(--letter-line);background:linear-gradient(100deg,#72549c29,transparent)}
+.letters-header>div{flex:1}
+.letters-header p{margin:0;color:#c4b9df;font-size:14px;letter-spacing:.1em}
+.letters-header h1{margin:0;font-family:'Noto Serif JP',serif;font-size:27px;font-weight:600;letter-spacing:.18em;line-height:1.45}
+.letters-seal{display:grid;place-items:center;width:51px;height:51px;color:#d7b9ff;border:1px solid #b99bd35c;border-radius:15px;background:#72549c22}
+.letters-seal svg{width:28px;height:28px}
+.letters-icon{display:grid;place-items:center;width:40px;height:40px;flex-shrink:0;border:1px solid var(--letter-line);border-radius:12px;background:#ffffff06;color:#e8e1f7}
+.letters-toolbar{display:flex;align-items:center;gap:12px;flex-shrink:0;padding:12px 24px;border-bottom:1px solid var(--letter-line)}
+.letters-toolbar-note{flex:1;color:var(--letter-muted);font-size:14px}
+.letters-button{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:40px;padding:8px 16px;border:1px solid #c0afd444;border-radius:11px;background:#ffffff07;color:#efeafa;line-height:1.4;font-size:14px;font-weight:500}
+.letters-button.is-primary{border-color:#ddbf78;background:linear-gradient(115deg,#f0d89f,#d1ac62);color:#2e2516;font-weight:700}
+.letters-button.is-subtle{background:transparent;color:#c3bad0;border-color:transparent}
+.letters-icon,.letters-button,.letters-destination,.letters-inbox-row{transition:background .18s,box-shadow .18s,transform .18s,border-color .18s}
+@media(hover:hover){.letters-icon:hover,.letters-button:not(:disabled):hover{background:#ffffff16;border-color:#d3bfee77}.letters-button.is-primary:not(:disabled):hover{background:#f5dfac;box-shadow:0 3px 14px #e3bb6033}.letters-inbox-row:hover{background:#b28cda14;border-color:#b28cda66}.letters-destination:not(:disabled):hover{background:#aa83ca18;border-color:#cdb1e777}}
+.letters-icon:active,.letters-button:active,.letters-destination:active,.letters-inbox-row:active{transform:scale(.985)}
+.letters-dialog .letters-main{display:block;flex:1;min-width:0;min-height:0;width:100%;max-width:none;height:auto;margin:0;padding:0;overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable;scrollbar-width:thin;scrollbar-color:#9680af5c transparent}
+.letters-main:has(.letters-thread){overflow:hidden}
+.letters-feedback{flex-shrink:0;margin:0;padding:9px 24px;background:#82c9b012;color:#b8e8d8;font-size:14px;max-height:130px;overflow:auto;overflow-wrap:anywhere}
+.letters-feedback.is-error{color:#ffd0b5;background:#d5764b15}
+.letters-feedback[hidden],.letters-pending[hidden],.letters-dialog [hidden]{display:none!important}
+.letters-pending{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 24px;border-bottom:1px solid #d7af593b;background:#9e7c2816;font-size:14px;flex-shrink:0;max-height:150px;overflow:auto}
+.letters-pending>div{flex:1 1 270px}
+.letters-pending strong,.letters-pending span{display:block}
+.letters-pending strong{color:#f0d597}
+.letters-pending span{color:#cabd9e;font-size:13px}
+.letters-footer{flex-shrink:0;padding:10px 24px;border-top:1px solid var(--letter-line);color:#a8a4b8;font-size:13px;text-align:center}
+.letters-section-heading{padding:21px 24px 12px}
+.letters-section-heading h2{margin:0 0 5px;font-size:18px}
+.letters-section-heading p{margin:0;font-size:14px;color:var(--letter-muted)}
+.letters-inbox-list{padding:0 14px 12px}
+.letters-inbox-row{display:flex;align-items:flex-start;gap:13px;width:100%;padding:16px 14px;margin:4px 0;text-align:left;border:1px solid transparent;border-radius:13px;background:transparent;color:inherit}
+.letters-inbox-row.is-unread{background:#b99bdb0e;border-color:#b99bdb26}
+.letters-thread-icon{display:grid;place-items:center;width:43px;height:43px;flex-shrink:0;border-radius:13px;background:#c7a2ff14;color:#d1b1fc}
+.letters-thread-icon.is-guild{background:#84ddbe14;color:#8edfc2}
+.letters-inbox-copy{display:block;flex:1}
+.letters-row-top{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
+.letters-row-top strong{font-size:16px;overflow-wrap:anywhere}
+.letters-row-top time{flex-shrink:0;color:#a9a2b9;font-size:13px}
+.letters-kind{display:flex;align-items:center;gap:9px;margin:3px 0;color:#beb2d2;font-size:13px}
+.letters-preview{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere;font-size:14px;color:#bdbbce;white-space:pre-wrap}
+.letters-count,[data-letter-unread]{padding:1px 7px;border-radius:6px;background:#d6b477;color:#231c15;font-size:12px;font-weight:700}
+.letters-more{display:flex;margin:8px auto 18px}
+.letters-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;min-height:220px;padding:32px 24px;text-align:center}
+.letters-empty>svg{width:40px;height:40px;margin-bottom:12px;color:#b9a1d3}
+.letters-empty h2,.letters-empty h3{margin:0;font-size:19px}
+.letters-empty p{margin:0 0 12px;max-width:450px;color:var(--letter-muted);font-size:14px}
+.letters-new{padding:23px 26px}
+.letters-recipient h2{margin:2px 0;font-family:'Noto Serif JP',serif;font-size:25px;overflow-wrap:anywhere}
+.letters-recipient p{margin:0;color:var(--letter-muted);font-size:14px}
+.letters-eyebrow{color:#c4a2dd;font-size:13px;letter-spacing:.08em}
+.letters-destinations{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:20px 0 13px}
+.letters-destination{display:flex;align-items:center;gap:11px;padding:16px;border:1px solid var(--letter-line);border-radius:13px;text-align:left;background:#ffffff04;color:#dad3e6}
+.letters-destination span,.letters-destination strong,.letters-destination small{display:block}
+.letters-destination strong{font-size:15px;line-height:1.5}
+.letters-destination small{margin-top:3px;color:#aea3c0;font-size:13px;overflow-wrap:anywhere}
+.letters-destination.is-selected{background:#9970c426;border-color:#b690dd;color:#eddaff;box-shadow:inset 0 0 0 1px #b690dd22}
+.letters-destination[data-destination="guild"].is-selected{background:#53b49b1a;border-color:#75c9b0;color:#c6f5e6;box-shadow:inset 0 0 0 1px #75c9b022}
+.letters-visibility{margin:0;color:#ccb8e5;font-size:14px;line-height:1.6;overflow-wrap:anywhere}
+.letters-visibility.is-guild{color:#99d7c0}
+.letters-compose{flex-shrink:0;display:flex;flex-direction:column;gap:8px;padding:17px 24px 14px;border-top:1px solid var(--letter-line);background:#151d2b6b}
+.letters-new .letters-compose{padding:23px 0 0;margin-top:23px;background:none}
+.letters-compose label{font-size:14px;color:#dbd1e8}
+.letters-compose textarea{display:block;width:100%;min-height:82px;max-height:210px;resize:vertical;border:1px solid #bbabd54d;border-radius:11px;padding:12px 14px;background:#0d142455;color:#f7f1ff;line-height:1.6;overflow:auto;overscroll-behavior:contain}
+.letters-compose textarea::placeholder{color:#958caa}
+.letters-compose-footer{display:flex;align-items:center;justify-content:space-between;gap:12px}
+[data-letter-counter]{color:#aaa1bb;font-size:13px}
+[data-letter-counter].is-error{color:#ffc19d}
+.letters-thread{display:flex;flex-direction:column;width:100%;height:100%;min-height:0}
+.letters-thread-heading{flex-shrink:0;padding:14px 24px 13px;border-bottom:1px solid var(--letter-line);max-height:165px;overflow:auto}
+.letters-thread-heading h2{margin:1px 0 3px;font-size:20px;font-weight:600;overflow-wrap:anywhere}
+.letters-message-scroll{flex:1;min-height:80px;overflow:auto;overscroll-behavior:contain;padding:17px 24px;scrollbar-gutter:stable;scrollbar-width:thin;scrollbar-color:#9680af5c transparent}
+.letters-message-list{display:flex;flex-direction:column;gap:15px}
+.letters-message{align-self:flex-start;max-width:88%;padding:12px 15px;border:1px solid #b8a5d52f;border-radius:3px 14px 14px;background:#ad85d110}
+.letters-message.is-mine{align-self:flex-end;background:#72b8aa12;border-color:#72b8aa3d;border-radius:14px 3px 14px 14px}
+.letters-message header{display:flex;align-items:baseline;justify-content:space-between;gap:16px;color:#c4aed9;font-size:13px}
+.letters-message.is-mine header{color:#9ed0c3}
+.letters-message strong{font-weight:500;overflow-wrap:anywhere}
+.letters-message time{flex-shrink:0;font-size:12px;color:#9b97aa}
+.letters-message p{white-space:pre-wrap;overflow-wrap:anywhere;margin:6px 0 0;font-size:16px}
+.letters-empty-message{text-align:center;color:var(--letter-muted);font-size:14px}
+.letters-new-messages{flex-shrink:0;margin:0;border:0;border-top:1px solid #a58ace3d;padding:8px;background:#453351;color:#edd6ff;font-size:14px}
+.field-letter-box{margin:17px 0;padding:14px;border:1px solid #bb91df38;border-radius:12px;background:linear-gradient(120deg,#9a72c413,#6dc7a80a)}
+.field-letter-box h4{margin:0 0 9px;color:#d5b8ef;font-size:15px}
+.field-letter-actions{display:grid;grid-template-columns:1fr;gap:8px}
+.field-letter-actions .field-button{justify-content:center;border-color:#b58ed14d;color:#dfc7f2;font-size:14px}
+.field-letter-actions .field-button:last-child{color:#b0e6d2;border-color:#72bfa64d}
+.field-letter-box .field-caption{margin:8px 0 0}
+@media(max-width:600px){.letters-dialog{width:calc(100vw - 12px);height:calc(100dvh - 16px);border-radius:17px}.letters-header{padding:13px 15px;gap:12px}.letters-header p{font-size:12px;letter-spacing:.02em}.letters-header h1{font-size:23px}.letters-seal{width:43px;height:43px}.letters-toolbar{padding:9px 14px;gap:8px}.letters-toolbar-note{display:none}.letters-toolbar>.letters-icon{margin-left:auto}.letters-feedback,.letters-pending{padding:9px 15px}.letters-footer{padding:8px 12px;font-size:12px}.letters-section-heading{padding:18px 17px 10px}.letters-inbox-list{padding:0 7px 10px}.letters-inbox-row{gap:10px;padding:13px 8px}.letters-thread-icon{width:37px;height:37px}.letters-row-top{flex-wrap:wrap;gap:2px 10px}.letters-row-top strong{font-size:15px}.letters-new{padding:18px 17px}.letters-destinations{gap:8px;margin-top:16px}.letters-destination{flex-direction:column;align-items:flex-start;gap:8px;padding:13px 11px}.letters-destination strong{font-size:14px}.letters-thread-heading{padding:11px 16px;max-height:140px}.letters-thread-heading h2{font-size:18px}.letters-visibility{font-size:13px}.letters-message-scroll{padding:13px 14px}.letters-message{max-width:94%;padding:10px 12px}.letters-message header{gap:10px;flex-wrap:wrap}.letters-compose{padding:11px 14px;gap:6px}.letters-compose textarea{min-height:70px;max-height:135px;padding:10px 11px}.letters-compose label{font-size:13px}.letters-button{min-height:40px}.letters-pending>div{flex-basis:100%}}
+@media(max-height:600px) and (min-width:601px){.letters-dialog{height:calc(100dvh - 16px)}.letters-header{padding:10px 20px}.letters-header h1{font-size:23px}.letters-header p{display:none}.letters-seal{height:38px;width:38px}.letters-toolbar{padding:7px 20px}.letters-thread-heading{padding:8px 20px;max-height:100px}.letters-compose{padding:8px 20px}.letters-compose label{display:none}.letters-compose textarea{min-height:58px;height:58px}.letters-footer{padding:6px 20px}.letters-pending{max-height:90px}.letters-feedback{max-height:75px}}
+@media(prefers-reduced-motion:reduce){.letters-dialog button{transition:none;transform:none}}
