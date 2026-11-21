@@ -7,6 +7,9 @@ const officers=new Map(roster.map((o,i)=>[o.id,{...o,index:i}]));
 const castles=new Map((data.castles||[]).map(c=>[c.id,c]));
 const facilities=new Map((data.buildings||[]).map(b=>[b.id,b]));
 const portraitFacilities=new Set((data.buildings||[]).slice(0,32).map(b=>b.id));
+// Artwork revisions are independent of game releases so stale HTTP/SW caches
+// cannot keep the former plain-background facility sheets after this update.
+const facilityArtRevision='scenery-20261122';
 const frames=Object.fromEntries(ranks.map(r=>[r,`assets/frames/rank-${r}.svg`]));
 const operatorPortrait={id:'of_b0616adde162',rank:'U',url:'assets/operator-ieyasu-u.webp?v=3.8.1-20261121'};
 const cache=new Map();let observer,scheduled=false;
@@ -37,7 +40,7 @@ function tileInfo(kind,id,variant){
  const item=(kind==='castle'?castles:facilities).get(id);if(!item)return null;
  const limit=kind!=='castle'?32:['edo','sunpu'].includes(id)?64:(data.majorCityIds||['edo','sunpu','nijo','osaka','nagoya']).includes(id)?48:32;
  const level=Math.max(1,Math.min(limit,Math.round(Number(variant)||1))),artLevel=Math.min(32,level),cell=artLevel-1;
- return{url:`assets/${kind==='castle'?'castles':'facilities'}/${id}.webp`,x:(cell%8)/7*100,y:Math.floor(cell/8)/3*100,name:item.name,level,artLevel,finalStage:level>32,portraitCell:kind==='facility'&&portraitFacilities.has(id)};
+ return{url:`assets/${kind==='castle'?'castles':'facilities'}/${id}.webp${kind==='facility'?'?v='+facilityArtRevision:''}`,x:(cell%8)/7*100,y:Math.floor(cell/8)/3*100,name:item.name,level,artLevel,finalStage:level>32,portraitCell:kind==='facility'&&portraitFacilities.has(id)};
 }
 function tile(kind,id,className='',variant=1){const t=tileInfo(kind,id,variant);if(!t)return'';
  return `<span class="painted-art ${kind}-painting${t.portraitCell?' portrait-cell':''} ${esc(className)}" data-art-url="${esc(t.url)}" data-art-x="${t.x}" data-art-y="${t.y}" style="--tile-x:${t.x}%;--tile-y:${t.y}%" role="img" aria-label="${esc(t.name)} ${t.level?'Lv.'+t.level+(t.finalStage?'・最終形態':''):t.rank+'ランク'}のオリジナルイラスト" aria-busy="true"><span class="art-surface" aria-hidden="true"></span><span class="art-loading" aria-hidden="true">${icon(kind==='officer'?'officers':kind==='castle'?'town':'facilities')}</span></span>`;
