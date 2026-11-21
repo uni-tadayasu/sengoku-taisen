@@ -7,6 +7,7 @@ const letterAccess=(alias='t')=>`((${alias}.kind='player' AND (${alias}.user_a=?
 const letterActor=id=>[id,id,id,id,id];
 async function letterHash(value){const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value));return Array.from(new Uint8Array(digest),v=>v.toString(16).padStart(2,'0')).join('');}
 const LETTER_SELECT=`SELECT t.*,a.name AS a_name,b.name AS b_name,s.name AS sender_name,g.name AS guild_name,c.name AS context_name,
+  (SELECT gi.version FROM guild_icons gi WHERE gi.guild_id=t.guild_id) AS guild_icon_version,
   lm.id AS message_id,lm.body AS last_body,lm.sender_id AS last_sender_id,lm.created_at AS last_created_at,author.name AS last_sender_name,
   (SELECT COUNT(*) FROM base_letter_messages m WHERE m.thread_id=t.id AND m.seq>COALESCE(r.last_seq,0) AND m.sender_id<>?) AS unread_count
   FROM base_letter_threads t
@@ -17,9 +18,9 @@ const LETTER_SELECT=`SELECT t.*,a.name AS a_name,b.name AS b_name,s.name AS send
 function letterThread(row,viewer,evaluationRef){
   const player=row.kind==='player',peer=player?(row.user_a===viewer?{id:row.user_b,name:row.b_name,evaluation:evaluationRef(row.user_b)}:{id:row.user_a,name:row.a_name,evaluation:evaluationRef(row.user_a)}):null;
   return {id:row.id,kind:row.kind,title:player?peer.name:row.sender_id===viewer?row.guild_name:`${row.sender_name} → ${row.guild_name}`,
-    peer,guild:player?null:{id:row.guild_id,name:row.guild_name},sender:player?null:{id:row.sender_id,name:row.sender_name,evaluation:evaluationRef(row.sender_id)},
+    peer,guild:player?null:{id:row.guild_id,name:row.guild_name,iconVersion:row.guild_icon_version||null},sender:player?null:{id:row.sender_id,name:row.sender_name,evaluation:evaluationRef(row.sender_id)},
     contextPlayer:row.context_player_id?{id:row.context_player_id,name:row.context_name,evaluation:evaluationRef(row.context_player_id)}:null,
-    visibility:player?'領主本人同士だけが閲覧できます。':'送り主と、所属ギルドの現在のメンバーに共有されます。',
+    visibility:player?'領主本人同士だけが閲覧できます。':'送り主と、所属同盟の現在のメンバーに共有されます。',
     unreadCount:Number(row.unread_count||0),lastSeq:Number(row.last_seq),updatedAt:letterIso(row.updated_at),canReply:true,
     lastMessage:row.message_id?{id:row.message_id,seq:Number(row.last_seq),authorId:row.last_sender_id,authorName:row.last_sender_name,authorEvaluation:evaluationRef(row.last_sender_id),text:Array.from(row.last_body||'').slice(0,120).join(''),createdAt:letterIso(row.last_created_at)}:null};
 }
@@ -83,9 +84,9 @@ async function letterSend(ctx,replyId=null){
   let target=null,guildId=null,threadId=replyId,kind=null,a=null,b=null,sender=null,contextPlayer=null,guard,guardParams;
   if(replyId){guard=`EXISTS(SELECT 1 FROM base_letter_threads t WHERE t.id=? AND ${letterAccess()})`;guardParams=[replyId,...letterActor(user.id)];}
   else{
-    if(!['player','guild'].includes(body.destination))h.fail(400,'INVALID_INPUT','領主本人か所属ギルドを選んでください。');
+    if(!['player','guild'].includes(body.destination))h.fail(400,'INVALID_INPUT','領主本人か所属同盟を選んでください。');
     target=h.idField(body.targetPlayerId,'宛先の領主');if(target===user.id)h.fail(400,'INVALID_TARGET','ほかの領主の本拠を選んでください。');kind=body.destination;contextPlayer=target;
-    if(kind==='guild')guildId=h.idField(body.guildId,'宛先のギルド');else if(body.guildId!==undefined)h.fail(400,'INVALID_INPUT','領主本人への書状にギルドは指定できません。');
+    if(kind==='guild')guildId=h.idField(body.guildId,'宛先の同盟');else if(body.guildId!==undefined)h.fail(400,'INVALID_INPUT','領主本人への書状に同盟は指定できません。');
     if(kind==='player'){[a,b]=[user.id,target].sort();threadId='lt_'+(await letterHash(JSON.stringify(['player',a,b]))).slice(0,32);guard='EXISTS(SELECT 1 FROM users WHERE id=?)';guardParams=[target];}
     else{sender=user.id;threadId='lt_'+(await letterHash(JSON.stringify(['guild',guildId,sender]))).slice(0,32);guard='EXISTS(SELECT 1 FROM guild_members gm JOIN guilds g ON g.id=gm.guild_id WHERE gm.user_id=? AND gm.guild_id=?)';guardParams=[target,guildId];}
     guard+=' AND NOT EXISTS(SELECT 1 FROM player_bans WHERE user_id=? AND active=1)';guardParams.push(target);
@@ -104,7 +105,7 @@ async function letterSend(ctx,replyId=null){
   statements.push(letterStmt(db,`INSERT INTO base_letter_messages(id,thread_id,sender_id,body,created_at) SELECT ?,?,?,?,? WHERE ${gate}`,messageId,threadId,user.id,text,now,...args));
   statements.push(letterStmt(db,`UPDATE base_letter_threads SET last_seq=(SELECT seq FROM base_letter_messages WHERE id=?),updated_at=? WHERE id=? AND ${gate}`,messageId,now,threadId,...args));
   const accepted=letterRows((await db.batch(statements))[0])[0];
-  if(!accepted){await h.requireAccountAccess(db,user);const replay=await letterStmt(db,'SELECT * FROM base_letter_requests WHERE actor_id=? AND request_id=?',user.id,requestId).first();if(replay){if(replay.request_hash!==digest)h.fail(409,'LETTER_REQUEST_REUSED','この送信番号は別の書状に使用されています。');return letterSentResponse(ctx,replay,true);}if(!replyId&&(await h.getUser(db,target))?.ban_active)h.fail(404,'PLAYER_NOT_FOUND','宛先の領主が見つかりません。');if(!replyId&&kind==='guild')h.fail(409,'LETTER_TARGET_CHANGED','宛先の所属ギルドが変わりました。送信先を選び直してください。');h.fail(404,'LETTER_NOT_FOUND','この書状は見つからないか、返信できません。');}
+  if(!accepted){await h.requireAccountAccess(db,user);const replay=await letterStmt(db,'SELECT * FROM base_letter_requests WHERE actor_id=? AND request_id=?',user.id,requestId).first();if(replay){if(replay.request_hash!==digest)h.fail(409,'LETTER_REQUEST_REUSED','この送信番号は別の書状に使用されています。');return letterSentResponse(ctx,replay,true);}if(!replyId&&(await h.getUser(db,target))?.ban_active)h.fail(404,'PLAYER_NOT_FOUND','宛先の領主が見つかりません。');if(!replyId&&kind==='guild')h.fail(409,'LETTER_TARGET_CHANGED','宛先の所属同盟が変わりました。送信先を選び直してください。');h.fail(404,'LETTER_NOT_FOUND','この書状は見つからないか、返信できません。');}
   return letterSentResponse(ctx,accepted,false);
 }
 

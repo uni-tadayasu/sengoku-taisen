@@ -57,7 +57,7 @@ test('empty letter deltas replace and remove old author avatars while preserving
 });
 test('guild letter titles and participant lists show portraits only for people',()=>{
   const h=letters(),thread={kind:'guild',guild:{name:'同盟の旗'},sender:{id:PEER,name:'送り主',avatarVersion:FIRST,evaluation},contextPlayer:{id:'u_context',name:'本拠の領主',avatarVersion:SECOND,evaluation}};
-  assert.equal(count(h.api.threadTitle(thread,ME)),1);assert.equal(h.api.threadTitle(thread,PEER),'同盟の旗');const participants=h.api.threadParticipants(thread);assert.equal(count(participants),2);assert(participants.includes(FIRST));assert(participants.includes(SECOND));h.controller.dispose();
+  assert.equal(count(h.api.threadTitle(thread,ME)),1);assert.equal(h.api.threadTitle(thread,PEER).replace(/<[^>]*>/g,''),'同盟の旗');const participants=h.api.threadParticipants(thread);assert.equal(count(participants),2);assert(participants.includes(FIRST));assert(participants.includes(SECOND));h.controller.dispose();
 });
 
 (async()=>{for(const {name,run}of tests){await run();console.log('PASS '+name);}console.log(`${tests.length} avatar surface checks passed. Synthetic data only; no network or production mutations.`);})().catch(error=>{console.error(error);process.exitCode=1;});

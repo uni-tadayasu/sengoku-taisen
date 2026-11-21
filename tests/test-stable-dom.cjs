@@ -2,77 +2,7 @@
 // Deterministic DOM model for reconciliation and retention behavior. Browser QA is separate.
 const assert=require('node:assert/strict'),{patch,forget}=require('../stable-dom.js');
 const tests=[],test=(name,run)=>tests.push([name,run]);
-const HTML='http://www.w3.org/1999/xhtml',SVG='http://www.w3.org/2000/svg';
-const decode=s=>s.replace(/&quot;/g,'"').replace(/&#39;/g,"'").replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&amp;/g,'&');
-class Style{
- constructor(owner){this.owner=owner;this.map=new Map();}
- [Symbol.iterator](){return this.map.keys();}
- getPropertyValue(name){return this.map.get(name)?.[0]||'';}
- getPropertyPriority(name){return this.map.get(name)?.[1]||'';}
- setProperty(name,value,priority=''){this.map.set(name,[String(value),priority]);this.sync();}
- removeProperty(name){const value=this.getPropertyValue(name);this.map.delete(name);this.sync();return value;}
- sync(){this.owner._attrs.set('style',[...this.map].map(([k,[v,p]])=>k+': '+v+(p?' !'+p:'')+';').join(' '));}
- parse(value){this.map.clear();for(const declaration of value.split(';')){const colon=declaration.indexOf(':');if(colon<0)continue;const name=declaration.slice(0,colon).trim(),raw=declaration.slice(colon+1).trim(),priority=/!important$/.test(raw)?'important':'';if(name)this.map.set(name,[raw.replace(/\s*!important$/,''),priority]);}}
-}
-class Node{
- constructor(type,name,doc,namespace=HTML){this.nodeType=type;this.nodeName=name;this.localName=type===1?name.toLowerCase():undefined;this.namespaceURI=type===1?namespace:null;this.ownerDocument=doc;this.parentNode=null;this.childNodes=[];this._attrs=new Map();this._text='';this._value=undefined;this._checked=undefined;this._selected=undefined;this.scrollTop=0;this.scrollLeft=0;this.selectionStart=null;this.selectionEnd=null;this.selectionDirection='none';this.style=new Style(this);this.classList={contains:v=>(this.getAttribute('class')||'').split(/\s+/).includes(v),add:(...values)=>this.setAttribute('class',[...new Set([...(this.getAttribute('class')||'').split(/\s+/).filter(Boolean),...values])].join(' ')),remove:(...values)=>this.setAttribute('class',(this.getAttribute('class')||'').split(/\s+/).filter(v=>v&&!values.includes(v)).join(' '))};}
- get attributes(){return [...this._attrs].map(([name,value])=>({name,value}));}
- get firstChild(){return this.childNodes[0]||null;}
- get nextSibling(){if(!this.parentNode)return null;return this.parentNode.childNodes[this.parentNode.childNodes.indexOf(this)+1]||null;}
- get nodeValue(){return this.nodeType===3||this.nodeType===8?this._text:null;}
- set nodeValue(value){this._text=String(value);}
- get textContent(){return this.nodeType===3||this.nodeType===8?this._text:this.childNodes.map(n=>n.textContent).join('');}
- set textContent(value){if(this.nodeType===3||this.nodeType===8){this._text=String(value);return;}this.replaceChildren(...(value===''?[]:[this.ownerDocument.createTextNode(String(value))]));}
- getAttribute(name){return this._attrs.has(name)?this._attrs.get(name):null;}
- setAttribute(name,value){this._attrs.set(name,String(value));if(name==='style')this.style.parse(String(value));}
- hasAttribute(name){return this._attrs.has(name);}
- removeAttribute(name){this._attrs.delete(name);if(name==='style')this.style.map.clear();}
- appendChild(node){return this.insertBefore(node,null);}
- append(...nodes){nodes.forEach(n=>this.appendChild(n));}
- insertBefore(node,before){if(node===before)return node;if(before&&before.parentNode!==this)throw Error('Invalid reference child');const moving=!!node.parentNode;if(moving){if(node.contains(this.ownerDocument?.activeElement))this.ownerDocument.activeElement=this.ownerDocument.body;node.remove();}const index=before?this.childNodes.indexOf(before):this.childNodes.length;this.childNodes.splice(index,0,node);node.parentNode=this;if(this.resetScrollOnInsert)this.scrollTop=0;return node;}
- remove(){if(this.parentNode){const p=this.parentNode;p.childNodes.splice(p.childNodes.indexOf(this),1);this.parentNode=null;}}
- replaceChildren(...nodes){for(const node of [...this.childNodes])node.remove();nodes.forEach(n=>this.appendChild(n));}
- contains(node){return node===this||this.childNodes.some(child=>child.contains(node));}
- get isConnected(){return !!this.ownerDocument?.body?.contains(this);}
- matches(selector){
-  if(this.nodeType!==1)return false;selector=selector.trim();
-  if(selector.startsWith('#'))return this.getAttribute('id')===selector.slice(1);
-  if(selector.startsWith('.'))return this.classList.contains(selector.slice(1));
-  if(/^\[[^\]]+\]$/.test(selector)){const match=selector.slice(1,-1).match(/^([^=]+)(?:=["']?([^"']*)["']?)?$/);return match&&this.hasAttribute(match[1])&&(match[2]===undefined||this.getAttribute(match[1])===match[2]);}
-  return this.localName===selector;
- }
- querySelectorAll(selector){const result=[],walk=node=>{for(const c of node.childNodes){if(c.matches(selector))result.push(c);walk(c);}};walk(this);return result;}
- querySelector(selector){return this.querySelectorAll(selector)[0]||null;}
- focus(){this.ownerDocument.activeElement=this;}
- setSelectionRange(start,end,direction='none'){this.selectionStart=start;this.selectionEnd=end;this.selectionDirection=direction;}
- get options(){return this.querySelectorAll('option');}
- get multiple(){return this.hasAttribute('multiple');}
- get selected(){return this._selected??this.hasAttribute('selected');}
- set selected(value){this._selected=!!value;}
- get checked(){return this._checked??this.hasAttribute('checked');}
- set checked(value){this._checked=!!value;}
- get value(){if(this.localName==='select'){const options=this.options;return (options.find(o=>o.selected)||options[0])?.value||'';}if(this.localName==='option')return this.getAttribute('value')??this.textContent;return this._value??(this.localName==='textarea'?this.textContent:this.getAttribute('value')||'');}
- set value(value){value=String(value);if(this.localName==='select'){for(const option of this.options)option.selected=option.value===value;}else this._value=value;}
- get open(){return this.hasAttribute('open');}
- set open(value){if(value)this.setAttribute('open','');else this.removeAttribute('open');}
- get innerHTML(){const target=this.localName==='template'?this.content:this;return target.childNodes.map(serialize).join('');}
- set innerHTML(value){const target=this.localName==='template'?this.content:this;target.replaceChildren(...parse(String(value),this.ownerDocument));}
-}
-function serialize(node){if(node.nodeType===3)return node.nodeValue;if(node.nodeType===8)return'<!--'+node.nodeValue+'-->';return'<'+node.localName+node.attributes.map(a=>' '+a.name+'="'+a.value+'"').join('')+'>'+node.childNodes.map(serialize).join('')+'</'+node.localName+'>';}
-function parse(source,doc){
- const fragment=new Node(11,'#document-fragment',doc),stack=[fragment],voids=new Set(['input','img','br','hr','meta','link','source','area','wbr']);
- for(const token of source.match(/<!--[\s\S]*?-->|<[^>]+>|[^<]+/g)||[]){
-  if(token.startsWith('<!--')){const n=doc.createComment(token.slice(4,-3));stack.at(-1).appendChild(n);continue;}
-  if(token.startsWith('</')){stack.pop();continue;}
-  if(token.startsWith('<')){const match=token.match(/^<([\w-]+)([\s\S]*?)\/?\s*>$/);if(!match)throw Error('Unsupported fixture HTML');const t=match[1].toLowerCase(),parent=stack.at(-1),node=new Node(1,t,doc,t==='svg'||parent.namespaceURI===SVG?SVG:HTML);const raw=match[2],attributes=/([\w:-]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+)))?/g;let a;while((a=attributes.exec(raw)))node.setAttribute(a[1],decode(a[2]??a[3]??a[4]??''));parent.appendChild(node);if(!voids.has(t)&&!token.endsWith('/>'))stack.push(node);continue;}
-  stack.at(-1).appendChild(doc.createTextNode(decode(token)));
- }
- return [...fragment.childNodes];
-}
-function setup(){
- const doc={activeElement:null,createElement(name){const n=new Node(1,name,this);if(name==='template')n.content=new Node(11,'#document-fragment',this);return n;},createTextNode(text){const n=new Node(3,'#text',this);n.nodeValue=text;return n;},createComment(text){const n=new Node(8,'#comment',this);n.nodeValue=text;return n;}};
- doc.body=doc.createElement('body');doc.scrollingElement=doc.body;doc.activeElement=doc.body;const host=doc.createElement('main');doc.body.appendChild(host);return{doc,host,$:selector=>host.querySelector(selector)};
-}
+const {setup}=require('./helpers/dom-model.cjs');
 
 test('equal generated HTML is a true no-op after runtime artwork and icons are added',()=>{
  const {doc,host,$}=setup(),source='<button class="button" data-action="save"><span>保存</span></button>';patch(host,source,{key:'header'});const button=$('button'),label=$('span'),icon=doc.createElement('svg');button.insertBefore(icon,button.firstChild);button.setAttribute('data-art-ready','1');button.setAttribute('data-button-art-enhanced','1');button.classList.add('illustrated-item','art-ready');button.style.setProperty('--item-art','url("loaded.webp")');const result=patch(host,source,{key:'header'});assert.equal(result.changed,false);assert.strictEqual($('button'),button);assert.strictEqual($('span'),label);assert.strictEqual(button.firstChild,icon);assert(button.classList.contains('art-ready'));assert.equal(button.style.getPropertyValue('--item-art'),'url("loaded.webp")');

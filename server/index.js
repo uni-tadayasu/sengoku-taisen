@@ -8,8 +8,8 @@ import {handleRoaming,reconcileRoamingProgress} from './roaming.js';
 import {handleRoamingDeployment} from './roaming-deployment.js';
 import {handleCovert,reconcileCovertProgress,covertIncidentStatements} from './covert.js';
 const API = '/api/v1';
-const API_VERSION = '3.20.0';
-const API_FEATURES = Object.freeze({trades:true,moderation:true,premium:true,timedEvents:true,troopTrades:true,roamingBattles:true,roamingDeployment:true,covertDispatch:true,privatePlayerRoles:true});
+const API_VERSION = '3.21.0';
+const API_FEATURES = Object.freeze({trades:true,moderation:true,premium:true,timedEvents:true,troopTrades:true,roamingBattles:true,roamingDeployment:true,covertDispatch:true,privatePlayerRoles:true,guildIcons:true});
 const MAX_BODY = 16 * 1024;
 const MAX_SAVE_BODY = 2 * 1024 * 1024;
 const MAX_AVATAR_BYTES = 48 * 1024;
@@ -380,7 +380,7 @@ function mapUser(row, now = Date.now()) {
   return {
     id: row.id, name: row.name, clan: publicClan(row.clan,row.is_admin,row.is_staff,row.personal_clan), isAdmin: !!row.is_admin, isStaff: !!row.is_staff && !row.is_admin,
     avatarVersion: row.avatar_version || null,evaluation:evaluationRef(row.id),
-    guildId: row.guild_id || null, guildName: row.guild_name || null,
+    guildId: row.guild_id || null, guildName: row.guild_name || null,guildIconVersion: row.guild_id ? row.guild_icon_version || null : null,
     guildRole: row.guild_id ? (row.owner_id === row.id ? 'owner' : row.is_guild_officer ? 'officer' : 'member') : null,
     online: !row.ban_active && row.presence_seen !== null && row.presence_seen !== undefined && Number(row.presence_seen) > now - ONLINE_WINDOW,
   };
@@ -418,6 +418,7 @@ function publicIdentities(payload,request){
   return visit(payload);
 }
 const USER_SELECT = `SELECT u.id,u.name,u.clan,u.last_seen,gm.guild_id,g.name AS guild_name,g.owner_id,
+  (SELECT gi.version FROM guild_icons gi WHERE gi.guild_id=gm.guild_id) AS guild_icon_version,
   COALESCE((SELECT active FROM player_bans pb WHERE pb.user_id=u.id),0) AS ban_active,
   COALESCE((SELECT revision FROM player_bans pb WHERE pb.user_id=u.id),0) AS moderation_epoch,
   (SELECT a.version FROM user_avatars a WHERE a.user_id=u.id) AS avatar_version,
@@ -515,6 +516,90 @@ async function getAvatar(request,env,origin) {
   if(origin!==null)headers.set('Access-Control-Allow-Origin',origin);
   return new Response(object.body,{status:200,headers});
 }
+function guildIconBucket(env) {
+  if(!env.BUCKET?.put||!env.BUCKET?.get||!env.BUCKET?.delete)fail(503,'GUILD_ICON_STORAGE_UNAVAILABLE','同盟アイコンの保存サービスの準備中です。少し時間をおいて再度お試しください。');
+  return env.BUCKET;
+}
+function guildIconInput(body,upload) {
+  if(Object.keys(body).some(key=>!(upload?['guildId','image']:['guildId']).includes(key)))fail(400,'INVALID_GUILD_ICON','同盟アイコンの送信内容が正しくありません。');
+  const guildId=idField(body.guildId,'同盟の識別子');
+  if(!upload)return{guildId};
+  try{return{guildId,bytes:decodeAvatarImage({image:body.image})};}
+  catch(error){if(error instanceof ApiError&&['INVALID_AVATAR','AVATAR_TOO_LARGE'].includes(error.code))fail(error.status,error.code==='AVATAR_TOO_LARGE'?'GUILD_ICON_TOO_LARGE':'INVALID_GUILD_ICON',error.message.replaceAll('写真','同盟アイコン'));throw error;}
+}
+function guildIconCommitGuard(user,guildId) {
+  const access=accountCommitGuard(user);
+  return{sql:`EXISTS(SELECT 1 FROM guilds g JOIN guild_members gm ON gm.guild_id=g.id WHERE g.id=? AND g.owner_id=? AND gm.user_id=?) AND ${access.sql}`,args:[guildId,user.id,user.id,...access.args]};
+}
+async function requireGuildIconAccess(db,user,guildId) {
+  await requireAccountAccess(db,user);
+  const current=await getUser(db,user.id);
+  if(!current)fail(403,'GUILD_REQUIRED','現在所属している同盟で操作してください。');
+  requireGuild(current,guildId);requireGuildRole(current,'icon');
+}
+async function guildIconResult(db,guildId) {
+  const current=await stmt(db,GUILD_SELECT+' WHERE g.id=?',guildId).first();
+  if(!current)fail(409,'GUILD_CHANGED','同盟の状態が変わりました。一覧を更新してください。');
+  return{ok:true,guild:mapGuild(current)};
+}
+async function putGuildIcon(request,env,user,now) {
+  const db=env.DB,{guildId,bytes}=guildIconInput(await readBody(request,MAX_AVATAR_BODY),true);
+  requireGuild(user,guildId);requireGuildRole(user,'icon');
+  const bucket=guildIconBucket(env);
+  await budget(db,'guild-icon-write:'+user.id,10,10*60*1000,now);
+  const version=await hashBytes(bytes),key='guild-icons/'+guildId+'/'+crypto.randomUUID()+'.jpg';
+  try{const uploaded=await bucket.put(key,bytes,{httpMetadata:{contentType:'image/jpeg',cacheControl:'no-store'}});if(!uploaded)throw Error('Guild icon upload incomplete');}
+  catch{await removeAvatarObject(bucket,key);fail(503,'GUILD_ICON_STORAGE_UNAVAILABLE','同盟アイコンを保存できませんでした。少し時間をおいて再度お試しください。');}
+  let result;
+  try{
+    // The image write yields to storage. Ownership, membership and moderation
+    // must still authorize the exact requested guild when metadata commits.
+    const access=guildIconCommitGuard(user,guildId);
+    result=await db.batch([
+      stmt(db,'SELECT object_key FROM guild_icons WHERE guild_id=?',guildId),
+      stmt(db,`INSERT INTO guild_icons(guild_id,version,object_key,content_type,byte_length,updated_at)
+        SELECT ?,?,?,'image/jpeg',?,? WHERE ${access.sql} ON CONFLICT(guild_id) DO UPDATE SET
+        version=excluded.version,object_key=excluded.object_key,content_type=excluded.content_type,
+        byte_length=excluded.byte_length,updated_at=excluded.updated_at RETURNING object_key`,guildId,version,key,bytes.length,now,...access.args),
+    ]);
+    if(!rows(result[1]).length){await requireGuildIconAccess(db,user,guildId);fail(409,'GUILD_CHANGED','同盟の役職または所属が変わりました。一覧を更新してください。');}
+  }catch(error){
+    // A lost D1 response may follow a successful commit. Delete this unique
+    // candidate only when a fresh read proves it is no longer current.
+    try{const current=await stmt(db,'SELECT object_key FROM guild_icons WHERE guild_id=?',guildId).first();if(current?.object_key!==key)await removeAvatarObject(bucket,key);}catch{}
+    throw error;
+  }
+  await removeAvatarObject(bucket,rows(result[0])[0]?.object_key);
+  return guildIconResult(db,guildId);
+}
+async function deleteGuildIcon(request,env,user,now) {
+  const db=env.DB,{guildId}=guildIconInput(await readBody(request),false);
+  requireGuild(user,guildId);requireGuildRole(user,'icon');
+  const bucket=guildIconBucket(env);
+  await budget(db,'guild-icon-write:'+user.id,10,10*60*1000,now);
+  const access=guildIconCommitGuard(user,guildId),result=await db.batch([
+    stmt(db,'SELECT 1 AS allowed WHERE '+access.sql,...access.args),
+    stmt(db,'DELETE FROM guild_icons WHERE guild_id=? AND '+access.sql+' RETURNING object_key',guildId,...access.args),
+  ]);
+  if(!rows(result[0]).length){await requireGuildIconAccess(db,user,guildId);fail(409,'GUILD_CHANGED','同盟の役職または所属が変わりました。一覧を更新してください。');}
+  await removeAvatarObject(bucket,rows(result[1])[0]?.object_key);
+  return guildIconResult(db,guildId);
+}
+async function getGuildIcon(request,env,origin) {
+  const url=new URL(request.url),id=url.pathname.slice((API+'/guild-icons/').length),version=url.searchParams.get('v');
+  if(!/^[A-Za-z0-9_-]{1,90}$/.test(id)||version!==null&&!/^[0-9a-f]{64}$/.test(version))fail(400,'INVALID_GUILD_ICON','同盟アイコンの識別子が正しくありません。');
+  const db=env.DB;if(!db?.prepare)fail(503,'SERVICE_UNAVAILABLE','通信サービスの準備中です。');
+  const select='SELECT i.version,i.object_key,i.byte_length FROM guild_icons i JOIN guilds g ON g.id=i.guild_id WHERE i.guild_id=?';
+  const current=await stmt(db,select,id).first();
+  if(!current||version!==null&&version!==current.version)fail(404,'GUILD_ICON_NOT_FOUND','この同盟アイコンは現在使用されていません。');
+  let object;try{object=await guildIconBucket(env).get(current.object_key);}catch(error){if(error instanceof ApiError)throw error;fail(503,'GUILD_ICON_STORAGE_UNAVAILABLE','同盟アイコンを読み込めませんでした。少し時間をおいて再度お試しください。');}
+  if(!object?.body||Number(object.size)!==Number(current.byte_length))fail(404,'GUILD_ICON_NOT_FOUND','この同盟アイコンは現在使用されていません。');
+  const latest=await stmt(db,select,id).first();
+  if(latest?.object_key!==current.object_key||latest?.version!==current.version){await object.body.cancel();fail(404,'GUILD_ICON_NOT_FOUND','この同盟アイコンは現在使用されていません。');}
+  const headers=new Headers({'Content-Type':'image/jpeg','Content-Length':String(current.byte_length),'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Content-Security-Policy':"default-src 'none'; sandbox; base-uri 'none'; frame-ancestors 'none'",'Vary':'Origin'});
+  if(origin!==null)headers.set('Access-Control-Allow-Origin',origin);
+  return new Response(object.body,{status:200,headers});
+}
 async function authenticate(request, db, now) {
   const header = request.headers.get('authorization') || '';
   const match = /^Bearer ([A-Za-z0-9_-]{43})$/.exec(header);
@@ -586,7 +671,7 @@ async function roomFor(db, user, channel, target) {
   if (channel === 'world') return 'world';
   if (channel === 'admin') { requireStaffChat(user); return 'admin'; }
   if (channel === 'guild') {
-    if (!user.guild_id || (target && target !== user.guild_id)) fail(403, 'GUILD_REQUIRED', '所属ギルドのチャットだけを利用できます。');
+    if (!user.guild_id || (target && target !== user.guild_id)) fail(403, 'GUILD_REQUIRED', '所属同盟のチャットだけを利用できます。');
     return 'guild:' + user.guild_id;
   }
   if (channel === 'friend') {
@@ -608,8 +693,9 @@ const MESSAGE_SELECT = `SELECT m.id,m.user_id,m.body,m.created_at,u.name,
  EXISTS(SELECT 1 FROM staff_members sm WHERE sm.user_id=m.user_id) AS is_staff
  FROM messages m JOIN users u ON u.id=m.user_id`;
 const GUILD_SELECT = `SELECT g.id,g.name,g.owner_id,u.name AS owner_name,g.created_at,
+ (SELECT gi.version FROM guild_icons gi WHERE gi.guild_id=g.id) AS icon_version,
  (SELECT COUNT(*) FROM guild_members gm WHERE gm.guild_id=g.id) AS member_count FROM guilds g JOIN users u ON u.id=g.owner_id`;
-function mapGuild(row) { return {id:row.id,name:row.name,ownerId:row.owner_id,ownerName:row.owner_name,ownerEvaluation:evaluationRef(row.owner_id),memberCount:Number(row.member_count),maxMembers:MAX_GUILD_MEMBERS,createdAt:iso(row.created_at)}; }
+function mapGuild(row) { return {id:row.id,name:row.name,ownerId:row.owner_id,ownerName:row.owner_name,ownerEvaluation:evaluationRef(row.owner_id),iconVersion:row.icon_version||null,memberCount:Number(row.member_count),maxMembers:MAX_GUILD_MEMBERS,createdAt:iso(row.created_at)}; }
 const GUILD_MEMBER_GUARD='EXISTS(SELECT 1 FROM guild_members WHERE user_id=? AND guild_id=?)';
 const GUILD_ASSETS=['gold','rice','wood','stone','magatama'];
 const GUILD_ASSET_NAMES={gold:'金',rice:'兵糧',wood:'木材',stone:'石材',magatama:'勾玉'};
@@ -617,11 +703,11 @@ const GUILD_ASSET_LIMIT=999999999;
 const GUILD_ASSET_COMMIT='EXISTS(SELECT 1 FROM guild_asset_requests WHERE actor_id=? AND request_id=? AND commit_token=?)';
 const GUILD_ROLE_COMMIT='EXISTS(SELECT 1 FROM guild_role_requests WHERE actor_id=? AND request_id=? AND commit_token=?)';
 function requireGuild(user,guildId) {
-  if(!user.guild_id||guildId&&user.guild_id!==guildId)fail(403,'GUILD_REQUIRED','現在所属しているギルドで操作してください。');
+  if(!user.guild_id||guildId&&user.guild_id!==guildId)fail(403,'GUILD_REQUIRED','現在所属している同盟で操作してください。');
 }
 function guildRoleAllowed(user,action) { return user.owner_id===user.id||action==='remove'&&!!user.is_guild_officer; }
 function requireGuildRole(user,action) {
-  if(!guildRoleAllowed(user,action))fail(403,'GUILD_ROLE_REQUIRED','この操作に必要なギルド役職がありません。');
+  if(!guildRoleAllowed(user,action))fail(403,'GUILD_ROLE_REQUIRED','この操作に必要な同盟役職がありません。');
 }
 function mapTreasury(row) { return {...Object.fromEntries(GUILD_ASSETS.map(key=>[key,Number(row?.[key]||0)])),revision:Number(row?.revision||0)}; }
 function pageLimit(url,max=50) {
@@ -645,7 +731,7 @@ async function guildSnapshot(db,user,now,guildId=null) {
     stmt(db,GUILD_SELECT+' WHERE g.id=? AND '+GUILD_MEMBER_GUARD,id,user.id,id),
     stmt(db,USER_SELECT+' WHERE gm.guild_id=? AND '+GUILD_MEMBER_GUARD+' ORDER BY gm.joined_at,u.id',id,user.id,id),
   ]);
-  if(!rows(result[0]).length)fail(403,'GUILD_REQUIRED','ギルドの所属が変更されました。接続を更新してください。');
+  if(!rows(result[0]).length)fail(403,'GUILD_REQUIRED','同盟の所属が変更されました。接続を更新してください。');
   return {ok:true,user:mapUser(current,now),guild:rows(result[1])[0]?mapGuild(rows(result[1])[0]):null,members:rows(result[2]).map(row=>mapUser(row,now))};
 }
 async function ensureTreasury(db,guildId) {
@@ -660,7 +746,7 @@ async function readTreasury(db,user,url,now) {
     stmt(db,'SELECT * FROM guild_treasuries WHERE guild_id=? AND '+GUILD_MEMBER_GUARD,guildId,user.id,guildId),
     stmt(db,'SELECT id,result_json,created_at FROM guild_asset_requests WHERE guild_id=? AND '+GUILD_MEMBER_GUARD+after+' ORDER BY created_at DESC,id DESC LIMIT ?',guildId,user.id,guildId,...(cursor?[cursor.value,cursor.value,cursor.id]:[]),limit+1),
   ]);
-  const treasury=rows(result[0])[0];if(!treasury)fail(403,'GUILD_REQUIRED','現在所属しているギルドで操作してください。');
+  const treasury=rows(result[0])[0];if(!treasury)fail(403,'GUILD_REQUIRED','現在所属している同盟で操作してください。');
   const found=rows(result[1]),page=found.slice(0,limit),last=page.at(-1);
   return {ok:true,guildId,treasury:mapTreasury(treasury),ledger:page.map(row=>publicLedger(JSON.parse(row.result_json))),nextCursor:found.length>limit?encodeGuildCursor('ledger',Number(last.created_at),last.id):null,serverNow:iso(now)};
 }
@@ -672,12 +758,12 @@ async function priorGuildTransfer(db,user,body,digest) {
 async function guildTransferResult(db,user,body,receipt,idempotent,now) {
   const current=await getUser(db,user.id);requireGuild(current,body.guildId);
   const treasury=await stmt(db,'SELECT * FROM guild_treasuries WHERE guild_id=? AND '+GUILD_MEMBER_GUARD,body.guildId,user.id,body.guildId).first();
-  if(!treasury)fail(403,'GUILD_REQUIRED','ギルドの所属が変更されました。');
+  if(!treasury)fail(403,'GUILD_REQUIRED','同盟の所属が変更されました。');
   return {...await syncSnapshot(db,await getSyncRow(db,user.id),current,body.deviceId,now),guildId:body.guildId,receipt:publicLedger(receipt),treasury:mapTreasury(treasury),idempotent};
 }
 async function guildTransfer(db,user,raw,now) {
   if(Object.keys(raw).some(key=>!['guildId','direction','resource','amount','requestId','deviceId','expectedRevision'].includes(key)))fail(400,'INVALID_INPUT','入出庫の情報が正しくありません。');
-  const body={...raw,guildId:idField(raw.guildId,'ギルド'),requestId:idField(raw.requestId,'操作番号'),deviceId:idField(raw.deviceId,'端末')};
+  const body={...raw,guildId:idField(raw.guildId,'同盟'),requestId:idField(raw.requestId,'操作番号'),deviceId:idField(raw.deviceId,'端末')};
   if(!['deposit','withdraw'].includes(body.direction)||!GUILD_ASSETS.includes(body.resource)||!Number.isSafeInteger(body.amount)||body.amount<1||body.amount>1000000||!Number.isSafeInteger(body.expectedRevision)||body.expectedRevision<0)fail(400,'INVALID_INPUT','入出庫は対応する資産を1〜1,000,000の整数で指定してください。');
   requireGuild(user,body.guildId);
   const digest=await hash(JSON.stringify([user.id,body.guildId,body.direction,body.resource,body.amount]));
@@ -687,9 +773,9 @@ async function guildTransfer(db,user,raw,now) {
   const clock=await getWorldClock(db,now),save=normalizeGameSave(JSON.parse(row.save_json),user,now,{reading:true,clock}),state=save.state;
   if(!state.worldClock)fail(409,'CLOCK_ANCHOR_REQUIRED','先に共通時計へ同期してください。');
   if(clock.elapsedMs-state.worldClock.elapsedMs>15000)fail(409,'CLOCK_STALE','共通時計と本拠を同期してから入出庫してください。');
-  const treasury=await ensureTreasury(db,body.guildId);if(!treasury)fail(403,'GUILD_REQUIRED','ギルドの所属が変更されました。');
+  const treasury=await ensureTreasury(db,body.guildId);if(!treasury)fail(403,'GUILD_REQUIRED','同盟の所属が変更されました。');
   const key=body.resource,personal=key==='magatama'?state.magatama:state.resources[key],pooled=Number(treasury[key]),deposit=body.direction==='deposit',delta=deposit?-body.amount:body.amount;
-  if(deposit?personal<body.amount:pooled<body.amount)fail(409,'INSUFFICIENT_ASSETS',deposit?'手持ちの資産が足りません。':'ギルドの共有資産が足りません。');
+  if(deposit?personal<body.amount:pooled<body.amount)fail(409,'INSUFFICIENT_ASSETS',deposit?'手持ちの資産が足りません。':'同盟の共有資産が足りません。');
   if(personal+delta>GUILD_ASSET_LIMIT||pooled-delta>GUILD_ASSET_LIMIT)fail(409,'ASSET_LIMIT','保管できる資産の上限を超えます。');
   if(key==='magatama')state.magatama=personal+delta;else state.resources[key]=personal+delta;
   state.log.unshift({turn:state.turn,text:`${user.guild_name}の共有資産へ${GUILD_ASSET_NAMES[key]}${body.amount.toLocaleString('ja-JP')}を${deposit?'納入':'受取'}。`,kind:'guild'});state.log=state.log.slice(0,200);save.savedAt=iso(now);
@@ -720,15 +806,15 @@ async function guildTransfer(db,user,raw,now) {
   return guildTransferResult(db,user,body,receipt,false,now);
 }
 async function guildManage(db,user,raw,remove,now) {
-  if(Object.keys(raw).some(key=>!(remove?['guildId','targetPlayerId','requestId']:['guildId','targetPlayerId','role','requestId']).includes(key)))fail(400,'INVALID_INPUT','ギルド役職の指定が正しくありません。');
-  const guildId=idField(raw.guildId,'ギルド'),targetId=idField(raw.targetPlayerId,'対象の領主'),requestId=idField(raw.requestId,'操作番号'),action=remove?'remove':raw.role;
+  if(Object.keys(raw).some(key=>!(remove?['guildId','targetPlayerId','requestId']:['guildId','targetPlayerId','role','requestId']).includes(key)))fail(400,'INVALID_INPUT','同盟役職の指定が正しくありません。');
+  const guildId=idField(raw.guildId,'同盟'),targetId=idField(raw.targetPlayerId,'対象の領主'),requestId=idField(raw.requestId,'操作番号'),action=remove?'remove':raw.role;
   if(!['officer','member','remove'].includes(action)||!remove&&action==='remove')fail(400,'INVALID_INPUT','副盟主またはメンバーを指定してください。');
   requireGuild(user,guildId);requireGuildRole(user,action);
   if(targetId===user.id)fail(400,'INVALID_TARGET','自分自身の役職変更・除名はできません。');
   const lookup=()=>stmt(db,'SELECT * FROM guild_role_requests WHERE actor_id=? AND request_id=?',user.id,requestId).first();
-  const matches=prior=>{if(prior&&(prior.guild_id!==guildId||prior.target_id!==targetId||prior.action!==action))fail(409,'REQUEST_ID_REUSED','その操作番号は別のギルド操作に使われています。');return prior;};
+  const matches=prior=>{if(prior&&(prior.guild_id!==guildId||prior.target_id!==targetId||prior.action!==action))fail(409,'REQUEST_ID_REUSED','その操作番号は別の同盟操作に使われています。');return prior;};
   if(matches(await lookup()))return {...await guildSnapshot(db,user,now,guildId),idempotent:true};
-  const target=await getUser(db,targetId);if(!target||target.guild_id!==guildId)fail(404,'GUILD_MEMBER_NOT_FOUND','対象の領主はこのギルドに所属していません。');
+  const target=await getUser(db,targetId);if(!target||target.guild_id!==guildId)fail(404,'GUILD_MEMBER_NOT_FOUND','対象の領主はこの同盟に所属していません。');
   if(target.owner_id===target.id||action==='remove'&&user.owner_id!==user.id&&target.is_guild_officer)fail(403,'GUILD_ROLE_REQUIRED','この役職のメンバーは変更・除名できません。');
   const already=!remove&&(action==='officer')===!!target.is_guild_officer;
   await budget(db,'guild-manage:'+user.id,30,60000,now);const nonce=crypto.randomUUID(),guard=[user.id,requestId,nonce],access=accountCommitGuard(user);
@@ -747,11 +833,12 @@ async function guildManage(db,user,raw,remove,now) {
   else changes.push(stmt(db,'DELETE FROM guild_officers WHERE user_id=? AND guild_id=? AND '+GUILD_ROLE_COMMIT,targetId,guildId,...guard));
   if(remove)changes.push(stmt(db,'DELETE FROM guild_members WHERE user_id=? AND guild_id=? AND '+GUILD_ROLE_COMMIT,targetId,guildId,...guard));
   const result=await db.batch(changes);
-  if(!rows(result[0]).length){if(matches(await lookup()))return {...await guildSnapshot(db,user,now,guildId),idempotent:true};const current=await getUser(db,user.id);requireGuild(current,guildId);requireGuildRole(current,action);fail(409,'GUILD_CHANGED','ギルドの役職または所属が変わりました。一覧を更新してください。');}
+  if(!rows(result[0]).length){if(matches(await lookup()))return {...await guildSnapshot(db,user,now,guildId),idempotent:true};const current=await getUser(db,user.id);requireGuild(current,guildId);requireGuildRole(current,action);fail(409,'GUILD_CHANGED','同盟の役職または所属が変わりました。一覧を更新してください。');}
   return {...await guildSnapshot(db,user,now,guildId),idempotent:already};
 }
-async function guildLeave(db,user,body,now) {
-  if(body.guildId!==undefined)requireGuild(user,idField(body.guildId,'ギルド'));
+async function guildLeave(env,user,body,now) {
+  const db=env.DB;
+  if(body.guildId!==undefined)requireGuild(user,idField(body.guildId,'同盟'));
   if(!user.guild_id)return {ok:true,user:mapUser(user,now)};
   const guildId=user.guild_id,empty='NOT EXISTS(SELECT 1 FROM guild_treasuries WHERE guild_id=? AND (gold>0 OR rice>0 OR wood>0 OR stone>0 OR magatama>0))',access=accountCommitGuard(user);
   const result=await db.batch([
@@ -759,15 +846,18 @@ async function guildLeave(db,user,body,now) {
       ORDER BY EXISTS(SELECT 1 FROM guild_officers go WHERE go.user_id=gm.user_id AND go.guild_id=gm.guild_id) DESC,gm.joined_at,gm.user_id LIMIT 1)
       WHERE id=? AND owner_id=? AND EXISTS(SELECT 1 FROM guild_members WHERE guild_id=? AND user_id<>?) AND ${access.sql}`,guildId,user.id,guildId,user.id,guildId,user.id,...access.args),
     stmt(db,'DELETE FROM guild_members WHERE user_id=? AND guild_id=? AND (EXISTS(SELECT 1 FROM guild_members other WHERE other.guild_id=? AND other.user_id<>?) OR '+empty+') AND '+access.sql+' RETURNING user_id',user.id,guildId,guildId,user.id,guildId,...access.args),
-    stmt(db,'DELETE FROM guilds WHERE id=? AND NOT EXISTS(SELECT 1 FROM guild_members WHERE guild_id=?) AND '+empty+' AND '+access.sql,guildId,guildId,guildId,...access.args),
+    stmt(db,'SELECT object_key FROM guild_icons WHERE guild_id=?',guildId),
+    stmt(db,'DELETE FROM guilds WHERE id=? AND NOT EXISTS(SELECT 1 FROM guild_members WHERE guild_id=?) AND '+empty+' AND '+access.sql+' RETURNING id',guildId,guildId,guildId,...access.args),
   ]);
   const current=await getUser(db,user.id);
   if(!rows(result[1]).length&&current.guild_id===guildId)fail(409,'GUILD_TREASURY_NOT_EMPTY','最後のメンバーが脱退する前に、共有資産をすべて引き出してください。');
+  if(rows(result[3]).length&&env.BUCKET?.delete)await removeAvatarObject(env.BUCKET,rows(result[2])[0]?.object_key);
   return {ok:true,user:mapUser(current,now)};
 }
 const EFFECTIVE_CYCLE_SQL="COALESCE(s.cycle_index,MAX(COALESCE((SELECT CAST(value AS INTEGER) FROM settings WHERE key='cyclePolicyStart'),0),CAST(COALESCE(json_extract(s.save_json,'$.state.worldClock.elapsedMs'),0)/40320000 AS INTEGER)))";
 const GUILD_RANKINGS=`WITH totals AS (
   SELECT g.id,g.name,g.owner_id,owner.name AS owner_name,g.created_at,COUNT(gm.user_id) AS member_count,
+    (SELECT gi.version FROM guild_icons gi WHERE gi.guild_id=g.id) AS icon_version,
     COALESCE(SUM(COALESCE(json_extract(s.save_json,'$.state.prestige'),0)),0) AS total_prestige,
     COALESCE(SUM(CASE WHEN s.save_json IS NULL THEN 0 WHEN ${EFFECTIVE_CYCLE_SQL}<? THEN 1 ELSE
       (SELECT COUNT(*) FROM json_each(s.save_json,'$.state.castles') c
@@ -1869,6 +1959,8 @@ async function route(request, env, now) {
   if(path==='/admin/moderation'||path.startsWith('/admin/moderation/'))return handleModeration({db,user,now,path,method,url,request,helpers:{fail,readBody,budget,idField,textField,uid,hash,mapUser,getUser,requireAdmin,userSelect:USER_SELECT}});
   if (path === '/me/avatar' && method === 'PUT') return putAvatar(request,env,user,now);
   if (path === '/me/avatar' && method === 'DELETE') return deleteAvatar(request,env,user,now);
+  if (path === '/guild/icon' && method === 'PUT') return putGuildIcon(request,env,user,now);
+  if (path === '/guild/icon' && method === 'DELETE') return deleteGuildIcon(request,env,user,now);
   if (path === '/staff/recent-logins' && method === 'GET') return recentLogins(db,user,url,now);
   if (path === '/guild/treasury' && method === 'GET') return readTreasury(db,user,url,now);
   if (path === '/guild/treasury/transfer' && method === 'POST') return guildTransfer(db,user,await readBody(request),now);
@@ -2077,29 +2169,29 @@ async function route(request, env, now) {
     return guildSnapshot(db,user,now);
   }
   if (path === '/guild' && method === 'POST') {
-    const body=await readBody(request),name=textField(body.name,'ギルド名',24);
-    if (user.guild_id) fail(409,'ALREADY_IN_GUILD','所属中のギルドを脱退してから作成してください。');
+    const body=await readBody(request),name=textField(body.name,'同盟名',24);
+    if (user.guild_id) fail(409,'ALREADY_IN_GUILD','所属中の同盟を脱退してから作成してください。');
     const id=uid('g_'),access=accountCommitGuard(user);
     try { await db.batch([
       stmt(db,'INSERT INTO guilds(id,name,name_key,owner_id,created_at) SELECT ?,?,?,?,? WHERE '+access.sql,id,name,nameKey(name),user.id,now,...access.args),
       stmt(db,'INSERT INTO guild_members(user_id,guild_id,joined_at) SELECT ?,?,? WHERE '+access.sql,user.id,id,now,...access.args),
       stmt(db,'INSERT INTO guild_treasuries(guild_id) SELECT ? WHERE '+access.sql,id,...access.args),
-    ]); } catch(error) { if (/unique/i.test(String(error))) fail(409,'GUILD_CONFLICT','そのギルド名は使われているか、すでに別のギルドへ参加しています。'); throw error; }
+    ]); } catch(error) { if (/unique/i.test(String(error))) fail(409,'GUILD_CONFLICT','その同盟名は使われているか、すでに別の同盟へ参加しています。'); throw error; }
     await requireAccountAccess(db,user);
     return {ok:true,guild:mapGuild(await stmt(db,GUILD_SELECT+' WHERE g.id=?',id).first()),user:mapUser(await getUser(db,user.id),now)};
   }
   if (path === '/guild/join' && method === 'POST') {
-    const body=await readBody(request),guildId=idField(body.guildId,'ギルドの識別子');
+    const body=await readBody(request),guildId=idField(body.guildId,'同盟の識別子');
     if (user.guild_id===guildId) return {ok:true,user:mapUser(user,now)};
-    if (user.guild_id) fail(409,'ALREADY_IN_GUILD','所属中のギルドを脱退してから参加してください。');
-    if (!await stmt(db,'SELECT id FROM guilds WHERE id=?',guildId).first()) fail(404,'GUILD_NOT_FOUND','そのギルドは見つかりませんでした。');
+    if (user.guild_id) fail(409,'ALREADY_IN_GUILD','所属中の同盟を脱退してから参加してください。');
+    if (!await stmt(db,'SELECT id FROM guilds WHERE id=?',guildId).first()) fail(404,'GUILD_NOT_FOUND','その同盟は見つかりませんでした。');
     const access=accountCommitGuard(user);await stmt(db,`INSERT INTO guild_members(user_id,guild_id,joined_at) SELECT ?,?,? WHERE EXISTS(SELECT 1 FROM guilds WHERE id=?) AND (SELECT COUNT(*) FROM guild_members WHERE guild_id=?)<? AND ${access.sql} ON CONFLICT(user_id) DO NOTHING`,user.id,guildId,now,guildId,guildId,MAX_GUILD_MEMBERS,...access.args).run();
     const current=await getUser(db,user.id);
-    if (current.guild_id!==guildId) fail(409,'GUILD_UNAVAILABLE','ギルドが満員か、すでに別のギルドへ参加しています。');
+    if (current.guild_id!==guildId) fail(409,'GUILD_UNAVAILABLE','同盟が満員か、すでに別の同盟へ参加しています。');
     return {ok:true,user:mapUser(current,now)};
   }
   if (path === '/guild/leave' && method === 'POST') {
-    return guildLeave(db,user,await readBody(request),now);
+    return guildLeave(env,user,await readBody(request),now);
   }
   if (path === '/friends/request' && method === 'POST') {
     const body=await readBody(request),other=idField(body.userId,'領主の識別子');
@@ -2218,6 +2310,7 @@ export default {
         return new Response(null,{status:204,headers});
       }
       if(path.startsWith(API+'/avatars/')&&request.method==='GET')return await getAvatar(request,env,origin);
+      if(path.startsWith(API+'/guild-icons/')&&request.method==='GET')return await getGuildIcon(request,env,origin);
       const now=Date.now(),payload=await route(request,env,now),evaluated=await resolvePlayerEvaluations(env.DB,payload,now),resolved=await resolvePremiumAppearances(env.DB,evaluated,now),authenticated=authenticatedRequests.get(request);
       if(authenticated)await requireAccountAccess(env.DB,authenticated);
       return response(publicIdentities(resolved,request),200,origin);

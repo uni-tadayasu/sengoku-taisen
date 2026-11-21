@@ -10,7 +10,7 @@ async function until(condition){for(let i=0;i<80;i++){if(condition())return;awai
 function setup(extra={}){
  let game=extra.game||new E({isAdmin:true,seed:25}),status={ownerId:'lord-a',linked:false,online:true,writable:true,readable:true,stamp:'one',...extra.status},calls=0,id=0,resultCount=0;
  const store=extra.storage||storage(),requests=[];let hook,loadHook;
- const options={getGame:()=>game,getStatus:()=>status,storage:store,uuid:()=>`covert-ui-${++id}`,load:async cursor=>loadHook?loadHook(cursor):{ok:true,covert:game.covertStatus()},mutate:async(action,data)=>{
+ const options={getGame:()=>game,getStatus:()=>status,storage:store,now:extra.now,onChange:extra.onChange,uuid:()=>`covert-ui-${++id}`,load:async cursor=>loadHook?loadHook(cursor):{ok:true,covert:game.covertStatus()},mutate:async(action,data)=>{
   calls++;requests.push({action,data:clone(data)});assert([...store.values.values()].some(value=>JSON.parse(value).data.requestId===data.requestId),'intent is durable before sending');
   if(hook)return hook(action,data);
   return execute(action,data);
@@ -107,6 +107,17 @@ test('registered target pagination drains all pages, deduplicates NPCs and searc
 
 test('read responses after identity change cannot leak private reports to the new player',async()=>{
  const h=setup({status:{linked:true}}),pause=deferred(),privateValue=h.game.covertStatus();h.loadHook=()=>pause.promise;const task=h.controller.reload();await Promise.resolve();h.status={...h.status,ownerId:'lord-new',readable:false,stamp:'new'};h.controller.refresh();pause.resolve({ok:true,covert:privateValue});assert.equal(await task,false);assert.equal(h.controller.snapshot().covert,null);
+});
+
+test('automatic refresh keeps an existing snapshot quiet while initial and requested reads show progress',async()=>{
+ let time=1000,reads=0;const frames=[],h=setup({status:{linked:true},now:()=>time,onChange:s=>frames.push(s)}),initial=deferred();
+ h.loadHook=()=>{reads++;return initial.promise;};h.controller.refresh();assert.equal(h.controller.snapshot().loading,true);assert.equal(h.controller.snapshot().covert,null);
+ await until(()=>reads===1);initial.resolve({ok:true,covert:h.game.covertStatus()});await until(()=>!h.controller.snapshot().loading);const expected=markup(h.controller.snapshot());frames.length=0;
+ const poll=deferred();h.loadHook=()=>{reads++;return poll.promise;};time+=45001;h.controller.refresh();await until(()=>reads===2);
+ assert.equal(h.controller.snapshot().loading,false);assert.equal(markup(h.controller.snapshot()),expected);assert(frames.every(s=>!s.loading));assert.equal(h.calls,0);
+ poll.resolve({ok:true,covert:h.game.covertStatus()});await until(()=>frames.length>=3);assert.equal(markup(h.controller.snapshot()),expected);assert(frames.every(s=>!s.loading));
+ const manual=deferred();h.loadHook=()=>{reads++;return manual.promise;};const task=h.controller.reload();assert.equal(h.controller.snapshot().loading,true);await until(()=>reads===3);manual.resolve({ok:true,covert:h.game.covertStatus()});assert.equal(await task,true);assert.equal(h.controller.snapshot().loading,false);
+ const pending=deferred();h.loadHook=()=>{reads++;return pending.promise;};time+=45001;h.controller.refresh();await until(()=>reads===4);const requested=h.controller.reload();assert.equal(h.controller.snapshot().loading,true);assert.equal(reads,4,'manual refresh coalesces the background read');pending.resolve({ok:true,covert:h.game.covertStatus()});assert.equal(await requested,true);assert.equal(h.controller.snapshot().loading,false);
 });
 
 test('markup escapes player-controlled names and uses genuine locked availability',()=>{

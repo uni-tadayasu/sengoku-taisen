@@ -308,7 +308,7 @@ test('guild membership changes while waiting for the clock or flush prevent the 
     const h=setup(),gate=deferred();if(phase==='clock')h.control.onClockRefresh=()=>gate.promise;else h.control.onFlush=()=>gate.promise;
     const task=h.c.requestField(guildRoute,{method:'POST',data:guildPayload});
     await until(()=>phase==='clock'?h.trace.includes('clock-refresh'):h.control.flushes===1);
-    h.control.user.guildId='guild-new';gate.resolve({ok:true});await assert.rejects(task,/所属するギルド/);
+    h.control.user.guildId='guild-new';gate.resolve({ok:true});await assert.rejects(task,/所属する同盟/);
     assert.equal(h.posts.length,0);assert.equal(guildRecords(h).length,0);assert.equal(h.c.fieldActionPending,false);
   }
 });
@@ -317,7 +317,7 @@ test('a changed guild after the server commits reconciles the player without del
   const h=setup(),response=deferred();h.control.onPost=()=>response.promise;
   const task=h.c.requestField(guildRoute,{method:'POST',data:guildPayload});await until(()=>h.posts.length===1);
   h.control.user.guildId='guild-new';response.resolve({ok:true,receipt:{id:'old-guild'},treasury:{gold:900}});
-  await assert.rejects(task,/所属するギルド/);assert(h.control.refreshes>=1);assert.equal(h.c.fieldActionPending,false);
+  await assert.rejects(task,/所属する同盟/);assert(h.control.refreshes>=1);assert.equal(h.c.fieldActionPending,false);
 });
 
 test('an older in-flight sync poll cannot complete a newer guild operation',async()=>{

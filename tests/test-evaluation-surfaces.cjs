@@ -89,7 +89,7 @@ test('letter polling refreshes old authors and the peer with no new message, pre
 });
 test('guild letter titles rank the sender but never the guild itself or historical names in the message text',()=>{
   const h=letters(),thread={kind:'guild',guild:{name:'同盟の旗'},sender:{id:'other',name:'送り主',evaluation:promoted},contextPlayer:{id:'context',name:'本拠の領主',evaluation}};
-  const title=h.api.threadTitle(thread,'actor');assert.equal(badgeCount(title),1);assert(title.endsWith(' → 同盟の旗'));assert.equal(h.api.threadTitle(thread,'other'),'同盟の旗');assert.equal(badgeCount(h.api.threadParticipants(thread)),2);noNestedButtons(title);
+  const title=h.api.threadTitle(thread,'actor');assert.equal(badgeCount(title),1);assert(title.replace(/<[^>]*>/g,'').endsWith(' → 同盟の旗'));assert.equal(h.api.threadTitle(thread,'other').replace(/<[^>]*>/g,''),'同盟の旗');assert.equal(badgeCount(h.api.threadParticipants(thread)),2);noNestedButtons(title);
   h.controller.dispose();
 });
 test('field rows, battle parties and marker descriptions use the matching DTO and never modify formations or outcomes',()=>{
