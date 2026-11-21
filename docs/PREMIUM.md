@@ -1,10 +1,16 @@
 # プレミアム商品の実装と運用
 
-## 初回公開の状態（2026年11月21日）
+## 設定・公開の状況（2026年11月22日 JST）
 
 フロントエンドはVer.3.14.0、実APIはSites version 23へ更新しています。3商品の価格・購入URL・完成アート・外観管理・署名通知の処理を実装しました。
 
-Stripeの設定保存は接続認証が完了していないため、Webhookの署名鍵と契約管理URLは未設定です。`SENGOKU_PREMIUM_ENABLED` も有効にしていません。カタログは閲覧できますが、ゲームからの購入は待機します。必要な設定を完了し、受信先を確認してから販売を有効化してください。
+Stripeの接続認証を再確認し、LiveのWebhook `we_1UeFufL3ZjL9QUmfA3vQjPP4` を保存しました。状態は `enabled`、API versionは `2026-09-30.endive`、対象は23イベントです。契約管理Portal `bpc_1UeFsLL3ZjL9QUmfCKVGnsnG` も保存済みで、[契約管理URL](https://billing.stripe.com/p/login/4gM3cw92Q6NP4gj1Ia9MY00)を設定しました。解約は契約期間末に適用し、返金按分は行わない設定です。
+
+Sitesの環境設定 revision 3に署名鍵をsecretとして保存し、`SENGOKU_PREMIUM_ENABLED=true` と契約管理URLを設定しました。保存済みversion 23の再デプロイ `appgdep_6b01b42264548191951ddc68127c3c45` は `succeeded`、反映された `env_set_revision` は `3` です。
+
+既存3商品のStripe画像・説明を完成アートに更新し、Payment Linkの決済完了後の戻り先を `https://www.kasai-solutions-inc.com/?premium=<商品ID>` に設定しました。価格・税込設定・商品構成は維持しています。公開APIのヘルスチェックで `status:"ready"`・`version:"3.14.0"`・`features.premium:true` を確認し、契約管理ページの表示も確認しました。
+
+実決済と本番Stripeイベントの受信は未実施です。購入から有料権利の反映までの本番確認は、ローカルの署名付きfixtureによる検証とは区別しています。
 
 ## 商品
 
@@ -108,7 +114,7 @@ node tests/test-public-pages.cjs
 node tests/test-release-assets.cjs
 ```
 
-backendの `scripts/test-premium.mjs` は署名付きfixtureをin-memory D1へ送って検証します。実購入、実課金、実顧客の作成はテストに含めません。公開時はbackendのマイグレーションと新APIを先に更新します。署名鍵・契約管理URLの設定と通知受信を確認した後に、販売を明示的に有効化します。設定が未完了でもカタログと外観管理UIは公開できますが、購入ボタンは待機します。
+backendの `scripts/test-premium.mjs` は署名付きfixtureをin-memory D1へ送って検証します。実購入、実課金、実顧客の作成はテストに含めません。2026年11月22日 JST時点では、署名鍵・契約管理URL・販売有効化フラグの保存と再デプロイが完了しています。本番の実決済・通知受信・権利反映の確認は未実施であり、fixtureによる検証とは別に記録します。必要な環境設定が不足する場合は、購入ボタンは待機します。
 
 ## Stripeの仕様資料
 
