@@ -4,8 +4,8 @@
   "name": "戦国VS",
   "alternateName": "SENGOKU VS",
   "publisher": "KASAI SOLUTIONS",
-  "release": "3.12.1-20261121",
-  "version": "3.12.1",
+  "release": "3.12.2-20261121",
+  "version": "3.12.2",
   "dateModified": "2026-11-21",
   "language": "ja",
   "locale": "ja_JP",
@@ -65,6 +65,12 @@
       "path": "/",
       "title": "戦国VS｜城下町育成・武将編成・対人戦のブラウザゲーム",
       "description": "城下町を育て、武将を編成し、天下を目指す戦国ブラウザゲーム「戦国VS」。城郭の強化、CPU戦役、領主同士の対人戦、資産の輸出入・交易に対応。次の一手を案内するヒント付き。PC・スマホ・タブレットで遊べて、進行も同期できます。",
+      "dateModified": "2026-11-21"
+    },
+    "share": {
+      "path": "/sengoku-vs/",
+      "title": "戦国VS｜一城から天下へ、城育成と武将の戦記",
+      "description": "一城の城下町を育て、武将を迎えて天下へ。戦国VSの城郭強化、軍団編成、CPU戦役、領主同士の対人戦・交易を紹介します。次の一手を案内するヒントと端末同期に対応し、PC・スマホ・タブレットのブラウザで遊べます。",
       "dateModified": "2026-11-21"
     },
     "guide": {

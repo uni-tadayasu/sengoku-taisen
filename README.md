@@ -6,6 +6,14 @@
 
 **© KASAI SOLUTIONS**
 
+## Ver.3.12.2 — 戦国VS専用の共有ページ・旧素材の整理
+
+[戦国VSの紹介・共有ページ](https://www.kasai-solutions-inc.com/sengoku-vs/) を追加しました。自己参照canonicalと `og:url` を `/sengoku-vs/` にそろえ、以前ほかのゲームで使っていたトップURLと区別します。ページは通常のHTMLで作品を紹介し、「戦国VSを遊ぶ」から既存のゲームへ移動できます。
+
+公開ページの検索情報・画像は戦国VSに統一しています。未使用で旧タイトルの文字が残っていた `assets/title-keyvisual.webp` を削除し、配信ソースの旧タイトル表記も整理しました。旧サイトで使っていた `/assets/ogp-handheld.png` などの画像と `/monsters/`・`/moves/` は、この公開リポジトリに存在しません。存在しないURLは404と `noindex,follow` の案内を返します。
+
+Xや検索エンジンが保存している情報は、公開ファイルの削除とは別に更新されます。旧URLをrobots.txtで遮断せず、クローラーが現在の404や戦国VSのページを確認できる状態を保ちます。
+
 ## Ver.3.12.1 — 戦国VSのSNSカード・アイコン・検索情報
 
 トップ・遊び方・引き継ぎ・概要のタイトル、説明文、OGP、Twitter Card、構造化データを `site-metadata.json` から更新します。現在の城下町育成・武将編成・対人戦・交易・ヒントを紹介し、正規URLは `https://www.kasai-solutions-inc.com/` のままです。
@@ -109,7 +117,7 @@ PC・スマートフォン・タブレットの本文や見出しは、ダブル
 
 共通フィールドの地図と本拠詳細に、各領主の天守 Lv.1〜32 に対応する城イラストを表示します。城郭の強化レベルは別項目で保持し、スタッフ共同拠点は共有の天守レベルを参照します。同じ城を本拠にする領主は、一覧で選び直すとその領主の外観へ切り替わります。
 
-PCのタブ用アイコンとインストール用アイコンを戦国大戦専用のファイル名へ統一し、公開版の更新番号を付けて取得します。同じドメインに残っている古いアイコンのキャッシュと区別します。
+PCのタブ用アイコンとインストール用アイコンを本作専用のファイル名へ統一し、公開版の更新番号を付けて取得します。同じドメインに残っている古いアイコンのキャッシュと区別します。
 
 ## Ver.3.9.3 — スマホ・タブレットの固定フッター修正
 
@@ -141,7 +149,7 @@ PCのタブ用アイコンとインストール用アイコンを戦国大戦専
 
 ゲーム概要・遊び方・データ復元の公開ページを、現在の城下町、連続増築、武将編成、共通時間、ギルド、書状、軍師AI、ウォーキングの仕様に合わせて整理しました。タイトル画面は既存の構成を保ち、短い概要と制作名の通常リンクから作品情報を読めます。
 
-`site-metadata.json` を公開情報の原本とし、`node tools/build-public-pages.cjs` でトップの検索用情報、静的な説明ページ、構造化データ、Web App Manifest、サイトマップを生成します。ページごとの内容更新日時を管理し、ビルドを実行しただけでは `lastmod` を進めません。正規URLは `https://www.kasai-solutions-inc.com/` に統一します。
+`site-metadata.json` を公開情報の原本とし、`node tools/build-public-pages.cjs` でトップの検索用情報、静的な説明ページ、構造化データ、Web App Manifest、サイトマップを生成します。ページごとの内容更新日時を管理し、ビルドを実行しただけでは `lastmod` を進めません。正規ドメインは `https://www.kasai-solutions-inc.com/` に統一し、各公開ページには自身の正規URLを設定します。
 
 公開後の更新通知には `node tools/notify-indexnow.mjs` を使用します。既定では送信予定の確認だけを行い、`--submit` を付けたときだけ、公開URLと検証ファイルを確認してIndexNowへ通知します。Googleへの登録申請はSearch Consoleの所有権確認と管理権限が別途必要です。通知の受理と検索結果への掲載は異なり、即時掲載や順位を保証するものではありません。運用条件と一次資料は [SOURCES-SEO.md](SOURCES-SEO.md) に記載しています。
 
@@ -262,11 +270,12 @@ PCのタブ用アイコンとインストール用アイコンを戦国大戦専
 
 JavaScriptを実行しない状態でも読める公開ページを用意しています。
 
+- [戦国VSの紹介・共有](https://www.kasai-solutions-inc.com/sengoku-vs/)
 - [遊び方](https://www.kasai-solutions-inc.com/guide/)
 - [引き継ぎ・復元](https://www.kasai-solutions-inc.com/guide/data-recovery/)
 - [ゲーム紹介](https://www.kasai-solutions-inc.com/about/)
 
-各ページに固有のtitle/description、正規URL、OGP/Twitter Card、構造化データを設定します。`robots.txt`と4URLの`sitemap.xml`を公開し、ガイドから本体へリンクします。検索順位・インデックス登録を保証するものではありません。Search Consoleの所有権確認やサイトマップ送信は別途そのサービスのアカウントで行います。
+各ページに固有のtitle/description、正規URL、OGP/Twitter Card、構造化データを設定します。`robots.txt`と5URLの`sitemap.xml`を公開し、ガイドから本体へリンクします。検索順位・インデックス登録を保証するものではありません。Search Consoleの所有権確認やサイトマップ送信は別途そのサービスのアカウントで行います。
 
 ## 共通フィールドの攻撃と外交
 

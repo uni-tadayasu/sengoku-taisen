@@ -1,4 +1,4 @@
-/* 戦国大戦・交流の間。認証キーはサーバー側のみ。 */
+/* 戦国VS・交流の間。認証キーはサーバー側のみ。 */
 (function(global){
 'use strict';
 const IDKEY='sengoku-online-identity-v1', CLAIMKEY='sengoku-mail-claims-v1';

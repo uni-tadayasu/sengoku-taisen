@@ -1,4 +1,4 @@
-/* 戦国大戦 — actual coastlines, Web Mercator geography and castle coordinates.
+/* 戦国VS — actual coastlines, Web Mercator geography and castle coordinates.
  * Geographic data is supplied by map-data.js; no schematic fallback is drawn.
  */
 (function(global){

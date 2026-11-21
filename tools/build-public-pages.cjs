@@ -4,13 +4,14 @@
 // No game state, server settings or deployment operation is part of this build.
 const fs = require('node:fs');
 const path = require('node:path');
+const renderSharePage = require('./share-page.cjs');
 const root = path.resolve(__dirname, '..');
 const site = JSON.parse(fs.readFileSync(path.join(root, 'site-metadata.json'), 'utf8'));
 const {SengokuEngine, SENGOKU_DATA} = require(path.join(root, 'engine.js'));
 const {origin, release} = site;
 // Dates are editorial inputs. A new build or deployment must not change them.
 if (site.schemaVersion !== 1 || new URL(origin).origin !== origin || !origin.startsWith('https://')) throw Error('site-metadata.json: canonical HTTPS origin is required');
-for (const key of ['home', 'guide', 'recovery', 'about']) {
+for (const key of ['home', 'share', 'guide', 'recovery', 'about']) {
   const page = site.pages[key];
   if (!page || !/^\/(?:[a-z0-9-]+\/)*$/.test(page.path) || !page.title || !page.description || !/^\d{4}-\d{2}-\d{2}$/.test(page.dateModified)) throw Error(`site-metadata.json: invalid ${key} page`);
 }
@@ -76,7 +77,7 @@ function structuredData(key, breadcrumbItems = [], pageImage = site.ogImage.path
     isPartOf:{'@id':websiteId}, publisher:{'@id':organizationId},
     about:{'@id':gameId}, primaryImageOfPage:{'@type':'ImageObject',url:absolute(pageImage)}
   };
-  if (key === 'home' || key === 'about') webPage.mainEntity = {'@id':gameId};
+  if (['home', 'share', 'about'].includes(key)) webPage.mainEntity = {'@id':gameId};
   const graph = [
     {'@type':'Organization','@id':organizationId,name:site.publisher,url:home,logo:{'@type':'ImageObject',url:absolute(site.logo.path),width:site.logo.width,height:site.logo.height}},
     {'@type':'WebSite','@id':websiteId,name:site.name,alternateName:site.alternateName,url:home,inLanguage:site.language,publisher:{'@id':organizationId}},
@@ -489,6 +490,11 @@ function aboutContent(p) {
 
 const pages = [
   {
+    ...site.pages.share,
+    file: 'sengoku-vs/index.html', slug: 'sengoku-vs', key: 'share', label: '戦国VSの紹介',
+    image: 'assets/title-sengoku-vs.webp'
+  },
+  {
     ...site.pages.guide,
     file: 'guide/index.html', slug: 'guide', key: 'guide', label: '遊び方',
     eyebrow: 'KASAI SOLUTIONSのゲームガイド', heading: '戦国VSの<br><span>遊び方</span>',
@@ -530,6 +536,12 @@ function render(page) {
   if (page.key === 'recovery') breadcrumbItems.push({name:'遊び方',url:canonical('guide'),href:p.dir('guide')});
   breadcrumbItems.push({name:page.label,url});
   const jsonld = structuredData(page.key, breadcrumbItems, page.image);
+  if (page.key === 'share') return renderSharePage({
+    site,
+    metadataHtml: metadataEntries('share').map(metaTag).join('\n  ') + `\n  <link rel="canonical" href="${url}">`,
+    jsonLd: jsonScript(jsonld),
+    iconHtml: brandLinks(p.file).join('\n  ')
+  });
   const nav = pages.map(({key,label,slug})=>`<a href="${p.dir(slug)}"${page.key===key?' aria-current="page"':''}>${label}</a>`).join('');
   const secondaryHref = page.secondary[1].startsWith('#') ? page.secondary[1] : p.dir(page.secondary[1]);
   const imageFigure = `<figure class="hero-figure${page.wide?' hero-figure--wide':''}"><div class="hero-image-frame"><img src="${p.file(page.image)}" alt="${esc(page.imageAlt)}" width="${page.imageWidth}" height="${page.imageHeight}" fetchpriority="high" decoding="async"></div><figcaption><span>${page.imageCaption}</span><b>${page.imageTag}</b></figcaption><dl class="hero-note">${page.notes.map(([title,text])=>`<div><dt>${title}</dt><dd>${text}</dd></div>`).join('')}</dl></figure>`;

@@ -1,4 +1,4 @@
-/* 戦国大戦: 16 original procedural scores. No samples, quotations, or external dependencies. */
+/* 戦国VS: 16 original procedural scores. No samples, quotations, or external dependencies. */
 (function (global) {
   'use strict';
 

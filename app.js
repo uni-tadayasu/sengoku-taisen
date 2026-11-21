@@ -1,4 +1,4 @@
-/* 戦国大戦 — browser interface, offline persistence and original procedural audio. */
+/* 戦国VS — browser interface, offline persistence and original procedural audio. */
 (() => {
   'use strict';
   const $ = s => document.querySelector(s);

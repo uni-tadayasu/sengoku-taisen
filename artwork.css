@@ -1,4 +1,4 @@
-/* 戦国大戦の原画、階級別の額装、透かし絵。 */
+/* 戦国VSの原画、階級別の額装、透かし絵。 */
 .painted-art{display:block;position:relative;background-color:#213637;background-size:800% 400%;background-position:var(--tile-x) var(--tile-y);background-repeat:no-repeat;overflow:hidden;isolation:isolate}
 .art-loading{position:absolute;inset:0;display:grid;place-items:center;color:#c5b57b;background:radial-gradient(ellipse at center,#2e4645,#142225);animation:art-breathe 1.5s ease-in-out infinite}
 .art-loading .item-icon{width:35px;height:35px}.art-ready>.art-loading{display:none}.art-error>.art-loading{animation:none;opacity:.4}

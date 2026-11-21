@@ -1,4 +1,4 @@
-/* 戦国大戦・端末間の自動保存。一つの領主につき、進行する端末は一つ。 */
+/* 戦国VS・端末間の自動保存。一つの領主につき、進行する端末は一つ。 */
 (function(global){
 'use strict';
 const NAME_KEY='sengoku-device-name-v1',PENDING_KEY='sengoku-sync-pending-v1';

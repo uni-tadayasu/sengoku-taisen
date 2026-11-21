@@ -2,7 +2,15 @@
 
 確認日：2026年11月21日。正規の公開ドメインは `https://www.kasai-solutions-inc.com/`、運営者・著作権者の表記は **KASAI SOLUTIONS** です。
 
-## v3.9.7 の更新内容
+## v3.12.2 の共有URL・旧ゲーム情報の整理
+
+戦国VS固有の `/sengoku-vs/` を公開5ページへ追加し、canonical・og:url・サイトマップをこのページ自身のURLにそろえます。ゲーム本体と保存・同期の場所は既存トップURLです。旧トップURLに保存されているXのカードとは別の取得先を用意する対応であり、Xのキャッシュ消去完了を意味しません。
+
+旧サイトのOG画像 `/assets/ogp-handheld.png`、関連の旧画像、`/monsters/`・`/moves/` は現在の配信元に存在せず404です。これらのURLはrobots.txtで遮断せず、検索クローラーが削除状態を取得できるようにします。未使用の旧タイトル素材 `assets/title-keyvisual.webp` は配信元から削除しました。
+
+現行OGPは `assets/branding/sengoku-vs-ogp-20261121.jpg`。旧 `assets/ogp.jpg` も同じ戦国VS画像です。ファビコン・ホーム画面用画像・JSON-LDの画像は `site-metadata.json` で管理します。
+
+## v3.9.7 の更新内容（記録）
 
 公開内容の更新日は2026年11月21日、アセットのリリース識別子は `3.9.7-20261121` です。作品名は **戦国VS / SENGOKU VS**、正規ドメインと既存の保存形式・保存キーは維持します。
 
@@ -18,11 +26,12 @@
 
 機能説明は [共通フィールドの表示](field.js)、[ゲームの状態と成長上限](engine.js)、[サーバーの合戦確定・通知](server/index.js) と照合します。自動メールの説明対象は共通フィールドの対人戦です。天下地図のCPU戦は既存の戦報と履歴で確認します。個々の領主の私信や合戦通知そのものを公開ページに載せることはありません。
 
-## 対象となる公開4ページ
+## 対象となる公開5ページ
 
 | ページ | 正規URL | 内容 |
 | --- | --- | --- |
 | 作品トップ | https://www.kasai-solutions-inc.com/ | ゲームの概要と開始入口 |
+| 紹介・共有 | https://www.kasai-solutions-inc.com/sengoku-vs/ | 戦国VS固有の共有URLと作品紹介 |
 | 遊び方 | https://www.kasai-solutions-inc.com/guide/ | 操作・成長・同期・追加機能の説明 |
 | 引き継ぎ・復元 | https://www.kasai-solutions-inc.com/guide/data-recovery/ | 端末変更、領主データ、権限の復元手順 |
 | 作品情報 | https://www.kasai-solutions-inc.com/about/ | 作品・運営者・対応環境について |
@@ -31,7 +40,7 @@
 
 ## 公開情報をそろえる実装方針
 
-- 公開4ページの概要、ページごとのmetadata・構造化データ・canonical、Web App Manifestの作品情報、サイトマップを、共通の `site-metadata.json` から生成します。機能説明や正規URLの修正は共通データへ反映し、出力の食い違いを防ぎます。
+- 公開5ページの概要、ページごとのmetadata・構造化データ・canonical、Web App Manifestの作品情報、サイトマップを、共通の `site-metadata.json` から生成します。機能説明や正規URLの修正は共通データへ反映し、出力の食い違いを防ぎます。
 - 既存のタイトル画面の構成と画面内への収まりを維持します。検索向けの説明は、利用者にも読める公開HTMLへ掲載します。
 - ゲームの概要とガイドは、現在の機能・利用条件と一致させます。ウォーキングの前景計測、軍師AIの実行条件、施設の連続増築なども、利用者が確認できる説明にします。
 - `WebSite`、`WebPage`、ゲーム、運営組織の識別子と関係をそろえ、作品名・運営者名・URLを一貫させます。架空のレビュー、評価、件数、受賞歴は追加しません。
@@ -44,7 +53,7 @@ GoogleはJavaScriptを実行できますが、クロール・レンダリング�
 
 タイトルはページごとに簡潔にし、概要はそのページの本文を要約します。検索結果のタイトルや説明文は検索エンジン側で生成され、指定文字列の採用や表示長を保証しません。参照：[タイトルリンク](https://developers.google.com/search/docs/appearance/title-link)、[スニペットとmeta description](https://developers.google.com/search/docs/appearance/snippet)。
 
-faviconは `assets/sengoku-taisen-icon-192.png` の既存の正方形アイコンを使用します。Googleは48×48pxより大きいアイコンを推奨し、URLを頻繁に変えないよう案内しています。画像名は互換性のため維持し、公開4ページと404で同じアイコンを指します。参照：[検索結果のfavicon](https://developers.google.com/search/docs/appearance/favicon-in-search)。
+faviconは `assets/branding/sengoku-vs-icon-192-20261121.png` の戦国VSの正方形アイコンを使用します。Googleは48×48pxより大きいアイコンを推奨し、URLを頻繁に変えないよう案内しています。ゲームのリリースごとには画像URLを変更せず、公開5ページと404で同じアイコンを指します。参照：[検索結果のfavicon](https://developers.google.com/search/docs/appearance/favicon-in-search)。
 
 ## 更新日と正規URL
 
@@ -78,9 +87,9 @@ Googleは正確な `lastmod` を利用し、`priority` と `changefreq` は使�
 
 ### Bing等へのIndexNow
 
-既存の [IndexNow通知CLI](tools/notify-indexnow.mjs) は、**既定では送信しないdry-run**です。引数なしの実行はローカル設定・検証ファイル・サイトマップの4URLだけを調べ、ネットワーク通信を行いません。今回の内容変更対象は上記4URLです。**公開前の検証ではdry-runのみ実施し、送信結果は公開後に別途確認します。**
+既存の [IndexNow通知CLI](tools/notify-indexnow.mjs) は、**既定では送信しないdry-run**です。引数なしの実行はローカル設定・検証ファイル・サイトマップの5URLだけを調べ、ネットワーク通信を行いません。今回の内容変更対象は上記5URLです。**公開前の検証ではdry-runのみ実施し、送信結果は公開後に別途確認します。**
 
-`--submit` を明示した場合だけ、公開された検証キーファイル、サイトマップ、公開4ページを取得します。HTTP 200、HTML形式、自己参照canonical、検索除外指定がないことを確認してから、`https://api.indexnow.org/indexnow` へ4URLをまとめて1回POSTします。ホストと対象URLは固定し、転送先には追従せず、失敗時の自動再送もしません。
+`--submit` を明示した場合だけ、公開された検証キーファイル、サイトマップ、公開5ページを取得します。HTTP 200、HTML形式、自己参照canonical、検索除外指定がないことを確認してから、`https://api.indexnow.org/indexnow` へ5URLをまとめて1回POSTします。ホストと対象URLは固定し、転送先には追従せず、失敗時の自動再送もしません。
 
 この事前確認は、公開ページの本文やリリース版まで照合するものではありません。実行者は新しい本文が公開済みであることを別途確認する必要があります。HTTP 200は受領、202は受領してキー検証待ち、429や通信失敗は別の結果として扱います。この文書は送信完了や受理を先取りして記録するものではありません。
 
