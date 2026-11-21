@@ -1,4 +1,4 @@
-# 戦国大戦 通信API
+# 戦国VS（SENGOKU VS）通信API
 
 Base path: `/api/v1`. UTF-8 JSON, except public avatar image responses. JSON success always includes `ok: true`.
 All routes except GET `/config`, GET `/health`, GET `/online`, GET `/world-clock`, GET `/field`, GET `/guild/rankings`, GET `/achievements`, GET `/avatars/:userId`, POST `/session`, POST `/devices/link`, and POST `/admin/recover` require `Authorization: Bearer <game-token>`. Administrator recovery requires the original operator registration key in its JSON body instead of an existing game token.

@@ -1,4 +1,4 @@
-戦国大戦 ― 城と群雄の戦記
+戦国VS（SENGOKU VS）― 城と群雄の戦記
 © KASAI SOLUTIONS
 
 公開URL: https://www.kasai-solutions-inc.com/

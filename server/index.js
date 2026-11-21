@@ -22,7 +22,7 @@ const MAX_TURN = 999999999;
 const WORLD_MONTH_MS = 60000;
 const WORLD_CYCLE_MONTHS = 56 * 12;
 const WORLD_CYCLE_MS = WORLD_CYCLE_MONTHS * WORLD_MONTH_MS;
-const WELCOME = '戦国大戦へようこそ。城を育て、仲間と語らい、天下統一を目指しましょう。';
+const WELCOME = '戦国VSへようこそ。城を育て、仲間と語らい、天下統一を目指しましょう。';
 const BASE_ORIGINS = new Set(['https://uni-tadayasu.github.io', 'https://www.kasai-solutions-inc.com', 'http://127.0.0.1:4173', 'null']);
 const encoder = new TextEncoder();
 
@@ -1860,7 +1860,7 @@ export default {
     try {
       const path=new URL(request.url).pathname;
       if(path==='/' && (request.method==='GET'||request.method==='HEAD')) {
-        return new Response(request.method==='HEAD'?null:'<!doctype html><html lang="ja"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>戦国大戦 通信局</title><body style="font-family:system-ui;background:#101318;color:#eee;padding:3rem"><h1>戦国大戦 通信局</h1><p>領主たちの交流・端末同期・接続一覧を支える通信サービスです。</p><footer>© KASAI SOLUTIONS</footer></body></html>',{headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'"}});
+        return new Response(request.method==='HEAD'?null:'<!doctype html><html lang="ja"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>戦国VS 通信局</title><body style="font-family:system-ui;background:#101318;color:#eee;padding:3rem"><h1>戦国VS 通信局</h1><p>領主たちの交流・端末同期・接続一覧を支える通信サービスです。</p><footer>© KASAI SOLUTIONS</footer></body></html>',{headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'"}});
       }
       if(!path.startsWith(API+'/')) fail(404,'NOT_FOUND','その通信機能は見つかりませんでした。');
       origin=allowedOrigin(request,env);

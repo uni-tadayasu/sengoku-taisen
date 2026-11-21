@@ -2,7 +2,7 @@
 (function(global){
 'use strict';
 const IDKEY='sengoku-online-identity-v1', CLAIMKEY='sengoku-mail-claims-v1';
-const DEFAULT='戦国大戦へようこそ。一城を育て、武将とともに、あなたの天下を描いてください。';
+const DEFAULT='戦国VSへようこそ。一城を育て、武将とともに、あなたの天下を描いてください。';
 const RES={gold:'金',rice:'兵糧',wood:'木材',stone:'石材',magatama:'勾玉'};
 const s={identity:null,user:null,friends:[],requests:[],unreadMail:0,unreadLetters:0,config:{announcement:DEFAULT,adminClaimed:true,adminRecoveryAvailable:false,onlineCount:0},configLoaded:false,connected:false,tab:'world',friendId:null,chats:new Map(),guilds:[],guild:null,members:[],mail:[],players:[],adminPlayers:[],adminSection:'chat',staff:[],staffCandidates:[],staffLoaded:false,staffQuery:'',staffPage:1,staffCandidatePage:1,openedMail:null,open:false,meLoading:false,error:'',paused:false,pending:{},confirm:null,onlinePlayers:[],onlineTotal:0,onlineCursor:null,onlineLoaded:false,onlineError:'',pairCode:null,syncStatus:null};
 let dialog,body,launcher,announcement,configTimer=null,pollTimer=null,configBusy=false,pollBusy=false,disposed=false,authEpoch=0,privilegeEpoch=0,onlineTimer=null,onlineEpoch=0,onlineBusy=false,syncUnsubscribe=null,recentLoginTimer=null,recentLoginGeneration=0,recentLoginBusy=false,avatarEditor=null,avatarGeneration=0,avatarMutationEpoch=0;

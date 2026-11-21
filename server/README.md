@@ -1,4 +1,4 @@
-# 戦国大戦 ― 交流・同期・共通時計サーバー
+# 戦国VS（SENGOKU VS）― 交流・同期・共通時計サーバー
 
 © KASAI SOLUTIONS
 

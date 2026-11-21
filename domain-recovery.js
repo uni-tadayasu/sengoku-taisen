@@ -10,14 +10,14 @@ function identity(value){
  return{id:value.id,token:value.token,name:typeof value.name==='string'?value.name.slice(0,80):''};
 }
 function gameSave(value){
- if(!object(value)||value.game!=='sengoku-tento'||value.version!==2||!object(value.state))throw Error('戦国大戦のゲームセーブを選んでください。');
+ if(!object(value)||value.game!=='sengoku-tento'||value.version!==2||!object(value.state))throw Error('戦国VSのゲームセーブを選んでください。');
  return value;
 }
 function parse(value){
  if(!object(value))throw Error('領主データ、ゲームセーブ、または統合バックアップを選んでください。');
  if(value.format===FORMAT){if(value.version!==VERSION)throw Error('この統合バックアップのバージョンには対応していません。');return{identity:identity(value.identity),save:gameSave(value.save),kind:'complete'};}
  if(value.game==='sengoku-tento')return{identity:null,save:gameSave(value),kind:'game'};
- if(value.format!==undefined&&value.format!=='sengoku-lord-identity')throw Error('このファイルは戦国大戦の領主データとして読み込めません。');
+ if(value.format!==undefined&&value.format!=='sengoku-lord-identity')throw Error('このファイルは戦国VSの領主データとして読み込めません。');
  if(value.version!==undefined&&value.version!==1)throw Error('領主データのバージョンを確認してください。');
  return{identity:identity(value),save:null,kind:'identity'};
 }

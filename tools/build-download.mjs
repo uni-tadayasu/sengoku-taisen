@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/** Creates a complete, directly openable folder ZIP. No external JS dependencies. */
+/** Packages 戦国VS / SENGOKU VS as a complete, directly openable folder ZIP. */
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
@@ -7,7 +7,7 @@ import {spawnSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
 const args=process.argv.slice(2);
 const option=name=>{const i=args.indexOf(name);return i<0?null:args[i+1];};
-if(args.includes('--help')){console.log('node tools/build-download.mjs --dist /absolute/game --out /absolute/downloads');process.exit(0);}
+if(args.includes('--help')){console.log('戦国VS / SENGOKU VS — ダウンロードビルド\nnode tools/build-download.mjs --dist /absolute/game --out /absolute/downloads');process.exit(0);}
 const distInput=option('--dist')??(!args[0]?.startsWith('--')?args[0]:null);
 const outInput=option('--out')??(!args[0]?.startsWith('--')?args[1]:null);
 if(!distInput||!outInput||!path.isAbsolute(distInput)||!path.isAbsolute(outInput))throw Error('Provide absolute --dist and --out paths.');
@@ -17,6 +17,7 @@ const check=spawnSync(process.execPath,[path.join(dist,'tools/build-art-manifest
 if(check.status!==0)throw Error('Artwork validation failed:\n'+check.stdout+check.stderr);
 await fs.mkdir(out,{recursive:true});
 const staging=await fs.mkdtemp(path.join(os.tmpdir(),'sengoku-download-'));
+// Keep the historical ZIP and folder names for existing download links and scripts.
 const zipPath=path.join(out,'sengoku-taisen-download.zip');
 const skip=new Set(['.git','.openai','node_modules','qa-mobile.html','sengoku-tento-offline.html','castle-town.png']);
 let fileCount=0,sourceBytes=0;

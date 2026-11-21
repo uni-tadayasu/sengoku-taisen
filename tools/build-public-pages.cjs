@@ -35,7 +35,7 @@ function metadataEntries(key) {
   const page = site.pages[key], image = site.ogImage;
   return [
     ['name', 'author', site.publisher], ['name', 'copyright', site.publisher],
-    ['name', 'application-name', site.name], ['name', 'description', page.description],
+    ['name', 'application-name', site.name], ['name', 'apple-mobile-web-app-title', site.name], ['name', 'description', page.description],
     ['name', 'robots', 'index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1'],
     ['property', 'og:type', 'website'], ['property', 'og:locale', site.locale],
     ['property', 'og:site_name', site.name], ['property', 'og:title', page.title],
@@ -309,12 +309,12 @@ function recoveryContent(p) {
 
 function aboutContent(p) {
   return [
-    section('world', '作品について', '戦国大戦とは：一城から領国を育てるブラウザゲーム', `
-      <p class="lead-paragraph">「戦国大戦」は、<strong>KASAI SOLUTIONS</strong>による戦国ブラウザゲームです。はじまりの一城を選び、城下町の施設を増築し、武将を迎えて軍団を編成。内政と戦役を進めながら、自分の領国を育てます。PC・スマートフォン・タブレットから遊べます。</p>
+    section('world', '作品について', '戦国VSとは：一城から領国を育てるブラウザゲーム', `
+      <p class="lead-paragraph">「戦国VS」は、<strong>KASAI SOLUTIONS</strong>による戦国ブラウザゲームです。はじまりの一城を選び、城下町の施設を増築し、武将を迎えて軍団を編成。内政と戦役を進めながら、自分の領国を育てます。PC・スマートフォン・タブレットから遊べます。</p>
       <p>年月は全プレイヤー共通で進みます。天下地図ではCPU勢力の城を攻略し、共通フィールドではほかの領主の本拠を選んで交流や外交を行います。ギルドで資産を共有したり、領主本人や所属ギルドへ書状を送ったりできます。</p>
       <p>軍師AIでは、入力した方針と現在の戦況から出陣案を確認し、自動進軍を始められます。対応するスマートフォン・タブレットでは、画面を表示して歩くと、検知した歩数に応じた資産を獲得できます。領主を連携すれば、進行を端末間で自動同期できます。</p>
       <p class="quote-line">一城の志が、天下を動かす。</p>
-      <a class="chapter-link" href="${p.dir('guide')}">戦国大戦の遊び方を読む</a>
+      <a class="chapter-link" href="${p.dir('guide')}">戦国VSの遊び方を読む</a>
     `),
     section('gameplay', '城下町・武将・領主交流', '選んだ城を育て、仲間と戦記を重ねる', `
       <h3>一城から始める内政と武将編成</h3>
@@ -378,9 +378,9 @@ const pages = [
   {
     ...site.pages.guide,
     file: 'guide/index.html', slug: 'guide', key: 'guide', label: '遊び方',
-    eyebrow: 'KASAI SOLUTIONSのゲームガイド', heading: '戦国大戦の<br><span>遊び方</span>',
+    eyebrow: 'KASAI SOLUTIONSのゲームガイド', heading: '戦国VSの<br><span>遊び方</span>',
     lead: 'はじまりの城を選び、城下町を育て、武将を編成する。共通の年月で進む戦役と領主交流、軍師AI、ウォーキングまで、操作とルールを案内します。',
-    image: 'assets/castle-town.webp', imageWidth: 1536, imageHeight: 1024, imageAlt: '山々と川に囲まれ、田畑や商家が広がる戦国大戦の城下町イラスト', imageCaption: '城下町から始まる、あなたの領国。', imageTag: '城と群雄の戦記',
+    image: 'assets/castle-town.webp', imageWidth: 1536, imageHeight: 1024, imageAlt: '山々と川に囲まれ、田畑や商家が広がる戦国VSの城下町イラスト', imageCaption: '城下町から始まる、あなたの領国。', imageTag: '城と群雄の戦記',
     heroAction: 'ゲームを開く', secondary: ['データ復元の案内', 'guide/data-recovery'],
     notes: [['遊ぶ場所', 'PC・スマホ・タブレットのブラウザ'], ['世界の時間', '全プレイヤーで共通']],
     toc: [['first-steps','城選び・初めての進め方'],['resources','城下町と資源'],['construction','施設Lv・連続増築'],['officers','武将・軍団・勾玉'],['maps','二つの地図と外交'],['world-clock','共通時間・拠点リセット'],['community','ギルド・接続一覧・役職'],['letters','領主・ギルドへの書状'],['strategy','軍師AI・自動進軍'],['walking','ウォーキング報酬'],['save-and-sync','保存と端末同期'],['questions','よくある質問']],
@@ -389,9 +389,9 @@ const pages = [
   {
     ...site.pages.recovery,
     file: 'guide/data-recovery/index.html', slug: 'guide/data-recovery', key: 'recovery', label: 'データ復元',
-    eyebrow: '同じ領主で続きを遊ぶ', heading: '戦国大戦の<br><span>引き継ぎ・復元</span>',
+    eyebrow: '同じ領主で続きを遊ぶ', heading: '戦国VSの<br><span>引き継ぎ・復元</span>',
     lead: '端末を変えても、サイトのURLが変わっても。以前の領主と積み重ねた進行へ戻るために、手元のデータに合う手順を選びます。',
-    image: 'assets/castle-town.webp', imageWidth: 1536, imageHeight: 1024, imageAlt: '城と町、田畑が一体になった戦国大戦の領国イラスト', imageCaption: '城・武将・資源の記録を、次の端末へ。', imageTag: '戦記を引き継ぐ',
+    image: 'assets/castle-town.webp', imageWidth: 1536, imageHeight: 1024, imageAlt: '城と町、田畑が一体になった戦国VSの領国イラスト', imageCaption: '城・武将・資源の記録を、次の端末へ。', imageTag: '戦記を引き継ぐ',
     heroAction: 'ゲームを開いて引き継ぐ', secondary: ['手元のデータから選ぶ', '#choose'],
     notes: [['本人の確認', '領主データ・接続コード・運営登録キー'], ['進行の復元', 'クラウド保存・ゲームセーブ']],
     toc: [['choose','手元のデータから選ぶ'],['site-address','URL変更と保存先'],['old-device','接続コードで引き継ぐ'],['complete-backup','統合バックアップ'],['old-files','旧形式の2ファイル'],['cloud-priority','クラウドと復元元'],['identity-only','領主データだけの場合'],['operator','運営・スタッフの復元'],['redirect','旧URLが転送される場合'],['no-access','復元できる範囲']],
@@ -400,12 +400,12 @@ const pages = [
   {
     ...site.pages.about,
     file: 'about/index.html', slug: 'about', key: 'about', label: 'ゲーム概要',
-    eyebrow: 'KASAI SOLUTIONSの戦国ブラウザゲーム', heading: '戦国大戦とは<br><span>城と群雄の戦記</span>',
+    eyebrow: 'KASAI SOLUTIONSの戦国ブラウザゲーム', heading: '戦国VSとは<br><span>城と群雄の戦記</span>',
     lead: '選んだ一城から城下町を育て、武将を集め、共通の年月を歩む。ギルドや書状で領主とつながる、本作の遊び方と制作方針を紹介します。',
-    image: 'assets/title-keyvisual.webp', imageWidth: 1774, imageHeight: 887, imageAlt: '二人の武将と日本の城郭を描いた戦国大戦のタイトルイラスト', imageCaption: '戦国大戦 — 城と群雄の戦記', imageTag: 'KASAI SOLUTIONS', wide: true,
+    image: 'assets/title-sengoku-vs.webp', imageWidth: 1774, imageHeight: 887, imageAlt: '二人の武将と日本の城郭を描いた戦国VSのタイトルイラスト', imageCaption: '戦国VS — 城と群雄の戦記', imageTag: 'KASAI SOLUTIONS', wide: true,
     heroAction: 'ゲームを開く', secondary: ['遊び方を読む', 'guide'],
     notes: [['ゲームの基本', '一城からの内政・武将編成・戦役'], ['領主同士の交流', 'ギルド・書状・端末同期']],
-    toc: [['world','戦国大戦とは'],['gameplay','城下町・武将・領主交流'],['strategy-and-walking','軍師AI・ウォーキング'],['collection','収録内容と成長段階'],['artwork','イラスト・德川家康U'],['geography','地図の資料と出典'],['crests','家紋と識別章'],['copyright','著作権・引き継ぎ']],
+    toc: [['world','戦国VSとは'],['gameplay','城下町・武将・領主交流'],['strategy-and-walking','軍師AI・ウォーキング'],['collection','収録内容と成長段階'],['artwork','イラスト・德川家康U'],['geography','地図の資料と出典'],['crests','家紋と識別章'],['copyright','著作権・引き継ぎ']],
     content: aboutContent, closingTitle: '一城の志を、ここから。', closingText: '城下町の営みと、群雄たちの戦記をブラウザで。'
   }
 ];
@@ -440,11 +440,11 @@ function render(page) {
 </head>
 <body data-page="${page.key}">
   <a class="skip-link" href="#content">本文へ移動</a>
-  <header class="site-header"><div class="site-header-inner page-width"><a class="site-brand" href="${p.dir('')}" aria-label="戦国大戦 ゲームのトップへ"><img src="${p.file('assets/icon-192.png')}?v=${release}" alt="" width="44" height="44"><span><b>戦国大戦</b><small>城と群雄の戦記</small></span></a><nav class="header-navigation" aria-label="サイトの案内">${nav}<a class="nav-play" href="${p.dir('')}">ゲームを開く</a></nav></div></header>
+  <header class="site-header"><div class="site-header-inner page-width"><a class="site-brand" href="${p.dir('')}" aria-label="戦国VS ゲームのトップへ"><img src="${p.file('assets/icon-192.png')}?v=${release}" alt="" width="44" height="44"><span><b>戦国VS</b><small>城と群雄の戦記</small></span></a><nav class="header-navigation" aria-label="サイトの案内">${nav}<a class="nav-play" href="${p.dir('')}">ゲームを開く</a></nav></div></header>
   <main id="content" class="page-width">
     <nav aria-label="パンくず"><ol class="breadcrumbs">${breadcrumbItems.map((item,i)=>`<li>${i===breadcrumbItems.length-1?`<span aria-current="page">${item.name}</span>`:`<a href="${item.href}">${item.name}</a>`}</li>`).join('')}</ol></nav>
     <section class="hero" aria-labelledby="page-title"><div class="hero-copy"><p class="eyebrow">${page.eyebrow}</p><h1 id="page-title">${page.heading}</h1><p class="hero-lead">${page.lead}</p><div class="hero-actions"><a class="action-link" href="${p.dir('')}">${page.heroAction}</a><a class="text-link" href="${secondaryHref}">${page.secondary[0]}</a></div></div>${imageFigure}</section>
-    <div class="reading-layout"><aside class="toc"><nav aria-label="このページの目次"><p class="toc-title">このページの案内</p><ul>${page.toc.map(([id,label])=>`<li><a href="#${id}">${label}</a></li>`).join('')}</ul></nav><div class="toc-foot"><p>${esc(site.publisher)}のゲームガイド。</p><a href="${p.dir('')}">戦国大戦を開く</a></div></aside><article class="article" aria-label="${page.label}の本文"><p class="article-updated">内容更新：<time datetime="${page.dateModified}">${modifiedLabel(page.dateModified)}</time></p>${page.content(p)}</article></div>
+    <div class="reading-layout"><aside class="toc"><nav aria-label="このページの目次"><p class="toc-title">このページの案内</p><ul>${page.toc.map(([id,label])=>`<li><a href="#${id}">${label}</a></li>`).join('')}</ul></nav><div class="toc-foot"><p>${esc(site.publisher)}のゲームガイド。</p><a href="${p.dir('')}">戦国VSを開く</a></div></aside><article class="article" aria-label="${page.label}の本文"><p class="article-updated">内容更新：<time datetime="${page.dateModified}">${modifiedLabel(page.dateModified)}</time></p>${page.content(p)}</article></div>
     <section class="closing"><div><h2>${page.closingTitle}</h2><p>${page.closingText}</p></div><a class="action-link" href="${p.dir('')}">ゲームを開く</a></section>
   </main>
   <footer class="site-footer"><div class="footer-inner page-width"><p class="footer-brand">${esc(site.name)} <span>城と群雄の戦記</span></p><nav class="footer-nav" aria-label="フッターの案内">${nav}</nav><p class="copyright">© ${esc(site.publisher)}</p><p class="footer-note">地図・人物・家紋の資料はゲーム概要に記載しています。</p></div></footer>
@@ -488,7 +488,7 @@ function updateHome() {
   if (!hasGraph) html = html.replace('</head>', `  ${graph}\n</head>`);
   // Keep the two-line launch layout. No new cards, rows or navigation bands.
   html = html.replace(/(<p class="launch-introduction">)[\s\S]*?(<\/p>)/, (_, before, after) => before + site.launchIntroduction.map(esc).join('<br>') + after);
-  html = html.replace(/<p class="launch-copyright">[\s\S]*?<\/p>/, `<p class="launch-copyright">© <a href="about/" aria-label="${esc(site.publisher)}の戦国大戦について">${esc(site.publisher)}</a></p>`);
+  html = html.replace(/<p class="launch-copyright">[\s\S]*?<\/p>/, `<p class="launch-copyright">© <a href="about/" aria-label="${esc(site.publisher)}の戦国VSについて">${esc(site.publisher)}</a></p>`);
   html = html.replace(/(<a href="about\/" data-action="about">)[^<]*(<\/a>)/, '$1ゲーム概要・出典$2');
   html = html.replace(/(<div class="version-label">)群雄集結 · Ver\. [^<]+(<\/div>)/, `$1群雄集結 · Ver. ${esc(site.version)}$2`);
   html = html.replace(/(\b(?:src|href)=["'][^"']*[?&]v=)[^&"']+/g, (_, prefix) => prefix + release);
