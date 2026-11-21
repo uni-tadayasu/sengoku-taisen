@@ -49,14 +49,14 @@ Chat GET and letter inbox/thread GET responses additionally include `playerEvalu
 
 | Method / path | Body / query | Result fields, in addition to `ok` |
 |---|---|---|
-| GET `/health` | none | `status:"ready"` |
-| GET `/config` | none | `announcement:string`, `adminClaimed:boolean`, `adminRecoveryAvailable:boolean`, `onlineCount:number`, `clock` |
+| GET `/health` | none | `status:"ready"`, `version:"3.10.0"`, `features:{trades:true}` |
+| GET `/config` | none | `version:"3.10.0"`, `features:{trades:true}`, `announcement:string`, `adminClaimed:boolean`, `adminRecoveryAvailable:boolean`, `onlineCount:number`, `clock` |
 | POST `/session` | `{name?,clan?}` | `token:string`, `user` |
 | GET `/me` | none | `user`, `friends:user[]`, `requests:[{id,name,clan,avatarVersion,evaluation,direction:"incoming"|"outgoing",createdAt}]`, `unreadMail:number` |
 | PATCH `/profile` | `{name}` | `user` |
 | GET `/players` | `?q=検索語` (2–24 chars) | `players:user[]` (up to 30, excludes requester) |
 
-Names and clan labels have a 24-character limit. Names are unique after Unicode compatibility normalization and case folding.
+The health read also verifies that the trade, request and delivery tables exist, without creating or changing them. Names and clan labels have a 24-character limit. Names are unique after Unicode compatibility normalization and case folding.
 The distinct clan name **`德川家`** is reserved for authenticated operators and staff. Ordinary players may use **`徳川家`**. An unauthenticated session or ordinary profile request attempting to set the reserved name returns 403 `ADMIN_CLAN_REQUIRED`. Operator and staff public identities report `德川家`, while the chosen lord name remains unchanged. The role flags remain separate: staff have Sunpu and never gain Edo or Ieyasu U from the family label. A dismissed staff identity returns to its backed-up original family; a legacy ordinary reserved label without such a backup is projected as `徳川家`.
 If no name is supplied, the server chooses `旅の領主` plus a random suffix.
 The 256-bit anonymous game token is a 43-character base64url string. The server stores only its SHA-256 hash. A session-creation token is returned only when creating that identity. Additional per-device tokens are issued through successful pairing or verified recovery of the original operator identity.
@@ -475,6 +475,92 @@ Errors include 401 authentication, 403 `GUILD_REQUIRED` for absent/mismatched cu
 
 Default/maximum page size is 50. The opaque cursor stores the last prestige total and guild ID. Rankings are a live view, so member/save changes can move entries between pages; clients should deduplicate and refresh from the first page. Only guild names, owner identity, member count, public prestige/castle totals and rank are returned. Private treasury balances, receipts, individual resources and save data are never included.
 
+## Player trades: exports, imports and escrow
+
+Trade is private to its two authenticated player IDs. Clan names, home castle IDs and guild membership do not select a wallet or grant access. A participant may offer any combination of **gold, rice, wood, stone and magatama** in exchange for another combination. An empty requested bundle is a free export. Trade charges no command or additional fee and remains available while the common clock is paused.
+
+The server holds the sender's offered assets as escrow when a proposal is created. Acceptance subtracts the recipient's requested payment and credits the offered assets to that recipient in the same transaction. The sender's proceeds are recorded as an unclaimed delivery. Cancellation or rejection instead records the original offered bundle as a refund delivery. Only the delivery owner can explicitly claim it into their own current save. The other player's save, revision and writer lease are never changed by any trade operation, so a trader who is online with unsaved gameplay is not forced to replace that gameplay when the other participant accepts or rejects a proposal.
+
+### Routes and exact input
+
+| Method / path | Input | Result |
+|---|---|---|
+| GET `/trades?box=incoming&limit=20&cursor=…` | `box` is `incoming`, `outgoing`, `history` or `claimable`; limit 1–50 | `{ok,trades,nextCursor,summary,rules}` |
+| GET `/trades/recipient?playerId=u_…` | Another player's public ID | `{ok,player}` using the normal public player DTO; target must have a saved base |
+| GET `/trades/:tradeId` | A `tr_` ID followed by 32 lowercase hexadecimal characters | `{ok,trade}` for either participant |
+| POST `/trades` | Proposal shown below | Full sync snapshot plus `{trade,receipt,idempotent}` |
+| POST `/trades/:tradeId/accept` | Writer envelope shown below | Same response; recipient pays and receives, sender gains a pending delivery |
+| POST `/trades/:tradeId/cancel` | Writer envelope | Same response; sender cancels a pending proposal |
+| POST `/trades/:tradeId/reject` | Writer envelope | Same response; recipient rejects a pending proposal |
+| POST `/trades/:tradeId/claim` | Writer envelope | Same response; delivery owner receives the whole pending bundle |
+
+```js
+// POST /trades
+{
+  targetPlayerId:"u_…",
+  offer:{gold:1000,wood:200},
+  want:{rice:600}, // {} (or omitted) means no payment is required
+  requestId:"operation-uuid",deviceId:"current-document",expectedRevision:12
+}
+
+// Writer envelope for accept, cancel, reject and claim
+{requestId:"operation-uuid",deviceId:"current-document",expectedRevision:13}
+```
+
+Only the listed fields are accepted. Every specified bundle value must be a safe integer from 0 to 1,000,000; strings, fractions, negative values, nulls and unknown asset names are rejected. Missing asset fields are normalized to zero, in the fixed order `gold,rice,wood,stone,magatama`. The offered bundle must contain at least one positive value. A requested bundle may be all zero. Gold, rice, wood and stone use `state.resources`; magatama uses `state.magatama`. The payer must own the full outgoing bundle before receiving the incoming bundle, including when the same asset appears on both sides.
+
+Incoming and outgoing lists contain all states in their respective direction; history contains both directions. The `claimable` box contains only deliveries owned by the authenticated player whose `claimed_at` is null, including old proceeds and refunds beyond the first history page. A claimed delivery disappears from this box on the next read. Lists use immutable `created_at DESC,id DESC` keyset order, with a bounded cursor tied to the selected box. The default page size is 20 and the maximum is 50; `summary` and `rules` retain the same shape for every box. These reads do not claim a delivery, change a trade, apply world progression or modify a game save. A missing trade and a trade belonging to other people both return `TRADE_NOT_FOUND`.
+
+### Trade, receipt and list DTOs
+
+```js
+{
+  id:"tr_…",revision:2,status:"accepted", // pending | accepted | cancelled | rejected
+  sender:{playerId:"u_sender",name:"提案時の送り主名"},
+  recipient:{playerId:"u_recipient",name:"提案時の相手名"},
+  offer:{gold:1000,rice:0,wood:200,stone:0,magatama:0},
+  want:{gold:0,rice:600,wood:0,stone:0,magatama:0},
+  createdAt:"2026-11-21T00:00:00.000Z",updatedAt:"2026-11-21T00:01:00.000Z",
+  delivery:{
+    kind:"proceeds", // or refund
+    recipientPlayerId:"u_sender",
+    assets:{gold:0,rice:600,wood:0,stone:0,magatama:0},
+    claimedAt:null // ISO timestamp after the owner claims
+  }, // null while pending, or after a free export is accepted
+  canAccept:false,canReject:false,canCancel:false,canClaim:true
+}
+
+// Receipt is immutable evidence of one successful request, not a fresh quote.
+{
+  id:"tx_…",requestId:"operation-uuid",tradeId:"tr_…",action:"accept",
+  playerId:"u_recipient",playerRevision:14,tradeRevision:2,
+  createdAt:"2026-11-21T00:01:00.000Z"
+}
+
+// Extra fields on the list response
+{
+  summary:{incomingPending:1,outgoingPending:2,claimable:1},
+  rules:{assets:["gold","rice","wood","stone","magatama"],maxAmount:1000000,
+    balanceLimit:999999999,maxPending:20}
+}
+```
+
+The capability flags are relative to the authenticated viewer. `canAccept` and `canReject` belong only to the recipient of a pending proposal; `canCancel` belongs only to its sender. `canClaim` means this viewer owns an unclaimed delivery. It does not pre-approve current wallet space or the device's writer lease. Both participants may see the agreed terms and delivery status, but neither receives the other participant's wallet, raw save, devices or credentials. Names are snapshots from proposal creation. `receipt.action` is one of `propose`, `accept`, `cancel`, `reject`, `claim`.
+
+Proposal creation, acceptance and claiming each increment the acting player's save revision exactly once and renew that player's writer lease. Cancellation and rejection update trade/delivery state without modifying either save or lease. Every successful state transition, including a delivery claim, increments the trade revision. A free export creates no proceeds delivery and no unnecessary sender claim action. Every successful mutation returns the full current sync snapshot; `receipt.playerRevision` and `receipt.tradeRevision` remain the values at the original commit even when a replay returns newer save/trade state.
+
+### Atomicity, limits and recovery
+
+All five mutations require the actor's exact save revision, current writer device, unexpired lease and common-clock checkpoint no more than 15 simulated seconds behind the server. The client must update common time, durably save and flush local gameplay, pause local mutations for the request, then refresh/apply the canonical server snapshot. It must not add imports with `applyGift` or a separate local balance adjustment. The account's current operator/staff term, save revision/writer/lease, clock revision, proposal state/revision, permitted side and unclaimed-delivery state are checked in the conditional operation insert inside the same D1 batch. The private per-attempt commit nonce gates all subsequent trade, save and delivery changes. No update is authorized merely because another concurrent attempt used the same public request ID.
+
+There can be at most 20 pending outgoing proposals per player, checked again at commit. Proposals have no automatic expiry; the sender can cancel them. New attempts share a limit of 30 per account per real minute. A proposal's offered funds cannot be spent in another proposal or ordinary save action after its committed deduction. Competing accept/cancel/reject operations permit exactly one transition from pending. Concurrent claims cannot credit the same delivery twice. Any statement failure rolls back the entire operation, including the receipt and any earlier save update.
+
+Persist each request ID and semantic payload before transport. The unique `(actor_id,request_id)` receipt has no TTL. Replaying identical semantics returns the original receipt and current trade/sync snapshot before checking the old device/revision; reusing an ID for another action, target or bundle returns `REQUEST_ID_REUSED`. Device and expected-save revision are transport context and are not part of the semantic hash. Canonical zero-filled bundles make omitted/explicit zero fields equivalent. After an uncertain response, retry the same request ID and terms with the current device/revision. Clear the client pending record only after the canonical save revision is at least `receipt.playerRevision` and the transaction can be read at or above `receipt.tradeRevision`.
+
+Every resulting wallet balance must be at most 999,999,999. Acceptance or claim that would overflow any asset fails as a whole with `ASSET_LIMIT`; no truncation, partial delivery, deletion or payment occurs. In particular, a full wallet does not discard a refund: it remains claimable until the owner makes space. Escrow, request receipts and deliveries live outside imported saves and survive new campaigns, world cycles, guild changes and staff transitions under the same player ID. Restoring an old game save does not reopen a claimed delivery. Existing deliberate save-import semantics still apply to wallet balances; this system does not attest every locally authored gameplay balance.
+
+Other errors include `INVALID_INPUT`, `INVALID_CURSOR`, `INVALID_TARGET`, `PLAYER_NOT_FOUND`, `TRADE_NOT_FOUND`, `TRADE_FORBIDDEN`, `TRADE_CLOSED`, `TRADE_NOT_CLAIMABLE`, `TRADE_ALREADY_CLAIMED`, `TRADE_PENDING_LIMIT`, `TRADE_CHANGED`, `INSUFFICIENT_ASSETS`, `SAVE_REQUIRED`, `LEASE_REQUIRED`, `REVISION_CONFLICT`, `CLOCK_ANCHOR_REQUIRED`, `CLOCK_STALE`, `WORLD_CLOCK_CHANGED`, `AUTHORITY_CHANGED`, and `RATE_LIMITED`. A failed operation is never permission to adjust balances locally.
+
 ## Friends
 
 | Method / path | Body | Result |
@@ -755,7 +841,7 @@ Initial sends and replies persist a sender-scoped request ID and a hash of exact
 ## Deployment
 
 Use a dependency-free Cloudflare Worker ESM with `env.DB` and private `env.BUCKET`. Required manifest bindings: `d1:"DB"`, `r2:"BUCKET"`, no `static` field. Sites provisions the R2 bucket; no public object bucket URL is required.
-After any frontend engine change, run `node scripts/sync-game-runtime.mjs <absolute frontend dist>` and verify exact engine parity. Run `node scripts/build.mjs` to combine `worker/game-officers.js`, `worker/game-engine.js`, `worker/letters.js` and `worker/index.js` into one deployable `dist/server/index.js` Worker ESM; `worker/game-runtime.js` remains the source/test import adapter. Do not deploy a raw copy of `worker/index.js` without its modules; preserve `drizzle/` in source so Sites packages and applies the schema migrations. Apply `0000_social` through `0010_base_letters` using the append-only journal. The previously recorded migration files and journal entries are unchanged. `0001_cloud_sync` creates the device session and cloud-save tables; `0002_world_clock` adds the singleton clock; `0003_shared_field` adds field operations, relations and battles; `0004_staff_roles` adds support membership and its operation ledger; `0005_user_avatars` adds image metadata; `0006_guild_assets` adds guild roles, pooled balances and ledgers; `0007_world_cycles` adds save cycle markers, settlement receipts and public achievements; `0008_staff_base` adds staff membership terms, shared Sunpu development and private campaign backups; `0009_walking_rewards` adds independent walking accounts, signed-session metadata and cumulative receipts; `0010_base_letters` adds private/guild correspondence threads, messages, sender request receipts and per-reader cursors. These migrations are schema-only, with no player-data mutations. No table creation or schema alterations occur inside request handling.
+After any frontend engine change, run `node scripts/sync-game-runtime.mjs <absolute frontend dist>` and verify exact engine parity. Run `node scripts/build.mjs` to combine `worker/game-officers.js`, `worker/game-engine.js`, `worker/letters.js`, `worker/trade.js` and `worker/index.js` into one deployable `dist/server/index.js` Worker ESM; `worker/game-runtime.js` remains the source/test import adapter. Do not deploy a raw copy of `worker/index.js` without its modules; preserve `drizzle/` in source so Sites packages and applies the schema migrations. Apply `0000_social` through `0011_player_trades` using the append-only journal. The previously recorded migration files and journal entries are unchanged. `0001_cloud_sync` creates the device session and cloud-save tables; `0002_world_clock` adds the singleton clock; `0003_shared_field` adds field operations, relations and battles; `0004_staff_roles` adds support membership and its operation ledger; `0005_user_avatars` adds image metadata; `0006_guild_assets` adds guild roles, pooled balances and ledgers; `0007_world_cycles` adds save cycle markers, settlement receipts and public achievements; `0008_staff_base` adds staff membership terms, shared Sunpu development and private campaign backups; `0009_walking_rewards` adds independent walking accounts, signed-session metadata and cumulative receipts; `0010_base_letters` adds private/guild correspondence threads, messages, sender request receipts and per-reader cursors; `0011_player_trades` adds escrowed proposals, operation receipts and unclaimed proceeds/refunds. These migrations are schema-only, with no player-data mutations. No table creation or schema alterations occur inside request handling.
 
 Default CORS origins: the API's own origin, `https://www.kasai-solutions-inc.com`, the previous `https://uni-tadayasu.github.io` origin, `http://127.0.0.1:4173`, and the literal `null` origin for offline file HTML. No credentials/cookies are allowed. The custom-domain allowance is an exact HTTPS origin match, not a suffix or wildcard. Keeping the previous origin allows an existing signed-in device there to issue its own pairing code during migration.
 For a different hosted frontend, set `SENGOKU_ALLOWED_ORIGINS` to its exact origin, or comma-separated exact origins. Do not include paths or wildcards.
@@ -767,7 +853,7 @@ The Worker uses D1 `prepare`, `bind`, `first`, `run`, `all` and `batch` APIs. It
 
 ## Local verification
 
-Run the `scripts/test-*.mjs` suites (excluding the `test-support.mjs` harness) using Node 24 or a Node version providing `node:sqlite`. In addition to social/sync/field/guild/avatar/staff/cycle coverage, `test-walking.mjs` verifies cumulative grants, real-time envelopes, delayed network delivery, simultaneous reports, response loss, reloads, account/campaign isolation, import handling and atomic rollback. `test-letters.mjs` verifies private/guild correspondence permissions, current membership, retry receipts and message/read cursors. `test-construction-queues.mjs` verifies shared reservations, per-stage charging, conflicting requests, lost responses, caps, stage deadlines and personal staff-transition progress. Run `node --check worker/index.js`, `node --check worker/letters.js` and the built Worker syntax check. Frontend `tests/test-walking-engine.cjs` verifies durable local grants and save migration separately from browser motion/controller tests; `tests/test-construction-queue-engine.cjs` verifies head-only progress and save/reload timing; `tests/test-strategy-engine.cjs` and the independent `tests/test-strategy-contract.cjs` cover parsing, exclusions, resources, decision replay, scope changes and stop conditions.
+Run the `scripts/test-*.mjs` suites (excluding the `test-support.mjs` harness) using Node 24 or a Node version providing `node:sqlite`. In addition to social/sync/field/guild/avatar/staff/cycle coverage, `test-walking.mjs` verifies cumulative grants, real-time envelopes, delayed network delivery, simultaneous reports, response loss, reloads, account/campaign isolation, import handling and atomic rollback. `test-letters.mjs` verifies private/guild correspondence permissions, current membership, retry receipts and message/read cursors. `test-trade.mjs` exercises escrowed bundles, free exports, actor-only save updates, pending refunds/proceeds, authorization, limits, replay, races and rollback. `test-construction-queues.mjs` verifies shared reservations, per-stage charging, conflicting requests, lost responses, caps, stage deadlines and personal staff-transition progress. Run `node --check worker/index.js`, `node --check worker/letters.js`, `node --check worker/trade.js` and the built Worker syntax check. Frontend `tests/test-walking-engine.cjs` verifies durable local grants and save migration separately from browser motion/controller tests; `tests/test-construction-queue-engine.cjs` verifies head-only progress and save/reload timing; `tests/test-strategy-engine.cjs` and the independent `tests/test-strategy-contract.cjs` cover parsing, exclusions, resources, decision replay, scope changes and stop conditions.
 
 The avatar parser fixtures include baseline/progressive RGB/grayscale, restart markers and the actual Chrome canvas output; API tests use an isolated R2 map to cover cleanup races and uncertain DB responses. Recent-connection tests verify current-role SQL guards and rolling-window privacy. Clan tests verify reserved/ordinary character variants and deterministic migration. Guild suites inject mid-transaction SQL failures and post-commit response loss, concurrent duplicate/competing transfers, competing users' withdrawals, stale writers/revisions, membership/role revocation, promoted targets, protected private chat/history, preserved final funds and safe public ranking aggregation. All tests use local fixtures and do not modify production accounts, roles, saves, photos or messages.
 

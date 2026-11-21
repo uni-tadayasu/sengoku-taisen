@@ -1,6 +1,9 @@
 import {GameEngine, GAME_OFFICERS} from './game-runtime.js';
 import {handleLetters} from './letters.js';
+import {handleTrades} from './trade.js';
 const API = '/api/v1';
+const API_VERSION = '3.10.0';
+const API_FEATURES = Object.freeze({trades:true});
 const MAX_BODY = 16 * 1024;
 const MAX_SAVE_BODY = 2 * 1024 * 1024;
 const MAX_AVATAR_BYTES = 48 * 1024;
@@ -1658,8 +1661,8 @@ async function route(request, env, now) {
   const db = env.DB;
   if (!db?.prepare || !db?.batch) fail(503, 'SERVICE_UNAVAILABLE', '通信サービスの準備中です。');
   if (path === '/health' && method === 'GET') {
-    await stmt(db, 'SELECT COUNT(*) AS count FROM users').first();
-    return {ok:true,status:'ready'};
+    await stmt(db, 'SELECT (SELECT COUNT(*) FROM users) AS count,EXISTS(SELECT 1 FROM trades) AS trade_schema,EXISTS(SELECT 1 FROM trade_requests) AS trade_request_schema,EXISTS(SELECT 1 FROM trade_deliveries) AS trade_delivery_schema').first();
+    return {ok:true,status:'ready',version:API_VERSION,features:API_FEATURES};
   }
   if (path === '/world-clock' && method === 'GET') {
     const clock=await getWorldClock(db,now);await cyclePolicy(db,clock,now);return {ok:true,clock};
@@ -1676,7 +1679,7 @@ async function route(request, env, now) {
       stmt(db, 'SELECT COUNT(DISTINCT user_id) AS count FROM player_presence WHERE online=1 AND last_seen>?', now-ONLINE_WINDOW),
     ]);
     const settings = Object.fromEntries(rows(result[0]).map(r => [r.key,r.value]));
-    return {ok:true,announcement:settings.announcement ?? WELCOME,adminClaimed:!!settings.adminUserId,adminRecoveryAvailable:!!settings.adminUserId&&typeof env.SENGOKU_ADMIN_KEY==='string'&&env.SENGOKU_ADMIN_KEY.length>0,onlineCount:Number(rows(result[1])[0]?.count || 0),clock:await getWorldClock(db,now)};
+    return {ok:true,version:API_VERSION,features:API_FEATURES,announcement:settings.announcement ?? WELCOME,adminClaimed:!!settings.adminUserId,adminRecoveryAvailable:!!settings.adminUserId&&typeof env.SENGOKU_ADMIN_KEY==='string'&&env.SENGOKU_ADMIN_KEY.length>0,onlineCount:Number(rows(result[1])[0]?.count || 0),clock:await getWorldClock(db,now)};
   }
   if (path === '/online' && method === 'GET') {
     const cursor=url.searchParams.get('cursor')||'',limitText=url.searchParams.get('limit')||'50';
@@ -1761,6 +1764,7 @@ async function route(request, env, now) {
   if (path === '/walking/start' && method === 'POST') return walkingStart(db,user,await readBody(request),now);
   if (path === '/walking/claim' && method === 'POST') return walkingClaim(db,user,await readBody(request),now);
   if (path === '/letters' || path.startsWith('/letters/')) return handleLetters({db,user,now,path,method,url,request,helpers:{fail,readBody,budget,idField,textField,uid,mapUser,getUser,evaluationRef,evaluationUpdates}});
+  if (path === '/trades' || path.startsWith('/trades/')) return handleTrades({db,user,now,path,method,url,request,helpers:{fail,readBody,budget,idField,uid,mapUser,getUser,getSyncRow,hash,fieldWriter,settleWriterCycle,getWorldClock,normalizeGameSave,roleCommitGuard,syncSnapshot,syncLease:SYNC_LEASE,worldClockId:WORLD_CLOCK_ID}});
   if (path === '/field/me' && method === 'GET') return fieldMe(db,user,url,now);
   if (path === '/field/attack' && method === 'POST') return fieldAttack(db,user,await readBody(request),now);
   if (path === '/field/diplomacy' && method === 'POST') return fieldDiplomacy(db,user,await readBody(request),now);

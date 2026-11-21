@@ -167,10 +167,11 @@ function mount(container,options={}){
     if(!home)result+=`<p class="field-caption">領主の本拠：${esc(player.homeCastleName||player.homeCastleId)}。この城は所領です。</p>`;
     if(coLocated>1)result+=`<p class="field-caption">この城には${coLocated}人の領主の拠点があります。一覧で守備する領主を選べます。</p>`;
     if(castleId==='sunpu')result+='<p class="field-caption">駿府城はスタッフ全員で共同成長させます。戦後の保護期間も共通です。</p>';
-    if(!opts.identity?.id)return result+'<div class="field-notice">出陣・外交・書状は、領主登録後に利用できます。</div><button class="field-button is-gold is-full" data-field-action="register">領主登録・ログイン</button>';
+    if(!opts.identity?.id)return result+'<div class="field-notice">出陣・外交・書状・交易は、領主登録後に利用できます。</div><button class="field-button is-gold is-full" data-field-action="register">領主登録・ログイン</button>';
     if(!canAct()&&!cache.busy)result+=`<div class="field-notice">${esc(access().fieldPending?'前の采配を反映しています。':'操作端末と共通時刻を確認すると采配できます。')}<button class="field-inline-button" data-field-action="sync">端末同期を確認</button></div>`;
     if(own){const cooldown=Math.max(0,number(cache.me?.attack?.cooldownUntilElapsedMs)-elapsed());return result+`<div class="field-self-note">${icon('shield')}<div><strong>あなたの旗が、この城に掲がっています。</strong><p>ほかの領主の拠点を選ぶと、出陣や同盟の申し出ができます。</p></div></div><div class="field-key-value"><span>出陣できる兵</span><b>${num(state().troops??cache.me?.attack?.availableTroops)}人</b></div>${cooldown?`<div class="field-key-value"><span>出陣の再準備</span><b>あと${remainingLabel(cooldown)}</b></div>`:''}${protection?`<div class="field-notice">戦後の保護 · あと${remainingLabel(protection)}</div>`:''}`;}
     result+=`<section class="field-letter-box"><h4>領主へ書状を届ける</h4><div class="field-letter-actions"><button type="button" class="field-button" data-field-action="letter-player" data-player-id="${esc(player.playerId)}">領主に書状</button><button type="button" class="field-button" data-field-action="letter-guild" data-player-id="${esc(player.playerId)}">所属ギルドに書状</button></div><p class="field-caption">本人への便りか、所属ギルドへの連絡を選べます。</p></section>`;
+    result+='<section class="field-trade-box"><h4>資産を輸出・輸入する</h4><button type="button" class="field-button" data-field-action="trade-player" data-player-id="'+esc(player.playerId)+'">この領主に交易を申し出る</button><p class="field-caption">資産を預け、相手の承認で交換します。無償での提供もできます。</p></section>';
     result+=`<section class="field-diplomacy-box"><h4>外交</h4>${diplomacyControls(player)}</section>`;
     if(policy.mode==='protected')return result+`<div class="field-notice">${icon('shield')}${esc(policy.description)}</div>`;
     if(protection)return result+`<div class="field-notice">戦後の保護期間です。あと${remainingLabel(protection)}で再び対象になります。</div>`;
@@ -252,6 +253,7 @@ function mount(container,options={}){
     const button=event.target.closest?.('[data-field-action]');if(!button||!container.contains(button)||button.disabled)return;event.stopPropagation();const action=button.dataset.fieldAction;
     if(action==='refresh'){await refresh();return;}if(action==='load-more'){await refresh({append:true});return;}
     if(action==='letter-player'||action==='letter-guild'){if(!opts.identity?.id){opts.onRegister?.();return;}if(global.SengokuLetters?.openCompose)await global.SengokuLetters.openCompose({playerId:button.dataset.playerId,destination:action==='letter-guild'?'guild':'player'});else message('書状を読み込めませんでした。画面を再読み込みしてください。',true);return;}
+    if(action==='trade-player'){if(!opts.identity?.id){opts.onRegister?.();return;}if(global.SengokuTrade?.openCompose)await global.SengokuTrade.openCompose({playerId:button.dataset.playerId});else message('交易を読み込めませんでした。画面を再読み込みしてください。',true);return;}
     if(action==='register'){opts.onRegister?.();return;}if(action==='sync'){(opts.onSync||opts.onRegister)?.();return;}
     if(action==='select-player'){const selected=cache.players.find(p=>button.dataset.targetId?targetKey(p)===button.dataset.targetId:p.playerId===button.dataset.playerId&&isHomeTarget(p));if(!selected)return;cache.selectedId=targetKey(selected);cache.tab='base';cache.confirm=null;cache.troops='';render();return;}
     if(action==='clear-castle'){cache.castleFilter='';cache.page=1;render();return;}

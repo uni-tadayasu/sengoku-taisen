@@ -2,7 +2,7 @@
   "id": "./",
   "name": "戦国VS｜一城の志が、天下を動かす。",
   "short_name": "戦国VS",
-  "description": "戦国VSは、城下町育成と武将編成を楽しむKASAI SOLUTIONSの戦国ブラウザゲーム。総合評価に応じた位階を領主の称号として付与。CPU勢力との戦役、領主同士の報酬戦・大都市の占領戦、合戦を知らせる郵便に対応。PC・スマホ・タブレットで進行を同期できます。",
+  "description": "戦国VSは、城下町育成と武将編成を楽しむKASAI SOLUTIONSの戦国ブラウザゲーム。総合評価に応じた位階、CPU戦役、領主同士の報酬戦・占領戦、資産の輸出入・交易に対応。PC・スマホ・タブレットで進行を同期できます。",
   "lang": "ja",
   "start_url": "./",
   "scope": "./",
@@ -11,13 +11,13 @@
   "theme_color": "#13171b",
   "icons": [
     {
-      "src": "assets/sengoku-taisen-icon-192.png?v=3.9.11-20261121",
+      "src": "assets/sengoku-taisen-icon-192.png?v=3.10.0-20261121",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "assets/sengoku-taisen-icon-512.png?v=3.9.11-20261121",
+      "src": "assets/sengoku-taisen-icon-512.png?v=3.10.0-20261121",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"

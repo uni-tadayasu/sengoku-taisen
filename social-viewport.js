@@ -14,7 +14,7 @@
   if (typeof module !== 'undefined' && module.exports) module.exports = { viewportBox };
   const doc = global.document, root = doc?.documentElement;
   if (!root || global.SengokuSocialViewport) return;
-  const selector = '.social-dialog, .letters-dialog';
+  const selector = '.social-dialog, .letters-dialog, .trade-dialog';
   const coarse = global.matchMedia?.('(any-pointer: coarse)');
   const removers = [];
   let frame = 0, observer, destroyed = false, started = false;

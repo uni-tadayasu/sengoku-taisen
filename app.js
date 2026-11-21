@@ -187,11 +187,11 @@
   function renderField(){return heading('共通フィールド','SHARED WORLD · 領主たちの天下','同じ世界に拠点を構え、攻撃と外交で関係を築く。')+'<div id="shared-field" class="shared-field"><div class="notice">領主たちの拠点を読み込んでいます。</div></div>';}
   function fieldOptions(){return{stateKey:'shared-field',identity:window.SengokuSocial?.getUser?.()||null,request:requestField,getState:()=>state(),getSyncStatus:()=>({...window.SengokuCloudSync?.getStatus?.(),writable:canMutate(),fieldPending:fieldActionPending,deviceId:window.SengokuCloudSync?.getDevice?.().id}),onRegister:()=>window.SengokuSocial?.open('profile'),onSync:()=>window.SengokuSocial?.open('sync'),onMutation:async()=>{},onMessage:toast};}
   async function requestField(route,{method='GET',data:payload}={}){
-    const isGuild=route==='/guild/treasury/transfer'&&method==='POST',isStaff=route==='/staff/base/upgrade'&&method==='POST',isAttack=route==='/field/attack'&&method==='POST';
-    if(!isGuild&&!isStaff&&(!/^\/field(?:\/me|\/attack|\/diplomacy)?(?:\?[^#]*)?$/.test(route)||!['GET','POST'].includes(method)))throw Error('共通フィールド・資産・共同普請の操作を確認してください。');
-    const social=window.SengokuSocial,sync=window.SengokuCloudSync,send=isStaff?social?.staffRequest:isGuild?social?.guildRequest:social?.fieldRequest;if(!send)throw Error('共通フィールド・資産・共同普請に接続できません。');
+    const isGuild=route==='/guild/treasury/transfer'&&method==='POST',isStaff=route==='/staff/base/upgrade'&&method==='POST',isAttack=route==='/field/attack'&&method==='POST',isTrade=method==='POST'&&/^\/trades(?:\/tr_[a-f0-9]{32}\/(?:accept|cancel|reject|claim))?$/.test(route);
+    if(!isGuild&&!isStaff&&!isTrade&&(!/^\/field(?:\/me|\/attack|\/diplomacy)?(?:\?[^#]*)?$/.test(route)||!['GET','POST'].includes(method)))throw Error('共通フィールド・資産・交易・共同普請の操作を確認してください。');
+    const social=window.SengokuSocial,sync=window.SengokuCloudSync,send=isStaff?social?.staffRequest:isGuild?social?.guildRequest:isTrade?social?.tradeRequest:social?.fieldRequest;if(!send)throw Error('共通フィールド・資産・交易・共同普請に接続できません。');
     if(method==='GET'){if(route.split('?')[0]==='/field/me'){const [path,query='']=route.split('?'),params=new URLSearchParams(query);params.set('deviceId',sync?.getDevice?.().id||'');route=path+'?'+params;}return social.fieldRequest(route,{method});}
-    const user=social.getUser?.();if(!user)throw Error('交流から領主を登録すると参加できます。');if(!sync?.getStatus?.().linked)throw Error('端末同期を確認してください。');if(fieldActionPending)throw Error('前の共通フィールド・資産・共同普請の操作を確認しています。');
+    const user=social.getUser?.();if(!user)throw Error('交流から領主を登録すると参加できます。');if(!sync?.getStatus?.().linked)throw Error('端末同期を確認してください。');if(fieldActionPending)throw Error('前の共通フィールド・資産・交易・共同普請の操作を確認しています。');
     const staffEpoch=isStaff?roleEpoch:null;
     const verifyIdentity=()=>{if(String(social.getUser?.()?.id)!==String(user.id)){const error=Error('接続中の領主が変わったため、以前の結果の反映を取り消しました。');error.code='STALE_IDENTITY';throw error;}};
     const verifyGuild=()=>{if(isGuild&&(!payload?.guildId||String(social.getUser?.()?.guildId)!==String(payload.guildId))){const error=Error('所属するギルドが変わりました。ギルド画面を更新して確認してください。');error.code='STALE_GUILD';throw error;}};
@@ -199,9 +199,10 @@
     verifyGuild();verifyStaff();await window.SengokuWorldClock?.refresh();verifyIdentity();verifyGuild();verifyStaff();processWorldClock();if(!requireWritable())throw Error('共通時刻と端末同期が整ってから操作してください。');if(!save())throw Error('セーブを保存できなかったため、操作を見送りました。');
     fieldActionPending=true;refreshLiveControls();
     const fieldPayload=value=>Object.fromEntries(Object.entries(value||{}).filter(([key])=>!['requestId','deviceId','expectedRevision'].includes(key)).sort(([a],[b])=>a.localeCompare(b)));
-    const operationFor=(path,value)=>({route:path,payload:path==='/guild/treasury/transfer'?{guildId:value.guildId,direction:value.direction,resource:value.resource,amount:value.amount}:path==='/staff/base/upgrade'?{kind:value.kind,id:value.id}:fieldPayload(value)});
+    const tradePayload=value=>{const body=fieldPayload(value);for(const key of ['offer','want'])if(body[key]&&typeof body[key]==='object'&&!Array.isArray(body[key]))body[key]=Object.fromEntries(Object.entries(body[key]).sort(([a],[b])=>a.localeCompare(b)));return body;};
+    const operationFor=(path,value)=>({route:path,payload:path==='/guild/treasury/transfer'?{guildId:value.guildId,direction:value.direction,resource:value.resource,amount:value.amount}:path==='/staff/base/upgrade'?{kind:value.kind,id:value.id}:path.startsWith('/trades')?tradePayload(value):fieldPayload(value)});
     const operation=operationFor(route,payload),signature=JSON.stringify(operation),fieldPrefix='sengoku-field-pending-v1:'+encodeURIComponent(String(user.id))+':';
-    const keyFor=value=>(value.route==='/staff/base/upgrade'?'sengoku-staff-upgrade-pending-v1:':value.route==='/guild/treasury/transfer'?'sengoku-guild-transfer-pending-v1:':'sengoku-field-pending-v1:')+encodeURIComponent(String(user.id))+':'+encodeURIComponent(JSON.stringify(value));
+    const keyFor=value=>(value.route==='/staff/base/upgrade'?'sengoku-staff-upgrade-pending-v1:':value.route==='/guild/treasury/transfer'?'sengoku-guild-transfer-pending-v1:':value.route.startsWith('/trades')?'sengoku-trade-pending-v1:':'sengoku-field-pending-v1:')+encodeURIComponent(String(user.id))+':'+encodeURIComponent(JSON.stringify(value));
     const savedOperation=stored=>{if(stored?.playerId!==String(user.id)||typeof stored.requestId!=='string')return null;try{const old=JSON.parse(stored.signature);return operationFor(old.route,stored.payload??old.payload);}catch(_){return null;}};
     const readPending=key=>{try{return JSON.parse(localStorage.getItem(key)||'null');}catch(_){return null;}};
     async function performOperation(value,requestedId){
@@ -220,10 +221,10 @@
         const body={...pendingRecord.payload,requestId:pendingRecord.requestId,deviceId:sync.getDevice().id,expectedRevision:sync.getStatus().revision,...(isStaff?{baseRevision:pendingRecord.baseRevision}:{})};sent=true;
         const result=await send(value.route,{method:'POST',data:body});received=true;
         verifyIdentity();verifyStaff();if(result.clock)window.SengokuWorldClock?.accept(result.clock);
-        if(isAttack){pendingRecord={...pendingRecord,committed:true,...(Number.isSafeInteger(result.revision)?{committedRevision:result.revision}:{})};localStorage.setItem(pendingKey,JSON.stringify(pendingRecord));}
-        const needsReconcile=()=>isAttack&&!Number.isSafeInteger(result.revision)||Number.isSafeInteger(result.revision)&&(!Number.isSafeInteger(sync.getStatus().revision)||sync.getStatus().revision<result.revision)||isStaff&&(!Number.isSafeInteger(result.staffBase?.revision)||!staffConstructionReady()||game.getStaffBase().revision<result.staffBase.revision);
-        let reconciled=await sync.refresh();verifyIdentity();verifyStaff();if((isGuild||isStaff||isAttack)&&needsReconcile()){reconciled=await sync.refresh();verifyIdentity();verifyStaff();}
-        if((isGuild||isStaff||isAttack)&&(!reconciled?.ok||needsReconcile())){const error=Error(isStaff?'共同普請の結果を確認しています。通信回復後に同じ操作を再試行してください。二重には支払いません。':isGuild?'資産の操作結果を保存先に確認しています。通信回復後に同じ操作を再試行してください。二重には移動しません。':'前の合戦の結果を保存先に確認しています。通信回復後に出陣を再試行してください。結果の反映を確認してから次の出陣へ進みます。');error.code=isStaff?'STAFF_RECONCILE_PENDING':isGuild?'GUILD_RECONCILE_PENDING':'FIELD_RECONCILE_PENDING';throw error;}
+        if(isAttack||isTrade){pendingRecord={...pendingRecord,committed:true,...(Number.isSafeInteger(result.revision)?{committedRevision:result.revision}:{})};localStorage.setItem(pendingKey,JSON.stringify(pendingRecord));}
+        const needsReconcile=()=>(isAttack||isTrade)&&!Number.isSafeInteger(result.revision)||Number.isSafeInteger(result.revision)&&(!Number.isSafeInteger(sync.getStatus().revision)||sync.getStatus().revision<result.revision)||isStaff&&(!Number.isSafeInteger(result.staffBase?.revision)||!staffConstructionReady()||game.getStaffBase().revision<result.staffBase.revision);
+        let reconciled=await sync.refresh();verifyIdentity();verifyStaff();if((isGuild||isStaff||isAttack||isTrade)&&needsReconcile()){reconciled=await sync.refresh();verifyIdentity();verifyStaff();}
+        if((isGuild||isStaff||isAttack||isTrade)&&(!reconciled?.ok||needsReconcile())){const error=Error(isStaff?'共同普請の結果を確認しています。通信回復後に同じ操作を再試行してください。二重には支払いません。':isTrade?'交易の結果を保存先に確認しています。通信回復後に同じ操作を再試行してください。資産を二重には移動しません。':isGuild?'資産の操作結果を保存先に確認しています。通信回復後に同じ操作を再試行してください。二重には移動しません。':'前の合戦の結果を保存先に確認しています。通信回復後に出陣を再試行してください。結果の反映を確認してから次の出陣へ進みます。');error.code=isStaff?'STAFF_RECONCILE_PENDING':isTrade?'TRADE_RECONCILE_PENDING':isGuild?'GUILD_RECONCILE_PENDING':'FIELD_RECONCILE_PENDING';throw error;}
         clearPending();verifyGuild();verifyStaff();return result;
       }catch(error){if(!received&&!pendingRecord?.committed&&error.status&&error.status<500)clearPending();if(sent&&String(social.getUser?.()?.id)===String(user.id))try{await sync.refresh();}catch(_){}throw error;}
     }
@@ -239,6 +240,11 @@
       }
       return await performOperation(operation,payload?.requestId);
     }finally{fieldActionPending=false;refreshLiveControls();queueWorldProgress();}
+  }
+  function spendableAssets(){const s=state();return {gold:s.resources.gold,rice:s.resources.rice,wood:s.resources.wood,stone:s.resources.stone,magatama:s.magatama||0};}
+  async function requestTrade(route,{method='POST',data:payload}={}){
+    if(method!=='POST'||!/^\/trades(?:\/tr_[a-f0-9]{32}\/(?:accept|cancel|reject|claim))?$/.test(route))throw Error('交易の操作を確認してください。');
+    return requestField(route,{method,data:payload});
   }
   async function upgradeSharedBase(kind,id){
     try{const result=await requestField('/staff/base/upgrade',{method:'POST',data:{kind,id}});playNote(659,.075);toast(result.receipt?.queued?`Lv.${result.receipt.targetLevel}への共同増築を予約しました。先の工事から順番に進みます。`:'共同普請の結果を反映しました。全スタッフの駿府城へ自動で共有されます。');}
@@ -965,7 +971,7 @@
     if(!save()){game.state=before;return{ok:false,message:'保存できなかったため、復元を取り消しました。'};}
     preserveInteraction($('#main'),render);refreshActiveModal();return result;
   }
-  window.SengokuBridge={getEvaluation,showEvaluation,getStrategyAccess,previewStrategy,beginStrategy,stepStrategy,stopStrategy,getState:()=>state(),hasStarted:()=>!startPending,getSave:getGameSave,getStoredSave,toast,canReceiveGifts:()=>saveEnabled&&canMutate(),applyGift:applyDurableGift,getWalkingAccess,beginLocalWalkingSession:payload=>localWalkingOperation('begin',payload),applyLocalWalkingProgress:payload=>localWalkingOperation('progress',payload),endLocalWalkingSession:payload=>localWalkingOperation('end',payload),startWalkingSession:payload=>requestWalking('/walking/start',payload),claimWalkingSteps:payload=>requestWalking('/walking/claim',payload),guildTransfer:payload=>requestField('/guild/treasury/transfer',{method:'POST',data:payload}),openSettings:settingsModal,openStartSelection,setSyncAccess,setRoleAccess,setAdminAccess,getRoleAccess:()=>({isAdmin:game.isAdmin===true,isStaff:game.isStaff===true,pending:syncAccess.rolePending===true,epoch:roleEpoch}),applyStaffBase,getStaffBase:()=>staffConstructionReady()?game.getStaffBase():null,applyCloudSave,prepareRecoverySave,prepareNewRecoverySave,applyRecoverySave,restoreAdminAssets};
+  window.SengokuBridge={getEvaluation,showEvaluation,getStrategyAccess,previewStrategy,beginStrategy,stepStrategy,stopStrategy,getState:()=>state(),hasStarted:()=>!startPending,getSave:getGameSave,getStoredSave,toast,canReceiveGifts:()=>saveEnabled&&canMutate(),applyGift:applyDurableGift,getWalkingAccess,beginLocalWalkingSession:payload=>localWalkingOperation('begin',payload),applyLocalWalkingProgress:payload=>localWalkingOperation('progress',payload),endLocalWalkingSession:payload=>localWalkingOperation('end',payload),startWalkingSession:payload=>requestWalking('/walking/start',payload),claimWalkingSteps:payload=>requestWalking('/walking/claim',payload),spendableAssets,tradeRequest:requestTrade,guildTransfer:payload=>requestField('/guild/treasury/transfer',{method:'POST',data:payload}),openSettings:settingsModal,openStartSelection,setSyncAccess,setRoleAccess,setAdminAccess,getRoleAccess:()=>({isAdmin:game.isAdmin===true,isStaff:game.isStaff===true,pending:syncAccess.rolePending===true,epoch:roleEpoch}),applyStaffBase,getStaffBase:()=>staffConstructionReady()?game.getStaffBase():null,applyCloudSave,prepareRecoverySave,prepareNewRecoverySave,applyRecoverySave,restoreAdminAssets};
   let lastRealtime=performance.now(),saveCounter=0;
   document.addEventListener('visibilitychange',()=>{lastRealtime=performance.now();if(document.hidden)save();else{window.SengokuWorldClock?.refresh();processWorldClock();}});
   window.addEventListener('pagehide',()=>save());
