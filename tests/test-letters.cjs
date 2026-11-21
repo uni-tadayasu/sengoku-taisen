@@ -98,6 +98,69 @@ test('late send results cannot enter a different account and pending records sta
   h.setHandler(null);h.setUser({id:'u_me',name:'自分',guildId:null});h.controller.refreshIdentity();await drain();assert(h.controller.getState().pending);await h.controller.retry();assert.equal(h.data.receipts.size,1);assert.equal(h.controller.getState().pending,null);h.controller.dispose();
 });
 
+test('a summary revision removes old thread and inbox bodies, then reloads the current page without losing other authors',async()=>{
+  const h=setup();let revision=0;
+  h.data.messages[1]={...h.data.messages[1],authorId:'u_innocent',authorName:'ほかの領主',text:'残る本文'};
+  h.setHandler(async(route,options,base)=>{
+    const result=await base(route,options);result.contentRevision=revision;
+    if(/^\/letters\/lt_/.test(route)&&options.method!=='POST'){
+      const query=new URL(route,'https://local.invalid').searchParams;
+      if(query.has('contentRevision')&&Number(query.get('contentRevision'))!==revision){result.reset=true;result.messages=structuredClone(h.data.messages);result.hasOlder=false;result.nextBefore=null;}
+    }return result;
+  });
+  await h.controller.openInbox();await h.controller.openThread(THREAD);assert.equal(h.controller.getState().messages.length,2);
+  revision=1;h.data.messages=h.data.messages.filter(message=>message.authorId==='u_innocent');await h.controller.refresh();
+  assert(h.changes.some(state=>state.change==='content-reset'&&state.messages.length===0&&state.threads.length===0));
+  assert.deepEqual(h.controller.getState().messages.map(message=>message.text),['残る本文']);assert.equal(h.controller.getState().contentRevision,1);
+  const recent=h.calls.filter(call=>call.route.startsWith('/letters/'+THREAD+'?')).at(-1);assert(recent.route.includes('limit=40'));assert(recent.route.includes('contentRevision=1'));assert(!recent.route.includes('after='));h.controller.dispose();
+});
+
+test('a late thread response from before a deletion cannot revive the removed messages',async()=>{
+  const h=setup(),wait=deferred();let revision=0,hold=false;
+  h.setHandler(async(route,options,base)=>{const result=await base(route,options);result.contentRevision=revision;return hold&&route.startsWith('/letters/'+THREAD+'?')?wait.promise:result;});
+  await h.controller.openInbox();await h.controller.openThread(THREAD);const old=structuredClone(h.controller.getState().messages);hold=true;
+  const refreshing=h.controller.refresh();await drain();h.controller.observeContentRevision(2);
+  wait.resolve({ok:true,thread:{...h.data.thread},messages:old,contentRevision:0,hasOlder:false});await refreshing;
+  assert.equal(h.controller.getState().contentRevision,2);assert.equal(h.controller.getState().messages.length,0);assert.equal(h.controller.getState().threads.length,0);
+  assert.equal(h.controller.observeContentRevision(1),false);assert.equal(h.controller.getState().contentRevision,2);h.controller.dispose();
+});
+
+test('an older inbox response and its last-message preview cannot reappear after a newer revision',async()=>{
+  const h=setup(),wait=deferred();let hold=false;
+  h.setHandler(async(route,options,base)=>{const result=await base(route,options);result.contentRevision=0;return hold&&route.startsWith('/letters?')?wait.promise:result;});
+  await h.controller.openInbox();const old=structuredClone(h.controller.getState().threads);assert(old[0].lastMessage.text);
+  hold=true;const loading=h.controller.refresh();await drain();h.controller.observeContentRevision(1);
+  wait.resolve({ok:true,threads:old,nextCursor:null,contentRevision:0});await loading;
+  assert.equal(h.controller.getState().threads.length,0);assert.equal(h.controller.getState().contentRevision,1);h.controller.dispose();
+});
+
+test('inbox pagination sends its nonzero content revision and reaches the thirty-first thread after a deletion',async()=>{
+  const h=setup(),rows=Array.from({length:31},(_,i)=>({...h.data.thread,id:'lt_'+(i+1).toString(16).padStart(32,'0')}));
+  h.setHandler(async(route,options,base)=>{
+    if(!route.startsWith('/letters?')){const result=await base(route,options);return{...result,contentRevision:3};}
+    const query=new URL(route,'https://local.invalid').searchParams,reset=Number(query.get('contentRevision')||0)!==3,more=query.has('cursor')&&!reset;
+    return{ok:true,contentRevision:3,reset,threads:more?rows.slice(30):rows.slice(0,30),nextCursor:more?null:'page2',unreadCount:0,unreadThreads:0};
+  });
+  await h.controller.openInbox();assert.equal(h.controller.getState().threads.length,30);assert.equal(h.controller.getState().contentRevision,3);
+  await h.controller.loadMore();assert.equal(h.controller.getState().threads.length,31);assert.equal(h.controller.getState().nextCursor,null);
+  assert(h.calls.at(-1).route.includes('cursor=page2'));assert(h.calls.at(-1).route.includes('contentRevision=3'));h.controller.dispose();
+});
+
+test('a banned identity clears private letters and cannot send, retry, read, or poll until verified restoration',async()=>{
+  const h=setup();await h.controller.openInbox();await h.controller.openThread(THREAD);h.controller.setDraft('送信前の下書き');
+  h.setUser({id:'u_me',name:'自分',guildId:null,isBanned:true});h.controller.refreshIdentity();await drain();
+  const state=h.controller.getState(),calls=h.calls.length;assert(state.suspended);assert.equal(state.messages.length,0);assert.equal(state.threads.length,0);assert.equal(state.thread,null);assert.equal(state.draft,'');
+  assert.equal(await h.controller.send(),false);assert.equal(await h.controller.retry(),false);await h.controller.refresh();await h.controller.openCompose({playerId:'u_target'});await h.controller.markRead();assert.equal(h.calls.length,calls);
+  h.setUser({id:'u_me',name:'自分',guildId:null,isBanned:false});h.controller.refreshIdentity();await drain();assert.equal(h.controller.getState().suspended,false);assert(h.calls.length>calls);assert.equal(h.posts().length,0);h.controller.dispose();
+});
+
+test('a direct ACCOUNT_BANNED failure suspends the letters controller before another posting attempt',async()=>{
+  const h=setup();await h.controller.openCompose({playerId:'u_target'});h.controller.setDraft('停止直前の本文');
+  h.setHandler(async(route,options,base)=>{if(options.method==='POST')throw error('利用停止中',403,'ACCOUNT_BANNED');return base(route,options);});
+  assert.equal(await h.controller.send(),false);assert(h.controller.getState().suspended);assert.equal(h.controller.getState().messages.length,0);const posts=h.posts().length;
+  assert.equal(await h.controller.send(),false);assert.equal(await h.controller.retry(),false);assert.equal(h.posts().length,posts);h.controller.dispose();
+});
+
 test('missing durable storage prevents unsafe sends and forged persisted routes are ignored',async()=>{
   const h=setup();h.options.storage.setItem=()=>{throw Error('storage blocked');};const controller=createController(h.options);await controller.openCompose({playerId:'u_target'});controller.setDraft('保存できない本文');assert.equal(await controller.send(),false);assert.equal(h.posts().length,0);assert(controller.getState().error.includes('送信番号'));controller.dispose();h.controller.dispose();
   const store=new Map([['sengoku-letters-v1:u_me:pending',JSON.stringify({ownerId:'u_me',route:'/admin/staff',data:{requestId:'bad',text:'forged'},draftKey:'x',originalDraft:'forged'})]]),fresh=setup({storage:store});await fresh.controller.openInbox();assert.equal(fresh.controller.getState().pending,null);assert.equal(await fresh.controller.retry(),false);assert.equal(fresh.posts().length,0);fresh.controller.dispose();

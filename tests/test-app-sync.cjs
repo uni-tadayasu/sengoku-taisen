@@ -56,6 +56,13 @@ test('successful local persistence triggers sync, whereas cloud apply never echo
   assert.equal(c.applyCloudSave(remote,{isAdmin:false,reason:'remote',backup:false}).ok,true);
   assert.deepEqual(events,['sengoku:game-saved']);assert.equal(c.game.state.resources.gold,remote.state.resources.gold);
 });
+test('BAN blocks a previously writable lease and keeps its notice above role revalidation',()=>{
+  const {c,stored,events}=setup();c.syncAccess={...c.syncAccess,banned:true,rolePending:true,message:'この領主は利用停止中です。'};
+  assert.equal(c.syncMessage(),'この領主は利用停止中です。');
+  c.syncAccess.rolePending=false;const before=JSON.stringify(c.game.state),saved=stored.get('save');
+  assert.equal(c.canMutate(),false);assert.equal(c.save(),false);assert.equal(c.applyDurableGift({gold:100},'banned-gift').ok,false);
+  assert.equal(JSON.stringify(c.game.state),before);assert.equal(stored.get('save'),saved);assert.equal(events.length,0);
+});
 test('initial replacement retains the exact pre-sync save as a downloadable backup',()=>{
   const {c,stored}=setup();const original=stored.get('save');
   const remote=JSON.parse(c.game.exportSave());remote.state.resources.gold+=123;

@@ -28,6 +28,8 @@ function createController(options={}){
   const later=options.setTimeout||global.setTimeout.bind(global),cancel=options.clearTimeout||global.clearTimeout.bind(global);
   let epoch=0,viewEpoch=0,disposed=false,timer=null,summaryBusy=false,viewBusy=false,readBusy=false,readQueued=0,sendPromise=null,lastRead=0,lastMembership='';
   const s={ownerId:null,open:false,view:'inbox',threads:[],unreadCount:0,unreadThreads:0,nextCursor:null,loaded:false,loading:false,loadingOlder:false,error:'',status:'',thread:null,messages:[],hasOlder:false,nextBefore:null,hasNewer:false,target:null,targetPlayerId:null,destination:'player',guildId:null,needsTargetConfirm:false,draft:'',draftKey:'',sending:false,pending:null,change:'init'};
+  s.contentRevision=null;s.suspended=false;s.threadNeedsReset=false;
+  let contentEpoch=0;
   function emit(change='status'){s.change=change;notify(snapshot());}
   function snapshot(){return clone(s);}
   const key=suffix=>STORE+s.ownerId+':'+suffix;
@@ -39,18 +41,39 @@ function createController(options={}){
     if(value.route==='/letters'&&(!ID.test(value.data.targetPlayerId||'')||!['player','guild'].includes(value.data.destination)||value.data.destination==='guild'&&!ID.test(value.data.guildId||'')))return null;
     return value;
   }
-  function identity(){
-    const user=getUser(),id=user?.id?String(user.id):null,membership=String(user?.guildId||'');
-    if(id===s.ownerId&&membership===lastMembership)return user;
+  function identity({allowResume=false}={}){
+    const user=getUser(),id=user?.id?String(user.id):null,membership=String(user?.guildId||''),suspended=user?.isBanned===true||id===s.ownerId&&s.suspended&&!allowResume;
+    if(id===s.ownerId&&membership===lastMembership&&suspended===s.suspended)return user;
+    const wasSuspended=s.suspended;s.suspended=suspended;
     const changed=id!==s.ownerId;epoch++;viewEpoch++;summaryBusy=viewBusy=readBusy=false;readQueued=lastRead=0;sendPromise=null;lastMembership=membership;
     s.ownerId=id;s.sending=false;s.loading=false;s.loadingOlder=false;s.threads=[];s.messages=[];s.thread=null;s.loaded=false;s.nextCursor=null;s.error='';s.status='';s.unreadCount=s.unreadThreads=0;
-    if(changed){s.pending=id?validPending(readStore(key('pending'),null),id):null;s.draft='';s.draftKey='';s.target=null;s.targetPlayerId=null;s.view='inbox';}
+    if(changed||suspended||wasSuspended){s.pending=id&&!suspended?validPending(readStore(key('pending'),null),id):null;s.draft='';s.draftKey='';s.target=null;s.targetPlayerId=null;s.view='inbox';}
     else if(s.view==='thread'){s.view='inbox';s.draft='';s.draftKey='';s.status='所属が変わったため、書状の閲覧権限を確認し直します。';}
     if(!id){s.view='inbox';s.error='書状は領主登録・ログイン後に利用できます。';}
+    if(suspended)s.error='この領主は利用停止中のため、書状を利用できません。BAN解除後に同じ領主で利用を再開できます。';
     emit('identity');return user;
   }
-  function current(e,owner){const user=getUser();return !disposed&&epoch===e&&s.ownerId===owner&&String(user?.id||'')===String(owner||'')&&String(user?.guildId||'')===lastMembership;}
-  async function call(route,options){const e=epoch,owner=s.ownerId;const result=await request(route,options);if(!current(e,owner)){const error=Error('接続する領主が変わりました。');error.code='STALE_IDENTITY';throw error;}return result;}
+  function current(e,owner){const user=getUser();return !disposed&&!s.suspended&&user?.isBanned!==true&&epoch===e&&s.ownerId===owner&&String(user?.id||'')===String(owner||'')&&String(user?.guildId||'')===lastMembership;}
+  function suspendAccount(message){
+    if(s.suspended)return;s.suspended=true;epoch++;viewEpoch++;summaryBusy=viewBusy=readBusy=false;sendPromise=null;readQueued=lastRead=0;cancel(timer);timer=null;
+    Object.assign(s,{threads:[],messages:[],thread:null,target:null,targetPlayerId:null,pending:null,draft:'',draftKey:'',view:'inbox',unreadCount:0,unreadThreads:0,nextCursor:null,loaded:false,loading:false,loadingOlder:false,sending:false,error:message||'この領主は利用停止中です。BAN解除後に同じ領主で利用を再開できます。',status:''});emit('banned');
+  }
+  function observeContentRevision(value){
+    if(!Number.isSafeInteger(value)||value<0)return true;
+    if(s.contentRevision!==null&&value<s.contentRevision)return false;
+    if(s.contentRevision===value)return true;
+    const changed=s.contentRevision!==null||s.messages.length>0||s.threads.length>0;s.contentRevision=value;
+    if(changed){contentEpoch++;s.messages=[];s.threads=[];s.nextCursor=null;s.loaded=false;s.hasOlder=false;s.nextBefore=null;s.hasNewer=false;s.unreadCount=s.unreadThreads=0;s.threadNeedsReset=s.view==='thread';if(s.thread)s.thread={...s.thread,lastMessage:null};emit('content-reset');}
+    return true;
+  }
+  async function call(route,options){
+    const e=epoch,owner=s.ownerId,revisionEpoch=contentEpoch;
+    if(s.suspended)throw Object.assign(Error('この領主は利用停止中です。'),{code:'ACCOUNT_BANNED',status:403});
+    let result;try{result=await request(route,options);}catch(error){if(error.code==='ACCOUNT_BANNED'&&current(e,owner))suspendAccount(error.message);throw error;}
+    if(!current(e,owner)){const error=Error('接続する領主が変わりました。');error.code='STALE_IDENTITY';throw error;}
+    if(!observeContentRevision(result.contentRevision)||revisionEpoch!==contentEpoch&&!Number.isSafeInteger(result.contentRevision)){const error=Error('削除後の新しい書状を確認しています。');error.code='STALE_CONTENT';throw error;}
+    return result;
+  }
   function setSummary(result){s.unreadCount=Math.max(0,Number(result?.unreadCount)||0);s.unreadThreads=Math.max(0,Number(result?.unreadThreads)||0);}
   function applyPlayerEvaluations(result){
     const updates=new Map((Array.isArray(result?.playerEvaluations)?result.playerEvaluations:[]).filter(row=>row&&typeof row.playerId==='string'&&Object.hasOwn(row,'evaluation')).map(row=>[row.playerId,row.evaluation]));if(!updates.size)return;
@@ -58,41 +81,41 @@ function createController(options={}){
     update(s.target);for(const message of s.messages)update(message,'authorId','authorEvaluation');
     for(const thread of [...s.threads,...(s.thread?[s.thread]:[])]){for(const person of [thread.peer,thread.sender,thread.contextPlayer])update(person);update(thread.lastMessage,'authorId','authorEvaluation');}
   }
-  function schedule(){cancel(timer);timer=null;if(!disposed&&visible())timer=later(tick,s.open&&s.view==='thread'?5000:15000);}
-  async function refreshSummary(){identity();if(!s.ownerId||summaryBusy||disposed||!visible())return;summaryBusy=true;const e=epoch;try{const result=await call('/letters/summary');setSummary(result);applyPlayerEvaluations(result);emit('summary');}catch(error){if(error.code!=='STALE_IDENTITY'&&s.open&&!s.loaded){s.error=error.message;emit();}}finally{if(e===epoch)summaryBusy=false;}}
-  async function tick(){if(disposed)return;identity();if(visible()&&s.ownerId){await refreshSummary();if(s.open){if(s.view==='inbox')await loadInbox();else if(s.view==='thread')await loadThread(s.thread?.id,{refresh:true});}}schedule();}
+  function schedule(){cancel(timer);timer=null;if(!disposed&&!s.suspended&&visible())timer=later(tick,s.open&&s.view==='thread'?5000:15000);}
+  async function refreshSummary(){identity();if(!s.ownerId||s.suspended||summaryBusy||disposed||!visible())return;summaryBusy=true;const e=epoch;try{const result=await call('/letters/summary');setSummary(result);applyPlayerEvaluations(result);emit('summary');}catch(error){if(e===epoch&&error.code!=='STALE_IDENTITY'&&s.open&&!s.loaded){s.error=error.message;emit();}}finally{if(e===epoch)summaryBusy=false;}}
+  async function tick(){if(disposed)return;identity();if(visible()&&s.ownerId&&!s.suspended){await refreshSummary();if(s.open&&!s.suspended){if(s.view==='inbox')await loadInbox();else if(s.view==='thread')await loadThread(s.thread?.id,{refresh:true});}}schedule();}
   function draftKey(){return s.view==='thread'&&s.thread?'thread:'+s.thread.id:s.view==='compose'&&s.targetPlayerId?'compose:'+s.targetPlayerId+':'+s.destination+(s.destination==='guild'?':'+(s.guildId||'none'):''):'';}
   function useDraft(fallback=''){s.draftKey=draftKey();const saved=s.draftKey?readStore(key('draft:'+s.draftKey),null):null;s.draft=typeof saved==='string'?saved:fallback;}
-  function setDraft(value){if(!s.ownerId)return;s.draft=String(value??'').slice(0,8000);if(s.draftKey&&!writeStore(key('draft:'+s.draftKey),s.draft)){s.status='下書きを端末に保存できません。この画面を開いたままにしてください。';}emit('draft');}
+  function setDraft(value){if(!s.ownerId||s.suspended)return;s.draft=String(value??'').slice(0,8000);if(s.draftKey&&!writeStore(key('draft:'+s.draftKey),s.draft)){s.status='下書きを端末に保存できません。この画面を開いたままにしてください。';}emit('draft');}
   async function loadInbox({more=false}={}){
-    if(!s.ownerId||viewBusy||more&&!s.nextCursor)return;viewBusy=true;const e=epoch,v=viewEpoch;const cursor=more?s.nextCursor:null;if(!s.loaded)s.loading=true;emit('loading');
-    try{const result=await call('/letters?limit=30'+(cursor?'&cursor='+encodeURIComponent(cursor):''));if(v!==viewEpoch||s.view!=='inbox')return;s.threads=more?[...new Map([...s.threads,...result.threads].map(t=>[t.id,t])).values()]:result.threads||[];s.nextCursor=result.nextCursor||null;s.loaded=true;s.error='';setSummary(result);applyPlayerEvaluations(result);emit(more?'inbox-more':'inbox');}
+    if(!s.ownerId||s.suspended||viewBusy||more&&!s.nextCursor)return;viewBusy=true;const e=epoch,v=viewEpoch,revisionEpoch=contentEpoch;let reload=false;const cursor=more?s.nextCursor:null;if(!s.loaded)s.loading=true;emit('loading');
+    try{const result=await call('/letters?limit=30'+(cursor?'&cursor='+encodeURIComponent(cursor):'')+(s.contentRevision!==null?'&contentRevision='+s.contentRevision:''));if(v!==viewEpoch||s.view!=='inbox')return;if(more&&(revisionEpoch!==contentEpoch||result.reset===true)){reload=true;return;}s.threads=more?[...new Map([...s.threads,...result.threads].map(t=>[t.id,t])).values()]:result.threads||[];s.nextCursor=result.nextCursor||null;s.loaded=true;s.error='';setSummary(result);applyPlayerEvaluations(result);emit(more?'inbox-more':'inbox');}
     catch(error){if(current(e,s.ownerId)&&v===viewEpoch&&error.code!=='STALE_IDENTITY'){s.error=error.message;emit();}}
-    finally{if(e===epoch&&v===viewEpoch){viewBusy=false;s.loading=false;emit('loading');}}
+    finally{if(e===epoch&&v===viewEpoch){viewBusy=false;s.loading=false;emit('loading');if(reload)await loadInbox();}}
   }
-  async function openInbox(){identity();viewEpoch++;viewBusy=false;s.open=true;s.view='inbox';s.thread=null;s.messages=[];s.target=null;s.draft='';s.draftKey='';s.error=s.ownerId?'':'書状は領主登録・ログイン後に利用できます。';s.status='';emit('navigation');if(s.ownerId)await loadInbox();schedule();}
+  async function openInbox(){identity();viewEpoch++;viewBusy=false;s.open=true;s.view='inbox';s.thread=null;s.messages=[];s.target=null;s.draft='';s.draftKey='';s.error=s.suspended?'この領主は利用停止中のため、書状を利用できません。':s.ownerId?'':'書状は領主登録・ログイン後に利用できます。';s.status='';emit('navigation');if(s.ownerId)await loadInbox();schedule();}
   async function recipient({confirm=false}={}){
-    const id=s.targetPlayerId,e=epoch,v=viewEpoch;if(!id||!s.ownerId)return;
+    const id=s.targetPlayerId,e=epoch,v=viewEpoch;if(!id||!s.ownerId||s.suspended)return;
     s.loading=true;emit('loading');
     try{const result=await call('/letters/recipient?playerId='+encodeURIComponent(id));if(v!==viewEpoch||s.view!=='compose'||id!==s.targetPlayerId)return;s.target=result.player;if(!confirm)s.guildId=s.destination==='guild'?result.player.guildId||null:null;const previous=s.draft;useDraft(previous);s.error=s.destination==='guild'&&!result.player.guildId?'この領主はギルドに所属していません。領主本人に書状を送れます。':'';emit('recipient');}
     catch(error){if(e===epoch&&v===viewEpoch&&error.code!=='STALE_IDENTITY'){s.error=error.message;emit();}}
     finally{if(e===epoch&&v===viewEpoch){s.loading=false;emit('loading');}}
   }
   async function openCompose({playerId,destination='player'}={}){
-    identity();if(!ID.test(String(playerId||''))||String(playerId)===s.ownerId)return openInbox();viewEpoch++;viewBusy=false;s.open=true;s.view='compose';s.targetPlayerId=String(playerId);s.target=null;s.destination=destination==='guild'?'guild':'player';s.guildId=null;s.needsTargetConfirm=false;s.thread=null;s.messages=[];s.draft='';s.draftKey='';s.error='';s.status='';emit('navigation');if(s.ownerId)await recipient();else{s.error='書状は領主登録・ログイン後に利用できます。';emit();}schedule();
+    identity();if(s.suspended)return openInbox();if(!ID.test(String(playerId||''))||String(playerId)===s.ownerId)return openInbox();viewEpoch++;viewBusy=false;s.open=true;s.view='compose';s.targetPlayerId=String(playerId);s.target=null;s.destination=destination==='guild'?'guild':'player';s.guildId=null;s.needsTargetConfirm=false;s.thread=null;s.messages=[];s.draft='';s.draftKey='';s.error='';s.status='';emit('navigation');if(s.ownerId)await recipient();else{s.error='書状は領主登録・ログイン後に利用できます。';emit();}schedule();
   }
-  function setDestination(value){if(!['player','guild'].includes(value)||!s.target)return;const previous=s.draft;s.destination=value;s.guildId=value==='guild'?s.target.guildId||null:null;s.needsTargetConfirm=false;useDraft(previous);s.error=value==='guild'&&!s.guildId?'この領主はギルドに所属していません。':'';emit('destination');}
+  function setDestination(value){if(s.suspended)return;if(!['player','guild'].includes(value)||!s.target)return;const previous=s.draft;s.destination=value;s.guildId=value==='guild'?s.target.guildId||null:null;s.needsTargetConfirm=false;useDraft(previous);s.error=value==='guild'&&!s.guildId?'この領主はギルドに所属していません。':'';emit('destination');}
   async function loadThread(id,{refresh=false,older=false}={}){
-    if(!THREAD.test(String(id||''))||!s.ownerId||viewBusy||older&&!s.nextBefore)return;
-    const e=epoch,v=viewEpoch;viewBusy=true;s.loadingOlder=older;if(!refresh&&!older)s.loading=true;emit('loading');
-    const highest=s.messages.at(-1)?.seq||0,query=older?'before='+s.nextBefore:refresh?'after='+highest:'limit=40';
-    try{const result=await call('/letters/'+id+'?'+query);if(v!==viewEpoch||s.view!=='thread'||s.thread?.id!==id)return;s.thread=result.thread;s.messages=refresh||older?mergeMessages(s.messages,result.messages||[]):result.messages||[];if(!refresh){s.hasOlder=Boolean(result.hasOlder);s.nextBefore=result.nextBefore||null;}s.hasNewer=Boolean(result.hasNewer);s.error='';s.loaded=true;applyPlayerEvaluations(result);emit(older?'older':refresh?'messages':'thread');}
+    if(!THREAD.test(String(id||''))||!s.ownerId||s.suspended||viewBusy||older&&!s.nextBefore&&!s.threadNeedsReset)return;
+    const e=epoch,v=viewEpoch,revisionEpoch=contentEpoch,resetting=s.threadNeedsReset;viewBusy=true;s.loadingOlder=older&&!resetting;if(!refresh&&!older||resetting)s.loading=true;emit('loading');
+    const highest=s.messages.at(-1)?.seq||0,query=(resetting?'limit=40':older?'before='+s.nextBefore:refresh?'after='+highest:'limit=40')+(s.contentRevision!==null?'&contentRevision='+s.contentRevision:'');
+    try{const result=await call('/letters/'+id+'?'+query);if(v!==viewEpoch||s.view!=='thread'||s.thread?.id!==id)return;const replacing=resetting||result.reset===true||revisionEpoch!==contentEpoch||!refresh&&!older;s.thread=result.thread;s.messages=replacing?result.messages||[]:mergeMessages(s.messages,result.messages||[]);if(!refresh||replacing){s.hasOlder=Boolean(result.hasOlder);s.nextBefore=result.nextBefore||null;}s.hasNewer=Boolean(result.hasNewer);s.threadNeedsReset=false;s.error='';s.loaded=true;applyPlayerEvaluations(result);emit(replacing?'thread':older?'older':'messages');}
     catch(error){if(e!==epoch||v!==viewEpoch||error.code==='STALE_IDENTITY')return;s.error=error.message;if([403,404].includes(error.status)){s.messages=[];s.thread=null;s.view='inbox';s.threads=[];s.loaded=false;s.draft='';s.draftKey='';viewEpoch++;viewBusy=false;emit('revoked');}else emit();}
     finally{if(e===epoch&&v===viewEpoch){viewBusy=false;s.loading=false;s.loadingOlder=false;emit('loading');}}
   }
-  async function openThread(id){identity();if(!THREAD.test(String(id||'')))return;viewEpoch++;viewBusy=false;s.view='thread';s.open=true;s.thread=s.threads.find(t=>t.id===id)||{id,title:'書状',kind:'player'};s.messages=[];s.hasOlder=false;s.nextBefore=null;s.hasNewer=false;s.error='';s.status='';lastRead=readQueued=0;useDraft();emit('navigation');await loadThread(id);schedule();}
+  async function openThread(id){identity();if(s.suspended)return openInbox();if(!THREAD.test(String(id||'')))return;viewEpoch++;viewBusy=false;s.view='thread';s.open=true;s.thread=s.threads.find(t=>t.id===id)||{id,title:'書状',kind:'player'};s.messages=[];s.hasOlder=false;s.nextBefore=null;s.hasNewer=false;s.error='';s.status='';lastRead=readQueued=0;useDraft();emit('navigation');await loadThread(id);schedule();}
   async function markRead(){
-    if(!s.open||s.view!=='thread'||!s.thread||!s.messages.length||!visible()||disposed)return;const through=s.messages.at(-1).seq;if(through<=lastRead)return;readQueued=Math.max(readQueued,through);if(readBusy)return;
+    if(s.suspended||!s.open||s.view!=='thread'||!s.thread||!s.messages.length||!visible()||disposed)return;const through=s.messages.at(-1).seq;if(through<=lastRead)return;readQueued=Math.max(readQueued,through);if(readBusy)return;
     readBusy=true;const e=epoch,v=viewEpoch,id=s.thread.id,requested=readQueued;readQueued=0;
     try{const result=await call('/letters/'+id+'/read',{method:'POST',data:{through:requested}});if(v!==viewEpoch||s.thread?.id!==id)return;lastRead=Math.max(lastRead,Number(result.through)||0);setSummary(result);if(lastRead>=s.thread.lastSeq)s.thread.unreadCount=0;emit('read');}
     catch(error){if(e===epoch&&v===viewEpoch&&error.code!=='STALE_IDENTITY'&&[403,404].includes(error.status)){s.messages=[];s.thread=null;s.threads=[];s.view='inbox';s.error=error.message;viewEpoch++;viewBusy=false;emit('revoked');}}
@@ -100,7 +123,7 @@ function createController(options={}){
   }
   function clearSentDraft(record){const name=key('draft:'+record.draftKey),stored=readStore(name,null);if(stored===record.originalDraft)removeStore(name);if(s.draftKey===record.draftKey&&s.draft===record.originalDraft)s.draft='';}
   function sendRecord(record){
-    if(sendPromise)return sendPromise;const e=epoch,v=viewEpoch,owner=s.ownerId;s.sending=true;s.error='';s.status='書状を届けています…';emit('sending');
+    if(s.suspended)return Promise.resolve(false);if(sendPromise)return sendPromise;const e=epoch,v=viewEpoch,owner=s.ownerId;s.sending=true;s.error='';s.status='書状を届けています…';emit('sending');
     sendPromise=(async()=>{try{
       const result=await call(record.route,{method:'POST',data:clone(record.data)});if(!current(e,owner))return false;
       const unchangedDraft=s.draftKey===record.draftKey&&s.draft===record.originalDraft;s.pending=null;removeStore(key('pending'));clearSentDraft(record);s.status=result.idempotent?'書状が届いていることを確認しました。':'書状を届けました。';s.error='';
@@ -115,20 +138,20 @@ function createController(options={}){
     }finally{if(e===epoch){s.sending=false;sendPromise=null;emit('sending');}}})();return sendPromise;
   }
   function send(){
-    identity();if(sendPromise)return sendPromise;if(!s.ownerId)return Promise.resolve(false);if(s.pending){s.error='先の書状の送信結果を確認してから、新しい書状を送ってください。';emit();return Promise.resolve(false);}
+    identity();if(sendPromise)return sendPromise;if(!s.ownerId||s.suspended)return Promise.resolve(false);if(s.pending){s.error='先の書状の送信結果を確認してから、新しい書状を送ってください。';emit();return Promise.resolve(false);}
     const text=normalized(s.draft);if(!text||textLength(text)>MAX_TEXT){s.error='書状は1～1,000文字で入力してください。';emit();return Promise.resolve(false);}
     let route,data;if(s.view==='thread'&&s.thread?.canReply!==false){route='/letters/'+s.thread.id+'/messages';data={requestId:uuid(),text};}
     else if(s.view==='compose'&&s.target&&!s.needsTargetConfirm&&(s.destination==='player'||s.guildId)){route='/letters';data={requestId:uuid(),targetPlayerId:s.target.id,destination:s.destination,...(s.destination==='guild'?{guildId:s.guildId}:{}),text};}
     else{s.error='宛先を確認して選び直してください。';emit();return Promise.resolve(false);}
     const record={ownerId:s.ownerId,route,data,draftKey:s.draftKey,originalDraft:s.draft,createdAt:now()};if(!writeStore(key('pending'),record)){s.error='送信番号を端末に保存できません。ブラウザーの保存設定を確認してください。';emit();return Promise.resolve(false);}s.pending=record;return sendRecord(record);
   }
-  function retry(){identity();return s.pending?sendRecord(s.pending):Promise.resolve(false);}
+  function retry(){identity();return s.pending&&!s.suspended?sendRecord(s.pending):Promise.resolve(false);}
   function forgetPending(){if(s.sending)return;s.pending=null;removeStore(key('pending'));s.status='送信記録を整理しました。すでに届いた書状は取り消されません。';emit();}
   function close(){s.open=false;emit('close');schedule();}
-  function refreshIdentity(){identity();if(s.open&&s.ownerId&&s.view==='inbox')loadInbox();refreshSummary();schedule();}
+  function refreshIdentity(){identity({allowResume:true});if(s.open&&s.ownerId&&s.view==='inbox')loadInbox();refreshSummary();schedule();}
   function start(){identity();refreshSummary();schedule();}
   function dispose(){disposed=true;epoch++;cancel(timer);timer=null;s.messages=[];s.threads=[];s.thread=null;}
-  return{getState:snapshot,start,refreshIdentity,openInbox,openCompose,openThread,setDestination,setDraft,send,retry,forgetPending,close,refresh:tick,markRead,loadMore:()=>loadInbox({more:true}),loadOlder:()=>loadThread(s.thread?.id,{older:true}),dispose};
+  return{getState:snapshot,start,refreshIdentity,observeContentRevision,suspendAccount,openInbox,openCompose,openThread,setDestination,setDraft,send,retry,forgetPending,close,refresh:tick,markRead,loadMore:()=>loadInbox({more:true}),loadOlder:()=>loadThread(s.thread?.id,{older:true}),dispose};
 }
 
 const paths={mail:'M3 5h18v14H3V5Zm0 1 9 7 9-7',close:'m6 6 12 12M18 6 6 18',people:'M9 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm-6 8v-2a6 6 0 0 1 12 0v2M17 5a3 3 0 0 1 0 6m1 3a5 5 0 0 1 3 4v2',refresh:'M20 8a9 9 0 0 0-15-3L2 8m0-5v5h5M4 16a9 9 0 0 0 15 3l3-3m0 5v-5h-5'};
@@ -139,17 +162,19 @@ function createView(doc,controller){
   doc.body.append(dialog);const $=selector=>dialog.querySelector(selector);let shell='',lastMessages='',renderedSeq=0,returnFocus=null,markTimer=null,lastUnread=-1;
   const date=value=>{const d=new Date(value);return Number.isFinite(d.getTime())?new Intl.DateTimeFormat('ja-JP',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}).format(d):'';};
   const form=()=>`<form class="letters-compose" data-letter-form><label for="letters-text">書状の本文</label><textarea id="letters-text" rows="3" maxlength="4000" placeholder="礼をもって言葉を届けましょう。"></textarea><div class="letters-compose-footer"><span data-letter-counter>0 / 1,000</span><button type="submit" class="letters-button is-primary" data-letter-send>書状を送る</button></div></form>`;
-  function viewShell(state){if(!state.ownerId)return`<div class="letters-empty">${icon('mail')}<h2>本拠から、領主へ書状を</h2><p>領主登録をすると、本人への書状や、所属ギルドへの連絡を送れます。</p><button type="button" class="letters-button is-primary" data-letter-action="register">領主登録・ログイン</button></div>`;if(state.view==='inbox')return'<section class="letters-inbox"><div class="letters-section-heading"><h2>届いた書状・送った書状</h2><p>共通フィールドで領主の本拠を選ぶと、新しい書状を書けます。</p></div><div class="letters-inbox-list" data-letter-inbox></div><button type="button" class="letters-button letters-more" data-letter-action="inbox-more" hidden>さらに表示</button></section>';if(state.view==='compose')return`<section class="letters-new"><div data-letter-target></div>${form()}</section>`;return`<section class="letters-thread"><header class="letters-thread-heading" data-letter-thread-heading></header><div class="letters-message-scroll" data-letter-scroll tabindex="0" aria-label="書状のやり取り"><button type="button" class="letters-button letters-more" data-letter-action="older" hidden>以前の書状を読む</button><div class="letters-message-list" data-letter-messages></div></div><button type="button" class="letters-new-messages" data-letter-action="latest" hidden>新しい書状があります · 最新へ</button>${form()}</section>`;}
+  function viewShell(state){if(state.suspended)return'<div class="letters-empty"><h2>この領主は利用停止中です</h2><p>書状の閲覧と送信を停止しています。運営がBANを解除すると、同じ領主で再開できます。削除済みの本文は復元されません。</p></div>';if(!state.ownerId)return`<div class="letters-empty">${icon('mail')}<h2>本拠から、領主へ書状を</h2><p>領主登録をすると、本人への書状や、所属ギルドへの連絡を送れます。</p><button type="button" class="letters-button is-primary" data-letter-action="register">領主登録・ログイン</button></div>`;if(state.view==='inbox')return'<section class="letters-inbox"><div class="letters-section-heading"><h2>届いた書状・送った書状</h2><p>共通フィールドで領主の本拠を選ぶと、新しい書状を書けます。</p></div><div class="letters-inbox-list" data-letter-inbox></div><button type="button" class="letters-button letters-more" data-letter-action="inbox-more" hidden>さらに表示</button></section>';if(state.view==='compose')return`<section class="letters-new"><div data-letter-target></div>${form()}</section>`;return`<section class="letters-thread"><header class="letters-thread-heading" data-letter-thread-heading></header><div class="letters-message-scroll" data-letter-scroll tabindex="0" aria-label="書状のやり取り"><button type="button" class="letters-button letters-more" data-letter-action="older" hidden>以前の書状を読む</button><div class="letters-message-list" data-letter-messages></div></div><button type="button" class="letters-new-messages" data-letter-action="latest" hidden>新しい書状があります · 最新へ</button>${form()}</section>`;}
   function requestRead(){global.cancelAnimationFrame?.(markTimer);markTimer=global.requestAnimationFrame?.(()=>{const scroll=$('[data-letter-scroll]');if(dialog.open&&!doc.hidden&&scroll&&scroll.scrollHeight-scroll.clientHeight-scroll.scrollTop<64)controller.markRead();});}
   function render(state){
+    if(['identity','content-reset','banned'].includes(state.change)){shell='';lastMessages='';renderedSeq=0;$('[data-letter-main]').innerHTML='';$('[data-letter-pending]').innerHTML='';$('[data-letter-pending]').hidden=true;}
     if(lastUnread!==state.unreadCount){lastUnread=state.unreadCount;global.dispatchEvent?.(new global.CustomEvent('sengoku:letters-updated',{detail:{count:state.unreadCount,ownerId:state.ownerId}}));}
     if(state.open&&!dialog.open){returnFocus=doc.activeElement;dialog.showModal();}else if(!state.open&&dialog.open){dialog.close();return;}
     if(!state.open)return;
-    const key=state.ownerId+':'+state.view+':'+(state.view==='thread'?state.thread?.id:state.view==='compose'?state.targetPlayerId:'');
+    const key=state.ownerId+':'+state.suspended+':'+state.view+':'+(state.view==='thread'?state.thread?.id:state.view==='compose'?state.targetPlayerId:'');
     if(shell!==key){shell=key;lastMessages='';renderedSeq=0;$('[data-letter-main]').innerHTML=viewShell(state);$('[data-letter-main]').scrollTop=0;if(state.view==='compose')global.setTimeout(()=>$('textarea')?.focus({preventScroll:true}),0);}
     const feedback=$('[data-letter-feedback]');feedback.textContent=state.error||state.status||'';feedback.hidden=!feedback.textContent;feedback.classList.toggle('is-error',Boolean(state.error));
     const pending=$('[data-letter-pending]');pending.hidden=!state.pending;const pendingHTML=state.pending?`<div><strong>${state.sending?'書状を送信中です':'送信結果を確認する書状があります'}</strong><span>同じ送信番号で確認します。二重には届きません。</span></div><button type="button" class="letters-button" data-letter-action="retry"${state.sending?' disabled':''}>${state.sending?'送信中…':'送信結果を確認'}</button><button type="button" class="letters-button is-subtle" data-letter-action="forget"${state.sending?' disabled':''}>記録を整理</button>`:'';if(pending.innerHTML!==pendingHTML)pending.innerHTML=pendingHTML;
     const badge=$('[data-letter-unread]');badge.textContent=state.unreadCount?String(Math.min(999,state.unreadCount)):'';badge.hidden=!state.unreadCount;
+    if(state.suspended)return;
     if(state.ownerId&&state.view==='inbox'){
       const list=$('[data-letter-inbox]'),main=$('[data-letter-main]'),top=main.scrollTop;
       const html=state.threads.map(thread=>`<button type="button" class="letters-inbox-row ${thread.unreadCount?'is-unread':''}" data-letter-action="thread" data-thread-id="${esc(thread.id)}"><span class="letters-thread-icon ${thread.kind==='guild'?'is-guild':''}">${icon(thread.kind==='guild'?'people':'mail')}</span><span class="letters-inbox-copy"><span class="letters-row-top"><strong>${threadTitle(thread,state.ownerId)}</strong><time datetime="${esc(thread.updatedAt)}">${esc(date(thread.updatedAt))}</time></span><span class="letters-kind">${thread.kind==='guild'?'ギルドへの連絡':'領主本人への書状'}${thread.unreadCount?`<b class="letters-count">未読 ${thread.unreadCount}</b>`:''}</span><span class="letters-preview">${thread.lastMessage?playerName(thread.lastMessage.authorName,thread.lastMessage.authorEvaluation):''}：${esc(thread.lastMessage?.text||'')}</span></span></button>`).join('')||`<div class="letters-empty">${icon('mail')}<h3>${state.loading?'書状を確認しています':'まだ書状はありません'}</h3><p>フィールドの本拠から「領主に書状」「所属ギルドに書状」を選んで送れます。</p></div>`;
@@ -177,7 +202,7 @@ function createView(doc,controller){
 }
 let singleton=null,view=null;
 function boot(){if(singleton||!global.document?.body)return;singleton=createController({onChange:state=>view?.render(state)});view=createView(global.document,singleton);global.document.addEventListener('visibilitychange',()=>singleton?.refresh());singleton.start();}
-const api={createController,scrollAfterUpdate,mergeMessages,textLength,escape:esc,openInbox(){boot();global.SengokuSocial?.close?.();return singleton?.openInbox();},openCompose(options){boot();global.SengokuSocial?.close?.();return singleton?.openCompose(options);},refreshIdentity(){singleton?.refreshIdentity();},close(){singleton?.close();},getState:()=>singleton?.getState(),dispose(){singleton?.dispose();view?.dispose();singleton=view=null;}};
+const api={createController,scrollAfterUpdate,mergeMessages,textLength,escape:esc,openInbox(){boot();global.SengokuSocial?.close?.();return singleton?.openInbox();},openCompose(options){boot();global.SengokuSocial?.close?.();return singleton?.openCompose(options);},refreshIdentity(){singleton?.refreshIdentity();},observeContentRevision(value){return singleton?.observeContentRevision(value);},suspendAccount(message){singleton?.suspendAccount(message);},close(){singleton?.close();},getState:()=>singleton?.getState(),dispose(){singleton?.dispose();view?.dispose();singleton=view=null;}};
 global.SengokuLetters=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;
 if(global.document){if(global.document.readyState==='loading')global.document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();}
 })(typeof window!=='undefined'?window:globalThis);

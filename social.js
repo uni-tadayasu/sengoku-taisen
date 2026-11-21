@@ -15,6 +15,8 @@ const guildRoleName=role=>({owner:'盟主',officer:'副盟主',member:'メンバ
 const busy=new Set(),controllers=new Set();
 let recovery=null,recoveryEpoch=0,recoveryHeld=false,adminRecoveryRequestId=null;
 let mailStatusBusy=false,meGeneration=0;
+s.accountBanned=null;s.accountAccessPending=null;s.contentRevision=null;
+let accountEpoch=0,contentEpoch=0;
 const recoveryTools=()=>{if(!global.SengokuDomainRecovery)throw Error('復旧機能を読み込めませんでした。画面を再読み込みしてください。');return global.SengokuDomainRecovery;};
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const $=selector=>dialog?.querySelector(selector);
@@ -59,6 +61,34 @@ function pauseGuildLists(){guildListGeneration++;treasuryBusy=rankingsBusy=false
 function clearGuildData({resetSection=true}={}){guildEpoch++;pauseGuildLists();s.guild=null;s.members=[];s.guildTreasury={guildId:null,balance:null,ledger:[],cursor:null,loaded:false,error:'',serverNow:null};if(resetSection)s.guildSection='chat';for(const key of s.chats.keys())if(key.startsWith('guild:'))s.chats.delete(key);for(const selector of ['#social-guild-ledger','#social-guild-balances','#social-guild-members']){const node=$(selector);if(node)node.textContent='';}if(s.confirm?.scope==='guild')clearConfirm();}
 function clearAdminData(){privilegeEpoch++;refreshOperatorRecoveryAccess();destroyAvatarEditor();clearRecentLogins();for(const key of s.chats.keys())if(key.startsWith('admin:'))s.chats.delete(key);s.adminPlayers=[];s.staff=[];s.staffCandidates=[];s.staffLoaded=false;s.staffQuery='';s.staffPage=1;s.staffCandidatePage=1;s.adminSection='chat';if(s.confirm)clearConfirm();}
 function clearPrivate(){clearAdminData();clearGuildData();s.mail=[];s.openedMail=null;s.guilds=[];s.players=[];s.friendId=null;s.chats.clear();s.confirm=null;s.pairCode=null;}
+function accountBannedError(){return Object.assign(Error(s.accountBanned?.message||'この領主は利用を停止されています。運営による解除後、同じ領主で再接続できます。'),{code:'ACCOUNT_BANNED',status:403});}
+function accountAccessError(){return Object.assign(Error(s.accountAccessPending?.message||'利用状態が変わったため、最新の保存と権限を確認しています。'),{code:'ACCOUNT_ACCESS_CHANGED',status:409});}
+function accountBannedView(){return '<section class="social-account-banned"><h2>この領主は利用停止中です</h2><p>'+esc(s.accountBanned?.message||'運営による利用停止が適用されています。')+'</p><code>'+esc(s.identity?.id||'')+'</code><p>運営がBANを解除すると、同じ領主で利用を再開できます。認証情報と保存された進行はこのまま保持します。削除されたチャット・書状の本文は復元されません。</p><button type="button" class="social-button primary" data-social="banned-recheck">接続を再確認</button></section>';}
+function accountAccessView(){return '<section class="social-account-banned"><h2>利用状態を再確認しています</h2><p>'+esc(s.accountAccessPending?.message||'アカウントの利用状態が変わりました。最新の保存と権限が確認できるまで、操作を待機しています。')+'</p><code>'+esc(s.identity?.id||'')+'</code><p>認証情報は保持されています。このまま同じ領主の状態を確認します。</p><button type="button" class="social-button primary" data-social="banned-recheck">接続を再確認</button></section>';}
+function markAccountAccessChanged(message){
+ if(!s.identity)return;accountEpoch++;s.accountBanned=null;s.accountAccessPending={playerId:String(s.identity.id),message:message||'利用状態が変わったため、最新の保存と権限を確認しています。'};
+ clearPrivate();s.user=null;s.friends=[];s.requests=[];s.unreadMail=s.unreadLetters=0;s.tab='profile';clearTimeout(pollTimer);pollTimer=null;
+ global.SengokuLetters?.refreshIdentity?.();global.SengokuTrade?.dispose?.();global.SengokuModeration?.refreshIdentity?.();
+ if(body)render();header();global.SengokuCloudSync?.invalidateAccountAccess?.(s.accountAccessPending);
+}
+function markAccountBanned(user,message){
+ const id=String(user?.id||s.identity?.id||'');if(!s.identity||id!==String(s.identity.id))throw staleIdentity();
+ const first=s.accountBanned?.playerId!==id;
+ s.user={...(String(s.user?.id)===id?s.user:{}),...user,id,isBanned:true,isAdmin:false,isStaff:false};
+ s.accountBanned={playerId:id,message:message||s.accountBanned?.message||'この領主は運営により利用を停止されています。'};s.accountAccessPending=null;
+ if(first){accountEpoch++;clearPrivate();s.friends=[];s.requests=[];s.unreadMail=s.unreadLetters=0;s.onlinePlayers=[];s.onlineLoaded=false;s.onlineCursor=null;s.tab='profile';clearTimeout(pollTimer);pollTimer=null;global.SengokuTrade?.dispose?.();}
+ global.SengokuLetters?.refreshIdentity?.();global.SengokuModeration?.refreshIdentity?.();
+ if(body)render();header();
+ if(first)global.SengokuBridge?.toast?.(s.accountBanned.message,true);
+}
+function observeContentRevision(value){
+ if(!Number.isSafeInteger(value)||value<0)return true;
+ if(s.contentRevision!==null&&value<s.contentRevision)return false;
+ if(s.contentRevision===value)return true;
+ const changed=s.contentRevision!==null||s.chats.size>0;s.contentRevision=value;
+ if(changed){contentEpoch++;s.chats.clear();const list=$('#social-message-list');if(list){list.innerHTML='';if(list.dataset)delete list.dataset.signature;}renderMessages();}
+ global.SengokuLetters?.observeContentRevision?.(value);return true;
+}
 function canShowOperatorRecovery(){return s.configLoaded&&s.config.adminClaimed===true&&s.config.adminRecoveryAvailable===true&&s.connected===true&&!recoveryHeld&&Boolean(s.identity)&&s.user?.isAdmin===true&&String(s.user.id)===String(s.identity.id);}
 function refreshOperatorRecoveryAccess(){
  const allowed=canShowOperatorRecovery(),host=$('[data-operator-recovery]');
@@ -68,20 +98,29 @@ function refreshOperatorRecoveryAccess(){
 function connected(value){s.connected=value;refreshOperatorRecoveryAccess();header();}
 async function api(route,{method='GET',data,auth=true,token,background=false,keepalive=false,identityEpoch}={}){
  const origin=base();if(!origin)throw Error('通信機能は現在利用できません。ゲーム本体は引き続き遊べます。');
+ if(s.accountBanned&&auth&&!(method==='GET'&&(route==='/me'||/^\/sync\?/.test(route))))throw accountBannedError();
+ if(s.accountAccessPending&&auth&&!(method==='GET'&&(route==='/me'||/^\/sync\?/.test(route))))throw accountAccessError();
  const loadingId=!background&&method!=='GET'?global.SengokuLoading?.begin('通信を届けています…'):null;
  const controller=new AbortController();controllers.add(controller);const timeout=setTimeout(()=>controller.abort(),12000);
  const headers={Accept:'application/json'};if(data!==undefined)headers['Content-Type']='application/json';
- const requestEpoch=identityEpoch??authEpoch,requestPrivilegeEpoch=privilegeEpoch,requestAvatarEpoch=avatarMutationEpoch,requestGuildEpoch=guildEpoch,requestGuildId=s.user?.guildId,implicitIdentity=identityEpoch!==undefined||(token===undefined&&(auth||route==='/session'||route==='/devices/link'||route==='/admin/recover'));
+ const requestEpoch=identityEpoch??authEpoch,requestAccountEpoch=accountEpoch,requestPrivilegeEpoch=privilegeEpoch,requestAvatarEpoch=avatarMutationEpoch,requestGuildEpoch=guildEpoch,requestGuildId=s.user?.guildId,implicitIdentity=identityEpoch!==undefined||(token===undefined&&(auth||route==='/session'||route==='/devices/link'||route==='/admin/recover'));
  if(implicitIdentity&&requestEpoch!==authEpoch){controllers.delete(controller);clearTimeout(timeout);if(loadingId)global.SengokuLoading?.end(loadingId);const e=Error('接続する領主が変わったため、以前の処理を取り消しました。');e.code='STALE_IDENTITY';throw e;}
  const bearer=token??(auth?s.identity?.token:null);if(bearer)headers.Authorization=`Bearer ${bearer}`;
  try{
   const response=await fetch(origin+route,{method,headers,body:data!==undefined?JSON.stringify(data):undefined,signal:controller.signal,credentials:'omit',cache:'no-store',keepalive});
   let result;try{result=await response.json();}catch(_){throw Error('通信の応答を読み取れませんでした。時間をおいてお試しください。');}
-  if(implicitIdentity&&requestEpoch!==authEpoch){const stale=Error('接続する領主が変わったため、以前の通信処理を取り消しました。');stale.code='STALE_IDENTITY';throw stale;}
-  if(!response.ok||result.ok===false){const error=Error(result?.error?.message||'通信処理を完了できませんでした。');error.code=result?.error?.code;error.status=response.status;error.data=result;if(implicitIdentity&&auth&&bearer===s.identity?.token&&requestEpoch===authEpoch&&requestPrivilegeEpoch===privilegeEpoch&&s.user){if(['STAFF_CHAT_REQUIRED','STAFF_REQUIRED'].includes(error.code))acceptUser({...s.user,isAdmin:false,isStaff:false});else if(response.status===401)acceptUser(null);else if(error.code==='GUILD_REQUIRED'&&requestGuildEpoch===guildEpoch&&String(requestGuildId)===String(s.user.guildId)&&(!data?.guildId||String(data.guildId)===String(requestGuildId)))acceptUser({...s.user,guildId:null,guildName:null,guildRole:null});}throw error;}
+  if(implicitIdentity&&(requestEpoch!==authEpoch||requestAccountEpoch!==accountEpoch)){const stale=Error('接続する領主または利用状態が変わったため、以前の通信処理を取り消しました。');stale.code='STALE_IDENTITY';throw stale;}
+  if((!response.ok||result.ok===false)&&result?.error?.code==='ACCOUNT_BANNED'&&implicitIdentity&&auth&&bearer===s.identity?.token){
+   const first=!s.accountBanned;markAccountBanned({id:s.identity.id},result.error.message);
+   if(first)global.SengokuCloudSync?.suspendAccount?.({playerId:String(s.identity.id),message:s.accountBanned.message});
+   throw Object.assign(accountBannedError(),{data:result});
+  }
+  if((!response.ok||result.ok===false)&&result?.error?.code==='ACCOUNT_ACCESS_CHANGED'&&implicitIdentity&&auth&&bearer===s.identity?.token){markAccountAccessChanged(result.error.message);throw Object.assign(accountAccessError(),{data:result});}
+  if(!response.ok||result.ok===false){const error=Error(result?.error?.message||'通信処理を完了できませんでした。');error.code=result?.error?.code;error.status=response.status;error.data=result;if(implicitIdentity&&auth&&bearer===s.identity?.token&&requestEpoch===authEpoch&&requestPrivilegeEpoch===privilegeEpoch&&s.user){if(['STAFF_CHAT_REQUIRED','STAFF_REQUIRED','ADMIN_REQUIRED'].includes(error.code))acceptUser({...s.user,isAdmin:false,isStaff:false});else if(response.status===401)acceptUser(null);else if(error.code==='GUILD_REQUIRED'&&requestGuildEpoch===guildEpoch&&String(requestGuildId)===String(s.user.guildId)&&(!data?.guildId||String(data.guildId)===String(requestGuildId)))acceptUser({...s.user,guildId:null,guildName:null,guildRole:null});}throw error;}
   if(implicitIdentity&&requestAvatarEpoch!==avatarMutationEpoch&&s.user&&String(result.user?.id)===String(s.user.id))result.user={...result.user,avatarVersion:s.user.avatarVersion||null};
   if(implicitIdentity&&requestGuildEpoch!==guildEpoch&&s.user&&String(result.user?.id)===String(s.user.id))result.user={...result.user,guildId:s.user.guildId||null,guildName:s.user.guildName||null,guildRole:s.user.guildRole||null};
   if(implicitIdentity&&!/^\/sync(?:[/?]|$)/.test(route)&&requestPrivilegeEpoch!==privilegeEpoch&&s.user&&String(result.user?.id)===String(s.user.id))result.user={...result.user,isAdmin:s.user.isAdmin===true,isStaff:s.user.isStaff===true};
+  if(implicitIdentity&&!observeContentRevision(result.contentRevision)){const error=Error('削除後の新しい会話を確認しています。');error.code='STALE_CONTENT';throw error;}
   connected(true);return result;
  }catch(error){
   if(error.name==='AbortError')throw Error('通信が混み合っています。少し待って、もう一度お試しください。');
@@ -91,7 +130,7 @@ async function api(route,{method='GET',data,auth=true,token,background=false,kee
 async function act(key,button,work){if(busy.has(key))return;busy.add(key);if(button)button.disabled=true;try{await work();}catch(e){if(e.code!=='STALE_IDENTITY')toast(e.message||'処理を完了できませんでした。',true);}finally{busy.delete(key);if(button?.isConnected)button.disabled=false;}}
 function empty(title,detail,kind='chat'){return `<div class="social-empty">${icon(kind)}<h3>${esc(title)}</h3><p>${esc(detail)}</p></div>`;}
 function header(){
- if(!dialog)return;const status=$('#social-connection');if(status){status.textContent=s.user?(s.connected?'接続中':'通信未接続'):'登録は任意です';status.classList.toggle('online',Boolean(s.user&&s.connected));}
+ if(!dialog)return;const status=$('#social-connection');if(status){status.textContent=s.accountBanned?'利用停止中':s.accountAccessPending?'再確認中':s.user?(s.connected?'接続中':'通信未接続'):'登録は任意です';status.classList.toggle('online',Boolean(s.user&&s.connected));}
  const count=$('#social-online-count');if(count)count.textContent=s.configLoaded?`接続中 ${num(s.config.onlineCount)} 人`:'城主たちの集う場所';
  const totalUnread=s.unreadMail+s.unreadLetters,badge=launcher?.querySelector('.social-unread');if(badge){badge.textContent=totalUnread>99?'99+':String(totalUnread);badge.hidden=!totalUnread;}launcher?.setAttribute('aria-label',totalUnread?`交流の間を開く（未読 ${num(totalUnread)} 件）`:'交流の間を開く');
  const lettersBadge=$('[data-social-tab="letters"] .social-tab-count');if(lettersBadge)lettersBadge.textContent=s.unreadLetters?String(s.unreadLetters):'';
@@ -101,7 +140,7 @@ function renderAnnouncement(){
  if(!announcement)return;const notice=String(s.config.announcement??DEFAULT).slice(0,300),news=s.achievements.events.slice(0,3).map(e=>`${playerText(e.playerName,e.playerEvaluation)}：${e.title}`),text=[notice,...news].filter(Boolean).join('　◆　'),line=announcement.querySelector('.social-announcement-text');if(line.textContent!==text)line.textContent=text;
  announcement.hidden=s.configLoaded&&text.length===0;announcement.classList.toggle('is-paused',s.paused);const button=announcement.querySelector('.social-announcement-toggle');button.innerHTML=icon(s.paused?'play':'pause');button.setAttribute('aria-label',s.paused?'お知らせのスクロールを再開':'お知らせのスクロールを停止');button.setAttribute('aria-pressed',String(s.paused));
 }
-function tabs(){return[{id:'world',label:'世界',icon:'chat'},{id:'news',label:'御触書',icon:'flag'},{id:'online',label:'接続一覧',icon:'people'},{id:'sync',label:'端末同期',icon:'refresh'},{id:'recovery',label:'引き継ぎ',icon:'upload'},{id:'guild',label:'ギルド',icon:'flag'},{id:'guild-rankings',label:'ギルド順位',icon:'flag'},{id:'friends',label:'フレンド',icon:'people'},{id:'letters',label:'書状',icon:'mail'},{id:'trade',label:'交易',icon:'refresh'},{id:'mail',label:'郵便',icon:'mail'},{id:'profile',label:'領主',icon:'user'},...(hasAdminChat()?[{id:'admin',label:s.user.isAdmin?'運営':'運営チャット',icon:'shield'},{id:'recent-logins',label:'ログイン履歴',icon:'people'}]:[])];}
+function tabs(){if(s.accountBanned||s.accountAccessPending)return[{id:'profile',label:s.accountBanned?'利用停止':'利用状態',icon:'shield'}];return[{id:'world',label:'世界',icon:'chat'},{id:'news',label:'御触書',icon:'flag'},{id:'online',label:'接続一覧',icon:'people'},{id:'sync',label:'端末同期',icon:'refresh'},{id:'recovery',label:'引き継ぎ',icon:'upload'},{id:'guild',label:'ギルド',icon:'flag'},{id:'guild-rankings',label:'ギルド順位',icon:'flag'},{id:'friends',label:'フレンド',icon:'people'},{id:'letters',label:'書状',icon:'mail'},{id:'trade',label:'交易',icon:'refresh'},{id:'mail',label:'郵便',icon:'mail'},{id:'profile',label:'領主',icon:'user'},...(hasAdminChat()?[{id:'admin',label:s.user.isAdmin?'運営':'運営チャット',icon:'shield'},{id:'recent-logins',label:'ログイン履歴',icon:'people'}]:[])];}
 
 // Public records are emitted by accepted server transitions. No local log text
 // or private chat, treasury balance, or login history is ever sent to this feed.
@@ -153,7 +192,7 @@ function registerView(){
  return `<div class="social-welcome"><div class="social-welcome-seal">交</div><div class="social-eyebrow">THE COMMON ROOM</div><h2>領主たちと、言葉を交わす。</h2><p>世界の会話、仲間とのギルド、友との文。</p></div>${recoveryIntro}${registration}<div class="social-notice">登録は任意です。交流にはインターネット接続が必要です。領主の認証情報はこのブラウザに保存され、同じ領主の端末で進行を自動同期します。</div>${s.error?`<div class="social-feedback is-error">${esc(s.error)}</div>`:''}${!base()?'<div class="social-feedback is-error">通信機能は現在準備中です。城下町はそのままお楽しみいただけます。</div>':''}${s.identity?'<div class="social-center"><button class="social-text-button" data-social="reconnect">接続を確認する</button><button class="social-text-button danger" data-social="logout">この端末の接続を解除</button></div>':''}`;
 }
 function channel(){
- if(!s.user)return null;
+ if(!s.user||s.accountBanned)return null;
  if(s.tab==='world')return{channel:'world',target:null,title:'世界の広場',caption:'すべての領主が集う、開かれた会話です。'};
  if(s.tab==='guild'&&s.user.guildId&&s.guildSection==='chat')return{channel:'guild',target:null,title:s.user.guildName||'ギルド',caption:'このギルドの仲間だけが読める会話です。'};
  if(s.tab==='friends'&&s.friendId&&s.friends.some(f=>String(f.id)===String(s.friendId)))return{channel:'friend',target:s.friendId,title:s.friends.find(f=>String(f.id)===String(s.friendId))?.name||'友との文',player:s.friends.find(f=>String(f.id)===String(s.friendId)),caption:'選んだフレンドと二人で話します。'};
@@ -164,8 +203,8 @@ function chatView(c){return `<section class="social-chat"><div class="social-sec
 function renderMessages(){
  const c=channel(),list=$('#social-message-list');if(!c||!list)return;const cache=s.chats.get(chatKey(c)),messages=cache?.messages||[],nearBottom=list.scrollHeight-list.scrollTop-list.clientHeight<90,oldTop=list.scrollTop;
  if(!cache){list.innerHTML=empty('会話を読み込んでいます','しばらくお待ちください。');return;}
- if(!messages.length){list.innerHTML=empty('まだ、言葉は届いていません','最初のひと言から、交流を始めましょう。');return;}
- const signature=JSON.stringify(messages.map(m=>[m.id,m.name,m.isAdmin===true,m.isStaff===true,m.avatarVersion||'',evaluationKey(m.evaluation)]));if(list.dataset.signature===signature)return;
+ if(!messages.length){if(list.dataset)delete list.dataset.signature;list.innerHTML=empty('まだ、言葉は届いていません','最初のひと言から、交流を始めましょう。');return;}
+ const signature=JSON.stringify(messages.map(m=>[m.id,m.text,m.name,m.isAdmin===true,m.isStaff===true,m.avatarVersion||'',evaluationKey(m.evaluation),s.contentRevision]));if(list.dataset.signature===signature)return;
  list.innerHTML=messages.map(m=>`<article class="social-message ${String(m.userId)===String(s.user.id)?'own':''}">${socialAvatar({...m,id:m.userId})}<div class="social-message-content"><div class="social-message-meta"><strong>${playerName(m.name,m.evaluation,m.userId)}</strong>${role(m)}<time>${esc(date(m.createdAt))}</time></div><p>${esc(m.text)}</p></div></article>`).join('');list.dataset.signature=signature;
  if(nearBottom||!cache.rendered)list.scrollTop=list.scrollHeight;else list.scrollTop=oldTop;cache.rendered=true;
 }
@@ -287,12 +326,16 @@ async function loadRecentLogins({more=false}={}){
 function staleIdentity(){const e=Error('接続する領主が変わったため、以前の処理を取り消しました。');e.code='STALE_IDENTITY';return e;}
 function applyRoleAccess(user={}){const bridge=global.SengokuBridge,roles={isAdmin:user?.isAdmin===true,isStaff:user?.isStaff===true&&user?.isAdmin!==true,pending:!user?.id&&Boolean(s.identity)};if(bridge?.setRoleAccess)bridge.setRoleAccess(roles);else bridge?.setAdminAccess?.(roles.isAdmin);}
 function acceptUser(user,{fromSync=false}={}){
- if(!user){const wasAdminTab=['admin','recent-logins'].includes(s.tab);s.user=null;s.unreadMail=0;s.unreadLetters=0;s.mail=[];s.openedMail=null;global.SengokuLetters?.refreshIdentity?.();global.SengokuTrade?.refreshIdentity?.();clearAdminData();clearGuildData();if(wasAdminTab)s.tab='profile';if(!fromSync)applyRoleAccess();if(body&&(wasAdminTab||s.open)){clearConfirm();render();}return;}
+ if(user?.isBanned===true){markAccountBanned(user);return;}
+ if(!user&&s.accountBanned)return;
+ const wasBanned=Boolean(s.accountBanned),wasPending=Boolean(s.accountAccessPending);
+ if(!user){const wasAdminTab=['admin','recent-logins'].includes(s.tab);s.user=null;s.unreadMail=0;s.unreadLetters=0;s.mail=[];s.openedMail=null;global.SengokuLetters?.refreshIdentity?.();global.SengokuTrade?.refreshIdentity?.();global.SengokuModeration?.refreshIdentity?.();clearAdminData();clearGuildData();if(wasAdminTab)s.tab='profile';if(!fromSync)applyRoleAccess();if(body&&(wasAdminTab||s.open)){clearConfirm();render();}return;}
  if(!s.identity||String(user.id)!==String(s.identity.id))throw staleIdentity();
+ if(wasBanned||wasPending){s.accountBanned=null;s.accountAccessPending=null;accountEpoch++;}
  const previous=s.user,guildChanged=String(previous?.guildId||'')!==String(user.guildId||''),guildRoleChanged=(previous?.guildRole||'')!==(user.guildRole||''),roleChanged=(previous?.isAdmin===true)!==(user.isAdmin===true)||(previous?.isStaff===true)!==(user.isStaff===true&&user.isAdmin!==true),wasAdminTab=['admin','recent-logins'].includes(s.tab);
- s.user={...user,isAdmin:user.isAdmin===true,isStaff:user.isStaff===true&&user.isAdmin!==true};if(guildChanged||guildRoleChanged){clearGuildData({resetSection:guildChanged});if(s.open&&s.tab==='guild')render();}if(!fromSync)applyRoleAccess(s.user);
- if(roleChanged){clearAdminData();if(wasAdminTab&&!hasAdminChat())s.tab='profile';renderTabs();if(body&&(s.open||wasAdminTab)){clearConfirm();render();}if(s.open&&s.tab==='recent-logins'&&hasAdminChat())loadRecentLogins();}
- else if(!previous&&s.open&&!s.confirm)render();applyPlayerEvaluations([{playerId:s.user.id,evaluation:s.user.evaluation}]);if(!previous||guildChanged){global.SengokuLetters?.refreshIdentity?.();global.SengokuTrade?.refreshIdentity?.();}refreshProfileAvatar();header();
+ s.user={...user,isBanned:false,isAdmin:user.isAdmin===true,isStaff:user.isStaff===true&&user.isAdmin!==true};if(guildChanged||guildRoleChanged){clearGuildData({resetSection:guildChanged});if(s.open&&s.tab==='guild')render();}if(!fromSync)applyRoleAccess(s.user);
+ if(roleChanged){clearAdminData();global.SengokuModeration?.refreshIdentity?.();if(wasAdminTab&&!hasAdminChat())s.tab='profile';renderTabs();if(body&&(s.open||wasAdminTab)){clearConfirm();render();}if(s.open&&s.tab==='recent-logins'&&hasAdminChat())loadRecentLogins();}
+ else if((!previous||wasBanned||wasPending)&&s.open&&!s.confirm)render();applyPlayerEvaluations([{playerId:s.user.id,evaluation:s.user.evaluation}]);if(!previous||guildChanged||wasBanned||wasPending){global.SengokuLetters?.refreshIdentity?.();global.SengokuTrade?.refreshIdentity?.();}refreshProfileAvatar();header();
 }
 function startCloud(){
  if(recoveryHeld){global.SengokuCloudSync?.stop?.({pending:true});global.SengokuBridge?.setSyncAccess?.({linked:true,ready:false,writable:false,reason:'recovery',message:'引き継ぎが途中です。保存内容を確認するまで同期を停止しています。'});return;}
@@ -301,7 +344,7 @@ function startCloud(){
  if(!global.SengokuCloudSync){s.error='同期機能を読み込めませんでした。画面を再読み込みしてください。';return;}
  global.SengokuCloudSync.start({id:identity.id,request:(route,options)=>api(route,{...options,token:identity.token,identityEpoch:epoch,background:true}),onUser:user=>{if(epoch===authEpoch)acceptUser(user,{fromSync:true});}});
 }
-function installIdentity(identity,user){global.SengokuCloudSync?.stop?.({pending:true});authEpoch++;recoveryEpoch++;recovery=null;recoveryHeld=false;clearPrivate();s.identity=identity;s.user=user?{...user,isAdmin:false,isStaff:false}:null;s.friends=[];s.requests=[];s.unreadMail=0;s.unreadLetters=0;global.SengokuLetters?.refreshIdentity?.();global.SengokuTrade?.refreshIdentity?.();s.error='';refreshOperatorRecoveryAccess();if(s.tab==='recent-logins'){s.tab='profile';render();}applyRoleAccess();startCloud();}
+function installIdentity(identity,user){global.SengokuCloudSync?.stop?.({pending:true});authEpoch++;recoveryEpoch++;recovery=null;recoveryHeld=false;clearPrivate();s.accountBanned=null;s.accountAccessPending=null;accountEpoch++;s.identity=identity;s.user=user?{...user,isAdmin:false,isStaff:false}:null;s.friends=[];s.requests=[];s.unreadMail=0;s.unreadLetters=0;global.SengokuLetters?.refreshIdentity?.();global.SengokuTrade?.refreshIdentity?.();global.SengokuModeration?.refreshIdentity?.();s.error='';refreshOperatorRecoveryAccess();if(s.tab==='recent-logins'){s.tab='profile';render();}applyRoleAccess();startCloud();}
 async function loadOnline({more=false}={}){
  if(disposed||document.hidden||!s.open||s.tab!=='online'||onlineBusy)return;onlineBusy=true;clearTimeout(onlineTimer);const epoch=++onlineEpoch;
  try{const cursor=more?s.onlineCursor:null,r=await api('/online'+(cursor?'?cursor='+encodeURIComponent(cursor):''),{auth:false,background:true});if(epoch!==onlineEpoch||disposed)return;const incoming=Array.isArray(r.players)?r.players:[];s.onlinePlayers=more?[...new Map([...s.onlinePlayers,...incoming].map(p=>[String(p.id),p])).values()]:incoming;s.onlineTotal=Number(r.total)||0;s.onlineCursor=r.nextCursor||null;s.onlineLoaded=true;s.onlineError='';s.config.onlineCount=s.onlineTotal;header();if(s.open&&s.tab==='online'&&!s.confirm)render();}
@@ -345,7 +388,7 @@ function staffConfirmation(targetId,action){
 function adminView(){
  if(!hasAdminChat())return empty('運営とスタッフの画面です','この領主には参加権限がありません。','shield');
  if(!s.user.isAdmin)s.adminSection='chat';
- const sections=s.user.isAdmin?[['chat','運営チャット'],['staff','スタッフ管理'],['announcement','御触書'],['mail','システム便']]:[['chat','運営チャット']];if(!sections.some(([id])=>id===s.adminSection))s.adminSection='chat';let content='';
+ const sections=s.user.isAdmin?[['chat','運営チャット'],['staff','スタッフ管理'],['moderation','プレイヤー管理'],['announcement','御触書'],['mail','システム便']]:[['chat','運営チャット']];if(!sections.some(([id])=>id===s.adminSection))s.adminSection='chat';let content='';
  if(s.adminSection==='chat')content=chatView(channel());
  if(s.adminSection==='staff')content=staffView();
  if(s.adminSection==='announcement')content=`<form id="social-announcement-form" class="social-admin-form"><h2>御触書を届ける</h2><p>画面上部を流れる、全プレイヤー向けのお知らせです。</p><label for="social-announcement-input">お知らせ本文</label><textarea id="social-announcement-input" name="text" maxlength="300" rows="5">${esc(s.config.announcement)}</textarea><button class="social-button primary" type="submit">内容を確認する</button></form>`;
@@ -353,7 +396,7 @@ function adminView(){
  return `<div class="social-admin-heading">${icon('shield')}<div><span class="social-eyebrow">${s.user.isAdmin?'ADMINISTRATION':'STAFF ROOM'}</span><h2>${s.user.isAdmin?'運営の間':'運営チャット'} ${role(s.user)}</h2></div></div>${s.user.isAdmin?`<div class="social-subtabs">${sections.map(([id,label])=>`<button data-social="admin-section" data-id="${id}" class="${s.adminSection===id?'active':''}">${label}</button>`).join('')}</div>`:''}${content}`;
 }
 function render(){
- if(!body)return;destroyAvatarEditor();if(['admin','recent-logins'].includes(s.tab)&&!hasAdminChat())s.tab='world';renderTabs();header();clearConfirm();
+ if(!body)return;destroyAvatarEditor();if(s.accountBanned||s.accountAccessPending){renderTabs();header();clearConfirm();body.innerHTML=s.accountBanned?accountBannedView():accountAccessView();return;}if(['admin','recent-logins'].includes(s.tab)&&!hasAdminChat())s.tab='world';renderTabs();header();clearConfirm();
  body.innerHTML=s.tab==='news'?achievementsView():s.tab==='online'?onlineView():s.tab==='guild-rankings'?guildRankingsView():s.tab==='sync'?syncView():s.tab==='recovery'?recoveryView():!s.user?registerView():s.tab==='recent-logins'?recentLoginsView():s.tab==='world'?chatView(channel()):s.tab==='guild'?guildView():s.tab==='friends'?friendsView():s.tab==='mail'?mailView():s.tab==='profile'?profileView():adminView();renderMessages();mountProfileAvatar();refreshGuildTreasuryView();
 }
 function confirmUI({title,description,details,confirmLabel='実行する',danger=false,onConfirm,scope}){
@@ -372,14 +415,17 @@ async function loadConfig(){
  catch(_){s.config.adminRecoveryAvailable=false;connected(false);}finally{configBusy=false;if(!disposed&&!document.hidden){refreshMailStatus();configTimer=setTimeout(loadConfig,30000);}}
 }
 async function loadChat(){
- const c=channel();if(!c)return;const owner=s.identity?.id,epoch=privilegeEpoch,membershipEpoch=guildEpoch,key=chatKey(c),cache=s.chats.get(key)||{messages:[],after:0,rendered:false},params=new URLSearchParams({channel:c.channel});if(cache.after>0)params.set('after',String(cache.after));if(c.target)params.set('target',c.target);
- const r=await api('/chat?'+params);if(String(owner)!==String(s.identity?.id)||c.channel==='admin'&&(epoch!==privilegeEpoch||!hasAdminChat())||c.channel==='guild'&&(membershipEpoch!==guildEpoch||!s.user?.guildId))return;const map=new Map(cache.messages.map(m=>[String(m.id),m]));for(const m of r.messages||[])map.set(String(m.id),m);
- cache.messages=[...map.values()].sort((a,b)=>Number(a.id)-Number(b.id)).slice(-200);cache.after=Number(r.nextAfter)||cache.after;s.chats.set(key,cache);applyPlayerEvaluations([...(r.messages||[]).filter(m=>Object.hasOwn(m,'evaluation')).map(m=>({playerId:m.userId,evaluation:m.evaluation})),...(Array.isArray(r.playerEvaluations)?r.playerEvaluations:[])]);if(channel()&&chatKey(channel())===key)renderMessages();
+ const c=channel();if(!c)return;const owner=s.identity?.id,epoch=privilegeEpoch,membershipEpoch=guildEpoch,revisionEpoch=contentEpoch,key=chatKey(c),cache=s.chats.get(key)||{messages:[],after:0,rendered:false},params=new URLSearchParams({channel:c.channel});if(cache.after>0)params.set('after',String(cache.after));if(c.target)params.set('target',c.target);if(s.contentRevision!==null)params.set('contentRevision',String(s.contentRevision));
+ const r=await api('/chat?'+params);if(String(owner)!==String(s.identity?.id)||s.accountBanned||c.channel==='admin'&&(epoch!==privilegeEpoch||!hasAdminChat())||c.channel==='guild'&&(membershipEpoch!==guildEpoch||!s.user?.guildId))return;
+ if(revisionEpoch!==contentEpoch&&!Number.isSafeInteger(r.contentRevision))return;
+ const reset=r.reset===true||revisionEpoch!==contentEpoch,map=new Map((reset?[]:cache.messages).map(m=>[String(m.id),m]));for(const m of r.messages||[])map.set(String(m.id),m);
+ cache.messages=[...map.values()].sort((a,b)=>Number(a.id)-Number(b.id)).slice(-200);cache.after=reset?Number(r.nextAfter)||0:Number(r.nextAfter)||cache.after;cache.contentRevision=s.contentRevision;if(reset)cache.rendered=false;s.chats.set(key,cache);applyPlayerEvaluations([...(r.messages||[]).filter(m=>Object.hasOwn(m,'evaluation')).map(m=>({playerId:m.userId,evaluation:m.evaluation})),...(Array.isArray(r.playerEvaluations)?r.playerEvaluations:[])]);if(channel()&&chatKey(channel())===key)renderMessages();
 }
 async function loadGuild(){if(!s.user)return null;const epoch=authEpoch,membershipEpoch=guildEpoch,owner=String(s.identity?.id),guildId=String(s.user.guildId||''),r=await api(guildId?'/guild':'/guilds');if(epoch!==authEpoch||membershipEpoch!==guildEpoch||owner!==String(s.identity?.id)||guildId!==String(s.user?.guildId||''))return null;s.guild=r.guild||null;s.members=r.members||[];if(r.guilds)s.guilds=r.guilds;applyPlayerEvaluations([...s.members.filter(p=>Object.hasOwn(p,'evaluation')).map(p=>({playerId:p.id,evaluation:p.evaluation})),...(r.guilds||[]).filter(g=>Object.hasOwn(g,'ownerEvaluation')).map(g=>({playerId:g.ownerId,evaluation:g.ownerEvaluation}))]);refreshGuildMembers();return r;}
 async function loadMail(){const r=await api('/mail');s.mail=r.mail||[];applyPlayerEvaluations(s.mail.flatMap(mail=>mail.participants||[]));}
-function schedulePoll(){clearTimeout(pollTimer);pollTimer=null;if(!disposed&&s.open&&s.user&&!['news','online','sync','recovery','recent-logins','guild-rankings'].includes(s.tab)&&!(s.tab==='guild'&&s.guildSection==='treasury')&&!document.hidden)pollTimer=setTimeout(()=>refresh({silent:true}),5000);}
+function schedulePoll(){clearTimeout(pollTimer);pollTimer=null;if(!s.accountBanned&&!s.accountAccessPending&&!disposed&&s.open&&s.user&&!['news','online','sync','recovery','recent-logins','guild-rankings'].includes(s.tab)&&!(s.tab==='guild'&&s.guildSection==='treasury')&&!document.hidden)pollTimer=setTimeout(()=>refresh({silent:true}),5000);}
 async function refresh({view=false,silent=false}={}){
+ if(s.accountBanned||s.accountAccessPending){render();return;}
  if(s.tab==='news'){await loadAchievements();return;}
  if(s.tab==='guild-rankings'){await loadGuildRankings();return;}
  if(s.tab==='guild'&&s.guildSection==='treasury'){try{await loadMe();if(s.open&&!document.hidden&&s.tab==='guild'&&s.guildSection==='treasury')await loadGuildTreasury();}catch(error){if(!silent&&error.code!=='STALE_IDENTITY')toast(error.message,true);}finally{if(s.tab==='guild'&&s.guildSection==='treasury')scheduleGuildLists();else schedulePoll();}return;}
@@ -395,7 +441,7 @@ async function refresh({view=false,silent=false}={}){
  }catch(e){if(!silent&&e.code!=='STALE_IDENTITY')toast(e.message,true);if(e.status===401){acceptUser(null);s.error='領主情報を確認できませんでした。保存した領主データから再接続してください。';render();}}
  finally{pollBusy=false;schedulePoll();}
 }
-function open(tab='world'){if(disposed)return;if(tab==='letters'&&global.SengokuLetters){close();return global.SengokuLetters.openInbox();}if(tab==='trade'&&global.SengokuTrade){close();return global.SengokuTrade.openBox();}pauseRecentLogins();pauseGuildLists();clearTimeout(pollTimer);pollTimer=null;s.open=true;s.tab=tabs().some(t=>t.id===tab)?tab:'world';s.error='';render();if(!dialog.open)dialog.showModal();refresh({view:true});if(s.user&&!s.configLoaded)loadConfig();}
+function open(tab='world'){if(disposed)return;if(s.accountBanned||s.accountAccessPending)tab='profile';if(tab==='moderation'&&s.user?.isAdmin===true&&global.SengokuModeration){close();return global.SengokuModeration.open();}if(tab==='letters'&&global.SengokuLetters){close();return global.SengokuLetters.openInbox();}if(tab==='trade'&&global.SengokuTrade){close();return global.SengokuTrade.openBox();}pauseRecentLogins();pauseGuildLists();clearTimeout(pollTimer);pollTimer=null;s.open=true;s.tab=tabs().some(t=>t.id===tab)?tab:'world';s.error='';render();if(!dialog.open)dialog.showModal();refresh({view:true});if(s.user&&!s.configLoaded&&!s.accountBanned)loadConfig();}
 function close(){s.open=false;destroyAvatarEditor();pauseRecentLogins();pauseGuildLists();clearTimeout(onlineTimer);onlineTimer=null;clearTimeout(pollTimer);pollTimer=null;clearConfirm();if(dialog.open)dialog.close();}
 async function selectTab(tab){if(tab==='letters'&&global.SengokuLetters){close();await global.SengokuLetters.openInbox();return;}if(tab==='trade'&&global.SengokuTrade){close();await global.SengokuTrade.openBox();return;}pauseRecentLogins();pauseGuildLists();clearTimeout(pollTimer);pollTimer=null;clearTimeout(onlineTimer);onlineTimer=null;s.tab=tabs().some(t=>t.id===tab)?tab:'world';s.openedMail=null;render();await refresh({view:true});}
 function downloadJSON(filename,data){const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download=filename;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
@@ -422,6 +468,7 @@ async function click(event){
  if(command==='recovery-clear'){recoveryEpoch++;recovery=null;render();return;}
  if(command==='recovery-connect'){await act(command,button,async()=>confirmUI(recoveryConfirmation(id)));return;}
  if(command==='identity-export'){if(s.identity)downloadJSON('sengoku-lord-identity.json',{format:'sengoku-lord-identity',version:1,id:s.identity.id,token:s.identity.token,name:s.user?.name||''});return;}
+ if(command==='banned-recheck'){await act(command,button,async()=>{await global.SengokuCloudSync?.refresh?.();if(s.accountBanned)toast(s.accountBanned.message,true);else if(s.accountAccessPending)toast(s.accountAccessPending.message);else{render();toast('利用状態と最新の保存を確認しました。');}});return;}
  if(command==='reconnect'){await act(command,button,async()=>{await loadMe();s.error='';await global.SengokuCloudSync?.refresh?.();render();refresh({view:true});});return;}
  if(command==='sync-open'){await selectTab('sync');return;}
  if(command==='game-settings'){close();global.SengokuBridge?.openSettings?.();return;}
@@ -439,14 +486,14 @@ async function click(event){
  if(command==='pair-create'){await act(command,button,async()=>{const epoch=authEpoch;await global.SengokuCloudSync?.flush?.();if(epoch!==authEpoch)throw staleIdentity();const r=await api('/devices/pair-code',{method:'POST',data:{}});if(typeof r.code!=='string'||!/^[A-Za-z0-9]{12}$/.test(r.code))throw Error('接続コードを確認できませんでした。');s.pairCode={code:r.code,expiresAt:r.expiresAt};s.tab='sync';render();});return;}
  if(command==='pair-copy'){await act(command,button,async()=>{if(!s.pairCode||Date.parse(s.pairCode.expiresAt)<=Date.now())throw Error('新しい接続コードを発行してください。');if(!global.navigator?.clipboard?.writeText)throw Error('表示された12文字のコードを別の端末へ入力してください。');await global.navigator.clipboard.writeText(s.pairCode.code);toast('接続コードをコピーしました。');});return;}
  if(command==='admin-restore'){await act(command,button,async()=>{if(!s.user?.isAdmin)throw Error('運営権限を確認してください。');const r=await global.SengokuBridge?.restoreAdminAssets?.();if(!r?.ok)throw Error(r?.message||'この端末で進行できる状態を確認してください。');await global.SengokuCloudSync?.flush?.();toast(r.message||'運営専用の武将を確認・復元しました。');});return;}
- if(command==='admin-section'){if(!hasAdminChat())return;s.adminSection=s.user.isAdmin&&['chat','staff','announcement','mail'].includes(id)?id:'chat';render();refresh({view:true});return;}
+ if(command==='admin-section'){if(!hasAdminChat())return;if(id==='moderation'&&s.user?.isAdmin===true){if(global.SengokuModeration){close();await global.SengokuModeration.open();}else toast('プレイヤー管理を読み込めませんでした。画面を再読み込みしてください。',true);return;}s.adminSection=s.user.isAdmin&&['chat','staff','announcement','mail'].includes(id)?id:'chat';render();refresh({view:true});return;}
  if(command==='staff-refresh'){await act(command,button,loadStaff);return;}
  if(command==='staff-page'){if(!s.user?.isAdmin)return;const key=id==='candidates'?'staffCandidatePage':'staffPage';s[key]=Math.max(1,Number(button.dataset.page)||1);renderStaffLists();return;}
  if(command==='staff-appoint'||command==='staff-dismiss'){await act(command+':'+id,button,async()=>{confirmUI(staffConfirmation(id,command==='staff-appoint'?'appoint':'dismiss'));});return;}
  if(command==='friend-select'){s.friendId=id;render();refresh({view:true});return;}
  if(command==='mail-back'){s.openedMail=null;render();return;}
  if(command==='admin-select-player'){const p=s.adminPlayers.find(p=>String(p.id)===String(id)),select=$('#social-mail-target');if(p&&select){if(![...select.options].some(o=>o.value===String(id))){const o=document.createElement('option');o.value=id;o.textContent=`${playerText(p.name,p.evaluation)}（${p.id}）`;select.append(o);}select.value=id;toast(`${playerText(p.name,p.evaluation)} を宛先に設定しました。`);}return;}
- if(command==='logout'){confirmUI({title:'この端末の接続を解除しますか',description:'領主とクラウドの進行は残ります。この端末は同期を解除し、端末内の保存で遊べる状態になります。再接続には接続コードか領主データを使います。',confirmLabel:'接続を解除',danger:true,onConfirm:async()=>{await global.SengokuCloudSync?.flush?.();global.SengokuCloudSync?.stop?.();authEpoch++;recoveryEpoch++;recovery=null;recoveryHeld=false;clearPrivate();s.identity=null;s.user=null;s.friends=[];s.requests=[];s.chats.clear();s.unreadMail=0;applyRoleAccess();try{localStorage.removeItem(IDKEY);}catch(_){}clearTimeout(pollTimer);render();}});return;}
+ if(command==='logout'){confirmUI({title:'この端末の接続を解除しますか',description:'領主とクラウドの進行は残ります。この端末は同期を解除し、端末内の保存で遊べる状態になります。再接続には接続コードか領主データを使います。',confirmLabel:'接続を解除',danger:true,onConfirm:async()=>{await global.SengokuCloudSync?.flush?.();global.SengokuCloudSync?.stop?.();authEpoch++;recoveryEpoch++;recovery=null;recoveryHeld=false;clearPrivate();s.identity=null;s.user=null;s.accountBanned=null;s.accountAccessPending=null;accountEpoch++;global.SengokuLetters?.refreshIdentity?.();global.SengokuTrade?.refreshIdentity?.();global.SengokuModeration?.refreshIdentity?.();s.friends=[];s.requests=[];s.chats.clear();s.unreadMail=0;applyRoleAccess();try{localStorage.removeItem(IDKEY);}catch(_){}clearTimeout(pollTimer);render();}});return;}
  if(command==='guild-leave'){await act(command,button,async()=>confirmUI(guildLeaveConfirmation()));return;}
  if(command==='friend-remove'){const p=s.friends.find(f=>String(f.id)===String(id));confirmUI({title:'フレンドを解除しますか',description:`${playerText(p?.name||'この領主',p?.evaluation)} とのフレンド関係を解除します。`,confirmLabel:'解除する',danger:true,onConfirm:async()=>{await api('/friends',{method:'DELETE',data:{userId:id}});s.friendId=null;await loadMe();render();}});return;}
  await act(command+':'+(id||''),button,async()=>{
@@ -608,7 +655,14 @@ function init(){
  if(interruptedRecovery){open('recovery');verifyRecovery({identity:s.identity,save:null,kind:'interrupted'}).catch(error=>{if(error.code!=='STALE_IDENTITY')toast(error.message,true);});return;}
  if(s.identity){const epoch=authEpoch;s.meLoading=true;loadMe().catch(e=>{if(epoch===authEpoch){s.error=e.message;acceptUser(null);}}).finally(()=>{if(epoch!==authEpoch)return;s.meLoading=false;if(s.open){render();refresh({view:true});}});}
 }
-async function dispose(){disposed=true;global.removeEventListener?.('sengoku:letters-updated',lettersUpdated);global.SengokuLetters?.dispose?.();global.SengokuTrade?.dispose?.();achievementGeneration++;clearTimeout(achievementTimer);achievementTimer=null;destroyAvatarEditor();clearRecentLogins();clearGuildData();recoveryEpoch++;recovery=null;syncUnsubscribe?.();global.SengokuCloudSync?.stop?.();clearTimeout(onlineTimer);clearTimeout(configTimer);clearTimeout(pollTimer);for(const c of controllers)c.abort();controllers.clear();document.removeEventListener('click',pageClick);document.removeEventListener('visibilitychange',visibility);dialog?.remove();launcher?.remove();}
+async function dispose(){disposed=true;global.removeEventListener?.('sengoku:letters-updated',lettersUpdated);global.SengokuLetters?.dispose?.();global.SengokuTrade?.dispose?.();global.SengokuModeration?.dispose?.();achievementGeneration++;clearTimeout(achievementTimer);achievementTimer=null;destroyAvatarEditor();clearRecentLogins();clearGuildData();recoveryEpoch++;recovery=null;syncUnsubscribe?.();global.SengokuCloudSync?.stop?.();clearTimeout(onlineTimer);clearTimeout(configTimer);clearTimeout(pollTimer);for(const c of controllers)c.abort();controllers.clear();document.removeEventListener('click',pageClick);document.removeEventListener('visibilitychange',visibility);dialog?.remove();launcher?.remove();}
+function moderationRequest(route,options={}){
+ const method=options.method||'GET',valid=method==='GET'&&/^\/admin\/moderation\/(?:players|target|bans)(?:\?[^#]*)?$/.test(route)||method==='POST'&&route==='/admin/moderation';
+ if(!valid)throw Error('プレイヤー管理の操作を確認してください。');
+ if(!s.user?.isAdmin||s.accountBanned)throw Error('この操作には運営権限が必要です。');
+ const owner=String(s.identity?.id),generation=authEpoch,privilege=privilegeEpoch;
+ return api(route,{...options,background:true}).then(result=>{if(owner!==String(s.identity?.id)||generation!==authEpoch||privilege!==privilegeEpoch||!s.user?.isAdmin||s.accountBanned)throw staleIdentity();return result;});
+}
 function tradeRequest(route,options={}){
  const method=options.method||'GET';
  const read=method==='GET'&&(/^\/trades(?:\/(?:recipient|tr_[a-f0-9]{32}))?(?:\?[^#]*)?$/.test(route)||/^\/players\?q=[^&#]+$/.test(route));
@@ -617,7 +671,7 @@ function tradeRequest(route,options={}){
  if(!s.user)throw Error('領主登録・ログイン後に交易を利用できます。');
  return api(route,{...options,background:true});
 }
-global.SengokuSocial={open,close,exportRecoveryBackup,tradeRequest,getUser:()=>s.user?{id:s.user.id,name:s.user.name,clan:s.user.clan,guildId:s.user.guildId||null,guildName:s.user.guildName||null,guildRole:s.user.guildRole||null,isAdmin:s.user.isAdmin===true,isStaff:s.user.isStaff===true,avatarVersion:s.user.avatarVersion||null,evaluation:publicEvaluation(s.user.evaluation)}:null,lettersRequest:(route,options={})=>{if(!/^\/letters(?:\/(?:summary|recipient|lt_[a-f0-9]{32}(?:\/(?:messages|read))?))?(?:\?[^#]*)?$/.test(route)||!['GET','POST'].includes(options.method||'GET'))throw Error('書状の操作を確認してください。');if(!s.user)throw Error('領主登録・ログイン後に書状を利用できます。');return api(route,{...options,background:true});},walkingRequest:(route,options={})=>{if(!['/walking/start','/walking/claim'].includes(route)||options.method!=='POST')throw Error('ウォーキングの操作を確認してください。');if(!s.user)throw Error('接続中の領主を確認してください。');return api(route,{...options,background:true});},fieldRequest:async(route,options={})=>{if(!/^\/field(?:\/me|\/attack|\/diplomacy)?(?:\?[^#]*)?$/.test(route))throw Error('フィールドの操作を確認してください。');const result=await api(route,options);if(route==='/field/attack'&&options.method==='POST'&&result.battle)refreshMailStatus();return result;},staffRequest:(route,options={})=>{const method=options.method||'GET';if(!(route==='/staff/base'&&method==='GET'||route==='/staff/base/upgrade'&&method==='POST'))throw Error('スタッフ共同拠点の操作を確認してください。');if(!s.user?.isStaff&&!s.user?.isAdmin)throw Error('スタッフ権限を確認してください。');return api(route,options);},guildRequest:(route,options={})=>{if(route!=='/guild/treasury/transfer'||options.method!=='POST')throw Error('ギルド金庫の操作を確認してください。');return api(route,options);},refresh:()=>refresh({view:true}),dispose,setWorldClock:async values=>{if(!s.user?.isAdmin)throw Error('運営権限が必要です。');return api('/world-clock',{method:'PATCH',data:values});}};
+global.SengokuSocial={open,close,exportRecoveryBackup,tradeRequest,moderationRequest,observeContentRevision,getModerationContext:()=>({epoch:authEpoch,privilegeEpoch}),getUser:()=>s.user?{id:s.user.id,name:s.user.name,clan:s.user.clan,guildId:s.user.guildId||null,guildName:s.user.guildName||null,guildRole:s.user.guildRole||null,isAdmin:s.user.isAdmin===true,isStaff:s.user.isStaff===true,isBanned:s.user.isBanned===true,avatarVersion:s.user.avatarVersion||null,evaluation:publicEvaluation(s.user.evaluation)}:null,lettersRequest:(route,options={})=>{if(!/^\/letters(?:\/(?:summary|recipient|lt_[a-f0-9]{32}(?:\/(?:messages|read))?))?(?:\?[^#]*)?$/.test(route)||!['GET','POST'].includes(options.method||'GET'))throw Error('書状の操作を確認してください。');if(!s.user)throw Error('領主登録・ログイン後に書状を利用できます。');return api(route,{...options,background:true});},walkingRequest:(route,options={})=>{if(!['/walking/start','/walking/claim'].includes(route)||options.method!=='POST')throw Error('ウォーキングの操作を確認してください。');if(!s.user)throw Error('接続中の領主を確認してください。');return api(route,{...options,background:true});},fieldRequest:async(route,options={})=>{if(!/^\/field(?:\/me|\/attack|\/diplomacy)?(?:\?[^#]*)?$/.test(route))throw Error('フィールドの操作を確認してください。');const result=await api(route,options);if(route==='/field/attack'&&options.method==='POST'&&result.battle)refreshMailStatus();return result;},staffRequest:(route,options={})=>{const method=options.method||'GET';if(!(route==='/staff/base'&&method==='GET'||route==='/staff/base/upgrade'&&method==='POST'))throw Error('スタッフ共同拠点の操作を確認してください。');if(!s.user?.isStaff&&!s.user?.isAdmin)throw Error('スタッフ権限を確認してください。');return api(route,options);},guildRequest:(route,options={})=>{if(route!=='/guild/treasury/transfer'||options.method!=='POST')throw Error('ギルド金庫の操作を確認してください。');return api(route,options);},refresh:()=>refresh({view:true}),dispose,setWorldClock:async values=>{if(!s.user?.isAdmin)throw Error('運営権限が必要です。');return api('/world-clock',{method:'PATCH',data:values});}};
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init,{once:true});else init();
 })(window);
 

@@ -119,5 +119,40 @@
  const inbound=client(inboundClock,inboundServer,'existing',{initialStarted:false});await inbound.start();check(inbound.state().castle==='odawara'&&inbound.bridge.hasStarted(),'an existing remote campaign is applied even when local getSave returns null');check(inbound.applied.length===1&&!inbound.applied[0].meta.backup,'no fabricated starter campaign is backed up before remote recovery');check(inboundServer.puts().length===0&&inboundServer.get('existing').revision===4,'loading the existing cloud game does not issue a replacement save');inbound.sync.stop();await settle();
  // Null is allowed only with an explicit unstarted bridge flag.
  const brokenClock=new Clock(),brokenServer=server(brokenClock),broken=client(brokenClock,brokenServer,'broken');broken.bridge.getSave=()=>null;delete broken.bridge.hasStarted;await broken.start();check(broken.sync.getStatus().reason==='error'&&!broken.sync.getStatus().writable&&brokenServer.puts().length===0,'an invalid active game still fails closed');broken.sync.stop();
- console.log(`Cloud sync tests passed: ${assertions} protocol, canonical-state, concurrent-save, takeover, stale-identity, hidden-presence, lease-expiry, unload-order, offline, checkpoint and explicit first-start assertions. No external requests.`);
+ // A ban invalidates responses already in flight and keeps every write paused.
+ const banClock=new Clock(),banServer=server(banClock),banStore=memory(),bannedClient=client(banClock,banServer,'banned',{storage:banStore});await bannedClient.start();
+ bannedClient.mutate(s=>{s.resources.gold=321;});const banCheckpoint=banStore.getItem('sengoku-sync-pending-v1');let releaseOldSnapshot,heldSnapshot=false;
+ const oldSnapshotGate=new Promise(resolve=>{releaseOldSnapshot=resolve;});banServer.intercept(async call=>{const result=await call.process();if(call.route.startsWith('/sync?')&&!heldSnapshot){heldSnapshot=true;await oldSnapshotGate;}return result;});
+ const oldSnapshot=bannedClient.sync.refresh();await settle();check(heldSnapshot,'an authoritative-looking old snapshot can be delayed across a ban');
+ check(bannedClient.sync.suspendAccount({playerId:'another-player'})===false&&bannedClient.sync.getStatus().writable,'a stale ban for another identity cannot pause the current writer');
+ bannedClient.sync.suspendAccount({playerId:'banned',message:'利用停止中'});const heldStatus=bannedClient.sync.getStatus();
+ check(heldStatus.banned&&heldStatus.reason==='banned'&&!heldStatus.writable&&!heldStatus.ready&&!heldStatus.leaseExpiresAt,'BAN releases local authority immediately while preserving the linked identity');
+ check(banStore.getItem('sengoku-sync-pending-v1')===banCheckpoint,'BAN preserves the last unsent checkpoint without sanitizing or uploading it');
+ const blockedRoutes=[];banServer.intercept(async call=>{blockedRoutes.push({route:call.route,method:call.opts?.method||'GET'});throw Object.assign(Error('利用停止中'),{code:'ACCOUNT_BANNED',status:403});});releaseOldSnapshot();await oldSnapshot;
+ check(bannedClient.sync.getStatus().banned&&!bannedClient.sync.getStatus().writable,'a success sent before BAN cannot re-enable the account after it arrives');
+ await bannedClient.sync.flush();await banClock.advance(30000);check(blockedRoutes.length===1&&blockedRoutes.every(r=>r.method==='GET'&&r.route.startsWith('/sync?')),'a banned account checks only the read-only sync endpoint once per 30 seconds');
+ bannedClient.hidden(true);bannedClient.sync.visibilityChanged();await bannedClient.sync.pageHidden();bannedClient.online(false);check(bannedClient.sync.getStatus().reason==='banned'&&blockedRoutes.length===1,'visibility, unload and offline events neither hide the BAN message nor send a write');
+ const resumed=banServer.get('banned');resumed.save.state.resources.gold=777;resumed.revision++;resumed.writer=null;resumed.until=0;banServer.intercept(null);bannedClient.hidden(false);bannedClient.online(true);await bannedClient.sync.refresh();
+ check(!bannedClient.sync.getStatus().banned&&bannedClient.sync.getStatus().writable&&bannedClient.state().resources.gold===777,'解除 pulls the authoritative save and reacquires a lease using the same identity');
+ check(banServer.get('banned').save.state.resources.gold===777,'解除 does not overwrite newer cloud progress with the pre-BAN checkpoint');bannedClient.sync.stop();await settle();
+ // Presence can discover a ban before the first save/lease completes.
+ const entryClock=new Clock(),entryServer=server(entryClock),entry=client(entryClock,entryServer,'blocked-entry');entryServer.intercept(async()=>{throw Object.assign(Error('利用停止中'),{code:'ACCOUNT_BANNED',status:403});});await entry.start();await settle();
+ check(entry.sync.getStatus().banned&&entryServer.puts().length===0,'initial presence/authentication rejection blocks the initial cloud upload');entry.sync.stop();await settle();
+ // A late rejected request from a replaced identity cannot ban the replacement.
+ const lateClock=new Clock(),lateServer=server(lateClock),late=client(lateClock,lateServer,'old-player');let rejectOld;const oldBanGate=new Promise(resolve=>{rejectOld=resolve;});
+ lateServer.intercept(async call=>{if(call.id==='old-player'&&call.route.startsWith('/sync?')){await oldBanGate;throw Object.assign(Error('利用停止中'),{code:'ACCOUNT_BANNED',status:403});}return call.process();});
+ const oldIdentity=late.start();await settle();await late.start('new-player');rejectOld();await oldIdentity;check(!late.sync.getStatus().banned&&late.sync.getStatus().writable,'a previous identity ACCOUNT_BANNED reply cannot freeze the new identity');late.sync.stop();await settle();
+ // Even a BAN/解除 cycle entirely within one request must reacquire authority.
+ const epochClock=new Clock(),epochServer=server(epochClock),epochClient=client(epochClock,epochServer,'access-change');await epochClient.start();epochClient.mutate(s=>{s.resources.gold=444;});
+ epochServer.intercept(async call=>{if(call.opts?.method==='PUT')throw Object.assign(Error('利用状態が変わりました'),{code:'ACCOUNT_ACCESS_CHANGED',status:409});return call.process();});await epochClient.sync.flush();
+ check(epochClient.sync.getStatus().reason==='access-changed'&&!epochClient.sync.getStatus().writable&&!epochClient.sync.getStatus().banned,'a changed access epoch pauses writes without claiming the player remains banned');
+ epochServer.intercept(null);await epochClient.sync.refresh();check(epochClient.sync.getStatus().writable,'a fresh authoritative sync resolves an access-epoch change');
+ let releaseEpochSnapshot;const epochSnapshotGate=new Promise(resolve=>{releaseEpochSnapshot=resolve;});epochServer.intercept(async call=>{const result=await call.process();if(call.route.startsWith('/sync?'))await epochSnapshotGate;return result;});const epochSnapshot=epochClient.sync.refresh();await settle();
+ check(epochClient.sync.invalidateAccountAccess({playerId:'other'})===false&&epochClient.sync.getStatus().writable,'an external access-change notice is scoped to the current identity');
+ epochClient.sync.invalidateAccountAccess({playerId:'access-change',message:'利用状態を再確認しています。'});releaseEpochSnapshot();await epochSnapshot;
+ check(!epochClient.sync.getStatus().writable&&epochClient.sync.getStatus().reason==='access-changed','a non-sync request can invalidate an older successful cloud response before it re-enables writes');
+ epochServer.intercept(null);await epochClient.sync.refresh();check(epochClient.sync.getStatus().writable,'external access invalidation resumes only after a fresh successful sync');
+ const resumedPresence=epochServer.log.filter(call=>call.route==='/presence'&&call.data.online).length;await epochClock.advance(20000);
+ check(epochServer.log.filter(call=>call.route==='/presence'&&call.data.online).length>resumedPresence,'fresh account access restarts periodic online presence after its timers were paused');epochClient.sync.stop();await settle();
+ console.log(`Cloud sync tests passed: ${assertions} protocol, canonical-state, concurrent-save, takeover, stale-identity, hidden-presence, lease-expiry, unload-order, offline, checkpoint, first-start and BAN/解除 assertions. No external requests.`);
 })().catch(error=>{console.error(error);process.exitCode=1;});

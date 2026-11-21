@@ -58,7 +58,7 @@ async function tradeRecipient(ctx){
   const {db,user,url,now,helpers:h}=ctx,id=h.idField(url.searchParams.get('playerId'),'相手の領主');
   if(id===user.id)h.fail(400,'INVALID_TARGET','ほかの領主を交易相手に選んでください。');
   const target=await h.getUser(db,id),save=target?await h.getSyncRow(db,id):null;
-  if(!target||!save?.save_json)h.fail(404,'PLAYER_NOT_FOUND','本拠を保存済みの領主を交易相手に選んでください。');
+  if(!target||target.ban_active||!save?.save_json)h.fail(404,'PLAYER_NOT_FOUND','本拠を保存済みの領主を交易相手に選んでください。');
   return {ok:true,player:h.mapUser(target,now)};
 }
 async function tradePrior(ctx,body,digest){
@@ -97,12 +97,13 @@ function tradeAuthorize(row,actor,action,h){
 }
 async function tradeCommitFailure(ctx,body,digest,actor,id,action){
   const {db,user,now,helpers:h}=ctx,prior=await tradePrior(ctx,body,digest);if(prior)return tradeResult(ctx,body,JSON.parse(prior.result_json),true);
+  await h.requireAccountAccess(db,user);
   h.fieldWriter(await h.getSyncRow(db,user.id),body.deviceId,body.expectedRevision,Date.now());
   const current=await h.getUser(db,user.id);if(!!current?.is_admin!==!!user.is_admin||current?.staff_term!==user.staff_term)h.fail(409,'AUTHORITY_CHANGED','領主の役職が更新されました。同期してからお試しください。');
   if((await h.getWorldClock(db,now)).revision!==actor.clock.revision)h.fail(409,'WORLD_CLOCK_CHANGED','共通時計を確認してからお試しください。');
   if(action==='propose'){
     if((await tradeSummary(db,user.id)).outgoingPending>=TRADE_RULES.maxPending)h.fail(409,'TRADE_PENDING_LIMIT','承認待ちの交易は20件までです。先に取消・承認をお待ちください。');
-    if(!(await h.getSyncRow(db,body.targetPlayerId))?.save_json)h.fail(404,'PLAYER_NOT_FOUND','相手の本拠が見つかりません。');
+    if(!(await h.getSyncRow(db,body.targetPlayerId))?.save_json||(await h.getUser(db,body.targetPlayerId))?.ban_active)h.fail(404,'PLAYER_NOT_FOUND','相手の本拠が見つかりません。');
   }else tradeAuthorize(await tradeRequireRow(ctx,id),user.id,action,h);
   h.fail(409,'TRADE_CHANGED','交易の状態が更新されました。最新の一覧を確認してください。');
 }
@@ -114,7 +115,7 @@ async function tradeMutate(ctx,id=null,action='propose'){
   let row=null,target=null;
   if(propose){
     if(body.targetPlayerId===user.id)h.fail(400,'INVALID_TARGET','自分自身へ交易を申し込むことはできません。');
-    target=await h.getUser(db,body.targetPlayerId);if(!target||!(await h.getSyncRow(db,target.id))?.save_json)h.fail(404,'PLAYER_NOT_FOUND','本拠を保存済みの領主を交易相手に選んでください。');
+    target=await h.getUser(db,body.targetPlayerId);if(!target||target.ban_active||!(await h.getSyncRow(db,target.id))?.save_json)h.fail(404,'PLAYER_NOT_FOUND','本拠を保存済みの領主を交易相手に選んでください。');
     if((await tradeSummary(db,user.id)).outgoingPending>=TRADE_RULES.maxPending)h.fail(409,'TRADE_PENDING_LIMIT','承認待ちの交易は20件までです。先に取消・承認をお待ちください。');
     id=h.uid('tr_');
   }else{row=await tradeRequireRow(ctx,id);tradeAuthorize(row,user.id,action,h);}
@@ -126,8 +127,9 @@ async function tradeMutate(ctx,id=null,action='propose'){
   else delivery={kind:'refund',assets:offer};
   const nonce=crypto.randomUUID(),gateArgs=[user.id,body.requestId,nonce],role=h.roleCommitGuard(user),tradeRevision=propose?1:Number(row.revision)+1;
   const receipt={id:h.uid('tx_'),requestId:body.requestId,tradeId:id,action,playerId:user.id,playerRevision:Number(actor.row.revision)+(changesSave?1:0),tradeRevision,createdAt:tradeIso(now)};
-  const condition=propose?"EXISTS(SELECT 1 FROM player_saves target WHERE target.user_id=? AND target.save_json IS NOT NULL) AND (SELECT COUNT(*) FROM trades WHERE sender_id=? AND status='pending')<?":action==='claim'?"EXISTS(SELECT 1 FROM trades t JOIN trade_deliveries d ON d.trade_id=t.id WHERE t.id=? AND t.revision=? AND t.sender_id=? AND d.recipient_id=? AND d.claimed_at IS NULL)":`EXISTS(SELECT 1 FROM trades t WHERE t.id=? AND t.revision=? AND t.status='pending' AND t.${action==='cancel'?'sender_id':'recipient_id'}=?)`;
-  const conditionArgs=propose?[body.targetPlayerId,user.id,TRADE_RULES.maxPending]:action==='claim'?[id,row.revision,user.id,user.id]:[id,row.revision,user.id];
+  const targetGuard=propose?h.roleCommitGuard(target):null;
+  const condition=propose?`EXISTS(SELECT 1 FROM player_saves target WHERE target.user_id=? AND target.save_json IS NOT NULL) AND (SELECT COUNT(*) FROM trades WHERE sender_id=? AND status='pending')<? AND ${targetGuard.sql}`:action==='claim'?"EXISTS(SELECT 1 FROM trades t JOIN trade_deliveries d ON d.trade_id=t.id WHERE t.id=? AND t.revision=? AND t.sender_id=? AND d.recipient_id=? AND d.claimed_at IS NULL)":`EXISTS(SELECT 1 FROM trades t WHERE t.id=? AND t.revision=? AND t.status='pending' AND t.${action==='cancel'?'sender_id':'recipient_id'}=?)`;
+  const conditionArgs=propose?[body.targetPlayerId,user.id,TRADE_RULES.maxPending,...targetGuard.args]:action==='claim'?[id,row.revision,user.id,user.id]:[id,row.revision,user.id];
   const statements=[tradeStmt(db,`INSERT INTO trade_requests(id,actor_id,request_id,trade_id,action,request_hash,commit_token,result_json,created_at)
     SELECT ?,?,?,?,?,?,?,?,? FROM player_saves ps WHERE ps.user_id=? AND ps.revision=? AND ps.writer_device_id=? AND ps.lease_expires_at>?
     AND ${role.sql} AND EXISTS(SELECT 1 FROM world_clock WHERE id=? AND revision=?) AND ${condition}

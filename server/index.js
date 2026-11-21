@@ -1,9 +1,10 @@
 import {GameEngine, GAME_OFFICERS} from './game-runtime.js';
 import {handleLetters} from './letters.js';
 import {handleTrades} from './trade.js';
+import {handleModeration} from './moderation.js';
 const API = '/api/v1';
-const API_VERSION = '3.10.0';
-const API_FEATURES = Object.freeze({trades:true});
+const API_VERSION = '3.11.0';
+const API_FEATURES = Object.freeze({trades:true,moderation:true});
 const MAX_BODY = 16 * 1024;
 const MAX_SAVE_BODY = 2 * 1024 * 1024;
 const MAX_AVATAR_BYTES = 48 * 1024;
@@ -29,6 +30,7 @@ const WORLD_CYCLE_MS = WORLD_CYCLE_MONTHS * WORLD_MONTH_MS;
 const WELCOME = '戦国VSへようこそ。城を育て、仲間と語らい、天下統一を目指しましょう。';
 const BASE_ORIGINS = new Set(['https://uni-tadayasu.github.io', 'https://www.kasai-solutions-inc.com', 'http://127.0.0.1:4173', 'null']);
 const encoder = new TextEncoder();
+const authenticatedRequests = new WeakMap();
 
 class ApiError extends Error {
   constructor(status, code, message, retryAfter) {
@@ -346,11 +348,13 @@ function mapUser(row, now = Date.now()) {
     avatarVersion: row.avatar_version || null,evaluation:evaluationRef(row.id),
     guildId: row.guild_id || null, guildName: row.guild_name || null,
     guildRole: row.guild_id ? (row.owner_id === row.id ? 'owner' : row.is_guild_officer ? 'officer' : 'member') : null,
-    online: row.presence_seen !== null && row.presence_seen !== undefined && Number(row.presence_seen) > now - ONLINE_WINDOW,
+    online: !row.ban_active && row.presence_seen !== null && row.presence_seen !== undefined && Number(row.presence_seen) > now - ONLINE_WINDOW,
   };
 }
 function publicClan(clan,isAdmin,isStaff=false,personalClan=null) { return isAdmin||isStaff?ADMIN_CLAN:clan===ADMIN_CLAN?CLAN_HOMES[personalClan]?personalClan:ORDINARY_TOKUGAWA_CLAN:clan; }
 const USER_SELECT = `SELECT u.id,u.name,u.clan,u.last_seen,gm.guild_id,g.name AS guild_name,g.owner_id,
+  COALESCE((SELECT active FROM player_bans pb WHERE pb.user_id=u.id),0) AS ban_active,
+  COALESCE((SELECT revision FROM player_bans pb WHERE pb.user_id=u.id),0) AS moderation_epoch,
   (SELECT a.version FROM user_avatars a WHERE a.user_id=u.id) AS avatar_version,
   EXISTS(SELECT 1 FROM guild_officers go WHERE go.user_id=u.id AND go.guild_id=gm.guild_id) AS is_guild_officer,
   (SELECT MAX(p.last_seen) FROM player_presence p WHERE p.user_id=u.id AND p.online=1) AS presence_seen,
@@ -365,6 +369,9 @@ const USER_SELECT = `SELECT u.id,u.name,u.clan,u.last_seen,gm.guild_id,g.name AS
   (SELECT sm.appointed_elapsed_ms FROM staff_members sm WHERE sm.user_id=u.id) AS staff_since_ms
   FROM users u LEFT JOIN guild_members gm ON gm.user_id=u.id LEFT JOIN guilds g ON g.id=gm.guild_id`;
 async function getUser(db, id) { return stmt(db, USER_SELECT + ' WHERE u.id=?', id).first(); }
+function accountCommitGuard(user){return {sql:"NOT EXISTS(SELECT 1 FROM player_bans WHERE user_id=? AND active=1) AND COALESCE((SELECT revision FROM player_bans WHERE user_id=?),0)=?",args:[user.id,user.id,Number(user.moderation_epoch||0)]};}
+async function requireAccountAccess(db,user){const row=await stmt(db,'SELECT active,revision FROM player_bans WHERE user_id=?',user.id).first();if(row?.active)fail(403,'ACCOUNT_BANNED','この領主のオンライン利用は運営により停止されています。解除後に再接続できます。');if(Number(row?.revision||0)!==Number(user.moderation_epoch||0))fail(409,'ACCOUNT_ACCESS_CHANGED','この領主の利用状態が変更されました。最新の接続状態を確認してください。');}
+function contentRevisionInput(url){const raw=url.searchParams.get('contentRevision');if(raw===null)return 0;if(!/^\d{1,16}$/.test(raw)||!Number.isSafeInteger(Number(raw)))fail(400,'INVALID_CURSOR','投稿の更新番号が正しくありません。');return Number(raw);}
 function avatarBucket(env) {
   if(!env.BUCKET?.put||!env.BUCKET?.get||!env.BUCKET?.delete)fail(503,'AVATAR_STORAGE_UNAVAILABLE','写真の保存サービスの準備中です。少し時間をおいて再度お試しください。');
   return env.BUCKET;
@@ -398,13 +405,15 @@ async function putAvatar(request,env,user,now) {
   catch{await removeAvatarObject(bucket,key);fail(503,'AVATAR_STORAGE_UNAVAILABLE','写真を保存できませんでした。少し時間をおいて再度お試しください。');}
   let result;
   try {
+    const access=accountCommitGuard(user);
     result=await db.batch([
       stmt(db,'SELECT object_key FROM user_avatars WHERE user_id=?',user.id),
       stmt(db,`INSERT INTO user_avatars(user_id,version,object_key,content_type,byte_length,updated_at)
-        VALUES(?,?,?,'image/jpeg',?,?) ON CONFLICT(user_id) DO UPDATE SET
+        SELECT ?,?,?,'image/jpeg',?,? WHERE ${access.sql} ON CONFLICT(user_id) DO UPDATE SET
         version=excluded.version,object_key=excluded.object_key,content_type=excluded.content_type,
-        byte_length=excluded.byte_length,updated_at=excluded.updated_at`,user.id,version,key,bytes.length,now),
+        byte_length=excluded.byte_length,updated_at=excluded.updated_at RETURNING object_key`,user.id,version,key,bytes.length,now,...access.args),
     ]);
+    if(!rows(result[1]).length)await requireAccountAccess(db,user);
   } catch(error) {
     // A network failure can happen after D1 committed. Never remove an object
     // that might already be the account's current image; retain it if uncertain.
@@ -418,7 +427,8 @@ async function deleteAvatar(request,env,user,now) {
   const db=env.DB,bucket=avatarBucket(env);
   await budget(db,'avatar-write:'+user.id,10,10*60*1000,now);
   if(request.body!==null&&Object.keys(await readBody(request)).length)fail(400,'INVALID_AVATAR','写真の削除には追加の情報は不要です。');
-  const removed=await stmt(db,'DELETE FROM user_avatars WHERE user_id=? RETURNING object_key',user.id).first();
+  const access=accountCommitGuard(user),removed=await stmt(db,'DELETE FROM user_avatars WHERE user_id=? AND '+access.sql+' RETURNING object_key',user.id,...access.args).first();
+  await requireAccountAccess(db,user);
   await removeAvatarObject(bucket,removed?.object_key);
   return {ok:true,user:mapUser(await getUser(db,user.id),now)};
 }
@@ -427,14 +437,14 @@ async function getAvatar(request,env,origin) {
   if(!/^[A-Za-z0-9_-]{1,90}$/.test(id)||version!==null&&!/^[0-9a-f]{64}$/.test(version))fail(400,'INVALID_AVATAR','写真の識別子が正しくありません。');
   const db=env.DB;
   if(!db?.prepare)fail(503,'SERVICE_UNAVAILABLE','通信サービスの準備中です。');
-  const current=await stmt(db,'SELECT version,object_key,byte_length FROM user_avatars WHERE user_id=?',id).first();
+  const current=await stmt(db,'SELECT version,object_key,byte_length FROM user_avatars WHERE user_id=? AND NOT EXISTS(SELECT 1 FROM player_bans WHERE user_id=user_avatars.user_id AND active=1)',id).first();
   if(!current||version!==null&&version!==current.version)fail(404,'AVATAR_NOT_FOUND','この写真は現在使用されていません。');
   const bucket=avatarBucket(env);let object;
   try{object=await bucket.get(current.object_key);}catch{fail(503,'AVATAR_STORAGE_UNAVAILABLE','写真を読み込めませんでした。少し時間をおいて再度お試しください。');}
   if(!object?.body||Number(object.size)!==Number(current.byte_length))fail(404,'AVATAR_NOT_FOUND','この写真は現在使用されていません。');
   // Re-check after the asynchronous object read so deletion/replacement during
   // that read cannot expose the superseded image through an old version URL.
-  const latest=await stmt(db,'SELECT object_key FROM user_avatars WHERE user_id=?',id).first();
+  const latest=await stmt(db,'SELECT object_key FROM user_avatars WHERE user_id=? AND NOT EXISTS(SELECT 1 FROM player_bans WHERE user_id=user_avatars.user_id AND active=1)',id).first();
   if(latest?.object_key!==current.object_key){await object.body.cancel();fail(404,'AVATAR_NOT_FOUND','この写真は現在使用されていません。');}
   const headers=new Headers({'Content-Type':'image/jpeg','Content-Length':String(current.byte_length),'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Content-Security-Policy':"default-src 'none'; sandbox; base-uri 'none'; frame-ancestors 'none'",'Vary':'Origin'});
   if(origin!==null)headers.set('Access-Control-Allow-Origin',origin);
@@ -447,10 +457,13 @@ async function authenticate(request, db, now) {
   const tokenHash = await hash(match[1]);
   const row = await stmt(db, USER_SELECT + ' WHERE u.token_hash=? OR u.id=(SELECT user_id FROM user_sessions WHERE token_hash=? AND revoked_at IS NULL)', tokenHash, tokenHash).first();
   if (!row) fail(401, 'INVALID_TOKEN', '通信プレイヤーの認証に失敗しました。保存済みの接続データをご確認ください。');
+  if(row.ban_active)fail(403,'ACCOUNT_BANNED','この領主のオンライン利用は運営により停止されています。解除後に再接続できます。');
   if (Number(row.last_seen) <= now - 60000) {
-    await stmt(db, 'UPDATE users SET last_seen=? WHERE id=? AND last_seen<=?', now, row.id, now - 60000).run();
+    const access=accountCommitGuard(row);await stmt(db, 'UPDATE users SET last_seen=? WHERE id=? AND last_seen<=? AND '+access.sql, now, row.id, now - 60000,...access.args).run();
     row.last_seen = now;
   }
+  await requireAccountAccess(db,row);
+  authenticatedRequests.set(request,row);
   return row;
 }
 function requireAdmin(user) { if (!user.is_admin) fail(403, 'ADMIN_REQUIRED', '運営専用の機能です。'); }
@@ -653,7 +666,7 @@ async function guildManage(db,user,raw,remove,now) {
   const target=await getUser(db,targetId);if(!target||target.guild_id!==guildId)fail(404,'GUILD_MEMBER_NOT_FOUND','対象の領主はこのギルドに所属していません。');
   if(target.owner_id===target.id||action==='remove'&&user.owner_id!==user.id&&target.is_guild_officer)fail(403,'GUILD_ROLE_REQUIRED','この役職のメンバーは変更・除名できません。');
   const already=!remove&&(action==='officer')===!!target.is_guild_officer;
-  await budget(db,'guild-manage:'+user.id,30,60000,now);const nonce=crypto.randomUUID(),guard=[user.id,requestId,nonce];
+  await budget(db,'guild-manage:'+user.id,30,60000,now);const nonce=crypto.randomUUID(),guard=[user.id,requestId,nonce],access=accountCommitGuard(user);
   const changes=[
     stmt(db,`INSERT INTO guild_role_requests(actor_id,request_id,guild_id,target_id,action,commit_token,created_at)
       SELECT ?,?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM guilds g
@@ -662,8 +675,8 @@ async function guildManage(db,user,raw,remove,now) {
         WHERE g.id=? AND target.user_id<>g.owner_id AND target.user_id<>actor.user_id
         AND (g.owner_id=? OR (?='remove'
           AND EXISTS(SELECT 1 FROM guild_officers go WHERE go.user_id=actor.user_id AND go.guild_id=g.id)
-          AND NOT EXISTS(SELECT 1 FROM guild_officers go WHERE go.user_id=target.user_id AND go.guild_id=g.id))))
-      ON CONFLICT(actor_id,request_id) DO NOTHING RETURNING request_id`,user.id,requestId,guildId,targetId,action,nonce,now,user.id,targetId,guildId,user.id,action),
+          AND NOT EXISTS(SELECT 1 FROM guild_officers go WHERE go.user_id=target.user_id AND go.guild_id=g.id)))) AND ${access.sql}
+      ON CONFLICT(actor_id,request_id) DO NOTHING RETURNING request_id`,user.id,requestId,guildId,targetId,action,nonce,now,user.id,targetId,guildId,user.id,action,...access.args),
   ];
   if(action==='officer')changes.push(stmt(db,'INSERT INTO guild_officers(user_id,guild_id,appointed_by,appointed_at) SELECT ?,?,?,? WHERE '+GUILD_ROLE_COMMIT+' ON CONFLICT(user_id) DO NOTHING',targetId,guildId,user.id,now,...guard));
   else changes.push(stmt(db,'DELETE FROM guild_officers WHERE user_id=? AND guild_id=? AND '+GUILD_ROLE_COMMIT,targetId,guildId,...guard));
@@ -675,13 +688,13 @@ async function guildManage(db,user,raw,remove,now) {
 async function guildLeave(db,user,body,now) {
   if(body.guildId!==undefined)requireGuild(user,idField(body.guildId,'ギルド'));
   if(!user.guild_id)return {ok:true,user:mapUser(user,now)};
-  const guildId=user.guild_id,empty='NOT EXISTS(SELECT 1 FROM guild_treasuries WHERE guild_id=? AND (gold>0 OR rice>0 OR wood>0 OR stone>0 OR magatama>0))';
+  const guildId=user.guild_id,empty='NOT EXISTS(SELECT 1 FROM guild_treasuries WHERE guild_id=? AND (gold>0 OR rice>0 OR wood>0 OR stone>0 OR magatama>0))',access=accountCommitGuard(user);
   const result=await db.batch([
     stmt(db,`UPDATE guilds SET owner_id=(SELECT gm.user_id FROM guild_members gm WHERE gm.guild_id=? AND gm.user_id<>?
       ORDER BY EXISTS(SELECT 1 FROM guild_officers go WHERE go.user_id=gm.user_id AND go.guild_id=gm.guild_id) DESC,gm.joined_at,gm.user_id LIMIT 1)
-      WHERE id=? AND owner_id=? AND EXISTS(SELECT 1 FROM guild_members WHERE guild_id=? AND user_id<>?)`,guildId,user.id,guildId,user.id,guildId,user.id),
-    stmt(db,'DELETE FROM guild_members WHERE user_id=? AND guild_id=? AND (EXISTS(SELECT 1 FROM guild_members other WHERE other.guild_id=? AND other.user_id<>?) OR '+empty+') RETURNING user_id',user.id,guildId,guildId,user.id,guildId),
-    stmt(db,'DELETE FROM guilds WHERE id=? AND NOT EXISTS(SELECT 1 FROM guild_members WHERE guild_id=?) AND '+empty,guildId,guildId,guildId),
+      WHERE id=? AND owner_id=? AND EXISTS(SELECT 1 FROM guild_members WHERE guild_id=? AND user_id<>?) AND ${access.sql}`,guildId,user.id,guildId,user.id,guildId,user.id,...access.args),
+    stmt(db,'DELETE FROM guild_members WHERE user_id=? AND guild_id=? AND (EXISTS(SELECT 1 FROM guild_members other WHERE other.guild_id=? AND other.user_id<>?) OR '+empty+') AND '+access.sql+' RETURNING user_id',user.id,guildId,guildId,user.id,guildId,...access.args),
+    stmt(db,'DELETE FROM guilds WHERE id=? AND NOT EXISTS(SELECT 1 FROM guild_members WHERE guild_id=?) AND '+empty+' AND '+access.sql,guildId,guildId,guildId,...access.args),
   ]);
   const current=await getUser(db,user.id);
   if(!rows(result[1]).length&&current.guild_id===guildId)fail(409,'GUILD_TREASURY_NOT_EMPTY','最後のメンバーが脱退する前に、共有資産をすべて引き出してください。');
@@ -977,9 +990,11 @@ function saveAchievements(before,after) {
   return found;
 }
 async function settlePlayerCycle(db,row,user,now,clock=undefined,{deferActive=true,writerDeviceId=null}={}) {
+  const account=user;
   if(!row?.save_json)return row;clock=clock||await getWorldClock(db,now);row=await ensureStaffCampaign(db,user,now,clock);
   const policy=await cyclePolicy(db,clock,now),current=Math.floor(clock.elapsedMs/WORLD_CYCLE_MS);
   for(let attempt=0;attempt<3;attempt++){
+    await requireAccountAccess(db,account);
     let save=normalizeGameSave(JSON.parse(row.save_json),user,now,{reading:true,clock});
     if(row.cycle_index===null||row.cycle_index===undefined){
       const index=Math.max(policy,Math.floor((save.state.worldClock?.elapsedMs??clock.elapsedMs)/WORLD_CYCLE_MS)),home=user.is_admin?'edo':save.state.home;
@@ -1019,14 +1034,14 @@ async function publicAchievements(db,url,now) {
   const raw=url.searchParams.get('limit')||'20',cursor=url.searchParams.get('cursor');
   if(!/^\d{1,2}$/.test(raw)||Number(raw)<1||Number(raw)>50)fail(400,'INVALID_INPUT','お知らせの件数は1〜50件で指定してください。');
   let point=null;if(cursor){if(cursor.length>512)fail(400,'INVALID_CURSOR','お知らせの続きが長すぎます。');try{point=JSON.parse(atob(cursor.replaceAll('-','+').replaceAll('_','/')));}catch{fail(400,'INVALID_CURSOR','お知らせの続きが正しくありません。');}if(!Array.isArray(point)||point.length!==2||!Number.isSafeInteger(point[0])||point[0]<0||typeof point[1]!=='string'||!/^ach_[a-f0-9]{32}$/.test(point[1]))fail(400,'INVALID_CURSOR','お知らせの続きが正しくありません。');}
-  const limit=Number(raw),found=rows(await stmt(db,`SELECT e.*,u.name,u.clan,CASE WHEN u.id=(SELECT value FROM settings WHERE key='adminUserId') THEN 1 ELSE 0 END AS is_admin,EXISTS(SELECT 1 FROM staff_members sm WHERE sm.user_id=u.id) AS is_staff,(SELECT json_extract(b.save_json,'$.state.clan') FROM staff_campaign_backups b WHERE b.user_id=u.id AND b.active=1) AS personal_clan FROM achievement_events e JOIN users u ON u.id=e.user_id ${point?'WHERE (e.occurred_at<? OR (e.occurred_at=? AND e.id<?))':''} ORDER BY e.occurred_at DESC,e.id DESC LIMIT ?`,...(point?[point[0],point[0],point[1]]:[]),limit+1).all()),page=found.slice(0,limit),last=page.at(-1);
+  const limit=Number(raw),found=rows(await stmt(db,`SELECT e.*,u.name,u.clan,CASE WHEN u.id=(SELECT value FROM settings WHERE key='adminUserId') THEN 1 ELSE 0 END AS is_admin,EXISTS(SELECT 1 FROM staff_members sm WHERE sm.user_id=u.id) AS is_staff,(SELECT json_extract(b.save_json,'$.state.clan') FROM staff_campaign_backups b WHERE b.user_id=u.id AND b.active=1) AS personal_clan FROM achievement_events e JOIN users u ON u.id=e.user_id WHERE NOT EXISTS(SELECT 1 FROM player_bans pb WHERE pb.user_id=u.id AND pb.active=1) ${point?'AND (e.occurred_at<? OR (e.occurred_at=? AND e.id<?))':''} ORDER BY e.occurred_at DESC,e.id DESC LIMIT ?`,...(point?[point[0],point[0],point[1]]:[]),limit+1).all()),page=found.slice(0,limit),last=page.at(-1);
   return {ok:true,events:page.map(row=>({id:row.id,playerId:row.user_id,playerName:row.name,playerEvaluation:evaluationRef(row.user_id),clan:publicClan(row.clan,row.is_admin,row.is_staff,row.personal_clan),kind:row.kind,title:row.title,detail:row.detail,targetId:row.target_id,targetName:row.target_name,value:row.value,occurredAt:iso(row.occurred_at)})),nextCursor:found.length>limit?btoa(JSON.stringify([Number(last.occurred_at),last.id])).replaceAll('+','-').replaceAll('/','_').replaceAll('=',''):null,serverNow:iso(now)};
 }
 
 function roleCommitGuard(user) {
-  return {sql:`(?=CASE WHEN ?=COALESCE((SELECT value FROM settings WHERE key='adminUserId'),'') THEN 1 ELSE 0 END) AND COALESCE((SELECT COALESCE(sm.term_id,'legacy:'||sm.appointed_at) FROM staff_members sm WHERE sm.user_id=?),'')=?`,args:[user.is_admin?1:0,user.id,user.id,user.staff_term||'']};
+  const access=accountCommitGuard(user);return {sql:`(?=CASE WHEN ?=COALESCE((SELECT value FROM settings WHERE key='adminUserId'),'') THEN 1 ELSE 0 END) AND COALESCE((SELECT COALESCE(sm.term_id,'legacy:'||sm.appointed_at) FROM staff_members sm WHERE sm.user_id=?),'')=? AND ${access.sql}`,args:[user.is_admin?1:0,user.id,user.id,user.staff_term||'',...access.args]};
 }
-async function requireCurrentStaffBase(db,user,{allowAdmin=false}={}) {const current=await getUser(db,user.id);if(!current||!(allowAdmin?current.is_admin||current.is_staff:current.is_staff&&!current.is_admin)||current.staff_term!==user.staff_term||!!current.is_admin!==!!user.is_admin)fail(403,'STAFF_BASE_REQUIRED','スタッフの役職が変更されました。');return current;}
+async function requireCurrentStaffBase(db,user,{allowAdmin=false}={}) {await requireAccountAccess(db,user);const current=await getUser(db,user.id);if(!current||!(allowAdmin?current.is_admin||current.is_staff:current.is_staff&&!current.is_admin)||current.staff_term!==user.staff_term||!!current.is_admin!==!!user.is_admin)fail(403,'STAFF_BASE_REQUIRED','スタッフの役職が変更されました。');return current;}
 const STAFF_TERM_SQL="COALESCE(sm.term_id,'legacy:'||sm.appointed_at)";
 const STAFF_MEMBER_GUARD=`EXISTS(SELECT 1 FROM staff_members sm WHERE sm.user_id=? AND ${STAFF_TERM_SQL}=?) AND NOT EXISTS(SELECT 1 FROM settings WHERE key='adminUserId' AND value=?)`;
 function staffInitialState(elapsed) {
@@ -1114,8 +1129,10 @@ async function advanceDepartingStaff(db,row,user,backup,now,clock) {
 }
 
 async function ensureStaffCampaign(db,user,now,clock=undefined,{deferClanMigration=false}={}) {
+  const account=user,access=accountCommitGuard(user);
   clock=clock||await getWorldClock(db,now);let row=await getSyncRow(db,user.id);if(!row?.save_json)return row;
   for(let attempt=0;attempt<3;attempt++){
+    await requireAccountAccess(db,account);
     const staff=!!user.is_staff&&!user.is_admin;let backup=await stmt(db,'SELECT * FROM staff_campaign_backups WHERE user_id=?',user.id).first();
     if(staff&&backup?.active&&backup.term_id===user.staff_term){
       if(deferClanMigration||JSON.parse(row.save_json).state.clan===ADMIN_CLAN)return row;
@@ -1133,8 +1150,8 @@ async function ensureStaffCampaign(db,user,now,clock=undefined,{deferClanMigrati
       const joined=Math.max(Number(user.staff_since_ms??clock.elapsedMs),Number(personal.state.worldClock?.elapsedMs||0));
       const result=await db.batch([
         stmt(db,`INSERT INTO staff_campaign_backups(user_id,term_id,save_json,joined_elapsed_ms,left_elapsed_ms,active,transition_token,updated_at)
-          SELECT ?,?,?,?,NULL,1,?,? WHERE ${STAFF_MEMBER_GUARD} AND EXISTS(SELECT 1 FROM player_saves WHERE user_id=? AND revision=?)
-          ON CONFLICT(user_id) DO UPDATE SET term_id=excluded.term_id,save_json=excluded.save_json,joined_elapsed_ms=excluded.joined_elapsed_ms,left_elapsed_ms=NULL,active=1,transition_token=excluded.transition_token,updated_at=excluded.updated_at`,user.id,user.staff_term,JSON.stringify(personal),joined,nonce,now,user.id,user.staff_term,user.id,user.id,row.revision),
+          SELECT ?,?,?,?,NULL,1,?,? WHERE ${STAFF_MEMBER_GUARD} AND EXISTS(SELECT 1 FROM player_saves WHERE user_id=? AND revision=?) AND ${access.sql}
+          ON CONFLICT(user_id) DO UPDATE SET term_id=excluded.term_id,save_json=excluded.save_json,joined_elapsed_ms=excluded.joined_elapsed_ms,left_elapsed_ms=NULL,active=1,transition_token=excluded.transition_token,updated_at=excluded.updated_at`,user.id,user.staff_term,JSON.stringify(personal),joined,nonce,now,user.id,user.staff_term,user.id,user.id,row.revision,...access.args),
         stmt(db,`UPDATE player_saves SET save_json=?,revision=revision+1,updated_at=?,cycle_home='sunpu' WHERE user_id=? AND revision=? AND EXISTS(SELECT 1 FROM staff_campaign_backups WHERE user_id=? AND transition_token=?) RETURNING *`,JSON.stringify(saved),now,user.id,row.revision,user.id,nonce)
       ]);if(rows(result[1])[0])return rows(result[1])[0];
     }else{
@@ -1142,7 +1159,7 @@ async function ensureStaffCampaign(db,user,now,clock=undefined,{deferClanMigrati
       const result=await db.batch([
         stmt(db,`UPDATE staff_campaign_backups SET active=0,transition_token=?,updated_at=? WHERE user_id=? AND active=1 AND term_id=?
           AND (NOT EXISTS(SELECT 1 FROM staff_members WHERE user_id=?) OR EXISTS(SELECT 1 FROM settings WHERE key='adminUserId' AND value=?))
-          AND EXISTS(SELECT 1 FROM player_saves WHERE user_id=? AND revision=?)`,nonce,now,user.id,backup.term_id,user.id,user.id,user.id,row.revision),
+          AND EXISTS(SELECT 1 FROM player_saves WHERE user_id=? AND revision=?) AND ${access.sql}`,nonce,now,user.id,backup.term_id,user.id,user.id,user.id,row.revision,...access.args),
         stmt(db,`UPDATE player_saves SET save_json=?,revision=revision+1,updated_at=?,cycle_home=? WHERE user_id=? AND revision=? AND EXISTS(SELECT 1 FROM staff_campaign_backups WHERE user_id=? AND transition_token=?) RETURNING *`,JSON.stringify(saved),now,saved.state.cycle?.home||saved.state.home,user.id,row.revision,user.id,nonce),
         stmt(db,`UPDATE users SET clan=? WHERE id=? AND EXISTS(SELECT 1 FROM staff_campaign_backups WHERE user_id=? AND transition_token=?)`,saved.state.clan,user.id,user.id,nonce)
       ]);if(rows(result[1])[0])return rows(result[1])[0];
@@ -1178,13 +1195,13 @@ async function staffBaseUpgrade(db,user,raw,now) {
   state.jobs.push(job);state.updatedElapsedMs=clock.elapsedMs;
   const receipt={requestId:body.requestId,jobId:job.jobId,kind:body.kind,id:body.id,targetLevel:job.targetLevel,cost:pick(cost,RESOURCES),queued:job.startedElapsedMs>clock.elapsedMs,queuePosition:chain.length,queuedAtElapsedMs:clock.elapsedMs,startedElapsedMs:job.startedElapsedMs,completesElapsedMs:job.completesElapsedMs,baseRevision:Number(shared.revision)+1,playerRevision:Number(row.revision)+1};
   game.log(`駿府城の${body.kind==='castle'?'城郭':globalThis.SENGOKU_DATA.buildings.find(b=>b.id===body.id).name} Lv.${job.targetLevel}へ共同普請を${receipt.queued?'予約':'開始'}しました。`,'staff-build');
-  const next=normalizeGameSave(JSON.parse(game.exportSave()),user,now,{clock}),nonce=crypto.randomUUID(),gate='EXISTS(SELECT 1 FROM staff_base_requests WHERE actor_id=? AND request_id=? AND commit_token=?)',gateArgs=[user.id,body.requestId,nonce];
+  const next=normalizeGameSave(JSON.parse(game.exportSave()),user,now,{clock}),nonce=crypto.randomUUID(),gate='EXISTS(SELECT 1 FROM staff_base_requests WHERE actor_id=? AND request_id=? AND commit_token=?)',gateArgs=[user.id,body.requestId,nonce],access=accountCommitGuard(user);
   const result=await db.batch([
     stmt(db,`INSERT INTO staff_base_requests(actor_id,request_id,request_hash,commit_token,result_json,created_at)
       SELECT ?,?,?,?,?,? FROM player_saves ps JOIN staff_base sb ON sb.id='sunpu'
       WHERE ps.user_id=? AND ps.revision=? AND ps.writer_device_id=? AND ps.lease_expires_at>? AND sb.revision=?
-      AND ${STAFF_MEMBER_GUARD} AND EXISTS(SELECT 1 FROM world_clock WHERE id=? AND revision=? AND running=1)
-      ON CONFLICT(actor_id,request_id) DO NOTHING RETURNING request_id`,user.id,body.requestId,digest,nonce,JSON.stringify(receipt),now,user.id,row.revision,body.deviceId,now,shared.revision,user.id,user.staff_term,user.id,WORLD_CLOCK_ID,clock.revision),
+      AND ${STAFF_MEMBER_GUARD} AND ${access.sql} AND EXISTS(SELECT 1 FROM world_clock WHERE id=? AND revision=? AND running=1)
+      ON CONFLICT(actor_id,request_id) DO NOTHING RETURNING request_id`,user.id,body.requestId,digest,nonce,JSON.stringify(receipt),now,user.id,row.revision,body.deviceId,now,shared.revision,user.id,user.staff_term,user.id,...access.args,WORLD_CLOCK_ID,clock.revision),
     stmt(db,`UPDATE player_saves SET save_json=?,revision=revision+1,updated_at=?,lease_expires_at=? WHERE user_id=? AND ${gate}`,JSON.stringify(next),now,now+SYNC_LEASE,user.id,...gateArgs),
     stmt(db,`UPDATE staff_base SET state_json=?,revision=revision+1,commit_token=?,updated_at=? WHERE id='sunpu' AND ${gate}`,JSON.stringify(state),nonce,now,...gateArgs)
   ]);
@@ -1320,11 +1337,14 @@ function mapWorldClock(row,now) {
 }
 async function getWorldClock(db,now) { return mapWorldClock(await getWorldClockRow(db,now),now); }
 async function syncSnapshot(db,row,user,deviceId,now,{settle=false}={}) {
+  const authenticated=user;await requireAccountAccess(db,authenticated);
   const clock=await getWorldClock(db,now);
   row=await ensureStaffCampaign(db,user,now,clock);user=await getUser(db,user.id);
+  await requireAccountAccess(db,authenticated);
   row=await settlePlayerCycle(db,row,user,now,clock,{deferActive:!settle,writerDeviceId:settle?deviceId:null});
   const staffBase=user.is_staff&&!user.is_admin?await staffBaseDto(db,user,clock,now):null;
   const current=await getUser(db,user.id);if(current.is_admin!==user.is_admin||current.staff_term!==user.staff_term)fail(409,'STAFF_ROLE_CHANGED','役職が更新されました。もう一度同期してください。');
+  await requireAccountAccess(db,authenticated);
   return {ok:true,user:mapUser(user,now),staffBase:publicStaffBase(staffBase),save:row?.save_json?normalizeGameSave(JSON.parse(row.save_json),user,now,{reading:true,clock}):null,clock,
     revision:Number(row?.revision||0),updatedAt:row?.updated_at?iso(row.updated_at):null,
     writerDeviceId:row?.writer_device_id||null,writerDeviceName:row?.writer_device_name||null,
@@ -1355,7 +1375,7 @@ const FIELD_SELECT=`SELECT u.id,u.name,u.clan,u.last_seen,s.revision,s.lease_exp
   json_extract(s.save_json,'$.state.buildings.wall') AS wall,json_extract(s.save_json,'$.state.tech.discipline') AS discipline,
   json_extract(s.save_json,'$.state.army') AS army_json,json_extract(s.save_json,'$.state.officerVariants') AS variants_json
   FROM users u JOIN player_saves s ON s.user_id=u.id
-  WHERE s.save_json IS NOT NULL AND (COALESCE(json_extract(s.save_json,'$.state.gameOver'),0)=0 OR u.id=(SELECT value FROM settings WHERE key='adminUserId') OR EXISTS(SELECT 1 FROM staff_members sm WHERE sm.user_id=u.id) OR ${EFFECTIVE_CYCLE_SQL}<?)`;
+  WHERE s.save_json IS NOT NULL AND NOT EXISTS(SELECT 1 FROM player_bans pb WHERE pb.user_id=u.id AND pb.active=1) AND (COALESCE(json_extract(s.save_json,'$.state.gameOver'),0)=0 OR u.id=(SELECT value FROM settings WHERE key='adminUserId') OR EXISTS(SELECT 1 FROM staff_members sm WHERE sm.user_id=u.id) OR ${EFFECTIVE_CYCLE_SQL}<?)`;
 function fieldArmy(army,variants) {
   const powers=[.9,.95,1,1.08,1.16,1.25,1.35,1.5];
   const scores=army.map(id=>Math.max(...RANKS.map((rank,i)=>variants.includes(id+':'+rank)?powers[i]:0))||1);
@@ -1414,7 +1434,7 @@ async function getFieldList(db,viewer,url,now) {
   if(cursor)idField(cursor,'共有地図の続き');
   if(!/^\d{1,3}$/.test(limitText)||Number(limitText)<1||Number(limitText)>100)fail(400,'INVALID_INPUT','一覧の件数は1～100件で指定してください。');
   const limit=Number(limitText),clock=await getWorldClock(db,now),relations=viewer?await fieldOwnRelations(db,viewer.id,clock.elapsedMs):[];await cyclePolicy(db,clock,now);const currentCycle=Math.floor(clock.elapsedMs/WORLD_CYCLE_MS);await sharedStaffBaseRow(db,clock,now);
-  const result=await db.batch([stmt(db,FIELD_SELECT+' AND u.id>? ORDER BY u.id LIMIT ?',currentCycle,cursor,limit+1),stmt(db,`SELECT COUNT(*) AS count FROM player_saves s WHERE save_json IS NOT NULL AND (COALESCE(json_extract(save_json,'$.state.gameOver'),0)=0 OR user_id=(SELECT value FROM settings WHERE key='adminUserId') OR EXISTS(SELECT 1 FROM staff_members sm WHERE sm.user_id=s.user_id) OR ${EFFECTIVE_CYCLE_SQL}<?)`,currentCycle)]);
+  const result=await db.batch([stmt(db,FIELD_SELECT+' AND u.id>? ORDER BY u.id LIMIT ?',currentCycle,cursor,limit+1),stmt(db,`SELECT COUNT(*) AS count FROM player_saves s WHERE save_json IS NOT NULL AND NOT EXISTS(SELECT 1 FROM player_bans pb WHERE pb.user_id=s.user_id AND pb.active=1) AND (COALESCE(json_extract(save_json,'$.state.gameOver'),0)=0 OR user_id=(SELECT value FROM settings WHERE key='adminUserId') OR EXISTS(SELECT 1 FROM staff_members sm WHERE sm.user_id=s.user_id) OR ${EFFECTIVE_CYCLE_SQL}<?)`,currentCycle)]);
   const found=rows(result[0]),players=found.slice(0,limit).map(row=>mapFieldPlayer(row,viewer,relations.find(r=>r.user_a===row.id||r.user_b===row.id),clock,now));
   const targets=found.slice(0,limit).flatMap(row=>mapFieldTargets(row,viewer,relations.find(r=>r.user_a===row.id||r.user_b===row.id),clock,now));
   return {ok:true,players,targets,total:Number(rows(result[1])[0].count),nextCursor:found.length>limit?players.at(-1).playerId:null,clock,rules:FIELD_RULES};
@@ -1425,6 +1445,7 @@ function fieldWriter(row,deviceId,revision,now) {
   if(Number(row.revision)!==revision)fail(409,'REVISION_CONFLICT','本拠の保存が更新されています。同期してからお試しください。');
 }
 async function settleWriterCycle(db,user,deviceId,revision,now) {
+  await requireAccountAccess(db,user);
   let prior=await getSyncRow(db,user.id);fieldWriter(prior,deviceId,revision,now);
   prior=await ensureStaffCampaign(db,user,now);fieldWriter(prior,deviceId,revision,now);
   const settled=await settlePlayerCycle(db,prior,user,now,undefined,{deferActive:false,writerDeviceId:deviceId});fieldWriter(settled,deviceId,revision,now);return settled;
@@ -1511,7 +1532,7 @@ async function fieldAttack(db,user,raw,now) {
   const digest=await hash(JSON.stringify(intent)),prior=await priorFieldRequest(db,user.id,body,'attack',digest);if(prior)return fieldReplayAttack(db,user,body,prior,now);
   if(body.targetPlayerId===user.id)fail(400,'INVALID_TARGET','自分の城には出陣できません。');
   await budget(db,'field-attack:'+user.id,30,60000,now);
-  const target=await getUser(db,body.targetPlayerId);if(!target)fail(404,'FIELD_PLAYER_NOT_FOUND','相手の本拠が見つかりません。');
+  const target=await getUser(db,body.targetPlayerId);if(!target||target.ban_active)fail(404,'FIELD_PLAYER_NOT_FOUND','相手の本拠が見つかりません。');
   const attackerRow=await settleWriterCycle(db,user,body.deviceId,body.expectedRevision,now);
   let defenderRow=await getSyncRow(db,target.id);if(!defenderRow?.save_json)fail(404,'FIELD_PLAYER_NOT_FOUND','相手の本拠はまだ共有されていません。');
   const initialHome=target.is_admin?'edo':target.is_staff?'sunpu':JSON.parse(defenderRow.save_json).state.home;
@@ -1585,7 +1606,7 @@ async function fieldDiplomacy(db,user,raw,now) {
   const body=fieldRequestBody(raw,'diplomacy'),digest=await hash(JSON.stringify(['diplomacy',body.targetPlayerId,body.action]));
   let prior=await priorFieldRequest(db,user.id,body,'diplomacy',digest);
   if(body.targetPlayerId===user.id)fail(400,'INVALID_TARGET','自分自身へ外交を申し込むことはできません。');
-  const target=await getUser(db,body.targetPlayerId);if(!target)fail(404,'FIELD_PLAYER_NOT_FOUND','相手の領主が見つかりません。');
+  const target=await getUser(db,body.targetPlayerId);if(!target||target.ban_active)fail(404,'FIELD_PLAYER_NOT_FOUND','相手の領主が見つかりません。');
   const clock=await getWorldClock(db,now);
   const respond=async idempotent=>({ok:true,relationship:mapFieldRelationship(await fieldRelation(db,user.id,target.id),user.id,clock.elapsedMs,target.name),idempotent,clock});
   if(prior)return respond(true);
@@ -1602,16 +1623,16 @@ async function fieldDiplomacy(db,user,raw,now) {
     if(Number(active.actor_count)>=20||Number(active.target_count)>=20)fail(409,'DIPLOMACY_LIMIT','各領主が同時に進められる外交は20件までです。');
   }
   const nextStatus={propose:'pending',accept:'allied',reject:'rejected',cancel:'cancelled'}[body.action],proposedBy=body.action==='propose'?user.id:relation.proposed_by;
-  const expiry=clock.elapsedMs+(body.action==='propose'?FIELD_RULES.proposalLifetimeMs:body.action==='accept'?FIELD_RULES.allianceDurationMs:0),nonce=crypto.randomUUID(),[first,second]=pair(user.id,target.id),relationRevision=relation?Number(relation.revision):-1;
+  const expiry=clock.elapsedMs+(body.action==='propose'?FIELD_RULES.proposalLifetimeMs:body.action==='accept'?FIELD_RULES.allianceDurationMs:0),nonce=crypto.randomUUID(),[first,second]=pair(user.id,target.id),relationRevision=relation?Number(relation.revision):-1,access=roleCommitGuard(user),targetAccess=roleCommitGuard(target);
   const result=await db.batch([
     stmt(db,`INSERT INTO field_requests(actor_id,request_id,kind,request_hash,commit_token,result_json,created_at)
       SELECT ?,?,'diplomacy',?,?,?,? FROM player_saves a JOIN player_saves d ON d.user_id=?
       WHERE a.user_id=? AND a.revision=? AND a.writer_device_id=? AND a.lease_expires_at>? AND d.revision=? AND d.save_json IS NOT NULL
-      AND EXISTS(SELECT 1 FROM world_clock WHERE id=? AND revision=?)
+      AND EXISTS(SELECT 1 FROM world_clock WHERE id=? AND revision=?) AND ${access.sql} AND ${targetAccess.sql}
       AND ((?=-1 AND NOT EXISTS(SELECT 1 FROM field_relations WHERE user_a=? AND user_b=?)) OR EXISTS(SELECT 1 FROM field_relations WHERE user_a=? AND user_b=? AND revision=?))
       AND (?<>'propose' OR ((SELECT COUNT(*) FROM field_relations WHERE (user_a=? OR user_b=?) AND status IN ('pending','allied') AND expires_elapsed_ms>?)<20
         AND (SELECT COUNT(*) FROM field_relations WHERE (user_a=? OR user_b=?) AND status IN ('pending','allied') AND expires_elapsed_ms>?)<20))
-      ON CONFLICT(actor_id,request_id) DO NOTHING RETURNING request_id`,user.id,body.requestId,digest,nonce,JSON.stringify({targetPlayerId:target.id,action:body.action}),now,target.id,user.id,body.expectedRevision,body.deviceId,now,other.revision,WORLD_CLOCK_ID,clock.revision,relationRevision,first,second,first,second,relationRevision,body.action,user.id,user.id,clock.elapsedMs,target.id,target.id,clock.elapsedMs),
+      ON CONFLICT(actor_id,request_id) DO NOTHING RETURNING request_id`,user.id,body.requestId,digest,nonce,JSON.stringify({targetPlayerId:target.id,action:body.action}),now,target.id,user.id,body.expectedRevision,body.deviceId,now,other.revision,WORLD_CLOCK_ID,clock.revision,...access.args,...targetAccess.args,relationRevision,first,second,first,second,relationRevision,body.action,user.id,user.id,clock.elapsedMs,target.id,target.id,clock.elapsedMs),
     stmt(db,`INSERT INTO field_relations(user_a,user_b,status,proposed_by,expires_elapsed_ms,updated_elapsed_ms,revision,updated_at)
       SELECT ?,?,?,?,?,?,0,? WHERE EXISTS(SELECT 1 FROM field_requests WHERE actor_id=? AND request_id=? AND commit_token=?)
       ON CONFLICT(user_a,user_b) DO UPDATE SET status=excluded.status,proposed_by=excluded.proposed_by,expires_elapsed_ms=excluded.expires_elapsed_ms,updated_elapsed_ms=excluded.updated_elapsed_ms,revision=field_relations.revision+1,updated_at=excluded.updated_at`,first,second,nextStatus,proposedBy,expiry,clock.elapsedMs,now,user.id,body.requestId,nonce)
@@ -1661,7 +1682,7 @@ async function route(request, env, now) {
   const db = env.DB;
   if (!db?.prepare || !db?.batch) fail(503, 'SERVICE_UNAVAILABLE', '通信サービスの準備中です。');
   if (path === '/health' && method === 'GET') {
-    await stmt(db, 'SELECT (SELECT COUNT(*) FROM users) AS count,EXISTS(SELECT 1 FROM trades) AS trade_schema,EXISTS(SELECT 1 FROM trade_requests) AS trade_request_schema,EXISTS(SELECT 1 FROM trade_deliveries) AS trade_delivery_schema').first();
+    await stmt(db, 'SELECT (SELECT COUNT(*) FROM users) AS count,EXISTS(SELECT 1 FROM trades) AS trade_schema,EXISTS(SELECT 1 FROM trade_requests) AS trade_request_schema,EXISTS(SELECT 1 FROM trade_deliveries) AS trade_delivery_schema,EXISTS(SELECT 1 FROM player_bans) AS ban_schema,EXISTS(SELECT 1 FROM moderation_requests) AS moderation_schema,(SELECT content_revision FROM moderation_state WHERE id=1) AS content_revision').first();
     return {ok:true,status:'ready',version:API_VERSION,features:API_FEATURES};
   }
   if (path === '/world-clock' && method === 'GET') {
@@ -1676,7 +1697,7 @@ async function route(request, env, now) {
   if (path === '/config' && method === 'GET') {
     const result = await db.batch([
       stmt(db, `SELECT key,value FROM settings WHERE key IN ('announcement','adminUserId')`),
-      stmt(db, 'SELECT COUNT(DISTINCT user_id) AS count FROM player_presence WHERE online=1 AND last_seen>?', now-ONLINE_WINDOW),
+      stmt(db, 'SELECT COUNT(DISTINCT user_id) AS count FROM player_presence WHERE online=1 AND last_seen>? AND NOT EXISTS(SELECT 1 FROM player_bans pb WHERE pb.user_id=player_presence.user_id AND pb.active=1)', now-ONLINE_WINDOW),
     ]);
     const settings = Object.fromEntries(rows(result[0]).map(r => [r.key,r.value]));
     return {ok:true,version:API_VERSION,features:API_FEATURES,announcement:settings.announcement ?? WELCOME,adminClaimed:!!settings.adminUserId,adminRecoveryAvailable:!!settings.adminUserId&&typeof env.SENGOKU_ADMIN_KEY==='string'&&env.SENGOKU_ADMIN_KEY.length>0,onlineCount:Number(rows(result[1])[0]?.count || 0),clock:await getWorldClock(db,now)};
@@ -1687,8 +1708,8 @@ async function route(request, env, now) {
     if(!/^\d{1,3}$/.test(limitText)||Number(limitText)<1||Number(limitText)>100)fail(400,'INVALID_INPUT','一覧の件数は1～100件で指定してください。');
     const limit=Number(limitText);
     const result=await db.batch([
-      stmt(db,USER_SELECT+' WHERE u.id>? AND EXISTS(SELECT 1 FROM player_presence ap WHERE ap.user_id=u.id AND ap.online=1 AND ap.last_seen>?) ORDER BY u.id LIMIT ?',cursor,now-ONLINE_WINDOW,limit+1),
-      stmt(db,'SELECT COUNT(DISTINCT user_id) AS count FROM player_presence WHERE online=1 AND last_seen>?',now-ONLINE_WINDOW),
+      stmt(db,USER_SELECT+' WHERE u.id>? AND NOT EXISTS(SELECT 1 FROM player_bans pb WHERE pb.user_id=u.id AND pb.active=1) AND EXISTS(SELECT 1 FROM player_presence ap WHERE ap.user_id=u.id AND ap.online=1 AND ap.last_seen>?) ORDER BY u.id LIMIT ?',cursor,now-ONLINE_WINDOW,limit+1),
+      stmt(db,'SELECT COUNT(DISTINCT user_id) AS count FROM player_presence WHERE online=1 AND last_seen>? AND NOT EXISTS(SELECT 1 FROM player_bans pb WHERE pb.user_id=player_presence.user_id AND pb.active=1)',now-ONLINE_WINDOW),
     ]);
     const found=rows(result[0]),players=found.slice(0,limit).map(row=>mapUser(row,now));
     return {ok:true,players,total:Number(rows(result[1])[0]?.count||0),nextCursor:found.length>limit?players.at(-1).id:null,onlineWindowSeconds:ONLINE_WINDOW/1000};
@@ -1698,15 +1719,18 @@ async function route(request, env, now) {
     await budget(db,scope||'pair-link-unattributed',12,15*60*1000,now);
     const body=await readBody(request),code=codeField(body.code),deviceName=textField(body.deviceName,'端末名',64,{optional:true})||'連携した端末';
     const codeHash=await hash('pair:v1:'+code),token=gameToken(),tokenHash=await hash(token);
+    const candidate=await stmt(db,'SELECT p.user_id,COALESCE(b.active,0) AS ban_active,COALESCE(b.revision,0) AS moderation_epoch FROM pairing_codes p LEFT JOIN player_bans b ON b.user_id=p.user_id WHERE p.code_hash=? AND p.expires_at>?',codeHash,now).first();
+    if(candidate?.ban_active)fail(403,'ACCOUNT_BANNED','この領主のオンライン利用は停止されています。');
+    const linkGuard="NOT EXISTS(SELECT 1 FROM player_bans WHERE user_id=pairing_codes.user_id AND active=1) AND COALESCE((SELECT revision FROM player_bans WHERE user_id=pairing_codes.user_id),0)=?";
     // D1 batches are transactions: exactly one redemption can both create a token
     // and consume this code. A failed batch leaves the code usable for a retry.
     const result=await db.batch([
       stmt(db,`INSERT INTO user_sessions(token_hash,user_id,device_name,created_at,last_seen)
-        SELECT ?,user_id,?,?,? FROM pairing_codes WHERE code_hash=? AND expires_at>?`,tokenHash,deviceName,now,now,codeHash,now),
-      stmt(db,'DELETE FROM pairing_codes WHERE code_hash=? AND expires_at>? RETURNING user_id',codeHash,now),
+        SELECT ?,user_id,?,?,? FROM pairing_codes WHERE code_hash=? AND expires_at>? AND ${linkGuard}`,tokenHash,deviceName,now,now,codeHash,now,Number(candidate?.moderation_epoch||0)),
+      stmt(db,'DELETE FROM pairing_codes WHERE code_hash=? AND expires_at>? AND '+linkGuard+' RETURNING user_id',codeHash,now,Number(candidate?.moderation_epoch||0)),
     ]);
     const linked=rows(result[1])[0];
-    if(!linked)fail(410,'PAIR_CODE_EXPIRED','連携コードは使用済みか、有効期限が切れています。元の端末で新しく発行してください。');
+    if(!linked){if(candidate)await requireAccountAccess(db,{id:candidate.user_id,moderation_epoch:candidate.moderation_epoch});fail(410,'PAIR_CODE_EXPIRED','連携コードは使用済みか、有効期限が切れています。元の端末で新しく発行してください。');}
     return {ok:true,token,user:mapUser(await getUser(db,linked.user_id),now)};
   }
   if (path === '/admin/recover' && method === 'POST') {
@@ -1748,6 +1772,7 @@ async function route(request, env, now) {
   }
 
   let user = await authenticate(request,db,now);
+  if(path==='/admin/moderation'||path.startsWith('/admin/moderation/'))return handleModeration({db,user,now,path,method,url,request,helpers:{fail,readBody,budget,idField,textField,uid,hash,mapUser,getUser,requireAdmin,userSelect:USER_SELECT}});
   if (path === '/me/avatar' && method === 'PUT') return putAvatar(request,env,user,now);
   if (path === '/me/avatar' && method === 'DELETE') return deleteAvatar(request,env,user,now);
   if (path === '/staff/recent-logins' && method === 'GET') return recentLogins(db,user,url,now);
@@ -1763,8 +1788,8 @@ async function route(request, env, now) {
   if (path === '/staff/base/upgrade' && method === 'POST') return staffBaseUpgrade(db,user,await readBody(request),now);
   if (path === '/walking/start' && method === 'POST') return walkingStart(db,user,await readBody(request),now);
   if (path === '/walking/claim' && method === 'POST') return walkingClaim(db,user,await readBody(request),now);
-  if (path === '/letters' || path.startsWith('/letters/')) return handleLetters({db,user,now,path,method,url,request,helpers:{fail,readBody,budget,idField,textField,uid,mapUser,getUser,evaluationRef,evaluationUpdates}});
-  if (path === '/trades' || path.startsWith('/trades/')) return handleTrades({db,user,now,path,method,url,request,helpers:{fail,readBody,budget,idField,uid,mapUser,getUser,getSyncRow,hash,fieldWriter,settleWriterCycle,getWorldClock,normalizeGameSave,roleCommitGuard,syncSnapshot,syncLease:SYNC_LEASE,worldClockId:WORLD_CLOCK_ID}});
+  if (path === '/letters' || path.startsWith('/letters/')) return handleLetters({db,user,now,path,method,url,request,helpers:{fail,readBody,budget,idField,textField,uid,mapUser,getUser,evaluationRef,evaluationUpdates,accountCommitGuard,requireAccountAccess,contentRevisionInput}});
+  if (path === '/trades' || path.startsWith('/trades/')) return handleTrades({db,user,now,path,method,url,request,helpers:{fail,readBody,budget,idField,uid,mapUser,getUser,getSyncRow,hash,fieldWriter,settleWriterCycle,getWorldClock,normalizeGameSave,roleCommitGuard,syncSnapshot,requireAccountAccess,syncLease:SYNC_LEASE,worldClockId:WORLD_CLOCK_ID}});
   if (path === '/field/me' && method === 'GET') return fieldMe(db,user,url,now);
   if (path === '/field/attack' && method === 'POST') return fieldAttack(db,user,await readBody(request),now);
   if (path === '/field/diplomacy' && method === 'POST') return fieldDiplomacy(db,user,await readBody(request),now);
@@ -1783,19 +1808,21 @@ async function route(request, env, now) {
   if (path === '/devices/pair-code' && method === 'POST') {
     await readBody(request);
     await budget(db,'pair-code:'+user.id,5,10*60*1000,now);
-    const code=pairingCode(),expiresAt=now+PAIR_CODE_LIFETIME;
-    await db.batch([
-      stmt(db,'DELETE FROM pairing_codes WHERE user_id=? OR expires_at<=?',user.id,now),
-      stmt(db,'INSERT INTO pairing_codes(code_hash,user_id,created_at,expires_at) VALUES(?,?,?,?)',await hash('pair:v1:'+code),user.id,now,expiresAt),
+    const code=pairingCode(),expiresAt=now+PAIR_CODE_LIFETIME,access=accountCommitGuard(user);
+    const result=await db.batch([
+      stmt(db,'DELETE FROM pairing_codes WHERE (user_id=? OR expires_at<=?) AND '+access.sql,user.id,now,...access.args),
+      stmt(db,'INSERT INTO pairing_codes(code_hash,user_id,created_at,expires_at) SELECT ?,?,?,? WHERE '+access.sql+' RETURNING code_hash',await hash('pair:v1:'+code),user.id,now,expiresAt,...access.args),
     ]);
+    if(!rows(result[1]).length)await requireAccountAccess(db,user);
     return {ok:true,code,expiresAt:iso(expiresAt)};
   }
   if (path === '/presence' && method === 'POST') {
     const body=await readBody(request),deviceId=idField(body.deviceId,'端末識別子'),deviceName=textField(body.deviceName,'端末名',64,{optional:true})||'接続中の端末';
     if(typeof body.online!=='boolean')fail(400,'INVALID_INPUT','接続状態を指定してください。');
     await budget(db,'presence:'+user.id,180,60000,now);
-    await stmt(db,`INSERT INTO player_presence(user_id,device_id,device_name,online,last_seen) VALUES(?,?,?,?,?)
-      ON CONFLICT(user_id,device_id) DO UPDATE SET device_name=excluded.device_name,online=excluded.online,last_seen=excluded.last_seen`,user.id,deviceId,deviceName,body.online?1:0,now).run();
+    const access=accountCommitGuard(user),present=await stmt(db,`INSERT INTO player_presence(user_id,device_id,device_name,online,last_seen) SELECT ?,?,?,?,? WHERE ${access.sql}
+      ON CONFLICT(user_id,device_id) DO UPDATE SET device_name=excluded.device_name,online=excluded.online,last_seen=excluded.last_seen RETURNING user_id`,user.id,deviceId,deviceName,body.online?1:0,now,...access.args).first();
+    if(!present)await requireAccountAccess(db,user);
     // A browser session can leave many random tab IDs over time; retain only recent
     // presence. This affects neither identity tokens nor cloud saves.
     await stmt(db,'DELETE FROM player_presence WHERE user_id=? AND last_seen<?',user.id,now-24*60*60*1000).run();
@@ -1817,18 +1844,19 @@ async function route(request, env, now) {
     const body=await readBody(request),deviceId=idField(body.deviceId,'端末識別子'),deviceName=textField(body.deviceName,'端末名',64,{optional:true})||'プレイ中の端末';
     if(body.takeOver!==undefined&&typeof body.takeOver!=='boolean')fail(400,'INVALID_INPUT','端末の切替方法が正しくありません。');
     await budget(db,'sync-lease:'+user.id,120,60000,now);
+    const access=accountCommitGuard(user);
     const result=await db.batch([
-      stmt(db,'INSERT INTO player_saves(user_id) VALUES(?) ON CONFLICT(user_id) DO NOTHING',user.id),
+      stmt(db,'INSERT INTO player_saves(user_id) SELECT ? WHERE '+access.sql+' ON CONFLICT(user_id) DO NOTHING',user.id,...access.args),
       stmt(db,`UPDATE player_saves SET writer_device_id=?,writer_device_name=?,lease_expires_at=?
-        WHERE user_id=? AND (writer_device_id IS NULL OR writer_device_id=? OR lease_expires_at<=? OR ?=1) RETURNING *`,deviceId,deviceName,now+SYNC_LEASE,user.id,deviceId,now,body.takeOver?1:0),
+        WHERE user_id=? AND (writer_device_id IS NULL OR writer_device_id=? OR lease_expires_at<=? OR ?=1) AND ${access.sql} RETURNING *`,deviceId,deviceName,now+SYNC_LEASE,user.id,deviceId,now,body.takeOver?1:0,...access.args),
     ]);
     const row=rows(result[1])[0];
-    if(!row)fail(409,'LEASE_HELD','別の端末がプレイ中です。続ける場合は「この端末でプレイ」を選んでください。');
+    if(!row){await requireAccountAccess(db,user);fail(409,'LEASE_HELD','別の端末がプレイ中です。続ける場合は「この端末でプレイ」を選んでください。');}
     return syncSnapshot(db,row,user,deviceId,now);
   }
   if (path === '/sync/release' && method === 'POST') {
-    const body=await readBody(request),deviceId=idField(body.deviceId,'端末識別子');
-    await stmt(db,'UPDATE player_saves SET writer_device_id=NULL,writer_device_name=NULL,lease_expires_at=0 WHERE user_id=? AND writer_device_id=?',user.id,deviceId).run();
+    const body=await readBody(request),deviceId=idField(body.deviceId,'端末識別子'),access=accountCommitGuard(user);
+    await stmt(db,'UPDATE player_saves SET writer_device_id=NULL,writer_device_name=NULL,lease_expires_at=0 WHERE user_id=? AND writer_device_id=? AND '+access.sql,user.id,deviceId,...access.args).run();
     return syncSnapshot(db,await getSyncRow(db,user.id),user,deviceId,now);
   }
   if (path === '/sync' && method === 'PUT') {
@@ -1866,6 +1894,7 @@ async function route(request, env, now) {
     for(const event of saveAchievements(before,save))statements.push(achievementStatement(db,user.id,event,now,gate,[user.id,nonce]));
     const changed=await db.batch(statements),row=rows(changed[0])[0];
     if(!row) {
+      await requireAccountAccess(db,user);
       const current=await getSyncRow(db,user.id);
       if(!current||current.writer_device_id!==deviceId||Number(current.lease_expires_at)<=now)fail(409,'LEASE_REQUIRED','プレイ端末の同期権限が切れました。接続状態を確認してください。');
       if(Number(current.revision)===body.revision&&!save.state.worldClock&&current.save_json&&JSON.parse(current.save_json).state?.worldClock)fail(409,'CLOCK_ANCHOR_REQUIRED','この領主は共通時計へ移行済みです。共通時計に対応した最新版から保存してください。');
@@ -1893,14 +1922,14 @@ async function route(request, env, now) {
   if (path === '/profile' && method === 'PATCH') {
     const body = await readBody(request), name = textField(body.name,'領主名',24);
     if(!user.is_admin&&!user.is_staff&&typeof body.clan==='string'&&body.clan.normalize('NFC').trim()===ADMIN_CLAN)fail(403,'ADMIN_CLAN_REQUIRED','德川家は運営・スタッフ専用です。一般の領主は徳川家を選択できます。');
-    try { await stmt(db,'UPDATE users SET name=?,name_key=? WHERE id=?',name,nameKey(name),user.id).run(); }
+    const access=accountCommitGuard(user);try { await stmt(db,'UPDATE users SET name=?,name_key=? WHERE id=? AND '+access.sql,name,nameKey(name),user.id,...access.args).run(); }
     catch (error) { if (/unique/i.test(String(error))) fail(409,'NAME_TAKEN','その領主名はすでに使われています。'); throw error; }
     return {ok:true,user:mapUser(await getUser(db,user.id),now)};
   }
   if (path === '/players' && method === 'GET') {
     const q = textField(url.searchParams.get('q'),'検索語',24,{min:2});
     const pattern = '%' + q.replaceAll('\\','\\\\').replaceAll('%','\\%').replaceAll('_','\\_') + '%';
-    const result = await stmt(db,USER_SELECT + ` WHERE (u.name LIKE ? ESCAPE '\\' OR u.id=?) AND u.id<>? ORDER BY u.last_seen DESC,u.name LIMIT 30`,pattern,q,user.id).all();
+    const result = await stmt(db,USER_SELECT + ` WHERE (u.name LIKE ? ESCAPE '\\' OR u.id=?) AND u.id<>? AND NOT EXISTS(SELECT 1 FROM player_bans pb WHERE pb.user_id=u.id AND pb.active=1) ORDER BY u.last_seen DESC,u.name LIMIT 30`,pattern,q,user.id).all();
     return {ok:true,players:rows(result).map(r=>mapUser(r,now))};
   }
   if (path === '/chat' && method === 'GET') {
@@ -1908,29 +1937,33 @@ async function route(request, env, now) {
     const room = await roomFor(db,user,channel,url.searchParams.get('target'));
     const afterText = url.searchParams.get('after') || '0';
     if (!/^\d{1,15}$/.test(afterText)) fail(400,'INVALID_CURSOR','読み込み位置が正しくありません。');
-    const after = Number(afterText);
-    const restricted=channel==='admin'||channel==='guild',guard=channel==='admin'?STAFF_CHAT_GUARD:GUILD_MEMBER_GUARD,guardParams=channel==='admin'?[user.id,user.id]:[user.id,user.guild_id],params=[room,...(restricted?guardParams:[]),...(after>0?[after]:[])];
-    const query=MESSAGE_SELECT+' WHERE m.room_key=?'+(restricted?' AND '+guard:'')+(after>0?' AND m.id>? ORDER BY m.id ASC LIMIT 100':' ORDER BY m.id DESC LIMIT 100');
-    const authors=stmt(db,'SELECT DISTINCT user_id FROM (SELECT m.user_id FROM messages m WHERE m.room_key=?'+(restricted?' AND '+guard:'')+' ORDER BY m.id DESC LIMIT 100)',room,...(restricted?guardParams:[]));
-    let result,recent;
-    if(restricted) {
-      const read=await db.batch([stmt(db,'SELECT 1 AS allowed WHERE '+guard,...guardParams),stmt(db,query,...params),authors]);
-      if(!rows(read[0]).length)fail(403,channel==='admin'?'STAFF_CHAT_REQUIRED':'GUILD_REQUIRED','このチャットの参加権限がありません。');
-      result=read[1];recent=read[2];
-    }else [result,recent]=await db.batch([stmt(db,query,...params),authors]);
-    let messages=rows(result).map(mapMessage);
-    if (!after) messages.reverse();
-    return {ok:true,channel,messages,playerEvaluations:evaluationUpdates([...messages.map(message=>message.userId),...rows(recent).map(row=>row.user_id)]),nextAfter:messages.at(-1)?.id || after,hasMore:messages.length===100};
+    const after=Number(afterText),known=contentRevisionInput(url),access=accountCommitGuard(user),channelGuard=channel==='admin'?STAFF_CHAT_GUARD:channel==='guild'?GUILD_MEMBER_GUARD:'1',channelArgs=channel==='admin'?[user.id,user.id]:channel==='guild'?[user.id,user.guild_id]:[],guard=channelGuard+' AND '+access.sql,guardParams=[...channelArgs,...access.args];
+    // Revision and messages share one snapshot. A stale delta cursor is replaced
+    // by the latest page, so deleted messages cannot remain in a merged cache.
+    const query=MESSAGE_SELECT+` CROSS JOIN moderation_state mc WHERE mc.id=1 AND m.room_key=? AND ${guard}
+      AND (?<>mc.content_revision OR ?=0 OR m.id>?) ORDER BY CASE WHEN ?=mc.content_revision AND ?>0 THEN m.id END ASC,m.id DESC LIMIT 100`;
+    const read=await db.batch([
+      stmt(db,'SELECT 1 AS allowed WHERE '+guard,...guardParams),
+      stmt(db,query,room,...guardParams,known,after,after,known,after),
+      stmt(db,'SELECT DISTINCT user_id FROM (SELECT m.user_id FROM messages m WHERE m.room_key=? AND '+guard+' ORDER BY m.id DESC LIMIT 100)',room,...guardParams),
+      stmt(db,'SELECT content_revision FROM moderation_state WHERE id=1')
+    ]);
+    const allowed=rows(read[0])[0];if(!allowed){await requireAccountAccess(db,user);fail(403,channel==='admin'?'STAFF_CHAT_REQUIRED':'GUILD_REQUIRED','このチャットの参加権限がありません。');}
+    const contentRevision=Number(rows(read[3])[0].content_revision),reset=known!==contentRevision,delta=after>0&&!reset,messages=rows(read[1]).map(mapMessage);
+    if(!delta)messages.reverse();
+    return {ok:true,channel,contentRevision,reset,messages,playerEvaluations:evaluationUpdates([...messages.map(message=>message.userId),...rows(read[2]).map(row=>row.user_id)]),nextAfter:messages.at(-1)?.id||(delta?after:0),hasMore:messages.length===100};
   }
   if (path === '/chat' && method === 'POST') {
     const body=await readBody(request), channel=textField(body.channel,'チャット種別',12), text=textField(body.text,'メッセージ',300);
     const room=await roomFor(db,user,channel,body.target);
     await budget(db,'chat:'+user.id,1,5000,now);
-    const guard=channel==='admin'?STAFF_CHAT_GUARD:channel==='guild'?GUILD_MEMBER_GUARD:'1',guardParams=channel==='admin'?[user.id,user.id]:channel==='guild'?[user.id,user.guild_id]:[];
+    const access=accountCommitGuard(user),guard=(channel==='admin'?STAFF_CHAT_GUARD:channel==='guild'?GUILD_MEMBER_GUARD:'1')+' AND '+access.sql,guardParams=[...(channel==='admin'?[user.id,user.id]:channel==='guild'?[user.id,user.guild_id]:[]),...access.args];
     const inserted=await stmt(db,'INSERT INTO messages(room_key,channel,user_id,body,created_at) SELECT ?,?,?,?,? WHERE '+guard+' RETURNING id',room,channel,user.id,text,now,...guardParams).first();
-    if(!inserted)fail(403,channel==='admin'?'STAFF_CHAT_REQUIRED':'GUILD_REQUIRED','このチャットの参加権限がありません。');
+    if(!inserted){await requireAccountAccess(db,user);fail(403,channel==='admin'?'STAFF_CHAT_REQUIRED':'GUILD_REQUIRED','このチャットの参加権限がありません。');}
+    await requireAccountAccess(db,user);
     const message=await stmt(db,MESSAGE_SELECT+' WHERE m.id=?',inserted.id).first();
-    return {ok:true,message:mapMessage(message)};
+    if(!message){await requireAccountAccess(db,user);fail(409,'CONTENT_CHANGED','投稿が更新されました。最新の一覧を確認してください。');}
+    return {ok:true,message:mapMessage(message),contentRevision:Number((await stmt(db,'SELECT content_revision FROM moderation_state WHERE id=1').first()).content_revision)};
   }
   if (path === '/guilds' && method === 'GET') {
     const result=await stmt(db,GUILD_SELECT+' ORDER BY member_count DESC,g.name LIMIT 50').all();
@@ -1942,12 +1975,13 @@ async function route(request, env, now) {
   if (path === '/guild' && method === 'POST') {
     const body=await readBody(request),name=textField(body.name,'ギルド名',24);
     if (user.guild_id) fail(409,'ALREADY_IN_GUILD','所属中のギルドを脱退してから作成してください。');
-    const id=uid('g_');
+    const id=uid('g_'),access=accountCommitGuard(user);
     try { await db.batch([
-      stmt(db,'INSERT INTO guilds(id,name,name_key,owner_id,created_at) VALUES(?,?,?,?,?)',id,name,nameKey(name),user.id,now),
-      stmt(db,'INSERT INTO guild_members(user_id,guild_id,joined_at) VALUES(?,?,?)',user.id,id,now),
-      stmt(db,'INSERT INTO guild_treasuries(guild_id) VALUES(?)',id),
+      stmt(db,'INSERT INTO guilds(id,name,name_key,owner_id,created_at) SELECT ?,?,?,?,? WHERE '+access.sql,id,name,nameKey(name),user.id,now,...access.args),
+      stmt(db,'INSERT INTO guild_members(user_id,guild_id,joined_at) SELECT ?,?,? WHERE '+access.sql,user.id,id,now,...access.args),
+      stmt(db,'INSERT INTO guild_treasuries(guild_id) SELECT ? WHERE '+access.sql,id,...access.args),
     ]); } catch(error) { if (/unique/i.test(String(error))) fail(409,'GUILD_CONFLICT','そのギルド名は使われているか、すでに別のギルドへ参加しています。'); throw error; }
+    await requireAccountAccess(db,user);
     return {ok:true,guild:mapGuild(await stmt(db,GUILD_SELECT+' WHERE g.id=?',id).first()),user:mapUser(await getUser(db,user.id),now)};
   }
   if (path === '/guild/join' && method === 'POST') {
@@ -1955,7 +1989,7 @@ async function route(request, env, now) {
     if (user.guild_id===guildId) return {ok:true,user:mapUser(user,now)};
     if (user.guild_id) fail(409,'ALREADY_IN_GUILD','所属中のギルドを脱退してから参加してください。');
     if (!await stmt(db,'SELECT id FROM guilds WHERE id=?',guildId).first()) fail(404,'GUILD_NOT_FOUND','そのギルドは見つかりませんでした。');
-    await stmt(db,`INSERT INTO guild_members(user_id,guild_id,joined_at) SELECT ?,?,? WHERE EXISTS(SELECT 1 FROM guilds WHERE id=?) AND (SELECT COUNT(*) FROM guild_members WHERE guild_id=?)<? ON CONFLICT(user_id) DO NOTHING`,user.id,guildId,now,guildId,guildId,MAX_GUILD_MEMBERS).run();
+    const access=accountCommitGuard(user);await stmt(db,`INSERT INTO guild_members(user_id,guild_id,joined_at) SELECT ?,?,? WHERE EXISTS(SELECT 1 FROM guilds WHERE id=?) AND (SELECT COUNT(*) FROM guild_members WHERE guild_id=?)<? AND ${access.sql} ON CONFLICT(user_id) DO NOTHING`,user.id,guildId,now,guildId,guildId,MAX_GUILD_MEMBERS,...access.args).run();
     const current=await getUser(db,user.id);
     if (current.guild_id!==guildId) fail(409,'GUILD_UNAVAILABLE','ギルドが満員か、すでに別のギルドへ参加しています。');
     return {ok:true,user:mapUser(current,now)};
@@ -1971,7 +2005,8 @@ async function route(request, env, now) {
     const prior=await stmt(db,'SELECT * FROM friendships WHERE user_a=? AND user_b=?',a,b).first();
     if(prior) return {ok:true,status:prior.status,direction:prior.requested_by===user.id?'outgoing':'incoming'};
     await budget(db,'friend-request:'+user.id,20,600000,now);
-    await stmt(db,`INSERT INTO friendships(user_a,user_b,requested_by,status,created_at,updated_at) VALUES(?,?,?,'pending',?,?) ON CONFLICT(user_a,user_b) DO NOTHING`,a,b,user.id,now,now).run();
+    const access=accountCommitGuard(user);await stmt(db,`INSERT INTO friendships(user_a,user_b,requested_by,status,created_at,updated_at) SELECT ?,?,?,'pending',?,? WHERE ${access.sql} ON CONFLICT(user_a,user_b) DO NOTHING`,a,b,user.id,now,now,...access.args).run();
+    await requireAccountAccess(db,user);
     const current=await stmt(db,'SELECT * FROM friendships WHERE user_a=? AND user_b=?',a,b).first();
     return {ok:true,status:current.status,direction:current.requested_by===user.id?'outgoing':'incoming'};
   }
@@ -1981,13 +2016,14 @@ async function route(request, env, now) {
     const [a,b]=pair(user.id,other);
     const prior=await stmt(db,'SELECT * FROM friendships WHERE user_a=? AND user_b=?',a,b).first();
     if(!prior||prior.status!=='pending'||prior.requested_by!==other) fail(403,'REQUEST_NOT_FOUND','承認できる友達申請がありません。');
-    if(body.accept) await stmt(db,`UPDATE friendships SET status='accepted',updated_at=? WHERE user_a=? AND user_b=? AND status='pending' AND requested_by=?`,now,a,b,other).run();
-    else await stmt(db,`DELETE FROM friendships WHERE user_a=? AND user_b=? AND status='pending' AND requested_by=?`,a,b,other).run();
+    const access=accountCommitGuard(user);
+    if(body.accept) await stmt(db,`UPDATE friendships SET status='accepted',updated_at=? WHERE user_a=? AND user_b=? AND status='pending' AND requested_by=? AND ${access.sql}`,now,a,b,other,...access.args).run();
+    else await stmt(db,`DELETE FROM friendships WHERE user_a=? AND user_b=? AND status='pending' AND requested_by=? AND ${access.sql}`,a,b,other,...access.args).run();
     return {ok:true,status:body.accept?'accepted':'declined'};
   }
   if (path === '/friends' && method === 'DELETE') {
-    const body=await readBody(request),other=idField(body.userId,'領主の識別子'),[a,b]=pair(user.id,other);
-    await stmt(db,'DELETE FROM friendships WHERE user_a=? AND user_b=?',a,b).run();
+    const body=await readBody(request),other=idField(body.userId,'領主の識別子'),[a,b]=pair(user.id,other),access=accountCommitGuard(user);
+    await stmt(db,'DELETE FROM friendships WHERE user_a=? AND user_b=? AND '+access.sql,a,b,...access.args).run();
     return {ok:true,deleted:true};
   }
   if (path === '/admin/claim' && method === 'POST') {
@@ -2038,7 +2074,7 @@ async function route(request, env, now) {
   if (path === '/mail/read' && method === 'POST') {
     const body=await readBody(request),mailId=idField(body.mailId,'メール識別子');
     await visibleMail(db,user.id,mailId);
-    await stmt(db,'INSERT INTO mail_reads(mail_id,user_id,read_at) VALUES(?,?,?) ON CONFLICT(mail_id,user_id) DO NOTHING',mailId,user.id,now).run();
+    const access=accountCommitGuard(user);await stmt(db,'INSERT INTO mail_reads(mail_id,user_id,read_at) SELECT ?,?,? WHERE '+access.sql+' ON CONFLICT(mail_id,user_id) DO NOTHING',mailId,user.id,now,...access.args).run();
     return {ok:true,read:true};
   }
   if (path === '/mail/claim' && method === 'POST') {
@@ -2047,11 +2083,11 @@ async function route(request, env, now) {
     if(!mail.gift_json) fail(400,'NO_GIFT','このメールには贈り物がありません。');
     const reused=await stmt(db,'SELECT mail_id FROM mail_receipts WHERE user_id=? AND request_id=?',user.id,requestId).first();
     if(reused&&reused.mail_id!==mailId) fail(409,'IDEMPOTENCY_CONFLICT','別の贈り物に使用した受取番号です。');
-    const receiptId=uid('r_');
+    const receiptId=uid('r_'),access=accountCommitGuard(user);
     let result;
     try {result=await db.batch([
-      stmt(db,`INSERT INTO mail_receipts(mail_id,user_id,receipt_id,request_id,gift_json,claimed_at) SELECT id,?,?,?,?,? FROM mail_campaigns WHERE id=? AND (target_user_id IS NULL OR target_user_id=?) AND gift_json IS NOT NULL ON CONFLICT(mail_id,user_id) DO NOTHING`,user.id,receiptId,requestId,mail.gift_json,now,mailId,user.id),
-      stmt(db,'INSERT INTO mail_reads(mail_id,user_id,read_at) VALUES(?,?,?) ON CONFLICT(mail_id,user_id) DO NOTHING',mailId,user.id,now),
+      stmt(db,`INSERT INTO mail_receipts(mail_id,user_id,receipt_id,request_id,gift_json,claimed_at) SELECT id,?,?,?,?,? FROM mail_campaigns WHERE id=? AND (target_user_id IS NULL OR target_user_id=?) AND gift_json IS NOT NULL AND ${access.sql} ON CONFLICT(mail_id,user_id) DO NOTHING`,user.id,receiptId,requestId,mail.gift_json,now,mailId,user.id,...access.args),
+      stmt(db,'INSERT INTO mail_reads(mail_id,user_id,read_at) SELECT ?,?,? WHERE '+access.sql+' ON CONFLICT(mail_id,user_id) DO NOTHING',mailId,user.id,now,...access.args),
       stmt(db,'SELECT receipt_id,request_id,gift_json FROM mail_receipts WHERE mail_id=? AND user_id=?',mailId,user.id),
     ]);}catch(error){if(/unique/i.test(String(error))) fail(409,'IDEMPOTENCY_CONFLICT','受取番号が別の操作と重複しています。');throw error;}
     const receipt=rows(result[2])[0];
@@ -2078,9 +2114,11 @@ export default {
         return new Response(null,{status:204,headers});
       }
       if(path.startsWith(API+'/avatars/')&&request.method==='GET')return await getAvatar(request,env,origin);
-      const now=Date.now(),payload=await route(request,env,now);
-      return response(await resolvePlayerEvaluations(env.DB,payload,now),200,origin);
+      const now=Date.now(),payload=await route(request,env,now),resolved=await resolvePlayerEvaluations(env.DB,payload,now),authenticated=authenticatedRequests.get(request);
+      if(authenticated)await requireAccountAccess(env.DB,authenticated);
+      return response(resolved,200,origin);
     }catch(error){
+      const authenticated=authenticatedRequests.get(request);if(authenticated)try{await requireAccountAccess(env.DB,authenticated);}catch(accessError){error=accessError;}
       if(error instanceof ApiError){const e={code:error.code,message:error.message};if(error.retryAfter)e.retryAfter=error.retryAfter;return response({ok:false,error:e},error.status,origin,error.retryAfter);}
       return response({ok:false,error:{code:'INTERNAL_ERROR',message:'通信処理に失敗しました。少し時間をおいて再度お試しください。'}},500,origin);
     }
