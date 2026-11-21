@@ -41,7 +41,8 @@ function metadataEntries(key) {
     ['property', 'og:type', 'website'], ['property', 'og:locale', site.locale],
     ['property', 'og:site_name', site.name], ['property', 'og:title', page.title],
     ['property', 'og:description', page.description], ['property', 'og:url', canonical(key)],
-    ['property', 'og:image', absolute(image.path)], ['property', 'og:image:width', image.width],
+    ['property', 'og:image', absolute(image.path)], ['property', 'og:image:secure_url', absolute(image.path)],
+    ['property', 'og:image:type', image.type], ['property', 'og:image:width', image.width],
     ['property', 'og:image:height', image.height], ['property', 'og:image:alt', image.alt],
     ['name', 'twitter:card', 'summary_large_image'], ['name', 'twitter:title', page.title],
     ['name', 'twitter:description', page.description], ['name', 'twitter:image', absolute(image.path)],
@@ -49,6 +50,22 @@ function metadataEntries(key) {
   ];
 }
 const metaTag = ([attribute, name, value]) => `<meta ${attribute}="${esc(name)}" content="${esc(value)}">`;
+
+// Keep brand URLs stable between game releases; use a new pathname when the
+// artwork changes so browser/SNS image caches can fetch the new identity.
+function brandLinks(resolve) {
+  return [site.faviconIco, site.faviconSmall, site.favicon].map(icon =>
+    `<link rel="icon" href="${esc(resolve(icon.path))}" sizes="${esc(icon.sizes)}" type="${esc(icon.type)}">`
+  ).concat(`<link rel="apple-touch-icon" href="${esc(resolve(site.appleTouchIcon.path))}" sizes="${esc(site.appleTouchIcon.sizes)}">`);
+}
+
+function withBrandLinks(html, resolve = value => value) {
+  return html.replace(/<head\b[^>]*>[\s\S]*?<\/head>/i, head => {
+    head = head.replace(/(?:\r?\n)?[ \t]*<link\b[^>]*>/gi, tag =>
+      ['icon', 'shortcut icon', 'apple-touch-icon'].includes(tagAttributes(tag).rel) ? '' : tag);
+    return head.replace('</head>', `  ${brandLinks(resolve).join('\n  ')}\n</head>`);
+  });
+}
 
 function structuredData(key, breadcrumbItems = [], pageImage = site.ogImage.path) {
   const url = canonical(key), home = canonical('home'), page = site.pages[key];
@@ -525,8 +542,7 @@ function render(page) {
   ${metadataEntries(page.key).map(metaTag).join('\n  ')}
   <meta name="theme-color" content="#0c141f">
   <link rel="canonical" href="${url}">
-  <link rel="icon" href="${p.file(site.favicon.path)}" sizes="${esc(site.favicon.sizes)}" type="${esc(site.favicon.type)}">
-  <link rel="apple-touch-icon" href="${p.file('assets/apple-touch-icon.png')}?v=${release}">
+  ${brandLinks(p.file).join('\n  ')}
   <link rel="stylesheet" href="${p.file('guide.css')}?v=${release}">
   <link rel="stylesheet" href="${p.file('interaction-motion.css')}?v=${release}">
   <script defer src="${p.file('interaction-motion.js')}?v=${release}"></script>
@@ -538,7 +554,7 @@ function render(page) {
 </head>
 <body data-page="${page.key}">
   <a class="skip-link" href="#content">本文へ移動</a>
-  <header class="site-header"><div class="site-header-inner page-width"><a class="site-brand" href="${p.dir('')}" aria-label="戦国VS ゲームのトップへ"><img src="${p.file('assets/icon-192.png')}?v=${release}" alt="" width="44" height="44"><span><b>戦国VS</b><small>城と群雄の戦記</small></span></a><nav class="header-navigation" aria-label="サイトの案内">${nav}<a class="nav-play" href="${p.dir('')}">ゲームを開く</a></nav></div></header>
+  <header class="site-header"><div class="site-header-inner page-width"><a class="site-brand" href="${p.dir('')}" aria-label="戦国VS ゲームのトップへ"><img src="${p.file(site.favicon.path)}" alt="" width="44" height="44"><span><b>戦国VS</b><small>城と群雄の戦記</small></span></a><nav class="header-navigation" aria-label="サイトの案内">${nav}<a class="nav-play" href="${p.dir('')}">ゲームを開く</a></nav></div></header>
   <main id="content" class="page-width">
     <nav aria-label="パンくず"><ol class="breadcrumbs">${breadcrumbItems.map((item,i)=>`<li>${i===breadcrumbItems.length-1?`<span aria-current="page">${item.name}</span>`:`<a href="${item.href}">${item.name}</a>`}</li>`).join('')}</ol></nav>
     <section class="hero" aria-labelledby="page-title"><div class="hero-copy"><p class="eyebrow">${page.eyebrow}</p><h1 id="page-title">${page.heading}</h1><p class="hero-lead">${page.lead}</p><div class="hero-actions"><a class="action-link" href="${p.dir('')}">${page.heroAction}</a><a class="text-link" href="${secondaryHref}">${page.secondary[0]}</a></div></div>${imageFigure}</section>
@@ -586,8 +602,8 @@ function updateHome() {
   html = html.replace(/<title>[\s\S]*?<\/title>/i, `<title>${esc(page.title)}</title>`);
   for (const entry of metadataEntries('home')) html = replaceHeadTag(html, 'meta', attrs => attrs[entry[0]] === entry[1], metaTag(entry));
   html = replaceHeadTag(html, 'link', attrs => attrs.rel === 'canonical', `<link rel="canonical" href="${canonical('home')}">`);
-  html = replaceHeadTag(html, 'link', attrs => attrs.rel === 'icon', `<link rel="icon" type="${esc(site.favicon.type)}" sizes="${esc(site.favicon.sizes)}" href="${site.favicon.path}">`);
-  html = replaceHeadTag(html, 'link', attrs => attrs.rel === 'apple-touch-icon', `<link rel="apple-touch-icon" href="assets/apple-touch-icon.png?v=${release}">`);
+  html = withBrandLinks(html);
+  html = html.replace(/(<div class="mobile-brand"><img\s+src=")[^"]+("[^>]*>)/, (_, before, after) => before + site.favicon.path + after);
   const graph = `<script type="application/ld+json">${jsonScript(structuredData('home'))}</script>`;
   let hasGraph = false;
   html = html.replace(/<script\b([^>]*)>[\s\S]*?<\/script>/gi, (tag, attributes) => {
@@ -609,7 +625,7 @@ function updateHome() {
 
 function updateNotFound() {
   let html = fs.readFileSync(path.join(root, '404.html'), 'utf8');
-  html = replaceHeadTag(html, 'link', attrs => attrs.rel === 'icon', `<link rel="icon" href="/${site.favicon.path}" sizes="${esc(site.favicon.sizes)}" type="${esc(site.favicon.type)}">`);
+  html = withBrandLinks(html, value => '/' + value);
   // A 404 document can be served at an unknown nested URL. Its assets must
   // always resolve at the site root rather than below that missing path.
   html = html.replace(/(\b(?:src|href)=["'])\/?(image-protect|interaction-motion)\.(css|js)(?:\?[^"']*)?/g, (_, before, name, extension) => `${before}/${name}.${extension}?v=${release}`);
@@ -622,7 +638,7 @@ function updateManifest() {
   manifest.short_name = site.name;
   manifest.description = site.pages.home.description;
   manifest.lang = site.language;
-  manifest.icons = manifest.icons.map(icon => ({...icon, src:icon.src.split('?')[0]+'?v='+release}));
+  manifest.icons = site.appIcons;
   return JSON.stringify(manifest, null, 2) + '\n';
 }
 

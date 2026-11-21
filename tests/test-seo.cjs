@@ -13,6 +13,32 @@ const htmlFor=page=>read(path.join(page.path,'index.html').replace(/^\//,''));
 const pages=Object.entries(site.pages).map(([key,page])=>({key,...page,url:site.origin+page.path,html:htmlFor(page)}));
 const graph=html=>JSON.parse([...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)].find(m=>attrs(m[1]).type==='application/ld+json')[2])['@graph'];
 const tests=[];const test=(name,fn)=>tests.push([name,fn]);
+const bytes=file=>fs.readFileSync(path.join(root,file));
+function pngSize(image){
+  assert(image.length>=24,'PNG header is missing');
+  assert(image.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10])),'The icon must contain a real PNG');
+  assert.equal(image.subarray(12,16).toString(),'IHDR');
+  return{width:image.readUInt32BE(16),height:image.readUInt32BE(20)};
+}
+function jpegSize(image){
+  assert(image.length>=4&&image.readUInt16BE(0)===0xffd8,'The social image must contain a real JPEG');
+  let offset=2;
+  while(offset+3<image.length){
+    assert.equal(image[offset++],0xff,'Invalid JPEG marker');
+    while(image[offset]===0xff)offset++;
+    const marker=image[offset++];
+    if(marker===0xd9||marker===0xda)break;
+    if(marker===0x01||marker>=0xd0&&marker<=0xd7)continue;
+    const length=image.readUInt16BE(offset);
+    assert(length>=2&&offset+length<=image.length,'Truncated JPEG segment');
+    if([0xc0,0xc1,0xc2,0xc3,0xc5,0xc6,0xc7,0xc9,0xca,0xcb,0xcd,0xce,0xcf].includes(marker)){
+      assert(length>=8,'Invalid JPEG frame');
+      return{width:image.readUInt16BE(offset+5),height:image.readUInt16BE(offset+3)};
+    }
+    offset+=length;
+  }
+  assert.fail('The social image has no JPEG dimensions');
+}
 
 test('one metadata source matches every title, description, canonical and social preview',()=>{
   assert.equal(site.schemaVersion,1);assert.equal(site.origin,'https://www.kasai-solutions-inc.com');assert.deepEqual(Object.keys(site.pages).sort(),['about','guide','home','recovery']);
@@ -20,8 +46,8 @@ test('one metadata source matches every title, description, canonical and social
     const meta=tags(page.html,'meta'),links=tags(page.html,'link'),value=(kind,key)=>{const matches=meta.filter(m=>m[kind]===key);assert.equal(matches.length,1,key+' on '+page.path);return matches[0].content;};
     assert.equal(decode(page.html.match(/<title>([^<]+)<\/title>/)[1]),page.title);assert.equal(value('name','description'),page.description);
     assert.equal(links.find(l=>l.rel==='canonical').href,page.url);
-    for(const [name,expected] of [['og:title',page.title],['og:description',page.description],['og:url',page.url],['og:site_name',site.name],['og:locale',site.locale],['og:image',site.origin+'/'+site.ogImage.path],['og:image:width',String(site.ogImage.width)],['og:image:height',String(site.ogImage.height)],['og:image:alt',site.ogImage.alt]])assert.equal(value('property',name),expected,name);
-    for(const [name,expected] of [['twitter:title',page.title],['twitter:description',page.description],['twitter:image',site.origin+'/'+site.ogImage.path],['twitter:image:alt',site.ogImage.alt]])assert.equal(value('name',name),expected,name);
+    for(const [name,expected] of [['og:title',page.title],['og:description',page.description],['og:url',page.url],['og:site_name',site.name],['og:locale',site.locale],['og:image',site.origin+'/'+site.ogImage.path],['og:image:secure_url',site.origin+'/'+site.ogImage.path],['og:image:type',site.ogImage.type],['og:image:width',String(site.ogImage.width)],['og:image:height',String(site.ogImage.height)],['og:image:alt',site.ogImage.alt]])assert.equal(value('property',name),expected,name);
+    for(const [name,expected] of [['twitter:card','summary_large_image'],['twitter:title',page.title],['twitter:description',page.description],['twitter:image',site.origin+'/'+site.ogImage.path],['twitter:image:alt',site.ogImage.alt]])assert.equal(value('name',name),expected,name);
   }
 });
 
@@ -33,7 +59,7 @@ test('all four JSON-LD graphs share one publisher, site and game identity with t
     const organization=nodes.find(n=>n['@type']==='Organization'),website=nodes.find(n=>n['@type']==='WebSite'),game=nodes.find(n=>n['@type']==='VideoGame'),webpage=nodes.find(n=>n['@type']==='WebPage');
     assert.equal(organization.name,site.publisher);assert.equal(organization.logo.url,site.origin+'/'+site.logo.path);assert.equal(organization.logo.width,site.logo.width);assert.equal(organization.logo.height,site.logo.height);
     assert.equal(website.name,site.name);assert.equal(website.alternateName,site.alternateName);assert.equal(website.publisher['@id'],commonIds.Organization);
-    assert.equal(game.name,site.name);assert.equal(game.description,site.pages.home.description);assert.equal(game.softwareVersion,site.version);assert.equal(game.dateModified,site.dateModified);assert.equal(game.publisher['@id'],commonIds.Organization);assert.equal(game.softwareHelp.url,site.origin+site.pages.guide.path);
+    assert.equal(game.name,site.name);assert.equal(game.description,site.pages.home.description);assert.equal(game.image,site.origin+'/'+site.ogImage.path);assert.equal(game.softwareVersion,site.version);assert.equal(game.dateModified,site.dateModified);assert.equal(game.publisher['@id'],commonIds.Organization);assert.equal(game.softwareHelp.url,site.origin+site.pages.guide.path);
     assert.equal(webpage.url,page.url);assert.equal(webpage['@id'],page.url+'#webpage');assert.equal(webpage.name,page.title);assert.equal(webpage.description,page.description);assert.equal(webpage.dateModified,page.dateModified);assert.equal(webpage.inLanguage,site.language);assert.equal(webpage.isPartOf['@id'],commonIds.WebSite);assert.equal(webpage.publisher['@id'],commonIds.Organization);assert.equal(webpage.about['@id'],commonIds.VideoGame);if(['home','about'].includes(page.key))assert.equal(webpage.mainEntity['@id'],commonIds.VideoGame);
     const serialized=JSON.stringify(nodes);assert(!/"(?:aggregateRating|review|award|SearchAction)"/.test(serialized),'Do not claim unavailable reviews, awards or search functionality');
   }
@@ -56,6 +82,93 @@ test('sitemap dates, install metadata and stable square favicon reflect the same
   const manifest=JSON.parse(read('manifest.webmanifest'));assert.equal(manifest.description,site.pages.home.description);assert.equal(manifest.short_name,site.name);assert.equal(manifest.lang,site.language);assert.equal(new URL(manifest.start_url,site.origin+'/').href,site.origin+'/');assert.equal(new URL(manifest.scope,site.origin+'/').href,site.origin+'/');
   const png=fs.readFileSync(path.join(root,site.favicon.path));assert.equal(png.subarray(1,4).toString(),'PNG');assert.equal(png.readUInt32BE(16),192);assert.equal(png.readUInt32BE(20),192);
   for(const page of pages){const icon=tags(page.html,'link').find(link=>link.rel==='icon'&&link.sizes===site.favicon.sizes);assert(icon,'192px favicon on '+page.path);const url=new URL(icon.href,page.url);assert.equal(url.href,site.origin+'/'+site.favicon.path);assert(!url.search&&!url.hash);assert.equal(icon.type,site.favicon.type);}
+});
+
+test('social metadata points to the real VS JPEG and the legacy card URL serves the same image',()=>{
+  assert.match(site.ogImage.path,/^assets\/branding\/sengoku-vs-ogp-\d{8}\.jpg$/);
+  assert.equal(site.ogImage.type,'image/jpeg');
+  const image=bytes(site.ogImage.path);
+  assert.deepEqual(jpegSize(image),{width:site.ogImage.width,height:site.ogImage.height});
+  assert(image.equals(bytes('assets/ogp.jpg')),'Old shared links must no longer receive the previous game image');
+});
+
+test('public pages and nested 404 use the current favicon family and Apple icon',()=>{
+  const surfaces=[...pages,{path:'/unknown/nested/page',url:site.origin+'/unknown/nested/page',html:read('404.html')}];
+  const icons=[site.faviconSmall,site.favicon,site.faviconIco];
+  for(const page of surfaces){
+    const links=tags(page.html,'link');
+    for(const spec of icons){
+      assert(spec?.path&&spec.sizes&&spec.type,'Each published favicon needs a defined source');
+      const matching=links.filter(link=>link.rel==='icon'&&link.sizes===spec.sizes);
+      assert.equal(matching.length,1,spec.sizes+' favicon on '+page.path);
+      assert.equal(new URL(matching[0].href,page.url).href,site.origin+'/'+spec.path);
+      assert.equal(matching[0].type,spec.type);
+    }
+    assert.equal(links.filter(link=>/^(?:shortcut )?icon$/i.test(link.rel||'')).length,icons.length,'No old favicon competes with the current brand');
+    const apple=links.filter(link=>link.rel==='apple-touch-icon');
+    assert.equal(apple.length,1,'One Apple icon on '+page.path);
+    assert.equal(new URL(apple[0].href,page.url).href,site.origin+'/'+site.appleTouchIcon.path);
+    assert.equal(apple[0].sizes,site.appleTouchIcon.sizes);
+  }
+  for(const page of pages){
+    const brand=page.html.match(/<(?:div|a)\b[^>]*class="[^"]*\b(?:mobile-brand|site-brand)\b[^"]*"[^>]*>\s*(<img\b[^>]*>)/i);
+    assert(brand,'Visible brand image on '+page.path);
+    assert.equal(new URL(attrs(brand[1]).src,page.url).href,site.origin+'/'+site.favicon.path);
+  }
+  const manifest=JSON.parse(read('manifest.webmanifest'));
+  assert.deepEqual(manifest.icons,site.appIcons);
+  assert.deepEqual(site.appIcons.map(icon=>icon.sizes).sort(),['192x192','512x512']);
+  for(const icon of site.appIcons){
+    const [width,height]=icon.sizes.split('x').map(Number);
+    assert.deepEqual(pngSize(bytes(icon.src)),{width,height});
+    assert.equal(icon.type,'image/png');
+    assert.equal(icon.purpose,'any');
+  }
+  assert.deepEqual(pngSize(bytes(site.logo.path)),{width:site.logo.width,height:site.logo.height});
+});
+
+test('root favicon contains the actual 32px and 192px PNGs and the Apple fallback matches the current icon',()=>{
+  assert.equal(site.faviconIco.path,'favicon.ico');
+  const ico=bytes(site.faviconIco.path);
+  assert(ico.length>=6);
+  assert.equal(ico.readUInt16LE(0),0);assert.equal(ico.readUInt16LE(2),1);
+  const count=ico.readUInt16LE(4),entries=[];
+  assert.equal(count,2);assert(ico.length>=6+count*16);
+  for(let index=0;index<count;index++){
+    const header=6+index*16,width=ico[header]||256,height=ico[header+1]||256;
+    const size=ico.readUInt32LE(header+8),offset=ico.readUInt32LE(header+12);
+    assert(offset>=6+count*16&&size>0&&offset+size<=ico.length,'ICO payload must stay inside the file');
+    const png=ico.subarray(offset,offset+size);
+    assert.deepEqual(pngSize(png),{width,height});
+    const source=[site.faviconSmall,site.favicon].find(icon=>icon.sizes===width+'x'+height);
+    assert(source,'Unexpected ICO size');assert(png.equals(bytes(source.path)),'ICO artwork must match the standalone PNG');
+    entries.push(width+'x'+height);
+  }
+  assert.deepEqual(entries.sort(),['192x192','32x32']);
+  const apple=bytes(site.appleTouchIcon.path);
+  assert.deepEqual(pngSize(apple),{width:180,height:180});
+  assert(apple.equals(bytes('apple-touch-icon.png')),'Root Apple fallback must not serve the previous icon');
+});
+
+test('Twitterbot can crawl every public page and the real social preview image',()=>{
+  const groups=[];let group=null;
+  for(const raw of read('robots.txt').split(/\r?\n/)){
+    const match=raw.replace(/#.*/,'').trim().match(/^([\w-]+):\s*(.*)$/);if(!match)continue;
+    const field=match[1].toLowerCase(),value=match[2];
+    if(field==='user-agent'){
+      if(!group||group.rules.length){group={agents:[],rules:[]};groups.push(group);}
+      group.agents.push(value.toLowerCase());
+    }else if(group&&['allow','disallow'].includes(field)&&value)group.rules.push({allow:field==='allow',value});
+  }
+  const explicit=groups.filter(group=>group.agents.includes('twitterbot'));
+  const selected=explicit.length?explicit:groups.filter(group=>group.agents.includes('*'));
+  for(const pathname of [...pages.map(page=>page.path),'/'+site.ogImage.path]){
+    const matching=selected.flatMap(group=>group.rules).filter(rule=>{
+      const pattern=rule.value.split('*').map(part=>part.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')).join('.*').replace(/\\\$$/,'$');
+      return new RegExp('^'+pattern).test(pathname);
+    }).sort((a,b)=>b.value.replace(/\*/g,'').length-a.value.replace(/\*/g,'').length||Number(b.allow)-Number(a.allow));
+    assert(!matching.length||matching[0].allow,'Twitterbot cannot crawl '+pathname);
+  }
 });
 
 test('the home introduction is visible HTML and still preserves the existing game entry',()=>{
