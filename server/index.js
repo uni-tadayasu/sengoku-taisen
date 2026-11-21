@@ -659,6 +659,55 @@ function giftField(value) {
   if (Object.values(gift).every(n => n === 0)) return null;
   return gift;
 }
+function systemMailEvent(requestId) {
+  // Only the server can create this namespace: public request IDs reject ':'.
+  // A title or body supplied by an operator never changes the source identity.
+  const match=/^system:field:(fb_[a-f0-9]{32}):(attacker|defender)$/.exec(requestId||'');
+  return match?{kind:'field-battle',battleId:match[1],side:match[2]}:null;
+}
+function fieldBattleMailContent(battle,side,homes) {
+  const attacker=side==='attacker',won=attacker?battle.won:!battle.won,captured=!!battle.capture?.captured,moved=homes.defenderBefore!==homes.defenderAfter;
+  const labels={gold:'金銭',rice:'兵糧',wood:'木材',stone:'石材'},amounts=value=>RESOURCES.map(key=>`${labels[key]}${Number(value?.[key]||0).toLocaleString('ja-JP')}`).join('・');
+  const mode={reward:'報酬戦（占領なし）',capture:'占領戦',raid:'襲撃（占領なし）'}[battle.battleMode];
+  const lines=[attacker?`${battle.defenderName}の${battle.castleName}へ出陣しました。`:`${battle.attackerName}から${battle.castleName}を攻撃されました。`,
+    `結果：${won?attacker?'勝利':'防衛勝利':attacker?'敗北・撤退':'敗北'}。`,`戦闘の種類：${mode}。`];
+  if(attacker){
+    lines.push(`出陣兵：${battle.troops.toLocaleString('ja-JP')}人。損失：${battle.attackerLost.toLocaleString('ja-JP')}人。`,`消費した兵糧：${battle.foodCost.toLocaleString('ja-JP')}。`);
+    if(battle.battleMode==='reward')lines.push(`勝利報酬：${amounts(battle.rewards)}。${battle.won?'所持上限を反映した実際の獲得量です。':'今回は勝利報酬がありません。'}`);
+    else lines.push(`戦利品：${amounts(battle.loot)}。`);
+    if(captured){
+      lines.push(battle.capture.newlyOwned?`${battle.castleName}を所領に加え、帰還兵のうち${battle.capture.garrison.toLocaleString('ja-JP')}人を守備兵として配置しました。`:`相手の${battle.castleName}の領有を解きました。あなたが既に所有していた同城の城郭・城兵・普請は継続します。`);
+      lines.push(`あなたの本拠は${CASTLE_BY_ID[homes.attacker].name}のままです。`);
+      if(moved)lines.push(`相手の本拠は${CASTLE_BY_ID[homes.defenderBefore].name}から${CASTLE_BY_ID[homes.defenderAfter].name}へ移りました。`);
+    }else lines.push('この戦闘で城の領有と本拠は変わりません。');
+    lines.push('戦闘の損失・消費・獲得はすでに保存へ反映済みです。このメールで追加の受け取り操作は不要です。');
+  }else{
+    lines.push(`損失：援軍${battle.defenderLost.troops.toLocaleString('ja-JP')}人・城兵${battle.defenderLost.garrison.toLocaleString('ja-JP')}人。`,`資源の損失：${amounts(battle.loot)}。`);
+    if(battle.battleMode==='reward')lines.push(`${battle.castleName}は占領されません。この戦闘による資源・兵・施設・軍団・奉行の損失はありません。通常の時刻進行・共同普請は継続します。`);
+    else if(captured){
+      lines.push(`${battle.castleName}の領有を失いました。`);
+      if(moved){
+        lines.push(`本拠の移転：${CASTLE_BY_ID[homes.defenderBefore].name} → ${CASTLE_BY_ID[homes.defenderAfter].name}。`,
+          '施設・軍団・奉行・所持武将・研究、戦闘後に残った資源と兵を引き継いでいます。施設の普請も継続します。',
+          `移転先の城郭はLv.${homes.defenderLevel}です（通常城の上限はLv.32）。城郭の普請は移転先の上限内で引き継ぎます。`,
+          '次の周回も新しい本拠から再出発します。');
+      }else lines.push(`本拠は${CASTLE_BY_ID[homes.defenderAfter].name}のままです。施設・軍団・奉行・所持武将・研究と、戦闘後に残った資源・兵を保持しています。`);
+    }else lines.push(`${battle.castleName}の領有と、本拠${CASTLE_BY_ID[homes.defenderAfter].name}を維持しています。`);
+    lines.push('戦闘結果はすでに保存へ反映済みです。ゲームへ接続し直すと最新の状態を確認できます。');
+  }
+  const title=!attacker&&moved?`【敗北・本拠移転】${battle.castleName}`:`【${attacker?won?'戦闘勝利':'戦闘敗北':won?'防衛勝利':'被攻撃・敗北'}】${battle.castleName}`;
+  return {title,body:lines.join('\n')};
+}
+async function fieldBattleMailStatements(db,battle,homes,now,gate,args) {
+  // Two private notices share the battle's commit nonce. They carry no gifts:
+  // rewards have already been applied by the authoritative battle transaction.
+  return Promise.all(['attacker','defender'].map(async side=>{
+    const target=side==='attacker'?battle.attackerPlayerId:battle.defenderPlayerId,{title,body}=fieldBattleMailContent(battle,side,homes);
+    const id=`m_sys_${battle.id.slice(3)}_${side==='attacker'?'a':'d'}`,requestId=`system:field:${battle.id}:${side}`,payloadHash=await hash(JSON.stringify({target,title,body,gift:null}));
+    return stmt(db,`INSERT INTO mail_campaigns(id,sender_id,target_user_id,title,body,gift_json,request_id,payload_hash,created_at)
+      SELECT ?,?,?,?,?,NULL,?,?,? WHERE ${gate}`,id,battle.attackerPlayerId,target,title,body,requestId,payloadHash,now,...args);
+  }));
+}
 async function visibleMail(db, userId, mailId) {
   const mail = await stmt(db, 'SELECT * FROM mail_campaigns WHERE id=? AND (target_user_id IS NULL OR target_user_id=?)', mailId, userId).first();
   if (!mail) fail(404, 'MAIL_NOT_FOUND', 'このメールは受信できません。');
@@ -1397,7 +1446,7 @@ async function fieldAttack(db,user,raw,now) {
   if(!rewardOnly)defenderRow=await settlePlayerCycle(db,defenderRow,target,now,undefined,{deferActive:true});
   const clock=await getWorldClock(db,now);if(!clock.running)fail(409,'WORLD_PAUSED','世界の共通時間が停止中です。');
   const attacker=normalizeGameSave(JSON.parse(attackerRow.save_json),user,now,{reading:true,clock}),defender=normalizeGameSave(JSON.parse(defenderRow.save_json),target,now,{reading:true,clock}),a=attacker.state,d=defender.state;
-  const castleId=body.targetCastleId||d.home,battleMode=fieldBattleMode(target,castleId,{legacy:body.targetCastleId===undefined});
+  const defenderHomeBefore=d.home,castleId=body.targetCastleId||d.home,battleMode=fieldBattleMode(target,castleId,{legacy:body.targetCastleId===undefined});
   if(castleId!==d.home&&(!FIELD_CAPTURE_CASTLES.includes(castleId)||d.castles[castleId].owner!==d.clan))fail(409,'FIELD_TARGET_CHANGED','この領主の攻撃可能な城ではありません。共有地図を更新してください。');
   if(Number(attackerRow.cycle_index)<Math.floor(clock.elapsedMs/WORLD_CYCLE_MS)||battleMode!=='reward'&&Number(defenderRow.cycle_index)<Math.floor(clock.elapsedMs/WORLD_CYCLE_MS))fail(409,'CYCLE_SETTLEMENT_REQUIRED','領地の精算中です。共有地図を更新してください。');
   if(a.gameOver||d.gameOver)fail(409,'BASE_UNAVAILABLE','本拠を失っている領主とは戦えません。');
@@ -1454,6 +1503,7 @@ async function fieldAttack(db,user,raw,now) {
   if(defenderNext){const personal=await staffPersonalProgressStatement(db,target,defenderNext,now,gate,gateArgs,null,captureChange);if(personal)statements.push(personal);}
   for(const event of saveAchievements(attackerBefore,attackerNext))statements.push(achievementStatement(db,user.id,event,now,gate,gateArgs));
   statements.push(stmt(db,`INSERT INTO field_battles(id,attacker_id,defender_id,occurred_elapsed_ms,result_json,created_at) SELECT ?,?,?,?,?,? WHERE ${gate}`,battle.id,user.id,target.id,clock.elapsedMs,resultJson,now,...gateArgs));
+  statements.push(...await fieldBattleMailStatements(db,battle,{attacker:a.home,defenderBefore:defenderHomeBefore,defenderAfter:d.home,defenderLevel:d.castles[d.home].level},now,gate,gateArgs));
   const result=await db.batch(statements);
   if(!rows(result[0]).length){const replay=await fieldCommitFailure(db,user,body,'attack',digest,clock,now);return fieldReplayAttack(db,user,body,replay,now);}
   return {...await syncSnapshot(db,await getSyncRow(db,user.id),user,body.deviceId,now),battle,idempotent:false};
@@ -1907,8 +1957,8 @@ async function route(request, env, now) {
     return {ok:true,mailId:saved.id,alreadySent:saved.id!==id};
   }
   if (path === '/mail' && method === 'GET') {
-    const result=await stmt(db,`SELECT m.id,m.title,m.body,m.gift_json,m.created_at,r.read_at,c.receipt_id FROM mail_campaigns m LEFT JOIN mail_reads r ON r.mail_id=m.id AND r.user_id=? LEFT JOIN mail_receipts c ON c.mail_id=m.id AND c.user_id=? WHERE m.target_user_id IS NULL OR m.target_user_id=? ORDER BY m.created_at DESC,m.id DESC LIMIT 200`,user.id,user.id,user.id).all();
-    return {ok:true,mail:rows(result).map(r=>({id:r.id,title:r.title,body:r.body,gift:r.gift_json?JSON.parse(r.gift_json):null,read:r.read_at!==null,claimed:!!r.receipt_id,createdAt:iso(r.created_at)}))};
+    const result=await stmt(db,`SELECT m.id,m.title,m.body,m.gift_json,m.request_id,m.created_at,r.read_at,c.receipt_id FROM mail_campaigns m LEFT JOIN mail_reads r ON r.mail_id=m.id AND r.user_id=? LEFT JOIN mail_receipts c ON c.mail_id=m.id AND c.user_id=? WHERE m.target_user_id IS NULL OR m.target_user_id=? ORDER BY m.created_at DESC,m.id DESC LIMIT 200`,user.id,user.id,user.id).all();
+    return {ok:true,mail:rows(result).map(r=>{const event=systemMailEvent(r.request_id);return {id:r.id,title:r.title,body:r.body,gift:r.gift_json?JSON.parse(r.gift_json):null,read:r.read_at!==null,claimed:!!r.receipt_id,createdAt:iso(r.created_at),source:event?'system':'operator',event};})};
   }
   if (path === '/mail/read' && method === 'POST') {
     const body=await readBody(request),mailId=idField(body.mailId,'メール識別子');

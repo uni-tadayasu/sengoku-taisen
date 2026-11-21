@@ -1,0 +1,29 @@
+/* Prevent accidental page-text selection on every device. Native text fields
+   and editable regions keep selection, copy menus and caret positioning. */
+html {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Unknown/missing input types are text fields in HTML. Exclude only controls
+   that have no editable text, and retain readonly fields used for copying. */
+html :is(
+  input:not([type="button" i], [type="submit" i], [type="reset" i],
+    [type="checkbox" i], [type="radio" i], [type="range" i],
+    [type="color" i], [type="file" i], [type="hidden" i], [type="image" i]),
+  textarea,
+  [contenteditable=""],
+  [contenteditable="true" i],
+  [contenteditable="plaintext-only" i]
+) {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+}
+
+/* Use inherited selection behavior rather than a universal descendant rule:
+   an editable region inside a noneditable island can opt back into editing. */
+html [contenteditable="false" i] {
+  -webkit-user-select: none;
+  user-select: none;
+}

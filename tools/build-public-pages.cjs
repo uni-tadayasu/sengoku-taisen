@@ -84,6 +84,43 @@ function guideContent(p) {
       ])}
       <p>以前の続きへ戻る場合は、初回画面の<strong>「以前の領主・運営を復元」</strong>から引き継げます。城を確定する前の状態は保存・自動送信しません。すでに保存されている進行は、開始城選択の追加によって変わりません。</p>
       <p>通常城の城郭と城下町施設は<strong>Lv.32</strong>まで、二条城・大坂城・名古屋城の城郭は<strong>Lv.48</strong>まで、江戸城・駿府城の城郭は<strong>Lv.64</strong>まで発展します。城の強化に応じて費用と効果が変わります。詳細画面では32段階の絵姿を見比べられ、Lv.33以降は最終形態の絵を使います。イラストの閲覧だけで資源やレベルが変わることはありません。</p>
+      <a class="chapter-link" href="#castle-upgrades">本拠・城郭のレベルの上げ方を確認する</a>
+    `, 'section-town'),
+    section('castle-upgrades', '初めての普請', '本拠・城郭のレベルの上げ方', `
+      <p class="lead-paragraph">本拠には、城下町の施設である<strong>「天守」</strong>と、城全体の強さを表す<strong>「城郭レベル」</strong>があります。それぞれ別の工事で育てます。まず、どちらを上げたいかを選んでください。</p>
+      ${table('天守と城郭の違い', ['育てるもの', '開く画面', '主な働き'], [
+        ['天守', '城下町 → 天守', '施設の解放、武将の登用条件、兵数上限や基礎収入などを支える施設です。天守のレベルによって指令上限と同時普請枠も増えます。'],
+        ['本拠・所領の城郭', '天下地図 → 自分の城', '城ごとの防衛補正と領地の基礎収入を高めます。城下町の天守を増築しても、こちらのレベルは別に育てます。']
+      ])}
+      <p>ゲーム内の<strong>「レベル上げガイド」</strong>からも確認できます。ガイド内の「天守を開く」や「○○の城郭を開く」で、実際に育てる対象の詳細へ進めます。</p>
+      <h3>天守を1段階上げる</h3>
+      ${steps([
+        ['城下町で「天守」を開く', 'メニューから「城下町」を開き、町並みの「天守」か、施設一覧の「天守」を押します。「全64施設を管理」から天守を選んでも同じ詳細を開けます。'],
+        ['目標レベル・必要資源・工期を確認する', '現在のLvと、次に上がるLvを確認します。金銭・木材・石材の必要数、工期、指令の残りを見て、着工できるか確かめます。'],
+        ['「増築する」を押し、完成を待つ', '指令1回と表示された資源を支払って工事を始めます。スタッフは「共同普請する」を押します。表示レベルと効果は、工事が完成したときに上がります。']
+      ])}
+      <h3>本拠の城郭を1段階上げる</h3>
+      ${steps([
+        ['「天下地図」から「本拠へ」を押す', '地図上部の「本拠へ」で地図を本拠へ寄せます。その後、本拠の城を押して選択してください。ほかの所領を育てる場合は、地図または「拠点一覧」で「自領」の城を選びます。'],
+        ['城の詳細で「城郭の拡張」を確認する', '「城郭レベル」の現在値、次のLv、必要な金銭・木材・石材と工期を確認します。育成する操作は「天下地図」にあります。共通フィールドは領主同士の対人戦・交流に使います。'],
+        ['「Lv.Nへ拡張する」を押す', 'Nには次のレベルが表示されます。指令1回と表示資源を支払って工事を始め、完成後に次の拡張へ進みます。同じ城郭の工事中は、次の段階を予約できません。']
+      ])}
+      <h3>費用・完成時間・連続予約</h3>
+      <p>1段階につき<strong>指令1回と金銭・木材・石材</strong>を使います。必要数は目標レベルごとに異なるため、操作前の表示を確認してください。指令は共通時間で20秒ごとに1回復します。1倍速なら実時間20秒です。</p>
+      <p>工期は1倍速で、天守が<strong>120秒または180秒</strong>、城郭が<strong>60秒・120秒・180秒</strong>です。世界の速度によって現実の待ち時間が変わり、共通時間の停止中は完成へ進みません。城下町の「進行中の普請・研究」や対象の詳細で、目標Lv・残り時間・進み具合を確認できます。</p>
+      <p><strong>天守などの施設は「次の増築を予約」</strong>で連続工事を手配できます。予約1段階ごとに資源と指令をその場で支払い、前の工事から順に進みます。予約の取り消しはできません。城郭の拡張は、1段階が完成してから次を始めます。</p>
+      <p>施設と城郭は同じ普請枠を使います。天守Lv.1〜7では同時に2枠、Lv.8・16・24・32に達するごとに1枠増え、最大6枠になります。同じ施設の連続予約は、まとめて1枠です。</p>
+      ${table('成長上限と役職別の育て方', ['対象', '上限', '操作できる条件'], [
+        ['天守・城下町の全施設', 'Lv.32', '一般プレイヤーと運営は個人の城下町を育てます。スタッフは駿府城の施設を全スタッフで共有します。'],
+        ['通常城の城郭', 'Lv.32', '自分が領有している本拠・所領を天下地図から拡張します。'],
+        ['二条城・大坂城・名古屋城の城郭', 'Lv.48', '攻略して自分の所領にした後に拡張できます。一般プレイヤーの開始城には選べません。'],
+        ['江戸城の城郭', 'Lv.64', '認証済みの運営の固定本拠です。運営が自分の資源と指令で拡張します。'],
+        ['駿府城の城郭', 'Lv.64', 'スタッフ共同本拠です。「駿府城の共同普請を開く」から「Lv.Nへ共同普請する」を押します。着手したスタッフが自分の資源と指令を支払い、成長と普請枠を共有します。']
+      ])}
+      <h3>ボタンを押せない・工事が進まないとき</h3>
+      <p>資源不足なら城下町の生産を、指令不足なら回復を待ちます。普請枠が埋まっている場合は先の工事の完成を待ち、同じ城郭が拡張中ならその完成後に操作します。上限まで完成・予約済みの対象には、次の工事を追加できません。</p>
+      <p>通信や共通時刻を確認中の場合は、画面の案内が解消してから操作します。端末連携中は、操作権のある1台で普請を行います。スタッフ共同普請は、最新の駿府城と権限を確認でき、共通時間が進んでいるときに開始できます。</p>
+      ${callout('絵姿の閲覧と、実際のレベル上げ', '「32段階の姿を見る」「32段階の城郭を見る」は完成イラストを見比べる機能です。画像のレベルを切り替えても進行は変わりません。実際に育てるときは、天守の「増築する」または城郭の「拡張する」で工事を始めてください。')}
     `, 'section-town'),
     section('resources', '城下町と資源', '城下町で生産する資源と使い道', `
       <p>資源の所持数と収支を確認しながら、内政と軍備の配分を考えます。兵を増やすと維持する兵糧も必要です。普請・研究の完成を待つ間は、武将や地図を確認できます。普請・研究の進行欄には、経過時間・残り時間・進捗率を表示します。経過はゲーム内の進行時間、残りは現在の世界速度での待ち時間です。</p>
@@ -120,15 +157,16 @@ function guideContent(p) {
       ])}
       <p>通常プレイヤーは、運営専用の江戸城とスタッフ専用の駿府城を除く<strong>126城</strong>の統一を目指します。運営の本拠は江戸城、スタッフの本拠は駿府城に固定されます。この二つの専用拠点は一般プレイヤーが開始城に選べず、占領・所持もできません。共通フィールドでは勝利報酬を受け取る対人戦に挑戦できます。江戸・駿府・二条（京）・大坂・名古屋は大都市拠点に指定され、最初の城には選べません。二条・大坂・名古屋は、開始後に攻略できます。</p>
       <p>共通フィールドの本拠の外観は、その領主の<strong>天守 Lv.1〜32</strong>に合わせて変わります。所領として表示する大都市は城郭のレベルに合わせ、Lv.33〜48は最終段階の絵を使います。城郭レベルは別に表示します。同じ城に複数の領主がいる場合は、一覧で領主を選ぶとその人の天守の見た目へ切り替わります。スタッフ共同拠点は、共有して育てている天守を反映します。</p>
-      <h3>城によって変わる対人戦</h3>
+      <h3 id="field-battles">報酬戦・占領戦・通常本拠への襲撃</h3>
       <p>領主と対象の城、出陣兵数・戦法を選び、戦闘の種類を確認して出陣します。指令1回と兵糧を消費し、結果と報酬はサーバーで確定します。一般プレイヤーの開始城は引き続き大都市5城を除く123城です。</p>
-      ${table('共通フィールドの城と勝利時の扱い', ['対象', '戦闘と勝利時の結果'], [
-        ['江戸城・駿府城', '報酬戦です。勝利すると金銭・兵糧・木材・石材を各500まで受け取れます。所持上限に達している分は加算しません。城は占領できず、守備側の兵・資源・武将・施設は失われません。'],
-        ['二条城・大坂城・名古屋城', '占領戦です。相手領主が本拠または所領として持つ城に勝利すると、自分の所領へ加わります。占領した城もほかのプレイヤーの攻撃対象になります。'],
-        ['通常の本拠', '限定襲撃です。城の領有は移らず、守備側の兵損は各兵数の10%以内、勝利時の略奪は各資源の5%以内かつ500以内です。']
+      ${table('共通フィールドの城・成長上限・勝利時の扱い', ['対象', '城郭上限', '戦闘と勝利時の結果'], [
+        ['江戸城・駿府城', 'Lv.64', '報酬戦です。勝利すると金銭・兵糧・木材・石材を各500まで受け取れます。所持上限に達している分は加算しません。城は占領できず、守備側の兵・資源・武将・施設は失われません。'],
+        ['二条城・大坂城・名古屋城', 'Lv.48', '占領戦です。相手領主が本拠または所領として持つ城に勝利すると、自分の所領へ加わります。占領した城もほかのプレイヤーの攻撃対象になります。'],
+        ['通常の本拠', 'Lv.32', '限定襲撃です。城の領有は移らず、守備側の兵損は各兵数の10%以内、勝利時の略奪は各資源の5%以内かつ500以内です。']
       ])}
       <p>大都市を占領しても、攻撃側の本拠と育成は継続します。新しく得た城には、出陣した生存兵の15%を守備兵として配置します。敗者がその城を本拠にしていた場合は、通常の城へ退避し、武将・軍団・奉行・施設・研究を引き継ぎます。武将そのものを奪うことはありません。同じ歴史上の城に複数の領主がいる場合も、選んだ領主の城を個別に攻撃します。</p>
       <p>攻撃後の待機と被襲撃後の保護は、共通時間で60秒。同盟中の相手や保護期間中の拠点には攻撃できず、世界時計の停止中も出陣できません。NPCはこの対人戦の相手に含まれません。</p>
+      <p>確定した勝敗と被攻撃の内容は、双方に届く<a href="#system-mail">ゲーム内システムメール</a>でも確認できます。本拠が移った場合は、同じ便りに移転先を記載します。</p>
       <h3>同盟は相手の承諾で成立</h3>
       <p>外交の提案を相手が承諾すると、<strong>ゲーム内の6か月間</strong>、互いに攻撃できなくなります。届いた提案の拒否や、未承諾の自分の提案の取消もできます。暦が一周して拠点をリセットするときは、前の暦で結んだ同盟・未承諾の外交提案も終了します。</p>
     `, 'section-field'),
@@ -142,7 +180,7 @@ function guideContent(p) {
       <p>占領地の城郭・守備兵と占領地で未完了の増築はリセットされます。本拠の城郭、城下の施設・研究・武将・資源は残ります。天下地図のCPU勢力との同盟・偵察、共通フィールドの前の暦から続く外交関係は区切りで終了します。</p>
     `, 'section-clock'),
     section('community', '領主たちの交流', 'ギルドの役職・共有金庫・ランキング', `
-      <p>「交流」で領主名を登録すると、世界チャット、ギルド、フレンド、システム便などを使えます。「接続一覧」では現在オンラインの領主と所属・役職を確認できます。同じ領主の複数端末は一人にまとめて表示されます。</p>
+      <p>「交流」で領主名を登録すると、世界チャット、ギルド、フレンド、郵便などを使えます。「接続一覧」では現在オンラインの領主と所属・役職を確認できます。同じ領主の複数端末は一人にまとめて表示されます。</p>
       <p>接続状態は定期的に更新され、直近90秒以内に接続確認のあった領主をオンラインとして表示します。端末を閉じた直後などは、表示が変わるまで少し時間がかかります。</p>
       <h3>御触書と領主の達成</h3>
       <p>画面上部の「御触書」には運営のお知らせと、領主の名前付きの達成記録を表示します。「御触書」を押すか、「交流」→「御触書」を開くと、達成内容と日本時間の日時を一覧で読めます。30秒ごとに更新し、以前の知らせも確認できます。</p>
@@ -160,8 +198,8 @@ function guideContent(p) {
       <p>スタッフは、占領されない専用の<strong>駿府城</strong>を固定本拠とします。城郭レベルと城下町の64施設、進行中の共同普請を全スタッフで共有します。誰かが普請を始めると、共通時間で完成へ進み、成長を全スタッフの画面へ反映します。共有した成長は暦の区切りを越えて残ります。</p>
       <p>着工するスタッフが自分の所持資源を支払います。武将・軍団・研究・資源残高は領主ごとに管理します。共同普請にはスタッフ権限と接続確認が必要で、重複した着工や通信の再試行による二重の支払いを防ぎます。</p>
       <p>スタッフの家名と駿府城の所属は<strong>「德川家」</strong>に統一します。任命前の家名・個人本拠・個人施設は別に記録し、解任後は元の家と個人の進行へ戻します。武将・研究・所持資源はその領主が引き継ぎ、駿府城の共同成長はスタッフ共通の拠点に残ります。以前に一般プレイヤーとして駿府城を本拠にしていた領主は、個人の成長を引き継いで通常の城へ本拠を移します。</p>
-      <h3>システム便と贈り物</h3>
-      <p>運営は個別の領主または全プレイヤーへ、便りと金・兵糧・木材・石材・勾玉を届けられます。届いた便りは「システム便」で開き、「受け取る」で贈り物を受領します。受取記録により同じ贈り物の重複加算を防ぎます。</p>
+      <h3>運営から届くシステム便と贈り物</h3>
+      <p>運営は個別の領主または全プレイヤーへ、便りと金・兵糧・木材・石材・勾玉を届けられます。届いた便りは「交流」→「郵便」で開き、贈り物が同封されている場合は「受け取る」で受領します。受取記録により同じ贈り物の重複加算を防ぎます。合戦から自動で届く知らせは、<a href="#system-mail">システムメールの案内</a>をご覧ください。</p>
       ${table('役職ごとの機能', ['役職', '主な機能'], [
         ['プレイヤー', '領国の運営、戦役、共通フィールド、通常のチャットやフレンド交流。'],
         ['スタッフ', '運営から任命されたサポート役。德川家・駿府城の占領されない固定本拠を全スタッフで育てます。運営チャットの閲覧・送信と、直近24時間のログイン履歴の閲覧もできます。'],
@@ -179,6 +217,17 @@ function guideContent(p) {
       <p>同じ城に複数の領主がいる場合も、領主名を確認して宛先を選びます。ギルド宛ての場合は、送信画面に共有先を表示します。ギルド未所属の領主には個人宛ての書状を送れます。</p>
       <p>届いた書状は「交流」の書状入口から確認できます。未読を表示し、過去のやり取りを読みながら返信できます。ギルド宛ての外部書状は、既存のギルド内部チャットとは別の会話です。</p>
       <p>送信前に相手の所属が変わった場合は、宛先を再確認します。送信の二度押しや通信の再試行で、同じ書状が重複して届かないようにしています。</p>
+    `, 'section-field'),
+    section('system-mail', 'ゲーム内の郵便で確認', '勝敗・被攻撃・本拠移転を知らせるシステムメール', `
+      <p class="lead-paragraph">共通フィールドの対人戦が確定すると、攻撃した領主と守備した領主へ、それぞれ1通のシステムメールが自動で届きます。ゲーム内の<strong>「交流」→「郵便」</strong>で確認する通知です。</p>
+      ${table('自動で届く合戦の知らせ', ['受け取る内容', '確認できること'], [
+        ['攻撃側への戦果', '勝利・敗北、相手と対象城、報酬戦・占領戦・襲撃の種類、自軍の損失、実際の戦利品・報酬、占領結果。'],
+        ['守備側への報告', 'どの領主にどの城を攻撃されたか、守り切ったか・敗れたか、自軍の損失、資源と城の変化。'],
+        ['本拠を失って移った場合', '同じ便りに移転前と移転先の城、武将・軍団・奉行・施設・研究を引き継ぐことを記載します。']
+      ])}
+      <p>画面を開いていなかった間の知らせも、次に接続したときに未読の郵便として確認できます。通知を開くと既読になります。同じ戦闘の通信を再送しても、同じ知らせが重複して届くことはありません。</p>
+      <p>合戦の報酬は戦闘の確定時に反映済みです。この通知には返信や贈り物の受取操作はありません。共通フィールドの<strong>「合戦報告」</strong>も引き続き確認できます。</p>
+      <p>天下地図のCPU戦は、従来の戦報と履歴で確認します。城ごとの勝利時の扱いは<a href="#field-battles">報酬戦・占領戦・襲撃の違い</a>で案内しています。</p>
     `, 'section-field'),
     section('strategy', '軍師AIと自動進軍', '軍師AIの使い方・自動進軍の開始と停止', `
       <p class="lead-paragraph">「軍議」または「天下地図」から軍師AIを開き、作戦を文章で入力します。例えば、<strong>「兵を温存して弱い城から攻める」</strong>、<strong>「兵糧を1000残して清洲城を目指す」</strong>など、方針と目標を伝えます。</p>
@@ -272,6 +321,8 @@ function recoveryContent(p) {
         ['サーバーにもこの端末にも進行がない・一般プレイヤー', '以前のゲームセーブを追加するか、新たに始める場合は先に開始城を選ぶ画面へ進みます。城を選ぶ前の状態は自動保存・自動送信しません。']
       ])}
       <p>接続後は、領主名・所属・城・所持武将・資源が意図した状態か確認してください。進行できる端末は同時に1台です。別の端末が操作中なら、最新状態を確認してから操作権を切り替えます。</p>
+      <h3 id="relocated-home">以前と本拠が違うときは、合戦の知らせを確認</h3>
+      <p>共通フィールドで本拠にしていた二条城・大坂城・名古屋城を奪われると、通常の城へ本拠を移します。その場合は「交流」→「郵便」に届くシステムメールで、移転前と移転先を確認できます。武将・軍団・奉行・施設・研究は引き継ぎます。まず同じ領主で接続していることと、<a href="${p.dir('guide')}#system-mail">合戦・本拠移転の通知</a>を確認してください。</p>
     `),
     section('identity-only', '領主データだけがある場合', 'まず、サーバーの進行を確認する。', `
       <p>領主データだけでも、サーバーにクラウド保存があれば同じ領主と進行に戻れます。「領主データ・セーブを選ぶ」からファイルを読み込み、表示されるサーバー上の保存を確認してください。</p>
@@ -317,7 +368,7 @@ function aboutContent(p) {
   return [
     section('world', '作品について', '戦国VSとは：一城から領国を育てるブラウザゲーム', `
       <p class="lead-paragraph">「戦国VS」は、<strong>KASAI SOLUTIONS</strong>による戦国ブラウザゲームです。はじまりの一城を選び、城下町の施設を増築し、武将を迎えて軍団を編成。内政と戦役を進めながら、自分の領国を育てます。PC・スマートフォン・タブレットから遊べます。</p>
-      <p>年月は全プレイヤー共通で進みます。天下地図ではCPU勢力の城を攻略し、共通フィールドではほかの領主の本拠を選んで交流や外交を行います。ギルドで資産を共有したり、領主本人や所属ギルドへ書状を送ったりできます。</p>
+      <p>年月は全プレイヤー共通で進みます。天下地図ではCPU勢力の城を攻略し、共通フィールドではほかの領主の本拠や所領を選んで、対人戦・同盟・交流を行います。ギルドで資産を共有したり、領主本人や所属ギルドへ書状を送ったりできます。</p>
       <p>軍師AIでは、入力した方針と現在の戦況から出陣案を確認し、自動進軍を始められます。対応するスマートフォン・タブレットでは、画面を表示して歩くと、検知した歩数に応じた資産を獲得できます。領主を連携すれば、進行を端末間で自動同期できます。</p>
       <p class="quote-line">一城の志が、天下を動かす。</p>
       <a class="chapter-link" href="${p.dir('guide')}">戦国VSの遊び方を読む</a>
@@ -325,12 +376,16 @@ function aboutContent(p) {
     section('gameplay', '城下町・武将・領主交流', '選んだ城を育て、仲間と戦記を重ねる', `
       <h3>一城から始める内政と武将編成</h3>
       <p>最初は、大都市拠点を除く城から本拠を一つ選びます。田畑や商業施設で資源を生産し、増築や研究、募兵へ配分します。同じ施設の次のレベルを予約すると、費用と指令を支払った順に工事が進みます。城下町では施設名と現在レベルを確認でき、天守から町並みまでの全景を見ながら操作できます。</p>
-      <p>武将は登用・招集で迎え、軍団と内政を支える奉行に配置します。人物の能力・特技・ランクを見て、戦い方や城下町の育て方を考えます。始め方と操作は、<a href="${p.dir('guide')}#first-steps">開始城と序盤の進め方</a>、<a href="${p.dir('guide')}#construction">施設の連続増築</a>、<a href="${p.dir('guide')}#officers">武将と軍団の編成</a>で案内しています。</p>
+      <p>武将は登用・招集で迎え、軍団と内政を支える奉行に配置します。人物の能力・特技・ランクを見て、戦い方や城下町の育て方を考えます。始め方と操作は、<a href="${p.dir('guide')}#first-steps">開始城と序盤の進め方</a>、<a href="${p.dir('guide')}#castle-upgrades">本拠・城郭のレベルの上げ方</a>、<a href="${p.dir('guide')}#construction">施設の連続増築</a>、<a href="${p.dir('guide')}#officers">武将と軍団の編成</a>で案内しています。</p>
       <h3>全プレイヤー共通の年月と占領報酬</h3>
       <p>世界時計は1560年1月から1615年12月までを繰り返します。区切りには占領拠点をリセットし、直前に保有した本拠以外の城数に応じて報酬を受け取ります。選んだ本拠の成長、武将・施設・研究・所持資源は引き継ぎます。留守中の生産や普請は、再接続時に共通時刻まで反映します。詳しくは<a href="${p.dir('guide')}#world-clock">共通時間と拠点リセットのルール</a>をご覧ください。</p>
       <h3>ギルドの資産共有と領主への書状</h3>
       <p>領主を登録すると、世界チャット、オンラインの接続一覧、ギルドなどを利用できます。ギルドでは役職を設け、共有金庫に納めた資産をメンバーで使えます。共通フィールドの本拠からは、相手本人か所属ギルドを宛先に選び、書状を送って返信できます。ギルド宛ての書状は送った領主と、そのギルドの現在のメンバーに共有されます。</p>
-      <p><a href="${p.dir('guide')}#community">ギルドの役職・共有金庫・ランキング</a>と、<a href="${p.dir('guide')}#letters">書状の宛先・閲覧範囲</a>を確認できます。天下地図の領国はプレイヤーごとのCPU戦で、共通フィールドでは、江戸城・駿府城の報酬戦、二条城・大坂城・名古屋城の占領戦、通常本拠への限定襲撃を行えます。</p>
+      <p><a href="${p.dir('guide')}#community">ギルドの役職・共有金庫・ランキング</a>と、<a href="${p.dir('guide')}#letters">書状の宛先・閲覧範囲</a>を確認できます。</p>
+      <h3>共通フィールドの報酬戦と大都市の占領戦</h3>
+      <p>江戸城・駿府城は、占領せず勝利報酬を得る対人戦です。城郭はLv.64まで育ちます。二条城・大坂城・名古屋城は城郭Lv.48までの占領対象で、勝利すると選んだ領主の城を自分の所領に加えます。通常の本拠はLv.32までで、領有を移さない限定襲撃です。<a href="${p.dir('guide')}#field-battles">各城の報酬・占領・保護期間</a>を確認して出陣できます。</p>
+      <h3>勝敗と本拠移転を伝えるシステムメール</h3>
+      <p>対人戦の確定後、攻撃側と守備側の双方にゲーム内の郵便が届きます。勝敗・被攻撃・実際の戦利品や報酬、占領の結果を残し、本拠が移った場合は移転先も伝えます。次に接続したときにも未読の知らせを確認できます。閲覧の手順は<a href="${p.dir('guide')}#system-mail">システムメールの案内</a>にまとめています。</p>
     `, 'section-community'),
     section('strategy-and-walking', '自動進軍と端末の動き', '軍師AIとウォーキングの遊び方', `
       <h3>作戦文から次の出陣を評価する軍師AI</h3>
@@ -385,11 +440,11 @@ const pages = [
     ...site.pages.guide,
     file: 'guide/index.html', slug: 'guide', key: 'guide', label: '遊び方',
     eyebrow: 'KASAI SOLUTIONSのゲームガイド', heading: '戦国VSの<br><span>遊び方</span>',
-    lead: 'はじまりの城を選び、城下町を育て、武将を編成する。共通の年月で進む戦役と領主交流、軍師AI、ウォーキングまで、操作とルールを案内します。',
+    lead: 'はじまりの城を選び、城下町を育て、武将を編成する。CPUとの戦役、領主同士の報酬戦・占領戦、勝敗を届ける郵便から端末同期まで、操作とルールを案内します。',
     image: 'assets/castle-town.webp', imageWidth: 1536, imageHeight: 1024, imageAlt: '山々と川に囲まれ、田畑や商家が広がる戦国VSの城下町イラスト', imageCaption: '城下町から始まる、あなたの領国。', imageTag: '城と群雄の戦記',
     heroAction: 'ゲームを開く', secondary: ['データ復元の案内', 'guide/data-recovery'],
     notes: [['遊ぶ場所', 'PC・スマホ・タブレットのブラウザ'], ['世界の時間', '全プレイヤーで共通']],
-    toc: [['first-steps','城選び・初めての進め方'],['resources','城下町と資源'],['construction','施設Lv・連続増築'],['officers','武将・軍団・勾玉'],['maps','二つの地図と外交'],['world-clock','共通時間・拠点リセット'],['community','ギルド・接続一覧・役職'],['letters','領主・ギルドへの書状'],['strategy','軍師AI・自動進軍'],['walking','ウォーキング報酬'],['save-and-sync','保存と端末同期'],['questions','よくある質問']],
+    toc: [['first-steps','城選び・初めての進め方'],['castle-upgrades','本拠・城郭のレベル上げ'],['resources','城下町と資源'],['construction','施設Lv・連続増築'],['officers','武将・軍団・勾玉'],['maps','二つの地図と外交'],['field-battles','報酬戦・占領戦・襲撃'],['world-clock','共通時間・拠点リセット'],['community','ギルド・接続一覧・役職'],['letters','領主・ギルドへの書状'],['system-mail','勝敗・移転のシステムメール'],['strategy','軍師AI・自動進軍'],['walking','ウォーキング報酬'],['save-and-sync','保存と端末同期'],['questions','よくある質問']],
     content: guideContent, closingTitle: 'さあ、城下町へ。', closingText: '最初の普請を選び、あなたの一手から戦記を始めましょう。'
   },
   {
@@ -400,14 +455,14 @@ const pages = [
     image: 'assets/castle-town.webp', imageWidth: 1536, imageHeight: 1024, imageAlt: '城と町、田畑が一体になった戦国VSの領国イラスト', imageCaption: '城・武将・資源の記録を、次の端末へ。', imageTag: '戦記を引き継ぐ',
     heroAction: 'ゲームを開いて引き継ぐ', secondary: ['手元のデータから選ぶ', '#choose'],
     notes: [['本人の確認', '領主データ・接続コード・運営登録キー'], ['進行の復元', 'クラウド保存・ゲームセーブ']],
-    toc: [['choose','手元のデータから選ぶ'],['site-address','URL変更と保存先'],['old-device','接続コードで引き継ぐ'],['complete-backup','統合バックアップ'],['old-files','旧形式の2ファイル'],['cloud-priority','クラウドと復元元'],['identity-only','領主データだけの場合'],['operator','運営・スタッフの復元'],['redirect','旧URLが転送される場合'],['no-access','復元できる範囲']],
+    toc: [['choose','手元のデータから選ぶ'],['site-address','URL変更と保存先'],['old-device','接続コードで引き継ぐ'],['complete-backup','統合バックアップ'],['old-files','旧形式の2ファイル'],['cloud-priority','クラウドと復元元'],['relocated-home','本拠が移った場合'],['identity-only','領主データだけの場合'],['operator','運営・スタッフの復元'],['redirect','旧URLが転送される場合'],['no-access','復元できる範囲']],
     content: recoveryContent, closingTitle: '以前の領主で、再接続する。', closingText: 'ゲームを開き、「交流」から「引き継ぎ」を選んでください。'
   },
   {
     ...site.pages.about,
     file: 'about/index.html', slug: 'about', key: 'about', label: 'ゲーム概要',
     eyebrow: 'KASAI SOLUTIONSの戦国ブラウザゲーム', heading: '戦国VSとは<br><span>城と群雄の戦記</span>',
-    lead: '選んだ一城から城下町を育て、武将を集め、共通の年月を歩む。ギルドや書状で領主とつながる、本作の遊び方と制作方針を紹介します。',
+    lead: '選んだ一城から城下町を育て、武将を集め、共通の年月を歩む。CPUとの戦役と領主同士の対人戦、合戦を伝える郵便、本作の制作方針を紹介します。',
     image: 'assets/title-sengoku-vs.webp', imageWidth: 1774, imageHeight: 887, imageAlt: '二人の武将と日本の城郭を描いた戦国VSのタイトルイラスト', imageCaption: '戦国VS — 城と群雄の戦記', imageTag: 'KASAI SOLUTIONS', wide: true,
     heroAction: 'ゲームを開く', secondary: ['遊び方を読む', 'guide'],
     notes: [['ゲームの基本', '一城からの内政・武将編成・戦役'], ['領主同士の交流', 'ギルド・書状・端末同期']],
@@ -435,11 +490,13 @@ function render(page) {
   ${metadataEntries(page.key).map(metaTag).join('\n  ')}
   <meta name="theme-color" content="#0c141f">
   <link rel="canonical" href="${url}">
-  <link rel="icon" href="${p.file(site.favicon.path)}?v=${release}" sizes="${esc(site.favicon.sizes)}" type="${esc(site.favicon.type)}">
+  <link rel="icon" href="${p.file(site.favicon.path)}" sizes="${esc(site.favicon.sizes)}" type="${esc(site.favicon.type)}">
   <link rel="apple-touch-icon" href="${p.file('assets/apple-touch-icon.png')}?v=${release}">
   <link rel="stylesheet" href="${p.file('guide.css')}?v=${release}">
   <link rel="stylesheet" href="${p.file('interaction-motion.css')}?v=${release}">
   <script defer src="${p.file('interaction-motion.js')}?v=${release}"></script>
+  <link rel="stylesheet" href="${p.file('selection-lock.css')}?v=${release}">
+  <script defer src="${p.file('selection-lock.js')}?v=${release}"></script>
   <link rel="stylesheet" href="${p.file('image-protect.css')}?v=${release}">
   <script defer src="${p.file('image-protect.js')}?v=${release}"></script>
   <script type="application/ld+json">${jsonScript(jsonld)}</script>
@@ -474,6 +531,19 @@ function replaceHeadTag(html, tagName, matches, replacement) {
   return found ? html : html.replace('</head>', `  ${replacement}\n</head>`);
 }
 
+function withSelectionAssets(html, prefix = '') {
+  html = replaceHeadTag(html, 'link', attrs => attrs.rel === 'stylesheet' && /(?:^|\/)selection-lock\.css(?:\?|$)/.test(attrs.href || ''), `<link rel="stylesheet" href="${prefix}selection-lock.css?v=${release}">`);
+  const script = `<script defer src="${prefix}selection-lock.js?v=${release}"></script>`;
+  let found = false;
+  html = html.replace(/<script\b([^>]*)>[\s\S]*?<\/script>/gi, (tag, attributes) => {
+    if (!/(?:^|\/)selection-lock\.js(?:\?|$)/.test(tagAttributes(attributes).src || '')) return tag;
+    if (found) return '';
+    found = true;
+    return script;
+  });
+  return found ? html : html.replace('</head>', `  ${script}\n</head>`);
+}
+
 function updateHome() {
   let html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
   const page = site.pages.home;
@@ -481,7 +551,7 @@ function updateHome() {
   html = html.replace(/<title>[\s\S]*?<\/title>/i, `<title>${esc(page.title)}</title>`);
   for (const entry of metadataEntries('home')) html = replaceHeadTag(html, 'meta', attrs => attrs[entry[0]] === entry[1], metaTag(entry));
   html = replaceHeadTag(html, 'link', attrs => attrs.rel === 'canonical', `<link rel="canonical" href="${canonical('home')}">`);
-  html = replaceHeadTag(html, 'link', attrs => attrs.rel === 'icon', `<link rel="icon" type="${esc(site.favicon.type)}" sizes="${esc(site.favicon.sizes)}" href="${site.favicon.path}?v=${release}">`);
+  html = replaceHeadTag(html, 'link', attrs => attrs.rel === 'icon', `<link rel="icon" type="${esc(site.favicon.type)}" sizes="${esc(site.favicon.sizes)}" href="${site.favicon.path}">`);
   html = replaceHeadTag(html, 'link', attrs => attrs.rel === 'apple-touch-icon', `<link rel="apple-touch-icon" href="assets/apple-touch-icon.png?v=${release}">`);
   const graph = `<script type="application/ld+json">${jsonScript(structuredData('home'))}</script>`;
   let hasGraph = false;
@@ -497,8 +567,18 @@ function updateHome() {
   html = html.replace(/<p class="launch-copyright">[\s\S]*?<\/p>/, `<p class="launch-copyright">© <a href="about/" aria-label="${esc(site.publisher)}の戦国VSについて">${esc(site.publisher)}</a></p>`);
   html = html.replace(/(<a href="about\/" data-action="about">)[^<]*(<\/a>)/, '$1ゲーム概要・出典$2');
   html = html.replace(/(<div class="version-label">)群雄集結 · Ver\. [^<]+(<\/div>)/, `$1群雄集結 · Ver. ${esc(site.version)}$2`);
+  html = withSelectionAssets(html);
   html = html.replace(/(\b(?:src|href)=["'][^"']*[?&]v=)[^&"']+/g, (_, prefix) => prefix + release);
   return html;
+}
+
+function updateNotFound() {
+  let html = fs.readFileSync(path.join(root, '404.html'), 'utf8');
+  html = replaceHeadTag(html, 'link', attrs => attrs.rel === 'icon', `<link rel="icon" href="/${site.favicon.path}" sizes="${esc(site.favicon.sizes)}" type="${esc(site.favicon.type)}">`);
+  // A 404 document can be served at an unknown nested URL. Its assets must
+  // always resolve at the site root rather than below that missing path.
+  html = html.replace(/(\b(?:src|href)=["'])\/?(image-protect|interaction-motion)\.(css|js)(?:\?[^"']*)?/g, (_, before, name, extension) => `${before}/${name}.${extension}?v=${release}`);
+  return withSelectionAssets(html, '/');
 }
 
 function updateManifest() {
@@ -520,6 +600,7 @@ function sitemap() {
 // partially regenerated public surface. Unchanged files keep their mtime.
 const outputs = new Map(pages.map(page => [page.file, render(page)]));
 outputs.set('index.html', updateHome());
+outputs.set('404.html', updateNotFound());
 outputs.set('manifest.webmanifest', updateManifest());
 outputs.set('sitemap.xml', sitemap());
 let changed = 0;

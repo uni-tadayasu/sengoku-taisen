@@ -29,3 +29,51 @@
 @media(max-width:500px){.kamon-catalog{grid-template-columns:repeat(2,minmax(0,1fr))}.territory-list.all-territories{grid-template-columns:1fr}}
 
 @media(max-width:600px){html:not(.sengoku-desktop-fit) .navigation{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:0}html:not(.sengoku-desktop-fit) .navigation .nav-item{padding:6px 1px;min-width:0;font-size:9px;line-height:1.2}html:not(.sengoku-desktop-fit) .navigation .nav-item .icon{width:18px;height:18px}html:not(.sengoku-desktop-fit) .navigation .nav-item>span{white-space:normal;text-align:center}}
+
+/* The level guide uses the existing dialog; its links only open detail views. */
+.level-guide-entry { margin: 10px 0; min-height: 44px; white-space: normal; }
+.level-guide-modal { width: min(740px, calc(100vw - 24px)); }
+.level-guide-modal .modal-header { position: sticky; top: 0; z-index: 2; background: #1a2024; }
+.level-guide-modal .modal-header .icon-button { flex: none; min-width: 44px; min-height: 44px; }
+.level-guide-modal .modal-body { padding: 20px 24px; }
+.level-guide-body { min-width: 0; color: #c7ceca; font-size: 15px; line-height: 1.85; overflow-wrap: anywhere; }
+.level-guide-body p { margin: 0 0 13px; }
+.level-guide-body strong { color: #f4e4bf; font-weight: 600; }
+.level-guide-intro { padding-bottom: 4px; }
+.level-guide-pending { border: 1px solid #dec48044; border-radius: 7px; padding: 12px; background: #dec4800c; }
+.level-guide-choices { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 13px; }
+.level-guide-card { display: flex; flex-direction: column; min-width: 0; padding: 16px; border: 1px solid #c4ad7240; border-radius: 9px; background: #26312d66; }
+.level-guide-card .level-guide-label { color: #b8c6ba; font-size: 13px; }
+.level-guide-card h3 { display: flex; align-items: center; gap: 7px; margin: 6px 0 9px; color: #f2dfb2; font-size: 20px; }
+.level-guide-card h3 .icon { flex: none; width: 20px; height: 20px; }
+.level-guide-card .level-guide-current { margin: 0 0 12px; font-size: 14px; color: #e3c886; }
+.level-guide-steps { flex: 1; margin: 0 0 16px; padding-left: 22px; }
+.level-guide-steps li { margin: 0 0 9px; padding-left: 3px; }
+.level-guide-steps li::marker { color: #dfc58b; font-weight: 700; }
+.level-guide-card .button { min-height: 44px; height: auto; padding: 11px 12px; font-size: 14px; white-space: normal; text-align: center; }
+.level-guide-card .button .icon { flex: none; }
+.level-guide-basics { margin: 20px 0; }
+.level-guide-basics h3 { color: #e8dfce; font-size: 17px; }
+.level-guide-basics ul { margin: 0; padding-left: 21px; }
+.level-guide-basics li { margin: 7px 0; }
+.level-guide-details { border-top: 1px solid #c4ad722f; padding: 4px 0; }
+.level-guide-details summary { min-height: 44px; padding: 10px 4px; color: #ead8b4; cursor: pointer; font-weight: 600; }
+.level-guide-details[open] summary { margin-bottom: 4px; }
+.level-guide-details p { padding: 0 4px; }
+.level-guide-limits { margin: 0 4px 15px; }
+.level-guide-limits > div { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; padding: 7px 0; border-bottom: 1px solid #ffffff0c; }
+.level-guide-limits dt, .level-guide-limits dd { margin: 0; }
+.level-guide-limits dd { color: #e5c987; font-variant-numeric: tabular-nums; }
+.level-guide-more { padding-top: 15px; font-size: 14px; }
+.level-guide-more a { color: #e4c68b; text-decoration: underline; text-underline-offset: 3px; }
+@media (max-width: 560px) {
+  .level-guide-modal .modal-header { padding: 16px 16px 12px; gap: 8px; }
+  .level-guide-modal .modal-header h2 { font-size: 21px; }
+  .level-guide-modal .modal-header p { font-size: 13px; }
+  .level-guide-modal .modal-body { padding: 16px; }
+  .level-guide-body { font-size: 15px; }
+  .level-guide-choices { grid-template-columns: minmax(0, 1fr); }
+  .level-guide-card { padding: 14px; }
+  .level-guide-card .button { font-size: 15px; }
+  .level-guide-modal .modal-footer { padding: 14px 16px 18px; }
+}

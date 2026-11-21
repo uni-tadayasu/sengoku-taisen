@@ -63,6 +63,32 @@ test('the home introduction is visible HTML and still preserves the existing gam
   assert(intro);assert.equal(normalized(intro),normalized(site.launchIntroduction.join('')));assert.equal([...html.matchAll(/\bid="launch-enter"/g)].length,1);assert(html.includes('id="main"'));assert(html.includes('id="launch-screen"'));
 });
 
+test('current battle limits and automatic mail are explained in public HTML without loading the game',()=>{
+  const guide=pages.find(page=>page.key==='guide').html,article=guide.match(/<article\b([^>]*)>([\s\S]*?)<\/article>/);
+  assert(article);assert(!/\bhidden\b|aria-hidden=["']true/.test(article[1]));
+  const table=article[2].match(/<table\b[^>]*><caption>共通フィールドの城・成長上限・勝利時の扱い<\/caption>([\s\S]*?)<\/table>/)?.[1];assert(table);
+  const rows=[...table.matchAll(/<tr>([\s\S]*?)<\/tr>/g)].slice(1).map(match=>normalized(match[1]));
+  assert.equal(rows.length,3);assert.match(rows[0],/^江戸城・駿府城Lv\.64報酬戦/);assert(rows[0].includes('各500'));assert(rows[0].includes('占領できず'));
+  assert.match(rows[1],/^二条城・大坂城・名古屋城Lv\.48占領戦/);assert(rows[1].includes('自分の所領'));
+  assert.match(rows[2],/^通常の本拠Lv\.32限定襲撃/);assert(rows[2].includes('領有は移らず'));
+  const mail=article[2].match(/<section\b([^>]*\bid="system-mail"[^>]*)>([\s\S]*?)<\/section>/);assert(mail);assert(!/\bhidden\b|aria-hidden=["']true/.test(mail[1]));
+  const text=normalized(mail[2].replace(/<(?:script|style)\b[\s\S]*?<\/(?:script|style)>/gi,''));
+  for(const phrase of ['共通フィールドの対人戦','それぞれ1通','「交流」→「郵便」','未読','移転前と移転先','戦闘の確定時に反映済み','返信や贈り物の受取操作はありません','天下地図のCPU戦'])assert(text.includes(phrase),phrase);
+  const about=pages.find(page=>page.key==='about'),recovery=pages.find(page=>page.key==='recovery');
+  for(const page of [about,recovery])assert(tags(page.html,'a').some(link=>link.href&&new URL(link.href,page.url).href===site.origin+'/guide/#system-mail'),'Related public pages link directly to the mail guide');
+  assert(recovery.html.includes('id="relocated-home"'));assert(tags(about.html,'a').some(link=>link.href&&new URL(link.href,about.url).href===site.origin+'/guide/#field-battles'));
+});
+
+test('the beginner upgrade guide gives separate keep and castle steps, actual controls and reservation limits',()=>{
+  const guide=pages.find(page=>page.key==='guide'),section=guide.html.match(/<section\b([^>]*\bid="castle-upgrades"[^>]*)>([\s\S]*?)<\/section>/);
+  assert(section);assert(!/\bhidden\b|aria-hidden=["']true/.test(section[1]));
+  const text=normalized(section[2]);
+  for(const phrase of ['「天守」','「城郭レベル」','それぞれ別の工事','城下町で「天守」を開く','「天下地図」から「本拠へ」を押す','その後、本拠の城を押して選択','「城郭の拡張」','「Lv.Nへ拡張する」','「次の増築を予約」','予約の取り消しはできません','同じ城郭の工事中は、次の段階を予約できません','指令1回と金銭・木材・石材','120秒または180秒','60秒・120秒・180秒','Lv.8・16・24・32','最大6枠','駿府城の共同普請を開く'])assert(text.includes(phrase),phrase);
+  for(const limit of ['Lv.32','Lv.48','Lv.64'])assert(text.includes(limit));
+  assert(tags(guide.html,'a').some(link=>link.href==='#castle-upgrades'));
+  const about=pages.find(page=>page.key==='about');assert(tags(about.html,'a').some(link=>link.href&&new URL(link.href,about.url).href===site.origin+'/guide/#castle-upgrades'));
+});
+
 (async()=>{
  const notifier=await import(pathToFileURL(path.join(root,'tools/notify-indexnow.mjs')).href),plan=await notifier.loadPlan(root);
  const response=(body,status=200,type='text/html; charset=utf-8',headers={})=>new Response(body,{status,headers:{'Content-Type':type,...headers}});

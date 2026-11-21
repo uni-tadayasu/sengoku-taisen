@@ -4,14 +4,14 @@
   "name": "戦国VS",
   "alternateName": "SENGOKU VS",
   "publisher": "KASAI SOLUTIONS",
-  "release": "3.9.6-20261121",
-  "version": "3.9.6",
+  "release": "3.9.7-20261121",
+  "version": "3.9.7",
   "dateModified": "2026-11-21",
   "language": "ja",
   "locale": "ja_JP",
   "tagline": "一城の志が、天下を動かす。",
   "launchIntroduction": [
-    "城下町を育て、武将を編成し、共通の年月を歩む。",
+    "城下町を育て、武将を編成し、領主同士の対人戦へ。",
     "PC・スマホ・タブレットで遊ぶ戦国ブラウザゲーム。"
   ],
   "ogImage": {
@@ -26,33 +26,33 @@
     "height": 512
   },
   "favicon": {
-    "path": "assets/sengoku-taisen-favicon-32.png",
-    "sizes": "32x32",
+    "path": "assets/sengoku-taisen-icon-192.png",
+    "sizes": "192x192",
     "type": "image/png"
   },
   "pages": {
     "home": {
       "path": "/",
-      "title": "戦国VS｜城育成・武将編成のブラウザゲーム - KASAI SOLUTIONS",
-      "description": "戦国VSはKASAI SOLUTIONSの戦国ブラウザゲーム。選んだ一城から城下町を育て、武将を編成し、共通の年月で領国を広げます。ギルドや書状での交流、軍師AI、ウォーキング報酬に対応。同じ領主を端末連携すれば、PC・スマホ・タブレットで進行を自動同期できます。",
+      "title": "戦国VS｜城育成・武将編成・対人戦のブラウザゲーム",
+      "description": "戦国VSは、城下町育成と武将編成を楽しむKASAI SOLUTIONSの戦国ブラウザゲーム。CPU勢力との戦役に加え、共通フィールドで領主同士の報酬戦・大都市の占領戦に挑めます。合戦結果はゲーム内の郵便で確認。PC・スマホ・タブレットで進行を同期できます。",
       "dateModified": "2026-11-21"
     },
     "guide": {
       "path": "/guide/",
-      "title": "戦国VSの遊び方｜城選び・育成・交流・自動進軍",
-      "description": "戦国VSの遊び方を、城選びから城下町の連続増築、武将編成、共通時間、ギルド・書状まで案内。軍師AIとウォーキング報酬の条件、端末同期・データ復元も確認できます。KASAI SOLUTIONSによるゲームガイドです。",
+      "title": "戦国VSの遊び方｜城育成・対人戦・システムメール",
+      "description": "戦国VSの本拠天守・城郭のレベル上げ手順、必要な資源・指令・工期と成長上限を解説。武将・奉行の配置、江戸・駿府の報酬戦、二条・大坂・名古屋の占領戦、ゲーム内システムメール、端末同期も案内します。",
       "dateModified": "2026-11-21"
     },
     "recovery": {
       "path": "/guide/data-recovery/",
       "title": "戦国VSのデータ復元・引き継ぎ｜機種変更とドメイン移行",
-      "description": "KASAI SOLUTIONSの戦国VSで、機種変更・URL変更後に続きを遊ぶための復元ガイド。接続コード、領主データとセーブ、統合バックアップ、運営本人向けの復旧表示とクラウド保存の確認手順を案内します。",
+      "description": "戦国VSの機種変更・URL変更後の引き継ぎガイド。接続コード、領主データとセーブ、統合バックアップ、クラウド保存と、本人確認済み運営の復旧手順を案内します。対人戦で本拠が移った場合の合戦通知も確認できます。",
       "dateModified": "2026-11-21"
     },
     "about": {
       "path": "/about/",
-      "title": "戦国VSとは｜城下町育成・武将・領主交流｜KASAI SOLUTIONS",
-      "description": "KASAI SOLUTIONSの戦国ブラウザゲーム「戦国VS」を紹介。城下町を育て、武将を編成し、共通の年月で領国を発展。ギルド、書状、軍師AI、ウォーキング報酬と、地図・人物・家紋の制作方針を案内します。",
+      "title": "戦国VSとは｜城育成と対人戦を楽しむ戦国ブラウザゲーム",
+      "description": "KASAI SOLUTIONSが制作する「戦国VS」のゲーム概要。城下町、武将、CPU戦役とプレイヤー同士の報酬戦・占領戦、自動で届く合戦の知らせを紹介します。PC・スマホ・タブレットの対応、地図・人物・家紋の出典も掲載。",
       "dateModified": "2026-11-21"
     }
   }

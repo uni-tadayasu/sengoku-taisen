@@ -3,6 +3,7 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const path=require('node:path');
 const root=path.resolve(__dirname,'..'),origin='https://www.kasai-solutions-inc.com';
+const site=JSON.parse(fs.readFileSync(path.join(root,'site-metadata.json'),'utf8'));
 const sitemap=fs.readFileSync(path.join(root,'sitemap.xml'),'utf8');
 const urls=[...sitemap.matchAll(/<loc>([^<]+)<\/loc>/g)].map(m=>m[1]);
 assert.equal(urls.length,4);assert.equal(new Set(urls).size,4);
@@ -25,6 +26,10 @@ for(const url of urls){
  const scripts=[...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)];let pageGraphs=0;
  for(const match of scripts){const attrs=tagAttrs(match[1]);if(attrs.type!=='application/ld+json')continue;const data=JSON.parse(match[2]);assert.equal(data['@context'],'https://schema.org');graphs++;pageGraphs++;assert(!match[2].includes('aggregateRating'),'Do not publish unsupported ratings');}
  assert(pageGraphs>0,'Missing structured data on '+url);
+ const selectionStyles=[...html.matchAll(/<link\b[^>]*>/gi)].map(m=>tagAttrs(m[0])).filter(a=>a.rel==='stylesheet'&&/selection-lock\.css(?:\?|$)/.test(a.href||''));
+ const selectionScripts=scripts.filter(match=>/selection-lock\.js(?:\?|$)/.test(tagAttrs(match[1]).src||''));
+ assert.equal(selectionStyles.length,1);assert.equal(selectionScripts.length,1);assert(/\bdefer\b/.test(selectionScripts[0][1]));
+ for(const href of [selectionStyles[0].href,tagAttrs(selectionScripts[0][1]).src])assert.equal(new URL(href,url).searchParams.get('v'),site.release);
  for(const match of html.matchAll(/<(?:a|img|script|link)\b[^>]*>/gi)){
   const attrs=tagAttrs(match[0]),href=attrs.href||attrs.src;if(!href||/^(?:data:|mailto:|tel:|javascript:)/.test(href))continue;
   const target=new URL(href,url);if(target.origin!==origin)continue;
@@ -52,4 +57,7 @@ for(const agent of ['googlebot','bingbot']){
 }
 const seen=new Set(),pending=[origin+'/'];for(let i=0;i<pending.length;i++){const url=pending[i];if(seen.has(url))continue;seen.add(url);pending.push(...connections.get(url)||[]);}assert.equal(seen.size,4,'All sitemap pages need static links from the public site');
 const notFound=fs.readFileSync(path.join(root,'404.html'),'utf8');assert(/content="noindex,follow"/.test(notFound));
+for(const name of ['selection-lock.css','selection-lock.js'])assert(notFound.includes('/'+name+'?v='+site.release));
+assert(/<script\b[^>]*\bdefer\b[^>]*src="\/selection-lock\.js\?v=/.test(notFound));
+for(const match of notFound.matchAll(/<(?:link|script)\b[^>]*>/gi)){const a=tagAttrs(match[0]),href=a.href||a.src;if(!href)continue;const asset=new URL(href,origin+'/unknown/nested/page');if(asset.origin===origin)assert(fs.existsSync(path.join(root,asset.pathname)),'404 asset must resolve from a nested missing URL: '+href);}
 console.log(`PASS ${urls.length} canonical pages, ${graphs} JSON-LD blocks, ${links} local links/assets, static discovery, section links, crawler access, sitemap, domain and 404.`);
