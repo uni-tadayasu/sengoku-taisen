@@ -101,5 +101,34 @@ test('followers, missing local durability and unrelated routes cannot send a con
  for(const kind of ['follower','unsaved','guest']){const h=setup();if(kind==='follower'){h.c.syncAccess.writable=false;h.control.status.writable=false;}if(kind==='unsaved')h.c.saveEnabled=false;if(kind==='guest')h.control.user=null;await assert.rejects(h.c.requestBranches('/branches/build',{method:'POST',data:build}));assert.equal(h.posts.length,0);}
  const h=setup();for(const route of ['/branches?owner=other','/branches/build/extra','/branches/../admin'])await assert.rejects(h.c.requestBranches(route,{method:'POST',data:build}));assert.equal(h.posts.length,0);
 });
+test('facility orders use the same authoritative branch ledger and never mutate local resources optimistically',async()=>{
+ for(const action of ['build-facility','upgrade-facility']){
+  const h=setup(),before=clone(h.c.game.state);h.control.branchSequence=4;h.control.onPost=async()=>({ok:true,revision:9});h.control.onRefresh=async()=>{h.control.status.revision=9;return{ok:true};};
+  const result=await h.c.requestBranches('/branches/'+action,{method:'POST',data:{branchId:'edo_north',facilityId:'farm',deviceId:'forged',sequence:999,expectedRevision:999}});
+  assert(result.ok);assert.equal(h.posts.length,1);const body=h.posts[0].options.data;assert.equal(body.facilityId,'farm');assert.equal(body.branchId,'edo_north');assert.equal(body.deviceId,'tab-a');assert.equal(body.expectedRevision,7);assert.equal(body.sequence,4);assert.equal(body.campaignId,h.c.game.state.walking.campaignId);assert.deepEqual(clone(h.c.game.state),before);assert.equal(branchRecords(h).length,0);
+ }
+});
+test('different facility orders reconcile a lost response with its original target and receipt before sending the next',async()=>{
+ const h=setup(),farm={branchId:'edo_north',facilityId:'farm'},market={branchId:'edo_north',facilityId:'market'};h.control.onPost=async()=>{throw Error('lost facility response');};
+ await assert.rejects(h.c.requestBranches('/branches/build-facility',{method:'POST',data:farm}),/lost facility response/);const first=clone(h.posts[0].options.data);h.control.onPost=async()=>({ok:true,revision:7});
+ await h.c.requestBranches('/branches/build-facility',{method:'POST',data:market});assert.equal(h.posts.length,3);assert.equal(h.posts[1].options.data.requestId,first.requestId);assert.equal(h.posts[1].options.data.facilityId,'farm');assert.equal(h.posts[2].options.data.facilityId,'market');assert.notEqual(h.posts[2].options.data.requestId,first.requestId);assert.equal(branchRecords(h).length,0);
+});
+test('local facility build and upgrade each save a timed paid order and roll back completely on storage failure',async()=>{
+ for(const action of ['build-facility','upgrade-facility']){
+  const prepare=()=>{const h=setup();h.c.syncAccess.linked=false;h.c.game.state.branches=[{id:'edo_north',parentCastleId:'edo',direction:'north',level:3,fallen:false,facilities:action==='upgrade-facility'?{farm:1}:{}}];return h;};
+  const h=prepare(),q=h.c.game.branchFacilityQuote('edo_north','farm'),gold=h.c.game.state.resources.gold,result=await h.c.requestBranches('/branches/'+action,{method:'POST',data:{branchId:'edo_north',facilityId:'farm'}});
+  assert(result.ok,result.message);assert.equal(h.c.game.state.resources.gold,gold-q.cost.gold);assert.equal(h.c.game.state.branches[0].level,3);const saved=JSON.parse(h.stored.get('save'));assert.equal(saved.state.jobs.find(job=>job.facilityId==='farm').targetLevel,action==='upgrade-facility'?2:1);assert.equal(h.posts.length,0);
+  const after=clone(h.c.game.state),duplicate=await h.c.requestBranches('/branches/'+action,{method:'POST',data:{branchId:'edo_north',facilityId:'farm'}});assert.equal(duplicate.ok,false);assert.deepEqual(clone(h.c.game.state),after);
+  const failed=prepare(),before=clone(failed.c.game.state);failed.c.localStorage.setItem=()=>{throw Error('full');};await assert.rejects(failed.c.requestBranches('/branches/'+action,{method:'POST',data:{branchId:'edo_north',facilityId:'farm'}}),/保存できなかった/);assert.deepEqual(clone(failed.c.game.state),before);
+ }
+});
+test('real delegated click actions carry the chosen facility through the mutation gate and branch transaction bridge',async()=>{
+ const start=source.indexOf("  document.addEventListener('click',async event=>"),end=source.indexOf("  document.addEventListener('input'",start),mutations=source.match(/^  const mutationActions=.*$/m)?.[0];assert(start>=0&&end>start&&mutations);
+ for(const action of ['build-branch-facility','upgrade-branch-facility']){
+  const h=setup();let click;h.c.document.addEventListener=(type,handler)=>{if(type==='click')click=handler;};vm.runInContext(mutations+'\n'+source.slice(start,end),h.c);
+  const node={dataset:{action,id:'edo_north',facility:'watchtower'},disabled:false,closest(){return this;}};await click({target:node});assert.equal(h.posts.length,1);assert.equal(h.posts[0].route,'/branches/'+action.replace('-branch',''));assert.equal(h.posts[0].options.data.branchId,'edo_north');assert.equal(h.posts[0].options.data.facilityId,'watchtower');
+  const blocked=setup();blocked.c.syncAccess.writable=false;blocked.c.document.addEventListener=(type,handler)=>{if(type==='click')click=handler;};vm.runInContext(mutations+'\n'+source.slice(start,end),blocked.c);node.disabled=false;await click({target:node});assert.equal(blocked.posts.length,0);
+ }
+});
 (async()=>{for(const[name,run]of tests){await run();console.log('PASS '+name);}console.log(tests.length+' branch transaction bridge checks passed. No live writes.');})().catch(error=>{console.error(error);process.exitCode=1;});
 

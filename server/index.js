@@ -20,8 +20,8 @@ import {handleProtection,enrollProtection,prepareProtection,protectionBattleStat
 import {handleBranches,applyBranchProgress,reconcileBranchProgress,branchProgressStatements,branchStateGuard} from './branches.js';
 import {ensureResidency,residencySnapshot,residencyDirectory,residencyStart,initialResidencyStatements,residencyTargetGuard,prepareResidencySuccession,prepareResidencyCpuLosses} from './residency.js';
 const API = '/api/v1';
-const API_VERSION = '4.4.0';
-const API_FEATURES = Object.freeze({trades:true,moderation:true,premium:true,timedEvents:true,troopTrades:true,roamingBattles:true,roamingDeployment:true,covertDispatch:true,privatePlayerRoles:true,guildIcons:true,court:true,kyotoGosho:true,branches:true,branchBattles:true,audioCalls:true,progression:true,armyPresets:true,allianceStrategy:true,sharedConquest:true,newcomerProtection:true,webPush:true,battleAdviser:true,battleCatalog:true,eventBattleRewards:true,shogunate:true,attackTravel:true,castleResidency:true});
+const API_VERSION = '4.6.0';
+const API_FEATURES = Object.freeze({trades:true,moderation:true,premium:true,timedEvents:true,troopTrades:true,roamingBattles:true,roamingDeployment:true,covertDispatch:true,privatePlayerRoles:true,guildIcons:true,court:true,kyotoGosho:true,branches:true,branchBattles:true,branchFacilities:true,audioCalls:true,progression:true,armyPresets:true,allianceStrategy:true,sharedConquest:true,newcomerProtection:true,webPush:true,battleAdviser:true,battleCatalog:true,eventBattleRewards:true,shogunate:true,attackTravel:true,castleResidency:true});
 const MAX_BODY = 16 * 1024;
 const MAX_SAVE_BODY = 2 * 1024 * 1024;
 const MAX_AVATAR_BYTES = 48 * 1024;
@@ -1021,7 +1021,7 @@ const OFFICER_BY_ID = Object.assign(Object.create(null), Object.fromEntries(OFFI
 const CLAN_HOMES = {'織田家':'kiyosu','武田家':'tsutsujigasaki','上杉家':'kasugayama','徳川家':'okazaki','毛利家':'yoshida','島津家':'uchijo','伊達家':'yonezawa','北条家':'odawara'};
 const copy = value => JSON.parse(JSON.stringify(value));
 const pick = (object, keys) => Object.fromEntries(keys.map(key => [key,object[key]]));
-const jobDto=job=>({...pick(job,['kind','id','remaining','total','remainingSeconds','totalSeconds','targetLevel']),...(job.kind==='branch'&&job.repair===true?{repair:true}:{}),...(job.kind==='branch'&&job.completesElapsedMs!==undefined?{completesElapsedMs:job.completesElapsedMs}:{})});
+const jobDto=job=>({...pick(job,['kind','id','remaining','total','remainingSeconds','totalSeconds','targetLevel']),...(job.kind==='branch'&&job.repair===true?{repair:true}:{}),...(job.kind==='branch'&&job.facilityId!==undefined?{facilityId:job.facilityId}:{}),...(job.kind==='branch'&&job.completesElapsedMs!==undefined?{completesElapsedMs:job.completesElapsedMs}:{})});
 function branchSite(id){for(const parent of globalThis.SENGOKU_DATA.branchRules.parents)for(const direction of globalThis.SENGOKU_DATA.branchRules.directions)if(id===parent.id+'_'+direction.id)return{id,parentCastleId:parent.id,direction:direction.id,name:CASTLE_BY_ID[parent.id].name+'・'+direction.name+'支拠点',maxLevel:parent.maxLevel};return null;}
 function initialCastle(id){const castle=globalThis.SENGOKU_DATA.castles.find(item=>item.id===id);return{owner:castle.clan,troops:castle.initialTroops,wall:castle.wall,level:1};}
 
@@ -1076,7 +1076,7 @@ function normalizeGameSave(raw, user, now, {reading=false,clock=null}={}) {
   if(!Array.isArray(s.jobs)||s.jobs.length>193)invalid();
   for(const j of s.jobs){if(!isObj(j))invalid();if(j.remainingSeconds===undefined)j.remainingSeconds=j.remaining*60;if(j.totalSeconds===undefined)j.totalSeconds=j.total*60;if(!scalar(j.remainingSeconds,.00000001,180)||!num(j.totalSeconds,60,180)||j.totalSeconds!==j.total*60||j.remainingSeconds>j.totalSeconds||j.remaining!==Math.ceil((j.remainingSeconds-1e-8)/60)||j.kind==='branch'&&j.completesElapsedMs!==undefined&&!num(j.completesElapsedMs,0,WORLD_MONTH_MS*(MAX_TURN+1)-1))invalid();}
   try{s.branches=GameEngine.normalizeBranchState(s.branches,{castles:s.castles,clan:s.clan,jobs:s.jobs,isAdmin:!!user.is_admin,validateRole:!reading});}catch{invalid();}
-  const jobkeys=new Map();for(const j of s.jobs){if(!isObj(j)||!['building','castle','research','branch'].includes(j.kind)||!num(j.remaining,1,3)||!num(j.total,1,3)||j.remaining>j.total||j.kind!=='branch'&&j.repair!==undefined)invalid();const branch=j.kind==='branch'?s.branches.find(b=>b.id===j.id):null,defs=j.kind==='branch'?s.branches:j.kind==='building'?BUILDINGS:j.kind==='castle'?CASTLES:TECHS,current=j.kind==='branch'?branch?.level-(j.repair===true?1:0):j.kind==='castle'?s.castles[j.id]?.level:(j.kind==='building'?s.buildings:s.tech)[j.id],key=j.kind+':'+j.id,count=jobkeys.get(key)||0;if(!defs.some(d=>d.id===j.id)||j.targetLevel!==current+count+1||j.targetLevel>(j.kind==='branch'?branchSite(j.id).maxLevel:j.kind==='research'?5:j.kind==='castle'?incomingCastleLimit(j.id):32)||j.kind==='castle'&&s.castles[j.id]?.owner!==s.clan||count&&(j.kind!=='building'||j.remainingSeconds!==j.totalSeconds))invalid();jobkeys.set(key,count+1);}
+  const jobkeys=new Map();for(const j of s.jobs){if(!isObj(j)||!['building','castle','research','branch'].includes(j.kind)||!num(j.remaining,1,3)||!num(j.total,1,3)||j.remaining>j.total||j.kind!=='branch'&&j.repair!==undefined)invalid();const branch=j.kind==='branch'?s.branches.find(b=>b.id===j.id):null,defs=j.kind==='branch'?s.branches:j.kind==='building'?BUILDINGS:j.kind==='castle'?CASTLES:TECHS,current=j.kind==='branch'?(j.facilityId?branch?.facilities?.[j.facilityId]||0:branch?.level-(j.repair===true?1:0)):j.kind==='castle'?s.castles[j.id]?.level:(j.kind==='building'?s.buildings:s.tech)[j.id],key=j.kind+':'+j.id,count=jobkeys.get(key)||0;if(!defs.some(d=>d.id===j.id)||j.targetLevel!==current+count+1||j.targetLevel>(j.kind==='branch'?(j.facilityId?branch?.level:branchSite(j.id).maxLevel):j.kind==='research'?5:j.kind==='castle'?incomingCastleLimit(j.id):32)||j.kind==='castle'&&s.castles[j.id]?.owner!==s.clan||count&&(j.kind!=='building'||j.remainingSeconds!==j.totalSeconds))invalid();jobkeys.set(key,count+1);}
   if(s.jobs.filter(j=>j.kind==='research').length>1||[...jobkeys.keys()].filter(key=>!key.startsWith('research:')).length>(staff||serviceSave?6:2+Math.floor(s.buildings.keep/8)))invalid();
   if(reading||legacyMap){if(reading)for(const id of FIELD_CAPTURE_CASTLES)s.castles[id].level=Math.min(48,s.castles[id].level);s.castles.sunpu.level=Math.min(32,s.castles.sunpu.level);s.jobs=s.jobs.filter(job=>job.kind!=='castle'||job.targetLevel<=castleLevelLimit(job.id));}
   s.jobs=s.jobs.map(jobDto);
@@ -1741,8 +1741,8 @@ function fieldBranches(row,castleId,castle,clock,cyclePending,home,baseReason){
   const stored=row.branches_json?JSON.parse(row.branches_json):{branches:[],jobs:[]};
   if(cyclePending&&castleId!==home)return[];
   return stored.branches.filter(branch=>branch.parentCastleId===castleId).map(branch=>{
-    const projected={...branch},job=stored.jobs.find(job=>job.id===branch.id);
-    if(job&&job.completesElapsedMs<=clock.elapsedMs){projected.level=job.targetLevel;if(job.repair)projected.fallen=false;}
+    const projected=copy(branch),job=stored.jobs.find(job=>job.id===branch.id);
+    if(job&&job.completesElapsedMs<=clock.elapsedMs){if(job.facilityId)GameEngine.completeBranchFacility(projected,job,job.completesElapsedMs);else{projected.level=job.targetLevel;if(job.repair)projected.fallen=false;}}
     const site=branchSite(branch.id),defense=fieldBranchDefense({castles:{[castleId]:castle}},projected),reason=baseReason||(!projected.level?'建設中の支拠点です。':projected.fallen?'この支拠点はすでに陥落しています。':'');
     return{...projected,name:site.name,maxLevel:site.maxLevel,building:!!job&&job.completesElapsedMs>clock.elapsedMs,repairing:!!job?.repair&&job.completesElapsedMs>clock.elapsedMs,defenseTroops:defense?.force||0,defensePower:defense?.power||0,attackable:!reason,attackReason:reason};
   });

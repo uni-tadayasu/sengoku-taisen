@@ -50,4 +50,14 @@ test('verified private snapshots reach the coordinator before the direct API pro
 test('authoritative branch conflict codes are retained for safe retry and reconciliation',async()=>{
  const h=harness();h.setTransport(async()=>({status:409,data:{ok:false,error:{code:'BRANCH_STATE_CHANGED',message:'支拠点の最新情報を確認してください。'}}}));await assert.rejects(h.api.branchRequest('/branches/build',{method:'POST',data:body}),error=>error.status===409&&error.code==='BRANCH_STATE_CHANGED');
 });
+test('facility routes send exact facility targets with authentication and the unchanged durable writer contract',async()=>{
+ for(const action of ['build-facility','upgrade-facility']){
+  const h=harness({admin:true}),payload={branchId:'edo_north',facilityId:'farm',requestId:'facility-order',campaignId:body.campaignId,sequence:3,deviceId:body.deviceId,expectedRevision:7};
+  await h.api.branchRequest('/branches/'+action,{method:'POST',data:payload,auth:false,token:'forged'});assert.equal(h.calls[0].url,'https://fixture.invalid/api/v1/branches/'+action);assert.equal(h.calls[0].headers.Authorization,'Bearer '+TOKEN);assert.deepEqual(h.calls[0].body,payload);
+  h.status.writable=false;await assert.rejects(h.api.branchRequest('/branches/'+action,{method:'POST',data:payload}),error=>error.code==='BRANCH_SYNC_REQUIRED');assert.equal(h.calls.length,1);
+ }
+});
+test('facility command routes reject reads, suffixes and query injection before transport',async()=>{
+ const h=harness();for(const[route,method]of [['/branches/build-facility','GET'],['/branches/build-facility/extra','POST'],['/branches/upgrade-facility?playerId=other','POST'],['/branches/remove-facility','POST']])await assert.rejects(h.api.branchRequest(route,{method,data:body}),error=>error.status===400);assert.equal(h.calls.length,0);
+});
 (async()=>{for(const[name,run]of tests){await run();console.log('PASS '+name);}console.log(tests.length+' real branch transport checks passed. No live requests.');})().catch(error=>{console.error(error);process.exitCode=1;});

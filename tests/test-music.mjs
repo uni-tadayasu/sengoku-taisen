@@ -5,11 +5,11 @@ import crypto from 'node:crypto';
 const source=fs.readFileSync(new URL('../music.js',import.meta.url),'utf8');
 function fixture({session=false,media=false,throwsSession=false}={}){
   let sequence=0;const timers=new Map(),listeners=new Map(),windowListeners=new Map(),audioListeners=new Map(),calls=[];
-  const mediaElements=[],contexts=[];
+  const mediaElements=[],contexts=[],nodes=[],sources=new Set(),waves=[];
   const document={hidden:false,addEventListener:(n,f)=>listeners.set(n,f),removeEventListener:n=>listeners.delete(n)};
-  class Param{constructor(){this.value=0;}setValueAtTime(v,t){assert(Number.isFinite(v));assert(Number.isFinite(t));this.value=v;}linearRampToValueAtTime(v,t){this.setValueAtTime(v,t);}exponentialRampToValueAtTime(v,t){assert(v>0);this.setValueAtTime(v,t);}cancelScheduledValues(){}cancelAndHoldAtTime(){}}
-  class Node{constructor(){this.connections=[];this.gain=new Param();this.frequency=new Param();this.pan=new Param();this.threshold=new Param();this.knee=new Param();this.ratio=new Param();this.attack=new Param();this.release=new Param();}connect(node){this.connections.push(node);}disconnect(){this.connections=[];}start(t){assert(t>=0);this.started=t;}stop(t){assert(t>=0);this.stopped=t;}}
-  class AC{constructor(){this.sampleRate=8000;this.currentTime=0;this.state='suspended';this.destination={kind:'speakers'};this.listeners=new Map();contexts.push(this);}createGain(){return new Node();}createDynamicsCompressor(){return new Node();}createConvolver(){return new Node();}createStereoPanner(){return new Node();}createOscillator(){return new Node();}createBufferSource(){return new Node();}createBiquadFilter(){return new Node();}createBuffer(c,n){const data=Array.from({length:c},()=>new Float32Array(n));return{getChannelData:i=>data[i]};}addEventListener(n,f){this.listeners.set(n,f);}removeEventListener(n){this.listeners.delete(n);}resume(){calls.push('context.resume');if(this.resumeImpl)return this.resumeImpl();this.state='running';return Promise.resolve();}async suspend(){calls.push('context.suspend');this.state='suspended';}async close(){this.state='closed';}}
+  class Param{constructor(){this.value=0;this.events=[];}setValueAtTime(v,t){assert(Number.isFinite(v));assert(Number.isFinite(t));this.value=v;this.events.push([v,t]);}linearRampToValueAtTime(v,t){this.setValueAtTime(v,t);}exponentialRampToValueAtTime(v,t){assert(v>0);this.setValueAtTime(v,t);}cancelScheduledValues(){}cancelAndHoldAtTime(){}}
+  class Node{constructor(kind='node'){this.kind=kind;this.connections=[];this.gain=new Param();this.frequency=new Param();this.pan=new Param();this.threshold=new Param();this.knee=new Param();this.ratio=new Param();this.attack=new Param();this.release=new Param();nodes.push(this);}connect(node){this.connections.push(node);}disconnect(){this.connections=[];}start(t){assert(t>=0);this.started=t;sources.add(this);}stop(t){assert(t>=0);this.stopped=t;}setPeriodicWave(wave){assert(wave.real.length>8);this.wave=wave;}}
+  class AC{constructor(){this.sampleRate=8000;this.currentTime=0;this.state='suspended';this.destination={kind:'speakers'};this.listeners=new Map();contexts.push(this);}createGain(){return new Node('gain');}createDynamicsCompressor(){return new Node('compressor');}createConvolver(){return new Node('convolver');}createStereoPanner(){return new Node('panner');}createOscillator(){return new Node('oscillator');}createBufferSource(){return new Node('buffer-source');}createBiquadFilter(){return new Node('filter');}createPeriodicWave(real,imag){assert([...real,...imag].every(Number.isFinite));const wave={real,imag};waves.push(wave);return wave;}createBuffer(c,n,sampleRate=this.sampleRate){const data=Array.from({length:c},()=>new Float32Array(n));return{length:n,sampleRate,numberOfChannels:c,getChannelData:i=>data[i]};}addEventListener(n,f){this.listeners.set(n,f);}removeEventListener(n){this.listeners.delete(n);}resume(){calls.push('context.resume');if(this.resumeImpl)return this.resumeImpl();this.state='running';return Promise.resolve();}async suspend(){calls.push('context.suspend');this.state='suspended';}async close(){this.state='closed';}advance(time){this.currentTime=time;for(const source of sources)if(source.stopped<=time){sources.delete(source);source.onended?.();}}}
   if(media){
     AC.prototype.createMediaStreamDestination=function(){const sink=new Node(),track={stopped:false,stop(){this.stopped=true;}};sink.stream={getTracks:()=>[track]};return sink;};
     document.createElement=name=>{assert.equal(name,'audio');const element={srcObject:null,paused:true,playCount:0,pauseCount:0,attributes:{},setAttribute(k,v){this.attributes[k]=v;},play(){calls.push('media.play');this.playCount++;if(this.playImpl)return this.playImpl();this.paused=false;return Promise.resolve();},pause(){this.pauseCount++;this.paused=true;}};mediaElements.push(element);return element;};
@@ -18,12 +18,26 @@ function fixture({session=false,media=false,throwsSession=false}={}){
   const context={document,navigator:session?{audioSession}:{},AudioContext:AC,console,addEventListener:(n,f)=>windowListeners.set(n,f),removeEventListener:n=>windowListeners.delete(n),setTimeout:(fn,ms)=>{const id=++sequence;timers.set(id,{fn,ms});return id;},clearTimeout:id=>timers.delete(id)};
   context.window=context;vm.createContext(context);vm.runInContext(source,context);
   const runTimer=ms=>{const entry=[...timers].find(([,v])=>v.ms===ms);assert(entry,`timer ${ms} exists`);timers.delete(entry[0]);entry[1].fn();};
-  return {Music:context.SengokuMusic,Tracks:context.SENGOKU_MUSIC_TRACKS,document,timers,listeners,windowListeners,audioListeners,audioSession,mediaElements,contexts,calls,runTimer};
+  return {Music:context.SengokuMusic,Tracks:context.SENGOKU_MUSIC_TRACKS,document,timers,listeners,windowListeners,audioListeners,audioSession,mediaElements,contexts,calls,runTimer,nodes,sources,waves};
 }
 const f=fixture(),{Music,Tracks}=f;
 assert.equal(Tracks.length,16);assert.equal(new Set(Tracks.map(t=>t.id)).size,16);
 const signatures=[];for(const t of Tracks){const s=Music.inspect(t.id);assert(s.duration>=60&&s.duration<=120);assert(s.eventCount>150);assert(s.events.every(e=>e.beat>=0&&e.beat<128&&Number.isFinite(e.duration)&&e.duration>0));for(const e of s.events)if(e.midi!==undefined)assert(e.midi>=20&&e.midi<=100);signatures.push(crypto.createHash('sha256').update(JSON.stringify(s.events)).digest('hex'));}
 assert.equal(new Set(signatures).size,16);
+// A real seven-part form must change orchestration and density, not just gain.
+for(const track of Tracks){
+ const score=Music.inspect(track.id),form=score.sections;
+ assert.equal(form.map(s=>s.id).join(','),'intro,build,theme,break,rise,climax,coda');
+ assert.equal(form[0].startBar,0);assert.equal(form.at(-1).endBar,32);
+ for(let i=1;i<form.length;i++)assert.equal(form[i].startBar,form[i-1].endBar);
+ assert(score.instruments.includes('strings'));assert(score.instruments.includes('choir'));
+ assert(score.events.every(event=>event.priority>0&&form.some(section=>section.id===event.section&&event.beat>=section.startBar*4&&event.beat<section.endBar*4)));
+ const density=id=>score.events.filter(event=>event.section===id).length/(form.find(section=>section.id===id).endBar-form.find(section=>section.id===id).startBar);
+ assert(density('climax')>density('break')*1.8,track.id+' must actually rebuild the ensemble after the break');
+ assert(score.estimatedPeak.voices<score.voiceBudget.voices);assert(score.estimatedPeak.sources<score.voiceBudget.sources);
+ if(track.scene==='battle'||track.scene==='army'){assert(score.instruments.includes('brass'));assert(score.instruments.includes('odaiko'));assert(score.instruments.includes('shamisen'));assert(!score.events.some(event=>event.section==='break'&&event.type==='brass'));}
+ if(['castle-evening','winter-silence','defeat-moon'].includes(track.id))assert(!score.events.some(event=>['taiko','odaiko','wood','hat','tsuzumi'].includes(event.type)),track.id+' preserves reflective pacing');
+}
 const music=new Music({volume:10});assert.equal(f.timers.size,0);assert.equal(music.playing,false);assert.equal(music._context,null);
 await music.play('town-dawn');assert.equal(f.timers.size,1);assert.equal(music.playing,true);assert.equal(music.currentId,'town-dawn');
 for(const track of Tracks){await music.play(track.id);assert.equal(f.timers.size,1);assert.equal(music.currentId,track.id);music.playEffect('confirm');}
@@ -140,4 +154,37 @@ let scenarios=1;
  x.document.hidden=true;await p.setVoiceActive(false);assert.equal(p._context.state,'suspended');
  x.document.hidden=false;await p._onVisibility();assert.equal(p._context.state,'running');await p.dispose();scenarios++;
 }
-console.log(JSON.stringify({tracks:Tracks.length,distinctScores:new Set(signatures).size,scenarios,lifecycle:'Native playback category, real media sink fallback, gesture ordering, mute, rejection/retry, pause race, visibility, interruptions, bfcache, voice-call focus and cleanup.'},null,2));
+// Run the real scheduler through two full battle loops and a town score. The
+// shared ceiling includes release tails and the scheduled look-ahead window.
+let measuredPeak={voices:0,sources:0};
+for(const id of ['battle-storm','battle-siege','town-dawn']){
+ const x=fixture(),p=new x.Music({volume:10});await p.play(id);const score=x.Music.inspect(id),ctx=p._context;
+ const duration=score.duration*(id==='battle-storm'?2:1)+.1;
+ for(let time=.05;time<duration;time+=.05){ctx.advance(time);p._schedule();assert(p._voices.size<=score.voiceBudget.voices);assert(p._sourceCount<=score.voiceBudget.sources);measuredPeak.voices=Math.max(measuredPeak.voices,p._voices.size);measuredPeak.sources=Math.max(measuredPeak.sources,p._sourceCount);}
+ assert.equal(p._droppedVoices,0,id+' must not lose intended notes under its normal budget');
+ assert(x.waves.length>0,'orchestral timbres use original harmonic waveforms');
+ assert(x.nodes.some(node=>node.kind==='oscillator'&&node.wave),'waveforms reach real instrument sources');
+ assert.notDeepEqual(p._reverb.buffer.getChannelData(0),p._reverb.buffer.getChannelData(1),'room reflections are stereo');
+ assert.equal(p._session.bus.connections.length,1,'dry signal has one path to the compressor');
+ assert.equal(p._session.roomBus.connections[0],p._reverb,'room sends use a separate controlled bus');
+ await p.dispose();assert.equal(p._voices.size,0);assert.equal(p._sourceCount,0);assert.equal(p._sessions.size,0);assert.equal(p._waveCache.size,0);assert.equal(p._pluckCache.size,0);assert.equal(x.timers.size,0);assert(x.nodes.every(node=>node.connections.length===0),'every voice and room node disconnects on dispose');scenarios++;
+}
+// Saturation is bounded even if a browser delays its onended callbacks.
+{
+ const x=fixture(),p=new x.Music();await p.play('battle-storm');const budget=x.Music.inspect('battle-storm').voiceBudget;
+ for(let i=0;i<500;i++)p._voice(p._session,{type:'choir',midi:60+i%12,velocity:.2,pan:0,part:'harmony'},.02,5);
+ assert(p._droppedVoices>0);assert(p._voices.size<=budget.voices);assert(p._sourceCount<=budget.sources);
+ p._context.currentTime=7;p._pruneVoices(7);assert.equal(p._voices.size,0);assert.equal(p._sourceCount,0);
+ assert(p._voice(p._session,{type:'brass',midi:60,velocity:.3,pan:0},7.01,1),'expired callbacks cannot permanently exhaust voices');
+ p.setVolume(0);const before=x.nodes.length;for(let i=0;i<100;i++)p.playEffect('victory');assert.equal(x.nodes.length,before,'muted effects allocate no suspended sources');
+ await p.dispose();assert(x.nodes.every(node=>!node.connections.length));scenarios++;
+}
+// Fast page changes release both dry and room buses when the fade ends.
+{
+ const x=fixture({session:true}),p=new x.Music();await p.play('town-dawn');const old=p._session;
+ x.contexts[0].advance(1);await p.play('battle-siege');assert.equal(old.active,false);assert.equal(p._sessions.size,2);
+ x.contexts[0].advance(1.4);p._schedule();assert.equal(old.bus.connections.length,0);assert.equal(old.roomBus.connections.length,0);assert.equal(p._sessions.size,1);
+ await p.setVoiceActive(true);const before=x.nodes.length;p.playEffect('confirm');assert.equal(x.nodes.length,before);assert.equal(x.timers.size,0);assert.equal(x.audioSession.type,'auto');
+ await p.dispose();assert.equal(p._sourceCount,0);scenarios++;
+}
+console.log(JSON.stringify({tracks:Tracks.length,distinctScores:new Set(signatures).size,sectionsPerTrack:7,scenarios,measuredPeak,voiceBudget:Music.inspect(Tracks[0].id).voiceBudget,lifecycle:'Native playback category, real media sink fallback, gesture ordering, mute, rejection/retry, pause race, visibility, interruptions, bfcache, voice-call focus, bounded orchestral voices and complete graph cleanup.'},null,2));

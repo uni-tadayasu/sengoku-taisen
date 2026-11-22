@@ -22,7 +22,7 @@ function projected(raw,at,anchor=at){
   const branch=state.branches.find(item=>item.id===job.id);if(!branch)continue;
   const due=job.completesElapsedMs<=at;
   const remainingSeconds=Math.min(job.totalSeconds,Math.max(.001,(job.completesElapsedMs-anchor)/1000));
-  if(due){branch.level=job.targetLevel;if(job.repair)branch.fallen=false;continue;}
+  if(due){if(job.facilityId)GameEngine.completeBranchFacility(branch,job,job.completesElapsedMs);else{branch.level=job.targetLevel;if(job.repair)branch.fallen=false;}continue;}
   jobs.push({...job,remainingSeconds,remaining:Math.max(1,Math.ceil((remainingSeconds-1e-8)/60))});
  }
  return{branches:state.branches,jobs};
@@ -81,14 +81,14 @@ async function response(ctx,record,deviceId,idempotent){
  return{...await status(ctx,snapshot),result:JSON.parse(record.result_json),idempotent};
 }
 function input(raw,action,h){
- const common=['requestId','deviceId','expectedRevision','campaignId','sequence'],extra=action==='build'?['parentCastleId','direction']:['branchId'];
+ const common=['requestId','deviceId','expectedRevision','campaignId','sequence'],facility=action==='build-facility'||action==='upgrade-facility',extra=action==='build'?['parentCastleId','direction']:facility?['branchId','facilityId']:['branchId'];
  if(!raw||typeof raw!=='object'||Array.isArray(raw)||Object.keys(raw).some(key=>!common.includes(key)&&!extra.includes(key)))h.fail(400,'INVALID_INPUT','支拠点操作の送信項目を確認してください。');
  const body={};for(const key of ['requestId','deviceId','campaignId']){body[key]=h.idField(raw[key],key);if(body[key].length>90)h.fail(400,'INVALID_INPUT','操作番号が長すぎます。');}
  for(const key of ['sequence','expectedRevision']){if(!Number.isSafeInteger(raw[key])||raw[key]<0||raw[key]>1000000000)h.fail(400,'INVALID_INPUT','更新番号が正しくありません。');body[key]=raw[key];}
  if(action==='build'){
   if(!PARENTS.includes(raw.parentCastleId)||!DIRECTIONS.includes(raw.direction))h.fail(400,'INVALID_BRANCH_PARENT','江戸・二条・大坂・名古屋の拠点と東西南北の方角を選んでください。京都御所には支拠点を建設できません。');
   body.parentCastleId=raw.parentCastleId;body.direction=raw.direction;
- }else body.branchId=h.idField(raw.branchId,'支拠点');
+ }else{body.branchId=h.idField(raw.branchId,'支拠点');if(facility){body.facilityId=h.idField(raw.facilityId,'支拠点施設');if(!globalThis.SENGOKU_DATA.branchFacilities.some(def=>def.id===body.facilityId))h.fail(400,'INVALID_BRANCH_FACILITY','支拠点に建設できる施設を選んでください。');}}
  return body;
 }
 async function mutation(ctx,action){
@@ -105,18 +105,22 @@ async function mutation(ctx,action){
  const shared=user.is_staff&&!user.is_admin?await h.staffBaseDto(db,user,clock,ctx.now):null;
  const game=GameEngine.fromSave(save,GAME_OFFICERS,{isAdmin:!!user.is_admin,isStaff:!!user.is_staff,staffBase:shared,branchAuthority:{resolvedElapsedMs:found.resolvedElapsedMs}});
  game.applyWorldClock(clock,{maxSeconds:60});
- const result=action==='build'?game.buildBranch(body.parentCastleId,body.direction):action==='upgrade'?game.upgradeBranch(body.branchId):game.repairBranch(body.branchId);
+ const result=action==='build'?game.buildBranch(body.parentCastleId,body.direction):action==='upgrade'?game.upgradeBranch(body.branchId):action==='repair'?game.repairBranch(body.branchId):action==='build-facility'?game.buildBranchFacility(body.branchId,body.facilityId):game.upgradeBranchFacility(body.branchId,body.facilityId);
  if(!result.ok)h.fail(409,result.code||'BRANCH_UNAVAILABLE',result.message);
  const createdJob=game.state.jobs.find(job=>job.kind==='branch'&&job.id===result.branchId);
  if(createdJob)createdJob.completesElapsedMs=clock.elapsedMs+createdJob.totalSeconds*1000;
  await h.budget(db,'branches:'+user.id,60,60000,ctx.now);
  const now=Date.now(),next=h.normalizeGameSave(JSON.parse(game.exportSave()),user,now,{clock}),nonce=crypto.randomUUID(),role=h.roleCommitGuard(user),gateArgs=[user.id,body.requestId,nonce];
+ // The immutable receipt table records build/upgrade/repair categories. The
+ // exact facility operation and facilityId are bound by the request hash and
+ // retained in result_json; reusing an ID across either scope still conflicts.
+ const ledgerAction=action==='build-facility'?'build':action==='upgrade-facility'?'upgrade':action;
  const cpuLosses=await prepareResidencyCpuLosses(db,{userId:user.id,events:game.takeHomeDefenseLosses(),now,state:next.state});
  const sharedGuard=shared?{sql:"EXISTS(SELECT 1 FROM staff_base WHERE id='kyoto_gosho' AND revision=?)",args:[shared.revision]}:{sql:'1=1',args:[]};
  const statements=[stmt(db,`INSERT INTO branch_requests(actor_id,request_id,campaign_id,sequence,action,request_hash,commit_token,result_json,created_at)
   SELECT ?,?,?,?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM player_saves WHERE user_id=? AND revision=? AND writer_device_id=? AND lease_expires_at>? AND COALESCE(json_extract(save_json,'$.state.walking.campaignId'),'legacy_v1')=?)
   AND EXISTS(SELECT 1 FROM world_clock WHERE id=? AND revision=?) AND ${role.sql} AND ${found.guard.sql} AND ${sharedGuard.sql} AND ${cpuLosses.guard.sql}
-  ON CONFLICT(actor_id,request_id) DO NOTHING`,user.id,body.requestId,body.campaignId,body.sequence,action,digest,nonce,JSON.stringify(result),now,user.id,body.expectedRevision,body.deviceId,now,body.campaignId,h.worldClockId,clock.revision,...role.args,...found.guard.args,...sharedGuard.args,...cpuLosses.guard.args),
+  ON CONFLICT(actor_id,request_id) DO NOTHING`,user.id,body.requestId,body.campaignId,body.sequence,ledgerAction,digest,nonce,JSON.stringify(result),now,user.id,body.expectedRevision,body.deviceId,now,body.campaignId,h.worldClockId,clock.revision,...role.args,...found.guard.args,...sharedGuard.args,...cpuLosses.guard.args),
   stmt(db,`UPDATE player_saves SET save_json=?,revision=revision+1,updated_at=?,lease_expires_at=? WHERE user_id=? AND ${GATE}`,JSON.stringify(next),now,now+h.syncLease,user.id,...gateArgs),
   ...branchProgressStatements(db,user.id,next,now,GATE,gateArgs,{resolvedElapsedMs:clock.elapsedMs}),
   ...(h.covertIncidentStatements?h.covertIncidentStatements(db,user.id,next,now,GATE,gateArgs):[])
@@ -131,6 +135,6 @@ async function mutation(ctx,action){
 export async function handleBranches(ctx){
  const{db,user,helpers:h,path,method,url}=ctx;await h.requireAccountAccess(db,user);
  if(path==='/branches'&&method==='GET'){if([...url.searchParams.keys()].some(key=>key!=='deviceId'))h.fail(400,'INVALID_INPUT','支拠点一覧の指定を確認してください。');return status(ctx);}
- const action=path.slice('/branches/'.length);if(method==='POST'&&['build','upgrade','repair'].includes(action))return mutation(ctx,action);
+ const action=path.slice('/branches/'.length);if(method==='POST'&&['build','upgrade','repair','build-facility','upgrade-facility'].includes(action))return mutation(ctx,action);
  h.fail(404,'NOT_FOUND','その支拠点操作は見つかりませんでした。');
 }

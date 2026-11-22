@@ -9,7 +9,8 @@ const facilities=new Map((data.buildings||[]).map(b=>[b.id,b]));
 const portraitFacilities=new Set((data.buildings||[]).slice(0,32).map(b=>b.id));
 // Artwork revisions are independent of game releases so stale HTTP/SW caches
 // cannot keep the former plain-background facility sheets after this update.
-const facilityArtRevision='scenery-20261122';
+const facilityArtRevision='luxury-20261122';
+const officerArtRevision='luxury-20261122';
 const frames=Object.fromEntries(ranks.map(r=>[r,`assets/frames/rank-${r}.svg`]));
 const operatorPortrait={id:'of_b0616adde162',rank:'U',url:'assets/operator-ieyasu-u.webp?v=3.8.1-20261121'};
 const cache=new Map(),paintRequests=new WeakMap();let observer,scheduled=false;
@@ -35,7 +36,7 @@ function icon(name='default'){return `<svg class="item-icon" viewBox="0 0 24 24"
 function tileInfo(kind,id,variant){
  if(kind==='officer'){
   const o=officers.get(id);if(!o)return null;const rank=ranks.includes(variant)?variant:o.rank;
-  const cell=o.index%32;return{url:`assets/illustrations/officers-${rank}-${String(Math.floor(o.index/32)+1).padStart(2,'0')}.webp`,x:(cell%8)/7*100,y:Math.floor(cell/8)/3*100,name:o.name==='德川家康'?'徳川家康':o.name,rank};
+  const cell=o.index%32;return{url:`assets/illustrations/officers-${rank}-${String(Math.floor(o.index/32)+1).padStart(2,'0')}.webp?v=${officerArtRevision}`,x:(cell%8)/7*100,y:Math.floor(cell/8)/3*100,name:o.name==='德川家康'?'徳川家康':o.name,rank};
  }
  const item=(kind==='castle'?castles:facilities).get(id);if(!item)return null;
  const limit=kind!=='castle'?32:id==='kyoto_gosho'?128:id==='edo'?64:(data.majorCityIds||['edo','kyoto_gosho','nijo','osaka','nagoya']).includes(id)?48:32;
