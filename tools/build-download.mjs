@@ -15,6 +15,7 @@ const dist=await fs.realpath(distInput),out=path.resolve(outInput);
 if(out===dist||out.startsWith(dist+path.sep))throw Error('Output must be outside the game directory.');
 const check=spawnSync(process.execPath,[path.join(dist,'tools/build-art-manifest.cjs'),'--check'],{encoding:'utf8'});
 if(check.status!==0)throw Error('Artwork validation failed:\n'+check.stdout+check.stderr);
+const artwork=JSON.parse(await fs.readFile(path.join(dist,'assets/art-manifest.json'),'utf8'));
 await fs.mkdir(out,{recursive:true});
 const staging=await fs.mkdtemp(path.join(os.tmpdir(),'sengoku-download-'));
 // Keep the historical ZIP and folder names for existing download links and scripts.
@@ -40,7 +41,7 @@ try{
  await fs.rm(zipPath,{force:true});
  const zipped=spawnSync('zip',['-q','-r','-9',zipPath,'sengoku-taisen'],{cwd:staging,encoding:'utf8'});
  if(zipped.status!==0)throw Error('ZIP creation failed: '+zipped.stderr);
- const result={file:zipPath,files:fileCount+1,sourceBytes,zipBytes:(await fs.stat(zipPath)).size,sha256:createHash('sha256').update(await fs.readFile(zipPath)).digest('hex'),illustrations:8192};
+ const result={file:zipPath,files:fileCount+1,sourceBytes,zipBytes:(await fs.stat(zipPath)).size,sha256:createHash('sha256').update(await fs.readFile(zipPath)).digest('hex'),illustrations:artwork.totals.illustrations};
  await fs.writeFile(path.join(out,'download-manifest.json'),JSON.stringify(result,null,2)+'\n');
  console.log(JSON.stringify(result,null,2));
 }finally{await fs.rm(staging,{recursive:true,force:true});}

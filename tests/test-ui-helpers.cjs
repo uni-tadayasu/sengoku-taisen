@@ -6,6 +6,19 @@ function fn(name){const start=source.indexOf(`  function ${name}(`);assert(start
 function button(action,id){return{dataset:{action,id},disabled:false};}
 function context(game,extra={}){const c={game,data:D,gachaPresentation:null,gachaDrawing:false,saveEnabled:true,skillNames:{},gachaHistoryPage:1,worldCatchingUp:false,startPending:false,worldSettlementPending:false,interactionEpoch:0,interactionRestores:new WeakMap(),currentView:'army',pageControls:()=>'',clanCrest:()=>'',state:()=>c.game.state,resNames:{gold:'金銭',rice:'兵糧',wood:'木材',stone:'石材'},currentJob:(kind,id)=>c.game.state.jobs.find(j=>j.kind===kind&&j.id===id),hasResources:cost=>D.resources.every(k=>c.game.state.resources[k]>=(cost?.[k]||0)),document:{querySelectorAll:()=>[]},$:()=>null,canMutate:()=>true,mutationActions:new Set(['toggle-time','upgrade','upgrade-castle','claim-quest','draw-officers','recruit-officer','scout','diplomacy','attack','assign-army','remove-army','assign-governor','remove-governor','recruit-troops','train','research','confirm-import','start-new','restore-admin-assets','confirm-admin-castle']),syncAccess:{linked:false,ready:true,writable:true},window:{dispatchEvent:()=>{}},CustomEvent:class{constructor(type){this.type=type;}},...extra};vm.createContext(c);vm.runInContext(["patchHTML","constructionJobs","constructionCount","buildingChain","buildingTailLevel","castleLevelLimit","jobKey","jobDuration","jobClockText","sharedJobAttribution","refreshTouchHeaderStatus"].map(fn).join("\n"),c);return c;}
 let checks=0;function test(name,run){run();checks++;console.log(`PASS ${name}`);}
+test('costs name each resource and update exact shortfalls when balances change',()=>{
+  const {doc,host}=require('./helpers/dom-model.cjs').setup();
+  const g=new E({officers:roster,seed:1});g.state.resources.wood=40;g.state.magatama=8;
+  const c=context(g,{document:doc,resIcons:{wood:'wood'},icon:()=>'',num:String});
+  vm.runInContext(fn('costHtml')+'\n'+fn('refreshLiveControls'),c);
+  host.innerHTML=c.costHtml({wood:50,magatama:10,turns:1});
+  assert.match(host.textContent,/木材 50（あと10）/);assert.match(host.textContent,/勾玉 10（あと2）/);
+  assert.match(host.textContent,/60秒/);
+  for(const chip of host.querySelectorAll('[data-cost-resource]'))chip.classList.toggle=(name,active)=>active?chip.classList.add(name):chip.classList.remove(name);
+  g.state.resources.wood=50;g.state.magatama=5;c.refreshLiveControls();
+  assert.equal(host.querySelector('[data-cost-resource="wood"] [data-cost-shortage]').textContent,'');
+  assert.equal(host.querySelector('[data-cost-resource="magatama"] [data-cost-shortage]').textContent,'（あと5）');
+});
 test('actual touch header tolerates absent markup and hides provisional balances before starting',()=>{
   const c=context(new E({officers:roster,seed:1}));assert.doesNotThrow(()=>c.refreshTouchHeaderStatus());
   const summary={hidden:false};c.$=selector=>selector==='#touch-header-status'?summary:null;c.startPending=true;c.state=()=>{throw Error('provisional balances must not be read');};

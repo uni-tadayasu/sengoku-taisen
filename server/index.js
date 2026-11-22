@@ -20,7 +20,7 @@ import {handleProtection,enrollProtection,prepareProtection,protectionBattleStat
 import {handleBranches,applyBranchProgress,reconcileBranchProgress,branchProgressStatements,branchStateGuard} from './branches.js';
 import {ensureResidency,residencySnapshot,residencyDirectory,residencyStart,initialResidencyStatements,residencyTargetGuard,prepareResidencySuccession,prepareResidencyCpuLosses} from './residency.js';
 const API = '/api/v1';
-const API_VERSION = '4.6.0';
+const API_VERSION = '4.8.0';
 const API_FEATURES = Object.freeze({trades:true,moderation:true,premium:true,timedEvents:true,troopTrades:true,roamingBattles:true,roamingDeployment:true,covertDispatch:true,privatePlayerRoles:true,guildIcons:true,court:true,kyotoGosho:true,branches:true,branchBattles:true,branchFacilities:true,audioCalls:true,progression:true,armyPresets:true,allianceStrategy:true,sharedConquest:true,newcomerProtection:true,webPush:true,battleAdviser:true,battleCatalog:true,eventBattleRewards:true,shogunate:true,attackTravel:true,castleResidency:true});
 const MAX_BODY = 16 * 1024;
 const MAX_SAVE_BODY = 2 * 1024 * 1024;
@@ -1325,11 +1325,17 @@ async function tradeTroopCapacity(db,user,save,clock,now) {
   return Math.max(0,Math.min(1000000,Math.floor(game.availableTroopCapacity())));
 }
 function renameCampaignClan(state,clan) {if(state.clan===clan)return;const previous=state.clan;for(const castle of Object.values(state.castles)){if(castle.owner===previous)castle.owner=clan;else if(castle.owner===clan)castle.owner='在地衆';}state.clan=clan;delete state.treaties[clan];}
+// A lost personal home can retreat to a castle that belongs to another clan
+// in the staff campaign. Only the player's own garrison and upgrades survive.
+function restoredHomeCastle(current,personal,owningClan) {
+  if(current.owner!==owningClan)return {...personal};
+  return {...personal,troops:Math.max(current.troops,personal.troops),wall:Math.max(current.wall,personal.wall),level:Math.max(current.level,personal.level)};
+}
 function restorePersonalCampaign(save,backup,user) {
   const s=save.state,original=JSON.parse(backup.save_json).state;renameCampaignClan(s,CLAN_HOMES[original.clan]?original.clan:ORDINARY_TOKUGAWA_CLAN);
   let home=original.home;if(['edo','kyoto_gosho'].includes(home))home=CLAN_HOMES[s.clan]||'kiyosu';
-  const oldCastle=original.castles[original.home],current=s.castles[home];
-  s.castles[home]={owner:s.clan,troops:Math.max(current.troops,oldCastle.troops),wall:Math.max(current.wall,oldCastle.wall,s.buildings.wall),level:Math.min(castleLevelLimit(home),Math.max(current.level,oldCastle.level))};
+  const restored=restoredHomeCastle(s.castles[home],original.castles[original.home],s.clan);
+  s.castles[home]={...restored,owner:s.clan,wall:Math.max(restored.wall,s.buildings.wall),level:Math.min(castleLevelLimit(home),restored.level)};
   s.home=home;if(s.cycle)s.cycle.home=['edo','kyoto_gosho'].includes(original.cycle?.home)?home:original.cycle?.home||home;
   const def=globalThis.SENGOKU_DATA.castles.find(c=>c.id==='kyoto_gosho');s.castles.kyoto_gosho={owner:def.clan===s.clan?'在地衆':def.clan,troops:def.initialTroops,wall:def.wall,level:1};
   s.captureRewards=[...new Set([...s.captureRewards.filter(id=>id!=='kyoto_gosho'),home])];
@@ -1590,12 +1596,22 @@ function mapWorldClock(row,now) {
 async function getWorldClock(db,now) { return mapWorldClock(await getWorldClockRow(db,now),now); }
 // Only a trusted prior checkpoint may prove CPU damage or parent loss. Imported
 // branch flags, RNG seeds and ownership changes are never combat evidence.
+function guardDefenseCheckpoint(save,clock){
+  const submitted=save.state.worldClock?.elapsedMs;
+  const submittedTurn=Math.floor(submitted/WORLD_MONTH_MS);
+  if(Number.isSafeInteger(submitted)&&submittedTurn>Math.floor(clock.elapsedMs/WORLD_MONTH_MS)&&GameEngine.cpuTurnDue(submittedTurn)){
+    // Retain the last trusted RNG and garrisons until this month's CPU turn
+    // can be replayed. A retry may submit the same local actions and revision.
+    fail(409,'DEFENSE_CLOCK_PENDING','城の防衛を共通時刻で確定してから、自動保存を再開します。');
+  }
+}
 async function resolveSyncBranches(db,user,save,before,clock,now){
   const access=await branchStateGuard(db,user.id,save.state.walking.campaignId);
   let model=copy(access.state),resolvedElapsedMs=access.resolvedElapsedMs,replayed=null,shared=null;
   const parentLosses=new Map();let ownershipCorrected=false;
   const incomingElapsed=Math.min(clock.elapsedMs,Number(save.state.worldClock?.elapsedMs||0));
   if(access.row&&model.branches.length&&before?.state.walking.campaignId===save.state.walking.campaignId&&before.state.worldClock){
+    guardDefenseCheckpoint(save,clock);
     const trusted=copy(before);
     await reconcileCovertProgress(db,user.id,trusted);
     // A later field transaction can change a defense while its owner's ordinary
@@ -1655,6 +1671,7 @@ async function resolveSyncResidency(db,user,save,before,clock,now,branchAccess){
   const cursor=await stmt(db,'SELECT resolved_elapsed_ms FROM castle_residency_cpu_cursors WHERE user_id=? AND campaign_id=?',user.id,campaignId).first();
   let resolved=Math.max(Number(cursor?.resolved_elapsed_ms||0),Math.min(clock.elapsedMs,Number(save.state.worldClock?.elapsedMs||0))),events=[],provenState=null;
   if(sameCampaign&&before.state.worldClock){
+    if(member.lord_user_id===user.id)guardDefenseCheckpoint(save,clock);
     const trusted=copy(before),start=Math.max(Number(before.state.worldClock.elapsedMs),Number(cursor?.resolved_elapsed_ms||0),Number(branchAccess.resolvedElapsedMs||0)),target=Math.max(start,Math.min(clock.elapsedMs,Number(save.state.worldClock?.elapsedMs||0)));
     trusted.state.worldClock={id:WORLD_CLOCK_ID,elapsedMs:start};trusted.state.turn=Math.floor(start/WORLD_MONTH_MS);trusted.state.realtime.elapsed=start%WORLD_MONTH_MS/1000;
     await reconcileCovertProgress(db,user.id,trusted);applyBranchProgress(trusted,branchAccess.state,{...clock,elapsedMs:start});
@@ -1700,6 +1717,8 @@ async function syncSnapshot(db,row,user,deviceId,now,{settle=false}={}) {
 
 const FIELD_RULES=Object.freeze({minTroops:300,maxTroops:100000,commandCost:1,foodBase:150,foodPerTroop:.3,attackCooldownMs:60000,defenderProtectionMs:60000,proposalLifetimeMs:600000,allianceDurationMs:360000,maxLootPerResource:500,maxLootFraction:.05,maxDefenderLossFraction:.1,operatorProtected:false,staffProtected:false,targetCastles:true,specialBaseBattles:true,branchBattles:true,captureCastles:FIELD_CAPTURE_CASTLES,uncapturableCastles:['edo','kyoto_gosho'],victoryRewards:{gold:500,rice:500,wood:500,stone:500},
   tactics:[{id:'balanced',name:'正攻法',food:1,modifier:1,loss:1},{id:'assault',name:'総攻撃',food:1.25,modifier:1.18,loss:1.35},{id:'siege',name:'包囲戦',food:1.65,modifier:.97,loss:.8},{id:'ambush',name:'伏兵',food:1.1,modifier:1.06,loss:.95}]});
+// A new fixed home takes effect when the role changes, even while the stored save retains its former castle.
+const FIELD_FIXED_HOME_SQL="(u.id=(SELECT value FROM settings WHERE key='adminUserId') OR EXISTS(SELECT 1 FROM staff_members sm WHERE sm.user_id=u.id))";
 const FIELD_SELECT=`SELECT u.id,u.name,u.clan,u.last_seen,s.revision,s.lease_expires_at,s.cycle_home,
   (SELECT castle_id FROM castle_residents WHERE user_id=u.id) AS household_id,
   (SELECT cs.lord_user_id FROM castle_seats cs JOIN castle_residents m ON m.castle_id=cs.castle_id WHERE m.user_id=u.id) AS household_lord,
@@ -1725,7 +1744,7 @@ const FIELD_SELECT=`SELECT u.id,u.name,u.clan,u.last_seen,s.revision,s.lease_exp
   json_extract(s.save_json,'$.state.buildings.wall') AS wall,json_extract(s.save_json,'$.state.tech.discipline') AS discipline,
   json_extract(s.save_json,'$.state.army') AS army_json,json_extract(s.save_json,'$.state.officerVariants') AS variants_json
   FROM users u JOIN player_saves s ON s.user_id=u.id
-  WHERE s.save_json IS NOT NULL AND NOT EXISTS(SELECT 1 FROM player_bans pb WHERE pb.user_id=u.id AND pb.active=1) AND (COALESCE(json_extract(s.save_json,'$.state.gameOver'),0)=0 OR u.id=(SELECT value FROM settings WHERE key='adminUserId') OR EXISTS(SELECT 1 FROM staff_members sm WHERE sm.user_id=u.id) OR ${EFFECTIVE_CYCLE_SQL}<?)`;
+  WHERE s.save_json IS NOT NULL AND NOT EXISTS(SELECT 1 FROM player_bans pb WHERE pb.user_id=u.id AND pb.active=1) AND (COALESCE(json_extract(s.save_json,'$.state.gameOver'),0)=0 OR ${FIELD_FIXED_HOME_SQL} OR ${EFFECTIVE_CYCLE_SQL}<?)`;
 function fieldArmy(army,variants) {
   const powers=[.9,.95,1,1.08,1.16,1.25,1.35,1.5];
   const scores=army.map(id=>Math.max(...RANKS.map((rank,i)=>variants.includes(id+':'+rank)?powers[i]:0))||1);
@@ -1772,7 +1791,10 @@ function mapFieldPlayer(row,viewer,relationship,clock,now,targetCastleId=null) {
   const castleId=targetCastleId||home,isHome=castleId===home,battleMode=fieldBattleMode(row,castleId);
   const castle={...(!isHome?castles[castleId]:!row.is_admin&&storedHome==='edo'&&!alternatives.length&&castles.edo.owner===row.game_clan?castles.edo:castles[home])};
   if(isHome&&row.is_admin&&storedHome!=='edo')for(const key of ['troops','wall','level'])castle[key]=Math.max(castle[key],castles[storedHome][key]);
-  if(isHome&&!row.is_admin&&!row.is_staff&&storedHome==='kyoto_gosho'){const personal=row.personal_castle_json?JSON.parse(row.personal_castle_json):castles.kyoto_gosho;for(const key of ['troops','wall','level'])castle[key]=Math.max(castle[key],personal[key]);}
+  if(isHome&&!row.is_admin&&!row.is_staff&&storedHome==='kyoto_gosho'){
+    if(row.personal_castle_json)Object.assign(castle,restoredHomeCastle(castle,JSON.parse(row.personal_castle_json),row.game_clan));
+    else for(const key of ['troops','wall','level'])castle[key]=Math.max(castle[key],castles.kyoto_gosho[key]);
+  }
   if(isHome&&row.is_staff&&!row.is_admin){castle.level=Number(row.staff_castle_level||1);castle.wall=Number(row.staff_wall||1);}
   castle.level=Math.min(castleLevelLimit(castleId),castle.level);
   const rawKeepLevel=!isHome?castle.level:row.is_staff&&!row.is_admin?row.staff_keep_level:row.keep_level;
@@ -1795,7 +1817,13 @@ async function fieldOwnRelations(db,userId,elapsed) {
   return rows(await stmt(db,`SELECT r.*,u.name AS target_name FROM field_relations r JOIN users u ON u.id=CASE WHEN r.user_a=? THEN r.user_b ELSE r.user_a END
     WHERE (r.user_a=? OR r.user_b=?) AND r.status IN ('pending','allied') AND r.expires_elapsed_ms>? AND r.updated_elapsed_ms>=? ORDER BY r.updated_elapsed_ms DESC LIMIT 100`,userId,userId,userId,elapsed,Math.floor(elapsed/WORLD_CYCLE_MS)*WORLD_CYCLE_MS).all());
 }
-const FIELD_PUBLIC_HOME_SQL="(json_extract(s.save_json,'$.state.home') IN ('edo','kyoto_gosho','nijo','osaka','nagoya') OR EXISTS(SELECT 1 FROM castle_seats cs WHERE cs.castle_id=json_extract(s.save_json,'$.state.home') AND cs.lord_user_id=u.id))";
+// A dismissed palace member's saved home may still be Kyoto until synchronization.
+// Use their restored personal castle for the same visibility rules as other players.
+const FIELD_PERSONAL_HOME_SQL=`CASE WHEN json_extract(s.save_json,'$.state.home') IN ('edo','kyoto_gosho','sunpu')
+  THEN COALESCE((SELECT json_extract(b.save_json,'$.state.home') FROM staff_campaign_backups b WHERE b.user_id=u.id AND b.active=1),json_extract(s.save_json,'$.state.home'))
+  ELSE json_extract(s.save_json,'$.state.home') END`;
+const FIELD_PUBLIC_HOME_SQL=`(${FIELD_FIXED_HOME_SQL} OR ${FIELD_PERSONAL_HOME_SQL} IN ('nijo','osaka','nagoya')
+  OR EXISTS(SELECT 1 FROM castle_seats cs WHERE cs.lord_user_id=u.id AND cs.castle_id=${FIELD_PERSONAL_HOME_SQL}))`;
 const FIELD_PUBLIC_TARGET_SQL="("+FIELD_PUBLIC_HOME_SQL+" OR EXISTS(SELECT 1 FROM json_each(s.save_json,'$.state.castles') c WHERE c.key IN ('nijo','osaka','nagoya') AND json_extract(c.value,'$.owner')=json_extract(s.save_json,'$.state.clan')))";
 async function getFieldList(db,viewer,url,now) {
   await ensureResidency(db,now);

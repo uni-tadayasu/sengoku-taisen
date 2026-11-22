@@ -24,10 +24,12 @@ try{
  shared.history=[{jobId:'history-a',kind:'building',id:'farm',level:3,effectiveElapsedMs:45000},{jobId:'history-b',kind:'building',id:'farm',level:4,effectiveElapsedMs:90000}];shared.buildings.farm=4;
  sql.prepare("UPDATE staff_base SET state_json=?,revision=revision+1 WHERE id='kyoto_gosho'").run(JSON.stringify(shared));at(120000);
  const historical=await sync(a),expected=GameEngine.fromSave(historical.save,GAME_OFFICERS,{isStaff:true,staffBase:historical.staffBase});expected.applyWorldClock(await clock());const expectedPrivate=JSON.parse(expected.exportSave());
- await role(a,'dismiss');const publicAfterDismiss=(await api('/field')).data.players.find(p=>p.playerId===a.user.id);assert.equal(publicAfterDismiss.homeCastleId,'himeji');assert.equal(Object.hasOwn(publicAfterDismiss,'isStaff'),false);
+ await role(a,'dismiss');assert(!(await api('/field')).data.players.some(p=>p.playerId===a.user.id),'A dismissed palace member has no ordinary seat until their saving device returns');
  const restored=await sync(a);assert.equal(restored.user.isStaff,false);assert.equal(restored.staffBase,null);assert.equal(restored.save.state.home,'himeji');assert.equal(restored.save.state.cycle.home,'himeji');assert.equal(restored.save.state.castles.himeji.level,12);assert.equal(restored.save.state.buildings.farm,6);assert.equal(restored.save.state.jobs.length,0);assert.equal(back(a).active,0);assert.equal(back(a).left_elapsed_ms,120000);
  assert.deepEqual(restored.save.state.resources,expectedPrivate.state.resources);assert.equal(restored.save.state.magatama,expectedPrivate.state.magatama);GameEngine.fromSave(restored.save,GAME_OFFICERS);
  const bytes=row(a).save_json;await sync(a);assert.equal(row(a).save_json,bytes,'repeated read does not repeat membership income or restore assets');
+ await put(a,restored.save);const publicHome=(await api('/field')).data.players.find(p=>p.playerId===a.user.id);
+ assert.equal(publicHome.homeCastleId,'himeji');assert.equal(Object.hasOwn(publicHome,'isStaff'),false);
  checks.push('exact admission and departure times preserve queued personal jobs, separate facilities, resources and original chosen home');
 
  // A new term in the very same real millisecond cannot reuse a prior backup.
@@ -48,7 +50,7 @@ try{
  await role(a,'dismiss');const postCycle=await sync(a);assert.equal(postCycle.save.state.home,'himeji');assert.equal(postCycle.save.state.castles.himeji.level,19);assert.equal(postCycle.save.state.buildings.farm,6);assert.equal(sql.prepare('SELECT COUNT(*) n FROM cycle_receipts WHERE user_id=?').get(a.user.id).n,1);GameEngine.fromSave(postCycle.save,GAME_OFFICERS);
  checks.push('shared base survives cycle reset; old personal home construction and exactly-once rewards survive dismissal');
 
- const legacy=await create('駿府本拠の一般領主',{home:'kiyosu'}),legacySave=JSON.parse(row(legacy).save_json);legacySave.state.home='sunpu';legacySave.state.cycle.home='sunpu';legacySave.state.castles.sunpu={owner:legacySave.state.clan,troops:4200,wall:8,level:12};legacySave.state.jobs=[{kind:'castle',id:'kiyosu',targetLevel:2,total:1,remaining:1,totalSeconds:60,remainingSeconds:30}];
+ const legacy=await create('駿府本拠の一般領主',{home:'sunpu'}),legacySave=JSON.parse(row(legacy).save_json);legacySave.state.home='sunpu';legacySave.state.cycle.home='sunpu';legacySave.state.castles.sunpu={owner:legacySave.state.clan,troops:4200,wall:8,level:12};legacySave.state.castles.kiyosu.owner=legacySave.state.clan;legacySave.state.jobs=[{kind:'castle',id:'kiyosu',targetLevel:2,total:1,remaining:1,totalSeconds:60,remainingSeconds:30}];
  sql.prepare("UPDATE player_saves SET save_json=?,cycle_home='sunpu' WHERE user_id=?").run(JSON.stringify(legacySave),legacy.user.id);
  const legacyPublic=(await api('/field')).data.players.find(p=>p.playerId===legacy.user.id);assert.equal(legacyPublic.homeCastleId,'sunpu');assert.equal(legacyPublic.level,12);assert.equal(legacyPublic.majorCity,false);
  const legacyMoved=await sync(legacy);assert.equal(legacyMoved.save.state.home,'sunpu');assert.equal(legacyMoved.save.state.castles.sunpu.level,12);assert.equal(legacyMoved.save.state.castles.sunpu.troops,4200);assert.equal(legacyMoved.save.state.jobs[0].targetLevel,2);GameEngine.fromSave(legacyMoved.save,GAME_OFFICERS);await put(legacy,legacyMoved.save);

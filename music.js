@@ -1,141 +1,142 @@
-/* 戦国VS: 16 original orchestral scores with synthesized Japanese instruments. No samples, quotations, or external dependencies. */
+/* 戦国VS: sixteen original written scores, locally hosted stereo recordings, and an offline Web Audio performance of the same score. */
 (function (global) {
   'use strict';
 
-  // Eight eighth-note positions per measure. A dash ties the preceding note;
-  // a dot is a rest. Pitches are semitones above the cue's written tonic.
+  // Written phrases use eight straight or twelve compound subdivisions per
+  // measure. A dash sustains the previous note and a dot leaves a breath.
   const SCORES = [
     {
-      id:'town-dawn', name:'暁の城下', scene:'town', tempo:83, root:62, lead:'flute', reply:'pluck', groove:'river',
-      description:'朝の一吹きから始まる尺八。二面の箏が川波のように受け渡し、弦が朝日に向けて開く。',
-      chords:'0sus 0M -5M -5M 2m -3M -5sus 0M',
+      id:"town-dawn", name:"霞ヶ浦の渡し", scene:"town", tempo:82, root:60,
+      lead:"flute", reply:"pluck", groove:"river", chords:"0M -5M 2m -7M -3m -5M -7sus 0M",
+      description:"舟を漕ぐ箏の反復に朝の笛が乗り、渡し場に弦の響きが広がる。",
       tune:[
-        '. 7 9 - 14 - 12 9','7 - - . 2 4 7 -','5 - 9 7 5 - 2 -','4 - - - 2 - . .',
-        '9 - 12 14 16 - 14 -','12 - 9 - 7 4 2 -','5 7 9 - 7 - 2 4','2 - 0 - - - . .']
+        ". . 4 - 2 0 7 -", "9 - - 7 5 - 0 -", "2 - 5 9 12 - 9 -", "11 - 7 - . 2 4 -",
+        "12 - 7 9 . 4 7 -", "5 9 12 - 14 - 9 -", "7 - . 2 11 9 7 2", "4 2 0 - - - . ."]
     },
     {
-      id:'castle-evening', name:'夕映えの天守', scene:'town', tempo:68, root:61, lead:'flute', reply:'strings', groove:'still',
-      description:'夕鐘の残響に低い笛が重なる。余白を長く取り、後半で高弦が対旋律を奏でる。',
-      chords:'0m -4M -2sus -5m -7m -4M -5sus 0m',
+      id:"castle-evening", name:"石垣の夕照", scene:"town", tempo:69, root:58,
+      lead:"strings", reply:"flute", groove:"still", chords:"0m -2sus -4M 3M -5m -4M -2M 0m",
+      description:"独奏チェロから始まり、対岸の笛とヴィオラが城影に長い弧を描く。",
       tune:[
-        '7 - - - . 8 7 3','2 - 0 - - - . .','3 - - 7 5 - - .','2 - - - - . . .',
-        '. . 7 8 12 - - -','10 - 8 - 7 - . .','5 - . 3 2 - - 5','3 2 0 - - - - .']
+        "3 - 5 7 - - . .", "2 - - . 5 - 7 -", "8 - 3 - . 7 8 -", "10 - 7 3 - - . .",
+        "12 - - 10 8 - 5 -", "7 8 - - . 12 10 -", "5 - 2 - - 3 2 -", "7 3 0 - - - . ."]
     },
     {
-      id:'fields-green', name:'豊穣の風', scene:'town', tempo:96, root:62, lead:'pluck', reply:'flute', groove:'harvest',
-      description:'弾む箏の摘み音と手鼓の掛け合い。田のあぜ道を歩くような、跳ねた八分音符の田楽。',
-      chords:'0M -5M -3m -7M -2m -5M -7sus 0M',
+      id:"fields-green", name:"水車と稲穂", scene:"town", tempo:99, root:62,
+      lead:"pluck", reply:"flute", groove:"harvest", chords:"0M -3m -5M -7M 2m -5M -7M 0M",
+      description:"水車が転がす三連の拍子。笛と箏が短い旋律を渡し、実りの祝いへ入る。",
       tune:[
-        '4 7 . 9 7 - 4 2','0 - 2 4 . 2 0 -','4 7 9 - 12 9 7 4','2 - - . 2 4 2 -',
-        '5 9 . 12 9 - 7 5','4 7 9 12 14 - 12 -','9 7 . 4 2 - 7 4','2 4 0 - - . . .']
+        "0 - 4 7 . 4 2 - 0 4 - 7", "9 - . 12 9 7 4 - . 2 - .", "5 9 - 12 . 9 5 - 2 0 - .", "7 - - 2 - . 4 2 0 2 - .",
+        "2 - 5 9 12 14 9 - - 5 9 -", "12 9 5 9 - . 14 - 12 9 - .", "11 7 2 7 - 9 11 - 14 11 7 -", "4 - 7 2 4 2 0 - - . . ."]
     },
     {
-      id:'market-breeze', name:'楽市のにぎわい', scene:'town', tempo:114, root:60, lead:'shamisen', reply:'pluck', groove:'market',
-      description:'裏拍から飛び込む三味線。短い撥音に木片の音が応え、路地の喧騒を陽気に描く。',
-      chords:'0m 0m -2M -5m 3M -2M -5sus 0m',
+      id:"market-breeze", name:"染物横町の手拍子", scene:"town", tempo:112, root:64,
+      lead:"shamisen", reply:"bell", groove:"market", chords:"0m -5m -2M 0m 3M -4M -2M 0open",
+      description:"染物の店先を抜ける三味線。木片、鈴、小鼓の裏拍が一つずつ加わる。",
       tune:[
-        '. 7 . 7 10 12 . 10','7 3 . 2 0 - 3 .','5 . 5 7 . 10 7 5','3 2 0 - . . 0 2',
-        '3 . 7 10 12 . 15 12','10 . 7 - 5 3 . 5','7 . 10 7 5 . 3 2','0 - . 3 2 0 . .']
+        ". 3 2 . 0 7 3 .", "5 0 . 5 8 . 5 7", ". 2 5 . 10 7 . 5", "3 0 3 7 . 3 2 .",
+        "7 10 . 15 10 7 . 3", "8 . 12 8 . 7 3 5", "2 5 . 10 7 2 5 .", "3 2 7 . 0 - . ."]
     },
     {
-      id:'world-march', name:'山河を越えて', scene:'world', tempo:91, root:58, lead:'brass', reply:'flute', groove:'procession',
-      description:'谷間に響く角笛を遠くの笛が引き継ぐ。歩みを刻む低弦から、峠の先の広い響きへ。',
-      chords:'0m -4M 3M -2M -5m -4M -2sus 0m',
+      id:"world-march", name:"旌旗越ゆる稜線", scene:"world", tempo:88, root:60,
+      lead:"brass", reply:"flute", groove:"procession", chords:"0m -2M -4M 3M -5m 3M -2sus 0open",
+      description:"山の稜線をまたぐ二本の角笛。低弦の行進を背に、遠い谷から笛が返す。",
       tune:[
-        '0 - . 7 7 - 10 -','8 - 7 3 0 - . .','3 - 7 - 10 - 14 -','12 - 10 - 5 - - .',
-        '5 - . 8 12 - 15 -','14 12 10 - 8 - 7 -','5 - 7 10 7 - 2 -','3 - 0 - - - . .']
+        "7 - 0 - - 3 7 10", "5 - . 2 5 - 7 -", "8 - 12 8 3 - 7 -", "10 7 3 - - . 5 -",
+        "5 8 12 - 17 - 12 8", "15 - - 14 10 7 3 -", "10 - 5 - 2 5 7 -", "3 - 7 2 0 - - ."]
     },
     {
-      id:'mountain-road', name:'霧深き峠', scene:'world', tempo:73, root:63, lead:'flute', reply:'sho', groove:'mist',
-      description:'半音で揺れる山笛と、霧の奥から一打ずつ戻る鼓。細い笙が静かな峠を渡る。',
-      chords:'0open 1M 0open -5m -4M 1M -5open 0open',
+      id:"mountain-road", name:"鳴らぬ峠の鈴", scene:"world", tempo:74, root:61,
+      lead:"flute", reply:"bell", groove:"mist", chords:"0open -5m 1M 0open -4M -5open 1M 0open",
+      description:"霧の山道に独奏尺八と同じ鈴の反響。低い木管だけが足取りに寄り添う。",
       tune:[
-        '. . 0 1 7 - - .','8 - . 7 1 - - .','0 - . . 5 7 8 -','7 - - - . . . .',
-        '. 7 8 12 13 - - .','12 - 8 7 5 - . .','1 - 5 - 7 5 1 -','0 - - - - . . .']
+        ". 1 - - 0 - . 5", "7 - 5 1 - - . .", "8 7 - . 5 1 - -", "0 - . . 7 - - .",
+        "8 - . . 12 8 - 7", "5 - 7 - . 1 5 -", "13 - 12 8 - 5 1 -", "7 1 0 - - . . ."]
     },
     {
-      id:'officers-oath', name:'武士の誓い', scene:'officers', tempo:86, root:60, lead:'strings', reply:'flute', groove:'oath',
-      description:'一人の弦が掲げる四度の誓いを笛が受ける。揃った弓の刻みが、武将の決意を支える。',
-      chords:'0m -4M -2M 0m 3M -5m -2sus 0m',
+      id:"officers-oath", name:"磨いた柄の記憶", scene:"officers", tempo:85, root:59,
+      lead:"flute", reply:"strings", groove:"oath", chords:"0m 3M -4M -2sus -5m -4M -2M 0m",
+      description:"低い笛が語る武将の来し方。弓をそろえた弦と琵琶風の撥弦が誓いを支える。",
       tune:[
-        '0 - 5 7 3 - - .','8 - 7 5 3 - 0 -','2 - 5 7 10 - 7 -','3 - - - . . 2 3',
-        '7 - 10 12 15 - - 14','12 - 8 5 3 - 5 -','10 - 7 5 2 - - 5','3 2 0 - - - - .']
+        ". 0 3 5 7 - 3 -", "10 - 7 3 . 7 10 -", "8 - . 3 0 3 7 -", "5 2 - - . 5 2 -",
+        "5 8 10 - 12 - 8 -", "15 - 12 8 3 - . 7", "10 7 2 - 5 7 2 -", "3 - . 2 0 - - ."]
     },
     {
-      id:'council-lantern', name:'軍議の灯', scene:'chronicle', tempo:89, root:58, lead:'shamisen', reply:'sho', groove:'lantern',
-      description:'消え入りそうな笙の上で、三味線が三・三・二に問いを刻む。低音の返答が次の一手を促す。',
-      chords:'0m 0m 1M 0open -5m 1M -5open 0m',
+      id:"council-lantern", name:"軍扇の裏", scene:"chronicle", tempo:90, root:55,
+      lead:"shamisen", reply:"sho", groove:"lantern", chords:"0open 1M 0m -5open -4M 0m 1M 0open",
+      description:"箏の低音が指令の間を刻み、三味線と木管が軍議の問いと返答を分け合う。",
       tune:[
-        '0 . . 3 . . 1 .','0 . 7 . . 3 1 .','1 . . 5 . . 8 7','3 - . 1 0 - . .',
-        '5 . . 8 . . 12 .','13 12 . 8 . . 7 5','1 . 5 . 7 . 3 1','0 - - . . . 3 1']
+        ". 0 . 7 3 . 0 1", "5 . 1 . . 8 5 1", "7 3 . . 0 . 3 7", "5 . 0 . . 5 7 .",
+        "8 . 12 8 . 7 3 .", "7 . 10 . 3 . 7 10", "13 . 8 . 5 1 . 5", "7 3 . 0 - . . ."]
     },
     {
-      id:'army-banner', name:'旗印のもとに', scene:'army', tempo:108, root:57, lead:'brass', reply:'shamisen', groove:'banner',
-      description:'大太鼓の両面打ちと短い号角。三味線の返しに隊列の足並みがそろう軍楽。',
-      chords:'0open -2M -5m 0open -4M -2M -5open 0open',
+      id:"army-banner", name:"六拍の陣立て", scene:"army", tempo:109, root:57,
+      lead:"brass", reply:"shamisen", groove:"banner", chords:"0open -5m -2M 0m -4M 3M -2M 0open",
+      description:"三連の陣太鼓に二隊の金管が応える。小鼓の折り返しで旗持ちが歩をそろえる。",
       tune:[
-        '0 . 0 7 7 - 10 7','5 - 2 . 5 7 5 -','3 . 3 8 8 - 7 5','7 - - . 0 . 2 3',
-        '8 - 12 15 12 - 8 -','10 - 7 . 10 12 10 7','5 . 5 7 2 - 5 2','0 - . 7 0 - - .']
+        "0 - . 7 - 0 3 - 7 10 - .", "5 - 0 8 - 5 12 - . 8 5 -", "2 - 5 10 - 7 5 2 . 5 - .", "7 - . 3 - . 0 - - . 3 7",
+        "8 - 12 15 - . 12 8 - 3 8 -", "10 - 15 14 - 10 7 - . 3 7 -", "14 10 7 2 - 5 7 5 2 5 - .", "7 - 3 0 - - . 0 . . . ."]
     },
     {
-      id:'research-stars', name:'星読みの書', scene:'research', tempo:78, root:65, lead:'bell', reply:'pluck', groove:'stars',
-      description:'星座をなぞる鐘と、反対側から昇る箏の分散和音。高音の残響が重なる夜の研究曲。',
-      chords:'0M 2m -3m -5M -2m -7M -5sus 0M',
+      id:"research-stars", name:"北辰のものさし", scene:"research", tempo:79, root:63,
+      lead:"bell", reply:"flute", groove:"stars", chords:"0M -3m 2m -7M -5M 0M -7sus 0M",
+      description:"夜の天文台に鉄琴が一音ずつ座標を打つ。ハープと遠い笛が星を結んでいく。",
       tune:[
-        '4 - . 11 9 - . 7','2 - 6 - . . 9 -','4 - . 7 12 - 9 -','7 - - . 2 - . .',
-        '5 - . 12 14 - . 12','11 - 7 - 4 - . .','9 - . 7 5 - 2 -','4 - 0 - - . . .']
+        ". 7 - 4 11 - . 14", "9 - . 4 7 - 9 -", "5 - 9 14 - . 12 -", "11 - 7 - 2 - . .",
+        "12 - . 5 9 12 - 17", "16 - 11 7 4 - - .", ". 14 9 - 7 - 2 -", "4 - 7 2 0 - . ."]
     },
     {
-      id:'battle-storm', name:'烈風の陣', scene:'battle', tempo:126, root:62, lead:'shamisen', reply:'brass', groove:'gallop',
-      description:'三・三・二で駆ける撥弦と交差する太鼓。急停止を挟み、低弦の刻みと金管が一斉に返す。',
-      chords:'0m 0m -4M -2M -5m -4M -2M 0open',
+      id:"battle-storm", name:"紅蓮三段", scene:"battle", tempo:128, root:61,
+      lead:"shamisen", reply:"brass", groove:"gallop", chords:"0m -2M 0m -4M -5m 3M -2sus 0m",
+      description:"三段に分かれた撥音が駆け抜ける。重い陣太鼓に短い弦と金管の返しが切り込む。",
       tune:[
-        '0 7 . 0 10 . 7 5','3 . 0 3 5 7 . 10','8 12 . 8 15 . 12 8','10 . 7 10 14 12 10 7',
-        '5 12 . 8 15 . 12 8','8 . 12 15 17 15 . 12','10 7 5 10 7 5 3 2','0 - . 7 . 0 . .']
+        "7 0 3 . 7 10 3 0", "5 2 . 10 7 5 2 5", "3 7 . 12 7 3 10 7", "8 3 0 8 . 12 8 .",
+        "5 8 12 5 . 17 12 8", "7 10 15 10 14 . 10 7", "2 7 10 14 10 7 . 5", "3 7 2 . 0 - . ."]
     },
     {
-      id:'battle-siege', name:'城門を衝く', scene:'battle', tempo:99, root:54, lead:'brass', reply:'shamisen', groove:'siege',
-      description:'低い金管の二音が城門に響く。間を置いた大太鼓が連打に変わり、重い弦が押し寄せる。',
-      chords:'0open 1M 0m -5m -4M 1M -5open 0m',
+      id:"battle-siege", name:"櫓門の鉄槌", scene:"battle", tempo:96, root:55,
+      lead:"brass", reply:"strings", groove:"siege", chords:"0open -5m 1M 0m -4M 1M -5open 0open",
+      description:"低いトロンボーンが門前で響く。太鼓は打つ手を交替し、包囲の終盤に全弦が迫る。",
       tune:[
-        '0 - - 1 0 - . .','7 - 8 - 7 - . .','3 . 3 7 12 - - .','8 - 5 - 1 - . .',
-        '8 - - 12 15 - 12 -','13 - 12 8 7 - - .','5 . 5 7 1 - 3 1','0 - - - . 0 . .']
+        ". 0 - 7 . 0 3 -", "5 - - . 8 5 0 -", "1 - 5 - 8 5 1 .", "3 - 7 3 0 - . .",
+        "8 - 3 8 12 - 15 -", "13 - - . 8 - 5 1", "7 5 . 0 5 7 1 -", "0 - . 7 0 - - ."]
     },
     {
-      id:'victory-horizon', name:'勝鬨、空高く', scene:'victory', tempo:111, root:62, lead:'brass', reply:'flute', groove:'fan',
-      description:'冒頭からせり上がる祝典のファンファーレ。太鼓の返しを合図に、笛と弦が高く歌う。',
-      chords:'0M -5M -7M 0M -3m -5M -7sus 0M',
+      id:"victory-horizon", name:"白金の凱旋門", scene:"victory", tempo:116, root:60,
+      lead:"brass", reply:"flute", groove:"fan", chords:"0M -7M -3m -5M 2m -5M -7M 0M",
+      description:"三連の号角が凱旋の橋へ踏み出す。鈴、ティンパニ、応答する高弦が勝鬨を迎える。",
       tune:[
-        '7 . 7 9 12 - 16 -','14 - 9 5 7 - - .','2 4 7 - 11 - 14 -','12 - - - . 4 7 9',
-        '12 - 16 19 16 - 12 -','17 - 14 9 5 - 7 -','9 11 14 - 11 9 7 4','2 4 0 - - - . .']
+        "4 - 7 12 - 4 7 - . 12 16 -", "11 7 - 2 - . 7 11 14 11 - .", "9 - 12 16 12 9 4 - . 7 9 -", "5 - 9 12 - - 9 - . 5 7 -",
+        "14 - . 9 14 17 14 - 12 9 5 -", "12 17 - 21 - 17 14 12 9 5 - .", "11 14 19 14 - 11 7 9 11 14 11 7", "12 - 7 4 2 4 0 - - . . ."]
     },
     {
-      id:'defeat-moon', name:'月下の再起', scene:'defeat', tempo:66, root:60, lead:'strings', reply:'flute', groove:'lunar',
-      description:'低い独奏弦の下降句に、ひと呼吸遅れて笛が応える。最後の開放五度に再起の余韻を残す。',
-      chords:'0m -4M -5m -2sus -7m -4M -5open 0open',
+      id:"defeat-moon", name:"渡せなかった書状", scene:"defeat", tempo:66, root:57,
+      lead:"strings", reply:"flute", groove:"lunar", chords:"0m -5m -4M -2sus 3M -4M -5open 0open",
+      description:"独奏チェロが下書きの一節を繰り返す。尺八の短い返事から、最後に開放弦だけが残る。",
       tune:[
-        '. 7 8 - 7 - 3 -','0 - - - . . . .','5 - . 3 2 - 0 -','2 - - - - . . .',
-        '3 - 7 - 10 - . 8','7 - 3 - 0 - - .','2 - 5 - 7 - 2 -','0 - - - - - . .']
+        ". 3 - 0 - - . .", "5 - - . 0 3 5 -", "8 - 7 3 0 - . .", "2 - - - . . 5 2",
+        "3 7 - 10 - - . 7", "8 - . 3 7 - 8 -", "5 - . 2 7 - 5 2", "0 - - - - . . ."]
     },
     {
-      id:'winter-silence', name:'雪待つ山里', scene:'town', tempo:72, root:64, lead:'bell', reply:'flute', groove:'snow',
-      description:'鈴の一粒一粒と弱音の笛。離れた音域の箏が、雪の積もる山里にゆっくり広がる。',
-      chords:'0m -5m -4M 0open 3M -2sus -4M 0open',
+      id:"winter-silence", name:"氷柱の茶室", scene:"town", tempo:72, root:60,
+      lead:"bell", reply:"strings", groove:"snow", chords:"0m -2sus -4M -5m 3M -4M -2sus 0open",
+      description:"一粒ずつ落ちる鈴に箏のかすかな倍音が寄り添う。雪の茶室を少人数の室内楽で描く。",
       tune:[
-        '12 - . . 7 - . .','8 - . 5 . . . .','3 - - . 7 - 8 -','7 - - - . . . .',
-        '. 10 15 - . 12 - .','10 - . 5 . . 2 -','3 - 7 - 8 - 3 -','0 - - - - . . .']
+        ". . 3 - . 7 - -", "5 - . . 2 - . .", "8 - . 3 0 - - .", "5 - 7 - . . . .",
+        "10 - . . 15 - 10 -", "12 8 - . 3 - . .", "2 - . 7 5 - 2 -", "7 - . 0 - - . ."]
     },
     {
-      id:'unification', name:'天下、一つの空', scene:'menu', tempo:87, root:62, lead:'flute', reply:'brass', groove:'horizon',
-      description:'天下の主題を一本の笛から金管へ。波打つ箏、広い和声、大太鼓が一つの山河を描く。',
-      chords:'0sus 0M -5M -7M -3m -5M -7sus 0M',
+      id:"unification", name:"天つ風、四海を渡る", scene:"menu", tempo:93, root:62,
+      lead:"flute", reply:"brass", groove:"horizon", chords:"0M -7M -5M -3m 2m -5M -7sus 0M",
+      description:"四海を渡る笛の旋律に、箏と弦の波が押し寄せる。遠くの角笛を大太鼓が迎える終曲。",
       tune:[
-        '0 - 2 7 9 - 7 -','4 - - 2 0 - . .','5 - 9 12 14 - 12 9','7 - - - . . 2 4',
-        '9 - 12 16 19 - - 16','17 - 14 12 9 - 5 -','7 9 14 - 11 - 7 4','2 - 0 - - - - .']
-    }
+        ". 4 7 - 12 - 9 7", "2 - 7 11 14 - 7 -", "9 - 5 2 . 5 9 12", "16 - 12 9 4 - . .",
+        "5 - 9 14 17 - 14 9", "12 - - 9 5 9 12 -", "7 9 14 - 11 - 7 2", "4 - 7 2 0 - - ."]
+    },
   ].map(score => ({...score, bars:32, beats:4}));
   const TRACKS = Object.freeze(SCORES.map(t => Object.freeze({
     id:t.id,name:t.name,title:t.name,scene:t.scene,tempo:t.tempo,bars:t.bars,
+    recording:'assets/music/'+t.id+'.mp3?v=4.8.0-20261122',
     beatsPerBar:t.beats,duration:t.bars*t.beats*60/t.tempo,
     durationSeconds:Math.round(t.bars*t.beats*60/t.tempo),description:t.description
   })));
@@ -175,22 +176,22 @@
   // Eight-step accompaniment and sixteen-step percussion parts. Digits are
   // chord voices from low to high. Spaces in drum notation divide the beats.
   const GROOVES = {
-    river:      {keys:'0.12.321', bass:'0....2..', kit:'T... .... t... ..w.', sway:.045},
-    still:      {keys:'0..2...1', bass:'0.......', kit:'', sway:.018},
-    harvest:    {keys:'0.2.1.32', bass:'0..2.1..', kit:'t... .w.. d... ..wd', sway:.095},
-    market:     {keys:'.1.2.103', bass:'0..2..21', kit:'t..w ..d. .w.d .w..', sway:.070},
-    procession: {keys:'0.1.2..1', bass:'0..0.2..', kit:'B... ..w. T... w.d.', sway:.015},
-    mist:       {keys:'0.....2.', bass:'0.......', kit:'.... .... ..d. ....', sway:.030},
-    oath:       {keys:'0.21.321', bass:'0...2...', kit:'t... .... ..d. ...d', sway:.020},
-    lantern:    {keys:'0..1..2.', bass:'0..0..2.', kit:'w... ..d. .... w...', sway:.014},
-    banner:     {keys:'01.201.2', bass:'0.0.2.02', kit:'B..d w..d T.d. ww.d', sway:.005},
-    stars:      {keys:'0.23.421', bass:'0.....2.', kit:'', sway:.028},
-    gallop:     {keys:'02.03.21', bass:'0..0..20', kit:'B..d ..T. .d.. T.dd', sway:0},
-    siege:      {keys:'0..01.2.', bass:'0..0....', kit:'B... ...T ..d. ..T.', sway:0},
-    fan:        {keys:'0.123.24', bass:'0..22.1.', kit:'B..w ...d T.w. .dd.', sway:.010},
-    lunar:      {keys:'0....2..', bass:'0.......', kit:'', sway:.018},
-    snow:       {keys:'0...3..2', bass:'0.......', kit:'', sway:.032},
-    horizon:    {keys:'0.123.21', bass:'0...2..1', kit:'T... .... d... .w..', sway:.027}
+    river:      {keys:'0..213.2', bass:'0...2...', kit:'t... .... d... ..w.', sway:.045},
+    still:      {keys:'0.....21', bass:'0.......', kit:'', sway:.018},
+    harvest:    {keys:'0.123.13', bass:'0..2...1', kit:'t..w ..d. t..d ..w.', sway:.095},
+    market:     {keys:'1.20.103', bass:'0.2..021', kit:'.w.d T.w. .d.. t.wd', sway:.070},
+    procession: {keys:'0...12.2', bass:'0.2.0..2', kit:'B... w..d t... ...d', sway:.015},
+    mist:       {keys:'0....1..', bass:'0.......', kit:'.... ..d. .... ....', sway:.030},
+    oath:       {keys:'0..21.32', bass:'0...21..', kit:'T... .d.. .... w...', sway:.020},
+    lantern:    {keys:'0.10..2.', bass:'0..2..0.', kit:'.w.. ..d. w... .d..', sway:.014},
+    banner:     {keys:'0.2.02.1', bass:'0.02.0.2', kit:'B.d. .w.d T..w .d.d', sway:.005},
+    stars:      {keys:'0..2341.', bass:'0...2...', kit:'', sway:.028},
+    gallop:     {keys:'021.32.1', bass:'0.20.20.', kit:'B.dd T.d. B.dT .dd.', sway:0},
+    siege:      {keys:'0.0..21.', bass:'0....2..', kit:'B... T... ..dT ....', sway:0},
+    fan:        {keys:'0..2.134', bass:'0.2...12', kit:'B..d ..w. T.dd ...d', sway:.010},
+    lunar:      {keys:'0.....1.', bass:'0.......', kit:'', sway:.018},
+    snow:       {keys:'0....3.2', bass:'0.......', kit:'', sway:.032},
+    horizon:    {keys:'0.2.3142', bass:'0..2..1.', kit:'T..d .... t... ..d.', sway:.027}
   };
   const CHORDS = {M:[0,4,7,12,16], m:[0,3,7,12,15], sus:[0,5,7,12,14], open:[0,7,12,14,19]};
   const DRUMS = {B:'odaiko',T:'taiko',t:'taiko',d:'tsuzumi',w:'wood'};
@@ -207,9 +208,10 @@
 
   function readMeasure(measure) {
     const phrase=[];
-    for(const [position,token] of measure.split(' ').entries()){
-      if(token==='-')phrase[phrase.length-1].length+=.5;
-      else phrase.push({position:position*.5,length:.5,semitone:token==='.'?null:Number(token)});
+    const steps=measure.split(' '),unit=4/steps.length;
+    for(const [position,token] of steps.entries()){
+      if(token==='-')phrase[phrase.length-1].length+=unit;
+      else phrase.push({position:position*unit,length:unit,semitone:token==='.'?null:Number(token)});
     }
     return phrase.filter(note=>note.semitone!==null);
   }
@@ -225,15 +227,16 @@
     const reflective=['still','mist','lunar','snow','stars'].includes(t.groove);
     // The battle and fanfare cues get to their main statement in two bars.
     // The reflective cues hold their central duet and take longer to recover.
-    const boundaries=martial?[0,2,6,14,18,22,30,32]:reflective?[0,4,8,14,20,25,30,32]:[0,3,7,15,19,23,30,32];
+    const boundaries=martial?[0,2,7,15,19,23,30,32]:reflective?[0,4,8,16,21,25,30,32]:[0,3,8,16,20,24,30,32];
     const sections=FORM.map((section,index)=>({...section,startBar:boundaries[index],endBar:boundaries[index+1]}));
     const kit=groove.kit.replace(/ /g,'');
+    const compound=t.tune[0].split(' ').length===12;
     for(let bar=0;bar<t.bars;bar++){
       const section=sections.find(s=>bar>=s.startBar&&bar<s.endBar);
       const intro=section.id==='intro',rest=section.id==='break',rise=section.id==='rise';
       const full=section.id==='climax',close=section.id==='coda',main=section.id==='theme';
       const local=bar-section.startBar;
-      let measure=(rest||rise||full?(local+4):local)%8;
+      let measure=main?local%8:(rest||full?(local+4)%8:local%4);
       if(close)measure=6+local;
       const chord=harmony[measure],tune=melodies[measure];
       const downbeat=bar*t.beats;
@@ -241,7 +244,7 @@
       function place(beat,type,midi,length,level,pan,part){
         // Offset the right hand and the back half of each beat ever so slightly.
         // Absolute bar boundaries stay fixed over subsequent loops.
-        const offbeat=Math.abs(beat%1-.5)<.01?groove.sway:0;
+        const offbeat=compound?0:Math.abs(beat%1-.5)<.01?groove.sway:0;
         const onset=downbeat+beat+offbeat+(part==='ostinato'?.013:0);
         const event={beat:onset,type,duration:length,velocity:clamp(level*energy,0,.92),pan,part,
           priority:PART_PRIORITY[part],section:section.id};
@@ -251,9 +254,9 @@
       const lead=rest?(t.reply==='brass'?'flute':t.reply):t.lead;
       const phrasing=(lead==='shamisen'||lead==='pluck')?.82:.94;
       for(const [i,note] of tune.entries()){
-        if(rest&&i%2===1)continue;
+        if((rest&&i%2===1)||(intro&&reflective&&local===0&&i>0))continue;
         const length=rest?Math.min(note.length+.40,4-note.position):note.length*phrasing;
-        const pitch=t.root+note.semitone+(rest&&lead==='strings'?-12:0);
+        const pitch=t.root+note.semitone+(rest&&lead==='strings'?-12:0)+(rise&&local>=2&&t.groove==='gallop'?12:0);
         const accent=(i===0?.84:.7)+(i%3===2?.05:0);
         place(note.position,lead,pitch,length,accent,lead==='shamisen'?-.12:.05,'lead');
         // The penultimate melody note at the height of the cue has a short
@@ -275,7 +278,8 @@
       for(let step=0;step<8;step++){
         if(keyboard[step]==='.'||(close&&local===1&&step>3))continue;
         const instrument=martial&&step%2===0?'shamisen':'pluck';
-        place(step/2,instrument,chord[Number(keyboard[step])]-12,reflective?1.55:.64,
+        const position=step/2+(compound&&step%2?1/6:0);
+        place(position,instrument,chord[Number(keyboard[step])]-12,reflective?1.55:.64,
           .38+((step+bar)%3)*.034,step%2===0?-.44:.34,'ostinato');
       }
       // The held thirds move with the bass instead of lingering over the
@@ -293,8 +297,8 @@
       if((main&&local%2===1)||rise||full){
         const answering=t.reply;
         const high=answering==='flute'||answering==='bell'?12:0;
-        place(1.51,answering,chord[2]+high,.77,full?.48:.37,-.26,'answer');
-        if(full||local%2===1)place(2.78,answering,chord[local%2] +high,.90,.34,.18,'answer');
+        place(1.34,answering,chord[local%2?2:1]+high,.79,full?.54:.39,-.31,'answer');
+        if(full||local%2===1)place(2.68,answering,chord[local%2?0:2]+high,.87,.43,.26,'answer');
       }
       if((full||rise)&&martial){
         for(const beat of [.5,1.5,2.5,3.5])
@@ -306,6 +310,11 @@
       }
       if((bar===0||full&&local===0)&&(!martial||t.scene==='victory'))
         place(0,'kane',chord[2],1.7,.24,.38,'ornament');
+      if((rise||full)&&(!reflective||t.groove==='stars')&&local%2===0){
+        // A cascading response in the upper strings, against the sustained
+        // middle voices. It joins only at phrase boundaries.
+        [0,1,2,3].forEach((voice,index)=>place(2.20+index/3,'pluck',chord[voice],.40,.31+index*.055,.44-index*.16,'ornament'));
+      }
       if(kit){
         for(let step=0;step<kit.length;step++){
           const stroke=kit[step];if(stroke==='.')continue;
@@ -352,8 +361,14 @@
       this._audioSessionHandler=()=>{
         // Let the browser finish calls/other exclusive audio before resuming.
         // Repeated resume() calls here would steal audio focus back from it.
-        if(this._audioSession?.state==='interrupted')this._clearScheduler();
-        else if(this._audioSession?.state==='active'){if(this._playing)this._preparePlaybackSession();this._contextStateHandler();}
+        if(this._audioSession?.state==='interrupted'){
+          this._clearScheduler();
+          if(this._session?.recording)this._smoothGain(this._session.recording.gain.gain,0,.035);
+        }else if(this._audioSession?.state==='active'){
+          if(this._playing)this._preparePlaybackSession();
+          if(this._session?.recording)this._smoothGain(this._session.recording.gain.gain,1,.10);
+          this._contextStateHandler();
+        }
       };
       if(typeof document!=='undefined')document.addEventListener('visibilitychange',this._visibilityHandler);
       global.addEventListener?.('pagehide',this._pageHideHandler);
@@ -515,7 +530,7 @@
       this._currentId=id;this._playing=true;this._resumePosition=0;
       const score=compile(byId.get(id)),ctx=this._context;
       const bus=ctx.createGain(),roomBus=ctx.createGain();bus.gain.value=0;roomBus.gain.value=0;bus.connect(this._compressor);roomBus.connect(this._reverb);
-      const session={bus,roomBus,score,voices:new Set(),active:true,start:ctx.currentTime+.055-position,eventIndex:0,cycle:0};
+      const session={id,bus,roomBus,score,voices:new Set(),recording:null,recordingTried:false,active:true,start:ctx.currentTime+.055-position,eventIndex:0,cycle:0};
       while(session.eventIndex<score.events.length&&score.events[session.eventIndex].beat*score.secondsPerBeat<position)session.eventIndex++;
       this._session=session;this._sessions.add(session);
       bus.gain.linearRampToValueAtTime(1,ctx.currentTime+.25);
@@ -550,10 +565,48 @@
         catch(_){if(token===this._token)this._clearScheduler();}
       }
     }
+    async _loadRecording(session){
+      const ctx=this._context,track=TRACKS.find(item=>item.id===session.id);
+      if(!global.fetch||!ctx.decodeAudioData||!track)return;
+      const abort=typeof AbortController==='function'?new AbortController():null;
+      session.recordingRequest=abort;
+      try{
+        const response=await global.fetch(track.recording,{credentials:'same-origin',signal:abort?.signal});
+        if(!response.ok||!session.active)return;
+        const bytes=await response.arrayBuffer();
+        if(!session.active||this._disposed)return;
+        const buffer=await ctx.decodeAudioData(bytes);
+        if(!session.active||this._disposed||this._session!==session)return;
+        // The MP3 contains encoder delay/padding metadata. Browser decoding
+        // removes these samples so loop points describe the written bars.
+        const seconds=Math.min(buffer.duration,track.duration);
+        if(!Number.isFinite(seconds)||seconds<1)return;
+        const source=ctx.createBufferSource(),gain=ctx.createGain(),now=ctx.currentTime;
+        source.buffer=buffer;source.loop=true;source.loopStart=0;source.loopEnd=seconds;
+        const start=Math.max(now+.025,session.start),offset=Math.max(0,start-session.start)%seconds;
+        gain.gain.setValueAtTime(0,now);gain.gain.linearRampToValueAtTime(this._audioSession?.state==='interrupted'?0:1,start+.18);
+        source.connect(gain);gain.connect(this._master);
+        source.onended=()=>{
+          source.disconnect();gain.disconnect();source.buffer=null;
+          if(session.recording?.source===source)session.recording=null;
+          if(!session.active&&!session.voices.size)this._releaseSession(session);
+        };
+        source.start(start,offset);
+        session.recording={source,gain};
+        this._smoothGain(session.bus.gain,0,.18);
+        this._smoothGain(session.roomBus.gain,0,.18);
+        this._clearScheduler();
+      }catch(_){
+        // Offline with no cached master, an interrupted request, or an old
+        // decoder all retain the local performance of this same written score.
+      }finally{if(session.recordingRequest===abort)session.recordingRequest=null;}
+    }
     _schedule(){
       this._clearScheduler();
       if(!this._playing||!this._volume||this._hidden()||this._disposed||!this._session||this._context?.state!=='running'||this._audioSession?.state==='interrupted')return;
       const s=this._session,ctx=this._context,horizon=ctx.currentTime+.18,events=s.score.events;
+      if(!s.recordingTried){s.recordingTried=true;this._loadRecording(s);}
+      if(s.recording)return;
       this._pruneVoices(ctx.currentTime);
       let guard=0;
       while(guard++<512) {
@@ -567,13 +620,23 @@
     }
     _retire(session,fade){
       if(!session||!session.active)return;
-      session.active=false;this._smoothGain(session.bus.gain,0,fade);
+      session.active=false;session.recordingRequest?.abort();
+      if(session.recording){
+        this._smoothGain(session.recording.gain.gain,0,fade);
+        try{session.recording.source.stop(this._context.currentTime+fade+.025);}catch(_){}
+      }
+      this._smoothGain(session.bus.gain,0,fade);
       if(session.roomBus)this._smoothGain(session.roomBus.gain,0,fade);
       const stop=this._context.currentTime+fade+.025;
       for(const voice of session.voices){voice.endTime=Math.min(voice.endTime,stop);for(const source of voice.sources){try{source.stop(stop);}catch(_){}}}
-      if(!session.voices.size)this._releaseSession(session);
+      if(!session.voices.size&&!session.recording)this._releaseSession(session);
     }
     _releaseSession(session){
+      if(session.recording){
+        const {source,gain}=session.recording;source.onended=null;
+        try{source.stop();source.disconnect();gain.disconnect();source.buffer=null;}catch(_){}
+        session.recording=null;
+      }
       try{session.bus.disconnect();session.roomBus?.disconnect();}catch(_){}
       this._sessions.delete(session);
     }
@@ -582,7 +645,7 @@
       for(const node of [...voice.sources,...voice.nodes]){try{node.disconnect();}catch(_){}}
       this._voices.delete(voice);this._sourceCount=Math.max(0,this._sourceCount-voice.sources.length);
       voice.session.voices.delete(voice);
-      if(!voice.session.active&&!voice.session.voices.size)this._releaseSession(voice.session);
+      if(!voice.session.active&&!voice.session.voices.size&&!voice.session.recording)this._releaseSession(voice.session);
     }
     _pruneVoices(now){
       // Normally onended performs this work. Also prune by audio time after a
@@ -701,7 +764,7 @@
       const sources=[],nodes=[],end=clamp(duration,.08,6),actualEnd=voiceLifetime(event.type,duration);
       const envelope=ctx.createGain();nodes.push(envelope);envelope.gain.value=0;
       const pan=ctx.createStereoPanner?ctx.createStereoPanner():ctx.createGain();
-      if(pan.pan)pan.pan.value=clamp(event.pan||0,-.72,.72);nodes.push(pan);envelope.connect(pan);pan.connect(session.bus);
+      if(pan.pan)pan.pan.value=clamp(event.pan||0,-.72,.72);nodes.push(pan);envelope.connect(pan);pan.connect(event.part==='effect'&&session.recording?this._compressor:session.bus);
       if(session.roomBus){const send=ctx.createGain();send.gain.value=ROOM_SEND[event.type]??.2;pan.connect(send);send.connect(session.roomBus);nodes.push(send);}
       const addOsc=(type,hz,gain=1,target=envelope)=>{
         const osc=ctx.createOscillator();osc.type=type;osc.frequency.setValueAtTime(hz,time);

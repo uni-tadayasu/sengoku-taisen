@@ -6,75 +6,151 @@
   <meta name="referrer" content="no-referrer">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex,nofollow">
-  <title>戦国VS 音楽帳｜16曲のオリジナルBGMを試聴</title>
-  <link rel="icon" href="../assets/branding/sengoku-vs-favicon-32-20261121.png">
+  <title>戦国VS 音楽帳｜オリジナルサウンドトラック全16曲</title>
+  <link rel="icon" href="../assets/branding/sengoku-vs-favicon-32-20261122.png">
   <style>
-    :root{color-scheme:dark;--paper:#f5efe0;--muted:#c4c8ca;--line:#394548;--gold:#e1bf7e;--ink:#111b21;font-family:system-ui,"Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif;color:var(--paper);background:var(--ink)}
-    *{box-sizing:border-box}
-    body{margin:0;line-height:1.65}
-    [hidden]{display:none!important}
-    .mast,main,footer{width:min(70rem,100% - 2.5rem);margin:auto}
-    .mast{display:flex;align-items:center;justify-content:space-between;gap:.8rem;min-height:4.2rem;border-bottom:1px solid var(--line)}
-    a{color:var(--gold);text-underline-offset:.22em}
-    .brand{display:flex;align-items:center;gap:.7rem;color:var(--paper);text-decoration:none;font:bold 1.15rem "Yu Mincho","Hiragino Mincho ProN",serif;letter-spacing:.12em}
-    .brand img{width:2rem;height:2rem}
-    .back,.save{display:inline-flex;align-items:center;min-height:2.75rem;font-size:.94rem}
-    main{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.05fr);margin-block:clamp(1.25rem,5vw,4rem);border:1px solid var(--line);background:#17242b}
-    .cover{position:relative;display:flex;align-items:flex-end;isolation:isolate;min-height:29rem;padding:clamp(1.5rem,4vw,3.5rem);overflow:hidden;background:#222e33}
-    .cover img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:60% center;z-index:-2}
-    .cover:before{content:"";position:absolute;inset:0;background:linear-gradient(0deg,rgba(8,18,23,.97) 0%,rgba(8,18,23,.62) 35%,transparent 72%);z-index:-1}
-    h1,h2{font-family:"Yu Mincho","Hiragino Mincho ProN","Noto Serif JP",serif;margin:0;line-height:1.25;letter-spacing:.055em}
-    h1{font-size:clamp(2.6rem,5vw,4.5rem);text-shadow:0 2px 8px #0a1115}
-    h2{font-size:clamp(1.65rem,3vw,2.5rem)}
-    .cover p{margin:.65rem 0 0;color:#eee5d3}
-    .player{min-width:0;padding:clamp(1.3rem,3.6vw,3rem)}
-    .selected{border-bottom:1px solid var(--line);padding-bottom:1rem;margin-bottom:1.3rem}
-    .selected small{display:block;color:var(--gold);font-size:.9rem;margin-bottom:.45rem}
-    .selected p{color:var(--muted);margin:.75rem 0 0}
-    .fields{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:1rem}
-    label{display:block;font-size:.94rem;font-weight:650}
-    select,button{font:inherit;border-radius:.28rem}
-    select{display:block;appearance:none;width:100%;margin-top:.3rem;min-height:3rem;padding:.48rem 1.9rem .48rem .72rem;color:var(--paper);border:1px solid #667378;background-color:#111c22;background-image:linear-gradient(45deg,transparent 50%,#d8c6a1 50%),linear-gradient(135deg,#d8c6a1 50%,transparent 50%);background-position:calc(100% - 14px) center,calc(100% - 9px) center;background-size:5px 5px;background-repeat:no-repeat}
-    button{display:flex;align-items:center;justify-content:center;gap:.7rem;min-height:3.1rem;width:100%;margin:1.35rem 0 .5rem;padding:.58rem 1rem;background:#edd19a;color:#252019;font-weight:750;border:1px solid #ffe3b1;cursor:pointer}
-    button:before{content:"";border-block:.35rem solid transparent;border-left:.56rem solid currentColor}
-    button:hover:enabled{background:#ffe5b6}
-    button:disabled{background:#b4a584;cursor:wait}
-    :focus-visible{outline:3px solid #f9c75d;outline-offset:3px}
-    progress,audio{display:block;width:100%;margin-block:1rem;accent-color:var(--gold)}
-    progress{height:.55rem}
-    #status{color:var(--muted);font-size:.94rem;margin:.6rem 0}
-    details{border-top:1px solid var(--line);margin-top:1.25rem}
-    summary{cursor:pointer;padding:.72rem 0;color:var(--muted)}
-    pre{white-space:pre-wrap;overflow-wrap:anywhere;color:var(--muted);font-size:.87rem;line-height:1.6}
-    footer{color:var(--muted);font-size:.88rem;padding-bottom:2rem}
-    @media(max-width:47rem){main{grid-template-columns:1fr}.cover{min-height:clamp(11rem,37vw,17rem)}.cover img{object-position:center 48%}}
-    @media(max-width:32rem){.mast,main,footer{width:calc(100% - 1.5rem)}.player{padding:1.15rem}.fields{grid-template-columns:1fr;gap:.75rem}.mast{min-height:3.6rem}}
+    :root {
+      color-scheme: dark;
+      --ink: #121b27;
+      --lacquer: #1c2a35;
+      --rice: #f6edd9;
+      --muted: #cec8b9;
+      --leaf: #e5c18b;
+      --line: #ab8b5f77;
+      --type: #302923;
+      --serif: "Yu Mincho", "Hiragino Mincho ProN", "Noto Serif JP", serif;
+      font: 16px/1.6 "Hiragino Kaku Gothic ProN", "Yu Gothic", Meiryo, system-ui, sans-serif;
+      color: var(--rice);
+      background: #121b27;
+    }
+    * { box-sizing: border-box; }
+    body { min-height: 100vh; margin: 0; background: radial-gradient(ellipse at 12% 18%,#493b32 0,transparent 42%),radial-gradient(ellipse at 86% 74%,#223b46,transparent 53%),#121b27; }
+    [hidden] { display: none !important; }
+    h1,h2,p,figure { margin: 0; }
+    a { color: var(--leaf); text-underline-offset: .23em; }
+    :focus-visible { outline: 3px solid #f7cf81; outline-offset: 3px; }
+    .skip-link { position: fixed; top: 4px; left: 8px; z-index: 3; transform: translateY(-150%); background: #ecdaad; color: #282421; padding: .55rem .8rem; }
+    .skip-link:focus { transform: none; }
+    .mast,main,footer { width: min(67rem,calc(100% - 2.5rem)); margin-inline: auto; }
+    .mast { display: flex; align-items: center; justify-content: space-between; gap: 1rem; min-height: 4.15rem; border-bottom: 1px solid var(--line); }
+    .brand,.mast-guide { display: inline-flex; min-height: 44px; align-items: center; text-decoration: none; }
+    .brand { gap: .6rem; color: var(--rice); font: 650 1.15rem/1.3 var(--serif); letter-spacing: .09em; }
+    .brand img { width: 1.95rem; height: 1.95rem; }
+    .mast-guide { font-size: .9rem; }
+    .mast-guide:hover { text-decoration: underline; }
+    main { display: grid; grid-template-columns: minmax(0,.87fr) minmax(0,1.13fr); align-items: start; gap: clamp(1.5rem,5vw,4.6rem); padding: clamp(1.65rem,4.2vw,3.7rem) 0; }
+    .album { min-width: 0; display: grid; gap: 1.2rem; }
+    .album-type { display: inline-flex; align-items: center; gap: .6rem; color: var(--leaf); font-size: .84rem; font-weight: 700; letter-spacing: .045em; }
+    .album-type::before { content: ""; width: 1.4rem; height: 2px; background: var(--leaf); }
+    h1 { margin: .36rem 0 .5rem; font: 750 clamp(2rem,4.6vw,4.35rem)/1.14 var(--serif); letter-spacing: .035em; color: #f5e4bf; text-wrap: balance; }
+    .album-description { color: #e1d6bf; font-size: 1rem; line-height: 1.65; }
+    .sleeve { position: relative; isolation: isolate; padding: 0 10% 0 0; margin-inline: 2px; }
+    .sleeve::before { content: ""; position: absolute; z-index: -1; right: 0; top: 7.5%; aspect-ratio: 1; height: 85%; border-radius: 50%; border: 1px solid #837d70; background: radial-gradient(circle,#c2a277 0 1%,#202222 1.3% 4%,#927141 4.3% 16%,#12181a 16.3% 18%,transparent 18.2%), repeating-radial-gradient(circle,#171a1e 0 2px,#3b3d3f 2.7px,#191c22 3.3px); box-shadow: 0 .3rem .8rem #03081199; }
+    .jacket { width: 100%; aspect-ratio: 1; padding: 4px; border: 1px solid #b09a75; background: linear-gradient(125deg,#dec699,#a27d51 52%,#dfc18b); box-shadow: 0 16px 32px #050b144d; }
+    .jacket img { display: block; width: 100%; height: 100%; aspect-ratio: 1; object-fit: contain; border: 1px solid #665039; }
+    .player { min-width: 0; border: 1px solid var(--line); border-radius: 3px; background: linear-gradient(145deg,#24343e,#182632); box-shadow: 0 14px 45px #050c1648; }
+    .selected { position: relative; padding: clamp(1.1rem,3.25vw,2.1rem); padding-inline-start: clamp(1.3rem,3.65vw,2.45rem); border-bottom: 3px double #ad8b59; background: linear-gradient(110deg,#f5e6c8,#e9d5b0 58%,#ddc399); color: var(--type); }
+    .selected::before { content: ""; position: absolute; left: 0; top: .9rem; bottom: .9rem; width: 4px; background: #9a4835; }
+    .selected small { display: block; min-width: 0; color: #574331; font-size: .88rem; font-weight: 650; letter-spacing: .025em; }
+    h2 { margin: .4rem 0; font: 700 clamp(1.45rem,3vw,2.45rem)/1.27 var(--serif); letter-spacing: .04em; text-wrap: balance; overflow-wrap: anywhere; }
+    #track-description { color: #4e4336; line-height: 1.65; font-size: .96rem; }
+    .deck { padding: clamp(1rem,3vw,2rem); }
+    .fields { display: grid; grid-template-columns: minmax(0,1.22fr) minmax(0,1fr); gap: .8rem; }
+    label { display: block; color: #ebdfc8; font-weight: 650; font-size: .91rem; }
+    select,button { font: inherit; }
+    select { width: 100%; display: block; margin-top: .32rem; min-height: 46px; appearance: none; padding: .6rem 1.7rem .6rem .66rem; font-size: 1rem; color: #f2ecdd; border: 1px solid #b29e7f83; border-radius: 2px; background-color: #15232e; background-image: linear-gradient(45deg,transparent 50%,#cfbb94 50%),linear-gradient(135deg,#cfbb94 50%,transparent 50%); background-position: calc(100% - 14px) center,calc(100% - 9px) center; background-repeat: no-repeat; background-size: 5px 5px; cursor: pointer; }
+    button { display: flex; justify-content: center; align-items: center; gap: .65rem; width: 100%; min-height: 50px; margin: 1rem 0 0; padding: .58rem .85rem; font-weight: 700; cursor: pointer; border: 1px solid #d8ac77; border-radius: 2px; color: #fff1d5; background: linear-gradient(110deg,#994737,#733a32); box-shadow: inset 0 0 0 2px #f2cc981d; }
+    button::before { content: ""; border-block: .34rem solid transparent; border-inline-start: .55rem solid currentColor; }
+    button:hover:enabled { background: #a34c3a; }
+    button:disabled { opacity: .64; cursor: wait; }
+    progress,audio { display: block; width: 100%; margin: .9rem 0 0; accent-color: var(--leaf); }
+    progress { height: .55rem; }
+    #status { color: #e1d8c7; font-size: .9rem; margin-top: .65rem; }
+    #status:empty { display: none; }
+    .downloads { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem 1rem; margin: .9rem 0 .45rem; }
+    .save,summary { display: inline-flex; align-items: center; min-height: 44px; line-height: 1.4; font-size: .9rem; }
+    .save { gap: .4rem; color: #ecd2a3; }
+    .save svg { flex: none; width: 16px; height: 16px; }
+    details { margin-top: .3rem; border-top: 1px solid var(--line); }
+    summary { display: list-item; padding: .8rem 0; color: var(--muted); cursor: pointer; }
+    pre { margin: 0 0 .65rem; padding: .68rem .85rem; white-space: pre-wrap; overflow-wrap: anywhere; border-inline-start: 2px solid #a58c61; background: #14212b; color: #ded6c5; font-size: .86rem; }
+    footer { color: var(--muted); border-top: 1px solid var(--line); padding: 1rem 0 2rem; font-size: .85rem; }
+    @media (max-width: 52rem) {
+      main { grid-template-columns: minmax(0,.77fr) minmax(0,1.23fr); gap: 1.45rem; }
+      .fields { grid-template-columns: 1fr; gap: .65rem; }
+      .album-description { font-size: .95rem; }
+    }
+    @media (max-width: 39rem) {
+      .mast,main,footer { width: calc(100% - 1.5rem); }
+      .mast { min-height: 3.45rem; gap: .4rem; }
+      .mast-guide { font-size: .85rem; }
+      main { display: block; padding-block: 1rem 1.5rem; }
+      .album { grid-template-columns: minmax(0,.86fr) minmax(0,1.14fr); align-items: center; gap: .85rem; margin-block-end: 1rem; }
+      .album-copy { grid-column: 2; grid-row: 1; }
+      .sleeve { grid-column: 1; grid-row: 1; }
+      .album-type { gap: 0; font-size: .76rem; letter-spacing: 0; }
+      .album-type::before { display: none; }
+      h1 { margin: .3rem 0; font-size: clamp(1.65rem,5.8vw,2.5rem); }
+      .album-description { font-size: .86rem; line-height: 1.6; }
+      .selected { padding: .9rem 1rem; }
+      .deck { padding: .9rem; }
+      .downloads { gap: .05rem .8rem; margin-top: .55rem; }
+    }
+    @media (min-width: 40rem) and (max-height:32rem) {
+      main { grid-template-columns: minmax(0,.68fr) minmax(0,1.32fr); padding-block: 1rem; }
+      .album { gap: .55rem; } h1 { font-size: 2.1rem; }
+      .sleeve { max-width: 15rem; }
+      .fields { grid-template-columns: minmax(0,1fr) minmax(0,1fr); }
+    }
+    @media (forced-colors: active) {
+      .sleeve::before { display: none; }
+      .selected,button { border: 1px solid CanvasText; }
+    }
   </style>
 </head>
 <body>
-  <header class="mast"><a class="brand" href="../"><img src="../assets/branding/sengoku-vs-favicon-32-20261121.png" alt="" width="32" height="32">戦国VS</a><a class="back" href="../">ゲームに戻る</a></header>
+  <a class="skip-link" href="#player">選曲と再生へ移動</a>
+  <header class="mast">
+    <a class="brand" href="../"><img src="../assets/branding/sengoku-vs-favicon-32-20261122.png" alt="" width="32" height="32">戦国VS</a>
+    <a class="mast-guide" href="../guide/#music">ゲーム内の音楽設定</a>
+  </header>
   <main>
-    <header class="cover">
-      <img src="../assets/campaign/archive.webp" alt="" width="1200" height="500">
-      <div><h1>戦国の音楽帳</h1><p>城下、軍議、合戦を彩る全16曲</p></div>
-    </header>
-    <section class="player" aria-labelledby="track-name">
-      <div class="selected" aria-live="polite" aria-atomic="true"><small id="track-meta"></small><h2 id="track-name">曲を選ぶ</h2><p id="track-description"></p></div>
-      <div class="fields">
-        <label for="track">曲目<select id="track"></select></label>
-        <label for="excerpt">再生範囲<select id="excerpt"><option value="climax">聴きどころ</option><option value="full">全曲</option></select></label>
+    <section class="album" aria-labelledby="album-title">
+      <div class="album-copy">
+        <p class="album-type">オリジナルサウンドトラック</p>
+        <h1 id="album-title">戦国の音楽帳</h1>
+        <p class="album-description">城下の営みから決戦まで、戦国VSを彩る全16曲。</p>
       </div>
-      <button id="render" type="button">この曲を聴く</button>
-      <progress id="progress" max="100" value="0" hidden aria-label="音声の準備"></progress>
-      <p id="status" role="status"></p>
-      <audio id="audio" controls preload="metadata" hidden aria-label="選んだ曲の再生"></audio>
-      <a id="download" class="save" hidden>WAVで保存</a>
-      <details><summary>音声データ・計測結果</summary><pre id="metrics">再生の準備が終わると表示されます。</pre></details>
-      <noscript><p>試聴にはJavaScriptを有効にしてください。</p></noscript>
+      <figure class="sleeve">
+        <div class="jacket"><img src="../assets/chronicle/music.webp" alt="宵の城を背に、琵琶・太鼓・笛・箏を奏でる一座を描いたアルバムジャケット" width="900" height="900" fetchpriority="high" decoding="async"></div>
+      </figure>
+    </section>
+    <section id="player" class="player" aria-labelledby="track-name" tabindex="-1">
+      <header class="selected">
+        <small id="track-meta">選択中の曲</small>
+        <h2 id="track-name">曲目を確認しています</h2>
+        <p id="track-description"></p>
+      </header>
+      <div class="deck">
+        <div class="fields">
+          <label for="track">曲目<select id="track" disabled></select></label>
+          <label for="excerpt">再生範囲<select id="excerpt" disabled><option value="climax">聴きどころ</option><option value="full">この1曲を通して聴く</option></select></label>
+        </div>
+        <button type="button" id="render" disabled>選択中の曲を再生</button>
+        <progress id="progress" max="100" value="0" aria-label="音源を準備中" hidden></progress>
+        <p id="status" role="status"></p>
+        <audio id="audio" controls preload="metadata" aria-label="選択中の曲の再生" hidden></audio>
+        <div class="downloads">
+          <a id="download" class="save" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M12 3v11m-4-4 4 4 4-4M4 16v4h16v-4"/></svg>選択中の曲をMP3で保存</a>
+          <a id="wav-save" class="save" href="#player" hidden>選択範囲をWAVで保存</a>
+        </div>
+        <details><summary>この曲の録音情報・音量</summary><pre id="metrics">録音形式を確認できます。</pre></details>
+        <noscript><p>試聴にはJavaScriptが必要です。<a href="../guide/#music">ゲーム内の音楽設定を読む</a></p></noscript>
+      </div>
     </section>
   </main>
   <footer>© KASAI SOLUTIONS</footer>
-  <script src="../music.js?v=4.7.0-20261122"></script>
-  <script src="music-audition.js?v=4.7.0-20261122"></script>
+  <script src="../music.js?v=4.8.0-20261122"></script>
+  <script src="music-audition.js?v=4.8.0-20261122"></script>
 </body>
 </html>

@@ -4,6 +4,8 @@ import {createHash} from 'node:crypto';
 import {harness} from './test-support.mjs';
 import {GameEngine,GAME_OFFICERS} from './game-runtime.js';
 
+const publishedVersion=JSON.parse(readFileSync(new URL('../site-metadata.json',import.meta.url),'utf8')).version;
+
 const DAY=86400000,checks=[];let calls=0,externalRequests=0;
 const originalFetch=globalThis.fetch;globalThis.fetch=async()=>{externalRequests++;throw Error('Timed event fixtures must stay local');};
 const post=(p,body,expected=200)=>({method:'POST',token:p?.token,body,expected});
@@ -37,7 +39,7 @@ function noPrivate(value){const json=JSON.stringify(value);for(const key of ['cr
 
 try{
  await scope('health advertises timed events only when all four event tables are available',async h=>{
-  const ready=await get(h,'/health');assert.equal(ready.status,'ready');assert.equal(ready.version,'4.3.0');assert.equal(ready.features.timedEvents,true);assert.equal(ready.features.audioCalls,true);
+  const ready=await get(h,'/health');assert.equal(ready.status,'ready');assert.equal(ready.version,publishedVersion);assert.equal(ready.features.timedEvents,true);assert.equal(ready.features.audioCalls,true);
   for(const table of ['timed_events','timed_event_requests','timed_event_participants','timed_event_rewards']){
    h.sql.exec('ALTER TABLE '+table+' RENAME TO fixture_hidden');
    const unavailable=(await h.api('/health',{expected:503})).data;assert.equal(unavailable.error.code,'SERVICE_UNAVAILABLE');assert.equal(unavailable.features,undefined);

@@ -8,7 +8,7 @@ const clock={id:'staff-test-world',elapsedMs:120000,confirmedElapsedMs:120000,ru
 let count=0;async function test(name,run){await run();count++;console.log('PASS '+name);}
 function personal(){const g=new SengokuEngine({clan:'伊達家',startCastle:'himeji',officers:roster,seed:7});g.state.buildings.farm=3;g.state.resources.gold=900000;g.state.resources.wood=900000;g.state.resources.stone=900000;g.applyWorldClock(clock);return g;}
 function base(revision=1){const buildings=plain(personal().state.buildings);buildings.farm=5;buildings.keep=10;return {id:'kyoto_gosho',revision,castleLevel:63,buildings,initial:{castleLevel:63,buildings:plain(buildings)},history:[],jobs:[],updatedElapsedMs:120000,accessSinceElapsedMs:0,personalClan:'伊達家',protected:true};}
-function browser(initialSave,{linked=false,liveModal=false}={}) {
+function browser(initialSave,{linked=false,liveModal=false,travelUI}={}) {
   const stored = new Map(initialSave === undefined ? [] : [[SAVE, initialSave]]);
   if(linked)stored.set('sengoku-online-identity-v1',JSON.stringify({id:'staff-fixture',token:'test-token'}));
   const nodes = new Map(), handlers = new Map(), events = [];
@@ -46,6 +46,7 @@ function browser(initialSave,{linked=false,liveModal=false}={}) {
     addEventListener(){},dispatchEvent:event=>events.push(event.type),CustomEvent:class{constructor(type){this.type=type;}}
   };
   if(modalDOM)c.SengokuStableDOM={patch(node,html,options){node._html=html;if(node===nodes.get('modal-content'))return stable.patch(modalDOM.host,html,options);node.innerHTML=html;return{artwork:false};},forget(node){if(node===nodes.get('modal-content'))stable.forget(modalDOM.host);}};
+  if(travelUI)c.SengokuTravelUI=travelUI;
   c.window=c;vm.createContext(c);vm.runInContext(fs.readFileSync(path.join(__dirname,'../kamon.js'),'utf8'),c);vm.runInContext(source,c);
   async function event(type,target){for(const listener of handlers.get(type)||[])await listener({target});}
   async function click(action,id){const node={disabled:false,dataset:{action,id},closest(){return this;}};await event('click',node);}
@@ -162,7 +163,10 @@ await test('a staff house name never enables operator recovery, Edo ownership, o
 await test('ordinary 徳川家 remains selectable without staff or operator access',async()=>{
   const b=browser(),bridge=b.c.SengokuBridge;bridge.openStartSelection();
   let html=b.nodes.get('modal-content').innerHTML;assert(html.includes('data-id="徳川家"'));assert(!html.includes('data-id="德川家"'));
-  b.query('#new-start-castle').value='himeji';await b.click('choose-clan','徳川家');await b.click('choose-clan','德川家');await b.click('start-new');
+  assert.match(html,/data-action="choose-residency-mode" data-id="local"/);
+  await b.click('choose-residency-mode','local');
+  b.query('#new-start-castle').value='himeji';await b.event('change',b.query('#new-start-castle'));
+  await b.click('choose-clan','徳川家');await b.click('choose-clan','德川家');await b.click('start-new');
   assert.equal(bridge.getState().clan,'徳川家');assert.equal(bridge.getState().home,'himeji');assert.equal(bridge.getRoleAccess().isStaff,false);assert.equal(bridge.getRoleAccess().isAdmin,false);
   assert(!bridge.getState().officerVariants.includes('of_b0616adde162:U'));assert.match(b.nodes.get('clan-panel').innerHTML,/aria-label="徳川家：三つ葉葵"/);
   html=b.nodes.get('main').innerHTML;assert(!html.includes('staff-base-notice'));
@@ -194,9 +198,37 @@ await test('quiet canonical refresh keeps the branch preference editable while c
  bridge.setSyncAccess({linked:true,ready:true,writable:true,rolePending:false,reason:'writer'});assert.strictEqual(b.query('#branch-direction-nijo'),select);assert.equal(select.disabled,false);assert.equal(select.value,'west');assert.strictEqual(b.c.document.activeElement,select);assert.equal(b.c.document.querySelectorAll('[data-action="build-branch"]')[0].disabled,false);
  select.disabled=true;bridge.setSyncAccess({linked:true,ready:true,writable:true});assert.equal(select.disabled,false,'Live refresh also repairs a stale disabled attribute without rebuilding the field');
 });
-await test('real app branch battle uses its exact target and result never claims occupied territory',async()=>{
-  const b=browser(personal().exportSave()),bridge=b.c.SengokuBridge;b.c.SengokuBranches=require('../branches.js');const s=bridge.getState();s.castles.nijo.owner='在地衆';const neighbor=SENGOKU_DATA.castles.find(c=>c.id==='nijo').neighbors[0];s.castles[neighbor].owner=s.clan;s.branches=[{id:'nijo_east',parentCastleId:'nijo',direction:'east',level:2,fallen:false}];s.command=3;s.troops=30000;s.resources.rice=900000;
-  await b.click('prepare-branch-battle','nijo_east');assert.match(b.nodes.get('modal-content').innerHTML,/支拠点への出陣/);assert.match(b.nodes.get('modal-content').innerHTML,/data-action="attack-branch"/);assert.match(b.nodes.get('modal-content').innerHTML,/領地の占領・資源の獲得はありません/);await b.click('attack-branch');assert.equal(bridge.getState().lastBattle.branchId,'nijo_east');assert.equal(bridge.getState().castles.nijo.owner,'在地衆');assert.match(b.nodes.get('modal-content').innerHTML,/領地の占領・資源の獲得はありません/);assert.doesNotMatch(b.nodes.get('modal-content').innerHTML,/領国に加わりました/);
+await test('branch departure preserves its target, refunds a vanished defense, and renders branch-specific combat receipts',async()=>{
+  let actions;
+  const travelUI={...require('../travel-ui.js'),configure(options){actions=options;}};
+  const b=browser(personal().exportSave(),{travelUI}),bridge=b.c.SengokuBridge;
+  b.c.SengokuBranches=require('../branches.js');
+  const s=bridge.getState();s.castles.nijo.owner='在地衆';
+  const neighbor=SENGOKU_DATA.castles.find(c=>c.id==='nijo').neighbors[0];s.castles[neighbor].owner=s.clan;
+  s.branches=[{id:'nijo_east',parentCastleId:'nijo',direction:'east',level:2,fallen:false}];s.command=3;s.troops=30000;s.resources.rice=900000;
+  // Enemy branches are absent from the attacker's durable private save.
+  // Retain a separate battle fixture for the distinct completed-report route.
+  const defender=personal();defender.state=plain(s);
+  const combat=defender.attackBranch('nijo_east','balanced',s.troops);
+  assert(combat.ok);assert.equal(combat.battle.branchId,'nijo_east');assert.equal(combat.battle.captured,false);
+  const before={troops:s.troops,command:s.command,battles:s.stats.battles};
+  await b.click('prepare-branch-battle','nijo_east');let html=b.nodes.get('modal-content').innerHTML;
+  assert.match(html,/支拠点への出陣/);assert.match(html,/data-action="attack-branch"/);assert.match(html,/領地の占領・資源の獲得はありません/);
+  await b.click('attack-branch');const march=bridge.getState().march;
+  assert.equal(march.targetBranchId,'nijo_east');assert.equal(bridge.getState().lastBattle,null);
+  assert.equal(actions.getLocal()[0].id,march.id);assert.equal(b.nodes.get('modal').open,false);
+  const due={...clock,elapsedMs:march.arrivesElapsedMs,confirmedElapsedMs:march.arrivesElapsedMs};
+  b.c.SengokuWorldClock={snapshot:()=>({ready:true,clock:due}),refresh(){}};
+  await b.event('visibilitychange',b.c.document);
+  const receipt=actions.getLocal().find(row=>row.id===march.id);assert(receipt);
+  assert.equal(receipt.status,'cancelled');assert.equal(receipt.targetBranchId,march.targetBranchId);
+  assert.equal(receipt.battle,undefined);assert.equal(actions.onReport(receipt),false);
+  assert.equal(bridge.getState().castles.nijo.owner,'在地衆');assert.equal(bridge.getState().march,null);
+  assert.equal(bridge.getState().troops,before.troops);assert.equal(bridge.getState().command,before.command);
+  assert.equal(bridge.getState().stats.battles,before.battles);
+  const completed={...march,status:'resolved',battle:combat.battle};
+  assert.equal(actions.onReport(completed),true);assert.equal(b.nodes.get('modal').open,true);
+  html=b.nodes.get('modal-content').innerHTML;assert.match(html,/領地の占領・資源の獲得はありません/);assert.doesNotMatch(html,/領国に加わりました/);
 });
 await test('court navigation and evaluation entry mount once, refresh in place and dispose on leaving',async()=>{
   const b=browser(personal().exportSave()),bridge=b.c.SengokuBridge,trace=[];let options;

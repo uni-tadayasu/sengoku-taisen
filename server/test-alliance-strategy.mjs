@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
-import {harness} from './test-support.mjs';
+import {harness,settleFieldMarch,syncFieldWriter} from './test-support.mjs';
 import {GameEngine,GAME_OFFICERS} from './game-runtime.js';
 import {getAllianceDefense,prepareRallyAttack} from './alliance.js';
 
@@ -15,15 +15,15 @@ const status=async(h,p)=>(await h.api('/alliance',{token:p.token})).data;
 const unit=(h,id)=>h.sql.prepare('SELECT * FROM alliance_units WHERE id=?').get(id);
 const guild=async(h,p,name)=>(await h.api('/guild',post(p,{name}))).data.guild.id;
 const join=(h,p,g,expected=200)=>h.api('/guild/join',post(p,{guildId:g},expected));
-async function savePlayer(h,p){
+async function savePlayer(h,p,home='kiyosu'){
  p.deviceId||='writer-'+p.user.id;
  await h.api('/sync/lease',post(p,{deviceId:p.deviceId,takeOver:true}));
- const prior=(await h.api('/sync',{token:p.token})).data,save=prior.save||h.fresh(),clock=(await h.api('/world-clock')).data.clock;
+ const prior=(await h.api('/sync',{token:p.token})).data,save=prior.save||h.fresh(home),clock=(await h.api('/world-clock')).data.clock;
  save.state.worldClock={id:clock.id,elapsedMs:clock.elapsedMs};save.state.turn=Math.floor(clock.elapsedMs/60000);save.state.realtime.elapsed=clock.elapsedMs%60000/1000;
  if(!prior.save){save.state.troops=5000;save.state.command=3;save.state.resources={gold:100000,rice:100000,wood:100000,stone:100000};}
  return (await h.api('/sync',{method:'PUT',token:p.token,body:{deviceId:p.deviceId,revision:prior.revision,save}})).data;
 }
-async function players(h,names){const out=[];for(const name of names){const p=await h.session(name);await savePlayer(h,p);out.push(p);}return out;}
+async function players(h,names,homes=[]){const out=[];for(const [i,name] of names.entries()){const p=await h.session(name);await savePlayer(h,p,homes[i]);out.push(p);}return out;}
 async function policy(h,p,change={}){
  const current=await status(h,p);return command(h,p,'policy',{...current.policy,...change});
 }
@@ -124,15 +124,16 @@ await scenario('Troop escrow is atomic, replayable, capacity-safe and survives l
 });
 
 await scenario('A real pooled battle consumes only escrow, allocates losses and recovers a lost response once',async h=>{
- const [leader,ally,enemy]=await players(h,['共同出陣の主将','共同出陣の仲間','共同出陣の敵']),g=await guild(h,leader,'共同出陣試験');await join(h,ally,g);
+ const [leader,ally,enemy]=await players(h,['共同出陣の主将','共同出陣の仲間','共同出陣の敵'],['kiyosu','okazaki','inuyama']),g=await guild(h,leader,'共同出陣試験');await join(h,ally,g);
  const op=await operation(h,leader,enemy);
  const first=(await command(h,leader,'rally/join',{operationId:op,troops:1200})).result.unitId;
  const second=(await command(h,ally,'rally/join',{operationId:op,troops:1800})).result.unitId;
  const before=read(h,leader).state.troops,enemyBefore=read(h,enemy).state.troops,launch=body(h,leader,{operationId:op});
  const u={id:leader.user.id,guild_id:g},one=await prepareRallyAttack(h.db,u,op,h.now,armyHelpers),two=await prepareRallyAttack(h.db,u,op,h.now,armyHelpers);
  assert.equal(one.troops,3000);assert.equal(one.roll,two.roll);
- h.afterBatch=statements=>{if(statements[0]?.sql.includes('INSERT INTO field_requests')){h.afterBatch=null;throw Error('Local lost response after pooled battle commit');}};
- await h.api('/alliance/rally/launch',post(leader,launch,500));
+ let responseLost=false;h.afterBatch=statements=>{if(statements[0]?.sql.includes('INSERT INTO field_requests')){h.afterBatch=null;responseLost=true;throw Error('Local lost response after pooled battle commit');}};
+ const departure=(await h.api('/alliance/rally/launch',post(leader,launch))).data;assert(departure.marching);assert.equal(departure.battle,null);
+ assert.equal(h.sql.prepare('SELECT COUNT(*) n FROM field_battles').get().n,0);h.now+=departure.march.remainingMs;await h.api('/marches',{token:leader.token});assert(responseLost);
  const replay=(await h.api('/alliance/rally/launch',post(leader,{...launch,expectedRevision:0,deviceId:'different-device'}))).data;
  assert.equal(replay.idempotent,true);assert.equal(replay.battle.troops,3000);
  assert.equal(read(h,leader).state.troops,before,'leader cannot keep the participants surviving force');
@@ -142,21 +143,23 @@ await scenario('A real pooled battle consumes only escrow, allocates losses and 
  assert.equal(h.sql.prepare("SELECT COUNT(*) n FROM alliance_contributions WHERE kind='attack'").get().n,2);
  assert.equal((await status(h,leader)).operations[0].status,'completed');
  await h.api('/field/attack',post(leader,body(h,leader,{requestId:launch.requestId,targetPlayerId:enemy.user.id,targetCastleId:read(h,enemy).state.home,troops:3000,tactic:'balanced'}),409));
+ await syncFieldWriter(h,ally);
  const allyReturned=unit(h,second).troops,claimBody=body(h,ally,{unitId:second});await h.api('/alliance/units/claim',post(ally,claimBody));await h.api('/alliance/units/claim',post(ally,claimBody));
  const collected=read(h,ally).state.troops;assert.equal(collected,3200+allyReturned,'returned troops are only added once');
 });
 
 await scenario('Stationed aid changes real defense; membership and zero-support races cancel the attack',async h=>{
- const [defender,helper,attacker]=await players(h,['援軍先の領主','援軍の領主','援軍を攻める領主']),g=await guild(h,defender,'援軍試験');await join(h,helper,g);
+ const [defender,helper,attacker]=await players(h,['援軍先の領主','援軍の領主','援軍を攻める領主'],['kiyosu','okazaki','inuyama']),g=await guild(h,defender,'援軍試験');await join(h,helper,g);
  const castle=read(h,defender).state.home,baseline=(await h.api('/field',{token:attacker.token})).data.targets.find(t=>t.playerId===defender.user.id&&t.targetCastleId===castle);
  const aid=(await command(h,helper,'reinforcements/send',{targetPlayerId:defender.user.id,castleId:castle,troops:1500,hours:1})).result.unitId;
  const support=await getAllianceDefense(h.db,{id:defender.user.id,guild_id:g},castle,h.now);assert.equal(support.troops,1500);
  const before=read(h,attacker),attackBody=body(h,attacker,{targetPlayerId:defender.user.id,targetCastleId:castle,troops:1500,tactic:'balanced'});
- h.beforeBatch=statements=>{if(statements[0]?.sql.includes('INSERT INTO field_requests')){h.beforeBatch=null;h.sql.prepare('DELETE FROM guild_members WHERE user_id=?').run(helper.user.id);}};
+ h.beforeBatch=statements=>{if(statements[0]?.sql.includes('INSERT INTO battle_marches')){h.beforeBatch=null;h.sql.prepare('DELETE FROM guild_members WHERE user_id=?').run(helper.user.id);}};
  await h.api('/field/attack',post(attacker,attackBody,409));assert.deepEqual(read(h,attacker),before);
  assert.equal((await status(h,helper)).units.find(u=>u.id===aid).state,'returning');await join(h,helper,g);
  const active=(await command(h,helper,'reinforcements/send',{targetPlayerId:defender.user.id,castleId:castle,troops:1000,hours:1})).result.unitId;
- const battle=(await h.api('/field/attack',post(attacker,body(h,attacker,{targetPlayerId:defender.user.id,targetCastleId:castle,troops:1500,tactic:'balanced'})))).data.battle;
+ const departure=(await h.api('/field/attack',post(attacker,body(h,attacker,{targetPlayerId:defender.user.id,targetCastleId:castle,troops:1500,tactic:'balanced'})))).data;
+ const battle=await settleFieldMarch(h,attacker,departure);
  assert(battle.defensePower>baseline.defensePower,'aid must affect actual combat, not merely its card');
  assert.equal(unit(h,active).troops,battle.won?900:970);
  const empty=await h.session('同盟未所属の守備者'),zero=await getAllianceDefense(h.db,{id:empty.user.id,guild_id:null},'kiyosu',h.now);
@@ -165,7 +168,7 @@ await scenario('Stationed aid changes real defense; membership and zero-support 
 });
 
 await scenario('Rallies honor target protection and intact branches, and escrow funds the captured garrison',async h=>{
- const [leader,ally,enemy]=await players(h,['包囲作戦の主将','包囲作戦の仲間','支城の城主']),g=await guild(h,leader,'城郭集結試験');await join(h,ally,g);
+ const [leader,ally,enemy]=await players(h,['包囲作戦の主将','包囲作戦の仲間','支城の城主'],['kiyosu','okazaki','inuyama']),g=await guild(h,leader,'城郭集結試験');await join(h,ally,g);
  edit(h,enemy,s=>{s.castles.nijo={owner:s.clan,troops:100,wall:1,level:1};});
  const branch={id:'nijo_north',parentCastleId:'nijo',direction:'north',level:1,fallen:false},seed=fallen=>{
   const branches=[{...branch,fallen}];edit(h,enemy,s=>{s.branches=branches;});
@@ -180,7 +183,7 @@ await scenario('Rallies honor target protection and intact branches, and escrow 
  assert.equal(unit(h,a).troops+unit(h,b).troops,3000);
  h.sql.prepare('DELETE FROM pvp_protection WHERE user_id=?').run(enemy.user.id);
  const branchOp=await operation(h,leader,enemy,{castleId:'nijo',branchId:'nijo_north'});await command(h,ally,'rally/join',{operationId:branchOp,troops:600});
- const branchResult=(await command(h,leader,'rally/launch',{operationId:branchOp})).battle;
+ const branchDeparture=await command(h,leader,'rally/launch',{operationId:branchOp}),branchResult=await settleFieldMarch(h,leader,branchDeparture);
  assert.equal(branchResult.battleMode,'branch');assert.equal(branchResult.capture.captured,false);assert.deepEqual(branchResult.defenderLost,{troops:0,garrison:0});
  // A deterministic fixture selects a roll below the field's minimum win
  // probability; production always uses the immutable server-generated ID.
@@ -188,10 +191,11 @@ await scenario('Rallies honor target protection and intact branches, and escrow 
  assert(!JSON.stringify(await status(h,leader)).includes(battleSeed),'The battle seed must never be published');
  let fixtureId;for(let i=0;i<10000;i++){const candidate='ao_capture_fixture_'+i,hex=createHash('sha256').update(JSON.stringify(['alliance-battle-v1',battleSeed,candidate,roster])).digest('hex');if(parseInt(hex.slice(0,8),16)/4294967296<.05){fixtureId=candidate;break;}}assert(fixtureId);
  h.sql.prepare('UPDATE alliance_operations SET id=? WHERE id=?').run(fixtureId,op);h.sql.prepare('UPDATE alliance_units SET operation_id=? WHERE operation_id=?').run(fixtureId,op);op=fixtureId;
- seed(true);const at=read(h,leader).state.worldClock.elapsedMs+60000;
+ seed(true);const at=(await h.api('/world-clock')).data.clock.elapsedMs+60000;
  h.sql.prepare('UPDATE world_clock SET base_elapsed_ms=?,anchor_real_ms=?,revision=revision+1').run(at,h.now);
  for(const p of [leader,ally,enemy])edit(h,p,s=>{s.worldClock.elapsedMs=at;s.turn=Math.floor(at/60000);s.realtime.elapsed=at%60000/1000;s.command=3;});
- const standing=read(h,leader).state.troops,captured=(await command(h,leader,'rally/launch',{operationId:op})).battle;
+ await h.api('/sync/lease',post(leader,{deviceId:leader.deviceId}));
+ const standing=read(h,leader).state.troops,departure=await command(h,leader,'rally/launch',{operationId:op}),captured=await settleFieldMarch(h,leader,departure);
  assert.equal(captured.capture.captured,true);assert(captured.capture.garrison>0);
  assert.equal(unit(h,a).troops+unit(h,b).troops+captured.attackerLost+captured.capture.garrison,3000);
  assert.equal(read(h,leader).state.troops,standing);assert.equal(read(h,leader).state.castles.nijo.troops,captured.capture.garrison);

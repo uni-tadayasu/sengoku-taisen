@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {harness} from './test-support.mjs';
+import {harness,settleFieldMarch as settleMarch} from './test-support.mjs';
 import {GameEngine,GAME_OFFICERS} from './game-runtime.js';
 
 const post=(p,body,expected=200)=>({method:'POST',token:p?.token,body,expected});
@@ -18,7 +18,7 @@ async function roles(h){
 }
 async function player(h,name='野外の領主'){
  const p=await h.session(name);p.deviceId='map-device-'+p.user.id;
- const lease=(await h.api('/sync/lease',post(p,{deviceId:p.deviceId}))).data,save=h.fresh();
+ const lease=(await h.api('/sync/lease',post(p,{deviceId:p.deviceId}))).data,save=h.fresh(unitFor(h).castleId);
  save.state.worldClock={id:lease.clock.id,elapsedMs:lease.clock.elapsedMs};save.state.turn=Math.floor(lease.clock.elapsedMs/60000);save.state.realtime.elapsed=lease.clock.elapsedMs%60000/1000;
  await h.api('/sync',{method:'PUT',token:p.token,body:{deviceId:p.deviceId,revision:lease.revision,save}});return p;
 }
@@ -27,6 +27,8 @@ function unitFor(h,encounterId='road_scouts'){
  return GameEngine.roamingDeploymentSummary(d).castles.flatMap(c=>GameEngine.roamingDeploymentUnits(d,c.castleId)).find(u=>u.encounterId===encounterId);
 }
 function battleInput(h,p,u=unitFor(h),extra={}){const r=row(h,p),s=state(h,p);return{deviceId:p.deviceId,expectedRevision:r.revision,campaignId:s.walking.campaignId,sequence:s.roaming.sequence,requestId:crypto.randomUUID(),encounterId:u.encounterId,unitId:u.unitId,castleId:u.castleId,deploymentRevision:u.deploymentRevision,tactic:'balanced',troops:1000,...extra};}
+const status=async(h,p)=>(await h.api('/marches?deviceId='+p.deviceId,{token:p.token})).data;
+const depart=async(h,p,body)=>(await h.api('/roaming/battle',post(p,body))).data;
 const getManage=(h,p)=>h.api('/staff/roaming',{token:p.token});
 const propose=async(h,staff,body=payload())=>(await h.api('/staff/roaming/proposals',post(staff,body))).data;
 const act=(h,p,id,action,body={},expected=200)=>h.api('/'+(action==='cancel'?'staff':'admin')+'/roaming/proposals/'+id+'/'+action,post(p,{requestId:crypto.randomUUID(),expectedRevision:1,...body},expected));
@@ -142,21 +144,30 @@ try{
   await h.api('/roaming/battle',post(p,body,409));assert.equal(count(h,'roaming_battles'),0);
  });
  await scope('map battle uses canonical unit, shares victory cooldown, preserves receipts and allows timed respawn',async h=>{
-  const p=await player(h),other=await player(h,'別の戦う領主'),u=unitFor(h),body=battleInput(h,p,u),first=(await h.api('/roaming/battle',post(p,body))).data;
-  assert(first.battle.won);assert.equal(first.battle.unitId,u.unitId);assert.equal(first.battle.castleId,u.castleId);assert.equal(first.battle.deploymentRevision,u.deploymentRevision);assert.equal(first.battle.enemyTroops,u.troops);assert.equal(first.battle.respawnAt,h.now+300000);assert.equal(first.save.state.roaming.history[0].respawnAt,first.battle.respawnAt);
+  const p=await player(h),other=await player(h,'別の戦う領主'),u=unitFor(h),body=battleInput(h,p,u),departure=await depart(h,p,body),battle=await settleMarch(h,p,departure);
+  assert(battle.won);assert.equal(battle.unitId,u.unitId);assert.equal(battle.castleId,u.castleId);assert.equal(battle.deploymentRevision,u.deploymentRevision);assert.equal(battle.enemyTroops,u.troops);assert.equal(battle.respawnAt,h.now+300000);assert.equal(state(h,p).roaming.history[0].respawnAt,battle.respawnAt);
   const map=(await h.api('/roaming/map?castleId='+u.castleId)).data;assert.equal(map.units.find(x=>x.unitId===u.unitId).available,false);
   const before=row(h,other).save_json;await h.api('/roaming/battle',post(other,battleInput(h,other,u),409));assert.equal(row(h,other).save_json,before);
   assert((await h.api('/roaming/battle',post(p,body))).data.idempotent);assert.equal(count(h,'roaming_battles'),1);assert.equal(count(h,'roaming_unit_cooldowns'),1);
   h.now+=300000;assert.equal((await h.api('/roaming/map?castleId='+u.castleId)).data.units.find(x=>x.unitId===u.unitId).available,true);
  });
  await scope('two players winning the same unit concurrently can receive only one set of rewards',async h=>{
-  const one=await player(h),two=await player(h,'競り合う領主'),u=unitFor(h),before=[row(h,one).save_json,row(h,two).save_json];
-  const out=await Promise.all([h.api('/roaming/battle',post(one,battleInput(h,one,u),null)),h.api('/roaming/battle',post(two,battleInput(h,two,u),null))]);assert.deepEqual(out.map(r=>r.response.status).sort(),[200,409]);assert.equal(count(h,'roaming_battles'),1);assert.equal(count(h,'roaming_unit_cooldowns'),1);
-  const loser=out[0].response.status===409?0:1;assert.equal(row(h,[one,two][loser]).save_json,before[loser]);
+  const one=await player(h),two=await player(h,'競り合う領主'),actors=[one,two],unit=unitFor(h);
+  const departures=await Promise.all(actors.map(actor=>depart(h,actor,battleInput(h,actor,unit))));
+  assert(departures.every(r=>r.marching));assert.equal(count(h,'roaming_battles'),0);
+  h.now+=Math.max(...departures.map(r=>r.march.remainingMs));
+  await Promise.all(actors.map(actor=>status(h,actor)));
+  const settled=await Promise.all(actors.map(actor=>status(h,actor)));
+  assert.deepEqual(settled.map(r=>r.history[0].status).sort(),['cancelled','resolved']);
+  assert.equal(count(h,'roaming_battles'),1);assert.equal(count(h,'roaming_unit_cooldowns'),1);
+  const loser=settled.findIndex(r=>r.history[0].status==='cancelled');
+  const {save,clock,march}=departures[loser],transit=GameEngine.fromSave(save,GAME_OFFICERS);
+  transit.applyWorldClock({...clock,elapsedMs:march.arrivesAtMs},{maxSeconds:86400,deferCycleSettlement:true});
+  const refunded=settled[loser].save.state;assert.equal(refunded.roaming.sequence,0);assert.equal(refunded.troops,transit.state.troops+march.troops);assert.equal(refunded.resources.rice,transit.state.resources.rice+save.state.march.foodCost);
  });
  await scope('defeat leaves a unit available and cannot poison its global cooldown',async h=>{
-  const p=await player(h),u=unitFor(h,'ronin_vanguard'),r=(await h.api('/roaming/battle',post(p,battleInput(h,p,u,{troops:300})))).data;
-  assert.equal(r.battle.won,false);assert.equal(r.battle.respawnAt,null);assert.equal(count(h,'roaming_unit_cooldowns'),0);assert.equal((await h.api('/roaming/map?castleId='+u.castleId)).data.units.find(x=>x.unitId===u.unitId).available,true);
+  const p=await player(h),u=unitFor(h,'ronin_vanguard'),departure=await depart(h,p,battleInput(h,p,u,{troops:300})),battle=await settleMarch(h,p,departure);
+  assert.equal(battle.won,false);assert.equal(battle.respawnAt,null);assert.equal(count(h,'roaming_unit_cooldowns'),0);assert.equal((await h.api('/roaming/map?castleId='+u.castleId)).data.units.find(x=>x.unitId===u.unitId).available,true);
  });
  await scope('forged unit IDs, castle, type, revision and missing map target fail without debits',async h=>{
   const p=await player(h),body=battleInput(h,p),before=row(h,p).save_json;
@@ -167,13 +178,13 @@ try{
  });
  await scope('deployment replacement during battle commit cannot charge a stale map selection',async h=>{
   const p=await player(h),body=battleInput(h,p),before=row(h,p).save_json;let once=true;
-  h.beforeBatch=ss=>{if(once&&ss.some(s=>s.sql.includes('INSERT INTO roaming_battles'))){once=false;h.sql.exec('UPDATE roaming_deployment SET revision=revision+1');}};
-  const r=await h.api('/roaming/battle',post(p,body,409));assert.equal(r.data.error.code,'ROAMING_DEPLOYMENT_CHANGED');assert.equal(row(h,p).save_json,before);assert.equal(count(h,'roaming_battles'),0);assert.equal(count(h,'roaming_unit_cooldowns'),0);
+  h.beforeBatch=ss=>{if(once&&ss.some(s=>s.sql.includes('INSERT INTO battle_marches'))){once=false;h.sql.exec('UPDATE roaming_deployment SET revision=revision+1');}};
+  const r=await h.api('/roaming/battle',post(p,body,409));assert.equal(once,false);assert.equal(r.data.error.code,'ROAMING_STATE_CHANGED');assert.equal(row(h,p).save_json,before);assert.equal(count(h,'roaming_battles'),0);assert.equal(count(h,'roaming_unit_cooldowns'),0);
  });
  await scope('battle database failure rolls back the unit cooldown and reward as one transaction',async h=>{
-  const p=await player(h),body=battleInput(h,p),before=row(h,p).save_json;let once=true;
+  const p=await player(h),body=battleInput(h,p),departure=await depart(h,p,body),escrow=row(h,p).save_json;h.now+=departure.march.remainingMs;let once=true;
   h.beforeBatch=ss=>{if(once&&ss.some(s=>s.sql.includes('INSERT INTO roaming_unit_cooldowns'))){once=false;ss.push(h.db.prepare('UPDATE no_such_roaming_map_table SET absent=1'));}};
-  await h.api('/roaming/battle',post(p,body,500));assert.equal(row(h,p).save_json,before);assert.equal(count(h,'roaming_battles'),0);assert.equal(count(h,'roaming_unit_cooldowns'),0);h.beforeBatch=null;assert((await h.api('/roaming/battle',post(p,body))).data.battle.won);
+  const failed=await status(h,p);assert.equal(once,false);assert.equal(failed.active[0].id,departure.march.id);assert.equal(row(h,p).save_json,escrow);assert.equal(count(h,'roaming_battles'),0);assert.equal(count(h,'roaming_unit_cooldowns'),0);h.beforeBatch=null;assert((await status(h,p)).history[0].battle.won);const replay=await depart(h,p,body);assert(replay.idempotent);assert(replay.battle.won);
  });
  await scope('legacy pre-map receipts remain replayable but cannot authorize a new template-only battle',async h=>{
   const p=await player(h),r=row(h,p),save=JSON.parse(r.save_json),game=GameEngine.fromSave(save,GAME_OFFICERS),body={deviceId:p.deviceId,expectedRevision:r.revision,campaignId:save.state.walking.campaignId,sequence:0,requestId:crypto.randomUUID(),encounterId:'road_scouts',tactic:'balanced',troops:1000},b=game.battleRoaming(body.encounterId,body.tactic,body.troops,body).battle;

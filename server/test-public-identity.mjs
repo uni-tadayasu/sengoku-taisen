@@ -49,6 +49,44 @@ await scope('public configuration never advertises management state and self rec
   assert.deepEqual((await h.api('/config')).data,before);
 });
 
+await scope('public field pages project newly assigned fixed homes without changing personal saves or showing ordinary retainers',async h=>{
+  async function start(name,castleId,mode='lord') {
+    const actor=await h.session(name),deviceId='map-'+actor.user.id;
+    const lease=(await h.api('/sync/lease',post(actor,{deviceId}))).data;
+    await h.api('/castles/residency/start',post(actor,{deviceId,revision:lease.revision,requestId:crypto.randomUUID(),castleId,mode,clan:'織田家',difficulty:'normal'}));
+    return actor;
+  }
+  const operator=await start('地図の甲','kiyosu'),office=await start('地図の乙','himeji'),ordinary=await start('地図の丙','inuyama');
+  await start('地図の丁','inuyama','retainer');
+  await h.api('/admin/claim',post(operator,{key:h.env.SENGOKU_ADMIN_KEY}));
+  await h.api('/admin/staff',post(operator,{targetPlayerId:office.user.id,action:'appoint',requestId:crypto.randomUUID()}));
+  const before=h.sql.prepare('SELECT user_id,save_json,revision FROM player_saves ORDER BY user_id').all();
+  const expected=[[operator.user.id,'edo'],[office.user.id,'kyoto_gosho'],[ordinary.user.id,'inuyama']].sort();
+  for(const viewer of [null,ordinary]) {
+    const players=[],targets=[];let cursor='';
+    for(let i=0;i<expected.length;i++){
+      const page=(await h.api('/field?limit=1'+(cursor?'&cursor='+cursor:''),{token:viewer?.token})).data;
+      publicOnly(page);assert.equal(page.total,expected.length);assert.equal(page.players.length,1);
+      players.push(...page.players.map(p=>[p.playerId,p.homeCastleId]));targets.push(...page.targets.map(p=>[p.playerId,p.targetCastleId]));
+      cursor=page.nextCursor;assert.equal(Boolean(cursor),i<expected.length-1);
+    }
+    assert.deepEqual(players,expected);assert.deepEqual(targets,expected);
+  }
+  assert.deepEqual(h.sql.prepare('SELECT user_id,save_json,revision FROM player_saves ORDER BY user_id').all(),before);
+  const palace=(await h.api('/sync',{token:office.token})).data,deviceId='map-'+office.user.id;
+  await h.api('/sync',{method:'PUT',token:office.token,body:{deviceId,save:palace.save,revision:palace.revision}});
+  await h.api('/admin/staff',post(operator,{targetPlayerId:office.user.id,action:'dismiss',requestId:crypto.randomUUID()}));
+  const afterDismissal=(await h.api('/field?limit=1')).data;
+  assert.equal(afterDismissal.total,2);assert.equal(afterDismissal.players.length,1);assert(afterDismissal.nextCursor);
+  const last=(await h.api('/field?limit=1&cursor='+afterDismissal.nextCursor)).data;
+  assert.equal(last.players.length,1);assert.equal(last.nextCursor,null);
+  assert.deepEqual([...afterDismissal.players,...last.players].map(p=>p.playerId).sort(),[operator.user.id,ordinary.user.id].sort());
+  const personal=(await h.api('/sync',{token:office.token})).data;
+  await h.api('/sync',{method:'PUT',token:office.token,body:{deviceId,save:personal.save,revision:personal.revision}});
+  const rejoined=(await h.api('/field')).data;publicOnly(rejoined);assert.equal(rejoined.total,3);
+  assert.equal(rejoined.players.find(p=>p.playerId===office.user.id)?.homeCastleId,'himeji');
+});
+
 await scope('public lists show current offices while concealing site authority flags',async h=>{
   const {admin,staff,viewer}=await people(h);
   for(const actor of [admin,staff])await h.api('/presence',post(actor,{deviceId:actor.deviceId,online:true}));

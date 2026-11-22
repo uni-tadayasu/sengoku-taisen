@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {harness} from './test-support.mjs';
+import {harness,settleFieldMarch} from './test-support.mjs';
 
 // The same durable identities are read through real Worker routes before and
 // after avatar replacement/removal. Fixtures never contact a public service.
@@ -12,7 +12,7 @@ const upload=async(actor,name)=>(await h.api('/me/avatar',{method:'PUT',token:ac
 const photo=(value,expected,key='avatarVersion')=>{assert(value,'Expected a visible participant');assert(Object.hasOwn(value,key),'Missing '+key);assert.equal(value[key],expected,key);};
 const tables=names=>Object.fromEntries(names.map(table=>[table,h.sql.prepare('SELECT * FROM '+table+' ORDER BY 1').all()]));
 async function save(actor,defender=false){
- actor.deviceId='avatar-'+actor.user.id;const lease=(await h.api('/sync/lease',post(actor,{deviceId:actor.deviceId}))).data,state=h.fresh();
+ actor.deviceId='avatar-'+actor.user.id;const lease=(await h.api('/sync/lease',post(actor,{deviceId:actor.deviceId}))).data,state=h.fresh(defender?'inuyama':'kiyosu');
  state.state.troops=20000;state.state.resources={gold:100000,rice:100000,wood:100000,stone:100000};
  if(defender)state.state.castles.nijo={owner:state.state.clan,level:20,wall:4,troops:1000};
  state.state.worldClock={id:lease.clock.id,elapsedMs:lease.clock.elapsedMs};state.state.turn=Math.floor(lease.clock.elapsedMs/60000);state.state.realtime.elapsed=lease.clock.elapsedMs%60000/1000;
@@ -36,7 +36,11 @@ try{
  // Combat projections use an opponent outside the current alliance.
  await h.api('/guild/leave',post(viewer,{guildId:guild.id}));
  const random=crypto.getRandomValues;crypto.getRandomValues=function(array){return array instanceof Uint32Array&&array.length===1?array.fill(0):random.call(crypto,array);};
- try{await h.api('/field/attack',post(actor,{requestId:'avatar-battle',targetPlayerId:viewer.user.id,targetCastleId:'nijo',troops:3000,tactic:'balanced',deviceId:actor.deviceId,expectedRevision:revision()}));}finally{crypto.getRandomValues=random;}
+  try{
+  const departure=(await h.api('/field/attack',post(actor,{requestId:'avatar-battle',targetPlayerId:viewer.user.id,targetCastleId:'nijo',troops:3000,tactic:'balanced',deviceId:actor.deviceId,expectedRevision:revision()}))).data;
+  await settleFieldMarch(h,actor,departure);
+  }finally{crypto.getRandomValues=random;}
+  await h.api('/sync/lease',post(actor,{deviceId:actor.deviceId}));
  await h.api('/guild/join',post(viewer,{guildId:guild.id}));
  await h.api('/field/diplomacy',post(actor,{requestId:'avatar-alliance',targetPlayerId:viewer.user.id,action:'propose',deviceId:actor.deviceId,expectedRevision:revision()}));
  await h.api('/admin/staff',post(operator,{targetPlayerId:staff.user.id,action:'appoint',requestId:crypto.randomUUID()}));

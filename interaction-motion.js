@@ -113,6 +113,7 @@ function visible(el) {
 function removeEntry(el, record) {
   if (entries.get(el) !== record) return;
   entries.delete(el); global.clearTimeout(record.timer); record.animation?.cancel();
+  record.chapter?.removeAttribute('data-chronicle-entry');
 }
 function enter(el, index) {
   if (!el.animate || !visible(el)) return;
@@ -121,9 +122,13 @@ function enter(el, index) {
   const from = { opacity: opacity * .38 }, to = { opacity };
   const safe = el.matches('.page-heading,.realtime-strip,.toolbar,.section-heading,.hero-copy,.hero-figure,.modal-header,.modal-footer,.social-header,.social-tabs,.social-footer');
   if (safe && style.transform === 'none' && !['fixed', 'absolute', 'sticky'].includes(style.position) && (!style.translate || ['none', '0px', '0px 0px'].includes(style.translate))) { from.translate = '0 8px'; to.translate = '0 0'; }
-  const record = { animation: null, timer: 0 }; entries.set(el, record);
+  const chapterSelector = '.page-heading,.town-scene-heading,.covert-heading,.roaming-heading,.court-heading,.modal-header,.navigation-dialog-header';
+  const chapter = el.matches(chapterSelector) ? el : el.querySelector(chapterSelector);
+  const duration = chapter ? 420 : 220;
+  const record = { animation: null, timer: 0, chapter }; entries.set(el, record);
+  chapter?.setAttribute('data-chronicle-entry','');
   try {
-    record.animation = el.animate([from, to], { duration: 300, delay: Math.min(index, 7) * 24, easing: 'cubic-bezier(.2,.75,.25,1)', fill: 'backwards' });
+    record.animation = el.animate([from, to], { duration, delay: Math.min(index, 5) * 20, easing: 'cubic-bezier(.18,.72,.24,1)', fill: 'backwards' });
     record.animation.onfinish = record.animation.oncancel = () => removeEntry(el, record);
     record.timer = global.setTimeout(() => removeEntry(el, record), 650);
   } catch (_) { removeEntry(el, record); }

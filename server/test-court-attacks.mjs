@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {harness} from './test-support.mjs';
+import {harness,settleFieldMarch,syncFieldWriter} from './test-support.mjs';
 import {fixture,post,row,save,count,appoint,updateSave} from './test-court-support.mjs';
 
 const attackBody=(h,actor,target,castleId='edo')=>({requestId:crypto.randomUUID(),targetPlayerId:target.user.id,targetCastleId:castleId,troops:1000,tactic:'balanced',deviceId:actor.deviceId,expectedRevision:row(h,actor).revision});
@@ -12,9 +12,13 @@ async function force(won,run){const old=crypto.getRandomValues;crypto.getRandomV
 async function provision(h,{source='kyoto_gosho',targetKind='player'}={}){
  const admin=await fixture(h,'江戸城の領主',{admin:true}),staff=await fixture(h,'京都御所の担当',{staff:true,holdings:source==='nijo'?['nijo']:[]}),raider=await fixture(h,'契機を作る領主');
  await covert(h,staff,'hire',{sourceCastleId:source,count:400});const target=targetKind==='player'?{kind:'player',playerId:admin.user.id,castleId:'edo'}:{kind:'castle',castleId:'edo'};
- const stationed=(await covert(h,staff,'dispatch',{sourceCastleId:source,target,count:200,mode:'station'})).data;
+ const dispatched=(await covert(h,staff,'dispatch',{sourceCastleId:source,target,count:200,mode:'station'})).data;assert(dispatched.marching);
+ h.now+=dispatched.march.remainingMs;const stationed=(await h.api('/marches?deviceId='+staff.deviceId,{token:staff.token})).data;
+ assert.equal(stationed.history.find(m=>m.id===dispatched.march.id)?.status,'resolved');
+ await syncFieldWriter(h,raider);
  const incoming=(await force(false,()=>attack(h,raider,attackBody(h,raider,staff,source)))).data;
- return{admin,staff,raider,stationId:stationed.result.stationId,incidentId:incoming.battle.id};
+ const battle=await settleFieldMarch(h,raider,incoming);await syncFieldWriter(h,staff);
+ return{admin,staff,raider,stationId:stationed.save.state.covert.stations[0].id,incidentId:battle.id};
 }
 let checks=0,calls=0;
 async function scope(name,run){const h=harness();try{await run(h);checks++;console.log('PASS '+name);}finally{calls+=h.calls;h.close();}}
@@ -27,12 +31,12 @@ try{
   for(const target of field.targets)for(const key of ['isAdmin','isStaff','isCourtEmperor','leaderId'])assert.equal(Object.hasOwn(target,key),false);
   const before=effects(h),blocked=await attack(h,staff,attackBody(h,staff,admin),403);assert.equal(blocked.data.error.code,'COURT_EDO_ATTACK_REQUIRED');assert.deepEqual(effects(h),before);
   await attack(h,staff,{...attackBody(h,staff,admin),sourceCastleId:'nijo',isCourtEmperor:true},400);assert.deepEqual(effects(h),before);
-  const ordinaryResult=(await attack(h,ordinary,attackBody(h,ordinary,admin))).data;assert.equal(ordinaryResult.battle.battleMode,'reward');assert.equal(ordinaryResult.battle.capture.captured,false);
+  const departure=(await attack(h,ordinary,attackBody(h,ordinary,admin))).data,battle=await settleFieldMarch(h,ordinary,departure);assert.equal(battle.battleMode,'reward');assert.equal(battle.capture.captured,false);
  });
  await scope('an appointed Emperor can duel Edo without changing its owner or assets and replay cannot attack twice',async h=>{
   const admin=await fixture(h,'決闘の江戸',{admin:true}),staff=await fixture(h,'任命済みの天皇',{staff:true});await appoint(h,staff);
   const capability=(await h.api('/field/me?deviceId='+staff.deviceId,{token:staff.token})).data;assert.equal(capability.attack.canAttackEdoFromKyoto,true);const target=(await h.api('/field',{token:staff.token})).data.targets.find(t=>t.playerId===admin.user.id&&t.targetCastleId==='edo');assert.equal(target.attackable,true);
-  const before=row(h,admin),palace=h.sql.prepare('SELECT * FROM staff_base').get(),body=attackBody(h,staff,admin),result=(await force(true,()=>attack(h,staff,body))).data;
+  const before=row(h,admin),palace=h.sql.prepare('SELECT * FROM staff_base').get(),body=attackBody(h,staff,admin),departure=(await force(true,()=>attack(h,staff,body))).data,result={battle:await settleFieldMarch(h,staff,departure)};
   assert.equal(result.battle.won,true);assert.equal(result.battle.battleMode,'reward');assert.equal(result.battle.capture.captured,false);assert.deepEqual(result.battle.defenderLost,{troops:0,garrison:0});assert.deepEqual(row(h,admin),before);assert.deepEqual(h.sql.prepare('SELECT * FROM staff_base').get(),palace);assert.equal(save(h,staff).state.home,'kyoto_gosho');assert.notEqual(save(h,staff).state.castles.edo.owner,save(h,staff).state.clan);
   await appoint(h,null);const committed=effects(h),replay=(await attack(h,staff,body)).data;assert.equal(replay.idempotent,true);assert.equal(replay.battle.id,result.battle.id);assert.deepEqual(effects(h),committed);assert.equal(count(h,'field_battles'),1);
  });
@@ -44,13 +48,25 @@ try{
    ()=>h.sql.prepare('UPDATE staff_members SET term_id=? WHERE user_id=?').run(crypto.randomUUID(),staff.user.id),
    ()=>h.sql.prepare('INSERT INTO player_bans(user_id,active,revision,banned_by,updated_at) VALUES(?,0,1,?,?)').run(staff.user.id,admin.user.id,h.now),
   ];
-  for(const change of changes){await appoint(h,staff);await h.api('/sync?deviceId='+staff.deviceId,{token:staff.token});const before=effects(h);h.beforeBatch=statements=>{if(!statements.some(s=>s.sql.includes('INSERT INTO field_requests')))return;h.beforeBatch=null;change();};const response=await attack(h,staff,attackBody(h,staff,admin),null);assert.equal(response.response.status,409);assert.deepEqual(effects(h),before);}
+  for(const change of changes){await appoint(h,staff);await h.api('/sync?deviceId='+staff.deviceId,{token:staff.token});const before=effects(h);h.beforeBatch=statements=>{if(!statements.some(s=>s.sql.includes('INSERT INTO battle_marches')))return;h.beforeBatch=null;change();};const response=await attack(h,staff,attackBody(h,staff,admin),null);assert.equal(response.response.status,409);assert.deepEqual(effects(h),before);}
   assert.equal(count(h,'field_battles'),0);assert.equal(count(h,'field_requests'),0);
+ });
+ await scope('revocation at the arrival transaction returns the army without an Edo battle',async h=>{
+  const admin=await fixture(h,'到着先の江戸',{admin:true}),staff=await fixture(h,'到着前の御所担当',{staff:true});await appoint(h,staff);
+  const before=save(h,staff),sent=(await attack(h,staff,attackBody(h,staff,admin))).data,escrow=effects(h);
+  assert(sent.marching);h.now+=sent.march.remainingMs;
+  h.beforeBatch=statements=>{if(!statements.some(s=>s.sql.includes('INSERT INTO field_requests')))return;h.beforeBatch=null;h.sql.exec('DELETE FROM court_leader');};
+  const attempted=(await h.api('/marches',{token:staff.token})).data;
+  if(attempted.active.length){assert.deepEqual(effects(h),escrow);assert.equal(attempted.active[0].id,sent.march.id);}
+  const returned=(await h.api('/marches',{token:staff.token})).data;
+  assert.equal(returned.history[0].id,sent.march.id);assert.equal(returned.history[0].status,'cancelled');assert.equal(returned.history[0].battle,null);
+  assert.equal(returned.save.state.troops,before.state.troops);assert.equal(count(h,'field_battles'),0);assert.equal(count(h,'field_requests'),0);assert.equal(count(h,'mail_campaigns'),0);
  });
  await scope('Kyoto scouts and stationed units remain available while only the current Emperor can retaliate at Edo',async h=>{
   const{admin,staff,stationId,incidentId}=await provision(h);const status=(await h.api('/covert',{token:staff.token})).data;assert.equal(status.covert.rules.canAttackEdoFromKyoto,false);assert(status.covert.incidents.some(v=>v.id===incidentId));
   const before=effects(h),blocked=await covert(h,staff,'retaliate',{stationId,incidentId},403);assert.equal(blocked.data.error.code,'COURT_EDO_ATTACK_REQUIRED');assert.deepEqual(effects(h),before);
-  const spy=await covert(h,staff,'dispatch',{sourceCastleId:'kyoto_gosho',target:{kind:'player',playerId:admin.user.id,castleId:'edo'},count:1,mode:'scout'});assert.equal(spy.data.result.report.target.castleId,'edo');
+  const spy=await covert(h,staff,'dispatch',{sourceCastleId:'kyoto_gosho',target:{kind:'player',playerId:admin.user.id,castleId:'edo'},count:1,mode:'scout'});assert(spy.data.marching);h.now+=spy.data.march.remainingMs;
+  const observed=(await h.api('/marches',{token:staff.token})).data;assert.equal(observed.save.state.covert.reports.at(-1).target.castleId,'edo');await syncFieldWriter(h,staff);
   updateSave(h,staff,s=>{s.command=3;});await appoint(h,staff);assert.equal((await h.api('/covert',{token:staff.token})).data.covert.rules.canAttackEdoFromKyoto,true);
   const targetBefore=row(h,admin),body=covertBody(h,staff,{stationId,incidentId}),result=(await h.api('/covert/retaliate',post(staff,body))).data;assert(result.result.battle);assert.deepEqual(result.result.battle.defenderLost,{troops:0,garrison:0});assert.deepEqual(row(h,admin),targetBefore);assert.equal(count(h,'covert_battles'),1);
   await appoint(h,null);const after=effects(h),replay=(await h.api('/covert/retaliate',post(staff,body))).data;assert.equal(replay.idempotent,true);assert.deepEqual(effects(h),after);

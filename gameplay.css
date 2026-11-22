@@ -22,22 +22,22 @@ body:not(.at-title) {
   background: var(--bg);
 }
 #app #main {
-  --chapter-art: url("assets/campaign/town.webp");
+  --chapter-art: url("assets/chronicle/town.webp");
   --chapter-focus: 70% 53%;
   --chapter-rule: #d3ae74;
   background: radial-gradient(ellipse at 80% 0, #46556135, transparent 45%), #101c28;
   scrollbar-color: #536471 #13202c;
 }
 #app #main:is([data-view="map"],[data-view="field"],[data-view="roaming"],[data-view="covert"],[data-view="army"]) {
-  --chapter-art: url("assets/campaign/war.webp");
+  --chapter-art: url("assets/chronicle/war.webp");
   --chapter-rule: #e0917a;
 }
 #app #main:is([data-view="council"],[data-view="court"]) {
-  --chapter-art: url("assets/campaign/court.webp");
+  --chapter-art: url("assets/chronicle/court.webp");
   --chapter-rule: #d5b48b;
 }
 #app #main:is([data-view="research"],[data-view="officers"],[data-view="crests"]) {
-  --chapter-art: url("assets/campaign/archive.webp");
+  --chapter-art: url("assets/chronicle/archive.webp");
   --chapter-rule: #aac8cb;
 }
 
@@ -243,7 +243,7 @@ body:not(.at-title) .navigation-dialog .navigation-pin.is-pinned {
 body:not(.at-title) :is(.social-profile-section,.social-guild-card,.social-friend-card,.social-message-content,.events-stage,.events-adviser,.progress-summary,.premium-product-card,.letters-message,.trade-offer) {
   color: var(--text); border-color: var(--line); background-color: #1d3340;
 }
-body:not(.at-title) .events-hero { background: linear-gradient(90deg,#182b39f5,#1d2d38a3),url("assets/campaign/war.webp") right center / cover; }
+body:not(.at-title) .events-hero { background: linear-gradient(90deg,#182b39f5,#1d2d38a3),url("assets/chronicle/war.webp") right center / cover; }
 body:not(.at-title) .events-stage:is(.active,.selected) { background: #34424a; border-color: #cfb07b; }
 body:not(.at-title) :is(.empty,.field-empty,.court-empty,.covert-empty,.roaming-empty,.events-empty,.navigation-empty) {
   color: #c8d7d8; border-color: #9bb2b56e; background: #192b38; border-radius: 4px;
@@ -283,3 +283,97 @@ body:not(.at-title) .social-launcher { --button-wash-start: #654b35f5; --button-
   #app #main :is(.page-heading,.court-heading,.roaming-heading,.covert-heading)::before { background: Canvas; }
   #app .sidebar .nav-item.active { border: 2px solid Highlight; }
 }
+
+/* The floating community control has its own space in the desktop footer. */
+html.sengoku-desktop-fit #app .game-footer {
+  min-height: 52px;
+  padding-inline-end: max(118px, calc(108px + env(safe-area-inset-right, 0px)));
+}
+html.sengoku-desktop-fit body:not(.at-title) .social-launcher {
+  inset: auto max(12px, env(safe-area-inset-right, 0px)) 4px auto;
+  width: 94px; max-width: 94px; height: 44px; min-height: 44px;
+  padding: 6px 9px; justify-content: center; gap: 6px; font-size: .94rem;
+}
+#app #main .town-scene-heading .scene-label { gap: 7px; flex-wrap: wrap; }
+#app #main .town-scene-heading .town-scene-name { color: #f4e9d0; font-size: 1.1rem; letter-spacing: .045em; }
+#app #main .town-scene-heading .scene-label > span { color: var(--muted); font-weight: normal; }
+html:not(.sengoku-desktop-fit) #app #main .town-workspace .town-panel { order: 0; margin-bottom: 12px; }
+html:not(.sengoku-desktop-fit) #app #main .town-overview { order: 1; }
+html.sengoku-navigation-ready:not(.sengoku-desktop-fit) #app .sidebar .navigation-menu-trigger { display: none; }
+html:not(.sengoku-desktop-fit) #app .sidebar {
+  padding-block: 7px;
+}
+html:not(.sengoku-desktop-fit) #app .clan-panel {
+  display: grid; align-items: center; grid-template-columns: minmax(0,1fr) auto;
+  gap: 2px 10px; margin: 0; padding: 5px 9px;
+}
+html:not(.sengoku-desktop-fit) #app .clan-panel .clan-line { grid-column: 1; grid-row: 1 / span 2; gap: 7px; }
+html:not(.sengoku-desktop-fit) #app .clan-panel .clan-progress { display: none; }
+html:not(.sengoku-desktop-fit) #app .clan-panel .clan-progress-label {
+  grid-column: 2; grid-row: 2; justify-content: end; gap: 5px;
+  margin: 0; font-size: .8rem; line-height: 1.4;
+}
+html:not(.sengoku-desktop-fit) #app .clan-panel .player-evaluation-entry {
+  grid-column: 2; grid-row: 1; width: auto; max-width: 100%;
+  min-height: 44px; margin: 0; padding: 5px 7px;
+}
+html:not(.sengoku-desktop-fit) #app .topbar {
+  gap: 3px 5px; padding-block: 3px 5px;
+}
+html:not(.sengoku-desktop-fit) #app .topbar :is(.resource,.touch-header-stat) {
+  min-height: 44px; padding: 3px 6px; gap: 1px 4px; align-content: center;
+}
+@media (max-width: 700px) {
+  html:not(.sengoku-desktop-fit) #app .topbar :is(.resource,.touch-header-stat) { grid-column: span 2; }
+  html:not(.sengoku-desktop-fit) #app .topbar :is(.resource-amount,.touch-header-stat-value) { font-size: 1rem; }
+  html:not(.sengoku-desktop-fit) #app .topbar :is(.resource,.touch-header-stat) .resource-label { font-size: .875rem; }
+  html:not(.sengoku-desktop-fit) #app .clan-panel .player-evaluation-entry-label { display: none; }
+  html:not(.sengoku-desktop-fit) #app .clan-panel .clan-line small { line-height: 1.4; }
+}
+@media (max-width: 430px) {
+  :is(#main,.modal) .officer-filter-heading { flex-wrap: wrap; gap: 3px 10px; }
+  :is(#main,.modal) .officer-filter-heading .text-link {
+    flex: none; width: auto; max-width: 100%; min-height: 44px; white-space: normal;
+    padding: 5px 8px; margin-inline-start: auto;
+  }
+}
+@media (max-width: 360px) {
+  html:not(.sengoku-desktop-fit) #app .clan-panel { grid-template-columns: minmax(0,1fr) fit-content(58%); }
+  html:not(.sengoku-desktop-fit) #app .topbar :is(.resource-amount,.touch-header-stat-value) {
+    font-size: .9rem; font-variant-numeric: tabular-nums;
+  }
+}
+@media (min-width: 700px) and (max-height: 500px) and (orientation: landscape) {
+  html:not(.sengoku-desktop-fit) #app .topbar {
+    grid-template-columns: minmax(105px,1.4fr) repeat(6,minmax(0,1fr)) auto;
+    align-items: center; gap: 4px; padding-inline: max(8px,env(safe-area-inset-left,0px)) max(8px,env(safe-area-inset-right,0px));
+  }
+  html:not(.sengoku-desktop-fit) #app .topbar .calendar { grid-column: 1; grid-row: 1; gap: 0; }
+  html:not(.sengoku-desktop-fit) #app .topbar .calendar b { font-size: 1rem; }
+  html:not(.sengoku-desktop-fit) #app .topbar .calendar > span { font-size: .8rem; }
+  html:not(.sengoku-desktop-fit) #app .topbar .header-actions { grid-column: 8; grid-row: 1; gap: 3px; }
+  html:not(.sengoku-desktop-fit) #app .topbar :is(.resource,.touch-header-stat) {
+    grid-column: span 1; padding-inline: 4px; row-gap: 0;
+  }
+  html:not(.sengoku-desktop-fit) #app .topbar :is(.resource-amount,.touch-header-stat-value) { font-size: .9rem; }
+  html:not(.sengoku-desktop-fit) #app .clan-panel { grid-template-columns: minmax(0,1fr) auto auto; }
+  html:not(.sengoku-desktop-fit) #app .clan-panel :is(.clan-line,.clan-progress-label,.player-evaluation-entry) { grid-row: 1; }
+  html:not(.sengoku-desktop-fit) #app .clan-panel .clan-progress-label { grid-column: 2; }
+  html:not(.sengoku-desktop-fit) #app .clan-panel .player-evaluation-entry { grid-column: 3; }
+  html:not(.sengoku-desktop-fit) #app #main { padding-block-start: 8px; }
+}
+html.sengoku-compact-input:not(.sengoku-desktop-fit) #app .topbar,
+html.sengoku-compact-input:not(.sengoku-desktop-fit) body:not(.at-title) #announcement-bar {
+  position: relative; top: auto;
+}
+html.sengoku-compact-input:not(.sengoku-desktop-fit) #app .sidebar-bottom,
+html.sengoku-compact-input:not(.sengoku-desktop-fit) .social-launcher {
+  visibility: hidden;
+}
+/* Narrow panels can wrap a resource and its shortfall without splitting the action. */
+:is(#main,.modal) .cost > [data-cost-resource] {
+  min-width: 0; max-width: 100%; flex-wrap: wrap; row-gap: 0;
+  white-space: normal; overflow-wrap: anywhere;
+}
+:is(#main,.modal) [data-cost-shortage]:empty { display: none; }
+#app #main .town-castle-upgrade-detail .cost > [data-cost-resource] { white-space: normal; }

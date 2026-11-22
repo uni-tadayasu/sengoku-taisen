@@ -24,6 +24,7 @@
   const article = document.querySelector('.article');
   const toc = document.querySelector('.toc-chapters');
   if (!article || !toc) return;
+  if (window.matchMedia?.('(max-width: 900px)').matches) toc.open = false;
   const list = toc.querySelector('ul');
   const links = [...(list?.querySelectorAll('a[href^="#"]') || [])];
   const sections = links.map(link => ({ link, target: document.getElementById(link.hash.slice(1)) })).filter(entry => entry.target);
@@ -37,21 +38,27 @@
   const input = search.querySelector('input'), status = search.querySelector('[role="status"]');
   const empty = document.createElement('p');
   empty.className = 'public-search-empty'; empty.textContent = '該当する項目がありません。別の言葉で検索してください。'; empty.hidden = true; list.after(empty);
+  const chapters = sections.map(({ link, target }) => ({
+    link,
+    name: normalize(link.textContent + ' ' + (target.matches('section') ? target.querySelector('h2, h3')?.textContent || '' : target.textContent)),
+    text: normalize(target.textContent)
+  }));
   status.textContent = '全' + links.length + '項目から探せます';
   input.addEventListener('input', () => {
     const terms = normalize(input.value).split(/\s+/).filter(Boolean);
+    const matches = text => terms.every(term => text.includes(term));
+    const namesMatch = chapters.some(chapter => matches(chapter.name));
     let count = 0;
-    for (const link of links) {
-      const target = document.getElementById(link.hash.slice(1));
-      const title = target?.matches('section') ? target.querySelector('h2, h3')?.textContent : target?.textContent;
-      const text = normalize(link.textContent + ' ' + (title || ''));
-      const matches = terms.every(term => text.includes(term));
-      link.closest('li').hidden = !matches;
-      if (matches) count++;
+    for (const chapter of chapters) {
+      const show = matches(namesMatch ? chapter.name : chapter.text);
+      chapter.link.closest('li').hidden = !show;
+      if (show) count++;
     }
     if (terms.length) toc.open = true;
     empty.hidden = count !== 0;
-    status.textContent = terms.length ? count + '件の項目が見つかりました' : '全' + links.length + '項目から探せます';
+    if (!terms.length) status.textContent = '全' + links.length + '項目から探せます';
+    else if (count && !namesMatch) status.textContent = '本文に含まれる項目が' + count + '件あります';
+    else status.textContent = count + '件の項目が見つかりました';
   });
   const progress = document.createElement('div');
   progress.className = 'public-reading-progress'; progress.setAttribute('aria-hidden', 'true');

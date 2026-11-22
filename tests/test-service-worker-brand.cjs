@@ -29,7 +29,7 @@ function fixture({offline = false, failInstall = false, cacheControl = ''} = {})
     match() { throw new Error('Cross-game cache lookup is forbidden'); }
   };
   const self = {location: {origin}, clients: {async claim() { calls.push(['claim']); }}, async skipWaiting() { calls.push(['skip']); }, addEventListener(name, callback) { listeners[name] = callback; }};
-  vm.runInNewContext(source, {self, caches, URL, Promise, Response: {error: () => ({error: true})}, fetch: async () => { if (offline) throw new Error('offline'); return {ok: true, type: 'basic', brand: 'network', headers: {get: () => cacheControl}, clone() { return {...this}; }}; }});
+  vm.runInNewContext(source, {self, caches, URL, Promise, Response: {error: () => ({error: true})}, fetch: async () => { if (offline) throw new Error('offline'); return {ok: true, status: 200, type: 'basic', brand: 'network', headers: {get: () => cacheControl}, clone() { return {...this}; }}; }});
   async function dispatch(name, request) {
     let response; const pending = [];
     listeners[name]({request, waitUntil(promise) { pending.push(promise); }, respondWith(promise) { response = promise; }});

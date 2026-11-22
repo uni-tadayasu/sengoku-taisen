@@ -107,7 +107,7 @@ test('image sitemap sends crawlers to visible artwork on each canonical page',()
 });
 
 test('social metadata points to the real VS JPEG and the legacy card URL serves the same image',()=>{
-  assert.match(site.ogImage.path,/^assets\/branding\/sengoku-vs-ogp-\d{8}\.jpg$/);
+  assert.match(site.ogImage.path,/^assets\/branding\/sengoku-vs-ogp-(?:\d{8}|v\d+)\.jpg$/);
   assert.equal(site.ogImage.type,'image/jpeg');
   const image=bytes(site.ogImage.path);
   assert.deepEqual(jpegSize(image),{width:site.ogImage.width,height:site.ogImage.height});

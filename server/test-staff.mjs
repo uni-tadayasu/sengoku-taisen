@@ -112,6 +112,9 @@ try{
   const defenderBefore=database.prepare('SELECT * FROM player_saves WHERE user_id=?').get(a.user.id),sharedBefore=database.prepare("SELECT * FROM staff_base WHERE id='kyoto_gosho'").get(),backupBefore=database.prepare('SELECT * FROM staff_campaign_backups WHERE user_id=?').get(a.user.id);
   let defeat;const random=crypto.getRandomValues;crypto.getRandomValues=array=>array.fill(0xffffffff);
   try{defeat=(await api('/field/attack',post(b.token,{targetPlayerId:a.user.id,targetCastleId:'kyoto_gosho',troops:300,tactic:'balanced',requestId:crypto.randomUUID(),deviceId:'ordinary-device',expectedRevision:attackerSaved.revision}))).data;}finally{crypto.getRandomValues=random;}
+  assert(defeat.marching);assert.equal(defeat.battle,null);tick(defeat.march.remainingMs);
+  const arrived=(await api('/marches?deviceId=ordinary-device',{token:b.token})).data;
+  assert.equal(arrived.history[0].id,defeat.march.id);assert.equal(arrived.history[0].status,'resolved');defeat={save:arrived.save,battle:arrived.history[0].battle};
   assert.equal(defeat.battle.battleMode,'reward');assert.equal(defeat.battle.won,false);assert.equal(defeat.battle.defenderRevision,defenderBefore.revision);assert.deepEqual(defeat.battle.defenderLost,{troops:0,garrison:0});
   assert.deepEqual(defeat.battle.loot,{gold:0,rice:0,wood:0,stone:0});assert.deepEqual(defeat.battle.rewards,{gold:0,rice:0,wood:0,stone:0});
   assert.equal(defeat.save.state.home,attackerSaved.save.state.home);assert.notEqual(defeat.save.state.castles.kyoto_gosho.owner,defeat.save.state.clan);

@@ -1,6 +1,6 @@
 {
   "id": "./",
-  "name": "戦国VS｜一城の志が、天下を動かす。",
+  "name": "戦国VS｜一城から、天下へ。",
   "short_name": "戦国VS",
   "description": "戦国VS公式。城下町を育て、武将を編成し、軍師AIと天下統一を目指す戦国ブラウザゲームです。PC・スマホ・タブレットで基本プレイ無料。同盟を結び、ほかの領主と攻城戦を楽しめます。",
   "lang": "ja",
@@ -11,13 +11,13 @@
   "theme_color": "#13171b",
   "icons": [
     {
-      "src": "assets/branding/sengoku-vs-icon-192-20261121.png",
+      "src": "assets/branding/sengoku-vs-icon-192-20261122.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "assets/branding/sengoku-vs-icon-512-20261121.png",
+      "src": "assets/branding/sengoku-vs-icon-512-20261122.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"

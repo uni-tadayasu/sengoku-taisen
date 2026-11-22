@@ -93,29 +93,38 @@ function structuredData(key, breadcrumbItems = []) {
   return {'@context':'https://schema.org','@graph':graph};
 }
 
-function quickTopics(p) {
-  const topics = [
-    ['#first-steps', '初めて遊ぶ', '城選び・最初の進め方'],
-    ['#device-controls', '画面と操作', 'PC・スマホ・タブレット'],
-    ['#castle-upgrades', '城を育てる', '天守・城郭のレベル上げ'],
-    ['#strategy', '軍師AIを使う', '提案・準備・自動進軍'],
-    ['#timed-events', '合戦と報酬', 'イベント・天下統一・幕府'],
-    [p.dir('guide/data-recovery'), '続きを引き継ぐ', '保存・端末変更・復元']
-  ];
-  return `<nav class="guide-quick" aria-labelledby="quick-topics-title"><h2 id="quick-topics-title">目的から探す</h2><ul>${topics.map(([href,title,description])=>`<li><a href="${href}"><strong>${title}</strong><span>${description}</span></a></li>`).join('')}</ul><a class="guide-quick-all" href="#page-contents">すべての項目を見る</a></nav>`;
+function quickTopics(key, p) {
+  const topics = {
+    guide: [
+      ['#first-steps','初めて遊ぶ','城選びと初日の内政'], ['#device-controls','画面と操作','PC・スマホ・タブレット'],
+      ['#castle-upgrades','城を育てる','天守と城郭の違い'], ['#strategy','軍師AIを使う','提案・準備・自動進軍'],
+      ['#timed-events','合戦と報酬','催事と天下統一'], [p.dir('guide/data-recovery'),'続きを引き継ぐ','端末変更と保存']
+    ],
+    recovery: [
+      ['#old-device','以前の端末がある','接続コードで引き継ぐ'],
+      ['#complete-backup','バックアップがある','保存したファイルから復元'],
+      ['#no-access','手元にデータがない','確認できる復元方法']
+    ],
+    about: [
+      ['#collection','収録内容','武将・城・施設の数と成長'], ['#artwork','戦国の絵巻','人物・建物の作品資料'],
+      ['#geography','地図と出典','拠点・地形の参考資料']
+    ]
+  }[key];
+  const title = {guide:'目的から探す', recovery:'手元のデータから選ぶ', about:'作品資料を開く'}[key];
+  return `<nav class="guide-quick" aria-labelledby="quick-topics-title"><div class="quick-heading"><h2 id="quick-topics-title">${title}</h2><a class="guide-quick-all" href="#page-contents">すべての項目を見る</a></div><ul>${topics.map(([href,title,description])=>`<li><a href="${href}"><strong>${title}</strong><span>${description}</span></a></li>`).join('')}</ul></nav>`;
 }
 
 function guideContent(p) {
   return [
     section('first-steps', '初めての領主へ', '開始城を選ぶ・最初の進め方', `
-      <p class="lead-paragraph">初めて遊ぶときは、タイトルの「城を選んで始める」から、はじまりの城を選びます。年月は、ほかのプレイヤーと同じ世界時計で動きます。</p>
+      <p class="lead-paragraph">初めての方はタイトルの「城を選んで始める」を押してください。家と難易度を決め、入城したい城を選ぶと、城下町での最初の普請へ進めます。</p>
       ${steps([
-        ['はじまりの城を選ぶ', '「城を選んで始める」で城の選択画面を開き、家・難易度・開始城を選びます。通常の開始城は、大都市拠点（江戸・京都御所・二条・大坂・名古屋）を除く124城です。接続中は空いている城の領主として、または領主のいる城の家臣として参加できます。すべての領主枠が埋まっていても家臣として始められます。駿府城も通常城として選べます。'],
+        ['はじまりの城を選ぶ', '全国124城から本拠を選びます。ほかの領主と遊ぶ場合は「領主として入城」か「家臣として参加」を選びます。領主枠がすべて埋まっていても、家臣として入城できます。未連携でまず個人の戦役を試す場合は「端末だけで遊ぶ」を選び、「端末だけで始める」で確定します。'],
         ['城下町の生産を整える', '田畑で兵糧、商業施設で金を生産します。木材と石材も集め、施設を選んで普請を進めます。「全64施設を管理」では、軍備・研究・外交の施設まで確認できます。'],
         ['武将を迎えて役目を任せる', '武将を登用・招集し、最大3名を軍団に編成します。内政を支える奉行も任命できます。同じ武将を軍団へ重複して編成することはできません。'],
         ['天下地図で次の一城を選ぶ', '自領に隣接する城を選び、偵察や外交を活用します。出陣するときは兵数・戦法・予測を確認しましょう。城を増やすほど、守備や兵糧の管理も大切になります。']
       ])}
-      <p>以前の続きへ戻る場合は、初回画面の<strong>「以前の領主を復元」</strong>から引き継げます。城を確定する前の状態は保存・自動送信しません。すでに保存されている進行は、開始城選択の追加によって変わりません。</p>
+      <p>同じブラウザに進行が保存されていれば、次回はタイトルの<strong>「物語の続きをひらく」</strong>で再開できます。機種変更などで新たに城を選ぶ画面が出たときは、<a href="${p.dir('guide/data-recovery')}">以前の領主を復元する手順</a>を先に確認してください。</p>
       <p>通常城の城郭と城下町施設は<strong>Lv.32</strong>まで、二条城・大坂城・名古屋城の城郭は<strong>Lv.48</strong>まで、江戸城の城郭は<strong>Lv.64</strong>まで、京都御所の城郭は<strong>Lv.128</strong>まで発展します。城の強化に応じて費用と効果が変わります。詳細画面では32段階の絵姿を見比べられ、Lv.33以降は最終形態の絵を使います。イラストの閲覧だけで資源やレベルが変わることはありません。</p>
       <a class="chapter-link" href="#castle-upgrades">本拠・城郭のレベルの上げ方を確認する</a>
     `, 'section-town'),
@@ -448,12 +457,12 @@ function guideContent(p) {
     `),
     section('questions', 'よくある質問', '対応端末・画面表示・音楽について', `
       <div class="faq"><h3>PCとスマートフォンの両方で遊べますか？</h3><p>PC・スマートフォン・タブレットのブラウザから利用できます。画面幅に合わせてメニュー・資源表示・操作欄を配置し、狭いPCウィンドウでもコンパクトな表示へ切り替わります。スマホでは下部のメニューでよく使う画面へ移り、「メニュー」から機能を検索できます。縦向き・横向きを切り替えても、画面内のスクロールで操作を続けられます。同じ領主IDを連携すれば、端末を変えて続けられます。</p>
-      <h3>開始する城を選べますか？</h3><p>初回の「はじまりの城を選ぶ」で、家・難易度・大都市拠点（江戸・京都御所・二条・大坂・名古屋）を除く124城から開始城を選び、「この城から始める」で確定します。選んだ1城のみを所持して始まります。以前の続きは「以前の領主を復元」から戻せます。</p>
+      <h3>開始する城を選べますか？</h3><p>初回は124城から選べます。空いている城の領主になる場合は「この城から始める」、仕える家臣になる場合は「この城の家臣として始める」で確定します。<a href="#first-steps">初めての城選びと進め方</a>に各モードの操作を掲載しています。</p>
       <h3>今の進行を別の城から始め直せますか？</h3><p>「保存・設定」から「新しい物語を始める」を選ぶと、開始城を選び直せます。確定すると現在の進行を新しい進行へ置き換え、置き換え前のセーブをバックアップとして保管します。今までの続きで遊ぶ場合は、この操作は不要です。</p>
       <h3>PCの表示領域は調節できますか？</h3><p>城下町は、左側に天守から手前の町並みまで全景を表示し、右側に施設の操作や進行状況をまとめています。左メニューの「領域を調整」を押すと、金色の境界をドラッグしてメニュー幅、上部の高さ、城下町・天下地図・共通フィールドの幅配分と表示高さを変えられます。境界を選んで矢印キーでも調整でき、「初期配置」で元に戻せます。配置はそのブラウザに保存されます。</p>
       <h3>画面の動きを控えめにできますか？</h3><p>ボタンやカードには、カーソルを合わせたときやクリック・タップしたときの反応があります。端末やブラウザの「動きを減らす」設定を有効にすると、位置移動・拡縮・波紋などを自動で抑え、色や枠線で操作状態を示します。</p>
       <h3>ほかのプレイヤーと、すべての城を奪い合いますか？</h3><p>天下地図の領国と戦役はプレイヤーごとのCPU戦です。共通フィールドでは、実際の領主が持つ二条城・大坂城・名古屋城を占領できます。江戸城・京都御所は占領できない報酬戦、通常本拠は領有を移さない限定襲撃です。年月・接続状況・交流は全員で共有します。</p>
-      <h3>音楽はどこで変更できますか？</h3><p>音符ボタンからBGMを有効にできます。16曲のオリジナルBGMを収録し、自動選曲、音楽帳からの手動選曲、音量調整に対応しています。</p><h3>スマホのマナーモード中も音を鳴らせますか？</h3><p>最初に再生ボタンをタップすると、対応するスマホ・タブレットではメディア再生としてBGMを鳴らします。端末のメディア音量を上げてください。ゲーム内で停止した音や音量0を勝手に解除することはありません。端末・ブラウザの再生制限によって音が出ない場合があります。</p></div>
+      <h3 id="music">音楽はどこで変更できますか？</h3><p>「保存・設定」でBGMの「停止中 · 再生」を押し、音量を調整します。「音楽帳を開く」で全16曲から好きな曲を選べます。元に戻すには「場面に合わせて自動選曲」を押してください。ゲームを始める前に<a href="${p.file('tools/music-audition.html')}">戦国の音楽帳で16曲を試聴</a>することもできます。</p><h3>スマホのマナーモード中も音を鳴らせますか？</h3><p>最初に再生ボタンをタップすると、対応するスマホ・タブレットではメディア再生としてBGMを鳴らします。端末のメディア音量を上げてください。ゲーム内で停止した音や音量0を勝手に解除することはありません。端末・ブラウザの再生制限によって音が出ない場合があります。</p></div>
       <a class="chapter-link" href="${p.dir('about')}">作品の収録内容・地図や家紋の出典を読む</a>
     `)
   ].join('\n');
@@ -475,7 +484,7 @@ function recoveryContent(p) {
     section('old-device', '以前の端末が使える場合', '接続コードで、同じ領主を呼び戻す。', `
       ${steps([
         ['以前の領主で接続している端末を開く', '領主名・領主ID・進行を確認します。進行が旧端末にしかない場合に備え、ゲームセーブか統合バックアップも保管しておきます。'],
-        ['接続コードを発行する', '旧端末の「交流」から「端末同期」を開き、「接続コードを発行」を選びます。コードの有効期限は10分で、使えるのは1回です。新しいコードを発行すると、以前の未使用コードは無効になります。'],
+        ['接続コードを発行する', '旧端末の「交流」から「端末同期」を開き、「接続コードを発行」を選びます。表示される英数字12文字のコードは10分間有効で、使えるのは1回です。新しいコードを発行すると、以前の未使用コードは無効になります。'],
         ['新しいサイトでコードを入力する', '新しい端末・URLで「交流」から「引き継ぎ」を開き、発行された接続コードを入力します。同じ領主として接続できるか、サーバーで確認します。'],
         ['表示された進行を確認して接続する', 'クラウド保存がある場合は「サーバーの進行で接続」を選びます。クラウド保存がない場合は、以前のゲームセーブを追加して引き継ぎます。']
       ])}
@@ -584,9 +593,9 @@ function aboutContent(p) {
         ['オリジナルBGM', '16曲', '—']
       ])}
       <div class="collection-total"><b>8,224</b><span>武将・城郭・施設の基本イラスト</span></div>
-      <p>8,224点は、配信用の画像シートに収めた各イラストの単位で数えています。画像ファイル数は256枚です。武将にはD・C・B・A・S・SS・SSS・Uの8ランクがあります。</p>
+      <p>武将はD・C・B・A・S・SS・SSS・Uの8ランクで衣装や背景が変わります。城郭と施設は、普請が進むにつれて建物や周囲の風景が変化します。</p>
       <p>ゲーム内の施設と通常城の城郭は<strong>Lv.32</strong>まで、二条城・大坂城・名古屋城の城郭は<strong>Lv.48</strong>まで、江戸城の城郭は<strong>Lv.64</strong>まで、京都御所の城郭は<strong>Lv.128</strong>まで育成できます。城郭と施設の絵姿はそれぞれ32段階で、大都市のLv.33以降は最終形態のイラストを使います。</p>
-      <p>音楽は箏・三味線・笛・笙・太鼓などをイメージして構成した、本作オリジナルの16曲。ブラウザ内で音を合成し、場面に合わせた自動選曲と音楽帳からの手動選曲に対応しています。</p>
+      <p>城下町、軍議、合戦、勝利などの場面に合わせて、箏・三味線・笛・笙・太鼓をイメージした16曲が流れます。<a href="${p.file('tools/music-audition.html')}">戦国の音楽帳</a>では、各曲の聴きどころと全編をゲームの外で試聴できます。</p>
     `),
     section('artwork', '城と武将のイラスト', 'ゲームの世界を描く、独自の表現。', `
       <p>武将は和風アニメ調、城や施設は発展が伝わる建築イラストとして制作しています。衣装・兜・装飾・背景・建物の構成を描き分けた、本作用の表現です。人物の実際の容姿や、城郭の厳密な復元図を示すものではありません。</p>
@@ -637,8 +646,8 @@ const pages = [
     ...site.pages.recovery,
     file: 'guide/data-recovery/index.html', slug: 'guide/data-recovery', key: 'recovery', label: 'データ復元',
     eyebrow: 'データ復元ガイド', heading: '領主の引き継ぎ',
-    lead: '端末を変えても、サイトのURLが変わっても。以前の領主と積み重ねた進行へ戻るために、手元のデータに合う手順を選びます。',
-    heroAction: 'ゲームを開いて引き継ぐ', secondary: ['手元のデータから選ぶ', '#choose'],
+    lead: '新しい端末で、育てた城と武将の続きを遊ぶための手順です。以前の端末が使えれば接続コードを、バックアップを持っていれば保存したファイルを使います。',
+    heroAction: 'ゲームを開く', secondary: ['復元方法を選ぶ', '#choose'],
     toc: [['choose','手元のデータから選ぶ'],['site-address','URL変更と保存先'],['old-device','接続コードで引き継ぐ'],['complete-backup','統合バックアップ'],['old-files','旧形式の2ファイル'],['cloud-priority','クラウドと復元元'],['relocated-home','本拠が移った場合'],['identity-only','領主データだけの場合'],['redirect','旧URLが転送される場合'],['no-access','復元できる範囲']],
     content: recoveryContent, closingTitle: '以前の領主で、再接続する。', closingText: 'ゲームを開き、「交流」から「引き継ぎ」を選んでください。'
   },
@@ -660,18 +669,19 @@ function render(page) {
   if (page.key === 'recovery') breadcrumbItems.push({name:'遊び方',url:canonical('guide'),href:p.dir('guide')});
   breadcrumbItems.push({name:page.label,url});
   const jsonld = structuredData(page.key, breadcrumbItems);
-  const nav = pages.map(({key, label, slug}) =>
+  const nav = ['share','guide','recovery','about','premium'].map(key=>pages.find(item=>item.key===key)).map(({key, label, slug}) =>
     `<a href="${p.dir(slug)}"${page.key === key ? ' aria-current="page"' : ''}>${esc(label)}</a>`
   ).join('');
   const header = `<header class="site-header"><div class="site-header-inner page-width">
     <a class="site-brand" href="${p.dir('')}" aria-label="戦国VS ゲームのトップへ"><img src="${p.file(site.favicon.path)}" alt="" width="44" height="44"><span><b>戦国VS</b><small>SENGOKU VS</small></span></a>
-    <button class="public-nav-toggle" type="button" hidden aria-expanded="false" aria-controls="public-site-nav">メニュー</button>
+    <button class="public-nav-toggle" type="button" hidden aria-expanded="false" aria-controls="public-site-nav"><span class="menu-lines" aria-hidden="true"></span>メニュー</button>
     <nav class="header-navigation" id="public-site-nav" aria-label="サイトの案内">${nav}<a class="nav-play" href="${p.dir('')}">ゲームを開く</a></nav>
   </div></header>`;
+  const footer = `<footer class="site-footer"><div class="footer-inner page-width"><a class="footer-brand" href="${p.dir('')}">${esc(site.name)} <span>SENGOKU VS</span></a><nav class="footer-nav" aria-label="フッターの案内">${nav}</nav><p class="copyright">© ${esc(site.publisher)}</p><p class="footer-note"><a href="${p.dir('about')}#copyright">著作権・作品資料</a>${['share','premium'].includes(page.key)?` <span>更新 <time datetime="${page.dateModified}">${modifiedLabel(page.dateModified)}</time></span>`: ''}</p></div></footer>`;
   const mobileArt = page.artwork.mobile ? `<source media="(max-width: 660px)" srcset="${p.file(page.artwork.mobile)}">` : '';
   const artwork = `<picture class="chapter-art">${mobileArt}<img src="${p.file(page.artwork.path)}" alt="${esc(page.artwork.alt)}" width="${page.artwork.width}" height="${page.artwork.height}" fetchpriority="high" decoding="async"></picture>`;
   if (['share', 'premium'].includes(page.key)) return (page.key === 'share' ? renderSharePage : renderPremiumPage)({
-    site, header, artwork,
+    site, header, footer, artwork,
     metadataHtml: metadataEntries(page.key).map(metaTag).join('\n  ') + `\n  <link rel="canonical" href="${url}">`,
     jsonLd: jsonScript(jsonld),
     iconHtml: brandLinks(p.file).join('\n  ')
@@ -704,13 +714,13 @@ function render(page) {
   ${header}
   <main id="content" class="page-width">
     <nav aria-label="パンくず"><ol class="breadcrumbs">${breadcrumbItems.map((item,i)=>`<li>${i===breadcrumbItems.length-1?`<span aria-current="page">${item.name}</span>`:`<a href="${item.href}">${item.name}</a>`}</li>`).join('')}</ol></nav>
-    <section class="hero chapter-hero" aria-labelledby="page-title">${artwork}<div class="hero-copy"><p class="eyebrow">${page.eyebrow}</p><h1 id="page-title">${page.heading}</h1><p class="hero-lead">${page.lead}</p><div class="hero-actions"><a class="action-link" href="${p.dir('')}">${page.heroAction}</a><a class="text-link" href="${secondaryHref}">${page.secondary[0]}</a></div></div></section>
-${page.key === 'guide' ? quickTopics(p) : ''}
-    <div class="reading-layout"><aside id="page-contents" class="toc" tabindex="-1"><nav aria-label="このページの目次"><p class="toc-title">このページの案内</p><details class="toc-chapters"><summary>すべての項目 <span>${page.toc.length}項目</span></summary><ul>${page.toc.map(([id,label])=>`<li><a href="#${id}">${label}</a></li>`).join('')}</ul></details></nav><div class="toc-foot"><p>${esc(site.publisher)}のゲームガイド。</p><a href="${p.dir('')}">戦国VSを開く</a></div></aside><article class="article" aria-label="${page.label}の本文"><p class="article-updated">内容更新：<time datetime="${page.dateModified}">${modifiedLabel(page.dateModified)}</time></p>${page.content(p)}</article></div>
+    <section class="hero chapter-hero folio-hero" aria-labelledby="page-title">${artwork}<div class="hero-copy"><p class="eyebrow">${page.eyebrow}</p><h1 id="page-title">${page.heading}</h1><p class="hero-lead">${page.lead}</p><div class="hero-actions"><a class="action-link" href="${p.dir('')}">${page.heroAction}</a><a class="text-link" href="${secondaryHref}">${page.secondary[0]}</a></div></div></section>
+${quickTopics(page.key, p)}
+    <div class="reading-layout"><aside id="page-contents" class="toc" tabindex="-1"><nav aria-label="このページの目次"><h2 class="toc-title">目次</h2><details class="toc-chapters" open><summary>すべての項目 <span>${page.toc.length}項目</span></summary><ul>${page.toc.map(([id,label])=>`<li><a href="#${id}">${label}</a></li>`).join('')}</ul></details></nav></aside><article class="article" aria-label="${page.label}の本文"><p class="article-updated">内容更新：<time datetime="${page.dateModified}">${modifiedLabel(page.dateModified)}</time></p>${page.content(p)}</article></div>
     <section class="closing"><div><h2>${page.closingTitle}</h2><p>${page.closingText}</p></div><a class="action-link" href="${p.dir('')}">ゲームを開く</a></section>
   </main>
   <nav class="reading-actions" aria-label="読書中の案内"><a href="#page-contents">目次へ</a><a href="${p.dir('')}">ゲームを開く</a></nav>
-  <footer class="site-footer"><div class="footer-inner page-width"><p class="footer-brand">${esc(site.name)} <span>城と群雄の戦記</span></p><nav class="footer-nav" aria-label="フッターの案内">${nav}</nav><p class="copyright">© ${esc(site.publisher)}</p><p class="footer-note">地図・人物・家紋の資料はゲーム概要に記載しています。</p></div></footer>
+  ${footer}
 </body>
 </html>
 `;
@@ -768,7 +778,7 @@ function updateHome() {
   if (!hasGraph) html = html.replace('</head>', `  ${graph}\n</head>`);
   // Keep the title concise while exposing help and recovery without entering the game.
   html = html.replace(/(<p class="launch-introduction">)[\s\S]*?(<\/p>)/, (_, before, after) => before + site.launchIntroduction.map(esc).join('<br>') + after);
-  const launchGuide = '<nav class="launch-guide-nav" aria-label="戦国VSの案内"><a href="sengoku-vs/"><img src="assets/campaign/war.webp" width="120" height="70" alt=""><span><strong>ゲーム紹介</strong><small>内政から天下統一まで</small></span></a><a href="guide/"><img src="assets/campaign/town.webp" width="120" height="70" alt=""><span><strong>遊び方</strong><small>城主のための操作ガイド</small></span></a><a href="guide/data-recovery/"><img src="assets/campaign/archive.webp" width="120" height="70" alt=""><span><strong>引き継ぎ・復元</strong><small>セーブデータの移行</small></span></a></nav>';
+  const launchGuide = '<nav class="launch-guide-nav" aria-label="戦国VSの案内"><a href="sengoku-vs/"><img src="assets/chronicle/war.webp" width="120" height="70" alt=""><span><strong>ゲーム紹介</strong><small>内政・編成・合戦の流れ</small></span></a><a href="guide/"><img src="assets/chronicle/town.webp" width="120" height="70" alt=""><span><strong>遊び方</strong><small>城を選んだ後の進め方</small></span></a><a href="guide/data-recovery/"><img src="assets/chronicle/archive.webp" width="120" height="70" alt=""><span><strong>引き継ぎ・復元</strong><small>領主とセーブデータの移行</small></span></a></nav>';
   // Keep an authored title composition intact: the story owns its guide nav,
   // and the subtitle's intentional line break is not a metadata replacement.
   let hasLaunchGuide = false;

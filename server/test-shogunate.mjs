@@ -17,13 +17,13 @@ function assertContract(value,receipt=null,record=null){
 const row=(h,p)=>h.sql.prepare('SELECT * FROM player_saves WHERE user_id=?').get(p.user.id),post=(p,body,expected=200)=>({method:'POST',token:p.token,body,expected});
 let count=0,calls=0;
 async function scope(name,fn){const h=harness();try{await fn(h);count++;console.log('PASS '+name);}finally{calls+=h.calls;h.close();}}
-async function player(h,name='幕府の検証'){const p=await h.session(name);p.deviceId='sg-device-'+p.user.id;const l=(await h.api('/sync/lease',post(p,{deviceId:p.deviceId}))).data,s=h.fresh();s.state.worldClock={id:l.clock.id,elapsedMs:l.clock.elapsedMs};s.state.turn=Math.floor(l.clock.elapsedMs/60000);s.state.realtime.elapsed=l.clock.elapsedMs%60000/1000;await h.api('/sync',{method:'PUT',token:p.token,body:{deviceId:p.deviceId,revision:l.revision,save:s}});return p;}
+async function player(h,name='幕府の検証',home='kiyosu'){const p=await h.session(name);p.deviceId='sg-device-'+p.user.id;const l=(await h.api('/sync/lease',post(p,{deviceId:p.deviceId}))).data,s=h.fresh(home);s.state.worldClock={id:l.clock.id,elapsedMs:l.clock.elapsedMs};s.state.turn=Math.floor(l.clock.elapsedMs/60000);s.state.realtime.elapsed=l.clock.elapsedMs%60000/1000;await h.api('/sync',{method:'PUT',token:p.token,body:{deviceId:p.deviceId,revision:l.revision,save:s}});return p;}
 async function change(h,p,fn,expected=200,deviceId=p.deviceId){const r=row(h,p),s=JSON.parse(r.save_json);fn(s.state);return h.api('/sync',{method:'PUT',token:p.token,body:{deviceId,revision:r.revision,save:s},expected});}
 async function unify(h,p){return change(h,p,s=>{for(const [id,c] of Object.entries(s.castles))if(!['edo','kyoto_gosho'].includes(id))c.owner=s.clan;s.won=false;});}
 const view=async(h,p)=>assertContract((await h.api('/shogunate',{token:p.token})).data.shogunate);
 async function forceFieldWin(run){const original=crypto.getRandomValues;crypto.getRandomValues=function(value){return value instanceof Uint32Array&&value.length===1?value.fill(0):original.call(crypto,value);};try{return await run();}finally{crypto.getRandomValues=original;}}
 async function lastFieldCastle(h){
- const attacker=await player(h,'最後の城を攻める領主'),defender=await player(h,'最後の城を守る領主');
+ const attacker=await player(h,'最後の城を攻める領主'),defender=await player(h,'最後の城を守る領主','inuyama');
  await change(h,attacker,s=>{for(const [id,c]of Object.entries(s.castles))if(!['edo','kyoto_gosho','osaka'].includes(id))c.owner=s.clan;s.resources.rice=50000;s.troops=10000;s.command=3;});
  await change(h,defender,s=>{s.castles.osaka={owner:s.clan,troops:10,wall:1,level:1};});
  h.sql.prepare('UPDATE pvp_protection SET ended_at=?,revision=revision+1').run(h.now);

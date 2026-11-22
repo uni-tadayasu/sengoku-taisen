@@ -5,11 +5,14 @@ const catalog = require('../premium-catalog.js');
 const { renderCatalog } = require('../premium.js');
 const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
 
-function renderPremiumPage({ site, metadataHtml, jsonLd, iconHtml, header }) {
+function renderPremiumPage({ site, metadataHtml, jsonLd, iconHtml, header, footer, artwork }) {
   const page = site.pages.premium, release = esc(site.release);
   const asset = name => `../${name}?v=${release}`;
-  const modified = String(page.dateModified || site.dateModified || '');
-  const modifiedLabel = modified.replace(/^(\d{4})-(\d{2})-(\d{2})$/, (_, year, month, day) => `${year}年${Number(month)}月${Number(day)}日`);
+  const prices = catalog.getProducts().map(product => {
+    const subscription = product.kind === 'subscription';
+    return `<a href="#premium-page-${esc(product.id)}-name"><strong>${esc(product.priceYen.toLocaleString('ja-JP'))}<span>${subscription ? '円 / 月' : '円'}</span></strong><span>${esc(product.name)}・税込</span></a>`;
+  }).join('');
+
   return `<!doctype html>
 <html lang="${esc(site.language || 'ja')}">
 <head>
@@ -39,11 +42,12 @@ function renderPremiumPage({ site, metadataHtml, jsonLd, iconHtml, header }) {
   ${header}
   <main id="content" class="page-width premium-page-main">
     <nav aria-label="パンくず"><ol class="breadcrumbs"><li><a href="../">戦国VS</a></li><li><span aria-current="page">有料版・支援</span></li></ol></nav>
-    <section class="premium-page-hero" aria-labelledby="page-title"><div><p class="eyebrow">外観コレクション・継続支援</p><h1 id="page-title">戦国VS プレミアム</h1><p>金の旗を掲げ、月明かりの城下を眺める。育てた一城を、あなたの好きな装いに。</p><p class="premium-hero-note">買い切りの外観は480円・980円。月額支援は780円（税込）です。</p><a class="action-link" href="#premium-page-preview-heading">外観を試す</a></div><figure class="premium-page-visual"><img src="../assets/premium/moonlit-castle-v1.webp" alt="月と城の灯り、水面の反射を描いた月影の城下の完成背景" width="1536" height="1024" decoding="async" fetchpriority="high"><figcaption>月影の城下 · ゲームに適用できる完成背景</figcaption></figure></section>
+    <section class="premium-page-hero hero chapter-hero folio-hero" aria-labelledby="page-title">${artwork}<div class="hero-copy"><p class="eyebrow">外観コレクション・継続支援</p><h1 id="page-title">戦国VS プレミアム</h1><p class="hero-lead">旗印を掲げ、城下町の眺めを変える。ゲームで身につけられる外観をこのページで試着できます。城育成・武将編成・合戦の基本プレイは無料です。</p><div class="hero-actions"><a class="action-link" href="#premium-page-preview-heading">外観を試す</a><a class="text-link" href="#premium-page-products-heading">商品と料金を見る</a></div></div></section>
+    <nav class="folio-index premium-editions" aria-label="商品の価格（税込）">${prices}</nav>
     ${renderCatalog({ catalog, surface: 'public', assetPrefix: '../', gamePrefix: '../', idPrefix: 'premium-page' })}
     <nav class="premium-page-return" aria-label="ゲームの案内"><a class="action-link" href="../">戦国VSを遊ぶ</a><a href="../guide/">遊び方を読む</a><a href="../about/">ゲーム概要</a></nav>
   </main>
-  <footer class="site-footer"><div class="footer-inner page-width"><p class="footer-brand">戦国VS <span>城と群雄の戦記</span></p><nav class="footer-nav" aria-label="フッターの案内"><a href="../sengoku-vs/">ゲーム紹介</a><a href="../guide/">遊び方</a><a href="../about/">ゲーム概要・出典</a><a href="../guide/data-recovery/">データ復元</a></nav><p class="copyright">© ${esc(site.publisher || 'KASAI SOLUTIONS')}</p><p class="footer-note">購入と装備は、ゲーム内で領主を確認してから。</p><p class="premium-updated">更新日：<time datetime="${esc(modified)}">${esc(modifiedLabel)}</time></p></div></footer>
+  ${footer}
 </body>
 </html>
 `;
