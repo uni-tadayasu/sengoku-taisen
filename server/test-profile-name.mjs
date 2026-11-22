@@ -95,8 +95,11 @@ await scope('historical chat, letters, ledgers, battles and empty deltas use the
   const revision=()=>Number(saved(h,actor).revision);
   await h.api('/guild/treasury/transfer',post(actor,{guildId:guild.id,resource:'gold',amount:1,direction:'deposit',requestId:'rename-ledger',deviceId:actor.deviceId,expectedRevision:revision()}));
   await h.api('/trades',post(actor,{targetPlayerId:viewer.user.id,offer:{gold:1},want:{},requestId:'rename-trade',deviceId:actor.deviceId,expectedRevision:revision()}));
+  // Keep the battle fixture outside the alliance's friendly-fire restriction.
+  await h.api('/guild/leave',post(viewer,{guildId:guild.id}));
   const random=crypto.getRandomValues;crypto.getRandomValues=function(array){return array instanceof Uint32Array&&array.length===1?array.fill(0):random.call(crypto,array);};
   try{await h.api('/field/attack',post(actor,{requestId:'rename-battle',targetPlayerId:viewer.user.id,targetCastleId:'nijo',troops:3000,tactic:'balanced',deviceId:actor.deviceId,expectedRevision:revision()}));}finally{crypto.getRandomValues=random;}
+  await h.api('/guild/join',post(viewer,{guildId:guild.id}));
   await h.api('/field/diplomacy',post(actor,{requestId:'rename-relation',targetPlayerId:viewer.user.id,action:'propose',deviceId:actor.deviceId,expectedRevision:revision()}));
   const records=['messages','base_letter_messages','field_battles','field_requests','guild_asset_requests','trade_requests','mail_campaigns'],before=tables(h,records),newName='過去表示の新名';
   await rename(h,actor,{name:newName,expectedName:actor.user.name});

@@ -303,7 +303,7 @@
   }
   function giftMarkup(gift) { return Object.entries(RESOURCES).filter(([key]) => gift[key] > 0).map(([key, label]) => `<span>${label}<b>${number(gift[key])}</b></span>`).join(''); }
   function personMarkup(player) {
-    return `<span class="player-evaluation-person">${global.SengokuAvatar?.markup?.({ id: player.playerId, name: player.name, avatarVersion: player.avatarVersion }, 'inline') || ''}<span class="player-evaluation-name" data-premium-player="${esc(player.playerId)}" data-premium-player-name="${esc(player.name)}">${global.SengokuPremiumRuntime?.nameMarkup?.(player.name, player.appearance) || esc(player.name)}</span>${global.SengokuEvaluationUI?.badge?.(player.evaluation) || ''}</span>`;
+    return `<span class="player-evaluation-person">${global.SengokuAvatar?.markup?.({ id: player.playerId, name: player.name, avatarVersion: player.avatarVersion }, 'inline') || ''}<span class="player-evaluation-name" data-premium-player="${esc(player.playerId)}" data-premium-player-name="${esc(player.name)}">${global.SengokuPremiumRuntime?.nameMarkup?.(player.name, player.appearance) || esc(player.name)}</span>${global.SengokuEvaluationUI?.badge?.(player.evaluation) || ''}${global.SengokuPublicCourt?.slot?.(player.playerId) || ''}</span>`;
   }
   function listMarkup(state, now) {
     if (!state.events.length) return `<div class="events-empty"><span class="events-seal" aria-hidden="true">陣</span><h2>${state.loading ? '催事・合戦を確認中' : state.admin ? '最初の設計案を作りましょう' : '現在、催事・合戦はありません'}</h2><p>${state.admin ? '戦い名と開催期間から、3つの戦場を編成します。' : '開催が決まると、ここに戦場と参加方法が届きます。'}</p></div>`;

@@ -53,6 +53,7 @@ function setup(options={}) {
     refresh:async()=>{control.refreshes++;trace.push('sync-refresh');return control.onRefresh?control.onRefresh():{ok:true};},
   };
   social.guildRequest=async(route,opts)=>{const call={route,options:clone(opts)};posts.push(call);trace.push('send-guild');return control.onPost?control.onPost(call):{ok:true,receipt:{id:'guild-transfer-1'}};};
+  social.expansionRequest=async(route,opts={})=>{const call={route,options:clone({method:'GET',...opts})};if(call.options.method==='GET'){gets.push(call);trace.push('get-expansion');return control.onGet?control.onGet(call):{ok:true};}posts.push(call);trace.push('send-expansion');return control.onPost?control.onPost(call):{ok:true,revision:control.status.revision,receipt:{id:'expansion-1'}};};
   context={
     game,roster,SengokuEngine,staffBaseId:'kyoto_gosho',URLSearchParams,Date,JSON,Math,Promise,
     state:()=>context.game.state,
@@ -72,7 +73,7 @@ function setup(options={}) {
     queueWorldProgress:()=>control.queued++,preserveInteraction:()=>{},closeModal:()=>{},updateBattlePreview:()=>{},syncMusic:()=>{},
   };
   vm.createContext(context);
-  vm.runInContext(['confirmedWorldClock','clockIsApplied','canMutate','syncMessage','requireWritable','save','backupCurrentSave','trustedBranchAuthority','applyBranchAuthority','applyCloudSave','applyDurableGift','restoreAdminAssets','processWorldClock','requestField'].map(fn).join('\n'),context);
+  vm.runInContext(['confirmedWorldClock','clockIsApplied','canMutate','syncMessage','requireWritable','save','backupCurrentSave','trustedBranchAuthority','applyBranchAuthority','applyCloudSave','applyDurableGift','restoreAdminAssets','processWorldClock','requestField','requestExpansion'].map(fn).join('\n'),context);
   return {c:context,control,stored,trace,posts,gets,events,clockAccepts};
 }
 const tests=[];
@@ -339,6 +340,42 @@ test('guild gateway rejects reads, nested routes and stale membership before a m
     await assert.rejects(h.c.requestField(route,{method,data:payload}));
   }
   assert.equal(h.posts.length,0);assert.equal(h.control.flushes,0);assert.equal(guildRecords(h).length,0);
+});
+
+const expansionCases=[
+ ['/progress/claim',{key:'d:20000:build'}],
+ ['/progress/exchange',{officerId:'officer-1',rank:'SS'}],
+ ['/alliance/rally/join',{operationId:'operation-1',troops:500}],
+ ['/alliance/rally/launch',{operationId:'operation-1'}],
+ ['/alliance/reinforcements/send',{targetPlayerId:'player-b',castleId:'nagoya',troops:500,hours:6}],
+ ['/alliance/units/claim',{unitId:'unit-1'}],
+ ['/alliance/treasury/claim',{withdrawalId:'withdrawal-1'}]
+];
+const expansionRecords=h=>[...h.stored.entries()].filter(([key])=>key.startsWith('sengoku-expansion-pending-v1:'));
+for(const [route,payload]of expansionCases){
+ test(route+' freezes local play, flushes current writer fields, then reconciles before success',async()=>{
+  const h=setup(),flush=deferred(),response=deferred(),refresh=deferred(),before=JSON.stringify(h.c.game.state);
+  h.control.onFlush=()=>flush.promise;h.control.onPost=()=>response.promise;h.control.onRefresh=()=>refresh.promise;
+  const task=h.c.requestExpansion(route,{method:'POST',data:{...payload,requestId:'intent-original',deviceId:'spoof',expectedRevision:999}});
+  await until(()=>h.control.flushes===1);assert.deepEqual(h.trace.slice(0,3),['clock-refresh','save','flush']);assert.equal(h.posts.length,0);assert.equal(h.c.canMutate(),false);assert.equal(h.c.save(),false);assert.equal(h.c.applyDurableGift({gold:50},'during-expansion').ok,false);assert.equal(JSON.stringify(h.c.game.state),before);
+  h.control.status.revision=19;flush.resolve({ok:true});await until(()=>h.posts.length===1);
+  const sent=h.posts[0];assert.equal(sent.route,route);assert.equal(sent.options.data.deviceId,'tab-a');assert.equal(sent.options.data.expectedRevision,19);assert.equal(sent.options.data.requestId,'intent-original');for(const[k,v]of Object.entries(payload))assert.deepEqual(sent.options.data[k],v);
+  assert.equal(expansionRecords(h).length,1);assert.equal(JSON.parse(expansionRecords(h)[0][1]).requestId,'intent-original');await assert.rejects(h.c.requestExpansion(route,{method:'POST',data:payload}));assert.equal(h.posts.length,1);
+  response.resolve({ok:true,revision:20,receipt:{id:'committed-expansion'}});await until(()=>h.control.refreshes===1);assert.equal(h.c.canMutate(),false);assert.equal(expansionRecords(h).length,1);assert.equal(JSON.parse(expansionRecords(h)[0][1]).committed,true);
+  const authoritative=JSON.parse(h.c.game.exportSave());authoritative.state.resources.gold-=20;h.c.game=SengokuEngine.fromSave(authoritative,roster);h.stored.set('save',h.c.game.exportSave());h.control.status.revision=20;refresh.resolve({ok:true});
+  const result=await task;assert.equal(result.receipt.id,'committed-expansion');assert.equal(h.c.game.state.resources.gold,authoritative.state.resources.gold);assert.equal(h.c.fieldActionPending,false);assert.equal(h.c.canMutate(),true);assert.equal(expansionRecords(h).length,0);
+ });
+ test(route+' retains the exact receipt ID and semantic payload across response loss and reload',async()=>{
+  const h=setup(),receipts=new Map();let executions=0;
+  h.control.onPost=async call=>{const id=call.options.data.requestId;executions++;receipts.set(id,{ok:true,revision:8,receipt:{id}});throw Error('expansion response lost');};
+  await assert.rejects(h.c.requestExpansion(route,{method:'POST',data:{...payload,requestId:'first-intent'}}),/response lost/);assert.equal(expansionRecords(h).length,1);assert.equal(h.c.fieldActionPending,false);assert.equal(h.control.refreshes,1);
+  const reopened=setup({stored:h.stored});reopened.control.status.revision=21;reopened.control.onPost=async call=>{if(receipts.has(call.options.data.requestId))return receipts.get(call.options.data.requestId);executions++;return{ok:true,revision:21,receipt:{id:'duplicate'}};};
+  const result=await reopened.c.requestExpansion(route,{method:'POST',data:{...payload,requestId:'new-button-id',expectedRevision:0,deviceId:'foreign'}});assert.equal(result.receipt.id,'first-intent');assert.equal(reopened.posts[0].options.data.requestId,'first-intent');assert.equal(reopened.posts[0].options.data.expectedRevision,21);assert.equal(reopened.posts[0].options.data.deviceId,'tab-a');assert.equal(executions,1);assert.equal(expansionRecords(reopened).length,0);
+ });
+}
+test('expansion reads bypass the writer flow and a changed account cannot finish another owner claim',async()=>{
+ const h=setup();await h.c.requestExpansion('/progress');assert.equal(h.gets[0].route,'/progress');assert.equal(h.control.flushes,0);
+ const flush=deferred();h.control.onFlush=()=>flush.promise;const task=h.c.requestExpansion('/progress/claim',{method:'POST',data:{key:'d:20000:build'}});await until(()=>h.control.flushes===1);h.control.user={...h.control.user,id:'player-other'};flush.resolve({ok:true});await assert.rejects(task,e=>e.code==='STALE_IDENTITY');assert.equal(h.posts.length,0);assert.equal(expansionRecords(h).length,0);assert.equal(h.c.fieldActionPending,false);
 });
 
 (async()=>{

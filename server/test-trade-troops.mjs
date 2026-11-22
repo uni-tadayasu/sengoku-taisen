@@ -141,13 +141,13 @@ await scope('historical five-asset hashes and zero-troop retries remain identica
   const legacyRefund=(await propose(h,a,b,{wood:10},{})).data.trade.id;await act(h,a,legacyRefund,'cancel');await act(h,a,legacyRefund,'claim');assert.equal(saved(h,a).state.troops,9000);
 });
 
-await scope('reduced capacity still allows exports and net troop reductions, while the million-soldier save limit is enforced',async h=>{
+await scope('reduced capacity still allows exports and net troop reductions, while the 100-million-soldier save limit is enforced',async h=>{
   const a=await fixture(h,'兵最大送信',1000000),b=await fixture(h,'兵最大受信',10000),limit=cap(h,b);assert(limit<10000);
   const net=(await propose(h,a,b,{troops:100},{troops:200})).data.trade.id;await act(h,b,net,'accept');assert.equal(saved(h,b).state.troops,9900);
   const remaining=saved(h,a).state.troops,id=(await propose(h,a,b,{troops:remaining},{})).data.trade.id;assert.equal(saved(h,a).state.troops,0);
   const receiver=row(h,b);assert.equal((await act(h,b,id,'accept',{},409)).data.error.code,'TROOP_LIMIT');assert.deepEqual(row(h,b),receiver);
   await act(h,a,id,'cancel');assert.equal(JSON.parse(delivery(h,id).assets_json).troops,remaining);
-  const invalid=saved(h,a);invalid.state.troops=1000001;await h.api('/sync',{method:'PUT',token:a.token,body:{deviceId:a.deviceId,revision:Number(row(h,a).revision),save:invalid},expected:400});assert.equal(saved(h,a).state.troops,0);
+  const invalid=saved(h,a);invalid.state.troops=100000001;await h.api('/sync',{method:'PUT',token:a.token,body:{deviceId:a.deviceId,revision:Number(row(h,a).revision),save:invalid},expected:400});assert.equal(saved(h,a).state.troops,0);
 });
 
 await scope('staff imports use projected shared-base capacity instead of personal saved buildings',async h=>{

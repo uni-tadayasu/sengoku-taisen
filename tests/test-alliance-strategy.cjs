@@ -1,0 +1,72 @@
+const assert=require('node:assert/strict');
+const {createController,parseDate,inputDate,operationCard,policyView}=require('../alliance.js');
+const now=Date.parse('2026-11-22T03:00:00Z');
+const context=()=>({playerId:'u_one',epoch:1,guildId:'g_one'});
+const data=()=>({ok:true,serverNow:now,guild:{id:'g_one',name:'同盟',role:'member'},policy:{joinMode:'approval',description:'参加歓迎',activity:'20時〜',withdrawRole:'officers',dailyLimit:100000000,approvalThreshold:500,newcomerHours:24,revision:1},operations:[],members:[],units:[],directory:[],applications:[],withdrawals:[],contributions:[]});
+const store=()=>{const values=new Map();return{getItem:k=>values.get(k)||null,setItem:(k,v)=>values.set(k,v),removeItem:k=>values.delete(k),values};};
+const deferred=()=>{let resolve,reject;const promise=new Promise((a,b)=>{resolve=a;reject=b;});return{promise,resolve,reject};};
+let count=0;
+async function test(name,run){await run();count++;console.log('PASS '+name);}
+(async()=>{
+ await test('unauthenticated context never loads alliance data',async()=>{
+  let calls=0;const c=createController({getContext:()=>({}),request:()=>{calls++;}});
+  assert.equal(await c.load(),false);assert.equal(calls,0);assert.match(c.snapshot().error,/領主を登録/);c.dispose();
+ });
+ await test('JST dates remain correct independent of browser timezone',async()=>{
+  assert.equal(inputDate(now),'2026-11-22T12:00');assert.equal(parseDate('2026-11-22T12:00'),now);
+  assert.equal(parseDate('2026-12-01T00:00'),Date.parse('2026-11-30T15:00:00Z'));
+ });
+ await test('an uncertain mutation keeps the same request on retry and browser reopen',async()=>{
+  const storage=store(),sent=[];let failure=true;
+  const options={getContext:context,storage,request:async()=>data(),mutate:async(route,b)=>{sent.push({route,data:JSON.parse(JSON.stringify(b))});if(failure)throw Error('通信切断');return{ok:true,result:{message:'帰還しました'}};}};
+  const c=createController(options);await c.load();assert.equal(await c.send('/alliance/units/claim',{unitId:'au_one'}),false);
+  const requestId=c.snapshot().pending.data.requestId;
+  assert.equal(await c.send('/alliance/units/claim',{unitId:'au_two'}),false);assert.equal(sent.length,1,'pending same-route intent must not become a different transfer');
+  c.dispose();failure=false;
+  const restored=createController(options);await restored.load();assert.equal(restored.snapshot().pending.data.requestId,requestId);
+  assert.equal(await restored.retry(),true);assert.deepEqual(sent[0],sent[1]);assert.equal(restored.snapshot().pending,null);assert.equal(storage.values.size,0);restored.dispose();
+ });
+ await test('fresh API conflicts clear an uncommitted intent, allowing correction',async()=>{
+  const storage=store();let status=409,calls=0;
+  const c=createController({getContext:context,storage,request:async()=>data(),mutate:async()=>{calls++;throw Object.assign(Error('収容力が足りません'),{status});}});
+  await c.load();assert.equal(await c.send('/alliance/units/claim',{unitId:'au_one'}),false);assert.equal(c.snapshot().pending,null);assert.equal(storage.values.size,0);
+  status=403;await c.send('/alliance/policy',{revision:0});assert.equal(c.snapshot().pending,null);assert.equal(calls,2);c.dispose();
+ });
+ await test('late data and target requests are discarded on membership changes',async()=>{
+  let identity=context();const response=deferred(),target=deferred();
+  const c=createController({getContext:()=>identity,request:()=>response.promise,readField:()=>target.promise,storage:store()});
+  const loading=c.load(),targets=c.loadTargets();identity={playerId:'u_two',epoch:2,guildId:'g_two'};
+  response.resolve(data());target.resolve({targets:[{playerId:'private-target'}]});
+  assert.equal(await loading,false);assert.equal(await targets,false);assert.equal(c.snapshot().data,null);assert.deepEqual(c.snapshot().targets,[]);c.dispose();
+ });
+ await test('an old account mutation cannot publish data or block a new account',async()=>{
+  let identity=context(),calls=0;const old=deferred(),storage=store();
+  const c=createController({getContext:()=>identity,request:async()=>data(),storage,mutate:async()=>{if(++calls===1)return old.promise;return{ok:true};}});
+  const pending=c.send('/alliance/units/claim',{unitId:'au_old'});identity={playerId:'u_new',epoch:2,guildId:'g_new'};
+  assert.equal(c.snapshot().sending,false);assert.equal(c.snapshot().pending,null);
+  assert.equal(await c.send('/alliance/units/claim',{unitId:'au_new'}),true);
+  old.resolve({ok:true,result:{message:'旧アカウントの内容'}});assert.equal(await pending,false);
+  assert(!c.snapshot().message.includes('旧アカウント'));assert.equal(c.snapshot().pending,null);c.dispose();
+ });
+ await test('a slow background read cannot overwrite the post-commit refresh',async()=>{
+  let reads=0;const stale=deferred(),latest=data();latest.guild.name='新しい同盟状態';
+  const c=createController({getContext:context,storage:store(),request:async()=>{reads++;return reads===2?stale.promise:reads>=3?latest:data();},mutate:async()=>({ok:true})});
+  await c.load();const loading=c.load();assert.equal(await c.send('/alliance/operations/rsvp',{operationId:'ao_one',response:'yes'}),true);
+  stale.resolve(data());assert.equal(await loading,false);assert.equal(c.snapshot().data.guild.name,'新しい同盟状態');c.dispose();
+ });
+ await test('storage failure never sends a nonrecoverable asset mutation',async()=>{
+  let writes=0;const c=createController({getContext:context,storage:{setItem(){throw Error('full');},getItem(){return null;}},request:async()=>data(),mutate:async()=>{writes++;}});
+  assert.equal(await c.send('/alliance/rally/join',{operationId:'ao_one',troops:1000}),false);assert.equal(writes,0);assert.match(c.snapshot().error,/保存/);c.dispose();
+ });
+ await test('private plan cards escape names and only show authorized assignment controls',async()=>{
+  const d=data();d.members=[{id:'u_two',name:'<img src=x onerror=alert(1)>'}];
+  const op={id:'ao_one',title:'<script>alert(1)</script>',note:'安全な表示',kind:'attack',creatorId:'u_other',startsAt:now,expiresAt:now+60000,status:'planned',castleName:'大坂城',castleId:'osaka',branchId:'osaka_east',troops:1000,assignments:[{id:'task_1',playerId:'u_two',label:'<b>東門</b>',done:false}],rsvps:[],result:null};
+  const html=operationCard(op,d,{id:'u_one'});assert(!html.includes('<script>'));assert(!html.includes('<img'));assert(html.includes('&lt;script&gt;'));assert(html.includes('東支拠点'));
+  assert(!html.includes('data-alliance="launch"'));assert(!html.includes('data-alliance="task"'));assert(!html.includes('data-alliance-form="assignment"'));
+  assert(operationCard(op,d,{id:'u_two'}).includes('data-alliance="task"'));
+  d.guild.role='owner';const owner=operationCard(op,d,{id:'u_one'});assert(owner.includes('data-alliance="launch"'));assert(owner.includes('data-alliance-form="assignment"'));
+  assert(policyView(d,{id:'u_one'}).includes('max="100000000"'));
+  d.guild.role='member';assert(!policyView(d,{id:'u_one'}).includes('data-alliance-form="policy"'));
+ });
+ console.log('Alliance browser: '+count+' scenarios passed.');
+})().catch(error=>{console.error(error);process.exitCode=1;});

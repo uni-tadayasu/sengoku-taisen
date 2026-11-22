@@ -306,7 +306,7 @@ try{
     assert.equal(listing.players.find(p=>p.playerId===alice.user.id).homeCastleId,'kiyosu');
     assert.equal(listing.players.find(p=>p.playerId===bob.user.id).homeCastleId,'kiyosu','Colocated bases remain separate real accounts');
     const protectedOperator=listing.players.find(p=>p.playerId===operator.user.id);
-    assert.equal(protectedOperator.homeCastleId,'edo');assert.equal(protectedOperator.attackable,false);
+    assert.equal(protectedOperator.homeCastleId,'edo');assert.equal(protectedOperator.attackable,true);assert.equal(protectedOperator.battleMode,'reward');assert.equal(protectedOperator.capturable,false,'Edo permits reward duels while keeping its owner protected');
     const own=await api('/field/me?deviceId='+a.cloud.getDevice().id,{token:alice.token});
     const follower=await api('/field/me?deviceId='+b.cloud.getDevice().id,{token:alice.token});
     assert.equal(own.attack.ready,true);assert.equal(follower.attack.ready,false,'The follower device cannot command a field raid');

@@ -50,7 +50,7 @@ test('an intentionally empty army stays empty after a reload instead of receivin
 
 test('legacy optional-field migration preserves custom assignments',()=>{
   const game=create(),expected=arrange(game),legacy=save(game);
-  for(const key of ['officerVariants','gachaHistory','giftReceipts','walking','cycle'])delete legacy.state[key];
+  for(const key of ['officerVariants','gachaHistory','giftReceipts','walking','roaming','covert','cycle'])delete legacy.state[key];
   const restored=E.fromSave(legacy,roster);
   assert.deepEqual(assignments(restored),expected);
   assert.deepEqual(assignments(E.fromSave(restored.exportSave(),roster)),expected);
@@ -76,7 +76,7 @@ test('an unverified imported staff view has no privileges and leaves its origina
   const unverified=E.fromSave(stored,roster);
   assert.equal(unverified.isStaff,false);
   assert.equal(unverified.isAdmin,false);
-  assert.equal(unverified.canOwnCastle('sunpu'),false);
+  assert.equal(unverified.canOwnCastle('kyoto_gosho'),false);
   assert.equal(unverified.getStaffBase(),null);
   assert.deepEqual(unverified.state.army,expected.army);
   assert.deepEqual(stored,source,'An unverified display must never replace the raw source used by the app');
@@ -88,7 +88,7 @@ test('confirmed dismissal removes shared-only appointments while keeping the per
   const fixture=staffFixture(),expected={army:fixture.expected.army,governors:{farm:fixture.expected.governors.farm}};
   const stored=save(fixture.game),demoted=E.fromSave(stored,roster,{isStaff:false});
   assert.deepEqual(assignments(demoted),expected);
-  assert.equal(demoted.canOwnCastle('sunpu'),false);
+  assert.equal(demoted.canOwnCastle('kyoto_gosho'),false);
   assert.equal(demoted.state.buildings.gold_mine,0);
   fixture.game.setRoleAccess({isAdmin:false,isStaff:false});
   assert.deepEqual(assignments(fixture.game),expected);

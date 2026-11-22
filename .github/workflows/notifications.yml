@@ -1,0 +1,33 @@
+name: Deliver game notifications
+on:
+  schedule:
+    - cron: '2-57/5 * * * *'
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/notifications.yml']
+permissions: {}
+concurrency:
+  group: notification-dispatch
+  cancel-in-progress: false
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Deliver opted-in notifications
+        env:
+          NOTIFICATION_TICK_URL: https://sengoku-tento.hisa-0128-1996.chatgpt.site/api/v1/notifications/tick
+        run: |
+          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 60 \
+            --retry 2 --retry-delay 10 --request POST \
+            --header 'Content-Type: application/json' --data '{}' \
+            "$NOTIFICATION_TICK_URL" > tick.json
+          python3 - <<'PYTHON'
+          import json
+          with open('tick.json', encoding='utf-8') as f:
+              result = json.load(f)
+          if not result.get('ok') or result.get('configured') is False:
+              raise SystemExit('Notification dispatcher is not ready')
+          print({k: result[k] for k in ('ok', 'sent', 'failed', 'checked', 'waiting') if k in result})
+          PYTHON

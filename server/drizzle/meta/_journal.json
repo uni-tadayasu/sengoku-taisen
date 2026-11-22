@@ -155,6 +155,34 @@
       "when": 1796947200000,
       "tag": "0021_audio_calls",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "6",
+      "when": 1797033600000,
+      "tag": "0022_player_progress",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "6",
+      "when": 1797120000000,
+      "tag": "0023_alliance_strategy",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "6",
+      "when": 1797206400000,
+      "tag": "0024_shared_conquest",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "6",
+      "when": 1797292800000,
+      "tag": "0025_protection_notifications",
+      "breakpoints": true
     }
   ]
 }

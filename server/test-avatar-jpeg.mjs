@@ -3,9 +3,9 @@ import {readFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 // Test the exact dependency-free parser shipped in the single-file Worker.
 const workerSource=readFileSync(new URL('./index.js',import.meta.url),'utf8');
-const parserStart=workerSource.indexOf('function normalizeAvatarJpeg(input) {'),parserEnd=workerSource.indexOf('\nfunction mapUser(',parserStart);
-assert(parserStart>0&&parserEnd>parserStart);
-const normalizeAvatarJpeg=Function('return ('+workerSource.slice(parserStart,parserEnd)+')')();
+const parserSource=workerSource.match(/^function normalizeAvatarJpeg\(input\) \{[\s\S]*?^\}/m)?.[0];
+assert(parserSource,'The standalone JPEG parser must remain present in the Worker');
+const normalizeAvatarJpeg=Function('return ('+parserSource+')')();
 
 const directory=fileURLToPath(new URL('./fixtures/avatar/',import.meta.url));
 let checks=0;

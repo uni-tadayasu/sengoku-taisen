@@ -1008,6 +1008,18 @@
     "url": "assets/kamon/asakura.svg"
   },
   {
+    "id": "court-group",
+    "clan": "朝廷",
+    "name": "宮門と光輪の群章",
+    "motif": "palacegate",
+    "kind": "group",
+    "status": "unverified",
+    "description": "京都御所と朝廷の勢力表示用に独自に描いたゲーム内の創作群章。",
+    "note": "宮門と光輪を組み合わせた朝廷表示用の創作群章。史実の皇室紋章を復刻したものではない。",
+    "sourceIds": [],
+    "url": "assets/kamon/court-group.svg"
+  },
+  {
     "id": "asahina",
     "clan": "朝比奈家",
     "name": "左三つ巴",

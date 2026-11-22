@@ -40,8 +40,8 @@ try{
   const one=(await join(h,a)).data,two=(await join(h,b,'guild',true)).data;await join(h,admin);await join(h,staff);
   assert.match(one.sessionId,/^vc_[a-f0-9]{32}$/);assert.equal(one.heartbeatMs,10000);assert.equal(one.leaseMs,45000);assert.equal(one.pollMs,2000);assert.equal(one.room.maxParticipants,8);assert.equal(one.relayAvailable,false);
   const roster=(await h.api('/voice/room?channel=guild',{token:a.token})).data;assert.equal(roster.participants.length,4);assert.equal(roster.participants.find(p=>p.sessionId===one.sessionId).isSelf,true);assert.equal(roster.participants.find(p=>p.sessionId===two.sessionId).muted,true);
-  for(const participant of roster.participants)assert.deepEqual(Object.keys(participant).sort(),['isSelf','joinedAt','muted','name','sessionId']);
-  const serialized=JSON.stringify(roster);for(const p of [a,b,admin,staff])assert(!serialized.includes(p.user.id));assert(!serialized.includes('isAdmin'));assert(!serialized.includes('isStaff'));assert(roster.participants.some(p=>p.name===admin.user.name));
+  for(const participant of roster.participants)assert.deepEqual(Object.keys(participant).sort(),['courtOffice','isSelf','joinedAt','muted','name','sessionId']);
+  const serialized=JSON.stringify(roster);for(const p of [a,b,admin,staff])assert(!serialized.includes(p.user.id));assert(!serialized.includes('isAdmin'));assert(!serialized.includes('isStaff'));assert.equal(roster.participants.find(p=>p.name===admin.user.name).courtOffice.title,'太政大臣');assert.equal(roster.participants.find(p=>p.name===staff.user.name).courtOffice.title,'参議');
  });
  await scope('offer answer ICE ordering, stable replay receipts, ack and exact room isolation',async h=>{
   const {players:[a,b]}=await alliance(h),{players:[other]}=await alliance(h,1,'別同盟'),{admin}=await administration(h),one=(await join(h,a)).data,two=(await join(h,b)).data,elsewhere=(await join(h,other)).data,privateCall=(await join(h,admin,'admin')).data;
@@ -118,7 +118,7 @@ try{
   h.env.VOICE_TURN_URLS='https://forged.invalid';assert.equal((await heartbeat(h,a,call.sessionId)).data.relayAvailable,false);
  });
  await scope('schema readiness checks voice tables and membership triggers; migration seeds old members',async h=>{
-  const {players:[a,b]}=await alliance(h);const health=(await h.api('/health')).data;assert.equal(health.version,'3.23.0');assert.equal(health.features.audioCalls,true);
+  const {players:[a,b]}=await alliance(h);const health=(await h.api('/health')).data;assert.equal(health.version,'4.0.0');assert.equal(health.features.audioCalls,true);
   h.sql.exec('DROP TRIGGER voice_guild_move');assert.equal((await h.api('/health',{expected:503})).data.error.code,'SERVICE_UNAVAILABLE');
   h.sql.exec('DROP TRIGGER voice_guild_join; DROP TRIGGER voice_guild_leave; DROP TABLE voice_signals; DROP TABLE voice_sessions; DROP TABLE voice_membership_epochs');await h.api('/health',{expected:503});
   for(const sql of readFileSync(new URL('./drizzle/0021_audio_calls.sql',import.meta.url),'utf8').split('--> statement-breakpoint').map(v=>v.trim()).filter(Boolean))h.sql.exec(sql);

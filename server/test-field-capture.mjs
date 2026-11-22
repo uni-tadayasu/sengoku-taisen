@@ -111,7 +111,7 @@ await scope('capturing a staff original home updates its backup atomically and d
 });
 
 await scope('server reward amounts respect caps and do not borrow defender resources',async h=>{
-  const operator=await fixture(h,'報酬の運営',{admin:true}),actor=await fixture(h,'上限報酬の領主',{mutate:s=>s.resources={gold:999999950,rice:999999999,wood:999999999,stone:999999998}}),before=row(h,operator),beforeActor=save(h,actor);
+  const operator=await fixture(h,'報酬の運営',{admin:true}),actor=await fixture(h,'上限報酬の領主',{mutate:s=>s.resources={gold:99999951,rice:100000000,wood:100000000,stone:99999999}}),before=row(h,operator),beforeActor=save(h,actor);
   const result=await outcome(true,()=>attack(h,actor,body(h,actor,operator,'edo')));assert.equal(result.battle.battleMode,'reward');assert.deepEqual(result.battle.rewards,{gold:49,rice:500,wood:0,stone:1});assert.deepEqual(result.battle.loot,zeros);assert.deepEqual(result.battle.defenderLost,{troops:0,garrison:0});assert.deepEqual(row(h,operator),before);assert.equal(result.battle.defenderRevision,before.revision);
   for(const key of resources)assert.equal(save(h,actor).state.resources[key],beforeActor.state.resources[key]+result.battle.rewards[key]-(key==='rice'?result.battle.foodCost:0));
 });

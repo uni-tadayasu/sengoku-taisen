@@ -7,7 +7,7 @@ const TRADE_ASSETS=Object.freeze(['gold','rice','wood','stone','magatama','troop
 const TRADE_NAMES={gold:'金銭',rice:'兵糧',wood:'木材',stone:'石材',magatama:'勾玉',troops:'兵士'};
 // Troops also have the engine's building/governor capacity. The save format
 // separately validates state.troops at no more than one million.
-const TRADE_RULES=Object.freeze({assets:TRADE_ASSETS,maxAmount:1000000,balanceLimit:999999999,troopBalanceLimit:1000000,maxPending:20});
+const TRADE_RULES=Object.freeze({assets:TRADE_ASSETS,maxAmount:1000000,balanceLimit:100000000,troopBalanceLimit:100000000,maxPending:20});
 const TRADE_GATE='EXISTS(SELECT 1 FROM trade_requests WHERE actor_id=? AND request_id=? AND commit_token=?)';
 const TRADE_SELECT=`SELECT t.*,d.recipient_id AS delivery_recipient_id,d.kind AS delivery_kind,d.assets_json AS delivery_assets_json,d.claimed_at
   FROM trades t LEFT JOIN trade_deliveries d ON d.trade_id=t.id`;

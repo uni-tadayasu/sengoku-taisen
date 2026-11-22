@@ -352,8 +352,11 @@ await scope('unequipped purchases appear on every public name and refresh histor
   assert.deepEqual(ledger.appearance,expected);assert.deepEqual((await read('/guild/treasury')).ledger[0].appearance,expected);
   const proposed=(await h.api('/trades',post(actor,{targetPlayerId:other.user.id,offer:{gold:1},want:{},requestId:'premium-trade',deviceId:actor.deviceId,expectedRevision:revision()}))).data;
   assert.deepEqual(proposed.trade.sender.appearance,expected);assert.deepEqual((await read('/trades')).trades[0].sender.appearance,expected);
+  // Purchase badges are verified against a legitimate opposing player.
+  await h.api('/guild/leave',post(other,{guildId:guild.id}));
   const original=crypto.getRandomValues;crypto.getRandomValues=function(array){return array instanceof Uint32Array&&array.length===1?array.fill(0):original.call(crypto,array);};
   let attacked;try{attacked=(await h.api('/field/attack',post(actor,{requestId:'premium-battle',targetPlayerId:other.user.id,targetCastleId:'nijo',troops:3000,tactic:'balanced',deviceId:actor.deviceId,expectedRevision:revision()}))).data;}finally{crypto.getRandomValues=original;}
+  await h.api('/guild/join',post(other,{guildId:guild.id}));
   assert.deepEqual(attacked.battle.attackerAppearance,expected);assert.deepEqual(attacked.battle.defenderAppearance.ownedProducts,[]);
   await h.api('/field/diplomacy',post(actor,{requestId:'premium-diplomacy',targetPlayerId:other.user.id,action:'propose',deviceId:actor.deviceId,expectedRevision:revision()}));
   const field=await read('/field');assert.deepEqual(field.players.find(p=>p.playerId===actor.user.id).appearance,expected);

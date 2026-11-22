@@ -268,9 +268,9 @@ test('the existing local Worker preserves staff assignments on shared-only facil
     await h.api('/sync',{method:'PUT',token:player.token,body:{deviceId,revision:lease.revision,save:save(personal)}});
     await h.api('/admin/staff',{method:'POST',token:admin.token,body:{targetPlayerId:player.user.id,action:'appoint',requestId:crypto.randomUUID()}});
     await h.api('/sync?deviceId='+deviceId,{token:player.token});
-    const shared=JSON.parse(h.sql.prepare("SELECT state_json FROM staff_base WHERE id='sunpu'").get().state_json);
+    const shared=JSON.parse(h.sql.prepare("SELECT state_json FROM staff_base WHERE id='kyoto_gosho'").get().state_json);
     shared.buildings.gold_mine=1;shared.initial.buildings.gold_mine=1;
-    h.sql.prepare("UPDATE staff_base SET state_json=?,revision=revision+1 WHERE id='sunpu'").run(JSON.stringify(shared));
+    h.sql.prepare("UPDATE staff_base SET state_json=?,revision=revision+1 WHERE id='kyoto_gosho'").run(JSON.stringify(shared));
     const latest=(await h.api('/sync?deviceId='+deviceId,{token:player.token})).data;
     const game=E.fromSave(latest.save,realRoster,{isStaff:true,staffBase:latest.staffBase});
     game.applyWorldClock(latest.clock);game.autoAssignGovernors();

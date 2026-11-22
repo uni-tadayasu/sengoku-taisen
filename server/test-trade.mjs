@@ -4,7 +4,7 @@ import {harness} from './test-support.mjs';
 // Actual Worker and all journal migrations, with one local SQLite transaction
 // per D1 batch. No request or player data leaves this process.
 const ASSETS=['gold','rice','wood','stone','magatama'];
-const LIMIT=999999999;
+const LIMIT=100000000;
 const vector=value=>Object.fromEntries(ASSETS.map(key=>[key,value?.[key]||0]));
 const balance=save=>({...save.state.resources,magatama:save.state.magatama});
 const add=(...values)=>Object.fromEntries(ASSETS.map(key=>[key,values.reduce((sum,value)=>sum+(value?.[key]||0),0)]));
@@ -225,7 +225,7 @@ await scope('pending limits, private pagination and summaries remain accurate af
   const a=await fixture(h,'一覧送信'),b=await fixture(h,'一覧受信'),ids=[];
   for(let i=0;i<20;i++)ids.push((await propose(h,a,b,{gold:1},{})).data.trade.id);
   const before=row(h,a);assert.equal((await propose(h,a,b,{gold:1},{},{},409)).data.error.code,'TRADE_PENDING_LIMIT');assert.deepEqual(row(h,a),before);assert.equal(count(h,'trades'),20);
-  let cursor='',seen=[];do{const page=(await h.api('/trades?box=incoming&limit=7'+(cursor?'&cursor='+encodeURIComponent(cursor):''),{token:b.token})).data;assert.equal(page.summary.incomingPending,20);assert.equal(page.summary.outgoingPending,0);assert.equal(page.rules.maxPending,20);assert.equal(page.rules.balanceLimit,LIMIT);assert.equal(page.rules.maxAmount,1000000);assert.deepEqual([...page.rules.assets].sort(),[...ASSETS,'troops'].sort());assert.equal(page.rules.troopBalanceLimit,1000000);seen.push(...page.trades.map(t=>t.id));cursor=page.nextCursor;}while(cursor);
+  let cursor='',seen=[];do{const page=(await h.api('/trades?box=incoming&limit=7'+(cursor?'&cursor='+encodeURIComponent(cursor):''),{token:b.token})).data;assert.equal(page.summary.incomingPending,20);assert.equal(page.summary.outgoingPending,0);assert.equal(page.rules.maxPending,20);assert.equal(page.rules.balanceLimit,LIMIT);assert.equal(page.rules.maxAmount,1000000);assert.deepEqual([...page.rules.assets].sort(),[...ASSETS,'troops'].sort());assert.equal(page.rules.troopBalanceLimit,LIMIT);seen.push(...page.trades.map(t=>t.id));cursor=page.nextCursor;}while(cursor);
   assert.deepEqual([...new Set(seen)].sort(),ids.sort());assert.equal(seen.length,20);
   for(const suffix of ['limit=0','limit=51','limit=1.5','box=everyone','cursor=bad'])await h.api('/trades?'+suffix,{token:a.token,expected:400});
   await act(h,a,ids[0],'cancel');const summary=(await h.api('/trades?box=outgoing',{token:a.token})).data.summary;assert.equal(summary.outgoingPending,19);assert.equal(summary.claimable,1);await propose(h,a,b,{gold:1},{});

@@ -20,7 +20,7 @@ async function fixture(name,{legacy=false}={}){
  const g=new GameEngine({clan:'織田家',officers:GAME_OFFICERS,seed:7});g.applyWorldClock((await api('/world-clock')).data.clock);const save=JSON.parse(g.exportSave());if(legacy){delete save.state.walking;delete save.state.roaming;delete save.state.covert;}
  await api('/sync',{method:'PUT',token:p.token,body:{deviceId:p.deviceId,revision:l.revision,save}});return p;
 }
-function paid(before,after,steps){for(const k of ['gold','rice','wood','stone'])assert.equal(after.resources[k],Math.min(999999999,before.resources[k]+steps*2),k);assert.equal(after.magatama,Math.min(999999999,before.magatama+steps*2));assert.equal(after.revision,before.revision+(steps>0?1:0));}
+function paid(before,after,steps){for(const k of ['gold','rice','wood','stone'])assert.equal(after.resources[k],Math.min(100000000,before.resources[k]+steps*2),k);assert.equal(after.magatama,Math.min(100000000,before.magatama+steps*2));assert.equal(after.revision,before.revision+(steps>0?1:0));}
 function barrier(fragment){let arrived=0,release;const pending=new Promise(r=>release=r);h.beforeBatch=async statements=>{if(statements.some(s=>s.sql.includes(fragment))){arrived++;if(arrived===2){h.beforeBatch=null;release();}await pending;}};return()=>arrived;}
 try{
  await api('/world-clock');sql.prepare("UPDATE world_clock SET running=0,base_elapsed_ms=0,anchor_real_ms=?,speed=1 WHERE id='world-v1'").run(h.now);
@@ -124,7 +124,7 @@ try{
  const rollback=await fixture('歩行の原子的復旧'),rs=(await start(rollback)).data.walkingSession;h.now+=5000;const rb=claimBody(rollback,rs,{totalSteps:10,activeMs:5000}),rbBefore={row:row(rollback),account:account(rollback),count:count(rollback)};
  sql.exec("CREATE TEMP TRIGGER reject_walking_account BEFORE UPDATE ON walking_accounts BEGIN SELECT RAISE(ABORT,'test rollback'); END");await claim(rollback,rb,500);sql.exec('DROP TRIGGER reject_walking_account');
  assert.deepEqual(row(rollback),rbBefore.row);assert.deepEqual(account(rollback),rbBefore.account);assert.equal(count(rollback),rbBefore.count);await claim(rollback,rb);
- const cap=await fixture('歩行の上限');const capSave=saved(cap);for(const k of ['gold','rice','wood','stone'])capSave.state.resources[k]=999999998;capSave.state.magatama=999999999;
+ const cap=await fixture('歩行の上限');const capSave=saved(cap);for(const k of ['gold','rice','wood','stone'])capSave.state.resources[k]=99999999;capSave.state.magatama=100000000;
  await api('/sync',{method:'PUT',token:cap.token,body:{deviceId:cap.deviceId,revision:row(cap).revision,save:capSave}});const cs=(await start(cap)).data.walkingSession;h.now+=5000;
  const capped=(await claim(cap,claimBody(cap,cs,{totalSteps:10,activeMs:5000}))).data;assert.deepEqual(capped.receipt.rewards,{gold:1,rice:1,wood:1,stone:1,magatama:0});assert.equal(account(cap).total_steps,10);
  sql.prepare("UPDATE world_clock SET speed=4,running=0 WHERE id='world-v1'").run();h.now+=5000;const sped=(await claim(cap,claimBody(cap,capped.walkingSession,{totalSteps:20,activeMs:10000}))).data;assert.equal(sped.receipt.deltaSteps,10);assert.equal(account(cap).total_steps,20);

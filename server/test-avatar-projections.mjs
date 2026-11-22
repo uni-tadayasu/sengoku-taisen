@@ -33,8 +33,11 @@ try{
  const revision=()=>Number(saved(actor).revision);
  await h.api('/guild/treasury/transfer',post(actor,{guildId:guild.id,resource:'gold',amount:1,direction:'deposit',requestId:'avatar-ledger',deviceId:actor.deviceId,expectedRevision:revision()}));
  await h.api('/trades',post(actor,{targetPlayerId:viewer.user.id,offer:{gold:1},want:{},requestId:'avatar-trade',deviceId:actor.deviceId,expectedRevision:revision()}));
+ // Combat projections use an opponent outside the current alliance.
+ await h.api('/guild/leave',post(viewer,{guildId:guild.id}));
  const random=crypto.getRandomValues;crypto.getRandomValues=function(array){return array instanceof Uint32Array&&array.length===1?array.fill(0):random.call(crypto,array);};
  try{await h.api('/field/attack',post(actor,{requestId:'avatar-battle',targetPlayerId:viewer.user.id,targetCastleId:'nijo',troops:3000,tactic:'balanced',deviceId:actor.deviceId,expectedRevision:revision()}));}finally{crypto.getRandomValues=random;}
+ await h.api('/guild/join',post(viewer,{guildId:guild.id}));
  await h.api('/field/diplomacy',post(actor,{requestId:'avatar-alliance',targetPlayerId:viewer.user.id,action:'propose',deviceId:actor.deviceId,expectedRevision:revision()}));
  await h.api('/admin/staff',post(operator,{targetPlayerId:staff.user.id,action:'appoint',requestId:crypto.randomUUID()}));
  await get('/sync?deviceId='+staff.deviceId,staff);
