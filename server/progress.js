@@ -26,11 +26,8 @@ async function globalMetrics(db,id){
 }
 function checkpoint(save,now,global){const s=save.state;return{at:now,resources:{...s.resources,magatama:s.magatama},metrics:metrics(save),home:s.home,troops:s.troops,buildings:{...s.buildings},castles:Object.fromEntries(Object.entries(s.castles).map(([id,v])=>[id,v.level])),tech:{...s.tech},attackCount:global?.attackCount||0};}
 function initial(now,save,global){const c=calendarKeys(now);return{version:1,calendar:c,totals:Object.fromEntries([...keys,'donations','trades','defenses'].map(k=>[k,0])),dayBase:null,weekBase:null,spent:0,lastVisit:now,checkpoint:checkpoint(save,now,global),returning:null,recovery:null,recap:null};}
-async function account(ctx,save,{ack=false}={}){
- const {db,user,helpers:h}=ctx,now=Date.now(),campaignId=save.state.walking.campaignId,current=metrics(save),global=await globalMetrics(db,user.id);
- await stmt(db,'INSERT INTO progress_accounts(user_id,data_json,commit_token,updated_at) VALUES(?,?,?,?) ON CONFLICT(user_id) DO NOTHING',user.id,JSON.stringify(initial(now,save,global)),'init',now).run();
- for(let attempt=0;attempt<4;attempt++){
-  const row=await stmt(db,'SELECT * FROM progress_accounts WHERE user_id=?',user.id).first(),data=JSON.parse(row.data_json),previous=await stmt(db,'SELECT observed_json FROM progress_campaigns WHERE user_id=? AND campaign_id=?',user.id,campaignId).first(),observed=previous?JSON.parse(previous.observed_json):{},next=copy(data),seen={};
+function observeMetrics(data,current,observed,global,now){
+  const next=copy(data),seen={};
   for(const key of keys){seen[key]=Math.max(n(observed[key]),n(current[key]));next.totals[key]=Math.min(MAX,n(next.totals[key])+Math.max(0,seen[key]-n(observed[key])));}
   for(const key of ['donations','trades','defenses'])next.totals[key]=Math.max(n(next.totals[key]),global[key]);
   // The earned/spent totals remain an audit trail; points are a capped balance.
@@ -44,6 +41,28 @@ async function account(ctx,save,{ack=false}={}){
   next.calendar=cal;
   if(now-next.lastVisit>=DAY&&(!next.returning||next.returning.key!==String(next.lastVisit)))next.returning={key:String(next.lastVisit),baseline:copy(next.totals),expiresAt:now+7*DAY};
   if(global.lastLoss&&next.recovery?.key!==global.lastLoss.id)next.recovery={key:global.lastLoss.id,baseline:copy(next.totals),expiresAt:Number(global.lastLoss.created_at)+3*DAY};
+  return {next,seen};
+}
+// Capture earned recruitment points from the verified outgoing campaign in
+// the same transaction, even if the player never opened their progress page.
+export async function prepareRelocationProgress(db,userId,save,now){
+ const campaign=save.state.walking.campaignId,global=await globalMetrics(db,userId);
+ const [account,prior]=await db.batch([stmt(db,'SELECT data_json,revision FROM progress_accounts WHERE user_id=?',userId),stmt(db,'SELECT observed_json FROM progress_campaigns WHERE user_id=? AND campaign_id=?',userId,campaign)]);
+ const row=rows(account)[0],observed=rows(prior)[0];
+ const {next,seen}=observeMetrics(row?JSON.parse(row.data_json):initial(now,save,global),metrics(save),observed?JSON.parse(observed.observed_json):{},global,now);
+ const guard=row?{sql:'EXISTS(SELECT 1 FROM progress_accounts WHERE user_id=? AND revision=?)',args:[userId,row.revision]}:{sql:'NOT EXISTS(SELECT 1 FROM progress_accounts WHERE user_id=?)',args:[userId]};
+ return {guard,statements:(gate,args,nonce)=>[
+  stmt(db,`INSERT INTO progress_accounts(user_id,data_json,revision,commit_token,updated_at) SELECT ?,?,1,?,? WHERE ${gate}
+    ON CONFLICT(user_id) DO UPDATE SET data_json=excluded.data_json,revision=progress_accounts.revision+1,commit_token=excluded.commit_token,updated_at=excluded.updated_at`,userId,JSON.stringify(next),nonce,now,...args),
+  stmt(db,`INSERT INTO progress_campaigns(user_id,campaign_id,observed_json) SELECT ?,?,? WHERE ${gate}
+    ON CONFLICT(user_id,campaign_id) DO UPDATE SET observed_json=excluded.observed_json`,userId,campaign,JSON.stringify(seen),...args)
+ ]};
+}
+async function account(ctx,save,{ack=false}={}){
+ const {db,user,helpers:h}=ctx,now=Date.now(),campaignId=save.state.walking.campaignId,current=metrics(save),global=await globalMetrics(db,user.id);
+ await stmt(db,'INSERT INTO progress_accounts(user_id,data_json,commit_token,updated_at) VALUES(?,?,?,?) ON CONFLICT(user_id) DO NOTHING',user.id,JSON.stringify(initial(now,save,global)),'init',now).run();
+ for(let attempt=0;attempt<4;attempt++){
+  const row=await stmt(db,'SELECT * FROM progress_accounts WHERE user_id=?',user.id).first(),data=JSON.parse(row.data_json),previous=await stmt(db,'SELECT observed_json FROM progress_campaigns WHERE user_id=? AND campaign_id=?',user.id,campaignId).first(),observed=previous?JSON.parse(previous.observed_json):{},{next,seen}=observeMetrics(data,current,observed,global,now);
   const old=next.checkpoint,changed=old&&now-old.at>=60000;
   const recap=changed?{since:old.at,until:now,resources:Object.fromEntries(['gold','rice','wood','stone','magatama'].map(k=>[k,(k==='magatama'?save.state.magatama:save.state.resources[k])-(old.resources?.[k]||0)])),completedBuildings:Object.entries(save.state.buildings).filter(([k,v])=>v>(old.buildings?.[k]||0)).map(([id,level])=>({id,level})),completedResearch:Object.entries(save.state.tech).filter(([k,v])=>v>(old.tech?.[k]||0)).map(([id,level])=>({id,level})),oldHome:old.home,home:save.state.home,troopDelta:save.state.troops-old.troops,unreadMail:global.unreadMail,lastAttackAt:global.lastLoss?.created_at||null}:null;
   if(recap){recap.attacks=global.attacks.filter(b=>b.at>=old.at);recap.attackCount=Math.max(0,global.attackCount-(old.attackCount??global.attackCount-recap.attacks.length));recap.completedCastles=Object.entries(save.state.castles).filter(([id,c])=>c.owner===save.state.clan&&c.level>(old.castles?.[id]??c.level)).map(([id,c])=>({id,level:c.level}));}

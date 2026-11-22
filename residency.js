@@ -46,6 +46,41 @@ function createAdmission(options){
   }
  }};
 }
+// Keep the destination, request ID and original revision through reloads.
+// Receipt lookup uses the current device and never performs a move.
+function createRelocation(options){
+ const owner=String(options.playerId),key='sengoku-residency-relocation-v1:'+encodeURIComponent(owner),storage=options.storage;
+ function pending(){
+  const raw=storage.getItem(key);if(!raw)return null;
+  const record=JSON.parse(raw);
+  if(record?.owner!==owner||!castleId(record.castleId)||typeof record.requestId!=='string'||typeof record.deviceId!=='string'||!Number.isSafeInteger(record.revision)||record.revision<0)throw Error('前回の移転記録を確認できません。端末同期で最新の本拠を確認してください。');
+  return record;
+ }
+ function clear(record){if(pending()?.requestId===record.requestId)storage.removeItem(key);}
+ async function run(id,expectedRequestId=null,{resend=false}={}){
+  if(!castleId(id))throw Error('移転先の城を選んでください。');
+  let record=pending();
+  if((record?.requestId||null)!==expectedRequestId||record&&record.castleId!==id)throw Error('移転記録が更新されました。画面を閉じて受付結果を確認してください。');
+  const device=options.writer(),lookup=Boolean(record)&&!resend;
+  if(!record){
+   record={owner,castleId:id,requestId:options.uuid(),deviceId:device.deviceId,revision:device.revision};
+   storage.setItem(key,JSON.stringify(record));
+  }
+  const {castleId:target,requestId,revision}=record;let received=false;
+  try{
+   const result=await options.send({castleId:target,requestId,deviceId:device.deviceId,revision},lookup);received=true;
+   if(result?.admission?.requestId!==requestId||result.admission.castleId!==target||!['lord','retainer'].includes(result.admission.mode)||!result.save?.state||!Number.isSafeInteger(result.revision))throw Error('移転の受付結果を確認できませんでした。同じ移転先で再確認してください。');
+   const accepted=await options.accept(result);if(!accepted?.ok)throw Error('最新の本拠を端末に反映できませんでした。移転結果を再確認してください。');
+   clear(record);return{result,superseded:accepted.superseded===true};
+  }catch(error){
+   // Only a definite rejection of a write releases the chosen destination.
+   // A missing receipt may still be racing the original transaction.
+   if(!lookup&&!received&&[400,404,409,422].includes(error.status)&&!['STALE_IDENTITY','ACCOUNT_ACCESS_CHANGED','LOCAL_WRITER_CHANGED'].includes(error.code))clear(record);
+   throw error;
+  }
+ }
+ return{pending,run};
+}
 const store=createStore();let opts={},generation=0,directoryPromise=null,dialog=null,dialogCastle='',roster=null,rosterError='',rosterLoading=false,rosterGeneration=0,returnFocus=null;
 function context(){const value=opts.getContext?.()||{playerId:'',user:null};return value.pending||value.banned?{...value,playerId:'',user:null}:value;}
 function identity(){const c=context(),id=String(c.playerId||c.user?.id||'');if(store.owner()!==id){store.reset(id);generation++;directoryPromise=null;roster=null;rosterGeneration++;renderSelf();}return id;}
@@ -56,7 +91,7 @@ async function loadDirectory({force=false}={}){
  try{return await task;}finally{if(directoryPromise===task)directoryPromise=null;}
 }
 function personHtml(person){if(!person)return'<span>領主未入城</span>';const id=esc(person.playerId),photo=global.SengokuAvatar?.markup?.({id:person.playerId,name:person.name,avatarVersion:person.avatarVersion},'inline')||'',name=global.SengokuPremiumRuntime?.nameMarkup?.(person.name,person.appearance)||esc(person.name),badge=global.SengokuEvaluationUI?.badge?.(person.evaluation)||'',office=global.SengokuPublicCourt?.slot?.(person.playerId)||'';const markup=`<span class="residency-person">${photo}<span class="player-evaluation-name" data-premium-player="${id}" data-premium-player-name="${esc(person.name)}">${name}</span>${badge}${office}</span>`;return global.SengokuLordProfile?.linkedName?.(person.playerId,person.name,markup)||markup;}
-function selfHtml(){const c=context(),member=store.snapshot().self;if(c.user?.isAdmin||c.user?.isStaff)return'';if(member)return`<div class="residency-self-copy"><span>城の所属</span><strong>${esc(member.castleName)}</strong><p>${esc(roleText(member))}</p>${member.role==='retainer'&&(member.successionPosition===null||member.eligible===false)?'<small>本拠の戦役を再開すると継承対象になります。</small>':''}</div><button type="button" class="button small" data-residency-open="${esc(member.castleId)}">城の領主と家臣</button>`;return`<div class="residency-self-copy"><span>城の所属</span><p>${c.user?'入城状況を確認できます。':'未登録の進行は、この端末の個人の戦役です。'}</p></div><button type="button" class="button small" ${c.user?'data-residency-choose':'data-residency-register'}>${c.user?'入城する城を選ぶ':'領主登録・ログイン'}</button>`;}
+function selfHtml(){const c=context(),member=store.snapshot().self;if(c.user?.isAdmin||c.user?.isStaff)return'';const move=global.SengokuBridge?.canShowRelocation?.()?'<button type="button" class="button small" data-action="relocate-open" aria-haspopup="dialog">本拠を移す</button>':'';if(member)return`<div class="residency-self-copy"><span>城の所属</span><strong>${esc(member.castleName)}</strong><p>${esc(roleText(member))}</p>${member.role==='retainer'&&(member.successionPosition===null||member.eligible===false)?'<small>本拠の戦役を再開すると継承対象になります。</small>':''}</div><button type="button" class="button small" data-residency-open="${esc(member.castleId)}">城の領主と家臣</button>${move}`;return`<div class="residency-self-copy"><span>城の所属</span><p>${c.user?'入城状況を確認できます。':'未登録の進行は、この端末の個人の戦役です。'}</p></div><button type="button" class="button small" ${c.user?'data-residency-choose':'data-residency-register'}>${c.user?'入城する城を選ぶ':'領主登録・ログイン'}</button>${move}`;}
 function compact(){identity();return`<section class="residency-self-panel" data-residency-self aria-label="城の所属">${selfHtml()}</section>`;}
 function renderSelf(){for(const host of global.document?.querySelectorAll?.('[data-residency-self]')||[]){const html=selfHtml();host.hidden=!html;if(global.SengokuStableDOM)global.SengokuStableDOM.patch(host,html);else if(host.innerHTML!==html)host.innerHTML=html;}}
 function rosterHtml(){const directory=store.snapshot().directory,castle=directory?.castles.find(row=>row.castleId===dialogCastle),name=castle?.castleName||global.SENGOKU_DATA?.castles?.find(row=>row.id===dialogCastle)?.name||dialogCastle;
@@ -77,7 +112,7 @@ function open(id){const chosen=castleId(id||store.snapshot().self?.castleId||opt
 function refreshIdentity(){const before=store.owner();identity();renderSelf();if(before!==store.owner()&&dialog?.open)close();}
 function configure(value){opts={...opts,...value};identity();renderSelf();return api;}
 function click(event){const button=event.target?.closest?.('[data-residency-open],[data-residency-close],[data-residency-refresh],[data-residency-more],[data-residency-register],[data-residency-choose]');if(!button||button.disabled)return;event.preventDefault();if(button.hasAttribute('data-residency-open'))open(button.dataset.residencyOpen);else if(button.hasAttribute('data-residency-close'))close();else if(button.hasAttribute('data-residency-refresh'))loadRoster();else if(button.hasAttribute('data-residency-more'))loadRoster(true);else if(button.hasAttribute('data-residency-register'))global.SengokuSocial?.open?.('profile');else opts.onChoose?.();}
-const api={configure,observe,loadDirectory,open,close,compact,refreshIdentity,renderSelf,self:()=>store.snapshot().self,directory:()=>store.snapshot().directory,revision:()=>store.snapshot().revision,createStore,cleanMembership,cleanDirectory,choices,choiceMode,roleText,membershipText,createAdmission,personHtml};
+const api={configure,observe,loadDirectory,open,close,compact,refreshIdentity,renderSelf,self:()=>store.snapshot().self,directory:()=>store.snapshot().directory,revision:()=>store.snapshot().revision,createStore,cleanMembership,cleanDirectory,choices,choiceMode,roleText,membershipText,createAdmission,createRelocation,personHtml};
 global.SengokuResidency=api;global.document?.addEventListener?.('click',click);
 if(typeof module!=='undefined'&&module.exports)module.exports=api;
 })(typeof window!=='undefined'?window:globalThis);

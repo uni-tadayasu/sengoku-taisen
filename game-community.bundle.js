@@ -1438,13 +1438,18 @@ async function voiceRequest(route,options={}){
  verify();const result=await api(route,{method,data:write?data:undefined,auth:true,background:true,identityEpoch:initial.epoch,keepalive:path==='/voice/leave'});verify();return result;
 }
 async function residencyRequest(route,options={}){
- const method=options.method||'GET',read=method==='GET'&&/^\/castles\/residency(?:\?[^#]*)?$/.test(route),write=method==='POST'&&route==='/castles/residency/start';
+ const method=options.method||'GET',read=method==='GET'&&/^\/castles\/residency(?:\?[^#]*)?$/.test(route),receipt=method==='POST'&&route==='/castles/residency/relocate?receipt=1',relocation=method==='POST'&&(route==='/castles/residency/relocate'||receipt),write=method==='POST'&&(route==='/castles/residency/start'||relocation);
  if(!read&&!write)throw Object.assign(Error('入城の操作を確認してください。'),{status:400});
  const query=route.split('?')[1]||'',params=new URLSearchParams(query),entries=[...params.entries()];
  if(read&&(entries.some(([key,value])=>!['castleId','cursor','limit'].includes(key)||value.length>500||/[\u0000-\u001f]/.test(value))||new Set(entries.map(([key])=>key)).size!==entries.length||params.has('castleId')&&!/^[A-Za-z0-9_-]{1,90}$/.test(params.get('castleId'))||params.has('limit')&&(!/^\d+$/.test(params.get('limit'))||Number(params.get('limit'))<1||Number(params.get('limit'))>100)))throw Object.assign(Error('城の名簿の条件を確認してください。'),{status:400});
  const initial=getCourtContext();
  const verify=()=>{const current=getCourtContext();if(initial.epoch!==current.epoch||initial.accountEpoch!==current.accountEpoch||initial.privilegeEpoch!==current.privilegeEpoch||initial.playerId!==current.playerId)throw staleIdentity();};
- if(write){const sync=global.SengokuCloudSync,status=sync?.getStatus?.(),data=options.data;if(!initial.user||initial.pending||initial.banned)throw Object.assign(Error('領主登録と接続を確認してから入城してください。'),{status:403,code:'RESIDENCY_IDENTITY_REQUIRED'});if(!status?.linked||!status.ready||!status.writable||typeof data?.deviceId!=='string'||data.deviceId!==sync?.getDevice?.().id||!Number.isSafeInteger(data?.revision)||data.revision!==status.revision)throw Object.assign(Error('操作端末と最新の進行を確認してください。'),{status:409,code:'REVISION_CONFLICT'});}
+ if(relocation){
+  const data=options.data;
+  if(!data||Object.keys(data).sort().join(',')!=='castleId,deviceId,requestId,revision'||typeof data.castleId!=='string'||!/^[A-Za-z0-9_-]{1,90}$/.test(data.castleId)||typeof data.requestId!=='string'||data.requestId.length<8||data.requestId.length>120)throw Object.assign(Error('移転先と受付番号を確認してください。'),{status:400});
+  if(initial.user?.isAdmin||initial.user?.isStaff)throw Object.assign(Error('この本拠は固定されています。'),{status:403,code:'FIXED_RESIDENCE'});
+ }
+ if(write){const sync=global.SengokuCloudSync,status=sync?.getStatus?.(),data=options.data;if(!initial.user||initial.pending||initial.banned)throw Object.assign(Error('領主登録と接続を確認してから入城してください。'),{status:403,code:'RESIDENCY_IDENTITY_REQUIRED'});if(!status?.linked||!status.ready||!receipt&&!status.writable||typeof data?.deviceId!=='string'||data.deviceId!==sync?.getDevice?.().id||!Number.isSafeInteger(data?.revision)||(relocation?data.revision<0:data.revision!==status.revision))throw Object.assign(Error('操作端末と最新の進行を確認してください。'),{status:409,code:relocation?'LOCAL_WRITER_CHANGED':'REVISION_CONFLICT'});}
  verify();const result=await api(route,{method,data:write?options.data:undefined,auth:write||Boolean(s.identity&&!s.accountBanned),background:true,identityEpoch:initial.epoch});verify();return result;
 }
 async function branchRequest(route,options={}){

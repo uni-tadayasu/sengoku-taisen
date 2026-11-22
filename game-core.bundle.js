@@ -4240,6 +4240,60 @@ const api=Object.freeze({version:1,coordinates,plan,nearest,distance,formatDurat
       if(options.staffBase&&this.isStaff)this.applyStaffBase(options.staffBase);
       if(options.branchAuthority!==undefined){const authority=this.setBranchAuthority(options.branchAuthority);if(!authority.ok)throw new Error(authority.message);}
     }
+    relocateResidence(castleId,options={}){
+      const previous=this.state,role=options?.role;
+      if(this.isAdmin||this.isStaff)return{ok:false,code:'RESIDENCY_FIXED_HOME',message:'役職に定められた本拠からは移転できません。'};
+      if(typeof castleId!=='string'||!Object.hasOwn(CASTLE_BY_ID,castleId)||MAJOR_CITY_IDS.includes(castleId))
+        return{ok:false,code:'INVALID_CASTLE',message:'大都市拠点以外の124城から移転先を選んでください。'};
+      // A defeated lord may already run the private realm from another holding,
+      // while still registered in the former castle's public household.
+      const registeredHome=options?.residencyCastleId??previous.home;
+      if(registeredHome===castleId)return{ok:false,code:'RESIDENCY_SAME_CASTLE',message:'現在の本拠と異なる城を選んでください。'};
+      if(role!=='lord'&&role!=='retainer')return{ok:false,code:'INVALID_RESIDENCY_ROLE',message:'移転先での立場を選んでください。'};
+
+      // Build the new campaign independently. No partial reset can reach the
+      // live model if validation fails, and queued actions keep their old scope.
+      const fresh=new SengokuEngine({clan:previous.clan,difficulty:previous.difficulty,
+        startCastle:castleId,officers:this.roster,seed:previous.seed});
+      const next=fresh.state;
+      const clock=options.worldClock??(previous.worldClock&&{...previous.worldClock,
+        running:previous.realtime.running||previous.gameOver,speed:previous.realtime.speed});
+      if(clock!==undefined&&clock!==null){
+        if(previous.worldClock&&clock.id===previous.worldClock.id&&clock.elapsedMs<previous.worldClock.elapsedMs)
+          return{ok:false,code:'INVALID_WORLD_CLOCK',message:'共通時刻を更新してから移転してください。'};
+        const synced=fresh.applyWorldClock(clock);
+        if(!synced.ok)return{ok:false,code:'INVALID_WORLD_CLOCK',message:synced.message};
+      }
+      for(const key of RESOURCES)next.resources[key]=Math.min(next.resources[key],previous.resources[key]);
+      next.troops=Math.min(next.troops,previous.troops);
+      const oldGarrison=previous.castles[previous.home];
+      next.castles[castleId].troops=Math.min(next.castles[castleId].troops,oldGarrison.owner===previous.clan?oldGarrison.troops:0);
+      next.magatama=Math.min(next.magatama,previous.magatama);
+
+      // Keep exactly the player's collected paintings. A relocation must never
+      // recruit the default household again or discard a previously earned rank.
+      next.officers=[...previous.officers];
+      next.officerVariants=[...previous.officerVariants];
+      next.army=[...previous.army];
+      next.progress.officers=copy(previous.progress.officers);
+      next.progress.presets=copy(previous.progress.presets);
+
+      next.giftReceipts=[...previous.giftReceipts];
+      next.claimedQuests=[...previous.claimedQuests];
+      next.captureRewards=[...new Set([...previous.captureRewards,castleId])];
+      next.walking.localSteps=previous.walking.localSteps;
+      next.walking.serverSteps=previous.walking.serverSteps;
+      if(previous.walking.localSession)next.walking.localSession={...previous.walking.localSession,closed:true};
+
+      next.log=[];
+      const message=CASTLE_BY_ID[castleId].name+'へ本拠を移し、'+(role==='lord'?'領主':'家臣')+'として新たな戦役を始めました。';
+      // A concurrent public admission can determine the office at commit time.
+      // The private diary records the move, independent of the resulting seat.
+      fresh.log(CASTLE_BY_ID[castleId].name+'へ本拠を移し、新たな戦役を始めました。','story');
+      this.state=next;
+      BRANCH_AUTHORITY.delete(this);BRANCH_PARENT_LOSSES.delete(this);HOME_DEFENSE_LOSSES.delete(this);
+      return{ok:true,previousHome:previous.home,home:castleId,role,message};
+    }
     get data(){return DATA;}
     evaluation(){return evaluateState(this.state,{officers:this.roster});}
     static evaluateState(state,options={}){return evaluateState(state,options);}
@@ -6554,7 +6608,7 @@ global.setInterval?.(()=>{if(!global.document.hidden&&options.getContext)refresh
   ].map(score => ({...score, bars:32, beats:4}));
   const TRACKS = Object.freeze(SCORES.map(t => Object.freeze({
     id:t.id,name:t.name,title:t.name,scene:t.scene,tempo:t.tempo,bars:t.bars,
-    recording:'assets/music/'+t.id+'.mp3?v=4.9.3-20261123',
+    recording:'assets/music/'+t.id+'.mp3?v=4.9.4-20261123',
     beatsPerBar:t.beats,duration:t.bars*t.beats*60/t.tempo,
     durationSeconds:Math.round(t.bars*t.beats*60/t.tempo),description:t.description
   })));
@@ -7309,7 +7363,7 @@ const officerArtRevision='chronicle-480';
 const previewDir='assets/art-previews/', previewRevision='atlas-20261123';
 const previewUrl=name=>previewDir+name+'.webp?v='+previewRevision;
 const numberTag=value=>String(value).padStart(2,'0');
-const frames=Object.fromEntries(ranks.map(r=>[r,`assets/frames/rank-${r}.svg?v=4.9.3-20261123`]));
+const frames=Object.fromEntries(ranks.map(r=>[r,`assets/frames/rank-${r}.svg?v=4.9.4-20261123`]));
 const operatorPortrait={id:'of_b0616adde162',rank:'U',url:'assets/operator-ieyasu-u.webp?v=ieyasu-anime-u-20261123'};
 const cache=new Map(),loaded=new Set(),paintRequests=new WeakMap(),deferredTitle=new Set();let observer,scheduled=false;
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
