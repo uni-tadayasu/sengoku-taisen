@@ -119,6 +119,46 @@ function markerPresentation(marker,options={}){
   return{custom,html:custom?appearance.html:marker.cluster?`<b>${marker.points.length}</b>`:marker.home?icon('home'):icon('castle'),label:custom&&typeof appearance.label==='string'?appearance.label:label};
 }
 function safeUrl(value){return typeof value==='string'&&/^(?:https?:\/\/|(?:\.\/)?assets\/|data:image\/)/i.test(value)?value:'';}
+// Geography is shared by every map view. Load it only when a view needs it,
+// retaining the latest redraw callback if data changes while it is in flight.
+let geographyRequest;
+const geographyViews = new WeakMap();
+function prepareGeography(container, redraw) {
+  if (global.SENGOKU_GEOGRAPHY?.land) return true;
+  const doc = container?.ownerDocument;
+  const src = doc?.querySelector?.('meta[name="sengoku-geography"]')?.content;
+  if (!src || !/^map-data\.js\?v=[a-f0-9]{12}$/.test(src)) return true;
+  const waiting = geographyViews.get(container);
+  if (waiting) { waiting.redraw = redraw; return false; }
+  const view = {redraw};
+  geographyViews.set(container, view);
+  container.innerHTML = '<p class="sg-map-unavailable" role="status">地形を読み込んでいます。</p>';
+  if (!geographyRequest) {
+    geographyRequest = new Promise((resolve, reject) => {
+      const script = doc.createElement('script');
+      script.src = src;
+      script.onload = () => {
+        script.remove();
+        if (global.SENGOKU_GEOGRAPHY?.land) resolve();
+        else reject(new Error('Missing map data'));
+      };
+      script.onerror = () => { script.remove(); reject(new Error('Map download failed')); };
+      doc.head.append(script);
+    }).catch(error => { geographyRequest = null; throw error; });
+  }
+  geographyRequest.then(() => {
+    geographyViews.delete(container);
+    if (container.isConnected) view.redraw();
+  }, () => {
+    if (!container.isConnected) { geographyViews.delete(container); return; }
+    container.innerHTML = '<div class="sg-map-unavailable"><p>地形を読み込めませんでした。</p><button type="button" class="button">地形を再読み込み</button></div>';
+    container.querySelector('button').addEventListener('click', () => {
+      geographyViews.delete(container);
+      view.redraw();
+    }, {once:true});
+  });
+  return false;
+}
 function mount(container,options={}){
   if(!container||typeof container.querySelector!=='function')return null;
   const previous=mounted.get(container);if(previous){previous.update(options);return previous;}
@@ -313,7 +353,7 @@ function mount(container,options={}){
   if(stored&&stored.region!==opts.region)lastView=null;
   resize();return controller;
 }
-const api={mount,project,unproject,projectBounds,geometryPath,fitBounds,zoomAt,castlePoints,layoutMarkers,layoutBranches,markerPresentation,scaleForView};
+const api={mount,prepareGeography,project,unproject,projectBounds,geometryPath,fitBounds,zoomAt,castlePoints,layoutMarkers,layoutBranches,markerPresentation,scaleForView};
 if(typeof module!=='undefined'&&module.exports)module.exports=api;
 global.SengokuWorldMap=api;
 })(typeof window!=='undefined'?window:globalThis);

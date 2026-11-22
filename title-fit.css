@@ -131,3 +131,6 @@ body.at-title #app { display: none; }
   #launch-enter.edition-enter { min-width:0; padding-inline:8px; gap:5px; font-size:1rem; letter-spacing:.015em; }
   #launch-enter [data-enter-label] { white-space:nowrap; }
 }
+
+/* Reuse the title’s town thumbnail for its small painted controls. */
+#launch-screen { --item-art: url("assets/responsive/town-240.webp"); }

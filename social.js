@@ -14,7 +14,7 @@ s.achievements={events:[],cursor:null,loaded:false,error:'',serverNow:null,expan
 const guildRoleName=role=>({owner:'盟主',officer:'副盟主',member:'メンバー'})[role]||'メンバー';
 const busy=new Set(),controllers=new Set();
 let recovery=null,recoveryEpoch=0,recoveryHeld=false,adminRecoveryRequestId=null;
-let mailStatusBusy=false,meGeneration=0;
+let mailStatusBusy=false,meGeneration=0,chatReadSequence=0;
 let courtAccessSequence=0;
 let voiceView=null;
 s.accountBanned=null;s.accountAccessPending=null;s.contentRevision=null;s.profileNameEdit=null;
@@ -48,7 +48,7 @@ function applyPlayerEvaluations(rows){
  // Only replace the non-interactive badge slot. Polling must leave composing
  // text, selection, focused controls and the profile's image editor mounted.
  for(const node of dialog?.querySelectorAll?.('[data-player-evaluation]')||[]){const value=updates.get(String(node.dataset.playerEvaluation));if(!value||!Object.hasOwn(value,'evaluation'))continue;const key=evaluationKey(value.evaluation);if(node.dataset.evaluationKey!==key){node.innerHTML=evaluationBadge(value.evaluation);node.dataset.evaluationKey=key;}}
- for(const node of dialog?.querySelectorAll?.('[data-premium-player]')||[]){const id=String(node.dataset.premiumPlayer),value=updates.get(id),own=id===String(s.user?.id);if(!value||!Object.hasOwn(value,'appearance')&&!Object.hasOwn(value,'name'))continue;if(Object.hasOwn(value,'name'))node.dataset.premiumPlayerName=value.name;if(!own&&!Object.hasOwn(value,'appearance')){const text=node.querySelector?.('.sengoku-premium-name-text');if(text)text.textContent=value.name;else node.textContent=value.name;continue;}const look=own?global.SengokuPremiumRuntime?.getAppearance?.():value.appearance,html=global.SengokuPremiumRuntime?.nameMarkup?.(node.dataset.premiumPlayerName,look)||esc(node.dataset.premiumPlayerName);if(node.innerHTML!==html)node.innerHTML=html;}
+ for(const node of dialog?.querySelectorAll?.('[data-premium-player]')||[]){const id=String(node.dataset.premiumPlayer),value=updates.get(id),own=id===String(s.user?.id);if(!value||!Object.hasOwn(value,'appearance')&&!Object.hasOwn(value,'name'))continue;if(Object.hasOwn(value,'name')&&node.dataset.premiumPlayerName!==value.name)node.dataset.premiumPlayerName=value.name;if(!own&&!Object.hasOwn(value,'appearance')){const text=node.querySelector?.('.sengoku-premium-name-text');setSocialText(text||node,value.name);continue;}const look=own?global.SengokuPremiumRuntime?.getAppearance?.():value.appearance,html=global.SengokuPremiumRuntime?.nameMarkup?.(node.dataset.premiumPlayerName,look)||esc(node.dataset.premiumPlayerName);if(node.innerHTML!==html)node.innerHTML=html;}
 }
 const hasAdminChat=(user=s.user)=>user?.isAdmin===true||user?.isStaff===true;
 function requireAdmin(){if(!s.user?.isAdmin)throw Error('この操作には運営権限が必要です。');}
@@ -230,10 +230,11 @@ function channel(){
 function chatKey(c){return `${c.channel}:${c.target||(c.channel==='guild'?s.user?.guildId:'')||''}`;}
 function chatView(c){return `<section class="social-chat"><div class="social-section-heading"><div><h3 data-social-chat-title>${c.player?linkedPlayerName(c.player,true):esc(c.title)}</h3><p>${esc(c.caption)}</p></div></div>${['guild','admin'].includes(c.channel)?'<div id="social-voice-room"></div>':''}<div id="social-message-list" class="social-message-list" role="log" aria-live="polite" aria-relevant="additions text"></div><form id="social-chat-form" class="social-chat-form"><label class="social-sr-only" for="social-chat-input">メッセージ</label><small id="social-chat-register">上位の領主へは敬語で送信します。</small><textarea id="social-chat-input" aria-describedby="social-chat-register" name="text" rows="2" maxlength="300" placeholder="言葉を交わす…（300文字まで）" required></textarea><div class="social-chat-form-bottom"><span>Enterで送信 · Shift+Enterで改行</span><button type="submit" class="social-button primary">${icon('send')}送信</button></div></form></section>`;}
 function renderMessages(){
- const c=channel(),list=$('#social-message-list');if(!c||!list)return;const key=chatKey(c),cache=s.chats.get(key),messages=cache?.messages||[],nearBottom=list.scrollHeight-list.scrollTop-list.clientHeight<90,oldTop=list.scrollTop;
+ const c=channel(),list=$('#social-message-list');if(!c||!list)return;const key=chatKey(c),cache=s.chats.get(key),messages=cache?.messages||[];
  if(!cache){patchSocial(list,empty('会話を読み込んでいます','しばらくお待ちください。'),{key});return;}
  if(!messages.length){if(list.dataset)delete list.dataset.signature;patchSocial(list,empty('まだ、言葉は届いていません','最初のひと言から、交流を始めましょう。'),{key});return;}
  const signature=JSON.stringify(messages.map(m=>[m.id,m.text,m.name,m.isAdmin===true,m.isStaff===true,m.avatarVersion||'',evaluationKey(m.evaluation),m.appearance||null,s.contentRevision]));if(list.dataset.signature===signature)return;
+ const oldTop=list.scrollTop,nearBottom=list.scrollHeight-oldTop-list.clientHeight<90;
  patchSocial(list,messages.map(m=>`<article data-stable-key="${esc(m.id)}" class="social-message ${String(m.userId)===String(s.user.id)?'own':''}">${socialAvatar({...m,id:m.userId})}<div class="social-message-content"><div class="social-message-meta"><strong>${linkedPlayerName({...m,id:m.userId})}</strong>${role(m)}<time>${esc(date(m.createdAt))}</time></div><p>${esc(m.text)}</p></div></article>`).join(''),{key});list.dataset.signature=signature;
  if(nearBottom||!cache.rendered)list.scrollTop=list.scrollHeight;else list.scrollTop=oldTop;cache.rendered=true;
 }
@@ -507,7 +508,7 @@ function confirmUI({title,description,details,confirmLabel='実行する',danger
 function clearConfirm(){const focus=s.confirm?.returnFocus;s.confirm=null;if(body)body.inert=false;const tabs=$('#social-tabs'),host=$('#social-confirm-host');if(tabs)tabs.inert=false;if(host)host.innerHTML='';if(focus?.isConnected)focus.focus();}
 async function loadMe({token,commit=true,updateRelations=true}={}){const epoch=authEpoch,roleEpoch=privilegeEpoch,generation=commit?++meGeneration:0,r=await api('/me',{token});if(commit&&generation===meGeneration&&epoch===authEpoch&&roleEpoch===privilegeEpoch&&s.identity){acceptUser(r.user);s.management=r.user?.isAdmin===true&&String(r.user.id)===String(s.identity.id)?{playerId:String(r.user.id),recoveryAvailable:r.management?.recoveryAvailable===true}:null;refreshOperatorRecoveryAccess();if(updateRelations){s.friends=r.friends||[];s.requests=r.requests||[];applyPlayerEvaluations([...s.friends,...s.requests].filter(p=>Object.hasOwn(p,'evaluation')).map(p=>({playerId:p.id,evaluation:p.evaluation,...(Object.hasOwn(p,'appearance')?{appearance:p.appearance}:{})})));}s.unreadMail=Number(r.unreadMail)||0;header();}return r;}
 async function refreshMailStatus(){
- if(mailStatusBusy||disposed||document.hidden||recoveryHeld||!s.identity||!s.user)return;
+ if(mailStatusBusy||pollBusy||s.meLoading||disposed||document.hidden||recoveryHeld||!s.identity||!s.user)return;
  mailStatusBusy=true;try{await loadMe({updateRelations:false});}catch(_){}finally{mailStatusBusy=false;}
 }
 async function loadConfig(){
@@ -516,11 +517,30 @@ async function loadConfig(){
  catch(_){connected(false);}finally{configBusy=false;if(!disposed&&!document.hidden){refreshMailStatus();configTimer=setTimeout(loadConfig,30000);}}
 }
 async function loadChat(){
- const c=channel();if(!c)return;const owner=s.identity?.id,epoch=privilegeEpoch,membershipEpoch=guildEpoch,revisionEpoch=contentEpoch,key=chatKey(c),cache=s.chats.get(key)||{messages:[],after:0,rendered:false},params=new URLSearchParams({channel:c.channel});if(cache.after>0)params.set('after',String(cache.after));if(c.target)params.set('target',c.target);if(s.contentRevision!==null)params.set('contentRevision',String(s.contentRevision));
- const r=await api('/chat?'+params);if(String(owner)!==String(s.identity?.id)||s.accountBanned||c.channel==='admin'&&(epoch!==privilegeEpoch||!hasAdminChat())||c.channel==='guild'&&(membershipEpoch!==guildEpoch||!s.user?.guildId))return;
+ const c=channel();if(!c)return;
+ const owner=s.identity?.id,epoch=privilegeEpoch,membershipEpoch=guildEpoch,revisionEpoch=contentEpoch,key=chatKey(c),read=++chatReadSequence;
+ const initial=s.chats.get(key),params=new URLSearchParams({channel:c.channel});
+ if(initial?.after>0)params.set('after',String(initial.after));
+ if(c.target)params.set('target',c.target);
+ if(s.contentRevision!==null)params.set('contentRevision',String(s.contentRevision));
+ const r=await api('/chat?'+params);
+ if(String(owner)!==String(s.identity?.id)||!s.user||s.accountBanned||s.accountAccessPending||c.channel==='admin'&&(epoch!==privilegeEpoch||!hasAdminChat())||c.channel==='guild'&&(membershipEpoch!==guildEpoch||!s.user.guildId))return;
  if(revisionEpoch!==contentEpoch&&!Number.isSafeInteger(r.contentRevision))return;
- const reset=r.reset===true||revisionEpoch!==contentEpoch,map=new Map((reset?[]:cache.messages).map(m=>[String(m.id),m]));for(const m of r.messages||[])map.set(String(m.id),m);
- cache.messages=[...map.values()].sort((a,b)=>Number(a.id)-Number(b.id)).slice(-200);cache.after=reset?Number(r.nextAfter)||0:Number(r.nextAfter)||cache.after;cache.contentRevision=s.contentRevision;if(reset)cache.rendered=false;s.chats.set(key,cache);applyPlayerEvaluations([...(r.messages||[]).filter(m=>Object.hasOwn(m,'evaluation')).map(m=>({playerId:m.userId,evaluation:m.evaluation,...(Object.hasOwn(m,'appearance')?{appearance:m.appearance}:{})})),...(Array.isArray(r.playerEvaluations)?r.playerEvaluations:[])]);if(channel()&&chatKey(channel())===key)renderMessages();
+ const cache=s.chats.get(key)||{messages:[],after:0,rendered:false};
+ // A send can finish its follow-up read before an older poll. Keep the newest applied page and cursor.
+ if(cache.read>read)return;
+ const reset=r.reset===true||revisionEpoch!==contentEpoch,incoming=r.messages||[];
+ if(reset||incoming.length){
+   const map=new Map((reset?[]:cache.messages).map(m=>[String(m.id),m]));
+   for(const message of incoming)map.set(String(message.id),message);
+   cache.messages=[...map.values()].sort((a,b)=>Number(a.id)-Number(b.id)).slice(-200);
+ }
+ cache.read=read;cache.after=reset?Number(r.nextAfter)||0:Math.max(Number(r.nextAfter)||0,cache.after);cache.contentRevision=s.contentRevision;
+ if(reset)cache.rendered=false;
+ s.chats.set(key,cache);
+ const updates=[...incoming.filter(m=>Object.hasOwn(m,'evaluation')).map(m=>({playerId:m.userId,evaluation:m.evaluation,...(Object.hasOwn(m,'appearance')?{appearance:m.appearance}:{})})),...(Array.isArray(r.playerEvaluations)?r.playerEvaluations:[])];
+ if(updates.length)applyPlayerEvaluations(updates);
+ const visible=channel();if(visible&&chatKey(visible)===key)renderMessages();
 }
 async function loadGuild(){if(!s.user)return null;const epoch=authEpoch,membershipEpoch=guildEpoch,owner=String(s.identity?.id),guildId=String(s.user.guildId||''),r=await api(guildId?'/guild':'/guilds');if(epoch!==authEpoch||membershipEpoch!==guildEpoch||owner!==String(s.identity?.id)||guildId!==String(s.user?.guildId||''))return null;s.guild=r.guild||null;s.members=r.members||[];if(r.guilds)s.guilds=r.guilds;applyPlayerEvaluations([...s.members.filter(p=>Object.hasOwn(p,'evaluation')).map(p=>({playerId:p.id,evaluation:p.evaluation,...(Object.hasOwn(p,'appearance')?{appearance:p.appearance}:{})})),...(r.guilds||[]).filter(g=>Object.hasOwn(g,'ownerEvaluation')).map(g=>({playerId:g.ownerId,evaluation:g.ownerEvaluation,...(Object.hasOwn(g,'ownerAppearance')?{appearance:g.ownerAppearance}:{})}))]);refreshGuildMembers();refreshGuildIcon();return r;}
 async function loadMail(){const r=await api('/mail');s.mail=r.mail||[];applyPlayerEvaluations(s.mail.flatMap(mail=>mail.participants||[]));}
@@ -533,13 +553,20 @@ async function refresh({view=false,silent=false}={}){
  if(s.tab==='recent-logins'){await loadRecentLogins();return;}if(s.tab==='online'){await loadOnline();return;}if(s.tab==='sync'){await global.SengokuCloudSync?.refresh?.();return;}if(s.tab==='recovery')return;if(pollBusy||disposed||!s.open||document.hidden||!s.user)return;pollBusy=true;clearTimeout(pollTimer);
  try{
   if(view&&s.tab==='profile'&&global.SengokuCloudSync?.getStatus?.().writable)await global.SengokuCloudSync.flush?.();
-  if(!s.user)return;const before={guild:s.user.guildId,guildRole:s.user.guildRole,friends:s.friends.map(f=>f.id).join(','),friendDisplay:friendsSignature(),requests:JSON.stringify(s.requests),admin:s.user.isAdmin,staff:s.user.isStaff};await loadMe();if(!s.user)return;
+  if(!s.user)return;const before={guild:s.user.guildId,guildRole:s.user.guildRole,friends:s.friends.map(f=>f.id).join(','),friendDisplay:friendsSignature(),requests:JSON.stringify(s.requests),admin:s.user.isAdmin,staff:s.user.isStaff};
+  // The world channel checks access on the server itself. Private rooms wait for fresh membership and role data.
+  const worldRead=s.tab==='world';
+  if(worldRead){
+    const results=await Promise.allSettled([loadMe(),loadChat()]);
+    for(const result of results)if(result.status==='rejected')throw result.reason;
+  }else await loadMe();
+  if(!s.user)return;
   if(s.tab==='guild'&&(view||before.guild!==s.user.guildId||before.guildRole!==s.user.guildRole||s.guildSection==='members'))await loadGuild();
   if(s.tab==='admin'&&s.adminSection==='staff'&&s.user.isAdmin)await loadStaff();
   if(s.tab==='mail'){await loadMail();if(!s.confirm&&s.user&&s.tab==='mail')patchMailView();}
-  else if(!s.confirm&&(view&&s.tab!=='profile'||before.guild!==s.user.guildId||before.admin!==s.user.isAdmin||before.staff!==s.user.isStaff||(s.tab==='friends'&&before.friends!==s.friends.map(f=>f.id).join(','))))render();
+  else if(!s.confirm&&(view&&s.tab!=='profile'&&s.tab!=='world'||before.guild!==s.user.guildId||before.admin!==s.user.isAdmin||before.staff!==s.user.isStaff||(s.tab==='friends'&&before.friends!==s.friends.map(f=>f.id).join(','))))render();
   else if(s.tab==='friends'&&(before.friendDisplay!==friendsSignature()||before.requests!==JSON.stringify(s.requests)))refreshFriendsView();
-  await loadChat();
+  if(!worldRead||s.tab!=='world')await loadChat();
  }catch(e){if(!silent&&e.code!=='STALE_IDENTITY')toast(e.message,true);if(e.status===401){acceptUser(null);s.error='領主情報を確認できませんでした。保存した領主データから再接続してください。';render();}}
  finally{pollBusy=false;schedulePoll();}
 }

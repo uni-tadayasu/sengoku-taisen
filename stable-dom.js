@@ -67,7 +67,7 @@
   writeAttribute(node,'aria-busy','true',stats);
  }
  function updateGhost(node,stats){
-  if(!node.hasAttribute?.('data-ghost-url'))return;
+  if(!node.hasAttribute?.('data-ghost-url')||node.hasAttribute('data-ghost-theme'))return;
   const image=node.querySelector?.('[data-art-url]');if(!image)return;
   if(node.getAttribute('data-ghost-url')!==image.getAttribute('data-art-url')){
    // Let the existing decorator choose and observe the new nested artwork.
@@ -83,7 +83,7 @@
   if(!element(live))return false;
   if(matchesIsland(live,fresh,options.selectors))return false;
   const next=attrs(fresh),styles=names(fresh),input=retainInput(live,options.preserveInputs),sourceInput=retainInput(fresh,true),wasOpen=tag(live)==='details'?live.open:null;
-  const assetChanged=previous.attrs.get('data-art-url')!==next.get('data-art-url')&&next.has('data-art-url'),tileChanged=assetChanged||['data-art-x','data-art-y'].some(name=>previous.attrs.get(name)!==next.get(name));
+  const assetChanged=next.has('data-art-url')&&['data-art-url','data-art-native','data-art-small'].some(name=>previous.attrs.get(name)!==next.get(name)),tileChanged=assetChanged||['data-art-x','data-art-y'].some(name=>previous.attrs.get(name)!==next.get(name));
   for(const name of new Set([...previous.attrs.keys(),...next.keys()])){
    const before=previous.attrs.get(name)??null,after=next.get(name)??null;if(before===after)continue;
    if(name==='class')patchClass(live,before,after,stats);

@@ -116,6 +116,7 @@ function mount(host,opts={}){
  const controller=createController({...opts,onChange:s=>{model=s;render();}}),identity=()=>model?.identity||{};
  function drawMap(){
   const el=host.querySelector('[data-alliance-map]');if(!el||!global.SengokuWorldMap){if(map){map.destroy();map=null;mapHost=null;}return;}
+  if(global.SengokuWorldMap.prepareGeography?.(el,drawMap)===false)return;
   const d=model.data,active=d.operations.filter(o=>o.status==='planned'&&o.expiresAt>d.serverNow),byCastle=new Map();for(const o of active){const list=byCastle.get(o.castleId)||[];list.push(o);byCastle.set(o.castleId,list);}
   const castles=(global.SENGOKU_DATA?.castles||[]).map(c=>({...c,owner:byCastle.has(c.id)?'同盟作戦':'',level:1,troops:byCastle.get(c.id)?.reduce((n,o)=>n+o.troops,0)||0,disabled:false}));
   const options={stateKey:'alliance-private-'+d.guild.id,castles,clan:'同盟作戦',allowRestrictedSelection:true,isAdmin:true,selectedId:selectedCastle,region:'all',markerSize:32,onSelect:id=>{selectedCastle=id;map?.update({selectedId:id});const relevant=active.filter(o=>o.castleId===id);opts.onMessage?.(relevant.length?relevant.map(o=>o.title).join(' / '):'この城に同盟作戦はありません。');},markerAppearance:marker=>{const plans=byCastle.get(marker.id);return plans?{html:'<span class="alliance-map-pin">'+esc(labels[plans[0].kind])+'<b>'+plans.length+'</b></span>',label:marker.name+'：'+plans.map(p=>p.title).join('、')}:null;}};

@@ -17,7 +17,7 @@
 .modal-body>.castle-banner:has(.castle-detail-art){position:relative;display:block;overflow:hidden;width:min(100%,360px,42dvh);max-width:100%;height:auto;aspect-ratio:1;border:1px solid var(--line);border-radius:5px;margin:0 auto 20px}
 .territory-art{width:58px;height:58px;min-width:58px;border:1px solid #c8b17c55;border-radius:4px}.territory-row{gap:12px}.territory-row>div:first-of-type{min-width:0;flex:1}.territory-numbers{flex-shrink:0}
 .item-icon{width:21px;height:21px;display:inline-block;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;vertical-align:middle;flex-shrink:0;margin-right:8px;color:#c8b17d}
-.illustrated-item{position:relative;isolation:isolate;overflow:hidden}.illustrated-item::before{content:"";position:absolute;inset:0;z-index:-1;background-image:var(--item-art);background-size:800% 400%;background-position:var(--item-x,50%) var(--item-y,50%);opacity:.075;filter:saturate(.65);pointer-events:none}
+.illustrated-item{position:relative;isolation:isolate;overflow:hidden}.illustrated-item::before{content:"";position:absolute;inset:0;z-index:-1;background-image:var(--item-art);background-size:var(--item-size,800% 400%);background-position:var(--item-x,50%) var(--item-y,50%);opacity:.075;filter:saturate(.65);pointer-events:none}
 .nav-item.illustrated-item::before{opacity:.14;mask-image:linear-gradient(90deg,transparent 20%,#000)}
 .resource.illustrated-item::before{opacity:.045}.officer-content.illustrated-item::before{opacity:.045}.notice.illustrated-item::before{opacity:.055}
 .officer-content{background:#182226eb}.building-card,.facility-entry,.research-card,.panel{background-color:#182125}
@@ -90,3 +90,14 @@ html[data-presentation-motion="quiet"] .painted-art>.art-surface{transition:none
 [data-rank="SS"] > .portrait-rank-badge { --rank-line: #c3a5e3; --rank-ink: #efdbff; }
 [data-rank="SSS"] > .portrait-rank-badge { --rank-line: #e4977f; --rank-ink: #ffcfbf; }
 [data-rank="U"] > .portrait-rank-badge { --rank-line: #edcf82; --rank-ink: #17191c; background: #f7d77e; }
+
+
+/* Derivatives keep paint on the original node while its rank or level changes. */
+.painted-art[data-art-sheet="small"]:not(.operator-portrait)>.art-surface {
+ background-size:var(--small-size);
+ background-position:var(--small-x) var(--small-y);
+}
+.painted-art[data-art-sheet="native"]:not(.operator-portrait)>.art-surface {
+ background-size:var(--native-size);
+ background-position:var(--native-x) var(--native-y);
+}

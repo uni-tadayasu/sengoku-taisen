@@ -42,6 +42,9 @@ test('actual world-clock processing renders the applied resource state and still
   const c=context(game,{worldCatchupTimer:null,worldClockStatusKey:'true:true:1:0',activeModal:'',window:{SengokuWorldClock:{snapshot:()=>({ready:true,clock,message:'共通時間'})}},confirmedWorldClock:()=>clock,canMutate:()=>writable,renderHeader:()=>snapshots.push({gold:game.state.resources.gold,command:game.state.command}),refreshJobTimers:()=>{}});vm.runInContext(fn('refreshLiveControls')+'\n'+fn('processWorldClock'),c);
   c.processWorldClock();assert.equal(applies,1);assert.deepEqual(snapshots,[{gold:50,command:3}]);
   writable=false;game.state.resources.gold=75;c.processWorldClock();assert.equal(applies,1);assert.deepEqual(snapshots,[{gold:50,command:3},{gold:75,command:3}]);
+  c.document.hidden=true;c.processWorldClock();assert.equal(applies,1);assert.equal(snapshots.length,2);
+  c.document.hidden=false;writable=true;let fullRedraws=0;c.render=()=>{fullRedraws++;c.renderHeader();};c.refreshActiveModal=()=>{};c.syncMusic=()=>{};c.preserveInteraction=(_host,draw)=>draw();
+  game.applyWorldClock=()=>({ok:true,monthChanged:true});c.processWorldClock();assert.equal(fullRedraws,1);assert.equal(snapshots.length,3,'a monthly redraw must not repeat the ordinary header pass');
 });
 test('actual live controls re-enable exactly at command refill and resource threshold',()=>{const game=new E({officers:roster,seed:1}),upgrade=button('upgrade','farm'),train=button('train'),c=context(game,{document:{querySelectorAll:q=>q==='[data-action]'?[upgrade,train]:[]}});vm.runInContext(fn('refreshLiveControls'),c);game.state.command=0;c.refreshLiveControls();assert(upgrade.disabled&&train.disabled);for(let i=0;i<19;i++)game.tick(1);c.refreshLiveControls();assert(upgrade.disabled);game.tick(1);c.refreshLiveControls();assert(!upgrade.disabled&&!train.disabled);game.state.resources.gold=game.costs('farm').gold-1;c.refreshLiveControls();assert(upgrade.disabled);game.tick(1);c.refreshLiveControls();assert(!upgrade.disabled);});
 test('actual recruitment control rejects capacity and retains entered amount',()=>{const game=new E({officers:roster,seed:1}),recruit=button('recruit-troops'),input={value:'20000'},c=context(game,{$:selector=>selector==='#recruit-amount'?input:null,document:{querySelectorAll:q=>q==='[data-action]'?[recruit]:[]}});vm.runInContext(fn('refreshLiveControls'),c);c.refreshLiveControls();assert(recruit.disabled);input.value='100';c.refreshLiveControls();assert(!recruit.disabled);assert.equal(input.value,'100');game.state.resources.rice=0;c.refreshLiveControls();assert(recruit.disabled);});
@@ -68,6 +71,59 @@ test('actual gift bridge rolls resources, receipt and log back if persistence fa
 test('actual save returns false on browser storage failure, including guarded mode',()=>{let storageCalls=0;const game=new E({officers:roster,seed:1}),indicator={},c=context(game,{saveEnabled:true,saveKey:'test',saveWarning:'',localStorage:{setItem:()=>{storageCalls++;throw Error('QuotaExceededError');}},toast:()=>{},$:()=>indicator});vm.runInContext(fn('save'),c);assert.equal(c.save(),false);assert.equal(c.saveEnabled,false);assert.equal(c.save(),false);assert.equal(storageCalls,1);});
 test('actual gacha bridge rolls currency, roster, history and RNG back on save failure',()=>{const game=new E({officers:roster,seed:42}),before=JSON.stringify(game.state);const c=context(game,{saveEnabled:true,save:()=>false,renderHeader:()=>{},refreshLiveControls:()=>{},preserveInteraction:()=>{},render:()=>{}});vm.runInContext(fn('drawDurableOfficers'),c);const failure=c.drawDurableOfficers(10);assert.equal(failure.ok,false);assert.equal(failure.retryable,true);assert.equal(JSON.stringify(game.state),before);c.save=()=>true;const result=c.drawDurableOfficers(10);assert(result.ok);assert.equal(result.results.length,10);assert.equal(game.state.magatama,300+result.refund);assert.equal(game.state.stats.gachaDraws,10);});
 test('actual gacha buttons follow balance and block guarded saves',()=>{const game=new E({officers:roster,seed:1}),single={...button('draw-officers'),dataset:{action:'draw-officers',count:'1'}},ten={...button('draw-officers'),dataset:{action:'draw-officers',count:'10'}},c=context(game,{saveEnabled:true,document:{querySelectorAll:q=>q==='[data-action]'?[single,ten]:[]}});vm.runInContext(fn('refreshLiveControls'),c);game.state.magatama=299;c.refreshLiveControls();assert(single.disabled&&ten.disabled);game.state.magatama=300;c.refreshLiveControls();assert(!single.disabled&&ten.disabled);game.state.magatama=2700;c.refreshLiveControls();assert(!single.disabled&&!ten.disabled);c.saveEnabled=false;c.refreshLiveControls();assert(single.disabled&&ten.disabled);});
+test('sixty clock samples update visible balances and countdown without reparsing markup or evaluating the whole roster',()=>{
+  const {doc,host}=require('./helpers/dom-model.cjs').setup();
+  const game=new E({officers:roster,seed:1}),clock={calendar:{elapsed:0,turn:0},speed:1,running:true};
+  host.innerHTML='<div id="resources"></div><div id="calendar"></div><div id="clan-panel"></div><button id="sound-button"></button>';
+  let scores=0,templates=0;const create=doc.createElement.bind(doc);
+  doc.createElement=name=>{if(name==='template')templates++;return create(name);};
+  const c=context(game,{document:doc,$:q=>doc.querySelector(q),resIcons:{},num:String,esc:String,icon:()=>'<svg></svg>',
+    getEvaluation:()=>{scores++;return game.evaluation();},refreshEvaluationUI:()=>{},evaluationEntry:()=>'',
+    date:()=>({year:1560,month:1,season:'冬'}),clanInfo:()=>({leader:'織田信長'}),settings:{sound:false},activeModal:'',
+    window:{SengokuWorldClock:{snapshot:()=>({ready:true,mode:'shared',clock})},SengokuStableDOM:require('../stable-dom.js')}});
+  vm.runInContext(fn('renderHeader'),c);c.renderHeader();
+  const calendar=doc.querySelector('#month-countdown'),balance=doc.querySelector('#header-balance-gold'),sound=doc.querySelector('#sound-button');
+  sound.focus();const scoresAtStart=scores,templatesAtStart=templates;
+  for(let second=0;second<60;second++){
+    game.state.resources.gold=100+second;clock.calendar.elapsed=second;c.renderHeader(true);
+    assert.equal(balance.textContent,String(100+second));assert.equal(calendar.textContent,String(60-second));
+  }
+  assert.equal(scores,scoresAtStart);assert.equal(templates,templatesAtStart);
+  assert.equal(doc.querySelector('#month-countdown'),calendar);assert.equal(doc.querySelector('#header-balance-gold'),balance);assert.equal(doc.activeElement,sound);
+  game.state.resources.gold=3;clock.running=false;clock.speed=2;c.renderHeader();
+  assert.equal(balance.textContent,'3');assert.match(doc.querySelector('#calendar').textContent,/停止中/);
+  assert.equal(doc.querySelector('#month-countdown').textContent,'1');assert.equal(scores,scoresAtStart+1);
+  c.startPending=true;c.renderHeader();assert.equal(doc.querySelector('#header-balance-gold'),null);
+  c.startPending=false;c.renderHeader();assert.equal(doc.querySelector('#header-balance-gold').textContent,'3');
+});
+test('an expanded 31-level construction queue uses one projection for all clocks and progress bars',()=>{
+  const game=new E({officers:roster,seed:1}),clocks=[],bars=[];
+  for(let level=2;level<=32;level++){
+    const key='building:farm:personal:'+level;clocks.push({dataset:{jobClock:key}});bars.push({dataset:{jobProgress:key},style:{}});
+    game.state.jobs.push({kind:'building',id:'farm',targetLevel:level,totalSeconds:60,remainingSeconds:level===2?40:60});
+  }
+  clocks.push({dataset:{jobClock:'building:farm'}});bars.push({dataset:{jobProgress:'building:farm:shared:2'},style:{}});
+  const projection=game.constructionJobs.bind(game);let calls=0;game.constructionJobs=()=>{calls++;return projection();};
+  const c=context(game,{document:{querySelectorAll:q=>q==='[data-job-clock]'?clocks:bars}});vm.runInContext(fn('refreshJobTimers'),c);
+  c.refreshJobTimers();assert.equal(calls,1);assert.equal(clocks.at(-1).textContent,clocks[0].textContent);
+  assert.match(clocks[1].textContent,/着工まで 40秒/);assert.equal(bars[0].style.width,'33.333%');assert.equal(bars[1].style.width,'0%');assert.equal(bars.at(-1).style.width,'100%');
+  game.state.jobs.shift();c.refreshJobTimers();assert.equal(calls,2);assert.equal(clocks[0].textContent,'完成');assert.match(clocks[1].textContent,/経過 0秒/);
+});
+test('the archive highest-rank index reflects gains and permission changes without repeated collection scans',()=>{
+  const game=new E({officers:roster,seed:1});
+  game.state.officers=roster.map(o=>o.id);game.state.officerVariants=roster.flatMap(o=>D.ranks.map(rank=>o.id+':'+rank));
+  const expected=new Map(roster.map(base=>[base.id,game.officer(base.id).rank]));
+  const includes=game.state.officerVariants.includes.bind(game.state.officerVariants);let lookups=0;
+  Object.defineProperty(game.state.officerVariants,'includes',{value:(...args)=>{lookups++;return includes(...args);}});
+  const filter={q:'',rank:'all',ownership:'owned',sort:'lead'},c=context(game,{roster,filter});
+  vm.runInContext(fn('filterOfficerList')+'\n'+fn('filteredOfficers'),c);
+  const all=c.filteredOfficers();assert.equal(all.length,roster.length);assert(all.every(o=>o.rank===expected.get(o.id)));
+  assert(lookups<=roster.length+8,`unexpected duplicate ownership lookups: ${lookups}`);
+  const key=D.adminAssets.officerId;assert.equal(all.find(o=>o.id===key).rank,'SSS');
+  const ordinary=roster.find(o=>o.id!==key);game.state.officerVariants=game.state.officerVariants.filter(variant=>variant!==ordinary.id+':U');
+  assert.equal(c.filteredOfficers().find(o=>o.id===ordinary.id).rank,'SSS');
+  game._grantOfficerVariant(ordinary.id,'U');assert.equal(c.filteredOfficers().find(o=>o.id===ordinary.id).rank,'U');
+});
 test('actual gacha screen and odds include all8 ranks and all256 officers',()=>{const game=new E({officers:roster,seed:1});let captured;const c=context(game,{roster,gachaOddsRank:'D',gachaOddsPage:1,num:v=>String(v),esc:v=>String(v),icon:name=>`[${name}]`,shortDate:()=>'',modal:(...args)=>{captured=args;}});vm.runInContext(fn('renderGacha')+'\n'+fn('gachaOfficerOddsRows')+'\n'+fn('individualOddsPage')+'\n'+fn('gachaOddsModal'),c);let html=c.renderGacha();assert.equal((html.match(/class="gacha-rank rank-/g)||[]).length,8);assert(html.includes('data-count="1"'));assert(html.includes('data-count="10"'));assert(html.includes('2700'));assert(html.includes('現金の支払いはありません'));c.gachaOddsModal();const body=captured[2];assert.equal((body.match(/<tr>/g)||[]).length,20);assert(body.includes('ランク別・対象武将の個別提供割合'));assert(body.includes('確定枠・天井'));assert.equal(captured[4],'gacha-odds');});
 test('actual preservation helper restores typed inputs, focus, caret, scroll and matching recruit cost',()=>{const game=new E({officers:roster,seed:1});let input,search,fields,focusCount=0;const body={id:'test-modal-body',scrollTop:20},dialog={scrollTop:31},cost={innerHTML:''},doc={activeElement:null,getElementById:id=>[...fields,body].find(f=>f.id===id)};const win={scrollX:0,scrollY:180,scrollTo:p=>{win.scrollX=p.left;win.scrollY=p.top;}};const make=(id,value)=>({id,value,checked:false,type:'text',dataset:{},selectionStart:2,selectionEnd:4,focus(){doc.activeElement=this;focusCount++;},setSelectionRange(a,b){this.selectionStart=a;this.selectionEnd=b;}});input=make('recruit-amount','2300');search=make('officer-search','伊達 政宗');fields=[input,search];doc.activeElement=search;const container={scrollTop:44,contains:el=>fields.includes(el)||el===body,querySelectorAll:q=>q==='input,select,textarea'?fields:q==='*'?[...fields,body]:[],querySelector:q=>q==='.modal-body'?body:null};const c=context(game,{window:win,document:doc,$:q=>q==='#modal'?dialog:q==='#recruit-amount'?input:q==='#recruit-cost'?cost:null,costHtml:value=>JSON.stringify(value),refreshLiveControls:()=>{},refreshJobTimers:()=>{}});vm.runInContext(fn('interactionLocator')+'\n'+fn('locateInteraction')+'\n'+fn('preserveInteraction'),c);c.preserveInteraction(container,()=>{input=make('recruit-amount','1000');search=make('officer-search','');search.selectionStart=0;search.selectionEnd=0;fields=[input,search];doc.activeElement=null;container.scrollTop=0;body.scrollTop=0;dialog.scrollTop=0;win.scrollY=0;});assert.equal(input.value,'2300');assert.equal(search.value,'伊達 政宗');assert.equal(doc.activeElement,search);assert.equal(search.selectionStart,2);assert.equal(search.selectionEnd,4);assert.equal(focusCount,1);assert.equal(container.scrollTop,44);assert.equal(body.scrollTop,20);assert.equal(dialog.scrollTop,31);assert.equal(win.scrollY,180);assert.equal(cost.innerHTML,JSON.stringify(game.recruitTroopCost(2300)));});
 

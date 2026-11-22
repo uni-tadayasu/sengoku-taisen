@@ -27,7 +27,7 @@ function harness(){
     'global.__selfCourt={s,acceptUser,connected,installIdentity,playerName,setRecovery(value){recoveryHeld=value;global.SengokuPublicCourt.refresh();},setPending(value){s.accountAccessPending=value?{}:null;global.SengokuPublicCourt.refresh();}};global.SengokuSocial={open');
   vm.runInContext(social,scope);
   const source=read('app.js');
-  const entries=source.slice(source.indexOf('  function getEvaluation(){'),source.indexOf('  function renderHeader(){'));
+  const entries=source.slice(source.indexOf('  function getEvaluation(){'),source.indexOf('  function renderHeader('));
   assert(entries.includes('function evaluationCourtPlayer('),'Read the actual game rank-entry integration');
   vm.runInContext(`
     let startPending=false, syncAccess={linked:true,ready:true,rolePending:false}, evaluationOwnerId=${JSON.stringify(A)};

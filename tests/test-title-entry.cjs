@@ -14,11 +14,11 @@ async function testEntry() {
   doc.readyState = 'complete';
   doc.body.classList.add('at-title');
   doc.body.classList.toggle = (name, enabled) => enabled ? doc.body.classList.add(name) : doc.body.classList.remove(name);
-  let selectionCount = 0;
+  const steps = [];
   const waiting = [];
   const win = {
     SENGOKU_AT_TITLE: true,
-    SengokuBridge: {hasStarted: () => false, openStartSelection: () => selectionCount++},
+    SengokuBridge: {hasStarted: () => false, renderGameplay() { assert.equal(win.SENGOKU_AT_TITLE, false); steps.push('draw'); }, openStartSelection() { steps.push('select'); }},
     SengokuArt: {decorate() {}, readyCurrent: () => new Promise(resolve => waiting.push(resolve))}
   };
   vm.runInNewContext(fs.readFileSync(path.join(root, 'boot.js'), 'utf8'), {
@@ -27,9 +27,10 @@ async function testEntry() {
   const skip = doc.getElementById('game-skip-link');
   const status = doc.getElementById('art-load-status');
   const loading = doc.getElementById('game-loading');
+  assert.deepEqual(steps, [], 'opening the title must not start gameplay painting');
   win.SengokuTitle.enter();
   win.SengokuTitle.enter();
-  assert.equal(selectionCount, 1);
+  assert.deepEqual(steps, ['draw', 'select'], 'paint once, then open the start selection');
   assert.equal(doc.activeElement.id, 'main');
   assert.equal(skip.getAttribute('href'), '#main');
   assert.equal(loading.hidden, true, 'Optional art must not open a blocking dialog');
@@ -49,6 +50,9 @@ async function testEntry() {
   waiting[1]();
   await nextView;
   assert.equal(status.hidden, true);
+  win.SengokuTitle.enter();
+  assert.deepEqual(steps, ['draw', 'select', 'draw', 'select']);
+  await Promise.resolve();waiting.at(-1)();
   console.log('PASS title entry, skip targets and stale-artwork handling while images are still downloading.');
 }
 testEntry().catch(error => {console.error(error);process.exitCode = 1;});
