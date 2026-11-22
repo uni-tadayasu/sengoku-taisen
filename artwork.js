@@ -14,7 +14,7 @@ const officerArtRevision='chronicle-480';
 const previewDir='assets/art-previews/', previewRevision='atlas-20261123';
 const previewUrl=name=>previewDir+name+'.webp?v='+previewRevision;
 const numberTag=value=>String(value).padStart(2,'0');
-const frames=Object.fromEntries(ranks.map(r=>[r,`assets/frames/rank-${r}.svg?v=4.9.4-20261123`]));
+const frames=Object.fromEntries(ranks.map(r=>[r,`assets/frames/rank-${r}.svg?v=4.9.5-20261123`]));
 const operatorPortrait={id:'of_b0616adde162',rank:'U',url:'assets/operator-ieyasu-u.webp?v=ieyasu-anime-u-20261123'};
 const cache=new Map(),loaded=new Set(),paintRequests=new WeakMap(),deferredTitle=new Set();let observer,scheduled=false;
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -178,16 +178,18 @@ function buttonArtwork(el){
 // A one-character control already has its own visible symbol. Adding a second
 // icon pushes close/step controls outside their fixed hit area.
 function hasSymbolLabel(el){return /^[×✕✖+＋−－–‹›«»←→…⋯]$/.test((el.textContent||'').trim());}
+// The game fills explicit icon slots on render. Keep them reserved even before their SVG is mounted.
+function hasArtworkIcon(el){return Boolean(el.querySelector('svg,img,.painted-art,.portrait-frame,[data-icon]'));}
 function decorate(){scheduled=false;
  document.querySelectorAll('[data-art-url]:not([data-art-observed])').forEach(el=>{el.dataset.artObserved='1';observePaint(el);});
  const selector='.button,.text-link,.launch-enter,.nav-item,.resource,.building-card,.facility-entry,.territory-row,.research-card,.quest-row,.tactic-card,.music-track,.settings-stack>.button,.social-tabs button,.social-list-card,.social-mail-row,.social-profile-section,.social-gift,.clan-choice,.gacha-banner,.title-feature,.panel,.notice,.officer-content';
  document.querySelectorAll(selector).forEach(el=>{if(el.dataset.artEnhanced)return;el.dataset.artEnhanced='1';el.classList.add('illustrated-item');
   let type=el.dataset.artTheme||el.dataset.view||el.dataset.action||'council';if(type.includes('gacha')||type.includes('draw'))type='gacha';if(type.includes('music')||type==='sound')type='music';if(type.includes('save')||type.includes('export')||type.includes('import'))type='save';
   decorateBackground(el,type);
-  if(el.matches('button')&&!hasSymbolLabel(el)&&!el.querySelector('svg,img,.painted-art')&&!el.classList.contains('territory-row'))el.insertAdjacentHTML('afterbegin',icon(type));
+  if(el.matches('button')&&!hasSymbolLabel(el)&&!hasArtworkIcon(el)&&!el.classList.contains('territory-row'))el.insertAdjacentHTML('afterbegin',icon(type));
  });
  document.querySelectorAll(buttonSelector).forEach(buttonArtwork);
- document.querySelectorAll('button,.title-feature').forEach(el=>{if(!hasSymbolLabel(el)&&!el.querySelector('svg,img,.painted-art,.portrait-frame')){let type=el.dataset.artTheme||el.dataset.view||el.dataset.action||'default';if(type.includes('gacha')||type.includes('draw'))type='gacha';else if(type.includes('music')||type.includes('sound'))type='music';else if(type.includes('rank'))type='rank';else if(type.includes('officer')||type.includes('recruit'))type='officers';else if(type.includes('castle')||type.includes('building')||type.includes('upgrade'))type='town';else if(type.includes('save')||type.includes('export')||type.includes('import'))type='save';el.insertAdjacentHTML('afterbegin',icon(type));}});
+ document.querySelectorAll('button,.title-feature').forEach(el=>{if(!hasSymbolLabel(el)&&!hasArtworkIcon(el)){let type=el.dataset.artTheme||el.dataset.view||el.dataset.action||'default';if(type.includes('gacha')||type.includes('draw'))type='gacha';else if(type.includes('music')||type.includes('sound'))type='music';else if(type.includes('rank'))type='rank';else if(type.includes('officer')||type.includes('recruit'))type='officers';else if(type.includes('castle')||type.includes('building')||type.includes('upgrade'))type='town';else if(type.includes('save')||type.includes('export')||type.includes('import'))type='save';el.insertAdjacentHTML('afterbegin',icon(type));}});
  document.querySelectorAll('.section-heading h2,.panel-heading h2,.social-profile-section h3').forEach(el=>{if(!el.querySelector('svg'))el.insertAdjacentHTML('afterbegin',icon(el.closest('.social-profile-section')?'save':'council'));});
 }
 function schedule(){if(scheduled)return;scheduled=true;requestAnimationFrame(decorate);}

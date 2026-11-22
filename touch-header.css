@@ -1,5 +1,4 @@
-/* Six essential values share one sticky information area on phones/tablets.
-   Desktop keeps its existing header and command deck. */
+/* Sticky ledger layout for phones and tablets. */
 .touch-header-status { display: none; }
 #touch-header-status[hidden] { display: none !important; }
 

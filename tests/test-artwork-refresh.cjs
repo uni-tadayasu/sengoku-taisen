@@ -37,7 +37,22 @@ function portraitRanks(){
  assert(!artScope.officerCrest(null).includes('portrait-rank-badge'));
  console.log('PASS 2,048 ranked portraits, exclusive Ieyasu, compact crests and offline fallback identify the displayed variant');
 }
+function headerIconSlots(){
+ const {doc,host,$}=require('./helpers/dom-model.cjs').setup();
+ host.innerHTML='<button id="command"><span data-icon="flag"></span>指令</button><button id="magatama" class="button"><span data-icon="magatama"></span>勾玉</button><button id="plain">選ぶ</button>';
+ const window={SENGOKU_AT_TITLE:true};
+ vm.runInNewContext(source,{window,document:doc});
+ window.SengokuArt.decorate();
+ assert.equal($('#command').querySelectorAll('svg').length,0);
+ assert.equal($('#magatama').querySelectorAll('svg').length,0);
+ assert.equal($('#plain').querySelectorAll('svg').length,1);
+ for(const id of ['command','magatama'])$('#'+id).querySelector('[data-icon]').innerHTML='<svg class="icon"></svg>';
+ window.SengokuArt.decorate();
+ for(const id of ['command','magatama','plain'])assert.equal($('#'+id).querySelectorAll('svg').length,1);
+ console.log('PASS command and magatama retain a single authored icon before and after game rendering');
+}
 async function run(){
+ headerIconSlots();
  portraitRanks();
  const thumbDataset={artSmall:'tiny.webp',smallWidth:'80',smallHeight:'107',artNative:'card.webp'};
  {
