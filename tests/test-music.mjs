@@ -124,4 +124,20 @@ let scenarios=1;
  x.document.hidden=true;await p._onVisibility();x.document.hidden=false;x.mediaElements[0].playImpl=null;await p._onVisibility();
  reject(new Error('Old request cancelled'));await old;assert.equal(x.timers.size,1);assert.equal(p._context.state,'running');assert.equal(x.mediaElements[0].paused,false);await p.dispose();scenarios++;
 }
-console.log(JSON.stringify({tracks:Tracks.length,distinctScores:new Set(signatures).size,scenarios,lifecycle:'Native playback category, real media sink fallback, gesture ordering, mute, rejection/retry, pause race, visibility, interruptions, bfcache, cleanup.'},null,2));
+// Our voice feature releases playback before capture and cannot be interrupted
+// by a scene change, a volume control, or a page visibility notification.
+{
+ const x=fixture({session:true}),p=new x.Music({volume:27});await p.play('town-dawn');
+ const entering=p.setVoiceActive(true);assert.equal(x.audioSession.type,'auto','release is synchronous before getUserMedia');await entering;
+ x.audioSession.type='play-and-record';await p.play('battle-storm');p.setVolume(42);await p._onVisibility();
+ assert.equal(p._context.state,'suspended');assert.equal(x.timers.size,0);assert.equal(x.audioSession.type,'play-and-record');assert.equal(p.volume,42);assert.equal(p.playing,true);
+ x.audioSession.type='auto';await p.setVoiceActive(false);assert.equal(p._context.state,'running');assert.equal(x.audioSession.type,'playback');assert.equal(p.currentId,'battle-storm');assert.equal(x.timers.size,1);
+ await p.setVoiceActive(true);p.pause();await p.setVoiceActive(false);assert.equal(p._context.state,'suspended','pausing during a call is respected after leaving');assert.equal(p.playing,false);await p.dispose();scenarios++;
+}
+{
+ const x=fixture({media:true}),p=new x.Music();await p.setVoiceActive(true);await p.play('town-dawn');
+ assert.equal(p._context.state,'suspended');assert.equal(x.mediaElements[0].playCount,0,'new BGM while calling does not start an audio sink');
+ x.document.hidden=true;await p.setVoiceActive(false);assert.equal(p._context.state,'suspended');
+ x.document.hidden=false;await p._onVisibility();assert.equal(p._context.state,'running');await p.dispose();scenarios++;
+}
+console.log(JSON.stringify({tracks:Tracks.length,distinctScores:new Set(signatures).size,scenarios,lifecycle:'Native playback category, real media sink fallback, gesture ordering, mute, rejection/retry, pause race, visibility, interruptions, bfcache, voice-call focus and cleanup.'},null,2));

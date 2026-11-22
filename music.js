@@ -167,7 +167,7 @@
       this._timer=null;this._pauseTimer=null;this._token=0;this._resumePosition=0;this._disposed=false;
       this._noise=null;this._pluckCache=new Map();this._sessions=new Set();
       this._audioElement=null;this._streamDestination=null;this._audioSession=null;
-      this._previousSessionType=null;this._ownsAudioSession=false;this._outputToken=0;this._pageActive=true;
+      this._previousSessionType=null;this._ownsAudioSession=false;this._outputToken=0;this._pageActive=true;this._voiceActive=false;
       this._visibilityHandler=()=>this._onVisibility();
       this._pageHideHandler=()=>{this._pageActive=false;this._clearScheduler();this._suspendOutput();};
       this._pageShowHandler=()=>{this._pageActive=true;return this._onVisibility();};
@@ -190,6 +190,14 @@
     get auto(){return this._auto;}
     get volume(){return this._volume;}
     setAuto(value){this._auto=Boolean(value);}
+    setVoiceActive(value){
+      const active=value===true;if(active===this._voiceActive)return Promise.resolve();
+      this._voiceActive=active;
+      // Release the music playback category before microphone capture. Keep the
+      // user's playback intent and volume, so ending a call resumes the score.
+      if(active){this._clearScheduler();clearTimeout(this._pauseTimer);this._pauseTimer=null;return this._suspendOutput();}
+      return this._onVisibility();
+    }
     setVolume(value){
       this._volume=clamp(Number(value)||0,0,100);
       if(this._context&&this._master)this._smoothGain(this._master.gain,this._playing?this._volume/100*.65:0,.08);
@@ -197,7 +205,7 @@
       if(!this._volume){this._clearScheduler();this._suspendOutput();}
       else if(!this._hidden())this._resumeOutput().then(ok=>{if(ok)this._schedule();}).catch(()=>{});
     }
-    _hidden(){return !this._pageActive||(typeof document!=='undefined'&&document.hidden);}
+    _hidden(){return this._voiceActive||!this._pageActive||(typeof document!=='undefined'&&document.hidden);}
     _smoothGain(param,value,time){
       const now=this._context.currentTime;
       if(typeof param.cancelAndHoldAtTime==='function')param.cancelAndHoldAtTime(now);
