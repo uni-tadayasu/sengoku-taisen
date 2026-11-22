@@ -28,7 +28,7 @@
  function badge(player){
   const current=office(player);if(!current)return'';
   const title=escape(current.title),kind=current.kind;
-  return`<span class="public-court-badge public-court-${kind}" aria-label="役職：${title}" title="役職：${title}"><svg class="public-court-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3 10 12 4l9 6M5 10h14M5 20h14M3 22h18M7 11v8m5-8v8m5-8v8" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="2" r="1.4" fill="currentColor"/></svg><span class="public-court-title">${title}</span></span>`;
+  return`<span class="public-court-badge public-court-${kind}" aria-label="役職：${title}" title="役職：${title}"><span class="public-court-title">${title}</span></span>`;
  }
  function slot(player){const id=typeof player==='string'?player:player?.playerId||player?.userId||player?.id||player?.sessionId;return validId(id)?`<span class="public-court-slot" data-court-player="${escape(id)}">${badge(player)}</span>`:badge(player);}
  const api={update,office,badge,slot,refresh,normalize,beginRequest:()=>++sequence,text:player=>office(player)?.title||'',clear(){cache.clear();versions.clear();floor=++sequence;refresh();}};global.SengokuPublicCourt=api;
