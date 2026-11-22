@@ -18,11 +18,11 @@ import {resolvePublicCourtOffices} from './public-court.js';
 import {messageRegister} from './message-addressing.js';
 import {handleAlliance,assertGuildJoinAllowed,treasuryGuard,treasuryContributionStatements,prepareRallyAttack,getAllianceDefense,rallyMarchStatements,rallyMarchCancellation} from './alliance.js';
 import {handleProtection,enrollProtection,prepareProtection,protectionBattleStatements,decorateProtectedTargets,protectionStatus} from './protection.js';
-import {handleBranches,applyBranchProgress,reconcileBranchProgress,branchProgressStatements,branchStateGuard} from './branches.js';
+import {handleBranches,projectBranchState,applyBranchProgress,reconcileBranchProgress,branchProgressStatements,branchStateGuard} from './branches.js';
 import {relocateResidence} from './relocation.js';
 import {ensureResidency,residencySnapshot,residencyDirectory,residencyStart,initialResidencyStatements,residencyTargetGuard,prepareResidencySuccession,prepareResidencyCpuLosses} from './residency.js';
 const API = '/api/v1';
-const API_VERSION = '4.9.5';
+const API_VERSION = '4.9.6';
 const API_FEATURES = Object.freeze({trades:true,moderation:true,premium:true,timedEvents:true,troopTrades:true,roamingBattles:true,roamingDeployment:true,covertDispatch:true,privatePlayerRoles:true,guildIcons:true,court:true,kyotoGosho:true,branches:true,branchBattles:true,branchFacilities:true,audioCalls:true,progression:true,armyPresets:true,allianceStrategy:true,sharedConquest:true,newcomerProtection:true,webPush:true,battleAdviser:true,battleCatalog:true,eventBattleRewards:true,shogunate:true,attackTravel:true,castleResidency:true,residencyRelocation:true});
 const MAX_BODY = 16 * 1024;
 const MAX_SAVE_BODY = 2 * 1024 * 1024;
@@ -1137,10 +1137,22 @@ function normalizeGameSave(raw, user, now, {reading=false,clock=null}={}) {
     if(s.turn!==Math.floor(s.worldClock.elapsedMs/WORLD_MONTH_MS)||Math.abs(rt.elapsed-(s.worldClock.elapsedMs%WORLD_MONTH_MS)/1000)>1e-5)fail(400,'INVALID_CLOCK_ANCHOR','ゲーム年月と共通時計の保存位置が一致しません。');
     if(!reading&&clock&&s.worldClock.elapsedMs>clock.elapsedMs+5000)fail(400,'CLOCK_AHEAD','保存時刻が世界の共通時計より先です。共通時計を再確認してください。');
   }
-  if(!Array.isArray(s.jobs)||s.jobs.length>193)invalid();
+  if(!Array.isArray(s.jobs)||s.jobs.length>GameEngine.maxConstructionJobs)invalid();
   for(const j of s.jobs){if(!isObj(j))invalid();if(j.remainingSeconds===undefined)j.remainingSeconds=j.remaining*60;if(j.totalSeconds===undefined)j.totalSeconds=j.total*60;if(!scalar(j.remainingSeconds,.00000001,180)||!num(j.totalSeconds,60,180)||j.totalSeconds!==j.total*60||j.remainingSeconds>j.totalSeconds||j.remaining!==Math.ceil((j.remainingSeconds-1e-8)/60)||j.kind==='branch'&&j.completesElapsedMs!==undefined&&!num(j.completesElapsedMs,0,WORLD_MONTH_MS*(MAX_TURN+1)-1))invalid();}
   try{s.branches=GameEngine.normalizeBranchState(s.branches,{castles:s.castles,clan:s.clan,jobs:s.jobs,isAdmin:!!user.is_admin,validateRole:!reading});}catch{invalid();}
-  const jobkeys=new Map();for(const j of s.jobs){if(!isObj(j)||!['building','castle','research','branch'].includes(j.kind)||!num(j.remaining,1,3)||!num(j.total,1,3)||j.remaining>j.total||j.kind!=='branch'&&j.repair!==undefined)invalid();const branch=j.kind==='branch'?s.branches.find(b=>b.id===j.id):null,defs=j.kind==='branch'?s.branches:j.kind==='building'?BUILDINGS:j.kind==='castle'?CASTLES:TECHS,current=j.kind==='branch'?(j.facilityId?branch?.facilities?.[j.facilityId]||0:branch?.level-(j.repair===true?1:0)):j.kind==='castle'?s.castles[j.id]?.level:(j.kind==='building'?s.buildings:s.tech)[j.id],key=j.kind+':'+j.id,count=jobkeys.get(key)||0;if(!defs.some(d=>d.id===j.id)||j.targetLevel!==current+count+1||j.targetLevel>(j.kind==='branch'?(j.facilityId?branch?.level:branchSite(j.id).maxLevel):j.kind==='research'?5:j.kind==='castle'?incomingCastleLimit(j.id):32)||j.kind==='castle'&&s.castles[j.id]?.owner!==s.clan||count&&(j.kind!=='building'||j.remainingSeconds!==j.totalSeconds))invalid();jobkeys.set(key,count+1);}
+  const jobkeys=new Map();
+  for(const j of s.jobs){
+    if(!isObj(j)||!['building','castle','research','branch'].includes(j.kind)||!num(j.remaining,1,3)||!num(j.total,1,3)||j.remaining>j.total||j.kind!=='branch'&&j.repair!==undefined)invalid();
+    const key=j.kind+':'+j.id,count=jobkeys.get(key)||0;
+    if(j.kind!=='branch'){
+      const defs=j.kind==='building'?BUILDINGS:j.kind==='castle'?CASTLES:TECHS,current=j.kind==='castle'?s.castles[j.id]?.level:(j.kind==='building'?s.buildings:s.tech)[j.id];
+      const limit=j.kind==='research'?5:j.kind==='castle'?incomingCastleLimit(j.id):32;
+      if(!defs.some(d=>d.id===j.id)||j.targetLevel!==current+count+1||j.targetLevel>limit||j.kind==='castle'&&s.castles[j.id]?.owner!==s.clan||count&&(j.kind!=='building'||j.remainingSeconds!==j.totalSeconds))invalid();
+    }
+    // normalizeBranchState above checks levels, ordering and cost durations
+    // across every facility and body reservation sharing this branch.
+    jobkeys.set(key,count+1);
+  }
   if(s.jobs.filter(j=>j.kind==='research').length>1||[...jobkeys.keys()].filter(key=>!key.startsWith('research:')).length>(staff||serviceSave?6:2+Math.floor(s.buildings.keep/8)))invalid();
   if(reading||legacyMap){if(reading)for(const id of FIELD_CAPTURE_CASTLES)s.castles[id].level=Math.min(48,s.castles[id].level);s.castles.sunpu.level=Math.min(32,s.castles.sunpu.level);s.jobs=s.jobs.filter(job=>job.kind!=='castle'||job.targetLevel<=castleLevelLimit(job.id));}
   s.jobs=s.jobs.map(jobDto);
@@ -1823,11 +1835,14 @@ function fieldBranchDefense(state,branch,tactic='balanced',siege=0){return GameE
 function fieldBranches(row,castleId,castle,clock,cyclePending,home,baseReason){
   const stored=row.branches_json?JSON.parse(row.branches_json):{branches:[],jobs:[]};
   if(cyclePending&&castleId!==home)return[];
-  return stored.branches.filter(branch=>branch.parentCastleId===castleId).map(branch=>{
-    const projected=copy(branch),job=stored.jobs.find(job=>job.id===branch.id);
-    if(job&&job.completesElapsedMs<=clock.elapsedMs){if(job.facilityId)GameEngine.completeBranchFacility(projected,job,job.completesElapsedMs);else{projected.level=job.targetLevel;if(job.repair)projected.fallen=false;}}
-    const site=branchSite(branch.id),defense=fieldBranchDefense({castles:{[castleId]:castle}},projected),reason=baseReason||(!projected.level?'建設中の支拠点です。':projected.fallen?'この支拠点はすでに陥落しています。':'');
-    return{...projected,name:site.name,maxLevel:site.maxLevel,building:!!job&&job.completesElapsedMs>clock.elapsedMs,repairing:!!job?.repair&&job.completesElapsedMs>clock.elapsedMs,defenseTroops:defense?.force||0,defensePower:defense?.power||0,attackable:!reason,attackReason:reason};
+  const branches=stored.branches.filter(branch=>branch.parentCastleId===castleId);
+  if(!branches.length)return[];
+  const ids=new Set(branches.map(branch=>branch.id));
+  const model=projectBranchState({branches,jobs:stored.jobs.filter(job=>ids.has(job.id))},clock.elapsedMs);
+  return model.branches.map(branch=>{
+    const job=model.jobs.find(job=>job.id===branch.id);
+    const site=branchSite(branch.id),defense=fieldBranchDefense({castles:{[castleId]:castle}},branch),reason=baseReason||(!branch.level?'建設中の支拠点です。':branch.fallen?'この支拠点はすでに陥落しています。':'');
+    return{...branch,name:site.name,maxLevel:site.maxLevel,building:!!job,repairing:!!job?.repair,defenseTroops:defense?.force||0,defensePower:defense?.power||0,attackable:!reason,attackReason:reason};
   });
 }
 function fieldBattleMode(user,castleId,{legacy=false}={}) {return castleId==='edo'&&user.is_admin||castleId==='kyoto_gosho'&&user.is_staff&&!user.is_admin?'reward':!legacy&&FIELD_CAPTURE_CASTLES.includes(castleId)?'capture':'raid';}

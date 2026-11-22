@@ -6,8 +6,20 @@ const dto=p=>p?{enabled:!!p.enabled,...Object.fromEntries(types.map(k=>[k,!!p[k]
 const configured=env=>!!env.WEB_PUSH_PRIVATE_JWK&&/^[A-Za-z0-9_-]{87}$/.test(env.WEB_PUSH_PUBLIC_KEY||'');
 const campaignOf=state=>String(state?.walking?.campaignId||'legacy');
 const stateOf=save=>{try{return (typeof save==='string'?JSON.parse(save):save)?.state||null;}catch(_){return null;}};
-const jobKey=(userId,state,job)=>'job:'+userId+':'+encodeURIComponent(campaignOf(state))+':'+job.kind+':'+encodeURIComponent(job.id)+':'+job.targetLevel+(job.repair?':'+job.due:'');
-const levelOf=(state,kind,id)=>kind==='building'?Number(state.buildings?.[id]||0):kind==='research'?Number(state.tech?.[id]||0):kind==='castle'?(state.castles?.[id]?.owner===state.clan?Number(state.castles[id].level||0):0):Number(state.branches?.find(b=>b.id===id&&!b.fallen)?.level||0);
+function jobKey(userId,state,job){
+ const key='job:'+userId+':'+encodeURIComponent(campaignOf(state))+':'+job.kind+':'+encodeURIComponent(job.id)+':'+job.targetLevel;
+ if(job.facilityId)return key+':facility:'+encodeURIComponent(job.facilityId);
+ return job.repair?key+':'+job.due:key;
+}
+function levelOf(state,kind,id,facilityId){
+ if(kind==='branch'){
+  const branch=state.branches?.find(b=>b.id===id&&!b.fallen);
+  return Number((facilityId?branch?.facilities?.[facilityId]:branch?.level)||0);
+ }
+ if(kind==='building')return Number(state.buildings?.[id]||0);
+ if(kind==='research')return Number(state.tech?.[id]||0);
+ return state.castles?.[id]?.owner===state.clan?Number(state.castles[id].level||0):0;
+}
 export function notificationQuiet(p,now){const h=new Date(now+9*3600000).getUTCHours(),a=p.quiet_start,b=p.quiet_end;return a!==b&&(a<b?h>=a&&h<b:h>=a||h<b);}
 function preferenceGate(userId,updatedAt,now,categories){
  const hour=new Date(now+9*3600000).getUTCHours();
@@ -27,9 +39,18 @@ function pendingJobs(state){
  }
  return result;
 }
-function jobStatement(db,userId,state,job,now,clock,gate='1=1',args=[],completed=false){
- const due=completed?null:job.due,delay=completed?0:clock?.running?Math.max(0,due-clock.elapsedMs)/Math.max(.1,clock.speed):86400000;
- return stmt(db,`INSERT INTO notification_outbox(id,user_id,category,title,body,due_at,world_due_elapsed,created_at) SELECT ?,?,'construction',?,?,?,?,? WHERE ${gate} AND EXISTS(SELECT 1 FROM notification_preferences WHERE user_id=? AND enabled=1 AND construction=1) ON CONFLICT(id) DO UPDATE SET due_at=excluded.due_at,world_due_elapsed=excluded.world_due_elapsed WHERE notification_outbox.delivered_at IS NULL AND notification_outbox.leased_until<=?`,jobKey(userId,state,job),userId,job.kind==='research'?'研究が完成しました':'普請が完成しました','城下町と成長手帳で次の目標を確認できます。',Math.round(now+delay),due,now,...args,userId,now);
+// Store a full queue in one statement so long, valid branch queues do not
+// require a separate D1 query for every forecast or completed facility.
+function jobStatement(db,userId,state,jobs,now,clock,gate='1=1',args=[],completed=false){
+ const notices=jobs.map(job=>{
+  const due=completed?null:job.due,delay=completed?0:clock?.running?Math.max(0,due-clock.elapsedMs)/Math.max(.1,clock.speed):86400000;
+  return {id:jobKey(userId,state,job),title:job.kind==='research'?'研究が完成しました':'普請が完成しました',dueAt:Math.round(now+delay),worldDue:due};
+ });
+ return stmt(db,`INSERT INTO notification_outbox(id,user_id,category,title,body,due_at,world_due_elapsed,created_at)
+   SELECT json_extract(n.value,'$.id'),?,'construction',json_extract(n.value,'$.title'),?,json_extract(n.value,'$.dueAt'),json_extract(n.value,'$.worldDue'),?
+   FROM json_each(?) n WHERE ${gate} AND EXISTS(SELECT 1 FROM notification_preferences WHERE user_id=? AND enabled=1 AND construction=1)
+   ON CONFLICT(id) DO UPDATE SET due_at=excluded.due_at,world_due_elapsed=excluded.world_due_elapsed WHERE notification_outbox.delivered_at IS NULL AND notification_outbox.leased_until<=?`,
+   userId,'城下町と成長手帳で次の目標を確認できます。',now,JSON.stringify(notices),...args,userId,now);
 }
 // Include these statements in the successful save transaction, using the same
 // commit-token predicate as the save. This catches even work completed between ticks.
@@ -39,14 +60,31 @@ export function notificationSaveStatements(db,userId,beforeSave,afterSave,now,ga
  for(const kind of ['building','research','castle','branch']){
   const ids=kind==='building'?Object.keys(after.buildings||{}):kind==='research'?Object.keys(after.tech||{}):kind==='castle'?Object.keys(after.castles||{}):(after.branches||[]).map(b=>b.id);
   for(const id of ids){const old=levelOf(before,kind,id),next=levelOf(after,kind,id),repair=kind==='branch'&&before.branches?.find(b=>b.id===id)?.fallen&&next>0;if(next<=old||kind==='castle'&&before.castles?.[id]?.owner!==before.clan)continue;
-   for(let targetLevel=repair?next:old+1;targetLevel<=Math.min(next,old+64);targetLevel++){const job=oldJobs.find(j=>j.kind===kind&&j.id===id&&j.targetLevel===targetLevel)||{kind,id,targetLevel};statements.push(jobStatement(db,userId,after,job,now,null,gate,gateArgs,true));}
+   for(let targetLevel=repair?next:old+1;targetLevel<=Math.min(next,old+64);targetLevel++){const job=oldJobs.find(j=>!j.facilityId&&j.kind===kind&&j.id===id&&j.targetLevel===targetLevel)||{kind,id,targetLevel};statements.push(jobStatement(db,userId,after,[job],now,null,gate,gateArgs,true));}
   }
  }
+ const facilities=[];
+ for(const branch of after.branches||[]){
+  if(branch.fallen)continue;
+  const previous=before.branches?.find(b=>b.id===branch.id);
+  for(const [facilityId,level] of Object.entries(branch.facilities||{})){
+   // Repairs resume effects from existing levels without completing them again.
+   for(let targetLevel=Number(previous?.facilities?.[facilityId]||0)+1;targetLevel<=level;targetLevel++)
+    facilities.push({kind:'branch',id:branch.id,facilityId,targetLevel});
+  }
+ }
+ if(facilities.length)statements.push(jobStatement(db,userId,after,facilities,now,null,gate,gateArgs,true));
  return statements;
 }
 function parseJob(userId,id){
  const prefix='job:'+userId+':';if(!id.startsWith(prefix))return null;
- try{const [campaign,kind,target,level,repairDue]=id.slice(prefix.length).split(':');if(!['building','research','castle','branch'].includes(kind)||!/^\d+$/.test(level))return null;return{campaign:decodeURIComponent(campaign),kind,id:decodeURIComponent(target),targetLevel:Number(level),repair:repairDue!==undefined,due:Number(repairDue)};}catch(_){return null;}
+ try{
+  const [campaign,kind,target,level,suffix,facility]=id.slice(prefix.length).split(':');
+  if(!['building','research','castle','branch'].includes(kind)||!/^\d+$/.test(level))return null;
+  const job={campaign:decodeURIComponent(campaign),kind,id:decodeURIComponent(target),targetLevel:Number(level)};
+  if(suffix==='facility')return kind==='branch'&&facility?{...job,facilityId:decodeURIComponent(facility)}:null;
+  return {...job,repair:suffix!==undefined,due:Number(suffix)};
+ }catch(_){return null;}
 }
 async function queueFacts(db,userId,since,now,clock){
  const statements=[];
@@ -57,11 +95,20 @@ async function queueFacts(db,userId,since,now,clock){
  const events=rows(await stmt(db,"SELECT id,starts_at,ends_at FROM timed_events WHERE status='active' AND ends_at>? AND (starts_at>=? OR ends_at<=?)",now,since,now+3600000).all());
  for(const e of events){if(e.starts_at>=since)statements.push(...notificationStatements(db,userId,'event','event:start:'+userId+':'+e.id,'期間限定合戦が始まりました','期間限定合戦から戦場と報酬を確認できます。',e.starts_at,now));statements.push(...notificationStatements(db,userId,'event','event:end:'+userId+':'+e.id,'期間限定合戦がまもなく終了します','残りの戦功目標を確認しましょう。',e.ends_at-3600000,now));}
  const saveRow=await stmt(db,'SELECT save_json,revision FROM player_saves WHERE user_id=?',userId).first(),state=stateOf(saveRow?.save_json),jobs=state?pendingJobs(state):[];
- if(state&&clock&&!state.gameOver)for(const job of jobs)statements.push(jobStatement(db,userId,state,job,now,clock,'EXISTS(SELECT 1 FROM player_saves WHERE user_id=? AND revision=?)',[userId,saveRow.revision]));
+ if(jobs.length&&clock&&!state.gameOver)statements.push(jobStatement(db,userId,state,jobs,now,clock,'EXISTS(SELECT 1 FROM player_saves WHERE user_id=? AND revision=?)',[userId,saveRow.revision]));
  // A cancelled construction, a lost castle or a new campaign must not leave a
  // stale forecast behind. Completed levels survive removal from state.jobs.
- const queued=rows(await stmt(db,"SELECT id FROM notification_outbox WHERE user_id=? AND category='construction' AND delivered_at IS NULL",userId).all());
- for(const item of queued){const job=parseJob(userId,item.id);if(job&&(!state||job.campaign!==campaignOf(state)||levelOf(state,job.kind,job.id)<job.targetLevel&&!jobs.some(j=>jobKey(userId,state,j)===item.id)))statements.push(stmt(db,'DELETE FROM notification_outbox WHERE id=? AND delivered_at IS NULL AND EXISTS(SELECT 1 FROM player_saves WHERE user_id=? AND revision=?)',item.id,userId,saveRow?.revision??null));}
+ const queued=rows(await stmt(db,"SELECT id,world_due_elapsed FROM notification_outbox WHERE user_id=? AND category='construction' AND delivered_at IS NULL",userId).all());
+ const forecastIds=new Set(jobs.map(job=>jobKey(userId,state,job))),stale=[];
+ // Older clients stored a facility forecast using the branch-body key. Its
+ // original due time identifies it without discarding a genuine body completion.
+ const oldFacilityForecasts=new Set(jobs.filter(j=>j.facilityId).map(j=>jobKey(userId,state,{...j,facilityId:null})+'@'+j.due));
+ for(const item of queued){
+  const job=parseJob(userId,item.id);
+  if(!forecastIds.has(item.id)&&oldFacilityForecasts.has(item.id+'@'+item.world_due_elapsed)||
+   job&&(!state||job.campaign!==campaignOf(state)||levelOf(state,job.kind,job.id,job.facilityId)<job.targetLevel&&!forecastIds.has(item.id)))stale.push(item.id);
+ }
+ if(stale.length)statements.push(stmt(db,'DELETE FROM notification_outbox WHERE id IN (SELECT value FROM json_each(?)) AND delivered_at IS NULL AND EXISTS(SELECT 1 FROM player_saves WHERE user_id=? AND revision=?)',JSON.stringify(stale),userId,saveRow?.revision??null));
  statements.push(stmt(db,`DELETE FROM notification_outbox WHERE user_id=? AND category='operation' AND delivered_at IS NULL AND id LIKE ? AND NOT EXISTS(SELECT 1 FROM alliance_operations o JOIN guild_members m ON m.guild_id=o.guild_id AND m.user_id=? WHERE ('operation:'||?||':'||o.id)=notification_outbox.id AND o.status='planned' AND o.expires_at>? AND o.starts_at>?)`,userId,'operation:'+userId+':%',userId,userId,now,now-900000));
  const operations=rows(await stmt(db,`SELECT o.id,o.starts_at FROM alliance_operations o JOIN guild_members m ON m.guild_id=o.guild_id AND m.user_id=? WHERE o.status='planned' AND o.starts_at>? AND o.starts_at<?`,userId,now-900000,now+3600000).all());
  for(const o of operations){const id='operation:'+userId+':'+o.id;statements.push(...notificationStatements(db,userId,'operation',id,'同盟の作戦時刻が近づいています','同盟作戦で集合時刻と担当を確認できます。',o.starts_at-300000,now));statements.push(stmt(db,'UPDATE notification_outbox SET due_at=? WHERE id=? AND delivered_at IS NULL',o.starts_at-300000,id));}
@@ -78,9 +125,11 @@ function sourceGate(userId,message,now,snapshot){
  if(job){
   const field=job.kind==='building'?'buildings':job.kind==='research'?'tech':'castles';
   const path='$.state.'+field+'.'+JSON.stringify(job.id)+(job.kind==='castle'?'.level':'');
-  const level=job.kind==='branch'?`EXISTS(SELECT 1 FROM json_each(s.save_json,'$.state.branches') b WHERE json_extract(b.value,'$.id')=? AND json_extract(b.value,'$.level')>=? AND COALESCE(json_extract(b.value,'$.fallen'),0)=0)`:`COALESCE(json_extract(s.save_json,?),0)>=?`;
+  const branchLevel=job.facilityId?'$.facilities.'+JSON.stringify(job.facilityId):'$.level';
+  const branchJob=job.kind!=='branch'?'':job.facilityId?" AND json_extract(j.value,'$.facilityId')=?":" AND json_extract(j.value,'$.facilityId') IS NULL";
+  const level=job.kind==='branch'?`EXISTS(SELECT 1 FROM json_each(s.save_json,'$.state.branches') b WHERE json_extract(b.value,'$.id')=? AND json_extract(b.value,?)>=? AND COALESCE(json_extract(b.value,'$.fallen'),0)=0)`:`COALESCE(json_extract(s.save_json,?),0)>=?`;
   const ownership=job.kind==='castle'?` AND json_extract(s.save_json,?)=json_extract(s.save_json,'$.state.clan')`:'';
-  return{sql:`EXISTS(SELECT 1 FROM player_saves s WHERE s.user_id=? AND s.revision=? AND COALESCE(json_extract(s.save_json,'$.state.walking.campaignId'),'legacy')=? ${ownership} AND (${level} OR (COALESCE(json_extract(s.save_json,'$.state.gameOver'),0)=0 AND EXISTS(SELECT 1 FROM json_each(s.save_json,'$.state.jobs') j WHERE json_extract(j.value,'$.kind')=? AND json_extract(j.value,'$.id')=? AND json_extract(j.value,'$.targetLevel')=?))))`,args:[userId,snapshot.saveRevision,job.campaign,...(job.kind==='castle'?['$.state.castles.'+JSON.stringify(job.id)+'.owner']:[]),job.kind==='branch'?job.id:path,job.targetLevel,job.kind,job.id,job.targetLevel]};
+  return{sql:`EXISTS(SELECT 1 FROM player_saves s WHERE s.user_id=? AND s.revision=? AND COALESCE(json_extract(s.save_json,'$.state.walking.campaignId'),'legacy')=? ${ownership} AND (${level} OR (COALESCE(json_extract(s.save_json,'$.state.gameOver'),0)=0 AND EXISTS(SELECT 1 FROM json_each(s.save_json,'$.state.jobs') j WHERE json_extract(j.value,'$.kind')=? AND json_extract(j.value,'$.id')=? AND json_extract(j.value,'$.targetLevel')=?${branchJob}))))`,args:[userId,snapshot.saveRevision,job.campaign,...(job.kind==='castle'?['$.state.castles.'+JSON.stringify(job.id)+'.owner']:[]),...(job.kind==='branch'?[job.id,branchLevel]:[path]),job.targetLevel,job.kind,job.id,job.targetLevel,...(job.facilityId?[job.facilityId]:[])]};
  }
  return{sql:'1=1',args:[]};
 }

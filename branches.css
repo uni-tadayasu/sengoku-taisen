@@ -44,8 +44,18 @@
 .branch-facility-bonuses dd{margin:3px 0 0;font-family:Georgia,serif;font-size:22px;line-height:1.3;font-variant-numeric:tabular-nums;color:#f0d396}
 .branch-facility-bonuses dd small{margin-left:4px;font:.8125rem/1.5 sans-serif;color:#b6bba4}
 .castle-branches .branch-facility-empty-benefit{font-size:.875rem;color:#9fab96;margin:0 0 16px}
-.branch-facility-running{display:flex;align-items:baseline;justify-content:space-between;gap:8px;flex-wrap:wrap;padding:10px 12px;background:#ba8b3b14;border-left:2px solid #d9b66f;font-size:.875rem!important}
-.branch-facility-running>span{font-size:.875rem;line-height:1.7;color:#c8c8aa;font-variant-numeric:tabular-nums}
+.castle-branches .branch-booking-rule{margin:12px 0;padding:8px 12px;border-left:2px solid #bda064;color:#d8d4ba;line-height:1.7}
+.branch-booking-rule b{color:#f9d995;font-variant-numeric:tabular-nums}
+.branch-queue{margin:16px 0;padding:12px;border:1px solid #ba9b6045;border-radius:3px;background:#101a14}
+.branch-queue h5{margin:0 0 8px;font-size:1rem;color:#f4e5c4}
+.branch-queue h5 small{margin-left:4px;color:#c7b994;font-size:.8125rem;font-weight:400}
+.branch-queue ol{list-style:none;margin:0;padding:0}
+.branch-queue li{display:flex;gap:10px;align-items:baseline;padding:7px 0;border-top:1px solid #bda06433}
+.branch-queue li>div{min-width:0;color:#e3dece;font-size:.875rem;overflow-wrap:anywhere}
+.branch-queue-position{flex:0 0 22px;min-height:22px;text-align:center;border:1px solid #bda06455;color:#dfc788;line-height:20px;font-size:.8125rem;font-variant-numeric:tabular-nums}
+.branch-queue li:first-child .branch-queue-position{background:#b2914f;color:#151d18}
+.branch-queue-state{display:inline-block;margin-left:8px;color:#d1bb89;font-size:.8125rem}
+.branch-queue li small{display:block;margin-top:4px;font-size:.8125rem;color:#c0c9b6;font-variant-numeric:tabular-nums}
 .branch-facility-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,210px),1fr));align-items:stretch;gap:14px}
 .branch-facility-card{display:flex;flex-direction:column;overflow:hidden;border:1px solid #b99d6040;border-radius:3px;background:linear-gradient(150deg,#202c20,#101c16);box-shadow:0 6px 18px #0003;min-width:0}
 .branch-facility-visual{position:relative;aspect-ratio:1;min-height:128px;overflow:hidden;border-bottom:1px solid #d9b66f38;background:#1a281c}
@@ -86,7 +96,6 @@
 .castle-branches .branch-facility-action:disabled{opacity:.65;cursor:not-allowed}
 .castle-branches .branch-facility-reason{font-size:.875rem;line-height:1.7;margin:8px 0 0;color:#e5baa1;overflow-wrap:anywhere}
 .branch-facility-reason[hidden]{display:none}
-.castle-branches .branch-facility-footnote{font-size:.8125rem;color:#94a78d;margin:16px 0 0;line-height:1.9}
 @media(hover:hover) and (prefers-reduced-motion:no-preference){
  .branch-facility-card{transition:border-color 180ms ease,box-shadow 180ms ease}
  .branch-facility-card:hover{border-color:#d9b66f80;box-shadow:0 8px 24px #0004}

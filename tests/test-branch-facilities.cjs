@@ -21,18 +21,18 @@ test('construction charges the exact quote once and resumes fractional progress 
  const g=ready('nijo',3),quote=g.branchFacilityQuote('nijo_north','market'),before=copy(g.state),result=g.buildBranchFacility('nijo_north','market');assert(result.ok);assert.equal(result.facilityId,'market');assert.equal(result.targetLevel,1);
  for(const key of D.resources)assert.equal(g.state.resources[key],before.resources[key]-(quote.cost[key]||0));assert.equal(g.state.command,before.command-1);assert.equal(g.state.jobs[0].kind,'branch');assert.equal(g.state.jobs[0].id,'nijo_north');assert.equal(g.state.jobs[0].facilityId,'market');assert.equal(g.state.jobs[0].totalSeconds,quote.cost.seconds);assert.equal(g.branch('nijo_north').level,3);assert.equal(g.branchFacilityStatus('nijo_north').facilities.find(d=>d.id==='market').level,0);
  g._advanceRealtime(21.125);const loaded=E.fromSave(g.exportSave(),officers);loaded._cpuTurn=()=>[];assert.equal(loaded.state.jobs[0].remainingSeconds,38.875);loaded._advanceRealtime(38.874);assert.equal(loaded.branchFacilityStatus('nijo_north').builtCount,0);loaded._advanceRealtime(.001);assert.equal(loaded.branch('nijo_north').facilities.market,1);assert.equal(loaded.branch('nijo_north').level,3);assert.deepEqual(loaded.state.branches[0].facilityCompletedAt.market,[60000]);assert.deepEqual(loaded.state.stats,before.stats);assert.deepEqual(E.fromSave(loaded.exportSave(),officers).state.branches,loaded.state.branches);
- reject(loaded,()=>loaded.buildBranchFacility('nijo_north','market'));assert(loaded.upgradeBranchFacility('nijo_north','market').ok);reject(loaded,()=>loaded.upgradeBranchFacility('nijo_north','market'));
+ reject(loaded,()=>loaded.buildBranchFacility('nijo_north','market'));assert(loaded.upgradeBranchFacility('nijo_north','market').ok);assert(loaded.upgradeBranchFacility('nijo_north','market').queued);reject(loaded,()=>loaded.upgradeBranchFacility('nijo_north','market'));
 });
 
-test('branch upgrades, repairs and facilities share one job and the common construction capacity',()=>{
- const g=ready('nijo',3);g.state.branches.push(record('nijo',3,'south'));assert(g.buildBranchFacility('nijo_north','farm').ok);reject(g,()=>g.buildBranchFacility('nijo_north','market'));reject(g,()=>g.upgradeBranch('nijo_north'));reject(g,()=>g.repairBranch('nijo_north'));assert(g.buildBranchFacility('nijo_south','farm').ok);assert.equal(g.constructionChains(),2);g.state.command=3;reject(g,()=>g.upgrade('farm'));g._advanceRealtime(60);assert.equal(g.branch('nijo_north').facilities.farm,1);assert.equal(g.branch('nijo_south').facilities.farm,1);assert.equal(g.branchFacilityBonuses().income.rice,200);
+test('work in each branch shares one construction slot and distinct branches can run concurrently',()=>{
+ const g=ready('nijo',3);g.state.branches.push(record('nijo',3,'south'));assert(g.buildBranchFacility('nijo_north','farm').ok);assert(g.buildBranchFacility('nijo_south','farm').ok);assert(g.buildBranchFacility('nijo_north','market').queued);reject(g,()=>g.repairBranch('nijo_north'));assert.equal(g.constructionChains(),2);g._advanceRealtime(20);assert(g.upgradeBranch('nijo_north').queued);reject(g,()=>g.upgrade('farm'));g._advanceRealtime(60);assert.equal(g.branch('nijo_north').facilities.farm,1);assert.equal(g.branch('nijo_south').facilities.farm,1);assert.equal(g.branchFacilityBonuses().income.rice,200);
  const busy=ready('osaka',4);assert(busy.upgrade('farm').ok);assert(busy.upgradeCastle(busy.state.home).ok);busy.state.command=3;reject(busy,()=>busy.buildBranchFacility('osaka_north','market'));
 });
 
 test('permission, completion, command, resources, local pause and completed branch level guard every start',()=>{
  const g=ready('nijo',1);reject(g,()=>g.upgradeBranchFacility('nijo_north','farm'));finish(g,()=>g.buildBranchFacility('nijo_north','farm'));reject(g,()=>g.upgradeBranchFacility('nijo_north','farm'));assert.match(g.branchFacilityQuote('nijo_north','farm').reason,/支拠点を増築/);finish(g,()=>g.upgradeBranch('nijo_north'));assert.equal(g.branchFacilityQuote('nijo_north','farm').maxLevel,2);assert(g.upgradeBranchFacility('nijo_north','farm').ok);
  for(const change of [g=>g.state.command=0,g=>g.state.resources.stone=0,g=>g.state.realtime.running=false,g=>g.state.branches[0].fallen=true,g=>g.state.castles.nijo.owner='在地衆',g=>g.state.gameOver=true]){const denied=ready();change(denied);reject(denied,()=>denied.buildBranchFacility('nijo_north','farm'));}
- const unbuilt=ready();unbuilt.state.branches=[];assert(unbuilt.buildBranch('nijo','north').ok);assert.equal(unbuilt.branchFacilityStatus('nijo_north').facilities.length,12);assert.equal(unbuilt.branchFacilityStatus('nijo_north').maxLevel,0);reject(unbuilt,()=>unbuilt.buildBranchFacility('nijo_north','farm'));
+ const unbuilt=ready();unbuilt.state.branches=[];assert(unbuilt.buildBranch('nijo','north').ok);assert.equal(unbuilt.branchFacilityStatus('nijo_north').facilities.length,12);assert.equal(unbuilt.branchFacilityStatus('nijo_north').maxLevel,0);assert(unbuilt.buildBranchFacility('nijo_north','farm').queued);assert.equal(unbuilt.branchFacilityStatus('nijo_north').active,false);
 });
 
 test('all facility types reach but never exceed the branch cap, with paid 60/120/180-second jobs',()=>{
@@ -66,10 +66,98 @@ test('first common-clock adoption preserves existing facility effects and remain
 
 test('save validation rejects unknown/excess facilities, invalid levels, forged job stages and malformed completion times',()=>{
  const g=ready('nijo',3);assert(g.buildBranchFacility('nijo_north','farm').ok);const initial=JSON.parse(g.exportSave());
- const mutations=[s=>s.branches[0].facilities=null,s=>s.branches[0].facilities=[],s=>s.branches[0].facilities={farm:-1},s=>s.branches[0].facilities={farm:1.5},s=>s.branches[0].facilities={farm:'1'},s=>s.branches[0].facilities={farm:4},s=>s.branches[0].facilities={keep:1},s=>s.branches[0].facilities=JSON.parse('{"__proto__":1}'),s=>s.jobs[0].facilityId='keep',s=>s.jobs[0].facilityId=null,s=>s.jobs[0].targetLevel=2,s=>s.jobs[0].repair=true,s=>s.jobs[0].kind='building',s=>s.jobs.push({...s.jobs[0],facilityId:'market'}),s=>{s.jobs[0].total=2;s.jobs[0].totalSeconds=120;},s=>s.branches[0].fallen=true,s=>s.branches[0].level=0];
+ const mutations=[s=>s.branches[0].facilities=null,s=>s.branches[0].facilities=[],s=>s.branches[0].facilities={farm:-1},s=>s.branches[0].facilities={farm:1.5},s=>s.branches[0].facilities={farm:'1'},s=>s.branches[0].facilities={farm:4},s=>s.branches[0].facilities={keep:1},s=>s.branches[0].facilities=JSON.parse('{"__proto__":1}'),s=>s.jobs[0].facilityId='keep',s=>s.jobs[0].facilityId=null,s=>s.jobs[0].targetLevel=2,s=>s.jobs[0].repair=true,s=>s.jobs[0].kind='building',s=>s.jobs.push({...s.jobs[0],facilityId:'market',targetLevel:2}),s=>{s.jobs[0].total=2;s.jobs[0].totalSeconds=120;},s=>s.branches[0].fallen=true,s=>s.branches[0].level=0];
  for(const change of mutations){const raw=copy(initial);change(raw.state);assert.throws(()=>E.fromSave(raw,officers));}
  g._advanceRealtime(60);const complete=JSON.parse(g.exportSave());for(const times of [null,[],{farm:[]},{farm:[-1]},{farm:[1.5]},{farm:['60000']},{farm:[60000,70000]},{market:[60000]},{farm:[60000],unknown:[60000]}]){const raw=copy(complete);raw.state.branches[0].facilityCompletedAt=times;assert.throws(()=>E.fromSave(raw,officers));}
  const edo=ready('edo',8);edo.state.branches[0].facilities={granary:1};assert.throws(()=>E.fromSave(edo.exportSave(),officers,{isAdmin:true}));
+});
+
+test('mixed reservations pay one command and their projected stage price immediately, then finish in FIFO order',()=>{
+ const g=ready(),id='nijo_north';g.state.branches=[];const before=copy(g.state.resources),costs=[];
+ function accept(quote,send,wait,target){
+   assert(quote.ok);assert.equal(quote.commandCost,1);assert.equal(quote.targetLevel,target);
+   const commands=g.state.command,resources=copy(g.state.resources);const result=send();assert(result.ok,result.message);
+   assert.equal(result.startsInSeconds,wait);assert.equal(g.state.command,commands-1);
+   for(const key of D.resources)assert.equal(g.state.resources[key],resources[key]-(quote.cost[key]||0));
+   costs.push(quote.cost);return result;
+ }
+ accept(g.branchQuote('nijo','north'),()=>g.buildBranch('nijo','north'),0,1);
+ accept(g.branchQuote('nijo','north'),()=>g.upgradeBranch(id),60,2);
+ accept(g.branchFacilityQuote(id,'market'),()=>g.buildBranchFacility(id,'market'),120,1);
+ assert.equal(g.constructionChains(),1);reject(g,()=>g.upgradeBranchFacility(id,'market'));
+ for(const key of D.resources)assert.equal(g.state.resources[key],before[key]-costs.reduce((sum,c)=>sum+(c[key]||0),0));
+ g._advanceRealtime(20);accept(g.branchFacilityQuote(id,'market'),()=>g.upgradeBranchFacility(id,'market'),160,2);
+ g._advanceRealtime(20);accept(g.branchFacilityQuote(id,'farm'),()=>g.buildBranchFacility(id,'farm'),200,1);
+ const status=g.branchFacilityStatus(id);assert.equal(status.maxLevel,0);assert.equal(status.queuedLevel,2);assert.equal(status.active,false);
+ assert.deepEqual(status.jobs.map(j=>[j.queuePosition,j.queued,j.startsInSeconds]),[[1,false,0],[2,true,20],[3,true,80],[4,true,140],[5,true,200]]);
+ assert.deepEqual(status.facilities.find(f=>f.id==='market').jobs.map(j=>j.targetLevel),[1,2]);
+ assert.equal(g.branchFacilityBonuses().income.gold,0);
+ const h=E.fromSave(g.exportSave(),officers);h._cpuTurn=()=>[];
+ h._advanceRealtime(19.875);assert.equal(h.branch(id).level,0);
+ h._advanceRealtime(.125);assert.equal(h.branch(id).level,1);assert.deepEqual(h.branch(id).facilities,{});
+ h._advanceRealtime(60);assert.equal(h.branch(id).level,2);assert.equal(h.branchFacilityBonuses().income.gold,0);
+ h._advanceRealtime(60);assert.equal(h.branchFacilityBonuses().income.gold,D.branchFacilities.find(f=>f.id==='market').income.gold);assert.deepEqual(h.branch(id).facilities,{market:1});
+ h._advanceRealtime(120);assert.deepEqual(h.branch(id).facilities,{market:2,farm:1});
+ assert.deepEqual(h.branch(id).facilityCompletedAt,{market:[180000,240000],farm:[300000]});assert.deepEqual(h.branch(id).jobs,[]);
+});
+
+test('a fallen branch and lost parent discard the whole queue; neither future levels nor later bonuses become active',()=>{
+ const g=ready('osaka',3),id='osaka_north';
+ assert(g.buildBranchFacility(id,'farm').ok);assert(g.upgradeBranchFacility(id,'farm').ok);assert(g.upgradeBranch(id).ok);
+ g._advanceRealtime(20);const held=copy(g.state.resources),commands=g.state.command;assert(g._fallBranch(id));
+ assert.deepEqual(g.state.resources,held);assert.equal(g.state.command,commands);assert.deepEqual(g.branch(id).jobs,[]);
+ assert.equal(g.branch(id).level,3);assert.equal(g.branchFacilityBonuses().income.rice,0);
+ assert(g.repairBranch(id).ok);reject(g,()=>g.upgradeBranch(id));reject(g,()=>g.buildBranchFacility(id,'farm'));
+ g._advanceRealtime(60);assert(!g.branch(id).fallen);assert.deepEqual(g.branch(id).facilities,{});
+ assert(g.buildBranchFacility(id,'market').ok);assert(g.upgradeBranch(id).ok);
+ g.state.castles.osaka.owner='在地衆';const imported=E.fromSave(g.exportSave(),officers);assert.equal(imported.branch(id),null);assert.deepEqual(imported.state.jobs,[]);
+});
+
+test('a battle projection ahead of a private clock does not advance the successor before its promised start',()=>{
+ const g=ready('nijo',2),id='nijo_north';
+ assert(g.buildBranchFacility(id,'market').ok);g.state.jobs[0].completesElapsedMs=120000;
+ assert(g.buildBranchFacility(id,'farm').ok);g.state.jobs[1].completesElapsedMs=180000;
+ assert.deepEqual(g.branch(id).jobs.map(j=>[j.startsInSeconds,j.finishesInSeconds]),[[60,120],[120,180]]);
+ assert.equal(g.branchFacilityQuote(id,'market').startsInSeconds,180);
+ g._advanceRealtime(60);assert.equal(g.branch(id).jobs[0].remainingSeconds,60);assert.equal(g.branchFacilityBonuses().income.gold,0);
+ g._advanceRealtime(59.875);assert.equal(g.branchFacilityBonuses().income.gold,0);g._advanceRealtime(.125);
+ assert.equal(g.branchFacilityBonuses().income.gold,45);assert.equal(g.branchFacilityBonuses().income.rice,0);
+ const saved=E.fromSave(g.exportSave(),officers);saved._cpuTurn=()=>[];
+ saved._advanceRealtime(60);assert.deepEqual(saved.branch(id).facilityCompletedAt,{market:[120000],farm:[180000]});
+ const migrate=ready('nijo',2);assert(migrate.buildBranchFacility(id,'market').ok);migrate.state.jobs[0].completesElapsedMs=120000;
+ assert(migrate.upgradeBranchFacility(id,'market').ok);migrate.state.jobs[1].completesElapsedMs=180000;
+ assert(migrate.applyWorldClock({id:'another-world',elapsedMs:900000,running:true,speed:1}).ok);
+ assert.deepEqual(migrate.state.jobs.map(j=>j.completesElapsedMs),[1020000,1080000]);
+ assert.deepEqual(migrate.branch(id).jobs.map(j=>j.startsInSeconds),[60,120]);
+});
+
+test('long mixed queues round-trip with their exact deadlines, order, full waiting durations and stage dependencies',()=>{
+ const g=ready('nijo',24),id='nijo_north',s=g.state;
+ let end=10000;
+ for(const f of D.branchFacilities){
+   for(let level=0;level<24;level++){
+     const cost=E.branchFacilityCost('nijo',f.id,level);end+=cost.seconds*1000;
+     s.jobs.push({kind:'branch',id,facilityId:f.id,remaining:cost.turns,total:cost.turns,
+       remainingSeconds:cost.seconds,totalSeconds:cost.seconds,targetLevel:level+1,completesElapsedMs:end});
+   }
+ }
+ s.jobs[0].remainingSeconds-=.125;
+ const raw=JSON.parse(g.exportSave());assert(raw.state.jobs.length>193);assert.equal(E.maxConstructionJobs,2289);
+ const imported=E.fromSave(raw,officers);assert.deepEqual(imported.state.jobs,s.jobs);
+ for(const mutate of [
+   jobs=>jobs[1].targetLevel++,
+   jobs=>jobs[1].remainingSeconds-=1,
+   jobs=>jobs[1].completesElapsedMs-=1,
+   jobs=>jobs.reverse(),
+   jobs=>jobs[1].repair=true
+ ]){
+   const changed=copy(raw);mutate(changed.state.jobs);assert.throws(()=>E.fromSave(changed,officers));
+ }
+ const required=ready('nijo',1);
+ required.state.jobs=[{kind:'branch',id,targetLevel:2,remaining:1,total:1,remainingSeconds:60,totalSeconds:60},
+  {kind:'branch',id,facilityId:'market',targetLevel:1,remaining:1,total:1,remainingSeconds:60,totalSeconds:60},
+  {kind:'branch',id,facilityId:'market',targetLevel:2,remaining:1,total:1,remainingSeconds:60,totalSeconds:60}];
+ const invalid=JSON.parse(required.exportSave());invalid.state.jobs.push(invalid.state.jobs.shift());assert.throws(()=>E.fromSave(invalid,officers));
 });
 
 for(const [name,run] of tests){run();console.log('PASS '+name);}

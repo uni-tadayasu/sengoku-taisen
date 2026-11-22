@@ -57,11 +57,18 @@ try{
   }
  });
 
- await scope('same-branch jobs, command/resources and a paused or stale common clock reject before payment',async h=>{
+ await scope('same-branch jobs queue without bypassing command, resources, repair or clock guards',async h=>{
   const p=await fixture(h,'施設工事の条件',{holdings:['nijo']}),branchId=seed(h,p),base=save(h,p);
   for(const change of [s=>s.command=0,s=>s.resources.stone=0]){updateSave(h,p,s=>Object.assign(s,clone(base.state)));updateSave(h,p,change);const before=stable(h,p);await command(h,p,'build-facility',{branchId,facilityId:'farm'},409);assert.deepEqual(stable(h,p),before);}
   updateSave(h,p,s=>Object.assign(s,clone(base.state)));h.sql.exec('UPDATE world_clock SET running=0,revision=revision+1');const paused=stable(h,p);assert.equal((await command(h,p,'build-facility',{branchId,facilityId:'farm'},409)).error.code,'WORLD_PAUSED');assert.deepEqual(stable(h,p),paused);h.sql.exec('UPDATE world_clock SET running=1,revision=revision+1');clockAt(h,15001);assert.equal((await command(h,p,'build-facility',{branchId,facilityId:'farm'},409)).error.code,'CLOCK_STALE');clockAt(h,0);
-  await command(h,p,'build-facility',{branchId,facilityId:'farm'});const busy=stable(h,p);for(const [action,extra] of [['build-facility',{facilityId:'market'}],['upgrade',{}],['repair',{}]])await command(h,p,action,{branchId,...extra},409);assert.deepEqual(stable(h,p),busy);const deadline=model(h,p).jobs[0].completesElapsedMs;clockAt(h,deadline-1);const early=await syncNow(h,p);assert.equal(early.save.state.branches[0].facilities,undefined);h.sql.exec('UPDATE world_clock SET running=0,revision=revision+1');const stopped=await status(h,p);assert.equal(stopped.branchState.jobs[0].remainingSeconds,.001);h.sql.exec('UPDATE world_clock SET running=1,revision=revision+1');await finish(h,p,branchId);assert.equal(model(h,p).branches[0].facilities.farm,1);
+  await command(h,p,'build-facility',{branchId,facilityId:'farm'});
+  for(const [action,extra] of [['build-facility',{facilityId:'market'}],['upgrade',{}]]){
+   const queued=await command(h,p,action,{branchId,...extra});assert(queued.result.queued);
+  }
+  const busy=stable(h,p);await command(h,p,'repair',{branchId},409);assert.deepEqual(stable(h,p),busy);
+  const deadline=model(h,p).jobs[0].completesElapsedMs;clockAt(h,deadline-1);const early=await syncNow(h,p);assert.equal(early.save.state.branches[0].facilities,undefined);
+  h.sql.exec('UPDATE world_clock SET running=0,revision=revision+1');const stopped=await status(h,p);assert.equal(stopped.branchState.jobs[0].remainingSeconds,.001);assert(stopped.branchState.jobs.slice(1).every(j=>j.remainingSeconds===j.totalSeconds));
+  h.sql.exec('UPDATE world_clock SET running=1,revision=revision+1');await finish(h,p,branchId);assert.equal(model(h,p).branches[0].facilities.farm,1);assert.equal(model(h,p).jobs.length,2);
  });
 
  await scope('duplicates, lost responses and racing facility intents create one payment and preserve exact intent',async h=>{

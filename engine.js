@@ -246,6 +246,19 @@
   const BRANCH_SITES=BRANCH_RULES.parents.flatMap(parent=>BRANCH_RULES.directions.map(direction=>({id:parent.id+'_'+direction.id,parentCastleId:parent.id,direction:direction.id,name:CASTLE_BY_ID[parent.id].name+'・'+direction.name+'支拠点',maxLevel:parent.maxLevel})));
   const BRANCH_BY_ID=Object.assign(Object.create(null),Object.fromEntries(BRANCH_SITES.map(site=>[site.id,site])));
   function branchUpgradeCost(parentCastleId,fromLevel){const rule=BRANCH_RULES.parents.find(row=>row.id===parentCastleId);if(!rule||!Number.isInteger(fromLevel)||fromLevel<0||fromLevel>=rule.maxLevel)return null;const stage=Math.max(1,fromLevel),lv=stage-1,mult=1+lv*.3+lv*lv*.015,turns=stage>=16?3:stage>=6?2:1;return{gold:Math.round(700*mult),rice:0,wood:Math.round(280*mult),stone:Math.round(400*mult),turns,seconds:turns*60};}
+  // The previous save limit covers ordinary town work. Each permitted branch
+  // can additionally reserve its own body and every facility up to its cap.
+  const MAX_CONSTRUCTION_JOBS=193+BRANCH_RULES.parents.reduce((total,parent)=>
+    total+parent.maxBranches*parent.maxLevel*(1+parent.facilitySlots),0);
+  function branchQueuePlan(branch,jobs){
+    const facilities={...branch?.facilities};let level=branch?.level||0,startsInSeconds=0;
+    for(const job of jobs){
+      if(job.facilityId)facilities[job.facilityId]=job.targetLevel;
+      else level=job.targetLevel;
+      startsInSeconds=job.finishesInSeconds??(startsInSeconds+job.remainingSeconds);
+    }
+    return {level,facilities,startsInSeconds,queuePosition:jobs.length+1,queued:jobs.length>0};
+  }
   function normalizeBranchState(value,{castles,clan,jobs=[],isAdmin=false,validateRole=true}={}){
     const invalid=()=>{throw Object.assign(Error('支拠点の配置・成長・工事を確認できません。'),{code:'INVALID_BRANCH_STATE'});},raw=value===undefined?[]:value;
     if(!Array.isArray(raw)||raw.length>BRANCH_RULES.parents.reduce((total,parent)=>total+parent.maxBranches,0)||!Array.isArray(jobs))invalid();
@@ -256,8 +269,27 @@
       if(row.facilities!==undefined){if(!row.facilities||typeof row.facilities!=='object'||Array.isArray(row.facilities))invalid();const ids=new Set(branchFacilityCatalog(site.parentCastleId).map(def=>def.id)),entries=Object.entries(row.facilities);if(entries.length>rule.facilitySlots||entries.some(([id,level])=>!ids.has(id)||!Number.isInteger(level)||level<0||level>row.level))invalid();clean.facilities=Object.fromEntries(entries);}
       if(row.facilityCompletedAt!==undefined){if(!row.facilityCompletedAt||typeof row.facilityCompletedAt!=='object'||Array.isArray(row.facilityCompletedAt)||!clean.facilities)invalid();const entries=Object.entries(row.facilityCompletedAt),levels=Object.entries(clean.facilities).filter(([,level])=>level>0);if(entries.length!==levels.length||entries.some(([id,times])=>!Object.hasOwn(clean.facilities,id)||!Array.isArray(times)||times.length!==clean.facilities[id]||!times.length||times.some((at,i)=>!Number.isSafeInteger(at)||at<0||i>0&&at<times[i-1])))invalid();clean.facilityCompletedAt=Object.fromEntries(entries.map(([id,times])=>[id,[...times]]));}
       found.set(site.id,clean);result.push(clean);}
-    const active=new Set();for(const job of jobs){if(job?.kind!=='branch'){if(job?.facilityId!==undefined)invalid();continue;}const row=found.get(job.id),repair=job.repair===true,facility=job.facilityId!==undefined,level=facility?row?.facilities?.[job.facilityId]||0:row?.level,cost=row&&(facility?branchFacilityCost(row.parentCastleId,job.facilityId,level):branchUpgradeCost(row.parentCastleId,repair?Math.max(0,row.level-1):row.level));if(job.completesElapsedMs!==undefined&&(!Number.isSafeInteger(job.completesElapsedMs)||job.completesElapsedMs<0)||job.repair!==undefined&&job.repair!==true||!row||!cost||active.has(job.id)||facility&&(repair||row.level<1||job.targetLevel>row.level)||repair&&(!row.fallen||row.level<1)||!repair&&row.fallen||job.targetLevel!==(repair?row.level:level+1)||job.totalSeconds!==cost.seconds||job.total!==cost.turns||typeof job.remainingSeconds!=='number'||!Number.isFinite(job.remainingSeconds)||job.remainingSeconds<=0||job.remainingSeconds>cost.seconds||job.remaining!==Math.ceil((job.remainingSeconds-1e-8)/60))invalid();active.add(job.id);}
-    if(result.some(row=>row.level===0&&!active.has(row.id)))invalid();return result;
+    const plans=new Map();
+    for(const job of jobs){
+      if(job?.kind!=='branch'){if(job?.facilityId!==undefined)invalid();continue;}
+      const row=found.get(job.id);if(!row)invalid();
+      const prior=plans.get(job.id),plan=prior||{level:row.level,facilities:{...row.facilities}};
+      const repair=job.repair===true,facility=job.facilityId!==undefined;
+      const level=facility?(plan.facilities[job.facilityId]||0):plan.level;
+      const cost=facility?branchFacilityCost(row.parentCastleId,job.facilityId,level):
+        branchUpgradeCost(row.parentCastleId,repair?Math.max(0,level-1):level);
+      if(!cost||job.repair!==undefined&&!repair||repair&&(prior||facility||!row.fallen||row.level<1)||
+        !repair&&row.fallen||facility&&(plan.level<1||job.targetLevel>plan.level)||
+        job.targetLevel!==(repair?level:level+1)||job.totalSeconds!==cost.seconds||job.total!==cost.turns||
+        !Number.isFinite(job.remainingSeconds)||job.remainingSeconds<=0||job.remainingSeconds>cost.seconds||
+        prior&&job.remainingSeconds!==cost.seconds||job.remaining!==Math.ceil((job.remainingSeconds-1e-8)/60))invalid();
+      const deadline=job.completesElapsedMs;
+      if(deadline!==undefined&&(!Number.isSafeInteger(deadline)||deadline<0||
+        prior?.deadline!==undefined&&deadline!==prior.deadline+cost.seconds*1000))invalid();
+      if(facility)plan.facilities[job.facilityId]=job.targetLevel;else plan.level=job.targetLevel;
+      plan.deadline=deadline;plans.set(job.id,plan);
+    }
+    if(result.some(row=>row.level===0&&!plans.has(row.id)))invalid();return result;
   }
   const DATA = {version:2,assetCap:ASSET_CAP,staffBaseId:STAFF_BASE_ID,courtAdmission:COURT_ADMISSION,branchRules:BRANCH_RULES,branchFacilities:BRANCH_FACILITIES,gacha:GACHA,rankBonuses:RANK_BONUSES,adminAssets:ADMIN_ASSETS,adminClan:ADMIN_CLAN,staffClan:STAFF_CLAN,majorCityIds:MAJOR_CITY_IDS,worldCalendar:WORLD_CALENDAR,secondsPerMonth:60,secondsPerCommand:20,buildingLimit:32,ranks:RANKS,evaluationRanks:EVALUATION_RANKS,evaluationMax:EVALUATION_MAX,categories:CATEGORY_LABELS,clans:CLANS,buildings:BUILDINGS,techs:TECHS,castles:CASTLES,tactics:TACTICS,quests:QUESTS,resources:RESOURCES,covert:COVERT_RULES,roaming:{commandCost:1,minTroops:300,historyLimit:20,encounters:ROAMING_ENCOUNTERS,tactics:ROAMING_TACTICS}};
   const clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
@@ -604,6 +636,7 @@
     static get ASSET_CAP(){return ASSET_CAP;}
     static normalizeAssets(state){return normalizeAssets(state);}
     static evaluationRank(score){return evaluationRank(score);}
+    static get maxConstructionJobs(){return MAX_CONSTRUCTION_JOBS;}
     static normalizeBranchState(value,options={}){return normalizeBranchState(value,options);}
     static branchFacilityCost(parentCastleId,facilityId,fromLevel){return branchFacilityCost(parentCastleId,facilityId,fromLevel);}
     static branchFacilityEffects(branch,elapsedMs=Infinity){return branchFacilityEffects(branch,elapsedMs);}
@@ -800,7 +833,16 @@
     }
     constructionJobs(){
       const view=this.isStaff?STAFF_VIEW.get(this):null,elapsed=this.state.worldClock?.elapsedMs??this.state.turn*60000+this.state.realtime.elapsed*1000,waits=new Map(),positions=new Map();
-      const personal=this.state.jobs.map(job=>{const key=job.kind+':'+job.id,startsInSeconds=job.kind==='building'?(waits.get(key)||0):0,queuePosition=(positions.get(key)||0)+1;positions.set(key,queuePosition);waits.set(key,startsInSeconds+job.remainingSeconds);const facility=job.kind==='branch'&&job.facilityId?BRANCH_FACILITIES.find(def=>def.id===job.facilityId):null;return{...job,...(facility?{name:BRANCH_BY_ID[job.id].name+'・'+facility.name,branchName:BRANCH_BY_ID[job.id].name,facilityName:facility.name}:{}),shared:false,queued:startsInSeconds>0,startsInSeconds,finishesInSeconds:startsInSeconds+job.remainingSeconds,queuePosition};});
+      const personal=this.state.jobs.map(job=>{
+        const key=job.kind+':'+job.id,queuePosition=(positions.get(key)||0)+1;
+        const promisedStart=job.kind==='branch'&&Number.isSafeInteger(job.completesElapsedMs)?
+          (job.completesElapsedMs-elapsed)/1000-job.remainingSeconds:0;
+        const startsInSeconds=Math.max(0,promisedStart,waits.get(key)||0),finishesInSeconds=startsInSeconds+job.remainingSeconds;
+        positions.set(key,queuePosition);waits.set(key,finishesInSeconds);
+        const facility=job.kind==='branch'&&job.facilityId?BRANCH_FACILITIES.find(def=>def.id===job.facilityId):null;
+        return{...job,...(facility?{name:BRANCH_BY_ID[job.id].name+'・'+facility.name,branchName:BRANCH_BY_ID[job.id].name,facilityName:facility.name}:{}),
+          shared:false,queued:startsInSeconds>0,startsInSeconds,finishesInSeconds,queuePosition};
+      });
       const sharedPositions=new Map(),shared=(view?.base.jobs||[]).filter(job=>job.completesElapsedMs>elapsed).map(job=>{const key=job.kind+':'+job.id,startsInSeconds=Math.max(0,(job.startedElapsedMs-elapsed)/1000),remainingSeconds=Math.min(job.totalSeconds,(job.completesElapsedMs-elapsed)/1000),queuePosition=(sharedPositions.get(key)||0)+1;sharedPositions.set(key,queuePosition);return{...job,shared:true,queued:startsInSeconds>0,startsInSeconds,finishesInSeconds:startsInSeconds+remainingSeconds,queuePosition,remainingSeconds,remaining:Math.ceil((remainingSeconds-1e-8)/60),total:job.totalSeconds/60};});
       return [...personal,...shared];
     }
@@ -836,7 +878,12 @@
       return{isNew,isNewOfficer,upgraded:isNew&&!isNewOfficer&&RANKS.indexOf(rank)>RANKS.indexOf(previous)};
     }
     castle(id){const c=CASTLE_BY_ID[id];return c?{...c,...this.state.castles[id]}:null;}
-    branch(id){const site=BRANCH_BY_ID[id],record=this.state.branches.find(row=>row.id===id);if(!site||!record)return null;return{...site,...copy(record),facilities:copy(record.facilities||{}),job:this.constructionJobs().find(job=>job.kind==='branch'&&job.id===id)||null};}
+    branch(id){
+      const site=BRANCH_BY_ID[id],record=this.state.branches.find(row=>row.id===id);
+      if(!site||!record)return null;
+      const jobs=this.constructionJobs().filter(job=>job.kind==='branch'&&job.id===id);
+      return {...site,...copy(record),facilities:copy(record.facilities||{}),job:jobs[0]||null,jobs};
+    }
     activeBranches(parentCastleId){return this.state.branches.filter(row=>row.parentCastleId===parentCastleId&&row.level>0&&!row.fallen).map(row=>this.branch(row.id));}
     parentAttackPermission(parentCastleId){const branches=this.activeBranches(parentCastleId);return branches.length?{ok:false,code:'BRANCHES_REQUIRED',message:'大都市拠点へ攻めるには、残っている支拠点をすべて先に陥落させてください。',branchIds:branches.map(row=>row.id)}:{ok:true,branchIds:[]};}
     branchDefense(id,tactic='balanced',siege=0){const branch=this.branch(id),parent=branch&&this.castle(branch.parentCastleId);if(!branch||branch.level<1||!parent)return null;const force=Math.max(200,Math.floor(parent.troops*.25)),wallFactor=Math.max(.2,1-(Number(siege)||0)*.12)*(tactic==='siege'?.5:1),facilities=branchFacilityEffects(branch,this.state?this.state.turn*60000+this.state.realtime.elapsed*1000:Infinity),facilityMultiplier=1+facilities.defense+facilities.siegeDefense*wallFactor,power=Math.max(1,Math.round((force+200)*(1+branch.level*.08)*(1+parent.wall*.03*wallFactor)*facilityMultiplier));return{power,force,level:branch.level,parentCastleId:branch.parentCastleId,facilityMultiplier};}
@@ -846,34 +893,93 @@
       return{parentCastleId,parentName:parent?.name||'',available,maxBranches:rule?.maxBranches||0,maxLevel:rule?.maxLevel||0,facilitySlots:rule?.facilitySlots||0,branches,directions:BRANCH_RULES.directions.map(direction=>({...direction,available:available&&branches.length<rule.maxBranches&&!branches.some(row=>row.direction===direction.id)})),reason};
     }
     branchQuote(parentCastleId,direction){
-      const status=this.branchStatus(parentCastleId),site=BRANCH_BY_ID[parentCastleId+'_'+direction],record=site&&this.state.branches.find(row=>row.id===site.id),level=record?.level??0,cost=site?branchUpgradeCost(parentCastleId,level):null,guard=this._guard();let reason=status.reason;
-      if(!reason&&!site)reason='支拠点の方角を北・東・南・西から選んでください。';else if(!reason&&record&&this.state.jobs.some(job=>job.kind==='branch'&&job.id===record.id))reason='この支拠点は普請中です。';else if(!reason&&record?.fallen)reason='陥落した支拠点は、先に修復してください。';else if(!reason&&record&&level>=status.maxLevel)reason=`この支拠点は最高のLv.${status.maxLevel}です。`;else if(!reason&&!record&&status.branches.length>=status.maxBranches)reason=`この親拠点の支拠点は${status.maxBranches}か所までです。`;else if(!reason&&guard)reason=guard.message;else if(!reason&&this.constructionChains()>=this.constructionSlots())reason=`施設・城郭・支拠点を合わせて同時に${this.constructionSlots()}件まで普請できます。`;else if(!reason&&cost&&!this._canPay(cost))reason='支拠点の普請に必要な資源が足りません。';
-      return{ok:!reason,reason,message:reason,id:site?.id||'',parentCastleId,direction,level,targetLevel:level+1,maxLevel:status.maxLevel,cost,commandCost:1};
+      const status=this.branchStatus(parentCastleId),site=BRANCH_BY_ID[parentCastleId+'_'+direction];
+      const record=status.branches.find(row=>row.id===site?.id),level=record?.level||0;
+      const plan=branchQueuePlan(record,record?.jobs||[]),queuedLevel=plan.level;
+      const cost=site?branchUpgradeCost(parentCastleId,queuedLevel):null;let reason=status.reason;
+      if(!reason&&!site)reason='支拠点の方角を北・東・南・西から選んでください。';
+      else if(!reason&&record?.fallen)reason='陥落した支拠点は、先に修復してください。';
+      else if(!reason&&queuedLevel>=status.maxLevel)reason=`この支拠点は最高のLv.${status.maxLevel}まで建設・予約されています。`;
+      else if(!reason&&!record&&status.branches.length>=status.maxBranches)reason=`この親拠点の支拠点は${status.maxBranches}か所までです。`;
+      else if(!reason)reason=this._guard()?.message||'';
+      if(!reason&&!plan.queued&&this.constructionChains()>=this.constructionSlots())reason=`施設・城郭・支拠点を合わせて同時に${this.constructionSlots()}件まで普請できます。`;
+      if(!reason&&cost&&!this._canPay(cost))reason='支拠点の普請に必要な資源が足りません。';
+      return{ok:!reason,reason,message:reason,id:site?.id||'',parentCastleId,direction,level,queuedLevel,targetLevel:queuedLevel+1,maxLevel:status.maxLevel,cost,commandCost:1,
+        queued:plan.queued,queuePosition:plan.queuePosition,startsInSeconds:plan.startsInSeconds};
     }
     buildBranch(parentCastleId,direction){const id=parentCastleId+'_'+direction;if(this.state.branches.some(row=>row.id===id))return fail('この方角にはすでに支拠点があります。');return this._startBranch(parentCastleId,direction);}
     branchRepairQuote(id){const row=this.state.branches.find(branch=>branch.id===id),status=this.branchStatus(row?.parentCastleId),cost=row?.level>0?branchUpgradeCost(row.parentCastleId,Math.max(0,row.level-1)):null,guard=this._guard();let reason=!row?'修復する支拠点が見つかりません。':status.reason||(!row.fallen?'この支拠点は陥落していません。':this.state.jobs.some(job=>job.kind==='branch'&&job.id===id)?'この支拠点は普請中です。':guard?.message||'');if(!reason&&this.constructionChains()>=this.constructionSlots())reason=`施設・城郭・支拠点を合わせて同時に${this.constructionSlots()}件まで普請できます。`;if(!reason&&cost&&!this._canPay(cost))reason='支拠点の修復に必要な資源が足りません。';return{ok:!reason,reason,message:reason,id,parentCastleId:row?.parentCastleId||'',direction:row?.direction||'',level:row?.level||0,targetLevel:row?.level||0,maxLevel:status.maxLevel,cost,commandCost:1,repair:true};}
     repairBranch(id){const quote=this.branchRepairQuote(id);if(!quote.ok)return quote;const {cost,targetLevel}=quote;this._pay(cost);this.state.jobs.push({kind:'branch',id,repair:true,remaining:cost.turns,total:cost.turns,remainingSeconds:cost.seconds,totalSeconds:cost.seconds,targetLevel});return this._action(`${BRANCH_BY_ID[id].name} Lv.${targetLevel}の修復を開始。あと${cost.seconds}秒（1倍速）で復旧します。`,'build',{branchId:id,targetLevel,repair:true});}
     upgradeBranch(id){const row=this.state.branches.find(branch=>branch.id===id);if(!row)return fail('増築する支拠点が見つかりません。');return this._startBranch(row.parentCastleId,row.direction);}
-    _startBranch(parentCastleId,direction){const quote=this.branchQuote(parentCastleId,direction);if(!quote.ok)return quote;const s=this.state,{cost,id,targetLevel}=quote,created=!s.branches.some(row=>row.id===id);if(created)s.branches.push({id,parentCastleId,direction,level:0,fallen:false});this._pay(cost);s.jobs.push({kind:'branch',id,remaining:cost.turns,total:cost.turns,remainingSeconds:cost.seconds,totalSeconds:cost.seconds,targetLevel});return this._action(`${BRANCH_BY_ID[id].name}をLv.${targetLevel}へ${created?'建設':'増築'}開始。あと${cost.seconds}秒（1倍速）で完成。`,'build',{branchId:id,parentCastleId,direction,targetLevel});}
+    _startBranch(parentCastleId,direction){
+      const quote=this.branchQuote(parentCastleId,direction);if(!quote.ok)return quote;
+      const {id}=quote,created=!this.state.branches.some(row=>row.id===id);
+      if(created)this.state.branches.push({id,parentCastleId,direction,level:0,fallen:false});
+      return this._enqueueBranch(quote,id,{parentCastleId,direction},BRANCH_BY_ID[id].name,created?'建設':'増築');
+    }
+    _enqueueBranch(quote,id,details,name,action){
+      const {cost,targetLevel,queued,queuePosition,startsInSeconds}=quote;
+      this._pay(cost);
+      this.state.jobs.push({kind:'branch',id,...(details.facilityId?{facilityId:details.facilityId}:{}),
+        remaining:cost.turns,total:cost.turns,remainingSeconds:cost.seconds,totalSeconds:cost.seconds,targetLevel});
+      return this._action(`${name} Lv.${targetLevel}の${action}を${queued?'予約':'開始'}しました。工期${cost.seconds}秒（1倍速）。`,'build',
+        {branchId:id,...details,targetLevel,queued,queuePosition,startsInSeconds});
+    }
     branchFacilityBonuses(branchId){
       const total=branchFacilityEffects(null),s=this.state;
       for(const branch of s.branches){if(branchId!==undefined&&branch.id!==branchId||s.castles[branch.parentCastleId]?.owner!==s.clan||branch.parentCastleId==='edo'&&!this.isAdmin)continue;const bonus=branchFacilityEffects(branch,s.turn*60000+s.realtime.elapsed*1000);for(const key of RESOURCES)total.income[key]+=bonus.income[key];for(const key of ['capacity','defense','siegeDefense'])total[key]+=bonus[key];}
       return total;
     }
     branchFacilityStatus(branchId){
-      const branch=this.branch(branchId),parent=branch&&this.branchStatus(branch.parentCastleId),catalog=branch?branchFacilityCatalog(branch.parentCastleId):[],reason=!branch?'支拠点が見つかりません。':parent.reason||(!branch.level?'支拠点の完成後に施設を建設できます。':branch.fallen?'陥落した支拠点を修復すると施設を利用できます。':'');
-      return{branchId,parentCastleId:branch?.parentCastleId||'',available:!reason,active:!reason,reason,slots:catalog.length,builtCount:catalog.filter(def=>(branch.facilities[def.id]||0)>0).length,totalLevels:catalog.reduce((sum,def)=>sum+(branch.facilities[def.id]||0),0),maxLevel:branch?.level||0,job:branch?.job||null,bonuses:this.branchFacilityBonuses(branchId),facilities:catalog.map(def=>{const level=branch.facilities[def.id]||0,maxLevel=branch.level;return{...def,level,maxLevel,job:branch.job?.facilityId===def.id?branch.job:null,quote:this.branchFacilityQuote(branchId,def.id),effectText:branchFacilityEffectText(def,level),nextEffectText:level<maxLevel?branchFacilityEffectText(def,level+1):maxLevel>=parent.maxLevel?'最高レベルに達しています。':'支拠点を増築すると、さらに強化できます。'};})};
+      const branch=this.branch(branchId),parent=branch&&this.branchStatus(branch.parentCastleId);
+      const catalog=branch?branchFacilityCatalog(branch.parentCastleId):[],jobs=branch?.jobs||[],plan=branchQueuePlan(branch,jobs);
+      const reason=!branch?'支拠点が見つかりません。':parent.reason||(branch.fallen?'陥落した支拠点を修復すると施設を利用できます。':
+        !plan.level?'支拠点の建設を先に予約してください。':'');
+      return{branchId,parentCastleId:branch?.parentCastleId||'',available:!reason,active:!reason&&branch.level>0,reason,
+        slots:catalog.length,builtCount:catalog.filter(def=>(branch.facilities[def.id]||0)>0).length,
+        totalLevels:catalog.reduce((sum,def)=>sum+(branch.facilities[def.id]||0),0),
+        maxLevel:branch?.level||0,queuedLevel:plan.level,job:branch?.job||null,jobs,bonuses:this.branchFacilityBonuses(branchId),
+        facilities:catalog.map(def=>{
+          const level=branch.facilities[def.id]||0,work=jobs.filter(job=>job.facilityId===def.id);
+          const quote=this._quoteBranchFacility(branch,def,parent,plan);
+          const nextEffectText=quote.queuedLevel<plan.level?branchFacilityEffectText(def,quote.targetLevel):
+            (plan.level>=parent.maxLevel?'最高レベルに達しています。':'支拠点を増築すると、さらに強化できます。');
+          return{...def,level,maxLevel:branch.level,job:work[0]||null,jobs:work,quote,effectText:branchFacilityEffectText(def,level),nextEffectText};
+        })};
     }
     branchFacilityQuote(branchId,facilityId){
-      const branch=this.branch(branchId),status=this.branchStatus(branch?.parentCastleId),def=branch&&branchFacilityCatalog(branch.parentCastleId).find(row=>row.id===facilityId),level=branch?.facilities?.[facilityId]||0,maxLevel=branch?.level||0,cost=def?branchFacilityCost(branch.parentCastleId,facilityId,level):null,guard=this._guard();let reason=!branch?'支拠点が見つかりません。':status.reason;
-      if(!reason&&!def)reason='この支拠点に建設できる施設を選んでください。';else if(!reason&&!branch.level)reason='支拠点の完成後に施設を建設できます。';else if(!reason&&branch.fallen)reason='陥落した支拠点は、先に修復してください。';else if(!reason&&branch.job)reason='この支拠点は普請中です。完成を待ってください。';else if(!reason&&level>=maxLevel)reason=maxLevel>=status.maxLevel?`この施設は最高のLv.${maxLevel}です。`:`施設は支拠点のLv.${maxLevel}まで強化できます。先に支拠点を増築してください。`;else if(!reason&&this.state.realtime.running===false)reason='時間が停止中です。再開してから普請してください。';else if(!reason&&guard)reason=guard.message;else if(!reason&&this.constructionChains()>=this.constructionSlots())reason=`施設・城郭・支拠点を合わせて同時に${this.constructionSlots()}件まで普請できます。`;else if(!reason&&cost&&!this._canPay(cost))reason='施設の普請に必要な資源が足りません。';
-      return{ok:!reason,reason,message:reason,branchId,facilityId,level,targetLevel:level+1,maxLevel,cost,commandCost:1};
+      const branch=this.branch(branchId),status=this.branchStatus(branch?.parentCastleId);
+      const def=branch&&branchFacilityCatalog(branch.parentCastleId).find(row=>row.id===facilityId);
+      return this._quoteBranchFacility(branch,def,status,branchQueuePlan(branch,branch?.jobs||[]),branchId,facilityId);
     }
-    buildBranchFacility(branchId,facilityId){if((this.branch(branchId)?.facilities?.[facilityId]||0)>0)return fail('この施設は建設済みです。増築を選んでください。');return this._startBranchFacility(branchId,facilityId);}
-    upgradeBranchFacility(branchId,facilityId){if(!(this.branch(branchId)?.facilities?.[facilityId]>0))return fail('この施設は未建設です。先に建設してください。');return this._startBranchFacility(branchId,facilityId);}
-    _startBranchFacility(branchId,facilityId){
-      const quote=this.branchFacilityQuote(branchId,facilityId);if(!quote.ok)return quote;const {cost,targetLevel}=quote,def=BRANCH_FACILITIES.find(row=>row.id===facilityId);this._pay(cost);this.state.jobs.push({kind:'branch',id:branchId,facilityId,remaining:cost.turns,total:cost.turns,remainingSeconds:cost.seconds,totalSeconds:cost.seconds,targetLevel});
-      return this._action(`${BRANCH_BY_ID[branchId].name}の${def.name}をLv.${targetLevel}へ${targetLevel===1?'建設':'増築'}開始。あと${cost.seconds}秒（1倍速）で完成。`,'build',{branchId,facilityId,targetLevel});
+    _quoteBranchFacility(branch,def,status,plan,branchId=branch?.id,facilityId=def?.id){
+      const level=branch?.facilities?.[facilityId]||0,queuedLevel=plan.facilities[facilityId]||0,maxLevel=plan.level;
+      const cost=def?branchFacilityCost(branch.parentCastleId,facilityId,queuedLevel):null;let reason=!branch?'支拠点が見つかりません。':status.reason;
+      if(!reason&&!def)reason='この支拠点に建設できる施設を選んでください。';
+      else if(!reason&&!plan.level)reason='支拠点の建設を先に予約してください。';
+      else if(!reason&&branch.fallen)reason='陥落した支拠点は、先に修復してください。';
+      else if(!reason&&queuedLevel>=maxLevel)reason=maxLevel>=status.maxLevel?`この施設は最高のLv.${maxLevel}まで建設・予約されています。`:`施設は支拠点のLv.${maxLevel}まで強化できます。先に支拠点を増築してください。`;
+      else if(!reason&&!this.state.realtime.running)reason='時間が停止中です。再開してから普請してください。';
+      else if(!reason)reason=this._guard()?.message||'';
+      if(!reason&&!plan.queued&&this.constructionChains()>=this.constructionSlots())reason=`施設・城郭・支拠点を合わせて同時に${this.constructionSlots()}件まで普請できます。`;
+      if(!reason&&cost&&!this._canPay(cost))reason='支拠点の施設普請に必要な資源が足りません。';
+      return{ok:!reason,reason,message:reason,branchId,facilityId,level,queuedLevel,targetLevel:queuedLevel+1,maxLevel,cost,commandCost:1,
+        queued:plan.queued,queuePosition:plan.queuePosition,startsInSeconds:plan.startsInSeconds};
+    }
+    buildBranchFacility(branchId,facilityId){
+      const quote=this.branchFacilityQuote(branchId,facilityId);
+      if(quote.queuedLevel>0)return fail('この施設は建設済み、または建設予約済みです。増築を選んでください。');
+      return this._startBranchFacility(quote);
+    }
+    upgradeBranchFacility(branchId,facilityId){
+      const quote=this.branchFacilityQuote(branchId,facilityId);
+      if(!quote.queuedLevel)return fail('この施設は未建設です。先に建設してください。');
+      return this._startBranchFacility(quote);
+    }
+    _startBranchFacility(quote){
+      if(!quote.ok)return quote;
+      const {branchId,facilityId,targetLevel}=quote,def=BRANCH_FACILITIES.find(row=>row.id===facilityId);
+      return this._enqueueBranch(quote,branchId,{facilityId},BRANCH_BY_ID[branchId].name+'の'+def.name,targetLevel===1?'建設':'増築');
     }
     ownedCastles(){return CASTLES.filter(c=>this.canOwnCastle(c.id)&&this.state.castles[c.id].owner===this.state.clan).map(c=>this.castle(c.id));}
     adjacentTargets(){const ids=new Set();for(const c of this.ownedCastles())for(const id of c.neighbors)if(this.canOwnCastle(id)&&this.state.castles[id].owner!==this.state.clan)ids.add(id);return [...ids].map(id=>this.castle(id));}
@@ -1600,6 +1706,9 @@
       rt.running=clock.running&&!s.gameOver;rt.speed=clock.speed;
       if(!anchor||anchor.id!==clock.id){
         const delta=clock.elapsedMs-this._marchElapsed();for(const march of [s.march,...(s.covert.dispatches||[])])if(march&&march.authority!=='server'){march.departedElapsedMs=Math.max(0,march.departedElapsedMs+delta);march.arrivesElapsedMs=march.departedElapsedMs+march.travel.durationMs;}
+        for(const job of s.jobs)if(job.kind==='branch'&&Number.isSafeInteger(job.completesElapsedMs)){
+          job.completesElapsedMs=Math.max(0,Math.round(job.completesElapsedMs+delta));
+        }
         for(const branch of s.branches)if(branch.facilityCompletedAt)branch.facilityCompletedAt=Object.fromEntries(Object.entries(branch.facilityCompletedAt).map(([id,times])=>[id,times.map(at=>Math.max(0,Math.round(at+delta)))]));
         const turn=Math.floor(clock.elapsedMs/60000),offset=turn-s.turn,shift=v=>Math.max(0,Math.min(MAX_TURN,Math.floor(v)+offset));
         s.treaties=Object.fromEntries(Object.entries(s.treaties).filter(([,until])=>until>s.turn).map(([clan,until])=>[clan,Math.min(MAX_TURN+6,turn+(until-s.turn))]));
@@ -1663,13 +1772,22 @@
         // Rates only change at a monthly boundary or completion. Integrating each
         // interval makes long shared-clock catch-up exact without one loop per second.
         const elapsed=s.turn*60000+rt.elapsed*1000;this._projectStaffAt(elapsed);const view=this.isStaff?STAFF_VIEW.get(this):null,nextShared=view?Math.min(...view.events.filter(e=>e.effectiveElapsedMs>elapsed).map(e=>e.effectiveElapsedMs),view.base.accessSinceElapsedMs>elapsed?view.base.accessSinceElapsedMs:Infinity,view.base.clanSinceElapsedMs>elapsed?view.base.clanSinceElapsedMs:Infinity):Infinity;
-        const activeJobs=new Set(),activeKeys=new Set();for(const job of s.jobs){const key=job.kind+':'+job.id;if(activeKeys.has(key))continue;activeKeys.add(key);activeJobs.add(job);}
+        const activeJobs=new Set(),activeKeys=new Set();let nextBranchStart=Infinity;
+        for(const job of s.jobs){
+          const key=job.kind+':'+job.id;if(activeKeys.has(key))continue;activeKeys.add(key);
+          // A defender can receive a completed predecessor before catching up
+          // its private clock. Its successor must still wait for the promised start.
+          const start=job.kind==='branch'&&Number.isSafeInteger(job.completesElapsedMs)?
+            job.completesElapsedMs-job.remainingSeconds*1000:elapsed;
+          if(start>elapsed+.00001)nextBranchStart=Math.min(nextBranchStart,start);
+          else activeJobs.add(job);
+        }
         const nextMarch=s.march?.authority==='local'?s.march.arrivesElapsedMs:Infinity,nextCovert=Math.min(Infinity,...(s.covert.dispatches||[]).filter(v=>v.authority!=='server'&&v.target.kind==='castle'&&v.arrivesElapsedMs>elapsed).map(v=>v.arrivesElapsedMs));
         // A defender can receive a server-completed facility while its normal
         // checkpoint is still older. Its recorded completion boundary prevents
         // retroactive resource production during later clock catch-up.
         const nextFacility=Math.min(Infinity,...s.branches.flatMap(branch=>Object.values(branch.facilityCompletedAt||{}).flatMap(times=>{const at=times.find(at=>at>elapsed);return at===undefined?[]:[at];})));
-        const step=Math.min(left,60-rt.elapsed,...[...activeJobs].map(j=>j.remainingSeconds),(nextShared-elapsed)/1000,(nextMarch-elapsed)/1000,(nextCovert-elapsed)/1000,(nextFacility-elapsed)/1000);
+        const step=Math.min(left,60-rt.elapsed,...[...activeJobs].map(j=>j.remainingSeconds),(nextShared-elapsed)/1000,(nextMarch-elapsed)/1000,(nextCovert-elapsed)/1000,(nextFacility-elapsed)/1000,(nextBranchStart-elapsed)/1000);
         if(!(step>0))break;
         const income=this.income();
         for(const key of RESOURCES){
@@ -1790,7 +1908,7 @@
       const rt=s.realtime;
       if(s.worldClock!==undefined&&(!isObj(s.worldClock)||typeof s.worldClock.id!=='string'||!s.worldClock.id||s.worldClock.id.length>100||!Number.isSafeInteger(s.worldClock.elapsedMs)||s.worldClock.elapsedMs<0||Math.floor(s.worldClock.elapsedMs/60000)!==s.turn||Math.abs((s.worldClock.elapsedMs%60000)/1000-rt.elapsed)>.00001))invalid();
       if(!isObj(rt)||typeof rt.running!=='boolean'||![1,2,4].includes(rt.speed)||!scalar(rt.elapsed,0,59.99999999)||!scalar(rt.commandProgress,0,19.99999999)||!isObj(rt.incomeRemainders)||Object.keys(rt.incomeRemainders).length!==4||!RESOURCES.every(k=>scalar(rt.incomeRemainders[k],-1,1)&&Math.abs(rt.incomeRemainders[k])<1))invalid();
-      if(!Array.isArray(s.jobs)||s.jobs.length>193)invalid();
+      if(!Array.isArray(s.jobs)||s.jobs.length>MAX_CONSTRUCTION_JOBS)invalid();
       for(const j of s.jobs){if(!isObj(j))invalid();if(j.remainingSeconds===undefined)j.remainingSeconds=j.remaining*60;if(j.totalSeconds===undefined)j.totalSeconds=j.total*60;if(!scalar(j.remainingSeconds,.00000001,180)||!num(j.totalSeconds,60,180)||j.totalSeconds!==j.total*60||j.remainingSeconds>j.totalSeconds||j.remaining!==Math.ceil((j.remainingSeconds-1e-8)/60))invalid();}
       // Pre-release local exports allowed a single Edo branch up to Lv.32.
       // The revised four-direction layout caps every branch at Lv.8, without
@@ -1807,7 +1925,20 @@
         }return[job];
       });
       try{s.branches=normalizeBranchState(s.branches,{castles:s.castles,clan:s.clan,jobs:s.jobs,isAdmin:g.isAdmin,validateRole:false});}catch(error){invalid();}
-      const jobkeys=new Map();for(const j of s.jobs){if(!isObj(j)||!['building','castle','research','branch'].includes(j.kind)||!num(j.remaining,1,3)||!num(j.total,1,3)||j.remaining>j.total)invalid();const defs=j.kind==='building'?BUILDINGS:j.kind==='castle'?CASTLES:j.kind==='branch'?BRANCH_SITES:TECHS,current=j.kind==='branch'?(j.facilityId?s.branches.find(row=>row.id===j.id)?.facilities?.[j.facilityId]||0:s.branches.find(row=>row.id===j.id)?.level):j.kind==='castle'?(legacyCastleLevels.get(j.id)??s.castles[j.id]?.level):(j.kind==='building'?s.buildings:s.tech)[j.id],key=j.kind+':'+j.id,count=jobkeys.get(key)||0;if(!defs.some(d=>d.id===j.id)||j.targetLevel!==(j.kind==='branch'&&j.repair?current:current+count+1)||j.targetLevel>(j.kind==='research'?5:j.kind==='branch'?(j.facilityId?s.branches.find(row=>row.id===j.id)?.level:BRANCH_BY_ID[j.id]?.maxLevel):j.kind==='castle'?(['sunpu','nijo','osaka','nagoya'].includes(j.id)?64:g.castleLevelLimit(j.id)):32)||j.kind==='castle'&&s.castles[j.id]?.owner!==s.clan||count&&(j.kind!=='building'||j.remainingSeconds!==j.totalSeconds))invalid();jobkeys.set(key,count+1);}
+      const jobkeys=new Map();
+      for(const j of s.jobs){
+        if(!isObj(j)||!['building','castle','research','branch'].includes(j.kind)||!num(j.remaining,1,3)||!num(j.total,1,3)||j.remaining>j.total)invalid();
+        const key=j.kind+':'+j.id,count=jobkeys.get(key)||0;jobkeys.set(key,count+1);
+        // The branch validator walks each mixed FIFO in order, applying the
+        // scheduled body/individual facility stages to all later checks.
+        if(j.kind==='branch')continue;
+        const castle=j.kind==='castle',research=j.kind==='research';
+        const defs=castle?CASTLES:research?TECHS:BUILDINGS;
+        const current=castle?(legacyCastleLevels.get(j.id)??s.castles[j.id]?.level):(research?s.tech:s.buildings)[j.id];
+        const limit=castle?(['sunpu','nijo','osaka','nagoya'].includes(j.id)?64:g.castleLevelLimit(j.id)):research?5:32;
+        if(!defs.some(d=>d.id===j.id)||j.targetLevel!==current+count+1||j.targetLevel>limit||
+          castle&&s.castles[j.id]?.owner!==s.clan||count&&(j.kind!=='building'||j.remainingSeconds!==j.totalSeconds))invalid();
+      }
       if(s.jobs.filter(j=>j.kind==='research').length>1||[...jobkeys.keys()].filter(key=>!key.startsWith('research:')).length>(g.isStaff||serviceSave?6:2+Math.floor(s.buildings.keep/8)))invalid();
       s.jobs=s.jobs.filter(j=>j.kind!=='castle'||j.targetLevel<=g.castleLevelLimit(j.id));
       if(!isObj(s.treaties)||Object.entries(s.treaties).some(([k,v])=>!validOwner.has(k)||k===s.clan||!num(v,0,MAX_TURN+6)))invalid();

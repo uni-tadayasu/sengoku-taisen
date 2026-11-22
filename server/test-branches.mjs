@@ -43,6 +43,61 @@ try{
   worldAt(h,64000);const partial=await syncNow(h,p);assert.equal(partial.save.state.branches[0].level,0);assert.equal(partial.save.state.jobs.find(j=>j.kind==='branch').remainingSeconds,1);assert.equal(model(h,p).jobs[0].completesElapsedMs,65000);assert.equal(ledger(h,p).sequence,1,'relative clock progress does not bump branch sequence');
   await finish(h,p,'nijo_north');const completed=await status(h,p);assert.equal(completed.branchState.branches[0].level,1);assert.deepEqual(completed.branchState.jobs,[]);assert.equal(model(h,p).jobs.length,0);assert.equal(completed.sequence,2);assert.equal(receipts(h,p).length,1);
  });
+ await scope('paid branch and facility reservations share one FIFO on the same branch, run beside a different branch and settle at their own deadlines',async h=>{
+  const p=await fixture(h,'支城の連続予約',{holdings:['nijo']}),id='nijo_north',facilityId='market',opening=save(h,p);
+  const plans=[
+   ['build',{parentCastleId:'nijo',direction:'north'},GameEngine.branchUpgradeCost('nijo',0)],
+   ['upgrade',{branchId:id},GameEngine.branchUpgradeCost('nijo',1)],
+   ['build-facility',{branchId:id,facilityId},GameEngine.branchFacilityCost('nijo',facilityId,0)],
+   ['upgrade-facility',{branchId:id,facilityId},GameEngine.branchFacilityCost('nijo',facilityId,1)]
+  ],deadlines=[];let paid=0,original;
+  for(const [index,[operation,fields,cost]] of plans.entries()){
+   const before=save(h,p),request=body(h,p,fields),r=(await h.api('/branches/'+operation,post(p,request))).data;
+   if(index===1)original=request;
+   assertCharges(before,r.save,cost);assert.equal(r.result.queued,index>0);assert.equal(r.result.queuePosition,index+1);
+   assert.equal(r.result.startsInSeconds,paid);paid+=cost.seconds;deadlines.push(paid*1000);
+   assert.deepEqual(model(h,p).jobs.map(j=>j.completesElapsedMs),deadlines);
+  }
+  const parallel=await command(h,p,'build',{parentCastleId:'nijo',direction:'east'});assert.equal(parallel.result.queuePosition,1);
+  assert.equal(save(h,p).state.command,opening.state.command-5);const exhausted=stable(h,p);
+  await command(h,p,'upgrade',{branchId:id},409);assert.deepEqual(stable(h,p),exhausted);
+  const retry=(await h.api('/branches/upgrade',post(p,original))).data;assert(retry.idempotent);assert.equal(retry.revision,row(h,p).revision);assert.deepEqual(stable(h,p),exhausted);
+  const legacy=save(h,p);delete legacy.state.branches;legacy.state.jobs=[];await put(h,p,legacy);assert.deepEqual(model(h,p).jobs.filter(j=>j.id===id).map(j=>j.completesElapsedMs),deadlines);
+  // Public field information projects every due reservation without running
+  // the owner's save, including multiple finished jobs on one branch.
+  const scout=await fixture(h,'普請の推移を確認する領主',{startCastle:'inuyama'});
+  const view=async at=>{worldAt(h,at);return(await h.api('/field',{token:scout.token})).data.targets.find(t=>t.playerId===p.user.id&&t.targetCastleId==='nijo').branches.find(b=>b.id===id);};
+  assert.equal((await view(deadlines[0]-1)).level,0);assert.equal((await view(deadlines[1])).level,2);
+  let branch=await view(deadlines[2]);assert.equal(branch.facilities[facilityId],1);assert(branch.building);
+  branch=await view(deadlines[3]);assert.equal(branch.facilities[facilityId],2);assert.equal(branch.building,false);
+  worldAt(h,deadlines[0]);let snapshot=await syncNow(h,p);
+  assert.equal(snapshot.save.state.branches.find(b=>b.id==='nijo_east').level,1);
+  assert.deepEqual(model(h,p).jobs.map(j=>j.completesElapsedMs),deadlines.slice(1));
+  worldAt(h,deadlines[3]);snapshot=await syncNow(h,p);branch=snapshot.save.state.branches.find(b=>b.id===id);
+  assert.equal(branch.level,2);assert.equal(branch.facilities[facilityId],2);assert.deepEqual(branch.facilityCompletedAt[facilityId],deadlines.slice(2));
+  assert.equal(model(h,p).jobs.length,0);assert.equal(receipts(h,p).length,5);
+ });
+ await scope('a valid paid branch queue remains readable and writable beyond the previous whole-save limit of 193 jobs',async h=>{
+  const p=await fixture(h,'大規模普請',{holdings:['nijo']}),id='nijo_north';
+  await command(h,p,'build',{parentCastleId:'nijo',direction:'north'});await finish(h,p,id);
+  authoritativeBranch(h,p,id,b=>{b.level=24;});
+  const game=GameEngine.fromSave(save(h,p),GAME_OFFICERS),types=game.branchFacilityStatus(id).facilities.map(f=>f.id);
+  for(const key of Object.keys(game.state.resources))game.state.resources[key]=GameEngine.ASSET_CAP;
+  let end=game.state.worldClock.elapsedMs;
+  // Reconstruct a valid long-running queue from fully paid facility commands.
+  // The fixture supplies the instructions several hours of play would recover.
+  for(let i=0;i<194;i++){
+   const facility=types[Math.floor(i/24)];game.state.command=game.commandMax();
+   const accepted=i%24?game.upgradeBranchFacility(id,facility):game.buildBranchFacility(id,facility);
+   assert(accepted.ok);const j=game.state.jobs.at(-1);end+=j.totalSeconds*1000;j.completesElapsedMs=end;
+  }
+  const before=JSON.parse(game.exportSave()),jobs=before.state.jobs.map(({remaining,remainingSeconds,...rest})=>rest);
+  h.sql.prepare('UPDATE player_saves SET save_json=?,revision=revision+1 WHERE user_id=?').run(JSON.stringify(before),p.user.id);
+  h.sql.prepare('UPDATE branch_states SET state_json=?,sequence=sequence+1 WHERE actor_id=? AND campaign_id=?').run(JSON.stringify({branches:before.state.branches,jobs}),p.user.id,before.state.walking.campaignId);
+  assert.equal((await status(h,p)).branchState.jobs.length,194);assert.equal((await put(h,p,before)).save.state.jobs.length,194);
+  const newest=await command(h,p,'upgrade-facility',{branchId:id,facilityId:types[8]});assert.equal(newest.result.queuePosition,195);assert.equal(newest.branchState.jobs[193].completesElapsedMs,end);
+  assert(Buffer.byteLength(JSON.stringify(newest.save))<2*1024*1024);assert.equal(newest.branchState.jobs[194].completesElapsedMs,end+newest.branchState.jobs[194].totalSeconds*1000);
+ });
  await scope('parent ownership, direction uniqueness, four/two placement limits and Kyoto exclusion hold on actual commands',async h=>{
   const p=await fixture(h,'方角と設置上限',{holdings:['nijo','osaka','nagoya']}),operator=await fixture(h,'江戸の設置上限',{admin:true});
   assert.equal(errorCode(await command(h,p,'build',{parentCastleId:'edo',direction:'north'},409)),'BRANCH_UNAVAILABLE');
@@ -109,8 +164,13 @@ try{
  });
  await scope('a forged save five seconds ahead cannot complete construction before the actual absolute deadline',async h=>{
   const p=await fixture(h,'早すぎる完成の拒否',{holdings:['nijo']});await command(h,p,'build',{parentCastleId:'nijo',direction:'north'});const deadline=model(h,p).jobs[0].completesElapsedMs;
-  for(const remaining of [5000,1000]){worldAt(h,deadline-remaining);const forged=anchor(save(h,p),deadline-remaining+5000);forged.state.branches=[{id:'nijo_north',parentCastleId:'nijo',direction:'north',level:24,fallen:false}];forged.state.jobs=forged.state.jobs.filter(job=>job.kind!=='branch');const written=await put(h,p,forged);assert.equal(written.save.state.branches[0].level,0);assert.equal(written.save.state.jobs.find(job=>job.kind==='branch').completesElapsedMs,deadline);assert.equal(model(h,p).branches[0].level,0);assert.equal(model(h,p).jobs[0].completesElapsedMs,deadline);await command(h,p,'upgrade',{branchId:'nijo_north'},409);}
-  worldAt(h,deadline);const exact=await status(h,p);assert.equal(exact.branchState.branches[0].level,1);assert.equal(exact.branchState.jobs.length,0);assert.equal(receipts(h,p).length,1);
+  for(const remaining of [5000,1000]){
+   worldAt(h,deadline-remaining);const forged=anchor(save(h,p),deadline-remaining+5000);forged.state.branches=[{id:'nijo_north',parentCastleId:'nijo',direction:'north',level:24,fallen:false}];forged.state.jobs=forged.state.jobs.filter(job=>job.kind!=='branch');
+   const written=await put(h,p,forged);assert.equal(written.save.state.branches[0].level,0);assert.equal(written.save.state.jobs.find(job=>job.kind==='branch').completesElapsedMs,deadline);assert.equal(model(h,p).branches[0].level,0);
+   if(remaining===5000){const queued=await command(h,p,'upgrade',{branchId:'nijo_north'});assert(queued.result.queued);assert.equal(queued.result.startsInSeconds,5);}
+   assert.deepEqual(model(h,p).jobs.map(j=>j.completesElapsedMs),[deadline,deadline+60000]);
+  }
+  worldAt(h,deadline);const exact=await status(h,p);assert.equal(exact.branchState.branches[0].level,1);assert.equal(exact.branchState.jobs.length,1);assert.equal(exact.branchState.jobs[0].targetLevel,2);assert.equal(receipts(h,p).length,2);
  });
  await scope('incoming sync cannot erase, relocate, forge or revive authoritative branches and repair work',async h=>{
   const p=await fixture(h,'支拠点インポート防御',{holdings:['nijo','osaka']});await command(h,p,'build',{parentCastleId:'nijo',direction:'west'});await finish(h,p,'nijo_west');const initial=clone(model(h,p).branches[0]);

@@ -144,10 +144,11 @@
     const construction = jobs.filter(job => job.kind !== 'research');
     if (construction.length) {
       const first = [...construction].sort((a,b) => a.finishesInSeconds-b.finishesInSeconds || compareId(a,b))[0];
-      const name = first.kind === 'castle' ? game.castle(first.id)?.name : data.buildings.find(b => b.id === first.id)?.name;
+      const name = first.kind === 'branch' ? first.name || game.branch?.(first.id)?.name
+        : first.kind === 'castle' ? game.castle(first.id)?.name : data.buildings.find(b => b.id === first.id)?.name;
       add({id:'construction-wait',priority:chains.size>=slots?82:53,tone:'muted',category:'construction',title:'進行中の普請を確認',
         reason:`${name||'普請'}のLv.${first.targetLevel}が完成するまで${running?`、ゲーム内で約${fmt(first.finishesInSeconds)}秒です。`:'待機中です。'+paused}`,
-        detail:`${shared?'共同':''}普請枠は${chains.size} / ${slots}件です。同じ施設の連続予約は1枠として数えます。`,
+        detail:`${shared?'共同':''}普請枠は${chains.size} / ${slots}件です。${first.kind==='branch'?'同じ支城の本体・内部施設の予約は合わせて1枠です。':'同じ施設の連続予約は1枠として数えます。'}`,
         action:view('town','普請の進み具合を見る'),...wait(first.finishesInSeconds)});
     }
     // A completion exactly on a month boundary is logged before the engine
