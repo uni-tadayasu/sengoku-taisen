@@ -10,6 +10,12 @@
  handler=async()=>({ok:true,messages:[],nextAfter:0});await t.loadChat();
  assert(!new URL(requests.at(-1).url).searchParams.has('after'));
  assert.equal(requests.at(-1).options.headers.Authorization,'Bearer '+TOKEN);assert(!requests.at(-1).url.includes(TOKEN));
+ assert.equal(requests.at(-1).options.redirect,'error');assert.equal(requests.at(-1).options.referrerPolicy,'no-referrer');
+ const trusted=context.SENGOKU_API_BASE;
+ for(const invalid of ['http://api.example.invalid','https://account@example.invalid','https://example.invalid/?custom=1']){
+  context.SENGOKU_API_BASE=invalid;const count=requests.length;await assert.rejects(t.api('/me'));assert.equal(requests.length,count);
+ }
+ context.SENGOKU_API_BASE=trusted;
  let resolve;handler=()=>new Promise(r=>{resolve=r;});
  const stale=t.api('/me');t.setEpoch(1);resolve({ok:true,user:{id:'u_old'}});await assert.rejects(stale,e=>e.code==='STALE_IDENTITY');
  let explicitResolve;handler=()=>new Promise(r=>{explicitResolve=r;});

@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const { createNavigationUI, normalizeQuery, filterEntries } = require('../navigation-ui.js');
 const { documentFixture } = require('./test-events-ui.cjs');
 const tests = [], test = (name, run) => tests.push([name, run]);
-const views = [['town', '城下町'], ['map', '天下地図'], ['field', '共通フィールド'], ['roaming', '野良兵戦'], ['covert', '派遣部隊'], ['court', '京都御所'], ['officers', '武将名鑑'], ['crests', '家紋帳'], ['army', '軍団編成'], ['research', '技術研究'], ['council', '軍議']];
+const views = [['town', '城下町'], ['facilities', '城下普請帳'], ['map', '天下地図'], ['field', '共通フィールド'], ['roaming', '野良兵戦'], ['covert', '派遣部隊'], ['court', '京都御所'], ['officers', '武将名鑑'], ['crests', '家紋帳'], ['army', '軍団編成'], ['research', '技術研究'], ['council', '軍議']];
 const actions = [['events', '期間限定合戦'], ['progress', '成長手帳'], ['alliance-strategy', '同盟作戦'], ['conquest', '共有天下統一'], ['shogunate', '幕府の記録']];
 const preferenceKey = 'sengoku-navigation-preferences-v1';
 function fixture({ touch = false, unsupported = false, storage = new Map(), storageDenied = false } = {}) {
@@ -63,7 +63,7 @@ function delayedNavigation(s) {
 test('enhancement preserves all original destinations and never executes a game command while opening', () => {
   const s = fixture(), originals = [...s.nav.children, ...s.bottom.children.filter(node => node.tagName === 'BUTTON')];
   assert(s.api); assert(s.doc.documentElement.classList.contains('sengoku-navigation-ready'));
-  const entries = s.api.getEntries(); assert.equal(entries.length, 23);
+  const entries = s.api.getEntries(); assert.equal(entries.length, 24);
   for (const [id] of views) assert(entries.some(entry => entry.key === 'view:' + id));
   for (const [id] of actions) assert(entries.some(entry => entry.key === 'action:' + id));
   for (const id of ['settings', 'hints', 'premium', 'title-screen']) assert(entries.some(entry => entry.key === 'action:' + id));
@@ -78,6 +78,7 @@ test('search understands full-width letters, kana and multiple purpose words wit
   assert(filterEntries(s.api.getEntries(), 'ＮＰＣ').some(entry => entry.key === 'view:roaming'));
   assert(filterEntries(s.api.getEntries(), '軍師 ＡＩ').some(entry => entry.key === 'view:map'));
   assert(filterEntries(s.api.getEntries(), 'ばくふ').some(entry => entry.key === 'action:shogunate'));
+  assert(filterEntries(s.api.getEntries(), 'ふしん').some(entry => entry.key === 'view:facilities' && entry.group === '城と内政'));
   assert(filterEntries(s.api.getEntries(), '育成').some(entry => entry.key === 'view:town'));
   assert(filterEntries(s.api.getEntries(), 'ぐんし').some(entry => entry.key === 'view:council'));
   for (const key of ['view:map', 'view:field', 'view:roaming', 'action:events']) assert(filterEntries(s.api.getEntries(), '戦い').some(entry => entry.key === key));
@@ -175,8 +176,8 @@ test('public help links preserve the game in its tab and source labels are escap
 });
 
 test('unsupported dialog and teardown keep original navigation available', () => {
-  const unsupported = fixture({ unsupported: true }); assert.equal(unsupported.api, null); assert(!unsupported.doc.documentElement.classList.contains('sengoku-navigation-ready')); assert.equal(unsupported.nav.children.length, 16);
-  const s = fixture(); s.api.open(); s.api.destroy(); assert(!s.doc.documentElement.classList.contains('sengoku-navigation-ready')); assert.equal(s.get('#navigation-dialog'), null); assert.equal(s.nav.children.length, 16); assert.equal(s.get('.navigation-quick-dock'), null); assert.equal(s.frames.size, 0);
+  const unsupported = fixture({ unsupported: true }); assert.equal(unsupported.api, null); assert(!unsupported.doc.documentElement.classList.contains('sengoku-navigation-ready')); assert.equal(unsupported.nav.children.length, views.length + actions.length);
+  const s = fixture(); s.api.open(); s.api.destroy(); assert(!s.doc.documentElement.classList.contains('sengoku-navigation-ready')); assert.equal(s.get('#navigation-dialog'), null); assert.equal(s.nav.children.length, views.length + actions.length); assert.equal(s.get('.navigation-quick-dock'), null); assert.equal(s.frames.size, 0);
 });
 
 test('favorite controls are separate buttons, preserve focus and never execute destinations', () => {

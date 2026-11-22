@@ -1,5 +1,5 @@
 /* 本体は先に保存。大きな絵巻は、実際に開いたものから保存します。 */
-const RELEASE='4.6.0-20261122';
+const RELEASE='4.7.0-20261122';
 const CACHE='sengoku-taisen-v'+RELEASE;
 const CORE=['./voice.js','./voice.css','./branches.js','./branches.css','./court.js','./court.css','./stable-dom.js','./roaming-management.js','./roaming-management.css','./covert.js','./covert.css','./responsive-polish.css','./roaming.js','./roaming.css','./button-artwork.css','./events.js','./events.css','./hints.js','./hints-ui.js','./hints.css','./scroll-top.js','./scroll-top.css','./player-evaluation.js','./player-evaluation.css','./selection-lock.css','./selection-lock.js','./social-mobile.css','./social-viewport.js','./touch-header.css','./viewport-lock.js','./viewport-lock.css','./strategy.js','./strategy.css','./letters.js','./letters.css','./trade.js','./trade.css','./moderation.js','./moderation.css','./walking.js','./walking.css','./governors.css','./town-fit.js','./town-fit.css','./officer-icons.css','./image-protect.js','./image-protect.css','./avatar.js','./alliance-icon.js','./avatar.css','./start-castle.css','./interaction-motion.js','./interaction-motion.css','./title-fit.css','./layout-controls.js','./layout-controls.css','./world-clock.js','./world-map.js','./world-map.css','./map-data.js','./kamon.js','./kamon.css','./desktop-fit.js','./desktop-fit.css','./responsive-layout.css','./vivid-theme.css','./domain-recovery.css','./domain-recovery.js','./guide.css','./guide/','./guide/data-recovery/','./about/','./field.js','./field.css','./assets/operator-ieyasu-u.webp','./','./index.html','./styles.css','./readability.css','./gacha.css','./artwork.css','./boot.css','./officers-data.js','./engine.js','./music.js','./artwork.js','./app.js','./boot.js','./config.js','./social.js','./social.css','./cloud-sync.js','./cloud-sync.css','./assets/castle-town.webp','./assets/title-sengoku-vs.webp','./assets/emblem.webp','./assets/crest.svg','./assets/favicon-32.png','./assets/icon-192.png','./assets/icon-512.png','./assets/apple-touch-icon.png','./manifest.webmanifest',...['D','C','B','A','S','SS','SSS','U'].map(rank=>'./assets/frames/rank-'+rank+'.svg')];
 CORE.push(...["./assets/map/japan-hillshade-gsi-z8.webp", "./assets/map/japan-terrain-gsi-z8.webp", "./assets/kamon/akamatsu.svg", "./assets/kamon/akechi.svg", "./assets/kamon/akizuki.svg", "./assets/kamon/amago.svg", "./assets/kamon/ando.svg", "./assets/kamon/asahina.svg", "./assets/kamon/asakura.svg", "./assets/kamon/asano.svg", "./assets/kamon/ashikaga.svg", "./assets/kamon/ashina.svg", "./assets/kamon/awaya.svg", "./assets/kamon/azai.svg", "./assets/kamon/chiba.svg", "./assets/kamon/chosokabe.svg", "./assets/kamon/chugoku-group.svg", "./assets/kamon/date.svg", "./assets/kamon/endo.svg", "./assets/kamon/fukushima.svg", "./assets/kamon/gamo.svg", "./assets/kamon/hachisuka.svg", "./assets/kamon/hatakeyama.svg", "./assets/kamon/hojo.svg", "./assets/kamon/hokuriku-group.svg", "./assets/kamon/honda.svg", "./assets/kamon/hongwanji.svg", "./assets/kamon/honjo.svg", "./assets/kamon/horio.svg", "./assets/kamon/hosokawa.svg", "./assets/kamon/ii.svg", "./assets/kamon/iio.svg", "./assets/kamon/ikeda.svg", "./assets/kamon/ikoma.svg", "./assets/kamon/imagawa.svg", "./assets/kamon/ito.svg", "./assets/kamon/jinbo.svg", "./assets/kamon/jo.svg", "./assets/kamon/kanamori.svg", "./assets/kamon/kanto-group.svg", "./assets/kamon/kato.svg", "./assets/kamon/kikkawa.svg", "./assets/kamon/kinki-group.svg", "./assets/kamon/kobayakawa.svg", "./assets/kamon/koide.svg", "./assets/kamon/kono.svg", "./assets/kamon/kunohe.svg", "./assets/kamon/kuroda.svg", "./assets/kamon/kyushu-group.svg", "./assets/kamon/local-group.svg", "./assets/kamon/maeda.svg", "./assets/kamon/matsukura.svg", "./assets/kamon/matsunaga.svg", "./assets/kamon/matsuura.svg", "./assets/kamon/mimura.svg", "./assets/kamon/miyoshi.svg", "./assets/kamon/mogami.svg", "./assets/kamon/mori-ranmaru.svg", "./assets/kamon/mori.svg", "./assets/kamon/murakami.svg", "./assets/kamon/nabeshima.svg", "./assets/kamon/nagano.svg", "./assets/kamon/nakagawa.svg", "./assets/kamon/nakamura.svg", "./assets/kamon/nanbu.svg", "./assets/kamon/narita.svg", "./assets/kamon/nishina.svg", "./assets/kamon/oda.svg", "./assets/kamon/ogasawara.svg", "./assets/kamon/okudaira.svg", "./assets/kamon/ota.svg", "./assets/kamon/otomo.svg", "./assets/kamon/ouchi.svg", "./assets/kamon/rokkaku.svg", "./assets/kamon/ryuzoji.svg", "./assets/kamon/sagara.svg", "./assets/kamon/saito.svg", "./assets/kamon/sanada.svg", "./assets/kamon/satake.svg", "./assets/kamon/satomi.svg", "./assets/kamon/sengoku.svg", "./assets/kamon/shibata-katsuie.svg", "./assets/kamon/shibata.svg", "./assets/kamon/shimazu.svg", "./assets/kamon/shimizu.svg", "./assets/kamon/sogo.svg", "./assets/kamon/soma.svg", "./assets/kamon/suzuki.svg", "./assets/kamon/tachibana.svg", "./assets/kamon/takeda.svg", "./assets/kamon/tamura.svg", "./assets/kamon/todo.svg", "./assets/kamon/tohoku-group.svg", "./assets/kamon/tokugawa.svg", "./assets/kamon/toyama.svg", "./assets/kamon/toyotomi.svg", "./assets/kamon/tozawa.svg", "./assets/kamon/tsugaru.svg", "./assets/kamon/tsutsui.svg", "./assets/kamon/uesugi.svg", "./assets/kamon/ujiie.svg", "./assets/kamon/ukita.svg", "./assets/kamon/unaffiliated.svg", "./assets/kamon/utsunomiya.svg", "./assets/kamon/wakisaka.svg", "./assets/kamon/yamana.svg", "./assets/kamon/yamauchi.svg", "./assets/kamon/yoshimi.svg", "./assets/kamon/yuki.svg", "./assets/kamon/yura.svg"]);
@@ -9,7 +9,8 @@ CORE.push('./premium/','./premium-catalog.js','./premium.js','./premium.css','./
 CORE.push('./favicon.ico','./apple-touch-icon.png','./assets/branding/sengoku-vs-favicon-32-20261121.png','./assets/branding/sengoku-vs-icon-192-20261121.png','./assets/branding/sengoku-vs-icon-512-20261121.png','./assets/branding/sengoku-vs-apple-touch-icon-180-20261121.png');
 CORE.push('./progress.js','./progress.css','./alliance.js','./alliance.css','./conquest.js','./conquest.css','./notifications.js','./notifications.css','./public-court.js','./public-court.css','./assets/kamon/court-group.svg');
 CORE.push('./battle-catalog.js','./battle-advisor.js','./battle-advisor.css','./shogunate.js','./shogunate.css');
-CORE.push('./navigation-ui.js','./navigation-ui.css');
+CORE.push('./navigation-ui.js','./navigation-ui.css','./gameplay.css','./tools/music-audition.html','./tools/music-audition.js');
+CORE.push(...['dawn','dawn-small','town','war','court','archive'].map(scene=>'./assets/campaign/'+scene+'.webp'));
 CORE.push('./travel.js','./travel-ui.js','./travel-ui.css');
 CORE.push('./residency.js','./residency.css');
 CORE.push('./palace-theme.css','./page-collections.css','./presentation.js','./presentation.css','./public-luxury.css','./public-luxury.js','./assets/palace-pattern.svg');
@@ -21,15 +22,40 @@ for(const asset of ['manifest.webmanifest','assets/favicon-32.png','assets/icon-
 const currentMatch=request=>caches.open(CACHE).then(cache=>cache.match(request));
 self.addEventListener('install',event=>event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(CORE)).then(()=>self.skipWaiting())));
 self.addEventListener('activate',event=>event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(key=>/^(sengoku-tento-|sengoku-taisen-|pachi-)/.test(key)&&key!==CACHE).map(key=>caches.delete(key)))).then(()=>self.clients.claim())));
-self.addEventListener('fetch',event=>{
-  const url=new URL(event.request.url);
-  if(event.request.method!=='GET'||url.origin!==self.location.origin||/\/api\//.test(url.pathname))return;
-  const store=response=>{if(response.ok&&response.type==='basic'){const copy=response.clone();event.waitUntil(caches.open(CACHE).then(cache=>cache.put(event.request,copy)).catch(()=>{}));}return response;};
-  if(/\/assets\/.+\.(webp|png|svg)$/.test(url.pathname)){
-    event.respondWith(currentMatch(event.request).then(cached=>cached||fetch(event.request).then(store)));
+const publicFiles = new Set(CORE);
+self.addEventListener('fetch', event => {
+  const request = event.request, url = new URL(request.url);
+  if (request.method !== 'GET' || url.origin !== self.location.origin || request.cache === 'no-store' ||
+      request.headers?.has('Authorization') || request.headers?.has('Range') || /\/api\//.test(url.pathname)) return;
+
+  const scope = new URL(self.registration?.scope || self.location.origin + '/').pathname;
+  if (!url.pathname.startsWith(scope)) return;
+  const relative = './' + url.pathname.slice(scope.length);
+  const artwork = /^\.\/assets\/.+\.(?:webp|png|svg|jpe?g|avif|woff2?|mp3|ogg|m4a)$/i.test(relative) &&
+    (!url.search || /^\?v=[A-Za-z0-9._-]{1,64}$/.test(url.search));
+  const pagePath = relative.endsWith('/index.html') ? relative.slice(0, -10) :
+    relative.endsWith('/') ? relative : relative + '/';
+  const page = request.mode === 'navigate' && publicFiles.has(pagePath);
+  if (!page && !artwork && !publicFiles.has(relative + url.search)) return;
+
+  // Parameterized navigations (including payment returns) can use the offline
+  // public document, but their full URLs must never become CacheStorage keys.
+  const store = response => {
+    const policy = response.headers?.get('Cache-Control') || '';
+    if (response.ok && response.type === 'basic' && !response.redirected && !(page && url.search) &&
+        !/\b(?:no-store|private|no-cache)\b/i.test(policy)) {
+      const copy = response.clone();
+      event.waitUntil(caches.open(CACHE).then(cache => cache.put(request, copy)).catch(() => {}));
+    }
+    return response;
+  };
+  if (artwork) {
+    event.respondWith(currentMatch(request).then(cached => cached || fetch(request).then(store)));
     return;
   }
-  event.respondWith(fetch(event.request).then(store).catch(()=>currentMatch(event.request).then(cached=>cached||(event.request.mode==='navigate'?currentMatch('./index.html'):Response.error()))));
+  const offlineKey = page ? pagePath : request;
+  event.respondWith(fetch(request).then(store).catch(async () =>
+    (await currentMatch(offlineKey)) || (page && await currentMatch('./index.html')) || Response.error()));
 });
 // The browser decrypts the authenticated Web Push payload before this event.
 self.addEventListener('push',event=>{

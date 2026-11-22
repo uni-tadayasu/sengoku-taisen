@@ -2,78 +2,138 @@
 (function (global) {
   'use strict';
 
-  const SCALES = {
-    yo:[0,2,5,7,9], in:[0,1,5,7,8], hira:[0,2,3,7,8],
-    major:[0,2,4,7,9], minor:[0,3,5,7,10]
-  };
-  // Each pair is [scale degree, beat length]; null is a deliberate rest.
-  // Every track has its own four-bar theme, harmonic route, orchestration and rhythm.
+  // Eight eighth-note positions per measure. A dash ties the preceding note;
+  // a dot is a rest. Pitches are semitones above the cue's written tonic.
   const SCORES = [
-    {id:'town-dawn',name:'暁の城下',scene:'town',tempo:84,root:62,scale:'yo',bars:32,beats:4,
-      chords:[0,3,1,4,0,2,3,0],style:'flow',lead:'flute',density:.8,drums:'light',
-      description:'尺八を思わせる笛の主題を琴と弦が包み、朝の城下から大らかな合奏へ広がる。',
-      phrases:[[[0,1],[2,.5],[3,.5],[4,1],[2,1]],[[1,.5],[2,.5],[3,1],[1,1],[null,1]],[[0,.5],[1,.5],[2,1],[5,1],[4,1]],[[3,1],[2,.5],[1,.5],[0,2]]]},
-    {id:'castle-evening',name:'夕映えの天守',scene:'town',tempo:72,root:57,scale:'hira',bars:32,beats:4,
-      chords:[0,2,4,1,0,3,2,0],style:'sparse',lead:'flute',density:.5,drums:'none',
-      description:'余韻を残す琴と息遣いのある笛。薄い弦と合唱音色が夕暮れの城郭に重なる。',
-      phrases:[[[4,1.5],[2,.5],[1,1],[null,1]],[[0,2],[2,1],[3,1]],[[5,1],[4,.5],[3,.5],[2,1.5],[null,.5]],[[1,1],[0,3]]]},
-    {id:'fields-green',name:'豊穣の風',scene:'town',tempo:92,root:60,scale:'major',bars:32,beats:4,
-      chords:[0,3,4,1,2,3,4,0],style:'bounce',lead:'pluck',density:.9,drums:'light',
-      description:'跳ねる琴に鼓と伸びやかな弦が応える、豊かな実りを祝う軽快な主題。',
-      phrases:[[[0,.5],[2,.5],[4,1],[3,.5],[2,.5],[1,1]],[[2,.5],[3,.5],[5,.5],[4,.5],[2,1],[null,1]],[[1,.5],[2,.5],[3,1],[4,.5],[5,.5],[3,1]],[[2,1],[1,.5],[2,.5],[0,1.5],[null,.5]]]},
-    {id:'market-breeze',name:'楽市のにぎわい',scene:'town',tempo:104,root:65,scale:'yo',bars:32,beats:4,
-      chords:[0,4,2,3,1,4,3,0],style:'syncopated',lead:'pluck',density:1,drums:'wood',
-      description:'細やかな琴と三味線、左右に交わす木音。楽市の活気から華やかな合奏へ。',
-      phrases:[[[2,.5],[null,.5],[3,.5],[4,.5],[5,1],[3,1]],[[4,.5],[2,.5],[1,.5],[null,.5],[2,.5],[3,.5],[0,1]],[[3,.5],[4,.5],[6,1],[5,.5],[4,.5],[2,1]],[[1,.5],[3,.5],[2,1],[0,1],[null,1]]]},
-    {id:'world-march',name:'山河を越えて',scene:'world',tempo:96,root:55,scale:'minor',bars:32,beats:4,
-      chords:[0,3,2,4,0,1,4,0],style:'march',lead:'flute',density:.9,drums:'march',
-      description:'重太鼓の歩みに笛と弦が広がり、山河の先で金管が高らかに応える行軍曲。',
-      phrases:[[[0,1],[0,.5],[2,.5],[3,1],[5,1]],[[4,1],[3,.5],[2,.5],[1,1],[null,1]],[[2,1],[3,.5],[4,.5],[5,1],[7,1]],[[5,1],[3,1],[2,.5],[1,.5],[0,1]]]},
-    {id:'mountain-road',name:'霧深き峠',scene:'world',tempo:78,root:62,scale:'in',bars:32,beats:4,
-      chords:[0,1,3,4,2,1,4,0],style:'sparse',lead:'flute',density:.6,drums:'pulse',
-      description:'低い弦、遠い鼓、霧を分ける笛。静寂と広がりが交差する峠の調べ。',
-      phrases:[[[0,1.5],[1,.5],[3,1],[null,1]],[[4,1],[3,.5],[1,.5],[0,1],[null,1]],[[2,.5],[3,.5],[4,1.5],[6,.5],[5,1]],[[3,1],[1,1],[0,2]]]},
-    {id:'officers-oath',name:'武士の誓い',scene:'officers',tempo:88,root:60,scale:'minor',bars:32,beats:4,
-      chords:[0,2,3,4,1,3,4,0],style:'arpeggio',lead:'flute',density:.8,drums:'light',
-      description:'琴と凛とした笛の誓いを厚い弦が受け継ぎ、英傑の志を大きく描く。',
-      phrases:[[[3,1],[2,.5],[0,.5],[2,1],[4,1]],[[5,1.5],[4,.5],[3,1],[null,1]],[[2,.5],[3,.5],[5,1],[6,.5],[5,.5],[4,1]],[[3,1],[1,1],[0,1.5],[null,.5]]]},
-    {id:'council-lantern',name:'軍議の灯',scene:'chronicle',tempo:82,root:57,scale:'hira',bars:32,beats:4,
-      chords:[0,4,1,3,2,4,1,0],style:'pulse',lead:'pluck',density:.65,drums:'wood',
-      description:'低弦の反復、三味線の問い、笛の応答。夜の軍議に緊張と奥行きを添える。',
-      phrases:[[[0,.5],[null,.5],[2,1],[1,.5],[0,.5],[3,1]],[[4,1],[2,1],[1,.5],[null,.5],[0,1]],[[1,.5],[2,.5],[4,1],[5,.5],[4,.5],[3,1]],[[2,1.5],[1,.5],[0,2]]]},
-    {id:'army-banner',name:'旗印のもとに',scene:'army',tempo:108,root:55,scale:'yo',bars:32,beats:4,
-      chords:[0,3,4,2,0,4,1,0],style:'march',lead:'pluck',density:1,drums:'march',
-      description:'三味線と弦の刻みに大太鼓と金管が集結する、勇壮な軍団の行進。',
-      phrases:[[[0,.5],[0,.5],[3,1],[4,.5],[3,.5],[5,1]],[[2,.5],[3,.5],[4,1],[2,1],[0,1]],[[3,.5],[3,.5],[5,1],[7,.5],[6,.5],[5,1]],[[4,1],[3,.5],[2,.5],[0,1],[null,1]]]},
-    {id:'research-stars',name:'星読みの書',scene:'research',tempo:76,root:64,scale:'major',bars:32,beats:4,
-      chords:[0,2,1,4,3,2,4,0],style:'arpeggio',lead:'bell',density:.7,drums:'none',
-      description:'澄んだ鐘と琴の糸から、弦と合唱音色が星空のように開く探究の曲。',
-      phrases:[[[2,1],[4,.5],[5,.5],[7,1],[4,1]],[[3,1.5],[1,.5],[2,1],[null,1]],[[4,.5],[5,.5],[7,1],[6,1],[3,1]],[[2,1],[1,1],[0,2]]]},
-    {id:'battle-storm',name:'烈風の陣',scene:'battle',tempo:116,root:57,scale:'minor',bars:32,beats:4,
-      chords:[0,4,3,2,0,3,1,4],style:'drive',lead:'pluck',density:1,drums:'battle',
-      description:'疾走する三味線に重太鼓と金管が応え、静寂を挟んで烈しい大合奏へ踏み込む。',
-      phrases:[[[0,.5],[2,.5],[3,.5],[2,.5],[5,.5],[4,.5],[3,1]],[[4,.5],[5,.5],[7,1],[5,.5],[4,.5],[2,1]],[[3,.5],[4,.5],[5,.5],[7,.5],[8,1],[5,1]],[[4,.5],[3,.5],[2,.5],[1,.5],[0,1],[null,1]]]},
-    {id:'battle-siege',name:'城門を衝く',scene:'battle',tempo:100,root:50,scale:'hira',bars:32,beats:4,
-      chords:[0,1,4,3,0,2,1,4],style:'drive',lead:'flute',density:1,drums:'siege',
-      description:'低く轟く大太鼓、うねる弦、重厚な金管。城門へ迫る緊張を段階的に高める。',
-      phrases:[[[0,1],[2,.5],[1,.5],[0,1],[3,1]],[[4,1],[5,.5],[4,.5],[2,1],[null,1]],[[3,.5],[4,.5],[6,1],[5,.5],[3,.5],[4,1]],[[2,1],[1,.5],[0,.5],[0,2]]]},
-    {id:'victory-horizon',name:'勝鬨、空高く',scene:'victory',tempo:106,root:62,scale:'major',bars:32,beats:4,
-      chords:[0,3,2,4,1,3,4,0],style:'bright',lead:'flute',density:.95,drums:'march',
-      description:'上昇する笛と祝祭の琴を、金管と弦と合唱音色がたたえる晴れやかな勝鬨。',
-      phrases:[[[0,.5],[2,.5],[4,1],[5,1],[7,1]],[[6,1],[5,.5],[4,.5],[3,1],[null,1]],[[4,.5],[5,.5],[7,1],[9,.5],[8,.5],[7,1]],[[5,1],[4,.5],[2,.5],[0,2]]]},
-    {id:'defeat-moon',name:'月下の再起',scene:'defeat',tempo:68,root:57,scale:'in',bars:32,beats:4,
-      chords:[0,3,1,4,2,1,3,0],style:'sparse',lead:'flute',density:.4,drums:'none',
-      description:'途切れる笛と静かな琴から、低弦と柔らかな合唱音色へ。敗戦を越える夜の誓い。',
-      phrases:[[[4,1.5],[3,.5],[1,1],[null,1]],[[2,2],[0,1],[null,1]],[[1,1],[3,1],[4,1.5],[null,.5]],[[2,1],[1,1],[0,2]]]},
-    {id:'winter-silence',name:'雪待つ山里',scene:'town',tempo:70,root:65,scale:'hira',bars:32,beats:4,
-      chords:[0,2,4,3,1,4,2,0],style:'sparse',lead:'bell',density:.45,drums:'none',
-      description:'雪のように落ちる鐘、淡い弦の重なり。余白を大切にした冬の城下の調べ。',
-      phrases:[[[5,1],[4,1],[2,1.5],[null,.5]],[[3,1],[1,1],[0,1],[null,1]],[[4,1.5],[5,.5],[3,1],[1,1]],[[2,2],[0,2]]]},
-    {id:'unification',name:'天下、一つの空',scene:'menu',tempo:90,root:60,scale:'yo',bars:32,beats:4,
-      chords:[0,3,1,4,2,3,4,0],style:'bright',lead:'flute',density:1,drums:'light',
-      description:'琴と笛の主題を弦と金管と合唱音色が受け継ぐ、統一された山河の大らかな終曲。',
-      phrases:[[[0,1],[3,.5],[4,.5],[5,1],[7,1]],[[5,1],[4,.5],[3,.5],[2,1],[null,1]],[[3,.5],[4,.5],[5,1],[8,1],[7,1]],[[5,1],[3,1],[2,.5],[1,.5],[0,1]]]}
-  ];
+    {
+      id:'town-dawn', name:'暁の城下', scene:'town', tempo:83, root:62, lead:'flute', reply:'pluck', groove:'river',
+      description:'朝の一吹きから始まる尺八。二面の箏が川波のように受け渡し、弦が朝日に向けて開く。',
+      chords:'0sus 0M -5M -5M 2m -3M -5sus 0M',
+      tune:[
+        '. 7 9 - 14 - 12 9','7 - - . 2 4 7 -','5 - 9 7 5 - 2 -','4 - - - 2 - . .',
+        '9 - 12 14 16 - 14 -','12 - 9 - 7 4 2 -','5 7 9 - 7 - 2 4','2 - 0 - - - . .']
+    },
+    {
+      id:'castle-evening', name:'夕映えの天守', scene:'town', tempo:68, root:61, lead:'flute', reply:'strings', groove:'still',
+      description:'夕鐘の残響に低い笛が重なる。余白を長く取り、後半で高弦が対旋律を奏でる。',
+      chords:'0m -4M -2sus -5m -7m -4M -5sus 0m',
+      tune:[
+        '7 - - - . 8 7 3','2 - 0 - - - . .','3 - - 7 5 - - .','2 - - - - . . .',
+        '. . 7 8 12 - - -','10 - 8 - 7 - . .','5 - . 3 2 - - 5','3 2 0 - - - - .']
+    },
+    {
+      id:'fields-green', name:'豊穣の風', scene:'town', tempo:96, root:62, lead:'pluck', reply:'flute', groove:'harvest',
+      description:'弾む箏の摘み音と手鼓の掛け合い。田のあぜ道を歩くような、跳ねた八分音符の田楽。',
+      chords:'0M -5M -3m -7M -2m -5M -7sus 0M',
+      tune:[
+        '4 7 . 9 7 - 4 2','0 - 2 4 . 2 0 -','4 7 9 - 12 9 7 4','2 - - . 2 4 2 -',
+        '5 9 . 12 9 - 7 5','4 7 9 12 14 - 12 -','9 7 . 4 2 - 7 4','2 4 0 - - . . .']
+    },
+    {
+      id:'market-breeze', name:'楽市のにぎわい', scene:'town', tempo:114, root:60, lead:'shamisen', reply:'pluck', groove:'market',
+      description:'裏拍から飛び込む三味線。短い撥音に木片の音が応え、路地の喧騒を陽気に描く。',
+      chords:'0m 0m -2M -5m 3M -2M -5sus 0m',
+      tune:[
+        '. 7 . 7 10 12 . 10','7 3 . 2 0 - 3 .','5 . 5 7 . 10 7 5','3 2 0 - . . 0 2',
+        '3 . 7 10 12 . 15 12','10 . 7 - 5 3 . 5','7 . 10 7 5 . 3 2','0 - . 3 2 0 . .']
+    },
+    {
+      id:'world-march', name:'山河を越えて', scene:'world', tempo:91, root:58, lead:'brass', reply:'flute', groove:'procession',
+      description:'谷間に響く角笛を遠くの笛が引き継ぐ。歩みを刻む低弦から、峠の先の広い響きへ。',
+      chords:'0m -4M 3M -2M -5m -4M -2sus 0m',
+      tune:[
+        '0 - . 7 7 - 10 -','8 - 7 3 0 - . .','3 - 7 - 10 - 14 -','12 - 10 - 5 - - .',
+        '5 - . 8 12 - 15 -','14 12 10 - 8 - 7 -','5 - 7 10 7 - 2 -','3 - 0 - - - . .']
+    },
+    {
+      id:'mountain-road', name:'霧深き峠', scene:'world', tempo:73, root:63, lead:'flute', reply:'sho', groove:'mist',
+      description:'半音で揺れる山笛と、霧の奥から一打ずつ戻る鼓。細い笙が静かな峠を渡る。',
+      chords:'0open 1M 0open -5m -4M 1M -5open 0open',
+      tune:[
+        '. . 0 1 7 - - .','8 - . 7 1 - - .','0 - . . 5 7 8 -','7 - - - . . . .',
+        '. 7 8 12 13 - - .','12 - 8 7 5 - . .','1 - 5 - 7 5 1 -','0 - - - - . . .']
+    },
+    {
+      id:'officers-oath', name:'武士の誓い', scene:'officers', tempo:86, root:60, lead:'strings', reply:'flute', groove:'oath',
+      description:'一人の弦が掲げる四度の誓いを笛が受ける。揃った弓の刻みが、武将の決意を支える。',
+      chords:'0m -4M -2M 0m 3M -5m -2sus 0m',
+      tune:[
+        '0 - 5 7 3 - - .','8 - 7 5 3 - 0 -','2 - 5 7 10 - 7 -','3 - - - . . 2 3',
+        '7 - 10 12 15 - - 14','12 - 8 5 3 - 5 -','10 - 7 5 2 - - 5','3 2 0 - - - - .']
+    },
+    {
+      id:'council-lantern', name:'軍議の灯', scene:'chronicle', tempo:89, root:58, lead:'shamisen', reply:'sho', groove:'lantern',
+      description:'消え入りそうな笙の上で、三味線が三・三・二に問いを刻む。低音の返答が次の一手を促す。',
+      chords:'0m 0m 1M 0open -5m 1M -5open 0m',
+      tune:[
+        '0 . . 3 . . 1 .','0 . 7 . . 3 1 .','1 . . 5 . . 8 7','3 - . 1 0 - . .',
+        '5 . . 8 . . 12 .','13 12 . 8 . . 7 5','1 . 5 . 7 . 3 1','0 - - . . . 3 1']
+    },
+    {
+      id:'army-banner', name:'旗印のもとに', scene:'army', tempo:108, root:57, lead:'brass', reply:'shamisen', groove:'banner',
+      description:'大太鼓の両面打ちと短い号角。三味線の返しに隊列の足並みがそろう軍楽。',
+      chords:'0open -2M -5m 0open -4M -2M -5open 0open',
+      tune:[
+        '0 . 0 7 7 - 10 7','5 - 2 . 5 7 5 -','3 . 3 8 8 - 7 5','7 - - . 0 . 2 3',
+        '8 - 12 15 12 - 8 -','10 - 7 . 10 12 10 7','5 . 5 7 2 - 5 2','0 - . 7 0 - - .']
+    },
+    {
+      id:'research-stars', name:'星読みの書', scene:'research', tempo:78, root:65, lead:'bell', reply:'pluck', groove:'stars',
+      description:'星座をなぞる鐘と、反対側から昇る箏の分散和音。高音の残響が重なる夜の研究曲。',
+      chords:'0M 2m -3m -5M -2m -7M -5sus 0M',
+      tune:[
+        '4 - . 11 9 - . 7','2 - 6 - . . 9 -','4 - . 7 12 - 9 -','7 - - . 2 - . .',
+        '5 - . 12 14 - . 12','11 - 7 - 4 - . .','9 - . 7 5 - 2 -','4 - 0 - - . . .']
+    },
+    {
+      id:'battle-storm', name:'烈風の陣', scene:'battle', tempo:126, root:62, lead:'shamisen', reply:'brass', groove:'gallop',
+      description:'三・三・二で駆ける撥弦と交差する太鼓。急停止を挟み、低弦の刻みと金管が一斉に返す。',
+      chords:'0m 0m -4M -2M -5m -4M -2M 0open',
+      tune:[
+        '0 7 . 0 10 . 7 5','3 . 0 3 5 7 . 10','8 12 . 8 15 . 12 8','10 . 7 10 14 12 10 7',
+        '5 12 . 8 15 . 12 8','8 . 12 15 17 15 . 12','10 7 5 10 7 5 3 2','0 - . 7 . 0 . .']
+    },
+    {
+      id:'battle-siege', name:'城門を衝く', scene:'battle', tempo:99, root:54, lead:'brass', reply:'shamisen', groove:'siege',
+      description:'低い金管の二音が城門に響く。間を置いた大太鼓が連打に変わり、重い弦が押し寄せる。',
+      chords:'0open 1M 0m -5m -4M 1M -5open 0m',
+      tune:[
+        '0 - - 1 0 - . .','7 - 8 - 7 - . .','3 . 3 7 12 - - .','8 - 5 - 1 - . .',
+        '8 - - 12 15 - 12 -','13 - 12 8 7 - - .','5 . 5 7 1 - 3 1','0 - - - . 0 . .']
+    },
+    {
+      id:'victory-horizon', name:'勝鬨、空高く', scene:'victory', tempo:111, root:62, lead:'brass', reply:'flute', groove:'fan',
+      description:'冒頭からせり上がる祝典のファンファーレ。太鼓の返しを合図に、笛と弦が高く歌う。',
+      chords:'0M -5M -7M 0M -3m -5M -7sus 0M',
+      tune:[
+        '7 . 7 9 12 - 16 -','14 - 9 5 7 - - .','2 4 7 - 11 - 14 -','12 - - - . 4 7 9',
+        '12 - 16 19 16 - 12 -','17 - 14 9 5 - 7 -','9 11 14 - 11 9 7 4','2 4 0 - - - . .']
+    },
+    {
+      id:'defeat-moon', name:'月下の再起', scene:'defeat', tempo:66, root:60, lead:'strings', reply:'flute', groove:'lunar',
+      description:'低い独奏弦の下降句に、ひと呼吸遅れて笛が応える。最後の開放五度に再起の余韻を残す。',
+      chords:'0m -4M -5m -2sus -7m -4M -5open 0open',
+      tune:[
+        '. 7 8 - 7 - 3 -','0 - - - . . . .','5 - . 3 2 - 0 -','2 - - - - . . .',
+        '3 - 7 - 10 - . 8','7 - 3 - 0 - - .','2 - 5 - 7 - 2 -','0 - - - - - . .']
+    },
+    {
+      id:'winter-silence', name:'雪待つ山里', scene:'town', tempo:72, root:64, lead:'bell', reply:'flute', groove:'snow',
+      description:'鈴の一粒一粒と弱音の笛。離れた音域の箏が、雪の積もる山里にゆっくり広がる。',
+      chords:'0m -5m -4M 0open 3M -2sus -4M 0open',
+      tune:[
+        '12 - . . 7 - . .','8 - . 5 . . . .','3 - - . 7 - 8 -','7 - - - . . . .',
+        '. 10 15 - . 12 - .','10 - . 5 . . 2 -','3 - 7 - 8 - 3 -','0 - - - - . . .']
+    },
+    {
+      id:'unification', name:'天下、一つの空', scene:'menu', tempo:87, root:62, lead:'flute', reply:'brass', groove:'horizon',
+      description:'天下の主題を一本の笛から金管へ。波打つ箏、広い和声、大太鼓が一つの山河を描く。',
+      chords:'0sus 0M -5M -7M -3m -5M -7sus 0M',
+      tune:[
+        '0 - 2 7 9 - 7 -','4 - - 2 0 - . .','5 - 9 12 14 - 12 9','7 - - - . . 2 4',
+        '9 - 12 16 19 - - 16','17 - 14 12 9 - 5 -','7 9 14 - 11 - 7 4','2 - 0 - - - - .']
+    }
+  ].map(score => ({...score, bars:32, beats:4}));
   const TRACKS = Object.freeze(SCORES.map(t => Object.freeze({
     id:t.id,name:t.name,title:t.name,scene:t.scene,tempo:t.tempo,bars:t.bars,
     beatsPerBar:t.beats,duration:t.bars*t.beats*60/t.tempo,
@@ -83,24 +143,20 @@
   const compiled = new Map();
   const clamp = (n,a,b)=>Math.max(a,Math.min(b,n));
   const frequency = midi => 440*Math.pow(2,(midi-69)/12);
-  const degreeNote = (t,d,oct=0) => {
-    const scale=SCALES[t.scale], step=Math.floor(d/scale.length);
-    return t.root + scale[((d%scale.length)+scale.length)%scale.length] + step*12 + oct*12;
-  };
   // These sections are composed into the score, not produced by changing volume.
   // The middle break removes the rhythmic bed; the theme returns in a wider
   // register before a distinct climax and a tonic cadence back into the loop.
   const FORM = Object.freeze([
-    {id:'intro',name:'序奏',startBar:0,endBar:4,energy:.48},
-    {id:'build',name:'高まり',startBar:4,endBar:8,energy:.68},
-    {id:'theme',name:'主題',startBar:8,endBar:16,energy:.88},
-    {id:'break',name:'静寂',startBar:16,endBar:20,energy:.40},
-    {id:'rise',name:'再起',startBar:20,endBar:24,energy:.80},
-    {id:'climax',name:'大合奏',startBar:24,endBar:30,energy:1.08},
-    {id:'coda',name:'結び',startBar:30,endBar:32,energy:.63}
+    {id:'intro',name:'序奏',energy:.48},
+    {id:'build',name:'高まり',energy:.68},
+    {id:'theme',name:'主題',energy:.88},
+    {id:'break',name:'静寂',energy:.40},
+    {id:'rise',name:'再起',energy:.80},
+    {id:'climax',name:'大合奏',energy:1.08},
+    {id:'coda',name:'結び',energy:.63}
   ].map(section=>Object.freeze(section)));
   const VOICE_LIMIT=40, SOURCE_LIMIT=88;
-  const SOURCE_COST=Object.freeze({pluck:1,shamisen:1,flute:4,sho:2,strings:2,brass:2,choir:2,kane:3,tsuzumi:2,bell:3,bass:2,taiko:3,odaiko:3,wood:2,cymbal:1,hat:1});
+  const SOURCE_COST=Object.freeze({pluck:1,shamisen:1,flute:4,sho:2,strings:2,brass:2,choir:2,kane:3,tsuzumi:1,bell:3,bass:2,taiko:1,odaiko:1,wood:1,cymbal:1,hat:1});
   const PART_PRIORITY=Object.freeze({lead:9,bass:8,percussion:7,answer:6,harmony:4,ostinato:3,ornament:2,effect:10});
   const ROOM_SEND=Object.freeze({pluck:.34,shamisen:.22,flute:.52,sho:.66,strings:.48,brass:.35,choir:.70,kane:.40,tsuzumi:.16,bell:.46,bass:.08,taiko:.16,odaiko:.22,wood:.14,cymbal:.27,hat:.10});
   function voiceLifetime(type,duration){
@@ -116,123 +172,173 @@
     for(const edge of edges){voices+=edge.voices;sources+=edge.sources;if(edge.at>=0&&edge.at<duration){maxVoices=Math.max(maxVoices,voices);maxSources=Math.max(maxSources,sources);}}
     return{voices:maxVoices,sources:maxSources};
   }
-  function compile(t) {
-    if(compiled.has(t.id)) return compiled.get(t.id);
-    const events=[],energetic=['battle','army','victory'].includes(t.scene),quiet=t.style==='sparse',siege=t.drums==='siege';
-    let section=FORM[0];
-    function pitch(beat,type,midi,duration,velocity,pan=0,part='harmony'){
-      if(midi===null||beat<0||beat>=t.bars*t.beats)return;
-      events.push({beat,type,midi,duration,velocity:clamp(velocity,0,.92),pan,part,priority:PART_PRIORITY[part],section:section.id});
+  // Eight-step accompaniment and sixteen-step percussion parts. Digits are
+  // chord voices from low to high. Spaces in drum notation divide the beats.
+  const GROOVES = {
+    river:      {keys:'0.12.321', bass:'0....2..', kit:'T... .... t... ..w.', sway:.045},
+    still:      {keys:'0..2...1', bass:'0.......', kit:'', sway:.018},
+    harvest:    {keys:'0.2.1.32', bass:'0..2.1..', kit:'t... .w.. d... ..wd', sway:.095},
+    market:     {keys:'.1.2.103', bass:'0..2..21', kit:'t..w ..d. .w.d .w..', sway:.070},
+    procession: {keys:'0.1.2..1', bass:'0..0.2..', kit:'B... ..w. T... w.d.', sway:.015},
+    mist:       {keys:'0.....2.', bass:'0.......', kit:'.... .... ..d. ....', sway:.030},
+    oath:       {keys:'0.21.321', bass:'0...2...', kit:'t... .... ..d. ...d', sway:.020},
+    lantern:    {keys:'0..1..2.', bass:'0..0..2.', kit:'w... ..d. .... w...', sway:.014},
+    banner:     {keys:'01.201.2', bass:'0.0.2.02', kit:'B..d w..d T.d. ww.d', sway:.005},
+    stars:      {keys:'0.23.421', bass:'0.....2.', kit:'', sway:.028},
+    gallop:     {keys:'02.03.21', bass:'0..0..20', kit:'B..d ..T. .d.. T.dd', sway:0},
+    siege:      {keys:'0..01.2.', bass:'0..0....', kit:'B... ...T ..d. ..T.', sway:0},
+    fan:        {keys:'0.123.24', bass:'0..22.1.', kit:'B..w ...d T.w. .dd.', sway:.010},
+    lunar:      {keys:'0....2..', bass:'0.......', kit:'', sway:.018},
+    snow:       {keys:'0...3..2', bass:'0.......', kit:'', sway:.032},
+    horizon:    {keys:'0.123.21', bass:'0...2..1', kit:'T... .... d... .w..', sway:.027}
+  };
+  const CHORDS = {M:[0,4,7,12,16], m:[0,3,7,12,15], sus:[0,5,7,12,14], open:[0,7,12,14,19]};
+  const DRUMS = {B:'odaiko',T:'taiko',t:'taiko',d:'tsuzumi',w:'wood'};
+  const DRUM_LEVEL = {B:.80,T:.65,t:.43,d:.34,w:.34};
+
+  // Each definition has the fundamental, stick noise decay and the
+  // inharmonic membrane modes [ratio, amplitude, decay in seconds].
+  const DRUM_MODELS={
+    odaiko:[52,.019,[[1,.65,.36],[1.52,.28,.32],[1.97,.23,.24],[2.63,.13,.17],[3.72,.10,.12],[5.61,.09,.070]]],
+    taiko:[86,.014,[[1,.66,.21],[1.58,.30,.20],[2.16,.20,.14],[2.82,.16,.095],[4.19,.10,.064],[6.7,.055,.042]]],
+    tsuzumi:[238,.010,[[1,.60,.072],[1.63,.28,.053],[2.25,.24,.049],[3.36,.16,.039],[5.41,.11,.028]]],
+    wood:[640,.006,[[1,.50,.024],[1.47,.30,.019],[2.70,.19,.014],[4.11,.11,.010]]]
+  };
+
+  function readMeasure(measure) {
+    const phrase=[];
+    for(const [position,token] of measure.split(' ').entries()){
+      if(token==='-')phrase[phrase.length-1].length+=.5;
+      else phrase.push({position:position*.5,length:.5,semitone:token==='.'?null:Number(token)});
     }
-    function note(beat,type,degree,duration,velocity,pan=0,octave=0,part='harmony'){
-      if(degree!==null)pitch(beat,type,degreeNote(t,degree,octave),duration,velocity,pan,part);
-    }
-    function drum(beat,type,velocity,pan=0){
-      if(beat>=t.bars*t.beats)return;
-      events.push({beat,type,duration:.3,velocity:clamp(velocity,0,.92),pan,part:'percussion',priority:PART_PRIORITY.percussion,section:section.id});
-    }
-    const patterns={sparse:[0,2.5],flow:[0,.75,1.5,2.5,3.5],bounce:[0,.75,1.5,2,2.75,3.5],syncopated:[0,.75,1.5,2.5,3.25,3.75],march:[0,.5,1,2,2.5,3],arpeggio:[0,.5,1,1.5,2,2.5,3,3.5],pulse:[0,1.5,2,3],drive:[0,.5,1,1.5,2,2.5,3,3.5],bright:[0,.5,1.5,2,2.5,3.5]};
-    const chordSteps=[0,2,4,2,3,4,2,1];
-    for(let bar=0;bar<t.bars;bar++){
-      section=FORM.find(row=>bar>=row.startBar&&bar<row.endBar);
-      const start=bar*t.beats,local=bar-section.startBar,energy=section.energy;
-      const intro=section.id==='intro',breakdown=section.id==='break',climax=section.id==='climax',rise=section.id==='rise',coda=section.id==='coda';
-      const chord=bar===31?0:t.chords[bar%t.chords.length],root=degreeNote(t,chord,-1),fifth=root+7;
-      const theme=bar===31?[[2,1],[1,1],[0,2]]:t.phrases[(bar+(rise?2:0))%t.phrases.length];
-      const lead=breakdown?(t.lead==='bell'?'bell':'flute'):(t.lead==='pluck'?'shamisen':t.lead);
-      let beat=0;
-      for(let i=0;i<theme.length;i++){
-        const [degree,duration]=theme[i],omit=intro&&(i>1||bar%2===1&&i===1)||breakdown&&i%2===1;
-        const lift=climax&&energetic&&bar%4<2?5:0;
-        if(!omit)note(start+beat,lead,degree===null?null:degree+lift,Math.max(.16,duration*(breakdown?.98:.85)),(.46+(!intro&&climax?.07:0))*energy,lead==='shamisen'?-.13:.10,0,'lead');
-        // The counter-line answers a held note, rather than doubling every note.
-        if((climax||section.id==='theme'&&bar%4===3)&&degree!==null&&duration>=1&&i===0){
-          const answer=energetic?'brass':'strings';
-          note(start+beat+.5,answer,degree+2,Math.min(1.25,duration),.25*energy,-.28,-1,'answer');
-        }
-        if(rise&&local>=2&&degree!==null&&i===0)note(start+beat+.12,'pluck',degree+1,.13,.22,.36,0,'ornament');
-        beat+=duration;
-      }
-      // Root and fifth remain open beneath the Japanese melodic modes.
-      if(!breakdown||bar%2===0)note(start,'bass',chord,quiet||breakdown?3.5:1.8,.43*energy,0,-2,'bass');
-      if(!intro&&!breakdown&&!coda&&!quiet)note(start+2,'bass',chord+(bar%2?0:3),1.7,.31*energy,0,-2,'bass');
-      const pattern=intro?[0,2]:breakdown?[0,2.5]:patterns[t.style];
-      pattern.forEach((offset,index)=>{
-        if(coda&&bar===31&&offset>2)return;
-        const degree=chord+chordSteps[(index+(bar%2))%chordSteps.length];
-        const instrument=energetic&&!intro&&!breakdown&&index%2?'shamisen':'pluck';
-        note(start+offset,instrument,degree,quiet?1.1:.64,.25*t.density*energy,index%2?-.43:.34,-1,'ostinato');
-      });
-      // Long bowed voicings enter gradually, with a separate breath in the break.
-      if((!intro||bar===2)&&bar%2===0){
-        const length=(coda?3.45:breakdown?5.2:6.7);
-        pitch(start+.018,'strings',root,length,.22*energy,-.38,'harmony');
-        if(!breakdown)pitch(start+.05,'strings',fifth,length,.18*energy,.35,'harmony');
-      }
-      // A soft human-vowel texture belongs to the expansive, reflective scenes.
-      if((breakdown&&bar===16)||(climax&&bar%2===0)||t.scene==='menu'&&section.id==='theme'&&bar%4===0){
-        pitch(start+.08,'choir',root+12,breakdown?6.4:3.1,(quiet?.16:.21)*energy,-.17,'harmony');
-        if(!quiet)pitch(start+.12,'choir',fifth+12,breakdown?6.1:3.0,.16*energy,.20,'harmony');
-      }
-      if(!intro&&!breakdown&&bar%4===0&&!energetic)note(start+.1,'sho',chord+4,3.3,.12*energy,-.28,-1,'harmony');
-      // Brass announces the returning theme and carries battle/army climaxes.
-      if((energetic&&(climax||section.id==='theme'&&bar%2===0))||(t.scene==='world'||t.scene==='menu')&&climax&&bar%2===0){
-        const accents=climax&&energetic?[0,2.5]:[0];
-        for(const offset of accents){
-          pitch(start+offset,'brass',root+12,offset?1.0:1.7,.35*energy,-.21,'answer');
-          pitch(start+offset+.025,'brass',fifth+12,offset?.9:1.6,.26*energy,.22,'answer');
-        }
-      }
-      // The string ostinato grows during the rise, not throughout the quiet pages.
-      if(energetic&&(rise||climax)&&bar!==29){
-        const offsets=rise&&local<2?[0,1,2,3]:[.5,1.5,2.5,3.5];
-        offsets.forEach((offset,index)=>note(start+offset,'strings',chord+(index%2?3:0),.33,.20*energy,index%2?.32:-.32,0,'ostinato'));
-      }
-      if((bar===3||bar===7||bar===23||bar===29)&&!quiet){
-        for(let j=0;j<5;j++)note(start+3.25+j*.13,'pluck',chord+j,.35,.12+j*.014,-.48+j*.22,0,'ornament');
-      }
-      if([0,8,24].includes(bar))note(start,'kane',chord+5,2,.15*(bar===24?1.2:1),.42,0,'ornament');
-      if((section.id==='theme'||climax)&&bar%4===1&&t.lead!=='bell')note(start+3,'bell',chord+5,1.1,.10*energy,.45,0,'ornament');
-      if(t.drums==='none'){
-        // Snow, evening and defeat keep their silence even in the large section.
-        if(climax&&bar===24)drum(start,'cymbal',.09,.2);
-        continue;
-      }
-      if(intro||breakdown){if((energetic||t.scene==='world')&&local===0)drum(start,'odaiko',intro?.30:.22,-.08);continue;}
-      const strength=(energetic?.58:.36)*energy;
-      drum(start,energetic&&(climax||siege)?'odaiko':'taiko',strength,-.08);
-      if(!coda||bar===30)drum(start+2,'taiko',strength*.72,.06);
-      if(coda)continue;
-      if(['march','battle','siege'].includes(t.drums)){
-        drum(start+1,'wood',.20*energy,-.25);drum(start+3,'wood',.24*energy,.25);
-      }
-      if(t.drums==='wood'||t.drums==='light'){
-        drum(start+1.5,'wood',.16*energy,-.27);drum(start+3.5,'wood',.13*energy,.25);
-      }
-      if(bar%2===1){drum(start+1.75,'tsuzumi',.19*energy,-.35);drum(start+3.5,'tsuzumi',.23*energy,.32);}
-      if(t.drums==='battle'){
-        for(const offset of [.75,1.5,2.75,3.5])drum(start+offset,'hat',.14*energy,offset<2?-.36:.36);
-        if(climax)drum(start+2.75,'taiko',.29,.20);
-      }
-      if(siege){drum(start+2.5,'taiko',.32*energy,.17);drum(start+3.5,'wood',.20*energy,-.22);}
-      if([7,15,23,29].includes(bar)){
-        [.0,.25,.5,.75].forEach((offset,index)=>drum(start+3+offset,index===3?'taiko':'tsuzumi',(.15+index*.055)*energy,index%2?.28:-.28));
-      }
-      if([8,24].includes(bar))drum(start,'cymbal',climax?.23:.16,.33);
-    }
-    events.sort((a,b)=>a.beat-b.beat||b.priority-a.priority);
-    const secondsPerBeat=60/t.tempo,duration=t.bars*t.beats*secondsPerBeat;
-    const result={events,secondsPerBeat,duration,sections:FORM,peak:scorePeak(events,secondsPerBeat,duration)};
-    compiled.set(t.id,result);return result;
+    return phrase.filter(note=>note.semitone!==null);
   }
 
+  function compile(t){
+    if(compiled.has(t.id))return compiled.get(t.id);
+    const events=[],groove=GROOVES[t.groove],melodies=t.tune.map(readMeasure);
+    const harmony=t.chords.split(' ').map(symbol=>{
+      const [,offset,quality]=symbol.match(/^(-?\d+)(M|m|sus|open)$/);
+      return CHORDS[quality].map(interval=>t.root+Number(offset)+interval);
+    });
+    const martial=['battle','army','victory'].includes(t.scene);
+    const reflective=['still','mist','lunar','snow','stars'].includes(t.groove);
+    // The battle and fanfare cues get to their main statement in two bars.
+    // The reflective cues hold their central duet and take longer to recover.
+    const boundaries=martial?[0,2,6,14,18,22,30,32]:reflective?[0,4,8,14,20,25,30,32]:[0,3,7,15,19,23,30,32];
+    const sections=FORM.map((section,index)=>({...section,startBar:boundaries[index],endBar:boundaries[index+1]}));
+    const kit=groove.kit.replace(/ /g,'');
+    for(let bar=0;bar<t.bars;bar++){
+      const section=sections.find(s=>bar>=s.startBar&&bar<s.endBar);
+      const intro=section.id==='intro',rest=section.id==='break',rise=section.id==='rise';
+      const full=section.id==='climax',close=section.id==='coda',main=section.id==='theme';
+      const local=bar-section.startBar;
+      let measure=(rest||rise||full?(local+4):local)%8;
+      if(close)measure=6+local;
+      const chord=harmony[measure],tune=melodies[measure];
+      const downbeat=bar*t.beats;
+      const energy=section.energy*(martial&&intro?1.48:1);
+      function place(beat,type,midi,length,level,pan,part){
+        // Offset the right hand and the back half of each beat ever so slightly.
+        // Absolute bar boundaries stay fixed over subsequent loops.
+        const offbeat=Math.abs(beat%1-.5)<.01?groove.sway:0;
+        const onset=downbeat+beat+offbeat+(part==='ostinato'?.013:0);
+        const event={beat:onset,type,duration:length,velocity:clamp(level*energy,0,.92),pan,part,
+          priority:PART_PRIORITY[part],section:section.id};
+        if(midi!==null)event.midi=midi;
+        events.push(event);
+      }
+      const lead=rest?(t.reply==='brass'?'flute':t.reply):t.lead;
+      const phrasing=(lead==='shamisen'||lead==='pluck')?.82:.94;
+      for(const [i,note] of tune.entries()){
+        if(rest&&i%2===1)continue;
+        const length=rest?Math.min(note.length+.40,4-note.position):note.length*phrasing;
+        const pitch=t.root+note.semitone+(rest&&lead==='strings'?-12:0);
+        const accent=(i===0?.84:.7)+(i%3===2?.05:0);
+        place(note.position,lead,pitch,length,accent,lead==='shamisen'?-.12:.05,'lead');
+        // The penultimate melody note at the height of the cue has a short
+        // approach ornament. Leave room for breaths at phrase endings.
+        if(full&&i===tune.length-2&&note.position>.24&&note.semitone>2&&lead==='flute')
+          place(note.position-.18,lead,pitch-2,.14,.30,.05,'ornament');
+      }
+      if(!rest||local%2===0){
+        const pattern=intro||rest||close?'0.......':groove.bass;
+        for(let step=0;step<8;step++){
+          if(pattern[step]==='.')continue;
+          const midi=chord[Number(pattern[step])]-24;
+          place(step/2,'bass',midi,reflective||rest?3.5:martial?.50:1.1,.75,0,'bass');
+        }
+      }
+      // One answering hand in the introduction; interlocking left/right
+      // plucks in the faster parts. In the break a single note is left ringing.
+      const keyboard=rest?'0.......':intro?'0...2...':groove.keys;
+      for(let step=0;step<8;step++){
+        if(keyboard[step]==='.'||(close&&local===1&&step>3))continue;
+        const instrument=martial&&step%2===0?'shamisen':'pluck';
+        place(step/2,instrument,chord[Number(keyboard[step])]-12,reflective?1.55:.64,
+          .38+((step+bar)%3)*.034,step%2===0?-.44:.34,'ostinato');
+      }
+      // The held thirds move with the bass instead of lingering over the
+      // next harmony. Avoid scoring the same note in both registers.
+      if(!rest&&(!intro||local===0)){
+        place(.025,'strings',chord[1]-12,full||reflective?3.25:2.35,.33,-.29,'harmony');
+        if(main||full||close)place(.065,'strings',chord[2],2.7,.25,.30,'harmony');
+      }
+      if((rest&&local===0)||(full&&local%2===0)){
+        place(.10,'choir',chord[2],rest?3.4:2.85,.25,.26,'harmony');
+        if(full)place(.13,'choir',chord[0],2.75,.21,-.19,'harmony');
+      }
+      // A separate answer fits the space around each cadence, taking over
+      // from the lead for a beat or echoing the end with wider orchestration.
+      if((main&&local%2===1)||rise||full){
+        const answering=t.reply;
+        const high=answering==='flute'||answering==='bell'?12:0;
+        place(1.51,answering,chord[2]+high,.77,full?.48:.37,-.26,'answer');
+        if(full||local%2===1)place(2.78,answering,chord[local%2] +high,.90,.34,.18,'answer');
+      }
+      if((full||rise)&&martial){
+        for(const beat of [.5,1.5,2.5,3.5])
+          place(beat,'strings',chord[beat<2?0:2]-12,.30,.46,-.37,'ostinato');
+        if(full&&t.lead!=='brass')place(.05,'brass',chord[2],1.48,.54,.21,'answer');
+      }else if(full&&!martial&&local%2===1){
+        place(.16,'sho',chord[0],3.1,.27,.19,'harmony');
+        place(3.12,'bell',chord[2]+12,.64,.23,.46,'ornament');
+      }
+      if((bar===0||full&&local===0)&&(!martial||t.scene==='victory'))
+        place(0,'kane',chord[2],1.7,.24,.38,'ornament');
+      if(kit){
+        for(let step=0;step<kit.length;step++){
+          const stroke=kit[step];if(stroke==='.')continue;
+          if(rest||intro&&!martial){if(step!==0||local%2===1)continue;}
+          if(close&&(local===1?step>0:step>8))continue;
+          place(step/4,DRUMS[stroke],null,.32,DRUM_LEVEL[stroke],stroke==='w'?-.32:stroke==='d'?.30:0,'percussion');
+        }
+        if((main||rise||full)&&bar===section.endBar-1){
+          for(let i=0;i<4;i++)place(3+i*.25,'tsuzumi',null,.25,.23+i*.08,i%2?.32:-.28,'percussion');
+        }
+        if(full&&local===0)place(0,'cymbal',null,1.4,.34,.26,'percussion');
+      }
+    }
+    events.sort((a,b)=>a.beat-b.beat||b.priority-a.priority);
+    const strokeCounts=new Map();
+    for(const event of events){
+      if(!DRUM_MODELS[event.type])continue;
+      const count=strokeCounts.get(event.type)||0;
+      event.alternate=count%2;
+      strokeCounts.set(event.type,count+1);
+    }
+    const secondsPerBeat=60/t.tempo,duration=t.bars*t.beats*secondsPerBeat;
+    const result={events,secondsPerBeat,duration,sections,peak:scorePeak(events,secondsPerBeat,duration)};
+    compiled.set(t.id,result);
+    return result;
+  }
   class SengokuMusic {
     constructor({volume=10,onTrackChange=null}={}) {
       this._volume=clamp(Number(volume)||0,0,100);this._onTrackChange=onTrackChange;
       this._context=null;this._master=null;this._compressor=null;this._reverb=null;
       this._currentId=null;this._session=null;this._playing=false;this._auto=true;
       this._timer=null;this._pauseTimer=null;this._token=0;this._resumePosition=0;this._disposed=false;
-      this._noise=null;this._pluckCache=new Map();this._waveCache=new Map();this._sessions=new Set();
+      this._noise=null;this._drumCache=new Map();this._pluckCache=new Map();this._waveCache=new Map();this._sessions=new Set();
       this._voices=new Set();this._sourceCount=0;this._droppedVoices=0;
       this._audioElement=null;this._streamDestination=null;this._audioSession=null;
       this._previousSessionType=null;this._ownsAudioSession=false;this._outputToken=0;this._pageActive=true;this._voiceActive=false;
@@ -485,7 +591,7 @@
     }
     _ensembleWave(kind,midi){
       const ctx=this._context;if(!ctx.createPeriodicWave)return null;
-      const key=kind+(kind==='choir'?':'+midi:'');if(this._waveCache.has(key))return this._waveCache.get(key);
+      const key=kind+':'+midi;if(this._waveCache.has(key))return this._waveCache.get(key);
       const real=new Float32Array(49),imag=new Float32Array(49),hz=frequency(midi);
       const bell=(value,center,width)=>Math.exp(-.5*Math.pow((value-center)/width,2));
       for(let harmonic=1;harmonic<imag.length;harmonic++){
@@ -494,8 +600,16 @@
           const at=hz*harmonic;
           amplitude=(.75*bell(at,710,170)+.48*bell(at,1200,230)+.18*bell(at,2500,410)+.12/harmonic)/Math.pow(harmonic,.45);
           if(at>ctx.sampleRate*.45)amplitude=0;
-        }else if(kind==='brass')amplitude=Math.exp(-harmonic/13)/Math.pow(harmonic,.82);
-        else amplitude=(harmonic%2?1:.78)*Math.exp(-harmonic/23)/Math.pow(harmonic,1.22);
+        }else{
+          const at=hz*harmonic;
+          // A bowed body has broad wood resonances. The horn's bell gives
+          // its upper mids a different focus at each position in its range.
+          const body=kind==='brass'
+            ? .42+.70*bell(at,860,430)+.37*bell(at,1800,620)
+            : .33+.86*bell(at,440,160)+.51*bell(at,1040,350)+.40*bell(at,2450,510);
+          amplitude=body*Math.exp(-harmonic/23)/Math.pow(harmonic,kind==='brass'?.79:.93);
+          if(at>ctx.sampleRate*.45)amplitude=0;
+        }
         imag[harmonic]=amplitude;
       }
       const wave=ctx.createPeriodicWave(real,imag);
@@ -503,21 +617,76 @@
       this._waveCache.set(key,wave);return wave;
     }
     _pluckBuffer(midi,kind='pluck'){
-      const key=kind+':'+Math.round(midi*100);if(this._pluckCache.has(key))return this._pluckCache.get(key);
-      const ctx=this._context,rate=ctx.sampleRate,hz=frequency(midi),length=Math.ceil(rate*(kind==='shamisen'?1.7:2.2));
-      const buffer=ctx.createBuffer(1,length,rate),out=buffer.getChannelData(0);
-      const size=Math.max(4,Math.round(rate/hz)),ring=new Float32Array(size);
-      let seed=(Math.round(midi*100)*7919+(kind==='shamisen'?73:23))>>>0;
-      for(let i=0;i<size;i++){seed=(Math.imul(seed,1664525)+1013904223)>>>0;ring[i]=(seed/4294967296*2-1)*(kind==='shamisen'?.85:.65);}
-      let at=0;
-      for(let i=0;i<length;i++) {
-        const value=ring[at],next=ring[(at+1)%size];
-        ring[at]=(kind==='shamisen'?.493:.497)*(value+next);at=(at+1)%size;
-        const sawari=kind==='shamisen'?Math.sin(i/rate*hz*3)*Math.exp(-i/(rate*.07))*.12:0;
-        out[i]=(value+sawari)*Math.min(1,i/(rate*.004));
+      const key=kind+':'+midi;
+      if(this._pluckCache.has(key))return this._pluckCache.get(key);
+      const rate=Math.min(this._context.sampleRate,32000),hz=frequency(midi),lute=kind==='shamisen';
+      const buffer=this._context.createBuffer(1,Math.ceil(rate*(lute?1.85:2.55)),rate);
+      const out=buffer.getChannelData(0);
+      // A triangular displacement locates the plectrum on the string. A
+      // fractionally tuned delay line damps its high partials on each round.
+      const period=rate/hz+.5,size=Math.max(4,Math.floor(period)),fraction=period-size;
+      const ring=new Float32Array(size),pluckAt=lute?.12:.21;
+      let seed=midi*431+37,previous=0,dc=0,soundboard=0,prior=0;
+      for(let i=0;i<size;i++){
+        const phase=i/size;
+        seed=(Math.imul(seed,1664525)+1013904223)>>>0;
+        ring[i]=.92*((phase<pluckAt?phase/pluckAt:(1-phase)/(1-pluckAt))-.5)
+          +(seed/4294967296-.5)*(lute?.32:.12);
+      }
+      const radius=Math.exp(-1/(rate*.038)),center=lute?740:330;
+      const first=2*radius*Math.cos(2*Math.PI*center/rate),second=radius*radius;
+      const loss=lute?.991:.996,bodyDrive=Math.sin(2*Math.PI*center/rate)*.022;
+      let pos=0,bridge=0;
+      for(let i=0;i<out.length;i++){
+        const raw=ring[pos],next=ring[(pos+1)%size];
+        const average=(raw+next)*.5;
+        ring[pos]=loss*((1-fraction)*average+fraction*previous);
+        previous=average;
+        pos=(pos+1)%size;
+        dc+=.007*(raw-dc);
+        const string=raw-dc;
+        // The lute's buzzing bridge clips the positive displacement. Its
+        // soundboard continues to ring briefly after each change of direction.
+        const buzz=lute?Math.max(0,string-.12)*.39:0;
+        const strike=string+buzz-bridge;
+        bridge=string+buzz;
+        const resonant=first*soundboard-second*prior+bodyDrive*strike;
+        prior=soundboard;soundboard=resonant;
+        const body=bridge*1.28+soundboard*.5;
+        out[i]=Math.min(1,i/(rate*.0025),(out.length-i)/(rate*.018))*Math.tanh(body);
       }
       if(this._pluckCache.size>=64)this._pluckCache.delete(this._pluckCache.keys().next().value);
-      this._pluckCache.set(key,buffer);return buffer;
+      this._pluckCache.set(key,buffer);
+      return buffer;
+    }
+    _drumBuffer(kind,alternate){
+      const key=kind+':'+alternate;
+      if(this._drumCache.has(key))return this._drumCache.get(key);
+      const [fundamental,snap,modes]=DRUM_MODELS[kind],rate=Math.min(24000,this._context.sampleRate);
+      const length=Math.ceil(voiceLifetime(kind,.32)*rate),buffer=this._context.createBuffer(1,length,rate);
+      const out=buffer.getChannelData(0),tuning=alternate?1.024:.989;
+      let seed=kind.length*919+alternate*1613,grain=0,oldNoise=0,attack=1;
+      const attackDecay=Math.exp(-1/(snap*rate));
+      for(let i=0;i<length;i++){
+        seed=(Math.imul(seed,1664525)+1013904223)>>>0;
+        const noise=seed/2147483648-1;
+        grain+=.37*((noise-oldNoise)-grain);oldNoise=noise;
+        out[i]=attack*grain*.46;
+        attack*=attackDecay;
+      }
+      for(const [ratio,amplitude,decay] of modes){
+        const omega=2*Math.PI*fundamental*tuning*ratio/rate,radius=Math.exp(-1/(rate*decay));
+        const first=2*radius*Math.cos(omega),second=radius*radius;
+        let previous=0,older=-Math.sin(omega)*amplitude*(alternate&&ratio>2?.86:1);
+        for(let i=0;i<length;i++){
+          const sample=first*previous-second*older;
+          out[i]+=sample;older=previous;previous=sample;
+        }
+      }
+      for(let i=0;i<length;i++)
+        out[i]=Math.tanh(out[i]*1.23)*Math.min(1,i/(rate*.002),(length-i)/(rate*.012));
+      this._drumCache.set(key,buffer);
+      return buffer;
     }
     _voice(session,event,time,duration){
       const ctx=this._context;
@@ -551,9 +720,9 @@
         envelope.gain.setValueAtTime(0,time);envelope.gain.linearRampToValueAtTime(velocity*(event.type==='shamisen'?.48:.58),time+.004);
         envelope.gain.exponentialRampToValueAtTime(.0001,time+actualEnd-.035);
       }else if(event.type==='flute'){
-        const hz=frequency(event.midi),osc=addOsc('sine',hz*.988);
-        addOsc('sine',hz*2,.16);addOsc('sine',hz*3,.045);
-        const breath=ctx.createBufferSource(),filter=ctx.createBiquadFilter(),gain=ctx.createGain();breath.buffer=this._noise;breath.loop=true;filter.type='bandpass';filter.frequency.value=Math.min(hz*2.7,ctx.sampleRate*.43);gain.gain.value=.055;
+        const hz=frequency(event.midi),osc=addOsc('sine',hz*(event.part==='ornament'?.972:.989));
+        addOsc('sine',hz*2,.23);addOsc('sine',hz*3,.075);
+        const breath=ctx.createBufferSource(),filter=ctx.createBiquadFilter(),gain=ctx.createGain();breath.buffer=this._noise;breath.loop=true;filter.type='bandpass';filter.frequency.value=Math.min(hz*2.7,ctx.sampleRate*.43);gain.gain.setValueAtTime(.14,time);gain.gain.linearRampToValueAtTime(.046,time+Math.min(.07,end*.32));
         breath.connect(filter);filter.connect(gain);gain.connect(envelope);sources.push(breath);nodes.push(filter,gain);
         osc.frequency.linearRampToValueAtTime(hz,time+.045);
         // A breath attack and delayed, shallow vibrato make held phrases sing.
@@ -561,7 +730,7 @@
           const offset=Math.min(end,.11*step),depth=clamp((offset-.18)/.4,0,1)*.0036;
           osc.frequency.linearRampToValueAtTime(hz*(1+Math.sin(offset*31)*depth),time+offset);
         }
-        swell(velocity*.19,.08,.13);
+        swell(velocity*.25,.048,.13);
       }else if(['strings','brass','choir'].includes(event.type)){
         const hz=frequency(event.midi),kind=event.type,wave=this._ensembleWave(kind,event.midi);
         const filter=kind==='choir'?null:lowpass(kind==='brass'?hz*6.5:hz*7.5);
@@ -574,33 +743,25 @@
           filter.frequency.setValueAtTime(Math.min(ctx.sampleRate*.43,hz*2.3),time);
           filter.frequency.linearRampToValueAtTime(Math.min(ctx.sampleRate*.43,hz*8.2),time+Math.min(.11,end*.3));
           filter.frequency.linearRampToValueAtTime(Math.min(ctx.sampleRate*.43,hz*4.5),time+end);
-          swell(velocity*.19,.065,.1);
+          swell(velocity*.25,event.part==='lead'?.047:.074,.14);
         }else if(kind==='choir')swell(velocity*.13,.32,.40);
-        else swell(velocity*.17,event.part==='ostinato'?.028:.20,.22);
+        else swell(velocity*.23,event.part==='ostinato'?.024:event.part==='lead'?.075:.21,.22);
       }else if(event.type==='sho'){
         const hz=frequency(event.midi);addOsc('sine',hz);addOsc('triangle',hz*2,.24);swell(velocity*.18,.30,.30);
       }else if(event.type==='kane'){
         const hz=frequency(event.midi)*2;addOsc('sine',hz);addOsc('sine',hz*2.756,.19);addOsc('sine',hz*5.404,.045);
         envelope.gain.setValueAtTime(.0001,time);envelope.gain.linearRampToValueAtTime(velocity*.10,time+.003);envelope.gain.exponentialRampToValueAtTime(.0001,time+2.8);
-      }else if(event.type==='tsuzumi'){
-        const drum=addOsc('sine',260);drum.frequency.exponentialRampToValueAtTime(170,time+.045);drum.frequency.exponentialRampToValueAtTime(230,time+.13);
-        addOsc('sine',515,.11);envelope.gain.setValueAtTime(.0001,time);envelope.gain.linearRampToValueAtTime(velocity*.27,time+.003);envelope.gain.exponentialRampToValueAtTime(.0001,time+.22);
+      }else if(['tsuzumi','taiko','odaiko','wood'].includes(event.type)){
+        const source=ctx.createBufferSource();
+        source.buffer=this._drumBuffer(event.type,event.alternate||0);
+        source.connect(envelope);sources.push(source);
+        envelope.gain.setValueAtTime(velocity*(event.type==='wood'?.21:.48),time);
       }else if(event.type==='bell'){
         const hz=frequency(event.midi);addOsc('sine',hz);addOsc('sine',hz*2.01,.20);addOsc('sine',hz*3.98,.045);
         envelope.gain.setValueAtTime(.0001,time);envelope.gain.linearRampToValueAtTime(velocity*.16,time+.008);envelope.gain.exponentialRampToValueAtTime(.0001,time+end+1);
       }else if(event.type==='bass'){
         addOsc('sine',frequency(event.midi));addOsc('triangle',frequency(event.midi)*2,.09);
         envelope.gain.setValueAtTime(0,time);envelope.gain.linearRampToValueAtTime(velocity*.25,time+.03);envelope.gain.exponentialRampToValueAtTime(.0001,time+end);
-      }else if(event.type==='taiko'||event.type==='odaiko'){
-        const large=event.type==='odaiko',body=addOsc('sine',large?80:120),rim=addOsc('sine',large?153:207,.24);
-        body.frequency.exponentialRampToValueAtTime(large?37:54,time+(large?.30:.17));rim.frequency.exponentialRampToValueAtTime(large?85:121,time+.12);
-        const strike=ctx.createBufferSource(),filter=ctx.createBiquadFilter(),gain=ctx.createGain();strike.buffer=this._noise;filter.type='bandpass';filter.frequency.value=large?720:1100;
-        gain.gain.setValueAtTime(.32,time);gain.gain.exponentialRampToValueAtTime(.0001,time+.075);
-        strike.connect(filter);filter.connect(gain);gain.connect(envelope);sources.push(strike);nodes.push(filter,gain);
-        envelope.gain.setValueAtTime(.0001,time);envelope.gain.linearRampToValueAtTime(velocity*(large?.34:.31),time+.006);envelope.gain.exponentialRampToValueAtTime(.0001,time+actualEnd-.04);
-      }else if(event.type==='wood'){
-        const osc=addOsc('sine',680);osc.frequency.exponentialRampToValueAtTime(410,time+.04);addOsc('sine',980,.23);
-        envelope.gain.setValueAtTime(.0001,time);envelope.gain.linearRampToValueAtTime(velocity*.18,time+.002);envelope.gain.exponentialRampToValueAtTime(.0001,time+.085);
       }else{
         const source=ctx.createBufferSource(),filter=ctx.createBiquadFilter();source.buffer=this._noise;source.loop=event.type==='cymbal';
         filter.type='highpass';filter.frequency.value=Math.min(event.type==='cymbal'?1800:4300,ctx.sampleRate*.43);nodes.push(filter);source.connect(filter);filter.connect(envelope);sources.push(source);
@@ -636,7 +797,7 @@
       for(const voice of [...this._voices])this._disconnectVoice(voice);
       for(const session of [...this._sessions])this._releaseSession(session);
       for(const node of [this._reverb,this._reverbHighpass,this._reverbLowpass,this._wet,this._compressor,this._master])try{node?.disconnect();}catch(_){}
-      this._sessions.clear();this._pluckCache.clear();this._waveCache.clear();this._session=null;this._noise=null;
+      this._sessions.clear();this._drumCache.clear();this._pluckCache.clear();this._waveCache.clear();this._session=null;this._noise=null;
       if(this._reverb)this._reverb.buffer=null;
     }
     // Read-only score summaries permit deterministic integrity checks without audio.

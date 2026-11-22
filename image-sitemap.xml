@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
+  <url><loc>https://www.kasai-solutions-inc.com/</loc>
+    <image:image><image:loc>https://www.kasai-solutions-inc.com/assets/campaign/dawn.webp</image:loc></image:image>
+    <image:image><image:loc>https://www.kasai-solutions-inc.com/assets/campaign/town.webp</image:loc></image:image>
+    <image:image><image:loc>https://www.kasai-solutions-inc.com/assets/campaign/war.webp</image:loc></image:image>
+    <image:image><image:loc>https://www.kasai-solutions-inc.com/assets/campaign/archive.webp</image:loc></image:image>
+  </url>
+  <url><loc>https://www.kasai-solutions-inc.com/sengoku-vs/</loc>
+    <image:image><image:loc>https://www.kasai-solutions-inc.com/assets/campaign/dawn.webp</image:loc></image:image>
+    <image:image><image:loc>https://www.kasai-solutions-inc.com/assets/campaign/town.webp</image:loc></image:image>
+    <image:image><image:loc>https://www.kasai-solutions-inc.com/assets/campaign/war.webp</image:loc></image:image>
+    <image:image><image:loc>https://www.kasai-solutions-inc.com/assets/campaign/court.webp</image:loc></image:image>
+  </url>
+  <url><loc>https://www.kasai-solutions-inc.com/premium/</loc>
+    <image:image><image:loc>https://www.kasai-solutions-inc.com/assets/premium/moonlit-castle-v1.webp</image:loc></image:image>
+    <image:image><image:loc>https://www.kasai-solutions-inc.com/assets/premium/gold-banner-v1.webp</image:loc></image:image>
+    <image:image><image:loc>https://www.kasai-solutions-inc.com/assets/premium/supporter-badge-v1.webp</image:loc></image:image>
+  </url>
+  <url><loc>https://www.kasai-solutions-inc.com/guide/</loc>
+    <image:image><image:loc>https://www.kasai-solutions-inc.com/assets/campaign/town.webp</image:loc></image:image>
+  </url>
+  <url><loc>https://www.kasai-solutions-inc.com/guide/data-recovery/</loc>
+    <image:image><image:loc>https://www.kasai-solutions-inc.com/assets/campaign/archive.webp</image:loc></image:image>
+  </url>
+  <url><loc>https://www.kasai-solutions-inc.com/about/</loc>
+    <image:image><image:loc>https://www.kasai-solutions-inc.com/assets/campaign/court.webp</image:loc></image:image>
+  </url>
+</urlset>

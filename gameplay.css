@@ -1,0 +1,285 @@
+/* The campaign interface shares a palette with its four illustrated chapter plates. */
+body:not(.at-title) {
+  --bg: #101a26;
+  --panel: #172634;
+  --panel-2: #223747;
+  --text: #f4efdf;
+  --muted: #bdcbd0;
+  --gold: #e4c18a;
+  --green: #acdbbc;
+  --blue: #acd7e5;
+  --red: #ba5446;
+  --line: #b9d2da30;
+  --palace-border: #a6bbbe47;
+  --palace-surface: linear-gradient(125deg, #203342, #152532 85%);
+  --section-accent: #e4c18a !important;
+  --section-rgb: 228,193,138 !important;
+  --section-solid: #405a69 !important;
+  --section-deep: #172735 !important;
+  --section-secondary: #d8e1dc !important;
+  --ink-surface: #172735;
+  color: var(--text);
+  background: var(--bg);
+}
+#app #main {
+  --chapter-art: url("assets/campaign/town.webp");
+  --chapter-focus: 70% 53%;
+  --chapter-rule: #d3ae74;
+  background: radial-gradient(ellipse at 80% 0, #46556135, transparent 45%), #101c28;
+  scrollbar-color: #536471 #13202c;
+}
+#app #main:is([data-view="map"],[data-view="field"],[data-view="roaming"],[data-view="covert"],[data-view="army"]) {
+  --chapter-art: url("assets/campaign/war.webp");
+  --chapter-rule: #e0917a;
+}
+#app #main:is([data-view="council"],[data-view="court"]) {
+  --chapter-art: url("assets/campaign/court.webp");
+  --chapter-rule: #d5b48b;
+}
+#app #main:is([data-view="research"],[data-view="officers"],[data-view="crests"]) {
+  --chapter-art: url("assets/campaign/archive.webp");
+  --chapter-rule: #aac8cb;
+}
+
+/* A continuous command rail and ledger, with the active destination identified in two ways. */
+#app .sidebar, #app .sidebar-bottom, #app .game-footer { color: var(--muted); background: #121e2a; border-color: var(--line); }
+#app .sidebar { scrollbar-color: #50606c #121e2a; box-shadow: inset -1px 0 #fff1; }
+#app .sidebar .clan-panel {
+  border: 1px solid #c4aa7a58; border-inline-start: 3px solid #cfaf75;
+  background: linear-gradient(115deg, #314453, #1b2d3a);
+  border-radius: 3px; box-shadow: none;
+}
+#app .clan-panel .clan-line b { color: var(--text); }
+#app .clan-progress { background: #0e1a26; }
+#app .clan-progress i { background: #d4bb8c; }
+#app .nav-section-name { display: none; }
+html.sengoku-desktop-fit #app .nav-section-name {
+  display: flex; align-items: center; gap: 9px; margin: 10px 4px 0;
+  font-size: .81rem; font-weight: 650; line-height: 1.45; letter-spacing: .08em; color: #c2c5b6;
+}
+html.sengoku-desktop-fit #app .nav-section-name::after { content: ""; flex: 1; border-top: 1px solid var(--line); }
+html.sengoku-desktop-fit #app .nav-section-name:first-child { margin-top: 0; }
+#app .sidebar .nav-item, body:not(.at-title) .navigation-dialog .navigation-entry {
+  --button-wash-start: #1a2a38f7; --button-wash-end: #1c2d39e8;
+  color: #e1e6df; border-radius: 4px; box-shadow: none;
+}
+html.sengoku-desktop-fit #app #navigation { gap: 3px; }
+html.sengoku-desktop-fit #app #navigation .nav-item { min-height: 44px; }
+#app .sidebar .nav-item > .icon { color: #becacc; }
+#app .sidebar .nav-item.active, body:not(.at-title) .navigation-dialog .navigation-entry.is-current {
+  --button-wash-start: #733f35f5; --button-wash-end: #382e33e8;
+  color: #fff3d8; border-color: #b38e635e;
+  box-shadow: inset 3px 0 #e49f78;
+}
+#app .sidebar .nav-item.active > .icon { color: #f0c391; }
+#app .sidebar .nav-count { background: #0b1a26; color: #e4c997; border-color: #a4927259; font-variant-numeric: tabular-nums; }
+#app .sidebar .navigation-menu-trigger {
+  --button-wash-start: #2d414ff7; --button-wash-end: #1f3542ee;
+  border-color: #9eada15e; border-radius: 4px;
+}
+#app .navigation-trigger-copy small, body:not(.at-title) .navigation-dialog .navigation-entry small { color: var(--muted); }
+#app .topbar, html:not(.sengoku-desktop-fit) #app .topbar {
+  background: linear-gradient(110deg, #283a47, #162532 68%);
+  border-bottom: 1px solid #ba9e696b;
+  box-shadow: 0 3px 16px #06111b55;
+}
+#app .topbar .mobile-brand, #app .topbar .calendar b { color: #f3e2be; }
+#app .topbar .resource-amount, #app .touch-header-stat-value { color: #faf2dc; letter-spacing: .01em; }
+#app .topbar .resource-label, html:not(.sengoku-desktop-fit) #app .topbar .resource-label { color: #c6d4d7; }
+#app .topbar .resource-gain { color: #acd6b8; }
+#app .topbar .resource, html:not(.sengoku-desktop-fit) #app .topbar :is(.resource,.touch-header-stat) {
+  background-color: #101e2a80; border-color: #accbd034; border-radius: 4px;
+}
+html:not(.sengoku-desktop-fit) #app .topbar .touch-header-stat {
+  --button-wash-start: #233746f7; --button-wash-end: #1e3240ed;
+}
+#app .version-label, #app .game-footer :is(a,button) { color: #b3c3ca; }
+body:not(.at-title) .announcement-bar { background: #293a44; border-color: #bc9b6470; color: #f1e5c5; }
+
+/* Chapter art remains clear on the right. The command tray sits below the title. */
+#app #main :is(.page-heading,.court-heading,.roaming-heading,.covert-heading) {
+  position: relative; isolation: isolate; min-width: 0;
+  min-height: clamp(152px, 14vw, 204px); padding: clamp(19px,2.4vw,34px);
+  gap: 14px; margin-block-end: 16px; border: 1px solid #cfbf9a6b;
+  border-inline-start: 3px solid var(--chapter-rule); border-radius: 3px;
+  background: #152332; box-shadow: 0 7px 22px #06111f45;
+}
+#app #main :is(.page-heading,.court-heading,.roaming-heading,.covert-heading)::before {
+  inset: 0; background-image: linear-gradient(90deg,#142333fc 0%,#142333ed 23%,#142333b3 48%,#14233312 83%),var(--chapter-art);
+  background-position: center,var(--chapter-focus); background-size: cover; background-repeat: no-repeat;
+}
+#app #main :is(.page-heading,.court-heading,.roaming-heading,.covert-heading)::after {
+  inset: auto 0 0; height: 2px; border: 0; border-radius: 0;
+  background: linear-gradient(90deg,var(--chapter-rule),transparent 66%);
+}
+#app #main .page-heading {
+  display: grid; grid-template-columns: minmax(0,1fr);
+  align-content: center; align-items: start; justify-items: start;
+}
+#app #main .page-heading > div:first-child { min-width: 0; width: 100%; }
+#app #main :is(.page-heading,.court-heading,.roaming-heading,.covert-heading) h1 {
+  margin: 0; color: #fff2d9; font: 650 clamp(1.85rem,2.9vw,3rem)/1.25 var(--serif);
+  letter-spacing: .04em; text-shadow: 0 2px 6px #0c1827,0 6px 18px #0c1827a6;
+}
+#app #main :is(.page-heading,.court-heading,.roaming-heading,.covert-heading) :is(.subtitle,p) {
+  max-width: 41em; margin-top: 6px; color: #eef1e8; line-height: 1.65; text-shadow: 0 1px 5px #0f1e2b;
+}
+#app #main :is(.page-heading,.court-heading,.roaming-heading,.covert-heading) .eyebrow {
+  margin-bottom: .5rem; color: #e4d1ad; font-size: .79rem; letter-spacing: .08em;
+}
+#app #main .chapter-symbol { width: 23px; height: 23px; margin-right: 8px; border: 0; border-radius: 2px; background: #863d33; color: #fff0ce; }
+#app #main .chapter-symbol .icon { width: 16px; height: 16px; }
+#app #main .page-heading-actions {
+  display: flex; flex-wrap: wrap; max-width: 100%; width: auto; gap: 8px 12px;
+  background: #101f2bdb; border: 1px solid #b3c6c83d; border-radius: 4px; padding: 5px 9px;
+}
+#app #main .page-heading-actions .commands { color: #dce4dd; }
+#app #main .command-pips i.filled { background: #d7bb86; box-shadow: none; }
+#app #main .realtime-strip, #app #main .currency-chip { color: var(--muted); background-color: #192c39; border-color: var(--line); }
+#app #main .currency-chip { color: var(--gold); }
+#app #main .time-track, body:not(.at-title) .progress { background: #0c1a26; }
+#app #main .time-track i, body:not(.at-title) .progress > i { background: linear-gradient(90deg,#9c8057,#dfc187); }
+
+/* The town keeps its measured map and facility pins; the console is a separate book of commands. */
+#app #main .town-panel { background: #172934; border-color: #b5a48082; border-radius: 4px; box-shadow: 0 8px 22px #06111f45; }
+#app #main .town-scene-heading, #app #main .town-style-strip { background: #203340; color: #d8e3dc; border-color: var(--line); }
+#app #main .town-scene-heading .scene-label { color: #efdec1; }
+#app #main .town-scene-board .hotspot .label { background: #112533f0; color: #fff3dc; border-color: #dbc18c; }
+#app #main .town-scene-board .hotspot.has-job .label { border-color: #9bd9b5; }
+#app #main .town-overview, html.sengoku-desktop-fit #app #main .town-overview {
+  border: 1px solid #a9bdc04a; border-top: 2px solid var(--chapter-rule);
+  background: linear-gradient(155deg,#233847,#172734 75%); border-radius: 4px;
+}
+#app #main .town-overview .page-heading {
+  display: block; min-height: 0; padding: 0;
+  margin-bottom: 12px; background: transparent; border: 0; box-shadow: none;
+}
+#app #main .town-overview .page-heading::before, #app #main .town-overview .page-heading::after { content: none; }
+#app #main .town-overview .page-heading h1 { font-size: clamp(1.5rem,2.2vw,2.25rem); }
+#app #main .town-overview .page-heading-actions { width: 100%; margin-top: 8px; }
+#app #main :is(.town-facility-console,.town-style-strip,.town-scene-legend,.governor-assignment-entry,.residency-self-panel) {
+  color: var(--text); background-color: #1a2d3a; border-color: var(--line);
+}
+#app #main :is(.building-card,.town-facility-button) { --button-wash-start: #203746f5; --button-wash-end: #1c2e3ce0; border-color: #a6bcc04c; border-radius: 4px; }
+#app #main .building-card .building-level { color: #f3dfad; border-color: #b098675c; background: #23313a; }
+#app #main .building-card .building-art { border-color: var(--line); }
+#app #main .hint-entry { background: #223745; border-color: var(--line); border-inline-start: 3px solid #b99163; }
+#app #main .hint-entry strong { color: #f3e2bc; }
+#app #main :is(.section-heading,.panel-heading) h2 { color: #f0e3c7; letter-spacing: .045em; }
+#app #main .section-heading { border-color: var(--line); }
+#app #main :is(.panel,.facility-entry,.quest-row,.castle-detail,.roaming-panel,.covert-panel,.court-panel,.roaming-deployment-summary,.officer-card,.kamon-entry,.army-muster-overview,.army-illustrated-slot,.research-overview,.research-illustrated-card,.field-card,.field-base-card) {
+  color: var(--text); border-color: var(--palace-border); border-radius: 4px;
+  background: var(--palace-surface); box-shadow: 0 4px 14px #06111f36;
+}
+#app #main .section-heading h2 > .icon, #app #main .panel-heading .icon { color: #dfbf89; }
+#app #main .facility-banner, #app #main .gacha-sanctuary {
+  background: linear-gradient(90deg,#172b39f2 10%,#1b2c36cf 55%,#262c3470),var(--chapter-art) right center / cover;
+  border-color: var(--palace-border); border-radius: 4px;
+}
+#app #main .officer-subnav, #app #main .territory-row, #app #main .army-slot-heading {
+  background-color: #1e3240; border-color: var(--line);
+}
+#app #main .territory-row.active { background-color: #35414a; border-color: #d3af7b; }
+#app #main .quest-row { border-inline-start: 3px solid #7d959a; }
+#app #main .quest-row:has([data-action="claim-quest"]:enabled) { border-inline-start-color: #e4c18a; background: linear-gradient(105deg,#393e36,#1c303c); }
+#app #main .officer-stats, #app #main .geographic-map-panel { border-color: #b8a7826b; }
+#app #main .log-panel .activity-item { border-color: #8fa6ab62; }
+#app #main .log-panel .activity-item::before { background: #d4b88b; border-color: #233744; }
+#app #main .roaming-supplies, #app #main .covert-supplies { background-color: #1b2e3c; border-color: var(--line); }
+
+/* The first decision gets a panoramic plate and one dominant action. */
+#app #main .start-campaign-welcome {
+  align-items: flex-start; justify-content: center; text-align: start;
+  padding: clamp(24px,4vw,64px); border-radius: 4px; border-color: #b3a07d8c;
+  background: linear-gradient(90deg,#142332fb 0%,#162735ea 34%,#1728378a 70%,#17283733),var(--chapter-art) 74% center / cover;
+}
+#app #main .start-campaign-welcome h1 { color: #fff1d7; }
+#app #main .start-campaign-welcome p, #app #main .start-campaign-welcome small { max-width: 36em; color: #e1e7df; text-shadow: 0 1px 4px #0d1d2a; }
+#app #main .start-campaign-emblem { color: #f3d4a0; border-color: #e3bd8273; background: #763e35; border-radius: 5px; }
+#app #main .start-campaign-actions { justify-content: flex-start; }
+
+/* Retain the artwork beneath each control. Separate secondary, primary and selected actions. */
+body:not(.at-title) :is(.button,.social-button,.events-button,.field-button,.court-button,.covert-button,.roaming-button,.icon-button,.social-icon-button,.navigation-pin,.navigation-recent-link) {
+  --button-wash-start: #223846f7; --button-wash-end: #1c303de5;
+  color: #f0eee1; background-color: #223744; border-color: #acbdc059; border-radius: 4px;
+  box-shadow: inset 0 1px #ffffff0c;
+}
+body:not(.at-title) :is(.button.gold,.field-button.gold,.social-button.gold,.events-button.is-primary) {
+  --button-wash-start: #614e37f5; --button-wash-end: #3f382ee8;
+  color: #ffedc6; border-color: #c9aa737d;
+}
+body:not(.at-title) :is(.button.primary,.social-button.primary,.field-button.primary,.events-button.primary) {
+  --button-wash-start: #994a3bf5; --button-wash-end: #733d32e8;
+  color: #fff3d9; border-color: #dfab7b;
+}
+body:not(.at-title) :is(.button.danger,.social-button.danger) {
+  --button-wash-start: #6a3238f7; --button-wash-end: #492b33ec;
+  color: #ffdad1; border-color: #c17a75;
+}
+body:not(.at-title) :is(.input,.select,.social-input,.social-select,.search-box,.navigation-search) {
+  color: #f6f2e5; background-color: #122331; border-color: #869d9f82; border-radius: 4px;
+}
+body:not(.at-title) .search-box > .input { background-color: transparent; }
+body:not(.at-title) :is(input,textarea)::placeholder { color: #aec2c8; }
+body:not(.at-title) :is(.notice,.sync-access-notice,.tip-bar) { color: #d7e2df; border-color: #adbec24d; background: #233642; }
+body:not(.at-title) :is(.tabs,.social-tabs,.alliance-tabs,.progress-tabs,.court-tabs,.covert-tabs,.field-tabs,.cq-tabs) :is(.active,[aria-selected=true]) {
+  --button-wash-start: #4d4a3ff5; --button-wash-end: #323f41f0;
+  color: #fff0ca; border-color: #ceae75; box-shadow: inset 0 -2px #dbb780;
+}
+body:not(.at-title) :is(.modal,.navigation-dialog,.social-dialog,.events-dialog,.progress-dialog,.alliance-dialog,.cq-dialog,.premium-dialog,.residency-dialog,.walking-dialog,.letters-dialog,.trade-dialog,.strategy-dialog,.hints-dialog) {
+  color: var(--text); border: 1px solid #b8ab898c; border-radius: 6px;
+  background: linear-gradient(140deg,#263d4b,#172836 66%); box-shadow: 0 24px 90px #0009;
+}
+body:not(.at-title) dialog::backdrop { background: #061421bf; }
+body:not(.at-title) :is(.modal-header,.social-header,.events-header,.progress-header,.alliance-dialog-top,.cq-dialog-top,.premium-header,.navigation-dialog-header,.walking-header,.letters-header,.trade-header,.strategy-header,.hints-header) {
+  background: linear-gradient(105deg,#2f4552,#1b2d3a); border-bottom: 1px solid #c4a4716b;
+}
+body:not(.at-title) :is(.modal-footer,.social-footer,.events-footer,.navigation-dialog-footer) { color: var(--muted); background: #172a37; border-color: var(--line); }
+body:not(.at-title) :is(.navigation-entry-icon,.navigation-pin) { color: #e4c798; background-color: #243a47; border-color: var(--line); }
+body:not(.at-title) .navigation-dialog .navigation-pin.is-pinned {
+  --button-wash-start: #654d37f5; --button-wash-end: #473c33ed;
+  color: #ffe5ab; border-color: #c9aa75;
+}
+body:not(.at-title) :is(.social-profile-section,.social-guild-card,.social-friend-card,.social-message-content,.events-stage,.events-adviser,.progress-summary,.premium-product-card,.letters-message,.trade-offer) {
+  color: var(--text); border-color: var(--line); background-color: #1d3340;
+}
+body:not(.at-title) .events-hero { background: linear-gradient(90deg,#182b39f5,#1d2d38a3),url("assets/campaign/war.webp") right center / cover; }
+body:not(.at-title) .events-stage:is(.active,.selected) { background: #34424a; border-color: #cfb07b; }
+body:not(.at-title) :is(.empty,.field-empty,.court-empty,.covert-empty,.roaming-empty,.events-empty,.navigation-empty) {
+  color: #c8d7d8; border-color: #9bb2b56e; background: #192b38; border-radius: 4px;
+}
+body:not(.at-title) .toast, body:not(.at-title) .loading-card { background: #203746; border-color: #d1b580; color: #fff0d0; }
+body:not(.at-title) .social-launcher { --button-wash-start: #654b35f5; --button-wash-end: #393c36ed; color: #fff0cc; border-color: #c1a273; }
+#app :is(button,a,input,select,textarea,summary):focus-visible, body:not(.at-title) dialog :focus-visible {
+  outline: 3px solid #ffe6a5; outline-offset: -3px;
+}
+@media (hover:hover) and (pointer:fine) {
+  #app .sidebar .nav-item:hover, body:not(.at-title) .navigation-dialog .navigation-entry:hover {
+    --button-wash-end: #374854df; border-color: #c5ae87; color: #fff1d3;
+  }
+  body:not(.at-title) :is(.button,.social-button,.events-button,.field-button):not(:disabled):hover {
+    color: #fff6e1; border-color: #e4c396; box-shadow: 0 0 0 1px #dec69f45;
+  }
+}
+@media (max-width: 640px) {
+  #app #main :is(.page-heading,.court-heading,.roaming-heading,.covert-heading) { min-height: 136px; padding: 16px; }
+  #app #main :is(.page-heading,.court-heading,.roaming-heading,.covert-heading)::before {
+    background-image: linear-gradient(90deg,#122433f5 0%,#122433cc 48%,#12243361 92%),var(--chapter-art);
+    background-position: center,66% center;
+  }
+  #app #main :is(.page-heading,.court-heading,.roaming-heading,.covert-heading) h1 { font-size: 1.85rem; }
+  #app #main .page-heading-actions { gap: 6px; padding: 4px 6px; }
+  #app #main .start-campaign-actions { align-self: stretch; }
+}
+@media (max-width: 600px) {
+  html:not(.sengoku-desktop-fit) #app #main .page-heading-actions { padding: 0; background: transparent; border: 0; }
+  html:not(.sengoku-desktop-fit) #app #main .page-heading-actions .button { min-height: 44px; }
+}
+@media (pointer: coarse) {
+  body:not(.at-title) :is(.button,.navigation-pin,.navigation-entry,.social-button,.events-button,.field-button,.court-button,.covert-button,.roaming-button,.start-campaign-actions button) { min-height: 44px; }
+  body:not(.at-title) :is(.input,.social-input,.social-select,.select,textarea,.navigation-search input) { font-size: max(1rem,16px); }
+}
+@media (forced-colors: active) {
+  #app #main :is(.page-heading,.court-heading,.roaming-heading,.covert-heading)::before { background: Canvas; }
+  #app .sidebar .nav-item.active { border: 2px solid Highlight; }
+}

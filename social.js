@@ -53,7 +53,14 @@ function applyPlayerEvaluations(rows){
 const hasAdminChat=(user=s.user)=>user?.isAdmin===true||user?.isStaff===true;
 function requireAdmin(){if(!s.user?.isAdmin)throw Error('この操作には運営権限が必要です。');}
 const giftLabel=g=>Object.entries(RES).filter(([k])=>Number(g?.[k])>0).map(([k,label])=>`${label} ${num(g[k])}`).join(' / ')||'添付なし';
-function base(){try{const raw=global.SENGOKU_API_BASE;if(typeof raw!=='string'||!raw.trim())return null;const u=new URL(raw);if(!['https:','http:'].includes(u.protocol))return null;return raw.replace(/\/+$/,'').replace(/\/api\/v1$/,'')+'/api/v1';}catch(_){return null;}}
+function base(){
+ try{
+  const url=new URL(global.SENGOKU_API_BASE);
+  const localHttp=url.protocol==='http:'&&['localhost','127.0.0.1','[::1]'].includes(url.hostname);
+  if((url.protocol!=='https:'&&!localHttp)||url.username||url.password||url.search||url.hash)return null;
+  return url.origin+url.pathname.replace(/\/+$/,'').replace(/\/api\/v1$/,'')+'/api/v1';
+ }catch(_){return null;}
+}
 function validIdentity(v){return v&&typeof v==='object'&&(typeof v.id==='string'||Number.isSafeInteger(v.id))&&String(v.id).length>0&&String(v.id).length<180&&typeof v.token==='string'&&v.token.length>=20&&v.token.length<=8192&&!/\s/.test(v.token);}
 function saveJSON(key,value){try{const raw=JSON.stringify(value);localStorage.setItem(key,raw);return localStorage.getItem(key)===raw;}catch(_){return false;}}
 function readJSON(key,fallback){try{return JSON.parse(localStorage.getItem(key))??fallback;}catch(_){return fallback;}}
@@ -113,7 +120,7 @@ async function api(route,{method='GET',data,auth=true,token,background=false,kee
  if(implicitIdentity&&requestEpoch!==authEpoch){controllers.delete(controller);clearTimeout(timeout);if(loadingId)global.SengokuLoading?.end(loadingId);const e=Error('接続する領主が変わったため、以前の処理を取り消しました。');e.code='STALE_IDENTITY';throw e;}
  const bearer=token??(auth?s.identity?.token:null);if(bearer)headers.Authorization=`Bearer ${bearer}`;
  try{
-  const response=await fetch(origin+route,{method,headers,body:data!==undefined?JSON.stringify(data):undefined,signal:controller.signal,credentials:'omit',cache:'no-store',keepalive});
+  const response=await fetch(origin+route,{method,headers,body:data!==undefined?JSON.stringify(data):undefined,signal:controller.signal,credentials:'omit',cache:'no-store',redirect:'error',referrerPolicy:'no-referrer',keepalive});
   let result;try{result=await response.json();}catch(_){throw Error('通信の応答を読み取れませんでした。時間をおいてお試しください。');}
   if(implicitIdentity&&(requestEpoch!==authEpoch||requestAccountEpoch!==accountEpoch)){const stale=Error('接続する領主または利用状態が変わったため、以前の通信処理を取り消しました。');stale.code='STALE_IDENTITY';throw stale;}
   if((!response.ok||result.ok===false)&&result?.error?.code==='ACCOUNT_BANNED'&&implicitIdentity&&auth&&bearer===s.identity?.token){

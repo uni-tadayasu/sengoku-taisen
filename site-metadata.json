@@ -4,8 +4,8 @@
   "name": "戦国VS",
   "alternateName": "SENGOKU VS",
   "publisher": "KASAI SOLUTIONS",
-  "release": "4.6.0-20261122",
-  "version": "4.6.0",
+  "release": "4.7.0-20261122",
+  "version": "4.7.0",
   "dateModified": "2026-11-22",
   "language": "ja",
   "locale": "ja_JP",
@@ -15,11 +15,11 @@
     "あなたの一手から、新たな戦国史が始まる。"
   ],
   "ogImage": {
-    "path": "assets/branding/sengoku-vs-ogp-20261121.jpg",
+    "path": "assets/branding/sengoku-vs-ogp-20261122.jpg",
     "type": "image/jpeg",
-    "width": 1774,
-    "height": 887,
-    "alt": "戦国VSの武将と城郭を描いたKASAI SOLUTIONSのオリジナルタイトルビジュアル"
+    "width": 1200,
+    "height": 630,
+    "alt": "暁の城と甲冑の武将を墨と金で描いた「戦国VS」のタイトルビジュアル"
   },
   "logo": {
     "path": "assets/branding/sengoku-vs-icon-512-20261121.png",
@@ -63,39 +63,118 @@
   "pages": {
     "home": {
       "path": "/",
-      "title": "戦国VS｜城育成・軍師AI・天下統一のブラウザゲーム",
-      "description": "城下町を育て、武将を編成し、軍師AIと天下統一を目指す戦国ブラウザゲーム「戦国VS」。城攻め・対人戦・同盟・期間限定合戦を楽しめ、統一達成で幕府を開設できます。PC・スマホ・タブレット対応。操作ガイドと端末間の引き継ぎにも対応しています。",
-      "dateModified": "2026-11-22"
+      "title": "戦国VS｜無料で遊べる戦国ブラウザ戦略ゲーム",
+      "description": "戦国VS公式。城下町を育て、武将を編成し、軍師AIと天下統一を目指す戦国ブラウザゲームです。PC・スマホ・タブレットで基本プレイ無料。同盟を結び、ほかの領主と攻城戦を楽しめます。",
+      "dateModified": "2026-11-22",
+      "artwork": {
+        "path": "assets/campaign/dawn.webp",
+        "alt": "甲冑の武将が立つ、暁の城",
+        "width": 1536,
+        "height": 1024
+      },
+      "additionalImages": [
+        "assets/campaign/town.webp",
+        "assets/campaign/war.webp",
+        "assets/campaign/archive.webp"
+      ]
     },
     "share": {
       "path": "/sengoku-vs/",
-      "title": "戦国VSの紹介｜武将を育て、軍師と天下統一を目指す",
-      "description": "一城から領国を育てる戦国VS。城下町の育成、武将編成、軍師AIの提案、領主同士の対人戦と同盟、合戦報酬や幕府開設を紹介します。PC・スマホ・タブレットでの操作方法と、同じ領主で続きを遊ぶ引き継ぎガイドも案内しています。",
-      "dateModified": "2026-11-22"
+      "title": "戦国VS ゲーム紹介｜城下町・武将編成・攻城戦の楽しみ方",
+      "description": "戦国VSを初めて知る方へ。一城を選んで田畑や商家を育てる内政から、武将編成、ほかの領主との合戦や同盟まで、ゲームの流れをイラストとともに紹介します。",
+      "dateModified": "2026-11-22",
+      "artwork": {
+        "path": "assets/campaign/dawn.webp",
+        "alt": "暁の城を背に立つ、戦国VSの武将",
+        "width": 1536,
+        "height": 1024,
+        "mobile": "assets/campaign/dawn-small.webp"
+      },
+      "additionalImages": [
+        "assets/campaign/town.webp",
+        "assets/campaign/war.webp",
+        "assets/campaign/court.webp"
+      ]
     },
     "premium": {
       "path": "/premium/",
-      "title": "戦国VSの有料版・支援｜外観アイテムとサポーターのご案内",
-      "description": "戦国VSの外観アイテム「金彩の旗印」480円、「月影の城下」980円と、月額780円のサポーターをご紹介。実際の外観を見比べ、ゲーム内で購入・装備を管理できます。",
-      "dateModified": "2026-11-22"
+      "title": "戦国VS プレミアム｜城下の外観・旗印・月額支援の料金",
+      "description": "金彩の旗印は480円、月影の城下は980円、サポーターは月額780円（税込）。戦国VSで装備したときの見本、買い切りと月額の違い、購入後の反映を確認できます。",
+      "dateModified": "2026-11-22",
+      "artwork": {
+        "path": "assets/premium/moonlit-castle-v1.webp",
+        "alt": "月明かりと城の灯が川面に映る「月影の城下」",
+        "width": 1536,
+        "height": 1024
+      },
+      "socialImage": {
+        "path": "assets/branding/sengoku-vs-premium-20261122.jpg",
+        "type": "image/jpeg",
+        "width": 1200,
+        "height": 630,
+        "alt": "月明かりと城の灯が川面に映る「月影の城下」"
+      },
+      "additionalImages": [
+        "assets/premium/gold-banner-v1.webp",
+        "assets/premium/supporter-badge-v1.webp"
+      ]
     },
     "guide": {
       "path": "/guide/",
-      "title": "戦国VSの遊び方｜操作方法・軍師AI・合戦報酬・幕府",
-      "description": "戦国VSの操作と進め方を目的別に案内。城の領主・家臣としての参加と入城順の継承、PC・スマホ・タブレットの使い方、城郭・支城の施設育成、距離に応じた行軍、軍師AI、合戦報酬・幕府開設、保存・同期・復元を解説します。",
-      "dateModified": "2026-11-22"
+      "title": "戦国VS 攻略ガイド｜最初の城選びから城郭強化・合戦まで",
+      "description": "戦国VSの公式攻略ガイド。開始城の選び方、天守と城郭のレベルの上げ方、武将や軍師AIの使い方、合戦の報酬を目的から探せます。スマホ操作やデータの引き継ぎも案内します。",
+      "dateModified": "2026-11-22",
+      "artwork": {
+        "path": "assets/campaign/town.webp",
+        "alt": "朝日が差す川沿いの城下町と木橋",
+        "width": 1200,
+        "height": 500
+      },
+      "socialImage": {
+        "path": "assets/branding/sengoku-vs-guide-20261122.jpg",
+        "type": "image/jpeg",
+        "width": 1200,
+        "height": 630,
+        "alt": "朝日が差す川沿いの城下町と木橋"
+      }
     },
     "recovery": {
       "path": "/guide/data-recovery/",
-      "title": "戦国VSのデータ復元・引き継ぎ｜機種変更とドメイン移行",
-      "description": "戦国VSの機種変更・URL変更後の引き継ぎガイド。接続コード、領主データとセーブ、統合バックアップ、クラウド保存からの復元手順を案内します。購入済みの商品も、同じ領主で確認できます。",
-      "dateModified": "2026-11-22"
+      "title": "戦国VSの引き継ぎ・データ復元｜端末変更とバックアップ",
+      "description": "機種変更やサイト移転後に、同じ領主で戦国VSを再開する方法。以前の端末、接続コード、統合バックアップ、旧形式のセーブのうち、手元にあるものから復元手順を選べます。",
+      "dateModified": "2026-11-22",
+      "artwork": {
+        "path": "assets/campaign/archive.webp",
+        "alt": "灯明のそばに置かれた琵琶と巻物",
+        "width": 1200,
+        "height": 500
+      },
+      "socialImage": {
+        "path": "assets/branding/sengoku-vs-recovery-20261122.jpg",
+        "type": "image/jpeg",
+        "width": 1200,
+        "height": 630,
+        "alt": "灯明のそばに置かれた琵琶と巻物"
+      }
     },
     "about": {
       "path": "/about/",
-      "title": "戦国VSとは｜城育成・合戦・幕府開設の戦国ゲーム",
-      "description": "KASAI SOLUTIONSの戦国ブラウザゲーム「戦国VS」の作品紹介。城下町育成、武将編成、すべての戦闘を支援する軍師AI、190件の戦い一覧を使うイベントと天下統一・幕府開設を紹介します。対応端末、地図や家紋の出典も掲載。",
-      "dateModified": "2026-11-22"
+      "title": "戦国VSの作品概要｜収録武将・城・家紋と地図の出典",
+      "description": "戦国VSの世界観と収録内容をまとめた公式資料。武将と城郭の成長段階、家紋を描く基準、戦国地図に使った地形・城跡の資料、KASAI SOLUTIONSの制作情報を掲載しています。",
+      "dateModified": "2026-11-22",
+      "artwork": {
+        "path": "assets/campaign/court.webp",
+        "alt": "御殿の縁側で向かい合う使者",
+        "width": 1200,
+        "height": 500
+      },
+      "socialImage": {
+        "path": "assets/branding/sengoku-vs-about-20261122.jpg",
+        "type": "image/jpeg",
+        "width": 1200,
+        "height": 630,
+        "alt": "御殿の縁側で向かい合う使者"
+      }
     }
   }
 }
