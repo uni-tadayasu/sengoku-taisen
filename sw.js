@@ -15,8 +15,13 @@ CORE.push('./travel.js','./travel-ui.js','./travel-ui.css');
 CORE.push('./residency.js','./residency.css');
 CORE.push('./palace-theme.css','./page-collections.css','./presentation.js','./presentation.css','./public-luxury.css','./public-luxury.js','./assets/palace-pattern.svg');
 // Versioned entry URLs prevent browser HTTP caches from mixing old and new engines.
-for(let i=0;i<CORE.length;i++)if(/\.(?:js|css)$/.test(CORE[i]))CORE[i]+='?v='+RELEASE;
-for(const asset of ['manifest.webmanifest','assets/favicon-32.png','assets/icon-192.png','assets/icon-512.png','assets/sengoku-taisen-favicon-32.png','assets/sengoku-taisen-icon-192.png','assets/sengoku-taisen-icon-512.png','assets/apple-touch-icon.png','assets/emblem.webp','assets/castle-town.webp','assets/operator-ieyasu-u.webp'])CORE.push('./'+asset+'?v='+RELEASE);
+const portraitRevision='ieyasu-sokutai-20261123';
+for(let i=0;i<CORE.length;i++){
+  const asset=CORE[i];
+  if(/\.(?:js|css)$/.test(asset))CORE[i]=asset+'?v='+RELEASE+(asset==='./artwork.js'?'&portrait='+portraitRevision:'');
+}
+CORE.push('./assets/operator-ieyasu-u.webp?v='+portraitRevision);
+for(const asset of ['manifest.webmanifest','assets/favicon-32.png','assets/icon-192.png','assets/icon-512.png','assets/sengoku-taisen-favicon-32.png','assets/sengoku-taisen-icon-192.png','assets/sengoku-taisen-icon-512.png','assets/apple-touch-icon.png','assets/emblem.webp','assets/castle-town.webp'])CORE.push('./'+asset+'?v='+RELEASE);
 for(const rank of ['D','C','B','A','S','SS','SSS','U'])CORE.push('./assets/frames/rank-'+rank+'.svg?v='+RELEASE);
 // Only this release may answer a request. Older games used this same origin;
 // CacheStorage.match across every cache could otherwise return their icons or HTML.

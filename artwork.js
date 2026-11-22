@@ -12,7 +12,7 @@ const portraitFacilities=new Set((data.buildings||[]).slice(0,32).map(b=>b.id));
 const facilityArtRevision='chronicle-480';
 const officerArtRevision='chronicle-480';
 const frames=Object.fromEntries(ranks.map(r=>[r,`assets/frames/rank-${r}.svg?v=4.9.0-20261123`]));
-const operatorPortrait={id:'of_b0616adde162',rank:'U',url:'assets/operator-ieyasu-u.webp?v=4.9.0-20261123'};
+const operatorPortrait={id:'of_b0616adde162',rank:'U',url:'assets/operator-ieyasu-u.webp?v=ieyasu-sokutai-20261123'};
 const cache=new Map(),paintRequests=new WeakMap();let observer,scheduled=false;
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const icons={
@@ -46,7 +46,7 @@ function tileInfo(kind,id,variant){
 function tile(kind,id,className='',variant=1){const t=tileInfo(kind,id,variant);if(!t)return'';
  return `<span class="painted-art ${kind}-painting${t.portraitCell?' portrait-cell':''} ${esc(className)}" data-art-url="${esc(t.url)}" data-art-x="${t.x}" data-art-y="${t.y}" style="--tile-x:${t.x}%;--tile-y:${t.y}%" role="img" aria-label="${esc(t.name)} ${t.level?'Lv.'+t.level+(t.finalStage?'・最終形態':''):t.rank+'ランク'}のオリジナルイラスト" aria-busy="true"><span class="art-surface" aria-hidden="true"></span><span class="art-loading" aria-hidden="true">${icon(kind==='officer'?'officers':kind==='castle'?'town':'facilities')}</span></span>`;
 }
-function portrait(o){if(!o)return'';const rank=ranks.includes(o.rank)?o.rank:'D',special=o.id===operatorPortrait.id&&rank===operatorPortrait.rank;const painting=special?`<span class="painted-art painted-portrait operator-portrait" data-art-url="${operatorPortrait.url}" data-art-x="50" data-art-y="50" role="img" aria-label="徳川家康 Uランクの特別イラスト" aria-busy="true"><span class="art-surface" aria-hidden="true"></span><span class="art-loading" aria-hidden="true">${icon('officers')}</span></span>`:tile('officer',o.id,'painted-portrait',rank);return `<span class="portrait-frame" data-rank="${rank}">${painting}<img class="rank-frame" src="${frames[rank]}" alt="" aria-hidden="true" loading="lazy"><b class="portrait-rank-badge" aria-hidden="true">${rank}</b></span>`;}
+function portrait(o){if(!o)return'';const rank=ranks.includes(o.rank)?o.rank:'D',special=o.id===operatorPortrait.id&&rank===operatorPortrait.rank;const painting=special?`<span class="painted-art painted-portrait operator-portrait" data-art-url="${operatorPortrait.url}" data-art-x="50" data-art-y="50" role="img" aria-label="束帯姿の晩年の徳川家康 Uランクの特別肖像" aria-busy="true"><span class="art-surface" aria-hidden="true"></span><span class="art-loading" aria-hidden="true">${icon('officers')}</span></span>`:tile('officer',o.id,'painted-portrait',rank);return `<span class="portrait-frame" data-rank="${rank}">${painting}<img class="rank-frame" src="${frames[rank]}" alt="" aria-hidden="true" loading="lazy"><b class="portrait-rank-badge" aria-hidden="true">${rank}</b></span>`;}
 function load(url){if(cache.has(url))return cache.get(url);const promise=new Promise((resolve,reject)=>{const img=new Image();img.onload=()=>resolve(url);img.onerror=()=>{cache.delete(url);reject(Error('画像を読み込めませんでした'));};img.src=url;});cache.set(url,promise);return promise;}
 async function reveal(el){
  const url=el.dataset.artUrl||el.dataset.ghostUrl;if(!url||el.dataset.artReady)return;
