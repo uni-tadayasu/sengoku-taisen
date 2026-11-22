@@ -18,7 +18,7 @@ CORE.push('./palace-theme.css','./page-collections.css','./presentation.js','./p
 const portraitRevision='ieyasu-sokutai-20261123';
 for(let i=0;i<CORE.length;i++){
   const asset=CORE[i];
-  if(/\.(?:js|css)$/.test(asset))CORE[i]=asset+'?v='+RELEASE+(asset==='./artwork.js'?'&portrait='+portraitRevision:'');
+  if(/\.(?:js|css)$/.test(asset))CORE[i]=asset+'?v='+RELEASE+(['./artwork.js','./artwork.css'].includes(asset)?'&portrait='+portraitRevision:'');
 }
 CORE.push('./assets/operator-ieyasu-u.webp?v='+portraitRevision);
 for(const asset of ['manifest.webmanifest','assets/favicon-32.png','assets/icon-192.png','assets/icon-512.png','assets/sengoku-taisen-favicon-32.png','assets/sengoku-taisen-icon-192.png','assets/sengoku-taisen-icon-512.png','assets/apple-touch-icon.png','assets/emblem.webp','assets/castle-town.webp'])CORE.push('./'+asset+'?v='+RELEASE);

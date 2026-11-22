@@ -34,8 +34,16 @@
 .art-surface{display:block;position:absolute;inset:0;background-size:800% 400%;background-position:var(--tile-x) var(--tile-y);background-repeat:no-repeat}.portrait-cell{background:linear-gradient(90deg,#172726,#2f3b30 50%,#172726)}.portrait-cell>.art-surface{left:12.5%;right:12.5%;box-shadow:0 0 0 1px #d6b97440}
 
 /* A dedicated full-resolution portrait replaces the atlas portrait for operator Ieyasu U. */
-.operator-portrait>.art-surface{background-size:cover;background-position:50% 27%}.operator-portrait-frame{background:#17241e;box-shadow:0 0 0 1px #e2bd64,0 0 24px #d5ac382d}.operator-art-seal{position:absolute;bottom:10%;left:50%;transform:translateX(-50%);z-index:4;padding:4px 9px;color:#ffe9ac;background:#171a12e8;border:1px solid #c9a54f;border-radius:3px;font-size:10px;letter-spacing:.12em;white-space:nowrap;pointer-events:none}.officer-detail-portrait:has(.operator-portrait){width:230px;flex-basis:230px;aspect-ratio:2/3}.officer-detail-portrait .operator-portrait>.art-surface{background-position:center}.officer-detail-portrait .operator-art-seal{font-size:11px}
-@media(max-width:600px){.officer-detail-top:has(.operator-portrait){flex-direction:column;align-items:center}.officer-detail-portrait:has(.operator-portrait){width:min(100%,280px);flex-basis:auto}.operator-art-seal{font-size:9px;letter-spacing:.04em;padding:3px 6px}}
+.operator-portrait>.art-surface{background-size:cover;background-position:center top}.operator-portrait-frame{background:#17241e;box-shadow:0 0 0 1px #e2bd64,0 0 24px #d5ac382d}.operator-art-seal{position:absolute;bottom:10%;left:50%;transform:translateX(-50%);z-index:4;padding:4px 9px;color:#ffe9ac;background:#171a12e8;border:1px solid #c9a54f;border-radius:3px;font-size:10px;letter-spacing:.12em;white-space:nowrap;pointer-events:none}#modal .officer-detail-portrait:has(.operator-portrait){
+  position:relative;
+  width:min(100%,230px);
+  height:auto;
+  flex:0 0 auto;
+  aspect-ratio:2/3;
+}
+#modal .officer-detail-portrait:has(.operator-portrait)>.portrait-frame{position:absolute;inset:0}
+#modal .officer-detail-portrait .operator-portrait>.art-surface{background-size:contain;background-position:center}.officer-detail-portrait .operator-art-seal{font-size:11px}
+@media(max-width:600px){.officer-detail-top:has(.operator-portrait){flex-direction:column;align-items:center}#modal .officer-detail-portrait:has(.operator-portrait){width:min(100%,280px)}.operator-art-seal{font-size:9px;letter-spacing:.04em;padding:3px 6px}}
 
 /* The paintings carry the visual detail; a restrained mount gives them depth. */
 .portrait-frame{background:#111a1a;box-shadow:inset 0 0 0 1px #edce8b66,0 9px 24px #0005}
