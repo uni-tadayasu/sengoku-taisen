@@ -1,6 +1,7 @@
 // Authoritative branch construction and siege condition. A branch is attached
 // to its parent city; it never becomes an additional territory or reward city.
 import {GameEngine,GAME_OFFICERS} from './game-runtime.js';
+import {prepareResidencyCpuLosses} from './residency.js';
 const stmt=(db,sql,...args)=>db.prepare(sql).bind(...args);
 const GATE='EXISTS(SELECT 1 FROM branch_requests WHERE actor_id=? AND request_id=? AND commit_token=?)';
 const PARENTS=['edo','nijo','osaka','nagoya'];
@@ -110,15 +111,17 @@ async function mutation(ctx,action){
  if(createdJob)createdJob.completesElapsedMs=clock.elapsedMs+createdJob.totalSeconds*1000;
  await h.budget(db,'branches:'+user.id,60,60000,ctx.now);
  const now=Date.now(),next=h.normalizeGameSave(JSON.parse(game.exportSave()),user,now,{clock}),nonce=crypto.randomUUID(),role=h.roleCommitGuard(user),gateArgs=[user.id,body.requestId,nonce];
+ const cpuLosses=await prepareResidencyCpuLosses(db,{userId:user.id,events:game.takeHomeDefenseLosses(),now,state:next.state});
  const sharedGuard=shared?{sql:"EXISTS(SELECT 1 FROM staff_base WHERE id='kyoto_gosho' AND revision=?)",args:[shared.revision]}:{sql:'1=1',args:[]};
  const statements=[stmt(db,`INSERT INTO branch_requests(actor_id,request_id,campaign_id,sequence,action,request_hash,commit_token,result_json,created_at)
   SELECT ?,?,?,?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM player_saves WHERE user_id=? AND revision=? AND writer_device_id=? AND lease_expires_at>? AND COALESCE(json_extract(save_json,'$.state.walking.campaignId'),'legacy_v1')=?)
-  AND EXISTS(SELECT 1 FROM world_clock WHERE id=? AND revision=?) AND ${role.sql} AND ${found.guard.sql} AND ${sharedGuard.sql}
-  ON CONFLICT(actor_id,request_id) DO NOTHING`,user.id,body.requestId,body.campaignId,body.sequence,action,digest,nonce,JSON.stringify(result),now,user.id,body.expectedRevision,body.deviceId,now,body.campaignId,h.worldClockId,clock.revision,...role.args,...found.guard.args,...sharedGuard.args),
+  AND EXISTS(SELECT 1 FROM world_clock WHERE id=? AND revision=?) AND ${role.sql} AND ${found.guard.sql} AND ${sharedGuard.sql} AND ${cpuLosses.guard.sql}
+  ON CONFLICT(actor_id,request_id) DO NOTHING`,user.id,body.requestId,body.campaignId,body.sequence,action,digest,nonce,JSON.stringify(result),now,user.id,body.expectedRevision,body.deviceId,now,body.campaignId,h.worldClockId,clock.revision,...role.args,...found.guard.args,...sharedGuard.args,...cpuLosses.guard.args),
   stmt(db,`UPDATE player_saves SET save_json=?,revision=revision+1,updated_at=?,lease_expires_at=? WHERE user_id=? AND ${GATE}`,JSON.stringify(next),now,now+h.syncLease,user.id,...gateArgs),
   ...branchProgressStatements(db,user.id,next,now,GATE,gateArgs,{resolvedElapsedMs:clock.elapsedMs}),
   ...(h.covertIncidentStatements?h.covertIncidentStatements(db,user.id,next,now,GATE,gateArgs):[])
  ];
+ statements.push(...cpuLosses.statements(GATE,gateArgs));
  const personal=h.staffPersonalProgressStatement?await h.staffPersonalProgressStatement(db,user,next,now,GATE,gateArgs,game.getStaffPersonalProgress?.()):null;
  if(personal)statements.push(personal);
  await db.batch(statements);const committed=await prior(ctx,body.requestId,digest);

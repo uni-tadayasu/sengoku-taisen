@@ -4,8 +4,8 @@
   "name": "戦国VS",
   "alternateName": "SENGOKU VS",
   "publisher": "KASAI SOLUTIONS",
-  "release": "4.3.0-20261122",
-  "version": "4.3.0",
+  "release": "4.4.0-20261122",
+  "version": "4.4.0",
   "dateModified": "2026-11-22",
   "language": "ja",
   "locale": "ja_JP",
@@ -82,7 +82,7 @@
     "guide": {
       "path": "/guide/",
       "title": "戦国VSの遊び方｜操作方法・軍師AI・合戦報酬・幕府",
-      "description": "戦国VSの操作と進め方を目的別に案内。PC・スマホ・タブレットの使い方、城郭・施設の育成、距離に応じた行軍時間、軍師AI、イベントの戦い一覧と毎戦報酬、天下統一後の幕府開設を解説します。保存・同期・データ復元も確認できます。",
+      "description": "戦国VSの操作と進め方を目的別に案内。城の領主・家臣としての参加と入城順の継承、PC・スマホ・タブレットの使い方、城郭・施設の育成、距離に応じた行軍、軍師AI、合戦報酬・幕府開設、保存・同期・復元を解説します。",
       "dateModified": "2026-11-22"
     },
     "recovery": {

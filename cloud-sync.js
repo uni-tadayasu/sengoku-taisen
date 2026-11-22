@@ -117,6 +117,7 @@ function create(options={}){
   const user=snapshot?.user;if(!user||String(user.id)!==String(session?.id))throw Error('同期する領主を確認できませんでした。');
   roleAccess(user);session.onUser?.(user);
  }
+ function observeResidency(result){if(Number.isSafeInteger(result?.residencyRevision))global.SengokuResidency?.observe?.(result,{playerId:String(session?.id||''),revision:result.residencyRevision});}
  function lease(snapshot){
   const server=Date.parse(snapshot.serverTime),until=Date.parse(snapshot.leaseExpiresAt),duration=Number.isFinite(server)&&Number.isFinite(until)?until-server:Number.isFinite(until)?until-now():0;
   const mine=snapshot.writerDeviceId===device.id&&snapshot.writable!==false&&duration>1000;
@@ -169,7 +170,7 @@ function create(options={}){
   else if(remote&&branchCorrectionPending){const corrected=mergeBranchCorrection(branchCorrectionPending,remote,local());if(corrected.changed){if(!await apply(corrected.save,result,g,{reason:'branch-canonical'}))return false;}if(!corrected.pending)branchCorrectionPending=null;dirty=fingerprint(local())!==ack;}
   // The branch ledger may be newer than the player's economic checkpoint. Its
   // trusted cursor must reach the engine before a clock notification can catch up.
-  applyBranchAuthority(result,g);if(result.clock)global.SengokuWorldClock?.accept(result.clock);
+  applyBranchAuthority(result,g);observeResidency(result);if(result.clock)global.SengokuWorldClock?.accept(result.clock);
   applyStaffBase(result,g);revision=result.revision;initialized=true;attempt=null;checkpoint();status.updatedAt=result.updatedAt||null;lease(result);access();return true;
  }
  function fail(error,g){
@@ -199,7 +200,7 @@ function create(options={}){
    if(staleBranch)branchCorrectionPending=save;
    else if(current===sent&&canonical!==current){if(!await apply(result.save,result,g,{reason:'canonical',backup:false}))return{ok:false};branchCorrectionPending=null;}
    else{const corrected=mergeBranchCorrection(save,result.save,currentSave);branchCorrectionPending=corrected.pending?save:null;if(corrected.changed&&!await apply(corrected.save,result,g,{reason:'branch-canonical',backup:false}))return{ok:false};}
-   if(!valid(g))return{ok:false};applyBranchAuthority(result,g);if(result.clock)global.SengokuWorldClock?.accept(result.clock);applyStaffBase(result,g);revision=result.revision;ack=canonical;dirty=fingerprint(local())!==ack;initialized=true;attempt=null;checkpoint();status.updatedAt=result.updatedAt||null;lease(result);access();if(dirty&&!suspended)scheduleSave();return{ok:true};
+   if(!valid(g))return{ok:false};applyBranchAuthority(result,g);observeResidency(result);if(result.clock)global.SengokuWorldClock?.accept(result.clock);applyStaffBase(result,g);revision=result.revision;ack=canonical;dirty=fingerprint(local())!==ack;initialized=true;attempt=null;checkpoint();status.updatedAt=result.updatedAt||null;lease(result);access();if(dirty&&!suspended)scheduleSave();return{ok:true};
   }catch(error){if(!valid(g))return{ok:false};if(['REVISION_CONFLICT','LEASE_REQUIRED','CYCLE_SETTLEMENT_REQUIRED','CLOCK_REWIND'].includes(error.code)){await recoverConflict(g);return{ok:false,conflict:true};}throw error;}
  }
  async function refreshCore(g,{takeOver=false,settleCycle=false}={}){
@@ -253,7 +254,8 @@ function create(options={}){
   return enqueue(async g=>{try{const final=await flushCore(g,{suspended:true,keepalive:true});if(!valid(g)||!final?.ok)return;await request(g,'/sync/release',{method:'POST',data:{deviceId:device.id},keepalive:true});if(valid(g)){leaseDeadline=0;emit({writable:false,leaseExpiresAt:null});}}catch(e){fail(e,g);}});
  }
  function setDeviceName(value){const name=Array.from(String(value||'').trim()).slice(0,40).join('');if(!name)throw Error('端末名を入力してください。');try{localStorage.setItem(NAME_KEY,name);}catch(_){throw Error('端末名を保存できませんでした。');}device.name=name;emit();if(session&&!hidden())presence(true);return name;}
- return{start,stop,refresh,observeBranchSnapshot,suspendAccount,invalidateAccountAccess,takeOver:()=>refresh({takeOver:true}),flush,notifySave,visibilityChanged,connectionChanged,pageHidden,setDeviceName,getStatus:()=>({...status}),getDevice:()=>({...device}),subscribe:fn=>{listeners.add(fn);fn({...status});return()=>listeners.delete(fn);}};
+ function acceptSnapshot(result,{reason='residency-admission'}={}){return enqueue(async g=>{if(!valid(g)||banned||!result?.user||String(result.user.id)!==String(session.id))return{ok:false};if(!Number.isSafeInteger(result.revision)||result.revision<0)throw Error('入城後の保存番号を確認できませんでした。');if(result.revision<revision)return{ok:true,superseded:true};const ok=await snapshot(result,g,{force:true,reason});if(ok)schedulePoll();return{ok};});}
+ return{start,stop,refresh,acceptSnapshot,observeBranchSnapshot,suspendAccount,invalidateAccountAccess,takeOver:()=>refresh({takeOver:true}),flush,notifySave,visibilityChanged,connectionChanged,pageHidden,setDeviceName,getStatus:()=>({...status}),getDevice:()=>({...device}),subscribe:fn=>{listeners.add(fn);fn({...status});return()=>listeners.delete(fn);}};
 }
 const sync=create();sync.create=create;sync.fingerprint=fingerprint;global.SengokuCloudSync=sync;
 global.addEventListener?.('sengoku:game-saved',()=>sync.notifySave());

@@ -3,6 +3,7 @@
 import {GameEngine,GAME_OFFICERS} from './game-runtime.js';
 import {prepareProtection,protectionBattleStatements} from './protection.js';
 import {getAllianceDefense} from './alliance.js';
+import {residencyTargetGuard,prepareResidencySuccession,prepareResidencyCpuLosses} from './residency.js';
 const stmt=(db,sql,...args)=>db.prepare(sql).bind(...args);
 const rows=value=>value?.results||[];
 const gate='EXISTS(SELECT 1 FROM covert_requests WHERE actor_id=? AND request_id=? AND commit_token=?)';
@@ -57,7 +58,7 @@ async function status(ctx,snapshot=null){
  const covert=game.covertStatus(),listUrl=new URL(url);listUrl.searchParams.set('limit',url.searchParams.get('limit')||'100');
  covert.rules={...covert.rules,canAttackEdoFromKyoto:emperor.isCourtEmperor};if(emperor.isCourtEmperor)h.registerCourtGuard(emperor.guard);
  const list=await h.getFieldList(db,current,listUrl,now);
- covert.targets.push(...list.targets.filter(t=>t.playerId!==user.id).map(t=>({kind:'player',playerId:t.playerId,castleId:t.targetCastleId,name:t.targetCastleName,playerName:t.name})));
+ covert.targets.push(...list.targets.filter(t=>t.playerId!==user.id&&(!snapshot.residency?.castleId||t.householdCastleId!==snapshot.residency.castleId)).map(t=>({kind:'player',playerId:t.playerId,castleId:t.targetCastleId,name:t.targetCastleName,playerName:t.name})));
  covert.targetCursor=list.nextCursor;covert.playerTargetTotal=Math.max(0,list.total-1);covert.online=true;
  return{...snapshot,covert};
 }
@@ -88,7 +89,7 @@ function input(raw,action,h){
  }
  return body;
 }
-async function playerTarget(ctx,targetSpec,clock,action){
+async function playerTarget(ctx,targetSpec,clock,action,term=null){
  const {db,user,helpers:h,now}=ctx;
  if(targetSpec.playerId===user.id)h.fail(400,'INVALID_TARGET','自分の共有拠点には派遣できません。');
  const target=await h.getUser(db,targetSpec.playerId);
@@ -98,6 +99,7 @@ async function playerTarget(ctx,targetSpec,clock,action){
  const rewardOnly=['edo','kyoto_gosho'].includes(targetSpec.castleId);
  // A mission never advances or changes its target as a side effect of spying.
  const save=h.normalizeGameSave(JSON.parse(row.save_json),target,now,{reading:true,clock}),s=save.state;
+ const residency=await residencyTargetGuard(db,{attackerId:user.id,targetId:target.id,castleId:targetSpec.castleId,isHome:targetSpec.castleId===s.home,term,now,fail:h.fail});
  const branches=await h.branchStateGuard(db,target.id,s.walking.campaignId);await h.reconcileBranchProgress(db,target.id,save,clock,{projectToClock:true});
  if(targetSpec.castleId!==s.home&&(!['nijo','osaka','nagoya'].includes(targetSpec.castleId)||s.castles[targetSpec.castleId].owner!==s.clan))h.fail(409,'FIELD_TARGET_CHANGED','この領主の共有拠点ではありません。派遣先を更新してください。');
  if(s.gameOver||Number(row.cycle_index)<Math.floor(clock.elapsedMs/cycleMs)&&!rewardOnly)h.fail(409,'BASE_UNAVAILABLE','この拠点は領地の精算中です。');
@@ -108,7 +110,7 @@ async function playerTarget(ctx,targetSpec,clock,action){
  const snapshot=GameEngine.normalizeCovertSnapshot({level:castle.level,troops:s.troops,garrison:castle.troops,wall:targetSpec.castleId===s.home?s.buildings.wall:castle.wall,defensePower:h.fieldDefense(supportedState,'balanced',0,targetSpec.castleId).power,resources:s.resources,army:g.armyStats()});
  snapshot.activeBranches=s.branches.filter(branch=>branch.parentCastleId===targetSpec.castleId&&branch.level>0&&!branch.fallen).map(branch=>branch.id);
  const canonicalTarget={kind:'player',playerId:target.id,castleId:targetSpec.castleId,name:castleMap.get(targetSpec.castleId).name,playerName:target.name};
- const role=h.roleCommitGuard(target),guards={sql:`EXISTS(SELECT 1 FROM player_saves WHERE user_id=? AND revision=? AND save_json IS NOT NULL) AND ${role.sql} AND ${sharedGuard.sql} AND ${branches.guard.sql}`,args:[target.id,row.revision,...role.args,...sharedGuard.args,...branches.guard.args]};
+ const role=h.roleCommitGuard(target),guards={sql:`EXISTS(SELECT 1 FROM player_saves WHERE user_id=? AND revision=? AND save_json IS NOT NULL) AND ${role.sql} AND ${sharedGuard.sql} AND ${branches.guard.sql} AND ${residency.sql}`,args:[target.id,row.revision,...role.args,...sharedGuard.args,...branches.guard.args,...residency.args]};
  if(action==='retaliate'){
   if(snapshot.activeBranches.length)h.fail(409,'BRANCHES_REQUIRED','大都市拠点へ反撃する前に、残っている支拠点をすべて陥落させてください。');
   const relation=await h.fieldRelation(db,user.id,target.id);if(h.fieldRelationStatus(relation,user.id,clock.elapsedMs)==='allied')h.fail(409,'ALLIED_TARGET','同盟期間中の相手には反撃できません。');
@@ -121,7 +123,7 @@ async function playerTarget(ctx,targetSpec,clock,action){
   for(const table of ['field_battles','covert_battles']){guards.sql+=` AND NOT EXISTS(SELECT 1 FROM ${table} WHERE (defender_id=? OR (?=1 AND json_extract(result_json,'$.castleId')='kyoto_gosho')) AND occurred_elapsed_ms>?)`;guards.args.push(target.id,shieldPalace,clock.elapsedMs-60000);}
  }
  guards.sql+=' AND '+protection.guard.sql+' AND '+support.guard.sql;guards.args.push(...protection.guard.args,...support.guard.args);
- return{target,row,save,snapshot,canonicalTarget,guards,rewardOnly,protection,support};
+ return{target,row,save,snapshot,canonicalTarget,guards,rewardOnly,protection,support,residencyTerm:residency.term};
 }
 async function mutation(ctx,action){
  const {db,user,helpers:h,request}=ctx,body=input(await h.readBody(request),action,h);
@@ -158,17 +160,21 @@ async function mutation(ctx,action){
  if(action==='dispatch'&&result.accepted){const dispatch=game.state.covert.dispatches.find(v=>v.id===result.march.id);dispatch.authority='server';dispatch.departedElapsedMs=Math.floor(clock.elapsedMs);dispatch.arrivesElapsedMs=dispatch.departedElapsedMs+dispatch.travel.durationMs;const history=game.state.covert.history.find(v=>v.requestId===body.requestId);history.march=JSON.parse(JSON.stringify(dispatch));result.result.march=history.march;result.march=history.march;}
  await h.budget(db,'covert:'+user.id,60,60000,ctx.now);
  const now=Date.now(),next=h.normalizeGameSave(JSON.parse(game.exportSave()),user,now,{clock}),nonce=crypto.randomUUID(),role=h.roleCommitGuard(user),gateArgs=[user.id,body.requestId,nonce];
+ const cpuLosses=await prepareResidencyCpuLosses(db,{userId:user.id,events:game.takeHomeDefenseLosses(),now,state:next.state});
+ const incomingBattle=action==='retaliate'&&target?{battleMode:target.rewardOnly?'reward':'raid',id:'cb_'+crypto.randomUUID().replaceAll('-',''),attackerPlayerId:user.id,defenderPlayerId:target.target.id,castleId:targetSpec.castleId,castleName:castleMap.get(targetSpec.castleId).name,won:result.result.battle.won,defenderLost:result.result.battle.defenderLost,occurredElapsedMs:clock.elapsedMs}:null;
+ const successionPlan=incomingBattle?.won&&!target.rewardOnly&&targetSpec.castleId===target.save.state.home?await prepareResidencySuccession(db,{userId:target.target.id,castleId:targetSpec.castleId,battleId:incomingBattle.id,kind:'covert',now}):null;
+ if(successionPlan?.succession){incomingBattle.succession=successionPlan.succession;result.result.battle.succession=successionPlan.succession;}
  const stateGuard=found.row?{sql:'EXISTS(SELECT 1 FROM covert_states WHERE actor_id=? AND campaign_id=? AND sequence=? AND state_json=?)',args:[user.id,body.campaignId,body.sequence,found.row.state_json]}:{sql:'NOT EXISTS(SELECT 1 FROM covert_states WHERE actor_id=? AND campaign_id=?)',args:[user.id,body.campaignId]};
- const sharedGuard=shared?{sql:"EXISTS(SELECT 1 FROM staff_base WHERE id='kyoto_gosho' AND revision=?)",args:[shared.revision]}:safe,targetGuard=target?.guards||safe;
+ const sharedGuard=shared?{sql:"EXISTS(SELECT 1 FROM staff_base WHERE id='kyoto_gosho' AND revision=?)",args:[shared.revision]}:safe,targetGuard=target?.guards||safe,successionGuard=successionPlan?.guard||safe;
  const statements=[stmt(db,`INSERT INTO covert_requests(actor_id,request_id,campaign_id,sequence,action,incident_id,request_hash,commit_token,result_json,created_at)
   SELECT ?,?,?,?,?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM player_saves WHERE user_id=? AND revision=? AND writer_device_id=? AND lease_expires_at>? AND COALESCE(json_extract(save_json,'$.state.walking.campaignId'),'legacy_v1')=?)
-  AND EXISTS(SELECT 1 FROM world_clock WHERE id=? AND revision=?) AND ${role.sql} AND ${stateGuard.sql} AND ${sharedGuard.sql} AND ${targetGuard.sql} AND ${incidentGuard.sql} AND ${courtGuard.sql} AND ${actorBranches.guard.sql}
-  ON CONFLICT DO NOTHING`,user.id,body.requestId,body.campaignId,body.sequence,action,action==='retaliate'?body.incidentId:null,digest,nonce,JSON.stringify(result.result),now,user.id,body.expectedRevision,body.deviceId,now,body.campaignId,h.worldClockId,clock.revision,...role.args,...stateGuard.args,...sharedGuard.args,...targetGuard.args,...incidentGuard.args,...courtGuard.args,...actorBranches.guard.args),
+  AND EXISTS(SELECT 1 FROM world_clock WHERE id=? AND revision=?) AND ${role.sql} AND ${stateGuard.sql} AND ${sharedGuard.sql} AND ${targetGuard.sql} AND ${incidentGuard.sql} AND ${courtGuard.sql} AND ${actorBranches.guard.sql} AND ${successionGuard.sql} AND ${cpuLosses.guard.sql}
+  ON CONFLICT DO NOTHING`,user.id,body.requestId,body.campaignId,body.sequence,action,action==='retaliate'?body.incidentId:null,digest,nonce,JSON.stringify(result.result),now,user.id,body.expectedRevision,body.deviceId,now,body.campaignId,h.worldClockId,clock.revision,...role.args,...stateGuard.args,...sharedGuard.args,...targetGuard.args,...incidentGuard.args,...courtGuard.args,...actorBranches.guard.args,...successionGuard.args,...cpuLosses.guard.args),
   stmt(db,`UPDATE player_saves SET save_json=?,revision=revision+1,updated_at=?,lease_expires_at=? WHERE user_id=? AND ${gate}`,JSON.stringify(next),now,now+h.syncLease,user.id,...gateArgs),
   stmt(db,`INSERT INTO covert_states(actor_id,campaign_id,sequence,state_json,updated_at) SELECT ?,?,?,?,? WHERE ${gate}
    ON CONFLICT(actor_id,campaign_id) DO UPDATE SET sequence=excluded.sequence,state_json=excluded.state_json,updated_at=excluded.updated_at`,user.id,body.campaignId,next.state.covert.sequence,JSON.stringify(next.state.covert),now,...gateArgs)
  ];
- if(action==='dispatch'&&target)statements.push(stmt(db,`UPDATE covert_requests SET march_target_campaign_id=? WHERE actor_id=? AND request_id=? AND ${gate}`,target.save.state.walking.campaignId,user.id,body.requestId,...gateArgs));
+ if(action==='dispatch'&&target)statements.push(stmt(db,`UPDATE covert_requests SET march_target_campaign_id=?,march_target_residency_json=? WHERE actor_id=? AND request_id=? AND ${gate}`,target.save.state.walking.campaignId,target.residencyTerm?JSON.stringify(target.residencyTerm):null,user.id,body.requestId,...gateArgs));
  statements.push(...h.branchProgressStatements(db,user.id,next,now,gate,gateArgs,{resolvedElapsedMs:Math.min(clock.elapsedMs,next.state.worldClock?.elapsedMs||0)}));
  if(action==='retaliate'&&target){
   const b=result.result.battle,d=target.save.state,castle=d.castles[targetSpec.castleId];
@@ -179,12 +185,14 @@ async function mutation(ctx,action){
    statements.push(stmt(db,`UPDATE player_saves SET save_json=?,revision=revision+1,updated_at=? WHERE user_id=? AND ${gate}`,JSON.stringify(defenderNext),now,target.target.id,...gateArgs));
    statements.push(...h.branchProgressStatements(db,target.target.id,defenderNext,now,gate,gateArgs,{resolvedElapsedMs:clock.elapsedMs}));
   }
-  const battle={battleMode:target.rewardOnly?'reward':'raid',id:'cb_'+crypto.randomUUID().replaceAll('-',''),attackerPlayerId:user.id,defenderPlayerId:target.target.id,castleId:targetSpec.castleId,castleName:castleMap.get(targetSpec.castleId).name,won:b.won,defenderLost:b.defenderLost,occurredElapsedMs:clock.elapsedMs};
+  const battle=incomingBattle;
   statements.push(...protectionBattleStatements(db,target.target.id,now,target.protection.shieldUntil,gate,gateArgs),...target.support.statements(battle,gate,gateArgs));
   statements.push(stmt(db,`INSERT INTO covert_battles(id,attacker_id,defender_id,occurred_elapsed_ms,result_json,created_at) SELECT ?,?,?,?,?,? WHERE ${gate}`,battle.id,user.id,target.target.id,clock.elapsedMs,JSON.stringify(battle),now,...gateArgs));
   const title=battle.castleName+'の戦闘報告',mailBody=battle.castleName+'が部隊の襲撃を受けました。'+(b.won?'相手部隊が戦闘で優勢となりました。':'守備隊が相手部隊を退けました。')+'損失は軍団'+b.defenderLost.troops+'人・守備兵'+b.defenderLost.garrison+'人です。拠点の領有は継続しています。',mailRequest='system:covert:'+battle.id,mailHash=await h.hash(JSON.stringify([target.target.id,title,mailBody]));
   statements.push(stmt(db,`INSERT INTO mail_campaigns(id,sender_id,target_user_id,title,body,gift_json,request_id,payload_hash,created_at) SELECT ?,?,?,?,?,NULL,?,?,? WHERE ${gate}`,'m_sys_'+battle.id,user.id,target.target.id,title,mailBody,mailRequest,mailHash,now,...gateArgs));
  }
+ if(successionPlan)statements.push(...successionPlan.statements(gate,gateArgs));
+ statements.push(...cpuLosses.statements(gate,gateArgs));
  await db.batch(statements);
  const committed=await prior(ctx,body.requestId,digest);
  if(!committed){
@@ -221,15 +229,17 @@ export async function settleCovertDispatches(ctx,{actorId=null,limit=8}={}){
    if(dispatch.target.kind!=='player')continue;
    if(playerTargets++>=1)continue; // Keep D1 arrival guards below 100 bindings.
    try{
-    const receipt=await stmt(db,'SELECT march_target_campaign_id FROM covert_requests WHERE actor_id=? AND request_id=?',user.id,dispatch.requestId).first(),target=await playerTarget(own,dispatch.target,clock,'dispatch');
+    const receipt=await stmt(db,'SELECT march_target_campaign_id,march_target_residency_json FROM covert_requests WHERE actor_id=? AND request_id=?',user.id,dispatch.requestId).first(),term=receipt?.march_target_residency_json?JSON.parse(receipt.march_target_residency_json):null,target=await playerTarget(own,dispatch.target,clock,'dispatch',term);
     if(receipt?.march_target_campaign_id&&target.save.state.walking.campaignId!==receipt.march_target_campaign_id)h.fail(409,'COVERT_TARGET_CHANGED','派遣先の物語が切り替わったため、部隊は帰還しました。');
     targetSnapshots[dispatch.target.playerId+':'+dispatch.target.castleId]={snapshot:target.snapshot,battleCursor:cursor};targetGuards.push(target.guards);
    }catch(error){if(!error?.status)throw error;const result=game.cancelCovertDispatch(dispatch.id,error.message,{authoritative:true});if(result)completed.push(result);}
   }
   completed.push(...game.settleCovertDue({targetSnapshots,authoritative:true}));if(!completed.length)continue;
-  const next=h.normalizeGameSave(JSON.parse(game.exportSave()),user,now,{clock}),nonce=crypto.randomUUID(),role=user.ban_active?safe:h.roleCommitGuard(user),guards=[role,branches.guard,...targetGuards,...(shared?[{sql:"EXISTS(SELECT 1 FROM staff_base WHERE id='kyoto_gosho' AND revision=?)",args:[shared.revision]}]:[])],commitGate='EXISTS(SELECT 1 FROM player_saves WHERE user_id=? AND cycle_commit=?)',args=[user.id,nonce];
+  const cpuLosses=await prepareResidencyCpuLosses(db,{userId:user.id,events:game.takeHomeDefenseLosses(),now,state:game.state});
+  const next=h.normalizeGameSave(JSON.parse(game.exportSave()),user,now,{clock}),nonce=crypto.randomUUID(),role=user.ban_active?safe:h.roleCommitGuard(user),guards=[role,branches.guard,cpuLosses.guard,...targetGuards,...(shared?[{sql:"EXISTS(SELECT 1 FROM staff_base WHERE id='kyoto_gosho' AND revision=?)",args:[shared.revision]}]:[])],commitGate='EXISTS(SELECT 1 FROM player_saves WHERE user_id=? AND cycle_commit=?)',args=[user.id,nonce];
   const statements=[stmt(db,`UPDATE player_saves SET save_json=?,revision=revision+1,updated_at=?,cycle_commit=? WHERE user_id=? AND revision=? AND EXISTS(SELECT 1 FROM covert_states WHERE actor_id=? AND campaign_id=? AND state_json=?) AND EXISTS(SELECT 1 FROM world_clock WHERE id=? AND revision=?) AND ${guards.map(g=>'('+g.sql+')').join(' AND ')} RETURNING user_id`,JSON.stringify(next),now,nonce,user.id,saved.revision,user.id,ledger.campaign_id,found.row.state_json,h.worldClockId,clock.revision,...guards.flatMap(g=>g.args)),stmt(db,`UPDATE covert_states SET sequence=?,state_json=?,updated_at=? WHERE actor_id=? AND campaign_id=? AND ${commitGate}`,next.state.covert.sequence,JSON.stringify(next.state.covert),now,user.id,ledger.campaign_id,...args),...h.branchProgressStatements(db,user.id,next,now,commitGate,args,{resolvedElapsedMs:Math.min(clock.elapsedMs,next.state.worldClock?.elapsedMs||0)}),...covertIncidentStatements(db,user.id,next,now,commitGate,args)];
   for(const result of completed)statements.push(stmt(db,`UPDATE covert_requests SET result_json=? WHERE actor_id=? AND request_id=? AND ${commitGate}`,JSON.stringify(result),user.id,result.requestId,...args));
+  statements.push(...cpuLosses.statements(commitGate,args));
   await db.batch(statements);
  }
 }

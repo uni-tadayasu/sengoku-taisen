@@ -202,7 +202,8 @@
   const STAFF_CLAN=Object.freeze({...CLANS.find(c=>c.name==='徳川家'),name:ADMIN_ASSETS.clanName,leader:'徳川家康',home:STAFF_BASE_ID,description:'京都御所を共同本拠とする、スタッフの家。'});
   const GIFT_FIELDS=[...RESOURCES,'magatama'];
   // Role belongs to the authenticated runtime. It is never serialized in a save.
-  const ADMIN_ACCESS=new WeakMap(),STAFF_ACCESS=new WeakMap(),COURT_ACCESS=new WeakMap(),BRANCH_AUTHORITY=new WeakMap(),BRANCH_PARENT_LOSSES=new WeakMap(),STAFF_VIEW=new WeakMap(),STAFF_ORIGIN=new WeakMap();
+  const ADMIN_ACCESS=new WeakMap(),STAFF_ACCESS=new WeakMap(),COURT_ACCESS=new WeakMap(),BRANCH_AUTHORITY=new WeakMap(),BRANCH_PARENT_LOSSES=new WeakMap(),HOME_DEFENSE_LOSSES=new WeakMap(),STAFF_VIEW=new WeakMap(),STAFF_ORIGIN=new WeakMap();
+  const MAX_HOME_DEFENSE_LOSSES=256;
   const WORLD_CALENDAR=Object.freeze({startYear:1560,yearsPerCycle:56,monthsPerCycle:672,secondsPerMonth:60});
   const MAX_TURN=999999999;
   // Court titles are game progression, independent of account/guild permissions.
@@ -534,6 +535,17 @@
     setBranchAuthority(authority={}){const requested=authority?.resolvedElapsedMs??0;if(!authority||typeof authority!=='object'||Array.isArray(authority)||!Number.isSafeInteger(requested)||requested<0)return fail('支拠点の確定時刻を確認してください。');const current=this.branchResolvedElapsedMs,resolvedElapsedMs=requested===0?0:Math.max(current,requested),changed=current!==resolvedElapsedMs;BRANCH_AUTHORITY.set(this,{campaignId:this.state.walking.campaignId,resolvedElapsedMs});return{ok:true,changed,resolvedElapsedMs};}
     takeBranchParentLosses(){const recorded=BRANCH_PARENT_LOSSES.get(this);BRANCH_PARENT_LOSSES.delete(this);return recorded?.campaignId===this.state.walking.campaignId?copy(recorded.losses):[];}
     _recordBranchParentLoss(parentCastleId){const s=this.state,branches=s.branches.filter(branch=>branch.parentCastleId===parentCastleId);if(!branches.length)return;const prior=BRANCH_PARENT_LOSSES.get(this),losses=prior?.campaignId===s.walking.campaignId?prior.losses:[],ids=new Set(branches.map(branch=>branch.id));losses.push({parentCastleId,branches:copy(branches),jobs:copy(s.jobs.filter(job=>job.kind==='branch'&&ids.has(job.id)))});BRANCH_PARENT_LOSSES.set(this,{campaignId:s.walking.campaignId,losses});}
+    // Household succession consumes only losses produced by a trusted running
+    // engine. These receipts are transient: save imports, logs, role projection
+    // and territory resets cannot supply or replay them.
+    takeHomeDefenseLosses(){const recorded=HOME_DEFENSE_LOSSES.get(this);HOME_DEFENSE_LOSSES.delete(this);return recorded?.campaignId===this.state.walking.campaignId?copy(recorded.losses):[];}
+    _recordHomeDefenseLoss(castleId,sourceCastleId){
+      const s=this.state;if(castleId!==s.home||s.castles[castleId]?.owner!==s.clan||!CASTLE_BY_ID[sourceCastleId]||s.castles[sourceCastleId]?.owner===s.clan||['edo',STAFF_BASE_ID].includes(castleId))return;
+      const campaignId=s.walking.campaignId,cycle=Math.floor(s.turn/WORLD_CALENDAR.monthsPerCycle),id=`cpu-home:${campaignId}:${cycle}:${s.turn}:${sourceCastleId}:${castleId}`,prior=HOME_DEFENSE_LOSSES.get(this),losses=prior?.campaignId===campaignId?prior.losses:[];
+      if(losses.length>=MAX_HOME_DEFENSE_LOSSES||losses.some(loss=>loss.id===id))return;
+      losses.push({id,kind:'cpu',campaignId,cycle,turn:s.turn,occurredElapsedMs:Math.floor(s.turn*60000+s.realtime.elapsed*1000),castleId,sourceCastleId});
+      HOME_DEFENSE_LOSSES.set(this,{campaignId,losses});
+    }
     courtAttackPermission(sourceCastleId,targetCastleId){return sourceCastleId===STAFF_BASE_ID&&targetCastleId===ADMIN_ASSETS.castleId&&!this.isCourtEmperor?{ok:false,code:'COURT_EDO_ATTACK_REQUIRED',message:'京都御所から江戸城へ攻められるのは、太政大臣より上位の天皇だけです。現在の任命を確認してください。'}:{ok:true};}
     castleLevelLimit(id){return id===STAFF_BASE_ID?128:id==='edo'?64:MAJOR_CITY_IDS.includes(id)?48:32;}
     canOwnCastle(id){return Boolean(CASTLE_BY_ID[id])&&(id!==ADMIN_ASSETS.castleId||this.isAdmin)&&(id!==STAFF_BASE_ID||this.isStaff);}
@@ -1435,7 +1447,7 @@
         this.recordOfficerBattle({key:`defense:${s.walking.campaignId}:${s.turn}:${move.from}:${move.to}`,won:held,role:'defense'});
         const fieldLoss=Math.min(s.troops,Math.round(reinforce*(held?.12:.3)));s.troops-=fieldLoss;
         if(held){b.troops=Math.max(100,b.troops-Math.round(b.troops*.18));a.troops=Math.max(300,a.troops-Math.round(attack*.3));s.prestige=Math.min(ASSET_CAP,s.prestige+5);events.push(`${a.owner}が${bc.name}へ侵攻。守備隊が撃退しました（援軍損失${fieldLoss}人）。`);}
-        else{this._recordBranchParentLoss(move.to);b.owner=a.owner;this._pruneBranches();if(s.jobs.some(j=>j.kind==='castle'&&j.id===move.to)){s.jobs=s.jobs.filter(j=>j.kind!=='castle'||j.id!==move.to);events.push(`${bc.name}の落城により、進行中の城郭拡張は中止されました。`);}b.troops=Math.max(250,Math.round(a.troops*.3));a.troops=Math.max(350,a.troops-Math.round(b.troops*.6));s.morale=clamp(s.morale-10,15,100);events.push(`${a.owner}の侵攻により${bc.name}を失いました。`);if(!this.ownedCastles().length){s.gameOver=true;events.push('最後の城が陥落しました。設定から新しい物語を始められます。');}else if(home){s.home=this.ownedCastles()[0].id;events.push(`${CASTLE_BY_ID[s.home].name}へ本拠を移しました。`);}}
+        else{this._recordHomeDefenseLoss(move.to,move.from);this._recordBranchParentLoss(move.to);b.owner=a.owner;this._pruneBranches();if(s.jobs.some(j=>j.kind==='castle'&&j.id===move.to)){s.jobs=s.jobs.filter(j=>j.kind!=='castle'||j.id!==move.to);events.push(`${bc.name}の落城により、進行中の城郭拡張は中止されました。`);}b.troops=Math.max(250,Math.round(a.troops*.3));a.troops=Math.max(350,a.troops-Math.round(b.troops*.6));s.morale=clamp(s.morale-10,15,100);events.push(`${a.owner}の侵攻により${bc.name}を失いました。`);if(!this.ownedCastles().length){s.gameOver=true;events.push('最後の城が陥落しました。設定から新しい物語を始められます。');}else if(home){s.home=this.ownedCastles()[0].id;events.push(`${CASTLE_BY_ID[s.home].name}へ本拠を移しました。`);}}
       }else{
         const ratio=a.troops/(b.troops*(1+b.wall*.08)*(1+(b.level-1)*.04));
         if(this.random()<clamp(.32+(ratio-1)*.3,.1,.8)){const old=b.owner;b.owner=a.owner;b.troops=Math.max(450,Math.round(a.troops*.42));a.troops=Math.max(500,a.troops-Math.round(b.troops*.4));events.push(`${a.owner}が${old}の${bc.name}を攻略しました。`);}
