@@ -56,7 +56,7 @@ function setup(options={}) {
   context={
     game,roster,SengokuEngine,staffBaseId:'kyoto_gosho',URLSearchParams,Date,JSON,Math,Promise,
     state:()=>context.game.state,
-    syncAccess:{...control.status},saveKey:'save',backupKey:'backups',saveEnabled:true,saveWarning:'',
+    syncAccess:{...control.status},lastLocalSaveRaw:null,lastLocalSaveGame:null,localCampaignRefreshPending:false,saveKey:'save',backupKey:'backups',saveEnabled:true,saveWarning:'',
     worldCatchingUp:false,worldSettlementPending:false,worldSettlementRetryAt:0,worldCatchupTimer:null,worldClockStatusKey:'',fieldActionPending:false,walkingActionPending:false,strategyActionPending:false,startPending:false,roleEpoch:1,
     selectedCastle:'',lastRealtime:0,saveCounter:0,importedGame:null,activeModal:'',
     localStorage:{get length(){return stored.size;},key:index=>[...stored.keys()][index]??null,getItem:key=>stored.get(key)||null,setItem:(key,value)=>{if(control.storageError)throw Error('storage unavailable');stored.set(key,value);},removeItem:key=>stored.delete(key)},
@@ -72,7 +72,7 @@ function setup(options={}) {
     queueWorldProgress:()=>control.queued++,preserveInteraction:()=>{},closeModal:()=>{},updateBattlePreview:()=>{},syncMusic:()=>{},
   };
   vm.createContext(context);
-  vm.runInContext(['confirmedWorldClock','clockIsApplied','canMutate','syncMessage','requireWritable','save','backupCurrentSave','trustedBranchAuthority','applyBranchAuthority','applyCloudSave','applyDurableGift','restoreAdminAssets','processWorldClock','requestField','requestCovert','getCovertAccess','getRoamingAccess'].map(fn).join('\n'),context);
+  vm.runInContext(['confirmedWorldClock','clockIsApplied','canMutate','syncMessage','requireWritable','changedLocalCampaign','save','backupCurrentSave','trustedBranchAuthority','applyBranchAuthority','applyCloudSave','applyDurableGift','restoreAdminAssets','processWorldClock','requestField','requestCovert','getCovertAccess','getRoamingAccess'].map(fn).join('\n'),context);
   return {c:context,control,stored,trace,posts,gets,events,clockAccepts};
 }
 

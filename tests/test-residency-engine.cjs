@@ -127,4 +127,106 @@ test('bounded receipts preserve earliest losses until drained and cannot cross c
   assert.deepEqual(g.takeHomeDefenseLosses(),[]);
 });
 
+test('relocation starts only at the chosen castle with exactly the existing officers, ranks and training',()=>{
+  for(const role of ['lord','retainer']){
+    const g=fresh({difficulty:'hard'}),s=g.state,extra=officers.find(o=>!s.officers.includes(o.id));
+    assert(g._grantOfficerVariant(extra.id,'SS'));
+    assert(g.assignArmy([extra.id,...s.army.slice(0,2)]).ok);
+    assert(g.setOfficerRole(extra.id,'defense').ok);
+    g.recordOfficerBattle({key:'pre-move-defense',won:true,role:'defense'});
+    assert(g.saveArmyPreset(1,'守備隊').ok);
+    assert(g.assignGovernor('farm',s.officers.find(id=>!s.army.includes(id))).ok);
+    s.buildings.keep=16;s.tech[D.techs[0].id]=2;s.castles.ishikawa.owner=s.clan;
+    assert(g.upgrade('farm').ok);s.turn=18;s.realtime.elapsed=20;
+    const oldCampaign=s.walking.campaignId,original=structuredClone(s),defaults=fresh({startCastle:'sunpu',difficulty:'hard'}).state;
+    const moved=g.relocateResidence('sunpu',{role});assert(moved.ok,moved.message);
+    assert.deepEqual([moved.previousHome,moved.home,moved.role],['kiyosu','sunpu',role]);
+    const next=g.state;assert.notEqual(next.walking.campaignId,oldCampaign);
+    assert.equal(next.home,'sunpu');assert.equal(next.cycle.home,'sunpu');assert.equal(next.turn,0);
+    for(const key of ['clan','difficulty','officers','officerVariants','army'])assert.deepEqual(next[key],original[key]);
+    for(const key of ['officers','presets'])assert.deepEqual(next.progress[key],original.progress[key]);
+    for(const key of ['buildings','tech','castles','jobs','governors','branches','lastBattle','march','marchHistory','stats','gachaHistory'])assert.deepEqual(next[key],defaults[key]);
+    assert.deepEqual(g.ownedCastles().map(c=>c.id),['sunpu']);
+    assert(!next.log.some(entry=>entry.text.includes('門出の贈り物')));assert.match(next.log[0].text,/駿府城へ本拠を移し/);assert.doesNotMatch(next.log[0].text,/領主|家臣/);assert(moved.message.includes(role==='lord'?'領主':'家臣'));
+    assert.deepEqual(load(g).state,next);
+  }
+});
+
+test('relocating repeatedly never refills spent currency, troops, garrison or granted rewards',()=>{
+  const g=fresh({difficulty:'easy'}),s=g.state;
+  assert(g.applyGift({gold:36,magatama:8},'household-mail-once').ok);
+  const quest=D.quests[0].id;s.claimedQuests.push(quest);s.captureRewards.push('inuyama');
+  assert(g.beginLocalWalkingSession('walk-residency-01').ok);assert(g.applyLocalWalkingProgress('walk-residency-01',7).ok);
+  s.walking.serverSteps=11;Object.assign(s.resources,{gold:90000,rice:400,wood:0,stone:50000});
+  s.magatama=0;s.troops=380;s.castles.kiyosu.troops=275;
+  const collected=[...s.officerVariants];
+  for(const home of ['sunpu','ishikawa','kiyosu','sunpu']){
+    const before=g.state.walking.campaignId;assert(g.relocateResidence(home,{role:'lord'}).ok);
+    assert.notEqual(g.state.walking.campaignId,before);
+    assert.deepEqual(g.state.resources,{gold:4400,rice:400,wood:0,stone:1200});assert.equal(g.state.magatama,0);
+    assert.equal(g.state.troops,380);assert.equal(g.state.castles[home].troops,275);
+    assert.deepEqual(g.state.officerVariants,collected);assert.deepEqual(g.state.claimedQuests,[quest]);
+    assert(g.state.captureRewards.includes('inuyama'));assert(g.state.captureRewards.includes(home));
+    assert.deepEqual(g.state.giftReceipts,['household-mail-once']);assert.equal(g.applyGift({gold:36},'household-mail-once').already,true);
+    assert.equal(g.state.walking.localSteps,7);assert.equal(g.state.walking.serverSteps,11);
+    assert.equal(g.beginLocalWalkingSession('walk-residency-01').closed,true);assert(!g.applyLocalWalkingProgress('walk-residency-01',8).ok);
+    assert(!g.canDrawOfficers(1).ok);
+  }
+});
+
+test('a new shared campaign starts at the authoritative current date without historical income or cycle rewards',()=>{
+  const g=fresh();assert(g.applyWorldClock(clock(10000)).ok);
+  g.setBranchAuthority({resolvedElapsedMs:10000});
+  const now={...clock((D.worldCalendar.monthsPerCycle+2)*60000+23000),running:false,speed:4};
+  g.state.resources.gold=35;g.state.magatama=3;
+  const moved=g.relocateResidence('sunpu',{role:'retainer',worldClock:now});assert(moved.ok,moved.message);
+  const s=g.state;assert.deepEqual(s.worldClock,{id:now.id,elapsedMs:now.elapsedMs});assert.equal(s.turn,D.worldCalendar.monthsPerCycle+2);
+  assert.equal(s.realtime.elapsed,23);assert.equal(s.realtime.running,false);assert.equal(s.realtime.speed,4);
+  assert.equal(s.cycle.index,1);assert.equal(s.cycle.latestReward,null);assert.equal(s.resources.gold,35);assert.equal(s.magatama,3);
+  assert.equal(g.branchResolvedElapsedMs,0);assert.deepEqual(g.takeHomeDefenseLosses(),[]);assert.deepEqual(load(g).state,s);
+  assert(g.relocateResidence('ishikawa',{role:'lord'}).ok);assert.equal(g.state.worldClock.elapsedMs,now.elapsedMs);
+});
+
+test('after a home defense loss, a different registered household may relocate to the private fallback home',()=>{
+  const g=vulnerable(fresh(),{home:'ishikawa',outposts:['kiyosu']});
+  g._cpuTurn();assert.equal(g.state.home,'kiyosu');assert.equal(g.state.cycle.home,'ishikawa');
+  const same=g.relocateResidence('ishikawa',{role:'lord',residencyCastleId:'ishikawa'});assert.equal(same.code,'RESIDENCY_SAME_CASTLE');
+  const changed=g.relocateResidence('kiyosu',{role:'retainer',residencyCastleId:'ishikawa'});
+  assert(changed.ok);assert.equal(changed.previousHome,'kiyosu');assert.equal(g.state.cycle.home,'kiyosu');assert.deepEqual(load(g).state,g.state);
+});
+
+test('invalid relocation inputs leave both campaign identity and prior state intact',()=>{
+  const g=fresh();g.applyWorldClock(clock(48000));const before=g.exportSave();
+  for(const [castle,options,code] of [
+    ['kiyosu',{role:'lord'},'RESIDENCY_SAME_CASTLE'],['unknown',{role:'lord'},'INVALID_CASTLE'],['constructor',{role:'lord'},'INVALID_CASTLE'],
+    ...D.majorCityIds.map(id=>[id,{role:'retainer'},'INVALID_CASTLE']),
+    ['sunpu',{role:'staff'},'INVALID_RESIDENCY_ROLE'],['sunpu',null,'INVALID_RESIDENCY_ROLE'],
+    ['sunpu',{role:'retainer',worldClock:clock(2000)},'INVALID_WORLD_CLOCK'],
+    ['sunpu',{role:'retainer',worldClock:{id:'bad'}},'INVALID_WORLD_CLOCK']
+  ]){
+    const result=g.relocateResidence(castle,options);assert.equal(result.ok,false);assert.equal(result.code,code);
+    assert.deepEqual(JSON.parse(g.exportSave()).state,JSON.parse(before).state);
+  }
+  for(const options of [{isAdmin:true},{isStaff:true}]){
+    const fixed=fresh(options),home=fixed.state.home,unchanged=JSON.parse(fixed.exportSave()).state;
+    assert.equal(fixed.relocateResidence('sunpu',{role:'lord'}).code,'RESIDENCY_FIXED_HOME');assert.equal(fixed.state.home,home);
+    assert.deepEqual(JSON.parse(fixed.exportSave()).state,unchanged);
+  }
+});
+
+test('defeat and pending actions end in the old campaign without synthetic succession or refunds',()=>{
+  const defeated=vulnerable();defeated._cpuTurn();assert(defeated.state.gameOver);
+  assert(defeated.relocateResidence('sunpu',{role:'retainer'}).ok);assert(!defeated.state.gameOver);
+  assert.equal(defeated.state.castles.sunpu.troops,0);assert.deepEqual(defeated.takeHomeDefenseLosses(),[]);
+  const g=fresh();g.state.castles.nijo.owner=g.state.clan;
+  assert(g.hireCovert('nijo',20).ok);
+  assert(g.departCovertDispatch('nijo',{kind:'castle',castleId:'odawara'},10,'station').ok);
+  assert(g.departAttack('inuyama','balanced',300).ok);
+  assert(g.state.march);assert(g.state.covert.dispatches.length);
+  const troops=g.state.troops,rice=g.state.resources.rice;
+  assert(g.relocateResidence('sunpu',{role:'lord'}).ok);assert.equal(g.state.march,null);assert.deepEqual(g.state.covert.dispatches,[]);
+  assert.equal(g.state.roaming.sequence,0);assert.equal(g.state.troops,troops);assert.equal(g.state.resources.rice,rice);
+  assert.deepEqual(load(g).state,g.state);
+});
+
 console.log(`Residency engine: ${count} tests passed.`);

@@ -544,6 +544,60 @@
       if(options.staffBase&&this.isStaff)this.applyStaffBase(options.staffBase);
       if(options.branchAuthority!==undefined){const authority=this.setBranchAuthority(options.branchAuthority);if(!authority.ok)throw new Error(authority.message);}
     }
+    relocateResidence(castleId,options={}){
+      const previous=this.state,role=options?.role;
+      if(this.isAdmin||this.isStaff)return{ok:false,code:'RESIDENCY_FIXED_HOME',message:'役職に定められた本拠からは移転できません。'};
+      if(typeof castleId!=='string'||!Object.hasOwn(CASTLE_BY_ID,castleId)||MAJOR_CITY_IDS.includes(castleId))
+        return{ok:false,code:'INVALID_CASTLE',message:'大都市拠点以外の124城から移転先を選んでください。'};
+      // A defeated lord may already run the private realm from another holding,
+      // while still registered in the former castle's public household.
+      const registeredHome=options?.residencyCastleId??previous.home;
+      if(registeredHome===castleId)return{ok:false,code:'RESIDENCY_SAME_CASTLE',message:'現在の本拠と異なる城を選んでください。'};
+      if(role!=='lord'&&role!=='retainer')return{ok:false,code:'INVALID_RESIDENCY_ROLE',message:'移転先での立場を選んでください。'};
+
+      // Build the new campaign independently. No partial reset can reach the
+      // live model if validation fails, and queued actions keep their old scope.
+      const fresh=new SengokuEngine({clan:previous.clan,difficulty:previous.difficulty,
+        startCastle:castleId,officers:this.roster,seed:previous.seed});
+      const next=fresh.state;
+      const clock=options.worldClock??(previous.worldClock&&{...previous.worldClock,
+        running:previous.realtime.running||previous.gameOver,speed:previous.realtime.speed});
+      if(clock!==undefined&&clock!==null){
+        if(previous.worldClock&&clock.id===previous.worldClock.id&&clock.elapsedMs<previous.worldClock.elapsedMs)
+          return{ok:false,code:'INVALID_WORLD_CLOCK',message:'共通時刻を更新してから移転してください。'};
+        const synced=fresh.applyWorldClock(clock);
+        if(!synced.ok)return{ok:false,code:'INVALID_WORLD_CLOCK',message:synced.message};
+      }
+      for(const key of RESOURCES)next.resources[key]=Math.min(next.resources[key],previous.resources[key]);
+      next.troops=Math.min(next.troops,previous.troops);
+      const oldGarrison=previous.castles[previous.home];
+      next.castles[castleId].troops=Math.min(next.castles[castleId].troops,oldGarrison.owner===previous.clan?oldGarrison.troops:0);
+      next.magatama=Math.min(next.magatama,previous.magatama);
+
+      // Keep exactly the player's collected paintings. A relocation must never
+      // recruit the default household again or discard a previously earned rank.
+      next.officers=[...previous.officers];
+      next.officerVariants=[...previous.officerVariants];
+      next.army=[...previous.army];
+      next.progress.officers=copy(previous.progress.officers);
+      next.progress.presets=copy(previous.progress.presets);
+
+      next.giftReceipts=[...previous.giftReceipts];
+      next.claimedQuests=[...previous.claimedQuests];
+      next.captureRewards=[...new Set([...previous.captureRewards,castleId])];
+      next.walking.localSteps=previous.walking.localSteps;
+      next.walking.serverSteps=previous.walking.serverSteps;
+      if(previous.walking.localSession)next.walking.localSession={...previous.walking.localSession,closed:true};
+
+      next.log=[];
+      const message=CASTLE_BY_ID[castleId].name+'へ本拠を移し、'+(role==='lord'?'領主':'家臣')+'として新たな戦役を始めました。';
+      // A concurrent public admission can determine the office at commit time.
+      // The private diary records the move, independent of the resulting seat.
+      fresh.log(CASTLE_BY_ID[castleId].name+'へ本拠を移し、新たな戦役を始めました。','story');
+      this.state=next;
+      BRANCH_AUTHORITY.delete(this);BRANCH_PARENT_LOSSES.delete(this);HOME_DEFENSE_LOSSES.delete(this);
+      return{ok:true,previousHome:previous.home,home:castleId,role,message};
+    }
     get data(){return DATA;}
     evaluation(){return evaluateState(this.state,{officers:this.roster});}
     static evaluateState(state,options={}){return evaluateState(state,options);}

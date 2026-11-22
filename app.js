@@ -67,6 +67,7 @@
   const interactionRestores=new WeakMap();
   for(const type of ['pointerdown','wheel','touchstart','touchmove','keydown'])document.addEventListener(type,()=>{interactionEpoch++;},{capture:true,passive:true});
   document.addEventListener('pointermove',event=>{if(event.buttons)interactionEpoch++;},{capture:true,passive:true});
+  let relocationView=null,relocationBusy=false;
   let newResidencyMode='lord',newResidencyDirectory=null,newResidencyLoading=false,newResidencyError='',residencyStartPending=false,newGameGeneration=0;
   let newStartCastle='',game,saveEnabled=true,saveWarning='',currentView='town',filter={q:'',clan:'all',ownership:'all',sort:'lead',direction:'desc',rank:'all',skill:'all',assignment:'all',page:1},selectedCastle='',toastTimer,activeModal='',activeModalContext=null,battleTarget='',battleBranchTarget='',battleTactic='balanced',battleTroops=0,newClan='織田家',mapZoom=1,mapRegion='all',mapQuery='',facilityCategory='all',facilityQuery='',officerSection='archive',gachaOddsRank='D',gachaOddsPage=1,facilityPage=1,territoryPage=1,questPage=1,logPage=1,gachaHistoryPage=1,choicePage=1,choiceMode='army',choiceTarget='',musicPage=1,crestPage=1,crestQuery='';
   const officerPreferencesKey='sengoku-officer-filters-v1';
@@ -95,8 +96,32 @@
   function queueWorldProgress(){if(worldCatchupTimer===null)worldCatchupTimer=setTimeout(processWorldClock,0);}
   function canMutate(ignoreClock=false,allowSetup=false,allowStrategy=false){const lease=!syncAccess.linked||(syncAccess.ready&&syncAccess.writable&&(!syncAccess.leaseExpiresAt||Date.parse(syncAccess.leaseExpiresAt)>Date.now()+1000));return !syncAccess.banned&&lease&&!syncAccess.rolePending&&!fieldActionPending&&!walkingActionPending&&(!strategyActionPending||allowStrategy)&&!worldSettlementPending&&(allowSetup||!startPending)&&(ignoreClock||!worldCatchingUp&&clockIsApplied());}
   function canStartNew(){return canMutate(true,true)&&!worldCatchingUp&&(!game.isStaff||staffConstructionReady())&&(!window.SengokuWorldClock||Boolean(confirmedWorldClock()));}
-  let saveChangedInAnotherTab=false;
-  window.addEventListener('storage',event=>{if(event.key===saveKey||event.key===null)saveChangedInAnotherTab=true;});
+  let saveChangedInAnotherTab=false,lastLocalSaveRaw=null,lastLocalSaveGame=null,localCampaignRefreshPending=false;
+  function changedLocalCampaign(){
+    if(startPending||syncAccess.linked||syncAccess.rolePending||game.isAdmin||game.isStaff)return false;
+    const raw=localStorage.getItem(saveKey);if(!raw||raw===lastLocalSaveRaw&&game===lastLocalSaveGame)return false;
+    const savedId=JSON.parse(raw)?.state?.walking?.campaignId;
+    if(!savedId||savedId===state().walking?.campaignId){lastLocalSaveRaw=raw;lastLocalSaveGame=game;return false;}
+    if(!localCampaignRefreshPending){
+      localCampaignRefreshPending=true;
+      Promise.resolve().then(()=>{
+        localCampaignRefreshPending=false;
+        if(syncAccess.linked||syncAccess.rolePending||game.isAdmin||game.isStaff)return;
+        const latest=localStorage.getItem(saveKey);if(!latest)return;
+        const next=SengokuEngine.fromSave(latest,roster);
+        if(next.state.walking.campaignId===state().walking.campaignId)return;
+        game=next;lastLocalSaveRaw=latest;lastLocalSaveGame=game;selectedCastle='';lastRealtime=performance.now();saveCounter=0;
+        retireLocalWalkingContext();closeModal();render();
+        toast(`別のタブで戦役が更新されました。現在の本拠は${relocationName(state().home)}です。`);
+      }).catch(()=>toast('別のタブの進行を確認するため、画面を再読み込みしてください。',true));
+    }
+    return true;
+  }
+  window.addEventListener('storage',event=>{
+    if(event.key!==saveKey&&event.key!==null)return;
+    saveChangedInAnotherTab=true;
+    try{changedLocalCampaign();}catch(_){/* An unreadable external save is handled by the next durable save check. */}
+  });
   async function prepareReleaseSwitch(){
     const busy=()=>fieldActionPending||walkingActionPending||strategyActionPending||worldSettlementPending||syncAccess.rolePending;
     if(busy())return {ok:false,message:'進行中の操作が終わってから、もう一度お試しください。'};
@@ -117,7 +142,7 @@
   }
   function syncMessage(){return syncAccess.banned?(syncAccess.message||'この領主は利用を停止されています。'):syncAccess.rolePending?'領主の権限を確認しています。確認が終わるまで操作と保存を待機しています。':worldSettlementPending?'占領した拠点の集計と報酬を同期しています。':syncAccess.message||(syncAccess.writable?'この端末で進行中 · 自動同期しています。':'他端末の進行を表示中です。「端末同期」から操作端末を切り替えられます。');}
   function requireWritable(){if(syncAccess.banned){toast(syncMessage(),true);return false;}if(canMutate())return true;toast(worldSettlementPending?'占領した拠点の集計と報酬を同期しています。':startPending?'はじめに本拠の城を一つ選んでください。以前の進行がある場合は、引き継ぎ・復元から再接続できます。':fieldActionPending?'共通フィールド・資産・共同普請の結果を同期しています。':worldCatchingUp||window.SengokuWorldClock?.snapshot().ready&&!clockIsApplied()?'共通時刻までの進行を反映しています。':window.SengokuWorldClock&&!window.SengokuWorldClock.snapshot().ready?window.SengokuWorldClock.snapshot().message:syncMessage(),true);return false;}
-  function save({allowClockCatchup=false,allowStrategy=false}={}){const indicator=$('#save-indicator');if(startPending){if(indicator)indicator.textContent='開始する城を選択してください';return false;}if(!canMutate(allowClockCatchup,false,allowStrategy)){if(indicator)indicator.textContent=syncAccess.banned?'利用停止中':syncAccess.ready?'クラウドの進行を表示中':'クラウドを確認中';return false;}if(!saveEnabled){if(indicator)indicator.textContent='自動保存できません';return false;}try{localStorage.setItem(saveKey,game.exportSave());if(indicator)indicator.textContent=syncAccess.linked?'端末に保存 · 同期中':'端末に自動保存済み';window.dispatchEvent(new CustomEvent('sengoku:game-saved'));return true;}catch(e){saveEnabled=false;saveWarning='このブラウザでは保存領域を利用できません。「保存・設定」でセーブを書き出してください。';if(indicator)indicator.textContent='セーブ書き出しを推奨';toast(saveWarning,true);return false;}}
+  function save({allowClockCatchup=false,allowStrategy=false,replaceCampaign=false}={}){const indicator=$('#save-indicator');if(startPending){if(indicator)indicator.textContent='開始する城を選択してください';return false;}if(!canMutate(allowClockCatchup,false,allowStrategy)){if(indicator)indicator.textContent=syncAccess.banned?'利用停止中':syncAccess.ready?'クラウドの進行を表示中':'クラウドを確認中';return false;}if(!saveEnabled){if(indicator)indicator.textContent='自動保存できません';return false;}try{if(!syncAccess.linked&&!replaceCampaign&&changedLocalCampaign()){if(indicator)indicator.textContent='別のタブで更新された本拠を確認中';return false;}const raw=game.exportSave();localStorage.setItem(saveKey,raw);if(!syncAccess.linked){lastLocalSaveRaw=raw;lastLocalSaveGame=game;}if(indicator)indicator.textContent=syncAccess.linked?'端末に保存 · 同期中':'端末に自動保存済み';window.dispatchEvent(new CustomEvent('sengoku:game-saved'));return true;}catch(e){saveEnabled=false;saveWarning='このブラウザでは保存領域を利用できません。「保存・設定」でセーブを書き出してください。';if(indicator)indicator.textContent='セーブ書き出しを推奨';toast(saveWarning,true);return false;}}
   function getGameSave(){if(startPending)return null;if(!saveEnabled)throw Error('元のセーブを読み込み・保存できないため、仮の進行は同期しません。');return JSON.parse(syncAccess.rolePending&&pendingRoleSave?pendingRoleSave:game.exportSave());}
   function getStoredSave(){const raw=localStorage.getItem(saveKey);return raw===null?null:JSON.parse(raw);}
   function syncBanner(){return syncAccess.linked?`<div id="sync-access-notice" class="sync-access-notice ${canMutate()?'sync-writable':'sync-readonly'}" role="status"><span>${icon(canMutate()?'check':'lock')}<span>${esc(syncMessage())}</span></span><button class="button small" data-action="open-sync">${syncAccess.banned?'利用状態を確認':'端末同期'}</button></div>`:'';}
@@ -601,7 +626,7 @@
     const cost=game.castleUpgradeCost(id);
     return {action:`<button type="button" class="button gold town-castle-level-up" id="home-castle-level-up" data-action="upgrade-castle" data-id="${esc(id)}" data-home-upgrade="true" aria-label="${esc(c.name)}の城郭をLv.${c.level+1}へ強化する" aria-describedby="home-castle-upgrade-cost home-castle-upgrade-hint">${icon('plus')}<span>レベルUP<small>Lv.${c.level+1}へ</small></span></button>`,detail:`<div class="town-castle-upgrade-detail" id="home-castle-upgrade-cost"><small class="town-castle-upgrade-label">城郭の${shared?'共同普請':'強化'}費用 · 指令1回</small>${costHtml(cost)}<p class="town-castle-upgrade-note" id="home-castle-upgrade-hint">${esc(homeCastleUpgradeHint(id))}</p></div>`};
   }
-  function premiumTownImage(){return window.SengokuPremiumRuntime?.getAppearance?.().town==='moonlit-castle'?'assets/premium/moonlit-castle-v1.webp':'assets/castle-town.webp?v=4.9.3-20261123';}
+  function premiumTownImage(){return window.SengokuPremiumRuntime?.getAppearance?.().town==='moonlit-castle'?'assets/premium/moonlit-castle-v1.webp':'assets/castle-town.webp?v=4.9.4-20261123';}
   function townSceneSources(src){
     const name=src.includes('moonlit')?'moonlit-castle':'castle-town';
     return [400,720,1080,1536].map(width=>`assets/responsive/${name}-${width}.webp ${width}w`).join(', ');
@@ -863,6 +888,131 @@
     modal(startPending?'はじまりの城を選ぶ':'新しい物語',game.isAdmin?'出発点は、江戸城に固定されています。':game.isStaff?'徳川家として、共同本拠の京都御所から出発します。':'領主として旗を掲げるか、家臣として城を支える。',`${startPending?`<div class="start-recovery-row"><span>以前のプレイを続ける方はこちら</span><button class="button small" data-action="open-recovery">${icon('upload')}以前の領主を復元</button></div>`:''}<div class="new-campaign-layout"><section class="new-campaign-house"><h3>仕える家</h3><p class="new-campaign-help">${special?'家は徳川家に固定されています。':'個人の武将と家の特性を選びます。プレイヤーの家臣として入城しても、自分の武将・資源を育てます。'}</p><div class="clan-select-grid">${houses.map(c=>`<button class="clan-choice ${newClan===c.name?'active':''}" data-action="choose-clan" data-id="${c.name}" aria-pressed="${newClan===c.name}">${clanCrest(c.name,38)}<span><b>${esc(c.name==='德川家'?'徳川家':c.name)}</b><small>${esc(c.leader==='德川家康'?'徳川家康':c.leader)}</small></span></button>`).join('')}</div><div class="start-clan-bonus">${clanCrest(clan.name,25)}<strong>${esc(clan.bonus)}</strong></div><div class="form-row"><label for="new-difficulty">難易度</label><select id="new-difficulty" class="select">${[['easy','初陣 — 初めての領主へ'],['normal','戦国 — ほどよい緊張感'],['hard','修羅 — 手強い群雄との戦い']].map(([v,n])=>`<option value="${v}" ${difficulty===v?'selected':''}>${n}</option>`).join('')}</select></div></section><section class="new-campaign-castle"><h3>${retainer&&!special?'家臣として仕える城を選ぶ':'はじまりの城'}</h3>${special?`<p class="new-campaign-help">${game.isAdmin?'本拠は江戸城です。':'本拠は保護された京都御所です。共同で城郭・城下町を育てます。'}</p>`:`<div class="residency-choice-modes" aria-label="城への参加方法"><button type="button" class="button" data-action="choose-residency-mode" data-id="lord" aria-pressed="${newResidencyMode==='lord'}" ${newResidencyDirectory?.full?'disabled':''}>領主として入城</button><button type="button" class="button" data-action="choose-residency-mode" data-id="retainer" aria-pressed="${retainer}">家臣として参加</button>${linked?'':'<button type="button" class="button" data-action="choose-residency-mode" data-id="local" aria-pressed="'+local+'">端末だけで遊ぶ</button>'}</div><p id="residency-start-status" class="residency-start-status ${!local&&newResidencyError?'is-error':''}" role="status">${esc(local?'この端末の個人の戦役です。共有フィールドの領主の席は確保しません。':status)}</p>${newResidencyError&&!local?'<button type="button" class="button small" data-action="residency-retry">入城状況を再確認</button>':''}<label for="new-start-castle" class="new-campaign-help">${retainer?'仕える城':'本拠にする城'}を一つ選択 · ${rows.length}城</label><select id="new-start-castle" class="select" required aria-describedby="start-castle-rule"><option value="" ${!rows.some(c=>c.castleId===newStartCastle)?'selected':''} disabled>城を選んでください</option>${regions.map(region=>`<optgroup label="${esc(region)}">${rows.filter(c=>c.region===region).map(c=>`<option value="${c.castleId}" ${newStartCastle===c.castleId?'selected':''}>${esc(c.castleName)}（${esc(c.province)}国）${retainer?' · '+esc(c.lord?.name||'領主')+' · 家臣'+num(c.retainerCount)+'人':''}</option>`).join('')}</optgroup>`).join('')}</select>`}<div id="start-castle-preview" class="start-castle-preview" aria-live="polite">${startCastlePreview()}</div><p id="start-castle-rule" class="new-campaign-help">${game.isAdmin?'徳川家康 U の特別イラストを所持して開始します。':game.isStaff?'徳川家の京都御所と施設は、共同普請の現在の成長を引き継ぎます。武将・資源・研究は個人ごとに育ちます。':retainer?'この城が本拠の防衛戦で敗れると、先に仕えた家臣から順に領主を引き継ぎます。順番は入城確定時に決まります。前の領主は家臣の最後尾へ移ります。登用した武将とは別の、プレイヤー同士の所属です。':local?'未登録の進行はこの端末に保存します。共有フィールドへの入城は、領主登録時に空き城と家臣の順番を確認して決まります。':'一つの城に領主は一人です。江戸・京都御所・二条（京）・大坂・名古屋は、通常の開始城として選べません。'}</p>${!special&&!local&&!linked?'<p class="residency-start-help">共有の城で始めるには、まず「領主登録へ」で名前を登録してください。入城する城は登録後に確定します。</p>':''}</section></div><p class="start-save-notice">${startPending?'入城の確定が終わるまで、本拠と進行は保存されません。':'確定すると現在の進行を新しい物語に置き換えます。今のセーブは置き換え前のバックアップにも残します。'}</p><p id="start-campaign-sync" class="start-campaign-sync" role="status"></p>`,`<button class="button" data-action="close">${startPending?'あとで選ぶ':'やめる'}</button>${startPending?'':'<button class="button" data-action="export-save">今のセーブを保存</button>'}<button class="button primary" data-action="${!special&&!local&&!linked?'open-lord-registration':'start-new'}">${!special&&!local&&!linked?'領主登録へ':label}</button>`,'new');
     refreshLiveControls();
   }
+  function canShowRelocation(){
+    return !startPending&&!game.isAdmin&&!game.isStaff&&!syncAccess.banned&&!syncAccess.rolePending&&window.SENGOKU_AT_TITLE!==true;
+  }
+  function sameRelocationPlayer(view){
+    const user=window.SengokuSocial?.getUser?.();
+    return canShowRelocation()&&roleEpoch===view.epoch&&Boolean(syncAccess.linked)===view.linked&&String(user?.id||'')===view.owner;
+  }
+  function sameRelocationCampaign(view,saveState=state()){
+    return saveState?.home===view.source&&saveState?.walking?.campaignId===view.campaign;
+  }
+  function relocationName(id){return data.castles.find(castle=>castle.id===id)?.name||id;}
+  function relocationCommand(view){
+    const sync=window.SengokuCloudSync,social=window.SengokuSocial;
+    function verify(){if(!sameRelocationPlayer(view))throw Object.assign(Error('領主または操作権限が変わりました。本拠をもう一度確認してください。'),{code:'STALE_IDENTITY'});}
+    return window.SengokuResidency.createRelocation({
+      playerId:view.owner,storage:localStorage,uuid:()=>crypto.randomUUID(),
+      writer:()=>({deviceId:sync.getDevice().id,revision:sync.getStatus().revision}),
+      send:async (payload,receipt)=>{verify();const route='/castles/residency/relocate'+(receipt?'?receipt=1':'');const result=await social.residencyRequest(route,{method:'POST',data:payload});verify();return result;},
+      accept:async result=>{verify();const accepted=await sync.acceptSnapshot(result,{reason:'residency-relocation'});verify();return accepted;}
+    });
+  }
+  function relocationRole(view,row){
+    if(!view.linked)return 'この端末の個人の戦役で本拠を移します。共有フィールドの所属には参加しません。';
+    if(!row)return '移転確定時に空き城なら領主に、領主がいる城なら家臣になります。';
+    return row.available?'現在は空き城です。確定時も空いていれば、あなたが領主になります。':`現在の領主は${row.lord?.name||'ほかのプレイヤー'}です。確定時に領主がいれば、継承順の最後尾に家臣として加わります。`;
+  }
+  function relocationBlock(view){
+    if(!sameRelocationPlayer(view))return '領主の接続状態が変わりました。画面を閉じ、本拠を確認し直してください。';
+    if(!saveEnabled)return '端末の保存領域を確認してから移転してください。';
+    if(relocationBusy)return '移転の受付結果を確認しています。';
+    if(fieldActionPending||walkingActionPending||strategyActionPending||worldSettlementPending)return '進行中の操作が完了すると移転を確認できます。';
+    if(view.pending&&!view.resend)return syncAccess.ready?'':'端末の同期が完了すると受付結果を確認できます。';
+    if(!sameRelocationCampaign(view))return '本拠が更新されました。画面を閉じ、移転元を確認し直してください。';
+    if(!canMutate())return view.linked&&!syncAccess.writable?'移転の確定には操作端末が必要です。「端末同期」で操作権を確認してください。':'現在の進行を同期しています。完了すると移転できます。';
+    return '';
+  }
+  async function loadRelocationDirectory(view,notice=''){
+    view.loading=true;view.error=notice;drawRelocation(view);
+    try{
+      const directory=await window.SengokuResidency.loadDirectory({force:true});
+      if(!directory)throw Error('城の入城状況を確認できませんでした。');
+      const allowed=new Set(data.castles.filter(castle=>!castle.majorCity&&castle.id!==view.source).map(castle=>castle.id));
+      view.rows=directory.castles.filter(row=>allowed.has(row.castleId));
+    }catch(error){view.rows=[];view.error=error.message||'移転先を取得できませんでした。';}
+    finally{view.loading=false;if(relocationView===view&&activeModal==='relocate'&&sameRelocationPlayer(view))drawRelocation(view);}
+  }
+  function openRelocation(){
+    if(!canShowRelocation()||relocationBusy)return;
+    const view={source:state().home,campaign:state().walking?.campaignId,epoch:roleEpoch,linked:Boolean(syncAccess.linked),owner:String(window.SengokuSocial?.getUser?.()?.id||''),rows:[],target:'',loading:false,error:'',pending:null};
+    if(view.linked&&!view.owner||!view.linked&&view.owner){toast('領主と端末の同期を確認してから移転先を選んでください。',true);return;}
+    relocationView=view;
+    if(view.linked){
+      try{view.command=relocationCommand(view);view.pending=view.command.pending();}
+      catch(error){toast(error.message||'前回の移転記録を読み込めませんでした。',true);return;}
+      if(view.pending){view.target=view.pending.castleId;drawRelocationConfirm(view);return;}
+      return loadRelocationDirectory(view);
+    }
+    view.rows=data.castles.filter(castle=>!castle.majorCity&&castle.id!==view.source).map(castle=>({castleId:castle.id,castleName:castle.name,region:castle.region,province:castle.province}));
+    drawRelocation(view);
+  }
+  function drawRelocation(view){
+    const row=view.rows.find(c=>c.castleId===view.target),groups=[...new Set(view.rows.map(c=>c.region))];
+    const options=groups.map(region=>`<optgroup label="${esc(region)}">${view.rows.filter(c=>c.region===region).map(c=>`<option value="${esc(c.castleId)}" ${c.castleId===view.target?'selected':''}>${esc(c.castleName)}（${esc(c.province)}国）${view.linked?(c.available?' · 空き城':' · 領主在城'):''}</option>`).join('')}</optgroup>`).join('');
+    const body=`<p>現在の本拠は<strong>${esc(relocationName(view.source))}</strong>です。移転回数に制限はありません。</p><div class="form-row"><label for="relocate-castle-select">移転先の城</label><select class="select" id="relocate-castle-select" aria-describedby="relocate-destination" ${view.loading||!view.rows.length?'disabled':''}><option value="">城を選んでください</option>${options}</select></div><p id="relocate-destination" aria-live="polite">${esc(relocationRole(view,row))}</p><p role="status">${esc(view.loading?'各城の入城状況を確認しています。':view.error)}</p>${view.error?'<button type="button" class="button small" data-action="relocate-retry">移転先を再取得</button>':''}`;
+    modal('本拠を移す','移転先を選ぶ',body,`<button type="button" class="button" data-action="close">やめる</button><button type="button" class="button primary" data-action="relocate-review" ${row?'':'disabled'}>移転内容を確認</button>`,'relocate');
+  }
+  function drawRelocationConfirm(view){
+    const row=view.rows.find(c=>c.castleId===view.target),pending=Boolean(view.pending)&&!view.resend;
+    const details=`<div class="stat-row"><span>移転元</span><strong>${esc(relocationName(view.source))}</strong></div><div class="stat-row"><span>移転先</span><strong>${esc(relocationName(view.target))}</strong></div><p>${esc(relocationRole(view,row))}</p>${view.linked?'<p>移転元で領主の場合、継承資格のある家臣が順に領主を引き継ぎます。</p>':''}<h3>引き継ぐもの</h3><p>領主名・購入済みの品、所持武将・獲得ランク・武将の育成、軍団編成と編成セットを引き継ぎます。</p><h3>新しい城で初期化するもの</h3><p>資産（金銭・兵糧・木材・石材）、兵数、勾玉は、現在の残高と開始時の額のうち少ない方になります。移転で残高は増えません。</p><p>施設・研究・領地・支拠点・戦役の進捗は初期化され、奉行の任命、進行中の工事・研究・部隊派遣が解除されます。受領済みの贈物や報酬は再支給されません。</p>`;
+    const body=(pending?`<p><strong>${esc(relocationName(view.target))}</strong>への移転の受付結果を確認します。前回の受付番号で最新の本拠を取得します。</p>`:details)+`<p class="residency-start-status is-error" role="alert">${esc(view.error)}</p><p id="relocate-sync-status" role="status"></p>`;
+    modal(pending?'移転結果を再確認':'移転内容を確認',pending?'送信済みの移転':`${relocationName(view.source)} → ${relocationName(view.target)}`,body,`<button type="button" class="button" data-action="close" id="relocate-dismiss">${pending?'閉じる':'やめる'}</button>${view.resend?'<button type="button" class="button" data-action="relocate-receipt">受付結果だけ再確認</button>':view.pending?'':'<button type="button" class="button" data-action="relocate-back">移転先を選び直す</button>'}<button type="button" class="button primary" data-action="relocate-confirm">${pending?'移転結果を再確認':view.resend?'同じ移転を再送する':'この城へ本拠を移す'}</button>`,'relocate-confirm');
+  }
+  async function commitRelocation(){
+    const view=relocationView;if(!view||activeModal!=='relocate-confirm'||relocationBusy)return;
+    const block=relocationBlock(view);if(block){toast(block,true);return;}
+    if(!view.pending&&!view.rows.some(c=>c.castleId===view.target))return;
+    let fieldLocked=false;const earlierCampaign=state().walking?.campaignId;
+    try{
+      let message;
+      if(view.linked){
+        const sync=window.SengokuCloudSync;
+        const journal=view.command.pending();
+        if((journal?.requestId||null)!==(view.pending?.requestId||null))throw Error('移転の受付記録が更新されました。画面を閉じて本拠を確認してください。');
+        if(!view.pending&&!save({allowClockCatchup:true}))throw Error('現在の進行を保存してから移転してください。');
+        relocationBusy=true;fieldActionPending=true;fieldLocked=true;refreshLiveControls();
+        if(!view.pending){
+          const flushed=await sync.flush();
+          if(!flushed?.ok||!sync.getStatus().writable||!sameRelocationPlayer(view)||!sameRelocationCampaign(view))throw Error('最新の本拠と操作端末を確認してから移転してください。');
+        }
+        const {result,superseded}=await view.command.run(view.target,view.pending?.requestId||null,{resend:view.resend===true});
+        if(!sameRelocationPlayer(view))return;
+        const membership=window.SengokuResidency.self?.()||result.residency;
+        const role=membership?.castleId===state().home?membership.role:state().home===view.target&&!superseded?result.admission.mode:null;
+        message=(state().home===view.target&&!superseded?`${relocationName(view.target)}に本拠を移しました。`:`最新の本拠は${relocationName(state().home)}です。`)+(role?`現在の所属は${role==='lord'?'領主':'家臣'}です。`:'');
+        void window.SengokuResidency.loadDirectory({force:true}).catch(()=>{});
+      }else{
+        const stored=JSON.parse(localStorage.getItem(saveKey)||'null');
+        if(!sameRelocationCampaign(view,stored?.state))throw Error('この端末の本拠が更新されました。ゲームを開き直してください。');
+        const candidate=SengokuEngine.fromSave(game.exportSave(),roster);
+        const result=candidate.relocateResidence(view.target,{role:'lord',worldClock:confirmedWorldClock()||undefined});
+        if(!result.ok)throw Error(result.message);
+        backupCurrentSave('residency-relocation',true);
+        localStorage.setItem(saveKey,candidate.exportSave());
+        game=candidate;window.dispatchEvent(new CustomEvent('sengoku:game-saved'));
+        message=`${relocationName(view.target)}に、この端末の本拠を移しました。`;
+      }
+      if(earlierCampaign!==state().walking?.campaignId){retireLocalWalkingContext();selectedCastle='';filter.page=1;lastRealtime=performance.now();saveCounter=0;}
+      if(activeModal==='relocate-confirm'&&$('#modal').open&&relocationView===view){if(document.querySelector('.social-dialog[open]'))window.SengokuSocial?.close?.();go('town');}else render();
+      toast(message);
+    }catch(error){
+      if(!sameRelocationPlayer(view))return;
+      view.error=error.message||'移転結果を取得できませんでした。端末の同期状態を確認してください。';
+      if(view.linked){try{view.pending=view.command.pending();if(view.pending)view.target=view.pending.castleId;}catch(_){}view.resend=Boolean(view.pending&&error.code==='RELOCATION_RECEIPT_PENDING');if(view.resend)view.error='まだ受付結果がありません。もう一度照会するか、移転内容を確認して同じ受付番号で再送できます。';}
+      if(activeModal==='relocate-confirm'&&$('#modal').open&&relocationView===view){
+        if(view.linked&&!view.pending&&Number(error.status)>=400&&Number(error.status)<500){
+          view.target='';view.resend=false;await window.SengokuCloudSync.refresh().catch(()=>{});
+          if(activeModal==='relocate-confirm'&&$('#modal').open&&sameRelocationPlayer(view)){
+            view.source=state().home;view.campaign=state().walking?.campaignId;await loadRelocationDirectory(view,view.error);
+          }
+        }else drawRelocationConfirm(view);
+      }else toast(view.error,true);
+    }finally{
+      relocationBusy=false;if(fieldLocked){fieldActionPending=false;queueWorldProgress();}refreshLiveControls();
+    }
+  }
   async function startRegisteredGame(choice){
     const social=window.SengokuSocial,sync=window.SengokuCloudSync,owner=String(social?.getUser?.()?.id||''),epoch=roleEpoch;if(!owner||!sync?.acceptSnapshot||!social?.residencyRequest)throw Error('領主登録と端末同期を確認してください。');
     const verify=()=>{if(owner!==String(social.getUser?.()?.id||'')||epoch!==roleEpoch)throw Object.assign(Error('接続するプレイヤーが変わったため、以前の入城結果を反映していません。'),{code:'STALE_IDENTITY'});};
@@ -992,8 +1142,14 @@
     case 'research':perform(game.research(id));break;
     case 'export-save':exportSave();break;
     case 'import-save':stopStrategy();$('#save-import').click();break;
-    case 'confirm-import':if(importedGame){try{backupCurrentSave('manual-import');}catch(_){toast('バックアップを保存できませんでした。先にセーブを書き出してください。',true);break;}lastRealtime=performance.now();game=SengokuEngine.fromSave(importedGame.exportSave(),roster,{isAdmin:game.isAdmin,isStaff:game.isStaff,staffBase:game.getStaffBase?.()});const importClock=confirmedWorldClock();if(importClock)worldCatchingUp=Boolean(game.applyWorldClock(importClock,{deferCycleSettlement:syncAccess.linked}).pending);importedGame=null;saveEnabled=true;saveWarning='';selectedCastle='';retireLocalWalkingContext();closeModal();save();render();toast(worldCatchingUp?'セーブを読み込み、共通時刻までの進行を反映しています。':'セーブデータを読み込みました。');queueWorldProgress();}break;
+    case 'confirm-import':if(importedGame){try{backupCurrentSave('manual-import');}catch(_){toast('バックアップを保存できませんでした。先にセーブを書き出してください。',true);break;}lastRealtime=performance.now();game=SengokuEngine.fromSave(importedGame.exportSave(),roster,{isAdmin:game.isAdmin,isStaff:game.isStaff,staffBase:game.getStaffBase?.()});const importClock=confirmedWorldClock();if(importClock)worldCatchingUp=Boolean(game.applyWorldClock(importClock,{deferCycleSettlement:syncAccess.linked}).pending);importedGame=null;saveEnabled=true;saveWarning='';selectedCastle='';retireLocalWalkingContext();closeModal();save({replaceCampaign:true});render();toast(worldCatchingUp?'セーブを読み込み、共通時刻までの進行を反映しています。':'セーブデータを読み込みました。');queueWorldProgress();}break;
     case 'install':await install();break;
+    case 'relocate-open':await openRelocation();break;
+    case 'relocate-review':if(activeModal==='relocate'&&sameRelocationPlayer(relocationView)&&relocationView.rows.some(c=>c.castleId===relocationView.target)){relocationView.error='';drawRelocationConfirm(relocationView);}break;
+    case 'relocate-back':if(activeModal==='relocate-confirm'&&!relocationBusy&&!relocationView.pending){relocationView.error='';drawRelocation(relocationView);}break;
+    case 'relocate-retry':if(activeModal==='relocate'&&!relocationView.loading)await loadRelocationDirectory(relocationView);break;
+    case 'relocate-receipt':if(activeModal==='relocate-confirm'&&relocationView?.pending&&!relocationBusy){relocationView.resend=false;drawRelocationConfirm(relocationView);await commitRelocation();}break;
+    case 'relocate-confirm':await commitRelocation();break;
     case 'new-game':newGameModal();break;
     case 'choose-residency-mode':if(!residencyStartPending&&['lord','retainer','local'].includes(id)&&!(id==='local'&&syncAccess.linked)){newResidencyMode=id;newStartCastle='';drawNewGame();}break;
     case 'open-lord-registration':{
@@ -1014,9 +1170,9 @@
     case 'start-new':startNewGame();break;
   }});
   document.addEventListener('input',e=>{if(e.target.dataset?.officerFilter==='q'){updateOfficerFilter(e.target.dataset.officerContext,'q',e.target.value);return;}if(e.target.id==='crest-search'){crestQuery=e.target.value.trim();crestPage=1;patchHTML($('#crest-results'),crestResults());}if(e.target.id==='art-preview-level')updateArtPreview(Number(e.target.value));if(e.target.id==='castle-search'){mapQuery=e.target.value.trim();territoryPage=1;patchHTML($('#territory-results'),territoryResults());}if(e.target.id==='facility-search'){facilityQuery=e.target.value.trim();facilityPage=1;patchHTML($('#facility-results'),facilitiesResults());}if(e.target.id==='battle-troops'){battleTroops=Number(e.target.value);updateBattlePreview();}if(e.target.id==='recruit-amount'){patchHTML($('#recruit-cost'),costHtml(game.recruitTroopCost(Number(e.target.value))));refreshLiveControls();}if(e.target.id==='volume'){settings.volume=Number(e.target.value);if(music)music.setVolume(settings.volume);safeSettings();}});
-  document.addEventListener('change',e=>{if(e.target.dataset?.branchParent){if(window.SengokuBranches?.selectDirection?.(game,e.target.dataset.branchParent,e.target.value)){preserveInteraction($('#main'),render);refreshActiveModal();}return;}if(e.target.dataset?.officerFilter){updateOfficerFilter(e.target.dataset.officerContext,e.target.dataset.officerFilter,e.target.value);return;}if(e.target.id==='new-start-castle'){newStartCastle=e.target.value;patchHTML($('#start-castle-preview'),startCastlePreview());refreshLiveControls();}if(e.target.id==='gacha-odds-rank'&&data.ranks.includes(e.target.value)){gachaOddsRank=e.target.value;gachaOddsPage=1;patchHTML($('#gacha-individual-list'),individualOddsPage());}if(e.target.id==='facility-category'){facilityCategory=e.target.value;facilityPage=1;patchHTML($('#facility-results'),facilitiesResults());}if(e.target.id==='map-region'){mapRegion=e.target.value;territoryPage=1;render();}if(e.target.id==='battle-tactic'){battleTactic=e.target.value;updateBattlePreview();}if(e.target.id==='tips'){settings.tips=e.target.value==='on';safeSettings();render();}});
+  document.addEventListener('change',e=>{if(e.target.dataset?.branchParent){if(window.SengokuBranches?.selectDirection?.(game,e.target.dataset.branchParent,e.target.value)){preserveInteraction($('#main'),render);refreshActiveModal();}return;}if(e.target.dataset?.officerFilter){updateOfficerFilter(e.target.dataset.officerContext,e.target.dataset.officerFilter,e.target.value);return;}if(e.target.id==='relocate-castle-select'&&activeModal==='relocate'){const view=relocationView,row=view.rows.find(c=>c.castleId===e.target.value);view.target=row?.castleId||'';const preview=$('#relocate-destination');if(preview)preview.textContent=relocationRole(view,row);refreshLiveControls();return;}if(e.target.id==='new-start-castle'){newStartCastle=e.target.value;patchHTML($('#start-castle-preview'),startCastlePreview());refreshLiveControls();}if(e.target.id==='gacha-odds-rank'&&data.ranks.includes(e.target.value)){gachaOddsRank=e.target.value;gachaOddsPage=1;patchHTML($('#gacha-individual-list'),individualOddsPage());}if(e.target.id==='facility-category'){facilityCategory=e.target.value;facilityPage=1;patchHTML($('#facility-results'),facilitiesResults());}if(e.target.id==='map-region'){mapRegion=e.target.value;territoryPage=1;render();}if(e.target.id==='battle-tactic'){battleTactic=e.target.value;updateBattlePreview();}if(e.target.id==='tips'){settings.tips=e.target.value==='on';safeSettings();render();}});
   document.addEventListener('keydown',e=>{if((e.key==='Enter'||e.key===' ')&&e.target.matches('.castle-node')){e.preventDefault();if(e.target.dataset.id==='edo'&&!game.isAdmin){toast('江戸城は保護された拠点です。');return;}selectedCastle=e.target.dataset.id;render();}if(e.key==='Escape'){if(activeModal==='gacha-animation'){e.preventDefault();finishGachaPresentation();return;}clearGachaPresentation();activeModal='';activeModalContext=null;}});
-  $('#modal').addEventListener('cancel',event=>{if(activeModal==='gacha-animation'){event.preventDefault();finishGachaPresentation();}else clearGachaPresentation();});
+  $('#modal').addEventListener('cancel',event=>{if(activeModal==='relocate'||activeModal==='relocate-confirm'){event.preventDefault();closeModal();}else if(activeModal==='gacha-animation'){event.preventDefault();finishGachaPresentation();}else clearGachaPresentation();});
   $('#modal').addEventListener('click',e=>{if(e.target===$('#modal')){const r=e.target.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom){if(activeModal==='gacha-animation')finishGachaPresentation();else closeModal();}}});
   window.addEventListener('hashchange',()=>{const view=location.hash.slice(1);if(['town','facilities','map','field','roaming','covert','court','officers','crests','army','research','council'].includes(view)&&view!==currentView)go(view);});
   if(['town','facilities','map','field','roaming','covert','court','officers','crests','army','research','council'].includes(location.hash.slice(1)))currentView=location.hash.slice(1);
@@ -1028,6 +1184,9 @@
     document.querySelectorAll('[data-action]').forEach(node=>{
       const id=node.dataset.id;let disabled;
       switch(node.dataset.action){
+        case 'relocate-review':disabled=!relocationView?.target||relocationView.loading||!sameRelocationPlayer(relocationView);break;
+        case 'relocate-back':disabled=relocationBusy;break;
+        case 'relocate-confirm':{const reason=relocationBlock(relocationView),status=$('#relocate-sync-status'),dismiss=$('#relocate-dismiss'),dismissLabel=relocationBusy||relocationView.pending?'閉じる':'やめる';if(dismiss&&dismiss.textContent!==dismissLabel)dismiss.textContent=dismissLabel;if(status&&status.textContent!==reason)status.textContent=reason;disabled=Boolean(reason);break;}
         case 'start-new':disabled=!canStartNew()||residencyStartPending||(!game.isAdmin&&!game.isStaff&&newResidencyMode!=='local'&&syncAccess.linked&&newResidencyLoading)||!admissionCastleAllowed(game.isAdmin?'edo':game.isStaff?staffBaseId:$('#new-start-castle')?.value||newStartCastle);break;
         case 'upgrade':{const b=data.buildings.find(b=>b.id===id),chain=buildingChain(id);disabled=!b||!canCommand||!saveEnabled||!game.buildingUnlock(id).ok||buildingTailLevel(id)>=game.buildingMax(id)||!chain.length&&constructionCount(game.isStaff===true)>=game.constructionSlots()||game.isStaff&&!staffConstructionReady()||!hasResources(game.costs(id));break;}
         case 'upgrade-castle':{const c=game.castle(id);disabled=!saveEnabled||!canCommand||!c||c.owner!==s.clan||c.level>=castleLevelLimit(id)||!!currentJob('castle',id)||constructionCount(game.isStaff===true&&id===staffBaseId)>=game.constructionSlots()||game.isStaff&&id===staffBaseId&&!staffConstructionReady()||!hasResources(game.castleUpgradeCost(id));if(node.dataset.homeUpgrade==='true'){const hint=$('#home-castle-upgrade-hint');if(hint){const message=homeCastleUpgradeHint(id);if(hint.textContent!==message)hint.textContent=message;}}break;}
@@ -1386,7 +1545,7 @@
     if(!save()){game.state=before;return{ok:false,message:'保存できなかったため、復元を取り消しました。'};}
     preserveInteraction($('#main'),render);refreshActiveModal();return result;
   }
-  window.SengokuBridge={prepareReleaseSwitch,getMarches:()=>window.SengokuTravelUI?.snapshot()||{active:[],history:[]},openMarches:()=>window.SengokuTravelUI?.open(),primeProgress,confirmProtectionExit,requestExpansion,getExpansionAccess,openProgress:tab=>openExpansion('progress',tab),setVoiceActive,openCourt,applyCourtAccess,applyBranchAuthority,getEventAccess,eventBattle:requestEventBattle,refreshPremiumAppearance,getHints,followHint,openHintHelp,getEvaluation,showEvaluation,getStrategyAccess,previewStrategy,beginStrategy,stepStrategy,stopStrategy,getState:()=>state(),getLocalCommander,hasStarted:()=>!startPending,getSave:getGameSave,getStoredSave,toast,canReceiveGifts:()=>saveEnabled&&canMutate(),applyGift:applyDurableGift,getWalkingAccess,beginLocalWalkingSession:payload=>localWalkingOperation('begin',payload),applyLocalWalkingProgress:payload=>localWalkingOperation('progress',payload),endLocalWalkingSession:payload=>localWalkingOperation('end',payload),startWalkingSession:payload=>requestWalking('/walking/start',payload),claimWalkingSteps:payload=>requestWalking('/walking/claim',payload),spendableAssets,troopCapacity:()=>Math.min(1000000,game.troopCapacity()),tradeRequest:requestTrade,guildTransfer:payload=>requestField('/guild/treasury/transfer',{method:'POST',data:payload}),openSettings:settingsModal,renderGameplay:render,openStartSelection,openCastleAdmission:newGameModal,setSyncAccess,setRoleAccess,setAdminAccess,getRoleAccess:()=>({isAdmin:game.isAdmin===true,isStaff:game.isStaff===true,pending:syncAccess.rolePending===true,epoch:roleEpoch}),applyStaffBase,getStaffBase:()=>staffConstructionReady()?game.getStaffBase():null,applyCloudSave,prepareRecoverySave,prepareNewRecoverySave,applyRecoverySave,restoreAdminAssets};
+  window.SengokuBridge={canShowRelocation,prepareReleaseSwitch,getMarches:()=>window.SengokuTravelUI?.snapshot()||{active:[],history:[]},openMarches:()=>window.SengokuTravelUI?.open(),primeProgress,confirmProtectionExit,requestExpansion,getExpansionAccess,openProgress:tab=>openExpansion('progress',tab),setVoiceActive,openCourt,applyCourtAccess,applyBranchAuthority,getEventAccess,eventBattle:requestEventBattle,refreshPremiumAppearance,getHints,followHint,openHintHelp,getEvaluation,showEvaluation,getStrategyAccess,previewStrategy,beginStrategy,stepStrategy,stopStrategy,getState:()=>state(),getLocalCommander,hasStarted:()=>!startPending,getSave:getGameSave,getStoredSave,toast,canReceiveGifts:()=>saveEnabled&&canMutate(),applyGift:applyDurableGift,getWalkingAccess,beginLocalWalkingSession:payload=>localWalkingOperation('begin',payload),applyLocalWalkingProgress:payload=>localWalkingOperation('progress',payload),endLocalWalkingSession:payload=>localWalkingOperation('end',payload),startWalkingSession:payload=>requestWalking('/walking/start',payload),claimWalkingSteps:payload=>requestWalking('/walking/claim',payload),spendableAssets,troopCapacity:()=>Math.min(1000000,game.troopCapacity()),tradeRequest:requestTrade,guildTransfer:payload=>requestField('/guild/treasury/transfer',{method:'POST',data:payload}),openSettings:settingsModal,renderGameplay:render,openStartSelection,openCastleAdmission:newGameModal,setSyncAccess,setRoleAccess,setAdminAccess,getRoleAccess:()=>({isAdmin:game.isAdmin===true,isStaff:game.isStaff===true,pending:syncAccess.rolePending===true,epoch:roleEpoch}),applyStaffBase,getStaffBase:()=>staffConstructionReady()?game.getStaffBase():null,applyCloudSave,prepareRecoverySave,prepareNewRecoverySave,applyRecoverySave,restoreAdminAssets};
   let lastRealtime=performance.now(),saveCounter=0;
   document.addEventListener('visibilitychange',()=>{lastRealtime=performance.now();if(document.hidden)save();else{window.SengokuWorldClock?.refresh();processWorldClock();}});
   window.addEventListener('pagehide',()=>save());

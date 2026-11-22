@@ -14,7 +14,7 @@ async function test(name, run) { await run(); count++; console.log('PASS '+name)
 
 // Run the complete application bootstrap and its real event handlers. Only the
 // browser surface and timers are replaced; saves and engine transitions are real.
-function browser(initialSave, {atTitle=false}={}) {
+function browser(initialSave, {atTitle=false,withResidency=false}={}) {
   const stored = new Map(initialSave === undefined ? [] : [[SAVE, initialSave]]);
   const nodes = new Map(), handlers = new Map(), events = [];
   const staticIds = new Set(['main','calendar','resources','clan-panel','sound-button','navigation','save-indicator','save-import','modal','modal-content','toast']);
@@ -44,10 +44,42 @@ function browser(initialSave, {atTitle=false}={}) {
     setInterval:()=>1,setTimeout:()=>1,clearTimeout(){},scrollTo(){},scrollX:0,scrollY:0,
     addEventListener(){},dispatchEvent:event=>events.push(event.type),CustomEvent:class{constructor(type){this.type=type;}}
   };
-  c.window=c;vm.createContext(c);vm.runInContext(source,c);
+  c.window=c;vm.createContext(c);
+  if(withResidency)vm.runInContext(fs.readFileSync(path.join(__dirname,'../residency.js'),'utf8'),c);
+  vm.runInContext(source,c);
   async function event(type,target){for(const listener of handlers.get(type)||[])await listener({target});}
-  async function click(action,id){const node={disabled:false,dataset:{action,id},closest(){return this;}};await event('click',node);}
+  async function click(action,id){const node={disabled:false,dataset:{action,id},closest(selector){return selector.includes('[data-action]')?this:null;}};await event('click',node);}
   return {c,stored,events,nodes,query,click,event,failNextSave:()=>{failSave=true;}};
+}
+
+function seasonedCampaign() {
+  const game = new SengokuEngine({clan:'織田家', difficulty:'hard', startCastle:'kiyosu', officers:roster, seed:18});
+  const s = game.state;
+  const officer = s.officers[1];
+  game._grantOfficerVariant(officer, 'SSS');
+  game.setOfficerRole(officer, 'siege');
+  Object.assign(s.progress.officers[officer], {sorties:28, wins:14});
+  assert(game.assignArmy([officer, s.officers[0]]).ok);
+  assert(game.saveArmyPreset(1, '移転前の軍団').ok);
+  assert(game.assignGovernor('farm', s.officers[3]).ok);
+  s.buildings.farm = 8;
+  s.tech.commerce = 3;
+  s.resources.gold = 9541;
+  s.resources.rice = 91;
+  s.troops = 800;
+  s.magatama = 12;
+  s.castles.inuyama.owner = s.clan;
+  return game;
+}
+
+async function reviewMove(b, castleId) {
+  await b.click('relocate-open');
+  const choice = b.query('#relocate-castle-select');
+  assert(choice, 'relocation must open its own castle selector');
+  choice.value = castleId;
+  await b.event('change', choice);
+  await b.click('relocate-review');
+  assert.match(b.nodes.get('modal-content').innerHTML, /data-action="relocate-confirm"/);
 }
 
 (async()=>{
@@ -167,5 +199,97 @@ await test('operator recovery preview is non-mutating, then confirmed recovery r
 await test('operator identity changes an open first-start chooser to the fixed Edo choice',async()=>{
   const b=browser();b.c.SengokuBridge.openStartSelection();b.c.SengokuBridge.setAdminAccess(true);const html=b.nodes.get('modal-content').innerHTML;assert.match(html,/本拠 · 江戸城固定/);assert.equal(b.query('#new-start-castle'),null);await b.click('start-new');assert.equal(b.c.SengokuBridge.getState().home,'edo');assert.equal(Object.values(b.c.SengokuBridge.getState().castles).filter(c=>c.owner===b.c.SengokuBridge.getState().clan).length,1);
 });
-console.log(`${count} castle selection and durable-start checks passed.`);
+await test('the move selector excludes fixed homes, and reviewing or cancelling keeps the complete campaign',async()=>{
+  const b = browser(seasonedCampaign().exportSave(), {withResidency:true}), original = b.stored.get(SAVE);
+  assert(b.nodes.get('main').innerHTML.includes('data-action="relocate-open"'));
+  await b.click('relocate-open');
+  const selector = b.nodes.get('modal-content').innerHTML;
+  assert.match(selector, /<option value="himeji"/);
+  for(const id of ['kiyosu', ...SENGOKU_DATA.majorCityIds]) assert(!selector.includes(`<option value="${id}"`));
+  assert.equal([...selector.matchAll(/<option value="[^"]+"/g)].length, 123);
+  await b.click('close');
+  await reviewMove(b, 'himeji');
+  const confirmation = b.nodes.get('modal-content').innerHTML;
+  for(const text of ['清洲城','姫路城','武将','研究','施設','戦役']) assert(confirmation.includes(text), text);
+  assert.equal(b.stored.get(SAVE), original);
+  await b.click('relocate-back');
+  assert.equal(b.query('#relocate-castle-select').value, 'himeji');
+  await b.click('close');
+  assert.equal(b.stored.get(SAVE), original);
+  assert.deepEqual(plain(b.c.SengokuBridge.getState()), JSON.parse(original).state);
+});
+await test('the town and profile offer relocation only to established ordinary players', async()=>{
+  const checkUnavailable = async b=>{
+    assert(!b.c.SengokuBridge.canShowRelocation());
+    assert(!b.c.SengokuResidency.compact().includes('data-action="relocate-open"'));
+    assert(!b.nodes.get('main').innerHTML.includes('data-action="relocate-open"'));
+    await b.click('relocate-open');
+    assert.equal(b.query('#relocate-castle-select'), null);
+  };
+  await checkUnavailable(browser(undefined, {withResidency:true}));
+  for(const role of [{isAdmin:true},{isStaff:true}]) {
+    const b = browser(seasonedCampaign().exportSave(), {withResidency:true});
+    assert(b.c.SengokuResidency.compact().includes('data-action="relocate-open"'));
+    b.c.SengokuBridge.setRoleAccess(role);
+    await checkUnavailable(b);
+  }
+});
+
+await test('confirmed local moves and reload keep trained officers and depleted assets on every return',async()=>{
+  const game = seasonedCampaign(), original = plain(game.state);
+  const baseline = new SengokuEngine({clan:original.clan, difficulty:original.difficulty, startCastle:'himeji', officers:roster}).state;
+  const campaignIds = new Set([original.walking.campaignId]);
+  let b = browser(game.exportSave(), {withResidency:true});
+  for(const destination of ['himeji','inuyama','kiyosu']) {
+    await reviewMove(b, destination);
+    await b.click('relocate-confirm');
+    assert.equal(b.query('#modal').open, false);
+    const stored = JSON.parse(b.stored.get(SAVE)).state;
+    assert.equal(stored.home, destination);
+    assert.deepEqual(stored, plain(b.c.SengokuBridge.getState()));
+    assert.equal(stored.clan, original.clan);
+    assert.equal(stored.difficulty, original.difficulty);
+    for(const key of ['officers','officerVariants','army']) assert.deepEqual(stored[key], original[key]);
+    for(const key of ['officers','presets']) assert.deepEqual(stored.progress[key], original.progress[key]);
+    assert.deepEqual(stored.governors, {});
+    assert.deepEqual(stored.buildings, baseline.buildings);
+    assert.deepEqual(stored.tech, baseline.tech);
+    assert.deepEqual(Object.keys(stored.castles).filter(id=>stored.castles[id].owner===stored.clan), [destination]);
+    assert.equal(stored.resources.gold, baseline.resources.gold);
+    assert.equal(stored.resources.rice, original.resources.rice);
+    assert.equal(stored.troops, original.troops);
+    assert.equal(stored.magatama, original.magatama);
+    assert(!campaignIds.has(stored.walking.campaignId));
+    campaignIds.add(stored.walking.campaignId);
+    b = browser(b.stored.get(SAVE), {withResidency:true});
+    assert.deepEqual(plain(b.c.SengokuBridge.getState()), stored);
+  }
+});
+
+await test('a failed local relocation write cannot retire or replace the playable campaign',async()=>{
+  const b = browser(seasonedCampaign().exportSave(), {withResidency:true}), original = b.stored.get(SAVE);
+  await reviewMove(b, 'himeji');
+  b.failNextSave();
+  await b.click('relocate-confirm');
+  assert.equal(b.stored.get(SAVE), original);
+  assert.deepEqual(plain(b.c.SengokuBridge.getState()), JSON.parse(original).state);
+  assert(b.query('#modal').open);
+});
+await test('an older local tab cannot undo a completed move when it autosaves or confirms its own move',async()=>{
+  const prior = seasonedCampaign().exportSave();
+  const moving = browser(prior, {withResidency:true});
+  const stale = browser(prior, {withResidency:true});
+  await reviewMove(stale, 'inuyama');
+  await reviewMove(moving, 'himeji');
+  await moving.click('relocate-confirm');
+  const latest = moving.stored.get(SAVE);
+  assert.equal(JSON.parse(latest).state.home, 'himeji');
+  stale.stored.set(SAVE, latest);
+  stale.c.document.hidden = true;
+  await stale.event('visibilitychange', stale.c.document);
+  assert.equal(JSON.parse(stale.stored.get(SAVE)).state.home, 'himeji');
+  await stale.click('relocate-confirm');
+  assert.equal(stale.stored.get(SAVE), latest);
+});
+console.log(`${count} castle selection, relocation and durable-start checks passed.`);
 })().catch(error=>{console.error(error);process.exitCode=1;});

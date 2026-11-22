@@ -257,7 +257,7 @@ export async function prepareRallyAttack(db,user,operationId,now,h,frozen=null){
    if(!allocation)throw Error('Rally result must be allocated before committing');
    return[
     stmt(db,"UPDATE alliance_operations SET status='completed',result_json=?,march_id=NULL,revision=revision+1 WHERE id=? AND "+gate,JSON.stringify({battleId:battle.id,won:battle.won,pooledTroops:troops,attackerLost:battle.attackerLost,castleName:battle.castleName,branchName:battle.branchName||null}),o.id,...args),
-    ...allocation.flatMap(a=>[stmt(db,"UPDATE alliance_units SET troops=?,state=?,march_id=NULL,revision=revision+1 WHERE id=? AND "+gate,a.returned,a.returned?'returning':'claimed',a.unit.id,...args),contribution(db,'rally:'+battle.id+':'+a.unit.id,o.guild_id,a.unit.owner_id,'attack',a.unit.troops,o.title+'：'+(battle.won?'勝利':'撤退')+'・生存兵'+a.returned,now,gate,args)]),
+    ...allocation.flatMap(a=>[stmt(db,"UPDATE alliance_units SET troops=CASE WHEN campaign_retired=1 THEN 0 ELSE ? END,state=CASE WHEN campaign_retired=1 THEN 'claimed' ELSE ? END,march_id=NULL,revision=revision+1 WHERE id=? AND "+gate,a.returned,a.returned?'returning':'claimed',a.unit.id,...args),contribution(db,'rally:'+battle.id+':'+a.unit.id,o.guild_id,a.unit.owner_id,'attack',a.unit.troops,o.title+'：'+(battle.won?'勝利':'撤退')+'・生存兵'+a.returned,now,gate,args)]),
    ];
   }};
 }
@@ -265,7 +265,7 @@ export function rallyMarchStatements(db,rally,marchId,gate,args){
  return [stmt(db,"UPDATE alliance_operations SET march_id=?,revision=revision+1 WHERE id=? AND "+gate,marchId,rally.operationId,...args),stmt(db,"UPDATE alliance_units SET march_id=?,revision=revision+1 WHERE operation_id=? AND state='stationed' AND "+gate,marchId,rally.operationId,...args)];
 }
 export function rallyMarchCancellation(db,march,gate,args){
- return [stmt(db,"UPDATE alliance_operations SET status='cancelled',march_id=NULL,revision=revision+1 WHERE march_id=? AND "+gate,march.id,...args),stmt(db,"UPDATE alliance_units SET state='returning',march_id=NULL,revision=revision+1 WHERE march_id=? AND state='stationed' AND "+gate,march.id,...args)];
+ return [stmt(db,"UPDATE alliance_operations SET status='cancelled',march_id=NULL,revision=revision+1 WHERE march_id=? AND "+gate,march.id,...args),stmt(db,"UPDATE alliance_units SET troops=CASE WHEN campaign_retired=1 THEN 0 ELSE troops END,state=CASE WHEN campaign_retired=1 THEN 'claimed' ELSE 'returning' END,march_id=NULL,revision=revision+1 WHERE march_id=? AND state='stationed' AND "+gate,march.id,...args)];
 }
 export async function getAllianceDefense(db,target,castleId,now){
  await settleUnits(db,now,target.id);const m=target.guild_id?await membership(db,target.id,target.guild_id):null;

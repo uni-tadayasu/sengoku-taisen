@@ -34,5 +34,16 @@ let count=0;async function test(name,run){await run();count++;console.log('PASS 
  await test('cloud bridge applies a confirmed canonical admission with a backup and residency revision',async()=>{const h=await cloudHarness(),before=h.applied.length,next=h.snapshot(2,'lord',12);assert.equal((await h.sync.acceptSnapshot(next)).ok,true);assert.equal(h.applied.length,before+1);assert.equal(h.control.current.state.marker,'revision-2');assert.equal(h.applied.at(-1).meta.reason,'residency-admission');assert.equal(h.applied.at(-1).meta.backup,true);assert.equal(h.observations.at(-1).meta.revision,12);assert.equal(h.sync.getStatus().revision,2);});
  await test('a delayed admission receipt cannot replace a newer synced campaign or membership',async()=>{const h=await cloudHarness();await h.sync.acceptSnapshot(h.snapshot(5,'lord',20));const before=h.applied.length,observed=h.observations.length,result=await h.sync.acceptSnapshot(h.snapshot(2,'retainer',10));assert.equal(result.ok,true);assert.equal(result.superseded,true);assert.equal(h.applied.length,before);assert.equal(h.observations.length,observed);assert.equal(h.control.current.state.marker,'revision-5');});
  await test('the cloud bridge rejects a different identity and propagates canonical empty membership',async()=>{const h=await cloudHarness(),before=h.applied.length;assert.equal((await h.sync.acceptSnapshot({...h.snapshot(2),user:{id:'other'}})).ok,false);assert.equal(h.applied.length,before);assert.equal((await h.sync.acceptSnapshot(h.snapshot(3,null,21))).ok,true);assert.equal(h.observations.at(-1).value.residency,null);assert.equal(h.observations.at(-1).meta.revision,21);});
+ await test('a delayed relocation receipt at the same save revision cannot restore a superseded writer lease',async()=>{
+  const h=await cloudHarness(),oldWriter=h.snapshot(2);
+  h.control.remote={...oldWriter,writerDeviceId:'another-device',writerDeviceName:'新しい端末',writable:false,
+    serverTime:new Date(105000).toISOString(),leaseExpiresAt:new Date(135000).toISOString()};
+  assert((await h.sync.refresh()).ok);
+  assert.equal(h.sync.getStatus().writable,false);
+  const applied=h.applied.length;
+  await h.sync.acceptSnapshot(oldWriter,{reason:'residency-relocation'});
+  assert.equal(h.sync.getStatus().writable,false,'the newer lease belongs to the other tab');
+  assert.equal(h.applied.length,applied,'the already synchronized save must not be replaced again');
+ });
  console.log(`Residency bridge: ${count} scenarios passed; no production requests.`);
 })().catch(error=>{console.error(error);process.exitCode=1;});
