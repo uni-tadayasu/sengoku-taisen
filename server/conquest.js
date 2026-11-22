@@ -1,6 +1,7 @@
 // One common, exclusive-ownership battlefield. Its economy is independent of
 // campaign saves and is never populated from client-supplied power or resources.
 import './game-runtime.js';
+import {conquestShogunateStatements} from './shogunate.js';
 
 const DAY=86400000,JST=9*3600000,WEEK=7*DAY;
 const CASTLES=globalThis.SENGOKU_DATA.castles;
@@ -201,7 +202,8 @@ async function act(ctx){
   S(db,`UPDATE conquest_members SET ${contributionColumn}=${contributionColumn}+?,actions=actions+1,last_action_at=? WHERE season_id=? AND user_id=? AND ${GATE}`,points,now,seasonId,user.id,...gateArgs),
   ...(source?[S(db,`UPDATE conquest_castles SET stock=?,revision=revision+1 WHERE season_id=? AND castle_id=? AND ${GATE}`,sourceStock,seasonId,fromId,...gateArgs)]:[]),
   ...(firstCapture?[S(db,`INSERT INTO conquest_captures(season_id,guild_id,castle_id,user_id,captured_at) SELECT ?,?,?,?,? WHERE ${GATE} ON CONFLICT DO NOTHING`,seasonId,member.guildId,castleId,user.id,now,...gateArgs)]:[]),
-  ...(defenseGuild?[S(db,`UPDATE conquest_guilds SET defenses=defenses+1,revision=revision+1 WHERE season_id=? AND guild_id=? AND ${GATE}`,seasonId,defenseGuild,...gateArgs)]:[])
+  ...(defenseGuild?[S(db,`UPDATE conquest_guilds SET defenses=defenses+1,revision=revision+1 WHERE season_id=? AND guild_id=? AND ${GATE}`,seasonId,defenseGuild,...gateArgs)]:[]),
+  ...(battle?.won?conquestShogunateStatements({db,seasonId,guildId:member.guildId,title:member.name+'・共有天下統一',now,gateSql:GATE,gateArgs}):[])
  ]);
  const saved=await prior(ctx,requestId,digest);if(!saved){await h.requireAccountAccess(db,user);h.fail(409,'CONQUEST_CHANGED','別の領主の行動、所属変更または大会終了により戦況が変わりました。最新表示から選び直してください。');}
  return result(ctx,saved,saved.commit_token!==nonce);

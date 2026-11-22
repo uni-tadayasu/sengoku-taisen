@@ -43,7 +43,7 @@ function markerAppearance(marker){
   const player=marker.players?.find(p=>targetKey(p)===marker.displayTargetId);if(!player)return null;
   return{html:castleAppearance(player,{marker:true}),label:`${marker.name} ${playerText(player.name,player.evaluation,player.appearance,player.playerId)}の${isHomeTarget(player)?'本拠':'所領'} ${keepLabel(player)}${isHomeTarget(player)?' 城郭 Lv.'+player.level:''}${marker.players.length>1?'・'+marker.players.length+'人の領主':''}`};
 }
-const DEFAULT_RULES={minTroops:300,maxTroops:100000,commandCost:1,foodBase:150,foodPerTroop:.3,attackCooldownMs:60000,defenderProtectionMs:60000,allianceDurationMs:360000,tactics:[{id:'balanced',name:'正攻法',food:1},{id:'assault',name:'総攻撃',food:1.25},{id:'siege',name:'兵糧攻め',food:1.65},{id:'ambush',name:'伏兵',food:1.1}]};
+const DEFAULT_RULES={minTroops:300,maxTroops:100000,commandCost:1,foodBase:150,foodPerTroop:.3,attackCooldownMs:60000,defenderProtectionMs:60000,allianceDurationMs:360000,tactics:[{id:'balanced',name:'正攻法',food:1,modifier:1,loss:1},{id:'assault',name:'総攻撃',food:1.25,modifier:1.18,loss:1.35},{id:'siege',name:'包囲戦',food:1.65,modifier:.97,loss:.8},{id:'ambush',name:'伏兵',food:1.1,modifier:1.06,loss:.95}]};
 const icons={refresh:'M20 8a9 9 0 1 0 1 7M20 3v5h-5',search:'M10 17a7 7 0 1 0 0-14 7 7 0 0 0 0 14m5-2 6 6',castle:'M3 20h18M5 20V10l7-5 7 5v10M3 10h18M9 5l3-3 3 3M10 20v-5h4v5',swords:'m4 3 7 7-3 3-7-7 3-3Zm9 10 7 7M15 18l3-3M20 3l-7 7 3 3 7-7-3-3ZM11 13l-7 7M9 18l-3-3',flag:'M4 22V3m0 1c6-5 10 5 16 0v10c-6 5-10-5-16 0',check:'m4 12 5 5L20 6',shield:'m12 2 9 4v6c0 5-9 10-9 10S3 17 3 12V6l9-4ZM8 12l3 3 5-6',clock:'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Zm0 4v6l4 2',users:'M9 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM2 21v-3c0-3 3-5 7-5s7 2 7 5v3M17 4c5-1 6 7 1 8m1 2c3 1 4 3 4 7',close:'m6 6 12 12M6 18 18 6'};
 const icon=name=>`<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${icons[name]||icons.castle}"/></svg>`;
 function normalizePlayers(payload){
@@ -96,6 +96,28 @@ function attackValidation({player,me,identity,access={},state={},troops,tactic,r
   const payload={targetPlayerId:player.playerId,troops:amount,tactic};if(r.targetCastles===true)payload.targetCastleId=targetCastleId(player);if(player.targetBranchId&&r.branchBattles===true)payload.targetBranchId=player.targetBranchId;
   return{ok:true,foodCost:cost,battleMode:policy.mode,payload};
 }
+function armyPower(state={}){
+  const ranks=global.SENGOKU_DATA?.ranks||['D','C','B','A','S','SS','SSS','U'],powers=[.9,.95,1,1.08,1.16,1.25,1.35,1.5],variants=new Set(state.officerVariants||[]),army=Array.isArray(state.army)?state.army:[];
+  return army.length?Math.round(army.reduce((sum,id)=>sum+(Math.max(...ranks.map((rank,i)=>variants.has(id+':'+rank)?powers[i]||1:0))||1),0)/army.length*1000)/1000:.75;
+}
+function estimateBattle({player,state={},troops,tactic,rules}={}){
+  const r=rulesFor(rules),choice=r.tactics.find(t=>t.id===tactic),fallback=DEFAULT_RULES.tactics.find(t=>t.id===tactic),amount=Number(troops),defensePower=Number(player?.defensePower);
+  if(!choice||!fallback||!Number.isInteger(amount)||amount<r.minTroops||amount>r.maxTroops||!Number.isFinite(defensePower)||defensePower<=0)return{ok:false,message:'公開されている守備戦力と出陣兵数を確認してください。'};
+  const modifier=Number(choice.modifier??fallback.modifier),loss=Number(choice.loss??fallback.loss),morale=Math.max(0,Math.min(100,number(state.morale))),attackPower=Math.max(1,Math.round(amount*(.7+.5*morale/100)*(1+integer(state.tech?.discipline)*.06+integer(state.tech?.gunnery)*.05)*armyPower(state)*modifier)),ratio=attackPower/defensePower,chance=Math.max(.05,Math.min(.95,.5+Math.log(ratio)*.6));
+  const casualties=won=>Math.min(amount,Math.max(1,Math.floor(amount*Math.min(.35,(won?.08+.06/Math.max(.3,ratio):.2+.06/Math.max(.3,ratio))*loss))));
+  return{ok:true,tactic,tacticName:choice.name,troops:amount,winChance:Math.round(chance*100),estimatedLoss:Math.round(chance*casualties(true)+(1-chance)*casualties(false)),foodCost:foodCost(amount,tactic,r),attackPower,defensePower,approximate:true,reasons:[`公開守備${num(player.defenseTroops)}人・守備戦力${num(defensePower)}を基準にした推定です。`,`軍団の階級・士気・研究を反映し、${choice.name}で${num(amount)}人の出陣を比較しました。`,'敵の援軍や戦況の変化、包囲・攻城研究による守備力の低下はこの推定に含みません。']};
+}
+function battleAdvice(context={}){
+  const advisor=global.SengokuBattleAdvisor;if(!advisor)return null;
+  const {player,me,state={},style='balanced'}=context,r=rulesFor(context.rules),minimum=Math.max(1,integer(me?.attack?.minTroops)||r.minTroops),maximum=Math.min(integer(me?.attack?.maxTroops)||r.maxTroops,integer(me?.attack?.availableTroops),state.troops===undefined?Infinity:integer(state.troops)),rice=integer(state.resources?.rice??me?.attack?.rice),candidates=[];
+  const initial=attackValidation({...context,troops:minimum,tactic:r.tactics[0]?.id});
+  for(const tactic of r.tactics){const max=Math.min(maximum,Math.floor((rice-r.foodBase)/(r.foodPerTroop*tactic.food)));if(max<minimum)continue;const counts=new Set([minimum,max,Number(context.troops)]);
+    for(let i=1;i<24;i++)counts.add(Math.floor(minimum+(max-minimum)*i/24));
+    const sample=estimateBattle({player,state,troops:minimum,tactic:tactic.id,rules:r});if(sample.ok)for(const goal of [.5,.65,.75,.85,.9,.95])counts.add(Math.ceil(minimum*sample.defensePower*Math.exp((goal-.5)/.6)/sample.attackPower));
+    for(const troops of counts){if(!Number.isInteger(troops)||troops<minimum||troops>max)continue;const check=attackValidation({...context,troops,tactic:tactic.id,rules:r});if(!check.ok)continue;const estimate=estimateBattle({player,state,troops,tactic:tactic.id,rules:r});if(estimate.ok)candidates.push(estimate);}
+  }
+  return advisor.compare(candidates,{style,targetName:targetCastleName(player),emptyMessage:initial.ok?'公開守備戦力を再取得してください。':initial.message});
+}
 function playerPhoto(player){const user={...player,id:player.playerId};return global.SengokuAvatar?.markup?.(user,'small')||'';}
 function publicRow(player,{selectedId='',identity,relationship=player.relationship,rules={}}={}){
   const own=player.self||player.playerId===identity?.id,label=own?'あなた':relationship==='allied'?'同盟':relationship==='incoming'?'申請あり':relationship==='outgoing'?'申請中':player.online?'接続中':'領主';
@@ -134,7 +156,7 @@ function battleReportHtml(battle,viewerId){
   const garrison=summary.captured&&battle.capture?.newlyOwned!==false&&integer(battle.capture?.garrison)>0?`<p>${summary.attacker?'帰還兵から':'攻撃側の帰還兵から'}${num(battle.capture.garrison)}人を、この城の守備兵として配置しました。</p>`:'';
   return`<article class="field-battle-report ${summary.positive?'is-victory':''}" data-field-battle-mode="${summary.mode}"><span class="field-eyebrow">${summary.attacker?'出陣の記録':summary.defender?'拠点の防衛':'合戦の記録'} · ${summary.mode==='reward'?'報酬戦・占領不可':summary.mode==='capture'?'占領戦':summary.mode==='branch'?'支拠点戦・占領なし':'襲撃'}</span><h3>${summary.title}</h3><p>${playerName(battle.attackerName,battle.attackerEvaluation,battle.attackerAppearance,battle.attackerPlayerId,battle.attackerAvatarVersion)} → ${playerName(battle.defenderName,battle.defenderEvaluation,battle.defenderAppearance,battle.defenderPlayerId,battle.defenderAvatarVersion)}</p><strong>${esc(battle.branchName||battle.castleName||'')}</strong><p class="field-battle-effect">${summary.effect}</p>${relocated}${garrison}<div class="field-report-stats"><div><span>出陣</span><b>${num(battle.troops)}人</b></div><div><span>${summary.attacker||summary.defender?'自軍の損失':'攻撃側の損失'}</span><b>${num(summary.attacker||summary.defender?summary.loss:battle.attackerLost)}人</b></div></div>${lootBox}${rewardBox}${battle.analysis?`<details class="field-battle-analysis"><summary>勝敗の理由と補正を見る</summary><p>${esc(battle.analysis.explanation)}</p><dl><dt>攻撃戦力 / 防衛戦力</dt><dd>${num(battle.analysis.attackPower)} / ${num(battle.analysis.defensePower)}</dd><dt>事前の攻撃側勝率</dt><dd>${num(battle.analysis.winChance)}%（確定ではありません）</dd><dt>出陣時の士気 / 戦法</dt><dd>${num(battle.analysis.morale)} / ${esc(battle.analysis.tactic)}</dd><dt>防衛援軍</dt><dd>${num(battle.analysis.reinforcementTroops)}人</dd><dt>戦力差による戦利品係数</dt><dd>${Number(battle.analysis.lootScale)*100}%</dd></dl></details>`:''}<small class="field-report-date">${when?`${when.year}年${when.month}月`:'共通時間の合戦記録'}</small></article>`;
 }
-function makeCache(){return{players:[],total:0,nextCursor:null,me:null,rules:rulesFor(),clock:null,lastFetched:0,loading:false,promise:null,busy:false,error:'',selectedId:'',selectedBranchId:'',castleFilter:'',query:'',filter:'all',page:1,tab:'base',relationshipPage:1,battlePage:1,troops:'',tactic:'balanced',confirm:null,lastBattle:null,watchers:new Set()};}
+function makeCache(){return{players:[],total:0,nextCursor:null,me:null,rules:rulesFor(),clock:null,lastFetched:0,loading:false,promise:null,busy:false,error:'',selectedId:'',selectedBranchId:'',castleFilter:'',query:'',filter:'all',page:1,tab:'base',relationshipPage:1,battlePage:1,troops:'',tactic:'balanced',advisorStyle:'balanced',confirm:null,lastBattle:null,watchers:new Set()};}
 function mount(container,options={}){
   if(!container?.querySelector)return null;if(mounted.has(container)){const existing=mounted.get(container);existing.update(options);return existing;}
   let opts={stateKey:'shared-field',...options},key='',cache=null,map=null,destroyed=false,timer=null,detailHost=null,detailMarkup=null;
@@ -157,6 +179,8 @@ function mount(container,options={}){
   }
   function selectedRelation(){return cache.me?.relationships?.find(r=>r.targetPlayerId===current()?.playerId);}
   function validation(){return attackValidation({player:current(),me:cache.me,identity:opts.identity,access:access(),state:state(),troops:cache.troops,tactic:cache.tactic,rules:cache.rules,clock:clockSnapshot()});}
+  function advice(){return battleAdvice({player:current(),me:cache.me,identity:opts.identity,access:access(),state:state(),troops:cache.troops,rules:cache.rules,clock:clockSnapshot(),style:cache.advisorStyle});}
+  function applyAdvice(){if(!canAct())return false;const proposed=advice();if(!proposed?.ok){message(proposed?.message||'出陣条件を確認してください。',true);return false;}cache.troops=String(proposed.troops);cache.tactic=proposed.tactic;cache.confirm=null;renderDetail();message('軍師の案を反映しました。出陣内容を確認してください。');return true;}
   function confirmationKey(player=current()){return JSON.stringify([targetKey(player),player?.targetBranchId||'',battlePolicy(player,cache.rules).mode,String(cache.troops),cache.tactic]);}
   function diplomacyControls(player){
     const relation=relationshipFor(player,cache.me,opts.identity),disabled=!canAct()?' disabled':'';
@@ -184,6 +208,7 @@ function mount(container,options={}){
     result+=`<section class="field-letter-box"><h4>領主へ書状を届ける</h4><div class="field-letter-actions"><button type="button" class="field-button" data-field-action="letter-player" data-player-id="${esc(player.playerId)}">領主に書状</button><button type="button" class="field-button" data-field-action="letter-guild" data-player-id="${esc(player.playerId)}">所属同盟に書状</button></div><p class="field-caption">本人への便りか、所属同盟への連絡を選べます。</p></section>`;
     result+='<section class="field-trade-box"><h4>資産を輸出・輸入する</h4><button type="button" class="field-button" data-field-action="trade-player" data-player-id="'+esc(player.playerId)+'">この領主に交易を申し出る</button><p class="field-caption">資産を預け、相手の承認で交換します。無償での提供もできます。</p></section>';
     result+=`<section class="field-diplomacy-box"><h4>外交</h4>${diplomacyControls(player)}</section>`;
+    result+=global.SengokuBattleAdvisor?.markup(advice(),{action:'field-apply',disabled:!canAct(),showStyles:true,note:'公開情報からの推定です。案を反映したあと、出陣内容を確認してください。'})||'';
     if(policy.mode==='protected')return result+`<div class="field-notice">${icon('shield')}${esc(policy.description)}</div>`;
     if(protection)return result+`<div class="field-notice">戦後の保護期間です。あと${remainingLabel(protection)}で再び対象になります。</div>`;
     if(relation==='allied')return result;
@@ -261,7 +286,7 @@ function mount(container,options={}){
     finally{target.busy=false;for(const callback of target.watchers)callback();if(!destroyed)await refresh();}
   }
   async function click(event){
-    const button=event.target.closest?.('[data-field-action]');if(!button||!container.contains(button)||button.disabled)return;event.stopPropagation();const action=button.dataset.fieldAction;
+    const button=event.target.closest?.('[data-field-action],[data-battle-advisor-action]');if(!button||!container.contains(button)||button.disabled)return;event.stopPropagation();if(button.dataset.battleAdvisorAction==='field-apply'){event.preventDefault();applyAdvice();return;}const action=button.dataset.fieldAction;
     if(action==='refresh'){await refresh();return;}if(action==='load-more'){await refresh({append:true});return;}
     if(action==='letter-player'||action==='letter-guild'){if(!opts.identity?.id){opts.onRegister?.();return;}if(global.SengokuLetters?.openCompose)await global.SengokuLetters.openCompose({playerId:button.dataset.playerId,destination:action==='letter-guild'?'guild':'player'});else message('書状を読み込めませんでした。画面を再読み込みしてください。',true);return;}
     if(action==='trade-player'){if(!opts.identity?.id){opts.onRegister?.();return;}if(global.SengokuTrade?.openCompose)await global.SengokuTrade.openCompose({playerId:button.dataset.playerId});else message('交易を読み込めませんでした。画面を再読み込みしてください。',true);return;}
@@ -277,14 +302,14 @@ function mount(container,options={}){
     if(action==='attack'){const check=validation();if(!check.ok){message(check.message,true);return;}if(cache.confirm?.signature!==confirmationKey())return;await mutate('/field/attack',check.payload);return;}
     if(action==='diplomacy'){const operation=button.dataset.operation;if(!['propose','accept','reject','cancel'].includes(operation))return;await mutate('/field/diplomacy',{targetPlayerId:button.dataset.playerId,action:operation});}
   }
-  function input(event){const kind=event.target.dataset.fieldInput;if(!kind)return;
+  function input(event){if(event.target.matches?.('[data-battle-advisor-style]')){if(!cache.busy&&global.SengokuBattleAdvisor?.styles[event.target.value]){cache.advisorStyle=event.target.value;cache.confirm=null;renderDetail();}return;}const kind=event.target.dataset.fieldInput;if(!kind)return;
     if(kind==='search'){cache.query=event.target.value;cache.page=1;render();}
     else if(kind==='filter'){cache.filter=event.target.value;cache.page=1;render();}
-    else if(kind==='troops'||kind==='tactic'){cache[kind]=event.target.value;cache.confirm=null;const cost=container.querySelector('[data-field-food]');if(cost)cost.textContent=num(foodCost(cache.troops,cache.tactic,cache.rules));const check=validation(),reason=container.querySelector('[data-field-attack-reason]');if(reason)reason.textContent=check.ok?'兵数と戦法を確認して出陣します。':check.message;const confirm=container.querySelector('[data-field-action="confirm-attack"]');if(confirm)confirm.disabled=!check.ok||cache.busy;const sent=container.querySelector('[data-field-action="attack"]');if(sent)renderDetail();}
+    else if(kind==='troops'||kind==='tactic'){cache[kind]=event.target.value;cache.confirm=null;const cost=container.querySelector('[data-field-food]');if(cost)cost.textContent=num(foodCost(cache.troops,cache.tactic,cache.rules));const check=validation(),reason=container.querySelector('[data-field-attack-reason]');if(reason)reason.textContent=check.ok?'兵数と戦法を確認して出陣します。':check.message;const confirm=container.querySelector('[data-field-action="confirm-attack"]');if(confirm)confirm.disabled=!check.ok||cache.busy;renderDetail();}
   }
   bindCache();structure();listen(container,'click',click);listen(container,'input',input);listen(container,'change',event=>{if(event.target.tagName==='SELECT')input(event);});listen(doc,'visibilitychange',()=>{if(!doc.hidden)refresh();schedule();});
-  const controller={refresh,update(next={}){if(destroyed)return;const old=key;opts={...opts,...next};bindCache();if(old!==key){map?.destroy();map=null;}render();if(old!==key||Date.now()-cache.lastFetched>15000)refresh();},destroy(){if(destroyed)return;destroyed=true;if(timer!==null)global.clearTimeout(timer);timer=null;map?.destroy();cache.watchers.delete(render);for(const remove of listeners)remove();mounted.delete(container);}};
+  const controller={refresh,applyAdvice,update(next={}){if(destroyed)return;const old=key;opts={...opts,...next};bindCache();if(old!==key){map?.destroy();map=null;}render();if(old!==key||Date.now()-cache.lastFetched>15000)refresh();},destroy(){if(destroyed)return;destroyed=true;if(timer!==null)global.clearTimeout(timer);timer=null;map?.destroy();cache.watchers.delete(render);for(const remove of listeners)remove();mounted.delete(container);}};
   mounted.set(container,controller);render();if(Date.now()-cache.lastFetched>15000||!cache.lastFetched)refresh();schedule();return controller;
 }
-const api={mount,normalizePlayers,normalizeBranches,branchTarget,groupBases,targetKey,targetCastleId,targetCastleName,isHomeTarget,battlePolicy,battleSummary,battleReportHtml,keepLevelInfo,castleAppearance,markerAppearance,foodCost,remainingLabel,relationshipFor,attackValidation,publicRow};global.SengokuField=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;
+const api={mount,normalizePlayers,normalizeBranches,branchTarget,groupBases,targetKey,targetCastleId,targetCastleName,isHomeTarget,battlePolicy,battleSummary,battleReportHtml,keepLevelInfo,castleAppearance,markerAppearance,foodCost,remainingLabel,relationshipFor,attackValidation,estimateBattle,battleAdvice,publicRow};global.SengokuField=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;
 })(typeof window!=='undefined'?window:globalThis);

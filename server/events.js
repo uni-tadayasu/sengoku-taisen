@@ -1,7 +1,9 @@
 // Timed NPC battles spend the campaign's shared command through its current
 // writer revision. The save, battle receipt, points and mail commit together.
 import {GameEngine,GAME_OFFICERS} from './game-runtime.js';
-import {generateEventPlan,normalizeEventPlan,resolveEventBattle} from './event-planner.js';
+import {generateEventPlan,normalizeEventPlan,resolveEventBattle,adviseEventBattle} from './event-planner.js';
+import './battle-catalog.js';
+import {shogunateGrantStatements,shogunateEventRight} from './shogunate.js';
 
 const DAY_MS=86400000;
 const COMMAND_COST=1;
@@ -17,7 +19,7 @@ function eventDto(row,now){
  const status=eventStatus(row,now);
  return {id:row.id,name:row.name,durationDays:Number(row.duration_days),status,startsAt:eventIso(row.starts_at),endsAt:eventIso(row.ends_at),endedAt:eventIso(row.ended_at??(status==='ended'?row.ends_at:null)),createdAt:eventIso(row.created_at),plan:normalizeEventPlan(JSON.parse(row.plan_json))};
 }
-async function eventCommand(ctx,raw,now,snapshot=null){
+async function eventGame(ctx,raw,now,snapshot=null){
  if(!raw)return null;
  try{
   const {db,user,helpers:h}=ctx,current=snapshot?.user?{...user,is_admin:snapshot.user.isAdmin,is_staff:snapshot.user.isStaff}:user;
@@ -28,7 +30,7 @@ async function eventCommand(ctx,raw,now,snapshot=null){
    const base=typeof shared==='string'?JSON.parse(shared):shared;
    if(base?.buildings){let keep=base.buildings.keep;for(const job of base.jobs||[])if(job.kind==='building'&&job.id==='keep'&&job.completesElapsedMs<=clock.elapsedMs)keep=Math.max(keep,job.targetLevel);game.state.buildings.keep=keep;}
   }
-  return {available:game.state.command,max:game.commandMax(),cost:COMMAND_COST};
+  return game;
  }catch{return null;}
 }
 async function eventProgress(ctx,row,now,snapshot=null){
@@ -37,10 +39,14 @@ async function eventProgress(ctx,row,now,snapshot=null){
  const result=await db.batch([
   eventStmt(db,'SELECT points,wins,battles FROM timed_event_participants WHERE event_id=? AND user_id=?',row.id,user.id),
   eventStmt(db,'SELECT save_json FROM player_saves WHERE user_id=?',user.id),
-  eventStmt(db,'SELECT milestone_id,mail_id,awarded_at FROM timed_event_rewards WHERE event_id=? AND user_id=? ORDER BY awarded_at,milestone_id',row.id,user.id)
+  eventStmt(db,'SELECT milestone_id,mail_id,awarded_at FROM timed_event_rewards WHERE event_id=? AND user_id=? ORDER BY awarded_at,milestone_id',row.id,user.id),
+  eventStmt(db,"SELECT DISTINCT json_extract(result_json,'$.battle.stageId') AS stage_id FROM timed_event_requests WHERE event_id=? AND actor_id=? AND action='battle' AND json_extract(result_json,'$.battle.won')=1",row.id,user.id)
  ]);
- const participant=eventRows(result[0])[0],command=await eventCommand(ctx,snapshot?snapshot.save:eventRows(result[1])[0]?.save_json,now,snapshot);
- return {points:Number(participant?.points||0),wins:Number(participant?.wins||0),battles:Number(participant?.battles||0),command,rewards:eventRows(result[2]).map(reward=>({milestoneId:reward.milestone_id,mailId:reward.mail_id,awardedAt:eventIso(reward.awarded_at)}))};
+ const participant=eventRows(result[0])[0],game=await eventGame(ctx,snapshot?snapshot.save:eventRows(result[1])[0]?.save_json,now,snapshot),plan=normalizeEventPlan(JSON.parse(row.plan_json));
+ const command=game?{available:game.state.command,max:game.commandMax(),cost:COMMAND_COST}:null,points=Number(participant?.points||0),wonStages=new Set(eventRows(result[3]).map(r=>r.stage_id));
+ const clearedStageIds=plan.stages.filter(s=>wonStages.has(s.id)).map(s=>s.id),advisers=game?plan.stages.map(stage=>adviseEventBattle(plan,{stageId:stage.id,army:game.armyStats(),morale:game.state.morale})):[];
+ const right=plan.ending?.kind==='unification'?await shogunateEventRight(db,user.id,row.id):null;
+ return {points,wins:Number(participant?.wins||0),battles:Number(participant?.battles||0),command,advisers,unification:{eligible:plan.ending?.kind==='unification',clearedStageIds,requiredStageIds:plan.ending?.requiredStageIds||[],points,requiredPoints:plan.ending?.requiredPoints||0,achieved:Boolean(right),earnedAt:right?eventIso(right.earnedAt):null},rewards:eventRows(result[2]).map(reward=>({milestoneId:reward.milestone_id,mailId:reward.mail_id,awardedAt:eventIso(reward.awarded_at)}))};
 }
 async function eventLeaderboard(ctx,id){
  const found=eventRows(await eventStmt(ctx.db,`SELECT p.user_id,u.name,p.points,p.wins,p.battles FROM timed_event_participants p JOIN users u ON u.id=p.user_id
@@ -77,14 +83,24 @@ async function eventResult(ctx,receipt,idempotent,body=null){
  return response;
 }
 async function eventGenerate(ctx){
- const {db,user,request,helpers:h}=ctx,raw=await h.readBody(request),requestId=eventBody(raw,['name','durationDays','requestId'],h);
- const name=h.textField(raw.name,'戦いの名前',60),days=raw.durationDays;
- if(/[\u0000-\u001F\u007F-\u009F]/u.test(name))h.fail(400,'INVALID_INPUT','戦いの名前は改行・制御文字を含めず入力してください。');
+ const {db,user,request,helpers:h}=ctx,raw=await h.readBody(request),legacy=Object.hasOwn(raw,'name')&&!Object.hasOwn(raw,'battleId'),requestId=eventBody(raw,legacy?['name','durationDays','requestId']:['battleId','durationDays','requestId'],h);
+ const days=raw.durationDays;
  if(!Number.isInteger(days)||days<1||days>7)h.fail(400,'INVALID_INPUT','開催期間は1〜7日の整数にしてください。');
- const digest=await h.hash(JSON.stringify(['generate',name,days])),prior=await eventPrior(ctx,requestId,digest);
+ // A pre-update client may have lost the response to an already committed
+ // free-name draft. Replay its exact receipt, but never create another one.
+ if(legacy){
+  const oldName=h.textField(raw.name,'戦いの名前',60);
+  if(/[\u0000-\u001F\u007F-\u009F]/u.test(oldName))h.fail(400,'INVALID_INPUT','戦い一覧から選択してください。');
+  const oldDigest=await h.hash(JSON.stringify(['generate',oldName,days])),oldReceipt=await eventPrior(ctx,requestId,oldDigest);
+  if(oldReceipt)return eventResult(ctx,oldReceipt,true);
+  h.fail(400,'BATTLE_SELECTION_REQUIRED','戦いの名前は戦い一覧から選択してください。');
+ }
+ const battleId=h.textField(raw.battleId,'戦いの選択',128),battle=globalThis.SengokuBattleCatalog.get(battleId);
+ if(!battle)h.fail(400,'BATTLE_SELECTION_REQUIRED','戦い一覧から戦場を選択してください。');
+ const name=battle.name,digest=await h.hash(JSON.stringify(['generate',battleId,days])),prior=await eventPrior(ctx,requestId,digest);
  if(prior)return eventResult(ctx,prior,true);
  await h.budget(db,'event-design:'+user.id,20,60000,ctx.now);
- const id=h.uid('ev_'),plan=generateEventPlan({name,durationDays:days,seed:h.uid('seed_')}),nonce=crypto.randomUUID(),now=Date.now(),guard=h.roleCommitGuard(user),gateArgs=[user.id,requestId,nonce];
+ const id=h.uid('ev_'),plan=generateEventPlan({battleId,durationDays:days,seed:h.uid('seed_')}),nonce=crypto.randomUUID(),now=Date.now(),guard=h.roleCommitGuard(user),gateArgs=[user.id,requestId,nonce];
  await db.batch([
   eventStmt(db,`INSERT INTO timed_event_requests(actor_id,request_id,event_id,action,request_hash,commit_token,result_json,created_at)
    SELECT ?,?,?,'generate',?,?,?,? WHERE ${EVENT_ADMIN} AND ${guard.sql} AND (SELECT COUNT(*) FROM timed_events WHERE status='draft')<${MAX_DRAFTS}
@@ -154,7 +170,11 @@ async function eventBattle(ctx,id){
  const roll=crypto.getRandomValues(new Uint32Array(1))[0]/4294967296;
  const commandBefore=save.state.command;
  const battle={...resolveEventBattle(plan,{stageId,tactic,army:game.armyStats(),morale:game.state.morale},roll),id:h.uid('eb_'),requestId,commandCost:COMMAND_COST,commandBefore,commandAfter:commandBefore-COMMAND_COST,playerRevision:Number(savedRow.revision)+1,createdAt:eventIso(now)};
- save.state.command-=COMMAND_COST;save.savedAt=eventIso(now);
+ // The catalogue plan alone supplies the reward. It shares the command/save
+ // revision and receipt transaction, so retrying cannot grant it twice.
+ save.state.command-=COMMAND_COST;
+ if(battle.offeredRewards){const credited=game._gain(battle.offeredRewards);battle.rewards=Object.fromEntries(Object.keys(battle.offeredRewards).map(key=>[key,credited[key]]));save.state.resources={...game.state.resources};save.state.magatama=game.state.magatama;}
+ save.savedAt=eventIso(now);
  const updatedSave=h.normalizeGameSave(save,user,now,{clock});
  const statements=[
   eventStmt(db,`INSERT INTO timed_event_requests(actor_id,request_id,event_id,action,request_hash,commit_token,result_json,created_at)
@@ -181,6 +201,12 @@ async function eventBattle(ctx,id){
     ON CONFLICT(event_id,user_id,milestone_id) DO NOTHING`,id,user.id,milestone.id,mailId,requestId,now,...gateArgs,mailId)
   );
  }
+ if(plan.ending?.kind==='unification'){
+  // The current battle receipt and points are already in this transaction.
+  // Repeated wins on one stage or a catalogue title alone cannot qualify.
+  const proofSql=`EXISTS(SELECT 1 FROM timed_event_participants WHERE event_id=? AND user_id=? AND points>=?) AND (SELECT COUNT(DISTINCT json_extract(result_json,'$.battle.stageId')) FROM timed_event_requests WHERE event_id=? AND actor_id=? AND action='battle' AND json_extract(result_json,'$.battle.won')=1 AND json_extract(result_json,'$.battle.stageId') IN ('stage-1','stage-2','stage-3'))=3`;
+  statements.push(...shogunateGrantStatements({db,userId:user.id,sourceType:'event',sourceId:id,title:row.name,battleId:plan.battleId,earnedAt:now,gateSql:EVENT_GATE,gateArgs,proofSql,proofArgs:[id,user.id,plan.ending.requiredPoints,id,user.id]}));
+ }
  statements.push(eventStmt(db,`UPDATE timed_event_requests SET result_json=json_set(result_json,'$.rewardMailIds',json((SELECT json_group_array(mail_id) FROM timed_event_rewards WHERE event_id=? AND user_id=? AND request_id=?)))
   WHERE actor_id=? AND request_id=? AND commit_token=?`,id,user.id,requestId,...gateArgs));
  await db.batch(statements);
@@ -198,6 +224,7 @@ async function eventBattle(ctx,id){
 
 export async function handleEvents(ctx){
  const {db,user,now,path,method,helpers:h}=ctx;
+ if(path==='/events/catalog'&&method==='GET')return{ok:true,version:1,battles:globalThis.SengokuBattleCatalog.list()};
  if(path==='/events'&&method==='GET'){
   const found=eventRows(await eventStmt(db,`SELECT * FROM timed_events WHERE status IN ('active','ended')
    ORDER BY CASE WHEN status='active' AND ended_at IS NULL AND ends_at>? THEN 0 ELSE 1 END,starts_at DESC,id DESC LIMIT 20`,now).all());

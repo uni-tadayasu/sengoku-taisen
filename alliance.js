@@ -15,24 +15,24 @@ const amountInput=(name,value=1000,max=50000)=>'<input class="input" type="numbe
 const options=(items,value)=>items.map(i=>'<option value="'+esc(i.id)+'"'+(String(i.id)===String(value)?' selected':'')+'>'+esc(i.name)+'</option>').join('');
 const select=(name,items,value)=>'<select class="input" name="'+name+'">'+options(items,value)+'</select>';
 function createController(opts={}){
- let alive=true,generation=0,loadSeq=0,who='',flight=null;
+ let alive=true,generation=0,loadSeq=0,targetSeq=0,who='',flight=null;
  const context=opts.getContext||(()=>global.SengokuSocial?.getExpansionContext?.()||{user:global.SengokuSocial?.getUser?.()});
  const request=opts.request||((route)=>global.SengokuSocial.expansionRequest(route,{method:'GET'}));
  const mutate=opts.mutate||((route,data)=>global.SengokuBridge.requestExpansion(route,{method:'POST',data}));
  const storage=opts.storage||(()=>{try{return global.localStorage;}catch{return null;}})();
- let s={data:null,targets:[],loading:false,sending:false,error:'',message:'',pending:null};
+ let s={data:null,targets:[],fieldRules:null,loading:false,sending:false,error:'',message:'',pending:null};
  const key=id=>'sengoku-alliance-pending-v1:'+encodeURIComponent(id);
- const identity=()=>{const c=context()||{},id=String(c.playerId||c.user?.id||'');const stamp=JSON.stringify([id,c.epoch,c.accountEpoch,c.guildEpoch,c.privilegeEpoch,c.user?.guildId||c.guildId||'',c.user?.guildRole||c.guildRole||'']);if(who!==stamp){who=stamp;generation++;loadSeq++;flight=null;s={data:null,targets:[],loading:false,sending:false,error:'',message:'',pending:null};try{const p=JSON.parse(storage?.getItem(key(id))||'null');if(p?.ownerId===id&&typeof p.route==='string'&&p.route.startsWith('/alliance/')&&typeof p.data?.requestId==='string')s.pending=p;}catch{}}return{id,stamp,user:c.user||null};};
+ const identity=()=>{const c=context()||{},id=String(c.playerId||c.user?.id||'');const stamp=JSON.stringify([id,c.epoch,c.accountEpoch,c.guildEpoch,c.privilegeEpoch,c.user?.guildId||c.guildId||'',c.user?.guildRole||c.guildRole||'']);if(who!==stamp){who=stamp;generation++;loadSeq++;targetSeq++;flight=null;s={data:null,targets:[],fieldRules:null,loading:false,sending:false,error:'',message:'',pending:null};try{const p=JSON.parse(storage?.getItem(key(id))||'null');if(p?.ownerId===id&&typeof p.route==='string'&&p.route.startsWith('/alliance/')&&typeof p.data?.requestId==='string')s.pending=p;}catch{}}return{id,stamp,user:c.user||null};};
  const emit=()=>{if(alive)opts.onChange?.(snapshot());};
  const snapshot=()=>{const current=identity();return{...s,identity:current};};
  async function load(){
   const c=identity(),g=generation,ticket=++loadSeq;if(!c.id){s.error='領主を登録してから同盟作戦をご利用ください。';emit();return false;}
   s.loading=true;s.error='';emit();
-  try{const value=await request('/alliance');if(!alive||g!==generation||ticket!==loadSeq||identity().stamp!==c.stamp)return false;if(!value?.ok)throw Error(value?.error?.message||'同盟を読み込めませんでした。');s.data=value;return true;}
+  try{const value=await request('/alliance');if(!alive||g!==generation||ticket!==loadSeq||identity().stamp!==c.stamp)return false;if(!value?.ok)throw Error(value?.error?.message||'同盟を読み込めませんでした。');s.data=value;if(value.operations?.some(o=>o.kind==='attack'&&o.status==='planned')&&(opts.readField||global.SengokuSocial?.fieldRequest))await loadTargets();return alive&&g===generation&&identity().stamp===c.stamp;}
   catch(e){if(alive&&g===generation)s.error=e.message||'同盟を読み込めませんでした。';return false;}
   finally{if(alive&&g===generation){s.loading=false;emit();}}
  }
- async function loadTargets(){const c=identity(),g=generation;try{const value=await (opts.readField?opts.readField():global.SengokuSocial.fieldRequest('/field'));if(!alive||identity().stamp!==c.stamp||g!==generation)return false;s.targets=value?.targets||value?.players||[];emit();return true;}catch(e){if(alive&&identity().stamp===c.stamp&&g===generation){s.error=e.message||'共通フィールドを読み込めませんでした。';emit();}return false;}}
+ async function loadTargets(){const c=identity(),g=generation,ticket=++targetSeq;try{const value=await (opts.readField?opts.readField():global.SengokuSocial.fieldRequest('/field'));if(!alive||identity().stamp!==c.stamp||g!==generation||ticket!==targetSeq)return false;s.targets=value?.targets||value?.players||[];s.fieldRules=value?.rules||null;emit();return true;}catch(e){if(alive&&identity().stamp===c.stamp&&g===generation&&ticket===targetSeq){s.error=e.message||'共通フィールドを読み込めませんでした。';emit();}return false;}}
  async function send(route,data={}){
   const c=identity();if(!c.id||flight)return false;
   if(s.pending&&(s.pending.route!==route||data.requestId!==s.pending.data.requestId)){s.error='前の操作結果を先に再確認してください。';emit();return false;}
@@ -49,7 +49,26 @@ function createController(opts={}){
  identity();
  return{snapshot,load,loadTargets,send,retry(){return s.pending?send(s.pending.route,s.pending.data):Promise.resolve(false);},dispose(){alive=false;generation++;loadSeq++;}};
 }
-function operationCard(o,d,me){
+function rallyAdvice(o,{data,me={},targets=[],game,rules,access={}}={}){
+ const advisor=global.SengokuBattleAdvisor;if(!advisor)return null;const unavailable=message=>advisor.compare([],{targetName:o?.castleName,emptyMessage:message});
+ if(!o||o.kind!=='attack'||o.status!=='planned'||o.expiresAt<=data?.serverNow)return unavailable('現在進行中の集結攻撃を選んでください。');
+ if(o.creatorId!==me.id&&!['owner','officer'].includes(data?.guild?.role))return unavailable('作戦の作成者または同盟役職者が、出陣者の軍団で軍議を行います。仲間は集結への兵の提供で支援できます。');
+ if(!game?.state)return unavailable('本領の軍団・士気・研究を読み込んでから軍議を行います。');
+ if(access.writable===false||access.gameWritable===false)return unavailable(access.reason||'操作端末と本領の同期を確認してください。');
+ if(game.state.gameOver)return unavailable('本拠の状態を回復してから出陣してください。');
+ if(o.startsAt>data.serverNow)return unavailable('作戦の開始時刻まで集結兵と補給を整えてください。');
+ if(!Number.isSafeInteger(o.troops)||o.troops<300||o.troops>100000)return unavailable('集結兵を300〜100,000人に整えてください。');
+ const raw=targets.find(p=>p.playerId===o.targetPlayerId&&(p.targetCastleId||p.homeCastleId)===o.castleId),field=global.SengokuField;
+ let target=raw&&field?.normalizePlayers([raw])[0];if(!target)return unavailable('最新の共通フィールドを取得すると、集結軍と公開守備戦力を比較できます。');
+ if(o.branchId){if(!target.branches?.some(b=>b.id===o.branchId))return unavailable('対象の支拠点の状態を再取得してください。');target=field.branchTarget(target,o.branchId);}
+ if(target.playerId===me.id)return unavailable('自分の拠点には集結攻撃できません。');
+ if(!target.attackable||target.relationship==='allied')return unavailable(target.attackReason||'現在この相手には出陣できません。');
+ const estimate=field.estimateBattle({player:target,state:game.state,troops:o.troops,tactic:o.tactic||'balanced',rules});if(!estimate.ok)return unavailable(estimate.message);
+ if(Number(game.state.command)<1)return unavailable('出陣者の指令が不足しています。回復を待ってください。');
+ if(Number(game.state.resources?.rice)<estimate.foodCost)return unavailable(`出陣者の兵糧が${num(estimate.foodCost)}必要です。補給を整えてください。`);
+ return advisor.compare([{...estimate,reasons:[`現在の集結兵${num(o.troops)}人と、作戦で決めた${estimate.tacticName}を評価しました。`,'集結兵と戦法はこの軍議から変更しません。出陣者の軍団・士気・研究を使用します。',...estimate.reasons]}],{targetName:target.targetBranchName||o.castleName});
+}
+function operationCard(o,d,me,advisorContext={}){
  const organizer=o.creatorId===me.id||['owner','officer'].includes(d.guild?.role),active=o.status==='planned'&&o.expiresAt>d.serverNow;
  const taskRows=o.assignments.map(a=>'<li><span>'+esc(d.members.find(m=>m.id===a.playerId)?.name||'元メンバー')+(global.SengokuPublicCourt?.slot?.(a.playerId)||'')+'：'+esc(a.label)+'</span>'+((a.playerId===me.id||organizer)&&active?'<button class="button small" data-alliance="task" data-id="'+esc(o.id)+'" data-task="'+esc(a.id)+'" data-done="'+(!a.done)+'">'+(a.done?'完了済み':'完了にする')+'</button>':'<b>'+(a.done?'完了':'進行中')+'</b>')+'</li>').join('');
  const counts=['yes','maybe','no'].map(k=>labels[k]+' '+o.rsvps.filter(r=>r.response===k).length).join(' / ');
@@ -57,16 +76,16 @@ function operationCard(o,d,me){
  (active?'<div class="alliance-actions">'+['yes','maybe','no'].map(r=>'<button type="button" class="button small" data-alliance="rsvp" data-id="'+esc(o.id)+'" data-response="'+r+'">'+labels[r]+'</button>').join('')+button('map-focus','地図で見る',o.castleId)+'</div>':'')+
  (taskRows?'<ul class="alliance-tasks">'+taskRows+'</ul>':'')+
  (active&&organizer?'<form data-alliance-form="assignment" data-id="'+esc(o.id)+'" class="alliance-inline">'+select('playerId',d.members,me.id)+textInput('label','例：北支拠点を担当',80)+'<button class="button" type="submit">担当を追加</button></form>':'')+
- (active&&o.kind==='attack'?'<section class="alliance-rally"><h4>集結兵 '+num(o.troops)+' / 100,000人</h4><p>出陣者の軍団・研究・戦法を使用します。兵糧と指令は出陣者が支払い、占領した城と戦利品も出陣者へ反映します。生存兵は各参加者へ帰還します。</p><form data-alliance-form="rally" data-id="'+esc(o.id)+'" class="alliance-inline">'+field('提供する兵',amountInput('troops',1000))+'<button class="button" type="submit">兵を集結へ送る</button></form>'+(organizer?button('launch','この集結軍で出陣',o.id,o.startsAt>d.serverNow?' disabled':''):'')+'</section>':'')+
+ (active&&o.kind==='attack'?'<section class="alliance-rally"><h4>集結兵 '+num(o.troops)+' / 100,000人</h4><p>出陣者の軍団・研究・戦法を使用します。兵糧と指令は出陣者が支払い、占領した城と戦利品も出陣者へ反映します。生存兵は各参加者へ帰還します。</p><div data-alliance-advisor-operation="'+esc(o.id)+'">'+(global.SengokuBattleAdvisor?.markup(rallyAdvice(o,{...advisorContext,data:d,me}),{action:'rally-review',disabled:!organizer||advisorContext.blocked,showStyles:false,applyLabel:'この集結軍の出陣を確認',note:'現在の集結兵と作戦の戦法による推定です。確認画面で出陣を決めます。'})||'')+'</div><form data-alliance-form="rally" data-id="'+esc(o.id)+'" class="alliance-inline">'+field('提供する兵',amountInput('troops',1000))+'<button class="button" type="submit">兵を集結へ送る</button></form>'+(organizer?button('launch','この集結軍で出陣',o.id,o.startsAt>d.serverNow?' disabled':''):'')+'</section>':'')+
  (o.result?'<div class="alliance-result"><b>'+(o.result.won?'集結勝利':'集結撤退')+'</b><span>出陣 '+num(o.result.pooledTroops)+'人 / 損失 '+num(o.result.attackerLost)+'人</span></div>':'')+
  (active&&organizer?'<div class="alliance-actions">'+button('complete','作戦を完了',o.id)+button('cancel','作戦を中止',o.id)+'</div>':'')+'</article>';
 }
-function operationsView(d,me,targets){
+function operationsView(d,me,targets,advisorContext={}){
  if(!d.guild)return empty('同盟へ参加すると作戦予定表と地図マークを共有できます。');
  const castles=global.SENGOKU_DATA?.castles||[],targetOptions=[{id:'',name:'相手を選択（集合・防衛予定は省略可）'},...targets.filter(p=>!p.self&&p.playerId!==me.id).map(p=>({id:p.playerId+':'+(p.targetCastleId||p.homeCastleId),name:p.name+' / '+(p.targetCastleName||p.homeCastleName)}))];
  return'<section class="alliance-panel"><h2>同盟の作戦地図</h2><p>この地図の作戦マークは所属する仲間にだけ共有されます。</p><div class="alliance-map" data-alliance-map></div></section><details class="alliance-panel"><summary>新しい作戦・地図マークを登録</summary><form data-alliance-form="operation" class="alliance-form">'+field('作戦名',textInput('title','例：大坂城の東支拠点へ集結',60))+field('種類',select('kind',[{id:'attack',name:'集結攻撃'},{id:'defend',name:'防衛予定'},{id:'gather',name:'集合・打合せ'}],'attack'))+
  '<div class="alliance-target-load">'+button('targets','共通フィールドの領主を取得')+'</div>'+field('相手の領主と拠点',select('targetKey',targetOptions,''))+field('地図の城',select('castleId',castles,'osaka'))+field('攻撃対象',select('direction',[{id:'',name:'本城'},{id:'north',name:'北支拠点'},{id:'east',name:'東支拠点'},{id:'south',name:'南支拠点'},{id:'west',name:'西支拠点'}],''))+field('戦法',select('tactic',[{id:'balanced',name:'正攻法'},{id:'assault',name:'総攻撃'},{id:'siege',name:'包囲戦'},{id:'ambush',name:'伏兵'}],'balanced'))+
- field('開始（日本時間）','<input class="input" type="datetime-local" name="startsAt" value="'+inputDate(Date.now()+5*60000)+'" required>')+field('終了（日本時間・最大24時間）','<input class="input" type="datetime-local" name="expiresAt" value="'+inputDate(Date.now()+2*3600000)+'" required>')+field('作戦内容','<textarea class="input" name="note" maxlength="500" rows="3" placeholder="集合時刻や担当する支拠点を記入"></textarea>')+'<button class="button primary" type="submit">作戦を登録</button></form></details><div class="alliance-operations">'+(d.operations.map(o=>operationCard(o,d,me)).join('')||empty('作戦はまだありません。仲間と次の目標を決めましょう。'))+'</div>';
+ field('開始（日本時間）','<input class="input" type="datetime-local" name="startsAt" value="'+inputDate(Date.now()+5*60000)+'" required>')+field('終了（日本時間・最大24時間）','<input class="input" type="datetime-local" name="expiresAt" value="'+inputDate(Date.now()+2*3600000)+'" required>')+field('作戦内容','<textarea class="input" name="note" maxlength="500" rows="3" placeholder="集合時刻や担当する支拠点を記入"></textarea>')+'<button class="button primary" type="submit">作戦を登録</button></form></details><div class="alliance-operations">'+(d.operations.map(o=>operationCard(o,d,me,{...advisorContext,targets})).join('')||empty('作戦はまだありません。仲間と次の目標を決めましょう。'))+'</div>';
 }
 function unitsView(d,me){
  const own=d.units.filter(u=>u.ownerId===me.id),castles=global.SENGOKU_DATA?.castles||[];
@@ -110,7 +129,7 @@ function mount(host,opts={}){
   if(confirmation)content+='<section class="alliance-confirm" role="alertdialog" aria-label="操作の確認"><h3>'+esc(confirmation.title)+'</h3><p>'+esc(confirmation.message)+'</p><div class="alliance-actions">'+button('confirm','確認して実行')+button('dismiss','戻る')+'</div></section>';
   if(!d)content+=empty(model.loading?'同盟の情報を読み込んでいます。':'領主登録と接続状態を確認してください。');
   else content+='<div class="alliance-body"'+(model.sending?' aria-busy="true"':'')+'>'+(
-   tab==='operations'?operationsView(d,me,model.targets):tab==='units'?unitsView(d,me):tab==='members'?membershipView(d,me):tab==='policy'?policyView(d,me):contributionsView(d))+'</div>';
+   tab==='operations'?operationsView(d,me,model.targets,{game:opts.getGame?.(),rules:model.fieldRules,access:opts.getContext?.()||{},blocked:model.sending||Boolean(model.pending)}):tab==='units'?unitsView(d,me):tab==='members'?membershipView(d,me):tab==='policy'?policyView(d,me):contributionsView(d))+'</div>';
   const active=global.document?.activeElement,editing=active&&host.contains(active)&&/^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName);
   if(editing&&!confirmation&&!model.sending&&d&&host.querySelector('.alliance-body'))return;
   if(global.SengokuStableDOM)global.SengokuStableDOM.patch(host,content);else host.innerHTML=content;
@@ -121,7 +140,9 @@ function mount(host,opts={}){
  }
  function confirm(title,message,route,data){confirmation={title,message,route,data};render();host.querySelector('.alliance-confirm button')?.focus();}
  async function click(event){
-  const el=event.target.closest?.('[data-alliance]');if(!el||!host.contains(el)||el.disabled)return;const action=el.dataset.alliance,id=el.dataset.id,d=model?.data,me=identity();if(action==='tab'){tab=id;confirmation=null;render();return;}if(action==='refresh'){await controller.load();return;}if(action==='retry'){await controller.retry();return;}if(action==='targets'){await controller.loadTargets();return;}if(action==='dismiss'){confirmation=null;render();return;}
+  const el=event.target.closest?.('[data-alliance],[data-battle-advisor-action]');if(!el||!host.contains(el)||el.disabled)return;let action=el.dataset.alliance,id=el.dataset.id;const d=model?.data,me=identity();if(el.dataset.battleAdvisorAction==='rally-review'){
+   event.preventDefault();if(!d||model.sending||model.pending)return;id=el.closest('[data-alliance-advisor-operation]')?.dataset.allianceAdvisorOperation;const operation=d.operations.find(o=>o.id===id),advice=rallyAdvice(operation,{data:d,me,targets:model.targets,game:opts.getGame?.(),rules:model.fieldRules,access:opts.getContext?.()||{}});if(!advice?.ok){opts.onMessage?.(advice?.message||'最新の集結状況を確認してください。');return;}action='launch';
+  }if(action==='tab'){tab=id;confirmation=null;render();return;}if(action==='refresh'){await controller.load();return;}if(action==='retry'){await controller.retry();return;}if(action==='targets'){await controller.loadTargets();return;}if(action==='dismiss'){confirmation=null;render();return;}
   if(action==='confirm'){const c=confirmation;confirmation=null;if(c){await controller.send(c.route,c.data);}return;}
   if(action==='map-focus'){selectedCastle=id;map?.update({selectedId:id});map?.fit('selected',true);host.querySelector('[data-alliance-map]')?.scrollIntoView({behavior:'smooth',block:'nearest'});return;}
   if(!d||model.sending||model.pending)return;
@@ -160,5 +181,5 @@ function open(options={}){
  const controller=mount(dialog.querySelector('.alliance-dialog-content'),options),close=()=>{controller.destroy();dialog.close();dialog.remove();opened=null;before?.focus?.();};
  dialog.querySelector('[data-alliance-close]').addEventListener('click',close);dialog.addEventListener('cancel',e=>{e.preventDefault();close();});dialog.showModal();opened={controller,close};return opened;
 }
-const api={createController,mount,open,parseDate,inputDate,operationCard,policyView};global.SengokuAlliance=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;
+const api={createController,mount,open,parseDate,inputDate,operationCard,policyView,rallyAdvice};global.SengokuAlliance=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;
 })(typeof window!=='undefined'?window:globalThis);

@@ -487,6 +487,12 @@
     _baseGrantRank(id){const o=this.baseOfficer(id),rank=o?.rank||o?.rarity;return id===ADMIN_ASSETS.officerId&&rank==='U'&&!this.isAdmin?'SSS':rank;}
     gachaPool(rank){return RANKS.includes(rank)?this.roster.filter(o=>this.canOwnOfficerVariant(o.id,rank)):[];}
     unificationTarget(){return CASTLES.filter(c=>this.canOwnCastle(c.id)).length;}
+    getUnificationProof(){
+      // Recompute from eligible holdings. Saved flags, battle names and event
+      // results never establish campaign unification or change runtime roles.
+      const s=this.state,targetCastleIds=CASTLES.filter(c=>this.canOwnCastle(c.id)).map(c=>c.id),ownedCastleIds=targetCastleIds.filter(id=>s.castles[id]?.owner===s.clan);
+      return{version:1,campaignId:s.walking.campaignId,cycle:s.cycle?.index??Math.floor(s.turn/WORLD_CALENDAR.monthsPerCycle),clan:s.clan,home:s.home,role:this.isAdmin?'admin':this.isStaff?'staff':'player',worldId:s.worldClock?.id||'local',owned:ownedCastleIds.length,target:targetCastleIds.length,achieved:targetCastleIds.length>0&&ownedCastleIds.length===targetCastleIds.length,targetCastleIds,ownedCastleIds};
+    }
     _pruneBranches(){const s=this.state,prior=s.branches||[],branches=prior.filter(row=>BRANCH_BY_ID[row.id]&&s.castles[row.parentCastleId]?.owner===s.clan&&(row.parentCastleId!=='edo'||this.isAdmin)),ids=new Set(branches.map(row=>row.id)),jobs=s.jobs.filter(job=>job.kind!=='branch'||ids.has(job.id)),changed=prior.length!==branches.length||s.jobs.length!==jobs.length;if(prior.length!==branches.length)s.branches=branches;if(s.jobs.length!==jobs.length)s.jobs=jobs;return changed;}
     _updateCampaignOutcome(){const s=this.state;this._pruneBranches();s.won=CASTLES.filter(c=>this.canOwnCastle(c.id)).every(c=>s.castles[c.id].owner===s.clan);s.gameOver=!this.ownedCastles().length;if(s.gameOver)s.realtime.running=false;}
     _enforceAdminRestrictions(){
@@ -1055,6 +1061,59 @@
     attackBranch(branchId,tactic='balanced',troops=this.state.troops){
       const p=this.previewBranchBattle(branchId,tactic,troops);if(!p.ok)return{ok:false,code:p.code,message:p.message};const s=this.state,t=TACTICS.find(row=>row.id===tactic),won=this.random()<p.winChance/100,lostRate=won?clamp(.08+.19/Math.max(.5,p.ratio),.08,.32):clamp(.27+.13/Math.max(.4,p.ratio),.27,.65),medic=s.army.some(id=>this.officer(id)?.skill==='medic'),ourLost=Math.min(p.troops,Math.max(30,Math.round(p.troops*lostRate*t.loss*(.92+this.random()*.16)*(medic?.9:1))));this._pay({rice:p.foodCost});s.troops-=ourLost;if(won)this._fallBranch(branchId);
       const phases=[{title:'出陣',text:`${p.troops.toLocaleString()}の兵が${p.castleName}へ進軍。${t.name}を採用。`},{title:won?'支拠点陥落':'撤退',text:won?'支拠点の守りを突破しました。残る支拠点を落とすと親拠点を攻撃できます。':'支拠点の守りを突破できず、生存兵は帰還しました。'}],battle={won,castleId:p.parentCastleId,parentCastleId:p.parentCastleId,branchId,castleName:p.castleName,captured:false,ourBefore:p.troops,ourLost,enemyBefore:p.enemyTroops,enemyLost:won?p.enemyTroops:0,phases,rewards:{gold:0,rice:0,magatama:0},capturedOfficer:null,garrison:0,tactic,turn:s.turn};s.lastBattle=battle;return this._action(`${p.castleName}への攻撃に${won?'勝利し、支拠点を陥落させました':'敗れ、生存兵は帰還しました'}。`,'battle',{battle});
+    }
+    adviseBattle(options={}){
+      const invalid=message=>({ok:false,code:'INVALID_BATTLE_ADVICE',message,reasons:[message],alternatives:[]});
+      if(!options||typeof options!=='object'||Array.isArray(options))return invalid('戦場と軍師の方針を選んでください。');
+      const {mode='castle',targetId,style='balanced',reserveTroops=0,reserveRice=0,deploymentUnit}=options;
+      if(!['castle','branch','roaming'].includes(mode)||typeof targetId!=='string'||!targetId||typeof style!=='string'||!Object.hasOwn(STRATEGY_STYLES,style)||![reserveTroops,reserveRice].every(n=>Number.isSafeInteger(n)&&n>=0&&n<=ASSET_CAP))return invalid('戦場・方針・残す兵と兵糧の数値を確認してください。');
+      if(deploymentUnit!==undefined&&(mode!=='roaming'||!validRoamingUnit(deploymentUnit,targetId)||deploymentUnit.available!==undefined&&typeof deploymentUnit.available!=='boolean'))return invalid('地図の配置部隊を選び直してください。');
+      const policy={mode,targetId,style,reserveTroops,reserveRice};
+      if(deploymentUnit!==undefined)policy.deploymentUnit=Object.fromEntries(['unitId','castleId','encounterId','deploymentRevision','slot','troops','available'].filter(key=>deploymentUnit[key]!==undefined).map(key=>[key,deploymentUnit[key]]));
+      const s=this.state,roaming=mode==='roaming',maxTroops=Math.max(0,Math.min(s.troops-reserveTroops,roaming?this.troopCapacity():ASSET_CAP,roaming?1000000:ASSET_CAP)),minWinChance=roaming?100:STRATEGY_STYLES[style].minWinChance;
+      const unavailable=(message,code='BATTLE_UNAVAILABLE')=>({ok:false,mode,targetId,style,policy,maxTroops,minWinChance,code,message,reasons:[message],alternatives:[]});
+      const guard=this._guard();if(guard)return unavailable(guard.message,'BATTLE_GUARD');
+      if(maxTroops<300)return unavailable(reserveTroops?'残す兵を確保すると、出陣に必要な300人を用意できません。':'出陣に必要な300人を用意してください。','BATTLE_TROOPS');
+      if(s.resources.rice<reserveRice)return unavailable('残す兵糧を確保できるまで出陣を見合わせてください。','BATTLE_RICE');
+      const tactics=roaming?ROAMING_TACTICS:TACTICS,preview=(tactic,troops)=>mode==='branch'?this.previewBranchBattle(targetId,tactic,troops):roaming?this.previewRoamingBattle(targetId,tactic,troops,deploymentUnit!==undefined?{deploymentUnit}:{}):this.previewBattle(targetId,tactic,troops);
+      const chance=p=>roaming?(p.predictedWin?100:0):p.winChance,candidates=[],medic=s.army.some(id=>this.officer(id)?.skill==='medic')?.9:1;
+      let blocked=null;
+      // Only existing previews are evaluated: no RNG, state copies that run a
+      // constructor, clocks, saves, rewards or battle execution are involved.
+      for(const tactic of tactics){
+        const rate=(roaming?.24:.3)*tactic.food,baseCost=roaming?120:150,budget=s.resources.rice-reserveRice;
+        let available=Math.min(maxTroops,Math.floor((budget-baseCost)/rate));
+        while(available>=300&&Math.ceil(available*rate)+baseCost>budget)available--;
+        if(available<300)continue;
+        const largest=preview(tactic.id,available);
+        if(!largest.ok){blocked=blocked||largest;continue;}
+        // The preview's chance is monotone in deployed troops. Binary search
+        // finds legal thresholds exactly, including rounded castle chances and
+        // the deterministic roaming win boundary, without a troop-sized loop.
+        const firstAtChance=threshold=>{
+          if(chance(largest)<threshold)return null;
+          let low=300,high=available;
+          while(low<high){const middle=low+Math.floor((high-low)/2),p=preview(tactic.id,middle);if(p.ok&&chance(p)>=threshold)high=middle;else low=middle+1;}
+          return low;
+        };
+        const minimum=firstAtChance(minWinChance),strongest=firstAtChance(chance(largest)),troopOptions=new Set([300,available,minimum,strongest,Math.ceil(available*.25),Math.ceil(available*.5),Math.ceil(available*.75),minimum===null?null:Math.ceil((minimum+available)/2)]);
+        for(const troops of troopOptions){
+          if(!Number.isSafeInteger(troops)||troops<300||troops>available)continue;
+          const p=preview(tactic.id,troops);if(!p.ok||s.resources.rice-p.foodCost<reserveRice)continue;
+          const winChance=chance(p),winRate=clamp(.08+.19/Math.max(.5,p.ratio),.08,.32),loseRate=clamp(.27+.13/Math.max(.4,p.ratio),.27,.65);
+          const lossAt=rate=>Math.min(troops,Math.max(30,Math.round(troops*rate*tactic.loss*medic))),estimatedLoss=roaming?p.expectedLoss:Math.round(lossAt(winRate)*winChance/100+lossAt(loseRate)*(1-winChance/100));
+          const score=style==='conserve'?-estimatedLoss-p.foodCost*.08+winChance:style==='rapid'?winChance*30-estimatedLoss*.1-p.foodCost*.015:winChance*12-estimatedLoss*.35-p.foodCost*.035;
+          candidates.push({mode,targetId,targetName:p.castleName||p.encounter?.name||targetId,...(mode==='castle'?{castleId:targetId}:mode==='branch'?{branchId:targetId,castleId:p.parentCastleId,parentCastleId:p.parentCastleId}:{encounterId:targetId,...(deploymentUnit?{unitId:deploymentUnit.unitId,deploymentRevision:deploymentUnit.deploymentRevision}:{})}),tactic:tactic.id,tacticName:tactic.name,troops,foodCost:p.foodCost,commandCost:1,winChance,estimatedLoss,attackPower:p.attackPower,defensePower:p.defensePower??p.enemyPower,enemyTroops:p.enemyTroops,deterministic:roaming,...(roaming?{predictedWin:p.predictedWin}:{}),reserveAfter:{troops:s.troops-troops,rice:s.resources.rice-p.foodCost},meetsGoal:winChance>=minWinChance,score:Math.round(score*100)/100});
+        }
+      }
+      if(!candidates.length){const p=blocked||preview(tactics[0].id,Math.min(maxTroops,300));return unavailable(p.ok?'残す兵糧と出陣費用を確保できるまで出陣を見合わせてください。':p.message,p.code||'BATTLE_RICE');}
+      const hasSafeChoice=candidates.some(c=>c.meetsGoal),choices=hasSafeChoice?candidates.filter(c=>c.meetsGoal):candidates;
+      choices.sort((a,b)=>(hasSafeChoice?0:b.winChance-a.winChance)||b.score-a.score||a.foodCost-b.foodCost||a.troops-b.troops||a.tactic.localeCompare(b.tactic));
+      const chosen=choices[0],alternatives=[];
+      for(const candidate of choices)if(candidate.tactic!==chosen.tactic&&!alternatives.some(row=>row.tactic===candidate.tactic)){alternatives.push(copy(candidate));if(alternatives.length===3)break;}
+      const labels={conserve:'兵の損耗と兵糧消費を抑える',balanced:'勝率・損耗・兵糧の釣り合いを取る',rapid:'勝率を優先して攻略を進める'},reasons=[`${labels[style]}方針で、${chosen.tacticName}と兵${chosen.troops.toLocaleString()}人を提案します。`,roaming?`現在の戦力と相性では${chosen.predictedWin?'勝利':'敗北'}予測です。予想損失は${chosen.estimatedLoss.toLocaleString()}人です。`:`予想勝率${chosen.winChance}%、予想損失${chosen.estimatedLoss.toLocaleString()}人です。勝利を保証するものではありません。`,`出陣費用は兵糧${chosen.foodCost.toLocaleString()}。出陣中も兵${chosen.reserveAfter.troops.toLocaleString()}人・兵糧${chosen.reserveAfter.rice.toLocaleString()}を残せます。`];
+      if(!chosen.meetsGoal)reasons.unshift(roaming?'現在の条件では勝利できる編成がありません。増兵・編成・訓練を整えて再評価してください。':`方針の目安である勝率${minWinChance}%に届きません。増兵・編成・訓練を整えてからの出陣を勧めます。`);
+      return{ok:true,...chosen,style,policy,maxTroops,minWinChance,caution:!chosen.meetsGoal,recommendation:chosen.meetsGoal?'attack':'prepare',message:reasons[0],reasons,alternatives};
     }
     compileStrategy(input){
       if(typeof input!=='string'||Array.from(input).length>500||!input.trim())return{ok:false,code:'STRATEGY_TEXT_REQUIRED',message:'作戦を500文字以内で入力してください。',warnings:[]};

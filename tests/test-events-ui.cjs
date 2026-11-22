@@ -1,10 +1,17 @@
 'use strict';
 // In-memory event fixtures only. No real API, account, save, battle or mail is changed.
 const assert = require('node:assert/strict');
-const { createController, createUI, cleanEvent, cleanProgress, cleanLeaderboard, detailMarkup, leaderboardMarkup } = require('../events.js');
+const { createController, createUI, cleanEvent, cleanProgress, cleanLeaderboard, cleanCatalog, selectedAdvice, adviserMarkup, outcomeMarkup, catalogOptionsMarkup, catalogSelectionMarkup, detailMarkup, battleMarkup, leaderboardMarkup } = require('../events.js');
 const clone = value => JSON.parse(JSON.stringify(value));
 const tests = [], test = (name, run) => tests.push([name, run]);
 const NOW = Date.parse('2026-11-22T03:00:00Z'), OWNER = 'u_' + '1'.repeat(32), OTHER = 'u_' + '2'.repeat(32);
+const BATTLE_ID = 'history:kawanakajima';
+const catalogFixture = () => [
+  { id: BATTLE_ID, name: '川中島の戦い', category: 'historical', themeId: 'river', unificationEligible: false, description: '川辺で三つの戦場に挑む合戦。' },
+  { id: 'history:sekigahara', name: '関ヶ原の戦い', category: 'historical', themeId: 'plain', unificationEligible: true, description: '全戦場の勝利と最終戦功で天下統一。' },
+  { id: 'castle:edo', name: '江戸城の戦い', category: 'castle', themeId: 'castle', unificationEligible: false, description: '江戸城を舞台にした城攻め。' },
+  { id: 'roaming:bandits', name: '街道の野盗', category: 'roaming', themeId: 'forest', unificationEligible: false, description: '街道に現れた野良兵。' }
+];
 const deferred = () => { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
 const drain = async () => { for (let index = 0; index < 16; index++) await Promise.resolve(); };
 function eventFixture(extra = {}) {
@@ -21,15 +28,29 @@ function eventFixture(extra = {}) {
 }
 const draftFixture = (extra = {}) => eventFixture({ status: 'draft', startsAt: null, endsAt: null, ...extra });
 const progressFixture = (extra = {}) => ({ points: 0, wins: 0, battles: 0, command: { available: 3, max: 3, cost: 1 }, rewards: [], ...extra });
+function catalogEventFixture(battleId = BATTLE_ID, extra = {}) {
+  const battle = catalogFixture().find(item => item.id === battleId), event = eventFixture({ name: battle.name, ...extra });
+  event.plan.battleId = battle.id; event.plan.battle = clone(battle);
+  event.plan.ending = { kind: battle.unificationEligible ? 'unification' : 'victory', requiredStageIds: event.plan.stages.map(stage => stage.id), requiredPoints: 600, reward: battle.unificationEligible ? 'shogunate_right' : null };
+  event.plan.battleRewards = { victory: event.plan.stages.map((_, i) => ({ gold: 100 * (i + 1), rice: 100, wood: 30, stone: 20, magatama: 0 })), defeat: event.plan.stages.map(() => ({ gold: 20, rice: 30, wood: 0, stone: 0, magatama: 0 })) };
+  return event;
+}
+function advisedProgressFixture(event = catalogEventFixture(), extra = {}) {
+  return progressFixture({ advisers: event.plan.stages.map(stage => {
+    const options = event.plan.tactics.map(tactic => ({ tactic: tactic.id, tacticName: tactic.name, winChance: tactic.id === 'charge' ? 80 : 52, playerPower: tactic.id === 'charge' ? 1900 : 1200, enemyPower: stage.enemyPower }));
+    return { stageId: stage.id, ...options.find(item => item.tactic === 'charge'), reason: '現在の軍団では武勇を生かした突撃が有利です。', options };
+  }), unification: { eligible: event.plan.ending.kind === 'unification', clearedStageIds: [], requiredStageIds: event.plan.stages.map(stage => stage.id), points: 0, requiredPoints: 600, achieved: false, earnedAt: null }, ...extra });
+}
 const evaluationFixture = { version: 1, score: 32000, maxScore: 100000, rankIndex: 6, rankId: 'court-6', rankName: '従五位下' };
 const rankFixture = () => [{ rank: 1, playerId: OTHER, name: '甲斐の領主', avatarVersion: 'c'.repeat(64), evaluation: evaluationFixture, points: 350, wins: 3, battles: 3, isAdmin: true, isStaff: true }];
 const contextFixture = (admin = false) => ({ epoch: 1, privilegeEpoch: 1, accountEpoch: 1, playerId: OWNER, user: { id: OWNER, name: '越後の領主', isAdmin: admin, isStaff: false }, isAdmin: admin, connected: true, pending: false, banned: false });
 function storageFixture() { const values = new Map(); return { getItem: key => values.get(key) || null, setItem: (key, value) => values.set(key, String(value)), removeItem: key => values.delete(key), values }; }
-function setup({ admin = false, context = contextFixture(admin), events = [eventFixture()], progress = progressFixture(), storage = storageFixture() } = {}) {
+function setup({ admin = false, context = contextFixture(admin), events = [eventFixture()], progress = progressFixture(), storage = storageFixture(), catalog = catalogFixture() } = {}) {
   let access = clone(context), clock = NOW, handler, sequence = 0, committed = 0;
-  const calls = [], changes = [], receipts = new Map(), server = { events: clone(events), progress: clone(progress), leaderboard: rankFixture() };
+  const calls = [], changes = [], receipts = new Map(), server = { events: clone(events), progress: clone(progress), leaderboard: rankFixture(), catalog: clone(catalog) };
   const base = async (route, settings) => {
     if (settings.method !== 'POST') {
+      if (route === '/events/catalog') return { ok: true, version: 1, battles: clone(server.catalog) };
       if (route === '/events' || route === '/admin/events') return { ok: true, serverNow: new Date(clock).toISOString(), events: clone(server.events.filter(event => event.status !== 'discarded' && (route === '/admin/events' || event.status !== 'draft'))) };
       const event = server.events.find(event => '/events/' + event.id === route); assert(event, 'Unknown fixture read: ' + route);
       return { ok: true, serverNow: new Date(clock).toISOString(), event: clone(event), progress: access.user ? clone(server.progress) : null, leaderboard: clone(server.leaderboard) };
@@ -37,7 +58,7 @@ function setup({ admin = false, context = contextFixture(admin), events = [event
     const data = settings.data;
     if (receipts.has(data.requestId)) return { ...clone(receipts.get(data.requestId)), idempotent: true };
     let event, result;
-    if (route === '/admin/events/generate') { event = draftFixture({ id: 'ev_' + String(++committed).padStart(32, '0'), name: data.name, durationDays: data.durationDays }); server.events.unshift(event); }
+    if (route === '/admin/events/generate') { assert(server.catalog.some(item => item.id === data.battleId)); event = catalogEventFixture(data.battleId, { status: 'draft', startsAt: null, endsAt: null, id: 'ev_' + String(++committed).padStart(32, '0'), durationDays: data.durationDays }); server.events.unshift(event); }
     else {
       event = server.events.find(event => route.includes('/' + event.id + '/')); assert(event, 'Unknown fixture mutation: ' + route);
       if (route.endsWith('/publish')) { assert.equal(event.status, 'draft'); event.status = 'active'; event.startsAt = new Date(clock).toISOString(); event.endsAt = new Date(clock + event.durationDays * 86400000).toISOString(); }
@@ -54,7 +75,7 @@ function setup({ admin = false, context = contextFixture(admin), events = [event
     }
     result = { ok: true, serverNow: new Date(clock).toISOString(), event: clone(event), ...result, idempotent: false }; receipts.set(data.requestId, clone(result)); return result;
   };
-  const options = { now: () => clock, uuid: () => 'event_request_' + ++sequence, storage, getContext: () => clone(access), request: (route, settings = { method: 'GET' }) => { calls.push({ route, settings: clone(settings) }); return handler ? handler(route, settings, base) : base(route, settings); }, onChange: state => changes.push(state) };
+  const options = { now: () => clock, uuid: () => 'event_request_' + ++sequence, storage, catalog: clone(catalog), getContext: () => clone(access), request: (route, settings = { method: 'GET' }) => { calls.push({ route, settings: clone(settings) }); return handler ? handler(route, settings, base) : base(route, settings); }, onChange: state => changes.push(state) };
   const controller = createController(options);
   return { controller, options, calls, changes, server, storage, receipts, base, posts: () => calls.filter(call => call.settings.method === 'POST'), commits: () => committed, setContext(value) { access = clone(value); }, context: () => clone(access), setHandler(value) { handler = value; }, advance(ms) { clock += ms; } };
 }
@@ -81,11 +102,11 @@ test('staff, banned users and unverified self identity cannot open the admin scr
   }
 });
 
-test('name and duration validation precede generation, and an accepted draft remains unpublished', async () => {
+test('catalog selection and duration validation precede generation, and an accepted draft remains unpublished', async () => {
   const s = setup({ admin: true, events: [] }); await s.controller.open({ admin: true });
-  for (const [name, days] of [['', 3], ['あ'.repeat(61), 1], ['合戦', 0], ['合戦', 8], ['合戦', 1.5], ['合\n戦', 3]]) { s.controller.setDraft(name, days); assert.equal(await s.controller.generate(), false); }
-  assert.equal(s.posts().length, 0); s.controller.setDraft('  川中島・霧の決戦  ', 7); assert(await s.controller.generate());
-  assert.equal(s.posts()[0].route, '/admin/events/generate'); assert.equal(s.posts()[0].settings.data.name, '川中島・霧の決戦'); assert.equal(s.posts()[0].settings.data.durationDays, 7); assert.equal(s.controller.getState().event.status, 'draft'); assert(!s.posts().some(call => call.route.endsWith('/publish'))); s.controller.dispose();
+  for (const [id, days] of [['', 3], ['自由に付けた合戦名', 1], [BATTLE_ID, 0], [BATTLE_ID, 8], [BATTLE_ID, 1.5], ['history:unknown', 3]]) { s.controller.setDraft(id, days); assert.equal(await s.controller.generate(), false); }
+  assert.equal(s.posts().length, 0); s.controller.setDraft(BATTLE_ID, 7); assert(await s.controller.generate());
+  assert.equal(s.posts()[0].route, '/admin/events/generate'); assert.deepEqual(Object.keys(s.posts()[0].settings.data).sort(), ['battleId', 'durationDays', 'requestId']); assert.equal(s.posts()[0].settings.data.battleId, BATTLE_ID); assert.equal(s.posts()[0].settings.data.durationDays, 7); assert.equal(s.controller.getState().event.status, 'draft'); assert.equal(s.controller.getState().event.name, '川中島の戦い'); assert(!s.posts().some(call => call.route.endsWith('/publish'))); s.controller.dispose();
 });
 
 test('publishing, ending and discarding require their own reviewed confirmation', async () => {
@@ -119,7 +140,7 @@ test('a committed response lost in transit is recovered after reload from the pe
 });
 
 test('generation with an uncertain outcome is resumed in the authorized admin mode', async () => {
-  const s = setup({ admin: true, events: [] }); await s.controller.open({ admin: true }); s.controller.setDraft('七日間の決戦', 7);
+  const s = setup({ admin: true, events: [] }); await s.controller.open({ admin: true }); s.controller.setDraft(BATTLE_ID, 7);
   let lost = false; s.setHandler(async (route, settings, base) => { const result = await base(route, settings); if (settings.method === 'POST' && !lost) { lost = true; throw Error('Response lost'); } return result; });
   assert.equal(await s.controller.generate(), false); const id = s.posts()[0].settings.data.requestId; s.controller.close(); await s.controller.open(); assert.equal(s.controller.getState().admin, true); assert(await s.controller.retry()); assert.equal(s.posts()[1].settings.data.requestId, id); assert.equal(s.server.events.length, 1); s.controller.dispose();
 });
@@ -145,7 +166,7 @@ test('late personal results cannot cross an account or privilege epoch change', 
 });
 
 test('operator removal immediately drops the private view and refuses its in-flight draft', async () => {
-  const s = setup({ admin: true }), wait = deferred(); await s.controller.open({ admin: true }); s.controller.setDraft('秘密の下書き', 3);
+  const s = setup({ admin: true }), wait = deferred(); await s.controller.open({ admin: true }); s.controller.setDraft(BATTLE_ID, 3);
   s.setHandler(async (route, settings, base) => { if (settings.method === 'POST') { const result = await base(route, settings); await wait.promise; return result; } return base(route, settings); });
   const sending = s.controller.generate(); await drain(); s.setContext({ ...contextFixture(false), privilegeEpoch: 2 }); await s.controller.refreshAccess(); wait.resolve(); assert.equal(await sending, false); const state = s.controller.getState(); assert.equal(state.open, false); assert.equal(state.authorized, false); assert.equal(state.name, ''); assert.equal(state.event, null); assert.equal(state.pending, null); s.controller.dispose();
 });
@@ -212,6 +233,67 @@ test('rendering escapes supplied text and keeps avatar, premium name and rank in
   global.SengokuAvatar = { markup: player => '<span class="avatar-fixture" data-player-avatar="' + player.id + '"></span>' }; global.SengokuEvaluationUI = { badge: () => '<span class="rank-fixture">位階</span>' }; global.SengokuPremiumRuntime = { nameMarkup: name => name };
   const ranks = leaderboardMarkup(cleanLeaderboard(rankFixture()), eventFixture()); assert(ranks.indexOf('avatar-fixture') < ranks.indexOf('data-premium-player=')); assert(ranks.indexOf('data-premium-player=') < ranks.indexOf('rank-fixture')); assert(!ranks.includes('isAdmin')); assert(!ranks.includes('isStaff'));
   [global.SengokuAvatar, global.SengokuEvaluationUI, global.SengokuPremiumRuntime] = prior;
+});
+
+test('the full canonical catalog retains all castle and roaming battles and rejects invalid duplicate IDs', () => {
+  const { SENGOKU_DATA } = require('../engine.js'), source = require('../battle-catalog.js').list(SENGOKU_DATA), catalog = cleanCatalog(source);
+  assert(catalog); assert.equal(catalog.filter(item => item.category === 'castle').length, SENGOKU_DATA.castles.length); assert.equal(catalog.filter(item => item.category === 'roaming').length, SENGOKU_DATA.roaming.encounters.length);
+  assert(catalog.some(item => item.id === 'history:sekigahara' && item.unificationEligible));
+  assert.equal(cleanCatalog([...source, source[0]]), null); assert.equal(cleanCatalog([{ ...source[0], id: 'history:../other' }]), null);
+});
+
+test('catalog plans validate rewards and all unification requirements while old plans remain accepted', () => {
+  const raw = catalogEventFixture('history:sekigahara'), event = cleanEvent(raw); assert(event); assert.equal(event.plan.battleId, 'history:sekigahara'); assert.equal(event.plan.ending.reward, 'shogunate_right');
+  for (const mutate of [plan => plan.battle.id = BATTLE_ID, plan => plan.ending.requiredStageIds[1] = plan.ending.requiredStageIds[0], plan => plan.battleRewards.victory[0].gold = -1, plan => plan.battle.unificationEligible = false]) { const value = clone(raw); mutate(value.plan); assert.equal(cleanEvent(value), null); }
+  const ordinary = cleanEvent(catalogEventFixture()); assert(ordinary); assert(!outcomeMarkup(ordinary, null).includes('幕府を開く')); assert(cleanEvent(eventFixture()));
+});
+
+test('adviser and unification progress is bounded and earned status requires every server condition', () => {
+  const event = catalogEventFixture('history:sekigahara'), progress = advisedProgressFixture(event); assert(cleanProgress(progress));
+  for (const mutate of [value => value.advisers[0].winChance = 101, value => value.advisers[0].options = [], value => value.advisers[1].stageId = value.advisers[0].stageId, value => value.unification.achieved = true]) { const value = clone(progress); mutate(value); assert.equal(cleanProgress(value), undefined); }
+  progress.points = 600; Object.assign(progress.unification, { achieved: true, points: 600, clearedStageIds: [...progress.unification.requiredStageIds], earnedAt: new Date(NOW).toISOString() });
+  const clean = cleanProgress(progress); assert(clean); assert.equal(clean.unification.achieved, true); assert(outcomeMarkup(cleanEvent(event), clean).includes('data-events="shogunate"'));
+});
+
+test('old saved generation requests can recover their original receipt without permitting new free names', async () => {
+  const s = setup({ admin: true, events: [] }), event = draftFixture({ name: '以前の自由名の合戦' }), requestId = 'old-generation-request';
+  const pending = { ownerId: OWNER, kind: 'generate', route: '/admin/events/generate', eventId: '', data: { name: event.name, durationDays: 3, requestId } };
+  s.storage.setItem('sengoku-events-pending-v1:' + OWNER, JSON.stringify(pending)); s.receipts.set(requestId, { ok: true, event, serverNow: new Date(NOW).toISOString() }); s.controller.dispose();
+  const restored = createController(s.options); await restored.open(); assert.equal(restored.getState().admin, true); assert(await restored.retry()); assert.deepEqual(s.posts()[0].settings.data, pending.data); assert.equal(restored.getState().pending, null);
+  restored.setDraft(event.name, 3); assert.equal(await restored.generate(), false); assert.equal(s.posts().length, 1); restored.dispose();
+});
+
+test('a mismatched generated catalog response stays recoverable and never publishes another selection', async () => {
+  const s = setup({ admin: true, events: [] }); await s.controller.open({ admin: true }); s.controller.setDraft('history:sekigahara', 3);
+  s.setHandler(async (route, settings, base) => { const result = await base(route, settings); if (route === '/admin/events/generate') result.event = catalogEventFixture(BATTLE_ID, { status: 'draft', startsAt: null, endsAt: null }); return result; });
+  assert.equal(await s.controller.generate(), false); assert(s.controller.getState().pending); assert.equal(s.controller.getState().event, null); assert.equal(s.posts().length, 1); s.controller.dispose();
+});
+
+test('cached catalog choices remain usable during a catalog refresh failure', async () => {
+  const s = setup({ admin: true, events: [] }); s.setHandler((route, settings, base) => { if (route === '/events/catalog') throw Error('Offline catalog'); return base(route, settings); });
+  assert(await s.controller.open({ admin: true })); assert.equal(s.controller.getState().catalog.length, catalogFixture().length); assert(s.controller.getState().catalogMessage.includes('登録済み'));
+  s.controller.setDraft(BATTLE_ID, 3); assert(await s.controller.generate()); s.controller.dispose();
+});
+
+test('adviser application changes only the chosen tactic and the existing battle route spends the command', async () => {
+  const event = catalogEventFixture(), s = setup({ events: [event], progress: advisedProgressFixture(event) }); await s.controller.open();
+  const before = clone(s.controller.getState().progress); assert.equal(selectedAdvice(s.controller.getState()).tactic, 'charge'); assert(s.controller.applyAdvice());
+  assert.equal(s.controller.getState().tactic, 'charge'); assert.equal(s.posts().length, 0); assert.deepEqual(s.controller.getState().progress, before); assert(adviserMarkup(s.controller.getState()).includes('80'));
+  assert(await s.controller.battle()); assert.equal(s.posts()[0].settings.data.tactic, 'charge'); assert.equal(s.controller.getState().progress.command.available, before.command.available - 1); s.controller.dispose();
+});
+
+test('battle rewards show actual grants and caps separately from milestone mail and legacy battles', async () => {
+  const s = setup(); await s.controller.open();
+  s.setHandler(async (route, settings, base) => { const result = await base(route, settings); if (route.endsWith('/battle')) { result.battle.rewards = { gold: 30, rice: 0, wood: 0, stone: 0, magatama: 0 }; result.battle.offeredRewards = { gold: 100, rice: 100, wood: 0, stone: 0, magatama: 0 }; } return result; });
+  assert(await s.controller.battle()); const state = s.controller.getState(), html = battleMarkup(state.battle, state.rewardMailIds);
+  assert.equal(state.battle.rewards.gold, 30); assert(html.includes('今回の合戦報酬')); assert(html.includes('所持上限')); assert(html.includes('システム便')); assert(!battleMarkup({ ...state.battle, rewards: undefined }, []).includes('今回の合戦報酬')); s.controller.dispose();
+});
+
+test('catalog and adviser text is escaped and a legacy adviser does not invent a win rate', () => {
+  const catalog = catalogFixture(); catalog[0].name = '<img src=x onerror=alert(1)>'; catalog[0].description = '<script>alert(1)</script>';
+  const state = { catalog, catalogQuery: '', catalogCategory: '', battleId: BATTLE_ID, event: cleanEvent(eventFixture()), stageId: 'stage_1', tactic: 'balanced', signedIn: true };
+  for (const html of [catalogOptionsMarkup(state), catalogSelectionMarkup(state)]) { assert(!html.includes('<img src=x')); assert(!html.includes('<script>')); }
+  const html = adviserMarkup(state); assert(html.includes('戦場の地形から提案')); assert(!html.includes('<dt>勝利予測</dt>')); assert.equal(selectedAdvice(state).exact, false);
 });
 
 // Small DOM fixture used by the existing UI tests, extended with form/class state.
@@ -284,8 +366,8 @@ test('the one-second UI tick reflects command recovery without a fetch, form rep
 });
 
 test('admin input survives refresh and the UI confirms publication without losing the draft review', async () => {
-  const s = uiSetup({ admin: true, events: [draftFixture()] }); await s.ui.open({ admin: true }); const input = s.get('#events-name'), main = s.get('[data-events-main]');
-  input.value = '次の新しい決戦'; input.focus(); s.get('#events-dialog').dispatch('input', input); main.scrollTop = 310; await s.ui.refresh(); assert.equal(s.get('#events-name'), input); assert.equal(input.value, '次の新しい決戦'); assert.equal(s.doc.activeElement, input); assert.equal(main.scrollTop, 310);
+  const s = uiSetup({ admin: true, events: [draftFixture()] }); await s.ui.open({ admin: true }); const input = s.get('#events-battle'), main = s.get('[data-events-main]');
+  input.value = 'history:sekigahara'; input.focus(); s.get('#events-dialog').dispatch('change', input); main.scrollTop = 310; await s.ui.refresh(); assert.equal(s.get('#events-battle'), input); assert.equal(input.value, 'history:sekigahara'); assert.equal(s.doc.activeElement, input); assert.equal(main.scrollTop, 310);
   assert.equal(s.get('[data-events-generator]').hidden, false); assert(s.get('[data-events-detail]').textContent.includes('5つの戦術')); assert(s.get('[data-events="discard"]'));
   s.click('[data-events="publish"]'); assert.equal(s.get('[data-events-confirm]').hidden, false); assert(s.get('[data-events-confirm]').textContent.includes('3日間')); assert.equal(s.posts().length, 0); s.click('[data-events="confirm"]'); await drain(); assert.equal(s.posts().length, 1); assert.equal(s.controller.getState().event.status, 'active'); s.ui.dispose();
 });
@@ -298,11 +380,38 @@ test('the native tactic control has five choices, keyboard stage selection works
 
 test('admin identity loss clears the private modal DOM and a public view has no management controls', async () => {
   const s = uiSetup({ admin: true, events: [draftFixture({ name: '公開しない計画' })] }); await s.ui.open({ admin: true }); assert(s.get('[data-events-detail]').textContent.includes('公開しない計画'));
-  s.controller.setDraft('入力中の非公開名', 7); assert.equal(s.get('#events-name').value, '入力中の非公開名');
-  s.setContext({ ...contextFixture(false), privilegeEpoch: 2 }); await s.ui.refreshAccess(); assert.equal(s.get('#events-dialog').open, false); assert.equal(s.get('[data-events-detail]').textContent, ''); assert.equal(s.get('[data-events-list]').textContent, ''); assert.equal(s.get('#events-name').value, '');
+  s.controller.setDraft('history:sekigahara', 7); assert.equal(s.get('#events-battle').value, 'history:sekigahara');
+  s.setContext({ ...contextFixture(false), privilegeEpoch: 2 }); await s.ui.refreshAccess(); assert.equal(s.get('#events-dialog').open, false); assert.equal(s.get('[data-events-detail]').textContent, ''); assert.equal(s.get('[data-events-list]').textContent, ''); assert.equal(s.get('#events-battle').value, '');
   await s.ui.open(); assert.equal(s.get('[data-events-generator]').hidden, true); assert.equal(s.get('[data-events="publish"]'), null); assert(s.get('[data-events-list]').textContent.includes('現在、催事・合戦はありません')); s.ui.dispose();
+});
+
+test('catalog search and categories filter selectable battles while preserving the reviewed choice', async () => {
+  const s = uiSetup({ admin: true, events: [] }); await s.ui.open({ admin: true }); assert.equal(s.get('#events-name'), null);
+  const search = s.get('#events-search'), category = s.get('#events-category'), battles = s.get('#events-battle');
+  search.value = '関ケ原'; search.focus(); s.get('#events-dialog').dispatch('input', search); assert(s.get('[data-events-catalog-count]').textContent.startsWith('1件')); assert(battles.innerHTML.includes('関ヶ原')); assert(!battles.innerHTML.includes('江戸城'));
+  battles.value = 'history:sekigahara'; s.get('#events-dialog').dispatch('change', battles); assert(s.get('[data-events-selection]').textContent.includes('幕府開設権')); assert.equal(s.get('[data-events-generate-submit]').disabled, false);
+  search.value = ''; s.get('#events-dialog').dispatch('input', search); category.value = 'castle'; s.get('#events-dialog').dispatch('change', category);
+  assert(s.get('[data-events-catalog-count]').textContent.startsWith('1件')); assert(battles.innerHTML.includes('江戸城')); assert.equal(battles.value, 'history:sekigahara'); assert(battles.innerHTML.includes('選択中'));
+  await s.ui.refresh(); assert.equal(s.get('#events-search'), search); assert.equal(category.value, 'castle'); assert.equal(s.controller.getState().battleId, 'history:sekigahara'); s.ui.dispose();
+});
+
+test('the adviser UI applies the authoritative tactic without sending or replacing the battle form', async () => {
+  const event = catalogEventFixture(), s = uiSetup({ events: [event], progress: advisedProgressFixture(event) }); await s.ui.open(); const tactic = s.get('#events-tactic');
+  assert(s.get('[data-event-adviser]').textContent.includes('軍師AI')); assert(s.get('[data-event-adviser]').textContent.includes('80')); assert.equal(s.get('[data-events="advice"]').disabled, false);
+  s.click('[data-events="advice"]'); assert.equal(tactic.value, 'charge'); assert.equal(s.get('#events-tactic'), tactic); assert.equal(s.doc.activeElement, tactic); assert.equal(s.posts().length, 0); assert.equal(s.get('[data-events="advice"]').disabled, true); s.ui.dispose();
+});
+
+test('the shogunate entry appears only after earned event unification and opens the existing destination', async () => {
+  const event = catalogEventFixture('history:sekigahara'), progress = advisedProgressFixture(event), s = uiSetup({ events: [event], progress });
+  const previous = global.SengokuShogunate; let opened = 0; global.SengokuShogunate = { open: () => opened++ };
+  try {
+    await s.ui.open(); assert.equal(s.get('[data-events="shogunate"]'), null); assert(s.get('[data-event-outcome]').textContent.includes('本領の城の所有は変わりません'));
+    s.server.progress.points = 600; Object.assign(s.server.progress.unification, { points: 600, achieved: true, earnedAt: new Date(NOW).toISOString(), clearedStageIds: [...event.plan.ending.requiredStageIds] });
+    await s.ui.refresh(); assert(s.get('[data-events="shogunate"]')); assert.equal(opened, 0); s.click('[data-events="shogunate"]'); assert.equal(opened, 1); assert.equal(s.get('#events-dialog').open, false);
+  } finally { global.SengokuShogunate = previous; s.ui.dispose(); }
 });
 
 async function run() { let failed = 0; for (const [name, body] of tests) { try { await body(); console.log('PASS', name); } catch (error) { failed++; console.error('FAIL', name, error.stack || error); } } console.log(`${tests.length - failed}/${tests.length} events UI checks passed`); if (failed) process.exitCode = 1; }
 if (require.main === module) run();
-module.exports = { eventFixture, draftFixture, progressFixture, rankFixture, contextFixture, storageFixture, setup, documentFixture };
+module.exports = { eventFixture, draftFixture, progressFixture, catalogFixture, catalogEventFixture, advisedProgressFixture, rankFixture, contextFixture, storageFixture, setup, documentFixture };
+

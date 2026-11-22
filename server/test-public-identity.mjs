@@ -94,14 +94,14 @@ await scope('site mail and event publication omit the managing player identity',
   assert.equal(mail.source,'site');assert.equal(mail.body,body);assert.equal(mail.gift.gold,5);assert.equal(mail.event,null);
   for(const key of ['senderId','sender_id','authorId','authorName','authorAvatarVersion','authorEvaluation','authorAppearance','createdBy','creatorId'])assert(!Object.hasOwn(mail,key));
   assert(!JSON.stringify(mail).includes(admin.user.id));assert(!JSON.stringify(mail).includes(admin.user.name));
-  const planned=(await h.api('/admin/events/generate',post(admin,{name:'桶狭間の戦い',durationDays:1,requestId:crypto.randomUUID()}))).data;
+  const planned=(await h.api('/admin/events/generate',post(admin,{battleId:'history:okehazama',durationDays:1,requestId:crypto.randomUUID()}))).data;
   await h.api('/admin/events/'+planned.event.id+'/publish',post(admin,{requestId:crypto.randomUUID()}));
   for(const path of ['/events','/events/'+planned.event.id]){
     const event=(await h.api(path,{token:viewer.token})).data;publicOnly(event);
     for(const field of ['creatorId','creator_id','createdBy','authorId','authorName'])assert(!JSON.stringify(event).includes('"'+field+'"'));
     assert(!JSON.stringify(event).includes(admin.user.id));
   }
-  await h.api('/admin/events/generate',post(staff,{name:'桶狭間の戦い',durationDays:1,requestId:crypto.randomUUID()},403));
+  await h.api('/admin/events/generate',post(staff,{battleId:'history:okehazama',durationDays:1,requestId:crypto.randomUUID()},403));
   await h.api('/admin/mail',post(viewer,{target:'all',title:'偽装',body:'本文',requestId:'identity-forged-mail'},403));
 });
 

@@ -183,6 +183,13 @@
       "when": 1797292800000,
       "tag": "0025_protection_notifications",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "6",
+      "when": 1797379200000,
+      "tag": "0026_battle_rewards_shogunate",
+      "breakpoints": true
     }
   ]
 }

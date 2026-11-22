@@ -23,14 +23,14 @@ function harness({admin=false,staff=false,guest=false}={}){
 const tests=[];const test=(name,run)=>tests.push({name,run});
 test('visitors can read public events without credentials and cannot create or battle',async()=>{
  const h=harness({guest:true});await h.api.eventRequest('/events');assert.equal(h.calls[0].headers.Authorization,undefined);
- await h.api.eventRequest('/events/'+EVENT);assert.equal(h.calls.length,2);
+ await h.api.eventRequest('/events/'+EVENT);await h.api.eventRequest('/events/catalog');assert.equal(h.calls.length,3);assert.equal(h.calls[2].headers.Authorization,undefined);
  await assert.rejects(h.api.eventRequest('/admin/events'),/接続中/);
  await assert.rejects(h.api.eventRequest('/events/'+EVENT+'/battle',{method:'POST',data:{}}),/接続中/);
- assert.equal(h.calls.length,2);
+ assert.equal(h.calls.length,3);
 });
 test('only the confirmed primary operator can use administrative event routes',async()=>{
  for(const config of [{},{staff:true}]){const h=harness(config);await assert.rejects(h.api.eventRequest('/admin/events/generate',{method:'POST',data:{}}),/運営権限/);assert.equal(h.calls.length,0);}
- const h=harness({admin:true}),data={name:'関ヶ原の決戦',durationDays:7,requestId:'same-operation'};
+ const h=harness({admin:true}),data={battleId:'history:sekigahara',durationDays:7,requestId:'same-operation'};
  await h.api.eventRequest('/admin/events/generate',{method:'POST',data,auth:false,token:'ignored'});
  assert.equal(h.calls[0].headers.Authorization,'Bearer '+'a'.repeat(64));assert.deepEqual(h.calls[0].body,data);
  assert.equal(h.api.getEventContext().isAdmin,true);
@@ -76,3 +76,4 @@ test('event gift mail has the right label and retains the existing claim flow',(
  h.t.s.openedMail=null;h.t.s.mail[0].claimed=true;assert.match(h.t.mailView(),/期間限定合戦 · 報酬は受取済み/);
 });
 (async()=>{for(const {name,run} of tests){await run();console.log('PASS '+name);}console.log('PASS '+tests.length+' event transport and mail checks');})().catch(error=>{console.error(error);process.exitCode=1;});
+
