@@ -1,7 +1,7 @@
 # 戦国VS（SENGOKU VS）通信API
 
 Base path: `/api/v1`. UTF-8 JSON, except public avatar image responses. JSON success always includes `ok: true`.
-All routes except GET `/config`, GET `/health`, GET `/online`, GET `/world-clock`, GET `/field`, GET `/guild/rankings`, GET `/achievements`, GET `/avatars/:userId`, POST `/session`, POST `/devices/link`, and POST `/admin/recover` require `Authorization: Bearer <game-token>`. Administrator recovery requires the original operator registration key in its JSON body instead of an existing game token.
+All routes except GET `/config`, GET `/health`, GET `/online`, GET `/players`, GET `/players/:id/profile`, GET `/world-clock`, GET `/field`, GET `/guild/rankings`, GET `/achievements`, GET `/avatars/:userId`, POST `/session`, POST `/devices/link`, and POST `/admin/recover` require `Authorization: Bearer <game-token>`. Administrator recovery requires the original operator registration key in its JSON body instead of an existing game token.
 No cookies are used. Never put a token or pairing code in a URL. POST/PUT/PATCH/DELETE bodies require `Content-Type: application/json`, including `{}` for an empty body. DELETE `/me/avatar` also accepts no body.
 
 ## 送信時の敬語
@@ -35,6 +35,14 @@ error = {ok:false, error:{code:"AUTH_REQUIRED", message:"日本語の説明", re
 `retryAfter` exists only on rate limits. HTTP status is meaningful (400, 401, 403, 404, 409, 410, 413, 415, 429, 500, 503).
 All returned timestamps are ISO strings. Treat names, messages, mail, and announcements as plain text, never HTML.
 
+### 公開プロフィールと総大将
+
+`GET /players/:id/profile` は、ゲスト、本人、ほかのプレイヤーに同じ公開プロフィールを返します。`player` の公開項目は `id`、`name`、`clan`、`guildId`、`guildName`、`guildRole`、`avatarVersion`、`evaluation`、`courtOffice`、`appearance`、`commander` です。`appearance` には既存の公開装備・購入マークを表示します。利用停止・存在しない領主は HTTP 404 `PLAYER_NOT_FOUND` となります。
+
+`commander` は確定した最新のセーブの軍団先頭にいる武将を示し、形式は `{officerId,name,rank}` です。武将名は人物図鑑と一致し、ランクはその武将について現在所有する最高ランクです。軍団の並べ替え・ランクの更新は、セーブが確定した後の取得から反映されます。軍団先頭が空、セーブがない、または確認できない場合は `null` です。古いセーブにはゲームと同じランク移行を適用します。本人の `GET /me` の `user.commander` にも同じ形式で反映します。
+
+ゲスト用の `GET /players?q=…` は領主名の部分一致または完全な領主IDで最大30人を検索します。結果は軽量な公開名簿で、IDから個別プロフィールを開くと総大将を取得できます。ゲストの検索上限はIPごとに1分あたり20回、個別取得は60回です。超過時は HTTP 429 と `retryAfter` を返します。
+
 ### Player evaluation and court-rank titles
 
 `evaluation` is the compact current projection `{version:1,score,maxScore:100000,rankId,rankName,rankIndex}` from the shared `GameEngine.publicEvaluation` function. It assigns seventeen ranks, `court-0` (無位) through `court-16` (正一位). The score combines territory/castles, completed facilities, distinct officers and their strongest owned rarities, army/governor assignments, research, prestige and recorded attack wins, and walking progress. It is independent of operator, staff and guild permissions. Clients cannot upload an authoritative score or title.
@@ -65,7 +73,8 @@ Chat GET and letter inbox/thread GET responses additionally include `playerEvalu
 | POST `/session` | `{name?,clan?}` | `token:string`, `user` |
 | GET `/me` | none | `user`, `friends:user[]`, `requests:[{id,name,clan,avatarVersion,evaluation,direction:"incoming"|"outgoing",createdAt}]`, `unreadMail:number` |
 | PATCH `/profile` | `{name,expectedName?}` | `user` |
-| GET `/players` | `?q=検索語` (2–24 chars) | `players:user[]` (up to 30, excludes requester) |
+| GET `/players` | `?q=検索語` (name of 2–24 characters or complete player ID) | Up to 30 public search results. Authenticated callers receive user objects and their own entry is omitted. |
+| GET `/players/:id/profile` | Public player ID | `{ok:true,player}` with the current commander and public profile fields |
 
 The health read also verifies the trade and moderation tables, without creating or changing them. Names and clan labels have a 24-character limit. Names are unique after Unicode compatibility normalization and case folding.
 The distinct clan name **`德川家`** is reserved for authenticated operators and staff. Ordinary players may use **`徳川家`**. An unauthenticated session or ordinary profile request attempting to set the reserved name returns 403 `ADMIN_CLAN_REQUIRED`. Private self and authorized management identities retain `德川家`; general public identities display `徳川家`, while the chosen lord name remains unchanged. The role flags remain separate: staff have Kyoto Gosho and never gain Edo or Ieyasu U from the family label. A dismissed staff identity returns to its backed-up original family; a legacy ordinary reserved label without such a backup is projected as `徳川家`.

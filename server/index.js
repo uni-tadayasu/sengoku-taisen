@@ -21,7 +21,7 @@ import {handleProtection,enrollProtection,prepareProtection,protectionBattleStat
 import {handleBranches,applyBranchProgress,reconcileBranchProgress,branchProgressStatements,branchStateGuard} from './branches.js';
 import {ensureResidency,residencySnapshot,residencyDirectory,residencyStart,initialResidencyStatements,residencyTargetGuard,prepareResidencySuccession,prepareResidencyCpuLosses} from './residency.js';
 const API = '/api/v1';
-const API_VERSION = '4.9.0';
+const API_VERSION = '4.9.1';
 const API_FEATURES = Object.freeze({trades:true,moderation:true,premium:true,timedEvents:true,troopTrades:true,roamingBattles:true,roamingDeployment:true,covertDispatch:true,privatePlayerRoles:true,guildIcons:true,court:true,kyotoGosho:true,branches:true,branchBattles:true,branchFacilities:true,audioCalls:true,progression:true,armyPresets:true,allianceStrategy:true,sharedConquest:true,newcomerProtection:true,webPush:true,battleAdviser:true,battleCatalog:true,eventBattleRewards:true,shogunate:true,attackTravel:true,castleResidency:true});
 const MAX_BODY = 16 * 1024;
 const MAX_SAVE_BODY = 2 * 1024 * 1024;
@@ -329,6 +329,15 @@ function evaluationState(row,meta,now){
   }
   return state;
 }
+// Rank is the strongest owned variant of the officer in the active formation's
+// first slot, just as GameEngine.officer(id) resolves the army screen.
+const officerNames=new Map(GAME_OFFICERS.map(officer=>[officer.id,officer.name]));
+function publicCommander(state){
+  const officerId=state?.army?.[0];
+  if(!officerId)return null;
+  const rank=RANKS.findLast(value=>state.officerVariants.includes(officerId+':'+value)),name=officerNames.get(officerId);
+  return rank&&name?{officerId,name,rank}:null;
+}
 async function resolvePlayerEvaluations(db,payload,now){
   const refs=[],ids=new Set(),nameRefs=[],avatarRefs=[],avatarIds=new Set(),skip=new Set(['save','state','entitlements','appearance']);
   const isPlayerId=id=>typeof id==='string'&&/^u_[A-Za-z0-9_]{1,96}$/.test(id);
@@ -348,6 +357,7 @@ async function resolvePlayerEvaluations(db,payload,now){
     for(const [child,node]of Object.entries(value))if(!skip.has(child))visit(node,value,child);
   }
   visit(payload,null,null);if(!ids.size&&!nameRefs.length&&!avatarRefs.length)return payload;
+  const commanderIds=new Set(refs.filter(ref=>ref.key==='evaluation'&&Object.hasOwn(ref.parent,'commander')).map(ref=>ref.id));
   const selected=[...ids],queries=[stmt(db,`SELECT
     (SELECT json_object('base_elapsed_ms',base_elapsed_ms,'anchor_real_ms',anchor_real_ms,'running',running,'speed',speed,'revision',revision) FROM world_clock WHERE id=?) AS clock_json,
     (SELECT state_json FROM staff_base WHERE id='kyoto_gosho') AS shared_json,
@@ -366,17 +376,22 @@ async function resolvePlayerEvaluations(db,payload,now){
   for(let offset=0;offset<otherNames.length;offset+=80){const page=otherNames.slice(offset,offset+80);queries.push(stmt(db,`SELECT u.id,u.name,
     (SELECT a.version FROM user_avatars a WHERE a.user_id=u.id AND NOT EXISTS(SELECT 1 FROM player_bans ban WHERE ban.user_id=u.id AND ban.active=1)) AS avatar_version
     FROM users u WHERE u.id IN (${page.map(()=>'?').join(',')})`,...page));}
-  const results=await db.batch(queries),meta=rows(results[0])[0]||{},values=new Map(),names=new Map(),avatars=new Map(),empty=GameEngine.publicEvaluation(null,{officers:GAME_OFFICERS});
+  const results=await db.batch(queries),meta=rows(results[0])[0]||{},values=new Map(),commanders=new Map(),names=new Map(),avatars=new Map(),empty=GameEngine.publicEvaluation(null,{officers:GAME_OFFICERS});
   for(const result of results.slice(1))for(const row of rows(result)){
     names.set(row.id,row.name);avatars.set(row.id,row.avatar_version||null);
     if(!ids.has(row.id))continue;
     if(!row.save_json){values.set(row.id,empty);continue;}
     let evaluation=null;
-    try{evaluation=GameEngine.publicEvaluation(evaluationState(row,meta,now),{officers:GAME_OFFICERS});}catch{/* Unreadable saves remain unverified, not an invented demotion. */}
+    try{
+      const state=evaluationState(row,meta,now);
+      evaluation=GameEngine.publicEvaluation(state,{officers:GAME_OFFICERS});
+      if(commanderIds.has(row.id))commanders.set(row.id,publicCommander(state));
+    }catch{/* Unreadable saves remain unverified. */}
     values.set(row.id,evaluation);
   }
   for(const ref of refs){
     ref.parent[ref.key]=values.has(ref.id)?values.get(ref.id):null;
+    if(ref.key==='evaluation'&&Object.hasOwn(ref.parent,'commander'))ref.parent.commander=commanders.get(ref.id)||null;
     // Refresh participant labels, including empty message deltas, without
     // rewriting historical receipts or user-authored message bodies.
     const nameField={evaluation:'name',ownerEvaluation:'ownerName',authorEvaluation:'authorName',attackerEvaluation:'attackerName',defenderEvaluation:'defenderName',targetEvaluation:'targetName',playerEvaluation:Object.hasOwn(ref.parent,'playerName')?'playerName':Object.hasOwn(ref.parent,'name')?'name':null}[ref.key];
@@ -479,6 +494,45 @@ const USER_SELECT = `SELECT u.id,u.name,u.clan,u.created_at,u.last_seen,gm.guild
   (SELECT sm.appointed_elapsed_ms FROM staff_members sm WHERE sm.user_id=u.id) AS staff_since_ms
   FROM users u LEFT JOIN guild_members gm ON gm.user_id=u.id LEFT JOIN guilds g ON g.id=gm.guild_id`;
 async function getUser(db, id) { return stmt(db, USER_SELECT + ' WHERE u.id=?', id).first(); }
+const publicPlayerId=/^u_[A-Za-z0-9_]{1,96}$/;
+const availablePlayer="NOT EXISTS(SELECT 1 FROM player_bans banned WHERE banned.user_id=u.id AND banned.active=1)";
+async function readPlayerProfile(request,env,id,now){
+  const db=env.DB,viewer=request.headers.has('authorization')?await authenticate(request,db,now):null;
+  if(!publicPlayerId.test(id))fail(404,'PLAYER_NOT_FOUND','領主のプロフィールが見つかりません。');
+  if(!viewer)await budget(db,await ipScope(request,env,'public-profile')||'public-profile-unattributed',60,60000,now);
+  const row=await stmt(db,USER_SELECT+' WHERE u.id=? AND '+availablePlayer,id).first();
+  if(!row)fail(404,'PLAYER_NOT_FOUND','領主のプロフィールが見つかりません。');
+  const {name,clan,guildId,guildName,guildRole,avatarVersion,evaluation}=mapUser(row,now);
+  return {ok:true,player:{id,name,clan,guildId,guildName,guildRole,avatarVersion,evaluation,commander:null}};
+}
+async function searchPlayers(request,env,url,now){
+  const db=env.DB,viewer=request.headers.has('authorization')?await authenticate(request,db,now):null;
+  const q=textField(url.searchParams.get('q'),'検索語',98,{min:2}),longId=Array.from(q).length>24;
+  if(longId&&!publicPlayerId.test(q))fail(400,'INVALID_INPUT','検索には2～24文字の名前か領主IDを入力してください。');
+  if(!viewer)await budget(db,await ipScope(request,env,'public-player-search')||'public-player-search-unattributed',20,60000,now);
+  const clause=longId?'u.id=?':"(u.name LIKE ? ESCAPE '\\' OR u.id=?)";
+  const searchArgs=longId?[q]:['%'+q.replaceAll('\\','\\\\').replaceAll('%','\\%').replaceAll('_','\\_')+'%',q];
+  const where=' WHERE '+clause+' AND u.id<>? AND '+availablePlayer+' ORDER BY u.last_seen DESC,u.name LIMIT 30';
+  if(viewer){
+    const result=await stmt(db,USER_SELECT+where,...searchArgs,viewer.id).all();
+    return {ok:true,players:rows(result).map(row=>mapUser(row,now))};
+  }
+  // Directory hits need names and IDs. Opening one profile loads only that save.
+  const result=await stmt(db,`SELECT u.id,u.name,
+    CASE WHEN u.clan=? OR EXISTS(SELECT 1 FROM staff_members sm WHERE sm.user_id=u.id)
+      OR u.id=(SELECT value FROM settings WHERE key='adminUserId') THEN ? ELSE u.clan END AS clan
+    FROM users u`+where,ADMIN_CLAN,ORDINARY_TOKUGAWA_CLAN,...searchArgs,'').all();
+  return {ok:true,players:rows(result).map(({id,name,clan})=>({id,name,clan}))};
+}
+// Recheck visibility after the asynchronous identity and appearance reads.
+async function finishPublicProfiles(db,payload,individual){
+  const candidates=individual?[payload.player]:payload.players;
+  if(!candidates.length)return;
+  const ids=candidates.map(player=>player.id),allowed=rows(await stmt(db,`SELECT u.id FROM users u WHERE u.id IN (${ids.map(()=>'?').join(',')}) AND ${availablePlayer}`,...ids).all());
+  const visible=new Set(allowed.map(row=>row.id));
+  if(individual&&!visible.has(ids[0]))fail(404,'PLAYER_NOT_FOUND','領主のプロフィールが見つかりません。');
+  if(!individual)payload.players=payload.players.filter(player=>visible.has(player.id));
+}
 function accountCommitGuard(user){return {sql:"NOT EXISTS(SELECT 1 FROM player_bans WHERE user_id=? AND active=1) AND COALESCE((SELECT revision FROM player_bans WHERE user_id=?),0)=?",args:[user.id,user.id,Number(user.moderation_epoch||0)]};}
 async function requireAccountAccess(db,user){const row=await stmt(db,'SELECT active,revision FROM player_bans WHERE user_id=?',user.id).first();if(row?.active)fail(403,'ACCOUNT_BANNED','この領主のオンライン利用は停止されています。解除後に再接続できます。');if(Number(row?.revision||0)!==Number(user.moderation_epoch||0))fail(409,'ACCOUNT_ACCESS_CHANGED','この領主の利用状態が変更されました。最新の接続状態を確認してください。');}
 function contentRevisionInput(url){const raw=url.searchParams.get('contentRevision');if(raw===null)return 0;if(!/^\d{1,16}$/.test(raw)||!Number.isSafeInteger(Number(raw)))fail(400,'INVALID_CURSOR','投稿の更新番号が正しくありません。');return Number(raw);}
@@ -2290,6 +2344,9 @@ async function route(request, env, now) {
   if (path === '/world-clock' && method === 'GET') {
     const clock=await getWorldClock(db,now);await cyclePolicy(db,clock,now);return {ok:true,clock};
   }
+  if (path === '/players' && method === 'GET') return searchPlayers(request,env,url,now);
+  const profile=method==='GET'&&/^\/players\/([^/]+)\/profile$/.exec(path);
+  if(profile)return readPlayerProfile(request,env,profile[1],now);
   if (path === '/achievements' && method === 'GET') return publicAchievements(db,url,now);
   if (method === 'GET' && (path === '/roaming/deployment' || path === '/roaming/map')) return handleRoamingDeployment({db,now,path,method,url,request,helpers:{fail,idField}});
   if (path === '/guild/rankings' && method === 'GET') return guildRankings(db,url,now);
@@ -2569,7 +2626,7 @@ async function route(request, env, now) {
         FROM friendships f JOIN users u ON u.id=CASE WHEN f.user_a=? THEN f.user_b ELSE f.user_a END WHERE (f.user_a=? OR f.user_b=?) AND f.status='pending' ORDER BY f.created_at DESC`,user.id,user.id,user.id),
       stmt(db, `SELECT COUNT(*) AS count FROM mail_campaigns m WHERE (m.target_user_id IS NULL OR m.target_user_id=?) AND NOT EXISTS(SELECT 1 FROM mail_reads r WHERE r.mail_id=m.id AND r.user_id=?)`,user.id,user.id),
     ]);
-    return {ok:true,user:mapUser(user,now),...(user.is_admin?{management:{recoveryAvailable:typeof env.SENGOKU_ADMIN_KEY==='string'&&env.SENGOKU_ADMIN_KEY.length>0}}:{}),friends:rows(result[0]).map(r=>mapUser(r,now)),requests:rows(result[1]).map(r=>({id:r.id,name:r.name,clan:publicClan(r.clan,r.is_admin,r.is_staff,r.personal_clan),avatarVersion:r.avatar_version||null,evaluation:evaluationRef(r.id),direction:r.requested_by===user.id?'outgoing':'incoming',createdAt:iso(r.created_at)})),unreadMail:Number(rows(result[2])[0]?.count || 0)};
+    return {ok:true,user:{...mapUser(user,now),commander:null},...(user.is_admin?{management:{recoveryAvailable:typeof env.SENGOKU_ADMIN_KEY==='string'&&env.SENGOKU_ADMIN_KEY.length>0}}:{}),friends:rows(result[0]).map(r=>mapUser(r,now)),requests:rows(result[1]).map(r=>({id:r.id,name:r.name,clan:publicClan(r.clan,r.is_admin,r.is_staff,r.personal_clan),avatarVersion:r.avatar_version||null,evaluation:evaluationRef(r.id),direction:r.requested_by===user.id?'outgoing':'incoming',createdAt:iso(r.created_at)})),unreadMail:Number(rows(result[2])[0]?.count || 0)};
   }
   if (path === '/profile' && method === 'PATCH') {
     const body = await readBody(request), name = textField(body.name,'領主名',24),expectedName=Object.hasOwn(body,'expectedName')?textField(body.expectedName,'変更前の領主名',24):null;
@@ -2580,12 +2637,6 @@ async function route(request, env, now) {
     catch (error) { if (/unique/i.test(String(error))) fail(409,'NAME_TAKEN','その領主名はすでに使われています。'); throw error; }
     if(!rows(changed).length){await requireAccountAccess(db,user);fail(409,'PROFILE_CHANGED','別の端末で領主名が変更されました。最新の名前を確認してから、もう一度お試しください。');}
     return {ok:true,user:mapUser(await getUser(db,user.id),now)};
-  }
-  if (path === '/players' && method === 'GET') {
-    const q = textField(url.searchParams.get('q'),'検索語',24,{min:2});
-    const pattern = '%' + q.replaceAll('\\','\\\\').replaceAll('%','\\%').replaceAll('_','\\_') + '%';
-    const result = await stmt(db,USER_SELECT + ` WHERE (u.name LIKE ? ESCAPE '\\' OR u.id=?) AND u.id<>? AND NOT EXISTS(SELECT 1 FROM player_bans pb WHERE pb.user_id=u.id AND pb.active=1) ORDER BY u.last_seen DESC,u.name LIMIT 30`,pattern,q,user.id).all();
-    return {ok:true,players:rows(result).map(r=>mapUser(r,now))};
   }
   if (path === '/chat' && method === 'GET') {
     const channel = url.searchParams.get('channel') || 'world';
@@ -2783,7 +2834,10 @@ export default {
       if(authenticated)await requireAccountAccess(env.DB,authenticated);
       await verifyCourtResponse(env.DB,request);
       if(typeof ctx?.waitUntil==='function'&&path!==API+'/notifications/tick')ctx.waitUntil((async()=>{await backgroundMarchSweep(env,now);await dispatchNotifications(env,await getWorldClock(env.DB,now));})().catch(()=>{}));
-      return response(await resolvePublicCourtOffices(env.DB,publicIdentities(resolved,request),now),200,origin);
+      const visible=await resolvePublicCourtOffices(env.DB,publicIdentities(resolved,request),now);
+      if(path.startsWith(API+'/players/')&&payload.player)await finishPublicProfiles(env.DB,visible,true);
+      else if(path===API+'/players'&&!authenticated)await finishPublicProfiles(env.DB,visible,false);
+      return response(visible,200,origin);
     }catch(error){
       const authenticated=authenticatedRequests.get(request);if(authenticated)try{await requireAccountAccess(env.DB,authenticated);}catch(accessError){error=accessError;}
       if(error instanceof ApiError){const e={code:error.code,message:error.message};if(error.retryAfter)e.retryAfter=error.retryAfter;return response({ok:false,error:e},error.status,origin,error.retryAfter);}

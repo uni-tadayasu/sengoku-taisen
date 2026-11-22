@@ -54,7 +54,7 @@ body :is(.subtitle,.panel-heading small) { color:#bfc2b0; }
 #main .page-heading::before,
 #main :is(.roaming-heading,.covert-heading,.court-heading)::before {
   content:""; position:absolute; inset:0; z-index:-2; pointer-events:none;
-  background:linear-gradient(90deg,#111a13 0%,#111a13ed 36%,#111a1370 76%,#111a1355),url('assets/castle-town.webp?v=4.9.0-20261123') right 43% / cover no-repeat;
+  background:linear-gradient(90deg,#111a13 0%,#111a13ed 36%,#111a1370 76%,#111a1355),url('assets/castle-town.webp?v=4.9.1-20261123') right 43% / cover no-repeat;
 }
 #main .page-heading::after,
 #main :is(.roaming-heading,.covert-heading,.court-heading)::after {
@@ -98,7 +98,7 @@ body :is(.button,.social-button,.events-button,.covert-button,.court-button,.fie
 }
 body :is(.button,.social-button,.events-button,.covert-button,.court-button,.field-button,.roaming-button):is(.primary,.gold) {
   color:#fff1d3; border-color:#dfb875; background-color:#76502c;
-  background-image:linear-gradient(115deg,#876336e6,#614224ed),url('assets/castle-town.webp?v=4.9.0-20261123');
+  background-image:linear-gradient(115deg,#876336e6,#614224ed),url('assets/castle-town.webp?v=4.9.1-20261123');
   background-size:cover; background-position:center 55%;
   box-shadow:inset 0 0 0 2px #dabc6c26,inset 0 1px #f6e2ab55,0 4px 12px #0003;
   font-weight:650;
@@ -150,7 +150,7 @@ body :is(button,a,input,select,textarea,summary):focus-visible { outline:2px sol
 #main .governor-assignment-entry { background:#26321f; border-color:#8f9b6650; }
 
 /* Archives, maps, diplomacy and the mission chronicle. */
-#main .facility-banner { background:linear-gradient(90deg,#263023f2,#1b2818b5),url('assets/castle-town.webp?v=4.9.0-20261123') center 65%/cover; border-color:#c0a16b66; }
+#main .facility-banner { background:linear-gradient(90deg,#263023f2,#1b2818b5),url('assets/castle-town.webp?v=4.9.1-20261123') center 65%/cover; border-color:#c0a16b66; }
 #main .facility-banner h2 { color:#f3dfb4; }
 #main .facility-entry { overflow:hidden; }
 #main .facility-entry-heading h3 { color:#f1dba7; font-weight:650; }
@@ -229,7 +229,7 @@ body .toast { color:#fff1cc; background:#2a3624f5; border-color:#d8b777a8; box-s
 #launch-screen .launch-introduction { color:#cecebb; line-height:1.9; font-size:16px; margin:0; }
 #launch-screen .launch-pillars { display:flex; flex-wrap:wrap; gap:8px; padding:0; margin:0; list-style:none; }
 #launch-screen .launch-pillars li { padding:6px 10px; border:1px solid #bea4655c; color:#e6d3a7; font-family:var(--serif); font-size:14px; background:#151d12b0; }
-#launch-screen .launch-enter { position:relative; overflow:hidden; width:100%; min-height:62px; margin:4px 0 0; font-family:var(--serif); font-size:23px; color:#ffedbf; border:1px solid #dfb675; background:linear-gradient(110deg,#8b3c2eeb,#713326eb),url('assets/castle-town.webp?v=4.9.0-20261123') center/cover; box-shadow:inset 0 0 0 4px #e9c17720,0 10px 24px #0004; }
+#launch-screen .launch-enter { position:relative; overflow:hidden; width:100%; min-height:62px; margin:4px 0 0; font-family:var(--serif); font-size:23px; color:#ffedbf; border:1px solid #dfb675; background:linear-gradient(110deg,#8b3c2eeb,#713326eb),url('assets/castle-town.webp?v=4.9.1-20261123') center/cover; box-shadow:inset 0 0 0 4px #e9c17720,0 10px 24px #0004; }
 #launch-screen .launch-enter::after { content:""; position:absolute; inset:0; pointer-events:none; background:linear-gradient(110deg,transparent 20%,#ffe8b630 47%,transparent 70%); transform:translateX(-110%); animation:palace-sheen 6s 1.2s ease-in-out 2; }
 #launch-screen .launch-guide-nav { gap:5px 18px; margin:0; }
 #launch-screen .launch-guide-nav a { color:#dec895; font-size:14px; text-decoration:none; border-bottom:1px solid #ad925652; }

@@ -91,3 +91,48 @@
 .social-alliance-icon-small{width:36px;height:36px;min-width:36px;flex-basis:36px;font-size:18px}.social-alliance-icon-inline{width:26px;height:26px;min-width:26px;flex-basis:26px;font-size:14px}.social-alliance-icon-profile{width:76px;height:76px;min-width:76px;flex-basis:76px;font-size:32px}
 .social-guild-mon{width:64px;height:64px;min-width:64px;flex:0 0 64px;border:0;border-radius:50%;background:transparent}.social-guild-mon>.social-alliance-icon{width:100%;height:100%;min-width:0;flex:none}.social-guild-rank-name h3{display:flex;align-items:center;gap:9px}.social-guild-rank-name h3>span:last-child{min-width:0;overflow-wrap:anywhere}.social-alliance-icon-editor{margin-bottom:24px;padding:0 18px;border:1px solid #a0beab3d;border-radius:12px;background:linear-gradient(125deg,#30594b25,#38495817)}.social-alliance-icon-editor .avatar-editor{border-bottom:0}.social-alliance-icon-editor .avatar-editor-heading>div:first-child{min-width:0}.social-alliance-icon-editor .avatar-editor-heading p{overflow-wrap:anywhere}
 @media(max-width:600px){.social-guild-mon{width:52px;height:52px;min-width:52px;flex-basis:52px}.social-alliance-icon-profile{width:64px;height:64px;min-width:64px;flex-basis:64px}.social-alliance-icon-editor{padding:0 12px}.social-alliance-icon-editor .avatar-editor-heading{gap:12px}.social-alliance-icon-editor .avatar-editor-heading h3{font-size:18px}.social-guild-rank-name h3{gap:7px}.social-guild-rank-name .social-alliance-icon-small{width:30px;height:30px;min-width:30px;flex-basis:30px}}
+
+/* Lord directory and the public commander portrait share the game's paper, ink and gilt frame. */
+.edition-profile-link { display:block; width:fit-content; margin:.3rem 0 0; padding:.5rem 0; min-height:44px; color:#f4d99a; background:transparent; border:0; text-decoration:underline; text-underline-offset:.3em; font:inherit; }
+.edition-profile-link:hover { color:#fff; }
+.lord-directory, .lord-own-section { margin:0 0 1.2rem; }
+.lord-directory form>label { display:block; color:#e7cf9e; font-weight:650; margin-bottom:.45rem; }
+.lord-directory form>div { display:flex; align-items:stretch; gap:.5rem; }
+.lord-directory form input, .lord-profile-share input { flex:1 1 auto; width:0; min-width:0; border:1px solid #7e785e; border-radius:4px; background:#111e29; color:#fff6df; padding:.5rem .65rem; font:inherit; font-size:1rem; }
+.lord-directory button, .public-lord-profile button { min-height:44px; }
+.lord-directory [data-search-status], .lord-profile-feedback p, .lord-profile-share p { font-size:.87rem; line-height:1.6; }
+.lord-directory [data-search-status]:not(:empty) { margin:.6rem 0; }
+.lord-search-hit { display:flex; align-items:center; justify-content:space-between; gap:.6rem; padding:.4rem .1rem; border-bottom:1px solid #b99c6252; }
+.lord-search-hit>div { min-width:0; overflow-wrap:anywhere; }
+.lord-search-hit small { display:block; color:#c9c0ad; }
+.lord-profile-link, .lord-profile-name { appearance:none; border:0; background:transparent; color:#e6c784; padding:.25rem 0; text-align:start; font:inherit; text-decoration:underline; text-decoration-thickness:1px; text-underline-offset:.23em; }
+.lord-profile-link { min-height:44px; flex:0 0 auto; }
+.lord-profile-name { min-height:32px; max-width:100%; font-weight:inherit; overflow-wrap:anywhere; }
+.lord-profile-name>.item-icon, .edition-profile-link>.item-icon, .lord-profile-link>.item-icon { display:none; }
+.lord-profile-name:focus-visible, .lord-profile-link:focus-visible, .edition-profile-link:focus-visible, .public-lord-profile :focus-visible { outline:2px solid #e9bc65; outline-offset:2px; }
+.social-message-meta .lord-profile-name { min-height:26px; }
+.lord-own-actions { display:flex; flex-wrap:wrap; align-items:center; gap:.3rem 1rem; }
+.lord-own-actions p { margin:.5rem 0; font-size:.85rem; }
+.lord-commander { display:grid; grid-template-columns:clamp(82px,19vw,136px) minmax(0,1fr); align-items:center; gap:clamp(.85rem,4vw,1.7rem); padding:clamp(.8rem,2vw,1.25rem); color:#2b271f; background:linear-gradient(115deg,#f4e4bc,#dcc797); border:1px solid #ab8651; box-shadow:inset 0 0 0 3px #f0dba9,inset 0 0 0 4px #b69b685e; border-radius:5px; }
+.lord-commander .lord-commander-portrait { width:100%; aspect-ratio:3/4; overflow:hidden; }
+.lord-commander .portrait-frame { width:100%; height:100%; }
+.lord-commander h3 { font:600 .84rem/1.4 system-ui,sans-serif; color:#6c492a; letter-spacing:.12em; margin:0; }
+.lord-commander .lord-commander-name { color:#28251d; font-family:"Yu Mincho","Hiragino Mincho ProN",serif; font-weight:750; font-size:clamp(1.2rem,4vw,2.05rem); line-height:1.35; overflow-wrap:anywhere; margin:.3rem 0; }
+.lord-commander .lord-commander-rank { color:#574125; margin:.25rem 0 0; font-size:.82rem; }
+.lord-commander-rank b { margin-left:.2rem; color:#502b13; font-size:1.02rem; }
+.lord-commander-empty { display:block; }
+.lord-commander-empty p { color:#463626; font-size:1.05rem; margin:.25rem 0; }
+.public-lord-profile { box-sizing:border-box; width:min(33rem,calc(100% - 24px)); max-width:none; margin:auto; max-height:calc(100dvh - 24px); overflow:auto; overscroll-behavior:contain; padding:clamp(.85rem,3vw,1.45rem); border:1px solid #c3a774; border-radius:7px; background:#152630; color:#fff0ce; box-shadow:0 20px 65px #05090cbf; color-scheme:dark; }
+.public-lord-profile::backdrop { background:#080e17bd; }
+.public-lord-profile>header { display:flex; align-items:center; justify-content:space-between; gap:.5rem; border-bottom:1px solid #bba16d72; padding-bottom:.65rem; }
+.public-lord-profile>header h2 { margin:0; color:#f5dfb4; font:bold clamp(1.15rem,4vw,1.45rem)/1.4 "Yu Mincho","Hiragino Mincho ProN",serif; }
+.lord-public-identity { display:flex; align-items:center; gap:.85rem; padding:1rem 0; }
+.lord-public-identity>div { min-width:0; overflow-wrap:anywhere; }
+.lord-public-identity h3 { font-size:1.16rem; margin:0; }
+.lord-public-identity p { color:#d2c8b4; margin:.25rem 0; }
+.lord-public-badges { display:flex; flex-wrap:wrap; align-items:center; gap:.5rem; }
+.public-lord-profile [hidden] { display:none!important; }
+.lord-profile-feedback p:not(:empty), .lord-profile-share { margin-top:.8rem; }
+.lord-profile-share label { display:block; margin:.6rem 0; }
+.lord-profile-share input { display:block; box-sizing:border-box; width:100%; margin-top:.2rem; }
+.field-base-heading .lord-profile-link { display:block; }
