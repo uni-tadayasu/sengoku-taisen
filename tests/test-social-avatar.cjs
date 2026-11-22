@@ -19,6 +19,25 @@ function setup(role='ordinary'){
 function deferred(){let resolve;const promise=new Promise(r=>resolve=r);return{promise,resolve};}
 let count=0;async function test(name,run){await run();count++;console.log('PASS '+name);}
 (async()=>{
+await test('chat polling retains existing messages, loaded avatars, reading position and draft across additions and removals',()=>{
+ const mounted=setup(),{host,doc}=require('./helpers/dom-model.cjs').setup(),list=doc.createElement('section'),draft=doc.createElement('textarea');
+ host.appendChild(list);host.appendChild(draft);list.scrollHeight=1500;list.clientHeight=300;
+ mounted.c.SengokuStableDOM=require('../stable-dom.js');mounted.nodes.set('#social-message-list',list);
+ mounted.t.s.tab='world';
+ const message=id=>({id,userId:'other',name:'参陣した領主',avatarVersion:OLD,text:'伝令 '+id,createdAt:'2026-11-22T00:00:00Z'});
+ const cache={messages:Array.from({length:24},(_,i)=>message(i+1)),after:24};mounted.t.s.chats.set('world:',cache);
+ mounted.t.renderMessages();const original=list.querySelectorAll('article'),portrait=original[0].querySelector('[data-avatar-owner]');
+ portrait.setAttribute('data-loaded','true');draft.value='編集中の文';draft.focus();draft.setSelectionRange(1,3);list.scrollTop=140;
+ for(let i=0;i<45;i++)mounted.t.renderMessages();
+ assert(list.querySelectorAll('article').every((node,index)=>node===original[index]));
+ cache.messages.push(message(25));mounted.t.renderMessages();assert.equal(list.querySelectorAll('article').length,25);
+ assert(original.every((node,index)=>list.querySelectorAll('article')[index]===node));
+ assert.strictEqual(original[0].querySelector('[data-avatar-owner]'),portrait);assert.equal(portrait.getAttribute('data-loaded'),'true');
+ cache.messages.splice(1,1);cache.messages[2].text='更新された伝令';mounted.t.renderMessages();
+ assert(!list.contains(original[1]));assert(list.contains(original[3]));assert.match(original[3].textContent,/更新された伝令/);
+ assert.equal(list.scrollTop,140);assert.strictEqual(doc.activeElement,draft);assert.equal(draft.value,'編集中の文');
+ assert.equal(draft.selectionStart,1);assert.equal(draft.selectionEnd,3);
+});
 await test('every registered role receives the profile editor and guests do not',()=>{
  for(const role of ['ordinary','staff','admin','guest']){const b=setup(role);b.t.render();assert.equal(b.mounts.length,role==='guest'?0:1);if(role!=='guest'){assert.match(b.body.innerHTML,/id="social-avatar-editor"/);assert.equal(b.mounts[0].user.id,'actor');assert(b.marks.some(m=>m.size==='profile'));}}
 });

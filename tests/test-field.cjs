@@ -226,4 +226,27 @@ async function pvpUiTest(){
   }finally{controller.destroy();}
   count++;console.log('PASS exact-city confirmation, reward/capture receipts, safe failures and duplicate-click protection preserve local formations');
 }
-liveRefreshTest().then(pvpUiTest).then(()=>console.log(count+' shared-field presentation and action-guard checks passed.')).catch(error=>{console.error(error);process.exitCode=1;});
+async function sustainedFieldPolling(){
+  const {doc,host}=require('./helpers/dom-model.cjs').setup();
+  doc.hidden=false;doc.addEventListener=doc.removeEventListener=()=>{};
+  const scope={document:doc,setTimeout:()=>1,clearTimeout(){},SengokuStableDOM:require('../stable-dom.js')};scope.window=scope;
+  require('node:vm').runInNewContext(require('node:fs').readFileSync(require.resolve('../field.js'),'utf8'),scope);
+  let people=[player('first'),player('second')];
+  const controller=scope.SengokuField.mount(host,{stateKey:'sustained-poll',request:async()=>({players:people,total:people.length})});
+  try{
+    await controller.refresh();
+    const rows=()=>host.querySelectorAll('[data-field-action="select-player"]'),original=rows();
+    assert.equal(original.length,2);original[1].focus();host.scrollTop=108;
+    const search=host.querySelector('[data-field-input="search"]');
+    const image=doc.createElement('img');original[1].appendChild(image);
+    for(let i=0;i<40;i++)await controller.refresh({background:true});
+    assert.strictEqual(rows()[0],original[0]);assert.strictEqual(rows()[1],original[1]);
+    assert.strictEqual(doc.activeElement,original[1]);assert.equal(host.scrollTop,108);assert(original[1].contains(image));
+    people=[{...people[1],name:'帰還した領主'},people[0],player('third')];
+    await controller.refresh({background:true});assert.equal(rows().length,3);
+    assert.strictEqual(rows()[0],original[1]);assert.strictEqual(rows()[1],original[0]);assert.match(rows()[0].textContent,/帰還した領主/);
+    assert.strictEqual(doc.activeElement,original[1]);assert.strictEqual(search,host.querySelector('[data-field-input="search"]'));assert.equal(host.scrollTop,108);
+  }finally{controller.destroy();}
+  count++;console.log('PASS forty field polls retain focused player rows and artwork, then update a reordered roster in place');
+}
+liveRefreshTest().then(pvpUiTest).then(sustainedFieldPolling).then(()=>console.log(count+' shared-field presentation and action-guard checks passed.')).catch(error=>{console.error(error);process.exitCode=1;});

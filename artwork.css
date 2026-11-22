@@ -51,3 +51,34 @@
 }
 @media(prefers-reduced-motion:reduce){.painted-art>.art-surface{transition:none;transform:none!important}}
 html[data-presentation-motion="quiet"] .painted-art>.art-surface{transition:none;transform:none!important}
+
+/* Read the selected historical officer's rank from the illustration itself. */
+.portrait-frame { container-type: inline-size; }
+.portrait-rank-badge {
+  --rank-ink: #fcf6e8;
+  --rank-line: #c5ba9d;
+  position: absolute;
+  z-index: 5;
+  inset-block-end: .45rem;
+  inset-inline-start: .45rem;
+  display: inline-grid;
+  place-items: center;
+  min-inline-size: 1.75em;
+  padding: .13em .34em .15em;
+  color: var(--rank-ink);
+  background: #151b24;
+  border: 1px solid var(--rank-line);
+  border-radius: .15em;
+  box-shadow: 0 1px 3px #000b;
+  font: 750 clamp(.8125rem, 8cqi, 1.25rem)/1.12 Georgia, serif;
+  letter-spacing: .025em;
+  white-space: nowrap;
+  pointer-events: none;
+}
+[data-rank="C"] > .portrait-rank-badge { --rank-line: #d4a681; }
+[data-rank="B"] > .portrait-rank-badge { --rank-line: #a3c5e3; }
+[data-rank="A"] > .portrait-rank-badge { --rank-line: #94d2b0; }
+[data-rank="S"] > .portrait-rank-badge { --rank-line: #d9b169; --rank-ink: #ffdf94; }
+[data-rank="SS"] > .portrait-rank-badge { --rank-line: #c3a5e3; --rank-ink: #efdbff; }
+[data-rank="SSS"] > .portrait-rank-badge { --rank-line: #e4977f; --rank-ink: #ffcfbf; }
+[data-rank="U"] > .portrait-rank-badge { --rank-line: #edcf82; --rank-ink: #17191c; background: #f7d77e; }

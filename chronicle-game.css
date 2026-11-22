@@ -421,3 +421,8 @@ html:not(.sengoku-desktop-fit) #app.chronicle-shell .chronicle-ledger .resource 
 @media (max-width:360px) {
   html:not(.sengoku-desktop-fit) #app.chronicle-shell .clan-line small { text-wrap: balance; }
 }
+
+/* Calendar and construction values keep their width as the clock advances. */
+#app.chronicle-shell :is(.resource-amount,#month-countdown,#command-count,[data-job-clock],[data-magatama-balance]){
+  font-variant-numeric:tabular-nums;
+}

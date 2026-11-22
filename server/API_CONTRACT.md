@@ -4,6 +4,14 @@ Base path: `/api/v1`. UTF-8 JSON, except public avatar image responses. JSON suc
 All routes except GET `/config`, GET `/health`, GET `/online`, GET `/world-clock`, GET `/field`, GET `/guild/rankings`, GET `/achievements`, GET `/avatars/:userId`, POST `/session`, POST `/devices/link`, and POST `/admin/recover` require `Authorization: Bearer <game-token>`. Administrator recovery requires the original operator registration key in its JSON body instead of an existing game token.
 No cookies are used. Never put a token or pairing code in a URL. POST/PUT/PATCH/DELETE bodies require `Content-Type: application/json`, including `{}` for an empty body. DELETE `/me/avatar` also accepts no body.
 
+## 送信時の敬語
+
+受信者に目上のプレイヤーが含まれると、サーバーが送信時に日本語の文章を敬語に整え、変換済みの本文を保存・配信します。個人チャットと個人書状では相手本人、同盟チャットと作戦の連絡事項では現在の同盟員、同盟書状では現在の同盟員と元の差出人、加入申請では承認担当者を比較します。謁見で領主が朝廷へ送る文は担当者全員を、担当者からの返信はその領主を宛先とします。運営チャットと直接配布する郵便も実際の宛先を使います。
+
+公開官職は、官職なし、参議、中納言、大納言、内大臣、右大臣、左大臣、太政大臣、天皇の順です。同じ官職の領主は公開評価の位階（無位から正一位まで）で比較します。個人・同盟宛ての相手が全員同格以下の場合は送った原文を届けます。世界・朝廷の公開チャット、全員宛ての告知・郵便では公開官職を確認し、官職を持たない送り主以外に保存データのある一般領主が33人以上いれば一律に敬語を使います。音声通話は対象外です。
+
+画面やクライアント側の設定でこの判定は無効にできません。書状で変換後の本文が1,000文字を超える場合、送信は成立せず、HTTP 400 と `POLITE_TEXT_TOO_LONG` を返します。受付番号のある送信を同じ入力で再送した場合は最初の確定結果を返します。書き込み中に位階・所属・宛先が変わった場合は、最新状態で再送してください。
+
 ## Common objects
 
 ```js

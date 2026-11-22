@@ -63,7 +63,7 @@ test('own sidebar/page rank and evaluation details include the authoritative off
   const own=h.transport.playerName('現在の領主',evaluation,A,null,null,false);
   assert.match(own,/data-court-self="true"/);
   assert.match(own,/public-court-title">太政大臣/);
-  assert.doesNotMatch(h.court.selfBadge(A),/<svg|<img|太政官|運営|スタッフ/);
+  assert.match(h.court.selfBadge(A),/data-court-seal="stamp"/);assert.doesNotMatch(h.court.selfBadge(A),/<img|太政官|運営|スタッフ/);
 });
 test('office changes update mounted self slots and the open evaluation detail key',()=>{
   const h=harness(),slot=h.node(A),button=h.entry();h.connect();h.entries.show();h.entries.refresh();const oldKey=h.entries.key();

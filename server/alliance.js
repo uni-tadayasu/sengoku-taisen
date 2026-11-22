@@ -115,7 +115,9 @@ async function application(ctx,b,action){
  if(action==='apply'){
   if(user.guild_id)h.fail(409,'ALREADY_IN_GUILD','現在の同盟を脱退してから申請してください。');
   if(p.joinMode==='invite')h.fail(403,'GUILD_INVITE_REQUIRED','この同盟は招待制です。');
-  message=text(h,b.message,'ひとこと',200,true);guard=and(guard,{sql:'NOT EXISTS(SELECT 1 FROM guild_members WHERE user_id=?)',args:[user.id]});
+  message=text(h,b.message,'ひとこと',200,true);
+  if(message){const register=await h.resolveMessageRegister(db,user,{kind:'guild-officers',id:guildId},now);message=await register.write(message);guard=and(guard,register.guard);}
+  guard=and(guard,{sql:'NOT EXISTS(SELECT 1 FROM guild_members WHERE user_id=?)',args:[user.id]});
  }else{
   const m=await requireMember(ctx,false,true);if(m.guild_id!==guildId)h.fail(403,'GUILD_REQUIRED','所属同盟で操作してください。');
   targetId=id(h,b.playerId,'対象の領主');if(targetId===user.id)h.fail(400,'INVALID_TARGET','別の領主を選んでください。');
@@ -137,7 +139,9 @@ async function createOperation(ctx,b){
  if(targetId){const target=await h.getUser(db,targetId);if(!target||target.ban_active)h.fail(404,'PLAYER_NOT_FOUND','対象の領主が見つかりません。');if(b.kind==='attack'&&target.guild_id===m.guild_id)h.fail(409,'ALLIED_TARGET','同じ同盟の領主へ攻撃作戦は作成できません。');}
  if(branchId&&branchId!==castleId+'_north'&&branchId!==castleId+'_east'&&branchId!==castleId+'_south'&&branchId!==castleId+'_west')h.fail(400,'INVALID_INPUT','対象都市の支拠点を選んでください。');
  const operationId='ao_'+crypto.randomUUID().replaceAll('-',''),limit={sql:"(SELECT COUNT(*) FROM alliance_operations WHERE guild_id=? AND status='planned' AND expires_at>?)<30",args:[m.guild_id,now]};
- return commit(ctx,b,'operation-create',and(memberGuard(m),limit),(gate,args)=>[stmt(db,'INSERT INTO alliance_operations(id,guild_id,creator_id,title,note,kind,target_player_id,castle_id,branch_id,tactic,starts_at,expires_at,created_at,resolution_seed) SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?,? WHERE '+gate,operationId,m.guild_id,user.id,title,note,b.kind,targetId,castleId,branchId,b.tactic||'balanced',startsAt,expiresAt,now,crypto.randomUUID(),...args)],{operationId,message:'作戦と同盟専用の地図マークを登録しました。'});
+ const register=note?await h.resolveMessageRegister(db,user,{kind:'guild',id:m.guild_id},now):null;
+ const spokenNote=register?await register.write(note):note;
+ return commit(ctx,b,'operation-create',and(memberGuard(m),limit,register?.guard||emptyGuard()),(gate,args)=>[stmt(db,'INSERT INTO alliance_operations(id,guild_id,creator_id,title,note,kind,target_player_id,castle_id,branch_id,tactic,starts_at,expires_at,created_at,resolution_seed) SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?,? WHERE '+gate,operationId,m.guild_id,user.id,title,spokenNote,b.kind,targetId,castleId,branchId,b.tactic||'balanced',startsAt,expiresAt,now,crypto.randomUUID(),...args)],{operationId,message:'作戦と同盟専用の地図マークを登録しました。'});
 }
 async function updateOperation(ctx,b,action){
  const {db,user,helpers:h}=ctx,m=await requireMember(ctx),o=await getOperation(ctx,b);

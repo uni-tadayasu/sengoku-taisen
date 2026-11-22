@@ -32,7 +32,8 @@
 | `conquest.js` | `GET /conquest`・`/conquest/history`、`POST /conquest/{join,action}`。全同盟が共有する129城、同盟ごとの兵・物資、唯一の城所有、出陣・援軍・輸送・普請、順位・個人貢献・歴代成績・記念称号。 |
 | `protection.js` | `GET /protection`・`POST /protection/end`。一般領主の登録後24時間の保護、対人出陣前の明示解除、対象となる対人攻撃が30分以内に3回で120分の復興保護。同じ同盟の仲間への出陣も拒否。 |
 | `notifications.js` / `web-push.js` | `GET /notifications`、`POST /notifications/{preferences,subscribe,unsubscribe}`。通知設定・端末と配信台帳。配信起動は `POST /notifications/tick`。 |
-| `public-court.js` | 公開応答に、現在の在任資格・任命・功績から確認した官職だけを付加。名札は実役職名の文字のみで、「太政官」の接頭辞を付けません。管理権限のフラグ・任期・認証情報は公開しません。 |
+| `public-court.js` | 公開応答に、現在の在任資格・任命・功績から確認した官職だけを付加。名札は8官職それぞれの紋と役職名で表示します。管理権限のフラグ・任期・認証情報は公開しません。 |
+| `message-addressing.js`、`honorific-text.js`、`honorific-intent.js` | 受信者の現在の官職・位階を確認し、目上の領主に届く本文を小型の日本語分類モデルと活用規則で整えます。変換はWorker内で完結します。 |
 
 通常の保存を書き換える任務受取・絵巻交換・兵の送出／帰還・金庫出金は、操作端末と保存の版を確認します。操作番号、現在の同盟所属世代、必要な役職と利用停止世代を確定時にも照合し、消費・受取・記録を同じD1バッチに含めます。編成セット・武将熟練・戦報は既存セーブへ保存し、任務受取・交換の台帳はインポートで巻き戻しません。
 

@@ -1,11 +1,18 @@
-/* Public court office labels keep their text at narrow widths. */
-.public-court-badge{display:inline-flex;align-items:center;vertical-align:middle;max-width:100%;margin-inline-start:5px;padding:3px 7px;border:1px solid #b79a60;border-radius:6px;background:#272131;color:#f3dba4;font-size:10px;font-weight:700;line-height:1.3;letter-spacing:.02em;white-space:nowrap;text-shadow:none;box-sizing:border-box}
-.public-court-badge .public-court-title{color:inherit}
-.public-court-slot{display:inline-flex;align-items:center;vertical-align:middle}.public-court-slot:empty{display:none}
-.social-profile-heading .public-court-self .public-court-badge{min-height:28px;margin-inline-start:0;padding:3px 7px;font-size:14px}
-.public-court-chancellor{border-color:#cbb070;background:#322919;color:#ffe4a1}
-.public-court-emperor{border-color:#d5b69a;background:#3b2233;color:#ffe0b0}
-@media(max-width:420px){.public-court-badge{margin-inline-start:3px;padding:2px 5px;font-size:10px}}
-@media(forced-colors:active){.public-court-badge{border-color:CanvasText;background:Canvas;color:CanvasText}}
-
-.public-court-map-tag{position:absolute;top:-8px;left:50%;transform:translateX(-50%);pointer-events:none;z-index:2}.public-court-map-tag .public-court-badge{margin:0;padding:1px 3px;font-size:8px;line-height:1.2}
+/* A compact enamel seal and a legible title sit beside the separate rank badge. */
+.public-court-slot{display:inline-flex;align-items:center;vertical-align:middle;max-width:100%}
+.public-court-slot:empty{display:none}
+.public-court-badge{--court-ink:#f5dc9a;--court-ground:#25362e;--court-edge:#847b57;display:inline-flex;align-items:center;gap:.28em;flex:none;vertical-align:middle;box-sizing:border-box;margin-inline-start:.3em;padding:.13em .5em .13em .19em;min-height:1.7em;max-width:100%;border:1px solid var(--court-edge);border-radius:.34em;background:var(--court-ground);color:var(--court-ink);font-size:12px;font-weight:750;line-height:1.2;letter-spacing:.02em;white-space:nowrap;text-shadow:none;box-shadow:inset 0 0 0 1px #f9deb40c}
+.public-court-badge .public-court-icon{display:block;flex:none;width:1.38em;height:1.38em;box-sizing:border-box;padding:1px;color:inherit}
+.public-court-badge .public-court-title{color:inherit;font:inherit;letter-spacing:inherit}
+.public-court-badge[data-court-seal="scroll"]{--court-ground:#243849;--court-ink:#c7e9f4;--court-edge:#708a9b}
+.public-court-badge[data-court-seal="book"]{--court-ground:#443022;--court-ink:#f7d6a8;--court-edge:#9e7953}
+.public-court-badge[data-court-seal="gate"]{--court-ground:#3b2f49;--court-ink:#e3d3ef;--court-edge:#8a7799}
+.public-court-badge[data-court-seal="feather"]{--court-ground:#173c42;--court-ink:#c0ece5;--court-edge:#65908a}
+.public-court-badge[data-court-seal="pine"]{--court-ground:#314129;--court-ink:#dce9b3;--court-edge:#84906c}
+.public-court-chancellor{--court-ground:#41263a;--court-ink:#ffe0be;--court-edge:#b38381}
+.public-court-emperor{--court-ground:#50271f;--court-ink:#ffe4a8;--court-edge:#c8a566}
+.social-profile-heading .public-court-self .public-court-badge{margin-inline-start:0;font-size:14px}
+.public-court-map-tag{position:absolute;top:-8px;left:50%;transform:translateX(-50%);pointer-events:none;z-index:2}
+.public-court-map-tag .public-court-badge{margin:0;padding:0 3px 0 1px;min-height:0;font-size:9px;line-height:1.2}
+@media(max-width:420px){.public-court-badge{font-size:11px}}
+@media(forced-colors:active){.public-court-badge{border-color:CanvasText;background:Canvas;color:CanvasText;box-shadow:none}}
