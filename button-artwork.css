@@ -5,8 +5,8 @@
     input[type="button"], input[type="submit"], input[type="reset"], summary,
     .button, .action-link, .nav-play, .decision-list a, .guide-actions a,
     .share-actions a, .premium-buy) {
-  --button-wash-start: rgba(12, 23, 34, .82);
-  --button-wash-end: rgba(14, 26, 34, .64);
+  --button-wash-start: rgba(12, 23, 34, .88);
+  --button-wash-end: rgba(14, 26, 34, .76);
   background-image:
     linear-gradient(105deg, var(--button-wash-start), var(--button-wash-end)),
     var(--item-art, url("assets/castle-town.webp")) !important;
@@ -15,16 +15,16 @@
   background-repeat: no-repeat !important;
 }
 
-/* Keep the existing color meanings while making the illustrations visible. */
+/* Keep the existing color meanings with the illustrations softly visible. */
 :is(.button.primary, .social-button.primary, .field-button.primary,
     .launch-enter, .action-link.primary, .nav-play) {
-  --button-wash-start: rgba(104, 37, 44, .88);
-  --button-wash-end: rgba(100, 35, 36, .68);
+  --button-wash-start: rgba(104, 37, 44, .91);
+  --button-wash-end: rgba(100, 35, 36, .78);
 }
 :is(.button.gold, .social-button.gold, .field-button.gold,
     .action-link.gold, .premium-buy) {
-  --button-wash-start: rgba(56, 43, 23, .86);
-  --button-wash-end: rgba(60, 46, 23, .64);
+  --button-wash-start: rgba(56, 43, 23, .90);
+  --button-wash-end: rgba(60, 46, 23, .76);
 }
 /* These actions originally had a pale gold fill and dark lettering. The new
    dark scenery needs light lettering in default, hover and focused states. */
@@ -35,24 +35,41 @@
 .hints-card:first-child.is-recommended .hints-action,
 .hints-card:first-child.is-recommended .hints-action:not(:disabled):is(:hover, :focus-visible) {
   color: #fff5d8;
-  --button-wash-start: rgba(65, 48, 22, .85);
-  --button-wash-end: rgba(53, 41, 24, .64);
+  --button-wash-start: rgba(65, 48, 22, .90);
+  --button-wash-end: rgba(53, 41, 24, .76);
 }
 :is(.button.danger, .social-button.danger, [data-action="attack"]) {
-  --button-wash-start: rgba(107, 31, 45, .88);
-  --button-wash-end: rgba(92, 26, 34, .68);
+  --button-wash-start: rgba(107, 31, 45, .91);
+  --button-wash-end: rgba(92, 26, 34, .78);
 }
 :is(.nav-item.active, [role="tab"][aria-selected="true"],
     button[aria-pressed="true"], .social-tabs button.active) {
-  --button-wash-start: rgba(65, 33, 44, .87);
-  --button-wash-end: rgba(64, 37, 29, .66);
+  --button-wash-start: rgba(65, 33, 44, .91);
+  --button-wash-end: rgba(64, 37, 29, .78);
 }
 
 /* Small glyph buttons get the same scenery, with a darker center for clarity. */
 :is(.icon-button, .social-icon-button, .modal-close, .scroll-top-button,
     .art-level-controls button, .rank-preview-strip button) {
-  --button-wash-start: rgba(10, 23, 33, .83);
-  --button-wash-end: rgba(10, 23, 33, .64);
+  --button-wash-start: rgba(10, 23, 33, .89);
+  --button-wash-end: rgba(10, 23, 33, .78);
+}
+
+/* These controls already paint the illustration above. Remove only the
+   duplicate image, preserving pseudo-element content and active markers. */
+:is(button, [role="button"], [role="tab"], [role="switch"],
+    input[type="button"], input[type="submit"], input[type="reset"], summary,
+    .button, .action-link, .nav-play, .decision-list a, .guide-actions a,
+    .share-actions a, .premium-buy).illustrated-item::before {
+  background-image: none;
+}
+
+/* Flex action controls already provide an icon gap. Inline artwork keeps
+   its original margin, and centered title feature illustrations are untouched. */
+:is(.button, .nav-item, .social-button, .field-button,
+    .events-button, .hints-action) > .item-icon {
+  margin-right: 0;
+  margin-inline-end: 0;
 }
 
 @media (forced-colors: active) {

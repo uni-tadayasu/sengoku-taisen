@@ -34,8 +34,9 @@
 .alliance-map-pin b{display:inline-grid;place-items:center;background:#f5d481;color:#342417;border-radius:50%;min-width:1.2rem;font-size:.8rem}
 .alliance-contribution{border-bottom:1px solid #ffffff1c;padding:.9rem 0}.alliance-contribution>div{display:flex;justify-content:space-between;gap:.6rem;flex-wrap:wrap}.alliance-contribution p{margin:.25rem 0}.alliance-contribution small{color:#b9c2cb;font-size:.85rem}
 .alliance-dialog{color:#eee8dc;background:#151b22;border:1px solid #bd9b53;border-radius:16px;max-width:1100px;width:min(1100px,calc(100vw - 24px));height:min(90dvh,1000px);padding:0;overflow:hidden;box-shadow:0 25px 100px #0009}
-.alliance-dialog::backdrop{background:#03080bc9}.alliance-dialog-top{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:.8rem 1.2rem;border-bottom:1px solid #a58e5747}
-.alliance-dialog-content{height:calc(100% - 76px);overflow:auto;padding:1rem 1.2rem;overscroll-behavior:contain;box-sizing:border-box}
+.alliance-dialog[open]{display:flex;flex-direction:column}
+.alliance-dialog::backdrop{background:#03080bc9}.alliance-dialog-top{display:flex;flex:none;min-width:0;align-items:center;justify-content:space-between;gap:1rem;padding:.8rem 1.2rem;border-bottom:1px solid #a58e5747}
+.alliance-dialog-content{flex:1 1 auto;min-height:0;height:auto;overflow:auto;padding:1rem 1.2rem;overscroll-behavior:contain;box-sizing:border-box}
 .alliance-screen :focus-visible{outline:3px solid #efd17c;outline-offset:3px}
 @media(max-width:640px){.alliance-heading{align-items:flex-start;flex-direction:column}.alliance-form{grid-template-columns:1fr}.alliance-panel,.alliance-operation{padding:.9rem;border-radius:12px}.alliance-tabs{flex-wrap:nowrap;overflow-x:auto;padding:.5rem 0}.alliance-tabs .button{flex:0 0 auto;min-width:6.5rem;font-size:.9rem}.alliance-map{height:320px}.alliance-dialog{width:calc(100vw - 12px);height:94dvh;max-height:94dvh}.alliance-dialog-content{padding:.7rem}.alliance-directory{grid-template-columns:1fr}.alliance-unit{align-items:flex-start}.alliance-inline>.input,.alliance-inline>label{flex-basis:100%}.alliance-tasks li{align-items:flex-start}.alliance-tasks li .button{flex-shrink:0}}
 @media(prefers-reduced-motion:reduce){.alliance-screen *{scroll-behavior:auto!important;transition:none!important}}

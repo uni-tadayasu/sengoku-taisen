@@ -165,7 +165,6 @@ html.sengoku-desktop-fit #main .town-status-panels .objective p { font-size: 16p
 /* A smaller header leaves more height for the scene without reducing text. */
 @media (min-width: 1001px) {
   html.sengoku-desktop-fit:not([data-layout-header]) body:has(#main[data-view="town"]) .topbar { min-height: 78px; padding-top: 8px; padding-bottom: 8px; }
-  html.sengoku-desktop-fit body:has(#main[data-view="town"]) .resource-gain { display: inline; margin-left: 5px; }
 }
 @container game-content (max-width: 700px) {
   html.sengoku-desktop-fit #main .town-workspace.dashboard-grid { grid-template-columns: minmax(0,1fr) 220px; gap: 10px; }
@@ -218,9 +217,14 @@ html:not(.sengoku-desktop-fit) #main .town-status-panels > .panel:last-child { g
 #main .town-facility-console .building-card { min-width: 0; }
 
 /* The home castle can be upgraded beside its name without leaving the town. */
+#main .town-overview { container: town-overview / inline-size; }
 #main .town-castle-heading { width: 100%; min-width: 0; }
-#main .town-castle-heading-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 10px; }
-#main .town-castle-heading-copy { min-width: 0; }
+#main .town-castle-heading-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 4px 10px; }
+#main .town-castle-heading-copy { display: contents; }
+#main .town-castle-heading-copy .eyebrow { grid-column: 1 / -1; }
+#main .town-castle-heading-copy h1 { grid-column: 1; grid-row: 2; }
+#main .town-castle-heading-copy .subtitle { grid-column: 1; grid-row: 3; }
+#main .town-castle-heading-row > :not(.town-castle-heading-copy) { grid-column: 2; grid-row: 2 / 4; }
 #main .town-castle-heading .eyebrow, #main .town-castle-heading .subtitle { overflow-wrap: anywhere; }
 #main .town-castle-level-up { min-width: 86px; min-height: 64px; padding: 9px 10px; gap: 5px; font-size: 14px; font-weight: 600; white-space: normal; }
 #main .town-castle-level-up .icon { width: 16px; height: 16px; }
@@ -236,3 +240,12 @@ html:not(.sengoku-desktop-fit) #main .town-status-panels > .panel:last-child { g
 #main .town-castle-upgrade-detail .cost > span { white-space: nowrap; }
 #main .town-castle-upgrade-detail .progress { margin-top: 7px; }
 #main .town-castle-heading-row + .town-castle-upgrade-note { margin-top: 8px; }
+
+/* The overview can be narrow even on a wide desktop with a resized town. */
+#main .town-overview .expansion-entry { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr)); gap: 8px; }
+#main .town-overview .expansion-entry > .button { width: 100%; min-width: 0; min-height: 44px; white-space: normal; }
+@container town-overview (max-width: 310px) {
+  #main .town-castle-heading-row { grid-template-columns: minmax(0, 1fr); }
+  #main .town-castle-heading-row > :not(.town-castle-heading-copy) { grid-column: 1; grid-row: 4; width: 100%; min-width: 0; min-height: 44px; margin-top: 4px; }
+  #main .town-castle-level-up small { display: inline-block; margin: 0 0 0 8px; }
+}

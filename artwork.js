@@ -86,6 +86,9 @@ function buttonArtwork(el){
  // Retain the atlas aspect ratio on wide and shallow action controls.
  if(el.dataset.ghostUrl)el.style.setProperty('--button-art-size',/\/\b(?:facilities|castles|illustrations)\//.test(el.dataset.ghostUrl)?'800% auto':'cover');
 }
+// A one-character control already has its own visible symbol. Adding a second
+// icon pushes close/step controls outside their fixed hit area.
+function hasSymbolLabel(el){return /^[×✕✖+＋−－–‹›«»←→…⋯]$/.test((el.textContent||'').trim());}
 function decorate(){scheduled=false;
  document.querySelectorAll('[data-art-url]:not([data-art-observed])').forEach(el=>{el.dataset.artObserved='1';observer?observer.observe(el):reveal(el);});
  const selector='.button,.text-link,.launch-enter,.nav-item,.resource,.building-card,.facility-entry,.territory-row,.research-card,.quest-row,.tactic-card,.music-track,.settings-stack>.button,.social-tabs button,.social-list-card,.social-mail-row,.social-profile-section,.social-gift,.clan-choice,.gacha-banner,.title-feature,.panel,.notice,.officer-content';
@@ -95,10 +98,10 @@ function decorate(){scheduled=false;
   if(art)info={url:art.dataset.artUrl,x:art.dataset.artX,y:art.dataset.artY};
   else{const args=backgrounds[type]||backgrounds.council;info=tileInfo(args[0],args[1],args[2]||16);}
   if(info){el.dataset.ghostUrl=info.url;if(observer)observer.observe(el);else reveal(el);el.style.setProperty('--item-x',info.x+'%');el.style.setProperty('--item-y',info.y+'%');}
-  if(el.matches('button')&&!el.querySelector('svg,img,.painted-art')&&!el.classList.contains('territory-row'))el.insertAdjacentHTML('afterbegin',icon(type));
+  if(el.matches('button')&&!hasSymbolLabel(el)&&!el.querySelector('svg,img,.painted-art')&&!el.classList.contains('territory-row'))el.insertAdjacentHTML('afterbegin',icon(type));
  });
  document.querySelectorAll(buttonSelector).forEach(buttonArtwork);
- document.querySelectorAll('button,.title-feature').forEach(el=>{if(!el.querySelector('svg,img,.painted-art,.portrait-frame')){let type=el.dataset.artTheme||el.dataset.view||el.dataset.action||'default';if(type.includes('gacha')||type.includes('draw'))type='gacha';else if(type.includes('music')||type.includes('sound'))type='music';else if(type.includes('rank'))type='rank';else if(type.includes('officer')||type.includes('recruit'))type='officers';else if(type.includes('castle')||type.includes('building')||type.includes('upgrade'))type='town';else if(type.includes('save')||type.includes('export')||type.includes('import'))type='save';el.insertAdjacentHTML('afterbegin',icon(type));}});
+ document.querySelectorAll('button,.title-feature').forEach(el=>{if(!hasSymbolLabel(el)&&!el.querySelector('svg,img,.painted-art,.portrait-frame')){let type=el.dataset.artTheme||el.dataset.view||el.dataset.action||'default';if(type.includes('gacha')||type.includes('draw'))type='gacha';else if(type.includes('music')||type.includes('sound'))type='music';else if(type.includes('rank'))type='rank';else if(type.includes('officer')||type.includes('recruit'))type='officers';else if(type.includes('castle')||type.includes('building')||type.includes('upgrade'))type='town';else if(type.includes('save')||type.includes('export')||type.includes('import'))type='save';el.insertAdjacentHTML('afterbegin',icon(type));}});
  document.querySelectorAll('.section-heading h2,.panel-heading h2,.social-profile-section h3').forEach(el=>{if(!el.querySelector('svg'))el.insertAdjacentHTML('afterbegin',icon(el.closest('.social-profile-section')?'save':'council'));});
 }
 function schedule(){if(scheduled)return;scheduled=true;requestAnimationFrame(decorate);}
