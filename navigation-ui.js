@@ -1,0 +1,232 @@
+/* Find a destination without changing the game's command or save pathways. */
+(function (global) {
+  'use strict';
+  const GROUPS = ['城と内政', '合戦と天下', '武将と軍団', '交流・記録', '設定・案内', 'その他'];
+  const DETAILS = {
+    'view:town': ['城と内政', '施設の増築と本拠の成長', 'まち 城下 施設 建設 建築 増築 育成 レベル上げ 資源 金銭 お金 兵糧 木材 石材'],
+    'view:research': ['城と内政', '技術を研究して国力を高める', 'けんきゅう 内政 育成 レベル上げ 資源 強化 技術'],
+    'view:court': ['城と内政', '京都御所への参内と朝廷との交流', 'きょうと ごしょ 位階 朝廷 参内 貢献'],
+    'view:map': ['合戦と天下', '城・支城を選び、軍師と攻略を考える', 'ちず マップ 天下 統一 城攻め 支城 戦い CPU 軍師 ぐんし AI 外交 同盟 交渉'],
+    'view:field': ['合戦と天下', 'ほかの領主の本拠と対人戦', 'フィールド オンライン 対人 戦い PvP プレイヤー 領主 城'],
+    'view:roaming': ['合戦と天下', '野良兵との合戦と報酬', 'のら 野良兵 NPC CPU 戦う 戦い 報酬 軍師 ぐんし AI'],
+    'view:covert': ['合戦と天下', '部隊の派遣と迎撃・反撃', 'はけん 偵察 部隊 迎撃 反撃'],
+    'action:events': ['合戦と天下', '開催中のイベント・戦功・報酬', 'イベント 期間 合戦 戦い 関ヶ原 関ケ原 報酬 軍師 ぐんし AI'],
+    'action:alliance-strategy': ['合戦と天下', '同盟の作戦と集結軍', 'どうめい ギルド 協力 集結 ラリー'],
+    'action:conquest': ['合戦と天下', '同盟で挑む共有の天下統一', 'きょうゆう 天下 統一 大会 シーズン ギルド'],
+    'view:officers': ['武将と軍団', '武将の能力・絞り込み・招集', 'ぶしょう 武将 育成 レベル上げ 一覧 名鑑 ソート フィルター ガチャ 招集'],
+    'view:army': ['武将と軍団', '出陣する武将と兵力を整える', 'ぐんだん 編成 軍団 兵士 募兵 訓練 パーティー'],
+    'view:crests': ['武将と軍団', '各勢力の家紋を確認', 'かもん 家紋 勢力'],
+    'view:council': ['交流・記録', '軍師AI・任務・領国の戦記', 'ぐんぎ 作戦 軍師 ぐんし AI 任務 戦記 履歴 ログ'],
+    'action:progress': ['交流・記録', '任務・武将の熟練・編成保存・分析', '成長 せいちょう 任務 経験 熟練 保存 分析 報酬'],
+    'action:shogunate': ['交流・記録', '天下統一の功績と幕府の開設', 'ばくふ 幕府 将軍 征夷大将軍 天下 統一 開設 報酬'],
+    'action:hints': ['設定・案内', '今の領国に合った次の一手', 'ヒント 次 わからない 何 進め方 おすすめ'],
+    'action:premium': ['設定・案内', '有料版と外観・支援の案内', 'プレミアム 購入 課金 外観 支援 有料'],
+    'action:settings': ['設定・案内', 'セーブ・読込・音・表示の設定', 'せってい 保存 セーブ 音 BGM ミュート データ バックアップ 読込'],
+    'action:title-screen': ['設定・案内', '開始画面へ戻る', 'タイトル 最初 ホーム 戻る'],
+    'utility:layout': ['設定・案内', 'PCの画面配置を調整', 'レイアウト 画面 サイズ 大きさ 幅 高さ 縮小 拡大 配置 領域'],
+    'utility:social': ['交流・記録', '領主登録・チャット・同盟・書状・同期', 'こうりゅう 交流 登録 チャット 同盟 ギルド 手紙 書状 メール 通話 同期 引き継ぎ 引継ぎ 復元']
+  };
+  const ICONS = {
+    menu: 'M4 5h16M4 12h16M4 19h16',
+    search: 'M10 17a7 7 0 1 0 0-14 7 7 0 0 0 0 14m5-2 6 6',
+    close: 'm6 6 12 12M6 18 18 6',
+    book: 'M4 3h13a3 3 0 0 1 3 3v15H6a3 3 0 0 1 0-6h14M4 3v15M8 7h8M8 11h6'
+  };
+  const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
+  const svg = name => '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="' + (ICONS[name] || ICONS.menu) + '"/></svg>';
+  function normalizeQuery(value) {
+    return String(value ?? '').normalize('NFKC').toLocaleLowerCase('ja').replace(/[\u30a1-\u30f6]/g, char => String.fromCharCode(char.charCodeAt(0) - 0x60)).trim();
+  }
+  function filterEntries(entries, query) {
+    const terms = normalizeQuery(query).split(/\s+/).filter(Boolean);
+    return entries.filter(entry => terms.every(term => normalizeQuery([entry.label, entry.description, entry.keywords, entry.group].join(' ')).includes(term)));
+  }
+  function createNavigationUI(win = global) {
+    const doc = win.document, root = doc?.documentElement;
+    if (!doc || !root) return null;
+    const nav = doc.getElementById('navigation'), app = doc.getElementById('app');
+    const sidebar = app?.querySelector('.sidebar'), bottom = app?.querySelector('.sidebar-bottom');
+    if (!nav || !app || !sidebar || !bottom) return null;
+    const dialog = doc.createElement('dialog');
+    if (typeof dialog.showModal !== 'function') return null;
+    let initialized = false, frame = 0, returnFocus = null, restoreFocus = true, entries = [], signature = '', pendingNavigation = null;
+    const removers = [], observers = [], quickButtons = new Map();
+    const raf = win.requestAnimationFrame?.bind(win) || (fn => win.setTimeout(fn, 16));
+    const caf = win.cancelAnimationFrame?.bind(win) || win.clearTimeout?.bind(win);
+    const listen = (node, type, fn, options) => { node?.addEventListener(type, fn, options); removers.push(() => node?.removeEventListener(type, fn, options)); };
+    const hasClass = (node, name) => node?.classList?.contains(name) === true;
+    const setAttr = (node, name, value) => { if (value == null) node.removeAttribute(name); else if (node.getAttribute(name) !== String(value)) node.setAttribute(name, String(value)); };
+    const touch = () => Number(win.navigator?.maxTouchPoints) > 0 || win.matchMedia?.('(any-pointer: coarse)').matches === true;
+    function otherDialog(ignoreLoading = false) {
+      return [...doc.querySelectorAll('dialog'), ...doc.querySelectorAll('[role="dialog"]')].some(node => node !== dialog && !(ignoreLoading && node.id === 'game-loading') && (node.open === true || node.getAttribute('aria-modal') === 'true' && !node.hidden && node.getClientRects().length > 0));
+    }
+    function unavailable() {
+      return doc.hidden || app.inert || win.SENGOKU_AT_TITLE === true || hasClass(doc.body, 'at-title') || hasClass(doc.body, 'is-loading') || otherDialog() || Boolean(doc.getElementById('layout-resize-toolbar') && !doc.getElementById('layout-resize-toolbar').hidden);
+    }
+    function finishNavigation() {
+      if (!pendingNavigation) return;
+      const main = doc.getElementById('main'), loading = doc.getElementById('game-loading');
+      if (!main || main.getAttribute('data-view') !== pendingNavigation.view || doc.hidden || app.inert || win.SENGOKU_AT_TITLE === true || hasClass(doc.body, 'at-title') || dialog.open || otherDialog(true) || Boolean(doc.getElementById('layout-resize-toolbar') && !doc.getElementById('layout-resize-toolbar').hidden)) {
+        pendingNavigation = null; return;
+      }
+      // The existing loading observer will call refresh when its work ends.
+      // Never poll, and never let a later render replay this scroll/focus.
+      if (hasClass(doc.body, 'is-loading') || loading?.open) return;
+      pendingNavigation = null;
+      if (!hasClass(root, 'sengoku-desktop-fit')) main.scrollIntoView({ block: 'start', behavior: 'instant' });
+      main.focus({ preventScroll: true });
+    }
+    function cancelPendingNavigation() { pendingNavigation = null; }
+    function sourceLabel(node) {
+      const label = [...node.children].find(child => child.tagName === 'SPAN' && !hasClass(child, 'nav-count') && !child.hasAttribute('data-icon'));
+      return (label?.textContent || node.getAttribute('aria-label') || node.textContent || '').trim().slice(0, 80);
+    }
+    function item(key, source, label) {
+      const details = DETAILS[key] || ['その他', 'この機能を開く', ''];
+      return { key, source, label: label || sourceLabel(source), group: details[0], description: details[1], keywords: details[2], disabled: source.disabled === true, current: hasClass(source, 'active') || source.getAttribute('aria-current') === 'page', icon: source.querySelector('svg')?.outerHTML || svg('menu') };
+    }
+    function collect() {
+      const list = [], seen = new Set();
+      const add = entry => { if (entry.label && !seen.has(entry.key)) { seen.add(entry.key); list.push(entry); } };
+      for (const node of nav.querySelectorAll('button')) {
+        if (node.hidden) continue;
+        const view = node.getAttribute('data-view'), action = node.getAttribute('data-action');
+        if (view || action) add(item(view ? 'view:' + view : 'action:' + action, node));
+      }
+      for (const node of bottom.children) {
+        if (node.tagName !== 'BUTTON' || node.hidden || !hasClass(node, 'nav-item')) continue;
+        const action = node.getAttribute('data-action');
+        if (action) add(item('action:' + action, node));
+        else if (hasClass(node, 'layout-editor-button')) add(item('utility:layout', node));
+      }
+      const social = doc.querySelector('.social-launcher');
+      if (social && !social.hidden) add(item('utility:social', social, '交流'));
+      add({ key: 'help:guide', label: '遊び方', group: '設定・案内', description: '端末ごとの操作と遊び方を別タブで確認', keywords: '操作 ガイド スマホ PC タブレット 初心者 はじめて', href: 'guide/', icon: svg('book') });
+      add({ key: 'help:recovery', label: '引き継ぎ・復元', group: '設定・案内', description: '端末変更とデータの復元を別タブで確認', keywords: '引継ぎ データ 同期 セーブ 復旧 スマホ パソコン バックアップ', href: 'guide/data-recovery/', icon: svg('book') });
+      return list;
+    }
+    const trigger = doc.createElement('button');
+    trigger.type = 'button'; trigger.className = 'nav-item navigation-menu-trigger';
+    trigger.setAttribute('aria-haspopup', 'dialog'); trigger.setAttribute('aria-controls', 'navigation-dialog'); trigger.setAttribute('aria-expanded', 'false');
+    trigger.innerHTML = svg('search') + '<span class="navigation-trigger-copy"><b>すべてのメニュー</b><small>機能名から探す</small></span><kbd aria-hidden="true">Ctrl K</kbd>';
+    const dock = doc.createElement('div'); dock.className = 'navigation-quick-dock';
+    for (const [key, label] of [['view:town', '城下町'], ['view:map', '天下地図'], ['view:army', '軍団編成'], ['menu', 'メニュー']]) {
+      const button = doc.createElement('button'); button.type = 'button'; button.className = 'nav-item navigation-quick';
+      button.setAttribute('data-navigation-quick', key);
+      button.innerHTML = svg('menu') + '<span>' + label + '</span>';
+      if (key === 'menu') { button.setAttribute('aria-haspopup', 'dialog'); button.setAttribute('aria-controls', 'navigation-dialog'); button.setAttribute('aria-expanded', 'false'); }
+      quickButtons.set(key, button); dock.appendChild(button);
+    }
+    dialog.id = 'navigation-dialog'; dialog.className = 'navigation-dialog'; dialog.setAttribute('aria-labelledby', 'navigation-title');
+    dialog.innerHTML = '<header class="navigation-dialog-header"><div><h2 id="navigation-title">すべてのメニュー</h2><p>やりたいことから、すぐに移動できます。</p></div><button type="button" class="navigation-close" data-navigation-close aria-label="メニューを閉じる">' + svg('close') + '</button></header>' +
+      '<div class="navigation-search-row"><label class="navigation-search"><span class="social-sr-only">メニューを検索</span>' + svg('search') + '<input id="navigation-query" type="search" placeholder="機能名や目的で検索" autocomplete="off" autocapitalize="off" spellcheck="false" aria-controls="navigation-results"></label><button type="button" class="navigation-clear" data-navigation-clear aria-label="検索を消去">消去</button></div>' +
+      '<p id="navigation-result-status" class="navigation-result-status" role="status" aria-live="polite"></p><div id="navigation-results" class="navigation-results"></div>' +
+      '<footer class="navigation-dialog-footer"><span>選んだ機能の画面を開きます。</span><span class="navigation-keyboard-hint">Ctrl / ⌘ K で開く · Esc で閉じる</span></footer>';
+    const search = dialog.querySelector('#navigation-query'), results = dialog.querySelector('#navigation-results');
+    const status = dialog.querySelector('#navigation-result-status'), clearButton = dialog.querySelector('[data-navigation-clear]');
+    function renderResults() {
+      const matches = filterEntries(entries, search.value);
+      const next = JSON.stringify([search.value, matches.map(entry => [entry.key, entry.label, entry.disabled, entry.current])]);
+      if (next === signature) return;
+      signature = next;
+      status.textContent = search.value.trim() ? matches.length + '件見つかりました' : '全' + entries.length + '項目 · 目的から選べます';
+      clearButton.disabled = !search.value;
+      results.innerHTML = matches.length ? GROUPS.map(group => {
+        const rows = matches.filter(entry => entry.group === group); if (!rows.length) return '';
+        return '<section class="navigation-group"><h3>' + group + '</h3><div class="navigation-entry-grid">' + rows.map(entry => {
+          const content = '<span class="navigation-entry-icon">' + entry.icon + '</span><span class="navigation-entry-copy"><b>' + esc(entry.label) + '</b><small>' + esc(entry.description) + '</small></span>' + (entry.current ? '<span class="navigation-current">表示中</span>' : '');
+          return entry.href ? '<a class="navigation-entry" data-navigation-help href="' + entry.href + '" target="_blank" rel="noopener">' + content + '</a>' : '<button type="button" class="navigation-entry' + (entry.current ? ' is-current' : '') + '" data-navigation-target="' + esc(entry.key) + '"' + (entry.disabled ? ' disabled' : '') + (entry.current ? ' aria-current="page"' : '') + '>' + content + '</button>';
+        }).join('') + '</div></section>';
+      }).join('') : '<div class="navigation-empty"><b>見つかりませんでした</b><p>別の言葉で探すか、検索を消去してください。</p></div>';
+    }
+    function expanded(value) { setAttr(trigger, 'aria-expanded', value); setAttr(quickButtons.get('menu'), 'aria-expanded', value); }
+    function close(restore = true) { restoreFocus = restore; expanded(false); if (dialog.open) dialog.close(); }
+    function refresh() {
+      frame = 0; if (!initialized) return;
+      entries = collect();
+      for (const [key, button] of quickButtons) {
+        if (key === 'menu') continue;
+        const entry = entries.find(entry => entry.key === key);
+        button.disabled = !entry || entry.disabled;
+        button.classList.toggle('active', entry?.current === true);
+        setAttr(button, 'aria-current', entry?.current ? 'page' : null);
+        const markup = (entry?.icon || svg('menu')) + '<span>' + esc(entry?.label || key.slice(5)) + '</span>';
+        if (button.innerHTML !== markup) button.innerHTML = markup;
+      }
+      if (dialog.open) { if (unavailable()) close(false); else renderResults(); }
+      finishNavigation();
+    }
+    function schedule() { if (initialized && !frame) frame = raf(refresh); }
+    function open(from) {
+      if (!initialized || unavailable()) return false;
+      if (dialog.open) return true;
+      entries = collect(); returnFocus = from || doc.activeElement; restoreFocus = true;
+      search.value = ''; signature = ''; renderResults(); results.scrollTop = 0;
+      dialog.showModal(); expanded(true);
+      (touch() ? dialog.querySelector('[data-navigation-close]') : search).focus({ preventScroll: true });
+      return true;
+    }
+    function activate(key) {
+      if (unavailable()) return false;
+      const entry = collect().find(entry => entry.key === key);
+      if (!entry?.source?.isConnected || entry.disabled) return false;
+      close(false); pendingNavigation = key.startsWith('view:') ? { view: key.slice(5) } : null;
+      entry.source.click(); schedule();
+      return true;
+    }
+    function keydown(event) {
+      if (event.defaultPrevented || event.repeat || event.isComposing || event.altKey || event.shiftKey || !(event.ctrlKey || event.metaKey) || String(event.key).toLowerCase() !== 'k') return;
+      const target = event.target;
+      if (target?.isContentEditable || target?.closest?.('input, textarea, select, [contenteditable="true"], [contenteditable=""]') || unavailable()) return;
+      event.preventDefault(); open(target);
+    }
+    function destroy() {
+      close(false); initialized = false; pendingNavigation = null; if (frame) caf?.(frame); frame = 0;
+      for (const observer of observers) observer.disconnect();
+      for (const remove of removers.splice(0)) remove();
+      root.classList.remove('sengoku-navigation-ready'); trigger.remove(); dock.remove(); dialog.remove();
+    }
+    listen(trigger, 'click', () => open(trigger));
+    listen(dock, 'click', event => { const button = event.target.closest('[data-navigation-quick]'); if (!button || button.disabled) return; const key = button.getAttribute('data-navigation-quick'); if (key === 'menu') open(button); else activate(key); });
+    listen(dialog, 'click', event => {
+      const target = event.target.closest('[data-navigation-target]');
+      if (target && !target.disabled) activate(target.getAttribute('data-navigation-target'));
+      else if (event.target.closest('[data-navigation-close]')) close();
+      else if (event.target.closest('[data-navigation-clear]')) { search.value = ''; renderResults(); search.focus({ preventScroll: true }); }
+      else if (event.target.closest('[data-navigation-help]')) close(false);
+    });
+    listen(dialog, 'close', () => {
+      // A queued close event must not undo a menu reopened in the meantime.
+      if (dialog.open) return;
+      expanded(false);
+      if (restoreFocus && !otherDialog() && !unavailable()) {
+        const target = returnFocus?.isConnected && returnFocus.getClientRects().length ? returnFocus : trigger;
+        target.focus({ preventScroll: true });
+      }
+      returnFocus = null;
+    });
+    listen(search, 'input', renderResults);
+    for (const event of ['wheel', 'touchmove', 'pointerdown']) listen(doc, event, cancelPendingNavigation, { capture: true, passive: true });
+    listen(doc, 'keydown', event => { if (!['Shift', 'Control', 'Alt', 'Meta'].includes(event.key)) cancelPendingNavigation(); }, { capture: true });
+    listen(doc, 'focusin', event => { const surface = event.target.closest?.('dialog, [role="dialog"]'); if (surface && surface.id !== 'game-loading') cancelPendingNavigation(); }, { capture: true });
+    listen(doc, 'visibilitychange', () => { if (doc.hidden) cancelPendingNavigation(); });
+    listen(doc, 'keydown', keydown);
+    listen(win, 'resize', schedule, { passive: true });
+    listen(win, 'pageshow', schedule);
+    nav.parentElement.insertBefore(trigger, nav); bottom.appendChild(dock); doc.body.appendChild(dialog);
+    initialized = true; refresh(); root.classList.add('sengoku-navigation-ready');
+    if (win.MutationObserver) {
+      const navigationObserver = new win.MutationObserver(schedule);
+      navigationObserver.observe(nav, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'aria-current', 'disabled', 'hidden'] }); observers.push(navigationObserver);
+      const bodyObserver = new win.MutationObserver(schedule);
+      bodyObserver.observe(doc.body, { attributes: true, attributeFilter: ['class'] }); observers.push(bodyObserver);
+      const utilityObserver = new win.MutationObserver(schedule);
+      utilityObserver.observe(bottom, { childList: true }); observers.push(utilityObserver);
+    }
+    return { open, close, refresh, activate, destroy, isOpen: () => dialog.open, getEntries: () => collect().map(({ source, icon, ...entry }) => entry) };
+  }
+  if (typeof module !== 'undefined' && module.exports) module.exports = { createNavigationUI, normalizeQuery, filterEntries };
+  if (!global.document || global.SengokuNavigation) return;
+  const start = () => { if (!global.SengokuNavigation) global.SengokuNavigation = createNavigationUI(global); };
+  if (global.document.readyState === 'loading') global.document.addEventListener('DOMContentLoaded', start, { once: true }); else start();
+})(typeof window !== 'undefined' ? window : globalThis);

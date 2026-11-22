@@ -2,6 +2,7 @@
 .public-court-badge{display:inline-flex;align-items:center;vertical-align:middle;max-width:100%;margin-inline-start:5px;padding:3px 7px;border:1px solid #b79a60;border-radius:6px;background:#272131;color:#f3dba4;font-size:10px;font-weight:700;line-height:1.3;letter-spacing:.02em;white-space:nowrap;text-shadow:none;box-sizing:border-box}
 .public-court-badge .public-court-title{color:inherit}
 .public-court-slot{display:inline-flex;align-items:center;vertical-align:middle}.public-court-slot:empty{display:none}
+.social-profile-heading .public-court-self .public-court-badge{min-height:28px;margin-inline-start:0;padding:3px 7px;font-size:14px}
 .public-court-chancellor{border-color:#cbb070;background:#322919;color:#ffe4a1}
 .public-court-emperor{border-color:#d5b69a;background:#3b2233;color:#ffe0b0}
 @media(max-width:420px){.public-court-badge{margin-inline-start:3px;padding:2px 5px;font-size:10px}}

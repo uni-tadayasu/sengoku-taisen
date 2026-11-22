@@ -21,10 +21,10 @@ const absolute = relative => new URL(relative, `${origin}/`).href;
 const canonical = key => absolute(site.pages[key].path);
 const modifiedLabel = value => value.replace(/^(\d{4})-(\d{2})-(\d{2})$/, (_, year, month, day) => `${year}年${Number(month)}月${Number(day)}日`);
 const jsonScript = value => JSON.stringify(value).replace(/</g, '\\u003c');
-const section = (id, kicker, title, body, theme = '') => `<section id="${id}" class="article-section ${theme}"><div class="section-kicker">${kicker}</div><h2>${title}</h2>${body}</section>`;
+const section = (id, kicker, title, body, theme = '') => `<section id="${id}" class="article-section ${theme}" aria-labelledby="${id}-title"><div class="section-kicker">${kicker}</div><h2 id="${id}-title">${title}</h2>${body}<a class="section-return" href="#page-contents">目次へ戻る</a></section>`;
 const callout = (title, body, warm = false) => `<aside class="callout${warm ? ' callout--warm' : ''}"><h3>${title}</h3><p>${body}</p></aside>`;
 const steps = items => `<ol class="step-list">${items.map(([title, text], index) => `<li><span class="step-marker" aria-hidden="true">${index + 1}</span><div><h3>${title}</h3><p>${text}</p></div></li>`).join('')}</ol>`;
-const table = (caption, headings, rows, extra = '') => `<div class="data-table-wrap"><table class="${extra}"><caption>${caption}</caption><thead><tr>${headings.map(h => `<th scope="col">${h}</th>`).join('')}</tr></thead><tbody>${rows.map(cells => `<tr>${cells.map((cell, i) => i === 0 ? `<th scope="row">${cell}</th>` : `<td>${cell}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+const table = (caption, headings, rows, extra = '') => `<div class="data-table-wrap" role="region" tabindex="0" aria-label="${esc(caption)}"><table class="${extra}"><caption>${caption}</caption><thead><tr>${headings.map(h => `<th scope="col">${h}</th>`).join('')}</tr></thead><tbody>${rows.map(cells => `<tr>${cells.map((cell, i) => i === 0 ? `<th scope="row">${cell}</th>` : `<td>${cell}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
 
 function paths(file) {
   const from = path.posix.dirname(file);
@@ -92,6 +92,18 @@ function structuredData(key, breadcrumbItems = [], pageImage = site.ogImage.path
   return {'@context':'https://schema.org','@graph':graph};
 }
 
+function quickTopics(p) {
+  const topics = [
+    ['#first-steps', '初めて遊ぶ', '城選び・最初の進め方'],
+    ['#device-controls', '画面と操作', 'PC・スマホ・タブレット'],
+    ['#castle-upgrades', '城を育てる', '天守・城郭のレベル上げ'],
+    ['#strategy', '軍師AIを使う', '提案・準備・自動進軍'],
+    ['#timed-events', '合戦と報酬', 'イベント・天下統一・幕府'],
+    [p.dir('guide/data-recovery'), '続きを引き継ぐ', '保存・端末変更・復元']
+  ];
+  return `<nav class="guide-quick" aria-labelledby="quick-topics-title"><h2 id="quick-topics-title">目的から探す</h2><ul>${topics.map(([href,title,description])=>`<li><a href="${href}"><strong>${title}</strong><span>${description}</span></a></li>`).join('')}</ul><a class="guide-quick-all" href="#page-contents">すべての項目を見る</a></nav>`;
+}
+
 function guideContent(p) {
   return [
     section('first-steps', '初めての領主へ', '開始城を選ぶ・最初の進め方', `
@@ -105,6 +117,18 @@ function guideContent(p) {
       <p>以前の続きへ戻る場合は、初回画面の<strong>「以前の領主を復元」</strong>から引き継げます。城を確定する前の状態は保存・自動送信しません。すでに保存されている進行は、開始城選択の追加によって変わりません。</p>
       <p>通常城の城郭と城下町施設は<strong>Lv.32</strong>まで、二条城・大坂城・名古屋城の城郭は<strong>Lv.48</strong>まで、江戸城の城郭は<strong>Lv.64</strong>まで、京都御所の城郭は<strong>Lv.128</strong>まで発展します。城の強化に応じて費用と効果が変わります。詳細画面では32段階の絵姿を見比べられ、Lv.33以降は最終形態の絵を使います。イラストの閲覧だけで資源やレベルが変わることはありません。</p>
       <a class="chapter-link" href="#castle-upgrades">本拠・城郭のレベルの上げ方を確認する</a>
+    `, 'section-town'),
+    section('device-controls', '端末に合わせて遊ぶ', 'PC・スマホ・タブレットの操作方法', `
+      <p class="lead-paragraph">画面幅に合わせてメニューと操作欄が切り替わります。目的の機能が見つからないときは<strong>「すべてのメニュー」</strong>を開き、機能名や目的で検索してください。「育成」「戦い」などの目的から、必要な画面を見つけられます。</p>
+      ${table('端末ごとの基本操作', ['端末', '操作と画面の使い方'], [
+        ['PC', 'マウスのクリックとホイールで操作します。Tabキーでボタンや入力欄へ移り、Enterキーで選択できます。左側のメニューから移動でき、「すべてのメニュー」では名前や目的で探せます。入力中や別の画面を開いているとき以外は、Ctrl+K（MacはCommand+K）でもメニューを開けます。'],
+        ['スマホ', '画面下部の「城下町」「天下地図」「軍団編成」「メニュー」「交流」から、よく使う画面へ移動します。「メニュー」を開くと、ほかのすべての機能を探せます。一覧や本文は上下へスクロールし、地図の拡大・縮小は地図内の操作を使います。'],
+        ['タブレット・狭いPC', 'ウィンドウ幅や端末の向きに応じた配置で操作できます。縦向きでも横向きでも同じ機能を利用でき、幅が狭いときはコンパクトなメニューになります。']
+      ])}
+      <p>「すべてのメニュー」の<strong>「機能名や目的で検索」</strong>には、例えば「兵」「報酬」「保存」などを入力できます。検索を消すと全項目へ戻ります。メニューの選択だけで、出陣や資源の消費は行いません。</p>
+      <h3>迷ったら「ヒント」、操作に困ったら「保存・設定」</h3>
+      <p><strong>「ヒント」</strong>は今の領国に合う次の行動を案内します。<strong>「保存・設定」</strong>ではバックアップ、音量などを確認できます。初めての人は、まず城下町の田畑・商家と軍団を整え、戦いの前に軍師の提案を確認すると進めやすくなります。</p>
+      <p>入力欄で検索・絞り込みを使うときは、条件を解除すると元の一覧へ戻れます。画面を閉じるときは、その画面の<strong>「閉じる」</strong>を使ってください。保存・引き継ぎの操作は、<a href="${p.dir('guide/data-recovery')}">データ復元ガイド</a>で手順を確認できます。</p>
     `, 'section-town'),
     section('next-hints', '迷ったときの道しるべ', '次に何をするか、ヒントで確認', `
       <p class="lead-paragraph">メニューの<strong>「ヒント」</strong>、または城下町の<strong>「次の一手」</strong>から、現在の領国に合うおすすめを確認できます。資源・兵糧収支・指令・普請・軍団・任務などの状況に応じて、優先する行動を並べます。</p>
@@ -216,6 +240,7 @@ function guideContent(p) {
     section('player-evaluation', '領主の成長と称号', '総合評価から自動で授かる位階', `
       <p class="lead-paragraph">各プレイヤーの領国・育成・編成・実績を、7項目、合計100,000点で評価します。現在の点数に応じて<strong>無位から正一位まで17段階の位階</strong>を自動で付与します。</p>
       <p>ゲームのヘッダーや各画面見出しの「総合評価」、交流の領主プロフィールから、自分の位階・総合評価・内訳・次の位階までの必要点を確認できます。他の領主の位階は、交流、フレンド、同盟、書状、共通フィールドの城主表示などに名前と一緒に表示します。</p>
+      <p>自分の「総合評価」や交流プロフィールでは、接続確認済みの朝廷の役職がある場合に、位階の横へ役職名を文字で表示します（役職用の装飾アイコンは付けません）。</p>
       ${table('総合評価の7項目', ['項目','上限','評価する成長'], SengokuEngine.evaluateState({}).breakdown.map(item=>[esc(item.name),`${item.maxScore.toLocaleString('ja-JP')}点`,esc(item.description)]))}
       <p>各項目の端数は切り捨て、合計点から位階を決めます。軍団は最高所有レア度を反映した能力、奉行は建設済み施設への政治力・特技の適性を使います。所持資源や残兵、発言数は得点に含めません。</p>
       ${table('位階と必要な総合評価', ['位階','必要点'], SENGOKU_DATA.evaluationRanks.map(rank=>[esc(rank.name),`${rank.minScore.toLocaleString('ja-JP')}点以上`]))}
@@ -352,11 +377,25 @@ function guideContent(p) {
       ${steps([
         ['戦場と戦術を選ぶ', '領主登録と進行の保存後、3つの戦場から挑む場所を選びます。敵軍・戦場の特色・有効な戦術を確認し、保存済みの軍団で出陣します。'],
         ['戦功を重ねる', '出陣1回につき、通常の行動と共通の指令を1消費します。日ごとの回数制限はありません。指令の上限は天守レベルに従い、回復も通常どおり共通時間20秒ごとです。勝敗と戦場に応じて戦功を獲得し、敗北でも一部の戦功を得られます。通常の城・兵・資源は、このイベント合戦によって失いません。'],
-        ['報酬を受け取る', '新しい戦い一覧から設計したイベントでは、出陣ごとに金銭・兵糧・木材・石材・勾玉を直接獲得します。勝利時は通常報酬、敗北時も少量の報酬があります。各資産の所有上限100,000,000を超える分は加算されません。戦功が達成条件へ届くと、対象の領主へ追加報酬付きのシステム便が自動で届きます。「交流」→「郵便」で贈り物を受け取ってください。同じ達成報酬の便は1回だけ発行されます。']
+        ['報酬を受け取る', '新しい戦い一覧から設計したイベントでは、勝利するたびに金銭・兵糧・木材・石材・勾玉を直接獲得します。敗北時にも金銭・兵糧・勾玉の奮戦報酬があります。各資産の所有上限100,000,000を超える分は加算されません。戦功が達成条件へ届くと、対象の領主へ追加報酬付きのシステム便が自動で届きます。「交流」→「郵便」で贈り物を受け取ってください。同じ達成報酬の便は1回だけ発行されます。']
       ])}
       <p>終了日時になると新しい出陣はできなくなります。終了後も結果と順位を確認でき、すでに届いた報酬の便は郵便から受け取れます。順位表には領主名・設定したアイコン・位階バッジを表示します。</p>
-      <p>イベントの運営画面では、歴史上の合戦、ゲーム内のすべての城攻め、6種類の野良兵戦から戦いを検索・選択します。正式な戦い名と地形を基に、内蔵のゲームAIが3戦場・敵軍・戦術の適性・開催日数に合う報酬を設計します。各戦場の軍師は現在の軍団と士気から5つの戦術を比較し、提案を選択欄へ反映できます。開催される条件と報酬は設計案・合戦画面で確認できます。同時開催は1件です。更新前に作成したイベントは、元の達成条件と報酬を維持します。</p>
-      <h3>天下統一を達成して幕府を開く</h3><p>関ヶ原の戦い・小田原征伐・大坂夏の陣を選んだイベントには、天下統一の結末があります。本人が<strong>全3戦場に勝利し、最終段階の必要戦功へ到達</strong>すると、一度だけ幕府開設権を獲得します。イベント上の統一で天下地図の領有は変わりません。</p><p>天下地図では役割ごとの統一対象城をすべて制覇すると獲得します。共有天下統一大会では、同盟が全129城を制覇した時点で、同じ同盟に在籍して参戦・支援した領主が獲得します。メニューの<strong>「幕府の記録」</strong>から権利を選んで開設すると、幕府名と征夷大将軍の称号を記録します。獲得・開設の記録は領主に保存され、古いセーブを読み込んでも二重に受け取れません。</p>
+      <p>イベントの設計には、<strong>史実をもとにした55の合戦、ゲーム内の全129城、6種類の野良兵戦を合わせた190件</strong>の戦い一覧を使います。選んだ戦い名と地形を基に、内蔵のゲームAIが3戦場・敵軍・戦術の適性・開催日数に合う報酬を設計します。各戦場の軍師は現在の軍団と士気から5つの戦術を比較し、提案を選択欄へ反映できます。開催される条件と報酬は設計案・合戦画面で確認できます。同時開催は1件です。更新前に作成したイベントは、元の達成条件と報酬を維持します。</p>
+      <p>合戦名はシナリオの題材です。敵軍・段階・報酬・天下統一の条件はゲームのルールとして設計し、実際の歴史の再現を意味しません。天下統一の報酬は、<a href="#shogunate">幕府開設の条件と手順</a>をご確認ください。</p>
+    `, 'section-field'),
+    section('shogunate', '天下統一の達成報酬', '幕府を開く条件と「幕府の記録」', `
+      <p class="lead-paragraph">天下統一を達成すると、<strong>幕府を開く権利</strong>を獲得できます。権利は領主の功績として記録され、メニューの<strong>「幕府の記録」</strong>から確認できます。</p>
+      ${table('幕府開設権を獲得する条件', ['統一の種類', '達成条件'], [
+        ['対象の期間限定合戦', '関ヶ原の戦い・小田原征伐・大坂夏の陣を選んだイベントで、本人が全3戦場に勝利し、最終段階の必要戦功へ到達します。'],
+        ['天下地図', '自分の天下統一の対象となる城をすべて領有します。進行状況はゲーム画面で確認できます。'],
+        ['共有天下統一大会', '同盟が全129城を制覇した時点で、その同盟に在籍し、実際に参戦・支援した領主が対象です。']
+      ])}
+      ${steps([
+        ['「幕府の記録」を開く', '領主を登録・接続した状態で、メニューの「幕府の記録」から、獲得した開設権と統一の記録を確認します。'],
+        ['使用する開設権を選ぶ', 'どの統一による功績かを確認して、使いたい権利を選びます。権利は同じ統一の達成について重複して発行されません。'],
+        ['開設を確認する', '確認画面の内容を読んで「幕府を開設する」を押すと、勢力に応じた幕府名と「征夷大将軍」の称号を記録します。']
+      ])}
+      <p>期間限定合戦での天下統一はイベントの結末です。天下地図の城の領有は変わりません。獲得・開設の記録は領主に保存され、古いセーブを読み込んだり物語を始め直したりしても、同じ功績を二重に受け取ることはありません。</p>
     `, 'section-field'),
     section('walking', '端末を持って歩く', 'ウォーキング報酬の受け取り方と計測条件', `
       <p class="lead-paragraph">城下町または「保存・設定」から<strong>「ウォーキング」</strong>を開き、計測を開始します。端末の動きから検知した<strong>1歩につき、金銭・兵糧・木材・石材・勾玉をそれぞれ2</strong>獲得します。100歩なら各200です。すべてのプレイヤーで同じルールです。</p>
@@ -378,7 +417,7 @@ function guideContent(p) {
       <a class="chapter-link" href="${p.dir('guide/data-recovery')}">端末変更・データ復元の手順を読む</a>
     `),
     section('questions', 'よくある質問', '対応端末・画面表示・音楽について', `
-      <div class="faq"><h3>PCとスマートフォンの両方で遊べますか？</h3><p>PC・スマートフォン・タブレットのブラウザから利用できます。画面幅に合わせてメニュー・資源表示・操作欄を配置し、狭いPCウィンドウでもコンパクトな表示へ切り替わります。スマホではメニューを横へスクロールして選べます。縦向き・横向きを切り替えても、画面内のスクロールで操作を続けられます。同じ領主IDを連携すれば、端末を変えて続けられます。</p>
+      <div class="faq"><h3>PCとスマートフォンの両方で遊べますか？</h3><p>PC・スマートフォン・タブレットのブラウザから利用できます。画面幅に合わせてメニュー・資源表示・操作欄を配置し、狭いPCウィンドウでもコンパクトな表示へ切り替わります。スマホでは下部のメニューでよく使う画面へ移り、「メニュー」から機能を検索できます。縦向き・横向きを切り替えても、画面内のスクロールで操作を続けられます。同じ領主IDを連携すれば、端末を変えて続けられます。</p>
       <h3>開始する城を選べますか？</h3><p>初回の「はじまりの城を選ぶ」で、家・難易度・大都市拠点（江戸・京都御所・二条・大坂・名古屋）を除く124城から開始城を選び、「この城から始める」で確定します。選んだ1城のみを所持して始まります。以前の続きは「以前の領主を復元」から戻せます。</p>
       <h3>今の進行を別の城から始め直せますか？</h3><p>「保存・設定」から「新しい物語を始める」を選ぶと、開始城を選び直せます。確定すると現在の進行を新しい進行へ置き換え、置き換え前のセーブをバックアップとして保管します。今までの続きで遊ぶ場合は、この操作は不要です。</p>
       <h3>PCの表示領域は調節できますか？</h3><p>城下町は、左側に天守から手前の町並みまで全景を表示し、右側に施設の操作や進行状況をまとめています。左メニューの「領域を調整」を押すと、金色の境界をドラッグしてメニュー幅、上部の高さ、城下町・天下地図・共通フィールドの幅配分と表示高さを変えられます。境界を選んで矢印キーでも調整でき、「初期配置」で元に戻せます。配置はそのブラウザに保存されます。</p>
@@ -467,7 +506,7 @@ function aboutContent(p) {
     section('world', '作品について', '戦国VSとは：一城から領国を育てるブラウザゲーム', `
       <p class="lead-paragraph">「戦国VS」は、<strong>KASAI SOLUTIONS</strong>による戦国ブラウザゲームです。はじまりの一城を選び、城下町の施設を増築し、武将を迎えて軍団を編成。内政と戦役を進めながら、自分の領国を育てます。PC・スマートフォン・タブレットから遊べます。</p>
       <p>年月は全プレイヤー共通で進みます。天下地図ではCPU勢力の城を攻略し、共通フィールドではほかの領主の本拠や所領を選んで、対人戦・同盟・交流を行います。同盟で資産を共有したり、領主本人や所属同盟へ書状を送ったりできます。</p>
-      <p>軍師AIでは、入力した方針と現在の戦況から出陣案を確認し、自動進軍を始められます。対応するスマートフォン・タブレットでは、画面を表示して歩くと、検知した歩数に応じた資産を獲得できます。領主を連携すれば、進行を端末間で自動同期できます。</p>
+      <p>城攻め・支拠点・野良兵戦・対人戦・派遣部隊への反撃・同盟集結軍・共有天下統一・期間限定合戦で、軍師AIの提案を確認できます。天下地図のCPU城では、入力した方針に沿った自動進軍も利用できます。対応するスマートフォン・タブレットでは、画面を表示して歩くと、検知した歩数に応じた資産を獲得できます。領主を連携すれば、進行を端末間で自動同期できます。</p>
       <p class="quote-line">一城の志が、天下を動かす。</p>
       <a class="chapter-link" href="${p.dir('guide')}">戦国VSの遊び方を読む</a>
     `),
@@ -489,12 +528,22 @@ function aboutContent(p) {
       <p>対人戦の確定後、攻撃側と守備側の双方にゲーム内の郵便が届きます。勝敗・被攻撃・実際の戦利品や報酬、占領の結果を残し、本拠が移った場合は移転先も伝えます。次に接続したときにも未読の知らせを確認できます。閲覧の手順は<a href="${p.dir('guide')}#system-mail">システムメールの案内</a>にまとめています。</p>
     `, 'section-community'),
     section('strategy-and-walking', '自動進軍と端末の動き', '軍師AIとウォーキングの遊び方', `
+      <h3>すべての戦いで、準備を支える軍師AI</h3>
+      <p>軍師は現在の兵力・士気・戦況を比較し、戦法や出陣条件を提案します。変更できる戦いでは、提案を入力に反映してから内容を確認して出陣できます。部隊や戦法が固定の戦いでは、現在の強さと次に整えたい準備を案内します。</p>
       <h3>作戦文から次の出陣を評価する軍師AI</h3>
       <p>「兵を温存して弱い城から攻める」などの作戦文を入力すると、ゲーム内の軍師AIが城・戦法・出陣兵数を比較し、候補と予測勝率を示します。内容を確認して自動進軍を開始し、いつでも停止できます。対象は天下地図の隣接するCPU勢力の城で、保護城や同盟中の城を除きます。</p>
       <p>自動進軍は画面を表示し、共通時間が進んでいる操作端末で動きます。敗戦、目標達成、出陣回数の上限などで停止し、画面を閉じている間の攻撃をまとめて実行することはありません。作戦文を外部の生成AIサービスへ送信しません。<a href="${p.dir('guide')}#strategy">軍師AIの使い方と停止条件</a>を確認してから始められます。</p>
       <h3>検知した歩数に応じて五つの資産を獲得</h3>
       <p>モーションセンサーに対応したスマートフォン・タブレットでウォーキングを開始すると、検知した<strong>1歩につき金銭・兵糧・木材・石材・勾玉をそれぞれ2</strong>獲得します。位置情報は使わず、ゲーム画面を表示している間の端末の動きから歩数を推定します。</p>
       <p>画面ロック中や別アプリの表示中は計測できず、端末の持ち方や振動によって専用の歩数計と差が出る場合があります。世界時計の倍速で歩行報酬が増えることはありません。<a href="${p.dir('guide')}#walking">ウォーキングの開始手順と対応条件</a>に詳しくまとめています。</p>
+    `, 'section-field'),
+    section('events-and-shogunate', '合戦から天下統一へ', 'イベントの戦い一覧・毎戦報酬・幕府開設', `
+      <p>期間限定合戦は、史実をもとにした55の合戦、ゲーム内の全129城、6種類の野良兵戦を合わせた<strong>190件の戦い一覧</strong>から設計されます。開催中のイベントでは3つの戦場へ挑み、軍師が現在の軍団に合う戦術を提案します。</p>
+      <p>新しい一覧から作られたイベントでは、勝利時に金銭・兵糧・木材・石材・勾玉、敗北時にも一部の奮戦報酬を獲得できます。戦功の目標を達成すると、追加の報酬が郵便へ届きます。</p>
+      <p>関ヶ原の戦いなど天下統一の結末を持つイベントで、全3戦場の勝利と必要戦功を達成すると、幕府を開く権利が得られます。天下地図や共有天下統一の達成も対象です。「幕府の記録」から開設すると、幕府名と「征夷大将軍」の称号が記録されます。</p>
+      <p>合戦名は題材であり、敵軍や報酬、天下統一の条件はゲーム独自のルールです。開催条件と達成状況は合戦画面で確認できます。</p>
+      <a class="chapter-link" href="${p.dir('guide')}#timed-events">期間限定合戦の参加と報酬</a>
+      <a class="chapter-link" href="${p.dir('guide')}#shogunate">幕府を開く条件と手順</a>
     `, 'section-field'),
     section('collection', '収録内容と作品の設定', '武将・城郭・施設の収録と成長段階', `
       <p>戦国期から近世初頭の人物と城を、年代を横断した「群雄集結」の設定で収録しています。歴史上の全武将を網羅した名簿ではなく、能力・特技・ランク・所属や勢力配置はゲーム向けの創作です。</p>
@@ -551,11 +600,11 @@ const pages = [
     ...site.pages.guide,
     file: 'guide/index.html', slug: 'guide', key: 'guide', label: '遊び方',
     eyebrow: 'KASAI SOLUTIONSのゲームガイド', heading: '戦国VSの<br><span>遊び方</span>',
-    lead: 'はじまりの城を選び、城下町を育て、武将を編成する。CPUとの戦役、領主同士の報酬戦・占領戦、勝敗を届ける郵便から端末同期まで、操作とルールを案内します。',
+    lead: 'はじめての一城から、軍師と目指す天下統一まで。端末ごとの操作、城の育成、合戦の報酬、幕府の開設、データの引き継ぎを、知りたいことから確認できます。',
     image: 'assets/castle-town.webp', imageWidth: 1536, imageHeight: 1024, imageAlt: '山々と川に囲まれ、田畑や商家が広がる戦国VSの城下町イラスト', imageCaption: '城下町から始まる、あなたの領国。', imageTag: '城と群雄の戦記',
     heroAction: 'ゲームを開く', secondary: ['データ復元の案内', 'guide/data-recovery'],
     notes: [['遊ぶ場所', 'PC・スマホ・タブレットのブラウザ'], ['世界の時間', '全プレイヤーで共通']],
-    toc: [['first-steps','城選び・初めての進め方'],['next-hints','次の一手・上へ戻る'],['castle-upgrades','本拠・城郭のレベル上げ'],['resources','城下町と資源'],['construction','施設Lv・連続増築'],['officers','武将・軍団・勾玉'],['maps','二つの地図と外交'],['field-battles','報酬戦・占領戦・襲撃'],['branches','支拠点・攻略順・修復'],['player-evaluation','総合評価・位階の称号'],['court','京都御所・参内と謁見'],['world-clock','共通時間・拠点リセット'],['community','同盟・接続一覧・役職'],['voice-chat','同盟の音声通話'],['trade','兵士・資産の輸出入'],['roaming','野良兵士とのCPU戦'],['covert','派遣部隊・偵察・駐留・反撃'],['letters','領主・同盟への書状'],['system-mail','勝敗・移転のシステムメール'],['strategy','軍師AI・自動進軍'],['timed-events','期間限定合戦・報酬'],['walking','ウォーキング報酬'],['save-and-sync','保存と端末同期'],['questions','よくある質問']],
+    toc: [['first-steps','城選び・初めての進め方'],['device-controls','PC・スマホ・タブレットの操作'],['next-hints','次の一手・上へ戻る'],['castle-upgrades','本拠・城郭のレベル上げ'],['resources','城下町と資源'],['construction','施設Lv・連続増築'],['officers','武将・軍団・勾玉'],['maps','二つの地図と外交'],['field-battles','報酬戦・占領戦・襲撃'],['branches','支拠点・攻略順・修復'],['player-evaluation','総合評価・位階の称号'],['court','京都御所・参内と謁見'],['world-clock','共通時間・拠点リセット'],['community','同盟・接続一覧・役職'],['voice-chat','同盟の音声通話'],['trade','兵士・資産の輸出入'],['roaming','野良兵士とのCPU戦'],['covert','派遣部隊・偵察・駐留・反撃'],['letters','領主・同盟への書状'],['system-mail','勝敗・移転のシステムメール'],['strategy','軍師AI・自動進軍'],['timed-events','期間限定合戦・毎戦報酬'],['shogunate','天下統一・幕府の開設'],['walking','ウォーキング報酬'],['save-and-sync','保存と端末同期'],['questions','よくある質問']],
     content: guideContent, closingTitle: 'さあ、城下町へ。', closingText: '最初の普請を選び、あなたの一手から戦記を始めましょう。'
   },
   {
@@ -573,11 +622,11 @@ const pages = [
     ...site.pages.about,
     file: 'about/index.html', slug: 'about', key: 'about', label: 'ゲーム概要',
     eyebrow: 'KASAI SOLUTIONSの戦国ブラウザゲーム', heading: '戦国VSとは<br><span>城と群雄の戦記</span>',
-    lead: '選んだ一城から城下町を育て、武将を集め、共通の年月を歩む。CPUとの戦役と領主同士の対人戦、合戦を伝える郵便、本作の制作方針を紹介します。',
+    lead: '選んだ一城を育て、武将を迎え、軍師とともに天下へ。城育成と合戦、同盟の交流、天下統一を記念する幕府開設まで、戦国VSの遊びを紹介します。',
     image: 'assets/title-sengoku-vs.webp', imageWidth: 1774, imageHeight: 887, imageAlt: '二人の武将と日本の城郭を描いた戦国VSのタイトルイラスト', imageCaption: '戦国VS — 城と群雄の戦記', imageTag: 'KASAI SOLUTIONS', wide: true,
     heroAction: 'ゲームを開く', secondary: ['遊び方を読む', 'guide'],
     notes: [['ゲームの基本', '一城からの内政・武将編成・戦役'], ['領主同士の交流', '同盟・書状・端末同期']],
-    toc: [['world','戦国VSとは'],['gameplay','城下町・武将・領主交流'],['strategy-and-walking','軍師AI・ウォーキング'],['collection','収録内容と成長段階'],['artwork','イラストと外観'],['geography','地図の資料と出典'],['crests','家紋と識別章'],['copyright','著作権・引き継ぎ']],
+    toc: [['world','戦国VSとは'],['gameplay','城下町・武将・領主交流'],['strategy-and-walking','軍師AI・ウォーキング'],['events-and-shogunate','合戦報酬・天下統一・幕府'],['collection','収録内容と成長段階'],['artwork','イラストと外観'],['geography','地図の資料と出典'],['crests','家紋と識別章'],['copyright','著作権・引き継ぎ']],
     content: aboutContent, closingTitle: '一城の志を、ここから。', closingText: '城下町の営みと、群雄たちの戦記をブラウザで。'
   }
 ];
@@ -598,11 +647,12 @@ function render(page) {
   const nav = pages.map(({key,label,slug})=>`<a href="${p.dir(slug)}"${page.key===key?' aria-current="page"':''}>${label}</a>`).join('');
   const secondaryHref = page.secondary[1].startsWith('#') ? page.secondary[1] : p.dir(page.secondary[1]);
   const imageFigure = `<figure class="hero-figure${page.wide?' hero-figure--wide':''}"><div class="hero-image-frame"><img src="${p.file(page.image)}" alt="${esc(page.imageAlt)}" width="${page.imageWidth}" height="${page.imageHeight}" fetchpriority="high" decoding="async"></div><figcaption><span>${page.imageCaption}</span><b>${page.imageTag}</b></figcaption><dl class="hero-note">${page.notes.map(([title,text])=>`<div><dt>${title}</dt><dd>${text}</dd></div>`).join('')}</dl></figure>`;
+  const heroAside = page.key === 'guide' ? quickTopics(p) : imageFigure;
   return `<!doctype html>
 <html lang="${esc(site.language)}">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>${esc(page.title)}</title>
   ${metadataEntries(page.key).map(metaTag).join('\n  ')}
   <meta name="theme-color" content="#0c141f">
@@ -622,10 +672,11 @@ function render(page) {
   <header class="site-header"><div class="site-header-inner page-width"><a class="site-brand" href="${p.dir('')}" aria-label="戦国VS ゲームのトップへ"><img src="${p.file(site.favicon.path)}" alt="" width="44" height="44"><span><b>戦国VS</b><small>城と群雄の戦記</small></span></a><nav class="header-navigation" aria-label="サイトの案内">${nav}<a class="nav-play" href="${p.dir('')}">ゲームを開く</a></nav></div></header>
   <main id="content" class="page-width">
     <nav aria-label="パンくず"><ol class="breadcrumbs">${breadcrumbItems.map((item,i)=>`<li>${i===breadcrumbItems.length-1?`<span aria-current="page">${item.name}</span>`:`<a href="${item.href}">${item.name}</a>`}</li>`).join('')}</ol></nav>
-    <section class="hero" aria-labelledby="page-title"><div class="hero-copy"><p class="eyebrow">${page.eyebrow}</p><h1 id="page-title">${page.heading}</h1><p class="hero-lead">${page.lead}</p><div class="hero-actions"><a class="action-link" href="${p.dir('')}">${page.heroAction}</a><a class="text-link" href="${secondaryHref}">${page.secondary[0]}</a></div></div>${imageFigure}</section>
-    <div class="reading-layout"><aside class="toc"><nav aria-label="このページの目次"><p class="toc-title">このページの案内</p><ul>${page.toc.map(([id,label])=>`<li><a href="#${id}">${label}</a></li>`).join('')}</ul></nav><div class="toc-foot"><p>${esc(site.publisher)}のゲームガイド。</p><a href="${p.dir('')}">戦国VSを開く</a></div></aside><article class="article" aria-label="${page.label}の本文"><p class="article-updated">内容更新：<time datetime="${page.dateModified}">${modifiedLabel(page.dateModified)}</time></p>${page.content(p)}</article></div>
+    <section class="hero" aria-labelledby="page-title"><div class="hero-copy"><p class="eyebrow">${page.eyebrow}</p><h1 id="page-title">${page.heading}</h1><p class="hero-lead">${page.lead}</p><div class="hero-actions"><a class="action-link" href="${p.dir('')}">${page.heroAction}</a><a class="text-link" href="${secondaryHref}">${page.secondary[0]}</a></div></div>${heroAside}</section>
+    <div class="reading-layout"><aside id="page-contents" class="toc" tabindex="-1"><nav aria-label="このページの目次"><p class="toc-title">このページの案内</p><details class="toc-chapters"><summary>すべての項目 <span>${page.toc.length}項目</span></summary><ul>${page.toc.map(([id,label])=>`<li><a href="#${id}">${label}</a></li>`).join('')}</ul></details></nav><div class="toc-foot"><p>${esc(site.publisher)}のゲームガイド。</p><a href="${p.dir('')}">戦国VSを開く</a></div></aside><article class="article" aria-label="${page.label}の本文"><p class="article-updated">内容更新：<time datetime="${page.dateModified}">${modifiedLabel(page.dateModified)}</time></p>${page.content(p)}</article></div>
     <section class="closing"><div><h2>${page.closingTitle}</h2><p>${page.closingText}</p></div><a class="action-link" href="${p.dir('')}">ゲームを開く</a></section>
   </main>
+  <nav class="reading-actions" aria-label="読書中の案内"><a href="#page-contents">目次へ</a><a href="${p.dir('')}">ゲームを開く</a></nav>
   <footer class="site-footer"><div class="footer-inner page-width"><p class="footer-brand">${esc(site.name)} <span>城と群雄の戦記</span></p><nav class="footer-nav" aria-label="フッターの案内">${nav}</nav><p class="copyright">© ${esc(site.publisher)}</p><p class="footer-note">地図・人物・家紋の資料はゲーム概要に記載しています。</p></div></footer>
 </body>
 </html>
@@ -682,9 +733,11 @@ function updateHome() {
     return graph;
   });
   if (!hasGraph) html = html.replace('</head>', `  ${graph}\n</head>`);
-  // Keep the two-line launch layout. No new cards, rows or navigation bands.
+  // Keep the title concise while exposing help and recovery without entering the game.
   html = html.replace(/(<p class="launch-introduction">)[\s\S]*?(<\/p>)/, (_, before, after) => before + site.launchIntroduction.map(esc).join('<br>') + after);
-  html = html.replace(/<p class="launch-copyright">[\s\S]*?<\/p>/, `<p class="launch-copyright">© <a href="about/" aria-label="${esc(site.publisher)}の戦国VSについて">${esc(site.publisher)}</a></p>`);
+  const launchGuide = '<nav class="launch-guide-nav" aria-label="遊び方と引き継ぎ"><a href="guide/">遊び方</a><a href="guide/data-recovery/">引き継ぎ・復元</a><a href="sengoku-vs/">ゲーム紹介</a></nav>';
+  html = html.replace(/\s*<nav class="launch-guide-nav"[^>]*>[\s\S]*?<\/nav>/g, '');
+  html = html.replace(/<p class="launch-copyright">[\s\S]*?<\/p>/, `${launchGuide}\n      <p class="launch-copyright">© <a href="about/" aria-label="${esc(site.publisher)}の戦国VSについて">${esc(site.publisher)}</a></p>`);
   html = html.replace(/(<a href="about\/" data-action="about">)[^<]*(<\/a>)/, '$1ゲーム概要・出典$2');
   html = html.replace(/(<div class="version-label">)群雄集結 · Ver\. [^<]+(<\/div>)/, `$1群雄集結 · Ver. ${esc(site.version)}$2`);
   html = withSelectionAssets(html);

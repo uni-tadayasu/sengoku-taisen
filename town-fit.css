@@ -22,21 +22,35 @@ html.sengoku-desktop-fit[data-layout-townheight] #main .town-panel .town-scene {
   left: var(--town-marker-x) !important; top: var(--town-marker-y) !important;
   width: 44px; height: 44px; min-width: 44px; min-height: 44px; padding: 0;
   display: grid; place-items: center; transform: translate(-50%, -50%); overflow: visible;
+  /* This is the transparent hit area, not an illustrated rectangular button.
+     Painting the shared button artwork here leaves dark squares when the town
+     is compact. Keep the facility's own seal and label as the visible control. */
+  background: transparent !important; border: 0; box-shadow: none; filter: none;
 }
-#main .town-scene-board .hotspot .pin { width: 26px; height: 26px; }
+#main .town-scene-board .hotspot .pin {
+  display: grid; place-items: center; width: 32px; height: 32px;
+  visibility: visible; border: 2px solid #fff3c7; border-radius: 50%;
+  background: #efd28c; color: #183039; transform: none;
+  box-shadow: 0 1px 3px #10232999;
+}
+#main .town-scene-board .hotspot .pin svg {
+  width: 20px; height: 20px; color: #183039; stroke-width: 1.9; transform: none;
+}
 #main .town-scene-board .hotspot .label {
   position: absolute; left: var(--town-label-left, 0); top: var(--town-label-top, 33px);
   display: block; width: max-content; min-width: 0; margin: 0; transform: none;
   padding: 4px 7px; white-space: nowrap; overflow-wrap: normal; line-height: 1.35; font-size: 14px;
   border: 1px solid #dfc37b99; border-radius: 7px; background: #102126f2; color: #fff2d2;
-  box-shadow: 0 2px 9px #07151399; font-weight: 600; pointer-events: auto;
+  box-shadow: 0 1px 3px #07151380; font-weight: 600; pointer-events: auto;
 }
 #main .town-scene-board .hotspot .label i { display: inline-block; white-space: nowrap; margin-left: 6px; padding: 1px 5px; border-radius: 4px; background: #e1bd75; color: #261f12; font-weight: 700; font-variant-numeric: tabular-nums; }
-#main .town-scene[data-town-compact] .hotspot { pointer-events: none; }
-#main .town-scene[data-town-compact] .hotspot .pin { visibility: hidden; }
+#main .town-scene[data-town-compact] .hotspot { pointer-events: auto; }
 #main .town-scene[data-town-compact] .hotspot .label { display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 58px; padding: 4px 6px; font-size: 14px; }
 #main .town-scene[data-town-compact] .hotspot .label i { margin: 0; padding: 0 5px; font-size: 14px; }
+#main .town-scene-board .hotspot:is(:hover,:focus-visible) { z-index: 4; }
+#main .town-scene-board .hotspot:is(:hover,:focus-visible) .pin { background: #fff0bd; border-color: #fffdf2; }
 #main .town-scene-board .hotspot:is(:hover,:focus-visible) .label { border-color: #fff0be; background: #234137; outline: 2px solid #f0d38566; outline-offset: 1px; }
+#main .town-scene-board .hotspot.has-job .pin { background: #b6ebcb; border-color: #eefff3; }
 #main .town-scene-board .hotspot.has-job .label { border-color: #96dcbb; }
 #main .town-scene[data-town-art-small] .hotspot { display: none; }
 #main .town-scene-legend { display: none; grid-template-columns: minmax(0, 1fr); gap: 7px; padding: 10px; border-top: 1px solid #d9bd7821; }

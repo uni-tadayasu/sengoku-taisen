@@ -48,6 +48,10 @@
 .player-evaluation-entry:hover { border-color: #dfc48699; background: #bca15e19; }
 .player-evaluation-entry:focus-visible { outline: 2px solid #e6c784; outline-offset: 3px; }
 .player-evaluation-entry-label { white-space: nowrap; }
+.player-evaluation-current { display: inline-flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 5px; min-width: 0; max-width: 100%; vertical-align: middle; }
+.player-evaluation-current .public-court-badge { min-height: 28px; margin-inline-start: 0; padding: 3px 7px; font-size: 14px; }
+.player-evaluation-summary .player-evaluation-current { justify-content: flex-start; }
+.player-evaluation-summary .public-court-badge { font-size: 16px; }
 .player-evaluation-entry-pending { color: var(--muted, #aab3b1); font-size: 14px; }
 .clan-panel .player-evaluation-entry { margin-top: 10px; width: 100%; }
 .page-heading-actions .player-evaluation-entry { flex: none; }

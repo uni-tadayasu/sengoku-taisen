@@ -12,7 +12,7 @@ function renderSharePage({ site, metadataHtml, jsonLd, iconHtml }) {
 <html lang="${esc(site.language || 'ja')}">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>${esc(page.title)}</title>
   ${metadataHtml}
   <meta name="theme-color" content="#0c141f">
@@ -45,7 +45,7 @@ function renderSharePage({ site, metadataHtml, jsonLd, iconHtml }) {
         <p class="share-tagline">${esc(site.tagline || '一城の志が、天下を動かす。')}</p>
         <p class="hero-lead">選んだ一城から、あなたの戦記が始まります。田畑や商家を育てて国力を蓄え、武将を迎えて軍団を編成。内政と戦役を重ねながら、自分の領国を育てる戦国ブラウザゲームです。</p>
         <div class="hero-actions"><a class="action-link" href="../">戦国VSを遊ぶ</a><a class="text-link" href="../guide/">遊び方を読む</a></div>
-        <p class="share-platform">PC・スマホ・タブレットのブラウザで遊べます。</p>
+        <p class="share-platform">PC・スマホ・タブレットのブラウザで遊べます。<a href="../guide/#device-controls">端末ごとの操作方法</a></p>
       </div>
       <figure class="hero-figure hero-figure--wide">
         <div class="hero-image-frame"><img src="../assets/title-sengoku-vs.webp" alt="二人の武将と城郭、金色の「戦国VS」の文字を描いたタイトルイラスト" width="1774" height="887" fetchpriority="high" decoding="async"></div>
@@ -57,9 +57,17 @@ function renderSharePage({ site, metadataHtml, jsonLd, iconHtml }) {
       <div class="share-section-heading"><p class="section-kicker">育てる・備える・進む</p><h2 id="share-journey-title">一城から広がる、三つの楽しみ。</h2></div>
       <ol class="share-feature-list">
         <li><span class="share-step-number" aria-hidden="true">一</span><div><h3>城下町を育て、城を強く。</h3><p>田畑で兵糧を、商業施設で金銭を蓄え、木材や石材を使って施設を増築。城郭のレベルを上げ、奉行を配置し、技術を研究しながら、領国を支える力を少しずつ整えていきます。</p><a class="share-detail-link" href="../guide/#construction">城下町と普請の遊び方</a></div></li>
-        <li><span class="share-step-number" aria-hidden="true">二</span><div><h3>武将を迎え、自分の軍団を編成。</h3><p>武将ごとの能力や特技を見て、軍団と内政の役目を選びます。兵を集め、訓練で士気を整え、天下地図で隣接するCPU勢力の城へ。戦況を確認し、戦法と兵数を決める采配が、次の戦役につながります。大都市拠点を確保すれば、部隊の雇用・偵察・駐留で遠方にも備えられます。</p><a class="share-detail-link" href="../guide/#officers">武将と軍団の遊び方</a><a class="share-detail-link" href="../guide/#covert">派遣部隊の使い方</a></div></li>
+        <li><span class="share-step-number" aria-hidden="true">二</span><div><h3>武将を迎え、自分の軍団を編成。</h3><p>武将ごとの能力や特技を見て、軍団と内政の役目を選びます。兵を集め、訓練で士気を整え、天下地図で隣接するCPU勢力の城へ。戦況と軍師AIの提案を確認し、戦法と兵数を決める采配が、次の戦役につながります。大都市拠点を確保すれば、部隊の雇用・偵察・駐留で遠方にも備えられます。</p><a class="share-detail-link" href="../guide/#officers">武将と軍団の遊び方</a><a class="share-detail-link" href="../guide/#covert">派遣部隊の使い方</a></div></li>
         <li><span class="share-step-number" aria-hidden="true">三</span><div><h3>ほかの領主と、戦記を重ねる。</h3><p>共通フィールドでは領主同士の対人戦を、同盟や書状では交流を楽しめます。交易では、相手へ渡す資産と受け取りたい対価を示して申出を送り、承認を経て交換。領主との関わりも、国づくりの一部になります。</p><a class="share-detail-link" href="../guide/#trade">領主との交易の遊び方</a></div></li>
       </ol>
+    </section>
+
+    <section class="share-support" aria-labelledby="share-battles-title">
+      <div class="share-section-heading"><p class="section-kicker">軍師と備え、天下を目指す</p><h2 id="share-battles-title">合戦の一手を、次の達成へ。</h2></div>
+      <div class="share-support-copy">
+        <section><h3>戦況に合う提案を、軍師から。</h3><p>城攻め・野良兵戦・対人戦・期間限定合戦など、すべての戦闘で軍師の助言を確認できます。戦法や出陣条件を比べ、提案を準備に反映してから出陣。天下地図のCPU城では、作戦文に沿った自動進軍にも対応しています。</p><a class="share-detail-link" href="../guide/#strategy">軍師AIの提案と自動進軍</a></section>
+        <section><h3>戦いの報酬から、幕府の開設へ。</h3><p>190件の戦い一覧を使って設計された期間限定合戦では、一戦ごとの報酬と戦功の達成報酬を獲得できます。対象の合戦で天下統一の条件を満たすと、幕府を開く権利を獲得。「幕府の記録」に幕府名と征夷大将軍の称号が残ります。</p><a class="share-detail-link" href="../guide/#timed-events">イベントの報酬を確認する</a><a class="share-detail-link" href="../guide/#shogunate">天下統一と幕府の開設</a></section>
+      </div>
     </section>
 
     <section class="share-support" aria-labelledby="share-support-title">
