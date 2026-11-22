@@ -23,7 +23,10 @@ Object.defineProperty(Node.prototype,'hidden',{configurable:true,get(){return th
 Node.prototype.select=function(){this.setSelectionRange(0,this.value.length);};
 const context={document:doc,URL,URLSearchParams,AbortController,queueMicrotask,location:{origin:'https://game.example',pathname:'/',search:'?token=private&test=other'},navigator:{clipboard:{writeText:async url=>{if(blockClipboard)throw Error('denied');clipboard=url;}}},setTimeout:fn=>{timers.set(++tick,fn);return tick;},clearTimeout:id=>timers.delete(id)};
 context.window=context;vm.createContext(context);
-for(const file of ['officers-data.js','artwork.js','stable-dom.js','public-profile.js'])vm.runInContext(read(file),context);
+for(const file of ['officers-data.js','artwork.js','stable-dom.js'])vm.runInContext(read(file),context);
+const existingStartHandlers=new Set(listeners.get('DOMContentLoaded'));
+vm.runInContext(read('public-profile.js'),context);
+const profileStart=[...listeners.get('DOMContentLoaded')].find(handler=>!existingStartHandlers.has(handler));
 let artUpdates=0;context.SengokuArt.schedule=()=>{artUpdates++;};
 const ui=context.SengokuLordProfile,officer=context.SENGOKU_OFFICERS[0],other=context.SENGOKU_OFFICERS[1];
 const commander=(record,rank)=>({officerId:record.id,name:'サーバー名の代入不可',rank});
@@ -31,11 +34,21 @@ const player=(id,name,selected)=>({id,name,clan:'上杉家',commander:selected,i
 let request,search,queries=[];
 context.SengokuSocial={getPublicProfile:id=>request(id),searchPublicPlayers:q=>{queries.push(q);return search(q);}};
 async function main(){
+ host.innerHTML='<button id="launch-enter">城を選んで始める</button><main id="main"></main>';
+ context.SENGOKU_AT_TITLE=true;context.location.search='?lord=u_shared';
+ context.SengokuBridge={renderGameplay:()=>assert.fail('a public profile should not enter gameplay')};
+ request=id=>({player:player(id,'共有リンクの領主',commander(officer,'A'))});
+ profileStart();await settle();
+ const shared=doc.getElementById('public-lord-profile');assert(shared.open);assert.match(shared.textContent,/共有リンクの領主/);
+ assert.match(shared.innerHTML,/officers-A-/);assert.equal(doc.getElementById('main').innerHTML,'');assert.equal(context.SENGOKU_AT_TITLE,true);
+ shared.close();context.SENGOKU_AT_TITLE=false;context.location.search='?token=private&test=other';
  host.innerHTML='<button id="return">領主を選ぶ</button>';const opener=doc.getElementById('return');opener.focus();
- let resolveA;
- request=id=>id==='u_a'?new Promise(resolve=>resolveA=resolve):Promise.resolve({player:player(id,'鬼<王>',commander(officer,'SS'))});
- const a=ui.open('u_a',opener);await ui.open('u_b',opener);
- resolveA({player:player('u_a','古い領主',null)});await a;
+ let resolveA;const profileReads=[];
+ request=id=>{profileReads.push(id);return id==='u_a'?new Promise(resolve=>resolveA=resolve):Promise.resolve({player:player(id,'鬼<王>',commander(officer,'SS'))});};
+ const a=ui.open('u_a',opener),repeatOpen=ui.open('u_a',opener);
+ await emit('visibilitychange',doc);await emit('visibilitychange',doc);
+ assert.deepEqual(profileReads,['u_a']);await ui.open('u_b',opener);
+ resolveA({player:player('u_a','古い領主',null)});await Promise.all([a,repeatOpen]);
  const dialog=doc.getElementById('public-lord-profile'),body=dialog.querySelector('[data-profile-body]');
  assert.equal(dialog.open,true);assert.match(body.textContent,/鬼<王>/);assert.match(body.textContent,new RegExp(officer.name));
  assert.match(body.innerHTML,/data-officer-rank="SS"/);assert.match(body.innerHTML,/officers-SS-/);
@@ -61,7 +74,7 @@ async function main(){
  await emit('click',close);assert.equal(dialog.open,false);assert.equal(doc.activeElement,opener);
  host.innerHTML=ui.directory();const form=doc.getElementById('public-lord-search'),input=form.querySelector('[name=q]'),list=host.querySelector('[data-search-list]');
  let resolveSearch;search=q=>q==='上杉'?new Promise(resolve=>resolveSearch=resolve):Promise.resolve({players:[player('u_az','伊達甲',null)]});
- input.value='上杉';const pending=emit('submit',form);input.value='伊達';await emit('submit',form);
+ input.value='上杉';const pending=emit('submit',form);await emit('submit',form);assert.deepEqual(queries,['上杉']);input.value='伊達';await emit('submit',form);
  resolveSearch({players:[player('u_other','古い検索',null)]});await pending;
  assert.deepEqual(queries,['上杉','伊達']);assert.equal(list.querySelector('[data-public-profile]').dataset.publicProfile,'u_az');assert(!list.textContent.includes('古い検索'));
  input.value='一';await emit('submit',form);assert.equal(queries.length,2);assert.equal(list.textContent,'');assert.match(host.querySelector('[data-search-status]').textContent,/2〜24/);

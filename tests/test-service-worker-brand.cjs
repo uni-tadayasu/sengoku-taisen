@@ -7,7 +7,7 @@ const release = JSON.parse(fs.readFileSync(require('node:path').join(__dirname, 
 const current = 'sengoku-taisen-v' + release;
 const origin = 'https://www.kasai-solutions-inc.com';
 
-function fixture({offline = false, failInstall = false, cacheControl = ''} = {}) {
+function fixture({offline = false, failInstall = false, updating = false, cacheControl = ''} = {}) {
   const listeners = {}, deleted = [], calls = [], records = new Map();
   const key = request => typeof request === 'string' ? new URL(request, origin + '/').href : request.url;
   for (const name of ['pachi-shell-v1', 'pachi-art-v1', 'pachi-fonts-v1', 'sengoku-taisen-v-old', 'unrelated-records', current]) records.set(name, new Map());
@@ -22,14 +22,20 @@ function fixture({offline = false, failInstall = false, cacheControl = ''} = {})
       if (!records.has(name)) records.set(name, new Map());
       return {
         async match(request) { calls.push(['match', name]); return records.get(name).get(key(request)); },
-        async put(request, response) { records.get(name).set(key(request), response); },
-        async addAll(urls) { assert(urls.includes('./index.html')); if (failInstall) throw new Error('precache failed'); calls.push(['precache']); }
+        async put(request, response) { records.get(name).set(key(request), response); calls.push(['put',key(request)]); }
       };
     },
     match() { throw new Error('Cross-game cache lookup is forbidden'); }
   };
-  const self = {location: {origin}, clients: {async claim() { calls.push(['claim']); }}, async skipWaiting() { calls.push(['skip']); }, addEventListener(name, callback) { listeners[name] = callback; }};
-  vm.runInNewContext(source, {self, caches, URL, Promise, Response: {error: () => ({error: true})}, fetch: async () => { if (offline) throw new Error('offline'); return {ok: true, status: 200, type: 'basic', brand: 'network', headers: {get: () => cacheControl}, clone() { return {...this}; }}; }});
+  const self = {registration:{scope:origin+'/',active:updating?{}:null},location: {origin}, clients: {async claim() { calls.push(['claim']); }}, async skipWaiting() { calls.push(['skip']); }, addEventListener(name, callback) { listeners[name] = callback; }};
+  const html='<link rel="manifest" href="manifest.webmanifest?v='+release+'"><script src="mini.bundle.js?v=1234567890ab"></script>';
+  vm.runInNewContext(source, {self, caches, URL, Promise, Response, fetch: async request => {
+    if(offline)throw new Error('offline');
+    const url=key(request);calls.push(['fetch',url]);
+    if(failInstall&&url.includes('mini.bundle.js'))throw new Error('precache failed');
+    const document=url.endsWith('index.html'),type=document?'text/html':url.includes('.js?')?'text/javascript':url.includes('.webmanifest?')?'application/manifest+json':url.includes('.webp')?'image/webp':'text/plain';
+    return {ok: true,status:200,type:'basic',brand:'network',headers:new Headers({'Cache-Control':cacheControl,'Content-Type':type}),clone(){return {...this};},text:async()=>document?html:''};
+  }});
   async function dispatch(name, request) {
     let response; const pending = [];
     listeners[name]({request, waitUntil(promise) { pending.push(promise); }, respondWith(promise) { response = promise; }});
@@ -47,6 +53,7 @@ function fixture({offline = false, failInstall = false, cacheControl = ''} = {})
   for (const request of [
     {url: origin + '/private/document'},
     {url: origin + '/assets/icon-192.png', headers: new Headers({Authorization: 'Bearer fixture'})},
+    {url: origin + '/assets/icon-192.png', headers: new Headers({Cookie:'fixture=private'})},
     {url: origin + '/assets/icon-192.png', headers: new Headers({Range: 'bytes=0-10'})},
     {url: origin + '/assets/icon-192.png', cache: 'no-store'}
   ]) assert.equal(await online.dispatch('fetch', {method: 'GET', ...request}), undefined);
@@ -66,7 +73,14 @@ function fixture({offline = false, failInstall = false, cacheControl = ''} = {})
   assert.deepEqual(online.deleted.sort(), ['pachi-art-v1', 'pachi-fonts-v1', 'pachi-shell-v1', 'sengoku-taisen-v-old'].sort());
   assert(online.records.has(current)); assert(online.records.has('unrelated-records'));
   await online.dispatch('install');
-  assert(online.calls.findIndex(c => c[0] === 'precache') < online.calls.findIndex(c => c[0] === 'skip'));
+  assert(online.calls.findIndex(c => c[0] === 'put'&&c[1].endsWith('index.html')) < online.calls.findIndex(c => c[0] === 'skip'));
+  assert(!online.calls.some(c=>c[0]==='fetch'&&/assets\/kamon|assets\/music|assets\/map/.test(c[1])));
+  const repeat=online.calls.filter(c=>c[0]==='fetch').length;
+  const fetchReq=url=>({method:'GET',url:origin+'/'+url});
+  await online.dispatch('fetch',{...fetchReq(''),mode:'navigate'});
+  await online.dispatch('fetch',fetchReq('mini.bundle.js?v=1234567890ab'));
+  assert.equal(online.calls.filter(c=>c[0]==='fetch').length,repeat,'Warm page and fingerprinted scripts require zero transfers');
+  const upgraded=fixture({updating:true});await upgraded.dispatch('install');assert(!upgraded.calls.some(c=>c[0]==='skip'),'A new worker must wait while an older client is playing');
   const failed = fixture({failInstall: true}); await assert.rejects(failed.dispatch('install'), /precache failed/);
   assert(!failed.calls.some(c => c[0] === 'skip'));
   console.log('PASS current-brand asset/offline responses, retired-cache cleanup, unrelated-cache retention, API bypass and safe activation.');

@@ -8,7 +8,7 @@ const esc=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&
 const validId=id=>typeof id==='string'&&/^u_[A-Za-z0-9_]{1,96}$/.test(id);
 const clanName=clan=>clan==='德川家'?'徳川家':clan||'浪人';
 const searches=new WeakMap();
-let dialog=null,selection=null,sequence=0,timer=null,opener=null;
+let dialog=null,selection=null,sequence=0,timer=null,opener=null,activeRead=null;
 function patch(host,html,key){
   if(global.SengokuStableDOM){
     const result=global.SengokuStableDOM.patch(host,html,{key});
@@ -69,8 +69,15 @@ function schedule(id){
   clearTimeout(timer);
   if(!doc.hidden&&dialog?.open&&selection===id)timer=setTimeout(()=>load(id),15000);
 }
-async function load(id){
-  const generation=++sequence;clearTimeout(timer);
+function load(id){
+  clearTimeout(timer);
+  if(activeRead?.id===id&&activeRead.generation===sequence)return activeRead.promise;
+  const generation=++sequence;
+  const promise=readProfile(id,generation).finally(()=>{if(activeRead?.generation===generation)activeRead=null;});
+  activeRead={id,generation,promise};
+  return promise;
+}
+async function readProfile(id,generation){
   const current=()=>sequence===generation&&dialog?.open&&selection===id;
   const host=dialog.querySelector('[data-profile-body]');
   try{
@@ -89,7 +96,9 @@ async function load(id){
 }
 function open(id,trigger){
   if(!validId(id))return;
-  ensureDialog();clearTimeout(timer);opener=trigger||doc.activeElement;selection=id;
+  ensureDialog();
+  if(dialog.open&&selection===id)return load(id);
+  sequence++;clearTimeout(timer);opener=trigger||doc.activeElement;selection=id;
   dialog.querySelector('.lord-profile-share').hidden=true;dialog.querySelector('[data-profile-url]').parentElement.hidden=true;
   dialog.querySelector('[data-copy-status]').textContent='';
   patch(dialog.querySelector('[data-profile-body]'),'',id);status('公開プロフィールを読み込んでいます。');
@@ -130,10 +139,11 @@ async function search(event){
   event.preventDefault();
   const section=form.closest('[data-public-player-search]'),input=form.querySelector('[name=q]');
   const query=input.value.normalize('NFC').trim(),length=Array.from(query).length;
-  const generation=(searches.get(form)||0)+1;searches.set(form,generation);
+  if(searches.get(form)?.query===query)return;
   const summary=section.querySelector('[data-search-status]'),list=section.querySelector('[data-search-list]');
-  const current=()=>form.isConnected&&searches.get(form)===generation;
-  if(!validId(query)&&(length<2||length>24)){summary.textContent='領主名は2〜24文字、領主IDは全文を入力してください。';patch(list,'','results');return;}
+  if(!validId(query)&&(length<2||length>24)){searches.delete(form);summary.textContent='領主名は2〜24文字、領主IDは全文を入力してください。';patch(list,'','results');return;}
+  const attempt={query};searches.set(form,attempt);
+  const current=()=>form.isConnected&&searches.get(form)===attempt;
   summary.textContent='領主を探しています。';
   try{
     const result=await global.SengokuSocial.searchPublicPlayers(query);
@@ -142,6 +152,7 @@ async function search(event){
     patch(list,rows.map(person=>`<div class="lord-search-hit" data-stable-key="${esc(person.id)}"><div><strong>${esc(person.name)}</strong><small>${esc(clanName(person.clan))}</small></div>${profileButton(person,'プロフィール')}</div>`).join(''),'results');
     summary.textContent=rows.length?`「${query}」の検索結果 · ${rows.length}件`:`「${query}」に該当する領主はいません。`;
   }catch(_){if(current()){patch(list,'','results');summary.textContent='領主を検索できませんでした。もう一度検索してください。';}}
+  finally{if(searches.get(form)===attempt)searches.delete(form);}
 }
 function visibility(){
   clearTimeout(timer);timer=null;

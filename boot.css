@@ -1,4 +1,4 @@
-.at-title{overflow:hidden}.at-title #app,.at-title #announcement-bar,.at-title .social-launcher{visibility:hidden}.launch-screen{position:fixed;inset:0;z-index:90;overflow:auto;background:#0c1720;color:#f4ecd4;display:flex;align-items:center;justify-content:center;padding:28px;isolation:isolate}.launch-screen[hidden]{display:none}
+.at-title{overflow:hidden}.at-title #app,.at-title #announcement-bar,.at-title .social-launcher{display:none!important}.launch-screen{position:fixed;inset:0;z-index:90;overflow:auto;background:#0c1720;color:#f4ecd4;display:flex;align-items:center;justify-content:center;padding:28px;isolation:isolate}.launch-screen[hidden]{display:none}
 .launch-screen::before{content:"";position:fixed;inset:0;background:radial-gradient(ellipse at 50% 22%,#38504d50,transparent 60%),repeating-linear-gradient(135deg,#fff1 0,transparent 1px,transparent 12px);opacity:.24;pointer-events:none}.launch-screen::after{content:"";position:fixed;inset:17px;border:1px solid #caa65e55;pointer-events:none}
 .launch-card{position:relative;width:min(1160px,100%);text-align:center}.launch-topline{display:flex;justify-content:space-between;align-items:center;margin:0 16px 18px;color:#c4b58e;font-size:12px;letter-spacing:.22em}.launch-topline span:last-child{letter-spacing:.1em}.launch-emblem{display:flex;align-items:center;gap:10px}.launch-emblem img{width:31px;height:31px;border-radius:50%}
 .launch-keyvisual{width:100%;aspect-ratio:2/1;background:#15252a url('assets/title-sengoku-vs.webp') center/cover;border:1px solid #c6a8694d;border-radius:6px;box-shadow:0 25px 80px #0007;position:relative;overflow:hidden}.launch-keyvisual::after{content:"";position:absolute;inset:0;background:linear-gradient(transparent 72%,#0c1720a6)}
@@ -14,3 +14,5 @@
 
 /* Keep the top of the title reachable on short desktop and landscape screens. */
 .launch-screen{align-items:safe center}
+
+#game-update-action[hidden]{display:none!important}#game-update-status:not(:empty){display:block;max-width:28rem;color:#fff2cd;font-size:.85rem}

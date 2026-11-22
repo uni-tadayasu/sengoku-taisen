@@ -12,7 +12,7 @@ function setup(role='ordinary'){
  const make=()=>({innerHTML:'',textContent:'',inert:false,isConnected:true,scrollTop:0,dataset:{},classList:{toggle(){}},setAttribute(){},focus(){}});
  for(const id of ['social-avatar-editor','social-profile-avatar','social-tabs','social-confirm-host'])nodes.set('#'+id,make());
  const body=make(),dialog={querySelector:selector=>nodes.get(selector)||null,querySelectorAll:()=>[],open:true,close(){this.open=false;},remove(){}};
- c.window=c;vm.createContext(c);vm.runInContext(source.replace('global.SengokuSocial={open','global.__avatarSocialTest={s,api,render,acceptUser,installIdentity,loadMe,close,profileView,onlineView,friendsView,guildView,playerCards,staffCards,recentLoginsView,renderMessages,setUI:(d,b)=>{dialog=d;body=b;}};global.SengokuSocial={open'),c);
+ c.window=c;vm.createContext(c);vm.runInContext(source.replace('global.SengokuSocial={open','global.__avatarSocialTest={s,api,render,acceptUser,installIdentity,loadMe,loadChat,refresh,refreshMailStatus,close,profileView,onlineView,friendsView,guildView,playerCards,staffCards,recentLoginsView,renderMessages,setUI:(d,b)=>{dialog=d;body=b;}};global.SengokuSocial={open'),c);
  const t=c.__avatarSocialTest;t.setUI(dialog,body);t.s.identity={id:'actor',token:TOKEN};t.s.user=role==='guest'?null:{...actor};t.s.open=true;t.s.tab='profile';t.s.configLoaded=true;
  return{c,t,actor,body,dialog,nodes,requests,mounts,marks,setHandler:fn=>handler=fn,destroyCount:()=>destroyed};
 }
@@ -21,14 +21,16 @@ let count=0;async function test(name,run){await run();count++;console.log('PASS 
 (async()=>{
 await test('chat polling retains existing messages, loaded avatars, reading position and draft across additions and removals',()=>{
  const mounted=setup(),{host,doc}=require('./helpers/dom-model.cjs').setup(),list=doc.createElement('section'),draft=doc.createElement('textarea');
- host.appendChild(list);host.appendChild(draft);list.scrollHeight=1500;list.clientHeight=300;
+ host.appendChild(list);host.appendChild(draft);
+ let layoutReads=0;
+ Object.defineProperties(list,{scrollHeight:{get(){layoutReads++;return 1500;}},clientHeight:{get(){layoutReads++;return 300;}}});
  mounted.c.SengokuStableDOM=require('../stable-dom.js');mounted.nodes.set('#social-message-list',list);
  mounted.t.s.tab='world';
  const message=id=>({id,userId:'other',name:'参陣した領主',avatarVersion:OLD,text:'伝令 '+id,createdAt:'2026-11-22T00:00:00Z'});
  const cache={messages:Array.from({length:24},(_,i)=>message(i+1)),after:24};mounted.t.s.chats.set('world:',cache);
  mounted.t.renderMessages();const original=list.querySelectorAll('article'),portrait=original[0].querySelector('[data-avatar-owner]');
  portrait.setAttribute('data-loaded','true');draft.value='編集中の文';draft.focus();draft.setSelectionRange(1,3);list.scrollTop=140;
- for(let i=0;i<45;i++)mounted.t.renderMessages();
+ layoutReads=0;for(let i=0;i<45;i++)mounted.t.renderMessages();assert.equal(layoutReads,0,'unchanged polls should not force chat layout');
  assert(list.querySelectorAll('article').every((node,index)=>node===original[index]));
  cache.messages.push(message(25));mounted.t.renderMessages();assert.equal(list.querySelectorAll('article').length,25);
  assert(original.every((node,index)=>list.querySelectorAll('article')[index]===node));
@@ -37,6 +39,34 @@ await test('chat polling retains existing messages, loaded avatars, reading posi
  assert(!list.contains(original[1]));assert(list.contains(original[3]));assert.match(original[3].textContent,/更新された伝令/);
  assert.equal(list.scrollTop,140);assert.strictEqual(doc.activeElement,draft);assert.equal(draft.value,'編集中の文');
  assert.equal(draft.selectionStart,1);assert.equal(draft.selectionEnd,3);
+});
+await test('world chat displays before the concurrent account read, leaves other rooms authorization-first and avoids a duplicate unread poll',async()=>{
+ const b=setup(),me=deferred(),chat=deferred();
+ const {doc,host}=require('./helpers/dom-model.cjs').setup(),list=doc.createElement('section');
+ host.appendChild(list);b.nodes.set('#social-message-list',list);b.c.SengokuStableDOM=require('../stable-dom.js');b.t.s.tab='world';
+ b.setHandler(url=>new URL(url).pathname.endsWith('/me')?me.promise:chat.promise);
+ const poll=b.t.refresh({silent:true});
+ assert.equal(b.requests.length,2);
+ await b.t.refreshMailStatus();assert.equal(b.requests.length,2);
+ chat.resolve({ok:true,messages:[{id:5,userId:'other',name:'領主',text:'伝令',createdAt:'2026-11-22T00:00:00Z'}],nextAfter:5});
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.match(list.textContent,/伝令/);
+ me.resolve({ok:true,user:b.actor,friends:[],requests:[]});await poll;assert.equal(b.requests.length,2);
+ const privateRoom=setup('staff'),role=deferred();privateRoom.t.s.tab='admin';
+ privateRoom.setHandler(url=>new URL(url).pathname.endsWith('/me')?role.promise:{ok:true,messages:[],nextAfter:0});
+ const privatePoll=privateRoom.t.refresh({silent:true});assert.equal(privateRoom.requests.length,1);
+ role.resolve({ok:true,user:{...privateRoom.actor,isStaff:false},friends:[],requests:[]});await privatePoll;
+ assert(!privateRoom.requests.some(request=>new URL(request.url).pathname.endsWith('/chat')));
+});
+await test('an old chat poll finishing after a post-read cannot roll back the timeline cursor, and empty deltas retain the timeline',async()=>{
+ const b=setup(),late=deferred(),fresh=deferred(),row=id=>({id,userId:'other',name:'領主',text:'伝令'+id});
+ b.t.s.tab='world';let calls=0;
+ b.setHandler(()=>calls++?fresh.promise:late.promise);
+ const oldPoll=b.t.loadChat(),newPoll=b.t.loadChat();fresh.resolve({ok:true,messages:[row(1),row(2)],nextAfter:2});await newPoll;
+ late.resolve({ok:true,messages:[row(1)],nextAfter:1});await oldPoll;
+ const cache=b.t.s.chats.get('world:'),timeline=cache.messages;assert.equal(cache.after,2);assert.deepEqual([...timeline].map(m=>m.id),[1,2]);
+ b.setHandler(()=>({ok:true,messages:[],nextAfter:2}));await b.t.loadChat();
+ assert.strictEqual(b.t.s.chats.get('world:').messages,timeline);assert.equal(new URL(b.requests.at(-1).url).searchParams.get('after'),'2');
 });
 await test('every registered role receives the profile editor and guests do not',()=>{
  for(const role of ['ordinary','staff','admin','guest']){const b=setup(role);b.t.render();assert.equal(b.mounts.length,role==='guest'?0:1);if(role!=='guest'){assert.match(b.body.innerHTML,/id="social-avatar-editor"/);assert.equal(b.mounts[0].user.id,'actor');assert(b.marks.some(m=>m.size==='profile'));}}

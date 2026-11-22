@@ -42,6 +42,7 @@ function enter(){
  document.body.classList.remove('at-title');
  title.hidden=true;global.SENGOKU_AT_TITLE=false;
  setSkipTarget(false);
+ global.SengokuBridge?.renderGameplay?.();
  document.getElementById('main')?.focus({preventScroll:true});
  global.SengokuBridge?.openStartSelection?.();
  void ready();
@@ -60,6 +61,61 @@ function init(){title=document.getElementById('launch-screen');enterButton=docum
  // The artwork loads independently. A slow illustration must never delay entry.
  updateTitleAction();
  global.SengokuArt?.decorate();refresh();
+}
+function reportedRelease(worker){
+ return new Promise(resolve=>{
+  const channel=new global.MessageChannel();
+  const finish=value=>{clearTimeout(timer);channel.port1.close();resolve(value);};
+  const timer=setTimeout(()=>finish(null),3000);
+  channel.port1.onmessage=event=>finish(event.data?.release||null);
+  try{worker.postMessage({type:'sengoku-release'},[channel.port2]);}catch{finish(null);}
+ });
+}
+async function registerOfflineEntry(){
+ const registration=await global.navigator.serviceWorker.register('./sw.js');
+ const action=document.getElementById('game-update-action'),button=document.getElementById('game-update-open'),status=document.getElementById('game-update-status');
+ if(!action||!button||!status||!global.MessageChannel)return;
+ const release=new URL(document.querySelector('link[rel="manifest"]').href).searchParams.get('v');
+ let target=null,checking=0,lastCheck=Date.now(),switching=false;
+ async function inspect(){
+  const turn=++checking,worker=registration.waiting;
+  const version=worker&&await reportedRelease(worker);
+  if(turn!==checking)return;
+  target=worker&&registration.waiting===worker&&version!==release&&/^\d+\.\d+\.\d+-\d{8}$/.test(version)?version:null;
+  action.hidden=!target;
+ }
+ const watch=worker=>worker?.addEventListener('statechange',inspect);
+ registration.addEventListener('updatefound',()=>{watch(registration.installing);void inspect();});
+ global.navigator.serviceWorker.addEventListener('controllerchange',inspect);
+ watch(registration.installing);void inspect();
+ document.addEventListener('visibilitychange',()=>{
+  if(document.visibilityState!=='visible')return;
+  void inspect();
+  if(Date.now()-lastCheck>=5*60*1000){lastCheck=Date.now();registration.update().catch(()=>{});}
+ });
+ button.addEventListener('click',async()=>{
+  if(switching||!target)return;
+  switching=true;button.disabled=true;status.textContent='保存を確認しています…';
+  try{
+   const selected=target,name='sengoku-taisen-v'+selected;
+   if(!await global.caches.has(name)||!await (await global.caches.open(name)).match(new URL('index.html',registration.scope).href)){
+    status.textContent='新版の準備を確認できませんでした。通信状況をご確認ください。';return;
+   }
+   const ready=await global.SengokuBridge?.prepareReleaseSwitch?.();
+   if(!ready?.ok){status.textContent=ready?.message||'保存状態を確認できませんでした。';return;}
+   if(global.SENGOKU_AT_TITLE===false){status.textContent='';return;}
+   if(!registration.waiting||selected!==target){status.textContent='更新状況を確認しています。';await inspect();return;}
+   const url=new URL(global.location.href);url.searchParams.set('sengoku-version',selected);
+   global.location.replace(url.href);
+  }catch{status.textContent='新版を開けませんでした。もう一度お試しください。';}
+  finally{switching=false;button.disabled=false;}
+ });
+}
+// Let the browser finish the visible entry before preparing offline play.
+if(global.navigator?.serviceWorker&&!global.SENGOKU_OFFLINE&&global.location?.protocol!=='file:'){
+ const register=()=>registerOfflineEntry().catch(()=>{});
+ if(document.readyState==='complete')register();
+ else global.addEventListener('load',register,{once:true});
 }
 global.SengokuLoading={begin,progress,end,ready};global.SengokuTitle={enter,home};
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init,{once:true});else init();

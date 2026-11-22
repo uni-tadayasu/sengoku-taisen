@@ -14,7 +14,7 @@ async function test(name, run) { await run(); count++; console.log('PASS '+name)
 
 // Run the complete application bootstrap and its real event handlers. Only the
 // browser surface and timers are replaced; saves and engine transitions are real.
-function browser(initialSave) {
+function browser(initialSave, {atTitle=false}={}) {
   const stored = new Map(initialSave === undefined ? [] : [[SAVE, initialSave]]);
   const nodes = new Map(), handlers = new Map(), events = [];
   const staticIds = new Set(['main','calendar','resources','clan-panel','sound-button','navigation','save-indicator','save-import','modal','modal-content','toast']);
@@ -38,7 +38,7 @@ function browser(initialSave) {
     nodes.set(id,node);return node;
   }
   const document = {hidden:false,activeElement:null,querySelector:query,querySelectorAll:()=>[],getElementById:id=>query('#'+id),addEventListener:(type,fn)=>{if(!handlers.has(type))handlers.set(type,[]);handlers.get(type).push(fn);}};
-  const c = {document,console,SengokuEngine,SENGOKU_DATA,SENGOKU_OFFICERS:roster,Date,Math,URL,Blob,URLSearchParams,
+  const c = {SENGOKU_AT_TITLE:atTitle,document,console,SengokuEngine,SENGOKU_DATA,SENGOKU_OFFICERS:roster,Date,Math,URL,Blob,URLSearchParams,
     localStorage:{getItem:key=>stored.has(key)?stored.get(key):null,setItem:(key,value)=>{if(failSave&&key===SAVE)throw Error('storage full');stored.set(key,value);}},
     navigator:{},location:{hash:'#town',protocol:'https:'},history:{replaceState(){}},performance:{now:()=>1000},
     setInterval:()=>1,setTimeout:()=>1,clearTimeout(){},scrollTo(){},scrollX:0,scrollY:0,
@@ -75,6 +75,24 @@ await test('the five major-city flags restrict only new starts and preserve exis
     const legacy=new SengokuEngine({clan:'徳川家',officers:roster,seed:43});legacy.state.home=id;legacy.state.castles[id].owner=legacy.state.clan;legacy.state.castles[id].level=13;legacy.state.resources.gold=662211;
     const loaded=SengokuEngine.fromSave(legacy.exportSave(),roster);assert.deepEqual(plain(loaded.state),plain(legacy.state));assert(loaded.canOwnCastle(id));
   }
+});
+await test('a fresh title and a returning title defer all town markup until gameplay entry',async()=>{
+  const fresh=browser(undefined,{atTitle:true});
+  assert.equal(fresh.nodes.get('main').innerHTML,'');assert.equal(fresh.nodes.get('calendar').innerHTML,'');assert.equal(fresh.nodes.get('navigation').innerHTML,'');
+  fresh.c.SengokuBridge.setSyncAccess({linked:true,ready:false,writable:false,reason:'initializing'});assert.equal(fresh.nodes.get('main').innerHTML,'');
+  fresh.c.SengokuBridge.refreshPremiumAppearance();fresh.c.SengokuBridge.renderGameplay();assert.equal(fresh.nodes.get('main').innerHTML,'');
+  fresh.c.SENGOKU_AT_TITLE=false;fresh.c.SengokuBridge.renderGameplay();assert.match(fresh.nodes.get('main').innerHTML,/はじまりの城を選ぶ/);
+  fresh.c.SengokuBridge.openStartSelection();assert.equal(fresh.nodes.get('modal').open,true);
+  const saved=new SengokuEngine({officers:roster,clan:'織田家',startCastle:'kiyosu',seed:8});
+  const resume=browser(saved.exportSave(),{atTitle:true});assert.equal(resume.c.SengokuBridge.hasStarted(),true);
+  assert(resume.c.SengokuBridge.getLocalCommander().officerId,'a public-profile visit can still read the local commander before entry');
+  assert.equal(resume.nodes.get('main').innerHTML,'');assert.equal(resume.nodes.get('resources').innerHTML,'');
+  resume.c.SENGOKU_AT_TITLE=false;resume.c.SengokuBridge.renderGameplay();resume.c.SengokuBridge.openStartSelection();
+  assert.match(resume.nodes.get('main').innerHTML,/清洲城/);assert.match(resume.nodes.get('main').innerHTML,/town-scene-image/);assert.equal(resume.nodes.get('modal').open,false);
+  resume.c.SENGOKU_AT_TITLE=true;const old=resume.nodes.get('main').innerHTML;
+  const other=new SengokuEngine({officers:roster,clan:'毛利家',startCastle:'himeji',seed:9});assert(resume.c.SengokuBridge.applyCloudSave(other.exportSave(),{reason:'initial'}).ok);
+  assert.equal(resume.c.SengokuBridge.getState().home,'himeji');assert.equal(resume.nodes.get('main').innerHTML,old);
+  resume.c.SENGOKU_AT_TITLE=false;resume.c.SengokuBridge.renderGameplay();assert.match(resume.nodes.get('main').innerHTML,/姫路城/);
 });
 await test('first bootstrap remains unsaved and opens an explicit 124-castle choice with recovery access',async()=>{
   const b=browser();assert.equal(b.c.SengokuBridge.hasStarted(),false);assert.equal(b.c.SengokuBridge.getSave(),null);assert(!b.stored.has(SAVE));assert.equal(b.events.length,0);

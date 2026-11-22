@@ -600,7 +600,7 @@ function aboutContent(p) {
     `),
     section('artwork', '城と武将のイラスト', 'ゲームの世界を描く、独自の表現。', `
       <p>武将は和風アニメ調、城や施設は発展が伝わる建築イラストとして制作しています。衣装・兜・装飾・背景・建物の構成を描き分けた、本作用の表現です。人物の実際の容姿や、城郭の厳密な復元図を示すものではありません。</p>
-      <div class="art-feature"><figure><img src="${p.file('assets/premium/moonlit-castle-v1.webp')}" alt="月明かりと灯籠に彩られた戦国VSの城下町" width="1536" height="1024" loading="lazy" decoding="async"><figcaption>月影の城下の完成イラスト</figcaption></figure><div><h3>一城に、あなたらしい彩りを。</h3><p>城下町の景色や領主の名札を、好きな外観に切り替えられます。金の刺繍を施した旗印、月明かりの城下町、黄金のサポーターバッジを用意しています。</p><p><a href="${p.dir('premium')}">外観コレクションと支援の案内</a>で、実際に使われるイラストを見比べられます。</p></div></div>
+      <div class="art-feature"><figure><img src="${p.file('assets/responsive/moonlit-castle-720.webp')}" srcset="${[400,720,1080,1536].map(width => `${p.file(`assets/responsive/moonlit-castle-${width}.webp`)} ${width}w`).join(', ')}" sizes="(max-width: 650px) 90vw, (max-width: 900px) 50vw, 460px" alt="月明かりと灯籠に彩られた戦国VSの城下町" width="1536" height="1024" loading="lazy" decoding="async"><figcaption>月影の城下の完成イラスト</figcaption></figure><div><h3>一城に、あなたらしい彩りを。</h3><p>城下町の景色や領主の名札を、好きな外観に切り替えられます。金の刺繍を施した旗印、月明かりの城下町、黄金のサポーターバッジを用意しています。</p><p><a href="${p.dir('premium')}">外観コレクションと支援の案内</a>で、実際に使われるイラストを見比べられます。</p></div></div>
       <ul class="source-list"><li><a href="${p.file('ARTWORK.md')}">イラストの構成と制作方針</a><small>画像数の数え方と、ランク・成長段階の構成。</small></li><li><a href="${p.file('SOURCES.md')}">武将の収録方針・人物資料</a><small>全国から選抜した256名と、人物・所属・能力の扱い。</small></li></ul>
     `),
     section('geography', '天下地図の資料', '日本の山河と、城跡の位置をたどる。', `
@@ -674,13 +674,15 @@ function render(page) {
     `<a href="${p.dir(slug)}"${page.key === key ? ' aria-current="page"' : ''}>${esc(label)}</a>`
   ).join('');
   const header = `<header class="site-header"><div class="site-header-inner page-width">
-    <a class="site-brand" href="${p.dir('')}" aria-label="戦国VS ゲームのトップへ"><img src="${p.file(site.favicon.path)}" alt="" width="44" height="44"><span><b>戦国VS</b><small>SENGOKU VS</small></span></a>
+    <a class="site-brand" href="${p.dir('')}" aria-label="戦国VS ゲームのトップへ"><img src="${p.file(site.favicon.path)}" srcset="${[48,96,144].map(width => p.file(`assets/responsive/brand-${width}.webp`) + ` ${width}w`).join(', ')}" sizes="44px" alt="" width="44" height="44"><span><b>戦国VS</b><small>SENGOKU VS</small></span></a>
     <button class="public-nav-toggle" type="button" hidden aria-expanded="false" aria-controls="public-site-nav"><span class="menu-lines" aria-hidden="true"></span>メニュー</button>
     <nav class="header-navigation" id="public-site-nav" aria-label="サイトの案内">${nav}<a class="nav-play" href="${p.dir('')}">ゲームを開く</a></nav>
   </div></header>`;
   const footer = `<footer class="site-footer"><div class="footer-inner page-width"><a class="footer-brand" href="${p.dir('')}">${esc(site.name)} <span>SENGOKU VS</span></a><nav class="footer-nav" aria-label="フッターの案内">${nav}</nav><p class="copyright">© ${esc(site.publisher)}</p><p class="footer-note"><a href="${p.dir('about')}#copyright">著作権・作品資料</a>${['share','premium'].includes(page.key)?` <span>更新 <time datetime="${page.dateModified}">${modifiedLabel(page.dateModified)}</time></span>`: ''}</p></div></footer>`;
-  const mobileArt = page.artwork.mobile ? `<source media="(max-width: 660px)" srcset="${p.file(page.artwork.mobile)}">` : '';
-  const artwork = `<picture class="chapter-art">${mobileArt}<img src="${p.file(page.artwork.path)}" alt="${esc(page.artwork.alt)}" width="${page.artwork.width}" height="${page.artwork.height}" fetchpriority="high" decoding="async"></picture>`;
+  const chapter = path.basename(page.artwork.path, '.webp');
+  const chapterSources = [240,400,640,960,1200].map(width => `${p.file(`assets/responsive/${chapter}-${width}.webp`)} ${width}w`).join(', ');
+  const panelSources = [400,640,900].map(width => `${p.file(`assets/responsive/${chapter}-panel-${width}.webp`)} ${width}w`).join(', ');
+  const artwork = `<picture class="chapter-art"><source media="(min-width: 651px)" srcset="${panelSources}" sizes="(max-width: 900px) 640px, (min-width: 1380px) 850px, max(650px, 58vw)"><img src="${p.file(page.artwork.path)}" srcset="${chapterSources}" sizes="(max-width: 650px) calc(100vw - 24px), (max-width: 900px) 47vw, (min-width: 1460px) 755px, 52vw" alt="${esc(page.artwork.alt)}" width="${page.artwork.width}" height="${page.artwork.height}" fetchpriority="high" decoding="async"></picture>`;
   if (['share', 'premium'].includes(page.key)) return (page.key === 'share' ? renderSharePage : renderPremiumPage)({
     site, header, footer, artwork,
     metadataHtml: metadataEntries(page.key).map(metaTag).join('\n  ') + `\n  <link rel="canonical" href="${url}">`,
@@ -779,7 +781,7 @@ function updateHome() {
   if (!hasGraph) html = html.replace('</head>', `  ${graph}\n</head>`);
   // Keep the title concise while exposing help and recovery without entering the game.
   html = html.replace(/(<p class="launch-introduction">)[\s\S]*?(<\/p>)/, (_, before, after) => before + site.launchIntroduction.map(esc).join('<br>') + after);
-  const launchGuide = '<nav class="launch-guide-nav" aria-label="戦国VSの案内"><a href="sengoku-vs/"><img src="assets/chronicle/war.webp" width="120" height="70" alt=""><span><strong>ゲーム紹介</strong><small>内政・編成・合戦の流れ</small></span></a><a href="guide/"><img src="assets/chronicle/town.webp" width="120" height="70" alt=""><span><strong>遊び方</strong><small>城を選んだ後の進め方</small></span></a><a href="guide/data-recovery/"><img src="assets/chronicle/archive.webp" width="120" height="70" alt=""><span><strong>引き継ぎ・復元</strong><small>領主とセーブデータの移行</small></span></a></nav>';
+  const launchGuide = '<nav class="launch-guide-nav" aria-label="戦国VSの案内"><a href="sengoku-vs/"><img src="assets/chronicle/war.webp" srcset="assets/responsive/war-240.webp 240w, assets/responsive/war-400.webp 400w, assets/responsive/war-640.webp 640w, assets/responsive/war-960.webp 960w, assets/responsive/war-1200.webp 1200w" sizes="(max-width: 700px) 58vw, (min-width: 1880px) 573px, 30vw" width="1200" height="500" alt="" decoding="async"><span><strong>ゲーム紹介</strong><small>内政・編成・合戦の流れ</small></span></a><a href="guide/"><img src="assets/chronicle/town.webp" srcset="assets/responsive/town-240.webp 240w, assets/responsive/town-400.webp 400w, assets/responsive/town-640.webp 640w, assets/responsive/town-960.webp 960w, assets/responsive/town-1200.webp 1200w" sizes="(max-width: 700px) 58vw, (min-width: 1880px) 573px, 30vw" width="1200" height="500" alt="" decoding="async"><span><strong>遊び方</strong><small>城を選んだ後の進め方</small></span></a><a href="guide/data-recovery/"><img src="assets/chronicle/archive.webp" srcset="assets/responsive/archive-240.webp 240w, assets/responsive/archive-400.webp 400w, assets/responsive/archive-640.webp 640w, assets/responsive/archive-960.webp 960w, assets/responsive/archive-1200.webp 1200w" sizes="(max-width: 700px) 58vw, (min-width: 1880px) 573px, 30vw" width="1200" height="500" alt="" decoding="async"><span><strong>引き継ぎ・復元</strong><small>領主とセーブデータの移行</small></span></a></nav>';
   // Keep an authored title composition intact: the story owns its guide nav,
   // and the subtitle's intentional line break is not a metadata replacement.
   let hasLaunchGuide = false;
@@ -796,7 +798,7 @@ function updateHome() {
   html = html.replace(/(<a href="about\/" data-action="about">)[^<]*(<\/a>)/, '$1ゲーム概要・出典$2');
   html = html.replace(/(<div class="version-label">)群雄集結 · Ver\. [^<]+(<\/div>)/, `$1群雄集結 · Ver. ${esc(site.version)}$2`);
   html = withSelectionAssets(html);
-  html = html.replace(/(\b(?:src|href)=["'][^"']*[?&]v=)[^&"']+/g, (_, prefix) => prefix + release);
+  html = html.replace(/(\b(?:src|href)=["'][^"']*[?&]v=)[^&"']+/g, (attribute, prefix) => /\.bundle\.(?:css|js)\?v=$/.test(prefix) ? attribute : prefix + release);
   return html;
 }
 
