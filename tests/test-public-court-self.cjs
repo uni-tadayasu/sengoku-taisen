@@ -63,12 +63,17 @@ test('own sidebar/page rank and evaluation details include the authoritative off
   const own=h.transport.playerName('現在の領主',evaluation,A,null,null,false);
   assert.match(own,/data-court-self="true"/);
   assert.match(own,/public-court-title">太政大臣/);
-  assert.match(h.court.selfBadge(A),/data-court-seal="stamp"/);assert.doesNotMatch(h.court.selfBadge(A),/<img|太政官|運営|スタッフ/);
+  const selfBadge=h.court.selfBadge(A);
+  assert.match(selfBadge,/data-court-seal="stamp"/);
+  assert.deepEqual([...selfBadge.matchAll(/<img[^>]* src="([^"]+)"/g)].map(m=>m[1]),['assets/court-badges/stamp-relief.webp']);
+  assert.doesNotMatch(selfBadge,/太政官|運営|スタッフ/);
 });
 test('office changes update mounted self slots and the open evaluation detail key',()=>{
   const h=harness(),slot=h.node(A),button=h.entry();h.connect();h.entries.show();h.entries.refresh();const oldKey=h.entries.key();
   h.court.update({playerId:A,playerCourtOffice:official});h.entries.refresh();
   assert.match(slot.innerHTML,/左大臣/);assert.doesNotMatch(slot.innerHTML,/太政大臣/);
+  assert(slot.innerHTML.includes('assets/court-badges/pine-relief.webp'));
+  assert(!slot.innerHTML.includes('assets/court-badges/stamp-relief.webp'));
   assert.match(button.attrs['aria-label'],/役職 左大臣/);
   assert.notEqual(h.entries.key(),oldKey);assert.match(h.scope.__modal.body,/左大臣/);
 });

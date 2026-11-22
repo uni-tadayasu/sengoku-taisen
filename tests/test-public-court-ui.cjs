@@ -1,13 +1,39 @@
 const assert=require('node:assert/strict'),court=require('../public-court.js');
+const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
 let count=0;function test(name,run){court.clear();run();count++;console.log('PASS '+name);}
-test('each current office pairs one accessible title with an original, distinct seal',()=>{
- const roles={'参議':'official','中納言':'official','大納言':'official','内大臣':'official','右大臣':'official','左大臣':'official','太政大臣':'chancellor','天皇':'emperor'},seals=new Set(),art=new Set();
- for(const [title,kind] of Object.entries(roles)){
+test('each current office pairs one accessible title with its own relief and linework',()=>{
+ const roles=[
+  ['参議','official','fan'],['中納言','official','scroll'],['大納言','official','book'],
+  ['内大臣','official','gate'],['右大臣','official','feather'],['左大臣','official','pine'],
+  ['太政大臣','chancellor','stamp'],['天皇','emperor','sun']
+ ];
+ const art=new Set(),files=new Set();
+ for(const [title,kind,seal] of roles){
   const html=court.badge({courtOffice:{title,kind}});
   assert(html.includes('role="img" aria-label="役職：'+title+'"'));assert(html.includes('public-court-'+kind));assert(html.includes('<span class="public-court-title">'+title+'</span>'));assert(html.includes('aria-hidden="true" focusable="false"'));assert(!html.includes('太政官'));
-  seals.add(html.match(/data-court-seal="([a-z]+)"/)[1]);art.add(html.match(/<svg[^>]+>(.*?)<\/svg>/)[1]);
+  assert(html.includes(`data-court-seal="${seal}"`));
+  assert(html.includes(`data-stable-key="court-seal-${seal}"`));
+  const matching=html.match(/<img [^>]*src="([^"]+)"[^>]*>/g)||[];
+  assert.equal(matching.length,1,title);
+  const src=`assets/court-badges/${seal}-relief.webp`;
+  assert(matching[0].includes(`src="${src}"`));
+  assert.match(matching[0],/width="24" height="24" alt=""/);
+  assert.doesNotMatch(html,/\son(?:load|error)=/);
+  const bytes=fs.readFileSync(path.join(__dirname,'..',src));
+  assert.equal(bytes.toString('ascii',0,4),'RIFF');assert.equal(bytes.toString('ascii',8,12),'WEBP');
+  files.add(bytes.toString('base64'));
+  art.add(html.match(/<svg[^>]+>(.*?)<\/svg>/)[1]);
  }
- assert.equal(seals.size,8);assert.equal(art.size,8);assert.equal(court.badgeTitle('<b>天皇</b>'),'');
+ assert.equal(files.size,8);assert.equal(art.size,8);assert.equal(court.badgeTitle('<b>天皇</b>'),'');
+});
+test('resource failure reveals only the fallback of the affected office without replacing the nameplate',()=>{
+ let handle;
+ const document={addEventListener(type,listener,capture){assert.equal(type,'error');assert.equal(capture,true);handle=listener;}};
+ vm.runInNewContext(fs.readFileSync(require.resolve('../public-court.js'),'utf8'),{document});
+ const failed={hidden:false,matches:s=>s==='img.public-court-relief'};
+ const other={hidden:false,matches:()=>false};
+ handle({target:failed});handle({target:other});handle({target:document});
+ assert.equal(failed.hidden,true);assert.equal(other.hidden,false);
 });
 test('player rank and unverified privilege flags never imply an office',()=>{assert.equal(court.badge({id:'u_one',isAdmin:true,isStaff:true,evaluation:{rankName:'従五位'}}),'');assert.equal(court.badge({courtOffice:{title:'天皇',kind:'official'}}),'');assert.equal(court.badge({courtOffice:{title:'<img src=x onerror=alert(1)>',kind:'official'}}),'');});
 test('empty participant deltas refresh cached badges and explicit null removes a demoted office',()=>{court.update({updates:[{playerId:'u_one',evaluation:{},courtOffice:{title:'参議',kind:'official'}}]});assert(court.badge('u_one').includes('参議'));court.update({updates:[{playerId:'u_one',evaluation:{},courtOffice:null}]});assert.equal(court.badge('u_one'),'');});
