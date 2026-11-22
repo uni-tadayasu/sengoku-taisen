@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {harness} from './test-support.mjs';
+import {harness,settleFieldMarch} from './test-support.mjs';
 import {GameEngine,GAME_OFFICERS} from './game-runtime.js';
 const post=(p,body,expected=200)=>({method:'POST',token:p?.token,body,expected});
 const row=(h,p)=>h.sql.prepare('SELECT * FROM player_saves WHERE user_id=?').get(p.user.id);
@@ -7,20 +7,40 @@ const save=(h,p)=>JSON.parse(row(h,p).save_json);
 const count=(h,table)=>h.sql.prepare('SELECT COUNT(*) AS n FROM '+table).get().n;
 let checks=0,calls=0;
 async function scope(name,fn){const h=harness();try{await fn(h);checks++;console.log('PASS '+name);}finally{calls+=h.calls;h.close();}}
-async function fixture(h,name,{admin=false,holdings=[],mutate=()=>{}}={}){
+async function fixture(h,name,{admin=false,home='kiyosu',holdings=[],mutate=()=>{}}={}){
  const p=await h.session(name);p.deviceId='covert-device-'+p.user.id;
  if(admin)await h.api('/admin/claim',post(p,{key:h.env.SENGOKU_ADMIN_KEY}));
  const lease=(await h.api('/sync/lease',post(p,{deviceId:p.deviceId}))).data;
- const g=new GameEngine({officers:GAME_OFFICERS,seed:17,isAdmin:admin}),value=JSON.parse(g.exportSave()),s=value.state;
+ const g=new GameEngine({officers:GAME_OFFICERS,seed:17,isAdmin:admin,startCastle:home}),value=JSON.parse(g.exportSave()),s=value.state;
  s.resources={gold:100000,rice:100000,wood:100000,stone:100000};s.troops=10000;s.buildings.keep=16;s.command=5;
  for(const id of holdings)s.castles[id].owner=s.clan;
  s.worldClock={id:lease.clock.id,elapsedMs:lease.clock.elapsedMs};s.turn=Math.floor(lease.clock.elapsedMs/60000);s.realtime.elapsed=lease.clock.elapsedMs%60000/1000;mutate(s);
  await h.api('/sync',{method:'PUT',token:p.token,body:{deviceId:p.deviceId,revision:lease.revision,save:value}});return p;
 }
 function body(h,p,extra={}){const r=row(h,p),s=JSON.parse(r.save_json).state;return{requestId:crypto.randomUUID(),deviceId:p.deviceId,expectedRevision:r.revision,campaignId:s.walking.campaignId,sequence:s.covert.sequence,...extra};}
-async function op(h,p,action,extra={},expected=200){return(await h.api('/covert/'+action,post(p,body(h,p,extra),expected))).data;}
-async function incoming(h,attacker,defender,castleId='edo'){
- return(await h.api('/field/attack',post(attacker,{targetPlayerId:defender.user.id,targetCastleId:castleId,troops:1000,tactic:'balanced',requestId:crypto.randomUUID(),deviceId:attacker.deviceId,expectedRevision:row(h,attacker).revision}))).data.battle;
+async function align(h,p){
+ const leased=(await h.api('/sync/lease',post(p,{deviceId:p.deviceId}))).data;
+ if(leased.save.state.worldClock.elapsedMs===leased.clock.elapsedMs)return;
+ const game=GameEngine.fromSave(leased.save,GAME_OFFICERS,{isAdmin:leased.user.isAdmin,isStaff:leased.user.isStaff,staffBase:leased.staffBase});
+ const advanced=game.applyWorldClock(leased.clock,{maxSeconds:86400,deferCycleSettlement:true});assert(advanced.ok&&!advanced.pending);
+ await h.api('/sync',{method:'PUT',token:p.token,body:{deviceId:p.deviceId,revision:leased.revision,save:JSON.parse(game.exportSave())}});
+}
+async function finishDispatch(h,p,request,departure){
+ assert.equal(departure.march.status,'marching');h.now+=departure.march.remainingMs;
+ const settled=(await h.api('/marches?deviceId='+p.deviceId,{token:p.token})).data;
+ assert.equal(settled.history.find(m=>m.id===departure.march.id)?.status,'resolved');
+ await h.api('/sync/lease',post(p,{deviceId:p.deviceId}));
+ const replay=(await h.api('/covert/dispatch',post(p,request))).data;assert(replay.idempotent);
+ return replay;
+}
+async function op(h,p,action,extra={},expected=200){
+ const request=body(h,p,extra),response=(await h.api('/covert/'+action,post(p,request,expected))).data;
+ return action==='dispatch'&&expected===200?finishDispatch(h,p,request,response):response;
+}
+async function incoming(h,attacker,defender,castleId='edo',{syncDefender=true}={}){
+ await align(h,attacker);
+ const departure=(await h.api('/field/attack',post(attacker,{targetPlayerId:defender.user.id,targetCastleId:castleId,troops:1000,tactic:'balanced',requestId:crypto.randomUUID(),deviceId:attacker.deviceId,expectedRevision:row(h,attacker).revision}))).data;
+ const battle=await settleFieldMarch(h,attacker,departure);if(syncDefender)await align(h,defender);return battle;
 }
 async function armed(h,source,target={kind:'castle',castleId:'kagoshima'}){
  await op(h,source,'hire',{sourceCastleId:'edo',count:400});
@@ -57,7 +77,7 @@ try{
   const stored=row(h,p).save_json;assert.equal((await h.api('/covert/recall',post(p,request))).data.idempotent,true);assert.equal(row(h,p).save_json,stored);await op(h,p,'recall',{stationId:id},409);
  });
  await scope('real incoming attack enables one stationed NPC retaliation without capturing or minting rewards',async h=>{
-  const p=await fixture(h,'被攻撃元',{admin:true}),a=await fixture(h,'襲撃元'),stationId=await armed(h,p);let status=(await h.api('/covert',{token:p.token})).data;assert.equal(status.covert.incidents.length,0);
+  const p=await fixture(h,'被攻撃元',{admin:true}),a=await fixture(h,'襲撃元',{home:'kawagoe'}),stationId=await armed(h,p);let status=(await h.api('/covert',{token:p.token})).data;assert.equal(status.covert.incidents.length,0);
   await op(h,p,'retaliate',{stationId,incidentId:'fake-attack'},409);
   const hit=await incoming(h,a,p);status=(await h.api('/covert',{token:p.token})).data;assert.equal(status.covert.incidents.length,1);assert.equal(status.covert.incidents[0].id,hit.id);assert(status.covert.incidents[0].available);assert.deepEqual(status.covert.incidents[0].stationIds,[stationId]);
   const before=save(h,p),request=body(h,p,{stationId,incidentId:hit.id}),r=(await h.api('/covert/retaliate',post(p,request))).data,b=r.result.battle,after=save(h,p);
@@ -73,17 +93,17 @@ try{
   assert.equal(r.save.state.covert.reserves.edo,100);assert.equal(r.save.state.covert.stations[0].id,stationId);assert(!JSON.stringify(r.save.state.covert).includes('private'));await op(h,p,'retaliate',{stationId,incidentId:'fake'},409);
  });
  await scope('player counter atomically applies bounded casualties and one generic private notification',async h=>{
-  const p=await fixture(h,'反撃元',{admin:true}),a=await fixture(h,'実襲撃元'),d=await fixture(h,'常駐先');const stationId=await armed(h,p,{kind:'player',playerId:d.user.id,castleId:'kiyosu'}),hit=await incoming(h,a,p),beforeD=save(h,d),beforeP=save(h,p),mailBefore=count(h,'mail_campaigns');
+  const p=await fixture(h,'反撃元',{admin:true}),a=await fixture(h,'実襲撃元',{home:'kawagoe'}),d=await fixture(h,'常駐先');const stationId=await armed(h,p,{kind:'player',playerId:d.user.id,castleId:'kiyosu'}),hit=await incoming(h,a,p),beforeD=save(h,d),beforeP=save(h,p),mailBefore=count(h,'mail_campaigns');
   const request=body(h,p,{stationId,incidentId:hit.id}),r=(await h.api('/covert/retaliate',post(p,request))).data,b=r.result.battle,afterD=save(h,d);
   assert.equal(afterD.state.troops,beforeD.state.troops-b.defenderLost.troops);assert.equal(afterD.state.castles.kiyosu.troops,beforeD.state.castles.kiyosu.troops-b.defenderLost.garrison);assert(b.defenderLost.troops<=Math.floor(beforeD.state.troops*.1));assert(b.defenderLost.garrison<=Math.floor(beforeD.state.castles.kiyosu.troops*.1));assert.deepEqual(afterD.state.resources,beforeD.state.resources);assert.equal(afterD.state.castles.kiyosu.owner,beforeD.state.castles.kiyosu.owner);assert.equal(count(h,'mail_campaigns'),mailBefore+1);assert.equal(count(h,'covert_battles'),1);
   const mail=h.sql.prepare('SELECT * FROM mail_campaigns WHERE target_user_id=? ORDER BY rowid DESC LIMIT 1').get(d.user.id);for(const term of ['運営','忍者','スタッフ','偵察','常駐','反撃','incident'])assert(!mail.body.includes(term));assert.equal(mail.gift_json,null);
   const delivered=(await h.api('/mail',{token:d.token})).data.mail.find(v=>v.id===mail.id);assert.equal(delivered.source,'system');assert.equal(delivered.event.kind,'field-battle');assert.deepEqual(delivered.participants,[]);
   const stored=row(h,d).save_json;await h.api('/covert/retaliate',post(p,request));assert.equal(row(h,d).save_json,stored);assert.equal(count(h,'covert_battles'),1);assert.equal(count(h,'mail_campaigns'),mailBefore+1);
   assert.equal(save(h,p).state.covert.stations[0].count,beforeP.state.covert.stations[0].count-b.ourLost);
-  const third=await fixture(h,'保護検証');await h.api('/field/attack',post(third,{targetPlayerId:d.user.id,targetCastleId:'kiyosu',troops:1000,tactic:'balanced',requestId:crypto.randomUUID(),deviceId:third.deviceId,expectedRevision:row(h,third).revision},409));
+  const third=await fixture(h,'保護検証',{home:'inuyama'});const denied=await h.api('/field/attack',post(third,{targetPlayerId:d.user.id,targetCastleId:'kiyosu',troops:1000,tactic:'balanced',requestId:crypto.randomUUID(),deviceId:third.deviceId,expectedRevision:row(h,third).revision},409));assert.equal(denied.data.error.code,'TARGET_PROTECTED');
  });
  await scope('Edo and Kyoto palace remain uncapturable and keep defender assets during counterattacks',async h=>{
-  const opPlayer=await fixture(h,'江戸防衛',{admin:true}),staff=await fixture(h,'京都御所防衛'),attacker=await fixture(h,'反撃側',{holdings:['nijo']}),raider=await fixture(h,'機会作成');
+  const opPlayer=await fixture(h,'江戸防衛',{admin:true}),staff=await fixture(h,'京都御所防衛'),attacker=await fixture(h,'反撃側',{home:'akutagawa',holdings:['nijo']}),raider=await fixture(h,'機会作成',{home:'kawagoe'});
   await h.api('/admin/staff',post(opPlayer,{targetPlayerId:staff.user.id,action:'appoint',requestId:crypto.randomUUID()}));await h.api('/sync?deviceId='+staff.deviceId,{token:staff.token});
   await op(h,attacker,'hire',{sourceCastleId:'nijo',count:300});
   const station=(await op(h,attacker,'dispatch',{sourceCastleId:'nijo',target:{kind:'player',playerId:opPlayer.user.id,castleId:'edo'},count:100,mode:'station'})).result.stationId;
@@ -100,7 +120,7 @@ try{
   const counter=await op(h,attacker,'retaliate',{stationId:other,incidentId:hit.id});assert.deepEqual(counter.result.battle.defenderLost,{troops:0,garrison:0});assert.equal(row(h,staff).save_json,staffBefore);assert.equal(row(h,staff).revision,staffRevision);assert.equal(h.sql.prepare("SELECT state_json FROM staff_base WHERE id='kyoto_gosho'").get().state_json,sharedBefore);
  });
  await scope('concurrent requests spend one inventory sequence and one incoming opportunity only',async h=>{
-  const p=await fixture(h,'同時指示',{admin:true}),a=await fixture(h,'同時襲撃'),d=await fixture(h,'同時反撃先'),stationId=await armed(h,p,{kind:'player',playerId:d.user.id,castleId:'kiyosu'}),hit=await incoming(h,a,p),one=body(h,p,{stationId,incidentId:hit.id}),two={...one,requestId:crypto.randomUUID()};
+  const p=await fixture(h,'同時指示',{admin:true}),a=await fixture(h,'同時襲撃',{home:'kawagoe'}),d=await fixture(h,'同時反撃先'),stationId=await armed(h,p,{kind:'player',playerId:d.user.id,castleId:'kiyosu'}),hit=await incoming(h,a,p),one=body(h,p,{stationId,incidentId:hit.id}),two={...one,requestId:crypto.randomUUID()};
   let entered=0,release;const barrier=new Promise(r=>release=r);h.beforeBatch=async statements=>{if(!statements[0]?.sql.includes('INSERT INTO covert_requests'))return;if(++entered===2){h.beforeBatch=null;release();}await barrier;};
   const results=await Promise.all([h.api('/covert/retaliate',post(p,one,null)),h.api('/covert/retaliate',post(p,two,null))]);assert.deepEqual(results.map(r=>r.response.status).sort(),[200,409]);assert.equal(count(h,'covert_battles'),1);assert.equal(h.sql.prepare('SELECT COUNT(*) AS n FROM covert_requests WHERE incident_id=?').get(hit.id).n,1);
  });
@@ -113,13 +133,13 @@ try{
   }
  });
  await scope('database failure rolls back actor inventory, defender casualties, mail and receipt together',async h=>{
-  const p=await fixture(h,'原子性',{admin:true}),a=await fixture(h,'契機'),d=await fixture(h,'防衛先'),stationId=await armed(h,p,{kind:'player',playerId:d.user.id,castleId:'kiyosu'}),hit=await incoming(h,a,p),request=body(h,p,{stationId,incidentId:hit.id}),beforeP=row(h,p).save_json,beforeD=row(h,d).save_json,mails=count(h,'mail_campaigns'),receipts=count(h,'covert_requests');
+  const p=await fixture(h,'原子性',{admin:true}),a=await fixture(h,'契機',{home:'kawagoe'}),d=await fixture(h,'防衛先'),stationId=await armed(h,p,{kind:'player',playerId:d.user.id,castleId:'kiyosu'}),hit=await incoming(h,a,p),request=body(h,p,{stationId,incidentId:hit.id}),beforeP=row(h,p).save_json,beforeD=row(h,d).save_json,mails=count(h,'mail_campaigns'),receipts=count(h,'covert_requests');
   h.beforeBatch=statements=>{if(statements[0]?.sql.includes('INSERT INTO covert_requests')){h.beforeBatch=null;statements.push(h.db.prepare('UPDATE nonexistent_covert_fixture SET value=1'));}};
   await h.api('/covert/retaliate',post(p,request,500));assert.equal(row(h,p).save_json,beforeP);assert.equal(row(h,d).save_json,beforeD);assert.equal(count(h,'mail_campaigns'),mails);assert.equal(count(h,'covert_requests'),receipts);assert.equal(count(h,'covert_battles'),0);
   assert.equal((await h.api('/covert/retaliate',post(p,request))).data.idempotent,false);
  });
  await scope('stale same-campaign imports preserve canonical casualties/reports and fresh campaigns cannot clone units',async h=>{
-  const p=await fixture(h,'保存保護',{admin:true}),old=save(h,p),a=await fixture(h,'保存襲撃'),stationId=await armed(h,p),hit=await incoming(h,a,p);await op(h,p,'retaliate',{stationId,incidentId:hit.id});const canonical=structuredClone(save(h,p).state.covert);
+  const p=await fixture(h,'保存保護',{admin:true}),old=save(h,p),a=await fixture(h,'保存襲撃',{home:'kawagoe'}),stationId=await armed(h,p),hit=await incoming(h,a,p);await op(h,p,'retaliate',{stationId,incidentId:hit.id});const canonical=structuredClone(save(h,p).state.covert);
   for(const imported of [old,{...old,state:{...old.state,covert:{reserves:{edo:999999},sequence:0}}}]){
    const r=(await h.api('/sync',{method:'PUT',token:p.token,body:{deviceId:p.deviceId,revision:row(h,p).revision,save:imported}})).data;assert.deepEqual(r.save.state.covert,canonical);await op(h,p,'retaliate',{stationId,incidentId:hit.id},409);
   }
@@ -127,18 +147,18 @@ try{
   const returned=(await h.api('/sync',{method:'PUT',token:p.token,body:{deviceId:p.deviceId,revision:row(h,p).revision,save:old}})).data;assert.deepEqual(returned.save.state.covert,canonical);
  });
  await scope('paginated targets expose every registered base and no public role or private reports',async h=>{
-  const p=await fixture(h,'頁の主',{admin:true}),one=await fixture(h,'頁一'),two=await fixture(h,'頁二',{holdings:['nijo']});
+  const p=await fixture(h,'頁の主',{admin:true}),one=await fixture(h,'頁一'),two=await fixture(h,'頁二',{home:'inuyama',holdings:['nijo']});
   const all=[];let cursor=null;do{const r=(await h.api('/covert?limit=1'+(cursor?'&cursor='+cursor:''),{token:p.token})).data;all.push(...r.covert.targets.filter(t=>t.kind==='player'));cursor=r.covert.targetCursor;}while(cursor);
   assert(all.some(t=>t.playerId===one.user.id));assert(all.some(t=>t.playerId===two.user.id&&t.castleId==='nijo'));assert(all.every(t=>!('isAdmin'in t)&&!('isStaff'in t)&&!('resources'in t)));
  });
  await scope('an incoming attack committed during station preparation cannot authorize that new station',async h=>{
-  const p=await fixture(h,'順序検証',{admin:true}),a=await fixture(h,'割込み襲撃');await op(h,p,'hire',{sourceCastleId:'edo',count:100});const before=row(h,p).save_json,request=body(h,p,{sourceCastleId:'edo',count:50,mode:'station',target:{kind:'castle',castleId:'kagoshima'}});let hit;
-  h.beforeBatch=async statements=>{if(!statements[0]?.sql.includes('INSERT INTO covert_requests'))return;h.beforeBatch=null;hit=await incoming(h,a,p);};
+  const p=await fixture(h,'順序検証',{admin:true}),a=await fixture(h,'割込み襲撃',{home:'kawagoe'});await op(h,p,'hire',{sourceCastleId:'edo',count:100});const before=row(h,p).save_json,request=body(h,p,{sourceCastleId:'edo',count:50,mode:'station',target:{kind:'castle',castleId:'kagoshima'}});let hit;
+  h.beforeBatch=async statements=>{if(!statements[0]?.sql.includes('INSERT INTO covert_requests'))return;h.beforeBatch=null;hit=await incoming(h,a,p,'edo',{syncDefender:false});};
   await h.api('/covert/dispatch',post(p,request,409));assert.equal(row(h,p).save_json,before);assert.equal(count(h,'covert_requests'),1);assert.equal(save(h,p).state.covert.stations.length,0);
-  const done=(await h.api('/covert/dispatch',post(p,request))).data;assert.equal(done.covert.incidents.length,0);await op(h,p,'retaliate',{stationId:done.result.stationId,incidentId:hit.id},409);
+  await align(h,p);const retried={...request,expectedRevision:row(h,p).revision};const done=await finishDispatch(h,p,retried,(await h.api('/covert/dispatch',post(p,retried))).data);assert.equal(done.covert.incidents.length,0);await op(h,p,'retaliate',{stationId:done.result.stationId,incidentId:hit.id},409);
  });
  await scope('an attack on a different active campaign cannot unlock an older imported campaign station',async h=>{
-  const p=await fixture(h,'物語の境界',{admin:true}),a=await fixture(h,'境界襲撃'),stationId=await armed(h,p),original=save(h,p),fresh=structuredClone(original);fresh.state.walking.campaignId='campaign-during-attack';delete fresh.state.roaming;
+  const p=await fixture(h,'物語の境界',{admin:true}),a=await fixture(h,'境界襲撃',{home:'kawagoe'}),stationId=await armed(h,p),original=save(h,p),fresh=structuredClone(original);fresh.state.walking.campaignId='campaign-during-attack';delete fresh.state.roaming;
   await h.api('/sync',{method:'PUT',token:p.token,body:{deviceId:p.deviceId,revision:row(h,p).revision,save:fresh}});const hit=await incoming(h,a,p);
   assert.equal(h.sql.prepare('SELECT defender_campaign_id FROM field_battles WHERE id=?').get(hit.id).defender_campaign_id,'campaign-during-attack');
   await h.api('/sync',{method:'PUT',token:p.token,body:{deviceId:p.deviceId,revision:row(h,p).revision,save:original}});assert.equal((await h.api('/covert',{token:p.token})).data.covert.incidents.length,0);await op(h,p,'retaliate',{stationId,incidentId:hit.id},409);

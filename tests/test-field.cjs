@@ -184,6 +184,7 @@ async function pvpUiTest(){
   let targets=[target('me','kiyosu','kiyosu'),target('enemy','odawara','odawara'),target('enemy','odawara','nijo'),target('enemy','odawara','osaka'),target('operator','edo','edo',{isAdmin:true}),target('staff','kyoto_gosho','kyoto_gosho',{isStaff:true})],rules={...modernRules},nextReply=null;
   const scope={document:doc,setTimeout:()=>1,clearTimeout(){},SengokuWorldMap:{mount(){return{update(){},destroy(){}};}}};scope.window=scope;
   vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../field.js'),'utf8'),scope);
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../travel-ui.js'),'utf8'),scope);
   const controller=scope.SengokuField.mount(host,{stateKey:'target-battle-ui-test',identity:{id:'me'},getSyncStatus:()=>({writable:true}),getState:()=>local,onMessage:(message,error)=>messages.push({message,error}),request:async(route,options)=>{
     if(options.method==='POST'){requests.push({route,data:JSON.parse(JSON.stringify(options.data))});return typeof nextReply==='function'?nextReply():nextReply;}
     if(route.startsWith('/field/me'))return{rules,relationships:[],battles:[],attack:{ready:true,availableTroops:5000,minTroops:300,maxTroops:100000,command:3,rice:9000}};
@@ -205,7 +206,13 @@ async function pvpUiTest(){
     await select('operator:edo');assert(detail().includes('報酬戦・占領不可'));assert(detail().includes('城郭上限 Lv.64'));await send('confirm-attack');assert(detail().includes('江戸城へ出陣しますか'));
     nextReply=receipt('edo','reward',false);await send('attack');assert.equal(requests.at(-1).data.targetCastleId,'edo');assert(detail().includes('報酬戦から撤退'));assert(detail().includes('勝利報酬はありません'));
     await select('staff:kyoto_gosho');nextReply={ok:false,error:{message:'戦後の保護期間です。'}};await send('confirm-attack');await send('attack');assert.equal(messages.at(-1).error,true);assert(!detail().includes('field-battle-report'));
-    nextReply={ok:true};await send('confirm-attack');await send('attack');assert.equal(messages.at(-1).error,true);assert(messages.at(-1).message.includes('合戦結果を確認できません'));assert(!detail().includes('報酬戦に勝利'));
+    nextReply={ok:true,accepted:true,marching:true,march:{id:'field-trip',kind:'field',status:'marching',sourceCastleId:'kiyosu',targetCastleId:'kyoto_gosho',distanceKm:120,durationMs:60000,departedAtMs:0,arrivesAtMs:60000}};
+    await send('confirm-attack');await send('attack');
+    assert.equal(messages.at(-1).error,false);
+    assert(messages.at(-1).message.includes('到着までの時間'));
+    assert.equal(scope.SengokuTravelUI.snapshot().active[0].id,'field-trip');
+    assert(!detail().includes('field-battle-report'),'Departure cannot display a victory before arrival');
+    nextReply={ok:true};await send('confirm-attack');await send('attack');assert.equal(messages.at(-1).error,true);assert(messages.at(-1).message.includes('出陣の受付を確認できません'));assert(!detail().includes('報酬戦に勝利'));
     await send('confirm-attack');const posted=requests.length;rules={...modernRules,specialBaseBattles:false};await controller.refresh();await send('attack');assert.equal(requests.length,posted,'Losing the capability invalidates the confirmation before a request');
     rules={...modernRules};await controller.refresh();await select('enemy:nijo');await send('confirm-attack');targets=targets.filter(t=>F.targetKey(t)!=='enemy:nijo');await controller.refresh();await send('attack');assert.equal(requests.length,posted,'A target that disappeared cannot reuse an old confirmation');
     await select('enemy:osaka');await send('confirm-attack');const remaining=targets;targets=[];await controller.refresh();targets=remaining;await controller.refresh();await send('attack');assert.equal(requests.length,posted,'An empty refresh cannot preserve a confirmation for a target that later returns');

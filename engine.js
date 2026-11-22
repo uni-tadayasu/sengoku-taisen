@@ -263,6 +263,10 @@
   const clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
   const copy=o=>JSON.parse(JSON.stringify(o));
   const int=n=>Math.floor(Number(n)||0);
+  // Existing garrisons below a battle's reserve keep their survivors. A
+  // casualty floor may protect soldiers but cannot recruit replacements.
+  const survivorsAfterLoss=(before,loss,reserve)=>before-Math.min(loss,Math.max(0,before-reserve));
+  const BATTLE_COUNTER_MAX=10000000;
   const fail=message=>({ok:false,message});
   function governorBonusForCategory(category,officer){
     if(!officer)return 1;
@@ -1001,7 +1005,11 @@
       const g=this._guard();if(g)return g;const n=int(amount);if(!Number.isFinite(Number(amount))||n<100||n>20000)return fail('募兵数は100〜20,000人で指定してください。');
       if(this.state.troops+n>this.availableTroopCapacity())return fail(`兵数上限は${this.troopCapacity().toLocaleString()}人です。兵舎を増築してください。`);
       const cost=this.recruitTroopCost(n);if(!this._canPay(cost))return fail('募兵に必要な金銭・兵糧が足りません。');
-      this._pay(cost);this.state.troops+=n;this.state.morale=clamp(this.state.morale-Math.ceil(n/700),25,100);return this._action(`${n.toLocaleString()}人を募兵しました。`,'army');
+      this._pay(cost);this.state.troops+=n;
+      // Recruitment dilutes morale down to 25. A depleted force already below
+      // that threshold keeps its morale until actual recovery or training.
+      this.state.morale=Math.min(this.state.morale,Math.max(25,this.state.morale-Math.ceil(n/700)));
+      return this._action(`${n.toLocaleString()}人を募兵しました。`,'army');
     }
     train(){const g=this._guard();if(g)return g;if(this.state.morale>=100)return fail('士気は最高です。');const cost=this.trainingCost();if(!this._canPay(cost))return fail('訓練には金銭180・兵糧250が必要です。');this._pay(cost);const gain=this.trainingGain();this.state.morale=clamp(this.state.morale+gain,0,100);return this._action(`軍団を訓練。士気が${this.state.morale}になりました。`,'army');}
     researchCost(id){if(!TECHS.some(t=>t.id===id))return null;const lv=this.state.tech[id],divisor=this._governorBonus('academy')*(1+(this.state.buildings.academy-1)*.025+this._facilityEffect('research')),turns=lv>=2?2:1;return{gold:Math.round((650+lv*420)/divisor),wood:Math.round((180+lv*120)/divisor),stone:Math.round((120+lv*100)/divisor),rice:0,turns,seconds:turns*60};}
@@ -1253,7 +1261,11 @@
       const paid={...s.resources,magatama:s.magatama};if(won){this._gain(e.rewards);s.prestige=Math.min(ASSET_CAP,s.prestige+e.prestige);r.wins++;}
       const rewards=Object.fromEntries(GIFT_FIELDS.map(k=>[k,(k==='magatama'?s.magatama:s.resources[k])-paid[k]]));
       const battle={requestId,campaignId,sequence,encounterId:e.id,encounterName:e.name,tactic,tacticName:p.tacticName,won,deployed:troops,ourLost:p.expectedLoss,survivors:troops-p.expectedLoss,enemyTroops:p.enemyTroops,enemyLost:won?p.enemyTroops:Math.min(p.enemyTroops-1,Math.floor(p.enemyTroops*clamp(p.ratio*.5,.05,.8))),attackPower:p.attackPower,enemyPower:p.enemyPower,foodCost:p.foodCost,commandCost:1,commandBefore,commandAfter:commandBefore-1,rewards,prestigeGain:s.prestige-prestigeBefore,turn:s.turn};
-      if(e.unitId)Object.assign(battle,{unitId:e.unitId,castleId:e.castleId,deploymentRevision:e.deploymentRevision});
+      if(e.unitId){
+        Object.assign(battle,{unitId:e.unitId,castleId:e.castleId,deploymentRevision:e.deploymentRevision});
+        // The respawn window opens when the arrival settles, in wall time even when the world clock is catching up.
+        if(MARCH_CONTEXT.has(this))battle.respawnAt=won?Date.now()+(options.respawnSeconds??ROAMING_DEPLOYMENT_DEFAULTS.respawnSeconds)*1000:null;
+      }
       r.sequence++;r.history.unshift(copy(battle));r.history=r.history.slice(0,20);
       return this._action(`野良兵「${e.name}」に${won?'勝利':'敗北'}。兵${p.expectedLoss.toLocaleString()}人を失い、${won?`金銭${rewards.gold.toLocaleString()}・勾玉${rewards.magatama.toLocaleString()}などを獲得。`:'生存兵は本拠へ帰還。'}`,won?'victory':'defeat',{battle,idempotent:false});
     }
@@ -1274,11 +1286,13 @@
       if(s.clan==='島津家'&&tactic==='ambush')attackPower*=1.15;
       if((s.scouted[castleId]||0)>s.turn)attackPower*=1.1;
       if(a.count===0)attackPower*=.75;
-      if(ctx)attackPower=ctx.attackPower;
+      // Marches retain integer attack power. Use that exact value from the
+      // first forecast so unchanged defenses produce the same arrival odds.
+      attackPower=ctx?.attackPower??Math.round(attackPower);
       const defensePower=(c.troops*(1+c.wall*.11*wallFactor)+c.wall*130*wallFactor)*(s.difficulty==='hard'?1.1:s.difficulty==='easy'?.9:1)*(1+(c.level-1)*.04);
       const ratio=attackPower/Math.max(1,defensePower);
       const chance=ratio>=2.2?.99:ratio<=.45?.02:clamp(.5+Math.log(ratio)*.65,.05,.97);
-      const court=this.courtAttackPermission(s.home,castleId),branchGate=this.parentAttackPermission(castleId);let reason='';if(this._marchBusy())reason=this._marchBusy().message;else if(s.gameOver)reason='本拠を失っています。';else if(!court.ok)reason=court.message;else if(c.owner===s.clan)reason='この城はすでに自領です。';else if(!branchGate.ok)reason=branchGate.message;else if(!this.canOwnCastle(castleId))reason=castleId===STAFF_BASE_ID?'京都御所はスタッフ専用のため出陣できません。':'江戸城は運営専用のため出陣できません。';else if(!this.adjacentTargets().some(a=>a.id===castleId))reason='自領に隣接する城へ出陣できます。';else if((s.treaties[c.owner]||0)>s.turn)reason='同盟期間中の勢力には出陣できません。';else if(n<300||n>s.troops)reason='出陣兵数は300人以上、現在の兵数以下で指定してください。';else if(!ctx&&s.command<1)reason='指示の回復をお待ちください（1倍速で20秒に1回）。';else if(!ctx&&s.resources.rice<foodCost)reason='出陣に必要な兵糧が足りません。';
+      const court=this.courtAttackPermission(s.home,castleId),branchGate=this.parentAttackPermission(castleId);let reason='';if(this._marchBusy())reason=this._marchBusy().message;else if(s.gameOver)reason='本拠を失っています。';else if(!court.ok)reason=court.message;else if(c.owner===s.clan)reason='この城はすでに自領です。';else if(!branchGate.ok)reason=branchGate.message;else if(!this.canOwnCastle(castleId))reason=castleId===STAFF_BASE_ID?'京都御所はスタッフ専用のため出陣できません。':'江戸城は運営専用のため出陣できません。';else if(!this.adjacentTargets().some(a=>a.id===castleId))reason='自領に隣接する城へ出陣できます。';else if((s.treaties[c.owner]||0)>s.turn)reason='同盟期間中の勢力には出陣できません。';else if(!Number.isSafeInteger(troops)||n<300||n>s.troops)reason='出陣兵数は300人以上、現在の兵数以下の整数で指定してください。';else if(!ctx&&s.command<1)reason='指示の回復をお待ちください（1倍速で20秒に1回）。';else if(!ctx&&s.resources.rice<foodCost)reason='出陣に必要な兵糧が足りません。';
       return{ok:!reason,...(!court.ok?{code:court.code}:!branchGate.ok&&reason===branchGate.message?{code:branchGate.code,branchIds:branchGate.branchIds}:{}),message:reason||'出陣できます。',castleId,castleName:c.name,tactic,troops:n,enemyTroops:c.troops,attackPower:Math.round(attackPower),defensePower:Math.round(defensePower),winChance:Math.round(chance*100),foodCost,scouted:(s.scouted[castleId]||0)>s.turn,ratio,tactics:TACTICS,travel:this._attackTravel('castle',castleId)};
     }
     previewBranchBattle(branchId,tactic='balanced',troops=this.state.troops){
@@ -1396,7 +1410,7 @@
       if(Object.keys(anchor).some(k=>k!=='startBattles'&&anchor[k]!==policy.anchor[k])||battles<0)return result('stop','STRATEGY_SCOPE_CHANGED','物語・周回・本拠・役職が変わったため、作戦を開始し直してください。');
       if(s.march)return result('wait','STRATEGY_MARCHING','出陣中の軍団の到着と戦果を待っています。',{march:this.getMarchStatus()});
       if(policy.hold||policy.maxBattles===0)return result('stop','STRATEGY_HOLD','攻撃せず待機する作戦です。');
-      if(battles>=policy.maxBattles||s.stats.battles>=10000000)return result('stop','STRATEGY_LIMIT','設定した出陣回数に達しました。');
+      if(battles>=policy.maxBattles||s.stats.battles>=BATTLE_COUNTER_MAX)return result('stop','STRATEGY_LIMIT','設定した出陣回数に達しました。');
       if(s.gameOver)return result('stop','STRATEGY_DEFEATED','本拠を失ったため作戦を停止しました。');
       const goals=policy.targetCastleId?[CASTLE_BY_ID[policy.targetCastleId]]:policy.targetRegion?CASTLES.filter(c=>c.region===policy.targetRegion&&!['edo',STAFF_BASE_ID].includes(c.id)):null;
       if(goals?.every(c=>s.castles[c.id].owner===s.clan))return result('stop','STRATEGY_TARGET_REACHED','指定した目標を制圧しました。');
@@ -1454,8 +1468,8 @@
       const medic=MARCH_CONTEXT.get(this)?.medic??this.state.army.some(id=>this.officer(id)?.skill==='medic');
       const ourLost=Math.min(p.troops,Math.max(30,Math.round(p.troops*lostRate*t.loss*(.92+this.random()*.16)*(medic?.9:1))));
       const enemyLost=won?c.troops:Math.max(0,Math.min(c.troops-100,Math.round(c.troops*clamp(p.ratio*.32,.08,.65))));
-      this._pay({rice:p.foodCost});s.troops-=ourLost;s.stats.battles++;s.morale=clamp(s.morale+(won?5:-12),15,100);
-      const rewards=won?{gold:450+c.wall*180,rice:500+c.wall*200,magatama:s.captureRewards.includes(castleId)?0:GACHA.firstCaptureReward}:{gold:0,rice:0,magatama:0};
+      this._pay({rice:p.foodCost});s.troops-=ourLost;s.stats.battles=Math.min(BATTLE_COUNTER_MAX,s.stats.battles+1);s.morale=clamp(s.morale+(won?5:-12),15,100);
+      const rewards={gold:0,rice:0,magatama:0};
       const phases=[
         {title:'出陣',text:`${p.troops.toLocaleString()}の兵が${c.name}へ進軍。${t.name}を採用。`},
         {title:'開戦',text:`守備兵${c.troops.toLocaleString()}、城壁 Lv.${c.wall}。${p.scouted?'偵察で得た情報をもとに攻め手を定めた。':'敵の防備を見極めながら攻撃を開始した。'}`},
@@ -1464,14 +1478,21 @@
       ];
       let capturedOfficer=null,garrison=0;
       if(won){
-        s.stats.wins++;s.prestige=Math.min(ASSET_CAP,s.prestige+20+c.wall*5);this._gain(rewards);
-        if(!s.captureRewards.includes(castleId)){s.captureRewards.push(castleId);phases.push({title:'初攻略の褒賞',text:`この城の初めての攻略により、勾玉${GACHA.firstCaptureReward}を得た。同じ城の再攻略では受け取れません。`});}
+        s.stats.wins=Math.min(BATTLE_COUNTER_MAX,s.stats.wins+1);s.prestige=Math.min(ASSET_CAP,s.prestige+20+c.wall*5);
+        const firstCapture=!s.captureRewards.includes(castleId);
+        const gained=this._gain({gold:450+c.wall*180,rice:500+c.wall*200,magatama:firstCapture?GACHA.firstCaptureReward:0});
+        rewards.gold=gained.gold;rewards.rice=gained.rice;rewards.magatama=gained.magatama;
+        if(firstCapture){
+          s.captureRewards.push(castleId);
+          const text=rewards.magatama>0?`この城の初攻略により、勾玉${rewards.magatama}を得た。`:'勾玉が所持上限に達しています。';
+          phases.push({title:'初攻略の褒賞',text:text+'同じ城の再攻略では受け取れません。'});
+        }
         garrison=Math.min(300,Math.floor((p.troops-ourLost)*.18));garrison=Math.min(garrison,s.troops);s.troops-=garrison;
         const removedBranches=new Set(s.branches.filter(branch=>branch.parentCastleId===castleId).map(branch=>branch.id));s.branches=s.branches.filter(branch=>branch.parentCastleId!==castleId);s.jobs=s.jobs.filter(job=>job.kind!=='branch'||!removedBranches.has(job.id));
         s.castles[castleId]={owner:s.clan,troops:garrison,wall:Math.max(1,c.wall-1),level:c.level};
         const candidates=this.roster.filter(o=>o.clan===c.owner&&!s.officers.includes(o.id));
         if(candidates.length){const chosen=candidates[Math.floor(this.random()*candidates.length)];this._grantOfficerVariant(chosen.id,this._baseGrantRank(chosen.id));capturedOfficer=chosen.id;phases.push({title:'帰順',text:`${chosen.name}が新たに家臣へ加わった。`});}
-      }else s.castles[castleId].troops=Math.max(100,c.troops-enemyLost);
+      }else s.castles[castleId].troops=c.troops-enemyLost;
       const report={won,castleId,castleName:c.name,ourBefore:p.troops,ourLost,enemyBefore:c.troops,enemyLost,phases,rewards,capturedOfficer,garrison,tactic,turn:s.turn};
       s.lastBattle=report;this._updateCampaignOutcome();
       const text=won?`${c.name}を攻略！ ${garrison}人を守備兵として配置。${capturedOfficer?`${this.officer(capturedOfficer).name}が帰順。`:''}`:`${c.name}の攻城戦から撤退。兵${ourLost.toLocaleString()}人を失いました。`;
@@ -1479,32 +1500,34 @@
       if(s.won)this.log(`攻略対象の${this.unificationTarget()}城を統一。戦乱の世に、新しい天下が訪れました。`,'victory');
       return result;
     }
+    static cpuTurnDue(turn){return turn>=5&&turn%3===0;}
     _cpuTurn(){
-      const s=this.state;if(s.turn<5||s.turn%3!==0)return[];const events=[];
+      const s=this.state;if(!SengokuEngine.cpuTurnDue(s.turn))return[];const events=[];
       const choices=[];
       for(const c of CASTLES){const a=s.castles[c.id];if(a.owner===s.clan)continue;for(const tid of c.neighbors){const b=s.castles[tid];if((tid===ADMIN_ASSETS.castleId||tid===STAFF_BASE_ID)&&!(b.owner===s.clan&&(s.covert.stations.some(v=>v.sourceCastleId===tid)||this.activeBranches(tid).length)))continue;if(a.owner===b.owner)continue;if((s.treaties[a.owner]||0)>s.turn&&b.owner===s.clan)continue;choices.push({from:c.id,to:tid});}}
       if(!choices.length)return events;
       const playerThreats=choices.filter(e=>s.castles[e.to].owner===s.clan),others=choices.filter(e=>s.castles[e.to].owner!==s.clan);
       const canRaid=playerThreats.length&&s.turn>=8&&this.random()<(s.difficulty==='hard'?.45:s.difficulty==='easy'?.16:.28);
-      const pool=canRaid?playerThreats:(others.length?others:choices);
+      const pool=canRaid?playerThreats:others;
+      if(!pool.length)return events;
       const move=pool[Math.floor(this.random()*pool.length)],a=s.castles[move.from],b=s.castles[move.to],ac=CASTLE_BY_ID[move.from],bc=CASTLE_BY_ID[move.to];
       if(b.owner===s.clan){
         if(s.turn*60000+s.realtime.elapsed*1000<=this.branchResolvedElapsedMs&&s.branches.some(branch=>branch.parentCastleId===move.to))return events;
         if((s.treaties[a.owner]||0)>s.turn)return events;
         this._recordCovertIncident(move.to,move.from);
-        const branch=this.activeBranches(move.to)[0];if(branch){const defense=this.branchDefense(branch.id),attack=a.troops*(s.difficulty==='hard'?.85:s.difficulty==='easy'?.55:.7),held=defense.power>=attack*(.84+this.random()*.32);this.recordOfficerBattle({key:`defense:${s.walking.campaignId}:${s.turn}:${branch.id}`,won:held,role:'defense'});a.troops=Math.max(300,a.troops-Math.round(defense.force*(held?.3:.1)));if(held)events.push(`${a.owner}が${branch.name}へ侵攻しましたが、支拠点が守りを固めて撃退しました。`);else{this._fallBranch(branch.id);events.push(`${a.owner}の攻撃で${branch.name}が陥落。親拠点の領有と守備資産は維持しました。`);}for(const event of events)this.log(event,'world');return events;}
+        const branch=this.activeBranches(move.to)[0];if(branch){const defense=this.branchDefense(branch.id),attack=a.troops*(s.difficulty==='hard'?.85:s.difficulty==='easy'?.55:.7),held=defense.power>=attack*(.84+this.random()*.32);this.recordOfficerBattle({key:`defense:${s.walking.campaignId}:${s.turn}:${branch.id}`,won:held,role:'defense'});a.troops=survivorsAfterLoss(a.troops,Math.round(defense.force*(held?.3:.1)),300);if(held)events.push(`${a.owner}が${branch.name}へ侵攻しましたが、支拠点が守りを固めて撃退しました。`);else{this._fallBranch(branch.id);events.push(`${a.owner}の攻撃で${branch.name}が陥落。親拠点の領有と守備資産は維持しました。`);}for(const event of events)this.log(event,'world');return events;}
         if(['edo',STAFF_BASE_ID].includes(move.to)){events.push(a.owner+'が'+bc.name+'へ侵攻。城の領有と守備資産を維持しました。');for(const e of events)this.log(e,'world');return events;}
         const home=move.to===s.home,reinforce=home?Math.round(s.troops*.45):Math.round(s.troops*.18),wall=home?s.buildings.wall:b.wall;
         const attack=a.troops*(s.difficulty==='hard'?.85:s.difficulty==='easy'?.55:.7),defense=this.defensePower(move.to);
         const held=defense>=attack*(.84+this.random()*.32);
         this.recordOfficerBattle({key:`defense:${s.walking.campaignId}:${s.turn}:${move.from}:${move.to}`,won:held,role:'defense'});
         const fieldLoss=Math.min(s.troops,Math.round(reinforce*(held?.12:.3)));s.troops-=fieldLoss;
-        if(held){b.troops=Math.max(100,b.troops-Math.round(b.troops*.18));a.troops=Math.max(300,a.troops-Math.round(attack*.3));s.prestige=Math.min(ASSET_CAP,s.prestige+5);events.push(`${a.owner}が${bc.name}へ侵攻。守備隊が撃退しました（援軍損失${fieldLoss}人）。`);}
-        else{this._recordHomeDefenseLoss(move.to,move.from);this._recordBranchParentLoss(move.to);b.owner=a.owner;this._pruneBranches();if(s.jobs.some(j=>j.kind==='castle'&&j.id===move.to)){s.jobs=s.jobs.filter(j=>j.kind!=='castle'||j.id!==move.to);events.push(`${bc.name}の落城により、進行中の城郭拡張は中止されました。`);}b.troops=Math.max(250,Math.round(a.troops*.3));a.troops=Math.max(350,a.troops-Math.round(b.troops*.6));s.morale=clamp(s.morale-10,15,100);events.push(`${a.owner}の侵攻により${bc.name}を失いました。`);if(!this.ownedCastles().length){s.gameOver=true;events.push('最後の城が陥落しました。設定から新しい物語を始められます。');}else if(home){s.home=this.ownedCastles()[0].id;events.push(`${CASTLE_BY_ID[s.home].name}へ本拠を移しました。`);}}
+        if(held){b.troops=survivorsAfterLoss(b.troops,Math.round(b.troops*.18),100);a.troops=survivorsAfterLoss(a.troops,Math.round(attack*.3),300);s.prestige=Math.min(ASSET_CAP,s.prestige+5);events.push(`${a.owner}が${bc.name}へ侵攻。守備隊が撃退しました（援軍損失${fieldLoss}人）。`);}
+        else{this._recordHomeDefenseLoss(move.to,move.from);this._recordBranchParentLoss(move.to);b.owner=a.owner;this._pruneBranches();if(s.jobs.some(j=>j.kind==='castle'&&j.id===move.to)){s.jobs=s.jobs.filter(j=>j.kind!=='castle'||j.id!==move.to);events.push(`${bc.name}の落城により、進行中の城郭拡張は中止されました。`);}b.troops=Math.max(250,Math.round(a.troops*.3));a.troops=survivorsAfterLoss(a.troops,Math.round(b.troops*.6),350);s.morale=clamp(s.morale-10,15,100);events.push(`${a.owner}の侵攻により${bc.name}を失いました。`);if(!this.ownedCastles().length){s.gameOver=true;events.push('最後の城が陥落しました。設定から新しい物語を始められます。');}else if(home){s.home=this.ownedCastles()[0].id;events.push(`${CASTLE_BY_ID[s.home].name}へ本拠を移しました。`);}}
       }else{
         const ratio=a.troops/(b.troops*(1+b.wall*.08)*(1+(b.level-1)*.04));
-        if(this.random()<clamp(.32+(ratio-1)*.3,.1,.8)){const old=b.owner;b.owner=a.owner;b.troops=Math.max(450,Math.round(a.troops*.42));a.troops=Math.max(500,a.troops-Math.round(b.troops*.4));events.push(`${a.owner}が${old}の${bc.name}を攻略しました。`);}
-        else{a.troops=Math.max(400,a.troops-Math.round(a.troops*.14));b.troops=Math.max(300,b.troops-Math.round(b.troops*.08));events.push(`${ac.name}の${a.owner}が${bc.name}へ進軍。両軍は戦いの後、兵を引きました。`);}
+        if(this.random()<clamp(.32+(ratio-1)*.3,.1,.8)){const old=b.owner;b.owner=a.owner;b.troops=Math.max(450,Math.round(a.troops*.42));a.troops=survivorsAfterLoss(a.troops,Math.round(b.troops*.4),500);events.push(`${a.owner}が${old}の${bc.name}を攻略しました。`);}
+        else{a.troops=survivorsAfterLoss(a.troops,Math.round(a.troops*.14),400);b.troops=survivorsAfterLoss(b.troops,Math.round(b.troops*.08),300);events.push(`${ac.name}の${a.owner}が${bc.name}へ進軍。両軍は戦いの後、兵を引きました。`);}
       }
       for(const e of events)this.log(e,'world');return events;
     }
@@ -1658,7 +1681,15 @@
     // Compatibility/testing helper. The game UI uses tick(), pause and speed controls only.
     nextTurn(){if(this.state.worldClock)return fail('年月は全プレイヤー共通の時刻で進みます。');if(this.state.gameOver)return fail('最後の城を失っています。新しい物語を始めてください。');return this._advanceRealtime(60);}
     questStatus(id){const q=QUESTS.find(q=>q.id===id);if(!q)return{complete:false,claimed:false,progress:0,target:0};const s=this.state,target=id==='unify'?this.unificationTarget():q.target;let progress=0;switch(id){case'first_upgrade':progress=s.stats.upgrades;break;case'first_recruit':progress=s.stats.recruited;break;case'first_battle':progress=s.stats.wins;break;case'three_castles':case'ten_castles':case'unify':progress=this.ownedCastles().length;break;case'five_officers':progress=s.officers.length;break;case'technology':progress=s.stats.researches;break;}return{complete:progress>=target,claimed:s.claimedQuests.includes(id),progress:Math.min(target,progress),target};}
-    claimQuest(id){const q=QUESTS.find(q=>q.id===id);if(!q)return fail('目標が見つかりません。');const status=this.questStatus(id);if(status.claimed)return fail('この報酬は受け取り済みです。');if(!status.complete)return fail('まだ目標を達成していません。');this.state.claimedQuests.push(id);this._gain(q.reward);this.state.prestige=Math.min(ASSET_CAP,this.state.prestige+q.prestige);this.log(`目標「${q.name}」達成。報酬を受け取りました。`,'quest');return{ok:true,message:`「${q.name}」の報酬を受け取りました。`,rewards:q.reward};}
+    claimQuest(id){
+      const q=QUESTS.find(q=>q.id===id);if(!q)return fail('目標が見つかりません。');
+      const status=this.questStatus(id);if(status.claimed)return fail('この報酬は受け取り済みです。');if(!status.complete)return fail('まだ目標を達成していません。');
+      const credited=this._gain(q.reward),rewards=Object.fromEntries(Object.keys(q.reward).map(key=>[key,credited[key]]));
+      this.state.claimedQuests.push(id);this.state.prestige=Math.min(ASSET_CAP,this.state.prestige+q.prestige);
+      const limited=Object.keys(q.reward).some(key=>rewards[key]<q.reward[key]);
+      const message=`「${q.name}」の報酬を受け取りました。${limited?'所持上限に達した資産は、空きのある分まで加算しました。':''}`;
+      this.log(message,'quest');return{ok:true,message,rewards};
+    }
     exportSave(){this._pruneBranches();this._rememberStaffPersonalProgress();const state=copy(this.state),view=this.isStaff?STAFF_VIEW.get(this):null;if(view){state.buildings=copy(view.personalBuildings);state.castles[STAFF_BASE_ID].level=view.personalBaseLevel;state.castles[STAFF_BASE_ID].wall=view.personalBaseWall;}if(this.isStaff){const origin=STAFF_ORIGIN.get(this),homeCastle=view?.personalHomeCastle||origin?.homeCastle;state.staffService={baseId:STAFF_BASE_ID,...(origin?{personalClan:origin.clan,personalHome:origin.home,personalCycleHome:origin.cycleHome}:{}),...(homeCastle?{personalHomeCastle:copy(homeCastle)}:{})};}normalizeAssets(state);return JSON.stringify({game:'sengoku-tento',version:2,savedAt:new Date().toISOString(),state},null,2);}
     static fromSave(raw,officers,options={}){
       let obj;try{obj=typeof raw==='string'?JSON.parse(raw):copy(raw);}catch(e){throw new Error('セーブデータを読み取れません。JSONファイルを選んでください。');}

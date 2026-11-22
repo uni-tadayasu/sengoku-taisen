@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {performance} from 'node:perf_hooks';
 import {createHash} from 'node:crypto';
-import {harness} from './test-support.mjs';
+import {harness,settleFieldMarch} from './test-support.mjs';
 import {GameEngine as E,GAME_OFFICERS as officers} from './game-runtime.js';
 
 const checks=[];let calls=0;
@@ -13,9 +13,9 @@ const zero=evaluate(null);
 const json=value=>JSON.parse(JSON.stringify(value));
 function gameplay(h){return createHash('sha256').update(JSON.stringify(['player_saves','staff_campaign_backups','staff_base','field_battles','field_requests','cycle_receipts'].map(table=>h.sql.prepare('SELECT * FROM '+table+' ORDER BY 1').all()))).digest('hex');}
 async function scope(name,run){const h=harness();try{await run(h);checks.push(name);console.log('PASS '+name);}finally{calls+=h.calls;h.close();}}
-async function fixture(h,name,change=()=>{}){
+async function fixture(h,name,change=()=>{},home='kiyosu'){
   const p=await h.session(name);p.deviceId='device-'+p.user.id;
-  const lease=(await h.api('/sync/lease',post(p,{deviceId:p.deviceId}))).data,value=h.fresh(),s=value.state;
+  const lease=(await h.api('/sync/lease',post(p,{deviceId:p.deviceId}))).data,value=h.fresh(home),s=value.state;
   s.resources={gold:100000,rice:100000,wood:100000,stone:100000};s.troops=20000;s.governors={keep:s.officers[3]};
   s.worldClock={id:lease.clock.id,elapsedMs:lease.clock.elapsedMs};s.turn=Math.floor(lease.clock.elapsedMs/60000);s.realtime.elapsed=lease.clock.elapsedMs%60000/1000;
   change(s);p.snapshot=(await h.api('/sync',{method:'PUT',token:p.token,body:{deviceId:p.deviceId,revision:lease.revision,save:value}})).data;return p;
@@ -121,9 +121,12 @@ await scope('a pending world cycle counts only the retained home and does not si
 });
 
 await scope('committed PvP wins, field targets, history, system-mail participants, achievements and guild ledgers agree without changing receipts',async h=>{
-  const a=await fixture(h,'合戦評価の攻撃'),d=await fixture(h,'合戦評価の守備',s=>{s.castles.nijo={owner:s.clan,level:20,wall:4,troops:1000};});
+  const a=await fixture(h,'合戦評価の攻撃'),d=await fixture(h,'合戦評価の守備',s=>{s.castles.nijo={owner:s.clan,level:20,wall:4,troops:1000};},'inuyama');
   const body={requestId:'evaluation-battle',targetPlayerId:d.user.id,targetCastleId:'nijo',troops:3000,tactic:'balanced',deviceId:a.deviceId,expectedRevision:row(h,a).revision};
-  const previousWins=saved(h,a).state.stats.wins,result=(await victory(()=>h.api('/field/attack',post(a,body)))).data,expectedA=evaluate(saved(h,a).state),expectedD=evaluate(saved(h,d).state);
+  const previousWins=saved(h,a).state.stats.wins,departure=(await victory(()=>h.api('/field/attack',post(a,body)))).data;
+  const completed=await settleFieldMarch(h,a,departure);
+  const result=(await h.api('/field/attack',post(a,body))).data,expectedA=evaluate(saved(h,a).state),expectedD=evaluate(saved(h,d).state);
+  assert.equal(result.battle.id,completed.id);
   assert.equal(saved(h,a).state.stats.wins,previousWins+1);assert.deepEqual(result.battle.attackerEvaluation,expectedA);assert.deepEqual(result.battle.defenderEvaluation,expectedD);
   const immutable=h.sql.prepare('SELECT result_json FROM field_requests WHERE actor_id=? AND request_id=?').get(a.user.id,body.requestId).result_json;assert(!immutable.includes('Evaluation'));
   const field=(await h.api('/field',{token:a.token})).data,before=gameplay(h);for(const p of field.targets)assert.deepEqual(p.evaluation,p.playerId===a.user.id?expectedA:expectedD);
@@ -131,6 +134,7 @@ await scope('committed PvP wins, field targets, history, system-mail participant
   for(const actor of [a,d]){const mail=(await h.api('/mail',{token:actor.token})).data.mail[0];assert.equal(mail.source,'system');assert.deepEqual(mail.participants,[{playerId:a.user.id,name:a.user.name,avatarVersion:null,courtOffice:null,side:'attacker',evaluation:expectedA,appearance:{nameplate:null,town:null,badge:null,ownedProducts:[]}},{playerId:d.user.id,name:d.user.name,avatarVersion:null,courtOffice:null,side:'defender',evaluation:expectedD,appearance:{nameplate:null,town:null,badge:null,ownedProducts:[]}}]);}
   const events=(await h.api('/achievements')).data.events.filter(e=>e.playerId===a.user.id);assert(events.length);for(const event of events)assert.deepEqual(event.playerEvaluation,expectedA);
   const replay=(await h.api('/field/attack',post(a,body))).data;assert(replay.idempotent);assert.deepEqual(replay.battle.attackerEvaluation,expectedA);assert.equal(gameplay(h),before);
+  await h.api('/sync/lease',post(a,{deviceId:a.deviceId}));
   const guild=(await h.api('/guild',post(a,{name:'評価資産の軍団'}))).data.guild,receipt=(await h.api('/guild/treasury/transfer',post(a,{guildId:guild.id,resource:'gold',amount:100,direction:'deposit',requestId:'evaluation-transfer',deviceId:a.deviceId,expectedRevision:row(h,a).revision}))).data.receipt;
   assert.deepEqual(receipt.playerEvaluation,expectedA);assert.deepEqual((await h.api('/guild/treasury',{token:a.token})).data.ledger[0].playerEvaluation,expectedA);
   assert(!h.sql.prepare('SELECT result_json FROM guild_asset_requests WHERE actor_id=?').get(a.user.id).result_json.includes('Evaluation'));

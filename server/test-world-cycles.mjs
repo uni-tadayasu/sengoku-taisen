@@ -4,10 +4,10 @@ const CYCLE=672*60000;
 const h=harness();
 const post=(token,body)=>({method:'POST',token,body});
 const clock=elapsed=>h.sql.prepare('UPDATE world_clock SET base_elapsed_ms=?,anchor_real_ms=?,running=1,speed=1 WHERE id=?').run(elapsed,h.now,'world-v1');
-async function fixture(name='周回検証の領主'){
+async function fixture(name='周回検証の領主',home='kiyosu'){
  h.resetRates();const user=await h.session(name);await h.api('/world-clock');clock(CYCLE-1000);
  await h.api('/sync/lease',post(user.token,{deviceId:'device-a'}));
- const save=h.fresh(),s=save.state;s.turn=671;s.worldClock={id:'world-v1',elapsedMs:CYCLE-1000};s.realtime.elapsed=59;
+ const save=h.fresh(home),s=save.state;s.turn=671;s.worldClock={id:'world-v1',elapsedMs:CYCLE-1000};s.realtime.elapsed=59;
  s.castles.inabayama.owner=s.clan;s.castles.inuyama.owner=s.clan;s.castles[s.home].level=7;s.resources.gold=10000;s.resources.rice=20000;s.magatama=5000;
  s.jobs=[{kind:'castle',id:'inabayama',targetLevel:2,total:3,remaining:3,totalSeconds:180,remainingSeconds:180}];
  const saved=(await h.api('/sync',{method:'PUT',token:user.token,body:{deviceId:'device-a',revision:0,save}})).data;
@@ -60,10 +60,10 @@ try{
  assert.equal((await h.api('/sync',{token:unchanged.user.token})).data.revision,ready.revision);
  assert.equal((await h.api('/sync/settle',post(unchanged.user.token,{deviceId:'device-a',revision:ready.revision}))).data.save.state.cycle.index,1);
  // Public field/ranking projections drop stale captures at the boundary without forcing the writer.
- const projected=await fixture('公開地図の検証');const guild=(await h.api('/guild',post(projected.user.token,{name:'周回する軍団'}))).data.guild;
+ const projected=await fixture('公開地図の検証','himeji');const guild=(await h.api('/guild',post(projected.user.token,{name:'周回する軍団'}))).data.guild;
  assert.equal((await h.api('/guild/rankings')).data.guilds.find(g=>g.id===guild.id).ownedCastles,3);clock(CYCLE);
  assert.equal((await h.api('/guild/rankings')).data.guilds.find(g=>g.id===guild.id).ownedCastles,1);
- const field=(await h.api('/field?limit=100')).data.players.find(p=>p.playerId===projected.user.user.id);assert.equal(field.homeCastleId,'kiyosu');assert.equal(field.attackable,false);
+ const field=(await h.api('/field?limit=100')).data.players.find(p=>p.playerId===projected.user.user.id);assert.equal(field.homeCastleId,'himeji');assert.equal(field.attackable,false);
  assert.equal(h.sql.prepare('SELECT revision FROM player_saves WHERE user_id=?').get(projected.user.user.id).revision,1);
  await h.api('/guild/treasury/transfer',{...post(projected.user.token,{guildId:guild.id,direction:'deposit',resource:'gold',amount:10,requestId:'old-writer',deviceId:'old-device',expectedRevision:1}),expected:409});
  assert.equal(h.sql.prepare('SELECT revision FROM player_saves WHERE user_id=?').get(projected.user.user.id).revision,1,'stale writer command cannot trigger settlement');

@@ -120,7 +120,24 @@ test('owner and role changes at every await boundary reject earlier private resu
 test('local paid hire and scouting persist once and keep the military soldier balance unchanged',async()=>{
  const h=setup();h.c.syncAccess.linked=false;const body=payload(h),before=clone(h.c.game.state);let response=await h.c.requestCovert('/covert/hire',{method:'POST',data:body});assert.equal(response.ok,true);assert.equal(h.posts.length,0);assert.equal(h.c.game.state.command,before.command-1);assert.equal(h.c.game.state.troops,before.troops);assert.equal(h.c.game.state.covert.reserves.edo,10);assert.equal(response.covert.sequence,1);
  const after=clone(h.c.game.state);response=await h.c.requestCovert('/covert/hire',{method:'POST',data:body});assert.equal(response.idempotent,true);assert.deepEqual(clone(h.c.game.state),after);
- const scout={...body,requestId:'covert-scout',sequence:1,mode:'scout',target:{kind:'castle',castleId:'odawara'}};response=await h.c.requestCovert('/covert/dispatch',{method:'POST',data:scout});assert.equal(response.ok,true);assert.equal(response.covert.reports.length,1);assert.equal(h.c.game.state.covert.reserves.edo,10);assert.equal(JSON.parse(h.stored.get('save')).state.covert.sequence,2);
+ const scout={...body,requestId:'covert-scout',sequence:1,mode:'scout',target:{kind:'castle',castleId:'odawara'}};
+ const send=()=>h.c.requestCovert('/covert/dispatch',{method:'POST',data:scout});
+ response=await send();assert(response.ok&&response.marching);const {march}=response;
+ assert.equal(response.covert.reports.length,0);assert.equal(h.c.game.state.covert.reserves.edo,0);
+ assert.equal(h.c.game.state.troops,before.troops);
+ assert.equal(JSON.parse(h.stored.get('save')).state.covert.dispatches[0].id,march.id);
+ const enRoute=clone(h.c.state());assert((await send()).idempotent);assert.deepEqual(clone(h.c.state()),enRoute);
+ const arrival={...h.control.clock,elapsedMs:march.arrivesElapsedMs,confirmedElapsedMs:march.arrivesElapsedMs};
+ h.control.clock=arrival;const advanced=h.c.game.applyWorldClock(arrival);
+ assert.equal(advanced.covertResults.length,1);assert.equal(advanced.covertResults[0].dispatchId,march.id);
+ assert.equal(h.c.state().covert.dispatches.length,0);assert.equal(h.c.state().covert.reserves.edo,10);
+ const status=await h.c.requestCovert('/covert');assert.equal(status.covert.reports.length,1);
+ assert.equal(status.covert.reports[0].target.castleId,'odawara');assert.equal(h.c.state().troops,before.troops);
+ assert(h.c.save());const persisted=JSON.parse(h.stored.get('save')).state.covert;
+ assert.equal(persisted.sequence,2);assert.deepEqual(persisted.reports,clone(status.covert.reports));
+ const settled=clone(h.c.state()),again=await send();assert(again.idempotent);
+ assert.equal(again.result.status,'resolved');assert.deepEqual(clone(h.c.state()),settled);
+
 });
 
 test('failed local save restores the complete pre-operation campaign',async()=>{

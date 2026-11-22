@@ -1,0 +1,598 @@
+{
+  "schemaVersion": 1,
+  "medium": "Original illustrations generated with built-in image_gen, commissioned independently for each facility and for the town board.",
+  "artDirection": "Painterly Sengoku-era architectural and landscape miniatures in lapis indigo, vermilion and antique gold. Follow the individual subject brief, terrain and working tools. Show the actual structure evolving from its earliest functional form through an established compound to its final masterwork.",
+  "layout": {
+    "columns": 8,
+    "rows": 4,
+    "firstLevel": 1,
+    "lastLevel": 32,
+    "readingOrder": "row-major",
+    "export": "Register painted panel boundaries to the existing game cell coordinates, remove fine seam lines, and compress as WebP."
+  },
+  "castleTown": {
+    "output": "assets/castle-town.webp",
+    "subjectBrief": "An inhabited Japanese castle town beneath distant blue mountains, with a high central keep, buildings and streets, rice paddies, riverfront trade, military and construction districts, and a tree-lined temple. The composition follows the eight existing destinations on the town board.",
+    "sourcePngSha256": "188454b3db400fa3f4bf091aab80dc59cf24db10d33103b0c1b385a320d62680",
+    "sourceWidth": 1536,
+    "sourceHeight": 1024
+  },
+  "facilities": [
+    {
+      "id": "keep",
+      "name": "天守",
+      "subjectBrief": "Subject: 天守 / Tenshu command keep. Its real function: 城の格を高め、優秀な武将の登用と内政を支える。. Scene and material identity: a jagged mountain ridge above an emerald valley in a vermilion storm sunset; black lacquer tiled roofs, pale plaster, colossal cut-stone foundations and golden shachihoko; retain visible stronghold purpose. Structural growth: a tiny wooden watch keep grows through two, three and five roof tiers into a grand fortified keep with gate towers, terraces, command balconies and banners.",
+      "output": "assets/facilities/keep.webp",
+      "sourcePngSha256": "5e42a3aefd6b8e76ff2ec6f06a2a5c847209e9c46f945b58be3838b6b08d1646",
+      "sourceWidth": 1536,
+      "sourceHeight": 1024
+    },
+    {
+      "id": "farm",
+      "name": "田畑",
+      "subjectBrief": "Subject: 田畑 / mixed agricultural farm. Its real function: 兵糧を生産する。大軍を維持するための基盤。. Scene and material identity: amber harvest valley with deep emerald field terraces, earthen paths, tiny farmers using sickles, baskets of grain, ox carts and red-roof farm shelters in low golden sun. Structural growth: one tilled plot and straw shelter develops into many distinct productive terraced plots, granaries, water channels and an organized farming estate; the fields must dominate, never a palace.",
+      "output": "assets/facilities/farm.webp",
+      "sourcePngSha256": "df584638afe4187e4f84edb69a0a0475ea5de7c0d748a34eb6a16b2a5a6e717c",
+      "sourceWidth": 1536,
+      "sourceHeight": 1024
+    },
+    {
+      "id": "market",
+      "name": "商家",
+      "subjectBrief": "Subject: 商家 / merchant shops and market. Its real function: 城下の往来を増やし、金銭収入を高める。. Scene and material identity: rain-polished narrow canal streets at indigo dusk, vermilion awnings, lantern gold reflections, bolts of silk, pottery, produce stalls and tiny porters. Structural growth: one roadside stall grows into timber storefronts, covered shopping arcades, bridges, courtyard warehouses and a prosperous merchant quarter; shops remain central.",
+      "output": "assets/facilities/market.webp",
+      "sourcePngSha256": "5a01cc242d30c54d869fc993f1099780ec3cef0ad01e6cf43bf98f8292157e58",
+      "sourceWidth": 1536,
+      "sourceHeight": 1024
+    },
+    {
+      "id": "lumber",
+      "name": "伐採所",
+      "subjectBrief": "Subject: 伐採所 / logging camp. Its real function: 建設と研究に用いる木材を生産する。. Scene and material identity: towering dark cedar ravine in luminous jade mist, diagonal forest sunbeams, massive felled logs, hand-saws, axes, ropes and tiny lumberjacks. Structural growth: a woodcutters lean-to becomes a larger working log camp with stacked timber, crane rigs, loading ramps, log bridges and timber halls; giant trees remain distinctive.",
+      "output": "assets/facilities/lumber.webp",
+      "sourcePngSha256": "1bd14359c32e37e55e5964b28a5ba3ee59659b784dde0933e78de79d2ffbbfd9",
+      "sourceWidth": 1448,
+      "sourceHeight": 1086
+    },
+    {
+      "id": "quarry",
+      "name": "採石場",
+      "subjectBrief": "Subject: 採石場 / stone quarry. Its real function: 城壁と建造物に必要な石材を生産する。. Scene and material identity: dramatic ochre limestone canyon and dark basalt ledges, dusty amber rimlight, chiseled stone faces, wedge tools, rope cranes and tiny stonemasons. Structural growth: a small cut in the cliff grows into a terraced quarry with scaffold ledges, winch gantries, block stockpiles, stone cutting sheds and road ramps.",
+      "output": "assets/facilities/quarry.webp",
+      "sourcePngSha256": "a2f91beaacfffc1e7ecf3b10ced02159e4242b801ed5d9309ac99021b2af8e65",
+      "sourceWidth": 1536,
+      "sourceHeight": 1024
+    },
+    {
+      "id": "barracks",
+      "name": "兵舎",
+      "subjectBrief": "",
+      "output": "assets/facilities/barracks.webp",
+      "sourcePngSha256": "0770878c81e063769e9180b517a82d74ce65f57ec5fced099eb73d348494b6f7",
+      "sourceWidth": 1536,
+      "sourceHeight": 1024
+    },
+    {
+      "id": "wall",
+      "name": "城壁",
+      "subjectBrief": "Subject: 城壁 / castle defensive wall. Its real function: 本拠を守る防壁。敵の攻城に対する防御力が上がる。. Scene and material identity: rainy twilight under storm clouds, pale stone ramparts reflected in deep green moat water, vermilion torches and gold lit guard windows. Structural growth: a low earthen palisade develops into tall sloped stone walls, tile-roof parapets, arrow slits, corner towers, reinforced bastions and layered defensive terraces; walls dominate.",
+      "output": "assets/facilities/wall.webp",
+      "sourcePngSha256": "c25e79e1f186715e15e19d22dd2869b9e58fc74805c19d776d8d90608466a09a",
+      "sourceWidth": 1536,
+      "sourceHeight": 1024
+    },
+    {
+      "id": "academy",
+      "name": "学問所",
+      "subjectBrief": "Subject: 学問所 / scholarly academy. Its real function: 技術を研究し、内政と軍事を恒久的に強化する。. Scene and material identity: a serene snowy mountain courtyard at blue dusk, cinnabar study halls, jade roof tiles, warm amber paper-window light, stacked scrolls and tiny scholars. Structural growth: a simple thatched classroom grows into an elegant learning campus with lecture halls, colonnades, archives, study gardens, wooden astronomical instruments and towers.",
+      "output": "assets/facilities/academy.webp",
+      "sourcePngSha256": "7983b1e0ecf58a2762ec86900fd392465c160cb7c5a9b1f25f07da14733dd539",
+      "sourceWidth": 1536,
+      "sourceHeight": 1024
+    },
+    {
+      "id": "gold_mine",
+      "name": "金山",
+      "subjectBrief": "Subject: 金山 / gold mine. Its real function: 金の採掘で領国の財源を増やす。. Scene and material identity: a black volcanic mountain cut open with glowing ochre mineral veins, fiery lanterns, winding mountain timber tracks, baskets of gold ore and miners. Structural growth: one hand-dug mine entrance becomes branching timber-framed shafts, ore washing pools, rope lifts, cliff gantries, sorting halls and a monumental mountain mining complex.",
+      "output": "assets/facilities/gold_mine.webp",
+      "sourcePngSha256": "e0aea74fedad3c143b6f953fd466d267ab2e047bb782f128af45d96fab3c686f",
+      "sourceWidth": 1536,
+      "sourceHeight": 1024
+    },
+    {
+      "id": "silver_mine",
+      "name": "銀山",
+      "subjectBrief": "Subject: 銀山 / silver mine. Its real function: 銀の採掘と交易で収入を得る。. Scene and material identity: a steep snowy slate ridge under a violet winter dawn, bright silver seams, cold blue stone, crimson work banners, warm miners lamps and silver ore baskets. Structural growth: a single silver seam and shack grows through tunneling galleries, covered tracks, timber headframes, washing works and a multi-terrace mine town clinging to the ridge.",
+      "output": "assets/facilities/silver_mine.webp",
+      "sourcePngSha256": "ef1e42acb86a4921d55dc03c3b12f640df252b9ddb87e54957bed3893f0cd44a",
+      "sourceWidth": 1536,
+      "sourceHeight": 1024
+    },
+    {
+      "id": "trade_port",
+      "name": "交易港",
+      "subjectBrief": "Subject: 交易港 / ocean trade harbor. Its real function: 海を行き来する商船の取引を支える。. Scene and material identity: a dramatic turquoise bay at coral sunset, huge cream and cinnabar merchant sails, salt-dark timber docks, cargo bales, cranes and sea cliffs. Structural growth: one jetty and cargo shed develops into multiple wharves, larger trading ships, customs halls, fortified breakwaters and a flourishing maritime trade district.",
+      "output": "assets/facilities/trade_port.webp",
+      "sourcePngSha256": "cd03bac2439e618902b7774af4d14f58e51f70c1c35d31dc1a7b67521100e468",
+      "sourceWidth": 1536,
+      "sourceHeight": 1024
+    },
+    {
+      "id": "wholesale",
+      "name": "問屋街",
+      "subjectBrief": "Subject: 問屋街 / wholesale warehouse district. Its real function: 商品の集積と流通で城下の商いを広げる。. Scene and material identity: busy ochre riverside cargo courts under a smoky amber dawn, indigo cloth bundles, rice sacks, shipping crates, red shop banners and teams of porters. Structural growth: one storehouse develops into broad raised-floor warehouses, loading balconies, covered cargo alleys, river piers and a coordinated distribution district.",
+      "output": "assets/facilities/wholesale.webp",
+      "sourcePngSha256": "5b8cf0f6ebe5a5ba9414ff261abcbf0bc931fb434e5d9f5daffcbfea6cd1e401",
+      "sourceWidth": 1536,
+      "sourceHeight": 1024
+    },
+    {
+      "id": "artisan_town",
+      "name": "職人町",
+      "subjectBrief": "Subject: 職人町 / artisan quarter. Its real function: 職人の仕事を育てて領国の産業を増やす。. Scene and material identity: warm red-orange forge light inside a dense dark timber crafts quarter, ceramic jars, lacquerware, textiles, carpentry tools and sparks against jade evening rain. Structural growth: one tiny craft workshop grows into connected specialist workshops, kilns, fabric-drying balconies, guild halls and lively craft streets; visibly handmade goods dominate.",
+      "output": "assets/facilities/artisan_town.webp",
+      "sourcePngSha256": "e0f2c92f957971211de77cf2d093a341c110647f2b0d0d9815bcda277c1bdbd4",
+      "sourceWidth": 1536,
+      "sourceHeight": 1024
+    },
+    {
+      "id": "post_town",
+      "name": "宿場町",
+      "subjectBrief": "Subject: 宿場町 / highway inn town. Its real function: 旅人と商人の往来から安定した収益を得る。. Scene and material identity: a steep cobbled mountain pass in autumn russet and deep pine green, travellers carrying packs, packhorses, glowing inns and red roadside lanterns. Structural growth: one roadside inn becomes a longer highway settlement with stables, bathhouses, tea stalls, covered rest stations and layered inns beside the winding road.",
+      "output": "assets/facilities/post_town.webp",
+      "sourcePngSha256": "3bb94dbd30bbb1eaba5832fdd8f3bdf70d49612effcb4f8c8cb668334ee1bb32",
+      "sourceWidth": 1536,
+      "sourceHeight": 1024
+    },
+    {
+      "id": "mint",
+      "name": "鋳銭所",
+      "subjectBrief": "Subject: 鋳銭所 / coin mint. Its real function: 貨幣の流通を整え領国の収入を高める。. Scene and material identity: a fortress-like dark timber foundry under midnight blue clouds, glowing copper and gold furnaces, round coin molds, casting trays and guarded strongboxes. Structural growth: a small furnace shack develops into protected casting halls, cooling courtyards, coin storerooms, multiple chimneys and a grand fortified mint; make the coin-making machinery clear.",
+      "output": "assets/facilities/mint.webp",
+      "sourcePngSha256": "a9881f9c645803a0c55598ec176302a550e556670c7c62813497cbe8de9699f7",
+      "sourceWidth": 1536,
+      "sourceHeight": 1024
+    },
+    {
+      "id": "rice_paddy",
+      "name": "水田",
+      "subjectBrief": "Subject: 水田 / irrigated rice paddy. Its real function: 水を引き込んだ田で米を安定生産する。. Scene and material identity: mirror-bright jade rice terraces cascading down a mountain bowl in golden morning mist, young rice rows, narrow levees, farmers and ox ploughs. Structural growth: one flooded rectangle expands into layered terrace systems, stone sluices, rice nurseries, tool huts, waterwheel channels and an immense productive rice landscape.",
+      "output": "assets/facilities/rice_paddy.webp",
+      "sourcePngSha256": "57bc9587d06560efe27620caa6fb28c016f5508534c21cbbd90914da40bbbbd6",
+      "sourceWidth": 1536,
+      "sourceHeight": 1024
+    },
+    {
+      "id": "dry_field",
+      "name": "畑作地",
+      "subjectBrief": "Subject: 畑作地 / dry grain fields. Its real function: 麦や雑穀を育て軍の食を支える。. Scene and material identity: rolling rust-gold wheat and millet hills under windy amber light, dark earthen furrows, grain sheaves, scythes and ox-drawn carts. Structural growth: one hand-tilled patch grows into many neatly rotated fields, windbreaks, threshing floors, elevated grain barns and an extensive golden grain estate; no flooded paddies.",
+      "output": "assets/facilities/dry_field.webp",
+      "sourcePngSha256": "742ec1f3486626e1d3bbc34919f032f8fb0d55a1311324920b3696d98efc48cb",
+      "sourceWidth": 1448,
+      "sourceHeight": 1086
+    },
+    {
+      "id": "orchard",
+      "name": "果樹園",
+      "subjectBrief": "Subject: 果樹園 / fruit orchard. Its real function: 果実を収穫し領内の食料を増やす。. Scene and material identity: terraced persimmon and plum trees with saturated amber and crimson fruit against dark emerald foliage, rocky hills, woven harvest baskets and sunlit stone walls. Structural growth: a handful of fruit trees and a basket shed grows into orderly orchard terraces, stone irrigation channels, packing sheds, fruit-drying galleries and a broad rich orchard.",
+      "output": "assets/facilities/orchard.webp",
+      "sourcePngSha256": "84beab3689c48b9dd7b5c3be2b92c40f9b82a29847a2821bb95829b3740d9d44",
+      "sourceWidth": 1448,
+      "sourceHeight": 1086
+    },
+    {
+      "id": "fishery",
+      "name": "漁港",
+      "subjectBrief": "Subject: 漁港 / working fishing harbor. Its real function: 漁場と水運を整備して食料を供給する。. Scene and material identity: a rugged teal coastline with foaming breakers under purple dawn, fishing boats, tangled nets, drying fish racks, baskets and small fishers. Structural growth: one fishing beach shelter develops into timber piers, boat houses, net-drying towers, fish markets, breakwaters and a dense working fishing village; fishing equipment is unmistakable.",
+      "output": "assets/facilities/fishery.webp",
+      "sourcePngSha256": "e39ce2258d8ef4ed84d7d0a510c172f9da3346004f5616d36ecd4412d60ebc02",
+      "sourceWidth": 1536,
+      "sourceHeight": 1024
+    },
+    {
+      "id": "ranch",
+      "name": "牧畜場",
+      "subjectBrief": "Subject: 牧畜場 / livestock ranch. Its real function: 家畜を育て食料供給を厚くする。. Scene and material identity: a windswept highland meadow with emerald grass and ochre rock, rustic red barns, cattle, goats, hay wagons and animal pens in dramatic low sun. Structural growth: one animal pen becomes larger pastures with fences, stone barns, haylofts, feeding yards, bridges and a thriving highland husbandry estate; livestock stay visible.",
+      "output": "assets/facilities/ranch.webp",
+      "sourcePngSha256": "d2eb8220f7438ae920237c5987586a7aa13f7514c2f2fd67e44c6d218f161792",
+      "sourceWidth": 1536,
+      "sourceHeight": 1024
+    },
+    {
+      "id": "granary",
+      "name": "兵糧蔵",
+      "subjectBrief": "Subject: 兵糧蔵 / military grain storehouses. Its real function: 収穫物の損耗を抑え利用できる兵糧を増やす。. Scene and material identity: raised timber granaries on a dry golden plateau beneath an indigo sky, rice bales, woven sacks, heavy red doors and tiny logistics workers. Structural growth: one raised-floor grain hut grows through multiple timber barns to immense tiled-roof granary rows, loading yards, guarded corridors and vaulted reserve halls; stores are the focus.",
+      "output": "assets/facilities/granary.webp",
+      "sourcePngSha256": "10bbae8b1cbfe060522a7076ebe40132b9a12b7e85783a079c2fc62e17123348",
+      "sourceWidth": 1536,
+      "sourceHeight": 1024
+    },
+    {
+      "id": "irrigation",
+      "name": "用水路",
+      "subjectBrief": "Subject: 用水路 / irrigation canal works. Its real function: 田畑へ水を巡らせ追加の収穫を生む。. Scene and material identity: a jade river gorge channeled through mossy stone into bright rice terraces, red sluice gates, wooden waterwheels, spillways and tiny workers. Structural growth: a hand-dug stream develops into engineered channels, stone-lined sluices, stepped weirs, aqueduct bridges and a monumental working irrigation network; water paths dominate.",
+      "output": "assets/facilities/irrigation.webp",
+      "sourcePngSha256": "b308c550f98ff47519b9fcd930cde4d9a954c30eda62fbb3191f02ada0d436b8",
+      "sourceWidth": 1536,
+      "sourceHeight": 1024
+    },
+    {
+      "id": "cedar_forest",
+      "name": "杉林",
+      "subjectBrief": "Subject: 杉林 / managed cedar forest. Its real function: 計画的な植林と伐採で建材を確保する。. Scene and material identity: cathedral-tall cedar trunks and deep emerald needles with shafts of gold mist, orderly seedling beds, red trail markers and forestry workers. Structural growth: a seedling patch and tiny hut grows into dense managed cedar stands with forestry paths, nursery terraces, ranger shelters, high canopy walks and timber gathering courts.",
+      "output": "assets/facilities/cedar_forest.webp",
+      "sourcePngSha256": "1d69d5174d2b6a50061bd9b90a992df266dcfea5456122ca961708138e3c5d13",
+      "sourceWidth": 1536,
+      "sourceHeight": 1024
+    },
+    {
+      "id": "bamboo_grove",
+      "name": "竹林",
+      "subjectBrief": "Subject: 竹林 / cultivated bamboo grove. Its real function: 竹を育て木材資源を補う。. Scene and material identity: luminous jade bamboo stems with black-green shadows, winding stone paths, gold mist, baskets of bamboo poles and tiny harvesters. Structural growth: a few bamboo clumps develop into orderly cultivated groves, raised drying racks, rope bridges, harvesting shelters and a broad intricate bamboo management landscape.",
+      "output": "assets/facilities/bamboo_grove.webp",
+      "sourcePngSha256": "17fd4b068d2c1ef339ce5b56a1e997dacf5e6332c53de3b0c0c1484539415931",
+      "sourceWidth": 1536,
+      "sourceHeight": 1024
+    },
+    {
+      "id": "sawmill",
+      "name": "製材所",
+      "subjectBrief": "Subject: 製材所 / timber sawmill. Its real function: 切り出した木材を使いやすい建材へ加工する。. Scene and material identity: a rugged logging valley at copper sunset, long cedar beams, giant hand-saw frames, sawdust piles, red workshop doors and tiny carpenters. Structural growth: a simple sawpit develops into covered saw benches, large sawing halls, loading gantries, timber drying racks and a powerful organized lumber processing complex.",
+      "output": "assets/facilities/sawmill.webp",
+      "sourcePngSha256": "5ed3c747917d5ff802fd7fb6f44b6d0dbdf6db0d32dc56771ab10386efffbe9e",
+      "sourceWidth": 1536,
+      "sourceHeight": 1024
+    },
+    {
+      "id": "timber_market",
+      "name": "材木問屋",
+      "subjectBrief": "Subject: 材木問屋 / timber trading yard. Its real function: 近隣から材木を買い集め供給を増やす。. Scene and material identity: a wide river quay of tall squared timber stacks, indigo merchant banners, red warehouses, rope-bound log rafts and amber reflections. Structural growth: one log stall expands into surveyed timber lanes, merchant halls, measuring platforms, river loading cranes and a grand timber exchange along the water.",
+      "output": "assets/facilities/timber_market.webp",
+      "sourcePngSha256": "b9f3294d96c6c2470a9682a3c0043049f3243c74d61f009bbf376eea14fca90c",
+      "sourceWidth": 1536,
+      "sourceHeight": 1024
+    },
+    {
+      "id": "charcoal_kiln",
+      "name": "炭焼き窯",
+      "subjectBrief": "Subject: 炭焼き窯 / charcoal kiln village. Its real function: 木材の利用効率を高め領国の生産を支える。. Scene and material identity: blackened earthen dome kilns nested on a dark pine hillside, ember-red mouths, drifting cobalt smoke, charcoal baskets and woodcutters. Structural growth: one small clay kiln grows into larger earth kilns, fuel-drying sheds, charcoal sorting courts, covered storage and a network of glowing kiln terraces.",
+      "output": "assets/facilities/charcoal_kiln.webp",
+      "sourcePngSha256": "72a8423b7f11ff4852eb36005cbed37d97df306420a912f8a9c218d51f8181d9",
+      "sourceWidth": 1536,
+      "sourceHeight": 1024
+    },
+    {
+      "id": "forest_office",
+      "name": "山林奉行所",
+      "subjectBrief": "Subject: 山林奉行所 / forest administration office. Its real function: 山林を管理し木材供給を持続させる。. Scene and material identity: a dramatic cedar-clad ridge with moss-green paths, vermilion ranger buildings, timber maps and survey stakes, tiny officials studying scrolls. Structural growth: one woodland checkpoint becomes a dignified forestry magistrates compound with survey courtyards, records halls, seedling nurseries, watch platforms and managed forest roads.",
+      "output": "assets/facilities/forest_office.webp",
+      "sourcePngSha256": "947b29c8d2a0d8f7d446336d33b41287ce54f7ca679832024aab94e2df32910d",
+      "sourceWidth": 1536,
+      "sourceHeight": 1024
+    },
+    {
+      "id": "water_sawmill",
+      "name": "水車製材所",
+      "subjectBrief": "Subject: 水車製材所 / water-powered sawmill. Its real function: 水力で製材を進め多くの木材を確保する。. Scene and material identity: a powerful jade river beneath red cliffs, dark timber waterwheels, rushing white foam, long beams on conveyors and glowing amber mill windows. Structural growth: one small creek wheel and saw shed grows into larger waterwheels, linked mill races, timber cutting halls, bridges, log channels and a monumental hydraulic sawmill.",
+      "output": "assets/facilities/water_sawmill.webp",
+      "sourcePngSha256": "03a590e650a5014f3986563bdbcca2254089ad9ea64ea118270435bb5f0eb5e3",
+      "sourceWidth": 1536,
+      "sourceHeight": 1024
+    },
+    {
+      "id": "stoneworks",
+      "name": "石工場",
+      "subjectBrief": "Subject: 石工場 / stone cutting workshop. Its real function: 石を加工して建設に使える石材を増やす。. Scene and material identity: a sculpted granite work court in tawny rock foothills, pale cut stone blocks, iron chisels, carved lantern parts, rope hoists and tiny masons. Structural growth: one stone cutting bench develops into covered carving sheds, precision dressing halls, carved stair stockpiles, crane galleries and an elaborate stoneworking district.",
+      "output": "assets/facilities/stoneworks.webp",
+      "sourcePngSha256": "f10c22add0b727e05339c7b3ffd3a6f5aa2a80c8859c03c41ea756bd33d5fc29",
+      "sourceWidth": 1536,
+      "sourceHeight": 1024
+    },
+    {
+      "id": "clay_pit",
+      "name": "粘土採掘所",
+      "subjectBrief": "Subject: 粘土採掘所 / clay extraction works. Its real function: 土壁や建築に使う建材を採掘する。. Scene and material identity: deep red-orange clay terraces with wet umber pools, reed baskets, wooden digging tools, sloped ramps and clay-coated workers under a jade gray sky. Structural growth: one shallow clay pit grows into multi-level extraction terraces, drainage channels, drying courts, material sheds and a broad terraced earthen resource complex.",
+      "output": "assets/facilities/clay_pit.webp",
+      "sourcePngSha256": "b6096bc9160505207830fdf91cd149461807a765dce7c7445077055218bbff03",
+      "sourceWidth": 1536,
+      "sourceHeight": 1024
+    },
+    {
+      "id": "lime_kiln",
+      "name": "石灰窯",
+      "subjectBrief": "Subject: 石灰窯 / lime burning kiln works. Its real function: 石灰を焼き城普請に使える建材を生産する。. Scene and material identity: white limestone crags against deep violet evening with fiery ochre kiln mouths, chalk sacks, heat shimmer, smoke columns and tiny lime burners. Structural growth: one squat lime kiln grows into rows of taller stone kilns, limestone breaking yards, vaulted fuel stores, covered cooling sheds and an imposing stone industrial complex.",
+      "output": "assets/facilities/lime_kiln.webp",
+      "sourcePngSha256": "f5a35971a9a6db5e1d9eb8c2c33eea1600b121ddb43d762f129e8788aab13d89",
+      "sourceWidth": 1536,
+      "sourceHeight": 1024
+    },
+    {
+      "id": "tile_kiln",
+      "name": "瓦窯",
+      "subjectBrief": "Subject: 瓦窯 / roof-tile kiln works. Its real function: 屋根瓦を焼き建築資源を供給する。. Scene and material identity: terraced hillside climbing kilns glowing vermilion at blue dusk, wet gray tile blanks, curved roof-tile stacks, firewood and tiny potters. Structural growth: one ground kiln and drying rack grows into long ascending kilns, tiled drying halls, glaze workshops, loading yards and a large hillside tile-making district.",
+      "output": "assets/facilities/tile_kiln.webp",
+      "sourcePngSha256": "3451b76219f50af8004c39a8de0b94fdbe8d3f98aa04afe15e398613e6cd496e",
+      "sourceWidth": 1774,
+      "sourceHeight": 887
+    },
+    {
+      "id": "iron_mine",
+      "name": "鉄山",
+      "subjectBrief": "Subject: 鉄山 / iron ore mine. Its real function: 鉱石を採掘し建設・軍備に使う資材を供給する。. Scene and material identity: dark red ironstone cliffs in an emerald mountain gorge, sparks from ore processing, rust-black mine carts, miners lamps and heavy timber headframes. Structural growth: one ore tunnel develops into layered mine galleries, mountain haul tracks, tall winches, ore crushing yards and a massive mountain ironworks mining settlement.",
+      "output": "assets/facilities/iron_mine.webp",
+      "sourcePngSha256": "81a8b8675966f75010d64bebcb3556133da25856f6fbf893568d27cc8fef8241",
+      "sourceWidth": 1774,
+      "sourceHeight": 887
+    },
+    {
+      "id": "copper_mine",
+      "name": "銅山",
+      "subjectBrief": "Subject: 銅山 / copper ore mine. Its real function: 銅を採掘し加工済みの建材へ換える。. Scene and material identity: oxidized turquoise-green copper cliffs glowing against burnt-orange rock at purple sunset, ore baskets, winding mine tracks and red work banners. Structural growth: one copper seam grows into deeper cut terraces, timber tunnels, sorting pavilions, lift towers, processing sheds and a grand multilevel copper excavation.",
+      "output": "assets/facilities/copper_mine.webp",
+      "sourcePngSha256": "6022f9e4f738681e1b8d1d3f07b02508a75e81d0a30b5332cc897a1bc09e9b17",
+      "sourceWidth": 1774,
+      "sourceHeight": 887
+    },
+    {
+      "id": "stone_depot",
+      "name": "石材集積所",
+      "subjectBrief": "Subject: 石材集積所 / stone supply depot. Its real function: 運搬路を整えて使える石材を増やす。. Scene and material identity: a bustling mountain-road junction with enormous pale cut-stone stacks, ochre dust, red crane gantries, wooden carts and laborers moving blocks. Structural growth: one stockpile yard becomes paved block lanes, larger lifting cranes, covered stone barns, fortified distribution gates and extensive organized terraces of dressed stone.",
+      "output": "assets/facilities/stone_depot.webp",
+      "sourcePngSha256": "927bfd64d0bedf9612e3e5a9a50e406757b95c8cd357f3bebf23e19e884796c8",
+      "sourceWidth": 1774,
+      "sourceHeight": 887
+    },
+    {
+      "id": "dojo",
+      "name": "武芸道場",
+      "subjectBrief": "Subject: 武芸道場 / martial arts dojo. Its real function: 武芸を伝え軍団の攻撃力と兵数上限を高める。. Scene and material identity: a quiet rain-wet courtyard framed by deep crimson maples and dark green pines, black lacquer practice halls, bamboo swords, weapon racks and tiny students. Structural growth: a small wooden training shelter develops into polished dojo halls, open sparring courts, gate corridors, elevated demonstration halls and a grand martial campus.",
+      "output": "assets/facilities/dojo.webp",
+      "sourcePngSha256": "d66ba2c613898e71727275f55fb525edd466af59968cb12e6a1ebb41039486e2",
+      "sourceWidth": 1774,
+      "sourceHeight": 887
+    },
+    {
+      "id": "stable",
+      "name": "馬場",
+      "subjectBrief": "Subject: 馬場 / warhorse stables and riding ground. Its real function: 馬と乗り手を育て軍団の戦力を増す。. Scene and material identity: a windswept emerald plateau below russet cliffs at gold dawn, beautiful dark horses, saddles, horse tack, red stalls and mounted riders. Structural growth: a modest fenced paddock grows into covered stables, training tracks, feed lofts, obstacle yards, grand equestrian halls and a wide royal horse training estate.",
+      "output": "assets/facilities/stable.webp",
+      "sourcePngSha256": "803b39389358846659c4ba142c88f4efad90ca49e53efd0e751ba1556ae64c66",
+      "sourceWidth": 1774,
+      "sourceHeight": 887
+    },
+    {
+      "id": "gunsmith",
+      "name": "鉄砲鍛冶",
+      "subjectBrief": "Subject: 鉄砲鍛冶 / matchlock gunsmith workshop. Its real function: 火器を整備して軍団の攻撃力を高める。. Scene and material identity: ink-dark forge district with blazing orange-red furnace light, long matchlock barrels, iron tools, gunstock racks, bellows and craftspeople. Structural growth: one gunsmith bench develops into larger smithies, barrel-forging sheds, boring benches, guarded drying stores, firing-test yards and a grand firelit weapons workshop.",
+      "output": "assets/facilities/gunsmith.webp",
+      "sourcePngSha256": "be0c3d40ab75bd0a01c749c8208d332060617b9bd9a48ee494dbe9511c3132fe",
+      "sourceWidth": 1774,
+      "sourceHeight": 887
+    },
+    {
+      "id": "spear_workshop",
+      "name": "槍工房",
+      "subjectBrief": "Subject: 槍工房 / spear-making workshop. Its real function: 足軽の装備を充実させ軍備を拡大する。. Scene and material identity: a timber yard of long spear shafts, bright steel spearheads, lacquer-red weapon racks, rope lashings and craftsmen under dramatic jade-gold light. Structural growth: one handwork shed grows into spear-shaft drying galleries, forging huts, assembly halls, bundled weapon stores and a large military production compound.",
+      "output": "assets/facilities/spear_workshop.webp",
+      "sourcePngSha256": "02047f450904beeab255abf3007a3c57ad24f54a31d80be855b10da767b7a1ce",
+      "sourceWidth": 1774,
+      "sourceHeight": 887
+    },
+    {
+      "id": "armory",
+      "name": "武具蔵",
+      "subjectBrief": "Subject: 武具蔵 / armor and weapons storehouse. Its real function: 武具を備え大軍の出陣を支える。. Scene and material identity: a guarded stone court at deep blue dusk with gold armor glints, red lacquer doors, rows of samurai armor, bow racks and supply carts. Structural growth: one secure equipment hut develops into reinforced armor stores, roofed weapon lanes, inspection courts, multiple secure vault halls and a monumental military arsenal.",
+      "output": "assets/facilities/armory.webp",
+      "sourcePngSha256": "9684d97fab9a01ac8007b3fb792394468d8fee942a65525065be7cdc65bd2238",
+      "sourceWidth": 1774,
+      "sourceHeight": 887
+    },
+    {
+      "id": "drill_ground",
+      "name": "訓練場",
+      "subjectBrief": "Subject: 訓練場 / army drill ground. Its real function: 兵の連携を鍛え軍団の攻撃力を高める。. Scene and material identity: a broad red-earth parade field bounded by dark pines and mountains, vermilion standards, spear formations, archery targets, drums and tiny soldiers. Structural growth: one small training yard grows into organized archery lanes, obstacle courses, command platforms, drill pavilions and an enormous precise military exercise campus.",
+      "output": "assets/facilities/drill_ground.webp",
+      "sourcePngSha256": "73de4b7ded692f389b0276bd046cd11baae721e3af1fa9002360d8c9bbe67838",
+      "sourceWidth": 1774,
+      "sourceHeight": 887
+    },
+    {
+      "id": "war_school",
+      "name": "兵学寮",
+      "subjectBrief": "Subject: 兵学寮 / military strategy school. Its real function: 軍学を伝えて精強な軍団を育てる。. Scene and material identity: a high plateau campus under turbulent violet clouds, gold-lit war rooms, red banner poles, sand-table maps, formation diagrams without writing and scholar-officers. Structural growth: one tactical study hut becomes multiple planning halls, lecture terraces, model-battle courts, commanding watchtowers and a grand strategist academy.",
+      "output": "assets/facilities/war_school.webp",
+      "sourcePngSha256": "f903a710424f0878fdc4801782d7892ec406745d87f1e186a0b6008e1c7b7106",
+      "sourceWidth": 1774,
+      "sourceHeight": 887
+    },
+    {
+      "id": "main_gate",
+      "name": "大手門",
+      "subjectBrief": "Subject: 大手門 / fortified main castle gate. Its real function: 城への進入を抑え領国の防衛力を高める。. Scene and material identity: a dramatic stone causeway above green water at amber sunset, massive red lacquer gate leaves, iron bosses, black tiled towers and tiny guards. Structural growth: a simple palisade gate grows into stone gatehouses, layered roofed gates, defensive courtyards, bridges, corner turrets and a magnificent multi-stage fortified entrance.",
+      "output": "assets/facilities/main_gate.webp",
+      "sourcePngSha256": "a72dc407c0f991200a48d56427691a66442c4cef684661e7a55c32ec3fc8cc17",
+      "sourceWidth": 1774,
+      "sourceHeight": 887
+    },
+    {
+      "id": "moat",
+      "name": "堀",
+      "subjectBrief": "Subject: 堀 / castle moat defenses. Its real function: 堀を巡らせ敵軍の攻め手を鈍らせる。. Scene and material identity: deep emerald and ink-blue water snaking around cliffs, red bridges, sloped pale stone, reeds, mist and reflected torch gold. Structural growth: a shallow ditch grows into deeper water channels, stone banks, sluice gates, defensive islets, raised bridges and a broad intricate system of concentric moats.",
+      "output": "assets/facilities/moat.webp",
+      "sourcePngSha256": "242f96e6c6707efd0c3b6604dde591847c2b6cd56f95de94796fe0e2677d8fac",
+      "sourceWidth": 1774,
+      "sourceHeight": 887
+    },
+    {
+      "id": "watchtower",
+      "name": "物見櫓",
+      "subjectBrief": "Subject: 物見櫓 / watchtower defense network. Its real function: 遠方を見張り守備隊の備えを強くする。. Scene and material identity: a steep dark pine ridge at crimson dawn, distant mountain silhouettes, tall red timber lookout towers, signal braziers and vigilant guards. Structural growth: one low timber lookout grows through taller roofed towers, stone foundations, covered stairs, beacon platforms and an imposing ridge-top observation citadel.",
+      "output": "assets/facilities/watchtower.webp",
+      "sourcePngSha256": "831506853735b73a29b7e524696c49be63cef2148a686f653d4512fb6c3baf9b",
+      "sourceWidth": 1774,
+      "sourceHeight": 887
+    },
+    {
+      "id": "guardhouse",
+      "name": "詰所",
+      "subjectBrief": "Subject: 詰所 / guard duty compound. Its real function: 守備兵の活動を支え防衛を強化する。. Scene and material identity: a snow-dusted narrow mountain pass at indigo night, vermilion guard shelters, lantern gold light, spear racks, watch fires and sentries. Structural growth: one patrol shelter develops into barracked guard posts, inspection gates, warm duty halls, reinforced patrol corridors and a fortified watch station compound.",
+      "output": "assets/facilities/guardhouse.webp",
+      "sourcePngSha256": "2df39c821af8c82743ad6d1a409983b3ee9bc4353895e739e0c393d2694fb5f3",
+      "sourceWidth": 1774,
+      "sourceHeight": 887
+    },
+    {
+      "id": "earthworks",
+      "name": "土塁",
+      "subjectBrief": "Subject: 土塁 / earthen defensive ramparts. Its real function: 土の防壁を築いて敵の侵攻を防ぐ。. Scene and material identity: red-brown earth ridges carved across an emerald hillside under a storm-lit sky, sharpened timber stakes, stone-lined trenches and digging soldiers. Structural growth: a low dirt berm grows into high layered ramparts, deep trenches, revetments, angled timber barriers, passageways and an extensive terraced earth fortress.",
+      "output": "assets/facilities/earthworks.webp",
+      "sourcePngSha256": "dae5db7c42b7ca84f68b916471ff170dec4f234078d8916989c5f5b849689749",
+      "sourceWidth": 1774,
+      "sourceHeight": 887
+    },
+    {
+      "id": "outpost",
+      "name": "支城",
+      "subjectBrief": "Subject: 支城 / frontier outpost castle. Its real function: 周辺の守りを固め各領地の防衛力を増す。. Scene and material identity: an isolated red-rock spire above rolling jade fog, austere timber towers and vermilion banners catching golden dawn, rugged stairs and guards. Structural growth: one mountain stockade develops into a stone-footed hillfort, gatehouses, small keeps, linked courtyards and a powerful independent frontier citadel.",
+      "output": "assets/facilities/outpost.webp",
+      "sourcePngSha256": "d2bb45ebc5afad29d27ae603c680809024b875c07c895c9b1afa93d2fdf03d0e",
+      "sourceWidth": 1774,
+      "sourceHeight": 887
+    },
+    {
+      "id": "herb_garden",
+      "name": "薬草園",
+      "subjectBrief": "Subject: 薬草園 / medicinal herb garden. Its real function: 守備兵の療養を支え防衛力を維持する。. Scene and material identity: a secluded jade ravine with dew-covered herbs, purple and crimson healing flowers, bamboo drying baskets, stone pools and tiny herb gatherers. Structural growth: one medicinal planting bed grows into terraced herb gardens, drying galleries, apothecary huts, irrigation pools and a tranquil extensive healing garden compound.",
+      "output": "assets/facilities/herb_garden.webp",
+      "sourcePngSha256": "f0c9c361a49108743ec4fa3f0254b371d3b807b8c1673259adfbd72a9f5e6ef7",
+      "sourceWidth": 1774,
+      "sourceHeight": 887
+    },
+    {
+      "id": "library",
+      "name": "蔵書院",
+      "subjectBrief": "Subject: 蔵書院 / scholarly archive library. Its real function: 書物を集め技術研究の費用を軽減する。. Scene and material identity: a warm lantern-lit archive courtyard in a midnight pine forest, crimson columns, gold fittings, wooden scroll cases, stacked books and tiny archivists. Structural growth: one book storeroom grows into several archive halls, covered reading galleries, fireproof plaster storehouses, scholar courts and a grand multi-tier library.",
+      "output": "assets/facilities/library.webp",
+      "sourcePngSha256": "c2ccae06dad28935ce8dd6aeb97499477f43a8b2bfec29244734d891c5e6b0a2",
+      "sourceWidth": 1774,
+      "sourceHeight": 887
+    },
+    {
+      "id": "observatory",
+      "name": "天文台",
+      "subjectBrief": "Subject: 天文台 / historical astronomical observatory. Its real function: 暦と観測の知を研究へ役立てる。. Scene and material identity: an ink-violet starry mountaintop with a huge golden moon, brass armillary spheres, red observation decks, jade roofs and small astronomers. Structural growth: one open star-watching platform grows into tall observation towers, armillary instruments, calendar study halls, bridges and a spectacular stepped astronomical campus; no modern telescope domes.",
+      "output": "assets/facilities/observatory.webp",
+      "sourcePngSha256": "2d275006cdcb08972356cac11fc4928c0346f71fb274228a095f69e09ac71042",
+      "sourceWidth": 1774,
+      "sourceHeight": 887
+    },
+    {
+      "id": "craft_lab",
+      "name": "工芸所",
+      "subjectBrief": "Subject: 工芸所 / experimental craft workshop. Its real function: 加工技術の改良で研究の無駄を減らす。. Scene and material identity: a dramatic amber-lit makers court beneath jade-green cliffs, ceramic glaze jars, lacquer samples, weaving looms, carved wooden models and artisans. Structural growth: one experimental workbench grows into specialist material rooms, covered galleries, kilns, model displays and an elaborate palace of traditional crafts.",
+      "output": "assets/facilities/craft_lab.webp",
+      "sourcePngSha256": "e29ad9eda82d0eece4d9140e8f4f6e9b7e1e92e3127332ca9314b49111772206",
+      "sourceWidth": 1774,
+      "sourceHeight": 887
+    },
+    {
+      "id": "engineering_shop",
+      "name": "普請工房",
+      "subjectBrief": "Subject: 普請工房 / construction engineering workshop. Its real function: 建築と工作の知識を研究に生かす。. Scene and material identity: a rugged riverside works yard lit by low copper sun, timber cranes, scale bridge models, pulley rigs, stone plans without text and builders. Structural growth: one carpenters hut grows into model-testing courts, scaffold halls, giant hoists, bridge-building bays and a monumental traditional engineering works.",
+      "output": "assets/facilities/engineering_shop.webp",
+      "sourcePngSha256": "ccaaa76e41b298b55d8a9fba38e7cbc2052f7e47d621c7a7a4756ec26e002d1d",
+      "sourceWidth": 1774,
+      "sourceHeight": 887
+    },
+    {
+      "id": "medical_school",
+      "name": "医術所",
+      "subjectBrief": "Subject: 医術所 / traditional medical school. Its real function: 医学の知見を集め技術研究を支える。. Scene and material identity: a serene mist-green valley clinic with cinnabar trim, warm paper windows, porcelain medicine jars, herb drying racks and tiny healers. Structural growth: one small healing hut grows into treatment halls, apothecaries, study pavilions, covered recovery gardens and a large elegant medical academy.",
+      "output": "assets/facilities/medical_school.webp",
+      "sourcePngSha256": "02fa341401d444077eb90d570744cf47a3f93e43aa60e1ea9cc005f475fb2317",
+      "sourceWidth": 1774,
+      "sourceHeight": 887
+    },
+    {
+      "id": "school",
+      "name": "寺子屋",
+      "subjectBrief": "Subject: 寺子屋 / temple elementary school. Its real function: 読み書きの学びを広め技術の基礎を育てる。. Scene and material identity: a friendly ochre courtyard under crimson autumn leaves, dark timber classrooms with warm windows, ink brushes, blank books and tiny students. Structural growth: one village classroom grows into multiple schoolhouses, covered learning galleries, a book store, garden courtyards and a rich community school campus.",
+      "output": "assets/facilities/school.webp",
+      "sourcePngSha256": "36aea0f42464b7b93f19592b52e7df1bcacf47692bf351ef8271b23a0a233413",
+      "sourceWidth": 1774,
+      "sourceHeight": 887
+    },
+    {
+      "id": "foreign_studies",
+      "name": "南蛮学舎",
+      "subjectBrief": "Subject: 南蛮学舎 / Nanban foreign studies academy. Its real function: 海外の知識を取り入れ研究費用を軽減する。. Scene and material identity: a dramatic ocean-facing cliff at turquoise dusk, Japanese red timber halls with Portuguese-influenced arched windows, globes, astrolabes, maps without lettering and scholars. Structural growth: one foreign study room grows into mixed Japanese-Nanban learning halls, chart galleries, navigation courts, observatory balconies and a grand coastal knowledge campus.",
+      "output": "assets/facilities/foreign_studies.webp",
+      "sourcePngSha256": "4d5db8f47bdd7bd53159f9028196f37a89c18149023ec48c054ad72d52b332aa",
+      "sourceWidth": 1774,
+      "sourceHeight": 887
+    },
+    {
+      "id": "envoy_house",
+      "name": "使者館",
+      "subjectBrief": "Subject: 使者館 / diplomatic envoy residence. Its real function: 使者を迎え交渉と情報収集の費用を減らす。. Scene and material identity: a dignified vermilion courtyard between deep green mountain gardens, golden lanterns, travelling chests, ceremonial parasols and tiny visiting envoys. Structural growth: one reception hut grows into tiled reception halls, processional gates, guest courtyards, formal meeting pavilions and an imposing diplomatic compound.",
+      "output": "assets/facilities/envoy_house.webp",
+      "sourcePngSha256": "ffe8282e5c7954b12d23ebff4bc86c2001f54b54e9bb4e2b98274fd5dc7c1509",
+      "sourceWidth": 1774,
+      "sourceHeight": 887
+    },
+    {
+      "id": "tea_house",
+      "name": "茶室",
+      "subjectBrief": "Subject: 茶室 / ceremonial tea house. Its real function: 交流の場を設け外交と登用を助ける。. Scene and material identity: a mossy emerald ravine under crimson maple canopies with a narrow stream, glowing paper lanterns, dark timber tea pavilions and ceramic tea tools. Structural growth: one rustic tea shelter grows into refined tea rooms, stepping-stone gardens, viewing verandas, bridges, formal tea halls and an exquisite nested garden estate.",
+      "output": "assets/facilities/tea_house.webp",
+      "sourcePngSha256": "1a2d997ae66d87c525cee0046c6a071fdf82b3dfcba164cc13a60ee5cd802e0e",
+      "sourceWidth": 1774,
+      "sourceHeight": 887
+    },
+    {
+      "id": "temple",
+      "name": "寺院",
+      "subjectBrief": "Subject: 寺院 / Buddhist temple compound. Its real function: 人と知の往来を支え外交の費用を軽減する。. Scene and material identity: a steep black-pine mountain bathed in crimson sunset with gold incense haze, vermilion temple pillars, bronze bells, stone lanterns and small monks. Structural growth: one simple worship hall develops into tiled main halls, bell towers, covered cloisters, pagodas, grand gates and an elaborate mountain temple complex.",
+      "output": "assets/facilities/temple.webp",
+      "sourcePngSha256": "4caed5a416e5cbcf5c44e809d31ac16fae59b0f050ca02e5be2ef5a9b076f18e",
+      "sourceWidth": 1774,
+      "sourceHeight": 887
+    },
+    {
+      "id": "shrine",
+      "name": "社",
+      "subjectBrief": "Subject: 社 / Shinto shrine compound. Its real function: 領内の結束を深め対外交流を支える。. Scene and material identity: a jade cedar forest with a waterfall and deep red torii gates in luminous dawn mist, sacred ropes, lanterns and white-robed attendants. Structural growth: one tiny wooden shrine grows into linked sanctuaries, vermilion gateways, offering halls, sacred bridges and a magnificent forest shrine estate.",
+      "output": "assets/facilities/shrine.webp",
+      "sourcePngSha256": "4582330ad3b42b411d2dd5ddd1b16ca96f81b2aed983fb4086e9e948f2775e4f",
+      "sourceWidth": 1774,
+      "sourceHeight": 887
+    },
+    {
+      "id": "guest_house",
+      "name": "迎賓館",
+      "subjectBrief": "Subject: 迎賓館 / formal guest reception palace. Its real function: 客人をもてなし他勢力との交渉を助ける。. Scene and material identity: a moonlit waterside garden with gold reflections, black lacquer and cinnabar architecture, brocade screens, lantern rows and formally dressed visitors. Structural growth: one guest room grows into refined reception wings, banqueting halls, waterside pavilions, ceremonial courtyards and a splendid diplomatic guest palace.",
+      "output": "assets/facilities/guest_house.webp",
+      "sourcePngSha256": "79fa54a551f0caeb0dd1c853149faab909dda9f8dd5113c01935956546d85ecf",
+      "sourceWidth": 1774,
+      "sourceHeight": 887
+    },
+    {
+      "id": "relay_station",
+      "name": "伝馬所",
+      "subjectBrief": "Subject: 伝馬所 / horse courier relay station. Its real function: 使者の移動を整え交渉と偵察の費用を減らす。. Scene and material identity: a dramatic amber-lit mountain road through jade forests, red relay posts, fresh horses, courier packs, stable gates and rushing messengers. Structural growth: one messenger stop becomes larger horse stables, relay courtyards, supply lofts, guarded road gateways and a well-organized courier headquarters.",
+      "output": "assets/facilities/relay_station.webp",
+      "sourcePngSha256": "4967964f3cf69f6717bba00a19d838d3473a1c3f60190e08e9cc3dcb26a50931",
+      "sourceWidth": 1774,
+      "sourceHeight": 887
+    },
+    {
+      "id": "intelligence_office",
+      "name": "情報所",
+      "subjectBrief": "Subject: 情報所 / intelligence and reconnaissance office. Its real function: 情報を集め外交・偵察・登用の費用を軽減する。. Scene and material identity: a discreet fortified dark timber compound at indigo rainy night, crimson window slits, lantern gold map rooms, scroll cases, messenger birds and shadowy scouts. Structural growth: one concealed information hut grows into secure records rooms, signal balconies, courier passages, lookout towers and an imposing yet secretive intelligence headquarters.",
+      "output": "assets/facilities/intelligence_office.webp",
+      "sourcePngSha256": "6f61728e59d1a4dfa3e4765c9afd7de95e2fd576c0120d549b573c781a6ae311",
+      "sourceWidth": 1774,
+      "sourceHeight": 887
+    }
+  ]
+}

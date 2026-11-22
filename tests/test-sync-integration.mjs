@@ -131,7 +131,7 @@ try{
   const bob=await api('/session',{method:'POST',data:{name:'独立統合の領主',clan:'織田家'}});
   const operator=await api('/session',{method:'POST',data:{name:'運営統合の領主',clan:'織田家'}});
   await api('/admin/claim',{method:'POST',token:operator.token,data:{key:env.SENGOKU_ADMIN_KEY}});
-  const a=makeDevice('first',makeGame()),b=makeDevice('second',makeGame({seed:999}));
+  const a=makeDevice('first',makeGame({startCastle:'inuyama'})),b=makeDevice('second',makeGame({seed:999}));
   // The other account starts from a migrated legacy Edo/U save. It must upload
   // valid ordinary state, not gain privileges or disturb Alice's account.
   const legacy=makeGame({isAdmin:true,startCastle:'edo'});
@@ -298,13 +298,19 @@ try{
     // Begin living campaigns at the current common date; no retroactive income
     // is earned by replacing the completed catch-up fixtures above.
     await a.cloud.refresh();await c.cloud.refresh();await op.cloud.refresh();
-    a.game=makeGame();c.game=makeGame();
-    applyConfirmed(a);applyConfirmed(c);applyConfirmed(op);
-    for(const device of [a,c,op]){device.persist();assert((await device.cloud.flush()).ok);}
+    for(const [device,account,castleId] of [[a,alice,'inuyama'],[c,bob,'kiyosu']]){
+      const start=await api('/castles/residency/start',{method:'POST',token:account.token,data:{
+        requestId:crypto.randomUUID(),deviceId:device.cloud.getDevice().id,revision:device.cloud.getStatus().revision,
+        castleId,mode:'lord',clan:'織田家',difficulty:'normal'
+      }});
+      assert.equal(start.residency.role,'lord');
+      assert((await device.cloud.refresh()).ok);
+    }
+    applyConfirmed(op);op.persist();assert((await op.cloud.flush()).ok);
     const listing=await api('/field?limit=100',{token:alice.token});
     assert.equal(listing.players.length,3,'Only the three actual saved accounts appear');
-    assert.equal(listing.players.find(p=>p.playerId===alice.user.id).homeCastleId,'kiyosu');
-    assert.equal(listing.players.find(p=>p.playerId===bob.user.id).homeCastleId,'kiyosu','Colocated bases remain separate real accounts');
+    assert.equal(listing.players.find(p=>p.playerId===alice.user.id).homeCastleId,'inuyama');
+    assert.equal(listing.players.find(p=>p.playerId===bob.user.id).homeCastleId,'kiyosu','The defender holds a separate castle');
     const protectedOperator=listing.players.find(p=>p.playerId===operator.user.id);
     assert.equal(protectedOperator.homeCastleId,'edo');assert.equal(protectedOperator.attackable,true);assert.equal(protectedOperator.battleMode,'reward');assert.equal(protectedOperator.capturable,false,'Edo permits reward duels while keeping its owner protected');
     const own=await api('/field/me?deviceId='+a.cloud.getDevice().id,{token:alice.token});
@@ -315,12 +321,23 @@ try{
     assert(c.game.upgrade('farm').ok);c.persist();
     const queued=JSON.parse(c.persisted);
     const payload={targetPlayerId:bob.user.id,troops:300,tactic:'balanced',requestId:crypto.randomUUID(),deviceId:a.cloud.getDevice().id,expectedRevision:attackerRevision};
-    const result=await api('/field/attack',{method:'POST',token:alice.token,data:payload});
-    assert.equal(result.idempotent,false);assert.equal(result.revision,attackerRevision+1);
+    const departure=await api('/field/attack',{method:'POST',token:alice.token,data:payload});
+    assert.equal(departure.idempotent,false);assert.equal(departure.revision,attackerRevision+1);
+    assert.equal(departure.march.status,'marching');assert.equal(departure.battle,null);
+    assert.equal((await api('/sync',{token:bob.token})).revision,defenderRevision);
+    clock+=departure.march.remainingMs;
+    const marches=await api('/marches?deviceId='+a.cloud.getDevice().id,{token:alice.token});
+    const arrived=marches.history.find(entry=>entry.id===departure.march.id);assert.equal(arrived.status,'resolved');
+    const result={...(await api('/sync',{token:alice.token})),battle:arrived.battle};
+    const arrivalClock=(await api('/world-clock')).clock;
+    const attackerProjection=E.fromSave(departure.save,roster);
+    attackerProjection.applyWorldClock(arrivalClock);
+    assert.equal(departure.save.state.command,beforeA.command-1);
+    assert.equal(departure.save.state.resources.rice,beforeA.resources.rice-result.battle.foodCost);
     assert.equal(result.battle.defenderRevision,defenderRevision+1);
     assert.equal(result.save.state.troops,beforeA.troops-result.battle.attackerLost);
-    assert.equal(result.save.state.command,beforeA.command-1);
-    assert.equal(result.save.state.resources.rice,beforeA.resources.rice-result.battle.foodCost+result.battle.loot.rice);
+    assert.equal(result.save.state.command,attackerProjection.state.command);
+    assert.equal(result.save.state.resources.rice,attackerProjection.state.resources.rice+result.battle.loot.rice);
     assert.equal(result.save.state.home,beforeA.home);
     await a.cloud.refresh();await c.cloud.refresh();
     const defender=await api('/sync',{token:bob.token});
@@ -335,7 +352,10 @@ try{
     stateEqual(c.game.state.officerVariants,beforeC.officerVariants);assert.equal(c.game.state.home,beforeC.home);
     const before=writes();await c.cloud.flush();assert.equal(writes(),before,'A replaced dirty save must not undo the raid on its next flush');
     const replay=await api('/field/attack',{method:'POST',token:alice.token,data:payload});
-    assert.equal(replay.idempotent,true);assert.equal(replay.revision,result.revision);stateEqual(replay.battle,result.battle);
+    assert.equal(replay.idempotent,true);assert.equal(replay.revision,result.revision);
+    const {attackerEvaluation,defenderEvaluation,...storedBattle}=replay.battle;
+    assert(Number.isFinite(attackerEvaluation.score));assert(Number.isFinite(defenderEvaluation.score));
+    stateEqual(storedBattle,result.battle);
     stateEqual((await api('/sync',{token:bob.token})).save.state,defender.save.state);
   });
 
@@ -382,7 +402,7 @@ try{
     if(!current.running||current.speed!==1)await api('/world-clock',{method:'PATCH',token:operator.token,data:{running:true,speed:1,revision:current.revision}});
     const start=(await api('/world-clock')).clock,boundary=(Math.floor(start.elapsedMs/cycleMs)+1)*cycleMs;
     clock+=boundary-1000-start.elapsedMs;await a.cloud.takeOver();await a.worldClock.refresh();
-    a.game=makeGame();applyConfirmed(a);a.game.state.castles.inabayama.owner=a.game.state.clan;a.persist();assert((await a.cloud.flush()).ok);
+    a.game=makeGame({startCastle:'inuyama'});applyConfirmed(a);a.game.state.castles.inabayama.owner=a.game.state.clan;a.persist();assert((await a.cloud.flush()).ok);
     a.game.state.castles.odani.owner=a.game.state.clan;a.persist();
     clock+=1000;await a.worldClock.refresh();const result=applyConfirmed(a);assert(result.settlementRequired);a.persist();
     const baseline=a.cloud.getStatus().revision;assert((await a.cloud.refresh()).ok);
@@ -392,7 +412,7 @@ try{
   await test('an unchanged boundary checkpoint sends an explicit settlement rather than looping forever',async()=>{
     const cycleMs=672*60000,current=(await api('/world-clock')).clock,boundary=(Math.floor(current.elapsedMs/cycleMs)+1)*cycleMs;
     clock+=boundary-1-current.elapsedMs;await a.cloud.refresh();await a.worldClock.refresh();
-    a.game=makeGame();applyConfirmed(a);a.persist();assert((await a.cloud.flush()).ok);const beforeWrites=writes();
+    a.game=makeGame({startCastle:'inuyama'});applyConfirmed(a);a.persist();assert((await a.cloud.flush()).ok);const beforeWrites=writes();
     clock+=1;await a.worldClock.refresh();const result=applyConfirmed(a);assert(result.settlementRequired);assert.equal(result.changed,false);
     const beforeSettle=requests.filter(r=>r.route==='/sync/settle').length;
     assert((await a.cloud.refresh({settleCycle:true})).ok);assert.equal(writes(),beforeWrites);assert(requests.filter(r=>r.route==='/sync/settle').length>beforeSettle);

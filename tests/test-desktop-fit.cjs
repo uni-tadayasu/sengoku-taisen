@@ -45,6 +45,14 @@ test('phone and tablet widths use the same compact layout with a desktop mouse',
  }
  for(const width of [1025,1280,1440,1920]){const h=harness({width});h.refresh();assert.equal(h.api.getStatus().mode,'desktop',width+'px');}
 });
+test('game text entry releases fixed navigation only when the keyboard occupies the visual viewport',()=>{
+ const h=harness({width:390,height:844,touch:1,fine:false,coarse:true});
+ h.environment.document.activeElement={matches:selector=>selector.includes('#main input')};
+ h.environment.visualViewport.height=844;h.refresh();assert(!h.classes.has('sengoku-compact-input'));
+ h.environment.visualViewport.height=480;h.refresh();assert(h.classes.has('sengoku-compact-input'));
+ h.environment.visualViewport.scale=1.5;h.refresh();assert(!h.classes.has('sengoku-compact-input'));
+ h.environment.visualViewport.scale=1;h.environment.document.activeElement={matches:()=>false};h.refresh();assert(!h.classes.has('sengoku-compact-input'));
+});
 test('actual runtime removes a legacy scale without reading long-page dimensions',()=>{
  const h=harness();h.refresh();const s=h.api.getStatus();assert.equal(s.active,true);assert.equal(s.mode,'desktop');assert.equal(s.scale,1);assert.equal(s.visibleWidth,1366);assert.equal(s.visibleHeight,899);assert.equal(h.vars.get('--desktop-layout-width'),'1366.000px');assert.equal(h.vars.get('--desktop-offset-top'),'37.000px');
  for(const n of [h.app,h.launch,h.dialog]){assert.equal(n.style.transform,'');assert.equal(n.style.left,'');assert.equal(n.style.top,'');assert.equal(n.style.minHeight,'');}assert.equal(h.app.dataset.desktopScale,'1.000');assert.equal(h.dialog.dataset.desktopScale,'1.000');assert.equal(h.bodyPane.scrollTop,170,'Refreshing the viewport must not reset a form/history reader');

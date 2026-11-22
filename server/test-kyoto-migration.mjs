@@ -59,11 +59,14 @@ try{
   // the departed member's still-active palace identity.
   h.sql.prepare('UPDATE player_saves SET save_json=?,cycle_home=? WHERE user_id=?').run(JSON.stringify(old),'sunpu',staff.user.id);
   await h.api('/admin/staff',post(h.operator,{requestId:crypto.randomUUID(),targetPlayerId:staff.user.id,action:'dismiss'}));
-  const departed=(await h.api('/field')).data.players.find(p=>p.playerId===staff.user.id);assert.equal(departed.homeCastleId,JSON.parse(backup.save_json).state.home);
+  assert(!(await h.api('/field')).data.players.some(p=>p.playerId===staff.user.id),'The expired appointment cannot show Kyoto or Sunpu as an active seat');
   const restored=(await h.api('/sync?deviceId='+staff.deviceId,{token:staff.token})).data;assert.equal(restored.save.state.home,JSON.parse(backup.save_json).state.home);assert.equal(restored.staffBase,null);
+  await h.api('/sync',{method:'PUT',token:staff.token,body:{deviceId:staff.deviceId,revision:restored.revision,save:restored.save}});
+  const returned=(await h.api('/field')).data.players.find(p=>p.playerId===staff.user.id);
+  assert.equal(returned.homeCastleId,restored.save.state.home,'First save restores the vacant personal seat to the map');
  });
  await scope('ordinary Sunpu is playable at32 while historical64 and over-cap work safely normalize',async h=>{
-  const player=await fixture(h,'駿府の一般領主'),old=save(h,player);delete old.state.castles.kyoto_gosho;old.state.home='sunpu';old.state.cycle.home='sunpu';old.state.castles.sunpu={owner:old.state.clan,level:64,troops:4567,wall:19};old.state.jobs=[{kind:'castle',id:'sunpu',targetLevel:64,total:1,remaining:1,totalSeconds:60,remainingSeconds:30}];old.state.castles.sunpu.level=63;
+  const player=await fixture(h,'駿府の一般領主',{startCastle:'sunpu'}),old=save(h,player);delete old.state.castles.kyoto_gosho;old.state.home='sunpu';old.state.cycle.home='sunpu';old.state.castles.sunpu={owner:old.state.clan,level:64,troops:4567,wall:19};old.state.jobs=[{kind:'castle',id:'sunpu',targetLevel:64,total:1,remaining:1,totalSeconds:60,remainingSeconds:30}];old.state.castles.sunpu.level=63;
   h.sql.prepare('UPDATE player_saves SET save_json=?,cycle_home=? WHERE user_id=?').run(JSON.stringify(old),'sunpu',player.user.id);
   const prior=row(h,player),loaded=(await h.api('/sync?deviceId='+player.deviceId,{token:player.token})).data;assert.equal(loaded.save.state.home,'sunpu');assert.equal(loaded.save.state.castles.sunpu.level,32);assert.equal(loaded.save.state.castles.sunpu.troops,4567);assert.equal(loaded.save.state.jobs.length,0);assert.deepEqual(loaded.save.state.resources,old.state.resources);assert.deepEqual(row(h,player),prior);
   const field=(await h.api('/field')).data.players.find(p=>p.playerId===player.user.id);assert.equal(field.homeCastleId,'sunpu');assert.equal(field.level,32);assert.equal(field.majorCity,false);assert.equal(field.battleMode,'raid');

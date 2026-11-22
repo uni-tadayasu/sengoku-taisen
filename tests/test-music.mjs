@@ -3,7 +3,7 @@ import vm from 'node:vm';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 const source=fs.readFileSync(new URL('../music.js',import.meta.url),'utf8');
-function fixture({session=false,media=false,throwsSession=false}={}){
+function fixture({session=false,media=false,throwsSession=false,recordings=false}={}){
   let sequence=0;const timers=new Map(),listeners=new Map(),windowListeners=new Map(),audioListeners=new Map(),calls=[];
   const mediaElements=[],contexts=[],nodes=[],sources=new Set(),waves=[];
   const document={hidden:false,addEventListener:(n,f)=>listeners.set(n,f),removeEventListener:n=>listeners.delete(n)};
@@ -16,9 +16,15 @@ function fixture({session=false,media=false,throwsSession=false}={}){
   }
   let type='auto';const audioSession={state:'inactive',get type(){return type;},set type(v){if(throwsSession)throw new Error('Unsupported session');type=v;calls.push('session:'+v);},addEventListener:(n,f)=>audioListeners.set(n,f),removeEventListener:n=>audioListeners.delete(n)};
   const context={document,navigator:session?{audioSession}:{},AudioContext:AC,console,addEventListener:(n,f)=>windowListeners.set(n,f),removeEventListener:n=>windowListeners.delete(n),setTimeout:(fn,ms)=>{const id=++sequence;timers.set(id,{fn,ms});return id;},clearTimeout:id=>timers.delete(id)};
+  const files=[];
+  if(recordings){
+    context.AbortController=AbortController;
+    context.fetch=(url,{signal})=>new Promise(resolve=>files.push({url,signal,resolve}));
+    AC.prototype.decodeAudioData=async()=>({duration:120});
+  }
   context.window=context;vm.createContext(context);vm.runInContext(source,context);
   const runTimer=ms=>{const entry=[...timers].find(([,v])=>v.ms===ms);assert(entry,`timer ${ms} exists`);timers.delete(entry[0]);entry[1].fn();};
-  return {Music:context.SengokuMusic,Tracks:context.SENGOKU_MUSIC_TRACKS,document,timers,listeners,windowListeners,audioListeners,audioSession,mediaElements,contexts,calls,runTimer,nodes,sources,waves};
+  return {Music:context.SengokuMusic,Tracks:context.SENGOKU_MUSIC_TRACKS,document,timers,listeners,windowListeners,audioListeners,audioSession,mediaElements,contexts,calls,runTimer,nodes,sources,waves,files};
 }
 const f=fixture(),{Music,Tracks}=f;
 assert.equal(Tracks.length,16);assert.equal(new Set(Tracks.map(t=>t.id)).size,16);
@@ -186,5 +192,33 @@ for(const id of ['battle-storm','battle-siege','town-dawn']){
  x.contexts[0].advance(1.4);p._schedule();assert.equal(old.bus.connections.length,0);assert.equal(old.roomBus.connections.length,0);assert.equal(p._sessions.size,1);
  await p.setVoiceActive(true);const before=x.nodes.length;p.playEffect('confirm');assert.equal(x.nodes.length,before);assert.equal(x.timers.size,0);assert.equal(x.audioSession.type,'auto');
  await p.dispose();assert.equal(p._sourceCount,0);scenarios++;
+}
+// Recorded files are fetched individually after a gesture. Stale requests
+// cannot outlive a track switch, and the crossfade retains the call/volume
+// lifecycle. Missing or unsupported recordings keep the updated local score.
+{
+ const x=fixture({recordings:true,session:true}),p=new x.Music({volume:10});
+ const flush=async()=>{for(let i=0;i<12;i++)await Promise.resolve();};
+ assert.equal(x.files.length,0);
+ await p.play('battle-storm');assert.equal(x.files.length,1);
+ const old=x.files[0];
+ assert.equal(old.url,x.Tracks.find(t=>t.id==='battle-storm').recording);
+ await p.play('castle-evening');assert(old.signal.aborted);
+ old.resolve({ok:true,arrayBuffer:async()=>new ArrayBuffer(4)});
+ const active=x.files[1];active.resolve({ok:true,arrayBuffer:async()=>new ArrayBuffer(4)});
+ await flush();
+ const master=p._session.recording;
+ assert(master);assert.equal(master.source.loop,true);
+ assert.equal(master.source.loopEnd,x.Music.inspect('castle-evening').duration);
+ assert.equal(x.timers.size,0);assert.equal(p._session.bus.gain.value,0);
+ x.audioSession.state='interrupted';x.audioListeners.get('statechange')();assert.equal(master.gain.gain.value,0);
+ x.audioSession.state='active';x.audioListeners.get('statechange')();assert.equal(master.gain.gain.value,1);
+ await p.setVoiceActive(true);assert.equal(p._context.state,'suspended');
+ await p.setVoiceActive(false);assert.equal(p._context.state,'running');
+ p._context.advance(2);p.pause();assert.equal(p._resumePosition,1.945);
+ p._context.advance(3);assert.equal(master.source.buffer,null);assert.equal(master.gain.connections.length,0);
+ await p.play('castle-evening');x.files[2].resolve({ok:false});await flush();
+ assert.equal(p._session.recording,null);assert.equal(x.timers.size,1);
+ await p.dispose();assert(x.nodes.every(node=>!node.connections.length));scenarios++;
 }
 console.log(JSON.stringify({tracks:Tracks.length,distinctScores:new Set(signatures).size,sectionsPerTrack:7,scenarios,measuredPeak,voiceBudget:Music.inspect(Tracks[0].id).voiceBudget,lifecycle:'Native playback category, real media sink fallback, gesture ordering, mute, rejection/retry, pause race, visibility, interruptions, bfcache, voice-call focus, bounded orchestral voices and complete graph cleanup.'},null,2));

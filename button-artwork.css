@@ -9,7 +9,7 @@
   --button-wash-end: rgba(14, 26, 34, .76);
   background-image:
     linear-gradient(105deg, var(--button-wash-start), var(--button-wash-end)),
-    var(--item-art, url("assets/castle-town.webp")) !important;
+    var(--item-art, url("assets/castle-town.webp?v=4.8.0-20261122")) !important;
   background-size: 100% 100%, var(--button-art-size, cover) !important;
   background-position: center, var(--item-x, 50%) var(--item-y, 50%) !important;
   background-repeat: no-repeat !important;

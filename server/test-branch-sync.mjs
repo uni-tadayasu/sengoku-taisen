@@ -29,6 +29,10 @@ async function cpuPlayer(h,name,{upgrade=false,station=false}={}){
   s.castles.nijo={owner:s.clan,troops:100,wall:1,level:1};s.home='nijo';s.cycle.home='nijo';s.difficulty='hard';s.troops=300;s.treaties={};s.seed=17;
   s.turn=8;s.realtime.elapsed=59;s.worldClock.elapsedMs=539000;
  });
+ // This scenario starts after the lord lost the original ordinary home and
+ // relocated to a conquered major city. The old seat no longer belongs to them.
+ h.sql.prepare('UPDATE castle_seats SET lord_user_id=NULL,lord_epoch=lord_epoch+1 WHERE lord_user_id=?').run(p.user.id);
+ h.sql.prepare('DELETE FROM castle_residents WHERE user_id=?').run(p.user.id);
  h.sql.prepare('UPDATE player_saves SET cycle_home=? WHERE user_id=?').run('nijo',p.user.id);
  const jobs=upgrade?[{kind:'branch',id:'nijo_north',targetLevel:2,total:1,totalSeconds:60,completesElapsedMs:599000}]:[];
  seed(h,p,[branch()],jobs);return p;
@@ -52,10 +56,13 @@ try{
  });
  await scope('a forged fall and future timestamp cannot trigger an early raid or skip its later real boundary',async h=>{
   const p=await cpuPlayer(h,'未来時刻の検証');const predicted=advance(save(h,p),540000);assert.equal(predicted.state.branches[0].fallen,true);
-  // A normal save may predict up to five seconds ahead; branch authority is
-  // still resolved only through the actual server clock.
-  predicted.state.seed=0;const early=(await sync(h,p,predicted)).data;assert.equal(early.save.state.branches[0].fallen,false);assert.equal(early.branchResolvedElapsedMs,539000);
-  clockAt(h,540000);const onTime=(await sync(h,p,early.save)).data;assert.equal(onTime.save.state.branches[0].fallen,true);assert.equal(onTime.branchResolvedElapsedMs,540000);assert.equal(onTime.save.state.castles.nijo.owner,onTime.save.state.clan);
+  // A save just ahead within the same month still succeeds. A speculative
+  // next-month save must not replace the checkpoint needed for the CPU raid.
+  const sameMonth=advance(save(h,p),539500);await sync(h,p,sameMonth);
+  const snapshotBefore=snapshot(h);
+  predicted.state.seed=0;const early=(await sync(h,p,predicted,409)).data;
+  assert.equal(early.error.code,'DEFENSE_CLOCK_PENDING');assert.deepEqual(snapshot(h),snapshotBefore);
+  clockAt(h,540000);const onTime=(await sync(h,p,predicted)).data;assert.equal(onTime.save.state.branches[0].fallen,true);assert.equal(onTime.branchResolvedElapsedMs,540000);assert.equal(onTime.save.state.castles.nijo.owner,onTime.save.state.clan);
  });
  await scope('an old ownership import is canonically corrected without erasing defenses or trapping repeat saves',async h=>{
   const p=await fixture(h,'領有を守る城主',{holdings:['nijo']});seed(h,p,[branch()]);const original=save(h,p),bad=clone(original);bad.state.castles.nijo.owner='在地衆';bad.state.branches=[];bad.state.jobs=[];const before=model(h,p);

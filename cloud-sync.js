@@ -201,7 +201,15 @@ function create(options={}){
    else if(current===sent&&canonical!==current){if(!await apply(result.save,result,g,{reason:'canonical',backup:false}))return{ok:false};branchCorrectionPending=null;}
    else{const corrected=mergeBranchCorrection(save,result.save,currentSave);branchCorrectionPending=corrected.pending?save:null;if(corrected.changed&&!await apply(corrected.save,result,g,{reason:'branch-canonical',backup:false}))return{ok:false};}
    if(!valid(g))return{ok:false};applyBranchAuthority(result,g);observeResidency(result);if(result.clock)global.SengokuWorldClock?.accept(result.clock);applyStaffBase(result,g);revision=result.revision;ack=canonical;dirty=fingerprint(local())!==ack;initialized=true;attempt=null;checkpoint();status.updatedAt=result.updatedAt||null;lease(result);access();if(dirty&&!suspended)scheduleSave();return{ok:true};
-  }catch(error){if(!valid(g))return{ok:false};if(['REVISION_CONFLICT','LEASE_REQUIRED','CYCLE_SETTLEMENT_REQUIRED','CLOCK_REWIND'].includes(error.code)){await recoverConflict(g);return{ok:false,conflict:true};}throw error;}
+  }catch(error){
+   if(!valid(g))return{ok:false};
+   if(error.code==='DEFENSE_CLOCK_PENDING'){
+    // The owner still has the writer lease. Keep the unacknowledged local
+    // snapshot and try again once the server reaches this month.
+    if(!suspended)scheduleSave();
+    return{ok:false,pending:true};
+   }
+   if(['REVISION_CONFLICT','LEASE_REQUIRED','CYCLE_SETTLEMENT_REQUIRED','CLOCK_REWIND'].includes(error.code)){await recoverConflict(g);return{ok:false,conflict:true};}throw error;}
  }
  async function refreshCore(g,{takeOver=false,settleCycle=false}={}){
   if(!valid(g)||hidden()||!online()){if(valid(g))access();return{ok:false};}

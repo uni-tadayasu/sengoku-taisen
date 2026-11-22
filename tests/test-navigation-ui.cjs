@@ -89,6 +89,32 @@ test('search understands full-width letters, kana and multiple purpose words wit
   s.get('[data-navigation-clear]').click(); assert.equal(input.value, ''); assert.equal(s.doc.activeElement, input);
 });
 
+test('a new search or clearing a query starts at the first match while refresh retains a focused guide link', () => {
+  const s = fixture(); s.api.open();
+  const query = s.get('#navigation-query'), results = s.get('#navigation-results');
+  assert.equal(s.get('.navigation-favorites'), null);
+  results.scrollTop = 360; query.value = '城'; query.dispatch('input');
+  assert.equal(results.scrollTop, 0);
+  results.scrollTop = 76; s.get('[data-navigation-clear]').click();
+  assert.equal(results.scrollTop, 0); assert.equal(s.doc.activeElement, query);
+  const guide = results.querySelector('[data-navigation-help="help:guide"]');
+  guide.focus(); results.scrollTop = 245; s.api.toggleFavorite('view:map');
+  assert.equal(s.doc.activeElement.getAttribute('data-navigation-help'), 'help:guide');
+  assert.equal(results.scrollTop, 245); assert(s.get('.navigation-favorites'));
+});
+
+test('the menu combines category and text filters and resets both on the next opening', () => {
+  const s = fixture(); s.api.open();
+  const category = s.get('#navigation-category'), query = s.get('#navigation-query'), results = s.get('#navigation-results');
+  category.value = '合戦と天下'; category.dispatch('change');
+  assert(results.querySelector('[data-navigation-target="view:map"]'));
+  assert.equal(results.querySelector('[data-navigation-target="view:officers"]'), null);
+  query.value = '派遣'; query.dispatch('input'); assert(results.querySelector('[data-navigation-target="view:covert"]'));
+  assert.equal(results.querySelector('[data-navigation-target="view:map"]'), null);
+  s.api.close(); s.api.open(); assert.equal(category.value, ''); assert.equal(query.value, '');
+  assert(results.querySelector('[data-navigation-target="view:officers"]'));
+});
+
 test('choosing a page delegates exactly once to its original control and updates the quick dock', () => {
   const s = fixture(); s.api.open(); s.get('[data-navigation-target="view:army"]').click(); s.drain();
   assert.deepEqual(s.calls, ['view:army']); assert.equal(s.api.isOpen(), false); assert.equal(s.main.getAttribute('data-view'), 'army');

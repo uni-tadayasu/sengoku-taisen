@@ -59,6 +59,9 @@ test('chapter search filters only the index, handles no results, and clearing re
   assert.equal(f.get('.toc-chapters').open, true);
   assert.match(f.get('.public-search-status').textContent, /^2件/);
   assert.equal(f.get('.article').innerHTML, f.originalArticle, 'Search must never hide or rewrite guide content');
+  f.search('マナーモード');
+  assert(f.links.some(link => !link.closest('li').hidden && link.href === '#questions'));
+  assert.match(f.get('.public-search-status').textContent, /^本文に含まれる項目/);
   f.search('見つからないzzzz');
   assert(f.links.every(link => link.closest('li').hidden)); assert.equal(f.get('.public-search-empty').hidden, false);
   f.search('');

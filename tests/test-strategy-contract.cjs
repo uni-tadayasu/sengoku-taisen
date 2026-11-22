@@ -19,6 +19,31 @@ const avoidClan=game.compileStrategy('武田家には攻撃しない。弱い城
 checks.push('clan and ally prohibitions preserve their intended scope');
 for(const mutate of [g=>g.state.walking.campaignId='another-campaign',g=>g.state.cycle.index++,g=>g.state.home='kiyosu',g=>g.setRoleAccess({isAdmin:true})]){const g=E.fromSave(game.exportSave(),roster);mutate(g);assert.equal(g.planStrategy(compiled.policy).action,'stop');}
 checks.push('campaign, cycle, home and authenticated-role changes retire the prior strategy');
-const loss=make(),lossPolicy=loss.compileStrategy('弱い城から攻める').policy,lossPlan=loss.planStrategy(lossPolicy);loss.random=()=>0.9999;const lost=loss.executeStrategy(lossPolicy,lossPlan);assert(lost.ok&&!lost.battle.won&&lost.shouldStop);assert.equal(lost.stopReason,'defeat');
-checks.push('a defeated automatic attack instructs the runner to stop');
-console.log(JSON.stringify({ok:true,checks,example:{castle:plan.castleName,tactic:plan.tacticName,troops:plan.troops,winChance:plan.winChance,food:plan.foodCost}},null,2));
+const loss=make(),lossPolicy=loss.compileStrategy('弱い城から攻める').policy,lossPlan=loss.planStrategy(lossPolicy);
+loss.random=()=>0.9999;const departure=loss.executeStrategy(lossPolicy,lossPlan);
+assert(departure.ok&&departure.marching);assert.equal(departure.battle,undefined);
+assert.equal(loss.planStrategy(lossPolicy).code,'STRATEGY_MARCHING');assert.equal(loss.state.stats.battles,0);
+let remaining=departure.march.remainingMs/1000;const receipts=[];
+while(remaining>0){const seconds=Math.min(remaining,5);receipts.push(...loss.tick(seconds).marchResults);remaining-=seconds;}
+assert.equal(receipts.length,1);const [arrival]=receipts;
+assert.equal(arrival.id,departure.march.id);assert.equal(arrival.status,'resolved');
+assert.equal(arrival.battle.won,false);assert.equal(arrival.battle.castleId,lossPlan.castleId);
+assert.equal(loss.state.stats.battles,1);assert.deepEqual(loss.resolveDueMarches(),[]);
+const app=fs.readFileSync(path.join(__dirname,'../app.js'),'utf8');
+const runner={
+  game:loss,state:()=>loss.state,window:{},strategyActionPending:false,
+  strategyRun:{id:'run-loss',active:true,scopeId:'loss-story',policy:lossPolicy,pendingMarchId:arrival.id},
+  getStrategyAccess:()=>({scopeId:'loss-story',canRun:true,canAct:true}),
+};
+vm.createContext(runner);
+const decisionView=app.match(/^  function strategyDecisionView[^\n]+/m)[0];
+const step=app.match(/^  async function stepStrategy\([\s\S]*?^  }/m)[0];
+vm.runInContext(decisionView+'\n'+step,runner);
+runner.stepStrategy('run-loss').then(async settled=>{
+  assert(settled.arrived&&settled.confirmed&&settled.shouldStop&&settled.stop);
+  assert.equal(settled.marchId,arrival.id);assert.equal(settled.battle.won,false);
+  assert.equal(runner.strategyRun.active,false);assert((await runner.stepStrategy('run-loss')).stop);
+  assert.equal(loss.state.stats.battles,1);
+  checks.push('a loss is reported once at arrival and instructs the automatic runner to stop');
+  console.log(JSON.stringify({ok:true,checks,example:{castle:plan.castleName,tactic:plan.tacticName,troops:plan.troops,winChance:plan.winChance,food:plan.foodCost}},null,2));
+}).catch(error=>{console.error(error);process.exitCode=1;});

@@ -40,6 +40,25 @@
   const sync=api.create({device:{id:'tab-'+crypto.randomUUID(),name:'端末 '+id},bridge:()=>bridge,now:()=>clock.time,hidden:()=>!visible,online:()=>connected,setTimeout:clock.set,clearTimeout:clock.clear,storage});
   return{sync,bridge,applied,access,roles,storage,start:who=>sync.start({id:who||id,request:svc.request(who||id),onUser(){}}),state:()=>clone(current),begin:next=>{if(next)current=clone(next);started=true;sync.notifySave();},mutate:fn=>{fn(current);sync.notifySave();},hidden:v=>{visible=!v;},online:v=>{connected=v;sync.connectionChanged();},role:()=>role};
  }
+ // A speculative month is retried using the same writer lease. Local actions
+ // entered while waiting survive both the rejected request and the later PUT.
+ {
+  const clock=new Clock(),svc=server(clock),owner=client(clock,svc);
+  await owner.start();await settle();
+  const previous=svc.get('u').revision,inputs=[];let held=true;
+  svc.intercept(async({route,opts,process})=>{
+    if(route==='/sync'&&opts.method==='PUT'){
+      inputs.push(opts.data.revision);
+      if(held)throw Object.assign(Error('pending'),{code:'DEFENSE_CLOCK_PENDING',status:409});
+    }
+    return process();
+  });
+  owner.mutate(s=>{s.resources.gold+=5;});await clock.advance(1000);
+  check(inputs.length===1&&svc.get('u').revision===previous,'future defense checkpoint leaves the server revision unchanged');
+  owner.mutate(s=>{s.resources.gold+=2;});held=false;await clock.advance(1000);
+  check(inputs.length===2&&inputs.every(r=>r===previous)&&svc.get('u').save.state.resources.gold===107,'retry preserves the lease, base revision and latest local actions');
+  owner.sync.stop();
+ }
  // Initial upload, linked follower, debounce and timestamp/key-order stability.
  const clock=new Clock(),svc=server(clock),a=client(clock,svc),b=client(clock,svc);
  const starting=a.start();check(!a.sync.getStatus().writable&&!a.sync.getStatus().ready,'pending identity starts read-only');await starting;

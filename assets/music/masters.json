@@ -1,0 +1,168 @@
+{
+  "format": "MP3 stereo",
+  "sampleRate": 44100,
+  "bitrate": 112000,
+  "instruments": "TimGM6mb (Tim Brechbill and David Bolton), FluidSynth and original modeled percussion",
+  "tracks": {
+    "town-dawn": {
+      "title": "霞ヶ浦の渡し",
+      "samples": 4130341,
+      "duration": 93.6585,
+      "lufs": -19.05,
+      "truePeakDb": -3.66,
+      "seamDelta": 0.000642,
+      "bytes": 1312322,
+      "sha256": "645949612ecc92c0eb93439a6030609fe5a6bb8bf967cae44d4145dafa3c6067"
+    },
+    "castle-evening": {
+      "title": "石垣の夕照",
+      "samples": 4908522,
+      "duration": 111.3044,
+      "lufs": -19.95,
+      "truePeakDb": -6.85,
+      "seamDelta": 0.000211,
+      "bytes": 1559176,
+      "sha256": "8bde641ebb3fd541d065b52be1f1504b7dbc8e1ccf6f2f0ae2bfe700c615f992"
+    },
+    "fields-green": {
+      "title": "水車と稲穂",
+      "samples": 3421091,
+      "duration": 77.5758,
+      "lufs": -19.04,
+      "truePeakDb": -2.8,
+      "seamDelta": 0.001738,
+      "bytes": 1087039,
+      "sha256": "d043faaa234126613891cb9fdfa6fc07cc06e280f62d669979e533ba7cdf0cd0"
+    },
+    "market-breeze": {
+      "title": "染物横町の手拍子",
+      "samples": 3024000,
+      "duration": 68.5714,
+      "lufs": -19.69,
+      "truePeakDb": -2.58,
+      "seamDelta": 0.000119,
+      "bytes": 960876,
+      "sha256": "30d922c3b85edc9717337fd31767a45ac0bc093e10914be05bbc31fe355dc752"
+    },
+    "world-march": {
+      "title": "旌旗越ゆる稜線",
+      "samples": 3848727,
+      "duration": 87.2727,
+      "lufs": -19.04,
+      "truePeakDb": -4.49,
+      "seamDelta": 0.001343,
+      "bytes": 1222725,
+      "sha256": "06627e878dbf404d5279b62eabc7dd6f16f5d8ffe8bf85f99722b16de4be1abe"
+    },
+    "mountain-road": {
+      "title": "鳴らぬ峠の鈴",
+      "samples": 4576865,
+      "duration": 103.7838,
+      "lufs": -19.95,
+      "truePeakDb": -3.89,
+      "seamDelta": 0.000494,
+      "bytes": 1453853,
+      "sha256": "3b46a9591e2e8dcf81652b1d10c8772c236d2825b5cf93c7cb02d9d5b2d2b0df"
+    },
+    "officers-oath": {
+      "title": "磨いた柄の記憶",
+      "samples": 3984565,
+      "duration": 90.3529,
+      "lufs": -19.05,
+      "truePeakDb": -3.6,
+      "seamDelta": 0.000196,
+      "bytes": 1265879,
+      "sha256": "01ceab23a0f73a03d2db08e792707027df004bec6252ad5314bd1a0686ee4d85"
+    },
+    "council-lantern": {
+      "title": "軍扇の裏",
+      "samples": 3763200,
+      "duration": 85.3333,
+      "lufs": -19.04,
+      "truePeakDb": -2.73,
+      "seamDelta": 0.000219,
+      "bytes": 1195653,
+      "sha256": "cf40d78b806e82601158b76f263c8ecf661745ed8db72bd5a86f915a6395bdb4"
+    },
+    "army-banner": {
+      "title": "六拍の陣立て",
+      "samples": 3107229,
+      "duration": 70.4587,
+      "lufs": -17.95,
+      "truePeakDb": -3.59,
+      "seamDelta": 0.000863,
+      "bytes": 987568,
+      "sha256": "f7526adc2bc8bde121fe156be9b732b0bc03c58b0fe9ca6da522c28c3217dbd7"
+    },
+    "research-stars": {
+      "title": "北辰のものさし",
+      "samples": 4287190,
+      "duration": 97.2152,
+      "lufs": -19.05,
+      "truePeakDb": -3.95,
+      "seamDelta": 0.001275,
+      "bytes": 1362062,
+      "sha256": "89d627ae76ab82e4173232a1dd7d331588ce2a8318b8781b9d4021196ebcf649"
+    },
+    "battle-storm": {
+      "title": "紅蓮三段",
+      "samples": 2646000,
+      "duration": 60.0,
+      "lufs": -17.93,
+      "truePeakDb": -2.4,
+      "seamDelta": 0.006634,
+      "bytes": 840910,
+      "sha256": "df0f7d5b99321a7ed72be12420c45301351bf9f7b366c26b5591dc25a2ea26c2"
+    },
+    "battle-siege": {
+      "title": "櫓門の鉄槌",
+      "samples": 3528000,
+      "duration": 80.0,
+      "lufs": -19.3,
+      "truePeakDb": -2.42,
+      "seamDelta": 0.002026,
+      "bytes": 1121050,
+      "sha256": "7b0dfbfe7bf94d17072b05d86fe51434d8eea1e6ae57df84cec4d07e9d988fc0"
+    },
+    "victory-horizon": {
+      "title": "白金の凱旋門",
+      "samples": 2919724,
+      "duration": 66.2069,
+      "lufs": -19.55,
+      "truePeakDb": -2.28,
+      "seamDelta": 0.001011,
+      "bytes": 927956,
+      "sha256": "bdb6a718222ea0576298569ea719481c45bd0b1d9b4137c224d7c5b8da404b28"
+    },
+    "defeat-moon": {
+      "title": "渡せなかった書状",
+      "samples": 5131636,
+      "duration": 116.3636,
+      "lufs": -19.94,
+      "truePeakDb": -7.08,
+      "seamDelta": 0.001103,
+      "bytes": 1630134,
+      "sha256": "701018c4ba1d027d11951d45a1b3d8660704d005258aa9857e204a30ee457b61"
+    },
+    "winter-silence": {
+      "title": "氷柱の茶室",
+      "samples": 4704000,
+      "duration": 106.6667,
+      "lufs": -19.94,
+      "truePeakDb": -3.4,
+      "seamDelta": 0.000478,
+      "bytes": 1494445,
+      "sha256": "df348824dd874385aa325c1bc1a4f57ccf1257900f43e697a6b9f3ea854f89b7"
+    },
+    "unification": {
+      "title": "天つ風、四海を渡る",
+      "samples": 3641806,
+      "duration": 82.5806,
+      "lufs": -17.94,
+      "truePeakDb": -3.55,
+      "seamDelta": 0.001978,
+      "bytes": 1157268,
+      "sha256": "37b11476a72def1721b3801e6c55614c9b47162c61ca7442b23a96e4dd809222"
+    }
+  }
+}

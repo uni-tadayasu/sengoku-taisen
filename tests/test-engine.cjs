@@ -82,4 +82,27 @@ test('old v2 castle levels default1 and invalid levels or non-owned castle jobs 
 test('magatama-only and mixed gifts share the durable receipt ledger without changing old gifts',()=>{let g=game(),resources=structuredClone(g.state.resources),magatama=g.state.magatama,command=g.state.command;assert(g.applyGift({magatama:750},'currency-gift').ok);assert.equal(g.state.magatama,magatama+750);assert.deepEqual(g.state.resources,resources);assert.equal(g.state.command,command);g=E.fromSave(g.exportSave(),officers);const snapshot=structuredClone(g.state);assert(g.applyGift({magatama:750},'currency-gift').already);assert.deepEqual(g.state,snapshot);assert(g.applyGift({gold:100,rice:200,magatama:250},'mixed-gift').ok);assert.equal(g.state.resources.gold,resources.gold+100);assert.equal(g.state.resources.rice,resources.rice+200);assert.equal(g.state.magatama,magatama+1000);assert(g.applyGift({wood:50},'legacy-gift').ok);assert.equal(g.state.magatama,magatama+1000);assert.equal(g.state.resources.wood,resources.wood+50);assert.deepEqual(g.state.giftReceipts,['currency-gift','mixed-gift','legacy-gift']);assert(!D.resources.includes('magatama'),'Currency remains separate from production resources');});
 test('invalid magatama rejects the entire mixed gift and accepted currency respects balance limits',()=>{let g=game(),before=structuredClone(g.state);for(const value of [-1,1000001,1.5,NaN,Infinity,'100',null,undefined]){assert.equal(g.applyGift({gold:100,magatama:value},'invalid-currency').ok,false);assert.deepEqual(g.state,before);}g.state.magatama=E.ASSET_CAP-19;assert(g.applyGift({magatama:1000000},'cap-currency').ok);assert.equal(g.state.magatama,E.ASSET_CAP);g.state.giftReceipts=Array.from({length:2000},(_,i)=>`currency-${i}`);before=structuredClone(g.state);assert.equal(g.applyGift({gold:100,magatama:100},'over-ledger').ok,false);assert.deepEqual(g.state,before);});
 
+test('recruitment does not double as training when an army is depleted',()=>{
+  for(const [before,expected] of [[15,15],[24,24],[25,25],[26,25],[80,79]]){
+    const g=game();g.state.morale=before;
+    assert(g.recruitTroops(100).ok);assert.equal(g.state.morale,expected);
+    assert.equal(g.state.command,2);assert.equal(g.state.resources.gold,3200-32);
+  }
+});
+test('quest and siege records credit only the available storage',()=>{
+  const g=game(),limit=D.assetCap,quest=D.quests.find(q=>q.id==='first_upgrade');
+  g.state.resources.gold=limit-5;g.state.magatama=limit;g.state.stats.upgrades=1;
+  const claimed=g.claimQuest(quest.id);assert(claimed.ok);
+  assert.deepEqual(claimed.rewards,{gold:5,rice:quest.reward.rice,magatama:0});
+  assert.equal(g.claimQuest(quest.id).ok,false);assert.equal(g.state.resources.gold,limit);
+  const target=g.adjacentTargets()[0].id;
+  g.state.resources.gold=limit-3;g.state.resources.rice=limit;g.state.magatama=limit-4;
+  const preview=g.previewBattle(target,'balanced',g.state.troops);
+  const result=g.attack(target,'balanced',g.state.troops);assert(result.ok&&result.battle.won);
+  const rewards=result.battle.rewards;
+  assert.equal(rewards.gold,3);assert.equal(rewards.magatama,4);
+  assert.equal(rewards.rice,g.state.resources.rice-(limit-preview.foodCost));
+  assert(result.battle.phases.some(p=>p.title==='初攻略の褒賞'&&p.text.includes('勾玉4')));
+  assert.deepEqual(E.fromSave(g.exportSave(),officers).state.lastBattle.rewards,rewards);
+});
 console.log(`${count} real-time, gift, variant and32-level castle gameplay tests passed.`);

@@ -78,7 +78,7 @@ function setup(options={}) {
 
 const tests=[];
 const test=(name,run)=>tests.push({name,run});
-const payload=h=>{const unit=SengokuEngine.roamingDeploymentUnits(SengokuEngine.roamingDeploymentDefaults(),h.c.game.data.castles[0].id)[0];return{encounterId:unit.encounterId,unitId:unit.unitId,castleId:unit.castleId,deploymentRevision:unit.deploymentRevision,tactic:'balanced',troops:1000,requestId:'roaming-first',campaignId:h.c.game.state.walking.campaignId,sequence:h.c.game.state.roaming.sequence};};
+const payload=h=>{const unit=SengokuEngine.roamingDeploymentUnits(SengokuEngine.roamingDeploymentDefaults(),h.c.game.state.home)[0];return{encounterId:unit.encounterId,unitId:unit.unitId,castleId:unit.castleId,deploymentRevision:unit.deploymentRevision,tactic:'balanced',troops:1000,requestId:'roaming-first',campaignId:h.c.game.state.walking.campaignId,sequence:h.c.game.state.roaming.sequence};};
 
 test('CPU access follows campaign, clock, owner and writer without treating empty commands as lost-receipt failure',()=>{
  const h=setup();let a=h.c.getRoamingAccess();assert.equal(a.writable,true);assert.equal(a.linked,true);assert.equal(a.ownerId,'player-a');
@@ -137,12 +137,43 @@ test('a change of player during flush, response or refresh rejects old CPU resul
  }
 });
 
-test('local CPU battle saves real command, casualty, reward and history exactly once',async()=>{
- const h=setup();h.c.syncAccess.linked=false;h.c.game.state.command=2;const body=payload(h),before=clone(h.c.game.state);
- const result=await h.c.requestRoamingBattle(body);assert.equal(result.ok,true);assert.equal(h.posts.length,0);assert.equal(h.c.game.state.command,1);
- assert.equal(h.c.game.state.troops,before.troops-result.battle.ourLost);assert.equal(h.c.game.state.resources.rice,before.resources.rice-result.battle.foodCost+result.battle.rewards.rice);
- assert.equal(h.c.game.state.roaming.sequence,1);const after=clone(h.c.game.state);
- const duplicate=await h.c.requestRoamingBattle(body);assert.equal(duplicate.idempotent,true);assert.deepEqual(clone(h.c.game.state),after);
+function arrive(h, departure, worldDelayMs=0) {
+  assert(departure.ok && departure.marching);
+  const {game}=h.c;
+  const clock={...h.control.clock,elapsedMs:departure.march.arrivesElapsedMs+worldDelayMs,
+    confirmedElapsedMs:departure.march.arrivesElapsedMs+worldDelayMs};
+  h.control.clock=clock;
+  const update=game.applyWorldClock(clock);
+  assert.equal(update.marchResults.length,1);
+  const [receipt]=update.marchResults;
+  assert.equal(receipt.id,departure.march.id);
+  assert.equal(receipt.status,'resolved');
+  assert(h.c.save(),'the settled clock saves the arrival receipt');
+  return receipt.battle;
+}
+
+test('local CPU departure saves escrow once and arrival settles casualties, rewards and history',async()=>{
+ const h=setup();h.c.syncAccess.linked=false;h.c.game.state.command=2;
+ const body=payload(h),before=clone(h.c.game.state);
+ const departure=await h.c.requestRoamingBattle(body),march=departure.march;
+ assert(departure.ok&&departure.marching);assert.equal(h.posts.length,0);assert.equal(departure.battle,undefined);
+ assert.equal(h.c.game.state.command,1);
+ assert.equal(h.c.game.state.troops,before.troops-body.troops);
+ assert.equal(h.c.game.state.resources.rice,before.resources.rice-march.foodCost);
+ assert.equal(h.c.game.state.roaming.sequence,0);
+ assert.equal(JSON.parse(h.stored.get('save')).state.march.id,march.id);
+ const escrow=clone(h.c.game.state),replayed=await h.c.requestRoamingBattle(body);
+ assert(replayed.idempotent);assert.equal(replayed.march.id,march.id);assert.deepEqual(clone(h.c.game.state),escrow);
+ // Advance an identical garrison without an arrival to isolate passive income during travel.
+ const garrison=SengokuEngine.fromSave(h.c.game.exportSave(),roster);garrison.state.troops+=march.troops;garrison.state.march=null;
+ const battle=arrive(h,departure);garrison.applyWorldClock(h.control.clock);
+ assert.equal(h.c.game.state.troops,before.troops-battle.ourLost);
+ assert.equal(battle.foodCost,march.foodCost);
+ assert.equal(h.c.game.state.resources.rice,garrison.state.resources.rice+battle.rewards.rice);
+ assert.equal(h.c.game.state.roaming.sequence,1);assert.equal(h.c.game.state.march,null);
+ const after=clone(h.c.game.state),duplicate=await h.c.requestRoamingBattle(body);
+ assert(duplicate.idempotent);assert.equal(duplicate.battle.requestId,body.requestId);
+ assert.deepEqual(clone(h.c.game.state),after);
  assert.equal(JSON.parse(h.stored.get('save')).state.roaming.history[0].requestId,body.requestId);
 });
 
@@ -157,8 +188,26 @@ test('map identity survives the durable command bridge without accepting client 
 test('local stale deployment and absent map target fail before consuming',async()=>{
  const h=setup();h.c.syncAccess.linked=false;const body=payload(h),before=clone(h.c.game.state);await assert.rejects(h.c.requestRoamingBattle({...body,deploymentRevision:2}),e=>e.code==='ROAMING_DEPLOYMENT_CHANGED');await assert.rejects(h.c.requestRoamingBattle({...body,unitId:undefined}),e=>e.code==='ROAMING_MAP_REQUIRED');assert.deepEqual(clone(h.c.game.state),before);
 });
-test('local victory observes respawn cooldown while a recorded retry stays readable',async()=>{
- const h=setup();h.c.syncAccess.linked=false;const body=payload(h),result=await h.c.requestRoamingBattle(body);assert(result.battle.won);assert(result.battle.respawnAt>Date.now());const before=clone(h.c.game.state);await assert.rejects(h.c.requestRoamingBattle({...body,requestId:'second-at-same-unit',sequence:1}),e=>e.code==='ROAMING_UNIT_UNAVAILABLE');assert.deepEqual(clone(h.c.game.state),before);assert((await h.c.requestRoamingBattle(body)).idempotent);
+test('local mapped victory starts the real-time cooldown on settlement and persists it until expiry',async()=>{
+ const h=setup();h.c.syncAccess.linked=false;h.c.window.SENGOKU_OFFLINE=true;
+ const body={...payload(h),troops:Math.min(h.c.game.state.troops,h.c.game.troopCapacity())};
+ const departure=await h.c.requestRoamingBattle(body);
+ const duration=departure.march.options.respawnSeconds*1000,start=Date.now();
+ const battle=arrive(h,departure,2*duration);
+ assert(battle.won);assert(battle.respawnAt>=start+duration&&battle.respawnAt<=Date.now()+duration);
+ const restored=setup({stored:h.stored});restored.control.clock=h.control.clock;
+ restored.c.syncAccess.linked=false;restored.c.window.SENGOKU_OFFLINE=true;
+ assert.equal(restored.c.state().roaming.history[0].respawnAt,battle.respawnAt);
+ assert.equal(restored.c.state().marchHistory[0].battle.respawnAt,battle.respawnAt);
+ const before=clone(restored.c.state()),next={...payload(restored),requestId:'second-at-same-unit'};
+ restored.c.Date=class extends Date{static now(){return battle.respawnAt-1;}};
+ await assert.rejects(restored.c.requestRoamingBattle(next),e=>e.code==='ROAMING_UNIT_UNAVAILABLE');
+ const replay=await restored.c.requestRoamingBattle(body);
+ assert(replay.idempotent);assert.equal(replay.battle.respawnAt,battle.respawnAt);
+ assert.deepEqual(clone(restored.c.state()),before);
+ restored.c.Date=class extends Date{static now(){return battle.respawnAt;}};
+ const again=await restored.c.requestRoamingBattle(next);
+ assert(again.ok&&again.marching);assert.equal(again.march.options.unitId,body.unitId);
 });
 test('temporary preflight failure retains the same uncertain operation for later receipt lookup',async()=>{
  const h=setup(),body=payload(h);h.control.onPost=async()=>{throw Error('lost response');};await assert.rejects(h.c.requestRoamingBattle(body));const id=roamingPending(h).requestId;h.control.onPost=async()=>{throw Object.assign(Error('writer refreshing'),{status:409,code:'ROAMING_SYNC_REQUIRED',retryable:true});};await assert.rejects(h.c.requestRoamingBattle(body));assert.equal(roamingPending(h).requestId,id);

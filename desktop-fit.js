@@ -46,6 +46,12 @@ function update(){
   if(!Number.isFinite(viewportWidth)||!Number.isFinite(viewportHeight)||viewportWidth<=0||viewportHeight<=0)return;
   const active=desktopMode(media?.matches,global.navigator?.maxTouchPoints,coarseMedia?.matches,viewportWidth);
   root.classList.toggle('sengoku-desktop-fit',active);
+  // Mobile browsers can leave the layout viewport tall while the keyboard
+  // covers the visual viewport. Only release fixed chrome during game input.
+  const editingMain = doc.activeElement?.matches?.('#main textarea, #main input:not([type]), #main input:is([type=text],[type=search],[type=number],[type=email],[type=url],[type=tel],[type=password])');
+  const keyboardOpen = viewport && (viewport.scale ?? 1) === 1 && global.innerHeight - viewport.height >= 120;
+  root.classList.toggle('sengoku-compact-input',Boolean(!active && editingMain && keyboardOpen));
+
   const offsetX=viewport?.offsetLeft||0,offsetY=viewport?.offsetTop||0,atTitle=doc.body.classList.contains('at-title');
   const announcement=doc.getElementById('announcement-bar'),announcementHeight=!atTitle&&announcement&&!announcement.hidden?announcement.offsetHeight:0;
   const plan=planViewport(viewportWidth,viewportHeight,announcementHeight);
@@ -68,7 +74,7 @@ function refresh(){if(!root||destroyed)return;if(!initialized)start();if(!pendin
 function start(){
   if(initialized||destroyed||!doc.body)return;initialized=true;
   media=global.matchMedia?.('(hover: hover) and (pointer: fine)');coarseMedia=global.matchMedia?.('(any-pointer: coarse)');
-  listen(media,'change',refresh);listen(coarseMedia,'change',refresh);listen(global,'resize',refresh);listen(global,'orientationchange',refresh);listen(global.visualViewport,'resize',refresh);listen(global.visualViewport,'scroll',refresh);listen(doc,'visibilitychange',refresh);listen(doc,'fullscreenchange',refresh);
+  listen(media,'change',refresh);listen(coarseMedia,'change',refresh);listen(global,'resize',refresh);listen(global,'orientationchange',refresh);listen(global.visualViewport,'resize',refresh);listen(global.visualViewport,'scroll',refresh);listen(doc,'focusin',refresh);listen(doc,'focusout',refresh);listen(doc,'visibilitychange',refresh);listen(doc,'fullscreenchange',refresh);
   if(global.ResizeObserver){resizeObserver=new global.ResizeObserver(refresh);for(const node of doc.querySelectorAll('#announcement-bar,.topbar'))resizeObserver.observe(node);}
   if(global.MutationObserver){mutationObserver=new global.MutationObserver(records=>{
     if(records.some(record=>{
@@ -79,7 +85,7 @@ function start(){
   doc.fonts?.ready?.then(refresh).catch(()=>{});refresh();
 }
 function destroy(){
-  destroyed=true;if(pending)caf(pending);pending=0;for(const remove of listeners)remove();listeners=[];resizeObserver?.disconnect();mutationObserver?.disconnect();root?.classList.remove('sengoku-desktop-fit');
+  destroyed=true;if(pending)caf(pending);pending=0;for(const remove of listeners)remove();listeners=[];resizeObserver?.disconnect();mutationObserver?.disconnect();root?.classList.remove('sengoku-desktop-fit');root?.classList.remove('sengoku-compact-input');
   for(const node of doc?.querySelectorAll?.('#app,.launch-card,dialog[data-desktop-scale]')||[])clearLegacyGeometry(node);
   if(root)setVar('--touch-header-height','0px');
   if(root)setVar('--touch-announcement-height','0px');

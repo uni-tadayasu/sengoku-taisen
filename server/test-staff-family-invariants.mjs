@@ -53,8 +53,15 @@ await scope('all eight personal families round-trip exact estates without acquir
       const edo=structuredClone(staff.save);edo.state.home='edo';edo.state.castles.edo.owner=edo.state.clan;await put(p,edo,403);
       await api('/admin/announcement',post(p.token,{text:'権限なし'},403));
     }
-    await role(p,'dismiss');const immediate=(await api('/field')).data.players.find(x=>x.playerId===p.user.id);assert.equal(immediate.clan,clan);assert.equal(immediate.homeCastleId,'himeji');assert.equal((await api('/me',{token:p.token})).data.user.clan,clan);
+    await role(p,'dismiss');
+    const immediate=(await api('/field')).data.players.find(x=>x.playerId===p.user.id);
+    assert.equal(immediate,undefined,'A dismissed officer has no public palace home');
+    assert.equal((await api('/me',{token:p.token})).data.user.clan,clan);
     const restored=await sync(p);assert.equal(restored.save.state.clan,clan);assert.equal(restored.user.clan,clan);assert.equal(restored.user.isStaff,false);assert.deepEqual(owned(restored.save),[...expected,'osaka'].sort());assert.equal(restored.save.state.castles.osaka.level,43);assert.equal(restored.save.state.castles.himeji.level,12);assert.equal(restored.save.state.buildings.farm,5);assert.equal(restored.staffBase,null);E.fromSave(restored.save,officers);
+    const seated=await put(p,restored.save);
+    const publicHome=(await api('/field')).data.players.find(x=>x.playerId===p.user.id);
+    assert.equal(Boolean(publicHome),seated.residency.role==='lord');
+    if(publicHome){assert.equal(publicHome.clan,clan);assert.equal(publicHome.homeCastleId,'himeji');}
     if(index===0){const forged=structuredClone(staff.save);forged.state.isAdmin=true;forged.state.isStaff=true;forged.state.staffService={baseId:'kyoto_gosho',personalClan:'德川家'};await put(p,forged,403);await api('/staff/base',{token:p.token,expected:403});}
   }
   await api('/session',post(null,{name:'偽装德川家',clan:'德川家'},403));

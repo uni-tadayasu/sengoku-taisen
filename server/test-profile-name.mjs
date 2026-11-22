@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {harness} from './test-support.mjs';
+import {harness,settleFieldMarch} from './test-support.mjs';
 
 // Isolated SQLite/Worker fixtures: no live account, payment or external request.
 const post=(actor,body,expected=200)=>({method:'POST',token:actor?.token,body,expected});
@@ -12,7 +12,7 @@ let checks=0,calls=0,externalRequests=0;
 const originalFetch=globalThis.fetch;globalThis.fetch=async()=>{externalRequests++;throw Error('No external requests in profile fixtures');};
 async function scope(label,run){const h=harness();try{await run(h);checks++;console.log('PASS '+label);}finally{calls+=h.calls;h.close();}}
 async function savePlayer(h,actor,{defender=false}={}){
-  actor.deviceId='profile-'+actor.user.id;const lease=(await h.api('/sync/lease',post(actor,{deviceId:actor.deviceId}))).data,save=h.fresh();
+  actor.deviceId='profile-'+actor.user.id;const lease=(await h.api('/sync/lease',post(actor,{deviceId:actor.deviceId}))).data,save=h.fresh(defender?'inuyama':'kiyosu');
   save.state.troops=20000;save.state.resources={gold:100000,rice:100000,wood:100000,stone:100000};
   if(defender)save.state.castles.nijo={owner:save.state.clan,level:20,wall:4,troops:1000};
   save.state.worldClock={id:lease.clock.id,elapsedMs:lease.clock.elapsedMs};save.state.turn=Math.floor(lease.clock.elapsedMs/60000);save.state.realtime.elapsed=lease.clock.elapsedMs%60000/1000;
@@ -98,7 +98,11 @@ await scope('historical chat, letters, ledgers, battles and empty deltas use the
   // Keep the battle fixture outside the alliance's friendly-fire restriction.
   await h.api('/guild/leave',post(viewer,{guildId:guild.id}));
   const random=crypto.getRandomValues;crypto.getRandomValues=function(array){return array instanceof Uint32Array&&array.length===1?array.fill(0):random.call(crypto,array);};
-  try{await h.api('/field/attack',post(actor,{requestId:'rename-battle',targetPlayerId:viewer.user.id,targetCastleId:'nijo',troops:3000,tactic:'balanced',deviceId:actor.deviceId,expectedRevision:revision()}));}finally{crypto.getRandomValues=random;}
+  try{
+  const departure=(await h.api('/field/attack',post(actor,{requestId:'rename-battle',targetPlayerId:viewer.user.id,targetCastleId:'nijo',troops:3000,tactic:'balanced',deviceId:actor.deviceId,expectedRevision:revision()}))).data;
+  await settleFieldMarch(h,actor,departure);
+  }finally{crypto.getRandomValues=random;}
+  await h.api('/sync/lease',post(actor,{deviceId:actor.deviceId}));
   await h.api('/guild/join',post(viewer,{guildId:guild.id}));
   await h.api('/field/diplomacy',post(actor,{requestId:'rename-relation',targetPlayerId:viewer.user.id,action:'propose',deviceId:actor.deviceId,expectedRevision:revision()}));
   const records=['messages','base_letter_messages','field_battles','field_requests','guild_asset_requests','trade_requests','mail_campaigns'],before=tables(h,records),newName='過去表示の新名';

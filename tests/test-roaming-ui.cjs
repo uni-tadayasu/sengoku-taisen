@@ -7,7 +7,12 @@ const deferred=()=>{let resolve,reject;const promise=new Promise((a,b)=>{resolve
 const tests=[],test=(name,fn)=>tests.push([name,fn]);
 function focusHost(){
  const listeners=new Map(),document={body:{},activeElement:null};let html='',nodes=[];document.activeElement=document.body;
- function node(tag,attrs={}){const n={tagName:tag,id:attrs.id||'',dataset:attrs.dataset||{},classList:[attrs.className||''],disabled:!!attrs.disabled,connected:true,focus(){document.activeElement=this;},setAttribute(){},closest(){return this;},matches(selector){return selector.split(',').some(s=>s==='button'&&tag==='BUTTON'||s==='input'&&tag==='INPUT'||s==='select'&&tag==='SELECT'||s==='summary'&&tag==='SUMMARY'||s==='.'+this.classList[0]);}};nodes.push(n);return n;}
+ function node(tag,attrs={}){const n={tagName:tag,id:attrs.id||'',dataset:attrs.dataset||{},classList:[attrs.className||''],disabled:!!attrs.disabled,connected:true,focus(){document.activeElement=this;},setAttribute(){},
+     closest(selector){
+       if(selector==='[data-roaming-action]'&&this.dataset.roamingAction)return this;
+       if(selector==='[data-battle-advisor-action="roaming-apply"]'&&this.dataset.battleAdvisorAction==='roaming-apply')return this;
+       return null;
+     },matches(selector){return selector.split(',').some(s=>s==='button'&&tag==='BUTTON'||s==='input'&&tag==='INPUT'||s==='select'&&tag==='SELECT'||s==='summary'&&tag==='SUMMARY'||s==='.'+this.classList[0]);}};nodes.push(n);return n;}
  const host={ownerDocument:document,scrollTop:18,contains:n=>nodes.includes(n)&&n.connected,get innerHTML(){return html;},set innerHTML(value){const owned=nodes.includes(document.activeElement);for(const n of nodes)n.connected=false;nodes=[];if(owned)document.activeElement=document.body;html=value;for(const match of value.matchAll(/<button\b([^>]*)>/g)){const attr=match[1],read=name=>attr.match(new RegExp(name+'="([^"]*)"'))?.[1];node('BUTTON',{id:read('id'),disabled:/\bdisabled\b/.test(attr),dataset:{roamingAction:read('data-roaming-action'),roamingId:read('data-roaming-id'),view:read('data-view')}});}node('INPUT',{id:'roaming-troops'});node('SELECT',{id:'roaming-tactic'});for(const className of ['roaming-help','roaming-confirm','roaming-pending','roaming-report'])if(value.includes('class="'+className))node('SECTION',{className});},querySelector(selector){if(selector.startsWith('#'))return nodes.find(n=>n.id===selector.slice(1));if(selector.startsWith('.'))return nodes.find(n=>n.classList[0]===selector.slice(1));const action=selector.match(/data-roaming-action="([^"]+)"/)?.[1];return action?nodes.find(n=>n.dataset.roamingAction===action):null;},querySelectorAll:()=>nodes.filter(n=>n.tagName==='BUTTON'),addEventListener:(name,fn)=>listeners.set(name,fn),removeEventListener:name=>listeners.delete(name)};
  return{host,document,listeners,click(action,id){const button=nodes.find(n=>n.dataset.roamingAction===action&&(!id||n.dataset.roamingId===id));assert(button&&!button.disabled);button.focus();listeners.get('click')({target:button,preventDefault(){}});return button;}};
 }
@@ -36,6 +41,45 @@ test('after a mapped victory the cooldown forecast never falls back to archetype
  const f=setup({network:true,status:{linked:true}});await f.ready();const target=f.c.snapshot().units.find(u=>u.encounterId==='road_scouts');assert(target);assert.equal(target.troops,1000);let defeated=false;
  f.loadHook(async route=>route==='/roaming/deployment'?{ok:true,deployment:E.roamingDeploymentSummary(f.config)}:{ok:true,deployment:E.roamingDeploymentSummary(f.config),castleId:f.g.state.home,units:E.roamingDeploymentUnits(f.config,f.g.state.home).map(u=>({...u,available:!(defeated&&u.unitId===target.unitId),respawnAt:defeated&&u.unitId===target.unitId?Date.now()+300000:null})),serverNow:new Date().toISOString()});
  f.hook(body=>{const result=f.execute(body);defeated=result.battle.won;return result;});assert(f.c.select(target.unitId));assert(f.c.prepare());assert(await f.c.submit());assert(defeated);await f.c.loadDeployment();const snapshot=f.c.snapshot(),html=markup(snapshot);assert.equal(snapshot.selectedUnit.troops,1000);assert.equal(snapshot.preview.enemyPower,undefined);assert.match(html,/<span>敵軍の戦力<\/span><b>—<\/b>/);assert.doesNotMatch(html,/<span>敵軍の戦力<\/span><b>450<\/b>/);assert.match(html,/部隊の再出現後に確認できます/);
+});
+test('local map follows settled cooldown through save and reload until its exact wall-time expiry',()=>{
+ const f=setup();let wall=Date.now();
+ const [unit,other]=f.c.snapshot().units;
+ const body={deploymentUnit:unit,unitId:unit.unitId,castleId:unit.castleId,deploymentRevision:unit.deploymentRevision,
+   campaignId:f.g.state.walking.campaignId,sequence:0,requestId:'offline-mapped-march',respawnSeconds:90};
+ const departure=f.g.departRoamingBattle(unit.encounterId,'balanced',f.g.state.troops,body);
+ assert(departure.ok&&departure.marching);
+ let remaining=departure.march.remainingMs/1000;
+ while(remaining>0){const step=Math.min(5,remaining);f.g.tick(step);remaining-=step;}
+ const receipt=f.g.state.roaming.history[0];assert(receipt.won&&receipt.respawnAt>wall);
+ let view=f.c.refresh();assert.equal(view.selectedUnit.available,false);assert(!view.preview.enemyPower);
+ assert(!f.c.prepare());assert(!f.c.select(unit.unitId));assert(f.c.select(other.unitId));
+ const restored=E.fromSave(f.g.exportSave(),officers),reopened=createController({...f.options,getGame:()=>restored,now:()=>wall});
+ wall=receipt.respawnAt-1;view=reopened.refresh();
+ assert.equal(view.units.find(u=>u.unitId===unit.unitId).remainingSeconds,1);assert(!reopened.select(unit.unitId));
+ assert.match(markup(view),/再出現まで 1秒/);
+ wall=receipt.respawnAt;view=reopened.refresh();assert.equal(view.units.find(u=>u.unitId===unit.unitId).available,true);
+ assert(reopened.select(unit.unitId));assert(reopened.prepare());reopened.dispose();f.c.dispose();
+});
+test('the public deployment remains authoritative for a linked player',async()=>{
+ const f=setup({network:true,status:{linked:true}});await f.ready();
+ const unit=f.c.snapshot().selectedUnit;
+ f.g.state.roaming.history.push({unitId:unit.unitId,won:true,respawnAt:Date.now()+300000});
+ assert(f.c.select(unit.unitId));assert(f.c.snapshot().selectedUnit.available);f.c.dispose();
+});
+test('two successive all-troop orders use survivors, while a manually edited draft survives refresh and target selection',async()=>{
+ const f=setup(),[first,second,third]=f.c.snapshot().units;
+ const initial=Math.min(f.g.state.troops,f.g.troopCapacity());f.c.setTroops(String(initial));
+ assert(f.c.prepare());assert(await f.c.submit());assert.equal(f.g.state.roaming.history[0].unitId,first.unitId);
+ const survivors=Math.min(f.g.state.troops,f.g.troopCapacity());assert(survivors<initial);
+ assert.equal(f.c.refresh().troopsInput,String(initial),'a live render cannot change a field while the player is editing it');
+ assert(f.c.select(second.unitId));assert.equal(f.c.snapshot().troopsInput,String(survivors));
+ assert(f.c.prepare());assert(await f.c.submit());
+ assert.equal(f.g.state.roaming.history[0].unitId,second.unitId);assert.equal(f.g.state.roaming.history[0].deployed,survivors);
+ assert.equal(f.g.state.roaming.sequence,2);
+ f.c.setTroops('');f.c.refresh();assert(f.c.select(third.unitId));assert.equal(f.c.snapshot().troopsInput,'');
+ f.c.setTroops('901');f.c.refresh();assert(f.c.select(third.unitId));assert.equal(f.c.snapshot().troopsInput,'901');
+ f.c.dispose();
 });
 test('unchanged background updates preserve exact markup without a loading flash',async()=>{const f=setup({network:true,status:{linked:true}});await f.ready();const before=markup(f.c.snapshot()),seen=[];const monitored=createController({...f.options,onChange:s=>seen.push(s.loading)});await monitored.loadDeployment();monitored.select(monitored.snapshot().units[0].unitId);seen.length=0;const prior=markup(monitored.snapshot());await monitored.loadDeployment({background:true});assert(seen.every(v=>v===false));assert.equal(markup(monitored.snapshot()),prior);assert.equal(markup(f.c.snapshot()),before);});
 test('art decoration and identical live ticks do not rerender the view or move input focus',()=>{const f=setup();let writes=0,html='',help={open:false},input={id:'roaming-troops',selectionStart:null,selectionEnd:null,focus(){host.ownerDocument.activeElement=this;}},listeners=new Map();const host={scrollTop:50,ownerDocument:{activeElement:null},contains:n=>n===input,get innerHTML(){return html;},set innerHTML(value){html=value;writes++;help={open:false};},querySelector:q=>q==='.roaming-help'?help:q==='#roaming-troops'?input:null,addEventListener:(k,v)=>listeners.set(k,v),removeEventListener:k=>listeners.delete(k)};const previous=global.SengokuArt;global.SengokuArt={decorate(){html+='<!-- decorated artwork -->';}};try{const ui=mount(host,f.options);assert.equal(writes,1);help.open=true;host.ownerDocument.activeElement=input;for(let i=0;i<20;i++)ui.refresh();assert.equal(writes,1);f.g.state.resources.rice++;ui.refresh();assert.equal(writes,2);assert(help.open);assert.equal(host.ownerDocument.activeElement,input);assert.equal(host.scrollTop,50);ui.dispose();assert.equal(listeners.size,0);}finally{global.SengokuArt=previous;}});

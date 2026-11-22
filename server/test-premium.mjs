@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {createHmac} from 'node:crypto';
-import {harness} from './test-support.mjs';
+import {harness,settleFieldMarch} from './test-support.mjs';
 
 // Real Worker + journal migrations + transactional SQLite. All payments below
 // are signed local fixtures; outgoing fetch is disabled for the whole suite.
@@ -321,7 +321,7 @@ await scope('review release and its audit commit atomically, with concurrent and
 await scope('unequipped purchases appear on every public name and refresh historical chat and letter authors',async h=>{
   const actor=await h.session('購入表示の甲'),other=await h.session('購入表示の乙');
   for(const [player,defender]of [[actor,false],[other,true]]){
-    const save=h.fresh();save.state.troops=20000;save.state.resources={gold:100000,rice:100000,wood:100000,stone:100000};
+    const save=h.fresh(defender?'inuyama':'kiyosu');save.state.troops=20000;save.state.resources={gold:100000,rice:100000,wood:100000,stone:100000};
     if(defender)save.state.castles.nijo={owner:save.state.clan,level:20,wall:4,troops:1000};
     await savePlayer(h,player,save);
   }
@@ -355,7 +355,12 @@ await scope('unequipped purchases appear on every public name and refresh histor
   // Purchase badges are verified against a legitimate opposing player.
   await h.api('/guild/leave',post(other,{guildId:guild.id}));
   const original=crypto.getRandomValues;crypto.getRandomValues=function(array){return array instanceof Uint32Array&&array.length===1?array.fill(0):original.call(crypto,array);};
-  let attacked;try{attacked=(await h.api('/field/attack',post(actor,{requestId:'premium-battle',targetPlayerId:other.user.id,targetCastleId:'nijo',troops:3000,tactic:'balanced',deviceId:actor.deviceId,expectedRevision:revision()}))).data;}finally{crypto.getRandomValues=original;}
+  let attacked;
+  try{
+  const departure=(await h.api('/field/attack',post(actor,{requestId:'premium-battle',targetPlayerId:other.user.id,targetCastleId:'nijo',troops:3000,tactic:'balanced',deviceId:actor.deviceId,expectedRevision:revision()}))).data;
+  attacked={battle:await settleFieldMarch(h,actor,departure)};
+  }finally{crypto.getRandomValues=original;}
+  await h.api('/sync/lease',post(actor,{deviceId:actor.deviceId}));
   await h.api('/guild/join',post(other,{guildId:guild.id}));
   assert.deepEqual(attacked.battle.attackerAppearance,expected);assert.deepEqual(attacked.battle.defenderAppearance.ownedProducts,[]);
   await h.api('/field/diplomacy',post(actor,{requestId:'premium-diplomacy',targetPlayerId:other.user.id,action:'propose',deviceId:actor.deviceId,expectedRevision:revision()}));

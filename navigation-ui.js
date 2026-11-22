@@ -133,11 +133,12 @@
       quickButtons.set(key, button); dock.appendChild(button);
     }
     dialog.id = 'navigation-dialog'; dialog.className = 'navigation-dialog'; dialog.setAttribute('aria-labelledby', 'navigation-title');
-    dialog.innerHTML = '<header class="navigation-dialog-header"><div><h2 id="navigation-title">すべてのメニュー</h2><p>やりたいことから、すぐに移動できます。</p></div><button type="button" class="navigation-close" data-navigation-close aria-label="メニューを閉じる">' + svg('close') + '</button></header>' +
+    dialog.innerHTML = '<header class="navigation-dialog-header"><div><h2 id="navigation-title">すべてのメニュー</h2></div><button type="button" class="navigation-close" data-navigation-close aria-label="メニューを閉じる">' + svg('close') + '</button></header>' +
       '<div class="navigation-search-row"><label class="navigation-search"><span class="social-sr-only">メニューを検索</span>' + svg('search') + '<input id="navigation-query" type="search" placeholder="機能名や目的で検索" autocomplete="off" autocapitalize="off" spellcheck="false" aria-controls="navigation-results"></label><button type="button" class="navigation-clear" data-navigation-clear aria-label="検索を消去">消去</button></div>' +
-      '<p id="navigation-result-status" class="navigation-result-status" role="status" aria-live="polite"></p><div id="navigation-results" class="navigation-results"></div>' +
-      '<footer class="navigation-dialog-footer"><span>選んだ機能の画面を開きます。</span><span class="navigation-keyboard-hint">Ctrl / ⌘ K で開く · Esc で閉じる</span></footer>';
+      '<div class="navigation-summary"><label class="navigation-category"><span class="social-sr-only">メニューの分類</span><select id="navigation-category" aria-controls="navigation-results"></select></label><p id="navigation-result-status" class="navigation-result-status" role="status" aria-live="polite"></p></div><div id="navigation-results" class="navigation-results"></div>' +
+      '<footer class="navigation-dialog-footer"><span class="navigation-keyboard-hint">Ctrl / ⌘ K で開く · Esc で閉じる</span></footer>';
     const search = dialog.querySelector('#navigation-query'), results = dialog.querySelector('#navigation-results');
+    const category = dialog.querySelector('#navigation-category');
     const status = dialog.querySelector('#navigation-result-status'), clearButton = dialog.querySelector('[data-navigation-clear]');
     function availableKeys(keys, current = entries) { return keys.filter(key => current.some(entry => entry.key === key)); }
     function persistPreferences() {
@@ -157,24 +158,40 @@
       const destination = entry.href ? '<a class="navigation-entry" data-navigation-help="' + esc(entry.key) + '" href="' + entry.href + '" target="_blank" rel="noopener">' + content + '</a>' : '<button type="button" class="navigation-entry' + (entry.current ? ' is-current' : '') + '" data-navigation-target="' + esc(entry.key) + '"' + (entry.disabled ? ' disabled' : '') + (entry.current ? ' aria-current="page"' : '') + '>' + content + '</button>';
       return '<div class="navigation-entry-row" data-navigation-scope="' + scope + '">' + destination + '<button type="button" class="navigation-pin' + (pinned ? ' is-pinned' : '') + '" data-navigation-pin="' + esc(entry.key) + '" aria-pressed="' + pinned + '" aria-label="' + esc(entry.label) + 'をお気に入り' + (pinned ? 'から外す' : 'に追加') + '" title="' + (pinned ? 'お気に入りから外す' : 'お気に入りに追加') + '">' + svg('star') + '</button></div>';
     }
-    function renderResults() {
-      const matches = filterEntries(entries, search.value);
+    function renderResults(resetScroll = false) {
+      const groupEntries = category.value ? entries.filter(entry => entry.group === category.value) : entries;
+      const matches = filterEntries(groupEntries, search.value);
       const visibleFavorites = availableKeys(favorites), visibleRecent = availableKeys(recent).filter(key => !visibleFavorites.includes(key));
-      const next = JSON.stringify([search.value, visibleFavorites, visibleRecent, matches.map(entry => [entry.key, entry.label, entry.disabled, entry.current])]);
+      const next = JSON.stringify([search.value, category.value, visibleFavorites, visibleRecent, matches.map(entry => [entry.key, entry.label, entry.disabled, entry.current])]);
       if (next === signature) return;
       signature = next;
-      const focused = doc.activeElement, focusPin = focused?.getAttribute?.('data-navigation-pin'), focusTarget = focused?.getAttribute?.('data-navigation-target');
-      const focusScope = focused?.closest?.('[data-navigation-scope]')?.getAttribute('data-navigation-scope'), scroll = results.scrollTop;
-      status.textContent = search.value.trim() ? matches.length + '件見つかりました' : '全' + entries.length + '項目 · 目的から選べます';
+      const focused = doc.activeElement;
+      const focusAttribute = ['data-navigation-pin','data-navigation-target','data-navigation-help'].find(attribute => focused?.hasAttribute?.(attribute));
+      const focusKey = focusAttribute && focused.getAttribute(focusAttribute);
+      const focusScope = focused?.closest?.('[data-navigation-scope]')?.getAttribute('data-navigation-scope');
+      const scroll = resetScroll ? 0 : results.scrollTop;
+      status.textContent = search.value.trim() || category.value ? matches.length + '件見つかりました' : '全' + entries.length + '項目 · 星でお気に入りに追加';
       clearButton.disabled = !search.value;
-      const shortcuts = search.value.trim() ? '' : '<section class="navigation-group navigation-favorites" aria-label="お気に入り"><div class="navigation-group-heading"><h3>' + svg('star') + 'お気に入り</h3><small>' + visibleFavorites.length + ' / ' + FAVORITE_LIMIT + '</small></div>' + (visibleFavorites.length ? '<div class="navigation-entry-grid">' + visibleFavorites.map(key => entryMarkup(entries.find(entry => entry.key === key), 'favorites')).join('') + '</div>' : '<p class="navigation-favorite-hint">よく使う機能の星を押すと、ここに並びます。最大6件まで登録できます。</p>') + '</section>' + (visibleRecent.length ? '<section class="navigation-group navigation-recent" aria-label="最近開いた機能"><div class="navigation-group-heading"><h3>' + svg('clock') + '最近開いた機能</h3><button type="button" class="navigation-clear-recent" data-navigation-clear-recent>履歴を消去</button></div><div class="navigation-recent-list">' + visibleRecent.map(key => { const entry = entries.find(row => row.key === key); return entry.href ? '<a class="navigation-recent-link" data-navigation-help="' + esc(key) + '" href="' + entry.href + '" target="_blank" rel="noopener">' + entry.icon + '<span>' + esc(entry.label) + '</span></a>' : '<button type="button" class="navigation-recent-link" data-navigation-target="' + esc(key) + '"' + (entry.disabled ? ' disabled' : '') + '>' + entry.icon + '<span>' + esc(entry.label) + '</span></button>'; }).join('') + '</div></section>' : '');
-      results.innerHTML = shortcuts + (matches.length ? GROUPS.map(group => {
+      const groups = [];
+      if (!search.value.trim() && !category.value && visibleFavorites.length) {
+        const cards = visibleFavorites.map(key => entryMarkup(entries.find(entry => entry.key === key), 'favorites')).join('');
+        groups.push('<section class="navigation-group navigation-favorites" aria-label="お気に入り"><div class="navigation-group-heading"><h3>' + svg('star') + 'お気に入り</h3><small>' + visibleFavorites.length + ' / ' + FAVORITE_LIMIT + '</small></div><div class="navigation-entry-grid">' + cards + '</div></section>');
+      }
+      if (!search.value.trim() && !category.value && visibleRecent.length) {
+        const recentLinks = visibleRecent.map(key => {
+          const entry = entries.find(row => row.key === key);
+          const label = entry.icon + '<span>' + esc(entry.label) + '</span>';
+          return entry.href ? '<a class="navigation-recent-link" data-navigation-help="' + esc(key) + '" href="' + entry.href + '" target="_blank" rel="noopener">' + label + '</a>' :
+            '<button type="button" class="navigation-recent-link" data-navigation-target="' + esc(key) + '"' + (entry.disabled ? ' disabled' : '') + '>' + label + '</button>';
+        }).join('');
+        groups.push('<section class="navigation-group navigation-recent" aria-label="最近開いた機能" data-navigation-scope="recent"><div class="navigation-group-heading"><h3>' + svg('clock') + '最近開いた機能</h3><button type="button" class="navigation-clear-recent" data-navigation-clear-recent>履歴を消去</button></div><div class="navigation-recent-list">' + recentLinks + '</div></section>');
+      }
+      results.innerHTML = groups.join('') + (matches.length ? GROUPS.map(group => {
         const rows = matches.filter(entry => entry.group === group); if (!rows.length) return '';
         return '<section class="navigation-group"><h3>' + group + '</h3><div class="navigation-entry-grid">' + rows.map(entry => entryMarkup(entry)).join('') + '</div></section>';
-      }).join('') : '<div class="navigation-empty"><b>見つかりませんでした</b><p>別の言葉で探すか、検索を消去してください。</p></div>');
-      if (focusPin || focusTarget) {
-        const attribute = focusPin ? 'data-navigation-pin' : 'data-navigation-target', key = focusPin || focusTarget;
-        const candidates = [...results.querySelectorAll('[' + attribute + ']')].filter(node => node.getAttribute(attribute) === key);
+      }).join('') : '<div class="navigation-empty"><b>見つかりませんでした</b><p>検索の言葉や分類を変えてください。</p></div>');
+      if (focusKey) {
+        const candidates = [...results.querySelectorAll('[' + focusAttribute + ']')].filter(node => node.getAttribute(focusAttribute) === focusKey);
         (candidates.find(node => node.closest('[data-navigation-scope]')?.getAttribute('data-navigation-scope') === focusScope) || candidates[0] || search).focus({ preventScroll: true });
       }
       results.scrollTop = scroll;
@@ -219,7 +236,8 @@
       if (!initialized || unavailable()) return false;
       if (dialog.open) return true;
       entries = collect(); returnFocus = from || doc.activeElement; restoreFocus = true;
-      search.value = ''; signature = ''; renderResults(); results.scrollTop = 0;
+      category.innerHTML = '<option value="">全分類</option>' + GROUPS.filter(group => entries.some(entry => entry.group === group)).map(group => '<option>' + esc(group) + '</option>').join('');
+      category.value = ''; search.value = ''; signature = ''; renderResults(); results.scrollTop = 0;
       dialog.showModal(); expanded(true);
       (touch() ? dialog.querySelector('[data-navigation-close]') : search).focus({ preventScroll: true });
       return true;
@@ -256,21 +274,23 @@
       const target = event.target.closest('[data-navigation-target]');
       if (target && !target.disabled) activate(target.getAttribute('data-navigation-target'));
       else if (event.target.closest('[data-navigation-close]')) close();
-      else if (event.target.closest('[data-navigation-clear]')) { search.value = ''; renderResults(); search.focus({ preventScroll: true }); }
+      else if (event.target.closest('[data-navigation-clear]')) { search.value = ''; renderResults(true); search.focus({ preventScroll: true }); }
       else if (event.target.closest('[data-navigation-clear-recent]')) { clearRecent(); search.focus({ preventScroll: true }); }
-      else if (event.target.closest('[data-navigation-help]')) { remember(event.target.closest('[data-navigation-help]').getAttribute('data-navigation-help')); close(false); }
+      else if (event.target.closest('[data-navigation-help]')) { remember(event.target.closest('[data-navigation-help]').getAttribute('data-navigation-help')); close(); }
     });
     listen(dialog, 'close', () => {
       // A queued close event must not undo a menu reopened in the meantime.
       if (dialog.open) return;
       expanded(false);
       if (restoreFocus && !otherDialog() && !unavailable()) {
-        const target = returnFocus?.isConnected && returnFocus.getClientRects().length ? returnFocus : trigger;
+        const visibleMenu = hasClass(root, 'sengoku-desktop-fit') ? trigger : quickButtons.get('menu');
+        const target = returnFocus?.isConnected && returnFocus.getClientRects?.().length ? returnFocus : visibleMenu;
         target.focus({ preventScroll: true });
       }
       returnFocus = null;
     });
-    listen(search, 'input', renderResults);
+    listen(search, 'input', () => renderResults(true));
+    listen(category, 'change', () => renderResults(true));
     for (const event of ['wheel', 'touchmove', 'pointerdown']) listen(doc, event, cancelPendingNavigation, { capture: true, passive: true });
     listen(doc, 'keydown', event => { if (!['Shift', 'Control', 'Alt', 'Meta'].includes(event.key)) cancelPendingNavigation(); }, { capture: true });
     listen(doc, 'focusin', event => { const surface = event.target.closest?.('dialog, [role="dialog"]'); if (surface && surface.id !== 'game-loading') cancelPendingNavigation(); }, { capture: true });

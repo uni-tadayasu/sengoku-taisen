@@ -78,12 +78,36 @@ await test('the five major-city flags restrict only new starts and preserve exis
 });
 await test('first bootstrap remains unsaved and opens an explicit 124-castle choice with recovery access',async()=>{
   const b=browser();assert.equal(b.c.SengokuBridge.hasStarted(),false);assert.equal(b.c.SengokuBridge.getSave(),null);assert(!b.stored.has(SAVE));assert.equal(b.events.length,0);
-  assert.match(b.nodes.get('main').innerHTML,/はじまりの城を選ぶ/);b.c.SengokuBridge.openStartSelection();
-  const html=b.nodes.get('modal-content').innerHTML;assert.match(html,/以前の領主を復元/);assert.match(html,/data-action="open-recovery"/);assert.equal(b.query('#new-start-castle').value,'');for(const id of SENGOKU_DATA.majorCityIds)assert(!html.includes(`<option value="${id}"`));assert.match(html,/全124城/);
+  assert.match(b.nodes.get('main').innerHTML,/はじまりの城を選ぶ/);b.c.SengokuBridge.openStartSelection();await b.click('choose-residency-mode','local');
+  const html=b.nodes.get('modal-content').innerHTML;assert.match(html,/以前の領主を復元/);assert.match(html,/data-action="open-recovery"/);assert.equal(b.query('#new-start-castle').value,'');for(const id of SENGOKU_DATA.majorCityIds)assert(!html.includes(`<option value="${id}"`));assert.match(html,/本拠にする城を一つ選択 · 124城/);
   await b.click('start-new');assert.equal(b.c.SengokuBridge.hasStarted(),false);assert(!b.stored.has(SAVE));
 });
+await test('registration opens without a castle or clock and cancel returns to the uncommitted choices',async()=>{
+  const b=browser();b.c.SengokuBridge.openStartSelection();
+  b.c.SengokuWorldClock={snapshot:()=>({ready:false,message:'確認中'})};
+  b.query('#new-difficulty').value='hard';
+  assert.equal(b.query('#new-start-castle').value,'');
+  assert.match(b.nodes.get('modal-content').innerHTML,/data-action="open-lord-registration"/);
+  let returnToChoices,opened=false;
+  b.nodes.set('community-modal',{addEventListener:(event,fn)=>{assert.equal(event,'close');returnToChoices=fn;}});
+  b.c.SengokuSocial={open(tab){assert.equal(tab,'profile');opened=true;}};
+  await b.click('open-lord-registration');
+  assert(opened);assert.equal(b.query('#modal').open,false);assert(!b.stored.has(SAVE));
+  returnToChoices();
+  assert.equal(b.query('#modal').open,true);assert.equal(b.query('#new-difficulty').value,'hard');
+  assert.equal(b.c.SengokuBridge.hasStarted(),false);assert(!b.stored.has(SAVE));
+});
+await test('a personal campaign at an occupied online castle displays personal starting facts',async()=>{
+  const b=browser(),castle=SENGOKU_DATA.castles.find(row=>row.id==='himeji');
+  const occupied={castleId:castle.id,castleName:castle.name,region:castle.region,available:false,lord:{name:'共有の領主'},retainerCount:3};
+  b.c.SengokuResidency={loadDirectory:async()=>({capacity:124,occupied:124,full:true,castles:[occupied]}),choiceMode:()=>'retainer',choices:()=>[occupied]};
+  b.c.SengokuBridge.openStartSelection();await b.click('choose-residency-mode','local');
+  b.query('#new-start-castle').value='himeji';await b.click('choose-clan','武田家');
+  const preview=b.nodes.get('modal-content').innerHTML;assert.match(preview,/守備兵 1,200人/);
+  assert.doesNotMatch(preview,/共有の領主|入城時の継承順/);assert(!b.stored.has(SAVE));
+});
 await test('confirmed first start persists the selected castle before exposing a save to sync',async()=>{
-  const b=browser();b.c.SengokuBridge.openStartSelection();b.query('#new-start-castle').value='himeji';await b.click('choose-clan','武田家');
+  const b=browser();b.c.SengokuBridge.openStartSelection();await b.click('choose-residency-mode','local');b.query('#new-start-castle').value='himeji';await b.click('choose-clan','武田家');
   assert.equal(b.query('#new-start-castle').value,'himeji');b.query('#new-difficulty').value='hard';assert(!b.stored.has(SAVE));
   await b.click('start-new');assert.equal(b.c.SengokuBridge.hasStarted(),true);
   const save=b.c.SengokuBridge.getSave();assert.equal(save.state.home,'himeji');assert.equal(save.state.clan,'武田家');assert.equal(save.state.difficulty,'hard');assert.equal(Object.values(save.state.castles).filter(c=>c.owner===save.state.clan).length,1);assert.deepEqual(plain(save.state),JSON.parse(b.stored.get(SAVE)).state);assert.deepEqual(b.events,['sengoku:game-saved']);assert(!b.stored.has(BACKUP));
@@ -91,11 +115,11 @@ await test('confirmed first start persists the selected castle before exposing a
 await test('opening or cancelling a new story preserves the existing save, and a failed commit rolls back',async()=>{
   const old=new SengokuEngine({clan:'伊達家',officers:roster,seed:12});old.state.resources.gold=12345;const b=browser(old.exportSave()),saved=b.stored.get(SAVE),state=plain(b.c.SengokuBridge.getState());
   assert.equal(b.c.SengokuBridge.hasStarted(),true);b.c.SengokuBridge.openStartSelection();assert.equal(b.nodes.get('modal').open,false);
-  await b.click('new-game');b.query('#new-start-castle').value='himeji';await b.click('close');assert.equal(b.stored.get(SAVE),saved);assert.deepEqual(plain(b.c.SengokuBridge.getState()),state);
-  await b.click('new-game');b.query('#new-start-castle').value='himeji';b.failNextSave();await b.click('start-new');assert.equal(b.stored.get(SAVE),saved);assert.deepEqual(plain(b.c.SengokuBridge.getState()),state);assert.equal(b.nodes.get('modal').open,true);
+  await b.click('new-game');await b.click('choose-residency-mode','local');b.query('#new-start-castle').value='himeji';await b.click('close');assert.equal(b.stored.get(SAVE),saved);assert.deepEqual(plain(b.c.SengokuBridge.getState()),state);
+  await b.click('new-game');await b.click('choose-residency-mode','local');b.query('#new-start-castle').value='himeji';b.failNextSave();await b.click('start-new');assert.equal(b.stored.get(SAVE),saved);assert.deepEqual(plain(b.c.SengokuBridge.getState()),state);assert.equal(b.nodes.get('modal').open,true);
 });
 await test('a failed first durable write leaves the player in the unconfirmed selection',async()=>{
-  const b=browser();b.c.SengokuBridge.openStartSelection();b.query('#new-start-castle').value='himeji';b.failNextSave();await b.click('start-new');assert.equal(b.c.SengokuBridge.hasStarted(),false);assert.equal(b.c.SengokuBridge.getSave(),null);assert(!b.stored.has(SAVE));assert.equal(b.events.length,0);
+  const b=browser();b.c.SengokuBridge.openStartSelection();await b.click('choose-residency-mode','local');b.query('#new-start-castle').value='himeji';b.failNextSave();await b.click('start-new');assert.equal(b.c.SengokuBridge.hasStarted(),false);assert.equal(b.c.SengokuBridge.getSave(),null);assert(!b.stored.has(SAVE));assert.equal(b.events.length,0);
 });
 await test('an unreadable local save never uploads its starter fallback and a verified cloud save can recover it',async()=>{
   for(const hasRemote of [false,true]){

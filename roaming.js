@@ -35,26 +35,30 @@
   const current=(g,expected)=>!disposed&&g===generation&&context().stamp===expected;
   function applyLocal(who){const E=who.game?.constructor,config=E?.roamingDeploymentDefaults?.();if(!config)return;const summary=E.roamingDeploymentSummary(config);state.deployment={...config,totalSquads:summary.totalSquads};state.castleSummaries=summary.castles;state.units=E.roamingDeploymentUnits(config,state.castleId).map(u=>({...u,available:true,respawnAt:null}));state.loaded=true;state.local=true;}
   function selectedUnit(){return state.units.find(u=>u.unitId===state.selectedUnitId)||null;}
-  function unitAvailable(unit){return Boolean(unit?.available)&&(!cooldowns.has(unit.unitId)||cooldowns.get(unit.unitId)<=now()+state.serverOffset);}
+  function remainingCooldown(unit,who,wallNow=now()){
+   const serverExpiry=Math.max(Number(unit.respawnAt)||0,cooldowns.get(unit.unitId)||0);
+   const localWin=!who.linked&&who.game?.state?.roaming?.history?.find(b=>b.unitId===unit.unitId&&b.won&&b.respawnAt>wallNow);
+   return Math.max(0,serverExpiry-wallNow-state.serverOffset,(localWin?.respawnAt||0)-wallNow);
+  }
+  function unitAvailable(unit,who){return Boolean(unit?.available)&&remainingCooldown(unit,who)===0;}
   function preview(who=context()){
    const unit=selectedUnit(),game=who.game;
    if(!state.loaded||state.loading||state.loadError)return{ok:false,message:state.loading?'配置を読み込んでいます。':state.loadError||'全国の配置を取得してください。'};
    if(!unit)return{ok:false,message:'拡大マップまたは周辺の部隊一覧から、戦う野良兵を選んでください。'};
-   const p=game?.previewRoamingBattle(unit.encounterId,state.tactic,state.troopsInput.trim()===''?NaN:Number(state.troopsInput),{deploymentUnit:unit})||{ok:false,message:'本拠を読み込んでから出陣できます。'};
-   if(!unitAvailable(unit))return{...p,ok:false,message:'この部隊は撃退されています。再出現後に配置を更新してください。'};
-   return p;
+   if(!unitAvailable(unit,who))return{ok:false,message:'この部隊は撃退されています。再出現後に配置を更新してください。'};
+   return game?.previewRoamingBattle(unit.encounterId,state.tactic,state.troopsInput.trim()===''?NaN:Number(state.troopsInput),{deploymentUnit:unit})||{ok:false,message:'本拠を読み込んでから出陣できます。'};
   }
   function advice(who=context()){
    const unit=selectedUnit(),game=who.game,unavailable=message=>({ok:false,style:state.adviceStyle,message,reasons:[message],alternatives:[]});
    if(!state.loaded||state.loading||state.loadError)return unavailable(state.loading?'配置を読み込んでいます。':state.loadError||'全国の配置を取得してください。');
    if(!unit)return unavailable('地図または部隊一覧で相手を選ぶと、軍師が戦法と兵数を比較します。');
-   if(!unitAvailable(unit))return unavailable('この部隊は再出現を待っています。最新の配置から相手を選び直してください。');
+   if(!unitAvailable(unit,who))return unavailable('この部隊は再出現を待っています。最新の配置から相手を選び直してください。');
    if(!game?.adviseBattle)return unavailable('本拠を読み込むと、軍師の提案を確認できます。');
    return game.adviseBattle({mode:'roaming',targetId:unit.encounterId,style:state.adviceStyle,deploymentUnit:unit});
   }
   function snapshot(){
-   const who=context(),game=who.game,p=preview(who),templates=game?.roamingEncounters?.()||[],castles=clone(game?.data?.castles||[]),clockNow=now()+state.serverOffset;
-   const units=state.units.map(u=>{const e=templates.find(e=>e.id===u.encounterId)||{};return{...clone(e),...clone(u),id:u.unitId,enemyTroops:u.troops,available:unitAvailable(u),remainingSeconds:Math.max(0,Math.ceil((Math.max(Number(u.respawnAt)||0,cooldowns.get(u.unitId)||0)-clockNow)/1000))};});
+   const who=context(),game=who.game,p=preview(who),templates=game?.roamingEncounters?.()||[],castles=clone(game?.data?.castles||[]),wallNow=now();
+   const units=state.units.map(u=>{const e=templates.find(e=>e.id===u.encounterId)||{},remaining=remainingCooldown(u,who,wallNow);return{...clone(e),...clone(u),id:u.unitId,enemyTroops:u.troops,available:u.available&&remaining===0,remainingSeconds:Math.ceil(remaining/1000)};});
    return{...clone(state),units,selectedUnit:units.find(u=>u.unitId===state.selectedUnitId)||null,status:{writable:who.writable,online:who.online,linked:who.linked,ownerId:who.ownerId,reason:who.reason||''},preview:clone(p),advice:clone(advice(who)),encounters:units,tactics:clone(game?.data?.roaming?.tactics||[]),castles,homeId:game?.state?.home||'',castle:castles.find(c=>c.id===state.castleId)||null,army:game?.armyStats?.()||{count:0,lead:0,valor:0,intellect:0},resources:{rice:game?.state?.resources?.rice||0,command:game?.state?.command||0,troops:game?.state?.troops||0,maxTroops:game?Math.min(game.state.troops,game.troopCapacity()):0},history:clone(game?.state?.roaming?.history||[]),wins:game?.state?.roaming?.wins||0,total:game?.state?.roaming?.sequence||0};
   }
   function emit(){if(!disposed)options.onChange?.(snapshot());}
@@ -84,7 +88,16 @@
   }
   async function chooseCastle(id){const who=identity();if(state.sending||state.pending||!who.game?.data?.castles.some(c=>c.id===id))return false;if(state.castleId===id&&state.loaded&&!state.loadError)return true;loadSequence++;loadFlight=null;state.castleId=id;state.selectedUnitId='';state.selectedId='';state.units=[];state.loaded=false;state.confirmation=null;state.error='';if(!read&&(!who.linked||localOnly))applyLocal(who);emit();return loadDeployment();}
   function searchCastles(value){identity();state.castleQuery=String(value).slice(0,70);emit();return true;}
-  function select(id){identity();if(state.sending||state.pending||state.loading||state.loadError)return false;const unit=state.units.find(u=>u.unitId===id);if(!unit||!unitAvailable(unit))return false;state.selectedUnitId=id;state.selectedId=unit.encounterId;state.confirmation=null;state.error='';emit();return true;}
+  function select(id){
+   const who=identity();if(state.sending||state.pending||state.loading||state.loadError)return false;
+   const unit=state.units.find(u=>u.unitId===id);if(!unitAvailable(unit,who))return false;
+   const game=who.game,lastBattle=game?.state?.roaming?.history?.[0],troops=Number(state.troopsInput);
+   if(lastBattle&&lastBattle.deployed===troops&&!game.state.march){
+    const available=Math.min(game.state.troops,game.troopCapacity());
+    if(troops>available)state.troopsInput=String(available);
+   }
+   state.selectedUnitId=id;state.selectedId=unit.encounterId;state.confirmation=null;state.error='';emit();return true;
+  }
   const fingerprint=(who,p)=>JSON.stringify([who.campaignId,who.game?.state?.roaming?.sequence,state.selectedUnitId,state.deployment?.revision,state.tactic,p.troops,p.attackPower,p.enemyPower,p.foodCost,p.expectedLoss,p.predictedWin]);
   function setTactic(id){const who=identity();if(state.sending||state.pending||!who.game?.data?.roaming?.tactics.some(t=>t.id===id))return false;state.tactic=id;state.confirmation=null;state.error='';emit();return true;}
   function setTroops(value){identity();if(state.sending||state.pending)return false;state.troopsInput=String(value).slice(0,12);state.confirmation=null;state.error='';emit();return true;}

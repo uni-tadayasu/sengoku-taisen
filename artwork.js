@@ -9,10 +9,10 @@ const facilities=new Map((data.buildings||[]).map(b=>[b.id,b]));
 const portraitFacilities=new Set((data.buildings||[]).slice(0,32).map(b=>b.id));
 // Artwork revisions are independent of game releases so stale HTTP/SW caches
 // cannot keep the former plain-background facility sheets after this update.
-const facilityArtRevision='luxury-20261122';
-const officerArtRevision='luxury-20261122';
-const frames=Object.fromEntries(ranks.map(r=>[r,`assets/frames/rank-${r}.svg`]));
-const operatorPortrait={id:'of_b0616adde162',rank:'U',url:'assets/operator-ieyasu-u.webp?v=3.8.1-20261121'};
+const facilityArtRevision='chronicle-480';
+const officerArtRevision='chronicle-480';
+const frames=Object.fromEntries(ranks.map(r=>[r,`assets/frames/rank-${r}.svg?v=4.8.0-20261122`]));
+const operatorPortrait={id:'of_b0616adde162',rank:'U',url:'assets/operator-ieyasu-u.webp?v=4.8.0-20261122'};
 const cache=new Map(),paintRequests=new WeakMap();let observer,scheduled=false;
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const icons={

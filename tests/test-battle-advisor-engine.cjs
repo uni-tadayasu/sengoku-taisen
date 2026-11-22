@@ -173,4 +173,57 @@ test('advice and proof preserve the existing version two save contract',()=>{
   assert.equal(JSON.stringify(restored.state),before);const after=JSON.parse(restored.exportSave());assert.equal(after.version,2);assert.equal(after.state.version,2);assert.deepEqual(Object.keys(after.state).sort(),Object.keys(saved.state).sort());assert.equal(after.state.shogunate,undefined);
 });
 
+test('departure and arrival use the exact same chance even on a rounding boundary',()=>{
+  const g=game({seed:55}),target='okazaki',troops=304;
+  g.state.castles[target].troops=300;
+  const preview=g.previewBattle(target,'balanced',troops);
+  assert(preview.ok);assert.equal(preview.winChance,29);
+  const departed=g.departAttack(target,'balanced',troops);
+  assert(departed.ok);assert.equal(departed.march.profile.attackPower,preview.attackPower);
+  g.state.realtime.elapsed=departed.march.arrivesElapsedMs/1000;
+  const [receipt]=g.resolveDueMarches();
+  assert.equal(receipt.status,'resolved');
+  assert.equal(g.state.progress.reports[0].chance,preview.winChance);
+  assert.equal(g.state.progress.reports[0].attack,preview.attackPower);
+});
+
+test('fractional troops are rejected consistently in forecast, attack and travel',()=>{
+  const g=game(),target=g.adjacentTargets()[0].id,before=JSON.stringify(g.state);
+  assert.equal(g.previewBattle(target,'assault',300.5).ok,false);
+  assert.equal(g.attack(target,'assault',300.5).ok,false);
+  assert.equal(g.departAttack(target,'assault',300.5).ok,false);
+  assert.equal(JSON.stringify(g.state),before);
+});
+
+test('a repelled assault cannot reinforce an already small defending garrison',()=>{
+  const g=game(),target=g.adjacentTargets()[0].id;
+  g.state.castles[target].troops=38;g.random=()=>.999;
+  const result=g.attack(target,'balanced',300);
+  assert.equal(result.battle.won,false);
+  assert.equal(g.state.castles[target].troops,result.battle.enemyBefore-result.battle.enemyLost);
+  assert.equal(g.state.castles[target].troops,38);
+});
+
+test('manual battles remain playable and reloadable at the saved statistics ceiling',()=>{
+  const g=game(),target=g.adjacentTargets()[0].id;
+  g.state.stats.battles=10000000;g.state.stats.wins=10000000;
+  g.random=()=>0;
+  assert(g.attack(target,'balanced',300).battle.won);
+  const restored=Engine.fromSave(g.exportSave(),officers);
+  assert.equal(restored.state.stats.battles,10000000);assert.equal(restored.state.stats.wins,10000000);
+  assert.equal(restored.state.castles[target].owner,g.state.clan);
+});
+
+test('a sole rival respects early turns and the difficulty raid roll',()=>{
+  const g=game(),s=g.state,enemy=g.adjacentTargets()[0].owner;
+  for(const [id,castle] of Object.entries(s.castles))if(id!==s.home)castle.owner=enemy;
+  s.turn=6;g.random=()=>0;
+  let before=JSON.stringify(s);assert.deepEqual(g._cpuTurn(),[]);assert.equal(JSON.stringify(s),before);
+  s.turn=9;g.random=()=>.999;
+  before=JSON.stringify(s);assert.deepEqual(g._cpuTurn(),[]);assert.equal(JSON.stringify(s),before);
+  g.random=()=>0;s.castles[s.home].troops=38;s.troops=100000;
+  assert(g._cpuTurn().some(message=>message.includes('撃退')));
+  assert.equal(s.castles[s.home].troops,38);
+});
+
 console.log(`Battle advisor engine: ${count} tests passed.`);
