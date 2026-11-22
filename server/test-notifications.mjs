@@ -123,6 +123,40 @@ await scope('world clock schedules queued construction in sequence and respects 
  value.state.buildings.gold_mine=1;value.state.jobs=[];value.state.worldClock.elapsedMs=60000;save(h,p,value);assert.equal((await tick(h,{elapsedMs:120000,running:true,speed:1})).sent,0,'cancelled second construction cannot notify');
 });
 
+await scope('branch body and facilities with the same target level keep independent FIFO notices',async h=>{
+ const p=await setup(h,'支城普請の通知',{digestMinutes:0}),value=clockSave(h),id='nijo_north';
+ value.state.branches=[{id,parentCastleId:'nijo',direction:'north',level:0,fallen:false,facilities:{}}];
+ value.state.jobs=[{}, {facilityId:'farm'}, {facilityId:'market'}].map(params=>({kind:'branch',id,targetLevel:1,remainingSeconds:60,...params}));
+ save(h,p,value);
+ await tick(h,{elapsedMs:0,running:true,speed:1},0);
+ const forecasts=h.sql.prepare("SELECT id,world_due_elapsed FROM notification_outbox WHERE category='construction' ORDER BY world_due_elapsed").all();
+ assert.deepEqual(forecasts.map(row=>row.world_due_elapsed),[60000,120000,180000]);
+ assert.equal(new Set(forecasts.map(row=>row.id)).size,3);
+ const before=structuredClone(value);
+ value.state.worldClock.elapsedMs=60000;value.state.branches[0].level=1;value.state.jobs.shift();
+ save(h,p,value);await h.db.batch(notificationSaveStatements(h.db,p.user.id,before,value,h.now));
+ assert.equal((await tick(h,{elapsedMs:60000,running:true,speed:1})).sent,1);
+ const partial=structuredClone(value);
+ value.state.worldClock.elapsedMs=120000;value.state.branches[0].facilities.farm=1;value.state.jobs=[];
+ save(h,p,value);await h.db.batch(notificationSaveStatements(h.db,p.user.id,partial,value,h.now));
+ assert.equal((await tick(h,{elapsedMs:120000,running:true,speed:1})).sent,1);
+ assert.equal((await tick(h,{elapsedMs:180000,running:true,speed:1})).sent,0);
+ const delivered=h.sql.prepare("SELECT id FROM notification_outbox WHERE delivered_at IS NOT NULL AND category='construction'").all().map(row=>row.id).sort();
+ assert.deepEqual(delivered,forecasts.slice(0,2).map(row=>row.id).sort());
+});
+
+await scope('an outstanding pre-queue facility forecast is replaced once on upgrade',async h=>{
+ const p=await setup(h,'旧版の支城通知',{digestMinutes:0}),value=clockSave(h),id='nijo_north';
+ value.state.branches=[{id,level:1,fallen:false,facilities:{}}];
+ value.state.jobs=[{kind:'branch',id,facilityId:'farm',targetLevel:1,remainingSeconds:60}];
+ save(h,p,value);
+ const oldId='job:'+p.user.id+':notification_campaign:branch:'+id+':1';
+ h.sql.prepare("INSERT INTO notification_outbox(id,user_id,category,title,body,due_at,world_due_elapsed,created_at) VALUES(?,?,'construction','普請が完成しました','普請',?,60000,?)").run(oldId,p.user.id,h.now+60000,h.now);
+ assert.equal((await tick(h,{elapsedMs:60000,running:true,speed:1})).sent,1);
+ const entries=h.sql.prepare("SELECT id FROM notification_outbox WHERE category='construction'").all();
+ assert.deepEqual(entries.map(row=>row.id),[oldId+':facility:farm']);
+});
+
 await scope('completed work removed from jobs remains observable, while stale saves cannot send',async h=>{
  const p=await setup(h,'完成履歴'),before=clockSave(h),after=structuredClone(before);after.state.buildings.gold_mine=2;after.state.tech.agriculture=1;save(h,p,after);
  const additions=notificationSaveStatements(h.db,p.user.id,before,after,h.now);assert(additions.length>=3);await h.db.batch(additions);assert.equal((await tick(h,{elapsedMs:120000,running:true,speed:1})).sent,1);assert.equal(h.sql.prepare('SELECT COUNT(*) n FROM notification_outbox WHERE delivered_at IS NOT NULL').get().n,additions.length);
@@ -151,7 +185,7 @@ await scope('large digests stay within D1 parameter limits and retain every comp
 
 await scope('stale cleanup, clock changes and long-offline jobs retain correct notification receipts',async h=>{
  const p=await setup(h,'普請の競合確認',{digestMinutes:0}),before=clockSave(h),completed=structuredClone(before);save(h,p,before);completed.state.buildings.gold_mine=1;
- h.beforeStatement=async query=>{if(!query.startsWith("SELECT id FROM notification_outbox WHERE user_id=? AND category='construction'"))return;h.beforeStatement=null;save(h,p,completed);await h.db.batch(notificationSaveStatements(h.db,p.user.id,before,completed,h.now));};
+ h.beforeStatement=async query=>{if(!query.startsWith("SELECT id,world_due_elapsed FROM notification_outbox WHERE user_id=? AND category='construction'"))return;h.beforeStatement=null;save(h,p,completed);await h.db.batch(notificationSaveStatements(h.db,p.user.id,before,completed,h.now));};
  assert.equal((await tick(h)).sent,0);assert.equal(h.sql.prepare('SELECT COUNT(*) n FROM notification_outbox WHERE delivered_at IS NULL').get().n,1,'an old save snapshot cannot delete a newly committed completion');assert.equal((await tick(h,undefined,300001)).sent,1);
  const next=structuredClone(completed);next.state.buildings.gold_mine=2;save(h,p,next);await h.db.batch(notificationSaveStatements(h.db,p.user.id,completed,next,h.now));h.sql.prepare("INSERT INTO world_clock(id,base_elapsed_ms,anchor_real_ms,running,speed,revision) VALUES('world-v1',0,?,1,1,0) ON CONFLICT(id) DO UPDATE SET revision=0").run(h.now);
  h.beforeStatement=async query=>{if(!query.startsWith('UPDATE notification_subscriptions SET last_sent_at=?'))return;h.beforeStatement=null;h.sql.exec("UPDATE world_clock SET revision=revision+1,running=0 WHERE id='world-v1'");};assert.equal((await tick(h,{id:'world-v1',elapsedMs:0,running:true,speed:1,revision:0})).sent,0);assert.equal((await tick(h,{id:'world-v1',elapsedMs:0,running:false,speed:1,revision:1},300001)).sent,1);

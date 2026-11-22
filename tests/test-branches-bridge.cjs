@@ -57,7 +57,7 @@ function setup(options={}) {
     game,roster,SengokuEngine,staffBaseId:'kyoto_gosho',URLSearchParams,Date,JSON,Math,Promise,
     state:()=>context.game.state,
     syncAccess:{...control.status},lastLocalSaveRaw:null,lastLocalSaveGame:null,localCampaignRefreshPending:false,saveKey:'save',backupKey:'backups',saveEnabled:true,saveWarning:'',
-    worldCatchingUp:false,worldSettlementPending:false,worldSettlementRetryAt:0,worldCatchupTimer:null,worldClockStatusKey:'',fieldActionPending:false,walkingActionPending:false,strategyActionPending:false,startPending:false,roleEpoch:1,
+    branchBookingPending:false,worldCatchingUp:false,worldSettlementPending:false,worldSettlementRetryAt:0,worldCatchupTimer:null,worldClockStatusKey:'',fieldActionPending:false,walkingActionPending:false,strategyActionPending:false,startPending:false,roleEpoch:1,
     selectedCastle:'',lastRealtime:0,saveCounter:0,importedGame:null,activeModal:'',
     localStorage:{get length(){return stored.size;},key:index=>[...stored.keys()][index]??null,getItem:key=>stored.get(key)||null,setItem:(key,value)=>{if(control.storageError)throw Error('storage unavailable');stored.set(key,value);},removeItem:key=>stored.delete(key)},
     crypto:{randomUUID:()=>{control.uuidCalls++;return 'test-request-'+control.uuidCalls;}},
@@ -118,7 +118,15 @@ test('local facility build and upgrade each save a timed paid order and roll bac
   const prepare=()=>{const h=setup();h.c.syncAccess.linked=false;h.c.game.state.branches=[{id:'edo_north',parentCastleId:'edo',direction:'north',level:3,fallen:false,facilities:action==='upgrade-facility'?{farm:1}:{}}];return h;};
   const h=prepare(),q=h.c.game.branchFacilityQuote('edo_north','farm'),gold=h.c.game.state.resources.gold,result=await h.c.requestBranches('/branches/'+action,{method:'POST',data:{branchId:'edo_north',facilityId:'farm'}});
   assert(result.ok,result.message);assert.equal(h.c.game.state.resources.gold,gold-q.cost.gold);assert.equal(h.c.game.state.branches[0].level,3);const saved=JSON.parse(h.stored.get('save'));assert.equal(saved.state.jobs.find(job=>job.facilityId==='farm').targetLevel,action==='upgrade-facility'?2:1);assert.equal(h.posts.length,0);
-  const after=clone(h.c.game.state),duplicate=await h.c.requestBranches('/branches/'+action,{method:'POST',data:{branchId:'edo_north',facilityId:'farm'}});assert.equal(duplicate.ok,false);assert.deepEqual(clone(h.c.game.state),after);
+  const after=clone(h.c.game.state),next=h.c.game.branchFacilityQuote('edo_north','farm');
+  const repeated=await h.c.requestBranches('/branches/'+action,{method:'POST',data:{branchId:'edo_north',facilityId:'farm'}});
+  if(action==='build-facility'){assert.equal(repeated.ok,false);assert.deepEqual(clone(h.c.game.state),after);}
+  else{
+   assert(repeated.ok,repeated.message);assert.equal(h.c.game.state.command,after.command-1);
+   assert.equal(h.c.game.state.resources.gold,after.resources.gold-next.cost.gold);
+   assert.deepEqual(clone(h.c.game.state.jobs.map(job=>job.targetLevel)),[2,3]);
+   assert.equal(JSON.parse(h.stored.get('save')).state.jobs.length,2);
+  }
   const failed=prepare(),before=clone(failed.c.game.state);failed.c.localStorage.setItem=()=>{throw Error('full');};await assert.rejects(failed.c.requestBranches('/branches/'+action,{method:'POST',data:{branchId:'edo_north',facilityId:'farm'}}),/保存できなかった/);assert.deepEqual(clone(failed.c.game.state),before);
  }
 });
@@ -126,7 +134,13 @@ test('real delegated click actions carry the chosen facility through the mutatio
  const start=source.indexOf("  document.addEventListener('click',async event=>"),end=source.indexOf("  document.addEventListener('input'",start),mutations=source.match(/^  const mutationActions=.*$/m)?.[0];assert(start>=0&&end>start&&mutations);
  for(const action of ['build-branch-facility','upgrade-branch-facility']){
   const h=setup();let click;h.c.document.addEventListener=(type,handler)=>{if(type==='click')click=handler;};vm.runInContext(mutations+'\n'+source.slice(start,end),h.c);
-  const node={dataset:{action,id:'edo_north',facility:'watchtower'},disabled:false,closest(){return this;}};await click({target:node});assert.equal(h.posts.length,1);assert.equal(h.posts[0].route,'/branches/'+action.replace('-branch',''));assert.equal(h.posts[0].options.data.branchId,'edo_north');assert.equal(h.posts[0].options.data.facilityId,'watchtower');
+  const node={dataset:{action,id:'edo_north',facility:'watchtower'},disabled:false,closest(){return this;}};
+  let finishRead;h.control.onGet=()=>new Promise(done=>{finishRead=done;});
+  const first=click({target:node});await until(()=>typeof finishRead==='function');
+  // A fresh DOM button can replace the first one during an intervening redraw.
+  await click({target:{...node,disabled:false}});assert.equal(h.gets.length,1);assert.equal(h.posts.length,0);
+  finishRead({ok:true,campaignId:h.c.game.state.walking.campaignId,sequence:0});await first;
+  assert.equal(h.c.branchBookingPending,false);assert.equal(h.posts.length,1);assert.equal(h.posts[0].route,'/branches/'+action.replace('-branch',''));assert.equal(h.posts[0].options.data.branchId,'edo_north');assert.equal(h.posts[0].options.data.facilityId,'watchtower');
   const blocked=setup();blocked.c.syncAccess.writable=false;blocked.c.document.addEventListener=(type,handler)=>{if(type==='click')click=handler;};vm.runInContext(mutations+'\n'+source.slice(start,end),blocked.c);node.disabled=false;await click({target:node});assert.equal(blocked.posts.length,0);
  }
 });

@@ -70,6 +70,7 @@
   for(const type of ['pointerdown','wheel','touchstart','touchmove','keydown'])document.addEventListener(type,()=>{interactionEpoch++;},{capture:true,passive:true});
   document.addEventListener('pointermove',event=>{if(event.buttons)interactionEpoch++;},{capture:true,passive:true});
   let relocationView=null,relocationBusy=false;
+  let branchBookingPending=false;
   let newResidencyMode='lord',newResidencyDirectory=null,newResidencyLoading=false,newResidencyError='',residencyStartPending=false,newGameGeneration=0;
   let newStartCastle='',game,saveEnabled=true,saveWarning='',currentView='town',filter={q:'',clan:'all',ownership:'all',sort:'lead',direction:'desc',rank:'all',skill:'all',assignment:'all',page:1},selectedCastle='',toastTimer,activeModal='',activeModalContext=null,battleTarget='',battleBranchTarget='',battleTactic='balanced',battleTroops=0,newClan='織田家',mapZoom=1,mapRegion='all',mapQuery='',facilityCategory='all',facilityQuery='',officerSection='archive',gachaOddsRank='D',gachaOddsPage=1,facilityPage=1,territoryPage=1,questPage=1,logPage=1,gachaHistoryPage=1,choicePage=1,choiceMode='army',choiceTarget='',musicPage=1,crestPage=1,crestQuery='';
   const officerPreferencesKey='sengoku-officer-filters-v1';
@@ -89,7 +90,7 @@
   function constructionCount(shared=false){return new Set(constructionJobs().filter(j=>j.kind!=='research'&&Boolean(j.shared)===shared).map(j=>`${j.kind}:${j.id}`)).size;}
   function buildingChain(id){return constructionJobs().filter(j=>j.kind==='building'&&j.id===id&&Boolean(j.shared)===Boolean(game.isStaff)).sort((a,b)=>a.targetLevel-b.targetLevel);}
   function buildingTailLevel(id){return Math.max(state().buildings[id]||0,...buildingChain(id).map(j=>j.targetLevel));}
-  function jobKey(job){return `${job.kind}:${job.id}:${job.shared?'shared':'personal'}:${job.targetLevel}`;}
+  function jobKey(job){return `${job.kind}:${job.id}:${job.shared?'shared':'personal'}:${job.targetLevel}${job.kind==='branch'&&job.facilityId?':'+job.facilityId:''}`;}
   function castleLevelLimit(id){return game.castleLevelLimit?.(id)||(id===staffBaseId?128:id==='edo'?64:['nijo','osaka','nagoya'].includes(id)?48:32);}
   function staffConstructionReady(){return game.isStaff&&staffBaseReady&&Boolean(game.getStaffBase?.());}
   function safeSettings(){try{localStorage.setItem(settingsKey,JSON.stringify(settings));}catch(_){}}
@@ -628,7 +629,7 @@
     const cost=game.castleUpgradeCost(id);
     return {action:`<button type="button" class="button gold town-castle-level-up" id="home-castle-level-up" data-action="upgrade-castle" data-id="${esc(id)}" data-home-upgrade="true" aria-label="${esc(c.name)}の城郭をLv.${c.level+1}へ強化する" aria-describedby="home-castle-upgrade-cost home-castle-upgrade-hint">${icon('plus')}<span>レベルUP<small>Lv.${c.level+1}へ</small></span></button>`,detail:`<div class="town-castle-upgrade-detail" id="home-castle-upgrade-cost"><small class="town-castle-upgrade-label">城郭の${shared?'共同普請':'強化'}費用 · 指令1回</small>${costHtml(cost)}<p class="town-castle-upgrade-note" id="home-castle-upgrade-hint">${esc(homeCastleUpgradeHint(id))}</p></div>`};
   }
-  function premiumTownImage(){return window.SengokuPremiumRuntime?.getAppearance?.().town==='moonlit-castle'?'assets/premium/moonlit-castle-v1.webp':'assets/castle-town.webp?v=4.9.5-20261123';}
+  function premiumTownImage(){return window.SengokuPremiumRuntime?.getAppearance?.().town==='moonlit-castle'?'assets/premium/moonlit-castle-v1.webp':'assets/castle-town.webp?v=4.9.6-20261123';}
   function townSceneSources(src){
     const name=src.includes('moonlit')?'moonlit-castle':'castle-town';
     return [400,720,1080,1536].map(width=>`assets/responsive/${name}-${width}.webp ${width}w`).join(', ');
@@ -1095,7 +1096,7 @@
     case 'staff-base-detail':staffBaseModal();break;
     case 'upgrade':if(game.isStaff)await upgradeSharedBase('building',id);else{const result=upgradeDurableBuilding(id);toast(result.message,!result.ok);}break;
     case 'upgrade-castle':if(game.isStaff&&id===staffBaseId)await upgradeSharedBase('castle',id);else perform(game.upgradeCastle(id));break;
-    case 'build-branch':case 'upgrade-branch':case 'repair-branch':case 'build-branch-facility':case 'upgrade-branch-facility':{node.disabled=true;try{const action=a.replace('-branch',''),payload=action==='build'?{parentCastleId:id,direction:node.dataset.direction}:action.endsWith('-facility')?{branchId:id,facilityId:node.dataset.facility}:{branchId:id},result=await requestBranches('/branches/'+action,{method:'POST',data:payload});if(!result?.ok)throw Error(result?.message||'支拠点の普請を開始できませんでした。');preserveInteraction($('#main'),render);refreshActiveModal();toast(result.message||'支拠点の普請を開始しました。');}catch(error){toast(error.message||'支拠点の結果を確認してください。',true);}finally{refreshLiveControls();}break;}
+    case 'build-branch':case 'upgrade-branch':case 'repair-branch':case 'build-branch-facility':case 'upgrade-branch-facility':{if(branchBookingPending)break;branchBookingPending=true;node.disabled=true;try{refreshLiveControls();const action=a.replace('-branch',''),payload=action==='build'?{parentCastleId:id,direction:node.dataset.direction}:action.endsWith('-facility')?{branchId:id,facilityId:node.dataset.facility}:{branchId:id},result=await requestBranches('/branches/'+action,{method:'POST',data:payload});if(!result?.ok)throw Error(result?.message||'支拠点の普請を開始できませんでした。');preserveInteraction($('#main'),render);refreshActiveModal();toast(result.message||'支拠点の普請を開始しました。');}catch(error){toast(error.message||'支拠点の結果を確認してください。',true);}finally{branchBookingPending=false;refreshLiveControls();}break;}
     case 'preview-art':artPreviewModal(node.dataset.kind,id);break;
     case 'art-level-step':updateArtPreview((activeModalContext?.level||1)+Number(node.dataset.delta));break;
     case 'dismiss-tip':settings.tips=false;safeSettings();render();break;
@@ -1192,7 +1193,13 @@
         case 'start-new':disabled=!canStartNew()||residencyStartPending||(!game.isAdmin&&!game.isStaff&&newResidencyMode!=='local'&&syncAccess.linked&&newResidencyLoading)||!admissionCastleAllowed(game.isAdmin?'edo':game.isStaff?staffBaseId:$('#new-start-castle')?.value||newStartCastle);break;
         case 'upgrade':{const b=data.buildings.find(b=>b.id===id),chain=buildingChain(id);disabled=!b||!canCommand||!saveEnabled||!game.buildingUnlock(id).ok||buildingTailLevel(id)>=game.buildingMax(id)||!chain.length&&constructionCount(game.isStaff===true)>=game.constructionSlots()||game.isStaff&&!staffConstructionReady()||!hasResources(game.costs(id));break;}
         case 'upgrade-castle':{const c=game.castle(id);disabled=!saveEnabled||!canCommand||!c||c.owner!==s.clan||c.level>=castleLevelLimit(id)||!!currentJob('castle',id)||constructionCount(game.isStaff===true&&id===staffBaseId)>=game.constructionSlots()||game.isStaff&&id===staffBaseId&&!staffConstructionReady()||!hasResources(game.castleUpgradeCost(id));if(node.dataset.homeUpgrade==='true'){const hint=$('#home-castle-upgrade-hint');if(hint){const message=homeCastleUpgradeHint(id);if(hint.textContent!==message)hint.textContent=message;}}break;}
-        case 'build-branch':case 'upgrade-branch':case 'repair-branch':case 'build-branch-facility':case 'upgrade-branch-facility':{const action=node.dataset.action.replace('-branch',''),quote=window.SengokuBranches?.quote?.(game,action,action==='build'?{parentCastleId:id,direction:node.dataset.direction}:action.endsWith('-facility')?{branchId:id,facilityId:node.dataset.facility}:{branchId:id});disabled=!saveEnabled||!canCommand||quote?.ok!==true||!hasResources(quote?.cost);break;}
+        case 'build-branch':case 'upgrade-branch':case 'repair-branch':case 'build-branch-facility':case 'upgrade-branch-facility':{const action=node.dataset.action.replace('-branch',''),quote=window.SengokuBranches?.quote?.(game,action,action==='build'?{parentCastleId:id,direction:node.dataset.direction}:action.endsWith('-facility')?{branchId:id,facilityId:node.dataset.facility}:{branchId:id});disabled=branchBookingPending||!saveEnabled||!canCommand||quote?.ok!==true||!hasResources(quote?.cost);
+          const hint=node.nextElementSibling;
+          if(hint?.hasAttribute?.('data-branch-order-reason')){
+            const reason=!writable||!saveEnabled?(!saveEnabled?'保存状態を確認してから普請してください。':syncMessage()):quote?.reason||quote?.message||'';
+            if(hint.textContent!==reason)hint.textContent=reason;if(hint.hidden!==!reason)hint.hidden=!reason;
+          }
+          break;}
         case 'research':{const t=data.techs.find(t=>t.id===id);disabled=!t||!canCommand||s.tech[id]>=t.max||s.tech[id]>=s.buildings.academy||s.jobs.some(j=>j.kind==='research')||!hasResources(game.researchCost(id));break;}
         case 'recruit-officer':disabled=!game.canRecruitOfficer(id).ok;break;
         case 'auto-governors':{const status=governorAssignmentStatus();disabled=!saveEnabled||!status.facilityCount||!status.candidateCount||game.isStaff&&!staffConstructionReady();break;}
@@ -1226,7 +1233,7 @@
       if(detail){const message=missing?`（あと${num(missing)}）`:'';if(detail.textContent!==message)detail.textContent=message;}
     });
     document.querySelectorAll('[data-recruit-reason]').forEach(el=>{const info=game.canRecruitOfficer(el.dataset.recruitReason);const reason=info.ok?'':info.reason;if(el.textContent!==reason)el.textContent=reason;});
-    document.querySelectorAll('[data-branch-facility-reason]').forEach(el=>{const reason=window.SengokuBranches?.facilityReason?.(game,el.dataset.branchFacilityReason,el.dataset.facility,{writable:writable&&saveEnabled,writableReason:!saveEnabled?'保存状態を確認してから普請してください。':syncMessage()})||'';if(el.textContent!==reason)el.textContent=reason;el.hidden=!reason;});
+    for(const balance of document.querySelectorAll('[data-branch-commands]'))if(balance.textContent!==String(s.command))balance.textContent=String(s.command);
     if(currentView==='roaming'&&roamingController)roamingController.refresh();
     if(currentView==='covert'&&covertController)covertController.refresh();
     if(currentView==='court'&&courtController)courtController.refresh();
@@ -1246,12 +1253,13 @@
     if(!clocks.length&&!bars.length)return;
     const jobs=new Map();
     for(const job of constructionJobs()){
-      const group=job.kind+':'+job.id+':'+(job.shared?'shared':'personal'),exact=group+':'+job.targetLevel;
+      const group=job.kind+':'+job.id+':'+(job.shared?'shared':'personal'),exact=jobKey(job);
       if(!jobs.has(exact))jobs.set(exact,job);
-      const first=jobs.get(group);if(!first||job.targetLevel<first.targetLevel)jobs.set(group,job);
+      const first=jobs.get(group);if(!first||job.kind!=='branch'&&job.targetLevel<first.targetLevel)jobs.set(group,job);
     }
     function find(key){
-      const [kind,id,scope,level]=key.split(':');
+      const [kind,id,scope,level,facility]=key.split(':');
+      if(facility||jobs.has(key))return jobs.get(key);
       const shared=scope?scope==='shared':game.isStaff&&(kind==='building'||kind==='castle'&&id===staffBaseId);
       return jobs.get(kind+':'+id+':'+(shared?'shared':'personal')+(level?':'+Number(level):''));
     }

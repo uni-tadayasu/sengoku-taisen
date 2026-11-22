@@ -16,7 +16,7 @@ export async function branchStateGuard(db,userId,campaignId){
  const guard=row?{sql:'EXISTS(SELECT 1 FROM branch_states WHERE actor_id=? AND campaign_id=? AND sequence=? AND resolved_elapsed_ms=?)',args:[userId,campaignId,sequence,resolvedElapsedMs]}:{sql:'NOT EXISTS(SELECT 1 FROM branch_states WHERE actor_id=? AND campaign_id=?)',args:[userId,campaignId]};
  return{row,sequence,state,resolvedElapsedMs,guard};
 }
-function projected(raw,at,anchor=at){
+export function projectBranchState(raw,at,anchor=at){
  const state=clone(raw),jobs=[];
  for(const job of state.jobs){
   const branch=state.branches.find(item=>item.id===job.id);if(!branch)continue;
@@ -29,7 +29,7 @@ function projected(raw,at,anchor=at){
 }
 export function applyBranchProgress(save,state,clock,options={}){
  const anchor=Math.min(elapsed(save),Number.isSafeInteger(clock?.elapsedMs)?clock.elapsedMs:elapsed(save)),at=options.projectToClock&&Number.isSafeInteger(clock?.elapsedMs)?clock.elapsedMs:anchor;
- const model=projected(state,at,anchor);
+ const model=projectBranchState(state,at,anchor);
  // Role migration, a completed capture or a new cycle may have legitimately
  // removed the parent. Its old ledger must never restore orphaned defenses.
  // Uploads must establish ownership against the trusted prior checkpoint first.
@@ -45,9 +45,13 @@ export async function reconcileBranchProgress(db,userId,save,clock,options={}){
 }
 function durable(save){
  const at=elapsed(save),branches=clone(save.state.branches||[]).sort((a,b)=>a.id.localeCompare(b.id));
+ const ends=new Map();
  const jobs=(save.state.jobs||[]).filter(job=>job.kind==='branch').map(job=>{
   const {remainingSeconds,remaining,...rest}=job;
-  return{...rest,completesElapsedMs:Number.isSafeInteger(job.completesElapsedMs)?job.completesElapsedMs:at+Math.round(Number(remainingSeconds??Number(remaining)*60)*1000)};
+  const completesElapsedMs=Number.isSafeInteger(job.completesElapsedMs)?job.completesElapsedMs:
+    (ends.get(job.id)??at)+Math.round(Number(remainingSeconds??Number(remaining)*60)*1000);
+  ends.set(job.id,completesElapsedMs);
+  return{...rest,completesElapsedMs};
  }).sort((a,b)=>a.id.localeCompare(b.id));
  return JSON.stringify({branches,jobs});
 }
@@ -107,8 +111,15 @@ async function mutation(ctx,action){
  game.applyWorldClock(clock,{maxSeconds:60});
  const result=action==='build'?game.buildBranch(body.parentCastleId,body.direction):action==='upgrade'?game.upgradeBranch(body.branchId):action==='repair'?game.repairBranch(body.branchId):action==='build-facility'?game.buildBranchFacility(body.branchId,body.facilityId):game.upgradeBranchFacility(body.branchId,body.facilityId);
  if(!result.ok)h.fail(409,result.code||'BRANCH_UNAVAILABLE',result.message);
- const createdJob=game.state.jobs.find(job=>job.kind==='branch'&&job.id===result.branchId);
- if(createdJob)createdJob.completesElapsedMs=clock.elapsedMs+createdJob.totalSeconds*1000;
+ // Only the new tail may acquire a deadline. Earlier reservations remain
+ // tied to their original authoritative completion, including across retries.
+ const chain=game.state.jobs.filter(job=>job.kind==='branch'&&job.id===result.branchId);
+ const tail=chain.at(-1),previousEnd=chain.at(-2)?.completesElapsedMs;
+ if(tail){
+  const starts=Number.isSafeInteger(previousEnd)?Math.max(previousEnd,clock.elapsedMs):
+    clock.elapsedMs+Math.round(Number(result.startsInSeconds||0)*1000);
+  tail.completesElapsedMs=starts+tail.totalSeconds*1000;
+ }
  await h.budget(db,'branches:'+user.id,60,60000,ctx.now);
  const now=Date.now(),next=h.normalizeGameSave(JSON.parse(game.exportSave()),user,now,{clock}),nonce=crypto.randomUUID(),role=h.roleCommitGuard(user),gateArgs=[user.id,body.requestId,nonce];
  // The immutable receipt table records build/upgrade/repair categories. The
