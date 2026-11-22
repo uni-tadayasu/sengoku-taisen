@@ -15,12 +15,13 @@ import {handleNotifications,dispatchNotifications,notificationSaveStatements} fr
 import {handleConquest,settleConquestMarches,conquestMarches} from './conquest.js';
 import {handleShogunate,campaignShogunateStatements} from './shogunate.js';
 import {resolvePublicCourtOffices} from './public-court.js';
+import {messageRegister} from './message-addressing.js';
 import {handleAlliance,assertGuildJoinAllowed,treasuryGuard,treasuryContributionStatements,prepareRallyAttack,getAllianceDefense,rallyMarchStatements,rallyMarchCancellation} from './alliance.js';
 import {handleProtection,enrollProtection,prepareProtection,protectionBattleStatements,decorateProtectedTargets,protectionStatus} from './protection.js';
 import {handleBranches,applyBranchProgress,reconcileBranchProgress,branchProgressStatements,branchStateGuard} from './branches.js';
 import {ensureResidency,residencySnapshot,residencyDirectory,residencyStart,initialResidencyStatements,residencyTargetGuard,prepareResidencySuccession,prepareResidencyCpuLosses} from './residency.js';
 const API = '/api/v1';
-const API_VERSION = '4.8.0';
+const API_VERSION = '4.9.0';
 const API_FEATURES = Object.freeze({trades:true,moderation:true,premium:true,timedEvents:true,troopTrades:true,roamingBattles:true,roamingDeployment:true,covertDispatch:true,privatePlayerRoles:true,guildIcons:true,court:true,kyotoGosho:true,branches:true,branchBattles:true,branchFacilities:true,audioCalls:true,progression:true,armyPresets:true,allianceStrategy:true,sharedConquest:true,newcomerProtection:true,webPush:true,battleAdviser:true,battleCatalog:true,eventBattleRewards:true,shogunate:true,attackTravel:true,castleResidency:true});
 const MAX_BODY = 16 * 1024;
 const MAX_SAVE_BODY = 2 * 1024 * 1024;
@@ -387,6 +388,14 @@ async function resolvePlayerEvaluations(db,payload,now){
   // previously displayed photo after deletion, missing accounts or a BAN.
   for(const ref of avatarRefs)ref.value[ref.key]=avatars.get(ref.id)||null;
   return payload;
+}
+
+function resolveMessageRegister(db,user,audience,now){
+  return messageRegister(db,user,audience,now,async ids=>{
+    const people=evaluationUpdates(ids);
+    await resolvePlayerEvaluations(db,people,now);
+    return new Map(people.map(p=>[p.playerId,p.evaluation?.rankIndex]));
+  },fail);
 }
 
 async function courtAccess(db,user,now){
@@ -2379,14 +2388,14 @@ async function route(request, env, now) {
   if(path==='/castles/residency/start'&&method==='POST')return residencyStart(expansionContext,await readBody(request));
   if(path==='/marches'&&method==='GET')return marchStatus(expansionContext,url);
   if(path==='/marches/campaign'&&method==='POST')return departCampaignMarch(expansionContext,await readBody(request));
-  if(path==='/alliance'||path.startsWith('/alliance/'))return handleAlliance({...expansionContext,helpers:{...expansionContext.helpers,fieldAttack,guildTransfer}});
+  if(path==='/alliance'||path.startsWith('/alliance/'))return handleAlliance({...expansionContext,helpers:{...expansionContext.helpers,fieldAttack,guildTransfer,resolveMessageRegister}});
   if(path==='/progress'||path.startsWith('/progress/'))return handleProgress(expansionContext);
   if(path==='/conquest'||path.startsWith('/conquest/'))return handleConquest(expansionContext);
   if(path==='/shogunate'||path.startsWith('/shogunate/'))return handleShogunate(expansionContext);
   if(path==='/protection'||path.startsWith('/protection/'))return handleProtection(expansionContext);
   if(path==='/notifications'||path.startsWith('/notifications/'))return handleNotifications(expansionContext);
   if(path.startsWith('/voice/'))return handleVoice({db,env,user,now,path,method,url,request,helpers:{fail,readBody,budget,uid,hash,requireAccountAccess,roleCommitGuard,accountCommitGuard,registerResponseGuard:guard=>courtResponseGuards.set(request,guard)}});
-  if(path==='/court'||path.startsWith('/court/')||path==='/staff/court'||path==='/admin/court/leader')return handleCourt({db,user,now,path,method,url,request,helpers:{fail,readBody,budget,idField,textField,uid,hash,getUser,requireAccountAccess,roleCommitGuard,accountCommitGuard,evaluationRef,courtAccess,registerGuard:guard=>courtResponseGuards.set(request,guard)}});
+  if(path==='/court'||path.startsWith('/court/')||path==='/staff/court'||path==='/admin/court/leader')return handleCourt({db,user,now,path,method,url,request,helpers:{fail,readBody,budget,idField,textField,uid,hash,getUser,requireAccountAccess,roleCommitGuard,accountCommitGuard,evaluationRef,courtAccess,resolveMessageRegister,registerGuard:guard=>courtResponseGuards.set(request,guard)}});
   if (path === '/staff/roaming' || path.startsWith('/staff/roaming/') || path === '/admin/roaming' || path.startsWith('/admin/roaming/')) return handleRoamingDeployment({db,user,now,path,method,url,request,helpers:{fail,readBody,budget,idField,textField,hash,getUser,requireAccountAccess,roleCommitGuard}});
   if(path==='/premium'||path.startsWith('/premium/')||path==='/admin/premium/reviews')return handlePremium({db,env,user,now,path,method,request,helpers:{fail,readBody,budget,accountCommitGuard,requireAccountAccess,requireAdmin,getUser,textField,idField,hash,uid,evaluationRef}});
   if(path==='/admin/moderation'||path.startsWith('/admin/moderation/'))return handleModeration({db,user,now,path,method,url,request,helpers:{fail,readBody,budget,idField,textField,uid,hash,mapUser,getUser,requireAdmin,userSelect:USER_SELECT}});
@@ -2410,7 +2419,7 @@ async function route(request, env, now) {
   if (path === '/walking/claim' && method === 'POST') return walkingClaim(db,user,await readBody(request),now);
   if (path === '/covert' || path.startsWith('/covert/')) return handleCovert({db,user,now,path,method,url,request,helpers:{fail,readBody,budget,idField,hash,getUser,getSyncRow,fieldWriter,settleWriterCycle,getWorldClock,normalizeGameSave,roleCommitGuard,syncSnapshot,requireAccountAccess,staffBaseDto,getFieldList,fieldStaffDefense,fieldDefense,fieldRelation,fieldRelationStatus,courtEmperorAuthority,courtAttackAuthority,reconcileBranchProgress,branchStateGuard,branchProgressStatements,registerCourtGuard:guard=>courtResponseGuards.set(request,guard),syncLease:SYNC_LEASE,worldClockId:WORLD_CLOCK_ID}});
   if (path === '/roaming/battle' && method === 'POST' || path === '/roaming/history' && method === 'GET') return handleRoaming({...expansionContext,helpers:{...expansionContext.helpers,reconcileBranchProgress,branchStateGuard,branchProgressStatements,covertIncidentStatements}});
-  if (path === '/letters' || path.startsWith('/letters/')) return handleLetters({db,user,now,path,method,url,request,helpers:{fail,readBody,budget,idField,textField,uid,mapUser,getUser,evaluationRef,evaluationUpdates,accountCommitGuard,requireAccountAccess,contentRevisionInput}});
+  if (path === '/letters' || path.startsWith('/letters/')) return handleLetters({db,user,now,path,method,url,request,helpers:{fail,readBody,budget,idField,textField,uid,mapUser,getUser,evaluationRef,evaluationUpdates,accountCommitGuard,requireAccountAccess,contentRevisionInput,resolveMessageRegister}});
   if (path === '/trades' || path.startsWith('/trades/')) return handleTrades({db,user,now,path,method,url,request,helpers:{fail,readBody,budget,idField,uid,mapUser,getUser,getSyncRow,hash,fieldWriter,settleWriterCycle,getWorldClock,normalizeGameSave,roleCommitGuard,syncSnapshot,requireAccountAccess,tradeTroopCapacity,syncLease:SYNC_LEASE,worldClockId:WORLD_CLOCK_ID}});
   if (path === '/field/me' && method === 'GET') return fieldMe(db,user,url,now,request);
   if (path === '/field/attack' && method === 'POST') return fieldAttack(db,user,await readBody(request),now);
@@ -2604,8 +2613,12 @@ async function route(request, env, now) {
     const room=await roomFor(db,user,channel,body.target);
     await budget(db,'chat:'+user.id,1,5000,now);
     const access=accountCommitGuard(user),guard=(channel==='admin'?STAFF_CHAT_GUARD:channel==='guild'?GUILD_MEMBER_GUARD:'1')+' AND '+access.sql,guardParams=[...(channel==='admin'?[user.id,user.id]:channel==='guild'?[user.id,user.guild_id]:[]),...access.args];
-    const inserted=await stmt(db,'INSERT INTO messages(room_key,channel,user_id,body,created_at) SELECT ?,?,?,?,? WHERE '+guard+' RETURNING id',room,channel,user.id,text,now,...guardParams).first();
-    if(!inserted){await requireAccountAccess(db,user);fail(403,channel==='admin'?'STAFF_CHAT_REQUIRED':'GUILD_REQUIRED','このチャットの参加権限がありません。');}
+    const audience=channel==='friend'?{kind:'person',id:idField(body.target,'友達の識別子')}:channel==='guild'?{kind:'guild',id:user.guild_id}:{kind:channel==='admin'?'officials':'public'};
+    const register=await resolveMessageRegister(db,user,audience,now),spoken=await register.write(text);
+    const peerGuard=channel==='friend'?" AND EXISTS(SELECT 1 FROM friendships WHERE user_a=? AND user_b=? AND status='accepted')":'';
+    const peers=channel==='friend'?pair(user.id,audience.id):[];
+    const inserted=await stmt(db,'INSERT INTO messages(room_key,channel,user_id,body,created_at) SELECT ?,?,?,?,? WHERE '+guard+peerGuard+' AND '+register.guard.sql+' RETURNING id',room,channel,user.id,spoken,now,...guardParams,...peers,...register.guard.args).first();
+    if(!inserted){await requireAccountAccess(db,user);await roomFor(db,await getUser(db,user.id),channel,body.target);fail(409,'MESSAGE_AUDIENCE_CHANGED','宛先の状況が変わりました。もう一度送信してください。');}
     await requireAccountAccess(db,user);
     const message=await stmt(db,MESSAGE_SELECT+' WHERE m.id=?',inserted.id).first();
     if(!message){await requireAccountAccess(db,user);fail(409,'CONTENT_CHANGED','投稿が更新されました。最新の一覧を確認してください。');}
@@ -2696,8 +2709,10 @@ async function route(request, env, now) {
   if (path === '/admin/announcement' && method === 'POST') {
     requireAdmin(user);
     const body=await readBody(request),text=textField(body.text,'お知らせ',300,{min:0});
-    await stmt(db,`INSERT INTO settings(key,value,updated_at) VALUES('announcement',?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at`,text,now).run();
-    return {ok:true,announcement:text};
+    const register=await resolveMessageRegister(db,user,{kind:'public'},now),spoken=await register.write(text),role=roleCommitGuard(user);
+    const updated=await stmt(db,`INSERT INTO settings(key,value,updated_at) SELECT 'announcement',?,? WHERE ${role.sql} AND ${register.guard.sql} ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at RETURNING value`,spoken,now,...role.args,...register.guard.args).first();
+    if(!updated)fail(409,'MESSAGE_AUDIENCE_CHANGED','宛先の状況が変わりました。もう一度送信してください。');
+    return {ok:true,announcement:updated.value};
   }
   if (path === '/admin/mail' && method === 'POST') {
     requireAdmin(user);
@@ -2707,9 +2722,11 @@ async function route(request, env, now) {
     const prior=await stmt(db,'SELECT id,payload_hash FROM mail_campaigns WHERE sender_id=? AND request_id=?',user.id,requestId).first();
     if(prior) {if(prior.payload_hash!==payloadHash) fail(409,'IDEMPOTENCY_CONFLICT','同じ送信番号を別の内容に使うことはできません。');return {ok:true,mailId:prior.id,alreadySent:true};}
     await budget(db,'admin-mail:'+user.id,30,60000,now);
-    const id=uid('m_');
-    await stmt(db,`INSERT INTO mail_campaigns(id,sender_id,target_user_id,title,body,gift_json,request_id,payload_hash,created_at) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(sender_id,request_id) DO NOTHING`,id,user.id,target,title,content,giftJson,requestId,payloadHash,now).run();
+    const id=uid('m_'),register=await resolveMessageRegister(db,user,target?{kind:'person',id:target}:{kind:'public'},now);
+    const subject=await register.write(title,'title'),spoken=await register.write(content),role=roleCommitGuard(user);
+    await stmt(db,`INSERT INTO mail_campaigns(id,sender_id,target_user_id,title,body,gift_json,request_id,payload_hash,created_at) SELECT ?,?,?,?,?,?,?,?,? WHERE ${role.sql} AND ${register.guard.sql} ON CONFLICT(sender_id,request_id) DO NOTHING`,id,user.id,target,subject,spoken,giftJson,requestId,payloadHash,now,...role.args,...register.guard.args).run();
     const saved=await stmt(db,'SELECT id,payload_hash FROM mail_campaigns WHERE sender_id=? AND request_id=?',user.id,requestId).first();
+    if(!saved)fail(409,'MESSAGE_AUDIENCE_CHANGED','宛先の状況が変わりました。もう一度送信してください。');
     if(saved.payload_hash!==payloadHash) fail(409,'IDEMPOTENCY_CONFLICT','同じ送信番号を別の内容に使うことはできません。');
     return {ok:true,mailId:saved.id,alreadySent:saved.id!==id};
   }

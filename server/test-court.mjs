@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import {harness} from './test-support.mjs';
+import {honorificText} from './honorific-text.js';
 import {fixture,post,row,save,count,appoint,updateSave} from './test-court-support.mjs';
 
 let checks=0,calls=0;
@@ -26,7 +27,7 @@ try{
   const requestId=crypto.randomUUID(),first=(await chat(h,visitor,'最初の会話',requestId)).data,again=(await chat(h,visitor,'最初の会話',requestId)).data;
   assert.equal(first.idempotent,false);assert.equal(again.idempotent,true);assert.equal(first.message.id,again.message.id);assert.equal(count(h,'court_chat'),1);
   await chat(h,visitor,'書き換え',requestId,409);await chat(h,admin,'朝廷からのお知らせ');await chat(h,staff,'朝廷のご案内');
-  const list=(await h.api('/court/chat',{token:visitor.token})).data;assert.deepEqual(list.messages.map(m=>m.text),['最初の会話','朝廷からのお知らせ','朝廷のご案内']);assert.deepEqual(list.messages.slice(1).map(m=>m.author.name),['朝廷','朝廷']);
+  const list=(await h.api('/court/chat',{token:visitor.token})).data;assert.deepEqual(list.messages.map(m=>m.text),[honorificText('最初の会話'),'朝廷からのお知らせ',honorificText('朝廷のご案内')]);assert.deepEqual(list.messages.slice(1).map(m=>m.author.name),['朝廷','朝廷']);
   for(const m of list.messages.slice(1)){assert.equal(m.author.id,null);assert.equal(m.author.avatarVersion,null);assert.equal(m.author.evaluation,null);}
   assert(!JSON.stringify(list).includes(admin.user.id));assert(!JSON.stringify(list).includes(staff.user.id));assert(!JSON.stringify(list).includes('isAdmin'));
   const delta=(await h.api('/court/chat?after='+first.message.seq+'&contentRevision='+list.contentRevision,{token:visitor.token})).data;assert.equal(delta.messages.length,2);assert.equal(delta.reset,false);

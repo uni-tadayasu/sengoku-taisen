@@ -26,7 +26,7 @@ function fixture(options={}){
  function row(){const id=control.identity.playerId;if(!rows.has(id))rows.set(id,{ok:true,configured:options.configured!==false,publicKey:'AQID',devices:0,preferences:clone(defaults)});return rows.get(id);}
  const request=async(route,args={})=>{const call={owner:control.identity.playerId,route,method:args.method||'GET',data:clone(args.data||{})};calls.push(call);trace.push(call.method+' '+route);if(control.onRequest){const result=await control.onRequest(call);if(result!==undefined)return result;}if(route==='/notifications/preferences')row().preferences=clone(args.data);if(route==='/notifications/subscribe')row().devices=1;if(route==='/notifications/unsubscribe')row().devices=0;return route==='/notifications'?clone(row()):{ok:true};};
  class FormData{constructor(form){this.values=new Map();for(const input of form.querySelectorAll('input,select')){if(input.getAttribute('type')==='checkbox'&&!input.checked)continue;this.values.set(input.getAttribute('name'),input.value);}}has(key){return this.values.has(key);}get(key){return this.values.get(key)??null;}}
- const window={isSecureContext:options.supported!==false,PushManager:function(){},Notification};
+ const window={SengokuStableDOM:require('../stable-dom.js'),isSecureContext:options.supported!==false,PushManager:function(){},Notification};
  vm.runInNewContext(source,{window,document:doc,navigator,Notification,FormData,Uint8Array,atob,console,localStorage:{getItem:key=>stored.get(key)??null,setItem:(key,value)=>stored.set(key,value),removeItem:key=>stored.delete(key)}},{filename:'notifications.js'});
  const api=window.SengokuNotifications;
  const open=()=>api.open({getContext:()=>control.identity,request,notify:(...args)=>notices.push(args)});
@@ -80,4 +80,16 @@ test('unsupported browsers still save quiet hours and categories, and unregister
  f.api.close();f.control.identity={};f.open();assert.equal(f.$('dialog'),null);assert.equal(f.notices.length,1);assert.match(f.notices[0][0],/領主登録/);
 });
 
+test('a failed save keeps the open form, edited preferences and focused control for retry',async()=>{
+ const f=fixture();f.open();await settle();
+ const battle=f.$('[name="battle"]'),hour=f.$('[name="quietStart"]'),submit=f.$('[data-notification="save"]');
+ battle.checked=false;hour.value='19';hour.focus();
+ f.control.onRequest=call=>{if(call.route==='/notifications/preferences')throw Error('接続を再確認してください');};
+ f.click('save');await settle();
+ assert.strictEqual(f.$('[name="battle"]'),battle);assert.equal(battle.checked,false);
+ assert.strictEqual(f.$('[name="quietStart"]'),hour);assert.equal(hour.value,'19');assert.strictEqual(f.doc.activeElement,hour);
+ assert.strictEqual(f.$('[data-notification="save"]'),submit);
+ f.control.onRequest=null;f.click('save');await settle();
+ assert.equal(f.row().preferences.quietStart,19);assert.equal(f.row().preferences.battle,false);
+});
 (async()=>{let failed=0;for(const[name,run]of tests){try{await run();console.log('PASS '+name);}catch(error){failed++;console.error('FAIL '+name+'\n'+error.stack);}}console.log(`${tests.length-failed}/${tests.length} notification dialog scenarios passed.`);if(failed)process.exitCode=1;})().catch(error=>{console.error(error);process.exitCode=1;});

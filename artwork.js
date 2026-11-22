@@ -11,8 +11,8 @@ const portraitFacilities=new Set((data.buildings||[]).slice(0,32).map(b=>b.id));
 // cannot keep the former plain-background facility sheets after this update.
 const facilityArtRevision='chronicle-480';
 const officerArtRevision='chronicle-480';
-const frames=Object.fromEntries(ranks.map(r=>[r,`assets/frames/rank-${r}.svg?v=4.8.0-20261122`]));
-const operatorPortrait={id:'of_b0616adde162',rank:'U',url:'assets/operator-ieyasu-u.webp?v=4.8.0-20261122'};
+const frames=Object.fromEntries(ranks.map(r=>[r,`assets/frames/rank-${r}.svg?v=4.9.0-20261123`]));
+const operatorPortrait={id:'of_b0616adde162',rank:'U',url:'assets/operator-ieyasu-u.webp?v=4.9.0-20261123'};
 const cache=new Map(),paintRequests=new WeakMap();let observer,scheduled=false;
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const icons={
@@ -46,7 +46,7 @@ function tileInfo(kind,id,variant){
 function tile(kind,id,className='',variant=1){const t=tileInfo(kind,id,variant);if(!t)return'';
  return `<span class="painted-art ${kind}-painting${t.portraitCell?' portrait-cell':''} ${esc(className)}" data-art-url="${esc(t.url)}" data-art-x="${t.x}" data-art-y="${t.y}" style="--tile-x:${t.x}%;--tile-y:${t.y}%" role="img" aria-label="${esc(t.name)} ${t.level?'Lv.'+t.level+(t.finalStage?'・最終形態':''):t.rank+'ランク'}のオリジナルイラスト" aria-busy="true"><span class="art-surface" aria-hidden="true"></span><span class="art-loading" aria-hidden="true">${icon(kind==='officer'?'officers':kind==='castle'?'town':'facilities')}</span></span>`;
 }
-function portrait(o){if(!o)return'';const rank=ranks.includes(o.rank)?o.rank:'D',special=o.id===operatorPortrait.id&&rank===operatorPortrait.rank;const painting=special?`<span class="painted-art painted-portrait operator-portrait" data-art-url="${operatorPortrait.url}" data-art-x="50" data-art-y="50" role="img" aria-label="徳川家康 Uランクの特別イラスト" aria-busy="true"><span class="art-surface" aria-hidden="true"></span><span class="art-loading" aria-hidden="true">${icon('officers')}</span></span>`:tile('officer',o.id,'painted-portrait',rank);return `<span class="portrait-frame" data-rank="${rank}">${painting}<img class="rank-frame" src="${frames[rank]}" alt="" aria-hidden="true" loading="lazy"></span>`;}
+function portrait(o){if(!o)return'';const rank=ranks.includes(o.rank)?o.rank:'D',special=o.id===operatorPortrait.id&&rank===operatorPortrait.rank;const painting=special?`<span class="painted-art painted-portrait operator-portrait" data-art-url="${operatorPortrait.url}" data-art-x="50" data-art-y="50" role="img" aria-label="徳川家康 Uランクの特別イラスト" aria-busy="true"><span class="art-surface" aria-hidden="true"></span><span class="art-loading" aria-hidden="true">${icon('officers')}</span></span>`:tile('officer',o.id,'painted-portrait',rank);return `<span class="portrait-frame" data-rank="${rank}">${painting}<img class="rank-frame" src="${frames[rank]}" alt="" aria-hidden="true" loading="lazy"><b class="portrait-rank-badge" aria-hidden="true">${rank}</b></span>`;}
 function load(url){if(cache.has(url))return cache.get(url);const promise=new Promise((resolve,reject)=>{const img=new Image();img.onload=()=>resolve(url);img.onerror=()=>{cache.delete(url);reject(Error('画像を読み込めませんでした'));};img.src=url;});cache.set(url,promise);return promise;}
 async function reveal(el){
  const url=el.dataset.artUrl||el.dataset.ghostUrl;if(!url||el.dataset.artReady)return;
@@ -108,7 +108,10 @@ function decorate(){scheduled=false;
 function schedule(){if(scheduled)return;scheduled=true;requestAnimationFrame(decorate);}
 function currentAssets(){const h=innerHeight,w=innerWidth;return [...new Set(Array.from(document.querySelectorAll('[data-art-url],[data-ghost-url]')).filter(el=>{const r=el.getBoundingClientRect();return r.bottom>0&&r.top<h+180&&r.right>0&&r.left<w&&r.width>0;}).map(el=>el.dataset.artUrl||el.dataset.ghostUrl))];}
 async function readyCurrent(onProgress){decorate();const urls=currentAssets();let done=0;await Promise.allSettled(urls.map(url=>load(url).finally(()=>onProgress?.(++done,urls.length))));document.querySelectorAll('[data-art-url],[data-ghost-url]').forEach(el=>{if(urls.includes(el.dataset.artUrl||el.dataset.ghostUrl))reveal(el);});}
-function init(){if('IntersectionObserver'in global)observer=new IntersectionObserver(entries=>entries.forEach(entry=>{if(entry.isIntersecting){reveal(entry.target);observer.unobserve(entry.target);}}),{rootMargin:'180px'});new MutationObserver(schedule).observe(document.body,{childList:true,subtree:true});decorate();}
+function init(){if('IntersectionObserver'in global)observer=new IntersectionObserver(entries=>entries.forEach(entry=>{if(entry.isIntersecting){reveal(entry.target);observer.unobserve(entry.target);}}),{rootMargin:'180px'});new MutationObserver(records=>{
+ // Text-only clock, balance and unread updates cannot introduce artwork.
+ if(records.some(record=>[...record.addedNodes,...record.removedNodes].some(node=>node.nodeType===1)))schedule();
+}).observe(document.body,{childList:true,subtree:true});decorate();}
 global.SengokuArt={portrait,castle:(id,c='',level=1)=>tile('castle',id,c,level),facility:(id,c='',level=1)=>tile('facility',id,c,level),icon,tileInfo,load,readyCurrent,decorate,schedule,totalIllustrations:8224};
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init,{once:true});else init();
 })(window);

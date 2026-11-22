@@ -4,9 +4,9 @@
   "name": "戦国VS",
   "alternateName": "SENGOKU VS",
   "publisher": "KASAI SOLUTIONS",
-  "release": "4.8.0-20261122",
-  "version": "4.8.0",
-  "dateModified": "2026-11-22",
+  "release": "4.9.0-20261123",
+  "version": "4.9.0",
+  "dateModified": "2026-11-23",
   "language": "ja",
   "locale": "ja_JP",
   "tagline": "一城から、天下へ。",
@@ -65,7 +65,7 @@
       "path": "/",
       "title": "戦国VS｜無料で遊べる戦国ブラウザ戦略ゲーム",
       "description": "戦国VS公式。城下町を育て、武将を編成し、軍師AIと天下統一を目指す戦国ブラウザゲームです。PC・スマホ・タブレットで基本プレイ無料。同盟を結び、ほかの領主と攻城戦を楽しめます。",
-      "dateModified": "2026-11-22",
+      "dateModified": "2026-11-23",
       "artwork": {
         "path": "assets/chronicle/cover.webp",
         "alt": "軍扇を持つ武将が、城のある領国を見渡す戦国VSのメインビジュアル",
@@ -82,7 +82,7 @@
       "path": "/sengoku-vs/",
       "title": "戦国VS ゲーム紹介｜城下町・武将編成・攻城戦の楽しみ方",
       "description": "戦国VSを初めて知る方へ。一城を選んで田畑や商家を育てる内政から、武将編成、ほかの領主との合戦や同盟まで、ゲームの流れをイラストとともに紹介します。",
-      "dateModified": "2026-11-22",
+      "dateModified": "2026-11-23",
       "artwork": {
         "path": "assets/chronicle/war.webp",
         "alt": "軍旗の列を背に、白馬の上で指揮を執る武将",
@@ -98,7 +98,7 @@
       "path": "/premium/",
       "title": "戦国VS プレミアム｜城下の外観・旗印・月額支援の料金",
       "description": "金彩の旗印は480円、月影の城下は980円、サポーターは月額780円（税込）。戦国VSで装備したときの見本、買い切りと月額の違い、購入後の反映を確認できます。",
-      "dateModified": "2026-11-22",
+      "dateModified": "2026-11-23",
       "artwork": {
         "path": "assets/chronicle/court.webp",
         "alt": "金色の庭園に面した朱塗りの御殿",
@@ -122,7 +122,7 @@
       "path": "/guide/",
       "title": "戦国VS 攻略ガイド｜最初の城選びから城郭強化・合戦まで",
       "description": "戦国VSの公式攻略ガイド。開始城の選び方、天守と城郭のレベルの上げ方、武将や軍師AIの使い方、合戦の報酬を目的から探せます。スマホ操作やデータの引き継ぎも案内します。",
-      "dateModified": "2026-11-22",
+      "dateModified": "2026-11-23",
       "artwork": {
         "path": "assets/chronicle/town.webp",
         "alt": "宵の城下町に架かる橋と、行き交う人々",
@@ -141,7 +141,7 @@
       "path": "/guide/data-recovery/",
       "title": "戦国VSの引き継ぎ・データ復元｜端末変更とバックアップ",
       "description": "機種変更やサイト移転後に、同じ領主で戦国VSを再開する方法。以前の端末、接続コード、統合バックアップ、旧形式のセーブのうち、手元にあるものから復元手順を選べます。",
-      "dateModified": "2026-11-22",
+      "dateModified": "2026-11-23",
       "artwork": {
         "path": "assets/chronicle/archive.webp",
         "alt": "灯りに照らされた書院で二人が絵巻を調べる様子",
@@ -160,7 +160,7 @@
       "path": "/about/",
       "title": "戦国VSの作品概要｜収録武将・城・家紋と地図の出典",
       "description": "戦国VSの世界観と収録内容をまとめた公式資料。武将と城郭の成長段階、家紋を描く基準、戦国地図に使った地形・城跡の資料、KASAI SOLUTIONSの制作情報を掲載しています。",
-      "dateModified": "2026-11-22",
+      "dateModified": "2026-11-23",
       "artwork": {
         "path": "assets/chronicle/court.webp",
         "alt": "庭園に面した御殿で向かい合う二人の使者",

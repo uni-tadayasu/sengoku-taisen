@@ -34,6 +34,14 @@ test('guests and pending identities make no court requests and see no private re
 test('court authors use neutral aliases and all visitor-authored content is escaped',async()=>{
  const h=fixture({section:'chat'});h.data.chat=[message(1,'<img src=x>',{kind:'court',id:'SECRET_OPERATOR_ID',name:'SECRET_OPERATOR_NAME',avatarVersion:'a'.repeat(64)}),message(2,'<script>alert(1)</script>',{kind:'visitor',id:'visitor-two',name:'<visitor>'})];await h.controller.load();const html=Court.markup(h.controller.snapshot());assert.match(html,/朝廷/);assert.doesNotMatch(html,/SECRET_OPERATOR|<img src=x>|<script>alert/);assert.match(html,/&lt;visitor&gt;/);assert.match(html,/&lt;script&gt;/);assert.equal(h.controller.snapshot().chat[0].author.id,null);
 });
+test('court visitors carry verified seals and anonymous court replies keep a neutral attribution',async()=>{
+ const offices=require('../public-court.js');const h=fixture({section:'chat'});
+ try{
+  offices.update({people:[{id:'u_guest',name:'参内した領主',courtOffice:{title:'大納言',kind:'official'}},{id:'u_private',name:'非公開の担当者',courtOffice:{title:'天皇',kind:'emperor'}}]});
+  h.data.chat=[message(1,'広間の言葉',{kind:'visitor',id:'u_guest',name:'参内した領主'}),message(2,'朝廷からの返答',{kind:'court',id:'u_private',name:'非公開の担当者'})];
+  await h.controller.load();const html=Court.markup(h.controller.snapshot());assert.match(html,/data-court-player="u_guest"/);assert.match(html,/data-court-seal="book"/);assert.doesNotMatch(html,/u_private|非公開の担当者|data-court-seal="sun"/);
+ }finally{offices.clear();}
+});
 test('quiet polling preserves drafts and does not toggle loading after the first snapshot',async()=>{
  const h=fixture({section:'chat'});await h.controller.load();h.controller.update('chat','書いている途中');h.frames.length=0;const pause=deferred();h.hook=(route,args)=>route==='/court'?pause.promise:h.respond(route,args);h.advance(15000);h.controller.refresh();assert.equal(h.controller.snapshot().loading,false);assert.equal(h.controller.snapshot().drafts.chat,'書いている途中');pause.resolve(clone(h.info));await until(()=>h.frames.length>=3);assert(h.frames.every(s=>!s.loading));assert.equal(h.controller.snapshot().drafts.chat,'書いている途中');
 });

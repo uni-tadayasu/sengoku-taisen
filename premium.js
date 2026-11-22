@@ -43,7 +43,7 @@
   }
   function playerMarkup(user) {
     if (!user) return '';
-    return `<span class="player-evaluation-person">${global.SengokuAvatar?.markup?.(user, 'inline') || ''}<span class="player-evaluation-name">${esc(user.name)}</span>${global.SengokuEvaluationUI?.badge?.(user.evaluation) || ''}</span>`;
+    return `<span class="player-evaluation-person">${global.SengokuAvatar?.markup?.(user, 'inline') || ''}<span class="player-evaluation-name">${esc(user.name)}</span>${global.SengokuEvaluationUI?.badge?.(user.evaluation) || ''}${global.SengokuPublicCourt?.selfSlot?.(user.id) || ''}</span>`;
   }
   function normalizeContext(raw) {
     const status = ['loading', 'ready', 'anonymous', 'offline', 'error', 'banned'].includes(raw?.status) ? raw.status : 'offline';
@@ -98,7 +98,7 @@
     const surface = options.surface === 'game' ? 'game' : 'public', context = normalizeContext(options.context);
     const selected = choices.some(choice => choice.key === options.initialPreview) ? options.initialPreview : surface === 'public' ? 'moonlit-castle' : 'standard';
     const initial = choices.find(choice => choice.key === selected) || standardPreview;
-    const landscape = selected === 'moonlit-castle' ? 'assets/premium/moonlit-castle-v1.webp' : 'assets/castle-town.webp?v=4.8.0-20261122';
+    const landscape = selected === 'moonlit-castle' ? 'assets/premium/moonlit-castle-v1.webp' : 'assets/castle-town.webp?v=4.9.0-20261123';
     return `<div class="premium-catalog" data-premium-catalog data-premium-surface="${surface}" data-premium-id="${id}" data-premium-asset-prefix="${esc(assetPrefix)}" data-premium-selected="${initial.key}">
 ${surface === 'game' ? `      <div class="premium-introduction"><p class="premium-label">外観コレクションと、開発・運営への支援</p><h2>一城の景色に、あなたらしい彩りを。</h2><p>金刺繍の旗、月明かりの城下町、黄金の支援バッジ。戦国VSのために描いた外観で、いつもの戦記を楽しめます。城を育て、武将を迎え、合戦や交易を重ねる遊びは無料のままです。</p></div>` : ''}
       ${surface === 'game' ? `<section class="premium-account" aria-label="接続中の領主と外観の管理" data-premium-account>${accountMarkup(context)}</section><p class="premium-feedback" role="status" data-premium-feedback hidden></p><section class="premium-confirm" data-premium-confirm hidden></section>` : '<p class="premium-public-note">購入・外観の適用はゲーム内で行います。見本はどなたでも切り替えられます。</p>'}
@@ -159,7 +159,7 @@ ${surface === 'game' ? `      <div class="premium-introduction"><p class="premiu
         const choice = choices.find(item => item.key === key), stage = element.querySelector('[data-premium-stage]'); if (!choice || !stage) return false;
         element.setAttribute('data-premium-selected', choice.key); stage.setAttribute('data-premium-preview-mode', choice.key);
         const image = stage.querySelector('[data-premium-landscape]');
-        image?.setAttribute('src', prefix + (choice.key === 'moonlit-castle' ? 'assets/premium/moonlit-castle-v1.webp' : 'assets/castle-town.webp?v=4.8.0-20261122'));
+        image?.setAttribute('src', prefix + (choice.key === 'moonlit-castle' ? 'assets/premium/moonlit-castle-v1.webp' : 'assets/castle-town.webp?v=4.9.0-20261123'));
         image?.setAttribute('alt', choice.key === 'moonlit-castle' ? '月明かりと城の灯りが川面に映る城下町' : '天守と田畑、商家、川が広がる城下町');
         const title = element.querySelector('[data-premium-preview-title]'), description = element.querySelector('[data-premium-preview-description]');
         if (title) title.textContent = choice.label; if (description) description.textContent = choice.description;

@@ -92,13 +92,13 @@ await scope('ban atomically erases only its author across all chats and personal
   assert.equal(savedRow(h,target).writer_device_id,null);assert.equal(savedRow(h,target).lease_expires_at,0);
   for(const thread of seed.threads){
     const data=(await h.api('/letters/'+thread.id,{token:peer.token})).data;
-    assert(!JSON.stringify(data).includes('削除本文:'));assert(data.messages.some(message=>message.text.startsWith('保存本文:')));
+    assert(!JSON.stringify(data).includes('削除本文:'));assert(data.messages.some(message=>message.text.includes('保存本文:')));
     const max=h.sql.prepare('SELECT COALESCE(MAX(seq),0) seq FROM base_letter_messages WHERE thread_id=?').get(thread.id).seq;
     assert.equal(data.thread.lastSeq,max,'A removed latest message never remains the thread preview');
   }
   for(const channel of ['world','guild','friend','admin']){
     const actor=channel==='admin'?admin:peer,route='/chat?channel='+channel+(channel==='friend'?'&target='+target.user.id:'');
-    const data=(await h.api(route,{token:actor.token})).data;assert(!JSON.stringify(data).includes('削除本文:'));assert(data.messages.some(message=>message.text==='保存本文:'+channel));
+    const data=(await h.api(route,{token:actor.token})).data;assert(!JSON.stringify(data).includes('削除本文:'));assert(data.messages.some(message=>message.text.includes('保存本文:'+channel)));
   }
   const bans=(await h.api('/admin/moderation/bans',{token:admin.token})).data;assert.equal(bans.bans.length,1);assert.equal(bans.bans[0].player.id,target.user.id);assert.equal(bans.bans[0].ban.reason,'検証用の非公開判断理由');
   for(const route of ['/config','/online','/players?q='+encodeURIComponent('対象'),'/chat?channel=world','/letters']){
@@ -124,7 +124,7 @@ await scope('all existing tokens and pairing routes are blocked until unban, whi
   for(const actor of [target,linked])assert.equal((await h.api('/me',{token:actor.token})).data.user.id,target.user.id);
   assert.deepEqual((await h.api('/admin/moderation/bans',{token:admin.token})).data.bans,[]);
   const replay=await h.api('/letters',post(target,oldLetter,null));assert([200,404,409].includes(replay.response.status));assert.equal(owned(h,'base_letter_messages','sender_id',target).length,0,'A pre-ban send receipt cannot recreate erased correspondence');
-  await chat(h,target,'world','解除後の新しい本文');assert.deepEqual(owned(h,'messages','user_id',target).map(row=>row.body),['解除後の新しい本文']);
+  const renewed=await chat(h,target,'world','解除後の新しい本文');assert(renewed.text.includes('解除後の新しい本文'));assert.deepEqual(owned(h,'messages','user_id',target).map(row=>row.body),[renewed.text]);
   assert.equal((await linkedDevice(h,target,'解除後の端末')).user.id,target.user.id);await h.api('/devices/link',post(null,{code:unused.code,deviceName:'古いコード再利用'},410));
 });
 
@@ -219,10 +219,10 @@ await scope('content revisions reset stale chat and letter cursors without expos
   assert(Number.isSafeInteger(world.contentRevision));assert(Number.isSafeInteger(thread.contentRevision));assert(inbox.nextCursor);
   const result=(await moderate(h,admin,target)).data,newRevision=result.contentRevision;assert(newRevision>world.contentRevision);
   const chatReset=(await h.api('/chat?channel=world&after='+world.nextAfter+'&contentRevision='+world.contentRevision,{token:peer.token})).data;
-  assert.equal(chatReset.reset,true);assert.equal(chatReset.contentRevision,newRevision);assert(!JSON.stringify(chatReset).includes('削除本文:'));assert(chatReset.messages.some(message=>message.text==='保存本文:world'));
+  assert.equal(chatReset.reset,true);assert.equal(chatReset.contentRevision,newRevision);assert(!JSON.stringify(chatReset).includes('削除本文:'));assert(chatReset.messages.some(message=>message.text.includes('保存本文:world')));
   for(const suffix of ['after='+thread.readCursor,'before='+thread.readCursor]){
     const fresh=(await h.api('/letters/'+seed.threads[0].id+'?'+suffix+'&contentRevision='+thread.contentRevision,{token:peer.token})).data;
-    assert.equal(fresh.reset,true);assert.equal(fresh.contentRevision,newRevision);assert(!JSON.stringify(fresh).includes('削除本文:'));assert(fresh.messages.some(message=>message.text==='保存本文:個人返信'));
+    assert.equal(fresh.reset,true);assert.equal(fresh.contentRevision,newRevision);assert(!JSON.stringify(fresh).includes('削除本文:'));assert(fresh.messages.some(message=>message.text.includes('保存本文:個人返信')));
   }
   const freshInbox=(await h.api('/letters?limit=1&cursor='+encodeURIComponent(inbox.nextCursor)+'&contentRevision='+inbox.contentRevision,{token:peer.token})).data;
   assert.equal(freshInbox.reset,true);assert.equal(freshInbox.contentRevision,newRevision);assert(!JSON.stringify(freshInbox).includes('削除本文:'));

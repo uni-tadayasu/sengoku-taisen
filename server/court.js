@@ -58,9 +58,11 @@ async function chat(ctx,access){
 async function chatWrite(ctx,access){
  const {db,user,now,helpers:h}=ctx,body=await h.readBody(ctx.request);keys(body,['requestId','text'],h);
  const requestId=h.idField(body.requestId,'操作番号'),text=h.textField(body.text,'会話',300),digest=await h.hash(JSON.stringify(['chat',text])),existing=await prior(ctx,requestId,digest);
- let saved=existing,committed=false;if(!saved){await h.budget(db,'court-chat:'+user.id,20,60000,now);const id=h.uid('cc_'),nonce=crypto.randomUUID(),args=[user.id,requestId,nonce],result=await db.batch([
-  stmt(db,`INSERT INTO court_requests(actor_id,request_id,kind,request_hash,commit_token,message_id,created_at) SELECT ?,?,'chat',?,?,?,? WHERE ${access.guard.sql} ON CONFLICT(actor_id,request_id) DO NOTHING RETURNING *`,user.id,requestId,digest,nonce,id,now,...access.guard.args),
-  stmt(db,`INSERT INTO court_chat(id,author_id,author_kind,body,created_at) SELECT ?,?,?,?,? WHERE ${GATE}`,id,user.id,access.privileged?'court':'visitor',text,now,...args),
+ let saved=existing,committed=false;if(!saved){await h.budget(db,'court-chat:'+user.id,20,60000,now);const id=h.uid('cc_'),nonce=crypto.randomUUID(),args=[user.id,requestId,nonce];
+ const register=await h.resolveMessageRegister(db,user,{kind:'public'},now),spoken=await register.write(text);
+ const result=await db.batch([
+  stmt(db,`INSERT INTO court_requests(actor_id,request_id,kind,request_hash,commit_token,message_id,created_at) SELECT ?,?,'chat',?,?,?,? WHERE ${access.guard.sql} AND ${register.guard.sql} ON CONFLICT(actor_id,request_id) DO NOTHING RETURNING *`,user.id,requestId,digest,nonce,id,now,...access.guard.args,...register.guard.args),
+  stmt(db,`INSERT INTO court_chat(id,author_id,author_kind,body,created_at) SELECT ?,?,?,?,? WHERE ${GATE}`,id,user.id,access.privileged?'court':'visitor',spoken,now,...args),
  ]);saved=rows(result[0])[0];committed=!!saved;saved=saved||await prior(ctx,requestId,digest);if(!saved){await allowed(ctx,access);h.fail(409,'COURT_CHANGED','会話の状態が変わりました。もう一度確認してください。');}}
  const found=await read(ctx,access,[stmt(db,messageSelect('court_chat')+` WHERE m.id=? AND ${activeAuthor('m.author_id')}`,saved.message_id)]),row=rows(found[0])[0];if(!row)h.fail(409,'CONTENT_CHANGED','この会話は削除されています。最新の会話を確認してください。');
  return finish(ctx,access,{ok:true,message:message(row,ctx),idempotent:!committed});
@@ -81,11 +83,13 @@ async function audienceRead(ctx,access,id){
 async function audienceWrite(ctx,access,id=null){
  const {db,user,now,helpers:h}=ctx,body=await h.readBody(ctx.request);keys(body,id?['requestId','text']:['requestId','title','text'],h);
  const requestId=h.idField(body.requestId,'操作番号'),text=h.textField(body.text,'謁見の本文',1000),title=id?null:h.textField(body.title,'謁見の件名',80),kind=id?'reply':'audience',digest=await h.hash(JSON.stringify([kind,id,title,text])),existing=await prior(ctx,requestId,digest);
- if(id)await getThread(ctx,access,id);
+ const threadRow=id?await getThread(ctx,access,id):null;
  let saved=existing,committed=false;if(!saved){await h.budget(db,'court-audience:'+user.id,20,60000,now);const entity=id||h.uid('ca_'),mid=h.uid('cm_'),nonce=crypto.randomUUID(),args=[user.id,requestId,nonce],scope=threadScope(ctx,access),extra=id?` AND EXISTS(SELECT 1 FROM court_audience_threads t WHERE t.id=? AND ${scope.sql} AND ${activeAuthor('t.requester_id')})`:'';
- const statements=[stmt(db,`INSERT INTO court_requests(actor_id,request_id,kind,request_hash,commit_token,entity_id,message_id,created_at) SELECT ?,?,?,?,?,?,?,? WHERE ${access.guard.sql}${extra} ON CONFLICT(actor_id,request_id) DO NOTHING RETURNING *`,user.id,requestId,kind,digest,nonce,entity,mid,now,...access.guard.args,...(id?[id,...scope.args]:[]))];
- if(!id)statements.push(stmt(db,`INSERT INTO court_audience_threads(id,requester_id,title,status,created_at,updated_at) SELECT ?,?,?,'open',?,? WHERE ${GATE}`,entity,user.id,title,now,now,...args));
- statements.push(stmt(db,`INSERT INTO court_audience_messages(id,thread_id,author_id,author_kind,body,created_at) SELECT ?,?,?,?,?,? WHERE ${GATE}`,mid,entity,user.id,access.privileged?'court':'visitor',text,now,...args));
+ const audience=threadRow&&threadRow.requester_id!==user.id?{kind:'person',id:threadRow.requester_id}:{kind:'officials'};
+ const register=await h.resolveMessageRegister(db,user,audience,now),spoken=await register.write(text),subject=title&&await register.write(title,'title');
+ const statements=[stmt(db,`INSERT INTO court_requests(actor_id,request_id,kind,request_hash,commit_token,entity_id,message_id,created_at) SELECT ?,?,?,?,?,?,?,? WHERE ${access.guard.sql}${extra} AND ${register.guard.sql} ON CONFLICT(actor_id,request_id) DO NOTHING RETURNING *`,user.id,requestId,kind,digest,nonce,entity,mid,now,...access.guard.args,...(id?[id,...scope.args]:[]),...register.guard.args)];
+ if(!id)statements.push(stmt(db,`INSERT INTO court_audience_threads(id,requester_id,title,status,created_at,updated_at) SELECT ?,?,?,'open',?,? WHERE ${GATE}`,entity,user.id,subject,now,now,...args));
+ statements.push(stmt(db,`INSERT INTO court_audience_messages(id,thread_id,author_id,author_kind,body,created_at) SELECT ?,?,?,?,?,? WHERE ${GATE}`,mid,entity,user.id,access.privileged?'court':'visitor',spoken,now,...args));
  statements.push(stmt(db,`UPDATE court_audience_threads SET status=?,updated_at=? WHERE id=? AND ${GATE}`,id&&access.privileged?'answered':'open',now,entity,...args));
  const result=await db.batch(statements);saved=rows(result[0])[0];committed=!!saved;saved=saved||await prior(ctx,requestId,digest);if(!saved){await allowed(ctx,access);h.fail(409,'COURT_CHANGED','謁見の状態が変わりました。最新の内容を確認してください。');}}
  const current=await getThread(ctx,access,saved.entity_id),result=await read(ctx,access,[stmt(db,messageSelect('court_audience_messages')+` WHERE m.id=? AND ${activeAuthor('m.author_id')}`,saved.message_id)]),row=rows(result[0])[0];if(!row)h.fail(409,'CONTENT_CHANGED','この本文は削除されています。最新の内容を確認してください。');

@@ -95,17 +95,40 @@ async function letterSend(ctx,replyId=null){
   const prior=await letterStmt(db,'SELECT * FROM base_letter_requests WHERE actor_id=? AND request_id=?',user.id,requestId).first();
   if(prior){if(prior.request_hash!==digest)h.fail(409,'LETTER_REQUEST_REUSED','この送信番号は別の書状に使用されています。');return letterSentResponse(ctx,prior,true);}
   await h.budget(db,'letter-send:'+user.id,20,60000,now);
-  if(replyId&&!await letterHeader(db,user.id,replyId))h.fail(404,'LETTER_NOT_FOUND','この書状は見つからないか、返信できません。');
-  if(!replyId){const player=await h.getUser(db,target);if(!player||player.ban_active)h.fail(404,'PLAYER_NOT_FOUND','宛先の領主が見つかりません。');}
+  const thread=replyId?await letterHeader(db,user.id,replyId):null;
+  if(replyId&&!thread)h.fail(404,'LETTER_NOT_FOUND','この書状は見つからないか、返信できません。');
+  if(!replyId){
+    const player=await h.getUser(db,target);
+    if(!player||player.ban_active)h.fail(404,'PLAYER_NOT_FOUND','宛先の領主が見つかりません。');
+    if(kind==='guild'&&player.guild_id!==guildId)h.fail(409,'LETTER_TARGET_CHANGED','宛先の所属同盟が変わりました。送信先を選び直してください。');
+  }
+  const letterKind=thread?.kind||kind;
+  const audience=letterKind==='guild'?{kind:'guild',id:thread?.guild_id||guildId,sender:thread?.sender_id||sender}
+    :{kind:'person',id:thread?(thread.user_a===user.id?thread.user_b:thread.user_a):target};
+  const register=await h.resolveMessageRegister(db,user,audience,now),spoken=await register.write(text,'body',1000);
+  guard+=' AND '+register.guard.sql;guardParams.push(...register.guard.args);
   const token=crypto.randomUUID(),messageId=h.uid('lm_'),gate='EXISTS(SELECT 1 FROM base_letter_requests WHERE actor_id=? AND request_id=? AND commit_token=?)',args=[user.id,requestId,token],access=h.accountCommitGuard(user);
   const statements=[letterStmt(db,`INSERT INTO base_letter_requests(actor_id,request_id,request_hash,thread_id,message_id,commit_token,created_at)
     SELECT ?,?,?,?,?,?,? WHERE ${guard} AND ${access.sql} ON CONFLICT(actor_id,request_id) DO NOTHING RETURNING *`,user.id,requestId,digest,threadId,messageId,token,now,...guardParams,...access.args)];
   if(!replyId)statements.push(letterStmt(db,`INSERT INTO base_letter_threads(id,kind,user_a,user_b,sender_id,guild_id,context_player_id,created_at,updated_at)
     SELECT ?,?,?,?,?,?,?,?,? WHERE ${gate} ON CONFLICT(id) DO NOTHING`,threadId,kind,a,b,sender,guildId,contextPlayer,now,now,...args));
-  statements.push(letterStmt(db,`INSERT INTO base_letter_messages(id,thread_id,sender_id,body,created_at) SELECT ?,?,?,?,? WHERE ${gate}`,messageId,threadId,user.id,text,now,...args));
+  statements.push(letterStmt(db,`INSERT INTO base_letter_messages(id,thread_id,sender_id,body,created_at) SELECT ?,?,?,?,? WHERE ${gate}`,messageId,threadId,user.id,spoken,now,...args));
   statements.push(letterStmt(db,`UPDATE base_letter_threads SET last_seq=(SELECT seq FROM base_letter_messages WHERE id=?),updated_at=? WHERE id=? AND ${gate}`,messageId,now,threadId,...args));
   const accepted=letterRows((await db.batch(statements))[0])[0];
-  if(!accepted){await h.requireAccountAccess(db,user);const replay=await letterStmt(db,'SELECT * FROM base_letter_requests WHERE actor_id=? AND request_id=?',user.id,requestId).first();if(replay){if(replay.request_hash!==digest)h.fail(409,'LETTER_REQUEST_REUSED','この送信番号は別の書状に使用されています。');return letterSentResponse(ctx,replay,true);}if(!replyId&&(await h.getUser(db,target))?.ban_active)h.fail(404,'PLAYER_NOT_FOUND','宛先の領主が見つかりません。');if(!replyId&&kind==='guild')h.fail(409,'LETTER_TARGET_CHANGED','宛先の所属同盟が変わりました。送信先を選び直してください。');h.fail(404,'LETTER_NOT_FOUND','この書状は見つからないか、返信できません。');}
+  if(!accepted){
+    await h.requireAccountAccess(db,user);
+    const replay=await letterStmt(db,'SELECT * FROM base_letter_requests WHERE actor_id=? AND request_id=?',user.id,requestId).first();
+    if(replay){
+      if(replay.request_hash!==digest)h.fail(409,'LETTER_REQUEST_REUSED','この送信番号は別の書状に使用されています。');
+      return letterSentResponse(ctx,replay,true);
+    }
+    if(!replyId){
+      const player=await h.getUser(db,target);
+      if(!player||player.ban_active)h.fail(404,'PLAYER_NOT_FOUND','宛先の領主が見つかりません。');
+      if(kind==='guild'&&player.guild_id!==guildId)h.fail(409,'LETTER_TARGET_CHANGED','宛先の所属同盟が変わりました。送信先を選び直してください。');
+    }else if(!await letterHeader(db,user.id,replyId))h.fail(404,'LETTER_NOT_FOUND','この書状は見つからないか、返信できません。');
+    h.fail(409,'MESSAGE_AUDIENCE_CHANGED','宛先の状況が変わりました。もう一度送信してください。');
+  }
   return letterSentResponse(ctx,accepted,false);
 }
 

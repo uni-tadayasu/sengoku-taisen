@@ -10,7 +10,9 @@ const FIELDS=[
  ['targetPlayerId','targetName','targetCourtOffice'],
  ['attackerPlayerId','attackerName','attackerCourtOffice'],
  ['defenderPlayerId','defenderName','defenderCourtOffice'],
- ['actorPlayerId','actorName','actorCourtOffice']
+ ['actorPlayerId','actorName','actorCourtOffice'],
+ ['lordPlayerId','lordName','lordCourtOffice'],
+ ['previousLordPlayerId','previousLordName','previousLordCourtOffice']
 ];
 export const PUBLIC_COURT_TITLES=Object.freeze([
  {title:'参議',minMerit:0},{title:'中納言',minMerit:50},{title:'大納言',minMerit:200},
@@ -29,6 +31,12 @@ export async function resolvePublicCourtOffices(db,payload,now=Date.now()){
   for(const [key,child]of Object.entries(value))if(!SKIP.has(key))visit(child);
  }
  visit(payload);
+ // Only the authenticated shared-base DTO carries verified construction authors.
+ // Keep the personal campaign and other saved identities outside the projection.
+ for(const job of Array.isArray(payload?.staffBase?.jobs)?payload.staffBase.jobs:[]){
+  const author=job?.startedBy;
+  if(typeof author?.name==='string')add(author,author.id,'courtOffice');
+ }
  // Voice rooms intentionally publish session IDs instead of account IDs.
  // Resolve only the visible session's office without adding its private ID.
  if(voiceRefs.length){const sessions=[...new Set(voiceRefs.map(value=>value.sessionId))],mapping=new Map();for(let offset=0;offset<sessions.length;offset+=80){const page=sessions.slice(offset,offset+80),found=await statement(db,`SELECT id,user_id FROM voice_sessions WHERE id IN (${page.map(()=>'?').join(',')}) AND lease_until>?`,...page,now).all();for(const row of found.results||[])mapping.set(row.id,row.user_id);}for(const value of voiceRefs){value.courtOffice=null;if(mapping.has(value.sessionId))add(value,mapping.get(value.sessionId),'courtOffice');}}

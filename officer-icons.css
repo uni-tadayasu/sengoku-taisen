@@ -14,3 +14,14 @@
 .army-slot .officer-kamon { margin-inline: auto; }
 .officer-kamon.is-empty { border-style: dashed; opacity: .7; }
 .officer-kamon.is-empty .icon { width: 52%; height: 52%; }
+
+.avatar.officer-kamon[data-rank] { position: relative; }
+.officer-kamon > .portrait-rank-badge {
+  inset-block-end: -2px;
+  inset-inline: auto -2px;
+  font-size: .71875rem;
+  min-inline-size: 1.4em;
+  padding: .05em .18em;
+  line-height: 1.1;
+  letter-spacing: 0;
+}
