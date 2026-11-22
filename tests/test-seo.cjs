@@ -43,11 +43,13 @@ function jpegSize(image){
 test('one metadata source matches every title, description, canonical and social preview',()=>{
   assert.equal(site.schemaVersion,1);assert.equal(site.origin,'https://www.kasai-solutions-inc.com');assert.deepEqual(Object.keys(site.pages).sort(),['about','guide','home','premium','recovery','share']);assert.equal(site.pages.home.path,'/');assert.equal(site.pages.share.path,'/sengoku-vs/');assert.equal(site.pages.premium.path,'/premium/');
   for(const page of pages){
+    const image = page.socialImage || site.ogImage;
     const meta=tags(page.html,'meta'),links=tags(page.html,'link'),value=(kind,key)=>{const matches=meta.filter(m=>m[kind]===key);assert.equal(matches.length,1,key+' on '+page.path);return matches[0].content;};
     assert.equal(decode(page.html.match(/<title>([^<]+)<\/title>/)[1]),page.title);assert.equal(value('name','description'),page.description);
     assert.equal(links.find(l=>l.rel==='canonical').href,page.url);
-    for(const [name,expected] of [['og:title',page.title],['og:description',page.description],['og:url',page.url],['og:site_name',site.name],['og:locale',site.locale],['og:image',site.origin+'/'+site.ogImage.path],['og:image:secure_url',site.origin+'/'+site.ogImage.path],['og:image:type',site.ogImage.type],['og:image:width',String(site.ogImage.width)],['og:image:height',String(site.ogImage.height)],['og:image:alt',site.ogImage.alt]])assert.equal(value('property',name),expected,name);
-    for(const [name,expected] of [['twitter:card','summary_large_image'],['twitter:title',page.title],['twitter:description',page.description],['twitter:image',site.origin+'/'+site.ogImage.path],['twitter:image:alt',site.ogImage.alt]])assert.equal(value('name',name),expected,name);
+    for(const [name,expected] of [['og:title',page.title],['og:description',page.description],['og:url',page.url],['og:site_name',site.name],['og:locale',site.locale],['og:image',site.origin+'/'+image.path],['og:image:secure_url',site.origin+'/'+image.path],['og:image:type',image.type],['og:image:width',String(image.width)],['og:image:height',String(image.height)],['og:image:alt',image.alt]])assert.equal(value('property',name),expected,name);
+    for(const [name,expected] of [['twitter:card','summary_large_image'],['twitter:title',page.title],['twitter:description',page.description],['twitter:image',site.origin+'/'+image.path],['twitter:image:alt',image.alt]])assert.equal(value('name',name),expected,name);
+    assert.deepEqual(jpegSize(bytes(image.path)), { width: image.width, height: image.height });
   }
 });
 
@@ -82,6 +84,26 @@ test('sitemap dates, install metadata and stable square favicon reflect the same
   const manifest=JSON.parse(read('manifest.webmanifest'));assert.equal(manifest.description,site.pages.home.description);assert.equal(manifest.short_name,site.name);assert.equal(manifest.lang,site.language);assert.equal(new URL(manifest.start_url,site.origin+'/').href,site.origin+'/');assert.equal(new URL(manifest.scope,site.origin+'/').href,site.origin+'/');
   const png=fs.readFileSync(path.join(root,site.favicon.path));assert.equal(png.subarray(1,4).toString(),'PNG');assert.equal(png.readUInt32BE(16),192);assert.equal(png.readUInt32BE(20),192);
   for(const page of pages){const icon=tags(page.html,'link').find(link=>link.rel==='icon'&&link.sizes===site.favicon.sizes);assert(icon,'192px favicon on '+page.path);const url=new URL(icon.href,page.url);assert.equal(url.href,site.origin+'/'+site.favicon.path);assert(!url.search&&!url.hash);assert.equal(icon.type,site.favicon.type);}
+});
+
+test('image sitemap sends crawlers to visible artwork on each canonical page',()=>{
+  const xml=read('image-sitemap.xml');
+  assert(xml.includes('xmlns:image="http://www.google.com/schemas/sitemap-image/1.1"'));
+  assert(read('robots.txt').includes('Sitemap: '+site.origin+'/image-sitemap.xml'));
+  const entries=[...xml.matchAll(/<url><loc>([^<]+)<\/loc>([\s\S]*?)<\/url>/g)];
+  assert.equal(entries.length,pages.length);
+  for(const page of pages){
+    const entry=entries.find(match=>match[1]===page.url);
+    assert(entry,page.url);
+    const links=[...entry[2].matchAll(/<image:loc>([^<]+)<\/image:loc>/g)].map(match=>match[1]);
+    const expected=[page.artwork.path,...(page.additionalImages||[])].map(file=>site.origin+'/'+file);
+    assert.deepEqual(links,expected);
+    const visibleImages=tags(page.html,'img').map(img=>new URL(img.src,page.url).href);
+    for(const url of links){
+      assert(visibleImages.includes(url),'Image must be rendered on '+page.url+': '+url);
+      assert(fs.existsSync(path.join(root,new URL(url).pathname)),'Missing image: '+url);
+    }
+  }
 });
 
 test('social metadata points to the real VS JPEG and the legacy card URL serves the same image',()=>{

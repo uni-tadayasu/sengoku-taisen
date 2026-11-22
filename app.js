@@ -135,7 +135,27 @@
   function perform(result,{close=true,quiet=false}={}){if(!result?.ok){toast(result?.message||'実行できませんでした。',true);return false;}if(close)closeModal();save();render();playNote(659,.075);if(!quiet)toast(result.message);return true;}
   function hasResources(cost){return Object.keys(resNames).every(k=>state().resources[k]>=(cost?.[k]||0));}
   function costHtml(cost){return `<div class="cost">${Object.entries(resNames).filter(([k])=>cost?.[k]>0).map(([k,name])=>`<span data-cost-resource="${k}" data-cost-amount="${cost[k]}" class="${state().resources[k]<cost[k]?'insufficient':''}" title="${name}">${icon(resIcons[k])}${num(cost[k])}</span>`).join('')}${cost?.magatama?`<span class="magatama-cost">${icon('magatama')}${num(cost.magatama)}</span>`:''}${cost?.turns?`<span>${icon('calendar')}${cost.seconds||cost.turns*60}秒（1倍速）</span>`:''}</div>`;}
-  function nav(){const items=[['town','castle','城下町'],['map','map','天下地図'],['field','flag','共通フィールド'],['roaming','swords','野良兵戦'],['covert','eye','派遣部隊'],['court','scroll','京都御所'],['officers','users','武将名鑑'],['crests','flag','家紋帳'],['army','swords','軍団編成'],['research','book','技術研究'],['council','scroll','軍議']];const markup=items.map(([id,ic,name])=>`<button class="nav-item ${currentView===id||(id==='town'&&currentView==='facilities')?'active':''}" data-view="${id}" ${currentView===id?'aria-current="page"':''}>${icon(ic)}<span>${name}</span>${id==='officers'?`<span class="nav-count">${state().officers.length}</span>`:''}</button>`).join('')+`<button class="nav-item" data-action="events" aria-haspopup="dialog">${icon('calendar')}<span>期間限定合戦</span><span class="nav-count" data-events-status hidden></span></button>`+`<button class="nav-item" data-action="progress" aria-haspopup="dialog">${icon('book')}<span>成長手帳</span></button><button class="nav-item" data-action="alliance-strategy" aria-haspopup="dialog">${icon('flag')}<span>同盟作戦</span></button><button class="nav-item" data-action="conquest" aria-haspopup="dialog">${icon('castle')}<span>共有天下統一</span></button><button class="nav-item" data-action="shogunate" aria-haspopup="dialog">${icon('scroll')}<span>幕府の記録</span></button>`;if(markup!==renderedNavigation){patchHTML($('#navigation'),markup);renderedNavigation=markup;}}
+  const navSections = [
+    ['城と内政', [['town','castle','城下町'], ['facilities','castle','城下普請帳'], ['research','book','技術研究'], ['court','scroll','京都御所']]],
+    ['合戦と天下', [['map','map','天下地図'], ['field','flag','共通フィールド'], ['roaming','swords','野良兵戦'], ['covert','eye','派遣部隊']]],
+    ['武将と軍団', [['officers','users','武将名鑑'], ['army','swords','軍団編成'], ['crests','flag','家紋帳']]],
+    ['軍議と記録', [['council','scroll','軍議'], ['progress','book','成長手帳','dialog'], ['shogunate','scroll','幕府の記録','dialog']]],
+    ['同盟と合戦', [['events','calendar','期間限定合戦','dialog'], ['alliance-strategy','flag','同盟作戦','dialog'], ['conquest','castle','共有天下統一','dialog']]]
+  ];
+  function nav(){
+    const markup=navSections.map(([title,items])=>{
+      const links=items.map(([id,symbol,label,kind])=>{
+        const target=kind==='dialog'?`data-action="${id}" aria-haspopup="dialog"`:`data-view="${id}"`;
+        const active=kind!=='dialog' && currentView===id && !startPending;
+        let count='';
+        if(id==='officers')count=`<span class="nav-count">${state().officers.length}</span>`;
+        if(id==='events')count='<span class="nav-count" data-events-status hidden></span>';
+        return `<button class="nav-item${active?' active':''}" ${target}${active?' aria-current="page"':''}>${icon(symbol)}<span>${label}</span>${count}</button>`;
+      }).join('');
+      return `<span class="nav-section-name">${title}</span>${links}`;
+    }).join('');
+    if(markup!==renderedNavigation){patchHTML($('#navigation'),markup);renderedNavigation=markup;}
+  }
   function clanCrest(name,size=36){name=name==='德川家'?'徳川家':name;return window.SengokuKamon?.render(name,{size,className:'clan-kamon'})||`<span class="mon" title="${esc(name)}">${esc(name.slice(0,1))}</span>`;}
   function officerCrest(o){if(!o)return `<span class="avatar officer-kamon is-empty" role="img" aria-label="武将未任命">${icon('plus')}</span>`;const crest=window.SengokuKamon?.render(o.clan,{size:48,className:'officer-house-kamon'})||'<img src="assets/kamon/unaffiliated.svg" alt="" width="48" height="48">';return `<span class="avatar officer-kamon" role="img" aria-label="${esc(o.name==='德川家康'?'徳川家康':o.name)}・${esc(o.clan==='德川家'?'徳川家':o.clan)}の家紋" title="${esc(o.name==='德川家康'?'徳川家康':o.name)} · ${esc(o.clan==='德川家'?'徳川家':o.clan)} · ${esc(o.rank)}"><span aria-hidden="true">${crest}</span></span>`;}
   function pageControls(action,page,pages,label=''){return `<div class="pagination"><button class="button small" data-action="${action}" data-delta="-1" ${page<=1?'disabled':''}>前の頁</button><span>${label?`${esc(label)} · `:''}${page} / ${pages}</span><button class="button small" data-action="${action}" data-delta="1" ${page>=pages?'disabled':''}>次の頁</button></div>`;}

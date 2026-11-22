@@ -7,7 +7,7 @@ const release = JSON.parse(fs.readFileSync(require('node:path').join(__dirname, 
 const current = 'sengoku-taisen-v' + release;
 const origin = 'https://www.kasai-solutions-inc.com';
 
-function fixture({offline = false, failInstall = false} = {}) {
+function fixture({offline = false, failInstall = false, cacheControl = ''} = {}) {
   const listeners = {}, deleted = [], calls = [], records = new Map();
   const key = request => typeof request === 'string' ? new URL(request, origin + '/').href : request.url;
   for (const name of ['pachi-shell-v1', 'pachi-art-v1', 'pachi-fonts-v1', 'sengoku-taisen-v-old', 'unrelated-records', current]) records.set(name, new Map());
@@ -29,7 +29,7 @@ function fixture({offline = false, failInstall = false} = {}) {
     match() { throw new Error('Cross-game cache lookup is forbidden'); }
   };
   const self = {location: {origin}, clients: {async claim() { calls.push(['claim']); }}, async skipWaiting() { calls.push(['skip']); }, addEventListener(name, callback) { listeners[name] = callback; }};
-  vm.runInNewContext(source, {self, caches, URL, Promise, Response: {error: () => ({error: true})}, fetch: async () => { if (offline) throw new Error('offline'); return {ok: true, type: 'basic', brand: 'network', clone() { return {...this}; }}; }});
+  vm.runInNewContext(source, {self, caches, URL, Promise, Response: {error: () => ({error: true})}, fetch: async () => { if (offline) throw new Error('offline'); return {ok: true, type: 'basic', brand: 'network', headers: {get: () => cacheControl}, clone() { return {...this}; }}; }});
   async function dispatch(name, request) {
     let response; const pending = [];
     listeners[name]({request, waitUntil(promise) { pending.push(promise); }, respondWith(promise) { response = promise; }});
@@ -44,7 +44,23 @@ function fixture({offline = false, failInstall = false} = {}) {
   online.records.get(current).delete(origin + '/assets/icon-192.png');
   assert.equal((await online.dispatch('fetch', {method: 'GET', url: origin + '/assets/icon-192.png'})).brand, 'network');
   assert.equal(await online.dispatch('fetch', {method: 'GET', url: origin + '/api/v1/premium'}), undefined);
+  for (const request of [
+    {url: origin + '/private/document'},
+    {url: origin + '/assets/icon-192.png', headers: new Headers({Authorization: 'Bearer fixture'})},
+    {url: origin + '/assets/icon-192.png', headers: new Headers({Range: 'bytes=0-10'})},
+    {url: origin + '/assets/icon-192.png', cache: 'no-store'}
+  ]) assert.equal(await online.dispatch('fetch', {method: 'GET', ...request}), undefined);
+  const returnURL = origin + '/?notice=1';
+  assert.equal((await online.dispatch('fetch', {method: 'GET', url: returnURL, mode: 'navigate'})).brand, 'network');
+  assert(!online.records.get(current).has(returnURL));
+  const uncached = origin + '/assets/new-scene.webp';
+  for (const policy of ['private, max-age=300', 'no-store', 'no-cache']) {
+    const controlled = fixture({cacheControl: policy});
+    await controlled.dispatch('fetch', {method: 'GET', url: uncached});
+    assert(!controlled.records.get(current).has(uncached));
+  }
   const offline = fixture({offline: true});
+  assert.equal((await offline.dispatch('fetch', {method: 'GET', url: returnURL, mode: 'navigate'})).brand, 'sengoku');
   assert.equal((await offline.dispatch('fetch', {method: 'GET', url: origin + '/', mode: 'navigate'})).brand, 'sengoku');
   await online.dispatch('activate');
   assert.deepEqual(online.deleted.sort(), ['pachi-art-v1', 'pachi-fonts-v1', 'pachi-shell-v1', 'sengoku-taisen-v-old'].sort());

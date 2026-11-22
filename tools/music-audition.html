@@ -2,26 +2,79 @@
 <html lang="ja">
 <head>
   <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; object-src 'none'; frame-src 'none'; form-action 'none'; script-src 'self' file:; script-src-attr 'none'; style-src 'self' file: 'unsafe-inline'; font-src 'self' file:; img-src 'self' file: data: blob:; media-src 'self' file: blob: mediastream:; manifest-src 'self' file:; worker-src 'self'; connect-src 'self' file:">
+  <meta name="referrer" content="no-referrer">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex,nofollow">
-  <title>戦国VS · 音楽の試聴と確認</title>
+  <title>戦国VS 音楽帳｜16曲のオリジナルBGMを試聴</title>
+  <link rel="icon" href="../assets/branding/sengoku-vs-favicon-32-20261121.png">
   <style>
-    :root{color-scheme:dark;font-family:system-ui,sans-serif;background:#11150f;color:#efe8d9}body{max-width:780px;margin:40px auto;padding:0 20px;line-height:1.8}h1{font-family:serif;font-size:28px;color:#dec080;margin-bottom:8px}p{color:#bec6b5}label{display:block;margin-top:20px}select,button{font:inherit;min-height:46px;padding:8px 12px;border:1px solid #837047;border-radius:5px;background:#20261c;color:#f2e8d2}select{width:100%}button{margin-top:22px;cursor:pointer;background:#493a20}button:disabled{opacity:.5}audio{display:block;width:100%;margin-top:20px}a{color:#e5c27d}progress{display:block;width:100%;margin:20px 0;height:10px;accent-color:#d7b473}pre{white-space:pre-wrap;font-size:13px;color:#bec6b5}fieldset{border:1px solid #65573c;border-radius:6px;margin-top:24px;padding:20px}small{color:#aeb6a8}
+    :root{color-scheme:dark;--paper:#f5efe0;--muted:#c4c8ca;--line:#394548;--gold:#e1bf7e;--ink:#111b21;font-family:system-ui,"Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif;color:var(--paper);background:var(--ink)}
+    *{box-sizing:border-box}
+    body{margin:0;line-height:1.65}
+    [hidden]{display:none!important}
+    .mast,main,footer{width:min(70rem,100% - 2.5rem);margin:auto}
+    .mast{display:flex;align-items:center;justify-content:space-between;gap:.8rem;min-height:4.2rem;border-bottom:1px solid var(--line)}
+    a{color:var(--gold);text-underline-offset:.22em}
+    .brand{display:flex;align-items:center;gap:.7rem;color:var(--paper);text-decoration:none;font:bold 1.15rem "Yu Mincho","Hiragino Mincho ProN",serif;letter-spacing:.12em}
+    .brand img{width:2rem;height:2rem}
+    .back,.save{display:inline-flex;align-items:center;min-height:2.75rem;font-size:.94rem}
+    main{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.05fr);margin-block:clamp(1.25rem,5vw,4rem);border:1px solid var(--line);background:#17242b}
+    .cover{position:relative;display:flex;align-items:flex-end;isolation:isolate;min-height:29rem;padding:clamp(1.5rem,4vw,3.5rem);overflow:hidden;background:#222e33}
+    .cover img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:60% center;z-index:-2}
+    .cover:before{content:"";position:absolute;inset:0;background:linear-gradient(0deg,rgba(8,18,23,.97) 0%,rgba(8,18,23,.62) 35%,transparent 72%);z-index:-1}
+    h1,h2{font-family:"Yu Mincho","Hiragino Mincho ProN","Noto Serif JP",serif;margin:0;line-height:1.25;letter-spacing:.055em}
+    h1{font-size:clamp(2.6rem,5vw,4.5rem);text-shadow:0 2px 8px #0a1115}
+    h2{font-size:clamp(1.65rem,3vw,2.5rem)}
+    .cover p{margin:.65rem 0 0;color:#eee5d3}
+    .player{min-width:0;padding:clamp(1.3rem,3.6vw,3rem)}
+    .selected{border-bottom:1px solid var(--line);padding-bottom:1rem;margin-bottom:1.3rem}
+    .selected small{display:block;color:var(--gold);font-size:.9rem;margin-bottom:.45rem}
+    .selected p{color:var(--muted);margin:.75rem 0 0}
+    .fields{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:1rem}
+    label{display:block;font-size:.94rem;font-weight:650}
+    select,button{font:inherit;border-radius:.28rem}
+    select{display:block;appearance:none;width:100%;margin-top:.3rem;min-height:3rem;padding:.48rem 1.9rem .48rem .72rem;color:var(--paper);border:1px solid #667378;background-color:#111c22;background-image:linear-gradient(45deg,transparent 50%,#d8c6a1 50%),linear-gradient(135deg,#d8c6a1 50%,transparent 50%);background-position:calc(100% - 14px) center,calc(100% - 9px) center;background-size:5px 5px;background-repeat:no-repeat}
+    button{display:flex;align-items:center;justify-content:center;gap:.7rem;min-height:3.1rem;width:100%;margin:1.35rem 0 .5rem;padding:.58rem 1rem;background:#edd19a;color:#252019;font-weight:750;border:1px solid #ffe3b1;cursor:pointer}
+    button:before{content:"";border-block:.35rem solid transparent;border-left:.56rem solid currentColor}
+    button:hover:enabled{background:#ffe5b6}
+    button:disabled{background:#b4a584;cursor:wait}
+    :focus-visible{outline:3px solid #f9c75d;outline-offset:3px}
+    progress,audio{display:block;width:100%;margin-block:1rem;accent-color:var(--gold)}
+    progress{height:.55rem}
+    #status{color:var(--muted);font-size:.94rem;margin:.6rem 0}
+    details{border-top:1px solid var(--line);margin-top:1.25rem}
+    summary{cursor:pointer;padding:.72rem 0;color:var(--muted)}
+    pre{white-space:pre-wrap;overflow-wrap:anywhere;color:var(--muted);font-size:.87rem;line-height:1.6}
+    footer{color:var(--muted);font-size:.88rem;padding-bottom:2rem}
+    @media(max-width:47rem){main{grid-template-columns:1fr}.cover{min-height:clamp(11rem,37vw,17rem)}.cover img{object-position:center 48%}}
+    @media(max-width:32rem){.mast,main,footer{width:calc(100% - 1.5rem)}.player{padding:1.15rem}.fields{grid-template-columns:1fr;gap:.75rem}.mast{min-height:3.6rem}}
   </style>
 </head>
 <body>
-  <h1>戦国VS · 音楽の試聴と確認</h1>
-  <p>本体と同じ楽譜・音源・残響を使い、この端末内で試聴用の音声を作ります。ゲームの保存やオンラインデータには接続しません。</p>
-  <label for="track">試聴する曲</label><select id="track"></select>
-  <label for="excerpt">長さ</label><select id="excerpt"><option value="climax">大合奏の抜粋（約16〜25秒）</option><option value="full">全曲（約1〜2分）</option></select>
-  <button id="render" type="button">試聴用の音声を作る</button>
-  <progress id="progress" max="100" value="0" hidden></progress>
-  <p id="status" role="status">曲と長さを選んでください。音声の作成が終わると再生できます。</p>
-  <audio id="audio" controls preload="metadata" hidden></audio>
-  <p><a id="download" hidden>試聴音声をWAVで保存</a></p>
-  <fieldset><legend>確認結果</legend><pre id="metrics">まだ作成していません。</pre></fieldset>
-  <p><small>このページは制作時の試聴用です。音源は外部録音ではなく、合成した和楽器・弦・金管・合唱風の音色です。音声は音楽帳の音量100相当で作成し、再生プレイヤーの音量は30%から始めます。ゲームの初期音量10は変更しません。</small></p>
-  <script src="../music.js"></script>
-  <script src="music-audition.js"></script>
+  <header class="mast"><a class="brand" href="../"><img src="../assets/branding/sengoku-vs-favicon-32-20261121.png" alt="" width="32" height="32">戦国VS</a><a class="back" href="../">ゲームに戻る</a></header>
+  <main>
+    <header class="cover">
+      <img src="../assets/campaign/archive.webp" alt="" width="1200" height="500">
+      <div><h1>戦国の音楽帳</h1><p>城下、軍議、合戦を彩る全16曲</p></div>
+    </header>
+    <section class="player" aria-labelledby="track-name">
+      <div class="selected" aria-live="polite" aria-atomic="true"><small id="track-meta"></small><h2 id="track-name">曲を選ぶ</h2><p id="track-description"></p></div>
+      <div class="fields">
+        <label for="track">曲目<select id="track"></select></label>
+        <label for="excerpt">再生範囲<select id="excerpt"><option value="climax">聴きどころ</option><option value="full">全曲</option></select></label>
+      </div>
+      <button id="render" type="button">この曲を聴く</button>
+      <progress id="progress" max="100" value="0" hidden aria-label="音声の準備"></progress>
+      <p id="status" role="status"></p>
+      <audio id="audio" controls preload="metadata" hidden aria-label="選んだ曲の再生"></audio>
+      <a id="download" class="save" hidden>WAVで保存</a>
+      <details><summary>音声データ・計測結果</summary><pre id="metrics">再生の準備が終わると表示されます。</pre></details>
+      <noscript><p>試聴にはJavaScriptを有効にしてください。</p></noscript>
+    </section>
+  </main>
+  <footer>© KASAI SOLUTIONS</footer>
+  <script src="../music.js?v=4.7.0-20261122"></script>
+  <script src="music-audition.js?v=4.7.0-20261122"></script>
 </body>
 </html>

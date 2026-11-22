@@ -5,6 +5,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const renderSharePage = require('./share-page.cjs');
+const { pageSecurity } = require('./page-security.cjs');
 const renderPremiumPage = require('./premium-page.cjs');
 const root = path.resolve(__dirname, '..');
 const site = JSON.parse(fs.readFileSync(path.join(root, 'site-metadata.json'), 'utf8'));
@@ -35,7 +36,7 @@ function paths(file) {
 }
 
 function metadataEntries(key) {
-  const page = site.pages[key], image = site.ogImage;
+  const page = site.pages[key], image = page.socialImage || site.ogImage;
   return [
     ['name', 'author', site.publisher], ['name', 'copyright', site.publisher],
     ['name', 'application-name', site.name], ['name', 'apple-mobile-web-app-title', site.name], ['name', 'description', page.description],
@@ -69,16 +70,16 @@ function withBrandLinks(html, resolve = value => value) {
   });
 }
 
-function structuredData(key, breadcrumbItems = [], pageImage = site.ogImage.path) {
+function structuredData(key, breadcrumbItems = []) {
   const url = canonical(key), home = canonical('home'), page = site.pages[key];
   const organizationId = `${home}#organization`, websiteId = `${home}#website`, gameId = `${home}#game`;
   const webPage = {
     '@type':'WebPage', '@id':`${url}#webpage`, url, name:page.title,
     description:page.description, inLanguage:site.language, dateModified:page.dateModified,
     isPartOf:{'@id':websiteId}, publisher:{'@id':organizationId},
-    about:{'@id':gameId}, primaryImageOfPage:{'@type':'ImageObject',url:absolute(pageImage)}
+    about:{'@id':gameId}, primaryImageOfPage:{'@type':'ImageObject',url:absolute(page.artwork.path),caption:page.artwork.alt}
   };
-  if (['home', 'share', 'premium', 'about'].includes(key)) webPage.mainEntity = {'@id':gameId};
+  if (['home', 'share', 'about'].includes(key)) webPage.mainEntity = {'@id':gameId};
   const graph = [
     {'@type':'Organization','@id':organizationId,name:site.publisher,url:home,logo:{'@type':'ImageObject',url:absolute(site.logo.path),width:site.logo.width,height:site.logo.height}},
     {'@type':'WebSite','@id':websiteId,name:site.name,alternateName:site.alternateName,url:home,inLanguage:site.language,publisher:{'@id':organizationId}},
@@ -107,9 +108,9 @@ function quickTopics(p) {
 function guideContent(p) {
   return [
     section('first-steps', '初めての領主へ', '開始城を選ぶ・最初の進め方', `
-      <p class="lead-paragraph">「いざ、戦国へ」から始まる、あなただけの戦記。初めて遊ぶときは、はじまりの城を選びます。年月は、ほかのプレイヤーと同じ世界時計で動きます。</p>
+      <p class="lead-paragraph">初めて遊ぶときは、タイトルの「城を選んで始める」から、はじまりの城を選びます。年月は、ほかのプレイヤーと同じ世界時計で動きます。</p>
       ${steps([
-        ['はじまりの城を選ぶ', '初回の「いざ、戦国へ」で「はじまりの城を選ぶ」を開き、家・難易度・開始城を選びます。通常の開始城は、大都市拠点（江戸・京都御所・二条・大坂・名古屋）を除く124城です。接続中は空いている城の領主として、または領主のいる城の家臣として参加できます。すべての領主枠が埋まっていても家臣として始められます。駿府城も通常城として選べます。'],
+        ['はじまりの城を選ぶ', '「城を選んで始める」で城の選択画面を開き、家・難易度・開始城を選びます。通常の開始城は、大都市拠点（江戸・京都御所・二条・大坂・名古屋）を除く124城です。接続中は空いている城の領主として、または領主のいる城の家臣として参加できます。すべての領主枠が埋まっていても家臣として始められます。駿府城も通常城として選べます。'],
         ['城下町の生産を整える', '田畑で兵糧、商業施設で金を生産します。木材と石材も集め、施設を選んで普請を進めます。「全64施設を管理」では、軍備・研究・外交の施設まで確認できます。'],
         ['武将を迎えて役目を任せる', '武将を登用・招集し、最大3名を軍団に編成します。内政を支える奉行も任命できます。同じ武将を軍団へ重複して編成することはできません。'],
         ['天下地図で次の一城を選ぶ', '自領に隣接する城を選び、偵察や外交を活用します。出陣するときは兵数・戦法・予測を確認しましょう。城を増やすほど、守備や兵糧の管理も大切になります。']
@@ -617,44 +618,36 @@ function aboutContent(p) {
 const pages = [
   {
     ...site.pages.share,
-    file: 'sengoku-vs/index.html', slug: 'sengoku-vs', key: 'share', label: '戦国VSの紹介',
-    image: 'assets/title-sengoku-vs.webp'
+    file: 'sengoku-vs/index.html', slug: 'sengoku-vs', key: 'share', label: '戦国VSの紹介'
   },
   {
     ...site.pages.premium,
-    file: 'premium/index.html', slug: 'premium', key: 'premium', label: '有料版・支援',
-    image: 'assets/castle-town.webp'
+    file: 'premium/index.html', slug: 'premium', key: 'premium', label: '有料版・支援'
   },
   {
     ...site.pages.guide,
     file: 'guide/index.html', slug: 'guide', key: 'guide', label: '遊び方',
-    eyebrow: 'KASAI SOLUTIONSのゲームガイド', heading: '戦国VSの<br><span>遊び方</span>',
+    eyebrow: '公式ゲームガイド', heading: '戦国VSの遊び方',
     lead: 'はじめての一城から、軍師と目指す天下統一まで。端末ごとの操作、城の育成、合戦の報酬、幕府の開設、データの引き継ぎを、知りたいことから確認できます。',
-    image: 'assets/castle-town.webp', imageWidth: 1536, imageHeight: 1024, imageAlt: '山々と川に囲まれ、田畑や商家が広がる戦国VSの城下町イラスト', imageCaption: '城下町から始まる、あなたの領国。', imageTag: '城と群雄の戦記',
     heroAction: 'ゲームを開く', secondary: ['データ復元の案内', 'guide/data-recovery'],
-    notes: [['遊ぶ場所', 'PC・スマホ・タブレットのブラウザ'], ['世界の時間', '全プレイヤーで共通']],
     toc: [['first-steps','城選び・初めての進め方'],['device-controls','PC・スマホ・タブレットの操作'],['next-hints','次の一手・上へ戻る'],['castle-upgrades','本拠・城郭のレベル上げ'],['resources','城下町と資源'],['construction','施設Lv・連続増築'],['officers','武将・軍団・勾玉'],['maps','二つの地図と外交'],['field-battles','報酬戦・占領戦・襲撃'],['residency','城の領主・家臣と継承'],['marching','出陣から到着までの移動時間'],['branches','支拠点・攻略順・修復'],['player-evaluation','総合評価・位階の称号'],['court','京都御所・参内と謁見'],['world-clock','共通時間・拠点リセット'],['community','同盟・接続一覧・役職'],['voice-chat','同盟の音声通話'],['trade','兵士・資産の輸出入'],['roaming','野良兵士とのCPU戦'],['covert','派遣部隊・偵察・駐留・反撃'],['letters','領主・同盟への書状'],['system-mail','勝敗・移転のシステムメール'],['strategy','軍師AI・自動進軍'],['timed-events','期間限定合戦・毎戦報酬'],['shogunate','天下統一・幕府の開設'],['walking','ウォーキング報酬'],['save-and-sync','保存と端末同期'],['questions','よくある質問']],
     content: guideContent, closingTitle: 'さあ、城下町へ。', closingText: '最初の普請を選び、あなたの一手から戦記を始めましょう。'
   },
   {
     ...site.pages.recovery,
     file: 'guide/data-recovery/index.html', slug: 'guide/data-recovery', key: 'recovery', label: 'データ復元',
-    eyebrow: '同じ領主で続きを遊ぶ', heading: '戦国VSの<br><span>引き継ぎ・復元</span>',
+    eyebrow: 'データ復元ガイド', heading: '領主の引き継ぎ',
     lead: '端末を変えても、サイトのURLが変わっても。以前の領主と積み重ねた進行へ戻るために、手元のデータに合う手順を選びます。',
-    image: 'assets/castle-town.webp', imageWidth: 1536, imageHeight: 1024, imageAlt: '城と町、田畑が一体になった戦国VSの領国イラスト', imageCaption: '城・武将・資源の記録を、次の端末へ。', imageTag: '戦記を引き継ぐ',
     heroAction: 'ゲームを開いて引き継ぐ', secondary: ['手元のデータから選ぶ', '#choose'],
-    notes: [['本人の確認', '領主データ・接続コード'], ['進行の復元', 'クラウド保存・ゲームセーブ']],
     toc: [['choose','手元のデータから選ぶ'],['site-address','URL変更と保存先'],['old-device','接続コードで引き継ぐ'],['complete-backup','統合バックアップ'],['old-files','旧形式の2ファイル'],['cloud-priority','クラウドと復元元'],['relocated-home','本拠が移った場合'],['identity-only','領主データだけの場合'],['redirect','旧URLが転送される場合'],['no-access','復元できる範囲']],
     content: recoveryContent, closingTitle: '以前の領主で、再接続する。', closingText: 'ゲームを開き、「交流」から「引き継ぎ」を選んでください。'
   },
   {
     ...site.pages.about,
     file: 'about/index.html', slug: 'about', key: 'about', label: 'ゲーム概要',
-    eyebrow: 'KASAI SOLUTIONSの戦国ブラウザゲーム', heading: '戦国VSとは<br><span>城と群雄の戦記</span>',
-    lead: '選んだ一城を育て、武将を迎え、軍師とともに天下へ。城育成と合戦、同盟の交流、天下統一を記念する幕府開設まで、戦国VSの遊びを紹介します。',
-    image: 'assets/title-sengoku-vs.webp', imageWidth: 1774, imageHeight: 887, imageAlt: '二人の武将と日本の城郭を描いた戦国VSのタイトルイラスト', imageCaption: '戦国VS — 城と群雄の戦記', imageTag: 'KASAI SOLUTIONS', wide: true,
-    heroAction: 'ゲームを開く', secondary: ['遊び方を読む', 'guide'],
-    notes: [['ゲームの基本', '一城からの内政・武将編成・戦役'], ['領主同士の交流', '同盟・書状・端末同期']],
+    eyebrow: '作品資料', heading: '戦国VSの世界',
+    lead: '256人の武将と、城をめぐる戦国の世へ。戦国VSの世界観、城と人物の収録内容、地図や家紋を描くために使った資料をまとめました。',
+    heroAction: 'ゲームを開く', secondary: ['地図の出典を見る', '#geography'],
     toc: [['world','戦国VSとは'],['gameplay','城下町・武将・領主交流'],['strategy-and-walking','軍師AI・ウォーキング'],['events-and-shogunate','合戦報酬・天下統一・幕府'],['collection','収録内容と成長段階'],['artwork','イラストと外観'],['geography','地図の資料と出典'],['crests','家紋と識別章'],['copyright','著作権・引き継ぎ']],
     content: aboutContent, closingTitle: '一城の志を、ここから。', closingText: '城下町の営みと、群雄たちの戦記をブラウザで。'
   }
@@ -666,17 +659,24 @@ function render(page) {
   const breadcrumbItems = [{name:site.name,url:canonical('home'),href:p.dir('')}];
   if (page.key === 'recovery') breadcrumbItems.push({name:'遊び方',url:canonical('guide'),href:p.dir('guide')});
   breadcrumbItems.push({name:page.label,url});
-  const jsonld = structuredData(page.key, breadcrumbItems, page.image);
+  const jsonld = structuredData(page.key, breadcrumbItems);
+  const nav = pages.map(({key, label, slug}) =>
+    `<a href="${p.dir(slug)}"${page.key === key ? ' aria-current="page"' : ''}>${esc(label)}</a>`
+  ).join('');
+  const header = `<header class="site-header"><div class="site-header-inner page-width">
+    <a class="site-brand" href="${p.dir('')}" aria-label="戦国VS ゲームのトップへ"><img src="${p.file(site.favicon.path)}" alt="" width="44" height="44"><span><b>戦国VS</b><small>SENGOKU VS</small></span></a>
+    <button class="public-nav-toggle" type="button" hidden aria-expanded="false" aria-controls="public-site-nav">メニュー</button>
+    <nav class="header-navigation" id="public-site-nav" aria-label="サイトの案内">${nav}<a class="nav-play" href="${p.dir('')}">ゲームを開く</a></nav>
+  </div></header>`;
+  const mobileArt = page.artwork.mobile ? `<source media="(max-width: 660px)" srcset="${p.file(page.artwork.mobile)}">` : '';
+  const artwork = `<picture class="chapter-art">${mobileArt}<img src="${p.file(page.artwork.path)}" alt="${esc(page.artwork.alt)}" width="${page.artwork.width}" height="${page.artwork.height}" fetchpriority="high" decoding="async"></picture>`;
   if (['share', 'premium'].includes(page.key)) return (page.key === 'share' ? renderSharePage : renderPremiumPage)({
-    site,
+    site, header, artwork,
     metadataHtml: metadataEntries(page.key).map(metaTag).join('\n  ') + `\n  <link rel="canonical" href="${url}">`,
     jsonLd: jsonScript(jsonld),
     iconHtml: brandLinks(p.file).join('\n  ')
   });
-  const nav = pages.map(({key,label,slug})=>`<a href="${p.dir(slug)}"${page.key===key?' aria-current="page"':''}>${label}</a>`).join('');
   const secondaryHref = page.secondary[1].startsWith('#') ? page.secondary[1] : p.dir(page.secondary[1]);
-  const imageFigure = `<figure class="hero-figure${page.wide?' hero-figure--wide':''}"><div class="hero-image-frame"><img src="${p.file(page.image)}" alt="${esc(page.imageAlt)}" width="${page.imageWidth}" height="${page.imageHeight}" fetchpriority="high" decoding="async"></div><figcaption><span>${page.imageCaption}</span><b>${page.imageTag}</b></figcaption><dl class="hero-note">${page.notes.map(([title,text])=>`<div><dt>${title}</dt><dd>${text}</dd></div>`).join('')}</dl></figure>`;
-  const heroAside = page.key === 'guide' ? quickTopics(p) : imageFigure;
   return `<!doctype html>
 <html lang="${esc(site.language)}">
 <head>
@@ -684,7 +684,7 @@ function render(page) {
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>${esc(page.title)}</title>
   ${metadataEntries(page.key).map(metaTag).join('\n  ')}
-  <meta name="theme-color" content="#0c141f">
+  <meta name="theme-color" content="#111b25">
   <link rel="canonical" href="${url}">
   ${brandLinks(p.file).join('\n  ')}
   <link rel="stylesheet" href="${p.file('guide.css')}?v=${release}">
@@ -701,10 +701,11 @@ function render(page) {
 </head>
 <body class="public-luxury" data-page="${page.key}">
   <a class="skip-link" href="#content">本文へ移動</a>
-  <header class="site-header"><div class="site-header-inner page-width"><a class="site-brand" href="${p.dir('')}" aria-label="戦国VS ゲームのトップへ"><img src="${p.file(site.favicon.path)}" alt="" width="44" height="44"><span><b>戦国VS</b><small>城と群雄の戦記</small></span></a><nav class="header-navigation" aria-label="サイトの案内">${nav}<a class="nav-play" href="${p.dir('')}">ゲームを開く</a></nav></div></header>
+  ${header}
   <main id="content" class="page-width">
     <nav aria-label="パンくず"><ol class="breadcrumbs">${breadcrumbItems.map((item,i)=>`<li>${i===breadcrumbItems.length-1?`<span aria-current="page">${item.name}</span>`:`<a href="${item.href}">${item.name}</a>`}</li>`).join('')}</ol></nav>
-    <section class="hero" aria-labelledby="page-title"><div class="hero-copy"><div class="public-hero-seal" aria-hidden="true"><span>${({guide:'指南',recovery:'継承',about:'戦記'})[page.key]}</span></div><p class="eyebrow">${page.eyebrow}</p><h1 id="page-title">${page.heading}</h1><p class="hero-lead">${page.lead}</p><div class="hero-actions"><a class="action-link" href="${p.dir('')}">${page.heroAction}</a><a class="text-link" href="${secondaryHref}">${page.secondary[0]}</a></div></div>${heroAside}</section>
+    <section class="hero chapter-hero" aria-labelledby="page-title">${artwork}<div class="hero-copy"><p class="eyebrow">${page.eyebrow}</p><h1 id="page-title">${page.heading}</h1><p class="hero-lead">${page.lead}</p><div class="hero-actions"><a class="action-link" href="${p.dir('')}">${page.heroAction}</a><a class="text-link" href="${secondaryHref}">${page.secondary[0]}</a></div></div></section>
+${page.key === 'guide' ? quickTopics(p) : ''}
     <div class="reading-layout"><aside id="page-contents" class="toc" tabindex="-1"><nav aria-label="このページの目次"><p class="toc-title">このページの案内</p><details class="toc-chapters"><summary>すべての項目 <span>${page.toc.length}項目</span></summary><ul>${page.toc.map(([id,label])=>`<li><a href="#${id}">${label}</a></li>`).join('')}</ul></details></nav><div class="toc-foot"><p>${esc(site.publisher)}のゲームガイド。</p><a href="${p.dir('')}">戦国VSを開く</a></div></aside><article class="article" aria-label="${page.label}の本文"><p class="article-updated">内容更新：<time datetime="${page.dateModified}">${modifiedLabel(page.dateModified)}</time></p>${page.content(p)}</article></div>
     <section class="closing"><div><h2>${page.closingTitle}</h2><p>${page.closingText}</p></div><a class="action-link" href="${p.dir('')}">ゲームを開く</a></section>
   </main>
@@ -767,7 +768,7 @@ function updateHome() {
   if (!hasGraph) html = html.replace('</head>', `  ${graph}\n</head>`);
   // Keep the title concise while exposing help and recovery without entering the game.
   html = html.replace(/(<p class="launch-introduction">)[\s\S]*?(<\/p>)/, (_, before, after) => before + site.launchIntroduction.map(esc).join('<br>') + after);
-  const launchGuide = '<nav class="launch-guide-nav" aria-label="遊び方と引き継ぎ"><a href="guide/">遊び方</a><a href="guide/data-recovery/">引き継ぎ・復元</a><a href="sengoku-vs/">ゲーム紹介</a></nav>';
+  const launchGuide = '<nav class="launch-guide-nav" aria-label="戦国VSの案内"><a href="sengoku-vs/"><img src="assets/campaign/war.webp" width="120" height="70" alt=""><span><strong>ゲーム紹介</strong><small>内政から天下統一まで</small></span></a><a href="guide/"><img src="assets/campaign/town.webp" width="120" height="70" alt=""><span><strong>遊び方</strong><small>城主のための操作ガイド</small></span></a><a href="guide/data-recovery/"><img src="assets/campaign/archive.webp" width="120" height="70" alt=""><span><strong>引き継ぎ・復元</strong><small>セーブデータの移行</small></span></a></nav>';
   // Keep an authored title composition intact: the story owns its guide nav,
   // and the subtitle's intentional line break is not a metadata replacement.
   let hasLaunchGuide = false;
@@ -819,6 +820,20 @@ outputs.set('index.html', updateHome());
 outputs.set('404.html', updateNotFound());
 outputs.set('manifest.webmanifest', updateManifest());
 outputs.set('sitemap.xml', sitemap());
+const imageEntries = Object.entries(site.pages).map(([key, page]) => {
+  const locations = [page.artwork.path, ...(page.additionalImages || [])];
+  return `  <url><loc>${esc(canonical(key))}</loc>\n` + locations.map(file =>
+    `    <image:image><image:loc>${esc(absolute(file))}</image:loc></image:image>`
+  ).join('\n') + '\n  </url>';
+});
+outputs.set('image-sitemap.xml', '<?xml version="1.0" encoding="UTF-8"?>\n' +
+  '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">\n' +
+  imageEntries.join('\n') + '\n</urlset>\n');
+outputs.set('tools/music-audition.html', fs.readFileSync(path.join(root, 'tools/music-audition.html'), 'utf8'));
+const securePage = pageSecurity(fs.readFileSync(path.join(root, 'config.js'), 'utf8'));
+for (const [name, html] of outputs) {
+  if (name.endsWith('.html')) outputs.set(name, securePage(html, name === 'index.html'));
+}
 const checkOnly = process.argv.includes('--check');
 const outdated = [];
 let changed = 0;

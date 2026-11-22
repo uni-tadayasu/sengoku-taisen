@@ -3,6 +3,24 @@
   'use strict';
   const body = document.body;
   if (!body?.classList.contains('public-luxury')) return;
+  const menu = document.querySelector('.public-nav-toggle');
+  const nav = document.getElementById('public-site-nav');
+  if (menu && nav && window.matchMedia) {
+    const compact = window.matchMedia('(max-width: 900px)');
+    const collapse = () => menu.setAttribute('aria-expanded', 'false');
+    menu.hidden = false;
+    menu.addEventListener('click', () => {
+      menu.setAttribute('aria-expanded', String(menu.getAttribute('aria-expanded') !== 'true'));
+    });
+    menu.parentNode.addEventListener('keydown', event => {
+      if (event.key === 'Escape' && compact.matches && menu.getAttribute('aria-expanded') === 'true') {
+        collapse();
+        menu.focus();
+      }
+    });
+    nav.addEventListener('click', collapse);
+    compact.addEventListener?.('change', collapse);
+  }
   const article = document.querySelector('.article');
   const toc = document.querySelector('.toc-chapters');
   if (!article || !toc) return;
