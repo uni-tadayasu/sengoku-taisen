@@ -30,13 +30,16 @@ function renderPremiumPage({ site, metadataHtml, jsonLd, iconHtml }) {
   <script defer src="${asset('premium-catalog.js')}"></script>
   <script defer src="${asset('premium.js')}"></script>
   <script type="application/ld+json">${jsonLd}</script>
+  <link rel="stylesheet" href="${asset('button-artwork.css')}">
+  <link rel="stylesheet" href="${asset('public-luxury.css')}">
+  <script defer src="${asset('public-luxury.js')}"></script>
 </head>
-<body data-page="premium">
+<body class="public-luxury" data-page="premium">
   <a class="skip-link" href="#content">本文へ移動</a>
   <header class="site-header"><div class="site-header-inner page-width"><a class="site-brand" href="../" aria-label="戦国VS ゲームのトップへ"><img src="../${esc(site.favicon.path)}" alt="" width="44" height="44"><span><b>戦国VS</b><small>SENGOKU VS</small></span></a><nav class="header-navigation" aria-label="サイトの案内"><a href="../sengoku-vs/">ゲーム紹介</a><a href="../guide/">遊び方</a><a href="./" aria-current="page">プレミアム</a><a class="nav-play" href="../">ゲームを開く</a></nav></div></header>
   <main id="content" class="page-width premium-page-main">
     <nav aria-label="パンくず"><ol class="breadcrumbs"><li><a href="../">戦国VS</a></li><li><span aria-current="page">有料版・支援</span></li></ol></nav>
-    <section class="premium-page-hero" aria-labelledby="page-title"><div><p class="eyebrow">外観コレクション・継続支援</p><h1 id="page-title">戦国VS プレミアム</h1><p>金の旗を掲げ、月明かりの城下を眺める。育てた一城を、あなたの好きな装いに。</p><p class="premium-hero-note">買い切りの外観は480円・980円。月額支援は780円（税込）です。</p></div><figure class="premium-page-visual"><img src="../assets/premium/moonlit-castle-v1.webp" alt="月と城の灯り、水面の反射を描いた月影の城下の完成背景" width="1536" height="1024" decoding="async" fetchpriority="high"><figcaption>月影の城下 · ゲームに適用できる完成背景</figcaption></figure></section>
+    <section class="premium-page-hero" aria-labelledby="page-title"><div><div class="public-hero-seal" aria-hidden="true"><span>金彩</span></div><p class="eyebrow">外観コレクション・継続支援</p><h1 id="page-title">戦国VS プレミアム</h1><p>金の旗を掲げ、月明かりの城下を眺める。育てた一城を、あなたの好きな装いに。</p><p class="premium-hero-note">買い切りの外観は480円・980円。月額支援は780円（税込）です。</p></div><figure class="premium-page-visual"><img src="../assets/premium/moonlit-castle-v1.webp" alt="月と城の灯り、水面の反射を描いた月影の城下の完成背景" width="1536" height="1024" decoding="async" fetchpriority="high"><figcaption>月影の城下 · ゲームに適用できる完成背景</figcaption></figure></section>
     ${renderCatalog({ catalog, surface: 'public', assetPrefix: '../', gamePrefix: '../', idPrefix: 'premium-page' })}
     <nav class="premium-page-return" aria-label="ゲームの案内"><a class="action-link" href="../">戦国VSを遊ぶ</a><a href="../guide/">遊び方を読む</a><a href="../about/">ゲーム概要</a></nav>
   </main>

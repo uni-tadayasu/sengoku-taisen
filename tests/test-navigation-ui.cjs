@@ -6,7 +6,8 @@ const { documentFixture } = require('./test-events-ui.cjs');
 const tests = [], test = (name, run) => tests.push([name, run]);
 const views = [['town', '城下町'], ['map', '天下地図'], ['field', '共通フィールド'], ['roaming', '野良兵戦'], ['covert', '派遣部隊'], ['court', '京都御所'], ['officers', '武将名鑑'], ['crests', '家紋帳'], ['army', '軍団編成'], ['research', '技術研究'], ['council', '軍議']];
 const actions = [['events', '期間限定合戦'], ['progress', '成長手帳'], ['alliance-strategy', '同盟作戦'], ['conquest', '共有天下統一'], ['shogunate', '幕府の記録']];
-function fixture({ touch = false, unsupported = false } = {}) {
+const preferenceKey = 'sengoku-navigation-preferences-v1';
+function fixture({ touch = false, unsupported = false, storage = new Map(), storageDenied = false } = {}) {
   const { doc } = documentFixture(), originalCreate = doc.createElement, calls = [], scrolls = [], frames = new Map(); let sequence = 0;
   function augment(node) {
     if (node._navigationFixtureReady) return node; node._navigationFixtureReady = true;
@@ -44,11 +45,12 @@ function fixture({ touch = false, unsupported = false } = {}) {
     const view = node.getAttribute('data-view'), action = node.getAttribute('data-action'); calls.push(view ? 'view:' + view : 'action:' + action);
     if (view) { for (const button of nav.querySelectorAll('button')) button.classList.toggle('active', button.getAttribute('data-view') === view); main.setAttribute('data-view', view); }
   });
-  const win = { document: doc, navigator: { maxTouchPoints: touch ? 1 : 0 }, matchMedia: () => ({ matches: touch }), requestAnimationFrame: fn => { frames.set(++sequence, fn); return sequence; }, cancelAnimationFrame: id => frames.delete(id), events: {}, addEventListener: doc.addEventListener, removeEventListener: doc.removeEventListener };
+  const storageWrites = [];
+  const win = { document: doc, localStorage: { getItem(key) { assert.equal(key, preferenceKey, 'Navigation must not read account or game storage'); if (storageDenied) throw Error('Storage denied'); return storage.get(key) ?? null; }, setItem(key, value) { assert.equal(key, preferenceKey, 'Navigation must not change account or game storage'); if (storageDenied) throw Error('Storage denied'); storage.set(key, value); storageWrites.push(value); } }, navigator: { maxTouchPoints: touch ? 1 : 0 }, matchMedia: () => ({ matches: touch }), requestAnimationFrame: fn => { frames.set(++sequence, fn); return sequence; }, cancelAnimationFrame: id => frames.delete(id), events: {}, addEventListener: doc.addEventListener, removeEventListener: doc.removeEventListener };
   const drain = () => { let steps = 0; while (frames.size && steps++ < 20) { const [id, fn] = frames.entries().next().value; frames.delete(id); fn(); } assert(steps < 20, 'Animation loop did not settle'); };
   const api = createNavigationUI(win), get = selector => doc.querySelector(selector);
   const key = (extra = {}) => doc.dispatch('keydown', doc.activeElement, { key: 'k', ctrlKey: true, ...extra });
-  return { api, doc, win, app, nav, bottom, main, social, calls, scrolls, get, key, drain, source, frames };
+  return { api, doc, win, app, nav, bottom, main, social, calls, scrolls, get, key, drain, source, frames, storage, storageWrites };
 }
 function delayedNavigation(s) {
   const loading = s.doc.createElement('dialog'); loading.id = 'game-loading'; s.doc.body.append(loading);
@@ -175,6 +177,69 @@ test('public help links preserve the game in its tab and source labels are escap
 test('unsupported dialog and teardown keep original navigation available', () => {
   const unsupported = fixture({ unsupported: true }); assert.equal(unsupported.api, null); assert(!unsupported.doc.documentElement.classList.contains('sengoku-navigation-ready')); assert.equal(unsupported.nav.children.length, 16);
   const s = fixture(); s.api.open(); s.api.destroy(); assert(!s.doc.documentElement.classList.contains('sengoku-navigation-ready')); assert.equal(s.get('#navigation-dialog'), null); assert.equal(s.nav.children.length, 16); assert.equal(s.get('.navigation-quick-dock'), null); assert.equal(s.frames.size, 0);
+});
+
+test('favorite controls are separate buttons, preserve focus and never execute destinations', () => {
+  const s = fixture(); s.api.open(); const pin = s.get('[data-navigation-pin="view:army"]');
+  assert.equal(pin.tagName, 'BUTTON'); assert.equal(pin.getAttribute('type'), 'button');
+  assert.equal(pin.parentElement.tagName, 'DIV'); assert.equal(pin.querySelector('button'), null);
+  assert.equal(pin.getAttribute('aria-pressed'), 'false'); pin.focus(); s.get('#navigation-results').scrollTop = 120; pin.click();
+  assert.deepEqual(s.calls, []); assert(s.api.isOpen()); assert.deepEqual(s.api.getPreferences().favorites, ['view:army']);
+  assert.equal(s.doc.activeElement.getAttribute('data-navigation-pin'), 'view:army'); assert.equal(s.doc.activeElement.getAttribute('aria-pressed'), 'true');
+  assert.equal(s.doc.activeElement.closest('[data-navigation-scope]').getAttribute('data-navigation-scope'), 'all');
+  assert.equal(s.get('#navigation-results').scrollTop, 120);
+  const favoritePin = s.get('.navigation-favorites').querySelector('[data-navigation-pin="view:army"]'); favoritePin.focus(); favoritePin.click();
+  assert.deepEqual(s.api.getPreferences().favorites, []); assert.equal(s.doc.activeElement.getAttribute('data-navigation-pin'), 'view:army');
+  assert.equal(s.doc.activeElement.getAttribute('aria-pressed'), 'false'); assert.deepEqual(s.calls, []);
+});
+
+test('favorites are capped at six and restore from preferences without storing game state', () => {
+  const s = fixture(); s.api.open(); const keys = views.slice(0, 7).map(([key]) => 'view:' + key);
+  for (const key of keys.slice(0, 6)) assert(s.api.toggleFavorite(key));
+  assert.equal(s.api.toggleFavorite(keys[6]), false); assert(s.get('#navigation-result-status').textContent.includes('6件まで'));
+  assert.deepEqual(s.api.getPreferences().favorites, keys.slice(0, 6)); assert.deepEqual(s.calls, []);
+  const next = fixture({ storage: s.storage }); next.api.open(); assert.deepEqual(next.api.getPreferences().favorites, keys.slice(0, 6));
+  assert.equal(next.get('.navigation-favorites').querySelectorAll('[data-navigation-pin]').length, 6);
+  assert(next.api.toggleFavorite(keys[0])); assert(next.api.toggleFavorite(keys[6]));
+  assert.deepEqual(next.api.getPreferences().favorites, keys.slice(1, 7)); assert.equal(s.storage.size, 1);
+});
+
+test('unknown, hidden and removed sources never appear through saved favorites or recent history', () => {
+  const storage = new Map([[preferenceKey, JSON.stringify({ favorites: ['action:staff-hidden', 'view:army', 'view:town', 'view:army', '<img>'], recent: ['action:staff-hidden', 'view:army', 'view:map'] })]]);
+  const s = fixture({ storage }); s.nav.querySelector('[data-view="army"]').hidden = true;
+  s.nav.querySelector('[data-view="map"]').remove(); s.api.open();
+  assert.deepEqual(s.api.getPreferences(), { favorites: ['view:town'], recent: [] });
+  assert(!s.get('#navigation-results').textContent.includes('staff-hidden')); assert.equal(s.get('[data-navigation-pin="view:army"]'), null);
+  assert.equal(s.api.toggleFavorite('action:staff-hidden'), false); assert.equal(s.api.activate('view:army'), false); assert.equal(s.api.activate('view:map'), false);
+  assert.deepEqual(s.calls, []);
+});
+
+test('blocked storage and malformed preferences retain a working in-memory menu', () => {
+  const s = fixture({ storageDenied: true }); s.api.open(); assert(s.api.toggleFavorite('view:army'));
+  assert.deepEqual(s.api.getPreferences().favorites, ['view:army']); assert(s.get('#navigation-result-status').textContent.includes('この起動中のみ'));
+  assert(s.api.activate('view:army')); s.drain(); assert.deepEqual(s.api.getPreferences().recent, ['view:army']);
+  s.api.open(); assert(s.api.clearRecent()); assert.deepEqual(s.api.getPreferences().recent, []);
+  const malformed = fixture({ storage: new Map([[preferenceKey, '{bad json']]) }); assert(malformed.api.open()); assert.deepEqual(malformed.api.getPreferences(), { favorites: [], recent: [] });
+});
+
+test('recent destinations record accepted controls once, deduplicate, cap at five and clear', () => {
+  const s = fixture(); const keys = ['view:town', 'view:map', 'view:army', 'view:research', 'view:officers', 'view:crests'];
+  for (const key of keys) { assert(s.api.activate(key)); s.drain(); }
+  assert.equal(s.storageWrites.length, keys.length, 'A delegated source click must not write twice');
+  assert.deepEqual(s.api.getPreferences().recent, [...keys].reverse().slice(0, 5));
+  s.nav.querySelector('[data-view="army"]').click(); s.drain(); assert.deepEqual(s.api.getPreferences().recent, ['view:army', 'view:crests', 'view:officers', 'view:research', 'view:map']);
+  const before = s.storageWrites.length; s.api.activate('view:army'); s.drain(); assert.equal(s.storageWrites.length, before);
+  s.api.open(); s.api.toggleFavorite('view:army'); assert(!s.get('.navigation-recent').textContent.includes('軍団編成'), 'Favorite shortcuts should not be duplicated in recent shortcuts');
+  const input = s.get('#navigation-query'); s.get('[data-navigation-clear-recent]').click(); assert.deepEqual(s.api.getPreferences().recent, []); assert.equal(s.doc.activeElement, input);
+  assert.deepEqual(s.api.getPreferences().favorites, ['view:army']); assert.deepEqual(JSON.parse(s.storage.get(preferenceKey)).recent, []);
+});
+
+test('failed or disabled navigation does not create recent history and refresh leaves controls attached', () => {
+  const s = fixture(); s.api.open(); const source = s.nav.querySelector('[data-view="army"]'); source.disabled = true;
+  assert.equal(s.api.activate('view:army'), false); assert.equal(s.api.activate('action:unknown'), false); assert.deepEqual(s.api.getPreferences().recent, []);
+  source.disabled = false; source.click = () => {}; assert(s.api.activate('view:army')); s.drain(); assert.deepEqual(s.api.getPreferences().recent, []);
+  s.api.open(); const pin = s.get('[data-navigation-pin="view:army"]'), input = s.get('#navigation-query'); pin.focus();
+  s.api.refresh(); s.api.refresh(); assert.equal(s.get('[data-navigation-pin="view:army"]'), pin); assert.equal(s.get('#navigation-query'), input); assert.equal(s.doc.activeElement, pin);
 });
 
 let failed = 0;

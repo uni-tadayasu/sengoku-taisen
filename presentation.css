@@ -1,0 +1,37 @@
+/* The visible option changes presentation, never game timing or status. */
+.presentation-settings {
+  margin: 18px 0;
+  padding: 16px;
+  border: 1px solid #d9b66f3d;
+  border-radius: 6px;
+  background: linear-gradient(135deg, #d9b66f09, #16201966);
+}
+.presentation-setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.presentation-setting-row label { color: var(--text, #eee8da); font-size: 15px; font-weight: 600; }
+.presentation-setting-row .select { min-height: 44px; width: 132px; max-width: 55%; }
+.presentation-settings p {
+  margin: 10px 0 0;
+  color: var(--muted, #bac4af);
+  font-size: 13px;
+  line-height: 1.75;
+}
+html[data-presentation-motion="quiet"],
+html[data-presentation-motion="quiet"] *,
+html[data-presentation-motion="quiet"] *::before,
+html[data-presentation-motion="quiet"] *::after {
+  animation: none !important;
+  transition: none !important;
+  scroll-behavior: auto !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  html, html *, html *::before, html *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}

@@ -27,8 +27,11 @@ function renderSharePage({ site, metadataHtml, jsonLd, iconHtml }) {
   <link rel="stylesheet" href="${asset('image-protect.css')}">
   <script defer src="${asset('image-protect.js')}"></script>
   <script type="application/ld+json">${jsonLd}</script>
+  <link rel="stylesheet" href="${asset('button-artwork.css')}">
+  <link rel="stylesheet" href="${asset('public-luxury.css')}">
+  <script defer src="${asset('public-luxury.js')}"></script>
 </head>
-<body data-page="share">
+<body class="public-luxury" data-page="share">
   <a class="skip-link" href="#content">本文へ移動</a>
   <header class="site-header">
     <div class="site-header-inner page-width">
@@ -39,7 +42,7 @@ function renderSharePage({ site, metadataHtml, jsonLd, iconHtml }) {
   <main id="content" class="page-width">
     <nav aria-label="パンくず"><ol class="breadcrumbs"><li><a href="../">戦国VS</a></li><li><span aria-current="page">戦国VSの紹介</span></li></ol></nav>
     <section class="hero share-hero" aria-labelledby="page-title">
-      <div class="hero-copy">
+      <div class="hero-copy"><div class="public-hero-seal" aria-hidden="true"><span>天下</span></div>
         <p class="eyebrow">KASAI SOLUTIONSの戦国ブラウザゲーム</p>
         <h1 id="page-title">戦国VS</h1>
         <p class="share-tagline">${esc(site.tagline || '一城の志が、天下を動かす。')}</p>

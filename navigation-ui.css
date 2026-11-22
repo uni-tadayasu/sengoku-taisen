@@ -90,6 +90,29 @@ dialog.navigation-dialog[open] { display: flex; flex-direction: column; }
 .navigation-empty p { margin: 7px 0; color: #c7d2d9; font-size: 14px; }
 .navigation-dialog-footer { display: flex; flex: none; flex-wrap: wrap; justify-content: space-between; gap: 6px 16px; padding: 11px 20px; border-top: 1px solid #81949b44; color: #bacbd1; font-size: 12px; line-height: 1.5; }
 
+/* Personal shortcuts stay separate from destination controls and game saves. */
+.navigation-group-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.navigation-group-heading h3 { display: flex; align-items: center; gap: 7px; }
+.navigation-group-heading h3 .icon { width: 17px; height: 17px; }
+.navigation-group-heading > small { color: #c8b580; font-variant-numeric: tabular-nums; font-size: 12px; }
+.navigation-favorites { padding: 0 0 16px; border-bottom: 1px solid #c7ad6e33; }
+.navigation-favorite-hint { margin: 0; padding: 11px 13px; border: 1px dashed #c7ad6e55; border-radius: 8px; color: #bfc9c8; font-size: 13px; line-height: 1.7; }
+.navigation-entry-row { display: grid; grid-template-columns: minmax(0, 1fr) 44px; min-width: 0; overflow: hidden; border: 1px solid #7f949d55; border-radius: 9px; background: #162b34; }
+.navigation-dialog .navigation-entry-row > .navigation-entry { width: 100%; height: 100%; border: 0; border-radius: 8px 0 0 8px; }
+.navigation-entry-row:has(.is-current) { border-color: #d2b970a3; }
+.navigation-entry-row:has(.navigation-entry:hover) { border-color: #e9cf8b; }
+.navigation-dialog .navigation-pin { display: grid; place-items: center; align-self: stretch; width: 44px; min-width: 44px; min-height: 44px; padding: 0; border: 0; border-left: 1px solid #7f949d30; border-radius: 0 8px 8px 0; color: #b5c1bc; background: transparent; cursor: pointer; }
+.navigation-dialog .navigation-pin .icon { width: 20px; height: 20px; fill: none; }
+.navigation-dialog .navigation-pin:hover { color: #f7dda1; background: #d9b66f18; }
+.navigation-dialog .navigation-pin.is-pinned { color: #efd393; background: #d9b66f12; }
+.navigation-dialog .navigation-pin.is-pinned .icon { fill: #d9b66f3d; }
+.navigation-recent-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.navigation-dialog .navigation-recent-link { display: inline-flex; align-items: center; gap: 7px; min-width: 0; min-height: 44px; padding: 8px 11px; border: 1px solid #c7ad6e44; border-radius: 7px; color: #ddd7c7; background: #172a31; font: inherit; font-size: 13px; line-height: 1.45; text-decoration: none; text-align: left; cursor: pointer; }
+.navigation-dialog .navigation-recent-link .icon { flex: none; width: 17px; height: 17px; color: #d9bd80; }
+.navigation-dialog .navigation-recent-link:hover { border-color: #d9b66f; }
+.navigation-dialog .navigation-recent-link:disabled { opacity: .5; cursor: not-allowed; }
+.navigation-dialog .navigation-clear-recent { min-height: 44px; padding: 6px 0 6px 10px; color: #c8c9bd; background: transparent; border: 0; font: inherit; font-size: 12px; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+
 @media (min-width: 1400px) {
   #app .navigation-menu-trigger kbd { display: inline; }
 }
@@ -112,6 +135,7 @@ dialog.navigation-dialog[open] { display: flex; flex-direction: column; }
   .navigation-results { padding: 0 13px 14px; }
   .navigation-entry-grid { grid-template-columns: minmax(0, 1fr); }
   .navigation-dialog .navigation-entry { min-height: 76px; padding: 11px; gap: 10px; }
+  .navigation-entry-row .navigation-current { display: none; }
   .navigation-dialog-footer { padding-inline: 13px; }
 }
 @media (max-height: 500px) {

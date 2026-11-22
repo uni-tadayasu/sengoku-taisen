@@ -4,15 +4,15 @@
   "name": "戦国VS",
   "alternateName": "SENGOKU VS",
   "publisher": "KASAI SOLUTIONS",
-  "release": "4.4.0-20261122",
-  "version": "4.4.0",
+  "release": "4.5.0-20261122",
+  "version": "4.5.0",
   "dateModified": "2026-11-22",
   "language": "ja",
   "locale": "ja_JP",
   "tagline": "一城の志が、天下を動かす。",
   "launchIntroduction": [
-    "城を育て、軍師とともに天下統一を目指す。",
-    "PC・スマホ・タブレットで遊ぶ戦国ブラウザゲーム。"
+    "城を育て、英傑を率い、軍師と天下へ。",
+    "あなたの一手から、新たな戦国史が始まる。"
   ],
   "ogImage": {
     "path": "assets/branding/sengoku-vs-ogp-20261121.jpg",

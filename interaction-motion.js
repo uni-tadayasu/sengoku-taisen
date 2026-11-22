@@ -16,7 +16,7 @@ function listen(target, type, fn, options) {
   target?.addEventListener?.(type, fn, options);
   removers.push(() => target?.removeEventListener?.(type, fn, options));
 }
-function reduced() { return Boolean(media?.matches); }
+function reduced() { return Boolean(media?.matches) || doc.documentElement?.getAttribute('data-presentation-motion') === 'quiet'; }
 function eligible(el) {
   return Boolean(el?.isConnected && !el.closest(excluded) && !el.matches(':disabled,.is-disabled'));
 }
@@ -197,6 +197,7 @@ function init() {
   for (const [type, fn] of Object.entries({ pointerdown: pointerDown, pointermove: pointerMove, pointerup: pointerUp, pointercancel: pointerCancel, lostpointercapture: pointerCancel, click, keydown: keyDown, keyup: keyUp, change })) listen(doc, type, fn, { capture: true, passive: true });
   listen(doc, 'toggle', event => { if (event.target.tagName === 'DETAILS' && event.target.open) queue(event.target); }, true);
   listen(global, 'blur', clear); listen(global, 'pagehide', clear);
+  listen(global, 'sengoku-presentation-change', clear);
   listen(doc, 'visibilitychange', () => { if (doc.hidden) clear(); });
   if (media?.addEventListener) listen(media, 'change', clear);
   else if (media?.addListener) { media.addListener(clear); removers.push(() => media.removeListener(clear)); }

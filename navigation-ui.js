@@ -1,6 +1,8 @@
 /* Find a destination without changing the game's command or save pathways. */
 (function (global) {
   'use strict';
+  const PREFERENCE_KEY = 'sengoku-navigation-preferences-v1';
+  const FAVORITE_LIMIT = 6, RECENT_LIMIT = 5;
   const GROUPS = ['城と内政', '合戦と天下', '武将と軍団', '交流・記録', '設定・案内', 'その他'];
   const DETAILS = {
     'view:town': ['城と内政', '施設の増築と本拠の成長', 'まち 城下 施設 建設 建築 増築 育成 レベル上げ 資源 金銭 お金 兵糧 木材 石材'],
@@ -30,6 +32,8 @@
     menu: 'M4 5h16M4 12h16M4 19h16',
     search: 'M10 17a7 7 0 1 0 0-14 7 7 0 0 0 0 14m5-2 6 6',
     close: 'm6 6 12 12M6 18 18 6',
+    star: 'm12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9L12 3Z',
+    clock: 'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20M12 6v6l4 2',
     book: 'M4 3h13a3 3 0 0 1 3 3v15H6a3 3 0 0 1 0-6h14M4 3v15M8 7h8M8 11h6'
   };
   const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
@@ -41,6 +45,10 @@
     const terms = normalizeQuery(query).split(/\s+/).filter(Boolean);
     return entries.filter(entry => terms.every(term => normalizeQuery([entry.label, entry.description, entry.keywords, entry.group].join(' ')).includes(term)));
   }
+  function preferenceKeys(value, limit) {
+    if (!Array.isArray(value)) return [];
+    return [...new Set(value.filter(key => typeof key === 'string' && /^(?:view|action|utility|help):[a-z][a-z0-9-]{0,63}$/.test(key)))].slice(0, limit);
+  }
   function createNavigationUI(win = global) {
     const doc = win.document, root = doc?.documentElement;
     if (!doc || !root) return null;
@@ -50,6 +58,11 @@
     const dialog = doc.createElement('dialog');
     if (typeof dialog.showModal !== 'function') return null;
     let initialized = false, frame = 0, returnFocus = null, restoreFocus = true, entries = [], signature = '', pendingNavigation = null;
+    let favorites = [], recent = [];
+    try {
+      const saved = JSON.parse(win.localStorage?.getItem(PREFERENCE_KEY) || 'null');
+      favorites = preferenceKeys(saved?.favorites, FAVORITE_LIMIT); recent = preferenceKeys(saved?.recent, RECENT_LIMIT);
+    } catch (_) { /* Unavailable or malformed preferences must never block navigation. */ }
     const removers = [], observers = [], quickButtons = new Map();
     const raf = win.requestAnimationFrame?.bind(win) || (fn => win.setTimeout(fn, 16));
     const caf = win.cancelAnimationFrame?.bind(win) || win.clearTimeout?.bind(win);
@@ -81,6 +94,7 @@
       const label = [...node.children].find(child => child.tagName === 'SPAN' && !hasClass(child, 'nav-count') && !child.hasAttribute('data-icon'));
       return (label?.textContent || node.getAttribute('aria-label') || node.textContent || '').trim().slice(0, 80);
     }
+    function sourceHidden(node) { return node.hidden || Boolean(node.closest('[hidden], [aria-hidden="true"]')); }
     function item(key, source, label) {
       const details = DETAILS[key] || ['その他', 'この機能を開く', ''];
       return { key, source, label: label || sourceLabel(source), group: details[0], description: details[1], keywords: details[2], disabled: source.disabled === true, current: hasClass(source, 'active') || source.getAttribute('aria-current') === 'page', icon: source.querySelector('svg')?.outerHTML || svg('menu') };
@@ -89,18 +103,18 @@
       const list = [], seen = new Set();
       const add = entry => { if (entry.label && !seen.has(entry.key)) { seen.add(entry.key); list.push(entry); } };
       for (const node of nav.querySelectorAll('button')) {
-        if (node.hidden) continue;
+        if (sourceHidden(node)) continue;
         const view = node.getAttribute('data-view'), action = node.getAttribute('data-action');
         if (view || action) add(item(view ? 'view:' + view : 'action:' + action, node));
       }
       for (const node of bottom.children) {
-        if (node.tagName !== 'BUTTON' || node.hidden || !hasClass(node, 'nav-item')) continue;
+        if (node.tagName !== 'BUTTON' || sourceHidden(node) || !hasClass(node, 'nav-item')) continue;
         const action = node.getAttribute('data-action');
         if (action) add(item('action:' + action, node));
         else if (hasClass(node, 'layout-editor-button')) add(item('utility:layout', node));
       }
       const social = doc.querySelector('.social-launcher');
-      if (social && !social.hidden) add(item('utility:social', social, '交流'));
+      if (social && !sourceHidden(social)) add(item('utility:social', social, '交流'));
       add({ key: 'help:guide', label: '遊び方', group: '設定・案内', description: '端末ごとの操作と遊び方を別タブで確認', keywords: '操作 ガイド スマホ PC タブレット 初心者 はじめて', href: 'guide/', icon: svg('book') });
       add({ key: 'help:recovery', label: '引き継ぎ・復元', group: '設定・案内', description: '端末変更とデータの復元を別タブで確認', keywords: '引継ぎ データ 同期 セーブ 復旧 スマホ パソコン バックアップ', href: 'guide/data-recovery/', icon: svg('book') });
       return list;
@@ -124,20 +138,63 @@
       '<footer class="navigation-dialog-footer"><span>選んだ機能の画面を開きます。</span><span class="navigation-keyboard-hint">Ctrl / ⌘ K で開く · Esc で閉じる</span></footer>';
     const search = dialog.querySelector('#navigation-query'), results = dialog.querySelector('#navigation-results');
     const status = dialog.querySelector('#navigation-result-status'), clearButton = dialog.querySelector('[data-navigation-clear]');
+    function availableKeys(keys, current = entries) { return keys.filter(key => current.some(entry => entry.key === key)); }
+    function persistPreferences() {
+      try {
+        if (!win.localStorage) return false;
+        win.localStorage.setItem(PREFERENCE_KEY, JSON.stringify({ favorites, recent })); return true;
+      } catch (_) { return false; }
+    }
+    function remember(key) {
+      if (recent[0] === key || !collect().some(entry => entry.key === key)) return;
+      recent = [key, ...recent.filter(value => value !== key)].slice(0, RECENT_LIMIT);
+      persistPreferences();
+    }
+    function entryMarkup(entry, scope = 'all') {
+      const pinned = favorites.includes(entry.key);
+      const content = '<span class="navigation-entry-icon">' + entry.icon + '</span><span class="navigation-entry-copy"><b>' + esc(entry.label) + '</b><small>' + esc(entry.description) + '</small></span>' + (entry.current ? '<span class="navigation-current">表示中</span>' : '');
+      const destination = entry.href ? '<a class="navigation-entry" data-navigation-help="' + esc(entry.key) + '" href="' + entry.href + '" target="_blank" rel="noopener">' + content + '</a>' : '<button type="button" class="navigation-entry' + (entry.current ? ' is-current' : '') + '" data-navigation-target="' + esc(entry.key) + '"' + (entry.disabled ? ' disabled' : '') + (entry.current ? ' aria-current="page"' : '') + '>' + content + '</button>';
+      return '<div class="navigation-entry-row" data-navigation-scope="' + scope + '">' + destination + '<button type="button" class="navigation-pin' + (pinned ? ' is-pinned' : '') + '" data-navigation-pin="' + esc(entry.key) + '" aria-pressed="' + pinned + '" aria-label="' + esc(entry.label) + 'をお気に入り' + (pinned ? 'から外す' : 'に追加') + '" title="' + (pinned ? 'お気に入りから外す' : 'お気に入りに追加') + '">' + svg('star') + '</button></div>';
+    }
     function renderResults() {
       const matches = filterEntries(entries, search.value);
-      const next = JSON.stringify([search.value, matches.map(entry => [entry.key, entry.label, entry.disabled, entry.current])]);
+      const visibleFavorites = availableKeys(favorites), visibleRecent = availableKeys(recent).filter(key => !visibleFavorites.includes(key));
+      const next = JSON.stringify([search.value, visibleFavorites, visibleRecent, matches.map(entry => [entry.key, entry.label, entry.disabled, entry.current])]);
       if (next === signature) return;
       signature = next;
+      const focused = doc.activeElement, focusPin = focused?.getAttribute?.('data-navigation-pin'), focusTarget = focused?.getAttribute?.('data-navigation-target');
+      const focusScope = focused?.closest?.('[data-navigation-scope]')?.getAttribute('data-navigation-scope'), scroll = results.scrollTop;
       status.textContent = search.value.trim() ? matches.length + '件見つかりました' : '全' + entries.length + '項目 · 目的から選べます';
       clearButton.disabled = !search.value;
-      results.innerHTML = matches.length ? GROUPS.map(group => {
+      const shortcuts = search.value.trim() ? '' : '<section class="navigation-group navigation-favorites" aria-label="お気に入り"><div class="navigation-group-heading"><h3>' + svg('star') + 'お気に入り</h3><small>' + visibleFavorites.length + ' / ' + FAVORITE_LIMIT + '</small></div>' + (visibleFavorites.length ? '<div class="navigation-entry-grid">' + visibleFavorites.map(key => entryMarkup(entries.find(entry => entry.key === key), 'favorites')).join('') + '</div>' : '<p class="navigation-favorite-hint">よく使う機能の星を押すと、ここに並びます。最大6件まで登録できます。</p>') + '</section>' + (visibleRecent.length ? '<section class="navigation-group navigation-recent" aria-label="最近開いた機能"><div class="navigation-group-heading"><h3>' + svg('clock') + '最近開いた機能</h3><button type="button" class="navigation-clear-recent" data-navigation-clear-recent>履歴を消去</button></div><div class="navigation-recent-list">' + visibleRecent.map(key => { const entry = entries.find(row => row.key === key); return entry.href ? '<a class="navigation-recent-link" data-navigation-help="' + esc(key) + '" href="' + entry.href + '" target="_blank" rel="noopener">' + entry.icon + '<span>' + esc(entry.label) + '</span></a>' : '<button type="button" class="navigation-recent-link" data-navigation-target="' + esc(key) + '"' + (entry.disabled ? ' disabled' : '') + '>' + entry.icon + '<span>' + esc(entry.label) + '</span></button>'; }).join('') + '</div></section>' : '');
+      results.innerHTML = shortcuts + (matches.length ? GROUPS.map(group => {
         const rows = matches.filter(entry => entry.group === group); if (!rows.length) return '';
-        return '<section class="navigation-group"><h3>' + group + '</h3><div class="navigation-entry-grid">' + rows.map(entry => {
-          const content = '<span class="navigation-entry-icon">' + entry.icon + '</span><span class="navigation-entry-copy"><b>' + esc(entry.label) + '</b><small>' + esc(entry.description) + '</small></span>' + (entry.current ? '<span class="navigation-current">表示中</span>' : '');
-          return entry.href ? '<a class="navigation-entry" data-navigation-help href="' + entry.href + '" target="_blank" rel="noopener">' + content + '</a>' : '<button type="button" class="navigation-entry' + (entry.current ? ' is-current' : '') + '" data-navigation-target="' + esc(entry.key) + '"' + (entry.disabled ? ' disabled' : '') + (entry.current ? ' aria-current="page"' : '') + '>' + content + '</button>';
-        }).join('') + '</div></section>';
-      }).join('') : '<div class="navigation-empty"><b>見つかりませんでした</b><p>別の言葉で探すか、検索を消去してください。</p></div>';
+        return '<section class="navigation-group"><h3>' + group + '</h3><div class="navigation-entry-grid">' + rows.map(entry => entryMarkup(entry)).join('') + '</div></section>';
+      }).join('') : '<div class="navigation-empty"><b>見つかりませんでした</b><p>別の言葉で探すか、検索を消去してください。</p></div>');
+      if (focusPin || focusTarget) {
+        const attribute = focusPin ? 'data-navigation-pin' : 'data-navigation-target', key = focusPin || focusTarget;
+        const candidates = [...results.querySelectorAll('[' + attribute + ']')].filter(node => node.getAttribute(attribute) === key);
+        (candidates.find(node => node.closest('[data-navigation-scope]')?.getAttribute('data-navigation-scope') === focusScope) || candidates[0] || search).focus({ preventScroll: true });
+      }
+      results.scrollTop = scroll;
+    }
+    function toggleFavorite(key) {
+      if (!initialized || unavailable()) return false;
+      entries = collect();
+      const entry = entries.find(row => row.key === key); if (!entry) return false;
+      favorites = availableKeys(favorites);
+      const pinned = favorites.includes(key);
+      if (!pinned && favorites.length >= FAVORITE_LIMIT) { status.textContent = 'お気に入りは6件までです。登録済みの星を押して外してから追加してください。'; return false; }
+      favorites = pinned ? favorites.filter(value => value !== key) : [...favorites, key];
+      const stored = persistPreferences(); renderResults();
+      status.textContent = entry.label + 'をお気に入り' + (pinned ? 'から外しました。' : 'に追加しました。') + (stored ? '' : ' この起動中のみ有効です。端末に保存できませんでした。');
+      return true;
+    }
+    function clearRecent() {
+      if (!initialized || unavailable()) return false;
+      recent = []; const stored = persistPreferences(); renderResults();
+      status.textContent = '最近開いた機能の履歴を消去しました。' + (stored ? '' : ' 端末への保存はできませんでした。');
+      return true;
     }
     function expanded(value) { setAttr(trigger, 'aria-expanded', value); setAttr(quickButtons.get('menu'), 'aria-expanded', value); }
     function close(restore = true) { restoreFocus = restore; expanded(false); if (dialog.open) dialog.close(); }
@@ -171,7 +228,11 @@
       const entry = collect().find(entry => entry.key === key);
       if (!entry?.source?.isConnected || entry.disabled) return false;
       close(false); pendingNavigation = key.startsWith('view:') ? { view: key.slice(5) } : null;
-      entry.source.click(); schedule();
+      entry.source.click();
+      // Record an accepted destination only after its canonical control runs.
+      // No command, account data or game save is stored in these preferences.
+      if (!key.startsWith('view:') || doc.getElementById('main')?.getAttribute('data-view') === key.slice(5)) remember(key);
+      schedule();
       return true;
     }
     function keydown(event) {
@@ -189,11 +250,14 @@
     listen(trigger, 'click', () => open(trigger));
     listen(dock, 'click', event => { const button = event.target.closest('[data-navigation-quick]'); if (!button || button.disabled) return; const key = button.getAttribute('data-navigation-quick'); if (key === 'menu') open(button); else activate(key); });
     listen(dialog, 'click', event => {
+      const pin = event.target.closest('[data-navigation-pin]');
+      if (pin) { toggleFavorite(pin.getAttribute('data-navigation-pin')); return; }
       const target = event.target.closest('[data-navigation-target]');
       if (target && !target.disabled) activate(target.getAttribute('data-navigation-target'));
       else if (event.target.closest('[data-navigation-close]')) close();
       else if (event.target.closest('[data-navigation-clear]')) { search.value = ''; renderResults(); search.focus({ preventScroll: true }); }
-      else if (event.target.closest('[data-navigation-help]')) close(false);
+      else if (event.target.closest('[data-navigation-clear-recent]')) { clearRecent(); search.focus({ preventScroll: true }); }
+      else if (event.target.closest('[data-navigation-help]')) { remember(event.target.closest('[data-navigation-help]').getAttribute('data-navigation-help')); close(false); }
     });
     listen(dialog, 'close', () => {
       // A queued close event must not undo a menu reopened in the meantime.
@@ -211,6 +275,12 @@
     listen(doc, 'focusin', event => { const surface = event.target.closest?.('dialog, [role="dialog"]'); if (surface && surface.id !== 'game-loading') cancelPendingNavigation(); }, { capture: true });
     listen(doc, 'visibilitychange', () => { if (doc.hidden) cancelPendingNavigation(); });
     listen(doc, 'keydown', keydown);
+    listen(doc, 'click', event => {
+      const source = event.target.closest?.('button');
+      if (!source || source.disabled) return;
+      const entry = collect().find(row => row.source === source);
+      if (entry && (!entry.key.startsWith('view:') || doc.getElementById('main')?.getAttribute('data-view') === entry.key.slice(5))) remember(entry.key);
+    });
     listen(win, 'resize', schedule, { passive: true });
     listen(win, 'pageshow', schedule);
     nav.parentElement.insertBefore(trigger, nav); bottom.appendChild(dock); doc.body.appendChild(dialog);
@@ -223,7 +293,7 @@
       const utilityObserver = new win.MutationObserver(schedule);
       utilityObserver.observe(bottom, { childList: true }); observers.push(utilityObserver);
     }
-    return { open, close, refresh, activate, destroy, isOpen: () => dialog.open, getEntries: () => collect().map(({ source, icon, ...entry }) => entry) };
+    return { open, close, refresh, activate, destroy, toggleFavorite, clearRecent, isOpen: () => dialog.open, getPreferences: () => ({ favorites: availableKeys(favorites, collect()), recent: availableKeys(recent, collect()) }), getEntries: () => collect().map(({ source, icon, ...entry }) => entry) };
   }
   if (typeof module !== 'undefined' && module.exports) module.exports = { createNavigationUI, normalizeQuery, filterEntries };
   if (!global.document || global.SengokuNavigation) return;

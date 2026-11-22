@@ -691,13 +691,16 @@ function render(page) {
   <link rel="stylesheet" href="${p.file('image-protect.css')}?v=${release}">
   <script defer src="${p.file('image-protect.js')}?v=${release}"></script>
   <script type="application/ld+json">${jsonScript(jsonld)}</script>
+  <link rel="stylesheet" href="${p.file('button-artwork.css')}?v=${release}">
+  <link rel="stylesheet" href="${p.file('public-luxury.css')}?v=${release}">
+  <script defer src="${p.file('public-luxury.js')}?v=${release}"></script>
 </head>
-<body data-page="${page.key}">
+<body class="public-luxury" data-page="${page.key}">
   <a class="skip-link" href="#content">本文へ移動</a>
   <header class="site-header"><div class="site-header-inner page-width"><a class="site-brand" href="${p.dir('')}" aria-label="戦国VS ゲームのトップへ"><img src="${p.file(site.favicon.path)}" alt="" width="44" height="44"><span><b>戦国VS</b><small>城と群雄の戦記</small></span></a><nav class="header-navigation" aria-label="サイトの案内">${nav}<a class="nav-play" href="${p.dir('')}">ゲームを開く</a></nav></div></header>
   <main id="content" class="page-width">
     <nav aria-label="パンくず"><ol class="breadcrumbs">${breadcrumbItems.map((item,i)=>`<li>${i===breadcrumbItems.length-1?`<span aria-current="page">${item.name}</span>`:`<a href="${item.href}">${item.name}</a>`}</li>`).join('')}</ol></nav>
-    <section class="hero" aria-labelledby="page-title"><div class="hero-copy"><p class="eyebrow">${page.eyebrow}</p><h1 id="page-title">${page.heading}</h1><p class="hero-lead">${page.lead}</p><div class="hero-actions"><a class="action-link" href="${p.dir('')}">${page.heroAction}</a><a class="text-link" href="${secondaryHref}">${page.secondary[0]}</a></div></div>${heroAside}</section>
+    <section class="hero" aria-labelledby="page-title"><div class="hero-copy"><div class="public-hero-seal" aria-hidden="true"><span>${({guide:'指南',recovery:'継承',about:'戦記'})[page.key]}</span></div><p class="eyebrow">${page.eyebrow}</p><h1 id="page-title">${page.heading}</h1><p class="hero-lead">${page.lead}</p><div class="hero-actions"><a class="action-link" href="${p.dir('')}">${page.heroAction}</a><a class="text-link" href="${secondaryHref}">${page.secondary[0]}</a></div></div>${heroAside}</section>
     <div class="reading-layout"><aside id="page-contents" class="toc" tabindex="-1"><nav aria-label="このページの目次"><p class="toc-title">このページの案内</p><details class="toc-chapters"><summary>すべての項目 <span>${page.toc.length}項目</span></summary><ul>${page.toc.map(([id,label])=>`<li><a href="#${id}">${label}</a></li>`).join('')}</ul></details></nav><div class="toc-foot"><p>${esc(site.publisher)}のゲームガイド。</p><a href="${p.dir('')}">戦国VSを開く</a></div></aside><article class="article" aria-label="${page.label}の本文"><p class="article-updated">内容更新：<time datetime="${page.dateModified}">${modifiedLabel(page.dateModified)}</time></p>${page.content(p)}</article></div>
     <section class="closing"><div><h2>${page.closingTitle}</h2><p>${page.closingText}</p></div><a class="action-link" href="${p.dir('')}">ゲームを開く</a></section>
   </main>
@@ -761,8 +764,19 @@ function updateHome() {
   // Keep the title concise while exposing help and recovery without entering the game.
   html = html.replace(/(<p class="launch-introduction">)[\s\S]*?(<\/p>)/, (_, before, after) => before + site.launchIntroduction.map(esc).join('<br>') + after);
   const launchGuide = '<nav class="launch-guide-nav" aria-label="遊び方と引き継ぎ"><a href="guide/">遊び方</a><a href="guide/data-recovery/">引き継ぎ・復元</a><a href="sengoku-vs/">ゲーム紹介</a></nav>';
-  html = html.replace(/\s*<nav class="launch-guide-nav"[^>]*>[\s\S]*?<\/nav>/g, '');
-  html = html.replace(/<p class="launch-copyright">[\s\S]*?<\/p>/, `${launchGuide}\n      <p class="launch-copyright">© <a href="about/" aria-label="${esc(site.publisher)}の戦国VSについて">${esc(site.publisher)}</a></p>`);
+  // Keep an authored title composition intact: the story owns its guide nav,
+  // and the subtitle's intentional line break is not a metadata replacement.
+  let hasLaunchGuide = false;
+  html = html.replace(/<nav class="launch-guide-nav"[^>]*>[\s\S]*?<\/nav>/g, () => {
+    if (hasLaunchGuide) return '';
+    hasLaunchGuide = true;
+    return launchGuide;
+  });
+  if (!hasLaunchGuide) html = html.replace(/<p class="launch-copyright">/, `${launchGuide}\n      <p class="launch-copyright">`);
+  html = html.replace(/(<p class="launch-copyright">)([\s\S]*?)(<\/p>)/, (_, before, content, after) => {
+    const platform = content.includes('©') ? content.slice(0, content.indexOf('©')) : '';
+    return before + platform + `© <a href="about/" aria-label="${esc(site.publisher)}の戦国VSについて">${esc(site.publisher)}</a>` + after;
+  });
   html = html.replace(/(<a href="about\/" data-action="about">)[^<]*(<\/a>)/, '$1ゲーム概要・出典$2');
   html = html.replace(/(<div class="version-label">)群雄集結 · Ver\. [^<]+(<\/div>)/, `$1群雄集結 · Ver. ${esc(site.version)}$2`);
   html = withSelectionAssets(html);
@@ -775,7 +789,7 @@ function updateNotFound() {
   html = withBrandLinks(html, value => '/' + value);
   // A 404 document can be served at an unknown nested URL. Its assets must
   // always resolve at the site root rather than below that missing path.
-  html = html.replace(/(\b(?:src|href)=["'])\/?(image-protect|interaction-motion)\.(css|js)(?:\?[^"']*)?/g, (_, before, name, extension) => `${before}/${name}.${extension}?v=${release}`);
+  html = html.replace(/(\b(?:src|href)=["'])\/?(image-protect|interaction-motion|public-luxury)\.(css|js)(?:\?[^"']*)?/g, (_, before, name, extension) => `${before}/${name}.${extension}?v=${release}`);
   return withButtonArtwork(withSelectionAssets(html, '/'), '/button-artwork.css');
 }
 
@@ -801,12 +815,18 @@ outputs.set('index.html', updateHome());
 outputs.set('404.html', updateNotFound());
 outputs.set('manifest.webmanifest', updateManifest());
 outputs.set('sitemap.xml', sitemap());
+const checkOnly = process.argv.includes('--check');
+const outdated = [];
 let changed = 0;
 for (const [relative, contents] of outputs) {
   const file = path.join(root, relative);
   if (fs.existsSync(file) && fs.readFileSync(file, 'utf8') === contents) continue;
+  if (checkOnly) { outdated.push(relative); continue; }
   fs.mkdirSync(path.dirname(file), {recursive:true});
   fs.writeFileSync(file, contents, 'utf8');
   changed++;
 }
-console.log(`Generated ${outputs.size} public documents from site-metadata.json; ${changed} changed.`);
+if (checkOnly) {
+  if (outdated.length) { console.error('Public build differs: ' + outdated.join(', ')); process.exitCode = 1; }
+  else console.log(`PASS ${outputs.size} public documents match site-metadata.json and their templates.`);
+} else console.log(`Generated ${outputs.size} public documents from site-metadata.json; ${changed} changed.`);
