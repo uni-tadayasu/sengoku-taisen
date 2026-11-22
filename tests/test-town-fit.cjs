@@ -61,19 +61,25 @@ assert(largerTown.width>=790&&largerTown.height>=527,'1366×768 geometry has a m
 assert(largerTown.width*largerTown.height>3*(438*292),'Artwork area exceeds three times the previous 438×292 result');
 assert.equal(panelSceneHeight(569,60,0),509,'Long labels and larger system text use their actual measured height');
 assert.equal(panelSceneHeight(0,42,0),1,'Hidden or not-yet-sized panels remain finite');
-// All eight current facility levels stay present, including 200% desktop and
-// phones where the former compact mode hid the whole name/level label.
-for(const width of [290,307.5,339,570,705,819]){
+// Labels must avoid every icon, not only other labels. Include the actual
+// lower-left field and top-center academy, both reported overlapping on PC.
+for(const width of [290,307.5,339,400,440,480,570,619,620,705,819]){
   const height=width/1.5,compact=width<620;
-  const labels=placeLabels(points.map(([x,y],i)=>({x:width*x/100,y:height*y/100,width:compact?61:112,height:compact?50:32,pinSize:44,above:[3,7].includes(i)})),width,height);
-  assert.equal(labels.length,8);
+  const items=points.map(([x,y],i)=>({x:width*x/100,y:height*y/100,width:compact?66:120,height:compact?52:32,pinSize:44,above:[3,7].includes(i)}));
+  const labels=placeLabels(items,width,height);assert.equal(labels.length,8);
+  if(labels.some(label=>label.unplaced)){
+    assert(labels.every(label=>label.unplaced),'Use the adjacent facility list consistently when the illustration is too small');
+    assert(width<440,'Ordinary compact PC artwork must retain its on-picture names and levels');
+    continue;
+  }
   for(let i=0;i<labels.length;i++){
     const a=labels[i];assert(a.left>=5&&a.top>=5);assert(a.left+a.width<=width-5+1e-8&&a.top+a.height<=height-5+1e-8);
-    for(const b of labels.slice(i+1))assert(a.left+a.width<=b.left||b.left+b.width<=a.left||a.top+a.height<=b.top||b.top+b.height<=a.top,'Current facility levels cannot cover each other at '+width+'px');
+    for(const b of labels.slice(i+1))assert(a.left+a.width<=b.left||b.left+b.width<=a.left||a.top+a.height<=b.top||b.top+b.height<=a.top,'Facility labels cannot cover each other at '+width+'px');
+    for(const marker of items){const b={left:marker.x-22,top:marker.y-22,width:44,height:44};assert(a.left+a.width+3.9<=b.left||b.left+b.width+3.9<=a.left||a.top+a.height+3.9<=b.top||b.top+b.height+3.9<=a.top,'A label must not cover any facility icon at '+width+'px');}
   }
 }
 assert.equal(kamon.url('德川家'), kamon.url('徳川家'));
 assert.match(kamon.render('德川家'), /aria-label="徳川家：/);
 assert.equal(kamon.render('德川家'),kamon.render('徳川家'),'Public clan labels must not distinguish verified roles');
 assert.match(kamon.render('徳川家'), /aria-label="徳川家：/);
-console.log(`PASS ${cases} town fit/label geometries, eight readable non-overlapping current-level badges, full-height PC canvas/maximized image, drag limits, zero-size startup, and uniform public Tokugawa crest labels.`);
+console.log(`PASS ${cases} town fit/label geometries, eight labels avoiding every facility icon or an explicit compact-list fallback, full-height PC canvas, drag limits, zero-size startup, and uniform public Tokugawa crest labels.`);

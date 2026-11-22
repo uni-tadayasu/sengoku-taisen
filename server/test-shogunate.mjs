@@ -47,7 +47,7 @@ await scope('shared conquest full ownership rewards active guild contributors on
  h.sql.prepare('UPDATE conquest_castles SET owner_guild_id=?,stock=5000,protected_until=0 WHERE season_id=? AND castle_id<>?').run(g.id,d.season.id,target.id);
  h.sql.prepare('UPDATE conquest_members SET actions=1,transport_points=10 WHERE user_id=? AND season_id=?').run(b.user.id,d.season.id);
  assert.equal((await view(h,a)).rights.length,0);d=(await h.api('/conquest',{token:a.token})).data;const c=d.castles.find(c=>c.id===target.id),s=d.castles.find(c=>c.id===source),body={seasonId:d.season.id,requestId:crypto.randomUUID(),action:'attack',castleId:c.id,fromCastleId:s.id,troops:6000,tactic:'assault',expectedGuildRevision:d.guild.revision,expectedCastleRevision:c.revision,expectedSourceRevision:s.revision};
- const first=(await h.api('/conquest/action',post(a,body))).data;assert(first.result.battle.won);assert.equal((await view(h,a)).rights.length,1);assert.equal((await view(h,b)).rights.length,1);assert.equal((await view(h,idle)).rights.length,0);await h.api('/conquest/action',post(a,body));assert.equal(h.sql.prepare('SELECT COUNT(*) n FROM shogunate_rights').get().n,2);
+ const departure=(await h.api('/conquest/action',post(a,body))).data;assert(departure.marching);assert.equal((await view(h,a)).rights.length,0);h.now+=departure.march.durationMs;await h.api('/conquest',{token:a.token});const first=(await h.api('/conquest/action',post(a,body))).data;assert(first.result.battle.won);assert.equal((await view(h,a)).rights.length,1);assert.equal((await view(h,b)).rights.length,1);assert.equal((await view(h,idle)).rights.length,0);await h.api('/conquest/action',post(a,body));assert.equal(h.sql.prepare('SELECT COUNT(*) n FROM shogunate_rights').get().n,2);
 });
 await scope('a decisive field capture records its right before an immediate cycle settlement and replays once',async h=>{
  const {attacker,body}=await lastFieldCastle(h),before=JSON.parse(row(h,attacker).save_json).state;
@@ -57,22 +57,23 @@ await scope('a decisive field capture records its right before an immediate cycl
   h.sql.prepare('UPDATE world_clock SET base_elapsed_ms=?,anchor_real_ms=?,revision=revision+1').run((before.cycle.index+1)*672*60000,h.now);
   await h.api('/sync/settle',post(attacker,{deviceId:attacker.deviceId,revision:row(h,attacker).revision}));
  };
- const first=(await forceFieldWin(()=>h.api('/field/attack',post(attacker,body)))).data;assert(first.battle.capture.captured);assert.equal(first.save.state.cycle.index,before.cycle.index+1);
+ const departure=(await forceFieldWin(()=>h.api('/field/attack',post(attacker,body)))).data;assert(departure.marching);assert.equal(h.sql.prepare('SELECT COUNT(*) n FROM shogunate_rights').get().n,0);h.now+=departure.march.durationMs;await h.api('/sync/lease',post(attacker,{deviceId:attacker.deviceId}));const arrived=(await h.api('/marches?deviceId='+attacker.deviceId,{token:attacker.token})).data,first={...arrived,battle:arrived.history[0].battle};assert(first.battle.capture.captured);assert.equal(first.save.state.cycle.index,before.cycle.index+1);
  const replay=(await h.api('/field/attack',post(attacker,body))).data;assert(replay.idempotent);assert.equal(replay.battle.id,first.battle.id);
  const current=await view(h,attacker);assert.equal(current.rights.length,1);assert.equal(current.campaign.achieved,false);assert.equal(h.sql.prepare('SELECT COUNT(*) n FROM field_requests').get().n,1);
 });
-await scope('field victory and campaign right roll back together if any statement fails',async h=>{
- const {attacker,defender,body}=await lastFieldCastle(h),beforeA=row(h,attacker).save_json,beforeD=row(h,defender).save_json;
+await scope('field victory and campaign right roll back together if any arrival statement fails',async h=>{
+ const {attacker,defender,body}=await lastFieldCastle(h),departure=(await forceFieldWin(()=>h.api('/field/attack',post(attacker,body)))).data,beforeA=row(h,attacker).save_json,beforeD=row(h,defender).save_json;
+ h.now+=departure.march.durationMs;
  h.beforeBatch=statements=>{if(!statements.some(s=>s.sql.includes('INSERT INTO field_requests')))return;assert(statements.some(s=>s.sql.includes('INSERT INTO shogunate_rights')));h.beforeBatch=null;statements.push(h.db.prepare('UPDATE missing_field_shogunate SET value=1'));};
- await forceFieldWin(()=>h.api('/field/attack',post(attacker,body,500)));assert.equal(row(h,attacker).save_json,beforeA);assert.equal(row(h,defender).save_json,beforeD);
+ const pending=(await h.api('/marches',{token:attacker.token})).data;assert.equal(pending.active.length,1);assert.equal(row(h,attacker).save_json,beforeA);assert.equal(row(h,defender).save_json,beforeD);
  for(const table of ['field_requests','field_battles','shogunate_rights'])assert.equal(h.sql.prepare('SELECT COUNT(*) n FROM '+table).get().n,0);
- await forceFieldWin(()=>h.api('/field/attack',post(attacker,body)));assert.equal(h.sql.prepare('SELECT COUNT(*) n FROM shogunate_rights').get().n,1);
+ const done=(await h.api('/marches',{token:attacker.token})).data;assert.equal(done.history[0].status,'resolved');assert.equal(h.sql.prepare('SELECT COUNT(*) n FROM shogunate_rights').get().n,1);
 });
-await scope('a changed field revision or runtime role cannot admit a victory or grant its right',async h=>{
- const {attacker,defender,body}=await lastFieldCastle(h),beforeA=row(h,attacker).save_json,beforeD=row(h,defender).save_json;
+await scope('a changed field revision or runtime role cannot admit an arrival victory or grant its right',async h=>{
+ const {attacker,defender,body}=await lastFieldCastle(h),departure=(await forceFieldWin(()=>h.api('/field/attack',post(attacker,body)))).data,beforeA=row(h,attacker).save_json,beforeD=row(h,defender).save_json;h.now+=departure.march.durationMs;
  for(const mutate of [()=>h.sql.prepare('UPDATE player_saves SET revision=revision+1 WHERE user_id=?').run(attacker.user.id),()=>h.sql.prepare("INSERT INTO settings(key,value,updated_at) VALUES('adminUserId',?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(attacker.user.id,h.now)]){
-  body.expectedRevision=row(h,attacker).revision;h.beforeBatch=statements=>{if(!statements.some(s=>s.sql.includes('INSERT INTO field_requests')))return;h.beforeBatch=null;mutate();};
-  await forceFieldWin(()=>h.api('/field/attack',post(attacker,body,409)));assert.equal(row(h,attacker).save_json,beforeA);assert.equal(row(h,defender).save_json,beforeD);
+  h.beforeBatch=statements=>{if(!statements.some(s=>s.sql.includes('INSERT INTO field_requests')))return;h.beforeBatch=null;mutate();};
+  const pending=(await h.api('/marches',{token:attacker.token})).data;assert.equal(pending.active.length,1);assert.equal(row(h,attacker).save_json,beforeA);assert.equal(row(h,defender).save_json,beforeD);
   for(const table of ['field_requests','field_battles','shogunate_rights'])assert.equal(h.sql.prepare('SELECT COUNT(*) n FROM '+table).get().n,0);
  }
 });

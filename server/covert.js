@@ -69,7 +69,7 @@ async function prior(ctx,requestId,digest){
 async function response(ctx,record,deviceId,idempotent){
  const {db,user,helpers:h}=ctx;await h.requireAccountAccess(db,user);
  const snapshot=await h.syncSnapshot(db,await h.getSyncRow(db,user.id),await h.getUser(db,user.id),deviceId,Date.now());
- return{...await status(ctx,snapshot),result:JSON.parse(record.result_json),idempotent};
+ const result=JSON.parse(record.result_json);return{...await status(ctx,snapshot),result,idempotent,...(result.march?{accepted:result.status==='marching',marching:result.status==='marching',march:covertMarchDto(result.march,snapshot.clock,result)}:{})};
 }
 function input(raw,action,h){
  const common=['requestId','deviceId','expectedRevision','campaignId','sequence'];
@@ -152,12 +152,13 @@ async function mutation(ctx,action){
   incidentGuard=incident.kind==='field'?{sql:`EXISTS(SELECT 1 FROM field_battles WHERE id=? AND defender_id=? AND defender_campaign_id=? AND rowid>? AND occurred_elapsed_ms>=? AND (${incidentCastle})=?)`,args:[body.incidentId,user.id,body.campaignId,station.battleCursor,station.createdElapsedMs,station.sourceCastleId]}:{sql:'EXISTS(SELECT 1 FROM covert_incidents WHERE actor_id=? AND campaign_id=? AND incident_id=? AND source_castle_id=? AND occurred_elapsed_ms>=? AND station_sequence>?)',args:[user.id,body.campaignId,body.incidentId,station.sourceCastleId,station.createdElapsedMs,station.deploymentSequence]};
   incidentGuard.sql+=' AND NOT EXISTS(SELECT 1 FROM covert_requests WHERE actor_id=? AND incident_id=?)';incidentGuard.args.push(user.id,body.incidentId);
  }
- const result=action==='hire'?game.hireCovert(body.sourceCastleId,body.count,options):action==='dispatch'?game.dispatchCovert(body.sourceCastleId,body.target,body.count,body.mode,options):action==='recall'?game.recallCovert(body.stationId,options):game.retaliateCovert(body.stationId,body.incidentId,options);
+ const result=action==='hire'?game.hireCovert(body.sourceCastleId,body.count,options):action==='dispatch'?game.departCovertDispatch(body.sourceCastleId,body.target,body.count,body.mode,options):action==='recall'?game.recallCovert(body.stationId,options):game.retaliateCovert(body.stationId,body.incidentId,options);
  if(!result.ok)h.fail(409,result.code||'COVERT_UNAVAILABLE',result.message);
  if(result.idempotent)h.fail(409,'COVERT_ALREADY_RECORDED','この操作は記録済みです。派遣画面を更新してください。');
+ if(action==='dispatch'&&result.accepted){const dispatch=game.state.covert.dispatches.find(v=>v.id===result.march.id);dispatch.authority='server';dispatch.departedElapsedMs=Math.floor(clock.elapsedMs);dispatch.arrivesElapsedMs=dispatch.departedElapsedMs+dispatch.travel.durationMs;const history=game.state.covert.history.find(v=>v.requestId===body.requestId);history.march=JSON.parse(JSON.stringify(dispatch));result.result.march=history.march;result.march=history.march;}
  await h.budget(db,'covert:'+user.id,60,60000,ctx.now);
  const now=Date.now(),next=h.normalizeGameSave(JSON.parse(game.exportSave()),user,now,{clock}),nonce=crypto.randomUUID(),role=h.roleCommitGuard(user),gateArgs=[user.id,body.requestId,nonce];
- const stateGuard=found.row?{sql:'EXISTS(SELECT 1 FROM covert_states WHERE actor_id=? AND campaign_id=? AND sequence=?)',args:[user.id,body.campaignId,body.sequence]}:{sql:'NOT EXISTS(SELECT 1 FROM covert_states WHERE actor_id=? AND campaign_id=?)',args:[user.id,body.campaignId]};
+ const stateGuard=found.row?{sql:'EXISTS(SELECT 1 FROM covert_states WHERE actor_id=? AND campaign_id=? AND sequence=? AND state_json=?)',args:[user.id,body.campaignId,body.sequence,found.row.state_json]}:{sql:'NOT EXISTS(SELECT 1 FROM covert_states WHERE actor_id=? AND campaign_id=?)',args:[user.id,body.campaignId]};
  const sharedGuard=shared?{sql:"EXISTS(SELECT 1 FROM staff_base WHERE id='kyoto_gosho' AND revision=?)",args:[shared.revision]}:safe,targetGuard=target?.guards||safe;
  const statements=[stmt(db,`INSERT INTO covert_requests(actor_id,request_id,campaign_id,sequence,action,incident_id,request_hash,commit_token,result_json,created_at)
   SELECT ?,?,?,?,?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM player_saves WHERE user_id=? AND revision=? AND writer_device_id=? AND lease_expires_at>? AND COALESCE(json_extract(save_json,'$.state.walking.campaignId'),'legacy_v1')=?)
@@ -167,6 +168,7 @@ async function mutation(ctx,action){
   stmt(db,`INSERT INTO covert_states(actor_id,campaign_id,sequence,state_json,updated_at) SELECT ?,?,?,?,? WHERE ${gate}
    ON CONFLICT(actor_id,campaign_id) DO UPDATE SET sequence=excluded.sequence,state_json=excluded.state_json,updated_at=excluded.updated_at`,user.id,body.campaignId,next.state.covert.sequence,JSON.stringify(next.state.covert),now,...gateArgs)
  ];
+ if(action==='dispatch'&&target)statements.push(stmt(db,`UPDATE covert_requests SET march_target_campaign_id=? WHERE actor_id=? AND request_id=? AND ${gate}`,target.save.state.walking.campaignId,user.id,body.requestId,...gateArgs));
  statements.push(...h.branchProgressStatements(db,user.id,next,now,gate,gateArgs,{resolvedElapsedMs:Math.min(clock.elapsedMs,next.state.worldClock?.elapsedMs||0)}));
  if(action==='retaliate'&&target){
   const b=result.result.battle,d=target.save.state,castle=d.castles[targetSpec.castleId];
@@ -192,9 +194,49 @@ async function mutation(ctx,action){
  }
  return response(ctx,committed,body.deviceId,committed.commit_token!==nonce);
 }
+function covertMarchDto(dispatch,clock,result=null){
+ const status=result?.status||'marching';return{id:dispatch.id,requestId:dispatch.requestId,kind:'covert',status,timeBasis:'world',sourceCastleId:dispatch.sourceCastleId,sourceName:dispatch.travel.sourceName,targetCastleId:dispatch.targetCastleId,targetPlayerId:dispatch.target.playerId||null,targetName:dispatch.target.name,distanceKm:dispatch.travel.distanceKm,durationMs:dispatch.travel.durationMs,departedAtMs:dispatch.departedElapsedMs,arrivesAtMs:dispatch.arrivesElapsedMs,remainingMs:status==='marching'?Math.max(0,dispatch.arrivesElapsedMs-clock.elapsedMs):0,troops:dispatch.count,travel:dispatch.travel,battle:null,message:status==='cancelled'?'派遣を取りやめ、部隊と出陣費用を戻しました。':status==='resolved'?dispatch.mode==='station'?'部隊が到着し、常駐を開始しました。':'偵察が完了し、部隊が帰還しました。':'目的地へ部隊を派遣しています。到着後に報告を確認できます。'};
+}
+export async function covertMarches(ctx){
+ const row=await ctx.helpers.getSyncRow(ctx.db,ctx.user.id);if(!row?.save_json)return{active:[],history:[]};const save=JSON.parse(row.save_json),found=await canonical(ctx.db,ctx.user.id,save.state.walking?.campaignId||'legacy_v1'),clock=await ctx.helpers.getWorldClock(ctx.db,ctx.now);
+ return{active:found.state.dispatches.map(m=>covertMarchDto(m,clock)),history:found.state.history.filter(r=>r.march&&r.status!=='marching').map(r=>covertMarchDto(r.march,clock,r))};
+}
+export async function settleCovertDispatches(ctx,{actorId=null,limit=8}={}){
+ const {db,helpers:h,now}=ctx,clock=await h.getWorldClock(db,now);if(!clock.running)return;
+ const pending=rows(await stmt(db,`SELECT * FROM covert_states WHERE EXISTS(SELECT 1 FROM json_each(state_json,'$.dispatches') dispatch WHERE CAST(json_extract(dispatch.value,'$.arrivesElapsedMs') AS INTEGER)<=? OR CAST(json_extract(dispatch.value,'$.cycle') AS INTEGER)<>?)${actorId?' AND actor_id=?':''} ORDER BY updated_at LIMIT ?`,clock.elapsedMs,Math.floor(clock.elapsedMs/cycleMs),...(actorId?[actorId]:[]),Math.min(16,limit)).all());
+ for(const ledger of pending){
+  const user=await h.getUser(db,ledger.actor_id);if(!user)continue;
+  const own={...ctx,user},saved=await h.getSyncRow(db,user.id);if(!saved?.save_json)continue;
+  const save=h.normalizeGameSave(JSON.parse(saved.save_json),user,now,{reading:true,clock}),found=await canonical(db,user.id,ledger.campaign_id);
+  if(save.state.walking.campaignId!==ledger.campaign_id)continue;
+  if(!found.state.dispatches.some(m=>m.arrivesElapsedMs<=clock.elapsedMs||m.cycle!==Math.floor(clock.elapsedMs/cycleMs)))continue;
+  const branches=await h.branchStateGuard(db,user.id,ledger.campaign_id);await h.reconcileBranchProgress(db,user.id,save,clock);save.state.covert=found.state;
+  const shared=user.is_staff&&!user.is_admin?await h.staffBaseDto(db,user,clock,now):null,emperor=await h.courtEmperorAuthority(db,user),game=GameEngine.fromSave(save,GAME_OFFICERS,{isAdmin:!!user.is_admin,isStaff:!!user.is_staff,isCourtEmperor:emperor.isCourtEmperor,staffBase:shared,branchAuthority:{resolvedElapsedMs:branches.resolvedElapsedMs}});
+  const completed=[];for(const dispatch of [...game.state.covert.dispatches])if(dispatch.cycle!==Math.floor(clock.elapsedMs/cycleMs)){const result=game.cancelCovertDispatch(dispatch.id,'年月が変わったため派遣を取りやめました。',{authoritative:true});if(result)completed.push(result);}
+  const advanced=completed.length?{ok:true}:game.applyWorldClock(clock,{maxSeconds:86400,deferCycleSettlement:true});if(!advanced.ok||advanced.pending||advanced.settlementRequired)continue;
+  const targetSnapshots={},targetGuards=[];let playerTargets=0;const cursor=Number((await stmt(db,'SELECT COALESCE(MAX(rowid),0) AS cursor FROM field_battles').first()).cursor);
+  for(const dispatch of [...game.state.covert.dispatches]){
+   if(dispatch.arrivesElapsedMs>clock.elapsedMs&&dispatch.cycle===game.state.cycle.index)continue;
+   if(user.ban_active){const result=game.cancelCovertDispatch(dispatch.id,'利用状況が変わったため派遣を取りやめました。',{authoritative:true});if(result)completed.push(result);continue;}
+   if(dispatch.target.kind!=='player')continue;
+   if(playerTargets++>=1)continue; // Keep D1 arrival guards below 100 bindings.
+   try{
+    const receipt=await stmt(db,'SELECT march_target_campaign_id FROM covert_requests WHERE actor_id=? AND request_id=?',user.id,dispatch.requestId).first(),target=await playerTarget(own,dispatch.target,clock,'dispatch');
+    if(receipt?.march_target_campaign_id&&target.save.state.walking.campaignId!==receipt.march_target_campaign_id)h.fail(409,'COVERT_TARGET_CHANGED','派遣先の物語が切り替わったため、部隊は帰還しました。');
+    targetSnapshots[dispatch.target.playerId+':'+dispatch.target.castleId]={snapshot:target.snapshot,battleCursor:cursor};targetGuards.push(target.guards);
+   }catch(error){if(!error?.status)throw error;const result=game.cancelCovertDispatch(dispatch.id,error.message,{authoritative:true});if(result)completed.push(result);}
+  }
+  completed.push(...game.settleCovertDue({targetSnapshots,authoritative:true}));if(!completed.length)continue;
+  const next=h.normalizeGameSave(JSON.parse(game.exportSave()),user,now,{clock}),nonce=crypto.randomUUID(),role=user.ban_active?safe:h.roleCommitGuard(user),guards=[role,branches.guard,...targetGuards,...(shared?[{sql:"EXISTS(SELECT 1 FROM staff_base WHERE id='kyoto_gosho' AND revision=?)",args:[shared.revision]}]:[])],commitGate='EXISTS(SELECT 1 FROM player_saves WHERE user_id=? AND cycle_commit=?)',args=[user.id,nonce];
+  const statements=[stmt(db,`UPDATE player_saves SET save_json=?,revision=revision+1,updated_at=?,cycle_commit=? WHERE user_id=? AND revision=? AND EXISTS(SELECT 1 FROM covert_states WHERE actor_id=? AND campaign_id=? AND state_json=?) AND EXISTS(SELECT 1 FROM world_clock WHERE id=? AND revision=?) AND ${guards.map(g=>'('+g.sql+')').join(' AND ')} RETURNING user_id`,JSON.stringify(next),now,nonce,user.id,saved.revision,user.id,ledger.campaign_id,found.row.state_json,h.worldClockId,clock.revision,...guards.flatMap(g=>g.args)),stmt(db,`UPDATE covert_states SET sequence=?,state_json=?,updated_at=? WHERE actor_id=? AND campaign_id=? AND ${commitGate}`,next.state.covert.sequence,JSON.stringify(next.state.covert),now,user.id,ledger.campaign_id,...args),...h.branchProgressStatements(db,user.id,next,now,commitGate,args,{resolvedElapsedMs:Math.min(clock.elapsedMs,next.state.worldClock?.elapsedMs||0)}),...covertIncidentStatements(db,user.id,next,now,commitGate,args)];
+  for(const result of completed)statements.push(stmt(db,`UPDATE covert_requests SET result_json=? WHERE actor_id=? AND request_id=? AND ${commitGate}`,JSON.stringify(result),user.id,result.requestId,...args));
+  await db.batch(statements);
+ }
+}
 export async function handleCovert(ctx){
  const {user,db,helpers:h,path,method,url}=ctx;await h.requireAccountAccess(db,user);
  if(path==='/covert'&&method==='GET'){
+  await settleCovertDispatches(ctx,{actorId:user.id,limit:1});
   if([...url.searchParams.keys()].some(k=>!['cursor','limit','deviceId'].includes(k)))h.fail(400,'INVALID_INPUT','一覧の指定を確認してください。');
   return status(ctx);
  }

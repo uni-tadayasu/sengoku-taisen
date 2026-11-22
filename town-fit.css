@@ -52,6 +52,8 @@ html.sengoku-desktop-fit[data-layout-townheight] #main .town-panel .town-scene {
 #main .town-scene-board .hotspot:is(:hover,:focus-visible) .label { border-color: #fff0be; background: #234137; outline: 2px solid #f0d38566; outline-offset: 1px; }
 #main .town-scene-board .hotspot.has-job .pin { background: #b6ebcb; border-color: #eefff3; }
 #main .town-scene-board .hotspot.has-job .label { border-color: #96dcbb; }
+/* Keep measured dimensions stable while the adjacent list owns the labels. */
+#main .town-scene[data-town-labels-outside] .hotspot .label { visibility: hidden; pointer-events: none; }
 #main .town-scene[data-town-art-small] .hotspot { display: none; }
 #main .town-scene-legend { display: none; grid-template-columns: minmax(0, 1fr); gap: 7px; padding: 10px; border-top: 1px solid #d9bd7821; }
 #main .town-legend-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; min-width: 0; }

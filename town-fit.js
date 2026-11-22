@@ -22,18 +22,56 @@
     return { left, top, width: labelWidth, height: labelHeight, relativeLeft: left - x + half, relativeTop: top - y + half };
   }
   function placeLabels(items, width, height) {
-    const placed=[];
-    return items.map(item=>{
-      const preferred=labelRect(item.x,item.y,width,height,item.width,item.height,item.pinSize,item.above),candidates=[preferred];
-      candidates.push(labelRect(item.x,item.y,width,height,item.width,item.height,item.pinSize,!item.above));
-      for(let top=5;top<=height-preferred.height-5;top+=preferred.height+5)for(let left=5;left<=width-preferred.width-5;left+=preferred.width+5)candidates.push({...preferred,left,top});
-      let best=preferred,bestScore=Infinity;
-      for(const candidate of candidates){
-        const overlap=placed.reduce((sum,p)=>sum+Math.max(0,Math.min(candidate.left+candidate.width+3,p.left+p.width+3)-Math.max(candidate.left,p.left))*Math.max(0,Math.min(candidate.top+candidate.height+3,p.top+p.height+3)-Math.max(candidate.top,p.top)),0);
-        const distance=(candidate.left-preferred.left)**2+(candidate.top-preferred.top)**2,score=overlap*100000+distance;
-        if(score<bestScore){bestScore=score;best=candidate;}
+    // Every icon is an obstacle, including the icon belonging to this label.
+    // Previously the fallback only checked earlier labels and could put a
+    // name/level badge directly over the field or academy seal.
+    const gap=4, margin=5;
+    const intersects=(a,b)=>a.left < b.left+b.width+gap && a.left+a.width+gap > b.left && a.top < b.top+b.height+gap && a.top+a.height+gap > b.top;
+    const pins=items.map(item=>{const size=item.pinSize||44;return{left:item.x-size/2,top:item.y-size/2,width:size,height:size};});
+    const choices=items.map((item,index)=>{
+      const preferred=labelRect(item.x,item.y,width,height,item.width,item.height,item.pinSize,item.above);
+      const maxLeft=Math.max(margin,width-preferred.width-margin),maxTop=Math.max(margin,height-preferred.height-margin);
+      const xs=new Set([margin,maxLeft,preferred.left]),ys=new Set([margin,maxTop,preferred.top]);
+      for(const pin of pins){
+        xs.add(clamp(pin.left-preferred.width-gap,margin,maxLeft));xs.add(clamp(pin.left+pin.width+gap,margin,maxLeft));
+        ys.add(clamp(pin.top-preferred.height-gap,margin,maxTop));ys.add(clamp(pin.top+pin.height+gap,margin,maxTop));
       }
-      const half=(item.pinSize||28)/2,rect={...best,relativeLeft:best.left-item.x+half,relativeTop:best.top-item.y+half};placed.push(rect);return rect;
+      // Include local positions on each side, then regular fallback positions.
+      const half=(item.pinSize||44)/2;
+      xs.add(clamp(item.x-half-preferred.width-gap,margin,maxLeft));xs.add(clamp(item.x+half+gap,margin,maxLeft));
+      ys.add(clamp(item.y-preferred.height/2,margin,maxTop));
+      for(let x=margin;x<=maxLeft;x+=Math.max(10,preferred.width/2))xs.add(x);
+      for(let y=margin;y<=maxTop;y+=Math.max(10,preferred.height/2))ys.add(y);
+      const candidates=[];
+      for(const left of xs)for(const top of ys){
+        const rect={left,top,width:preferred.width,height:preferred.height};
+        if(pins.some(pin=>intersects(rect,pin)))continue;
+        rect.cost=(left-preferred.left)**2+(top-preferred.top)**2;
+        candidates.push(rect);
+      }
+      candidates.sort((a,b)=>a.cost-b.cost||a.top-b.top||a.left-b.left);
+      return{index,preferred,candidates};
+    });
+    // Place constrained labels first; bounded backtracking resolves tight
+    // layouts without moving any facility marker away from its illustration.
+    let attempts=0,solution=null;
+    function solve(remaining,placed){
+      if(!remaining.length){solution=placed.slice();return true;}
+      if(++attempts>12000)return false;
+      const options=remaining.map(choice=>({...choice,available:choice.candidates.filter(rect=>!placed.some(other=>other&&intersects(rect,other)))})).sort((a,b)=>a.available.length-b.available.length||a.index-b.index);
+      const next=options[0];if(!next.available.length)return false;
+      for(const rect of next.available.slice(0,80)){
+        placed[next.index]=rect;
+        if(solve(remaining.filter(choice=>choice.index!==next.index),placed))return true;
+      }
+      placed[next.index]=null;return false;
+    }
+    solve(choices,Array(items.length).fill(null));
+    // An exceptionally small artwork uses its adjacent facility list instead
+    // of overlapping labels; its circular location markers remain visible.
+    return items.map((item,index)=>{
+      const best=solution?.[index]||choices[index].preferred,half=(item.pinSize||44)/2;
+      return{...best,relativeLeft:best.left-item.x+half,relativeTop:best.top-item.y+half,unplaced:!solution};
     });
   }
   function sceneHeight(preferred, viewportHeight, sceneOffset, bottomPadding = 0) {
@@ -50,7 +88,7 @@
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   const doc = global.document;
   if (!doc || global.SengokuTownFit) return;
-  let main, scene, board, observer, mainObserver, modeObserver, frame = 0, destroyed = false;
+  let main, scene, board, observer, mainObserver, modeObserver, labelObserver, frame = 0, destroyed = false;
   const raf = global.requestAnimationFrame?.bind(global) || (fn => global.setTimeout(fn, 16));
   const caf = global.cancelAnimationFrame?.bind(global) || global.clearTimeout.bind(global);
   const removers = [];
@@ -64,7 +102,8 @@
     if (destroyed) return;
     const next = main?.querySelector('.town-scene');
     if (scene !== next) {
-      observer?.disconnect(); scene = next; board = scene?.querySelector('.town-scene-board');
+      observer?.disconnect(); labelObserver?.disconnect(); scene = next; board = scene?.querySelector('.town-scene-board');
+      if(board)labelObserver?.observe(board,{childList:true,subtree:true,characterData:true});
       if (scene) for (const node of [main, scene, ...main.querySelectorAll('.town-panel,.town-visual,.page-heading,.realtime-strip,.sync-access-notice,.town-scene-heading,.scene-caption,.town-premium-lord')]) observer?.observe(node);
     }
     if (!scene || !board || !scene.isConnected) return;
@@ -107,6 +146,8 @@
       markers.push({marker,label,x,y,width:labelBox.width,height:labelBox.height,pinSize:marker.offsetWidth,above:['academy','lumber'].includes(marker.dataset.id)});
     }
     const labels=placeLabels(markers,fit.width,fit.height);
+    const outside=labels.some(rect=>rect.unplaced);
+    if(scene.hasAttribute('data-town-labels-outside')!==outside)scene.toggleAttribute('data-town-labels-outside',outside);
     for(let index=0;index<markers.length;index++){
       const {label}=markers[index],rect=labels[index];
       style(label, '--town-label-left', rect.relativeLeft.toFixed(3) + 'px');
@@ -119,6 +160,7 @@
     main = doc.getElementById('main'); if (!main) return;
     if (global.ResizeObserver) observer = new global.ResizeObserver(refresh);
     if (global.MutationObserver) {
+      labelObserver = new global.MutationObserver(refresh);
       mainObserver = new global.MutationObserver(refresh);
       mainObserver.observe(main, { childList: true, attributes: true, attributeFilter: ['data-view'] });
       modeObserver = new global.MutationObserver(refresh);
@@ -131,7 +173,7 @@
   }
   function destroy() {
     destroyed = true; if (frame) caf(frame); frame = 0;
-    observer?.disconnect(); mainObserver?.disconnect(); modeObserver?.disconnect(); for (const remove of removers.splice(0)) remove();
+    observer?.disconnect(); mainObserver?.disconnect(); modeObserver?.disconnect(); labelObserver?.disconnect(); for (const remove of removers.splice(0)) remove();
   }
   global.SengokuTownFit = { ...api, refresh, destroy };
   if (doc.readyState === 'loading') listen(doc, 'DOMContentLoaded', init, { once: true }); else init();

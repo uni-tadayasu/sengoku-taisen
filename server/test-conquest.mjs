@@ -10,7 +10,9 @@ async function scope(name,run){const h=harness();h.now=SAT;try{await run(h);scop
 async function guild(h,name='共有同盟',members=1){const players=[];for(let i=0;i<members;i++)players.push(await h.session(name+'領主'+i));const g=(await h.api('/guild',post(players[0],{name}))).data.guild;for(const p of players.slice(1))await h.api('/guild/join',post(p,{guildId:g.id}));return{guild:g,players};}
 async function join(h,p,state=null,requestId=crypto.randomUUID(),expected=200){const d=state||await read(h,p);return h.api('/conquest/join',post(p,{seasonId:d.season.id,requestId},expected));}
 function action(data,castle,extra={}){return{seasonId:data.season.id,requestId:crypto.randomUUID(),action:'attack',castleId:castle.id,troops:2500,tactic:'balanced',expectedGuildRevision:data.guild.revision,expectedCastleRevision:castle.revision,...extra};}
-const run=(h,p,body,expected=200)=>h.api('/conquest/action',post(p,body,expected));
+// Existing economy/scoring assertions inspect completed battles. The dedicated
+// travel suite separately proves that none of these effects exist at departure.
+const run=async(h,p,body,expected=200)=>{let r=await h.api('/conquest/action',post(p,body,expected));if(expected===200&&r.data.marching){h.now=Math.max(h.now,r.data.march.arrivesAtMs);await read(h,p);r=await h.api('/conquest/action',post(p,body,expected));}return r;};
 const tick=h=>h.now+=31000;
 const neutral=d=>d.castles.find(c=>!c.ownerGuildId&&!c.strategic);
 
@@ -55,21 +57,21 @@ await scope('transport, real garrison reinforcement, wall construction and adjac
 
 await scope('two competing guilds cannot capture one castle twice',async h=>{
  const {players:[a],guild:ga}=await guild(h,'東軍'),{players:[b],guild:gb}=await guild(h,'西軍');const da=(await join(h,a)).data,db=(await join(h,b)).data,c=neutral(da),ba=action(da,c),bb=action(db,db.castles.find(v=>v.id===c.id));
- let entered=0,release;const barrier=new Promise(r=>release=r);h.beforeBatch=async statements=>{if(!statements.some(s=>s.sql.includes('INSERT INTO conquest_requests')&&s.params[4]==='attack'))return;if(++entered===2){h.beforeBatch=null;release();}await barrier;};
- const results=await Promise.all([run(h,a,ba,null),run(h,b,bb,null)]);assert.deepEqual(results.map(r=>r.response.status).sort(),[200,409]);
- const row=h.sql.prepare('SELECT * FROM conquest_castles WHERE castle_id=? AND season_id=?').get(c.id,da.season.id);assert([ga.id,gb.id].includes(row.owner_guild_id));assert.equal(row.revision,1);assert.equal(h.sql.prepare("SELECT COUNT(*) n FROM conquest_requests WHERE action='attack'").get().n,1);
- const loser=results[0].response.status===409?a:b,readLoser=await read(h,loser);assert.equal(readLoser.guild.troops,12000);assert.equal(readLoser.guild.supplies,6000);
+ let entered=0,release;const barrier=new Promise(r=>release=r);h.beforeBatch=async statements=>{if(!statements.some(s=>s.sql.includes('INSERT INTO conquest_requests')&&s.sql.includes("'attack'")))return;if(++entered===2){h.beforeBatch=null;release();}await barrier;};
+ const results=await Promise.all([run(h,a,ba,null),run(h,b,bb,null)]);assert.deepEqual(results.map(r=>r.response.status).sort(),[200,200]);assert(results.every(r=>r.data.marching));h.now=Math.max(...results.map(r=>r.data.march.arrivesAtMs));await read(h,a);
+ const row=h.sql.prepare('SELECT * FROM conquest_castles WHERE castle_id=? AND season_id=?').get(c.id,da.season.id);assert([ga.id,gb.id].includes(row.owner_guild_id));assert.equal(row.revision,1);assert.equal(h.sql.prepare("SELECT COUNT(*) n FROM conquest_requests WHERE action='attack'").get().n,2);assert.equal(h.sql.prepare('SELECT COUNT(*) n FROM conquest_captures').get().n,1);
+ const loser=row.owner_guild_id===ga.id?b:a,readLoser=await read(h,loser);assert.equal(readLoser.guild.troops,12000);assert.equal(readLoser.guild.supplies,6000);assert.equal(readLoser.marches.history[0].status,'cancelled');
 });
 
 await scope('one shared guild pool prevents concurrent overspending by allies',async h=>{
  const {players:[a,b]}=await guild(h,'共同指揮',2),da=(await join(h,a)).data,db=(await join(h,b)).data,targets=da.castles.filter(c=>!c.strategic).slice(0,2);
- let entered=0,release;const barrier=new Promise(r=>release=r);h.beforeBatch=async statements=>{if(!statements.some(s=>s.sql.includes('INSERT INTO conquest_requests')&&s.params[4]==='attack'))return;if(++entered===2){h.beforeBatch=null;release();}await barrier;};
- const results=await Promise.all([run(h,a,action(da,targets[0],{troops:10000}),null),run(h,b,action(db,targets[1],{troops:10000}),null)]);assert.deepEqual(results.map(r=>r.response.status).sort(),[200,409]);const d=await read(h,a);assert.equal(d.guild.ownedCastleIds.length,1);assert(d.guild.troops>=0);assert(d.guild.supplies>=0);
+ let entered=0,release;const barrier=new Promise(r=>release=r);h.beforeBatch=async statements=>{if(!statements.some(s=>s.sql.includes('INSERT INTO conquest_requests')&&s.sql.includes("'attack'")))return;if(++entered===2){h.beforeBatch=null;release();}await barrier;};
+ const results=await Promise.all([run(h,a,action(da,targets[0],{troops:10000}),null),run(h,b,action(db,targets[1],{troops:10000}),null)]);assert.deepEqual(results.map(r=>r.response.status).sort(),[200,409]);h.now=results.find(r=>r.response.status===200).data.march.arrivesAtMs;const d=await read(h,a);assert.equal(d.guild.ownedCastleIds.length,1);assert(d.guild.troops>=0);assert(d.guild.supplies>=0);
 });
 
 await scope('membership term rechecked at commit and guild hopping locked for a season',async h=>{
  const {players:[a],guild:ga}=await guild(h,'参加時の同盟'),{players:[b],guild:gb}=await guild(h,'移籍先同盟');let d=(await join(h,a)).data;
- h.beforeBatch=async statements=>{if(!statements.some(s=>s.sql.includes('INSERT INTO conquest_requests')&&s.params[4]==='attack'))return;h.beforeBatch=null;h.sql.prepare('DELETE FROM guild_members WHERE user_id=?').run(a.user.id);h.sql.prepare('INSERT INTO guild_members(user_id,guild_id,joined_at) VALUES(?,?,?)').run(a.user.id,ga.id,h.now);};
+ h.beforeBatch=async statements=>{if(!statements.some(s=>s.sql.includes('INSERT INTO conquest_requests')&&s.sql.includes("'attack'")))return;h.beforeBatch=null;h.sql.prepare('DELETE FROM guild_members WHERE user_id=?').run(a.user.id);h.sql.prepare('INSERT INTO guild_members(user_id,guild_id,joined_at) VALUES(?,?,?)').run(a.user.id,ga.id,h.now);};
  await run(h,a,action(d,neutral(d)),409);assert.equal(h.sql.prepare("SELECT COUNT(*) n FROM conquest_requests WHERE action='attack'").get().n,0);
  h.sql.prepare('UPDATE guild_members SET guild_id=?,joined_at=? WHERE user_id=?').run(gb.id,h.now,a.user.id);d=await read(h,a);assert.equal(d.guild,null);assert.equal(d.self.eligible,false);assert.equal(d.self.lockedGuildId,ga.id);await join(h,a,d,crypto.randomUUID(),409);
  h.now+=7*86400000;d=(await join(h,a)).data;assert.equal(d.guild.id,gb.id);assert.equal(d.guild.troops,12000);

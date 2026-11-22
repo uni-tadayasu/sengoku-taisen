@@ -45,11 +45,13 @@ async function readStandings(db,seasonId){
  return found.map(r=>({guildId:r.guild_id,name:r.guild_name,castles:Number(r.castles),territory:Number(r.territory),captures:Number(r.captures),defenses:Number(r.defenses),support:Math.min(2000,Number(r.support_points)),score:Number(r.territory)*100+Number(r.captures)*25+Number(r.defenses)*20+Math.min(2000,Number(r.support_points))})).sort((a,b)=>b.score-a.score||b.territory-a.territory||a.guildId.localeCompare(b.guildId)).map((r,i)=>({...r,rank:i+1,title:i===0&&r.score>0?'天下覇者':i<3&&r.score>0?'三傑の同盟':r.score>0?'天下争覇の同盟':'参陣同盟'}));
 }
 async function settleEnded(ctx){
+ await settleConquestMarches(ctx);
  const {db}=ctx,now=Date.now(),ended=R(await S(db,"SELECT id FROM conquest_seasons WHERE ends_at<=? AND (status='open' OR results_json IS NULL) ORDER BY ends_at LIMIT 12",now).all());
  for(const row of ended){
   // Close mutation admission first. A result snapshot can then never race an
   // attack that was admitted while the aggregate was being read.
-  await S(db,"UPDATE conquest_seasons SET status='ended' WHERE id=? AND status='open' AND ends_at<=?",row.id,now).run();
+  await S(db,"UPDATE conquest_seasons SET status='ended' WHERE id=? AND status='open' AND ends_at<=? AND NOT EXISTS(SELECT 1 FROM conquest_marches WHERE season_id=? AND status='marching')",row.id,now,row.id).run();
+  const pending=await S(db,"SELECT 1 found FROM conquest_marches WHERE season_id=? AND status='marching' LIMIT 1",row.id).first();if(pending)continue;
   const standings=await readStandings(db,row.id);
   await S(db,"UPDATE conquest_seasons SET results_json=?,finalized_at=? WHERE id=? AND status='ended' AND results_json IS NULL",JSON.stringify(standings),now,row.id).run();
  }
@@ -74,10 +76,10 @@ async function history(ctx){
 }
 async function snapshot(ctx,season=null){
  const {db,user,helpers:h}=ctx;season=season||await ensureSeason(ctx);const now=Date.now();
- const [castleResult,standings,member,guildMembership,past]=await Promise.all([
+ const [castleResult,standings,member,guildMembership,past,marches,stagingCastleId]=await Promise.all([
   S(db,'SELECT c.*,g.guild_name FROM conquest_castles c LEFT JOIN conquest_guilds g ON g.season_id=c.season_id AND g.guild_id=c.owner_guild_id WHERE c.season_id=? ORDER BY c.castle_id',season.id).all(),
   readStandings(db,season.id),S(db,'SELECT * FROM conquest_members WHERE season_id=? AND user_id=?',season.id,user.id).first(),
-  S(db,'SELECT gm.guild_id,g.name FROM guild_members gm JOIN guilds g ON g.id=gm.guild_id WHERE gm.user_id=?',user.id).first(),history(ctx)
+  S(db,'SELECT gm.guild_id,g.name FROM guild_members gm JOIN guilds g ON g.id=gm.guild_id WHERE gm.user_id=?',user.id).first(),history(ctx),conquestMarches(ctx),stagingCastle(ctx)
  ]);
  const activeGuild=member&&guildMembership?.guild_id===member.guild_id?await S(db,'SELECT * FROM conquest_guilds WHERE season_id=? AND guild_id=?',season.id,member.guild_id).first():null;
  const reserves=activeGuild?supply(activeGuild,now,season):null;
@@ -87,16 +89,16 @@ async function snapshot(ctx,season=null){
  const currentMembership=await S(db,'SELECT guild_id FROM guild_members WHERE user_id=?',user.id).first();
  if(activeGuild&&currentMembership?.guild_id!==activeGuild.guild_id)h.fail(409,'CONQUEST_MEMBERSHIP_CHANGED','同盟の所属が変わりました。大会を開き直してください。');
  const owned=R(castleResult).filter(c=>c.owner_guild_id===activeGuild?.guild_id).map(c=>c.castle_id);
- return{ok:true,serverNow:iso(now),season:seasonDto(season,now),rules:{...RULES,normalCampaignUnaffected:true,timezone:'Asia/Tokyo',schedule:'毎週土曜 00:00〜月曜 00:00（日本時間）',tactics:Object.entries(TACTICS).map(([id,t])=>({id,name:t.name})),scoreDescription:'領地価値×100＋初攻略城数×25＋防衛成功×20＋支援戦功（上限2,000）'},
+ return{ok:true,serverNow:iso(now),season:seasonDto(season,now),rules:{...RULES,travel:{baseSeconds:15,secondsPerKm:.5,timeBasis:'real'},normalCampaignUnaffected:true,timezone:'Asia/Tokyo',schedule:'毎週土曜 00:00〜月曜 00:00（日本時間）',tactics:Object.entries(TACTICS).map(([id,t])=>({id,name:t.name})),scoreDescription:'領地価値×100＋初攻略城数×25＋防衛成功×20＋支援戦功（上限2,000）'},
   castles:R(castleResult).map(row=>{const c=BY_ID.get(row.castle_id);return{id:c.id,name:c.name,province:c.province,region:c.region,x:c.x,y:c.y,neighbors:c.neighbors.slice(),strategic:STRATEGIC.has(c.id),value:STRATEGIC.has(c.id)?4:1,ownerGuildId:row.owner_guild_id,ownerName:row.guild_name||null,garrison:Number(row.garrison),wall:Number(row.wall),stock:row.owner_guild_id===activeGuild?.guild_id?Number(row.stock):null,revision:Number(row.revision),protectedUntil:iso(Number(row.protected_until)),mine:row.owner_guild_id===activeGuild?.guild_id};}),standings,
-  self:{joined:Boolean(member),lockedGuildId:member?.guild_id||null,currentGuildId:guildMembership?.guild_id||null,currentGuildName:guildMembership?.name||null,eligible:Boolean(guildMembership)&&(!member||member.guild_id===guildMembership.guild_id),points:memberScore(member),title:honor(memberScore(member)),nextActionAt:iso(Number(member?.last_action_at||0)+RULES.memberCooldownMs)},
+  marches,self:{playerId:user.id,stagingCastleId,joined:Boolean(member),lockedGuildId:member?.guild_id||null,currentGuildId:guildMembership?.guild_id||null,currentGuildName:guildMembership?.name||null,eligible:Boolean(guildMembership)&&(!member||member.guild_id===guildMembership.guild_id),points:memberScore(member),title:honor(memberScore(member)),nextActionAt:iso(Number(member?.last_action_at||0)+RULES.memberCooldownMs)},
   guild:activeGuild?{id:activeGuild.guild_id,name:activeGuild.guild_name,revision:Number(activeGuild.revision),troops:reserves.troops,supplies:reserves.supplies,nextReplenishAt:iso(reserves.replenishedAt+RULES.replenishMs),nextAttackAt:iso(Number(activeGuild.last_attack_at)+RULES.attackCooldownMs),ownedCastleIds:owned}:null,contributions:roster,records,history:past.seasons,best:past.best};
 }
 async function prior(ctx,requestId,digest){
  const receipt=await S(ctx.db,'SELECT * FROM conquest_requests WHERE user_id=? AND request_id=?',ctx.user.id,requestId).first();
  if(receipt&&receipt.request_hash!==digest)ctx.helpers.fail(409,'REQUEST_ID_REUSED','この操作番号は別の大会操作に使われています。');return receipt;
 }
-async function result(ctx,receipt,idempotent){const current=await snapshot(ctx);return{...current,result:JSON.parse(receipt.result_json),idempotent};}
+async function result(ctx,receipt,idempotent){const current=await snapshot(ctx),latest=await S(ctx.db,'SELECT result_json FROM conquest_requests WHERE user_id=? AND request_id=?',ctx.user.id,receipt.request_id).first(),record=JSON.parse(latest?.result_json||receipt.result_json),march=await S(ctx.db,'SELECT * FROM conquest_marches WHERE user_id=? AND request_id=?',ctx.user.id,receipt.request_id).first();if(march){record.march=marchDto(march);record.marching=march.status==='marching';}return{...current,result:record,idempotent,...(march?{accepted:true,marching:record.marching,march:record.march}:{})};}
 async function join(ctx){
  const {db,user,helpers:h}=ctx,raw=await h.readBody(ctx.request);strict(raw,['seasonId','requestId'],h);
  const requestId=h.idField(raw.requestId,'操作番号'),seasonId=h.idField(raw.seasonId,'大会'),digest=await h.hash(JSON.stringify(['join',seasonId])),old=await prior(ctx,requestId,digest);
@@ -123,6 +125,130 @@ export function conquestBattle({troops,tactic='balanced',garrison,wall}){
  const survivors=troops-attackerLost,garrisonPlaced=won?Math.min(RULES.maxGarrison,Math.max(100,Math.floor(survivors*.45))):0;
  return{won,attackPower:attack,defensePower:defense,attackerLost,enemyLost,garrisonPlaced,returned:survivors-garrisonPlaced,supplyCost:Math.ceil((150+troops*.16)*t.cost)};
 }
+const MARCH_GATE='EXISTS(SELECT 1 FROM conquest_marches WHERE id=? AND commit_token=? AND status=?)';
+function marchDto(row,now=Date.now()){
+ const result=JSON.parse(row.result_json||'{}');
+ return{id:row.id,requestId:row.request_id,kind:'conquest',status:row.status,timeBasis:'real',seasonId:row.season_id,guildId:row.guild_id,actorPlayerId:row.user_id,sourceCastleId:row.source_castle_id,sourceName:BY_ID.get(row.source_castle_id)?.name||'集結地',targetCastleId:row.target_castle_id,targetName:BY_ID.get(row.target_castle_id)?.name||'戦場',distanceKm:Number(row.distance_km),durationMs:Number(row.duration_ms),departedAtMs:Number(row.departed_at),arrivesAtMs:Number(row.arrives_at),remainingMs:row.status==='marching'?Math.max(0,Number(row.arrives_at)-now):0,troops:Number(row.troops),tactic:row.tactic,returnPendingTroops:Number(row.return_troops),returnPendingSupplies:Number(row.return_supplies),message:result.message||'',...(result.battle?{battle:result.battle}:{})};
+}
+async function stagingCastle(ctx){
+ const row=await ctx.helpers.getSyncRow(ctx.db,ctx.user.id);
+ let home;try{home=JSON.parse(row?.save_json||'null')?.state?.home;}catch{}
+ return BY_ID.has(home)?home:'kiyosu';
+}
+export async function conquestMarches(ctx){
+ const {db,user}=ctx;if(!user)return{active:[],history:[]};
+ const membership=await S(db,'SELECT guild_id FROM guild_members WHERE user_id=?',user.id).first();
+ const access=[user.id,membership?.guild_id||''];
+ const [active,history]=await Promise.all([
+  S(db,"SELECT * FROM conquest_marches WHERE (user_id=? OR guild_id=?) AND status='marching' ORDER BY arrives_at,id LIMIT 100",...access).all(),
+  S(db,"SELECT * FROM conquest_marches WHERE (user_id=? OR guild_id=?) AND status<>'marching' ORDER BY (return_troops>0 OR return_supplies>0) DESC,settled_at DESC,id DESC LIMIT 40",...access).all()
+ ]);
+ return{active:R(active).map(r=>marchDto(r)),history:R(history).map(r=>marchDto(r))};
+}
+async function departConquest(ctx,details){
+ const {db,user,helpers:h}=ctx,{requestId,seasonId,castleId,fromId,troops,tactic,digest,season,now,member,participant,guild,castle,reserve,source,guildRevision,castleRevision,sourceRevision,battle}=details;
+ const sourceCastleId=source?fromId:await stagingCastle(ctx),route=globalThis.SengokuTravel.plan({sourceCastleId,targetCastleId:castleId});
+ if(!route)h.fail(409,'CONQUEST_ROUTE','出陣元と目的地を確認してください。');
+ const arrives=now+route.durationMs;
+ if(arrives>=Number(season.ends_at))h.fail(409,'CONQUEST_ARRIVAL_AFTER_END','大会終了までに到着できません。近い城を選ぶか、次の大会をお待ちください。');
+ if(await S(db,"SELECT 1 found FROM conquest_marches WHERE user_id=? AND status='marching'",user.id).first())h.fail(409,'CONQUEST_MARCHING','出陣した部隊が行軍中です。到着後に次の出陣を選べます。');
+ if(!source&&await S(db,"SELECT 1 found FROM conquest_marches WHERE season_id=? AND guild_id=? AND status='marching'",seasonId,member.guildId).first())h.fail(409,'CONQUEST_LANDING_MARCHING','同盟の先発隊が最初の城へ行軍中です。到着をお待ちください。');
+ await h.budget(db,'conquest-action:'+user.id,12,60000,now);
+ const nonce=crypto.randomUUID(),id='cm_'+crypto.randomUUID().replaceAll('-',''),gateArgs=[user.id,requestId,nonce];
+ const message=BY_ID.get(castleId).name+'へ出陣しました。到着後に合戦を行います。';
+ const row={id,user_id:user.id,request_id:requestId,season_id:seasonId,guild_id:member.guildId,from_castle_id:fromId,source_castle_id:sourceCastleId,target_castle_id:castleId,target_owner_guild_id:castle.owner_guild_id,member_epoch:member.epoch,troops,tactic,supply_cost:battle.supplyCost,departed_at:now,arrives_at:arrives,distance_km:route.distanceKm,duration_ms:route.durationMs,status:'marching',result_json:JSON.stringify({message}),return_troops:0,return_supplies:0};
+ const record={action:'attack',seasonId,castleId,castleName:BY_ID.get(castleId).name,fromCastleId:fromId,troops,tactic,points:0,message,accepted:true,marching:true,march:marchDto(row,now)};
+ const sourceGuard=source?{sql:' AND EXISTS(SELECT 1 FROM conquest_castles WHERE season_id=? AND castle_id=? AND owner_guild_id=? AND revision=?)',args:[seasonId,fromId,member.guildId,sourceRevision]}:{sql:" AND NOT EXISTS(SELECT 1 FROM conquest_castles WHERE season_id=? AND owner_guild_id=?) AND NOT EXISTS(SELECT 1 FROM conquest_marches WHERE season_id=? AND guild_id=? AND status='marching')",args:[seasonId,member.guildId,seasonId,member.guildId]};
+ await db.batch([
+  S(db,`INSERT INTO conquest_requests(user_id,request_id,season_id,guild_id,action,request_hash,commit_token,result_json,created_at)
+   SELECT ?,?,?,?,'attack',?,?,?,? WHERE ${member.guard.sql}
+   AND EXISTS(SELECT 1 FROM conquest_seasons WHERE id=? AND status='open' AND starts_at<=? AND ends_at>?)
+   AND EXISTS(SELECT 1 FROM conquest_guilds WHERE season_id=? AND guild_id=? AND revision=?)
+   AND EXISTS(SELECT 1 FROM conquest_members WHERE season_id=? AND user_id=? AND guild_id=? AND last_action_at=?)
+   AND EXISTS(SELECT 1 FROM conquest_castles WHERE season_id=? AND castle_id=? AND revision=?)
+   AND NOT EXISTS(SELECT 1 FROM conquest_marches WHERE user_id=? AND status='marching')${sourceGuard.sql}
+   ON CONFLICT(user_id,request_id) DO NOTHING`,user.id,requestId,seasonId,member.guildId,digest,nonce,JSON.stringify(record),now,...member.guard.args,seasonId,now,arrives,seasonId,member.guildId,guildRevision,seasonId,user.id,member.guildId,participant.last_action_at,seasonId,castleId,castleRevision,user.id,...sourceGuard.args),
+  S(db,`UPDATE conquest_guilds SET troops=?,supplies=?,replenished_at=?,revision=revision+1,last_attack_at=? WHERE season_id=? AND guild_id=? AND ${GATE}`,reserve.troops-troops,reserve.supplies-(source?0:battle.supplyCost),reserve.replenishedAt,now,seasonId,member.guildId,...gateArgs),
+  ...(source?[S(db,`UPDATE conquest_castles SET stock=stock-?,revision=revision+1 WHERE season_id=? AND castle_id=? AND ${GATE}`,battle.supplyCost,seasonId,fromId,...gateArgs)]:[]),
+  S(db,`UPDATE conquest_members SET actions=actions+1,last_action_at=? WHERE season_id=? AND user_id=? AND ${GATE}`,now,seasonId,user.id,...gateArgs),
+  S(db,`INSERT INTO conquest_marches(id,user_id,request_id,season_id,guild_id,from_castle_id,source_castle_id,target_castle_id,target_owner_guild_id,member_epoch,troops,tactic,supply_cost,departed_at,arrives_at,distance_km,duration_ms,status,result_json,commit_token)
+   SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'marching',?,? WHERE ${GATE}`,...[row.id,row.user_id,row.request_id,row.season_id,row.guild_id,row.from_castle_id,row.source_castle_id,row.target_castle_id,row.target_owner_guild_id,row.member_epoch,row.troops,row.tactic,row.supply_cost,row.departed_at,row.arrives_at,row.distance_km,row.duration_ms,row.result_json,nonce],...gateArgs)
+ ]);
+ const saved=await prior(ctx,requestId,digest);if(!saved)h.fail(409,'CONQUEST_CHANGED','戦況や所属が変わりました。最新の表示から出陣を選び直してください。');
+ return result(ctx,saved,saved.commit_token!==nonce);
+}
+async function returnConquestEscrow(ctx){
+ const {db}=ctx,now=Date.now();
+ // Filter by the replenished pool before applying the bounded batch limit.
+ // Permanently full historical guilds must not starve later return receipts.
+ const ticks='MAX(0,CAST((MIN(?,s.ends_at)-MAX(g.replenished_at,s.starts_at))/? AS INTEGER))';
+ const rows=R(await S(db,`SELECT m.* FROM conquest_marches m
+  JOIN conquest_guilds g ON g.season_id=m.season_id AND g.guild_id=m.guild_id
+  JOIN conquest_seasons s ON s.id=m.season_id
+  WHERE m.status<>'marching' AND
+  ((m.return_troops>0 AND g.troops+${ticks}*?<?) OR (m.return_supplies>0 AND g.supplies+${ticks}*?<?))
+  ORDER BY m.settled_at,m.id LIMIT 32`,now,RULES.replenishMs,RULES.replenishTroops,RULES.maxTroops,now,RULES.replenishMs,RULES.replenishSupplies,RULES.maxSupplies).all());
+ for(const row of rows){
+  const [guild,season]=await Promise.all([S(db,'SELECT * FROM conquest_guilds WHERE season_id=? AND guild_id=?',row.season_id,row.guild_id).first(),S(db,'SELECT * FROM conquest_seasons WHERE id=?',row.season_id).first()]);if(!guild||!season)continue;
+  const pool=supply(guild,now,season),troops=Math.min(Number(row.return_troops),RULES.maxTroops-pool.troops),supplies=Math.min(Number(row.return_supplies),RULES.maxSupplies-pool.supplies);if(!troops&&!supplies)continue;
+  const nonce=crypto.randomUUID(),gate=[row.id,nonce,row.status];
+  await db.batch([
+   S(db,`UPDATE conquest_marches SET return_troops=return_troops-?,return_supplies=return_supplies-?,commit_token=? WHERE id=? AND status=? AND return_troops=? AND return_supplies=? AND EXISTS(SELECT 1 FROM conquest_guilds WHERE season_id=? AND guild_id=? AND revision=?)`,troops,supplies,nonce,row.id,row.status,row.return_troops,row.return_supplies,row.season_id,row.guild_id,guild.revision),
+   S(db,`UPDATE conquest_guilds SET troops=?,supplies=?,replenished_at=?,revision=revision+1 WHERE season_id=? AND guild_id=? AND ${MARCH_GATE}`,pool.troops+troops,pool.supplies+supplies,pool.replenishedAt,row.season_id,row.guild_id,...gate)
+  ]);
+ }
+}
+async function settleConquestMarch(ctx,id){
+ const {db,helpers:h}=ctx,now=Date.now();
+ for(let attempt=0;attempt<3;attempt++){
+  const row=await S(db,"SELECT * FROM conquest_marches WHERE id=? AND status='marching' AND arrives_at<=?",id,now).first();if(!row)return false;
+  const [season,guild,castle,source,actor]=await Promise.all([
+   S(db,'SELECT * FROM conquest_seasons WHERE id=?',row.season_id).first(),S(db,'SELECT * FROM conquest_guilds WHERE season_id=? AND guild_id=?',row.season_id,row.guild_id).first(),
+   S(db,'SELECT * FROM conquest_castles WHERE season_id=? AND castle_id=?',row.season_id,row.target_castle_id).first(),row.from_castle_id?S(db,'SELECT * FROM conquest_castles WHERE season_id=? AND castle_id=?',row.season_id,row.from_castle_id).first():Promise.resolve(null),h.getUser(db,row.user_id)
+  ]);
+  if(!season||!guild)throw Error('Conquest march lost its parent records');
+  let member=null,cancel='';
+  if(!actor)cancel='領主の参加資格を確認できなくなったため';
+  else try{member=await memberContext({...ctx,user:actor});}catch(error){if(error.status>=400&&error.status<500)cancel='領主の参加資格が変わったため';else throw error;}
+  if(!cancel&&(!member||member.guildId!==row.guild_id||member.epoch!==Number(row.member_epoch)))cancel='出陣した領主の所属が変わったため';
+  if(!cancel&&(season.status!=='open'||Number(row.arrives_at)>=Number(season.ends_at)))cancel='大会が終了したため';
+  if(!cancel&&(!castle||castle.owner_guild_id!==row.target_owner_guild_id||castle.owner_guild_id===row.guild_id))cancel='攻撃先の領有が変わったため';
+  if(!cancel&&Number(castle.protected_until)>Number(row.arrives_at))cancel='攻撃先が保護されているため';
+  if(!cancel&&row.from_castle_id&&(!source||source.owner_guild_id!==row.guild_id))cancel='出陣元の城を失ったため';
+  const pool=supply(guild,now,season),nonce=crypto.randomUUID(),status=cancel?'cancelled':'resolved',gate=[row.id,nonce,status];
+  const battle=cancel?null:conquestBattle({troops:Number(row.troops),tactic:row.tactic,garrison:Number(castle.garrison),wall:Number(castle.wall)});
+  const firstCapture=battle?.won&&!await S(db,'SELECT 1 found FROM conquest_captures WHERE season_id=? AND guild_id=? AND castle_id=?',row.season_id,row.guild_id,row.target_castle_id).first();
+  const points=firstCapture?(STRATEGIC.has(row.target_castle_id)?100:40):0;
+  const returningTroops=cancel?Number(row.troops):battle.returned,returningSupplies=cancel?Number(row.supply_cost):0;
+  const receivedTroops=Math.min(returningTroops,RULES.maxTroops-pool.troops),receivedSupplies=Math.min(returningSupplies,RULES.maxSupplies-pool.supplies);
+  const name=BY_ID.get(row.target_castle_id).name,message=cancel?name+'への進軍を中止しました。'+cancel+'、兵と出陣費用を同盟の待機資産へ返還します。':battle.won?name+'へ到着し、攻略しました。生存兵の一部を守備隊へ配置しました。':name+'へ到着後、合戦で敗れて撤退しました。生存兵が帰還しました。';
+  const record={action:'attack',seasonId:row.season_id,castleId:row.target_castle_id,castleName:name,fromCastleId:row.from_castle_id,troops:Number(row.troops),tactic:row.tactic,points,message,accepted:true,marching:false,cancelled:Boolean(cancel),...(battle?{battle}:{})};
+  const checks=[],args=[];
+  if(castle){checks.push('EXISTS(SELECT 1 FROM conquest_castles WHERE season_id=? AND castle_id=? AND revision=?)');args.push(row.season_id,row.target_castle_id,castle.revision);}else{checks.push('NOT EXISTS(SELECT 1 FROM conquest_castles WHERE season_id=? AND castle_id=?)');args.push(row.season_id,row.target_castle_id);}
+  if(source){checks.push('EXISTS(SELECT 1 FROM conquest_castles WHERE season_id=? AND castle_id=? AND revision=?)');args.push(row.season_id,row.from_castle_id,source.revision);}
+  if(!cancel){checks.push(member.guard.sql);args.push(...member.guard.args);checks.push("EXISTS(SELECT 1 FROM conquest_seasons WHERE id=? AND status='open')");args.push(row.season_id);}
+  const next=battle?{owner:battle.won?row.guild_id:castle.owner_guild_id,garrison:battle.won?battle.garrisonPlaced:Math.max(0,Number(castle.garrison)-battle.enemyLost),wall:battle.won?Math.max(1,Number(castle.wall)-1):Number(castle.wall),stock:battle.won?800:Number(castle.stock),protectedUntil:battle.won?now+RULES.captureProtectionMs:Number(castle.protected_until)}:null;
+  await db.batch([
+   S(db,`UPDATE conquest_marches SET status=?,result_json=?,commit_token=?,settled_at=?,return_troops=?,return_supplies=? WHERE id=? AND status='marching' AND arrives_at<=? AND EXISTS(SELECT 1 FROM conquest_guilds WHERE season_id=? AND guild_id=? AND revision=?) AND ${checks.join(' AND ')}`,status,JSON.stringify(record),nonce,now,returningTroops-receivedTroops,returningSupplies-receivedSupplies,row.id,now,row.season_id,row.guild_id,guild.revision,...args),
+   S(db,`UPDATE conquest_guilds SET troops=?,supplies=?,replenished_at=?,revision=revision+1,captures=captures+? WHERE season_id=? AND guild_id=? AND ${MARCH_GATE}`,pool.troops+receivedTroops,pool.supplies+receivedSupplies,pool.replenishedAt,firstCapture?1:0,row.season_id,row.guild_id,...gate),
+   ...(next?[S(db,`UPDATE conquest_castles SET owner_guild_id=?,garrison=?,wall=?,stock=?,protected_until=?,revision=revision+1 WHERE season_id=? AND castle_id=? AND ${MARCH_GATE}`,next.owner,next.garrison,next.wall,next.stock,next.protectedUntil,row.season_id,row.target_castle_id,...gate)]:[]),
+   S(db,`UPDATE conquest_members SET attack_points=attack_points+? WHERE season_id=? AND user_id=? AND ${MARCH_GATE}`,points,row.season_id,row.user_id,...gate),
+   S(db,`UPDATE conquest_requests SET result_json=? WHERE user_id=? AND request_id=? AND ${MARCH_GATE}`,JSON.stringify(record),row.user_id,row.request_id,...gate),
+   ...(firstCapture?[S(db,`INSERT INTO conquest_captures(season_id,guild_id,castle_id,user_id,captured_at) SELECT ?,?,?,?,? WHERE ${MARCH_GATE} ON CONFLICT DO NOTHING`,row.season_id,row.guild_id,row.target_castle_id,row.user_id,now,...gate)]:[]),
+   ...(battle&&!battle.won&&castle.owner_guild_id?[S(db,`UPDATE conquest_guilds SET defenses=defenses+1,revision=revision+1 WHERE season_id=? AND guild_id=? AND ${MARCH_GATE}`,row.season_id,castle.owner_guild_id,...gate)]:[]),
+   ...(battle?.won?conquestShogunateStatements({db,seasonId:row.season_id,guildId:row.guild_id,title:guild.guild_name+'・共有天下統一',now,gateSql:MARCH_GATE,gateArgs:gate}):[])
+  ]);
+  const current=await S(db,'SELECT status FROM conquest_marches WHERE id=?',row.id).first();if(current?.status!=='marching')return true;
+ }
+ return false;
+}
+export async function settleConquestMarches(ctx){
+ const {db}=ctx,now=Date.now(),due=R(await S(db,"SELECT id FROM conquest_marches WHERE status='marching' AND arrives_at<=? ORDER BY arrives_at,id LIMIT 32",now).all());
+ for(const row of due)await settleConquestMarch(ctx,row.id);
+ await returnConquestEscrow(ctx);
+ return due.length;
+}
+
 async function act(ctx){
  const {db,user,helpers:h}=ctx,raw=await h.readBody(ctx.request);
  strict(raw,['seasonId','requestId','action','castleId','fromCastleId','troops','amount','tactic','expectedGuildRevision','expectedCastleRevision','expectedSourceRevision'],h);
@@ -157,13 +283,7 @@ async function act(ctx){
   battle=conquestBattle({troops,tactic,garrison:Number(castle.garrison),wall:Number(castle.wall)});
   if(source){if(Number(source.stock)<battle.supplyCost)h.fail(409,'CONQUEST_STOCK','出陣元の物資が不足しています。輸送で補給してください。');sourceStock=Number(source.stock)-battle.supplyCost;}
   else{poolSupplyCost=battle.supplyCost;if(reserve.supplies<poolSupplyCost)h.fail(409,'CONQUEST_SUPPLIES','大会の共通物資が不足しています。');}
-  troopCost=battle.attackerLost+battle.garrisonPlaced;
-  if(battle.won){
-   firstCapture=!await S(db,'SELECT 1 AS found FROM conquest_captures WHERE season_id=? AND guild_id=? AND castle_id=?',seasonId,member.guildId,castleId).first();
-   next.owner=member.guildId;next.garrison=battle.garrisonPlaced;next.wall=Math.max(1,next.wall-1);next.stock=800;next.protectedUntil=now+RULES.captureProtectionMs;points=firstCapture?(STRATEGIC.has(castleId)?100:40):0;
-   message=BY_ID.get(castleId).name+'を攻略しました。生存兵の一部を守備隊へ配置しました。';
-  }else{next.garrison=Math.max(0,next.garrison-battle.enemyLost);defenseGuild=castle.owner_guild_id;message=BY_ID.get(castleId).name+'から撤退しました。敵の守備兵にも損害を与えました。';}
-  contributionColumn='attack_points';
+  return departConquest(ctx,{requestId,seasonId,castleId,fromId,troops,tactic,digest,season,now,member,participant,guild,castle,reserve,source,guildRevision,castleRevision,sourceRevision,battle});
  }else{
   if(!own)h.fail(403,'CONQUEST_OWN_CASTLE','支援できるのは自同盟の城です。');
   if(fromId)h.fail(400,'INVALID_INPUT','この役割に出陣元の指定は不要です。');

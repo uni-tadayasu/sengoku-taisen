@@ -3,7 +3,7 @@
 'use strict';
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const num=v=>Math.max(0,Math.floor(Number(v)||0)).toLocaleString('ja-JP');
-const labels={attack:'攻撃',defend:'防衛',gather:'集合',planned:'予定',completed:'完了',cancelled:'中止',yes:'参加',maybe:'調整中',no:'不参加',stationed:'派遣中',returning:'受取待ち',claimed:'帰還済み',rally:'集結',aid:'援軍',pending:'承認待ち',approved:'承認済み',denied:'辞退',invited:'招待',joined:'参加済み',used:'受取済み',gold:'金銭',rice:'兵糧',wood:'木材',stone:'石材',magatama:'勾玉',treasury:'寄付',defense:'防衛',open:'自由参加',approval:'承認制',invite:'招待制'};
+const labels={attack:'攻撃',defend:'防衛',gather:'集合',planned:'予定',marching:'進軍中',completed:'完了',cancelled:'中止',yes:'参加',maybe:'調整中',no:'不参加',stationed:'派遣中',returning:'受取待ち',claimed:'帰還済み',rally:'集結',aid:'援軍',pending:'承認待ち',approved:'承認済み',denied:'辞退',invited:'招待',joined:'参加済み',used:'受取済み',gold:'金銭',rice:'兵糧',wood:'木材',stone:'石材',magatama:'勾玉',treasury:'寄付',defense:'防衛',open:'自由参加',approval:'承認制',invite:'招待制'};
 const date=v=>new Intl.DateTimeFormat('ja-JP',{timeZone:'Asia/Tokyo',month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(new Date(v));
 const inputDate=v=>new Date(v+9*3600000).toISOString().slice(0,16);
 const parseDate=v=>Date.parse(v+':00+09:00');
@@ -28,7 +28,7 @@ function createController(opts={}){
  async function load(){
   const c=identity(),g=generation,ticket=++loadSeq;if(!c.id){s.error='領主を登録してから同盟作戦をご利用ください。';emit();return false;}
   s.loading=true;s.error='';emit();
-  try{const value=await request('/alliance');if(!alive||g!==generation||ticket!==loadSeq||identity().stamp!==c.stamp)return false;if(!value?.ok)throw Error(value?.error?.message||'同盟を読み込めませんでした。');s.data=value;if(value.operations?.some(o=>o.kind==='attack'&&o.status==='planned')&&(opts.readField||global.SengokuSocial?.fieldRequest))await loadTargets();return alive&&g===generation&&identity().stamp===c.stamp;}
+  try{const value=await request('/alliance');if(!alive||g!==generation||ticket!==loadSeq||identity().stamp!==c.stamp)return false;if(!value?.ok)throw Error(value?.error?.message||'同盟を読み込めませんでした。');s.data=value;if(value.marches)global.SengokuTravelUI?.ingest(value,{kind:'rally'});if(value.operations?.some(o=>o.kind==='attack'&&o.status==='planned')&&(opts.readField||global.SengokuSocial?.fieldRequest))await loadTargets();return alive&&g===generation&&identity().stamp===c.stamp;}
   catch(e){if(alive&&g===generation)s.error=e.message||'同盟を読み込めませんでした。';return false;}
   finally{if(alive&&g===generation){s.loading=false;emit();}}
  }
@@ -41,7 +41,8 @@ function createController(opts={}){
   s.pending=pending;s.sending=true;s.error='';s.message='';emit();const g=generation;
   flight=(async()=>{try{
    const value=await mutate(pending.route,pending.data);if(!alive||g!==generation||identity().stamp!==c.stamp)return false;if(value?.ok===false)throw Object.assign(Error(value.error?.message||value.message||'操作できませんでした。'),{status:409});
-   storage.removeItem(key(c.id));s.pending=null;s.message=value?.result?.message||(value?.battle?(value.battle.won?'集結軍が勝利しました。生存兵を受け取れます。':'集結軍は撤退しました。生存兵を受け取れます。'):'同盟の操作を反映しました。');opts.onMessage?.(s.message);await load();return true;
+   const march=global.SengokuTravelUI?.commandMarch(value,pending.data.requestId);if(value.accepted===true&&!march)throw Error('出陣の受付内容を確認できません。同じ操作で確認してください。');if(march)global.SengokuTravelUI?.record(march);
+   storage.removeItem(key(c.id));s.pending=null;s.message=march?.status==='marching'?'集結軍が出陣しました。到着してから合戦を行い、生存兵は各参加者へ帰還します。':march?.status==='cancelled'?march.message||'集結軍の出陣が取り消されました。':value?.result?.message||(value?.battle?(value.battle.won?'集結軍が勝利しました。生存兵を受け取れます。':'集結軍は撤退しました。生存兵を受け取れます。'):'同盟の操作を反映しました。');opts.onMessage?.(s.message);await load();return true;
   }catch(e){if(alive&&g===generation){s.error=e.message||'結果を確認できませんでした。同じ操作を再確認してください。';if(e.status>=400&&e.status<500&&![401,408,429].includes(e.status)){storage.removeItem(key(c.id));s.pending=null;}}return false;}
   finally{if(alive&&g===generation){s.sending=false;flight=null;emit();}}
   })();return flight;
@@ -68,6 +69,7 @@ function rallyAdvice(o,{data,me={},targets=[],game,rules,access={}}={}){
  if(Number(game.state.resources?.rice)<estimate.foodCost)return unavailable(`出陣者の兵糧が${num(estimate.foodCost)}必要です。補給を整えてください。`);
  return advisor.compare([{...estimate,reasons:[`現在の集結兵${num(o.troops)}人と、作戦で決めた${estimate.tacticName}を評価しました。`,'集結兵と戦法はこの軍議から変更しません。出陣者の軍団・士気・研究を使用します。',...estimate.reasons]}],{targetName:target.targetBranchName||o.castleName});
 }
+function operationTravel(o,game){return global.SengokuTravel?.plan({sourceCastleId:game?.state?.home,targetCastleId:o?.castleId,...(o?.branchId?{branchDirection:o.branchId.split('_').at(-1)}:{})});}
 function operationCard(o,d,me,advisorContext={}){
  const organizer=o.creatorId===me.id||['owner','officer'].includes(d.guild?.role),active=o.status==='planned'&&o.expiresAt>d.serverNow;
  const taskRows=o.assignments.map(a=>'<li><span>'+esc(d.members.find(m=>m.id===a.playerId)?.name||'元メンバー')+(global.SengokuPublicCourt?.slot?.(a.playerId)||'')+'：'+esc(a.label)+'</span>'+((a.playerId===me.id||organizer)&&active?'<button class="button small" data-alliance="task" data-id="'+esc(o.id)+'" data-task="'+esc(a.id)+'" data-done="'+(!a.done)+'">'+(a.done?'完了済み':'完了にする')+'</button>':'<b>'+(a.done?'完了':'進行中')+'</b>')+'</li>').join('');
@@ -76,8 +78,9 @@ function operationCard(o,d,me,advisorContext={}){
  (active?'<div class="alliance-actions">'+['yes','maybe','no'].map(r=>'<button type="button" class="button small" data-alliance="rsvp" data-id="'+esc(o.id)+'" data-response="'+r+'">'+labels[r]+'</button>').join('')+button('map-focus','地図で見る',o.castleId)+'</div>':'')+
  (taskRows?'<ul class="alliance-tasks">'+taskRows+'</ul>':'')+
  (active&&organizer?'<form data-alliance-form="assignment" data-id="'+esc(o.id)+'" class="alliance-inline">'+select('playerId',d.members,me.id)+textInput('label','例：北支拠点を担当',80)+'<button class="button" type="submit">担当を追加</button></form>':'')+
- (active&&o.kind==='attack'?'<section class="alliance-rally"><h4>集結兵 '+num(o.troops)+' / 100,000人</h4><p>出陣者の軍団・研究・戦法を使用します。兵糧と指令は出陣者が支払い、占領した城と戦利品も出陣者へ反映します。生存兵は各参加者へ帰還します。</p><div data-alliance-advisor-operation="'+esc(o.id)+'">'+(global.SengokuBattleAdvisor?.markup(rallyAdvice(o,{...advisorContext,data:d,me}),{action:'rally-review',disabled:!organizer||advisorContext.blocked,showStyles:false,applyLabel:'この集結軍の出陣を確認',note:'現在の集結兵と作戦の戦法による推定です。確認画面で出陣を決めます。'})||'')+'</div><form data-alliance-form="rally" data-id="'+esc(o.id)+'" class="alliance-inline">'+field('提供する兵',amountInput('troops',1000))+'<button class="button" type="submit">兵を集結へ送る</button></form>'+(organizer?button('launch','この集結軍で出陣',o.id,o.startsAt>d.serverNow?' disabled':''):'')+'</section>':'')+
- (o.result?'<div class="alliance-result"><b>'+(o.result.won?'集結勝利':'集結撤退')+'</b><span>出陣 '+num(o.result.pooledTroops)+'人 / 損失 '+num(o.result.attackerLost)+'人</span></div>':'')+
+ (active&&o.kind==='attack'?(global.SengokuTravelUI?.preview(operationTravel(o,advisorContext.game))||'')+'<section class="alliance-rally"><h4>集結兵 '+num(o.troops)+' / 100,000人</h4><p>出陣者の軍団・研究・戦法を使用します。兵糧と指令は出陣者が支払い、占領した城と戦利品も出陣者へ反映します。生存兵は各参加者へ帰還します。</p><div data-alliance-advisor-operation="'+esc(o.id)+'">'+(global.SengokuBattleAdvisor?.markup(rallyAdvice(o,{...advisorContext,data:d,me}),{action:'rally-review',disabled:!organizer||advisorContext.blocked,showStyles:false,applyLabel:'この集結軍の出陣を確認',note:'現在の集結兵と作戦の戦法による推定です。確認画面で出陣を決めます。'})||'')+'</div><form data-alliance-form="rally" data-id="'+esc(o.id)+'" class="alliance-inline">'+field('提供する兵',amountInput('troops',1000))+'<button class="button" type="submit">兵を集結へ送る</button></form>'+(organizer?button('launch','この集結軍で出陣',o.id,o.startsAt>d.serverNow?' disabled':''):'')+'</section>':'')+
+ (o.status==='marching'?'<section class="alliance-rally"><h4>集結軍が進軍中</h4>'+(global.SengokuTravelUI?.preview(o.march?.travel||o.march)||'')+(global.SengokuTravelUI?.countdownMarkup(o.march,{elapsedMs:global.SengokuWorldClock?.snapshot?.()?.clock?.elapsedMs})||'')+'<p>到着後に合戦を行います。生存兵の帰還は戦果の確定後です。</p>'+button('marches','進軍状況・戦果を見る')+'</section>':'')+
+ (o.result&&typeof o.result.won==='boolean'?'<div class="alliance-result"><b>'+(o.result.won?'集結勝利':'集結撤退')+'</b><span>出陣 '+num(o.result.pooledTroops)+'人 / 損失 '+num(o.result.attackerLost)+'人</span></div>':'')+
  (active&&organizer?'<div class="alliance-actions">'+button('complete','作戦を完了',o.id)+button('cancel','作戦を中止',o.id)+'</div>':'')+'</article>';
 }
 function operationsView(d,me,targets,advisorContext={}){
@@ -126,7 +129,7 @@ function mount(host,opts={}){
   if(model.error)content+='<p class="alliance-error" role="alert">'+esc(model.error)+'</p>';
   if(model.message)content+='<p class="alliance-message" role="status">'+esc(model.message)+'</p>';
   if(model.pending)content+='<div class="alliance-pending"><p>前の操作の結果を確認しています。新しい操作は結果の確認後に行えます。</p>'+button('retry','同じ操作の結果を再確認','',''+(model.sending?' disabled':''))+'</div>';
-  if(confirmation)content+='<section class="alliance-confirm" role="alertdialog" aria-label="操作の確認"><h3>'+esc(confirmation.title)+'</h3><p>'+esc(confirmation.message)+'</p><div class="alliance-actions">'+button('confirm','確認して実行')+button('dismiss','戻る')+'</div></section>';
+  if(confirmation)content+='<section class="alliance-confirm" role="alertdialog" aria-label="操作の確認"><h3>'+esc(confirmation.title)+'</h3><p>'+esc(confirmation.message)+'</p>'+(global.SengokuTravelUI?.preview(confirmation.travel)||'')+'<div class="alliance-actions">'+button('confirm','確認して実行')+button('dismiss','戻る')+'</div></section>';
   if(!d)content+=empty(model.loading?'同盟の情報を読み込んでいます。':'領主登録と接続状態を確認してください。');
   else content+='<div class="alliance-body"'+(model.sending?' aria-busy="true"':'')+'>'+(
    tab==='operations'?operationsView(d,me,model.targets,{game:opts.getGame?.(),rules:model.fieldRules,access:opts.getContext?.()||{},blocked:model.sending||Boolean(model.pending)}):tab==='units'?unitsView(d,me):tab==='members'?membershipView(d,me):tab==='policy'?policyView(d,me):contributionsView(d))+'</div>';
@@ -138,17 +141,17 @@ function mount(host,opts={}){
   if(model.sending||model.pending)host.querySelectorAll('.alliance-body button,.alliance-body input,.alliance-body select,.alliance-body textarea').forEach(el=>el.disabled=true);
   drawMap();
  }
- function confirm(title,message,route,data){confirmation={title,message,route,data};render();host.querySelector('.alliance-confirm button')?.focus();}
+ function confirm(title,message,route,data,travel=null){confirmation={title,message,route,data,travel};render();host.querySelector('.alliance-confirm button')?.focus();}
  async function click(event){
   const el=event.target.closest?.('[data-alliance],[data-battle-advisor-action]');if(!el||!host.contains(el)||el.disabled)return;let action=el.dataset.alliance,id=el.dataset.id;const d=model?.data,me=identity();if(el.dataset.battleAdvisorAction==='rally-review'){
    event.preventDefault();if(!d||model.sending||model.pending)return;id=el.closest('[data-alliance-advisor-operation]')?.dataset.allianceAdvisorOperation;const operation=d.operations.find(o=>o.id===id),advice=rallyAdvice(operation,{data:d,me,targets:model.targets,game:opts.getGame?.(),rules:model.fieldRules,access:opts.getContext?.()||{}});if(!advice?.ok){opts.onMessage?.(advice?.message||'最新の集結状況を確認してください。');return;}action='launch';
-  }if(action==='tab'){tab=id;confirmation=null;render();return;}if(action==='refresh'){await controller.load();return;}if(action==='retry'){await controller.retry();return;}if(action==='targets'){await controller.loadTargets();return;}if(action==='dismiss'){confirmation=null;render();return;}
+  }if(action==='marches'){global.SengokuTravelUI?.open();return;}if(action==='tab'){tab=id;confirmation=null;render();return;}if(action==='refresh'){await controller.load();return;}if(action==='retry'){await controller.retry();return;}if(action==='targets'){await controller.loadTargets();return;}if(action==='dismiss'){confirmation=null;render();return;}
   if(action==='confirm'){const c=confirmation;confirmation=null;if(c){await controller.send(c.route,c.data);}return;}
   if(action==='map-focus'){selectedCastle=id;map?.update({selectedId:id});map?.fit('selected',true);host.querySelector('[data-alliance-map]')?.scrollIntoView({behavior:'smooth',block:'nearest'});return;}
   if(!d||model.sending||model.pending)return;
   if(action==='rsvp')return controller.send('/alliance/operations/rsvp',{operationId:id,response:el.dataset.response});
   if(action==='task')return controller.send('/alliance/operations/assign',{operationId:id,assignmentId:el.dataset.task,done:el.dataset.done==='true'});
-  if(action==='launch'){const o=d.operations.find(o=>o.id===id);return confirm('集結軍を出陣させますか',num(o.troops)+'人で'+o.castleName+'へ出陣します。あなたの指令と兵糧を消費します。参加兵の損失が発生し、占領と戦利品はあなたへ反映します。','/alliance/rally/launch',{operationId:id});}
+  if(action==='launch'){const o=d.operations.find(o=>o.id===id);return confirm('集結軍を出陣させますか',num(o.troops)+'人で'+o.castleName+'へ出陣します。あなたの指令と兵糧を消費します。距離に応じて移動し、到着時に合戦を行います。兵の損失・占領・戦利品は到着後に確定します。','/alliance/rally/launch',{operationId:id},operationTravel(o,opts.getGame?.()));}
   if(action==='cancel'||action==='complete')return confirm(action==='cancel'?'作戦を中止しますか':'作戦を完了しますか','集結中の兵は各参加者の受取待ちへ戻ります。','/alliance/operations/'+action,{operationId:id});
   if(action==='recall')return confirm('部隊を撤収しますか','防衛・集結から外し、生存兵を受取待ちへ戻します。','/alliance/units/recall',{unitId:id});
   if(action==='claim')return controller.send('/alliance/units/claim',{unitId:id});

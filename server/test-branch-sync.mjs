@@ -20,8 +20,10 @@ function advance(value,at,options={}){
  const game=GameEngine.fromSave(value,GAME_OFFICERS,options),result=game.applyWorldClock({...clock(null,at),id:value.state.worldClock.id},{maxSeconds:86400});
  assert(result.ok&&!result.pending);return JSON.parse(game.exportSave());
 }
-async function cpuPlayer(h,name,{upgrade=false}={}){
- const p=await fixture(h,name,{holdings:['nijo']});clockAt(h,539000);
+async function cpuPlayer(h,name,{upgrade=false,station=false}={}){
+ const p=await fixture(h,name,{holdings:['nijo']});
+ if(station){const mission=async(action,extra)=>h.api('/covert/'+action,post(p,{requestId:crypto.randomUUID(),deviceId:p.deviceId,expectedRevision:row(h,p).revision,campaignId:save(h,p).state.walking.campaignId,sequence:save(h,p).state.covert.sequence,...extra}));await mission('hire',{sourceCastleId:'nijo',count:300});const dispatch=(await mission('dispatch',{sourceCastleId:'nijo',target:{kind:'castle',castleId:'osaka'},count:200,mode:'station'})).data;h.now+=dispatch.march.durationMs;const arrived=(await h.api('/covert',{token:p.token})).data;assert.equal(arrived.covert.stations.length,1);await h.api('/sync/lease',post(p,{deviceId:p.deviceId}));}
+ clockAt(h,539000);
  updateSave(h,p,s=>{
   for(const c of Object.values(s.castles)){c.owner='在地衆';c.troops=100000;}
   s.castles.nijo={owner:s.clan,troops:100,wall:1,level:1};s.home='nijo';s.cycle.home='nijo';s.difficulty='hard';s.troops=300;s.treaties={};s.seed=17;
@@ -37,9 +39,7 @@ async function scope(name,run){const h=harness();try{await run(h);checks++;conso
 const network=globalThis.fetch;globalThis.fetch=async()=>{throw Error('Branch sync tests must not contact a real service');};
 try{
  await scope('ordinary sync proves a CPU branch fall from the prior checkpoint and never resurrects it on refresh or an old import',async h=>{
-  const p=await cpuPlayer(h,'CPU進行の城主',{upgrade:true});
-  const mission=async(action,extra)=>h.api('/covert/'+action,post(p,{requestId:crypto.randomUUID(),deviceId:p.deviceId,expectedRevision:row(h,p).revision,campaignId:save(h,p).state.walking.campaignId,sequence:save(h,p).state.covert.sequence,...extra}));
-  await mission('hire',{sourceCastleId:'nijo',count:300});await mission('dispatch',{sourceCastleId:'nijo',target:{kind:'castle',castleId:'osaka'},count:200,mode:'station'});
+  const p=await cpuPlayer(h,'CPU進行の城主',{upgrade:true,station:true});
   const original=save(h,p),predicted=advance(original,540000);assert.equal(predicted.state.branches[0].fallen,true);assert.equal(predicted.state.castles.nijo.owner,predicted.state.clan);assert.equal(predicted.state.jobs.filter(j=>j.kind==='branch').length,0);
   clockAt(h,540000);predicted.state.resources.gold+=137;predicted.state.prestige+=11;
   const result=(await sync(h,p,predicted)).data;assert.equal(result.save.state.branches[0].fallen,true);assert.equal(model(h,p).branches[0].fallen,true);assert.equal(model(h,p).jobs.length,0);assert.equal(result.branchResolvedElapsedMs,540000);
@@ -98,16 +98,18 @@ try{
  });
  await scope('a later PvP fall cannot be replayed backward into a historical CPU capture of the parent',async h=>{
   const defender=await cpuPlayer(h,'古い保存位置の守備側'),attacker=await fixture(h,'新しい支拠点攻撃側');clockAt(h,541000);updateSave(h,attacker,s=>{s.turn=9;s.realtime.elapsed=1;s.worldClock.elapsedMs=541000;});
-  const fight=(await forceWin(()=>h.api('/field/attack',post(attacker,{requestId:crypto.randomUUID(),deviceId:attacker.deviceId,expectedRevision:row(h,attacker).revision,targetPlayerId:defender.user.id,targetCastleId:'nijo',targetBranchId:'nijo_north',troops:1000,tactic:'balanced'})))).data;
-  assert.equal(fight.battle.branchFallen,true);assert.equal(save(h,defender).state.worldClock.elapsedMs,539000);assert.equal(ledger(h,defender).resolved_elapsed_ms,541000);
-  const obsolete=advance(save(h,defender),541000);assert.notEqual(obsolete.state.castles.nijo.owner,obsolete.state.clan);
+  const departure=(await forceWin(()=>h.api('/field/attack',post(attacker,{requestId:crypto.randomUUID(),deviceId:attacker.deviceId,expectedRevision:row(h,attacker).revision,targetPlayerId:defender.user.id,targetCastleId:'nijo',targetBranchId:'nijo_north',troops:1000,tactic:'balanced'})))).data;
+  assert(departure.marching);const arrivedAt=departure.march.arrivesAtMs;clockAt(h,arrivedAt);const arrivals=(await h.api('/marches',{token:attacker.token})).data,fight={battle:arrivals.history[0].battle};
+  assert.equal(fight.battle.branchFallen,true);assert.equal(save(h,defender).state.worldClock.elapsedMs,539000);assert.equal(ledger(h,defender).resolved_elapsed_ms,arrivedAt);
+  const obsolete=advance(save(h,defender),arrivedAt);assert.notEqual(obsolete.state.castles.nijo.owner,obsolete.state.clan);
   assert.equal(save(h,defender).state.castles.nijo.owner,save(h,defender).state.clan);
-  const verified=(await h.api('/sync?deviceId='+defender.deviceId,{token:defender.token})).data,corrected=advance(verified.save,541000,{branchAuthority:{resolvedElapsedMs:verified.branchResolvedElapsedMs}});assert.equal(corrected.state.castles.nijo.owner,corrected.state.clan);
-  // A direct API repair, without a preceding client flush, must use the same
-  // trusted cursor when its server engine catches up that older checkpoint.
+  const verified=(await h.api('/sync?deviceId='+defender.deviceId,{token:defender.token})).data,corrected=advance(verified.save,arrivedAt,{branchAuthority:{resolvedElapsedMs:verified.branchResolvedElapsedMs}});assert.equal(corrected.state.castles.nijo.owner,corrected.state.clan);
+  // Flush elapsed travel time before repairing; the authoritative watermark
+  // must still prevent the old CPU raid from consuming the parent again.
+  await sync(h,defender,corrected);
   const repair=(await h.api('/branches/repair',post(defender,{requestId:crypto.randomUUID(),deviceId:defender.deviceId,expectedRevision:row(h,defender).revision,campaignId:verified.save.state.walking.campaignId,sequence:ledger(h,defender).sequence,branchId:'nijo_north'}))).data;
   assert.equal(repair.save.state.castles.nijo.owner,repair.save.state.clan);assert.equal(repair.save.state.branches[0].fallen,true);assert.equal(model(h,defender).jobs[0].repair,true);
-  const result=(await sync(h,defender,repair.save)).data;assert.equal(result.save.state.castles.nijo.owner,result.save.state.clan);assert.equal(result.save.state.branches[0].fallen,true);assert.equal(result.branchResolvedElapsedMs,541000);
+  const result=(await sync(h,defender,repair.save)).data;assert.equal(result.save.state.castles.nijo.owner,result.save.state.clan);assert.equal(result.save.state.branches[0].fallen,true);assert.equal(result.branchResolvedElapsedMs,arrivedAt);
  });
  await scope('watermark-only sync does not stale a pinned construction sequence',async h=>{
   const p=await fixture(h,'時間だけ進む支拠点',{holdings:['nijo']});seed(h,p,[branch()]);const initial=ledger(h,p),value=save(h,p);clockAt(h,1000);value.state.realtime.elapsed=1;value.state.worldClock.elapsedMs=1000;
@@ -119,9 +121,9 @@ try{
   const defender=await cpuPlayer(h,'二都市の支拠点'),attacker=await fixture(h,'二都市の攻撃側'),second={id:'osaka_east',parentCastleId:'osaka',direction:'east',level:2,fallen:false};
   updateSave(h,defender,s=>{s.castles.osaka={owner:s.clan,troops:100,wall:1,level:1};s.branches.push(second);});const state=model(h,defender);state.branches.push(second);h.sql.prepare('UPDATE branch_states SET state_json=?,sequence=sequence+1 WHERE actor_id=?').run(JSON.stringify(state),defender.user.id);
   clockAt(h,541000);updateSave(h,attacker,s=>{s.turn=9;s.realtime.elapsed=1;s.worldClock.elapsedMs=541000;});
-  await forceWin(()=>h.api('/field/attack',post(attacker,{requestId:crypto.randomUUID(),deviceId:attacker.deviceId,expectedRevision:row(h,attacker).revision,targetPlayerId:defender.user.id,targetCastleId:'nijo',targetBranchId:'nijo_north',troops:1000,tactic:'balanced'})));
-  const snapshot=(await h.api('/sync?deviceId='+defender.deviceId,{token:defender.token})).data;assert.equal(snapshot.branchResolvedElapsedMs,541000);assert.equal(snapshot.save.state.worldClock.elapsedMs,539000);
-  const correct=advance(snapshot.save,541000,{branchAuthority:{resolvedElapsedMs:snapshot.branchResolvedElapsedMs}});assert.equal(correct.state.branches.find(b=>b.id==='osaka_east').fallen,false);
+  const departure=(await forceWin(()=>h.api('/field/attack',post(attacker,{requestId:crypto.randomUUID(),deviceId:attacker.deviceId,expectedRevision:row(h,attacker).revision,targetPlayerId:defender.user.id,targetCastleId:'nijo',targetBranchId:'nijo_north',troops:1000,tactic:'balanced'})))).data;const arrivedAt=departure.march.arrivesAtMs;clockAt(h,arrivedAt);await h.api('/marches',{token:attacker.token});
+  const snapshot=(await h.api('/sync?deviceId='+defender.deviceId,{token:defender.token})).data;assert.equal(snapshot.branchResolvedElapsedMs,arrivedAt);assert.equal(snapshot.save.state.worldClock.elapsedMs,539000);
+  const correct=advance(snapshot.save,arrivedAt,{branchAuthority:{resolvedElapsedMs:snapshot.branchResolvedElapsedMs}});assert.equal(correct.state.branches.find(b=>b.id==='osaka_east').fallen,false);
   const result=(await sync(h,defender,correct)).data;assert.equal(result.save.state.branches.find(b=>b.id==='nijo_north').fallen,true);assert.equal(result.save.state.branches.find(b=>b.id==='osaka_east').fallen,false);assert.equal(result.save.state.castles.nijo.owner,result.save.state.clan);assert.equal(result.save.state.castles.osaka.owner,result.save.state.clan);
  });
  await scope('normal-sync replay pins semantic state, its private cursor, roles and clock until commit',async h=>{

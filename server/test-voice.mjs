@@ -118,7 +118,7 @@ try{
   h.env.VOICE_TURN_URLS='https://forged.invalid';assert.equal((await heartbeat(h,a,call.sessionId)).data.relayAvailable,false);
  });
  await scope('schema readiness checks voice tables and membership triggers; migration seeds old members',async h=>{
-  const {players:[a,b]}=await alliance(h);const health=(await h.api('/health')).data;assert.equal(health.version,'4.1.0');assert.equal(health.features.audioCalls,true);
+  const {players:[a,b]}=await alliance(h);const health=(await h.api('/health')).data;assert.equal(health.version,'4.3.0');assert.equal(health.features.audioCalls,true);
   h.sql.exec('DROP TRIGGER voice_guild_move');assert.equal((await h.api('/health',{expected:503})).data.error.code,'SERVICE_UNAVAILABLE');
   h.sql.exec('DROP TRIGGER voice_guild_join; DROP TRIGGER voice_guild_leave; DROP TABLE voice_signals; DROP TABLE voice_sessions; DROP TABLE voice_membership_epochs');await h.api('/health',{expected:503});
   for(const sql of readFileSync(new URL('./drizzle/0021_audio_calls.sql',import.meta.url),'utf8').split('--> statement-breakpoint').map(v=>v.trim()).filter(Boolean))h.sql.exec(sql);
