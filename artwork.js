@@ -11,8 +11,8 @@ const portraitFacilities=new Set((data.buildings||[]).slice(0,32).map(b=>b.id));
 // cannot keep the former plain-background facility sheets after this update.
 const facilityArtRevision='chronicle-480';
 const officerArtRevision='chronicle-480';
-const frames=Object.fromEntries(ranks.map(r=>[r,`assets/frames/rank-${r}.svg?v=4.9.0-20261123`]));
-const operatorPortrait={id:'of_b0616adde162',rank:'U',url:'assets/operator-ieyasu-u.webp?v=ieyasu-sokutai-20261123'};
+const frames=Object.fromEntries(ranks.map(r=>[r,`assets/frames/rank-${r}.svg?v=4.9.1-20261123`]));
+const operatorPortrait={id:'of_b0616adde162',rank:'U',url:'assets/operator-ieyasu-u.webp?v=ieyasu-anime-u-20261123'};
 const cache=new Map(),paintRequests=new WeakMap();let observer,scheduled=false;
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const icons={
@@ -51,7 +51,7 @@ function load(url){if(cache.has(url))return cache.get(url);const promise=new Pro
 async function reveal(el){
  const url=el.dataset.artUrl||el.dataset.ghostUrl;if(!url||el.dataset.artReady)return;
  const active=paintRequests.get(el);if(el.dataset.artLoading&&active?.url===url)return;
- if(global.SENGOKU_AT_TITLE&&!el.closest('#launch-screen'))return;
+ if(global.SENGOKU_AT_TITLE&&!el.closest('#launch-screen, #public-lord-profile, #community-modal [data-own-commander]'))return;
  const request={url};paintRequests.set(el,request);el.dataset.artLoading='1';
  const current=()=>paintRequests.get(el)===request&&(el.dataset.artUrl||el.dataset.ghostUrl)===url;
  try{
