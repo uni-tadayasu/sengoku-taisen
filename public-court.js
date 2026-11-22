@@ -24,8 +24,7 @@
  function refresh(){
   for(const node of global.document?.querySelectorAll?.('[data-court-player]')||[]){
    const id=node.dataset.courtPlayer,current=node.dataset.courtSelf==='true'?selfOffice(id):office(id);
-   // Browsers expand SVG self-closing tags when serializing innerHTML.
-   // Compare the actual mounted seal before touching the participant row.
+   // Keep the mounted artwork and its fallback state on unchanged polls.
    if(current&&node.firstElementChild?.dataset?.courtSeal===OFFICES[current.title].seal)continue;
    if(!current&&node.childNodes?.length===0)continue;
    const html=current?badgeTitle(current.title):'';
@@ -56,9 +55,16 @@
  function badgeTitle(title){
   if(typeof title!=='string'||!Object.hasOwn(OFFICES,title))return '';
   const {kind,seal,art}=OFFICES[title];
-  const icon=`<svg class="public-court-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round">${art}</svg>`;
+  const relief=`<img class="public-court-relief" src="assets/court-badges/${seal}-relief.webp" width="24" height="24" alt="" decoding="async" loading="lazy" draggable="false">`;
+  const linework=`<svg class="public-court-linework" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round">${art}</svg>`;
+  const icon=`<span class="public-court-icon" data-stable-key="court-seal-${seal}" aria-hidden="true">${relief}${linework}</span>`;
   return `<span class="public-court-badge public-court-${kind}" data-court-seal="${seal}" role="img" aria-label="役職：${title}" title="役職：${title}">${icon}<span class="public-court-title">${title}</span></span>`;
  }
+ // Resource errors do not bubble. Capture them once for every newly mounted
+ // office, so an uncached badge still has its own seal when playing offline.
+ global.document?.addEventListener?.('error',event=>{
+  if(event.target?.matches?.('img.public-court-relief'))event.target.hidden=true;
+ },true);
  function badge(player){const current=office(player);return current?badgeTitle(current.title):'';}
  function slot(player){const id=playerId(player);return validId(id)?`<span class="public-court-slot" data-court-player="${escape(id)}">${badge(player)}</span>`:badge(player);}
  // Self badges follow the verified current connection, never an old campaign,

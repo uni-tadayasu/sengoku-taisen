@@ -601,7 +601,7 @@
     const cost=game.castleUpgradeCost(id);
     return {action:`<button type="button" class="button gold town-castle-level-up" id="home-castle-level-up" data-action="upgrade-castle" data-id="${esc(id)}" data-home-upgrade="true" aria-label="${esc(c.name)}の城郭をLv.${c.level+1}へ強化する" aria-describedby="home-castle-upgrade-cost home-castle-upgrade-hint">${icon('plus')}<span>レベルUP<small>Lv.${c.level+1}へ</small></span></button>`,detail:`<div class="town-castle-upgrade-detail" id="home-castle-upgrade-cost"><small class="town-castle-upgrade-label">城郭の${shared?'共同普請':'強化'}費用 · 指令1回</small>${costHtml(cost)}<p class="town-castle-upgrade-note" id="home-castle-upgrade-hint">${esc(homeCastleUpgradeHint(id))}</p></div>`};
   }
-  function premiumTownImage(){return window.SengokuPremiumRuntime?.getAppearance?.().town==='moonlit-castle'?'assets/premium/moonlit-castle-v1.webp':'assets/castle-town.webp?v=4.9.2-20261123';}
+  function premiumTownImage(){return window.SengokuPremiumRuntime?.getAppearance?.().town==='moonlit-castle'?'assets/premium/moonlit-castle-v1.webp':'assets/castle-town.webp?v=4.9.3-20261123';}
   function townSceneSources(src){
     const name=src.includes('moonlit')?'moonlit-castle':'castle-town';
     return [400,720,1080,1536].map(width=>`assets/responsive/${name}-${width}.webp ${width}w`).join(', ');

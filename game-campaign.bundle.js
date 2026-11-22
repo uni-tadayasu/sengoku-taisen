@@ -1689,7 +1689,7 @@ const api={render,renderFacilities,facilityReason,jobName,name,selection,selectD
     const surface = options.surface === 'game' ? 'game' : 'public', context = normalizeContext(options.context);
     const selected = choices.some(choice => choice.key === options.initialPreview) ? options.initialPreview : surface === 'public' ? 'moonlit-castle' : 'standard';
     const initial = choices.find(choice => choice.key === selected) || standardPreview;
-    const landscape = selected === 'moonlit-castle' ? 'assets/premium/moonlit-castle-v1.webp' : 'assets/castle-town.webp?v=4.9.2-20261123';
+    const landscape = selected === 'moonlit-castle' ? 'assets/premium/moonlit-castle-v1.webp' : 'assets/castle-town.webp?v=4.9.3-20261123';
     return `<div class="premium-catalog" data-premium-catalog data-premium-surface="${surface}" data-premium-id="${id}" data-premium-asset-prefix="${esc(assetPrefix)}" data-premium-selected="${initial.key}">
 ${surface === 'game' ? `      <div class="premium-introduction"><p class="premium-label">外観コレクションと、開発・運営への支援</p><h2>一城の景色に、あなたらしい彩りを。</h2><p>金刺繍の旗、月明かりの城下町、黄金の支援バッジ。戦国VSのために描いた外観で、いつもの戦記を楽しめます。城を育て、武将を迎え、合戦や交易を重ねる遊びは無料のままです。</p></div>` : ''}
       ${surface === 'game' ? `<section class="premium-account" aria-label="接続中の領主と外観の管理" data-premium-account>${accountMarkup(context)}</section><p class="premium-feedback" role="status" data-premium-feedback hidden></p><section class="premium-confirm" data-premium-confirm hidden></section>` : '<p class="premium-public-note">購入・外観の適用はゲーム内で行います。見本はどなたでも切り替えられます。</p>'}
@@ -1751,7 +1751,7 @@ ${surface === 'game' ? `      <div class="premium-introduction"><p class="premiu
         element.setAttribute('data-premium-selected', choice.key); stage.setAttribute('data-premium-preview-mode', choice.key);
         const image = stage.querySelector('[data-premium-landscape]');
         image?.setAttribute('srcset', artworkSources(prefix, choice.key === 'moonlit-castle' ? 'moonlit-castle' : 'castle-town'));
-        image?.setAttribute('src', prefix + (choice.key === 'moonlit-castle' ? 'assets/premium/moonlit-castle-v1.webp' : 'assets/castle-town.webp?v=4.9.2-20261123'));
+        image?.setAttribute('src', prefix + (choice.key === 'moonlit-castle' ? 'assets/premium/moonlit-castle-v1.webp' : 'assets/castle-town.webp?v=4.9.3-20261123'));
         image?.setAttribute('alt', choice.key === 'moonlit-castle' ? '月明かりと城の灯りが川面に映る城下町' : '天守と田畑、商家、川が広がる城下町');
         const title = element.querySelector('[data-premium-preview-title]'), description = element.querySelector('[data-premium-preview-description]');
         if (title) title.textContent = choice.label; if (description) description.textContent = choice.description;
@@ -2768,8 +2768,7 @@ const api={createController,mount,open,markup,battlePreview,battleAdvice,countdo
  function refresh(){
   for(const node of global.document?.querySelectorAll?.('[data-court-player]')||[]){
    const id=node.dataset.courtPlayer,current=node.dataset.courtSelf==='true'?selfOffice(id):office(id);
-   // Browsers expand SVG self-closing tags when serializing innerHTML.
-   // Compare the actual mounted seal before touching the participant row.
+   // Keep the mounted artwork and its fallback state on unchanged polls.
    if(current&&node.firstElementChild?.dataset?.courtSeal===OFFICES[current.title].seal)continue;
    if(!current&&node.childNodes?.length===0)continue;
    const html=current?badgeTitle(current.title):'';
@@ -2800,9 +2799,16 @@ const api={createController,mount,open,markup,battlePreview,battleAdvice,countdo
  function badgeTitle(title){
   if(typeof title!=='string'||!Object.hasOwn(OFFICES,title))return '';
   const {kind,seal,art}=OFFICES[title];
-  const icon=`<svg class="public-court-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round">${art}</svg>`;
+  const relief=`<img class="public-court-relief" src="assets/court-badges/${seal}-relief.webp" width="24" height="24" alt="" decoding="async" loading="lazy" draggable="false">`;
+  const linework=`<svg class="public-court-linework" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round">${art}</svg>`;
+  const icon=`<span class="public-court-icon" data-stable-key="court-seal-${seal}" aria-hidden="true">${relief}${linework}</span>`;
   return `<span class="public-court-badge public-court-${kind}" data-court-seal="${seal}" role="img" aria-label="役職：${title}" title="役職：${title}">${icon}<span class="public-court-title">${title}</span></span>`;
  }
+ // Resource errors do not bubble. Capture them once for every newly mounted
+ // office, so an uncached badge still has its own seal when playing offline.
+ global.document?.addEventListener?.('error',event=>{
+  if(event.target?.matches?.('img.public-court-relief'))event.target.hidden=true;
+ },true);
  function badge(player){const current=office(player);return current?badgeTitle(current.title):'';}
  function slot(player){const id=playerId(player);return validId(id)?`<span class="public-court-slot" data-court-player="${escape(id)}">${badge(player)}</span>`:badge(player);}
  // Self badges follow the verified current connection, never an old campaign,
