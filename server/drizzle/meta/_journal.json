@@ -239,6 +239,13 @@
       "when": 1797984000000,
       "tag": "0033_external_troop_upkeep",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "6",
+      "when": 1798070400000,
+      "tag": "0034_stronghold_durability",
+      "breakpoints": true
     }
   ]
 }

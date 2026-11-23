@@ -901,7 +901,7 @@ async function residencyRequest(route,options={}){
  verify();const result=await api(route,{method,data:write?options.data:undefined,auth:write||Boolean(s.identity&&!s.accountBanned),background:true,identityEpoch:initial.epoch});verify();return result;
 }
 async function branchRequest(route,options={}){
- const method=options.method||'GET',read=method==='GET'&&route==='/branches',write=method==='POST'&&/^\/branches\/(?:build|upgrade|repair|build-facility|upgrade-facility|transfer-troops|assign-commander|remove-commander|auto-assign-commanders)$/.test(route);
+ const method=options.method||'GET',read=method==='GET'&&route==='/branches',write=method==='POST'&&/^\/branches\/(?:build|upgrade|repair|build-facility|upgrade-facility|transfer-troops|assign-commander|remove-commander|auto-assign-commanders|auto-assign-officers)$/.test(route);
  if(!read&&!write)throw Object.assign(Error('支拠点の操作を確認してください。'),{status:400});
  const initial=getCourtContext();if(!initial.user||initial.pending||initial.banned)throw Object.assign(Error('接続中の領主を確認してください。'),{status:403,code:'BRANCH_IDENTITY_REQUIRED',retryable:true});
  const verify=()=>{const current=getCourtContext();if(initial.epoch!==current.epoch||initial.accountEpoch!==current.accountEpoch||initial.privilegeEpoch!==current.privilegeEpoch||initial.playerId!==current.playerId||!current.user||current.pending||current.banned)throw staleIdentity();};

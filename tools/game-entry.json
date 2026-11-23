@@ -64,7 +64,8 @@
     "title-fit.css",
     "economy.css",
     "live-updates.css",
-    "officer-health.css"
+    "officer-health.css",
+    "durability.css"
   ],
   "game-preferences.bundle.js": [
     "viewport-lock.js",
@@ -81,6 +82,7 @@
     "stable-dom.js",
     "sync-notices.js",
     "officer-health.js",
+    "durability.js",
     "hints.js",
     "player-evaluation.js",
     "music.js",
