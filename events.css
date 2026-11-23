@@ -20,3 +20,29 @@ html:not(.sengoku-desktop-fit) .events-dialog{position:fixed;inset:auto;left:cal
 .events-defender h4{margin:0;color:#f5e5c0;font:600 1rem/1.5 'Noto Serif JP',serif}
 .events-defender p{margin:3px 0 8px;color:#d0d5d2}
 .events-defender .events-result-stats{grid-template-columns:repeat(2,minmax(0,1fr));margin:0}
+
+.events-defense-adviser{margin-top:24px;padding:22px;border:1px solid #92bca579;border-radius:12px;background:linear-gradient(140deg,#263e35,#182c36 75%);overflow-wrap:anywhere}
+.events-defense-adviser header{margin-bottom:18px;padding-bottom:14px;border-bottom:1px solid #a1bba742}
+.events-defense-adviser h3{margin:5px 0;font:600 clamp(20px,2vw,24px)/1.6 'Noto Serif JP',serif;color:#f1e8c9}
+.events-defense-adviser h4{margin:22px 0 10px;font:600 18px/1.65 'Noto Serif JP',serif;color:#e9dfbd}
+.events-defense-adviser h5{margin:0;font-size:16px;font-weight:600;line-height:1.7;color:#f0e4c6}
+.events-defense-adviser p{font-size:16px;line-height:1.9;color:#d3dfd5}
+.events-defense-adviser .events-defense-castle{font-size:14px;color:#c6d5c6}
+.events-defense-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin:18px 0!important;padding:15px 0;border-block:1px solid #a1bba738}
+.events-defense-stats dt{font-size:14px;line-height:1.7;color:#bcd0c6}
+.events-defense-stats dd{margin:5px 0 0;font-size:22px;line-height:1.5;font-weight:600;color:#f3dfae;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.events-defense-stats small{margin-left:4px;font-size:14px;font-weight:400;color:#c3d3c7}
+.events-defense-measures{display:grid;gap:12px;margin:0!important;padding:0;list-style:none}
+.events-defense-measures li{display:grid;grid-template-columns:minmax(72px,auto) minmax(0,1fr);align-items:start;gap:12px;padding:14px;border:1px solid #8ba6964d;border-radius:9px;background:#0d252450}
+.events-defense-measures p{margin:5px 0 0;font-size:14px}
+.events-defense-priority{display:inline-flex;justify-content:center;padding:4px 7px;border:1px solid #9dba9b5c;border-radius:5px;font-size:14px;line-height:1.5;color:#c6d7c0;white-space:nowrap}
+.events-defense-priority[data-priority="1"]{border-color:#d4b36e82;background:#d7ad3c14;color:#f3dc9c}
+.events-defense-stages{display:grid;gap:12px;margin-top:13px}
+.events-defense-stages article{padding:15px;border-left:3px solid #abbd9c;border-radius:0 8px 8px 0;background:#0d22284f}
+.events-defense-stages strong{display:block;margin:10px 0 5px;font-size:16px;line-height:1.8;font-weight:600;color:#e6d7ad}
+.events-defense-stages p{font-size:14px}
+.events-defense-stages .events-defense-tactic{margin-top:4px;color:#b6cdc4}
+.events-defense-adviser .events-defense-note{font-size:14px;line-height:1.85;color:#c0d0c6}
+.events-defense-adviser .events-defense-explanation{margin:19px 0 0;padding-top:16px;border-top:1px solid #a1bba738}
+@media(max-width:520px){.events-defense-adviser{padding:16px}.events-defense-stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 10px}.events-defense-stats>div:last-child{grid-column:1/-1}.events-defense-stats dd{font-size:21px}.events-defense-measures li{grid-template-columns:minmax(0,1fr);gap:9px;padding:12px}.events-defense-priority{justify-self:start}.events-defense-stages article{padding:13px}}
+@media(max-width:420px){.events-defense-stats{grid-template-columns:minmax(0,1fr)}.events-defense-stats>div:last-child{grid-column:auto}}

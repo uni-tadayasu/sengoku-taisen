@@ -1,7 +1,7 @@
 'use strict';
 // In-memory event fixtures only. No real API, account, save, battle or mail is changed.
 const assert = require('node:assert/strict');
-const { createController, createUI, cleanEvent, cleanProgress, cleanLeaderboard, cleanCatalog, selectedAdvice, adviserMarkup, outcomeMarkup, catalogOptionsMarkup, catalogSelectionMarkup, detailMarkup, battleMarkup, leaderboardMarkup } = require('../events.js');
+const { createController, createUI, cleanEvent, cleanProgress, cleanLeaderboard, cleanCatalog, selectedAdvice, adviserMarkup, defenseAdviserMarkup, outcomeMarkup, catalogOptionsMarkup, catalogSelectionMarkup, detailMarkup, battleMarkup, leaderboardMarkup } = require('../events.js');
 const clone = value => JSON.parse(JSON.stringify(value));
 const tests = [], test = (name, run) => tests.push([name, run]);
 const NOW = Date.parse('2026-11-22T03:00:00Z'), OWNER = 'u_' + '1'.repeat(32), OTHER = 'u_' + '2'.repeat(32);
@@ -40,6 +40,14 @@ function advisedProgressFixture(event = catalogEventFixture(), extra = {}) {
     const options = event.plan.tactics.map(tactic => ({ tactic: tactic.id, tacticName: tactic.name, winChance: tactic.id === 'charge' ? 80 : 52, playerPower: tactic.id === 'charge' ? 1900 : 1200, enemyPower: stage.enemyPower }));
     return { stageId: stage.id, ...options.find(item => item.tactic === 'charge'), reason: '現在の軍団では武勇を生かした突撃が有利です。', options };
   }), unification: { eligible: event.plan.ending.kind === 'unification', clearedStageIds: [], requiredStageIds: event.plan.stages.map(stage => stage.id), points: 0, requiredPoints: 600, achieved: false, earnedAt: null }, ...extra });
+}
+function defenseAdviserFixture(event = catalogEventFixture('castle:edo')) {
+  return { castleId:'edo', castleName:'江戸城', defenseTroops:2400, defensePower:9600, reinforcementTroops:400,
+    headline:'城壁を整え、守備隊を支える', summary:'守備隊と駐留中の援軍をもとに、今の城に合う備えをまとめました。',
+    measures:[{id:'alliance',priority:2,title:'同盟の援軍を確保する',detail:'駐留している400人の援軍は期限を確認しましょう。'},
+      {id:'wall',priority:1,title:'城壁の強化を進める',detail:'通常の城下町で城壁を強化し、守りを厚くしましょう。'},
+      {id:'readiness',priority:3,title:'兵の配置を継続して確認する',detail:'ほかの出陣の後は、城に残る兵数を見直しましょう。'}],
+    stages:event.plan.stages.map(stage=>({stageId:stage.id,stageName:stage.name,attackTactic:stage.recommendedTactic,attackTacticName:event.plan.tactics.find(t=>t.id===stage.recommendedTactic).name,defensePlan:'要所を守り、予備兵を残す',reason:'この戦場の地形に適した攻撃に備えて、城門と側面の守りを分担します。'})) };
 }
 const evaluationFixture = { version: 1, score: 32000, maxScore: 100000, rankIndex: 6, rankId: 'court-6', rankName: '従五位下' };
 const rankFixture = () => [{ rank: 1, playerId: OTHER, name: '甲斐の領主', avatarVersion: 'c'.repeat(64), evaluation: evaluationFixture, points: 350, wins: 3, battles: 3, isAdmin: true, isStaff: true }];
@@ -410,6 +418,67 @@ test('a visitor can see a resident castle’s force without personal battle fore
   await s.ui.open();assert(s.get('[data-event-opponent]').textContent.includes('守城の主'));
   assert.equal(s.get('[data-event-stage-power="stage_1"]').textContent,'3,080');
   assert.equal(s.get('.events-adviser-stats'),null);assert.equal(s.get('[data-events-battle-submit]').disabled,true);s.ui.dispose();
+});
+
+test('defensive advice has a bounded private contract and escapes every displayed recommendation',()=>{
+  const event=catalogEventFixture('castle:edo'),raw=defenseAdviserFixture(event);
+  Object.assign(raw,{headline:'<軍議>',summary:'<方針>',playerId:OWNER,isAdmin:true,token:'SECRET'});
+  Object.assign(raw.measures[0],{title:'<援軍>',detail:'<備え>',privateNotes:'SECRET'});
+  Object.assign(raw.stages[0],{stageName:'<戦場>',attackTacticName:'<奇襲>',defensePlan:'<守り>',reason:'<根拠>',attackerId:OTHER});
+  const progress=cleanProgress(progressFixture({defenseAdviser:raw}));assert(progress);
+  const advice=progress.defenseAdviser;
+  assert.deepEqual(Object.keys(advice).sort(),['castleId','castleName','defenseTroops','defensePower','reinforcementTroops','headline','summary','measures','stages'].sort());
+  assert(!JSON.stringify(advice).includes('SECRET')&&!JSON.stringify(advice).includes(OWNER)&&!JSON.stringify(advice).includes(OTHER));
+  event.opponent={castleId:advice.castleId,castleName:advice.castleName,lordName:'越後の領主',defenseTroops:advice.defenseTroops,defensePower:advice.defensePower};
+  const html=defenseAdviserMarkup({event,progress,signedIn:true});
+  for(const label of ['軍議','方針','援軍','備え','戦場','奇襲','守り','根拠'])assert(html.includes('&lt;'+label+'&gt;')&&!html.includes('<'+label+'>'));
+  assert(!html.includes('<button')&&!html.includes('<input')&&!html.includes('<select')&&!html.includes('勝利予測'));
+  for(const invalid of [{castleId:'../edo'},{defensePower:0},{defenseTroops:-1},{reinforcementTroops:2401},{headline:''},{summary:'x'.repeat(1501)},
+    {measures:[]},{measures:[{...raw.measures[0],priority:0}]},{measures:[raw.measures[0],raw.measures[0]]},
+    {stages:[]},{stages:[raw.stages[0],raw.stages[0]]},{stages:[{...raw.stages[0],attackTactic:'../charge'}]}])assert.equal(cleanProgress(progressFixture({defenseAdviser:{...raw,...invalid}})),undefined);
+  assert.equal(cleanProgress(progressFixture({defenseAdviser:null})).defenseAdviser,null);
+  assert(!Object.hasOwn(cleanProgress(progressFixture()),'defenseAdviser'));
+});
+
+test('only server-authorized defenders see their own briefing and attack forecasts stay clearly separate',async()=>{
+  const event=catalogEventFixture('castle:edo'),defense=defenseAdviserFixture(event);
+  event.opponent={castleId:'edo',castleName:'江戸城',lordName:'越後の領主',defenseTroops:defense.defenseTroops,defensePower:defense.defensePower};
+  const progress=advisedProgressFixture(event,{defenseAdviser:defense});
+  for(const advice of progress.advisers){advice.enemyPower=defense.defensePower;for(const option of advice.options)option.enemyPower=defense.defensePower;}
+  const s=uiSetup({events:[event],progress});await s.ui.open();
+  const panel=s.get('.events-defense-adviser');assert(panel);assert(panel.textContent.includes('防衛軍議 · あなたの拠点'));
+  assert(panel.textContent.includes('2,400')&&panel.textContent.includes('9,600')&&panel.textContent.includes('400'));
+  const priorities=panel.querySelectorAll('.events-defense-priority');assert.deepEqual(priorities.map(node=>node.getAttribute('data-priority')),['1','2','3']);
+  assert.equal(panel.querySelector('.events-defense-stages').querySelectorAll('article').length,3);
+  assert.equal(panel.querySelectorAll('button,input,select').length,0);assert(panel.textContent.includes('催事用の模擬合戦'));
+  assert(s.get('[data-event-adviser]').textContent.includes('攻撃側の試算'));assert.equal(s.get('[data-events="advice"]').textContent,'攻撃戦術に反映');
+  const before=clone(s.server.progress);s.click('[data-events="advice"]');assert.equal(s.controller.getState().tactic,'charge');
+  assert.equal(s.posts().length,0);assert.deepEqual(s.server.progress,before);assert(s.get('.events-defense-adviser'));
+  s.server.progress.defenseAdviser=null;await s.ui.refresh();
+  assert.equal(s.get('.events-defense-adviser'),null);assert(!s.get('[data-event-adviser]').textContent.includes('攻撃側の試算'));
+  // The current player and the public castle lord still have the same display
+  // name; only the private server authorization makes a defense briefing.
+  assert.equal(s.context().user.name,s.server.events[0].opponent.lordName);s.ui.dispose();
+  const state={event,progress:cleanProgress(progress),signedIn:false};assert.equal(defenseAdviserMarkup(state),'');
+  for(const mutation of [{castleId:'sunpu'},{defensePower:defense.defensePower+1},{defenseTroops:defense.defenseTroops+1},
+    {stages:[{...defense.stages[0],stageId:'other_stage'}]},{stages:[{...defense.stages[0],attackTactic:'other_tactic'}]}]){
+    assert.equal(defenseAdviserMarkup({...state,signedIn:true,progress:cleanProgress(progressFixture({defenseAdviser:{...defense,...mutation}}))}), '');
+  }
+});
+
+test('lord succession and account switching remove private defensive advice without disturbing the chosen attack tactic',async()=>{
+  const event=catalogEventFixture('castle:edo'),defense=defenseAdviserFixture(event);
+  event.opponent={castleId:'edo',castleName:'江戸城',lordName:'先代城主',defenseTroops:defense.defenseTroops,defensePower:defense.defensePower};
+  const s=uiSetup({events:[event],progress:advisedProgressFixture(event,{defenseAdviser:defense})});await s.ui.open();
+  s.controller.chooseStage('stage_2');s.controller.chooseTactic('defend');const select=s.get('#events-tactic'),main=s.get('[data-events-main]');select.focus();main.scrollTop=390;
+  s.server.events[0].opponent.lordName='次代城主';s.server.progress.defenseAdviser=null;await s.ui.refresh();
+  assert.equal(s.get('.events-defense-adviser'),null);assert.equal(s.get('#events-tactic'),select);assert.equal(select.value,'defend');assert.equal(s.doc.activeElement,select);assert.equal(main.scrollTop,390);
+  s.server.progress.defenseAdviser=defense;await s.ui.refresh();assert(s.get('.events-defense-adviser'));
+  const gate=deferred();s.setHandler((route,settings,base)=>route==='/events'?gate.promise:base(route,settings));
+  const next={...s.context(),playerId:OTHER,user:{id:OTHER,name:'先代城主'},epoch:2};s.setContext(next);const changing=s.ui.refreshAccess();
+  assert.equal(s.get('.events-defense-adviser'),null);assert.equal(s.controller.getState().progress,null);
+  s.server.progress.defenseAdviser=null;gate.resolve(await s.base('/events',{method:'GET'}));await changing;
+  assert.equal(s.get('.events-defense-adviser'),null);assert.equal(s.posts().length,0);s.ui.dispose();
 });
 
 test('the one-second UI tick reflects command recovery without a fetch, form replacement or focus loss', async () => {
