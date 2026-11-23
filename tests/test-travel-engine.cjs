@@ -26,11 +26,11 @@ test('all 129 map coordinates are shared; near routes take less time and remote 
 });
 
 test('departure escrows every soldier and cost without battle, capture, reward or progress',()=>{
-  const g=game(),id=weakTarget(g),before=snapshot(g.state),preview=g.previewBattle(id,'balanced',1500),untouched=stableSave(g);
+  const g=game(),id=weakTarget(g),before=snapshot(g.state),beforeUpkeep=g.income().upkeep,preview=g.previewBattle(id,'balanced',1500),untouched=stableSave(g);
   assert(preview.travel);assert.equal(stableSave(g),untouched);const r=g.departAttack(id,'balanced',1500);assert(r.accepted);assert.equal(r.battle,undefined);
   assert.equal(g.state.troops,before.troops-1500);assert.equal(g.state.resources.rice,before.resources.rice-preview.foodCost);assert.equal(g.state.command,before.command-1);
   assert.equal(g.state.castles[id].owner,before.castles[id].owner);assert.deepEqual(g.state.stats,before.stats);assert.equal(g.state.lastBattle,null);assert.equal(g.state.marchHistory.length,0);
-  assert.deepEqual(g.state.progress,before.progress);assert.equal(g.income().upkeep,Math.ceil(before.troops*.12+60));
+  assert.deepEqual(g.state.progress,before.progress);assert.equal(g.income().upkeep,beforeUpkeep);
   const after=stableSave(g),again=g.departAttack(id,'balanced',1500);assert(again.idempotent);assert.equal(stableSave(g),after);assert.equal(g.departAttack(id,'assault',1500).code,'MARCH_ACTIVE');assert.equal(g.attack(id,'balanced',300).ok,false);
 });
 

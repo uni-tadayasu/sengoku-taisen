@@ -15,7 +15,13 @@ export async function battleMarches(db,actorId,clock,now){
  const values=R(await S(db,'SELECT * FROM battle_marches WHERE actor_id=? ORDER BY created_at DESC,id DESC LIMIT 30',actorId).all());
  return{active:values.filter(x=>x.status==='marching').map(x=>marchDto(x,clock,now)),history:values.filter(x=>x.status!=='marching').slice(0,20).map(x=>marchDto(x,clock,now))};
 }
-export function serverMarchMarker(record){return JSON.parse(record.payload_json).marker;}
+export function serverMarchMarker(record){
+ const payload=JSON.parse(record.payload_json),marker=payload.marker;
+ // Legacy server markers can recover the actual departing officers from the
+ // immutable battle profile, even if the player's current army has changed.
+ const army=marker.army??payload.nativeMarch?.profile?.army??payload.nativeMarch?.army??payload.attackProfile?.army;
+ return{...marker,...(Array.isArray(army)?{army:[...army]}:{})};
+}
 export async function restoreServerMarch(db,actorId,save){
  if(!save)return save;const row=await activeMarch(db,actorId);
  if(row)save.state.march=serverMarchMarker(row);
@@ -24,7 +30,8 @@ export async function restoreServerMarch(db,actorId,save){
 }
 export function marchRecord({user,requestId,kind,save,travel,targetPlayerId=null,targetCampaignId=null,targetName,troops,tactic,foodCost,commandCost=1,clock,now,digest,payload={}}){
  const id='bm_'+crypto.randomUUID().replaceAll('-',''),departed=Math.floor(clock.elapsedMs),arrives=departed+travel.durationMs;
- const marker={version:1,authority:'server',id,kind,campaignId:save.state.walking.campaignId,cycle:Math.floor(departed/(672*60000)),clan:save.state.clan,sourceCastleId:travel.sourceCastleId,targetCastleId:travel.targetCastleId,...(targetPlayerId?{targetPlayerId}:{}),...(payload.body?.targetBranchId?{targetBranchId:payload.body.targetBranchId}:{}),troops,tactic,foodCost,commandCost,departedElapsedMs:departed,arrivesElapsedMs:arrives,travel};
+ const army=payload.nativeMarch?.profile?.army??payload.nativeMarch?.army??payload.attackProfile?.army??save.state.army;
+ const marker={version:1,authority:'server',id,kind,campaignId:save.state.walking.campaignId,cycle:Math.floor(departed/(672*60000)),clan:save.state.clan,sourceCastleId:travel.sourceCastleId,targetCastleId:travel.targetCastleId,...(targetPlayerId?{targetPlayerId}:{}),...(payload.body?.targetBranchId?{targetBranchId:payload.body.targetBranchId}:{}),army:[...army],troops,tactic,foodCost,commandCost,departedElapsedMs:departed,arrivesElapsedMs:arrives,travel};
  return{id,actor_id:user.id,request_id:requestId,kind,campaign_id:marker.campaignId,source_castle_id:travel.sourceCastleId,target_castle_id:travel.targetCastleId,target_player_id:targetPlayerId,target_campaign_id:targetCampaignId,target_name:targetName,troops,food_cost:foodCost,command_cost:commandCost,departed_ms:departed,arrives_ms:arrives,duration_ms:travel.durationMs,distance_km:travel.distanceKm,status:'marching',request_hash:digest,payload_json:JSON.stringify({...payload,marker}),result_json:null,commit_token:crypto.randomUUID(),revision:0,created_at:now,updated_at:now};
 }
 export function insertMarch(db,row,guard,args){
@@ -34,6 +41,7 @@ export function insertMarch(db,row,guard,args){
 export function finishMarchStatement(db,row,status,result,now,parentGate,parentArgs){return S(db,`UPDATE battle_marches SET status=?,result_json=?,revision=revision+1,updated_at=? WHERE id=? AND status='marching' AND revision=? AND ${parentGate}`,status,JSON.stringify({...result,resolvedAt:new Date(now).toISOString()}),now,row.id,row.revision,...parentArgs);}
 export async function advanceReservedMarch(ctx,saved,clock){
  const {db,user,now,helpers:h}=ctx,save=h.normalizeGameSave(JSON.parse(saved.save_json),user,now,{reading:true,clock}),before=JSON.parse(JSON.stringify(save));
+ await restoreServerMarch(db,user.id,save);
  if(h.reconcileCovertProgress)await h.reconcileCovertProgress(db,user.id,save);
  const branches=await h.branchStateGuard(db,user.id,save.state.walking.campaignId);await h.reconcileBranchProgress(db,user.id,save,clock);
  const shared=user.is_staff&&!user.is_admin?await h.staffBaseDto(db,user,clock,now):null;
