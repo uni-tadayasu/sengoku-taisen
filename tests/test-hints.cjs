@@ -130,6 +130,38 @@ test('not-started and lost-home campaigns do not offer gameplay actions', () => 
   assert.deepEqual(ids(build(game, {clockReady: false})), ['game-over']);
 });
 
+test('background waits remain blocked while only their presentation may retain prior advice', () => {
+  const game=make(),before=text(game.state);
+  for(const context of [
+    {clockReady:false,syncReason:'writer'},
+    {syncReady:false,syncReason:'initializing'},
+    ...['writer','local','applying','conflict','lease-expired','hidden'].map(syncReason=>({writable:false,syncReason})),
+    {writable:false,syncReason:'writer',syncMessage:'占領した拠点の集計と報酬を同期しています。'},
+    {writable:false,syncReason:'local',syncMessage:'実行中の操作の結果を確認しています。完了後にヒントを更新します。'}
+  ]){
+    const result=build(game,context);
+    assertShape(result);assert.equal(result.status,'blocked');assert.equal(result.transient,true);
+    assert.equal(result.items.length,1);assert.equal(result.items.some(paid),false);
+    assert(['sync','view'].includes(result.items[0].action.kind));
+  }
+  assert.equal(text(game.state),before);
+});
+
+test('connection, account and storage problems take precedence over a simultaneous clock wait', () => {
+  const game=make();
+  for(const syncReason of ['offline','error','auth','follower','identity','access-changed']){
+    const result=build(game,{syncReason,syncReady:false,clockReady:false,writable:false,syncMessage:'接続を確認してください。'});
+    assert.equal(result.status,'blocked');assert.notEqual(result.transient,true);
+    assert.notEqual(result.items[0].id,'clock-pending');assert.equal(result.items[0].action.kind,'sync');
+    assert.equal(result.summary,'接続を確認してください。');
+  }
+  for(const [context,id] of [[{banned:true},'account-banned'],[{syncReason:'banned'},'account-banned'],[{rolePending:true},'role-pending'],[{saveEnabled:false},'save-pending']]){
+    const result=build(game,{syncReady:false,clockReady:false,writable:false,syncReason:'applying',...context});
+    assert.equal(result.items[0].id,id);assert.notEqual(result.transient,true);
+  }
+  assert.equal(build(game,{clockReady:false,syncReason:'unknown-blocker'}).transient,false);
+});
+
 test('staff guidance requires both runtime base verification and the current bridge readiness flag', () => {
   const pending = rich(make({isStaff: true}));
   pending.state.buildings.keep = 29;

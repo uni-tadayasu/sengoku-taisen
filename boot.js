@@ -50,7 +50,7 @@ function enter(){
 function updateTitleAction(){
  const hasSave=global.SengokuBridge?.hasStarted?.()===true;
  enterButton.querySelector('[data-enter-label]').textContent=hasSave?'物語の続きをひらく':'城を選んで始める';
- title.querySelector('[data-title-status]').textContent=hasSave?'進行状況は自動保存されています':'開始する城を選んで、物語を始めます';
+ title.querySelector('[data-title-status]').textContent=hasSave?'':'開始する城を選んで、物語を始めます';
  enterButton.disabled=false;
 }
 function home(){artworkGeneration++;const status=document.getElementById('art-load-status');if(status)status.hidden=true;setSkipTarget(true);global.SENGOKU_AT_TITLE=true;started=false;document.body.classList.add('at-title');document.getElementById('app').inert=true;document.getElementById('app').setAttribute('aria-hidden','true');title.hidden=false;updateTitleAction();enterButton.focus({preventScroll:true});}
@@ -95,7 +95,7 @@ async function registerOfflineEntry(){
  });
  button.addEventListener('click',async()=>{
   if(switching||!target)return;
-  switching=true;button.disabled=true;status.textContent='保存を確認しています…';
+   switching=true;button.disabled=true;status.textContent='';
   try{
    const selected=target,name='sengoku-taisen-v'+selected;
    if(!await global.caches.has(name)||!await (await global.caches.open(name)).match(new URL('index.html',registration.scope).href)){
@@ -104,7 +104,7 @@ async function registerOfflineEntry(){
    const ready=await global.SengokuBridge?.prepareReleaseSwitch?.();
    if(!ready?.ok){status.textContent=ready?.message||'保存状態を確認できませんでした。';return;}
    if(global.SENGOKU_AT_TITLE===false){status.textContent='';return;}
-   if(!registration.waiting||selected!==target){status.textContent='更新状況を確認しています。';await inspect();return;}
+    if(!registration.waiting||selected!==target){status.textContent='';await inspect();return;}
    const url=new URL(global.location.href);url.searchParams.set('sengoku-version',selected);
    global.location.replace(url.href);
   }catch{status.textContent='新版を開けませんでした。もう一度お試しください。';}

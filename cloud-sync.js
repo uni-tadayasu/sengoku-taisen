@@ -52,7 +52,7 @@ function create(options={}){
  const later=options.setTimeout||global.setTimeout.bind(global),cancel=options.clearTimeout||global.clearTimeout.bind(global);
  const listeners=new Set();let session=null,generation=0,queue=Promise.resolve(),initialized=false,applying=false,dirty=false,ack='',revision=0,leaseDeadline=0,lastLeaseAt=0,refreshPending=null,attempt=null,banned=false,banMessage='',accessRefreshPending=false;
  let pollTimer=null,saveTimer=null,presenceTimer=null,expiryTimer=null,branchAuthoritySnapshot=null,branchCorrectionPending=null,maintenanceAuthoritySnapshot=null;
- let status={linked:false,ready:true,writable:true,banned:false,reason:'local',message:'この端末に自動保存しています。',revision:0,updatedAt:null,leaseExpiresAt:null,writerDeviceName:null,deviceName:device.name};
+ let status={linked:false,ready:true,writable:true,banned:false,reason:'local',message:'',revision:0,updatedAt:null,leaseExpiresAt:null,writerDeviceName:null,deviceName:device.name};
  const valid=g=>Boolean(session&&g===generation);
  const rolePending=()=>bridge()?.getRoleAccess?.().pending===true;
  const local=()=>{const currentBridge=bridge(),save=currentBridge?.getSave?.();if(save===null&&currentBridge?.hasStarted?.()===false)return null;if(!fingerprint(save))throw Error('ゲームの保存データを確認できませんでした。');return save;};
@@ -152,7 +152,7 @@ function create(options={}){
  function access(){
   const writable=initialized&&leaseDeadline>now()&&!hidden()&&online()&&!rolePending();
   const awaitingStart=bridge()?.hasStarted?.()===false,reason=!online()?'offline':hidden()?'hidden':rolePending()?'auth':writable?(awaitingStart?'awaiting-start':'writer'):'follower';
-  emit({linked:true,ready:initialized,writable,revision,reason,awaitingStart,leaseExpiresAt:leaseDeadline?new Date(leaseDeadline).toISOString():null,message:reason==='offline'?'通信が戻ると共通時刻までの進行を反映します。':reason==='hidden'?'この画面を開くと同期を再開します。':reason==='auth'?'領主の権限を確認しています。確認が終わるまで操作と保存を待機しています。':reason==='awaiting-start'?'開始する城を選ぶと、この領主の進行を保存します。':writable?(dirty?'変更を保存しています…':'自動同期中。この端末で進行できます。'):`${status.writerDeviceName||'別の端末'}の進行を自動で反映しています。`});
+  emit({linked:true,ready:initialized,writable,revision,reason,awaitingStart,leaseExpiresAt:leaseDeadline?new Date(leaseDeadline).toISOString():null,message:reason==='offline'?'通信が戻ると共通時刻までの進行を反映します。':reason==='hidden'?'この画面を開くと同期を再開します。':reason==='auth'?'領主の権限を確認しています。確認が終わるまで操作と保存を待機しています。':reason==='awaiting-start'?'開始する城を選ぶと、この領主の進行を保存します。':writable?'':`${status.writerDeviceName||'別の端末'}の進行を自動で反映しています。`});
  }
  function schedulePoll(){if(pollTimer!==null)cancel(pollTimer);pollTimer=null;const g=generation;if(session&&!hidden())pollTimer=later(()=>{pollTimer=null;if(valid(g))refresh();},banned?30000:5000);}
  function enqueue(work){const g=generation;const task=queue.catch(()=>{}).then(()=>valid(g)?work(g):undefined);queue=task.catch(()=>{});return task;}
@@ -213,7 +213,7 @@ function create(options={}){
   if(!valid(g)||banned||!initialized||rolePending()||!online()||leaseDeadline<=now()||(!suspended&&(!status.writable||hidden())))return{ok:false};
   const save=local();if(!save){dirty=false;attempt=null;checkpoint();if(!suspended)access();return{ok:true,waitingForStart:true};}
   const sent=fingerprint(save);dirty=sent!==ack;if(!dirty){if(!suspended)access();return{ok:true,unchanged:true};}
-  attempt={revision,key:hash(sent)};checkpoint();emit({message:'変更を自動保存しています…'});
+  attempt={revision,key:hash(sent)};checkpoint();
   try{
    const currentBridge=bridge(),hasAuthorityReader=typeof currentBridge?.getMaintenanceAuthority==='function';
    const authority=hasAuthorityReader?currentBridge.getMaintenanceAuthority():maintenanceAuthoritySnapshot?.authority;
@@ -271,7 +271,7 @@ function create(options={}){
  }
  function stop({pending=false}={}){
   checkpoint();const previous=banned?null:session;generation++;session=null;clearTimers();queue=Promise.resolve();refreshPending=null;initialized=false;applying=false;dirty=false;ack='';revision=0;leaseDeadline=0;banned=false;banMessage='';accessRefreshPending=false;branchAuthoritySnapshot=null;branchCorrectionPending=null;maintenanceAuthoritySnapshot=null;
-  emit({linked:pending,ready:!pending,writable:!pending,reason:pending?'initializing':'local',message:pending?'領主と最新の保存を確認しています…':'この端末に自動保存しています。',revision:0,updatedAt:null,leaseExpiresAt:null,writerDeviceName:null});roleAccess({},pending);
+  emit({linked:pending,ready:!pending,writable:!pending,reason:pending?'initializing':'local',message:pending?'領主と最新の保存を確認しています…':'',revision:0,updatedAt:null,leaseExpiresAt:null,writerDeviceName:null});roleAccess({},pending);
   if(previous){for(const [route,data]of [['/presence',{deviceId:device.id,deviceName:device.name,online:false}],['/sync/release',{deviceId:device.id}]]){try{Promise.resolve(previous.request(route,{method:'POST',data,background:true,keepalive:true})).catch(()=>{});}catch(_){}}}
  }
  function visibilityChanged(){

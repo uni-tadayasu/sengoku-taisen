@@ -79,6 +79,7 @@
     "battle-advisor.js",
     "shogunate.js",
     "stable-dom.js",
+    "sync-notices.js",
     "officer-health.js",
     "hints.js",
     "player-evaluation.js",

@@ -6,7 +6,7 @@ const source=fs.readFileSync(path.join(__dirname,'../desktop-fit.js'),'utf8');
 const css=fs.readFileSync(path.join(__dirname,'../desktop-fit.css'),'utf8'),responsive=fs.readFileSync(path.join(__dirname,'../responsive-layout.css'),'utf8');
 let count=0;function test(name,fn){fn();count++;console.log('PASS '+name);}
 function harness({width=1366,height=936,touch=0,fine=true,coarse=false,announcement=37}={}){
- const classes=new Set(),vars=new Map(),frames=new Map();let nextFrame=0;
+ const classes=new Set(),vars=new Map(),frames=new Map(),mutations=[],resizes=[];let nextFrame=0;
  const classList={contains:name=>classes.has(name),toggle(name,on){if(on)classes.add(name);else classes.delete(name);},remove(name){classes.delete(name);}};
  const root={classList,style:{getPropertyValue:name=>vars.get(name)||'',setProperty:(name,value)=>vars.set(name,value)}};
  const makeNode=()=>({style:{left:'125px',top:'70px',transform:'scale(.37)',minHeight:'1400px'},dataset:{desktopScale:'.370'}});
@@ -18,13 +18,14 @@ function harness({width=1366,height=936,touch=0,fine=true,coarse=false,announcem
  for(const node of [app,launch,dialog])for(const property of ['offsetWidth','offsetHeight','scrollWidth','scrollHeight'])Object.defineProperty(node,property,{get(){throw Error('Natural-content measurement would shrink readable UI');}});
  dialog.open=true;dialog.querySelector=()=>bodyPane;
  const queries=[];
- const document={documentElement:root,body:{classList:{contains:()=>false}},readyState:'loading',addEventListener(){},removeEventListener(){},getElementById:id=>({app,'announcement-bar':announcementNode,navigation}[id]||null),querySelector:selector=>selector==='#app .topbar'?header:null,querySelectorAll(selector){queries.push(selector);if(selector.startsWith('#app,'))return[app,launch,dialog];if(selector.startsWith('dialog[open]'))return[dialog];return[];}};
+ const document={documentElement:root,body:{classList:{contains:()=>false}},readyState:'loading',addEventListener(){},removeEventListener(){},getElementById:id=>({app,'announcement-bar':announcementNode,navigation}[id]||null),querySelector:selector=>selector==='#app .topbar'?header:null,querySelectorAll(selector){queries.push(selector);if(selector.startsWith('#app,'))return[app,launch,dialog];if(selector.startsWith('dialog[open]'))return[dialog];if(selector==='#announcement-bar,.topbar')return[announcementNode,header];return[];}};
  const media={matches:fine,addEventListener(){},removeEventListener(){}},coarseMedia={...media,matches:coarse};
  const environment={document,navigator:{maxTouchPoints:touch},innerWidth:width,innerHeight:height,visualViewport:{width,height,offsetLeft:0,offsetTop:0,addEventListener(){},removeEventListener(){}},getComputedStyle:node=>({position:node.position||'static'}),matchMedia:q=>q==='(any-pointer: coarse)'?coarseMedia:media,addEventListener(){},removeEventListener(){},requestAnimationFrame(callback){frames.set(++nextFrame,callback);return nextFrame;},cancelAnimationFrame:id=>frames.delete(id),module:{exports:{}}};
+ for(const [name,list]of [['MutationObserver',mutations],['ResizeObserver',resizes]])environment[name]=class{constructor(callback){this.callback=callback;this.observed=[];list.push(this);}observe(node,options){this.observed.push({node,options});}disconnect(){this.observed=[];}};
  vm.runInNewContext(source,environment);const api=environment.module.exports;
  function flush(){let turns=0;while(frames.size){assert(++turns<10,'Responsive refresh must settle without a feedback loop');const queued=[...frames.values()];frames.clear();queued.forEach(callback=>callback());}}
  function refresh(){api.refresh();flush();}
- return{api,environment,app,launch,dialog,bodyPane,vars,classes,media,coarseMedia,header,announcementNode,navigation,selected,refresh};
+ return{api,environment,app,launch,dialog,bodyPane,vars,classes,media,coarseMedia,header,announcementNode,navigation,selected,refresh,flush,mutations,resizes,pendingFrames:()=>frames.size};
 }
 test('desktop uses every available CSS pixel through 200 percent browser zoom',()=>{
  for(const [w,h]of [[1920,1080],[1440,900],[1366,936],[1280,720]])for(const zoom of [1,1.25,1.5,1.75,2]){
@@ -77,6 +78,29 @@ test('horizontal menu reveals a new selection without resetting deliberate menu 
 test('short-window headers reserve scroll space only while they are sticky',()=>{
  const h=harness({width:820,height:390});h.refresh();assert.equal(h.vars.get('--touch-header-height'),'164.000px');assert.equal(h.vars.get('--touch-announcement-height'),'37.000px');
  h.header.position='relative';h.announcementNode.position='relative';h.refresh();assert.equal(h.vars.get('--touch-header-height'),'0.000px');assert.equal(h.vars.get('--touch-announcement-height'),'0.000px');assert.equal(h.api.getStatus().mode,'flow');
+});
+test('routine text-only updates do not schedule viewport measurements',()=>{
+ const h=harness();h.refresh();const target={nodeType:1,closest:()=>null};
+ const records=Array.from({length:100},()=>({type:'childList',target,addedNodes:[{nodeType:3}],removedNodes:[{nodeType:3}]}));
+ h.mutations[0].callback(records);assert.equal(h.pendingFrames(),0,'health, army, economy and hint numbers must not trigger whole-page geometry');
+ h.mutations[0].callback([{type:'childList',target,addedNodes:[],removedNodes:[{nodeType:3}]}]);assert.equal(h.pendingFrames(),0);
+});
+test('real structure, view and dialog visibility changes still schedule layout',()=>{
+ const h=harness();h.refresh();const target={nodeType:1,closest:()=>null};
+ for(const change of [
+  {type:'childList',addedNodes:[{nodeType:1}],removedNodes:[]},
+  {type:'childList',addedNodes:[],removedNodes:[{nodeType:1}]},
+  {type:'attributes',attributeName:'open'},
+  {type:'attributes',attributeName:'hidden'},
+  {type:'attributes',attributeName:'class'},
+  {type:'attributes',attributeName:'data-view'}
+ ]){h.mutations[0].callback([{target,...change}]);assert.equal(h.pendingFrames(),1,change.attributeName||'Element structure');h.flush();}
+});
+test('text-caused header resizing still updates viewport through ResizeObserver',()=>{
+ const h=harness({width:820});h.refresh();const observer=h.resizes[0];
+ assert(observer.observed.some(entry=>entry.node===h.header));assert(observer.observed.some(entry=>entry.node===h.announcementNode));
+ h.announcementNode.offsetHeight=61;observer.callback([{target:h.announcementNode}]);assert.equal(h.pendingFrames(),1);h.flush();
+ assert.equal(h.vars.get('--desktop-offset-top'),'61.000px');assert.equal(h.vars.get('--touch-announcement-height'),'61.000px');
 });
 test('destroy removes legacy geometry and releases desktop overflow mode',()=>{
  const h=harness();h.refresh();h.api.destroy();assert(!h.classes.has('sengoku-desktop-fit'));assert.equal(h.app.dataset.desktopScale,undefined);assert.equal(h.api.getStatus().active,false);h.api.refresh();assert.equal(h.api.getStatus().active,false);

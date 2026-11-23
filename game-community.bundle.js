@@ -666,7 +666,7 @@ function validIdentity(v){return v&&typeof v==='object'&&(typeof v.id==='string'
 function saveJSON(key,value){try{const raw=JSON.stringify(value);localStorage.setItem(key,raw);return localStorage.getItem(key)===raw;}catch(_){return false;}}
 function readJSON(key,fallback){try{return JSON.parse(localStorage.getItem(key))??fallback;}catch(_){return fallback;}}
 function restoreStoredIdentity(){const saved=readJSON(IDKEY,null);if(validIdentity(saved)){s.identity={id:saved.id,token:saved.token};recoveryHeld=saved.pendingRecovery===true;}return recoveryHeld;}
-function toast(message,error=false){global.SengokuBridge?.toast?.(message,error);const el=$('#social-feedback');if(el){el.textContent=message;el.classList.toggle('is-error',error);el.hidden=false;}}
+function toast(message,error=false){message=global.SengokuSyncNotices?.visibleText?.(message)??message;if(!message)return;global.SengokuBridge?.toast?.(message,error);const el=$('#social-feedback');if(el){el.textContent=message;el.classList.toggle('is-error',error);el.hidden=false;}}
 function date(value){const d=new Date(value);return Number.isFinite(d.getTime())?new Intl.DateTimeFormat('ja-JP',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}).format(d):'';}
 function pauseRecentLogins(){recentLoginGeneration++;recentLoginBusy=false;clearTimeout(recentLoginTimer);recentLoginTimer=null;}
 function clearRecentLogins(){pauseRecentLogins();s.recentLogins={players:[],total:0,cursor:null,serverNow:null,windowStart:null,loaded:false,error:''};for(const selector of ['#social-recent-login-results','#social-recent-login-count','#social-recent-login-window','#social-recent-login-status']){const node=$(selector);if(node)node.textContent='';}}
@@ -940,7 +940,7 @@ function ownCommanderSection(){
 function profileView(){return `<div class="social-profile-heading"><span id="social-profile-avatar" data-avatar-key="${esc(JSON.stringify([s.user.id,s.user.name,s.user.avatarVersion||null]))}">${socialAvatar(s.user,'profile')}</span><div><div class="social-eyebrow">YOUR IDENTITY</div><h2>${playerName(s.user.name,s.user.evaluation,s.user.id,s.user.appearance,s.user.avatarVersion,false)} ${role(s.user)}</h2><p>${esc(s.user.clan==='德川家'?'徳川家':s.user.clan||'浪人')} · ${s.user.guildName?esc(s.user.guildName):'同盟未所属'}</p><button type="button" class="social-text-button" data-social="evaluation-open">総合評価を見る</button><button type="button" class="social-text-button" data-social="premium-open">自分の外観を管理</button></div></div>${ownCommanderSection()}<div class="social-profile-id"><span>領主ID</span><code>${esc(s.user.id)}</code></div><div id="social-avatar-editor"></div>${profileNameView()}${global.SengokuResidency?.compact?.()||''}<section class="social-profile-section"><h3>同じ領主で、どの端末からも</h3><p>端末を接続すると、城・武将・資源・進行状況を常に自動同期します。</p><div data-sync-status>${syncStatusCard()}</div><div class="social-actions"><button class="social-button primary" data-social="sync-open">${icon('refresh')}端末を接続・確認</button><button class="social-button" data-social="identity-export">${icon('download')}領主データを書き出す</button><button class="social-button" data-social="recovery-open">${icon('upload')}引き継ぎ・復元</button><button class="social-button" data-social="recovery-export">${icon('download')}統合バックアップ</button></div><div class="social-notice">領主データには本人の認証情報が含まれます。自分の端末間で使ってください。</div></section>${s.user.isAdmin?`<section class="social-profile-section"><h3>運営のゲーム設定</h3><p>運営の本拠は江戸城に固定されます。德川家康Uは特別イラストで付与され、同じ領主IDの端末へ同期します。</p><div class="social-actions"><button class="social-button" data-social="game-settings">ゲーム設定を開く</button><button class="social-button" data-social="admin-restore">德川家康Uを復元</button></div></section>`:''}${s.user.isStaff?`<section class="social-profile-section staff-base-notice"><h3>德川家 · スタッフ共同拠点 · 京都御所</h3><p>スタッフの家は德川家、本拠は占領されない京都御所に固定されます。城郭と城下町の施設を全スタッフで共有し、共同普請の成長が各端末へ自動で反映されます。</p><p>普請を指示したスタッフが自分の資源と指令を支払います。資源・武将・研究・奉行はそれぞれの領主のものです。</p><button class="social-button" data-social="game-settings">ゲーム設定を開く</button></section>`:''}<div class="social-right"><button class="social-text-button danger" data-social="logout">この端末の接続を解除</button></div>`;}
 function linkForm(){return `<section class="social-profile-section"><h3>別の端末の領主につなぐ</h3><p>接続済みの端末で「端末同期」からコードを発行し、こちらへ入力してください。同じ領主の最新の進行を読み込みます。</p><form id="social-device-link-form" class="social-inline-form"><label class="social-sr-only" for="social-device-code">12文字の接続コード</label><input id="social-device-code" name="code" minlength="12" maxlength="18" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="12文字の接続コード" required><button class="social-button primary" type="submit">この領主につなぐ</button></form></section>`;}
 function syncStatusCard(){
- const v=s.syncStatus||global.SengokuCloudSync?.getStatus?.()||{},reason=v.reason||'',message=String(v.message||'');
+ const v=s.syncStatus||global.SengokuCloudSync?.getStatus?.()||{},reason=v.reason||'',rawMessage=String(v.message||''),message=global.SengokuSyncNotices?.visibleText?.(rawMessage)??rawMessage;
  const banned=v.banned===true||reason==='banned',reconnect=reason==='auth'&&message.includes('再接続してください');
  const follower=v.linked&&v.ready&&!v.writable&&reason==='follower';
  // Background saves and initial checks stay silent; this card is only for
@@ -2915,14 +2915,15 @@ function ensureController(){if(!live){live=createController({window:global});uns
 function setText(selector,value){const node=dialog?.querySelector(selector);if(node&&node.textContent!==String(value))node.textContent=value;}
 function updateUI(value){
  const number=n=>Math.max(0,Math.floor(n||0)).toLocaleString('ja-JP');
- for(const entry of global.document.querySelectorAll?.('[data-walking-summary]')||[])entry.textContent=value.running?`${value.active&&value.reason!=='sensor'?'計測中':'計測継続・待機中'} · ${number(value.estimatedSteps)}歩${value.pendingSteps?` · ${number(value.pendingSteps)}歩を保存中`:''}`:value.pendingSteps?`${number(value.pendingSteps)}歩を同期待ち`:'端末を持って歩いて、領国を育てる';
+ const summary=value.running?`計測中 · ${number(value.estimatedSteps)}歩`:value.estimatedSteps?`今回の歩数 · ${number(value.estimatedSteps)}歩`:'端末を持って歩いて、領国を育てる';
+ for(const entry of global.document.querySelectorAll?.('[data-walking-summary]')||[])if(entry.textContent!==summary)entry.textContent=summary;
  if(!dialog)return;
  dialog.dataset.phase=value.phase;dialog.dataset.running=String(value.running);
  setText('[data-walking-status]',({idle:'未開始',starting:'許可・接続を確認中',waiting:'計測継続・センサー待ち',calibrating:'歩調を確認中',walking:'計測中',paused:value.running?'計測継続・待機中':value.closed||value.ending?'計測終了':'計測待機',unsupported:'この端末では利用不可',denied:'モーションの許可が必要',error:'保存を確認してください'})[value.phase]||'計測停止');
- setText('[data-walking-message]',value.message);setText('[data-walking-close]',value.running?'閉じて計測を続ける':'画面を閉じる');
- setText('[data-walking-steps]',number(value.estimatedSteps));setText('[data-walking-confirmed]',number(value.confirmedSteps));setText('[data-walking-pending]',number(value.rejectedSteps||value.pendingSteps));setText('[data-walking-pending-label]',value.rejectedSteps?'未反映':'保存・同期待ち');
- setText('[data-walking-mode]',value.mode==='remote'?'領主の進行へ自動同期':'この端末の物語に保存');
- setText('[data-walking-saved-note]',value.pendingSteps?'検知済みの歩数を保管しています。受け取り済みか確認しながら同期します。':value.confirmedSteps?'受け取り済みの報酬は、ゲームの資産へ反映されています。':'連続した歩調を確認してから数えます。振動や持ち方により、実際の歩数と差が出ることがあります。');
+ setText('[data-walking-message]',global.SengokuSyncNotices?.visibleText?.(value.message)??value.message);setText('[data-walking-close]',value.running?'閉じて計測を続ける':'画面を閉じる');
+ setText('[data-walking-steps]',number(value.estimatedSteps));setText('[data-walking-confirmed]',number(value.confirmedSteps));setText('[data-walking-pending]',number(value.rejectedSteps||value.pendingSteps));setText('[data-walking-pending-label]','未反映の歩数');
+ setText('[data-walking-mode]',value.mode==='remote'?'接続中の領主':'この端末の物語');
+ setText('[data-walking-saved-note]','連続した歩調を確認してから数えます。振動や持ち方により、実際の歩数と差が出ることがあります。');
  const start=dialog.querySelector('[data-walking-action="start"]'),stop=dialog.querySelector('[data-walking-action="stop"]'),retry=dialog.querySelector('[data-walking-action="retry"]'),awake=dialog.querySelector('#walking-keep-awake'),discard=dialog.querySelector('[data-walking-action="discard"]');
  start.hidden=value.active&&value.reason!=='sensor';start.disabled=value.starting||value.busy||!value.canCount||value.phase==='unsupported';start.textContent=value.starting?'開始を確認中…':value.running?'センサーを再接続':value.phase==='idle'?'計測を始める':'新しく計測する';
  stop.hidden=!value.running&&!value.starting;stop.disabled=false;retry.hidden=value.rejected||!(value.pending||value.pendingSteps||value.ending||value.reason==='WALKING_STORAGE');retry.disabled=value.busy||!value.canClaim;discard.hidden=!value.rejected;discard.disabled=value.busy||!value.canClaim;
@@ -3798,7 +3799,7 @@ function enter(){
 function updateTitleAction(){
  const hasSave=global.SengokuBridge?.hasStarted?.()===true;
  enterButton.querySelector('[data-enter-label]').textContent=hasSave?'物語の続きをひらく':'城を選んで始める';
- title.querySelector('[data-title-status]').textContent=hasSave?'進行状況は自動保存されています':'開始する城を選んで、物語を始めます';
+ title.querySelector('[data-title-status]').textContent=hasSave?'':'開始する城を選んで、物語を始めます';
  enterButton.disabled=false;
 }
 function home(){artworkGeneration++;const status=document.getElementById('art-load-status');if(status)status.hidden=true;setSkipTarget(true);global.SENGOKU_AT_TITLE=true;started=false;document.body.classList.add('at-title');document.getElementById('app').inert=true;document.getElementById('app').setAttribute('aria-hidden','true');title.hidden=false;updateTitleAction();enterButton.focus({preventScroll:true});}
@@ -3843,7 +3844,7 @@ async function registerOfflineEntry(){
  });
  button.addEventListener('click',async()=>{
   if(switching||!target)return;
-  switching=true;button.disabled=true;status.textContent='保存を確認しています…';
+   switching=true;button.disabled=true;status.textContent='';
   try{
    const selected=target,name='sengoku-taisen-v'+selected;
    if(!await global.caches.has(name)||!await (await global.caches.open(name)).match(new URL('index.html',registration.scope).href)){
@@ -3852,7 +3853,7 @@ async function registerOfflineEntry(){
    const ready=await global.SengokuBridge?.prepareReleaseSwitch?.();
    if(!ready?.ok){status.textContent=ready?.message||'保存状態を確認できませんでした。';return;}
    if(global.SENGOKU_AT_TITLE===false){status.textContent='';return;}
-   if(!registration.waiting||selected!==target){status.textContent='更新状況を確認しています。';await inspect();return;}
+    if(!registration.waiting||selected!==target){status.textContent='';await inspect();return;}
    const url=new URL(global.location.href);url.searchParams.set('sengoku-version',selected);
    global.location.replace(url.href);
   }catch{status.textContent='新版を開けませんでした。もう一度お試しください。';}
