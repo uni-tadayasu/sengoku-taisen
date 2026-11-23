@@ -89,14 +89,16 @@ await scenario('special castle advice remains private and is withdrawn after a r
  for(const p of [member,second]){const result=await detail(h,palace.id,p);assert.equal(result.event.opponent,null);assert.equal(result.progress.defenseAdviser,null);}
 });
 
-await scenario('a committed battle keeps its successful receipt when late defensive changes withdraw advice, and its retry cannot spend or award twice',async h=>{
- const op=await fixture(h,'主催者',{admin:true}),owner=await resident(h,'イベント対象の領主','himeji'),event=await publish(h,op,'castle:himeji');
+await scenario('an earlier battle remains recoverable after its attacker inherits the castle and a late defensive change withdraws advice',async h=>{
+ const op=await fixture(h,'主催者',{admin:true}),owner=await resident(h,'イベント対象の領主','himeji'),successor=await resident(h,'継承する家臣','himeji','retainer'),event=await publish(h,op,'castle:himeji');
  const before=checkAdvice(await detail(h,event.id,owner));
- const body={requestId:crypto.randomUUID(),stageId:'stage-2',tactic:'raid',deviceId:owner.deviceId,expectedRevision:row(h,owner).revision};
- h.beforeStatement=async sql=>{if(!sql.startsWith('SELECT 1 AS event_defense_current'))return;h.beforeStatement=null;assert.equal(h.sql.prepare('SELECT COUNT(*) AS n FROM timed_event_requests WHERE actor_id=? AND request_id=?').get(owner.user.id,body.requestId).n,1);updateSave(h,owner,s=>{s.castles.himeji.troops+=100;});};
- const battle=await write(h,'/events/'+event.id+'/battle',owner,body);assert.equal(battle.progress.defenseAdviser,null);
+ const body={requestId:crypto.randomUUID(),stageId:'stage-2',tactic:'raid',deviceId:successor.deviceId,expectedRevision:row(h,successor).revision};
+ const battle=await write(h,'/events/'+event.id+'/battle',successor,body);assert.equal(battle.progress.defenseAdviser,null);
  assert.equal(battle.battle.commandBefore-battle.battle.commandAfter,1);assert.equal(battle.battle.enemyPower,before.defensePower);
- const saved=state(h),replay=await write(h,'/events/'+event.id+'/battle',owner,body),fresh=checkAdvice(replay);assert(fresh.defensePower>before.defensePower);assert(replay.idempotent);assert.deepEqual(replay.battle,battle.battle);assert.deepEqual(state(h),saved);
+ await relocate(h,owner,'inuyama');const inherited=checkAdvice(await detail(h,event.id,successor));
+ h.beforeStatement=async sql=>{if(!sql.startsWith('SELECT 1 AS event_defense_current'))return;h.beforeStatement=null;assert.equal(h.sql.prepare('SELECT COUNT(*) AS n FROM timed_event_requests WHERE actor_id=? AND request_id=?').get(successor.user.id,body.requestId).n,1);updateSave(h,successor,s=>{s.castles.himeji.troops+=100;});};
+ const late=await write(h,'/events/'+event.id+'/battle',successor,body);assert(late.idempotent);assert.equal(late.progress.defenseAdviser,null);assert.deepEqual(late.battle,battle.battle);
+ const saved=state(h),replay=await write(h,'/events/'+event.id+'/battle',successor,body),fresh=checkAdvice(replay);assert(fresh.defensePower>inherited.defensePower);assert(replay.idempotent);assert.deepEqual(replay.battle,battle.battle);assert.deepEqual(state(h),saved);
 });
 
 const plan=generateEventPlan({battleId:'castle:himeji',durationDays:1,seed:'defense-pure'}),profile={castleId:'himeji',castleName:'姫路城',defenseTroops:1700,defensePower:2800,reinforcementTroops:100,garrisonTroops:700,fieldTroops:2000,homeContribution:900,wallLevel:2,castleLevel:3,castleMaxLevel:32,disciplineLevel:1,armyCount:1,armyRankPower:1,isHome:true};

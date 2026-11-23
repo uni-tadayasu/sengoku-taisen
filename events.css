@@ -46,3 +46,6 @@ html:not(.sengoku-desktop-fit) .events-dialog{position:fixed;inset:auto;left:cal
 .events-defense-adviser .events-defense-explanation{margin:19px 0 0;padding-top:16px;border-top:1px solid #a1bba738}
 @media(max-width:520px){.events-defense-adviser{padding:16px}.events-defense-stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 10px}.events-defense-stats>div:last-child{grid-column:1/-1}.events-defense-stats dd{font-size:21px}.events-defense-measures li{grid-template-columns:minmax(0,1fr);gap:9px;padding:12px}.events-defense-priority{justify-self:start}.events-defense-stages article{padding:13px}}
 @media(max-width:420px){.events-defense-stats{grid-template-columns:minmax(0,1fr)}.events-defense-stats>div:last-child{grid-column:auto}}
+.events-participation-notice{margin-top:20px;padding:16px 18px;border:1px solid #a6c0a65c;border-radius:10px;background:#27403280;overflow-wrap:anywhere}
+.events-participation-notice h3{margin:0 0 8px;font:600 18px/1.65 'Noto Serif JP',serif;color:#f1e4bc}
+.events-participation-notice p{margin:0;font-size:16px;line-height:1.85;color:#d3dfd5}

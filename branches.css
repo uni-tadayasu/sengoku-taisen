@@ -3,6 +3,93 @@
 @media(max-width:600px){.branch-card{padding:12px}.branch-card-heading{grid-template-columns:56px minmax(0,1fr);gap:10px}.branch-art,.branch-art-fallback{width:56px;height:56px}.branch-build{padding:12px}.field-branch-choice{align-items:start;flex-direction:column;gap:4px}}
 @media(prefers-reduced-motion:reduce){.castle-branches *{transition:none!important}}
 
+/* Troop orders share the same engine quotes in the map and castle dialog. */
+.branch-troop-transfer{container:branch-troops/inline-size;min-width:0;max-width:100%;margin:22px 0;padding:18px;border:1px solid #c6b37659;border-radius:9px;background:linear-gradient(145deg,#27332a,#13221d);color:#f0e8d0}
+.branch-troop-transfer *{box-sizing:border-box;min-width:0}
+.branch-troop-transfer :is(h3,p,label,strong,span,summary,dt,dd){overflow-wrap:anywhere}
+.branch-troop-heading h3{margin:4px 0 9px;font:600 20px/1.65 var(--serif,"Yu Mincho",serif);color:#f5e5bd}
+.branch-troop-eyebrow{display:block;font-size:12px;line-height:1.7;letter-spacing:.07em;color:#d4bd8b}
+.branch-troop-heading p{margin:0;font-size:14px;line-height:1.85;color:#c5cec0}
+.branch-troop-heading .branch-troop-cycle-note{margin-top:10px;font-size:12px;line-height:1.85;color:#cfbc93}
+.branch-troop-roster{margin:16px 0 20px;border-block:1px solid #b5b99035}
+.branch-troop-roster summary{min-height:44px;padding:11px 3px;color:#e5d7b4;font-size:14px;line-height:1.7;cursor:pointer}
+.branch-troop-roster summary span{margin-left:7px;color:#b6c4b4;font-variant-numeric:tabular-nums}
+.branch-troop-roster ul{list-style:none;margin:0;padding:0 0 12px}
+.branch-troop-roster li{display:grid;gap:5px;padding:10px 3px;border-top:1px solid #b5b99025;font-size:14px;line-height:1.7}
+.branch-troop-roster li strong{font-size:14px;font-weight:500;color:#e2e3cc}
+.branch-troop-roster li small{display:block;font-size:12px;color:#b4c3b1}
+.branch-troop-roster li>span{font-variant-numeric:tabular-nums;color:#e9d9a4}
+.branch-troop-roster li>span small{display:inline;font-size:13px}
+.branch-troop-form label{display:block;margin:0 0 7px;font-size:16px;font-weight:600;line-height:1.6;color:#e8ddbf}
+.branch-troop-route{display:grid;grid-template-columns:minmax(0,1fr);gap:17px;margin-bottom:20px}
+.branch-troop-form :is(select,input){display:block;max-width:100%;width:100%;min-height:44px;margin:0;padding:10px 11px;border:1px solid #b9aa786b;border-radius:5px;background:#0e211a;color:#f0ead9;font:400 16px/1.5 sans-serif}
+.branch-troop-form select{padding-right:30px;text-overflow:ellipsis}
+.branch-troop-form .branch-troop-stock{margin:7px 0 0;color:#bdcbb9;font-size:13px;line-height:1.7;font-variant-numeric:tabular-nums}
+.branch-troop-stock b{font-weight:500;color:#e7dfbc}
+.branch-troop-form .branch-troop-location-reason{margin:6px 0 0;font-size:13px;line-height:1.7;color:#e1b69f}
+.branch-troop-amount{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center}
+.branch-troop-amount>span{font-size:15px;color:#c7d0bd}
+.branch-troop-amount .button{grid-column:1/-1;margin:0;min-height:44px;white-space:normal;line-height:1.5;font-size:14px}
+.branch-troop-form .branch-troop-limit{margin:7px 0 16px;color:#bdcbb9;font-size:13px;line-height:1.7}
+.branch-troop-preview{display:grid;grid-template-columns:minmax(0,1fr);gap:10px;margin:0 0 18px;padding:13px;border:1px solid #a4ad7938;background:#0a1816a6;border-radius:5px}
+.branch-troop-preview>div{min-width:0}
+.branch-troop-preview dt{font-size:13px;line-height:1.6;color:#b9c9b6}
+.branch-troop-preview dd{display:flex;align-items:baseline;flex-wrap:wrap;gap:6px;margin:4px 0 0;color:#b6c4ae;font:16px/1.65 sans-serif;font-variant-numeric:tabular-nums}
+.branch-troop-preview strong{color:#f3dcaa;font-size:19px;font-weight:600}
+.branch-troop-preview small{margin-left:3px;color:#bdcbb9;font-size:12px;font-weight:400}
+.branch-troop-arrow{font-size:14px;color:#93a68b}
+.branch-troop-transfer .sr-only{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.branch-troop-form .branch-troop-cost{margin:0 0 12px;font-size:14px;line-height:1.75;color:#dccb9a}
+.branch-troop-cost>span{display:block;color:#aebfa9;font-size:13px}
+.branch-troop-order>.button{min-height:46px;width:100%;margin:0;font-size:16px;line-height:1.6;white-space:normal}
+.branch-troop-transfer :is(button,select,input,summary):focus-visible{outline:2px solid #f0d39a;outline-offset:3px}
+.branch-troop-transfer button:disabled{opacity:.6;cursor:not-allowed}
+.branch-troop-form .branch-troop-reason{margin:10px 0 0;font-size:14px;line-height:1.8;color:#edc3aa}
+.branch-troop-reason[hidden]{display:none}
+.branch-stationed{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:5px 12px;margin:14px 0;padding:11px 12px;border:1px solid #b2b99135;border-radius:5px;background:#0a18166b;font-size:14px;color:#c6d0bf}
+.branch-stationed strong{font-size:18px;color:#e9d49c;font-variant-numeric:tabular-nums}
+.branch-stationed strong small{margin-left:3px;font-size:12px;font-weight:400;color:#b9c7b4}
+.castle-branches .branch-stationed p{grid-column:1/-1;margin:0;font-size:12px;line-height:1.8;color:#afbfaa}
+@container branch-troops (min-width:440px){
+ .branch-troop-route,.branch-troop-preview{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .branch-troop-amount{grid-template-columns:minmax(0,1fr) auto minmax(140px,auto)}
+ .branch-troop-amount .button{grid-column:auto}
+ .branch-troop-roster li{grid-template-columns:minmax(0,1fr) auto;gap:14px}
+ .branch-troop-roster li>span{text-align:right}
+}
+@media(max-width:420px){.branch-troop-transfer{padding:14px}.branch-troop-heading h3{font-size:19px}}
+
+.branch-commanders{min-width:0;margin:18px 0;padding:15px;border:1px solid #b8aa7152;border-radius:6px;background:linear-gradient(145deg,#3034289c,#15251e)}
+.branch-commander-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.branch-commander-heading h5{margin:0;font:600 18px/1.6 var(--serif,"Yu Mincho",serif);color:#efdfbb}
+.branch-commander-heading>span{font-size:14px;color:#b8c6b1;font-variant-numeric:tabular-nums}
+.branch-commander-heading>span b{color:#edd49a;font-size:18px}
+.castle-branches .branch-commander-intro{margin:7px 0 13px;font-size:13px;line-height:1.8;color:#bdc8b4}
+.branch-commander-slots{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr));gap:12px;margin-bottom:16px}
+.branch-commander-slot{display:grid;grid-template-columns:64px minmax(0,1fr);align-items:center;gap:9px 11px;padding:12px;border:1px solid #b0ad7738;border-radius:5px;background:#0d1c16aa}
+.branch-commander-slot-label{grid-column:1/-1;font-size:12px;line-height:1.6;color:#aebc9e}
+.branch-commander-portrait{width:64px;height:92px;overflow:hidden;border:1px solid #b8a16c70;border-radius:3px;background:#243022}
+.branch-commander-portrait .portrait-frame{display:block;width:100%;height:100%;margin:0}
+.branch-commander-portrait .painted-portrait{height:100%;width:100%}
+.branch-commander-portrait-fallback{display:grid;place-items:center;width:100%;height:100%;font:30px/1.4 var(--serif,"Yu Mincho",serif);color:#b8a87d}
+.branch-commander-person{display:flex;align-items:flex-start;flex-direction:column;gap:5px;min-width:0}
+.branch-commander-person strong{color:#f0e3c0;font-size:16px;font-weight:600;line-height:1.7;overflow-wrap:anywhere}
+.branch-commander-person .officer-rank-label{font-size:12px;line-height:1.6;padding:1px 6px}
+.branch-commander-slot>.button{grid-column:1/-1;margin:0;min-height:44px;white-space:normal;font-size:14px;line-height:1.5}
+.branch-commander-empty{grid-column:1/-1;min-height:92px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px}
+.branch-commander-empty>span{display:grid;place-items:center;width:40px;height:40px;border:1px dashed #a7ae6d70;border-radius:50%;color:#8f9f76;font:21px/1 var(--serif,"Yu Mincho",serif)}
+.branch-commander-empty strong{font-size:14px;font-weight:400;color:#a5b493}
+.branch-commander-order>label{display:block;margin-bottom:7px;font-size:15px;line-height:1.6;color:#e3d5b4}
+.branch-commander-order>select{display:block;width:100%;max-width:100%;min-height:44px;margin:0 0 12px;padding:10px 30px 10px 10px;border:1px solid #b8a16c70;border-radius:5px;background:#0d2119;color:#eee8d6;font:400 16px/1.5 sans-serif;text-overflow:ellipsis}
+.branch-commander-preview{display:grid;grid-template-columns:64px minmax(0,1fr);align-items:center;gap:12px;padding:12px;margin-bottom:12px;border:1px solid #a7ae6d40;background:#0d1c166b;border-radius:5px}
+.branch-commander-order>.button{margin:0;min-height:44px;font-size:15px;line-height:1.6}
+.branch-commanders :is(button,select):focus-visible{outline:2px solid #eed299;outline-offset:3px}
+.branch-commanders button:disabled{opacity:.6;cursor:not-allowed}
+.castle-branches .branch-commander-reason{margin:8px 0 0;color:#edc3aa;font-size:13px;line-height:1.8}
+.branch-commander-reason[hidden]{display:none}
+.castle-branches .branch-commander-note{margin:12px 0 0;color:#aebfa8;font-size:12px;line-height:1.85}
+@media(max-width:420px){.branch-commanders{padding:12px}.branch-commander-slot{padding:10px}}
+
 /* Each branch keeps its own small castle town. Native disclosures retain their
    keyboard behavior and stay open through the source-aware DOM refreshes. */
 /* Give an expanded facility list enough reading width beside the desktop map.

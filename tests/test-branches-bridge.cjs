@@ -144,5 +144,27 @@ test('real delegated click actions carry the chosen facility through the mutatio
   const blocked=setup();blocked.c.syncAccess.writable=false;blocked.c.document.addEventListener=(type,handler)=>{if(type==='click')click=handler;};vm.runInContext(mutations+'\n'+source.slice(start,end),blocked.c);node.disabled=false;await click({target:node});assert.equal(blocked.posts.length,0);
  }
 });
+test('all deployment routes use authoritative metadata, stable receipts and no optimistic client mutation',async()=>{
+ for(const [action,payload]of [['transfer-troops',{from:'army',to:'castle:edo',troops:120}],['assign-commander',{branchId:'edo_north',officerId:'officer-a'}],['remove-commander',{branchId:'edo_north',officerId:'officer-a'}]]){
+  const h=setup(),before=clone(h.c.game.state);h.control.branchSequence=8;h.control.onPost=async()=>{throw Error('deployment response lost');};
+  await assert.rejects(h.c.requestBranches('/branches/'+action,{method:'POST',data:payload}),/deployment response lost/);const first=clone(h.posts[0].options.data);
+  assert.equal(first.sequence,8);assert.equal(first.deviceId,'tab-a');assert.equal(first.expectedRevision,7);assert.deepEqual(clone(h.c.game.state),before);
+  h.control.branchSequence=9;h.control.status.revision=8;h.control.onPost=async()=>({ok:true,revision:8,idempotent:true});await h.c.requestBranches('/branches/'+action,{method:'POST',data:payload});
+  assert.equal(h.posts[1].options.data.requestId,first.requestId);assert.equal(h.posts[1].options.data.sequence,8);assert.equal(branchRecords(h).length,0);
+ }
+});
+test('local troop transfer conserves finite stock through save and rolls back the complete game object',async()=>{
+ const prepare=()=>{const h=setup();h.c.syncAccess.linked=false;h.c.game.state.branches=[{id:'edo_north',parentCastleId:'edo',direction:'north',level:2,fallen:false}];return h;};
+ const h=prepare(),before=clone(h.c.game.state),original=h.c.game,result=await h.c.requestBranches('/branches/transfer-troops',{method:'POST',data:{from:'army',to:'branch:edo_north',troops:120}});
+ assert(result.ok,result.message);assert.notEqual(h.c.game,original);assert.equal(h.c.game.state.troops,before.troops-120);assert.equal(h.c.game.branch('edo_north').stationedTroops,120);assert.equal(h.c.game.state.command,before.command-1);assert.equal(JSON.parse(h.stored.get('save')).state.branches[0].stationedTroops,120);
+ const failed=prepare(),oldGame=failed.c.game,oldSave=oldGame.exportSave();failed.c.localStorage.setItem=()=>{throw Error('full');};
+ await assert.rejects(failed.c.requestBranches('/branches/transfer-troops',{method:'POST',data:{from:'army',to:'branch:edo_north',troops:120}}),/保存できなかった/);assert.equal(failed.c.game,oldGame);assert.deepEqual(JSON.parse(failed.c.game.exportSave()).state,JSON.parse(oldSave).state);
+});
+test('branch commander assignment and removal save at zero command without duplicating an army officer',async()=>{
+ const h=setup();h.c.syncAccess.linked=false;h.c.game.state.command=0;h.c.game.state.army=[];h.c.game.state.branches=[{id:'edo_north',parentCastleId:'edo',direction:'north',level:2,fallen:false}];const [officerId,second]=h.c.game.state.officers,resources=clone(h.c.game.state.resources);
+ const placed=await h.c.requestBranches('/branches/assign-commander',{method:'POST',data:{branchId:'edo_north',officerId}});assert(placed.ok,placed.message);assert.deepEqual(clone(h.c.game.branch('edo_north').commanders),[officerId]);assert.equal(h.c.game.state.command,0);assert.deepEqual(clone(h.c.game.state.resources),resources);assert.equal(h.c.game.assignArmy([officerId]).ok,false);
+ const rejected=await h.c.requestBranches('/branches/assign-commander',{method:'POST',data:{branchId:'edo_north',officerId:second}});assert.equal(rejected.ok,false);
+ const removed=await h.c.requestBranches('/branches/remove-commander',{method:'POST',data:{branchId:'edo_north',officerId}});assert(removed.ok,removed.message);assert.equal(h.c.game.state.command,0);assert.deepEqual(JSON.parse(h.stored.get('save')).state.branches[0].commanders,[]);assert(h.c.game.assignArmy([officerId]).ok);
+});
 (async()=>{for(const[name,run]of tests){await run();console.log('PASS '+name);}console.log(tests.length+' branch transaction bridge checks passed. No live writes.');})().catch(error=>{console.error(error);process.exitCode=1;});
 

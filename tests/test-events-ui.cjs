@@ -27,7 +27,7 @@ function eventFixture(extra = {}) {
   return { id: 'ev_' + 'a'.repeat(32), name, durationDays, status: 'active', startsAt: '2026-11-22T00:00:00Z', endsAt: new Date(Date.parse('2026-11-22T00:00:00Z') + durationDays * 86400000).toISOString(), endedAt: null, createdAt: '2026-11-21T12:00:00Z', plan, ...extra };
 }
 const draftFixture = (extra = {}) => eventFixture({ status: 'draft', startsAt: null, endsAt: null, ...extra });
-const progressFixture = (extra = {}) => ({ points: 0, wins: 0, battles: 0, command: { available: 3, max: 3, cost: 1 }, rewards: [], ...extra });
+const progressFixture = (extra = {}) => ({ points: 0, wins: 0, battles: 0, command: { available: 3, max: 3, cost: 1 }, rewards: [], battleEligibility: { canAttack: true, reason: null }, ...extra });
 function catalogEventFixture(battleId = BATTLE_ID, extra = {}) {
   const battle = catalogFixture().find(item => item.id === battleId), event = eventFixture({ name: battle.name, ...extra });
   event.plan.battleId = battle.id; event.plan.battle = clone(battle);
@@ -299,7 +299,7 @@ test('battle rewards show actual grants and caps separately from milestone mail 
 
 test('catalog and adviser text is escaped and a legacy adviser does not invent a win rate', () => {
   const catalog = catalogFixture(); catalog[0].name = '<img src=x onerror=alert(1)>'; catalog[0].description = '<script>alert(1)</script>';
-  const state = { catalog, catalogQuery: '', catalogCategory: '', battleId: BATTLE_ID, event: cleanEvent(eventFixture()), stageId: 'stage_1', tactic: 'balanced', signedIn: true };
+  const state = { catalog, catalogQuery: '', catalogCategory: '', battleId: BATTLE_ID, event: cleanEvent(eventFixture()), progress:progressFixture(), stageId: 'stage_1', tactic: 'balanced', signedIn: true };
   for (const html of [catalogOptionsMarkup(state), catalogSelectionMarkup(state)]) { assert(!html.includes('<img src=x')); assert(!html.includes('<script>')); }
   const html = adviserMarkup(state); assert(html.includes('戦場の地形から提案')); assert(!html.includes('<dt>勝利予測</dt>')); assert.equal(selectedAdvice(state).exact, false);
 });
@@ -440,10 +440,10 @@ test('defensive advice has a bounded private contract and escapes every displaye
   assert(!Object.hasOwn(cleanProgress(progressFixture()),'defenseAdviser'));
 });
 
-test('only server-authorized defenders see their own briefing and attack forecasts stay clearly separate',async()=>{
+test('an authenticated defender gets a defense-only briefing and cannot create or apply an attack',async()=>{
   const event=catalogEventFixture('castle:edo'),defense=defenseAdviserFixture(event);
   event.opponent={castleId:'edo',castleName:'江戸城',lordName:'越後の領主',defenseTroops:defense.defenseTroops,defensePower:defense.defensePower};
-  const progress=advisedProgressFixture(event,{defenseAdviser:defense});
+  const progress=advisedProgressFixture(event,{defenseAdviser:defense,battleEligibility:{canAttack:false,reason:'own_castle'}});
   for(const advice of progress.advisers){advice.enemyPower=defense.defensePower;for(const option of advice.options)option.enemyPower=defense.defensePower;}
   const s=uiSetup({events:[event],progress});await s.ui.open();
   const panel=s.get('.events-defense-adviser');assert(panel);assert(panel.textContent.includes('防衛軍議 · あなたの拠点'));
@@ -451,11 +451,17 @@ test('only server-authorized defenders see their own briefing and attack forecas
   const priorities=panel.querySelectorAll('.events-defense-priority');assert.deepEqual(priorities.map(node=>node.getAttribute('data-priority')),['1','2','3']);
   assert.equal(panel.querySelector('.events-defense-stages').querySelectorAll('article').length,3);
   assert.equal(panel.querySelectorAll('button,input,select').length,0);assert(panel.textContent.includes('催事用の模擬合戦'));
-  assert(s.get('[data-event-adviser]').textContent.includes('攻撃側の試算'));assert.equal(s.get('[data-events="advice"]').textContent,'攻撃戦術に反映');
-  const before=clone(s.server.progress);s.click('[data-events="advice"]');assert.equal(s.controller.getState().tactic,'charge');
+  assert.equal(s.get('[data-event-adviser]').textContent,'');assert.equal(s.get('[data-events="advice"]'),null);
+  assert(s.get('[data-event-participation]').textContent.includes('防衛専用'));assert.equal(s.get('[data-events-battle-form]').hidden,true);
+  assert.equal(s.get('#events-tactic').disabled,true);assert.equal(s.get('[data-events-battle-submit]').disabled,true);
+  const before=clone(s.server.progress),tactic=s.controller.getState().tactic;
+  assert.equal(s.controller.applyAdvice(),false);assert.equal(s.controller.chooseTactic('charge'),false);assert.equal(await s.controller.battle(),false);assert.equal(s.controller.getState().tactic,tactic);
   assert.equal(s.posts().length,0);assert.deepEqual(s.server.progress,before);assert(s.get('.events-defense-adviser'));
   s.server.progress.defenseAdviser=null;await s.ui.refresh();
-  assert.equal(s.get('.events-defense-adviser'),null);assert(!s.get('[data-event-adviser]').textContent.includes('攻撃側の試算'));
+  assert.equal(s.get('.events-defense-adviser'),null);assert.equal(s.get('[data-events-battle-submit]').disabled,true);assert.equal(await s.controller.battle(),false);
+  assert(s.get('[data-event-participation]').textContent.includes('防衛専用'));
+  s.server.progress.battleEligibility={canAttack:true,reason:null};await s.ui.refresh();
+  assert.equal(s.get('[data-events-battle-form]').hidden,false);assert.equal(s.get('[data-events-battle-submit]').disabled,false);
   // The current player and the public castle lord still have the same display
   // name; only the private server authorization makes a defense briefing.
   assert.equal(s.context().user.name,s.server.events[0].opponent.lordName);s.ui.dispose();
@@ -469,16 +475,35 @@ test('only server-authorized defenders see their own briefing and attack forecas
 test('lord succession and account switching remove private defensive advice without disturbing the chosen attack tactic',async()=>{
   const event=catalogEventFixture('castle:edo'),defense=defenseAdviserFixture(event);
   event.opponent={castleId:'edo',castleName:'江戸城',lordName:'先代城主',defenseTroops:defense.defenseTroops,defensePower:defense.defensePower};
-  const s=uiSetup({events:[event],progress:advisedProgressFixture(event,{defenseAdviser:defense})});await s.ui.open();
+  const s=uiSetup({events:[event],progress:advisedProgressFixture(event)});await s.ui.open();
   s.controller.chooseStage('stage_2');s.controller.chooseTactic('defend');const select=s.get('#events-tactic'),main=s.get('[data-events-main]');select.focus();main.scrollTop=390;
-  s.server.events[0].opponent.lordName='次代城主';s.server.progress.defenseAdviser=null;await s.ui.refresh();
+  s.server.progress.defenseAdviser=defense;s.server.progress.battleEligibility={canAttack:false,reason:'own_castle'};await s.ui.refresh();
+  assert(s.get('.events-defense-adviser'));assert.equal(s.get('[data-events-battle-form]').hidden,true);assert.equal(s.controller.getState().tactic,'defend');
+  s.server.events[0].opponent.lordName='次代城主';s.server.progress.defenseAdviser=null;s.server.progress.battleEligibility={canAttack:true,reason:null};await s.ui.refresh();
   assert.equal(s.get('.events-defense-adviser'),null);assert.equal(s.get('#events-tactic'),select);assert.equal(select.value,'defend');assert.equal(s.doc.activeElement,select);assert.equal(main.scrollTop,390);
-  s.server.progress.defenseAdviser=defense;await s.ui.refresh();assert(s.get('.events-defense-adviser'));
+  s.server.progress.defenseAdviser=defense;s.server.progress.battleEligibility={canAttack:false,reason:'own_castle'};await s.ui.refresh();assert(s.get('.events-defense-adviser'));
   const gate=deferred();s.setHandler((route,settings,base)=>route==='/events'?gate.promise:base(route,settings));
   const next={...s.context(),playerId:OTHER,user:{id:OTHER,name:'先代城主'},epoch:2};s.setContext(next);const changing=s.ui.refreshAccess();
   assert.equal(s.get('.events-defense-adviser'),null);assert.equal(s.controller.getState().progress,null);
-  s.server.progress.defenseAdviser=null;gate.resolve(await s.base('/events',{method:'GET'}));await changing;
+  s.server.progress.defenseAdviser=null;s.server.progress.battleEligibility={canAttack:true,reason:null};gate.resolve(await s.base('/events',{method:'GET'}));await changing;
   assert.equal(s.get('.events-defense-adviser'),null);assert.equal(s.posts().length,0);s.ui.dispose();
+});
+
+test('private attack eligibility is bounded, defaults closed while missing or stale, and never blocks receipt recovery',async()=>{
+  for(const battleEligibility of [null,{canAttack:'yes',reason:null},{canAttack:true,reason:'own_castle'},{canAttack:false,reason:null},{canAttack:false,reason:'other'}])assert.equal(cleanProgress(progressFixture({battleEligibility})),undefined);
+  const cleaned=cleanProgress(progressFixture({battleEligibility:{canAttack:false,reason:'own_castle',ownerId:OWNER,isAdmin:true}}));
+  assert.deepEqual(cleaned.battleEligibility,{canAttack:false,reason:'own_castle'});
+  const s=uiSetup({progress:progressFixture({battleEligibility:{canAttack:false,reason:'refresh_required'}})});await s.ui.open();
+  assert.equal(s.get('[data-events-battle-form]').hidden,false);assert.equal(s.get('[data-events-battle-submit]').disabled,true);assert.equal(await s.controller.battle(),false);
+  assert(s.get('[data-event-participation]').textContent.includes('最新の領主情報'));assert.equal(s.controller.applyAdvice(),false);
+  delete s.server.progress.battleEligibility;await s.ui.refresh();assert.equal(await s.controller.battle(),false);assert.equal(s.posts().length,0);
+  s.server.progress.battleEligibility={canAttack:true,reason:null};await s.ui.refresh();
+  s.setHandler(async(route,settings,base)=>{const result=await base(route,settings);if(route.endsWith('/battle')){s.server.progress.battleEligibility={canAttack:false,reason:'own_castle'};throw Error('応答を受け取れませんでした。');}return result;});
+  assert.equal(await s.controller.battle(),false);const pending=clone(s.controller.getState().pending);assert(pending);assert.equal(s.commits(),1);
+  s.setHandler(async(route,settings,base)=>{const result=await base(route,settings);if(route.endsWith('/battle'))result.progress.battleEligibility={canAttack:false,reason:'own_castle'};return result;});
+  assert.equal(await s.controller.retry(),true);assert.equal(s.commits(),1);assert.equal(s.posts().length,2);
+  assert.equal(s.posts()[0].settings.data.requestId,pending.data.requestId);assert.equal(s.posts()[1].settings.data.requestId,pending.data.requestId);
+  assert(s.get('[data-event-battle-result]').textContent.includes('勝利'));assert.equal(s.get('[data-events-battle-submit]').disabled,true);s.ui.dispose();
 });
 
 test('the one-second UI tick reflects command recovery without a fetch, form replacement or focus loss', async () => {

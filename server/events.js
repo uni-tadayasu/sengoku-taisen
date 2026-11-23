@@ -8,6 +8,7 @@ import {shogunateGrantStatements,shogunateEventRight} from './shogunate.js';
 const DAY_MS=86400000;
 const COMMAND_COST=1;
 const MAX_DRAFTS=30;
+const OWN_CASTLE_MESSAGE='自分が領主の拠点には出陣できません。この催事では防衛軍議を確認してください。';
 const eventStmt=(db,sql,...params)=>db.prepare(sql).bind(...params);
 const eventRows=result=>result?.results||[];
 const eventIso=value=>value===null||value===undefined?null:new Date(Number(value)).toISOString();
@@ -35,7 +36,7 @@ async function eventGame(ctx,raw,now,snapshot=null){
 }
 async function eventDefense(ctx,plan,now,clock=null){
  const id=globalThis.SengokuBattleCatalog.targetCastleId(plan);
- if(!id)return {opponent:null,guard:{sql:'1=1',args:[]}};
+ if(!id)return {opponent:null,guard:{sql:'1=1',args:[]},viewerOwnsTarget:false,clockRevision:null};
  return ctx.helpers.eventGarrison(ctx.db,id,clock||await ctx.helpers.getWorldClock(ctx.db,now),now,ctx.user?.id);
 }
 function eventForces(ctx,game,opponent){
@@ -52,16 +53,19 @@ async function eventProgress(ctx,row,now,snapshot=null,defense=null){
  ]);
  const participant=eventRows(result[0])[0],game=await eventGame(ctx,snapshot?snapshot.save:eventRows(result[1])[0]?.save_json,now,snapshot),plan=normalizeEventPlan(JSON.parse(row.plan_json));
  const command=game?{available:game.state.command,max:game.commandMax(),cost:COMMAND_COST}:null,points=Number(participant?.points||0),wonStages=new Set(eventRows(result[3]).map(r=>r.stage_id));
+ const battleEligibility={canAttack:!defense?.viewerOwnsTarget,reason:defense?.viewerOwnsTarget?'own_castle':null};
  const fieldForces=game?eventForces(ctx,game,defense?.opponent):undefined;
- const clearedStageIds=plan.stages.filter(s=>wonStages.has(s.id)).map(s=>s.id),advisers=game?plan.stages.map(stage=>adviseEventBattle(plan,{stageId:stage.id,army:game.armyStats(),morale:game.state.morale,fieldForces})):[];
+ const clearedStageIds=plan.stages.filter(s=>wonStages.has(s.id)).map(s=>s.id),advisers=game&&battleEligibility.canAttack?plan.stages.map(stage=>adviseEventBattle(plan,{stageId:stage.id,army:game.armyStats(),morale:game.state.morale,fieldForces})):[];
  const right=plan.ending?.kind==='unification'?await shogunateEventRight(db,user.id,row.id):null;
  let defenseAdviser=null;
  if(eventStatus(row,now)==='active'&&defense?.opponent&&defense.defender?.userId===user.id){
   defenseAdviser=adviseEventDefense(plan,{...defense.opponent,...defense.defender.profile});
-  ctx.helpers.registerDefenseResponseGuard?.({sql:defense.guard.sql+' AND EXISTS(SELECT 1 FROM world_clock WHERE id=? AND revision=?) AND EXISTS(SELECT 1 FROM timed_events WHERE id=? AND revision=? AND status=\'active\' AND ended_at IS NULL)',
-   args:[...defense.guard.args,ctx.helpers.worldClockId,defense.defender.clockRevision,row.id,row.revision]});
  }
- return {points,wins:Number(participant?.wins||0),battles:Number(participant?.battles||0),command,advisers,defenseAdviser,unification:{eligible:plan.ending?.kind==='unification',clearedStageIds,requiredStageIds:plan.ending?.requiredStageIds||[],points,requiredPoints:plan.ending?.requiredPoints||0,achieved:Boolean(right),earnedAt:right?eventIso(right.earnedAt):null},rewards:eventRows(result[2]).map(reward=>({milestoneId:reward.milestone_id,mailId:reward.mail_id,awardedAt:eventIso(reward.awarded_at)}))};
+ if(Number.isSafeInteger(defense?.clockRevision)){
+  ctx.helpers.registerDefenseResponseGuard?.({sql:defense.guard.sql+' AND EXISTS(SELECT 1 FROM world_clock WHERE id=? AND revision=?) AND EXISTS(SELECT 1 FROM timed_events WHERE id=? AND revision=? AND status=? AND ended_at IS ?)',
+   args:[...defense.guard.args,ctx.helpers.worldClockId,defense.clockRevision,row.id,row.revision,row.status,row.ended_at]});
+ }
+ return {points,wins:Number(participant?.wins||0),battles:Number(participant?.battles||0),command,advisers,defenseAdviser,battleEligibility,unification:{eligible:plan.ending?.kind==='unification',clearedStageIds,requiredStageIds:plan.ending?.requiredStageIds||[],points,requiredPoints:plan.ending?.requiredPoints||0,achieved:Boolean(right),earnedAt:right?eventIso(right.earnedAt):null},rewards:eventRows(result[2]).map(reward=>({milestoneId:reward.milestone_id,mailId:reward.mail_id,awardedAt:eventIso(reward.awarded_at)}))};
 }
 async function eventLeaderboard(ctx,id){
  const found=eventRows(await eventStmt(ctx.db,`SELECT p.user_id,u.name,p.points,p.wins,p.battles FROM timed_event_participants p JOIN users u ON u.id=p.user_id
@@ -177,6 +181,9 @@ async function eventBattle(ctx,id){
  const row=await eventRow(ctx,id,{publicOnly:true}),plan=normalizeEventPlan(JSON.parse(row.plan_json));
  if(!plan.stages.some(stage=>stage.id===stageId)||!plan.tactics.some(choice=>choice.id===tactic))h.fail(400,'INVALID_INPUT','このイベントの戦場と戦術を選択してください。');
  if(eventStatus(row,Date.now())!=='active')h.fail(409,'EVENT_ENDED','このイベントは終了しました。');
+ // Reject an incumbent before cycle settlement can update their save. An
+ // existing receipt has already been returned above, even after succession.
+ if((await eventDefense(ctx,plan,Date.now())).viewerOwnsTarget)h.fail(403,'EVENT_OWN_CASTLE',OWN_CASTLE_MESSAGE);
  const savedRow=await h.settleWriterCycle(db,user,deviceId,body.expectedRevision,ctx.now),clock=await h.getWorldClock(db,ctx.now);
  const save=h.normalizeGameSave(JSON.parse(savedRow.save_json),user,ctx.now,{reading:true,clock});
  const game=GameEngine.fromSave(save,GAME_OFFICERS,{isAdmin:!!user.is_admin,isStaff:!!user.is_staff});
@@ -184,11 +191,14 @@ async function eventBattle(ctx,id){
  if(!save.state.worldClock)h.fail(409,'CLOCK_ANCHOR_REQUIRED','先に共通時計へ同期してください。');
  if(clock.elapsedMs-save.state.worldClock.elapsedMs>15000)h.fail(409,'CLOCK_STALE','共通時計と本拠を同期してから出陣してください。');
  if(save.state.command<COMMAND_COST)h.fail(409,'INSUFFICIENT_COMMAND','指令が不足しています。通常の指令が回復してから出陣してください。');
+ const now=Date.now(),defense=await eventDefense(ctx,plan,now,clock);
+ if(defense.viewerOwnsTarget)h.fail(403,'EVENT_OWN_CASTLE',OWN_CASTLE_MESSAGE);
+ const {opponent,guard:targetGuard}=defense;
  await h.budget(db,'event-battle:'+user.id,30,60000,ctx.now);
- const now=Date.now(),nonce=crypto.randomUUID(),guard=h.roleCommitGuard(user),gateArgs=[user.id,requestId,nonce];
+ const nonce=crypto.randomUUID(),guard=h.roleCommitGuard(user),gateArgs=[user.id,requestId,nonce];
  if(eventStatus(row,now)!=='active')h.fail(409,'EVENT_ENDED','このイベントは終了しました。');
  const roll=crypto.getRandomValues(new Uint32Array(1))[0]/4294967296;
- const commandBefore=save.state.command,{opponent,guard:targetGuard}=await eventDefense(ctx,plan,now,clock);
+ const commandBefore=save.state.command;
  const fieldForces=eventForces(ctx,game,opponent);
  const battle={...resolveEventBattle(plan,{stageId,tactic,army:game.armyStats(),morale:game.state.morale,fieldForces,enemyName:opponent?opponent.castleName+'守備隊':undefined},roll),opponent,id:h.uid('eb_'),requestId,commandCost:COMMAND_COST,commandBefore,commandAfter:commandBefore-COMMAND_COST,playerRevision:Number(savedRow.revision)+1,createdAt:eventIso(now)};
  // The catalogue plan alone supplies the reward. It shares the command/save
@@ -234,8 +244,10 @@ async function eventBattle(ctx,id){
  const saved=await eventPrior(ctx,requestId,digest);
  if(!saved){
   await h.requireAccountAccess(db,user);
+  const freshNow=Date.now();
+  if((await eventDefense(ctx,plan,freshNow)).viewerOwnsTarget)h.fail(403,'EVENT_OWN_CASTLE',OWN_CASTLE_MESSAGE);
   h.fieldWriter(await h.getSyncRow(db,user.id),deviceId,body.expectedRevision,Date.now());
-  const current=await eventRow(ctx,id),freshNow=Date.now();
+  const current=await eventRow(ctx,id);
   if(eventStatus(current,freshNow)!=='active')h.fail(409,'EVENT_ENDED','このイベントは終了しました。');
   if((await h.getWorldClock(db,freshNow)).revision!==clock.revision)h.fail(409,'WORLD_CLOCK_CHANGED','共通時計が更新されました。同期してからお試しください。');
   h.fail(409,'EVENT_STATE_CHANGED','本拠または領主の状態が更新されました。最新の状態でもう一度挑戦してください。');

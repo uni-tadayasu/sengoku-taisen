@@ -2280,6 +2280,92 @@ html:not(.sengoku-desktop-fit) .trade-dialog[data-touch-compact] .trade-navigati
 html:not(.sengoku-desktop-fit) .trade-dialog[data-touch-compact] .trade-navigation>.trade-button{min-height:36px;padding-block:6px}
 @media(prefers-reduced-motion:reduce){.trade-dialog *{scroll-behavior:auto}}
 
+/* troop-garrisons.css */
+.troop-garrison-dialog{box-sizing:border-box;width:min(1000px,calc(100vw - 32px));height:min(920px,calc(100dvh - 32px));max-width:none;max-height:none;margin:auto;padding:0;border:1px solid #bdab776b;border-radius:14px;background:#152a25;color:#efe9d7;font:400 16px/1.75 'Noto Sans JP',sans-serif;box-shadow:0 28px 90px #000a;color-scheme:dark;overflow:hidden}
+.troop-garrison-dialog[open]{display:flex;flex-direction:column}
+.troop-garrison-dialog::backdrop{background:#071714db;backdrop-filter:blur(5px)}
+.troop-garrison-dialog *{box-sizing:border-box;min-width:0}
+.troop-garrison-dialog [hidden]{display:none!important}
+.troop-garrison-dialog :is(h1,h2,h3,p,dl,dd){margin:0}
+.troop-garrison-dialog :is(h1,h2,h3,p,span,label,dt,dd,strong){overflow-wrap:anywhere}
+.troop-garrison-dialog :is(button,input,select){font:inherit}
+.troop-garrison-dialog button{cursor:pointer;touch-action:manipulation}
+.troop-garrison-dialog button:disabled{opacity:.58;cursor:not-allowed}
+.troop-garrison-dialog :is(button,input,select):focus-visible{outline:2px solid #f2d89e;outline-offset:3px}
+.troop-garrison-dialog [tabindex="-1"]:focus{outline:none}
+.troop-garrison-dialog button::before,.troop-garrison-dialog button::after{content:none!important;display:none!important}
+.troop-garrison-header{display:flex;flex-shrink:0;align-items:center;gap:12px;padding:18px 22px;border-bottom:1px solid #bca76a42;background:#20372e}
+.troop-garrison-header>div{flex:1}
+.troop-garrison-header>div>span{display:block;color:#cdb987;font-size:12px;line-height:1.6;letter-spacing:.05em}
+.troop-garrison-header h1{margin-top:3px;font:600 clamp(20px,3vw,28px)/1.5 'Noto Serif JP',serif;color:#f0e0b8}
+.troop-garrison-button{display:inline-flex;align-items:center;justify-content:center;min-height:44px;gap:6px;padding:10px 16px;border:1px solid #c2b47b77;border-radius:6px;background:#92825516;color:#eee5cd;font-size:15px;line-height:1.6;text-align:center;white-space:normal}
+.troop-garrison-dialog .troop-garrison-button.is-primary{--button-wash-start:rgba(65,48,22,.90);--button-wash-end:rgba(53,41,24,.76);border-color:#dbc18b;background-color:#413016;color:#fff5d8;font-weight:600}
+.troop-garrison-button.is-small{padding:8px 11px;font-size:14px}
+.troop-garrison-close{flex:none;display:grid;place-items:center;width:44px;height:44px;padding:0;border:1px solid #aebca448;border-radius:50%;background:#0c201a55;color:#dddcc7;font-size:28px!important;line-height:1}
+.troop-garrison-body{flex:1;min-height:0;padding:23px;overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable;scrollbar-color:#a2976377 transparent;scrollbar-width:thin;background:radial-gradient(ellipse at 100% 0,#87974917,transparent 45%),linear-gradient(140deg,#1a3028,#12251f)}
+.troop-garrison-footer{flex-shrink:0;padding:10px 16px;border-top:1px solid #bca76a42;color:#b7c1a8;font-size:12px;line-height:1.65;text-align:center}
+.troop-garrison-feedback,.troop-garrison-pending{flex-shrink:0;padding:13px 22px;border-bottom:1px solid #a8b47d4d;font-size:14px;line-height:1.8;background:#294b322e;color:#d6e1bc}
+.troop-garrison-feedback[data-error="true"]{color:#f0c9ae;background:#7b3b2426}
+.troop-garrison-pending{max-height:36dvh;overflow:auto;color:#e8d6ac;background:#7e652520}
+.troop-garrison-pending p{margin:6px 0 10px;font-size:13px}
+.troop-garrison-intro>p{font-size:15px;line-height:1.9;color:#cbd4bd}
+.troop-garrison-totals{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:19px!important}
+.troop-garrison-totals>div{padding:14px;background:#0d201a9c;border:1px solid #aeb18438;border-radius:7px}
+.troop-garrison-totals dt{color:#b4c5a8;font-size:13px;line-height:1.7}
+.troop-garrison-totals dd{margin-top:5px;font-size:25px;line-height:1.5;color:#f0d8a3;font-variant-numeric:tabular-nums}
+.troop-garrison-totals small{font-size:13px;color:#b5c2a8;margin-left:4px}
+.troop-garrison-section{margin-top:25px;padding-top:23px;border-top:1px solid #aeb18438}
+.troop-garrison-section-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px}
+.troop-garrison-section h2{font:600 21px/1.6 'Noto Serif JP',serif;color:#eee0b7}
+.troop-garrison-section-heading>span{font-size:13px;color:#bbc7ad;font-variant-numeric:tabular-nums}
+.troop-garrison-note{font-size:13px;line-height:1.8;color:#b2c3ab}
+.troop-garrison-section>form{max-width:680px;margin-top:19px}
+.troop-garrison-dialog form>label{display:block;margin:14px 0 7px;font-size:15px;font-weight:500;color:#e7dabb}
+.troop-garrison-dialog :is(input,select){width:100%;max-width:100%;min-height:44px;padding:10px 11px;border:1px solid #b9aa766b;border-radius:5px;background:#0b2017;color:#f1e9d4;font-size:16px;line-height:1.5}
+.troop-garrison-dialog select{padding-right:30px;text-overflow:ellipsis}
+.troop-garrison-amount{display:grid;grid-template-columns:minmax(80px,1fr) auto minmax(140px,auto);align-items:center;gap:8px;margin-bottom:7px}
+.troop-garrison-amount>span{font-size:14px;color:#bac7ab}
+.troop-garrison-quote{margin:15px 0;padding:13px;border:1px solid #aeb18438;border-radius:5px;background:#0a1c167d}
+.troop-garrison-quote>span{display:block;font-size:13px;color:#dcc791}
+.troop-garrison-quote dl{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:13px;margin-top:10px}
+.troop-garrison-quote dt{font-size:12px;color:#b6c4a7}
+.troop-garrison-quote dd{font-size:16px;line-height:1.9;color:#bcc9ae;font-variant-numeric:tabular-nums}
+.troop-garrison-quote dd b{color:#f0d6a1;font-weight:600}
+.troop-garrison-quote dd>span{padding:0 2px;color:#7f9c7a}
+.troop-garrison-quote p{margin-top:7px;font-size:13px;line-height:1.8;color:#e1c2a0}
+.troop-garrison-dialog form>.troop-garrison-button{width:100%}
+.troop-garrison-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,330px),1fr));gap:16px;align-items:start;margin-top:16px}
+.troop-garrison-card{padding:18px;border:1px solid #b4ad724f;border-radius:8px;background:linear-gradient(140deg,#243f30,#172c23)}
+.troop-garrison-card header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-bottom:14px;margin-bottom:13px;border-bottom:1px solid #adb47d3b}
+.troop-garrison-card header>div>span{display:block;color:#acc2a3;font-size:12px}
+.troop-garrison-card h3{margin-top:3px;font:600 21px/1.6 'Noto Serif JP',serif;color:#ede0b8}
+.troop-garrison-card header>strong{font-size:24px;color:#eed7a0;line-height:1.5;font-variant-numeric:tabular-nums}
+.troop-garrison-card header>strong small{font-size:13px;margin-left:3px;font-weight:400;color:#b9c7ac}
+.troop-garrison-card .troop-garrison-amount{grid-template-columns:minmax(0,1fr) auto}
+.troop-garrison-card .troop-garrison-amount>button{grid-column:1/-1}
+.troop-garrison-empty{padding:30px 12px;text-align:center}
+.troop-garrison-empty h2{font:600 22px/1.7 'Noto Serif JP',serif;color:#e6d5a5}
+.troop-garrison-empty p{margin:12px 0 20px;font-size:15px;color:#bac9ad}
+.troop-garrison-empty-note{padding:18px;border:1px dashed #b0b18148;border-radius:6px;font-size:14px;color:#b6c6aa}
+.trade-navigation [data-trade="garrisons"]{border-color:#b5b37880;color:#e6dfb7;background:#6b805a24}
+@media(max-width:600px){
+ .troop-garrison-dialog{width:calc(100vw - 8px);height:calc(100dvh - 8px);border-radius:10px}
+ .troop-garrison-header{gap:8px;padding:13px}
+ .troop-garrison-header h1{font-size:20px}
+ .troop-garrison-body{padding:16px 13px 22px}
+ .troop-garrison-feedback,.troop-garrison-pending{padding:11px 13px}
+ .troop-garrison-totals{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+ .troop-garrison-totals>div:last-child{grid-column:1/-1}
+ .troop-garrison-totals dd{font-size:23px}
+ .troop-garrison-amount{grid-template-columns:minmax(0,1fr) auto}
+ .troop-garrison-amount>button{grid-column:1/-1}
+ .troop-garrison-card{padding:14px}
+ .troop-garrison-quote dl{grid-template-columns:minmax(0,1fr);gap:8px}
+ .troop-garrison-footer{text-align:left;font-size:11px}
+}
+html:not(.sengoku-desktop-fit) .troop-garrison-dialog{position:fixed;inset:auto;left:calc(var(--social-viewport-left,0px) + 4px);top:calc(var(--social-viewport-top,0px) + 4px);width:calc(var(--social-viewport-width,100vw) - 8px);height:calc(var(--social-viewport-height,100dvh) - 8px);margin:0}
+@media(prefers-reduced-motion:reduce){.troop-garrison-dialog *{scroll-behavior:auto!important;animation:none!important;transition:none!important}}
+
 /* moderation.css */
 .moderation-dialog{--mod-line:#c6b7a137;box-sizing:border-box;width:min(940px,calc(100vw - 32px));height:min(850px,calc(100dvh - 40px));max-width:none;max-height:none;margin:auto;padding:0;border:1px solid #ccb68b6b;border-radius:18px;background:linear-gradient(145deg,#302c29,#1c242b 60%,#18252b);color:#f2eddf;box-shadow:0 25px 100px #000a;font:400 16px/1.7 'Noto Sans JP',sans-serif;color-scheme:dark;overflow:hidden}
 .moderation-dialog[open]{display:flex;flex-direction:column}.moderation-dialog::backdrop{background:#09121bd6;backdrop-filter:blur(5px)}.moderation-dialog *{box-sizing:border-box;min-width:0}.moderation-dialog [hidden]{display:none!important}
@@ -2425,6 +2511,9 @@ html:not(.sengoku-desktop-fit) .events-dialog{position:fixed;inset:auto;left:cal
 .events-defense-adviser .events-defense-explanation{margin:19px 0 0;padding-top:16px;border-top:1px solid #a1bba738}
 @media(max-width:520px){.events-defense-adviser{padding:16px}.events-defense-stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 10px}.events-defense-stats>div:last-child{grid-column:1/-1}.events-defense-stats dd{font-size:21px}.events-defense-measures li{grid-template-columns:minmax(0,1fr);gap:9px;padding:12px}.events-defense-priority{justify-self:start}.events-defense-stages article{padding:13px}}
 @media(max-width:420px){.events-defense-stats{grid-template-columns:minmax(0,1fr)}.events-defense-stats>div:last-child{grid-column:auto}}
+.events-participation-notice{margin-top:20px;padding:16px 18px;border:1px solid #a6c0a65c;border-radius:10px;background:#27403280;overflow-wrap:anywhere}
+.events-participation-notice h3{margin:0 0 8px;font:600 18px/1.65 'Noto Serif JP',serif;color:#f1e4bc}
+.events-participation-notice p{margin:0;font-size:16px;line-height:1.85;color:#d3dfd5}
 
 /* battle-advisor.css */
 .battle-advisor{min-width:0;width:100%;margin:18px 0;padding:18px;border:1px solid #c6ab734f;border-radius:10px;background:linear-gradient(135deg,#29372ee6,#1a252ce6);color:var(--text,#eeeae1);overflow-wrap:anywhere}
@@ -3617,6 +3706,93 @@ html:not(.sengoku-desktop-fit) .premium-admin-dialog{position:fixed;inset:auto;l
 @media(min-width:900px){.modal-body .branch-cards{grid-template-columns:repeat(2,minmax(0,1fr))}.modal-body .branch-cards:has(>.branch-card:only-child){grid-template-columns:minmax(0,1fr)}}
 @media(max-width:600px){.branch-card{padding:12px}.branch-card-heading{grid-template-columns:56px minmax(0,1fr);gap:10px}.branch-art,.branch-art-fallback{width:56px;height:56px}.branch-build{padding:12px}.field-branch-choice{align-items:start;flex-direction:column;gap:4px}}
 @media(prefers-reduced-motion:reduce){.castle-branches *{transition:none!important}}
+
+/* Troop orders share the same engine quotes in the map and castle dialog. */
+.branch-troop-transfer{container:branch-troops/inline-size;min-width:0;max-width:100%;margin:22px 0;padding:18px;border:1px solid #c6b37659;border-radius:9px;background:linear-gradient(145deg,#27332a,#13221d);color:#f0e8d0}
+.branch-troop-transfer *{box-sizing:border-box;min-width:0}
+.branch-troop-transfer :is(h3,p,label,strong,span,summary,dt,dd){overflow-wrap:anywhere}
+.branch-troop-heading h3{margin:4px 0 9px;font:600 20px/1.65 var(--serif,"Yu Mincho",serif);color:#f5e5bd}
+.branch-troop-eyebrow{display:block;font-size:12px;line-height:1.7;letter-spacing:.07em;color:#d4bd8b}
+.branch-troop-heading p{margin:0;font-size:14px;line-height:1.85;color:#c5cec0}
+.branch-troop-heading .branch-troop-cycle-note{margin-top:10px;font-size:12px;line-height:1.85;color:#cfbc93}
+.branch-troop-roster{margin:16px 0 20px;border-block:1px solid #b5b99035}
+.branch-troop-roster summary{min-height:44px;padding:11px 3px;color:#e5d7b4;font-size:14px;line-height:1.7;cursor:pointer}
+.branch-troop-roster summary span{margin-left:7px;color:#b6c4b4;font-variant-numeric:tabular-nums}
+.branch-troop-roster ul{list-style:none;margin:0;padding:0 0 12px}
+.branch-troop-roster li{display:grid;gap:5px;padding:10px 3px;border-top:1px solid #b5b99025;font-size:14px;line-height:1.7}
+.branch-troop-roster li strong{font-size:14px;font-weight:500;color:#e2e3cc}
+.branch-troop-roster li small{display:block;font-size:12px;color:#b4c3b1}
+.branch-troop-roster li>span{font-variant-numeric:tabular-nums;color:#e9d9a4}
+.branch-troop-roster li>span small{display:inline;font-size:13px}
+.branch-troop-form label{display:block;margin:0 0 7px;font-size:16px;font-weight:600;line-height:1.6;color:#e8ddbf}
+.branch-troop-route{display:grid;grid-template-columns:minmax(0,1fr);gap:17px;margin-bottom:20px}
+.branch-troop-form :is(select,input){display:block;max-width:100%;width:100%;min-height:44px;margin:0;padding:10px 11px;border:1px solid #b9aa786b;border-radius:5px;background:#0e211a;color:#f0ead9;font:400 16px/1.5 sans-serif}
+.branch-troop-form select{padding-right:30px;text-overflow:ellipsis}
+.branch-troop-form .branch-troop-stock{margin:7px 0 0;color:#bdcbb9;font-size:13px;line-height:1.7;font-variant-numeric:tabular-nums}
+.branch-troop-stock b{font-weight:500;color:#e7dfbc}
+.branch-troop-form .branch-troop-location-reason{margin:6px 0 0;font-size:13px;line-height:1.7;color:#e1b69f}
+.branch-troop-amount{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center}
+.branch-troop-amount>span{font-size:15px;color:#c7d0bd}
+.branch-troop-amount .button{grid-column:1/-1;margin:0;min-height:44px;white-space:normal;line-height:1.5;font-size:14px}
+.branch-troop-form .branch-troop-limit{margin:7px 0 16px;color:#bdcbb9;font-size:13px;line-height:1.7}
+.branch-troop-preview{display:grid;grid-template-columns:minmax(0,1fr);gap:10px;margin:0 0 18px;padding:13px;border:1px solid #a4ad7938;background:#0a1816a6;border-radius:5px}
+.branch-troop-preview>div{min-width:0}
+.branch-troop-preview dt{font-size:13px;line-height:1.6;color:#b9c9b6}
+.branch-troop-preview dd{display:flex;align-items:baseline;flex-wrap:wrap;gap:6px;margin:4px 0 0;color:#b6c4ae;font:16px/1.65 sans-serif;font-variant-numeric:tabular-nums}
+.branch-troop-preview strong{color:#f3dcaa;font-size:19px;font-weight:600}
+.branch-troop-preview small{margin-left:3px;color:#bdcbb9;font-size:12px;font-weight:400}
+.branch-troop-arrow{font-size:14px;color:#93a68b}
+.branch-troop-transfer .sr-only{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.branch-troop-form .branch-troop-cost{margin:0 0 12px;font-size:14px;line-height:1.75;color:#dccb9a}
+.branch-troop-cost>span{display:block;color:#aebfa9;font-size:13px}
+.branch-troop-order>.button{min-height:46px;width:100%;margin:0;font-size:16px;line-height:1.6;white-space:normal}
+.branch-troop-transfer :is(button,select,input,summary):focus-visible{outline:2px solid #f0d39a;outline-offset:3px}
+.branch-troop-transfer button:disabled{opacity:.6;cursor:not-allowed}
+.branch-troop-form .branch-troop-reason{margin:10px 0 0;font-size:14px;line-height:1.8;color:#edc3aa}
+.branch-troop-reason[hidden]{display:none}
+.branch-stationed{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:5px 12px;margin:14px 0;padding:11px 12px;border:1px solid #b2b99135;border-radius:5px;background:#0a18166b;font-size:14px;color:#c6d0bf}
+.branch-stationed strong{font-size:18px;color:#e9d49c;font-variant-numeric:tabular-nums}
+.branch-stationed strong small{margin-left:3px;font-size:12px;font-weight:400;color:#b9c7b4}
+.castle-branches .branch-stationed p{grid-column:1/-1;margin:0;font-size:12px;line-height:1.8;color:#afbfaa}
+@container branch-troops (min-width:440px){
+ .branch-troop-route,.branch-troop-preview{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .branch-troop-amount{grid-template-columns:minmax(0,1fr) auto minmax(140px,auto)}
+ .branch-troop-amount .button{grid-column:auto}
+ .branch-troop-roster li{grid-template-columns:minmax(0,1fr) auto;gap:14px}
+ .branch-troop-roster li>span{text-align:right}
+}
+@media(max-width:420px){.branch-troop-transfer{padding:14px}.branch-troop-heading h3{font-size:19px}}
+
+.branch-commanders{min-width:0;margin:18px 0;padding:15px;border:1px solid #b8aa7152;border-radius:6px;background:linear-gradient(145deg,#3034289c,#15251e)}
+.branch-commander-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.branch-commander-heading h5{margin:0;font:600 18px/1.6 var(--serif,"Yu Mincho",serif);color:#efdfbb}
+.branch-commander-heading>span{font-size:14px;color:#b8c6b1;font-variant-numeric:tabular-nums}
+.branch-commander-heading>span b{color:#edd49a;font-size:18px}
+.castle-branches .branch-commander-intro{margin:7px 0 13px;font-size:13px;line-height:1.8;color:#bdc8b4}
+.branch-commander-slots{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr));gap:12px;margin-bottom:16px}
+.branch-commander-slot{display:grid;grid-template-columns:64px minmax(0,1fr);align-items:center;gap:9px 11px;padding:12px;border:1px solid #b0ad7738;border-radius:5px;background:#0d1c16aa}
+.branch-commander-slot-label{grid-column:1/-1;font-size:12px;line-height:1.6;color:#aebc9e}
+.branch-commander-portrait{width:64px;height:92px;overflow:hidden;border:1px solid #b8a16c70;border-radius:3px;background:#243022}
+.branch-commander-portrait .portrait-frame{display:block;width:100%;height:100%;margin:0}
+.branch-commander-portrait .painted-portrait{height:100%;width:100%}
+.branch-commander-portrait-fallback{display:grid;place-items:center;width:100%;height:100%;font:30px/1.4 var(--serif,"Yu Mincho",serif);color:#b8a87d}
+.branch-commander-person{display:flex;align-items:flex-start;flex-direction:column;gap:5px;min-width:0}
+.branch-commander-person strong{color:#f0e3c0;font-size:16px;font-weight:600;line-height:1.7;overflow-wrap:anywhere}
+.branch-commander-person .officer-rank-label{font-size:12px;line-height:1.6;padding:1px 6px}
+.branch-commander-slot>.button{grid-column:1/-1;margin:0;min-height:44px;white-space:normal;font-size:14px;line-height:1.5}
+.branch-commander-empty{grid-column:1/-1;min-height:92px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px}
+.branch-commander-empty>span{display:grid;place-items:center;width:40px;height:40px;border:1px dashed #a7ae6d70;border-radius:50%;color:#8f9f76;font:21px/1 var(--serif,"Yu Mincho",serif)}
+.branch-commander-empty strong{font-size:14px;font-weight:400;color:#a5b493}
+.branch-commander-order>label{display:block;margin-bottom:7px;font-size:15px;line-height:1.6;color:#e3d5b4}
+.branch-commander-order>select{display:block;width:100%;max-width:100%;min-height:44px;margin:0 0 12px;padding:10px 30px 10px 10px;border:1px solid #b8a16c70;border-radius:5px;background:#0d2119;color:#eee8d6;font:400 16px/1.5 sans-serif;text-overflow:ellipsis}
+.branch-commander-preview{display:grid;grid-template-columns:64px minmax(0,1fr);align-items:center;gap:12px;padding:12px;margin-bottom:12px;border:1px solid #a7ae6d40;background:#0d1c166b;border-radius:5px}
+.branch-commander-order>.button{margin:0;min-height:44px;font-size:15px;line-height:1.6}
+.branch-commanders :is(button,select):focus-visible{outline:2px solid #eed299;outline-offset:3px}
+.branch-commanders button:disabled{opacity:.6;cursor:not-allowed}
+.castle-branches .branch-commander-reason{margin:8px 0 0;color:#edc3aa;font-size:13px;line-height:1.8}
+.branch-commander-reason[hidden]{display:none}
+.castle-branches .branch-commander-note{margin:12px 0 0;color:#aebfa8;font-size:12px;line-height:1.85}
+@media(max-width:420px){.branch-commanders{padding:12px}.branch-commander-slot{padding:10px}}
 
 /* Each branch keeps its own small castle town. Native disclosures retain their
    keyboard behavior and stay open through the source-aware DOM refreshes. */

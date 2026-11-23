@@ -106,6 +106,11 @@
     const rewards = value.rewards.map(item => item && identifier(item.milestoneId) && identifier(item.mailId) && timestamp(item.awardedAt) ? { milestoneId: item.milestoneId, mailId: item.mailId, awardedAt: item.awardedAt } : null);
     if (rewards.some(item => !item)) return undefined;
     const extra = {};
+    if (value.battleEligibility !== undefined) {
+      const access = value.battleEligibility;
+      if (!access || typeof access.canAttack !== 'boolean' || access.canAttack && access.reason !== null || !access.canAttack && !['own_castle', 'refresh_required'].includes(access.reason)) return undefined;
+      extra.battleEligibility = { canAttack: access.canAttack, reason: access.reason };
+    }
     if (value.defenseAdviser !== undefined) {
       const defenseAdviser = cleanDefenseAdviser(value.defenseAdviser);
       if (defenseAdviser === undefined) return undefined;
@@ -332,9 +337,9 @@
     function setDraft(battleId, durationDays) { identity(); if (!state.admin || !state.authorized || state.sending || state.pending || state.confirmation) return false; state.battleId = String(battleId ?? ''); state.name = state.catalog.find(item => item.id === state.battleId)?.name || ''; state.durationDays = Number(durationDays); state.error = ''; emit('input'); return true; }
     function filterCatalog(query, category = state.catalogCategory) { identity(); if (!state.admin || !state.authorized || state.sending || state.pending || state.confirmation) return false; state.catalogQuery = String(query ?? '').slice(0, 120); state.catalogCategory = category === '' || state.catalog.some(item => item.category === category) ? category : ''; emit('catalog-filter'); return true; }
     function chooseStage(id) { identity(); if (!state.open || state.admin || state.sending || state.pending) return false; const stage = state.event?.plan.stages.find(item => item.id === id); if (!stage) return false; state.stageId = stage.id; state.tactic = stage.recommendedTactic; emit('choice'); return true; }
-    function chooseTactic(id) { identity(); if (!state.open || state.admin || state.sending || state.pending || !state.event?.plan.tactics.some(item => item.id === id)) return false; state.tactic = id; emit('choice'); return true; }
+    function chooseTactic(id) { identity(); if (!state.open || state.admin || state.sending || state.pending || !eventBattleEligibility(state).canAttack || !state.event?.plan.tactics.some(item => item.id === id)) return false; state.tactic = id; emit('choice'); return true; }
     function applyAdvice() {
-      identity(); if (!state.open || state.admin || !state.signedIn || state.sending || state.pending || state.confirmation || state.detailLoading) return false;
+      identity(); if (!state.open || state.admin || !state.signedIn || state.sending || state.pending || state.confirmation || state.detailLoading || !eventBattleEligibility(state).canAttack) return false;
       const advice = selectedAdvice(state); if (!advice || !chooseTactic(advice.tactic)) return false;
       state.message = '軍師の提案「' + advice.tacticName + '」を反映しました。戦況を確認して出陣してください。'; emit('advice'); return true;
     }
@@ -396,7 +401,7 @@
     }
     function battle() {
       identity(); const command = commands();
-      if (!state.open || state.admin || !state.signedIn || state.pending || state.sending || state.detailLoading || !active(state.event, serverTime()) || !state.progress || !command.ready || !command.writable || command.current < command.cost) return Promise.resolve(false);
+      if (!state.open || state.admin || !state.signedIn || state.pending || state.sending || state.detailLoading || !active(state.event, serverTime()) || !state.progress || !eventBattleEligibility(state).canAttack || !command.ready || !command.writable || command.current < command.cost) return Promise.resolve(false);
       if (!state.event.plan.stages.some(stage => stage.id === state.stageId) || !state.event.plan.tactics.some(tactic => tactic.id === state.tactic)) return Promise.resolve(false);
       try { return send(record('battle', state.event.id, { stageId: state.stageId, tactic: state.tactic })); } catch (error) { state.error = error.message; emit('error'); return Promise.resolve(false); }
     }
@@ -441,6 +446,21 @@
     if (!state.signedIn || !advice || !opponent || advice.castleId !== opponent.castleId || advice.defenseTroops !== opponent.defenseTroops || advice.defensePower !== opponent.defensePower || advice.stages.some(stage => !state.event.plan.stages.some(item => item.id === stage.stageId) || !state.event.plan.tactics.some(item => item.id === stage.attackTactic))) return null;
     return advice;
   }
+  function eventBattleEligibility(state) {
+    // Eligibility is private server state and remains authoritative even when
+    // the advisory snapshot is unavailable. Missing state cannot authorize a
+    // new attack; recovery of an already-sent request still uses its receipt.
+    if (currentDefenseAdviser(state)) return { canAttack: false, reason: 'own_castle' };
+    return state.progress?.battleEligibility || { canAttack: false, reason: 'refresh_required' };
+  }
+  function participationMarkup(state) {
+    if (!state.signedIn || !state.progress) return '';
+    const access = eventBattleEligibility(state);
+    if (access.canAttack) return '';
+    return access.reason === 'own_castle'
+      ? '<section class="events-participation-notice" aria-label="防衛側の参加"><h3>あなたの拠点は防衛専用です</h3><p>自分が領主の拠点には出陣できません。指令は消費されません。</p></section>'
+      : '<section class="events-participation-notice" aria-label="出陣可否の確認"><h3>最新の領主情報を確認してください</h3><p>拠点の状態を確認してから出陣できます。画面上部の「更新」で最新情報を取得してください。</p></section>';
+  }
   function defenseAdviserMarkup(state) {
     const advice = currentDefenseAdviser(state);
     if (!advice) return '';
@@ -449,13 +469,12 @@
     return `<section class="events-defense-adviser" aria-labelledby="events-defense-title"><header><span class="events-eyebrow">軍師AI</span><h3 id="events-defense-title">防衛軍議 · あなたの拠点</h3><p class="events-defense-castle">${esc(advice.castleName)}の守りを整える</p></header><h4>${esc(advice.headline)}</h4><p>${esc(advice.summary)}</p><dl class="events-defense-stats"><div><dt>現在の守備兵</dt><dd>${number(advice.defenseTroops)}<small>人</small></dd></div><div><dt>現在の守備戦力</dt><dd>${number(advice.defensePower)}</dd></div><div><dt>守備兵に含まれる援軍</dt><dd>${number(advice.reinforcementTroops)}<small>人</small></dd></div></dl><h4>今から整える守り</h4><ol class="events-defense-measures">${measures.map(item => `<li><span class="events-defense-priority" data-priority="${item.priority}">${priorities[item.priority]}</span><div><h5>${esc(item.title)}</h5><p>${esc(item.detail)}</p></div></li>`).join('')}</ol><h4>戦場ごとの備え</h4><p class="events-defense-note">地形に合う攻撃戦術を想定した対策です。ほかの領主の編成や、実際に選ぶ戦術を示すものではありません。</p><div class="events-defense-stages">${advice.stages.map(stage => `<article><h5>${esc(stage.stageName)}</h5><p class="events-defense-tactic">想定する攻め方 · ${esc(stage.attackTacticName)}</p><strong>${esc(stage.defensePlan)}</strong><p>${esc(stage.reason)}</p></article>`).join('')}</div><p class="events-defense-note events-defense-explanation">催事用の模擬合戦です。防衛側の兵・城・指令は消費されません。軍議は助言です。施設強化や援軍の手配は、通常の画面で行ってください。</p></section>`;
   }
   function adviserMarkup(state) {
-    if (state.admin) return '';
+    if (state.admin || !eventBattleEligibility(state).canAttack) return '';
     const advice = selectedAdvice(state); if (!advice) return '';
     const applied = state.tactic === advice.tactic, locked = !state.signedIn || state.sending || Boolean(state.pending || state.confirmation) || state.detailLoading;
     const forecast = advice.exact && advice.options.find(option => option.tactic === state.tactic);
     const recommendation = forecast && !applied ? `（提案した${esc(advice.tacticName)}は${number(advice.winChance)}%）` : '';
-    const defending = Boolean(currentDefenseAdviser(state));
-    return `<section class="events-adviser" aria-label="${defending ? '軍師AI · 攻撃側の試算' : '軍師AIの提案'}"><div class="events-adviser-heading"><div><span class="events-eyebrow">軍師AI${defending ? ' · 攻撃側の試算' : ''}</span><h4>${esc(advice.tacticName)}を提案</h4></div><span class="events-state">${advice.exact ? '現在の軍団で比較' : '戦場の地形から提案'}</span></div>${defending ? '<p class="events-note">以下は、ご自身がこの催事へ出陣する場合の攻撃戦術と勝利予測です。</p>' : ''}<p>${esc(advice.reason)}</p>${forecast ? `<p class="events-note">選択中の戦術 · ${esc(forecast.tacticName)}${recommendation}</p><dl class="events-adviser-stats"><div><dt>勝利予測</dt><dd>${number(Math.round(forecast.winChance * 10) / 10)}<small>%</small></dd></div><div><dt>自軍戦力</dt><dd>${number(Math.round(forecast.playerPower))}</dd></div><div><dt>敵戦力</dt><dd>${number(Math.round(forecast.enemyPower))}</dd></div></dl>` : '<p class="events-note">軍団を確認すると、戦力に応じた提案と勝利予測を表示します。</p>'}<p class="events-note">保存済みの軍団で出陣 · 兵の損失なし。${advice.exact ? '出陣時の軍団や戦況で予測は変わります。' : ''}</p><div class="events-adviser-actions"><span>${applied ? '提案の戦術を選択中' : '戦術の選択に反映できます'}</span><button type="button" class="events-button is-small" data-events="advice"${locked || applied ? ' disabled' : ''}>${defending ? '攻撃戦術に反映' : '提案を反映'}</button></div></section>`;
+    return `<section class="events-adviser" aria-label="軍師AIの提案"><div class="events-adviser-heading"><div><span class="events-eyebrow">軍師AI</span><h4>${esc(advice.tacticName)}を提案</h4></div><span class="events-state">${advice.exact ? '現在の軍団で比較' : '戦場の地形から提案'}</span></div><p>${esc(advice.reason)}</p>${forecast ? `<p class="events-note">選択中の戦術 · ${esc(forecast.tacticName)}${recommendation}</p><dl class="events-adviser-stats"><div><dt>勝利予測</dt><dd>${number(Math.round(forecast.winChance * 10) / 10)}<small>%</small></dd></div><div><dt>自軍戦力</dt><dd>${number(Math.round(forecast.playerPower))}</dd></div><div><dt>敵戦力</dt><dd>${number(Math.round(forecast.enemyPower))}</dd></div></dl>` : '<p class="events-note">軍団を確認すると、戦力に応じた提案と勝利予測を表示します。</p>'}<p class="events-note">保存済みの軍団で出陣 · 兵の損失なし。${advice.exact ? '出陣時の軍団や戦況で予測は変わります。' : ''}</p><div class="events-adviser-actions"><span>${applied ? '提案の戦術を選択中' : '戦術の選択に反映できます'}</span><button type="button" class="events-button is-small" data-events="advice"${locked || applied ? ' disabled' : ''}>提案を反映</button></div></section>`;
   }
   function outcomeMarkup(event, progress, admin = false) {
     const plan = event.plan, rewards = plan.battleRewards, ending = plan.ending, unification = progress?.unification;
@@ -489,7 +508,7 @@
   }
   function detailMarkup(event, admin) {
     const plan = event.plan, defender = defenderView(event);
-    return `<div class="events-hero"><div class="events-hero-top"><span class="events-eyebrow">${esc(plan.theme.label)}</span><span class="events-state" data-event-live-state></span></div><h2 tabindex="-1" data-event-heading>${esc(event.name)}</h2><p class="events-synopsis">${esc(plan.synopsis)}</p><div class="events-schedule"><span>${event.status === 'draft' ? '開催から' + event.durationDays + '日間・実時間' : date(event.startsAt) + ' 〜 ' + date(event.endsAt) + ' JST'}</span><strong data-event-countdown></strong></div></div><div data-event-progress></div><div data-event-defense-adviser></div><section class="events-section"><div class="events-section-heading"><div><span class="events-eyebrow">THREE BATTLEFIELDS</span><h3>${admin ? '編成された3つの戦場' : '戦場を選ぶ'}</h3></div><span class="events-note">保存済みの軍団で挑む専用合戦</span></div><div data-event-opponent>${defender.markup}</div><div class="events-stages"${admin ? '' : ' role="radiogroup" aria-label="出陣する戦場"'}>${plan.stages.map((stage, index) => `<${admin ? 'article' : 'button type="button" role="radio" aria-checked="false" data-events="stage" data-stage-id="' + esc(stage.id) + '"'} class="events-stage"><span class="events-stage-number">第${['一', '二', '三'][index]}陣</span><h4>${esc(stage.name)}</h4><span class="events-stage-enemy" data-event-stage-enemy="${esc(stage.id)}">${esc(defender.enemy(stage))}</span><p>${esc(stage.description)}</p><span class="events-stage-values"><span><span data-event-power-label="${esc(stage.id)}">${defender.label}</span> <b data-event-stage-power="${esc(stage.id)}">${defender.power(stage)}</b></span><span>基礎戦功 <b>${number(stage.basePoints)}</b></span></span><span class="events-stage-hint">${esc(stage.tacticHint)}</span></${admin ? 'article' : 'button'}>`).join('')}</div>${admin ? `<div class="events-tactics-preview"><h4>5つの戦術</h4><dl>${plan.tactics.map(tactic => `<div><dt>${esc(tactic.name)}</dt><dd>${esc(tactic.description)}</dd></div>`).join('')}</dl></div>` : `<form data-events-battle-form class="events-battle-controls"><div data-event-adviser></div><label for="events-tactic">戦術を選ぶ</label><select id="events-tactic" name="tactic">${plan.tactics.map(tactic => `<option value="${esc(tactic.id)}">${esc(tactic.name)}</option>`).join('')}</select><p class="events-note" data-event-tactic-description></p><div class="events-battle-actions"><p data-event-battle-access></p><button type="submit" class="events-button is-primary" data-events-battle-submit>指令1で出陣</button></div><p class="events-note">通常の城や兵は失いません。戦功と出陣回数は、この催事・合戦だけに記録されます。</p></form>`}</section><div data-event-battle-result></div><div data-event-outcome></div><section class="events-section"><div class="events-section-heading"><div><span class="events-eyebrow">BATTLE HONOURS</span><h3>戦功の褒賞</h3></div><button type="button" class="events-button is-small" data-events="mail">システム便へ</button></div><p class="events-note">目標に到達すると、報酬がシステム便に届きます。郵便からお受け取りください。</p><div data-event-rewards></div></section><section class="events-section events-rules"><h3>この合戦の決まり</h3><p>${esc(plan.theme.description)}</p><ul>${plan.rules.map(rule => `<li>${esc(rule)}</li>`).join('')}</ul><p class="events-note">指令の回復・上限は通常の行動と共通です。ゲーム内の時計を止めても開催期間は進みます。</p></section><div data-event-ranking></div><div class="events-admin-actions" data-event-admin-actions></div>`;
+    return `<div class="events-hero"><div class="events-hero-top"><span class="events-eyebrow">${esc(plan.theme.label)}</span><span class="events-state" data-event-live-state></span></div><h2 tabindex="-1" data-event-heading>${esc(event.name)}</h2><p class="events-synopsis">${esc(plan.synopsis)}</p><div class="events-schedule"><span>${event.status === 'draft' ? '開催から' + event.durationDays + '日間・実時間' : date(event.startsAt) + ' 〜 ' + date(event.endsAt) + ' JST'}</span><strong data-event-countdown></strong></div></div><div data-event-progress></div><div data-event-defense-adviser></div><div data-event-participation></div><section class="events-section"><div class="events-section-heading"><div><span class="events-eyebrow">THREE BATTLEFIELDS</span><h3>${admin ? '編成された3つの戦場' : '戦場を選ぶ'}</h3></div><span class="events-note">保存済みの軍団で挑む専用合戦</span></div><div data-event-opponent>${defender.markup}</div><div class="events-stages"${admin ? '' : ' role="radiogroup" aria-label="出陣する戦場"'}>${plan.stages.map((stage, index) => `<${admin ? 'article' : 'button type="button" role="radio" aria-checked="false" data-events="stage" data-stage-id="' + esc(stage.id) + '"'} class="events-stage"><span class="events-stage-number">第${['一', '二', '三'][index]}陣</span><h4>${esc(stage.name)}</h4><span class="events-stage-enemy" data-event-stage-enemy="${esc(stage.id)}">${esc(defender.enemy(stage))}</span><p>${esc(stage.description)}</p><span class="events-stage-values"><span><span data-event-power-label="${esc(stage.id)}">${defender.label}</span> <b data-event-stage-power="${esc(stage.id)}">${defender.power(stage)}</b></span><span>基礎戦功 <b>${number(stage.basePoints)}</b></span></span><span class="events-stage-hint">${esc(stage.tacticHint)}</span></${admin ? 'article' : 'button'}>`).join('')}</div>${admin ? `<div class="events-tactics-preview"><h4>5つの戦術</h4><dl>${plan.tactics.map(tactic => `<div><dt>${esc(tactic.name)}</dt><dd>${esc(tactic.description)}</dd></div>`).join('')}</dl></div>` : `<form data-events-battle-form class="events-battle-controls"><div data-event-adviser></div><label for="events-tactic">戦術を選ぶ</label><select id="events-tactic" name="tactic">${plan.tactics.map(tactic => `<option value="${esc(tactic.id)}">${esc(tactic.name)}</option>`).join('')}</select><p class="events-note" data-event-tactic-description></p><div class="events-battle-actions"><p data-event-battle-access></p><button type="submit" class="events-button is-primary" data-events-battle-submit>指令1で出陣</button></div><p class="events-note">通常の城や兵は失いません。戦功と出陣回数は、この催事・合戦だけに記録されます。</p></form>`}</section><div data-event-battle-result></div><div data-event-outcome></div><section class="events-section"><div class="events-section-heading"><div><span class="events-eyebrow">BATTLE HONOURS</span><h3>戦功の褒賞</h3></div><button type="button" class="events-button is-small" data-events="mail">システム便へ</button></div><p class="events-note">目標に到達すると、報酬がシステム便に届きます。郵便からお受け取りください。</p><div data-event-rewards></div></section><section class="events-section events-rules"><h3>この合戦の決まり</h3><p>${esc(plan.theme.description)}</p><ul>${plan.rules.map(rule => `<li>${esc(rule)}</li>`).join('')}</ul><p class="events-note">指令の回復・上限は通常の行動と共通です。ゲーム内の時計を止めても開催期間は進みます。</p></section><div data-event-ranking></div><div class="events-admin-actions" data-event-admin-actions></div>`;
   }
   function progressMarkup(state) {
     const progress = state.progress;
@@ -532,16 +551,17 @@
       if (!state.admin) updateControls(state);
     }
     function updateControls(state) {
-      const locked = state.sending || Boolean(state.pending || state.confirmation), event = state.event;
+      const locked = state.sending || Boolean(state.pending || state.confirmation), event = state.event, access = eventBattleEligibility(state);
       for (const node of dialog?.querySelectorAll?.('[data-events="stage"]') || []) { const selected = node.getAttribute('data-stage-id') === state.stageId; node.setAttribute('aria-checked', String(selected)); node.tabIndex = selected ? 0 : -1; node.classList.toggle('is-selected', selected); node.disabled = locked; }
-      const tactic = $('#events-tactic'); if (tactic) { if (tactic.value !== state.tactic) tactic.value = state.tactic; tactic.disabled = locked; }
+      const tactic = $('#events-tactic'); if (tactic) { if (tactic.value !== state.tactic) tactic.value = state.tactic; tactic.disabled = locked || !access.canAttack; }
+      const form = $('[data-events-battle-form]'); if (form) form.hidden = access.reason === 'own_castle';
       const choice = event?.plan.tactics.find(item => item.id === state.tactic); updateText($('[data-event-tactic-description]'), choice?.description || '');
       const command = state.commands || cleanCommands(null);
       updateText($('[data-event-command-current]'), command.ready ? number(command.current) : '—');
       updateText($('[data-event-command-max]'), command.ready ? number(command.max) : '—');
-      const canBattle = Boolean(!state.admin && state.signedIn && !locked && !state.detailLoading && active(event, controller.serverTime()) && state.progress && command.ready && command.writable && command.current >= command.cost);
-      const submit = $('[data-events-battle-submit]'); if (submit) { submit.disabled = !canBattle; updateText(submit, state.sending && state.pending?.kind === 'battle' ? '合戦の結果を確認中…' : '指令1で出陣'); }
-      const message = !state.signedIn ? '領主の接続を確認すると出陣できます。' : !active(event, controller.serverTime()) ? 'この合戦の出陣受付は終了しました。' : !state.progress || !command.ready ? command.message || '指令と保存状態を確認しています。' : !command.writable ? command.message || 'この端末の操作権を確認すると出陣できます。' : command.current < command.cost ? '指令不足です。指令が1以上になると出陣できます。' : '出陣に指令1を消費します。指令は通常の行動と共通です。';
+      const canBattle = Boolean(!state.admin && state.signedIn && access.canAttack && !locked && !state.detailLoading && active(event, controller.serverTime()) && state.progress && command.ready && command.writable && command.current >= command.cost);
+      const submit = $('[data-events-battle-submit]'); if (submit) { submit.disabled = !canBattle; updateText(submit, state.sending && state.pending?.kind === 'battle' ? '合戦の結果を確認中…' : access.reason === 'own_castle' ? '防衛専用' : '指令1で出陣'); }
+      const message = !state.signedIn ? '領主の接続を確認すると出陣できます。' : access.reason === 'own_castle' ? '自分が領主の拠点には出陣できません。' : !active(event, controller.serverTime()) ? 'この合戦の出陣受付は終了しました。' : !state.progress || !command.ready ? command.message || '指令と保存状態を確認しています。' : !access.canAttack ? '領主と拠点の最新情報を更新してから出陣してください。' : !command.writable ? command.message || 'この端末の操作権を確認すると出陣できます。' : command.current < command.cost ? '指令不足です。指令が1以上になると出陣できます。' : '出陣に指令1を消費します。指令は通常の行動と共通です。';
       updateText($('[data-event-battle-access]'), message);
       setHTML($('[data-event-adviser]'), adviserMarkup(state));
     }
@@ -601,6 +621,7 @@
         }
         setHTML($('[data-event-progress]'), progressMarkup(state));
         setHTML($('[data-event-defense-adviser]'), defenseAdviserMarkup(state));
+        setHTML($('[data-event-participation]'), participationMarkup(state));
         setHTML($('[data-event-outcome]'), outcomeMarkup(state.event, state.progress, state.admin));
         setHTML($('[data-event-rewards]'), rewardsMarkup(state.event, state.progress));
         setHTML($('[data-event-ranking]'), leaderboardMarkup(state.leaderboard, state.event));
