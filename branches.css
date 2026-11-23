@@ -203,3 +203,7 @@
  .branch-facility-bonuses>div:nth-child(odd){border-left:0}
  .branch-facility-content{padding:13px}
 }
+/* Automatic placement stays in the existing branch flow at every width. */
+.branch-auto-commanders{min-width:0;margin:14px 0;padding:12px;border:1px solid var(--line);border-radius:8px}
+.branch-auto-commanders>.button{white-space:normal;overflow-wrap:anywhere;min-height:44px}
+.branch-auto-commanders .branch-commander-note{margin:8px 0 0;overflow-wrap:anywhere}

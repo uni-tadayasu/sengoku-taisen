@@ -1,8 +1,9 @@
+import {externalTroopSnapshotStatements} from './maintenance.js';
 // Voluntary moves start a new private campaign while keeping the public player.
 // The receipt owns every side effect in one D1 transaction.
 import {GameEngine,GAME_OFFICERS} from './game-runtime.js';
 import {ensureResidency,RESIDENCY_CASTLES,prepareResidencySuccession} from './residency.js';
-import {activeMarch,finishMarchStatement} from './marches.js';
+import {activeMarch,finishMarchStatement,advanceReservedMarch} from './marches.js';
 import {rallyMarchCancellation} from './alliance.js';
 import {reconcileCovertProgress} from './covert.js';
 import {prepareRelocationProgress} from './progress.js';
@@ -72,7 +73,10 @@ export async function relocateResidence(ctx,body){
  await reconcileCovertProgress(db,user.id,before);
  const walking=await stmt(db,'SELECT total_steps FROM walking_accounts WHERE user_id=?',user.id).first();
  if(walking)before.state.walking.serverSteps=Number(walking.total_steps);
- const game=GameEngine.fromSave(before,GAME_OFFICERS),oldCovert=game.state.covert.dispatches.length?GameEngine.fromSave(before,GAME_OFFICERS):null;
+ // Settle the old army's costs before the fresh campaign keeps capped assets.
+ // The relocation receipt replaces the old realm and performs its succession.
+ const journey=await advanceReservedMarch(ctx,row,clock),game=journey.game,oldCovert=game.state.covert.dispatches.length?GameEngine.fromSave(JSON.parse(game.exportSave()),GAME_OFFICERS,{maintenanceAuthority:game.getMaintenanceAuthority()}):null;
+ if(walking)game.state.walking.serverSteps=Number(walking.total_steps);
  const dispatchIds=[];
  if(oldCovert)for(const dispatch of [...oldCovert.state.covert.dispatches]){
   oldCovert.cancelCovertDispatch(dispatch.id,notice,{authoritative:true});dispatchIds.push(dispatch.requestId);
@@ -86,6 +90,7 @@ export async function relocateResidence(ctx,body){
  const membership=old?{sql:"EXISTS(SELECT 1 FROM castle_residents m JOIN castle_seats s ON s.castle_id=m.castle_id WHERE m.user_id=? AND m.castle_id=? AND m.revision=? AND s.lord_epoch=? AND COALESCE(s.lord_user_id,'')=?)",args:[user.id,old.castle_id,old.revision,old.lord_epoch,old.lord_user_id||'']}:
    {sql:'NOT EXISTS(SELECT 1 FROM castle_residents WHERE user_id=?)',args:[user.id]};
  const progress=await prepareRelocationProgress(db,user.id,before,now);
+ progress.guard={sql:progress.guard.sql+' AND '+journey.branches.guard.sql,args:[...progress.guard.args,...journey.branches.guard.args]};
  const role=h.roleCommitGuard(user),departure=leaving?.guard||noGuard,march=await activeMarch(db,user.id);
  const nonce=crypto.randomUUID(),gate='EXISTS(SELECT 1 FROM castle_residency_requests WHERE actor_id=? AND request_id=? AND commit_token=?)',args=[user.id,requestId,nonce];
  const statements=[stmt(db,`INSERT INTO castle_residency_requests(actor_id,request_id,request_hash,commit_token,castle_id,mode,created_at)
@@ -106,6 +111,7 @@ export async function relocateResidence(ctx,body){
   ...closeReservations(db,user.id,campaignId,now,nonce,gate,args,march,oldCovert?.state.covert,dispatchIds,clock.elapsedMs),
   stmt(db,`UPDATE player_saves SET save_json=?,revision=revision+1,updated_at=?,lease_expires_at=?,cycle_index=?,cycle_home=?,cycle_commit=? WHERE user_id=? AND ${gate}`,JSON.stringify(next),now,now+h.syncLease,next.state.cycle.index,target,nonce,user.id,...args)
  );
+ statements.push(...externalTroopSnapshotStatements(db,[user.id],clock,gate,args));
  const committed=(await db.batch(statements))[0].results?.[0];if(committed)return result(committed,false);
  const retry=await prior();if(retry)return result(retry,true);
  await h.requireAccountAccess(db,user);h.fieldWriter(await h.getSyncRow(db,user.id),device,body.revision,now);

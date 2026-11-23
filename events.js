@@ -466,7 +466,7 @@
     if (!advice) return '';
     const priorities = { 1: '最優先', 2: '次の備え', 3: '継続する備え' };
     const measures = [...advice.measures].sort((a, b) => a.priority - b.priority);
-    return `<section class="events-defense-adviser" aria-labelledby="events-defense-title"><header><span class="events-eyebrow">軍師AI</span><h3 id="events-defense-title">防衛軍議 · あなたの拠点</h3><p class="events-defense-castle">${esc(advice.castleName)}の守りを整える</p></header><h4>${esc(advice.headline)}</h4><p>${esc(advice.summary)}</p><dl class="events-defense-stats"><div><dt>現在の守備兵</dt><dd>${number(advice.defenseTroops)}<small>人</small></dd></div><div><dt>現在の守備戦力</dt><dd>${number(advice.defensePower)}</dd></div><div><dt>守備兵に含まれる援軍</dt><dd>${number(advice.reinforcementTroops)}<small>人</small></dd></div></dl><h4>今から整える守り</h4><ol class="events-defense-measures">${measures.map(item => `<li><span class="events-defense-priority" data-priority="${item.priority}">${priorities[item.priority]}</span><div><h5>${esc(item.title)}</h5><p>${esc(item.detail)}</p></div></li>`).join('')}</ol><h4>戦場ごとの備え</h4><p class="events-defense-note">地形に合う攻撃戦術を想定した対策です。ほかの領主の編成や、実際に選ぶ戦術を示すものではありません。</p><div class="events-defense-stages">${advice.stages.map(stage => `<article><h5>${esc(stage.stageName)}</h5><p class="events-defense-tactic">想定する攻め方 · ${esc(stage.attackTacticName)}</p><strong>${esc(stage.defensePlan)}</strong><p>${esc(stage.reason)}</p></article>`).join('')}</div><p class="events-defense-note events-defense-explanation">催事用の模擬合戦です。防衛側の兵・城・指令は消費されません。軍議は助言です。施設強化や援軍の手配は、通常の画面で行ってください。</p></section>`;
+    return `<section class="events-defense-adviser" aria-labelledby="events-defense-title"><header><span class="events-eyebrow">軍師AI</span><h3 id="events-defense-title">防衛軍議 · あなたの拠点</h3><p class="events-defense-castle">${esc(advice.castleName)}の守りを整える</p></header><h4>${esc(advice.headline)}</h4><p>${esc(advice.summary)}</p><dl class="events-defense-stats"><div><dt>現在の守備兵</dt><dd>${number(advice.defenseTroops)}<small>人</small></dd></div><div><dt>現在の守備戦力</dt><dd>${number(advice.defensePower)}</dd></div><div><dt>守備兵に含まれる援軍</dt><dd>${number(advice.reinforcementTroops)}<small>人</small></dd></div></dl><h4>今から整える守り</h4><ol class="events-defense-measures">${measures.map(item => `<li data-stable-key="${esc(item.id)}"><span class="events-defense-priority" data-priority="${item.priority}">${priorities[item.priority]}</span><div><h5>${esc(item.title)}</h5><p>${esc(item.detail)}</p></div></li>`).join('')}</ol><h4>戦場ごとの備え</h4><p class="events-defense-note">地形に合う攻撃戦術を想定した対策です。ほかの領主の編成や、実際に選ぶ戦術を示すものではありません。</p><div class="events-defense-stages">${advice.stages.map(stage => `<article data-stable-key="${esc(stage.stageId)}"><h5>${esc(stage.stageName)}</h5><p class="events-defense-tactic">想定する攻め方 · ${esc(stage.attackTacticName)}</p><strong>${esc(stage.defensePlan)}</strong><p>${esc(stage.reason)}</p></article>`).join('')}</div><p class="events-defense-note events-defense-explanation">催事用の模擬合戦です。防衛側の兵・城・指令は消費されません。軍議は助言です。施設強化や援軍の手配は、通常の画面で行ってください。</p></section>`;
   }
   function adviserMarkup(state) {
     if (state.admin || !eventBattleEligibility(state).canAttack) return '';
@@ -488,8 +488,8 @@
     return global.SengokuLordProfile?.linkedName?.(player.playerId,player.name,markup)||markup;
   }
   function listMarkup(state, now) {
-    if (!state.events.length) return `<div class="events-empty"><span class="events-seal" aria-hidden="true">陣</span><h2>${state.loading ? '催事・合戦を確認中' : state.admin ? '最初の設計案を作りましょう' : '現在、催事・合戦はありません'}</h2><p>${state.admin ? '選択した戦いと開催期間から、3つの戦場を編成します。' : '開催が決まると、ここに戦場と参加方法が届きます。'}</p></div>`;
-    const group = (label, events) => events.length ? `<section class="events-list-group"><h2>${label}</h2>${events.map(event => `<button type="button" class="events-event-card${event.id === state.selectedId ? ' is-selected' : ''}" data-events="select" data-event-id="${esc(event.id)}" aria-pressed="${event.id === state.selectedId}"><span class="events-event-meta"><span class="events-state is-${esc(event.status)}">${statusName(event, now)}</span><span>${event.durationDays}日間</span></span><strong>${esc(event.name)}</strong><span class="events-card-theme">${esc(event.plan.theme.label)}</span><span class="events-card-date">${event.status === 'draft' ? '設計内容を確認' : date(event.endedAt || event.endsAt) + ' JST まで'}</span></button>`).join('')}</section>` : '';
+    if (!state.events.length) return `<div class="events-empty"><span class="events-seal" aria-hidden="true">陣</span><h2>${state.loading && !state.loaded ? '催事・合戦を確認中' : state.admin ? '最初の設計案を作りましょう' : '現在、催事・合戦はありません'}</h2><p>${state.admin ? '選択した戦いと開催期間から、3つの戦場を編成します。' : '開催が決まると、ここに戦場と参加方法が届きます。'}</p></div>`;
+    const group = (label, events) => events.length ? `<section class="events-list-group" data-stable-key="${esc(label)}"><h2>${label}</h2>${events.map(event => `<button type="button" class="events-event-card${event.id === state.selectedId ? ' is-selected' : ''}" data-events="select" data-event-id="${esc(event.id)}" data-stable-key="${esc(event.id)}" aria-pressed="${event.id === state.selectedId}"><span class="events-event-meta"><span class="events-state is-${esc(event.status)}">${statusName(event, now)}</span><span>${event.durationDays}日間</span></span><strong>${esc(event.name)}</strong><span class="events-card-theme">${esc(event.plan.theme.label)}</span><span class="events-card-date">${event.status === 'draft' ? '設計内容を確認' : date(event.endedAt || event.endsAt) + ' JST まで'}</span></button>`).join('')}</section>` : '';
     const live = state.events.filter(event => active(event, now));
     return (!state.admin && !live.length ? '<p class="events-note events-no-active">現在開催中の合戦はありません。過去の戦場と戦功を確認できます。</p>' : '') + group('開催中', live) + group('設計案', state.events.filter(event => event.status === 'draft')) + group('終了した合戦', state.events.filter(event => event.status !== 'draft' && !active(event, now)));
   }
@@ -528,7 +528,7 @@
   }
   function leaderboardMarkup(rows, event) {
     if (event.status === 'draft') return '';
-    return `<section class="events-section"><div class="events-section-heading"><div><span class="events-eyebrow">HONOUR RANKING</span><h3>戦功ランキング</h3></div><span class="events-note">${rows.length ? '上位' + rows.length + '名' : '戦功の記録'}</span></div>${rows.length ? `<ol class="events-ranking">${rows.map(player => `<li><span class="events-rank-number">${number(player.rank)}</span><div class="events-rank-person">${personMarkup(player)}<small>${number(player.wins)}勝</small></div><strong>${number(player.points)}<small>点</small></strong></li>`).join('')}</ol>` : '<p class="events-empty-ranking">まだ戦功の記録はありません。最初の出陣をお待ちしています。</p>'}</section>`;
+    return `<section class="events-section"><div class="events-section-heading"><div><span class="events-eyebrow">HONOUR RANKING</span><h3>戦功ランキング</h3></div><span class="events-note">${rows.length ? '上位' + rows.length + '名' : '戦功の記録'}</span></div>${rows.length ? `<ol class="events-ranking">${rows.map(player => `<li data-stable-key="${esc(player.playerId)}"><span class="events-rank-number">${number(player.rank)}</span><div class="events-rank-person">${personMarkup(player)}<small>${number(player.wins)}勝</small></div><strong>${number(player.points)}<small>点</small></strong></li>`).join('')}</ol>` : '<p class="events-empty-ranking">まだ戦功の記録はありません。最初の出陣をお待ちしています。</p>'}</section>`;
   }
   function confirmationMarkup(value) {
     const publish = value.kind === 'publish', discard = value.kind === 'discard', event = value.event;
@@ -537,7 +537,7 @@
   function createUI(options = {}) {
     const doc = options.document || global.document, later = options.setTimeout || global.setTimeout?.bind(global), cancel = options.clearTimeout || global.clearTimeout?.bind(global);
     let dialog, controller, returnFocus, disposed = false, polling = false, pollTimer = null, clockTimer = null, detailKey = '', confirmKey = '', listHTML = '', lastResult = '', lastMode = null, lastOpen = false;
-    const $ = selector => dialog?.querySelector(selector), setHTML = (node, markup) => { if (node && node.innerHTML !== markup) node.innerHTML = markup; };
+    const $ = selector => dialog?.querySelector(selector), setHTML = (node, markup, settings = {}) => { if (!node) return; if (global.SengokuStableDOM) global.SengokuStableDOM.patch(node, markup, settings); else if (node.innerHTML !== markup) node.innerHTML = markup; };
     const updateText = (node, value) => { if (node && node.textContent !== value) node.textContent = value; };
     function navStatus(state) {
       const currentEvents = state.publicEvents.filter(event => active(event, controller?.serverTime() ?? Date.now()));
@@ -602,15 +602,15 @@
       confirmHost.hidden = !state.confirmation;
       if (key !== confirmKey) { confirmKey = key; setHTML(confirmHost, state.confirmation ? confirmationMarkup(state.confirmation) : ''); if (state.confirmation) { confirmHost.querySelector('[data-events-confirm-title]')?.focus?.({ preventScroll: true }); main.scrollTop = 0; } }
       $('[data-events-workspace]').hidden = Boolean(state.confirmation);
-      const markup = listMarkup(state, controller.serverTime()); if (markup !== listHTML) { listHTML = markup; setHTML($('[data-events-list]'), markup); }
+      const markup = listMarkup(state, controller.serverTime()); if (markup !== listHTML) { listHTML = markup; setHTML($('[data-events-list]'), markup, { key: [state.playerId, state.admin] }); }
       for (const node of dialog.querySelectorAll('[data-events="select"]')) node.disabled = state.sending || Boolean(state.confirmation);
       const detail = $('[data-events-detail]'); detail.hidden = !state.event;
       if (!state.event) clearDetail();
       if (state.event) {
         const { opponent, ...planDetails } = state.event;
         const key = JSON.stringify([state.admin, planDetails]);
-        if (detailKey !== key) { detailKey = key; setHTML(detail, detailMarkup(state.event, state.admin)); lastResult = ''; }
-        else {
+        if (detailKey !== key) { detailKey = key; setHTML(detail, detailMarkup(state.event, state.admin), { key: [state.playerId, state.admin, state.event.id], preserveSelectors: ['[data-event-opponent]', '[data-event-progress]', '[data-event-defense-adviser]', '[data-event-participation]', '[data-event-outcome]', '[data-event-rewards]', '[data-event-ranking]', '[data-event-battle-result]', '[data-event-adviser]', '[data-event-admin-actions]'] }); lastResult = ''; }
+        {
           const defender = defenderView(state.event);
           setHTML($('[data-event-opponent]'), defender.markup);
           for (const stage of state.event.plan.stages) {
@@ -631,7 +631,7 @@
         ticks(state);
       }
       if (state.change === 'select') { detail.querySelector('[data-event-heading]')?.focus?.({ preventScroll: true }); if (global.matchMedia?.('(max-width:760px)').matches) detail.scrollIntoView?.({ block: 'start', behavior: 'auto' }); }
-      else if (!state.confirmation && state.change !== 'open') main.scrollTop = scrollTop;
+      else if (!global.SengokuStableDOM && !state.confirmation && state.change !== 'open') main.scrollTop = scrollTop;
       if (!lastOpen) { lastOpen = true; $('#events-title')?.focus?.({ preventScroll: true }); }
     }
     function routeSocial(tab) { controller.close(); (options.openSocial || (tab => global.SengokuSocial?.open?.(tab)))(tab); }

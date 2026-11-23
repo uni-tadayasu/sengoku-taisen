@@ -1,0 +1,54 @@
+/* Monthly production and recurring costs share one readable resource ledger. */
+#main .economy-panel {
+  min-width: 0;
+  margin-bottom: 18px;
+  padding: clamp(12px, 2vw, 20px);
+}
+#main .economy-total {
+  display: grid;
+  gap: 2px;
+  margin: 0 0 14px;
+  font-size: 14px;
+}
+#main .economy-total > span { color: var(--muted); }
+#main .economy-total strong { font-size: 22px; line-height: 1.4; font-variant-numeric: tabular-nums; }
+#main .economy-total small { margin-left: 5px; font-size: 14px; }
+#main .economy-resources {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  gap: 10px;
+  min-width: 0;
+}
+#main .economy-resource {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: #08111b30;
+}
+#main .economy-resource h3 { display: flex; align-items: center; gap: 7px; margin: 0 0 8px; font-size: 16px; }
+#main .economy-resource h3 .icon { width: 18px; height: 18px; color: var(--gold); }
+#main .economy-resource dl { margin: 0; }
+#main .economy-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: baseline; gap: 8px; margin: 5px 0; font-size: 14px; line-height: 1.5; }
+#main .economy-row dt { color: var(--muted); white-space: nowrap; }
+#main .economy-row dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+#main .economy-net { margin-top: 9px; padding-top: 8px; border-top: 1px solid var(--line); font-weight: 650; }
+#main .economy-net dd { color: #b2dfbc; }
+#main .economy-net dd.is-negative { color: #ffaaa0; }
+#main .economy-details { margin-top: 12px; border-top: 1px solid var(--line); }
+#main .economy-details summary { min-height: 44px; padding: 11px 0; font-size: 14px; line-height: 1.5; cursor: pointer; }
+#main .economy-details h3 { margin: 12px 0 7px; font-size: 16px; }
+#main .economy-breakdown { margin: 0; }
+#main .economy-breakdown > div { display: grid; gap: 1px; padding: 5px 0; border-bottom: 1px solid #ffffff0c; font-size: 14px; line-height: 1.5; }
+#main .economy-breakdown dt { color: var(--muted); }
+#main .economy-breakdown dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+#main .economy-note, #main .economy-details p { margin: 11px 0 0; color: var(--muted); font-size: 14px; line-height: 1.65; }
+#modal .facility-maintenance { margin: 16px 0; padding: 12px; border: 1px solid var(--line); border-radius: 5px; }
+#modal .facility-maintenance h3 { margin: 0 0 9px; font-size: 16px; }
+#modal .facility-maintenance table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 14px; line-height: 1.5; }
+#modal .facility-maintenance th, #modal .facility-maintenance td { padding: 6px 4px; border-bottom: 1px solid var(--line); text-align: right; font-variant-numeric: tabular-nums; }
+#modal .facility-maintenance th:first-child { text-align: left; }
+#modal .facility-maintenance td { white-space: nowrap; }
+#modal .facility-maintenance p { margin: 10px 0 0; color: var(--muted); font-size: 14px; line-height: 1.65; }
+#app .topbar .resource-gain.is-negative { color: #ffaaa0; }
+#app.chronicle-shell .chronicle-ledger .resource-gain.is-negative { color: #913b2c; }

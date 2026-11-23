@@ -1,7 +1,7 @@
 /* Source-aware DOM updates: retain mounted controls and artwork across background refreshes. */
 (function(global){
  'use strict';
- const states=new WeakMap(),ELEMENT=1,TEXT=3,COMMENT=8;
+ const states=new WeakMap(),forgotten=new WeakSet(),ELEMENT=1,TEXT=3,COMMENT=8;
  const attrs=node=>new Map(Array.from(node.attributes||[],a=>[a.name,a.value]));
  const names=node=>Array.from(node.style||[],name=>[name,node.style.getPropertyValue(name),node.style.getPropertyPriority(name)]);
  const tokens=value=>new Set(String(value||'').split(/\s+/).filter(Boolean));
@@ -133,26 +133,92 @@
  }
  function normalizedKey(key){try{return JSON.stringify(key??null);}catch(_){return String(key);}}
  function dirtyAncestors(host){for(let node=host.parentNode;node;node=node.parentNode){const state=states.get(node);if(state)state.dirty=true;}}
- function snapshotScroll(host,records){
-  const result=[],seen=new Set(),save=node=>{if(!node||seen.has(node))return;seen.add(node);if(node===host||node.scrollTop||node.scrollLeft)result.push([node,node.scrollTop||0,node.scrollLeft||0]);};
-  save(host);const walk=list=>{for(const item of list){if(element(item.node)){save(item.node);walk(item.children);}}};walk(records);
-  const scrolling=host.ownerDocument?.scrollingElement;if(scrolling?.contains?.(host))save(scrolling);return result;
+ function ancestorSource(host){
+  const find=(owner,records)=>{for(const entry of records){if(entry.node.parentNode!==owner)continue;if(entry.node===host)return entry;if(element(entry.node)&&entry.node.contains(host)){const found=find(entry.node,states.get(entry.node)?.records||entry.children);if(found)return found;}}return null;};
+  for(let node=host.parentNode;node;node=node.parentNode){const state=states.get(node);if(!state)continue;const source=find(node,state.records);if(source&&(host.childNodes.length===0||source.children.some(entry=>entry.node.parentNode===host)))return source;}
+  return null;
+ }
+ function scrollViewport(node){
+  const doc=node.ownerDocument,rect=node.getBoundingClientRect?.();if(!rect)return null;
+  if(node===doc?.scrollingElement){const view=doc.defaultView;return{top:0,left:0,bottom:view?.innerHeight||doc.documentElement?.clientHeight||rect.height,right:view?.innerWidth||doc.documentElement?.clientWidth||rect.width};}
+  const top=rect.top+(node.clientTop||0),left=rect.left+(node.clientLeft||0);return{top,left,bottom:top+(node.clientHeight||rect.height),right:left+(node.clientWidth||rect.width)};
+ }
+ function scrollAnchors(node,host){
+  // A hidden/unmeasurable pane has no reliable visual anchor. Retain its
+  // numeric offset until it has a real content viewport again.
+  if(!(node.clientHeight>0||node===node.ownerDocument?.scrollingElement&&node.ownerDocument?.defaultView?.innerHeight>0))return[];
+  const viewport=scrollViewport(node);if(!viewport)return[];
+  const doc=node.ownerDocument,styleOf=doc?.defaultView?.getComputedStyle?.bind(doc.defaultView)||global.getComputedStyle?.bind(global),hidden=new Map();
+  const excluded=part=>{
+   if(!part||part===node)return false;if(hidden.has(part))return hidden.get(part);
+   const style=styleOf?.(part),position=style?.position||part.style?.getPropertyValue?.('position'),value=part.hidden===true||part.hasAttribute?.('hidden')||part.getAttribute?.('aria-hidden')==='true'||['absolute','fixed','sticky'].includes(position)||style?.display==='none'||['hidden','collapse'].includes(style?.visibility)||excluded(part.parentElement);
+   hidden.set(part,value);return value;
+  };
+  const candidates=[];
+  for(const part of node.querySelectorAll?.('*')||[]){
+   // A nested update may change the height of an offscreen region. Its next
+   // visible content can anchor the ancestor; unrelated earlier headers cannot.
+   if(!host.contains(part)&&!(host.compareDocumentPosition?.(part)&4))continue;
+   if(keyOf(part)===null&&!['p','h1','h2','h3','li','tr','article','summary'].includes(tag(part))||excluded(part))continue;
+   const rect=part.getBoundingClientRect?.();if(!rect||rect.width<=0||rect.height<=0||rect.bottom<=viewport.top||rect.top>=viewport.bottom||rect.right<=viewport.left||rect.left>=viewport.right)continue;
+   candidates.push({node:part,top:rect.top-viewport.top,left:rect.left-viewport.left});
+  }
+  // Prefer the visible text/control over a large section that merely contains
+  // it. Keep alternatives so removing the first visible row is also stable.
+  return candidates.filter(item=>!candidates.some(other=>other!==item&&item.node.contains(other.node))).sort((a,b)=>Math.max(0,a.top)-Math.max(0,b.top)||Math.max(0,a.left)-Math.max(0,b.left)).slice(0,6);
+ }
+ function captureScroll(host){
+  if(!host?.ownerDocument)return null;
+  const entries=[],seen=new Set(),save=node=>{if(!element(node)||seen.has(node))return;seen.add(node);const top=node.scrollTop||0,left=node.scrollLeft||0;entries.push({node,top,left,anchors:top||left?scrollAnchors(node,host):[],applied:false,cancelled:false});};
+  save(host);for(const node of host.querySelectorAll?.('*')||[])if(node.scrollTop||node.scrollLeft)save(node);
+  for(let node=host.parentElement;node;node=node.parentElement)save(node);
+  const scrolling=host.ownerDocument.scrollingElement;if(scrolling?.contains?.(host))save(scrolling);
+  const depth=node=>{let result=0;for(;node;node=node.parentNode)result++;return result;};entries.sort((a,b)=>depth(b.node)-depth(a.node));
+  return{host,connected:host.isConnected,key:states.get(host)?.key,entries};
+ }
+ function restoreScroll(snapshot){
+  if(!snapshot?.host)return false;const {host}=snapshot;
+  if(snapshot.cancelled||snapshot.connected&&host.isConnected===false||snapshot.key!==undefined&&states.get(host)?.key!==snapshot.key)return false;
+  if(snapshot.entries.some(entry=>entry.applied&&(Math.abs((entry.node.scrollTop||0)-entry.appliedTop)>.5||Math.abs((entry.node.scrollLeft||0)-entry.appliedLeft)>.5))){snapshot.cancelled=true;return false;}
+  for(const entry of snapshot.entries){
+   const {node}=entry;if(entry.cancelled||node.isConnected===false||!(node===host||host.contains(node)||node.contains(host)))continue;
+   // Later layout passes may reuse this snapshot, but a user scroll (or another
+   // explicit scroll) after our first restore owns the new position.
+   let top=entry.top,left=entry.left;const viewport=scrollViewport(node),anchor=viewport&&entry.anchors.find(item=>node.contains(item.node)&&item.node.isConnected!==false);
+   if(anchor){const rect=anchor.node.getBoundingClientRect?.();if(rect&&rect.height>0&&rect.width>0){if(entry.top)top=(node.scrollTop||0)+rect.top-viewport.top-anchor.top;if(entry.left)left=(node.scrollLeft||0)+rect.left-viewport.left-anchor.left;}}
+   if(Math.abs((node.scrollTop||0)-top)>.5||Math.abs((node.scrollLeft||0)-left)>.5){
+    const position={top:Math.max(0,top),left:Math.max(0,left),behavior:'instant'};let applied=false;
+    if(typeof node.scrollTo==='function')try{node.scrollTo(position);applied=true;}catch(_){}
+    if(!applied){node.scrollTop=position.top;node.scrollLeft=position.left;}
+   }
+   entry.applied=true;entry.appliedTop=node.scrollTop||0;entry.appliedLeft=node.scrollLeft||0;
+  }
+  return true;
  }
  function patch(host,source,settings={}){
   if(!host?.ownerDocument?.createElement)throw TypeError('StableDOM.patch requires a DOM host.');
   const html=String(source??''),key=normalizedKey(settings.key),selectors=Array.isArray(settings.preserveSelectors)?settings.preserveSelectors.filter(v=>typeof v==='string'):typeof settings.preserveSelectors==='string'?[settings.preserveSelectors]:[],preserveInputs=settings.preserveInputs!==false;
-  const optionKey=JSON.stringify([preserveInputs,selectors]),previous=states.get(host),stats={changed:false,replaced:false,artwork:false,added:0,removed:0,moved:0,text:0,attributes:0};
+  const optionKey=JSON.stringify([preserveInputs,selectors]),stats={changed:false,replaced:false,artwork:false,added:0,removed:0,moved:0,text:0,attributes:0};let previous=states.get(host);
+  // The first nested update can inherit the ancestor's source records. Reading
+  // the decorated live DOM as source would erase runtime artwork on that tick.
+  // Explicit resets and arbitrary unowned DOM still mount a fresh context.
+  if(!previous&&!forgotten.has(host)){const source=ancestorSource(host);if(source)previous={key,html:null,optionKey,records:source.children,dirty:true};}
+  forgotten.delete(host);
   if(previous&&preserveInputs&&!previous.dirty&&previous.key===key&&previous.html===html&&previous.optionKey===optionKey&&previous.records.every(r=>r.node.parentNode===host))return stats;
   const template=host.ownerDocument.createElement('template');template.innerHTML=html;
   const fresh=Array.from(template.content.childNodes),options={selectors,preserveInputs};
   if(!previous||previous.key!==key){
    host.replaceChildren(...fresh);states.set(host,{key,html,optionKey,records:fresh.map(record),dirty:false});dirtyAncestors(host);return{...stats,changed:true,replaced:true,artwork:fresh.some(n=>element(n)&&(n.hasAttribute('data-art-url')||n.querySelector?.('[data-art-url]'))),added:fresh.length};
   }
-  const active=host.ownerDocument.activeElement,owned=active&&host.contains(active),focusState=owned?retainInput(active,true):null,scroll=snapshotScroll(host,previous.records);
+  const active=host.ownerDocument.activeElement,owned=active&&host.contains(active),focusState=owned?retainInput(active,true):null,scroll=captureScroll(host);
   const next=patchChildren(host,previous.records,fresh,options,stats);states.set(host,{key,html,optionKey,records:next.records,dirty:false});dirtyAncestors(host);stats.artwork=next.artwork;
-  if(owned&&host.contains(active)&&host.ownerDocument.activeElement!==active){active.focus?.({preventScroll:true});restoreInput(active,focusState);}
-  for(const [node,top,left]of scroll)if(node===host||host.contains(node)||node===host.ownerDocument.scrollingElement){if(node.scrollTop!==top)node.scrollTop=top;if(node.scrollLeft!==left)node.scrollLeft=left;}
+  if(owned&&host.contains(active)&&host.ownerDocument.activeElement!==active){
+   active.focus?.({preventScroll:true});
+   if(preserveInputs)restoreInput(active,focusState);
+   else if(focusState&&active.value===focusState.value&&typeof focusState.start==='number'&&typeof active.setSelectionRange==='function'&&(active.selectionStart!==focusState.start||active.selectionEnd!==focusState.end||active.selectionDirection!==focusState.direction))try{active.setSelectionRange(focusState.start,focusState.end,focusState.direction||'none');}catch(_){}
+  }
+  restoreScroll(scroll);
   stats.changed=stats.added+stats.removed+stats.moved+stats.text+stats.attributes>0;return stats;
  }
- const api={patch,forget:host=>states.delete(host)};global.SengokuStableDOM=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;
+ const api={patch,captureScroll,restoreScroll,forget:host=>{forgotten.add(host);return states.delete(host);}};global.SengokuStableDOM=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;
 })(typeof window!=='undefined'?window:globalThis);

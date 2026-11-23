@@ -75,7 +75,7 @@ function setup(options={}) {
     queueWorldProgress:()=>control.queued++,preserveInteraction:()=>{},closeModal:()=>{},updateBattlePreview:()=>{},syncMusic:()=>{},
   };
   vm.createContext(context);
-  vm.runInContext(['staffConstructionReady','confirmedWorldClock','clockIsApplied','canMutate','syncMessage','requireWritable','save','backupCurrentSave','trustedBranchAuthority','applyBranchAuthority','applyCloudSave','applyDurableGift','restoreAdminAssets','processWorldClock','requestField'].map(fn).join('\n'),context);
+  vm.runInContext(['staffConstructionReady','confirmedWorldClock','clockIsApplied','canMutate','syncMessage','requireWritable','save','backupCurrentSave','trustedBranchAuthority','applyBranchAuthority','trustedMaintenanceAuthority','applyMaintenanceAuthority','applyCloudSave','applyDurableGift','restoreAdminAssets','processWorldClock','requestField'].map(fn).join('\n'),context);
   return {c:context,control,stored,trace,posts,gets,events,clockAccepts};
 }
 

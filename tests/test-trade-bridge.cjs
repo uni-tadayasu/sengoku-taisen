@@ -38,7 +38,7 @@ function setup({stored=new Map()}={}){
     CustomEvent:class{constructor(type){this.type=type;}},performance:{now:()=>1000},document:{hidden:false},$:()=>null,
     setTimeout:()=>1,clearTimeout(){},toast(){},render(){},renderHeader(){},refreshLiveControls(){},refreshJobTimers(){},refreshActiveModal(){},queueWorldProgress:()=>control.queued++,preserveInteraction(){},closeModal(){},updateBattlePreview(){},syncMusic(){},
   };
-  vm.createContext(c);vm.runInContext(['confirmedWorldClock','clockIsApplied','canMutate','syncMessage','requireWritable','save','backupCurrentSave','trustedBranchAuthority','applyBranchAuthority','applyCloudSave','applyDurableGift','processWorldClock','requestField','requestTrade','spendableAssets'].map(fn).join('\n'),c);
+  vm.createContext(c);vm.runInContext(['confirmedWorldClock','clockIsApplied','canMutate','syncMessage','requireWritable','save','backupCurrentSave','trustedBranchAuthority','applyBranchAuthority','trustedMaintenanceAuthority','applyMaintenanceAuthority','applyCloudSave','applyDurableGift','processWorldClock','requestField','requestTrade','spendableAssets'].map(fn).join('\n'),c);
   return{c,control,stored,trace,posts,events,acceptedClocks};
 }
 let checks=0;async function test(name,run){await run();checks++;console.log('PASS '+name);}
@@ -134,11 +134,11 @@ await test('a new identity cannot reuse an old identity’s matching semantic pe
 await test('claim applies only the canonical synced save while preserving army, governors and queued construction',async()=>{
   const h=setup(),s=h.c.game.state,gate=deferred();s.governors.farm=s.officers.find(id=>!s.army.includes(id));s.buildings.farm=5;s.jobs.push({kind:'building',id:'farm',targetLevel:6,total:1,remaining:1,totalSeconds:60,remainingSeconds:60});
   const preserved=state=>clone(Object.fromEntries(['home','cycle','army','governors','buildings','jobs','officers','officerVariants','walking'].map(key=>[key,state[key]])));
-  const before=preserved(s),gold=s.resources.gold,remote=JSON.parse(h.c.game.exportSave());remote.state.resources.gold+=77;
+  const before=preserved(s),gold=s.resources.gold,remote=JSON.parse(h.c.game.exportSave());remote.state.resources.gold+=77;remote.state.troops=2500000;
   h.control.onPost=async()=>({ok:true,revision:9,trade:{id:ID,status:'accepted'},receipt:{id:'claim-once'}});
   h.control.onRefresh=async()=>{if(h.control.refreshes===1)return{ok:true};await gate.promise;assert.equal(h.c.applyCloudSave(remote,{isAdmin:false,isStaff:false}).ok,true);h.control.status.revision=9;return{ok:true};};
   const task=h.c.requestTrade('/trades/'+ID+'/claim',{data:{}});await until(()=>h.control.refreshes===2);assert.equal(h.c.game.state.resources.gold,gold);assert.equal(h.c.canMutate(),false);
-  gate.resolve();await task;assert.equal(h.c.game.state.resources.gold,gold+77);assert.deepEqual(preserved(h.c.game.state),before);assert.deepEqual(preserved(JSON.parse(h.stored.get('save')).state),before);assert.equal(records(h).length,0);
+  gate.resolve();await task;assert.equal(h.c.game.state.resources.gold,gold+77);assert.equal(h.c.game.state.troops,2500000);assert(h.c.game.state.troops>h.c.game.troopCapacity());assert.equal(JSON.parse(h.stored.get('save')).state.troops,2500000);assert.deepEqual(preserved(h.c.game.state),before);assert.deepEqual(preserved(JSON.parse(h.stored.get('save')).state),before);assert.equal(records(h).length,0);
 });
 
 await test('late lease loss during flush never posts, and retry resumes only after the writer is ready',async()=>{

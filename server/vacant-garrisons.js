@@ -1,3 +1,4 @@
+import {maintenanceContext,protectMaintenance,externalTroopSnapshotStatements} from './maintenance.js';
 // Sender-owned troop depots in castles with no current player lord. The depot
 // neither grants residence nor transfers the castle's ordinary NPC soldiers.
 import {GameEngine,GAME_OFFICERS} from './game-runtime.js';
@@ -22,20 +23,20 @@ async function status(ctx,snapshot=null){
  const{db,user,helpers:h}=ctx,now=Date.now(),current=await h.getUser(db,user.id);
  await h.requireAccountAccess(db,user);h.registerResponseGuard?.(h.roleCommitGuard(current));
  snapshot=snapshot||await h.syncSnapshot(db,await h.getSyncRow(db,user.id),current,ctx.url.searchParams.get('deviceId')||null,now);
- const empty={ok:true,...snapshot,campaignId:null,commandCost:1,command:{current:0,max:0},army:{troops:0,capacity:0,recallCapacity:0},garrisons:[],availableCastles:[]};
+ const empty={ok:true,...snapshot,campaignId:null,commandCost:1,command:{current:0,max:0},army:{troops:0,capacity:0,transportCapacity:0,recruitmentCapacity:0,recallCapacity:0},garrisons:[],availableCastles:[]};
  if(!snapshot.save)return empty;
  const campaignId=snapshot.save.state.walking.campaignId,game=GameEngine.fromSave(snapshot.save,GAME_OFFICERS,{isAdmin:!!current.is_admin,isStaff:!!current.is_staff,staffBase:snapshot.staffBase||null});
  const owned=rows(await stmt(db,'SELECT castle_id,troops FROM vacant_garrisons WHERE actor_id=? AND campaign_id=? AND troops>0 ORDER BY castle_id',user.id,campaignId).all());
  const occupied=rows(await stmt(db,`SELECT DISTINCT vg.castle_id FROM vacant_garrisons vg JOIN player_saves ps ON ps.user_id=vg.actor_id WHERE vg.actor_id<>? AND vg.troops>0 AND ${ACTIVE_CAMPAIGN}`,user.id).all());
  const blocked=new Set(occupied.map(row=>row.castle_id)),vacant=await h.listVacantCastles(db,current,snapshot.clock,now),vacantIds=new Set(vacant.map(row=>row.id)),ownByCastle=new Map(owned.map(row=>[row.castle_id,Number(row.troops)]));
- const troops=game.state.troops,capacity=game.availableTroopCapacity(),recallCapacity=Math.max(0,capacity-troops);
+ const troops=game.state.troops,recruitmentCapacity=game.availableTroopCapacity(),transportCapacity=game.troopTransportCapacity(),recallCapacity=Math.max(0,transportCapacity-troops);
  const availableCastles=vacant.filter(c=>!blocked.has(c.id)).map(c=>({castleId:c.id,castleName:c.name,majorCity:!!c.majorCity,stationedTroops:ownByCastle.get(c.id)||0,maxSend:Math.max(0,Math.min(troops,CAP-(ownByCastle.get(c.id)||0)))}));
  const garrisons=owned.filter(row=>CASTLES.has(row.castle_id)).map(row=>{
   const c=CASTLES.get(row.castle_id),troops=Number(row.troops),canSend=vacantIds.has(c.id)&&!blocked.has(c.id);
   return{castleId:c.id,castleName:c.name,majorCity:c.majorCity,troops,canSend,sendReason:canSend?'':blocked.has(c.id)?'ほかの領主の兵が配置されたため、追加の兵は送れません。':'この城に領主がいるため、追加の兵は送れません。',maxSend:canSend?Math.max(0,Math.min(game.state.troops,CAP-troops)):0,maxRecall:Math.min(troops,recallCapacity)};
  });
  await h.requireAccountAccess(db,user);
- return{ok:true,...snapshot,campaignId,commandCost:1,command:{current:game.state.command,max:game.commandMax()},army:{troops,capacity,recallCapacity},garrisons,availableCastles};
+ return{ok:true,...snapshot,campaignId,commandCost:1,command:{current:game.state.command,max:game.commandMax()},army:{troops,capacity:transportCapacity,transportCapacity,recruitmentCapacity,recallCapacity},garrisons,availableCastles};
 }
 async function prior(ctx,requestId,digest){
  const record=await stmt(ctx.db,'SELECT * FROM vacant_garrison_requests WHERE actor_id=? AND request_id=?',ctx.user.id,requestId).first();
@@ -80,7 +81,9 @@ async function mutation(ctx,action){
   if(!await stmt(db,'SELECT 1 AS available WHERE '+other.sql,...other.args).first())h.fail(409,'GARRISON_CASTLE_RESERVED','この城にはほかの領主の兵が配置されています。');
  }
  const shared=user.is_staff&&!user.is_admin?await h.staffBaseDto(db,user,clock,ctx.now):null;
- const game=GameEngine.fromSave(save,GAME_OFFICERS,{isAdmin:!!user.is_admin,isStaff:!!user.is_staff,staffBase:shared,branchAuthority:{resolvedElapsedMs:branch.resolvedElapsedMs}});
+ const maintenanceAuthority=protectMaintenance(branch,await maintenanceContext(db,user.id,save,clock));
+ if(maintenanceAuthority.hasMore||maintenanceAuthority.asOfElapsedMs>clock.elapsedMs)h.fail(409,'CLOCK_STALE','維持費の時間経過を同期しています。最新の保存へ同期してください。');
+ const game=GameEngine.fromSave(save,GAME_OFFICERS,{isAdmin:!!user.is_admin,isStaff:!!user.is_staff,staffBase:shared,maintenanceAuthority,branchAuthority:{resolvedElapsedMs:branch.resolvedElapsedMs}});
  const advanced=game.applyWorldClock(clock,{maxSeconds:60,deferCycleSettlement:true});
  if(!advanced.ok||advanced.pending||advanced.settlementRequired)h.fail(409,'CLOCK_STALE','共通時計と本拠を同期してから兵を移動してください。');
  if(game.state.gameOver)h.fail(409,'GARRISON_UNAVAILABLE','本拠の状態を確認してから兵を移動してください。');
@@ -89,7 +92,7 @@ async function mutation(ctx,action){
  if(action==='send'&&body.troops>armyBefore)h.fail(409,'INSUFFICIENT_TROOPS','手元の軍勢の兵が足りません。');
  if(action==='send'&&garrisonBefore+body.troops>CAP)h.fail(409,'GARRISON_CAPACITY','この城に配置できる兵数の上限を超えます。');
  if(action==='recall'&&body.troops>garrisonBefore)h.fail(409,'INSUFFICIENT_GARRISON_TROOPS','この城に配置している兵が足りません。');
- if(action==='recall'&&armyBefore+body.troops>game.availableTroopCapacity())h.fail(409,'TROOP_CAPACITY','帰還中・出陣中の兵を含めると、手元の軍勢の収容上限を超えます。');
+ if(action==='recall'&&armyBefore+body.troops>game.troopTransportCapacity())h.fail(409,'TROOP_CAPACITY','出陣中の兵が帰還する枠を含めると、兵の輸送で受け入れられる総数上限を超えます。拠点の収容人数とは別枠です。配置中の兵はそのまま保管されます。');
  const delta=action==='send'?body.troops:-body.troops,armyAfter=armyBefore-delta,garrisonAfter=garrisonBefore+delta;
  const message=action==='send'?`${castle.name}に兵${body.troops.toLocaleString()}人を配置しました。`:`${castle.name}から兵${body.troops.toLocaleString()}人が手元の軍勢へ帰還しました。`;
  game.state.troops=armyAfter;game.state.command--;game.state.troopTransferSequence=movement.sequence+1;game.log(message,'army');
@@ -113,6 +116,7 @@ async function mutation(ctx,action){
   ...cpuLosses.statements(GATE,gateArgs)
  ];
  const personal=h.staffPersonalProgressStatement?await h.staffPersonalProgressStatement(db,user,next,now,GATE,gateArgs,game.getStaffPersonalProgress?.()):null;if(personal)statements.push(personal);
+ statements.push(...externalTroopSnapshotStatements(db,[user.id],clock,GATE,gateArgs));
  await db.batch(statements);const committed=await prior(ctx,body.requestId,digest);
  if(!committed){await h.requireAccountAccess(db,user);h.fieldWriter(await h.getSyncRow(db,user.id),body.deviceId,body.expectedRevision,Date.now());h.fail(409,'GARRISON_STATE_CHANGED','城の領主・兵の配置・保存状態が更新されました。最新の状態を確認してください。');}
  return response(ctx,committed,body.deviceId,committed.commit_token!==nonce);

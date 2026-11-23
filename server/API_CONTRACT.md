@@ -289,6 +289,7 @@ All four routes return this snapshot shape on success:
   writable: true,
   entitlements: {edo: false, ieyasuU: false},
   staffBase: null, // current staff receive the separate shared base DTO below
+  maintenanceAuthority, // private troop totals and sealed timeline; see upkeep section
   clock // current shared world clock, as specified above
 }
 ```
@@ -298,7 +299,7 @@ All four routes return this snapshot shape on success:
 | GET `/sync` | `?deviceId=…` (optional) | Reads the authenticated account's snapshot without acquiring or renewing a lease. |
 | POST `/sync/lease` | `{deviceId,deviceName?,takeOver?:boolean}` | Claims an empty or expired lease, renews the same device's lease, or explicitly takes over when `takeOver:true`. |
 | POST `/sync/release` | `{deviceId}` | Releases only the matching holder's lease. Another device's release is a harmless no-op. |
-| PUT `/sync` | `{deviceId,revision,save:object}` | Saves only when the revision matches and this device still holds an unexpired lease; increments revision and renews the lease. A boundary settlement can additionally increment revision. |
+| PUT `/sync` | `{deviceId,revision,maintenanceRevision,save:object}` | Saves only when the save and private troop-ledger revisions match and this device still holds an unexpired lease; increments save revision and renews the lease. A boundary settlement can additionally increment revision. |
 | POST `/sync/settle` | `{deviceId,revision}` | Active writer explicitly finalizes a cycle after flushing its last pre-boundary save; returns a full sync snapshot. |
 
 Device IDs use ASCII letters, digits, `_` or `-`, with a maximum length of 90 characters. Use a fresh ID per browser document so two tabs are independent writers. A linked identity can have several connected devices, but only one device advances and writes the game at a time. `writable` is true only if the requested device is the current holder and the lease has not expired. Server timestamps allow a client to compute the remaining duration without trusting its local wall-clock offset.
@@ -310,6 +311,43 @@ Save writes use a single SQL `UPDATE … WHERE user_id=? AND revision=? AND writ
 The client polls snapshots every five seconds while the document is visible, schedules a save about one second after local changes, renews its lease at least every ten seconds while active, and heartbeats presence every twenty seconds. It pauses progression when the lease or network is unavailable and preserves a local recovery copy before replacing conflicting local progress. These intervals describe the client integration; the server enforces the lease and revision checks independently. Synchronization is automatic polling, not a claim of instantaneous delivery or uninterrupted operation during network loss.
 
 `PUT /sync` has a two-MiB streamed request-body limit, including its JSON wrapper. Other bodies remain limited to 16 KiB. The server validates the game's version-2 schema, including the 256 officer IDs, 129 castle records, 64 facilities, resource ranges, officer variants, jobs, armies, governors, timers, receipts and battle data. Only known fields survive normalization; imported `isAdmin`, `role` or other authority flags are not trusted. Invalid data returns HTTP 400 `INVALID_SAVE`. The returned save is the normalized canonical content, so clients must accept normalization without erasing actions made while a save request was in flight. Each identity is limited to 120 lease requests and 120 save writes per minute, with independent counters.
+
+### 兵・施設の維持費と私有の外部兵台帳
+
+維持費はゲーム内の月額で、通常の4資源の生産額から差し引きます。1倍速では60秒が1か月です。エンジンは経過秒数に比例して徴収し、端数を `realtime.incomeRemainders` に繰り越します。月の変わり目で同じ費用を重ねて引くことはありません。残高は0未満にならず、勾玉・威信は維持費の対象外です。
+
+| 項目 | 金銭／月 | 兵糧／月 | 木材／月 | 石材／月 |
+|---|---:|---:|---:|---:|
+| 現在の所有兵総数 `N` | `ceil(N × 0.04)` | `ceil(N × 0.12)` | 0 | 0 |
+| 対象施設・城郭の完成レベル合計 `L` | `2 × L` | `L` | `L` | `L` |
+| 従来の所有城の基礎維持費（城数 `C`） | 0 | `60 × C` | 0 | 0 |
+
+兵数は本隊、非同盟集結の進軍兵、個人所有城の実守備兵、支拠点の実配置兵、帰還待機の兵、忍者・足軽の保有分、サーバー台帳にある外部保有分を合算します。支拠点や本城への派生した守備支援、同盟員から受け入れた兵、スタッフの共同京都御所の城兵を個人兵として重複加算しません。施設の完成レベルは城下の64施設・個人所有城郭・稼働中の支拠点本体と内部施設です。未完成の予約分を含めず、支施設の完成時刻も尊重します。城数分の既存兵糧費は施設費の内訳に1回だけ含めます。
+
+外部所有兵の正本は、現在の戦役の `vacant_garrisons`、本人が送った保留中交易の兵と本人宛て未受取 `trade_deliveries`、本人の未受取・未引退 `alliance_units` です。取消や脱退だけで所有兵を無償維持へ切り替えません。大会用の `conquest_*` は通常戦役の個人兵とは別です。
+
+追加移行 `0033_external_troop_upkeep` は `external_troop_current_counts`、`external_troop_accounts`、`external_troop_snapshots` を追加します。既存の本人兵は移行時の共通時間で初期記録を作り、それ以前の外部兵維持費は0です。空城・交易・同盟の増減は、元の資産・兵変更と同じ操作台帳の条件を使うトランザクション内で最終合計を記録します。同じ確定操作の再送は新たな増減を作りません。
+
+本人の同期応答には次の私有メタデータを含めます。公開プロフィール、領主一覧、他プレイヤーの情報には含めません。
+
+```js
+maintenanceAuthority = {
+  version: 1,
+  campaignId: "現在の戦役ID",
+  activatedElapsedMs: 100000,
+  revision: 3,
+  asOfElapsedMs: 180000,
+  baseline: {elapsedMs:100000, vacant:500, trade:250, alliance:1000},
+  changes: [{elapsedMs:150000, vacant:750, trade:0, alliance:1000}]
+  // hasMore:true は履歴を分割して返した場合だけ存在
+}
+```
+
+`baseline` は保存済み時刻以前の最後の合計、`changes` はそれ以後の変化です。同一時刻の複数確定は最後の版を使い、時刻順に返します。発行した `asOfElapsedMs` までを確定し、後続の変化で既確定区間を書き換えません。クライアントはこの時刻と共有時計の確認済み時刻のうち早い方まで進めます。通常の5秒同期で区間を延ばし、後日の通知で残高を巻き戻しません。長い履歴は最大10,000変化ずつ送り、`hasMore:true` の間は途中の保存と次の取得を続け、通常操作を待機させます。サーバーの履歴は切り捨てません。
+
+`PUT /sync` の `maintenanceRevision` は、現在のエンジンへ適用済みの認証された台帳の版を指定します。初期保存で台帳がまだない場合を除き、欠落・不一致は409 `MAINTENANCE_REFRESH_REQUIRED` となります。最新の同期応答へ置き換えてから再試行し、旧クライアントでは画面の再読み込みを案内します。保存中に外部保有数や確定時刻が変わった場合も、古い前提のまま確定しません。ファイルの `maintenanceAuthority` や任意の外部兵数は信頼せず、サーバーは元の台帳から投影します。
+
+すでに保存した時刻より古いチェックポイントは409 `CLOCK_REWIND`、発行済みの `asOfElapsedMs` より先の保存は409 `MAINTENANCE_REFRESH_REQUIRED` で拒否し、保存・資産・台帳を変更しません。接続中のファイル読込にも、その時点の本人・戦役に対する認証済み台帳を使用します。異なる戦役、履歴の対象外の古い保存、読込中のアカウントや権限変更では現在の保存を保持します。
 
 ### Operator assets and restoration
 
@@ -622,8 +660,8 @@ Incoming and outgoing lists contain all states in their respective direction; hi
 // Extra fields on the list response
 {
   summary:{incomingPending:1,outgoingPending:2,claimable:1},
-  rules:{assets:["gold","rice","wood","stone","magatama"],maxAmount:1000000,
-    balanceLimit:999999999,maxPending:20}
+  rules:{assets:["gold","rice","wood","stone","magatama","troops"],maxAmount:1000000,
+    balanceLimit:100000000,troopBalanceLimit:100000000,maxPending:20}
 }
 ```
 
@@ -639,7 +677,9 @@ There can be at most 20 pending outgoing proposals per player, checked again at 
 
 Persist each request ID and semantic payload before transport. The unique `(actor_id,request_id)` receipt has no TTL. Replaying identical semantics returns the original receipt and current trade/sync snapshot before checking the old device/revision; reusing an ID for another action, target or bundle returns `REQUEST_ID_REUSED`. Device and expected-save revision are transport context and are not part of the semantic hash. Canonical zero-filled bundles make omitted/explicit zero fields equivalent. After an uncertain response, retry the same request ID and terms with the current device/revision. Clear the client pending record only after the canonical save revision is at least `receipt.playerRevision` and the transaction can be read at or above `receipt.tradeRevision`.
 
-Every resulting wallet balance must be at most 999,999,999. Acceptance or claim that would overflow any asset fails as a whole with `ASSET_LIMIT`; no truncation, partial delivery, deletion or payment occurs. In particular, a full wallet does not discard a refund: it remains claimable until the owner makes space. Escrow, request receipts and deliveries live outside imported saves and survive new campaigns, world cycles, guild changes and staff transitions under the same player ID. Restoring an old game save does not reopen a claimed delivery. Existing deliberate save-import semantics still apply to wallet balances; this system does not attest every locally authored gameplay balance.
+Every resulting resource wallet balance must be at most 100,000,000. Acceptance or claim that would overflow any asset fails as a whole with `ASSET_LIMIT`; no truncation, partial delivery, deletion or payment occurs. In particular, a full wallet does not discard a refund: it remains claimable until the owner makes space. Escrow, request receipts and deliveries live outside imported saves and survive new campaigns, world cycles, guild changes and staff transitions under the same player ID. Restoring an old game save does not reopen a claimed delivery. Existing deliberate save-import semantics still apply to wallet balances; this system does not attest every locally authored gameplay balance.
+
+Troop receipts in v4.9.10 use an independent transport allowance: `troopTransportCapacity() = max(0,100000000-reservedTroops())`. Acceptance, proceeds claims and refund claims that increase the field army compare the final troop balance against this ceiling, never against barracks, buildings, governors, normal castle capacity or shared-base capacity. Outgoing troops are deducted before checking a net incoming amount. A pure export or net reduction is permitted even when the existing field army exceeds its normal recruitment capacity. Each trade bundle still limits each asset to 1,000,000 per operation. Accepted stock above recruitment capacity remains ordinary saved `state.troops`; it is never truncated to recruitment capacity on reload, cycle projection or role changes. Returning active non-rally marches retain their reserved space under the 100-million stock limit. At that actual limit `TROOP_LIMIT` rejects the entire receipt and leaves pending deliveries/escrow intact. Recruitment and internal branch-to-army capacity rules are unchanged.
 
 Other errors include `INVALID_INPUT`, `INVALID_CURSOR`, `INVALID_TARGET`, `PLAYER_NOT_FOUND`, `TRADE_NOT_FOUND`, `TRADE_FORBIDDEN`, `TRADE_CLOSED`, `TRADE_NOT_CLAIMABLE`, `TRADE_ALREADY_CLAIMED`, `TRADE_PENDING_LIMIT`, `TRADE_CHANGED`, `INSUFFICIENT_ASSETS`, `SAVE_REQUIRED`, `LEASE_REQUIRED`, `REVISION_CONFLICT`, `CLOCK_ANCHOR_REQUIRED`, `CLOCK_STALE`, `WORLD_CLOCK_CHANGED`, `AUTHORITY_CHANGED`, and `RATE_LIMITED`. A failed operation is never permission to adjust balances locally.
 
@@ -1546,6 +1586,8 @@ The shared Kyoto Gosho castle stock is visible with `canSource:false,canDestinat
 
 Branch `commanders` is an optional array of owned officer IDs, defaulting to empty. Each completed Edo branch accepts one officer; each completed Nijo, Osaka or Nagoya branch accepts two. Assignment and removal consume neither commands nor resources. Placement rejects a non-owned officer, a duplicate within or across branches, an officer in the field army, and an officer serving as a governor. Army and governor assignment, including automatic governor planning, also exclude stationed officers. Fallen branches allow removal; unfinished or retreating branches do not accept assignments. These records assign existing officers and never grant a character, rarity or duplicate copy.
 
+`POST /branches/auto-assign-commanders` (v4.9.10) accepts `{branchId,requestId,deviceId,expectedRevision,campaignId,sequence}`. `branchId` is an eligible owned branch ID or `all` for all eligible owned branches. The read-only engine plan uses current rank-adjusted leadership, intellect, then valor, with rank and officer ID breaking ties. It excludes all existing branch commanders, army members and governors; existing placements are retained. For `all`, deterministic branch ID order fills the first slot of each branch before any second slot. Unbuilt, fallen, retreating or foreign branches are skipped in a bulk plan and rejected as a specific target. Limited officers leave the remaining slots vacant. No eligible slots or candidates rejects without changes. Successful results include `branchId,assignments:[{branchId,branchName,officerId,name,rank,lead,intellect,valor}],remainingSlots,commandCost:0,changed:true,message`. The full intent and exact result are kept in the existing deployment receipt under the `assign-commander` category, so retries never recalculate or assign additional officers. The save and branch ledger update atomically under the same access/revision/sequence guards as manual assignment, with no migration or separate officer inventory.
+
 Migration `0031_branch_deployments` adds `branch_deployment_requests` for `transfer-troops`, `assign-commander` and `remove-commander`, and `troop_transfer_states` for the per-actor/per-campaign movement marker. Request IDs share the branch operation replay lookup with construction receipts, so a reused ID cannot change its route or intent. Movement changes the saved `state.troopTransferSequence` and its authoritative marker exactly once; a branch-only commander change still updates the authoritative branch sequence and player-save revision. Source balances, private staff backup updates, branch state, marker and result receipt share the successful commit gate. Writer, revision, campaign, role, shared-base, clock or ledger races cannot leave a partial movement or assignment.
 
 ### Troop conservation during synchronization
@@ -1573,7 +1615,7 @@ All three routes require authentication. Mutation bodies reject unknown fields. 
   campaignId:"current-campaign-id", // null when no campaign save exists
   commandCost:1,
   command:{current:3,max:5},
-  army:{troops:9000,capacity:12000,recallCapacity:3000},
+  army:{troops:9000,capacity:100000000,transportCapacity:100000000,recruitmentCapacity:12000,recallCapacity:99991000},
   garrisons:[{
     castleId:"inuyama",castleName:"犬山城",majorCity:false,troops:500,
     canSend:true,sendReason:"",maxSend:9000,maxRecall:500
@@ -1592,11 +1634,11 @@ result = {
 }
 ```
 
-`garrisons` contains only positive balances owned by the authenticated sender in the current campaign. `availableCastles` includes currently eligible destinations, including a sender's existing refillable depot. It omits other players' names, IDs, roles and depot balances. `recallCapacity` is the remaining field-army space after existing and reserved troops; `maxRecall` is the smaller of that space and the sender's depot balance. `maxSend` is the smaller of the current field army and remaining space under the destination's 100,000,000 cap. These counts are previews; every POST revalidates authoritative state. A save-less identity gets `campaignId:null`, empty lists and zero command/army projections.
+`garrisons` contains only positive balances owned by the authenticated sender in the current campaign. `availableCastles` includes currently eligible destinations, including a sender's existing refillable depot. It omits other players' names, IDs, roles and depot balances. `capacity` is the absolute transport receive ceiling (`100000000-reservedTroops()`) and is retained for cached clients; `transportCapacity` exposes the same value explicitly, and `recruitmentCapacity` exposes the independent normal recruitment ceiling. New clients can fall back to `capacity` while receiving an older server response. `recallCapacity` is `max(0,transportCapacity-troops)`; `maxRecall` is the smaller of that independent allowance and the sender's depot balance. Normal barracks/base capacity never blocks this recall. `maxSend` is the smaller of the current field army and remaining space under the destination's 100,000,000 cap. These counts are previews; every POST revalidates authoritative state. A save-less identity gets `campaignId:null`, empty lists and zero command/army projections.
 
 Vacancy uses current ordinary `castle_seats` and the same eligible major-city holder predicates as event defense. All five major cities can be destinations when actually vacant. Edo remains occupied while its designated primary operator exists, and Kyoto Gosho while designated staff membership exists, even before those holders have a save; stationing never acquires their access. Any eligible metropolitan claimant makes that city unavailable, including disputed ownership with no single public event opponent. A different sender's positive garrison in that sender's current campaign also blocks the destination. An old inactive campaign does not reserve a castle indefinitely.
 
-A new lord arriving after deployment blocks further sends. The original sender's own remaining troops can still be recalled, subject to their command, writer and army-capacity checks. The recall never takes troops from the new lord or the NPC castle. The player must use a fresh request ID for a new transport and retain the original action, castle, troop count and campaign for an uncertain-response retry; only writer/revision metadata may refresh. An existing committed receipt is resolved before new transport eligibility, so later occupancy, a changed writer or a different current campaign does not invalidate that original acknowledgement. The replay returns the immutable `result` and the latest sync/list projection with `idempotent:true`.
+A new lord arriving after deployment blocks further sends. The original sender's own remaining troops can still be recalled, subject to their command, writer and independent transport-capacity checks. The recall never takes troops from the new lord or the NPC castle. The player must use a fresh request ID for a new transport and retain the original action, castle, troop count and campaign for an uncertain-response retry; only writer/revision metadata may refresh. An existing committed receipt is resolved before new transport eligibility, so later occupancy, a changed writer or a different current campaign does not invalidate that original acknowledgement. The replay returns the immutable `result` and the latest sync/list projection with `idempotent:true`.
 
 Migration `0032_vacant_garrisons` adds `vacant_garrisons` and `vacant_garrison_requests`. A new transport transaction checks the current actor, campaign, role/access, writer/save revision, running clock revision, own depot revision and shared troop-movement marker. Sends additionally bind the current-lord vacancy predicate and absence of another active sender's garrison. The transaction writes the army debit/credit, command debit, updated save, exact depot balance, movement marker and receipt together. Concurrent branch transfers and vacant-castle transports based on the same army snapshot can commit only one debit. The server never imports depot balances from ordinary game saves.
 

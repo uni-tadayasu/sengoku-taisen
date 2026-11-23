@@ -1,3 +1,4 @@
+import {maintenanceContext,protectMaintenance,externalTroopSnapshotStatements,MAINTENANCE_REFRESH_MESSAGE} from './maintenance.js';
 import {GameEngine, GAME_OFFICERS} from './game-runtime.js';
 import {handleLetters} from './letters.js';
 import {handleTrades} from './trade.js';
@@ -23,8 +24,8 @@ import {handleBranches,projectBranchState,applyBranchProgress,reconcileBranchPro
 import {relocateResidence} from './relocation.js';
 import {ensureResidency,residencySnapshot,residencyDirectory,residencyStart,initialResidencyStatements,residencyTargetGuard,prepareResidencySuccession,prepareResidencyCpuLosses} from './residency.js';
 const API = '/api/v1';
-const API_VERSION = '4.9.9';
-const API_FEATURES = Object.freeze({trades:true,moderation:true,premium:true,timedEvents:true,troopTrades:true,roamingBattles:true,roamingDeployment:true,covertDispatch:true,privatePlayerRoles:true,guildIcons:true,court:true,kyotoGosho:true,branches:true,branchBattles:true,branchFacilities:true,audioCalls:true,progression:true,armyPresets:true,allianceStrategy:true,sharedConquest:true,newcomerProtection:true,webPush:true,battleAdviser:true,battleCatalog:true,eventBattleRewards:true,shogunate:true,attackTravel:true,castleResidency:true,residencyRelocation:true});
+const API_VERSION = '4.9.10';
+const API_FEATURES = Object.freeze({trades:true,moderation:true,premium:true,timedEvents:true,troopTrades:true,roamingBattles:true,roamingDeployment:true,covertDispatch:true,privatePlayerRoles:true,guildIcons:true,court:true,kyotoGosho:true,branches:true,branchBattles:true,branchFacilities:true,audioCalls:true,progression:true,armyPresets:true,allianceStrategy:true,sharedConquest:true,newcomerProtection:true,webPush:true,battleAdviser:true,battleCatalog:true,eventBattleRewards:true,shogunate:true,attackTravel:true,castleResidency:true,residencyRelocation:true,maintenanceUpkeep:true});
 const MAX_BODY = 16 * 1024;
 const MAX_SAVE_BODY = 2 * 1024 * 1024;
 const MAX_AVATAR_BYTES = 48 * 1024;
@@ -1316,7 +1317,8 @@ async function settlePlayerCycle(db,row,user,now,clock=undefined,{deferActive=tr
     await reconcileCovertProgress(db,user.id,save);
     const branchAccess=await branchStateGuard(db,user.id,save.state.walking.campaignId);await reconcileBranchProgress(db,user.id,save,clock);
     const staffBase=user.is_staff&&!user.is_admin?await staffBaseDto(db,user,clock,now):null;
-    const game=GameEngine.fromSave(save,GAME_OFFICERS,{isAdmin:!!user.is_admin,isStaff:!!user.is_staff,staffBase,branchAuthority:{resolvedElapsedMs:branchAccess.resolvedElapsedMs}});
+    const maintenanceAuthority=protectMaintenance(branchAccess,await maintenanceContext(db,user.id,save,clock));
+    const game=GameEngine.fromSave(save,GAME_OFFICERS,{isAdmin:!!user.is_admin,isStaff:!!user.is_staff,staffBase,maintenanceAuthority,branchAuthority:{resolvedElapsedMs:branchAccess.resolvedElapsedMs}});
     const target=Math.min(current*WORLD_CYCLE_MS,(index+2)*WORLD_CYCLE_MS);
     const result=game.applyWorldClock({...clock,elapsedMs:target},{maxSeconds:86400});
     if(!result.ok||!result.changed)return row;
@@ -1402,7 +1404,7 @@ async function staffBaseDto(db,user,clock,now,row=undefined) {
 async function tradeTroopCapacity(db,user,save,clock,now) {
   const staffBase=user.is_staff&&!user.is_admin?await staffBaseDto(db,user,clock,now):null;
   const game=GameEngine.fromSave(save,GAME_OFFICERS,{isAdmin:!!user.is_admin,isStaff:!!user.is_staff,staffBase});
-  return Math.max(0,Math.min(1000000,Math.floor(game.availableTroopCapacity())));
+  return game.troopTransportCapacity();
 }
 function renameCampaignClan(state,clan) {if(state.clan===clan)return;const previous=state.clan;for(const castle of Object.values(state.castles)){if(castle.owner===previous)castle.owner=clan;else if(castle.owner===clan)castle.owner='在地衆';}state.clan=clan;delete state.treaties[clan];}
 // A lost personal home can retreat to a castle that belongs to another clan
@@ -1446,8 +1448,11 @@ async function advanceDepartingStaff(db,row,user,backup,now,clock) {
   if(save.state.worldClock&&save.state.worldClock.elapsedMs>=until)return row;
   await reconcileCovertProgress(db,user.id,save);
   const branchAccess=await branchStateGuard(db,user.id,save.state.walking.campaignId);await reconcileBranchProgress(db,user.id,save,{...clock,elapsedMs:until});
-  const base=await staffBaseDto(db,historical,clock,now),game=GameEngine.fromSave(save,GAME_OFFICERS,{isStaff:true,staffBase:base,branchAuthority:{resolvedElapsedMs:branchAccess.resolvedElapsedMs}});
-  const result=game.applyWorldClock({...clock,elapsedMs:until},{maxSeconds:86400});if(!result.ok||!result.changed)return row;
+  const maintenanceAuthority=protectMaintenance(branchAccess,await maintenanceContext(db,user.id,save,clock));
+  const base=await staffBaseDto(db,historical,clock,now),game=GameEngine.fromSave(save,GAME_OFFICERS,{isStaff:true,staffBase:base,maintenanceAuthority,branchAuthority:{resolvedElapsedMs:branchAccess.resolvedElapsedMs}});
+  const result=game.applyWorldClock({...clock,elapsedMs:until},{maxSeconds:86400});
+  if(result.maintenancePending&&!result.changed)fail(409,'STAFF_TRANSITION_PENDING','スタッフ任期中の進行を引き継いでいます。自動同期で続きを反映します。');
+  if(!result.ok||!result.changed)return row;
   const next=normalizeGameSave(JSON.parse(game.exportSave()),historical,now,{reading:true,clock}),nonce=crypto.randomUUID(),roleGuard=roleCommitGuard(user),rewards=result.cycleRewards||[];
   const gate='EXISTS(SELECT 1 FROM player_saves WHERE user_id=? AND cycle_commit=?)',args=[user.id,nonce];
   const statements=[stmt(db,`UPDATE player_saves SET save_json=?,revision=revision+1,updated_at=?,cycle_index=?,cycle_home=?,cycle_commit=?
@@ -1462,7 +1467,7 @@ async function advanceDepartingStaff(db,row,user,backup,now,clock) {
   if(rewards.length)statements.push(stmt(db,`DELETE FROM field_relations WHERE (user_a=? OR user_b=?) AND updated_elapsed_ms<? AND ${gate}`,user.id,user.id,next.state.cycle.index*WORLD_CYCLE_MS,...args));
   const changed=rows((await db.batch(statements))[0])[0];
   if(!changed)fail(409,'STAFF_ROLE_CHANGED','役職と個人進行が更新されました。もう一度同期してください。');
-  if(result.pending)fail(409,'STAFF_TRANSITION_PENDING','スタッフ任期中の進行を引き継いでいます。自動同期で続きを反映します。');
+  if(result.pending||result.maintenancePending&&next.state.worldClock.elapsedMs<until)fail(409,'STAFF_TRANSITION_PENDING','スタッフ任期中の進行を引き継いでいます。自動同期で続きを反映します。');
   return changed;
 }
 
@@ -1700,15 +1705,16 @@ async function resolveSyncBranches(db,user,save,before,clock,now,{importedStatio
     // A later field transaction can change a defense while its owner's ordinary
     // checkpoint remains older. Rebase this branch-only simulation at that last
     // authoritative transition; never apply today's fallen state to past raids.
-    // The branch cursor also survives an ordinary import's older timestamp or
-    // permitted +5s prediction. Neither may replay a raid twice or skip it.
+    // The branch cursor survives imports independently of the private clock.
+    // Neither older branch data nor a changed save may replay a raid twice.
     const start=resolvedElapsedMs,target=Math.max(start,incomingElapsed);
     trusted.state.worldClock={id:WORLD_CLOCK_ID,elapsedMs:start};trusted.state.turn=Math.floor(start/WORLD_MONTH_MS);trusted.state.realtime.elapsed=start%WORLD_MONTH_MS/1000;
     applyBranchProgress(trusted,model,{...clock,elapsedMs:start});
     shared=user.is_staff&&!user.is_admin?await staffBaseDto(db,user,clock,now):null;
-    const game=GameEngine.fromSave(trusted,GAME_OFFICERS,{isAdmin:!!user.is_admin,isStaff:!!user.is_staff,staffBase:shared});
+    const maintenanceAuthority=protectMaintenance(access,await maintenanceContext(db,user.id,trusted,clock));
+    const game=GameEngine.fromSave(trusted,GAME_OFFICERS,{isAdmin:!!user.is_admin,isStaff:!!user.is_staff,staffBase:shared,maintenanceAuthority});
     const result=game.applyWorldClock({...clock,elapsedMs:target},{maxSeconds:86400,deferCycleSettlement:true});
-    if(!result.ok||result.pending||result.settlementRequired)fail(409,'BRANCH_CLOCK_STALE','支拠点の時間経過を同期しています。最新の保存へ同期してください。');
+    if(!result.ok||result.pending||result.settlementRequired||result.maintenancePending&&game.state.worldClock.elapsedMs<target)fail(409,'BRANCH_CLOCK_STALE','支拠点の時間経過を同期しています。最新の保存へ同期してください。');
     replayed=JSON.parse(game.exportSave());
     for(const loss of game.takeBranchParentLosses())parentLosses.set(loss.parentCastleId,loss);
     model={branches:copy(replayed.state.branches),jobs:copy(replayed.state.jobs.filter(job=>job.kind==='branch'))};
@@ -1759,8 +1765,9 @@ async function resolveSyncResidency(db,user,save,before,clock,now,branchAccess){
     const trusted=copy(before),start=Math.max(Number(before.state.worldClock.elapsedMs),Number(cursor?.resolved_elapsed_ms||0),Number(branchAccess.resolvedElapsedMs||0)),target=Math.max(start,Math.min(clock.elapsedMs,Number(save.state.worldClock?.elapsedMs||0)));
     trusted.state.worldClock={id:WORLD_CLOCK_ID,elapsedMs:start};trusted.state.turn=Math.floor(start/WORLD_MONTH_MS);trusted.state.realtime.elapsed=start%WORLD_MONTH_MS/1000;
     await reconcileCovertProgress(db,user.id,trusted);applyBranchProgress(trusted,branchAccess.state,{...clock,elapsedMs:start});
-    const game=GameEngine.fromSave(trusted,GAME_OFFICERS,{branchAuthority:{resolvedElapsedMs:start}}),advanced=game.applyWorldClock({...clock,elapsedMs:target},{maxSeconds:86400,deferCycleSettlement:true});
-    if(!advanced.ok||advanced.pending||advanced.settlementRequired)fail(409,'RESIDENCY_CLOCK_STALE','城の防衛を共通時刻へ同期しています。最新の保存を確認してください。');
+    const maintenanceAuthority=protectMaintenance(branchAccess,await maintenanceContext(db,user.id,trusted,clock));
+    const game=GameEngine.fromSave(trusted,GAME_OFFICERS,{maintenanceAuthority,branchAuthority:{resolvedElapsedMs:start}}),advanced=game.applyWorldClock({...clock,elapsedMs:target},{maxSeconds:86400,deferCycleSettlement:true});
+    if(!advanced.ok||advanced.pending||advanced.settlementRequired||advanced.maintenancePending&&game.state.worldClock.elapsedMs<target)fail(409,'RESIDENCY_CLOCK_STALE','城の防衛を共通時刻へ同期しています。最新の保存を確認してください。');
     events=game.takeHomeDefenseLosses?.()||[];resolved=Math.max(resolved,target);
     if(events.some(event=>event.castleId===member.castle_id&&Number(event.occurredElapsedMs)>Number(member.lord_since_elapsed_ms)))provenState=game.state;
   }
@@ -1789,9 +1796,10 @@ async function syncSnapshot(db,row,user,deviceId,now,{settle=false}={}) {
   const current=await getUser(db,user.id);if(current.is_admin!==user.is_admin||current.staff_term!==user.staff_term)fail(409,'STAFF_ROLE_CHANGED','役職が更新されました。もう一度同期してください。');
   await requireAccountAccess(db,authenticated);
   const privateSave=row?.save_json?normalizeGameSave(JSON.parse(row.save_json),user,now,{reading:true,clock}):null;
+  const maintenanceAuthority=(await maintenanceContext(db,user.id,privateSave,clock)).authority;
   let branchResolvedElapsedMs=0;
   if(privateSave){await restoreServerMarch(db,user.id,privateSave);await reconcileCovertProgress(db,user.id,privateSave);const branches=await branchStateGuard(db,user.id,privateSave.state.walking.campaignId);applyBranchProgress(privateSave,branches.state,clock);branchResolvedElapsedMs=branches.resolvedElapsedMs;}
-  return {ok:true,user:mapUser(user,now),staffBase:publicStaffBase(staffBase),save:privateSave,clock,branchResolvedElapsedMs,...await residencySnapshot(db,user.id,now,evaluationRef),
+  return {ok:true,user:mapUser(user,now),staffBase:publicStaffBase(staffBase),save:privateSave,clock,maintenanceAuthority,branchResolvedElapsedMs,...await residencySnapshot(db,user.id,now,evaluationRef),
     revision:Number(row?.revision||0),updatedAt:row?.updated_at?iso(row.updated_at):null,
     writerDeviceId:row?.writer_device_id||null,writerDeviceName:row?.writer_device_name||null,
     leaseExpiresAt:row?.lease_expires_at?iso(row.lease_expires_at):null,serverTime:iso(now),
@@ -2171,7 +2179,9 @@ async function departCampaignMarch(ctx,raw){
   const branchAccess=await branchStateGuard(db,user.id,body.campaignId);await reconcileBranchProgress(db,user.id,save,clock);await reconcileCovertProgress(db,user.id,save);
   const targetId=body.kind==='branch'?branchSite(body.targetId)?.parentCastleId:body.targetId;if(!CASTLE_BY_ID[targetId])fail(400,'INVALID_TARGET','地図から攻撃先を選んでください。');
   const court=await courtAttackAuthority(db,user,save.state.home,targetId),emperor=await courtEmperorAuthority(db,user),shared=user.is_staff&&!user.is_admin?await staffBaseDto(db,user,clock,now):null;
-  const game=GameEngine.fromSave(save,GAME_OFFICERS,{isAdmin:!!user.is_admin,isStaff:!!user.is_staff,isCourtEmperor:emperor.isCourtEmperor,staffBase:shared,branchAuthority:{resolvedElapsedMs:branchAccess.resolvedElapsedMs}});
+  const maintenanceAuthority=protectMaintenance(branchAccess,await maintenanceContext(db,user.id,save,clock));
+  if(maintenanceAuthority.hasMore||maintenanceAuthority.asOfElapsedMs>clock.elapsedMs)fail(409,'CLOCK_STALE','維持費の時間経過を同期しています。最新の保存へ同期してください。');
+  const game=GameEngine.fromSave(save,GAME_OFFICERS,{isAdmin:!!user.is_admin,isStaff:!!user.is_staff,isCourtEmperor:emperor.isCourtEmperor,staffBase:shared,maintenanceAuthority,branchAuthority:{resolvedElapsedMs:branchAccess.resolvedElapsedMs}});
   const advanced=game.applyWorldClock(clock,{maxSeconds:86400,deferCycleSettlement:true});if(!advanced.ok||advanced.pending||advanced.settlementRequired)fail(409,'CLOCK_STALE','共通時計と本拠を同期してください。');
   const result=body.kind==='branch'?game.departBranchAttack(body.targetId,body.tactic,body.troops):game.departAttack(body.targetId,body.tactic,body.troops);
   if(!result.ok)fail(409,result.code||'MARCH_UNAVAILABLE',result.message);
@@ -2190,7 +2200,9 @@ async function settleCampaignMarch(ctx,march){
   const branches=await branchStateGuard(db,user.id,march.campaign_id);await reconcileBranchProgress(db,user.id,save,clock);await reconcileCovertProgress(db,user.id,save);
   const court=await courtAttackAuthority(db,user,march.source_castle_id,march.target_castle_id),emperor=await courtEmperorAuthority(db,user),shared=user.is_staff&&!user.is_admin?await staffBaseDto(db,user,clock,now):null;
   save.state.march=payload.nativeMarch;
-  const game=GameEngine.fromSave(save,GAME_OFFICERS,{isAdmin:!!user.is_admin,isStaff:!!user.is_staff,isCourtEmperor:emperor.isCourtEmperor,staffBase:shared,branchAuthority:{resolvedElapsedMs:branches.resolvedElapsedMs}});
+  const maintenanceAuthority=protectMaintenance(branches,await maintenanceContext(db,user.id,save,clock));
+  if(maintenanceAuthority.hasMore||maintenanceAuthority.asOfElapsedMs>clock.elapsedMs)fail(409,'MARCH_RETRY','維持費の時間経過を同期しています。');
+  const game=GameEngine.fromSave(save,GAME_OFFICERS,{isAdmin:!!user.is_admin,isStaff:!!user.is_staff,isCourtEmperor:emperor.isCourtEmperor,staffBase:shared,maintenanceAuthority,branchAuthority:{resolvedElapsedMs:branches.resolvedElapsedMs}});
   const advanced=game.applyWorldClock(clock,{maxSeconds:86400,deferCycleSettlement:true});if(!advanced.ok||advanced.pending||advanced.settlementRequired)fail(409,'MARCH_RETRY','到着した部隊の本拠を同期しています。');
   game.resolveDueMarches();const outcome=game.state.marchHistory.find(x=>x.id===march.id);if(!outcome)fail(409,'MARCH_RETRY','到着した部隊の戦況を確認しています。');
   const next=normalizeGameSave(JSON.parse(game.exportSave()),user,now,{clock}),nonce=crypto.randomUUID(),role=roleCommitGuard(user),sharedGuard=shared?{sql:"EXISTS(SELECT 1 FROM staff_base WHERE id='kyoto_gosho' AND revision=?)",args:[shared.revision]}:{sql:'1=1',args:[]},cpuLosses=await prepareResidencyCpuLosses(db,{userId:user.id,events:game.takeHomeDefenseLosses?.()||[],now,state:next.state}),guards=[role,court,branches.guard,sharedGuard,cpuLosses.guard],result={battle:outcome.battle||null,message:outcome.message,resolvedAt:iso(now)},gate="EXISTS(SELECT 1 FROM battle_marches WHERE id=? AND commit_token=? AND status IN ('resolved','cancelled'))",args=[march.id,nonce];
@@ -2200,7 +2212,7 @@ async function settleCampaignMarch(ctx,march){
   const personal=await staffPersonalProgressStatement(db,user,next,now,gate,args);if(personal)statements.push(personal);
   const done=await db.batch(statements);if(!rows(done[0]).length)fail(409,'MARCH_RETRY','到着時の本拠が更新されました。再確認しています。');
 }
-const MARCH_RETRY_ERRORS=new Set(['MARCH_RETRY','WORLD_CLOCK_CHANGED','REVISION_CONFLICT','FIELD_STATE_CHANGED','BRANCH_STATE_CHANGED','STAFF_BASE_CHANGED','CYCLE_SETTLEMENT_REQUIRED','WORLD_PAUSED']);
+const MARCH_RETRY_ERRORS=new Set(['MARCH_RETRY','CLOCK_STALE','MAINTENANCE_REFRESH_REQUIRED','WORLD_CLOCK_CHANGED','REVISION_CONFLICT','FIELD_STATE_CHANGED','BRANCH_STATE_CHANGED','STAFF_BASE_CHANGED','CYCLE_SETTLEMENT_REQUIRED','WORLD_PAUSED']);
 async function settleBattleMarches(ctx,{actorId=null,limit=12}={}){
   const {db,now}=ctx,clock=await getWorldClock(db,now);if(!clock.running)return;
   const due=rows(await stmt(db,`SELECT * FROM battle_marches WHERE status='marching' AND arrives_ms<=?${actorId?' AND actor_id=?':''} ORDER BY arrives_ms,id LIMIT ?`,clock.elapsedMs,...(actorId?[actorId]:[]),Math.min(40,limit)).all());
@@ -2229,7 +2241,8 @@ async function promoteImportedMarch(db,user,save,clock,now){
   if(!save.state.worldClock){
     // Anchor a first offline import once, using the engine's migration so
     // treaties, intelligence, jobs and the remaining journey keep their time.
-    const shared=user.is_staff&&!user.is_admin?await staffBaseDto(db,user,clock,now):null,game=GameEngine.fromSave(save,GAME_OFFICERS,{isAdmin:!!user.is_admin,isStaff:!!user.is_staff,staffBase:shared});
+    const maintenanceAuthority=(await maintenanceContext(db,user.id,save,clock)).authority;
+    const shared=user.is_staff&&!user.is_admin?await staffBaseDto(db,user,clock,now):null,game=GameEngine.fromSave(save,GAME_OFFICERS,{isAdmin:!!user.is_admin,isStaff:!!user.is_staff,staffBase:shared,maintenanceAuthority});
     const migrated=game.applyWorldClock(clock);if(!migrated.ok||migrated.pending)fail(409,'CLOCK_ANCHOR_REQUIRED','共通時計を確認してから進軍中の保存を同期してください。');
     game.state.cycle.latestReward=null;Object.assign(save,JSON.parse(game.exportSave()));native=save.state.march;native.cycle=save.state.cycle.index;
   }
@@ -2280,11 +2293,12 @@ async function fieldAttack(db,user,raw,now,internal={}) {
   if(!rewardOnly)defenderRow=await settlePlayerCycle(db,defenderRow,target,now,undefined,{deferActive:true});
   const clock=await getWorldClock(db,now);if(!clock.running)fail(409,'WORLD_PAUSED','世界の共通時間が停止中です。');
   const journey=flight?await advanceReservedMarch(marchContext(db,user,now),attackerRow,clock):null;
-  const attacker=journey?.save||normalizeGameSave(JSON.parse(attackerRow.save_json),user,now,{reading:true,clock}),defender=normalizeGameSave(JSON.parse(defenderRow.save_json),target,now,{reading:true,clock}),a=attacker.state,d=defender.state;
+  const defenderJourney=flight&&!rewardOnly?await advanceReservedMarch(marchContext(db,target,now),defenderRow,clock):null;
+  const attacker=journey?.save||normalizeGameSave(JSON.parse(attackerRow.save_json),user,now,{reading:true,clock}),defender=defenderJourney?.save||normalizeGameSave(JSON.parse(defenderRow.save_json),target,now,{reading:true,clock}),a=attacker.state,d=defender.state;
   if(flight&&(clock.elapsedMs<flight.arrives_ms||a.walking.campaignId!==flight.campaign_id||d.walking.campaignId!==flight.target_campaign_id||Math.floor(clock.elapsedMs/WORLD_CYCLE_MS)!==flightPayload.marker.cycle||a.clan!==flightPayload.marker.clan||a.castles[flight.source_castle_id]?.owner!==a.clan))fail(409,'MARCH_TARGET_CHANGED','進軍中に物語・拠点・年月が変わったため帰還しました。');
   if(flight)a.march=null;
-  const attackerBranches=journey?.branches||await branchStateGuard(db,user.id,a.walking.campaignId),defenderBranches=await branchStateGuard(db,target.id,d.walking.campaignId);
-  if(!journey)await reconcileBranchProgress(db,user.id,attacker,clock);await reconcileBranchProgress(db,target.id,defender,clock,{projectToClock:true});
+  const attackerBranches=journey?.branches||await branchStateGuard(db,user.id,a.walking.campaignId),defenderBranches=defenderJourney?.branches||await branchStateGuard(db,target.id,d.walking.campaignId);
+  if(!journey)await reconcileBranchProgress(db,user.id,attacker,clock);if(!defenderJourney)await reconcileBranchProgress(db,target.id,defender,clock,{projectToClock:true});
   const defenderHomeBefore=d.home,castleId=flight?.target_castle_id||body.targetCastleId||d.home,battleMode=body.targetBranchId?'branch':fieldBattleMode(target,castleId,{legacy:body.targetCastleId===undefined});
   const courtGuard=await courtAttackAuthority(db,user,flight?.source_castle_id||a.home,castleId);
   const residencyGuard=await residencyTargetGuard(db,{attackerId:user.id,targetId:target.id,castleId,isHome:castleId===d.home&&!body.targetBranchId,term:flightPayload?.residencyTerm||null,now,fail});
@@ -2334,6 +2348,8 @@ async function fieldAttack(db,user,raw,now,internal={}) {
   const succession=won&&castleId===defenderHomeBefore&&!branch&&battleMode!=='reward'?await prepareResidencySuccession(db,{userId:target.id,castleId,battleId:battle.id,kind:'field',now}):{guard:{sql:'1=1',args:[]},succession:null,statements:()=>[]};
   if(succession.succession)battle.succession=succession.succession;
   const cpuLosses=await prepareResidencyCpuLosses(db,{userId:user.id,events:journey?.game.takeHomeDefenseLosses?.()||[],now,state:a});
+  const defenderCpuLosses=await prepareResidencyCpuLosses(db,{userId:target.id,events:defenderJourney?.game.takeHomeDefenseLosses?.()||[],now,state:d});
+  defenderBranches.guard={sql:defenderBranches.guard.sql+' AND '+defenderCpuLosses.guard.sql,args:[...defenderBranches.guard.args,...defenderCpuLosses.guard.args]};
   if(rally)rally.applyResult(battle,a);
   GameEngine.recordOfficerBattleState?.(a,{key:'field:'+battle.id,won,role:'siege',army:attackProfile.army});
   if(battleMode!=='reward')GameEngine.recordOfficerBattleState?.(d,{key:'field:'+battle.id,won:!won,role:'defense',army:d.army});
@@ -2359,7 +2375,7 @@ async function fieldAttack(db,user,raw,now,internal={}) {
       ON CONFLICT(actor_id,request_id) DO NOTHING RETURNING request_id`,user.id,body.requestId,digest,nonce,resultJson,now,target.id,user.id,body.expectedRevision,flight?1:0,body.deviceId,now,defenderRow.revision,flight.id,flight.revision,clock.elapsedMs,...roleGuard.args,...targetRoleGuard.args,...sharedGuard.args,...courtGuard.args,...residencyGuard.args,...succession.guard.args,...cpuLosses.guard.args,...attackerBranches.guard.args,...defenderBranches.guard.args,...protection.guard.args,...support.guard.args,...(rally?.guard.args||[]),WORLD_CLOCK_ID,clock.revision,first,second,clock.elapsedMs,Math.floor(clock.elapsedMs/WORLD_CYCLE_MS)*WORLD_CYCLE_MS,user.id,clock.elapsedMs-FIELD_RULES.attackCooldownMs,target.id,sharedShield?1:0,clock.elapsedMs-FIELD_RULES.defenderProtectionMs,target.id,sharedShield?1:0,clock.elapsedMs-FIELD_RULES.defenderProtectionMs),
     stmt(db,`UPDATE player_saves SET save_json=?,revision=revision+1,updated_at=?,cycle_home=? WHERE user_id=? AND ${gate}`,attackerJson,now,attackerNext.state.cycle?.home||attackerNext.state.home,user.id,...gateArgs)
   ];
-  statements.push(...succession.statements(gate,gateArgs),...cpuLosses.statements(gate,gateArgs));
+  statements.push(...succession.statements(gate,gateArgs),...cpuLosses.statements(gate,gateArgs),...defenderCpuLosses.statements(gate,gateArgs));
   // Record the last eligible castle in the same receipt-gated transaction as
   // its capture. A following cycle settlement may immediately reset holdings.
   if(captured)statements.push(...campaignShogunateStatements({db,user,save:attackerNext,now,gateSql:gate,gateArgs}));
@@ -2371,10 +2387,13 @@ async function fieldAttack(db,user,raw,now,internal={}) {
   if(defenderNext){statements.push(stmt(db,`UPDATE player_saves SET save_json=?,revision=revision+1,updated_at=?,cycle_home=? WHERE user_id=? AND ${gate}`,defenderJson,now,defenderNext.state.cycle?.home||defenderNext.state.home,target.id,...gateArgs));statements.push(...branchProgressStatements(db,target.id,defenderNext,now,gate,gateArgs,{resolvedElapsedMs:clock.elapsedMs}));}
   statements.push(...covertIncidentStatements(db,user.id,attackerNext,now,gate,gateArgs));
   const attackerPersonal=await staffPersonalProgressStatement(db,user,attackerNext,now,gate,gateArgs,journey?.game.getStaffPersonalProgress?.());if(attackerPersonal)statements.push(attackerPersonal);
-  if(defenderNext){const personal=await staffPersonalProgressStatement(db,target,defenderNext,now,gate,gateArgs,null,captureChange);if(personal)statements.push(personal);}
+  if(defenderNext){const personal=await staffPersonalProgressStatement(db,target,defenderNext,now,gate,gateArgs,defenderJourney?.game.getStaffPersonalProgress?.(),captureChange);if(personal)statements.push(personal);
+    if(defenderJourney){statements.push(...covertIncidentStatements(db,target.id,defenderNext,now,gate,gateArgs));for(const event of saveAchievements(defenderJourney.before,defenderNext))statements.push(achievementStatement(db,target.id,event,now,gate,gateArgs));}
+  }
   for(const event of saveAchievements(attackerBefore,attackerNext))statements.push(achievementStatement(db,user.id,event,now,gate,gateArgs));
   statements.push(stmt(db,`INSERT INTO field_battles(id,attacker_id,defender_id,defender_campaign_id,occurred_elapsed_ms,result_json,created_at) SELECT ?,?,?,?,?,?,? WHERE ${gate}`,battle.id,user.id,target.id,d.walking.campaignId,clock.elapsedMs,resultJson,now,...gateArgs));
   statements.push(...await fieldBattleMailStatements(db,battle,{attacker:a.home,defenderBefore:defenderHomeBefore,defenderAfter:d.home,defenderLevel:d.castles[d.home].level},now,gate,gateArgs));
+  statements.push(...externalTroopSnapshotStatements(db,[...(support.maintenanceOwnerIds||[]),...(rally?.maintenanceOwnerIds||[])],clock,gate,gateArgs));
   const result=await db.batch(statements);
   if(!rows(result[0]).length){const completed=await priorFieldRequest(db,user.id,body,'attack',digest);if(completed)return fieldReplayAttack(db,user,body,completed,now);if(flight)fail(409,'MARCH_RETRY','到着時の状態が更新されました。再確認しています。');const replay=await fieldCommitFailure(db,user,body,'attack',digest,clock,now);return fieldReplayAttack(db,user,body,replay,now);}
   return {...await syncSnapshot(db,await getSyncRow(db,user.id),user,body.deviceId,now),battle:publicBattle(battle),idempotent:false};
@@ -2465,7 +2484,7 @@ async function route(request, env, now) {
       await stmt(db, 'SELECT (SELECT COUNT(*) FROM users) AS count,EXISTS(SELECT 1 FROM trades) AS trade_schema,EXISTS(SELECT 1 FROM trade_requests) AS trade_request_schema,EXISTS(SELECT 1 FROM trade_deliveries) AS trade_delivery_schema,EXISTS(SELECT 1 FROM player_bans) AS ban_schema,EXISTS(SELECT 1 FROM moderation_requests) AS moderation_schema,(SELECT content_revision FROM moderation_state WHERE id=1) AS content_revision,EXISTS(SELECT 1 FROM premium_orders) AS premium_order_schema,EXISTS(SELECT 1 FROM premium_events) AS premium_event_schema,EXISTS(SELECT 1 FROM premium_grants) AS premium_grant_schema,EXISTS(SELECT 1 FROM premium_appearances) AS premium_appearance_schema,EXISTS(SELECT 1 FROM timed_events) AS timed_event_schema,EXISTS(SELECT 1 FROM timed_event_requests) AS timed_event_request_schema,EXISTS(SELECT 1 FROM timed_event_participants) AS timed_event_participant_schema,EXISTS(SELECT 1 FROM timed_event_rewards) AS timed_event_reward_schema,EXISTS(SELECT 1 FROM roaming_battles) AS roaming_battle_schema,EXISTS(SELECT 1 FROM covert_states) AS covert_state_schema,EXISTS(SELECT 1 FROM covert_requests) AS covert_request_schema,EXISTS(SELECT 1 FROM covert_battles) AS covert_battle_schema,EXISTS(SELECT 1 FROM covert_incidents) AS covert_incident_schema,EXISTS(SELECT 1 FROM roaming_deployment) AS roaming_deployment_schema,EXISTS(SELECT 1 FROM roaming_deployment_proposals) AS roaming_deployment_proposal_schema,EXISTS(SELECT 1 FROM roaming_deployment_requests) AS roaming_deployment_request_schema,EXISTS(SELECT 1 FROM roaming_unit_cooldowns) AS roaming_unit_cooldown_schema,EXISTS(SELECT 1 FROM court_contributions) AS court_contribution_schema,EXISTS(SELECT 1 FROM court_leader) AS court_leader_schema,EXISTS(SELECT 1 FROM court_chat) AS court_chat_schema,EXISTS(SELECT 1 FROM court_audience_threads) AS court_audience_schema,EXISTS(SELECT 1 FROM court_audience_messages) AS court_audience_message_schema,EXISTS(SELECT 1 FROM court_requests) AS court_request_schema,EXISTS(SELECT 1 FROM branch_states) AS branch_state_schema,EXISTS(SELECT 1 FROM branch_requests) AS branch_request_schema').first();
       const voiceSchema=await stmt(db,"SELECT EXISTS(SELECT 1 FROM voice_sessions WHERE lease_until>=0) AS sessions,EXISTS(SELECT 1 FROM voice_signals WHERE acknowledged>=0) AS signals,EXISTS(SELECT 1 FROM voice_membership_epochs WHERE epoch>=1) AS membership,(SELECT COUNT(*) FROM sqlite_master WHERE type='trigger' AND name IN ('voice_guild_join','voice_guild_leave','voice_guild_move')) AS trigger_count").first();
       if(Number(voiceSchema?.trigger_count)!==3)throw Error('Voice membership migration incomplete');
-      await stmt(db,'SELECT (SELECT COUNT(*) FROM progress_accounts) AS progression,(SELECT COUNT(*) FROM alliance_operations) AS alliance,(SELECT COUNT(*) FROM conquest_seasons) AS conquest,(SELECT COUNT(*) FROM pvp_protection) AS protection,(SELECT COUNT(*) FROM notification_outbox) AS notifications,(SELECT COUNT(*) FROM shogunate_rights) AS shogunate,(SELECT COUNT(*) FROM shogunate_requests) AS shogunate_requests,(SELECT COUNT(*) FROM battle_marches) AS battle_marches,(SELECT COUNT(*) FROM conquest_marches) AS conquest_marches,(SELECT COUNT(*) FROM castle_seats) AS castle_residency,(SELECT COUNT(*) FROM castle_successions) AS castle_successions,(SELECT 1 FROM castle_retired_campaigns LIMIT 1) AS retired_campaign,(SELECT campaign_retired FROM alliance_units LIMIT 1) AS retired_unit').first();
+      await stmt(db,'SELECT (SELECT COUNT(*) FROM progress_accounts) AS progression,(SELECT COUNT(*) FROM alliance_operations) AS alliance,(SELECT COUNT(*) FROM conquest_seasons) AS conquest,(SELECT COUNT(*) FROM pvp_protection) AS protection,(SELECT COUNT(*) FROM notification_outbox) AS notifications,(SELECT COUNT(*) FROM shogunate_rights) AS shogunate,(SELECT COUNT(*) FROM shogunate_requests) AS shogunate_requests,(SELECT COUNT(*) FROM battle_marches) AS battle_marches,(SELECT COUNT(*) FROM conquest_marches) AS conquest_marches,(SELECT COUNT(*) FROM castle_seats) AS castle_residency,(SELECT COUNT(*) FROM castle_successions) AS castle_successions,(SELECT 1 FROM castle_retired_campaigns LIMIT 1) AS retired_campaign,(SELECT campaign_retired FROM alliance_units LIMIT 1) AS retired_unit,(SELECT COUNT(*) FROM external_troop_accounts) AS maintenance_accounts,(SELECT COUNT(*) FROM external_troop_snapshots) AS maintenance_snapshots').first();
     } catch { fail(503, 'SERVICE_UNAVAILABLE', '通信サービスの準備中です。'); }
     return {ok:true,status:'ready',version:API_VERSION,features:API_FEATURES};
   }
@@ -2569,7 +2588,7 @@ async function route(request, env, now) {
     return handleEvents({db,user,now,path,method,url,request,helpers:{eventGarrison,fieldAttackPower,registerDefenseResponseGuard:guard=>eventDefenseResponseGuards.set(request,guard),fail,readBody,budget,idField,textField,uid,hash,getUser,getSyncRow,requireAdmin,requireAccountAccess,roleCommitGuard,evaluationRef,fieldWriter,settleWriterCycle,getWorldClock,normalizeGameSave,syncSnapshot,syncLease:SYNC_LEASE,worldClockId:WORLD_CLOCK_ID}});
   }
   let user = await authenticate(request,db,now);
-  const expansionContext={db,env,user,now,path,method,url,request,helpers:{fail,readBody,budget,idField,textField,uid,hash,getUser,getSyncRow,requireAdmin,requireAccountAccess,roleCommitGuard,accountCommitGuard,evaluationRef,fieldWriter,settleWriterCycle,getWorldClock,normalizeGameSave,syncSnapshot,staffBaseDto,syncLease:SYNC_LEASE,worldClockId:WORLD_CLOCK_ID}};
+  const expansionContext={db,env,user,now,path,method,url,request,helpers:{fail,readBody,budget,idField,textField,uid,hash,getUser,getSyncRow,requireAdmin,requireAccountAccess,roleCommitGuard,accountCommitGuard,evaluationRef,fieldWriter,settleWriterCycle,getWorldClock,normalizeGameSave,syncSnapshot,staffBaseDto,reconcileCovertProgress,reconcileBranchProgress,branchStateGuard,branchProgressStatements,covertIncidentStatements,staffPersonalProgressStatement,saveAchievements,achievementStatement,syncLease:SYNC_LEASE,worldClockId:WORLD_CLOCK_ID}};
   if(path==='/castles/residency/relocate'&&method==='POST')return relocateResidence(expansionContext,await readBody(request));
   if(path==='/castles/residency/start'&&method==='POST')return residencyStart(expansionContext,await readBody(request));
   if(path==='/marches'&&method==='GET')return marchStatus(expansionContext,url);
@@ -2604,10 +2623,10 @@ async function route(request, env, now) {
   if (path === '/branches' || path.startsWith('/branches/')) return handleBranches({db,user,now,path,method,url,request,helpers:{fail,readBody,budget,idField,hash,getUser,getSyncRow,fieldWriter,settleWriterCycle,getWorldClock,normalizeGameSave,roleCommitGuard,syncSnapshot,requireAccountAccess,staffBaseDto,covertIncidentStatements,staffPersonalProgressStatement,registerResponseGuard:guard=>courtResponseGuards.set(request,{...guard,code:'BRANCH_ACCESS_CHANGED',message:'支拠点の利用資格が変わりました。最新の拠点と接続状態を確認してください。'}),syncLease:SYNC_LEASE,worldClockId:WORLD_CLOCK_ID}});
   if (path === '/walking/start' && method === 'POST') return walkingStart(db,user,await readBody(request),now);
   if (path === '/walking/claim' && method === 'POST') return walkingClaim(db,user,await readBody(request),now);
-  if (path === '/covert' || path.startsWith('/covert/')) return handleCovert({db,user,now,path,method,url,request,helpers:{fail,readBody,budget,idField,hash,getUser,getSyncRow,fieldWriter,settleWriterCycle,getWorldClock,normalizeGameSave,roleCommitGuard,syncSnapshot,requireAccountAccess,staffBaseDto,getFieldList,fieldStaffDefense,fieldDefense,fieldRelation,fieldRelationStatus,courtEmperorAuthority,courtAttackAuthority,reconcileBranchProgress,branchStateGuard,branchProgressStatements,registerCourtGuard:guard=>courtResponseGuards.set(request,guard),syncLease:SYNC_LEASE,worldClockId:WORLD_CLOCK_ID}});
+  if (path === '/covert' || path.startsWith('/covert/')) return handleCovert({db,user,now,path,method,url,request,helpers:{fail,readBody,budget,idField,hash,getUser,getSyncRow,fieldWriter,settleWriterCycle,getWorldClock,normalizeGameSave,roleCommitGuard,syncSnapshot,requireAccountAccess,staffBaseDto,getFieldList,fieldStaffDefense,fieldDefense,fieldRelation,fieldRelationStatus,courtEmperorAuthority,courtAttackAuthority,reconcileBranchProgress,branchStateGuard,branchProgressStatements,staffPersonalProgressStatement,saveAchievements,achievementStatement,registerCourtGuard:guard=>courtResponseGuards.set(request,guard),syncLease:SYNC_LEASE,worldClockId:WORLD_CLOCK_ID}});
   if (path === '/roaming/battle' && method === 'POST' || path === '/roaming/history' && method === 'GET') return handleRoaming({...expansionContext,helpers:{...expansionContext.helpers,reconcileBranchProgress,branchStateGuard,branchProgressStatements,covertIncidentStatements}});
   if (path === '/letters' || path.startsWith('/letters/')) return handleLetters({db,user,now,path,method,url,request,helpers:{fail,readBody,budget,idField,textField,uid,mapUser,getUser,evaluationRef,evaluationUpdates,accountCommitGuard,requireAccountAccess,contentRevisionInput,resolveMessageRegister}});
-  if (path === '/trades' || path.startsWith('/trades/')) return handleTrades({db,user,now,path,method,url,request,helpers:{fail,readBody,budget,idField,uid,mapUser,getUser,getSyncRow,hash,fieldWriter,settleWriterCycle,getWorldClock,normalizeGameSave,roleCommitGuard,syncSnapshot,requireAccountAccess,tradeTroopCapacity,syncLease:SYNC_LEASE,worldClockId:WORLD_CLOCK_ID}});
+  if (path === '/trades' || path.startsWith('/trades/')) return handleTrades({db,user,now,path,method,url,request,helpers:{fail,readBody,budget,idField,uid,mapUser,getUser,getSyncRow,hash,fieldWriter,settleWriterCycle,getWorldClock,normalizeGameSave,roleCommitGuard,syncSnapshot,requireAccountAccess,tradeTroopCapacity,staffBaseDto,reconcileCovertProgress,reconcileBranchProgress,branchStateGuard,branchProgressStatements,covertIncidentStatements,staffPersonalProgressStatement,saveAchievements,achievementStatement,syncLease:SYNC_LEASE,worldClockId:WORLD_CLOCK_ID}});
   if (path === '/field/me' && method === 'GET') return fieldMe(db,user,url,now,request);
   if (path === '/field/attack' && method === 'POST') return fieldAttack(db,user,await readBody(request),now);
   if (path === '/field/diplomacy' && method === 'POST') return fieldDiplomacy(db,user,await readBody(request),now);
@@ -2693,6 +2712,10 @@ async function route(request, env, now) {
     await budget(db,'sync-write:'+user.id,120,60000,now);
     let previous=await getSyncRow(db,user.id);if(previous?.save_json){fieldWriter(previous,deviceId,body.revision,now);previous=await ensureStaffCampaign(db,user,now,clock,{deferClanMigration:true});fieldWriter(previous,deviceId,body.revision,now);}
     const before=previous?.save_json?normalizeGameSave(JSON.parse(previous.save_json),user,now,{reading:true,clock}):null;
+    const maintenance=await maintenanceContext(db,user.id,before||save,clock);
+    if(before&&body.maintenanceRevision!==maintenance.authority.revision)fail(409,'MAINTENANCE_REFRESH_REQUIRED',MAINTENANCE_REFRESH_MESSAGE);
+    if(before?.state.worldClock&&save.state.worldClock&&save.state.worldClock.elapsedMs<before.state.worldClock.elapsedMs)fail(409,'CLOCK_REWIND','古い時刻のセーブで維持費の確定済み区間を巻き戻せません。最新データへ同期してください。');
+    if(save.state.worldClock&&save.state.worldClock.elapsedMs>maintenance.authority.asOfElapsedMs)fail(409,'MAINTENANCE_REFRESH_REQUIRED',MAINTENANCE_REFRESH_MESSAGE);
     if(before?.state.walking.campaignId!==save.state.walking.campaignId&&await stmt(db,'SELECT 1 FROM castle_retired_campaigns WHERE actor_id=? AND campaign_id=?',user.id,save.state.walking.campaignId).first())
       fail(409,'CAMPAIGN_RELOCATED','この戦役は本拠移転で終了しています。現在の本拠へ同期してください。');
     const covertPending=before?.state.walking.campaignId!==save.state.walking.campaignId?await stmt(db,"SELECT 1 AS pending FROM covert_states WHERE actor_id=? AND campaign_id=? AND json_array_length(state_json,'$.dispatches')>0",user.id,before?.state.walking.campaignId||'').first():null;if(covertPending)fail(409,'ARMY_MARCHING','派遣部隊が進軍中です。到着後に物語を切り替えてください。');
@@ -2727,7 +2750,7 @@ async function route(request, env, now) {
     const serialized=JSON.stringify(save),nonce=crypto.randomUUID(),roleGuard=roleCommitGuard(user);
     const statements=[stmt(db,`UPDATE player_saves SET save_json=?,revision=revision+1,updated_at=?,lease_expires_at=?,cycle_index=?,cycle_home=?,cycle_commit=?
       WHERE user_id=? AND revision=? AND writer_device_id=? AND lease_expires_at>?
-      AND (?=1 OR json_type(save_json,'$.state.worldClock') IS NULL) AND (?=0 OR NOT EXISTS(SELECT 1 FROM battle_marches WHERE actor_id=? AND status='marching')) AND ${roleGuard.sql} AND ${branchAccess.guard.sql} AND ${branchProgress.guard.sql} AND ${residencyProgress.guard.sql} RETURNING *`,serialized,now,now+SYNC_LEASE,cycleIndex,cycleHome,nonce,user.id,body.revision,deviceId,now,save.state.worldClock?1:0,importedMarch?1:0,user.id,...roleGuard.args,...branchAccess.guard.args,...branchProgress.guard.args,...residencyProgress.guard.args)];
+      AND (?=1 OR json_type(save_json,'$.state.worldClock') IS NULL) AND (?=0 OR NOT EXISTS(SELECT 1 FROM battle_marches WHERE actor_id=? AND status='marching')) AND ${roleGuard.sql} AND ${branchAccess.guard.sql} AND ${branchProgress.guard.sql} AND ${residencyProgress.guard.sql} AND ${maintenance.guard.sql} RETURNING *`,serialized,now,now+SYNC_LEASE,cycleIndex,cycleHome,nonce,user.id,body.revision,deviceId,now,save.state.worldClock?1:0,importedMarch?1:0,user.id,...roleGuard.args,...branchAccess.guard.args,...branchProgress.guard.args,...residencyProgress.guard.args,...maintenance.guard.args)];
     const gate='EXISTS(SELECT 1 FROM player_saves WHERE user_id=? AND cycle_commit=?)';
     statements.push(...residencyProgress.statements(gate,[user.id,nonce]));
     statements.push(...await initialResidencyStatements(db,{user,save,now,gateSql:gate,gateArgs:[user.id,nonce]}));
@@ -2738,11 +2761,13 @@ async function route(request, env, now) {
     for(const event of saveAchievements(before,save))statements.push(achievementStatement(db,user.id,event,now,gate,[user.id,nonce]));
     statements.push(...notificationSaveStatements(db,user.id,before,save,now,gate,[user.id,nonce]));
     statements.push(...campaignShogunateStatements({db,user,save,now,gateSql:gate,gateArgs:[user.id,nonce]}));
+    statements.push(...externalTroopSnapshotStatements(db,[user.id],clock,gate,[user.id,nonce]));
     const changed=await db.batch(statements),row=rows(changed[0])[0];
     if(!row) {
       await requireAccountAccess(db,user);
       const current=await getSyncRow(db,user.id);
       if(!current||current.writer_device_id!==deviceId||Number(current.lease_expires_at)<=now)fail(409,'LEASE_REQUIRED','プレイ端末の同期権限が切れました。接続状態を確認してください。');
+      if(!await stmt(db,'SELECT 1 WHERE '+maintenance.guard.sql,...maintenance.guard.args).first())fail(409,'MAINTENANCE_REFRESH_REQUIRED',MAINTENANCE_REFRESH_MESSAGE);
       if(Number(current.revision)===body.revision&&!save.state.worldClock&&current.save_json&&JSON.parse(current.save_json).state?.worldClock)fail(409,'CLOCK_ANCHOR_REQUIRED','この領主は共通時計へ移行済みです。共通時計に対応した最新版から保存してください。');
       fail(409,'REVISION_CONFLICT','新しいセーブが届いています。最新データを読み込んでから再開してください。');
     }

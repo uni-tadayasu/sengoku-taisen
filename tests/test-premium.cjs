@@ -139,7 +139,7 @@ test('the public page renders real artwork and game entry links, without direct 
   const ui = createUI({ document: doc, catalog, runtime: { getContext() { throw Error('Public page must not read account state'); } } });
   ui.mount(section); const preview = section.querySelector('[data-premium-catalog]');
   preview.dispatch('click', preview.querySelector('[data-premium-preview="gold-banner"]'));
-  assert.equal(preview.getAttribute('data-premium-selected'), 'gold-banner'); assert.equal(preview.querySelector('[data-premium-landscape]').getAttribute('src'), '../assets/castle-town.webp?v=4.9.9-20261123');
+  assert.equal(preview.getAttribute('data-premium-selected'), 'gold-banner'); assert.equal(preview.querySelector('[data-premium-landscape]').getAttribute('src'), '../assets/castle-town.webp?v=4.9.10-20261123');
   preview.dispatch('click', preview.querySelector('[data-premium-preview="moonlit-castle"]'));
   assert.equal(preview.querySelector('[data-premium-landscape]').getAttribute('src'), '../assets/premium/moonlit-castle-v1.webp'); ui.dispose();
 });

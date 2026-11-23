@@ -13,7 +13,7 @@ class Style{
  parse(value){this.map.clear();for(const declaration of value.split(';')){const colon=declaration.indexOf(':');if(colon<0)continue;const name=declaration.slice(0,colon).trim(),raw=declaration.slice(colon+1).trim(),priority=/!important$/.test(raw)?'important':'';if(name)this.map.set(name,[raw.replace(/\s*!important$/,''),priority]);}}
 }
 class Node{
- constructor(type,name,doc,namespace=HTML){this.nodeType=type;this.nodeName=name;this.localName=type===1?name.toLowerCase():undefined;this.namespaceURI=type===1?namespace:null;this.ownerDocument=doc;this.parentNode=null;this.childNodes=[];this._attrs=new Map();this._events=new Map();this._text='';this._value=undefined;this._checked=undefined;this._selected=undefined;this.scrollTop=0;this.scrollLeft=0;this.selectionStart=null;this.selectionEnd=null;this.selectionDirection='none';this.style=new Style(this);this.dataset=new Proxy({}, {get:(_,key)=>this.getAttribute(dataName(key))??undefined,set:(_,key,value)=>{this.setAttribute(dataName(key),value);return true;},deleteProperty:(_,key)=>{this.removeAttribute(dataName(key));return true;}});this.classList={contains:v=>(this.getAttribute('class')||'').split(/\s+/).includes(v),add:(...values)=>this.setAttribute('class',[...new Set([...(this.getAttribute('class')||'').split(/\s+/).filter(Boolean),...values])].join(' ')),remove:(...values)=>this.setAttribute('class',(this.getAttribute('class')||'').split(/\s+/).filter(v=>v&&!values.includes(v)).join(' '))};}
+ constructor(type,name,doc,namespace=HTML){this.nodeType=type;this.nodeName=name;this.localName=type===1?name.toLowerCase():undefined;this.namespaceURI=type===1?namespace:null;this.ownerDocument=doc;this.parentNode=null;this.childNodes=[];this._attrs=new Map();this._events=new Map();this._text='';this._value=undefined;this._checked=undefined;this._selected=undefined;this.scrollTop=0;this.scrollLeft=0;this.selectionStart=null;this.selectionEnd=null;this.selectionDirection='none';this.style=new Style(this);this.dataset=new Proxy({}, {get:(_,key)=>this.getAttribute(dataName(key))??undefined,set:(_,key,value)=>{this.setAttribute(dataName(key),value);return true;},deleteProperty:(_,key)=>{this.removeAttribute(dataName(key));return true;}});this.classList={contains:v=>(this.getAttribute('class')||'').split(/\s+/).includes(v),add:(...values)=>this.setAttribute('class',[...new Set([...(this.getAttribute('class')||'').split(/\s+/).filter(Boolean),...values])].join(' ')),remove:(...values)=>this.setAttribute('class',(this.getAttribute('class')||'').split(/\s+/).filter(v=>v&&!values.includes(v)).join(' ')),toggle:(value,force)=>{const enabled=force===undefined?!this.classList.contains(value):!!force;this.classList[enabled?'add':'remove'](value);return enabled;}};}
  get tagName(){return this.nodeType===1?this.localName.toUpperCase():undefined;}
  get id(){return this.getAttribute('id')||'';}
  set id(value){this.setAttribute('id',value);}
@@ -49,6 +49,8 @@ class Node{
  get disabled(){return this.hasAttribute('disabled');}
  set disabled(value){if(value)this.setAttribute('disabled','');else this.removeAttribute('disabled');}
  focus(){this.ownerDocument.activeElement=this;}
+ showModal(){this.open=true;}
+ close(){this.open=false;this.dispatchEvent({type:'close',bubbles:false});}
  scrollIntoView(){this.scrollIntoViewCalls=(this.scrollIntoViewCalls||0)+1;}
  getBoundingClientRect(){return{top:0,left:0,bottom:100,right:100,width:100,height:100};}
  setSelectionRange(start,end,direction='none'){this.selectionStart=start;this.selectionEnd=end;this.selectionDirection=direction;}
@@ -88,7 +90,7 @@ function parse(source,doc){
  return [...fragment.childNodes];
 }
 function setup(){
- const doc={activeElement:null,readyState:'loading',addEventListener(){},createElement(name){const n=new Node(1,name,this);if(name==='template')n.content=new Node(11,'#document-fragment',this);return n;},createTextNode(text){const n=new Node(3,'#text',this);n.nodeValue=text;return n;},createComment(text){const n=new Node(8,'#comment',this);n.nodeValue=text;return n;},querySelectorAll(selector){return this.body.querySelectorAll(selector);},querySelector(selector){return this.body.querySelector(selector);}};
+ const doc={activeElement:null,readyState:'loading',addEventListener(){},removeEventListener(){},createElement(name){const n=new Node(1,name,this);if(name==='template')n.content=new Node(11,'#document-fragment',this);return n;},createTextNode(text){const n=new Node(3,'#text',this);n.nodeValue=text;return n;},createComment(text){const n=new Node(8,'#comment',this);n.nodeValue=text;return n;},querySelectorAll(selector){return this.body.querySelectorAll(selector);},querySelector(selector){return this.body.querySelector(selector);}};
  doc.body=doc.createElement('body');doc.scrollingElement=doc.body;doc.activeElement=doc.body;const host=doc.createElement('main');doc.body.appendChild(host);return{doc,host,$:selector=>host.querySelector(selector)};
 }
 

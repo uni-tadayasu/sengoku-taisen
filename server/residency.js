@@ -1,3 +1,4 @@
+import {externalTroopSnapshotStatements} from './maintenance.js';
 // Public castle households are separate from each player's private campaign.
 // Only committed admissions and proved home-defense defeats change this ledger.
 import {GameEngine,GAME_OFFICERS} from './game-runtime.js';
@@ -162,6 +163,7 @@ export async function residencyStart(ctx,body){
  statements.push(S(db,`UPDATE castle_seats SET lord_since_elapsed_ms=CASE WHEN ?='lord' AND lord_user_id IS NULL THEN ? ELSE lord_since_elapsed_ms END,lord_user_id=CASE WHEN ?='lord' THEN ? ELSE lord_user_id END,lord_epoch=lord_epoch+CASE WHEN ?='lord' AND lord_user_id IS NULL THEN 1 ELSE 0 END,revision=revision+1 WHERE castle_id=? AND ${gate}`,body.mode,clock.elapsedMs,body.mode,user.id,body.mode,body.castleId,...args));
  statements.push(S(db,`UPDATE player_saves SET save_json=?,revision=revision+1,updated_at=?,lease_expires_at=?,cycle_index=?,cycle_home=?,cycle_commit=? WHERE user_id=? AND ${gate}`,JSON.stringify(save),now,now+h.syncLease,save.state.cycle.index,save.state.home,nonce,user.id,...args));
  statements.push(S(db,`UPDATE users SET clan=? WHERE id=? AND ${gate}`,save.state.clan,user.id,...args));
+ statements.push(...externalTroopSnapshotStatements(db,[user.id],clock,gate,args));
  const result=await db.batch(statements);if(!R(result[0]).length){const done=await S(db,'SELECT request_hash FROM castle_residency_requests WHERE actor_id=? AND request_id=?',user.id,body.requestId).first();if(done?.request_hash===digest)return reply(true);const current=await S(db,'SELECT lord_user_id FROM castle_seats WHERE castle_id=?',body.castleId).first();if(body.mode==='lord'&&current?.lord_user_id&&current.lord_user_id!==user.id)h.fail(409,'CASTLE_OCCUPIED','この城への入城が先に確定しました。一覧を更新してください。');h.fail(409,'RESIDENCY_CHANGED','城の領主・家臣または保存が更新されました。もう一度確認してください。');}
  return reply(false);
 }

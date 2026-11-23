@@ -66,7 +66,7 @@ test('bounded catch-up does not falsely signal settlement before reaching the bo
 test('continuous per-second progression and reconnect catch-up produce identical real game state',()=>{
   const a=productiveGame(),start=123*60000+4567;a.applyWorldClock(sample(start));const b=E.fromSave(a.exportSave(),roster);
   for(let elapsed=1000;elapsed<=600000;elapsed+=1000)a.applyWorldClock(sample(start+elapsed));
-  assert(b.applyWorldClock(sample(start+600000)).ok);assert.deepEqual(b.state,a.state);assert.equal(a.state.jobs.length,0);assert.equal(a.state.stats.upgrades,2);assert.equal(a.state.stats.researches,1);
+  assert(b.applyWorldClock(sample(start+600000)).ok);sameProgress(b.state,a.state);assert.equal(a.state.jobs.length,0);assert.equal(a.state.stats.upgrades,2);assert.equal(a.state.stats.researches,1);
 });
 
 test('bounded reconnect batches survive save/reload and converge to a continuous update',()=>{

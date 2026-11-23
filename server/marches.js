@@ -1,3 +1,4 @@
+import {maintenanceContext,protectMaintenance} from './maintenance.js';
 // Durable main-army movement. Only the original departure transaction can
 // reserve troops; only a pending-row CAS can resolve or refund the escrow.
 import {GameEngine,GAME_OFFICERS} from './game-runtime.js';
@@ -36,7 +37,9 @@ export async function advanceReservedMarch(ctx,saved,clock){
  if(h.reconcileCovertProgress)await h.reconcileCovertProgress(db,user.id,save);
  const branches=await h.branchStateGuard(db,user.id,save.state.walking.campaignId);await h.reconcileBranchProgress(db,user.id,save,clock);
  const shared=user.is_staff&&!user.is_admin?await h.staffBaseDto(db,user,clock,now):null;
- const game=GameEngine.fromSave(save,GAME_OFFICERS,{isAdmin:!!user.is_admin,isStaff:!!user.is_staff,staffBase:shared,branchAuthority:{resolvedElapsedMs:branches.resolvedElapsedMs}});
+ const maintenanceAuthority=protectMaintenance(branches,await maintenanceContext(db,user.id,save,clock));
+ if(maintenanceAuthority.hasMore||maintenanceAuthority.asOfElapsedMs>clock.elapsedMs)h.fail(409,'CLOCK_STALE','維持費の時間経過を同期しています。最新の保存へ同期してください。');
+ const game=GameEngine.fromSave(save,GAME_OFFICERS,{isAdmin:!!user.is_admin,isStaff:!!user.is_staff,staffBase:shared,maintenanceAuthority,branchAuthority:{resolvedElapsedMs:branches.resolvedElapsedMs}});
  // Keep the server marker present: travelling troops cannot defend the home or
  // earn income from a castle they have not reached. Stop before a new cycle so
  // the existing cycle receipt transaction remains the sole award authority.

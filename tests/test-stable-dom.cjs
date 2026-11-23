@@ -1,6 +1,6 @@
 'use strict';
 // Deterministic DOM model for reconciliation and retention behavior. Browser QA is separate.
-const assert=require('node:assert/strict'),{patch,forget}=require('../stable-dom.js');
+const assert=require('node:assert/strict'),{patch,forget,captureScroll,restoreScroll}=require('../stable-dom.js');
 const tests=[],test=(name,run)=>tests.push([name,run]);
 const {setup}=require('./helpers/dom-model.cjs');
 
@@ -27,6 +27,15 @@ test('focused input text, selection and native select node survive a background 
 });
 test('explicit source-controlled forms can update values and checkbox state',()=>{
  const {host,$}=setup();patch(host,'<input id="amount" value="10"><input id="flag" type="checkbox" checked>');const input=$('#amount');input.value='custom';patch(host,'<input id="amount" value="20"><input id="flag" type="checkbox">',{preserveInputs:false});assert.equal(input.value,'20');assert.equal($('#flag').checked,false);
+});
+test('refocusing a moved keyed control respects input policy and preserves unchanged selection',()=>{
+ for(const {preserveInputs,liveValue,sourceValue,expected,selection} of [{preserveInputs:false,liveValue:'1234',sourceValue:'20',expected:'20',selection:false},{preserveInputs:false,liveValue:'1234',sourceValue:'1234',expected:'1234',selection:true},{preserveInputs:true,liveValue:'5678',sourceValue:'20',expected:'5678',selection:true}]){
+  const {host,$,doc}=setup(),row=value=>`<section id="editable"><input id="amount" value="${value}"></section>`,other='<section id="other">別の項目</section>';
+  patch(host,other+row('1234'),{preserveInputs});const input=$('#amount');input.value=liveValue;input.setSelectionRange(1,3,'backward');input.focus();
+  patch(host,row(sourceValue)+other,{preserveInputs});
+  assert.strictEqual($('#amount'),input);assert.strictEqual(doc.activeElement,input);assert.equal(input.value,expected);
+  if(selection){assert.equal(input.selectionStart,1);assert.equal(input.selectionEnd,3);assert.equal(input.selectionDirection,'backward');}
+ }
 });
 test('explicit reset also restores edited controls when its generated HTML is unchanged',()=>{
  const {host,$}=setup(),source='<input id="filter" value=""><select id="sort"><option value="name">名前</option><option value="power">武力</option></select>';patch(host,source,{preserveInputs:false});const input=$('#filter');input.value='変更';$('#sort').value='power';const reset=patch(host,source,{preserveInputs:false});assert(reset.changed);assert.strictEqual($('#filter'),input);assert.equal(input.value,'');assert.equal($('#sort').value,'name');
@@ -84,6 +93,68 @@ test('an independently patched descendant invalidates an otherwise equal parent 
 });
 test('artwork-only attribute changes explicitly report the decorator work to callers',()=>{
  const {host}=setup();assert.equal(patch(host,'<span data-art-url="a.webp"></span>').artwork,true);assert.equal(patch(host,'<span data-art-url="a.webp"></span>').artwork,false);const changed=patch(host,'<span data-art-url="b.webp"></span>');assert.equal(changed.added,0);assert.equal(changed.removed,0);assert.equal(changed.artwork,true);
+});
+
+// Deterministic row geometry models browser scroll offsets, independent of the
+// reconciler's implementation. Browser QA verifies the actual CSS layout.
+function scrollingList({documentScrolling=false}={}){
+ const fixture=setup(),{doc,host}=fixture,pane=documentScrolling?doc.body:doc.createElement('dialog');
+ if(!documentScrolling){doc.body.appendChild(pane);pane.appendChild(host);pane.open=true;}
+ doc.defaultView={innerHeight:200,innerWidth:400};pane.clientHeight=200;pane.clientWidth=400;
+ const origin=documentScrolling?0:20;pane.getBoundingClientRect=()=>({top:origin,left:0,bottom:origin+200,right:400,width:400,height:200});
+ const html=rows=>rows.map(([id,height=100,label=id])=>`<article data-stable-key="${id}" data-row="${id}" data-height="${height}"><p>${label}</p><input id="edit-${id}" value="0"></article>`).join('');
+ const bind=()=>{for(const row of host.querySelectorAll('[data-row]')){
+  const rect=(offset,height)=>{const siblings=Array.from(host.children||host.childNodes).filter(node=>node.hasAttribute?.('data-row')),index=siblings.indexOf(row),top=origin+siblings.slice(0,index).reduce((sum,node)=>sum+Number(node.getAttribute('data-height')),0)-pane.scrollTop+offset;return{top,left:0,bottom:top+height,right:400,width:400,height};};
+  row.getBoundingClientRect=()=>rect(0,Number(row.getAttribute('data-height')));row.querySelector('p').getBoundingClientRect=()=>rect(10,20);row.querySelector('input').getBoundingClientRect=()=>rect(40,24);
+ }};
+ const draw=(rows,key='list')=>{const result=patch(host,html(rows),{key});bind();return result;};
+ draw([['a'],['b'],['c'],['d'],['e']]);return{...fixture,pane,draw};
+}
+test('prepending rows preserves visible content in an ancestor dialog and keeps a focused draft attached',()=>{
+ const {host,pane,draw,$,doc}=scrollingList();pane.scrollTop=150;const input=$('#edit-c'),row=host.querySelector('[data-row="c"]'),before=row.getBoundingClientRect().top;input.value='typed';input.setSelectionRange(1,3);input.focus();
+ draw([['new',80],['a'],['b'],['c',100,'updated'],['d'],['e']]);assert.equal(pane.scrollTop,230);assert.equal(row.getBoundingClientRect().top,before);assert.equal(row.querySelector('p').textContent,'updated');assert.strictEqual($('#edit-c'),input);assert.strictEqual(doc.activeElement,input);assert.equal(input.value,'typed');assert.equal(input.selectionStart,1);assert.equal(input.selectionEnd,3);
+});
+test('document scrolling preserves the same reading position when rows arrive above it',()=>{
+ const {host,pane,draw}=scrollingList({documentScrolling:true});pane.scrollTop=150;const row=host.querySelector('[data-row="c"]'),before=row.getBoundingClientRect().top;
+ draw([['new',75],['a'],['b'],['c'],['d'],['e']]);assert.equal(pane.scrollTop,225);assert.equal(row.getBoundingClientRect().top,before);
+});
+test('scroll restoration requests an instant move even when the page uses smooth scrolling',()=>{
+ const {host,pane,draw}=scrollingList({documentScrolling:true}),calls=[];pane.style.setProperty('scroll-behavior','smooth');pane.scrollTop=150;
+ pane.scrollTo=options=>{calls.push(options);if(options.behavior==='instant'){pane.scrollTop=options.top;pane.scrollLeft=options.left;}};
+ const row=host.querySelector('[data-row="c"]'),before=row.getBoundingClientRect().top;draw([['new',75],['a'],['b'],['c'],['d'],['e']]);assert.deepEqual(calls,[{top:225,left:0,behavior:'instant'}]);assert.equal(pane.scrollTop,225);assert.equal(row.getBoundingClientRect().top,before);assert.equal(pane.style.getPropertyValue('scroll-behavior'),'smooth');
+});
+test('the first nested patch inherits ancestor source records without remounting focused or decorated content',()=>{
+ const {doc,host,pane,$}=scrollingList();pane.scrollTop=150;const row=host.querySelector('[data-row="c"]'),label=row.querySelector('p'),text=label.firstChild,input=$('#edit-c'),icon=doc.createElement('svg'),path=doc.createElement('path'),top=row.getBoundingClientRect().top;
+ icon.appendChild(path);label.appendChild(icon);label.classList.add('art-ready');label.setAttribute('data-art-ready','1');label.style.setProperty('--item-art','url(loaded.webp)');input.value='draft';input.setSelectionRange(1,3);input.focus();
+ const result=patch(row,'<p>updated</p><input id="edit-c" value="0">',{key:'nested'});assert.equal(result.replaced,false);assert.equal(result.added,0);assert.equal(result.removed,0);assert.strictEqual(row.querySelector('p'),label);assert.strictEqual(label.firstChild,text);assert.equal(text.nodeValue,'updated');assert.strictEqual(label.querySelector('svg'),icon);assert.strictEqual(icon.firstChild,path);assert.equal(label.getAttribute('data-art-ready'),'1');assert.equal(label.style.getPropertyValue('--item-art'),'url(loaded.webp)');assert.strictEqual($('#edit-c'),input);assert.equal(input.value,'draft');assert.strictEqual(doc.activeElement,input);assert.equal(input.selectionStart,1);assert.equal(input.selectionEnd,3);assert.equal(pane.scrollTop,150);assert.equal(row.getBoundingClientRect().top,top);
+ const reset=patch(row,'<p>another</p><input id="edit-c" value="7">',{key:'another'});assert(reset.replaced);assert.notStrictEqual($('#edit-c'),input);assert.equal($('#edit-c').value,'7');
+});
+test('nested adoption does not capture unmanaged DOM, explicitly forgotten content or another ancestor context',()=>{
+ const {host,$,doc}=setup(),source='<section id="nested"><input id="draft" value="0"></section>';
+ host.innerHTML=source;const unmanaged=$('#draft');assert(patch(host,source,{key:'one'}).replaced);assert.notStrictEqual($('#draft'),unmanaged);
+ let nested=$('#nested'),input=$('#draft');input.value='draft';forget(nested);assert(patch(nested,'<input id="draft" value="1">').replaced);assert.notStrictEqual($('#draft'),input);assert.equal($('#draft').value,'1');
+ const outsider=doc.createElement('section');outsider.id='runtime';outsider.innerHTML='<input id="unowned" value="0">';host.appendChild(outsider);const external=outsider.firstChild;assert(patch(outsider,'<input id="unowned" value="2">').replaced);assert.notStrictEqual(outsider.firstChild,external);
+ input=$('#draft');input.value='private';patch(host,source,{key:'two'});assert.notStrictEqual($('#draft'),input);nested=$('#nested');const current=$('#draft');patch(nested,'<input id="draft" value="0">');assert.strictEqual($('#draft'),current);assert.equal(current.value,'0');
+});
+test('removing the first visible row uses a surviving visible anchor and deleting all anchors safely falls back',()=>{
+ const {host,pane,draw}=scrollingList();pane.scrollTop=150;const row=host.querySelector('[data-row="c"]'),before=row.getBoundingClientRect().top;
+ draw([['a'],['c'],['d'],['e']]);assert.equal(pane.scrollTop,50);assert.equal(row.getBoundingClientRect().top,before);
+ draw([['replacement']]);assert.equal(pane.scrollTop,50);assert.equal(host.querySelectorAll('[data-row]').length,1);
+});
+test('a pane at the top stays at the top when a new item is inserted',()=>{
+ const {pane,draw}=scrollingList();draw([['new',80],['a'],['b'],['c'],['d'],['e']]);assert.equal(pane.scrollTop,0);
+});
+test('fixed and unrelated earlier headers cannot displace the actual content anchor',()=>{
+ const {doc,host,pane,draw}=scrollingList(),heading=doc.createElement('h2'),fixed=doc.createElement('button');heading.id='outside-heading';heading.getBoundingClientRect=()=>({top:20,left:0,bottom:50,right:400,width:400,height:30});pane.insertBefore(heading,host);fixed.id='fixed-action';fixed.style.setProperty('position','fixed');fixed.getBoundingClientRect=heading.getBoundingClientRect;host.insertBefore(fixed,host.firstChild);
+ pane.scrollTop=150;const row=host.querySelector('[data-row="c"]'),before=row.getBoundingClientRect().top;draw([['new',80],['a'],['b'],['c'],['d'],['e']]);assert.equal(pane.scrollTop,230);assert.equal(row.getBoundingClientRect().top,before);assert.strictEqual(host.firstChild,fixed);
+});
+test('reusing a snapshot never undoes scrolling performed after its first restoration',()=>{
+ const {host,pane,draw}=scrollingList();pane.scrollTop=150;const snapshot=captureScroll(host);draw([['new',80],['a'],['b'],['c'],['d'],['e']]);assert(restoreScroll(snapshot));assert.equal(pane.scrollTop,230);
+ pane.scrollTop=267;assert.equal(restoreScroll(snapshot),false);assert.equal(pane.scrollTop,267);assert.equal(restoreScroll(snapshot),false);assert.equal(pane.scrollTop,267);
+});
+test('an old scroll snapshot cannot affect a newly selected patch context or a detached page',()=>{
+ const {doc,host,pane,draw}=scrollingList();pane.scrollTop=150;const snapshot=captureScroll(host);draw([['other']], 'other');pane.scrollTop=0;assert.equal(restoreScroll(snapshot),false);assert.equal(pane.scrollTop,0);
+ const second=captureScroll(host);host.remove();assert.equal(restoreScroll(second),false);doc.body.appendChild(host);
 });
 
 for(const[name,run]of tests){run();console.log('PASS '+name);}console.log(`${tests.length} stable DOM scenarios passed with deterministic DOM fixtures; no browser launched.`);
