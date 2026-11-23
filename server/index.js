@@ -24,7 +24,7 @@ import {handleBranches,projectBranchState,applyBranchProgress,reconcileBranchPro
 import {relocateResidence} from './relocation.js';
 import {ensureResidency,residencySnapshot,residencyDirectory,residencyStart,initialResidencyStatements,residencyTargetGuard,prepareResidencySuccession,prepareResidencyCpuLosses} from './residency.js';
 const API = '/api/v1';
-const API_VERSION = '4.9.10';
+const API_VERSION = '4.9.12';
 const API_FEATURES = Object.freeze({trades:true,moderation:true,premium:true,timedEvents:true,troopTrades:true,roamingBattles:true,roamingDeployment:true,covertDispatch:true,privatePlayerRoles:true,guildIcons:true,court:true,kyotoGosho:true,branches:true,branchBattles:true,branchFacilities:true,audioCalls:true,progression:true,armyPresets:true,allianceStrategy:true,sharedConquest:true,newcomerProtection:true,webPush:true,battleAdviser:true,battleCatalog:true,eventBattleRewards:true,shogunate:true,attackTravel:true,castleResidency:true,residencyRelocation:true,maintenanceUpkeep:true});
 const MAX_BODY = 16 * 1024;
 const MAX_SAVE_BODY = 2 * 1024 * 1024;
@@ -1186,6 +1186,9 @@ function normalizeGameSave(raw, user, now, {reading=false,clock=null}={}) {
   const n=g.state;for(const k of ['clan','home','turn','difficulty','resources','troops','troopTransferSequence','morale','prestige','command','buildings','jobs','branches','officers','officerVariants','army','governors','tech','castles','treaties','scouted','log','claimedQuests','giftReceipts','walking','roaming','covert','magatama','captureRewards','gachaHistory','seed','stats','realtime','march','marchHistory'])n[k]=copy(s[k]);
   n.progress=GameEngine.normalizePlayerProgress(s.progress,n);
   if(s.worldClock!==undefined)n.worldClock={id:WORLD_CLOCK_ID,elapsedMs:s.worldClock.elapsedMs};
+  n.officerHealth=GameEngine.normalizeOfficerHealth(s.officerHealth,n);
+  if(!reading&&clock&&s.officerHealth===undefined&&n.officerHealth)n.officerHealth.asOfElapsedMs=Math.min(n.officerHealth.asOfElapsedMs,clock.elapsedMs);
+  if(!n.officerHealth||!reading&&clock&&n.worldClock&&n.officerHealth.asOfElapsedMs>clock.elapsedMs)invalid();
   if(s.cycle!==undefined){const c=s.cycle,r=c?.latestReward;if(!isObj(c)||!num(c.index,0,Math.floor(MAX_TURN/WORLD_CYCLE_MONTHS))||!CASTLE_BY_ID[c.home]||r!==null&&(!isObj(r)||!num(r.cycle,0,c.index-1)||!num(r.captured,0,127)||r.gold!==r.captured*1000||r.rice!==r.captured*1000||r.magatama!==r.captured*100))invalid();n.cycle={index:c.index,home:c.home,latestReward:r===null?null:pick(r,['cycle','captured','gold','rice','magatama'])};}
   n.won=CASTLES.every(c=>!user.is_admin&&c.id==='edo'||n.castles[c.id].owner===n.clan);n.gameOver=!CASTLES.some(c=>n.castles[c.id].owner===n.clan);
   if(!n.gameOver&&n.castles[n.home].owner!==n.clan)invalid();if(n.gameOver)n.realtime.running=false;
@@ -1268,6 +1271,18 @@ function normalizeGameSave(raw, user, now, {reading=false,clock=null}={}) {
   if(n.lastBattle)n.lastBattle.phases=n.lastBattle.phases.map(v=>pick(v,['title','text']));
   const savedAt=typeof obj.savedAt==='string'&&obj.savedAt.length<=64&&Number.isFinite(Date.parse(obj.savedAt))?new Date(obj.savedAt).toISOString():iso(now);
   return {game:'sengoku-tento',version:2,savedAt,state:n};
+}
+
+function reconcileOfficerHealth(save,before,clock){
+  if(!before)return;
+  const state=save.state,prior=before.state;
+  // Both snapshots are compared at one absolute game time. The stored health
+  // can already be ahead of a save's simulation after an immediate event battle.
+  const admittedElapsed=Math.min(clock.elapsedMs,state.worldClock?.elapsedMs??Math.round(state.turn*WORLD_MONTH_MS+state.realtime.elapsed*1000));
+  const elapsed=Math.max(admittedElapsed,state.officerHealth.asOfElapsedMs,prior.officerHealth.asOfElapsedMs);
+  const incoming=GameEngine.projectOfficerHealth(state,elapsed),canonical=GameEngine.projectOfficerHealth(prior,elapsed);
+  for(const id of state.officers)if(Object.hasOwn(canonical.values,id))incoming.values[id]=Math.min(incoming.values[id],canonical.values[id]);
+  state.officerHealth=incoming;
 }
 
 // A rollout anchor prevents historical saves from receiving retroactive awards.
@@ -1716,6 +1731,7 @@ async function resolveSyncBranches(db,user,save,before,clock,now,{importedStatio
     const result=game.applyWorldClock({...clock,elapsedMs:target},{maxSeconds:86400,deferCycleSettlement:true});
     if(!result.ok||result.pending||result.settlementRequired||result.maintenancePending&&game.state.worldClock.elapsedMs<target)fail(409,'BRANCH_CLOCK_STALE','支拠点の時間経過を同期しています。最新の保存へ同期してください。');
     replayed=JSON.parse(game.exportSave());
+    reconcileOfficerHealth(save,replayed,clock);
     for(const loss of game.takeBranchParentLosses())parentLosses.set(loss.parentCastleId,loss);
     model={branches:copy(replayed.state.branches),jobs:copy(replayed.state.jobs.filter(job=>job.kind==='branch'))};
     resolvedElapsedMs=Math.max(resolvedElapsedMs,Math.min(clock.elapsedMs,replayed.state.worldClock.elapsedMs));
@@ -1769,6 +1785,7 @@ async function resolveSyncResidency(db,user,save,before,clock,now,branchAccess){
     const game=GameEngine.fromSave(trusted,GAME_OFFICERS,{maintenanceAuthority,branchAuthority:{resolvedElapsedMs:start}}),advanced=game.applyWorldClock({...clock,elapsedMs:target},{maxSeconds:86400,deferCycleSettlement:true});
     if(!advanced.ok||advanced.pending||advanced.settlementRequired||advanced.maintenancePending&&game.state.worldClock.elapsedMs<target)fail(409,'RESIDENCY_CLOCK_STALE','城の防衛を共通時刻へ同期しています。最新の保存を確認してください。');
     events=game.takeHomeDefenseLosses?.()||[];resolved=Math.max(resolved,target);
+    reconcileOfficerHealth(save,{state:game.state},clock);
     if(events.some(event=>event.castleId===member.castle_id&&Number(event.occurredElapsedMs)>Number(member.lord_since_elapsed_ms)))provenState=game.state;
   }
   if(member.lord_user_id===user.id){
@@ -1834,19 +1851,22 @@ const FIELD_SELECT=`SELECT u.id,u.name,u.clan,u.last_seen,s.revision,s.lease_exp
   json_extract(s.save_json,'$.state.troops') AS troops,json_extract(s.save_json,'$.state.castles') AS castles_json,
   json_extract(s.save_json,'$.state.buildings.keep') AS keep_level,
   json_extract(s.save_json,'$.state.buildings.wall') AS wall,json_extract(s.save_json,'$.state.tech.discipline') AS discipline,
-  json_extract(s.save_json,'$.state.army') AS army_json,json_extract(s.save_json,'$.state.officerVariants') AS variants_json
+  json_extract(s.save_json,'$.state.army') AS army_json,json_extract(s.save_json,'$.state.officerVariants') AS variants_json,
+  json_extract(s.save_json,'$.state.officers') AS officers_json,json_extract(s.save_json,'$.state.officerHealth') AS officer_health_json,
+  json_extract(s.save_json,'$.state.turn') AS game_turn,json_extract(s.save_json,'$.state.realtime') AS realtime_json,
+  json_extract(s.save_json,'$.state.march') AS march_json
   FROM users u JOIN player_saves s ON s.user_id=u.id
   WHERE s.save_json IS NOT NULL AND NOT EXISTS(SELECT 1 FROM player_bans pb WHERE pb.user_id=u.id AND pb.active=1) AND (COALESCE(json_extract(s.save_json,'$.state.gameOver'),0)=0 OR ${FIELD_FIXED_HOME_SQL} OR ${EFFECTIVE_CYCLE_SQL}<?)`;
-function fieldArmy(army,variants) {
+function fieldArmy(army,variants,state) {
   const powers=[.9,.95,1,1.08,1.16,1.25,1.35,1.5];
-  const scores=army.map(id=>Math.max(...RANKS.map((rank,i)=>variants.includes(id+':'+rank)?powers[i]:0))||1);
+  const scores=army.map(id=>(Math.max(...RANKS.map((rank,i)=>variants.includes(id+':'+rank)?powers[i]:0))||1)*GameEngine.officerCombatFactor(state,id));
   return {officerCount:army.length,rankPower:army.length?Math.round(scores.reduce((a,b)=>a+b,0)/army.length*1000)/1000:.75};
 }
 function fieldAttackPower(troops,profile,modifier=1){
-  return Math.max(1,Math.round(troops*(.7+.5*profile.morale/100)*(1+profile.tech.discipline*.06+profile.tech.gunnery*.05)*fieldArmy(profile.army,profile.officerVariants).rankPower*modifier));
+  return Math.max(1,Math.round(troops*(.7+.5*profile.morale/100)*(1+profile.tech.discipline*.06+profile.tech.gunnery*.05)*fieldArmy(profile.army,profile.officerVariants,profile).rankPower*modifier));
 }
 function fieldDefense(s,tactic='balanced',siege=0,castleId=s.home) {
-  const home=s.castles[castleId],isHome=castleId===s.home,force=home.troops+Math.floor(s.troops*(isHome?.45:.18)),army=fieldArmy(s.army,s.officerVariants);
+  const home=s.castles[castleId],isHome=castleId===s.home,force=home.troops+Math.floor(s.troops*(isHome?.45:.18)),army=fieldArmy(s.army,s.officerVariants,s);
   const wallFactor=Math.max(.2,1-siege*.12)*(tactic==='siege'?.5:1);
   return {force,power:Math.max(1,Math.round((force+200)*(1+(isHome?s.buildings.wall:home.wall)*.11*wallFactor)*(1+s.tech.discipline*.06)*(1+(home.level-1)*.04)*army.rankPower)),army};
 }
@@ -1899,6 +1919,8 @@ function mapFieldPlayer(row,viewer,relationship,clock,now,targetCastleId=null,in
   const keepLevel=Number.isFinite(rawKeepLevel)?Math.max(1,Math.min(32,Math.floor(rawKeepLevel))):1;
   if(cyclePending&&isHome&&battleMode!=='reward'){castle.troops=Math.max(1200,castle.troops);castle.wall=Math.max(castle.wall,Number(row.wall));}
   const state={home,troops:Number(row.troops),castles:{[castleId]:castle},buildings:{wall:isHome&&row.is_staff&&!row.is_admin?castle.wall:Number(row.wall)},tech:{discipline:Number(row.discipline)},army:JSON.parse(row.army_json||'[]'),officerVariants:JSON.parse(row.variants_json||'[]')};
+  Object.assign(state,{officers:JSON.parse(row.officers_json||'[]'),officerHealth:JSON.parse(row.officer_health_json||'null')||undefined,turn:Number(row.game_turn)||0,realtime:JSON.parse(row.realtime_json||'null')||{elapsed:0},march:JSON.parse(row.march_json||'null')});
+  state.officerHealth=GameEngine.projectOfficerHealth(state,clock.elapsedMs);
   const defense=fieldDefense(state,'balanced',0,castleId),self=viewer?.id===row.id,relation=self?'self':fieldRelationStatus(relationship,viewer?.id,clock.elapsedMs);
   inspectDefense?.({castleId,isHome,garrisonTroops:castle.troops,fieldTroops:state.troops,homeContribution:defense.force-castle.troops,wallLevel:isHome?state.buildings.wall:castle.wall,castleLevel:castle.level,castleMaxLevel:castleLevelLimit(castleId),disciplineLevel:state.tech.discipline,armyCount:defense.army.officerCount,armyRankPower:defense.army.rankPower});
   const lastDefended=Math.max(row.last_defended_ms??-Infinity,battleMode==='reward'&&castleId==='kyoto_gosho'?(row.last_kyoto_gosho_defended_ms??-Infinity):-Infinity),protectedUntil=Number.isFinite(lastDefended)?lastDefended+FIELD_RULES.defenderProtectionMs:0;
@@ -2147,7 +2169,7 @@ async function departFieldMarch({db,user,target,body,now,clock,attacker,attacker
   const a=attacker.state,site=body.targetBranchId?branchSite(body.targetBranchId):null;
   const travel=globalThis.SengokuTravel.plan({sourceCastleId:a.home,targetCastleId:castleId,...(site?{branchDirection:site.direction}:{} )});
   if(!travel)fail(409,'MARCH_ROUTE_UNAVAILABLE','この拠点への進軍経路を確認できません。');
-  const record=marchRecord({user,requestId:body.requestId,kind:rally?'rally':'field',save:attacker,travel,targetPlayerId:target.id,targetCampaignId:defender.state.walking.campaignId,targetName:target.name+'・'+(site?.name||CASTLE_BY_ID[castleId].name),troops:body.troops,tactic:body.tactic,foodCost,clock,now,digest,payload:{body:{...body},residencyTerm:residencyGuard.term,attackProfile:copy({morale:a.morale,tech:a.tech,army:a.army,officerVariants:a.officerVariants}),roll:crypto.getRandomValues(new Uint32Array(1))[0]/4294967296,rally:rally?.snapshot||null}});
+  const record=marchRecord({user,requestId:body.requestId,kind:rally?'rally':'field',save:attacker,travel,targetPlayerId:target.id,targetCampaignId:defender.state.walking.campaignId,targetName:target.name+'・'+(site?.name||CASTLE_BY_ID[castleId].name),troops:body.troops,tactic:body.tactic,foodCost,clock,now,digest,payload:{body:{...body},residencyTerm:residencyGuard.term,attackProfile:copy({morale:a.morale,tech:a.tech,army:a.army,officerVariants:a.officerVariants,officerHealth:GameEngine.projectOfficerHealth(a,clock.elapsedMs)}),roll:crypto.getRandomValues(new Uint32Array(1))[0]/4294967296,rally:rally?.snapshot||null}});
   if(rally){const payload=JSON.parse(record.payload_json);payload.rally.marchId=record.id;record.payload_json=JSON.stringify(payload);}
   // Rally troops already live in contributor escrow; undo the temporary force
   // added by validation. Ordinary attacks escrow the full outgoing army.
@@ -2235,17 +2257,21 @@ async function settleBattleMarches(ctx,{actorId=null,limit=12}={}){
     }
   }
 }
+async function anchorImportedSave(db,user,save,clock,now){
+  if(save.state.worldClock)return;
+  // Use the same migration for the campaign, health and any remaining journey.
+  // Local elapsed time must never be compared with the shared clock directly.
+  // This first attachment moves the time basis without simulating elapsed
+  // income/upkeep. World maintenance authority is checked after that move.
+  const shared=user.is_staff&&!user.is_admin?await staffBaseDto(db,user,clock,now):null,game=GameEngine.fromSave(save,GAME_OFFICERS,{isAdmin:!!user.is_admin,isStaff:!!user.is_staff,staffBase:shared});
+  const migrated=game.applyWorldClock(clock);if(!migrated.ok||migrated.pending)fail(409,'CLOCK_ANCHOR_REQUIRED','共通時計を確認してから保存を同期してください。');
+  game.state.cycle.latestReward=null;if(game.state.march?.authority==='local')game.state.march.cycle=game.state.cycle.index;
+  Object.assign(save,JSON.parse(game.exportSave()));
+}
 async function promoteImportedMarch(db,user,save,clock,now){
   let native=save.state.march;if(!native||native.authority!=='local')return null;
   if(native.troops>1000000)fail(409,'MARCH_FORCE_LIMIT','オンラインの進軍は1,000,000人以内の部隊で行ってください。');
-  if(!save.state.worldClock){
-    // Anchor a first offline import once, using the engine's migration so
-    // treaties, intelligence, jobs and the remaining journey keep their time.
-    const maintenanceAuthority=(await maintenanceContext(db,user.id,save,clock)).authority;
-    const shared=user.is_staff&&!user.is_admin?await staffBaseDto(db,user,clock,now):null,game=GameEngine.fromSave(save,GAME_OFFICERS,{isAdmin:!!user.is_admin,isStaff:!!user.is_staff,staffBase:shared,maintenanceAuthority});
-    const migrated=game.applyWorldClock(clock);if(!migrated.ok||migrated.pending)fail(409,'CLOCK_ANCHOR_REQUIRED','共通時計を確認してから進軍中の保存を同期してください。');
-    game.state.cycle.latestReward=null;Object.assign(save,JSON.parse(game.exportSave()));native=save.state.march;native.cycle=save.state.cycle.index;
-  }
+  if(!save.state.worldClock){await anchorImportedSave(db,user,save,clock,now);native=save.state.march;}
   const requestId=native.kind==='roaming'?native.options.requestId:'import_'+native.id;
   const prior=await findMarch(db,user.id,requestId);if(prior)fail(409,'MARCH_ALREADY_RECORDED','この保存の進軍はすでに登録または完了しています。最新の本拠へ同期してください。');
   const body=native.kind==='roaming'?{...native.options,encounterId:native.encounterId,troops:native.troops,tactic:native.tactic,deviceId:'imported-march',expectedRevision:0}:{kind:native.kind,targetId:native.targetBranchId||native.targetCastleId,tactic:native.tactic,troops:native.troops,campaignId:native.campaignId,deviceId:'imported-march',expectedRevision:0};
@@ -2325,6 +2351,7 @@ async function fieldAttack(db,user,raw,now,internal={}) {
   if(body.troops>a.troops||!flight&&(a.command<1||a.resources.rice<foodCost))fail(409,'INSUFFICIENT_FORCE','兵数・指示・兵糧が足りません。');
   const sharedGuard=sharedShield?await fieldStaffDefense(db,d,clock):{sql:'1=1',args:[]};
   if(!flight)return departFieldMarch({db,user,target,body,now,clock,attacker,attackerRow,defenderRow,defender,castleId,digest,foodCost,courtGuard,sharedGuard,attackerBranches,defenderBranches,protection,support,rally,residencyGuard});
+  d.officerHealth=GameEngine.projectOfficerHealth(d,clock.elapsedMs);
   const attackProfile=flightPayload.attackProfile;
   const attackerBefore=journey?.before||copy(attacker),attackPower=fieldAttackPower(body.troops,attackProfile,tactic.modifier);
   const defense=branch?fieldBranchDefense(d,branch,tactic.id,attackProfile.tech.siege):fieldDefense({...d,castles:{...d.castles,[castleId]:{...d.castles[castleId],troops:d.castles[castleId].troops+support.troops}}},tactic.id,attackProfile.tech.siege,castleId),ratio=attackPower/defense.power,chance=Math.max(.05,Math.min(.95,.5+Math.log(ratio)*.6));
@@ -2351,8 +2378,8 @@ async function fieldAttack(db,user,raw,now,internal={}) {
   const defenderCpuLosses=await prepareResidencyCpuLosses(db,{userId:target.id,events:defenderJourney?.game.takeHomeDefenseLosses?.()||[],now,state:d});
   defenderBranches.guard={sql:defenderBranches.guard.sql+' AND '+defenderCpuLosses.guard.sql,args:[...defenderBranches.guard.args,...defenderCpuLosses.guard.args]};
   if(rally)rally.applyResult(battle,a);
-  GameEngine.recordOfficerBattleState?.(a,{key:'field:'+battle.id,won,role:'siege',army:attackProfile.army});
-  if(battleMode!=='reward')GameEngine.recordOfficerBattleState?.(d,{key:'field:'+battle.id,won:!won,role:'defense',army:d.army});
+  GameEngine.recordOfficerBattleState(a,{key:'field:'+battle.id,won,role:'siege',army:attackProfile.army,elapsedMs:clock.elapsedMs});
+  if(battleMode!=='reward')GameEngine.recordOfficerBattleState(d,{key:'field:'+battle.id,won:!won,role:'defense',army:branch?branch.commanders:d.army,elapsedMs:clock.elapsedMs});
   battle.analysis={attackPower,defensePower:defense.power,ratio,winChance:Math.round(chance*100),morale:attackProfile.morale,tactic:tactic.name,roll:Math.round(roll*10000)/10000,reinforcementTroops:branch?0:support.troops,lootScale:ratio>=8?0:ratio>=4?.25:1,explanation:won?'戦力と戦法を反映した確率判定で勝利しました。':chance>=.5?'自軍が有利な予想でしたが、確率判定で敗れました。':'敵の守備戦力が優勢でした。士気・研究・兵数・戦法を見直せます。'};
   if(branch)Object.assign(battle,{branchId:branch.id,branchName:branchSite(branch.id).name,branchFallen:!!branch.fallen});
   a.log.unshift({turn:a.turn,text:`${target.name}の${battle.branchName||battle.castleName}へ出陣。${won?branch?'支拠点を陥落':captured?'城を占領':battleMode==='reward'?'勝利報酬を獲得':'戦利品を得て帰還':'撤退'}、兵${attackerLost}人を失いました。`,kind:'pvp'});a.log=a.log.slice(0,200);attacker.savedAt=iso(now);
@@ -2712,6 +2739,13 @@ async function route(request, env, now) {
     await budget(db,'sync-write:'+user.id,120,60000,now);
     let previous=await getSyncRow(db,user.id);if(previous?.save_json){fieldWriter(previous,deviceId,body.revision,now);previous=await ensureStaffCampaign(db,user,now,clock,{deferClanMigration:true});fieldWriter(previous,deviceId,body.revision,now);}
     const before=previous?.save_json?normalizeGameSave(JSON.parse(previous.save_json),user,now,{reading:true,clock}):null;
+    if(!save.state.worldClock&&importedState.officerHealth!==undefined){
+      if(before?.state.worldClock)fail(409,'CLOCK_ANCHOR_REQUIRED','この領主は共通時計へ移行済みです。共通時計に対応した最新版から保存してください。');
+      await anchorImportedSave(db,user,save,clock,now);
+      Object.assign(save,normalizeGameSave(save,user,now,{clock}));
+    }
+    let healthBefore=before;
+    if(before&&!before.state.worldClock&&save.state.worldClock){healthBefore=copy(before);await anchorImportedSave(db,user,healthBefore,clock,now);}
     const maintenance=await maintenanceContext(db,user.id,before||save,clock);
     if(before&&body.maintenanceRevision!==maintenance.authority.revision)fail(409,'MAINTENANCE_REFRESH_REQUIRED',MAINTENANCE_REFRESH_MESSAGE);
     if(before?.state.worldClock&&save.state.worldClock&&save.state.worldClock.elapsedMs<before.state.worldClock.elapsedMs)fail(409,'CLOCK_REWIND','古い時刻のセーブで維持費の確定済み区間を巻き戻せません。最新データへ同期してください。');
@@ -2720,7 +2754,7 @@ async function route(request, env, now) {
       fail(409,'CAMPAIGN_RELOCATED','この戦役は本拠移転で終了しています。現在の本拠へ同期してください。');
     const covertPending=before?.state.walking.campaignId!==save.state.walking.campaignId?await stmt(db,"SELECT 1 AS pending FROM covert_states WHERE actor_id=? AND campaign_id=? AND json_array_length(state_json,'$.dispatches')>0",user.id,before?.state.walking.campaignId||'').first():null;if(covertPending)fail(409,'ARMY_MARCHING','派遣部隊が進軍中です。到着後に物語を切り替えてください。');
     const pendingArmy=await activeMarch(db,user.id);
-    if(pendingArmy){if(body.save?.state?.march?.id!==pendingArmy.id||save.state.walking.campaignId!==pendingArmy.campaign_id)fail(409,'ARMY_MARCHING','進軍中の兵は別の保存に戻せません。最新の本拠へ同期してください。');save.state.march=serverMarchMarker(pendingArmy);}
+    if(pendingArmy){if(body.save?.state?.march?.id!==pendingArmy.id||save.state.walking.campaignId!==pendingArmy.campaign_id)fail(409,'ARMY_MARCHING','進軍中の兵は別の保存に戻せません。最新の本拠へ同期してください。');save.state.march=serverMarchMarker(pendingArmy);if(before)before.state.march=copy(save.state.march);}
     else if(save.state.march?.authority==='server')save.state.march=null;
     const importedMarch=!pendingArmy?await promoteImportedMarch(db,user,save,clock,now):null;
     if(!previous||previous.writer_device_id!==deviceId||Number(previous.lease_expires_at)<=now)fail(409,'LEASE_REQUIRED','プレイ端末の同期権限が切れました。');
@@ -2744,6 +2778,7 @@ async function route(request, env, now) {
     await reconcileRoamingProgress(db,user.id,save,before);
     await reconcileProgress(db,user.id,save,before);
     await reconcileCovertProgress(db,user.id,save);
+    reconcileOfficerHealth(save,healthBefore,clock);
     const branchProgress=await resolveSyncBranches(db,user,save,before,clock,now,{importedStationedTroops}),branchAccess=branchProgress.access;
     const residencyProgress=await resolveSyncResidency(db,user,save,before,clock,now,branchAccess);cycleHome=save.state.cycle.home;
     Object.assign(save,normalizeGameSave(save,user,now,{clock}));

@@ -1,6 +1,7 @@
 // Timed NPC battles spend the campaign's shared command through its current
 // writer revision. The save, battle receipt, points and mail commit together.
 import {GameEngine,GAME_OFFICERS} from './game-runtime.js';
+import {restoreServerMarch} from './marches.js';
 import {generateEventPlan,normalizeEventPlan,resolveEventBattle,adviseEventBattle,adviseEventDefense} from './event-planner.js';
 import './battle-catalog.js';
 import {shogunateGrantStatements,shogunateEventRight} from './shogunate.js';
@@ -26,6 +27,8 @@ async function eventGame(ctx,raw,now,snapshot=null){
   const {db,user,helpers:h}=ctx,current=snapshot?.user?{...user,is_admin:snapshot.user.isAdmin,is_staff:snapshot.user.isStaff}:user;
   const save=typeof raw==='string'?JSON.parse(raw):raw,clock=snapshot?.clock||await h.getWorldClock(db,now);
   const game=GameEngine.fromSave(h.normalizeGameSave(save,current,now,{reading:true,clock}),GAME_OFFICERS,{isAdmin:!!current.is_admin,isStaff:!!current.is_staff});
+  if(game.state.march?.authority==='server')await restoreServerMarch(db,user.id,{state:game.state});
+  game.state.officerHealth=GameEngine.projectOfficerHealth(game.state,clock.elapsedMs);
   if(current.is_staff&&!current.is_admin){
    const shared=snapshot?.staffBase||(await eventStmt(db,"SELECT state_json FROM staff_base WHERE id='kyoto_gosho'").first())?.state_json;
    const base=typeof shared==='string'?JSON.parse(shared):shared;
@@ -186,6 +189,8 @@ async function eventBattle(ctx,id){
  if((await eventDefense(ctx,plan,Date.now())).viewerOwnsTarget)h.fail(403,'EVENT_OWN_CASTLE',OWN_CASTLE_MESSAGE);
  const savedRow=await h.settleWriterCycle(db,user,deviceId,body.expectedRevision,ctx.now),clock=await h.getWorldClock(db,ctx.now);
  const save=h.normalizeGameSave(JSON.parse(savedRow.save_json),user,ctx.now,{reading:true,clock});
+ await restoreServerMarch(db,user.id,save);
+ save.state.officerHealth=GameEngine.projectOfficerHealth(save.state,clock.elapsedMs);
  const game=GameEngine.fromSave(save,GAME_OFFICERS,{isAdmin:!!user.is_admin,isStaff:!!user.is_staff});
  if(game.state.gameOver)h.fail(409,'BASE_UNAVAILABLE','本拠を失っている間はイベントに挑戦できません。');
  if(!save.state.worldClock)h.fail(409,'CLOCK_ANCHOR_REQUIRED','先に共通時計へ同期してください。');
@@ -204,6 +209,7 @@ async function eventBattle(ctx,id){
  // The catalogue plan alone supplies the reward. It shares the command/save
  // revision and receipt transaction, so retrying cannot grant it twice.
  save.state.command-=COMMAND_COST;
+ GameEngine.recordOfficerBattleState(save.state,{key:'event:'+battle.id,won:battle.won,role:'siege',army:game.state.army,elapsedMs:clock.elapsedMs});
  if(battle.offeredRewards){const credited=game._gain(battle.offeredRewards);battle.rewards=Object.fromEntries(Object.keys(battle.offeredRewards).map(key=>[key,credited[key]]));save.state.resources={...game.state.resources};save.state.magatama=game.state.magatama;}
  save.savedAt=eventIso(now);
  const updatedSave=h.normalizeGameSave(save,user,now,{clock});

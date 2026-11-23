@@ -1,5 +1,28 @@
 # 戦国VS（SENGOKU VS）通信API
 
+## 武将の体力（v4.9.12）
+
+セーブの `state.officerHealth` は、人物IDに対応する体力を持ちます。同じ人物の絵巻ランク間で共有し、別ランクの取得・表示・編成によって再初期化しません。
+
+```json
+{
+  "version": 1,
+  "asOfElapsedMs": 60000,
+  "values": { "officer_id": 85 }
+}
+```
+
+- `values` は所持する人物IDをキーとする0〜100の有限数です。小数は自然回復の端数を保持します。
+- `asOfElapsedMs` は回復を反映済みのゲーム内絶対経過時刻です。サーバーで先に戦闘が確定した場合、個別セーブの通常進行より先の時刻になり得ます。
+- 旧形式で体力がない人物と、新しく登用した人物は100から開始します。
+- 実戦の参加者に勝利15・敗北25の消耗を適用します。既存の戦果キー、受付番号、保存更新番号とともに確定し、同じ結果の再送で重ねて消耗しません。
+- 待機中は60,000msあたり10回復します。行軍マーカーに保持した参加者は、軍団を入れ替えても行軍中の回復対象になりません。
+- `/sync` PUTでは既存の体力を基準時刻へ投影し、所有武将の復元・防衛の再演と調停します。古いセーブの体力欠落や高い残量をそのまま採用して、確定済みの消耗を戻すことはありません。
+- 個人武将が参加しない共有天下統一、イベントで守備力だけを参照する相手、既存の報酬戦で保存を変更しない守備側には消耗を追加しません。
+
+既存の保存・戦果トランザクションを使用し、この機能に新しいD1テーブルはありません。
+
+
 Base path: `/api/v1`. UTF-8 JSON, except public avatar image responses. JSON success always includes `ok: true`.
 All routes except GET `/config`, GET `/health`, GET `/online`, GET `/players`, GET `/players/:id/profile`, GET `/world-clock`, GET `/field`, GET `/guild/rankings`, GET `/achievements`, GET `/avatars/:userId`, POST `/session`, POST `/devices/link`, and POST `/admin/recover` require `Authorization: Bearer <game-token>`. Administrator recovery requires the original operator registration key in its JSON body instead of an existing game token.
 No cookies are used. Never put a token or pairing code in a URL. POST/PUT/PATCH/DELETE bodies require `Content-Type: application/json`, including `{}` for an empty body. DELETE `/me/avatar` also accepts no body.

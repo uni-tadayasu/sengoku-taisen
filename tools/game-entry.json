@@ -63,7 +63,8 @@
     "chronicle-game.css",
     "title-fit.css",
     "economy.css",
-    "live-updates.css"
+    "live-updates.css",
+    "officer-health.css"
   ],
   "game-preferences.bundle.js": [
     "viewport-lock.js",
@@ -78,6 +79,7 @@
     "battle-advisor.js",
     "shogunate.js",
     "stable-dom.js",
+    "officer-health.js",
     "hints.js",
     "player-evaluation.js",
     "music.js",
