@@ -275,7 +275,9 @@
 
     const facilityCount = data.buildings.filter(b => s.buildings[b.id]>0).length;
     if (s.officers.length < facilityCount+3) {
-      const recruits = hasCommand ? game.searchOfficers().map(o => ({o,can:game.canRecruitOfficer(o.id)})).filter(row => row.can.ok).sort((a,b) => a.can.cost-b.can.cost || compareId(a.o,b.o)) : [];
+      const candidates = hasCommand ? game.searchOfficers() : [];
+      const quotes = game.canRecruitOfficers ? game.canRecruitOfficers(candidates.map(o => o.id)) : candidates.map(o => game.canRecruitOfficer(o.id));
+      const recruits = candidates.map((o,index) => ({o,can:quotes[index]})).filter(row => row.can.ok).sort((a,b) => a.can.cost-b.can.cost || compareId(a.o,b.o));
       if (recruits.length) {
         const {o,can}=recruits[0];
         add({id:'officers',priority:army.length<3&&!available.length?87:49,tone:'advice',category:'officers',title:'登用できる武将を確認',

@@ -63,6 +63,7 @@
  const clock=new Clock(),svc=server(clock),a=client(clock,svc),b=client(clock,svc);
  const starting=a.start();check(!a.sync.getStatus().writable&&!a.sync.getStatus().ready,'pending identity starts read-only');await starting;
  check(a.sync.getStatus().writable&&svc.get('u').revision===1,'first device owns a lease and uploads its existing save');await b.start();
+ check(svc.puts()[0].data.maintenanceRulesVersion===1,'save identifies the automatic troop upkeep rule without changing revision checks');
  check(!b.sync.getStatus().writable&&b.state().resources.gold===100,'second device receives latest save as a follower');
  const untouched=svc.puts().length;await a.sync.refresh();await a.sync.flush();clock.time+=77;await a.sync.flush();check(svc.puts().length===untouched,'unchanged state is not uploaded even when savedAt changes');
  a.mutate(s=>{s.resources.gold=120;});a.mutate(s=>{s.resources.rice=70;});check(svc.puts().length===untouched,'changes are debounced');await clock.advance(1000);

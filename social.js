@@ -14,7 +14,7 @@ s.achievements={events:[],cursor:null,loaded:false,error:'',serverNow:null,expan
 const guildRoleName=role=>({owner:'盟主',officer:'副盟主',member:'メンバー'})[role]||'メンバー';
 const busy=new Set(),controllers=new Set();
 let recovery=null,recoveryEpoch=0,recoveryHeld=false,adminRecoveryRequestId=null;
-let mailStatusBusy=false,meGeneration=0,chatReadSequence=0;
+let mailStatusBusy=false,meGeneration=0,chatReadSequence=0,viewRefreshGeneration=0,pendingViewRefresh=null;
 let courtAccessSequence=0;
 let voiceView=null,bodyScope='';
 s.accountBanned=null;s.accountAccessPending=null;s.contentRevision=null;s.profileNameEdit=null;
@@ -72,7 +72,7 @@ function clearRecentLogins(){pauseRecentLogins();s.recentLogins={players:[],tota
 function pauseGuildLists(){guildListGeneration++;treasuryBusy=rankingsBusy=false;clearTimeout(guildListTimer);guildListTimer=null;}
 function clearGuildData({resetSection=true}={}){guildEpoch++;global.SengokuVoice?.refreshAccess?.();global.SengokuProgress?.refresh?.();global.SengokuAlliance?.refreshAccess?.();global.SengokuConquest?.refreshAccess?.();global.SengokuNotifications?.refreshAccess?.();destroyGuildIconEditor();pauseGuildLists();s.guild=null;s.members=[];s.guildTreasury={guildId:null,balance:null,ledger:[],cursor:null,loaded:false,error:'',serverNow:null};if(resetSection)s.guildSection='chat';for(const key of s.chats.keys())if(key.startsWith('guild:'))s.chats.delete(key);for(const selector of ['#social-guild-ledger','#social-guild-balances','#social-guild-members']){const node=$(selector);if(node)node.textContent='';}if(s.confirm?.scope==='guild')clearConfirm();}
 function clearAdminData(){privilegeEpoch++;global.SengokuTroopGarrisons?.refreshIdentity?.();global.SengokuVoice?.refreshAccess?.();global.SengokuProgress?.refresh?.();global.SengokuAlliance?.refreshAccess?.();global.SengokuConquest?.refreshAccess?.();global.SengokuNotifications?.refreshAccess?.();courtAccessSequence++;global.SengokuBridge?.applyCourtAccess?.(null);destroyGuildIconEditor();s.management=null;global.SengokuPremiumAdmin?.clear?.();refreshOperatorRecoveryAccess();destroyAvatarEditor();clearRecentLogins();for(const key of s.chats.keys())if(key.startsWith('admin:'))s.chats.delete(key);s.adminPlayers=[];s.staff=[];s.staffCandidates=[];s.staffLoaded=false;s.staffQuery='';s.staffPage=1;s.staffCandidatePage=1;s.adminSection='chat';if(s.confirm)clearConfirm();}
-function clearPrivate(){global.SengokuPublicCourt?.clear?.();global.SengokuVoice?.leave?.('領主の接続を確認し直すため、通話を終了しました。');s.profileNameEdit=null;clearAdminData();clearGuildData();s.mail=[];s.openedMail=null;s.guilds=[];s.players=[];s.friendId=null;s.chats.clear();s.confirm=null;s.pairCode=null;}
+function clearPrivate(){cancelViewRefresh();global.SengokuPublicCourt?.clear?.();global.SengokuVoice?.leave?.('領主の接続を確認し直すため、通話を終了しました。');s.profileNameEdit=null;clearAdminData();clearGuildData();s.mail=[];s.openedMail=null;s.guilds=[];s.players=[];s.friendId=null;s.chats.clear();s.confirm=null;s.pairCode=null;}
 function accountBannedError(){return Object.assign(Error(s.accountBanned?.message||'この領主は利用を停止されています。解除後、同じ領主で再接続できます。'),{code:'ACCOUNT_BANNED',status:403});}
 function accountAccessError(){return Object.assign(Error(s.accountAccessPending?.message||'利用状態が変わったため、最新の保存と権限を確認しています。'),{code:'ACCOUNT_ACCESS_CHANGED',status:409});}
 function accountBannedView(){return '<section class="social-account-banned"><h2>この領主は利用停止中です</h2><p>'+esc(s.accountBanned?.message||'この領主は利用停止中です。')+'</p><code>'+esc(s.identity?.id||'')+'</code><p>利用停止が解除されると、同じ領主で利用を再開できます。認証情報と保存された進行はこのまま保持します。削除されたチャット・書状の本文は復元されません。</p><button type="button" class="social-button primary" data-social="banned-recheck">接続を再確認</button></section>';}
@@ -435,6 +435,7 @@ function acceptUser(user,{fromSync=false}={}){
  if(user?.isBanned===true){markAccountBanned(user);return;}
  if(!user&&s.accountBanned)return;
  const wasBanned=Boolean(s.accountBanned),wasPending=Boolean(s.accountAccessPending);
+ if(!user)cancelViewRefresh();
  if(!user){global.SengokuPublicCourt?.clear?.();s.profileNameEdit=null;const wasAdminTab=['admin','recent-logins'].includes(s.tab);s.user=null;s.unreadMail=0;s.unreadLetters=0;s.mail=[];s.openedMail=null;global.SengokuResidency?.refreshIdentity?.();global.SengokuLetters?.refreshIdentity?.();global.SengokuTrade?.refreshIdentity?.();global.SengokuTroopGarrisons?.refreshIdentity?.();global.SengokuModeration?.refreshIdentity?.();global.SengokuPremiumRuntime?.refreshIdentity?.();global.SengokuEvents?.refreshAccess?.();global.SengokuShogunate?.refreshAccess?.();global.SengokuCourt?.refreshAccess?.();global.SengokuVoice?.refreshAccess?.();global.SengokuProgress?.refresh?.();global.SengokuAlliance?.refreshAccess?.();global.SengokuConquest?.refreshAccess?.();global.SengokuNotifications?.refreshAccess?.();clearAdminData();clearGuildData();if(wasAdminTab)s.tab='profile';if(!fromSync)applyRoleAccess();if(body&&(wasAdminTab||s.open)){clearConfirm();render();}return;}
  if(!s.identity||String(user.id)!==String(s.identity.id))throw staleIdentity();
  if(wasBanned||wasPending){s.accountBanned=null;s.accountAccessPending=null;accountEpoch++;}
@@ -563,33 +564,43 @@ async function loadChat(){
 async function loadGuild(){if(!s.user)return null;const epoch=authEpoch,membershipEpoch=guildEpoch,owner=String(s.identity?.id),guildId=String(s.user.guildId||''),r=await api(guildId?'/guild':'/guilds');if(epoch!==authEpoch||membershipEpoch!==guildEpoch||owner!==String(s.identity?.id)||guildId!==String(s.user?.guildId||''))return null;s.guild=r.guild||null;s.members=r.members||[];if(r.guilds)s.guilds=r.guilds;applyPlayerEvaluations([...s.members.filter(p=>Object.hasOwn(p,'evaluation')).map(p=>({playerId:p.id,evaluation:p.evaluation,...(Object.hasOwn(p,'appearance')?{appearance:p.appearance}:{})})),...(r.guilds||[]).filter(g=>Object.hasOwn(g,'ownerEvaluation')).map(g=>({playerId:g.ownerId,evaluation:g.ownerEvaluation,...(Object.hasOwn(g,'ownerAppearance')?{appearance:g.ownerAppearance}:{})}))]);refreshGuildMembers();refreshGuildIcon();return r;}
 async function loadMail(){const r=await api('/mail');s.mail=r.mail||[];applyPlayerEvaluations(s.mail.flatMap(mail=>mail.participants||[]));}
 function schedulePoll(){clearTimeout(pollTimer);pollTimer=null;if(!s.accountBanned&&!s.accountAccessPending&&!disposed&&s.open&&s.user&&!['news','online','sync','recovery','recent-logins','guild-rankings'].includes(s.tab)&&!(s.tab==='guild'&&s.guildSection==='treasury')&&!document.hidden)pollTimer=setTimeout(()=>refresh({silent:true}),5000);}
+function cancelViewRefresh(){viewRefreshGeneration++;pendingViewRefresh=null;}
+function refreshViewScope(){return JSON.stringify([authEpoch,accountEpoch,s.identity?.id,s.tab,s.tab==='guild'?s.guildSection:null,s.tab==='admin'?s.adminSection:null,s.tab==='friends'?s.friendId:null]);}
 async function refresh({view=false,silent=false}={}){
+ const requested={generation:view?++viewRefreshGeneration:viewRefreshGeneration,scope:refreshViewScope(),silent};
+ const current=()=>!disposed&&s.open&&!document.hidden&&requested.generation===viewRefreshGeneration&&requested.scope===refreshViewScope();
+ if(!current())return;
+ // Keep just the latest explicit view request while the current read settles.
+ // Its scope is checked again before replaying; old reads never continue into it.
+ if(pollBusy){if(view)pendingViewRefresh=requested;return;}
  if(s.accountBanned||s.accountAccessPending){render();return;}
  if(s.tab==='news'){await loadAchievements();return;}
  if(s.tab==='guild-rankings'){await loadGuildRankings();return;}
  if(s.tab==='guild'&&s.guildSection==='treasury'){try{await loadMe();if(s.open&&!document.hidden&&s.tab==='guild'&&s.guildSection==='treasury')await loadGuildTreasury();}catch(error){if(!silent&&error.code!=='STALE_IDENTITY')toast(error.message,true);}finally{if(s.tab==='guild'&&s.guildSection==='treasury')scheduleGuildLists();else schedulePoll();}return;}
- if(s.tab==='recent-logins'){await loadRecentLogins();return;}if(s.tab==='online'){await loadOnline();return;}if(s.tab==='sync'){await global.SengokuCloudSync?.refresh?.();return;}if(s.tab==='recovery')return;if(pollBusy||disposed||!s.open||document.hidden||!s.user)return;pollBusy=true;clearTimeout(pollTimer);
+ if(s.tab==='recent-logins'){await loadRecentLogins();return;}if(s.tab==='online'){await loadOnline();return;}if(s.tab==='sync'){await global.SengokuCloudSync?.refresh?.();return;}if(s.tab==='recovery')return;if(!s.user)return;pollBusy=true;clearTimeout(pollTimer);pollTimer=null;
  try{
   if(view&&s.tab==='profile'&&global.SengokuCloudSync?.getStatus?.().writable)await global.SengokuCloudSync.flush?.();
-  if(!s.user)return;const before={guild:s.user.guildId,guildRole:s.user.guildRole,friends:s.friends.map(f=>f.id).join(','),friendDisplay:friendsSignature(),requests:JSON.stringify(s.requests),admin:s.user.isAdmin,staff:s.user.isStaff};
+  if(!current()||!s.user)return;const before={guild:s.user.guildId,guildRole:s.user.guildRole,friends:s.friends.map(f=>f.id).join(','),friendDisplay:friendsSignature(),requests:JSON.stringify(s.requests),admin:s.user.isAdmin,staff:s.user.isStaff};
   // The world channel checks access on the server itself. Private rooms wait for fresh membership and role data.
   const worldRead=s.tab==='world';
   if(worldRead){
     const results=await Promise.allSettled([loadMe(),loadChat()]);
     for(const result of results)if(result.status==='rejected')throw result.reason;
   }else await loadMe();
-  if(!s.user)return;
+  if(!current()||!s.user)return;
   if(s.tab==='guild'&&(view||before.guild!==s.user.guildId||before.guildRole!==s.user.guildRole||s.guildSection==='members'))await loadGuild();
+  if(!current()||!s.user)return;
   if(s.tab==='admin'&&s.adminSection==='staff'&&s.user.isAdmin)await loadStaff();
-  if(s.tab==='mail'){await loadMail();if(!s.confirm&&s.user&&s.tab==='mail')patchMailView();}
+  if(!current()||!s.user)return;
+  if(s.tab==='mail'){await loadMail();if(current()&&!s.confirm&&s.user)patchMailView();}
   else if(!s.confirm&&(view&&s.tab!=='profile'&&s.tab!=='world'||before.guild!==s.user.guildId||before.admin!==s.user.isAdmin||before.staff!==s.user.isStaff||(s.tab==='friends'&&before.friends!==s.friends.map(f=>f.id).join(','))))render();
   else if(s.tab==='friends'&&(before.friendDisplay!==friendsSignature()||before.requests!==JSON.stringify(s.requests)))refreshFriendsView();
-  if(!worldRead||s.tab!=='world')await loadChat();
- }catch(e){if(!silent&&e.code!=='STALE_IDENTITY')toast(e.message,true);if(e.status===401){acceptUser(null);s.error='領主情報を確認できませんでした。保存した領主データから再接続してください。';render();}}
- finally{pollBusy=false;schedulePoll();}
+  if(current()&&(!worldRead||s.tab!=='world'))await loadChat();
+ }catch(e){if(!current())return;if(!silent&&e.code!=='STALE_IDENTITY')toast(e.message,true);if(e.status===401){acceptUser(null);s.error='領主情報を確認できませんでした。保存した領主データから再接続してください。';render();}}
+ finally{pollBusy=false;const next=pendingViewRefresh;pendingViewRefresh=null;if(next&&next.generation===viewRefreshGeneration&&next.scope===refreshViewScope()&&!disposed&&s.open&&!document.hidden)await refresh({view:true,silent:next.silent});else schedulePoll();}
 }
 function open(tab='world'){if(disposed)return;if(s.accountBanned||s.accountAccessPending)tab='profile';if(tab==='moderation'&&s.user?.isAdmin===true&&global.SengokuModeration){close();return global.SengokuModeration.open();}if(tab==='letters'&&global.SengokuLetters){close();return global.SengokuLetters.openInbox();}if(tab==='trade'&&global.SengokuTrade){close();return global.SengokuTrade.openBox();}pauseRecentLogins();pauseGuildLists();clearTimeout(pollTimer);pollTimer=null;s.open=true;s.tab=tabs().some(t=>t.id===tab)?tab:'world';s.error='';render();if(!dialog.open)dialog.showModal();refresh({view:true});if(s.user&&!s.configLoaded&&!s.accountBanned)loadConfig();}
-function close(){s.open=false;disposeVoiceView();destroyAvatarEditor();destroyGuildIconEditor();pauseRecentLogins();pauseGuildLists();clearTimeout(onlineTimer);onlineTimer=null;clearTimeout(pollTimer);pollTimer=null;clearConfirm();if(dialog.open)dialog.close();}
+function close(){s.open=false;cancelViewRefresh();disposeVoiceView();destroyAvatarEditor();destroyGuildIconEditor();pauseRecentLogins();pauseGuildLists();clearTimeout(onlineTimer);onlineTimer=null;clearTimeout(pollTimer);pollTimer=null;clearConfirm();if(dialog.open)dialog.close();}
 async function selectTab(tab){if(tab==='letters'&&global.SengokuLetters){close();await global.SengokuLetters.openInbox();return;}if(tab==='trade'&&global.SengokuTrade){close();await global.SengokuTrade.openBox();return;}pauseRecentLogins();pauseGuildLists();clearTimeout(pollTimer);pollTimer=null;clearTimeout(onlineTimer);onlineTimer=null;s.tab=tabs().some(t=>t.id===tab)?tab:'world';s.openedMail=null;render();await refresh({view:true});}
 function downloadJSON(filename,data){const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download=filename;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
 async function claimGift(mailId){
@@ -601,6 +612,25 @@ async function claimGift(mailId){
  const r=await api('/mail/claim',{method:'POST',data:{mailId,requestId}});if(epoch!==authEpoch)throw staleIdentity();if(!r.receiptId||!r.gift)throw Error('受取結果を確認できませんでした。同じボタンで再確認してください。');
  const applied=await Promise.resolve(global.SengokuBridge.applyGift(r.gift,r.receiptId));if(epoch!==authEpoch)throw staleIdentity();if(!applied?.ok)throw Error(applied?.message||'ゲームへの反映を保存できませんでした。もう一度受け取りを確認してください。');
  delete s.pending[key];saveJSON(CLAIMKEY,s.pending);mail.claimed=true;toast(applied.already?'この贈り物は、すでにゲームへ反映されています。':'贈り物を受け取り、ゲームへ反映しました。');await loadMail();render();
+}
+async function openMail(id){
+ if(!s.open||s.tab!=='mail'||s.confirm||recoveryHeld||s.accountBanned||s.accountAccessPending||!s.identity||!s.user||String(s.identity.id)!==String(s.user.id))return;
+ const mail=s.mail.find(m=>String(m.id)===String(id));if(!mail)return;
+ const epoch=authEpoch,accessEpoch=accountEpoch,owner=String(s.identity.id);
+ const current=()=>!disposed&&epoch===authEpoch&&accessEpoch===accountEpoch&&owner===String(s.identity?.id)&&owner===String(s.user?.id)&&!recoveryHeld&&!s.accountBanned&&!s.accountAccessPending;
+ // The inbox already contains the body. Reading it must not wait for the
+ // read receipt, and reopening it must still work while that receipt is pending.
+ s.openedMail=id;patchMailView();if(mail.read)return;
+ await act(`mail-read:${epoch}:${accessEpoch}:${id}`,null,async()=>{
+  try{
+   const result=await api('/mail/read',{method:'POST',data:{mailId:id},background:true});
+   if(!current())return;
+   if(result.read!==true)throw Error('既読の記録を確認できませんでした。もう一度便りを開いてください。');
+   const latest=s.mail.find(m=>String(m.id)===String(id));if(latest)latest.read=true;
+   if(s.open&&s.tab==='mail'&&!s.openedMail&&!s.confirm)patchMailView();
+   await loadMe({updateRelations:false});
+  }catch(e){if(current()&&s.open&&s.tab==='mail'&&String(s.openedMail)===String(id))throw e;}
+ });
 }
 async function click(event){
  const tab=event.target.closest('[data-social-tab]');if(tab){await selectTab(tab.dataset.socialTab);return;}
@@ -642,6 +672,7 @@ async function click(event){
  if(command==='staff-appoint'||command==='staff-dismiss'){await act(command+':'+id,button,async()=>{confirmUI(staffConfirmation(id,command==='staff-appoint'?'appoint':'dismiss'));});return;}
  if(command==='friend-select'){s.friendId=id;render();refresh({view:true});return;}
  if(command==='mail-back'){s.openedMail=null;render();return;}
+ if(command==='mail-open'){await openMail(id);return;}
  if(command==='admin-select-player'){const p=s.adminPlayers.find(p=>String(p.id)===String(id)),select=$('#social-mail-target');if(p&&select){if(![...select.options].some(o=>o.value===String(id))){const o=document.createElement('option');o.value=id;o.textContent=`${playerText(p.name,p.evaluation,p.appearance)}（${p.id}）`;select.append(o);}select.value=id;toast(`${playerText(p.name,p.evaluation,p.appearance)} を宛先に設定しました。`);}return;}
  if(command==='logout'){confirmUI({title:'この端末の接続を解除しますか',description:'領主とクラウドの進行は残ります。この端末は同期を解除し、端末内の保存で遊べる状態になります。再接続には接続コードか領主データを使います。',confirmLabel:'接続を解除',danger:true,onConfirm:async()=>{await global.SengokuCloudSync?.flush?.();global.SengokuCloudSync?.stop?.();authEpoch++;recoveryEpoch++;recovery=null;recoveryHeld=false;clearPrivate();s.identity=null;s.user=null;s.accountBanned=null;s.accountAccessPending=null;accountEpoch++;global.SengokuResidency?.refreshIdentity?.();global.SengokuLetters?.refreshIdentity?.();global.SengokuTrade?.refreshIdentity?.();global.SengokuTroopGarrisons?.refreshIdentity?.();global.SengokuModeration?.refreshIdentity?.();global.SengokuPremiumRuntime?.refreshIdentity?.();global.SengokuEvents?.refreshAccess?.();global.SengokuShogunate?.refreshAccess?.();global.SengokuCourt?.refreshAccess?.();global.SengokuVoice?.refreshAccess?.();global.SengokuProgress?.refresh?.();global.SengokuAlliance?.refreshAccess?.();global.SengokuConquest?.refreshAccess?.();global.SengokuNotifications?.refreshAccess?.();s.friends=[];s.requests=[];s.chats.clear();s.unreadMail=0;applyRoleAccess();try{localStorage.removeItem(IDKEY);}catch(_){}clearTimeout(pollTimer);render();}});return;}
  if(command==='guild-leave'){await act(command,button,async()=>confirmUI(guildLeaveConfirmation()));return;}
@@ -652,7 +683,6 @@ async function click(event){
   if(command==='friend-request'){await api('/friends/request',{method:'POST',data:{userId:id}});await loadMe();render();toast('フレンド申請を送りました。');}
   if(command==='friend-accept'||command==='friend-reject'){await api('/friends/respond',{method:'POST',data:{userId:id,accept:command==='friend-accept'}});await loadMe();render();toast(command==='friend-accept'?'フレンドになりました。':'申請を辞退しました。');}
   if(command==='mail-refresh'){await loadMe();await loadMail();render();}
-  if(command==='mail-open'){s.openedMail=id;await api('/mail/read',{method:'POST',data:{mailId:id}});const m=s.mail.find(m=>String(m.id)===String(id));if(m)m.read=true;await loadMe();render();}
   if(command==='mail-claim')await claimGift(id);
  });
 }
@@ -797,6 +827,7 @@ function init(){
  dialog=document.createElement('dialog');dialog.id='community-modal';dialog.className='social-dialog';dialog.setAttribute('aria-labelledby','social-dialog-title');
  dialog.innerHTML=`<header class="social-header"><div class="social-header-mon">${icon('chat')}</div><div><div class="social-eyebrow">SENGOKU COMMUNITY</div><h1 id="social-dialog-title">交流の間</h1></div><div class="social-header-status"><span id="social-connection"></span><small id="social-online-count"></small></div><button class="social-icon-button" data-social="close" aria-label="交流を閉じる">${icon('close')}</button></header><nav id="social-tabs" class="social-tabs" role="tablist" aria-label="交流のメニュー"></nav><div id="social-feedback" class="social-feedback" role="status" hidden></div><div id="social-dialog-body" class="social-body"></div><footer class="social-footer"><span>礼をもって語り、志でつながる。</span><span>ゲームは閉じずに続けられます</span></footer><div id="social-confirm-host"></div><input id="social-identity-file" type="file" accept="application/json,.json" multiple hidden>`;
  document.body.append(dialog);body=$('#social-dialog-body');dialog.addEventListener('click',click);dialog.addEventListener('submit',submit);dialog.addEventListener('input',profileNameInput);dialog.addEventListener('change',event=>{if(['social-guild-direction','social-guild-resource'].includes(event.target.id))refreshGuildTreasuryView();});
+ dialog.addEventListener('close',cancelViewRefresh);
  dialog.addEventListener('close',()=>{s.open=false;disposeVoiceView();destroyAvatarEditor();destroyGuildIconEditor();pauseRecentLogins();pauseGuildLists();clearTimeout(onlineTimer);onlineTimer=null;clearTimeout(pollTimer);pollTimer=null;});dialog.addEventListener('cancel',event=>{if(s.confirm){event.preventDefault();clearConfirm();}});
  dialog.addEventListener('keydown',event=>{if(s.confirm&&event.key==='Tab'){const focusable=[...$('#social-confirm-host').querySelectorAll('button:not(:disabled),input,textarea,select')];if(focusable.length){const first=focusable[0],last=focusable[focusable.length-1];if(event.shiftKey&&(document.activeElement===first||!focusable.includes(document.activeElement))){event.preventDefault();last.focus();}else if(!event.shiftKey&&(document.activeElement===last||!focusable.includes(document.activeElement))){event.preventDefault();first.focus();}}return;}if(event.target.id==='social-chat-input'&&event.key==='Enter'&&!event.shiftKey&&!event.isComposing&&event.keyCode!==229){event.preventDefault();event.target.form.requestSubmit();}});
  $('#social-identity-file').addEventListener('change',event=>{const files=Array.from(event.target.files||[]);event.target.value='';importRecoveryFiles(files);});

@@ -192,11 +192,14 @@ function decorate(){scheduled=false;
  document.querySelectorAll('button,.title-feature').forEach(el=>{if(!hasSymbolLabel(el)&&!hasArtworkIcon(el)){let type=el.dataset.artTheme||el.dataset.view||el.dataset.action||'default';if(type.includes('gacha')||type.includes('draw'))type='gacha';else if(type.includes('music')||type.includes('sound'))type='music';else if(type.includes('rank'))type='rank';else if(type.includes('officer')||type.includes('recruit'))type='officers';else if(type.includes('castle')||type.includes('building')||type.includes('upgrade'))type='town';else if(type.includes('save')||type.includes('export')||type.includes('import'))type='save';el.insertAdjacentHTML('afterbegin',icon(type));}});
  document.querySelectorAll('.section-heading h2,.panel-heading h2,.social-profile-section h3').forEach(el=>{if(!el.querySelector('svg'))el.insertAdjacentHTML('afterbegin',icon(el.closest('.social-profile-section')?'save':'council'));});
 }
-function schedule(){if(scheduled)return;scheduled=true;requestAnimationFrame(decorate);}
-function visiblePaints(){
+function schedule(){if(scheduled)return;scheduled=true;requestAnimationFrame(()=>{if(scheduled)decorate();});}
+function visiblePaints({skipReadyControls=false}={}){
  const h=global.innerHeight,w=global.innerWidth;
  return Array.from(document.querySelectorAll('[data-art-url],[data-ghost-url]')).flatMap(el=>{
   if(!canPaint(el))return [];
+  // Control backgrounds keep the same decoded atlas at every size. A click
+  // must not force layout reads for all already-painted buttons and panels.
+  if(skipReadyControls&&!el.dataset.artUrl&&el.dataset.artReady&&el.dataset.artSource===el.dataset.ghostUrl)return [];
   const rect=el.getBoundingClientRect();
   return rect.width&&rect.height&&rect.bottom>0&&rect.top<h&&rect.right>0&&rect.left<w?[{el,rect}]:[];
  });
@@ -210,7 +213,7 @@ async function readyCurrent(onProgress){
   deferredTitle.clear();
  }
  const groups=new Map();
- for(const {el,rect}of visiblePaints()){
+ for(const {el,rect}of visiblePaints({skipReadyControls:true})){
   const {url}=displaySource(el,rect);if(!url)continue;
   if(!groups.has(url))groups.set(url,[]);
   groups.get(url).push(reveal(el,rect));

@@ -153,8 +153,10 @@ async function mutation(ctx,action){
  if(action==='transfer-troops')statements.push(stmt(db,`INSERT INTO troop_transfer_states(actor_id,campaign_id,sequence,updated_at)
   SELECT ?,?,?,? WHERE ${gate} ON CONFLICT(actor_id,campaign_id) DO UPDATE SET sequence=excluded.sequence,updated_at=excluded.updated_at`,user.id,body.campaignId,next.state.troopTransferSequence,now,...gateArgs));
  statements.push(...cpuLosses.statements(gate,gateArgs));
- const progress=game.getStaffPersonalProgress?.(),exactHomeTroops=action==='transfer-troops'&&progress&&[body.from,body.to].includes('castle:'+progress.home);
- const personal=h.staffPersonalProgressStatement?await h.staffPersonalProgressStatement(db,user,next,now,gate,gateArgs,progress,null,{exactHomeTroops:!!exactHomeTroops}):null;
+ // Time advancement can reduce the personal garrison for upkeep even when
+ // this particular command does not transfer troops to or from that castle.
+ const progress=game.getStaffPersonalProgress?.();
+ const personal=h.staffPersonalProgressStatement?await h.staffPersonalProgressStatement(db,user,next,now,gate,gateArgs,progress):null;
  if(personal)statements.push(personal);
  await db.batch(statements);const committed=await prior(ctx,body.requestId,digest);
  if(!committed){await h.requireAccountAccess(db,user);h.fieldWriter(await h.getSyncRow(db,user.id),body.deviceId,body.expectedRevision,Date.now());h.fail(409,'BRANCH_STATE_CHANGED','支拠点・保存・利用資格が更新されました。最新の状態を確認してください。');}

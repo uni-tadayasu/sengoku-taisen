@@ -1091,6 +1091,17 @@ const pick = (object, keys) => Object.fromEntries(keys.map(key => [key,object[ke
 const jobDto=job=>({...pick(job,['kind','id','remaining','total','remainingSeconds','totalSeconds','targetLevel']),...(job.kind==='branch'&&job.repair===true?{repair:true}:{}),...(job.kind==='branch'&&job.facilityId!==undefined?{facilityId:job.facilityId}:{}),...(job.kind==='branch'&&job.completesElapsedMs!==undefined?{completesElapsedMs:job.completesElapsedMs}:{})});
 function branchSite(id){for(const parent of globalThis.SENGOKU_DATA.branchRules.parents)for(const direction of globalThis.SENGOKU_DATA.branchRules.directions)if(id===parent.id+'_'+direction.id)return{id,parentCastleId:parent.id,direction:direction.id,name:CASTLE_BY_ID[parent.id].name+'・'+direction.name+'支拠点',maxLevel:parent.maxLevel};return null;}
 function initialCastle(id){const castle=globalThis.SENGOKU_DATA.castles.find(item=>item.id===id);return{owner:castle.clan,troops:castle.initialTroops,wall:castle.wall,level:1};}
+function upkeepTroopSnapshot(game){return{army:game.state.troops,castles:Object.fromEntries(game.ownedCastles().map(castle=>[castle.id,castle.troops])),branches:Object.fromEntries(game.state.branches.map(branch=>[branch.id,branch.stationedTroops||0]))};}
+function upkeepAdjustmentDto(before,after,result){
+  if(!result.changed||!Number.isSafeInteger(result.removed)||result.removed<=0)return null;
+  const stocks=value=>new Map([['army:army',value.army],...Object.entries(value.castles).map(([id,count])=>['castle:'+id,count]),...Object.entries(value.branches).map(([id,count])=>['branch:'+id,count])]);
+  const prior=stocks(before),next=stocks(after),debits=new Map();let removed=0;
+  for(const key of new Set([...prior.keys(),...next.keys()])){const difference=(prior.get(key)||0)-(next.get(key)||0);if(difference<0)return null;if(difference){debits.set(key,difference);removed+=difference;}}
+  if(removed!==result.removed||debits.size!==result.allocations.length)return null;
+  for(const item of result.allocations){const key=item.kind+':'+item.id;if(debits.get(key)!==item.removed)return null;debits.delete(key);}
+  if(debits.size)return null;
+  return{version:1,removed,allocations:result.allocations.map(item=>pick(item,['kind','id','removed'])),before,after};
+}
 
 function normalizeGameSave(raw, user, now, {reading=false,clock=null}={}) {
   let obj;try{obj=typeof raw==='string'?JSON.parse(raw):copy(raw);}catch(e){fail(400,'INVALID_SAVE','セーブデータを読み取れません。');}
@@ -1445,7 +1456,9 @@ function restorePersonalCampaign(save,backup,user) {
 // Personal campaign development is retained separately from the shared base.
 // This metadata never grants a role, and every write is gated by the parent
 // save mutation, so failed/replayed operations cannot change either copy.
-async function staffPersonalProgressStatement(db,user,save,now,gate,gateArgs,progress=null,capture=null,{exactHomeTroops=false}={}) {
+// Server-evaluated progress carries exact surviving troops, including upkeep
+// reductions; only a plain legacy save retains the older growth-only merge.
+async function staffPersonalProgressStatement(db,user,save,now,gate,gateArgs,progress=null,capture=null,{exactHomeTroops=Boolean(progress)}={}) {
   const backup=await stmt(db,'SELECT * FROM staff_campaign_backups WHERE user_id=? AND active=1',user.id).first();if(!backup)return null;
   const personal=JSON.parse(backup.save_json),home=personal.state.home,old=personal.state.castles[home];
   const current=progress?.home===home?progress.castle:save.state.castles[home];
@@ -1728,7 +1741,9 @@ async function resolveSyncBranches(db,user,save,before,clock,now,{importedStatio
     shared=user.is_staff&&!user.is_admin?await staffBaseDto(db,user,clock,now):null;
     const maintenanceAuthority=protectMaintenance(access,await maintenanceContext(db,user.id,trusted,clock));
     const game=GameEngine.fromSave(trusted,GAME_OFFICERS,{isAdmin:!!user.is_admin,isStaff:!!user.is_staff,staffBase:shared,maintenanceAuthority});
-    const result=game.applyWorldClock({...clock,elapsedMs:target},{maxSeconds:86400,deferCycleSettlement:true});
+    // This replay proves branch/CPU transitions from an older checkpoint. The
+    // complete incoming campaign is balanced only after every ledger is merged.
+    const result=game.applyWorldClock({...clock,elapsedMs:target},{maxSeconds:86400,deferCycleSettlement:true,rebalanceTroops:false});
     if(!result.ok||result.pending||result.settlementRequired||result.maintenancePending&&game.state.worldClock.elapsedMs<target)fail(409,'BRANCH_CLOCK_STALE','支拠点の時間経過を同期しています。最新の保存へ同期してください。');
     replayed=JSON.parse(game.exportSave());
     reconcileOfficerHealth(save,replayed,clock);
@@ -1782,7 +1797,7 @@ async function resolveSyncResidency(db,user,save,before,clock,now,branchAccess){
     trusted.state.worldClock={id:WORLD_CLOCK_ID,elapsedMs:start};trusted.state.turn=Math.floor(start/WORLD_MONTH_MS);trusted.state.realtime.elapsed=start%WORLD_MONTH_MS/1000;
     await reconcileCovertProgress(db,user.id,trusted);applyBranchProgress(trusted,branchAccess.state,{...clock,elapsedMs:start});
     const maintenanceAuthority=protectMaintenance(branchAccess,await maintenanceContext(db,user.id,trusted,clock));
-    const game=GameEngine.fromSave(trusted,GAME_OFFICERS,{maintenanceAuthority,branchAuthority:{resolvedElapsedMs:start}}),advanced=game.applyWorldClock({...clock,elapsedMs:target},{maxSeconds:86400,deferCycleSettlement:true});
+    const game=GameEngine.fromSave(trusted,GAME_OFFICERS,{maintenanceAuthority,branchAuthority:{resolvedElapsedMs:start}}),advanced=game.applyWorldClock({...clock,elapsedMs:target},{maxSeconds:86400,deferCycleSettlement:true,rebalanceTroops:false});
     if(!advanced.ok||advanced.pending||advanced.settlementRequired||advanced.maintenancePending&&game.state.worldClock.elapsedMs<target)fail(409,'RESIDENCY_CLOCK_STALE','城の防衛を共通時刻へ同期しています。最新の保存を確認してください。');
     events=game.takeHomeDefenseLosses?.()||[];resolved=Math.max(resolved,target);
     reconcileOfficerHealth(save,{state:game.state},clock);
@@ -2212,7 +2227,8 @@ async function departCampaignMarch(ctx,raw){
   const payload=JSON.parse(record.payload_json);payload.nativeMarch=native;record.payload_json=JSON.stringify(payload);game.state.march=serverMarchMarker(record);
   const next=normalizeGameSave(JSON.parse(game.exportSave()),user,now,{clock}),role=roleCommitGuard(user),sharedGuard=shared?{sql:"EXISTS(SELECT 1 FROM staff_base WHERE id='kyoto_gosho' AND revision=?)",args:[shared.revision]}:{sql:'1=1',args:[]},cpuLosses=await prepareResidencyCpuLosses(db,{userId:user.id,events:game.takeHomeDefenseLosses?.()||[],now,state:next.state}),guards=[role,court,branchAccess.guard,sharedGuard,cpuLosses.guard],args=[record.id,record.commit_token];
   const guard=`EXISTS(SELECT 1 FROM player_saves WHERE user_id=? AND revision=? AND writer_device_id=? AND lease_expires_at>?) AND EXISTS(SELECT 1 FROM world_clock WHERE id=? AND revision=? AND running=1) AND ${guards.map(g=>'('+g.sql+')').join(' AND ')}`;
-  await db.batch([insertMarch(db,record,guard,[user.id,saved.revision,body.deviceId,now,WORLD_CLOCK_ID,clock.revision,...guards.flatMap(g=>g.args)]),stmt(db,`UPDATE player_saves SET save_json=?,revision=revision+1,updated_at=?,lease_expires_at=? WHERE user_id=? AND ${MARCH_GATE}`,JSON.stringify(next),now,now+SYNC_LEASE,user.id,...args),...branchProgressStatements(db,user.id,next,now,MARCH_GATE,args,{resolvedElapsedMs:clock.elapsedMs}),...covertIncidentStatements(db,user.id,next,now,MARCH_GATE,args),...cpuLosses.statements(MARCH_GATE,args)]);
+  const personal=await staffPersonalProgressStatement(db,user,next,now,MARCH_GATE,args,game.getStaffPersonalProgress?.());
+  await db.batch([insertMarch(db,record,guard,[user.id,saved.revision,body.deviceId,now,WORLD_CLOCK_ID,clock.revision,...guards.flatMap(g=>g.args)]),stmt(db,`UPDATE player_saves SET save_json=?,revision=revision+1,updated_at=?,lease_expires_at=? WHERE user_id=? AND ${MARCH_GATE}`,JSON.stringify(next),now,now+SYNC_LEASE,user.id,...args),...branchProgressStatements(db,user.id,next,now,MARCH_GATE,args,{resolvedElapsedMs:clock.elapsedMs}),...covertIncidentStatements(db,user.id,next,now,MARCH_GATE,args),...cpuLosses.statements(MARCH_GATE,args),...(personal?[personal]:[])]);
   const committed=await findMarch(db,user.id,body.requestId);if(!committed){fieldWriter(await getSyncRow(db,user.id),body.deviceId,body.expectedRevision,now);fail(409,'MARCH_STATE_CHANGED','出陣前の状態が更新されました。最新の本拠を確認してください。');}
   return replayMarch(ctx,committed,body.deviceId,committed.id!==record.id);
 }
@@ -2231,7 +2247,7 @@ async function settleCampaignMarch(ctx,march){
   const statements=[stmt(db,`UPDATE battle_marches SET status=?,result_json=?,commit_token=?,revision=revision+1,updated_at=? WHERE id=? AND status='marching' AND revision=? AND arrives_ms<=? AND EXISTS(SELECT 1 FROM player_saves WHERE user_id=? AND revision=?) AND EXISTS(SELECT 1 FROM world_clock WHERE id=? AND revision=?) AND ${guards.map(g=>'('+g.sql+')').join(' AND ')} RETURNING id`,outcome.status,JSON.stringify(result),nonce,now,march.id,march.revision,clock.elapsedMs,user.id,saved.revision,WORLD_CLOCK_ID,clock.revision,...guards.flatMap(g=>g.args)),stmt(db,`UPDATE player_saves SET save_json=?,revision=revision+1,updated_at=? WHERE user_id=? AND ${gate}`,JSON.stringify(next),now,user.id,...args),...branchProgressStatements(db,user.id,next,now,gate,args,{resolvedElapsedMs:clock.elapsedMs}),...covertIncidentStatements(db,user.id,next,now,gate,args),...campaignShogunateStatements({db,user,save:next,now,gateSql:gate,gateArgs:args})];
   statements.push(...cpuLosses.statements(gate,args));
   for(const event of saveAchievements(save,next))statements.push(achievementStatement(db,user.id,event,now,gate,args));
-  const personal=await staffPersonalProgressStatement(db,user,next,now,gate,args);if(personal)statements.push(personal);
+  const personal=await staffPersonalProgressStatement(db,user,next,now,gate,args,game.getStaffPersonalProgress?.());if(personal)statements.push(personal);
   const done=await db.batch(statements);if(!rows(done[0]).length)fail(409,'MARCH_RETRY','到着時の本拠が更新されました。再確認しています。');
 }
 const MARCH_RETRY_ERRORS=new Set(['MARCH_RETRY','CLOCK_STALE','MAINTENANCE_REFRESH_REQUIRED','WORLD_CLOCK_CHANGED','REVISION_CONFLICT','FIELD_STATE_CHANGED','BRANCH_STATE_CHANGED','STAFF_BASE_CHANGED','CYCLE_SETTLEMENT_REQUIRED','WORLD_PAUSED']);
@@ -2781,18 +2797,34 @@ async function route(request, env, now) {
     reconcileOfficerHealth(save,healthBefore,clock);
     const branchProgress=await resolveSyncBranches(db,user,save,before,clock,now,{importedStationedTroops}),branchAccess=branchProgress.access;
     const residencyProgress=await resolveSyncResidency(db,user,save,before,clock,now,branchAccess);cycleHome=save.state.cycle.home;
-    Object.assign(save,normalizeGameSave(save,user,now,{clock}));
+    // Old clients must be able to flush before switching releases. Accept their
+    // envelope, then enforce current upkeep rules against all authoritative
+    // troop pools together so a repeated old save cannot restore unpaid troops.
+    const shared=user.is_staff&&!user.is_admin?await staffBaseDto(db,user,clock,now):null;
+    let balanceAuthority=maintenance.authority;
+    if(balanceAuthority.campaignId!==save.state.walking.campaignId){
+      // Campaign imports change which depot ledger is active at this commit.
+      // This static check must use that destination's depots, while retaining
+      // the player's existing trade/alliance ownership and revision guard.
+      const vacant=Number((await stmt(db,'SELECT COALESCE(SUM(troops),0) AS troops FROM vacant_garrisons WHERE actor_id=? AND campaign_id=?',user.id,save.state.walking.campaignId).first()).troops);
+      balanceAuthority={...balanceAuthority,campaignId:save.state.walking.campaignId,baseline:{...balanceAuthority.baseline,vacant},changes:balanceAuthority.changes.map(point=>({...point,vacant}))};
+    }
+    const balanced=GameEngine.fromSave(save,GAME_OFFICERS,{isAdmin:!!user.is_admin,isStaff:!!user.is_staff,staffBase:shared,maintenanceAuthority:balanceAuthority,branchAuthority:{resolvedElapsedMs:branchProgress.resolvedElapsedMs}});
+    const upkeepBefore=upkeepTroopSnapshot(balanced),upkeepResult=balanced.rebalanceTroopsForUpkeep();
+    const upkeepAdjustment=upkeepResult.changed?upkeepAdjustmentDto(upkeepBefore,upkeepTroopSnapshot(balanced),upkeepResult):null;
+    Object.assign(save,normalizeGameSave(JSON.parse(balanced.exportSave()),user,now,{clock}));
+    const sharedGuard=shared?{sql:"EXISTS(SELECT 1 FROM staff_base WHERE id='kyoto_gosho' AND revision=?)",args:[shared.revision]}:{sql:'1=1',args:[]};
     const serialized=JSON.stringify(save),nonce=crypto.randomUUID(),roleGuard=roleCommitGuard(user);
     const statements=[stmt(db,`UPDATE player_saves SET save_json=?,revision=revision+1,updated_at=?,lease_expires_at=?,cycle_index=?,cycle_home=?,cycle_commit=?
       WHERE user_id=? AND revision=? AND writer_device_id=? AND lease_expires_at>?
-      AND (?=1 OR json_type(save_json,'$.state.worldClock') IS NULL) AND (?=0 OR NOT EXISTS(SELECT 1 FROM battle_marches WHERE actor_id=? AND status='marching')) AND ${roleGuard.sql} AND ${branchAccess.guard.sql} AND ${branchProgress.guard.sql} AND ${residencyProgress.guard.sql} AND ${maintenance.guard.sql} RETURNING *`,serialized,now,now+SYNC_LEASE,cycleIndex,cycleHome,nonce,user.id,body.revision,deviceId,now,save.state.worldClock?1:0,importedMarch?1:0,user.id,...roleGuard.args,...branchAccess.guard.args,...branchProgress.guard.args,...residencyProgress.guard.args,...maintenance.guard.args)];
+      AND (?=1 OR json_type(save_json,'$.state.worldClock') IS NULL) AND (?=0 OR NOT EXISTS(SELECT 1 FROM battle_marches WHERE actor_id=? AND status='marching')) AND ${roleGuard.sql} AND ${branchAccess.guard.sql} AND ${branchProgress.guard.sql} AND ${residencyProgress.guard.sql} AND ${maintenance.guard.sql} AND ${sharedGuard.sql} RETURNING *`,serialized,now,now+SYNC_LEASE,cycleIndex,cycleHome,nonce,user.id,body.revision,deviceId,now,save.state.worldClock?1:0,importedMarch?1:0,user.id,...roleGuard.args,...branchAccess.guard.args,...branchProgress.guard.args,...residencyProgress.guard.args,...maintenance.guard.args,...sharedGuard.args)];
     const gate='EXISTS(SELECT 1 FROM player_saves WHERE user_id=? AND cycle_commit=?)';
     statements.push(...residencyProgress.statements(gate,[user.id,nonce]));
     statements.push(...await initialResidencyStatements(db,{user,save,now,gateSql:gate,gateArgs:[user.id,nonce]}));
     if(importedMarch)statements.push(insertMarch(db,importedMarch,gate,[user.id,nonce]));
     statements.push(...branchProgressStatements(db,user.id,save,now,gate,[user.id,nonce],{resolvedElapsedMs:branchProgress.resolvedElapsedMs}));
     if(branchProgress.replayed)statements.push(...covertIncidentStatements(db,user.id,branchProgress.replayed,now,gate,[user.id,nonce]));
-    const personal=await staffPersonalProgressStatement(db,user,save,now,gate,[user.id,nonce]);if(personal)statements.push(personal);
+    const personal=await staffPersonalProgressStatement(db,user,save,now,gate,[user.id,nonce],balanced.getStaffPersonalProgress?.());if(personal)statements.push(personal);
     for(const event of saveAchievements(before,save))statements.push(achievementStatement(db,user.id,event,now,gate,[user.id,nonce]));
     statements.push(...notificationSaveStatements(db,user.id,before,save,now,gate,[user.id,nonce]));
     statements.push(...campaignShogunateStatements({db,user,save,now,gateSql:gate,gateArgs:[user.id,nonce]}));
@@ -2810,7 +2842,12 @@ async function route(request, env, now) {
       await stmt(db,'UPDATE users SET clan=? WHERE id=?',save.state.clan,user.id).run();
       user.clan=save.state.clan;
     }
-    return syncSnapshot(db,row,user,deviceId,now,{settle:true});
+    const snapshot=await syncSnapshot(db,row,user,deviceId,now,{settle:true});
+    // This transient receipt describes only this exact committed revision.
+    // A subsequent role/cycle/foreign update may return a newer snapshot; do
+    // not attach an older troop adjustment to that different state.
+    if(upkeepAdjustment&&snapshot.revision===Number(row.revision)&&snapshot.save?.state.walking.campaignId===save.state.walking.campaignId)snapshot.upkeepAdjustment={...upkeepAdjustment,committedRevision:Number(row.revision)};
+    return snapshot;
   }
   if (path === '/me' && method === 'GET') {
     const result = await db.batch([

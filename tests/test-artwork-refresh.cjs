@@ -52,6 +52,33 @@ function headerIconSlots(){
  console.log('PASS command and magatama retain a single authored icon before and after game rendering');
 }
 async function run(){
+ {
+  const frames=[],scope={scheduled:false,requestAnimationFrame:fn=>frames.push(fn)},draws=[];
+  scope.decorate=()=>{scope.scheduled=false;draws.push('decorate');};
+  vm.createContext(scope);
+  const from=source.indexOf('function schedule(){'),to=source.indexOf('\nfunction visiblePaints(',from);
+  vm.runInContext(source.slice(from,to),scope);
+  scope.schedule();scope.schedule();assert.equal(frames.length,1);
+  scope.decorate();frames.shift()();assert.equal(draws.length,1,'A direct artwork pass fulfills the already-scheduled pass');
+  scope.schedule();frames.shift()();assert.equal(draws.length,2,'Later content changes still decorate');
+  console.log('PASS an explicit artwork pass avoids a duplicate queued scan');
+ }
+ {
+  const reads=new Map(),make=(id,dataset)=>({id,dataset,getBoundingClientRect(){reads.set(id,(reads.get(id)||0)+1);return{width:80,height:40,top:0,bottom:40,left:0,right:80};}});
+  const ready=make('ready',{ghostUrl:'controls.webp',artReady:'1',artSource:'controls.webp'});
+  const fresh=make('fresh',{ghostUrl:'controls.webp'});
+  const changed=make('changed',{ghostUrl:'new-controls.webp',artReady:'1',artSource:'controls.webp'});
+  const portrait=make('portrait',{artUrl:'portrait.webp',artReady:'1',artSource:'portrait.webp'});
+  const scope={global:{innerWidth:500,innerHeight:500},document:{querySelectorAll:()=>[ready,fresh,changed,portrait]},canPaint:()=>true};
+  vm.createContext(scope);
+  const from=source.indexOf('function visiblePaints('),to=source.indexOf('\nasync function readyCurrent(',from);
+  vm.runInContext(source.slice(from,to),scope);
+  assert.deepEqual(Array.from(scope.visiblePaints({skipReadyControls:true}),item=>item.el.id),['fresh','changed','portrait']);
+  assert.equal(reads.get('ready'),undefined,'Reading a cached control image must not force a layout measurement');
+  assert.equal(scope.visiblePaints().length,4,'Resize still inspects all visible artwork');
+  assert.equal(reads.get('ready'),1);
+  console.log('PASS cached controls skip click-time geometry while portraits and changed artwork remain responsive');
+ }
  headerIconSlots();
  portraitRanks();
  const thumbDataset={artSmall:'tiny.webp',smallWidth:'80',smallHeight:'107',artNative:'card.webp'};

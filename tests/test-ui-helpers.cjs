@@ -24,6 +24,25 @@ test('actual touch header tolerates absent markup and hides provisional balances
   const summary={hidden:false};c.$=selector=>selector==='#touch-header-status'?summary:null;c.startPending=true;c.state=()=>{throw Error('provisional balances must not be read');};
   assert.doesNotThrow(()=>c.refreshTouchHeaderStatus());assert.equal(summary.hidden,true);
 });
+test('upgrade quotes expose the occupied-castle multiplier and do not label ordinary purchases',()=>{
+  const g=new E({officers:roster,seed:1}),other=D.castles.find(row=>row.id!==g.state.home&&g.canOwnCastle(row.id));
+  const base=g.costs('farm').gold;g.state.castles[other.id].owner=g.state.clan;
+  const c=context(g,{resIcons:{gold:'gold'},icon:()=>'',num:String});vm.runInContext(fn('costHtml'),c);
+  const cost=g.costs('farm'),html=c.costHtml(cost);
+  assert.equal(cost.gold,base*2);assert.match(html,/領有2城 · 強化資産 2倍/);
+  assert.match(html,/施設維持費は変わりません/);assert(html.includes(`data-cost-amount="${cost.gold}"`));
+  assert(!c.costHtml(g.trainingCost()).includes('upgrade-cost-note'));
+});
+test('costs above the asset cap stay unpayable and keep compact shortage text after refresh',()=>{
+  const {doc,host}=require('./helpers/dom-model.cjs').setup(),g=new E({officers:roster,seed:1});
+  for(const row of D.castles)if(g.canOwnCastle(row.id))g.state.castles[row.id].owner=g.state.clan;
+  g.state.resources={gold:E.ASSET_CAP,rice:E.ASSET_CAP,wood:E.ASSET_CAP,stone:E.ASSET_CAP};
+  const c=context(g,{document:doc,resIcons:{},icon:()=>'',num:String});vm.runInContext(fn('costHtml')+'\n'+fn('refreshLiveControls'),c);
+  const cost=g.costs('farm');assert(cost.gold>E.ASSET_CAP);assert.equal(c.hasResources(cost),false);
+  host.innerHTML=c.costHtml(cost);assert.match(host.textContent,/上限超過/);assert.match(host.textContent,/強化資産 2の/);
+  for(const chip of host.querySelectorAll('[data-cost-resource]'))chip.classList.toggle=(name,active)=>active?chip.classList.add(name):chip.classList.remove(name);
+  c.refreshLiveControls();for(const chip of host.querySelectorAll('[data-cost-shortage]'))assert.equal(chip.textContent,'（所持上限1億）');
+});
 test('actual touch header follows live and synced balances, command limits and accessible labels without replacing controls',()=>{
   const make=()=>{let text='';const attributes=new Map();return{hidden:true,writes:0,get textContent(){return text;},set textContent(value){text=String(value);this.writes++;},getAttribute:key=>attributes.get(key)??null,setAttribute(key,value){attributes.set(key,String(value));this.writes++;},set innerHTML(value){throw Error('header controls must stay mounted');}};};
   const ids=['touch-header-status','touch-command-count','touch-command-limit','touch-command-info','touch-magatama-balance','touch-magatama-info'],nodes=Object.fromEntries(ids.map(id=>[id,make()])),pageBalance=make(),game=new E({officers:roster,seed:1});let maximum=6;

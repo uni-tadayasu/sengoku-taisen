@@ -27,6 +27,16 @@ async function testEntry() {
   const skip = doc.getElementById('game-skip-link');
   const status = doc.getElementById('art-load-status');
   const loading = doc.getElementById('game-loading');
+  loading.showModal = () => { loading.open = true; };
+  loading.close = () => { loading.open = false; };
+  const firstRequest = win.SengokuLoading.begin('処理中');
+  const secondRequest = win.SengokuLoading.begin('別の処理中');
+  assert.equal(loading.open, true);
+  win.SengokuLoading.end(firstRequest);
+  assert.equal(loading.open, true, 'Another pending request must retain the loading guard');
+  win.SengokuLoading.end(secondRequest);
+  assert.equal(loading.open, false, 'Completed requests must release controls without an artificial minimum wait');
+  assert.equal(loading.hidden, true);
   assert.deepEqual(steps, [], 'opening the title must not start gameplay painting');
   win.SengokuTitle.enter();
   win.SengokuTitle.enter();

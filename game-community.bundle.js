@@ -615,7 +615,7 @@ s.achievements={events:[],cursor:null,loaded:false,error:'',serverNow:null,expan
 const guildRoleName=role=>({owner:'盟主',officer:'副盟主',member:'メンバー'})[role]||'メンバー';
 const busy=new Set(),controllers=new Set();
 let recovery=null,recoveryEpoch=0,recoveryHeld=false,adminRecoveryRequestId=null;
-let mailStatusBusy=false,meGeneration=0,chatReadSequence=0;
+let mailStatusBusy=false,meGeneration=0,chatReadSequence=0,viewRefreshGeneration=0,pendingViewRefresh=null;
 let courtAccessSequence=0;
 let voiceView=null,bodyScope='';
 s.accountBanned=null;s.accountAccessPending=null;s.contentRevision=null;s.profileNameEdit=null;
@@ -673,7 +673,7 @@ function clearRecentLogins(){pauseRecentLogins();s.recentLogins={players:[],tota
 function pauseGuildLists(){guildListGeneration++;treasuryBusy=rankingsBusy=false;clearTimeout(guildListTimer);guildListTimer=null;}
 function clearGuildData({resetSection=true}={}){guildEpoch++;global.SengokuVoice?.refreshAccess?.();global.SengokuProgress?.refresh?.();global.SengokuAlliance?.refreshAccess?.();global.SengokuConquest?.refreshAccess?.();global.SengokuNotifications?.refreshAccess?.();destroyGuildIconEditor();pauseGuildLists();s.guild=null;s.members=[];s.guildTreasury={guildId:null,balance:null,ledger:[],cursor:null,loaded:false,error:'',serverNow:null};if(resetSection)s.guildSection='chat';for(const key of s.chats.keys())if(key.startsWith('guild:'))s.chats.delete(key);for(const selector of ['#social-guild-ledger','#social-guild-balances','#social-guild-members']){const node=$(selector);if(node)node.textContent='';}if(s.confirm?.scope==='guild')clearConfirm();}
 function clearAdminData(){privilegeEpoch++;global.SengokuTroopGarrisons?.refreshIdentity?.();global.SengokuVoice?.refreshAccess?.();global.SengokuProgress?.refresh?.();global.SengokuAlliance?.refreshAccess?.();global.SengokuConquest?.refreshAccess?.();global.SengokuNotifications?.refreshAccess?.();courtAccessSequence++;global.SengokuBridge?.applyCourtAccess?.(null);destroyGuildIconEditor();s.management=null;global.SengokuPremiumAdmin?.clear?.();refreshOperatorRecoveryAccess();destroyAvatarEditor();clearRecentLogins();for(const key of s.chats.keys())if(key.startsWith('admin:'))s.chats.delete(key);s.adminPlayers=[];s.staff=[];s.staffCandidates=[];s.staffLoaded=false;s.staffQuery='';s.staffPage=1;s.staffCandidatePage=1;s.adminSection='chat';if(s.confirm)clearConfirm();}
-function clearPrivate(){global.SengokuPublicCourt?.clear?.();global.SengokuVoice?.leave?.('領主の接続を確認し直すため、通話を終了しました。');s.profileNameEdit=null;clearAdminData();clearGuildData();s.mail=[];s.openedMail=null;s.guilds=[];s.players=[];s.friendId=null;s.chats.clear();s.confirm=null;s.pairCode=null;}
+function clearPrivate(){cancelViewRefresh();global.SengokuPublicCourt?.clear?.();global.SengokuVoice?.leave?.('領主の接続を確認し直すため、通話を終了しました。');s.profileNameEdit=null;clearAdminData();clearGuildData();s.mail=[];s.openedMail=null;s.guilds=[];s.players=[];s.friendId=null;s.chats.clear();s.confirm=null;s.pairCode=null;}
 function accountBannedError(){return Object.assign(Error(s.accountBanned?.message||'この領主は利用を停止されています。解除後、同じ領主で再接続できます。'),{code:'ACCOUNT_BANNED',status:403});}
 function accountAccessError(){return Object.assign(Error(s.accountAccessPending?.message||'利用状態が変わったため、最新の保存と権限を確認しています。'),{code:'ACCOUNT_ACCESS_CHANGED',status:409});}
 function accountBannedView(){return '<section class="social-account-banned"><h2>この領主は利用停止中です</h2><p>'+esc(s.accountBanned?.message||'この領主は利用停止中です。')+'</p><code>'+esc(s.identity?.id||'')+'</code><p>利用停止が解除されると、同じ領主で利用を再開できます。認証情報と保存された進行はこのまま保持します。削除されたチャット・書状の本文は復元されません。</p><button type="button" class="social-button primary" data-social="banned-recheck">接続を再確認</button></section>';}
@@ -1036,6 +1036,7 @@ function acceptUser(user,{fromSync=false}={}){
  if(user?.isBanned===true){markAccountBanned(user);return;}
  if(!user&&s.accountBanned)return;
  const wasBanned=Boolean(s.accountBanned),wasPending=Boolean(s.accountAccessPending);
+ if(!user)cancelViewRefresh();
  if(!user){global.SengokuPublicCourt?.clear?.();s.profileNameEdit=null;const wasAdminTab=['admin','recent-logins'].includes(s.tab);s.user=null;s.unreadMail=0;s.unreadLetters=0;s.mail=[];s.openedMail=null;global.SengokuResidency?.refreshIdentity?.();global.SengokuLetters?.refreshIdentity?.();global.SengokuTrade?.refreshIdentity?.();global.SengokuTroopGarrisons?.refreshIdentity?.();global.SengokuModeration?.refreshIdentity?.();global.SengokuPremiumRuntime?.refreshIdentity?.();global.SengokuEvents?.refreshAccess?.();global.SengokuShogunate?.refreshAccess?.();global.SengokuCourt?.refreshAccess?.();global.SengokuVoice?.refreshAccess?.();global.SengokuProgress?.refresh?.();global.SengokuAlliance?.refreshAccess?.();global.SengokuConquest?.refreshAccess?.();global.SengokuNotifications?.refreshAccess?.();clearAdminData();clearGuildData();if(wasAdminTab)s.tab='profile';if(!fromSync)applyRoleAccess();if(body&&(wasAdminTab||s.open)){clearConfirm();render();}return;}
  if(!s.identity||String(user.id)!==String(s.identity.id))throw staleIdentity();
  if(wasBanned||wasPending){s.accountBanned=null;s.accountAccessPending=null;accountEpoch++;}
@@ -1164,33 +1165,43 @@ async function loadChat(){
 async function loadGuild(){if(!s.user)return null;const epoch=authEpoch,membershipEpoch=guildEpoch,owner=String(s.identity?.id),guildId=String(s.user.guildId||''),r=await api(guildId?'/guild':'/guilds');if(epoch!==authEpoch||membershipEpoch!==guildEpoch||owner!==String(s.identity?.id)||guildId!==String(s.user?.guildId||''))return null;s.guild=r.guild||null;s.members=r.members||[];if(r.guilds)s.guilds=r.guilds;applyPlayerEvaluations([...s.members.filter(p=>Object.hasOwn(p,'evaluation')).map(p=>({playerId:p.id,evaluation:p.evaluation,...(Object.hasOwn(p,'appearance')?{appearance:p.appearance}:{})})),...(r.guilds||[]).filter(g=>Object.hasOwn(g,'ownerEvaluation')).map(g=>({playerId:g.ownerId,evaluation:g.ownerEvaluation,...(Object.hasOwn(g,'ownerAppearance')?{appearance:g.ownerAppearance}:{})}))]);refreshGuildMembers();refreshGuildIcon();return r;}
 async function loadMail(){const r=await api('/mail');s.mail=r.mail||[];applyPlayerEvaluations(s.mail.flatMap(mail=>mail.participants||[]));}
 function schedulePoll(){clearTimeout(pollTimer);pollTimer=null;if(!s.accountBanned&&!s.accountAccessPending&&!disposed&&s.open&&s.user&&!['news','online','sync','recovery','recent-logins','guild-rankings'].includes(s.tab)&&!(s.tab==='guild'&&s.guildSection==='treasury')&&!document.hidden)pollTimer=setTimeout(()=>refresh({silent:true}),5000);}
+function cancelViewRefresh(){viewRefreshGeneration++;pendingViewRefresh=null;}
+function refreshViewScope(){return JSON.stringify([authEpoch,accountEpoch,s.identity?.id,s.tab,s.tab==='guild'?s.guildSection:null,s.tab==='admin'?s.adminSection:null,s.tab==='friends'?s.friendId:null]);}
 async function refresh({view=false,silent=false}={}){
+ const requested={generation:view?++viewRefreshGeneration:viewRefreshGeneration,scope:refreshViewScope(),silent};
+ const current=()=>!disposed&&s.open&&!document.hidden&&requested.generation===viewRefreshGeneration&&requested.scope===refreshViewScope();
+ if(!current())return;
+ // Keep just the latest explicit view request while the current read settles.
+ // Its scope is checked again before replaying; old reads never continue into it.
+ if(pollBusy){if(view)pendingViewRefresh=requested;return;}
  if(s.accountBanned||s.accountAccessPending){render();return;}
  if(s.tab==='news'){await loadAchievements();return;}
  if(s.tab==='guild-rankings'){await loadGuildRankings();return;}
  if(s.tab==='guild'&&s.guildSection==='treasury'){try{await loadMe();if(s.open&&!document.hidden&&s.tab==='guild'&&s.guildSection==='treasury')await loadGuildTreasury();}catch(error){if(!silent&&error.code!=='STALE_IDENTITY')toast(error.message,true);}finally{if(s.tab==='guild'&&s.guildSection==='treasury')scheduleGuildLists();else schedulePoll();}return;}
- if(s.tab==='recent-logins'){await loadRecentLogins();return;}if(s.tab==='online'){await loadOnline();return;}if(s.tab==='sync'){await global.SengokuCloudSync?.refresh?.();return;}if(s.tab==='recovery')return;if(pollBusy||disposed||!s.open||document.hidden||!s.user)return;pollBusy=true;clearTimeout(pollTimer);
+ if(s.tab==='recent-logins'){await loadRecentLogins();return;}if(s.tab==='online'){await loadOnline();return;}if(s.tab==='sync'){await global.SengokuCloudSync?.refresh?.();return;}if(s.tab==='recovery')return;if(!s.user)return;pollBusy=true;clearTimeout(pollTimer);pollTimer=null;
  try{
   if(view&&s.tab==='profile'&&global.SengokuCloudSync?.getStatus?.().writable)await global.SengokuCloudSync.flush?.();
-  if(!s.user)return;const before={guild:s.user.guildId,guildRole:s.user.guildRole,friends:s.friends.map(f=>f.id).join(','),friendDisplay:friendsSignature(),requests:JSON.stringify(s.requests),admin:s.user.isAdmin,staff:s.user.isStaff};
+  if(!current()||!s.user)return;const before={guild:s.user.guildId,guildRole:s.user.guildRole,friends:s.friends.map(f=>f.id).join(','),friendDisplay:friendsSignature(),requests:JSON.stringify(s.requests),admin:s.user.isAdmin,staff:s.user.isStaff};
   // The world channel checks access on the server itself. Private rooms wait for fresh membership and role data.
   const worldRead=s.tab==='world';
   if(worldRead){
     const results=await Promise.allSettled([loadMe(),loadChat()]);
     for(const result of results)if(result.status==='rejected')throw result.reason;
   }else await loadMe();
-  if(!s.user)return;
+  if(!current()||!s.user)return;
   if(s.tab==='guild'&&(view||before.guild!==s.user.guildId||before.guildRole!==s.user.guildRole||s.guildSection==='members'))await loadGuild();
+  if(!current()||!s.user)return;
   if(s.tab==='admin'&&s.adminSection==='staff'&&s.user.isAdmin)await loadStaff();
-  if(s.tab==='mail'){await loadMail();if(!s.confirm&&s.user&&s.tab==='mail')patchMailView();}
+  if(!current()||!s.user)return;
+  if(s.tab==='mail'){await loadMail();if(current()&&!s.confirm&&s.user)patchMailView();}
   else if(!s.confirm&&(view&&s.tab!=='profile'&&s.tab!=='world'||before.guild!==s.user.guildId||before.admin!==s.user.isAdmin||before.staff!==s.user.isStaff||(s.tab==='friends'&&before.friends!==s.friends.map(f=>f.id).join(','))))render();
   else if(s.tab==='friends'&&(before.friendDisplay!==friendsSignature()||before.requests!==JSON.stringify(s.requests)))refreshFriendsView();
-  if(!worldRead||s.tab!=='world')await loadChat();
- }catch(e){if(!silent&&e.code!=='STALE_IDENTITY')toast(e.message,true);if(e.status===401){acceptUser(null);s.error='領主情報を確認できませんでした。保存した領主データから再接続してください。';render();}}
- finally{pollBusy=false;schedulePoll();}
+  if(current()&&(!worldRead||s.tab!=='world'))await loadChat();
+ }catch(e){if(!current())return;if(!silent&&e.code!=='STALE_IDENTITY')toast(e.message,true);if(e.status===401){acceptUser(null);s.error='領主情報を確認できませんでした。保存した領主データから再接続してください。';render();}}
+ finally{pollBusy=false;const next=pendingViewRefresh;pendingViewRefresh=null;if(next&&next.generation===viewRefreshGeneration&&next.scope===refreshViewScope()&&!disposed&&s.open&&!document.hidden)await refresh({view:true,silent:next.silent});else schedulePoll();}
 }
 function open(tab='world'){if(disposed)return;if(s.accountBanned||s.accountAccessPending)tab='profile';if(tab==='moderation'&&s.user?.isAdmin===true&&global.SengokuModeration){close();return global.SengokuModeration.open();}if(tab==='letters'&&global.SengokuLetters){close();return global.SengokuLetters.openInbox();}if(tab==='trade'&&global.SengokuTrade){close();return global.SengokuTrade.openBox();}pauseRecentLogins();pauseGuildLists();clearTimeout(pollTimer);pollTimer=null;s.open=true;s.tab=tabs().some(t=>t.id===tab)?tab:'world';s.error='';render();if(!dialog.open)dialog.showModal();refresh({view:true});if(s.user&&!s.configLoaded&&!s.accountBanned)loadConfig();}
-function close(){s.open=false;disposeVoiceView();destroyAvatarEditor();destroyGuildIconEditor();pauseRecentLogins();pauseGuildLists();clearTimeout(onlineTimer);onlineTimer=null;clearTimeout(pollTimer);pollTimer=null;clearConfirm();if(dialog.open)dialog.close();}
+function close(){s.open=false;cancelViewRefresh();disposeVoiceView();destroyAvatarEditor();destroyGuildIconEditor();pauseRecentLogins();pauseGuildLists();clearTimeout(onlineTimer);onlineTimer=null;clearTimeout(pollTimer);pollTimer=null;clearConfirm();if(dialog.open)dialog.close();}
 async function selectTab(tab){if(tab==='letters'&&global.SengokuLetters){close();await global.SengokuLetters.openInbox();return;}if(tab==='trade'&&global.SengokuTrade){close();await global.SengokuTrade.openBox();return;}pauseRecentLogins();pauseGuildLists();clearTimeout(pollTimer);pollTimer=null;clearTimeout(onlineTimer);onlineTimer=null;s.tab=tabs().some(t=>t.id===tab)?tab:'world';s.openedMail=null;render();await refresh({view:true});}
 function downloadJSON(filename,data){const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download=filename;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
 async function claimGift(mailId){
@@ -1202,6 +1213,25 @@ async function claimGift(mailId){
  const r=await api('/mail/claim',{method:'POST',data:{mailId,requestId}});if(epoch!==authEpoch)throw staleIdentity();if(!r.receiptId||!r.gift)throw Error('受取結果を確認できませんでした。同じボタンで再確認してください。');
  const applied=await Promise.resolve(global.SengokuBridge.applyGift(r.gift,r.receiptId));if(epoch!==authEpoch)throw staleIdentity();if(!applied?.ok)throw Error(applied?.message||'ゲームへの反映を保存できませんでした。もう一度受け取りを確認してください。');
  delete s.pending[key];saveJSON(CLAIMKEY,s.pending);mail.claimed=true;toast(applied.already?'この贈り物は、すでにゲームへ反映されています。':'贈り物を受け取り、ゲームへ反映しました。');await loadMail();render();
+}
+async function openMail(id){
+ if(!s.open||s.tab!=='mail'||s.confirm||recoveryHeld||s.accountBanned||s.accountAccessPending||!s.identity||!s.user||String(s.identity.id)!==String(s.user.id))return;
+ const mail=s.mail.find(m=>String(m.id)===String(id));if(!mail)return;
+ const epoch=authEpoch,accessEpoch=accountEpoch,owner=String(s.identity.id);
+ const current=()=>!disposed&&epoch===authEpoch&&accessEpoch===accountEpoch&&owner===String(s.identity?.id)&&owner===String(s.user?.id)&&!recoveryHeld&&!s.accountBanned&&!s.accountAccessPending;
+ // The inbox already contains the body. Reading it must not wait for the
+ // read receipt, and reopening it must still work while that receipt is pending.
+ s.openedMail=id;patchMailView();if(mail.read)return;
+ await act(`mail-read:${epoch}:${accessEpoch}:${id}`,null,async()=>{
+  try{
+   const result=await api('/mail/read',{method:'POST',data:{mailId:id},background:true});
+   if(!current())return;
+   if(result.read!==true)throw Error('既読の記録を確認できませんでした。もう一度便りを開いてください。');
+   const latest=s.mail.find(m=>String(m.id)===String(id));if(latest)latest.read=true;
+   if(s.open&&s.tab==='mail'&&!s.openedMail&&!s.confirm)patchMailView();
+   await loadMe({updateRelations:false});
+  }catch(e){if(current()&&s.open&&s.tab==='mail'&&String(s.openedMail)===String(id))throw e;}
+ });
 }
 async function click(event){
  const tab=event.target.closest('[data-social-tab]');if(tab){await selectTab(tab.dataset.socialTab);return;}
@@ -1243,6 +1273,7 @@ async function click(event){
  if(command==='staff-appoint'||command==='staff-dismiss'){await act(command+':'+id,button,async()=>{confirmUI(staffConfirmation(id,command==='staff-appoint'?'appoint':'dismiss'));});return;}
  if(command==='friend-select'){s.friendId=id;render();refresh({view:true});return;}
  if(command==='mail-back'){s.openedMail=null;render();return;}
+ if(command==='mail-open'){await openMail(id);return;}
  if(command==='admin-select-player'){const p=s.adminPlayers.find(p=>String(p.id)===String(id)),select=$('#social-mail-target');if(p&&select){if(![...select.options].some(o=>o.value===String(id))){const o=document.createElement('option');o.value=id;o.textContent=`${playerText(p.name,p.evaluation,p.appearance)}（${p.id}）`;select.append(o);}select.value=id;toast(`${playerText(p.name,p.evaluation,p.appearance)} を宛先に設定しました。`);}return;}
  if(command==='logout'){confirmUI({title:'この端末の接続を解除しますか',description:'領主とクラウドの進行は残ります。この端末は同期を解除し、端末内の保存で遊べる状態になります。再接続には接続コードか領主データを使います。',confirmLabel:'接続を解除',danger:true,onConfirm:async()=>{await global.SengokuCloudSync?.flush?.();global.SengokuCloudSync?.stop?.();authEpoch++;recoveryEpoch++;recovery=null;recoveryHeld=false;clearPrivate();s.identity=null;s.user=null;s.accountBanned=null;s.accountAccessPending=null;accountEpoch++;global.SengokuResidency?.refreshIdentity?.();global.SengokuLetters?.refreshIdentity?.();global.SengokuTrade?.refreshIdentity?.();global.SengokuTroopGarrisons?.refreshIdentity?.();global.SengokuModeration?.refreshIdentity?.();global.SengokuPremiumRuntime?.refreshIdentity?.();global.SengokuEvents?.refreshAccess?.();global.SengokuShogunate?.refreshAccess?.();global.SengokuCourt?.refreshAccess?.();global.SengokuVoice?.refreshAccess?.();global.SengokuProgress?.refresh?.();global.SengokuAlliance?.refreshAccess?.();global.SengokuConquest?.refreshAccess?.();global.SengokuNotifications?.refreshAccess?.();s.friends=[];s.requests=[];s.chats.clear();s.unreadMail=0;applyRoleAccess();try{localStorage.removeItem(IDKEY);}catch(_){}clearTimeout(pollTimer);render();}});return;}
  if(command==='guild-leave'){await act(command,button,async()=>confirmUI(guildLeaveConfirmation()));return;}
@@ -1253,7 +1284,6 @@ async function click(event){
   if(command==='friend-request'){await api('/friends/request',{method:'POST',data:{userId:id}});await loadMe();render();toast('フレンド申請を送りました。');}
   if(command==='friend-accept'||command==='friend-reject'){await api('/friends/respond',{method:'POST',data:{userId:id,accept:command==='friend-accept'}});await loadMe();render();toast(command==='friend-accept'?'フレンドになりました。':'申請を辞退しました。');}
   if(command==='mail-refresh'){await loadMe();await loadMail();render();}
-  if(command==='mail-open'){s.openedMail=id;await api('/mail/read',{method:'POST',data:{mailId:id}});const m=s.mail.find(m=>String(m.id)===String(id));if(m)m.read=true;await loadMe();render();}
   if(command==='mail-claim')await claimGift(id);
  });
 }
@@ -1398,6 +1428,7 @@ function init(){
  dialog=document.createElement('dialog');dialog.id='community-modal';dialog.className='social-dialog';dialog.setAttribute('aria-labelledby','social-dialog-title');
  dialog.innerHTML=`<header class="social-header"><div class="social-header-mon">${icon('chat')}</div><div><div class="social-eyebrow">SENGOKU COMMUNITY</div><h1 id="social-dialog-title">交流の間</h1></div><div class="social-header-status"><span id="social-connection"></span><small id="social-online-count"></small></div><button class="social-icon-button" data-social="close" aria-label="交流を閉じる">${icon('close')}</button></header><nav id="social-tabs" class="social-tabs" role="tablist" aria-label="交流のメニュー"></nav><div id="social-feedback" class="social-feedback" role="status" hidden></div><div id="social-dialog-body" class="social-body"></div><footer class="social-footer"><span>礼をもって語り、志でつながる。</span><span>ゲームは閉じずに続けられます</span></footer><div id="social-confirm-host"></div><input id="social-identity-file" type="file" accept="application/json,.json" multiple hidden>`;
  document.body.append(dialog);body=$('#social-dialog-body');dialog.addEventListener('click',click);dialog.addEventListener('submit',submit);dialog.addEventListener('input',profileNameInput);dialog.addEventListener('change',event=>{if(['social-guild-direction','social-guild-resource'].includes(event.target.id))refreshGuildTreasuryView();});
+ dialog.addEventListener('close',cancelViewRefresh);
  dialog.addEventListener('close',()=>{s.open=false;disposeVoiceView();destroyAvatarEditor();destroyGuildIconEditor();pauseRecentLogins();pauseGuildLists();clearTimeout(onlineTimer);onlineTimer=null;clearTimeout(pollTimer);pollTimer=null;});dialog.addEventListener('cancel',event=>{if(s.confirm){event.preventDefault();clearConfirm();}});
  dialog.addEventListener('keydown',event=>{if(s.confirm&&event.key==='Tab'){const focusable=[...$('#social-confirm-host').querySelectorAll('button:not(:disabled),input,textarea,select')];if(focusable.length){const first=focusable[0],last=focusable[focusable.length-1];if(event.shiftKey&&(document.activeElement===first||!focusable.includes(document.activeElement))){event.preventDefault();last.focus();}else if(!event.shiftKey&&(document.activeElement===last||!focusable.includes(document.activeElement))){event.preventDefault();first.focus();}}return;}if(event.target.id==='social-chat-input'&&event.key==='Enter'&&!event.shiftKey&&!event.isComposing&&event.keyCode!==229){event.preventDefault();event.target.form.requestSubmit();}});
  $('#social-identity-file').addEventListener('change',event=>{const files=Array.from(event.target.files||[]);event.target.value='';importRecoveryFiles(files);});
@@ -3393,7 +3424,7 @@ if(global.document.readyState==='loading')global.document.addEventListener('DOMC
     }
     function setDraft(battleId, durationDays) { identity(); if (!state.admin || !state.authorized || state.sending || state.pending || state.confirmation) return false; state.battleId = String(battleId ?? ''); state.name = state.catalog.find(item => item.id === state.battleId)?.name || ''; state.durationDays = Number(durationDays); state.error = ''; emit('input'); return true; }
     function filterCatalog(query, category = state.catalogCategory) { identity(); if (!state.admin || !state.authorized || state.sending || state.pending || state.confirmation) return false; state.catalogQuery = String(query ?? '').slice(0, 120); state.catalogCategory = category === '' || state.catalog.some(item => item.category === category) ? category : ''; emit('catalog-filter'); return true; }
-    function chooseStage(id) { identity(); if (!state.open || state.admin || state.sending || state.pending) return false; const stage = state.event?.plan.stages.find(item => item.id === id); if (!stage) return false; state.stageId = stage.id; state.tactic = stage.recommendedTactic; emit('choice'); return true; }
+    function chooseStage(id) { identity(); if (!state.open || state.admin || state.sending || state.pending || eventBattleEligibility(state).reason === 'own_castle') return false; const stage = state.event?.plan.stages.find(item => item.id === id); if (!stage) return false; state.stageId = stage.id; state.tactic = stage.recommendedTactic; emit('choice'); return true; }
     function chooseTactic(id) { identity(); if (!state.open || state.admin || state.sending || state.pending || !eventBattleEligibility(state).canAttack || !state.event?.plan.tactics.some(item => item.id === id)) return false; state.tactic = id; emit('choice'); return true; }
     function applyAdvice() {
       identity(); if (!state.open || state.admin || !state.signedIn || state.sending || state.pending || state.confirmation || state.detailLoading || !eventBattleEligibility(state).canAttack) return false;
@@ -3554,18 +3585,22 @@ if(global.document.readyState==='loading')global.document.addEventListener('DOMC
     if (!opponent) return '';
     return `<section class="events-defender"><h4>${report ? '出陣時の守備' : esc(opponent.castleName) + 'の守備'}</h4><p>${report ? esc(opponent.castleName) + ' · ' : ''}領主 ${esc(opponent.lordName)}</p><dl class="events-result-stats"><div><dt>守備兵</dt><dd>${number(opponent.defenseTroops)}人</dd></div><div><dt>守備戦力</dt><dd>${number(opponent.defensePower)}</dd></div></dl></section>`;
   }
-  function defenderView(event) {
+  function defenderView(event, defense = false) {
     const castle = !event.opponent && targetCastle(event.plan);
     const pending = Boolean(castle && event.opponent === undefined);
-    const notice = pending ? `<p class="events-note">${esc(castle.name)}の守備戦力は出陣時に確認します。</p>`
+    const notice = pending ? `<p class="events-note">${esc(castle.name)}${defense ? 'の最新の守備戦力を確認してください。' : 'の守備戦力は出陣時に確認します。'}</p>`
       : castle ? `<p class="events-note">${esc(castle.name)}では各戦場の基本戦力を使います。</p>` : '';
-    return { markup: opponentMarkup(event.opponent) || notice, label: pending && event.status === 'draft' ? '設計時の敵戦力' : '敵戦力',
+    return { markup: opponentMarkup(event.opponent) || notice, label: defense ? '守備戦力' : pending && event.status === 'draft' ? '設計時の敵戦力' : '敵戦力',
       power: stage => event.opponent ? number(event.opponent.defensePower) : pending && event.status !== 'draft' ? '確認中' : number(stage.enemyPower),
       enemy: stage => event.opponent ? event.opponent.castleName + '守備隊' : stage.enemyName };
   }
-  function detailMarkup(event, admin) {
-    const plan = event.plan, defender = defenderView(event);
-    return `<div class="events-hero"><div class="events-hero-top"><span class="events-eyebrow">${esc(plan.theme.label)}</span><span class="events-state" data-event-live-state></span></div><h2 tabindex="-1" data-event-heading>${esc(event.name)}</h2><p class="events-synopsis">${esc(plan.synopsis)}</p><div class="events-schedule"><span>${event.status === 'draft' ? '開催から' + event.durationDays + '日間・実時間' : date(event.startsAt) + ' 〜 ' + date(event.endsAt) + ' JST'}</span><strong data-event-countdown></strong></div></div><div data-event-progress></div><div data-event-defense-adviser></div><div data-event-participation></div><section class="events-section"><div class="events-section-heading"><div><span class="events-eyebrow">THREE BATTLEFIELDS</span><h3>${admin ? '編成された3つの戦場' : '戦場を選ぶ'}</h3></div><span class="events-note">保存済みの軍団で挑む専用合戦</span></div><div data-event-opponent>${defender.markup}</div><div class="events-stages"${admin ? '' : ' role="radiogroup" aria-label="出陣する戦場"'}>${plan.stages.map((stage, index) => `<${admin ? 'article' : 'button type="button" role="radio" aria-checked="false" data-events="stage" data-stage-id="' + esc(stage.id) + '"'} class="events-stage"><span class="events-stage-number">第${['一', '二', '三'][index]}陣</span><h4>${esc(stage.name)}</h4><span class="events-stage-enemy" data-event-stage-enemy="${esc(stage.id)}">${esc(defender.enemy(stage))}</span><p>${esc(stage.description)}</p><span class="events-stage-values"><span><span data-event-power-label="${esc(stage.id)}">${defender.label}</span> <b data-event-stage-power="${esc(stage.id)}">${defender.power(stage)}</b></span><span>基礎戦功 <b>${number(stage.basePoints)}</b></span></span><span class="events-stage-hint">${esc(stage.tacticHint)}</span></${admin ? 'article' : 'button'}>`).join('')}</div>${admin ? `<div class="events-tactics-preview"><h4>5つの戦術</h4><dl>${plan.tactics.map(tactic => `<div><dt>${esc(tactic.name)}</dt><dd>${esc(tactic.description)}</dd></div>`).join('')}</dl></div>` : `<form data-events-battle-form class="events-battle-controls"><div data-event-adviser></div><label for="events-tactic">戦術を選ぶ</label><select id="events-tactic" name="tactic">${plan.tactics.map(tactic => `<option value="${esc(tactic.id)}">${esc(tactic.name)}</option>`).join('')}</select><p class="events-note" data-event-tactic-description></p><div class="events-battle-actions"><p data-event-battle-access></p><button type="submit" class="events-button is-primary" data-events-battle-submit>指令1で出陣</button></div><p class="events-note">通常の城や兵は失いません。戦功と出陣回数は、この催事・合戦だけに記録されます。</p></form>`}</section><div data-event-battle-result></div><div data-event-outcome></div><section class="events-section"><div class="events-section-heading"><div><span class="events-eyebrow">BATTLE HONOURS</span><h3>戦功の褒賞</h3></div><button type="button" class="events-button is-small" data-events="mail">システム便へ</button></div><p class="events-note">目標に到達すると、報酬がシステム便に届きます。郵便からお受け取りください。</p><div data-event-rewards></div></section><section class="events-section events-rules"><h3>この合戦の決まり</h3><p>${esc(plan.theme.description)}</p><ul>${plan.rules.map(rule => `<li>${esc(rule)}</li>`).join('')}</ul><p class="events-note">指令の回復・上限は通常の行動と共通です。ゲーム内の時計を止めても開催期間は進みます。</p></section><div data-event-ranking></div><div class="events-admin-actions" data-event-admin-actions></div>`;
+  function stageCardsMarkup(event, admin = false, defense = false) {
+    const plan = event.plan, defender = defenderView(event, defense), readOnly = admin || defense;
+    return plan.stages.map((stage, index) => `<${readOnly ? 'article' : 'button type="button" role="radio" aria-checked="false" data-events="stage" data-stage-id="' + esc(stage.id) + '"'} class="events-stage" data-event-stage-card="${esc(stage.id)}"><span class="events-stage-number">第${['一', '二', '三'][index]}陣</span><h4>${esc(stage.name)}</h4><span class="events-stage-enemy" data-event-stage-enemy="${esc(stage.id)}">${esc(defender.enemy(stage))}</span><p>${esc(stage.description)}</p><span class="events-stage-values"><span><span data-event-power-label="${esc(stage.id)}">${defender.label}</span> <b data-event-stage-power="${esc(stage.id)}">${defender.power(stage)}</b></span><span>${defense ? '攻撃側の基礎戦功' : '基礎戦功'} <b>${number(stage.basePoints)}</b></span></span><span class="events-stage-hint">${defense ? '攻撃側の推奨戦術 · ' + esc(plan.tactics.find(tactic => tactic.id === stage.recommendedTactic)?.name || '') : esc(stage.tacticHint)}</span></${readOnly ? 'article' : 'button'}>`).join('');
+  }
+  function detailMarkup(event, admin, defense = false) {
+    const plan = event.plan, defender = defenderView(event, defense);
+    return `<div class="events-hero"><div class="events-hero-top"><span class="events-eyebrow">${esc(plan.theme.label)}</span><span class="events-state" data-event-live-state></span></div><h2 tabindex="-1" data-event-heading>${esc(event.name)}</h2><p class="events-synopsis">${esc(plan.synopsis)}</p><div class="events-schedule"><span>${event.status === 'draft' ? '開催から' + event.durationDays + '日間・実時間' : date(event.startsAt) + ' 〜 ' + date(event.endsAt) + ' JST'}</span><strong data-event-countdown></strong></div></div><div data-event-progress></div><div data-event-defense-adviser></div><div data-event-participation></div><section class="events-section"><div class="events-section-heading"><div><span class="events-eyebrow">THREE BATTLEFIELDS</span><h3 data-event-stages-heading>${admin ? '編成された3つの戦場' : defense ? '防衛する戦場' : '戦場を選ぶ'}</h3></div><span class="events-note" data-event-stages-note>${defense ? '各戦場の地形と守備戦力を確認できます。' : '保存済みの軍団で挑む専用合戦'}</span></div><div data-event-opponent>${defender.markup}</div><div class="events-stages" data-event-stages data-event-stages-mode="${admin ? 'admin' : defense ? 'defense' : 'attack'}"${admin || defense ? '' : ' role="radiogroup" aria-label="出陣する戦場"'}>${stageCardsMarkup(event, admin, defense)}</div>${admin ? `<div class="events-tactics-preview"><h4>5つの戦術</h4><dl>${plan.tactics.map(tactic => `<div><dt>${esc(tactic.name)}</dt><dd>${esc(tactic.description)}</dd></div>`).join('')}</dl></div>` : `<form data-events-battle-form class="events-battle-controls"><div data-event-adviser></div><label for="events-tactic">戦術を選ぶ</label><select id="events-tactic" name="tactic">${plan.tactics.map(tactic => `<option value="${esc(tactic.id)}">${esc(tactic.name)}</option>`).join('')}</select><p class="events-note" data-event-tactic-description></p><div class="events-battle-actions"><p data-event-battle-access></p><button type="submit" class="events-button is-primary" data-events-battle-submit>指令1で出陣</button></div><p class="events-note">通常の城や兵は失いません。戦功と出陣回数は、この催事・合戦だけに記録されます。</p></form>`}</section><div data-event-battle-result></div><div data-event-outcome></div><section class="events-section"><div class="events-section-heading"><div><span class="events-eyebrow">BATTLE HONOURS</span><h3>戦功の褒賞</h3></div><button type="button" class="events-button is-small" data-events="mail">システム便へ</button></div><p class="events-note">目標に到達すると、報酬がシステム便に届きます。郵便からお受け取りください。</p><div data-event-rewards></div></section><section class="events-section events-rules"><h3>この合戦の決まり</h3><p>${esc(plan.theme.description)}</p><ul>${plan.rules.map(rule => `<li>${esc(rule)}</li>`).join('')}</ul><p class="events-note">指令の回復・上限は通常の行動と共通です。ゲーム内の時計を止めても開催期間は進みます。</p></section><div data-event-ranking></div><div class="events-admin-actions" data-event-admin-actions></div>`;
   }
   function progressMarkup(state) {
     const progress = state.progress;
@@ -3624,6 +3659,17 @@ if(global.document.readyState==='loading')global.document.addEventListener('DOMC
       setHTML($('[data-event-adviser]'), adviserMarkup(state,game));
       global.SengokuOfficerHealthUI?.refresh(dialog,game);
     }
+    function updateBattlefields(state) {
+      const defense = !state.admin && eventBattleEligibility(state).reason === 'own_castle', mode = state.admin ? 'admin' : defense ? 'defense' : 'attack', stages = $('[data-event-stages]');
+      if (stages && stages.getAttribute('data-event-stages-mode') !== mode) {
+        setHTML(stages, stageCardsMarkup(state.event, state.admin, defense)); stages.setAttribute('data-event-stages-mode', mode);
+        if (mode === 'attack') { stages.setAttribute('role', 'radiogroup'); stages.setAttribute('aria-label', '出陣する戦場'); }
+        else { stages.removeAttribute('role'); stages.removeAttribute('aria-label'); }
+      }
+      updateText($('[data-event-stages-heading]'), state.admin ? '編成された3つの戦場' : defense ? '防衛する戦場' : '戦場を選ぶ');
+      updateText($('[data-event-stages-note]'), defense ? '各戦場の地形と守備戦力を確認できます。' : '保存済みの軍団で挑む専用合戦');
+      return defense;
+    }
     function closeDialog() {
       if (dialog?.open) dialog.close();
       if (returnFocus?.isConnected) returnFocus.focus?.({ preventScroll: true }); returnFocus = null; lastOpen = false;
@@ -3668,9 +3714,10 @@ if(global.document.readyState==='loading')global.document.addEventListener('DOMC
       if (state.event) {
         const { opponent, ...planDetails } = state.event;
         const key = JSON.stringify([state.admin, planDetails]);
-        if (detailKey !== key) { detailKey = key; setHTML(detail, detailMarkup(state.event, state.admin), { key: [state.playerId, state.admin, state.event.id], preserveSelectors: ['[data-event-opponent]', '[data-event-progress]', '[data-event-defense-adviser]', '[data-event-participation]', '[data-event-outcome]', '[data-event-rewards]', '[data-event-ranking]', '[data-event-battle-result]', '[data-event-adviser]', '[data-event-admin-actions]'] }); lastResult = ''; }
+        if (detailKey !== key) { detailKey = key; setHTML(detail, detailMarkup(state.event, state.admin, !state.admin && eventBattleEligibility(state).reason === 'own_castle'), { key: [state.playerId, state.admin, state.event.id], preserveSelectors: ['[data-event-opponent]', '[data-event-progress]', '[data-event-defense-adviser]', '[data-event-participation]', '[data-event-outcome]', '[data-event-rewards]', '[data-event-ranking]', '[data-event-battle-result]', '[data-event-adviser]', '[data-event-admin-actions]'] }); lastResult = ''; }
+        const defense = updateBattlefields(state);
         {
-          const defender = defenderView(state.event);
+          const defender = defenderView(state.event, defense);
           setHTML($('[data-event-opponent]'), defender.markup);
           for (const stage of state.event.plan.stages) {
             updateText($('[data-event-power-label="' + stage.id + '"]'), defender.label);
@@ -3751,11 +3798,10 @@ if(global.document.readyState==='loading')global.document.addEventListener('DOMC
 (function(global){
 'use strict';
 const jobs=new Map();let sequence=0,overlay,title,enterButton,started=false;
-const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 function refresh(){if(!overlay)return;const values=[...jobs.values()],latest=values.at(-1);overlay.hidden=!latest;if(latest&&!overlay.open)requestAnimationFrame(()=>{if(jobs.size&&!overlay.open)overlay.showModal();});if(!latest&&overlay.open)overlay.close();document.body.classList.toggle('is-loading',Boolean(latest));if(!latest)return;overlay.querySelector('[data-loading-label]').textContent=latest.label;const progress=overlay.querySelector('[data-loading-progress]');progress.hidden=!latest.total;if(latest.total){progress.max=latest.total;progress.value=latest.done;}overlay.querySelector('[data-loading-detail]').textContent=latest.total?`${latest.done} / ${latest.total} 点`:'画面を整えています';}
 function begin(label='読み込み中…'){const id=++sequence;jobs.set(id,{label,start:performance.now(),done:0,total:0});refresh();return id;}
 function progress(id,done,total){const job=jobs.get(id);if(job){job.done=done;job.total=total;refresh();}}
-async function end(id){const job=jobs.get(id);if(job)await wait(Math.max(0,240-(performance.now()-job.start)));jobs.delete(id);refresh();}
+async function end(id){jobs.delete(id);refresh();}
 // Texture downloads may finish after a view change. Keep the active controls
 // usable, and let only the most recent view own the footer's loading message.
 let artworkGeneration=0;
