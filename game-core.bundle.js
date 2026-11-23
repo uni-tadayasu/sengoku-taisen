@@ -6782,7 +6782,7 @@ global.setInterval?.(()=>{if(!global.document.hidden&&options.getContext)refresh
   ].map(score => ({...score, bars:32, beats:4}));
   const TRACKS = Object.freeze(SCORES.map(t => Object.freeze({
     id:t.id,name:t.name,title:t.name,scene:t.scene,tempo:t.tempo,bars:t.bars,
-    recording:'assets/music/'+t.id+'.mp3?v=4.9.7-20261123',
+    recording:'assets/music/'+t.id+'.mp3?v=4.9.8-20261123',
     beatsPerBar:t.beats,duration:t.bars*t.beats*60/t.tempo,
     durationSeconds:Math.round(t.bars*t.beats*60/t.tempo),description:t.description
   })));
@@ -7537,7 +7537,7 @@ const officerArtRevision='chronicle-480';
 const previewDir='assets/art-previews/', previewRevision='atlas-20261123';
 const previewUrl=name=>previewDir+name+'.webp?v='+previewRevision;
 const numberTag=value=>String(value).padStart(2,'0');
-const frames=Object.fromEntries(ranks.map(r=>[r,`assets/frames/rank-${r}.svg?v=4.9.7-20261123`]));
+const frames=Object.fromEntries(ranks.map(r=>[r,`assets/frames/rank-${r}.svg?v=4.9.8-20261123`]));
 const operatorPortrait={id:'of_b0616adde162',rank:'U',url:'assets/operator-ieyasu-u.webp?v=ieyasu-anime-u-20261123'};
 const cache=new Map(),loaded=new Set(),paintRequests=new WeakMap(),deferredTitle=new Set();let observer,scheduled=false;
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));

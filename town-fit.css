@@ -152,7 +152,7 @@ html.sengoku-desktop-fit #main .town-overview .realtime-strip { margin: 0; paddi
 html.sengoku-desktop-fit #main .town-overview .live-state { flex-basis: 100%; font-size: 14px; line-height: 1.5; }
 html.sengoku-desktop-fit #main .town-overview .currency-chip { min-height: 36px; padding: 5px 8px; font-size: 14px; }
 html.sengoku-desktop-fit #main .town-overview .shared-time-speed { margin-left: 0; font-size: 14px; }
-html.sengoku-desktop-fit #main .town-overview .sync-access-notice { margin: 10px 0 0; padding: 9px; font-size: 14px; gap: 8px; flex-wrap: wrap; }
+html.sengoku-desktop-fit #main .town-overview .sync-access-notice { margin: 10px 0 0; padding: 9px; font-size: 14px; gap: 8px; grid-template-columns: minmax(0, 1fr); }
 html.sengoku-desktop-fit #main .town-overview .sync-access-notice > span { min-width: 0; }
 html.sengoku-desktop-fit #main .town-overview .sync-access-notice .button { margin-left: auto; }
 html.sengoku-desktop-fit #main .town-facility-console .section-heading { margin: 0 0 9px; gap: 7px; }

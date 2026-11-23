@@ -1,7 +1,7 @@
 // Timed NPC battles spend the campaign's shared command through its current
 // writer revision. The save, battle receipt, points and mail commit together.
 import {GameEngine,GAME_OFFICERS} from './game-runtime.js';
-import {generateEventPlan,normalizeEventPlan,resolveEventBattle,adviseEventBattle} from './event-planner.js';
+import {generateEventPlan,normalizeEventPlan,resolveEventBattle,adviseEventBattle,adviseEventDefense} from './event-planner.js';
 import './battle-catalog.js';
 import {shogunateGrantStatements,shogunateEventRight} from './shogunate.js';
 
@@ -36,12 +36,12 @@ async function eventGame(ctx,raw,now,snapshot=null){
 async function eventDefense(ctx,plan,now,clock=null){
  const id=globalThis.SengokuBattleCatalog.targetCastleId(plan);
  if(!id)return {opponent:null,guard:{sql:'1=1',args:[]}};
- return ctx.helpers.eventGarrison(ctx.db,id,clock||await ctx.helpers.getWorldClock(ctx.db,now),now);
+ return ctx.helpers.eventGarrison(ctx.db,id,clock||await ctx.helpers.getWorldClock(ctx.db,now),now,ctx.user?.id);
 }
 function eventForces(ctx,game,opponent){
  return opponent?{attackPower:ctx.helpers.fieldAttackPower(game.state.troops,game.state),defensePower:opponent.defensePower}:undefined;
 }
-async function eventProgress(ctx,row,now,snapshot=null,opponent=null){
+async function eventProgress(ctx,row,now,snapshot=null,defense=null){
  if(!ctx.user)return null;
  const {db,user}=ctx;
  const result=await db.batch([
@@ -52,10 +52,16 @@ async function eventProgress(ctx,row,now,snapshot=null,opponent=null){
  ]);
  const participant=eventRows(result[0])[0],game=await eventGame(ctx,snapshot?snapshot.save:eventRows(result[1])[0]?.save_json,now,snapshot),plan=normalizeEventPlan(JSON.parse(row.plan_json));
  const command=game?{available:game.state.command,max:game.commandMax(),cost:COMMAND_COST}:null,points=Number(participant?.points||0),wonStages=new Set(eventRows(result[3]).map(r=>r.stage_id));
- const fieldForces=game?eventForces(ctx,game,opponent):undefined;
+ const fieldForces=game?eventForces(ctx,game,defense?.opponent):undefined;
  const clearedStageIds=plan.stages.filter(s=>wonStages.has(s.id)).map(s=>s.id),advisers=game?plan.stages.map(stage=>adviseEventBattle(plan,{stageId:stage.id,army:game.armyStats(),morale:game.state.morale,fieldForces})):[];
  const right=plan.ending?.kind==='unification'?await shogunateEventRight(db,user.id,row.id):null;
- return {points,wins:Number(participant?.wins||0),battles:Number(participant?.battles||0),command,advisers,unification:{eligible:plan.ending?.kind==='unification',clearedStageIds,requiredStageIds:plan.ending?.requiredStageIds||[],points,requiredPoints:plan.ending?.requiredPoints||0,achieved:Boolean(right),earnedAt:right?eventIso(right.earnedAt):null},rewards:eventRows(result[2]).map(reward=>({milestoneId:reward.milestone_id,mailId:reward.mail_id,awardedAt:eventIso(reward.awarded_at)}))};
+ let defenseAdviser=null;
+ if(eventStatus(row,now)==='active'&&defense?.opponent&&defense.defender?.userId===user.id){
+  defenseAdviser=adviseEventDefense(plan,{...defense.opponent,...defense.defender.profile});
+  ctx.helpers.registerDefenseResponseGuard?.({sql:defense.guard.sql+' AND EXISTS(SELECT 1 FROM world_clock WHERE id=? AND revision=?) AND EXISTS(SELECT 1 FROM timed_events WHERE id=? AND revision=? AND status=\'active\' AND ended_at IS NULL)',
+   args:[...defense.guard.args,ctx.helpers.worldClockId,defense.defender.clockRevision,row.id,row.revision]});
+ }
+ return {points,wins:Number(participant?.wins||0),battles:Number(participant?.battles||0),command,advisers,defenseAdviser,unification:{eligible:plan.ending?.kind==='unification',clearedStageIds,requiredStageIds:plan.ending?.requiredStageIds||[],points,requiredPoints:plan.ending?.requiredPoints||0,achieved:Boolean(right),earnedAt:right?eventIso(right.earnedAt):null},rewards:eventRows(result[2]).map(reward=>({milestoneId:reward.milestone_id,mailId:reward.mail_id,awardedAt:eventIso(reward.awarded_at)}))};
 }
 async function eventLeaderboard(ctx,id){
  const found=eventRows(await eventStmt(ctx.db,`SELECT p.user_id,u.name,p.points,p.wins,p.battles FROM timed_event_participants p JOIN users u ON u.id=p.user_id
@@ -86,9 +92,9 @@ async function eventResult(ctx,receipt,idempotent,body=null){
  const response={ok:true,serverNow:eventIso(now),event:eventDto(row,now),idempotent};
  if(receipt.action==='battle'){
   const {db,helpers:h}=ctx,current=await h.getUser(db,ctx.user.id),snapshot=await h.syncSnapshot(db,await h.getSyncRow(db,ctx.user.id),current,body.deviceId,now);
-  const {opponent}=await eventDefense(ctx,response.event.plan,now,snapshot.clock);
-  response.event.opponent=opponent;
-  Object.assign(response,snapshot,{progress:await eventProgress(ctx,row,now,snapshot,opponent),battle:result.battle,rewardMailIds:result.rewardMailIds||[]});
+  const defense=await eventDefense(ctx,response.event.plan,now,snapshot.clock);
+  response.event.opponent=defense.opponent;
+  Object.assign(response,snapshot,{progress:await eventProgress(ctx,row,now,snapshot,defense),battle:result.battle,rewardMailIds:result.rewardMailIds||[]});
  }
  else{
    await requireEventAdmin(ctx);
@@ -248,8 +254,8 @@ export async function handleEvents(ctx){
  const detail=/^\/events\/(ev_[a-f0-9]{32})$/.exec(path);
  if(detail&&method==='GET'){
   const row=await eventRow(ctx,detail[1],{publicOnly:true});
-  const event=eventDto(row,now),{opponent}=await eventDefense(ctx,event.plan,now);
-  return {ok:true,serverNow:eventIso(now),event:{...event,opponent},progress:await eventProgress(ctx,row,now,null,opponent),leaderboard:await eventLeaderboard(ctx,row.id)};
+  const event=eventDto(row,now),defense=await eventDefense(ctx,event.plan,now);
+  return {ok:true,serverNow:eventIso(now),event:{...event,opponent:defense.opponent},progress:await eventProgress(ctx,row,now,null,defense),leaderboard:await eventLeaderboard(ctx,row.id)};
  }
  if(path==='/admin/events'||path.startsWith('/admin/events/')){
   h.requireAdmin(user||{});await requireEventAdmin(ctx);

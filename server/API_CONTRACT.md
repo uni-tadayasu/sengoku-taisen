@@ -1319,6 +1319,23 @@ Public event details and event management action responses resolve the selected 
 
 When an opponent is present, all three stages use its field `defensePower` as the enemy strength, including eligible alliance troops already stationed at that castle. Adviser predictions and battle resolution compare that strength with the participant's saved field attack power adjusted by the chosen stage's tactic multiplier. The server resolves the garrison again for a new sortie and checks it at commit. The battle response records the opponent at that sortie in `battle.opponent`, while `event.opponent` reports the current preview. A replay preserves the original battle, including its recorded strength and opponent. Earlier receipts may omit `battle.opponent`. Event combat leaves the defender's troops, resources and castle ownership intact.
 
+### Personalized defense adviser
+
+Active-event details and battle responses may include `progress.defenseAdviser` for the authenticated current sole lord of the target castle. Ownership is matched by user ID, never by display name. Visitors, other players, retainers, ambiguous defenders, ended events, and plans without an occupied target receive no private advice. Public event and leaderboard DTOs never contain this profile.
+
+```js
+defenseAdviser = null | {
+  castleId, castleName, defenseTroops, defensePower, reinforcementTroops,
+  headline, summary,
+  measures:[{id,priority,title,detail}],
+  stages:[{stageId,stageName,attackTactic,attackTacticName,defensePlan,reason}]
+}
+```
+
+`priority` is 1–3, with 1 first. The bounded game adviser uses the same current field-defense projection as event combat: the castle's garrison and home/mobile troop contribution, castle and wall levels, completed discipline research, equipped army ranks, and eligible stationed alliance aid. It proposes six concrete preparation measures and a counterplan for each stage's most favorable attacking tactic. Attacker armies and choices are unknown, so it supplies no fabricated attacker strength or defense win percentage. These are read-only suggestions; they do not move troops, spend resources, change formations, or grant a defense bonus.
+
+Before sending personalized advice, the response rechecks the observed defender ownership, save and role, event, common clock, shared development and aid conditions. If the observations changed, it clears only `progress.defenseAdviser` to `null`. A committed battle still returns its successful receipt and current synchronization snapshot; a later retry cannot spend a second command. Clients also clear the panel after identity changes or a null/mismatched adviser projection.
+
 ### Clock, progress and battle results
 
 Publishing starts the event at the server's real UTC epoch time. Its scheduled end is exactly `durationDays * 86,400,000` milliseconds later. The virtual world clock, pause, speed settings and world cycles do not affect event duration. Only one non-ended, unexpired event may be active, enforced in the publishing transaction. Expiry is derived on reads and writes, so an event ends on time without a scheduled job or an open browser. The operator may end it early; scheduled `endsAt` remains unchanged and `endedAt` records the early stop. An event which expires naturally reports `endedAt` equal to `endsAt`.
@@ -1331,6 +1348,7 @@ Anonymous details return `progress:null`; signed-in players receive zero-valued 
 progress = {
   points:0, wins:0, battles:0,
   command:null | {available:3,max:3,cost:1},
+  defenseAdviser:null, // personalized object above, when available
   rewards:[{milestoneId:"milestone-1",mailId:"m_ev_…",awardedAt:"ISO-8601"}]
 }
 battle = {

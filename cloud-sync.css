@@ -1,7 +1,16 @@
 /* 交流の間：端末同期と接続中の領主 */
+/* Keep routine save messages in the same space, including narrow town panels.
+   Longer explanations remain readable by scrolling the focused message. */
+.sync-access-notice{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;font-size:14px;line-height:1.6;overflow-anchor:none}
+.sync-access-notice>span{display:grid;grid-template-columns:18px minmax(0,1fr);align-items:start;min-width:0;gap:10px}
+.sync-access-notice>span>.icon{margin-top:.2em}
+.sync-access-notice .sync-access-message{display:block;min-width:0;block-size:3.2em;line-height:1.6;overflow-x:hidden;overflow-y:auto;overflow-wrap:anywhere;white-space:normal;scrollbar-gutter:stable;overscroll-behavior:contain;touch-action:pan-y}
+.sync-access-notice>.button{justify-self:end;align-self:center;white-space:nowrap;max-width:100%}
+.sync-access-message:focus-visible,.social-sync-message:focus-visible{outline:2px solid var(--gold,#d8bf83);outline-offset:2px;border-radius:2px}
 .social-sync-status{display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px;margin-top:18px;padding:17px 18px;border:1px solid #bfa77b55;border-radius:6px;background:#c4a56b0a}
-.social-sync-status>strong{color:#dfc89f;font-size:16px;font-weight:500}.social-sync-status>p{flex:1 1 100%;font-size:14px}.social-sync-status>small{font-size:13px;color:#a7b5ab}.social-sync-status>.social-button{margin-left:auto;white-space:normal}.social-sync-status.is-writer{border-color:#87b49966;background:#78a58b0b}.social-sync-status.is-writer>strong{color:#b3d1b8}
+.social-sync-status>strong{color:#dfc89f;font-size:16px;font-weight:500}.social-sync-status>.social-sync-message{flex:1 1 100%;min-width:0;margin:0;font-size:14px;line-height:1.65;block-size:4.95em;overflow-x:hidden;overflow-y:auto;overflow-wrap:anywhere;white-space:normal;scrollbar-gutter:stable;overscroll-behavior:contain;overflow-anchor:none;touch-action:pan-y}.social-sync-status>small{font-size:13px;color:#a7b5ab;font-variant-numeric:tabular-nums}.social-sync-status>.social-button{margin-left:auto;white-space:normal}.social-sync-status.is-writer{border-color:#87b49966;background:#78a58b0b}.social-sync-status.is-writer>strong{color:#b3d1b8}
 .social-pair-code{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:14px;margin-top:20px;padding:23px 16px;border:1px solid #c4a56b55;border-radius:6px;background:#131c20}.social-pair-code code{font-size:clamp(20px,4.8vw,32px);letter-spacing:.12em;color:#f1ddae;overflow-wrap:anywhere}.social-pair-code>p{flex-basis:100%;text-align:center;font-size:13px}
 .social-online-caption{margin:-7px 0 20px!important;font-size:14px!important}.social-online-label{font-size:13px;color:#b1cbb9;padding:4px 8px;border:1px solid #7fa28e44;border-radius:4px;white-space:nowrap}
 #social-device-code{text-transform:uppercase;letter-spacing:.1em}#social-device-name-form{margin:22px 0}.social-dialog [data-sync-status]{min-width:0}
 @media(max-width:700px){.social-sync-status{padding:15px;gap:10px}.social-sync-status>.social-button{width:100%;margin:4px 0 0}.social-pair-code{padding:19px 12px;gap:12px}.social-pair-code code{letter-spacing:.08em}.social-online-label{font-size:12px}.social-dialog .social-profile-section h3{line-height:1.6}}
+@media(max-width:600px){.sync-access-notice{grid-template-columns:minmax(0,1fr);gap:8px}.sync-access-notice>.button{min-height:44px}}

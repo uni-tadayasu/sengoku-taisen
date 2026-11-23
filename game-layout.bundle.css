@@ -222,12 +222,21 @@
 
 /* cloud-sync.css */
 /* 交流の間：端末同期と接続中の領主 */
+/* Keep routine save messages in the same space, including narrow town panels.
+   Longer explanations remain readable by scrolling the focused message. */
+.sync-access-notice{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;font-size:14px;line-height:1.6;overflow-anchor:none}
+.sync-access-notice>span{display:grid;grid-template-columns:18px minmax(0,1fr);align-items:start;min-width:0;gap:10px}
+.sync-access-notice>span>.icon{margin-top:.2em}
+.sync-access-notice .sync-access-message{display:block;min-width:0;block-size:3.2em;line-height:1.6;overflow-x:hidden;overflow-y:auto;overflow-wrap:anywhere;white-space:normal;scrollbar-gutter:stable;overscroll-behavior:contain;touch-action:pan-y}
+.sync-access-notice>.button{justify-self:end;align-self:center;white-space:nowrap;max-width:100%}
+.sync-access-message:focus-visible,.social-sync-message:focus-visible{outline:2px solid var(--gold,#d8bf83);outline-offset:2px;border-radius:2px}
 .social-sync-status{display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px;margin-top:18px;padding:17px 18px;border:1px solid #bfa77b55;border-radius:6px;background:#c4a56b0a}
-.social-sync-status>strong{color:#dfc89f;font-size:16px;font-weight:500}.social-sync-status>p{flex:1 1 100%;font-size:14px}.social-sync-status>small{font-size:13px;color:#a7b5ab}.social-sync-status>.social-button{margin-left:auto;white-space:normal}.social-sync-status.is-writer{border-color:#87b49966;background:#78a58b0b}.social-sync-status.is-writer>strong{color:#b3d1b8}
+.social-sync-status>strong{color:#dfc89f;font-size:16px;font-weight:500}.social-sync-status>.social-sync-message{flex:1 1 100%;min-width:0;margin:0;font-size:14px;line-height:1.65;block-size:4.95em;overflow-x:hidden;overflow-y:auto;overflow-wrap:anywhere;white-space:normal;scrollbar-gutter:stable;overscroll-behavior:contain;overflow-anchor:none;touch-action:pan-y}.social-sync-status>small{font-size:13px;color:#a7b5ab;font-variant-numeric:tabular-nums}.social-sync-status>.social-button{margin-left:auto;white-space:normal}.social-sync-status.is-writer{border-color:#87b49966;background:#78a58b0b}.social-sync-status.is-writer>strong{color:#b3d1b8}
 .social-pair-code{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:14px;margin-top:20px;padding:23px 16px;border:1px solid #c4a56b55;border-radius:6px;background:#131c20}.social-pair-code code{font-size:clamp(20px,4.8vw,32px);letter-spacing:.12em;color:#f1ddae;overflow-wrap:anywhere}.social-pair-code>p{flex-basis:100%;text-align:center;font-size:13px}
 .social-online-caption{margin:-7px 0 20px!important;font-size:14px!important}.social-online-label{font-size:13px;color:#b1cbb9;padding:4px 8px;border:1px solid #7fa28e44;border-radius:4px;white-space:nowrap}
 #social-device-code{text-transform:uppercase;letter-spacing:.1em}#social-device-name-form{margin:22px 0}.social-dialog [data-sync-status]{min-width:0}
 @media(max-width:700px){.social-sync-status{padding:15px;gap:10px}.social-sync-status>.social-button{width:100%;margin:4px 0 0}.social-pair-code{padding:19px 12px;gap:12px}.social-pair-code code{letter-spacing:.08em}.social-online-label{font-size:12px}.social-dialog .social-profile-section h3{line-height:1.6}}
+@media(max-width:600px){.sync-access-notice{grid-template-columns:minmax(0,1fr);gap:8px}.sync-access-notice>.button{min-height:44px}}
 
 /* readability.css */
 /* 小さな画面でも采配に必要な情報を読みやすく保つ。 */
@@ -1623,7 +1632,7 @@ html.sengoku-desktop-fit #main .town-overview .realtime-strip { margin: 0; paddi
 html.sengoku-desktop-fit #main .town-overview .live-state { flex-basis: 100%; font-size: 14px; line-height: 1.5; }
 html.sengoku-desktop-fit #main .town-overview .currency-chip { min-height: 36px; padding: 5px 8px; font-size: 14px; }
 html.sengoku-desktop-fit #main .town-overview .shared-time-speed { margin-left: 0; font-size: 14px; }
-html.sengoku-desktop-fit #main .town-overview .sync-access-notice { margin: 10px 0 0; padding: 9px; font-size: 14px; gap: 8px; flex-wrap: wrap; }
+html.sengoku-desktop-fit #main .town-overview .sync-access-notice { margin: 10px 0 0; padding: 9px; font-size: 14px; gap: 8px; grid-template-columns: minmax(0, 1fr); }
 html.sengoku-desktop-fit #main .town-overview .sync-access-notice > span { min-width: 0; }
 html.sengoku-desktop-fit #main .town-overview .sync-access-notice .button { margin-left: auto; }
 html.sengoku-desktop-fit #main .town-facility-console .section-heading { margin: 0 0 9px; gap: 7px; }
@@ -2390,6 +2399,32 @@ html:not(.sengoku-desktop-fit) .events-dialog{position:fixed;inset:auto;left:cal
 .events-defender h4{margin:0;color:#f5e5c0;font:600 1rem/1.5 'Noto Serif JP',serif}
 .events-defender p{margin:3px 0 8px;color:#d0d5d2}
 .events-defender .events-result-stats{grid-template-columns:repeat(2,minmax(0,1fr));margin:0}
+
+.events-defense-adviser{margin-top:24px;padding:22px;border:1px solid #92bca579;border-radius:12px;background:linear-gradient(140deg,#263e35,#182c36 75%);overflow-wrap:anywhere}
+.events-defense-adviser header{margin-bottom:18px;padding-bottom:14px;border-bottom:1px solid #a1bba742}
+.events-defense-adviser h3{margin:5px 0;font:600 clamp(20px,2vw,24px)/1.6 'Noto Serif JP',serif;color:#f1e8c9}
+.events-defense-adviser h4{margin:22px 0 10px;font:600 18px/1.65 'Noto Serif JP',serif;color:#e9dfbd}
+.events-defense-adviser h5{margin:0;font-size:16px;font-weight:600;line-height:1.7;color:#f0e4c6}
+.events-defense-adviser p{font-size:16px;line-height:1.9;color:#d3dfd5}
+.events-defense-adviser .events-defense-castle{font-size:14px;color:#c6d5c6}
+.events-defense-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin:18px 0!important;padding:15px 0;border-block:1px solid #a1bba738}
+.events-defense-stats dt{font-size:14px;line-height:1.7;color:#bcd0c6}
+.events-defense-stats dd{margin:5px 0 0;font-size:22px;line-height:1.5;font-weight:600;color:#f3dfae;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.events-defense-stats small{margin-left:4px;font-size:14px;font-weight:400;color:#c3d3c7}
+.events-defense-measures{display:grid;gap:12px;margin:0!important;padding:0;list-style:none}
+.events-defense-measures li{display:grid;grid-template-columns:minmax(72px,auto) minmax(0,1fr);align-items:start;gap:12px;padding:14px;border:1px solid #8ba6964d;border-radius:9px;background:#0d252450}
+.events-defense-measures p{margin:5px 0 0;font-size:14px}
+.events-defense-priority{display:inline-flex;justify-content:center;padding:4px 7px;border:1px solid #9dba9b5c;border-radius:5px;font-size:14px;line-height:1.5;color:#c6d7c0;white-space:nowrap}
+.events-defense-priority[data-priority="1"]{border-color:#d4b36e82;background:#d7ad3c14;color:#f3dc9c}
+.events-defense-stages{display:grid;gap:12px;margin-top:13px}
+.events-defense-stages article{padding:15px;border-left:3px solid #abbd9c;border-radius:0 8px 8px 0;background:#0d22284f}
+.events-defense-stages strong{display:block;margin:10px 0 5px;font-size:16px;line-height:1.8;font-weight:600;color:#e6d7ad}
+.events-defense-stages p{font-size:14px}
+.events-defense-stages .events-defense-tactic{margin-top:4px;color:#b6cdc4}
+.events-defense-adviser .events-defense-note{font-size:14px;line-height:1.85;color:#c0d0c6}
+.events-defense-adviser .events-defense-explanation{margin:19px 0 0;padding-top:16px;border-top:1px solid #a1bba738}
+@media(max-width:520px){.events-defense-adviser{padding:16px}.events-defense-stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 10px}.events-defense-stats>div:last-child{grid-column:1/-1}.events-defense-stats dd{font-size:21px}.events-defense-measures li{grid-template-columns:minmax(0,1fr);gap:9px;padding:12px}.events-defense-priority{justify-self:start}.events-defense-stages article{padding:13px}}
+@media(max-width:420px){.events-defense-stats{grid-template-columns:minmax(0,1fr)}.events-defense-stats>div:last-child{grid-column:auto}}
 
 /* battle-advisor.css */
 .battle-advisor{min-width:0;width:100%;margin:18px 0;padding:18px;border:1px solid #c6ab734f;border-radius:10px;background:linear-gradient(135deg,#29372ee6,#1a252ce6);color:var(--text,#eeeae1);overflow-wrap:anywhere}

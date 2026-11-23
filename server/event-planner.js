@@ -140,6 +140,52 @@ export function adviseEventBattle(plan,{stageId,army,morale,fieldForces}={}){
   return{stageId,...option(best),reason:`${fieldForces?'本隊兵・士気・軍事研究・軍団ランクに、武将と戦場の戦術適性を加え、城の守備戦力に対して5つの戦術を比較しました。':'現在の軍団と士気・戦場適性で5つの戦術を比較しました。'}${best.chosen.name}の予測勝率は${Math.round(best.chance*100)}%です。勝利を保証するものではありません。`,options:estimates.map(option)};
 }
 
+// Read-only guidance for the authenticated current defender. The caller owns
+// identity and concurrency checks; this pure helper never changes a battle.
+export function adviseEventDefense(plan,defense){
+  plan=normalizeEventPlan(plan);
+  if(!defense||globalThis.SengokuBattleCatalog.targetCastleId(plan)!==defense.castleId)invalid('防衛対象の城を確認できません。');
+  const castleId=text(defense.castleId,'防衛対象',80),castleName=text(defense.castleName,'城の名前',120);
+  for(const key of ['defenseTroops','defensePower','reinforcementTroops','garrisonTroops','fieldTroops','homeContribution','wallLevel','castleLevel','castleMaxLevel','disciplineLevel','armyCount']){
+    if(!Number.isSafeInteger(defense[key])||defense[key]<0||defense[key]>1e12)invalid('現在の守備情報を確認できません。');
+  }
+  const d=defense;
+  if(typeof d.isHome!=='boolean'||d.defensePower<1||d.reinforcementTroops>d.defenseTroops||d.wallLevel<1||d.wallLevel>32||d.castleLevel<1||d.castleLevel>d.castleMaxLevel||d.castleMaxLevel>128||d.disciplineLevel>5||d.armyCount>3||!Number.isFinite(d.armyRankPower)||d.armyRankPower<.75||d.armyRankPower>1.5)invalid('現在の守備情報を確認できません。');
+  const n=value=>value.toLocaleString('ja-JP'),measures=[],add=(id,priority,title,detail)=>measures.push({id,priority,title,detail});
+  add('troops',d.defenseTroops<2000||d.fieldTroops===0?1:2,d.fieldTroops===0?'本隊兵の補充を優先':'本隊を保ち、守備兵を確保',
+    `城の駐屯兵は${n(d.garrisonTroops)}兵、本隊${n(d.fieldTroops)}兵のうち${n(d.homeContribution)}兵がこの城の守りに加わっています。通常の募兵で本隊を補い、別の戦への出陣前に守備戦力を確認しましょう。`);
+  if(d.isHome){
+    add('wall',d.wallLevel<4?1:d.wallLevel<32?2:3,d.wallLevel<32?'城壁の増築を検討':'完成した城壁を維持',
+      `現在の城壁はLv.${d.wallLevel} / 32です。${d.wallLevel<32?`城下町で城壁をLv.${d.wallLevel+1}へ増築できるか、資源と普請枠を確認しましょう。守備力への反映は工事の完成後です。`:'城壁は上限です。本隊兵・軍法整備・軍団ランクの準備に資源を回しましょう。'}`);
+  }else{
+    add('wall',3,'領有拠点の城壁を確認',`この城の城壁はLv.${d.wallLevel}です。本拠の城壁とは別の値が守備計算に使われます。この城の城郭強化、本隊の確保、駐留援軍を組み合わせて備えましょう。`);
+  }
+  add('discipline',d.disciplineLevel===0?1:d.disciplineLevel<5?2:3,d.disciplineLevel<5?'軍法整備で守備を強化':'軍法整備の成果を生かす',
+    `軍法整備はLv.${d.disciplineLevel} / 5です。${d.disciplineLevel<5?`研究画面でLv.${d.disciplineLevel+1}への研究条件と費用を確認しましょう。完成した軍法整備は守備全体に反映されます。`:'研究は上限まで完成しています。兵数と軍団のランクを整え、この守備補正を生かしましょう。'}`);
+  add('castle',d.castleLevel<4?1:d.castleLevel<d.castleMaxLevel?2:3,d.castleLevel<d.castleMaxLevel?'対象城の城郭を強化':'城郭の完成状態を維持',
+    `現在の城郭はLv.${d.castleLevel} / ${d.castleMaxLevel}です。${d.castleLevel<d.castleMaxLevel?`天下地図で${castleName}の城郭強化を確認し、Lv.${d.castleLevel+1}の完成を目指しましょう。工事中の段階は現在の守備力に含みません。`:'城郭は上限です。募兵・軍団編成・援軍の駐留を優先して確認しましょう。'}`);
+  add('army',d.armyCount===0?1:d.armyRankPower<1.25?2:3,d.armyCount===0?'守備を支える軍団を編成':'軍団のランク倍率を点検',
+    `現在の軍団は${d.armyCount}名、軍団ランクによる守備倍率は${d.armyRankPower}倍です。${d.armyCount===0?'所持武将から軍団を編成すると、未編成時の守備補正を改善できます。':'所持武将のランクを比較し、編成全体のランク倍率が下がらない組合せを選びましょう。人数を増やすだけで必ず強くなるとは限りません。'}`);
+  add('reinforcements',d.reinforcementTroops>0&&d.reinforcementTroops>=d.defenseTroops*.3?1:2,d.reinforcementTroops>0?'駐留援軍の期限を確認':'同盟援軍を相談',
+    d.reinforcementTroops>0?`現在${n(d.reinforcementTroops)}兵の有効な駐留援軍が守備力に含まれます。同盟画面で駐留期限を確認し、帰還後の守りも見直しましょう。`:'現在、守備力に含まれる駐留援軍は0兵です。同盟に所属している場合は、この城への援軍を仲間に相談しましょう。未到着・期限切れの援軍は計上されません。');
+  measures.sort((a,b)=>a.priority-b.priority);
+  const counters={
+    balanced:'本隊兵・城郭・軍法整備の偏りを減らし、優先対策の上位から準備する。軍団のランク倍率も維持する。',
+    charge:'正面の突破に備え、本隊を減らす別の出陣を慎重に判断する。城郭と駐留援軍を整え、守備兵を厚く保つ。',
+    raid:'搦手への攻撃を想定し、本隊兵と軍団のランク倍率を保つ。援軍の駐留状況を確認し、薄い守りを補う。',
+    siege:'外郭への圧力に備え、城郭・軍法整備を優先する。本拠なら城壁も整え、駐留援軍の期限を確認する。',
+    defend:'攻撃側が陣を整える局面を想定し、無理な別戦への出陣を控える計画を立てる。城郭と本隊兵の準備を進める。'
+  };
+  const stages=plan.stages.map(stage=>{
+    const tactic=[...TACTICS].sort((a,b)=>stage.tacticMultipliers[b.id]-stage.tacticMultipliers[a.id])[0];
+    return{stageId:stage.id,stageName:stage.name,attackTactic:tactic.id,attackTacticName:tactic.name,defensePlan:counters[tactic.id],
+      reason:`この局面では攻撃側の「${tactic.name}」の戦場適性が${Math.round(stage.tacticMultipliers[tactic.id]*100)}%で最も高く設定されています。相手の兵数・武将・選択戦術は未確定です。現在の守備戦力${n(d.defensePower)}を土台に備える軍議案です。`};
+  });
+  return{castleId,castleName,defenseTroops:d.defenseTroops,defensePower:d.defensePower,reinforcementTroops:d.reinforcementTroops,
+    headline:`${castleName}の防衛方針：${measures[0].title}`,
+    summary:'現在の守備を点検した防衛案です。攻撃側の兵数や軍団は未確定のため、防衛勝率は算出しません。イベント戦では守備兵・領土は減らず、対策の自動実行も行いません。',measures,stages};
+}
+
 export function resolveEventBattle(plan,{stageId,tactic,army,morale,fieldForces,enemyName=undefined}={},roll){
   // Only a server-stored approved plan belongs here. Request bodies contain
   // the stage/tactic selection, never an enemy, reward or claimed army stat.

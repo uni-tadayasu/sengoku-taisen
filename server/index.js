@@ -22,7 +22,7 @@ import {handleBranches,projectBranchState,applyBranchProgress,reconcileBranchPro
 import {relocateResidence} from './relocation.js';
 import {ensureResidency,residencySnapshot,residencyDirectory,residencyStart,initialResidencyStatements,residencyTargetGuard,prepareResidencySuccession,prepareResidencyCpuLosses} from './residency.js';
 const API = '/api/v1';
-const API_VERSION = '4.9.7';
+const API_VERSION = '4.9.8';
 const API_FEATURES = Object.freeze({trades:true,moderation:true,premium:true,timedEvents:true,troopTrades:true,roamingBattles:true,roamingDeployment:true,covertDispatch:true,privatePlayerRoles:true,guildIcons:true,court:true,kyotoGosho:true,branches:true,branchBattles:true,branchFacilities:true,audioCalls:true,progression:true,armyPresets:true,allianceStrategy:true,sharedConquest:true,newcomerProtection:true,webPush:true,battleAdviser:true,battleCatalog:true,eventBattleRewards:true,shogunate:true,attackTravel:true,castleResidency:true,residencyRelocation:true});
 const MAX_BODY = 16 * 1024;
 const MAX_SAVE_BODY = 2 * 1024 * 1024;
@@ -51,6 +51,7 @@ const BASE_ORIGINS = new Set(['https://uni-tadayasu.github.io', 'https://www.kas
 const encoder = new TextEncoder();
 const authenticatedRequests = new WeakMap();
 const courtResponseGuards = new WeakMap();
+const eventDefenseResponseGuards = new WeakMap();
 
 class ApiError extends Error {
   constructor(status, code, message, retryAfter) {
@@ -1860,7 +1861,7 @@ function mapFieldRelationship(row,userId,elapsed,targetName='') {
   if(status==='neutral')return null;
   return {targetPlayerId:row.user_a===userId?row.user_b:row.user_a,targetName,targetEvaluation:evaluationRef(row.user_a===userId?row.user_b:row.user_a),status,expiresElapsedMs:Number(row.expires_elapsed_ms),remainingMs:Math.max(0,Number(row.expires_elapsed_ms)-elapsed),proposedBy:row.proposed_by,revision:Number(row.revision)};
 }
-function mapFieldPlayer(row,viewer,relationship,clock,now,targetCastleId=null) {
+function mapFieldPlayer(row,viewer,relationship,clock,now,targetCastleId=null,inspectDefense=null) {
   const castles=JSON.parse(row.castles_json),cyclePending=Number(row.cycle_index)<Math.floor(clock.elapsedMs/WORLD_CYCLE_MS),rawHome=cyclePending?(row.cycle_home||row.original_home||row.home_id):row.home_id;
   const legacyService=rawHome==='sunpu'&&(row.service_base_id==='sunpu'||!!row.personal_home),storedHome=legacyService?'kyoto_gosho':rawHome;
   // Old saves remain untouched until their own synchronization. Project the
@@ -1884,15 +1885,16 @@ function mapFieldPlayer(row,viewer,relationship,clock,now,targetCastleId=null) {
   if(cyclePending&&isHome&&battleMode!=='reward'){castle.troops=Math.max(1200,castle.troops);castle.wall=Math.max(castle.wall,Number(row.wall));}
   const state={home,troops:Number(row.troops),castles:{[castleId]:castle},buildings:{wall:isHome&&row.is_staff&&!row.is_admin?castle.wall:Number(row.wall)},tech:{discipline:Number(row.discipline)},army:JSON.parse(row.army_json||'[]'),officerVariants:JSON.parse(row.variants_json||'[]')};
   const defense=fieldDefense(state,'balanced',0,castleId),self=viewer?.id===row.id,relation=self?'self':fieldRelationStatus(relationship,viewer?.id,clock.elapsedMs);
+  inspectDefense?.({castleId,isHome,garrisonTroops:castle.troops,fieldTroops:state.troops,homeContribution:defense.force-castle.troops,wallLevel:isHome?state.buildings.wall:castle.wall,castleLevel:castle.level,castleMaxLevel:castleLevelLimit(castleId),disciplineLevel:state.tech.discipline,armyCount:defense.army.officerCount,armyRankPower:defense.army.rankPower});
   const lastDefended=Math.max(row.last_defended_ms??-Infinity,battleMode==='reward'&&castleId==='kyoto_gosho'?(row.last_kyoto_gosho_defended_ms??-Infinity):-Infinity),protectedUntil=Number.isFinite(lastDefended)?lastDefended+FIELD_RULES.defenderProtectionMs:0;
   const baseReason=!viewer?'領主として接続してください。':self?'自分の城です。':viewer.householdCastleId&&viewer.householdCastleId===row.household_id?'同じ城の領主・家臣には攻撃できません。':castleId==='edo'&&viewer.courtEdoDenied?COURT_EDO_REASON:cyclePending&&battleMode!=='reward'&&Number(row.lease_expires_at)>now?'この領主は領地を精算中です。':relation==='allied'?'同盟の期間中です。':protectedUntil>clock.elapsedMs?'襲撃後の保護期間です。':!clock.running?'世界の共通時間が停止中です。':'';
   const branches=fieldBranches(row,castleId,castle,clock,cyclePending,home,baseReason),reason=baseReason||(branches.some(branch=>branch.level>0&&!branch.fallen)?'大都市拠点へ攻めるには、残っている支拠点をすべて先に陥落させてください。':'');
   return {playerId:row.id,name:row.name,clan,householdCastleId:row.household_id||null,householdRole:row.household_id?(row.household_lord===row.id?'lord':'retainer'):null,lordEpoch:Number(row.household_epoch||0),retainerCount:row.household_lord===row.id?Number(row.household_retainers||0):0,evaluation:evaluationRef(row.id),avatarVersion:row.avatar_version||null,homeCastleId:home,homeCastleName:CASTLE_BY_ID[home].name,targetCastleId:castleId,targetCastleName:CASTLE_BY_ID[castleId].name,isHome,battleMode,capturable:battleMode==='capture',majorCity:MAJOR_CITIES.includes(castleId),level:castle.level,keepLevel,defenseTroops:defense.force,defensePower:defense.power,armySummary:defense.army,branches,isAdmin:!!row.is_admin,isStaff:!!row.is_staff&&!row.is_admin,self,online:row.presence_seen!==null&&Number(row.presence_seen)>now-ONLINE_WINDOW,relationship:relation,protectedUntilElapsedMs:protectedUntil,attackable:!reason,attackReason:reason};
 }
-function mapFieldTargets(row,viewer,relationship,clock,now) {
-  const home=mapFieldPlayer(row,viewer,relationship,clock,now),castles=JSON.parse(row.castles_json);
+function mapFieldTargets(row,viewer,relationship,clock,now,inspectDefense=null) {
+  const home=mapFieldPlayer(row,viewer,relationship,clock,now,null,inspectDefense),castles=JSON.parse(row.castles_json);
   const outposts=Number(row.cycle_index)<Math.floor(clock.elapsedMs/WORLD_CYCLE_MS)?[]:FIELD_CAPTURE_CASTLES.filter(id=>id!==home.homeCastleId&&castles[id]?.owner===row.game_clan);
-  return [...(MAJOR_CITIES.includes(home.homeCastleId)||home.householdRole==='lord'&&home.householdCastleId===home.homeCastleId?[home]:[]),...outposts.map(id=>mapFieldPlayer(row,viewer,relationship,clock,now,id))];
+  return [...(MAJOR_CITIES.includes(home.homeCastleId)||home.householdRole==='lord'&&home.householdCastleId===home.homeCastleId?[home]:[]),...outposts.map(id=>mapFieldPlayer(row,viewer,relationship,clock,now,id,inspectDefense))];
 }
 async function fieldRelation(db,a,b) {const [first,second]=pair(a,b);return stmt(db,'SELECT * FROM field_relations WHERE user_a=? AND user_b=?',first,second).first();}
 async function fieldOwnRelations(db,userId,elapsed) {
@@ -1909,7 +1911,7 @@ const FIELD_PUBLIC_HOME_SQL=`(${FIELD_FIXED_HOME_SQL} OR ${FIELD_PERSONAL_HOME_S
 const FIELD_PUBLIC_TARGET_SQL="("+FIELD_PUBLIC_HOME_SQL+" OR EXISTS(SELECT 1 FROM json_each(s.save_json,'$.state.castles') c WHERE c.key IN ('nijo','osaka','nagoya') AND json_extract(c.value,'$.owner')=json_extract(s.save_json,'$.state.clan')))";
 // Resolve a named event against the same published castle and field defense
 // as the world map. A disputed major city has no single defending lord.
-async function eventGarrison(db,castleId,clock,now){
+async function eventGarrison(db,castleId,clock,now,viewerId=null){
   const none={opponent:null,guard:{sql:'1=1',args:[]}};
   if(!castleId||!CASTLE_BY_ID[castleId])return none;
   const cycle=Math.floor(clock.elapsedMs/WORLD_CYCLE_MS),ordinary=!MAJOR_CITIES.includes(castleId);
@@ -1949,7 +1951,9 @@ async function eventGarrison(db,castleId,clock,now){
     row.staff_castle_level=state.castles.kyoto_gosho.level;row.staff_wall=state.buildings.wall;
     guard.sql+=' AND '+shared.sql;guard.args.push(...shared.args);
   }
-  const target=mapFieldTargets(row,null,null,clock,now).find(t=>t.targetCastleId===castleId);
+  let defenseProfile=null;
+  const inspectDefense=owner.id===viewerId?profile=>{if(profile.castleId===castleId)defenseProfile=profile;}:null;
+  const target=mapFieldTargets(row,null,null,clock,now,inspectDefense).find(t=>t.targetCastleId===castleId);
   if(!target)return{opponent:null,guard};
   const aid=`SELECT COALESCE(SUM(u.troops),0) AS troops FROM alliance_units u JOIN guild_members a ON a.user_id=u.owner_id AND a.guild_id=u.guild_id
     JOIN guild_members d ON d.user_id=u.target_id AND d.guild_id=u.guild_id
@@ -1960,7 +1964,8 @@ async function eventGarrison(db,castleId,clock,now){
   const aidArgs=[now,owner.id,castleId],reinforcements=Number((await stmt(db,aid,...aidArgs).first()).troops);
   guard.sql+=' AND ('+aid+')=?';guard.args.push(...aidArgs,reinforcements);
   applyFieldReinforcements(target,reinforcements);
-  return{opponent:{castleId,castleName:CASTLE_BY_ID[castleId].name,lordName:owner.name,defenseTroops:target.defenseTroops,defensePower:target.defensePower},guard};
+  return{opponent:{castleId,castleName:CASTLE_BY_ID[castleId].name,lordName:owner.name,defenseTroops:target.defenseTroops,defensePower:target.defensePower},guard,
+    defender:defenseProfile?{userId:owner.id,profile:{...defenseProfile,reinforcementTroops:reinforcements},clockRevision:clock.revision}:null};
 }
 function applyFieldReinforcements(target,troops){
   target.reinforcementTroops=troops;
@@ -2516,7 +2521,7 @@ async function route(request, env, now) {
 
   if(path==='/events'||path.startsWith('/events/')||path==='/admin/events'||path.startsWith('/admin/events/')){
     const user=method==='GET'&&!path.startsWith('/admin/')&&!request.headers.has('authorization')?null:await authenticate(request,db,now);
-    return handleEvents({db,user,now,path,method,url,request,helpers:{eventGarrison,fieldAttackPower,fail,readBody,budget,idField,textField,uid,hash,getUser,getSyncRow,requireAdmin,requireAccountAccess,roleCommitGuard,evaluationRef,fieldWriter,settleWriterCycle,getWorldClock,normalizeGameSave,syncSnapshot,syncLease:SYNC_LEASE,worldClockId:WORLD_CLOCK_ID}});
+    return handleEvents({db,user,now,path,method,url,request,helpers:{eventGarrison,fieldAttackPower,registerDefenseResponseGuard:guard=>eventDefenseResponseGuards.set(request,guard),fail,readBody,budget,idField,textField,uid,hash,getUser,getSyncRow,requireAdmin,requireAccountAccess,roleCommitGuard,evaluationRef,fieldWriter,settleWriterCycle,getWorldClock,normalizeGameSave,syncSnapshot,syncLease:SYNC_LEASE,worldClockId:WORLD_CLOCK_ID}});
   }
   let user = await authenticate(request,db,now);
   const expansionContext={db,env,user,now,path,method,url,request,helpers:{fail,readBody,budget,idField,textField,uid,hash,getUser,getSyncRow,requireAdmin,requireAccountAccess,roleCommitGuard,accountCommitGuard,evaluationRef,fieldWriter,settleWriterCycle,getWorldClock,normalizeGameSave,syncSnapshot,staffBaseDto,syncLease:SYNC_LEASE,worldClockId:WORLD_CLOCK_ID}};
@@ -2918,6 +2923,10 @@ export default {
       const visible=await resolvePublicCourtOffices(env.DB,publicIdentities(resolved,request),now);
       if(path.startsWith(API+'/players/')&&payload.player)await finishPublicProfiles(env.DB,visible,true);
       else if(path===API+'/players'&&!authenticated)await finishPublicProfiles(env.DB,visible,false);
+      const defenseGuard=eventDefenseResponseGuards.get(request);
+      // A battle may already be committed. Withdraw only stale private advice
+      // so its receipt and command reconciliation remain successful/replayable.
+      if(defenseGuard&&!await stmt(env.DB,'SELECT 1 AS event_defense_current WHERE '+defenseGuard.sql,...defenseGuard.args).first())visible.progress.defenseAdviser=null;
       return response(visible,200,origin);
     }catch(error){
       const authenticated=authenticatedRequests.get(request);if(authenticated)try{await requireAccountAccess(env.DB,authenticated);}catch(accessError){error=accessError;}
