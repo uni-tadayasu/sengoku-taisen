@@ -1102,6 +1102,30 @@ function upkeepAdjustmentDto(before,after,result){
   if(debits.size)return null;
   return{version:1,removed,allocations:result.allocations.map(item=>pick(item,['kind','id','removed'])),before,after};
 }
+function reconcileMonthlyUpkeep(game,before,{hasMonthlyReceipt=false}={}){
+  const state=game.state,sameCampaign=before?.state.walking.campaignId===state.walking.campaignId;
+  if(!sameCampaign){state.upkeep=GameEngine.normalizeUpkeepState(undefined,state.turn);return null;}
+  const previous=GameEngine.normalizeUpkeepState(before.state.upkeep,before.state.turn),incoming=state.upkeep,allocations=[];
+  const counters={...previous.branchReductions};
+  if(hasMonthlyReceipt){
+    for(const [id,total] of Object.entries(incoming.branchReductions)){
+      const removed=Math.max(0,total-(counters[id]||0));if(!removed)continue;
+      const branch=state.branches.find(branch=>branch.id===id);
+      // Receipts can only debit soldiers in an existing canonical pool. They
+      // cannot add troops, repeat a settled month, or reset on a rebuilt site.
+      if(incoming.settledTurn<=previous.settledTurn||!branch||removed>(branch.stationedTroops||0))fail(409,'BRANCH_STATE_CHANGED','月ごとの減兵と支拠点の兵を最新の保存へ同期してください。');
+      branch.stationedTroops-=removed;counters[id]=total;allocations.push({kind:'branch',id,removed});
+    }
+  }
+  state.upkeep={version:1,settledTurn:Math.max(previous.settledTurn,hasMonthlyReceipt?incoming.settledTurn:before.state.turn),branchReductions:counters};
+  if(allocations.length)game._pruneBranches();
+  // A modern client already settled the month before any later recruitment or
+  // income change. Only legacy/deferred months need a complete calculation.
+  const pending=game.settleMonthlyUpkeep();
+  for(const item of pending.allocations){const prior=allocations.find(value=>value.kind===item.kind&&value.id===item.id);if(prior)prior.removed+=item.removed;else allocations.push({...item});}
+  const removed=allocations.reduce((sum,item)=>sum+item.removed,0);
+  return{changed:removed>0,removed,allocations};
+}
 
 function normalizeGameSave(raw, user, now, {reading=false,clock=null}={}) {
   let obj;try{obj=typeof raw==='string'?JSON.parse(raw):copy(raw);}catch(e){fail(400,'INVALID_SAVE','セーブデータを読み取れません。');}
@@ -1195,6 +1219,7 @@ function normalizeGameSave(raw, user, now, {reading=false,clock=null}={}) {
   if(!Array.isArray(s.log)||s.log.length>200||s.log.some(l=>!isObj(l)||!num(l.turn,0,MAX_TURN)||typeof l.text!=='string'||l.text.length>2000||typeof l.kind!=='string'||l.kind.length>30))invalid();
   // Only retain known, validated fields; do not merge arbitrary imported object keys.
   const n=g.state;for(const k of ['clan','home','turn','difficulty','resources','troops','troopTransferSequence','morale','prestige','command','buildings','jobs','branches','officers','officerVariants','army','governors','tech','castles','treaties','scouted','log','claimedQuests','giftReceipts','walking','roaming','covert','magatama','captureRewards','gachaHistory','seed','stats','realtime','march','marchHistory'])n[k]=copy(s[k]);
+  try{n.upkeep=GameEngine.normalizeUpkeepState(s.upkeep,s.turn);}catch{invalid();}
   n.progress=GameEngine.normalizePlayerProgress(s.progress,n);
   if(s.worldClock!==undefined)n.worldClock={id:WORLD_CLOCK_ID,elapsedMs:s.worldClock.elapsedMs};
   n.officerHealth=GameEngine.normalizeOfficerHealth(s.officerHealth,n);
@@ -1339,7 +1364,7 @@ async function settlePlayerCycle(db,row,user,now,clock=undefined,{deferActive=tr
     save=normalizeGameSave(JSON.parse(row.save_json),user,now,{reading:true,clock});
     const index=Number(row.cycle_index),home=user.is_admin?'edo':row.cycle_home||save.state.home;
     save.state.cycle={index,home,latestReward:save.state.cycle?.latestReward||null};
-    if(!save.state.worldClock){const elapsed=index*WORLD_CYCLE_MS+(save.state.turn%WORLD_CYCLE_MONTHS)*WORLD_MONTH_MS+Math.floor(save.state.realtime.elapsed*1000);save.state.turn=Math.floor(elapsed/WORLD_MONTH_MS);save.state.realtime.elapsed=(elapsed%WORLD_MONTH_MS)/1000;save.state.worldClock={id:WORLD_CLOCK_ID,elapsedMs:elapsed};}
+    if(!save.state.worldClock){const elapsed=index*WORLD_CYCLE_MS+(save.state.turn%WORLD_CYCLE_MONTHS)*WORLD_MONTH_MS+Math.floor(save.state.realtime.elapsed*1000);save.state.turn=Math.floor(elapsed/WORLD_MONTH_MS);save.state.realtime.elapsed=(elapsed%WORLD_MONTH_MS)/1000;save.state.worldClock={id:WORLD_CLOCK_ID,elapsedMs:elapsed};save.state.upkeep.settledTurn=save.state.turn;}
     await reconcileCovertProgress(db,user.id,save);
     const branchAccess=await branchStateGuard(db,user.id,save.state.walking.campaignId);await reconcileBranchProgress(db,user.id,save,clock);
     const staffBase=user.is_staff&&!user.is_admin?await staffBaseDto(db,user,clock,now):null;
@@ -1736,7 +1761,7 @@ async function resolveSyncBranches(db,user,save,before,clock,now,{importedStatio
     // The branch cursor survives imports independently of the private clock.
     // Neither older branch data nor a changed save may replay a raid twice.
     const start=resolvedElapsedMs,target=Math.max(start,incomingElapsed);
-    trusted.state.worldClock={id:WORLD_CLOCK_ID,elapsedMs:start};trusted.state.turn=Math.floor(start/WORLD_MONTH_MS);trusted.state.realtime.elapsed=start%WORLD_MONTH_MS/1000;
+    trusted.state.worldClock={id:WORLD_CLOCK_ID,elapsedMs:start};trusted.state.turn=Math.floor(start/WORLD_MONTH_MS);trusted.state.realtime.elapsed=start%WORLD_MONTH_MS/1000;trusted.state.upkeep.settledTurn=Math.min(trusted.state.upkeep.settledTurn,trusted.state.turn);
     applyBranchProgress(trusted,model,{...clock,elapsedMs:start});
     shared=user.is_staff&&!user.is_admin?await staffBaseDto(db,user,clock,now):null;
     const maintenanceAuthority=protectMaintenance(access,await maintenanceContext(db,user.id,trusted,clock));
@@ -1794,7 +1819,7 @@ async function resolveSyncResidency(db,user,save,before,clock,now,branchAccess){
   if(sameCampaign&&before.state.worldClock){
     if(member.lord_user_id===user.id)guardDefenseCheckpoint(save,clock);
     const trusted=copy(before),start=Math.max(Number(before.state.worldClock.elapsedMs),Number(cursor?.resolved_elapsed_ms||0),Number(branchAccess.resolvedElapsedMs||0)),target=Math.max(start,Math.min(clock.elapsedMs,Number(save.state.worldClock?.elapsedMs||0)));
-    trusted.state.worldClock={id:WORLD_CLOCK_ID,elapsedMs:start};trusted.state.turn=Math.floor(start/WORLD_MONTH_MS);trusted.state.realtime.elapsed=start%WORLD_MONTH_MS/1000;
+    trusted.state.worldClock={id:WORLD_CLOCK_ID,elapsedMs:start};trusted.state.turn=Math.floor(start/WORLD_MONTH_MS);trusted.state.realtime.elapsed=start%WORLD_MONTH_MS/1000;trusted.state.upkeep.settledTurn=Math.min(trusted.state.upkeep.settledTurn,trusted.state.turn);
     await reconcileCovertProgress(db,user.id,trusted);applyBranchProgress(trusted,branchAccess.state,{...clock,elapsedMs:start});
     const maintenanceAuthority=protectMaintenance(branchAccess,await maintenanceContext(db,user.id,trusted,clock));
     const game=GameEngine.fromSave(trusted,GAME_OFFICERS,{maintenanceAuthority,branchAuthority:{resolvedElapsedMs:start}}),advanced=game.applyWorldClock({...clock,elapsedMs:target},{maxSeconds:86400,deferCycleSettlement:true,rebalanceTroops:false});
@@ -2745,7 +2770,7 @@ async function route(request, env, now) {
     if(!body.save||typeof body.save!=='object'||Array.isArray(body.save))fail(400,'INVALID_SAVE','セーブデータを送信してください。');
     // Covert units, reports and response opportunities belong to the server ledger.
     // Ignore that entire client section, including malformed or forged imports.
-    const imported=copy(body.save),importedState=imported.state||imported;
+    const imported=copy(body.save),importedState=imported.state||imported,hasMonthlyReceipt=importedState.upkeep!==undefined;
     // Preserve only the fact that an untrusted import contains stationed troops.
     // The server branch ledger remains authoritative; first imports must recall
     // these soldiers locally before this section can safely be discarded.
@@ -2797,9 +2822,9 @@ async function route(request, env, now) {
     reconcileOfficerHealth(save,healthBefore,clock);
     const branchProgress=await resolveSyncBranches(db,user,save,before,clock,now,{importedStationedTroops}),branchAccess=branchProgress.access;
     const residencyProgress=await resolveSyncResidency(db,user,save,before,clock,now,branchAccess);cycleHome=save.state.cycle.home;
-    // Old clients must be able to flush before switching releases. Accept their
-    // envelope, then enforce current upkeep rules against all authoritative
-    // troop pools together so a repeated old save cannot restore unpaid troops.
+    // Settle one monthly receipt after the authoritative branch pools are
+    // merged. An already-settled client may have recruited again afterwards;
+    // saving those troops must not trigger a second reduction in the same month.
     const shared=user.is_staff&&!user.is_admin?await staffBaseDto(db,user,clock,now):null;
     let balanceAuthority=maintenance.authority;
     if(balanceAuthority.campaignId!==save.state.walking.campaignId){
@@ -2809,9 +2834,13 @@ async function route(request, env, now) {
       const vacant=Number((await stmt(db,'SELECT COALESCE(SUM(troops),0) AS troops FROM vacant_garrisons WHERE actor_id=? AND campaign_id=?',user.id,save.state.walking.campaignId).first()).troops);
       balanceAuthority={...balanceAuthority,campaignId:save.state.walking.campaignId,baseline:{...balanceAuthority.baseline,vacant},changes:balanceAuthority.changes.map(point=>({...point,vacant}))};
     }
-    const balanced=GameEngine.fromSave(save,GAME_OFFICERS,{isAdmin:!!user.is_admin,isStaff:!!user.is_staff,staffBase:shared,maintenanceAuthority:balanceAuthority,branchAuthority:{resolvedElapsedMs:branchProgress.resolvedElapsedMs}});
-    const upkeepBefore=upkeepTroopSnapshot(balanced),upkeepResult=balanced.rebalanceTroopsForUpkeep();
-    const upkeepAdjustment=upkeepResult.changed?upkeepAdjustmentDto(upkeepBefore,upkeepTroopSnapshot(balanced),upkeepResult):null;
+    // The personal garrison is an uploaded private stock. A monthly reduction
+    // must reach the appointment backup instead of being restored from it.
+    const personalHome=shared?.personalHome,personalCastle=personalHome&&save.state.castles[personalHome];
+    const sharedForBalance=hasMonthlyReceipt&&personalCastle?.owner===save.state.clan?{...shared,personalHomeCastle:{...shared.personalHomeCastle,troops:personalCastle.troops}}:shared;
+    const balanced=GameEngine.fromSave(save,GAME_OFFICERS,{isAdmin:!!user.is_admin,isStaff:!!user.is_staff,staffBase:sharedForBalance,maintenanceAuthority:balanceAuthority,branchAuthority:{resolvedElapsedMs:branchProgress.resolvedElapsedMs}});
+    const upkeepBefore=upkeepTroopSnapshot(balanced),upkeepResult=reconcileMonthlyUpkeep(balanced,before,{hasMonthlyReceipt});
+    const upkeepAdjustment=upkeepResult?.changed?upkeepAdjustmentDto(upkeepBefore,upkeepTroopSnapshot(balanced),upkeepResult):null;
     Object.assign(save,normalizeGameSave(JSON.parse(balanced.exportSave()),user,now,{clock}));
     const sharedGuard=shared?{sql:"EXISTS(SELECT 1 FROM staff_base WHERE id='kyoto_gosho' AND revision=?)",args:[shared.revision]}:{sql:'1=1',args:[]};
     const serialized=JSON.stringify(save),nonce=crypto.randomUUID(),roleGuard=roleCommitGuard(user);

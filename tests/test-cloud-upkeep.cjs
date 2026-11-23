@@ -19,7 +19,9 @@ function staffFixture(){
  const base={id:'kyoto_gosho',revision:1,castleLevel:1,initial:{castleLevel:1,buildings},buildings,jobs:[],history:[],createdElapsedMs:0,updatedElapsedMs:0,accessSinceElapsedMs:0,clanSinceElapsedMs:0,personalClan:p.state.clan,personalHome:home,personalCycleHome:home,personalBaseCastle:copy(p.state.castles.kyoto_gosho),personalHomeCastle:copy(p.state.castles[home])};
  return{...f,g:E.fromSave(p.exportSave(),officers,{isStaff:true,staffBase:base}),base,home};
 }
-async function setup(initial,{base=null,prepare=null}={}){
+// Most cases exercise the correction receipt itself, independently of when
+// the server schedules it. Monthly scheduling cases provide its real gate.
+async function setup(initial,{base=null,prepare=null,normalizeUpkeep=game=>game.rebalanceTroopsForUpkeep()}={}){
  const now=2000000000000,device='test-device',applied=[],tracks=[],timers=new Map(),live={game:initial,roleEpoch:0};let timerId=0,hold=null,closed=0;
  const state={save:JSON.parse(initial.exportSave()),revision:1,user:{id:'owner',isAdmin:initial.isAdmin,isStaff:initial.isStaff},base:copy(base),writer:null};
  const snapshot=()=>({ok:true,user:copy(state.user),save:copy(state.save),revision:state.revision,staffBase:copy(state.base),serverTime:new Date(now).toISOString(),leaseExpiresAt:new Date(now+30000).toISOString(),writerDeviceId:state.writer,writable:Boolean(state.writer)});
@@ -33,7 +35,7 @@ async function setup(initial,{base=null,prepare=null}={}){
   const gate=hold;hold=null;
   if(gate?.failure){await gate.promise;throw Error('network failed');}
   const game=E.fromSave(opts.data.save,officers,{isAdmin:state.user.isAdmin,isStaff:state.user.isStaff,staffBase:state.base});
-  prepare?.(game);const before=game.upkeepTroopSnapshot(),balance=game.rebalanceTroopsForUpkeep();
+  prepare?.(game);const before=game.upkeepTroopSnapshot(),balance=normalizeUpkeep(game,copy(state.save),opts.data);
   state.save=JSON.parse(game.exportSave());state.revision++;if(game.isStaff)state.base=game.getStaffBase();
   const result=snapshot();if(balance.changed)result.upkeepAdjustment={version:1,removed:balance.removed,allocations:balance.allocations,before,after:game.upkeepTroopSnapshot(),committedRevision:state.revision};
   if(gate){gate.result=copy(result);gate.balance=copy(balance);gate.committed=game;await gate.promise;}
@@ -52,9 +54,9 @@ let checks=0;async function test(name,run){await run();checks++;console.log('PAS
    assert((await c.sync.flush()).ok);assert.equal(c.state.save.state.troops,canonical);c.stop();
   }
  });
- await test('the same local automatic reduction during PUT is applied once',async()=>{
+ await test('the same local correction recorded during PUT is applied once',async()=>{
   const f=fixture(),c=await setup(f.g);c.mutate(g=>g.recruitTroops(6000));const gate=c.hold(),flight=c.sync.flush();await settle();
-  c.mutate(g=>g._advanceRealtime(.25));c.mutate(g=>g.assignGovernor('farm',f.farmer));const expected=c.game.state.troops,resources=copy(c.game.state.resources);assert.equal(expected,gate.result.save.state.troops);gate.release();assert((await flight).ok);
+  c.mutate(g=>g.rebalanceTroopsForUpkeep());c.mutate(g=>g.assignGovernor('farm',f.farmer));const expected=c.game.state.troops,resources=copy(c.game.state.resources);assert.equal(expected,gate.result.save.state.troops);gate.release();assert((await flight).ok);
   assert.equal(c.game.state.troops,expected);assert.deepEqual(c.game.state.resources,resources);assert.equal(c.tracks.at(-1).records.length,1);assert.equal(c.tracks.at(-1).current,true);assert(!c.applied.some(row=>row.meta.reason==='upkeep-conflict'));c.stop();
  });
  await test('ordinary recruitment, spending, army and governor changes survive a server reduction',async()=>{
@@ -99,6 +101,62 @@ let checks=0;async function test(name,run){await run();checks++;console.log('PAS
  });
  await test('long requests have a bounded nonpersistent journal and recover with a backup',async()=>{
   const f=fixture(),c=await setup(f.g);c.mutate(g=>g.recruitTroops(6000));const gate=c.hold(),flight=c.sync.flush();await settle();for(let i=0;i<130;i++){c.game.state.troops+=1000;c.game.rebalanceTroopsForUpkeep();}c.sync.notifySave();assert(!c.game.exportSave().includes('overflow'));gate.release();assert((await flight).ok);assert.equal(c.tracks.at(-1).overflow,true);assert.equal(c.tracks.at(-1).records.length,0);assert(c.applied.some(row=>row.meta.reason==='upkeep-conflict'&&row.meta.backupRuntime));c.stop();
+ });
+ await test('midmonth save stays unchanged; a rollover during PUT settles once and preserves later recruits',async()=>{
+  const f=fixture();f.g.state.realtime.elapsed=59.75;const c=await setup(f.g,{normalizeUpkeep:g=>g.settleMonthlyUpkeep()});
+  c.mutate(g=>g.recruitTroops(6000));const before=c.game.state.troops,gate=c.hold(),flight=c.sync.flush();await settle();
+  assert.equal(gate.result.upkeepAdjustment,undefined);assert.equal(gate.result.save.state.troops,before);assert.equal(gate.result.save.state.upkeep.settledTurn,0);
+  c.mutate(g=>g._advanceRealtime(.25));assert.equal(c.game.state.turn,1);assert.equal(c.game.state.upkeep.settledTurn,1);assert(c.game.state.troops<before);
+  const settled=c.game.state.troops;c.mutate(g=>g.recruitTroops(1000));const resources=copy(c.game.state.resources);gate.release();assert((await flight).ok);
+  assert.equal(c.game.state.troops,settled+1000);assert.deepEqual(c.game.state.resources,resources);assert.equal(c.tracks.at(-1).records.length,1);assert.equal(c.tracks.at(-1).records[0].monthlyTurn,1);
+  assert((await c.sync.flush()).ok);assert.equal(c.state.save.state.troops,settled+1000);assert.equal(c.state.save.state.upkeep.settledTurn,1);
+  const restored=E.fromSave(c.state.save,officers);restored._advanceRealtime(.25);assert.equal(restored.state.troops,settled+1000);assert.equal(restored.settleMonthlyUpkeep().removed,0);c.stop();
+ });
+ await test('a month with no deficit still settles before a later recruitment and first PUT',async()=>{
+  const f=fixture(),c=await setup(f.g,{normalizeUpkeep:g=>g.settleMonthlyUpkeep()});c.mutate(g=>g._advanceRealtime(60));
+  assert.equal(c.game.state.upkeep.settledTurn,1);assert.equal(c.game.state.log.filter(row=>row.kind==='upkeep').length,0);
+  c.mutate(g=>g.recruitTroops(6000));const troops=c.game.state.troops;assert(c.game.income().rice<0);assert((await c.sync.flush()).ok);
+  assert.equal(c.state.save.state.troops,troops);assert.equal(c.state.save.state.upkeep.settledTurn,1);c.stop();
+ });
+ await test('a no-reduction receipt advances the monthly marker without discarding an in-flight governor change',async()=>{
+  const f=fixture();f.g._advanceRealtime(60,{rebalanceTroops:false});assert.equal(f.g.state.upkeep.settledTurn,0);
+  const c=await setup(f.g,{normalizeUpkeep:g=>g.settleMonthlyUpkeep()});c.mutate(g=>{g.state.resources.gold++;});const gate=c.hold(),flight=c.sync.flush();await settle();
+  assert.equal(gate.result.upkeepAdjustment,undefined);assert.equal(gate.result.save.state.upkeep.settledTurn,1);c.mutate(g=>g.assignGovernor('farm',f.farmer));gate.release();assert((await flight).ok);
+  assert.equal(c.game.state.governors.farm,f.farmer);assert.equal(c.game.state.upkeep.settledTurn,1);assert(c.applied.some(row=>row.meta.reason==='upkeep-month'));
+  c.mutate(g=>g.recruitTroops(12000));const troops=c.game.state.troops;assert(c.game.income().rice<0);assert((await c.sync.flush()).ok);assert.equal(c.state.save.state.troops,troops);c.stop();
+ });
+ await test('the same branch monthly reduction on both sides records one cumulative loss and survives the next PUT',async()=>{
+  const f=fixture();f.g.state.troops=0;f.g.state.castles[f.g.state.home].troops=0;f.g.state.castles.nijo.owner=f.g.state.clan;f.g.state.castles.nijo.troops=0;f.g.state.branches=[{id:'nijo_north',parentCastleId:'nijo',direction:'north',level:1,fallen:false,stationedTroops:20000}];f.g._advanceRealtime(60,{rebalanceTroops:false});
+  const c=await setup(f.g,{normalizeUpkeep:g=>g.settleMonthlyUpkeep()});c.mutate(g=>{g.state.resources.gold++;});const gate=c.hold(),flight=c.sync.flush();await settle();assert(gate.balance.reductions.branches>0);
+  c.mutate(g=>g.settleMonthlyUpkeep());c.mutate(g=>g.assignGovernor('farm',f.farmer));const troops=c.game.state.branches[0].stationedTroops,lost=c.game.state.upkeep.branchReductions.nijo_north;assert.equal(lost,gate.balance.reductions.branches);gate.release();assert((await flight).ok);
+  assert.equal(c.game.state.branches[0].stationedTroops,troops);assert.equal(c.game.state.upkeep.branchReductions.nijo_north,lost);assert.equal(c.game.state.upkeep.settledTurn,1);assert(!c.applied.some(row=>row.meta.reason==='upkeep-conflict'));
+  assert((await c.sync.flush()).ok);assert.equal(c.state.save.state.branches[0].stationedTroops,troops);assert.equal(c.state.save.state.upkeep.branchReductions.nijo_north,lost);c.stop();
+ });
+ await test('canonical branch correction plus a later local month preserves both actual cumulative losses',async()=>{
+  const f=fixture();f.g.state.troops=0;f.g.state.castles[f.g.state.home].troops=0;f.g.state.castles.nijo.owner=f.g.state.clan;f.g.state.castles.nijo.troops=0;f.g.state.branches=[{id:'nijo_north',parentCastleId:'nijo',direction:'north',level:1,fallen:false,stationedTroops:20000}];f.g._advanceRealtime(60,{rebalanceTroops:false});let adjusted=false;
+  const c=await setup(f.g,{prepare:g=>{if(!adjusted){g.state.branches[0].stationedTroops+=300;adjusted=true;}},normalizeUpkeep:g=>g.settleMonthlyUpkeep()});c.mutate(g=>{g.state.resources.gold++;});const gate=c.hold(),flight=c.sync.flush();await settle();
+  c.mutate(g=>g.settleMonthlyUpkeep());c.mutate(g=>{g.state.branches[0].stationedTroops+=1000;});c.mutate(g=>g._advanceRealtime(60));const troops=c.game.state.branches[0].stationedTroops;gate.release();assert((await flight).ok);
+  assert.equal(c.game.state.branches[0].stationedTroops,troops);assert.equal(c.game.state.upkeep.branchReductions.nijo_north,21300-troops);assert.equal(c.game.state.upkeep.settledTurn,2);assert.equal(c.tracks.at(-1).records.length,2);assert(!c.applied.some(row=>row.meta.reason==='upkeep-conflict'));
+  assert((await c.sync.flush()).ok);assert.equal(c.state.save.state.branches[0].stationedTroops,troops);assert.equal(c.state.save.state.upkeep.branchReductions.nijo_north,21300-troops);c.stop();
+ });
+ await test('a midmonth staff response cannot revive the personal-home loss from a subsequent rollover',async()=>{
+  const f=staffFixture();f.g.state.realtime.elapsed=59.75;f.g.state.troops=0;f.g.state.castles[f.home].troops=20000;f.base.personalHomeCastle.troops=20000;
+  const c=await setup(f.g,{base:f.base,normalizeUpkeep:g=>g.settleMonthlyUpkeep()});c.mutate(g=>{g.state.resources.gold++;});const gate=c.hold(),flight=c.sync.flush();await settle();assert.equal(gate.result.upkeepAdjustment,undefined);
+  c.mutate(g=>g._advanceRealtime(.25));const troops=c.game.state.castles[f.home].troops;assert(troops<20000);gate.release();assert((await flight).ok);
+  assert.equal(c.game.state.castles[f.home].troops,troops);assert.equal(c.game.getStaffPersonalProgress().castle.troops,troops);assert.equal(c.game.state.upkeep.settledTurn,1);
+  const restored=E.fromSave(c.game.exportSave(),officers,{isStaff:true,staffBase:c.game.getStaffBase()});restored.setRoleAccess({isAdmin:false,isStaff:false});assert.equal(restored.state.castles[f.home].troops,troops);assert.equal(restored.state.upkeep.settledTurn,1);restored._advanceRealtime(.25);assert.equal(restored.state.castles[f.home].troops,troops);c.stop();
+ });
+ await test('an accepted campaign reset discards imported receipts while preserving in-flight governor changes',async()=>{
+  const f=fixture();f.g.state.upkeep.branchReductions.nijo_north=900;let accepted=false;
+  const c=await setup(f.g,{prepare:g=>{if(!accepted){g.state.upkeep.branchReductions={};accepted=true;}},normalizeUpkeep:g=>g.settleMonthlyUpkeep()});c.mutate(g=>{g.state.resources.gold++;});const gate=c.hold(),flight=c.sync.flush();await settle();
+  assert.equal(gate.result.upkeepAdjustment,undefined);assert.deepEqual(gate.result.save.state.upkeep.branchReductions,{});c.mutate(g=>g.assignGovernor('farm',f.farmer));gate.release();assert((await flight).ok);
+  assert.equal(c.game.state.governors.farm,f.farmer);assert.deepEqual(c.game.state.upkeep.branchReductions,{});assert((await c.sync.flush()).ok);assert.deepEqual(c.state.save.state.upkeep.branchReductions,{});c.stop();
+ });
+ await test('an accepted campaign reset retains only actual local branch losses after the submitted import',async()=>{
+  const f=fixture();f.g.state.upkeep.branchReductions.nijo_north=900;f.g.state.troops=0;f.g.state.castles[f.g.state.home].troops=0;f.g.state.castles.nijo.owner=f.g.state.clan;f.g.state.castles.nijo.troops=0;f.g.state.branches=[{id:'nijo_north',parentCastleId:'nijo',direction:'north',level:1,fallen:false,stationedTroops:20000}];f.g.state.realtime.elapsed=59.75;let accepted=false;
+  const c=await setup(f.g,{prepare:g=>{if(!accepted){g.state.upkeep.branchReductions={};accepted=true;}},normalizeUpkeep:g=>g.settleMonthlyUpkeep()});c.mutate(g=>{g.state.resources.gold++;});const gate=c.hold(),flight=c.sync.flush();await settle();assert.equal(gate.result.upkeepAdjustment,undefined);
+  c.mutate(g=>g._advanceRealtime(.25));const troops=c.game.state.branches[0].stationedTroops,newLoss=20000-troops;assert(newLoss>0);assert.equal(c.game.state.upkeep.branchReductions.nijo_north,900+newLoss);gate.release();assert((await flight).ok);
+  assert.equal(c.game.state.branches[0].stationedTroops,troops);assert.equal(c.game.state.upkeep.branchReductions.nijo_north,newLoss);assert.equal(c.game.state.upkeep.settledTurn,1);assert((await c.sync.flush()).ok);assert.equal(c.state.save.state.upkeep.branchReductions.nijo_north,newLoss);c.stop();
  });
  console.log(checks+' real-engine cloud upkeep checks passed.');
 })().catch(error=>{console.error(error);process.exitCode=1;});

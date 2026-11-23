@@ -406,6 +406,15 @@
     for(const change of changes){if(change.elapsedMs<=previous)bad();previous=change.elapsedMs;}
     return{version:1,campaignId,activatedElapsedMs:raw.activatedElapsedMs,revision:raw.revision,asOfElapsedMs:raw.asOfElapsedMs,baseline,changes,...(raw.hasMore===true?{hasMore:true}:{})};
   }
+  function normalizeUpkeepState(raw,turn){
+    const bad=()=>{throw new Error('月次の兵維持費の記録が正しくありません。');},obj=value=>value&&typeof value==='object'&&!Array.isArray(value),num=value=>Number.isSafeInteger(value)&&value>=0;
+    if(!num(turn)||turn>MAX_TURN)bad();
+    // Older saves begin checking at their next monthly boundary. Loading them
+    // never treats all earlier months as an unpaid troop adjustment.
+    if(raw===undefined)return{version:1,settledTurn:turn,branchReductions:{}};
+    if(!obj(raw)||raw.version!==1||!num(raw.settledTurn)||raw.settledTurn>turn||!obj(raw.branchReductions)||Object.entries(raw.branchReductions).some(([id,count])=>!Object.hasOwn(BRANCH_BY_ID,id)||!num(count)))bad();
+    return{version:1,settledTurn:raw.settledTurn,branchReductions:{...raw.branchReductions}};
+  }
   // Existing garrisons below a battle's reserve keep their survivors. A
   // casualty floor may protect soldiers but cannot recruit replacements.
   const survivorsAfterLoss=(before,loss,reserve)=>before-Math.min(loss,Math.max(0,before-reserve));
@@ -667,7 +676,7 @@
       if (!initial.length) initial.push(...this.roster.slice(0,4).map(o=>o.id));
       const scale={easy:.8,normal:1,hard:1.2}[difficulty];
       this.state={
-        version:2,clan:clan.name,home,turn:0,difficulty,cycle:{index:0,home,latestReward:null},
+        version:2,clan:clan.name,home,turn:0,difficulty,cycle:{index:0,home,latestReward:null},upkeep:{version:1,settledTurn:0,branchReductions:{}},
         resources:{gold:difficulty==='easy'?4400:3200,rice:5400,wood:1800,stone:1200},
         troops:3400,troopTransferSequence:0,morale:80,prestige:0,command:3,magatama:GACHA.initial,captureRewards:[home],gachaHistory:[],
         realtime:{running:true,speed:1,elapsed:0,commandProgress:0,incomeRemainders:{gold:0,rice:0,wood:0,stone:0}},
@@ -1376,7 +1385,18 @@
       active.add(tracking);UPKEEP_TRACKS.set(this,active);
       return()=>{if(!finished){finished=true;active.delete(tracking);if(!active.size)UPKEEP_TRACKS.delete(this);}return tracking;};
     }
-    rebalanceTroopsForUpkeep(){
+    settleMonthlyUpkeep(){
+      const s=this.state,upkeep=s.upkeep;
+      if(upkeep.settledTurn>=s.turn)return{ok:true,changed:false,removed:0,reductions:{field:0,home:0,castles:0,branches:0},allocations:[],message:''};
+      const result=this.rebalanceTroopsForUpkeep({monthlyTurn:s.turn});
+      upkeep.settledTurn=s.turn;
+      // The branch ledger lives on the server. Cumulative receipts preserve
+      // these exact losses through synchronization, even if several months
+      // pass before a save, or a branch is removed and built again.
+      for(const allocation of result.allocations)if(allocation.kind==='branch')upkeep.branchReductions[allocation.id]=Math.min(Number.MAX_SAFE_INTEGER,(upkeep.branchReductions[allocation.id]||0)+allocation.removed);
+      return result;
+    }
+    rebalanceTroopsForUpkeep({monthlyTurn=null}={}){
       const s=this.state,income=this.income(),reductions={field:0,home:0,castles:0,branches:0},allocations=[];
       const unchanged={ok:true,changed:false,removed:0,reductions,allocations,income,message:''};
       if(income.gold>=0&&income.rice>=0)return unchanged;
@@ -1414,7 +1434,7 @@
       if(recordBefore){
         const order=[{kind:'army',id:'army'},...castles.map(c=>({kind:'castle',id:c.id})),...Object.keys(recordBefore.branches).sort().map(id=>({kind:'branch',id}))];
         const count=(stocks,row)=>row.kind==='army'?stocks.army:stocks[row.kind==='castle'?'castles':'branches'][row.id]||0;
-        const record={before:recordBefore,after:this.upkeepTroopSnapshot(),order,limit:order.reduce((sum,row)=>sum+count(recordBefore,row),0)-removed};
+        const record={before:recordBefore,after:this.upkeepTroopSnapshot(),order,limit:order.reduce((sum,row)=>sum+count(recordBefore,row),0)-removed,...(monthlyTurn!==null?{monthlyTurn}:{})};
         for(const track of tracking){if(track.overflow)continue;if(track.records.length>=MAX_UPKEEP_TRACKS){track.overflow=true;track.records.length=0;}else track.records.push(record);}
       }
       const detail=[['field','手持ち'],['home','本拠の守備兵'],['castles','ほかの所有城の守備兵'],['branches','支拠点の配置兵']].filter(([key])=>reductions[key]>0).map(([key,label])=>label+reductions[key].toLocaleString()+'人').join(' → ');
@@ -2079,7 +2099,7 @@
         for(const record of s.log)record.turn=shift(record.turn);
         for(const record of s.gachaHistory)record.turn=shift(record.turn);
         if(s.lastBattle)s.lastBattle.turn=shift(s.lastBattle.turn??s.turn);
-        s.turn=turn;rt.elapsed=(clock.elapsedMs%60000)/1000;s.worldClock={id:clock.id,elapsedMs:clock.elapsedMs};s.cycle.index=Math.floor(turn/WORLD_CALENDAR.monthsPerCycle);
+        s.turn=turn;rt.elapsed=(clock.elapsedMs%60000)/1000;s.worldClock={id:clock.id,elapsedMs:clock.elapsedMs};s.cycle.index=Math.floor(turn/WORLD_CALENDAR.monthsPerCycle);s.upkeep.settledTurn=turn;
         this._projectStaffAt(clock.elapsedMs);rt.running=clock.running&&!s.gameOver;return{ok:true,changed:true,migrated:true,monthChanged:true,pending:false,...(maintenancePending?{maintenancePending:true}:{}),events:[],completed:[]};
       }
       // Absolute time is monotonic even when the visible calendar wraps to 1560.
@@ -2156,8 +2176,7 @@
         const step=Math.min(left,60-rt.elapsed,...[...activeJobs].map(j=>j.remainingSeconds),(nextShared-elapsed)/1000,(nextMarch-elapsed)/1000,(nextCovert-elapsed)/1000,(nextFacility-elapsed)/1000,(nextBranchStart-elapsed)/1000,(nextMaintenance-elapsed)/1000);
         if(!(step>0))break;
         s.officerHealth=projectOfficerHealth(s,Math.round(elapsed+step*1000));
-        const balance=rebalanceTroops?this.rebalanceTroopsForUpkeep():null,income=balance?.income||this.income();
-        if(balance?.changed)events.push(balance.message);
+        const income=this.income();
         for(const key of RESOURCES){
           const accrued=rt.incomeRemainders[key]+income[key]*step/60;
           const units=Math.trunc(accrued+Math.sign(accrued)*1e-9);
@@ -2196,11 +2215,13 @@
           if(s.command>=this.commandMax())rt.commandProgress=0;
         }else rt.commandProgress=0;
         rt.elapsed=precise(rt.elapsed+step);left=precise(left-step);
-        if(rt.elapsed>=60-1e-8){rt.elapsed=0;monthChanged=true;events.push(...this._advanceMonth());}
+        const monthlyBoundary=rt.elapsed>=60-1e-8;
+        if(monthlyBoundary){rt.elapsed=0;monthChanged=true;events.push(...this._advanceMonth());}
         settle();
-        // Completion, garrison growth, arrivals and external ownership changes
-        // take effect at the boundary even when this call ends exactly there.
-        if(rebalanceTroops){this._projectStaffAt(elapsedMillis(s));const balance=this.rebalanceTroopsForUpkeep();if(balance.changed)events.push(balance.message);}
+        // Adjust troop upkeep once as a new month begins, after that boundary's
+        // completions, garrison growth and arrivals. Midmonth changes wait for
+        // the next month; the saved monthly receipt prevents a repeated check.
+        if(monthlyBoundary&&rebalanceTroops){this._projectStaffAt(elapsedMillis(s));const balance=this.settleMonthlyUpkeep();if(balance.changed)events.push(balance.message);}
       }
       if(s.gameOver){rt.running=false;settle();}
       for(const result of s.marchHistory)if(!priorMarchIds.has(result.id)&&!marchResults.some(v=>v.id===result.id))marchResults.push(copy(result));
@@ -2262,6 +2283,7 @@
       const serviceSave=[STAFF_BASE_ID,'sunpu'].includes(s.staffService?.baseId);if(serviceSave&&!g.isStaff){s.command=Math.min(Number(s.command),3+Math.floor(s.buildings?.keep/8));if(isObj(s.governors))s.governors=Object.fromEntries(Object.entries(s.governors).filter(([id])=>!BUILDINGS.some(b=>b.id===id)||s.buildings?.[id]>0));}
       if(s.troopTransferSequence===undefined)s.troopTransferSequence=0;
       if(!num(s.turn,0,MAX_TURN)||!num(s.troops,0,ASSET_CAP)||!num(s.troopTransferSequence,0,1000000000)||!num(s.morale,0,100)||!num(s.prestige)||!num(s.command,0,7)||!num(s.seed,0,4294967295))invalid();
+      s.upkeep=normalizeUpkeepState(s.upkeep,s.turn);
       if(!isObj(s.resources)||!RESOURCES.every(k=>num(s.resources[k])))invalid();
       if(!isObj(s.buildings)||Object.keys(s.buildings).length!==BUILDINGS.length||!BUILDINGS.every(b=>num(s.buildings[b.id],b.core?1:0,32)))invalid();
       if(!g.isStaff&&s.command>3+Math.floor(s.buildings.keep/8))invalid();
@@ -2338,7 +2360,7 @@
       if(!num(s.stats.researches??0,0,10000000))invalid();s.stats.researches=s.stats.researches??Object.values(s.tech).reduce((a,b)=>a+b,0);
       if(!Array.isArray(s.log)||s.log.length>200||s.log.some(l=>!isObj(l)||!num(l.turn,0,MAX_TURN)||typeof l.text!=='string'||l.text.length>2000||typeof l.kind!=='string'||l.kind.length>30))invalid();
       // Only retain known, validated fields; do not merge arbitrary imported object keys.
-      const n=g.state;for(const k of ['clan','home','turn','difficulty','resources','troops','troopTransferSequence','morale','prestige','command','buildings','jobs','branches','officers','officerVariants','officerHealth','army','governors','tech','castles','treaties','scouted','log','claimedQuests','giftReceipts','walking','roaming','covert','progress','magatama','captureRewards','gachaHistory','seed','stats','realtime','march','marchHistory'])n[k]=copy(s[k]);
+      const n=g.state;for(const k of ['clan','home','turn','difficulty','upkeep','resources','troops','troopTransferSequence','morale','prestige','command','buildings','jobs','branches','officers','officerVariants','officerHealth','army','governors','tech','castles','treaties','scouted','log','claimedQuests','giftReceipts','walking','roaming','covert','progress','magatama','captureRewards','gachaHistory','seed','stats','realtime','march','marchHistory'])n[k]=copy(s[k]);
       n.jobs=n.jobs.map(j=>({...Object.fromEntries(['kind','id','remaining','total','remainingSeconds','totalSeconds','targetLevel'].map(k=>[k,j[k]])),...(j.kind==='branch'&&j.repair===true?{repair:true}:{}),...(j.kind==='branch'&&j.facilityId!==undefined?{facilityId:j.facilityId}:{}),...(j.kind==='branch'&&j.completesElapsedMs!==undefined?{completesElapsedMs:j.completesElapsedMs}:{})}));
       if(serviceSave){n.staffService={baseId:STAFF_BASE_ID};if(CLANS.some(c=>c.name===s.staffService.personalClan)){
         const clan=s.staffService.personalClan,valid=id=>CASTLE_BY_ID[id]&&!['edo',STAFF_BASE_ID].includes(id),home=valid(s.staffService.personalHome)?s.staffService.personalHome:CLANS.find(c=>c.name===clan).home,cycleHome=valid(s.staffService.personalCycleHome)?s.staffService.personalCycleHome:home,rawHome=s.staffService.personalHomeCastle;
@@ -2389,6 +2411,7 @@
   SengokuEngine.normalizePlayerProgress=normalizePlayerProgress;
   SengokuEngine.officerHealthRules=OFFICER_HEALTH_RULES;
   SengokuEngine.maintenanceRulesVersion=1;
+  SengokuEngine.normalizeUpkeepState=normalizeUpkeepState;
   SengokuEngine.normalizeOfficerHealth=normalizeOfficerHealth;
   SengokuEngine.projectOfficerHealth=projectOfficerHealth;
   SengokuEngine.officerCombatFactor=officerCombatFactor;
