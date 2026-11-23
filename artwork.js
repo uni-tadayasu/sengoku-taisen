@@ -16,7 +16,7 @@ const previewUrl=name=>previewDir+name+'.webp?v='+previewRevision;
 const numberTag=value=>String(value).padStart(2,'0');
 const frames=Object.fromEntries(ranks.map(r=>[r,`assets/frames/rank-${r}.svg?v=4.9.10-20261123`]));
 const operatorPortrait={id:'of_b0616adde162',rank:'U',url:'assets/operator-ieyasu-u.webp?v=ieyasu-anime-u-20261123'};
-const cache=new Map(),loaded=new Set(),paintRequests=new WeakMap(),deferredTitle=new Set();let observer,scheduled=false;
+const cache=new Map(),loaded=new Set(),paintRequests=new WeakMap(),deferredTitle=new Set(),decorationRoots=new Set();let observer,scheduled=false;
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const icons={
  town:'M3 20h18M5 20V10l7-5 7 5v10M3 10h18M6 5l6-3 6 3M8 13h2v3H8m6-3h2v3h-2M10 20v-3h4v3',
@@ -180,19 +180,50 @@ function buttonArtwork(el){
 function hasSymbolLabel(el){return /^[×✕✖+＋−－–‹›«»←→…⋯]$/.test((el.textContent||'').trim());}
 // The game fills explicit icon slots on render. Keep them reserved even before their SVG is mounted.
 function hasArtworkIcon(el){return Boolean(el.querySelector('svg,img,.painted-art,.portrait-frame,[data-icon]'));}
-function decorate(){scheduled=false;
- document.querySelectorAll('[data-art-url]:not([data-art-observed])').forEach(el=>{el.dataset.artObserved='1';observePaint(el);});
+function matching(root,selector){
+ const nodes=Array.from(root.querySelectorAll(selector));
+ if(root.nodeType===1&&root.matches(selector))nodes.unshift(root);
+ return nodes;
+}
+function decorate(root=document){
+ if(root===document){scheduled=false;decorationRoots.clear();}
+ matching(root,'[data-art-url]:not([data-art-observed])').forEach(el=>{el.dataset.artObserved='1';observePaint(el);});
  const selector='.button,.text-link,.launch-enter,.nav-item,.resource,.building-card,.facility-entry,.territory-row,.research-card,.quest-row,.tactic-card,.music-track,.settings-stack>.button,.social-tabs button,.social-list-card,.social-mail-row,.social-profile-section,.social-gift,.clan-choice,.gacha-banner,.title-feature,.panel,.notice,.officer-content';
- document.querySelectorAll(selector).forEach(el=>{if(el.dataset.artEnhanced)return;el.dataset.artEnhanced='1';el.classList.add('illustrated-item');
+ matching(root,selector).forEach(el=>{if(el.dataset.artEnhanced)return;el.dataset.artEnhanced='1';el.classList.add('illustrated-item');
   let type=el.dataset.artTheme||el.dataset.view||el.dataset.action||'council';if(type.includes('gacha')||type.includes('draw'))type='gacha';if(type.includes('music')||type==='sound')type='music';if(type.includes('save')||type.includes('export')||type.includes('import'))type='save';
   decorateBackground(el,type);
   if(el.matches('button')&&!hasSymbolLabel(el)&&!hasArtworkIcon(el)&&!el.classList.contains('territory-row'))el.insertAdjacentHTML('afterbegin',icon(type));
  });
- document.querySelectorAll(buttonSelector).forEach(buttonArtwork);
- document.querySelectorAll('button,.title-feature').forEach(el=>{if(!hasSymbolLabel(el)&&!hasArtworkIcon(el)){let type=el.dataset.artTheme||el.dataset.view||el.dataset.action||'default';if(type.includes('gacha')||type.includes('draw'))type='gacha';else if(type.includes('music')||type.includes('sound'))type='music';else if(type.includes('rank'))type='rank';else if(type.includes('officer')||type.includes('recruit'))type='officers';else if(type.includes('castle')||type.includes('building')||type.includes('upgrade'))type='town';else if(type.includes('save')||type.includes('export')||type.includes('import'))type='save';el.insertAdjacentHTML('afterbegin',icon(type));}});
- document.querySelectorAll('.section-heading h2,.panel-heading h2,.social-profile-section h3').forEach(el=>{if(!el.querySelector('svg'))el.insertAdjacentHTML('afterbegin',icon(el.closest('.social-profile-section')?'save':'council'));});
+ matching(root,buttonSelector).forEach(buttonArtwork);
+ matching(root,'button,.title-feature').forEach(el=>{if(!hasSymbolLabel(el)&&!hasArtworkIcon(el)){let type=el.dataset.artTheme||el.dataset.view||el.dataset.action||'default';if(type.includes('gacha')||type.includes('draw'))type='gacha';else if(type.includes('music')||type.includes('sound'))type='music';else if(type.includes('rank'))type='rank';else if(type.includes('officer')||type.includes('recruit'))type='officers';else if(type.includes('castle')||type.includes('building')||type.includes('upgrade'))type='town';else if(type.includes('save')||type.includes('export')||type.includes('import'))type='save';el.insertAdjacentHTML('afterbegin',icon(type));}});
+ matching(root,'.section-heading h2,.panel-heading h2,.social-profile-section h3').forEach(el=>{if(!el.querySelector('svg'))el.insertAdjacentHTML('afterbegin',icon(el.closest('.social-profile-section')?'save':'council'));});
 }
-function schedule(){if(scheduled)return;scheduled=true;requestAnimationFrame(()=>{if(scheduled)decorate();});}
+function flushDecorations(){
+ if(!scheduled)return;
+ scheduled=false;const roots=[...decorationRoots];decorationRoots.clear();
+ for(const root of roots)if(root===document||root.isConnected)decorate(root);
+}
+function schedule(root=document){
+ if(!root?.querySelectorAll||root!==document&&!root.isConnected)return;
+ // A replacement row only needs its own artwork. Preserve the broad explicit
+ // decorate() API, but never rescan a roster because one button gained an icon.
+ if(!decorationRoots.has(document)){
+  let covered=false;
+  for(const pending of decorationRoots){if(pending===root||pending.contains?.(root)){covered=true;break;}}
+  if(!covered){for(const pending of decorationRoots)if(root===document||root.contains?.(pending))decorationRoots.delete(pending);decorationRoots.add(root);}
+ }
+ if(scheduled)return;scheduled=true;requestAnimationFrame(flushDecorations);
+}
+function artworkMutations(records){
+ for(const record of records){
+  const changed=[...record.addedNodes,...record.removedNodes].some(node=>node.nodeType===1);
+  if(!changed)continue;
+  const target=record.target;
+  if(target?.closest?.('.ui-motion-layer'))continue;
+  if(target?.matches?.('button,.title-feature,.section-heading h2,.panel-heading h2,.social-profile-section h3'))schedule(target);
+  for(const node of record.addedNodes)if(node.nodeType===1&&!node.matches?.('.ui-motion-layer,.ui-motion-clip,.ui-motion-wave'))schedule(node);
+ }
+}
 function visiblePaints({skipReadyControls=false}={}){
  const h=global.innerHeight,w=global.innerWidth;
  return Array.from(document.querySelectorAll('[data-art-url],[data-ghost-url]')).flatMap(el=>{
@@ -205,7 +236,7 @@ function visiblePaints({skipReadyControls=false}={}){
  });
 }
 async function readyCurrent(onProgress){
- decorate();
+ flushDecorations();
  if(!global.SENGOKU_AT_TITLE){
   for(const el of deferredTitle){
    if(el.isConnected&&observer){observer.unobserve(el);observer.observe(el);}
@@ -235,10 +266,7 @@ function init(){
  };
  global.addEventListener?.('resize',repaintVisible);
  if(!observer)global.addEventListener?.('scroll',repaintVisible,{capture:true,passive:true});
- new MutationObserver(records=>{
- // Text-only clock, balance and unread updates cannot introduce artwork.
- if(records.some(record=>[...record.addedNodes,...record.removedNodes].some(node=>node.nodeType===1)))schedule();
-}).observe(document.body,{childList:true,subtree:true});decorate();}
+ new MutationObserver(artworkMutations).observe(document.body,{childList:true,subtree:true});decorate();}
 global.SengokuArt={portrait,castle:(id,c='',level=1)=>tile('castle',id,c,level),facility:(id,c='',level=1)=>tile('facility',id,c,level),icon,tileInfo,load,readyCurrent,decorate,schedule,totalIllustrations:8224};
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init,{once:true});else init();
 })(window);

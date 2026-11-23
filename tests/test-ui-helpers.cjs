@@ -177,4 +177,58 @@ test('both Tokugawa searches find the same variants and rendered rank labels use
   assert(source.includes('徳川家康 U を復元'));assert(!source.includes('德川家康 U を復元'));
 });
 
+
+test('closed dialogs do not recompute battle and officer actions during background updates',()=>{
+  const {doc,host}=require('./helpers/dom-model.cjs').setup(),game=new E({officers:roster,seed:11}),dialog=doc.createElement('dialog');
+  const id=roster.find(o=>!game.state.officers.includes(o.id)).id;dialog.innerHTML=`<button data-action="attack">Attack</button><button data-action="recruit-officer" data-id="${id}">Recruit</button><p data-recruit-reason="${id}"></p>`;doc.body.appendChild(dialog);
+  let battles=0,recruits=0;game.previewBattle=()=>{battles++;return{ok:true};};const recruit=game.canRecruitOfficer.bind(game);game.canRecruitOfficer=id=>{recruits++;return recruit(id);};
+  const c=context(game,{document:doc,$:q=>doc.querySelector(q),activeModal:'',battleTarget:'',battleTactic:'balanced',battleTroops:100});vm.runInContext(fn('refreshLiveControls'),c);
+  dialog.open=false;c.refreshLiveControls();assert.equal(battles,0);assert.equal(recruits,0);
+  dialog.open=true;c.refreshLiveControls();assert.equal(battles,1);assert.equal(recruits,1,'button and explanation share one current eligibility result');
+  dialog.open=false;c.refreshLiveControls();assert.equal(battles,1);assert.equal(recruits,1);
+});
+test('all visible construction controls share one fresh job projection per refresh',()=>{
+  const game=new E({officers:roster,seed:12}),buttons=D.buildings.map(b=>button('upgrade',b.id));game.state.command=3;game.state.resources={gold:1e8,rice:1e8,wood:1e8,stone:1e8};
+  let projections=0;const project=game.constructionJobs.bind(game);game.constructionJobs=()=>{projections++;return project();};
+  const c=context(game,{document:{querySelectorAll:q=>q==='[data-action]'?buttons:[]}});vm.runInContext(fn('refreshLiveControls'),c);
+  c.refreshLiveControls();assert.equal(projections,1);const farm=buttons.find(b=>b.dataset.id==='farm');assert.equal(farm.disabled,false);
+  game.state.resources.gold=0;c.refreshLiveControls();assert.equal(projections,2);assert.equal(farm.disabled,true,'the snapshot never survives a later balance update');
+});
+test('preserved redraws refresh actions once after restoring drafts, and exceptions do not suspend later checks',()=>{
+  const {doc,host}=require('./helpers/dom-model.cjs').setup(),game=new E({officers:roster,seed:13});doc.getElementById=id=>doc.querySelector('#'+id);
+  const id=roster.find(o=>!game.state.officers.includes(o.id)).id;host.innerHTML=`<input id="draft" value="original"><button data-action="recruit-officer" data-id="${id}">Recruit</button>`;const draft=doc.querySelector('#draft');draft.value='typed';draft.focus();draft.setSelectionRange(1,3);
+  let checks=0;const recruit=game.canRecruitOfficer.bind(game);game.canRecruitOfficer=id=>{checks++;return recruit(id);};
+  const c=context(game,{document:doc,$:q=>doc.querySelector(q),activeModal:'',refreshJobTimers:()=>{},window:{scrollX:0,scrollY:0,scrollTo(){}}});vm.runInContext(['refreshLiveControls','interactionLocator','locateInteraction','preserveInteraction'].map(fn).join('\n'),c);
+  c.preserveInteraction(host,()=>{draft.value='new default';c.refreshLiveControls();});assert.equal(checks,1);assert.equal(draft.value,'typed');assert.strictEqual(doc.activeElement,draft);assert.deepEqual([draft.selectionStart,draft.selectionEnd],[1,3]);
+  assert.throws(()=>c.preserveInteraction(host,()=>{throw Error('render failed');}),/render failed/);c.refreshLiveControls();assert.equal(checks,2);
+});
+test('closed dialog construction timers are dormant until the dialog reopens',()=>{
+  const {doc}=require('./helpers/dom-model.cjs').setup(),game=new E({officers:roster,seed:14}),dialog=doc.createElement('dialog');game.upgrade('farm');dialog.innerHTML='<span data-job-clock="building:farm"></span>';doc.body.appendChild(dialog);
+  let projections=0;const project=game.constructionJobs.bind(game);game.constructionJobs=()=>{projections++;return project();};
+  const c=context(game,{document:doc});vm.runInContext(fn('refreshJobTimers'),c);dialog.open=false;c.refreshJobTimers();assert.equal(projections,0);dialog.open=true;c.refreshJobTimers();assert.equal(projections,1);assert.match(dialog.textContent,/あと/);
+});
+
+test('long clock resumes yield in bounded tasks and preserve the exact final progression and completion notices',()=>{
+  const initial=new E({officers:roster,seed:25});initial.state.resources={gold:500000,rice:500000,wood:500000,stone:500000};initial.state.troops=500000;
+  assert(initial.upgrade('farm').ok);assert(initial.upgrade('market').ok);assert(initial.research('commerce').ok);
+  const clock={id:'ui-bounded-clock',elapsedMs:0,running:true,speed:1,calendar:{cycle:0,elapsed:0}};initial.applyWorldClock(clock);
+  const game=E.fromSave(initial.exportSave(),roster),reference=E.fromSave(initial.exportSave(),roster);game._cpuTurn=reference._cpuTurn=()=>[];clock.elapsedMs=7200000;
+  const expected=reference.applyWorldClock(clock,{maxSeconds:7200}),steps=[],controls=[],notices=[],timers=new Map();let nextTimer=0,paintTime=0,saves=0,redraws=0;
+  const apply=game.applyWorldClock.bind(game);game.applyWorldClock=(sample,options)=>{const before=game.state.worldClock.elapsedMs,result=apply(sample,options);steps.push({options,before,after:game.state.worldClock.elapsedMs,result});return result;};
+  const c=context(game,{activeModal:'',worldCatchupTimer:null,worldClockStatusKey:'true:true:1:0',saveCounter:0,window:{performance:{now:()=>paintTime},SengokuWorldClock:{snapshot:()=>({ready:true,clock})}},confirmedWorldClock:()=>clock,
+    setTimeout:(callback,delay)=>{assert.equal(delay,0);timers.set(++nextTimer,callback);return nextTimer;},clearTimeout:id=>timers.delete(id),renderHeader:()=>{},refreshLiveControls:()=>controls.push(c.worldCatchingUp),refreshJobTimers:()=>{},refreshActiveModal:()=>{},syncMusic:()=>{},preserveInteraction:(_host,draw)=>draw(),render:()=>{redraws++;c.refreshLiveControls();c.refreshJobTimers();},save:()=>{saves++;return true;},toast:message=>notices.push(message)});vm.runInContext(fn('processWorldClock'),c);
+  c.processWorldClock();assert.equal(steps.length,1);assert.equal(timers.size,1);assert.equal(saves,0);assert.deepEqual(controls,[true]);
+  while(timers.size){assert.equal(timers.size,1);assert(steps.length<20);const [id,callback]=timers.entries().next().value;timers.delete(id);paintTime+=20;callback();if(c.worldCatchingUp)assert.equal(saves,0);}
+  assert.equal(steps.length,12);assert(steps.every(step=>step.options.maxSeconds===600&&step.after-step.before<=600000));assert.equal(c.worldCatchingUp,false);assert.equal(redraws,1);assert.equal(saves,1);assert.equal(controls.at(-1),false);assert(controls.length>=2&&controls.length<steps.length,'pending replay does not repeatedly repaint controls');
+  const actual=JSON.parse(JSON.stringify(game.state)),wanted=JSON.parse(JSON.stringify(reference.state));
+  for(const key of D.resources){assert(Math.abs(actual.realtime.incomeRemainders[key]-wanted.realtime.incomeRemainders[key])<1e-10,key+' fractional carry');actual.realtime.incomeRemainders[key]=wanted.realtime.incomeRemainders[key];}
+  assert.deepEqual(actual,wanted);assert.deepEqual(notices,[expected.events.slice(0,2).join(' / ')]);assert.equal(c.processWorldClock.pendingNotice,null);
+});
+test('a failed clock slice immediately refreshes the controls and leaves no replay timer',()=>{
+  const game=new E({officers:roster,seed:26}),clock={running:true,speed:1,calendar:{cycle:0,elapsed:0}},controls=[];let timer=null,passes=0;
+  game.applyWorldClock=()=>++passes===1?{ok:true,pending:true,events:['施設が完成しました。']}:{ok:false};
+  const c=context(game,{activeModal:'',worldCatchupTimer:null,worldClockStatusKey:'true:true:1:0',window:{performance:{now:()=>0},SengokuWorldClock:{snapshot:()=>({ready:true,clock})}},confirmedWorldClock:()=>clock,setTimeout:callback=>{timer=callback;return 1;},clearTimeout:()=>{timer=null;},renderHeader:()=>{},refreshLiveControls:()=>controls.push(c.worldCatchingUp),refreshJobTimers:()=>{}});vm.runInContext(fn('processWorldClock'),c);
+  c.processWorldClock();assert.equal(typeof timer,'function');const resume=timer;resume();assert.equal(timer,null);assert.equal(c.worldCatchupTimer,null);assert.deepEqual(controls,[true,false]);
+});
+
 console.log(`${checks} real UI helper checks passed against256 officers,2048 variants and32 castle levels.`);

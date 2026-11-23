@@ -12,7 +12,7 @@ let dialog=null,selection=null,sequence=0,timer=null,opener=null,activeRead=null
 function patch(host,html,key){
   if(global.SengokuStableDOM){
     const result=global.SengokuStableDOM.patch(host,html,{key});
-    if(result.artwork)global.SengokuArt?.schedule?.();
+    if(result.artwork)global.SengokuArt?.schedule?.(host);
     return;
   }
   if(host.innerHTML!==html)host.innerHTML=html;

@@ -157,4 +157,17 @@ test('an old scroll snapshot cannot affect a newly selected patch context or a d
  const second=captureScroll(host);host.remove();assert.equal(restoreScroll(second),false);doc.body.appendChild(host);
 });
 
+test('native hit testing bounds anchor geometry reads on a long list and retains visible content',()=>{
+ const {doc,host,pane,draw}=scrollingList(),rows=Array.from({length:1000},(_,i)=>['row'+i]);draw(rows);pane.scrollTop=50150;
+ let reads=0;for(const part of host.querySelectorAll('*')){const original=part.getBoundingClientRect.bind(part);part.getBoundingClientRect=()=>{reads++;return original();};}
+ doc.elementsFromPoint=(_x,y)=>{const offset=y-20+pane.scrollTop;let top=0;for(const row of host.children||host.childNodes){const height=Number(row.getAttribute('data-height'));if(offset>=top&&offset<top+height){const inside=offset-top,hit=inside>=10&&inside<30?row.querySelector('p'):inside>=40&&inside<64?row.querySelector('input'):row;return [hit,row,host,pane,doc.body];}top+=height;}return[pane,doc.body];};
+ const row=host.querySelector('[data-row="row502"]'),before=row.getBoundingClientRect().top,snapshot=captureScroll(host);assert(snapshot.entries.some(entry=>entry.anchors.length));assert(reads<100,`only visible anchors should be measured, got ${reads}`);
+ draw([['new',80],...rows]);assert.equal(pane.scrollTop,50230);assert.equal(row.getBoundingClientRect().top,before);
+ assert.equal(restoreScroll(snapshot),true);const after=pane.scrollTop;pane.scrollTop+=19;assert.equal(restoreScroll(snapshot),false);assert.equal(pane.scrollTop,after+19);
+});
+test('unavailable or failed native hit testing preserves the deterministic geometry fallback',()=>{
+ const {doc,host,pane,draw}=scrollingList();pane.scrollTop=150;doc.elementsFromPoint=()=>{throw Error('unsupported');};const row=host.querySelector('[data-row="c"]'),before=row.getBoundingClientRect().top;
+ draw([['new',80],['a'],['b'],['c'],['d'],['e']]);assert.equal(pane.scrollTop,230);assert.equal(row.getBoundingClientRect().top,before);
+});
+
 for(const[name,run]of tests){run();console.log('PASS '+name);}console.log(`${tests.length} stable DOM scenarios passed with deterministic DOM fixtures; no browser launched.`);

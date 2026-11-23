@@ -154,8 +154,21 @@
    const style=styleOf?.(part),position=style?.position||part.style?.getPropertyValue?.('position'),value=part.hidden===true||part.hasAttribute?.('hidden')||part.getAttribute?.('aria-hidden')==='true'||['absolute','fixed','sticky'].includes(position)||style?.display==='none'||['hidden','collapse'].includes(style?.visibility)||excluded(part.parentElement);
    hidden.set(part,value);return value;
   };
-  const candidates=[];
-  for(const part of node.querySelectorAll?.('*')||[]){
+  const candidates=[],sampled=new Set();let sampledViewport=false;
+  if(typeof doc?.elementsFromPoint==='function'){
+   // Sample the visible viewport instead of measuring every row in a long
+   // roster or construction ledger. Hit testing already accounts for clipping,
+   // collapsed details and overlapping panes. Ancestors supply stable keys.
+   const view=doc.defaultView,left=Math.max(0,viewport.left),right=Math.min(view?.innerWidth||viewport.right,viewport.right),top=Math.max(0,viewport.top),bottom=Math.min(view?.innerHeight||viewport.bottom,viewport.bottom);
+   try{
+    if(right>left&&bottom>top)for(const y of [1,12,32,64,128,(bottom-top)*.5,(bottom-top)*.75,bottom-top-2])for(const ratio of [.15,.5,.85]){
+     const pointY=Math.min(bottom-1,top+Math.max(0,y)),pointX=left+(right-left)*ratio;
+     for(const hit of doc.elementsFromPoint(pointX,pointY)||[])for(let part=hit;part&&part!==node&&node.contains(part);part=part.parentElement)sampled.add(part);
+    }
+    sampledViewport=true;
+   }catch(_){sampled.clear();}
+  }
+  for(const part of sampledViewport?sampled:node.querySelectorAll?.('*')||[]){
    // A nested update may change the height of an offscreen region. Its next
    // visible content can anchor the ancestor; unrelated earlier headers cannot.
    if(!host.contains(part)&&!(host.compareDocumentPosition?.(part)&4))continue;

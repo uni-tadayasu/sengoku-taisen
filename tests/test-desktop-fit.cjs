@@ -96,6 +96,13 @@ test('real structure, view and dialog visibility changes still schedule layout',
   {type:'attributes',attributeName:'data-view'}
  ]){h.mutations[0].callback([{target,...change}]);assert.equal(h.pendingFrames(),1,change.attributeName||'Element structure');h.flush();}
 });
+test('button ripple layers do not remeasure the whole viewport',()=>{
+ const h=harness();h.refresh();const target={nodeType:1,closest:()=>null},wave={nodeType:1,matches:selector=>selector.includes('.ui-motion-wave')};
+ for(const record of [{target,addedNodes:[wave],removedNodes:[]},{target,addedNodes:[],removedNodes:[wave]},{target:{nodeType:1,closest:()=>({})},addedNodes:[{nodeType:1}],removedNodes:[]}]){
+  h.mutations[0].callback([{type:'childList',...record}]);assert.equal(h.pendingFrames(),0);
+ }
+ h.mutations[0].callback([{type:'childList',target,addedNodes:[wave,{nodeType:1,matches:()=>false}],removedNodes:[]}]);assert.equal(h.pendingFrames(),1,'A real content insertion in the same batch still updates the viewport');
+});
 test('text-caused header resizing still updates viewport through ResizeObserver',()=>{
  const h=harness({width:820});h.refresh();const observer=h.resizes[0];
  assert(observer.observed.some(entry=>entry.node===h.header));assert(observer.observed.some(entry=>entry.node===h.announcementNode));
