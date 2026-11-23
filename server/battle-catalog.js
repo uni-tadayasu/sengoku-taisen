@@ -37,11 +37,53 @@
   ['kizugawaguchi','木津川口の戦い','coast']
  ].map(([id,name,themeId,unificationEligible=false])=>Object.freeze({id:'history:'+id,name,category:'historical',themeId,unificationEligible,
   description:unificationEligible?'天下分け目のシナリオ。全3戦場の勝利と最終戦果目標の達成で、幕府開設権を獲得。':'合戦を題材にした3戦場のイベント。戦闘ごとの報酬と累計戦果の報酬を獲得。'}));
+ // These scenarios have a specific castle represented on the game map.
+ // Field battles and battles for a region do not inherit the nearest garrison.
+ const historicalCastles={
+  'history:nagashino':'nagashino','history:kawagoe':'kawagoe',
+  'history:ueda1':'ueda','history:ueda2':'ueda','history:odawara':'odawara',
+  'history:oshijo':'oshi','history:gifu':'inabayama',
+  'history:osaka_winter':'osaka','history:osaka_summer':'osaka',
+  'history:gassantoda':'gassan','history:koriyama':'yoshida','history:kunohe':'kunohe'
+ };
+ const castleAliases={
+  inabayama:['岐阜城'],kiyosu:['清須城'],
+  yoshida:['郡山城','安芸郡山城'],yamato_koriyama:['郡山城'],
+  takamatsu:['高松城'],sanuki_takamatsu:['讃岐高松城']
+ };
+ function normalizeTitle(name){
+  return typeof name==='string'?name.normalize('NFKC').replace(/\s/gu,'').replace(/[ヶヵケ]/gu,'ケ')
+   .replace(/^第1次/u,'第一次').replace(/^第2次/u,'第二次').replace(/^大阪/u,'大坂').replace(/^河越/u,'川越'):'';
+ }
+ function targetCastleId(plan,data=root.SENGOKU_DATA){
+  const castles=Array.isArray(data?.castles)?data.castles:[];
+  const id=typeof plan==='string'?(plan.includes(':')?plan:null):plan?.battleId??plan?.battle?.id??plan?.id;
+  if(id!=null){
+   if(typeof id!=='string'||(plan?.battle?.id!=null&&plan.battle.id!==id))return null;
+   const target=id.startsWith('castle:')?id.slice(7):Object.hasOwn(historicalCastles,id)?historicalCastles[id]:null;
+   return target&&castles.some(c=>c.id===target)?target:null;
+  }
+  // Free-text plans predate catalogue IDs. Match the whole Japanese title.
+  const title=normalizeTitle(typeof plan==='string'?plan:plan?.name);
+  if(!title)return null;
+  const scenario=historical.find(b=>normalizeTitle(b.name)===title);
+  const historicalId=scenario?targetCastleId(scenario,data):null;
+  if((scenario&&!historicalId)||!title.endsWith('の戦い'))return historicalId;
+  const place=title.slice(0,-3);
+  if(!place)return null;
+  const matches=castles.filter(c=>[c.name,...(Object.hasOwn(castleAliases,c.id)?castleAliases[c.id]:[])].some(label=>{
+   const full=normalizeTitle(label);
+   return place===full||place===full.replace(/(?:御所|御坊|館|城)$/u,'');
+  }));
+  const candidates=new Set(matches.map(c=>c.id));
+  if(historicalId)candidates.add(historicalId);
+  return candidates.size===1?candidates.values().next().value:null;
+ }
  function list(data=root.SENGOKU_DATA){
   const castles=Array.isArray(data?.castles)?data.castles:[],roaming=Array.isArray(data?.roaming?.encounters)?data.roaming.encounters:[];
   return [...historical,...castles.map(c=>({id:'castle:'+c.id,name:c.name+'の戦い',category:'castle',themeId:'castle',unificationEligible:false,description:c.province+'の'+c.name+'を舞台にした城攻め。戦闘報酬と累計戦果の報酬を獲得。'})),...roaming.map(r=>({id:'roaming:'+r.id,name:r.name,category:'roaming',themeId:({森:'forest',川辺:'river',峠:'mountain',丘陵:'mountain'})[r.terrain]||'plain',unificationEligible:false,description:r.description}))].map(v=>({...v}));
  }
- const api=Object.freeze({version:1,list,get:(id,data)=>list(data).find(v=>v.id===id)||null});
+ const api=Object.freeze({version:1,list,get:(id,data)=>list(data).find(v=>v.id===id)||null,targetCastleId});
  root.SengokuBattleCatalog=api;
  if(typeof module!=='undefined'&&module.exports)module.exports=api;
 })(typeof window!=='undefined'?window:globalThis);

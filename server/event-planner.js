@@ -6,6 +6,8 @@ import './battle-catalog.js';
 
 const STAGE_IDS=['stage-1','stage-2','stage-3'];
 const POINTS=[60,90,120],ENEMY_POWER=[78,112,145];
+const CASTLE_BATTLE_RULE='対象の城に現職の領主が一人いるときは、天下地図の守備兵・守備戦力を反映します。領主が定まらない場合は各戦場のNPC部隊と戦います。本領の兵数と領土は変わりません。';
+const CASTLE_ARMY_RULE='城の守備隊との合戦では本隊兵、士気、軍事研究、軍団のランクに、武将の戦術適性と戦場適性を反映します。NPC戦では軍団3名までの能力と士気を各100まで評価します。';
 const COMMAND_RULE='出陣ごとに通常の指令を1消費します。指令は通常の合戦・内政と同じ規則で回復します。';
 const LEGACY_DAILY_RULE='開催開始から24時間ごとに、3回まで挑戦できます。未使用の回数は繰り越されません。';
 const TACTICS=[
@@ -57,7 +59,7 @@ export function generateEventPlan({battleId,durationDays,seed}={}){
   });
   const scale=1+(durationDays-1)*.15;
   const ending={kind:battle.unificationEligible?'unification':'victory',requiredStageIds:[...STAGE_IDS],requiredPoints:160*durationDays,reward:battle.unificationEligible?'shogunate_right':null};
-  return{schemaVersion:1,generator:'game-ai-v1',name,durationDays,battleId,battle:{...battle},ending,battleRewards:battleGifts(),theme:{id:selected.id,label:selected.label,description:selected.description},
+  const plan={schemaVersion:1,generator:'game-ai-v1',name,durationDays,battleId,battle:{...battle},ending,battleRewards:battleGifts(),theme:{id:selected.id,label:selected.label,description:selected.description},
     synopsis:`「${name}」を題材に、${selected.label}の特色を持つ3つの局面へ挑むイベントです。軍団の能力と戦場に合う戦術で戦功を重ねましょう。`,
     rules:[COMMAND_RULE,'3つのステージは最初から選べます。難しいステージほど獲得できる戦功が多くなります。','毎戦の報酬を本領へ直接付与します。敗北時にも少量の資源と戦功を獲得でき、段階報酬は各1回メールで届きます。','軍団の能力と士気をもとに、イベント用の戦力でNPCと戦います。本領の兵数・資源・領土は減りません。','武将の専用効果や本拠の特例は適用せず、能力は各100・軍団は3名・士気は100を上限に評価します。',battle.unificationEligible?`全3局面でそれぞれ勝利し、戦功${ending.requiredPoints}点に達すると、このイベントの天下統一を達成して幕府開設権を1回獲得できます。本領の城の所有や役職は変わりません。`:'この合戦は通常の戦功・資源報酬を獲得するイベントです。幕府開設権の対象ではありません。'],
     commandCost:1,tactics:TACTICS.map(t=>({...t})),stages,
@@ -65,8 +67,16 @@ export function generateEventPlan({battleId,durationDays,seed}={}){
       {id:'milestone-1',title:'初陣の戦功',points:20*durationDays,gift:gift([600,800,200,200,30],scale)},
       {id:'milestone-2',title:'奮戦の戦功',points:80*durationDays,gift:gift([1200,1400,400,400,60],scale)},
       {id:'milestone-3',title:'大成の戦功',points:160*durationDays,gift:gift([2000,2200,800,800,100],scale)}]};
+  adaptCastleRules(plan);return plan;
 }
 
+function adaptCastleRules(plan){
+  if(!globalThis.SengokuBattleCatalog.targetCastleId(plan))return;
+  const army=plan.rules.findIndex(rule=>rule.includes('能力は各100')||rule===CASTLE_ARMY_RULE);
+  if(army>=0)plan.rules[army]=CASTLE_ARMY_RULE;
+  const battle=plan.rules.findIndex((rule,i)=>i!==army&&(rule.includes('NPC')||rule===CASTLE_BATTLE_RULE));
+  if(battle>=0)plan.rules[battle]=CASTLE_BATTLE_RULE;else if(plan.rules.length<12)plan.rules.push(CASTLE_BATTLE_RULE);
+}
 function validatePlan(plan){
   if(!plan||typeof plan!=='object'||plan.schemaVersion!==1||plan.generator!=='game-ai-v1'||plan.commandCost!==1)invalid('イベント計画が正しくありません。');
   text(plan.name,'戦いの名前',60);days(plan.durationDays);
@@ -99,39 +109,47 @@ export function normalizeEventPlan(plan){
   // Only the former daily quota and its explanation migrate to command use.
   const normalized={...plan,commandCost:1,rules:[COMMAND_RULE,...plan.rules.filter(rule=>rule!==LEGACY_DAILY_RULE&&rule!==COMMAND_RULE)]};
   delete normalized.dailyAttempts;
+  adaptCastleRules(normalized);
   if(normalized.rules.length>12)invalid('イベントの規則が正しくありません。');
   validatePlan(normalized);
   return JSON.parse(JSON.stringify(normalized));
 }
 
-function battleEstimate(plan,{stageId,tactic,army,morale}={}){
+function battleEstimate(plan,{stageId,tactic,army,morale,fieldForces}={}){
   const stage=plan.stages.find(item=>item.id===stageId),chosen=TACTICS.find(item=>item.id===tactic);
   if(!stage||!chosen)invalid('ステージと戦術を選んでください。');
   if(!army||typeof army!=='object'||!Number.isSafeInteger(army.count)||army.count<0)invalid('保存された軍団を確認できません。');
   const stats=['lead','valor','intellect','politics'].map(key=>cap(army[key],100,'軍団の能力')),count=Math.min(3,army.count),spirit=cap(morale,100,'士気');
   const ability=stats.reduce((sum,value,index)=>sum+value*WEIGHTS[tactic][index],0),fit=stage.tacticMultipliers[tactic];
-  const playerPower=Math.max(1,Math.round((62+ability*.92)*(.76+count*.08)*(.9+spirit*.0016)*fit)),enemyPower=stage.enemyPower;
+  if(fieldForces&&(!Number.isSafeInteger(fieldForces.attackPower)||fieldForces.attackPower<1||!Number.isSafeInteger(fieldForces.defensePower)||fieldForces.defensePower<1))invalid('拠点の守備戦力を確認できません。');
+  // Preserve the event's existing tactical specialties. Balanced is the
+  // reference, so its generalship is already represented by field attack power.
+  const balancedAbility=stats.reduce((sum,value,index)=>sum+value*WEIGHTS.balanced[index],0);
+  const specialization=(62+ability*.92)/(62+balancedAbility*.92);
+  const playerPower=fieldForces?Math.max(1,Math.round(fieldForces.attackPower*specialization*fit)):Math.max(1,Math.round((62+ability*.92)*(.76+count*.08)*(.9+spirit*.0016)*fit));
+  const enemyPower=fieldForces?fieldForces.defensePower:stage.enemyPower;
   const chance=Math.max(.10,Math.min(.96,.5+Math.log(playerPower/enemyPower)*.62));
   return{stage,chosen,stats,count,spirit,fit,playerPower,enemyPower,chance};
 }
 
-export function adviseEventBattle(plan,{stageId,army,morale}={}){
+export function adviseEventBattle(plan,{stageId,army,morale,fieldForces}={}){
   plan=normalizeEventPlan(plan);
-  const estimates=TACTICS.map(t=>battleEstimate(plan,{stageId,tactic:t.id,army,morale}));
+  const estimates=TACTICS.map(t=>battleEstimate(plan,{stageId,tactic:t.id,army,morale,fieldForces}));
   estimates.sort((a,b)=>b.chance-a.chance||b.playerPower-a.playerPower||TACTICS.indexOf(a.chosen)-TACTICS.indexOf(b.chosen));
   const best=estimates[0],option=v=>({tactic:v.chosen.id,tacticName:v.chosen.name,winChance:Math.round(v.chance*100),playerPower:v.playerPower,enemyPower:v.enemyPower});
-  return{stageId,...option(best),reason:`現在の軍団と士気・戦場適性で5つの戦術を比較しました。${best.chosen.name}の予測勝率は${Math.round(best.chance*100)}%です。勝利を保証するものではありません。`,options:estimates.map(option)};
+  return{stageId,...option(best),reason:`${fieldForces?'本隊兵・士気・軍事研究・軍団ランクに、武将と戦場の戦術適性を加え、城の守備戦力に対して5つの戦術を比較しました。':'現在の軍団と士気・戦場適性で5つの戦術を比較しました。'}${best.chosen.name}の予測勝率は${Math.round(best.chance*100)}%です。勝利を保証するものではありません。`,options:estimates.map(option)};
 }
 
-export function resolveEventBattle(plan,{stageId,tactic,army,morale}={},roll){
+export function resolveEventBattle(plan,{stageId,tactic,army,morale,fieldForces,enemyName=undefined}={},roll){
   // Only a server-stored approved plan belongs here. Request bodies contain
   // the stage/tactic selection, never an enemy, reward or claimed army stat.
   plan=normalizeEventPlan(plan);
   if(typeof roll!=='number'||!Number.isFinite(roll)||roll<0||roll>=1)invalid('合戦の判定値が正しくありません。');
-  const {stage,chosen,stats,count,spirit,fit,playerPower,enemyPower,chance}=battleEstimate(plan,{stageId,tactic,army,morale});
+  const {stage,chosen,stats,count,spirit,fit,playerPower,enemyPower,chance}=battleEstimate(plan,{stageId,tactic,army,morale,fieldForces});
+  const defender=enemyName||stage.enemyName;
   const won=roll<chance,points=won?stage.basePoints:Math.max(5,Math.floor(stage.basePoints*.25));
   const summary=won?`${stage.name}で敵陣を突破し、戦功${points}点を獲得しました。`:`${stage.name}で敵の抵抗を受け撤収し、奮戦の戦功${points}点を獲得しました。`;
   const reward=plan.battleRewards?.[won?'victory':'defeat']?.[plan.stages.findIndex(s=>s.id===stage.id)];
-  return{won,points,stageId:stage.id,stageName:stage.name,tactic:chosen.id,tacticName:chosen.name,enemyName:stage.enemyName,playerPower,enemyPower,winChance:Math.round(chance*100),summary,...(reward?{offeredRewards:{...reward}}:{}),
-    log:[`${stage.name}へ進軍。${stage.enemyName}と対峙しました。`,`軍団${count}名・統率${Math.round(stats[0])}・武勇${Math.round(stats[1])}・知略${Math.round(stats[2])}・政治${Math.round(stats[3])}・士気${Math.round(spirit)}で戦力を評価しました。`,`${chosen.name}を採用。戦場適性は${Math.round(fit*100)}%、味方戦力${playerPower}・敵戦力${enemyPower}です。`,summary]};
+  return{won,points,stageId:stage.id,stageName:stage.name,tactic:chosen.id,tacticName:chosen.name,enemyName:defender,playerPower,enemyPower,winChance:Math.round(chance*100),summary,...(reward?{offeredRewards:{...reward}}:{}),
+    log:[`${stage.name}へ進軍。${defender}と対峙しました。`,fieldForces?`本隊兵・士気・軍事研究・軍団ランクによる基礎攻撃力${fieldForces.attackPower}に、武将と戦場の戦術適性を反映しました。`:`軍団${count}名・統率${Math.round(stats[0])}・武勇${Math.round(stats[1])}・知略${Math.round(stats[2])}・政治${Math.round(stats[3])}・士気${Math.round(spirit)}で戦力を評価しました。`,`${chosen.name}を採用。戦場適性は${Math.round(fit*100)}%、味方戦力${playerPower}・敵戦力${enemyPower}です。`,summary]};
 }

@@ -33,7 +33,15 @@ async function eventGame(ctx,raw,now,snapshot=null){
   return game;
  }catch{return null;}
 }
-async function eventProgress(ctx,row,now,snapshot=null){
+async function eventDefense(ctx,plan,now,clock=null){
+ const id=globalThis.SengokuBattleCatalog.targetCastleId(plan);
+ if(!id)return {opponent:null,guard:{sql:'1=1',args:[]}};
+ return ctx.helpers.eventGarrison(ctx.db,id,clock||await ctx.helpers.getWorldClock(ctx.db,now),now);
+}
+function eventForces(ctx,game,opponent){
+ return opponent?{attackPower:ctx.helpers.fieldAttackPower(game.state.troops,game.state),defensePower:opponent.defensePower}:undefined;
+}
+async function eventProgress(ctx,row,now,snapshot=null,opponent=null){
  if(!ctx.user)return null;
  const {db,user}=ctx;
  const result=await db.batch([
@@ -44,7 +52,8 @@ async function eventProgress(ctx,row,now,snapshot=null){
  ]);
  const participant=eventRows(result[0])[0],game=await eventGame(ctx,snapshot?snapshot.save:eventRows(result[1])[0]?.save_json,now,snapshot),plan=normalizeEventPlan(JSON.parse(row.plan_json));
  const command=game?{available:game.state.command,max:game.commandMax(),cost:COMMAND_COST}:null,points=Number(participant?.points||0),wonStages=new Set(eventRows(result[3]).map(r=>r.stage_id));
- const clearedStageIds=plan.stages.filter(s=>wonStages.has(s.id)).map(s=>s.id),advisers=game?plan.stages.map(stage=>adviseEventBattle(plan,{stageId:stage.id,army:game.armyStats(),morale:game.state.morale})):[];
+ const fieldForces=game?eventForces(ctx,game,opponent):undefined;
+ const clearedStageIds=plan.stages.filter(s=>wonStages.has(s.id)).map(s=>s.id),advisers=game?plan.stages.map(stage=>adviseEventBattle(plan,{stageId:stage.id,army:game.armyStats(),morale:game.state.morale,fieldForces})):[];
  const right=plan.ending?.kind==='unification'?await shogunateEventRight(db,user.id,row.id):null;
  return {points,wins:Number(participant?.wins||0),battles:Number(participant?.battles||0),command,advisers,unification:{eligible:plan.ending?.kind==='unification',clearedStageIds,requiredStageIds:plan.ending?.requiredStageIds||[],points,requiredPoints:plan.ending?.requiredPoints||0,achieved:Boolean(right),earnedAt:right?eventIso(right.earnedAt):null},rewards:eventRows(result[2]).map(reward=>({milestoneId:reward.milestone_id,mailId:reward.mail_id,awardedAt:eventIso(reward.awarded_at)}))};
 }
@@ -77,9 +86,14 @@ async function eventResult(ctx,receipt,idempotent,body=null){
  const response={ok:true,serverNow:eventIso(now),event:eventDto(row,now),idempotent};
  if(receipt.action==='battle'){
   const {db,helpers:h}=ctx,current=await h.getUser(db,ctx.user.id),snapshot=await h.syncSnapshot(db,await h.getSyncRow(db,ctx.user.id),current,body.deviceId,now);
-  Object.assign(response,snapshot,{progress:await eventProgress(ctx,row,now,snapshot),battle:result.battle,rewardMailIds:result.rewardMailIds||[]});
+  const {opponent}=await eventDefense(ctx,response.event.plan,now,snapshot.clock);
+  response.event.opponent=opponent;
+  Object.assign(response,snapshot,{progress:await eventProgress(ctx,row,now,snapshot,opponent),battle:result.battle,rewardMailIds:result.rewardMailIds||[]});
  }
- else await requireEventAdmin(ctx);
+ else{
+   await requireEventAdmin(ctx);
+   response.event.opponent=(await eventDefense(ctx,response.event.plan,now)).opponent;
+ }
  return response;
 }
 async function eventGenerate(ctx){
@@ -168,8 +182,9 @@ async function eventBattle(ctx,id){
  const now=Date.now(),nonce=crypto.randomUUID(),guard=h.roleCommitGuard(user),gateArgs=[user.id,requestId,nonce];
  if(eventStatus(row,now)!=='active')h.fail(409,'EVENT_ENDED','このイベントは終了しました。');
  const roll=crypto.getRandomValues(new Uint32Array(1))[0]/4294967296;
- const commandBefore=save.state.command;
- const battle={...resolveEventBattle(plan,{stageId,tactic,army:game.armyStats(),morale:game.state.morale},roll),id:h.uid('eb_'),requestId,commandCost:COMMAND_COST,commandBefore,commandAfter:commandBefore-COMMAND_COST,playerRevision:Number(savedRow.revision)+1,createdAt:eventIso(now)};
+ const commandBefore=save.state.command,{opponent,guard:targetGuard}=await eventDefense(ctx,plan,now,clock);
+ const fieldForces=eventForces(ctx,game,opponent);
+ const battle={...resolveEventBattle(plan,{stageId,tactic,army:game.armyStats(),morale:game.state.morale,fieldForces,enemyName:opponent?opponent.castleName+'守備隊':undefined},roll),opponent,id:h.uid('eb_'),requestId,commandCost:COMMAND_COST,commandBefore,commandAfter:commandBefore-COMMAND_COST,playerRevision:Number(savedRow.revision)+1,createdAt:eventIso(now)};
  // The catalogue plan alone supplies the reward. It shares the command/save
  // revision and receipt transaction, so retrying cannot grant it twice.
  save.state.command-=COMMAND_COST;
@@ -180,8 +195,8 @@ async function eventBattle(ctx,id){
   eventStmt(db,`INSERT INTO timed_event_requests(actor_id,request_id,event_id,action,request_hash,commit_token,result_json,created_at)
    SELECT ?,?,?,'battle',?,?,?,? FROM timed_events e WHERE e.id=? AND e.status='active' AND e.ended_at IS NULL AND e.starts_at<=? AND e.ends_at>? AND e.revision=?
    AND EXISTS(SELECT 1 FROM player_saves ps WHERE ps.user_id=? AND ps.revision=? AND ps.writer_device_id=? AND ps.lease_expires_at>? AND ps.save_json IS NOT NULL AND json_extract(ps.save_json,'$.state.command')>=?)
-   AND EXISTS(SELECT 1 FROM world_clock WHERE id=? AND revision=?) AND ${guard.sql}
-   ON CONFLICT(actor_id,request_id) DO NOTHING`,user.id,requestId,id,digest,nonce,JSON.stringify({eventId:id,battle,rewardMailIds:[]}),now,id,now,now,row.revision,user.id,body.expectedRevision,deviceId,now,COMMAND_COST,h.worldClockId,clock.revision,...guard.args),
+   AND EXISTS(SELECT 1 FROM world_clock WHERE id=? AND revision=?) AND ${guard.sql} AND ${targetGuard.sql}
+   ON CONFLICT(actor_id,request_id) DO NOTHING`,user.id,requestId,id,digest,nonce,JSON.stringify({eventId:id,battle,rewardMailIds:[]}),now,id,now,now,row.revision,user.id,body.expectedRevision,deviceId,now,COMMAND_COST,h.worldClockId,clock.revision,...guard.args,...targetGuard.args),
   eventStmt(db,`UPDATE player_saves SET save_json=?,revision=revision+1,updated_at=?,lease_expires_at=? WHERE user_id=? AND ${EVENT_GATE}`,JSON.stringify(updatedSave),now,now+h.syncLease,user.id,...gateArgs),
   eventStmt(db,`INSERT INTO timed_event_participants(event_id,user_id,points,wins,battles,updated_at) SELECT ?,?,?,?,1,? WHERE ${EVENT_GATE}
    ON CONFLICT(event_id,user_id) DO UPDATE SET points=timed_event_participants.points+excluded.points,wins=timed_event_participants.wins+excluded.wins,battles=timed_event_participants.battles+1,updated_at=excluded.updated_at`,id,user.id,battle.points,battle.won?1:0,now,...gateArgs)
@@ -233,7 +248,8 @@ export async function handleEvents(ctx){
  const detail=/^\/events\/(ev_[a-f0-9]{32})$/.exec(path);
  if(detail&&method==='GET'){
   const row=await eventRow(ctx,detail[1],{publicOnly:true});
-  return {ok:true,serverNow:eventIso(now),event:eventDto(row,now),progress:await eventProgress(ctx,row,now),leaderboard:await eventLeaderboard(ctx,row.id)};
+  const event=eventDto(row,now),{opponent}=await eventDefense(ctx,event.plan,now);
+  return {ok:true,serverNow:eventIso(now),event:{...event,opponent},progress:await eventProgress(ctx,row,now,null,opponent),leaderboard:await eventLeaderboard(ctx,row.id)};
  }
  if(path==='/admin/events'||path.startsWith('/admin/events/')){
   h.requireAdmin(user||{});await requireEventAdmin(ctx);
