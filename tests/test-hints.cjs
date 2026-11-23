@@ -225,7 +225,7 @@ test('negative rice production and low reserves take precedence over recruitment
   }
 });
 
-test('recruitment quotes use real costs and leave capacity, nonnegative production and two months of food', () => {
+test('recruitment quotes use real costs and leave capacity, nonnegative gold and rice and two months of complete upkeep', () => {
   for (const clan of data.clans) {
     const game = developed(make({clan: clan.name}));
     game.state.troops = 1000;
@@ -236,10 +236,12 @@ test('recruitment quotes use real costs and leave capacity, nonnegative producti
     assert(game.state.troops + proposal.amount <= game.troopCapacity());
     const actual = game.recruitTroopCost(proposal.amount);
     for (const key of data.resources) assert.equal(proposal.cost[key] || 0, actual[key] || 0, clan.name + ' ' + key);
-    const upkeep = Math.ceil((game.state.troops + proposal.amount) * .12 + game.ownedCastles().length * 60);
-    assert(game.income().grossRice - upkeep >= 0);
-    assert(game.state.resources.rice - actual.rice >= Math.max(500, upkeep * 2));
-    assert(game.state.resources.gold >= actual.gold);
+    const preview = game.previewRecruitment(proposal.amount);
+    assert(preview.sustainable && preview.affordable && preview.withinReserve && preview.withinCapacity);
+    for (const key of ['gold','rice']) {
+      assert(preview.rawNet[key] >= 0);
+      assert(preview.balances[key] >= Math.max(key === 'gold' ? 500 : 1000, preview.totalUpkeep[key] * 2));
+    }
     const before = game.state.troops;
     assert.equal(game.recruitTroops(proposal.amount).ok, true, 'the engine must accept the proposed quantity');
     assert.equal(game.state.troops, before + proposal.amount);
@@ -249,28 +251,26 @@ test('recruitment quotes use real costs and leave capacity, nonnegative producti
 test('barely positive rice income cannot justify even the minimum additional army', () => {
   const game = rich(make());
   game.state.buildings.barracks = 10;
-  game.state.troops = Math.floor((game.income().grossRice - game.ownedCastles().length * 60 - 1) / .12);
+  game.state.troops = 0;
+  const income = game.income();
+  game.state.troops = Math.floor((income.gross.rice - income.facilityUpkeep.rice - 1) / .12) - income.totalTroops;
   assert(game.income().rice > 0);
   assert(game.troopCapacity() - game.state.troops > 1000);
-  assert(game.income().grossRice - Math.ceil((game.state.troops + 100) * .12 + 60) < 0);
+  assert(game.previewRecruitment(100).rawNet.rice < 0);
   const result = build(game);
   assert(has(result, 'rice-balance'));
   assert.equal(has(result, 'recruit-troops'), false);
 });
 
-test('recruitment finds the real integer boundary for rounded costs and post-payment food reserves', () => {
+test('recruitment finds the real integer boundary for rounded costs and both post-payment reserves', () => {
   for (const clan of ['織田家', '伊達家']) for (const constrained of ['gold', 'rice']) {
     const game = developed(make({clan}));
     game.state.troops = 1000;
-    const upkeep = amount => Math.ceil((game.state.troops + amount) * .12 + game.ownedCastles().length * 60);
-    const target = 347, quote = game.recruitTroopCost(target);
-    if (constrained === 'gold') game.state.resources.gold = quote.gold;
-    else game.state.resources.rice = quote.rice + Math.max(500, upkeep(target) * 2);
+    const target = 347, quote = game.previewRecruitment(target);
+    game.state.resources[constrained] = quote.cost[constrained] + quote.reserve[constrained];
     const feasible = Array.from({length: 901}, (_, index) => index + 100).filter(amount => {
-      const cost = game.recruitTroopCost(amount);
-      return data.resources.every(key => game.state.resources[key] >= (cost[key] || 0))
-        && game.income().grossRice >= upkeep(amount)
-        && game.state.resources.rice - cost.rice >= Math.max(500, upkeep(amount) * 2);
+      const preview = game.previewRecruitment(amount);
+      return preview.affordable && preview.sustainable && preview.withinReserve && preview.withinCapacity;
     });
     const maximum = feasible.at(-1);
     assert(maximum >= 100 && maximum < 1000, clan + ' ' + constrained);
@@ -280,6 +280,48 @@ test('recruitment finds the real integer boundary for rounded costs and post-pay
     assert.equal(proposal.missing, undefined);
     assert.equal(game.recruitTroops(proposal.amount).ok, true);
   }
+});
+
+test('a small hand army with large garrisons never receives unsupported recruitment advice', () => {
+  const game = rich(make());
+  game.state.troops = 100;
+  const income = game.income();
+  game.state.castles[game.state.home].troops += Math.floor(income.rawNet.rice / .12);
+  assert(game.income().rawNet.rice >= 0 && game.income().rawNet.rice < 12);
+  assert(game.previewRecruitment(100).rawNet.rice < 0);
+  const result = build(game);
+  assert.equal(has(result, 'recruit-troops'), false);
+  assert.match(find(result, 'rice-balance').reason, /100人を募兵すると/);
+});
+
+test('gold and material deficits show exact losses and matching production actions before optional spending', () => {
+  for (const key of ['gold','wood','stone']) {
+    const game = rich(make());
+    for (const row of data.buildings) game.state.buildings[row.id] = row.category === key ? 0 : 32;
+    game.state.troops = 100;
+    game.state.resources[key] = 100;
+    const income = game.income();
+    assert(income[key] < 0, key);
+    const result = build(game), advice = find(result, key+'-balance');
+    assert(advice, key);
+    assert.equal(result.items[0].id, key+'-balance');
+    assert.equal(advice.tone, 'urgent');
+    assert.match(advice.reason, new RegExp('毎月'+Math.floor(-income[key]).toLocaleString('ja-JP')+'減っています'));
+    assert.equal(advice.action.kind, 'building');
+    assert.equal(data.buildings.find(row => row.id === advice.action.id).category, key);
+    if (key === 'gold') assert.equal(has(result, 'recruit-troops'), false, 'positive food income cannot excuse a gold deficit');
+  }
+});
+
+test('multiple negative resources rank by remaining stock and do not pretend a deficit is a positive income', () => {
+  const game = rich(make());
+  for (const row of data.buildings) game.state.buildings[row.id] = ['wood','stone'].includes(row.category) ? 0 : 32;
+  game.state.resources.wood = 0;
+  game.state.resources.stone = 500;
+  const result = build(game);
+  assert.equal(result.items[0].id, 'wood-balance');
+  assert.equal(result.items[1].id, 'stone-balance');
+  for (const key of ['wood','stone']) assert.match(find(result, key+'-balance').reason, /減っています/);
 });
 
 test('unaffordable recruitment is labelled as preparation, and fewer than 100 capacity places stop it', () => {
@@ -425,6 +467,9 @@ test('training respects morale and reserves, and an optimized governor plan stop
   game.state.morale = 100;
   assert.equal(has(build(game), 'training'), false);
   game.state.morale = 50;
+  game.state.resources.gold = cost.gold + game.previewRecruitment(0).reserve.gold - 1;
+  assert.equal(has(build(game), 'training'), false);
+  game.state.resources.gold = 9000000;
   game.state.resources.rice = cost.rice;
   assert.equal(has(build(game), 'training'), false);
 

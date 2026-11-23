@@ -3702,9 +3702,15 @@ const api=Object.freeze({version:1,coordinates,plan,nearest,distance,formatDurat
   'use strict';
   const RESOURCES = ['gold', 'rice', 'wood', 'stone'];
   const ASSET_CAP = 100000000;
+  const ECONOMY_RULES=Object.freeze({surplusThresholds:Object.freeze({gold:5000,rice:9000,wood:3000,stone:2500}),upgradeMultiplierCap:16,recruitReserveMonths:2,recruitReserveMinimum:Object.freeze({gold:500,rice:1000})});
+  function balanceSurplus(rawNet){
+    const net={},surplusAdjustment={};
+    for(const key of RESOURCES){const raw=rawNet[key],threshold=ECONOMY_RULES.surplusThresholds[key];net[key]=raw>threshold?Math.floor(threshold*(1+Math.log(raw/threshold))):raw;surplusAdjustment[key]=raw-net[key];}
+    return{net,surplusAdjustment};
+  }
   function upgradeCostMultiplier(ownedCastleCount){
     if(!Number.isInteger(ownedCastleCount)||ownedCastleCount<0||ownedCastleCount>CASTLES.length)throw new Error('領有城数を確認できません。');
-    return 2**Math.max(0,ownedCastleCount-1);
+    return 2**Math.min(4,Math.max(0,ownedCastleCount-1));
   }
   function scaleUpgradeCost(cost,ownedCastleCount){
     if(cost==null)return null;
@@ -5143,8 +5149,11 @@ const api=Object.freeze({version:1,coordinates,plan,nearest,distance,formatDurat
       const gold=Math.floor((180+b.keep*50+b.market*180*this._governorBonus('market')+this._facilityEffect('gold')+n*100+expanded*15)*(1+t.commerce*.12)*(s.clan==='織田家'?1.15:1))+branchIncome.gold;
       const grossRice=Math.floor((b.farm*450*this._governorBonus('farm')+this._facilityEffect('rice')+n*170+expanded*20)*(1+t.cultivation*.12)*(s.clan==='北条家'?1.15:1))+branchIncome.rice;
       const gross={gold,rice:grossRice,wood:Math.floor((b.lumber*170*this._governorBonus('lumber')+this._facilityEffect('wood')+n*40+expanded*5)*(1+t.forestry*.15))+branchIncome.wood,stone:Math.floor((b.quarry*130*this._governorBonus('quarry')+this._facilityEffect('stone')+n*30+expanded*5)*(1+t.masonry*.15))+branchIncome.stone};
-      const maintenance=this.maintenance(),net=Object.fromEntries(RESOURCES.map(key=>[key,gross[key]-maintenance.totalUpkeep[key]]));
-      return{...net,upkeep:maintenance.totalUpkeep.rice,grossRice,gross,net,troopUpkeep:maintenance.troopUpkeep,facilityUpkeep:maintenance.facilityUpkeep,totalTroops:maintenance.totalTroops,troopBreakdown:maintenance.troops,facilityLevels:maintenance.facilities};
+      const maintenance=this.maintenance(),rawNet=Object.fromEntries(RESOURCES.map(key=>[key,gross[key]-maintenance.totalUpkeep[key]])),{net,surplusAdjustment}=balanceSurplus(rawNet);
+      // Full production still funds troops and facilities before excess savings
+      // taper. Existing sustainable forces and deficit signs never change just
+      // because a developed town produces more than the ordinary savings rate.
+      return{...net,upkeep:maintenance.totalUpkeep.rice,grossRice,gross,rawNet,surplusAdjustment,net,troopUpkeep:maintenance.troopUpkeep,facilityUpkeep:maintenance.facilityUpkeep,totalTroops:maintenance.totalTroops,troopBreakdown:maintenance.troops,facilityLevels:maintenance.facilities};
     }
     costs(id,fromLevel){const b=BUILDINGS.find(b=>b.id===id);if(fromLevel===undefined){const jobs=this.isStaff?STAFF_VIEW.get(this)?.base.jobs||[]:this.state.jobs;fromLevel=Math.max(this.state.buildings[id]??0,...jobs.filter(j=>j.kind==='building'&&j.id===id).map(j=>j.targetLevel));}if(!b||!Number.isInteger(fromLevel)||fromLevel<0||fromLevel>32)return null;const level=fromLevel,mult=1+level*.32+level*level*.025,turns=level>=16?3:level>=6||id==='keep'?2:1;return this.scaleUpgradeCost({gold:Math.round(b.base.gold*mult),wood:Math.round(b.base.wood*mult),stone:Math.round(b.base.stone*mult),rice:0,turns,seconds:turns*60});}
     upgrade(id){
@@ -5232,7 +5241,27 @@ const api=Object.freeze({version:1,coordinates,plan,nearest,distance,formatDurat
       return{ok:true,changed,governors,assignments,facilityCount,candidateCount,assignedCount,vacantCount,changedCount,clearedCount,totalBonus,previousTotalBonus,message};
     }
     autoAssignGovernors(){const plan=this.planGovernorAssignments();if(plan.ok&&plan.changed)this.state.governors={...plan.governors};return plan;}
-    recruitTroopCost(amount){const n=int(amount),m=(1-this.state.tech.conscription*.08)*(this.state.clan==='伊達家'?.85:1)/this._governorBonus('barracks');return{gold:Math.ceil(n*.32*m),rice:Math.ceil(n*.45*m),wood:0,stone:0};}
+    _recruitCostMultiplier(){return(1-this.state.tech.conscription*.08)*(this.state.clan==='伊達家'?.85:1)/this._governorBonus('barracks');}
+    recruitTroopCost(amount){const n=int(amount),m=this._recruitCostMultiplier();return{gold:Math.ceil(n*.32*m),rice:Math.ceil(n*.45*m),wood:0,stone:0};}
+    _previewRecruitment(amount,income,multiplier,capacity){
+      const cost={gold:Math.ceil(amount*.32*multiplier),rice:Math.ceil(amount*.45*multiplier),wood:0,stone:0},totalTroops=income.totalTroops+amount;
+      const troopUpkeep={gold:Math.ceil(totalTroops/25),rice:Math.floor(totalTroops/25)*3+Math.ceil(totalTroops%25*3/25),wood:0,stone:0};
+      const totalUpkeep=Object.fromEntries(RESOURCES.map(key=>[key,income.facilityUpkeep[key]+troopUpkeep[key]])),rawNet=Object.fromEntries(RESOURCES.map(key=>[key,income.gross[key]-totalUpkeep[key]])),{net}=balanceSurplus(rawNet);
+      const balances=Object.fromEntries(RESOURCES.map(key=>[key,this.state.resources[key]-cost[key]])),reserve=Object.fromEntries(['gold','rice'].map(key=>[key,Math.max(ECONOMY_RULES.recruitReserveMinimum[key],totalUpkeep[key]*ECONOMY_RULES.recruitReserveMonths)]));
+      return{amount,cost,balances,rawNet,net,troopUpkeep,totalUpkeep,totalTroops,reserve,sustainable:rawNet.gold>=0&&rawNet.rice>=0,affordable:RESOURCES.every(key=>balances[key]>=0),withinReserve:balances.gold>=reserve.gold&&balances.rice>=reserve.rice,withinCapacity:amount<=capacity};
+    }
+    previewRecruitment(amount,income=this.income()){
+      if(!Number.isSafeInteger(amount)||amount<0||amount>20000)return null;
+      return this._previewRecruitment(amount,income,this._recruitCostMultiplier(),Math.max(0,Math.min(20000,this.availableTroopCapacity()-this.state.troops)));
+    }
+    recruitmentBudget(income=this.income()){
+      const multiplier=this._recruitCostMultiplier(),capacity=Math.max(0,Math.min(20000,this.availableTroopCapacity()-this.state.troops)),preview=amount=>this._previewRecruitment(amount,income,multiplier,capacity);
+      const search=(limit,accept)=>{let low=0,high=limit;while(low<high){const middle=Math.ceil((low+high)/2);if(accept(preview(middle)))low=middle;else high=middle-1;}return low;};
+      const goldBudget=Math.max(0,income.gross.gold-income.facilityUpkeep.gold),riceBudget=Math.max(0,income.gross.rice-income.facilityUpkeep.rice);
+      const allowance=Math.min(goldBudget*25,Math.floor(riceBudget/3)*25+Math.floor((riceBudget%3)*25/3));
+      const affordableMax=search(capacity,row=>row.affordable),sustainableMax=Math.min(capacity,Math.max(0,allowance-income.totalTroops)),recommendedMax=search(Math.min(affordableMax,sustainableMax),row=>row.withinReserve&&row.sustainable);
+      return{affordableMax,sustainableMax,recommendedMax,reserveMonths:ECONOMY_RULES.recruitReserveMonths,minimumReserve:{...ECONOMY_RULES.recruitReserveMinimum}};
+    }
     recruitTroops(amount){
       const g=this._guard();if(g)return g;const n=int(amount);if(!Number.isFinite(Number(amount))||n<100||n>20000)return fail('募兵数は100〜20,000人で指定してください。');
       if(this.state.troops+n>this.availableTroopCapacity())return fail(`兵数上限は${this.troopCapacity().toLocaleString()}人です。兵舎を増築してください。`);
@@ -6106,6 +6135,7 @@ const api=Object.freeze({version:1,coordinates,plan,nearest,distance,formatDurat
   }
   SengokuEngine.normalizePlayerProgress=normalizePlayerProgress;
   SengokuEngine.officerHealthRules=OFFICER_HEALTH_RULES;
+  SengokuEngine.economyRules=ECONOMY_RULES;
   SengokuEngine.maintenanceRulesVersion=1;
   SengokuEngine.normalizeUpkeepState=normalizeUpkeepState;
   SengokuEngine.normalizeOfficerHealth=normalizeOfficerHealth;
@@ -6920,7 +6950,7 @@ global.setInterval?.(()=>{if(!global.document.hidden&&options.getContext)refresh
     }
 
     const data = game.data, items = new Map();
-    const resources = s.resources, income = game.income(), owned = game.ownedCastles();
+    const resources = s.resources, income = game.income();
     const jobs = game.constructionJobs(), shared = Boolean(game.isStaff);
     const scopedJobs = jobs.filter(job => Boolean(job.shared) === shared);
     const chains = new Set(scopedJobs.filter(job => job.kind !== 'research').map(job => job.kind+':'+job.id));
@@ -6965,21 +6995,24 @@ global.setInterval?.(()=>{if(!global.document.hidden&&options.getContext)refresh
         action:{kind:'building',id:b.id,label:b.name+'を確認'},...withCost(cost)});
     };
 
-    // Reserve two months of current upkeep. This is an advice policy, not a new
-    // engine restriction; the review screen still offers the full game rules.
-    const reserveRice = Math.max(500,income.upkeep*2);
+    // Advice uses the same complete upkeep and reserves as the recruitment
+    // preview. It never changes the player's chosen amount or game rules.
+    const recruitBudget = game.recruitmentBudget(income), currentRecruitment = game.previewRecruitment(0,income);
+    const reserveRice = currentRecruitment.reserve.rice, reserveGold = currentRecruitment.reserve.gold;
     const ricePressure = income.rice < 0 || resources.rice < reserveRice;
-    const riceAdvice = (reason,priority=100) => {
-      const farm = production('rice');
-      add({id:'rice-balance',priority,tone:income.rice<0?'urgent':'advice',category:'supplies',
-        title:income.rice<0?'兵糧の赤字を立て直す':'兵を増やす前に、兵糧を備える',reason,
-        detail:`月の生産 ${fmt(income.grossRice)}・維持費 ${fmt(income.upkeep)}。${farm?`${farm.b.name}や奉行の配置で生産を伸ばせます。`:'城下町の生産施設と奉行の配置を確認しましょう。'}`,
-        action:farm?{kind:'building',id:farm.b.id,label:farm.b.name+'を確認'}:view('army','兵糧収支を確認'),
-        ...(farm?withCost(farm.cost):{})});
+    const goldPressure = income.gold < 0 || resources.gold < reserveGold;
+    const resourceAdvice = (key,reason,priority=100) => {
+      const facility = production(key), name = NAMES[key], upkeep = income.troopUpkeep[key]+income.facilityUpkeep[key];
+      add({id:key+'-balance',priority,tone:income[key]<0?'urgent':'advice',category:'supplies',
+        title:income[key]<0?`${name}の赤字を立て直す`:`兵を増やす前に、${name}を備える`,reason,
+        detail:`月の生産 ${fmt(income.gross[key])}・維持費 ${fmt(upkeep)}・余剰生産の調整 ${fmt(income.surplusAdjustment[key])}。${facility?`${facility.b.name}や奉行の配置で生産を伸ばせます。`:'城下町の生産施設と奉行の配置を確認しましょう。'}`,
+        action:facility?{kind:'building',id:facility.b.id,label:facility.b.name+'を確認'}:view('facilities','収支と施設を見る'),
+        ...(facility?withCost(facility.cost):{})});
     };
-    if (ricePressure) {
-      riceAdvice(income.rice < 0 ? `兵糧が毎月${fmt(-income.rice)}減っています。現在の備蓄は${fmt(resources.rice)}です。` : `兵糧${fmt(resources.rice)}は、備えの目安${fmt(reserveRice)}（維持費2か月分、最低500）を下回っています。`);
-    }
+    const deficits = data.resources.filter(key => income[key]<0).sort((a,b) => resources[a]/-income[a]-resources[b]/-income[b] || a.localeCompare(b));
+    deficits.forEach((key,index) => resourceAdvice(key,`${NAMES[key]}が毎月${fmt(-income[key])}減っています。現在の備蓄は${fmt(resources[key])}です。`,110-index));
+    if (ricePressure && income.rice>=0) resourceAdvice('rice',`兵糧${fmt(resources.rice)}は、備えの目安${fmt(reserveRice)}（維持費2か月分、最低${fmt(recruitBudget.minimumReserve.rice)}）を下回っています。`);
+    if (goldPressure && income.gold>=0) resourceAdvice('gold',`金銭${fmt(resources.gold)}は、備えの目安${fmt(reserveGold)}（維持費2か月分、最低${fmt(recruitBudget.minimumReserve.gold)}）を下回っています。`,99);
 
     const rewards = data.quests.filter(q => {const status=game.questStatus(q.id);return status.complete&&!status.claimed;});
     if (rewards.length) {
@@ -7028,10 +7061,10 @@ global.setInterval?.(()=>{if(!global.document.hidden&&options.getContext)refresh
     }
 
     if (hasCommand) {
-      if (!ricePressure) {
+      if (!ricePressure && !deficits.length) {
         const economic = ['gold','wood','stone'].map(key => ({id:key,months:resources[key]/Math.max(1,income[key])})).sort((a,b) => a.months-b.months || compareId(a,b))[0];
         if (economic && economic.months < 12) {
-          recommendBuilding(production(economic.id),75,`${NAMES[economic.id]}の備蓄は${fmt(resources[economic.id])}、月の収入は${fmt(income[economic.id])}です。生産を伸ばすと、次の普請や研究を準備しやすくなります。`);
+          recommendBuilding(production(economic.id),75,`${NAMES[economic.id]}の備蓄は${fmt(resources[economic.id])}、毎月の差引は${fmt(income[economic.id])}です。生産を伸ばすと、次の普請や研究を準備しやすくなります。`);
         }
       }
       const home = game.castle(s.home);
@@ -7040,7 +7073,7 @@ global.setInterval?.(()=>{if(!global.document.hidden&&options.getContext)refresh
         const before = game.castleBenefits(home.id,home.level), after = game.castleBenefits(home.id,home.level+1);
         add({id:'castle:'+home.id,priority:affordable?67:47,tone:'advice',category:'construction',
           title:affordable?`${home.name}の城郭をLv.${home.level+1}へ`:`${home.name}の城郭拡張に備える`,
-          reason:`城郭を上げると月の金銭が${fmt(after.gold-before.gold)}、兵糧が${fmt(after.rice-before.rice)}増え、防衛補正も高まります。${affordable?'':` 不足は${shortageText(cost)}です。`}`,
+          reason:`城郭を上げると月の生産が金銭${fmt(after.gold-before.gold)}、兵糧${fmt(after.rice-before.rice)}増え、防衛補正も高まります。${affordable?'':` 不足は${shortageText(cost)}です。`}`,
           detail:`現在Lv.${home.level} / ${game.castleLevelLimit(home.id)}。指令1回・工期${fmt(cost.seconds)}秒（ゲーム内）。${shared?'スタッフの共同普請です。':''}`,
           action:{kind:'castle',id:home.id,label:'城郭の強化を確認'},...withCost(cost)});
       }
@@ -7077,12 +7110,12 @@ global.setInterval?.(()=>{if(!global.document.hidden&&options.getContext)refresh
       }
     }
 
-    const capacity = game.troopCapacity(), room = capacity-s.troops;
+    const capacity = game.troopCapacity(), room = (game.availableTroopCapacity?.()??capacity)-s.troops;
     const wantsTroops = s.troops < capacity*.65 && room >= 100;
     if (hasCommand && !ricePressure) {
-      if (s.troops > 0 && s.morale < 85) {
+      if (s.troops > 0 && s.morale < 85 && !goldPressure) {
         const cost = game.trainingCost(), affordable = canPay(cost);
-        if (resources.rice-number(cost.rice) >= reserveRice) {
+        if (resources.rice-number(cost.rice) >= reserveRice && resources.gold-number(cost.gold) >= reserveGold) {
           add({id:'training',priority:(s.morale<60?89:73)-(affordable?0:15),tone:s.morale<60?'urgent':'advice',category:'army',
             title:affordable?'訓練で士気を整える':'訓練の金銭を準備する',
             reason:`士気は${s.morale} / 100です。1回の訓練で${Math.min(100-s.morale,game.trainingGain())}回復します。${affordable?'':` 不足は${shortageText(cost)}です。`}`,
@@ -7091,31 +7124,24 @@ global.setInterval?.(()=>{if(!global.document.hidden&&options.getContext)refresh
       }
       if (wantsTroops) {
         const limit = Math.floor(Math.min(1000,room,Math.ceil(capacity*.65)-s.troops));
-        const upkeepAfter = amount => Math.ceil((s.troops+amount)*.12+owned.length*60);
-        const supported = amount => income.grossRice >= upkeepAfter(amount);
-        const affordable = amount => {
-          const cost=game.recruitTroopCost(amount);
-          return canPay(cost) && resources.rice-cost.rice >= Math.max(500,upkeepAfter(amount)*2);
-        };
-        if (limit>=100 && supported(100)) {
-          let low=0, high=limit;
-          while (low<high) {const mid=Math.ceil((low+high)/2);if (supported(mid)&&affordable(mid)) low=mid;else high=mid-1;}
-          if (low>=100) {
-            const cost=game.recruitTroopCost(low);
-            add({id:'recruit-troops',priority:s.troops<300?90:70,tone:'advice',category:'army',title:'兵を補充して軍団を整える',
-              reason:`現在${fmt(s.troops)} / ${fmt(capacity)}人。${fmt(low)}人の募兵なら、費用を払った後も兵糧の備えと赤字でない収支を保てます。`,
-              detail:'募兵には指令1回を使い、人数に応じて士気が下がります。軍団画面で人数を確認してください。',
-              action:view('army','募兵を確認'),amount:low,...withCost(cost)});
-          } else if (!canPay(game.recruitTroopCost(100))) {
-            const cost=game.recruitTroopCost(100);
-            add({id:'recruit-troops',priority:59,tone:'advice',category:'army',title:'最小100人の募兵費用を準備する',
-              reason:`兵数は${fmt(s.troops)} / ${fmt(capacity)}人。100人分の費用に${shortageText(cost)}が不足しています。`,
-              detail:'費用に加えて、募兵後の維持費と兵糧の備えも確認しましょう。',action:view('army','募兵費用を確認'),amount:100,...withCost(cost)});
-          } else {
-            riceAdvice('100人分の募兵費用はありますが、支払うと募兵後の維持費2か月分の備えを下回ります。兵糧を蓄えてから補充しましょう。',83);
-          }
+        const amount = Math.min(limit,recruitBudget.recommendedMax);
+        if (amount>=100) {
+          const preview=game.previewRecruitment(amount,income);
+          add({id:'recruit-troops',priority:s.troops<300?90:70,tone:'advice',category:'army',title:'兵を補充して軍団を整える',
+            reason:`現在${fmt(s.troops)} / ${fmt(capacity)}人。${fmt(amount)}人の募兵なら、費用を払った後も金銭・兵糧の備えと赤字のない収支を保てます。`,
+            detail:'募兵には指令1回を使い、人数に応じて士気が下がります。軍団画面で人数を確認してください。',
+            action:view('army','募兵を確認'),amount,...withCost(preview.cost)});
         } else if (limit>=100) {
-          riceAdvice('100人を募兵すると月の兵糧収支が赤字になります。生産を増やしてから兵を補充しましょう。',83);
+          const preview=game.previewRecruitment(100,income);
+          if (!preview.sustainable) {
+            for (const key of ['gold','rice'].filter(key => preview.rawNet[key]<0)) resourceAdvice(key,`100人を募兵すると、${NAMES[key]}の月間収支が${fmt(-preview.net[key])}の赤字になります。生産を増やしてから兵を補充しましょう。`,83);
+          } else if (!preview.affordable) {
+            add({id:'recruit-troops',priority:59,tone:'advice',category:'army',title:'最小100人の募兵費用を準備する',
+              reason:`兵数は${fmt(s.troops)} / ${fmt(capacity)}人。100人分の費用に${shortageText(preview.cost)}が不足しています。`,
+              detail:'費用に加えて、募兵後の金銭・兵糧の維持費と備えも確認しましょう。',action:view('army','募兵費用を確認'),amount:100,...withCost(preview.cost)});
+          } else {
+            for (const key of ['gold','rice'].filter(key => preview.balances[key]<preview.reserve[key])) resourceAdvice(key,`100人分の募兵費用はありますが、支払い後の${NAMES[key]}${fmt(preview.balances[key])}は、募兵後の備えの目安${fmt(preview.reserve[key])}を下回ります。${NAMES[key]}を蓄えてから補充しましょう。`,83);
+          }
         }
       } else if (room<100) {
         recommendBuilding(buildingFacts('barracks'),63,`兵数は${fmt(s.troops)} / ${fmt(capacity)}人で、100人を追加できる空きがありません。兵舎を育てると上限が増えます。`);

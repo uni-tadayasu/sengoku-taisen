@@ -33,9 +33,9 @@ const operations=[
  {name:'branch facility upgrade',quote:g=>g.branchFacilityQuote('nijo_north','farm').cost,run:g=>g.upgradeBranchFacility('nijo_north','farm')}
 ];
 
-test('the shared scaler doubles only four resource prices and never mutates a base quote',()=>{
+test('the shared scaler doubles four resource prices up to16x without mutating a base quote',()=>{
  const base={gold:123,rice:19,wood:5,stone:3,turns:2,seconds:120,commandCost:1,requiredLevel:8,magatama:300},before=copy(base);
- for(const count of [0,1,2,3,4,17,D.castles.length]){const multiplier=2**Math.max(0,count-1);assert.equal(E.upgradeCostMultiplier(count),multiplier);scaled(E.scaleUpgradeCost(base,count),base,multiplier);}
+ for(const count of [0,1,2,3,4,17,D.castles.length]){const multiplier=2**Math.min(4,Math.max(0,count-1));assert.equal(E.upgradeCostMultiplier(count),multiplier);scaled(E.scaleUpgradeCost(base,count),base,multiplier);}
  assert.deepEqual(base,before);assert.equal(E.scaleUpgradeCost(null,3),null);
  for(const count of [-1,.5,NaN,Infinity,'2',D.castles.length+1])assert.throws(()=>E.scaleUpgradeCost(base,count));
  for(const value of [-1,Infinity,NaN])assert.throws(()=>E.scaleUpgradeCost({gold:value},2));
@@ -45,7 +45,7 @@ test('all development quotes use current territory with unchanged time and exist
  for(const operation of operations){
   const g=game();operation.prepare?.(g);g.state.buildings.academy=8;g.state.buildings.library=4;g.state.tech.commerce=2;
   const base=operation.quote(g);assert(base,operation.name);
-  for(const count of [1,2,3,4,9,30,g.unificationTarget()]){holdings(g,count);assert.equal(g.upgradeCastleCount(),count);assert.equal(g.upgradeCostMultiplier(),2**(count-1));scaled(operation.quote(g),base,2**(count-1));}
+  for(const count of [1,2,3,4,9,30,g.unificationTarget()]){holdings(g,count);assert.equal(g.upgradeCastleCount(),count);assert.equal(g.upgradeCostMultiplier(),2**Math.min(4,count-1));scaled(operation.quote(g),base,2**Math.min(4,count-1));}
  }
 });
 
@@ -74,11 +74,13 @@ test('insufficient scaled resources reject every development action without part
  }
 });
 
-test('prices above the asset ceiling remain above it and cannot be bought at a capped discount',()=>{
+test('full-territory development remains payable under the unchanged asset ceiling',()=>{
  for(const operation of operations){
-  const g=game(30);operation.prepare?.(g);const cost=operation.quote(g);assert(cost.gold>D.assetCap,operation.name);assert(Number.isFinite(cost.gold));const before=copy(g.state);assert.equal(operation.run(g).ok,false,operation.name);assert.deepEqual(g.state,before,operation.name);
+  const g=game();holdings(g,g.unificationTarget());operation.prepare?.(g);const cost=operation.quote(g);for(const key of D.resources)assert((cost[key]||0)<=D.assetCap,operation.name+': '+key);assert(Number.isFinite(cost.gold));assert.equal(operation.run(g).ok,true,operation.name);
  }
- const g=game();const base=g.costs('farm').gold;holdings(g,g.unificationTarget());assert.equal(g.costs('farm').gold,base*2**(g.unificationTarget()-1));assert(Number.isFinite(g.costs('farm').gold));assert.doesNotThrow(()=>JSON.stringify(g.costs('farm')));
+ const g=game();const base=g.costs('farm').gold;holdings(g,g.unificationTarget());assert.equal(g.upgradeCostMultiplier(),16);assert.equal(g.costs('farm').gold,base*16);
+ for(const building of D.buildings)for(const key of D.resources)assert((g.costs(building.id,31)[key]||0)<=D.assetCap,building.id+': '+key);
+ assert.equal(E.scaleUpgradeCost({gold:D.assetCap},2).gold,D.assetCap*2,'the generic scaler does not clamp an invalidly large base price into a cheaper payable quote');
 });
 
 test('queued upgrades use the holdings at payment time and existing paid work is not charged again',()=>{
@@ -105,7 +107,7 @@ test('same-level upkeep stays fixed while extra castles add only their original 
 
 test('recruiting, officer employment, training, summons and level gates keep their previous prices',()=>{
  const g=game(),officer=officers.find(o=>!g.state.officers.includes(o.id)),measure=()=>({troops:g.recruitTroopCost(100),officer:g.recruitmentCost(officer.id),training:g.trainingCost(),single:g.gachaCost(1),ten:g.gachaCost(10),scout:g.scoutCost(),diplomacy:g.diplomacyCost(),unlock:g.buildingUnlock('mint'),command:g.commandMax(),slots:g.constructionSlots()}),base=measure();
- holdings(g,8);assert.equal(g.upgradeCostMultiplier(),128);assert.deepEqual(measure(),base);g.state.tech.commerce=g.state.buildings.academy;const before=copy(g.state);assert.equal(g.research('commerce').ok,false);assert.deepEqual(g.state,before);
+ holdings(g,8);assert.equal(g.upgradeCostMultiplier(),16);assert.deepEqual(measure(),base);g.state.tech.commerce=g.state.buildings.academy;const before=copy(g.state);assert.equal(g.research('commerce').ok,false);assert.deepEqual(g.state,before);
 });
 
 for(const [name,run]of tests){run();console.log('PASS '+name);}console.log(`${tests.length} territory upgrade-cost checks passed. Local engine only; no services contacted.`);
