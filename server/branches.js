@@ -1,3 +1,4 @@
+import {maintenanceContext,protectMaintenance} from './maintenance.js';
 // Authoritative branch construction and siege condition. A branch is attached
 // to its parent city; it never becomes an additional territory or reward city.
 import {GameEngine,GAME_OFFICERS} from './game-runtime.js';
@@ -5,7 +6,7 @@ import {prepareResidencyCpuLosses} from './residency.js';
 const stmt=(db,sql,...args)=>db.prepare(sql).bind(...args);
 const GATE='EXISTS(SELECT 1 FROM branch_requests WHERE actor_id=? AND request_id=? AND commit_token=?)';
 const DEPLOYMENT_GATE='EXISTS(SELECT 1 FROM branch_deployment_requests WHERE actor_id=? AND request_id=? AND commit_token=?)';
-const DEPLOYMENTS=['transfer-troops','assign-commander','remove-commander'];
+const DEPLOYMENTS=['transfer-troops','assign-commander','remove-commander','auto-assign-commanders'];
 const PARENTS=['edo','nijo','osaka','nagoya'];
 const DIRECTIONS=['north','east','south','west'];
 const EMPTY='{"branches":[],"jobs":[]}';
@@ -118,9 +119,11 @@ async function mutation(ctx,action){
  const found=await branchStateGuard(db,user.id,body.campaignId);if(found.sequence!==body.sequence)h.fail(409,'BRANCH_STATE_CHANGED','支拠点が更新されました。最新の状態を確認してください。');applyBranchProgress(save,found.state,clock);
  const movement=await troopTransferGuard(db,user.id,body.campaignId);if((save.state.troopTransferSequence||0)!==movement.sequence)h.fail(409,'TROOP_STATE_CHANGED','兵の配置が更新されました。最新の保存状態を読み込んでください。');
  const shared=user.is_staff&&!user.is_admin?await h.staffBaseDto(db,user,clock,ctx.now):null;
- const game=GameEngine.fromSave(save,GAME_OFFICERS,{isAdmin:!!user.is_admin,isStaff:!!user.is_staff,staffBase:shared,branchAuthority:{resolvedElapsedMs:found.resolvedElapsedMs}});
+ const maintenanceAuthority=protectMaintenance(found,await maintenanceContext(db,user.id,save,clock));
+ if(maintenanceAuthority.hasMore||maintenanceAuthority.asOfElapsedMs>clock.elapsedMs)h.fail(409,'CLOCK_STALE','維持費の時間経過を同期しています。最新の保存へ同期してください。');
+ const game=GameEngine.fromSave(save,GAME_OFFICERS,{isAdmin:!!user.is_admin,isStaff:!!user.is_staff,staffBase:shared,maintenanceAuthority,branchAuthority:{resolvedElapsedMs:found.resolvedElapsedMs}});
  game.applyWorldClock(clock,{maxSeconds:60});
- const result=action==='transfer-troops'?game.transferTroops(body.from,body.to,body.troops):action==='assign-commander'?game.assignBranchCommander(body.branchId,body.officerId):action==='remove-commander'?game.removeBranchCommander(body.branchId,body.officerId):action==='build'?game.buildBranch(body.parentCastleId,body.direction):action==='upgrade'?game.upgradeBranch(body.branchId):action==='repair'?game.repairBranch(body.branchId):action==='build-facility'?game.buildBranchFacility(body.branchId,body.facilityId):game.upgradeBranchFacility(body.branchId,body.facilityId);
+ const result=action==='transfer-troops'?game.transferTroops(body.from,body.to,body.troops):action==='auto-assign-commanders'?game.autoAssignBranchCommanders(body.branchId):action==='assign-commander'?game.assignBranchCommander(body.branchId,body.officerId):action==='remove-commander'?game.removeBranchCommander(body.branchId,body.officerId):action==='build'?game.buildBranch(body.parentCastleId,body.direction):action==='upgrade'?game.upgradeBranch(body.branchId):action==='repair'?game.repairBranch(body.branchId):action==='build-facility'?game.buildBranchFacility(body.branchId,body.facilityId):game.upgradeBranchFacility(body.branchId,body.facilityId);
  if(!result.ok)h.fail(409,result.code||'BRANCH_UNAVAILABLE',result.message);
  // Only the new tail may acquire a deadline. Earlier reservations remain
  // tied to their original authoritative completion, including across retries.
@@ -134,9 +137,9 @@ async function mutation(ctx,action){
  await h.budget(db,'branches:'+user.id,60,60000,ctx.now);
  const now=Date.now(),next=h.normalizeGameSave(JSON.parse(game.exportSave()),user,now,{clock}),nonce=crypto.randomUUID(),role=h.roleCommitGuard(user),gateArgs=[user.id,body.requestId,nonce];
  // The immutable receipt table records build/upgrade/repair categories. The
- // exact facility operation and facilityId are bound by the request hash and
+ // exact facility/automatic assignment operation and target are bound by the request hash and
  // retained in result_json; reusing an ID across either scope still conflicts.
- const ledgerAction=action==='build-facility'?'build':action==='upgrade-facility'?'upgrade':action;
+ const ledgerAction=action==='build-facility'?'build':action==='upgrade-facility'?'upgrade':action==='auto-assign-commanders'?'assign-commander':action;
  const cpuLosses=await prepareResidencyCpuLosses(db,{userId:user.id,events:game.takeHomeDefenseLosses(),now,state:next.state});
  const sharedGuard=shared?{sql:"EXISTS(SELECT 1 FROM staff_base WHERE id='kyoto_gosho' AND revision=?)",args:[shared.revision]}:{sql:'1=1',args:[]};
  const statements=[stmt(db,`INSERT INTO ${deployment?'branch_deployment_requests':'branch_requests'}(actor_id,request_id,campaign_id,sequence,action,request_hash,commit_token,result_json,created_at)

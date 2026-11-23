@@ -47,4 +47,12 @@ test('map and modal placement controls have unique labels and foreign branches e
  g.state.castles.nijo.owner='他家';assert.equal(B.renderCommanders(g,g.branch(branchId),{writable:true}),'');assert.equal(B.selectCommander(g,branchId,''),false);
 });
 
+test('automatic placement previews exact candidates and follows full, empty and read-only states',()=>{
+ const {g,branchId}=game(),plan=g.branchCommanderAutoPlan(branchId);assert(plan.ok);
+ let dom=render(g,branchId),button=dom.$('[data-action="auto-assign-branch-commanders"]');assert(button&&!button.disabled);assert.equal(button.getAttribute('data-id'),branchId);
+ for(const row of plan.assignments)assert(dom.$('[data-branch-auto-preview]').textContent.includes(row.name));
+ assert(g.autoAssignBranchCommanders(branchId).ok);dom=render(g,branchId);assert(dom.$('[data-action="auto-assign-branch-commanders"]').disabled);assert.match(dom.$('[data-branch-auto-preview]').textContent,/空き枠/);
+ const other=game();dom=render(other.g,other.branchId,{writable:false,writableReason:'同期を確認中です。'});assert(dom.$('[data-action="auto-assign-branch-commanders"]').disabled);assert.match(dom.$('[data-branch-auto-preview]').textContent,/同期/);
+ const bulk=setup();stable.patch(bulk.host,B.renderAutoCommanders(other.g,'all',{writable:true}));assert.equal(bulk.$('button').getAttribute('data-id'),'all');assert.match(bulk.host.textContent,/全支拠点/);
+});
 (async()=>{for(const[name,run]of tests){await run();console.log('PASS '+name);}console.log(tests.length+' branch officer UI checks passed. No live requests.');})().catch(error=>{console.error(error);process.exitCode=1;});

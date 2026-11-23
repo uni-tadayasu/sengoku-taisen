@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {harness,settleFieldMarch} from './test-support.mjs';
+import {harness} from './test-support.mjs';
 import {GameEngine,GAME_OFFICERS} from './game-runtime.js';
 
 const h=harness(),{api,sql:database,env,db}=h;
@@ -13,6 +13,10 @@ const presence=async (token,deviceId,online)=>(await api('/presence',post(token,
 
 const getClock=async()=>(await api('/world-clock')).data.clock;
 const snapshot=async player=>(await api('/sync?deviceId='+player.deviceId,{token:player.token})).data;
+async function advanceControl(player){
+  const value=await snapshot(player),game=GameEngine.fromSave(value.save,GAME_OFFICERS,{isAdmin:value.user.isAdmin,isStaff:value.user.isStaff,staffBase:value.staffBase,maintenanceAuthority:value.maintenanceAuthority,branchAuthority:{resolvedElapsedMs:value.branchResolvedElapsedMs}});
+  const result=game.applyWorldClock(value.clock,{maxSeconds:86400,deferCycleSettlement:true});assert(result.ok&&!result.pending&&!result.settlementRequired);return game;
+}
 async function upload(player) {
   await lease(player.token,player.deviceId);
   let prior=await snapshot(player);const current=await getClock();
@@ -64,14 +68,18 @@ try {
   assert.equal((await attack(a,attackBody(a,b,1,crypto.randomUUID(),10000),409)).error.code,'INSUFFICIENT_FORCE');
   const beforeA=dbSave(a),beforeB=dbSave(b),request=attackBody(a,b,1),departure=await attack(a,request);
   assert.equal(departure.idempotent,false);assert.equal(departure.revision,2);assert.equal(battles(),0);
-  const transit=GameEngine.fromSave(departure.save,GAME_OFFICERS);transit.applyWorldClock({...departure.clock,elapsedMs:departure.march.arrivesAtMs},{maxSeconds:86400,deferCycleSettlement:true});
-  const battle=await settleFieldMarch(h,a,departure);assert.equal(battle.attackerRevision,3);assert.equal(battle.defenderRevision,2);assert.equal(battles(),1);
+  tick(departure.march.remainingMs);
+  // Independent control engines accrue ordinary income, upkeep and completed
+  // work to the actual battle timestamp before either side suffers damage.
+  const transit=await advanceControl(a),defenderTransit=await advanceControl(b);
+  const arrived=(await api('/marches?deviceId='+a.deviceId,{token:a.token})).data,receipt=arrived.history.find(entry=>entry.id===departure.march.id);assert.equal(receipt?.status,'resolved');const battle=receipt.battle;assert(battle);assert.equal(battle.attackerRevision,3);assert.equal(battle.defenderRevision,2);assert.equal(battles(),1);
   const afterA=dbSave(a),afterB=dbSave(b);
   assert.equal(afterA.state.home,beforeA.state.home);assert.equal(afterB.state.home,beforeB.state.home);
-  assert.deepEqual(Object.fromEntries(Object.entries(afterB.state.castles).map(([id,s])=>[id,s.owner])),Object.fromEntries(Object.entries(beforeB.state.castles).map(([id,s])=>[id,s.owner])));
-  assert(battle.attackerLost<=Math.floor(request.troops*.35));assert(battle.defenderLost.troops<=beforeB.state.troops*.1);assert(battle.defenderLost.garrison<=beforeB.state.castles[beforeB.state.home].troops*.1);
-  assert.equal(afterA.state.troops,transit.state.troops+request.troops-battle.attackerLost);assert.equal(afterB.state.troops,beforeB.state.troops-battle.defenderLost.troops);
-  for(const resource of ['gold','rice','wood','stone']){assert(battle.loot[resource]<=500);assert(battle.loot[resource]<=beforeB.state.resources[resource]*.05);assert.equal(afterA.state.resources[resource]+afterB.state.resources[resource],transit.state.resources[resource]+beforeB.state.resources[resource]);}
+  assert.deepEqual(Object.fromEntries(Object.entries(afterB.state.castles).map(([id,s])=>[id,s.owner])),Object.fromEntries(Object.entries(defenderTransit.state.castles).map(([id,s])=>[id,s.owner])));
+  assert(battle.attackerLost<=Math.floor(request.troops*.35));assert(battle.defenderLost.troops<=defenderTransit.state.troops*.1);assert(battle.defenderLost.garrison<=defenderTransit.state.castles[beforeB.state.home].troops*.1);
+  assert.equal(afterA.state.troops,transit.state.troops+request.troops-battle.attackerLost);assert.equal(afterB.state.troops,defenderTransit.state.troops-battle.defenderLost.troops);assert.equal(afterB.state.castles[beforeB.state.home].troops,defenderTransit.state.castles[beforeB.state.home].troops-battle.defenderLost.garrison);
+  for(const key of ['worldClock','jobs','claimedQuests','magatama','buildings','tech'])assert.deepEqual(afterB.state[key],defenderTransit.state[key],key+' equals ordinary defender progress');
+  for(const resource of ['gold','rice','wood','stone']){assert(battle.loot[resource]<=500);assert(battle.loot[resource]<=defenderTransit.state.resources[resource]*.05);assert.equal(afterB.state.resources[resource],defenderTransit.state.resources[resource]-battle.loot[resource]);assert.equal(afterA.state.resources[resource]+afterB.state.resources[resource],transit.state.resources[resource]+defenderTransit.state.resources[resource]);}
   const replay=await attack(a,request);assert(replay.idempotent);assert.partialDeepStrictEqual(replay.battle,battle);assert.equal(replay.revision,3);assert.equal(battles(),1);assert.deepEqual(dbSave(a),afterA);assert.deepEqual(dbSave(b),afterB);
   assert.equal((await attack(a,{...request,targetPlayerId:c.user.id},409)).error.code,'REQUEST_ID_REUSED');
   assert.equal((await attack(a,attackBody(a,c,3),409)).error.code,'ATTACK_COOLDOWN');

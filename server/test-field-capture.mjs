@@ -23,17 +23,27 @@ async function fixture(h,name,{home='kiyosu',holdings=[],admin=false,mutate=()=>
   for(const id of holdings){s.castles[id]={owner:s.clan,troops:1600,wall:6,level:9};if(!s.captureRewards.includes(id))s.captureRewards.push(id);}
   mutate(s);
   const written=(await h.api('/sync',{method:'PUT',token:p.token,body:{deviceId:p.deviceId,revision:leased.revision,save:value}})).data;
-  p.revision=written.revision;return p;
+  p.revision=written.revision;(h.fieldPlayers??=new Map()).set(p.user.id,p);return p;
 }
 async function appoint(h,operator,p){await h.api('/admin/staff',post(operator,{targetPlayerId:p.user.id,action:'appoint',requestId:crypto.randomUUID()}));return (await h.api('/sync?deviceId='+p.deviceId,{token:p.token})).data;}
 const body=(h,a,d,castleId,extra={})=>({targetPlayerId:d.user.id,...(castleId===undefined?{}:{targetCastleId:castleId}),troops:3000,tactic:'balanced',requestId:crypto.randomUUID(),deviceId:a.deviceId,expectedRevision:Number(row(h,a).revision),...extra});
 const attack=async(h,p,request,expected=200)=>(await h.api('/field/attack',post(p,request,expected))).data;
+async function advanceControl(h,p){
+  const snapshot=(await h.api('/sync?deviceId='+p.deviceId,{token:p.token})).data;
+  const game=GameEngine.fromSave(snapshot.save,GAME_OFFICERS,{isAdmin:snapshot.user.isAdmin,isStaff:snapshot.user.isStaff,staffBase:snapshot.staffBase,maintenanceAuthority:snapshot.maintenanceAuthority,branchAuthority:{resolvedElapsedMs:snapshot.branchResolvedElapsedMs}});
+  const advanced=game.applyWorldClock(snapshot.clock,{maxSeconds:86400,deferCycleSettlement:true});assert(advanced.ok&&!advanced.pending&&!advanced.settlementRequired);
+  return JSON.parse(game.exportSave()).state;
+}
 async function fight(h,actor,request){
   const departure=await attack(h,actor,request);
-  const home=departure.save.state.home;
-  const game=GameEngine.fromSave(departure.save,GAME_OFFICERS,{isAdmin:home==='edo',isStaff:home==='kyoto_gosho',staffBase:departure.staffBase});
-  game.applyWorldClock({...departure.clock,elapsedMs:departure.march.arrivesAtMs},{maxSeconds:86400,deferCycleSettlement:true});
-  return {battle:await settleFieldMarch(h,actor,departure),transit:JSON.parse(game.exportSave()).state};
+  h.now+=departure.march.remainingMs;
+  // The control engines only advance time, independently of the battle route.
+  // Read metadata at the real arrival time so their maintenance seal and staff
+  // projection cover that interval; neither control writes a player save.
+  const transit=await advanceControl(h,actor),defender=h.fieldPlayers.get(request.targetPlayerId),targetCastle=request.targetCastleId||save(h,defender).state.home;
+  const defenderTransit=['edo','kyoto_gosho'].includes(targetCastle)?null:await advanceControl(h,defender);
+  const arrived=await status(h,actor),receipt=arrived.history.find(entry=>entry.id===departure.march.id);assert.equal(receipt?.status,'resolved');assert(receipt.battle);
+  return {battle:receipt.battle,transit,defenderTransit};
 }
 
 async function outcome(won,run){const original=crypto.getRandomValues;crypto.getRandomValues=function(array){return array instanceof Uint32Array&&array.length===1?array.fill(won?0:0xffffffff):original.call(crypto,array);};try{return await run();}finally{crypto.getRandomValues=original;}}
@@ -61,8 +71,8 @@ await scope('major outpost capture preserves homes and development, survives sta
   assert.equal(battle.battleMode,'capture');assert.equal(battle.capture.captured,true);assert.equal(battle.capture.newlyOwned,true);assert.equal(battle.capture.castleId,'nijo');assert.equal(battle.capture.defenderHomeCastleId,'kiyosu');
   assert.equal(afterA.state.home,beforeA.state.home);assert.equal(afterB.state.home,beforeB.state.home);assert.equal(afterA.state.castles.nijo.owner,afterA.state.clan);assert.notEqual(afterB.state.castles.nijo.owner,afterB.state.clan,'same clan names do not prevent loss');
   assert.equal(afterA.state.castles.nijo.level,9);assert.equal(afterA.state.castles.nijo.troops,battle.capture.garrison);assert.equal(afterA.state.troops,result.transit.troops+request.troops-battle.attackerLost-battle.capture.garrison);
-  unchangedDevelopment({state:result.transit},afterA);unchangedDevelopment(beforeB,afterB);assert.deepEqual(battle.rewards,zeros);
-  for(const key of resources)assert.equal(afterA.state.resources[key]+afterB.state.resources[key],result.transit.resources[key]+beforeB.state.resources[key]);
+  unchangedDevelopment({state:result.transit},afterA);unchangedDevelopment({state:result.defenderTransit},afterB);assert.deepEqual(battle.rewards,zeros);
+  for(const key of resources)assert.equal(afterA.state.resources[key]+afterB.state.resources[key],result.transit.resources[key]+result.defenderTransit.resources[key]);
   await h.api('/sync/lease',post(b,{deviceId:b.deviceId}));
   assert.equal((await h.api('/sync',{method:'PUT',token:b.token,body:{deviceId:b.deviceId,revision:revisionB,save:beforeB},expected:409})).data.error.code,'REVISION_CONFLICT');
   assert.deepEqual(save(h,b),afterB);
@@ -75,8 +85,9 @@ await scope('major outpost capture preserves homes and development, survives sta
 for(const id of ['nijo','osaka','nagoya'])await scope(id+' home capture retreats safely and changes the durable cycle home',async h=>{
   const a=await fixture(h,'本拠を攻める領主',{home:'inuyama'}),b=await fixture(h,'大都市の領主',{home:id,mutate:s=>{s.castles[id].level=20;s.jobs=[job('castle',id,21),job('building','gold_mine',4)];}}),before=save(h,b);
   const result=await outcome(true,()=>fight(h,a,body(h,a,b,id))),after=save(h,b);
-  assert.equal(result.battle.capture.captured,true);assert.equal(after.state.home,'kiyosu');assert.equal(after.state.cycle.home,'kiyosu');assert.equal(row(h,b).cycle_home,'kiyosu');assert.equal(after.state.castles.kiyosu.owner,after.state.clan);assert.equal(after.state.castles.kiyosu.level,20);assert.equal(after.state.castles.kiyosu.troops,before.state.castles[id].troops-result.battle.defenderLost.garrison);assert.notEqual(after.state.castles[id].owner,after.state.clan);
-  unchangedDevelopment(before,after);assert.deepEqual(after.state.jobs.find(j=>j.kind==='building'),before.state.jobs.find(j=>j.kind==='building'));assert.deepEqual(after.state.jobs.find(j=>j.kind==='castle'),{...before.state.jobs.find(j=>j.kind==='castle'),id:'kiyosu'});
+  const control=result.defenderTransit,castleJob=control.jobs.find(j=>j.kind==='castle');
+  assert.equal(result.battle.capture.captured,true);assert.equal(after.state.home,'kiyosu');assert.equal(after.state.cycle.home,'kiyosu');assert.equal(row(h,b).cycle_home,'kiyosu');assert.equal(after.state.castles.kiyosu.owner,after.state.clan);assert.equal(after.state.castles.kiyosu.level,control.castles[id].level);assert.equal(after.state.castles.kiyosu.troops,control.castles[id].troops-result.battle.defenderLost.garrison);assert.notEqual(after.state.castles[id].owner,after.state.clan);
+  unchangedDevelopment({state:control},after);assert.deepEqual(after.state.jobs.find(j=>j.kind==='building'),control.jobs.find(j=>j.kind==='building'));assert.deepEqual(after.state.jobs.find(j=>j.kind==='castle'),castleJob?{...castleJob,id:'kiyosu'}:undefined);
   await h.api('/sync/lease',post(b,{deviceId:b.deviceId}));
   const written=(await h.api('/sync',{method:'PUT',token:b.token,body:{deviceId:b.deviceId,revision:row(h,b).revision,save:after}})).data;assert.equal(written.save.state.home,'kiyosu');assert.equal(written.save.state.cycle.home,'kiyosu');
   h.now+=31000;h.sql.prepare('UPDATE world_clock SET base_elapsed_ms=?,anchor_real_ms=? WHERE id=?').run(672*60000,h.now,'world-v1');
@@ -109,23 +120,23 @@ for(const role of ['admin','staff'])await scope(role+' attacker captures an outp
 for(const role of ['admin','staff'])await scope(role+' owned major outpost can be captured while its role base remains',async h=>{
   const operator=await fixture(h,'所領守備の運営',{admin:true,holdings:role==='admin'?['nagoya']:[]}),defender=role==='admin'?operator:await fixture(h,'所領守備のスタッフ',{holdings:['nagoya']});if(role==='staff')await appoint(h,operator,defender);
   const actor=await fixture(h,'所領を攻める領主'),before=save(h,defender),shared=baseRow(h),home=role==='admin'?'edo':'kyoto_gosho';
-  const result=await outcome(true,()=>fight(h,actor,body(h,actor,defender,'nagoya'))),after=save(h,defender);assert.equal(result.battle.battleMode,'capture');assert.equal(result.battle.capture.captured,true);assert.equal(after.state.home,home);assert.equal(after.state.cycle.home,home);assert.equal(row(h,defender).cycle_home,home);assert.notEqual(after.state.castles.nagoya.owner,after.state.clan);unchangedDevelopment(before,after);assert.deepEqual(baseRow(h),shared);
+  const result=await outcome(true,()=>fight(h,actor,body(h,actor,defender,'nagoya'))),after=save(h,defender);assert.equal(result.battle.battleMode,'capture');assert.equal(result.battle.capture.captured,true);assert.equal(after.state.home,home);assert.equal(after.state.cycle.home,home);assert.equal(row(h,defender).cycle_home,home);assert.notEqual(after.state.castles.nagoya.owner,after.state.clan);unchangedDevelopment({state:result.defenderTransit},after);assert.deepEqual(baseRow(h),shared);
 });
 
 await scope('capturing a staff original home updates its backup atomically and dismissal cannot restore it',async h=>{
   const operator=await fixture(h,'原本を守る運営',{admin:true}),defender=await fixture(h,'元大都市のスタッフ',{home:'osaka',mutate:s=>{s.castles.osaka.level=24;s.castles.kiyosu.level=29;s.castles.kiyosu.wall=11;}});await appoint(h,operator,defender);
   assert.equal(JSON.parse(backup(h,defender).save_json).state.home,'osaka');const actor=await fixture(h,'スタッフ所領の攻撃者',{home:'akutagawa'}),before=save(h,defender),request=body(h,actor,defender,'osaka');
   const departure=await outcome(true,()=>attack(h,actor,request)),escrow=row(h,actor),beforeDefender=row(h,defender),beforeBackup=backup(h,defender);
-  h.now+=departure.march.remainingMs;
+  h.now+=departure.march.remainingMs;const defenderTransit=await advanceControl(h,defender);
   h.sql.exec("CREATE TRIGGER reject_capture BEFORE INSERT ON field_battles BEGIN SELECT RAISE(ABORT,'test capture rollback'); END");
   const failed=await status(h,actor);assert.equal(failed.active[0].id,departure.march.id);assert.deepEqual(row(h,actor),escrow);assert.deepEqual(row(h,defender),beforeDefender);assert.deepEqual(backup(h,defender),beforeBackup);assert.equal(count(h,'field_requests'),0);h.sql.exec('DROP TRIGGER reject_capture');
-  const result=(await status(h,actor)).history[0];assert.equal(result.battle.capture.captured,true);const personal=JSON.parse(backup(h,defender).save_json).state;assert.equal(personal.home,'kiyosu');assert.equal(personal.cycle.home,'kiyosu');assert.equal(personal.castles.kiyosu.troops,before.state.castles.osaka.troops-result.battle.defenderLost.garrison,'staff backup retains the actual surviving garrison');assert.notEqual(personal.castles.osaka.owner,personal.clan);assert.equal(row(h,defender).cycle_home,'kyoto_gosho');assert.equal(save(h,defender).state.home,'kyoto_gosho');
+  const result=(await status(h,actor)).history[0];assert.equal(result.battle.capture.captured,true);const personal=JSON.parse(backup(h,defender).save_json).state;assert.equal(personal.home,'kiyosu');assert.equal(personal.cycle.home,'kiyosu');assert.equal(personal.castles.kiyosu.troops,defenderTransit.castles.osaka.troops-result.battle.defenderLost.garrison,'staff backup retains the actual surviving garrison');assert.notEqual(personal.castles.osaka.owner,personal.clan);assert.equal(row(h,defender).cycle_home,'kyoto_gosho');assert.equal(save(h,defender).state.home,'kyoto_gosho');
   await h.api('/admin/staff',post(operator,{targetPlayerId:defender.user.id,action:'dismiss',requestId:crypto.randomUUID()}));
   const visible=(await h.api('/field/me?deviceId='+defender.deviceId,{token:defender.token})).data.self;
   assert.equal(visible.level,personal.castles.kiyosu.level);
   assert.equal(visible.defenseTroops,personal.castles.kiyosu.troops+Math.floor(save(h,defender).state.troops*.45));
   const restored=(await h.api('/sync?deviceId='+defender.deviceId,{token:defender.token})).data;
-  assert.equal(restored.save.state.home,'kiyosu');assert.equal(restored.save.state.cycle.home,'kiyosu');assert.equal(row(h,defender).cycle_home,'kiyosu');assert.notEqual(restored.save.state.castles.osaka.owner,restored.save.state.clan);assert.deepEqual(restored.save.state.castles.kiyosu,personal.castles.kiyosu);assert.equal(restored.save.state.castles.kiyosu.troops,before.state.castles.osaka.troops-result.battle.defenderLost.garrison,'dismissal does not resurrect the lost garrison');unchangedDevelopment(before,restored.save);
+  assert.equal(restored.save.state.home,'kiyosu');assert.equal(restored.save.state.cycle.home,'kiyosu');assert.equal(row(h,defender).cycle_home,'kiyosu');assert.notEqual(restored.save.state.castles.osaka.owner,restored.save.state.clan);assert.deepEqual(restored.save.state.castles.kiyosu,personal.castles.kiyosu);assert.equal(restored.save.state.castles.kiyosu.troops,defenderTransit.castles.osaka.troops-result.battle.defenderLost.garrison,'dismissal does not resurrect the lost garrison');unchangedDevelopment({state:defenderTransit},restored.save);
 });
 
 await scope('dismissal keeps legitimate personal-home growth while an older backup is active',async h=>{
@@ -143,9 +154,9 @@ await scope('dismissal keeps legitimate personal-home growth while an older back
 });
 
 await scope('server reward amounts respect caps and do not borrow defender resources',async h=>{
-  const operator=await fixture(h,'報酬の運営',{admin:true}),actor=await fixture(h,'上限報酬の領主',{home:'kawagoe',mutate:s=>s.resources={gold:99998500,rice:100000000,wood:100000000,stone:99999700}}),before=row(h,operator);
+  const operator=await fixture(h,'報酬の運営',{admin:true}),actor=await fixture(h,'上限報酬の領主',{home:'kawagoe',mutate:s=>s.resources={gold:99999000,rice:100000000,wood:100000000,stone:99999700}}),before=row(h,operator);
   const result=await outcome(true,()=>fight(h,actor,body(h,actor,operator,'edo')));assert.equal(result.battle.battleMode,'reward');assert.deepEqual(result.battle.rewards,Object.fromEntries(resources.map(key=>[key,Math.min(500,100000000-result.transit.resources[key])])));
-  for(const key of ['gold','stone'])assert(result.battle.rewards[key]>0&&result.battle.rewards[key]<500);assert.equal(result.battle.rewards.rice,500);assert.equal(result.battle.rewards.wood,0);assert.deepEqual(result.battle.loot,zeros);assert.deepEqual(result.battle.defenderLost,{troops:0,garrison:0});assert.deepEqual(row(h,operator),before);assert.equal(result.battle.defenderRevision,before.revision);
+  for(const key of ['gold','stone'])assert(result.battle.rewards[key]>0&&result.battle.rewards[key]<500,key+' retains partial reward coverage: '+result.battle.rewards[key]);assert.equal(result.battle.rewards.rice,500);assert.equal(result.battle.rewards.wood,0);assert.deepEqual(result.battle.loot,zeros);assert.deepEqual(result.battle.defenderLost,{troops:0,garrison:0});assert.deepEqual(row(h,operator),before);assert.equal(result.battle.defenderRevision,before.revision);
   for(const key of resources)assert.equal(save(h,actor).state.resources[key],result.transit.resources[key]+result.battle.rewards[key]);
 });
 

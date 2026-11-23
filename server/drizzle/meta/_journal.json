@@ -232,6 +232,13 @@
       "when": 1797897600000,
       "tag": "0032_vacant_garrisons",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "6",
+      "when": 1797984000000,
+      "tag": "0033_external_troop_upkeep",
+      "breakpoints": true
     }
   ]
 }

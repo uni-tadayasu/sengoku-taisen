@@ -23,6 +23,12 @@ function seed(h,p,{admin=false}={}){
 }
 function updateBranch(h,p,change){const value=model(h,p);change(value);h.sql.prepare('UPDATE branch_states SET state_json=?,sequence=sequence+1 WHERE actor_id=? AND campaign_id=?').run(JSON.stringify(value),p.user.id,save(h,p).state.walking.campaignId);updateSave(h,p,s=>{s.branches=clone(value.branches);s.jobs=clone(value.jobs);});}
 function recharge(h,p){updateSave(h,p,s=>{s.command=5;});}
+function freeRoster(h,p,{admin=false}={}){
+ const game=GameEngine.fromSave(save(h,p),GAME_OFFICERS,{isAdmin:admin});
+ for(const officer of game.roster.filter(officer=>game.canOwnOfficerVariant(officer.id,'A')).slice(0,12))game._grantOfficerVariant(officer.id,'A');
+ updateSave(h,p,s=>{s.officers=clone(game.state.officers);s.officerVariants=clone(game.state.officerVariants);s.stats.recruited=game.state.stats.recruited;s.army=[];s.governors={};s.command=0;s.resources={gold:0,rice:0,wood:0,stone:0};});
+ return save(h,p).state.officers;
+}
 
 const originalFetch=globalThis.fetch;globalThis.fetch=async()=>{throw Error('Deployment tests must not contact production');};
 try{
@@ -105,6 +111,50 @@ try{
   const bad=clone(canonical.save);bad.state.army=[ids[0]];await put(h,p,bad,400);
   updateBranch(h,p,state=>{state.branches.find(b=>b.id==='nijo_north').fallen=true;});await action(h,p,'remove-commander',{branchId:'nijo_north',officerId:ids[0]});await action(h,p,'assign-commander',{branchId:'osaka_north',officerId:ids[0]});
   assert(!model(h,p).branches.find(b=>b.id==='nijo_north').commanders.includes(ids[0]));assert.deepEqual(model(h,p).branches.find(b=>b.id==='osaka_north').commanders,[ids[0]]);
+ });
+
+ await scope('automatic single and all-branch placement is free, preserves occupied duties and persists the correct city limits',async h=>{
+  for(const admin of [false,true]){
+   const p=await fixture(h,'おまかせ配置'+admin,{admin,holdings:['nijo','osaka']});seed(h,p,{admin});const ids=freeRoster(h,p,{admin});
+   updateSave(h,p,s=>{s.army=[ids[0]];s.governors={farm:ids[1]};});await action(h,p,'assign-commander',{branchId:'osaka_north',officerId:ids[2]});const before=save(h,p);
+   const single=(await action(h,p,'auto-assign-commanders',{branchId:'nijo_north'})).data;assert.equal(single.result.commandCost,0);assert.equal(single.result.assignments.length,2);assert(single.result.assignments.every(item=>item.branchId==='nijo_north'&&ids.includes(item.officerId)&&!ids.slice(0,3).includes(item.officerId)));
+   assert.deepEqual(model(h,p).branches.find(b=>b.id==='osaka_north').commanders,[ids[2]]);assert.deepEqual(single.save.state.army,before.state.army);assert.deepEqual(single.save.state.governors,before.state.governors);assert.deepEqual(single.save.state.resources,before.state.resources);assert.equal(single.save.state.command,0);assert.equal(single.save.state.troops,before.state.troops);assert.equal(single.save.state.troopTransferSequence,0);assert.equal(movement(h,p),undefined);
+   const singleIds=model(h,p).branches.find(b=>b.id==='nijo_north').commanders,canonical=(await put(h,p,clone(before))).data;assert.deepEqual(canonical.save.state.branches.find(b=>b.id==='nijo_north').commanders,singleIds,'an older saved branch array cannot erase automatic placement');
+   const all=(await action(h,p,'auto-assign-commanders',{branchId:'all'})).data,assigned=model(h,p).branches.flatMap(b=>b.commanders||[]);assert.equal(all.result.assignments.length,admin?2:1);assert.equal(new Set(assigned).size,assigned.length);assert(assigned.every(id=>all.save.state.officers.includes(id)&&!all.save.state.army.includes(id)&&!Object.values(all.save.state.governors).includes(id)));
+   for(const branch of model(h,p).branches)assert.equal(branch.commanders.length,branch.parentCastleId==='edo'?1:2);assert.deepEqual(model(h,p).branches.find(b=>b.id==='nijo_north').commanders,singleIds);assert.equal(model(h,p).branches.find(b=>b.id==='osaka_north').commanders[0],ids[2]);assert.equal(all.save.state.command,0);assert.deepEqual(all.save.state.resources,before.state.resources);
+   const snapshot=(await h.api('/sync?deviceId='+p.deviceId,{token:p.token})).data;assert.deepEqual(snapshot.save.state.branches.flatMap(b=>b.commanders||[]).sort(),[...assigned].sort());assert.doesNotThrow(()=>GameEngine.fromSave(snapshot.save,GAME_OFFICERS,{isAdmin:admin}));
+   const full=stable(h,p);assert.equal((await action(h,p,'auto-assign-commanders',{branchId:'all'},409)).data.error.code,'BRANCH_COMMANDER_NO_SLOTS');assert.deepEqual(stable(h,p),full);
+  }
+ });
+
+ await scope('automatic assignment rejects unauthorized targets, forged choices and unavailable slots or officers without a receipt',async h=>{
+  await h.api('/branches/auto-assign-commanders',{method:'POST',body:{},expected:401});const p=await fixture(h,'おまかせ配置の条件',{holdings:['nijo','osaka']});seed(h,p);const before=stable(h,p);
+  for(const branchId of ['missing','edo_north'])await action(h,p,'auto-assign-commanders',{branchId},409);
+  for(const extra of [{officerId:save(h,p).state.officers[0]},{assignments:[{officerId:'foreign',branchId:'nijo_north'}]},{commandCost:0}])await action(h,p,'auto-assign-commanders',{branchId:'all',...extra},400);
+  await action(h,p,'auto-assign-commanders',{branchId:'all',campaignId:'another-campaign'},409);await action(h,p,'auto-assign-commanders',{branchId:'all',sequence:0},409);assert.deepEqual(stable(h,p),before);
+  updateBranch(h,p,state=>{for(const branch of state.branches)branch.fallen=true;});const unavailable=stable(h,p);assert.equal((await action(h,p,'auto-assign-commanders',{branchId:'all'},409)).data.error.code,'BRANCH_COMMANDER_NO_SLOTS');assert.equal((await action(h,p,'auto-assign-commanders',{branchId:'nijo_north'},409)).data.error.code,'BRANCH_COMMANDER_UNAVAILABLE');assert.deepEqual(stable(h,p),unavailable);
+  updateBranch(h,p,state=>{for(const branch of state.branches)branch.fallen=false;});updateSave(h,p,s=>{s.army=s.officers.slice(0,3);s.governors=Object.fromEntries(s.officers.slice(3).map((id,index)=>[Object.keys(s.buildings).filter(key=>s.buildings[key]>0)[index],id]));});const occupied=stable(h,p);assert.equal((await action(h,p,'auto-assign-commanders',{branchId:'all'},409)).data.error.code,'BRANCH_COMMANDER_NO_CANDIDATES');assert.deepEqual(stable(h,p),occupied);
+ });
+
+ await scope('automatic assignment receipts recover lost responses, reject changed scope and serialize against manual placement',async h=>{
+  const p=await fixture(h,'おまかせ再送',{holdings:['nijo','osaka']});seed(h,p);freeRoster(h,p);const request=body(h,p,{branchId:'all'});
+  h.afterBatch=statements=>{if(!statements[0]?.sql.includes('INSERT INTO branch_deployment_requests'))return;h.afterBatch=null;throw Error('Local automatic placement response lost');};await h.api('/branches/auto-assign-commanders',post(p,request,500));
+  const committed=stable(h,p),receipt=receipts(h,p)[0],result=JSON.parse(receipt.result_json);assert.equal(receipts(h,p).length,1);assert.equal(receipt.action,'assign-commander');assert.equal(result.assignments.length,4);
+  const replay=(await h.api('/branches/auto-assign-commanders',post(p,{...request,deviceId:'reader',expectedRevision:0}))).data;assert(replay.idempotent);assert.deepEqual(replay.result,result);assert.deepEqual(stable(h,p),committed);
+  assert.equal((await h.api('/branches/auto-assign-commanders',post(p,{...request,branchId:'nijo_north'},409))).data.error.code,'REQUEST_ID_REUSED');assert.equal((await h.api('/branches/assign-commander',post(p,{...request,branchId:'nijo_north',officerId:result.assignments[0].officerId},409))).data.error.code,'REQUEST_ID_REUSED');assert.deepEqual(stable(h,p),committed);
+  const other=await fixture(h,'おまかせと手動の競合',{holdings:['nijo','osaka']});seed(h,other);const ids=freeRoster(h,other),before=save(h,other),automatic=body(h,other,{branchId:'all'}),manual={...automatic,requestId:crypto.randomUUID(),branchId:'nijo_north',officerId:ids[0]};
+  h.beforeBatch=async statements=>{if(!statements[0]?.sql.includes('INSERT INTO branch_deployment_requests'))return;h.beforeBatch=null;await h.api('/branches/assign-commander',post(other,manual));};await h.api('/branches/auto-assign-commanders',post(other,automatic,409));
+  assert.equal(receipts(h,other).length,1);assert.deepEqual(model(h,other).branches.find(b=>b.id==='nijo_north').commanders,[ids[0]]);assert.equal(model(h,other).branches.flatMap(b=>b.commanders||[]).length,1);assert.equal(save(h,other).state.command,before.state.command);assert.deepEqual(save(h,other).state.resources,before.state.resources);assert.equal(movement(h,other),undefined);
+  const completed=(await action(h,other,'auto-assign-commanders',{branchId:'all'})).data;assert.equal(completed.result.assignments.length,3);assert.equal(new Set(model(h,other).branches.flatMap(b=>b.commanders||[])).size,4);assert.equal(model(h,other).branches.find(b=>b.id==='nijo_north').commanders[0],ids[0]);
+ });
+
+ await scope('automatic bulk placement reuses writer, revision, branch, clock, role and campaign commit guards',async h=>{
+  for(const kind of ['writer','revision','branch','clock','operator','campaign']){
+   h.resetRates();const admin=kind==='operator',p=await fixture(h,'おまかせ競合'+kind,{admin,holdings:['nijo','osaka']});seed(h,p,{admin});freeRoster(h,p,{admin});const request=body(h,p,{branchId:'all'});let expected;
+   const snapshot=()=>clone({save:row(h,p),ledgers:h.sql.prepare('SELECT * FROM branch_states WHERE actor_id=? ORDER BY campaign_id').all(p.user.id),receipts:receipts(h,p),movement:movement(h,p)});
+   h.beforeBatch=statements=>{if(!statements[0]?.sql.includes('INSERT INTO branch_deployment_requests'))return;h.beforeBatch=null;if(kind==='writer')h.sql.prepare('UPDATE player_saves SET writer_device_id=? WHERE user_id=?').run('other-device',p.user.id);if(kind==='revision')h.sql.prepare('UPDATE player_saves SET revision=revision+1 WHERE user_id=?').run(p.user.id);if(kind==='branch')h.sql.prepare('UPDATE branch_states SET sequence=sequence+1 WHERE actor_id=?').run(p.user.id);if(kind==='clock')h.sql.exec('UPDATE world_clock SET revision=revision+1');if(kind==='operator')h.sql.prepare("UPDATE settings SET value='replacement-operator' WHERE key='adminUserId'").run();if(kind==='campaign'){const replaced=save(h,p);replaced.state.walking.campaignId+='-replaced';h.sql.prepare('UPDATE player_saves SET save_json=? WHERE user_id=?').run(JSON.stringify(replaced),p.user.id);}expected=snapshot();};
+   await h.api('/branches/auto-assign-commanders',post(p,request,409));assert(expected);assert.deepEqual(snapshot(),expected,kind);assert.equal(receipts(h,p).length,0);
+  }
  });
 
  await scope('first cloud import with stationed soldiers is explicitly rejected and a fully returned offline save starts marker zero',async h=>{

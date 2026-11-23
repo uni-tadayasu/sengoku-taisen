@@ -11,8 +11,8 @@ const trade=(extra={})=>({id:ID,revision:1,status:'pending',sender:{playerId:PEE
 const deferred=()=>{let resolve,reject;const promise=new Promise((yes,no)=>{resolve=yes;reject=no;});return{promise,resolve,reject};};
 const drain=async()=>{for(let i=0;i<12;i++)await Promise.resolve();};
 const tests=[];const test=(name,run)=>tests.push({name,run});
-function setup({storage=new Map(),records=[trade()],writable=true,troopCapacity=4000}={}){
-  let user={id:ME,name:'自分'},serial=0,handler=null,writeHandler=null,canWrite=writable,timer=0,capacity=troopCapacity;
+function setup({storage=new Map(),records=[trade()],writable=true,troopTransportCapacity=100000000}={}){
+  let user={id:ME,name:'自分'},serial=0,handler=null,writeHandler=null,canWrite=writable,timer=0,capacity=troopTransportCapacity;
   const balances=basket({gold:5000,rice:5000,wood:5000,stone:5000,magatama:1000}),calls=[],changes=[],timers=new Map(),receipts=new Map();
   const base=async(route,options={})=>{
     const url=new URL(route,'https://local.invalid');
@@ -36,9 +36,9 @@ function setup({storage=new Map(),records=[trade()],writable=true,troopCapacity=
     throw Error('Unexpected local route: '+route);
   };
   const storageAPI={getItem:key=>storage.get(key)??null,setItem:(key,value)=>storage.set(key,value),removeItem:key=>storage.delete(key)};
-  const options={getUser:()=>user,getAccess:()=>({writable:canWrite,message:'別の端末を操作中です。'}),getAssets:()=>balances,getTroopCapacity:()=>capacity,storage:storageAPI,uuid:()=> 'request_'+(++serial),onChange:value=>changes.push(value),setTimeout:(fn,ms)=>{timers.set(++timer,{fn,ms});return timer;},clearTimeout:id=>timers.delete(id),request:async(route,value)=>{calls.push({route,options:structuredClone(value)});return handler?handler(route,value,base):base(route,value);},mutate:(route,value)=>{calls.push({route,options:structuredClone(value)});return writeHandler?writeHandler(route,value,base):base(route,value);}};
+  const options={getUser:()=>user,getAccess:()=>({writable:canWrite,message:'別の端末を操作中です。'}),getAssets:()=>balances,getTroopCapacity:()=>{throw Error('Normal recruitment capacity must not gate trade.');},getTroopTransportCapacity:()=>capacity,storage:storageAPI,uuid:()=> 'request_'+(++serial),onChange:value=>changes.push(value),setTimeout:(fn,ms)=>{timers.set(++timer,{fn,ms});return timer;},clearTimeout:id=>timers.delete(id),request:async(route,value)=>{calls.push({route,options:structuredClone(value)});return handler?handler(route,value,base):base(route,value);},mutate:(route,value)=>{calls.push({route,options:structuredClone(value)});return writeHandler?writeHandler(route,value,base):base(route,value);}};
   const controller=createController(options);
-  return{controller,options,storage,storageAPI,balances,calls,changes,records,receipts,timers,base,setUser:value=>user=value,setWritable:value=>canWrite=value,setTroopCapacity:value=>capacity=value,setRead:fn=>handler=fn,setWrite:fn=>writeHandler=fn,posts:()=>calls.filter(call=>call.options.method==='POST')};
+  return{controller,options,storage,storageAPI,balances,calls,changes,records,receipts,timers,base,setUser:value=>user=value,setWritable:value=>canWrite=value,setTroopTransportCapacity:value=>capacity=value,setRead:fn=>handler=fn,setWrite:fn=>writeHandler=fn,posts:()=>calls.filter(call=>call.options.method==='POST')};
 }
 
 test('a proposal requires a verified recipient and an explicit immutable confirmation',async()=>{
@@ -158,32 +158,33 @@ test('soldier exports and import requests use explicit people units and immutabl
   await h.controller.openCompose({playerId:PEER});h.controller.setDraft('wantAsset','troops');h.controller.setDraft('wantAmount','600');h.controller.prepareCreate();
   assert.equal(h.controller.getState().confirm.receive.troops,600);assert.match(assetText({troops:1234}),/兵士（輸出入） 1,234人/);h.controller.dispose();
 });
-test('mixed soldier imports use net payment and the live troop capacity',async()=>{
-  const h=setup({troopCapacity:2000,records:[trade({offer:basket({troops:200,wood:30}),want:basket({troops:100,rice:50})})]});h.balances.troops=1901;
-  await h.controller.openBox();await h.controller.prepareAction(ID,'accept');assert.equal(h.controller.getState().confirm,null);assert.match(h.controller.getState().error,/兵数.*上限/);
-  let card=tradeCard(cleanTrade(h.records[0]),h.controller.getState());assert.match(card,/data-kind="accept" disabled/);assert.match(card,/所持 1,901人 \/ 兵数上限 2,000人/);
-  h.balances.troops=1900;await h.controller.prepareAction(ID,'accept');assert(h.controller.getState().confirm);assert.equal(h.controller.getState().confirm.receive.troops,200);assert(await h.controller.confirm());
-  assert.equal(h.posts().length,1);h.controller.dispose();
+test('mixed soldier imports ignore recruitment capacity and use the net independent transport limit',async()=>{
+  const h=setup({records:[trade({offer:basket({troops:200,wood:30}),want:basket({troops:100,rice:50})})]});h.balances.troops=2000;
+  await h.controller.openBox();await h.controller.prepareAction(ID,'accept');assert(h.controller.getState().confirm);h.controller.cancelConfirm();
+  let card=tradeCard(cleanTrade(h.records[0]),h.controller.getState());assert(!/data-kind="accept" disabled/.test(card));assert.match(card,/所持 2,000人/);assert.match(card,/受入枠 あと99,998,000人/);assert.match(card,/拠点容量とは別枠/);assert(!card.includes('兵舎'));
+  h.setTroopTransportCapacity(99999000);h.balances.troops=99998901;await h.controller.prepareAction(ID,'accept');assert.equal(h.controller.getState().confirm,null);assert.match(h.controller.getState().error,/保有上限/);
+  h.balances.troops=99998900;await h.controller.prepareAction(ID,'accept');assert(h.controller.getState().confirm);assert.equal(h.controller.getState().confirm.receive.troops,200);assert(await h.controller.confirm());assert.equal(h.posts().length,1);h.controller.dispose();
 });
-test('soldier insufficiency, invalid quantities, unknown capacity and hard save limit block unsafe actions',async()=>{
-  const h=setup({records:[trade({offer:basket({troops:1}),want:zero()})],troopCapacity:null});h.balances.troops=100;
+test('soldier insufficiency, invalid quantities, unknown transport capacity and the total save limit block unsafe actions',async()=>{
+  const h=setup({records:[trade({offer:basket({troops:1}),want:zero()})],troopTransportCapacity:null});h.balances.troops=100;
   await h.controller.openCompose({playerId:PEER});h.controller.setDraft('offerAsset','troops');
   for(const amount of ['0','-1','1.5','101','1000001','NaN','Infinity']){h.controller.setDraft('offerAmount',amount);h.controller.prepareCreate();assert.equal(h.controller.getState().confirm,null);}
-  await h.controller.openBox();await h.controller.prepareAction(ID,'accept');assert.equal(h.controller.getState().confirm,null);assert.match(h.controller.getState().error,/兵数上限を確認/);
-  h.setTroopCapacity(2000000);h.balances.troops=1000000;assert.equal(h.controller.getState().troopCapacity,1000000);
+  await h.controller.openBox();await h.controller.prepareAction(ID,'accept');assert.equal(h.controller.getState().confirm,null);assert.match(h.controller.getState().error,/受入枠を確認/);
+  h.setTroopTransportCapacity(200000000);h.balances.troops=100000000;assert.equal(h.controller.getState().troopTransportCapacity,100000000);
   await h.controller.prepareAction(ID,'accept');assert.equal(h.controller.getState().confirm,null);
   h.records[0].want=basket({troops:1000001});await h.controller.prepareAction(ID,'accept');assert.equal(h.controller.getState().confirm,null);
   h.records[0].want=basket({troops:101});h.balances.troops=100;await h.controller.prepareAction(ID,'accept');assert.match(h.controller.getState().error,/不足/);assert.equal(h.posts().length,0);h.controller.dispose();
 });
-test('unclaimed soldier refunds remain intact until the whole delivery fits capacity',async()=>{
+test('soldier refunds ignore recruitment capacity and remain intact only at the independent stock ceiling',async()=>{
   const refund={kind:'refund',recipientPlayerId:ME,assets:basket({troops:400,gold:30}),claimedAt:null};
-  const h=setup({troopCapacity:4000,records:[trade({sender:{playerId:ME,name:'自分'},recipient:{playerId:PEER,name:'相手'},status:'cancelled',delivery:refund,canAccept:false,canReject:false,canClaim:true})]});h.balances.troops=3700;
-  await h.controller.openBox('claimable');await h.controller.prepareAction(ID,'claim');assert.equal(h.controller.getState().confirm,null);assert.equal(refund.claimedAt,null);assert.match(h.controller.getState().error,/保管/);
+  const h=setup({records:[trade({sender:{playerId:ME,name:'自分'},recipient:{playerId:PEER,name:'相手'},status:'cancelled',delivery:refund,canAccept:false,canReject:false,canClaim:true})]});h.balances.troops=4000;
+  await h.controller.openBox('claimable');await h.controller.prepareAction(ID,'claim');assert(h.controller.getState().confirm);assert.match(confirmationMarkup(h.controller.getState().confirm),/拠点の空き容量に関係なく/);h.controller.cancelConfirm();
+  h.balances.troops=99999601;await h.controller.prepareAction(ID,'claim');assert.equal(h.controller.getState().confirm,null);assert.equal(refund.claimedAt,null);assert.match(h.controller.getState().error,/全量保管/);
   const card=tradeCard(cleanTrade(h.records[0]),h.controller.getState());assert.match(card,/data-kind="claim" disabled/);assert.match(card,/兵士（輸出入） 400人/);
-  h.setTroopCapacity(4100);await h.controller.prepareAction(ID,'claim');assert(h.controller.getState().confirm);assert(await h.controller.confirm());assert.equal(h.posts().length,1);h.controller.dispose();
+  h.balances.troops=99999600;await h.controller.prepareAction(ID,'claim');assert(h.controller.getState().confirm);assert(await h.controller.confirm());assert.equal(h.posts().length,1);h.controller.dispose();
 });
-test('old resource trades and soldier exports still work above a reduced troop capacity',async()=>{
-  const h=setup({troopCapacity:1000});h.balances.troops=5000;await h.controller.openBox();await h.controller.prepareAction(ID,'accept');assert(h.controller.getState().confirm);h.controller.cancelConfirm();
+test('holdings above one million retain resource balances and allow existing trades and soldier exports',async()=>{
+  const h=setup();h.balances.troops=1200000;await h.controller.openBox();assert.equal(h.controller.getState().balances.troops,1200000);assert.equal(h.controller.getState().balances.gold,5000);await h.controller.prepareAction(ID,'accept');assert(h.controller.getState().confirm);h.controller.cancelConfirm();
   h.records[0].offer=basket({troops:100});h.records[0].want=basket({troops:200});await h.controller.prepareAction(ID,'accept');assert(h.controller.getState().confirm);h.controller.cancelConfirm();
   await h.controller.openCompose({playerId:PEER});h.controller.setDraft('offerAsset','troops');h.controller.setDraft('offerAmount','250');h.controller.prepareCreate();assert(h.controller.getState().confirm);h.controller.dispose();
 });

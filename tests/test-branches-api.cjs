@@ -63,4 +63,12 @@ test('facility command routes reject reads, suffixes and query injection before 
 test('commander placement and removal use the same guarded durable branch transport',async()=>{
  for(const action of ['assign-commander','remove-commander']){const h=harness(),payload={branchId:'nijo_north',officerId:'officer-one',requestId:'commander-order',campaignId:body.campaignId,sequence:3,deviceId:body.deviceId,expectedRevision:7};await h.api.branchRequest('/branches/'+action,{method:'POST',data:payload,auth:false,token:'forged'});assert.deepEqual(h.calls[0].body,payload);assert.equal(h.calls[0].headers.Authorization,'Bearer '+TOKEN);await assert.rejects(h.api.branchRequest('/branches/'+action,{method:'GET'}),e=>e.status===400);h.status.writable=false;await assert.rejects(h.api.branchRequest('/branches/'+action,{method:'POST',data:payload}),e=>e.code==='BRANCH_SYNC_REQUIRED');assert.equal(h.calls.length,1);}
 });
+test('automatic commander assignment keeps exact target scope and rejects spoofed routes, reads and stale writers',async()=>{
+ for(const branchId of ['all','nijo_north']){
+  const h=harness(),payload={branchId,requestId:'auto-commander-order',campaignId:body.campaignId,sequence:3,deviceId:body.deviceId,expectedRevision:7};
+  await h.api.branchRequest('/branches/auto-assign-commanders',{method:'POST',data:payload,auth:false,token:'forged'});assert.deepEqual(h.calls[0].body,payload);assert.equal(h.calls[0].headers.Authorization,'Bearer '+TOKEN);
+  for(const [route,method]of [['/branches/auto-assign-commanders','GET'],['/branches/auto-assign-commanders?playerId=other','POST'],['/branches/auto-assign-commanders/all','POST']])await assert.rejects(h.api.branchRequest(route,{method,data:payload}),error=>error.status===400);
+  h.status.writable=false;await assert.rejects(h.api.branchRequest('/branches/auto-assign-commanders',{method:'POST',data:payload}),error=>error.code==='BRANCH_SYNC_REQUIRED');assert.equal(h.calls.length,1);
+ }
+});
 (async()=>{for(const[name,run]of tests){await run();console.log('PASS '+name);}console.log(tests.length+' real branch transport checks passed. No live requests.');})().catch(error=>{console.error(error);process.exitCode=1;});

@@ -72,7 +72,7 @@ function setup(options={}) {
     queueWorldProgress:()=>control.queued++,preserveInteraction:()=>{},closeModal:()=>{},updateBattlePreview:()=>{},syncMusic:()=>{},
   };
   vm.createContext(context);
-  vm.runInContext(['confirmedWorldClock','clockIsApplied','canMutate','syncMessage','requireWritable','changedLocalCampaign','save','backupCurrentSave','trustedBranchAuthority','applyBranchAuthority','applyCloudSave','applyDurableGift','restoreAdminAssets','processWorldClock','requestField','requestBranches'].map(fn).join('\n'),context);
+  vm.runInContext(['confirmedWorldClock','clockIsApplied','canMutate','syncMessage','requireWritable','changedLocalCampaign','save','backupCurrentSave','trustedBranchAuthority','applyBranchAuthority','trustedMaintenanceAuthority','applyMaintenanceAuthority','applyCloudSave','applyDurableGift','restoreAdminAssets','processWorldClock','requestField','requestBranches'].map(fn).join('\n'),context);
   return {c:context,control,stored,trace,posts,gets,events,clockAccepts};
 }
 
@@ -145,7 +145,7 @@ test('real delegated click actions carry the chosen facility through the mutatio
  }
 });
 test('all deployment routes use authoritative metadata, stable receipts and no optimistic client mutation',async()=>{
- for(const [action,payload]of [['transfer-troops',{from:'army',to:'castle:edo',troops:120}],['assign-commander',{branchId:'edo_north',officerId:'officer-a'}],['remove-commander',{branchId:'edo_north',officerId:'officer-a'}]]){
+ for(const [action,payload]of [['transfer-troops',{from:'army',to:'castle:edo',troops:120}],['assign-commander',{branchId:'edo_north',officerId:'officer-a'}],['remove-commander',{branchId:'edo_north',officerId:'officer-a'}],['auto-assign-commanders',{branchId:'all'}]]){
   const h=setup(),before=clone(h.c.game.state);h.control.branchSequence=8;h.control.onPost=async()=>{throw Error('deployment response lost');};
   await assert.rejects(h.c.requestBranches('/branches/'+action,{method:'POST',data:payload}),/deployment response lost/);const first=clone(h.posts[0].options.data);
   assert.equal(first.sequence,8);assert.equal(first.deviceId,'tab-a');assert.equal(first.expectedRevision,7);assert.deepEqual(clone(h.c.game.state),before);
@@ -165,6 +165,13 @@ test('branch commander assignment and removal save at zero command without dupli
  const placed=await h.c.requestBranches('/branches/assign-commander',{method:'POST',data:{branchId:'edo_north',officerId}});assert(placed.ok,placed.message);assert.deepEqual(clone(h.c.game.branch('edo_north').commanders),[officerId]);assert.equal(h.c.game.state.command,0);assert.deepEqual(clone(h.c.game.state.resources),resources);assert.equal(h.c.game.assignArmy([officerId]).ok,false);
  const rejected=await h.c.requestBranches('/branches/assign-commander',{method:'POST',data:{branchId:'edo_north',officerId:second}});assert.equal(rejected.ok,false);
  const removed=await h.c.requestBranches('/branches/remove-commander',{method:'POST',data:{branchId:'edo_north',officerId}});assert(removed.ok,removed.message);assert.equal(h.c.game.state.command,0);assert.deepEqual(JSON.parse(h.stored.get('save')).state.branches[0].commanders,[]);assert(h.c.game.assignArmy([officerId]).ok);
+});
+test('local automatic placement persists at zero command and restores all state when storage fails',async()=>{
+ const prepare=()=>{const h=setup();h.c.syncAccess.linked=false;h.c.game.state.command=0;h.c.game.state.army=[];h.c.game.state.branches=[{id:'edo_north',parentCastleId:'edo',direction:'north',level:2,fallen:false}];return h;};
+ const h=prepare(),plan=h.c.game.branchCommanderAutoPlan('all'),resources=clone(h.c.game.state.resources);assert(plan.ok);
+ const result=await h.c.requestBranches('/branches/auto-assign-commanders',{method:'POST',data:{branchId:'all'}});assert(result.ok);assert.equal(h.c.game.state.command,0);assert.deepEqual(clone(h.c.game.state.resources),resources);assert.deepEqual(JSON.parse(h.stored.get('save')).state.branches[0].commanders,plan.assignments.map(row=>row.officerId));
+ const fail=prepare(),previous=fail.c.game,before=previous.exportSave();fail.c.localStorage.setItem=()=>{throw Error('full');};
+ await assert.rejects(fail.c.requestBranches('/branches/auto-assign-commanders',{method:'POST',data:{branchId:'all'}}),/保存できなかった/);assert.equal(fail.c.game,previous);assert.deepEqual(JSON.parse(previous.exportSave()).state,JSON.parse(before).state);
 });
 (async()=>{for(const[name,run]of tests){await run();console.log('PASS '+name);}console.log(tests.length+' branch transaction bridge checks passed. No live writes.');})().catch(error=>{console.error(error);process.exitCode=1;});
 

@@ -1,3 +1,4 @@
+import {maintenanceContext,protectMaintenance} from './maintenance.js';
 // Authoritative CPU field battles. The receipt and campaign mutation are one
 // D1 transaction, so network retries never spend or reward a second time.
 import {GameEngine,GAME_OFFICERS} from './game-runtime.js';
@@ -67,7 +68,9 @@ async function battle(ctx){
  if(save.state.walking.campaignId!==body.campaignId)h.fail(409,'ROAMING_SCOPE_CHANGED','物語が切り替わりました。最新の野良兵戦を開いてください。');
  const branchAccess=await h.branchStateGuard(db,user.id,body.campaignId);await h.reconcileBranchProgress(db,user.id,save,clock);
  const shared=user.is_staff&&!user.is_admin?await h.staffBaseDto(db,user,clock,ctx.now):null;
- const game=GameEngine.fromSave(save,GAME_OFFICERS,{isAdmin:!!user.is_admin,isStaff:!!user.is_staff,staffBase:shared,branchAuthority:{resolvedElapsedMs:branchAccess.resolvedElapsedMs}});
+ const maintenanceAuthority=protectMaintenance(branchAccess,await maintenanceContext(db,user.id,save,clock));
+ if(maintenanceAuthority.hasMore||maintenanceAuthority.asOfElapsedMs>clock.elapsedMs)h.fail(409,'CLOCK_STALE','維持費の時間経過を同期しています。最新の保存へ同期してください。');
+ const game=GameEngine.fromSave(save,GAME_OFFICERS,{isAdmin:!!user.is_admin,isStaff:!!user.is_staff,staffBase:shared,maintenanceAuthority,branchAuthority:{resolvedElapsedMs:branchAccess.resolvedElapsedMs}});
  const advanced=game.applyWorldClock(clock,{maxSeconds:86400,deferCycleSettlement:true});
  if(!advanced.ok||advanced.pending||advanced.settlementRequired)h.fail(409,'CLOCK_STALE','共通時計と本拠を同期してから出陣してください。');
  const result=game.departRoamingBattle(body.encounterId,body.tactic,body.troops,{...body,deploymentUnit:unit});
@@ -98,7 +101,9 @@ export async function settleRoamingMarch(ctx,march){
  if(save.state.roaming.sequence!==body.sequence)h.fail(409,'ROAMING_SCOPE_CHANGED','野良兵戦の記録が変更されたため帰還しました。');
  const branchAccess=await h.branchStateGuard(db,user.id,body.campaignId);await h.reconcileBranchProgress(db,user.id,save,clock);
  const shared=user.is_staff&&!user.is_admin?await h.staffBaseDto(db,user,clock,now):null;
- save.state.march=payload.nativeMarch;const game=GameEngine.fromSave(save,GAME_OFFICERS,{isAdmin:!!user.is_admin,isStaff:!!user.is_staff,staffBase:shared,branchAuthority:{resolvedElapsedMs:branchAccess.resolvedElapsedMs}});
+ const maintenanceAuthority=protectMaintenance(branchAccess,await maintenanceContext(db,user.id,save,clock));
+ if(maintenanceAuthority.hasMore||maintenanceAuthority.asOfElapsedMs>clock.elapsedMs)h.fail(409,'CLOCK_STALE','維持費の時間経過を同期しています。最新の保存へ同期してください。');
+ save.state.march=payload.nativeMarch;const game=GameEngine.fromSave(save,GAME_OFFICERS,{isAdmin:!!user.is_admin,isStaff:!!user.is_staff,staffBase:shared,maintenanceAuthority,branchAuthority:{resolvedElapsedMs:branchAccess.resolvedElapsedMs}});
  const advanced=game.applyWorldClock(clock,{maxSeconds:86400,deferCycleSettlement:true});
  if(!advanced.ok||advanced.pending||advanced.settlementRequired)h.fail(409,'MARCH_RETRY','到着時刻へ本拠を同期しています。');
  game.resolveDueMarches();const outcome=game.state.marchHistory.find(x=>x.id===march.id);

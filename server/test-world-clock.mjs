@@ -32,6 +32,7 @@ const db={
 };
 const env={DB:db,SENGOKU_ADMIN_KEY:crypto.randomUUID()+crypto.randomUUID()};
 let clock=1795219200000,calls=0;
+const maintenanceByToken=new Map();
 const originalNow=Date.now;
 Date.now=()=>clock;
 const tick=(milliseconds)=>{clock+=milliseconds;};
@@ -39,12 +40,16 @@ const base=JSON.parse(readFileSync(new URL('./fixtures/valid-save.json',import.m
 const fresh=()=>structuredClone(base);
 const ieyasu='of_b0616adde162';
 async function api(path,{method='GET',token,body,expected=200,ip='192.0.2.1',rawBody}={}) {
+  // Match the current client envelope using only authority actually returned
+  // for this token. rawBody remains available for deliberately old requests.
+  if(path==='/sync'&&method==='PUT'&&rawBody===undefined&&body&&!Object.hasOwn(body,'maintenanceRevision')&&maintenanceByToken.has(token))body={...body,maintenanceRevision:maintenanceByToken.get(token).revision};
   const headers={Origin:'http://127.0.0.1:4173','CF-Connecting-IP':ip};
   if(token)headers.Authorization='Bearer '+token;
   if(body!==undefined||rawBody!==undefined)headers['Content-Type']='application/json';
   const request=new Request('https://communications.example/api/v1'+path,{method,headers,body:rawBody??(body===undefined?undefined:JSON.stringify(body))});
   const response=await worker.fetch(request,env,{});
   const text=await response.text(),data=text?JSON.parse(text):null;
+  if(token&&data?.maintenanceAuthority)maintenanceByToken.set(token,data.maintenanceAuthority);
   calls++;
   assert.equal(response.status,expected,JSON.stringify({path,expected,status:response.status,data,sqlError:db.lastError}));
   assert.equal(response.headers.get('cache-control'),'no-store');
@@ -119,9 +124,12 @@ try {
   await api('/sync',write(a.token,'a-device',2,wrongPhase,400));
   const wrongId=anchored(cycleMs);wrongId.state.worldClock.id='personal-clock';await api('/sync',write(a.token,'a-device',2,wrongId,400));
   const nonInteger=anchored(cycleMs);nonInteger.state.worldClock.elapsedMs+=.5;await api('/sync',write(a.token,'a-device',2,nonInteger,400));
-  const withinTolerance=(await api('/sync',write(a.token,'a-device',2,anchored(cycleMs+5000)))).data;assert.equal(withinTolerance.revision,3);
-  const offlineCheckpoint=(await api('/sync',write(a.token,'a-device',3,anchored(0)))).data;
-  assert.equal(offlineCheckpoint.save.state.worldClock.elapsedMs,0,'old checkpoint can be caught up by the actual engine');assert.equal(offlineCheckpoint.clock.elapsedMs,cycleMs);
+  const persistedA=()=>database.prepare('SELECT save_json,revision FROM player_saves WHERE user_id=?').get(a.user.id),beforeFuture=persistedA();
+  const withinTolerance=(await api('/sync',write(a.token,'a-device',2,anchored(cycleMs+5000),409))).data;assert.equal(withinTolerance.error.code,'MAINTENANCE_REFRESH_REQUIRED');
+  assert.deepEqual(persistedA(),beforeFuture,'The public clock tolerance cannot advance economic progress beyond its private sealed horizon');
+  const currentCheckpoint=(await api('/sync',write(a.token,'a-device',2,anchored(cycleMs)))).data;assert.equal(currentCheckpoint.revision,3);
+  const beforeRewind=persistedA(),offlineCheckpoint=(await api('/sync',write(a.token,'a-device',3,anchored(0),409))).data;
+  assert.equal(offlineCheckpoint.error.code,'CLOCK_REWIND');assert.deepEqual(persistedA(),beforeRewind,'An old checkpoint cannot replace already settled resources or their time anchor');
   const snapshot=(await api('/sync?deviceId=a-device',{token:a.token})).data;assert.deepEqual(snapshot.clock,await getClock());
   const released=(await api('/sync/release',post(a.token,{deviceId:'a-device'}))).data;assert(released.clock);assert.equal(released.writerDeviceId,null);
   const beforeLarge=await getClock();tick(100002*60000-beforeLarge.elapsedMs);await lease(a.token,'a-device');
@@ -131,5 +139,5 @@ try {
   assert.equal(longResult.save.state.turn,100002);assert.equal(longResult.save.state.log[0].turn,100002);assert.equal(longResult.save.state.treaties['武田家'],100008);
   assert.equal(longResult.save.state.worldClock.elapsedMs,100002*60000);
   assert.deepEqual((await api('/config')).data.clock,await getClock());
-  console.log(JSON.stringify({ok:true,calls,checks:['atomic singleton initialization','identical public/account clock','elapsed time during disconnection','admin-only global pause/resume/speed','revision compare-and-swap including concurrent controls','rate changes preserve cumulative elapsed time','1560–1615 calendar loop without resetting elapsed','clock in config and every sync response','legacy save migration compatibility','retained validated worldClock checkpoints','server-owned running and speed on writes','stable save content across global control changes','future-anchor rejection and 5-second tolerance','consistent turn and fractional phase','atomic rejection of legacy regression','old-anchor catch-up compatibility','turn/log/treaty beyond old 100000 limit']},null,2));
+  console.log(JSON.stringify({ok:true,calls,checks:['atomic singleton initialization','identical public/account clock','elapsed time during disconnection','admin-only global pause/resume/speed','revision compare-and-swap including concurrent controls','rate changes preserve cumulative elapsed time','1560–1615 calendar loop without resetting elapsed','clock in config and every sync response','legacy save migration compatibility','retained validated worldClock checkpoints','server-owned running and speed on writes','stable save content across global control changes','private economic horizon rejects future anchors within public tolerance','consistent turn and fractional phase','atomic rejection of legacy regression','settled checkpoint rollback rejection','turn/log/treaty beyond old 100000 limit']},null,2));
 } finally {Date.now=originalNow;database.close();}

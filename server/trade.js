@@ -1,3 +1,6 @@
+import {maintenanceContext,externalTroopSnapshotStatements} from './maintenance.js';
+import {advanceReservedMarch} from './marches.js';
+import {prepareResidencyCpuLosses} from './residency.js';
 // Player-to-player trade keeps offered assets in escrow. Only the actor's own
 // save is ever written: proceeds/refunds wait in a separate delivery ledger.
 const tradeStmt=(db,sql,...params)=>db.prepare(sql).bind(...params);
@@ -5,8 +8,8 @@ const tradeRows=result=>result?.results||[];
 const tradeIso=value=>new Date(Number(value)).toISOString();
 const TRADE_ASSETS=Object.freeze(['gold','rice','wood','stone','magatama','troops']);
 const TRADE_NAMES={gold:'金銭',rice:'兵糧',wood:'木材',stone:'石材',magatama:'勾玉',troops:'兵士'};
-// Troops also have the engine's building/governor capacity. The save format
-// separately validates state.troops at no more than one million.
+// Transported troops use the save's independent 100-million stock ceiling,
+// reserving space for returning marches. Each trade remains at most one million.
 const TRADE_RULES=Object.freeze({assets:TRADE_ASSETS,maxAmount:1000000,balanceLimit:100000000,troopBalanceLimit:100000000,maxPending:20});
 const TRADE_GATE='EXISTS(SELECT 1 FROM trade_requests WHERE actor_id=? AND request_id=? AND commit_token=?)';
 const TRADE_SELECT=`SELECT t.*,d.recipient_id AS delivery_recipient_id,d.kind AS delivery_kind,d.assets_json AS delivery_assets_json,d.claimed_at
@@ -74,11 +77,13 @@ async function tradeResult(ctx,body,receipt,idempotent){
   const {db,user,now,helpers:h}=ctx,current=await h.getUser(db,user.id),snapshot=await h.syncSnapshot(db,await h.getSyncRow(db,user.id),current,body.deviceId,now),row=await tradeRequireRow(ctx,receipt.tradeId);
   return {...snapshot,trade:tradeDto(row,user.id),receipt,idempotent};
 }
-async function tradeActor(ctx,body){
+async function tradeActor(ctx,body,advance=true){
   const {db,user,now,helpers:h}=ctx,row=await h.settleWriterCycle(db,user,body.deviceId,body.expectedRevision,now),clock=await h.getWorldClock(db,now),save=h.normalizeGameSave(JSON.parse(row.save_json),user,now,{reading:true,clock});
   if(!save.state.worldClock)h.fail(409,'CLOCK_ANCHOR_REQUIRED','先に共通時計へ同期してください。');
   if(clock.elapsedMs-save.state.worldClock.elapsedMs>15000)h.fail(409,'CLOCK_STALE','共通時計と本拠を同期してから交易してください。');
-  return {row,clock,save};
+  if(!advance){const maintenance=await maintenanceContext(db,user.id,save,clock);return{row,clock,save,guard:maintenance.guard};}
+  const journey=await advanceReservedMarch(ctx,row,clock),cpuLosses=await prepareResidencyCpuLosses(db,{userId:user.id,events:journey.game.takeHomeDefenseLosses(),now,state:journey.save.state});
+  return {row,clock,save:journey.save,journey,cpuLosses,guard:{sql:journey.branches.guard.sql+' AND '+cpuLosses.guard.sql,args:[...journey.branches.guard.args,...cpuLosses.guard.args]}};
 }
 async function tradeMove(ctx,actor,outgoing,incoming){
   const {db,user,now,helpers:h}=ctx,save=actor.save;
@@ -90,18 +95,23 @@ async function tradeMove(ctx,actor,outgoing,incoming){
     const balance=key==='magatama'||key==='troops'?save.state[key]:save.state.resources[key],paid=outgoing[key]??0,received=incoming[key]??0;
     if(balance<paid)h.fail(409,'INSUFFICIENT_ASSETS',key==='troops'?'輸出する兵士が足りません。':'支払う資産が足りません。');
     values[key]=balance-paid+received;
-    // A lowered capacity must not prevent spending/exporting existing troops,
-    // or accepting an unrelated legacy resource trade.
+    // Reserved returning troops must not prevent spending/exporting existing
+    // troops, or accepting an unrelated legacy resource trade.
     const limit=key==='troops'?Math.min(TRADE_RULES.troopBalanceLimit,troopCapacity):TRADE_RULES.balanceLimit;
-    if(values[key]>limit)h.fail(409,key==='troops'?'TROOP_LIMIT':'ASSET_LIMIT',key==='troops'?`兵数上限は${limit.toLocaleString('ja-JP')}人です。兵士を減らすか兵舎などを増築してから再度お試しください。受取待ちの兵士は保管されます。`:'所持上限を超えるため全額を受け取れません。資産を使ってから再度お試しください。');
+    if(values[key]>limit)h.fail(409,key==='troops'?'TROOP_LIMIT':'ASSET_LIMIT',key==='troops'?`輸入・返還の受入後上限は${limit.toLocaleString('ja-JP')}人です。拠点の収容人数とは別枠で、出陣中の兵が帰還する枠を確保します。手元の兵を移動してから再度お試しください。受取待ちの兵士は保管されます。`:'所持上限を超えるため全額を受け取れません。資産を使ってから再度お試しください。');
   }
   for(const key of TRADE_ASSETS)if(key==='magatama'||key==='troops')save.state[key]=values[key];else save.state.resources[key]=values[key];
 }
-function tradeSaveStatements(ctx,actor,body,gateArgs,text){
+async function tradeSaveStatements(ctx,actor,body,gateArgs,text){
   const {db,user,now,helpers:h}=ctx,save=actor.save;save.state.log.unshift({turn:save.state.turn,text,kind:'trade'});save.state.log=save.state.log.slice(0,200);save.savedAt=tradeIso(now);
   const normalized=h.normalizeGameSave(save,user,now,{clock:actor.clock});
-  return [tradeStmt(db,'UPDATE player_saves SET save_json=?,revision=revision+1,updated_at=?,lease_expires_at=? WHERE user_id=? AND '+TRADE_GATE,JSON.stringify(normalized),now,now+h.syncLease,user.id,...gateArgs),
-    tradeStmt(db,"UPDATE users SET clan=CASE WHEN EXISTS(SELECT 1 FROM staff_members sm WHERE sm.user_id=users.id) AND users.id<>COALESCE((SELECT value FROM settings WHERE key='adminUserId'),'') THEN clan ELSE ? END WHERE id=? AND "+TRADE_GATE,normalized.state.clan,user.id,...gateArgs)];
+  const statements=[tradeStmt(db,'UPDATE player_saves SET save_json=?,revision=revision+1,updated_at=?,lease_expires_at=? WHERE user_id=? AND '+TRADE_GATE,JSON.stringify(normalized),now,now+h.syncLease,user.id,...gateArgs),
+    tradeStmt(db,"UPDATE users SET clan=CASE WHEN EXISTS(SELECT 1 FROM staff_members sm WHERE sm.user_id=users.id) AND users.id<>COALESCE((SELECT value FROM settings WHERE key='adminUserId'),'') THEN clan ELSE ? END WHERE id=? AND "+TRADE_GATE,normalized.state.clan,user.id,...gateArgs),
+    ...h.branchProgressStatements(db,user.id,normalized,now,TRADE_GATE,gateArgs,{resolvedElapsedMs:actor.journey.resolvedElapsedMs}),
+    ...h.covertIncidentStatements(db,user.id,normalized,now,TRADE_GATE,gateArgs),...actor.cpuLosses.statements(TRADE_GATE,gateArgs)];
+  const personal=await h.staffPersonalProgressStatement(db,user,normalized,now,TRADE_GATE,gateArgs,actor.journey.game.getStaffPersonalProgress?.());if(personal)statements.push(personal);
+  for(const event of h.saveAchievements(actor.journey.before,normalized))statements.push(h.achievementStatement(db,user.id,event,now,TRADE_GATE,gateArgs));
+  return statements;
 }
 function tradeAuthorize(row,actor,action,h){
   if(action==='accept'||action==='reject'){if(row.recipient_id!==actor)h.fail(403,'TRADE_FORBIDDEN','届いた交易にだけ承認・拒否できます。');}
@@ -135,7 +145,11 @@ async function tradeMutate(ctx,id=null,action='propose'){
     if((await tradeSummary(db,user.id)).outgoingPending>=TRADE_RULES.maxPending)h.fail(409,'TRADE_PENDING_LIMIT','承認待ちの交易は20件までです。先に取消・承認をお待ちください。');
     id=h.uid('tr_');
   }else{row=await tradeRequireRow(ctx,id);tradeAuthorize(row,user.id,action,h);}
-  const actor=await tradeActor(ctx,body),changesSave=propose||action==='accept'||action==='claim',offer=propose?body.offer:JSON.parse(row.offer_json),want=propose?body.want:JSON.parse(row.want_json);
+  const changesSave=propose||action==='accept'||action==='claim',actor=await tradeActor(ctx,body,changesSave),offer=propose?body.offer:JSON.parse(row.offer_json),want=propose?body.want:JSON.parse(row.want_json);
+  // Both owners must transfer troops at the actor's checkpoint. A concurrent
+  // sender read may already have sealed a later interval; retry that transfer
+  // instead of adding internal troops before removing the other owner's escrow.
+  if(action==='accept'&&((offer.troops||0)>0||(want.troops||0)>0))actor.guard={sql:actor.guard.sql+' AND NOT EXISTS(SELECT 1 FROM external_troop_accounts WHERE user_id=? AND sealed_elapsed_ms>?)',args:[...actor.guard.args,row.sender_id,actor.clock.elapsedMs]};
   let delivery=null,log='';
   if(propose){await tradeMove(ctx,actor,offer,tradeEmpty());log=`${target.name}へ交易を提案。輸出する${tradeLabel(offer)}を預けました。`;}
   else if(action==='accept'){await tradeMove(ctx,actor,want,offer);if(tradeHasAssets(want))delivery={kind:'proceeds',assets:want};log=`${row.sender_name}との交易が成立。${tradeLabel(want)}と引き換えに${tradeLabel(offer)}を輸入しました。`;}
@@ -148,13 +162,14 @@ async function tradeMutate(ctx,id=null,action='propose'){
   const conditionArgs=propose?[body.targetPlayerId,user.id,TRADE_RULES.maxPending,...targetGuard.args]:action==='claim'?[id,row.revision,user.id,user.id]:[id,row.revision,user.id];
   const statements=[tradeStmt(db,`INSERT INTO trade_requests(id,actor_id,request_id,trade_id,action,request_hash,commit_token,result_json,created_at)
     SELECT ?,?,?,?,?,?,?,?,? FROM player_saves ps WHERE ps.user_id=? AND ps.revision=? AND ps.writer_device_id=? AND ps.lease_expires_at>?
-    AND ${role.sql} AND EXISTS(SELECT 1 FROM world_clock WHERE id=? AND revision=?) AND ${condition}
-    ON CONFLICT(actor_id,request_id) DO NOTHING RETURNING id`,receipt.id,user.id,body.requestId,id,action,digest,nonce,JSON.stringify(receipt),now,user.id,body.expectedRevision,body.deviceId,Date.now(),...role.args,h.worldClockId,actor.clock.revision,...conditionArgs)];
+    AND ${role.sql} AND ${actor.guard.sql} AND EXISTS(SELECT 1 FROM world_clock WHERE id=? AND revision=?) AND ${condition}
+    ON CONFLICT(actor_id,request_id) DO NOTHING RETURNING id`,receipt.id,user.id,body.requestId,id,action,digest,nonce,JSON.stringify(receipt),now,user.id,body.expectedRevision,body.deviceId,Date.now(),...role.args,...actor.guard.args,h.worldClockId,actor.clock.revision,...conditionArgs)];
   if(propose)statements.push(tradeStmt(db,`INSERT INTO trades(id,sender_id,recipient_id,sender_name,recipient_name,offer_json,want_json,status,revision,created_at,updated_at) SELECT ?,?,?,?,?,?,?,'pending',1,?,? WHERE ${TRADE_GATE}`,id,user.id,target.id,user.name,target.name,JSON.stringify(offer),JSON.stringify(want),now,now,...gateArgs));
   else statements.push(tradeStmt(db,`UPDATE trades SET status=?,revision=revision+1,updated_at=? WHERE id=? AND ${TRADE_GATE}`,action==='claim'?row.status:action==='accept'?'accepted':action==='cancel'?'cancelled':'rejected',now,id,...gateArgs));
-  if(changesSave)statements.push(...tradeSaveStatements(ctx,actor,body,gateArgs,log));
+  if(changesSave)statements.push(...await tradeSaveStatements(ctx,actor,body,gateArgs,log));
   if(delivery)statements.push(tradeStmt(db,`INSERT INTO trade_deliveries(trade_id,recipient_id,kind,assets_json,created_at,claimed_at) SELECT ?,?,?,?,?,NULL WHERE ${TRADE_GATE}`,id,row.sender_id,delivery.kind,JSON.stringify(delivery.assets),now,...gateArgs));
   if(action==='claim')statements.push(tradeStmt(db,`UPDATE trade_deliveries SET claimed_at=? WHERE trade_id=? AND recipient_id=? AND ${TRADE_GATE}`,now,id,user.id,...gateArgs));
+  statements.push(...externalTroopSnapshotStatements(db,[user.id,row?.sender_id],actor.clock,TRADE_GATE,gateArgs));
   if(!tradeRows((await db.batch(statements))[0]).length)return tradeCommitFailure(ctx,body,digest,actor,id,action);
   return tradeResult(ctx,body,receipt,false);
 }

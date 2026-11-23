@@ -61,7 +61,9 @@
     "presentation.css",
     "gameplay.css",
     "chronicle-game.css",
-    "title-fit.css"
+    "title-fit.css",
+    "economy.css",
+    "live-updates.css"
   ],
   "game-preferences.bundle.js": [
     "viewport-lock.js",

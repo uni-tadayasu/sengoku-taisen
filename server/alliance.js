@@ -1,7 +1,9 @@
 // Alliance planning, membership rules and troop escrow. All valuable mutations
 // share a receipt gate with the player save; a replay never repeats a transfer.
 import {GameEngine,GAME_OFFICERS} from './game-runtime.js';
-import {marchDto} from './marches.js';
+import {marchDto,advanceReservedMarch} from './marches.js';
+import {prepareResidencyCpuLosses} from './residency.js';
+import {externalTroopSnapshotStatements} from './maintenance.js';
 const stmt=(db,sql,...args)=>db.prepare(sql).bind(...args);
 const rows=result=>result?.results||[];
 const clone=value=>JSON.parse(JSON.stringify(value));
@@ -28,6 +30,7 @@ async function commit(ctx,body,action,guard,changes,result,prepared=null){
  const p=prepared||await prior(ctx,body,action);if(p.old)return finish(ctx,body,JSON.parse(p.old.result_json),true);
  const {db,user,helpers:h}=ctx,nonce=crypto.randomUUID(),args=[user.id,body.requestId,nonce],access=h.roleCommitGuard?h.roleCommitGuard(user):h.accountCommitGuard(user),full=and(guard,access);
  const statements=[stmt(db,'INSERT INTO alliance_requests(actor_id,request_id,request_hash,commit_token,result_json,created_at) SELECT ?,?,?,?,?,? WHERE '+full.sql+' ON CONFLICT(actor_id,request_id) DO NOTHING RETURNING request_id',user.id,body.requestId,p.digest,nonce,JSON.stringify(result),ctx.now,...full.args),...changes(GATE,args)];
+ if(ctx.maintenanceAdvance){const own=ctx.maintenanceAdvance,personal=await h.staffPersonalProgressStatement(db,user,own.save,ctx.now,GATE,args,own.journey.game.getStaffPersonalProgress?.());if(personal)statements.push(personal);}
  const done=await db.batch(statements);if(!rows(done[0]).length){const retry=await prior(ctx,body,action);if(retry.old)return finish(ctx,body,JSON.parse(retry.old.result_json),true);await h.requireAccountAccess(db,user);h.fail(409,'ALLIANCE_STATE_CHANGED','同盟・部隊・保存の状態が更新されました。更新してからお試しください。');}
  return finish(ctx,body,result,false);
 }
@@ -35,10 +38,20 @@ function input(ctx,body){if(!body||typeof body!=='object'||Array.isArray(body))c
 async function saved(ctx,body){
  const {helpers:h,db,user}=ctx;id(h,body.deviceId,'操作端末');integer(h,body.expectedRevision,'保存番号',0,1000000000);
  const row=await h.settleWriterCycle(db,user,body.deviceId,body.expectedRevision,ctx.now),clock=await h.getWorldClock(db,ctx.now);
- const save=h.normalizeGameSave(JSON.parse(row.save_json),user,ctx.now,{reading:true,clock});
+ let save=h.normalizeGameSave(JSON.parse(row.save_json),user,ctx.now,{reading:true,clock});
  if(!save.state.worldClock||Math.abs(clock.elapsedMs-save.state.worldClock.elapsedMs)>15000)h.fail(409,'CLOCK_STALE','本拠と共通時計を同期してください。');
  const guard={sql:'EXISTS(SELECT 1 FROM player_saves WHERE user_id=? AND revision=? AND writer_device_id=? AND lease_expires_at>?) AND EXISTS(SELECT 1 FROM world_clock WHERE id=? AND revision=?)',args:[user.id,body.expectedRevision,body.deviceId,ctx.now,h.worldClockId||'world-v1',clock.revision]};
- return{row,clock,save,guard};
+ const journey=await advanceReservedMarch(ctx,row,clock);save=journey.save;
+ const cpuLosses=await prepareResidencyCpuLosses(db,{userId:user.id,events:journey.game.takeHomeDefenseLosses(),now:ctx.now,state:save.state});
+ // Statement factories keep every advance side effect under the same receipt.
+ ctx.maintenanceAdvance={save,journey};
+ const extra=(gate,args)=>[
+  ...h.branchProgressStatements(db,user.id,save,ctx.now,gate,args,{resolvedElapsedMs:journey.resolvedElapsedMs}),
+  ...h.covertIncidentStatements(db,user.id,save,ctx.now,gate,args),...cpuLosses.statements(gate,args),
+  ...h.saveAchievements(journey.before,save).map(event=>h.achievementStatement(db,user.id,event,ctx.now,gate,args)),
+  ...externalTroopSnapshotStatements(db,[user.id],clock,gate,args)
+ ];
+ return{row,clock,save,guard:and(guard,journey.branches.guard,cpuLosses.guard),extra};
 }
 function saveStatement(ctx,body,save,gate,args){return stmt(ctx.db,'UPDATE player_saves SET save_json=?,revision=revision+1,updated_at=?,lease_expires_at=? WHERE user_id=? AND '+gate,JSON.stringify(save),ctx.now,ctx.now+(ctx.helpers.syncLease||30000),ctx.user.id,...args);}
 function contribution(db,key,guildId,userId,kind,amount,detail,now,gate='1=1',args=[]){return stmt(db,'INSERT INTO alliance_contributions(id,guild_id,user_id,kind,amount,detail,created_at) SELECT ?,?,?,?,?,?,? WHERE '+gate+' ON CONFLICT(id) DO NOTHING',key,guildId,userId,kind,amount,detail,now,...args);}
@@ -191,7 +204,7 @@ async function sendUnits(ctx,b,kind){
  return commit(ctx,b,kind==='rally'?'rally-join':'aid-send',and(memberGuard(m),state.guard,extra,limit),(gate,args)=>[
  saveStatement(ctx,b,state.save,gate,args),
  stmt(db,"INSERT INTO alliance_units(id,guild_id,owner_id,owner_epoch,target_id,target_epoch,castle_id,operation_id,kind,state,troops,sent,expires_at,created_at) SELECT ?,?,?,?,?,?,?,?,?,'stationed',?,?,?,? WHERE "+gate,unitId,m.guild_id,user.id,m.epoch,targetId,targetEpoch,castleId,operationId,kind,troops,troops,expiresAt,now,...args),
- contribution(db,'send:'+unitId,m.guild_id,user.id,kind==='rally'?'rally':'aid',troops,kind==='rally'?'集結に兵を提供':'仲間の城へ援軍',now,gate,args),
+ contribution(db,'send:'+unitId,m.guild_id,user.id,kind==='rally'?'rally':'aid',troops,kind==='rally'?'集結に兵を提供':'仲間の城へ援軍',now,gate,args),...state.extra(gate,args),
  ],{unitId,message:kind==='rally'?'兵を集結へ派遣しました。出陣後の生存兵は各参加者へ戻ります。':'援軍を派遣しました。期限・脱退・撤収で生存兵が受取待ちへ戻ります。'});
 }
 async function unitsAction(ctx,b,action){
@@ -209,7 +222,7 @@ async function unitsAction(ctx,b,action){
  s.save.state.troops+=amount;
  return commit(ctx,b,action,and(unitGuard(unit),s.guard),(gate,args)=>[
  saveStatement(ctx,b,s.save,gate,args),
- stmt(db,'UPDATE alliance_units SET troops=troops-?,state=?,revision=revision+1 WHERE id=? AND '+gate,amount,amount===unit.troops?'claimed':'returning',unit.id,...args),
+ stmt(db,'UPDATE alliance_units SET troops=troops-?,state=?,revision=revision+1 WHERE id=? AND '+gate,amount,amount===unit.troops?'claimed':'returning',unit.id,...args),...s.extra(gate,args),
  ],{receivedTroops:amount,remainingTroops:unit.troops-amount,message:amount+'人が本隊へ帰還しました。'+(unit.troops>amount?'収容できない兵は受取待ちに残しています。':'')});
 }
 async function withdrawAction(ctx,b,action){
@@ -244,7 +257,7 @@ export async function prepareRallyAttack(db,user,operationId,now,h,frozen=null){
  const rollBytes=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(['alliance-battle-v1',o.resolution_seed,o.id,units.map(u=>[u.id,u.troops])])));
  const roll=new DataView(rollBytes).getUint32(0)/4294967296;
  let allocation=null;
- return{operationId:o.id,snapshot:{operationId:o.id,units:units.map(u=>({id:u.id,troops:u.troops,revision:u.revision}))},troops,roll,targetPlayerId:o.target_player_id,targetCastleId:o.castle_id,targetBranchId:o.branch_id||undefined,tactic:o.tactic,guard:and(organizer,opGuard(o),exact,frozen?frozenRoster:rosterGuard(units,now)),
+ return{maintenanceOwnerIds:[...new Set(units.map(u=>u.owner_id))],operationId:o.id,snapshot:{operationId:o.id,units:units.map(u=>({id:u.id,troops:u.troops,revision:u.revision}))},troops,roll,targetPlayerId:o.target_player_id,targetCastleId:o.castle_id,targetBranchId:o.branch_id||undefined,tactic:o.tactic,guard:and(organizer,opGuard(o),exact,frozen?frozenRoster:rosterGuard(units,now)),
   applyResult(battle,attackerState){
    const spent=Math.min(troops,Number(battle.attackerLost||0)+Number(battle.capture?.garrison||0)),returned=troops-spent;
    // Existing capture logic subtracts its new garrison too. Removing the
@@ -273,7 +286,7 @@ export async function getAllianceDefense(db,target,castleId,now){
  const units=rows(await stmt(db,"SELECT u.* FROM alliance_units u WHERE u.kind='aid' AND u.target_id=? AND u.castle_id=? AND "+unitLiveSql('u')+' AND u.target_epoch=? ORDER BY u.id LIMIT 201',target.id,castleId,now,m.epoch).all());
  const troops=units.reduce((n,u)=>n+u.troops,0),exact={sql:"(SELECT COUNT(*) FROM alliance_units WHERE target_id=? AND castle_id=? AND kind='aid' AND state='stationed' AND expires_at>?)=? AND (SELECT COALESCE(SUM(troops),0) FROM alliance_units WHERE target_id=? AND castle_id=? AND kind='aid' AND state='stationed' AND expires_at>?)=?",args:[target.id,castleId,now,units.length,target.id,castleId,now,troops]};
  const guard=and(memberGuard(m),exact,rosterGuard(units,now));
- return{troops,guard,statements:(battle,gate,args)=>units.flatMap(u=>{
+ return{maintenanceOwnerIds:[...new Set(units.map(u=>u.owner_id))],troops,guard,statements:(battle,gate,args)=>units.flatMap(u=>{
   const loss=battle.battleMode==='reward'||battle.battleMode==='branch'?0:Math.min(u.troops,Math.floor(u.troops*(battle.won?.1:.03))),survivors=u.troops-loss;
   return[stmt(db,'UPDATE alliance_units SET troops=?,state=?,revision=revision+1 WHERE id=? AND '+gate,survivors,survivors?(battle.capture?.captured?'returning':'stationed'):'claimed',u.id,...args),contribution(db,'defense:'+battle.id+':'+u.id,u.guild_id,u.owner_id,'defense',u.troops,battle.castleName+'を援軍で防衛・兵損'+loss,now,gate,args)];
  })};

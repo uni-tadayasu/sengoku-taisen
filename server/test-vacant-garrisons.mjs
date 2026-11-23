@@ -5,6 +5,7 @@ import {fixture,post,row,save,updateSave} from './test-court-support.mjs';
 import {GameEngine,GAME_OFFICERS} from './game-runtime.js';
 
 const reports=[],clone=value=>structuredClone(value);
+const STOCK_CAP=100000000;
 const depots=(h,p)=>h.sql.prepare('SELECT * FROM vacant_garrisons WHERE actor_id=? ORDER BY campaign_id,castle_id').all(p.user.id);
 const receipts=(h,p)=>h.sql.prepare('SELECT * FROM vacant_garrison_requests WHERE actor_id=? ORDER BY request_id').all(p.user.id);
 const movement=(h,p)=>h.sql.prepare('SELECT * FROM troop_transfer_states WHERE actor_id=? ORDER BY campaign_id').all(p.user.id);
@@ -26,7 +27,7 @@ const originalFetch=globalThis.fetch;globalThis.fetch=async()=>{throw Error('Vac
 try{
  await scope('finite send, refill and partial/full recall preserve total soldiers, castle ownership, receipts and sync replay protection',async h=>{
   await h.api('/troop-garrisons',{expected:401});await h.api('/troop-garrisons/send',{method:'POST',body:{},expected:401});
-  const p=await fixture(h,'兵を預ける領主',{startCastle:'himeji'}),before=save(h,p),initial=await status(h,p);assert(initial.availableCastles.some(c=>c.castleId==='inuyama'));assert.equal(initial.commandCost,1);assert.equal(initial.army.troops,before.state.troops);
+  const p=await fixture(h,'兵を預ける領主',{startCastle:'himeji'}),before=save(h,p),initial=await status(h,p);assert(initial.availableCastles.some(c=>c.castleId==='inuyama'));assert.equal(initial.commandCost,1);assert.equal(initial.army.troops,before.state.troops);assert.equal(initial.army.transportCapacity,STOCK_CAP);assert.equal(initial.army.recallCapacity,STOCK_CAP-before.state.troops);
   const request=body(h,p,'inuyama',600),sent=await command(h,p,'send',request);assert.equal(sent.idempotent,false);assert.equal(sent.result.requestId,request.requestId);assert.equal(sent.result.action,'send');assert.equal(sent.result.armyBefore-sent.result.armyAfter,600);assert.equal(sent.result.garrisonAfter-sent.result.garrisonBefore,600);
   assert.equal(sent.save.state.troops+stationed(h,p,'inuyama'),before.state.troops);assert.equal(sent.save.state.command,before.state.command-1);assert.deepEqual(sent.save.state.resources,before.state.resources);assert.deepEqual(sent.save.state.castles,before.state.castles);assert.equal(sent.save.state.home,before.state.home);assert.equal(h.sql.prepare('SELECT lord_user_id FROM castle_seats WHERE castle_id=?').get('inuyama').lord_user_id,null);
   const committed=stable(h,p),replay=await command(h,p,'send',request);assert(replay.idempotent);assert.deepEqual(replay.result,sent.result);assert.deepEqual(stable(h,p),committed);
@@ -67,12 +68,15 @@ try{
   assert.deepEqual(attempts.map(r=>r.response.status).sort(),[200,409]);assert.equal(stationed(h,a,'takaya')+stationed(h,b,'takaya'),100);assert.equal(receipts(h,a).length+receipts(h,b).length,1);
   assert.equal(save(h,a).state.troops+save(h,b).state.troops+stationed(h,a,'takaya')+stationed(h,b,'takaya'),20000);
  });
- await scope('capacity, amount, command and campaign failures preserve troop balances, while inactive campaigns do not reserve castles',async h=>{
+ await scope('normal full capacity allows recall, absolute capacity and other invalid moves remain atomic, and inactive campaigns release castles',async h=>{
   const a=await fixture(h,'容量を確認する領主',{startCastle:'himeji'}),b=await fixture(h,'旧物語の次の領主',{startCastle:'okazaki'}),before=stable(h,a);
   for(const troops of [0,-1,1.5,100000001])await command(h,a,'send',body(h,a,'inuyama',troops),400);
   assert.deepEqual(stable(h,a),before);assert.equal((await command(h,a,'send',body(h,a,'inuyama',10001),409)).error.code,'INSUFFICIENT_TROOPS');assert.deepEqual(stable(h,a),before);
   const request=body(h,a,'inuyama',500),sent=await command(h,a,'send',request);
   const game=GameEngine.fromSave(save(h,a),GAME_OFFICERS);updateSave(h,a,s=>{s.troops=game.availableTroopCapacity();});
+  const recallRequest=body(h,a,'inuyama',1),normalFull=save(h,a),allowed=await command(h,a,'recall',recallRequest);assert.equal(allowed.save.state.troops,normalFull.state.troops+1);assert.equal(allowed.army.capacity,STOCK_CAP);assert.equal(allowed.army.recruitmentCapacity,game.availableTroopCapacity());assert.equal(allowed.army.transportCapacity,STOCK_CAP);assert.equal(allowed.army.recallCapacity,STOCK_CAP-allowed.army.troops);assert.equal(allowed.garrisons[0].maxRecall,499);assert.equal(allowed.save.state.troops+stationed(h,a,'inuyama'),normalFull.state.troops+500);
+  const afterRecall=stable(h,a),replayed=await command(h,a,'recall',recallRequest);assert(replayed.idempotent);assert.deepEqual(replayed.result,allowed.result);assert.deepEqual(stable(h,a),afterRecall);
+  updateSave(h,a,s=>{s.troops=STOCK_CAP;});
   const full=stable(h,a),denied=await command(h,a,'recall',body(h,a,'inuyama',1),409);assert.equal(denied.error.code,'TROOP_CAPACITY');assert.deepEqual(stable(h,a),full);
   updateSave(h,a,s=>{s.command=0;});const exhausted=stable(h,a);assert.equal((await command(h,a,'send',body(h,a,'takaya',1),409)).error.code,'NO_COMMANDS');assert.deepEqual(stable(h,a),exhausted);
   const oldCampaign=save(h,a).state.walking.campaignId,newStory=new GameEngine({officers:GAME_OFFICERS,startCastle:'himeji'});newStory.applyWorldClock((await h.api('/world-clock')).data.clock);await put(h,a,JSON.parse(newStory.exportSave()));
@@ -80,6 +84,17 @@ try{
   const wrong=body(h,a,'inuyama',1);wrong.campaignId=oldCampaign;assert.equal((await command(h,a,'recall',wrong,409)).error.code,'GARRISON_SCOPE_CHANGED');
   const newSender=await command(h,b,'send',body(h,b,'inuyama',100));assert.equal(newSender.garrisons[0].troops,100);
   const currentBefore=stable(h,a),historic=await command(h,a,'send',request);assert(historic.idempotent);assert.deepEqual(historic.result,sent.result);assert.deepEqual(stable(h,a),currentBefore);
+ });
+ await scope('recall reserves returning march troops at the independent ceiling and replays committed partial returns without clipping',async h=>{
+  const p=await fixture(h,'帰還枠を残す領主',{startCastle:'kiyosu'});await command(h,p,'send',body(h,p,'inuyama',500));
+  const departure={kind:'castle',targetId:'inabayama',tactic:'balanced',troops:1000,requestId:crypto.randomUUID(),deviceId:p.deviceId,expectedRevision:row(h,p).revision,campaignId:save(h,p).state.walking.campaignId};
+  const marched=(await h.api('/marches/campaign',post(p,departure))).data;assert(marched.marching);assert.equal(marched.save.state.march.troops,1000);
+  updateSave(h,p,s=>{s.troops=STOCK_CAP-1000-499;});const available=await status(h,p);assert.equal(available.army.transportCapacity,STOCK_CAP-1000);assert.equal(available.army.recallCapacity,499);assert.equal(available.garrisons[0].maxRecall,499);assert.equal(available.army.capacity,available.army.transportCapacity);assert(available.army.recruitmentCapacity<available.army.troops);assert(available.army.recallCapacity<=available.army.capacity,'cached clients must accept the existing capacity field');
+  const fullRequest=body(h,p,'inuyama',500),before=stable(h,p),total=save(h,p).state.troops+save(h,p).state.march.troops+stationed(h,p,'inuyama');
+  const denied=await command(h,p,'recall',fullRequest,409);assert.equal(denied.error.code,'TROOP_CAPACITY');assert.deepEqual(stable(h,p),before,'a rejected whole recall must keep the entire depot and movement marker');
+  const request=body(h,p,'inuyama',499),recalled=await command(h,p,'recall',request);assert.equal(recalled.save.state.troops,STOCK_CAP-1000);assert.equal(recalled.save.state.march.troops,1000);assert.equal(recalled.garrisons[0].troops,1);assert.equal(recalled.garrisons[0].maxRecall,0);assert.equal(recalled.army.recallCapacity,0);assert.equal(recalled.save.state.troops+recalled.save.state.march.troops+stationed(h,p,'inuyama'),total);assert.equal(recalled.save.state.command,JSON.parse(before.save.save_json).state.command-1);
+  const committed=stable(h,p);assert.equal((await command(h,p,'recall',body(h,p,'inuyama',1),409)).error.code,'TROOP_CAPACITY');assert.deepEqual(stable(h,p),committed);
+  const replay=await command(h,p,'recall',request);assert(replay.idempotent);assert.deepEqual(replay.result,recalled.result);assert.deepEqual(stable(h,p),committed);assert.equal(movement(h,p)[0].sequence,2);assert.equal(receipts(h,p).length,2);
  });
  await scope('writer, role and clock races never leave a partial debit, depot or movement marker',async h=>{
   const operator=await h.session('輸送競合を検証する運営');await h.api('/admin/claim',post(operator,{key:h.env.SENGOKU_ADMIN_KEY}));

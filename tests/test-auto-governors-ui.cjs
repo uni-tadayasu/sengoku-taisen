@@ -37,13 +37,13 @@ function harness(game=create()){
     $:selector=>nodes.get(selector)||null,icon:()=>'',num:value=>Number(value||0).toLocaleString('ja-JP'),
     esc:value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char])),
     toast:(message,error)=>toasts.push({message,error}),modal:(title,subtitle,body,footer,kind)=>modals.push({title,subtitle,body,footer,kind}),
-    preserveInteraction:(_node,draw)=>draw(),renderHeader:()=>{calls.header++;},refreshTouchHeaderStatus(){},playNote:()=>{calls.sound++;},
+    preserveInteraction:(_node,draw)=>draw(),renderHeader:()=>{calls.header++;},refreshTouchHeaderStatus(){},refreshBranchDeploymentPanels(){},playNote:()=>{calls.sound++;},
     render:()=>{calls.render++;c.lastMarkup=c.currentView==='facilities'?c.renderFacilities():c.renderTown();c.refreshLiveControls();},
     heading:()=>'',staffBaseNotice:()=>'',syncBanner:()=>'',walkingEntry:()=>'',jobsHtml:()=>'',logItems:()=>'',officerCrest:()=>'',pageControls:()=>'',
     constructionJobs:()=>[],currentJob:()=>null,castleLevelLimit:id=>game.castleLevelLimit(id),date:()=>({year:1560,month:1,season:'春'}),costHtml:()=>''
   };
   vm.createContext(c);
-  vm.runInContext([declaration('mutationActions'),declaration('categoryNames'),...['confirmedWorldClock','clockIsApplied','canMutate','syncMessage','requireWritable','changedLocalCampaign','save','staffConstructionReady','governorAssignmentStatus','governorAssignmentEntry','facilityGovernorLabel','governorAssignmentResult','autoAssignGovernors','buildingOutput','buildingCard','facilitiesResults','renderFacilities','premiumTownImage','townSceneSources','premiumTownBanner','premiumLord','renderTown','refreshLiveControls'].map(fn)].join('\n'),c);
+  vm.runInContext([declaration('mutationActions'),declaration('categoryNames'),declaration('resNames'),declaration('resIcons'),...['confirmedWorldClock','clockIsApplied','canMutate','syncMessage','requireWritable','changedLocalCampaign','save','staffConstructionReady','governorAssignmentStatus','governorAssignmentEntry','facilityGovernorLabel','governorAssignmentResult','autoAssignGovernors','buildingOutput','buildingCard','facilitiesResults','economyNumber','economyPanel','renderFacilities','premiumTownImage','townSceneSources','premiumTownBanner','premiumLord','renderTown','refreshLiveControls'].map(fn)].join('\n'),c);
   const clickStart=source.indexOf("  document.addEventListener('click',async event=>"),clickEnd=source.indexOf("  document.addEventListener('input'",clickStart);
   assert(clickStart>=0&&clickEnd>clickStart);vm.runInContext(source.slice(clickStart,clickEnd),c);
   const click=async({force=false}={})=>{const target=force?{dataset:{action:'auto-governors'},disabled:false,closest(){return this;}}:controls[0];await handlers.get('click')({target});};
