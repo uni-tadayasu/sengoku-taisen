@@ -106,16 +106,19 @@ function commanderReason(game,branchId,helpers={},currentStatus){
  if(!candidate)return selected?'選択していた武将の所属を確認してください。':'配置する武将を選んでください。';
  return candidate.available?'':candidate.reason||'この武将は現在配置できません。';
 }
-function autoCommanderReason(game,branchId,helpers={}){
+function autoCommanderReason(game,branchId,helpers={},currentPlan){
  if(helpers.writable===false)return helpers.writableReason||'同期と保存の確認後に武将を配置できます。';
- const plan=game.branchCommanderAutoPlan?.(branchId);
+ const plan=currentPlan||game.branchCommanderAutoPlan?.(branchId);
  return plan?.ok?'':plan?.message||'武将の配置情報を確認できません。';
 }
 function renderAutoCommanders(game,branchId,helpers={}){
  const plan=game.branchCommanderAutoPlan?.(branchId);if(!plan)return'';
- const all=branchId==='all',reason=autoCommanderReason(game,branchId,helpers),surface=helpers.surface==='modal'?'modal':'map',key='branch-auto-'+surface+'-'+branchId;
- const preview=plan.ok?(all?`${num(plan.assignments.length)}名を、所有する全支拠点の空き枠へ配置します。`:`配置候補：${plan.assignments.map(row=>`${row.name}（${row.rank}）`).join('・')}`):plan.message;
- return `<div class="branch-auto-commanders" data-stable-key="${esc(key)}"${all?` data-branch-auto-panel="all" data-branch-auto-surface="${surface}"`:""}><button type="button" class="button gold full" data-action="auto-assign-branch-commanders" data-id="${esc(branchId)}" aria-describedby="${esc(key)}-preview"${reason?' disabled':''}>${all?'全支拠点にまとめておまかせ配置':'この支拠点におまかせ配置'}</button><p id="${esc(key)}-preview" class="branch-commander-note" data-branch-auto-preview>${esc(notice(helpers.writable===false?reason:preview))}</p><p class="branch-commander-note">統率・知略・武勇の順に、奉行よりも支拠点を優先して選びます。本隊とほかの支拠点の編成を保ち、奉行から異動した武将は元の施設から外します。指令・資材は使いません。</p></div>`;
+ const all=branchId==='all',reason=autoCommanderReason(game,branchId,helpers,plan),surface=helpers.surface==='modal'?'modal':'map',key='branch-auto-'+surface+'-'+branchId;
+ const candidates=plan.formations?.find(row=>row.branchId===branchId)?.commanders.map(id=>game.officer(id)).filter(Boolean)||plan.assignments||[];
+ const change=plan.changed===false?'現在の編成が適性に合っています。配置を維持します。':`${num(plan.changedCount??plan.assignments.length)}枠を変更${plan.replacedCount?`（入れ替え${num(plan.replacedCount)}名）`:''}します。${plan.retainedCount?`${num(plan.retainedCount)}名は現在の配置を維持します。`:''}`;
+ const preview=plan.ok?(all?`配置済みも含めて全支拠点を見直します。${change}`:`編成候補：${candidates.map(row=>`${row.name}（${row.rank}）`).join('・')||'未配置'}。${change}`):plan.message;
+ const scope=all?'本隊を維持し、配置済みの支拠点武将も含めて全支拠点を再編成します。':'本隊とほかの支拠点の編成を維持し、この支拠点の配置済み武将も入れ替え候補に含めます。';
+ return `<div class="branch-auto-commanders" data-stable-key="${esc(key)}"${all?` data-branch-auto-panel="all" data-branch-auto-surface="${surface}"`:""}><button type="button" class="button gold full" data-action="auto-assign-branch-commanders" data-id="${esc(branchId)}" aria-describedby="${esc(key)}-preview"${reason?' disabled':''}>${all?'全支拠点にまとめておまかせ配置':'この支拠点におまかせ配置'}</button><p id="${esc(key)}-preview" class="branch-commander-note" data-branch-auto-preview>${esc(notice(helpers.writable===false?reason:preview))}</p><p class="branch-commander-note">統率・知略・武勇の順に、奉行よりも支拠点を優先して選びます。${scope}奉行から異動した武将は元の施設から外します。指令・資材は使いません。</p></div>`;
 }
 function renderCommanders(game,branch,helpers={}){
  if(!branch||!own(game,branch.parentCastleId)||!game.branchCommanderStatus)return'';

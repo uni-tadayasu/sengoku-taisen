@@ -23,18 +23,18 @@ test('automatic preview ranks transferable governors and preserves main army and
  assert.equal(plan.assignments[0].fromBuildingId,'farm');const resources=clone(game.state.resources),army=clone(game.state.army);
  assert(game.autoAssignBranchCommanders('nijo_north').ok);assert.equal(game.state.command,0);assert.deepEqual(game.state.resources,resources);assert.deepEqual(game.state.army,army);assert.deepEqual(game.state.governors,{});assert.deepEqual(game.branch('osaka_north').commanders,[ids[2]]);
 });
-test('each Edo branch holds one and other cities two while current commanders remain in their slots',()=>{
+test('each Edo branch holds one and other cities two while suitable current commanders retain their slots',()=>{
  const {game,ids}=fixture({admin:true});assert(game.assignBranchCommander('nijo_north',ids[0]).ok);
  const result=game.autoAssignBranchCommanders('all');assert(result.ok);assert.equal(result.assignments.length,6);
  assert.equal(game.branch('edo_north').commanders.length,1);for(const id of ['nijo_north','nijo_south','osaka_north'])assert.equal(game.branch(id).commanders.length,2);
  assert.equal(game.branch('nijo_north').commanders[0],ids[0]);const assigned=game.state.branches.flatMap(row=>row.commanders);assert.equal(new Set(assigned).size,assigned.length);
- assert.equal(unchanged(game,()=>game.autoAssignBranchCommanders('all')).code,'BRANCH_COMMANDER_NO_SLOTS');
+ const repeated=unchanged(game,()=>game.autoAssignBranchCommanders('all'));assert(repeated.ok);assert.equal(repeated.changed,false);assert.equal(repeated.changedCount,0);
 });
 test('limited free officers first cover separate eligible branches and leave unavailable branches untouched',()=>{
  const {game,ids}=fixture({count:2});game.state.branches.push(branch('nagoya','east',{fallen:true}),branch('nagoya','west',{level:0}),branch('edo'));
  const result=game.autoAssignBranchCommanders('all');assert(result.ok);assert.equal(result.assignments.length,2);assert.equal(new Set(result.assignments.map(row=>row.branchId)).size,2);assert.equal(result.remainingSlots,4);
  assert(game.state.branches.filter(row=>['nagoya_east','nagoya_west','edo_north'].includes(row.id)).every(row=>row.commanders.length===0));assert.equal(new Set(game.state.branches.flatMap(row=>row.commanders)).size,ids.length);
- assert.equal(unchanged(game,()=>game.autoAssignBranchCommanders('all')).code,'BRANCH_COMMANDER_NO_CANDIDATES');
+ const repeated=unchanged(game,()=>game.autoAssignBranchCommanders('all'));assert(repeated.ok);assert.equal(repeated.changed,false);assert.equal(repeated.assignedCount,2);
 });
 test('foreign, missing, unbuilt, fallen and retreating targets cannot mutate formations',()=>{
  const {game}=fixture();for(const id of ['missing','edo_north',undefined])assert.equal(unchanged(game,()=>game.autoAssignBranchCommanders(id)).ok,false);

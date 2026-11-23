@@ -166,20 +166,26 @@ test('branch commander assignment and removal save at zero command without dupli
  const rejected=await h.c.requestBranches('/branches/assign-commander',{method:'POST',data:{branchId:'edo_north',officerId:second}});assert.equal(rejected.ok,false);
  const removed=await h.c.requestBranches('/branches/remove-commander',{method:'POST',data:{branchId:'edo_north',officerId}});assert(removed.ok,removed.message);assert.equal(h.c.game.state.command,0);assert.deepEqual(JSON.parse(h.stored.get('save')).state.branches[0].commanders,[]);assert(h.c.game.assignArmy([officerId]).ok);
 });
-test('local automatic placement persists at zero command and restores all state when storage fails',async()=>{
- const prepare=()=>{const h=setup();h.c.syncAccess.linked=false;h.c.game.state.command=0;h.c.game.state.army=[];h.c.game.state.branches=[{id:'edo_north',parentCastleId:'edo',direction:'north',level:2,fallen:false}];return h;};
- const h=prepare(),plan=h.c.game.branchCommanderAutoPlan('all'),resources=clone(h.c.game.state.resources);assert(plan.ok);
- const result=await h.c.requestBranches('/branches/auto-assign-commanders',{method:'POST',data:{branchId:'all'}});assert(result.ok);assert.equal(h.c.game.state.command,0);assert.deepEqual(clone(h.c.game.state.resources),resources);assert.deepEqual(JSON.parse(h.stored.get('save')).state.branches[0].commanders,plan.assignments.map(row=>row.officerId));
- const fail=prepare(),previous=fail.c.game,before=previous.exportSave();fail.c.localStorage.setItem=()=>{throw Error('full');};
- await assert.rejects(fail.c.requestBranches('/branches/auto-assign-commanders',{method:'POST',data:{branchId:'all'}}),/保存できなかった/);assert.equal(fail.c.game,previous);assert.deepEqual(JSON.parse(previous.exportSave()).state,JSON.parse(before).state);
+test('local automatic placement and full replacement persist at zero command and roll back all roles on storage failure',async()=>{
+ const prepare=(full=false)=>{const h=setup();h.c.syncAccess.linked=false;h.c.game.state.command=0;h.c.game.state.army=[];
+  const ranked=h.c.game.officerViews(h.c.game.state.officers).sort((a,b)=>b.lead-a.lead||b.intellect-a.intellect||b.valor-a.valor);
+  h.c.game.state.branches=[{id:'edo_north',parentCastleId:'edo',direction:'north',level:2,fallen:false,commanders:full?[ranked.at(-1).id]:[]}];if(full)h.c.game.state.governors={farm:ranked[0].id};return h;};
+ for(const full of [false,true]){
+  const h=prepare(full),plan=h.c.game.branchCommanderAutoPlan('all'),resources=clone(h.c.game.state.resources),original=h.c.game,before=clone(original.state);assert(plan.ok);assert.equal(plan.replacedCount,full?1:0);
+  const result=await h.c.requestBranches('/branches/auto-assign-commanders',{method:'POST',data:{branchId:'all'}});assert(result.ok);assert.notEqual(h.c.game,original);assert.deepEqual(clone(original.state),before);assert.equal(h.c.game.state.command,0);assert.deepEqual(clone(h.c.game.state.resources),resources);assert.deepEqual(JSON.parse(h.stored.get('save')).state.branches[0].commanders,plan.formations[0].commanders);
+  if(full)assert(!Object.values(h.c.game.state.governors).includes(h.c.game.state.branches[0].commanders[0]),'Governor transfer and branch replacement commit together');
+  const fail=prepare(full),previous=fail.c.game,oldSave=previous.exportSave();fail.c.localStorage.setItem=()=>{throw Error('full');};
+  await assert.rejects(fail.c.requestBranches('/branches/auto-assign-commanders',{method:'POST',data:{branchId:'all'}}),/保存できなかった/);assert.equal(fail.c.game,previous);assert.deepEqual(JSON.parse(previous.exportSave()).state,JSON.parse(oldSave).state);
+ }
 });
-test('linked branch-first placement reconciles authoritative state before displaying its nested result',async()=>{
+test('linked full branch replacement reconciles authoritative state before displaying its nested result',async()=>{
  const h=setup(),results=[],toasts=[],gate=deferred();
  for(const officer of roster.slice(0,24))h.c.game._grantOfficerVariant(officer.id,'S');
  h.c.game.state.command=0;h.c.game.state.branches=[{id:'edo_north',parentCastleId:'edo',direction:'north',level:2,fallen:false},{id:'edo_east',parentCastleId:'edo',direction:'east',level:2,fallen:false}];
+ const ranked=h.c.game.officerViews(h.c.game.state.officers.filter(id=>!h.c.game.state.army.includes(id))).sort((a,b)=>b.lead-a.lead||b.intellect-a.intellect||b.valor-a.valor);h.c.game.state.branches.forEach((branch,index)=>branch.commanders=[ranked.at(-1-index).id]);
  const first=h.c.game.branchCommanderAutoPlan('all').assignments[0];assert(h.c.game.assignGovernor('farm',first.officerId).ok);
  const original=h.c.game,before=clone(original.state),canonical=SengokuEngine.fromSave(original.exportSave(),roster,{isAdmin:true,branchAuthority:{resolvedElapsedMs:original.branchResolvedElapsedMs},maintenanceAuthority:original.getMaintenanceAuthority()}),result=canonical.autoAssignGovernors();
- assert.equal(result.branchAssignedCount,2);assert(result.branchAssignments.some(row=>row.officerId===first.officerId&&row.fromBuildingId==='farm'));
+ assert.equal(result.branchAssignedCount,2);assert.equal(result.branchReplacedCount,2);assert(result.branchAssignments.some(row=>row.officerId===first.officerId&&row.fromBuildingId==='farm'));
  h.c.governorAssignmentResult=value=>results.push(value);h.c.playNote=()=>{};h.c.toast=(message,error)=>toasts.push({message,error});
  vm.runInContext(fn('autoAssignGovernors'),h.c);
  h.control.branchSequence=12;h.control.onPost=()=>gate.promise;h.control.onRefresh=async()=>{h.c.game=canonical;h.stored.set('save',canonical.exportSave());h.control.status.revision=9;return{ok:true};};

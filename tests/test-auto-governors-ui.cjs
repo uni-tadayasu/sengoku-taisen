@@ -33,6 +33,15 @@ function branchFixture(){
   assert(game.assignGovernor('farm',leader).ok);
   return{game,leader};
 }
+function fullBranchFixture(){
+  const game=new E({officers:plain(roster),seed:17,isAdmin:true}),army=game.state.army.slice();
+  for(const officer of roster.slice(0,24))game._grantOfficerVariant(officer.id,'S');
+  const candidates=game.officerViews(game.state.officers.filter(id=>!army.includes(id))).sort((a,b)=>b.lead-a.lead||b.intellect-a.intellect||b.valor-a.valor),strong=candidates.slice(0,2).map(o=>o.id),released=candidates.slice(-2).map(o=>o.id),owned=[...army,...strong,...released];
+  game.state.officers=owned;game.state.officerVariants=game.state.officerVariants.filter(key=>owned.includes(key.split(':')[0]));game.state.officerHealth.values=Object.fromEntries(Object.entries(game.state.officerHealth.values).filter(([id])=>owned.includes(id)));
+  game.state.command=0;game.state.governors={farm:strong[0],market:strong[1]};
+  game.state.branches=['north','east'].map((direction,i)=>({id:'edo_'+direction,parentCastleId:'edo',direction,level:2,fallen:false,commanders:[released[i]]}));
+  return{game,strong,released};
+}
 function harness(game=create()){
   const stored=new Map([['save',game.exportSave()]]),writes=[],events=[],modals=[],toasts=[],handlers=new Map();
   const flags={failSave:false},calls={render:0,header:0,sound:0},nodes=new Map([['#main',{}],['#save-indicator',{textContent:''}]]);
@@ -65,7 +74,7 @@ let count=0;async function test(name,run){await run();count++;console.log('PASS 
 (async()=>{
 await test('both town and facility screens render the assignment entry with live counts',()=>{
   const h=harness(),before=plain(h.game.state),status=plain(h.c.governorAssignmentStatus());
-  assert.deepEqual(status,{facilityCount:8,candidateCount:1,assignedCount:0});
+  assert.deepEqual({facilityCount:status.facilityCount,candidateCount:status.candidateCount,assignedCount:status.assignedCount},{facilityCount:8,candidateCount:1,assignedCount:0});
   for(const view of ['town','facilities']){
     h.c.currentView=view;h.c.render();
     assert.equal((h.c.lastMarkup.match(/data-action="auto-governors"/g)||[]).length,1);
@@ -114,7 +123,23 @@ await test('a real click fills branch army slots before governors in one saved c
   assert.equal(new Set(all).size,all.length,'No officer is assigned to two posts');assert(!governors.includes(leader));assert.deepEqual(h.game.state.governors,plan.governors);
   assert.equal(h.writes.length,1);assert.deepEqual(h.events,['sengoku:game-saved']);
   assert.deepEqual(JSON.parse(h.stored.get('save')).state.branches,h.game.state.branches);assert.deepEqual(E.fromSave(h.stored.get('save'),roster,{isAdmin:true}).state.governors,plan.governors);
-  assert(h.modals.at(-1).body.includes('支拠点の軍団へ2名を優先配置'));assert.equal(h.c.branchBookingPending,false);
+  assert(h.modals.at(-1).body.includes('2枠を変更'));assert.equal(h.c.branchBookingPending,false);
+});
+
+await test('one real click replaces full branches from governors and assigns the displaced officers back to facilities',async()=>{
+  const {game,strong,released}=fullBranchFixture(),h=harness(game),before=plain(game.state),plan=game.planGovernorAssignments();
+  assert.equal(plan.branchAssignedCount,2);assert.equal(plan.branchReplacedCount,2);h.c.refreshLiveControls();assert(h.controls.every(node=>!node.disabled));
+  await h.click();assert.equal(h.toasts.filter(row=>row.error).length,0,JSON.stringify(h.toasts));assert.notEqual(h.game,game);assert.deepEqual(game.state,before);assert.deepEqual(h.game.state.army,before.army);assert.deepEqual(h.game.state.resources,before.resources);assert.equal(h.game.state.command,0);
+  const posted=h.game.state.branches.flatMap(branch=>branch.commanders||[]);assert.deepEqual([...posted].sort(),[...strong].sort());assert(h.game.state.branches.every(branch=>branch.commanders.length===1));
+  const governors=Object.values(h.game.state.governors);for(const id of released)assert(governors.includes(id),'An officer displaced from a full branch can serve as governor');
+  const roles=[...h.game.state.army,...posted,...governors];assert.equal(new Set(roles).size,roles.length);assert.equal(h.writes.length,1);assert.deepEqual(h.events,['sengoku:game-saved']);
+  const loaded=E.fromSave(h.stored.get('save'),roster,{isAdmin:true});assert.deepEqual(loaded.state.branches,h.game.state.branches);assert.deepEqual(loaded.state.governors,h.game.state.governors);assert.match(h.modals.at(-1).body,/入れ替え/);
+  const stable=plain(h.game.state);await h.click();assert.deepEqual(h.game.state,stable);assert.equal(h.modals.at(-1).title,'現在の配置を維持しました');
+});
+
+await test('a failed replacement restores full branch formations and every governor atomically',async()=>{
+  const {game}=fullBranchFixture(),h=harness(game),before=plain(game.state),stored=h.stored.get('save'),branches=game.state.branches,governors=game.state.governors;
+  h.flags.failSave=true;await h.click();assert.equal(h.game,game);assert.equal(game.state.branches,branches);assert.equal(game.state.governors,governors);assert.deepEqual(game.state,before);assert.equal(h.stored.get('save'),stored);assert.equal(h.writes.length,0);assert.equal(h.events.length,0);assert.equal(h.modals.length,0);assert(h.toasts.some(row=>row.error));
 });
 
 await test('a failed branch-first save restores branch commanders and governors together without a success dialog',async()=>{
@@ -175,18 +200,19 @@ await test('verified staff assignments use shared built facilities but persist o
 });
 
 await test('no non-army candidates disables the entry and a normal click cannot save',async()=>{
-  const game=create(),owned=game.state.army.slice();game.state.officers=owned.slice();game.state.officerVariants=game.state.officerVariants.filter(key=>owned.includes(key.split(':')[0]));
+  const game=create(),owned=game.state.army.slice();game.state.officers=owned.slice();game.state.officerVariants=game.state.officerVariants.filter(key=>owned.includes(key.split(':')[0]));game.state.officerHealth.values=Object.fromEntries(Object.entries(game.state.officerHealth.values).filter(([id])=>owned.includes(id)));
   const h=harness(game),before=plain(game.state);h.c.refreshLiveControls();assert(h.controls.every(node=>node.disabled));
-  assert(h.c.governorAssignmentEntry().includes('本隊・支拠点に未配置の家臣'));
+  assert(h.c.governorAssignmentEntry().includes('本隊'));
   await h.click();assert.deepEqual(game.state,before);assert.equal(h.writes.length,0);assert.equal(h.modals.length,0);
 });
 
-await test('existing branch commanders are excluded from the candidate count and remain in their posts',async()=>{
+await test('already posted eligible branch commanders keep global optimization available without spare officers',async()=>{
   const {game,leader}=branchFixture();assert(game.assignBranchCommander('edo_north',leader).ok);
-  const owned=[...game.state.army,leader];game.state.officers=owned;game.state.officerVariants=game.state.officerVariants.filter(key=>owned.includes(key.split(':')[0]));
-  const h=harness(game),before=plain(game.state);assert.equal(h.c.governorAssignmentStatus().candidateCount,0);
-  h.c.refreshLiveControls();assert(h.controls.every(node=>node.disabled));assert(h.c.governorAssignmentEntry().includes('本隊・支拠点に未配置の家臣'));
-  await h.click();assert.equal(h.game,game);assert.deepEqual(game.state,before);assert.deepEqual(game.branch('edo_north').commanders,[leader]);assert.equal(h.writes.length,0);assert.equal(h.modals.length,0);
+  const owned=[...game.state.army,leader];game.state.officers=owned;game.state.officerVariants=game.state.officerVariants.filter(key=>owned.includes(key.split(':')[0]));game.state.officerHealth.values=Object.fromEntries(Object.entries(game.state.officerHealth.values).filter(([id])=>owned.includes(id)));
+  const h=harness(game),before=plain(game.state);assert.equal(h.c.governorAssignmentStatus().candidateCount,1);
+  h.c.refreshLiveControls();assert(h.controls.every(node=>!node.disabled));await h.click();
+  assert.deepEqual(game.state,before);assert.deepEqual(h.game.branch('edo_north').commanders,[leader]);assert.equal(h.modals.at(-1).title,'現在の配置を維持しました');
+  const positions=[...h.game.state.army,...h.game.state.branches.flatMap(branch=>branch.commanders||[]),...Object.values(h.game.state.governors)];assert.equal(new Set(positions).size,positions.length);
 });
 
 await test('result rows and facility labels escape officer names and omit labels for unbuilt facilities',async()=>{

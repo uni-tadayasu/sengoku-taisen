@@ -1135,36 +1135,53 @@
       return{branchId,limit,available:!reason,reason,commanders:assigned.map(describe),candidates};
     }
     branchCommanderAutoPlan(branchId){
-      const all=branchId==='all',ids=all?this.state.branches.map(branch=>branch.id).sort():[branchId];
-      const statuses=ids.map(id=>this.branchCommanderStatus(id));
-      if(!all&&!statuses[0]?.available)return{ok:false,code:'BRANCH_COMMANDER_UNAVAILABLE',message:statuses[0]?.reason||'自分の支拠点を選んでください。',assignments:[]};
-      const branches=statuses.filter(status=>status.available&&status.commanders.length<status.limit);
-      if(!branches.length)return{ok:false,code:'BRANCH_COMMANDER_NO_SLOTS',message:'配置できる支拠点の空き枠がありません。',assignments:[]};
-      // Main-army and existing branch posts are reserved. Branch defense takes
-      // priority over building posts, whose officers can transfer atomically.
-      // Highest owned rank is already reflected in each officer's abilities.
-      const candidates=branches[0].candidates.filter(row=>row.available).map(row=>({...row,...this.officer(row.id)}));
-      candidates.sort((a,b)=>b.lead-a.lead||b.intellect-a.intellect||b.valor-a.valor||RANKS.indexOf(b.rank)-RANKS.indexOf(a.rank)||(a.id<b.id?-1:a.id>b.id?1:0));
-      if(!candidates.length)return{ok:false,code:'BRANCH_COMMANDER_NO_CANDIDATES',message:'本隊・ほかの支拠点以外に配置できる武将がいません。',assignments:[]};
-      const assignments=[],counts=new Map(branches.map(branch=>[branch.branchId,branch.commanders.length]));
-      // Fill the first vacant position in every branch before the second, so
-      // a small available roster is distributed instead of filling one city.
-      for(let slot=0;slot<2;slot++)for(const branch of branches){
-        if(!candidates.length)break;
-        const count=counts.get(branch.branchId);
-        if(count>=branch.limit||count>slot)continue;
-        const officer=candidates.shift();counts.set(branch.branchId,count+1);
-        assignments.push({branchId:branch.branchId,branchName:BRANCH_BY_ID[branch.branchId].name,officerId:officer.id,name:officer.name,rank:officer.rank,lead:officer.lead,intellect:officer.intellect,valor:officer.valor,...(officer.fromBuildingId?{fromBuildingId:officer.fromBuildingId,fromBuildingName:officer.fromBuildingName}:{})});
+      const s=this.state,all=branchId==='all',records=new Map(s.branches.map(branch=>[branch.id,branch]));
+      const eligibility=id=>{const branch=records.get(id),reason=!branch?'支拠点が見つかりません。':branch.retreating?'帰還待機中の支拠点には武将を配置できません。':!this.canOwnCastle(branch.parentCastleId)||s.castles[branch.parentCastleId]?.owner!==s.clan?'自分の支拠点を選んでください。':branch.level<1?'支拠点の建設が完了してから武将を配置してください。':branch.fallen?'陥落した支拠点からは武将の配置を解除できます。':'';return{branch,reason};};
+      const targets=(all?[...records.keys()].sort():[branchId]).map(eligibility);
+      if(!all&&targets[0].reason)return{ok:false,code:'BRANCH_COMMANDER_UNAVAILABLE',message:targets[0].reason,assignments:[],formations:[]};
+      const branches=targets.filter(row=>!row.reason).map(({branch})=>({branchId:branch.id,branchName:BRANCH_BY_ID[branch.id].name,limit:branch.parentCastleId==='edo'?1:2,previousCommanders:[...(branch.commanders||[])]}));
+      if(!branches.length)return{ok:false,code:'BRANCH_COMMANDER_NO_SLOTS',message:'配置を見直せる、自分の稼働中の支拠点がありません。',assignments:[],formations:[]};
+      const targetIds=new Set(branches.map(branch=>branch.branchId)),reserved=new Set(s.army),previousBranch=new Map(),governors=new Map();
+      for(const branch of s.branches)for(const id of branch.commanders||[])if(targetIds.has(branch.id))previousBranch.set(id,branch.id);else reserved.add(id);
+      for(const [buildingId,id]of Object.entries(s.governors))governors.set(id,{fromBuildingId:buildingId,fromBuildingName:BUILDINGS.find(row=>row.id===buildingId)?.name||buildingId});
+      // Inspect the current formation as well as available officers. Another
+      // branch's post is reserved only when that branch is outside this plan.
+      // One batch reuses ranked officer data, without scanning the roster once
+      // for every branch. Tied abilities prefer an existing target commander.
+      const strength=(a,b)=>b.lead-a.lead||b.intellect-a.intellect||b.valor-a.valor||RANKS.indexOf(b.rank)-RANKS.indexOf(a.rank);
+      const candidates=this.officerViews([...new Set(s.officers)].filter(id=>!reserved.has(id))).filter(Boolean).sort((a,b)=>strength(a,b)||Number(previousBranch.has(b.id))-Number(previousBranch.has(a.id))||(a.id<b.id?-1:a.id>b.id?1:0));
+      if(!candidates.length)return{ok:false,code:'BRANCH_COMMANDER_NO_CANDIDATES',message:'本隊・対象外の支拠点以外に、編成できる武将がいません。',assignments:[],formations:[]};
+      const capacity=branches.reduce((sum,branch)=>sum+branch.limit,0),selected=candidates.slice(0,capacity),selectedIds=new Set(selected.map(officer=>officer.id)),rankById=new Map(selected.map((officer,index)=>[officer.id,index]));
+      const counts=new Map(branches.map(branch=>[branch.branchId,0])),selectedBefore=new Map(branches.map(branch=>[branch.branchId,branch.previousCommanders.filter(id=>selectedIds.has(id))]));let available=selected.length;
+      // Cover one position in each branch before using its second. Within a
+      // scarce roster, retain already covered branches before moving an equal
+      // formation merely because of identifier ordering.
+      for(let slot=0;slot<2;slot++)for(const branch of [...branches].filter(row=>row.limit>slot).sort((a,b)=>Number(selectedBefore.get(b.branchId).length>slot)-Number(selectedBefore.get(a.branchId).length>slot)||(a.branchId<b.branchId?-1:1))){if(!available)break;counts.set(branch.branchId,counts.get(branch.branchId)+1);available--;}
+      const retained=new Set(),formations=branches.map(branch=>{
+        const count=counts.get(branch.branchId),keep=new Set([...selectedBefore.get(branch.branchId)].sort((a,b)=>rankById.get(a)-rankById.get(b)).slice(0,count)),commanders=Array(count).fill(null);
+        branch.previousCommanders.forEach((id,index)=>{if(keep.has(id)&&index<count){commanders[index]=id;retained.add(id);}});
+        for(const id of branch.previousCommanders)if(keep.has(id)&&!retained.has(id)){commanders[commanders.indexOf(null)]=id;retained.add(id);}
+        return{...branch,commanders};
+      }),remaining=selected.filter(officer=>!retained.has(officer.id));
+      for(let slot=0;slot<2;slot++)for(const formation of formations)if(slot<formation.commanders.length&&!formation.commanders[slot])formation.commanders[slot]=remaining.shift().id;
+      const byId=new Map(selected.map(officer=>[officer.id,officer])),assignments=[];let replacedCount=0,removedCount=0;
+      for(const formation of formations){
+        const removed=formation.previousCommanders.filter(id=>!formation.commanders.includes(id));removedCount+=removed.length;
+        formation.changed=formation.previousCommanders.length!==formation.commanders.length||formation.commanders.some((id,index)=>id!==formation.previousCommanders[index]);
+        formation.commanders.forEach((id,slot)=>{if(formation.previousCommanders.includes(id))return;const officer=byId.get(id),previousOfficerId=removed.shift()||null,fromBranchId=previousBranch.get(id);if(previousOfficerId)replacedCount++;
+          assignments.push({branchId:formation.branchId,branchName:formation.branchName,slot,officerId:id,name:officer.name,rank:officer.rank,lead:officer.lead,intellect:officer.intellect,valor:officer.valor,previousOfficerId,...(governors.get(id)||{}),...(fromBranchId?{fromBranchId,fromBranchName:BRANCH_BY_ID[fromBranchId].name}:{})});
+        });
       }
-      const remainingSlots=branches.reduce((sum,branch)=>sum+branch.limit-counts.get(branch.branchId),0);
-      return{ok:true,branchId,assignments,remainingSlots,commandCost:0,message:'統率・知略・武勇を優先し、奉行より先に支拠点の空き枠へ配置します。'};
+      const assignedCount=selected.length,changedCount=formations.reduce((sum,formation)=>sum+Array.from({length:Math.max(formation.previousCommanders.length,formation.commanders.length)},(_,slot)=>Number(formation.previousCommanders[slot]!==formation.commanders[slot])).reduce((count,value)=>count+value,0),0),retainedCount=retained.size,releasedCount=[...previousBranch.keys()].filter(id=>!selectedIds.has(id)).length,remainingSlots=capacity-assignedCount,changed=formations.some(formation=>formation.changed);
+      const message=changed?`${changedCount}枠の配置を見直します。${replacedCount?`既存の武将を${replacedCount}名入れ替えます。`:''}${remainingSlots?`武将が足りないため、残り${remainingSlots}枠は空けてあります。`:''}`:`現在の支拠点の編成が最適です。${retainedCount}名の配置を維持します。`;
+      return{ok:true,branchId,assignments,formations,assignedCount,changedCount,replacedCount,retainedCount,releasedCount,removedCount,addedCount:assignments.length-replacedCount,remainingSlots,changed,commandCost:0,message};
     }
     autoAssignBranchCommanders(branchId){
-      const plan=this.branchCommanderAutoPlan(branchId);if(!plan.ok)return plan;
-      for(const assignment of plan.assignments){const branch=this.state.branches.find(row=>row.id===assignment.branchId);branch.commanders=[...(branch.commanders||[]),assignment.officerId];for(const id of Object.keys(this.state.governors))if(this.state.governors[id]===assignment.officerId)delete this.state.governors[id];}
-      const message=`${plan.assignments.length}名の武将を支拠点の空き枠へおまかせ配置しました。${plan.remainingSlots?'配置できる武将が足りないため、残り'+plan.remainingSlots+'枠は空けてあります。':''}`;
-      this.log(message,'officer');
-      return{...plan,message,changed:true};
+      const plan=this.branchCommanderAutoPlan(branchId);if(!plan.ok||!plan.changed)return plan;
+      for(const formation of plan.formations){const branch=this.state.branches.find(row=>row.id===formation.branchId);branch.commanders=[...formation.commanders];}
+      const assigned=new Set(plan.formations.flatMap(formation=>formation.commanders));for(const id of Object.keys(this.state.governors))if(assigned.has(this.state.governors[id]))delete this.state.governors[id];
+      const message=plan.message.replace('見直します。','見直しました。').replace('入れ替えます。','入れ替えました。');this.log(message,'officer');
+      return{...plan,message};
     }
     assignBranchCommander(branchId,officerId){
       const status=this.branchCommanderStatus(branchId),candidate=status.candidates.find(row=>row.id===officerId);
@@ -1598,7 +1615,7 @@
     }
     planGovernorAssignments(){
       if(this.isStaff&&!STAFF_VIEW.get(this))return fail('京都御所の共同拠点を確認してから、奉行を配置してください。');
-      const s=this.state,branchPlan=this.branchCommanderAutoPlan('all'),branchAssignments=branchPlan.ok?branchPlan.assignments:[],branchAssignedCount=branchAssignments.length,facilities=BUILDINGS.filter(b=>s.buildings[b.id]>0),army=new Set([...s.army,...s.branches.flatMap(branch=>branch.commanders||[]),...branchAssignments.map(row=>row.officerId)]);
+      const s=this.state,branchPlan=this.branchCommanderAutoPlan('all'),branchAssignments=branchPlan.ok?branchPlan.assignments:[],branchFormations=branchPlan.ok?branchPlan.formations:[],branchAssignedCount=branchAssignments.length,branchChangedCount=branchPlan.changedCount||0,branchReplacedCount=branchPlan.replacedCount||0,branchRetainedCount=branchPlan.retainedCount||0,branchReleasedCount=branchPlan.releasedCount||0,formations=new Map(branchFormations.map(formation=>[formation.branchId,formation.commanders])),facilities=BUILDINGS.filter(b=>s.buildings[b.id]>0),army=new Set([...s.army,...s.branches.flatMap(branch=>formations.get(branch.id)||branch.commanders||[])]);
       const officers=this.officerViews([...new Set(s.officers)].filter(id=>!army.has(id)).sort()).filter(Boolean);
       const facilityCount=facilities.length,candidateCount=officers.length,columnCount=Math.max(facilityCount,candidateCount),bonuses=facilities.map(b=>officers.map(o=>governorBonusForCategory(b.category,o)));
       // One point of actual suitability outweighs every possible retention
@@ -1613,13 +1630,13 @@
       // An explicit reassignment also returns dormant staff appointments on
       // unbuilt facilities to the candidate pool; saves and reloads never do so.
       const changedCount=[...new Set([...Object.keys(s.governors),...Object.keys(governors)])].filter(id=>(s.governors[id]||null)!==(governors[id]||null)).length;
-      const clearedCount=Object.keys(s.governors).filter(id=>s.governors[id]&&!governors[id]).length,assignedCount=Object.keys(governors).length,vacantCount=facilityCount-assignedCount,changed=changedCount>0||branchAssignedCount>0;
+      const clearedCount=Object.keys(s.governors).filter(id=>s.governors[id]&&!governors[id]).length,assignedCount=Object.keys(governors).length,vacantCount=facilityCount-assignedCount,changed=changedCount>0||branchChangedCount>0;
       const totalBonus=assignments.reduce((sum,a)=>sum+a.bonus,0),previousTotalBonus=assignments.reduce((sum,a)=>sum+a.previousBonus,0);
       const governorMessage=!facilityCount?'建設済みの施設がありません。':!candidateCount?'軍団に編成されていない武将がいません。':changed?`奉行を${assignedCount}施設へ配置しました。${vacantCount?`残り${vacantCount}施設は未任命です。`:''}`:'奉行はすでに適性に合う配置です。';
-      const message=(branchAssignedCount?`支拠点へ${branchAssignedCount}名を優先配置しました。`:'')+governorMessage;
-      return{ok:true,changed,governors,assignments,branchAssignments,branchAssignedCount,facilityCount,candidateCount,assignedCount,vacantCount,changedCount,clearedCount,totalBonus,previousTotalBonus,message};
+      const message=(branchChangedCount?`支拠点の${branchChangedCount}枠を優先して編成し直しました。`:'')+governorMessage;
+      return{ok:true,changed,governors,assignments,branchAssignments,branchFormations,branchAssignedCount,branchChangedCount,branchReplacedCount,branchRetainedCount,branchReleasedCount,facilityCount,candidateCount,assignedCount,vacantCount,changedCount,clearedCount,totalBonus,previousTotalBonus,message};
     }
-    autoAssignGovernors(){const plan=this.planGovernorAssignments();if(plan.ok&&plan.changed){for(const assignment of plan.branchAssignments){const branch=this.state.branches.find(row=>row.id===assignment.branchId);branch.commanders=[...(branch.commanders||[]),assignment.officerId];}this.state.governors={...plan.governors};}return plan;}
+    autoAssignGovernors(){const plan=this.planGovernorAssignments();if(plan.ok&&plan.changed){for(const formation of plan.branchFormations){const branch=this.state.branches.find(row=>row.id===formation.branchId);branch.commanders=[...formation.commanders];}this.state.governors={...plan.governors};}return plan;}
     _recruitCostMultiplier(){return(1-this.state.tech.conscription*.08)*(this.state.clan==='伊達家'?.85:1)/this._governorBonus('barracks');}
     recruitTroopCost(amount){const n=int(amount),m=this._recruitCostMultiplier();return{gold:Math.ceil(n*.32*m),rice:Math.ceil(n*.45*m),wood:0,stone:0};}
     _previewRecruitment(amount,income,multiplier,capacity){
