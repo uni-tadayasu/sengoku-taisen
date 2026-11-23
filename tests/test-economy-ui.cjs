@@ -13,10 +13,10 @@ function harness(game=new E({seed:4910})){
   resNames:{gold:'金銭',rice:'兵糧',wood:'木材',stone:'石材'},resIcons:{gold:'coins',rice:'wheat',wood:'tree',stone:'mountain'},icon:name=>`<svg data-icon-name="${name}"></svg>`,
   window:{SengokuStableDOM:stable,SengokuWorldClock:{snapshot:()=>({ready:true,mode:'shared',clock})}},startPending:false,activeModal:'',settings:{sound:false},
   getEvaluation:()=>({}),refreshEvaluationUI(){},evaluationEntry:()=>'',refreshTouchHeaderStatus(){},date:()=>({year:1560,month:1,season:'春'}),clanInfo:()=>({leader:'織田信長'}),clanCrest:()=>'',
-  heading:title=>`<h1>${title}</h1>`,maximumRecruitAmount:()=>0,recruitLimitText:()=>'',costHtml:()=>'',portrait:()=>'',skillNames:{},
+  heading:title=>`<h1>${title}</h1>`,hasResources:cost=>D.resources.every(key=>game.state.resources[key]>=(cost?.[key]||0)),refreshLiveControls(){const income=game.income();c.refreshRecruitmentPreview(income,game.recruitmentBudget(income));},recruitLimitText:()=>'',costHtml:()=>'',portrait:()=>'',skillNames:{},
   facilityCategory:'all',facilityQuery:'',categoryNames:{},staffBaseNotice:()=>'',governorAssignmentEntry:()=>'',facilitiesResults:()=>'<input id="facility-search-test" value="">'
  };
- vm.createContext(c);vm.runInContext(['patchHTML','economyNumber','economyBalanceTitle','economyPanel','refreshEconomyPanels','facilityMaintenanceHtml','renderHeader','renderArmy','renderFacilities'].map(fn).join('\n'),c);
+ vm.createContext(c);vm.runInContext(['patchHTML','economyNumber','economyBalanceTitle','economyPanel','refreshEconomyPanels','facilityMaintenanceHtml','recruitmentPreviewHtml','refreshRecruitmentPreview','selectRecommendedRecruitment','selectMaximumRecruitment','maximumRecruitAmount','recruitLimitText','renderHeader','renderArmy','renderFacilities'].map(fn).join('\n'),c);
  return{c,doc,host,game,clock};
 }
 let count=0;function test(name,run){run();count++;console.log('PASS '+name);}
@@ -25,10 +25,17 @@ test('army and construction ledger show the same four-resource production, costs
  const h=harness();
  for(const view of ['Army','Facilities']){
   h.host.innerHTML=h.c['render'+view]();const panel=h.host.querySelector('[data-economy-panel]'),income=h.game.income();
-  assert(panel,view);assert.equal(panel.querySelectorAll('.economy-resource').length,4);assert.equal(panel.querySelectorAll('[data-economy-rate]').length,16);
-  for(const node of panel.querySelectorAll('[data-economy-rate]')){const kind=node.dataset.economyRate,key=node.dataset.economyResource;assert.equal(node.textContent,signed(income[kind][key],kind.endsWith('Upkeep')));}
+  assert(panel,view);assert.equal(panel.querySelectorAll('.economy-resource').length,4);assert.equal(panel.querySelectorAll('[data-economy-rate]').length,20);
+  for(const node of panel.querySelectorAll('[data-economy-rate]')){const kind=node.dataset.economyRate,key=node.dataset.economyResource;assert.equal(node.textContent,signed(income[kind][key],kind.endsWith('Upkeep')||kind==='surplusAdjustment'));}
   assert.equal(panel.querySelector('[data-economy-total]').textContent,format(income.totalTroops));assert.match(panel.textContent,/施設・城の維持費/);assert.match(panel.textContent,/60秒で1か月/);assert.match(panel.textContent,/残高は0未満/);assert.match(panel.textContent,/勾玉・威信は維持費の対象外/);
  }
+});
+
+test('developed surplus is listed after unchanged fees and the header displays the amount actually earned',()=>{
+ const h=harness();for(const row of D.buildings)h.game.state.buildings[row.id]=32;h.game.state.troops=100;
+ h.host.innerHTML='<div id="resources"></div><div id="calendar"></div><div id="clan-panel"></div><button id="sound-button"></button>'+h.c.economyPanel('army');h.c.renderHeader();const income=h.game.income();
+ for(const key of D.resources){assert(income.surplusAdjustment[key]>0);assert.equal(income.net[key],income.gross[key]-income.troopUpkeep[key]-income.facilityUpkeep[key]-income.surplusAdjustment[key]);assert.equal(h.doc.querySelector(`[data-economy-rate="surplusAdjustment"][data-economy-resource="${key}"]`).textContent,signed(income.surplusAdjustment[key],true));assert.equal(h.doc.querySelector(`#header-gain-${key}`).textContent,signed(income.net[key]));assert.match(h.doc.querySelector(`#header-resource-${key}`).title,/余剰生産の調整/);}
+ assert.match(h.host.textContent,/差引が実際に増減する額/);assert.match(h.host.textContent,/現在の備蓄・報酬は、この調整で減りません/);
 });
 
 test('large armies show explicit negative gold and rice net costs, while zero troop material costs stay zero',()=>{
@@ -60,6 +67,28 @@ test('facility previews separate completed monthly cost from a future level with
  h.host.innerHTML=h.c.facilityMaintenanceHtml('farm',2,5);assert.match(h.host.textContent,/現在 Lv\.2/);assert.match(h.host.textContent,/Lv\.5完成後/);
  for(const row of h.host.querySelectorAll('[data-maintenance-resource]')){const key=row.dataset.maintenanceResource;assert.equal(row.querySelector('[data-maintenance-current]').textContent,format(h.game.facilityUpkeep('farm',2)[key]));assert.equal(row.querySelector('[data-maintenance-next]').textContent,format(h.game.facilityUpkeep('farm',5)[key]));}
  assert.equal(JSON.stringify(h.game.state),before,'reading a preview never changes balances, jobs or levels');h.host.innerHTML=h.c.facilityMaintenanceHtml('farm',32);assert.equal(h.host.querySelector('[data-maintenance-next]'),null);
+});
+
+test('recruitment begins within the shared recommendation and previews both post-payment assets and full monthly upkeep',()=>{
+ const h=harness();h.game.state.buildings.barracks=10;h.game.state.troops=100;h.game.state.resources.gold=3200;h.game.state.resources.rice=3000;
+ const income=h.game.income(),budget=h.game.recruitmentBudget(income);assert(budget.recommendedMax>=100&&budget.recommendedMax<budget.affordableMax);
+ h.host.innerHTML=h.c.renderArmy();const input=h.doc.querySelector('#recruit-amount');assert.equal(input.value,String(Math.min(1000,budget.recommendedMax)));assert.equal(h.doc.querySelector('[data-recruit-recommended]').textContent,format(budget.recommendedMax));
+ const verify=()=>{const preview=h.game.previewRecruitment(Number(input.value));for(const kind of ['balances','net'])for(const key of ['gold','rice'])assert.equal(h.doc.querySelector(`[data-recruit-preview="${kind}"][data-recruit-resource="${key}"]`).textContent,kind==='net'?signed(preview[kind][key]):format(preview[kind][key]));};verify();
+ h.c.selectRecommendedRecruitment();assert.equal(input.value,String(budget.recommendedMax));verify();
+ h.c.selectMaximumRecruitment();assert.equal(input.value,String(budget.affordableMax),'manual maximum is not restricted to the recommendation');verify();
+ assert.equal(h.game.previewRecruitment(Number(input.value)).withinReserve,false);
+});
+
+test('unfunded or unsustainable armies start at the legal minimum and never present a sub-100 recommendation',()=>{
+ for(const scenario of ['reserve','upkeep']){const h=harness();h.game.state.troops=100;h.game.state.buildings.barracks=10;if(scenario==='reserve'){h.game.state.resources.gold=499;h.game.state.resources.rice=999;}else{h.game.state.castles[h.game.state.home].troops=100000;h.game.state.resources.gold=9000000;h.game.state.resources.rice=9000000;}assert(h.game.recruitmentBudget().recommendedMax<100);h.host.innerHTML=h.c.renderArmy();assert.equal(h.doc.querySelector('#recruit-amount').value,'100');assert.equal(h.doc.querySelector('[data-recruit-recommended]').textContent,'0');assert.equal(h.doc.querySelector('[data-action="recruit-balanced"]').hasAttribute('disabled'),true);if(scenario==='upkeep')for(const key of ['gold','rice'])assert(h.doc.querySelector(`[data-recruit-preview="net"][data-recruit-resource="${key}"]`).classList.contains('is-negative'));}
+});
+
+test('recruitment refreshes preserve typed amounts, focus, selection and all preview nodes',()=>{
+ const h=harness();h.game.state.buildings.barracks=10;h.game.state.troops=100;h.host.innerHTML=h.c.renderArmy();const input=h.doc.querySelector('#recruit-amount'),preview=h.doc.querySelector('.recruit-preview'),nodes=[...preview.querySelectorAll('*')];input.value='347';input.setSelectionRange(1,2,'backward');input.focus();h.host.scrollTop=290;
+ for(let i=0;i<12;i++){h.game.state.resources.gold+=10;h.game.state.castles[h.game.state.home].troops+=100;const income=h.game.income();h.c.refreshRecruitmentPreview(income,h.game.recruitmentBudget(income));}
+ assert.equal(input.value,'347');assert.strictEqual(h.doc.activeElement,input);assert.deepEqual([input.selectionStart,input.selectionEnd,input.selectionDirection],[1,2,'backward']);assert.equal(h.host.scrollTop,290);assert.strictEqual(h.doc.querySelector('.recruit-preview'),preview);assert(nodes.every(node=>node.isConnected));
+ input.value='';h.c.refreshLiveControls();for(const node of preview.querySelectorAll('[data-recruit-preview]'))assert.equal(node.textContent,'—');
+ let removals=0;h.doc.onRemove=()=>{removals++;};h.c.refreshLiveControls();assert.equal(removals,0,'unchanged preview does not rewrite text');
 });
 
 console.log(`${count} economy UI checks passed with actual app helpers and engine totals. No live requests.`);

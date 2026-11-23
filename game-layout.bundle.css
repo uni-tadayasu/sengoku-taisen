@@ -6354,6 +6354,17 @@ body.at-title #app { display: none; }
 #app .topbar .resource-gain.is-negative { color: #ffaaa0; }
 #app.chronicle-shell .chronicle-ledger .resource-gain.is-negative { color: #913b2c; }
 .upgrade-cost-note{margin:.35rem 0 .9rem;font-size:.875rem;line-height:1.6;overflow-wrap:anywhere}
+#main .recruit-preview { margin: 14px 0; padding: 12px; border: 1px solid var(--line); border-radius: 5px; }
+#main .recruit-recommendation { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; margin-bottom: 10px; }
+#main .recruit-recommendation p { font-size: 14px; }
+#main .recruit-recommendation strong { display: inline-block; min-width: 8ch; white-space: nowrap; font-variant-numeric: tabular-nums; }
+#main .recruit-recommendation .button { min-height: 44px; padding: 8px 12px; font-size: 14px; }
+#main .recruit-preview table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 14px; line-height: 1.5; }
+#main .recruit-preview th, #main .recruit-preview td { padding: 7px 3px; border-bottom: 1px solid var(--line); text-align: right; font-variant-numeric: tabular-nums; }
+#main .recruit-preview th:first-child { text-align: left; }
+#main .recruit-preview td { white-space: nowrap; }
+#main .recruit-preview td.is-negative { color: #ffaaa0; }
+#main .recruit-preview-note { margin-top: 10px; color: var(--muted); font-size: 13px; line-height: 1.65; }
 
 /* live-updates.css */
 /* Keep gameplay clocks stable without a routine synchronization status row. */
