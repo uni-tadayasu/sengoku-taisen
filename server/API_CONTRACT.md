@@ -1272,9 +1272,9 @@ subscription duplication guards, risk review, cross-surface ownership marks, pub
 independence. `scripts/test-public-identity.mjs` verifies role-free general DTOs,
 neutral historical notices and unchanged self/management authorization. It does not make real payments or modify production customers.
 
-## Timed NPC battle events (Ver.3.17.1)
+## Timed battle events
 
-The `timedEvents:true` health feature exposes a separate event system. The current primary operator supplies a battle name and a duration of 1–7 days, reviews the generated draft, and explicitly publishes it. Staff membership does not grant event administration. The planner is the built-in, bounded `game-ai-v1` game AI: it selects and evaluates fixed battle templates and tactics. It does not contact an external language model, interpret executable prompts, or accept client-supplied enemy strengths, scores, reward bundles or plans.
+The `timedEvents:true` health feature exposes a separate event system. The current primary operator selects a battle from the catalogue and a duration of 1–7 days, reviews the generated draft, and explicitly publishes it. Staff membership does not grant event administration. The planner is the built-in, bounded `game-ai-v1` game AI: it selects and evaluates fixed battle templates and tactics. It does not contact an external language model, interpret executable prompts, or accept client-supplied enemy strengths, scores, reward bundles or plans.
 
 ### Routes and visibility
 
@@ -1283,15 +1283,16 @@ All routes are under `/api/v1`. Event list/detail GETs accept optional authentic
 | Method/path | Body | Success response |
 | --- | --- | --- |
 | GET `/events` | — | `{ok,serverNow,events:[event]}` |
+| GET `/events/catalog` | — | `{ok,version,battles:[{id,name,category,themeId,unificationEligible,description}]}` |
 | GET `/events/:eventId` | — | `{ok,serverNow,event,progress,leaderboard}` |
 | GET `/admin/events` | — | `{ok,serverNow,events:[event]}` |
-| POST `/admin/events/generate` | `{name,durationDays,requestId}` | `{ok,serverNow,event,idempotent}` |
+| POST `/admin/events/generate` | `{battleId,durationDays,requestId}` | `{ok,serverNow,event,idempotent}` |
 | POST `/admin/events/:eventId/publish` | `{requestId}` | `{ok,serverNow,event,idempotent}` |
 | POST `/admin/events/:eventId/end` | `{requestId}` | `{ok,serverNow,event,idempotent}` |
 | POST `/admin/events/:eventId/discard` | `{requestId}` | `{ok,serverNow,event,idempotent}` |
 | POST `/events/:eventId/battle` | `{stageId,tactic,requestId,deviceId,expectedRevision}` | Full sync snapshot plus `{serverNow,event,progress,battle,rewardMailIds,idempotent}` |
 
-`eventId` is `ev_` followed by 32 lowercase hexadecimal characters. A name is trimmed, NFC-normalized and limited to 1–60 Unicode code points; embedded newlines and control characters are rejected. `durationDays` must be an integer, not a numeric string. Extra body fields are rejected. An operator may retain up to 30 unpublished drafts; `discard` frees a slot and can only act on an unpublished draft. Draft generation is limited to 20 requests per minute per operator, management mutations to 30 per minute, and new battle requests to 30 per minute per identity. Successful replays bypass these new-operation budgets.
+`eventId` is `ev_` followed by 32 lowercase hexadecimal characters. New drafts require a catalogue `battleId`. The former `{name,durationDays,requestId}` body can replay a corresponding older receipt. `durationDays` must be an integer, not a numeric string. Extra body fields are rejected. An operator may retain up to 30 unpublished drafts; `discard` frees a slot and can only act on an unpublished draft. Draft generation is limited to 20 requests per minute per operator, management mutations to 30 per minute, and new battle requests to 30 per minute per identity. Successful replays bypass these new-operation budgets.
 
 Public lists contain at most 20 published events with the currently active event first. Drafts and discarded plans return `EVENT_NOT_FOUND` (404) through public details, including when the viewer is the operator. The operator list contains at most 50 rows, prioritizes active events and drafts, and omits discarded plans. A stored discard receipt remains replayable and returns the current discarded DTO. A second publish request cannot restart or modify a published plan.
 
@@ -1312,7 +1313,11 @@ event = {
 }
 ```
 
-Every plan has three immediately selectable stages (`stage-1` through `stage-3`), five allowed tactics (`balanced`, `charge`, `raid`, `siege`, `defend`), and three milestone rewards (`milestone-1` through `milestone-3`). Names, descriptions and battle logs are ordinary text and must be escaped when rendered. The generated enemies, tactics and rewards remain unchanged after publication. Existing Ver.3.17.0 plans with `dailyAttempts:3` are normalized at the response/battle boundary to `commandCost:1`, with only the old participation rule replaced. Their stored plan, enemies, reward thresholds and gift amounts are not regenerated or rewritten. The seed and creator identity are private; event DTOs do not disclose operator/staff identities, roles, generation internals or request hashes.
+Every plan has three immediately selectable stages (`stage-1` through `stage-3`), five allowed tactics (`balanced`, `charge`, `raid`, `siege`, `defend`), and three milestone rewards (`milestone-1` through `milestone-3`). Names, descriptions and battle logs are ordinary text and must be escaped when rendered. Publication fixes the stage templates, fallback enemies, tactic modifiers and rewards. Existing Ver.3.17.0 plans with `dailyAttempts:3` are normalized at the response/battle boundary to `commandCost:1`, with only the old participation rule replaced. Their stored plan, enemies, reward thresholds and gift amounts are not regenerated or rewritten. The seed and creator identity are private; event DTOs do not disclose operator/staff identities, roles, generation internals or request hashes.
+
+Public event details and event management action responses resolve the selected battle's castle and return `event.opponent`, either `null` or `{castleId,castleName,lordName,defenseTroops,defensePower}`. Event lists carry the stored plan only. Each castle scenario and the historical scenarios mapped to a specific castle use that castle's current defender. Older plans without a catalogue ID use the title only when it identifies one mapped castle unambiguously. Ordinary castles use their current resident lord. Edo uses its designated defender, and Nijo, Osaka, Nagoya and Kyoto Gosho require a single eligible defender. An empty castle, an ambiguous defender, a field battle without a mapped castle, or a roaming encounter uses the plan's stage-specific enemy.
+
+When an opponent is present, all three stages use its field `defensePower` as the enemy strength, including eligible alliance troops already stationed at that castle. Adviser predictions and battle resolution compare that strength with the participant's saved field attack power adjusted by the chosen stage's tactic multiplier. The server resolves the garrison again for a new sortie and checks it at commit. The battle response records the opponent at that sortie in `battle.opponent`, while `event.opponent` reports the current preview. A replay preserves the original battle, including its recorded strength and opponent. Earlier receipts may omit `battle.opponent`. Event combat leaves the defender's troops, resources and castle ownership intact.
 
 ### Clock, progress and battle results
 

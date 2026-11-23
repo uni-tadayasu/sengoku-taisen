@@ -352,6 +352,66 @@ test('live UI updates preserve focused tactic, selected battlefield and scroll p
   assert.equal(s.get('[data-events-generator]').hidden, true); assert.equal(s.get('[data-events-battle-submit]').disabled, false); assert.equal(s.badge.textContent, '開催中'); s.ui.close(); assert.equal(s.doc.activeElement, s.entry); s.ui.dispose();
 });
 
+
+test('public castle defenders are bounded, escape lord names and exclude private player fields', () => {
+  const opponent = { castleId:'edo', castleName:'江戸城', lordName:'<刀>', defenseTroops:2100, defensePower:8700, playerId:'private-id', isAdmin:true, token:'secret' };
+  const raw = catalogEventFixture('castle:edo', {opponent}), event = cleanEvent(raw);
+  assert.deepEqual(Object.keys(event.opponent).sort(), ['castleId','castleName','defensePower','defenseTroops','lordName']);
+  const html = detailMarkup(event,false);
+  assert(html.includes('&lt;刀&gt;') && !html.includes('<刀>') && !html.includes('private-id') && !html.includes('secret'));
+  for(const invalid of [{defensePower:0},{defenseTroops:-1},{castleId:'../edo'},{lordName:''}])assert.equal(cleanEvent({...raw,opponent:{...opponent,...invalid}}),null);
+  assert.equal(cleanEvent({...raw,opponent:null}).opponent,null);
+  delete raw.opponent;assert(!Object.hasOwn(cleanEvent(raw),'opponent'));
+});
+
+test('the live garrison, chosen tactic and original battle report stay distinct when the next engagement changes', async () => {
+  const event = catalogEventFixture('castle:edo'), s = uiSetup({events:[event], progress:advisedProgressFixture(event)});
+  const first = {castleId:'edo',castleName:'江戸城',lordName:'先の城主',defenseTroops:2000,defensePower:7500};
+  const second = {...first,lordName:'次の城主',defenseTroops:3100,defensePower:13500};
+  let live = first;
+  function forecasts(result,defender) {
+    for(const advice of result.progress?.advisers||[]){
+      for(const option of advice.options){
+        option.enemyPower=defender?.defensePower||event.plan.stages.find(stage=>stage.id===advice.stageId).enemyPower;
+        option.winChance=option.tactic==='charge'?62:defender===first?41:29;
+      }
+      Object.assign(advice,advice.options.find(option=>option.tactic===advice.tactic));
+    }
+  }
+  s.setHandler(async(route,settings,base)=>{
+    const result=await base(route,settings);
+    if(route==='/events/'+event.id){result.event.opponent=live;forecasts(result,live);}
+    if(route.endsWith('/battle')){
+      result.battle.opponent=first;result.battle.enemyPower=first.defensePower;result.battle.winChance=41;
+      live=second;result.event.opponent=live;forecasts(result,live);
+    }
+    return result;
+  });
+  await s.ui.open();
+  const select=s.get('#events-tactic'),main=s.get('[data-events-main]'),stats=()=>s.get('.events-adviser-stats').textContent;
+  for(const stage of event.plan.stages)assert.equal(s.get('[data-event-stage-power="'+stage.id+'"]').textContent,'7,500');
+  assert(s.get('[data-event-opponent]').textContent.includes('先の城主'));assert.match(stats(),/41%/);
+  s.controller.chooseTactic('charge');assert.match(stats(),/62%/);
+  s.controller.chooseStage('stage_2');s.controller.chooseTactic('balanced');await s.controller.battle();
+  const report=s.get('[data-event-battle-result]').textContent;
+  assert(report.includes('先の城主')&&report.includes('7,500')&&!report.includes('次の城主'));
+  assert(s.get('[data-event-opponent]').textContent.includes('次の城主'));
+  assert.match(stats(),/29%/);assert(s.get('[data-event-stage-power="stage_2"]').textContent==='13,500');
+  select.focus();main.scrollTop=335;live=null;await s.ui.refresh();
+  assert.equal(s.get('#events-tactic'),select);assert.equal(s.doc.activeElement,select);assert.equal(main.scrollTop,335);
+  assert.equal(s.get('[data-event-stage-power="stage_2"]').textContent,event.plan.stages[1].enemyPower.toLocaleString('ja-JP'));
+  assert(!s.get('[data-event-opponent]').textContent.includes('次の城主'));
+  assert.equal(s.get('[data-event-battle-result]').textContent,report);s.ui.dispose();
+});
+
+test('a visitor can see a resident castle’s force without personal battle forecasts or controls to dispatch',async()=>{
+  const event=catalogEventFixture('castle:edo',{opponent:{castleId:'edo',castleName:'江戸城',lordName:'守城の主',defenseTroops:700,defensePower:3080}});
+  const guest={...contextFixture(),user:null,playerId:''},s=uiSetup({context:guest,events:[event]});
+  await s.ui.open();assert(s.get('[data-event-opponent]').textContent.includes('守城の主'));
+  assert.equal(s.get('[data-event-stage-power="stage_1"]').textContent,'3,080');
+  assert.equal(s.get('.events-adviser-stats'),null);assert.equal(s.get('[data-events-battle-submit]').disabled,true);s.ui.dispose();
+});
+
 test('the one-second UI tick reflects command recovery without a fetch, form replacement or focus loss', async () => {
   const live = { ...contextFixture(), commands: { current: 0, max: 5, cost: 1, ready: true, writable: true, message: '' } };
   const s = setup({ context: live }), { doc } = documentFixture(), timers = new Map(); let nextTimer = 0; s.controller.dispose();

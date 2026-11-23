@@ -22,7 +22,7 @@ import {handleBranches,projectBranchState,applyBranchProgress,reconcileBranchPro
 import {relocateResidence} from './relocation.js';
 import {ensureResidency,residencySnapshot,residencyDirectory,residencyStart,initialResidencyStatements,residencyTargetGuard,prepareResidencySuccession,prepareResidencyCpuLosses} from './residency.js';
 const API = '/api/v1';
-const API_VERSION = '4.9.6';
+const API_VERSION = '4.9.7';
 const API_FEATURES = Object.freeze({trades:true,moderation:true,premium:true,timedEvents:true,troopTrades:true,roamingBattles:true,roamingDeployment:true,covertDispatch:true,privatePlayerRoles:true,guildIcons:true,court:true,kyotoGosho:true,branches:true,branchBattles:true,branchFacilities:true,audioCalls:true,progression:true,armyPresets:true,allianceStrategy:true,sharedConquest:true,newcomerProtection:true,webPush:true,battleAdviser:true,battleCatalog:true,eventBattleRewards:true,shogunate:true,attackTravel:true,castleResidency:true,residencyRelocation:true});
 const MAX_BODY = 16 * 1024;
 const MAX_SAVE_BODY = 2 * 1024 * 1024;
@@ -1826,6 +1826,9 @@ function fieldArmy(army,variants) {
   const scores=army.map(id=>Math.max(...RANKS.map((rank,i)=>variants.includes(id+':'+rank)?powers[i]:0))||1);
   return {officerCount:army.length,rankPower:army.length?Math.round(scores.reduce((a,b)=>a+b,0)/army.length*1000)/1000:.75};
 }
+function fieldAttackPower(troops,profile,modifier=1){
+  return Math.max(1,Math.round(troops*(.7+.5*profile.morale/100)*(1+profile.tech.discipline*.06+profile.tech.gunnery*.05)*fieldArmy(profile.army,profile.officerVariants).rankPower*modifier));
+}
 function fieldDefense(s,tactic='balanced',siege=0,castleId=s.home) {
   const home=s.castles[castleId],isHome=castleId===s.home,force=home.troops+Math.floor(s.troops*(isHome?.45:.18)),army=fieldArmy(s.army,s.officerVariants);
   const wallFactor=Math.max(.2,1-siege*.12)*(tactic==='siege'?.5:1);
@@ -1904,6 +1907,65 @@ const FIELD_PERSONAL_HOME_SQL=`CASE WHEN json_extract(s.save_json,'$.state.home'
 const FIELD_PUBLIC_HOME_SQL=`(${FIELD_FIXED_HOME_SQL} OR ${FIELD_PERSONAL_HOME_SQL} IN ('nijo','osaka','nagoya')
   OR EXISTS(SELECT 1 FROM castle_seats cs WHERE cs.lord_user_id=u.id AND cs.castle_id=${FIELD_PERSONAL_HOME_SQL}))`;
 const FIELD_PUBLIC_TARGET_SQL="("+FIELD_PUBLIC_HOME_SQL+" OR EXISTS(SELECT 1 FROM json_each(s.save_json,'$.state.castles') c WHERE c.key IN ('nijo','osaka','nagoya') AND json_extract(c.value,'$.owner')=json_extract(s.save_json,'$.state.clan')))";
+// Resolve a named event against the same published castle and field defense
+// as the world map. A disputed major city has no single defending lord.
+async function eventGarrison(db,castleId,clock,now){
+  const none={opponent:null,guard:{sql:'1=1',args:[]}};
+  if(!castleId||!CASTLE_BY_ID[castleId])return none;
+  const cycle=Math.floor(clock.elapsedMs/WORLD_CYCLE_MS),ordinary=!MAJOR_CITIES.includes(castleId);
+  let predicate,params=[];
+  if(ordinary){
+    predicate=`u.id=(SELECT lord_user_id FROM castle_seats WHERE castle_id=?)
+      AND EXISTS(SELECT 1 FROM castle_residents m WHERE m.user_id=u.id AND m.castle_id=?)
+      AND NOT ${FIELD_FIXED_HOME_SQL} AND ${FIELD_PERSONAL_HOME_SQL}=?`;
+    params=[castleId,castleId,castleId];
+  }else if(castleId==='edo'){
+    predicate="u.id=(SELECT value FROM settings WHERE key='adminUserId')";
+  }else if(castleId==='kyoto_gosho'){
+    predicate="u.id<>COALESCE((SELECT value FROM settings WHERE key='adminUserId'),'') AND EXISTS(SELECT 1 FROM staff_members sm WHERE sm.user_id=u.id)";
+  }else{
+    // A prior cycle's captured outposts disappear from the map. The personal
+    // home survives, while service members defend their fixed residence.
+    predicate=`((NOT ${FIELD_FIXED_HOME_SQL} AND (CASE WHEN ${EFFECTIVE_CYCLE_SQL}<? THEN COALESCE(s.cycle_home,json_extract(s.save_json,'$.state.cycle.home'),${FIELD_PERSONAL_HOME_SQL}) ELSE ${FIELD_PERSONAL_HOME_SQL} END)=?)
+       OR (${EFFECTIVE_CYCLE_SQL}>=? AND json_extract(s.save_json,?)=json_extract(s.save_json,'$.state.clan')))`;
+    params=[cycle,castleId,cycle,'$.state.castles.'+castleId+'.owner'];
+  }
+  const seatTerm=ordinary?"(SELECT lord_epoch FROM castle_seats WHERE lord_user_id=u.id AND castle_id=?)":"NULL";
+  // A role change can turn a saved metropolitan home into an outpost before
+  // its save revision changes. Keep that defense classification in the guard.
+  const candidates=`SELECT u.id,u.name,s.revision,${seatTerm} AS term,
+    CASE WHEN u.id=(SELECT value FROM settings WHERE key='adminUserId') THEN 1 ELSE 0 END AS is_admin,
+    (SELECT term_id FROM staff_members WHERE user_id=u.id) AS staff_term FROM users u JOIN player_saves s ON s.user_id=u.id
+    WHERE s.save_json IS NOT NULL AND NOT EXISTS(SELECT 1 FROM player_bans b WHERE b.user_id=u.id AND b.active=1)
+    AND (COALESCE(json_extract(s.save_json,'$.state.gameOver'),0)=0 OR ${FIELD_FIXED_HOME_SQL} OR ${EFFECTIVE_CYCLE_SQL}<?) AND ${predicate} ORDER BY u.id LIMIT 2`;
+  const args=[...(ordinary?[castleId]:[]),cycle,...params],records=rows(await stmt(db,candidates,...args).all());
+  const guard={sql:`(SELECT json_group_array(json_array(id,name,revision,term,is_admin,staff_term)) FROM (${candidates}))=?`,
+    args:[...args,JSON.stringify(records.map(r=>[r.id,r.name,r.revision,r.term,r.is_admin,r.staff_term]))]};
+  if(records.length!==1)return{opponent:null,guard};
+  const owner=records[0],row=await stmt(db,FIELD_SELECT+' AND u.id=?',cycle,owner.id).first();
+  if(!row)return{opponent:null,guard};
+  if(castleId==='kyoto_gosho'){
+    const state={castles:{kyoto_gosho:{}},buildings:{}},shared=await fieldStaffDefense(db,state,clock);
+    row.staff_castle_level=state.castles.kyoto_gosho.level;row.staff_wall=state.buildings.wall;
+    guard.sql+=' AND '+shared.sql;guard.args.push(...shared.args);
+  }
+  const target=mapFieldTargets(row,null,null,clock,now).find(t=>t.targetCastleId===castleId);
+  if(!target)return{opponent:null,guard};
+  const aid=`SELECT COALESCE(SUM(u.troops),0) AS troops FROM alliance_units u JOIN guild_members a ON a.user_id=u.owner_id AND a.guild_id=u.guild_id
+    JOIN guild_members d ON d.user_id=u.target_id AND d.guild_id=u.guild_id
+    WHERE u.kind='aid' AND u.state='stationed' AND u.expires_at>? AND u.target_id=? AND u.castle_id=?
+    AND COALESCE((SELECT epoch FROM voice_membership_epochs WHERE user_id=u.owner_id),0)=u.owner_epoch
+    AND COALESCE((SELECT epoch FROM voice_membership_epochs WHERE user_id=u.target_id),0)=u.target_epoch
+    AND NOT EXISTS(SELECT 1 FROM player_bans b WHERE b.user_id IN (u.owner_id,u.target_id) AND b.active=1)`;
+  const aidArgs=[now,owner.id,castleId],reinforcements=Number((await stmt(db,aid,...aidArgs).first()).troops);
+  guard.sql+=' AND ('+aid+')=?';guard.args.push(...aidArgs,reinforcements);
+  applyFieldReinforcements(target,reinforcements);
+  return{opponent:{castleId,castleName:CASTLE_BY_ID[castleId].name,lordName:owner.name,defenseTroops:target.defenseTroops,defensePower:target.defensePower},guard};
+}
+function applyFieldReinforcements(target,troops){
+  target.reinforcementTroops=troops;
+  if(troops){target.defensePower=Math.round(target.defensePower*(target.defenseTroops+troops)/Math.max(1,target.defenseTroops));target.defenseTroops+=troops;}
+}
 async function getFieldList(db,viewer,url,now) {
   await ensureResidency(db,now);
   const cursor=url.searchParams.get('cursor')||'',limitText=url.searchParams.get('limit')||'50';
@@ -1924,7 +1986,7 @@ async function getFieldList(db,viewer,url,now) {
     AND COALESCE((SELECT epoch FROM voice_membership_epochs WHERE user_id=u.target_id),0)=u.target_epoch
     AND NOT EXISTS(SELECT 1 FROM player_bans b WHERE b.user_id IN (u.owner_id,u.target_id) AND b.active=1)
     GROUP BY u.target_id,u.castle_id`,now).all());
-  for(const player of [...players,...targets]){const aid=aids.find(v=>v.target_id===player.playerId&&v.castle_id===player.targetCastleId),troops=Number(aid?.troops||0);player.reinforcementTroops=troops;if(troops){player.defensePower=Math.round(player.defensePower*(player.defenseTroops+troops)/Math.max(1,player.defenseTroops));player.defenseTroops+=troops;}}
+  for(const player of [...players,...targets]){const aid=aids.find(v=>v.target_id===player.playerId&&v.castle_id===player.targetCastleId),troops=Number(aid?.troops||0);applyFieldReinforcements(player,troops);}
   await decorateProtectedTargets(db,[...players,...targets],viewer,now);
   return {ok:true,players,targets,total:Number(rows(result[1])[0].count),nextCursor:found.length>limit?found[limit-1].id:null,clock,rules:FIELD_RULES};
 }
@@ -2200,7 +2262,7 @@ async function fieldAttack(db,user,raw,now,internal={}) {
   const sharedGuard=sharedShield?await fieldStaffDefense(db,d,clock):{sql:'1=1',args:[]};
   if(!flight)return departFieldMarch({db,user,target,body,now,clock,attacker,attackerRow,defenderRow,defender,castleId,digest,foodCost,courtGuard,sharedGuard,attackerBranches,defenderBranches,protection,support,rally,residencyGuard});
   const attackProfile=flightPayload.attackProfile;
-  const attackerBefore=journey?.before||copy(attacker),attackPower=Math.max(1,Math.round(body.troops*(.7+.5*attackProfile.morale/100)*(1+attackProfile.tech.discipline*.06+attackProfile.tech.gunnery*.05)*fieldArmy(attackProfile.army,attackProfile.officerVariants).rankPower*tactic.modifier));
+  const attackerBefore=journey?.before||copy(attacker),attackPower=fieldAttackPower(body.troops,attackProfile,tactic.modifier);
   const defense=branch?fieldBranchDefense(d,branch,tactic.id,attackProfile.tech.siege):fieldDefense({...d,castles:{...d.castles,[castleId]:{...d.castles[castleId],troops:d.castles[castleId].troops+support.troops}}},tactic.id,attackProfile.tech.siege,castleId),ratio=attackPower/defense.power,chance=Math.max(.05,Math.min(.95,.5+Math.log(ratio)*.6));
   const roll=rally?rally.roll:flightPayload.roll,won=roll<chance;
   const attackerLost=Math.min(body.troops,Math.max(1,Math.floor(body.troops*Math.min(.35,(won?.08+.06/Math.max(.3,ratio):.2+.06/Math.max(.3,ratio))*tactic.loss))));
@@ -2454,7 +2516,7 @@ async function route(request, env, now) {
 
   if(path==='/events'||path.startsWith('/events/')||path==='/admin/events'||path.startsWith('/admin/events/')){
     const user=method==='GET'&&!path.startsWith('/admin/')&&!request.headers.has('authorization')?null:await authenticate(request,db,now);
-    return handleEvents({db,user,now,path,method,url,request,helpers:{fail,readBody,budget,idField,textField,uid,hash,getUser,getSyncRow,requireAdmin,requireAccountAccess,roleCommitGuard,evaluationRef,fieldWriter,settleWriterCycle,getWorldClock,normalizeGameSave,syncSnapshot,syncLease:SYNC_LEASE,worldClockId:WORLD_CLOCK_ID}});
+    return handleEvents({db,user,now,path,method,url,request,helpers:{eventGarrison,fieldAttackPower,fail,readBody,budget,idField,textField,uid,hash,getUser,getSyncRow,requireAdmin,requireAccountAccess,roleCommitGuard,evaluationRef,fieldWriter,settleWriterCycle,getWorldClock,normalizeGameSave,syncSnapshot,syncLease:SYNC_LEASE,worldClockId:WORLD_CLOCK_ID}});
   }
   let user = await authenticate(request,db,now);
   const expansionContext={db,env,user,now,path,method,url,request,helpers:{fail,readBody,budget,idField,textField,uid,hash,getUser,getSyncRow,requireAdmin,requireAccountAccess,roleCommitGuard,accountCommitGuard,evaluationRef,fieldWriter,settleWriterCycle,getWorldClock,normalizeGameSave,syncSnapshot,staffBaseDto,syncLease:SYNC_LEASE,worldClockId:WORLD_CLOCK_ID}};
