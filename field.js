@@ -248,7 +248,7 @@ function mount(container,options={}){
     // when the underlying detail has not changed during a shared refresh.
     if(host!==detailHost||markup!==detailMarkup){
       const focused=doc.activeElement,focusedKind=container.contains(focused)?focused?.dataset?.fieldInput:null,selection=focusedKind==='troops'?[focused.selectionStart,focused.selectionEnd]:null;
-      if(global.SengokuStableDOM){const changed=global.SengokuStableDOM.patch(host,markup,{key:['field-detail',key,cache.tab,cache.selectedId,cache.selectedBranchId]});if(changed.artwork)global.SengokuArt?.schedule?.();}else host.innerHTML=markup;detailHost=host;detailMarkup=markup;
+      if(global.SengokuStableDOM){const changed=global.SengokuStableDOM.patch(host,markup,{key:['field-detail',key,cache.tab,cache.selectedId,cache.selectedBranchId]});if(changed.artwork)global.SengokuArt?.schedule?.(host);}else host.innerHTML=markup;detailHost=host;detailMarkup=markup;
       if(focusedKind==='troops'||focusedKind==='tactic'){const next=host.querySelector(`[data-field-input="${focusedKind}"]`);if(!global.SengokuStableDOM||next!==focused)next?.focus({preventScroll:true});if((!global.SengokuStableDOM||next!==focused)&&selection?.[0]!=null)try{next?.setSelectionRange(...selection);}catch(_){}}
     }
     global.SengokuOfficerHealthUI?.refresh(host,opts.getGame?.()||global.SengokuBridge?.getGame?.());

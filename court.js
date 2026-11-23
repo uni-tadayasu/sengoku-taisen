@@ -115,7 +115,7 @@ function markup(s){
 }
 function mount(host,options={}){
  if(!host)return{refresh(){},dispose(){}};let alive=true,lastKey='',controls=new Map(),focusConfirmation=false;
- function render(s){if(!alive)return;const key=s.context.identity,html=markup(s),top=host.closest?.('main')?.scrollTop,main=host.closest?.('main');if(global.SengokuStableDOM){const result=global.SengokuStableDOM.patch(host,html,{key:['court',key]});if(result.artwork)global.SengokuArt?.schedule?.();}else if(host.innerHTML!==html)host.innerHTML=html;
+ function render(s){if(!alive)return;const key=s.context.identity,html=markup(s),top=host.closest?.('main')?.scrollTop,main=host.closest?.('main');if(global.SengokuStableDOM){const result=global.SengokuStableDOM.patch(host,html,{key:['court',key]});if(result.artwork)global.SengokuArt?.schedule?.(host);}else if(host.innerHTML!==html)host.innerHTML=html;
   const values=new Map([['court-chat-input',s.drafts.chat],['court-audience-title',s.drafts.title],['court-audience-body',s.drafts.body],['court-reply-input',s.drafts.reply],['court-leader-select',s.drafts.leader]]);for(const [id,value]of values)if(key!==lastKey||controls.get(id)!==value){const node=host.querySelector('#'+id);if(node&&node.value!==value)node.value=value;}controls=values;lastKey=key;if(main&&main.scrollTop!==top)main.scrollTop=top;if(focusConfirmation&&s.confirmation)host.querySelector('.court-confirm')?.focus?.({preventScroll:true});focusConfirmation=false;options.onChange?.(s);
  }
  const controller=createController({...options,onChange:render});

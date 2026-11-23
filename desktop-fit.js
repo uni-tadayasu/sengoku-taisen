@@ -80,8 +80,9 @@ function start(){
     if(records.some(record=>{
       // Resource, health and hint text updates do not change the viewport.
       // Real header size changes are handled by the ResizeObserver above.
-      if(record.type==='childList'&&![...record.addedNodes,...record.removedNodes].some(child=>child.nodeType===1))return false;
+      if(record.type==='childList'&&![...record.addedNodes,...record.removedNodes].some(child=>child.nodeType===1&&!child.matches?.('.ui-motion-layer,.ui-motion-clip,.ui-motion-wave')))return false;
       const node=record.target.nodeType===1?record.target:record.target.parentElement;
+      if(node?.closest?.('.ui-motion-layer'))return false;
       return !node?.closest?.('.sg-map,#calendar,#resources,#touch-header-status,[data-job-clock],[data-job-progress],#month-countdown,#month-progress');
     }))refresh();
   });mutationObserver.observe(doc.body,{subtree:true,childList:true,attributes:true,attributeFilter:['class','hidden','open','data-view']});}

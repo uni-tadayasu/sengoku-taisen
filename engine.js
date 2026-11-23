@@ -1012,14 +1012,30 @@
     baseOfficer(id){return this.officerMap[id]||null;}
     ownsVariant(id,rank){return this.canOwnOfficerVariant(id,rank)&&this.state.officerVariants.includes(`${id}:${rank}`);}
     ownedRanks(id){return RANKS.filter(rank=>this.ownsVariant(id,rank));}
-    highestOwnedRank(id){return this.ownedRanks(id).at(-1)||null;}
+    highestOwnedRank(id){for(let index=RANKS.length-1;index>=0;index--)if(this.ownsVariant(id,RANKS[index]))return RANKS[index];return null;}
     collection(){return{officers:this.state.officers.length,variants:this.state.officerVariants.filter(key=>{const [id,rank]=key.split(':');return this.canOwnOfficerVariant(id,rank);}).length,totalVariants:RANKS.reduce((sum,rank)=>sum+this.gachaPool(rank).length,0)};}
+    _officerView(base,chosen,variantOwned){
+      if(!base||!RANKS.includes(chosen))return null;
+      const rankBonus=RANK_BONUSES[chosen],baseStats=Object.fromEntries(['lead','valor','intellect','politics'].map(k=>[k,base[k]]));
+      const exclusive=base.id===ADMIN_ASSETS.officerId&&chosen==='U';
+      return{...base,name:exclusive?'德川家康':base.name,clan:exclusive?ADMIN_ASSETS.clanName:base.clan,baseRank:base.rank||base.rarity,rank:chosen,rarity:chosen,rankBonus,baseStats,...Object.fromEntries(Object.entries(baseStats).map(([k,v])=>[k,clamp(v+rankBonus,0,100)])),variantOwned};
+    }
     officer(id,rank){
       const base=this.baseOfficer(id);if(!base)return null;
-      const chosen=rank===undefined?this.highestOwnedRank(id)||this._baseGrantRank(id):rank;if(!RANKS.includes(chosen))return null;
-      const rankBonus=RANK_BONUSES[chosen],baseStats=Object.fromEntries(['lead','valor','intellect','politics'].map(k=>[k,base[k]]));
-      const exclusive=id===ADMIN_ASSETS.officerId&&chosen==='U';
-      return{...base,name:exclusive?'德川家康':base.name,clan:exclusive?ADMIN_ASSETS.clanName:base.clan,baseRank:base.rank||base.rarity,rank:chosen,rarity:chosen,rankBonus,baseStats,...Object.fromEntries(Object.entries(baseStats).map(([k,v])=>[k,clamp(v+rankBonus,0,100)])),variantOwned:this.ownsVariant(id,chosen)};
+      const highest=rank===undefined?this.highestOwnedRank(id):null,chosen=rank===undefined?highest||this._baseGrantRank(id):rank;
+      return this._officerView(base,chosen,rank===undefined?Boolean(highest):this.ownsVariant(id,chosen));
+    }
+    officerViews(ids,rank){
+      if(!ids.length)return[];
+      // A fresh index belongs only to this synchronous read. Imports, direct
+      // state edits, new variants and role changes are visible on the next call.
+      const variants=new Set(this.state.officerVariants);
+      return ids.map(id=>{
+        const base=this.baseOfficer(id);if(!base)return null;
+        let chosen=rank;
+        if(chosen===undefined){for(let index=RANKS.length-1;index>=0;index--){const candidate=RANKS[index];if(this.canOwnOfficerVariant(id,candidate)&&variants.has(`${id}:${candidate}`)){chosen=candidate;break;}}chosen=chosen||this._baseGrantRank(id);}
+        return this._officerView(base,chosen,this.canOwnOfficerVariant(id,chosen)&&variants.has(`${id}:${chosen}`));
+      });
     }
     officerHealth(id){
       const s=this.state;if(!s.officers.includes(id))return null;
@@ -1330,13 +1346,15 @@
       return{ok:true,already:false,message:'贈り物を受け取りました。',rewards:reward};
     }
     _action(text,kind='info',extra={}){if(!MARCH_CONTEXT.has(this))this.state.command--;this.log(text,kind);return{ok:true,message:text,...extra};}
-    governorBonusFor(buildingId,officerId){return governorBonusForCategory(BUILDINGS.find(b=>b.id===buildingId)?.category,this.officer(officerId));}
-    _governorBonus(id){return this.governorBonusFor(id,this.state.governors[id]);}
-    _facilityEffect(category){return EXTRA_FACILITIES.filter(b=>b.category===category).reduce((a,b)=>a+this.state.buildings[b.id]*b.effect*this._governorBonus(b.id),0);}
+    governorBonusFor(buildingId,officerId,officers){return governorBonusForCategory(BUILDINGS.find(b=>b.id===buildingId)?.category,officers?officers.get(officerId):this.officer(officerId));}
+    _governorViews(){const ids=[...new Set(Object.values(this.state.governors))],views=this.officerViews(ids);return new Map(ids.map((id,index)=>[id,views[index]]));}
+    _governorBonus(id,officers){return this.governorBonusFor(id,this.state.governors[id],officers);}
+    _facilityEffect(category,officers){return EXTRA_FACILITIES.filter(b=>b.category===category).reduce((a,b)=>a+this.state.buildings[b.id]*b.effect*this._governorBonus(b.id,officers),0);}
     buildingUnlock(id){const b=BUILDINGS.find(b=>b.id===id);if(!b)return{ok:false,requiredLevel:1,reason:'施設が見つかりません。'};const ok=this.state.buildings.keep>=b.requiredKeep;return{ok,requiredLevel:b.requiredKeep,reason:ok?'建設・増築できます。':`天守 Lv.${b.requiredKeep}が必要です。`};}
     governorDescription(id){const category=BUILDINGS.find(b=>b.id===id)?.category;const named={keep:'政治力に応じて武将の登用費用を軽減します。',barracks:'政治力に応じて兵数上限を増やし募兵費用を軽減します。',wall:'政治力に応じて本拠の防衛力を高めます。',academy:'政治力に応じて研究費用を軽減します。'};return named[id]||({gold:'政治力に応じてこの施設の金銭生産を増やします。',rice:'政治力に応じてこの施設の兵糧生産を増やします。',wood:'政治力に応じてこの施設の木材生産を増やします。',stone:'政治力に応じてこの施設の石材生産を増やします。',military:'政治力に応じてこの施設の攻撃力・兵数上限の効果を高めます。',defense:'政治力に応じてこの施設の防衛補正を高めます。',research:'政治力に応じてこの施設の研究費軽減を強化します。',diplomacy:'政治力に応じてこの施設の交渉・偵察・登用費軽減を強化します。'})[category]||'';}
     buildingSummary(id){const b=BUILDINGS.find(b=>b.id===id);if(!b)return'';const lv=this.state.buildings[id];if(!lv)return'未建設';const gov=this._governorBonus(id),v=lv*b.effect*gov;if(!b.core){if(RESOURCES.includes(b.category))return`${({gold:'金銭',rice:'兵糧',wood:'木材',stone:'石材'})[b.category]} +${Math.floor(v).toLocaleString()} /月（技術補正前）`;if(b.category==='military')return`攻撃 +${(v*100).toFixed(1)}%・兵数 +${Math.floor(lv*b.capacity*gov).toLocaleString()}`;if(b.category==='defense')return`領国防衛 +${(v*100).toFixed(1)}%`;if(b.category==='research')return`研究効率 +${(v*100).toFixed(1)}%`;return`交渉効率 +${(v*100).toFixed(1)}%`;}
-      return({keep:`登用条件 Lv.${lv}・指示 ${this.commandMax()}回`,farm:`兵糧 +${Math.floor(lv*450*gov).toLocaleString()} /月`,market:`金銭 +${Math.floor(lv*180*gov).toLocaleString()} /月`,lumber:`木材 +${Math.floor(lv*170*gov).toLocaleString()} /月`,quarry:`石材 +${Math.floor(lv*130*gov).toLocaleString()} /月`,barracks:`兵数上限 ${this.troopCapacity().toLocaleString()}`,wall:`本拠防衛 +${(lv*.16*100).toFixed(0)}%`,academy:`研究上限 Lv.${Math.min(5,lv)}・費用効率 +${((lv-1)*2.5).toFixed(1)}%`})[id]||'';
+      if(id==='barracks')return `兵数上限 ${this.troopCapacity().toLocaleString()}`;
+      return({keep:`登用条件 Lv.${lv}・指示 ${this.commandMax()}回`,farm:`兵糧 +${Math.floor(lv*450*gov).toLocaleString()} /月`,market:`金銭 +${Math.floor(lv*180*gov).toLocaleString()} /月`,lumber:`木材 +${Math.floor(lv*170*gov).toLocaleString()} /月`,quarry:`石材 +${Math.floor(lv*130*gov).toLocaleString()} /月`,wall:`本拠防衛 +${(lv*.16*100).toFixed(0)}%`,academy:`研究上限 Lv.${Math.min(5,lv)}・費用効率 +${((lv-1)*2.5).toFixed(1)}%`})[id]||'';
     }
     diplomacyCost(){return{gold:Math.max(60,Math.round((this.state.clan==='毛利家'?420:600)/(1+this._facilityEffect('diplomacy'))))};}
     scoutCost(){return{gold:Math.max(20,Math.round(120/(1+this._facilityEffect('diplomacy'))))};}
@@ -1449,10 +1467,10 @@
       return{ok:true,changed:true,removed,reductions,allocations,income:this.income(),message};
     }
     income(){
-      const s=this.state,b=s.buildings,t=s.tech,owned=this.ownedCastles(),n=owned.length,expanded=owned.reduce((sum,c)=>sum+c.level-1,0),branchIncome=this.branchFacilityBonuses().income;
-      const gold=Math.floor((180+b.keep*50+b.market*180*this._governorBonus('market')+this._facilityEffect('gold')+n*100+expanded*15)*(1+t.commerce*.12)*(s.clan==='織田家'?1.15:1))+branchIncome.gold;
-      const grossRice=Math.floor((b.farm*450*this._governorBonus('farm')+this._facilityEffect('rice')+n*170+expanded*20)*(1+t.cultivation*.12)*(s.clan==='北条家'?1.15:1))+branchIncome.rice;
-      const gross={gold,rice:grossRice,wood:Math.floor((b.lumber*170*this._governorBonus('lumber')+this._facilityEffect('wood')+n*40+expanded*5)*(1+t.forestry*.15))+branchIncome.wood,stone:Math.floor((b.quarry*130*this._governorBonus('quarry')+this._facilityEffect('stone')+n*30+expanded*5)*(1+t.masonry*.15))+branchIncome.stone};
+      const s=this.state,b=s.buildings,t=s.tech,governors=this._governorViews(),owned=this.ownedCastles(),n=owned.length,expanded=owned.reduce((sum,c)=>sum+c.level-1,0),branchIncome=this.branchFacilityBonuses().income;
+      const gold=Math.floor((180+b.keep*50+b.market*180*this._governorBonus('market',governors)+this._facilityEffect('gold',governors)+n*100+expanded*15)*(1+t.commerce*.12)*(s.clan==='織田家'?1.15:1))+branchIncome.gold;
+      const grossRice=Math.floor((b.farm*450*this._governorBonus('farm',governors)+this._facilityEffect('rice',governors)+n*170+expanded*20)*(1+t.cultivation*.12)*(s.clan==='北条家'?1.15:1))+branchIncome.rice;
+      const gross={gold,rice:grossRice,wood:Math.floor((b.lumber*170*this._governorBonus('lumber',governors)+this._facilityEffect('wood',governors)+n*40+expanded*5)*(1+t.forestry*.15))+branchIncome.wood,stone:Math.floor((b.quarry*130*this._governorBonus('quarry',governors)+this._facilityEffect('stone',governors)+n*30+expanded*5)*(1+t.masonry*.15))+branchIncome.stone};
       const maintenance=this.maintenance(),rawNet=Object.fromEntries(RESOURCES.map(key=>[key,gross[key]-maintenance.totalUpkeep[key]])),{net,surplusAdjustment}=balanceSurplus(rawNet);
       // Full production still funds troops and facilities before excess savings
       // taper. Existing sustainable forces and deficit signs never change just
@@ -1525,7 +1543,7 @@
     planGovernorAssignments(){
       if(this.isStaff&&!STAFF_VIEW.get(this))return fail('京都御所の共同拠点を確認してから、奉行を配置してください。');
       const s=this.state,facilities=BUILDINGS.filter(b=>s.buildings[b.id]>0),army=new Set([...s.army,...s.branches.flatMap(branch=>branch.commanders||[])]);
-      const officers=[...new Set(s.officers)].filter(id=>!army.has(id)).sort().map(id=>this.officer(id)).filter(Boolean);
+      const officers=this.officerViews([...new Set(s.officers)].filter(id=>!army.has(id)).sort()).filter(Boolean);
       const facilityCount=facilities.length,candidateCount=officers.length,columnCount=Math.max(facilityCount,candidateCount),bonuses=facilities.map(b=>officers.map(o=>governorBonusForCategory(b.category,o)));
       // One point of actual suitability outweighs every possible retention
       // tie-break. Integer scores avoid rounding-dependent reassignment.

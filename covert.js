@@ -245,7 +245,7 @@
    const doc=host.ownerDocument,active=doc?.activeElement,ownedFocus=host.contains(active),key=focusKey(active),selection={start:active?.selectionStart,end:active?.selectionEnd},hostTop=host.scrollTop,main=host.closest?.('main'),mainTop=main?.scrollTop;
    // Compare generated source with prior source, keeping artwork and icons
    // that the shared decorator added to summaries, controls and images.
-   if(global.SengokuStableDOM?.patch){const result=global.SengokuStableDOM.patch(host,html,{key:['covert',identity]});if(result.artwork)global.SengokuArt?.schedule?.();}
+   if(global.SengokuStableDOM?.patch){const result=global.SengokuStableDOM.patch(host,html,{key:['covert',identity]});if(result.artwork)global.SengokuArt?.schedule?.(host);}
    else host.innerHTML=html;
    const controls=controlValues(snapshot);
    for(const [id,value]of controls){if(identityChanged||controlIntent===id||lastControls.get(id)!==value){const input=host.querySelector('#'+id);if(input&&input.value!==String(value??''))input.value=String(value??'');}}

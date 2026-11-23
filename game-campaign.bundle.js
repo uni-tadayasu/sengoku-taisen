@@ -82,8 +82,9 @@ function start(){
     if(records.some(record=>{
       // Resource, health and hint text updates do not change the viewport.
       // Real header size changes are handled by the ResizeObserver above.
-      if(record.type==='childList'&&![...record.addedNodes,...record.removedNodes].some(child=>child.nodeType===1))return false;
+      if(record.type==='childList'&&![...record.addedNodes,...record.removedNodes].some(child=>child.nodeType===1&&!child.matches?.('.ui-motion-layer,.ui-motion-clip,.ui-motion-wave')))return false;
       const node=record.target.nodeType===1?record.target:record.target.parentElement;
+      if(node?.closest?.('.ui-motion-layer'))return false;
       return !node?.closest?.('.sg-map,#calendar,#resources,#touch-header-status,[data-job-clock],[data-job-progress],#month-countdown,#month-progress');
     }))refresh();
   });mutationObserver.observe(doc.body,{subtree:true,childList:true,attributes:true,attributeFilter:['class','hidden','open','data-view']});}
@@ -522,7 +523,7 @@ function mount(container,options={}){
     // when the underlying detail has not changed during a shared refresh.
     if(host!==detailHost||markup!==detailMarkup){
       const focused=doc.activeElement,focusedKind=container.contains(focused)?focused?.dataset?.fieldInput:null,selection=focusedKind==='troops'?[focused.selectionStart,focused.selectionEnd]:null;
-      if(global.SengokuStableDOM){const changed=global.SengokuStableDOM.patch(host,markup,{key:['field-detail',key,cache.tab,cache.selectedId,cache.selectedBranchId]});if(changed.artwork)global.SengokuArt?.schedule?.();}else host.innerHTML=markup;detailHost=host;detailMarkup=markup;
+      if(global.SengokuStableDOM){const changed=global.SengokuStableDOM.patch(host,markup,{key:['field-detail',key,cache.tab,cache.selectedId,cache.selectedBranchId]});if(changed.artwork)global.SengokuArt?.schedule?.(host);}else host.innerHTML=markup;detailHost=host;detailMarkup=markup;
       if(focusedKind==='troops'||focusedKind==='tactic'){const next=host.querySelector(`[data-field-input="${focusedKind}"]`);if(!global.SengokuStableDOM||next!==focused)next?.focus({preventScroll:true});if((!global.SengokuStableDOM||next!==focused)&&selection?.[0]!=null)try{next?.setSelectionRange(...selection);}catch(_){}}
     }
     global.SengokuOfficerHealthUI?.refresh(host,opts.getGame?.()||global.SengokuBridge?.getGame?.());
@@ -1282,7 +1283,7 @@ const api={mount,normalizePlayers,normalizeBranches,branchTarget,groupBases,targ
    const doc=host.ownerDocument,active=doc?.activeElement,ownedFocus=host.contains(active),key=focusKey(active),selection={start:active?.selectionStart,end:active?.selectionEnd},hostTop=host.scrollTop,main=host.closest?.('main'),mainTop=main?.scrollTop;
    // Compare generated source with prior source, keeping artwork and icons
    // that the shared decorator added to summaries, controls and images.
-   if(global.SengokuStableDOM?.patch){const result=global.SengokuStableDOM.patch(host,html,{key:['covert',identity]});if(result.artwork)global.SengokuArt?.schedule?.();}
+   if(global.SengokuStableDOM?.patch){const result=global.SengokuStableDOM.patch(host,html,{key:['covert',identity]});if(result.artwork)global.SengokuArt?.schedule?.(host);}
    else host.innerHTML=html;
    const controls=controlValues(snapshot);
    for(const [id,value]of controls){if(identityChanged||controlIntent===id||lastControls.get(id)!==value){const input=host.querySelector('#'+id);if(input&&input.value!==String(value??''))input.value=String(value??'');}}
@@ -1437,7 +1438,7 @@ function markup(s){
 }
 function mount(host,options={}){
  if(!host)return{refresh(){},dispose(){}};let alive=true,lastKey='',controls=new Map(),focusConfirmation=false;
- function render(s){if(!alive)return;const key=s.context.identity,html=markup(s),top=host.closest?.('main')?.scrollTop,main=host.closest?.('main');if(global.SengokuStableDOM){const result=global.SengokuStableDOM.patch(host,html,{key:['court',key]});if(result.artwork)global.SengokuArt?.schedule?.();}else if(host.innerHTML!==html)host.innerHTML=html;
+ function render(s){if(!alive)return;const key=s.context.identity,html=markup(s),top=host.closest?.('main')?.scrollTop,main=host.closest?.('main');if(global.SengokuStableDOM){const result=global.SengokuStableDOM.patch(host,html,{key:['court',key]});if(result.artwork)global.SengokuArt?.schedule?.(host);}else if(host.innerHTML!==html)host.innerHTML=html;
   const values=new Map([['court-chat-input',s.drafts.chat],['court-audience-title',s.drafts.title],['court-audience-body',s.drafts.body],['court-reply-input',s.drafts.reply],['court-leader-select',s.drafts.leader]]);for(const [id,value]of values)if(key!==lastKey||controls.get(id)!==value){const node=host.querySelector('#'+id);if(node&&node.value!==value)node.value=value;}controls=values;lastKey=key;if(main&&main.scrollTop!==top)main.scrollTop=top;if(focusConfirmation&&s.confirmation)host.querySelector('.court-confirm')?.focus?.({preventScroll:true});focusConfirmation=false;options.onChange?.(s);
  }
  const controller=createController({...options,onChange:render});

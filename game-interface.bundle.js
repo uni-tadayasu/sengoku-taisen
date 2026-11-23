@@ -6,7 +6,7 @@
   const $ = s => document.querySelector(s);
   const esc = v => String(v ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const num = v => Math.floor(Number(v)||0).toLocaleString('ja-JP');
-  function patchHTML(host,html,options={}){if(!host)return;if(window.SengokuStableDOM){const result=window.SengokuStableDOM.patch(host,html,options);if(result.artwork)window.SengokuArt?.schedule?.();return result;}if(host.innerHTML!==html)host.innerHTML=html;}
+  function patchHTML(host,html,options={}){if(!host)return;if(window.SengokuStableDOM){const result=window.SengokuStableDOM.patch(host,html,options);if(result.artwork)window.SengokuArt?.schedule?.(host);return result;}if(host.innerHTML!==html)host.innerHTML=html;}
   const paths = {
     castle:'M3 21h18M5 21V10l3-2 4-5 4 5 3 2v11M3 10h18M7 14h10M10 21v-5h4v5M9 7h6',
     map:'m3 5 6-2 6 3 6-2v16l-6 2-6-3-6 2V5Zm6-2v16M15 6v16',
@@ -887,20 +887,8 @@
     if(defaults)document.querySelectorAll('[data-officer-filter]').forEach(node=>{if(node.dataset.officerContext===context){const value=defaults[node.dataset.officerFilter];if(value!==undefined&&node.value!==String(value))node.value=String(value);}});
   }
   function filteredOfficers(){
-    const selected=filter.rank==='all'?null:filter.rank;
-    // Each archive row uses the highest legal owned rank by default. Index
-    // the current save once per filter so edits and authority changes apply
-    // immediately without scanning the entire collection for every rank.
-    const highest=new Map();
-    if(!selected)for(const key of state().officerVariants){
-      const split=key.lastIndexOf(':'),id=key.slice(0,split),rank=key.slice(split+1),index=data.ranks.indexOf(rank);
-      if(index>(highest.get(id)??-1)&&game.canOwnOfficerVariant(id,rank))highest.set(id,index);
-    }
-    const list=roster.map(base=>{
-      const fallback=base.rank||base.rarity;
-      const rank=selected||data.ranks[highest.get(base.id)]||(game.canOwnOfficerVariant(base.id,fallback)?fallback:undefined);
-      return game.officer(base.id,rank);
-    });
+    const selected=filter.rank==='all'?undefined:filter.rank,ids=roster.map(base=>base.id);
+    const list=game.officerViews?game.officerViews(ids,selected):ids.map(id=>game.officer(id,selected));
     return filterOfficerList(list,filter);
   }
   function officerCard(o){return `<button class="officer-card" data-rank="${o.rank}" data-action="officer" data-id="${o.id}"><div class="officer-art"><span class="clan-script clan-script-kamon">${clanCrest(o.clan,30)}</span>${portrait(o)}${game.ownsVariant(o.id,o.rank)?'<span class="owned-tag">絵巻所持</span>':'<span class="owned-tag unowned-variant">未所持</span>'}</div><div class="officer-content"><small>${esc(o.clan==='德川家'?'徳川家':o.clan)} · ${esc(o.region)}</small><h3>${esc(o.name==='德川家康'?'徳川家康':o.name)}</h3>${window.SengokuOfficerHealthUI?.markup(game,o.id,{compact:true})||''}<div class="mini-stats">${[['lead','統率'],['valor','武勇'],['intellect','知略'],['politics','政治']].map(([k,n])=>`<span>${n}<b>${o[k]}</b></span>`).join('')}</div><div class="skill-tag">${icon(skillIcons[o.skill]||'flag')}${esc(skillNames[o.skill]||o.skill)}</div></div></button>`;}
@@ -908,7 +896,7 @@
   function renderOfficers(){if(officerSection==='gacha')return heading('武将招集','WARLORD SUMMON · 群雄招来','勾玉を捧げ、まだ見ぬ英傑との縁を結ぶ。')+officerTabs()+renderGacha();return heading('武将名鑑','OFFICER ARCHIVE · 人こそ城',`${num(roster.length)}名 × 8ランク · 所持対象 ${num(game.collection().totalVariants)}種の絵巻。`)+officerTabs()+`${officerFilterToolbar('archive',filter)}<div id="officer-results">${officersResults()}</div><div class="notice">登場年代を越えた「群雄集結」シナリオです。能力・特技・格付けはゲーム用の創作で、歴史上の評価ではありません。全256名それぞれに D・C・B・A・S・SS・SSS・U の8種類、計2,048種の絵巻があります。ランクを選ぶと、そのランクの全武将を閲覧できます。軍団・奉行には所持する最高ランクの能力が反映されます。</div>`;}
   function officerTabs(){const collection=game.collection();return `<div class="officer-subnav"><div class="tabs" role="group" aria-label="武将の画面"><button class="${officerSection==='archive'?'active':''}" data-action="officer-section" data-id="archive" aria-pressed="${officerSection==='archive'}">${icon('users')}武将名鑑</button><button class="${officerSection==='gacha'?'active':''}" data-action="officer-section" data-id="gacha" aria-pressed="${officerSection==='gacha'}">${icon('magatama')}武将招集</button></div><span class="collection-count">家臣 ${collection.officers} / ${roster.length}名<br>絵巻 ${num(collection.variants)} / ${num(collection.totalVariants)}種</span></div>`;}
   function renderGacha(){const s=state(),g=data.gacha,odds=game.gachaOdds(),history=s.gachaHistory.slice(0,48),pages=Math.max(1,Math.ceil(history.length/4));gachaHistoryPage=Math.max(1,Math.min(gachaHistoryPage,pages));const recent=history.slice((gachaHistoryPage-1)*4,gachaHistoryPage*4);return `<section class="gacha-sanctuary"><div class="gacha-sanctuary-art" aria-hidden="true">${icon('magatama')}<span>縁</span></div><div class="gacha-hero-copy"><div class="eyebrow">A FATE WORTH FOLLOWING</div><h2>次なる英傑と、天下へ。</h2><p>全${roster.length}名・8ランク、${num(game.collection().totalVariants)}種の絵巻が招集対象。<br>同じ武将でも、ランクごとに姿と能力が異なります。</p><div class="gacha-balance"><span>${icon('magatama')}所持勾玉</span><b data-magatama-balance>${num(s.magatama)}</b></div><div class="gacha-actions"><button class="button gold" data-action="draw-officers" data-count="1">1回招集 <span>${icon('magatama')}${num(g.singleCost)}</span></button><button class="button primary" data-action="draw-officers" data-count="10">10回招集 <span>${icon('magatama')}${num(g.tenCost)}</span></button></div><p class="gacha-smallprint">指令の消費なし · 10回招集は勾玉${num(g.singleCost*10-g.tenCost)}お得</p></div></section><div class="gacha-details-grid"><section class="panel"><div class="panel-heading"><h2>${icon('crown')}招集の提供割合</h2><button class="text-link" data-action="gacha-odds">全武将の割合を見る</button></div><div class="gacha-rates">${odds.map(r=>`<div><span class="gacha-rank rank-${r.rank}">${r.rank}</span><b>${r.rate}<small>%</small></b><small>${r.count}名</small></div>`).join('')}</div><p class="subtitle">ランク内の対象武将から等確率で抽選。一部の特別な絵巻は抽選対象外です。1回・10回とも同じ割合で1枠ずつ抽選します。確定枠や天井はありません。</p><div class="notice">同じ武将でも別ランクなら新規絵巻です。同じ武将・同じランクの重複だけが勾玉${g.duplicateRefund}に変換されます。戦力には最高所持ランクを反映します。</div></section><section class="panel"><div class="panel-heading"><h2>${icon('magatama')}勾玉を集める</h2><small>プレイで獲得</small></div><div class="gacha-source"><span>${icon('calendar')}月次褒賞</span><b>+${g.monthlyReward}<small> / ゲーム内1か月</small></b></div><div class="gacha-source"><span>${icon('castle')}城の初攻略</span><b>+${g.firstCaptureReward}<small> / 1城につき1度</small></b></div><div class="gacha-source"><span>${icon('scroll')}領主の任務</span><b>+100〜1,000<small> / 任務</small></b></div><p class="subtitle">新しい物語は勾玉${num(g.initial)}で開始します。勾玉の購入や現金の支払いはありません。</p><button class="button full" data-view="council" style="margin-top:17px">${icon('target')}任務と報酬を確認する</button></section></div><div class="section-heading"><h2>${icon('scroll')}最近の招集</h2><small>累計 ${num(s.stats.gachaDraws)}回 · 最新48枚</small></div>${recent.length?`<div class="gacha-history">${recent.map(item=>{const o=game.officer(item.officerId,item.rank);return `<button data-action="officer" data-id="${o.id}" data-rank="${item.rank}" class="gacha-history-row"><span class="gacha-history-rank rank-${item.rank}">${item.rank}</span><span><b>${esc(o.name==='德川家康'?'徳川家康':o.name)}</b><small>${esc(o.clan==='德川家'?'徳川家':o.clan)} · ${shortDate(item.turn)}</small></span><small class="${item.isNew?'new-officer':''}">${item.isNew?(item.isNewOfficer?'新家臣・新絵巻':item.upgraded?'新絵巻・能力上昇':'新たな絵巻'):`同一絵巻 · 勾玉+${item.duplicateRefund}`}</small></button>`;}).join('')}</div>${pageControls('gacha-history-page',gachaHistoryPage,pages)}`:'<div class="panel empty"><p>招集した武将の記録が、ここに残ります。</p><p class="subtitle">まずは1回、あるいは10回。新たな出会いを軍団や城下の力に。</p></div>'}`;}
-  function gachaOfficerOddsRows(rank,page){const odds=game.gachaOdds().find(r=>r.rank===rank);if(!odds)return'';const all=game.gachaPool(rank).map(o=>game.officer(o.id,rank)).sort((a,b)=>a.name.localeCompare(b.name,'ja')),list=page===undefined?all:all.slice((page-1)*10,page*10);return list.map(o=>`<tr><th>${esc(o.name==='德川家康'?'徳川家康':o.name)}<small>${esc(o.clan==='德川家'?'徳川家':o.clan)}</small></th><td class="rank-${rank}">${rank}</td><td>${odds.perOfficerRate.toFixed(4)}%</td></tr>`).join('');}
+  function gachaOfficerOddsRows(rank,page){const odds=game.gachaOdds().find(r=>r.rank===rank);if(!odds)return'';const all=(game.officerViews?game.officerViews(game.gachaPool(rank).map(o=>o.id),rank):game.gachaPool(rank).map(o=>game.officer(o.id,rank))).sort((a,b)=>a.name.localeCompare(b.name,'ja')),list=page===undefined?all:all.slice((page-1)*10,page*10);return list.map(o=>`<tr><th>${esc(o.name==='德川家康'?'徳川家康':o.name)}<small>${esc(o.clan==='德川家'?'徳川家':o.clan)}</small></th><td class="rank-${rank}">${rank}</td><td>${odds.perOfficerRate.toFixed(4)}%</td></tr>`).join('');}
   function individualOddsPage(){const pages=Math.max(1,Math.ceil(game.gachaPool(gachaOddsRank).length/10));gachaOddsPage=Math.max(1,Math.min(gachaOddsPage,pages));return `<div class="gacha-odds-table-wrap"><table class="gacha-odds-table"><thead><tr><th>武将</th><th>ランク</th><th>提供割合</th></tr></thead><tbody id="gacha-individual-odds">${gachaOfficerOddsRows(gachaOddsRank,gachaOddsPage)}</tbody></table></div>${pageControls('gacha-odds-page',gachaOddsPage,pages)}`;}
 
   function gachaOddsModal(){const odds=game.gachaOdds();modal('武将招集の提供割合',`${roster.length}名・8ランク · 招集対象 ${num(game.collection().totalVariants)}種 · 1回と10回の各枠は同じ確率です。`,`<div class="notice">先にランクを抽選し、そのランクの対象武将から等確率で1名を選びます。対象の人数と各絵巻の割合は、この一覧で確認できます。所持状況・天守レベルは抽選割合に影響しません。確定枠・天井・期間限定武将はありません。</div><div class="gacha-odds-table-wrap"><table class="gacha-odds-table"><thead><tr><th>ランク</th><th>ランク合計</th><th>人数</th><th>武将1名あたり</th></tr></thead><tbody>${odds.map(r=>`<tr><th class="rank-${r.rank}">${r.rank}</th><td>${r.rate}%</td><td>${r.count}名</td><td>${r.perOfficerRate.toFixed(4)}%</td></tr>`).join('')}</tbody></table></div><p class="subtitle">表示は小数第4位まで。厳密な個別割合は「ランク合計 ÷ そのランクの対象人数」です。同じ武将・同じランクの重複だけが勾玉${data.gacha.duplicateRefund}に変換されます。</p><details class="gacha-all-officers"><summary>ランク別・対象武将の個別提供割合</summary><label for="gacha-odds-rank" style="margin-top:17px">確認するランク</label><select id="gacha-odds-rank" class="select">${data.ranks.map(rank=>`<option value="${rank}" ${rank===gachaOddsRank?'selected':''}>${rank}ランク · ${game.gachaPool(rank).length}名</option>`).join('')}</select><div id="gacha-individual-list">${individualOddsPage()}</div></details>`,`<button class="button primary" data-action="close">招集画面へ戻る</button>`,'gacha-odds');}
@@ -990,7 +978,7 @@
   }
   function renderArmy(){const s=state(),stats=game.armyStats(),income=game.income(),budget=game.recruitmentBudget(income),maximum=s.gameOver?0:budget.affordableMax,amount=budget.recommendedMax>=100?Math.min(1000,budget.recommendedMax):100;return heading('軍団編成','YOUR ARMY · 兵を知り、将を知る','三名の将を選び、次の合戦に備える。')+`<section class="army-muster-overview" aria-label="出陣前の軍団状況"><div><span>編成した将</span><strong>${stats.count}<small> / 3名</small></strong></div><div><span>本隊の兵力</span><strong>${num(s.troops)}<small>人</small></strong></div><div><span>軍団の士気</span><strong>${s.morale}<small> / 100</small></strong></div></section><div class="army-layout"><div class="left-column"><div class="army-slots">${[0,1,2].map((slot)=>{const o=game.officer(s.army[slot]);return `<section class="army-slot army-illustrated-slot${o?'':' is-vacant'}" data-rank="${o?esc(o.rank):'none'}"><div class="army-slot-heading"><span class="slot-label">${['総大将','副将・一','副将・二'][slot]}</span><span class="army-slot-number" aria-hidden="true">${['壱','弐','参'][slot]}</span></div>${o?`<button type="button" class="army-portrait" data-action="officer" data-id="${esc(o.id)}" aria-label="${esc(o.name==='德川家康'?'徳川家康':o.name)}・${esc(o.rank)}ランクの能力と絵巻を見る">${portrait(o)}</button>`:`<div class="army-portrait army-portrait-empty" aria-hidden="true">${icon('users')}<span>次の将を、ここに。</span></div>`}<div class="army-card-copy"><h3>${o?`<span class="officer-rank-label rank-${o.rank}">${esc(o.rank)}</span> ${esc(o.name==='德川家康'?'徳川家康':o.name)}`:'未任命'}</h3><p class="army-officer-house">${o?esc(o.clan==='德川家'?'徳川家':o.clan):'家臣から武将を選択'}</p>${o?`${window.SengokuOfficerHealthUI?.markup(game,o.id,{compact:true})||''}<div class="army-abilities" aria-label="${esc(o.name==='德川家康'?'徳川家康':o.name)}の能力">${[['lead','統率'],['valor','武勇'],['intellect','知略']].map(([key,label])=>`<div class="army-ability"><span>${label}</span><b>${o[key]}</b><span class="army-ability-track" aria-hidden="true"><i style="width:${Math.min(100,Math.max(0,o[key]))}%"></i></span></div>`).join('')}</div><p class="army-officer-skill">${icon('flag')}${esc(skillNames[o.skill]||o.skill)}</p>`:'<p class="army-vacancy-copy">三名の将の能力を組み合わせ、次の合戦に備えましょう。</p>'}<button class="button ${slot===0?'gold ':''}full" data-action="pick-army" data-slot="${slot}">${o?'武将を変更':'武将を任命'}</button></div></section>`;}).join('')}</div><section class="panel"><div class="panel-heading"><h2>兵を集める</h2>${icon('swords')}</div><p class="subtitle">本隊 ${num(s.troops)}人 · 募兵上限 ${num(game.troopCapacity())}人（兵舎の増築で増加）。交易の輸入・返還と空城からの帰還は、募兵上限とは別枠で受け入れます。</p><div class="enlist-form"><label for="recruit-amount" class="subtitle">人数</label><div class="recruit-amount-controls"><input id="recruit-amount" class="input" type="number" min="100" max="20000" step="1" value="${amount}" inputmode="numeric" aria-describedby="recruit-limit recruit-recommendation"><button type="button" class="button gold" data-action="recruit-max" aria-label="資産と収容枠で募兵できる最大人数を入力" aria-controls="recruit-amount" aria-describedby="recruit-limit" ${maximum<100?'disabled':''}>最大</button></div><button class="button primary" data-action="recruit-troops" ${s.command<1||s.gameOver?'disabled':''}>${icon('users')}募兵する</button></div><div id="recruit-cost">${costHtml(game.recruitTroopCost(amount))}</div>${recruitmentPreviewHtml(amount,income,budget)}<p id="recruit-limit" class="subtitle recruit-limit" role="status">${esc(recruitLimitText(maximum))}</p><p class="subtitle">募兵・訓練はそれぞれ指令1回。指令は1倍速で20秒ごとに1回復します。</p><hr class="divider"><div class="stat-row"><span>士気</span><b>${s.morale} / 100</b></div><div class="progress"><i style="width:${s.morale}%"></i></div>${costHtml(game.trainingCost?game.trainingCost():{gold:180,rice:250})}<button class="button full" data-action="train" ${s.morale>=100||s.command<1||s.gameOver?'disabled':''}>${icon('flag')}軍団を訓練する</button></section><div class="section-heading"><h2>${icon('swords')}合戦の戦法</h2><small>出陣ごとに選択できます</small></div><div class="tactics-grid">${data.tactics.map(t=>`<div class="tactic-card" data-tactic="${esc(t.id)}"><h3>${esc(t.name)}</h3><p>${esc(t.description)}</p></div>`).join('')}</div></div><aside><section class="panel"><div class="panel-heading"><h2>軍団の平均能力</h2>${icon('flag')}</div><p class="subtitle">現在の体力を反映した、戦闘時の能力です。</p>${[['lead','統率'],['valor','武勇'],['intellect','知略']].map(([k,n])=>`<div class="army-average-stat"><div class="stat-row"><span>${n}</span><b><span data-army-health-stat="${k}">${stats[k]}</span><small> / 100</small></b></div><div class="army-ability-track" aria-hidden="true"><i data-army-health-stat-bar="${k}" style="width:${Math.min(100,Math.max(0,stats[k]))}%"></i></div></div>`).join('')}${window.SengokuOfficerHealthUI?`<p class="army-health-explanation">${window.SengokuOfficerHealthUI.explanation(game)}</p>`:''}<div class="notice">軍団には同じ武将を重複して編成できません。奉行に任命すると軍団から外れます。</div><button class="button primary full" data-view="map" style="margin-top:18px">${icon('map')}天下地図から出陣</button><button class="button full" data-view="roaming" style="margin-top:10px">${icon('swords')}野良兵士と戦う</button><button class="button full" data-view="covert" style="margin-top:10px">${icon('eye')}派遣部隊を管理</button><button class="button gold full" data-action="troop-trade" style="margin-top:10px">${icon('handshake')}兵士を輸出入</button></section>${economyPanel('army')}</aside></div>`;}
   function officerChoiceResults(){
-    const s=state(),list=filterOfficerList(s.officers.map(id=>game.officer(id)),{...choiceFilters[choiceMode],ownership:'owned'},{rankMatches:true}),pages=Math.max(1,Math.ceil(list.length/8));choicePage=Math.max(1,Math.min(choicePage,pages));
+    const s=state(),list=filterOfficerList(game.officerViews?game.officerViews(s.officers):s.officers.map(id=>game.officer(id)),{...choiceFilters[choiceMode],ownership:'owned'},{rankMatches:true}),pages=Math.max(1,Math.ceil(list.length/8));choicePage=Math.max(1,Math.min(choicePage,pages));
     return `<div class="officer-choice-count" role="status">${list.length} / ${s.officers.length}名 · ${choicePage} / ${pages}頁</div><div class="officer-choice-list">${list.slice((choicePage-1)*8,choicePage*8).map(o=>`<button class="officer-choice" data-action="${choiceMode==='army'?'assign-army':'assign-governor'}" data-id="${o.id}" data-target="${choiceTarget}">${officerCrest(o)}<span class="officer-choice-description"><b><span class="officer-rank-label rank-${o.rank}">${esc(o.rank)}</span> ${esc(o.name==='德川家康'?'徳川家康':o.name)}</b><small>統率 ${o.lead} · 武勇 ${o.valor} · 知略 ${o.intellect} · 政治 ${o.politics}</small><small>${esc(skillNames[o.skill]||o.skill)}</small></span><small class="officer-choice-duty">${s.army.includes(o.id)?'軍団':Object.values(s.governors).includes(o.id)?'奉行':'待機'}</small>${window.SengokuOfficerHealthUI?.markup(game,o.id,{compact:true})||''}</button>`).join('')||'<div class="empty"><p>条件に合う家臣がいません。</p><button type="button" class="button" data-action="officer-reset" data-context="'+choiceMode+'">条件をリセット</button></div>'}</div>${pageControls('choice-page',choicePage,pages)}`;
   }
   function pickOfficer(mode,target,page=1){
@@ -1368,19 +1356,30 @@
   window.addEventListener('hashchange',()=>{const view=location.hash.slice(1);if(['town','facilities','map','field','roaming','covert','court','officers','crests','army','research','council'].includes(view)&&view!==currentView)go(view);});
   if(['town','facilities','map','field','roaming','covert','court','officers','crests','army','research','council'].includes(location.hash.slice(1)))currentView=location.hash.slice(1);
   function refreshLiveControls({refreshHints=true}={}){
-    if(window.SENGOKU_AT_TITLE===true&&!activeModal)return;
+    if(refreshLiveControls.suspended||window.SENGOKU_AT_TITLE===true&&!activeModal)return;
     refreshTouchHeaderStatus();
     if(!game?.state)return;
+    // Closed dialogs retain their DOM for stable reopening. They must not run
+    // battle, officer or construction checks during unrelated background ticks.
+    const activeNodes=selector=>Array.from(document.querySelectorAll(selector)).filter(node=>{const dialog=node.closest?.('dialog');return dialog?.open!==false&&!(window.SENGOKU_AT_TITLE===true&&node.closest?.('#app'));});
     const s=state(),canCommand=s.command>0&&!s.gameOver,writable=canMutate(),recruitInput=$('#recruit-amount'),recruitIncome=recruitInput?game.income():null,recruitBudget=recruitInput?game.recruitmentBudget(recruitIncome):null;
-    document.querySelectorAll('[data-action]').forEach(node=>{
+    const officerChecks=new Map(),recruitInfo=id=>{if(!officerChecks.has(id))officerChecks.set(id,game.canRecruitOfficer(id));return officerChecks.get(id);};
+    let constructionView;
+    const construction=()=>{
+      if(constructionView)return constructionView;
+      const jobs=constructionJobs(),chains=new Map(),counts=[new Set(),new Set()];
+      for(const job of jobs){const shared=job.shared?1:0;if(job.kind!=='research')counts[shared].add(job.kind+':'+job.id);if(job.kind==='building'){const key=job.id+':'+shared;if(!chains.has(key))chains.set(key,[]);chains.get(key).push(job);}}
+      return constructionView={jobs,chains,counts:counts.map(set=>set.size)};
+    };
+    activeNodes('[data-action]').forEach(node=>{
       const id=node.dataset.id;let disabled;
       switch(node.dataset.action){
         case 'relocate-review':disabled=!relocationView?.target||relocationView.loading||!sameRelocationPlayer(relocationView);break;
         case 'relocate-back':disabled=relocationBusy;break;
         case 'relocate-confirm':{const reason=relocationBlock(relocationView),status=$('#relocate-sync-status'),dismiss=$('#relocate-dismiss'),dismissLabel=relocationBusy||relocationView.pending?'閉じる':'やめる';if(dismiss&&dismiss.textContent!==dismissLabel)dismiss.textContent=dismissLabel;const visible=window.SengokuSyncNotices?.visibleText?.(reason)??reason;if(status&&status.textContent!==visible)status.textContent=visible;disabled=Boolean(reason);break;}
         case 'start-new':disabled=!canStartNew()||residencyStartPending||(!game.isAdmin&&!game.isStaff&&newResidencyMode!=='local'&&syncAccess.linked&&newResidencyLoading)||!admissionCastleAllowed(game.isAdmin?'edo':game.isStaff?staffBaseId:$('#new-start-castle')?.value||newStartCastle);break;
-        case 'upgrade':{const b=data.buildings.find(b=>b.id===id),chain=buildingChain(id);disabled=!b||!canCommand||!saveEnabled||!game.buildingUnlock(id).ok||buildingTailLevel(id)>=game.buildingMax(id)||!chain.length&&constructionCount(game.isStaff===true)>=game.constructionSlots()||game.isStaff&&!staffConstructionReady()||!hasResources(game.costs(id));break;}
-        case 'upgrade-castle':{const c=game.castle(id);disabled=!saveEnabled||!canCommand||!c||c.owner!==s.clan||c.level>=castleLevelLimit(id)||!!currentJob('castle',id)||constructionCount(game.isStaff===true&&id===staffBaseId)>=game.constructionSlots()||game.isStaff&&id===staffBaseId&&!staffConstructionReady()||!hasResources(game.castleUpgradeCost(id));if(node.dataset.homeUpgrade==='true'){const hint=$('#home-castle-upgrade-hint');if(hint){const message=homeCastleUpgradeHint(id);if(hint.textContent!==message)hint.textContent=message;}}break;}
+        case 'upgrade':{const b=data.buildings.find(b=>b.id===id),view=construction(),chain=view.chains.get(id+':'+(game.isStaff?1:0))||[];disabled=!b||!canCommand||!saveEnabled||!game.buildingUnlock(id).ok||Math.max(s.buildings[id]||0,...chain.map(job=>job.targetLevel))>=game.buildingMax(id)||!chain.length&&view.counts[game.isStaff?1:0]>=game.constructionSlots()||game.isStaff&&!staffConstructionReady()||!hasResources(game.costs(id));break;}
+        case 'upgrade-castle':{const c=game.castle(id);disabled=!saveEnabled||!canCommand||!c||c.owner!==s.clan||c.level>=castleLevelLimit(id)||!!currentJob('castle',id)||construction().counts[game.isStaff&&id===staffBaseId?1:0]>=game.constructionSlots()||game.isStaff&&id===staffBaseId&&!staffConstructionReady()||!hasResources(game.castleUpgradeCost(id));if(node.dataset.homeUpgrade==='true'){const hint=$('#home-castle-upgrade-hint');if(hint){const message=homeCastleUpgradeHint(id);if(hint.textContent!==message)hint.textContent=message;}}break;}
         case 'build-branch':case 'upgrade-branch':case 'repair-branch':case 'build-branch-facility':case 'upgrade-branch-facility':{const action=node.dataset.action.replace('-branch',''),quote=window.SengokuBranches?.quote?.(game,action,action==='build'?{parentCastleId:id,direction:node.dataset.direction}:action.endsWith('-facility')?{branchId:id,facilityId:node.dataset.facility}:{branchId:id});disabled=branchBookingPending||!saveEnabled||!canCommand||quote?.ok!==true||!hasResources(quote?.cost);
           const hint=node.nextElementSibling;
           if(hint?.hasAttribute?.('data-branch-order-reason')){
@@ -1393,7 +1392,7 @@
         case 'assign-branch-commander':disabled=Boolean(window.SengokuBranches?.commanderReason?.(game,id,branchDeploymentHelpers()));break;
         case 'remove-branch-commander':disabled=branchBookingPending||!saveEnabled||!writable||!game.branchCommanderStatus?.(id)?.commanders?.some(row=>row.id===node.dataset.officer);break;
         case 'research':{const t=data.techs.find(t=>t.id===id);disabled=!t||!canCommand||s.tech[id]>=t.max||s.tech[id]>=s.buildings.academy||s.jobs.some(j=>j.kind==='research')||!hasResources(game.researchCost(id));break;}
-        case 'recruit-officer':disabled=!game.canRecruitOfficer(id).ok;break;
+        case 'recruit-officer':disabled=!recruitInfo(id).ok;break;
         case 'auto-governors':{const status=governorAssignmentStatus();disabled=!saveEnabled||!status.facilityCount||!status.candidateCount||game.isStaff&&!staffConstructionReady();break;}
         case 'draw-officers':disabled=gachaDrawing||Boolean(gachaPresentation)||!saveEnabled||!game.canDrawOfficers(Number(node.dataset.count)).ok;break;
         case 'recruit-max':{const maximum=s.gameOver?0:recruitBudget?.affordableMax??maximumRecruitAmount(),hint=$('#recruit-limit');disabled=maximum<100;if(hint){const text=recruitLimitText(maximum);if(hint.textContent!==text)hint.textContent=text;}break;}
@@ -1416,25 +1415,25 @@
     refreshBranchDeploymentPanels();
     // Choosing a compass direction edits only a local preference. Quiet clock
     // and sync catches must lock construction actions without blurring this field.
-    document.querySelectorAll('[data-branch-parent]').forEach(node=>{const disabled=!game.branchStatus?.(node.dataset.branchParent)?.directions?.some(direction=>direction.available);if(node.disabled!==disabled)node.disabled=disabled;});
+    activeNodes('[data-branch-parent]').forEach(node=>{const disabled=!game.branchStatus?.(node.dataset.branchParent)?.directions?.some(direction=>direction.available);if(node.disabled!==disabled)node.disabled=disabled;});
     const speedControl=$('#realtime-speed');if(speedControl)speedControl.disabled=!writable;
-    for(const control of document.querySelectorAll('#new-start-castle,#new-difficulty,.clan-choice,[data-action="choose-residency-mode"],[data-action="residency-retry"]'))control.disabled=residencyStartPending||(control.dataset.id==='lord'&&control.dataset.action==='choose-residency-mode'&&newResidencyDirectory?.full===true);
+    for(const control of activeNodes('#new-start-castle,#new-difficulty,.clan-choice,[data-action="choose-residency-mode"],[data-action="residency-retry"]'))control.disabled=residencyStartPending||(control.dataset.id==='lord'&&control.dataset.action==='choose-residency-mode'&&newResidencyDirectory?.full===true);
     const startStatus=$('#start-campaign-sync');if(startStatus)startStatus.textContent=$('[data-action="open-lord-registration"]')?'':residencyStartPending?'入城の受付と最新の保存を確認しています。':canStartNew()?'':game.isStaff&&!staffConstructionReady()?'共同拠点の最新の成長を確認しています。':syncAccess.linked&&(!syncAccess.ready||!syncAccess.writable)?syncMessage():window.SengokuWorldClock?.snapshot().message||'同期の確認が終わると開始できます。';
-    document.querySelectorAll('[data-magatama-balance]').forEach(el=>{const value=num(s.magatama);if(el.textContent!==value)el.textContent=value;});
-    document.querySelectorAll('[data-cost-resource]').forEach(el=>{
+    activeNodes('[data-magatama-balance]').forEach(el=>{const value=num(s.magatama);if(el.textContent!==value)el.textContent=value;});
+    activeNodes('[data-cost-resource]').forEach(el=>{
       const key=el.dataset.costResource,balance=key==='magatama'?s.magatama:s.resources[key];
       const amount=Number(el.dataset.costAmount),missing=Math.max(0,amount-balance),detail=el.querySelector('[data-cost-shortage]');
       el.classList.toggle('insufficient',missing>0);
       if(detail){const message=amount>100000000?'（所持上限1億）':missing?`（あと${num(missing)}）`:'';if(detail.textContent!==message)detail.textContent=message;}
     });
-    document.querySelectorAll('[data-recruit-reason]').forEach(el=>{const info=game.canRecruitOfficer(el.dataset.recruitReason);const reason=info.ok?'':info.reason;if(el.textContent!==reason)el.textContent=reason;});
-    for(const balance of document.querySelectorAll('[data-branch-commands]'))if(balance.textContent!==String(s.command))balance.textContent=String(s.command);
+    activeNodes('[data-recruit-reason]').forEach(el=>{const info=recruitInfo(el.dataset.recruitReason);const reason=info.ok?'':info.reason;if(el.textContent!==reason)el.textContent=reason;});
+    for(const balance of activeNodes('[data-branch-commands]'))if(balance.textContent!==String(s.command))balance.textContent=String(s.command);
     if(currentView==='roaming'&&roamingController)roamingController.refresh();
     if(currentView==='covert'&&covertController)covertController.refresh();
     if(currentView==='court'&&courtController)courtController.refresh();
     window.SengokuOfficerHealthUI?.refresh(document,game);
-    const armyHealthStats=document.querySelectorAll('[data-army-health-stat]');
-    if(armyHealthStats.length){const values=game.armyStats();for(const node of armyHealthStats){const value=String(values[node.dataset.armyHealthStat]);if(node.textContent!==value)node.textContent=value;}for(const node of document.querySelectorAll('[data-army-health-stat-bar]')){const width=Math.max(0,Math.min(100,values[node.dataset.armyHealthStatBar]))+'%';if(node.style.width!==width)node.style.width=width;}}
+    const armyHealthStats=activeNodes('[data-army-health-stat]');
+    if(armyHealthStats.length){const values=game.armyStats();for(const node of armyHealthStats){const value=String(values[node.dataset.armyHealthStat]);if(node.textContent!==value)node.textContent=value;}for(const node of activeNodes('[data-army-health-stat-bar]')){const width=Math.max(0,Math.min(100,values[node.dataset.armyHealthStatBar]))+'%';if(node.style.width!==width)node.style.width=width;}}
     if(refreshHints)window.SengokuHintsUI?.refresh?.({throttled:true});
   }
   function jobDuration(value){const seconds=Math.max(0,Math.floor(Number(value)||0)),minutes=Math.floor(seconds/60);return minutes?`${minutes}分${String(seconds%60).padStart(2,'0')}秒`:`${seconds}秒`;}
@@ -1446,8 +1445,9 @@
     return `経過 ${jobDuration(elapsed)} / ${jobDuration(total)} · あと ${jobDuration(Math.ceil(remaining/speed))}${speedLabel}`;
   }
   function refreshJobTimers(){
-    if(window.SENGOKU_AT_TITLE===true&&!activeModal)return;
-    const clocks=document.querySelectorAll('[data-job-clock]'),bars=document.querySelectorAll('[data-job-progress]');
+    if(refreshJobTimers.suspended||window.SENGOKU_AT_TITLE===true&&!activeModal)return;
+    const active=node=>{const dialog=node.closest?.('dialog');return dialog?.open!==false&&!(window.SENGOKU_AT_TITLE===true&&node.closest?.('#app'));};
+    const clocks=Array.from(document.querySelectorAll('[data-job-clock]')).filter(active),bars=Array.from(document.querySelectorAll('[data-job-progress]')).filter(active);
     if(!clocks.length&&!bars.length)return;
     const jobs=new Map();
     for(const job of constructionJobs()){
@@ -1511,7 +1511,11 @@
     // A redraw is not navigation. Disable scroll anchoring while replacement
     // nodes and asynchronous artwork sizing settle, then restore each pane.
     if(container.style)container.style.overflowAnchor='none';
-    draw();
+    // Renderers and modal builders normally refresh their controls. Delay those
+    // reads until the saved input values are restored, then perform one pass.
+    const suspendedControls=refreshLiveControls.suspended,suspendedTimers=refreshJobTimers.suspended;
+    refreshLiveControls.suspended=refreshJobTimers.suspended=true;
+    try{draw();}finally{refreshLiveControls.suspended=suspendedControls;refreshJobTimers.suspended=suspendedTimers;}
     for(const field of fields){const el=locateInteraction(field.locator,container);if(!el)continue;if(el.value!==field.value)el.value=field.value;if(typeof field.checked==='boolean'&&el.checked!==field.checked)el.checked=field.checked;}
     const replacement=locateInteraction(focus,container);
     if(replacement){if(document.activeElement!==replacement)replacement.focus?.({preventScroll:true});if(typeof selection?.start==='number'&&replacement.setSelectionRange&&(replacement.selectionStart!==selection.start||replacement.selectionEnd!==selection.end||replacement.selectionDirection!==selection.direction)){try{replacement.setSelectionRange(selection.start,selection.end,selection.direction||'none');}catch(_){}}}
@@ -1801,15 +1805,20 @@
     if(worldCatchupTimer!==null){clearTimeout(worldCatchupTimer);worldCatchupTimer=null;}
     if(document.hidden)return;
     const shared=window.SengokuWorldClock?.snapshot();if(!shared)return;
-    const p=$('#month-progress');if(p&&shared.clock)p.style.width=shared.clock.calendar.elapsed/60*100+'%';
+    const p=$('#month-progress');if(p&&shared.clock){const width=shared.clock.calendar.elapsed/60*100+'%';if(p.style.width!==width)p.style.width=width;}
     if(!shared.ready||!shared.clock||!canMutate(true,false,allowStrategy)){renderHeader(true);refreshLiveControls();window.SengokuStrategy?.refreshAccess?.();return;}
-    const wasCatchingUp=worldCatchingUp,result=game.applyWorldClock(confirmedWorldClock(),{maxSeconds:7200,deferCycleSettlement:syncAccess.linked});
+    const wasCatchingUp=worldCatchingUp,result=game.applyWorldClock(confirmedWorldClock(),{maxSeconds:600,deferCycleSettlement:syncAccess.linked});
     worldCatchingUp=Boolean(result.pending||game.getMaintenanceStatus?.()?.hasMore);
     const clockKey=`${shared.ready}:${shared.clock.running}:${shared.clock.speed}:${shared.clock.calendar.cycle}`;
     const redraw=result.ok&&!result.pending&&!result.settlementRequired&&(wasCatchingUp||result.monthChanged||result.completed?.length||result.marchResults?.length||result.covertResults?.length||clockKey!==worldClockStatusKey);
-    if(!redraw){renderHeader(true);refreshLiveControls();refreshJobTimers();}
+    // Long resumes yield between bounded simulation slices. Refresh controls
+    // on entry and completion, with occasional progress while replay continues.
+    const paintAt=window.performance?.now?.()??Date.now(),lastPaint=processWorldClock.lastCatchupPaint;
+    if(!redraw&&(!result.pending||!wasCatchingUp||lastPaint===undefined||paintAt<lastPaint||paintAt-lastPaint>=100)){renderHeader(true);refreshLiveControls();refreshJobTimers();processWorldClock.lastCatchupPaint=paintAt;}
     window.SengokuStrategy?.refreshAccess?.();
     if(!result.ok)return;
+    const pendingNotice=processWorldClock.pendingNotice,events=[...(pendingNotice?.game===game?pendingNotice.events:[]),...(result.events||[])].slice(0,2);
+    processWorldClock.pendingNotice={game,events};
     if(result.pending){worldCatchupTimer=setTimeout(processWorldClock,0);return;}
     if(result.settlementRequired){settleWorldCycle();return;}
     if(game.getMaintenanceStatus?.()?.hasMore){
@@ -1818,7 +1827,7 @@
     const s=state(),count=$('#command-count'),pips=$('#command-pips');if(count&&count.textContent!==String(s.command))count.textContent=String(s.command);if(pips)patchHTML(pips,Array.from({length:game.commandMax()},(_,i)=>`<i class="${i<s.command?'filled':''}"></i>`).join(''));
     if(activeModal==='battle')updateBattlePreview();
     if(redraw){worldClockStatusKey=clockKey;preserveInteraction($('#main'),render);refreshActiveModal();syncMusic();}
-    if(result.events?.length)toast(result.events.slice(0,2).join(' / '));
+    processWorldClock.pendingNotice=null;if(events.length)toast(events.join(' / '));
     window.SengokuTravelUI?.refresh();
     if(result.changed){saveCounter++;if(saveCounter>=10||wasCatchingUp||result.migrated||result.monthChanged||result.completed?.length||result.marchResults?.length||result.covertResults?.length){saveCounter=0;save({allowStrategy});}}
   }
@@ -2319,7 +2328,7 @@ function fingerprint(save){
  const sorted=value=>Array.isArray(value)?value.map(sorted):value&&typeof value==='object'?Object.fromEntries(Object.keys(value).sort().map(key=>[key,sorted(value[key])])):value;
  return JSON.stringify(sorted(save.state));
 }
-function hash(value){let a=2166136261,b=3339675911;for(let i=0;i<value.length;i++){a=Math.imul(a^value.charCodeAt(i),16777619);b=Math.imul(b^value.charCodeAt(i),2246822519);}return(a>>>0).toString(16)+':'+(b>>>0).toString(16);}
+function hash(value){let a=2166136261,b=3339675911;const imul=Math.imul;for(let i=0;i<value.length;i++){const code=value.charCodeAt(i);a=imul(a^code,16777619);b=imul(b^code,2246822519);}return(a>>>0).toString(16)+':'+(b>>>0).toString(16);}
 // Reconcile only the authoritative branch/parent delta. A resource tick or a
 // new ordinary action must not prevent that delta, or be rolled back by it.
 function mergeBranchCorrection(sent,canonical,current,{troopsSeparate=false}={}){
@@ -2458,14 +2467,18 @@ function create(options={}){
  let status={linked:false,ready:true,writable:true,banned:false,reason:'local',message:'',revision:0,updatedAt:null,leaseExpiresAt:null,writerDeviceName:null,deviceName:device.name};
  const valid=g=>Boolean(session&&g===generation);
  const rolePending=()=>bridge()?.getRoleAccess?.().pending===true;
- const local=()=>{const currentBridge=bridge(),save=currentBridge?.getSave?.();if(save===null&&currentBridge?.hasStarted?.()===false)return null;if(!fingerprint(save))throw Error('ゲームの保存データを確認できませんでした。');return save;};
- const stored=()=>{const currentBridge=bridge();return currentBridge?.getStoredSave?currentBridge.getStoredSave():local();};
- function checkpoint(){
+ const local=()=>{const currentBridge=bridge(),save=currentBridge?.getSave?.();if(save===null&&currentBridge?.hasStarted?.()===false)return null;if(!save||typeof save!=='object'||!save.state||typeof save.state!=='object')throw Error('ゲームの保存データを確認できませんでした。');return save;};
+ const localSnapshot=()=>{const save=local();return{save,key:fingerprint(save)};};
+ const stored=fallback=>{const currentBridge=bridge();return currentBridge?.getStoredSave?currentBridge.getStoredSave():fallback===undefined?local():fallback;};
+ function checkpoint(current){
   if(!session||!initialized||rolePending())return;
   // A clock tick can advance the runtime after the primary local save. Keep the
   // exact pending snapshot and the durable source it belongs to in one write.
   // A failed storage write leaves the previous checkpoint and game save intact.
-  try{if(dirty){const save=local(),durable=stored();if(!save||!fingerprint(durable))return;storage?.setItem(PENDING_KEY,JSON.stringify({id:String(session.id),revision,ack:hash(ack),local:hash(fingerprint(save)),durable:hash(fingerprint(durable)),snapshot:save,attempt,...(branchCorrectionPending?{branchCorrectionPending:true}:{})}));}else{const old=JSON.parse(storage?.getItem(PENDING_KEY)||'null');if(old?.id===String(session.id))storage?.removeItem(PENDING_KEY);}}catch(_){}
+  // Reuse a snapshot only within the synchronous operation that captured it.
+  // Every response/authority application takes a new snapshot, so actions made
+  // during a request still survive without repeatedly exporting the same save.
+  try{if(dirty){const {save,key}=current||localSnapshot(),durable=stored(save),durableKey=durable===save?key:fingerprint(durable);if(!save||!durableKey)return;const localHash=hash(key),durableHash=durableKey===key?localHash:hash(durableKey);storage?.setItem(PENDING_KEY,JSON.stringify({id:String(session.id),revision,ack:hash(ack),local:localHash,durable:durableHash,snapshot:save,attempt,...(branchCorrectionPending?{branchCorrectionPending:true}:{})}));}else{const old=JSON.parse(storage?.getItem(PENDING_KEY)||'null');if(old?.id===String(session.id))storage?.removeItem(PENDING_KEY);}}catch(_){}
  }
  function canResume(remoteKey,remoteRevision){
   try{const pending=JSON.parse(storage?.getItem(PENDING_KEY)||'null');if(pending?.id!==String(session.id)||pending.branchCorrectionPending===true)return null;
@@ -2591,7 +2604,7 @@ function create(options={}){
    const resume=!force&&canResume(remoteKey,result.revision);
    if(!await apply(resume||remote,result,g,{reason:resume?'resume':!initialized?'initial':reason,backup:resume?Boolean(before)&&before!==fingerprint(resume):backup,backupRuntime:Boolean(branchCorrectionPending)}))return false;
    branchCorrectionPending=null;ack=remoteKey;dirty=fingerprint(local())!==ack;
-  }else if(!remote&&!initialized){ack='';dirty=Boolean(local());}
+  }else if(!remote&&!initialized){ack='';dirty=Boolean(localSnapshot().save);}
   else if(remote&&branchCorrectionPending){const corrected=mergeBranchCorrection(branchCorrectionPending,remote,local());if(corrected.changed){if(!await apply(corrected.save,result,g,{reason:'branch-canonical'}))return false;}if(!corrected.pending)branchCorrectionPending=null;dirty=fingerprint(local())!==ack;}
   // The branch ledger may be newer than the player's economic checkpoint. Its
   // trusted cursor must reach the engine before a clock notification can catch up.
@@ -2606,7 +2619,7 @@ function create(options={}){
   emit({linked:true,ready:initialized,writable:false,reason:auth?'auth':online()?'error':'offline',message:auth?'領主情報を再接続してください。接続するまで操作を待機しています。':error?.message||'通信が戻ると共通時刻までの進行を反映します。'});
  }
  function scheduleSave(){if(saveTimer!==null||!session||!status.writable||hidden())return;const g=generation;saveTimer=later(()=>{saveTimer=null;if(valid(g))flush();},1000);}
- function notifySave(){if(!session||banned||applying||!initialized||rolePending())return;try{const save=local();dirty=Boolean(save)&&fingerprint(save)!==ack;checkpoint();if(dirty&&status.writable)scheduleSave();}catch(e){fail(e,generation);}}
+ function notifySave(){if(!session||banned||applying||!initialized||rolePending())return;try{const current=localSnapshot();dirty=Boolean(current.save)&&current.key!==ack;checkpoint(current);if(dirty&&status.writable)scheduleSave();}catch(e){fail(e,generation);}}
  async function recoverConflict(g){
   emit({writable:false,reason:'conflict',message:'別の更新を確認したため、最新の保存を読み込んでいます…'});
   const result=await request(g,'/sync?deviceId='+encodeURIComponent(device.id));
@@ -2616,7 +2629,7 @@ function create(options={}){
   if(!valid(g)||banned||!initialized||rolePending()||!online()||leaseDeadline<=now()||(!suspended&&(!status.writable||hidden())))return{ok:false};
   const save=local();if(!save){dirty=false;attempt=null;checkpoint();if(!suspended)access();return{ok:true,waitingForStart:true};}
   const sent=fingerprint(save);dirty=sent!==ack;if(!dirty){if(!suspended)access();return{ok:true,unchanged:true};}
-  attempt={revision,key:hash(sent)};checkpoint();let finishUpkeep=null;
+  attempt={revision,key:hash(sent)};checkpoint({save,key:sent});let finishUpkeep=null;
   try{
    const currentBridge=bridge(),hasAuthorityReader=typeof currentBridge?.getMaintenanceAuthority==='function';
    const authority=hasAuthorityReader?currentBridge.getMaintenanceAuthority():maintenanceAuthoritySnapshot?.authority;
@@ -2644,7 +2657,7 @@ function create(options={}){
     if(home&&journal?.current&&!journal.overflow&&save.state.walking?.campaignId===preserved.state.walking?.campaignId&&save.state.clan===preserved.state.clan&&journal.records.some(record=>(record.before.castles[home]||0)>(record.after.castles[home]||0)))effective=staffSnapshotWithTroops(result,preserved.state);
     branchCorrectionPending=corrected.pending?save:null;if((corrected.changed||monthly.changed)&&!await apply(preserved,effective,g,{reason:corrected.changed?'branch-canonical':'upkeep-month',backup:false}))return{ok:false};
    }
-   if(!valid(g))return{ok:false};applyMaintenanceAuthority(effective,g);applyBranchAuthority(effective,g);observeResidency(effective);if(effective.clock)global.SengokuWorldClock?.accept(effective.clock);applyStaffBase(effective,g);revision=result.revision;ack=canonical;dirty=fingerprint(local())!==ack;initialized=true;attempt=null;checkpoint();status.updatedAt=result.updatedAt||null;lease(result);access();if(dirty&&!suspended)scheduleSave();return{ok:true};
+   if(!valid(g))return{ok:false};applyMaintenanceAuthority(effective,g);applyBranchAuthority(effective,g);observeResidency(effective);if(effective.clock)global.SengokuWorldClock?.accept(effective.clock);applyStaffBase(effective,g);revision=result.revision;ack=canonical;const latest=localSnapshot();dirty=latest.key!==ack;initialized=true;attempt=null;checkpoint(latest);status.updatedAt=result.updatedAt||null;lease(result);access();if(dirty&&!suspended)scheduleSave();return{ok:true};
   }catch(error){
    if(!valid(g))return{ok:false};
    if(error.code==='DEFENSE_CLOCK_PENDING'){

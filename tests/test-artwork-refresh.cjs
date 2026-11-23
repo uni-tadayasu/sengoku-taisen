@@ -53,15 +53,37 @@ function headerIconSlots(){
 }
 async function run(){
  {
-  const frames=[],scope={scheduled:false,requestAnimationFrame:fn=>frames.push(fn)},draws=[];
-  scope.decorate=()=>{scope.scheduled=false;draws.push('decorate');};
+  const frames=[],document={querySelectorAll:()=>[]},scope={document,decorationRoots:new Set(),scheduled:false,requestAnimationFrame:fn=>frames.push(fn)},draws=[];
+  scope.decorate=()=>{scope.scheduled=false;scope.decorationRoots.clear();draws.push('decorate');};
   vm.createContext(scope);
-  const from=source.indexOf('function schedule(){'),to=source.indexOf('\nfunction visiblePaints(',from);
+  const from=source.indexOf('function flushDecorations(){'),to=source.indexOf('\nfunction visiblePaints(',from);
   vm.runInContext(source.slice(from,to),scope);
   scope.schedule();scope.schedule();assert.equal(frames.length,1);
   scope.decorate();frames.shift()();assert.equal(draws.length,1,'A direct artwork pass fulfills the already-scheduled pass');
   scope.schedule();frames.shift()();assert.equal(draws.length,2,'Later content changes still decorate');
   console.log('PASS an explicit artwork pass avoids a duplicate queued scan');
+ }
+ {
+  const {doc,host,$}=require('./helpers/dom-model.cjs').setup(),frames=[],draws=[];
+  host.innerHTML='<section id="roster"><button id="existing">既存の武将</button></section><section id="changed"><button id="new">新しい操作</button></section><div class="ui-motion-layer"><div class="ui-motion-clip"></div></div>';
+  const scope={document:doc,decorationRoots:new Set(),scheduled:false,requestAnimationFrame:fn=>frames.push(fn),decorate:root=>draws.push(root)};
+  vm.createContext(scope);const from=source.indexOf('function flushDecorations(){'),to=source.indexOf('\nfunction visiblePaints(',from);vm.runInContext(source.slice(from,to),scope);
+  scope.schedule($('#new'));scope.schedule($('#changed'));scope.schedule($('#new'));assert.equal(frames.length,1);frames.shift()();assert.deepEqual(draws,[$('#changed')]);
+  draws.length=0;
+  scope.artworkMutations([{target:host,addedNodes:[$('#new')],removedNodes:[]}]);frames.shift()();assert.deepEqual(draws,[$('#new')],'Adding a button never rescans the existing roster');
+  draws.length=0;
+  scope.artworkMutations([{target:$('#new'),addedNodes:[doc.createTextNode('123')],removedNodes:[doc.createTextNode('122')]},{target:host,addedNodes:[$('.ui-motion-layer')],removedNodes:[]},{target:$('.ui-motion-layer'),addedNodes:[$('.ui-motion-clip')],removedNodes:[]}]);
+  assert.equal(frames.length,0,'Text updates and decorative click waves must not schedule artwork');
+  scope.schedule($('#new'));$('#new').remove();frames.shift()();assert.equal(draws.length,0,'Detached views must not be decorated');
+  console.log('PASS artwork batches overlapping changed roots and ignores text, ripples and detached views');
+ }
+ {
+  const {doc,host,$}=require('./helpers/dom-model.cjs').setup();host.innerHTML='<button id="untouched">別の画面</button><button id="added">追加</button>';
+  const window={SENGOKU_AT_TITLE:true};vm.runInNewContext(source,{window,document:doc});window.SengokuArt.decorate($('#added'));
+  assert.equal($('#added').querySelectorAll('svg').length,1);assert.equal($('#added').dataset.buttonArtEnhanced,'1');
+  assert.equal($('#untouched').querySelectorAll('svg').length,0);assert.equal($('#untouched').dataset.buttonArtEnhanced,undefined);
+  $('#added').textContent='変更後';window.SengokuArt.decorate($('#added'));assert.equal($('#added').querySelectorAll('svg').length,1,'A replaced button label regains exactly one icon');
+  console.log('PASS scoped artwork preserves new buttons and replaced icons without touching unrelated controls');
  }
  {
   const reads=new Map(),make=(id,dataset)=>({id,dataset,getBoundingClientRect(){reads.set(id,(reads.get(id)||0)+1);return{width:80,height:40,top:0,bottom:40,left:0,right:80};}});

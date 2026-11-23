@@ -4708,14 +4708,30 @@ const api=Object.freeze({version:1,coordinates,plan,nearest,distance,formatDurat
     baseOfficer(id){return this.officerMap[id]||null;}
     ownsVariant(id,rank){return this.canOwnOfficerVariant(id,rank)&&this.state.officerVariants.includes(`${id}:${rank}`);}
     ownedRanks(id){return RANKS.filter(rank=>this.ownsVariant(id,rank));}
-    highestOwnedRank(id){return this.ownedRanks(id).at(-1)||null;}
+    highestOwnedRank(id){for(let index=RANKS.length-1;index>=0;index--)if(this.ownsVariant(id,RANKS[index]))return RANKS[index];return null;}
     collection(){return{officers:this.state.officers.length,variants:this.state.officerVariants.filter(key=>{const [id,rank]=key.split(':');return this.canOwnOfficerVariant(id,rank);}).length,totalVariants:RANKS.reduce((sum,rank)=>sum+this.gachaPool(rank).length,0)};}
+    _officerView(base,chosen,variantOwned){
+      if(!base||!RANKS.includes(chosen))return null;
+      const rankBonus=RANK_BONUSES[chosen],baseStats=Object.fromEntries(['lead','valor','intellect','politics'].map(k=>[k,base[k]]));
+      const exclusive=base.id===ADMIN_ASSETS.officerId&&chosen==='U';
+      return{...base,name:exclusive?'德川家康':base.name,clan:exclusive?ADMIN_ASSETS.clanName:base.clan,baseRank:base.rank||base.rarity,rank:chosen,rarity:chosen,rankBonus,baseStats,...Object.fromEntries(Object.entries(baseStats).map(([k,v])=>[k,clamp(v+rankBonus,0,100)])),variantOwned};
+    }
     officer(id,rank){
       const base=this.baseOfficer(id);if(!base)return null;
-      const chosen=rank===undefined?this.highestOwnedRank(id)||this._baseGrantRank(id):rank;if(!RANKS.includes(chosen))return null;
-      const rankBonus=RANK_BONUSES[chosen],baseStats=Object.fromEntries(['lead','valor','intellect','politics'].map(k=>[k,base[k]]));
-      const exclusive=id===ADMIN_ASSETS.officerId&&chosen==='U';
-      return{...base,name:exclusive?'德川家康':base.name,clan:exclusive?ADMIN_ASSETS.clanName:base.clan,baseRank:base.rank||base.rarity,rank:chosen,rarity:chosen,rankBonus,baseStats,...Object.fromEntries(Object.entries(baseStats).map(([k,v])=>[k,clamp(v+rankBonus,0,100)])),variantOwned:this.ownsVariant(id,chosen)};
+      const highest=rank===undefined?this.highestOwnedRank(id):null,chosen=rank===undefined?highest||this._baseGrantRank(id):rank;
+      return this._officerView(base,chosen,rank===undefined?Boolean(highest):this.ownsVariant(id,chosen));
+    }
+    officerViews(ids,rank){
+      if(!ids.length)return[];
+      // A fresh index belongs only to this synchronous read. Imports, direct
+      // state edits, new variants and role changes are visible on the next call.
+      const variants=new Set(this.state.officerVariants);
+      return ids.map(id=>{
+        const base=this.baseOfficer(id);if(!base)return null;
+        let chosen=rank;
+        if(chosen===undefined){for(let index=RANKS.length-1;index>=0;index--){const candidate=RANKS[index];if(this.canOwnOfficerVariant(id,candidate)&&variants.has(`${id}:${candidate}`)){chosen=candidate;break;}}chosen=chosen||this._baseGrantRank(id);}
+        return this._officerView(base,chosen,this.canOwnOfficerVariant(id,chosen)&&variants.has(`${id}:${chosen}`));
+      });
     }
     officerHealth(id){
       const s=this.state;if(!s.officers.includes(id))return null;
@@ -5026,13 +5042,15 @@ const api=Object.freeze({version:1,coordinates,plan,nearest,distance,formatDurat
       return{ok:true,already:false,message:'贈り物を受け取りました。',rewards:reward};
     }
     _action(text,kind='info',extra={}){if(!MARCH_CONTEXT.has(this))this.state.command--;this.log(text,kind);return{ok:true,message:text,...extra};}
-    governorBonusFor(buildingId,officerId){return governorBonusForCategory(BUILDINGS.find(b=>b.id===buildingId)?.category,this.officer(officerId));}
-    _governorBonus(id){return this.governorBonusFor(id,this.state.governors[id]);}
-    _facilityEffect(category){return EXTRA_FACILITIES.filter(b=>b.category===category).reduce((a,b)=>a+this.state.buildings[b.id]*b.effect*this._governorBonus(b.id),0);}
+    governorBonusFor(buildingId,officerId,officers){return governorBonusForCategory(BUILDINGS.find(b=>b.id===buildingId)?.category,officers?officers.get(officerId):this.officer(officerId));}
+    _governorViews(){const ids=[...new Set(Object.values(this.state.governors))],views=this.officerViews(ids);return new Map(ids.map((id,index)=>[id,views[index]]));}
+    _governorBonus(id,officers){return this.governorBonusFor(id,this.state.governors[id],officers);}
+    _facilityEffect(category,officers){return EXTRA_FACILITIES.filter(b=>b.category===category).reduce((a,b)=>a+this.state.buildings[b.id]*b.effect*this._governorBonus(b.id,officers),0);}
     buildingUnlock(id){const b=BUILDINGS.find(b=>b.id===id);if(!b)return{ok:false,requiredLevel:1,reason:'施設が見つかりません。'};const ok=this.state.buildings.keep>=b.requiredKeep;return{ok,requiredLevel:b.requiredKeep,reason:ok?'建設・増築できます。':`天守 Lv.${b.requiredKeep}が必要です。`};}
     governorDescription(id){const category=BUILDINGS.find(b=>b.id===id)?.category;const named={keep:'政治力に応じて武将の登用費用を軽減します。',barracks:'政治力に応じて兵数上限を増やし募兵費用を軽減します。',wall:'政治力に応じて本拠の防衛力を高めます。',academy:'政治力に応じて研究費用を軽減します。'};return named[id]||({gold:'政治力に応じてこの施設の金銭生産を増やします。',rice:'政治力に応じてこの施設の兵糧生産を増やします。',wood:'政治力に応じてこの施設の木材生産を増やします。',stone:'政治力に応じてこの施設の石材生産を増やします。',military:'政治力に応じてこの施設の攻撃力・兵数上限の効果を高めます。',defense:'政治力に応じてこの施設の防衛補正を高めます。',research:'政治力に応じてこの施設の研究費軽減を強化します。',diplomacy:'政治力に応じてこの施設の交渉・偵察・登用費軽減を強化します。'})[category]||'';}
     buildingSummary(id){const b=BUILDINGS.find(b=>b.id===id);if(!b)return'';const lv=this.state.buildings[id];if(!lv)return'未建設';const gov=this._governorBonus(id),v=lv*b.effect*gov;if(!b.core){if(RESOURCES.includes(b.category))return`${({gold:'金銭',rice:'兵糧',wood:'木材',stone:'石材'})[b.category]} +${Math.floor(v).toLocaleString()} /月（技術補正前）`;if(b.category==='military')return`攻撃 +${(v*100).toFixed(1)}%・兵数 +${Math.floor(lv*b.capacity*gov).toLocaleString()}`;if(b.category==='defense')return`領国防衛 +${(v*100).toFixed(1)}%`;if(b.category==='research')return`研究効率 +${(v*100).toFixed(1)}%`;return`交渉効率 +${(v*100).toFixed(1)}%`;}
-      return({keep:`登用条件 Lv.${lv}・指示 ${this.commandMax()}回`,farm:`兵糧 +${Math.floor(lv*450*gov).toLocaleString()} /月`,market:`金銭 +${Math.floor(lv*180*gov).toLocaleString()} /月`,lumber:`木材 +${Math.floor(lv*170*gov).toLocaleString()} /月`,quarry:`石材 +${Math.floor(lv*130*gov).toLocaleString()} /月`,barracks:`兵数上限 ${this.troopCapacity().toLocaleString()}`,wall:`本拠防衛 +${(lv*.16*100).toFixed(0)}%`,academy:`研究上限 Lv.${Math.min(5,lv)}・費用効率 +${((lv-1)*2.5).toFixed(1)}%`})[id]||'';
+      if(id==='barracks')return `兵数上限 ${this.troopCapacity().toLocaleString()}`;
+      return({keep:`登用条件 Lv.${lv}・指示 ${this.commandMax()}回`,farm:`兵糧 +${Math.floor(lv*450*gov).toLocaleString()} /月`,market:`金銭 +${Math.floor(lv*180*gov).toLocaleString()} /月`,lumber:`木材 +${Math.floor(lv*170*gov).toLocaleString()} /月`,quarry:`石材 +${Math.floor(lv*130*gov).toLocaleString()} /月`,wall:`本拠防衛 +${(lv*.16*100).toFixed(0)}%`,academy:`研究上限 Lv.${Math.min(5,lv)}・費用効率 +${((lv-1)*2.5).toFixed(1)}%`})[id]||'';
     }
     diplomacyCost(){return{gold:Math.max(60,Math.round((this.state.clan==='毛利家'?420:600)/(1+this._facilityEffect('diplomacy'))))};}
     scoutCost(){return{gold:Math.max(20,Math.round(120/(1+this._facilityEffect('diplomacy'))))};}
@@ -5145,10 +5163,10 @@ const api=Object.freeze({version:1,coordinates,plan,nearest,distance,formatDurat
       return{ok:true,changed:true,removed,reductions,allocations,income:this.income(),message};
     }
     income(){
-      const s=this.state,b=s.buildings,t=s.tech,owned=this.ownedCastles(),n=owned.length,expanded=owned.reduce((sum,c)=>sum+c.level-1,0),branchIncome=this.branchFacilityBonuses().income;
-      const gold=Math.floor((180+b.keep*50+b.market*180*this._governorBonus('market')+this._facilityEffect('gold')+n*100+expanded*15)*(1+t.commerce*.12)*(s.clan==='織田家'?1.15:1))+branchIncome.gold;
-      const grossRice=Math.floor((b.farm*450*this._governorBonus('farm')+this._facilityEffect('rice')+n*170+expanded*20)*(1+t.cultivation*.12)*(s.clan==='北条家'?1.15:1))+branchIncome.rice;
-      const gross={gold,rice:grossRice,wood:Math.floor((b.lumber*170*this._governorBonus('lumber')+this._facilityEffect('wood')+n*40+expanded*5)*(1+t.forestry*.15))+branchIncome.wood,stone:Math.floor((b.quarry*130*this._governorBonus('quarry')+this._facilityEffect('stone')+n*30+expanded*5)*(1+t.masonry*.15))+branchIncome.stone};
+      const s=this.state,b=s.buildings,t=s.tech,governors=this._governorViews(),owned=this.ownedCastles(),n=owned.length,expanded=owned.reduce((sum,c)=>sum+c.level-1,0),branchIncome=this.branchFacilityBonuses().income;
+      const gold=Math.floor((180+b.keep*50+b.market*180*this._governorBonus('market',governors)+this._facilityEffect('gold',governors)+n*100+expanded*15)*(1+t.commerce*.12)*(s.clan==='織田家'?1.15:1))+branchIncome.gold;
+      const grossRice=Math.floor((b.farm*450*this._governorBonus('farm',governors)+this._facilityEffect('rice',governors)+n*170+expanded*20)*(1+t.cultivation*.12)*(s.clan==='北条家'?1.15:1))+branchIncome.rice;
+      const gross={gold,rice:grossRice,wood:Math.floor((b.lumber*170*this._governorBonus('lumber',governors)+this._facilityEffect('wood',governors)+n*40+expanded*5)*(1+t.forestry*.15))+branchIncome.wood,stone:Math.floor((b.quarry*130*this._governorBonus('quarry',governors)+this._facilityEffect('stone',governors)+n*30+expanded*5)*(1+t.masonry*.15))+branchIncome.stone};
       const maintenance=this.maintenance(),rawNet=Object.fromEntries(RESOURCES.map(key=>[key,gross[key]-maintenance.totalUpkeep[key]])),{net,surplusAdjustment}=balanceSurplus(rawNet);
       // Full production still funds troops and facilities before excess savings
       // taper. Existing sustainable forces and deficit signs never change just
@@ -5221,7 +5239,7 @@ const api=Object.freeze({version:1,coordinates,plan,nearest,distance,formatDurat
     planGovernorAssignments(){
       if(this.isStaff&&!STAFF_VIEW.get(this))return fail('京都御所の共同拠点を確認してから、奉行を配置してください。');
       const s=this.state,facilities=BUILDINGS.filter(b=>s.buildings[b.id]>0),army=new Set([...s.army,...s.branches.flatMap(branch=>branch.commanders||[])]);
-      const officers=[...new Set(s.officers)].filter(id=>!army.has(id)).sort().map(id=>this.officer(id)).filter(Boolean);
+      const officers=this.officerViews([...new Set(s.officers)].filter(id=>!army.has(id)).sort()).filter(Boolean);
       const facilityCount=facilities.length,candidateCount=officers.length,columnCount=Math.max(facilityCount,candidateCount),bonuses=facilities.map(b=>officers.map(o=>governorBonusForCategory(b.category,o)));
       // One point of actual suitability outweighs every possible retention
       // tie-break. Integer scores avoid rounding-dependent reassignment.
@@ -6741,8 +6759,21 @@ global.setInterval?.(()=>{if(!global.document.hidden&&options.getContext)refresh
    const style=styleOf?.(part),position=style?.position||part.style?.getPropertyValue?.('position'),value=part.hidden===true||part.hasAttribute?.('hidden')||part.getAttribute?.('aria-hidden')==='true'||['absolute','fixed','sticky'].includes(position)||style?.display==='none'||['hidden','collapse'].includes(style?.visibility)||excluded(part.parentElement);
    hidden.set(part,value);return value;
   };
-  const candidates=[];
-  for(const part of node.querySelectorAll?.('*')||[]){
+  const candidates=[],sampled=new Set();let sampledViewport=false;
+  if(typeof doc?.elementsFromPoint==='function'){
+   // Sample the visible viewport instead of measuring every row in a long
+   // roster or construction ledger. Hit testing already accounts for clipping,
+   // collapsed details and overlapping panes. Ancestors supply stable keys.
+   const view=doc.defaultView,left=Math.max(0,viewport.left),right=Math.min(view?.innerWidth||viewport.right,viewport.right),top=Math.max(0,viewport.top),bottom=Math.min(view?.innerHeight||viewport.bottom,viewport.bottom);
+   try{
+    if(right>left&&bottom>top)for(const y of [1,12,32,64,128,(bottom-top)*.5,(bottom-top)*.75,bottom-top-2])for(const ratio of [.15,.5,.85]){
+     const pointY=Math.min(bottom-1,top+Math.max(0,y)),pointX=left+(right-left)*ratio;
+     for(const hit of doc.elementsFromPoint(pointX,pointY)||[])for(let part=hit;part&&part!==node&&node.contains(part);part=part.parentElement)sampled.add(part);
+    }
+    sampledViewport=true;
+   }catch(_){sampled.clear();}
+  }
+  for(const part of sampledViewport?sampled:node.querySelectorAll?.('*')||[]){
    // A nested update may change the height of an offscreen region. Its next
    // visible content can anchor the ancestor; unrelated earlier headers cannot.
    if(!host.contains(part)&&!(host.compareDocumentPosition?.(part)&4))continue;
@@ -8118,7 +8149,7 @@ const previewUrl=name=>previewDir+name+'.webp?v='+previewRevision;
 const numberTag=value=>String(value).padStart(2,'0');
 const frames=Object.fromEntries(ranks.map(r=>[r,`assets/frames/rank-${r}.svg?v=4.9.10-20261123`]));
 const operatorPortrait={id:'of_b0616adde162',rank:'U',url:'assets/operator-ieyasu-u.webp?v=ieyasu-anime-u-20261123'};
-const cache=new Map(),loaded=new Set(),paintRequests=new WeakMap(),deferredTitle=new Set();let observer,scheduled=false;
+const cache=new Map(),loaded=new Set(),paintRequests=new WeakMap(),deferredTitle=new Set(),decorationRoots=new Set();let observer,scheduled=false;
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const icons={
  town:'M3 20h18M5 20V10l7-5 7 5v10M3 10h18M6 5l6-3 6 3M8 13h2v3H8m6-3h2v3h-2M10 20v-3h4v3',
@@ -8282,19 +8313,50 @@ function buttonArtwork(el){
 function hasSymbolLabel(el){return /^[×✕✖+＋−－–‹›«»←→…⋯]$/.test((el.textContent||'').trim());}
 // The game fills explicit icon slots on render. Keep them reserved even before their SVG is mounted.
 function hasArtworkIcon(el){return Boolean(el.querySelector('svg,img,.painted-art,.portrait-frame,[data-icon]'));}
-function decorate(){scheduled=false;
- document.querySelectorAll('[data-art-url]:not([data-art-observed])').forEach(el=>{el.dataset.artObserved='1';observePaint(el);});
+function matching(root,selector){
+ const nodes=Array.from(root.querySelectorAll(selector));
+ if(root.nodeType===1&&root.matches(selector))nodes.unshift(root);
+ return nodes;
+}
+function decorate(root=document){
+ if(root===document){scheduled=false;decorationRoots.clear();}
+ matching(root,'[data-art-url]:not([data-art-observed])').forEach(el=>{el.dataset.artObserved='1';observePaint(el);});
  const selector='.button,.text-link,.launch-enter,.nav-item,.resource,.building-card,.facility-entry,.territory-row,.research-card,.quest-row,.tactic-card,.music-track,.settings-stack>.button,.social-tabs button,.social-list-card,.social-mail-row,.social-profile-section,.social-gift,.clan-choice,.gacha-banner,.title-feature,.panel,.notice,.officer-content';
- document.querySelectorAll(selector).forEach(el=>{if(el.dataset.artEnhanced)return;el.dataset.artEnhanced='1';el.classList.add('illustrated-item');
+ matching(root,selector).forEach(el=>{if(el.dataset.artEnhanced)return;el.dataset.artEnhanced='1';el.classList.add('illustrated-item');
   let type=el.dataset.artTheme||el.dataset.view||el.dataset.action||'council';if(type.includes('gacha')||type.includes('draw'))type='gacha';if(type.includes('music')||type==='sound')type='music';if(type.includes('save')||type.includes('export')||type.includes('import'))type='save';
   decorateBackground(el,type);
   if(el.matches('button')&&!hasSymbolLabel(el)&&!hasArtworkIcon(el)&&!el.classList.contains('territory-row'))el.insertAdjacentHTML('afterbegin',icon(type));
  });
- document.querySelectorAll(buttonSelector).forEach(buttonArtwork);
- document.querySelectorAll('button,.title-feature').forEach(el=>{if(!hasSymbolLabel(el)&&!hasArtworkIcon(el)){let type=el.dataset.artTheme||el.dataset.view||el.dataset.action||'default';if(type.includes('gacha')||type.includes('draw'))type='gacha';else if(type.includes('music')||type.includes('sound'))type='music';else if(type.includes('rank'))type='rank';else if(type.includes('officer')||type.includes('recruit'))type='officers';else if(type.includes('castle')||type.includes('building')||type.includes('upgrade'))type='town';else if(type.includes('save')||type.includes('export')||type.includes('import'))type='save';el.insertAdjacentHTML('afterbegin',icon(type));}});
- document.querySelectorAll('.section-heading h2,.panel-heading h2,.social-profile-section h3').forEach(el=>{if(!el.querySelector('svg'))el.insertAdjacentHTML('afterbegin',icon(el.closest('.social-profile-section')?'save':'council'));});
+ matching(root,buttonSelector).forEach(buttonArtwork);
+ matching(root,'button,.title-feature').forEach(el=>{if(!hasSymbolLabel(el)&&!hasArtworkIcon(el)){let type=el.dataset.artTheme||el.dataset.view||el.dataset.action||'default';if(type.includes('gacha')||type.includes('draw'))type='gacha';else if(type.includes('music')||type.includes('sound'))type='music';else if(type.includes('rank'))type='rank';else if(type.includes('officer')||type.includes('recruit'))type='officers';else if(type.includes('castle')||type.includes('building')||type.includes('upgrade'))type='town';else if(type.includes('save')||type.includes('export')||type.includes('import'))type='save';el.insertAdjacentHTML('afterbegin',icon(type));}});
+ matching(root,'.section-heading h2,.panel-heading h2,.social-profile-section h3').forEach(el=>{if(!el.querySelector('svg'))el.insertAdjacentHTML('afterbegin',icon(el.closest('.social-profile-section')?'save':'council'));});
 }
-function schedule(){if(scheduled)return;scheduled=true;requestAnimationFrame(()=>{if(scheduled)decorate();});}
+function flushDecorations(){
+ if(!scheduled)return;
+ scheduled=false;const roots=[...decorationRoots];decorationRoots.clear();
+ for(const root of roots)if(root===document||root.isConnected)decorate(root);
+}
+function schedule(root=document){
+ if(!root?.querySelectorAll||root!==document&&!root.isConnected)return;
+ // A replacement row only needs its own artwork. Preserve the broad explicit
+ // decorate() API, but never rescan a roster because one button gained an icon.
+ if(!decorationRoots.has(document)){
+  let covered=false;
+  for(const pending of decorationRoots){if(pending===root||pending.contains?.(root)){covered=true;break;}}
+  if(!covered){for(const pending of decorationRoots)if(root===document||root.contains?.(pending))decorationRoots.delete(pending);decorationRoots.add(root);}
+ }
+ if(scheduled)return;scheduled=true;requestAnimationFrame(flushDecorations);
+}
+function artworkMutations(records){
+ for(const record of records){
+  const changed=[...record.addedNodes,...record.removedNodes].some(node=>node.nodeType===1);
+  if(!changed)continue;
+  const target=record.target;
+  if(target?.closest?.('.ui-motion-layer'))continue;
+  if(target?.matches?.('button,.title-feature,.section-heading h2,.panel-heading h2,.social-profile-section h3'))schedule(target);
+  for(const node of record.addedNodes)if(node.nodeType===1&&!node.matches?.('.ui-motion-layer,.ui-motion-clip,.ui-motion-wave'))schedule(node);
+ }
+}
 function visiblePaints({skipReadyControls=false}={}){
  const h=global.innerHeight,w=global.innerWidth;
  return Array.from(document.querySelectorAll('[data-art-url],[data-ghost-url]')).flatMap(el=>{
@@ -8307,7 +8369,7 @@ function visiblePaints({skipReadyControls=false}={}){
  });
 }
 async function readyCurrent(onProgress){
- decorate();
+ flushDecorations();
  if(!global.SENGOKU_AT_TITLE){
   for(const el of deferredTitle){
    if(el.isConnected&&observer){observer.unobserve(el);observer.observe(el);}
@@ -8337,10 +8399,7 @@ function init(){
  };
  global.addEventListener?.('resize',repaintVisible);
  if(!observer)global.addEventListener?.('scroll',repaintVisible,{capture:true,passive:true});
- new MutationObserver(records=>{
- // Text-only clock, balance and unread updates cannot introduce artwork.
- if(records.some(record=>[...record.addedNodes,...record.removedNodes].some(node=>node.nodeType===1)))schedule();
-}).observe(document.body,{childList:true,subtree:true});decorate();}
+ new MutationObserver(artworkMutations).observe(document.body,{childList:true,subtree:true});decorate();}
 global.SengokuArt={portrait,castle:(id,c='',level=1)=>tile('castle',id,c,level),facility:(id,c='',level=1)=>tile('facility',id,c,level),icon,tileInfo,load,readyCurrent,decorate,schedule,totalIllustrations:8224};
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init,{once:true});else init();
 })(window);
