@@ -1,4 +1,4 @@
-/* Live text changes within reserved rows, so clock ticks do not move the page. */
+/* Keep gameplay clocks stable without a routine synchronization status row. */
 /* The complete 100,000,000 balance must stay on one row in the phone ledger. */
 @media (max-width: 360px) {
   html:not(.sengoku-desktop-fit) #app .topbar :is(.resource, .touch-header-stat) {
@@ -15,31 +15,13 @@
 #app #main .realtime-strip {
   display: grid;
   grid-template-columns: auto minmax(40px, 1fr) auto;
-  grid-template-areas: "status status status" "currency progress speed";
+  grid-template-areas: "currency progress speed";
   align-items: center;
   gap: 8px 12px;
   font-size: 14px;
   line-height: 1.5;
 }
 #app #main .realtime-strip > * { min-width: 0; max-width: 100%; }
-#app #main .realtime-strip > .live-state {
-  grid-area: status;
-  display: block;
-  width: 100%;
-  block-size: 3em;
-  max-width: none;
-  font-size: 14px;
-  line-height: 1.5;
-  white-space: normal;
-  overflow-wrap: anywhere;
-  overflow-x: hidden;
-  overflow-y: auto;
-  text-overflow: clip;
-  scrollbar-gutter: stable;
-  scrollbar-width: thin;
-  overscroll-behavior: contain;
-  touch-action: pan-y;
-}
 #app #main .realtime-strip > .currency-chip {
   grid-area: currency;
   justify-self: start;
@@ -65,18 +47,18 @@
 /* The town console has its own narrow column even on a wide desktop. */
 #app #main .town-overview .realtime-strip {
   grid-template-columns: minmax(0, 1fr);
-  grid-template-areas: "status" "currency" "speed" "progress";
+  grid-template-areas: "currency" "speed" "progress";
 }
 @media (max-width: 600px) {
   #app #main .realtime-strip {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-areas: "status" "currency" "speed" "progress";
+    grid-template-areas: "currency" "speed" "progress";
   }
 }
 @container game-content (max-width: 600px) {
   #app #main .realtime-strip {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-areas: "status" "currency" "speed" "progress";
+    grid-template-areas: "currency" "speed" "progress";
   }
 }
 
@@ -104,7 +86,6 @@
 @container town-overview (max-width: 310px) {
   #main [data-job-clock] { block-size: 4.65em; }
 }
-#shared-world-status:focus-visible,
 #main [data-job-clock]:focus-visible,
 #modal [data-job-clock]:focus-visible {
   outline: 2px solid var(--gold, #d8bf83);
