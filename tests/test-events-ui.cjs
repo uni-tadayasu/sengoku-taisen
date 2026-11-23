@@ -309,6 +309,7 @@ const decode = value => String(value).replace(/&(?:amp|lt|gt|quot|#39);/g, entit
 class Element {
   constructor(tag, document) { this.tagName = tag.toUpperCase(); this.document = document; this.children = []; this.parentElement = null; this.attributes = {}; this.events = {}; this.id = ''; this.className = ''; this._text = ''; this._html = ''; this._disabled = false; this.open = false; this.value = ''; this.hidden = false; this.scrollTop = 0; this.classList = { toggle: (name, on) => { const names = new Set(this.className.split(/\s+/).filter(Boolean)); if (on) names.add(name); else names.delete(name); this.className = [...names].join(' '); } }; }
   setAttribute(name, value) { this.attributes[name] = String(value); if (name === 'id') this.id = String(value); if (name === 'class') this.className = String(value); if (name === 'disabled') this._disabled = true; if (name === 'hidden') this.hidden = true; if (name === 'value') this.value = String(value); }
+  removeAttribute(name) { delete this.attributes[name]; if (name === 'disabled') this._disabled = false; if (name === 'hidden') this.hidden = false; }
   getAttribute(name) { return this.attributes[name] ?? null; }
   hasAttribute(name) { return Object.hasOwn(this.attributes, name); }
   get disabled() { return this._disabled; }
@@ -453,15 +454,18 @@ test('an authenticated defender gets a defense-only briefing and cannot create o
   assert.equal(panel.querySelectorAll('button,input,select').length,0);assert(panel.textContent.includes('催事用の模擬合戦'));
   assert.equal(s.get('[data-event-adviser]').textContent,'');assert.equal(s.get('[data-events="advice"]'),null);
   assert(s.get('[data-event-participation]').textContent.includes('防衛専用'));assert.equal(s.get('[data-events-battle-form]').hidden,true);
+  const stages=s.get('[data-event-stages]');assert.equal(s.get('[data-event-stages-heading]').textContent,'防衛する戦場');assert.equal(stages.querySelectorAll('article').length,3);assert.equal(stages.querySelectorAll('button').length,0);assert.equal(stages.getAttribute('role'),null);assert.equal(stages.querySelectorAll('.is-selected').length,0);assert.equal(s.get('[data-event-power-label="stage_1"]').textContent,'守備戦力');assert(!s.get('[data-event-stages-note]').textContent.includes('軍団で挑む'));
   assert.equal(s.get('#events-tactic').disabled,true);assert.equal(s.get('[data-events-battle-submit]').disabled,true);
-  const before=clone(s.server.progress),tactic=s.controller.getState().tactic;
-  assert.equal(s.controller.applyAdvice(),false);assert.equal(s.controller.chooseTactic('charge'),false);assert.equal(await s.controller.battle(),false);assert.equal(s.controller.getState().tactic,tactic);
+  const before=clone(s.server.progress),tactic=s.controller.getState().tactic,stage=s.controller.getState().stageId;
+  assert.equal(s.controller.chooseStage('stage_2'),false);assert.equal(s.controller.getState().stageId,stage);assert.equal(s.controller.applyAdvice(),false);assert.equal(s.controller.chooseTactic('charge'),false);assert.equal(await s.controller.battle(),false);assert.equal(s.controller.getState().tactic,tactic);
   assert.equal(s.posts().length,0);assert.deepEqual(s.server.progress,before);assert(s.get('.events-defense-adviser'));
   s.server.progress.defenseAdviser=null;await s.ui.refresh();
   assert.equal(s.get('.events-defense-adviser'),null);assert.equal(s.get('[data-events-battle-submit]').disabled,true);assert.equal(await s.controller.battle(),false);
   assert(s.get('[data-event-participation]').textContent.includes('防衛専用'));
+  assert.equal(s.get('[data-event-stages-heading]').textContent,'防衛する戦場');assert.equal(s.get('[data-events="stage"]'),null);assert.equal(s.controller.chooseStage('stage_2'),false);
   s.server.progress.battleEligibility={canAttack:true,reason:null};await s.ui.refresh();
   assert.equal(s.get('[data-events-battle-form]').hidden,false);assert.equal(s.get('[data-events-battle-submit]').disabled,false);
+  assert.equal(s.get('[data-event-stages-heading]').textContent,'戦場を選ぶ');assert.equal(s.get('[data-event-stages]').getAttribute('role'),'radiogroup');assert.equal(s.get('[data-event-stages]').querySelectorAll('button').length,3);assert.equal(s.controller.chooseStage('stage_2'),true);assert.equal(s.controller.getState().stageId,'stage_2');
   // The current player and the public castle lord still have the same display
   // name; only the private server authorization makes a defense briefing.
   assert.equal(s.context().user.name,s.server.events[0].opponent.lordName);s.ui.dispose();
@@ -477,16 +481,26 @@ test('lord succession and account switching remove private defensive advice with
   event.opponent={castleId:'edo',castleName:'江戸城',lordName:'先代城主',defenseTroops:defense.defenseTroops,defensePower:defense.defensePower};
   const s=uiSetup({events:[event],progress:advisedProgressFixture(event)});await s.ui.open();
   s.controller.chooseStage('stage_2');s.controller.chooseTactic('defend');const select=s.get('#events-tactic'),main=s.get('[data-events-main]');select.focus();main.scrollTop=390;
+  const attackChoice=s.get('[data-event-stages]').querySelectorAll('button')[1];assert.equal(attackChoice.getAttribute('aria-checked'),'true');
   s.server.progress.defenseAdviser=defense;s.server.progress.battleEligibility={canAttack:false,reason:'own_castle'};await s.ui.refresh();
   assert(s.get('.events-defense-adviser'));assert.equal(s.get('[data-events-battle-form]').hidden,true);assert.equal(s.controller.getState().tactic,'defend');
+  assert.equal(attackChoice.isConnected,false);assert.equal(s.get('[data-event-stages-heading]').textContent,'防衛する戦場');assert.equal(s.get('[data-event-stages]').querySelectorAll('button').length,0);assert.equal(s.get('[data-event-stages]').querySelectorAll('.is-selected').length,0);assert.equal(s.controller.chooseStage('stage_3'),false);
   s.server.events[0].opponent.lordName='次代城主';s.server.progress.defenseAdviser=null;s.server.progress.battleEligibility={canAttack:true,reason:null};await s.ui.refresh();
   assert.equal(s.get('.events-defense-adviser'),null);assert.equal(s.get('#events-tactic'),select);assert.equal(select.value,'defend');assert.equal(s.doc.activeElement,select);assert.equal(main.scrollTop,390);
+  assert.equal(s.get('[data-event-stages-heading]').textContent,'戦場を選ぶ');assert.equal(s.get('[data-event-stages]').querySelectorAll('button')[1].getAttribute('aria-checked'),'true');
   s.server.progress.defenseAdviser=defense;s.server.progress.battleEligibility={canAttack:false,reason:'own_castle'};await s.ui.refresh();assert(s.get('.events-defense-adviser'));
   const gate=deferred();s.setHandler((route,settings,base)=>route==='/events'?gate.promise:base(route,settings));
   const next={...s.context(),playerId:OTHER,user:{id:OTHER,name:'先代城主'},epoch:2};s.setContext(next);const changing=s.ui.refreshAccess();
   assert.equal(s.get('.events-defense-adviser'),null);assert.equal(s.controller.getState().progress,null);
   s.server.progress.defenseAdviser=null;s.server.progress.battleEligibility={canAttack:true,reason:null};gate.resolve(await s.base('/events',{method:'GET'}));await changing;
   assert.equal(s.get('.events-defense-adviser'),null);assert.equal(s.posts().length,0);s.ui.dispose();
+});
+
+test('reopening a defender event keeps read-only stages without requiring private advice or guessing from a lord name',async()=>{
+  const event=catalogEventFixture('castle:edo');event.opponent={castleId:'edo',castleName:'江戸城',lordName:'同名の領主',defenseTroops:1200,defensePower:4800};
+  const context=contextFixture();context.user.name='同名の領主';const s=uiSetup({context,events:[event],progress:progressFixture({battleEligibility:{canAttack:false,reason:'own_castle'},defenseAdviser:null})});
+  for(let attempt=0;attempt<2;attempt++){await s.ui.open();assert.equal(s.get('[data-event-stages-heading]').textContent,'防衛する戦場');assert.equal(s.get('[data-events="stage"]'),null);assert.equal(s.get('[data-event-stages]').querySelectorAll('article').length,3);assert.equal(s.controller.chooseStage('stage_3'),false);assert.equal(await s.controller.battle(),false);s.ui.close();}
+  s.server.progress.battleEligibility={canAttack:true,reason:null};await s.ui.open();assert.equal(s.context().user.name,event.opponent.lordName);assert.equal(s.get('[data-event-stages-heading]').textContent,'戦場を選ぶ');assert.equal(s.controller.chooseStage('stage_3'),true);assert.equal(s.get('[data-events-battle-submit]').disabled,false);assert.equal(s.posts().length,0);s.ui.dispose();
 });
 
 test('private attack eligibility is bounded, defaults closed while missing or stale, and never blocks receipt recovery',async()=>{

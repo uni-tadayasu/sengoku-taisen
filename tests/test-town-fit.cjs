@@ -1,6 +1,6 @@
 'use strict';
 const assert = require('node:assert/strict');
-const {fitRect, labelRect, placeLabels, sceneHeight, panelSceneHeight} = require('../town-fit.js');
+const {fitRect, labelRect, placeLabels, createLabelLayout, sceneHeight, panelSceneHeight} = require('../town-fit.js');
 const kamon = require('../kamon.js');
 const points = [[39,27],[24,76],[51,62],[87,41],[86,79],[17,44],[68,43],[57,27]];
 let cases = 0;
@@ -82,4 +82,66 @@ assert.equal(kamon.url('德川家'), kamon.url('徳川家'));
 assert.match(kamon.render('德川家'), /aria-label="徳川家：/);
 assert.equal(kamon.render('德川家'),kamon.render('徳川家'),'Public clan labels must not distinguish verified roles');
 assert.match(kamon.render('徳川家'), /aria-label="徳川家：/);
-console.log(`PASS ${cases} town fit/label geometries, eight labels avoiding every facility icon or an explicit compact-list fallback, full-height PC canvas, drag limits, zero-size startup, and uniform public Tokugawa crest labels.`);
+
+// Repeated observer notifications can reuse geometry, while every input that
+// can move a label must still run the original, unchanged collision solver.
+{
+  const vm=require('node:vm');let solves=0;
+  const create=vm.runInNewContext('('+createLabelLayout.toString()+')', {placeLabels:(...args)=>{solves++;return placeLabels(...args);}});
+  const layout=create(),width=819,height=width/1.5;
+  const items=points.map(([x,y],i)=>({x:width*x/100,y:height*y/100,width:120,height:32,pinSize:44,above:[3,7].includes(i)}));
+  const plain=value=>JSON.parse(JSON.stringify(value));
+  const expected=placeLabels(items,width,height),first=layout(items,width,height);
+  assert.deepEqual(plain(first),expected);assert.equal(solves,1);
+  for(let n=0;n<100;n++)assert.deepEqual(plain(layout(items.map(item=>({...item})),width,height)),expected);
+  assert.equal(solves,1,'Identical geometry from repeated layout/resize notifications must solve once');
+  first[0].left=-999;
+  assert.deepEqual(plain(layout(items,width,height)),expected,'Callers cannot corrupt a reused placement');
+  const variations=[
+    {width:width+1,height,items}, {width,height:height+1,items},
+    ...['x','y','width','height','pinSize'].map(key=>({width,height,items:items.map((item,i)=>i?item:{...item,[key]:item[key]+1})})),
+    {width,height,items:items.map((item,i)=>i?item:{...item,above:!item.above})},
+    {width,height,items:[...items].reverse()}, {width,height,items:items.slice(0,-1)}
+  ];
+  for(const [index,input]of variations.entries()){
+    assert.deepEqual(plain(layout(input.items,input.width,input.height)),placeLabels(input.items,input.width,input.height));
+    assert.equal(solves,index+2,'Changed size, font metrics, coordinate, pin, placement or facility set must invalidate');
+  }
+  assert.deepEqual(plain(create()(items,width,height)),expected);
+  assert.equal(solves,variations.length+2,'A replacement scene receives a fresh layout cache');
+}
+
+// The live updater must constrain all labels before measuring any one of
+// them, and must apply positions again when the scene DOM is replaced.
+{
+  const fs=require('node:fs'),vm=require('node:vm');
+  const frames=[],events=[];let current;
+  const style=label=>{const values=new Map();return {getPropertyValue:key=>values.get(key)||'',setProperty(key,value){values.set(key,value);if(label&&key==='max-width')events.push('write:'+label);},removeProperty:key=>values.delete(key)};};
+  const attrs=()=>{const names=new Set();return{hasAttribute:name=>names.has(name),toggleAttribute(name,value){if(value)names.add(name);else names.delete(name);}};};
+  function makeScene(count=8){
+    const labels=[],markers=points.slice(0,count).map(([x,y],i)=>{
+      const label={style:style(String(i)),getBoundingClientRect(){events.push('read:'+i);return{width:120,height:32};}};labels.push(label);
+      return{dataset:{townX:x,townY:y,id:i===3?'lumber':i===7?'academy':'other'},offsetWidth:44,querySelector:()=>label};
+    });
+    const board={style:style(),querySelector:()=>({naturalWidth:1536,naturalHeight:1024}),querySelectorAll:()=>markers,setAttribute(){}};
+    const scene={...attrs(),style:style(),isConnected:true,clientWidth:819,clientHeight:546,querySelector:()=>board,closest:()=>null};
+    return{scene,board,labels};
+  }
+  current=makeScene();
+  const main={querySelector:()=>current.scene,querySelectorAll:()=>[],addEventListener(){},removeEventListener(){}};
+  const doc={readyState:'complete',getElementById:()=>main,documentElement:{classList:{contains:()=>false}}};
+  const win={document:doc,requestAnimationFrame:callback=>{frames.push(callback);return frames.length;},cancelAnimationFrame(){},addEventListener(){},removeEventListener(){}};
+  vm.runInNewContext(fs.readFileSync(require.resolve('../town-fit.js'),'utf8'),{window:win});
+  frames.shift()();
+  assert.deepEqual(events.slice(0,8),Array.from({length:8},(_,i)=>'write:'+i));
+  assert.deepEqual(events.slice(8),Array.from({length:8},(_,i)=>'read:'+i),'All width writes precede all geometry reads');
+  for(const label of current.labels)assert(label.style.getPropertyValue('--town-label-left'));
+  events.length=0;current=makeScene(7);win.SengokuTownFit.refresh();frames.shift()();
+  assert.equal(events.filter(event=>event.startsWith('write:')).length,7);
+  for(const label of current.labels)assert(label.style.getPropertyValue('--town-label-left'),'New scene nodes receive positions even when their dimensions match old nodes');
+  events.length=0;const replacement=makeScene(6);current.scene.querySelector=()=>replacement.board;
+  win.SengokuTownFit.refresh();frames.shift()();
+  assert.equal(events.filter(event=>event.startsWith('write:')).length,6);
+  for(const label of replacement.labels)assert(label.style.getPropertyValue('--town-label-left'),'A replaced board inside a retained scene also receives fresh positions');
+}
+console.log(`PASS ${cases} town fit/label geometries, eight labels avoiding every facility icon or an explicit compact-list fallback, full-height PC canvas, drag limits, zero-size startup, uniform public Tokugawa crest labels, unchanged-layout reuse and batched geometry reads.`);

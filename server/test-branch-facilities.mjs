@@ -24,11 +24,15 @@ function seed(h,p,parent='nijo',level=3,direction='north'){
  updateSave(h,p,s=>{s.branches=[branch];s.jobs=s.jobs.filter(j=>j.kind!=='branch');s.castles[parent].troops=1000000;s.castles[s.home].troops=1000000;s.troops=100000;s.resources={gold:9000000,rice:9000000,wood:9000000,stone:9000000};s.command=5;});
  h.sql.prepare('INSERT INTO branch_states(actor_id,campaign_id,sequence,state_json,resolved_elapsed_ms,updated_at) VALUES(?,?,1,?,?,?)').run(p.user.id,save(h,p).state.walking.campaignId,JSON.stringify({branches:[branch],jobs:[]}),at,h.now);return branch.id;
 }
-function charges(before,after,cost){for(const key of ['gold','rice','wood','stone'])assert.equal(after.state.resources[key],before.state.resources[key]-(cost[key]||0),key);assert.equal(after.state.command,before.state.command-1);}
+function charges(before,after,cost){const owned=Object.entries(before.state.castles).filter(([id,castle])=>id!=='kyoto_gosho'&&castle.owner===before.state.clan).length,multiplier=2**Math.max(0,owned-1);for(const key of ['gold','rice','wood','stone'])assert.equal(after.state.resources[key],before.state.resources[key]-(cost[key]||0)*multiplier,key);assert.equal(after.state.command,before.state.command-1);}
 async function force(won,run){const old=crypto.getRandomValues;crypto.getRandomValues=function(value){return value instanceof Uint32Array&&value.length===1?value.fill(won?0:0xffffffff):old.call(crypto,value);};try{return await run();}finally{crypto.getRandomValues=old;}}
 function fieldBody(h,p,target,branchId){return{requestId:crypto.randomUUID(),deviceId:p.deviceId,expectedRevision:row(h,p).revision,targetPlayerId:target.user.id,targetCastleId:branchId.split('_')[0],targetBranchId:branchId,troops:1000,tactic:'balanced'};}
 async function enemy(h,name,home='inuyama'){
- const p=await h.session(name);p.deviceId='facility-opponent-'+p.user.id;const lease=(await h.api('/sync/lease',post(p,{deviceId:p.deviceId}))).data,g=new GameEngine({officers:GAME_OFFICERS,seed:29,startCastle:home});g.applyWorldClock(lease.clock);g.state.resources={gold:900000,rice:900000,wood:900000,stone:900000};g.state.troops=10000;g.state.castles[home].troops=100000;await put(h,p,JSON.parse(g.exportSave()));return p;
+ const p=await h.session(name);p.deviceId='facility-opponent-'+p.user.id;const lease=(await h.api('/sync/lease',post(p,{deviceId:p.deviceId}))).data,g=new GameEngine({officers:GAME_OFFICERS,seed:29,startCastle:home});g.applyWorldClock(lease.clock);g.state.resources={gold:900000,rice:900000,wood:900000,stone:900000};g.state.troops=10000;g.state.castles[home].troops=100000;
+ // This fixture exercises siege timing, so fund its 110,000 troops through
+ // real production instead of losing the attacking army to the upkeep rule.
+ g.state.buildings.farm=32;g.state.buildings.market=32;assert(g.income().gold>=0&&g.income().rice>=0);
+ await put(h,p,JSON.parse(g.exportSave()));return p;
 }
 async function siege(h,attacker,defender,branchId,won){
  const checkpoint=save(h,defender),departed=(await force(won,()=>h.api('/field/attack',post(attacker,fieldBody(h,attacker,defender,branchId))))).data;assert(departed.marching&&departed.battle===null);clockAt(h,departed.march.arrivesAtMs);

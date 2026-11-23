@@ -87,9 +87,9 @@ test('server-recorded branch facility completion times split both production and
 
 test('all four expenses can make net negative, stop at zero without phantom debt, and leave special assets unchanged',()=>{
  const g=game();for(const b of D.buildings)if(['military','defense','research','diplomacy'].includes(b.category))g.state.buildings[b.id]=32;g.state.troops=E.ASSET_CAP;g.state.resources={gold:1,rice:1,wood:1,stone:1};
- const special={magatama:g.state.magatama,prestige:g.state.prestige};for(const key of D.resources)assert(g.income()[key]<0,key+' deficit');g._advanceRealtime(5);
- assert.deepEqual(g.state.resources,{gold:0,rice:0,wood:0,stone:0});assert.deepEqual(g.state.realtime.incomeRemainders,{gold:0,rice:0,wood:0,stone:0});g._advanceRealtime(5);assert.equal(g.state.magatama,special.magatama);assert.equal(g.state.prestige,special.prestige);
- g.state.buildings=copy(game().state.buildings);g.state.troops=0;g.state.castles[g.state.home].troops=0;const income=g.income();g._advanceRealtime(5);for(const key of D.resources)assert.equal(g.state.resources[key],Math.trunc(income[key]/12),key+' no carried debt');assert.equal(load(g).state.resources.gold,g.state.resources.gold);
+ const special={magatama:g.state.magatama,prestige:g.state.prestige};for(const key of D.resources)assert(g.income()[key]<0,key+' deficit');g.rebalanceTroopsForUpkeep();const balanced=g.income();g._advanceRealtime(5);
+ for(const key of D.resources){assert.equal(g.state.resources[key],Math.max(0,1+Math.trunc(balanced[key]/12)));if(balanced[key]<0)assert.equal(g.state.realtime.incomeRemainders[key],0);}assert.equal(g.maintenance().totalTroops,0);g._advanceRealtime(5);assert.equal(g.state.magatama,special.magatama);assert.equal(g.state.prestige,special.prestige);
+ g.state.buildings=copy(game().state.buildings);g.state.troops=0;g.state.castles[g.state.home].troops=0;const income=g.income(),before=copy(g.state.resources),carry=copy(g.state.realtime.incomeRemainders);g._advanceRealtime(5);for(const key of D.resources)assert.equal(g.state.resources[key],before[key]+Math.trunc(carry[key]+income[key]/12),key+' no carried debt');assert.equal(load(g).state.resources.gold,g.state.resources.gold);
 });
 
 test('trusted external timelines begin at activation and integrate historical changes instead of applying the latest total retroactively',()=>{

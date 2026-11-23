@@ -3,23 +3,25 @@ const source=fs.readFileSync(path.join(__dirname,'../social.js'),'utf8'),TOKEN='
 const balance={gold:5000,rice:6000,wood:7000,stone:8000,magatama:9000,revision:1};
 const member=(id,guildRole='member')=>({id,name:'領主 '+id,clan:'織田家',guildId:'g1',guildName:'霞の盟約',guildRole,isAdmin:false,isStaff:false});
 function setup(role='owner'){
- const requests=[],transfers=[],timers=new Map(),nodes=new Map();let timerId=0,handler,transfer=async()=>({ok:true});
+ const requests=[],transfers=[],timers=new Map(),nodes=new Map(),notices=[];let timerId=0,handler,transfer=async()=>({ok:true});
  const c={console,URL,URLSearchParams,AbortController,Intl,Date,crypto:require('node:crypto').webcrypto,FormData:class{constructor(f){this.v=f.values;}get(k){return this.v[k]??null;}},
   setTimeout:(fn,ms)=>{timers.set(++timerId,{fn,ms});return timerId;},clearTimeout:id=>timers.delete(id),document:{readyState:'loading',hidden:false,activeElement:null,addEventListener(){},removeEventListener(){}},
   localStorage:{getItem:()=>null,setItem(){},removeItem(){}},SENGOKU_API_BASE:'https://api.example.invalid',
   SengokuCloudSync:{start(){},stop(){},getStatus:()=>({linked:true,ready:true,writable:true})},
-  SengokuBridge:{setAdminAccess(){},setSyncAccess(){},toast(){},hasStarted:()=>true,getState:()=>({resources:{gold:10000,rice:10000,wood:10000,stone:10000},magatama:10000}),applyGift(){throw Error('Guild transfer must never apply a gift locally');},guildTransfer:async payload=>{transfers.push(payload);return transfer(payload);}},
+  SengokuBridge:{setAdminAccess(){},setSyncAccess(){},toast:(message,error)=>notices.push({message,error}),hasStarted:()=>true,getState:()=>({resources:{gold:10000,rice:10000,wood:10000,stone:10000},magatama:10000}),applyGift(){throw Error('Guild transfer must never apply a gift locally');},guildTransfer:async payload=>{transfers.push(payload);return transfer(payload);}},
   fetch:async(url,options)=>{requests.push({url,options});const r=await handler(url,options);return{ok:!r.__status,status:r.__status||200,json:async()=>r};}
  };
- const make=()=>({_html:'',get innerHTML(){return this._html;},set innerHTML(v){this._html=v;},get textContent(){return this._html;},set textContent(v){this._html=v;},inert:false,isConnected:true,scrollTop:47,dataset:{},attrs:{},classList:{toggle(){}},setAttribute(k,v){this.attrs[k]=v;},contains(){return false;},querySelectorAll(){return[];},querySelector(){return{focus(){}};},focus(){c.document.activeElement=this;}});
+ const make=()=>({_html:'',writes:0,get innerHTML(){return this._html;},set innerHTML(v){this._html=v;this.writes++;},get textContent(){return this._html;},set textContent(v){this._html=v;},inert:false,isConnected:true,scrollTop:47,dataset:{},attrs:{},classList:{toggle(){}},setAttribute(k,v){this.attrs[k]=v;},contains(){return false;},querySelectorAll(){return[];},querySelector(){return{focus(){}};},focus(){c.document.activeElement=this;}});
  for(const id of ['social-tabs','social-confirm-host','social-guild-balances','social-guild-ledger','social-guild-members','social-guild-treasury-status','social-guild-ledger-more','social-guild-transfer-confirm','social-guild-personal-balance','social-guild-rankings-summary','social-guild-rankings-status','social-guild-rankings-results','social-guild-rankings-more'])nodes.set('#'+id,make());
  const body=make(),dialog={open:true,querySelector:selector=>nodes.get(selector)||null,querySelectorAll:()=>[],close(){this.open=false;},remove(){}};
  c.window=c;vm.createContext(c);vm.runInContext(source.replace('global.SengokuSocial={open','global.__guildTest={s,api,loadMe,loadGuild,loadChat,loadGuildTreasury,loadGuildRankings,guildView,guildRankingsView,guildMemberConfirmation,guildTransferConfirmation,guildLeaveConfirmation,canManageGuildMember,acceptUser,installIdentity,clearPrivate,selectTab,close,visibility,schedulePoll,refresh,submit,setUI:(d,b)=>{dialog=d;body=b;},lifecycle:()=>({guildEpoch,guildListGeneration,treasuryBusy,rankingsBusy})};global.SengokuSocial={open'),c);
  const t=c.__guildTest;t.setUI(dialog,body);t.s.identity={id:'actor',token:TOKEN};t.s.user=member('actor',role);t.s.open=true;t.s.tab='guild';t.s.guildSection='treasury';t.s.guild={id:'g1',name:'霞の盟約',memberCount:4,maxMembers:50};t.s.members=[t.s.user,member('leader','owner'),member('vice','officer'),member('other')];t.s.guildTreasury={guildId:'g1',balance:{...balance},ledger:[],cursor:null,loaded:true,error:''};
  handler=async url=>{const route=new URL(url).pathname;if(route.endsWith('/me'))return{ok:true,user:t.s.user,friends:[],requests:[]};if(route.endsWith('/guild/treasury'))return{ok:true,guildId:t.s.user.guildId,treasury:{...balance},ledger:[],nextCursor:null,serverNow:NOW};if(route.endsWith('/guild'))return{ok:true,guild:t.s.guild,members:t.s.members};if(route.endsWith('/guilds'))return{ok:true,guilds:[]};if(route.endsWith('/chat'))return{ok:true,messages:[],nextAfter:0};return{ok:true};};
- return{c,t,body,nodes,requests,transfers,timers,setHandler:fn=>handler=fn,setTransfer:fn=>transfer=fn};
+ return{c,t,body,nodes,requests,transfers,timers,notices,setHandler:fn=>handler=fn,setTransfer:fn=>transfer=fn};
 }
 const deferred=()=>{let resolve;const promise=new Promise(r=>resolve=r);return{promise,resolve};};
+const me=user=>({ok:true,user:{...user},friends:[],requests:[]});
+const route=request=>new URL(request.url).pathname.replace('/api/v1','');
 let count=0;async function test(name,run){await run();count++;console.log('PASS '+name);}
 (async()=>{
 await test('guild roles limit appointment/removal independently of site operator privileges',()=>{
@@ -58,6 +60,49 @@ await test('public rankings expose only prestige/member/castle fields and need n
 });
 await test('member refresh reloads current roles without rebuilding the whole view',async()=>{
  const b=setup('officer');b.t.s.guildSection='members';let roster=0;b.setHandler(async url=>{const path=new URL(url).pathname;if(path.endsWith('/me'))return{ok:true,user:{...b.t.s.user,guildRole:'member'},friends:[],requests:[]};if(path.endsWith('/guild')){roster++;return{ok:true,guild:{id:'g1',memberCount:3},members:[member('other','officer')]};}return{ok:true,messages:[],nextAfter:0};});await b.t.refresh({silent:true});assert.equal(roster,1);assert.equal(b.t.s.user.guildRole,'member');assert.equal(b.t.s.members[0].guildRole,'officer');assert(b.nodes.get('#social-guild-members').innerHTML.includes('副盟主'));
+});
+await test('a busy poll immediately drains only the latest requested view without a timer or duplicate reads',async()=>{
+ const b=setup(),old=deferred(),user={...b.t.s.user};let summaries=0;b.t.s.tab='world';b.t.s.guildSection='chat';
+ b.setHandler(async url=>{const path=new URL(url).pathname;if(path.endsWith('/me'))return++summaries===1?old.promise:me(user);if(path.endsWith('/guild'))return{ok:true,guild:{id:'g1',memberCount:2},members:[member('latest')]};return{ok:true,messages:[],nextAfter:0,mail:[]};});
+ const active=b.t.refresh({silent:true});await b.t.selectTab('friends');await b.t.selectTab('mail');await b.t.selectTab('guild');await b.t.refresh({view:true});assert.equal(b.requests.length,2,'only the original world reads are in flight');
+ old.resolve(me(user));await active;assert.deepEqual(b.requests.map(route),['/me','/chat','/me','/guild','/chat']);assert.equal(new URL(b.requests.at(-1).url).searchParams.get('channel'),'guild');assert.equal(b.t.s.members[0].id,'latest');assert.equal(b.t.s.tab,'guild');assert.equal([...b.timers.values()].filter(t=>t.ms===5000).length,1,'one future poll remains; no timer was executed to drain the view');
+});
+await test('the latest view also loads after the obsolete poll fails without showing its error on the new screen',async()=>{
+ const b=setup(),old=deferred(),user={...b.t.s.user};let summaries=0;b.t.s.guildSection='members';
+ b.setHandler(async url=>new URL(url).pathname.endsWith('/me')?++summaries===1?old.promise:me(user):{ok:true,mail:[{id:'fresh',title:'最新の便り',body:'取得済み',read:false,createdAt:NOW}]});
+ const active=b.t.refresh({view:true});await b.t.selectTab('mail');old.resolve({ok:false,__status:503,error:{code:'TEMPORARY',message:'古い画面の通信失敗'}});await active;
+ assert.deepEqual(b.requests.map(route),['/me','/me','/mail']);assert.equal(b.t.s.tab,'mail');assert.match(b.body.innerHTML,/最新の便り/);assert.equal(b.notices.length,0);
+});
+await test('closing discards a queued view and a late poll cannot redraw or schedule it',async()=>{
+ const b=setup(),old=deferred(),user={...b.t.s.user};b.t.s.guildSection='members';b.setHandler(()=>old.promise);const active=b.t.refresh({silent:true});await b.t.selectTab('mail');b.t.close();const writes=b.body.writes;
+ old.resolve(me(user));await active;assert.equal(b.requests.length,1);assert.equal(b.body.writes,writes);assert.equal(b.t.s.open,false);assert.equal([...b.timers.values()].filter(t=>t.ms===5000).length,0);
+});
+await test('changing or losing the identity discards its queued view and late private responses',async()=>{
+ for(const change of ['replace','signed-out']){
+  const b=setup(),old=deferred(),user={...b.t.s.user};b.t.s.guildSection='members';b.setHandler(()=>old.promise);const active=b.t.refresh({silent:true});await b.t.selectTab('mail');
+  if(change==='replace')b.t.installIdentity({id:'next',token:'x'.repeat(64)},member('next'));else b.t.acceptUser(null);const writes=b.body.writes;
+  old.resolve(me(user));await active;assert.equal(b.requests.length,1);assert.equal(b.body.writes,writes);assert.equal(b.t.s.mail.length,0);assert.equal(b.notices.length,0);assert.equal(b.t.s.user?.id,change==='replace'?'next':undefined);
+ }
+});
+await test('a newly requested view after close or identity replacement survives only in its new scope',async()=>{
+ for(const change of ['reopen','replace']){
+  const b=setup(),old=deferred(),user={...b.t.s.user};let summaries=0;b.t.s.guildSection='members';
+  b.setHandler(async url=>new URL(url).pathname.endsWith('/me')?++summaries===1?old.promise:me(b.t.s.user):{ok:true,guild:{id:'g1',memberCount:1},members:[member('new-scope')]});
+  const active=b.t.refresh({silent:true});await b.t.selectTab('mail');if(change==='reopen'){b.t.close();b.t.s.open=true;}else b.t.installIdentity({id:'next',token:'x'.repeat(64)},member('next'));b.t.s.guildSection='members';await b.t.selectTab('guild');
+  old.resolve(me(user));await active;assert.deepEqual(b.requests.map(route),['/me','/me','/guild']);assert.equal(b.t.s.members[0].id,'new-scope');assert.equal(b.t.s.tab,'guild');assert.equal(b.requests[1].options.headers.Authorization,'Bearer '+(change==='replace'?'x'.repeat(64):TOKEN));
+ }
+});
+await test('queued private views still verify current membership and cannot reuse a revoked role',async()=>{
+ const b=setup(),old=deferred(),user={...b.t.s.user};let summaries=0;b.t.s.tab='world';b.t.s.guildSection='chat';
+ b.setHandler(async url=>{const path=new URL(url).pathname;if(path.endsWith('/me'))return++summaries===1?old.promise:me({...user,guildId:null,guildName:null,guildRole:null});return{ok:true,messages:[],nextAfter:0,guilds:[]};});
+ const active=b.t.refresh({silent:true});await b.t.selectTab('guild');old.resolve(me(user));await active;assert.deepEqual(b.requests.map(route),['/me','/chat','/me','/guilds']);assert.equal(b.t.s.user.guildId,null);assert(!b.requests.some(r=>new URL(r.url).searchParams.get('channel')==='guild'));
+ const a=setup(),prior=deferred();a.t.s.user={...a.t.s.user,isAdmin:true};a.t.s.tab='world';a.setHandler(async url=>new URL(url).pathname.endsWith('/me')?prior.promise:{ok:true,messages:[],nextAfter:0});
+ const running=a.t.refresh({silent:true});await a.t.selectTab('admin');prior.resolve(me({...a.t.s.user,isAdmin:false}));await running;assert.equal(a.t.s.tab,'profile');assert.equal(a.t.s.user.isAdmin,false);assert.deepEqual(a.requests.map(route),['/me','/chat']);assert(!a.requests.some(r=>new URL(r.url).searchParams.get('channel')==='admin'));
+});
+await test('switching from a busy poll to treasury queues one verified read and keeps its slower timer',async()=>{
+ const b=setup(),old=deferred(),user={...b.t.s.user};let summaries=0;b.t.s.tab='world';
+ b.setHandler(async url=>{const path=new URL(url).pathname;if(path.endsWith('/me'))return++summaries===1?old.promise:me(user);if(path.endsWith('/guild/treasury'))return{ok:true,guildId:'g1',treasury:balance,ledger:[],serverNow:NOW};return{ok:true,messages:[],nextAfter:0};});
+ const active=b.t.refresh({silent:true});await b.t.selectTab('guild');assert.equal(b.requests.length,2);old.resolve(me(user));await active;assert.deepEqual(b.requests.map(route),['/me','/chat','/me','/guild/treasury']);assert.equal([...b.timers.values()].filter(t=>t.ms===5000).length,0);assert.equal([...b.timers.values()].filter(t=>t.ms===30000).length,1);
 });
 console.log(`${count} guild UI permission, treasury and ranking checks passed. No network requests were made.`);
 })().catch(error=>{console.error(error);process.exitCode=1;});

@@ -6353,6 +6353,7 @@ body.at-title #app { display: none; }
 #modal .facility-maintenance p { margin: 10px 0 0; color: var(--muted); font-size: 14px; line-height: 1.65; }
 #app .topbar .resource-gain.is-negative { color: #ffaaa0; }
 #app.chronicle-shell .chronicle-ledger .resource-gain.is-negative { color: #913b2c; }
+.upgrade-cost-note{margin:.35rem 0 .9rem;font-size:.875rem;line-height:1.6;overflow-wrap:anywhere}
 
 /* live-updates.css */
 /* Keep gameplay clocks stable without a routine synchronization status row. */

@@ -74,6 +74,19 @@
       return{...best,relativeLeft:best.left-item.x+half,relativeTop:best.top-item.y+half,unplaced:!solution};
     });
   }
+  function createLabelLayout() {
+    let previousKey = '', previousLabels = null;
+    return (items, width, height) => {
+      // Font, level and compact-mode changes are represented by the measured
+      // label/pin sizes. No DOM node or game state is retained in this cache.
+      const key = JSON.stringify([width, height, items.map(item => [item.x, item.y, item.width, item.height, item.pinSize, Boolean(item.above)])]);
+      if (key !== previousKey || !previousLabels) {
+        previousLabels = placeLabels(items, width, height);
+        previousKey = key;
+      }
+      return previousLabels.map(rect => ({...rect}));
+    };
+  }
   function sceneHeight(preferred, viewportHeight, sceneOffset, bottomPadding = 0) {
     preferred = Math.max(1, Number(preferred) || 460);
     const remaining = Math.max(1, (Number(viewportHeight) || 0) - Math.max(0, Number(sceneOffset) || 0) - Math.max(0, Number(bottomPadding) || 0) - 8);
@@ -84,11 +97,12 @@
     const requested = Number(preferred);
     return Number.isFinite(requested) && requested > 0 ? Math.min(requested, available) : available;
   }
-  const api = { fitRect, labelRect, placeLabels, sceneHeight, panelSceneHeight };
+  const api = { fitRect, labelRect, placeLabels, createLabelLayout, sceneHeight, panelSceneHeight };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   const doc = global.document;
   if (!doc || global.SengokuTownFit) return;
   let main, scene, board, observer, mainObserver, modeObserver, labelObserver, frame = 0, destroyed = false;
+  let layoutLabels = createLabelLayout();
   const raf = global.requestAnimationFrame?.bind(global) || (fn => global.setTimeout(fn, 16));
   const caf = global.cancelAnimationFrame?.bind(global) || global.clearTimeout.bind(global);
   const removers = [];
@@ -100,9 +114,10 @@
   function update() {
     frame = 0;
     if (destroyed) return;
-    const next = main?.querySelector('.town-scene');
-    if (scene !== next) {
-      observer?.disconnect(); labelObserver?.disconnect(); scene = next; board = scene?.querySelector('.town-scene-board');
+    const next = main?.querySelector('.town-scene'), nextBoard = next?.querySelector('.town-scene-board');
+    if (scene !== next || board !== nextBoard) {
+      observer?.disconnect(); labelObserver?.disconnect(); scene = next; board = nextBoard;
+      layoutLabels = createLabelLayout();
       if(board)labelObserver?.observe(board,{childList:true,subtree:true,characterData:true});
       if (scene) for (const node of [main, scene, ...main.querySelectorAll('.town-panel,.town-visual,.page-heading,.realtime-strip,.sync-access-notice,.town-scene-heading,.scene-caption,.town-premium-lord')]) observer?.observe(node);
     }
@@ -136,16 +151,19 @@
     if (scene.hasAttribute('data-town-art-small') !== tiny) scene.toggleAttribute('data-town-art-small', tiny);
     const panel = scene.closest('.town-panel');
     if (panel && panel.hasAttribute('data-town-compact') !== compact) panel.toggleAttribute('data-town-compact', compact);
+    const pairs = Array.from(board.querySelectorAll('.hotspot'), marker => ({marker, label: marker.querySelector('.label')})).filter(item => item.label);
+    const maxLabelWidth = Math.max(0, fit.width - 10).toFixed(3) + 'px';
+    // Apply all width constraints before reading a single label. Interleaving
+    // these writes and measurements forced a separate layout for every pin.
+    for (const {label} of pairs) style(label, 'max-width', maxLabelWidth);
     const markers=[];
-    for (const marker of board.querySelectorAll('.hotspot')) {
-      const label = marker.querySelector('.label'); if (!label) continue;
-      style(label, 'max-width', Math.max(0, fit.width - 10).toFixed(3) + 'px');
+    for (const {marker, label} of pairs) {
       const x = fit.width * clamp(Number(marker.dataset.townX) || 0, 0, 100) / 100;
       const y = fit.height * clamp(Number(marker.dataset.townY) || 0, 0, 100) / 100;
       const labelBox = label.getBoundingClientRect();
       markers.push({marker,label,x,y,width:labelBox.width,height:labelBox.height,pinSize:marker.offsetWidth,above:['academy','lumber'].includes(marker.dataset.id)});
     }
-    const labels=placeLabels(markers,fit.width,fit.height);
+    const labels=layoutLabels(markers,fit.width,fit.height);
     const outside=labels.some(rect=>rect.unplaced);
     if(scene.hasAttribute('data-town-labels-outside')!==outside)scene.toggleAttribute('data-town-labels-outside',outside);
     for(let index=0;index<markers.length;index++){

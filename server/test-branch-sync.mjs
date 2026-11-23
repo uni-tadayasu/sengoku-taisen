@@ -58,7 +58,11 @@ try{
   const p=await cpuPlayer(h,'未来時刻の検証');const predicted=advance(save(h,p),540000);assert.equal(predicted.state.branches[0].fallen,true);
   // Neither a same-month forecast nor a next-month forecast may advance past
   // the confirmed maintenance horizon or replace the pending CPU checkpoint.
-  const sameMonth=advance(save(h,p),539500),snapshotBefore=snapshot(h);assert.equal((await sync(h,p,sameMonth,409)).data.error.code,'MAINTENANCE_REFRESH_REQUIRED');assert.deepEqual(snapshot(h),snapshotBefore);
+  const sameMonth=advance(save(h,p),539500),snapshotBefore=snapshot(h);
+  // Keep health at the last real observation so this specifically exercises
+  // the maintenance horizon, not the separate future-health validation guard.
+  sameMonth.state.officerHealth=clone(save(h,p).state.officerHealth);predicted.state.officerHealth=clone(sameMonth.state.officerHealth);
+  assert.equal((await sync(h,p,sameMonth,409)).data.error.code,'MAINTENANCE_REFRESH_REQUIRED');assert.deepEqual(snapshot(h),snapshotBefore);
   predicted.state.seed=0;const early=(await sync(h,p,predicted,409)).data;
   assert.equal(early.error.code,'MAINTENANCE_REFRESH_REQUIRED');assert.deepEqual(snapshot(h),snapshotBefore);
   clockAt(h,540000);const onTime=(await sync(h,p,predicted)).data;assert.equal(onTime.save.state.branches[0].fallen,true);assert.equal(onTime.branchResolvedElapsedMs,540000);assert.equal(onTime.save.state.castles.nijo.owner,onTime.save.state.clan);

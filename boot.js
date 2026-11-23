@@ -2,11 +2,10 @@
 (function(global){
 'use strict';
 const jobs=new Map();let sequence=0,overlay,title,enterButton,started=false;
-const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 function refresh(){if(!overlay)return;const values=[...jobs.values()],latest=values.at(-1);overlay.hidden=!latest;if(latest&&!overlay.open)requestAnimationFrame(()=>{if(jobs.size&&!overlay.open)overlay.showModal();});if(!latest&&overlay.open)overlay.close();document.body.classList.toggle('is-loading',Boolean(latest));if(!latest)return;overlay.querySelector('[data-loading-label]').textContent=latest.label;const progress=overlay.querySelector('[data-loading-progress]');progress.hidden=!latest.total;if(latest.total){progress.max=latest.total;progress.value=latest.done;}overlay.querySelector('[data-loading-detail]').textContent=latest.total?`${latest.done} / ${latest.total} 点`:'画面を整えています';}
 function begin(label='読み込み中…'){const id=++sequence;jobs.set(id,{label,start:performance.now(),done:0,total:0});refresh();return id;}
 function progress(id,done,total){const job=jobs.get(id);if(job){job.done=done;job.total=total;refresh();}}
-async function end(id){const job=jobs.get(id);if(job)await wait(Math.max(0,240-(performance.now()-job.start)));jobs.delete(id);refresh();}
+async function end(id){jobs.delete(id);refresh();}
 // Texture downloads may finish after a view change. Keep the active controls
 // usable, and let only the most recent view own the footer's loading message.
 let artworkGeneration=0;
