@@ -3,6 +3,7 @@ import {maintenanceContext,protectMaintenance,externalTroopSnapshotStatements} f
 // Private, authoritative dispatch ledger. None of the information in this
 // module is a public role projection or a client-provided intelligence report.
 import {GameEngine,GAME_OFFICERS} from './game-runtime.js';
+import {recordCastleSiege} from './durability.js';
 import {prepareProtection,protectionBattleStatements} from './protection.js';
 import {getAllianceDefense} from './alliance.js';
 import {residencyTargetGuard,prepareResidencySuccession,prepareResidencyCpuLosses} from './residency.js';
@@ -112,7 +113,7 @@ async function playerTarget(ctx,targetSpec,clock,action,term=null){
  const sharedGuard=target.is_staff&&!target.is_admin&&targetSpec.castleId==='kyoto_gosho'?await h.fieldStaffDefense(db,s,clock):safe;
  const g=GameEngine.fromSave(save,GAME_OFFICERS,{isAdmin:!!target.is_admin,isStaff:!!target.is_staff}),castle=s.castles[targetSpec.castleId];
  const support=await getAllianceDefense(db,target,targetSpec.castleId,now),protection=action==='retaliate'?await prepareProtection(db,user,target,now,{reward:rewardOnly,fail:h.fail}):{guard:safe,shieldUntil:0};
- const supportedState={...s,castles:{...s.castles,[targetSpec.castleId]:{...castle,troops:castle.troops+support.troops}}};
+ const supportedState={...s,worldClock:{...s.worldClock,elapsedMs:clock.elapsedMs},castles:{...s.castles,[targetSpec.castleId]:{...castle,troops:castle.troops+support.troops}}};
  const snapshot=GameEngine.normalizeCovertSnapshot({level:castle.level,troops:s.troops,garrison:castle.troops,wall:targetSpec.castleId===s.home?s.buildings.wall:castle.wall,defensePower:h.fieldDefense(supportedState,'balanced',0,targetSpec.castleId).power,resources:s.resources,army:g.armyStats()});
  snapshot.activeBranches=s.branches.filter(branch=>branch.parentCastleId===targetSpec.castleId&&branch.level>0&&!branch.fallen).map(branch=>branch.id);
  const canonicalTarget={kind:'player',playerId:target.id,castleId:targetSpec.castleId,name:castleMap.get(targetSpec.castleId).name,playerName:target.name};
@@ -165,9 +166,14 @@ async function mutation(ctx,action){
  if(result.idempotent)h.fail(409,'COVERT_ALREADY_RECORDED','この操作は記録済みです。派遣画面を更新してください。');
  if(action==='dispatch'&&result.accepted){const dispatch=game.state.covert.dispatches.find(v=>v.id===result.march.id);dispatch.authority='server';dispatch.departedElapsedMs=Math.floor(clock.elapsedMs);dispatch.arrivesElapsedMs=dispatch.departedElapsedMs+dispatch.travel.durationMs;const history=game.state.covert.history.find(v=>v.requestId===body.requestId);history.march=JSON.parse(JSON.stringify(dispatch));result.result.march=history.march;result.march=history.march;}
  await h.budget(db,'covert:'+user.id,60,60000,ctx.now);
- const now=Date.now(),next=h.normalizeGameSave(JSON.parse(game.exportSave()),user,now,{clock}),nonce=crypto.randomUUID(),role=h.roleCommitGuard(user),gateArgs=[user.id,body.requestId,nonce];
- const cpuLosses=await prepareResidencyCpuLosses(db,{userId:user.id,events:game.takeHomeDefenseLosses(),now,state:next.state});
+ const now=Date.now(),nonce=crypto.randomUUID(),role=h.roleCommitGuard(user),gateArgs=[user.id,body.requestId,nonce];
  const incomingBattle=action==='retaliate'&&target?{battleMode:target.rewardOnly?'reward':'raid',id:'cb_'+crypto.randomUUID().replaceAll('-',''),attackerPlayerId:user.id,defenderPlayerId:target.target.id,castleId:targetSpec.castleId,castleName:castleMap.get(targetSpec.castleId).name,won:result.result.battle.won,defenderLost:result.result.battle.defenderLost,occurredElapsedMs:clock.elapsedMs}:null;
+ if(incomingBattle&&!target.rewardOnly){const b=result.result.battle,damage=recordCastleSiege(target.save.state,targetSpec.castleId,{won:b.won,ratio:Number(b.attackPower||b.power||1)/Math.max(1,Number(b.defensePower||target.snapshot.defensePower||1)),elapsedMs:clock.elapsedMs});incomingBattle.durability=damage;b.durability=damage;}
+ const next=h.normalizeGameSave(JSON.parse(game.exportSave()),user,now,{clock});
+ // _covertCommit returns a detached receipt. Keep the same authoritative
+ // structural damage in the actor's durable history as in that receipt.
+ if(incomingBattle?.durability){const entry=next.state.covert.history.find(item=>item.requestId===body.requestId);if(entry?.battle)entry.battle.durability=structuredClone(incomingBattle.durability);}
+ const cpuLosses=await prepareResidencyCpuLosses(db,{userId:user.id,events:game.takeHomeDefenseLosses(),now,state:next.state});
  const successionPlan=incomingBattle?.won&&!target.rewardOnly&&targetSpec.castleId===target.save.state.home?await prepareResidencySuccession(db,{userId:target.target.id,castleId:targetSpec.castleId,battleId:incomingBattle.id,kind:'covert',now}):null;
  if(successionPlan?.succession){incomingBattle.succession=successionPlan.succession;result.result.battle.succession=successionPlan.succession;}
  const stateGuard=found.row?{sql:'EXISTS(SELECT 1 FROM covert_states WHERE actor_id=? AND campaign_id=? AND sequence=? AND state_json=?)',args:[user.id,body.campaignId,body.sequence,found.row.state_json]}:{sql:'NOT EXISTS(SELECT 1 FROM covert_states WHERE actor_id=? AND campaign_id=?)',args:[user.id,body.campaignId]};

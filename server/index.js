@@ -1,5 +1,6 @@
 import {maintenanceContext,protectMaintenance,externalTroopSnapshotStatements,MAINTENANCE_REFRESH_MESSAGE} from './maintenance.js';
 import {GameEngine, GAME_OFFICERS} from './game-runtime.js';
+import {castleDurability,branchDurability,durabilityRecord,reconcileCastleDurability} from './durability.js';
 import {handleLetters} from './letters.js';
 import {handleTrades} from './trade.js';
 import {handleModeration} from './moderation.js';
@@ -25,7 +26,7 @@ import {relocateResidence} from './relocation.js';
 import {ensureResidency,residencySnapshot,residencyDirectory,residencyStart,initialResidencyStatements,residencyTargetGuard,prepareResidencySuccession,prepareResidencyCpuLosses} from './residency.js';
 const API = '/api/v1';
 const API_VERSION = '4.9.12';
-const API_FEATURES = Object.freeze({trades:true,moderation:true,premium:true,timedEvents:true,troopTrades:true,roamingBattles:true,roamingDeployment:true,covertDispatch:true,privatePlayerRoles:true,guildIcons:true,court:true,kyotoGosho:true,branches:true,branchBattles:true,branchFacilities:true,audioCalls:true,progression:true,armyPresets:true,allianceStrategy:true,sharedConquest:true,newcomerProtection:true,webPush:true,battleAdviser:true,battleCatalog:true,eventBattleRewards:true,shogunate:true,attackTravel:true,castleResidency:true,residencyRelocation:true,maintenanceUpkeep:true});
+const API_FEATURES = Object.freeze({trades:true,moderation:true,premium:true,timedEvents:true,troopTrades:true,roamingBattles:true,roamingDeployment:true,covertDispatch:true,privatePlayerRoles:true,guildIcons:true,court:true,kyotoGosho:true,branches:true,branchBattles:true,branchFacilities:true,audioCalls:true,progression:true,armyPresets:true,allianceStrategy:true,sharedConquest:true,newcomerProtection:true,webPush:true,battleAdviser:true,battleCatalog:true,eventBattleRewards:true,shogunate:true,attackTravel:true,castleResidency:true,residencyRelocation:true,maintenanceUpkeep:true,strongholdDurability:true});
 const MAX_BODY = 16 * 1024;
 const MAX_SAVE_BODY = 2 * 1024 * 1024;
 const MAX_AVATAR_BYTES = 48 * 1024;
@@ -493,6 +494,7 @@ const USER_SELECT = `SELECT u.id,u.name,u.clan,u.created_at,u.last_seen,gm.guild
   (SELECT json_extract(b.save_json,'$.state.castles.'||json_extract(b.save_json,'$.state.home')) FROM staff_campaign_backups b WHERE b.user_id=u.id AND b.active=1) AS personal_castle_json,
   (SELECT json_extract(sb.state_json,'$.castleLevel') FROM staff_base sb WHERE sb.id='kyoto_gosho') AS staff_castle_level,
   (SELECT json_extract(sb.state_json,'$.buildings.wall') FROM staff_base sb WHERE sb.id='kyoto_gosho') AS staff_wall,
+  (SELECT json_extract(sb.state_json,'$.durability') FROM staff_base sb WHERE sb.id='kyoto_gosho') AS staff_durability_json,
   EXISTS(SELECT 1 FROM staff_members sm WHERE sm.user_id=u.id) AS is_staff,
   (SELECT COALESCE(sm.term_id,'legacy:'||sm.appointed_at) FROM staff_members sm WHERE sm.user_id=u.id) AS staff_term,
   (SELECT sm.appointed_elapsed_ms FROM staff_members sm WHERE sm.user_id=u.id) AS staff_since_ms
@@ -1165,6 +1167,8 @@ function normalizeGameSave(raw, user, now, {reading=false,clock=null}={}) {
   if(!isObj(s.tech)||!TECHS.every(t=>num(s.tech[t.id],0,t.max)))invalid();
   const validOwner=new Set([...CASTLES.map(c=>c.clan),'在地衆',ADMIN_CLAN]);for(const c of CLANS)validOwner.add(c.name);
   if(!isObj(s.castles)||Object.keys(s.castles).length!==CASTLES.length||!CASTLES.every(c=>{const v=s.castles[c.id];if(isObj(v)&&v.level===undefined)v.level=1;return isObj(v)&&validOwner.has(v.owner)&&num(v.troops,0,100000000)&&num(v.wall,1,32)&&num(v.level,1,incomingCastleLimit(c.id));}))invalid();
+  try{for(const castle of Object.values(s.castles)){if(castle.durability!==undefined)castle.durability=GameEngine.normalizeDurability(castle.durability);}}catch{invalid();}
+  if(!reading&&clock&&s.worldClock&&Object.values(s.castles).some(castle=>castle.durability?.updatedElapsedMs>clock.elapsedMs))invalid();
   if(!Array.isArray(s.officers)||s.officers.length>g.roster.length||new Set(s.officers).size!==s.officers.length||s.officers.some(id=>typeof id!=='string'||!g.officer(id)))invalid();
   if(!Array.isArray(s.army)||s.army.length>3||new Set(s.army).size!==s.army.length||s.army.some(id=>!s.officers.includes(id)))invalid();
   if(!isObj(s.governors)||Object.keys(s.governors).some(id=>!BUILDINGS.some(b=>b.id===id)||!staff&&s.buildings[id]<1)||Object.values(s.governors).some(id=>!s.officers.includes(id)||s.army.includes(id))||new Set(Object.values(s.governors)).size!==Object.values(s.governors).length)invalid();
@@ -1231,6 +1235,7 @@ function normalizeGameSave(raw, user, now, {reading=false,clock=null}={}) {
   n.lastBattle=null;
   if(s.lastBattle!==null&&s.lastBattle!==undefined){const b=s.lastBattle;if(!isObj(b)||typeof b.won!=='boolean'||!CASTLE_BY_ID[b.castleId]||!num(b.ourBefore)||!num(b.ourLost)||!num(b.enemyBefore)||!num(b.enemyLost)||!Array.isArray(b.phases)||b.phases.length>10||b.phases.some(p=>!isObj(p)||typeof p.title!=='string'||p.title.length>50||typeof p.text!=='string'||p.text.length>1000)||!isObj(b.rewards)||!num(b.rewards.gold)||!num(b.rewards.rice)||!num(b.rewards.magatama??0)||b.capturedOfficer!==null&&b.capturedOfficer!==undefined&&!g.officer(b.capturedOfficer))invalid();n.lastBattle={won:b.won,castleId:b.castleId,castleName:CASTLE_BY_ID[b.castleId].name,ourBefore:b.ourBefore,ourLost:b.ourLost,enemyBefore:b.enemyBefore,enemyLost:b.enemyLost,phases:copy(b.phases),rewards:{gold:b.rewards.gold,rice:b.rewards.rice,magatama:b.rewards.magatama??0},capturedOfficer:b.capturedOfficer||null,garrison:num(b.garrison)?b.garrison:0,tactic:TACTICS.some(t=>t.id===b.tactic)?b.tactic:'balanced',turn:num(b.turn,0,MAX_TURN)?b.turn:n.turn};}
   if(n.lastBattle&&s.lastBattle.branchId!==undefined){const site=branchSite(s.lastBattle.branchId);if(!site||site.parentCastleId!==n.lastBattle.castleId||RESOURCES.some(key=>Number(n.lastBattle.rewards[key]||0)!==0)||Number(n.lastBattle.rewards.magatama||0)!==0)invalid();n.lastBattle.branchId=site.id;n.lastBattle.castleName=site.name;n.lastBattle.captured=false;n.lastBattle.capturedOfficer=null;}
+  if(n.lastBattle&&s.lastBattle.durability!==undefined){try{n.lastBattle.durability=GameEngine.normalizeDurabilityBattle(s.lastBattle.durability);}catch{invalid();}}
   // A read after an administrative identity change must still be recoverable.
   // Match the client's legacy migration, without granting permission to upload
   // exclusive assets and without mutating the stored revision during a GET.
@@ -1295,7 +1300,7 @@ function normalizeGameSave(raw, user, now, {reading=false,clock=null}={}) {
   n.resources=pick(n.resources,RESOURCES);
   n.buildings=pick(n.buildings,BUILDINGS.map(v=>v.id));
   n.tech=pick(n.tech,TECHS.map(v=>v.id));
-  n.castles=Object.fromEntries(CASTLES.map(v=>[v.id,pick(n.castles[v.id],['owner','troops','wall','level'])]));
+  n.castles=Object.fromEntries(CASTLES.map(v=>[v.id,pick(n.castles[v.id],['owner','troops','wall','level',...(n.castles[v.id].durability?['durability']:[])])]));
   n.jobs=n.jobs.map(jobDto);
   n.log=n.log.map(v=>pick(v,['turn','text','kind']));
   n.stats=pick(n.stats,['battles','wins','upgrades','recruited','researches','gachaDraws','gachaDuplicates','castleUpgrades']);
@@ -1462,7 +1467,7 @@ function renameCampaignClan(state,clan) {if(state.clan===clan)return;const previ
 // in the staff campaign. Only the player's own garrison and upgrades survive.
 function restoredHomeCastle(current,personal,owningClan) {
   if(current.owner!==owningClan)return {...personal};
-  return {...personal,troops:Math.max(current.troops,personal.troops),wall:Math.max(current.wall,personal.wall),level:Math.max(current.level,personal.level)};
+  return {...personal,troops:Math.max(current.troops,personal.troops),wall:Math.max(current.wall,personal.wall),level:Math.max(current.level,personal.level),...(current.durability?{durability:copy(current.durability)}:{})};
 }
 function restorePersonalCampaign(save,backup,user) {
   const s=save.state,original=JSON.parse(backup.save_json).state;renameCampaignClan(s,CLAN_HOMES[original.clan]?original.clan:ORDINARY_TOKUGAWA_CLAN);
@@ -1487,12 +1492,16 @@ async function staffPersonalProgressStatement(db,user,save,now,gate,gateArgs,pro
   const backup=await stmt(db,'SELECT * FROM staff_campaign_backups WHERE user_id=? AND active=1',user.id).first();if(!backup)return null;
   const personal=JSON.parse(backup.save_json),home=personal.state.home,old=personal.state.castles[home];
   const current=progress?.home===home?progress.castle:save.state.castles[home];
-  if(current&&(current.owner===save.state.clan||progress&&current.owner===personal.state.clan)){for(const key of ['level','wall'])old[key]=Math.max(old[key],current[key]);old.troops=exactHomeTroops?current.troops:Math.max(old.troops,current.troops);}
+  if(current&&(current.owner===save.state.clan||progress&&current.owner===personal.state.clan)){for(const key of ['level','wall'])old[key]=Math.max(old[key],current[key]);old.troops=exactHomeTroops?current.troops:Math.max(old.troops,current.troops);
+    // A battle modifies the exported save after the journey's private progress
+    // snapshot. Its committed structural damage must win over that older view.
+    const committed=save.state.castles[home],condition=committed?.owner===save.state.clan?committed.durability:current.durability;if(condition)old.durability=copy(condition);
+  }
   old.level=Math.min(castleLevelLimit(home),old.level);
   // A staff member's original home can also be a public outpost. Its loss must
   // reach the personal metadata in this same transaction, or dismissal would
   // recreate that city from the original appointment backup.
-  if(capture){const lost=personal.state.castles[capture.castleId];if(home===capture.castleId)for(const key of ['level','wall','troops'])lost[key]=capture.castle[key];fieldLoseCastle(personal.state,capture.castleId,capture.fallbackHomeId);}
+  if(capture){const lost=personal.state.castles[capture.castleId];if(home===capture.castleId)for(const key of ['level','wall','troops',...(capture.castle.durability?['durability']:[])])lost[key]=capture.castle[key];fieldLoseCastle(personal.state,capture.castleId,capture.fallbackHomeId);}
   return stmt(db,`UPDATE staff_campaign_backups SET save_json=?,updated_at=? WHERE user_id=? AND active=1 AND term_id=? AND ${gate}`,JSON.stringify(personal),now,user.id,backup.term_id,...gateArgs);
 }
 async function advanceDepartingStaff(db,row,user,backup,now,clock) {
@@ -1799,6 +1808,7 @@ async function resolveSyncBranches(db,user,save,before,clock,now,{importedStatio
     save.state.gameOver=!owned.length;save.state.realtime.running=clock.running&&!save.state.gameOver;
   }
   applyBranchProgress(save,model,clock,{pruneOwners:false});
+  if(save.state.branches.some(branch=>(branch.commanders||[]).some(id=>save.state.army.includes(id))))fail(400,'INVALID_SAVE','本隊と支拠点には別の武将を配置してください。');
   const guard=access.row?{sql:`EXISTS(SELECT 1 FROM world_clock WHERE id=? AND revision=?)${shared?" AND EXISTS(SELECT 1 FROM staff_base WHERE id='kyoto_gosho' AND revision=?)":''}`,args:[WORLD_CLOCK_ID,clock.revision,...(shared?[shared.revision]:[])]}:{sql:'1=1',args:[]};
   guard.sql+=' AND '+movement.guard.sql;guard.args.push(...movement.guard.args);
   return{access,resolvedElapsedMs,replayed,guard};
@@ -1815,7 +1825,7 @@ async function resolveSyncResidency(db,user,save,before,clock,now,branchAccess){
   // A forged same-campaign home cannot redirect the next cycle's reset.
   save.state.cycle.home=member.castle_id;
   const cursor=await stmt(db,'SELECT resolved_elapsed_ms FROM castle_residency_cpu_cursors WHERE user_id=? AND campaign_id=?',user.id,campaignId).first();
-  let resolved=Math.max(Number(cursor?.resolved_elapsed_ms||0),Math.min(clock.elapsedMs,Number(save.state.worldClock?.elapsedMs||0))),events=[],provenState=null;
+  let resolved=Math.max(Number(cursor?.resolved_elapsed_ms||0),Math.min(clock.elapsedMs,Number(save.state.worldClock?.elapsedMs||0))),events=[],provenState=null,durabilityState=null;
   if(sameCampaign&&before.state.worldClock){
     if(member.lord_user_id===user.id)guardDefenseCheckpoint(save,clock);
     const trusted=copy(before),start=Math.max(Number(before.state.worldClock.elapsedMs),Number(cursor?.resolved_elapsed_ms||0),Number(branchAccess.resolvedElapsedMs||0)),target=Math.max(start,Math.min(clock.elapsedMs,Number(save.state.worldClock?.elapsedMs||0)));
@@ -1825,7 +1835,7 @@ async function resolveSyncResidency(db,user,save,before,clock,now,branchAccess){
     const game=GameEngine.fromSave(trusted,GAME_OFFICERS,{maintenanceAuthority,branchAuthority:{resolvedElapsedMs:start}}),advanced=game.applyWorldClock({...clock,elapsedMs:target},{maxSeconds:86400,deferCycleSettlement:true,rebalanceTroops:false});
     if(!advanced.ok||advanced.pending||advanced.settlementRequired||advanced.maintenancePending&&game.state.worldClock.elapsedMs<target)fail(409,'RESIDENCY_CLOCK_STALE','城の防衛を共通時刻へ同期しています。最新の保存を確認してください。');
     events=game.takeHomeDefenseLosses?.()||[];resolved=Math.max(resolved,target);
-    reconcileOfficerHealth(save,{state:game.state},clock);
+    reconcileOfficerHealth(save,{state:game.state},clock);durabilityState=game.state;
     if(events.some(event=>event.castleId===member.castle_id&&Number(event.occurredElapsedMs)>Number(member.lord_since_elapsed_ms)))provenState=game.state;
   }
   if(member.lord_user_id===user.id){
@@ -1840,7 +1850,7 @@ async function resolveSyncResidency(db,user,save,before,clock,now,branchAccess){
     }
   }
   const losses=await prepareResidencyCpuLosses(db,{userId:user.id,events,now}),guard={sql:seatGuard.sql+' AND '+losses.guard.sql+' AND EXISTS(SELECT 1 FROM world_clock WHERE id=? AND revision=?)',args:[...seatGuard.args,...losses.guard.args,WORLD_CLOCK_ID,clock.revision]};
-  return{guard,statements:(gate,args)=>[...losses.statements(gate,args),stmt(db,`INSERT INTO castle_residency_cpu_cursors(user_id,campaign_id,resolved_elapsed_ms) SELECT ?,?,? WHERE ${gate} ON CONFLICT(user_id,campaign_id) DO UPDATE SET resolved_elapsed_ms=MAX(resolved_elapsed_ms,excluded.resolved_elapsed_ms)`,user.id,campaignId,resolved,...args)]};
+  return{guard,durabilityState,statements:(gate,args)=>[...losses.statements(gate,args),stmt(db,`INSERT INTO castle_residency_cpu_cursors(user_id,campaign_id,resolved_elapsed_ms) SELECT ?,?,? WHERE ${gate} ON CONFLICT(user_id,campaign_id) DO UPDATE SET resolved_elapsed_ms=MAX(resolved_elapsed_ms,excluded.resolved_elapsed_ms)`,user.id,campaignId,resolved,...args)]};
 }
 
 async function syncSnapshot(db,row,user,deviceId,now,{settle=false}={}) {
@@ -1907,10 +1917,10 @@ function fieldAttackPower(troops,profile,modifier=1){
 }
 function fieldDefense(s,tactic='balanced',siege=0,castleId=s.home) {
   const home=s.castles[castleId],isHome=castleId===s.home,force=home.troops+Math.floor(s.troops*(isHome?.45:.18)),army=fieldArmy(s.army,s.officerVariants,s);
-  const wallFactor=Math.max(.2,1-siege*.12)*(tactic==='siege'?.5:1);
-  return {force,power:Math.max(1,Math.round((force+200)*(1+(isHome?s.buildings.wall:home.wall)*.11*wallFactor)*(1+s.tech.discipline*.06)*(1+(home.level-1)*.04)*army.rankPower)),army};
+  const durability=castleDurability(s,castleId),fortification=durability.fortificationFactor,wallFactor=Math.max(.2,1-siege*.12)*(tactic==='siege'?.5:1);
+  return {force,power:Math.max(1,Math.round((force+200)*(1+(isHome?s.buildings.wall:home.wall)*.11*wallFactor*fortification)*(1+s.tech.discipline*.06)*(1+(home.level-1)*.04*fortification)*army.rankPower)),army,durability};
 }
-function fieldBranchDefense(state,branch,tactic='balanced',siege=0){return GameEngine.prototype.branchDefense.call({branch:id=>id===branch.id?branch:null,castle:id=>state.castles[id]},branch.id,tactic,siege);}
+function fieldBranchDefense(state,branch,tactic='balanced',siege=0){const projected={...branch,durability:branchDurability(branch,state.worldClock?.elapsedMs??branch.durability?.updatedElapsedMs??0)};return GameEngine.prototype.branchDefense.call({branch:id=>id===branch.id?projected:null,castle:id=>state.castles[id]},branch.id,tactic,siege);}
 function fieldBranches(row,castleId,castle,clock,cyclePending,home,baseReason){
   const stored=row.branches_json?JSON.parse(row.branches_json):{branches:[],jobs:[]};
   if(cyclePending&&castleId!==home)return[];
@@ -1920,8 +1930,8 @@ function fieldBranches(row,castleId,castle,clock,cyclePending,home,baseReason){
   const model=projectBranchState({branches,jobs:stored.jobs.filter(job=>ids.has(job.id))},clock.elapsedMs);
   return model.branches.map(branch=>{
     const job=model.jobs.find(job=>job.id===branch.id);
-    const site=branchSite(branch.id),defense=fieldBranchDefense({castles:{[castleId]:castle}},branch),reason=baseReason||(!branch.level?'建設中の支拠点です。':branch.fallen?'この支拠点はすでに陥落しています。':'');
-    return{...branch,name:site.name,maxLevel:site.maxLevel,building:!!job,repairing:!!job?.repair,defenseTroops:defense?.force||0,defensePower:defense?.power||0,attackable:!reason,attackReason:reason};
+    const site=branchSite(branch.id),defense=fieldBranchDefense({castles:{[castleId]:castle},worldClock:{elapsedMs:clock.elapsedMs}},branch),reason=baseReason||(!branch.level?'建設中の支拠点です。':branch.fallen?'この支拠点はすでに陥落しています。':'');
+    return{...branch,durability:branchDurability(branch,clock.elapsedMs),name:site.name,maxLevel:site.maxLevel,building:!!job,repairing:!!job?.repair,defenseTroops:defense?.force||0,defensePower:defense?.power||0,attackable:!reason,attackReason:reason};
   });
 }
 function fieldBattleMode(user,castleId,{legacy=false}={}) {return castleId==='edo'&&user.is_admin||castleId==='kyoto_gosho'&&user.is_staff&&!user.is_admin?'reward':!legacy&&FIELD_CAPTURE_CASTLES.includes(castleId)?'capture':'raid';}
@@ -1953,20 +1963,20 @@ function mapFieldPlayer(row,viewer,relationship,clock,now,targetCastleId=null,in
     if(row.personal_castle_json)Object.assign(castle,restoredHomeCastle(castle,JSON.parse(row.personal_castle_json),row.game_clan));
     else for(const key of ['troops','wall','level'])castle[key]=Math.max(castle[key],castles.kyoto_gosho[key]);
   }
-  if(isHome&&row.is_staff&&!row.is_admin){castle.level=Number(row.staff_castle_level||1);castle.wall=Number(row.staff_wall||1);}
+  if(isHome&&row.is_staff&&!row.is_admin){castle.level=Number(row.staff_castle_level||1);castle.wall=Number(row.staff_wall||1);if(row.staff_durability_json)castle.durability=JSON.parse(row.staff_durability_json);else delete castle.durability;}
   castle.level=Math.min(castleLevelLimit(castleId),castle.level);
   const rawKeepLevel=!isHome?castle.level:row.is_staff&&!row.is_admin?row.staff_keep_level:row.keep_level;
   const keepLevel=Number.isFinite(rawKeepLevel)?Math.max(1,Math.min(32,Math.floor(rawKeepLevel))):1;
   if(cyclePending&&isHome&&battleMode!=='reward'){castle.troops=Math.max(1200,castle.troops);castle.wall=Math.max(castle.wall,Number(row.wall));}
   const state={home,troops:Number(row.troops),castles:{[castleId]:castle},buildings:{wall:isHome&&row.is_staff&&!row.is_admin?castle.wall:Number(row.wall)},tech:{discipline:Number(row.discipline)},army:JSON.parse(row.army_json||'[]'),officerVariants:JSON.parse(row.variants_json||'[]')};
   Object.assign(state,{officers:JSON.parse(row.officers_json||'[]'),officerHealth:JSON.parse(row.officer_health_json||'null')||undefined,turn:Number(row.game_turn)||0,realtime:JSON.parse(row.realtime_json||'null')||{elapsed:0},march:JSON.parse(row.march_json||'null')});
-  state.officerHealth=GameEngine.projectOfficerHealth(state,clock.elapsedMs);
+  state.officerHealth=GameEngine.projectOfficerHealth(state,clock.elapsedMs);state.worldClock={elapsedMs:clock.elapsedMs};
   const defense=fieldDefense(state,'balanced',0,castleId),self=viewer?.id===row.id,relation=self?'self':fieldRelationStatus(relationship,viewer?.id,clock.elapsedMs);
   inspectDefense?.({castleId,isHome,garrisonTroops:castle.troops,fieldTroops:state.troops,homeContribution:defense.force-castle.troops,wallLevel:isHome?state.buildings.wall:castle.wall,castleLevel:castle.level,castleMaxLevel:castleLevelLimit(castleId),disciplineLevel:state.tech.discipline,armyCount:defense.army.officerCount,armyRankPower:defense.army.rankPower});
   const lastDefended=Math.max(row.last_defended_ms??-Infinity,battleMode==='reward'&&castleId==='kyoto_gosho'?(row.last_kyoto_gosho_defended_ms??-Infinity):-Infinity),protectedUntil=Number.isFinite(lastDefended)?lastDefended+FIELD_RULES.defenderProtectionMs:0;
   const baseReason=!viewer?'領主として接続してください。':self?'自分の城です。':viewer.householdCastleId&&viewer.householdCastleId===row.household_id?'同じ城の領主・家臣には攻撃できません。':castleId==='edo'&&viewer.courtEdoDenied?COURT_EDO_REASON:cyclePending&&battleMode!=='reward'&&Number(row.lease_expires_at)>now?'この領主は領地を精算中です。':relation==='allied'?'同盟の期間中です。':protectedUntil>clock.elapsedMs?'襲撃後の保護期間です。':!clock.running?'世界の共通時間が停止中です。':'';
   const branches=fieldBranches(row,castleId,castle,clock,cyclePending,home,baseReason),reason=baseReason||(branches.some(branch=>branch.level>0&&!branch.fallen)?'大都市拠点へ攻めるには、残っている支拠点をすべて先に陥落させてください。':'');
-  return {playerId:row.id,name:row.name,clan,householdCastleId:row.household_id||null,householdRole:row.household_id?(row.household_lord===row.id?'lord':'retainer'):null,lordEpoch:Number(row.household_epoch||0),retainerCount:row.household_lord===row.id?Number(row.household_retainers||0):0,evaluation:evaluationRef(row.id),avatarVersion:row.avatar_version||null,homeCastleId:home,homeCastleName:CASTLE_BY_ID[home].name,targetCastleId:castleId,targetCastleName:CASTLE_BY_ID[castleId].name,isHome,battleMode,capturable:battleMode==='capture',majorCity:MAJOR_CITIES.includes(castleId),level:castle.level,keepLevel,defenseTroops:defense.force,defensePower:defense.power,armySummary:defense.army,branches,isAdmin:!!row.is_admin,isStaff:!!row.is_staff&&!row.is_admin,self,online:row.presence_seen!==null&&Number(row.presence_seen)>now-ONLINE_WINDOW,relationship:relation,protectedUntilElapsedMs:protectedUntil,attackable:!reason,attackReason:reason};
+  return {playerId:row.id,name:row.name,clan,householdCastleId:row.household_id||null,householdRole:row.household_id?(row.household_lord===row.id?'lord':'retainer'):null,lordEpoch:Number(row.household_epoch||0),retainerCount:row.household_lord===row.id?Number(row.household_retainers||0):0,evaluation:evaluationRef(row.id),avatarVersion:row.avatar_version||null,homeCastleId:home,homeCastleName:CASTLE_BY_ID[home].name,targetCastleId:castleId,targetCastleName:CASTLE_BY_ID[castleId].name,isHome,battleMode,capturable:battleMode==='capture',majorCity:MAJOR_CITIES.includes(castleId),level:castle.level,keepLevel,durability:defense.durability,defenseTroops:defense.force,defensePower:defense.power,armySummary:defense.army,branches,isAdmin:!!row.is_admin,isStaff:!!row.is_staff&&!row.is_admin,self,online:row.presence_seen!==null&&Number(row.presence_seen)>now-ONLINE_WINDOW,relationship:relation,protectedUntilElapsedMs:protectedUntil,attackable:!reason,attackReason:reason};
 }
 function mapFieldTargets(row,viewer,relationship,clock,now,inspectDefense=null) {
   const home=mapFieldPlayer(row,viewer,relationship,clock,now,null,inspectDefense),castles=JSON.parse(row.castles_json);
@@ -2199,7 +2209,7 @@ async function fieldStaffDefense(db,state,clock) {
   // any defender state. Due jobs are projected only for this battle snapshot.
   const row=await stmt(db,"SELECT * FROM staff_base WHERE id='kyoto_gosho'").first(),shared=row?JSON.parse(row.state_json):staffInitialState(clock.elapsedMs);
   for(const job of shared.jobs.filter(j=>j.completesElapsedMs<=clock.elapsedMs).sort((a,b)=>a.completesElapsedMs-b.completesElapsedMs)){if(job.kind==='castle')shared.castleLevel=job.targetLevel;else shared.buildings[job.id]=job.targetLevel;}
-  state.castles.kyoto_gosho.level=shared.castleLevel;state.castles.kyoto_gosho.wall=shared.buildings.wall;state.buildings.wall=shared.buildings.wall;
+  state.castles.kyoto_gosho.level=shared.castleLevel;state.castles.kyoto_gosho.wall=shared.buildings.wall;state.buildings.wall=shared.buildings.wall;if(shared.durability)state.castles.kyoto_gosho.durability=copy(shared.durability);else delete state.castles.kyoto_gosho.durability;
   return row?{sql:"EXISTS(SELECT 1 FROM staff_base WHERE id='kyoto_gosho' AND revision=?)",args:[row.revision]}:{sql:"NOT EXISTS(SELECT 1 FROM staff_base WHERE id='kyoto_gosho')",args:[]};
 }
 function marchContext(db,user,now,env=null){
@@ -2393,6 +2403,9 @@ async function fieldAttack(db,user,raw,now,internal={}) {
   const sharedGuard=sharedShield?await fieldStaffDefense(db,d,clock):{sql:'1=1',args:[]};
   if(!flight)return departFieldMarch({db,user,target,body,now,clock,attacker,attackerRow,defenderRow,defender,castleId,digest,foodCost,courtGuard,sharedGuard,attackerBranches,defenderBranches,protection,support,rally,residencyGuard});
   d.officerHealth=GameEngine.projectOfficerHealth(d,clock.elapsedMs);
+  const defenderDurability=branch?branchDurability(branch,clock.elapsedMs):castleDurability(d,castleId,clock.elapsedMs);
+  if(branch&&branch.durability)branch.durability=durabilityRecord(defenderDurability);
+  if(!branch&&castleId!=='kyoto_gosho'&&d.castles[castleId].durability)d.castles[castleId].durability=durabilityRecord(defenderDurability);
   const attackProfile=flightPayload.attackProfile;
   const attackerBefore=journey?.before||copy(attacker),attackPower=fieldAttackPower(body.troops,attackProfile,tactic.modifier);
   const defense=branch?fieldBranchDefense(d,branch,tactic.id,attackProfile.tech.siege):fieldDefense({...d,castles:{...d.castles,[castleId]:{...d.castles[castleId],troops:d.castles[castleId].troops+support.troops}}},tactic.id,attackProfile.tech.siege,castleId),ratio=attackPower/defense.power,chance=Math.max(.05,Math.min(.95,.5+Math.log(ratio)*.6));
@@ -2401,6 +2414,8 @@ async function fieldAttack(db,user,raw,now,internal={}) {
   const castle=d.castles[castleId],protectedAssets=battleMode==='reward'||!!branch,defenderLost=protectedAssets?{troops:0,garrison:0}:{troops:Math.min(Math.floor(d.troops*.1),Math.floor(body.troops*(won?.04:.015))),garrison:Math.min(Math.floor(castle.troops*.1),Math.floor(body.troops*(won?.08:.03)))};
   a.troops-=attackerLost;if(!flight){a.resources.rice-=foodCost;a.command-=1;}
   if(!protectedAssets){d.troops-=defenderLost.troops;castle.troops-=defenderLost.garrison;d.morale=Math.max(0,d.morale-2);}
+  const structuralDamage=battleMode==='reward'?null:GameEngine.durabilityAfterBattle(defenderDurability,{won,ratio,captured:won&&battleMode==='capture',elapsedMs:clock.elapsedMs});
+  if(structuralDamage)(branch||castle).durability=structuralDamage.record;
   if(branch&&won){branch.fallen=true;d.jobs=d.jobs.filter(job=>job.kind!=='branch'||job.id!==branch.id);}
   const loot={},rewards={};
   for(const key of RESOURCES){
@@ -2409,10 +2424,12 @@ async function fieldAttack(db,user,raw,now,internal={}) {
     if(loot[key])d.resources[key]-=loot[key];a.resources[key]+=loot[key]+rewards[key];
   }
   const captured=won&&battleMode==='capture',captureChange=captured?fieldCaptureCastle(a,d,castleId,body.troops,attackerLost):null;
+  if(captureChange?.newlyOwned&&structuralDamage)a.castles[castleId].durability=structuralDamage.record;
   const capture={captured,castleId,castleName:CASTLE_BY_ID[castleId].name,attackerPlayerId:user.id,defenderPlayerId:target.id,defenderHomeCastleId:d.home,defenderHomeCastleName:CASTLE_BY_ID[d.home].name,newlyOwned:!!captureChange?.newlyOwned,garrison:captureChange?.garrison||0};
   if(battleMode!=='branch'){a.stats.battles=Math.min(10000000,a.stats.battles+1);if(won)a.stats.wins=Math.min(a.stats.battles,a.stats.wins+1);}
   a.morale=Math.max(0,Math.min(100,a.morale+(won?3:-5)));
   const battle={id:uid('fb_'),requestId:body.requestId,attackerPlayerId:user.id,attackerName:user.name,defenderPlayerId:target.id,defenderName:target.name,castleId,castleName:CASTLE_BY_ID[castleId].name,battleMode,won,tactic:body.tactic,troops:body.troops,attackerLost,defenderLost,foodCost,loot,rewards,capture,attackPower,defensePower:defense.power,winChance:Math.round(chance*100),occurredElapsedMs:clock.elapsedMs,createdAt:iso(now),attackerRevision:Number(attackerRow.revision)+1,defenderRevision:Number(defenderRow.revision)+(battleMode==='reward'?0:1),nextAttackElapsedMs:clock.elapsedMs+FIELD_RULES.attackCooldownMs,defenderProtectedUntilElapsedMs:clock.elapsedMs+FIELD_RULES.defenderProtectionMs};
+  if(structuralDamage)battle.durability=structuralDamage;
   const succession=won&&castleId===defenderHomeBefore&&!branch&&battleMode!=='reward'?await prepareResidencySuccession(db,{userId:target.id,castleId,battleId:battle.id,kind:'field',now}):{guard:{sql:'1=1',args:[]},succession:null,statements:()=>[]};
   if(succession.succession)battle.succession=succession.succession;
   const cpuLosses=await prepareResidencyCpuLosses(db,{userId:user.id,events:journey?.game.takeHomeDefenseLosses?.()||[],now,state:a});
@@ -2822,6 +2839,7 @@ async function route(request, env, now) {
     reconcileOfficerHealth(save,healthBefore,clock);
     const branchProgress=await resolveSyncBranches(db,user,save,before,clock,now,{importedStationedTroops}),branchAccess=branchProgress.access;
     const residencyProgress=await resolveSyncResidency(db,user,save,before,clock,now,branchAccess);cycleHome=save.state.cycle.home;
+    reconcileCastleDurability(save,healthBefore,clock,{trustedStates:[branchProgress.replayed?.state,residencyProgress.durabilityState].filter(Boolean)});
     // Settle one monthly receipt after the authoritative branch pools are
     // merged. An already-settled client may have recruited again afterwards;
     // saving those troops must not trigger a second reduction in the same month.

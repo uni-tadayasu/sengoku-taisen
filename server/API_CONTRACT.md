@@ -1,5 +1,13 @@
 # 戦国VS（SENGOKU VS）通信API
 
+## Stronghold durability and branch-first officers (v4.9.18)
+
+Castle and branch saves may contain `durability: {version: 1, current, max, updatedElapsedMs}`. Missing legacy records mean full durability at the current level; unbuilt and fallen branches remain at zero. All fields must be finite and within their bounds. Projected DTOs add `ratio` and `recoveryPerMonth`. Repair uses authoritative game elapsed time, at 10% of maximum per 60,000 game milliseconds, capped at maximum. Reads do not write or advance revisions. Growth preserves absolute damage. Only the fortification contribution is scaled, by `0.25 + 0.75 * ratio`.
+
+Resolved destructive sieges persist their damage and `battle.durability` receipt in the same transaction as the battle. Receipts expose `before`, `after`, `damage`, `max`, `breached` and `captured`. A captured castle starts at 25% of its new maximum after any wall-level loss already applied by that battle mode. Protected reward fights and simulation events do not damage their referenced live base. Legacy/stale save PUTs cannot refill already-authoritative damage. The shared conquest stores the optional record in `conquest_castles.durability_json` (migration `0034_stronghold_durability.sql`).
+
+`POST /branches/auto-assign-officers` accepts `{branchId: "all"}` plus the same campaign, deployment sequence, revision and idempotent operation metadata required by other branch mutations. It fills active owned branch vacancies first, transferring eligible facility governors when appropriate, then assigns remaining officers to governors. The main army and existing branch commanders remain reserved. Edo permits one commander per branch; Nijo, Osaka and Nagoya permit two per branch, in manual and automatic assignment as well as save validation. Its `result` contains the existing governor assignment plan plus `branchAssignments` and `branchAssignedCount`; authoritative branch state, governor changes, receipts and save revision commit atomically. Manual and branch-only automatic assignment also allow governors to transfer, clearing the old facility appointment in that same transaction.
+
 ## 武将の体力（v4.9.12）
 
 セーブの `state.officerHealth` は、人物IDに対応する体力を持ちます。同じ人物の絵巻ランク間で共有し、別ランクの取得・表示・編成によって再初期化しません。

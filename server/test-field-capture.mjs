@@ -139,6 +139,16 @@ await scope('capturing a staff original home updates its backup atomically and d
   assert.equal(restored.save.state.home,'kiyosu');assert.equal(restored.save.state.cycle.home,'kiyosu');assert.equal(row(h,defender).cycle_home,'kiyosu');assert.notEqual(restored.save.state.castles.osaka.owner,restored.save.state.clan);assert.deepEqual(restored.save.state.castles.kiyosu,personal.castles.kiyosu);assert.equal(restored.save.state.castles.kiyosu.troops,defenderTransit.castles.osaka.troops-result.battle.defenderLost.garrison,'dismissal does not resurrect the lost garrison');unchangedDevelopment({state:defenderTransit},restored.save);
 });
 
+await scope('failed sieges persist staff personal-home durability through its separate backup and dismissal',async h=>{
+  const operator=await fixture(h,'耐久を守る運営',{admin:true}),defender=await fixture(h,'旧大都市を守る担当',{home:'osaka'});await appoint(h,operator,defender);
+  const actor=await fixture(h,'旧大都市の攻撃者',{home:'akutagawa'}),departure=await outcome(false,()=>attack(h,actor,body(h,actor,defender,'osaka'))),battle=await settleFieldMarch(h,actor,departure);
+  assert(!battle.won);assert(battle.durability.damage>0);assert.deepEqual(save(h,defender).state.castles.osaka.durability,battle.durability.record);
+  assert.deepEqual(JSON.parse(backup(h,defender).save_json).state.castles.osaka.durability,battle.durability.record);
+  const publicHome=(await h.api('/field',{token:actor.token})).data.targets.find(target=>target.playerId===defender.user.id&&target.targetCastleId==='kyoto_gosho');assert.equal(publicHome.durability.current,publicHome.durability.max);
+  await h.api('/admin/staff',post(operator,{targetPlayerId:defender.user.id,action:'dismiss',requestId:crypto.randomUUID()}));
+  const restored=(await h.api('/sync?deviceId='+defender.deviceId,{token:defender.token})).data.save.state;assert.equal(restored.home,'osaka');assert.deepEqual(restored.castles.osaka.durability,battle.durability.record);
+});
+
 await scope('dismissal keeps legitimate personal-home growth while an older backup is active',async h=>{
   const operator=await fixture(h,'成長を見届ける運営',{admin:true}),defender=await fixture(h,'任期中に守備を固めた領主',{home:'osaka'});
   const appointed=await appoint(h,operator,defender),oldBackup=backup(h,defender),castle=appointed.save.state.castles.osaka;

@@ -145,7 +145,7 @@ test('real delegated click actions carry the chosen facility through the mutatio
  }
 });
 test('all deployment routes use authoritative metadata, stable receipts and no optimistic client mutation',async()=>{
- for(const [action,payload]of [['transfer-troops',{from:'army',to:'castle:edo',troops:120}],['assign-commander',{branchId:'edo_north',officerId:'officer-a'}],['remove-commander',{branchId:'edo_north',officerId:'officer-a'}],['auto-assign-commanders',{branchId:'all'}]]){
+ for(const [action,payload]of [['transfer-troops',{from:'army',to:'castle:edo',troops:120}],['assign-commander',{branchId:'edo_north',officerId:'officer-a'}],['remove-commander',{branchId:'edo_north',officerId:'officer-a'}],['auto-assign-commanders',{branchId:'all'}],['auto-assign-officers',{branchId:'all'}]]){
   const h=setup(),before=clone(h.c.game.state);h.control.branchSequence=8;h.control.onPost=async()=>{throw Error('deployment response lost');};
   await assert.rejects(h.c.requestBranches('/branches/'+action,{method:'POST',data:payload}),/deployment response lost/);const first=clone(h.posts[0].options.data);
   assert.equal(first.sequence,8);assert.equal(first.deviceId,'tab-a');assert.equal(first.expectedRevision,7);assert.deepEqual(clone(h.c.game.state),before);
@@ -172,6 +172,31 @@ test('local automatic placement persists at zero command and restores all state 
  const result=await h.c.requestBranches('/branches/auto-assign-commanders',{method:'POST',data:{branchId:'all'}});assert(result.ok);assert.equal(h.c.game.state.command,0);assert.deepEqual(clone(h.c.game.state.resources),resources);assert.deepEqual(JSON.parse(h.stored.get('save')).state.branches[0].commanders,plan.assignments.map(row=>row.officerId));
  const fail=prepare(),previous=fail.c.game,before=previous.exportSave();fail.c.localStorage.setItem=()=>{throw Error('full');};
  await assert.rejects(fail.c.requestBranches('/branches/auto-assign-commanders',{method:'POST',data:{branchId:'all'}}),/保存できなかった/);assert.equal(fail.c.game,previous);assert.deepEqual(JSON.parse(previous.exportSave()).state,JSON.parse(before).state);
+});
+test('linked branch-first placement reconciles authoritative state before displaying its nested result',async()=>{
+ const h=setup(),results=[],toasts=[],gate=deferred();
+ for(const officer of roster.slice(0,24))h.c.game._grantOfficerVariant(officer.id,'S');
+ h.c.game.state.command=0;h.c.game.state.branches=[{id:'edo_north',parentCastleId:'edo',direction:'north',level:2,fallen:false},{id:'edo_east',parentCastleId:'edo',direction:'east',level:2,fallen:false}];
+ const first=h.c.game.branchCommanderAutoPlan('all').assignments[0];assert(h.c.game.assignGovernor('farm',first.officerId).ok);
+ const original=h.c.game,before=clone(original.state),canonical=SengokuEngine.fromSave(original.exportSave(),roster,{isAdmin:true,branchAuthority:{resolvedElapsedMs:original.branchResolvedElapsedMs},maintenanceAuthority:original.getMaintenanceAuthority()}),result=canonical.autoAssignGovernors();
+ assert.equal(result.branchAssignedCount,2);assert(result.branchAssignments.some(row=>row.officerId===first.officerId&&row.fromBuildingId==='farm'));
+ h.c.governorAssignmentResult=value=>results.push(value);h.c.playNote=()=>{};h.c.toast=(message,error)=>toasts.push({message,error});
+ vm.runInContext(fn('autoAssignGovernors'),h.c);
+ h.control.branchSequence=12;h.control.onPost=()=>gate.promise;h.control.onRefresh=async()=>{h.c.game=canonical;h.stored.set('save',canonical.exportSave());h.control.status.revision=9;return{ok:true};};
+ const task=h.c.autoAssignGovernors();await until(()=>h.posts.length===1);
+ assert.equal(h.c.branchBookingPending,true);assert.equal(h.c.game,original);assert.deepEqual(clone(h.c.game.state),before);assert.equal(results.length,0);
+ await h.c.autoAssignGovernors();assert.equal(h.posts.length,1,'A second click cannot start another transaction');
+ const post=h.posts[0],body=post.options.data;assert.equal(post.route,'/branches/auto-assign-officers');assert.equal(body.branchId,'all');assert.equal(body.sequence,12);assert.equal(body.campaignId,before.walking.campaignId);assert.equal(body.deviceId,'tab-a');assert.equal(body.expectedRevision,7);
+ gate.resolve({ok:true,revision:9,result});await task;
+ assert.equal(h.c.game,canonical);assert.equal(h.c.branchBookingPending,false);assert.equal(results.length,1);assert.equal(results[0],result,'The UI unwraps response.result only after cloud reconciliation');assert.equal(toasts.length,0);assert.equal(branchRecords(h).length,0);
+ assert.deepEqual(clone(original.state),before);assert.deepEqual(clone(canonical.state.army),before.army);assert.deepEqual(clone(canonical.state.resources),before.resources);assert.equal(canonical.state.command,0);
+ const posted=[...canonical.state.army,...canonical.state.branches.flatMap(row=>row.commanders||[]),...Object.values(canonical.state.governors)];assert.equal(new Set(posted).size,posted.length);assert(!Object.values(canonical.state.governors).includes(first.officerId));
+});
+test('linked placement with an unconfirmed save revision retains the receipt and never displays success',async()=>{
+ const h=setup(),results=[],toasts=[],before=clone(h.c.game.state),result={ok:true,assignments:[],branchAssignments:[],branchAssignedCount:0};
+ h.c.governorAssignmentResult=value=>results.push(value);h.c.playNote=()=>{};h.c.toast=(message,error)=>toasts.push({message,error});vm.runInContext(fn('autoAssignGovernors'),h.c);
+ h.control.onPost=async()=>({ok:true,revision:10,result});await h.c.autoAssignGovernors();
+ assert.equal(h.posts.length,1);assert.equal(h.posts[0].route,'/branches/auto-assign-officers');assert.equal(branchPending(h).committedRevision,10);assert.equal(results.length,0);assert(toasts.some(row=>row.error));assert.equal(h.c.branchBookingPending,false);assert.deepEqual(clone(h.c.game.state),before);
 });
 (async()=>{for(const[name,run]of tests){await run();console.log('PASS '+name);}console.log(tests.length+' branch transaction bridge checks passed. No live writes.');})().catch(error=>{console.error(error);process.exitCode=1;});
 

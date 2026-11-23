@@ -15,13 +15,13 @@ function fixture({admin=false,count=12}={}){
  return{game,ids};
 }
 function unchanged(game,run){const before=clone(game.state),result=run();assert.deepEqual(game.state,before);return result;}
-test('automatic preview is read-only, ranks owned abilities and excludes every existing assignment',()=>{
- const {game,ids}=fixture();game.state.army=[ids[0]];game.state.governors={farm:ids[1]};assert(game.assignBranchCommander('osaka_north',ids[2]).ok);
- const best=ids.slice(3).map(id=>game.officer(id)).sort((a,b)=>b.lead-a.lead||b.intellect-a.intellect||b.valor-a.valor||(a.id<b.id?-1:1));
+test('automatic preview ranks transferable governors and preserves main army and other branch posts',()=>{
+ const {game,ids}=fixture();game.state.army=[ids[0]];assert(game.assignBranchCommander('osaka_north',ids[2]).ok);
+ const best=ids.filter(id=>![ids[0],ids[2]].includes(id)).map(id=>game.officer(id)).sort((a,b)=>b.lead-a.lead||b.intellect-a.intellect||b.valor-a.valor||(a.id<b.id?-1:1));game.state.governors={farm:best[0].id};
  const plan=unchanged(game,()=>game.branchCommanderAutoPlan('nijo_north'));assert(plan.ok);assert.equal(plan.assignments.length,2);
  assert.deepEqual(plan.assignments.map(row=>row.officerId),best.slice(0,2).map(row=>row.id));assert.equal(plan.commandCost,0);
- const resources=clone(game.state.resources),army=clone(game.state.army),governors=clone(game.state.governors);
- assert(game.autoAssignBranchCommanders('nijo_north').ok);assert.equal(game.state.command,0);assert.deepEqual(game.state.resources,resources);assert.deepEqual(game.state.army,army);assert.deepEqual(game.state.governors,governors);assert.deepEqual(game.branch('osaka_north').commanders,[ids[2]]);
+ assert.equal(plan.assignments[0].fromBuildingId,'farm');const resources=clone(game.state.resources),army=clone(game.state.army);
+ assert(game.autoAssignBranchCommanders('nijo_north').ok);assert.equal(game.state.command,0);assert.deepEqual(game.state.resources,resources);assert.deepEqual(game.state.army,army);assert.deepEqual(game.state.governors,{});assert.deepEqual(game.branch('osaka_north').commanders,[ids[2]]);
 });
 test('each Edo branch holds one and other cities two while current commanders remain in their slots',()=>{
  const {game,ids}=fixture({admin:true});assert(game.assignBranchCommander('nijo_north',ids[0]).ok);
