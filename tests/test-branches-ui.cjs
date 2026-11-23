@@ -3,6 +3,16 @@
 const assert=require('node:assert/strict'),{SengokuEngine:E}=require('../engine.js'),B=require('../branches.js'),M=require('../world-map.js'),F=require('../field.js'),stable=require('../stable-dom.js'),{setup}=require('./helpers/dom-model.cjs');
 const tests=[],test=(name,run)=>tests.push([name,run]),copy=value=>JSON.parse(JSON.stringify(value));
 function game(admin=false){const g=new E({isAdmin:admin,seed:29});g.state.command=30;g.state.resources={gold:1000000,rice:1000000,wood:1000000,stone:1000000};g.state.buildings.keep=10;return g;}
+function fullCommanderGame(){
+ const scope={window:{}};require('node:vm').runInNewContext(require('node:fs').readFileSync(require.resolve('../officers-data.js'),'utf8'),scope);
+ const g=new E({isAdmin:true,officers:copy(scope.window.SENGOKU_OFFICERS),seed:4919});
+ for(const officer of g.roster.slice(0,24))g._grantOfficerVariant(officer.id,'S');
+ g.state.castles.nijo.owner=g.state.clan;g.state.command=0;
+ const available=g.officerViews(g.state.officers.filter(id=>!g.state.army.includes(id))).sort((a,b)=>b.lead-a.lead||b.intellect-a.intellect||b.valor-a.valor),weak=available.slice(-3).map(o=>o.id),strong=available.slice(0,3).map(o=>o.id);
+ g.state.governors={farm:strong[0],market:strong[1],barracks:strong[2]};
+ g.state.branches=[{id:'edo_north',parentCastleId:'edo',direction:'north',level:2,fallen:false,commanders:[weak[0]]},{id:'nijo_north',parentCastleId:'nijo',direction:'north',level:2,fallen:false,commanders:weak.slice(1)}];
+ return{g,weak,strong};
+}
 const helpers={writable:true,costHtml:cost=>`<div class="cost">金銭 ${cost.gold} 木材 ${cost.wood} 石材 ${cost.stone} 工期 ${cost.seconds}秒</div>`,jobClockText:job=>`あと ${Math.ceil(job.remainingSeconds)}秒`,jobKey:job=>`${job.kind}:${job.id}:personal:${job.targetLevel}`};
 
 test('only the four eligible parent cities show exact engine quotes and Kyoto has no build control',()=>{
@@ -31,6 +41,24 @@ test('resource-driven markup changes retain focused direction, painted art and s
  const g=game();g.state.castles.nijo.owner=g.state.clan;g.state.branches=[{id:'nijo_west',parentCastleId:'nijo',direction:'west',level:2,fallen:false}];const {host,$,doc}=setup();global.SengokuArt={castle:(parent,className)=>`<span class="${className}" data-art-kind="castle" data-art-id="${parent}"></span>`};
  stable.patch(host,B.render(g,'nijo',helpers),{key:'branches'});const select=$('#branch-direction-nijo'),art=$('.branch-art'),card=$('.branch-card');select.value='south';select.focus();art.classList.add('art-ready');host.scrollTop=244;g.state.resources.gold=0;stable.patch(host,B.render(g,'nijo',helpers),{key:'branches'});
  assert.strictEqual($('#branch-direction-nijo'),select);assert.strictEqual($('.branch-art'),art);assert.strictEqual($('.branch-card'),card);assert.strictEqual(doc.activeElement,select);assert.equal(select.value,'south');assert(art.classList.contains('art-ready'));assert.equal(host.scrollTop,244);delete global.SengokuArt;
+});
+test('full Edo and major-city branches keep automatic replacement enabled and preview the new formation',()=>{
+ const {g,weak}=fullCommanderGame(),before=JSON.stringify(g.state),{host}=setup();
+ for(const [parent,id,limit]of [['edo','edo_north',1],['nijo','nijo_north',2]]){
+  const plan=g.branchCommanderAutoPlan(id);assert(plan.ok);assert.equal(plan.replacedCount,limit);assert.equal(plan.formations[0].commanders.length,limit);
+  host.innerHTML=B.render(g,parent,helpers);const button=host.querySelector(`[data-action="auto-assign-branch-commanders"][data-id="${id}"]`),all=host.querySelector('[data-action="auto-assign-branch-commanders"][data-id="all"]');
+  assert(button&&!button.disabled,'A full branch must still offer automatic replacement');assert(all&&!all.disabled);assert.equal(host.querySelectorAll(`[data-branch-commander-panel="${id}"] .branch-commander-slot`).length,limit);
+  const preview=button.parentElement.querySelector('[data-branch-auto-preview]').textContent;
+  for(const officerId of plan.formations[0].commanders)assert(preview.includes(g.officer(officerId).name));assert.match(button.parentElement.textContent,/入れ替え|見直/);
+  assert(host.querySelector(`[data-branch-commander-panel="${id}"] .branch-commander-slots`).textContent.includes(g.officer(weak[parent==='edo'?0:1]).name),'Current occupants remain visible until the action commits');
+ }
+ assert.equal(JSON.stringify(g.state),before,'Rendering replacement previews never mutates appointments');
+});
+test('an already optimal full formation remains available with a readable no-change message and read-only gates still win',()=>{
+ const {g}=fullCommanderGame(),{host}=setup();assert(g.autoAssignBranchCommanders('all').ok);const before=JSON.stringify(g.state),plan=g.branchCommanderAutoPlan('all');assert(plan.ok);assert.equal(plan.changed,false);assert.equal(plan.assignments.length,0);
+ host.innerHTML=B.renderAutoCommanders(g,'all',helpers);assert(!host.querySelector('button').disabled);assert.match(host.querySelector('[data-branch-auto-preview]').textContent,/維持/);assert.equal(B.autoCommanderReason(g,'all',helpers),'');
+ host.innerHTML=B.renderAutoCommanders(g,'edo_north',helpers);assert(!host.querySelector('button').disabled);assert.match(host.querySelector('[data-branch-auto-preview]').textContent,/維持/);assert.equal(JSON.stringify(g.state),before);
+ host.innerHTML=B.renderAutoCommanders(g,'all',{...helpers,writable:false,writableReason:'別の端末で操作中です。'});assert(host.querySelector('button').disabled);assert.match(host.textContent,/別の端末で操作中/);assert.equal(JSON.stringify(g.state),before);
 });
 test('branch map markers use bounded screen offsets and never invent geographic coordinates or castle counts',()=>{
  const parent={id:'nijo',key:'nijo',sx:300,sy:250,priority:90,own:true},branches=['north','east','south','west'].map(direction=>({id:'nijo_'+direction,parentCastleId:'nijo',direction,level:2,name:direction})),before=copy(parent),markers=M.layoutBranches([parent],branches,{distance:84});
