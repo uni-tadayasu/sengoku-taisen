@@ -52,6 +52,26 @@ function staffSnapshotWithTroops(snapshot,state){
  if(snapshot.user?.isStaff!==true||snapshot.user?.isAdmin===true||!snapshot.staffBase?.personalHomeCastle||state.staffService?.personalHome!==home||state.castles?.[home]?.owner!==state.clan)return snapshot;
  return{...snapshot,staffBase:{...snapshot.staffBase,personalHomeCastle:{...snapshot.staffBase.personalHomeCastle,troops:state.castles[home].troops}}};
 }
+function monthlyUpkeepState(state){
+ const value=state?.upkeep;
+ if(!value||value.version!==1||!Number.isSafeInteger(value.settledTurn)||value.settledTurn<0||value.settledTurn>state.turn||!value.branchReductions||Array.isArray(value.branchReductions)||typeof value.branchReductions!=='object'||Object.values(value.branchReductions).some(count=>!Number.isSafeInteger(count)||count<0))return null;
+ return value;
+}
+function mergeMonthlyUpkeep(sent,canonical,current){
+ const a=sent?.state,b=canonical?.state,c=current?.state,prior=monthlyUpkeepState(a),source=monthlyUpkeepState(b),live=monthlyUpkeepState(c);
+ if(!source||!live||!a?.walking?.campaignId||a.walking.campaignId!==b.walking?.campaignId||a.walking.campaignId!==c.walking?.campaignId||a.worldClock?.id!==b.worldClock?.id||a.worldClock?.id!==c.worldClock?.id||source.settledTurn>c.turn)return{changed:false,save:current};
+ const branchReductions={};
+ for(const id of new Set([...Object.keys(source.branchReductions),...Object.keys(live.branchReductions),...Object.keys(prior?.branchReductions||{})])){
+  const committed=source.branchReductions[id]||0,before=prior?.branchReductions[id]||0,current=live.branchReductions[id]||0;
+  // A newly accepted campaign starts a fresh server receipt baseline. Keep
+  // losses after the submitted import, without reviving its discarded history.
+  const count=committed<before?committed+Math.max(0,current-before):Math.max(current,committed);
+  if(count)branchReductions[id]=count;
+ }
+ const upkeep={version:1,settledTurn:Math.max(source.settledTurn,live.settledTurn),branchReductions};
+ if(fingerprint({state:upkeep})===fingerprint({state:live}))return{changed:false,save:current};
+ const save=JSON.parse(JSON.stringify(current));save.state.upkeep=upkeep;return{changed:true,save};
+}
 // Replay only ordinary troop changes over the committed layout. Local automatic
 // reductions are recorded explicitly and replayed as affordable-total limits,
 // so the same reduction on both sides cannot be subtracted a second time.
@@ -68,7 +88,9 @@ function mergeUpkeepCorrection(sent,snapshot,current,journal){
  for(const key of new Set([...before.keys(),...after.keys()])){const delta=(before.get(key)||0)-(after.get(key)||0);if(delta<0||delta!==(allocations.get(key)||0))return conflict;removed+=delta;allocations.delete(key);}
  if(allocations.size||removed!==dto.removed)return conflict;
  const branches=mergeBranchCorrection(sent,snapshot.save,current,{troopsSeparate:true});if(branches.pending)return conflict;
- const merged=branches.changed?branches.save:JSON.parse(JSON.stringify(current)),target=new Map(after);
+ const monthly=mergeMonthlyUpkeep(sent,snapshot.save,branches.changed?branches.save:current),merged=monthly.changed?monthly.save:branches.changed?branches.save:JSON.parse(JSON.stringify(current)),target=new Map(after);
+ const canonicalMonthly=monthlyUpkeepState(b),currentMonthly=monthlyUpkeepState(c),branchReductions=canonicalMonthly&&currentMonthly?{...canonicalMonthly.branchReductions}:null;
+ if(canonicalMonthly&&canonicalMonthly.settledTurn>c.turn)return conflict;
  let source=upkeepMap(stocks(a));if(!source)return conflict;
  function replay(next){
   if(!next)return false;
@@ -88,11 +110,17 @@ function mergeUpkeepCorrection(sent,snapshot,current,journal){
   const order=record.order.map(row=>row.kind+':'+row.id);
   if(new Set(order).size!==order.length||order.some(key=>key==='castle:kyoto_gosho'||!prior.has(key)))return conflict;
   let excess=Math.max(0,order.reduce((sum,key)=>sum+(target.get(key)||0),0)-record.limit);
-  for(const key of order){const reduction=Math.min(excess,target.get(key)||0);if(reduction){target.set(key,target.get(key)-reduction);excess-=reduction;}}
+  if(record.monthlyTurn!==undefined&&(!Number.isSafeInteger(record.monthlyTurn)||record.monthlyTurn<a.turn||record.monthlyTurn>c.turn))return conflict;
+  for(const key of order){const reduction=Math.min(excess,target.get(key)||0);if(reduction){target.set(key,target.get(key)-reduction);excess-=reduction;
+    // Count the loss actually replayed over the canonical stocks. The same
+    // month settled on both sides must not create a second branch receipt.
+    if(branchReductions&&record.monthlyTurn!==undefined&&key.startsWith('branch:')){const id=key.slice(7),count=(branchReductions[id]||0)+reduction;if(!Number.isSafeInteger(count))return conflict;branchReductions[id]=count;}
+  }}
   source=next;
  }
  if(!replay(upkeepMap(stocks(c))))return conflict;
  const state=merged.state,actual=upkeepMap(stocks(state));if(!actual)return conflict;
+ if(branchReductions)state.upkeep={version:1,settledTurn:Math.max(canonicalMonthly.settledTurn,currentMonthly.settledTurn),branchReductions};
  for(const [key,value]of target)if(!actual.has(key)&&value!==0)return conflict;
  for(const [key,value]of actual)if(!target.has(key)&&value!==0)return conflict;
  state.troops=target.get('army:army');
@@ -298,11 +326,11 @@ function create(options={}){
     branchCorrectionPending=null;
    }
    else{
-    const corrected=mergeBranchCorrection(save,result.save,currentSave),preserved=corrected.changed?corrected.save:currentSave,home=result.staffBase?.personalHome;
+    const corrected=mergeBranchCorrection(save,result.save,currentSave),monthly=mergeMonthlyUpkeep(save,result.save,corrected.changed?corrected.save:currentSave),preserved=monthly.save,home=result.staffBase?.personalHome;
     // The server may have needed no reduction while a later local governor
     // change did. Its old personal-home backup must not replenish that loss.
     if(home&&journal?.current&&!journal.overflow&&save.state.walking?.campaignId===preserved.state.walking?.campaignId&&save.state.clan===preserved.state.clan&&journal.records.some(record=>(record.before.castles[home]||0)>(record.after.castles[home]||0)))effective=staffSnapshotWithTroops(result,preserved.state);
-    branchCorrectionPending=corrected.pending?save:null;if(corrected.changed&&!await apply(corrected.save,effective,g,{reason:'branch-canonical',backup:false}))return{ok:false};
+    branchCorrectionPending=corrected.pending?save:null;if((corrected.changed||monthly.changed)&&!await apply(preserved,effective,g,{reason:corrected.changed?'branch-canonical':'upkeep-month',backup:false}))return{ok:false};
    }
    if(!valid(g))return{ok:false};applyMaintenanceAuthority(effective,g);applyBranchAuthority(effective,g);observeResidency(effective);if(effective.clock)global.SengokuWorldClock?.accept(effective.clock);applyStaffBase(effective,g);revision=result.revision;ack=canonical;dirty=fingerprint(local())!==ack;initialized=true;attempt=null;checkpoint();status.updatedAt=result.updatedAt||null;lease(result);access();if(dirty&&!suspended)scheduleSave();return{ok:true};
   }catch(error){
