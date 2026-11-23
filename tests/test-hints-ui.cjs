@@ -1,8 +1,10 @@
 'use strict';
 const assert = require('node:assert/strict');
 const { createUI, normalize, formatWait, assetsMarkup } = require('../hints-ui.js');
+const { build } = require('../hints.js');
+const { SengokuEngine } = require('../engine.js');
 
-// Small native-dialog surface: no network, storage, or game engine is available.
+// Small native-dialog surface: no network, storage, or browser is required.
 class Element {
   constructor(tag, document) { this.tagName = tag.toUpperCase(); this.document = document; this.children = []; this.parentElement = null; this.attributes = {}; this.dataset = {}; this.events = {}; this.className = ''; this.id = ''; this.hidden = false; this.disabled = false; this.open = false; this.scrollTop = 0; this._text = ''; this.writes = 0; }
   setAttribute(name, value) { this.attributes[name] = String(value); if (name === 'class') this.className = String(value); if (name === 'id') this.id = String(value); if (name.startsWith('data-')) this.dataset[name.slice(5).replace(/-([a-z])/g, (_, char) => char.toUpperCase())] = String(value); if (name === 'hidden') this.hidden = true; }
@@ -51,6 +53,7 @@ class Element {
 }
 const hint = (id, extra = {}) => ({ id, priority: 100, tone: 'advice', category: 'construction', title: '田畑を育てる ' + id, reason: '兵糧を増やすと、次の準備を進められます。', action: { kind: 'building', id: 'farm', label: '田畑を確認する' }, ...extra });
 const report = (items = ['a', 'b', 'c', 'd', 'e'].map(id => hint(id)), extra = {}) => ({ scope: 'owner:first:castle', status: 'ready', title: '城下町から、次の準備を', summary: '今の資産と兵力に合わせた候補です。', items, ...extra });
+const waitingReport = (context={},scope='owner:first:castle') => ({...build(new SengokuEngine({seed:47}),{started:true,writable:false,syncReady:true,clockReady:true,saveEnabled:true,syncReason:'writer',syncMessage:'変更を自動保存しています…',...context}),scope});
 function setup(value = report(), options = {}) {
   const doc = { activeElement: null, createElement(tag) { return new Element(tag, doc); } }; doc.body = doc.createElement('body');
   doc.querySelector = selector => doc.body.querySelector(selector); doc.querySelectorAll = selector => doc.body.querySelectorAll(selector);
@@ -124,6 +127,41 @@ async function test(name, run) { await run(); checks++; console.log('PASS ' + na
     s.setModel(pending('owner:first:castle')); s.ui.refresh(); assert.equal(s.$('[data-hint-follow="a"]'), null);
     s.setModel(report()); s.ui.refresh(); time = 31001; s.setModel(pending('owner:first:castle')); s.ui.refresh(); assert.equal(s.$('[data-hint-follow="a"]'), null);
     s.setModel(report()); s.ui.refresh(); s.ui.close(); s.setModel(pending('owner:first:castle')); s.ui.open(); assert.equal(s.$('[data-hint-follow="a"]'), null); s.ui.dispose();
+  });
+  await test('saving, applying, conflict, settlement and walking waits keep existing cards and the town entry still', () => {
+    let time=1000;const s=setup(report(),{now:()=>time}),entry=s.doc.createElement('section');
+    entry.setAttribute('data-hint-entry','');entry.innerHTML='<strong data-hint-title></strong><p data-hint-reason></p>';s.doc.body.append(entry);s.ui.open();
+    const card=s.$('[data-hints-primary]').children[0],button=s.$('[data-hint-follow="b"]'),main=s.$('.hints-main'),details=s.$('.hints-other'),heading=s.$('[data-hint-title]'),summary=s.$('[data-hint-reason]');
+    button.focus();main.scrollTop=237;details.open=true;const writes=[heading.writes,summary.writes];
+    for(const context of [{syncReady:false,syncReason:'initializing'},{clockReady:false},{syncReason:'applying'},{syncReason:'conflict'},{syncReason:'writer',syncMessage:'占領した拠点の集計と報酬を同期しています。'},{syncReason:'local',syncMessage:'実行中の操作の結果を確認しています。完了後にヒントを更新します。'}]){
+      time+=100;const model=waitingReport(context);assert.equal(model.status,'blocked');assert.equal(model.transient,true);s.setModel(model);assert.equal(s.ui.refresh(),false);
+      assert.strictEqual(s.$('[data-hints-primary]').children[0],card);assert.strictEqual(s.doc.activeElement,button);assert.equal(main.scrollTop,237);assert(details.open);
+      assert.deepEqual([heading.writes,summary.writes],writes);assert(!/自動保存しています|同期しています|操作の結果を確認しています/.test(s.doc.body.textContent));
+    }
+    s.ui.dispose();
+  });
+  await test('first-load waits use one fixed card without routine progress text or an invented navigation action', () => {
+    const s=setup(waitingReport({syncReady:false,syncReason:'initializing'}));s.ui.open();
+    const card=s.$('[data-hints-primary]').children[0];assert.equal(s.$('[data-hints-title]').textContent,'次の一手');assert(card.querySelector('button').hidden);
+    for(const context of [{syncReason:'applying'},{syncReason:'conflict'},{clockReady:false},{syncReason:'writer',syncMessage:'占領した拠点の集計と報酬を同期しています。'}]){
+      s.setModel(waitingReport(context));assert.equal(s.ui.refresh(),false);assert.strictEqual(s.$('[data-hints-primary]').children[0],card);
+      assert(!/自動保存|同期しています|保存データを確認|操作を再開する準備/.test(s.doc.body.textContent));assert(card.querySelector('button').hidden);
+    }
+    s.ui.dispose();
+  });
+  await test('real connection, role, account and storage problems replace retained advice immediately', () => {
+    for(const context of [...['offline','error','auth','follower','identity','access-changed'].map(syncReason=>({syncReason,syncMessage:'実際の接続問題です。'})),{banned:true},{rolePending:true},{saveEnabled:false}]){
+      const s=setup(report(),{now:()=>1000});s.ui.open();const model=waitingReport({syncReady:false,clockReady:false,...context});
+      assert.notEqual(model.transient,true);s.setModel(model);s.ui.refresh();assert.equal(s.$('[data-hint-follow="a"]'),null);assert.equal(s.$('[data-hints-title]').textContent,model.title);
+      s.setModel(waitingReport());s.ui.refresh();assert.equal(s.$('[data-hint-follow="a"]'),null,'a later wait must not revive advice from before a real problem');s.ui.dispose();
+    }
+  });
+  await test('changing transient phases never extends thirty seconds or transfers advice to a new scope', () => {
+    let time=1000;const s=setup(report(),{now:()=>time});s.ui.open();
+    time=30999;s.setModel(waitingReport({syncReason:'applying'}));s.ui.refresh();assert(s.$('[data-hint-follow="a"]'));
+    time=31000;s.setModel(waitingReport({syncReason:'conflict'}));s.ui.refresh();assert.equal(s.$('[data-hint-follow="a"]'),null);assert(!s.doc.body.textContent.includes('自動保存'));
+    time=2000;s.setModel(waitingReport());s.ui.refresh();assert.equal(s.$('[data-hint-follow="a"]'),null,'expired advice cannot return after a clock rollback');
+    s.setModel(report());s.ui.refresh();s.setModel(waitingReport({syncReason:'applying'},'owner:replacement:castle'));s.ui.refresh();assert.equal(s.$('[data-hint-follow="a"]'),null);assert.equal(s.$('.hints-main').scrollTop,0);s.ui.dispose();
   });
   await test('reordered visible candidates preserve the same focused action node', () => {
     const s = setup(); s.ui.open(); const button = s.$('[data-hint-follow="b"]'); button.focus(); s.$('.hints-main').scrollTop = 110;

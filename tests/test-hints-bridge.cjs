@@ -40,6 +40,16 @@ test('advice retained by the UI cannot bypass a clock or account change at navig
   assert.equal(h.c.followHint(candidate.id).ok,false);assert.deepEqual(h.calls,[]);
   h.flags.clockApplied=true;h.c.syncAccess.banned=true;assert.equal(h.c.followHint(candidate.id).ok,false);assert.deepEqual(h.calls,[]);assert.equal(JSON.stringify(h.game.state),before);
 });
+test('retained advice is revalidated during applying, conflict and ordinary operation waits',()=>{
+  const h=setup();h.c.window.SengokuHints=require('../hints.js');const candidate=h.c.getHints().items.find(item=>item.action?.kind==='building'||item.action?.kind==='castle'||item.action?.kind==='view');assert(candidate);
+  const before=JSON.stringify(h.game.state);h.flags.writable=false;
+  for(const reason of ['applying','conflict','writer','local']){
+    h.c.syncAccess.reason=reason;h.c.walkingActionPending=reason==='writer';h.c.worldSettlementPending=reason==='local';
+    const model=h.c.getHints();assert.equal(model.status,'blocked');assert.equal(model.transient,true);
+    assert.equal(h.c.followHint(candidate.id).ok,false);assert.deepEqual(h.calls,[]);
+  }
+  assert.equal(JSON.stringify(h.game.state),before);
+});
 test('valid hints open existing views or details after closing the hint dialog, without saving or spending',()=>{
   const h=setup(),before=JSON.stringify(h.game.state),home=h.game.state.home;
   const cases=[
@@ -74,7 +84,7 @@ test('the bridge rejects unknown views, missing targets, protected castles and a
 });
 test('general help and the persistent hint entry open read-only guidance',()=>{
   const h=setup(),before=JSON.stringify(h.game.state);h.c.openHintHelp();assert.deepEqual(h.calls,[['close-hints'],['close-modal'],['help']]);h.calls.length=0;
-  let handler;h.c.document={addEventListener:(_type,fn)=>{handler=fn;}};h.c.mutationActions=new Set();
+  let handler;h.c.document={addEventListener:(type,fn)=>{if(type==='click')handler=fn;}};h.c.mutationActions=new Set();
   const start=source.indexOf("  document.addEventListener('click',async event=>"),end=source.indexOf("  document.addEventListener('input'",start);vm.runInContext(source.slice(start,end),h.c);
   const node={disabled:false,dataset:{action:'hints'},closest(){return this;}};handler({target:node});assert.deepEqual(h.calls,[['close-modal'],['open-hints']]);assert.equal(JSON.stringify(h.game.state),before);
   const index=fs.readFileSync(require.resolve('../index.html'),'utf8');assert.match(index,/class="nav-item" data-action="hints"/);assert(source.includes('data-hint-entry'));

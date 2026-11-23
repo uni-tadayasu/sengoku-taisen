@@ -6671,6 +6671,29 @@ global.setInterval?.(()=>{if(!global.document.hidden&&options.getContext)refresh
 })(typeof window!=='undefined'?window:globalThis);
 
 ;
+/* sync-notices.js */
+/* Internal save barriers remain authoritative; routine progress stays silent. */
+(function(global){
+ 'use strict';
+ const routine=new Set([
+  'この端末に自動保存しています','この端末に保存しています','変更を保存しています','変更を自動保存しています',
+  '進行状況は自動保存されています','自動同期中。この端末で進行できます','この端末で進行中 · 自動同期しています',
+  '最新の進行を反映しています','別の更新を確認したため、最新の保存を読み込んでいます',
+  '領主と最新の保存を確認しています','クラウドの最新データを確認しています','進行権を確認しています',
+  '領主の権限を確認しています。確認が終わるまで操作と保存を待機しています',
+  '占領した拠点の集計と報酬を同期しています','共通フィールド・資産・共同普請の結果を同期しています',
+  '外部に預けた兵の維持費を現在の時刻まで反映しています','共通時刻までの進行を反映しています','共通時刻を確認しています',
+  '合戦と指令の結果を同期しています','兵の維持費を最新の保存と照合しています',
+  '保存を確認しています','更新状況を確認しています','この領主の進行へ自動で同期します','この端末の物語に自動保存します'
+ ]);
+ function isRoutine(value){return routine.has(String(value??'').trim().replace(/[。.…]+$/u,''));}
+ function visibleText(value){const text=String(value??'');return isRoutine(text)?'':text;}
+ const api={isRoutine,visibleText};
+ global.SengokuSyncNotices=api;
+ if(typeof module==='object'&&module.exports)module.exports=api;
+})(typeof window!=='undefined'?window:globalThis);
+
+;
 /* officer-health.js */
 (function(global){
  'use strict';
@@ -6731,6 +6754,20 @@ global.setInterval?.(()=>{if(!global.document.hidden&&options.getContext)refresh
   function single(status,id,title,reason,action,tone='muted') {
     return {status,title,summary:reason,items:[{id,priority:1000,tone,category:'system',title,reason,action}]};
   }
+  // Only the presentation may retain earlier advice during these short waits.
+  // The current report remains blocked, with no previous gameplay actions.
+  const transientSyncReasons = new Set(['','local','writer','pending','initializing','applying','conflict','lease-expired','hidden']);
+  const syncProblems = {
+    offline:['通信を確認してください','通信が切れています。接続を確認してから操作を再開してください。'],
+    error:['接続を確認してください','最新の進行を確認できませんでした。連携画面で状態をご確認ください。'],
+    auth:['領主情報を再接続してください','領主情報を確認できません。連携画面から再接続してください。'],
+    follower:['操作端末を確認してください','この端末で操作する場合は、「端末同期」から操作端末を切り替えてください。'],
+    identity:['領主情報を確認してください','接続する領主が変わりました。連携画面で現在の領主をご確認ください。'],
+    'access-changed':['利用状態を確認してください','領主の利用状態が変わりました。連携画面で状態をご確認ください。']
+  };
+  function waiting(context,id,title,reason,action) {
+    return {...single('blocked',id,title,reason,action),transient:transientSyncReasons.has(context.syncReason||'')};
+  }
 
   /**
    * build(game, context) -> {status,title,summary,items}
@@ -6740,7 +6777,7 @@ global.setInterval?.(()=>{if(!global.document.hidden&&options.getContext)refresh
    */
   function build(game, context={}) {
     const s = game?.state;
-    if (context.banned || context.syncReason === 'ACCOUNT_BANNED') {
+    if (context.banned || ['banned','ACCOUNT_BANNED'].includes(context.syncReason)) {
       return single('blocked','account-banned','アカウントの状態を確認してください',context.syncMessage || '利用停止中です。連携画面で状態を確認してください。',{kind:'sync',label:'連携状態を確認'},'urgent');
     }
     if (context.rolePending) {
@@ -6749,23 +6786,27 @@ global.setInterval?.(()=>{if(!global.document.hidden&&options.getContext)refresh
     if (context.started === false || !s) {
       return single('not-started','start','最初の領国を選びましょう','勢力と本拠を選んで始めると、資源や軍団の状況に合う次の一手を案内します。',{kind:'new',label:'物語の開始画面へ'},'advice');
     }
+    if (context.saveEnabled === false) {
+      return single('blocked','save-pending','保存状態を確認してください','保存が有効になってから、領国の状況に合うヒントを表示します。',{kind:'settings',label:'設定を確認'});
+    }
+    const problem=Object.hasOwn(syncProblems,context.syncReason||'')?syncProblems[context.syncReason]:null;
+    if (problem) {
+      return single('blocked',context.syncReady===false?'sync-pending':'read-only',problem[0],context.syncMessage||problem[1],{kind:'sync',label:'連携状態を確認'});
+    }
     if (context.syncReady === false) {
-      return single('blocked','sync-pending','保存データを確認しています',context.syncMessage || '連携先の保存を確認してから、次の行動を案内します。',{kind:'sync',label:'連携状態を確認'});
+      return waiting(context,'sync-pending','保存データを確認しています',context.syncMessage || '連携先の保存を確認してから、次の行動を案内します。',{kind:'sync',label:'連携状態を確認'});
     }
     if (game.isStaff && (context.staffReady === false || !game.getStaffBase?.())) {
       return single('blocked','staff-pending','京都御所の共同拠点を確認しています','共同普請と施設レベルの確認が終わるまでお待ちください。',{kind:'sync',label:'連携状態を確認'});
-    }
-    if (context.saveEnabled === false) {
-      return single('blocked','save-pending','保存状態を確認してください','保存が有効になってから、領国の状況に合うヒントを表示します。',{kind:'settings',label:'設定を確認'});
     }
     if (s.gameOver) {
       return single('game-over','game-over','新しい物語の準備をしましょう','最後の城を失っています。これまでの記録を確認し、開始画面で次の勢力と本拠を選べます。',{kind:'new',label:'新しい物語の開始画面へ'},'advice');
     }
     if (context.clockReady === false) {
-      return single('blocked','clock-pending','次の一手','城下町の施設、軍団の編成、任務の報酬を確認できます。',view('town','城下町を見る'));
+      return waiting(context,'clock-pending','次の一手','城下町の施設、軍団の編成、任務の報酬を確認できます。',view('town','城下町を見る'));
     }
     if (context.writable === false) {
-      return single('blocked','read-only','操作を再開する準備を確認',context.syncMessage || '操作の同期が終わるまでお待ちください。連携画面でこの端末の状態を確認できます。',{kind:'sync',label:'連携・操作状況を確認'});
+      return waiting(context,'read-only','操作を再開する準備を確認',context.syncMessage || '操作の同期が終わるまでお待ちください。連携画面でこの端末の状態を確認できます。',{kind:'sync',label:'連携・操作状況を確認'});
     }
 
     const data = game.data, items = new Map();

@@ -21,7 +21,9 @@
       items.push({ id, category: categories[raw.category] || 'ヒント', tone: ['urgent', 'advice', 'success', 'muted'].includes(raw.tone) ? raw.tone : 'advice', title: text(raw.title, 180), reason: text(raw.reason, 1200), detail: text(raw.detail, 1200), label: text(raw.action?.label, 120), cost: assetMap(raw.cost), missing: assetMap(raw.missing), waitSeconds: Number.isFinite(raw.waitSeconds) && raw.waitSeconds >= 0 ? raw.waitSeconds : null });
       if (items.length === 10) break;
     }
-    return { scope: text(report?.scope, 500), status: ['ready', 'blocked', 'not-started', 'game-over'].includes(report?.status) ? report.status : 'blocked', title: text(report?.title, 200) || '今できることを見つけましょう', summary: text(report?.summary, 1200), items };
+    const status = ['ready', 'blocked', 'not-started', 'game-over'].includes(report?.status) ? report.status : 'blocked';
+    const transient = status === 'blocked' && (report?.transient === true || report?.transient !== false && items.length === 1 && items[0].id === 'clock-pending');
+    return { scope: text(report?.scope, 500), status, transient, title: text(report?.title, 200) || '今できることを見つけましょう', summary: text(report?.summary, 1200), items };
   }
   function formatWait(value) {
     const total = Math.ceil(Math.max(0, value)), hours = Math.floor(total / 3600), minutes = Math.floor(total % 3600 / 60), seconds = total % 60;
@@ -143,14 +145,16 @@
     function displayReport() {
       const next = normalize(read());
       if (lastStable && next.scope !== lastStable.scope) lastStable = null;
-      const clockOnly = next.status === 'blocked' && next.items.length === 1 && next.items[0].id === 'clock-pending';
-      if (clockOnly) {
-        // Applying a fresh clock sample briefly blocks actions every few seconds.
+      if (next.transient) {
+        // Applying clocks, saves and operation results briefly blocks actions.
         // Retain only the visible advice, never an action or permission decision.
-        // Identity/role changes and other blocking states clear this snapshot.
+        // Identity/role changes and real problems clear this snapshot immediately.
         const age = now() - lastStableAt;
         if (lastStable && age >= 0 && age < 30000) return lastStable;
-        return normalize({ scope: next.scope, status: 'blocked', title: '次の一手', summary: '城下町の施設、軍団の編成、任務の報酬を確認できます。', items: [{ id: 'clock-pending', category: 'system', tone: 'advice', title: '城下町から次の準備を', reason: '施設の生産や軍団の編成を見ながら、次に進めることを選びましょう。', action: { label: '城下町を見る' } }] });
+        lastStable = null;
+        // One fixed, non-actionable card also keeps first-load and expired waits
+        // stable across the different internal phases of a background update.
+        return normalize({ scope: next.scope, status: 'blocked', title: '次の一手', summary: '城下町の施設、軍団の編成、任務の報酬を確認できます。', items: [{ id: 'background-wait', category: 'system', tone: 'advice', title: '城下町から次の準備を', reason: '施設の生産や軍団の編成を見ながら、次に進めることを選びましょう。' }] });
       }
       lastStable = next.status === 'ready' ? next : null;
       lastStableAt = now();

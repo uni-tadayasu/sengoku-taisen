@@ -279,14 +279,15 @@ function ensureController(){if(!live){live=createController({window:global});uns
 function setText(selector,value){const node=dialog?.querySelector(selector);if(node&&node.textContent!==String(value))node.textContent=value;}
 function updateUI(value){
  const number=n=>Math.max(0,Math.floor(n||0)).toLocaleString('ja-JP');
- for(const entry of global.document.querySelectorAll?.('[data-walking-summary]')||[])entry.textContent=value.running?`${value.active&&value.reason!=='sensor'?'計測中':'計測継続・待機中'} · ${number(value.estimatedSteps)}歩${value.pendingSteps?` · ${number(value.pendingSteps)}歩を保存中`:''}`:value.pendingSteps?`${number(value.pendingSteps)}歩を同期待ち`:'端末を持って歩いて、領国を育てる';
+ const summary=value.running?`計測中 · ${number(value.estimatedSteps)}歩`:value.estimatedSteps?`今回の歩数 · ${number(value.estimatedSteps)}歩`:'端末を持って歩いて、領国を育てる';
+ for(const entry of global.document.querySelectorAll?.('[data-walking-summary]')||[])if(entry.textContent!==summary)entry.textContent=summary;
  if(!dialog)return;
  dialog.dataset.phase=value.phase;dialog.dataset.running=String(value.running);
  setText('[data-walking-status]',({idle:'未開始',starting:'許可・接続を確認中',waiting:'計測継続・センサー待ち',calibrating:'歩調を確認中',walking:'計測中',paused:value.running?'計測継続・待機中':value.closed||value.ending?'計測終了':'計測待機',unsupported:'この端末では利用不可',denied:'モーションの許可が必要',error:'保存を確認してください'})[value.phase]||'計測停止');
- setText('[data-walking-message]',value.message);setText('[data-walking-close]',value.running?'閉じて計測を続ける':'画面を閉じる');
- setText('[data-walking-steps]',number(value.estimatedSteps));setText('[data-walking-confirmed]',number(value.confirmedSteps));setText('[data-walking-pending]',number(value.rejectedSteps||value.pendingSteps));setText('[data-walking-pending-label]',value.rejectedSteps?'未反映':'保存・同期待ち');
- setText('[data-walking-mode]',value.mode==='remote'?'領主の進行へ自動同期':'この端末の物語に保存');
- setText('[data-walking-saved-note]',value.pendingSteps?'検知済みの歩数を保管しています。受け取り済みか確認しながら同期します。':value.confirmedSteps?'受け取り済みの報酬は、ゲームの資産へ反映されています。':'連続した歩調を確認してから数えます。振動や持ち方により、実際の歩数と差が出ることがあります。');
+ setText('[data-walking-message]',global.SengokuSyncNotices?.visibleText?.(value.message)??value.message);setText('[data-walking-close]',value.running?'閉じて計測を続ける':'画面を閉じる');
+ setText('[data-walking-steps]',number(value.estimatedSteps));setText('[data-walking-confirmed]',number(value.confirmedSteps));setText('[data-walking-pending]',number(value.rejectedSteps||value.pendingSteps));setText('[data-walking-pending-label]','未反映の歩数');
+ setText('[data-walking-mode]',value.mode==='remote'?'接続中の領主':'この端末の物語');
+ setText('[data-walking-saved-note]','連続した歩調を確認してから数えます。振動や持ち方により、実際の歩数と差が出ることがあります。');
  const start=dialog.querySelector('[data-walking-action="start"]'),stop=dialog.querySelector('[data-walking-action="stop"]'),retry=dialog.querySelector('[data-walking-action="retry"]'),awake=dialog.querySelector('#walking-keep-awake'),discard=dialog.querySelector('[data-walking-action="discard"]');
  start.hidden=value.active&&value.reason!=='sensor';start.disabled=value.starting||value.busy||!value.canCount||value.phase==='unsupported';start.textContent=value.starting?'開始を確認中…':value.running?'センサーを再接続':value.phase==='idle'?'計測を始める':'新しく計測する';
  stop.hidden=!value.running&&!value.starting;stop.disabled=false;retry.hidden=value.rejected||!(value.pending||value.pendingSteps||value.ending||value.reason==='WALKING_STORAGE');retry.disabled=value.busy||!value.canClaim;discard.hidden=!value.rejected;discard.disabled=value.busy||!value.canClaim;

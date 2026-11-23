@@ -78,6 +78,9 @@ function start(){
   if(global.ResizeObserver){resizeObserver=new global.ResizeObserver(refresh);for(const node of doc.querySelectorAll('#announcement-bar,.topbar'))resizeObserver.observe(node);}
   if(global.MutationObserver){mutationObserver=new global.MutationObserver(records=>{
     if(records.some(record=>{
+      // Resource, health and hint text updates do not change the viewport.
+      // Real header size changes are handled by the ResizeObserver above.
+      if(record.type==='childList'&&![...record.addedNodes,...record.removedNodes].some(child=>child.nodeType===1))return false;
       const node=record.target.nodeType===1?record.target:record.target.parentElement;
       return !node?.closest?.('.sg-map,#calendar,#resources,#touch-header-status,[data-job-clock],[data-job-progress],#month-countdown,#month-progress');
     }))refresh();
