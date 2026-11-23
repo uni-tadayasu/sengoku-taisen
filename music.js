@@ -136,7 +136,7 @@
   ].map(score => ({...score, bars:32, beats:4}));
   const TRACKS = Object.freeze(SCORES.map(t => Object.freeze({
     id:t.id,name:t.name,title:t.name,scene:t.scene,tempo:t.tempo,bars:t.bars,
-    recording:'assets/music/'+t.id+'.mp3?v=4.9.8-20261123',
+    recording:'assets/music/'+t.id+'.mp3?v=4.9.9-20261123',
     beatsPerBar:t.beats,duration:t.bars*t.beats*60/t.tempo,
     durationSeconds:Math.round(t.bars*t.beats*60/t.tempo),description:t.description
   })));

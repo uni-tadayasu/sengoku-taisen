@@ -1,0 +1,84 @@
+.troop-garrison-dialog{box-sizing:border-box;width:min(1000px,calc(100vw - 32px));height:min(920px,calc(100dvh - 32px));max-width:none;max-height:none;margin:auto;padding:0;border:1px solid #bdab776b;border-radius:14px;background:#152a25;color:#efe9d7;font:400 16px/1.75 'Noto Sans JP',sans-serif;box-shadow:0 28px 90px #000a;color-scheme:dark;overflow:hidden}
+.troop-garrison-dialog[open]{display:flex;flex-direction:column}
+.troop-garrison-dialog::backdrop{background:#071714db;backdrop-filter:blur(5px)}
+.troop-garrison-dialog *{box-sizing:border-box;min-width:0}
+.troop-garrison-dialog [hidden]{display:none!important}
+.troop-garrison-dialog :is(h1,h2,h3,p,dl,dd){margin:0}
+.troop-garrison-dialog :is(h1,h2,h3,p,span,label,dt,dd,strong){overflow-wrap:anywhere}
+.troop-garrison-dialog :is(button,input,select){font:inherit}
+.troop-garrison-dialog button{cursor:pointer;touch-action:manipulation}
+.troop-garrison-dialog button:disabled{opacity:.58;cursor:not-allowed}
+.troop-garrison-dialog :is(button,input,select):focus-visible{outline:2px solid #f2d89e;outline-offset:3px}
+.troop-garrison-dialog [tabindex="-1"]:focus{outline:none}
+.troop-garrison-dialog button::before,.troop-garrison-dialog button::after{content:none!important;display:none!important}
+.troop-garrison-header{display:flex;flex-shrink:0;align-items:center;gap:12px;padding:18px 22px;border-bottom:1px solid #bca76a42;background:#20372e}
+.troop-garrison-header>div{flex:1}
+.troop-garrison-header>div>span{display:block;color:#cdb987;font-size:12px;line-height:1.6;letter-spacing:.05em}
+.troop-garrison-header h1{margin-top:3px;font:600 clamp(20px,3vw,28px)/1.5 'Noto Serif JP',serif;color:#f0e0b8}
+.troop-garrison-button{display:inline-flex;align-items:center;justify-content:center;min-height:44px;gap:6px;padding:10px 16px;border:1px solid #c2b47b77;border-radius:6px;background:#92825516;color:#eee5cd;font-size:15px;line-height:1.6;text-align:center;white-space:normal}
+.troop-garrison-dialog .troop-garrison-button.is-primary{--button-wash-start:rgba(65,48,22,.90);--button-wash-end:rgba(53,41,24,.76);border-color:#dbc18b;background-color:#413016;color:#fff5d8;font-weight:600}
+.troop-garrison-button.is-small{padding:8px 11px;font-size:14px}
+.troop-garrison-close{flex:none;display:grid;place-items:center;width:44px;height:44px;padding:0;border:1px solid #aebca448;border-radius:50%;background:#0c201a55;color:#dddcc7;font-size:28px!important;line-height:1}
+.troop-garrison-body{flex:1;min-height:0;padding:23px;overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable;scrollbar-color:#a2976377 transparent;scrollbar-width:thin;background:radial-gradient(ellipse at 100% 0,#87974917,transparent 45%),linear-gradient(140deg,#1a3028,#12251f)}
+.troop-garrison-footer{flex-shrink:0;padding:10px 16px;border-top:1px solid #bca76a42;color:#b7c1a8;font-size:12px;line-height:1.65;text-align:center}
+.troop-garrison-feedback,.troop-garrison-pending{flex-shrink:0;padding:13px 22px;border-bottom:1px solid #a8b47d4d;font-size:14px;line-height:1.8;background:#294b322e;color:#d6e1bc}
+.troop-garrison-feedback[data-error="true"]{color:#f0c9ae;background:#7b3b2426}
+.troop-garrison-pending{max-height:36dvh;overflow:auto;color:#e8d6ac;background:#7e652520}
+.troop-garrison-pending p{margin:6px 0 10px;font-size:13px}
+.troop-garrison-intro>p{font-size:15px;line-height:1.9;color:#cbd4bd}
+.troop-garrison-totals{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:19px!important}
+.troop-garrison-totals>div{padding:14px;background:#0d201a9c;border:1px solid #aeb18438;border-radius:7px}
+.troop-garrison-totals dt{color:#b4c5a8;font-size:13px;line-height:1.7}
+.troop-garrison-totals dd{margin-top:5px;font-size:25px;line-height:1.5;color:#f0d8a3;font-variant-numeric:tabular-nums}
+.troop-garrison-totals small{font-size:13px;color:#b5c2a8;margin-left:4px}
+.troop-garrison-section{margin-top:25px;padding-top:23px;border-top:1px solid #aeb18438}
+.troop-garrison-section-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px}
+.troop-garrison-section h2{font:600 21px/1.6 'Noto Serif JP',serif;color:#eee0b7}
+.troop-garrison-section-heading>span{font-size:13px;color:#bbc7ad;font-variant-numeric:tabular-nums}
+.troop-garrison-note{font-size:13px;line-height:1.8;color:#b2c3ab}
+.troop-garrison-section>form{max-width:680px;margin-top:19px}
+.troop-garrison-dialog form>label{display:block;margin:14px 0 7px;font-size:15px;font-weight:500;color:#e7dabb}
+.troop-garrison-dialog :is(input,select){width:100%;max-width:100%;min-height:44px;padding:10px 11px;border:1px solid #b9aa766b;border-radius:5px;background:#0b2017;color:#f1e9d4;font-size:16px;line-height:1.5}
+.troop-garrison-dialog select{padding-right:30px;text-overflow:ellipsis}
+.troop-garrison-amount{display:grid;grid-template-columns:minmax(80px,1fr) auto minmax(140px,auto);align-items:center;gap:8px;margin-bottom:7px}
+.troop-garrison-amount>span{font-size:14px;color:#bac7ab}
+.troop-garrison-quote{margin:15px 0;padding:13px;border:1px solid #aeb18438;border-radius:5px;background:#0a1c167d}
+.troop-garrison-quote>span{display:block;font-size:13px;color:#dcc791}
+.troop-garrison-quote dl{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:13px;margin-top:10px}
+.troop-garrison-quote dt{font-size:12px;color:#b6c4a7}
+.troop-garrison-quote dd{font-size:16px;line-height:1.9;color:#bcc9ae;font-variant-numeric:tabular-nums}
+.troop-garrison-quote dd b{color:#f0d6a1;font-weight:600}
+.troop-garrison-quote dd>span{padding:0 2px;color:#7f9c7a}
+.troop-garrison-quote p{margin-top:7px;font-size:13px;line-height:1.8;color:#e1c2a0}
+.troop-garrison-dialog form>.troop-garrison-button{width:100%}
+.troop-garrison-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,330px),1fr));gap:16px;align-items:start;margin-top:16px}
+.troop-garrison-card{padding:18px;border:1px solid #b4ad724f;border-radius:8px;background:linear-gradient(140deg,#243f30,#172c23)}
+.troop-garrison-card header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-bottom:14px;margin-bottom:13px;border-bottom:1px solid #adb47d3b}
+.troop-garrison-card header>div>span{display:block;color:#acc2a3;font-size:12px}
+.troop-garrison-card h3{margin-top:3px;font:600 21px/1.6 'Noto Serif JP',serif;color:#ede0b8}
+.troop-garrison-card header>strong{font-size:24px;color:#eed7a0;line-height:1.5;font-variant-numeric:tabular-nums}
+.troop-garrison-card header>strong small{font-size:13px;margin-left:3px;font-weight:400;color:#b9c7ac}
+.troop-garrison-card .troop-garrison-amount{grid-template-columns:minmax(0,1fr) auto}
+.troop-garrison-card .troop-garrison-amount>button{grid-column:1/-1}
+.troop-garrison-empty{padding:30px 12px;text-align:center}
+.troop-garrison-empty h2{font:600 22px/1.7 'Noto Serif JP',serif;color:#e6d5a5}
+.troop-garrison-empty p{margin:12px 0 20px;font-size:15px;color:#bac9ad}
+.troop-garrison-empty-note{padding:18px;border:1px dashed #b0b18148;border-radius:6px;font-size:14px;color:#b6c6aa}
+.trade-navigation [data-trade="garrisons"]{border-color:#b5b37880;color:#e6dfb7;background:#6b805a24}
+@media(max-width:600px){
+ .troop-garrison-dialog{width:calc(100vw - 8px);height:calc(100dvh - 8px);border-radius:10px}
+ .troop-garrison-header{gap:8px;padding:13px}
+ .troop-garrison-header h1{font-size:20px}
+ .troop-garrison-body{padding:16px 13px 22px}
+ .troop-garrison-feedback,.troop-garrison-pending{padding:11px 13px}
+ .troop-garrison-totals{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+ .troop-garrison-totals>div:last-child{grid-column:1/-1}
+ .troop-garrison-totals dd{font-size:23px}
+ .troop-garrison-amount{grid-template-columns:minmax(0,1fr) auto}
+ .troop-garrison-amount>button{grid-column:1/-1}
+ .troop-garrison-card{padding:14px}
+ .troop-garrison-quote dl{grid-template-columns:minmax(0,1fr);gap:8px}
+ .troop-garrison-footer{text-align:left;font-size:11px}
+}
+html:not(.sengoku-desktop-fit) .troop-garrison-dialog{position:fixed;inset:auto;left:calc(var(--social-viewport-left,0px) + 4px);top:calc(var(--social-viewport-top,0px) + 4px);width:calc(var(--social-viewport-width,100vw) - 8px);height:calc(var(--social-viewport-height,100dvh) - 8px);margin:0}
+@media(prefers-reduced-motion:reduce){.troop-garrison-dialog *{scroll-behavior:auto!important;animation:none!important;transition:none!important}}

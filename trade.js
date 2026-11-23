@@ -279,7 +279,7 @@ function ensureView(){
   if(instance)return instance;
   const doc=global.document;if(!doc?.body)return null;
   const dialog=doc.createElement('dialog');dialog.id='trade-modal';dialog.className='trade-dialog';dialog.setAttribute('aria-labelledby','trade-dialog-title');
-  dialog.innerHTML='<header class="trade-header"><div class="trade-emblem" aria-hidden="true">交</div><div><p>領主どうしの資産交換・兵士の輸出入</p><h1 id="trade-dialog-title">交易の間</h1></div>'+button('更新','refresh','aria-label="交易一覧を更新"')+button('閉じる','close','aria-label="交易の間を閉じる"')+'</header><div class="trade-navigation"><nav class="trade-tabs" aria-label="交易の一覧" role="tablist">'+Object.entries(LABELS).map(([key,label])=>'<button type="button" role="tab" id="trade-tab-'+key+'" aria-controls="trade-content" aria-selected="false" data-trade="tab" data-box="'+key+'">'+label+'<span data-trade-count="'+key+'" hidden></span></button>').join('')+'</nav>'+button('新しい申出','new','',true)+'</div><div class="trade-main"><div class="trade-feedback" data-trade-feedback role="status" aria-live="polite" hidden></div><div class="trade-access" data-trade-access hidden></div><div class="trade-pending" data-trade-pending hidden></div><div id="trade-content" data-trade-content></div><section class="trade-confirm" data-trade-confirm aria-labelledby="trade-confirm-title" hidden></section></div><footer class="trade-footer">資産は一時預り · 対価・返還資産は受取操作 · 日時は日本標準時（JST）</footer>';
+  dialog.innerHTML='<header class="trade-header"><div class="trade-emblem" aria-hidden="true">交</div><div><p>領主どうしの資産交換・兵士の輸出入</p><h1 id="trade-dialog-title">交易の間</h1></div>'+button('更新','refresh','aria-label="交易一覧を更新"')+button('閉じる','close','aria-label="交易の間を閉じる"')+'</header><div class="trade-navigation"><nav class="trade-tabs" aria-label="交易の一覧" role="tablist">'+Object.entries(LABELS).map(([key,label])=>'<button type="button" role="tab" id="trade-tab-'+key+'" aria-controls="trade-content" aria-selected="false" data-trade="tab" data-box="'+key+'">'+label+'<span data-trade-count="'+key+'" hidden></span></button>').join('')+'</nav>'+button('新しい申出','new','',true)+button('空城へ兵を派遣','garrisons')+'</div><div class="trade-main"><div class="trade-feedback" data-trade-feedback role="status" aria-live="polite" hidden></div><div class="trade-access" data-trade-access hidden></div><div class="trade-pending" data-trade-pending hidden></div><div id="trade-content" data-trade-content></div><section class="trade-confirm" data-trade-confirm aria-labelledby="trade-confirm-title" hidden></section></div><footer class="trade-footer">資産は一時預り · 対価・返還資産は受取操作 · 日時は日本標準時（JST）</footer>';
   doc.body.append(dialog);
   const content=dialog.querySelector('[data-trade-content]'),feedback=dialog.querySelector('[data-trade-feedback]'),pending=dialog.querySelector('[data-trade-pending]'),access=dialog.querySelector('[data-trade-access]'),confirmHost=dialog.querySelector('[data-trade-confirm]'),main=dialog.querySelector('.trade-main');
   let controller,viewKey='',returnFocus=null,confirmFocus=null,lastConfirmation='',unsubscribe=null;
@@ -292,7 +292,7 @@ function ensureView(){
     const showingConfirm=Boolean(state.confirm),locked=state.sending||showingConfirm;
     for(const tab of dialog.querySelectorAll('[data-trade="tab"]')){const selected=tab.dataset.box===state.view;tab.setAttribute('aria-selected',String(selected));tab.tabIndex=selected?0:-1;tab.disabled=locked;}
     if(state.view==='compose')dialog.querySelector('[data-trade="tab"]').tabIndex=0;
-    for(const control of dialog.querySelectorAll('[data-trade="new"],[data-trade="refresh"]'))control.disabled=locked||state.loading||state.loadingMore;
+    for(const control of dialog.querySelectorAll('[data-trade="new"],[data-trade="refresh"],[data-trade="garrisons"]'))control.disabled=locked||state.loading||state.loadingMore;
     for(const [key,value] of Object.entries({incoming:state.summary.incomingPending,outgoing:state.summary.outgoingPending,claimable:state.summary.claimable,history:0})){const count=dialog.querySelector('[data-trade-count="'+key+'"]');count.textContent=value>99?'99+':String(value);count.hidden=!value;}
     const message=state.error||state.status;feedback.hidden=!message;feedback.classList.toggle('is-error',Boolean(state.error));feedback.setAttribute('role',state.error?'alert':'status');if(feedback.textContent!==message)feedback.textContent=message;
     access.hidden=!state.ownerId||state.access.writable;access.textContent=state.access.message;
@@ -340,6 +340,7 @@ function ensureView(){
     if(action==='close')controller.close();
     else if(action==='tab')run(controller.openBox(target.dataset.box));
     else if(action==='new')run(controller.openCompose());
+    else if(action==='garrisons'){controller.close();global.SengokuTroopGarrisons?.open?.();}
     else if(action==='refresh')run(controller.refresh());
     else if(action==='more')run(controller.loadMore());
     else if(action==='recipient')run(controller.selectRecipient(target.dataset.playerId));

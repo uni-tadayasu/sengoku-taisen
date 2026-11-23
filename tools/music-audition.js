@@ -27,7 +27,7 @@
   }
   document.querySelector('details').addEventListener('toggle',async event=>{
     if(!event.currentTarget.open||recordingStats||!window.fetch)return;
-    if(!statsRequest)statsRequest=fetch('../assets/music/masters.json?v=4.9.8-20261123')
+    if(!statsRequest)statsRequest=fetch('../assets/music/masters.json?v=4.9.9-20261123')
       .then(response=>response.ok?response.json():null).catch(()=>null);
     const manifest=await statsRequest;
     recordingStats=manifest?.tracks||null;
