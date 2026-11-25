@@ -58,6 +58,10 @@
 #modal .settings-hub .settings-secondary > summary {
   background-image: none !important; background-color: transparent;
 }
+#modal .settings-hub :is(.settings-group,.settings-secondary) > summary:focus-visible {
+  /* The group clips its corners, so an outside outline would be cut off. */
+  outline: 2px solid #f3ca7c; outline-offset: -3px;
+}
 #modal .settings-hub .settings-stack { grid-template-columns: minmax(0,1fr); }
 #modal .settings-hub .settings-action { min-width: 0; color: #f1e8d7; }
 #modal .settings-hub .settings-action > span { overflow-wrap: anywhere; }
@@ -87,4 +91,15 @@
   #modal .settings-hub .settings-group > summary,
   #modal .settings-hub .settings-group[open] > summary { background-image: none !important; background-color: Canvas; color: CanvasText; }
   #modal .settings-hub .settings-action { color: ButtonText; }
+}
+
+/* Keep the hint label intact; narrow phones put its selector on the next row. */
+#modal .settings-hub .settings-row:where(:has(> #tips)) {
+  display: grid; grid-template-columns: max-content minmax(0,1fr); gap: 10px 16px;
+}
+#modal .settings-hub label[for="tips"] { white-space: nowrap; }
+#modal .settings-hub #tips { justify-self: end; width: 150px; max-width: 100%; min-width: 0; }
+@media (max-width:400px) {
+  #modal .settings-hub .settings-row:where(:has(> #tips)) { grid-template-columns: minmax(0,1fr); gap: 6px; }
+  #modal .settings-hub #tips { width: 100%; justify-self: stretch; }
 }
