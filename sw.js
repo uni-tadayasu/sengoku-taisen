@@ -1,5 +1,5 @@
 /* 本体は先に保存。大きな絵巻は、実際に開いたものから保存します。 */
-const RELEASE='5.0.3-20261126';
+const RELEASE='5.0.4-20261126';
 const CACHE='sengoku-taisen-v'+RELEASE;
 const scopeURL=()=>self.registration?.scope||self.location.origin+'/';
 const currentMatch=(request,name=CACHE)=>caches.open(name).then(cache=>cache.match(request));
@@ -10,7 +10,7 @@ const optionalCode=new Set([
   './premium-runtime.js','./premium-appearance.css','./music.js','./tools/music-audition.js','./map-data.js'
 ]);
 const compactArtwork={cover:480,war:240,town:240,archive:240,brand:48,emblem:96};
-const compactURL=name=>'./assets/responsive/'+name+'-'+compactArtwork[name]+'.webp';
+const compactURL=name=>'./assets/responsive/'+name+'-'+(name==='brand'||name==='emblem'?'20261126-':'')+compactArtwork[name]+'.webp';
 
 // The current HTML names the real hashed bundles. Require the matching release
 // before adopting it, even if a CDN serves the previous HTML during a rollout.
@@ -155,7 +155,7 @@ self.addEventListener('fetch', event => {
   const offline=async (cached,cacheName)=>{
     if(cached)return cached;
     if(page&&pageKey!=='./')return Response.redirect(scopeURL(),302);
-    const compact=artwork&&/^\.\/assets\/responsive\/(cover|war|town|archive|brand|emblem)-\d+\.webp$/.exec(relative);
+    const compact=artwork&&/^\.\/assets\/responsive\/(cover|war|town|archive|brand|emblem)-(?:\d{8}-)?\d+\.webp$/.exec(relative);
     if(compact)return await currentMatch(new URL(compactURL(compact[1]),scopeURL()).href,cacheName)||Response.error();
     return Response.error();
   };

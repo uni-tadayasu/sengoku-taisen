@@ -12,6 +12,8 @@ const root = path.resolve(__dirname, '..');
 const site = JSON.parse(fs.readFileSync(path.join(root, 'site-metadata.json'), 'utf8'));
 const {SengokuEngine, SENGOKU_DATA} = require(path.join(root, 'engine.js'));
 const {origin, release} = site;
+const brandEdition = /-(\d{8})\.png$/.exec(site.favicon.path)?.[1];
+if (!brandEdition) throw Error('site-metadata.json: dated brand artwork is required');
 // Dates are editorial inputs. A new build or deployment must not change them.
 if (site.schemaVersion !== 1 || new URL(origin).origin !== origin || !origin.startsWith('https://')) throw Error('site-metadata.json: canonical HTTPS origin is required');
 for (const key of ['home', 'share', 'premium', 'guide', 'recovery', 'about']) {
@@ -814,7 +816,8 @@ outputs.set('tools/music-audition.html', withBrandLinks(auditionHtml, auditionPa
 const securePage = pageSecurity(fs.readFileSync(path.join(root, 'config.js'), 'utf8'));
 for (const [name, html] of outputs) {
   if (name.endsWith('.html')) {
-    const themed = replaceHeadTag(html, 'meta', attrs => attrs.name === 'theme-color', `<meta name="theme-color" content="${esc(site.themeColor)}">`);
+    const currentBrand = html.replace(/assets\/responsive\/(brand|emblem)-(?:\d{8}-)?(\d+)\.webp/g, (_, kind, width) => `assets/responsive/${kind}-${brandEdition}-${width}.webp`);
+    const themed = replaceHeadTag(currentBrand, 'meta', attrs => attrs.name === 'theme-color', `<meta name="theme-color" content="${esc(site.themeColor)}">`);
     outputs.set(name, securePage(themed, name === 'index.html'));
   }
 }
