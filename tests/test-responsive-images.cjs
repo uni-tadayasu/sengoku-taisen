@@ -2,6 +2,8 @@
 const assert=require('node:assert/strict');
 const fs=require('node:fs'),path=require('node:path');
 const root=path.join(__dirname,'..');
+const metadata=JSON.parse(fs.readFileSync(path.join(root,'site-metadata.json'),'utf8'));
+const brandEdition=/-(\d{8})\.png$/.exec(metadata.favicon.path)[1];
 const files=['index.html','guide/index.html','guide/data-recovery/index.html','sengoku-vs/index.html','about/index.html','premium/index.html','tools/music-audition.html','404.html'];
 const attr=(tag,key)=>new RegExp(`\\b${key}="([^"]*)"`).exec(tag)?.[1];
 const checked=new Set();
@@ -17,6 +19,11 @@ for(const file of files){
    assert(/^\d+w$/.test(descriptor)&&width>previous,`${file}: ${candidate}`);previous=width;
    const asset=url.startsWith('/')?path.join(root,url.slice(1)):path.resolve(root,path.dirname(file),url);
    assert(fs.statSync(asset).size>0,asset);assert.equal(path.basename(asset).split('-').at(-1),`${width}.webp`);checked.add(asset);
+   if (/\/(?:brand|emblem)-/.test(url)) {
+    assert(new RegExp(`/(brand|emblem)-${brandEdition}-${width}\\.webp$`).test(url),`${file}: brand srcset must change when its artwork changes`);
+    const legacy=asset.replace(`-${brandEdition}-`,'-');
+    assert(fs.readFileSync(asset).equals(fs.readFileSync(legacy)),`${file}: current and fallback brand artwork differ`);
+   }
   }
  }
  if(file==='index.html'){

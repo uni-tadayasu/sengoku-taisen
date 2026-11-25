@@ -127,9 +127,11 @@ def main():
     for size in (48, 96, 144):
         image = render(svg(simple=size <= 48), size * 4).resize((size, size), Image.Resampling.LANCZOS)
         image.save(RESPONSIVE / f'brand-{size}.webp', format='WEBP', lossless=True, method=6)
+        shutil.copyfile(RESPONSIVE / f'brand-{size}.webp', RESPONSIVE / f'brand-{EDITION}-{size}.webp')
     for size in (96, 192):
         image = renders[size]
         image.save(RESPONSIVE / f'emblem-{size}.webp', format='WEBP', lossless=True, method=6)
+        shutil.copyfile(RESPONSIVE / f'emblem-{size}.webp', RESPONSIVE / f'emblem-{EDITION}-{size}.webp')
     renders[512].save(ROOT / 'assets' / 'emblem.webp', format='WEBP', lossless=True, method=6)
     # Keep fallback/legacy image URLs consistent for installed home-screen apps.
     for filename, image in [('icon-192.png', renders[192]), ('icon-512.png', renders[512]),
