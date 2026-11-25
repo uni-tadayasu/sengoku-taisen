@@ -15,11 +15,18 @@ const facilities=game=>D.buildings.filter(b=>game.state.buildings[b.id]>0);
 const candidates=game=>game.state.officers.filter(id=>!game.state.army.includes(id));
 const close=(actual,expected,message)=>assert(Math.abs(actual-expected)<1e-9,message||`${actual} != ${expected}`);
 function ownAll(game){for(const o of game.roster)assert(game._grantOfficerVariant(o.id,'D'));return game;}
-function fixture(roster){
-  const game=create(roster);game.state.officers=roster.map(o=>o.id);
+function fixture(roster,options={}){
+  const game=create(roster,options);game.state.officers=roster.map(o=>o.id);
   game.state.officerVariants=roster.map(o=>o.id+':D');game.state.army=[];game.state.governors={};return game;
 }
 function exceptGovernors(game){const state=structuredClone(game.state);delete state.governors;return state;}
+function deepFreeze(value){for(const child of Object.values(value))if(child&&typeof child==='object'&&!Object.isFrozen(child))deepFreeze(child);return Object.freeze(value);}
+function horizontalTown(){
+  const roster=Array.from({length:43},(_,i)=>officer('candidate-'+String(i).padStart(2,'0'),40+i,['merchant','farmer','engineer','administrator'][i%4]));
+  const game=fixture(roster,{clan:'徳川家'});game.state.army=roster.slice(0,3).map(o=>o.id);game.state.buildings.keep=4;
+  for(const b of D.buildings)if(!b.core&&b.requiredKeep<=4)game.state.buildings[b.id]=1;
+  return game;
+}
 
 // Independent domain scoring, expressed as integer increments above 1.0.
 // It intentionally does not call the production scoring or matching helpers.
@@ -49,9 +56,14 @@ function bruteForce(game){
 function assertPlan(game,plan){
   assert.equal(plan.ok,true);const buildings=facilities(game),ids=candidates(game),entries=Object.entries(plan.governors);
   assert.equal(plan.facilityCount,buildings.length);assert.equal(plan.candidateCount,ids.length);
-  assert.equal(plan.assignedCount,Math.min(buildings.length,ids.length));assert.equal(entries.length,plan.assignedCount);
+  assert.equal(plan.assignedCount,Math.min(buildings.length,ids.length)-plan.budgetLimitedCount);assert.equal(entries.length,plan.assignedCount);
+  assert.equal(plan.staffingVacantCount,Math.max(0,buildings.length-ids.length));
   assert.equal(new Set(entries.map(([,id])=>id)).size,entries.length,'Each officer can govern at most one facility');
   assert.equal(plan.vacantCount,buildings.length-entries.length);
+  assert.equal(plan.vacantCount,plan.staffingVacantCount+plan.budgetLimitedCount);
+  const projected=game.income({governors:plan.governors});
+  assert.equal(plan.monthlySalary,plan.assignedCount*50);assert.equal(plan.monthlySalary,projected.governorSalary.gold);
+  assert.equal(plan.projectedNetGold,projected.net.gold);assert.equal(plan.projectedRawNetGold,projected.rawNet.gold);
   assert.deepEqual(plan.assignments.map(a=>a.buildingId),buildings.map(b=>b.id));
   let score=buildings.length,prior=buildings.length;
   for(const assignment of plan.assignments){
@@ -71,6 +83,7 @@ function assertPlan(game,plan){
 }
 function assertOptimal(game){
   const plan=game.planGovernorAssignments(),best=bruteForce(game);assertPlan(game,plan);
+  assert.equal(plan.budgetLimitedCount,0,'The exhaustive suitability oracle applies when the full plan is affordable');
   close((plan.totalBonus-plan.facilityCount)*400,best.score,'The plan must maximize the combined actual governor bonuses');
   assert.equal(plan.assignments.filter(a=>a.officerId&&a.officerId===a.previousOfficerId).length,best.retained,'Keep the greatest number of current assignments among equally suitable plans');
   return plan;
@@ -176,12 +189,82 @@ test('eligibility follows completed construction, including upgrades and inherit
   assert.equal(plan.facilityCount,9);const before=exceptGovernors(game);game.autoAssignGovernors();assert.deepEqual(exceptGovernors(game),before);
 });
 
-test('all 64 facilities can be assigned from the complete roster without duplicates or army changes',()=>{
+test('all 64 facilities with sufficient recurring income can be assigned without duplicates or army changes',()=>{
   const game=ownAll(create());for(const b of D.buildings)game.state.buildings[b.id]=1;
+  game.state.buildings.market=32;
   const before=exceptGovernors(game),plan=game.planGovernorAssignments();assertPlan(game,plan);
   assert.equal(plan.facilityCount,64);assert.equal(plan.assignedCount,64);assert.equal(plan.candidateCount,realRoster.length-game.state.army.length);
   assert(plan.candidateCount>200);assert.equal(plan.vacantCount,0);assert(Number.isFinite(plan.totalBonus));
   game.autoAssignGovernors();assert.deepEqual(exceptGovernors(game),before);assert.equal(game.autoAssignGovernors().changed,false);
+});
+
+test('a keep-four town with forty candidates keeps its automatic payroll within recurring gold income',()=>{
+  const game=horizontalTown(),before=structuredClone(game.state),army=game.state.army.slice(),reference=game.state.governors;
+  const plan=game.planGovernorAssignments();assertPlan(game,plan);
+  assert.equal(plan.facilityCount,40);assert.equal(plan.candidateCount,40);assert(plan.budgetLimitedCount>0);
+  assert.equal(plan.staffingVacantCount,0);assert.equal(plan.vacantCount,plan.budgetLimitedCount);
+  assert(plan.projectedRawNetGold>=0);assert(plan.projectedNetGold>=0);assert(plan.monthlySalary<2000);
+  assert.equal(plan.monthlySalary,plan.assignedCount*50);assert.match(plan.message,/給与予算/);assert(!plan.message.includes('候補不足'));
+  assert.deepEqual(game.state,before);assert.equal(game.state.governors,reference);assert.deepEqual(game.planGovernorAssignments(),plan);
+  const applied=game.autoAssignGovernors();assert.deepEqual(applied,plan);assert.deepEqual(game.state.army,army);
+  assert.equal(game.income().rawNet.gold,plan.projectedRawNetGold);assert.equal(game.income().net.gold,plan.projectedNetGold);
+  assert.equal(game.autoAssignGovernors().changed,false,'Repeated recommendations must remain stable after budget pruning');
+});
+
+test('a budget preview is read-only even when every state field and the state reference are immutable',()=>{
+  const game=horizontalTown(),before=structuredClone(game.state),reference=game.state;
+  deepFreeze(game.state);Object.defineProperty(game,'state',{writable:false});
+  const plan=game.planGovernorAssignments();assert(plan.ok);assert(plan.budgetLimitedCount>0);assert(plan.projectedRawNetGold>=0);
+  assert.deepEqual(game.state,before);assert.equal(game.state,reference);assert.deepEqual(game.planGovernorAssignments(),plan);
+});
+
+test('an existing troop deficit keeps gold-profitable appointments and cannot be made worse than no governors',()=>{
+  const roster=[officer('merchant',100,'merchant'),...Array.from({length:7},(_,i)=>officer('civil-'+i,20+i))],game=fixture(roster);
+  game.state.troops=50000;const empty=game.income({governors:{}}),before=structuredClone(game.state),plan=game.planGovernorAssignments();
+  assert(empty.rawNet.gold<0);assertPlan(game,plan);assert.equal(plan.governors.market,'merchant');
+  assert.equal(plan.assignedCount,1);assert.equal(plan.budgetLimitedCount,7);assert.equal(plan.monthlySalary,50);
+  assert(plan.projectedRawNetGold<0,'Salaries cannot solve a pre-existing army deficit');
+  assert(plan.projectedRawNetGold>empty.rawNet.gold,'The profitable merchant must remain instead of dismissing everyone');
+  assert.deepEqual(game.state,before);
+  assert(game.assignGovernor('wall','civil-0').ok,'Manual appointments must remain allowed even during a deficit');
+  assert.equal(game.state.governors.wall,'civil-0');
+});
+
+test('budget pruning prioritizes the greatest gold improvement, then the smaller lost bonus',()=>{
+  const game=fixture([officer('weak',20),officer('middle',40),officer('strong',80)]);
+  for(const b of D.buildings)game.state.buildings[b.id]=b.id==='market'?4:['farm','wall'].includes(b.id)?1:0;
+  game.state.governors={farm:'weak',wall:'middle',market:'strong'};
+  const full=game.income();game.state.troops+=(full.rawNet.gold+25)*25;assert.equal(game.income().rawNet.gold,-25);
+  const plan=game.planGovernorAssignments();assertPlan(game,plan);
+  assert.equal(plan.budgetLimitedCount,1);assert.equal(plan.governors.farm,undefined);
+  assert.equal(plan.governors.wall,'middle');assert.equal(plan.governors.market,'strong');assert.equal(plan.projectedRawNetGold,25);
+  const goldOnly=fixture([officer('low',20)]);
+  for(const b of D.buildings)goldOnly.state.buildings[b.id]=b.id==='market'?1:0;
+  goldOnly.state.troops=50000;const empty=goldOnly.income({governors:{}}),lowPlan=goldOnly.planGovernorAssignments();
+  assert.equal(lowPlan.budgetLimitedCount,1);assert.equal(lowPlan.assignedCount,0);
+  assert.equal(lowPlan.projectedRawNetGold,empty.rawNet.gold,'A production bonus smaller than its salary is also removed');
+});
+
+test('whole-ledger rounding cannot leave an irreducible deficit worse than no appointments',()=>{
+  const game=fixture([officer('merchant-a',70,'merchant'),officer('merchant-b',70,'merchant')],{clan:'徳川家'});
+  for(const b of D.buildings)game.state.buildings[b.id]=['market','mint'].includes(b.id)?1:0;
+  game.state.troops=50000;
+  const empty=game.income({governors:{}}),both=game.income({governors:{market:'merchant-a',mint:'merchant-b'}}),one=game.income({governors:{market:'merchant-a'}});
+  assert.equal(both.rawNet.gold,empty.rawNet.gold-1,'Two 49.5-gold bonuses produce only 99 gold against 100 in salary');
+  assert.equal(one.rawNet.gold,both.rawNet.gold,'Removing either one initially makes no whole-gold improvement');
+  const plan=game.planGovernorAssignments();assertPlan(game,plan);
+  assert.equal(plan.projectedRawNetGold,empty.rawNet.gold);assert.equal(plan.assignedCount,0);assert.equal(plan.budgetLimitedCount,2);
+});
+
+test('salary budgets retain branch priority and the main army without charging branch commanders as governors',()=>{
+  const game=horizontalTown();game.state.castles.nijo.owner=game.state.clan;
+  game.state.branches=[{id:'nijo_north',parentCastleId:'nijo',direction:'north',level:1,fallen:false,commanders:[],stationedTroops:0}];
+  const branch=game.branchCommanderAutoPlan('all'),protectedIds=new Set([...game.state.army,...branch.formations.flatMap(f=>f.commanders)]),before=structuredClone(game.state);
+  const plan=game.planGovernorAssignments();assert(plan.ok);assert(plan.budgetLimitedCount>0);
+  assert.deepEqual(plan.branchFormations,branch.formations);assert.equal(plan.candidateCount,40-branch.assignedCount);
+  assert(Object.values(plan.governors).every(id=>!protectedIds.has(id)));assert.equal(plan.monthlySalary,plan.assignedCount*50);
+  assert.deepEqual(game.state,before);game.autoAssignGovernors();assert.deepEqual(game.state.army,before.army);
+  assert.deepEqual(game.state.branches[0].commanders,branch.formations[0].commanders);assert.equal(game.income().net.gold,plan.projectedNetGold);
 });
 
 test('commit recomputes after a preview so newly assigned army officers cannot be moved into a facility',()=>{
@@ -249,6 +332,7 @@ test('the existing local Worker accepts and preserves an ordinary batch with the
     const lease=(await h.api('/sync/lease',{method:'POST',token:player.token,body:{deviceId,takeOver:true}})).data;
     const game=ownAll(create());game.applyWorldClock((await h.api('/world-clock')).data.clock);
     for(const b of D.buildings)game.state.buildings[b.id]=Math.max(1,game.state.buildings[b.id]);
+    game.state.buildings.market=32;
     game.state.army=game.state.officers.slice(0,3).reverse();game.autoAssignGovernors();
     const expected=structuredClone({army:game.state.army,governors:game.state.governors});
     const written=(await h.api('/sync',{method:'PUT',token:player.token,body:{deviceId,revision:lease.revision,save:save(game)}})).data;

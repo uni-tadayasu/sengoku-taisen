@@ -6,10 +6,10 @@
   'use strict';
   const RESOURCES = ['gold', 'rice', 'wood', 'stone'];
   const ASSET_CAP = 100000000;
-  const ECONOMY_RULES=Object.freeze({surplusThresholds:Object.freeze({gold:5000,rice:9000,wood:3000,stone:2500}),upgradeMultiplierCap:16,recruitReserveMonths:2,recruitReserveMinimum:Object.freeze({gold:500,rice:1000})});
+  const ECONOMY_RULES=Object.freeze({surplusThresholds:Object.freeze({gold:5000,rice:9000,wood:3000,stone:2500}),surplusMarginalRetention:.25,upgradeMultiplierCap:16,recruitReserveMonths:2,recruitReserveMinimum:Object.freeze({gold:500,rice:1000})});
   function balanceSurplus(rawNet){
-    const net={},surplusAdjustment={};
-    for(const key of RESOURCES){const raw=rawNet[key],threshold=ECONOMY_RULES.surplusThresholds[key];net[key]=raw>threshold?Math.floor(threshold*(1+Math.log(raw/threshold))):raw;surplusAdjustment[key]=raw-net[key];}
+    const net={},surplusAdjustment={},retention=ECONOMY_RULES.surplusMarginalRetention;
+    for(const key of RESOURCES){const raw=rawNet[key],threshold=ECONOMY_RULES.surplusThresholds[key];net[key]=raw>threshold?Math.floor(threshold+(raw-threshold)*retention+threshold*(1-retention)*Math.log(raw/threshold)):raw;surplusAdjustment[key]=raw-net[key];}
     return{net,surplusAdjustment};
   }
   function upgradeCostMultiplier(ownedCastleCount){
@@ -27,7 +27,7 @@
     }
     return scaled;
   }
-  const MAINTENANCE_RULES=Object.freeze({troops:Object.freeze({gold:.04,rice:.12,wood:0,stone:0}),facilityLevel:Object.freeze({gold:2,rice:1,wood:1,stone:1}),castleRice:60});
+  const MAINTENANCE_RULES=Object.freeze({troops:Object.freeze({gold:.04,rice:.12,wood:0,stone:0}),facilityLevel:Object.freeze({gold:2,rice:1,wood:1,stone:1}),castleRice:60,governorMonthlyGold:50});
   const OFFICER_HEALTH_RULES=Object.freeze({max:100,winCost:15,lossCost:25,recoveryPerMonth:10,minCombatFactor:.5});
   const DURABILITY_RULES=Object.freeze({recoveryFraction:.1,captureFraction:.25,minFortificationFactor:.25});
   function durabilityMax({castleId,level=1,wall=1,branch=false}={}){
@@ -1420,9 +1420,9 @@
     }
     _action(text,kind='info',extra={}){if(!MARCH_CONTEXT.has(this))this.state.command--;this.log(text,kind);return{ok:true,message:text,...extra};}
     governorBonusFor(buildingId,officerId,officers){return governorBonusForCategory(BUILDINGS.find(b=>b.id===buildingId)?.category,officers?officers.get(officerId):this.officer(officerId));}
-    _governorViews(){const ids=[...new Set(Object.values(this.state.governors))],views=this.officerViews(ids);return new Map(ids.map((id,index)=>[id,views[index]]));}
-    _governorBonus(id,officers){return this.governorBonusFor(id,this.state.governors[id],officers);}
-    _facilityEffect(category,officers){return EXTRA_FACILITIES.filter(b=>b.category===category).reduce((a,b)=>a+this.state.buildings[b.id]*b.effect*this._governorBonus(b.id,officers),0);}
+    _governorViews(assignments=this.state.governors){const ids=[...new Set(Object.values(assignments))],views=this.officerViews(ids);return new Map(ids.map((id,index)=>[id,views[index]]));}
+    _governorBonus(id,officers,assignments=this.state.governors){return this.governorBonusFor(id,assignments[id],officers);}
+    _facilityEffect(category,officers,assignments=this.state.governors){return EXTRA_FACILITIES.filter(b=>b.category===category).reduce((a,b)=>a+this.state.buildings[b.id]*b.effect*this._governorBonus(b.id,officers,assignments),0);}
     buildingUnlock(id){const b=BUILDINGS.find(b=>b.id===id);if(!b)return{ok:false,requiredLevel:1,reason:'施設が見つかりません。'};const ok=this.state.buildings.keep>=b.requiredKeep;return{ok,requiredLevel:b.requiredKeep,reason:ok?'建設・増築できます。':`天守 Lv.${b.requiredKeep}が必要です。`};}
     governorDescription(id){const category=BUILDINGS.find(b=>b.id===id)?.category;const named={keep:'政治力に応じて武将の登用費用を軽減します。',barracks:'政治力に応じて兵数上限を増やし募兵費用を軽減します。',wall:'政治力に応じて本拠の防衛力を高めます。',academy:'政治力に応じて研究費用を軽減します。'};return named[id]||({gold:'政治力に応じてこの施設の金銭生産を増やします。',rice:'政治力に応じてこの施設の兵糧生産を増やします。',wood:'政治力に応じてこの施設の木材生産を増やします。',stone:'政治力に応じてこの施設の石材生産を増やします。',military:'政治力に応じてこの施設の攻撃力・兵数上限の効果を高めます。',defense:'政治力に応じてこの施設の防衛補正を高めます。',research:'政治力に応じてこの施設の研究費軽減を強化します。',diplomacy:'政治力に応じてこの施設の交渉・偵察・登用費軽減を強化します。'})[category]||'';}
     buildingSummary(id){const b=BUILDINGS.find(b=>b.id===id);if(!b)return'';const lv=this.state.buildings[id];if(!lv)return'未建設';const gov=this._governorBonus(id),v=lv*b.effect*gov;if(!b.core){if(RESOURCES.includes(b.category))return`${({gold:'金銭',rice:'兵糧',wood:'木材',stone:'石材'})[b.category]} +${Math.floor(v).toLocaleString()} /月（技術補正前）`;if(b.category==='military')return`攻撃 +${(v*100).toFixed(1)}%・兵数 +${Math.floor(lv*b.capacity*gov).toLocaleString()}`;if(b.category==='defense')return`領国防衛 +${(v*100).toFixed(1)}%`;if(b.category==='research')return`研究効率 +${(v*100).toFixed(1)}%`;return`交渉効率 +${(v*100).toFixed(1)}%`;}
@@ -1449,7 +1449,18 @@
       if(!rule||!Number.isInteger(level)||level<0||level>rule.maxLevel)return null;
       return Object.fromEntries(RESOURCES.map(key=>[key,MAINTENANCE_RULES.facilityLevel[key]*level]));
     }
-    maintenance(){
+    governorPayroll(assignments=this.state.governors){
+      const s=this.state,owned=new Set(s.officers),paid=new Set();
+      // Staff saves may retain appointments to facilities that are not yet
+      // built. Charge only an owned, known officer at a completed facility,
+      // once per officer, without changing appointments or save data on reads.
+      for(const building of BUILDINGS){
+        const id=assignments?.[building.id];
+        if(s.buildings[building.id]>0&&typeof id==='string'&&owned.has(id)&&this.officerMap[id])paid.add(id);
+      }
+      return{count:paid.size,perOfficer:MAINTENANCE_RULES.governorMonthlyGold,gold:paid.size*MAINTENANCE_RULES.governorMonthlyGold,rice:0,wood:0,stone:0};
+    }
+    maintenance({governors=this.state.governors}={}){
       const s=this.state,owned=this.ownedCastles(),personal=owned.filter(castle=>!(this.isStaff&&castle.id===STAFF_BASE_ID)),elapsed=elapsedMillis(s);
       const covert=s.covert,external=this._maintenanceExternalAt(elapsed),troops={field:s.troops,marching:this.reservedTroops(),castleGarrisons:personal.reduce((sum,castle)=>sum+castle.troops,0),branchGarrisons:0,retreating:0,covert:Object.values(covert?.reserves||{}).reduce((sum,count)=>sum+count,0)+(covert?.stations||[]).reduce((sum,row)=>sum+row.count,0)+(covert?.dispatches||[]).reduce((sum,row)=>sum+row.count,0),external:external.vacant+external.trade+external.alliance};
       const facilities={townLevels:BUILDINGS.reduce((sum,building)=>sum+s.buildings[building.id],0),castleLevels:personal.reduce((sum,castle)=>sum+castle.level,0),branchLevels:0,branchFacilityLevels:0,totalLevels:0};
@@ -1470,8 +1481,9 @@
       // stocks must never change upkeep through per-stock rounding.
       const troopUpkeep={gold:Math.ceil(totalTroops/25),rice:Math.floor(totalTroops/25)*3+Math.ceil(totalTroops%25*3/25),wood:0,stone:0};
       const facilityUpkeep=Object.fromEntries(RESOURCES.map(key=>[key,facilities.totalLevels*MAINTENANCE_RULES.facilityLevel[key]+(key==='rice'?owned.length*MAINTENANCE_RULES.castleRice:0)]));
-      const totalUpkeep=Object.fromEntries(RESOURCES.map(key=>[key,troopUpkeep[key]+facilityUpkeep[key]]));
-      return{totalTroops,troops,facilities,troopUpkeep,facilityUpkeep,totalUpkeep};
+      const payroll=this.governorPayroll(governors),governorSalary=Object.fromEntries(RESOURCES.map(key=>[key,payroll[key]]));
+      const totalUpkeep=Object.fromEntries(RESOURCES.map(key=>[key,troopUpkeep[key]+facilityUpkeep[key]+governorSalary[key]]));
+      return{totalTroops,troops,facilities,troopUpkeep,facilityUpkeep,governorCount:payroll.count,governorSalary,totalUpkeep};
     }
     upkeepTroopSnapshot(){
       const s=this.state;
@@ -1498,8 +1510,9 @@
       const unchanged={ok:true,changed:false,removed:0,reductions,allocations,income,message:''};
       if(income.gold>=0&&income.rice>=0)return unchanged;
       // Ceil(N/25)<=gold and ceil(3*N/25)<=rice give exact integer
-      // allowances. Fixed facility upkeep never changes with this reduction.
-      const gold=Math.max(0,income.gross.gold-income.facilityUpkeep.gold),rice=Math.max(0,income.gross.rice-income.facilityUpkeep.rice);
+      // allowances. Facility upkeep and governor salaries remain fixed; only
+      // the troop portion can decrease through this existing monthly rule.
+      const gold=Math.max(0,income.gross.gold-income.facilityUpkeep.gold-(income.governorSalary?.gold||0)),rice=Math.max(0,income.gross.rice-income.facilityUpkeep.rice);
       const allowance=Math.min(gold*25,Math.floor(rice/3)*25+Math.floor((rice%3)*25/3));
       // Only an in-flight cloud write needs this small, bounded runtime journal.
       // It is never exported and ordinary positive-income ticks do no copying.
@@ -1539,16 +1552,18 @@
       this.log(message,'upkeep');
       return{ok:true,changed:true,removed,reductions,allocations,income:this.income(),message};
     }
-    income(){
-      const s=this.state,b=s.buildings,t=s.tech,governors=this._governorViews(),owned=this.ownedCastles(),n=owned.length,expanded=owned.reduce((sum,c)=>sum+c.level-1,0),branchIncome=this.branchFacilityBonuses().income;
-      const gold=Math.floor((180+b.keep*50+b.market*180*this._governorBonus('market',governors)+this._facilityEffect('gold',governors)+n*100+expanded*15)*(1+t.commerce*.12)*(s.clan==='織田家'?1.15:1))+branchIncome.gold;
-      const grossRice=Math.floor((b.farm*450*this._governorBonus('farm',governors)+this._facilityEffect('rice',governors)+n*170+expanded*20)*(1+t.cultivation*.12)*(s.clan==='北条家'?1.15:1))+branchIncome.rice;
-      const gross={gold,rice:grossRice,wood:Math.floor((b.lumber*170*this._governorBonus('lumber',governors)+this._facilityEffect('wood',governors)+n*40+expanded*5)*(1+t.forestry*.15))+branchIncome.wood,stone:Math.floor((b.quarry*130*this._governorBonus('quarry',governors)+this._facilityEffect('stone',governors)+n*30+expanded*5)*(1+t.masonry*.15))+branchIncome.stone};
-      const maintenance=this.maintenance(),rawNet=Object.fromEntries(RESOURCES.map(key=>[key,gross[key]-maintenance.totalUpkeep[key]])),{net,surplusAdjustment}=balanceSurplus(rawNet);
-      // Full production still funds troops and facilities before excess savings
+    income({governors:assignments=this.state.governors}={}){
+      // Explicit appointments let previews use the exact production ledger
+      // without temporarily changing state or losing instance-bound authority.
+      const s=this.state,b=s.buildings,t=s.tech,governors=this._governorViews(assignments),owned=this.ownedCastles(),n=owned.length,expanded=owned.reduce((sum,c)=>sum+c.level-1,0),branchIncome=this.branchFacilityBonuses().income;
+      const gold=Math.floor((180+b.keep*50+b.market*180*this._governorBonus('market',governors,assignments)+this._facilityEffect('gold',governors,assignments)+n*100+expanded*15)*(1+t.commerce*.12)*(s.clan==='織田家'?1.15:1))+branchIncome.gold;
+      const grossRice=Math.floor((b.farm*450*this._governorBonus('farm',governors,assignments)+this._facilityEffect('rice',governors,assignments)+n*170+expanded*20)*(1+t.cultivation*.12)*(s.clan==='北条家'?1.15:1))+branchIncome.rice;
+      const gross={gold,rice:grossRice,wood:Math.floor((b.lumber*170*this._governorBonus('lumber',governors,assignments)+this._facilityEffect('wood',governors,assignments)+n*40+expanded*5)*(1+t.forestry*.15))+branchIncome.wood,stone:Math.floor((b.quarry*130*this._governorBonus('quarry',governors,assignments)+this._facilityEffect('stone',governors,assignments)+n*30+expanded*5)*(1+t.masonry*.15))+branchIncome.stone};
+      const maintenance=this.maintenance({governors:assignments}),rawNet=Object.fromEntries(RESOURCES.map(key=>[key,gross[key]-maintenance.totalUpkeep[key]])),{net,surplusAdjustment}=balanceSurplus(rawNet);
+      // Full production funds troops, facilities and salaries before excess savings
       // taper. Existing sustainable forces and deficit signs never change just
       // because a developed town produces more than the ordinary savings rate.
-      return{...net,upkeep:maintenance.totalUpkeep.rice,grossRice,gross,rawNet,surplusAdjustment,net,troopUpkeep:maintenance.troopUpkeep,facilityUpkeep:maintenance.facilityUpkeep,totalTroops:maintenance.totalTroops,troopBreakdown:maintenance.troops,facilityLevels:maintenance.facilities};
+      return{...net,upkeep:maintenance.totalUpkeep.rice,grossRice,gross,rawNet,surplusAdjustment,net,troopUpkeep:maintenance.troopUpkeep,facilityUpkeep:maintenance.facilityUpkeep,governorCount:maintenance.governorCount,governorSalary:maintenance.governorSalary,totalTroops:maintenance.totalTroops,troopBreakdown:maintenance.troops,facilityLevels:maintenance.facilities};
     }
     costs(id,fromLevel){const b=BUILDINGS.find(b=>b.id===id);if(fromLevel===undefined){const jobs=this.isStaff?STAFF_VIEW.get(this)?.base.jobs||[]:this.state.jobs;fromLevel=Math.max(this.state.buildings[id]??0,...jobs.filter(j=>j.kind==='building'&&j.id===id).map(j=>j.targetLevel));}if(!b||!Number.isInteger(fromLevel)||fromLevel<0||fromLevel>32)return null;const level=fromLevel,mult=1+level*.32+level*level*.025,turns=level>=16?3:level>=6||id==='keep'?2:1;return this.scaleUpgradeCost({gold:Math.round(b.base.gold*mult),wood:Math.round(b.base.wood*mult),stone:Math.round(b.base.stone*mult),rice:0,turns,seconds:turns*60});}
     upgrade(id){
@@ -1627,14 +1642,38 @@
         if(officerId)governors[b.id]=officerId;
         return{buildingId:b.id,officerId,previousOfficerId,bonus:governorBonusForCategory(b.category,chosen),previousBonus:governorBonusForCategory(b.category,officerById.get(previousOfficerId)||this.officer(previousOfficerId))};
       });
+      // Start from the existing best suitability match, then keep salaries
+      // within current recurring income. Removing the most expensive marginal
+      // appointment first preserves gold-producing appointments that pay for
+      // themselves, including when soldiers already cause an unavoidable deficit.
+      const staffingVacantCount=facilityCount-Object.keys(governors).length;
+      let projectedIncome=this.income({governors}),budgetLimitedCount=0;
+      const noGovernorRawNetGold=projectedIncome.rawNet.gold<0?this.income({governors:{}}).rawNet.gold:projectedIncome.rawNet.gold;
+      while(projectedIncome.rawNet.gold<0){
+        let best=null;
+        for(const assignment of assignments){
+          if(!assignment.officerId)continue;
+          const without={...governors};delete without[assignment.buildingId];
+          const income=this.income({governors:without}),improvement=income.rawNet.gold-projectedIncome.rawNet.gold;
+          // Whole-ledger rounding can make two individually neutral removals
+          // save one gold together. Cross that plateau only when the current
+          // plan is worse than leaving every governor post empty.
+          if(improvement<0||improvement===0&&projectedIncome.rawNet.gold>=noGovernorRawNetGold)continue;
+          if(!best||improvement>best.improvement||improvement===best.improvement&&(assignment.bonus<best.assignment.bonus||assignment.bonus===best.assignment.bonus&&assignment.buildingId<best.assignment.buildingId))best={assignment,income,improvement};
+        }
+        if(!best)break;
+        delete governors[best.assignment.buildingId];best.assignment.officerId=null;best.assignment.bonus=1;
+        projectedIncome=best.income;budgetLimitedCount++;
+      }
+      const projectedNetGold=projectedIncome.net.gold,projectedRawNetGold=projectedIncome.rawNet.gold,monthlySalary=projectedIncome.governorSalary.gold;
       // An explicit reassignment also returns dormant staff appointments on
       // unbuilt facilities to the candidate pool; saves and reloads never do so.
       const changedCount=[...new Set([...Object.keys(s.governors),...Object.keys(governors)])].filter(id=>(s.governors[id]||null)!==(governors[id]||null)).length;
       const clearedCount=Object.keys(s.governors).filter(id=>s.governors[id]&&!governors[id]).length,assignedCount=Object.keys(governors).length,vacantCount=facilityCount-assignedCount,changed=changedCount>0||branchChangedCount>0;
       const totalBonus=assignments.reduce((sum,a)=>sum+a.bonus,0),previousTotalBonus=assignments.reduce((sum,a)=>sum+a.previousBonus,0);
-      const governorMessage=!facilityCount?'建設済みの施設がありません。':!candidateCount?'軍団に編成されていない武将がいません。':changed?`奉行を${assignedCount}施設へ配置しました。${vacantCount?`残り${vacantCount}施設は未任命です。`:''}`:'奉行はすでに適性に合う配置です。';
+      const governorMessage=(!facilityCount?'建設済みの施設がありません。':!candidateCount?'軍団に編成されていない武将がいません。':changed?`奉行を${assignedCount}施設へ配置しました。`:'奉行はすでに適性に合う配置です。')+(staffingVacantCount?`候補不足のため${staffingVacantCount}施設は未任命です。`:'')+(budgetLimitedCount?`給与予算に合わせて${budgetLimitedCount}施設は未任命です。`:'');
       const message=(branchChangedCount?`支拠点の${branchChangedCount}枠を優先して編成し直しました。`:'')+governorMessage;
-      return{ok:true,changed,governors,assignments,branchAssignments,branchFormations,branchAssignedCount,branchChangedCount,branchReplacedCount,branchRetainedCount,branchReleasedCount,facilityCount,candidateCount,assignedCount,vacantCount,changedCount,clearedCount,totalBonus,previousTotalBonus,message};
+      return{ok:true,changed,governors,assignments,branchAssignments,branchFormations,branchAssignedCount,branchChangedCount,branchReplacedCount,branchRetainedCount,branchReleasedCount,facilityCount,candidateCount,assignedCount,vacantCount,staffingVacantCount,budgetLimitedCount,projectedNetGold,projectedRawNetGold,monthlySalary,changedCount,clearedCount,totalBonus,previousTotalBonus,message};
     }
     autoAssignGovernors(){const plan=this.planGovernorAssignments();if(plan.ok&&plan.changed){for(const formation of plan.branchFormations){const branch=this.state.branches.find(row=>row.id===formation.branchId);branch.commanders=[...formation.commanders];}this.state.governors={...plan.governors};}return plan;}
     _recruitCostMultiplier(){return(1-this.state.tech.conscription*.08)*(this.state.clan==='伊達家'?.85:1)/this._governorBonus('barracks');}
@@ -1642,9 +1681,10 @@
     _previewRecruitment(amount,income,multiplier,capacity){
       const cost={gold:Math.ceil(amount*.32*multiplier),rice:Math.ceil(amount*.45*multiplier),wood:0,stone:0},totalTroops=income.totalTroops+amount;
       const troopUpkeep={gold:Math.ceil(totalTroops/25),rice:Math.floor(totalTroops/25)*3+Math.ceil(totalTroops%25*3/25),wood:0,stone:0};
-      const totalUpkeep=Object.fromEntries(RESOURCES.map(key=>[key,income.facilityUpkeep[key]+troopUpkeep[key]])),rawNet=Object.fromEntries(RESOURCES.map(key=>[key,income.gross[key]-totalUpkeep[key]])),{net}=balanceSurplus(rawNet);
+      const governorSalary=Object.fromEntries(RESOURCES.map(key=>[key,income.governorSalary?.[key]||0]));
+      const totalUpkeep=Object.fromEntries(RESOURCES.map(key=>[key,income.facilityUpkeep[key]+troopUpkeep[key]+governorSalary[key]])),rawNet=Object.fromEntries(RESOURCES.map(key=>[key,income.gross[key]-totalUpkeep[key]])),{net}=balanceSurplus(rawNet);
       const balances=Object.fromEntries(RESOURCES.map(key=>[key,this.state.resources[key]-cost[key]])),reserve=Object.fromEntries(['gold','rice'].map(key=>[key,Math.max(ECONOMY_RULES.recruitReserveMinimum[key],totalUpkeep[key]*ECONOMY_RULES.recruitReserveMonths)]));
-      return{amount,cost,balances,rawNet,net,troopUpkeep,totalUpkeep,totalTroops,reserve,sustainable:rawNet.gold>=0&&rawNet.rice>=0,affordable:RESOURCES.every(key=>balances[key]>=0),withinReserve:balances.gold>=reserve.gold&&balances.rice>=reserve.rice,withinCapacity:amount<=capacity};
+      return{amount,cost,balances,rawNet,net,troopUpkeep,governorSalary,totalUpkeep,totalTroops,reserve,sustainable:rawNet.gold>=0&&rawNet.rice>=0,affordable:RESOURCES.every(key=>balances[key]>=0),withinReserve:balances.gold>=reserve.gold&&balances.rice>=reserve.rice,withinCapacity:amount<=capacity};
     }
     previewRecruitment(amount,income=this.income()){
       if(!Number.isSafeInteger(amount)||amount<0||amount>20000)return null;
@@ -1653,7 +1693,7 @@
     recruitmentBudget(income=this.income()){
       const multiplier=this._recruitCostMultiplier(),capacity=Math.max(0,Math.min(20000,this.availableTroopCapacity()-this.state.troops)),preview=amount=>this._previewRecruitment(amount,income,multiplier,capacity);
       const search=(limit,accept)=>{let low=0,high=limit;while(low<high){const middle=Math.ceil((low+high)/2);if(accept(preview(middle)))low=middle;else high=middle-1;}return low;};
-      const goldBudget=Math.max(0,income.gross.gold-income.facilityUpkeep.gold),riceBudget=Math.max(0,income.gross.rice-income.facilityUpkeep.rice);
+      const goldBudget=Math.max(0,income.gross.gold-income.facilityUpkeep.gold-(income.governorSalary?.gold||0)),riceBudget=Math.max(0,income.gross.rice-income.facilityUpkeep.rice);
       const allowance=Math.min(goldBudget*25,Math.floor(riceBudget/3)*25+Math.floor((riceBudget%3)*25/3));
       const affordableMax=search(capacity,row=>row.affordable),sustainableMax=Math.min(capacity,Math.max(0,allowance-income.totalTroops)),recommendedMax=search(Math.min(affordableMax,sustainableMax),row=>row.withinReserve&&row.sustainable);
       return{affordableMax,sustainableMax,recommendedMax,reserveMonths:ECONOMY_RULES.recruitReserveMonths,minimumReserve:{...ECONOMY_RULES.recruitReserveMinimum}};

@@ -25,8 +25,8 @@ test('army and construction ledger show the same four-resource production, costs
  const h=harness();
  for(const view of ['Army','Facilities']){
   h.host.innerHTML=h.c['render'+view]();const panel=h.host.querySelector('[data-economy-panel]'),income=h.game.income();
-  assert(panel,view);assert.equal(panel.querySelectorAll('.economy-resource').length,4);assert.equal(panel.querySelectorAll('[data-economy-rate]').length,20);
-  for(const node of panel.querySelectorAll('[data-economy-rate]')){const kind=node.dataset.economyRate,key=node.dataset.economyResource;assert.equal(node.textContent,signed(income[kind][key],kind.endsWith('Upkeep')||kind==='surplusAdjustment'));}
+  assert(panel,view);assert.equal(panel.querySelectorAll('.economy-resource').length,4);assert.equal(panel.querySelectorAll('[data-economy-rate]').length,24);
+  for(const node of panel.querySelectorAll('[data-economy-rate]')){const kind=node.dataset.economyRate,key=node.dataset.economyResource;assert.equal(node.textContent,signed(income[kind][key],kind.endsWith('Upkeep')||kind==='governorSalary'||kind==='surplusAdjustment'));}
   assert.equal(panel.querySelector('[data-economy-total]').textContent,format(income.totalTroops));assert.match(panel.textContent,/施設・城の維持費/);assert.match(panel.textContent,/60秒で1か月/);assert.match(panel.textContent,/残高は0未満/);assert.match(panel.textContent,/勾玉・威信は維持費の対象外/);
  }
 });
@@ -89,6 +89,18 @@ test('recruitment refreshes preserve typed amounts, focus, selection and all pre
  assert.equal(input.value,'347');assert.strictEqual(h.doc.activeElement,input);assert.deepEqual([input.selectionStart,input.selectionEnd,input.selectionDirection],[1,2,'backward']);assert.equal(h.host.scrollTop,290);assert.strictEqual(h.doc.querySelector('.recruit-preview'),preview);assert(nodes.every(node=>node.isConnected));
  input.value='';h.c.refreshLiveControls();for(const node of preview.querySelectorAll('[data-recruit-preview]'))assert.equal(node.textContent,'—');
  let removals=0;h.doc.onRemove=()=>{removals++;};h.c.refreshLiveControls();assert.equal(removals,0,'unchanged preview does not rewrite text');
+});
+
+test('governor salary is a separate gold expense and refreshes in place after dismissal',()=>{
+ const scope={window:{}};vm.runInNewContext(fs.readFileSync(require.resolve('../officers-data.js'),'utf8'),scope);
+ const h=harness(new E({seed:4910,clan:'徳川家',officers:JSON.parse(JSON.stringify(scope.window.SENGOKU_OFFICERS))})),id=h.game.state.officers.find(value=>!h.game.state.army.includes(value));assert(h.game.assignGovernor('market',id).ok);
+ h.host.innerHTML=h.c.economyPanel('army');const panel=h.host.firstElementChild,salary=panel.querySelector('[data-economy-rate="governorSalary"][data-economy-resource="gold"]'),people=panel.querySelector('[data-economy-governors]');
+ assert.equal(salary.textContent,'−50');assert.equal(people.textContent,'1');
+ for(const key of ['rice','wood','stone'])assert.equal(panel.querySelector(`[data-economy-rate="governorSalary"][data-economy-resource="${key}"]`).textContent,'0');
+ for(const key of D.resources){const income=h.game.income();assert.equal(income.net[key],income.gross[key]-income.troopUpkeep[key]-income.facilityUpkeep[key]-income.governorSalary[key]-income.surplusAdjustment[key]);}
+ assert.match(h.c.economyBalanceTitle('gold',h.game.income()),/奉行の給与 −50/);
+ assert(h.game.assignGovernor('market',null).ok);h.c.refreshEconomyPanels(h.game.income());
+ assert.strictEqual(h.host.firstElementChild,panel);assert.strictEqual(panel.querySelector('[data-economy-governors]'),people);assert.equal(people.textContent,'0');assert.equal(salary.textContent,'0');
 });
 
 console.log(`${count} economy UI checks passed with actual app helpers and engine totals. No live requests.`);

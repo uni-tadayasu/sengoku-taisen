@@ -23,6 +23,13 @@ test('large sustainable armies keep their production budget and are not cut by t
  const game=fixture(32);game.state.troops=game.troopCapacity();const before=game.income(),troops=game.state.troops;assert(before.rawNet.gold>0&&before.rawNet.rice>0);assert(before.surplusAdjustment.wood>0);assert.equal(game.rebalanceTroopsForUpkeep().changed,false);game._advanceRealtime(60);assert.equal(game.state.troops,troops);assert.equal(game.state.upkeep.settledTurn,1);assert(!game.state.log.some(row=>row.kind==='upkeep'));
  const deficit=fixture(32);deficit.state.troops=10000000;const income=deficit.income();assert.deepEqual(income.net.gold,income.rawNet.gold);assert.deepEqual(income.net.rice,income.rawNet.rice);assert.equal(income.surplusAdjustment.gold,0);assert.equal(income.surplusAdjustment.rice,0);const expected=Math.min((income.gross.gold-income.facilityUpkeep.gold)*25,Math.floor((income.gross.rice-income.facilityUpkeep.rice)*25/3));deficit._advanceRealtime(60);assert.equal(deficit.maintenance().totalTroops,expected);
 });
+test('each resource retains at least a quarter of extra high-output production after integer rounding',()=>{
+ const game=fixture(),zero={gold:0,rice:0,wood:0,stone:0};assert.equal(E.economyRules.surplusMarginalRetention,.25);
+ for(const key of D.resources){const threshold=E.economyRules.surplusThresholds[key];
+  const net=raw=>game.previewRecruitment(0,{totalTroops:0,facilityUpkeep:zero,governorSalary:zero,gross:{...zero,[key]:raw}}).net[key];
+  for(const factor of [2,10,100,1000]){const raw=threshold*factor,extra=1000,benefit=net(raw+extra)-net(raw);assert(benefit>=249,key+' keeps the marginal floor');assert(benefit<=extra);assert(net(raw)<raw);assert(net(raw)>Math.floor(threshold*(1+Math.log(factor))));}
+ }
+});
 test('loading savings and crediting direct rewards never invokes the passive adjustment',()=>{
  const game=fixture(32);game.state.resources={gold:90000000,rice:90000000,wood:90000000,stone:90000000};const before=copy(game.state.resources),loaded=load(game);assert.deepEqual(loaded.state.resources,before);const state=copy(loaded.state);loaded.income();loaded.recruitmentBudget();loaded.previewRecruitment(1000);assert.deepEqual(loaded.state,state);
  const gift={gold:50000,rice:40000,wood:30000,stone:20000,magatama:150};assert(loaded.applyGift(gift,'economy-gift').ok);for(const key of D.resources)assert.equal(loaded.state.resources[key],before[key]+gift[key]);loaded._gain(Object.fromEntries(D.resources.map(key=>[key,E.ASSET_CAP])));assert.deepEqual(loaded.state.resources,Object.fromEntries(D.resources.map(key=>[key,E.ASSET_CAP])));

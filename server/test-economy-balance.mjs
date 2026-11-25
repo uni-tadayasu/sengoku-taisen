@@ -26,8 +26,8 @@ function rich(h,p,{troops=0}={}){
 }
 function assertRates(income){
  for(const key of resources){
-  const raw=income.gross[key]-income.troopUpkeep[key]-income.facilityUpkeep[key],threshold=thresholds[key];
-  const expected=raw>threshold?Math.floor(threshold*(1+Math.log(raw/threshold))):raw;
+  const raw=income.gross[key]-income.troopUpkeep[key]-income.facilityUpkeep[key]-income.governorSalary[key],threshold=thresholds[key];
+  const expected=raw>threshold?Math.floor(threshold+(raw-threshold)*.25+threshold*.75*Math.log(raw/threshold)):raw;
   assert.equal(income.rawNet[key],raw,key+' raw balance');assert.equal(income[key],expected,key+' effective balance');assert.equal(income.net[key],expected);
   assert.equal(income.surplusAdjustment[key],raw-expected);assert(raw>threshold,'fixture exercises the surplus threshold for '+key);
  }
@@ -49,9 +49,11 @@ async function victory(run){const old=crypto.getRandomValues;crypto.getRandomVal
 
 const originalFetch=globalThis.fetch;globalThis.fetch=async()=>{throw Error('Economy verification must not contact a real service');};
 try{
- await scope('server action accrues the exact reduced passive rate before charging a fixed construction price',async h=>{
+ await scope('server action accrues salary-inclusive income once before charging a fixed construction price',async h=>{
   const p=await fixture(h,'黒字の増加速度',{holdings:['nijo']});rich(h,p);
+  updateSave(h,p,state=>{const id=state.officers.find(value=>!state.army.includes(value));assert(id);state.governors={wall:id};});
   const before=await snapshot(h,p),game=engine(before),income=game.income(),quote=game.branchQuote('nijo','north'),fixed=clone(game.maintenance().facilityUpkeep);assertRates(income);assert(quote.ok);
+  assert.equal(income.governorCount,1);assert.deepEqual(income.governorSalary,{gold:50,rice:0,wood:0,stone:0});
   h.now+=12000;
   const body=branchBody(h,p,{parentCastleId:'nijo',direction:'north'}),result=(await h.api('/branches/build',post(p,body))).data;
   for(const key of resources)assert.equal(result.save.state.resources[key],before.save.state.resources[key]+Math.trunc(income.net[key]/5)-(quote.cost[key]||0),key);
