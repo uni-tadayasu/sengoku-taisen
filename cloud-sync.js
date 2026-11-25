@@ -20,12 +20,12 @@ function mergeBranchCorrection(sent,canonical,current,{troopsSeparate=false}={})
  function parts(state,parent){
   const branches=copy((state.branches||[]).filter(row=>row.parentCastleId===parent)).sort((x,y)=>x.id.localeCompare(y.id)),byId=new Map(branches.map(row=>[row.id,row])),jobs=[];
   for(const job of state.jobs||[]){if(job.kind!=='branch'||!byId.has(job.id))continue;const deadline=Number.isSafeInteger(job.completesElapsedMs)?job.completesElapsedMs:Math.round(elapsed(state)+job.remainingSeconds*1000),remainingSeconds=Math.min(job.totalSeconds,Math.max(0,(deadline-at)/1000));
-   if(remainingSeconds<=1e-8){const branch=byId.get(job.id);if(job.facilityId){global.SengokuEngine?.completeBranchFacility?.(branch,job,deadline);}else{branch.level=job.targetLevel;branch.fallen=false;if(job.repair)delete branch.durability;else if(branch.durability&&global.SengokuEngine?.durabilityView){const view=global.SengokuEngine.durabilityView(branch.durability,{castleId:branch.parentCastleId,level:branch.level,branch:true,elapsedMs:deadline});branch.durability={version:1,current:view.current,max:view.max,updatedElapsedMs:view.updatedElapsedMs};}}}
+   if(remainingSeconds<=1e-8){const branch=byId.get(job.id);if(job.facilityId){global.SengokuEngine?.completeBranchFacility?.(branch,job,deadline);}else{branch.level=job.targetLevel;branch.fallen=false;if(job.repair)delete branch.durability;else if(branch.durability&&global.SengokuEngine?.durabilityView){const view=global.SengokuEngine.durabilityView(branch.durability,{castleId:branch.parentCastleId,level:branch.level,branch:true,elapsedMs:deadline});branch.durability=conditionRecord(view);}}}
    else jobs.push({...copy(job),completesElapsedMs:deadline,remainingSeconds,remaining:Math.ceil((remainingSeconds-1e-8)/60)});
   }
   jobs.sort((x,y)=>x.id.localeCompare(y.id));return{owner:state.castles?.[parent]?.owner,branches,jobs};
  }
- const semantic=part=>({...part,...(troopsSeparate?{branches:part.branches.map(({stationedTroops,...branch})=>branch)}:{}),jobs:part.jobs.map(({remaining,remainingSeconds,...job})=>job)}),changes=[];let hasDelta=false;
+ const semantic=part=>({...part,branches:part.branches.map(({durability,...branch})=>branch),...(troopsSeparate?{branches:part.branches.map(({stationedTroops,durability,...branch})=>branch)}:{}),jobs:part.jobs.map(({remaining,remainingSeconds,...job})=>job)}),changes=[];let hasDelta=false;
  for(const parent of parents){const before=parts(a,parent),after=parts(b,parent),live=parts(c,parent);if(same(semantic(before),semantic(after)))continue;hasDelta=true;if(same(semantic(live),semantic(after)))continue;
   // A later branch action or CPU transition needs its own authoritative reply.
   if(!same(semantic(live),semantic(before)))return{changed:false,pending:true};changes.push({parent,after});
@@ -35,29 +35,91 @@ function mergeBranchCorrection(sent,canonical,current,{troopsSeparate=false}={})
  for(const path of paths){const before=read(a,path),after=read(b,path),live=read(c,path);if(before===after||live===after||after===undefined)continue;if(live!==before)return{changed:false,pending:true};summary.push({path,value:after});}
  if(!changes.length&&!summary.length)return{changed:false,pending:false};
  const merged=copy(current),state=merged.state;
- for(const {parent,after}of changes){if(!state.castles?.[parent])return{changed:false,pending:true};state.castles[parent].owner=after.owner;state.branches=(state.branches||[]).filter(row=>row.parentCastleId!==parent).concat(after.branches);state.jobs=(state.jobs||[]).filter(job=>job.kind!=='branch'||!job.id.startsWith(parent+'_')).concat(after.jobs);}
+ for(const {parent,after}of changes){if(!state.castles?.[parent])return{changed:false,pending:true};state.castles[parent].owner=after.owner;const liveBranches=new Map((state.branches||[]).map(row=>[row.id,row]));state.branches=(state.branches||[]).filter(row=>row.parentCastleId!==parent).concat(after.branches.map(branch=>{const live=liveBranches.get(branch.id);return live&&!branch.fallen&&!branch.retreating&&branch.level>=live.level&&!live.fallen&&!live.retreating?{...branch,...(live.durability?{durability:copy(live.durability)}:{})}:branch;}));state.jobs=(state.jobs||[]).filter(job=>job.kind!=='branch'||!job.id.startsWith(parent+'_')).concat(after.jobs);}
  const commanders=new Set((state.branches||[]).flatMap(branch=>branch.commanders||[]));for(const [facility,id]of Object.entries(state.governors||{}))if(commanders.has(id))delete state.governors[facility];
  for(const {path,value}of summary){let target=state;for(const key of path.slice(0,-1))target=target[key];target[path.at(-1)]=value;}
  return{changed:true,pending:false,save:merged};
 }
-// A canonical condition may arrive after an unrelated local action. Merge that
-// one field without replacing resources, orders, ownership or a newer siege.
+function conditionRecord(view){
+ return{version:1,current:view.current,max:view.max,updatedElapsedMs:view.updatedElapsedMs,...(Number.isSafeInteger(view.repairPendingHP)?{repairPendingHP:view.repairPendingHP}:{}),...(Number.isSafeInteger(view.repairRemainder)?{repairRemainder:view.repairRemainder}:{})};
+}
+// Merge structural damage independently of other branch changes. Recovery paid
+// after a request was sent remains attached to its materials and receipt.
 function mergeCastleDurabilityCorrection(sent,canonical,current){
  const a=sent?.state,b=canonical?.state,c=current?.state,same=(left,right)=>JSON.stringify(left??null)===JSON.stringify(right??null),scope=state=>JSON.stringify([state?.walking?.campaignId,state?.clan,state?.worldClock?.id,state?.cycle?.index]);
  if(!a?.walking?.campaignId||scope(a)!==scope(b)||scope(a)!==scope(c))return{changed:false,save:current};
- const at=Number.isSafeInteger(c.worldClock?.elapsedMs)?c.worldClock.elapsedMs:(c.turn||0)*60000+(c.realtime?.elapsed||0)*1000;let merged=null;
- for(const [id,after]of Object.entries(b.castles||{})){
-  const before=a.castles?.[id],live=c.castles?.[id];if(!before||!live||before.owner!==after.owner||live.owner!==after.owner||same(before.durability,after.durability)||same(live.durability,after.durability))continue;
-  if(!same(live.durability,before.durability)){
-   // CPU predictions can describe the same hit on both sides. Taking the lower
-   // condition at one game time preserves damage without subtracting it twice.
-   if(!global.SengokuEngine?.durabilityView)continue;
-   const options={castleId:id,level:live.level,wall:live.wall,elapsedMs:at},authoritative=global.SengokuEngine.durabilityView(after.durability,options),local=global.SengokuEngine.durabilityView(live.durability,options);
-   if(local.current<=authoritative.current)continue;
+ const at=Number.isSafeInteger(c.worldClock?.elapsedMs)?c.worldClock.elapsedMs:(c.turn||0)*60000+(c.realtime?.elapsed||0)*1000,engine=global.SengokuEngine;let merged=null;
+ // A later payment cannot be safely replayed over an earlier loss/removal of
+ // that base. The authoritative transition may have ended repair eligibility.
+ for(const kind of ['castles','branches'])for(const [id,count]of Object.entries(c.repair?.recovered?.[kind]||{})){
+  if(count<=(a.repair?.recovered?.[kind]?.[id]||0))continue;
+  const target=kind==='castles'?b.castles?.[id]:(b.branches||[]).find(row=>row.id===id),eligible=kind==='castles'?target?.owner===b.clan:target&&target.level>0&&!target.fallen&&!target.retreating&&b.castles?.[target.parentCastleId]?.owner===b.clan;
+  if(!eligible)return{conflict:true,changed:false,save:current};
+ }
+ const pools=[['castles',Object.entries(b.castles||{})],['branches',(b.branches||[]).map(row=>[row.id,row])]];
+ for(const [kind,rows]of pools)for(const [id,after]of rows){
+  const branch=kind==='branches',find=(state,key)=>branch?(state.branches||[]).find(row=>row.id===key):state.castles?.[key],before=find(a,id),live=find(c,id);
+  if(!before||!live||branch&&(before.parentCastleId!==after.parentCastleId||live.parentCastleId!==after.parentCastleId||live.fallen!==after.fallen||live.retreating!==after.retreating)||!branch&&(before.owner!==after.owner||live.owner!==after.owner)||same(before.durability,after.durability))continue;
+  let record=after.durability;
+  if(!same(live.durability,before.durability)&&engine?.durabilityView){
+   const owned=branch?c.castles?.[live.parentCastleId]?.owner===c.clan:live.owner===c.clan,options={castleId:branch?live.parentCastleId:id,level:live.level,...(branch?{branch:true,fallen:live.fallen||live.retreating}:{wall:live.wall}),elapsedMs:at,recoveryMode:owned?'paid':'free'};
+   const paidLater=owned?Math.max(0,(c.repair?.recovered?.[kind]?.[id]||0)-(a.repair?.recovered?.[kind]?.[id]||0)):0;
+   const paidCorrection=owned?(b.repair?.recovered?.[kind]?.[id]||0)-(a.repair?.recovered?.[kind]?.[id]||0):0;
+   let authoritative=engine.durabilityView(record,options),local=engine.durabilityView(live.durability,options);
+   const baseline=engine.durabilityView(before.durability,options),expectedLocal=Math.min(local.max,baseline.current+paidLater),ordinaryCapacityChange=owned&&local.current===expectedLocal;
+   // Without an ordered damage journal, recovery followed by another hit can
+   // be indistinguishable from the CPU hit already present in this reply.
+   // Preserve a backup and use the complete canonical state in that case.
+   if(owned&&(paidLater||paidCorrection)&&!ordinaryCapacityChange)return{conflict:true,changed:false,save:current};
+   if(paidLater&&!live.fallen&&!live.retreating){
+    const anchor=Math.max(Number(record?.updatedElapsedMs||0),Number(live.durability?.updatedElapsedMs||0)),prior=engine.durabilityView(record,{...options,elapsedMs:anchor});
+    if(prior.current+paidLater>prior.max)return{conflict:true,changed:false,save:current};
+    record={...conditionRecord(prior),current:Math.min(prior.max,prior.current+paidLater),repairPendingHP:Math.min(prior.repairPendingHP||0,live.durability?.repairPendingHP||0),repairRemainder:live.durability?.repairRemainder||0};
+    authoritative=engine.durabilityView(record,options);
+   }
+   // A later local siege may be worse than the acknowledged condition. Never
+   // add the same hit twice or turn that later damage into recovery.
+   if(ordinaryCapacityChange){
+    // Building completion increases capacity while preserving absolute
+    // damage. It must not hide repair HP which the same reply has charged.
+    record=conditionRecord(authoritative);
+   }else if(local.current<=authoritative.current)continue;
   }
-  merged=merged||JSON.parse(JSON.stringify(current));const castle=merged.state.castles[id];if(after.durability===undefined)delete castle.durability;else castle.durability=JSON.parse(JSON.stringify(after.durability));
+  merged=merged||JSON.parse(JSON.stringify(current));const target=branch?merged.state.branches.find(row=>row.id===id):merged.state.castles[id];
+  if(record===undefined)delete target.durability;else target.durability=JSON.parse(JSON.stringify(record));
  }
  return{changed:!!merged,save:merged||current};
+}
+// A repair acknowledgement corrects only its material delta and cumulative
+// receipt. Recompute prepaid cents after adding subsequent local recovery so
+// fractional credits cannot be refunded or charged a second time.
+function mergeRepairCorrection(sent,snapshot,current){
+ const dto=snapshot.repairAdjustment;if(!dto)return{changed:false,save:current};
+ const a=sent?.state,b=snapshot.save?.state,c=current?.state,engine=global.SengokuEngine,conflict={conflict:true};
+ const scope=state=>JSON.stringify([state?.walking?.campaignId,state?.clan,state?.worldClock?.id,state?.cycle?.index]);
+ if(dto.version!==1||dto.committedRevision!==snapshot.revision||!dto.before||!a?.repair||!c?.repair||!a.walking?.campaignId||scope(a)!==scope(b)||scope(a)!==scope(c)||typeof engine?.normalizeRepairState!=='function')return conflict;
+ try{
+  const prior=engine.normalizeRepairState(a.repair,a.turn),source=engine.normalizeRepairState(b.repair,b.turn),live=engine.normalizeRepairState(c.repair,c.turn),same=(left,right)=>fingerprint({state:left})===fingerprint({state:right});
+  if(!same(prior,dto.before)||!same(source,dto.after)||source.settledTurn>c.turn||live.settledTurn<prior.settledTurn)return conflict;
+  const recovered={castles:{},branches:{}};let hp=0,laterHP=0;
+  for(const kind of ['castles','branches'])for(const id of new Set([...Object.keys(prior.recovered[kind]),...Object.keys(source.recovered[kind]),...Object.keys(live.recovered[kind])])){
+   const later=(live.recovered[kind][id]||0)-(prior.recovered[kind][id]||0),value=(source.recovered[kind][id]||0)+later;
+   if(!Number.isSafeInteger(later)||later<0||!Number.isSafeInteger(value)||value<0)return conflict;if(value)recovered[kind][id]=value;hp+=value;laterHP+=later;
+  }
+  // Both sides may have settled the same previously unacknowledged month.
+  // Their cumulative counters cannot safely be added without a month journal.
+  if(laterHP&&source.settledTurn>prior.settledTurn&&live.settledTurn>prior.settledTurn)return conflict;
+  const spent={},credit={},resources={...c.resources};
+  for(const [key,rate]of [['wood',5],['stone',4]]){
+   const canonicalStock=Math.min(engine.ASSET_CAP,a.resources[key]+prior.spent[key]-source.spent[key]);
+   if(!Number.isSafeInteger(dto.resources?.[key])||canonicalStock<0||b.resources[key]!==canonicalStock||dto.resources[key]!==b.resources[key]-a.resources[key])return conflict;
+   const cents=hp*rate;if(!Number.isSafeInteger(cents))return conflict;spent[key]=Math.ceil(cents/100);credit[key]=spent[key]*100-cents;
+   const laterCostCorrection=(live.spent[key]-prior.spent[key])-(spent[key]-source.spent[key]);
+   const value=resources[key]+dto.resources[key]+laterCostCorrection;if(!Number.isSafeInteger(value)||value<0)return conflict;resources[key]=Math.min(engine.ASSET_CAP,value);
+  }
+  const repair=engine.normalizeRepairState({version:1,settledTurn:Math.max(source.settledTurn,live.settledTurn),spent,credit,recovered},c.turn),save=JSON.parse(JSON.stringify(current));save.state.repair=repair;save.state.resources=resources;
+  return{changed:!same(repair,c.repair)||!same(resources,c.resources),save};
+ }catch{return conflict;}
 }
 function upkeepStocks(state,user){
  return{army:state.troops,castles:Object.fromEntries(Object.entries(state.castles||{}).filter(([id,castle])=>castle.owner===state.clan&&(id!=='edo'||user?.isAdmin===true)&&(id!=='kyoto_gosho'||user?.isStaff===true&&user?.isAdmin!==true)).map(([id,castle])=>[id,castle.troops])),branches:Object.fromEntries((state.branches||[]).map(branch=>[branch.id,branch.stationedTroops||0]))};
@@ -340,21 +402,21 @@ function create(options={}){
    if(!Number.isSafeInteger(result.revision)||result.revision<=revision||!fingerprint(result.save))throw Error('自動保存の結果を確認できませんでした。');
    setRole(result);const journal=finishUpkeep?.(),canonical=fingerprint(result.save),currentSave=local(),current=fingerprint(currentSave),staleBranch=olderBranchSnapshot(result);let effective=result;
    // A save response must never erase actions performed while that request was in flight.
-   if(staleBranch&&result.upkeepAdjustment){await recoverConflict(g);return{ok:false,conflict:true};}
+   if(staleBranch&&(result.upkeepAdjustment||result.repairAdjustment)){await recoverConflict(g);return{ok:false,conflict:true};}
    if(staleBranch)branchCorrectionPending=save;
    else if(current===sent&&canonical!==current){if(!await apply(result.save,result,g,{reason:'canonical',backup:false}))return{ok:false};branchCorrectionPending=null;}
    else if(result.upkeepAdjustment){
     const corrected=mergeUpkeepCorrection(save,result,currentSave,journal);
     if(corrected.conflict){if(!await apply(result.save,result,g,{reason:'upkeep-conflict',backup:true,backupRuntime:true}))return{ok:false};}
-    else{const condition=mergeCastleDurabilityCorrection(save,result.save,corrected.save);effective=corrected.snapshot;if((corrected.changed||condition.changed)&&!await apply(condition.save,effective,g,{reason:'upkeep-canonical',backup:false}))return{ok:false};}
+    else{const condition=mergeCastleDurabilityCorrection(save,result.save,corrected.save),repair=mergeRepairCorrection(save,result,condition.save);effective=corrected.snapshot;if(condition.conflict||repair.conflict){if(!await apply(result.save,result,g,{reason:'repair-conflict',backup:true,backupRuntime:true}))return{ok:false};effective=result;}else if((corrected.changed||condition.changed||repair.changed)&&!await apply(repair.save,effective,g,{reason:'upkeep-canonical',backup:false}))return{ok:false};}
     branchCorrectionPending=null;
    }
    else{
-    const corrected=mergeBranchCorrection(save,result.save,currentSave),monthly=mergeMonthlyUpkeep(save,result.save,corrected.changed?corrected.save:currentSave),condition=mergeCastleDurabilityCorrection(save,result.save,monthly.save),preserved=condition.save,home=result.staffBase?.personalHome;
+    const corrected=mergeBranchCorrection(save,result.save,currentSave),monthly=mergeMonthlyUpkeep(save,result.save,corrected.changed?corrected.save:currentSave),condition=mergeCastleDurabilityCorrection(save,result.save,monthly.save),repair=mergeRepairCorrection(save,result,condition.save),preserved=repair.save||condition.save,home=result.staffBase?.personalHome;
     // The server may have needed no reduction while a later local governor
     // change did. Its old personal-home backup must not replenish that loss.
     if(home&&journal?.current&&!journal.overflow&&save.state.walking?.campaignId===preserved.state.walking?.campaignId&&save.state.clan===preserved.state.clan&&journal.records.some(record=>(record.before.castles[home]||0)>(record.after.castles[home]||0)))effective=staffSnapshotWithTroops(result,preserved.state);
-    branchCorrectionPending=corrected.pending?save:null;if((corrected.changed||monthly.changed||condition.changed)&&!await apply(preserved,effective,g,{reason:corrected.changed?'branch-canonical':monthly.changed?'upkeep-month':'durability-canonical',backup:false}))return{ok:false};
+    branchCorrectionPending=corrected.pending?save:null;if(condition.conflict||repair.conflict){if(!await apply(result.save,result,g,{reason:'repair-conflict',backup:true,backupRuntime:true}))return{ok:false};branchCorrectionPending=null;effective=result;}else if((corrected.changed||monthly.changed||condition.changed||repair.changed)&&!await apply(preserved,effective,g,{reason:repair.changed?'repair-canonical':corrected.changed?'branch-canonical':monthly.changed?'upkeep-month':'durability-canonical',backup:false}))return{ok:false};
    }
    if(!valid(g))return{ok:false};applyMaintenanceAuthority(effective,g);applyBranchAuthority(effective,g);observeResidency(effective);if(effective.clock)global.SengokuWorldClock?.accept(effective.clock);applyStaffBase(effective,g);revision=result.revision;ack=canonical;const latest=localSnapshot();dirty=latest.key!==ack;initialized=true;attempt=null;checkpoint(latest);status.updatedAt=result.updatedAt||null;lease(result);access();if(dirty&&!suspended)scheduleSave();return{ok:true};
   }catch(error){

@@ -18,12 +18,14 @@ test('legacy import initializes views at full and explicit damage survives save 
  const a=E.fromSave(old,roster);assert.equal(a.castle(a.state.home).durability.ratio,1);damage(a,a.state.home,.3);
  const b=E.fromSave(a.exportSave(),roster);assert.deepEqual(b.castle(b.state.home).durability,a.castle(a.state.home).durability);assert.deepEqual(b.state.castles[b.state.home].durability,a.state.castles[a.state.home].durability);
 });
-test('repair is exactly ten percent per game month and projection cannot double heal',()=>{
+test('paid repair settles ten percent at the monthly boundary and pure views cannot double heal or charge',()=>{
  const g=quiet(fresh()),id=g.state.home,initial=damage(g,id,.2),anchor=clone(g.state.castles[id].durability);
  for(let i=0;i<12;i++)g.tick(5);assert.equal(g.castle(id).durability.current,initial.current+initial.max/10);
- for(let i=0;i<15;i++)g.castle(id);assert.deepEqual(g.state.castles[id].durability,anchor);
+ const settled=clone(g.state);for(let i=0;i<15;i++){g.castle(id);g.income();g.repairQuote();}assert.deepEqual(g.state,settled);
+ assert.deepEqual(g.state.repair.spent,{wood:50,stone:40});
  const b=E.fromSave(g.exportSave(),roster);assert.equal(b.castle(id).durability.current,g.castle(id).durability.current);
- const a=E.durabilityView(anchor,{castleId:id,elapsedMs:600000});assert.equal(a.current,a.max);
+ const a=E.durabilityView(anchor,{castleId:id,elapsedMs:600000,recoveryMode:'free'});assert.equal(a.current,a.max);
+ assert.equal(E.durabilityView(anchor,{castleId:id,elapsedMs:600000}).current,initial.current);
  assert.equal(E.durabilityView({...anchor,updatedElapsedMs:60000},{castleId:id,elapsedMs:0}).current,initial.current);
 });
 test('clock migration preserves existing damage instead of healing through the time-origin offset',()=>{
@@ -40,7 +42,7 @@ test('stronger castle levels retain absolute missing durability',()=>{
  const g=quiet(prepare(fresh())),id=g.state.home,before=damage(g,id,.25),missing=before.max-before.current;
  g.state.castles[id].level++;g._anchorCastleDurability(id);const after=g.castle(id).durability;
  assert.equal(after.max-before.max,2000);assert.equal(after.max-after.current,missing);
- const prior=after.current;g.tick(5);assert.equal(g.castle(id).durability.current,prior+Math.floor(after.max/120));
+ const prior=after.current;g.tick(5);assert.equal(g.castle(id).durability.current,prior);assert.equal(g.castle(id).durability.repairPendingHP,Math.floor(after.max/120));
 });
 test('actual castle construction changes capacity at its completion time',()=>{
  const g=quiet(prepare(fresh())),id=g.state.home,before=damage(g,id,.2),quote=g.upgradeCastle(id);assert(quote.ok,quote.message);
@@ -85,3 +87,4 @@ test('malformed imported durability and battle results are rejected',()=>{
  assert.throws(()=>E.normalizeDurabilityBattle({before:1,after:0,damage:2,max:10000,breached:false,captured:false,record:{version:1,current:0,max:10000,updatedElapsedMs:0}}));
 });
 console.log(count+' durability engine groups passed.');
+

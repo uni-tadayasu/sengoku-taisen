@@ -639,14 +639,14 @@
   function buildingOutput(id){return game.buildingSummary?game.buildingSummary(id):'';}
   function economyNumber(value,kind='net'){
     const amount=Number(value)||0;if(!amount)return '0';
-    return (kind==='troopUpkeep'||kind==='facilityUpkeep'||kind==='governorSalary'||kind==='surplusAdjustment'||amount<0?'−':'+')+num(Math.abs(amount));
+    return (kind==='troopUpkeep'||kind==='facilityUpkeep'||kind==='governorSalary'||kind==='surplusAdjustment'||kind==='repairUpkeep'||amount<0?'−':'+')+num(Math.abs(amount));
   }
   function economyBalanceTitle(key,income){
-    return `${resNames[key]}：毎月の差引 ${economyNumber(income[key])}（生産 ${economyNumber(income.gross[key],'gross')}、兵の維持費 ${economyNumber(income.troopUpkeep[key],'troopUpkeep')}、施設・城の維持費 ${economyNumber(income.facilityUpkeep[key],'facilityUpkeep')}、奉行の給与 ${economyNumber(income.governorSalary[key],'governorSalary')}、余剰生産の調整 ${economyNumber(income.surplusAdjustment[key],'surplusAdjustment')}）`;
+    return `${resNames[key]}：毎月の差引（見込） ${economyNumber(income[key])}（生産 ${economyNumber(income.gross[key],'gross')}、兵の維持費 ${economyNumber(income.troopUpkeep[key],'troopUpkeep')}、施設・城の維持費 ${economyNumber(income.facilityUpkeep[key],'facilityUpkeep')}、奉行の給与 ${economyNumber(income.governorSalary[key],'governorSalary')}、余剰生産の調整 ${economyNumber(income.surplusAdjustment[key],'surplusAdjustment')}、拠点の修復費見込 ${economyNumber(income.repairUpkeep?.[key],'repairUpkeep')}）`;
   }
   function economyPanel(scope='ledger'){
     const income=game.income(),troops=[['field','本隊'],['marching','出陣中'],['castleGarrisons','本拠・所領の守備兵'],['branchGarrisons','支拠点の配置兵'],['retreating','帰還待機'],['covert','忍者・足軽'],['external','外部に配置・預けている兵']],levels=[['townLevels','城下の施設'],['castleLevels','所有する城郭'],['branchLevels','稼働中の支拠点'],['branchFacilityLevels','支拠点の施設']];
-    return `<section class="panel economy-panel ${scope==='army'?'economy-panel-compact':''}" data-economy-panel="${scope}" aria-labelledby="economy-title-${scope}"><div class="panel-heading"><h2 id="economy-title-${scope}">毎月の収支</h2>${icon('scroll')}</div><div class="economy-total"><span>維持費の対象となる兵</span><strong><span data-economy-total>${num(income.totalTroops)}</span><small>人</small></strong></div><div class="economy-resources">${Object.entries(resNames).map(([key,label])=>`<article class="economy-resource" data-stable-key="economy-${scope}-${key}"><h3>${icon(resIcons[key],key)}${label}</h3><dl>${[['gross','生産'],['troopUpkeep','兵の維持費'],['facilityUpkeep','施設・城の維持費'],['governorSalary','奉行の給与'],['surplusAdjustment','余剰生産の調整'],['net','差引']].map(([kind,title])=>`<div class="economy-row ${kind==='net'?'economy-net':''}"><dt>${title}</dt><dd data-economy-rate="${kind}" data-economy-resource="${key}" class="${kind==='net'&&income.net[key]<0?'is-negative':''}">${economyNumber(income[kind][key],kind)}</dd></div>`).join('')}</dl></article>`).join('')}</div><details class="economy-details"><summary>維持費・給与の対象と内訳</summary><h3>奉行の給与</h3><dl class="economy-breakdown"><div><dt>任命中の奉行</dt><dd><span data-economy-governors>${num(income.governorCount)}</span>人</dd></div><div><dt>1人の月給</dt><dd>金銭 ${num(data.maintenance.governorMonthlyGold)}</dd></div></dl><p>建設済み施設の奉行に、在任時間に応じて金銭を支払います。解除・軍団への異動後は、その武将の給与はかかりません。</p><h3>現在の兵数</h3><dl class="economy-breakdown">${troops.map(([key,label])=>`<div><dt>${label}</dt><dd><span data-economy-troops="${key}">${num(income.troopBreakdown[key])}</span>人</dd></div>`).join('')}</dl><h3>維持している完成レベル</h3><dl class="economy-breakdown">${levels.map(([key,label])=>`<div><dt>${label}</dt><dd>計 <span data-economy-levels="${key}">${num(income.facilityLevels[key])}</span></dd></div>`).join('')}<div><dt>完成レベルの合計</dt><dd><span data-economy-levels="totalLevels">${num(income.facilityLevels.totalLevels)}</span></dd></div></dl><p>施設・城の完成レベルと所有する城の数に応じた維持費です。未完成の普請・予約分は含みません。</p></details><p class="economy-note">維持費・給与を引いた後の余剰が大きいほど、増える資産を緩やかに調整します。増産分の25%を残す計算により、大きな領国でも施設強化の効果が続きます（端数切り捨て）。差引が実際に増減する額です。少額の収入・赤字・現在の備蓄・報酬は、この調整で減りません。</p><p class="economy-note">ゲーム内の月替わりに1回、金銭・兵糧の月間収支を確認します。赤字の場合は、手持ちの兵、本拠を優先した城の守備兵、支拠点の兵の順に、必要な人数だけ自動で減らし、その分の兵士維持費も下げます。月の途中では自動減兵しません。施設維持費は変わりません。</p><p class="economy-note">1倍速では60秒で1か月。生産・維持費・奉行の給与は経過時間に応じて反映し、残高は0未満になりません。勾玉・威信は維持費の対象外です。</p></section>`;
+    return `<section class="panel economy-panel ${scope==='army'?'economy-panel-compact':''}" data-economy-panel="${scope}" aria-labelledby="economy-title-${scope}"><div class="panel-heading"><h2 id="economy-title-${scope}">毎月の収支</h2>${icon('scroll')}</div><div class="economy-total"><span>維持費の対象となる兵</span><strong><span data-economy-total>${num(income.totalTroops)}</span><small>人</small></strong></div><div class="economy-resources">${Object.entries(resNames).map(([key,label])=>`<article class="economy-resource" data-stable-key="economy-${scope}-${key}"><h3>${icon(resIcons[key],key)}${label}</h3><dl>${[['gross','生産'],['troopUpkeep','兵の維持費'],['facilityUpkeep','施設・城の維持費'],['governorSalary','奉行の給与'],['surplusAdjustment','余剰生産の調整'],['repairUpkeep','拠点の修復費（見込）'],['net','差引（見込）']].map(([kind,title])=>`<div class="economy-row ${kind==='net'?'economy-net':''}"><dt>${title}</dt><dd data-economy-rate="${kind}" data-economy-resource="${key}" class="${kind==='net'&&income.net[key]<0?'is-negative':''}">${economyNumber(income[kind][key],kind)}</dd></div>`).join('')}</dl></article>`).join('')}</div><details class="economy-details"><summary>維持費・給与の対象と内訳</summary><h3>奉行の給与</h3><dl class="economy-breakdown"><div><dt>任命中の奉行</dt><dd><span data-economy-governors>${num(income.governorCount)}</span>人</dd></div><div><dt>1人の月給</dt><dd>金銭 ${num(data.maintenance.governorMonthlyGold)}</dd></div></dl><p>建設済み施設の奉行に、在任時間に応じて金銭を支払います。解除・軍団への異動後は、その武将の給与はかかりません。</p><h3>現在の兵数</h3><dl class="economy-breakdown">${troops.map(([key,label])=>`<div><dt>${label}</dt><dd><span data-economy-troops="${key}">${num(income.troopBreakdown[key])}</span>人</dd></div>`).join('')}</dl><h3>維持している完成レベル</h3><dl class="economy-breakdown">${levels.map(([key,label])=>`<div><dt>${label}</dt><dd>計 <span data-economy-levels="${key}">${num(income.facilityLevels[key])}</span></dd></div>`).join('')}<div><dt>完成レベルの合計</dt><dd><span data-economy-levels="totalLevels">${num(income.facilityLevels.totalLevels)}</span></dd></div></dl><p>施設・城の完成レベルと所有する城の数に応じた維持費です。未完成の普請・予約分は含みません。</p></details><p class="economy-note">維持費・給与を引いた後の余剰が大きいほど、増える資産を緩やかに調整します。増産分の25%を残す計算により、大きな領国でも施設強化の効果が続きます（端数切り捨て）。少額の収入・赤字・現在の備蓄・報酬は、この調整で減りません。差引は現在の生産・維持費と、次回の修復費を含めた見込みです。</p><p class="economy-note">ゲーム内の月替わりに1回、金銭・兵糧の月間収支を確認します。赤字の場合は、手持ちの兵、本拠を優先した城の守備兵、支拠点の兵の順に、必要な人数だけ自動で減らし、その分の兵士維持費も下げます。月の途中では自動減兵しません。施設維持費は変わりません。</p><p class="economy-note">自領の城と稼働中の支拠点は、月替わりに最大耐久の10%まで修復します。回復100につき木材5・石材4を使い、修復した分だけ支払います。月途中の損傷は経過時間で按分し、資材が不足する場合は各拠点の必要量に応じて回復を配分します。満タン・未完成・陥落中の拠点には日常の修復費はかかりません。陥落した支拠点の復旧工事は、開始時の見積額で精算します。</p><p class="economy-note">1倍速では60秒で1か月。生産・維持費・奉行の給与は経過時間に応じて反映し、残高は0未満になりません。勾玉・威信は維持費の対象外です。</p></section>`;
   }
   function refreshEconomyPanels(income){
     const panels=document.querySelectorAll('[data-economy-panel]');if(!panels.length)return;
@@ -1119,7 +1119,7 @@
     const campaign=`<div class="settings-row"><span>現在の難易度</span><strong>${({easy:'初陣',normal:'戦国',hard:'修羅'})[state().difficulty]}</strong></div><p class="settings-explanation">各資産の所有上限は100,000,000です。施設の収容量と1回の出陣人数には別の上限があります。</p>${game.isAdmin?`<div class="notice admin-fixed-base">${icon('castle')}<strong>本拠：江戸城（固定）</strong><br>武将・施設・資源は連携した端末へ引き継ぎます。</div>${settingAction('restore-admin-assets','徳川家康 U を復元','資格を確認済み。重複して付与されません。','crown')}`:''}<div class="settings-new-campaign"><p>新しい勢力・難易度で始める場合は、次の画面で内容を確認できます。</p><button class="button danger full" data-action="new-game">${icon('refresh')}新しい物語を始める</button></div>`;
     modal('保存・設定','音・表示、引き継ぎ、便利な機能をまとめて管理。',`${saveWarning?`<div class="notice" role="alert">${esc(saveWarning)}</div>`:''}<div class="settings-hub">${group('appearance','音・表示','BGM・音量・演出・城下町のヒント','sound',sound,true)}${group('save','保存・引き継ぎ','バックアップ・端末同期・データ復元','save',saves)}${group('features','便利な機能','通知・成長手帳・ウォーキング・外観','flag',convenience)}${group('campaign','戦役の設定','難易度の確認・新しい物語','castle',campaign)}</div>`,`<button class="button" data-action="help">遊び方</button><button class="button primary" data-action="close">ゲームへ戻る</button>`,'settings');
   }
-  function helpModal(){modal('天下への道しるべ','月を重ね、城を育て、将とともに天下へ。',`<div class="help-steps">${[['城下を育てる','田畑は兵糧、商家は金銭を生みます。施設を選んで増築すると表示された秒数で完成。木材と石材も計画的に確保しましょう。強化時の資源は、領有1城で1倍、2城で2倍、3城で4倍、4城で8倍、5城以降は16倍です。施設維持費の単価は変わりません。'],['武将を迎える','名鑑から武将を登用するほか、勾玉で武将招集ができます。勾玉は毎月・任務・城の初攻略で集まります。軍団に最大3名を編成。政治の高い家臣は各施設の奉行に任命し、生産・登用・募兵・防衛・研究を支えます。奉行の給与は1人あたり月額50の金銭で、在任時間に応じて支払います。'],['時を味方にする','資源は毎秒、普請と研究は実時間で進みます。1倍速では指令が20秒ごとに1回復し、60秒がゲーム内の1か月です。時間は全プレイヤー共通。1560〜1615年を周回し、画面を閉じていても進みます。再接続時に経過した分を反映します。速度・停止は全員共通です。'],['拠点の耐久を守る','すべての城・大都市・支拠点に耐久があります。攻城戦で損傷すると城壁などの防御効果が弱まり、稼働中はゲーム内1か月で最大耐久の10%を自動修復します。占領直後は25%から復旧し、陥落した支拠点は修復工事が必要です。'],['軍備を整える','募兵と訓練で兵数と士気を確保します。現在保有する兵には金銭・兵糧の維持費がかかります。完成した施設・城の維持費は金銭・兵糧・木材・石材から差し引かれます。ゲーム内の月替わりに1回、金銭・兵糧の月間収支が赤字なら、手持ち・本拠を優先した城の守備兵・支拠点の順に必要な兵数を自動調整し、その分の兵士維持費も減ります。月の途中では自動減兵しません。軍団や城下普請帳の「毎月の収支」で内訳を確認できます。'],['兵士を輸出入する','交流の交易で、兵士の人数と対価を指定して他の領主と輸出入できます。無償の移送も可能です。輸出兵は提案時に預け、相手の承認で移動します。取消・拒否の兵士は受取待ちに戻ります。輸入・返還は募兵上限とは別枠で受け入れ、本隊と出陣中の兵を合わせた保有上限を確認します。'],['野良兵士と戦う','野良兵戦でCPU部隊を選び、出陣兵数と戦法を決めます。指令1と兵糧を消費し、勝利すると資源や勾玉を獲得します。戦闘では兵の損失が発生します。城の所有は変わりません。'],['天下を切り拓く','天下地図で自領に隣接する城を選び、出陣兵数と戦法を決定。偵察や6か月の同盟も活用して保護された江戸城・京都御所を除く城の統一を目指します。自分の役職で領有できる城の数は画面に表示されます。'],['領主と向き合う','共通フィールドには実際のプレイヤーの本拠と、所領の二条・大坂・名古屋が表示されます。拠点を選んで出陣し、この3都市は勝利すると領有できます。外交が成立した6か月間は互いに攻撃できません。江戸城・京都御所の報酬戦にも挑戦でき、勝利時は戦勝報酬を得ます。この2城は占領されません。'],['戦記を守る','端末を連携すると進行を自動同期します。連携前の自動保存や、設定からのセーブ書き出しも利用できます。同じ領主IDを連携した端末へ引き継げます。']].map(([t,p])=>`<div class="help-step"><div><h3>${t}</h3><p>${p}</p></div></div>`).join('')}</div><div class="notice">天下地図はCPU勢力との戦役です。共通フィールドでは他プレイヤーの拠点を選び、襲撃や合意に基づく外交ができます。年月・接続状況・交流も全員で共有します。実在の人物・城を題材に、年代・能力・外交・合戦をゲーム向けに再構成しています。</div>`,`<button class="button primary" data-action="close">城下町へ</button>`,'help');}
+  function helpModal(){modal('天下への道しるべ','月を重ね、城を育て、将とともに天下へ。',`<div class="help-steps">${[['城下を育てる','田畑は兵糧、商家は金銭を生みます。施設を選んで増築すると表示された秒数で完成。木材と石材も計画的に確保しましょう。強化時の資源は、領有1城で1倍、2城で2倍、3城で4倍、4城で8倍、5城以降は16倍です。施設維持費の単価は変わりません。'],['武将を迎える','名鑑から武将を登用するほか、勾玉で武将招集ができます。勾玉は毎月・任務・城の初攻略で集まります。軍団に最大3名を編成。政治の高い家臣は各施設の奉行に任命し、生産・登用・募兵・防衛・研究を支えます。奉行の給与は1人あたり月額50の金銭で、在任時間に応じて支払います。'],['時を味方にする','資源は毎秒、普請と研究は実時間で進みます。1倍速では指令が20秒ごとに1回復し、60秒がゲーム内の1か月です。時間は全プレイヤー共通。1560〜1615年を周回し、画面を閉じていても進みます。再接続時に経過した分を反映します。速度・停止は全員共通です。'],['拠点の耐久を守る','すべての城・大都市・支拠点に耐久があります。攻城戦で損傷すると城壁などの防御効果が弱まり、自領の城と稼働中の支拠点は、月替わりに最大耐久の10%まで修復します。回復100につき木材5・石材4を消費し、資材不足時は回復量を抑えます。占領直後は25%から復旧し、陥落した支拠点は修復工事が必要です。'],['軍備を整える','募兵と訓練で兵数と士気を確保します。現在保有する兵には金銭・兵糧の維持費がかかります。完成した施設・城の維持費は金銭・兵糧・木材・石材から差し引かれます。ゲーム内の月替わりに1回、金銭・兵糧の月間収支が赤字なら、手持ち・本拠を優先した城の守備兵・支拠点の順に必要な兵数を自動調整し、その分の兵士維持費も減ります。月の途中では自動減兵しません。軍団や城下普請帳の「毎月の収支」で内訳を確認できます。'],['兵士を輸出入する','交流の交易で、兵士の人数と対価を指定して他の領主と輸出入できます。無償の移送も可能です。輸出兵は提案時に預け、相手の承認で移動します。取消・拒否の兵士は受取待ちに戻ります。輸入・返還は募兵上限とは別枠で受け入れ、本隊と出陣中の兵を合わせた保有上限を確認します。'],['野良兵士と戦う','野良兵戦でCPU部隊を選び、出陣兵数と戦法を決めます。指令1と兵糧を消費し、勝利すると資源や勾玉を獲得します。戦闘では兵の損失が発生します。城の所有は変わりません。'],['天下を切り拓く','天下地図で自領に隣接する城を選び、出陣兵数と戦法を決定。偵察や6か月の同盟も活用して保護された江戸城・京都御所を除く城の統一を目指します。自分の役職で領有できる城の数は画面に表示されます。'],['領主と向き合う','共通フィールドには実際のプレイヤーの本拠と、所領の二条・大坂・名古屋が表示されます。拠点を選んで出陣し、この3都市は勝利すると領有できます。外交が成立した6か月間は互いに攻撃できません。江戸城・京都御所の報酬戦にも挑戦でき、勝利時は戦勝報酬を得ます。この2城は占領されません。'],['戦記を守る','端末を連携すると進行を自動同期します。連携前の自動保存や、設定からのセーブ書き出しも利用できます。同じ領主IDを連携した端末へ引き継げます。']].map(([t,p])=>`<div class="help-step"><div><h3>${t}</h3><p>${p}</p></div></div>`).join('')}</div><div class="notice">天下地図はCPU勢力との戦役です。共通フィールドでは他プレイヤーの拠点を選び、襲撃や合意に基づく外交ができます。年月・接続状況・交流も全員で共有します。実在の人物・城を題材に、年代・能力・外交・合戦をゲーム向けに再構成しています。</div>`,`<button class="button primary" data-action="close">城下町へ</button>`,'help');}
   function aboutModal(){const sourceInfo=window.SENGOKU_ROSTER_META;modal('ゲーム概要・収録情報','戦国VS · KASAI SOLUTIONS',`<h3>城下町を育て、武将を編成する戦国ブラウザゲーム</h3><p>「戦国VS」は、KASAI SOLUTIONSによる戦国ブラウザゲームです。はじまりの城を選び、城下町の施設を連続増築し、武将を編成して領国を発展させます。PC・スマートフォン・タブレットで遊べます。</p><p>全員共通の年月のもと、天下地図でのCPU勢力の城攻略、共通フィールドでの外交、同盟の資産共有、領主や所属同盟への書状を楽しめます。軍師AIの自動進軍、対応端末でのウォーキング報酬、領主を連携した端末間の自動同期にも対応しています。</p><p class="subtitle"><a href="about/" target="_blank" rel="noopener">詳しいゲーム概要・制作方針</a> · <a href="guide/" target="_blank" rel="noopener">遊び方と各機能の条件</a></p><h3>収録人物</h3><p>戦国から織豊期を中心に${num(roster.length)}名、${new Set(roster.map(o=>o.clan)).size}勢力の人物を収録しています。史料に残る武将を一人残らず網羅した名簿ではありません。人物の改名は原則として同一人物にまとめています。</p><h3>歴史とゲームの関係</h3><p>本作は256名の人物・${data.castles.length}城・64施設が登場する「群雄集結」です。通常城と64施設は最大Lv.32、二条・大坂・名古屋の城郭はLv.48、江戸城の城郭はLv.64、京都御所はLv.128まで育成できます。城の姿は32段階で、Lv.33以降も最終形態を使用します。城郭${num(data.castles.length*32)}種・施設2,048種の段階別イラストがあります。武将絵巻と合わせて全${num(window.SengokuArt?.totalIllustrations||8224)}種を収録し、支度・朝活・昼活・夜活の4曲と、従来のオリジナルBGM16曲を収録しています。異なる年代の人物と城が同時に登場します。能力値・格付け・特技・城の勢力配置・施設効果はすべてゲーム用の創作です。武将1名につき8ランク、計2,048種の創作肖像を閲覧・収集できます。肖像は実際の容姿を示すものではありません。</p><h3>資料</h3><ul class="about-links">${(sourceInfo?.sources||[]).map(x=>`<li><a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.title)}</a></li>`).join('')}</ul><p class="subtitle"><a href="SOURCES.md" target="_blank" rel="noopener">人物資料</a>・<a href="SOURCES-MAP.md" target="_blank" rel="noopener">地図の出典</a>・<a href="SOURCES-KAMON.md" target="_blank" rel="noopener">家紋の出典</a>を確認できます。</p><hr class="divider"><p class="subtitle">ゲーム内城下町：オリジナル生成イラスト<br>音楽：トップメニュー・時間帯別の提供音源4曲と、本作のために作曲・編曲した16曲<br>著作権：© KASAI SOLUTIONS</p>`,`<button class="button primary" data-action="close">閉じる</button>`,'about');}
   function renderStartSelection(){return `<section class="start-campaign-welcome"><div class="start-campaign-emblem" aria-hidden="true">${icon('castle')}</div><div class="eyebrow">YOUR FIRST CASTLE</div><h1>天下への一歩を、<br>あなたの城から。</h1><p>${game.isAdmin?'家は徳川家、本拠は江戸城です。難易度を決めて出陣しましょう。':game.isStaff?'家は徳川家、共同本拠は京都御所です。難易度を決めて、共有の城下町から出陣しましょう。':`全国${data.castles.filter(c=>!c.majorCity).length}城の領主として入城するか、ほかのプレイヤーの家臣として参加できます。領主の城がすべて埋まっていても、家臣として始められます。`}<br>選択を確定するまで、新しい進行は保存されません。</p><div class="start-campaign-actions"><button class="button primary" data-action="new-game">${icon('castle')}${game.isAdmin?'江戸城で開始設定':game.isStaff?'京都御所で開始設定':'はじまりの城を選ぶ'}</button><button class="button" data-action="open-recovery">${icon('upload')}以前の領主を復元</button></div><small>以前の進行がある方は、引き継ぎ・データ復元からお戻りください。</small></section>`;}
   function openStartSelection(){if(startPending&&!$('#modal').open&&!document.querySelector('.social-dialog[open]'))newGameModal();}
@@ -2576,12 +2576,12 @@ function mergeBranchCorrection(sent,canonical,current,{troopsSeparate=false}={})
  function parts(state,parent){
   const branches=copy((state.branches||[]).filter(row=>row.parentCastleId===parent)).sort((x,y)=>x.id.localeCompare(y.id)),byId=new Map(branches.map(row=>[row.id,row])),jobs=[];
   for(const job of state.jobs||[]){if(job.kind!=='branch'||!byId.has(job.id))continue;const deadline=Number.isSafeInteger(job.completesElapsedMs)?job.completesElapsedMs:Math.round(elapsed(state)+job.remainingSeconds*1000),remainingSeconds=Math.min(job.totalSeconds,Math.max(0,(deadline-at)/1000));
-   if(remainingSeconds<=1e-8){const branch=byId.get(job.id);if(job.facilityId){global.SengokuEngine?.completeBranchFacility?.(branch,job,deadline);}else{branch.level=job.targetLevel;branch.fallen=false;if(job.repair)delete branch.durability;else if(branch.durability&&global.SengokuEngine?.durabilityView){const view=global.SengokuEngine.durabilityView(branch.durability,{castleId:branch.parentCastleId,level:branch.level,branch:true,elapsedMs:deadline});branch.durability={version:1,current:view.current,max:view.max,updatedElapsedMs:view.updatedElapsedMs};}}}
+   if(remainingSeconds<=1e-8){const branch=byId.get(job.id);if(job.facilityId){global.SengokuEngine?.completeBranchFacility?.(branch,job,deadline);}else{branch.level=job.targetLevel;branch.fallen=false;if(job.repair)delete branch.durability;else if(branch.durability&&global.SengokuEngine?.durabilityView){const view=global.SengokuEngine.durabilityView(branch.durability,{castleId:branch.parentCastleId,level:branch.level,branch:true,elapsedMs:deadline});branch.durability=conditionRecord(view);}}}
    else jobs.push({...copy(job),completesElapsedMs:deadline,remainingSeconds,remaining:Math.ceil((remainingSeconds-1e-8)/60)});
   }
   jobs.sort((x,y)=>x.id.localeCompare(y.id));return{owner:state.castles?.[parent]?.owner,branches,jobs};
  }
- const semantic=part=>({...part,...(troopsSeparate?{branches:part.branches.map(({stationedTroops,...branch})=>branch)}:{}),jobs:part.jobs.map(({remaining,remainingSeconds,...job})=>job)}),changes=[];let hasDelta=false;
+ const semantic=part=>({...part,branches:part.branches.map(({durability,...branch})=>branch),...(troopsSeparate?{branches:part.branches.map(({stationedTroops,durability,...branch})=>branch)}:{}),jobs:part.jobs.map(({remaining,remainingSeconds,...job})=>job)}),changes=[];let hasDelta=false;
  for(const parent of parents){const before=parts(a,parent),after=parts(b,parent),live=parts(c,parent);if(same(semantic(before),semantic(after)))continue;hasDelta=true;if(same(semantic(live),semantic(after)))continue;
   // A later branch action or CPU transition needs its own authoritative reply.
   if(!same(semantic(live),semantic(before)))return{changed:false,pending:true};changes.push({parent,after});
@@ -2591,29 +2591,91 @@ function mergeBranchCorrection(sent,canonical,current,{troopsSeparate=false}={})
  for(const path of paths){const before=read(a,path),after=read(b,path),live=read(c,path);if(before===after||live===after||after===undefined)continue;if(live!==before)return{changed:false,pending:true};summary.push({path,value:after});}
  if(!changes.length&&!summary.length)return{changed:false,pending:false};
  const merged=copy(current),state=merged.state;
- for(const {parent,after}of changes){if(!state.castles?.[parent])return{changed:false,pending:true};state.castles[parent].owner=after.owner;state.branches=(state.branches||[]).filter(row=>row.parentCastleId!==parent).concat(after.branches);state.jobs=(state.jobs||[]).filter(job=>job.kind!=='branch'||!job.id.startsWith(parent+'_')).concat(after.jobs);}
+ for(const {parent,after}of changes){if(!state.castles?.[parent])return{changed:false,pending:true};state.castles[parent].owner=after.owner;const liveBranches=new Map((state.branches||[]).map(row=>[row.id,row]));state.branches=(state.branches||[]).filter(row=>row.parentCastleId!==parent).concat(after.branches.map(branch=>{const live=liveBranches.get(branch.id);return live&&!branch.fallen&&!branch.retreating&&branch.level>=live.level&&!live.fallen&&!live.retreating?{...branch,...(live.durability?{durability:copy(live.durability)}:{})}:branch;}));state.jobs=(state.jobs||[]).filter(job=>job.kind!=='branch'||!job.id.startsWith(parent+'_')).concat(after.jobs);}
  const commanders=new Set((state.branches||[]).flatMap(branch=>branch.commanders||[]));for(const [facility,id]of Object.entries(state.governors||{}))if(commanders.has(id))delete state.governors[facility];
  for(const {path,value}of summary){let target=state;for(const key of path.slice(0,-1))target=target[key];target[path.at(-1)]=value;}
  return{changed:true,pending:false,save:merged};
 }
-// A canonical condition may arrive after an unrelated local action. Merge that
-// one field without replacing resources, orders, ownership or a newer siege.
+function conditionRecord(view){
+ return{version:1,current:view.current,max:view.max,updatedElapsedMs:view.updatedElapsedMs,...(Number.isSafeInteger(view.repairPendingHP)?{repairPendingHP:view.repairPendingHP}:{}),...(Number.isSafeInteger(view.repairRemainder)?{repairRemainder:view.repairRemainder}:{})};
+}
+// Merge structural damage independently of other branch changes. Recovery paid
+// after a request was sent remains attached to its materials and receipt.
 function mergeCastleDurabilityCorrection(sent,canonical,current){
  const a=sent?.state,b=canonical?.state,c=current?.state,same=(left,right)=>JSON.stringify(left??null)===JSON.stringify(right??null),scope=state=>JSON.stringify([state?.walking?.campaignId,state?.clan,state?.worldClock?.id,state?.cycle?.index]);
  if(!a?.walking?.campaignId||scope(a)!==scope(b)||scope(a)!==scope(c))return{changed:false,save:current};
- const at=Number.isSafeInteger(c.worldClock?.elapsedMs)?c.worldClock.elapsedMs:(c.turn||0)*60000+(c.realtime?.elapsed||0)*1000;let merged=null;
- for(const [id,after]of Object.entries(b.castles||{})){
-  const before=a.castles?.[id],live=c.castles?.[id];if(!before||!live||before.owner!==after.owner||live.owner!==after.owner||same(before.durability,after.durability)||same(live.durability,after.durability))continue;
-  if(!same(live.durability,before.durability)){
-   // CPU predictions can describe the same hit on both sides. Taking the lower
-   // condition at one game time preserves damage without subtracting it twice.
-   if(!global.SengokuEngine?.durabilityView)continue;
-   const options={castleId:id,level:live.level,wall:live.wall,elapsedMs:at},authoritative=global.SengokuEngine.durabilityView(after.durability,options),local=global.SengokuEngine.durabilityView(live.durability,options);
-   if(local.current<=authoritative.current)continue;
+ const at=Number.isSafeInteger(c.worldClock?.elapsedMs)?c.worldClock.elapsedMs:(c.turn||0)*60000+(c.realtime?.elapsed||0)*1000,engine=global.SengokuEngine;let merged=null;
+ // A later payment cannot be safely replayed over an earlier loss/removal of
+ // that base. The authoritative transition may have ended repair eligibility.
+ for(const kind of ['castles','branches'])for(const [id,count]of Object.entries(c.repair?.recovered?.[kind]||{})){
+  if(count<=(a.repair?.recovered?.[kind]?.[id]||0))continue;
+  const target=kind==='castles'?b.castles?.[id]:(b.branches||[]).find(row=>row.id===id),eligible=kind==='castles'?target?.owner===b.clan:target&&target.level>0&&!target.fallen&&!target.retreating&&b.castles?.[target.parentCastleId]?.owner===b.clan;
+  if(!eligible)return{conflict:true,changed:false,save:current};
+ }
+ const pools=[['castles',Object.entries(b.castles||{})],['branches',(b.branches||[]).map(row=>[row.id,row])]];
+ for(const [kind,rows]of pools)for(const [id,after]of rows){
+  const branch=kind==='branches',find=(state,key)=>branch?(state.branches||[]).find(row=>row.id===key):state.castles?.[key],before=find(a,id),live=find(c,id);
+  if(!before||!live||branch&&(before.parentCastleId!==after.parentCastleId||live.parentCastleId!==after.parentCastleId||live.fallen!==after.fallen||live.retreating!==after.retreating)||!branch&&(before.owner!==after.owner||live.owner!==after.owner)||same(before.durability,after.durability))continue;
+  let record=after.durability;
+  if(!same(live.durability,before.durability)&&engine?.durabilityView){
+   const owned=branch?c.castles?.[live.parentCastleId]?.owner===c.clan:live.owner===c.clan,options={castleId:branch?live.parentCastleId:id,level:live.level,...(branch?{branch:true,fallen:live.fallen||live.retreating}:{wall:live.wall}),elapsedMs:at,recoveryMode:owned?'paid':'free'};
+   const paidLater=owned?Math.max(0,(c.repair?.recovered?.[kind]?.[id]||0)-(a.repair?.recovered?.[kind]?.[id]||0)):0;
+   const paidCorrection=owned?(b.repair?.recovered?.[kind]?.[id]||0)-(a.repair?.recovered?.[kind]?.[id]||0):0;
+   let authoritative=engine.durabilityView(record,options),local=engine.durabilityView(live.durability,options);
+   const baseline=engine.durabilityView(before.durability,options),expectedLocal=Math.min(local.max,baseline.current+paidLater),ordinaryCapacityChange=owned&&local.current===expectedLocal;
+   // Without an ordered damage journal, recovery followed by another hit can
+   // be indistinguishable from the CPU hit already present in this reply.
+   // Preserve a backup and use the complete canonical state in that case.
+   if(owned&&(paidLater||paidCorrection)&&!ordinaryCapacityChange)return{conflict:true,changed:false,save:current};
+   if(paidLater&&!live.fallen&&!live.retreating){
+    const anchor=Math.max(Number(record?.updatedElapsedMs||0),Number(live.durability?.updatedElapsedMs||0)),prior=engine.durabilityView(record,{...options,elapsedMs:anchor});
+    if(prior.current+paidLater>prior.max)return{conflict:true,changed:false,save:current};
+    record={...conditionRecord(prior),current:Math.min(prior.max,prior.current+paidLater),repairPendingHP:Math.min(prior.repairPendingHP||0,live.durability?.repairPendingHP||0),repairRemainder:live.durability?.repairRemainder||0};
+    authoritative=engine.durabilityView(record,options);
+   }
+   // A later local siege may be worse than the acknowledged condition. Never
+   // add the same hit twice or turn that later damage into recovery.
+   if(ordinaryCapacityChange){
+    // Building completion increases capacity while preserving absolute
+    // damage. It must not hide repair HP which the same reply has charged.
+    record=conditionRecord(authoritative);
+   }else if(local.current<=authoritative.current)continue;
   }
-  merged=merged||JSON.parse(JSON.stringify(current));const castle=merged.state.castles[id];if(after.durability===undefined)delete castle.durability;else castle.durability=JSON.parse(JSON.stringify(after.durability));
+  merged=merged||JSON.parse(JSON.stringify(current));const target=branch?merged.state.branches.find(row=>row.id===id):merged.state.castles[id];
+  if(record===undefined)delete target.durability;else target.durability=JSON.parse(JSON.stringify(record));
  }
  return{changed:!!merged,save:merged||current};
+}
+// A repair acknowledgement corrects only its material delta and cumulative
+// receipt. Recompute prepaid cents after adding subsequent local recovery so
+// fractional credits cannot be refunded or charged a second time.
+function mergeRepairCorrection(sent,snapshot,current){
+ const dto=snapshot.repairAdjustment;if(!dto)return{changed:false,save:current};
+ const a=sent?.state,b=snapshot.save?.state,c=current?.state,engine=global.SengokuEngine,conflict={conflict:true};
+ const scope=state=>JSON.stringify([state?.walking?.campaignId,state?.clan,state?.worldClock?.id,state?.cycle?.index]);
+ if(dto.version!==1||dto.committedRevision!==snapshot.revision||!dto.before||!a?.repair||!c?.repair||!a.walking?.campaignId||scope(a)!==scope(b)||scope(a)!==scope(c)||typeof engine?.normalizeRepairState!=='function')return conflict;
+ try{
+  const prior=engine.normalizeRepairState(a.repair,a.turn),source=engine.normalizeRepairState(b.repair,b.turn),live=engine.normalizeRepairState(c.repair,c.turn),same=(left,right)=>fingerprint({state:left})===fingerprint({state:right});
+  if(!same(prior,dto.before)||!same(source,dto.after)||source.settledTurn>c.turn||live.settledTurn<prior.settledTurn)return conflict;
+  const recovered={castles:{},branches:{}};let hp=0,laterHP=0;
+  for(const kind of ['castles','branches'])for(const id of new Set([...Object.keys(prior.recovered[kind]),...Object.keys(source.recovered[kind]),...Object.keys(live.recovered[kind])])){
+   const later=(live.recovered[kind][id]||0)-(prior.recovered[kind][id]||0),value=(source.recovered[kind][id]||0)+later;
+   if(!Number.isSafeInteger(later)||later<0||!Number.isSafeInteger(value)||value<0)return conflict;if(value)recovered[kind][id]=value;hp+=value;laterHP+=later;
+  }
+  // Both sides may have settled the same previously unacknowledged month.
+  // Their cumulative counters cannot safely be added without a month journal.
+  if(laterHP&&source.settledTurn>prior.settledTurn&&live.settledTurn>prior.settledTurn)return conflict;
+  const spent={},credit={},resources={...c.resources};
+  for(const [key,rate]of [['wood',5],['stone',4]]){
+   const canonicalStock=Math.min(engine.ASSET_CAP,a.resources[key]+prior.spent[key]-source.spent[key]);
+   if(!Number.isSafeInteger(dto.resources?.[key])||canonicalStock<0||b.resources[key]!==canonicalStock||dto.resources[key]!==b.resources[key]-a.resources[key])return conflict;
+   const cents=hp*rate;if(!Number.isSafeInteger(cents))return conflict;spent[key]=Math.ceil(cents/100);credit[key]=spent[key]*100-cents;
+   const laterCostCorrection=(live.spent[key]-prior.spent[key])-(spent[key]-source.spent[key]);
+   const value=resources[key]+dto.resources[key]+laterCostCorrection;if(!Number.isSafeInteger(value)||value<0)return conflict;resources[key]=Math.min(engine.ASSET_CAP,value);
+  }
+  const repair=engine.normalizeRepairState({version:1,settledTurn:Math.max(source.settledTurn,live.settledTurn),spent,credit,recovered},c.turn),save=JSON.parse(JSON.stringify(current));save.state.repair=repair;save.state.resources=resources;
+  return{changed:!same(repair,c.repair)||!same(resources,c.resources),save};
+ }catch{return conflict;}
 }
 function upkeepStocks(state,user){
  return{army:state.troops,castles:Object.fromEntries(Object.entries(state.castles||{}).filter(([id,castle])=>castle.owner===state.clan&&(id!=='edo'||user?.isAdmin===true)&&(id!=='kyoto_gosho'||user?.isStaff===true&&user?.isAdmin!==true)).map(([id,castle])=>[id,castle.troops])),branches:Object.fromEntries((state.branches||[]).map(branch=>[branch.id,branch.stationedTroops||0]))};
@@ -2896,21 +2958,21 @@ function create(options={}){
    if(!Number.isSafeInteger(result.revision)||result.revision<=revision||!fingerprint(result.save))throw Error('自動保存の結果を確認できませんでした。');
    setRole(result);const journal=finishUpkeep?.(),canonical=fingerprint(result.save),currentSave=local(),current=fingerprint(currentSave),staleBranch=olderBranchSnapshot(result);let effective=result;
    // A save response must never erase actions performed while that request was in flight.
-   if(staleBranch&&result.upkeepAdjustment){await recoverConflict(g);return{ok:false,conflict:true};}
+   if(staleBranch&&(result.upkeepAdjustment||result.repairAdjustment)){await recoverConflict(g);return{ok:false,conflict:true};}
    if(staleBranch)branchCorrectionPending=save;
    else if(current===sent&&canonical!==current){if(!await apply(result.save,result,g,{reason:'canonical',backup:false}))return{ok:false};branchCorrectionPending=null;}
    else if(result.upkeepAdjustment){
     const corrected=mergeUpkeepCorrection(save,result,currentSave,journal);
     if(corrected.conflict){if(!await apply(result.save,result,g,{reason:'upkeep-conflict',backup:true,backupRuntime:true}))return{ok:false};}
-    else{const condition=mergeCastleDurabilityCorrection(save,result.save,corrected.save);effective=corrected.snapshot;if((corrected.changed||condition.changed)&&!await apply(condition.save,effective,g,{reason:'upkeep-canonical',backup:false}))return{ok:false};}
+    else{const condition=mergeCastleDurabilityCorrection(save,result.save,corrected.save),repair=mergeRepairCorrection(save,result,condition.save);effective=corrected.snapshot;if(condition.conflict||repair.conflict){if(!await apply(result.save,result,g,{reason:'repair-conflict',backup:true,backupRuntime:true}))return{ok:false};effective=result;}else if((corrected.changed||condition.changed||repair.changed)&&!await apply(repair.save,effective,g,{reason:'upkeep-canonical',backup:false}))return{ok:false};}
     branchCorrectionPending=null;
    }
    else{
-    const corrected=mergeBranchCorrection(save,result.save,currentSave),monthly=mergeMonthlyUpkeep(save,result.save,corrected.changed?corrected.save:currentSave),condition=mergeCastleDurabilityCorrection(save,result.save,monthly.save),preserved=condition.save,home=result.staffBase?.personalHome;
+    const corrected=mergeBranchCorrection(save,result.save,currentSave),monthly=mergeMonthlyUpkeep(save,result.save,corrected.changed?corrected.save:currentSave),condition=mergeCastleDurabilityCorrection(save,result.save,monthly.save),repair=mergeRepairCorrection(save,result,condition.save),preserved=repair.save||condition.save,home=result.staffBase?.personalHome;
     // The server may have needed no reduction while a later local governor
     // change did. Its old personal-home backup must not replenish that loss.
     if(home&&journal?.current&&!journal.overflow&&save.state.walking?.campaignId===preserved.state.walking?.campaignId&&save.state.clan===preserved.state.clan&&journal.records.some(record=>(record.before.castles[home]||0)>(record.after.castles[home]||0)))effective=staffSnapshotWithTroops(result,preserved.state);
-    branchCorrectionPending=corrected.pending?save:null;if((corrected.changed||monthly.changed||condition.changed)&&!await apply(preserved,effective,g,{reason:corrected.changed?'branch-canonical':monthly.changed?'upkeep-month':'durability-canonical',backup:false}))return{ok:false};
+    branchCorrectionPending=corrected.pending?save:null;if(condition.conflict||repair.conflict){if(!await apply(result.save,result,g,{reason:'repair-conflict',backup:true,backupRuntime:true}))return{ok:false};branchCorrectionPending=null;effective=result;}else if((corrected.changed||monthly.changed||condition.changed||repair.changed)&&!await apply(preserved,effective,g,{reason:repair.changed?'repair-canonical':corrected.changed?'branch-canonical':monthly.changed?'upkeep-month':'durability-canonical',backup:false}))return{ok:false};
    }
    if(!valid(g))return{ok:false};applyMaintenanceAuthority(effective,g);applyBranchAuthority(effective,g);observeResidency(effective);if(effective.clock)global.SengokuWorldClock?.accept(effective.clock);applyStaffBase(effective,g);revision=result.revision;ack=canonical;const latest=localSnapshot();dirty=latest.key!==ack;initialized=true;attempt=null;checkpoint(latest);status.updatedAt=result.updatedAt||null;lease(result);access();if(dirty&&!suspended)scheduleSave();return{ok:true};
   }catch(error){

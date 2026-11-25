@@ -22,7 +22,7 @@ test('recovery changes only visible numbers and meters, preserves drafts, and pr
  host.querySelector('dialog').open=false;
  const input=host.querySelector('#draft'),bar=host.querySelector('[role="meter"]'),nodes=host.querySelectorAll('*');input.value='次の編成';input.setSelectionRange(1,3,'backward');input.focus();host.scrollTop=219;
  const original=game.castle.bind(game),called=[];game.castle=key=>{called.push(key);return original(key);};
- game.state.worldClock.elapsedMs=60000;game.state.turn=1;const before=JSON.stringify(game.state);ui.refresh(host,game);
+ game.state.worldClock.elapsedMs=60000;game.state.turn=1;game.settleMonthlyRepairs();const before=JSON.stringify(game.state);ui.refresh(host,game);
  assert.deepEqual(called,[id]);assert.equal(JSON.stringify(game.state),before);assert.equal(bar.getAttribute('aria-valuenow'),String(full.max*.35));
  assert.equal(host.querySelector('#first [data-durability-current]').textContent,(full.max*.35).toLocaleString('ja-JP'));assert.equal(host.querySelector('#second [data-durability-current]').textContent,(full.max*.35).toLocaleString('ja-JP'));
  assert(nodes.every(node=>node.isConnected));assert.strictEqual(doc.activeElement,input);assert.equal(input.value,'次の編成');assert.deepEqual([input.selectionStart,input.selectionEnd,input.selectionDirection],[1,3,'backward']);assert.equal(host.scrollTop,219);assert.strictEqual(host.querySelector('[role="meter"]'),bar);
@@ -42,4 +42,12 @@ test('battle reports distinguish damage and post-capture restoration',()=>{
  assert.equal(ui.battleMarkup({before:NaN,after:0,damage:0,max:100}),'');
 });
 
+test('paid repair labels show material prices and full bases show no recurring fee',()=>{
+ const {host}=setup(),game=fresh(),id=game.state.home,full=game.castle(id).durability;
+ game.state.castles[id].durability={version:1,current:full.max/2,max:full.max,updatedElapsedMs:0};
+ host.innerHTML=ui.markup(game.castle(id).durability);assert.match(host.textContent,/月替わり/);assert.match(host.textContent,/木材50・石材40/);assert.match(ui.explanation(),/回復100につき木材5・石材4/);
+ delete game.state.castles[id].durability;host.innerHTML=ui.markup(game.castle(id).durability);assert.match(host.textContent,/修復費なし/);
+});
+
 console.log(count+' durability UI checks passed with real engine values and DOM preservation.');
+

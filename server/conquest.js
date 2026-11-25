@@ -16,7 +16,7 @@ const memberScore=row=>Number(row?.attack_points||0)+Number(row?.reinforcement_p
 const honor=points=>points>=1000?'天下の功臣':points>=400?'戦線の柱':points>=100?'同盟の功労者':points>0?'戦場の働き手':'初陣の領主';
 // The ledger stores only authoritative damage/repair checkpoints. Reads project
 // repair from the shared game clock without changing castle revisions.
-function castleDurability(row,clock){return GameEngine.durabilityView(row.durability_json?JSON.parse(row.durability_json):undefined,{castleId:row.castle_id,level:1,wall:Number(row.wall),elapsedMs:clock.elapsedMs});}
+function castleDurability(row,clock){return GameEngine.durabilityView(row.durability_json?JSON.parse(row.durability_json):undefined,{recoveryMode:'free',castleId:row.castle_id,level:1,wall:Number(row.wall),elapsedMs:clock.elapsedMs});}
 function durabilityRecord(view){return{version:1,current:view.current,max:view.max,updatedElapsedMs:view.updatedElapsedMs};}
 
 export function conquestSeason(now){
@@ -124,7 +124,7 @@ async function join(ctx){
 // Pure calculation is shared by the server's validation tests. Battles are
 // deterministic: the preview is an estimate only while revisions can change.
 export function conquestBattle({troops,tactic='balanced',garrison,wall,castleId,durability,elapsedMs=0}){
- const condition=GameEngine.durabilityView(durability,{castleId,level:1,wall,elapsedMs}),t=TACTICS[tactic]||TACTICS.balanced,attack=Math.round(troops*t.power),defense=Math.round((garrison+150)*(1+wall*.12*t.wall*condition.fortificationFactor)),won=attack>defense;
+ const condition=GameEngine.durabilityView(durability,{recoveryMode:'free',castleId,level:1,wall,elapsedMs}),t=TACTICS[tactic]||TACTICS.balanced,attack=Math.round(troops*t.power),defense=Math.round((garrison+150)*(1+wall*.12*t.wall*condition.fortificationFactor)),won=attack>defense;
  const attackerLost=Math.min(troops,Math.ceil(troops*(won?.12:.32)*t.loss)),enemyLost=won?garrison:Math.min(garrison,Math.floor(attack*.42));
  const survivors=troops-attackerLost,garrisonPlaced=won?Math.min(RULES.maxGarrison,Math.max(100,Math.floor(survivors*.45))):0;
  const damage=GameEngine.durabilityAfterBattle(condition,{won,ratio:attack/Math.max(1,defense),elapsedMs}),occupied=won?GameEngine.durabilityView(undefined,{castleId,level:1,wall:Math.max(1,wall-1),elapsedMs}):null,record=won?GameEngine.durabilityAfterBattle(occupied,{won:true,captured:true,elapsedMs}).record:damage.record;
@@ -304,7 +304,7 @@ async function act(ctx){
   }else{
    if(next.wall>=RULES.maxWall)h.fail(409,'CONQUEST_WALL_MAX','城壁は最大まで強化されています。');
    const cost=400*(next.wall+1);if(next.stock<cost)h.fail(409,'CONQUEST_STOCK','普請の物資が不足しています。必要物資 '+cost+'。');
-   next.stock-=cost;next.wall++;next.durability=durabilityRecord(GameEngine.durabilityView(next.durability,{castleId,level:1,wall:next.wall,elapsedMs:clock.elapsedMs}));points=40;contributionColumn='construction_points';message=BY_ID.get(castleId).name+'の城壁を Lv.'+next.wall+' に強化しました。';
+   next.stock-=cost;next.wall++;next.durability=durabilityRecord(GameEngine.durabilityView(next.durability,{recoveryMode:'free',castleId,level:1,wall:next.wall,elapsedMs:clock.elapsedMs}));points=40;contributionColumn='construction_points';message=BY_ID.get(castleId).name+'の城壁を Lv.'+next.wall+' に強化しました。';
   }
  }
  // Support scores represent consumed deliveries/work and are season bounded.

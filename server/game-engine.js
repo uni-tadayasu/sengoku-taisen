@@ -29,7 +29,7 @@
   }
   const MAINTENANCE_RULES=Object.freeze({troops:Object.freeze({gold:.04,rice:.12,wood:0,stone:0}),facilityLevel:Object.freeze({gold:2,rice:1,wood:1,stone:1}),castleRice:60,governorMonthlyGold:50});
   const OFFICER_HEALTH_RULES=Object.freeze({max:100,winCost:15,lossCost:25,recoveryPerMonth:10,minCombatFactor:.5});
-  const DURABILITY_RULES=Object.freeze({recoveryFraction:.1,captureFraction:.25,minFortificationFactor:.25});
+  const DURABILITY_RULES=Object.freeze({recoveryFraction:.1,captureFraction:.25,minFortificationFactor:.25,repairCostPer100:Object.freeze({wood:5,stone:4})});
   function durabilityMax({castleId,level=1,wall=1,branch=false}={}){
     const lv=Math.max(0,Math.min(branch?32:128,Math.floor(Number(level)||0))),w=Math.max(1,Math.min(32,Math.floor(Number(wall)||1)));
     if(branch)return lv?5000+(lv-1)*1500:0;
@@ -38,19 +38,28 @@
   function normalizeDurability(raw){
     if(raw===undefined)return undefined;
     if(!raw||typeof raw!=='object'||Array.isArray(raw)||raw.version!==1||!Number.isSafeInteger(raw.current)||!Number.isSafeInteger(raw.max)||raw.max<0||raw.max>ASSET_CAP||raw.current<0||raw.current>raw.max||!Number.isSafeInteger(raw.updatedElapsedMs)||raw.updatedElapsedMs<0)throw new Error('拠点の耐久値を確認できません。');
-    return{version:1,current:raw.current,max:raw.max,updatedElapsedMs:raw.updatedElapsedMs};
+    if(raw.repairPendingHP!==undefined&&(!Number.isSafeInteger(raw.repairPendingHP)||raw.repairPendingHP<0||raw.repairPendingHP>ASSET_CAP)||raw.repairRemainder!==undefined&&(!Number.isSafeInteger(raw.repairRemainder)||raw.repairRemainder<0||raw.repairRemainder>=600000))throw new Error('拠点の修復進行を確認できません。');
+    return{version:1,current:raw.current,max:raw.max,updatedElapsedMs:raw.updatedElapsedMs,...(raw.repairPendingHP!==undefined?{repairPendingHP:raw.repairPendingHP}:{}),...(raw.repairRemainder!==undefined?{repairRemainder:raw.repairRemainder}:{})};
   }
-  // Project repair from a saved anchor instead of touching every castle on each
-  // timer tick. Construction adds capacity while retaining absolute damage.
+  // Paid views project work awaiting the monthly settlement, never unpaid HP.
+  // NPC/alliance economies explicitly opt into the legacy free projection.
+  // Construction adds capacity while retaining absolute damage in either mode.
   function durabilityView(raw,options={}){
-    const record=normalizeDurability(raw),max=durabilityMax(options),elapsed=Math.max(0,Math.round(Number(options.elapsedMs)||0)),at=Math.max(elapsed,record?.updatedElapsedMs||0),inactive=options.fallen===true||options.branch===true&&Number(options.level)<1;
-    const repaired=record?record.current+Math.floor(record.max*Math.min(600000,Math.max(0,elapsed-record.updatedElapsedMs))/600000):max;
+    const record=normalizeDurability(raw),max=durabilityMax(options),elapsed=Math.max(0,Math.round(Number(options.elapsedMs)||0)),at=Math.max(elapsed,record?.updatedElapsedMs||0),inactive=options.fallen===true||options.branch===true&&Number(options.level)<1,recoveryMode=options.recoveryMode==='free'?'free':'paid';
+    const duration=record?Math.min(600000,Math.max(0,elapsed-record.updatedElapsedMs)):0;
+    const repaired=record?record.current+(recoveryMode==='free'?Math.floor(record.max*duration/600000):0):max;
     const current=inactive?0:record?Math.max(0,Math.min(max,repaired+max-record.max)):max,ratio=max?current/max:0;
-    return{version:1,current,max,ratio,recoveryPerMonth:inactive?0:Math.round(max*DURABILITY_RULES.recoveryFraction),updatedElapsedMs:at,fortificationFactor:DURABILITY_RULES.minFortificationFactor+(1-DURABILITY_RULES.minFortificationFactor)*ratio};
+    let repairPendingHP=0,repairRemainder=0;
+    if(recoveryMode==='paid'&&!inactive&&record&&current<max){
+      const work=(record.repairRemainder||0)+(record.current<record.max?record.max*duration:0);
+      repairPendingHP=Math.min(max-current,(record.repairPendingHP||0)+Math.floor(work/600000));
+      repairRemainder=repairPendingHP<max-current?work%600000:0;
+    }
+    return{version:1,current,max,ratio,recoveryMode,recoveryPerMonth:inactive?0:Math.round(max*DURABILITY_RULES.recoveryFraction),updatedElapsedMs:at,fortificationFactor:DURABILITY_RULES.minFortificationFactor+(1-DURABILITY_RULES.minFortificationFactor)*ratio,...(recoveryMode==='paid'?{repairPendingHP,repairRemainder}:{})};
   }
   function durabilityAfterBattle(view,{won=false,ratio=1,captured=false,elapsedMs=view?.updatedElapsedMs||0}={}){
     const max=Math.max(0,Math.round(view?.max||0)),before=Math.max(0,Math.min(max,Math.round(view?.current||0))),severity=Math.max(.1,Math.min(.35,.1+Math.max(0,Number(ratio)||0)*.15)),damage=won?before:Math.min(before,Math.max(1,Math.round(max*severity))),breachCurrent=before-damage,after=won&&captured?Math.round(max*DURABILITY_RULES.captureFraction):breachCurrent;
-    const record={version:1,current:after,max,updatedElapsedMs:Math.max(Math.round(Number(elapsedMs)||0),view?.updatedElapsedMs||0)};
+    const record={version:1,current:after,max,updatedElapsedMs:Math.max(Math.round(Number(elapsedMs)||0),view?.updatedElapsedMs||0),...(view?.recoveryMode==='paid'?{repairPendingHP:captured||!after?0:Math.min(max-after,view.repairPendingHP||0),repairRemainder:captured||!after?0:view.repairRemainder||0}:{})};
     return{before,after,damage,max,breachCurrent,breached:won===true,captured:won===true&&captured===true,record};
   }
   function normalizeDurabilityBattle(raw){
@@ -452,6 +461,16 @@
     if(!obj(raw)||raw.version!==1||!num(raw.settledTurn)||raw.settledTurn>turn||!obj(raw.branchReductions)||Object.entries(raw.branchReductions).some(([id,count])=>!Object.hasOwn(BRANCH_BY_ID,id)||!num(count)))bad();
     return{version:1,settledTurn:raw.settledTurn,branchReductions:{...raw.branchReductions}};
   }
+  function normalizeRepairState(raw,turn){
+    const bad=()=>{throw new Error('月次の拠点修復の記録が正しくありません。');},obj=value=>value&&typeof value==='object'&&!Array.isArray(value),num=value=>Number.isSafeInteger(value)&&value>=0;
+    if(!num(turn)||turn>MAX_TURN)bad();
+    if(raw===undefined)return{version:1,settledTurn:turn,spent:{wood:0,stone:0},credit:{wood:0,stone:0},recovered:{castles:{},branches:{}}};
+    if(!obj(raw)||raw.version!==1||!num(raw.settledTurn)||raw.settledTurn>turn||!obj(raw.spent)||!obj(raw.credit)||!obj(raw.recovered)||!obj(raw.recovered.castles)||!obj(raw.recovered.branches))bad();
+    for(const [group,known]of [['castles',CASTLE_BY_ID],['branches',BRANCH_BY_ID]])if(Object.entries(raw.recovered[group]).some(([id,value])=>!Object.hasOwn(known,id)||!num(value)))bad();
+    const recovered=Object.values(raw.recovered.castles).concat(Object.values(raw.recovered.branches)).reduce((sum,value)=>sum+BigInt(value),0n);
+    for(const key of ['wood','stone'])if(!num(raw.spent[key])||!num(raw.credit[key])||raw.credit[key]>=100||BigInt(raw.spent[key])*100n-recovered*BigInt(DURABILITY_RULES.repairCostPer100[key])!==BigInt(raw.credit[key]))bad();
+    return{version:1,settledTurn:raw.settledTurn,spent:{wood:raw.spent.wood,stone:raw.spent.stone},credit:{wood:raw.credit.wood,stone:raw.credit.stone},recovered:{castles:{...raw.recovered.castles},branches:{...raw.recovered.branches}}};
+  }
   // Existing garrisons below a battle's reserve keep their survivors. A
   // casualty floor may protect soldiers but cannot recruit replacements.
   const survivorsAfterLoss=(before,loss,reserve)=>before-Math.min(loss,Math.max(0,before-reserve));
@@ -713,7 +732,7 @@
       if (!initial.length) initial.push(...this.roster.slice(0,4).map(o=>o.id));
       const scale={easy:.8,normal:1,hard:1.2}[difficulty];
       this.state={
-        version:2,clan:clan.name,home,turn:0,difficulty,cycle:{index:0,home,latestReward:null},upkeep:{version:1,settledTurn:0,branchReductions:{}},
+        version:2,clan:clan.name,home,turn:0,difficulty,cycle:{index:0,home,latestReward:null},upkeep:{version:1,settledTurn:0,branchReductions:{}},repair:normalizeRepairState(undefined,0),
         resources:{gold:difficulty==='easy'?4400:3200,rice:5400,wood:1800,stone:1200},
         troops:3400,troopTransferSequence:0,morale:80,prestige:0,command:3,magatama:GACHA.initial,captureRewards:[home],gachaHistory:[],
         realtime:{running:true,speed:1,elapsed:0,commandProgress:0,incomeRemainders:{gold:0,rice:0,wood:0,stone:0}},
@@ -1090,10 +1109,12 @@
       if(isNew)this.state.officerVariants.push(`${id}:${rank}`);
       return{isNew,isNewOfficer,upgraded:isNew&&!isNewOfficer&&RANKS.indexOf(rank)>RANKS.indexOf(previous)};
     }
-    castle(id){const c=CASTLE_BY_ID[id],record=this.state.castles[id];return c?{...c,...record,durability:durabilityView(record.durability,{castleId:id,level:record.level,wall:record.wall,elapsedMs:elapsedMillis(this.state)})}:null;}
+    _castleRecoveryMode(id){return id!==STAFF_BASE_ID&&this.canOwnCastle(id)&&this.state.castles[id]?.owner===this.state.clan?'paid':'free';}
+    _branchRecoveryMode(row){return this._castleRecoveryMode(row.parentCastleId);}
+    castle(id){const c=CASTLE_BY_ID[id],record=this.state.castles[id];return c?{...c,...record,durability:durabilityView(record.durability,{castleId:id,level:record.level,wall:record.wall,elapsedMs:elapsedMillis(this.state),recoveryMode:this._castleRecoveryMode(id)})}:null;}
     _anchorCastleDurability(id,elapsedMs=elapsedMillis(this.state)){
       const row=this.state.castles[id];if(!row?.durability)return;
-      const view=durabilityView(row.durability,{castleId:id,level:row.level,wall:row.wall,elapsedMs});row.durability=normalizeDurability(view);
+      const view=durabilityView(row.durability,{castleId:id,level:row.level,wall:row.wall,elapsedMs,recoveryMode:this._castleRecoveryMode(id)});row.durability=normalizeDurability(view);
     }
     _damageCastleDurability(id,{won=false,ratio=1,captured=false,before}={}){
       const row=this.state.castles[id],view=before||this.castle(id)?.durability;if(!row||!view)return null;
@@ -1103,7 +1124,7 @@
     }
     _anchorBranchDurability(id,elapsedMs=elapsedMillis(this.state)){
       const row=this.state.branches.find(branch=>branch.id===id);if(!row?.durability)return;
-      row.durability=normalizeDurability(durabilityView(row.durability,{castleId:row.parentCastleId,level:row.level,branch:true,fallen:row.fallen||row.retreating,elapsedMs}));
+      row.durability=normalizeDurability(durabilityView(row.durability,{castleId:row.parentCastleId,level:row.level,branch:true,fallen:row.fallen||row.retreating,elapsedMs,recoveryMode:this._branchRecoveryMode(row)}));
     }
     _damageBranchDurability(id,options={}){
       const row=this.state.branches.find(branch=>branch.id===id),view=this.branch(id)?.durability;if(!row||!view)return null;
@@ -1113,11 +1134,50 @@
       const site=BRANCH_BY_ID[id],record=this.state.branches.find(row=>row.id===id);
       if(!site||!record)return null;
       const jobs=this.constructionJobs().filter(job=>job.kind==='branch'&&job.id===id);
-      return {...site,...copy(record),durability:durabilityView(record.durability,{castleId:record.parentCastleId,level:record.level,branch:true,fallen:record.fallen||record.retreating,elapsedMs:elapsedMillis(this.state)}),facilities:copy(record.facilities||{}),job:jobs[0]||null,jobs};
+      return {...site,...copy(record),durability:durabilityView(record.durability,{castleId:record.parentCastleId,level:record.level,branch:true,fallen:record.fallen||record.retreating,elapsedMs:elapsedMillis(this.state),recoveryMode:this._branchRecoveryMode(record)}),facilities:copy(record.facilities||{}),job:jobs[0]||null,jobs};
+    }
+    _repairTargets(elapsedMs){
+      const targets=[],add=(kind,id,row,options)=>{
+        if(!row.durability||row.durability.updatedElapsedMs>elapsedMs)return;
+        const view=durabilityView(row.durability,{...options,elapsedMs,recoveryMode:'paid'});
+        if(view.current<view.max)targets.push({kind,id,view,requestedHP:Math.min(view.repairPendingHP,view.recoveryPerMonth)});
+      };
+      for(const castle of CASTLES){const row=this.state.castles[castle.id];if(this._castleRecoveryMode(castle.id)==='paid')add('castle',castle.id,row,{castleId:castle.id,level:row.level,wall:row.wall});}
+      for(const row of this.state.branches)if(row.level>0&&!row.fallen&&!row.retreating&&this._branchRecoveryMode(row)==='paid')add('branch',row.id,row,{castleId:row.parentCastleId,level:row.level,branch:true});
+      return targets.sort((a,b)=>(a.kind+':'+a.id)<(b.kind+':'+b.id)?-1:1);
+    }
+    repairQuote({elapsedMs=(this.state.turn+1)*60000,resources=this.state.resources}={}){
+      const at=Math.max(0,Math.round(Number(elapsedMs)||0)),repair=this.state.repair,targets=this._repairTargets(at),requestedHP=targets.reduce((sum,row)=>sum+row.requestedHP,0);
+      const affordableHP=Math.min(...['wood','stone'].map(key=>Math.floor((clamp(Math.floor(Number(resources[key])||0),0,ASSET_CAP)*100+repair.credit[key])/DURABILITY_RULES.repairCostPer100[key]))),repairedHP=Math.min(requestedHP,affordableHP);
+      const costFor=hp=>Object.fromEntries(RESOURCES.map(key=>[key,key==='wood'||key==='stone'?Math.max(0,Math.ceil((hp*DURABILITY_RULES.repairCostPer100[key]-repair.credit[key])/100)):0]));
+      const allocations=targets.map(row=>({...row,repairedHP:requestedHP?Math.floor(row.requestedHP*repairedHP/requestedHP):0}));
+      let remaining=repairedHP-allocations.reduce((sum,row)=>sum+row.repairedHP,0);
+      // Share scarce materials proportionally; exact integer remainders and
+      // stable identifiers keep saves and different iteration orders identical.
+      const ranked=requestedHP?[...allocations].sort((a,b)=>(b.requestedHP*repairedHP%requestedHP)-(a.requestedHP*repairedHP%requestedHP)||((a.kind+':'+a.id)<(b.kind+':'+b.id)?-1:1)):[];
+      for(const row of ranked){if(!remaining)break;if(row.repairedHP<row.requestedHP){row.repairedHP++;remaining--;}}
+      const cost=costFor(repairedHP),credit=Object.fromEntries(['wood','stone'].map(key=>[key,repair.credit[key]+cost[key]*100-repairedHP*DURABILITY_RULES.repairCostPer100[key]]));
+      return{elapsedMs:at,requestedHP,repairedHP,limited:repairedHP<requestedHP,cost,requiredCost:costFor(requestedHP),credit,allocations:allocations.map(({kind,id,view,requestedHP,repairedHP})=>({kind,id,current:view.current,max:view.max,requestedHP,repairedHP,after:view.current+repairedHP,record:{version:1,current:view.current+repairedHP,max:view.max,updatedElapsedMs:at,repairPendingHP:0,repairRemainder:repairedHP===requestedHP&&view.current+repairedHP<view.max?view.repairRemainder:0}}))};
+    }
+    settleMonthlyRepairs(){
+      const s=this.state,repair=s.repair;
+      if(repair.settledTurn>=s.turn)return{ok:true,changed:false,repairedHP:0,cost:{gold:0,rice:0,wood:0,stone:0},allocations:[],message:''};
+      const quote=this.repairQuote({elapsedMs:s.turn*60000});
+      for(const allocation of quote.allocations){const row=allocation.kind==='castle'?s.castles[allocation.id]:s.branches.find(row=>row.id===allocation.id);row.durability={...allocation.record};if(allocation.repairedHP){const recovered=repair.recovered[allocation.kind==='castle'?'castles':'branches'];recovered[allocation.id]=(recovered[allocation.id]||0)+allocation.repairedHP;}}
+      for(const key of ['wood','stone']){s.resources[key]-=quote.cost[key];repair.spent[key]+=quote.cost[key];repair.credit[key]=quote.credit[key];}
+      repair.settledTurn=s.turn;this._rememberStaffPersonalProgress();
+      const message=quote.repairedHP?`月替わりの修復で耐久を${quote.repairedHP.toLocaleString()}回復し、木材${quote.cost.wood.toLocaleString()}・石材${quote.cost.stone.toLocaleString()}を使用しました。${quote.limited?'資材に合わせて修復量を調整しました。':''}`:'';
+      return{ok:true,changed:quote.repairedHP>0,...quote,message};
+    }
+    _migrateLegacyRepair(){
+      const at=elapsedMillis(this.state),anchor=(row,options)=>{if(row?.durability)row.durability={...normalizeDurability(durabilityView(row.durability,{...options,elapsedMs:at,recoveryMode:'free'})),repairPendingHP:0,repairRemainder:0};};
+      for(const castle of CASTLES){const row=this.state.castles[castle.id];if(this._castleRecoveryMode(castle.id)==='paid')anchor(row,{castleId:castle.id,level:row.level,wall:row.wall});}
+      for(const row of this.state.branches)if(this._branchRecoveryMode(row)==='paid')anchor(row,{castleId:row.parentCastleId,level:row.level,branch:true,fallen:row.fallen||row.retreating});
+      this._rememberStaffPersonalProgress();
     }
     activeBranches(parentCastleId){return this.state.branches.filter(row=>row.parentCastleId===parentCastleId&&row.level>0&&!row.fallen&&!row.retreating).map(row=>this.branch(row.id));}
     parentAttackPermission(parentCastleId){const branches=this.activeBranches(parentCastleId);return branches.length?{ok:false,code:'BRANCHES_REQUIRED',message:'大都市拠点へ攻めるには、残っている支拠点をすべて先に陥落させてください。',branchIds:branches.map(row=>row.id)}:{ok:true,branchIds:[]};}
-    branchDefense(id,tactic='balanced',siege=0){const branch=this.branch(id),parent=branch&&this.castle(branch.parentCastleId);if(!branch||branch.level<1||branch.retreating||!parent)return null;const baselineTroops=Math.max(200,Math.floor(parent.troops*.25)),stationedTroops=branch.stationedTroops||0,force=baselineTroops+stationedTroops,wallFactor=Math.max(.2,1-(Number(siege)||0)*.12)*(tactic==='siege'?.5:1),facilities=branchFacilityEffects(branch,this.state?this.state.turn*60000+this.state.realtime.elapsed*1000:Infinity),condition=durabilityView(branch.durability,{castleId:branch.parentCastleId,level:branch.level,branch:true,fallen:branch.fallen||branch.retreating,elapsedMs:this.state?elapsedMillis(this.state):branch.durability?.updatedElapsedMs||0}).fortificationFactor,facilityMultiplier=1+(facilities.defense+facilities.siegeDefense*wallFactor)*condition,power=Math.max(1,Math.round((force+200)*(1+branch.level*.08*condition)*(1+parent.wall*.03*wallFactor*condition)*facilityMultiplier));return{power,force,baselineTroops,stationedTroops,level:branch.level,parentCastleId:branch.parentCastleId,facilityMultiplier};}
+    branchDefense(id,tactic='balanced',siege=0){const branch=this.branch(id),parent=branch&&this.castle(branch.parentCastleId);if(!branch||branch.level<1||branch.retreating||!parent)return null;const baselineTroops=Math.max(200,Math.floor(parent.troops*.25)),stationedTroops=branch.stationedTroops||0,force=baselineTroops+stationedTroops,wallFactor=Math.max(.2,1-(Number(siege)||0)*.12)*(tactic==='siege'?.5:1),facilities=branchFacilityEffects(branch,this.state?this.state.turn*60000+this.state.realtime.elapsed*1000:Infinity),condition=durabilityView(branch.durability,{castleId:branch.parentCastleId,level:branch.level,branch:true,fallen:branch.fallen||branch.retreating,elapsedMs:this.state?elapsedMillis(this.state):branch.durability?.updatedElapsedMs||0,recoveryMode:this._branchRecoveryMode(branch)}).fortificationFactor,facilityMultiplier=1+(facilities.defense+facilities.siegeDefense*wallFactor)*condition,power=Math.max(1,Math.round((force+200)*(1+branch.level*.08*condition)*(1+parent.wall*.03*wallFactor*condition)*facilityMultiplier));return{power,force,baselineTroops,stationedTroops,level:branch.level,parentCastleId:branch.parentCastleId,facilityMultiplier};}
     _fallBranch(id){const branch=this.state.branches.find(row=>row.id===id);if(!branch||branch.level<1||branch.fallen)return false;this._damageBranchDurability(id,{won:true});branch.fallen=true;this.state.jobs=this.state.jobs.filter(job=>job.kind!=='branch'||job.id!==id);return true;}
     branchStatus(parentCastleId){
       const rule=BRANCH_RULES.parents.find(parent=>parent.id===parentCastleId),parent=this.castle(parentCastleId),available=!!rule&&parent?.owner===this.state.clan&&(parentCastleId!=='edo'||this.isAdmin),branches=rule?this.state.branches.filter(row=>row.parentCastleId===parentCastleId).map(row=>this.branch(row.id)):[],reason=!rule?'この拠点には支拠点を設置できません。':parentCastleId==='edo'&&!this.isAdmin?'江戸城の支拠点は運営の権限が必要です。':parent?.owner!==this.state.clan?'親拠点を領有すると支拠点を設置できます。':'';
@@ -1559,11 +1619,12 @@
       const gold=Math.floor((180+b.keep*50+b.market*180*this._governorBonus('market',governors,assignments)+this._facilityEffect('gold',governors,assignments)+n*100+expanded*15)*(1+t.commerce*.12)*(s.clan==='織田家'?1.15:1))+branchIncome.gold;
       const grossRice=Math.floor((b.farm*450*this._governorBonus('farm',governors,assignments)+this._facilityEffect('rice',governors,assignments)+n*170+expanded*20)*(1+t.cultivation*.12)*(s.clan==='北条家'?1.15:1))+branchIncome.rice;
       const gross={gold,rice:grossRice,wood:Math.floor((b.lumber*170*this._governorBonus('lumber',governors,assignments)+this._facilityEffect('wood',governors,assignments)+n*40+expanded*5)*(1+t.forestry*.15))+branchIncome.wood,stone:Math.floor((b.quarry*130*this._governorBonus('quarry',governors,assignments)+this._facilityEffect('stone',governors,assignments)+n*30+expanded*5)*(1+t.masonry*.15))+branchIncome.stone};
-      const maintenance=this.maintenance({governors:assignments}),rawNet=Object.fromEntries(RESOURCES.map(key=>[key,gross[key]-maintenance.totalUpkeep[key]])),{net,surplusAdjustment}=balanceSurplus(rawNet);
+      const maintenance=this.maintenance({governors:assignments}),rawNet=Object.fromEntries(RESOURCES.map(key=>[key,gross[key]-maintenance.totalUpkeep[key]])),{net:operatingNet,surplusAdjustment}=balanceSurplus(rawNet);
+      const untilMonth=60-s.realtime.elapsed,forecastResources=Object.fromEntries(RESOURCES.map(key=>{const accrued=s.realtime.incomeRemainders[key]+operatingNet[key]*untilMonth/60;return[key,clamp(s.resources[key]+Math.trunc(accrued+Math.sign(accrued)*1e-9),0,ASSET_CAP)];})),repair=this.repairQuote({resources:forecastResources}),repairUpkeep=repair.cost,net=Object.fromEntries(RESOURCES.map(key=>[key,operatingNet[key]-repairUpkeep[key]]));
       // Full production funds troops, facilities and salaries before excess savings
       // taper. Existing sustainable forces and deficit signs never change just
       // because a developed town produces more than the ordinary savings rate.
-      return{...net,upkeep:maintenance.totalUpkeep.rice,grossRice,gross,rawNet,surplusAdjustment,net,troopUpkeep:maintenance.troopUpkeep,facilityUpkeep:maintenance.facilityUpkeep,governorCount:maintenance.governorCount,governorSalary:maintenance.governorSalary,totalTroops:maintenance.totalTroops,troopBreakdown:maintenance.troops,facilityLevels:maintenance.facilities};
+      return{...net,upkeep:maintenance.totalUpkeep.rice,grossRice,gross,rawNet,surplusAdjustment,operatingNet,repairUpkeep,repair,net,troopUpkeep:maintenance.troopUpkeep,facilityUpkeep:maintenance.facilityUpkeep,governorCount:maintenance.governorCount,governorSalary:maintenance.governorSalary,totalTroops:maintenance.totalTroops,troopBreakdown:maintenance.troops,facilityLevels:maintenance.facilities};
     }
     costs(id,fromLevel){const b=BUILDINGS.find(b=>b.id===id);if(fromLevel===undefined){const jobs=this.isStaff?STAFF_VIEW.get(this)?.base.jobs||[]:this.state.jobs;fromLevel=Math.max(this.state.buildings[id]??0,...jobs.filter(j=>j.kind==='building'&&j.id===id).map(j=>j.targetLevel));}if(!b||!Number.isInteger(fromLevel)||fromLevel<0||fromLevel>32)return null;const level=fromLevel,mult=1+level*.32+level*level*.025,turns=level>=16?3:level>=6||id==='keep'?2:1;return this.scaleUpgradeCost({gold:Math.round(b.base.gold*mult),wood:Math.round(b.base.wood*mult),stone:Math.round(b.base.stone*mult),rice:0,turns,seconds:turns*60});}
     upgrade(id){
@@ -2243,7 +2304,7 @@
     }
     setSpeed(speed){if(this.state.worldClock)return fail('速度は全プレイヤー共通です。');if(![1,2,4].includes(speed))return fail('速度は1・2・4倍から選んでください。');this.state.realtime.speed=speed;return{ok:true,message:`進行速度を${speed}倍にしました。`};}
     calendar(turn=this.state.turn){const absolute=Math.max(0,Math.floor(turn)),within=absolute%WORLD_CALENDAR.monthsPerCycle;return{year:WORLD_CALENDAR.startYear+Math.floor(within/12),month:within%12+1,cycle:Math.floor(absolute/WORLD_CALENDAR.monthsPerCycle)+1,turn:absolute};}
-    applyWorldClock(clock,{maxSeconds=7200,deferCycleSettlement=false,rebalanceTroops=true}={}){
+    applyWorldClock(clock,{maxSeconds=7200,deferCycleSettlement=false,rebalanceTroops=true,settleRepairs=true}={}){
       if(!clock||typeof clock.id!=='string'||!clock.id||clock.id.length>100||!Number.isSafeInteger(clock.elapsedMs)||clock.elapsedMs<0||Math.floor(clock.elapsedMs/60000)>MAX_TURN||typeof clock.running!=='boolean'||![1,2,4].includes(clock.speed))return{...fail('共通時刻を確認できません。'),changed:false,events:[],completed:[]};
       const s=this.state,rt=s.realtime,anchor=s.worldClock;
       const maintenance=MAINTENANCE_AUTHORITY.get(this),confirmedThrough=maintenance?.campaignId===s.walking.campaignId?maintenance.asOfElapsedMs:Infinity,maintenancePending=clock.elapsedMs>confirmedThrough;
@@ -2255,8 +2316,8 @@
         health.asOfElapsedMs=clamp(Math.round(health.asOfElapsedMs+delta),0,MAX_TURN*60000+59999);s.officerHealth=health;
         // Linking a campaign to a different clock changes the time origin; it
         // must not treat that offset as elapsed repair time.
-        for(const [castleId,row] of Object.entries(s.castles))if(row.durability){const view=durabilityView(row.durability,{castleId,level:row.level,wall:row.wall,elapsedMs:elapsedMillis(s)});row.durability={...normalizeDurability(view),updatedElapsedMs:clock.elapsedMs};}
-        for(const row of s.branches)if(row.durability){const view=durabilityView(row.durability,{castleId:row.parentCastleId,level:row.level,branch:true,fallen:row.fallen||row.retreating,elapsedMs:elapsedMillis(s)});row.durability={...normalizeDurability(view),updatedElapsedMs:clock.elapsedMs};}
+        for(const [castleId,row] of Object.entries(s.castles))if(row.durability){const view=durabilityView(row.durability,{castleId,level:row.level,wall:row.wall,elapsedMs:elapsedMillis(s),recoveryMode:this._castleRecoveryMode(castleId)});row.durability={...normalizeDurability(view),updatedElapsedMs:clock.elapsedMs};}
+        for(const row of s.branches)if(row.durability){const view=durabilityView(row.durability,{castleId:row.parentCastleId,level:row.level,branch:true,fallen:row.fallen||row.retreating,elapsedMs:elapsedMillis(s),recoveryMode:this._branchRecoveryMode(row)});row.durability={...normalizeDurability(view),updatedElapsedMs:clock.elapsedMs};}
 
         for(const job of s.jobs)if(job.kind==='branch'&&Number.isSafeInteger(job.completesElapsedMs)){
           job.completesElapsedMs=Math.max(0,Math.round(job.completesElapsedMs+delta));
@@ -2268,7 +2329,7 @@
         for(const record of s.log)record.turn=shift(record.turn);
         for(const record of s.gachaHistory)record.turn=shift(record.turn);
         if(s.lastBattle)s.lastBattle.turn=shift(s.lastBattle.turn??s.turn);
-        s.turn=turn;rt.elapsed=(clock.elapsedMs%60000)/1000;s.worldClock={id:clock.id,elapsedMs:clock.elapsedMs};s.cycle.index=Math.floor(turn/WORLD_CALENDAR.monthsPerCycle);s.upkeep.settledTurn=turn;
+        s.turn=turn;rt.elapsed=(clock.elapsedMs%60000)/1000;s.worldClock={id:clock.id,elapsedMs:clock.elapsedMs};s.cycle.index=Math.floor(turn/WORLD_CALENDAR.monthsPerCycle);s.upkeep.settledTurn=turn;s.repair.settledTurn=turn;
         this._projectStaffAt(clock.elapsedMs);rt.running=clock.running&&!s.gameOver;return{ok:true,changed:true,migrated:true,monthChanged:true,pending:false,...(maintenancePending?{maintenancePending:true}:{}),events:[],completed:[]};
       }
       // Absolute time is monotonic even when the visible calendar wraps to 1560.
@@ -2284,7 +2345,7 @@
         // A defeated private campaign stops earning until its appointment. Split
         // here so becoming staff can resume the remaining shared-clock interval.
         const priorCycle=s.cycle.index,boundary=(s.cycle.index+1)*cycleMs,accessSince=this.isStaff?STAFF_VIEW.get(this)?.base.accessSinceElapsedMs:0,clanSince=this.isStaff?STAFF_VIEW.get(this)?.base.clanSinceElapsedMs:0,end=Math.min(target,Math.max(anchor.elapsedMs+1,boundary),accessSince>anchor.elapsedMs?accessSince:Infinity,clanSince>anchor.elapsedMs?clanSince:Infinity);
-        const result=s.gameOver?{events:[],completed:[],monthChanged:Math.floor(end/60000)!==s.turn}:this._advanceRealtime((end-anchor.elapsedMs)/1000,{rebalanceTroops});
+        const result=s.gameOver?{events:[],completed:[],monthChanged:Math.floor(end/60000)!==s.turn}:this._advanceRealtime((end-anchor.elapsedMs)/1000,{rebalanceTroops,settleRepairs});
         events.push(...result.events);completed.push(...result.completed);marchResults.push(...(result.marchResults||[]));covertResults.push(...(result.covertResults||[]));monthChanged=monthChanged||result.monthChanged;changed=true;
         s.turn=Math.floor(end/60000);rt.elapsed=(end%60000)/1000;anchor.elapsedMs=end;this._projectStaffAt(end);
         const reward=this._settleCycle(Math.floor(s.turn/WORLD_CALENDAR.monthsPerCycle))||(s.cycle.index>priorCycle?s.cycle.latestReward:null);if(reward){cycleRewards.push(reward);events.push(`占領${reward.captured}城の周回報酬を受け取りました。`);}
@@ -2316,7 +2377,7 @@
       // A suspended tab never produces an unbounded catch-up. The UI also pauses hidden tabs.
       return this._advanceRealtime(Math.min(5,deltaSeconds)*this.state.realtime.speed);
     }
-    _advanceRealtime(seconds,{rebalanceTroops=true}={}){
+    _advanceRealtime(seconds,{rebalanceTroops=true,settleRepairs=true}={}){
       const maintenance=MAINTENANCE_AUTHORITY.get(this),authority=maintenance?.campaignId===this.state.walking.campaignId?maintenance:null,elapsedBefore=elapsedMillis(this.state),maintenancePending=Boolean(authority&&seconds>(authority.asOfElapsedMs-elapsedBefore)/1000);
       if(authority)seconds=Math.max(0,Math.min(seconds,(authority.asOfElapsedMs-elapsedBefore)/1000));
       const s=this.state,rt=s.realtime,events=[],completed=[],marchResults=[],covertResults=[],priorMarchIds=new Set(s.marchHistory.map(v=>v.id));this._pruneBranches();let left=seconds,monthChanged=false;
@@ -2347,7 +2408,7 @@
         s.officerHealth=projectOfficerHealth(s,Math.round(elapsed+step*1000));
         const income=this.income();
         for(const key of RESOURCES){
-          const accrued=rt.incomeRemainders[key]+income[key]*step/60;
+          const accrued=rt.incomeRemainders[key]+(income.operatingNet||income)[key]*step/60;
           const units=Math.trunc(accrued+Math.sign(accrued)*1e-9);
           const before=s.resources[key],after=clamp(before+units,0,ASSET_CAP);
           s.resources[key]=after;
@@ -2385,7 +2446,7 @@
         }else rt.commandProgress=0;
         rt.elapsed=precise(rt.elapsed+step);left=precise(left-step);
         const monthlyBoundary=rt.elapsed>=60-1e-8;
-        if(monthlyBoundary){rt.elapsed=0;monthChanged=true;events.push(...this._advanceMonth());}
+        if(monthlyBoundary){rt.elapsed=0;monthChanged=true;events.push(...this._advanceMonth({settleRepairs}));}
         settle();
         // Adjust troop upkeep once as a new month begins, after that boundary's
         // completions, garrison growth and arrivals. Midmonth changes wait for
@@ -2397,8 +2458,9 @@
       const calendar=this.calendar();
       return{ok:true,message:monthChanged?`${calendar.year}年${calendar.month}月になりました。`:completed.length?events[0]:'',events,completed,marchResults,covertResults,changed:seconds>0||marchResults.length>0||covertResults.length>0,monthChanged,...(maintenancePending?{maintenancePending:true}:{})};
     }
-    _advanceMonth(){
+    _advanceMonth({settleRepairs=true}={}){
       const s=this.state,events=[];s.turn++;this._projectStaffAt(s.turn*60000);
+      if(settleRepairs){const repaired=this.settleMonthlyRepairs();if(repaired.message)events.push(repaired.message);}
       const cycleReset=this._settleCycle(Math.floor(s.turn/WORLD_CALENDAR.monthsPerCycle));
       this._gain({magatama:GACHA.monthlyReward});events.push(`月次褒賞として勾玉${GACHA.monthlyReward}を受け取りました。`);
       // Production, jobs and command recovery already progressed continuously in tick().
@@ -2425,7 +2487,7 @@
     exportSave(){this._pruneBranches();this._rememberStaffPersonalProgress();const state=copy(this.state),view=this.isStaff?STAFF_VIEW.get(this):null;if(view){state.buildings=copy(view.personalBuildings);state.castles[STAFF_BASE_ID].level=view.personalBaseLevel;state.castles[STAFF_BASE_ID].wall=view.personalBaseWall;}if(this.isStaff){const origin=STAFF_ORIGIN.get(this),homeCastle=view?.personalHomeCastle||origin?.homeCastle;state.staffService={baseId:STAFF_BASE_ID,...(origin?{personalClan:origin.clan,personalHome:origin.home,personalCycleHome:origin.cycleHome}:{}),...(homeCastle?{personalHomeCastle:copy(homeCastle)}:{})};}normalizeAssets(state);return JSON.stringify({game:'sengoku-tento',version:2,savedAt:new Date().toISOString(),state},null,2);}
     static fromSave(raw,officers,options={}){
       let obj;try{obj=typeof raw==='string'?JSON.parse(raw):copy(raw);}catch(e){throw new Error('セーブデータを読み取れません。JSONファイルを選んでください。');}
-      const s=obj?.state||obj;
+      const s=obj?.state||obj,legacyRepair=s?.repair===undefined;
       const invalid=()=>{throw new Error('このセーブデータは形式または内容が正しくありません。');};
       const isObj=v=>v&&typeof v==='object'&&!Array.isArray(v);
       const num=(v,min=0,max=999999999)=>typeof v==='number'&&Number.isFinite(v)&&Number.isInteger(v)&&v>=min&&v<=max;
@@ -2453,6 +2515,7 @@
       if(s.troopTransferSequence===undefined)s.troopTransferSequence=0;
       if(!num(s.turn,0,MAX_TURN)||!num(s.troops,0,ASSET_CAP)||!num(s.troopTransferSequence,0,1000000000)||!num(s.morale,0,100)||!num(s.prestige)||!num(s.command,0,7)||!num(s.seed,0,4294967295))invalid();
       s.upkeep=normalizeUpkeepState(s.upkeep,s.turn);
+      s.repair=normalizeRepairState(s.repair,s.turn);
       if(!isObj(s.resources)||!RESOURCES.every(k=>num(s.resources[k])))invalid();
       if(!isObj(s.buildings)||Object.keys(s.buildings).length!==BUILDINGS.length||!BUILDINGS.every(b=>num(s.buildings[b.id],b.core?1:0,32)))invalid();
       if(!g.isStaff&&s.command>3+Math.floor(s.buildings.keep/8))invalid();
@@ -2530,7 +2593,7 @@
       if(!num(s.stats.researches??0,0,10000000))invalid();s.stats.researches=s.stats.researches??Object.values(s.tech).reduce((a,b)=>a+b,0);
       if(!Array.isArray(s.log)||s.log.length>200||s.log.some(l=>!isObj(l)||!num(l.turn,0,MAX_TURN)||typeof l.text!=='string'||l.text.length>2000||typeof l.kind!=='string'||l.kind.length>30))invalid();
       // Only retain known, validated fields; do not merge arbitrary imported object keys.
-      const n=g.state;for(const k of ['clan','home','turn','difficulty','upkeep','resources','troops','troopTransferSequence','morale','prestige','command','buildings','jobs','branches','officers','officerVariants','officerHealth','army','governors','tech','castles','treaties','scouted','log','claimedQuests','giftReceipts','walking','roaming','covert','progress','magatama','captureRewards','gachaHistory','seed','stats','realtime','march','marchHistory'])n[k]=copy(s[k]);
+      const n=g.state;for(const k of ['clan','home','turn','difficulty','upkeep','repair','resources','troops','troopTransferSequence','morale','prestige','command','buildings','jobs','branches','officers','officerVariants','officerHealth','army','governors','tech','castles','treaties','scouted','log','claimedQuests','giftReceipts','walking','roaming','covert','progress','magatama','captureRewards','gachaHistory','seed','stats','realtime','march','marchHistory'])n[k]=copy(s[k]);
       n.jobs=n.jobs.map(j=>({...Object.fromEntries(['kind','id','remaining','total','remainingSeconds','totalSeconds','targetLevel'].map(k=>[k,j[k]])),...(j.kind==='branch'&&j.repair===true?{repair:true}:{}),...(j.kind==='branch'&&j.facilityId!==undefined?{facilityId:j.facilityId}:{}),...(j.kind==='branch'&&j.completesElapsedMs!==undefined?{completesElapsedMs:j.completesElapsedMs}:{})}));
       if(serviceSave){n.staffService={baseId:STAFF_BASE_ID};if(CLANS.some(c=>c.name===s.staffService.personalClan)){
         const clan=s.staffService.personalClan,valid=id=>CASTLE_BY_ID[id]&&!['edo',STAFF_BASE_ID].includes(id),home=valid(s.staffService.personalHome)?s.staffService.personalHome:CLANS.find(c=>c.name===clan).home,cycleHome=valid(s.staffService.personalCycleHome)?s.staffService.personalCycleHome:home,rawHome=s.staffService.personalHomeCastle;
@@ -2546,7 +2609,7 @@
       if(s.lastBattle?.durability!==undefined)try{s.lastBattle.durability=normalizeDurabilityBattle(s.lastBattle.durability);}catch{invalid();}
       if(s.lastBattle!==null&&s.lastBattle!==undefined){const b=s.lastBattle;if(!isObj(b)||typeof b.won!=='boolean'||!CASTLE_BY_ID[b.castleId]||!num(b.ourBefore)||!num(b.ourLost)||!num(b.enemyBefore)||!num(b.enemyLost)||!Array.isArray(b.phases)||b.phases.length>10||b.phases.some(p=>!isObj(p)||typeof p.title!=='string'||p.title.length>50||typeof p.text!=='string'||p.text.length>1000)||!isObj(b.rewards)||!num(b.rewards.gold)||!num(b.rewards.rice)||!num(b.rewards.magatama??0)||b.capturedOfficer!==null&&b.capturedOfficer!==undefined&&!g.officer(b.capturedOfficer))invalid();n.lastBattle={won:b.won,castleId:b.castleId,castleName:CASTLE_BY_ID[b.castleId].name,ourBefore:b.ourBefore,ourLost:b.ourLost,enemyBefore:b.enemyBefore,enemyLost:b.enemyLost,phases:copy(b.phases),rewards:{gold:b.rewards.gold,rice:b.rewards.rice,magatama:b.rewards.magatama??0},capturedOfficer:b.capturedOfficer||null,garrison:num(b.garrison)?b.garrison:0,tactic:TACTICS.some(t=>t.id===b.tactic)?b.tactic:'balanced',turn:num(b.turn,0,MAX_TURN)?b.turn:n.turn,...(b.durability?{durability:copy(b.durability)}:{})};if(b.branchId!==undefined){const site=BRANCH_BY_ID[b.branchId];if(!site||site.parentCastleId!==b.castleId||b.parentCastleId!==undefined&&b.parentCastleId!==site.parentCastleId||b.rewards.gold||b.rewards.rice||b.rewards.magatama||b.capturedOfficer||b.garrison)invalid();Object.assign(n.lastBattle,{branchId:site.id,parentCastleId:site.parentCastleId,castleName:site.name,captured:false});}}
       if(serviceSave&&!g.isStaff&&!g.isAdmin&&STAFF_ORIGIN.has(g))g._clearStaffProjection();
-      g._enforceAdminRestrictions();if(g.isAdmin)g.restoreAdminAssets();g._enforceStaffHome();if(g.isAdmin)n.cycle.home='edo';else if(n.cycle.home==='edo')n.cycle.home=n.home;if(g.isStaff&&options.staffBase)g.applyStaffBase(options.staffBase);g._updateCampaignOutcome();if(options.branchAuthority!==undefined){const authority=g.setBranchAuthority(options.branchAuthority);if(!authority.ok)throw new Error(authority.message);}if(options.maintenanceAuthority!==undefined){const authority=g.setMaintenanceAuthority(options.maintenanceAuthority);if(!authority.ok)throw new Error(authority.message);}return g;
+      g._enforceAdminRestrictions();if(g.isAdmin)g.restoreAdminAssets();g._enforceStaffHome();if(g.isAdmin)n.cycle.home='edo';else if(n.cycle.home==='edo')n.cycle.home=n.home;if(g.isStaff&&options.staffBase)g.applyStaffBase(options.staffBase);if(legacyRepair)g._migrateLegacyRepair();g._updateCampaignOutcome();if(options.branchAuthority!==undefined){const authority=g.setBranchAuthority(options.branchAuthority);if(!authority.ok)throw new Error(authority.message);}if(options.maintenanceAuthority!==undefined){const authority=g.setMaintenanceAuthority(options.maintenanceAuthority);if(!authority.ok)throw new Error(authority.message);}return g;
     }
   }
   // Player progression is an optional, versioned section. Older saves receive
@@ -2584,6 +2647,7 @@
   SengokuEngine.economyRules=ECONOMY_RULES;
   SengokuEngine.maintenanceRulesVersion=1;
   SengokuEngine.normalizeUpkeepState=normalizeUpkeepState;
+  SengokuEngine.normalizeRepairState=normalizeRepairState;
   SengokuEngine.normalizeOfficerHealth=normalizeOfficerHealth;
   SengokuEngine.projectOfficerHealth=projectOfficerHealth;
   SengokuEngine.officerCombatFactor=officerCombatFactor;

@@ -27,6 +27,12 @@ export async function troopTransferGuard(db,userId,campaignId){
 }
 export function projectBranchState(raw,at,anchor=at){
  const state=clone(raw),jobs=[];
+ // Branch ledgers created before paid repair have no work fields. Preserve
+ // their old free recovery only to the owner's saved checkpoint, not to the
+ // time of a public map read or an opponent's inspection.
+ for(const branch of state.branches)if(branch.durability&&branch.durability.repairPendingHP===undefined&&branch.durability.repairRemainder===undefined){
+  branch.durability={...durabilityRecord(GameEngine.durabilityView(branch.durability,{castleId:branch.parentCastleId,level:branch.level,branch:true,fallen:branch.fallen||branch.retreating,elapsedMs:anchor,recoveryMode:'free'})),repairPendingHP:0,repairRemainder:0};
+ }
  for(const job of state.jobs){
   const branch=state.branches.find(item=>item.id===job.id);if(!branch||branch.retreating)continue;
   const due=job.completesElapsedMs<=at;
