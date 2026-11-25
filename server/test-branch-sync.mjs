@@ -27,7 +27,7 @@ async function cpuPlayer(h,name,{upgrade=false,station=false}={}){
  updateSave(h,p,s=>{
   for(const c of Object.values(s.castles)){c.owner='在地衆';c.troops=100000;}
   s.castles.nijo={owner:s.clan,troops:100,wall:1,level:1};s.home='nijo';s.cycle.home='nijo';s.difficulty='hard';s.troops=300;s.treaties={};s.seed=17;
-  s.turn=8;s.realtime.elapsed=59;s.worldClock.elapsedMs=539000;s.upkeep=GameEngine.normalizeUpkeepState(undefined,s.turn);
+  s.turn=8;s.realtime.elapsed=59;s.worldClock.elapsedMs=539000;s.upkeep=GameEngine.normalizeUpkeepState(undefined,s.turn);s.repair=GameEngine.normalizeRepairState(undefined,s.turn);
  });
  // This scenario starts after the lord lost the original ordinary home and
  // relocated to a conquered major city. The old seat no longer belongs to them.

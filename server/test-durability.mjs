@@ -39,13 +39,14 @@ try{
   const bad=save(h,p);bad.state.castles.nijo.durability.current=-1;assert.equal((await put(h,p,bad,400)).error.code,'INVALID_SAVE');
   const ahead=save(h,p);ahead.state.castles.nijo.durability.updatedElapsedMs=1;assert.equal((await put(h,p,ahead,400)).error.code,'INVALID_SAVE');
  });
- await scope('natural repair follows the game clock once across reads, writes, pauses and writer takeover',async h=>{
+ await scope('paid repair settles at a month boundary once across reads, writes, pauses and writer takeover',async h=>{
   const p=await fixture(h,'耐久自然修復',{holdings:['nijo']});
   updateSave(h,p,s=>{const d=castleDurability(s,'nijo');s.castles.nijo.durability=durabilityRecord({...d,current:d.max/4});});
   const original=save(h,p).state.castles.nijo.durability;h.now+=30000;await syncFieldWriter(h,p);
-  assert.equal(castleDurability(save(h,p).state,'nijo').current,original.current+Math.floor(original.max*.05));
+  assert.equal(castleDurability(save(h,p).state,'nijo').current,original.current,'midmonth reads do not grant unpaid HP');
+  h.now+=30000;await syncFieldWriter(h,p);assert.equal(castleDurability(save(h,p).state,'nijo').current,original.current+Math.floor(original.max*.1));
   const first=save(h,p).state.castles.nijo.durability;await put(h,p,save(h,p));assert.deepEqual(save(h,p).state.castles.nijo.durability,first);
-  h.sql.prepare('UPDATE world_clock SET base_elapsed_ms=?,anchor_real_ms=?,running=0,revision=revision+1').run(30000,h.now);h.now+=600000;await syncFieldWriter(h,p);assert.deepEqual(save(h,p).state.castles.nijo.durability,first);
+  h.sql.prepare('UPDATE world_clock SET base_elapsed_ms=?,anchor_real_ms=?,running=0,revision=revision+1').run(60000,h.now);h.now+=600000;await syncFieldWriter(h,p);assert.deepEqual(save(h,p).state.castles.nijo.durability,first);
   p.deviceId+='-second';await h.api('/sync/lease',post(p,{deviceId:p.deviceId,takeOver:true}));const older=save(h,p);delete older.state.castles.nijo.durability;await put(h,p,older);assert.deepEqual(save(h,p).state.castles.nijo.durability,first);
  });
  await scope('real failed sieges lower structure, expose its defense effect and replay their damage once',async h=>{

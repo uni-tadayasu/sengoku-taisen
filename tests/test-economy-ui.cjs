@@ -25,7 +25,7 @@ test('army and construction ledger show the same four-resource production, costs
  const h=harness();
  for(const view of ['Army','Facilities']){
   h.host.innerHTML=h.c['render'+view]();const panel=h.host.querySelector('[data-economy-panel]'),income=h.game.income();
-  assert(panel,view);assert.equal(panel.querySelectorAll('.economy-resource').length,4);assert.equal(panel.querySelectorAll('[data-economy-rate]').length,24);
+  assert(panel,view);assert.equal(panel.querySelectorAll('.economy-resource').length,4);assert.equal(panel.querySelectorAll('[data-economy-rate]').length,28);
   for(const node of panel.querySelectorAll('[data-economy-rate]')){const kind=node.dataset.economyRate,key=node.dataset.economyResource;assert.equal(node.textContent,signed(income[kind][key],kind.endsWith('Upkeep')||kind==='governorSalary'||kind==='surplusAdjustment'));}
   assert.equal(panel.querySelector('[data-economy-total]').textContent,format(income.totalTroops));assert.match(panel.textContent,/施設・城の維持費/);assert.match(panel.textContent,/60秒で1か月/);assert.match(panel.textContent,/残高は0未満/);assert.match(panel.textContent,/勾玉・威信は維持費の対象外/);
  }
@@ -35,7 +35,7 @@ test('developed surplus is listed after unchanged fees and the header displays t
  const h=harness();for(const row of D.buildings)h.game.state.buildings[row.id]=32;h.game.state.troops=100;
  h.host.innerHTML='<div id="resources"></div><div id="calendar"></div><div id="clan-panel"></div><button id="sound-button"></button>'+h.c.economyPanel('army');h.c.renderHeader();const income=h.game.income();
  for(const key of D.resources){assert(income.surplusAdjustment[key]>0);assert.equal(income.net[key],income.gross[key]-income.troopUpkeep[key]-income.facilityUpkeep[key]-income.surplusAdjustment[key]);assert.equal(h.doc.querySelector(`[data-economy-rate="surplusAdjustment"][data-economy-resource="${key}"]`).textContent,signed(income.surplusAdjustment[key],true));assert.equal(h.doc.querySelector(`#header-gain-${key}`).textContent,signed(income.net[key]));assert.match(h.doc.querySelector(`#header-resource-${key}`).title,/余剰生産の調整/);}
- assert.match(h.host.textContent,/差引が実際に増減する額/);assert.match(h.host.textContent,/現在の備蓄・報酬は、この調整で減りません/);
+ assert.match(h.host.textContent,/次回の修復費を含めた見込み/);assert.match(h.host.textContent,/現在の備蓄・報酬は、この調整で減りません/);
 });
 
 test('large armies show explicit negative gold and rice net costs, while zero troop material costs stay zero',()=>{
@@ -101,6 +101,20 @@ test('governor salary is a separate gold expense and refreshes in place after di
  assert.match(h.c.economyBalanceTitle('gold',h.game.income()),/奉行の給与 −50/);
  assert(h.game.assignGovernor('market',null).ok);h.c.refreshEconomyPanels(h.game.income());
  assert.strictEqual(h.host.firstElementChild,panel);assert.strictEqual(panel.querySelector('[data-economy-governors]'),people);assert.equal(people.textContent,'0');assert.equal(salary.textContent,'0');
+});
+
+test('repair costs appear separately, reduce the forecast, and stop after a paid full restoration',()=>{
+ const h=harness(),id=h.game.state.home,full=h.game.castle(id).durability;
+ h.game.state.castles[id].durability={version:1,current:full.max-1000,max:full.max,updatedElapsedMs:0};
+ h.game.state.resources.wood=10000;h.game.state.resources.stone=10000;
+ h.host.innerHTML='<div id="resources"></div><div id="calendar"></div><div id="clan-panel"></div><button id="sound-button"></button>'+h.c.economyPanel('army');h.c.renderHeader();
+ const before=JSON.stringify(h.game.state),income=h.game.income();
+ assert.equal(income.repairUpkeep.wood,50);assert.equal(income.repairUpkeep.stone,40);
+ for(const key of D.resources){assert.equal(income.net[key],income.operatingNet[key]-income.repairUpkeep[key]);assert.equal(h.doc.querySelector(`[data-economy-rate="repairUpkeep"][data-economy-resource="${key}"]`).textContent,signed(income.repairUpkeep[key],true));}
+ assert.match(h.doc.querySelector('#header-resource-wood').title,/拠点の修復費見込 −50/);assert.match(h.host.textContent,/資材が不足する場合/);assert.equal(JSON.stringify(h.game.state),before);
+ const wood=h.doc.querySelector('[data-economy-rate="repairUpkeep"][data-economy-resource="wood"]');
+ h.game._advanceRealtime(60);h.c.refreshEconomyPanels(h.game.income());
+ assert.equal(h.game.castle(id).durability.current,full.max);assert.strictEqual(h.doc.querySelector('[data-economy-rate="repairUpkeep"][data-economy-resource="wood"]'),wood);assert.equal(wood.textContent,'0');
 });
 
 console.log(`${count} economy UI checks passed with actual app helpers and engine totals. No live requests.`);

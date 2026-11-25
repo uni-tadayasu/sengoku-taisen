@@ -1,6 +1,6 @@
 import {maintenanceContext,protectMaintenance,externalTroopSnapshotStatements,MAINTENANCE_REFRESH_MESSAGE} from './maintenance.js';
 import {GameEngine, GAME_OFFICERS} from './game-runtime.js';
-import {castleDurability,branchDurability,durabilityRecord,reconcileCastleDurability} from './durability.js';
+import {castleDurability,branchDurability,durabilityRecord,normalizeRepairProgress,reconcilePaidRepairs} from './durability.js';
 import {handleLetters} from './letters.js';
 import {handleTrades} from './trade.js';
 import {handleModeration} from './moderation.js';
@@ -1226,6 +1226,7 @@ function normalizeGameSave(raw, user, now, {reading=false,clock=null}={}) {
   try{n.upkeep=GameEngine.normalizeUpkeepState(s.upkeep,s.turn);}catch{invalid();}
   n.progress=GameEngine.normalizePlayerProgress(s.progress,n);
   if(s.worldClock!==undefined)n.worldClock={id:WORLD_CLOCK_ID,elapsedMs:s.worldClock.elapsedMs};
+  try{normalizeRepairProgress(n,s.repair,{isAdmin:!!user.is_admin});}catch{invalid();}
   n.officerHealth=GameEngine.normalizeOfficerHealth(s.officerHealth,n);
   if(!reading&&clock&&s.officerHealth===undefined&&n.officerHealth)n.officerHealth.asOfElapsedMs=Math.min(n.officerHealth.asOfElapsedMs,clock.elapsedMs);
   if(!n.officerHealth||!reading&&clock&&n.worldClock&&n.officerHealth.asOfElapsedMs>clock.elapsedMs)invalid();
@@ -1769,7 +1770,7 @@ async function resolveSyncBranches(db,user,save,before,clock,now,{importedStatio
     // authoritative transition; never apply today's fallen state to past raids.
     // The branch cursor survives imports independently of the private clock.
     // Neither older branch data nor a changed save may replay a raid twice.
-    const start=resolvedElapsedMs,target=Math.max(start,incomingElapsed);
+    const start=Math.max(resolvedElapsedMs,Number(before.state.worldClock.elapsedMs)),target=Math.max(start,incomingElapsed);
     trusted.state.worldClock={id:WORLD_CLOCK_ID,elapsedMs:start};trusted.state.turn=Math.floor(start/WORLD_MONTH_MS);trusted.state.realtime.elapsed=start%WORLD_MONTH_MS/1000;trusted.state.upkeep.settledTurn=Math.min(trusted.state.upkeep.settledTurn,trusted.state.turn);
     applyBranchProgress(trusted,model,{...clock,elapsedMs:start});
     shared=user.is_staff&&!user.is_admin?await staffBaseDto(db,user,clock,now):null;
@@ -1904,6 +1905,7 @@ const FIELD_SELECT=`SELECT u.id,u.name,u.clan,u.last_seen,s.revision,s.lease_exp
   json_extract(s.save_json,'$.state.army') AS army_json,json_extract(s.save_json,'$.state.officerVariants') AS variants_json,
   json_extract(s.save_json,'$.state.officers') AS officers_json,json_extract(s.save_json,'$.state.officerHealth') AS officer_health_json,
   json_extract(s.save_json,'$.state.turn') AS game_turn,json_extract(s.save_json,'$.state.realtime') AS realtime_json,
+  json_type(s.save_json,'$.state.repair') AS repair_type,
   json_extract(s.save_json,'$.state.march') AS march_json
   FROM users u JOIN player_saves s ON s.user_id=u.id
   WHERE s.save_json IS NOT NULL AND NOT EXISTS(SELECT 1 FROM player_bans pb WHERE pb.user_id=u.id AND pb.active=1) AND (COALESCE(json_extract(s.save_json,'$.state.gameOver'),0)=0 OR ${FIELD_FIXED_HOME_SQL} OR ${EFFECTIVE_CYCLE_SQL}<?)`;
@@ -1920,14 +1922,15 @@ function fieldDefense(s,tactic='balanced',siege=0,castleId=s.home) {
   const durability=castleDurability(s,castleId),fortification=durability.fortificationFactor,wallFactor=Math.max(.2,1-siege*.12)*(tactic==='siege'?.5:1);
   return {force,power:Math.max(1,Math.round((force+200)*(1+(isHome?s.buildings.wall:home.wall)*.11*wallFactor*fortification)*(1+s.tech.discipline*.06)*(1+(home.level-1)*.04*fortification)*army.rankPower)),army,durability};
 }
-function fieldBranchDefense(state,branch,tactic='balanced',siege=0){const projected={...branch,durability:branchDurability(branch,state.worldClock?.elapsedMs??branch.durability?.updatedElapsedMs??0)};return GameEngine.prototype.branchDefense.call({branch:id=>id===branch.id?projected:null,castle:id=>state.castles[id]},branch.id,tactic,siege);}
+function fieldBranchDefense(state,branch,tactic='balanced',siege=0){const projected={...branch,durability:branchDurability(branch,state.worldClock?.elapsedMs??branch.durability?.updatedElapsedMs??0)};return GameEngine.prototype.branchDefense.call({branch:id=>id===branch.id?projected:null,castle:id=>state.castles[id],_branchRecoveryMode:()=> 'paid'},branch.id,tactic,siege);}
 function fieldBranches(row,castleId,castle,clock,cyclePending,home,baseReason){
   const stored=row.branches_json?JSON.parse(row.branches_json):{branches:[],jobs:[]};
   if(cyclePending&&castleId!==home)return[];
   const branches=stored.branches.filter(branch=>branch.parentCastleId===castleId&&!branch.retreating);
   if(!branches.length)return[];
   const ids=new Set(branches.map(branch=>branch.id));
-  const model=projectBranchState({branches,jobs:stored.jobs.filter(job=>ids.has(job.id))},clock.elapsedMs);
+  const savedElapsed=(Number(row.game_turn)||0)*60000+Math.round((Number(JSON.parse(row.realtime_json||'null')?.elapsed)||0)*1000);
+  const model=projectBranchState({branches,jobs:stored.jobs.filter(job=>ids.has(job.id))},clock.elapsedMs,Math.min(clock.elapsedMs,savedElapsed));
   return model.branches.map(branch=>{
     const job=model.jobs.find(job=>job.id===branch.id);
     const site=branchSite(branch.id),defense=fieldBranchDefense({castles:{[castleId]:castle},worldClock:{elapsedMs:clock.elapsedMs}},branch),reason=baseReason||(!branch.level?'建設中の支拠点です。':branch.fallen?'この支拠点はすでに陥落しています。':'');
@@ -1968,8 +1971,9 @@ function mapFieldPlayer(row,viewer,relationship,clock,now,targetCastleId=null,in
   const rawKeepLevel=!isHome?castle.level:row.is_staff&&!row.is_admin?row.staff_keep_level:row.keep_level;
   const keepLevel=Number.isFinite(rawKeepLevel)?Math.max(1,Math.min(32,Math.floor(rawKeepLevel))):1;
   if(cyclePending&&isHome&&battleMode!=='reward'){castle.troops=Math.max(1200,castle.troops);castle.wall=Math.max(castle.wall,Number(row.wall));}
-  const state={home,troops:Number(row.troops),castles:{[castleId]:castle},buildings:{wall:isHome&&row.is_staff&&!row.is_admin?castle.wall:Number(row.wall)},tech:{discipline:Number(row.discipline)},army:JSON.parse(row.army_json||'[]'),officerVariants:JSON.parse(row.variants_json||'[]')};
+  const state={clan:castle.owner,home,troops:Number(row.troops),castles:{[castleId]:castle},buildings:{wall:isHome&&row.is_staff&&!row.is_admin?castle.wall:Number(row.wall)},tech:{discipline:Number(row.discipline)},army:JSON.parse(row.army_json||'[]'),officerVariants:JSON.parse(row.variants_json||'[]')};
   Object.assign(state,{officers:JSON.parse(row.officers_json||'[]'),officerHealth:JSON.parse(row.officer_health_json||'null')||undefined,turn:Number(row.game_turn)||0,realtime:JSON.parse(row.realtime_json||'null')||{elapsed:0},march:JSON.parse(row.march_json||'null')});
+  if(!row.repair_type&&castleId!=='kyoto_gosho'&&castle.durability)castle.durability={...durabilityRecord(GameEngine.durabilityView(castle.durability,{castleId,level:castle.level,wall:castle.wall,elapsedMs:state.turn*60000+Math.round(state.realtime.elapsed*1000),recoveryMode:'free'})),repairPendingHP:0,repairRemainder:0};
   state.officerHealth=GameEngine.projectOfficerHealth(state,clock.elapsedMs);state.worldClock={elapsedMs:clock.elapsedMs};
   const defense=fieldDefense(state,'balanced',0,castleId),self=viewer?.id===row.id,relation=self?'self':fieldRelationStatus(relationship,viewer?.id,clock.elapsedMs);
   inspectDefense?.({castleId,isHome,garrisonTroops:castle.troops,fieldTroops:state.troops,homeContribution:defense.force-castle.troops,wallLevel:isHome?state.buildings.wall:castle.wall,castleLevel:castle.level,castleMaxLevel:castleLevelLimit(castleId),disciplineLevel:state.tech.discipline,armyCount:defense.army.officerCount,armyRankPower:defense.army.rankPower});
@@ -2787,7 +2791,7 @@ async function route(request, env, now) {
     if(!body.save||typeof body.save!=='object'||Array.isArray(body.save))fail(400,'INVALID_SAVE','セーブデータを送信してください。');
     // Covert units, reports and response opportunities belong to the server ledger.
     // Ignore that entire client section, including malformed or forged imports.
-    const imported=copy(body.save),importedState=imported.state||imported,hasMonthlyReceipt=importedState.upkeep!==undefined;
+    const imported=copy(body.save),importedState=imported.state||imported,hasMonthlyReceipt=importedState.upkeep!==undefined,hasRepairReceipt=importedState.repair!==undefined;
     // Preserve only the fact that an untrusted import contains stationed troops.
     // The server branch ledger remains authoritative; first imports must recall
     // these soldiers locally before this section can safely be discarded.
@@ -2839,7 +2843,9 @@ async function route(request, env, now) {
     reconcileOfficerHealth(save,healthBefore,clock);
     const branchProgress=await resolveSyncBranches(db,user,save,before,clock,now,{importedStationedTroops}),branchAccess=branchProgress.access;
     const residencyProgress=await resolveSyncResidency(db,user,save,before,clock,now,branchAccess);cycleHome=save.state.cycle.home;
-    reconcileCastleDurability(save,healthBefore,clock,{trustedStates:[branchProgress.replayed?.state,residencyProgress.durabilityState].filter(Boolean)});
+    let repairAdjustment;
+    try{repairAdjustment=reconcilePaidRepairs(save,healthBefore,clock,{hasRepairReceipt,trustedStates:[branchProgress.replayed?.state,residencyProgress.durabilityState].filter(Boolean),branchState:branchProgress.replayed?.state,isAdmin:!!user.is_admin,isStaff:!!user.is_staff});}
+    catch(error){if(error.code==='REPAIR_STATE_CHANGED')fail(409,error.code,error.message);throw error;}
     // Settle one monthly receipt after the authoritative branch pools are
     // merged. An already-settled client may have recruited again afterwards;
     // saving those troops must not trigger a second reduction in the same month.
@@ -2894,6 +2900,7 @@ async function route(request, env, now) {
     // A subsequent role/cycle/foreign update may return a newer snapshot; do
     // not attach an older troop adjustment to that different state.
     if(upkeepAdjustment&&snapshot.revision===Number(row.revision)&&snapshot.save?.state.walking.campaignId===save.state.walking.campaignId)snapshot.upkeepAdjustment={...upkeepAdjustment,committedRevision:Number(row.revision)};
+    if(repairAdjustment&&snapshot.revision===Number(row.revision)&&snapshot.save?.state.walking.campaignId===save.state.walking.campaignId)snapshot.repairAdjustment={...repairAdjustment,committedRevision:Number(row.revision)};
     return snapshot;
   }
   if (path === '/me' && method === 'GET') {
