@@ -16,11 +16,11 @@ const init = source.slice(source.indexOf('  let settings={'), source.indexOf('  
 const clickStart = source.indexOf("  document.addEventListener('click',async event=>");
 const click = source.slice(clickStart, source.indexOf("\n  document.addEventListener('submit'", clickStart));
 const eventLine = type => source.split('\n').find(line => line.startsWith("  document.addEventListener('" + type + "',"));
-const actions = ['close', 'export-complete-backup', 'export-save', 'export-sync-backup', 'help', 'import-save', 'install', 'music', 'new-game', 'notifications', 'open-gacha', 'open-recovery', 'open-sync', 'premium', 'progress', 'sound-settings', 'walking'];
+const actions = ['close', 'export-complete-backup', 'export-save', 'export-sync-backup', 'help', 'import-save', 'install', 'music', 'music-resume', 'new-game', 'notifications', 'open-gacha', 'open-recovery', 'open-sync', 'premium', 'progress', 'sound-settings', 'walking'];
 function fixture({ preferences = {}, rawPreferences, role = 'player', linked = false, warning = '' } = {}) {
   const { doc, host } = setup(), handlers = new Map(), calls = [], writes = [];
   const savedGame = '{"campaign":"keep-original-save","turn":71}';
-  const storage = new Map([[saveKey, savedGame], [settingsKey, rawPreferences ?? JSON.stringify(preferences)]]);
+  const storage = new Map([[saveKey, savedGame], [settingsKey, rawPreferences ?? JSON.stringify({audioPreferenceVersion:1,sound:false,...preferences})]]);
   doc.addEventListener = (type, callback) => { if (!handlers.has(type)) handlers.set(type, []); handlers.get(type).push(callback); };
   const record = name => (...args) => { calls.push([name, ...args]); };
   const game = { isAdmin: role === 'admin', isStaff: role === 'staff', state: { difficulty: 'normal', magatama: 420, turn: 71, clan: '織田家', resources: { gold: 12345 } } };
@@ -35,7 +35,7 @@ function fixture({ preferences = {}, rawPreferences, role = 'player', linked = f
       SengokuWalking: { open: record('walking') }, SengokuPremium: { open: record('premium') }
     },
     syncAccess: { linked }, saveWarning: warning, currentView: 'town', activeModal: '', officerSection: 'archive',
-    music: null, voiceAudioActive: false, writable: true,
+    music: null, voiceAudioActive: false, writable: true, startPending: false,
     requireWritable: () => c.writable,
     esc: value => String(value ?? '').replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[character])),
     num: value => Math.floor(Number(value) || 0).toLocaleString('ja-JP'), icon: () => '<span aria-hidden="true"></span>',
@@ -48,16 +48,23 @@ function fixture({ preferences = {}, rawPreferences, role = 'player', linked = f
     restoreAdminAssets() { calls.push(['restore-admin-assets']); return { ok: true, message: '復元を確認しました。' }; },
     updateCatalogSearch: () => false, updateBranchTroopDraft: () => false,
     SengokuMusic: class {
-      constructor(options) { calls.push(['audio-created', options.volume]); }
+      constructor(options) { this.playing = false; calls.push(['audio-created', options.volume]); }
+      static daypartTrackId() { return 'town-theme'; }
+      static automaticTrackId() { return 'town-theme'; }
+      get audible() { return this.playing; }
+      setAuto(value) { calls.push(['automatic', value]); }
+      setScene(value) { calls.push(['scene', value]); }
       setVoiceActive(value) { calls.push(['voice-state', value]); }
-      async play(id) { calls.push(['play', id]); this.currentId = id; }
-      pause() { calls.push(['pause']); }
+      async play(id) { calls.push(['play', id]); this.currentId = id; this.playing = true; }
+      async attemptPlayback(id) { await this.play(id); return 'playing'; }
+      pause() { calls.push(['pause']); this.playing = false; }
       setVolume(value) { calls.push(['volume', value]); }
     }
   };
   vm.createContext(c);
-  vm.runInContext(init + '\nthis.settings = settings;\n' + source.split('\n').find(line => line.startsWith('  const mutationActions=')) + '\n' +
-    ['safeSettings', 'settingsModal', 'ensureAudio', 'sceneTrack', 'toggleSound'].map(fn).join('\n') + '\n' + click + '\n' + eventLine('input') + '\n' + eventLine('change'), c);
+  const musicState=source.split('\n').find(line=>line.startsWith('  let music=null,voiceAudioActive=false')).replace('let music=','var music=');
+  vm.runInContext(init + '\nthis.settings = settings;\n' + musicState + '\n' + source.split('\n').find(line => line.startsWith('  const mutationActions=')) + '\n' +
+    ['safeSettings', 'settingsModal', 'musicScene', 'musicStatusText', 'removeMusicGesture', 'refreshMusicPlayback', 'musicPlaybackBlocked', 'musicPlaybackFailed', 'ensureAudio', 'sceneTrack', 'requestMusicPlayback', 'trustedGestureMusic', 'applyMusicVolume', 'startMusic', 'syncMusic', 'stopMusic', 'toggleSound'].map(fn).join('\n') + '\n' + click + '\n' + eventLine('input') + '\n' + eventLine('change'), c);
   const dispatch = async (type, target, detail = {}) => { for (const handler of handlers.get(type) || []) await handler({ target, ...detail }); };
   const press = async action => { const node = doc.querySelector('[data-action="' + action + '"]'); assert(node, action); await dispatch('click', node.querySelector('strong') || node); };
   return { c, doc, host, game, calls, writes, storage, savedGame, dispatch, press };
@@ -69,13 +76,25 @@ async function test(name, run) { await run(); passed++; console.log('PASS ' + na
     const values = [[0, 0], [100, 100], [-5, 0], [205, 100], [31.7, 32], ['41.6', 42], [' 70 ', 70], ['', 10], ['   ', 10], ['NaN', 10], ['Infinity', 10], [true, 10], [false, 10], [null, 10], [[], 10], [{}, 10], ['"><img src=x onerror=alert(1)>', 10]];
     for (const [volume, expected] of values) {
       const f = fixture({ preferences: { volume, sound: true, tips: false, musicMode: 'manual', track: 'manual-theme', townFacilitiesExpanded: true } });
-      assert.equal(f.c.settings.volume, expected); assert.equal(f.c.settings.sound, false);
+      assert.equal(f.c.settings.volume, expected); assert.equal(f.c.settings.sound, true);
       assert.equal(f.c.settings.tips, false); assert.equal(f.c.settings.musicMode, 'manual'); assert.equal(f.c.settings.track, 'manual-theme'); assert.equal(f.c.settings.townFacilitiesExpanded, true);
       f.c.settingsModal(); assert.equal(f.doc.querySelector('#volume').value, String(expected)); assert.equal(f.doc.querySelector('img'), null);
       assert.equal(f.writes.length, 0, 'Opening settings must not rewrite old preferences or a campaign');
       assert.equal(f.storage.get(saveKey), f.savedGame);
     }
     assert.equal(fixture({ rawPreferences: '{broken-json' }).c.settings.volume, 10);
+  });
+  await test('the one-time audio migration unmutes old preferences but preserves later explicit mute and manual selection', () => {
+    for(const [volume,expected] of [[0,10],[44,44]]){
+      const f=fixture({rawPreferences:JSON.stringify({sound:false,volume,musicMode:'manual',track:'manual-theme'})});
+      assert.equal(f.c.settings.sound,true);assert.equal(f.c.settings.volume,expected);assert.equal(f.c.settings.audioPreferenceVersion,1);
+      assert.equal(f.c.settings.musicMode,'manual');assert.equal(f.c.settings.track,'manual-theme');
+      const migrated=JSON.parse(f.storage.get(settingsKey));assert.equal(migrated.audioPreferenceVersion,1,'migration is persisted even before playback succeeds');
+      assert.equal(f.storage.get(saveKey),f.savedGame);assert(f.writes.every(([key])=>key===settingsKey));
+      f.c.settings.sound=false;f.c.settings.volume=0;f.c.safeSettings();
+      const next=fixture({rawPreferences:f.storage.get(settingsKey)});
+      assert.equal(next.c.settings.sound,false);assert.equal(next.c.settings.volume,0);assert.equal(next.c.settings.musicMode,'manual');assert.equal(next.c.settings.track,'manual-theme');assert.equal(next.writes.length,0);
+    }
   });
   await test('grouped settings retain every existing action and protect the administrator-only route', () => {
     for (const role of ['player', 'staff', 'admin']) {
@@ -86,6 +105,7 @@ async function test(name, run) { await run(); passed++; console.log('PASS ' + na
       assert.equal(f.doc.querySelectorAll('.settings-group').length, 4);
       assert.deepEqual(f.doc.querySelectorAll('.settings-group').filter(node => node.open).map(node => node.id), ['settings-appearance']);
       assert(f.doc.querySelector('#presentation-detail')); assert.equal(f.doc.querySelector('#tips').value, 'on');
+      assert.equal(f.doc.querySelector('[data-action="music-resume"]').hasAttribute('hidden'),true,'stopped audio does not show a policy retry control');
       assert.equal(f.doc.querySelector('[role="alert"]').textContent, '<img src=x onerror=alert(1)>保存の確認'); assert.equal(f.doc.querySelector('img'), null);
       assert.equal(JSON.stringify(f.game.state), before); assert.equal(f.writes.length, 0); assert.equal(f.calls.length, 0, 'Settings must not autoplay audio');
     }
@@ -106,7 +126,7 @@ async function test(name, run) { await run(); passed++; console.log('PASS ' + na
     assert.equal(JSON.stringify(f.game.state), before); assert.equal(f.storage.get(saveKey), f.savedGame); assert(f.writes.every(([key]) => key === settingsKey));
   });
   await test('explicit BGM controls honor saved volume and manual track without changing the campaign', async () => {
-    const f = fixture({ preferences: { volume: 44, sound: true, musicMode: 'manual', track: 'manual-theme' } }), before = JSON.stringify(f.game.state);
+    const f = fixture({ preferences: { volume: 44, sound: false, musicMode: 'manual', track: 'manual-theme' } }), before = JSON.stringify(f.game.state);
     f.c.settingsModal(); await f.press('sound-settings');
     assert.equal(f.c.settings.sound, true); assert(f.calls.some(call => call[0] === 'audio-created' && call[1] === 44)); assert(f.calls.some(call => call[0] === 'play' && call[1] === 'manual-theme'));
     assert.match(f.doc.querySelector('[data-action="sound-settings"]').textContent, /再生中/);
@@ -114,6 +134,16 @@ async function test(name, run) { await run(); passed++; console.log('PASS ' + na
     const tips = f.doc.querySelector('#tips'); tips.value = 'off'; await f.dispatch('change', tips);
     assert.equal(JSON.parse(f.storage.get(settingsKey)).tips, false); assert(f.calls.some(call => call[0] === 'render'));
     assert.equal(JSON.stringify(f.game.state), before); assert.equal(f.storage.get(saveKey), f.savedGame);
+  });
+  await test('a policy-blocked preference is shown as waiting with a working explicit resume control', async () => {
+    const f=fixture({preferences:{sound:true,volume:44,musicMode:'manual',track:'manual-theme'}});
+    f.c.musicWaitingForGesture=true;f.c.settingsModal();
+    assert.match(f.doc.querySelector('[data-action="sound-settings"]').textContent,/再生待機/);
+    assert.equal(f.doc.querySelector('[data-action="music-resume"]').hasAttribute('hidden'),false);assert.equal(f.calls.length,0);
+    await f.press('music-resume');
+    assert.equal(f.c.settings.sound,true);assert.equal(f.c.music.playing,true);assert.equal(f.c.music.currentId,'manual-theme');
+    assert.match(f.doc.querySelector('[data-action="sound-settings"]').textContent,/再生中/);
+    assert.equal(f.doc.querySelector('[data-action="music-resume"]').hidden,true);assert.equal(f.storage.get(saveKey),f.savedGame);
   });
   await test('all save and utility actions keep their established routes and import/new-game remain review steps', async () => {
     const expected = {

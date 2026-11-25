@@ -6,7 +6,7 @@
   <meta name="referrer" content="no-referrer">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex,nofollow">
-  <title>戦国VS 音楽帳｜オリジナルサウンドトラック全16曲</title>
+  <title>戦国VS 音楽帳｜支度・朝昼夜のBGMと全20曲の試聴</title>
   <style>
     :root {
       color-scheme: dark;
@@ -43,6 +43,7 @@
     .album-type::before { content: ""; width: 1.4rem; height: 2px; background: var(--leaf); }
     h1 { margin: .36rem 0 .5rem; font: 750 clamp(2rem,4.6vw,4.35rem)/1.14 var(--serif); letter-spacing: .035em; color: #f5e4bf; text-wrap: balance; }
     .album-description { color: #e1d6bf; font-size: 1rem; line-height: 1.65; }
+    .album-description + .album-description { margin-top: .75rem; }
     .sleeve { position: relative; isolation: isolate; padding: 0 10% 0 0; margin-inline: 2px; }
     .sleeve::before { content: ""; position: absolute; z-index: -1; right: 0; top: 7.5%; aspect-ratio: 1; height: 85%; border-radius: 50%; border: 1px solid #837d70; background: radial-gradient(circle,#c2a277 0 1%,#202222 1.3% 4%,#927141 4.3% 16%,#12181a 16.3% 18%,transparent 18.2%), repeating-radial-gradient(circle,#171a1e 0 2px,#3b3d3f 2.7px,#191c22 3.3px); box-shadow: 0 .3rem .8rem #03081199; }
     .jacket { width: 100%; aspect-ratio: 1; padding: 4px; border: 1px solid #b09a75; background: linear-gradient(125deg,#dec699,#a27d51 52%,#dfc18b); box-shadow: 0 16px 32px #050b144d; }
@@ -123,9 +124,11 @@
   <main>
     <section class="album" aria-labelledby="album-title">
       <div class="album-copy">
-        <p class="album-type">オリジナルサウンドトラック</p>
+        <p class="album-type">支度・朝・昼・夜と戦国の音楽</p>
         <h1 id="album-title">戦国の音楽帳</h1>
-        <p class="album-description">城下の営みから決戦まで、戦国VSを彩る全16曲。</p>
+        <p class="album-description">提供音源の「支度」「朝活」「昼活」「夜活」と、城下の営みから決戦までを彩るオリジナルBGM16曲。全20曲から選び、再生ボタンで試聴できます。</p>
+        <p class="album-description">ゲーム本体の自動モードでは、トップメニューと本拠の選択中に「支度」が流れます。本拠確定後は端末の時刻に合わせ、朝05:00〜12:00、昼12:00〜18:00、夜18:00〜翌05:00で切り替わります。「支度」は時刻に依存せず、朝昼夜の選曲もゲーム内の暦とは独立しています。</p>
+        <p class="album-description">ゲーム本体は初期BGMオン・音量10%で、ブラウザが許可すれば自動再生し、制限がある場合は最初の操作で開始します。手動で選んだ曲と、その後の音量・停止・ミュート設定は維持します。「時間帯に合わせて自動選曲」で自動モードへ戻せます。<a href="../guide/#music">音楽設定の使い方</a></p>
       </div>
       <figure class="sleeve">
         <div class="jacket"><img src="../assets/responsive/music-440.webp" srcset="../assets/responsive/music-240.webp 240w, ../assets/responsive/music-440.webp 440w, ../assets/responsive/music-720.webp 720w, ../assets/responsive/music-900.webp 900w" sizes="(max-width: 560px) 44vw, (max-width: 850px) 240px, 320px" alt="宵の城を背に、琵琶・太鼓・笛・箏を奏でる一座を描いたアルバムジャケット" width="900" height="900" fetchpriority="high" decoding="async"></div>
@@ -156,7 +159,7 @@
     </section>
   </main>
   <footer>© KASAI SOLUTIONS</footer>
-  <script src="../music.js?v=4.9.10-20261123"></script>
-  <script src="music-audition.js?v=4.9.10-20261123"></script>
+  <script src="../music.js?v=5.0.6-20261126"></script>
+  <script src="music-audition.js?v=5.0.6-20261126"></script>
 </body>
 </html>

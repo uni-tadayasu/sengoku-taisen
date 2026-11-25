@@ -147,6 +147,11 @@ body.at-title #app { display: none; }
 #title-resume-detail { color: #c9d0d5; font-size: .82rem; line-height: 1.5; }
 #launch-screen .edition-profile-link { display: block; width: fit-content; margin-top: 12px; padding: 6px 0; font-size: .88rem; line-height: 1.5; color: #dbc49d; }
 #launch-enter.edition-enter { box-shadow: inset 0 0 0 3px #89392b, inset 0 0 0 4px #f3cf8e6b,0 9px 24px #080f1f66; }
+.title-music-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 7px 12px; max-width: 100%; margin-top: 12px; }
+.title-music-toggle { min-height: 44px; padding: 8px 12px; border: 1px solid #bfa27377; border-radius: 4px; background: #101d2edb; color: #f1dfbf; font: inherit; font-size: .85rem; line-height: 1.5; cursor: pointer; }
+.title-music-toggle:hover { background: #2a3b4a; border-color: #dab77c; }
+.title-music-toggle[hidden] { display: none; }
+.title-music-status { flex-basis: 100%; color: #ded2bc; font-size: .77rem; line-height: 1.55; }
 @media (min-width: 981px) and (min-height: 760px) { .edition-story { padding-block: clamp(25px,3.2vw,64px); } }
 @media (max-width: 700px) {
   .edition-mast nav { gap: 9px; }

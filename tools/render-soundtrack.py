@@ -242,7 +242,8 @@ def write_manifest(scores):
 
 def main():
     OUT.mkdir(parents=True,exist_ok=True)
-    script = "require('./music.js');process.stdout.write(JSON.stringify(SENGOKU_MUSIC_TRACKS.map(t=>({...t,score:SengokuMusic.inspect(t.id)}))))"
+    # Uploaded recordings have no generated score. Keep their original audio intact.
+    script = "require('./music.js');process.stdout.write(JSON.stringify(SENGOKU_MUSIC_TRACKS.filter(t=>!t.recordingOnly).map(t=>({...t,score:SengokuMusic.inspect(t.id)}))))"
     scores=json.loads(subprocess.check_output(['node','-e',script],cwd=ROOT))
     import argparse
     parser=argparse.ArgumentParser()

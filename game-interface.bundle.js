@@ -77,11 +77,16 @@
   const officerPreferencesKey='sengoku-officer-filters-v1';
   let choiceFilters={army:officerFilterDefaults('army'),governor:officerFilterDefaults('governor')},gachaPresentation=null,gachaDrawing=false;
   try{const saved=JSON.parse(localStorage.getItem(officerPreferencesKey)||'{}');filter=normalizeOfficerFilter(saved.archive,'archive');choiceFilters.army=normalizeOfficerFilter(saved.army,'army');choiceFilters.governor=normalizeOfficerFilter(saved.governor,'governor');}catch(_){}
-  let settings={sound:false,volume:10,tips:true,townFacilitiesExpanded:false,townLegendExpanded:false,musicMode:'auto',track:''};
+  let music=null,voiceAudioActive=false,musicStarted=false,musicStarting=false,musicWaitingForGesture=false,musicFailure=false,musicRequest=0,musicRequestedId='',musicGestureAvailable=true,musicVolumeRetryPending=false;
+  let settings={sound:true,volume:10,tips:true,townFacilitiesExpanded:false,townLegendExpanded:false,musicMode:'auto',track:''};
   try{settings={...settings,...JSON.parse(localStorage.getItem(settingsKey)||'{}')};}catch(_){}
   const storedVolume=settings.volume;
   settings.volume=(typeof storedVolume==='number'||typeof storedVolume==='string'&&storedVolume.trim()!=='')&&Number.isFinite(Number(storedVolume))?Math.round(Math.max(0,Math.min(100,Number(storedVolume)))):10;
-  settings.sound=false;
+  if(settings.musicMode!=='manual'||!(window.SENGOKU_MUSIC_TRACKS||[]).some(track=>track.id===settings.track))settings.musicMode='auto';
+  if(!(Number(settings.audioPreferenceVersion)>=1)){
+    settings.sound=true;if(settings.volume===0)settings.volume=10;
+    settings.audioPreferenceVersion=1;safeSettings();
+  }else settings.sound=settings.sound!==false;
   try{const raw=localStorage.getItem(saveKey);startPending=raw===null;if(linkedAtStart&&raw!==null)pendingRoleSave=raw;game=raw!==null?SengokuEngine.fromSave(raw,roster):new SengokuEngine({clan:'織田家',officers:roster});}catch(e){game=new SengokuEngine({clan:'織田家',officers:roster});saveWarning='保存を読み込めなかったため、自動保存を止めて仮プレイを開始しました。既存の保存データは上書きしていません。新しい物語やセーブ読込を確定すると置き換わります。';saveEnabled=false;}
   if(!game?.state){$('#main').innerHTML='<div class="loading-screen">ゲームの読み込みに失敗しました。再読み込みしてください。</div>';return;}
   const state=()=>game.state;
@@ -1108,14 +1113,14 @@
   function settingsModal(){
     const settingAction=(action,name,description,symbol,extra='')=>`<button class="button settings-action" data-action="${action}" ${extra}>${icon(symbol)}<span><strong>${name}</strong><small>${description}</small></span></button>`;
     const group=(id,name,description,symbol,body,open=false)=>`<details class="settings-group" id="settings-${id}" ${open?'open':''}><summary>${icon(symbol)}<span><strong>${name}</strong><small>${description}</small></span><span class="settings-disclosure" aria-hidden="true"></span></summary><div class="settings-group-body">${body}</div></details>`;
-    const sound=`<div class="settings-row settings-audio-row"><div><strong>BGM</strong><small>全16曲・画面に合わせて自動切替</small></div><button class="button ${settings.sound?'':'gold'} small" data-action="sound-settings">${settings.sound?'再生中 · 停止':'停止中 · 再生'}</button></div><div class="settings-row settings-volume"><label for="volume">音量</label><input id="volume" type="range" min="0" max="100" step="1" value="${settings.volume}" aria-label="BGM音量"><output for="volume" id="settings-volume-value">${settings.volume}%</output></div><button class="button full" data-action="music">${icon('sound')}音楽帳で曲を選ぶ</button><p class="settings-explanation">再生ボタンを押すと音が鳴ります。端末のメディア音量でも調整できます。</p>${window.SengokuPresentation?.settingsMarkup?.()||''}<div class="settings-row"><label for="tips">城下町のヒント</label><select id="tips" class="select"><option value="on" ${settings.tips?'selected':''}>表示する</option><option value="off" ${settings.tips?'':'selected'}>表示しない</option></select></div>`;
+    const sound=`<div class="settings-row settings-audio-row"><div><strong>BGM</strong><small>全20曲・トップは支度、ゲーム内は朝昼夜</small></div><button class="button ${settings.sound?'':'gold'} small" data-action="sound-settings">${musicStatusText()} · ${settings.sound?'停止':'再生'}</button></div><div class="settings-row settings-volume"><label for="volume">音量</label><input id="volume" type="range" min="0" max="100" step="1" value="${settings.volume}" aria-label="BGM音量"><output for="volume" id="settings-volume-value">${settings.volume}%</output></div><button class="button small" data-action="music-resume" ${settings.sound&&(musicWaitingForGesture||musicFailure)?'':'hidden'}>BGMを再生</button><button class="button full" data-action="music">${icon('sound')}音楽帳で曲を選ぶ</button><p class="settings-explanation">起動時にBGMの再生を試みます。ブラウザの許可待ちでは、画面を操作すると再生を試みます。停止・音量の設定は次回も保持します。</p>${window.SengokuPresentation?.settingsMarkup?.()||''}<div class="settings-row"><label for="tips">城下町のヒント</label><select id="tips" class="select"><option value="on" ${settings.tips?'selected':''}>表示する</option><option value="off" ${settings.tips?'':'selected'}>表示しない</option></select></div>`;
     const saves=`<p class="settings-explanation">${syncAccess.linked?'領主の進行を、連携した端末間で引き継ぎます。同時に操作できる端末は1台です。':'このブラウザに進行を自動保存します。端末を変える前に、バックアップを書き出してください。'}</p><div class="settings-stack">${settingAction('export-complete-backup','領主と進行をまとめて書き出す','ログイン情報とセーブを一つのバックアップへ。','save')}${settingAction('open-recovery','引き継ぎ・データ復元','機種やドメインが変わった後、元の領主と進行へ。','upload')}${settingAction('open-sync','端末同期・引き継ぎ','端末の接続と引き継ぎを管理。','refresh')}</div><details class="settings-secondary"><summary>セーブファイルの個別操作</summary><div class="settings-stack">${settingAction('export-save','セーブデータを書き出す','現在の戦役をJSONファイルで保存。','download')}${settingAction('import-save','セーブデータを読み込む','内容を確認してから現在の進行へ反映。','upload')}${settingAction('export-sync-backup','同期・読込前のセーブを取り出す','置き換え前のバックアップを書き出す。','download')}</div></details><p class="settings-explanation">通信が切れても世界の時間は進み、再接続時に共通時刻へ追いつきます。接続の確認中は操作が待機します。</p>`;
     const convenience=`<div class="settings-stack">${settingAction('notifications','通知設定','合戦・書状・普請などを選択。静かな時間帯は日本時間で設定。','bell')}${settingAction('progress','成長手帳・留守中の報告','任務、編成セット、武将育成、歴代記録を確認。','book','data-tab="recap"')}${settingAction('walking','ウォーキング','歩数に応じて、5つの資産が増えます。','walking')}${settingAction('open-gacha','武将招集・勾玉',`所持 ${num(state().magatama)} · プレイで集める専用通貨。`,'magatama')}${settingAction('premium','有料版・支援','外観を見比べ、購入した装いを管理。','flag','aria-haspopup="dialog"')}${settingAction('install','ホーム画面に追加','スマホからアプリのように起動。','plus')}</div>`;
     const campaign=`<div class="settings-row"><span>現在の難易度</span><strong>${({easy:'初陣',normal:'戦国',hard:'修羅'})[state().difficulty]}</strong></div><p class="settings-explanation">各資産の所有上限は100,000,000です。施設の収容量と1回の出陣人数には別の上限があります。</p>${game.isAdmin?`<div class="notice admin-fixed-base">${icon('castle')}<strong>本拠：江戸城（固定）</strong><br>武将・施設・資源は連携した端末へ引き継ぎます。</div>${settingAction('restore-admin-assets','徳川家康 U を復元','資格を確認済み。重複して付与されません。','crown')}`:''}<div class="settings-new-campaign"><p>新しい勢力・難易度で始める場合は、次の画面で内容を確認できます。</p><button class="button danger full" data-action="new-game">${icon('refresh')}新しい物語を始める</button></div>`;
     modal('保存・設定','音・表示、引き継ぎ、便利な機能をまとめて管理。',`${saveWarning?`<div class="notice" role="alert">${esc(saveWarning)}</div>`:''}<div class="settings-hub">${group('appearance','音・表示','BGM・音量・演出・城下町のヒント','sound',sound,true)}${group('save','保存・引き継ぎ','バックアップ・端末同期・データ復元','save',saves)}${group('features','便利な機能','通知・成長手帳・ウォーキング・外観','flag',convenience)}${group('campaign','戦役の設定','難易度の確認・新しい物語','castle',campaign)}</div>`,`<button class="button" data-action="help">遊び方</button><button class="button primary" data-action="close">ゲームへ戻る</button>`,'settings');
   }
   function helpModal(){modal('天下への道しるべ','月を重ね、城を育て、将とともに天下へ。',`<div class="help-steps">${[['城下を育てる','田畑は兵糧、商家は金銭を生みます。施設を選んで増築すると表示された秒数で完成。木材と石材も計画的に確保しましょう。強化時の資源は、領有1城で1倍、2城で2倍、3城で4倍、4城で8倍、5城以降は16倍です。施設維持費の単価は変わりません。'],['武将を迎える','名鑑から武将を登用するほか、勾玉で武将招集ができます。勾玉は毎月・任務・城の初攻略で集まります。軍団に最大3名を編成。政治の高い家臣は各施設の奉行に任命し、生産・登用・募兵・防衛・研究を支えます。'],['時を味方にする','資源は毎秒、普請と研究は実時間で進みます。1倍速では指令が20秒ごとに1回復し、60秒がゲーム内の1か月です。時間は全プレイヤー共通。1560〜1615年を周回し、画面を閉じていても進みます。再接続時に経過した分を反映します。速度・停止は全員共通です。'],['拠点の耐久を守る','すべての城・大都市・支拠点に耐久があります。攻城戦で損傷すると城壁などの防御効果が弱まり、稼働中はゲーム内1か月で最大耐久の10%を自動修復します。占領直後は25%から復旧し、陥落した支拠点は修復工事が必要です。'],['軍備を整える','募兵と訓練で兵数と士気を確保します。現在保有する兵には金銭・兵糧の維持費がかかります。完成した施設・城の維持費は金銭・兵糧・木材・石材から差し引かれます。ゲーム内の月替わりに1回、金銭・兵糧の月間収支が赤字なら、手持ち・本拠を優先した城の守備兵・支拠点の順に必要な兵数を自動調整し、その分の兵士維持費も減ります。月の途中では自動減兵しません。軍団や城下普請帳の「毎月の収支」で内訳を確認できます。'],['兵士を輸出入する','交流の交易で、兵士の人数と対価を指定して他の領主と輸出入できます。無償の移送も可能です。輸出兵は提案時に預け、相手の承認で移動します。取消・拒否の兵士は受取待ちに戻ります。輸入・返還は募兵上限とは別枠で受け入れ、本隊と出陣中の兵を合わせた保有上限を確認します。'],['野良兵士と戦う','野良兵戦でCPU部隊を選び、出陣兵数と戦法を決めます。指令1と兵糧を消費し、勝利すると資源や勾玉を獲得します。戦闘では兵の損失が発生します。城の所有は変わりません。'],['天下を切り拓く','天下地図で自領に隣接する城を選び、出陣兵数と戦法を決定。偵察や6か月の同盟も活用して保護された江戸城・京都御所を除く城の統一を目指します。自分の役職で領有できる城の数は画面に表示されます。'],['領主と向き合う','共通フィールドには実際のプレイヤーの本拠と、所領の二条・大坂・名古屋が表示されます。拠点を選んで出陣し、この3都市は勝利すると領有できます。外交が成立した6か月間は互いに攻撃できません。江戸城・京都御所の報酬戦にも挑戦でき、勝利時は戦勝報酬を得ます。この2城は占領されません。'],['戦記を守る','端末を連携すると進行を自動同期します。連携前の自動保存や、設定からのセーブ書き出しも利用できます。同じ領主IDを連携した端末へ引き継げます。']].map(([t,p])=>`<div class="help-step"><div><h3>${t}</h3><p>${p}</p></div></div>`).join('')}</div><div class="notice">天下地図はCPU勢力との戦役です。共通フィールドでは他プレイヤーの拠点を選び、襲撃や合意に基づく外交ができます。年月・接続状況・交流も全員で共有します。実在の人物・城を題材に、年代・能力・外交・合戦をゲーム向けに再構成しています。</div>`,`<button class="button primary" data-action="close">城下町へ</button>`,'help');}
-  function aboutModal(){const sourceInfo=window.SENGOKU_ROSTER_META;modal('ゲーム概要・収録情報','戦国VS · KASAI SOLUTIONS',`<h3>城下町を育て、武将を編成する戦国ブラウザゲーム</h3><p>「戦国VS」は、KASAI SOLUTIONSによる戦国ブラウザゲームです。はじまりの城を選び、城下町の施設を連続増築し、武将を編成して領国を発展させます。PC・スマートフォン・タブレットで遊べます。</p><p>全員共通の年月のもと、天下地図でのCPU勢力の城攻略、共通フィールドでの外交、同盟の資産共有、領主や所属同盟への書状を楽しめます。軍師AIの自動進軍、対応端末でのウォーキング報酬、領主を連携した端末間の自動同期にも対応しています。</p><p class="subtitle"><a href="about/" target="_blank" rel="noopener">詳しいゲーム概要・制作方針</a> · <a href="guide/" target="_blank" rel="noopener">遊び方と各機能の条件</a></p><h3>収録人物</h3><p>戦国から織豊期を中心に${num(roster.length)}名、${new Set(roster.map(o=>o.clan)).size}勢力の人物を収録しています。史料に残る武将を一人残らず網羅した名簿ではありません。人物の改名は原則として同一人物にまとめています。</p><h3>歴史とゲームの関係</h3><p>本作は256名の人物・${data.castles.length}城・64施設が登場する「群雄集結」です。通常城と64施設は最大Lv.32、二条・大坂・名古屋の城郭はLv.48、江戸城の城郭はLv.64、京都御所はLv.128まで育成できます。城の姿は32段階で、Lv.33以降も最終形態を使用します。城郭${num(data.castles.length*32)}種・施設2,048種の段階別イラストがあります。武将絵巻と合わせて全${num(window.SengokuArt?.totalIllustrations||8224)}種を収録し、16曲のオリジナルBGMを収録しています。異なる年代の人物と城が同時に登場します。能力値・格付け・特技・城の勢力配置・施設効果はすべてゲーム用の創作です。武将1名につき8ランク、計2,048種の創作肖像を閲覧・収集できます。肖像は実際の容姿を示すものではありません。</p><h3>資料</h3><ul class="about-links">${(sourceInfo?.sources||[]).map(x=>`<li><a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.title)}</a></li>`).join('')}</ul><p class="subtitle"><a href="SOURCES.md" target="_blank" rel="noopener">人物資料</a>・<a href="SOURCES-MAP.md" target="_blank" rel="noopener">地図の出典</a>・<a href="SOURCES-KAMON.md" target="_blank" rel="noopener">家紋の出典</a>を確認できます。</p><hr class="divider"><p class="subtitle">ゲーム内城下町：オリジナル生成イラスト<br>音楽：戦国VSのために作曲・編曲したステレオ録音<br>著作権：© KASAI SOLUTIONS</p>`,`<button class="button primary" data-action="close">閉じる</button>`,'about');}
+  function aboutModal(){const sourceInfo=window.SENGOKU_ROSTER_META;modal('ゲーム概要・収録情報','戦国VS · KASAI SOLUTIONS',`<h3>城下町を育て、武将を編成する戦国ブラウザゲーム</h3><p>「戦国VS」は、KASAI SOLUTIONSによる戦国ブラウザゲームです。はじまりの城を選び、城下町の施設を連続増築し、武将を編成して領国を発展させます。PC・スマートフォン・タブレットで遊べます。</p><p>全員共通の年月のもと、天下地図でのCPU勢力の城攻略、共通フィールドでの外交、同盟の資産共有、領主や所属同盟への書状を楽しめます。軍師AIの自動進軍、対応端末でのウォーキング報酬、領主を連携した端末間の自動同期にも対応しています。</p><p class="subtitle"><a href="about/" target="_blank" rel="noopener">詳しいゲーム概要・制作方針</a> · <a href="guide/" target="_blank" rel="noopener">遊び方と各機能の条件</a></p><h3>収録人物</h3><p>戦国から織豊期を中心に${num(roster.length)}名、${new Set(roster.map(o=>o.clan)).size}勢力の人物を収録しています。史料に残る武将を一人残らず網羅した名簿ではありません。人物の改名は原則として同一人物にまとめています。</p><h3>歴史とゲームの関係</h3><p>本作は256名の人物・${data.castles.length}城・64施設が登場する「群雄集結」です。通常城と64施設は最大Lv.32、二条・大坂・名古屋の城郭はLv.48、江戸城の城郭はLv.64、京都御所はLv.128まで育成できます。城の姿は32段階で、Lv.33以降も最終形態を使用します。城郭${num(data.castles.length*32)}種・施設2,048種の段階別イラストがあります。武将絵巻と合わせて全${num(window.SengokuArt?.totalIllustrations||8224)}種を収録し、支度・朝活・昼活・夜活の4曲と、従来のオリジナルBGM16曲を収録しています。異なる年代の人物と城が同時に登場します。能力値・格付け・特技・城の勢力配置・施設効果はすべてゲーム用の創作です。武将1名につき8ランク、計2,048種の創作肖像を閲覧・収集できます。肖像は実際の容姿を示すものではありません。</p><h3>資料</h3><ul class="about-links">${(sourceInfo?.sources||[]).map(x=>`<li><a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.title)}</a></li>`).join('')}</ul><p class="subtitle"><a href="SOURCES.md" target="_blank" rel="noopener">人物資料</a>・<a href="SOURCES-MAP.md" target="_blank" rel="noopener">地図の出典</a>・<a href="SOURCES-KAMON.md" target="_blank" rel="noopener">家紋の出典</a>を確認できます。</p><hr class="divider"><p class="subtitle">ゲーム内城下町：オリジナル生成イラスト<br>音楽：トップメニュー・時間帯別の提供音源4曲と、本作のために作曲・編曲した16曲<br>著作権：© KASAI SOLUTIONS</p>`,`<button class="button primary" data-action="close">閉じる</button>`,'about');}
   function renderStartSelection(){return `<section class="start-campaign-welcome"><div class="start-campaign-emblem" aria-hidden="true">${icon('castle')}</div><div class="eyebrow">YOUR FIRST CASTLE</div><h1>天下への一歩を、<br>あなたの城から。</h1><p>${game.isAdmin?'家は徳川家、本拠は江戸城です。難易度を決めて出陣しましょう。':game.isStaff?'家は徳川家、共同本拠は京都御所です。難易度を決めて、共有の城下町から出陣しましょう。':`全国${data.castles.filter(c=>!c.majorCity).length}城の領主として入城するか、ほかのプレイヤーの家臣として参加できます。領主の城がすべて埋まっていても、家臣として始められます。`}<br>選択を確定するまで、新しい進行は保存されません。</p><div class="start-campaign-actions"><button class="button primary" data-action="new-game">${icon('castle')}${game.isAdmin?'江戸城で開始設定':game.isStaff?'京都御所で開始設定':'はじまりの城を選ぶ'}</button><button class="button" data-action="open-recovery">${icon('upload')}以前の領主を復元</button></div><small>以前の進行がある方は、引き継ぎ・データ復元からお戻りください。</small></section>`;}
   function openStartSelection(){if(startPending&&!$('#modal').open&&!document.querySelector('.social-dialog[open]'))newGameModal();}
   function newGameModal(){stopStrategy();newClan=game.isAdmin?data.adminClan.name:game.isStaff?data.staffClan.name:state().clan;newStartCastle=game.isAdmin?'edo':game.isStaff?staffBaseId:'';newResidencyMode='lord';newResidencyDirectory=null;newResidencyError='';newResidencyLoading=!game.isAdmin&&!game.isStaff;newGameGeneration++;drawNewGame();if(newResidencyLoading)loadAdmissionChoices();}
@@ -1326,14 +1331,114 @@
   let installPrompt=null;
   window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();installPrompt=e;});
   async function install(){if(installPrompt){await installPrompt.prompt();installPrompt=null;return;}modal('ホーム画面に追加','ブラウザのメニューから登録できます。',`<div class="help-steps"><div class="help-step"><div><h3>iPhone・iPad</h3><p>Safariで公開版を開き、「共有」から「ホーム画面に追加」を選んでください。</p></div></div><div class="help-step"><div><h3>Android</h3><p>Chromeで公開版を開き、メニューから「ホーム画面に追加」または「アプリをインストール」を選んでください。</p></div></div></div><div class="notice">初回は通信が必要です。ホーム追加やオフライン動作の対応はブラウザにより異なります。</div>`,`<button class="button primary" data-action="close">わかりました</button>`,'install');}
-  let music=null,voiceAudioActive=false;
-  function setVoiceActive(value){voiceAudioActive=value===true;music?.setVoiceActive?.(voiceAudioActive)?.catch?.(()=>{});}
-  function ensureAudio(){if(!music){music=new SengokuMusic({volume:settings.volume});music.setVoiceActive?.(voiceAudioActive);}return music;}
-  function sceneTrack(scene){const tracks=window.SENGOKU_MUSIC_TRACKS||[];if(settings.musicMode==='manual'&&tracks.some(t=>t.id===settings.track))return settings.track;const match=tracks.filter(t=>t.scene===(scene||({town:'town',facilities:'town',map:'world',field:'world',roaming:'army',covert:'army',officers:'officers',army:'army',research:'research',council:'chronicle'})[currentView]||'town'));return (match[Math.floor(state().turn/3)%Math.max(1,match.length)]||tracks[0])?.id;}
-  function syncMusic(scene){if(!settings.sound)return;try{const player=ensureAudio(),id=sceneTrack(scene);if(id&&id!==player.currentId)player.play(id).catch(()=>{});}catch(_){} }
+  function setVoiceActive(value){voiceAudioActive=value===true;music?.setVoiceActive?.(voiceAudioActive)?.finally?.(refreshMusicPlayback);refreshMusicPlayback();}
+  function musicScene(){return window.SENGOKU_AT_TITLE===true||startPending?'title':'game';}
+  function musicStatusText(){
+    if(!settings.sound)return '停止中';
+    if(!settings.volume)return '音量0';
+    if(musicWaitingForGesture||music?.resuming&&!music?.audible)return '再生待機';
+    if(musicFailure)return '読込失敗';
+    if(voiceAudioActive)return '通話中・一時停止';
+    if(music?.audible)return '再生中';
+    return musicStarting||music?.playing?'読込中':'再生待機';
+  }
+  function removeMusicGesture(){
+    for(const type of ['pointerdown','click','keydown'])document.removeEventListener(type,trustedGestureMusic,true);
+    musicGestureAvailable=false;
+  }
+  function refreshMusicPlayback(){
+    const status=musicStatusText(),toggle=settings.sound?'停止':'再生';
+    if(music?.audible&&settings.sound)removeMusicGesture();
+    for(const node of document.querySelectorAll('[data-audio-toggle]')){
+      const text=settings.sound?`BGM ${status} · 停止`:'BGMを再生';
+      if(node.textContent!==text)node.textContent=text;
+      node.setAttribute('aria-label',settings.sound?'BGMを停止':'BGMを再生');
+    }
+    for(const node of document.querySelectorAll('[data-audio-status]')){
+      const text=musicWaitingForGesture?'ブラウザの許可待ちです。画面を操作すると再生を試みます。':musicFailure?'音源を読み込めませんでした。再生ボタンでお試しください。':`BGM: ${status}`;
+      if(node.textContent!==text)node.textContent=text;
+    }
+    for(const node of document.querySelectorAll('[data-action="sound-settings"]'))node.textContent=`${status} · ${toggle}`;
+    for(const node of document.querySelectorAll('[data-action="music-resume"]'))node.hidden=!(settings.sound&&settings.volume>0&&(musicWaitingForGesture||musicFailure));
+    const sound=$('#sound-button');if(sound)sound.setAttribute('aria-label',`${settings.sound?'BGMを停止':'BGMを再生'}（${status}）`);
+    if(activeModal!=='music')return;
+    for(const node of document.querySelectorAll('.music-track')){
+      const selected=Boolean(settings.sound&&node.dataset.id===music?.currentId),playing=selected&&music.audible;
+      node.classList.toggle('playing',playing);
+      const label=node.querySelector('.track-state');if(label)label.textContent=playing?'演奏中':selected&&music?.playing?'読込中':'聴く';
+    }
+  }
+  function musicPlaybackBlocked(){
+    ++musicRequest;musicStarting=false;musicWaitingForGesture=true;musicFailure=false;
+    refreshMusicPlayback();
+  }
+  function musicPlaybackFailed(error){
+    if(error?.name==='NotAllowedError'){musicPlaybackBlocked();return;}
+    ++musicRequest;musicStarting=false;musicWaitingForGesture=false;musicFailure=true;
+    if(music?.playing)music.pause();refreshMusicPlayback();
+    toast(error?.message||'音源を再生できませんでした。再生ボタンでお試しください。',true);
+  }
+  function ensureAudio(){
+    if(!music){music=new SengokuMusic({volume:settings.volume,scene:musicScene(),onTrackChange:refreshMusicPlayback,onStateChange:refreshMusicPlayback,onPlaybackError:musicPlaybackFailed,onPlaybackBlocked:musicPlaybackBlocked});music.setVoiceActive?.(voiceAudioActive);}
+    music.setAuto(settings.musicMode!=='manual');music.setScene(musicScene());return music;
+  }
+  function sceneTrack(){const tracks=window.SENGOKU_MUSIC_TRACKS||[];if(settings.musicMode==='manual'&&tracks.some(t=>t.id===settings.track))return settings.track;return SengokuMusic.automaticTrackId(musicScene());}
+  async function requestMusicPlayback(){
+    if(!settings.sound||!settings.volume)return;
+    const request=++musicRequest;musicStarting=true;musicWaitingForGesture=false;musicFailure=false;
+    try{
+      const player=ensureAudio();musicRequestedId=sceneTrack();refreshMusicPlayback();
+      const outcome=await player.attemptPlayback(musicRequestedId);
+      if(request!==musicRequest)return;
+      musicStarting=false;
+      if(outcome==='waiting')musicWaitingForGesture=true;
+      refreshMusicPlayback();
+    }catch(error){if(request===musicRequest)musicPlaybackFailed(error);}
+  }
+  function trustedGestureMusic(event){
+    if(event.isTrusted!==true||!musicGestureAvailable||!settings.sound||!settings.volume||voiceAudioActive||document.hidden)return;
+    if(!musicWaitingForGesture&&!musicStarting&&!music?.resuming)return;
+    if(event.type==='pointerdown'&&event.pointerType&&event.pointerType!=='mouse')return;
+    if(event.type==='keydown'&&(event.repeat||event.isComposing||event.ctrlKey||event.metaKey||event.altKey||['Shift','Control','Alt','Meta','Escape'].includes(event.key)))return;
+    if(event.target?.closest?.('[data-action="sound"],[data-action="sound-settings"],[data-action="music-stop"],[data-action="play-track"],[data-action="music-auto"],[data-action="music-resume"],#volume,input[type="range"]'))return;
+    removeMusicGesture();void requestMusicPlayback();
+  }
+  function applyMusicVolume(value){
+    settings.volume=Math.max(0,Math.min(100,Number(value)||0));
+    if(!settings.volume&&musicStarting){++musicRequest;musicStarting=false;musicWaitingForGesture=false;music?.pause();}
+    if(!settings.volume)musicVolumeRetryPending=false;
+    music?.setVolume(settings.volume);
+    const output=$('#settings-volume-value');if(output)output.textContent=settings.volume+'%';
+    safeSettings();refreshMusicPlayback();
+    if(settings.sound&&settings.volume>0&&!musicStarting&&!musicVolumeRetryPending&&(musicWaitingForGesture||musicFailure||!music?.playing)){
+      musicVolumeRetryPending=true;void requestMusicPlayback();
+    }
+  }
+  function startMusic(){
+    if(musicStarted)return;musicStarted=true;refreshMusicPlayback();
+    if(!settings.sound||!settings.volume)return;
+    for(const type of ['pointerdown','click','keydown'])document.addEventListener(type,trustedGestureMusic,true);
+    return requestMusicPlayback();
+  }
+  function syncMusic(){
+    if(!settings.sound)return;
+    try{
+      const player=ensureAudio(),id=sceneTrack();
+      if(musicWaitingForGesture||musicFailure)return;
+      if(musicStarting){if(id!==musicRequestedId)void requestMusicPlayback();return;}
+      if(player.playing&&id!==player.currentId)void requestMusicPlayback();
+    }catch(error){musicPlaybackFailed(error);}
+  }
   function playNote(){if(settings.sound&&music)music.playEffect('confirm');}
-  async function toggleSound(){try{const player=ensureAudio();if(settings.sound){player.pause();settings.sound=false;}else{await player.play(sceneTrack());settings.sound=true;}safeSettings();renderHeader();}catch(e){settings.sound=false;toast('このブラウザでは音声を再生できません。',true);}}
-  function musicModal(){const tracks=window.SENGOKU_MUSIC_TRACKS||[],now=music?.currentId,pages=Math.max(1,Math.ceil(tracks.length/8));musicPage=Math.max(1,Math.min(musicPage,pages));modal('十六の戦国旋律','本作のために作曲した、16曲のオリジナルBGM。',`<p>箏と尺八の城下町、金管と陣太鼓の合戦、独奏チェロが歌う敗戦。場面を選ぶと、そのために書き下ろした録音が流れます。</p><div class="music-mode"><button class="button ${settings.musicMode==='auto'?'gold':''}" data-action="music-auto">場面に合わせて自動選曲</button><span>${settings.musicMode==='auto'?'自動選曲中':'選んだ曲をループ'}</span></div><div class="music-list">${tracks.slice((musicPage-1)*8,musicPage*8).map((t,i)=>`<button class="music-track ${settings.sound&&now===t.id?'playing':''}" data-action="play-track" data-id="${t.id}"><span class="track-number">${String((musicPage-1)*8+i+1).padStart(2,'0')}</span><span class="track-title"><b>${esc(t.name)}</b><small>${esc(t.description)}</small></span><span class="track-duration">${Math.floor((t.durationSeconds||t.duration)/60)}:${String(Math.round((t.durationSeconds||t.duration)%60)).padStart(2,'0')}</span><span class="track-state">${settings.sound&&now===t.id?'演奏中':'聴く'}</span></button>`).join('')}</div>${pageControls('music-page',musicPage,pages)}<div class="notice">曲を選ぶとステレオ録音を繰り返し再生します。初期音量は10です。</div>`,`<button class="button" data-action="music-stop">演奏を止める</button><button class="button primary" data-action="close">戻る</button>`,'music');}
+  function stopMusic(){
+    settings.sound=false;++musicRequest;musicStarting=false;musicWaitingForGesture=false;musicFailure=false;
+    music?.pause();safeSettings();renderHeader();refreshMusicPlayback();
+  }
+  async function toggleSound(){
+    if(settings.sound){stopMusic();return;}
+    settings.sound=true;safeSettings();await requestMusicPlayback();renderHeader();refreshMusicPlayback();
+  }
+  function musicModal(){const tracks=window.SENGOKU_MUSIC_TRACKS||[],now=music?.currentId,pages=Math.max(1,Math.ceil(tracks.length/8));musicPage=Math.max(1,Math.min(musicPage,pages));modal('戦国の音楽帳','支度・朝活・昼活・夜活と、従来の16曲。全20曲から選べます。',`<p>自動モードでは、ゲーム開始前のトップメニューと本拠選択中に「支度」、ゲーム内では端末の時刻に合わせて「朝活」「昼活」「夜活」が流れます。同じ時間帯の画面移動では、曲を最初から再生し直しません。</p><p class="subtitle">朝 05:00〜11:59 · 昼 12:00〜17:59 · 夜 18:00〜翌04:59。ゲーム内の年月とは別に切り替わります。</p><div class="music-mode"><button class="button ${settings.musicMode==='auto'?'gold':''}" data-action="music-auto">時間帯に合わせて自動選曲</button><span>${settings.musicMode==='auto'?'トップは支度・ゲーム内は朝昼夜':'選んだ曲をループ'}</span></div><div class="music-list">${tracks.slice((musicPage-1)*8,musicPage*8).map((t,i)=>`<button class="music-track ${settings.sound&&music?.audible&&now===t.id?'playing':''}" data-action="play-track" data-id="${t.id}"><span class="track-number">${String((musicPage-1)*8+i+1).padStart(2,'0')}</span><span class="track-title"><b>${esc(t.name)}</b><small>${esc(t.description)}</small></span><span class="track-duration">${Math.floor((t.durationSeconds||t.duration)/60)}:${String(Math.round((t.durationSeconds||t.duration)%60)).padStart(2,'0')}</span><span class="track-state">${settings.sound&&music?.audible&&now===t.id?'演奏中':'聴く'}</span></button>`).join('')}</div>${pageControls('music-page',musicPage,pages)}<div class="notice">曲を選ぶと、その曲を時間帯に関係なく繰り返し再生します。自動に戻すとトップメニューは「支度」、ゲーム内は朝・昼・夜の曲へ切り替わります。初期音量は10です。</div>`,`<button class="button" data-action="music-stop">演奏を止める</button><button class="button primary" data-action="close">戻る</button>`,'music');}
   document.addEventListener('click',async event=>{const node=event.target.closest('[data-action],[data-view]:not(#main)');if(!node||node.disabled)return;if(node.dataset.view){go(node.dataset.view);return;}const a=node.dataset.action,id=node.dataset.id;if(mutationActions.has(a)&&!requireWritable())return;switch(a){
     case 'close':if(activeModal==='gacha-animation')finishGachaPresentation();else closeModal();break;
     case 'gacha-skip':finishGachaPresentation();break;
@@ -1365,9 +1470,10 @@
     case 'sound':await toggleSound();break;
     case 'music':musicModal();break;
     case 'music-page':musicPage+=Number(node.dataset.delta);musicModal();break;
-    case 'music-auto':settings.musicMode='auto';safeSettings();syncMusic();musicModal();break;
-    case 'music-stop':if(music)music.pause();settings.sound=false;safeSettings();renderHeader();musicModal();break;
-    case 'play-track':try{settings.musicMode='manual';settings.track=id;await ensureAudio().play(id);settings.sound=true;safeSettings();renderHeader();musicModal();}catch(_){toast('再生を開始できませんでした。',true);}break;
+    case 'music-auto':settings.musicMode='auto';music?.setAuto(true);safeSettings();if(settings.sound&&(musicWaitingForGesture||musicFailure))await requestMusicPlayback();else syncMusic();musicModal();break;
+    case 'music-stop':stopMusic();musicModal();break;
+    case 'music-resume':settings.sound=true;safeSettings();await requestMusicPlayback();refreshMusicPlayback();break;
+    case 'play-track':settings.musicMode='manual';settings.track=id;settings.sound=true;safeSettings();await requestMusicPlayback();renderHeader();musicModal();break;
     case 'sound-settings':await toggleSound();settingsModal();break;
     case 'fullscreen':try{if(document.fullscreenElement)await document.exitFullscreen();else if(document.documentElement.requestFullscreen)await document.documentElement.requestFullscreen();else toast('このブラウザでは全画面表示に対応していません。');}catch(_){toast('全画面表示を開始できませんでした。',true);}break;
     case 'world-clock-info':worldClockModal();break;
@@ -1465,9 +1571,9 @@
     case 'start-new':startNewGame();break;
   }});
   document.addEventListener('submit',event=>{const form=event.target.closest?.('[data-branch-troop-form]');if(!form)return;event.preventDefault();submitBranchTroops(form);});
-  document.addEventListener('input',e=>{if(e.isComposing)return;if(updateCatalogSearch(e.target)||updateBranchTroopDraft(e.target))return;if(e.target.id==='art-preview-level')updateArtPreview(Number(e.target.value));if(e.target.id==='battle-troops'){battleTroops=Number(e.target.value);updateBattlePreview();}if(e.target.id==='recruit-amount'){patchHTML($('#recruit-cost'),costHtml(game.recruitTroopCost(Number(e.target.value))));refreshLiveControls();}if(e.target.id==='volume'){settings.volume=Number(e.target.value);const output=$('#settings-volume-value');if(output)output.textContent=settings.volume+'%';if(music)music.setVolume(settings.volume);safeSettings();}});
+  document.addEventListener('input',e=>{if(e.isComposing)return;if(updateCatalogSearch(e.target)||updateBranchTroopDraft(e.target))return;if(e.target.id==='art-preview-level')updateArtPreview(Number(e.target.value));if(e.target.id==='battle-troops'){battleTroops=Number(e.target.value);updateBattlePreview();}if(e.target.id==='recruit-amount'){patchHTML($('#recruit-cost'),costHtml(game.recruitTroopCost(Number(e.target.value))));refreshLiveControls();}if(e.target.id==='volume')applyMusicVolume(e.target.value);});
   document.addEventListener('compositionend',e=>updateCatalogSearch(e.target));
-  document.addEventListener('change',e=>{if(updateBranchTroopDraft(e.target))return;if(e.target.hasAttribute?.('data-branch-commander-choice')){window.SengokuBranches?.selectCommander?.(game,e.target.dataset.branchCommanderChoice,e.target.value);refreshBranchDeploymentPanels();return;}if(e.target.dataset?.branchParent){if(window.SengokuBranches?.selectDirection?.(game,e.target.dataset.branchParent,e.target.value)){preserveInteraction($('#main'),render);refreshActiveModal();}return;}if(e.target.dataset?.officerFilter){updateOfficerFilter(e.target.dataset.officerContext,e.target.dataset.officerFilter,e.target.value);return;}if(e.target.id==='relocate-castle-select'&&activeModal==='relocate'){const view=relocationView,row=view.rows.find(c=>c.castleId===e.target.value);view.target=row?.castleId||'';const preview=$('#relocate-destination');if(preview)preview.textContent=relocationRole(view,row);refreshLiveControls();return;}if(e.target.id==='new-start-castle'){newStartCastle=e.target.value;patchHTML($('#start-castle-preview'),startCastlePreview());refreshLiveControls();}if(e.target.id==='gacha-odds-rank'&&data.ranks.includes(e.target.value)){gachaOddsRank=e.target.value;gachaOddsPage=1;patchHTML($('#gacha-individual-list'),individualOddsPage());}if(e.target.id==='facility-category'){facilityCategory=e.target.value;facilityPage=1;patchHTML($('#facility-results'),facilitiesResults());}if(e.target.id==='map-region'){mapRegion=e.target.value;territoryPage=1;render();}if(e.target.id==='battle-tactic'){battleTactic=e.target.value;updateBattlePreview();}if(e.target.id==='tips'){settings.tips=e.target.value==='on';safeSettings();render();}});
+  document.addEventListener('change',e=>{if(e.target.id==='volume'){musicVolumeRetryPending=false;return;}if(updateBranchTroopDraft(e.target))return;if(e.target.hasAttribute?.('data-branch-commander-choice')){window.SengokuBranches?.selectCommander?.(game,e.target.dataset.branchCommanderChoice,e.target.value);refreshBranchDeploymentPanels();return;}if(e.target.dataset?.branchParent){if(window.SengokuBranches?.selectDirection?.(game,e.target.dataset.branchParent,e.target.value)){preserveInteraction($('#main'),render);refreshActiveModal();}return;}if(e.target.dataset?.officerFilter){updateOfficerFilter(e.target.dataset.officerContext,e.target.dataset.officerFilter,e.target.value);return;}if(e.target.id==='relocate-castle-select'&&activeModal==='relocate'){const view=relocationView,row=view.rows.find(c=>c.castleId===e.target.value);view.target=row?.castleId||'';const preview=$('#relocate-destination');if(preview)preview.textContent=relocationRole(view,row);refreshLiveControls();return;}if(e.target.id==='new-start-castle'){newStartCastle=e.target.value;patchHTML($('#start-castle-preview'),startCastlePreview());refreshLiveControls();}if(e.target.id==='gacha-odds-rank'&&data.ranks.includes(e.target.value)){gachaOddsRank=e.target.value;gachaOddsPage=1;patchHTML($('#gacha-individual-list'),individualOddsPage());}if(e.target.id==='facility-category'){facilityCategory=e.target.value;facilityPage=1;patchHTML($('#facility-results'),facilitiesResults());}if(e.target.id==='map-region'){mapRegion=e.target.value;territoryPage=1;render();}if(e.target.id==='battle-tactic'){battleTactic=e.target.value;updateBattlePreview();}if(e.target.id==='tips'){settings.tips=e.target.value==='on';safeSettings();render();}});
   document.addEventListener('keydown',e=>{if((e.key==='Enter'||e.key===' ')&&e.target.matches('.castle-node')){e.preventDefault();if(e.target.dataset.id==='edo'&&!game.isAdmin){toast('江戸城は保護された拠点です。');return;}selectedCastle=e.target.dataset.id;render();}if(e.key==='Escape'){if(activeModal==='gacha-animation'){e.preventDefault();finishGachaPresentation();return;}clearGachaPresentation();activeModal='';activeModalContext=null;}});
   $('#modal').addEventListener('cancel',event=>{if(activeModal==='relocate'||activeModal==='relocate-confirm'){event.preventDefault();closeModal();}else if(activeModal==='gacha-animation'){event.preventDefault();finishGachaPresentation();}else clearGachaPresentation();});
   $('#modal').addEventListener('click',e=>{if(e.target===$('#modal')){const r=e.target.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom){if(activeModal==='gacha-animation')finishGachaPresentation();else closeModal();}}});
@@ -1908,7 +2014,7 @@
     if(!save()){game.state=before;return{ok:false,message:'保存できなかったため、復元を取り消しました。'};}
     preserveInteraction($('#main'),render);refreshActiveModal();return result;
   }
-  window.SengokuBridge={troopGarrisons:requestTroopGarrisons,getTroopGarrisonAccess,canShowRelocation,prepareReleaseSwitch,getMarches:()=>window.SengokuTravelUI?.snapshot()||{active:[],history:[]},openMarches:()=>window.SengokuTravelUI?.open(),primeProgress,confirmProtectionExit,requestExpansion,getExpansionAccess,openProgress:tab=>openExpansion('progress',tab),setVoiceActive,openCourt,applyCourtAccess,applyBranchAuthority,applyMaintenanceAuthority,getMaintenanceAuthority:()=>game.getMaintenanceAuthority?.()||null,getEventAccess,eventBattle:requestEventBattle,refreshPremiumAppearance,getHints,followHint,openHintHelp,getEvaluation,showEvaluation,getStrategyAccess,previewStrategy,beginStrategy,stepStrategy,stopStrategy,getState:()=>state(),getLocalCommander,hasStarted:()=>!startPending,getSave:getGameSave,getStoredSave,beginUpkeepSync,toast,canReceiveGifts:()=>saveEnabled&&canMutate(),applyGift:applyDurableGift,getWalkingAccess,beginLocalWalkingSession:payload=>localWalkingOperation('begin',payload),applyLocalWalkingProgress:payload=>localWalkingOperation('progress',payload),endLocalWalkingSession:payload=>localWalkingOperation('end',payload),startWalkingSession:payload=>requestWalking('/walking/start',payload),claimWalkingSteps:payload=>requestWalking('/walking/claim',payload),spendableAssets,troopCapacity:()=>game.troopCapacity(),troopTransportCapacity,tradeRequest:requestTrade,guildTransfer:payload=>requestField('/guild/treasury/transfer',{method:'POST',data:payload}),openSettings:settingsModal,renderGameplay:render,openStartSelection,openCastleAdmission:newGameModal,setSyncAccess,setRoleAccess,setAdminAccess,getRoleAccess:()=>({isAdmin:game.isAdmin===true,isStaff:game.isStaff===true,pending:syncAccess.rolePending===true,epoch:roleEpoch}),applyStaffBase,getStaffBase:()=>staffConstructionReady()?game.getStaffBase():null,applyCloudSave,prepareRecoverySave,prepareNewRecoverySave,applyRecoverySave,restoreAdminAssets};
+  window.SengokuBridge={troopGarrisons:requestTroopGarrisons,getTroopGarrisonAccess,canShowRelocation,prepareReleaseSwitch,getMarches:()=>window.SengokuTravelUI?.snapshot()||{active:[],history:[]},openMarches:()=>window.SengokuTravelUI?.open(),primeProgress,confirmProtectionExit,requestExpansion,getExpansionAccess,openProgress:tab=>openExpansion('progress',tab),startMusic,syncMusic,setVoiceActive,openCourt,applyCourtAccess,applyBranchAuthority,applyMaintenanceAuthority,getMaintenanceAuthority:()=>game.getMaintenanceAuthority?.()||null,getEventAccess,eventBattle:requestEventBattle,refreshPremiumAppearance,getHints,followHint,openHintHelp,getEvaluation,showEvaluation,getStrategyAccess,previewStrategy,beginStrategy,stepStrategy,stopStrategy,getState:()=>state(),getLocalCommander,hasStarted:()=>!startPending,getSave:getGameSave,getStoredSave,beginUpkeepSync,toast,canReceiveGifts:()=>saveEnabled&&canMutate(),applyGift:applyDurableGift,getWalkingAccess,beginLocalWalkingSession:payload=>localWalkingOperation('begin',payload),applyLocalWalkingProgress:payload=>localWalkingOperation('progress',payload),endLocalWalkingSession:payload=>localWalkingOperation('end',payload),startWalkingSession:payload=>requestWalking('/walking/start',payload),claimWalkingSteps:payload=>requestWalking('/walking/claim',payload),spendableAssets,troopCapacity:()=>game.troopCapacity(),troopTransportCapacity,tradeRequest:requestTrade,guildTransfer:payload=>requestField('/guild/treasury/transfer',{method:'POST',data:payload}),openSettings:settingsModal,renderGameplay:render,openStartSelection,openCastleAdmission:newGameModal,setSyncAccess,setRoleAccess,setAdminAccess,getRoleAccess:()=>({isAdmin:game.isAdmin===true,isStaff:game.isStaff===true,pending:syncAccess.rolePending===true,epoch:roleEpoch}),applyStaffBase,getStaffBase:()=>staffConstructionReady()?game.getStaffBase():null,applyCloudSave,prepareRecoverySave,prepareNewRecoverySave,applyRecoverySave,restoreAdminAssets};
   let lastRealtime=performance.now(),saveCounter=0;
   document.addEventListener('visibilitychange',()=>{lastRealtime=performance.now();if(document.hidden)save();else{window.SengokuWorldClock?.refresh();processWorldClock();}});
   window.addEventListener('pagehide',()=>save());
