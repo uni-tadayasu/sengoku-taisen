@@ -19,24 +19,27 @@ Node.prototype.matches = function (selector, scope) {
   if (selector === 'a[href^="#"]') return this.localName === 'a' && this.href.startsWith('#');
   return originalMatches.call(this, selector, scope);
 };
-function fixture(file = 'guide/index.html') {
-  const { doc } = setup(), frames = new Map(), handlers = new Map(); let sequence = 0;
+function fixture(file = 'guide/index.html', { mobile = false } = {}) {
+  const { doc } = setup(), frames = new Map(), handlers = new Map(), documentHandlers = new Map(); let sequence = 0, measurements = 0;
   const html = fs.readFileSync(path.join(root, file), 'utf8');
   doc.body.className = 'public-luxury';
   doc.body.innerHTML = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i)[1];
   doc.documentElement = { clientHeight: 800, scrollHeight: 10000 };
   doc.getElementById = id => doc.querySelector('#' + id);
-  const win = { scrollY: 0, addEventListener: (type, fn) => { if (!handlers.has(type)) handlers.set(type, []); handlers.get(type).push(fn); } };
+  const media = { matches: mobile, addEventListener() {} };
+  const win = { scrollY: 0, layoutShift: 0, matchMedia: () => media, addEventListener: (type, fn) => { if (!handlers.has(type)) handlers.set(type, []); handlers.get(type).push(fn); } };
+  doc.addEventListener = (type, fn) => { if (!documentHandlers.has(type)) documentHandlers.set(type, []); documentHandlers.get(type).push(fn); };
   const links = [...doc.querySelectorAll('.toc-chapters a')], destinations = links.map(link => doc.getElementById(link.hash.slice(1))).filter(Boolean);
-  destinations.forEach((target, index) => { target.getBoundingClientRect = () => ({ top: 600 + index * 300 - win.scrollY }); });
+  destinations.forEach((target, index) => { target.getBoundingClientRect = () => { measurements++; return { top: 600 + index * 300 + win.layoutShift - win.scrollY }; }; });
   const originalArticle = doc.querySelector('.article')?.innerHTML;
   const raf = fn => { frames.set(++sequence, fn); return sequence; };
   const run = () => vm.runInNewContext(source, { document: doc, window: win, requestAnimationFrame: raf });
   const drain = () => { let count = 0; while (frames.size) { assert(count++ < 5, 'Reader must not run a recurring animation loop'); const [id, fn] = frames.entries().next().value; frames.delete(id); fn(); } };
   const dispatch = type => { for (const fn of handlers.get(type) || []) fn(); };
+  const dispatchDocument = (type, detail = {}) => { const event = { type, target: doc.body, preventDefault() { this.defaultPrevented = true; }, ...detail }; for (const fn of documentHandlers.get(type) || []) fn(event); return event; };
   const search = value => { const input = doc.getElementById('public-chapter-query'); input.value = value; input.dispatchEvent({ type: 'input' }); };
   run(); drain();
-  return { doc, win, links, destinations, frames, originalArticle, drain, dispatch, search, get: selector => doc.querySelector(selector) };
+  return { doc, win, links, destinations, frames, originalArticle, drain, dispatch, dispatchDocument, search, run, measurements: () => measurements, get: selector => doc.querySelector(selector) };
 }
 let passed = 0;
 function test(name, run) { run(); passed++; console.log('PASS ' + name); }
@@ -89,6 +92,69 @@ test('nonreading public pages remain untouched by the reading controller', () =>
   for (const file of ['premium/index.html', 'sengoku-vs/index.html']) {
     const f = fixture(file);
     assert.equal(f.get('.public-chapter-search'), null); assert.equal(f.get('.public-reading-progress'), null); assert.equal(f.frames.size, 0);
+  }
+});
+test('search clears without replacing the input and keyboard navigation respects Japanese composition', () => {
+  const f = fixture(), input = f.get('#public-chapter-query'), clear = f.get('.public-search-clear');
+  assert(clear.disabled); input.focus(); f.search('兵士'); assert(!clear.disabled);
+  const first = f.links.find(link => !link.closest('li').hidden);
+  input.dispatchEvent({ type: 'keydown', key: 'ArrowDown', isComposing: true }); assert.equal(f.doc.activeElement, input);
+  input.dispatchEvent({ type: 'keydown', key: 'ArrowDown' }); assert.equal(f.doc.activeElement, first);
+  clear.dispatchEvent({ type: 'click' }); assert.equal(input.value, ''); assert.equal(f.doc.activeElement, input); assert(clear.disabled);
+  f.search('見つからないzzzz'); input.dispatchEvent({ type: 'keydown', key: 'Escape' });
+  assert.equal(input.value, ''); assert(f.links.every(link => !link.closest('li').hidden)); assert(f.get('.public-search-empty').hidden);
+  assert.equal(f.get('#public-chapter-query'), input); assert.equal(f.get('.article').innerHTML, f.originalArticle);
+});
+test('chapter search waits for Japanese composition and applies the committed query only once', () => {
+  const f = fixture(), input = f.get('#public-chapter-query'), list = f.get('#public-chapter-list'); input.focus();
+  const initialStatus = f.get('.public-search-status').textContent;
+  input.value = '兵'; input.dispatchEvent({ type: 'input', isComposing: true });
+  assert(f.links.every(link => !link.closest('li').hidden)); assert.equal(f.get('.public-search-status').textContent, initialStatus); assert.equal(f.frames.size, 0);
+  input.value = '兵士'; input.dispatchEvent({ type: 'compositionend' });
+  assert.equal(f.links.filter(link => !link.closest('li').hidden).length, 2); assert.equal(f.frames.size, 1); f.drain();
+  const measurements = f.measurements(); list.scrollTop = 77;
+  input.dispatchEvent({ type: 'input', isComposing: false });
+  assert.equal(f.frames.size, 0); assert.equal(f.measurements(), measurements); assert.equal(list.scrollTop, 77, 'The trailing input event must preserve the reader’s place');
+  assert.equal(f.doc.activeElement, input);
+  f.search('ｐｃ'); f.drain(); list.scrollTop = 53; f.search(' PC ');
+  assert.equal(f.frames.size, 0); assert.equal(list.scrollTop, 53, 'Equivalent normalized queries do not repeat the search');
+  f.get('.public-search-clear').dispatchEvent({ type: 'click' }); assert(f.links.every(link => !link.closest('li').hidden)); assert.equal(input.value, '');
+});
+test('scrolling reuses chapter geometry and a later layout change refreshes the current chapter', () => {
+  const f = fixture(), initialMeasurements = f.measurements();
+  assert.equal(initialMeasurements, f.links.length);
+  f.win.scrollY = 1000; f.dispatch('scroll'); f.drain();
+  assert.equal(f.get('.public-current-chapter a').textContent, f.links[2].textContent);
+  assert.equal(f.get('.public-current-chapter a').href, f.links[2].hash);
+  for (let index = 0; index < 20; index++) f.dispatch('scroll'); f.drain();
+  assert.equal(f.measurements(), initialMeasurements, 'Scrolling must not measure every chapter again');
+  f.win.layoutShift = 1000; f.dispatchDocument('load'); f.drain();
+  assert.equal(f.measurements(), initialMeasurements * 2);
+  assert(f.links.every(link => !link.hasAttribute('aria-current')));
+  f.run(); f.drain();
+  assert.equal(f.doc.querySelectorAll('.public-chapter-search').length, 1, 'Reinitialization cannot duplicate controls');
+});
+test('compact public navigation closes with outside click, keyboard escape and focus leaving the header', () => {
+  const f = fixture('sengoku-vs/index.html', { mobile: true }), menu = f.get('.public-nav-toggle');
+  menu.dispatchEvent({ type: 'click' }); assert.equal(menu.getAttribute('aria-expanded'), 'true');
+  f.dispatchDocument('click', { target: f.get('#content') }); assert.equal(menu.getAttribute('aria-expanded'), 'false');
+  menu.dispatchEvent({ type: 'click' });
+  const event = f.dispatchDocument('keydown', { key: 'Escape' });
+  assert(event.defaultPrevented); assert.equal(menu.getAttribute('aria-expanded'), 'false'); assert.equal(f.doc.activeElement, menu);
+  menu.dispatchEvent({ type: 'click' }); f.dispatchDocument('focusin', { target: f.get('.footer-brand') });
+  assert.equal(menu.getAttribute('aria-expanded'), 'false');
+});
+test('each guide chapter leads to its real next chapter and the final chapter ends at the index', () => {
+  for (const file of ['guide/index.html', 'guide/data-recovery/index.html', 'about/index.html']) {
+    const f = fixture(file), sections = f.doc.querySelectorAll('.article-section');
+    for (let index = 0; index < sections.length; index++) {
+      const next = sections[index].querySelector('.section-next');
+      if (index === sections.length - 1) assert.equal(next, null);
+      else {
+        const target = sections[index + 1], link = f.links.find(item => item.hash === '#' + target.id);
+        assert(next); assert(link); assert.equal(next.href, link.hash); assert.equal(next.querySelector('strong').textContent, link.textContent);
+      }
+    }
   }
 });
 console.log(passed + ' public reader checks passed.');

@@ -65,7 +65,9 @@
     "economy.css",
     "live-updates.css",
     "officer-health.css",
-    "durability.css"
+    "durability.css",
+    "command-ui.css",
+    "settings-ui.css"
   ],
   "game-preferences.bundle.js": [
     "viewport-lock.js",

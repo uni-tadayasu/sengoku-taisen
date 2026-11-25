@@ -1,0 +1,531 @@
+/* 戦国VS — 指揮所の装丁。 Existing layout and game-state owners remain authoritative. */
+body:not(.at-title) {
+  --command-base: #0c1420;
+  --command-surface: #152331;
+  --command-raised: #1d3040;
+  --command-inset: #0e1b27;
+  --command-ink: #f4efe2;
+  --command-muted: #bac9ce;
+  --command-gold: #e7c48b;
+  --command-rule: #bca27452;
+  --command-radius: 8px;
+  --panel: var(--command-surface);
+  --panel-2: var(--command-raised);
+  --text: var(--command-ink);
+  --muted: var(--command-muted);
+  --line: var(--command-rule);
+  --polished-wood: linear-gradient(125deg,#1c2d3b,#142330 75%);
+  background: var(--command-base);
+}
+#app.chronicle-shell {
+  color: var(--command-ink);
+  accent-color: var(--command-gold);
+}
+#app.chronicle-shell #main {
+  background: radial-gradient(ellipse at 80% 0%,#2335448c,transparent 48%),#0e1824;
+  scrollbar-gutter: stable;
+  scrollbar-color: #697886 #101b26;
+}
+#app.chronicle-shell #main > :last-child { margin-bottom: 0; }
+#app.chronicle-shell :is(button,a,input,select,textarea):focus-visible,
+body:not(.at-title) dialog :is(button,a,input,select,textarea,summary):focus-visible {
+  outline: 2px solid #f4ce88; outline-offset: 3px;
+}
+#app.chronicle-shell :is(.subtitle,.notice,.tip-bar) { line-height: 1.65; }
+#app.chronicle-shell :is(.resource-amount,.stat-row b,.cost,.pagination,.facility-seal,.army-ability b) {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Resource ledger: readable figures on six stable, separate tiles. */
+#app.chronicle-shell .chronicle-ledger,
+html:not(.sengoku-desktop-fit) #app.chronicle-shell .chronicle-ledger {
+  background: linear-gradient(100deg,#15222e,#0d1925 72%);
+  border-bottom: 1px solid #b99c685e;
+  box-shadow: 0 4px 15px #0004;
+}
+html.sengoku-desktop-fit #app.chronicle-shell .header-balances {
+  gap: 5px; border: 0; background: transparent;
+}
+#app.chronicle-shell .chronicle-ledger .resource,
+html:not(.sengoku-desktop-fit) #app.chronicle-shell .chronicle-ledger .resource,
+html.sengoku-desktop-fit #app.chronicle-shell .header-balances .touch-header-stat {
+  border: 1px solid #84939a3d; border-radius: 6px;
+  color: #f5eddb; background: linear-gradient(135deg,#213441,#172835);
+  box-shadow: inset 0 1px #ffffff08;
+}
+#app.chronicle-shell .chronicle-ledger .resource .resource-label,
+html:not(.sengoku-desktop-fit) #app.chronicle-shell .chronicle-ledger .resource .resource-label,
+#app.chronicle-shell .chronicle-ledger .touch-header-stat .resource-label { color: #c5d2d4; }
+#app.chronicle-shell .chronicle-ledger .resource .resource-amount,
+html:not(.sengoku-desktop-fit) #app.chronicle-shell .chronicle-ledger .resource .resource-amount { color: #fff2d5; }
+#app.chronicle-shell .chronicle-ledger .resource .icon { color: #e8c385; }
+#app.chronicle-shell .chronicle-ledger .resource .icon.wood { color: #9acba6; }
+#app.chronicle-shell .chronicle-ledger .resource .icon.stone { color: #afc7e3; }
+#app.chronicle-shell .chronicle-ledger .resource-gain { color: #a5d4b3; }
+#app.chronicle-shell .chronicle-ledger .resource-gain.is-negative { color: #ffb5a2; }
+#app.chronicle-shell .chronicle-ledger .calendar b { letter-spacing: .035em; }
+#app.chronicle-shell .chronicle-ledger .calendar > span { color: #bcc9d0; }
+#app.chronicle-shell .game-footer { background: #0f1b26; border-color: #70849538; }
+
+/* A quieter rail makes the active destination and pinned tools stand out. */
+#app.chronicle-shell .chronicle-rail {
+  background: linear-gradient(170deg,#192a37,#0e1926 72%);
+  border-color: #bca27452; box-shadow: inset -1px 0 #f0d39a0c;
+}
+#app.chronicle-shell .clan-panel {
+  border: 1px solid #bca27452; border-inline-start: 3px solid #d1aa6a;
+  border-radius: 6px; background: linear-gradient(125deg,#2c3c43,#192a37);
+}
+#app.chronicle-shell .sidebar .nav-item {
+  border-radius: 5px; --button-wash-start: #162633fc; --button-wash-end: #142330fa;
+  background-image: linear-gradient(105deg,var(--button-wash-start),var(--button-wash-end)) !important;
+  box-shadow: none;
+}
+#app.chronicle-shell .sidebar .nav-item:not(.active):not(.navigation-menu-trigger) { border-color: transparent; }
+#app.chronicle-shell .sidebar .nav-item.active {
+  --button-wash-start: #4d3c2dfc; --button-wash-end: #2d3030fb;
+  border-color: #bd9a5f82; border-inline-start: 3px solid #edca88;
+  box-shadow: inset 0 1px #f8d99c14; color: #ffe8b7;
+}
+#app.chronicle-shell .sidebar .navigation-menu-trigger {
+  --button-wash-start: #293d4bfb; --button-wash-end: #1c303efc;
+  border-radius: 6px; border-color: #d6b4776b;
+}
+html.sengoku-desktop-fit #app.chronicle-shell .nav-section-name { color: #aab8be; letter-spacing: .06em; }
+html.sengoku-desktop-fit #app.chronicle-shell #navigation { gap: 10px; }
+html.sengoku-desktop-fit #app.chronicle-shell #navigation .nav-item { min-height: 40px; }
+
+/* Compact chapter headers keep the painting and bring the first task into view. */
+#app.chronicle-shell #main :is(.page-heading,.roaming-heading,.court-heading,.covert-heading) {
+  grid-template-columns: minmax(0,1fr) minmax(150px,.42fr);
+  min-height: 122px; margin-bottom: 12px;
+  border: 1px solid #bfa16a66; border-top: 2px solid #d3b27a;
+  border-radius: 8px; background: linear-gradient(115deg,#223442,#132431 76%);
+  box-shadow: 0 8px 24px #030c153d;
+}
+#app.chronicle-shell #main .chapter-copy,
+#app.chronicle-shell #main :is(.roaming-heading,.covert-heading,.court-heading) > div:first-child {
+  padding: 17px 21px; gap: 0;
+}
+#app.chronicle-shell #main :is(.page-heading,.roaming-heading,.court-heading,.covert-heading) h1 {
+  color: #fff1d6; font-size: clamp(1.65rem,2.4vw,2.35rem); line-height: 1.25;
+  letter-spacing: .055em; text-shadow: 0 2px 8px #06101a55;
+}
+#app.chronicle-shell #main :is(.page-heading,.roaming-heading,.court-heading,.covert-heading) :is(.subtitle,p) {
+  color: #c6d1d0; font-size: .9375rem; line-height: 1.6; max-width: 52em;
+}
+#app.chronicle-shell #main :is(.page-heading,.roaming-heading,.court-heading,.covert-heading) .eyebrow {
+  color: #d8bd90; font-size: .8125rem; margin-bottom: 6px; letter-spacing: .045em;
+}
+#app.chronicle-shell #main .chapter-symbol {
+  width: 23px; height: 23px; border-color: #d4b16b8c; border-radius: 4px;
+  color: #f7dfb7; background: #74513b; box-shadow: none;
+}
+#app.chronicle-shell #main .chapter-plate,
+#app.chronicle-shell #main :is(.roaming-heading,.court-heading,.covert-heading)::before {
+  grid-row: 1; border-inline-start: 1px solid #d7b26b4f;
+  background: linear-gradient(90deg,#182b3a5c,#101e2920),var(--chapter-art) var(--chapter-position) / cover no-repeat;
+  box-shadow: inset 0 0 28px #0c152657;
+}
+#app.chronicle-shell #main .page-heading-actions {
+  grid-column: 1/-1; grid-row: 2; width: 100%; gap: 6px 14px;
+  padding: 6px 16px; background: #0f202dbb; border-top: 1px solid #a68c623d;
+}
+#app.chronicle-shell #main .page-heading-actions .button { min-height: 34px; padding-block: 5px; font-size: .875rem; }
+#app.chronicle-shell #main .realtime-strip {
+  margin-block: 0 12px; border: 1px solid #81909a32; border-radius: 6px;
+  background: #132331; color: #bfcdd0;
+}
+#app.chronicle-shell #main .realtime-strip .time-track { background: #08151e; border-radius: 4px; }
+#app.chronicle-shell #main .realtime-strip .time-track > i { background: linear-gradient(90deg,#8fa9a3,#d5b279); }
+#app.chronicle-shell #main .expansion-entry { gap: 8px; margin-block: 8px 14px; }
+#app.chronicle-shell #main .expansion-entry .button { border-radius: 6px; }
+
+/* Panels use one surface system; each section has a clear heading and reading edge. */
+#app.chronicle-shell #main :is(.panel,.facility-entry,.quest-row,.castle-detail,.covert-panel,.court-panel,.roaming-panel,.field-card,.field-base-card,.kamon-entry,.army-illustrated-slot,.research-illustrated-card) {
+  border: 1px solid #af95614a; border-radius: var(--command-radius);
+  background: var(--polished-wood); box-shadow: inset 0 1px #f0e0bb0b,0 4px 14px #030a1233;
+}
+#app.chronicle-shell #main .section-heading {
+  margin-top: 18px; padding-bottom: 9px; border-color: #a48f653e;
+}
+#app.chronicle-shell #main :is(.section-heading,.panel-heading) h2 {
+  color: #f2d7a8; font-size: clamp(1.0625rem,1.35vw,1.25rem); line-height: 1.5;
+}
+#app.chronicle-shell #main .section-heading > small { color: #bbccd1; font-size: .875rem; }
+#app.chronicle-shell #main :is(.notice,.tip-bar) {
+  border-radius: 6px; border-color: #9ba79f35; color: #cad6d5; background-color: #152a38;
+}
+#app.chronicle-shell #main .stat-row { gap: 12px; padding-block: 7px; }
+#app.chronicle-shell #main .stat-row > :last-child { flex: none; }
+#app.chronicle-shell #main .progress { height: 6px; border-radius: 5px; background: #081522; overflow: hidden; }
+#app.chronicle-shell #main .progress > i { border-radius: inherit; background: linear-gradient(90deg,#a0804e,#e3bf7f); }
+#app.chronicle-shell #main .cost { gap: 8px 14px; padding-block: 7px; }
+#app.chronicle-shell #main [data-cost-resource].insufficient { color: #ffb5a4; }
+#app.chronicle-shell #main .pagination {
+  min-height: 54px; gap: 12px; padding: 10px 12px; margin-top: 12px;
+  border: 1px solid #88958838; border-radius: 6px; background: #142431;
+}
+#app.chronicle-shell #main .pagination > span { color: #dae1dc; font-size: .875rem; }
+#app.chronicle-shell #main .pagination .button { min-height: 38px; }
+
+/* The town scene keeps its established sizing and interactive pin positions. */
+#app.chronicle-shell #main .town-workspace .town-panel {
+  border: 1px solid #c3a06c8c; border-radius: 8px;
+  box-shadow: 0 8px 24px #050c1559,inset 0 1px #f1d59b20;
+}
+#app.chronicle-shell #main .town-workspace .town-scene-heading {
+  background: linear-gradient(95deg,#162836fa,#273d48dc),var(--chapter-art) right 60% / cover;
+  border-bottom: 1px solid #b6955f75;
+}
+#app.chronicle-shell #main .town-overview { border-radius: 8px; border-color: #c0a36b69; background: var(--polished-wood); }
+#app.chronicle-shell #main .town-overview .page-heading { display: block; min-height: 0; background: #203342; border: 0; border-radius: 0; box-shadow: none; }
+#app.chronicle-shell #main .town-overview .town-castle-heading { padding: 14px; }
+#app.chronicle-shell #main .town-overview .page-heading h1 { font-size: clamp(1.5rem,2vw,1.9rem); color: #fff1d6; }
+#app.chronicle-shell #main .town-overview :is(.town-castle-upgrade-label,.town-castle-upgrade-note),
+#app.chronicle-shell #main .town-overview .town-castle-upgrade-detail :is(small,span,.icon) { color: #d4d7c9; }
+#app.chronicle-shell #main .town-overview [data-cost-resource].insufficient,
+#app.chronicle-shell #main .town-overview [data-cost-resource].insufficient small { color: #ffb5a4; }
+#app.chronicle-shell #main .town-overview .town-castle-upgrade-detail { border-color: #ac97654d; }
+#app.chronicle-shell #main :is(.town-facility-console,.town-status-panels .panel) { border-radius: 8px; }
+#app.chronicle-shell #main :is(.town-legend-grid,.buildings-grid) :is(.building-card,.town-facility-button) {
+  background: #192d3a; border-radius: 5px; border-color: #91a19942;
+}
+#app.chronicle-shell #main .town-facility-button small { font-variant-numeric: tabular-nums; }
+#app.chronicle-shell #main .scene-caption { background: #152633; border-top: 1px solid #ac986344; }
+#app.chronicle-shell #main .hint-entry { border-radius: 6px; background: linear-gradient(105deg,#2b403e,#1b2f39); border-color: #9cbb9e61; }
+
+/* Catalogs: filter states, actionable empty results and readable assignments. */
+#app.chronicle-shell #main .toolbar { gap: 9px; margin-block: 12px; }
+#app.chronicle-shell #main :is(.toolbar,.officer-filter-bar,.officer-choice-toolbar) :is(.input,.select,.search-box) {
+  border-radius: 6px; border-color: #93a5ab64; background-color: #0c1b28; color: #f5efde;
+}
+#app.chronicle-shell #main .search-box .input { background: transparent; border: 0; }
+#app.chronicle-shell #main :is(.input,.select) { min-height: 42px; }
+#app.chronicle-shell #main input::placeholder { color: #a5b8c1; opacity: 1; }
+#app.chronicle-shell #main .catalog-filter-chips {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 7px; margin-block: 10px 12px;
+}
+#app.chronicle-shell #main .catalog-filter-chips button {
+  min-height: 38px; padding: 7px 13px; border: 1px solid #99ada84c; border-radius: 6px;
+  background: #172a37; color: #ccd7d9; font: inherit; font-size: .875rem;
+  line-height: 1.4; cursor: pointer;
+  --button-wash-start: #172a37; --button-wash-end: #172a37;
+}
+#app.chronicle-shell #main .catalog-filter-chips button:is(.active,[aria-pressed="true"]) {
+  border-color: #d9b87c; background: #4a402e; color: #ffe6b3;
+  --button-wash-start: #51432f; --button-wash-end: #3a3429;
+  box-shadow: inset 0 -2px #d9b87c;
+}
+#app.chronicle-shell #main .catalog-result-summary {
+  display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap;
+  gap: 6px 15px; min-height: 42px; margin-block: 8px; color: #c6d4d6; font-size: .875rem;
+}
+#app.chronicle-shell #main .catalog-result-summary .button { min-height: 36px; }
+#app.chronicle-shell #main :is(.catalog-empty,.empty) {
+  grid-column: 1/-1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 12px; min-height: 180px; padding: 25px 18px; border: 1px dashed #92a4aa6b; border-radius: 8px;
+  background: #132633; color: #c8d5d9; text-align: center;
+}
+#app.chronicle-shell #main :is(.catalog-empty,.empty) p { max-width: 34em; margin: 0; line-height: 1.7; }
+#app.chronicle-shell #main :is(.catalog-empty,.empty) .button { margin-top: 4px; }
+#app.chronicle-shell #main .facility-banner {
+  min-height: 118px; border-radius: 8px; padding: 18px 22px; border-inline-start: 3px solid #c2a16c;
+  background: linear-gradient(95deg,#1a2e3cf7,#20353dcc 60%,#1b2d3944),var(--chapter-art) right center / cover;
+}
+#app.chronicle-shell #main .facility-banner h2 { font-size: clamp(1.25rem,1.9vw,1.65rem); }
+#app.chronicle-shell #main .facility-entry { overflow: hidden; }
+#app.chronicle-shell #main .facility-entry .facility-art { border-radius: 5px; }
+#app.chronicle-shell #main .facility-seal { border-radius: 5px; border-color: #d2af7b66; background: #0c1c2bd9; }
+#app.chronicle-shell #main .facility-entry .facility-effect { padding: 10px 11px; border-radius: 5px; background: #0e202bd1; color: #d6decf; }
+#app.chronicle-shell #main .officer-filter-bar { border-radius: 8px; border-color: #a68f5b58; background: #192d3b; }
+#app.chronicle-shell #main .officer-filter-drawer > summary { border-radius: 5px; background: #213744; }
+#app.chronicle-shell #main .officer-subnav { border-radius: 6px; border-inline-start: 3px solid #c5a36e; }
+#app.chronicle-shell #main .officer-card { border-radius: 8px; border-color: #b49c6b66; box-shadow: 0 6px 18px #0209114f; }
+#app.chronicle-shell #main .officer-content { padding: 15px; background: linear-gradient(125deg,#f0e6d0,#dbcaab); border-top: 2px solid #ae8a57; }
+#app.chronicle-shell #main .officer-content h3 { line-height: 1.4; }
+#app.chronicle-shell #main .officer-content .mini-stats { padding-block: 9px; }
+#app.chronicle-shell #main .officer-content .mini-stats b { font-size: 1.125rem; }
+body:not(.at-title) .officer-duty-badge {
+  display: inline-flex; align-items: center; width: fit-content; max-width: 100%;
+  padding: 4px 8px; border: 1px solid #6e8f7994; border-radius: 4px; background: #e3ebdc;
+  color: #28513c; font-size: .8125rem; font-weight: 650; line-height: 1.4;
+}
+body:not(.at-title) .officer-duty-badge[data-duty="army"] { background: #efd6c7; color: #743a27; border-color: #ac644b66; }
+body:not(.at-title) .officer-duty-badge[data-duty="governor"] { background: #d6e2ec; color: #294e68; border-color: #547d9966; }
+body:not(.at-title) .officer-duty-badge[data-duty="branch"] { background: #e2dcec; color: #584270; border-color: #89749d66; }
+body:not(.at-title) .officer-choice .officer-duty-badge { margin-block: 5px; }
+body:not(.at-title) .officer-choice[disabled] { opacity: .65; cursor: not-allowed; }
+body:not(.at-title) .officer-choice-unavailable { display: block; margin-top: 5px; color: #f4b6a4; font-size: .875rem; line-height: 1.5; }
+
+/* Army and research summaries become compact instruments above their cards. */
+#app.chronicle-shell #main :is(.army-muster-overview,.research-overview) {
+  border: 1px solid #b79c685b; border-radius: 8px;
+  background: linear-gradient(115deg,#263d49,#1a303f); color: #f4eddb;
+}
+#app.chronicle-shell #main :is(.army-muster-overview,.research-overview) :is(h2,strong,b,.eyebrow) { color: #ffe1ac; }
+#app.chronicle-shell #main :is(.army-muster-overview,.research-overview) :is(p,span,small) { color: #c8d5d5; }
+#app.chronicle-shell #main .army-muster-overview { padding-block: 0; }
+#app.chronicle-shell #main .army-muster-overview > div { padding: 13px 18px; }
+#app.chronicle-shell #main .army-muster-overview > div + div { border-color: #a9b6ad38; }
+#app.chronicle-shell #main .army-muster-overview strong { font-size: clamp(1.5rem,2.4vw,2rem); }
+#app.chronicle-shell #main .army-muster-overview span,
+#app.chronicle-shell #main .research-overview-metrics span { font-size: .875rem; letter-spacing: 0; }
+#app.chronicle-shell #main .army-slot-heading { background: #152633; border-bottom: 1px solid #9f85534d; }
+#app.chronicle-shell #main .army-illustrated-slot { overflow: hidden; }
+#app.chronicle-shell #main .army-card-copy { background: #192c39; }
+#app.chronicle-shell #main .army-card-copy h3 { color: #f7e9d0; }
+#app.chronicle-shell #main .army-abilities { gap: 10px; }
+#app.chronicle-shell #main .army-ability { background: #0c1d2a; border: 1px solid #84979830; border-radius: 5px; padding: 7px; }
+#app.chronicle-shell #main .army-ability b { color: #edd4a4; }
+#app.chronicle-shell #main .tactic-card { border-radius: 6px; border-color: #a28c5d4f; background: #182b38; }
+#app.chronicle-shell #main .research-overview { margin-bottom: 18px; }
+#app.chronicle-shell #main .research-overview-metrics { background: #10263385; border-color: #b5a16d44; }
+#app.chronicle-shell #main .research-current { border-color: #b5a16d44; }
+#app.chronicle-shell #main .research-visual { overflow: hidden; }
+#app.chronicle-shell #main .research-state { border: 1px solid #c4ac706b; border-radius: 4px; background: #10212bea; color: #edddbd; }
+#app.chronicle-shell #main [data-research-state="completed"] .research-state { color: #c7e7ca; border-color: #86b89280; background: #14342aec; }
+#app.chronicle-shell #main [data-research-state="running"] .research-state { color: #ffe0a5; background: #493b24ed; }
+#app.chronicle-shell #main .research-levels > span { border-radius: 4px; }
+#app.chronicle-shell #main .research-levels > span.is-learned { background: #98713d; border-color: #d9b077; color: #fff2d4; }
+#app.chronicle-shell #main .council-grid .quest-row { border-inline-start: 3px solid #869a9e; background: linear-gradient(110deg,#203543,#172b38); }
+#app.chronicle-shell #main .council-grid .quest-row:has([data-action="claim-quest"]:enabled) { border-inline-start-color: #e3bc76; background: linear-gradient(110deg,#4a3f2d,#25343a); }
+#app.chronicle-shell #main .quest-row .quest-reward { color: #e5c78c; line-height: 1.6; }
+
+/* Campaign surfaces and row selection remain readable over their illustrations. */
+#app.chronicle-shell #main :is(.geographic-map-panel,.roaming-map-shell,.field-map) { border-radius: 8px; overflow: hidden; border-color: #b59d6b69; }
+#app.chronicle-shell #main .territory-row { border-radius: 6px; border: 1px solid #96a7a43f; background-color: #172b39; }
+#app.chronicle-shell #main .territory-row.active { border-color: #d7b273; background-color: #2b3c3d; box-shadow: inset 3px 0 #d7b273; }
+#app.chronicle-shell #main .territory-label { border-radius: 4px; font-size: .8125rem; }
+#app.chronicle-shell #main .territory-label.own { color: #c3e6cf; background: #254939; border-color: #7bb49370; }
+#app.chronicle-shell #main .territory-label.reachable { color: #ffe0b1; background: #63472b; border-color: #cca56a77; }
+#app.chronicle-shell #main :is(.field-toolbar,.roaming-toolbar,.covert-toolbar) { gap: 9px; }
+#app.chronicle-shell #main :is(.field-card,.field-base-card,.covert-panel,.court-panel,.roaming-panel) :is(h2,h3) { line-height: 1.45; }
+#app.chronicle-shell #main :is(.roaming-supplies,.covert-supplies) { border-radius: 6px; background: #142a37; }
+#app.chronicle-shell #main :is(.roaming-record,.covert-private) { background: #172d38; border-color: #c5ac6b5b; border-radius: 5px; color: #e3d5b3; }
+#app.chronicle-shell #main .kamon-entry { padding: 18px 12px; }
+#app.chronicle-shell #main .kamon-entry b { color: #f0dfbf; }
+#app.chronicle-shell #main .kamon-entry small { color: #b6c9cd; }
+
+/* Buttons are restrained surfaces with a consistent emphasis and focus ring. */
+body:not(.at-title) :is(.button,.social-button,.events-button,.roaming-button,.covert-button,.field-button,.court-button) {
+  border-radius: 6px; border-color: #9baca55c; line-height: 1.45;
+  --button-wash-start: #2a4150f7; --button-wash-end: #1b303ef8;
+  box-shadow: inset 0 1px #ffffff07; text-shadow: none;
+}
+body:not(.at-title) :is(.button.gold,.field-button.gold,.social-button.gold,.events-button.is-primary) {
+  --button-wash-start: #6b5233fb; --button-wash-end: #493b29fa;
+  border-color: #d8b178ac; color: #ffedc9;
+}
+body:not(.at-title) :is(.button.primary,.field-button.primary,.social-button.primary,.events-button.primary) {
+  --button-wash-start: #984d38fb; --button-wash-end: #723828fb;
+  border-color: #e5b17d; color: #fff4df;
+  box-shadow: inset 0 1px #ffe1b42d,0 3px 10px #040a1233;
+}
+body:not(.at-title) :is(.button,.social-button,.events-button,.roaming-button,.covert-button,.field-button,.court-button):disabled {
+  opacity: .5; box-shadow: none; cursor: not-allowed;
+}
+#app.chronicle-shell #main .tabs button { border-radius: 5px; min-height: 40px; }
+#app.chronicle-shell #main .tabs button.active { border-color: #d2b16b; color: #ffe5b1; background-color: #56462d; }
+
+/* Dialog interiors share the game palette while keeping their own scroll containers. */
+body:not(.at-title) :is(.modal,.navigation-dialog,.social-dialog,.events-dialog,.progress-dialog,.alliance-dialog,.cq-dialog,.premium-dialog,.residency-dialog,.walking-dialog,.letters-dialog,.trade-dialog,.strategy-dialog,.hints-dialog) {
+  border: 1px solid #d4b079a3; border-radius: 10px; background: #132532;
+  color: #f2edde; box-shadow: 0 24px 90px #020811b8,inset 0 1px #ffe0a721;
+}
+body:not(.at-title) dialog::backdrop { background: #030a13bf; backdrop-filter: blur(3px); }
+body:not(.at-title) :is(.modal-header,.navigation-dialog-header,.events-header,.progress-header,.alliance-dialog-top,.cq-dialog-top,.premium-header,.residency-header,.walking-header,.letters-header,.trade-header,.strategy-header,.hints-header) {
+  background: linear-gradient(110deg,#2a3b44,#172d3b); border-bottom: 1px solid #c4a16978; color: #f1e5cb;
+}
+body:not(.at-title) :is(.modal-header,.navigation-dialog-header,.events-header,.progress-header,.alliance-dialog-top,.cq-dialog-top,.premium-header,.residency-header,.walking-header,.letters-header,.trade-header,.strategy-header,.hints-header) :is(h1,h2,h3) {
+  color: #ffe3b0; font-size: clamp(1.25rem,2vw,1.75rem); letter-spacing: .04em;
+}
+body:not(.at-title) :is(.modal-header,.events-header,.progress-header,.alliance-dialog-top,.cq-dialog-top,.premium-header,.walking-header,.letters-header,.trade-header,.strategy-header,.hints-header) :is(p,small,.eyebrow) { color: #c6d4d4; }
+body:not(.at-title) :is(.modal-footer,.social-footer,.navigation-dialog-footer,.events-footer,.trade-footer,.letters-footer) {
+  border-top-color: #a38e5f48; background-color: #10212e;
+}
+body:not(.at-title) .modal-body { line-height: 1.65; }
+body:not(.at-title) .modal-body :is(.input,.select,textarea) { border-color: #94aaa65c; border-radius: 6px; }
+body:not(.at-title) .navigation-entry-row { border-radius: 7px; border-color: #98a49943; background: #182e3d; }
+body:not(.at-title) .navigation-entry-row:has(.is-current) { border-color: #d1ac6f94; background: #293b3c; }
+body:not(.at-title) .navigation-dialog .navigation-entry-icon { border-radius: 5px; background: #253e4d; border-color: #b5a16f52; }
+body:not(.at-title) .navigation-dialog .navigation-entry-copy small { color: #bacbd2; }
+body:not(.at-title) .navigation-close { border-radius: 6px; }
+body:not(.at-title) :is(.social-header,.social-tabs) { background-color: #142a38; }
+body:not(.at-title) :is(.social-card,.social-staff-card,.events-card,.progress-card,.branch-card) { border-radius: 7px; }
+
+@media (min-width:1025px) {
+  html.sengoku-desktop-fit #app.chronicle-shell .chronicle-rail { gap: 10px; }
+  html.sengoku-desktop-fit #app.chronicle-shell #main { padding: clamp(16px,1.6vw,25px); }
+  html.sengoku-desktop-fit #app.chronicle-shell .officers-grid { gap: 14px; }
+  html.sengoku-desktop-fit #app.chronicle-shell .research-grid { gap: 16px; }
+  html.sengoku-desktop-fit #app.chronicle-shell .army-layout { gap: 18px; }
+  html.sengoku-desktop-fit #app.chronicle-shell .facility-catalog { gap: 14px; }
+  html.sengoku-desktop-fit:not([data-layout-townratio]) #app.chronicle-shell #main .town-workspace.dashboard-grid {
+    grid-template-columns: minmax(0,1fr) clamp(300px,31%,390px);
+  }
+  html.sengoku-desktop-fit #app.chronicle-shell #main[data-view="town"] { padding: 12px; scrollbar-gutter: auto; }
+}
+@media (max-width:900px) {
+  #app.chronicle-shell #main .page-heading { grid-template-columns: minmax(0,1fr) minmax(105px,.4fr); }
+  #app.chronicle-shell #main .chapter-copy { padding: 14px 16px; }
+  #app.chronicle-shell #main .facility-banner { min-height: 104px; padding: 16px; }
+  #app.chronicle-shell #main .catalog-filter-chips { gap: 6px; }
+  #app.chronicle-shell #main .catalog-filter-chips button { min-height: 42px; padding: 8px 11px; }
+}
+@media (max-width:720px) {
+  #app.chronicle-shell #main :is(.page-heading,.roaming-heading,.court-heading,.covert-heading) {
+    grid-template-columns: minmax(0,1fr) minmax(84px,.35fr); min-height: 112px; border-radius: 7px;
+  }
+  #app.chronicle-shell #main .chapter-copy,
+  #app.chronicle-shell #main :is(.roaming-heading,.covert-heading,.court-heading) > div:first-child { padding: 13px; }
+  #app.chronicle-shell #main :is(.page-heading,.roaming-heading,.court-heading,.covert-heading) h1 { font-size: clamp(1.4rem,5.2vw,1.8rem); }
+  #app.chronicle-shell #main :is(.page-heading,.roaming-heading,.court-heading,.covert-heading) :is(.subtitle,p) { font-size: .875rem; line-height: 1.55; }
+  #app.chronicle-shell #main :is(.page-heading,.roaming-heading,.court-heading,.covert-heading) .eyebrow { font-size: .75rem; }
+  #app.chronicle-shell #main .chapter-symbol { flex: none; }
+  #app.chronicle-shell #main .page-heading-actions { padding: 6px 10px; }
+  #app.chronicle-shell #main .town-overview .page-heading { display: block; min-height: 0; }
+  #app.chronicle-shell #main .pagination { padding: 8px; gap: 8px; }
+  #app.chronicle-shell #main .pagination .button { min-height: 44px; }
+  #app.chronicle-shell #main .catalog-result-summary { align-items: flex-start; }
+  #app.chronicle-shell #main .catalog-result-summary button { min-height: 42px; }
+  html.sengoku-navigation-ready:not(.sengoku-desktop-fit) #app.chronicle-shell .sidebar-bottom {
+    background: #102330; border-color: #b99b626e; box-shadow: 0 -4px 20px #030b1640;
+  }
+  html.sengoku-navigation-ready:not(.sengoku-desktop-fit) #app.chronicle-shell .navigation-quick { border-radius: 6px; }
+  html.sengoku-navigation-ready:not(.sengoku-desktop-fit) #app.chronicle-shell .navigation-quick.active { background-color: #3a3b2d; border-color: #d2ac66; }
+  body:not(.at-title) :is(.modal,.navigation-dialog,.social-dialog,.events-dialog,.progress-dialog,.trade-dialog) { border-radius: 8px; }
+  body:not(.at-title) dialog::backdrop { backdrop-filter: none; }
+}
+@media (max-width:400px) {
+  #app.chronicle-shell #main :is(.page-heading,.roaming-heading,.court-heading,.covert-heading) { grid-template-columns: minmax(0,1fr) 68px; }
+  #app.chronicle-shell #main .chapter-copy { padding: 12px; }
+  #app.chronicle-shell #main .chapter-symbol { display: none; }
+  #app.chronicle-shell #main .catalog-filter-chips { gap: 5px; }
+  #app.chronicle-shell #main .catalog-filter-chips button { padding-inline: 9px; }
+  #app.chronicle-shell #main .pagination { flex-wrap: wrap; }
+}
+@media (max-height:700px) and (min-width:1025px) {
+  html.sengoku-desktop-fit #app.chronicle-shell .chronicle-rail { gap: 7px; padding-block: 10px; }
+  html.sengoku-desktop-fit #app.chronicle-shell .chronicle-rail .brand { padding-bottom: 8px; }
+  html.sengoku-desktop-fit #app.chronicle-shell #main { padding: 13px 18px; }
+  #app.chronicle-shell #main :is(.page-heading,.roaming-heading,.court-heading,.covert-heading) { min-height: 100px; }
+  #app.chronicle-shell #main .chapter-copy { padding-block: 12px; }
+  #app.chronicle-shell #main .facility-banner { min-height: 92px; padding-block: 12px; }
+  #app.chronicle-shell #main .facility-banner p { margin-block: 5px; }
+}
+@media (hover:hover) and (pointer:fine) {
+  #app.chronicle-shell #main :is(.officer-card,.facility-entry,.kamon-entry,.research-illustrated-card):hover { border-color: #ddbc7d9e; }
+  #app.chronicle-shell #main :is(.catalog-filter-chips button,.territory-row):not(:disabled):hover { border-color: #d6b177b5; }
+  #app.chronicle-shell .sidebar .nav-item:not(.active):not(:disabled):hover { border-color: #b8a47666; }
+}
+@media (prefers-reduced-motion:no-preference) {
+  html:not([data-presentation-motion="quiet"]) #app.chronicle-shell #main :is(.officer-card,.facility-entry,.kamon-entry,.research-illustrated-card) { transition: border-color .18s ease,box-shadow .18s ease; }
+}
+@media (forced-colors:active) {
+  #app.chronicle-shell #main,
+  #app.chronicle-shell #main :is(.page-heading,.roaming-heading,.court-heading,.covert-heading,.panel,.catalog-empty),
+  #app.chronicle-shell .chronicle-ledger .resource { background: Canvas; color: CanvasText; border-color: CanvasText; }
+  #app.chronicle-shell #main :is(.page-heading,.roaming-heading,.court-heading,.covert-heading) :is(h1,p,.eyebrow),
+  #app.chronicle-shell .chronicle-ledger .resource .resource-amount,
+  body:not(.at-title) .officer-duty-badge { color: CanvasText; }
+  #app.chronicle-shell #main .catalog-filter-chips button:is(.active,[aria-pressed="true"]) { color: HighlightText; background: Highlight; }
+}
+
+/* The fixed resource ledger already exposes these balances and their actions.
+   Keep the monthly clock as a single slim row whenever that ledger is present. */
+#app.chronicle-shell:where(:has(#touch-header-status:not([hidden]))) #main .realtime-strip {
+  grid-template-columns: minmax(32px,1fr) auto;
+  grid-template-areas: "progress speed";
+  min-height: 30px; gap: 6px 12px; padding: 4px 10px; margin-block: 0 9px;
+}
+#app.chronicle-shell:where(:has(#touch-header-status:not([hidden]))) #main .realtime-strip > .currency-chip,
+#app.chronicle-shell:where(:has(#touch-header-status:not([hidden]))) #main .page-heading .commands { display: none; }
+#app.chronicle-shell #main .realtime-strip .time-track { height: 4px; }
+#app.chronicle-shell #main .realtime-strip > .shared-time-speed { font-size: .8125rem; line-height: 1.5; }
+#app.chronicle-shell #main .expansion-entry { margin-block: 6px 10px; }
+#app.chronicle-shell #main .officer-subnav { padding: 7px 10px; margin-bottom: 10px; gap: 8px 12px; }
+#app.chronicle-shell #main .officer-subnav .tabs button { min-height: 38px; padding: 6px 12px; }
+#app.chronicle-shell #main .officer-filter-bar { padding: 10px; margin-bottom: 10px; }
+#app.chronicle-shell #main .officer-filter-heading { gap: 4px 8px; }
+#app.chronicle-shell #main .officer-filter-heading .text-link { min-height: 32px; padding: 4px 6px; }
+#app.chronicle-shell #main .officer-filter-field { gap: 4px; }
+#app.chronicle-shell #main .officer-filter-drawer > summary { min-height: 40px; padding: 8px 10px; }
+#app.chronicle-shell #main .officer-ownership-tabs button { min-height: 36px; padding: 6px 11px; }
+#app.chronicle-shell #main .officer-filter-bar .officer-filter-heading > b { font-size: .9375rem; }
+#app.chronicle-shell #main #officer-results > .section-heading { margin-top: 0; margin-bottom: 10px; padding-bottom: 6px; }
+#app.chronicle-shell #main .research-action-reason {
+  display: flex; align-items: flex-start; min-height: 3em; margin: 6px 0 0;
+  color: #c9d6d5; font-size: .875rem; line-height: 1.5;
+}
+#app.chronicle-shell #main [data-research-state="waiting"] .research-state {
+  background: #243b4bea; color: #c8d8e5; border-color: #8ca6be5c;
+}
+#app.chronicle-shell #main .quest-row[data-quest-state="ready"] { border-inline-start-color: #e6be7a; }
+#app.chronicle-shell #main .quest-row[data-quest-state="claimed"] { border-inline-start-color: #86ad93; }
+#app.chronicle-shell #main .quest-progress-label { display: block; margin-top: 5px; font-size: .875rem; line-height: 1.5; color: #d2ddd9; }
+@media (min-width:830px) {
+  #app.chronicle-shell #main .officer-filter-bar { gap: 6px 12px; align-items: end; }
+  #app.chronicle-shell #main .officer-filter-heading { grid-column: 1; grid-row: 1; align-self: center; }
+  #app.chronicle-shell #main .officer-ownership-tabs { grid-column: 2; grid-row: 1; justify-content: flex-end; gap: 5px; }
+  #app.chronicle-shell #main .officer-filter-bar > .officer-filter-fields { grid-column: 1; grid-row: 2; }
+  #app.chronicle-shell #main .officer-filter-drawer { grid-column: 2; grid-row: 2; margin: 0; }
+  #app.chronicle-shell #main .officer-filter-drawer[open] { grid-column: 1/-1; grid-row: 3; }
+  #app.chronicle-shell #main[data-view="officers"] .page-heading { min-height: 102px; margin-bottom: 9px; }
+  #app.chronicle-shell #main[data-view="officers"] .chapter-copy { padding: 10px 18px; }
+  #app.chronicle-shell #main[data-view="officers"] .page-heading h1 { font-size: 1.85rem; }
+  #app.chronicle-shell #main[data-view="officers"] .page-heading .eyebrow { margin-bottom: 4px; }
+  #app.chronicle-shell #main[data-view="officers"] .page-heading-actions { padding-block: 4px; }
+  #app.chronicle-shell #main[data-view="officers"] .expansion-entry .button { min-height: 38px; padding-block: 6px; }
+}
+@media (max-width:600px) {
+  #app.chronicle-shell #main .officer-filter-heading .text-link { min-height: 44px; }
+  #app.chronicle-shell #main .officer-filter-drawer > summary { min-height: 44px; padding-block: 10px; }
+  #app.chronicle-shell #main .officer-ownership-tabs button,
+  #app.chronicle-shell #main .officer-subnav .tabs button { min-height: 44px; }
+  #app.chronicle-shell #main .officer-filter-bar .officer-filter-heading > b { font-size: .875rem; }
+  #app.chronicle-shell #main .officer-subnav .collection-count { flex: 1 1 100%; font-size: .8125rem; }
+}
+@media (max-height:540px) {
+  #app.chronicle-shell #main :is(.page-heading,.roaming-heading,.court-heading,.covert-heading) { min-height: 95px; }
+  #app.chronicle-shell #main .chapter-copy { padding-block: 10px; }
+  #app.chronicle-shell #main .town-overview .page-heading { min-height: 0; }
+  body:not(.at-title) :is(.modal-header,.navigation-dialog-header) { padding-block: 10px; }
+  body:not(.at-title) .modal-header h2 { font-size: 1.3rem; }
+}
+
+/* Jump between the town's long control groups without shrinking the scene. */
+#app.chronicle-shell #main .town-console-nav {
+  display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 5px;
+  width: 100%; min-width: 0; margin: 0; padding: 6px;
+  border: 1px solid #bd9e686e; border-radius: 7px;
+  background: #10222f; box-shadow: 0 3px 12px #02091240;
+  container: town-console-navigation / inline-size;
+}
+#app.chronicle-shell #main .town-console-nav > button {
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  min-width: 0; min-height: 40px; padding: 7px 5px; margin: 0;
+  border: 1px solid #8fa3a54d; border-radius: 4px;
+  background: #223948; background-image: none !important; color: #eee3cc;
+  font: inherit; font-size: .875rem; line-height: 1.4; white-space: nowrap; cursor: pointer;
+}
+#app.chronicle-shell #main .town-console-nav .icon { width: 16px; height: 16px; flex: none; color: #dfbd82; }
+html.sengoku-desktop-fit #app.chronicle-shell #main .town-console-nav {
+  position: sticky; top: 0; z-index: 4; flex: none;
+}
+html:not(.sengoku-desktop-fit) #app.chronicle-shell #main .town-console-nav {
+  position: static; order: -1; margin-bottom: 12px; box-shadow: none;
+}
+html:not(.sengoku-desktop-fit) #app.chronicle-shell #main .town-console-nav > button { min-height: 44px; }
+@container town-console-navigation (max-width:220px) {
+  #app.chronicle-shell #main .town-console-nav .icon { display: none; }
+  #app.chronicle-shell #main .town-console-nav > button { gap: 0; padding-inline: 2px; font-size: .8125rem; }
+}
+@media (hover:hover) {
+  #app.chronicle-shell #main .town-console-nav > button:hover { background-color: #304b5a; border-color: #d2b278; }
+}
+@media (forced-colors:active) {
+  #app.chronicle-shell #main .town-console-nav { background: Canvas; border-color: CanvasText; }
+  #app.chronicle-shell #main .town-console-nav > button { color: ButtonText; background: ButtonFace; border-color: ButtonText; }
+  #app.chronicle-shell #main .town-console-nav .icon { color: ButtonText; }
+}

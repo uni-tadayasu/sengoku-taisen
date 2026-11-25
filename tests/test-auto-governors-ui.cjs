@@ -49,7 +49,7 @@ function harness(game=create()){
   const c={game,SengokuEngine:E,staffBaseId:'kyoto_gosho',data:D,roster:plain(roster),state:()=>c.game.state,console,Date,Math,JSON,Number,String,Set,
     syncAccess:{linked:false,ready:true,writable:true,rolePending:false},lastLocalSaveRaw:null,lastLocalSaveGame:null,localCampaignRefreshPending:false,saveKey:'save',saveEnabled:true,saveWarning:'',
     branchBookingPending:false,worldCatchingUp:false,worldSettlementPending:false,fieldActionPending:false,walkingActionPending:false,strategyActionPending:false,startPending:false,
-    staffBaseReady:game.isStaff&&Boolean(game.getStaffBase()),settings:{tips:false},currentView:'town',facilityCategory:'all',facilityQuery:'',facilityPage:1,
+    staffBaseReady:game.isStaff&&Boolean(game.getStaffBase()),settings:{tips:false},currentView:'town',facilityCategory:'all',facilityQuery:'',facilityState:'all',facilityPage:1,
     document:{querySelectorAll:selector=>selector==='[data-action]'?controls:[],addEventListener:(type,listener)=>handlers.set(type,listener)},
     window:{SengokuDurabilityUI:durabilityUI,dispatchEvent:event=>events.push(event.type)},CustomEvent:class{constructor(type){this.type=type;}},
     localStorage:{getItem:key=>stored.get(key)??null,setItem:(key,value)=>{if(flags.failSave)throw Error('QuotaExceededError');stored.set(key,value);writes.push({key,value});}},
@@ -62,7 +62,7 @@ function harness(game=create()){
     constructionJobs:()=>[],currentJob:()=>null,castleLevelLimit:id=>c.game.castleLevelLimit(id),date:()=>({year:1560,month:1,season:'春'}),costHtml:()=>''
   };
   vm.createContext(c);
-  vm.runInContext([declaration('mutationActions'),declaration('categoryNames'),declaration('resNames'),declaration('resIcons'),...['confirmedWorldClock','clockIsApplied','canMutate','syncMessage','requireWritable','changedLocalCampaign','save','requestBranches','staffConstructionReady','governorAssignmentStatus','governorAssignmentEntry','facilityGovernorLabel','governorAssignmentResult','autoAssignGovernors','buildingOutput','buildingCard','facilitiesResults','economyNumber','economyPanel','renderFacilities','premiumTownImage','townSceneSources','premiumTownBanner','premiumLord','durabilityMarkup','durabilityHelp','renderTown','refreshLiveControls'].map(fn)].join('\n'),c);
+  vm.runInContext([declaration('mutationActions'),declaration('categoryNames'),declaration('resNames'),declaration('resIcons'),...['confirmedWorldClock','clockIsApplied','canMutate','syncMessage','requireWritable','changedLocalCampaign','save','requestBranches','staffConstructionReady','governorAssignmentStatus','governorAssignmentEntry','facilityGovernorLabel','governorAssignmentResult','autoAssignGovernors','buildingOutput','buildingCard','catalogMatches','catalogChips','facilitiesResults','economyNumber','economyPanel','renderFacilities','premiumTownImage','townSceneSources','premiumTownBanner','premiumLord','durabilityMarkup','durabilityHelp','renderTown','refreshLiveControls'].map(fn)].join('\n'),c);
   const clickStart=source.indexOf("  document.addEventListener('click',async event=>"),clickEnd=source.indexOf("  document.addEventListener('input'",clickStart);
   assert(clickStart>=0&&clickEnd>clickStart);vm.runInContext(source.slice(clickStart,clickEnd),c);
   const click=async({force=false}={})=>{const target=force?{dataset:{action:'auto-governors'},disabled:false,closest(){return this;}}:controls[0];await handlers.get('click')({target});};
