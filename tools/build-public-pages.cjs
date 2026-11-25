@@ -6,6 +6,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const renderSharePage = require('./share-page.cjs');
 const renderAboutContent = require('./about-content.cjs');
+const renderPressContent = require('./press-content.cjs');
 const { pageSecurity } = require('./page-security.cjs');
 const renderPremiumPage = require('./premium-page.cjs');
 const root = path.resolve(__dirname, '..');
@@ -16,7 +17,7 @@ const brandEdition = /-(\d{8})\.png$/.exec(site.favicon.path)?.[1];
 if (!brandEdition) throw Error('site-metadata.json: dated brand artwork is required');
 // Dates are editorial inputs. A new build or deployment must not change them.
 if (site.schemaVersion !== 1 || new URL(origin).origin !== origin || !origin.startsWith('https://')) throw Error('site-metadata.json: canonical HTTPS origin is required');
-for (const key of ['home', 'share', 'premium', 'guide', 'recovery', 'about']) {
+for (const key of ['home', 'share', 'premium', 'guide', 'recovery', 'about', 'press']) {
   const page = site.pages[key];
   if (!page || !/^\/(?:[a-z0-9-]+\/)*$/.test(page.path) || !page.title || !page.description || !/^\d{4}-\d{2}-\d{2}$/.test(page.dateModified)) throw Error(`site-metadata.json: invalid ${key} page`);
 }
@@ -123,9 +124,14 @@ function quickTopics(key, p) {
     about: [
       ['#collection','収録内容','武将・城・施設の数と成長'], ['#artwork','戦国の絵巻','人物・建物の作品資料'],
       ['#geography','地図と出典','拠点・地形の参考資料']
+    ],
+    press: [
+      ['#press-facts','作品情報を確認','料金・端末・ゲームの特徴'],
+      ['#press-media','素材を保存','画像・ロゴ・短い紹介動画'],
+      ['#press-copy','紹介文を使う','記事・SNS向けの日本語文例']
     ]
   }[key];
-  const title = {guide:'目的から探す', recovery:'手元のデータから選ぶ', about:'作品資料を開く'}[key];
+  const title = {guide:'目的から探す', recovery:'手元のデータから選ぶ', about:'作品資料を開く', press:'紹介に必要なものを探す'}[key];
   return `<nav class="guide-quick" aria-labelledby="quick-topics-title"><div class="quick-heading"><h2 id="quick-topics-title">${title}</h2><a class="guide-quick-all" href="#page-contents">すべての項目を見る</a></div><ul>${topics.map(([href,title,description])=>`<li><a href="${href}"><strong>${title}</strong><span>${description}</span></a></li>`).join('')}</ul></nav>`;
 }
 
@@ -585,6 +591,10 @@ function aboutContent(p) {
   return renderAboutContent(p, { section, table, site });
 }
 
+function pressContent(p) {
+  return renderPressContent(p, { section, table, site });
+}
+
 const pages = [
   {
     ...site.pages.share,
@@ -620,6 +630,15 @@ const pages = [
     heroAction: 'ゲームを開く', secondary: ['地図の出典を見る', '#geography'],
     toc: [['world','戦国VSとは'],['gameplay','城下町・武将・領主交流'],['strategy-and-walking','軍師AI・ウォーキング'],['events-and-shogunate','合戦報酬・天下統一・幕府'],['collection','収録内容と成長段階'],['artwork','イラストと外観'],['geography','地図の資料と出典'],['crests','家紋と識別章'],['copyright','著作権・引き継ぎ']],
     content: aboutContent, closingTitle: '一城の志を、ここから。', closingText: '城下町の営みと、群雄たちの戦記をブラウザで。'
+  },
+  {
+    ...site.pages.press,
+    file: 'press/index.html', slug: 'press', key: 'press', label: '紹介・掲載用素材',
+    eyebrow: '公式素材・メディア向け情報', heading: '戦国VSの紹介素材',
+    lead: '記事・動画・SNSで戦国VSを紹介する方へ。作品情報、日本語の紹介文、画像・ロゴ・短い動画をまとめました。作品名と公式URLを添えてご紹介ください。',
+    heroAction: '素材をまとめて保存', heroHref: 'assets/promo/sengoku-vs-press-kit-20261126.zip', secondary: ['ゲーム紹介を読む', 'sengoku-vs'],
+    toc: [['press-facts','作品情報'],['press-media','画像・動画・ロゴ'],['press-copy','日本語の紹介文'],['press-english','English information']],
+    content: pressContent, closingTitle: '一城から、広がる戦記。', closingText: '紹介の前に、ブラウザで戦国VSをお試しください。'
   }
 ];
 
@@ -638,7 +657,7 @@ function render(page) {
     <button class="public-nav-toggle" type="button" hidden aria-expanded="false" aria-controls="public-site-nav"><span class="menu-lines" aria-hidden="true"></span>メニュー</button>
     <nav class="header-navigation" id="public-site-nav" aria-label="サイトの案内">${nav}<a class="nav-play" href="${p.dir('')}">ゲームを開く</a></nav>
   </div></header>`;
-  const footer = `<footer class="site-footer"><div class="footer-inner page-width"><a class="footer-brand" href="${p.dir('')}">${esc(site.name)} <span>SENGOKU VS</span></a><nav class="footer-nav" aria-label="フッターの案内">${nav}</nav><p class="copyright">© ${esc(site.publisher)}</p><p class="footer-note"><a href="${p.dir('about')}#copyright">著作権・作品資料</a>${['share','premium'].includes(page.key)?` <span>更新 <time datetime="${page.dateModified}">${modifiedLabel(page.dateModified)}</time></span>`: ''}</p></div></footer>`;
+  const footer = `<footer class="site-footer"><div class="footer-inner page-width"><a class="footer-brand" href="${p.dir('')}">${esc(site.name)} <span>SENGOKU VS</span></a><nav class="footer-nav" aria-label="フッターの案内">${nav}<a href="${p.dir('press')}"${page.key === 'press' ? ' aria-current="page"' : ''}>紹介・掲載用素材</a></nav><p class="copyright">© ${esc(site.publisher)}</p><p class="footer-note"><a href="${p.dir('about')}#copyright">著作権・作品資料</a>${['share','premium'].includes(page.key)?` <span>更新 <time datetime="${page.dateModified}">${modifiedLabel(page.dateModified)}</time></span>`: ''}</p></div></footer>`;
   const chapter = path.basename(page.artwork.path, '.webp');
   const chapterSources = [240,400,640,960,1200].map(width => `${p.file(`assets/responsive/${chapter}-${width}.webp`)} ${width}w`).join(', ');
   const panelSources = [400,640,900].map(width => `${p.file(`assets/responsive/${chapter}-panel-${width}.webp`)} ${width}w`).join(', ');
@@ -671,14 +690,14 @@ function render(page) {
   <script type="application/ld+json">${jsonScript(jsonld)}</script>
   <link rel="stylesheet" href="${p.file('button-artwork.css')}?v=${release}">
   <link rel="stylesheet" href="${p.file('public-luxury.css')}?v=${release}">
-  <script defer src="${p.file('public-luxury.js')}?v=${release}"></script>
+${page.key === 'press' ? `  <link rel="stylesheet" href="${p.file('promotion.css')}?v=${release}">\n  <script defer src="${p.file('promotion-share.js')}?v=${release}"></script>\n` : ''}  <script defer src="${p.file('public-luxury.js')}?v=${release}"></script>
 </head>
 <body class="public-luxury" data-page="${page.key}">
   <a class="skip-link" href="#content">本文へ移動</a>
   ${header}
   <main id="content" class="page-width">
     <nav aria-label="パンくず"><ol class="breadcrumbs">${breadcrumbItems.map((item,i)=>`<li>${i===breadcrumbItems.length-1?`<span aria-current="page">${item.name}</span>`:`<a href="${item.href}">${item.name}</a>`}</li>`).join('')}</ol></nav>
-    <section class="hero chapter-hero folio-hero" aria-labelledby="page-title">${artwork}<div class="hero-copy"><p class="eyebrow">${page.eyebrow}</p><h1 id="page-title">${page.heading}</h1><p class="hero-lead">${page.lead}</p><div class="hero-actions"><a class="action-link" href="${p.dir('')}">${page.heroAction}</a><a class="text-link" href="${secondaryHref}">${page.secondary[0]}</a></div></div></section>
+    <section class="hero chapter-hero folio-hero" aria-labelledby="page-title">${artwork}<div class="hero-copy"><p class="eyebrow">${page.eyebrow}</p><h1 id="page-title">${page.heading}</h1><p class="hero-lead">${page.lead}</p><div class="hero-actions"><a class="action-link" href="${page.heroHref ? p.file(page.heroHref) : p.dir('')}"${page.heroHref ? ' download' : ''}>${page.heroAction}</a><a class="text-link" href="${secondaryHref}">${page.secondary[0]}</a></div></div></section>
 ${quickTopics(page.key, p)}
     <div class="reading-layout"><aside id="page-contents" class="toc" tabindex="-1"><nav aria-label="このページの目次"><h2 class="toc-title">目次</h2><details class="toc-chapters" open><summary>すべての項目 <span>${page.toc.length}項目</span></summary><ul>${page.toc.map(([id,label])=>`<li><a href="#${id}">${label}</a></li>`).join('')}</ul></details></nav></aside><article class="article" aria-label="${page.label}の本文"><p class="article-updated">内容更新：<time datetime="${page.dateModified}">${modifiedLabel(page.dateModified)}</time></p>${readingContent(page, p)}</article></div>
     <section class="closing"><div><h2>${page.closingTitle}</h2><p>${page.closingText}</p></div><a class="action-link" href="${p.dir('')}">ゲームを開く</a></section>
@@ -756,7 +775,7 @@ function updateHome() {
   if (!hasLaunchGuide) html = html.replace(/<p class="launch-copyright">/, `${launchGuide}\n      <p class="launch-copyright">`);
   html = html.replace(/(<p class="launch-copyright">)([\s\S]*?)(<\/p>)/, (_, before, content, after) => {
     const platform = content.includes('©') ? content.slice(0, content.indexOf('©')) : '';
-    return before + platform + `© <a href="about/" aria-label="${esc(site.publisher)}の戦国VSについて">${esc(site.publisher)}</a>` + after;
+    return before + platform + `© <a href="about/" aria-label="${esc(site.publisher)}の戦国VSについて">${esc(site.publisher)}</a> · <a href="press/">紹介素材</a>` + after;
   });
   html = html.replace(/(<a href="about\/" data-action="about">)[^<]*(<\/a>)/, '$1ゲーム概要・出典$2');
   html = html.replace(/(<div class="version-label">)群雄集結 · Ver\. [^<]+(<\/div>)/, `$1群雄集結 · Ver. ${esc(site.version)}$2`);

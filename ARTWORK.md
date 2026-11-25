@@ -1,5 +1,29 @@
 # オリジナルイラスト仕様
 
+## 紹介・掲載用素材と縦型動画（Ver.5.0.5 / 2026年11月26日）
+
+国内の新規プレイヤー向けに、既存の公式イラスト・紋章・BGMを使った24秒の紹介動画を制作しました。城下町を育てる、武将を編成する、城を攻めるという遊びの流れと、公式URL、基本プレイ無料・任意の外観アイテムと月額支援の案内を載せています。全場面に **「公式イラストによる紹介」** と表示しており、録画したゲームプレイではありません。日本語の見出し・説明を映像へ焼き込み、無音再生でも読める構成です。ナレーションは含みません。
+
+| 配布物 | 仕様・役割 |
+| --- | --- |
+| [紹介動画MP4](assets/promo/sengoku-vs-intro-ja-20261126.mp4) | 実尺24.000秒、720×1280、24fps・576フレーム、H.264 / yuv420p、AAC 44.1kHzステレオ、faststart。3,237,853バイト（約3.24MB） |
+| [ポスターJPEG](assets/promo/sengoku-vs-intro-ja-20261126-poster.jpg) | 動画の20秒位置から取得した静止画 |
+| [日本語VTT](assets/promo/sengoku-vs-intro-ja-20261126.vtt) | 字幕と動画中の説明の代替情報 |
+| [制作記録](assets/promo/VIDEO-PRODUCTION.md)・[JSON](assets/promo/sengoku-vs-intro-ja-20261126.json) | 構成、素材の出典、生成方法、実測仕様・容量、動画と素材のSHA-256 |
+| [実ゲーム画面4枚と撮影記録](assets/promo/screenshots/manifest.json) | タイトル・城下町・天下地図・武将。1363×936pxのJPEG、各0.3MB未満。隔離したローカルデモから取得 |
+| [動画用タイトル・説明文TXT](assets/promo/sengoku-vs-video-copy-ja-20261126.txt) | 日本語の投稿用原稿。作品URL、遊びと料金の説明、公式イラスト紹介の明示、制作・BGMクレジットを収録。未投稿 |
+| [紹介素材ZIP](assets/promo/sengoku-vs-press-kit-20261126.zip) | 共有画像5種類、実ゲーム画面4枚、SVG紋章・512px PNG、日本語作品概要・投稿文・動画用タイトルと説明文、英語fact sheet、収録物の一覧とSHA-256を収録（18ファイル・3,085,616バイト）。動画は別配布 |
+
+実ゲーム画面は `assets/promo/screenshots/sengoku-vs-{title,town,map,officers}-20261126.jpg` に保存しました。QA用に隔離したローカルデモで、通常の操作から織田家・清洲城の戦役を開始して撮影しています。全画像の上部に「ローカルデモ・データは保存されません」の表示があり、実プレイヤーの保存データ・アカウント・本番APIを使用していません。JPEGの撮影結果に合成や改変は加えていません。画像の容量は順に239,817・275,492・216,421・230,368バイトで、実寸とSHA-256を撮影記録に残しています。
+
+動画の画像は `assets/chronicle/cover.webp`・`town.webp`・`war.webp` と、`assets/branding/sengoku-vs-icon-512-20261126.png` です。元の絵を描き変えず、縦横比を保った切り出し、緩やかなカメラ移動、文字の背景・見出しのレイヤー、場面間のクロスフェードを加えています。元画像の制作根拠は本書の「戦国絵巻」「ブランド・共有画像」と関連する制作記録を参照してください。
+
+BGMは既存の `assets/music/world-march.mp3`「旌旗越ゆる稜線」の冒頭24秒です。音量を0.82倍にし、冒頭0.6秒・末尾1.6秒にフェードをかけました。楽曲の題名・録音情報は [assets/music/masters.json](assets/music/masters.json)、楽譜は `music.js`、録音生成は `tools/render-soundtrack.py` にあります。今回、新しい外部楽曲や第三者の音声は追加していません。映像中の文字は環境にインストール済みのNoto Sans CJK / Noto Serif CJKで描画し、フォントファイルは配布物に含めません。
+
+動画は `python3 tools/build-promo-video.py` で再生成します。Python 3、Pillow、FFmpeg（libx264・AAC）、ffprobe、Noto CJKフォントが必要です。ZIPは `python3 tools/build-press-kit.py` で生成し、収録元のファイルと一覧を対応させます。制作記録には、完成動画の全576フレームのデコード、主要6場面の目視確認、音声の計測結果を残しています。
+
+配布素材を案内する `/press/` と日本語・英語のTXTは、作品を紹介するための資料です。ゲームUIと公式ガイドは日本語です。利用時には作品名「戦国VS」、公式URL `https://www.kasai-solutions-inc.com/`、**© KASAI SOLUTIONS** を添えるよう案内します。地理データ・家紋などの第三者資料は作品概要と既存の出典資料を参照します。本節は素材の制作・配布準備の記録で、外部SNSへの投稿や掲載申請、v5.0.5のデプロイ完了を示すものではありません。
+
 ## ブランド・共有画像（Ver.5.0.3 / 2026年11月26日）
 
 既存の城・軍扇・旭日の紋章をベクターで再設計しました。墨地・金・朱を統一色とし、16〜48pxでは細部を省いた図案、96px以上では金の階調を使います。マスターは `assets/branding/sengoku-vs-mark-20261126.svg`、小サイズSVGは `sengoku-vs-favicon-20261126.svg` です。ホーム画面用・maskable・通知用白抜きバッジを専用に書き出し、`tools/build-brand-icons.py` で再生成できます。ゲーム内の各家の家紋とは別のブランド図案です。

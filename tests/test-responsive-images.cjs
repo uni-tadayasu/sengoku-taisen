@@ -4,7 +4,7 @@ const fs=require('node:fs'),path=require('node:path');
 const root=path.join(__dirname,'..');
 const metadata=JSON.parse(fs.readFileSync(path.join(root,'site-metadata.json'),'utf8'));
 const brandEdition=/-(\d{8})\.png$/.exec(metadata.favicon.path)[1];
-const files=['index.html','guide/index.html','guide/data-recovery/index.html','sengoku-vs/index.html','about/index.html','premium/index.html','tools/music-audition.html','404.html'];
+const files=['index.html','guide/index.html','guide/data-recovery/index.html','sengoku-vs/index.html','about/index.html','premium/index.html','press/index.html','tools/music-audition.html','404.html'];
 const attr=(tag,key)=>new RegExp(`\\b${key}="([^"]*)"`).exec(tag)?.[1];
 const checked=new Set();
 for(const file of files){

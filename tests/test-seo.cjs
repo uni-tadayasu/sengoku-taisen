@@ -80,7 +80,7 @@ function jpegSize(image){
 }
 
 test('one metadata source matches every title, description, canonical and social preview',()=>{
-  assert.equal(site.schemaVersion,1);assert.equal(site.origin,'https://www.kasai-solutions-inc.com');assert.deepEqual(Object.keys(site.pages).sort(),['about','guide','home','premium','recovery','share']);assert.equal(site.pages.home.path,'/');assert.equal(site.pages.share.path,'/sengoku-vs/');assert.equal(site.pages.premium.path,'/premium/');
+  assert.equal(site.schemaVersion,1);assert.equal(site.origin,'https://www.kasai-solutions-inc.com');assert.deepEqual(Object.keys(site.pages).sort(),['about','guide','home','premium','press','recovery','share']);assert.equal(site.pages.home.path,'/');assert.equal(site.pages.share.path,'/sengoku-vs/');assert.equal(site.pages.premium.path,'/premium/');
   for(const page of pages){
     const image = page.socialImage || site.ogImage;
     const meta=tags(page.html,'meta'),links=tags(page.html,'link'),value=(kind,key)=>{const matches=meta.filter(m=>m[kind]===key);assert.equal(matches.length,1,key+' on '+page.path);return matches[0].content;};
@@ -93,7 +93,7 @@ test('one metadata source matches every title, description, canonical and social
   }
 });
 
-test('all six JSON-LD graphs share one publisher, site and game identity with truthful page metadata',()=>{
+test('all public JSON-LD graphs share one publisher, site and game identity with truthful page metadata',()=>{
   const home=site.origin+'/',commonIds={Organization:home+'#organization',WebSite:home+'#website',VideoGame:home+'#game'};
   for(const page of pages){
     const nodes=graph(page.html),ids=nodes.map(node=>node['@id']);assert.equal(new Set(ids).size,ids.length);
@@ -120,7 +120,7 @@ test('reading-page breadcrumb markup matches visible labels and actual canonical
 
 test('sitemap dates, install metadata and stable square favicon reflect the same public site',()=>{
   const sitemap=read('sitemap.xml'),entries=[...sitemap.matchAll(/<url><loc>([^<]+)<\/loc><lastmod>([^<]+)<\/lastmod><\/url>/g)];
-  assert.equal(entries.length,6);for(const page of pages)assert(entries.some(e=>e[1]===page.url&&e[2]===page.dateModified));
+  assert.equal(entries.length,pages.length);for(const page of pages)assert(entries.some(e=>e[1]===page.url&&e[2]===page.dateModified));
   const manifest=JSON.parse(read('manifest.webmanifest'));assert.equal(manifest.description,site.pages.home.description);assert.equal(manifest.short_name,site.name);assert.equal(manifest.lang,site.language);assert.equal(new URL(manifest.start_url,site.origin+'/').href,site.origin+'/');assert.equal(new URL(manifest.scope,site.origin+'/').href,site.origin+'/');
   const png=fs.readFileSync(path.join(root,site.favicon.path));assert.equal(png.subarray(1,4).toString(),'PNG');assert.equal(png.readUInt32BE(16),192);assert.equal(png.readUInt32BE(20),192);
   for(const page of pages){const icon=tags(page.html,'link').find(link=>link.rel==='icon'&&link.sizes===site.favicon.sizes);assert(icon,'192px favicon on '+page.path);const url=new URL(icon.href,page.url);assert.equal(url.href,site.origin+'/'+site.favicon.path);assert(!url.search&&!url.hash);assert.equal(icon.type,site.favicon.type);}
@@ -324,7 +324,7 @@ test('public discovery identifies only Sengoku VS and does not explain privilege
  test('default dry run reads existing files without network, key rotation or payload logging',async()=>{
   const before=read('tools/indexnow-config.json'),keyBefore=read(plan.keyFile);let calls=0;
   const result=await notifier.run({root,fetchImpl:()=>{calls++;throw Error('Network must not run');}});
-  assert(result.ok);assert.equal(result.mode,'dry-run');assert.equal(result.networkRequests,0);assert.equal(result.notificationAttempted,false);assert.equal(result.urlCount,6);assert.equal(result.accepted,false);assert.equal(result.indexingVerified,false);assert.equal(calls,0);assert(!Object.hasOwn(result,'key'));assert(!Object.hasOwn(result,'payload'));assert.equal(read('tools/indexnow-config.json'),before);assert.equal(read(plan.keyFile),keyBefore);
+  assert(result.ok);assert.equal(result.mode,'dry-run');assert.equal(result.networkRequests,0);assert.equal(result.notificationAttempted,false);assert.equal(result.urlCount,pages.length);assert.equal(result.accepted,false);assert.equal(result.indexingVerified,false);assert.equal(calls,0);assert(!Object.hasOwn(result,'key'));assert(!Object.hasOwn(result,'payload'));assert.equal(read('tools/indexnow-config.json'),before);assert.equal(read(plan.keyFile),keyBefore);
  });
  test('CLI rejects arbitrary endpoints/URLs and incompatible local key configuration before any request',async()=>{
   for(const argv of [['--url','https://other.invalid/'],['https://other.invalid/'],['--submit','--host=other.invalid'],['--submit','--submit']]){const result=await notifier.run({argv,root,fetchImpl:()=>assert.fail('must not fetch')});assert.equal(result.ok,false);assert.equal(result.code,'INVALID_ARGUMENT');}
@@ -332,15 +332,15 @@ test('public discovery identifies only Sengoku VS and does not explain privilege
    const dir=fixture(change);try{const result=await notifier.run({argv:['--submit'],root:dir,fetchImpl:()=>assert.fail('must not fetch')});assert.equal(result.ok,false);assert.equal(result.notificationAttempted,false);}finally{fs.rmSync(dir,{recursive:true,force:true});}
   }
  });
- test('only the six same-host canonical sitemap URLs and valid dates can become a notification',()=>{
+ test('only the known same-host canonical sitemap URLs and valid dates can become a notification',()=>{
   const xml=read('sitemap.xml');assert.deepEqual(notifier.parseSitemap(xml),notifier.URLS);
   for(const bad of [xml.replace(site.origin,'https://other.invalid'),xml.replace(site.origin+'/guide/',site.origin+'/guide/?tracking=1'),xml.replace(site.origin+'/about/',site.origin+'/guide/'),xml.replace('<urlset','<!DOCTYPE urlset><urlset'),xml.replace(/<lastmod>[^<]+<\/lastmod>/,'<lastmod>2026-02-30</lastmod>'),xml.replace('<urlset','<sitemapindex')])assert.throws(()=>notifier.parseSitemap(bad));
  });
- test('submit waits for every published check, then sends exactly one bounded six-URL POST',async()=>{
+ test('submit waits for every published check, then sends exactly one bounded canonical-URL POST',async()=>{
   let releasePage,seenPage;const seen=new Promise(resolve=>{seenPage=resolve;});
   const transport=mock((url,options)=>{if(options.method==='GET'&&url===site.origin+'/premium/'){seenPage();return new Promise(resolve=>{releasePage=()=>resolve(response(pages.find(page=>page.key==='premium').html));});}});
   const pending=notifier.run({argv:['--submit'],root,fetchImpl:transport.fetchImpl});await seen;assert.equal(transport.posts().length,0);releasePage();const result=await pending;
-  assert(result.ok);assert.equal(result.result,'received');assert.equal(result.accepted,true);assert.equal(result.keyValidationPending,false);assert.equal(result.indexingVerified,false);assert.equal(result.pagesVerified,6);assert.equal(transport.posts().length,1);assert.equal(transport.calls.length,9);
+  assert(result.ok);assert.equal(result.result,'received');assert.equal(result.accepted,true);assert.equal(result.keyValidationPending,false);assert.equal(result.indexingVerified,false);assert.equal(result.pagesVerified,pages.length);assert.equal(transport.posts().length,1);assert.equal(transport.calls.length,pages.length+3);
   const post=transport.posts()[0];assert.equal(transport.calls.at(-1),post);assert.deepEqual(JSON.parse(post.options.body),plan.payload);assert.equal(post.options.headers['Content-Type'],'application/json; charset=utf-8');
  });
  test('202 is reported as key validation pending rather than confirmed 200 or indexing',async()=>{

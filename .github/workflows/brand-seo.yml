@@ -7,6 +7,9 @@ on:
       - '.github/workflows/brand-seo.yml'
       - 'site-metadata.json'
       - 'brand-discovery.css'
+      - 'promotion.css'
+      - 'promotion-share.js'
+      - 'assets/promo/**'
       - 'public-luxury.css'
       - 'assets/crest.svg'
       - 'assets/emblem.webp'
@@ -30,6 +33,9 @@ on:
       - 'tools/build-brand-icons.py'
       - 'tools/*page.cjs'
       - 'tools/about-content.cjs'
+      - 'tools/press-content.cjs'
+      - 'tools/build-press-kit.py'
+      - 'tools/build-promo-video.py'
       - 'tools/page-security.cjs'
       - 'tools/notify-indexnow.mjs'
       - 'tools/indexnow-config.json'
@@ -45,6 +51,9 @@ on:
       - '.github/workflows/brand-seo.yml'
       - 'site-metadata.json'
       - 'brand-discovery.css'
+      - 'promotion.css'
+      - 'promotion-share.js'
+      - 'assets/promo/**'
       - 'public-luxury.css'
       - 'assets/crest.svg'
       - 'assets/emblem.webp'
@@ -68,6 +77,9 @@ on:
       - 'tools/build-brand-icons.py'
       - 'tools/*page.cjs'
       - 'tools/about-content.cjs'
+      - 'tools/press-content.cjs'
+      - 'tools/build-press-kit.py'
+      - 'tools/build-promo-video.py'
       - 'tools/page-security.cjs'
       - 'tools/notify-indexnow.mjs'
       - 'tools/indexnow-config.json'
@@ -98,6 +110,8 @@ jobs:
           node-version: '22'
       - name: Check generated public documents
         run: node tools/build-public-pages.cjs --check
+      - name: Check the downloadable press kit
+        run: python3 tools/build-press-kit.py --check
       - name: Check metadata, artwork and notification contracts
         run: node tests/test-seo.cjs
       - name: Check crawlable links and structured data
