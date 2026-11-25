@@ -6,6 +6,18 @@
 
 **© KASAI SOLUTIONS**
 
+## Ver.5.0.5 — 国内向けの紹介・掲載用素材と共有導線
+
+国内の新規プレイヤーに作品を紹介しやすくするため、`/press/` に作品データ、紹介文、配布素材をまとめました。この節は **2026年11月26日時点の公開用ソースと素材の更新記録**です。配信の結果はGitHub ActionsのPagesデプロイ履歴で確認できます。
+
+- **紹介・掲載用素材:** 基本プレイ無料の範囲、任意の外観アイテム・月額支援、日本語のゲームであること、対応端末、個人戦役と登録後のオンライン要素を整理。短文・標準・メディア向けの紹介文と、開発・運営からの発信と分かる投稿文を用意しました。
+- **共有:** `/sengoku-vs/` にURLのコピー、X・LINEへの共有リンク、対応端末での共有ボタンを追加。`/press/` の紹介文もコピーできます。本文・URL・ダウンロードリンクはJavaScriptなしでも読め、共有は利用者の操作で開始します。
+- **配布ファイル:** 日本語の作品概要・投稿文・動画用タイトルと説明文、英語のfact sheet、共有画像5種類、実ゲーム画面4枚、SVG紋章・512pxアイコンを用意し、画像・紋章・TXTをZIPにまとめます。実ゲーム画面は隔離したローカルデモから取得した1363×936pxのJPEGで、各0.3MB未満。デモの表示を残し、合成・改変は行っていません。[撮影記録](assets/promo/screenshots/manifest.json)に条件と仕様を保存しています。英語資料は作品を説明するためのもので、ゲームUIや公式ガイドの英語対応を示すものではありません。
+- **紹介動画:** 公式イラストと既存BGMによる24秒の縦型動画（720×1280、24fps、約3.24MB）を別配布。全場面に「公式イラストによる紹介」と表示し、日本語の説明、無料開始と任意課金の案内を含みます。ポスター画像・VTT字幕と[制作記録](assets/promo/VIDEO-PRODUCTION.md)も保存しています。
+- **公開ページ:** `/press/` を加えた7つの正規URLで、metadata・canonical・サイトマップ・ナビゲーションをそろえました。外部SNSへの投稿、ゲーム紹介サイトへの掲載申請は未送信です。
+
+配布素材は [assets/promo/](assets/promo/)、紹介ページの本文は `tools/press-content.cjs`、共有機能は `promotion-share.js` にあります。公開文書は `node tools/build-public-pages.cjs`、ZIPは `python3 tools/build-press-kit.py`、動画は `python3 tools/build-promo-video.py` で再生成できます。先行する6URLのIndexNow通知はHTTP 200で受理されていますが、索引登録・順位の確認結果ではありません。v5.0.5での自動再通知は行いません。[検索通知の状態と方針](SOURCES-SEO.md)
+
 ## Ver.5.0.4 — 画面内ロゴのキャッシュ更新
 
 画面内のブランド画像にも図案の日付を含むURLを使い、以前の画像キャッシュが残っていても新しい紋章が表示されるようにしました。オフライン用の小画像も同じURLにそろえています。
@@ -647,14 +659,17 @@ PCのタブ用アイコンとインストール用アイコンを本作専用の
 
 城下町は琥珀、天下地図は翡翠、共通フィールドは青、武将は紫、家紋は朱、軍団は赤、技術はシアン、軍議は藍を基調にしています。施設の分野・資源・役職・交流タブにも識別色を割り当て、文字と操作のコントラストを確保します。
 
-JavaScriptを実行しない状態でも読める公開ページを用意しています。
+公開用ソースでは、ゲーム本体の入口とJavaScriptを実行しない状態でも読める説明ページを、次の7つの正規URLにまとめています。
 
+- [ゲーム本体・開始入口](https://www.kasai-solutions-inc.com/)
 - [戦国VSの紹介・共有](https://www.kasai-solutions-inc.com/sengoku-vs/)
+- [プレミアム・支援](https://www.kasai-solutions-inc.com/premium/)
 - [遊び方](https://www.kasai-solutions-inc.com/guide/)
 - [引き継ぎ・復元](https://www.kasai-solutions-inc.com/guide/data-recovery/)
-- [ゲーム紹介](https://www.kasai-solutions-inc.com/about/)
+- [作品概要](https://www.kasai-solutions-inc.com/about/)
+- [紹介・掲載用素材](https://www.kasai-solutions-inc.com/press/)
 
-各ページに固有のtitle/description、正規URL、OGP/Twitter Card、構造化データを設定します。`robots.txt`と5URLの`sitemap.xml`を公開し、ガイドから本体へリンクします。検索順位・インデックス登録を保証するものではありません。Search Consoleの所有権確認やサイトマップ送信は別途そのサービスのアカウントで行います。
+各ページに固有のtitle/description、正規URL、OGP/Twitter Card、構造化データを設定し、`site-metadata.json`から7URLの`sitemap.xml`を生成します。`robots.txt`からサイトマップへ、説明ページからゲーム本体へリンクします。公開用ソースの更新、実際の配信、検索エンジンへの通知、索引登録はそれぞれ確認します。Search Consoleの所有権確認やサイトマップ送信は別途そのサービスのアカウントで行います。現行の公開情報と通知状況は [SOURCES-SEO.md](SOURCES-SEO.md) を参照してください。
 
 ## 共通フィールドの攻撃と外交
 

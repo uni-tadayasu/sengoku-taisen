@@ -43,8 +43,8 @@ function fixture(file = 'guide/index.html', { mobile = false } = {}) {
 }
 let passed = 0;
 function test(name, run) { run(); passed++; console.log('PASS ' + name); }
-test('all three real reading pages get labelled search and retain article content and chapter links', () => {
-  for (const file of ['guide/index.html', 'guide/data-recovery/index.html', 'about/index.html']) {
+test('all real reading pages get labelled search and retain article content and chapter links', () => {
+  for (const file of ['guide/index.html', 'guide/data-recovery/index.html', 'about/index.html', 'press/index.html']) {
     const f = fixture(file), input = f.doc.getElementById('public-chapter-query');
     assert(input, file); assert.equal(input.getAttribute('aria-controls'), 'public-chapter-list');
     assert.equal(f.get('.public-chapter-search label').getAttribute('for'), input.id);
@@ -145,7 +145,7 @@ test('compact public navigation closes with outside click, keyboard escape and f
   assert.equal(menu.getAttribute('aria-expanded'), 'false');
 });
 test('each guide chapter leads to its real next chapter and the final chapter ends at the index', () => {
-  for (const file of ['guide/index.html', 'guide/data-recovery/index.html', 'about/index.html']) {
+  for (const file of ['guide/index.html', 'guide/data-recovery/index.html', 'about/index.html', 'press/index.html']) {
     const f = fixture(file), sections = f.doc.querySelectorAll('.article-section');
     for (let index = 0; index < sections.length; index++) {
       const next = sections[index].querySelector('.section-next');

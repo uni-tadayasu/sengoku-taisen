@@ -6,7 +6,7 @@ const root=path.resolve(__dirname,'..'),origin='https://www.kasai-solutions-inc.
 const site=JSON.parse(fs.readFileSync(path.join(root,'site-metadata.json'),'utf8'));
 const sitemap=fs.readFileSync(path.join(root,'sitemap.xml'),'utf8');
 const urls=[...sitemap.matchAll(/<loc>([^<]+)<\/loc>/g)].map(m=>m[1]);
-assert.equal(urls.length,6);assert.equal(new Set(urls).size,6);
+assert.equal(urls.length,Object.keys(site.pages).length);assert.equal(new Set(urls).size,urls.length);
 assert.equal(fs.readFileSync(path.join(root,'CNAME'),'utf8').trim(),new URL(origin).hostname);
 const titles=new Set(),descriptions=new Set(),connections=new Map(),renderAssets=new Set();let links=0,graphs=0;
 function decode(value){return value.replace(/&(?:amp|lt|gt|quot|#39);/g,entity=>({'&amp;':'&','&lt;':'<','&gt;':'>','&quot;':'"','&#39;':"'"}[entity]));}
@@ -30,13 +30,13 @@ for(const url of urls){
  const selectionScripts=scripts.filter(match=>/selection-lock\.js(?:\?|$)/.test(tagAttrs(match[1]).src||''));
  assert.equal(selectionStyles.length,1);assert.equal(selectionScripts.length,1);assert(/\bdefer\b/.test(selectionScripts[0][1]));
  for(const href of [selectionStyles[0].href,tagAttrs(selectionScripts[0][1]).src])assert.equal(new URL(href,url).searchParams.get('v'),site.release);
- for(const match of html.matchAll(/<(?:a|img|script|link)\b[^>]*>/gi)){
-  const attrs=tagAttrs(match[0]),href=attrs.href||attrs.src;if(!href||/^(?:data:|mailto:|tel:|javascript:)/.test(href))continue;
+ for(const match of html.matchAll(/<(?:a|img|script|link|video|source|track)\b[^>]*>/gi)){
+  const attrs=tagAttrs(match[0]),href=attrs.href||attrs.src||attrs.poster;if(!href||/^(?:data:|mailto:|tel:|javascript:)/.test(href))continue;
   const target=new URL(href,url);if(target.origin!==origin)continue;
   let targetFile=path.join(root,decodeURIComponent(target.pathname));if(target.pathname.endsWith('/'))targetFile=path.join(targetFile,'index.html');
   assert(fs.existsSync(targetFile),'Broken public link/asset: '+href+' on '+url);links++;
   if(/^<a\b/i.test(match[0])&&urls.includes(target.origin+target.pathname))connections.get(url).add(target.origin+target.pathname);
-  if(/^<(?:img|script|link)\b/i.test(match[0]))renderAssets.add(target.pathname);
+  if(/^<(?:img|script|link|video|source|track)\b/i.test(match[0]))renderAssets.add(target.pathname);
   if(target.hash&&parsed.pathname!=='/'&&/^<a\b/i.test(match[0])&&urls.includes(target.origin+target.pathname)){
    const linked=fs.readFileSync(targetFile,'utf8'),id=decodeURIComponent(target.hash.slice(1));assert([...linked.matchAll(/\bid=["']([^"']+)["']/g)].some(m=>m[1]===id),'Broken public section: '+href+' on '+url);
   }
@@ -55,7 +55,7 @@ for(const agent of ['googlebot','bingbot']){
   assert(!matches.length||matches[0].allow,agent+' cannot crawl '+pathname);
  }
 }
-const seen=new Set(),pending=[origin+'/'];for(let i=0;i<pending.length;i++){const url=pending[i];if(seen.has(url))continue;seen.add(url);pending.push(...connections.get(url)||[]);}assert.equal(seen.size,6,'All sitemap pages need static links from the public site');
+const seen=new Set(),pending=[origin+'/'];for(let i=0;i<pending.length;i++){const url=pending[i];if(seen.has(url))continue;seen.add(url);pending.push(...connections.get(url)||[]);}assert.equal(seen.size,urls.length,'All sitemap pages need static links from the public site');
 const notFound=fs.readFileSync(path.join(root,'404.html'),'utf8');assert(/content="noindex,follow"/.test(notFound));
 for(const name of ['selection-lock.css','selection-lock.js'])assert(notFound.includes('/'+name+'?v='+site.release));
 assert(/<script\b[^>]*\bdefer\b[^>]*src="\/selection-lock\.js\?v=/.test(notFound));

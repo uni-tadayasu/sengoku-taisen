@@ -6,6 +6,10 @@ const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&a
 function renderSharePage({ site, metadataHtml, jsonLd, iconHtml, header, footer, artwork }) {
   const page = site.pages.share, release = esc(site.release);
   const asset = name => `../${name}?v=${release}`;
+  const shareURL = site.origin + page.path;
+  const shareText = '一城から、天下へ。城下町づくり・武将編成・合戦を楽しむ「戦国VS」。PC・スマホで基本プレイ無料、インストール不要。';
+  const xURL = 'https://twitter.com/intent/tweet?' + new URLSearchParams({text:shareText, url:shareURL, hashtags:'戦国VS,ブラウザゲーム'});
+  const lineURL = 'https://social-plugins.line.me/lineit/share?' + new URLSearchParams({url:shareURL, text:shareText});
   return `<!doctype html>
 <html lang="${esc(site.language || 'ja')}">
 <head>
@@ -27,6 +31,8 @@ function renderSharePage({ site, metadataHtml, jsonLd, iconHtml, header, footer,
   <link rel="stylesheet" href="${asset('button-artwork.css')}">
   <link rel="stylesheet" href="${asset('public-luxury.css')}">
   <link rel="stylesheet" href="${asset('brand-discovery.css')}">
+  <link rel="stylesheet" href="${asset('promotion.css')}">
+  <script defer src="${asset('promotion-share.js')}"></script>
   <script defer src="${asset('public-luxury.js')}"></script>
 </head>
 <body class="public-luxury" data-page="share">
@@ -92,6 +98,13 @@ function renderSharePage({ site, metadataHtml, jsonLd, iconHtml, header, footer,
       </div>
     </section>
 
+    <section id="share" class="promotion-panel" aria-labelledby="share-title" data-share-url="${esc(shareURL)}" data-share-title="戦国VS｜一城から、天下へ。" data-share-text="${esc(shareText)}">
+      <div class="promotion-heading"><p class="section-kicker">戦国好きの友だちへ</p><h2 id="share-title">この一城を、誰かに紹介する。</h2><p>気になったら、遊び方や無料の範囲がわかる紹介ページを共有できます。</p></div>
+      <div class="promotion-copy-block"><label for="game-share-url">公式の紹介ページ</label><div class="promotion-url-row"><input id="game-share-url" type="url" value="${esc(shareURL)}" readonly spellcheck="false"><button type="button" class="promotion-copy-button" data-copy-target="game-share-url" hidden>URLをコピー</button></div><p class="promotion-copy-status" role="status" aria-live="polite"></p></div>
+      <div class="promotion-actions"><a href="${esc(xURL)}" target="_blank" rel="noopener noreferrer">Xで紹介</a><a href="${esc(lineURL)}" target="_blank" rel="noopener noreferrer">LINEで送る</a><button type="button" data-share-native hidden>端末の共有を開く</button></div>
+      <p class="promotion-share-status" role="status" aria-live="polite"></p>
+      <div class="promotion-press-link"><div><h3>記事・動画で紹介したい方へ</h3><p>公式画像、紋章、短い動画、日本語と英語の作品情報を用意しました。</p></div><a href="../press/">紹介・掲載用素材を見る</a></div>
+    </section>
     <section class="closing share-closing" aria-labelledby="share-closing-title"><div><h2 id="share-closing-title">あなたの一城から、始めましょう。</h2><p>城下町を育て、群雄とともに、次の戦記へ。</p></div><a class="action-link" href="../">戦国VSを遊ぶ</a></section>
   </main>
   ${footer}

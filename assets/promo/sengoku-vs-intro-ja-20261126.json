@@ -1,0 +1,130 @@
+{
+  "file": "sengoku-vs-intro-ja-20261126.mp4",
+  "seconds": 24.0,
+  "bytes": 3237853,
+  "sha256": "f8b2f848e61c9bd54b121525b8ffdae8ae6ce1028b1f61f1f5186338fd0fada7",
+  "video": {
+    "codec_name": "h264",
+    "width": 720,
+    "height": 1280,
+    "pix_fmt": "yuv420p",
+    "r_frame_rate": "24/1",
+    "nb_frames": "576"
+  },
+  "audio": {
+    "codec_name": "aac",
+    "sample_rate": "44100",
+    "channels": 2
+  },
+  "illustration_notice": "公式イラストによる紹介",
+  "music": {
+    "path": "assets/music/world-march.mp3",
+    "title": "旌旗越ゆる稜線",
+    "usage": "first 24 seconds, volume ×0.82, fade in 0.6 s / fade out 1.6 s",
+    "provenance": [
+      "ARTWORK.md",
+      "assets/music/masters.json",
+      "music.js",
+      "tools/render-soundtrack.py"
+    ]
+  },
+  "sources": [
+    {
+      "path": "assets/branding/sengoku-vs-icon-512-20261126.png",
+      "sha256": "aed62411141c4754d8d52748ccb328422ae6349fe3978d02348b8eca46dffd20"
+    },
+    {
+      "path": "assets/chronicle/cover.webp",
+      "sha256": "2f268da56315f4070aacaaa6e1cadd724bb575e9624519e83c9962a404b93693"
+    },
+    {
+      "path": "assets/chronicle/town.webp",
+      "sha256": "5dbfa684190340fa4708cb43d777404ac13be905aa9ec3c96a89300ca4554adb"
+    },
+    {
+      "path": "assets/chronicle/war.webp",
+      "sha256": "74eb69902ea2f12f19e7ec2688ed4baa3bc94bcfd16ff990c7d84047ee1da2c4"
+    },
+    {
+      "path": "assets/music/world-march.mp3",
+      "sha256": "06627e878dbf404d5279b62eabc7dd6f16f5d8ffe8bf85f99722b16de4be1abe"
+    }
+  ],
+  "scenes": [
+    {
+      "key": "title",
+      "image": "assets/chronicle/cover.webp",
+      "focus": [
+        0.77,
+        0.3
+      ],
+      "seconds": 4.4,
+      "title": "戦国VS",
+      "lines": [
+        "一城から、天下へ。"
+      ],
+      "zoom": "in"
+    },
+    {
+      "key": "town",
+      "image": "assets/chronicle/town.webp",
+      "focus": [
+        0.3,
+        0.45
+      ],
+      "seconds": 4.4,
+      "title": "城下町を育てる",
+      "lines": [
+        "施設を整え、",
+        "自分の領国を豊かに。"
+      ],
+      "zoom": "out"
+    },
+    {
+      "key": "officers",
+      "image": "assets/chronicle/war.webp",
+      "focus": [
+        0.64,
+        0.12
+      ],
+      "seconds": 4.4,
+      "title": "武将を編成する",
+      "lines": [
+        "役目と戦法を選び、",
+        "自分の軍団をつくる。"
+      ],
+      "zoom": "in"
+    },
+    {
+      "key": "siege",
+      "image": "assets/chronicle/cover.webp",
+      "focus": [
+        0.03,
+        0.52
+      ],
+      "seconds": 4.4,
+      "title": "城を攻める",
+      "lines": [
+        "次の一城へ、",
+        "あなたの采配を。"
+      ],
+      "zoom": "out"
+    },
+    {
+      "key": "start",
+      "image": "assets/chronicle/cover.webp",
+      "focus": [
+        0.76,
+        0.3
+      ],
+      "seconds": 8,
+      "title": "戦国VS",
+      "lines": [
+        "基本プレイ無料",
+        "インストール不要",
+        "PC・スマホ・タブレット対応"
+      ],
+      "zoom": "in"
+    }
+  ]
+}

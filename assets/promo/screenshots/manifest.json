@@ -1,0 +1,37 @@
+{
+  "date": "2026-11-26",
+  "release": "5.0.5",
+  "source": "Actual game UI in an isolated local demo. A new Oda / Kiyosu Castle campaign was started through the normal controls.",
+  "mode": "Memory-only local demo; no real player saves, account, or production API used. The demo banner is visible in every capture.",
+  "editing": "Unmodified JPEG captures. No compositing or generated gameplay.",
+  "files": [
+    {
+      "path": "assets/promo/screenshots/sengoku-vs-title-20261126.jpg",
+      "width": 1363,
+      "height": 936,
+      "bytes": 239817,
+      "sha256": "a5810f49c7d65c15e4e37a988e7b60e26f2025c8816b7877d8ae71fac0ce6e26"
+    },
+    {
+      "path": "assets/promo/screenshots/sengoku-vs-town-20261126.jpg",
+      "width": 1363,
+      "height": 936,
+      "bytes": 275492,
+      "sha256": "2720a1a7b75457bdff785dcc863ef29cf21aae582bf5aa62baf19380e2d391b2"
+    },
+    {
+      "path": "assets/promo/screenshots/sengoku-vs-map-20261126.jpg",
+      "width": 1363,
+      "height": 936,
+      "bytes": 216421,
+      "sha256": "d0e870af6d1d566731a27f2bcc63d01283acc70b0817899a3e2e5f81545a38d5"
+    },
+    {
+      "path": "assets/promo/screenshots/sengoku-vs-officers-20261126.jpg",
+      "width": 1363,
+      "height": 936,
+      "bytes": 230368,
+      "sha256": "6f3bcdda7e6d6192650493259fe4d8725687087ba81cc3d4ee895ccfebcb02cc"
+    }
+  ]
+}
