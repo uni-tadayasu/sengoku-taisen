@@ -1,0 +1,60 @@
+/* Clear first-visit information, using the public site's existing ink and gold. */
+.public-luxury .discovery-availability {
+  display:flex;
+  flex-wrap:wrap;
+  gap:.2rem .55rem;
+  margin:1rem 0 0;
+  color:#6a422b;
+  font-size:.9375rem;
+  font-weight:700;
+  line-height:1.8;
+}
+.public-luxury .availability-item { white-space:nowrap; }
+.public-luxury .availability-divider { color:#795b3c; }
+.public-luxury .discovery-opening {
+  display:grid;
+  grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);
+  gap:clamp(1rem,4vw,3rem);
+  margin-block:0 2rem;
+  padding-block:.6rem 1.8rem;
+  color:var(--paper-ink);
+}
+.public-luxury .discovery-opening .section-kicker { color:#884130; }
+.public-luxury .discovery-opening h2 {
+  margin:.6rem 0 0;
+  font:700 clamp(1.4rem,2.5vw,2rem)/1.7 var(--serif);
+  text-wrap:balance;
+}
+.public-luxury .discovery-opening p:not(.section-kicker) { margin:0; font-size:1rem; line-height:1.95; }
+.public-luxury .discovery-faq { scroll-margin-top:6rem; }
+.public-luxury .discovery-questions>section {
+  display:grid;
+  grid-template-columns:minmax(0,.75fr) minmax(0,1.4fr);
+  gap:clamp(1rem,4vw,3rem);
+  padding-block:1.35rem;
+  border-top:1px solid var(--paper-line);
+}
+.public-luxury .discovery-questions h3 {
+  margin:0;
+  color:var(--paper-ink);
+  font:700 clamp(1.05rem,1.7vw,1.25rem)/1.75 var(--serif);
+}
+.public-luxury .discovery-questions p { margin:0; color:var(--paper-ink); font-size:1rem; line-height:1.95; }
+.public-luxury .discovery-questions a { font-size:.9375rem; }
+/* Keep the commander's face inside the narrower, taller tablet hero panel. */
+@media (min-width:651px) and (max-width:900px) {
+  .public-luxury[data-page="share"] .chapter-art img { object-position:78% 50%; }
+}
+@media(max-width:700px) {
+  .public-luxury .discovery-opening,
+  .public-luxury .discovery-questions>section { grid-template-columns:minmax(0,1fr); gap:.7rem; }
+  .public-luxury .discovery-opening { margin-bottom:1rem; padding-bottom:1rem; }
+  .public-luxury .discovery-questions>section { padding-block:1.2rem; }
+}
+@media print {
+  .public-luxury .discovery-availability,
+  .public-luxury .discovery-availability span,
+  .public-luxury .discovery-opening,
+  .public-luxury .discovery-questions :is(h3,p,a) { color:#111; }
+  .public-luxury .discovery-questions>section { break-inside:avoid; }
+}

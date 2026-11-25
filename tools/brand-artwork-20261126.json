@@ -1,0 +1,61 @@
+{
+  "date": "2026-11-26",
+  "generator": "Built-in imagegen",
+  "purpose": "Official 戦国VS social sharing artwork",
+  "exports": {
+    "width": 1200,
+    "height": 630,
+    "format": "JPEG",
+    "colorspace": "sRGB",
+    "quality": 90,
+    "sampling": "4:4:4",
+    "progressive": true
+  },
+  "artworks": [
+    {
+      "key": "ogp",
+      "sourceFile": "exec-1dd58402-8168-4a25-b2f4-07f26656b668.png",
+      "output": "assets/branding/sengoku-vs-ogp-20261126.jpg",
+      "prompt": "Use case: ads-marketing\nAsset type: Official social sharing/Open Graph key visual for the Japanese browser strategy game 戦国VS. Final image exact 1200 × 630 pixels (aspect 40:21), polished professional Japanese videogame editorial cover.\nInput image: existing official game art, use as identity/style reference. Preserve the same young adult female samurai with dark hair, red-and-gold lacquered armor, ivory embroidered mantle, and golden folding war fan; preserve the older armored standard-bearer and red silk war banner in the background. This is a deliberate redesigned official cover.\nComposition: Dramatic cinematic panoramic landscape of the game's castle and castle town in mist, rich atmospheric depth, beautifully painted CG illustration, delicately hand-painted finish. The samurai occupies the right 42 percent, with her whole face and fan safely away from edges. A Japanese castle and winding river under dawn light are visible in middle distance. Left 53 percent is dark deep ink-indigo negative space gently merging with the landscape, reserved for high-clarity exact Japanese typography. Black lacquer, antique gold, deep vermilion accent. No glossy mobile-ad clutter or neon.\nTypography, all perfectly correct Japanese and crisp, designed by a premium Japanese game art director:\n- small upper-left understated label, text exactly: \"戦国戦略シミュレーション\"\n- gigantic elegant gold-foil Mincho main title on left: \"戦国VS\" ; read as a single compact game title, VS on same baseline or tastefully raised but together, generous tracking, no spelling changes.\n- medium ivory tagline below title, exactly: \"一城から、天下へ。\"\n- modest lower-left single line, exactly: \"城下町育成 ・ 武将編成 ・ 攻城戦\"\nImportant title typography must remain readable in a 300px-wide shared preview. All written content must fit inside x=64..1136 and y=55..570, with breathing room. No text touching the female figure, no subtitles additional to those specified. Do not print dimensions, frames, logos of other companies, watermarks, browser controls, ratings or false UI. Keep this an original rich painterly game identity matching the reference, with refined restrained composition.",
+      "sourceSHA256": "7ec96038c9bb6bae1e0ac4421a9f0cd5d2f137943ac4126548e9ab64ab8d6dbc",
+      "outputSHA256": "7b2e724e4914e20c6ccc5c39a7e93a368122d7553bd6874743ddf625ef51575f",
+      "bytes": 412437
+    },
+    {
+      "key": "guide",
+      "sourceFile": "exec-8ec77b95-d863-4f7f-8f88-95ce5e1a5b94.png",
+      "output": "assets/branding/sengoku-vs-guide-20261126.jpg",
+      "prompt": "Use case: ads-marketing. Edit the FIRST referenced image into a premium, unified official Open Graph artwork for the Japanese browser game 戦国VS. The SECOND image is the newly approved main brand cover: match its deep ink-indigo, antique gold, delicate vermilion accent and refined Japanese videogame editorial typography, not its people/scene.\nOutput horizontal exact aspect 1200x630 (40:21).\nRemove the existing cream rectangular panel and all old text. The illustration must extend seamlessly to a dark ink-indigo left side; no hard vertical divider. On the RIGHT HALF preserve the content of the first image: a warm lantern-lit riverside castle town with the three elegant samurai in the reference; retain their identity and beautifully detailed red, gold and dark blue clothing. Maintain painterly high-quality CG illustration, not vector, not photoreal. Be sophisticated with fine gold ornament only at edges.\nLeft side text, EXACT:\ntop small brand wordmark: \"戦国VS\"\nlarge unmistakably readable main heading: \"攻略ガイド\"\nbelow in medium smaller Japanese type: \"城下町・城郭・武将\"\nbottom small restrained publisher: \"KASAI SOLUTIONS\"\nUse a beautiful legible Mincho Japanese font, antique gold or ivory, aligned left, with proper breathing room. The main heading must fit as ONE line (shrink to fit 550px region if needed). The layout should be legible in a 300px-wide shared card. Keep ALL TEXT inside a safe rectangle 60px..1140px horizontally and 55px..575px vertically, and faces away from edges. Do not add any extra copy, URL, rating, browser frame, fake buttons, watermark or new logos. Treat this as a final real game sharing image with complete typography, not a mockup.",
+      "sourceSHA256": "d3b23cbf792f2afb28651881465fafd02f28a49957505c8d6ea1022ee26027cf",
+      "outputSHA256": "c408ea06abe348fdba0f9e037bbfb12e1b2ad75d523eadad92d43d070e764fdd",
+      "bytes": 438152
+    },
+    {
+      "key": "recovery",
+      "sourceFile": "exec-8403e874-f397-4f14-b435-72fedec8398e.png",
+      "output": "assets/branding/sengoku-vs-recovery-20261126.jpg",
+      "prompt": "Use case: ads-marketing. Edit the FIRST referenced image into a premium, unified official Open Graph artwork for the Japanese browser game 戦国VS. The SECOND image is the newly approved main brand cover: match its deep ink-indigo, antique gold, delicate vermilion accent and refined Japanese videogame editorial typography, not its people/scene.\nOutput horizontal exact aspect 1200x630 (40:21).\nRemove the existing cream rectangular panel and all old text. The illustration must extend seamlessly to a dark ink-indigo left side; no hard vertical divider. On the RIGHT HALF preserve the content of the first image: the two characters in a refined historical archive examining an illustrated scroll; retain their identity, books and dark green lacquer/gold background. Maintain painterly high-quality CG illustration, not vector, not photoreal. Be sophisticated with fine gold ornament only at edges.\nLeft side text, EXACT:\ntop small brand wordmark: \"戦国VS\"\nlarge unmistakably readable main heading: \"引き継ぎ・復元\"\nbelow in medium smaller Japanese type: \"育てた城と武将の続きを。\"\nbottom small restrained publisher: \"KASAI SOLUTIONS\"\nUse a beautiful legible Mincho Japanese font, antique gold or ivory, aligned left, with proper breathing room. The main heading must fit as ONE line (shrink to fit 550px region if needed). The layout should be legible in a 300px-wide shared card. Keep ALL TEXT inside a safe rectangle 60px..1140px horizontally and 55px..575px vertically, and faces away from edges. Do not add any extra copy, URL, rating, browser frame, fake buttons, watermark or new logos. Treat this as a final real game sharing image with complete typography, not a mockup.",
+      "sourceSHA256": "93e7e368025d77fd0ef440bf93c69566ed1b02e1b3436bda1b1d68fe2405e4e9",
+      "outputSHA256": "4faf89287f3ed0f5b1ec61e8d1ec73ad1aaa40927e95168432487885531b7082",
+      "bytes": 402572
+    },
+    {
+      "key": "about",
+      "sourceFile": "exec-be8f4c0b-f8fb-4e2e-bda0-630305d8c23c.png",
+      "output": "assets/branding/sengoku-vs-about-20261126.jpg",
+      "prompt": "Use case: ads-marketing. Edit the FIRST referenced image into a premium, unified official Open Graph artwork for the Japanese browser game 戦国VS. The SECOND image is the newly approved main brand cover: match its deep ink-indigo, antique gold, delicate vermilion accent and refined Japanese videogame editorial typography, not its people/scene.\nOutput horizontal exact aspect 1200x630 (40:21).\nRemove the existing cream rectangular panel and all old text. The illustration must extend seamlessly to a dark ink-indigo left side; no hard vertical divider. On the RIGHT HALF preserve the content of the first image: the diplomatic meeting of two elaborately dressed figures in a red-pillared palace overlooking an autumn garden, as in the target reference. Maintain painterly high-quality CG illustration, not vector, not photoreal. Be sophisticated with fine gold ornament only at edges.\nLeft side text, EXACT:\ntop small brand wordmark: \"戦国VS\"\nlarge unmistakably readable main heading: \"作品概要\"\nbelow in medium smaller Japanese type: \"戦国VSの世界と制作資料\"\nbottom small restrained publisher: \"KASAI SOLUTIONS\"\nUse a beautiful legible Mincho Japanese font, antique gold or ivory, aligned left, with proper breathing room. The main heading must fit as ONE line (shrink to fit 550px region if needed). The layout should be legible in a 300px-wide shared card. Keep ALL TEXT inside a safe rectangle 60px..1140px horizontally and 55px..575px vertically, and faces away from edges. Do not add any extra copy, URL, rating, browser frame, fake buttons, watermark or new logos. Treat this as a final real game sharing image with complete typography, not a mockup.",
+      "sourceSHA256": "983152e12e419d45166196734b71363dfbe291dd80b5a7746596faacc19b1323",
+      "outputSHA256": "48fd586c9069eb779bce10c15f97ea7d3a4e104fb1411f0f5bfdc04ee1283a5f",
+      "bytes": 421192
+    },
+    {
+      "key": "premium",
+      "sourceFile": "exec-2e9eecfa-9ca8-4f48-87ce-3f05f06eab44.png",
+      "output": "assets/branding/sengoku-vs-premium-20261126.jpg",
+      "prompt": "Use case: ads-marketing. Edit the FIRST referenced image into a premium, unified official Open Graph artwork for the Japanese browser game 戦国VS. The SECOND image is the newly approved main brand cover: match its deep ink-indigo, antique gold, delicate vermilion accent and refined Japanese videogame editorial typography, not its people/scene.\nOutput horizontal exact aspect 1200x630 (40:21).\nRemove the existing cream rectangular panel and all old text. The illustration must extend seamlessly to a dark ink-indigo left side; no hard vertical divider. On the RIGHT HALF preserve the content of the first image: the existing moonlit castle-town cosmetic shown in the target reference, preserving the exact game asset style, castle shape, lanterns, bridges and blue night palette. Maintain painterly high-quality CG illustration, not vector, not photoreal. Be sophisticated with fine gold ornament only at edges.\nLeft side text, EXACT:\ntop small brand wordmark: \"戦国VS\"\nlarge unmistakably readable main heading: \"プレミアム\"\nbelow in medium smaller Japanese type: \"城下の外観と旗印を彩る。\"\nbottom small restrained publisher: \"KASAI SOLUTIONS\"\nUse a beautiful legible Mincho Japanese font, antique gold or ivory, aligned left, with proper breathing room. The main heading must fit as ONE line (shrink to fit 550px region if needed). The layout should be legible in a 300px-wide shared card. Keep ALL TEXT inside a safe rectangle 60px..1140px horizontally and 55px..575px vertically, and faces away from edges. Do not add any extra copy, URL, rating, browser frame, fake buttons, watermark or new logos. Treat this as a final real game sharing image with complete typography, not a mockup.",
+      "sourceSHA256": "e5de52aaf598ef7c6cf1094c4a03542184b6d9b6b2f63ea5f5cf1608833905c7",
+      "outputSHA256": "64c71b537dd25fd128daa003c4f7a4adde9a7c74c2e6ca2ec4f3acab2964cd3b",
+      "bytes": 384233
+    }
+  ]
+}

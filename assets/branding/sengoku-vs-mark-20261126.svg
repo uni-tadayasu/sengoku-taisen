@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="brand-title brand-desc">
+  <title id="brand-title">戦国VS</title>
+  <desc id="brand-desc">墨色の地に、金の城と軍扇、朱の旭日を配した戦国VSの紋章。</desc>
+  <defs>
+    <linearGradient id="ink" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#24323b"/><stop offset=".54" stop-color="#141d25"/><stop offset="1" stop-color="#0c131a"/></linearGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2=".3" y2="1"><stop stop-color="#fff0bf"/><stop offset=".45" stop-color="#e5c17b"/><stop offset="1" stop-color="#b58a4b"/></linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="100" fill="url(#ink)"/>
+  <rect x="11" y="11" width="490" height="490" rx="91" fill="none" stroke="#c9a362" stroke-opacity=".45" stroke-width="2"/>
+  <circle cx="256" cy="256" r="211" fill="none" stroke="url(#gold)" stroke-width="9"/>
+  <g>
+  <circle cx="256" cy="176" r="66" fill="#b44c37"/>
+  <g fill="url(#gold)">
+    <path d="M173 208 Q221 188 256 144 Q291 188 339 208 L296 202 L296 228 L216 228 L216 202 Z"/>
+    <path d="M137 270 Q205 248 256 211 Q307 248 375 270 L318 264 L318 293 L194 293 L194 264 Z"/>
+    <path d="M124 317 Q191 301 256 271 Q321 301 388 317 Q325 328 256 357 Q187 328 124 317 Z"/>
+    <path d="M153 345 Q198 348 242 370 L251 393 Q197 378 153 345 Z"/>
+    <path d="M359 345 Q314 348 270 370 L261 393 Q315 378 359 345 Z"/>
+  </g>
+  <path d="M249 190h14v17h-14z M229 249h15v20h-15z M268 249h15v20h-15z" fill="#131b22"/>
+  <path d="M256 359 L270 380 L256 400 L242 380 Z" fill="#b44c37"/>
+</g>
+</svg>

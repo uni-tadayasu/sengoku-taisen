@@ -26,6 +26,7 @@ function renderSharePage({ site, metadataHtml, jsonLd, iconHtml, header, footer,
   <script type="application/ld+json">${jsonLd}</script>
   <link rel="stylesheet" href="${asset('button-artwork.css')}">
   <link rel="stylesheet" href="${asset('public-luxury.css')}">
+  <link rel="stylesheet" href="${asset('brand-discovery.css')}">
   <script defer src="${asset('public-luxury.js')}"></script>
 </head>
 <body class="public-luxury" data-page="share">
@@ -36,12 +37,13 @@ function renderSharePage({ site, metadataHtml, jsonLd, iconHtml, header, footer,
     <section class="hero share-hero chapter-hero folio-hero" aria-labelledby="page-title">
       ${artwork}
       <div class="hero-copy">
-        <p class="eyebrow">ゲーム紹介</p>
+        <p class="eyebrow">公式ゲーム紹介</p>
         <h1 id="page-title">戦国VS</h1>
         <p class="share-tagline">${esc(site.tagline || '一城の志が、天下を動かす。')}</p>
-        <p class="hero-lead">田畑や商家を育てた一城を本拠に、武将を率いて天下へ。個人の戦役でCPUの城を攻め、共通フィールドではほかの領主と合戦や交易を楽しめます。</p>
+        <p class="hero-lead">城下町を育て、武将を迎え、次の一城へ。戦国VSは、内政・軍団編成・攻城戦を楽しむ戦国戦略シミュレーションです。軍師の助言を読み、自分の采配で領国を広げていきます。</p>
         <div class="hero-actions"><a class="action-link" href="../">戦国VSを遊ぶ</a><a class="text-link" href="../guide/">遊び方を読む</a></div>
-        <p class="share-platform">PC・スマホ・タブレットのブラウザで遊べます。<a href="../guide/#device-controls">端末ごとの操作方法</a></p>
+        <p class="discovery-availability"><span class="availability-item">基本プレイ無料</span><span class="availability-divider" aria-hidden="true">/</span><span class="availability-item">インストール不要</span></p>
+        <p class="share-platform">PC・スマホ・タブレットのブラウザに対応。<br>有料の外観アイテム・月額支援もあります。<a href="#before-you-play">始める前のQ&amp;A</a></p>
       </div>
     </section>
 
@@ -50,6 +52,10 @@ function renderSharePage({ site, metadataHtml, jsonLd, iconHtml, header, footer,
       <a href="../guide/#maps"><strong>129</strong><span>の城と拠点</span></a>
       <a href="../guide/#construction"><strong>64</strong><span>種類の城下町施設</span></a>
     </nav>
+    <section class="discovery-opening" aria-labelledby="discovery-opening-title">
+      <div><p class="section-kicker">遊び方を選ぶ</p><h2 id="discovery-opening-title">ひとりの戦役も、領主との交流も。</h2></div>
+      <p>個人の戦役では、天下地図のCPU勢力と城を争います。領主を登録すると、共通フィールドでの対人戦、同盟、書状、交易へ。初めてなら「端末だけで遊ぶ」から、一城を育てるところから始められます。</p>
+    </section>
     <section class="share-journey" aria-labelledby="share-journey-title">
       <div class="share-section-heading"><p class="section-kicker">育てる・備える・進む</p><h2 id="share-journey-title">戦国VSでできること</h2></div>
       <ol class="share-feature-list">
@@ -72,6 +78,17 @@ function renderSharePage({ site, metadataHtml, jsonLd, iconHtml, header, footer,
       <div class="share-support-copy">
         <section><h3>迷ったときは「ヒント」へ。</h3><p>資産や兵力、施設の状況に合う「次の一手」を、理由とともに確認できます。城下町や画面の「ヒント」から候補を開き、気になる項目の画面へ。何から育てるか迷ったときも、今できる準備を見つけられます。</p><a class="share-detail-link" href="../guide/#next-hints">ヒントの使い方</a></section>
         <section><h3>同じ領主で、次の端末へ。</h3><p>領主を登録・連携すると、進行をPC・スマホ・タブレットで同期できます。端末を変えるときや続きを遊ぶときは、データ復元の案内を読み、同じ領主へ接続してください。積み重ねた城と武将の記録から、次の一手を始められます。</p><a class="share-detail-link" href="../guide/data-recovery/">引き継ぎ・復元の案内</a></section>
+      </div>
+    </section>
+
+    <section id="before-you-play" class="share-support discovery-faq" aria-labelledby="discovery-faq-title">
+      <div class="share-section-heading"><p class="section-kicker">始める前に</p><h2 id="discovery-faq-title">戦国VSのよくある質問</h2></div>
+      <div class="discovery-questions">
+        <section><h3>無料でどこまで遊べますか？</h3><div><p>城下町の育成、武将編成、合戦の基本プレイは無料です。有料商品は旗印や城下町の外観、月額サポーターのバッジで、武将の能力や兵力を強化したり、資産を増やしたりする特典はありません。</p><a class="share-detail-link" href="../premium/">外観の見本・料金・月額支援を見る</a></div></section>
+        <section><h3>アプリのインストールは必要ですか？</h3><div><p>インストールせず、このサイトから遊べます。PCはマウス、スマホ・タブレットはタップで操作できます。ゲームにはJavaScriptを、領主間の交流や同期にはインターネット接続を使います。</p><a class="share-detail-link" href="../guide/#device-controls">端末ごとの操作方法を読む</a></div></section>
+        <section><h3>ひとりでも遊べますか？</h3><div><p>個人の戦役ではCPU勢力の城を攻略できます。初回は「端末だけで遊ぶ」を選べます。ほかの領主と合戦・同盟・交易を楽しむときは、領主を登録して共通フィールドへ進みます。</p><a class="share-detail-link" href="../guide/#first-steps">最初の城選びと進め方を読む</a></div></section>
+        <section><h3>戦略ゲームが初めてでも始められますか？</h3><div><p>城下町の「次の一手」やメニューの「ヒント」で、今の領国に合う行動と理由を確認できます。軍師AIは戦況を比べ、出陣前の戦法や兵数を提案します。まずは田畑・商家と軍団を整えてみましょう。</p><a class="share-detail-link" href="../guide/#next-hints">ヒントと準備の進め方を読む</a></div></section>
+        <section><h3>PCとスマホで続きを遊べますか？</h3><div><p>領主を登録・連携すれば、同じ領主の進行を端末間で同期できます。新しい端末では接続コードや統合バックアップで引き継ぎます。操作する端末は同時に1台です。</p><a class="share-detail-link" href="../guide/data-recovery/">データの引き継ぎ・復元方法を読む</a></div></section>
       </div>
     </section>
 

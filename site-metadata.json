@@ -4,8 +4,8 @@
   "name": "戦国VS",
   "alternateName": "SENGOKU VS",
   "publisher": "KASAI SOLUTIONS",
-  "release": "5.0.2-20261126",
-  "version": "5.0.2",
+  "release": "5.0.3-20261126",
+  "version": "5.0.3",
   "dateModified": "2026-11-26",
   "language": "ja",
   "locale": "ja_JP",
@@ -15,56 +15,62 @@
     "軍師とともに、天下統一を目指す戦国戦略ゲーム。"
   ],
   "ogImage": {
-    "path": "assets/branding/sengoku-vs-ogp-v480.jpg",
+    "path": "assets/branding/sengoku-vs-ogp-20261126.jpg",
     "type": "image/jpeg",
     "width": 1200,
     "height": 630,
-    "alt": "城下を望む高台で軍扇を掲げる女武将と、旗印を持つ将の戦国VSキービジュアル"
+    "alt": "金色の「戦国VS」と「一城から、天下へ。」の文字、城下を望む軍扇の女武将と赤い軍旗"
   },
   "logo": {
-    "path": "assets/branding/sengoku-vs-icon-512-20261122.png",
+    "path": "assets/branding/sengoku-vs-icon-512-20261126.png",
     "width": 512,
     "height": 512
   },
   "favicon": {
-    "path": "assets/branding/sengoku-vs-icon-192-20261122.png",
+    "path": "assets/branding/sengoku-vs-icon-192-20261126.png",
     "sizes": "192x192",
     "type": "image/png"
   },
   "faviconSmall": {
-    "path": "assets/branding/sengoku-vs-favicon-32-20261122.png",
+    "path": "assets/branding/sengoku-vs-favicon-32-20261126.png",
     "sizes": "32x32",
     "type": "image/png"
   },
   "faviconIco": {
     "path": "favicon.ico",
-    "sizes": "32x32 192x192",
+    "sizes": "16x16 32x32 48x48 96x96 192x192",
     "type": "image/x-icon"
   },
   "appleTouchIcon": {
-    "path": "assets/branding/sengoku-vs-apple-touch-icon-180-20261122.png",
+    "path": "assets/branding/sengoku-vs-apple-touch-icon-180-20261126.png",
     "sizes": "180x180",
     "type": "image/png"
   },
   "appIcons": [
     {
-      "src": "assets/branding/sengoku-vs-icon-192-20261122.png",
+      "src": "assets/branding/sengoku-vs-icon-192-20261126.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "assets/branding/sengoku-vs-icon-512-20261122.png",
+      "src": "assets/branding/sengoku-vs-icon-512-20261126.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
+    },
+    {
+      "src": "assets/branding/sengoku-vs-maskable-512-20261126.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
     }
   ],
   "pages": {
     "home": {
       "path": "/",
-      "title": "戦国VS｜無料で遊べる戦国ブラウザ戦略ゲーム",
-      "description": "戦国VS公式。城下町を育て、武将を編成し、軍師AIと天下統一を目指す戦国ブラウザゲームです。PC・スマホ・タブレットで基本プレイ無料。同盟を結び、ほかの領主と攻城戦を楽しめます。",
+      "title": "戦国VS｜基本プレイ無料の戦国ブラウザゲーム",
+      "description": "戦国VS公式。城下町の内政、武将編成、城をめぐる合戦を楽しむ戦国戦略シミュレーション。軍師AIの助言、同盟・交易、端末間の引き継ぎに対応。PC・スマホ・タブレットで、インストールせず基本プレイ無料で始められます。",
       "dateModified": "2026-11-26",
       "artwork": {
         "path": "assets/chronicle/cover.webp",
@@ -80,8 +86,8 @@
     },
     "share": {
       "path": "/sengoku-vs/",
-      "title": "戦国VS ゲーム紹介｜城下町・武将編成・攻城戦の楽しみ方",
-      "description": "戦国VSを初めて知る方へ。一城を選んで田畑や商家を育てる内政から、武将編成、ほかの領主との合戦や同盟まで、ゲームの流れをイラストとともに紹介します。",
+      "title": "戦国VS ゲーム紹介｜遊び方・無料範囲・対応端末",
+      "description": "戦国VSの公式紹介。城下町づくり、武将編成、CPU勢力との合戦、領主同士の同盟・交易を紹介します。基本プレイ無料の範囲、PC・スマホの対応、始め方、データの引き継ぎも確認できます。",
       "dateModified": "2026-11-26",
       "artwork": {
         "path": "assets/chronicle/war.webp",
@@ -96,8 +102,8 @@
     },
     "premium": {
       "path": "/premium/",
-      "title": "戦国VS プレミアム｜城下の外観・旗印・月額支援の料金",
-      "description": "金彩の旗印は480円、月影の城下は980円、サポーターは月額780円（税込）。戦国VSで装備したときの見本、買い切りと月額の違い、購入後の反映を確認できます。",
+      "title": "戦国VS プレミアム｜外観アイテム・月額支援の内容と料金",
+      "description": "戦国VSの外観アイテムと月額支援の公式案内。金彩の旗印480円、月影の城下980円、サポーター月額780円（税込）。装備見本、買い切りと月額の違い、購入後の反映を確認できます。",
       "dateModified": "2026-11-26",
       "artwork": {
         "path": "assets/chronicle/court.webp",
@@ -106,11 +112,11 @@
         "height": 500
       },
       "socialImage": {
-        "path": "assets/branding/sengoku-vs-premium-v480.jpg",
+        "path": "assets/branding/sengoku-vs-premium-20261126.jpg",
         "type": "image/jpeg",
         "width": 1200,
         "height": 630,
-        "alt": "「戦国VS プレミアム」と、月明かりと城の灯が川面に映る「月影の城下」"
+        "alt": "「戦国VS プレミアム」の文字と、月明かりに照らされた城下町の外観"
       },
       "additionalImages": [
         "assets/premium/gold-banner-v1.webp",
@@ -120,8 +126,8 @@
     },
     "guide": {
       "path": "/guide/",
-      "title": "戦国VS 攻略ガイド｜最初の城選びから城郭強化・合戦まで",
-      "description": "戦国VSの公式攻略ガイド。開始城の選び方、天守と城郭のレベルの上げ方、武将や軍師AIの使い方、合戦の報酬を目的から探せます。スマホ操作やデータの引き継ぎも案内します。",
+      "title": "戦国VS 攻略ガイド｜城選び・内政・武将編成・合戦",
+      "description": "戦国VSの公式攻略ガイド。最初の城選びから、内政、天守と城郭の強化、武将編成、軍師AI、対人戦・イベントの報酬まで解説。PC・スマホの操作や保存・端末同期も、目的別に確認できます。",
       "dateModified": "2026-11-26",
       "artwork": {
         "path": "assets/chronicle/town.webp",
@@ -130,17 +136,17 @@
         "height": 500
       },
       "socialImage": {
-        "path": "assets/branding/sengoku-vs-guide-v480.jpg",
+        "path": "assets/branding/sengoku-vs-guide-20261126.jpg",
         "type": "image/jpeg",
         "width": 1200,
         "height": 630,
-        "alt": "「戦国VS 攻略ガイド」と、宵の城下町に架かる橋と、行き交う人々"
+        "alt": "「戦国VS 攻略ガイド」の文字と、灯りのともる城下町を歩く武将たち"
       }
     },
     "recovery": {
       "path": "/guide/data-recovery/",
-      "title": "戦国VSの引き継ぎ・データ復元｜端末変更とバックアップ",
-      "description": "機種変更やサイト移転後に、同じ領主で戦国VSを再開する方法。以前の端末、接続コード、統合バックアップ、旧形式のセーブのうち、手元にあるものから復元手順を選べます。",
+      "title": "戦国VS 引き継ぎ・データ復元｜機種変更とバックアップ",
+      "description": "機種変更やサイト移転後も、同じ領主で戦国VSを再開するための公式ガイド。接続コード、統合バックアップ、旧形式のセーブなど、手元にあるデータから引き継ぎ・復元の手順を確認できます。",
       "dateModified": "2026-11-26",
       "artwork": {
         "path": "assets/chronicle/archive.webp",
@@ -149,17 +155,17 @@
         "height": 500
       },
       "socialImage": {
-        "path": "assets/branding/sengoku-vs-recovery-v480.jpg",
+        "path": "assets/branding/sengoku-vs-recovery-20261126.jpg",
         "type": "image/jpeg",
         "width": 1200,
         "height": 630,
-        "alt": "「戦国VS 引き継ぎ」と、灯りに照らされた書院で二人が絵巻を調べる様子"
+        "alt": "「戦国VS 引き継ぎ・復元」の文字と、書院で絵巻を調べる二人"
       }
     },
     "about": {
       "path": "/about/",
-      "title": "戦国VSの作品概要｜収録武将・城・家紋と地図の出典",
-      "description": "戦国VSの世界観と収録内容をまとめた公式資料。武将と城郭の成長段階、家紋を描く基準、戦国地図に使った地形・城跡の資料、KASAI SOLUTIONSの制作情報を掲載しています。",
+      "title": "戦国VSの作品概要｜世界観・収録内容・制作資料",
+      "description": "戦国VSの世界観・対応端末・利用料金と、256人の武将、129の城と拠点、64種類の施設を紹介。人物・地図・家紋の資料、イラストの制作方針、KASAI SOLUTIONSの著作権表記を確認できます。",
       "dateModified": "2026-11-26",
       "artwork": {
         "path": "assets/chronicle/court.webp",
@@ -168,12 +174,23 @@
         "height": 500
       },
       "socialImage": {
-        "path": "assets/branding/sengoku-vs-about-v480.jpg",
+        "path": "assets/branding/sengoku-vs-about-20261126.jpg",
         "type": "image/jpeg",
         "width": 1200,
         "height": 630,
-        "alt": "「戦国VS 作品概要」と、庭園に面した御殿で向かい合う二人の使者"
+        "alt": "「戦国VS 作品概要」の文字と、秋の庭園に面した御殿で向かい合う使者"
       }
     }
-  }
+  },
+  "faviconSvg": {
+    "path": "assets/branding/sengoku-vs-favicon-20261126.svg",
+    "sizes": "any",
+    "type": "image/svg+xml"
+  },
+  "maskIcon": {
+    "path": "assets/branding/sengoku-vs-pinned-tab-20261126.svg",
+    "color": "#c7a35b"
+  },
+  "themeColor": "#131b22",
+  "backgroundColor": "#131b22"
 }
