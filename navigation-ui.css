@@ -158,3 +158,46 @@ dialog.navigation-dialog[open] { display: flex; flex-direction: column; }
   .navigation-favorites { padding-bottom: 8px; }
   .navigation-dialog .navigation-entry { min-height: 56px; padding-block: 5px; }
 }
+
+/* Pinned tools are available without reopening the finder on a wide screen. */
+.navigation-favorites-rail { display: none; }
+html.sengoku-desktop-fit #app .navigation-favorites-rail:not([hidden]) {
+  display: block; flex: none; min-width: 0; padding: 9px 0 10px;
+  border-block: 1px solid #bca57536;
+}
+.navigation-favorites-rail-heading {
+  display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 7px;
+  color: #d9c59d; font-size: .875rem;
+}
+.navigation-favorites-rail-heading > span { display: inline-flex; align-items: center; gap: 6px; }
+.navigation-favorites-rail-heading .icon { width: 15px; height: 15px; }
+.navigation-favorites-rail-heading > button {
+  padding: 4px 7px; min-height: 32px; background: transparent; border: 0;
+  color: #e9d2a9; font: inherit; font-size: .875rem; cursor: pointer; text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.navigation-favorites-rail-list { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 5px; }
+#app .navigation-favorite-shortcut {
+  display: flex; align-items: center; gap: 5px; width: 100%; min-width: 0; min-height: 36px;
+  padding: 6px 7px; border: 1px solid #a690683b; border-radius: 5px; background: #21313d;
+  color: #efe6d4; font: inherit; font-size: .875rem; line-height: 1.3; text-decoration: none; cursor: pointer;
+  background-image: none !important;
+}
+#app .navigation-favorite-shortcut .icon { width: 15px; height: 15px; flex: none; color: #d6b887; }
+#app .navigation-favorite-shortcut > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#app .navigation-favorite-shortcut.is-current { border-color: #d0ad72; background: #3e392d; color: #ffe4ad; }
+#app .navigation-favorite-shortcut:disabled { opacity: .48; cursor: not-allowed; }
+#app .navigation-favorite-shortcut:focus-visible,
+.navigation-favorites-rail-heading > button:focus-visible { outline: 2px solid #f4cf87; outline-offset: 2px; }
+@media (hover:hover) {
+  #app .navigation-favorite-shortcut:not(:disabled):hover { border-color: #d0ad72; background: #2d414d; }
+}
+@media (max-height:700px) {
+  html.sengoku-desktop-fit #app .navigation-favorites-rail:not([hidden]) { padding-block: 5px; }
+  .navigation-favorites-rail-heading { margin-bottom: 3px; }
+  #app .navigation-favorite-shortcut { min-height: 32px; padding-block: 4px; }
+}
+@media (forced-colors:active) {
+  #app .navigation-favorite-shortcut { color: ButtonText; background: ButtonFace; border-color: ButtonText; }
+  #app .navigation-favorite-shortcut.is-current { color: HighlightText; background: Highlight; }
+}

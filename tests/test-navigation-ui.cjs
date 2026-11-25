@@ -269,6 +269,55 @@ test('failed or disabled navigation does not create recent history and refresh l
   s.api.refresh(); s.api.refresh(); assert.equal(s.get('[data-navigation-pin="view:army"]'), pin); assert.equal(s.get('#navigation-query'), input); assert.equal(s.doc.activeElement, pin);
 });
 
+
+test('pinned desktop shortcuts delegate to current sources once and disappear when no favorites remain', () => {
+  const s = fixture({ storage: new Map([[preferenceKey, JSON.stringify({ favorites: ['view:army', 'view:map'] })]]) });
+  const rail = s.get('.navigation-favorites-rail');
+  assert.equal(rail.hidden, false);
+  assert.equal(rail.querySelectorAll('[data-navigation-favorite]').length, 2);
+  rail.querySelector('[data-navigation-favorite="view:army"]').click(); s.drain();
+  assert.deepEqual(s.calls, ['view:army']);
+  assert.equal(rail.querySelector('[data-navigation-favorite="view:army"]').getAttribute('aria-current'), 'page');
+  s.nav.querySelector('[data-view="map"]').disabled = true; s.api.refresh();
+  assert(rail.querySelector('[data-navigation-favorite="view:map"]').disabled);
+  rail.querySelector('[data-navigation-favorite="view:map"]').click(); assert.deepEqual(s.calls, ['view:army']);
+  assert(s.api.toggleFavorite('view:army')); assert(s.api.toggleFavorite('view:map'));
+  assert.equal(rail.hidden, true);
+});
+
+test('pinned help links preserve normal link behavior and editing opens the existing finder', () => {
+  const s = fixture(); assert(s.api.toggleFavorite('help:guide'));
+  const rail = s.get('.navigation-favorites-rail'), guide = rail.querySelector('[data-navigation-favorite="help:guide"]');
+  assert.equal(guide.tagName, 'A'); assert.equal(guide.getAttribute('href'), 'guide/');
+  assert.equal(guide.getAttribute('target'), '_blank'); assert.equal(guide.getAttribute('rel'), 'noopener');
+  guide.click(); assert.deepEqual(s.api.getPreferences().recent, ['help:guide']); assert.deepEqual(s.calls, []);
+  rail.querySelector('[data-navigation-edit-favorites]').click(); assert(s.api.isOpen());
+  s.api.destroy(); assert.equal(s.get('.navigation-favorites-rail'), null);
+});
+
+test('search keyboard travel skips disabled entries and leaves text editing native', () => {
+  const s = fixture(); s.nav.querySelector('[data-view="army"]').disabled = true; s.api.open();
+  const dialog = s.get('#navigation-dialog'), query = s.get('#navigation-query');
+  query.value = '軍'; query.dispatch('input'); query.focus();
+  const targets = [...s.get('#navigation-results').querySelectorAll('[data-navigation-target], [data-navigation-help]')].filter(node => !node.disabled);
+  assert(targets.length > 1);
+  const down = dialog.dispatch('keydown', query, { key: 'ArrowDown' }); assert(down.prevented); assert.equal(s.doc.activeElement, targets[0]);
+  dialog.dispatch('keydown', targets[0], { key: 'End' }); assert.equal(s.doc.activeElement, targets.at(-1));
+  dialog.dispatch('keydown', targets.at(-1), { key: 'Home' }); assert.equal(s.doc.activeElement, targets[0]);
+  query.focus(); const home = dialog.dispatch('keydown', query, { key: 'Home' }); assert.equal(home.prevented, false); assert.equal(s.doc.activeElement, query);
+  dialog.dispatch('keydown', query, { key: 'ArrowDown', isComposing: true }); assert.equal(s.doc.activeElement, query);
+  assert.deepEqual(s.calls, []);
+});
+
+test('backdrop dismissal requires a pointer press outside and ignores dialog padding or drags from controls', () => {
+  const s = fixture(); s.api.open(); const dialog = s.get('#navigation-dialog');
+  dialog.getBoundingClientRect = () => ({ left: 10, right: 800, top: 10, bottom: 600 });
+  dialog.dispatch('pointerdown', dialog); dialog.dispatch('click', dialog, { clientX: 15, clientY: 15 }); assert(s.api.isOpen());
+  dialog.dispatch('pointerdown', s.get('#navigation-query')); dialog.dispatch('click', dialog, { clientX: 1, clientY: 1 }); assert(s.api.isOpen());
+  dialog.dispatch('pointerdown', dialog); dialog.dispatch('click', dialog, { clientX: 1, clientY: 1 }); assert.equal(s.api.isOpen(), false);
+  assert.deepEqual(s.calls, []);
+});
+
 let failed = 0;
 for (const [name, run] of tests) { try { run(); console.log('PASS', name); } catch (error) { failed++; console.error('FAIL', name, error.stack); } }
 console.log(`${tests.length - failed}/${tests.length} navigation usability checks passed`);

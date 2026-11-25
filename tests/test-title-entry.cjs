@@ -16,9 +16,11 @@ async function testEntry() {
   doc.body.classList.toggle = (name, enabled) => enabled ? doc.body.classList.add(name) : doc.body.classList.remove(name);
   const steps = [];
   const waiting = [];
+  let savedState = null;
   const win = {
     SENGOKU_AT_TITLE: true,
-    SengokuBridge: {hasStarted: () => false, renderGameplay() { assert.equal(win.SENGOKU_AT_TITLE, false); steps.push('draw'); }, openStartSelection() { steps.push('select'); }},
+    SENGOKU_DATA: { castles: [{id:'kiyosu', name:'清洲城'}] },
+    SengokuBridge: {hasStarted: () => Boolean(savedState), getState: () => savedState, renderGameplay() { assert.equal(win.SENGOKU_AT_TITLE, false); steps.push('draw'); }, openStartSelection() { steps.push('select'); }},
     SengokuArt: {decorate() {}, readyCurrent: () => new Promise(resolve => waiting.push(resolve))}
   };
   vm.runInNewContext(fs.readFileSync(path.join(root, 'boot.js'), 'utf8'), {
@@ -38,6 +40,9 @@ async function testEntry() {
   assert.equal(loading.open, false, 'Completed requests must release controls without an artificial minimum wait');
   assert.equal(loading.hidden, true);
   assert.deepEqual(steps, [], 'opening the title must not start gameplay painting');
+  doc.querySelector('.edition-print').dispatchEvent({type:'click'});
+  assert.deepEqual(steps, [], 'touching title artwork must not accidentally enter the game');
+  assert.equal(doc.getElementById('title-resume').hidden, true, 'new players do not see a continuation claim');
   win.SengokuTitle.enter();
   win.SengokuTitle.enter();
   assert.deepEqual(steps, ['draw', 'select'], 'paint once, then open the start selection');
@@ -53,10 +58,17 @@ async function testEntry() {
   waiting[0]();
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(status.hidden, false, 'An old view must not end the current view’s status');
+  savedState = {clan:'織田家',home:'kiyosu',officers:['a','b','c'],gameOver:false};
   win.SengokuTitle.home();
   assert.equal(skip.getAttribute('href'), '#launch-enter');
   assert.equal(status.hidden, true);
   assert.equal(doc.activeElement.id, 'launch-enter');
+  assert.equal(doc.getElementById('title-resume').hidden, false);
+  assert.equal(doc.getElementById('title-resume-name').textContent, '織田家 · 清洲城');
+  assert.match(doc.getElementById('title-resume-detail').textContent, /家臣 3名/);
+  savedState.gameOver = true;
+  win.SengokuTitle.home();
+  assert.match(doc.getElementById('title-resume-detail').textContent, /再起/);
   waiting[1]();
   await nextView;
   assert.equal(status.hidden, true);

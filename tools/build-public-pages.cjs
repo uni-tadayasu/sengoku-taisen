@@ -22,10 +22,20 @@ const absolute = relative => new URL(relative, `${origin}/`).href;
 const canonical = key => absolute(site.pages[key].path);
 const modifiedLabel = value => value.replace(/^(\d{4})-(\d{2})-(\d{2})$/, (_, year, month, day) => `${year}年${Number(month)}月${Number(day)}日`);
 const jsonScript = value => JSON.stringify(value).replace(/</g, '\\u003c');
-const section = (id, kicker, title, body, theme = '') => `<section id="${id}" class="article-section ${theme}" aria-labelledby="${id}-title"><div class="section-kicker">${kicker}</div><h2 id="${id}-title">${title}</h2>${body}<a class="section-return" href="#page-contents">目次へ戻る</a></section>`;
+const section = (id, kicker, title, body, theme = '') => `<section id="${id}" class="article-section ${theme}" aria-labelledby="${id}-title"><div class="section-kicker">${kicker}</div><h2 id="${id}-title">${title}</h2>${body}<div class="section-navigation" data-section-navigation="${id}"><a class="section-return" href="#page-contents">目次へ戻る</a></div></section>`;
 const callout = (title, body, warm = false) => `<aside class="callout${warm ? ' callout--warm' : ''}"><h3>${title}</h3><p>${body}</p></aside>`;
 const steps = items => `<ol class="step-list">${items.map(([title, text], index) => `<li><span class="step-marker" aria-hidden="true">${index + 1}</span><div><h3>${title}</h3><p>${text}</p></div></li>`).join('')}</ol>`;
 const table = (caption, headings, rows, extra = '') => `<div class="data-table-wrap" role="region" tabindex="0" aria-label="${esc(caption)}"><table class="${extra}"><caption>${caption}</caption><thead><tr>${headings.map(h => `<th scope="col">${h}</th>`).join('')}</tr></thead><tbody>${rows.map(cells => `<tr>${cells.map((cell, i) => i === 0 ? `<th scope="row">${cell}</th>` : `<td>${cell}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+
+function readingContent(page, paths) {
+  const html = page.content(paths), labels = new Map(page.toc);
+  const chapters = [...html.matchAll(/<section id="([^"]+)" class="article-section\b/g)].map(match => [match[1], labels.get(match[1])]);
+  const nextChapters = new Map(chapters.map(([id], index) => [id, chapters[index + 1]]));
+  return html.replace(/(<div class="section-navigation" data-section-navigation="([^"]+)">)(<a class="section-return"[^>]+>[^<]+<\/a>)/g, (match, opening, id, back) => {
+    const next = nextChapters.get(id);
+    return opening + back + (next ? `<a class="section-next" href="#${esc(next[0])}"><span>次の項目</span><strong>${esc(next[1])}</strong></a>` : '');
+  });
+}
 
 function paths(file) {
   const from = path.posix.dirname(file);
@@ -743,7 +753,7 @@ function render(page) {
     <nav aria-label="パンくず"><ol class="breadcrumbs">${breadcrumbItems.map((item,i)=>`<li>${i===breadcrumbItems.length-1?`<span aria-current="page">${item.name}</span>`:`<a href="${item.href}">${item.name}</a>`}</li>`).join('')}</ol></nav>
     <section class="hero chapter-hero folio-hero" aria-labelledby="page-title">${artwork}<div class="hero-copy"><p class="eyebrow">${page.eyebrow}</p><h1 id="page-title">${page.heading}</h1><p class="hero-lead">${page.lead}</p><div class="hero-actions"><a class="action-link" href="${p.dir('')}">${page.heroAction}</a><a class="text-link" href="${secondaryHref}">${page.secondary[0]}</a></div></div></section>
 ${quickTopics(page.key, p)}
-    <div class="reading-layout"><aside id="page-contents" class="toc" tabindex="-1"><nav aria-label="このページの目次"><h2 class="toc-title">目次</h2><details class="toc-chapters" open><summary>すべての項目 <span>${page.toc.length}項目</span></summary><ul>${page.toc.map(([id,label])=>`<li><a href="#${id}">${label}</a></li>`).join('')}</ul></details></nav></aside><article class="article" aria-label="${page.label}の本文"><p class="article-updated">内容更新：<time datetime="${page.dateModified}">${modifiedLabel(page.dateModified)}</time></p>${page.content(p)}</article></div>
+    <div class="reading-layout"><aside id="page-contents" class="toc" tabindex="-1"><nav aria-label="このページの目次"><h2 class="toc-title">目次</h2><details class="toc-chapters" open><summary>すべての項目 <span>${page.toc.length}項目</span></summary><ul>${page.toc.map(([id,label])=>`<li><a href="#${id}">${label}</a></li>`).join('')}</ul></details></nav></aside><article class="article" aria-label="${page.label}の本文"><p class="article-updated">内容更新：<time datetime="${page.dateModified}">${modifiedLabel(page.dateModified)}</time></p>${readingContent(page, p)}</article></div>
     <section class="closing"><div><h2>${page.closingTitle}</h2><p>${page.closingText}</p></div><a class="action-link" href="${p.dir('')}">ゲームを開く</a></section>
   </main>
   <nav class="reading-actions" aria-label="読書中の案内"><a href="#page-contents">目次へ</a><a href="${p.dir('')}">ゲームを開く</a></nav>

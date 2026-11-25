@@ -134,3 +134,35 @@ body.at-title #app { display: none; }
 
 /* Reuse the title’s town thumbnail for its small painted controls. */
 #launch-screen { --item-art: url("assets/responsive/town-240.webp"); }
+
+/* A restrained continuation card gives returning players a clear starting point. */
+.edition-mast .edition-settings { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 10px; border: 1px solid #bfa27355; border-radius: 4px; color: #e9d5af; font: inherit; font-size: .9rem; background: #1b2b3a; cursor: pointer; }
+.edition-mast .edition-settings:hover { background: #2a3b4a; border-color: #dab77c; }
+.edition-resume { width: fit-content; max-width: 100%; display: grid; grid-template-columns: 3px minmax(0,1fr); column-gap: 13px; row-gap: 4px; margin: 0 0 18px; padding: 12px 17px 12px 0; color: #f3e7d0; background: linear-gradient(90deg,#101d2edb,#14273a50); border-block: 1px solid #c7a77642; }
+.edition-resume[hidden] { display: none; }
+.edition-resume::before { content: ""; grid-row: 1 / 4; background: #d4ae6c; }
+.edition-resume > * { grid-column: 2; }
+.edition-resume-label { font-size: .75rem; letter-spacing: .12em; color: #d7bf98; }
+.edition-resume strong { font-family: var(--mincho); font-size: 1.08rem; line-height: 1.5; overflow-wrap: anywhere; }
+#title-resume-detail { color: #c9d0d5; font-size: .82rem; line-height: 1.5; }
+#launch-screen .edition-profile-link { display: block; width: fit-content; margin-top: 12px; padding: 6px 0; font-size: .88rem; line-height: 1.5; color: #dbc49d; }
+#launch-enter.edition-enter { box-shadow: inset 0 0 0 3px #89392b, inset 0 0 0 4px #f3cf8e6b,0 9px 24px #080f1f66; }
+@media (min-width: 981px) and (min-height: 760px) { .edition-story { padding-block: clamp(25px,3.2vw,64px); } }
+@media (max-width: 700px) {
+  .edition-mast nav { gap: 9px; }
+  .edition-mast .edition-settings { padding-inline: 8px; font-size: .8rem; }
+  .edition-mast nav a { font-size: .8rem; }
+  .edition-resume { width: 100%; margin-bottom: 12px; padding-block: 9px; }
+  .edition-resume-label { font-size: .75rem; }
+  .edition-resume strong { font-size: 1rem; }
+  #launch-screen .edition-profile-link { margin-top: 8px; }
+}
+@media (max-width: 400px) {
+  .edition-mast .edition-wordmark { gap: 5px; letter-spacing: .025em; font-size: .68rem; }
+  .edition-wordmark img { width: 26px; height: 26px; }
+  .edition-mast nav { gap: 7px; }
+  .edition-mast nav a { font-size: .75rem; }
+  .edition-mast .edition-settings { padding-inline: 6px; font-size: .75rem; }
+}
+@media (max-height: 600px) and (min-width: 701px) { .edition-resume { margin-bottom: 10px; padding-block: 8px; } .edition-resume-label { display: none; } }
+@media (forced-colors: active) { .edition-resume, .edition-mast .edition-settings { background: Canvas; color: CanvasText; border: 1px solid CanvasText; } .edition-resume > * { color: CanvasText; } }

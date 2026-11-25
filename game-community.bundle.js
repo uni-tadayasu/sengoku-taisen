@@ -3846,11 +3846,25 @@ function updateTitleAction(){
  const hasSave=global.SengokuBridge?.hasStarted?.()===true;
  enterButton.querySelector('[data-enter-label]').textContent=hasSave?'物語の続きをひらく':'城を選んで始める';
  title.querySelector('[data-title-status]').textContent=hasSave?'':'開始する城を選んで、物語を始めます';
+ const resume=document.getElementById('title-resume');
+ const state=hasSave?global.SengokuBridge?.getState?.():null;
+ if(resume){
+  resume.hidden=!state;
+  if(state){
+   const home=global.SENGOKU_DATA?.castles?.find(castle=>castle.id===state.home);
+   const name=document.getElementById('title-resume-name'),detail=document.getElementById('title-resume-detail');
+   if(name)name.textContent=[state.clan,home?.name].filter(Boolean).join(' · ');
+   const officers=Array.isArray(state.officers)?state.officers.length:0;
+   if(detail)detail.textContent=state.gameOver?'戦役の記録を確認して、再起へ。':`家臣 ${officers}名 · 前回の進行から再開`;
+  }
+ }
  enterButton.disabled=false;
 }
 function home(){artworkGeneration++;const status=document.getElementById('art-load-status');if(status)status.hidden=true;setSkipTarget(true);global.SENGOKU_AT_TITLE=true;started=false;document.body.classList.add('at-title');document.getElementById('app').inert=true;document.getElementById('app').setAttribute('aria-hidden','true');title.hidden=false;updateTitleAction();enterButton.focus({preventScroll:true});}
 function init(){title=document.getElementById('launch-screen');enterButton=document.getElementById('launch-enter');overlay=document.getElementById('game-loading');overlay.addEventListener('cancel',e=>e.preventDefault());
- enterButton.addEventListener('click',enter);title.addEventListener('click',e=>{if(!e.target.closest('button,a,input,select'))enter();});
+ // Only the named start button enters the game. Touching artwork or the
+ // continuation summary must not accidentally start a campaign.
+ enterButton.addEventListener('click',enter);
  document.addEventListener('click',e=>{const back=e.target.closest('[data-action="title-screen"]');if(back){e.preventDefault();home();return;}const target=e.target.closest('[data-view]:not(#main),[data-action="officer"],[data-action="building"],[data-action="select-castle"],[data-action="draw-officers"],[data-action="officer-rank-detail"],[data-action="preview-art"],[data-action="art-level-step"],[data-action="music"],[data-action="settings"],[data-action="help"],[data-action="about"],[data-action="new-game"],[data-action="officer-page"],[data-action="officer-section"],[data-action="open-gacha"],[data-action="gacha-odds"],[data-action="officer-filter"],[data-action="pick-army"],[data-action="pick-governor"],[data-action="prepare-battle"],[data-action="diplomacy-info"],[data-action="council"],[data-action="start-new"],[data-action="confirm-import"],[data-action="attack"]');if(target&&!target.disabled&&!global.SENGOKU_AT_TITLE)void ready();},true);
  document.addEventListener('change',e=>{if(e.target.matches('#officer-rank,#officer-clan,#officer-sort,#facility-category,#map-region,#art-preview-level')&&!global.SENGOKU_AT_TITLE)void ready();},true);
  // The artwork loads independently. A slow illustration must never delay entry.
@@ -4539,7 +4553,8 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
     const dialog = doc.createElement('dialog');
     if (typeof dialog.showModal !== 'function') return null;
     let initialized = false, frame = 0, returnFocus = null, restoreFocus = true, entries = [], signature = '', pendingNavigation = null;
-    let favorites = [], recent = [];
+    let favorites = [], recent = [], railSignature = '';
+    let backdropPointer = false;
     try {
       const saved = JSON.parse(win.localStorage?.getItem(PREFERENCE_KEY) || 'null');
       favorites = preferenceKeys(saved?.favorites, FAVORITE_LIMIT); recent = preferenceKeys(saved?.recent, RECENT_LIMIT);
@@ -4604,6 +4619,9 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
     trigger.type = 'button'; trigger.className = 'nav-item navigation-menu-trigger';
     trigger.setAttribute('aria-haspopup', 'dialog'); trigger.setAttribute('aria-controls', 'navigation-dialog'); trigger.setAttribute('aria-expanded', 'false');
     trigger.innerHTML = svg('search') + '<span class="navigation-trigger-copy"><b>すべてのメニュー</b><small>機能名から探す</small></span><kbd aria-hidden="true">Ctrl K</kbd>';
+    const favoritesRail = doc.createElement('section');
+    favoritesRail.className = 'navigation-favorites-rail'; favoritesRail.hidden = true;
+    favoritesRail.setAttribute('aria-label', 'お気に入りの機能');
     const dock = doc.createElement('div'); dock.className = 'navigation-quick-dock';
     for (const [key, label] of [['view:town', '城下町'], ['view:map', '天下地図'], ['view:army', '軍団編成'], ['menu', 'メニュー']]) {
       const button = doc.createElement('button'); button.type = 'button'; button.className = 'nav-item navigation-quick';
@@ -4626,6 +4644,23 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
         if (!win.localStorage) return false;
         win.localStorage.setItem(PREFERENCE_KEY, JSON.stringify({ favorites, recent })); return true;
       } catch (_) { return false; }
+    }
+    function renderFavoritesRail() {
+      const pinned = availableKeys(favorites).map(key => entries.find(entry => entry.key === key));
+      favoritesRail.hidden = !pinned.length;
+      const next = JSON.stringify(pinned.map(entry => [entry.key, entry.label, entry.current, entry.disabled]));
+      if (next === railSignature) return;
+      railSignature = next;
+      const focusKey = favoritesRail.contains?.(doc.activeElement) ? doc.activeElement.getAttribute('data-navigation-favorite') : null;
+      favoritesRail.innerHTML = '<div class="navigation-favorites-rail-heading"><span>' + svg('star') + 'お気に入り</span><button type="button" data-navigation-edit-favorites aria-label="お気に入りを編集">編集</button></div><div class="navigation-favorites-rail-list">' + pinned.map(entry => {
+        const content = entry.icon + '<span>' + esc(entry.label) + '</span>';
+        const attrs = ' class="navigation-favorite-shortcut' + (entry.current ? ' is-current' : '') + '" data-navigation-favorite="' + esc(entry.key) + '" title="' + esc(entry.label + ' · ' + entry.description) + '"' + (entry.current ? ' aria-current="page"' : '');
+        return entry.href ? '<a' + attrs + ' href="' + entry.href + '" target="_blank" rel="noopener">' + content + '</a>' : '<button type="button"' + attrs + (entry.disabled ? ' disabled' : '') + '>' + content + '</button>';
+      }).join('') + '</div>';
+      if (focusKey) {
+        const target = [...favoritesRail.querySelectorAll('[data-navigation-favorite]')].find(node => node.getAttribute('data-navigation-favorite') === focusKey);
+        (target || trigger).focus({ preventScroll: true });
+      }
     }
     function remember(key) {
       if (recent[0] === key || !collect().some(entry => entry.key === key)) return;
@@ -4684,13 +4719,13 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
       const pinned = favorites.includes(key);
       if (!pinned && favorites.length >= FAVORITE_LIMIT) { status.textContent = 'お気に入りは6件までです。登録済みの星を押して外してから追加してください。'; return false; }
       favorites = pinned ? favorites.filter(value => value !== key) : [...favorites, key];
-      const stored = persistPreferences(); renderResults();
+      const stored = persistPreferences(); renderResults(); renderFavoritesRail();
       status.textContent = entry.label + 'をお気に入り' + (pinned ? 'から外しました。' : 'に追加しました。') + (stored ? '' : ' この起動中のみ有効です。端末に保存できませんでした。');
       return true;
     }
     function clearRecent() {
       if (!initialized || unavailable()) return false;
-      recent = []; const stored = persistPreferences(); renderResults();
+      recent = []; const stored = persistPreferences(); renderResults(); renderFavoritesRail();
       status.textContent = '最近開いた機能の履歴を消去しました。' + (stored ? '' : ' 端末への保存はできませんでした。');
       return true;
     }
@@ -4699,6 +4734,7 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
     function refresh() {
       frame = 0; if (!initialized) return;
       entries = collect();
+      renderFavoritesRail();
       for (const [key, button] of quickButtons) {
         if (key === 'menu') continue;
         const entry = entries.find(entry => entry.key === key);
@@ -4744,11 +4780,24 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
       close(false); initialized = false; pendingNavigation = null; if (frame) caf?.(frame); frame = 0;
       for (const observer of observers) observer.disconnect();
       for (const remove of removers.splice(0)) remove();
-      root.classList.remove('sengoku-navigation-ready'); trigger.remove(); dock.remove(); dialog.remove();
+      root.classList.remove('sengoku-navigation-ready'); trigger.remove(); favoritesRail.remove(); dock.remove(); dialog.remove();
     }
     listen(trigger, 'click', () => open(trigger));
+    listen(favoritesRail, 'click', event => {
+      const button = event.target.closest('[data-navigation-favorite]');
+      if (button && !button.disabled) {
+        const key = button.getAttribute('data-navigation-favorite');
+        if (button.tagName === 'A') remember(key); else activate(key);
+      } else if (event.target.closest('[data-navigation-edit-favorites]')) open(event.target.closest('[data-navigation-edit-favorites]'));
+    });
+    listen(dialog, 'pointerdown', event => { backdropPointer = event.target === dialog; });
     listen(dock, 'click', event => { const button = event.target.closest('[data-navigation-quick]'); if (!button || button.disabled) return; const key = button.getAttribute('data-navigation-quick'); if (key === 'menu') open(button); else activate(key); });
     listen(dialog, 'click', event => {
+      if (event.target === dialog && backdropPointer) {
+        const rect = dialog.getBoundingClientRect();
+        if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) close();
+      }
+      backdropPointer = false;
       const pin = event.target.closest('[data-navigation-pin]');
       if (pin) { toggleFavorite(pin.getAttribute('data-navigation-pin')); return; }
       const target = event.target.closest('[data-navigation-target]');
@@ -4770,6 +4819,24 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
       returnFocus = null;
     });
     listen(search, 'input', () => renderResults(true));
+    // Search results support keyboard travel without changing the native Tab order.
+    listen(dialog, 'keydown', event => {
+      if (!dialog.open || event.isComposing || event.ctrlKey || event.metaKey || event.altKey) return;
+      const keys = ['ArrowDown', 'ArrowUp', 'Home', 'End'];
+      const active = doc.activeElement;
+      if (!keys.includes(event.key) || (active !== search && !active?.hasAttribute?.('data-navigation-target') && !active?.hasAttribute?.('data-navigation-help'))) return;
+      if (active === search && !['ArrowDown', 'ArrowUp'].includes(event.key)) return;
+      const targets = [...results.querySelectorAll('[data-navigation-target], [data-navigation-help]')].filter(node => !node.disabled);
+      if (!targets.length) return;
+      event.preventDefault();
+      let index = targets.indexOf(active);
+      if (event.key === 'Home') index = 0;
+      else if (event.key === 'End') index = targets.length - 1;
+      else if (active === search) index = event.key === 'ArrowDown' ? 0 : targets.length - 1;
+      else index = Math.max(0, Math.min(targets.length - 1, index + (event.key === 'ArrowDown' ? 1 : -1)));
+      targets[index].focus({ preventScroll: true });
+      targets[index].scrollIntoView?.({ block: 'nearest' });
+    });
     listen(category, 'change', () => renderResults(true));
     for (const event of ['wheel', 'touchmove', 'pointerdown']) listen(doc, event, cancelPendingNavigation, { capture: true, passive: true });
     listen(doc, 'keydown', event => { if (!['Shift', 'Control', 'Alt', 'Meta'].includes(event.key)) cancelPendingNavigation(); }, { capture: true });
@@ -4784,7 +4851,7 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
     });
     listen(win, 'resize', schedule, { passive: true });
     listen(win, 'pageshow', schedule);
-    nav.parentElement.insertBefore(trigger, nav); bottom.appendChild(dock); doc.body.appendChild(dialog);
+    nav.parentElement.insertBefore(trigger, nav); nav.parentElement.insertBefore(favoritesRail, nav); bottom.appendChild(dock); doc.body.appendChild(dialog);
     initialized = true; refresh(); root.classList.add('sengoku-navigation-ready');
     if (win.MutationObserver) {
       const navigationObserver = new win.MutationObserver(schedule);

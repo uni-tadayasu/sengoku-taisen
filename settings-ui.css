@@ -1,0 +1,90 @@
+/* Settings are grouped by intent. The default section exposes audio immediately. */
+.settings-hub { display: grid; gap: 12px; min-width: 0; }
+.settings-group { margin: 0; border: 1px solid #a7895659; border-radius: 8px; background: #101e2b; overflow: hidden; }
+.settings-group > summary { display: flex; align-items: center; gap: 14px; min-height: 76px; padding: 16px 18px; list-style: none; cursor: pointer; color: #f3e7cf; background: linear-gradient(115deg,#263643,#182734); }
+.settings-group > summary::-webkit-details-marker { display: none; }
+.settings-group > summary > .icon { width: 24px; height: 24px; flex: none; color: #e5be7a; }
+.settings-group > summary > span:not(.settings-disclosure) { display: grid; gap: 4px; min-width: 0; flex: 1; }
+.settings-group > summary strong { font-size: 1.08rem; font-family: var(--serif); letter-spacing: .045em; }
+.settings-group > summary small { font-size: .875rem; line-height: 1.5; color: #c6cbd0; }
+.settings-disclosure { width: 9px; height: 9px; border-right: 1.5px solid #dfbd82; border-bottom: 1.5px solid #dfbd82; transform: rotate(45deg); margin: -5px 5px 0 0; flex: none; }
+.settings-group[open] > summary { border-bottom: 1px solid #a7895659; background: linear-gradient(115deg,#354352,#243540); }
+.settings-group[open] .settings-disclosure { transform: rotate(225deg); margin-top: 5px; }
+.settings-group > summary:hover { filter: brightness(1.08); }
+.settings-group > summary:focus-visible, .settings-secondary > summary:focus-visible { outline: 2px solid #f3ca7c; outline-offset: -3px; }
+.settings-group-body { padding: 18px; }
+.settings-hub .settings-stack { display: grid; gap: 9px; margin: 0; }
+.settings-hub .settings-action { display: flex; align-items: center; justify-content: flex-start; text-align: left; gap: 12px; width: 100%; min-height: 70px; padding: 12px 14px; background: #1d2d3c; border: 1px solid #ad946442; border-radius: 5px; box-shadow: none; }
+.settings-action > .icon { width: 21px; height: 21px; flex: none; color: #ddba7f; }
+.settings-action > span { min-width: 0; display: grid; gap: 5px; }
+.settings-action strong { font-size: .95rem; font-weight: 650; line-height: 1.45; }
+.settings-action small { display: block; color: #c6cdd2; font-size: .875rem; line-height: 1.55; font-weight: 400; }
+.settings-hub .settings-row { gap: 15px; min-height: 54px; margin: 0; padding: 10px 0; }
+.settings-hub .settings-row label { font-size: .94rem; }
+.settings-audio-row > div { display: grid; gap: 5px; }
+.settings-audio-row small { color: #c5cbd0; font-size: .85rem; line-height: 1.5; }
+.settings-hub .settings-volume { display: grid; grid-template-columns: auto minmax(0,1fr) 4ch; gap: 18px; }
+.settings-volume input[type="range"] { min-width: 0; width: 100%; height: 44px; margin: 0; accent-color: #e7bd75; cursor: pointer; }
+.settings-volume output { font-variant-numeric: tabular-nums; color: #f2d3a0; font-size: .9rem; text-align: end; }
+.settings-explanation { margin: 10px 0 16px; color: #bdc8cd; font-size: .875rem; line-height: 1.8; }
+.settings-hub .presentation-settings { margin: 18px 0 4px; border-radius: 5px; background: #21313d; padding: 14px; }
+.settings-hub .presentation-settings p { font-size: .875rem; }
+.settings-hub .settings-secondary { margin-top: 16px; border-top: 1px solid #9b85534d; }
+.settings-secondary > summary { padding: 16px 3px; cursor: pointer; font-size: .92rem; color: #e0c28d; }
+.settings-new-campaign { margin-top: 14px; padding: 14px; border: 1px solid #c779694f; border-radius: 5px; background: #472e2e36; }
+.settings-new-campaign p { margin: 0 0 12px; font-size: .875rem; line-height: 1.8; color: #e2cbc2; }
+@media (max-width: 600px) {
+  .settings-group > summary { padding: 14px; gap: 11px; min-height: 72px; }
+  .settings-group-body { padding: 14px; }
+  .settings-hub .settings-volume { gap: 10px; }
+  .settings-hub .settings-action { padding: 12px; }
+  .settings-hub .settings-row .select { max-width: 58%; }
+}
+@media (forced-colors: active) {
+  .settings-group, .settings-hub .settings-action { border-color: ButtonText; background: Canvas; }
+  .settings-group > summary, .settings-group[open] > summary { color: CanvasText; background: Canvas; }
+  .settings-disclosure { border-color: ButtonText; }
+  .settings-action small, .settings-group > summary small, .settings-explanation { color: CanvasText; }
+}
+
+/* Keep disclosure groups distinct from the game's painted action buttons. */
+#modal .settings-hub .settings-group > summary {
+  background-image: linear-gradient(115deg,#263643,#182734) !important;
+  color: #f3e7cf;
+}
+#modal .settings-hub .settings-group[open] > summary {
+  background-image: linear-gradient(115deg,#354352,#243540) !important;
+}
+#modal .settings-hub .settings-secondary > summary {
+  background-image: none !important; background-color: transparent;
+}
+#modal .settings-hub .settings-stack { grid-template-columns: minmax(0,1fr); }
+#modal .settings-hub .settings-action { min-width: 0; color: #f1e8d7; }
+#modal .settings-hub .settings-action > span { overflow-wrap: anywhere; }
+#modal .settings-hub .settings-action small { margin-top: 0; }
+#modal .settings-hub .settings-audio-row > div { flex: 1; min-width: 0; }
+#modal .settings-hub .settings-audio-row > button { flex: none; }
+#modal .settings-hub .settings-volume input[type="range"] { width: 100%; max-width: 100%; }
+#modal .settings-hub .settings-volume output { min-width: 4ch; }
+@media (min-width:760px) {
+  #modal .settings-hub .settings-stack { grid-template-columns: repeat(2,minmax(0,1fr)); }
+}
+@media (max-width:400px) {
+  #modal .settings-hub .settings-group > summary { gap: 9px; padding: 12px; }
+  #modal .settings-hub .settings-group > summary > .icon { width: 20px; height: 20px; }
+  #modal .settings-hub .settings-group > summary strong { font-size: 1rem; }
+  #modal .settings-hub .settings-group-body { padding: 12px; }
+  #modal .settings-hub .settings-volume { gap: 8px; }
+  #modal .settings-hub .settings-audio-row { flex-wrap: wrap; gap: 10px; }
+  #modal .settings-hub .settings-audio-row > div { flex-basis: 110px; }
+  #modal .settings-hub .presentation-setting-row { gap: 10px; }
+}
+@media (max-height:540px) {
+  #modal .settings-hub .settings-group > summary { min-height: 62px; padding-block: 10px; }
+  #modal .settings-hub .settings-group-body { padding-block: 12px; }
+}
+@media (forced-colors:active) {
+  #modal .settings-hub .settings-group > summary,
+  #modal .settings-hub .settings-group[open] > summary { background-image: none !important; background-color: Canvas; color: CanvasText; }
+  #modal .settings-hub .settings-action { color: ButtonText; }
+}
