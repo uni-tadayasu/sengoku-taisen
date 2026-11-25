@@ -350,6 +350,10 @@ body:not(.at-title) .navigation-entry-row { border-radius: 7px; border-color: #9
 body:not(.at-title) .navigation-entry-row:has(.is-current) { border-color: #d1ac6f94; background: #293b3c; }
 body:not(.at-title) .navigation-dialog .navigation-entry-icon { border-radius: 5px; background: #253e4d; border-color: #b5a16f52; }
 body:not(.at-title) .navigation-dialog .navigation-entry-copy small { color: #bacbd2; }
+body:not(.at-title) .navigation-dialog :is(.navigation-entry,.navigation-pin):focus-visible {
+  /* Each row clips its rounded corners; keep the full keyboard ring inside. */
+  outline: 2px solid #f4ce88; outline-offset: -3px;
+}
 body:not(.at-title) .navigation-close { border-radius: 6px; }
 body:not(.at-title) :is(.social-header,.social-tabs) { background-color: #142a38; }
 body:not(.at-title) :is(.social-card,.social-staff-card,.events-card,.progress-card,.branch-card) { border-radius: 7px; }
@@ -512,6 +516,13 @@ body:not(.at-title) :is(.social-card,.social-staff-card,.events-card,.progress-c
 #app.chronicle-shell #main .town-console-nav .icon { width: 16px; height: 16px; flex: none; color: #dfbd82; }
 html.sengoku-desktop-fit #app.chronicle-shell #main .town-console-nav {
   position: sticky; top: 0; z-index: 4; flex: none;
+  min-height: var(--town-console-nav-height,54px);
+}
+html.sengoku-desktop-fit #app.chronicle-shell #main .town-console {
+  /* 40px buttons + 12px padding + 2px border. The rem term also covers
+     enlarged browser text; native focus scrolling clears the sticky nav. */
+  --town-console-nav-height: max(54px,calc(1.225rem + 30px));
+  scroll-padding-top: calc(var(--town-console-nav-height) + 12px);
 }
 html:not(.sengoku-desktop-fit) #app.chronicle-shell #main .town-console-nav {
   position: static; order: -1; margin-bottom: 12px; box-shadow: none;
@@ -528,4 +539,37 @@ html:not(.sengoku-desktop-fit) #app.chronicle-shell #main .town-console-nav > bu
   #app.chronicle-shell #main .town-console-nav { background: Canvas; border-color: CanvasText; }
   #app.chronicle-shell #main .town-console-nav > button { color: ButtonText; background: ButtonFace; border-color: ButtonText; }
   #app.chronicle-shell #main .town-console-nav .icon { color: ButtonText; }
+}
+
+/* Supporting management stays below the facility catalog in clear disclosures. */
+#app.chronicle-shell #main .facility-ledger-support {
+  display: grid; gap: 10px; min-width: 0; margin-top: 22px; padding-top: 16px;
+  border-top: 1px solid #ab91614f;
+}
+#app.chronicle-shell #main .facility-ledger-support > .facility-support-details {
+  min-width: 0; margin: 0; border: 1px solid #9baa9f4d; border-radius: 7px;
+  background: #132633; overflow: hidden;
+}
+#app.chronicle-shell #main .facility-support-details > summary {
+  display: list-item; min-height: 48px; padding: 12px 15px;
+  color: #e8d4ac; background: #203643; background-image: none !important;
+  font-size: .9375rem; font-weight: 600; line-height: 1.5; cursor: pointer;
+}
+#app.chronicle-shell #main .facility-support-details > summary::marker { color: #d9b477; }
+#app.chronicle-shell #main .facility-support-details[open] > summary { border-bottom: 1px solid #ab946248; }
+#app.chronicle-shell #main .facility-support-details > summary:focus-visible {
+  outline: 2px solid #f4ce88; outline-offset: -3px;
+}
+#app.chronicle-shell #main .facility-support-details > :is(.economy-panel,.governor-assignment-panel,.staff-base-notice) {
+  margin: 0; padding: 14px; border: 0; border-radius: 0; background: transparent; box-shadow: none;
+}
+#app.chronicle-shell #main .facility-support-details > .notice { margin: 12px 14px 14px; }
+#app.chronicle-shell #main .facility-support-details > .economy-panel > .panel-heading { margin-top: 0; }
+@media (max-width:400px) {
+  #app.chronicle-shell #main .facility-support-details > summary { padding-inline: 12px; }
+  #app.chronicle-shell #main .facility-support-details > :is(.economy-panel,.governor-assignment-panel,.staff-base-notice) { padding: 12px; }
+}
+@media (forced-colors:active) {
+  #app.chronicle-shell #main .facility-ledger-support > .facility-support-details { border-color: CanvasText; background: Canvas; }
+  #app.chronicle-shell #main .facility-support-details > summary { color: CanvasText; background: Canvas; }
 }
