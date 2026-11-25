@@ -9,28 +9,31 @@
     return;
   }
   const audio=$('audio'),picker=$('track'),range=$('excerpt'),button=$('render');
-  const scenes={town:'城下町',world:'天下地図',officers:'武将',chronicle:'軍議',army:'軍団',research:'研究',battle:'合戦',victory:'勝利',defeat:'敗戦',menu:'天下統一'};
+  const scenes={title:'トップメニュー・本拠選択',morning:'朝 05:00〜11:59',day:'昼 12:00〜17:59',night:'夜 18:00〜翌04:59',town:'城下町',world:'天下地図',officers:'武将',chronicle:'軍議',army:'軍団',research:'研究',battle:'合戦',victory:'勝利',defeat:'敗戦',menu:'天下統一'};
   let track,from=0,to=0,request=0,stopTimer=0,ready=false,recordingStats=null,statsRequest=null;
   let wavURL=null,writingWav=false,selection=0;
   const Offline=window.OfflineAudioContext||window.webkitOfflineAudioContext;
-  const clock=t=>Math.floor(t/60)+':'+String(Math.round(t)%60).padStart(2,'0');
+  const clock=t=>Math.floor(Math.round(t)/60)+':'+String(Math.round(t)%60).padStart(2,'0');
   for(const item of tracks){
     const option=document.createElement('option');option.value=item.id;option.textContent=item.name;picker.append(option);
   }
-  audio.volume=.30;picker.value='battle-storm';
+  audio.volume=.30;picker.value='shitaku';
 
   function metrics(){
     const row=recordingStats?.[track.id];
-    const lines=[track.name,'44.1 kHz・ステレオ・MP3 / 112 kbps','収録時間 '+clock(track.durationSeconds)];
-    if(row)lines.push('統合ラウドネス '+row.lufs.toFixed(1)+' LUFS','トゥルーピーク '+row.truePeakDb.toFixed(1)+' dBTP');
+    const lines=[track.name,track.recordingOnly?'48 kHz・ステレオ・MP3（提供音源）':'44.1 kHz・ステレオ・MP3 / 112 kbps','収録時間 '+clock(track.durationSeconds)];
+    if(Number.isFinite(row?.lufs))lines.push('統合ラウドネス '+row.lufs.toFixed(1)+' LUFS');
+    if(Number.isFinite(row?.truePeakDb))lines.push('トゥルーピーク '+row.truePeakDb.toFixed(1)+' dBTP');
+    if(Number.isFinite(row?.samplePeakDbfs))lines.push('サンプルピーク '+row.samplePeakDbfs.toFixed(1)+' dBFS');
     $('metrics').textContent=lines.join('\n');
   }
   document.querySelector('details').addEventListener('toggle',async event=>{
     if(!event.currentTarget.open||recordingStats||!window.fetch)return;
-    if(!statsRequest)statsRequest=fetch('../assets/music/masters.json?v=4.9.10-20261123')
-      .then(response=>response.ok?response.json():null).catch(()=>null);
-    const manifest=await statsRequest;
-    recordingStats=manifest?.tracks||null;
+    if(!statsRequest)statsRequest=Promise.all([
+      '../assets/music/masters.json?v=4.9.10-20261123','../assets/music/daypart-masters.json'
+    ].map(path=>fetch(path).then(response=>response.ok?response.json():null).catch(()=>null)));
+    const manifests=await statsRequest;
+    recordingStats=Object.assign({},...manifests.map(manifest=>manifest?.tracks||{}));
     metrics();
   });
   function select(){
@@ -44,8 +47,11 @@
     track=tracks.find(item=>item.id===picker.value);
     const excerpt=window.SengokuMusic.inspect(track.id).sections.find(section=>section.id==='climax');
     const secondsPerBar=track.beatsPerBar*60/track.tempo;
-    from=range.value==='full'?0:excerpt.startBar*secondsPerBar;
-    to=range.value==='full'?track.duration:excerpt.endBar*secondsPerBar;
+    const full=range.value==='full';
+    from=full||track.recordingOnly?0:excerpt.startBar*secondsPerBar;
+    to=full?track.duration:track.recordingOnly?Math.min(30,track.duration):excerpt.endBar*secondsPerBar;
+    const excerptOption=range.querySelector('option[value="climax"]')||range.querySelector('option:not([value="full"])');
+    if(excerptOption)excerptOption.textContent=track.recordingOnly?'冒頭30秒':'聴きどころ';
     $('track-name').textContent=track.name;$('track-description').textContent=track.description;
     $('track-meta').textContent=scenes[track.scene]+'　·　曲の長さ '+clock(track.durationSeconds);
     $('status').textContent='';$('progress').hidden=true;
@@ -59,14 +65,14 @@
     if(seconds>.025)stopTimer=setTimeout(stopExcerpt,1000*seconds/Math.max(.25,audio.playbackRate));
     else{
       audio.pause();audio.currentTime=from;
-      $('status').textContent='聴きどころの再生が終わりました。';
+      $('status').textContent=(track.recordingOnly?'冒頭30秒':'聴きどころ')+'の再生が終わりました。';
     }
   }
   for(const control of [picker,range])control.addEventListener('change',select);
   audio.addEventListener('loadedmetadata',()=>{
     if(!audio.getAttribute('src'))return;
     audio.currentTime=from;ready=true;audio.hidden=false;button.hidden=true;
-    $('progress').hidden=true;$('status').textContent=track.name+'　'+(range.value==='full'?'曲の全編':'聴きどころ');
+    $('progress').hidden=true;$('status').textContent=track.name+'　'+(range.value==='full'?'曲の全編':track.recordingOnly?'冒頭30秒':'聴きどころ');
   });
   audio.addEventListener('error',()=>{
     if(!audio.getAttribute('src'))return;
@@ -101,7 +107,7 @@
     try{
       const response=await fetch('../'+track.recording);
       if(!response.ok)throw Error('Audio unavailable');
-      const decoder=new Offline(2,1,44100),buffer=await decoder.decodeAudioData(await response.arrayBuffer());
+      const decoder=new Offline(2,1,track.sampleRate||44100),buffer=await decoder.decodeAudioData(await response.arrayBuffer());
       if(selected!==selection)return;
       const first=Math.round(from*buffer.sampleRate),last=Math.min(buffer.length,Math.round(to*buffer.sampleRate));
       const channels=buffer.numberOfChannels,size=(last-first)*channels*2,view=new DataView(new ArrayBuffer(44+size));

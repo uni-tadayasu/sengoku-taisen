@@ -1,0 +1,78 @@
+name: Check game music
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/music.yml'
+      - 'music.js'
+      - 'app.js'
+      - 'boot.js'
+      - '*.bundle.js'
+      - 'index.html'
+      - 'sw.js'
+      - 'assets/music/**'
+      - 'tools/music-audition.*'
+      - 'tools/render-soundtrack.py'
+      - 'tools/build-game-entry.cjs'
+      - 'tools/game-entry.json'
+      - 'tests/*music*'
+      - 'tests/test-supplied-recordings.cjs'
+      - 'tests/test-settings-usability.cjs'
+      - 'tests/test-title-entry.cjs'
+      - 'tests/helpers/**'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/music.yml'
+      - 'music.js'
+      - 'app.js'
+      - 'boot.js'
+      - '*.bundle.js'
+      - 'index.html'
+      - 'sw.js'
+      - 'assets/music/**'
+      - 'tools/music-audition.*'
+      - 'tools/render-soundtrack.py'
+      - 'tools/build-game-entry.cjs'
+      - 'tools/game-entry.json'
+      - 'tests/*music*'
+      - 'tests/test-supplied-recordings.cjs'
+      - 'tests/test-settings-usability.cjs'
+      - 'tests/test-title-entry.cjs'
+      - 'tests/helpers/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: game-music-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  playback:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: '22'
+      - name: Check game entry and audition syntax
+        run: |
+          node tools/build-game-entry.cjs --check
+          node --check tools/music-audition.js
+      - name: Check supplied recordings against the verified originals
+        run: node tests/test-supplied-recordings.cjs
+      - name: Check original scores and playback lifecycle
+        run: node tests/test-music.mjs
+      - name: Check menu and time-of-day selection
+        run: node tests/test-music-time-of-day.mjs
+      - name: Check music preferences and save boundaries
+        run: |
+          node tests/test-settings-usability.cjs
+          node tests/test-title-entry.cjs
+      - name: Check partial and offline audio delivery
+        run: node tests/test-music-cache.cjs

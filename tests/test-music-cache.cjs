@@ -7,9 +7,14 @@ const origin = 'https://game.example';
 const source = fs.readFileSync(path.join(__dirname,'../sw.js'),'utf8');
 const release = source.match(/const RELEASE='([^']+)'/)[1];
 const track = origin + '/game/assets/music/town-dawn.mp3?v=' + release;
+const catalog = {};
+vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../music.js'),'utf8'),catalog);
+const supplied = ['shitaku','asakatsu','hirukatsu','yorukatsu'].map(id=>{
+  const entry=catalog.SENGOKU_MUSIC_TRACKS.find(item=>item.id===id);assert(entry,id+' exists in the real player catalogue');return entry;
+});
 const body = Uint8Array.from([12,21,33,46,57,62,74,84]);
 const cache = new Map(), events = {};
-let offline = false, policy = '', calls = 0;
+let offline = false, policy = '', calls = 0, expectedTrack = track;
 const scope = origin + '/game/';
 const cacheAPI = {
   match:async key=>cache.get(typeof key==='string'?key:key.url)?.clone(),
@@ -20,7 +25,7 @@ vm.runInNewContext(source,{
   URL,Headers,Request,Response,caches:{open:async()=>cacheAPI},
   fetch:async request=>{
     calls++;
-    assert.equal(request.url,track);
+    assert.equal(request.url,expectedTrack);
     assert.equal(request.headers.get('Range'),null);
     if(offline)throw Error('offline');
     const response = new Response(body,{headers:{'Content-Type':'audio/mpeg','Cache-Control':policy}});
@@ -55,5 +60,22 @@ function dispatch(url, headers={}) {
   assert.equal(calls,1);
   cache.clear();policy='private, no-store';offline=false;
   assert.equal((await dispatch(track,{Range:'bytes=0-2'})).status,206);assert.equal(cache.size,0);
+  // Exercise the exact URLs the player requests, not URLs manufactured from
+  // RELEASE: a mismatched catalogue query used to bypass this entire route.
+  for(const entry of supplied){
+    expectedTrack=new URL(entry.recording,scope).href;
+    assert.equal(new URL(expectedTrack).search,'','release cache, not a stale fixed query, versions supplied recordings');
+    cache.clear();offline=false;policy='';calls=0;
+    const initial=dispatch(expectedTrack,{Range:'bytes=0-2'}),concurrent=dispatch(expectedTrack,{Range:'bytes=3-'});
+    assert(initial&&concurrent,entry.id+' is handled by the service worker');
+    const [start,end]=await Promise.all([initial,concurrent]);assert.equal(calls,1,entry.id+' downloads once');assert(cache.has(expectedTrack));
+    assert.equal(start.status,206);assert.equal(start.headers.get('Content-Type'),'audio/mpeg');assert.equal(start.headers.get('Content-Range'),'bytes 0-2/8');
+    assert.deepEqual([...new Uint8Array(await start.arrayBuffer())],[12,21,33]);assert.deepEqual([...new Uint8Array(await end.arrayBuffer())],[46,57,62,74,84]);
+    offline=true;
+    const complete=await dispatch(expectedTrack),seek=await dispatch(expectedTrack,{Range:'bytes=-2'});
+    assert.equal(complete.status,200);assert.deepEqual([...new Uint8Array(await complete.arrayBuffer())],[...body]);
+    assert.equal(seek.status,206);assert.deepEqual([...new Uint8Array(await seek.arrayBuffer())],[74,84]);assert.equal(calls,1,entry.id+' plays and seeks from cache offline');
+  }
   console.log('PASS complete and partial BGM playback, one download, offline seeking, bounded ranges and private response bypass.');
+  console.log('PASS all four supplied recording URLs use the same cache/range route and remain independent of release query values.');
 })().catch(error=>{console.error(error);process.exitCode=1;});

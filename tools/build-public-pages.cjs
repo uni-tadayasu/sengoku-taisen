@@ -508,7 +508,11 @@ function guideContent(p) {
       <h3>PCの表示領域は調節できますか？</h3><p>城下町は、左側に天守から手前の町並みまで全景を表示し、右側に施設の操作や進行状況をまとめています。左メニューの「領域を調整」を押すと、金色の境界をドラッグしてメニュー幅、上部の高さ、城下町・天下地図・共通フィールドの幅配分と表示高さを変えられます。境界を選んで矢印キーでも調整でき、「初期配置」で元に戻せます。配置はそのブラウザに保存されます。</p>
       <h3>画面の動きを控えめにできますか？</h3><p>ボタンやカードには、カーソルを合わせたときやクリック・タップしたときの反応があります。端末やブラウザの「動きを減らす」設定を有効にすると、位置移動・拡縮・波紋などを自動で抑え、色や枠線で操作状態を示します。</p>
       <h3>ほかのプレイヤーと、すべての城を奪い合いますか？</h3><p>天下地図の領国と戦役はプレイヤーごとのCPU戦です。共通フィールドでは、実際の領主が持つ二条城・大坂城・名古屋城を占領できます。江戸城・京都御所は占領できない報酬戦、通常本拠は領有を移さない限定襲撃です。年月・接続状況・交流は全員で共有します。</p>
-      <h3 id="music">音楽はどこで変更できますか？</h3><p>「保存・設定」の<strong>「音・表示」</strong>でBGMの「停止中 · 再生」を押し、音量を調整します。現在の音量はスライダー横に数値で表示します。<strong>「音楽帳で曲を選ぶ」</strong>で全16曲から好きな曲を選べます。元に戻すには「場面に合わせて自動選曲」を押してください。ゲームを始める前に<a href="${p.file('tools/music-audition.html')}">戦国の音楽帳で16曲を試聴</a>することもできます。</p><h3>スマホのマナーモード中も音を鳴らせますか？</h3><p>最初に再生ボタンをタップすると、対応するスマホ・タブレットではメディア再生としてBGMを鳴らします。端末のメディア音量を上げてください。ゲーム内で停止した音や音量0を勝手に解除することはありません。端末・ブラウザの再生制限によって音が出ない場合があります。</p></div>
+      <h3 id="music">音楽はどこで変更できますか？</h3><p>初期設定は<strong>BGMオン・音量10%</strong>で、サイトを開くと自動再生を試みます。ブラウザの自動再生制限がある場合は、最初のタップやクリックで始まります。「保存・設定」の<strong>「音・表示」</strong>で再生・停止と音量を調整でき、現在の音量はスライダー横に数値で表示します。<strong>「音楽帳で曲を選ぶ」</strong>では、提供音源の「支度」「朝活」「昼活」「夜活」と既存のオリジナルBGM16曲を合わせた<strong>全20曲</strong>から選べます。</p>
+      <p><strong>「時間帯に合わせて自動選曲」</strong>を押すと自動モードへ戻ります。ゲーム開始前のトップメニューと本拠の選択中は、時刻にかかわらず<strong>「支度」</strong>が流れます。本拠を確定してゲームに入ると、端末に設定された現地時刻に合わせて次の曲へ切り替わります。</p>
+      ${table('ゲーム内の時間帯とBGM', ['端末の時刻', '自動で流れる曲'], [['05:00〜12:00', '朝活'], ['12:00〜18:00', '昼活'], ['18:00〜翌05:00', '夜活']])}
+      <p>ゲーム内の1560年から進む暦とは独立しています。同じ時間帯ではゲーム内の画面を移動しても曲の続きを再生します。手動で選んだ曲は画面や時間帯が変わっても維持し、音量・停止・ミュートの設定も保ちます。ゲームを始める前に<a href="${p.file('tools/music-audition.html')}">戦国の音楽帳で20曲を試聴</a>することもできます。</p>
+      <h3>スマホのマナーモード中も音を鳴らせますか？</h3><p>対応するスマホ・タブレットではメディア再生としてBGMを鳴らします。自動再生が制限されている場合は、最初に画面をタップしてください。端末のメディア音量も確認してください。利用者が後から選んだ停止や音量0は保存して尊重します。端末・ブラウザの再生制限によって音が出ない場合があります。</p></div>
       <a class="chapter-link" href="${p.dir('about')}">作品の収録内容・地図や家紋の出典を読む</a>
     `)
   ].join('\n');
@@ -830,7 +834,8 @@ outputs.set('image-sitemap.xml', '<?xml version="1.0" encoding="UTF-8"?>\n' +
   imageEntries.join('\n') + '\n</urlset>\n');
 const auditionPaths = paths('tools/music-audition.html');
 const auditionHtml = fs.readFileSync(path.join(root, 'tools/music-audition.html'), 'utf8')
-  .replace(/(<a\b[^>]*class="brand"[^>]*><img\s+src=")[^"]+("[^>]*>)/, (_, before, after) => before + auditionPaths.file(site.favicon.path) + after);
+  .replace(/(<a\b[^>]*class="brand"[^>]*><img\s+src=")[^"]+("[^>]*>)/, (_, before, after) => before + auditionPaths.file(site.favicon.path) + after)
+  .replace(/(<script\b[^>]*\bsrc=")(\.\.\/music\.js|music-audition\.js)(?:\?[^"]*)?("[^>]*>)/g, (_, before, source, after) => `${before}${source}?v=${esc(release)}${after}`);
 outputs.set('tools/music-audition.html', withBrandLinks(auditionHtml, auditionPaths.file));
 const securePage = pageSecurity(fs.readFileSync(path.join(root, 'config.js'), 'utf8'));
 for (const [name, html] of outputs) {

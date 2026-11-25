@@ -3837,6 +3837,7 @@ function enter(){
  document.body.classList.remove('at-title');
  title.hidden=true;global.SENGOKU_AT_TITLE=false;
  setSkipTarget(false);
+ global.SengokuBridge?.syncMusic?.();
  global.SengokuBridge?.renderGameplay?.();
  document.getElementById('main')?.focus({preventScroll:true});
  global.SengokuBridge?.openStartSelection?.();
@@ -3860,7 +3861,7 @@ function updateTitleAction(){
  }
  enterButton.disabled=false;
 }
-function home(){artworkGeneration++;const status=document.getElementById('art-load-status');if(status)status.hidden=true;setSkipTarget(true);global.SENGOKU_AT_TITLE=true;started=false;document.body.classList.add('at-title');document.getElementById('app').inert=true;document.getElementById('app').setAttribute('aria-hidden','true');title.hidden=false;updateTitleAction();enterButton.focus({preventScroll:true});}
+function home(){artworkGeneration++;const status=document.getElementById('art-load-status');if(status)status.hidden=true;setSkipTarget(true);global.SENGOKU_AT_TITLE=true;started=false;document.body.classList.add('at-title');document.getElementById('app').inert=true;document.getElementById('app').setAttribute('aria-hidden','true');title.hidden=false;updateTitleAction();global.SengokuBridge?.syncMusic?.();enterButton.focus({preventScroll:true});}
 function init(){title=document.getElementById('launch-screen');enterButton=document.getElementById('launch-enter');overlay=document.getElementById('game-loading');overlay.addEventListener('cancel',e=>e.preventDefault());
  // Only the named start button enters the game. Touching artwork or the
  // continuation summary must not accidentally start a campaign.
@@ -3870,6 +3871,7 @@ function init(){title=document.getElementById('launch-screen');enterButton=docum
  // The artwork loads independently. A slow illustration must never delay entry.
  updateTitleAction();
  global.SengokuArt?.decorate();refresh();
+ void global.SengokuBridge?.startMusic?.();
 }
 function reportedRelease(worker){
  return new Promise(resolve=>{
