@@ -5,6 +5,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const renderSharePage = require('./share-page.cjs');
+const renderAboutContent = require('./about-content.cjs');
 const { pageSecurity } = require('./page-security.cjs');
 const renderPremiumPage = require('./premium-page.cjs');
 const root = path.resolve(__dirname, '..');
@@ -67,15 +68,17 @@ const metaTag = ([attribute, name, value]) => `<meta ${attribute}="${esc(name)}"
 // Keep brand URLs stable between game releases; use a new pathname when the
 // artwork changes so browser/SNS image caches can fetch the new identity.
 function brandLinks(resolve) {
-  return [site.faviconIco, site.faviconSmall, site.favicon].map(icon =>
+  const links = [site.faviconIco, site.faviconSmall, site.favicon, site.faviconSvg].filter(Boolean).map(icon =>
     `<link rel="icon" href="${esc(resolve(icon.path))}" sizes="${esc(icon.sizes)}" type="${esc(icon.type)}">`
   ).concat(`<link rel="apple-touch-icon" href="${esc(resolve(site.appleTouchIcon.path))}" sizes="${esc(site.appleTouchIcon.sizes)}">`);
+  if (site.maskIcon) links.push(`<link rel="mask-icon" href="${esc(resolve(site.maskIcon.path))}" color="${esc(site.maskIcon.color)}">`);
+  return links;
 }
 
 function withBrandLinks(html, resolve = value => value) {
   return html.replace(/<head\b[^>]*>[\s\S]*?<\/head>/i, head => {
     head = head.replace(/(?:\r?\n)?[ \t]*<link\b[^>]*>/gi, tag =>
-      ['icon', 'shortcut icon', 'apple-touch-icon'].includes(tagAttributes(tag).rel) ? '' : tag);
+      ['icon', 'shortcut icon', 'apple-touch-icon', 'mask-icon'].includes(tagAttributes(tag).rel) ? '' : tag);
     return head.replace('</head>', `  ${brandLinks(resolve).join('\n  ')}\n</head>`);
   });
 }
@@ -87,7 +90,7 @@ function structuredData(key, breadcrumbItems = []) {
     '@type':'WebPage', '@id':`${url}#webpage`, url, name:page.title,
     description:page.description, inLanguage:site.language, dateModified:page.dateModified,
     isPartOf:{'@id':websiteId}, publisher:{'@id':organizationId},
-    about:{'@id':gameId}, primaryImageOfPage:{'@type':'ImageObject',url:absolute(page.artwork.path),caption:page.artwork.alt}
+    about:{'@id':gameId}, primaryImageOfPage:{'@type':'ImageObject',url:absolute(page.artwork.path),contentUrl:absolute(page.artwork.path),caption:page.artwork.alt,width:page.artwork.width,height:page.artwork.height}
   };
   if (['home', 'share', 'about'].includes(key)) webPage.mainEntity = {'@id':gameId};
   const graph = [
@@ -577,87 +580,7 @@ function recoveryContent(p) {
 }
 
 function aboutContent(p) {
-  return [
-    section('world', '作品について', '戦国VSとは：一城から領国を育てるブラウザゲーム', `
-      <p class="lead-paragraph">「戦国VS」は、<strong>KASAI SOLUTIONS</strong>による戦国ブラウザゲームです。はじまりの一城を選び、城下町の施設を増築し、武将を迎えて軍団を編成。内政と戦役を進めながら、自分の領国を育てます。PC・スマートフォン・タブレットから遊べます。</p>
-      <p>年月は全プレイヤー共通で進みます。天下地図ではCPU勢力の城を攻略し、共通フィールドではほかの領主の本拠や所領を選んで、対人戦・同盟・交流を行います。同盟で資産を共有したり、領主本人や所属同盟へ書状を送ったりできます。</p>
-      <p>城攻め・支拠点・野良兵戦・対人戦・派遣部隊への反撃・同盟集結軍・共有天下統一・期間限定合戦で、軍師AIの提案を確認できます。天下地図のCPU城では、入力した方針に沿った自動進軍も利用できます。対応するスマートフォン・タブレットでは、画面を表示して歩くと、検知した歩数に応じた資産を獲得できます。領主を連携すれば、進行を端末間で自動同期できます。</p>
-      <p class="quote-line">一城の志が、天下を動かす。</p>
-      <a class="chapter-link" href="${p.dir('guide')}">戦国VSの遊び方を読む</a>
-    `),
-    section('gameplay', '城下町・武将・領主交流', '選んだ城を育て、仲間と戦記を重ねる', `
-      <h3>一城から始める内政と武将編成</h3>
-      <p>最初は、大都市拠点を除く城から本拠を一つ選びます。田畑や商業施設で資源を生産し、増築や研究、募兵へ配分します。同じ施設の次のレベルを予約すると、費用と指令を支払った順に工事が進みます。城下町では施設名と現在レベルを確認でき、天守から町並みまでの全景を見ながら操作できます。</p>
-      <p>武将は登用・招集で迎え、軍団と内政を支える奉行に配置します。人物の能力・特技・ランクを見て、戦い方や城下町の育て方を考えます。始め方と操作は、<a href="${p.dir('guide')}#first-steps">開始城と序盤の進め方</a>、<a href="${p.dir('guide')}#castle-upgrades">本拠・城郭のレベルの上げ方</a>、<a href="${p.dir('guide')}#construction">施設の連続増築</a>、<a href="${p.dir('guide')}#officers">武将と軍団の編成</a>で案内しています。</p>
-      <h3>全プレイヤー共通の年月と占領報酬</h3>
-      <p>世界時計は1560年1月から1615年12月までを繰り返します。区切りには占領拠点をリセットし、直前に保有した本拠以外の城数に応じて報酬を受け取ります。選んだ本拠の成長、武将・施設・研究・所持資源は引き継ぎます。留守中の生産や普請は、再接続時に共通時刻まで反映します。詳しくは<a href="${p.dir('guide')}#world-clock">共通時間と拠点リセットのルール</a>をご覧ください。</p>
-      <h3>同盟の資産共有と領主への書状</h3>
-      <p>領主を登録すると、世界チャット、オンラインの接続一覧、同盟などを利用できます。同盟では役職を設け、共有金庫に納めた資産をメンバーで使えます。共通フィールドの本拠からは、相手本人か所属同盟を宛先に選び、書状を送って返信できます。同盟宛ての書状は送った領主と、その同盟の現在のメンバーに共有されます。</p>
-      <p><a href="${p.dir('guide')}#community">同盟の役職・共有金庫・ランキング</a>と、<a href="${p.dir('guide')}#letters">書状の宛先・閲覧範囲</a>を確認できます。</p>
-      <h3>他国との資産の輸出・輸入</h3>
-      <p>「交流」から交易を開き、ほかの領主へ兵士・金銭・兵糧・木材・石材・勾玉の交換を申し込めます。提供する数量と受け取りたい対価を示し、相手が承認すると成立します。無償の輸出にも対応し、申出・取引履歴・対価や返還分の受け取りを端末間で共有します。詳しい流れは<a href="${p.dir('guide')}#trade">交易の案内</a>をご覧ください。</p>
-      <h3>大都市拠点からの偵察・駐留・反撃</h3><p>所持する大都市拠点から部隊を雇用し、遠方の城や接続中の領主の拠点へ派遣できます。偵察結果を自分だけの報告で確認し、部隊を駐留させて、派遣元への攻撃を受けたあとの反撃に備えます。<a href="${p.dir('guide')}#covert">派遣部隊の案内</a>で雇用から撤収までの流れを確認できます。</p>
-      <h3>野良兵士とのCPU戦</h3><p>全国129拠点の周辺へ配置された野良兵を、拡大マップから選んで対戦できます。軍団と出陣兵数、4つの戦術を組み合わせ、指令1と兵糧を使って出陣します。勝敗による兵の損失と、勝利時の資源・勾玉・威信を戦果に記録します。<a href="${p.dir('guide')}#roaming">野良兵戦の案内</a>で準備と費用を確認できます。</p><h3>京都御所への参内</h3><p>従五位以上の領主は京都御所へ出向き、談話や非公開の謁見で交流できます。<a href="${p.dir('guide')}#court">参内の条件と操作</a>を確認できます。</p><h3>共通フィールドの報酬戦と大都市の占領戦</h3>
-      <p>江戸城・京都御所は、占領せず勝利報酬を得る対人戦です。江戸城の城郭はLv.64、京都御所の城郭はLv.128まで育ちます。二条城・大坂城・名古屋城は城郭Lv.48までの占領対象で、勝利すると選んだ領主の城を自分の所領に加えます。未陥落の支拠点がある大都市は、支拠点をすべて攻略してから本拠へ出陣します。江戸は4か所・Lv.8まで、二条・大坂・名古屋は各2か所・Lv.24まで建設でき、京都御所には支拠点はありません。通常の本拠はLv.32までで、領有を移さない限定襲撃です。<a href="${p.dir('guide')}#field-battles">各城の報酬・占領・保護期間</a>を確認して出陣できます。</p>
-      <h3>勝敗と本拠移転を伝えるシステムメール</h3>
-      <p>対人戦の確定後、攻撃側と守備側の双方にゲーム内の郵便が届きます。勝敗・被攻撃・実際の戦利品や報酬、占領の結果を残し、本拠が移った場合は移転先も伝えます。次に接続したときにも未読の知らせを確認できます。閲覧の手順は<a href="${p.dir('guide')}#system-mail">システムメールの案内</a>にまとめています。</p>
-    `, 'section-community'),
-    section('strategy-and-walking', '自動進軍と端末の動き', '軍師AIとウォーキングの遊び方', `
-      <h3>すべての戦いで、準備を支える軍師AI</h3>
-      <p>軍師は現在の兵力・士気・戦況を比較し、戦法や出陣条件を提案します。変更できる戦いでは、提案を入力に反映してから内容を確認して出陣できます。部隊や戦法が固定の戦いでは、現在の強さと次に整えたい準備を案内します。</p>
-      <h3>作戦文から次の出陣を評価する軍師AI</h3>
-      <p>「兵を温存して弱い城から攻める」などの作戦文を入力すると、ゲーム内の軍師AIが城・戦法・出陣兵数を比較し、候補と予測勝率を示します。内容を確認して自動進軍を開始し、いつでも停止できます。対象は天下地図の隣接するCPU勢力の城で、保護城や同盟中の城を除きます。</p>
-      <p>自動進軍は画面を表示し、共通時間が進んでいる操作端末で動きます。敗戦、目標達成、出陣回数の上限などで停止し、画面を閉じている間の攻撃をまとめて実行することはありません。作戦文を外部の生成AIサービスへ送信しません。<a href="${p.dir('guide')}#strategy">軍師AIの使い方と停止条件</a>を確認してから始められます。</p>
-      <h3>検知した歩数に応じて五つの資産を獲得</h3>
-      <p>モーションセンサーに対応したスマートフォン・タブレットでウォーキングを開始すると、検知した<strong>1歩につき金銭・兵糧・木材・石材・勾玉をそれぞれ2</strong>獲得します。位置情報は使わず、ゲーム画面を表示している間の端末の動きから歩数を推定します。</p>
-      <p>画面ロック中や別アプリの表示中は計測できず、端末の持ち方や振動によって専用の歩数計と差が出る場合があります。世界時計の倍速で歩行報酬が増えることはありません。<a href="${p.dir('guide')}#walking">ウォーキングの開始手順と対応条件</a>に詳しくまとめています。</p>
-    `, 'section-field'),
-    section('events-and-shogunate', '合戦から天下統一へ', 'イベントの戦い一覧・毎戦報酬・幕府開設', `
-      <p>期間限定合戦は、史実をもとにした55の合戦、ゲーム内の全129城、6種類の野良兵戦を合わせた<strong>190件の戦い一覧</strong>から設計されます。開催中のイベントでは3つの戦場へ挑み、軍師が現在の軍団に合う戦術を提案します。</p>
-      <p>新しい一覧から作られたイベントでは、勝利時に金銭・兵糧・木材・石材・勾玉、敗北時にも一部の奮戦報酬を獲得できます。戦功の目標を達成すると、追加の報酬が郵便へ届きます。</p>
-      <p>関ヶ原の戦いなど天下統一の結末を持つイベントで、全3戦場の勝利と必要戦功を達成すると、幕府を開く権利が得られます。天下地図や共有天下統一の達成も対象です。「幕府の記録」から開設すると、幕府名と「征夷大将軍」の称号が記録されます。</p>
-      <p>合戦名は題材であり、敵軍や報酬、天下統一の条件はゲーム独自のルールです。開催条件と達成状況は合戦画面で確認できます。</p>
-      <a class="chapter-link" href="${p.dir('guide')}#timed-events">期間限定合戦の参加と報酬</a>
-      <a class="chapter-link" href="${p.dir('guide')}#shogunate">幕府を開く条件と手順</a>
-    `, 'section-field'),
-    section('collection', '収録内容と作品の設定', '武将・城郭・施設の収録と成長段階', `
-      <p>戦国期から近世初頭の人物と城を、年代を横断した「群雄集結」の設定で収録しています。歴史上の全武将を網羅した名簿ではなく、能力・特技・ランク・所属や勢力配置はゲーム向けの創作です。</p>
-      ${table('人物・城郭・施設の収録規模', ['対象', '種類と段階', '基本画像数'], [
-        ['武将', '256名 × 8ランク', '2,048'],
-        ['城郭', '129拠点 × Lv.1〜32', '4,128'],
-        ['施設', '64種類 × Lv.1〜32', '2,048'],
-        ['オリジナルBGM', '16曲', '—']
-      ])}
-      <div class="collection-total"><b>8,224</b><span>武将・城郭・施設の基本イラスト</span></div>
-      <p>武将はD・C・B・A・S・SS・SSS・Uの8ランクで衣装や背景が変わります。城郭と施設は、普請が進むにつれて建物や周囲の風景が変化します。</p>
-      <p>ゲーム内の施設と通常城の城郭は<strong>Lv.32</strong>まで、二条城・大坂城・名古屋城の城郭は<strong>Lv.48</strong>まで、江戸城の城郭は<strong>Lv.64</strong>まで、京都御所の城郭は<strong>Lv.128</strong>まで育成できます。城郭と施設の絵姿はそれぞれ32段階で、大都市のLv.33以降は最終形態のイラストを使います。</p>
-      <p>城下町、軍議、合戦、勝利などの場面に合わせて、箏・三味線・笛・笙・太鼓をイメージした16曲が流れます。<a href="${p.file('tools/music-audition.html')}">戦国の音楽帳</a>では、各曲の聴きどころと全編をゲームの外で試聴できます。</p>
-    `),
-    section('artwork', '城と武将のイラスト', 'ゲームの世界を描く、独自の表現。', `
-      <p>武将は和風アニメ調、城や施設は発展が伝わる建築イラストとして制作しています。衣装・兜・装飾・背景・建物の構成を描き分けた、本作用の表現です。人物の実際の容姿や、城郭の厳密な復元図を示すものではありません。</p>
-      <div class="art-feature"><figure><img src="${p.file('assets/responsive/moonlit-castle-720.webp')}" srcset="${[400,720,1080,1536].map(width => `${p.file(`assets/responsive/moonlit-castle-${width}.webp`)} ${width}w`).join(', ')}" sizes="(max-width: 650px) 90vw, (max-width: 900px) 50vw, 460px" alt="月明かりと灯籠に彩られた戦国VSの城下町" width="1536" height="1024" loading="lazy" decoding="async"><figcaption>月影の城下の完成イラスト</figcaption></figure><div><h3>一城に、あなたらしい彩りを。</h3><p>城下町の景色や領主の名札を、好きな外観に切り替えられます。金の刺繍を施した旗印、月明かりの城下町、黄金のサポーターバッジを用意しています。</p><p><a href="${p.dir('premium')}">外観コレクションと支援の案内</a>で、実際に使われるイラストを見比べられます。</p></div></div>
-      <ul class="source-list"><li><a href="${p.file('ARTWORK.md')}">イラストの構成と制作方針</a><small>画像数の数え方と、ランク・成長段階の構成。</small></li><li><a href="${p.file('SOURCES.md')}">武将の収録方針・人物資料</a><small>全国から選抜した256名と、人物・所属・能力の扱い。</small></li></ul>
-    `),
-    section('geography', '天下地図の資料', '日本の山河と、城跡の位置をたどる。', `
-      <p>天下地図は、公開された地理データと、城郭・史跡・施設の代表地点から描いています。日本の海岸線、標高に応じた段彩と陰影、参考県境、主要な河川・湖を重ねています。</p>
-      <p>海岸線や標高は現代の地理資料です。戦国期の埋立て前の海岸線や旧国境を測量復元した地図ではありません。城の点は史跡・施設の代表地点で、天守や本丸の測量中心を意味しません。勢力配置と進軍経路はゲーム設定です。</p>
-      <ul class="source-list"><li><a href="https://www.naturalearthdata.com/">Natural Earth</a><small>Made with Natural Earth. 海岸線・参考県境・河川・湖の地理データを加工して使用。Natural EarthのデータはPublic Domainです。</small></li><li><a href="https://maps.gsi.go.jp/development/ichiran.html">国土地理院・地理院タイル</a><small>地理院タイル（国土地理院）を加工して作成。標高タイルと陰影起伏図をもとに、段彩と陰影を合成しています。</small></li><li><a href="https://geoshape.ex.nii.ac.jp/nrct-poi/">『日本歴史地名大系』施設・地点項目データセット</a><small>CODH作成、doi:10.20676/00000456、CC BY 4.0。城の代表地点の確認に使用し、ゲーム内名称との対応付けと項目選択を行っています。</small></li><li><a href="https://ckan.odp.jig.jp/dataset/jp-fukui-280-odp">福井県 観光情報・オープンデータ</a><small>CC BY 2.1 JP。丸岡城・大野城の観光施設代表点を使用しています。</small></li><li><a href="${p.file('SOURCES-MAP.md')}">地図の全出典・利用条件・加工内容</a><small>129拠点の個別出典、地図データの精度と限界、提供元へのクレジット。</small></li></ul>
-    `, 'section-map'),
-    section('crests', '諸家の家紋と識別章', 'その家を知る、もう一つのしるし。', `
-      <p>武将と城に登場する勢力へ、家紋または識別章を割り当てています。「家紋帳」では家名を検索し、代表意匠と採用理由、資料の確認状況を読めます。</p>
-      <div class="crest-row"><figure><img src="${p.file('assets/kamon/oda.svg')}" alt="織田木瓜の略図" width="58" height="58" loading="lazy"><figcaption>織田家</figcaption></figure><figure><img src="${p.file('assets/kamon/takeda.svg')}" alt="武田菱の略図" width="58" height="58" loading="lazy"><figcaption>武田家</figcaption></figure><figure><img src="${p.file('assets/kamon/uesugi.svg')}" alt="上杉笹の略図" width="58" height="58" loading="lazy"><figcaption>上杉家</figcaption></figure><figure><img src="${p.file('assets/kamon/tokugawa.svg')}" alt="三つ葉葵の略図" width="58" height="58" loading="lazy"><figcaption>徳川家</figcaption></figure></div>
-      <p>家紋は、資料の名称・構成を参考に独自に描いたゲーム用の略図です。時代・分家・人物・器物による異形を、一つの代表意匠として整理しています。「諸家」「在地衆」などの集合勢力には、ゲーム独自の群章を用いています。</p>
-      <p>資料確認済み、伝承・二次資料、参考・創作の区分を分け、同定に限界がある意匠はその旨を記載しています。同じ基本図形を複数の家が使う場合もあります。</p>
-      <a class="chapter-link" href="${p.file('SOURCES-KAMON.md')}">家紋・群章の対応表と出典を読む</a>
-    `),
-    section('copyright', '著作権と利用資料', '© KASAI SOLUTIONS', `
-      <p>本サイトの著作権表記は<strong>KASAI SOLUTIONS</strong>です。ゲームの表示・説明・オリジナル素材のクレジットを、この名称で統一しています。</p>
-      <p>地理データなどの第三者資料には、それぞれの提供元の利用条件が適用されます。地図上のクレジットと、地図・家紋・人物の各出典資料に、提供元・加工内容・参照先を記載しています。</p>
-      <h3>データの引き継ぎについて</h3>
-      <p>領主の認証情報とゲーム進行のバックアップ方法は、専用ページで案内しています。機種変更やサイトのURL変更をしたときは、同じ領主IDへ再接続して続きを確認してください。</p>
-      <a class="chapter-link" href="${p.dir('guide/data-recovery')}">機種変更・ドメイン移行・データ復元の案内</a>
-    `)
-  ].join('\n');
+  return renderAboutContent(p, { section, table, site });
 }
 
 const pages = [
@@ -722,7 +645,7 @@ function render(page) {
     site, header, footer, artwork,
     metadataHtml: metadataEntries(page.key).map(metaTag).join('\n  ') + `\n  <link rel="canonical" href="${url}">`,
     jsonLd: jsonScript(jsonld),
-    iconHtml: brandLinks(p.file).join('\n  ')
+    iconHtml: brandLinks(p.file).join('\n  ') + `\n  <link rel="manifest" href="${p.file('manifest.webmanifest')}?v=${release}">`
   });
   const secondaryHref = page.secondary[1].startsWith('#') ? page.secondary[1] : p.dir(page.secondary[1]);
   return `<!doctype html>
@@ -735,6 +658,7 @@ function render(page) {
   <meta name="theme-color" content="#111b25">
   <link rel="canonical" href="${url}">
   ${brandLinks(p.file).join('\n  ')}
+  <link rel="manifest" href="${p.file('manifest.webmanifest')}?v=${release}">
   <link rel="stylesheet" href="${p.file('guide.css')}?v=${release}">
   <link rel="stylesheet" href="${p.file('interaction-motion.css')}?v=${release}">
   <script defer src="${p.file('interaction-motion.js')}?v=${release}"></script>
@@ -804,6 +728,8 @@ function updateHome() {
   for (const entry of metadataEntries('home')) html = replaceHeadTag(html, 'meta', attrs => attrs[entry[0]] === entry[1], metaTag(entry));
   html = replaceHeadTag(html, 'link', attrs => attrs.rel === 'canonical', `<link rel="canonical" href="${canonical('home')}">`);
   html = withBrandLinks(html);
+  html = replaceHeadTag(html, 'meta', attrs => attrs.name === 'theme-color', `<meta name="theme-color" content="${esc(site.themeColor)}">`);
+  html = html.replace(/(<a\b[^>]*class="edition-wordmark"[^>]*><img\s+src=")[^"]+("[^>]*>)/, (_, before, after) => before + site.favicon.path + after);
   html = html.replace(/(<div class="mobile-brand"><img\s+src=")[^"]+("[^>]*>)/, (_, before, after) => before + site.favicon.path + after);
   const graph = `<script type="application/ld+json">${jsonScript(structuredData('home'))}</script>`;
   let hasGraph = false;
@@ -852,6 +778,10 @@ function updateManifest() {
   manifest.short_name = site.name;
   manifest.description = site.pages.home.description;
   manifest.lang = site.language;
+  manifest.dir = 'ltr';
+  manifest.theme_color = site.themeColor;
+  manifest.background_color = site.backgroundColor;
+  manifest.categories = ['games', 'strategy'];
   manifest.icons = site.appIcons;
   return JSON.stringify(manifest, null, 2) + '\n';
 }
@@ -877,10 +807,16 @@ const imageEntries = Object.entries(site.pages).map(([key, page]) => {
 outputs.set('image-sitemap.xml', '<?xml version="1.0" encoding="UTF-8"?>\n' +
   '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">\n' +
   imageEntries.join('\n') + '\n</urlset>\n');
-outputs.set('tools/music-audition.html', fs.readFileSync(path.join(root, 'tools/music-audition.html'), 'utf8'));
+const auditionPaths = paths('tools/music-audition.html');
+const auditionHtml = fs.readFileSync(path.join(root, 'tools/music-audition.html'), 'utf8')
+  .replace(/(<a\b[^>]*class="brand"[^>]*><img\s+src=")[^"]+("[^>]*>)/, (_, before, after) => before + auditionPaths.file(site.favicon.path) + after);
+outputs.set('tools/music-audition.html', withBrandLinks(auditionHtml, auditionPaths.file));
 const securePage = pageSecurity(fs.readFileSync(path.join(root, 'config.js'), 'utf8'));
 for (const [name, html] of outputs) {
-  if (name.endsWith('.html')) outputs.set(name, securePage(html, name === 'index.html'));
+  if (name.endsWith('.html')) {
+    const themed = replaceHeadTag(html, 'meta', attrs => attrs.name === 'theme-color', `<meta name="theme-color" content="${esc(site.themeColor)}">`);
+    outputs.set(name, securePage(themed, name === 'index.html'));
+  }
 }
 const checkOnly = process.argv.includes('--check');
 const outdated = [];

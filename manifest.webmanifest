@@ -2,25 +2,36 @@
   "id": "./",
   "name": "戦国VS｜一城から、天下へ。",
   "short_name": "戦国VS",
-  "description": "戦国VS公式。城下町を育て、武将を編成し、軍師AIと天下統一を目指す戦国ブラウザゲームです。PC・スマホ・タブレットで基本プレイ無料。同盟を結び、ほかの領主と攻城戦を楽しめます。",
+  "description": "戦国VS公式。城下町の内政、武将編成、城をめぐる合戦を楽しむ戦国戦略シミュレーション。軍師AIの助言、同盟・交易、端末間の引き継ぎに対応。PC・スマホ・タブレットで、インストールせず基本プレイ無料で始められます。",
   "lang": "ja",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
-  "background_color": "#121619",
-  "theme_color": "#13171b",
+  "background_color": "#131b22",
+  "theme_color": "#131b22",
   "icons": [
     {
-      "src": "assets/branding/sengoku-vs-icon-192-20261122.png",
+      "src": "assets/branding/sengoku-vs-icon-192-20261126.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "assets/branding/sengoku-vs-icon-512-20261122.png",
+      "src": "assets/branding/sengoku-vs-icon-512-20261126.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
+    },
+    {
+      "src": "assets/branding/sengoku-vs-maskable-512-20261126.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
     }
+  ],
+  "dir": "ltr",
+  "categories": [
+    "games",
+    "strategy"
   ]
 }

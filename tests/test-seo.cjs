@@ -20,6 +20,45 @@ function pngSize(image){
   assert.equal(image.subarray(12,16).toString(),'IHDR');
   return{width:image.readUInt32BE(16),height:image.readUInt32BE(20)};
 }
+function assertOpaquePng(image){
+  const {width,height}=pngSize(image),chunks=[];
+  for(let offset=8;offset+12<=image.length;){
+    const length=image.readUInt32BE(offset),type=image.subarray(offset+4,offset+8).toString();
+    assert(offset+12+length<=image.length,'Truncated PNG chunk');
+    chunks.push({type,data:image.subarray(offset+8,offset+8+length)});offset+=length+12;
+  }
+  assert(!chunks.some(chunk=>chunk.type==='tRNS'),'Maskable icons must have an opaque background');
+  const header=chunks.find(chunk=>chunk.type==='IHDR').data;
+  assert.equal(header[8],8,'Maskable icons use an 8-bit PNG');
+  assert([2,6].includes(header[9]),'Maskable icons use RGB or RGBA');
+  assert.equal(header[12],0,'Maskable PNGs are not interlaced');
+  if(header[9]===2)return;
+  const raw=require('node:zlib').inflateSync(Buffer.concat(chunks.filter(chunk=>chunk.type==='IDAT').map(chunk=>chunk.data)));
+  const stride=width*4;assert.equal(raw.length,(stride+1)*height);
+  let previous=Buffer.alloc(stride);
+  for(let y=0;y<height;y++){
+    const offset=y*(stride+1),filter=raw[offset],row=Buffer.alloc(stride);assert(filter<=4,'Invalid PNG row filter');
+    for(let x=0;x<stride;x++){
+      const left=x>=4?row[x-4]:0,up=previous[x],upperLeft=x>=4?previous[x-4]:0;
+      const prediction=left+up-upperLeft,distances=[Math.abs(prediction-left),Math.abs(prediction-up),Math.abs(prediction-upperLeft)];
+      const paeth=distances[0]<=distances[1]&&distances[0]<=distances[2]?left:distances[1]<=distances[2]?up:upperLeft;
+      const predictor=[0,left,up,Math.floor((left+up)/2),paeth][filter];
+      row[x]=(raw[offset+x+1]+predictor)&255;
+    }
+    for(let x=3;x<stride;x+=4)assert.equal(row[x],255,'Maskable icons must not contain transparent pixels');
+    previous=row;
+  }
+}
+function assertSelfContainedSvg(file){
+  const svg=read(file),rootTag=svg.match(/<svg\b[^>]*>/i)?.[0];assert(rootTag,'An SVG root is required');
+  const rootAttrs=attrs(rootTag);assert.equal(rootAttrs.xmlns,'http://www.w3.org/2000/svg');
+  const box=(rootAttrs.viewbox||'').trim().split(/[\s,]+/).map(Number);
+  assert.equal(box.length,4);assert(box.every(Number.isFinite)&&box[2]>0&&box[2]===box[3],'Brand SVGs must have a square viewBox');
+  assert(!/<(?:script|foreignObject|iframe|image|text)\b/i.test(svg),'Brand SVGs must use self-contained vector geometry');
+  assert(!/\bon[a-z]+\s*=|<!DOCTYPE|<!ENTITY|<\?xml-stylesheet|@import/i.test(svg),'Brand SVGs must not execute or import content');
+  for(const tag of svg.matchAll(/<[^!?/][^>]*>/g))for(const [name,value] of Object.entries(attrs(tag[0])))if(name==='href'||name==='xlink:href')assert(value.startsWith('#'),'SVG references must remain inside the same file');
+  for(const match of svg.matchAll(/url\(\s*["']?([^\s)'";]+)/gi))assert(match[1].startsWith('#'),'SVG paint must not request external content');
+}
 function jpegSize(image){
   assert(image.length>=4&&image.readUInt16BE(0)===0xffd8,'The social image must contain a real JPEG');
   let offset=2;
@@ -50,6 +89,7 @@ test('one metadata source matches every title, description, canonical and social
     for(const [name,expected] of [['og:title',page.title],['og:description',page.description],['og:url',page.url],['og:site_name',site.name],['og:locale',site.locale],['og:image',site.origin+'/'+image.path],['og:image:secure_url',site.origin+'/'+image.path],['og:image:type',image.type],['og:image:width',String(image.width)],['og:image:height',String(image.height)],['og:image:alt',image.alt]])assert.equal(value('property',name),expected,name);
     for(const [name,expected] of [['twitter:card','summary_large_image'],['twitter:title',page.title],['twitter:description',page.description],['twitter:image',site.origin+'/'+image.path],['twitter:image:alt',image.alt]])assert.equal(value('name',name),expected,name);
     assert.deepEqual(jpegSize(bytes(image.path)), { width: image.width, height: image.height });
+    assert(bytes(image.path).length<1024*1024,'Social previews stay below the project 1 MiB image budget');
   }
 });
 
@@ -114,9 +154,9 @@ test('social metadata points to the real VS JPEG and the legacy card URL serves 
   assert(image.equals(bytes('assets/ogp.jpg')),'Old shared links must no longer receive the previous game image');
 });
 
-test('public pages and nested 404 use the current favicon family and Apple icon',()=>{
-  const surfaces=[...pages,{path:'/unknown/nested/page',url:site.origin+'/unknown/nested/page',html:read('404.html')}];
-  const icons=[site.faviconSmall,site.favicon,site.faviconIco];
+test('public pages and nested 404 use the current favicon family, Apple icon and pinned-tab mark',()=>{
+  const surfaces=[...pages,{path:'/tools/music-audition.html',url:site.origin+'/tools/music-audition.html',html:read('tools/music-audition.html')},{path:'/unknown/nested/page',url:site.origin+'/unknown/nested/page',html:read('404.html')}];
+  const icons=[site.faviconSmall,site.favicon,site.faviconIco,site.faviconSvg];
   for(const page of surfaces){
     const links=tags(page.html,'link');
     for(const spec of icons){
@@ -131,6 +171,8 @@ test('public pages and nested 404 use the current favicon family and Apple icon'
     assert.equal(apple.length,1,'One Apple icon on '+page.path);
     assert.equal(new URL(apple[0].href,page.url).href,site.origin+'/'+site.appleTouchIcon.path);
     assert.equal(apple[0].sizes,site.appleTouchIcon.sizes);
+    const mask=links.filter(link=>link.rel==='mask-icon');assert.equal(mask.length,1,'One pinned-tab icon on '+page.path);
+    assert.equal(new URL(mask[0].href,page.url).href,site.origin+'/'+site.maskIcon.path);assert.equal(mask[0].color,site.maskIcon.color);
   }
   for(const page of pages){
     const brand=page.html.match(/<(?:div|a)\b[^>]*class="[^"]*\b(?:mobile-brand|site-brand)\b[^"]*"[^>]*>\s*(<img\b[^>]*>)/i);
@@ -139,40 +181,59 @@ test('public pages and nested 404 use the current favicon family and Apple icon'
   }
   const manifest=JSON.parse(read('manifest.webmanifest'));
   assert.deepEqual(manifest.icons,site.appIcons);
-  assert.deepEqual(site.appIcons.map(icon=>icon.sizes).sort(),['192x192','512x512']);
+  const anyIcons=site.appIcons.filter(icon=>icon.purpose==='any'),maskableIcons=site.appIcons.filter(icon=>icon.purpose==='maskable');
+  assert.deepEqual(anyIcons.map(icon=>icon.sizes).sort(),['192x192','512x512']);
+  assert(maskableIcons.some(icon=>Number(icon.sizes.split('x')[0])>=512),'Provide a dedicated 512px or larger maskable icon');
+  assert.equal(new Set(site.appIcons.map(icon=>icon.src)).size,site.appIcons.length,'Normal and maskable artwork must be separate');
   for(const icon of site.appIcons){
     const [width,height]=icon.sizes.split('x').map(Number);
     assert.deepEqual(pngSize(bytes(icon.src)),{width,height});
+    assert.equal(width,height,'App icons must be square');
     assert.equal(icon.type,'image/png');
-    assert.equal(icon.purpose,'any');
+    assert(['any','maskable'].includes(icon.purpose));
+    if(icon.purpose==='maskable')assertOpaquePng(bytes(icon.src));
   }
   assert.deepEqual(pngSize(bytes(site.logo.path)),{width:site.logo.width,height:site.logo.height});
+  assert.equal(site.faviconSvg.type,'image/svg+xml');assert.equal(site.faviconSvg.sizes,'any');
+  assertSelfContainedSvg(site.faviconSvg.path);assertSelfContainedSvg(site.maskIcon.path);
+  assert(/^#[0-9a-f]{6}$/i.test(site.maskIcon.color),'Pinned-tab tint must be an explicit color');
 });
 
-test('root favicon contains the actual 32px and 192px PNGs and the Apple fallback matches the current icon',()=>{
+test('root favicon contains real small-to-large PNG frames and Apple fallback matches the current icon',()=>{
   assert.equal(site.faviconIco.path,'favicon.ico');
   const ico=bytes(site.faviconIco.path);
   assert(ico.length>=6);
   assert.equal(ico.readUInt16LE(0),0);assert.equal(ico.readUInt16LE(2),1);
   const count=ico.readUInt16LE(4),entries=[];
-  assert.equal(count,2);assert(ico.length>=6+count*16);
+  const declared=site.faviconIco.sizes.split(/\s+/);assert.equal(count,declared.length);assert(ico.length>=6+count*16);
+  let endOfPrevious=6+count*16;
   for(let index=0;index<count;index++){
     const header=6+index*16,width=ico[header]||256,height=ico[header+1]||256;
     const size=ico.readUInt32LE(header+8),offset=ico.readUInt32LE(header+12);
-    assert(offset>=6+count*16&&size>0&&offset+size<=ico.length,'ICO payload must stay inside the file');
+    assert(offset>=endOfPrevious&&size>0&&offset+size<=ico.length,'ICO payloads must not overlap or leave the file');endOfPrevious=offset+size;
     const png=ico.subarray(offset,offset+size);
     assert.deepEqual(pngSize(png),{width,height});
     const source=[site.faviconSmall,site.favicon].find(icon=>icon.sizes===width+'x'+height);
-    assert(source,'Unexpected ICO size');assert(png.equals(bytes(source.path)),'ICO artwork must match the standalone PNG');
+    if(source)assert(png.equals(bytes(source.path)),'ICO artwork must match the standalone PNG');
     entries.push(width+'x'+height);
   }
-  assert.deepEqual(entries.sort(),['192x192','32x32']);
+  assert.deepEqual(entries.sort(),declared.sort());assert.equal(new Set(entries).size,count);
+  for(const size of [16,32,48,96,192])assert(entries.includes(size+'x'+size),'Missing desktop/favicon frame: '+size);
   const apple=bytes(site.appleTouchIcon.path);
   assert.deepEqual(pngSize(apple),{width:180,height:180});
   assert(apple.equals(bytes('apple-touch-icon.png')),'Root Apple fallback must not serve the previous icon');
 });
 
-test('Twitterbot can crawl every public page and the real social preview image',()=>{
+test('existing icon aliases no longer return the retired brand artwork',()=>{
+  for(const [source,aliases] of [
+    [site.favicon.path,['assets/icon-192.png','assets/sengoku-taisen-icon-192.png']],
+    [site.logo.path,['assets/icon-512.png','assets/sengoku-taisen-icon-512.png']],
+    [site.faviconSmall.path,['assets/favicon-32.png','assets/sengoku-taisen-favicon-32.png']],
+    [site.appleTouchIcon.path,['assets/apple-touch-icon.png']]
+  ])for(const file of aliases)assert(bytes(source).equals(bytes(file)),'The compatibility URL must serve the current brand: '+file);
+});
+
+test('search-image and social crawlers can fetch every public page, preview and brand icon',()=>{
   const groups=[];let group=null;
   for(const raw of read('robots.txt').split(/\r?\n/)){
     const match=raw.replace(/#.*/,'').trim().match(/^([\w-]+):\s*(.*)$/);if(!match)continue;
@@ -182,14 +243,18 @@ test('Twitterbot can crawl every public page and the real social preview image',
       group.agents.push(value.toLowerCase());
     }else if(group&&['allow','disallow'].includes(field)&&value)group.rules.push({allow:field==='allow',value});
   }
-  const explicit=groups.filter(group=>group.agents.includes('twitterbot'));
-  const selected=explicit.length?explicit:groups.filter(group=>group.agents.includes('*'));
-  for(const pathname of [...pages.map(page=>page.path),'/'+site.ogImage.path]){
-    const matching=selected.flatMap(group=>group.rules).filter(rule=>{
-      const pattern=rule.value.split('*').map(part=>part.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')).join('.*').replace(/\\\$$/,'$');
-      return new RegExp('^'+pattern).test(pathname);
-    }).sort((a,b)=>b.value.replace(/\*/g,'').length-a.value.replace(/\*/g,'').length||Number(b.allow)-Number(a.allow));
-    assert(!matching.length||matching[0].allow,'Twitterbot cannot crawl '+pathname);
+  const paths=new Set([...pages.map(page=>page.path),...pages.map(page=>'/'+(page.socialImage||site.ogImage).path),...[site.favicon,site.faviconSmall,site.faviconIco,site.faviconSvg,site.appleTouchIcon].map(icon=>'/'+icon.path),...site.appIcons.map(icon=>'/'+icon.src)]);
+  for(const agent of ['googlebot-image','twitterbot','facebookexternalhit']){
+    const specificity=group=>Math.max(0,...group.agents.map(token=>token!=='*'&&agent.startsWith(token)?token.length:0));
+    const longest=Math.max(0,...groups.map(specificity));
+    const selected=longest?groups.filter(group=>specificity(group)===longest):groups.filter(group=>group.agents.includes('*'));
+    for(const pathname of paths){
+      const matching=selected.flatMap(group=>group.rules).filter(rule=>{
+        const pattern=rule.value.split('*').map(part=>part.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')).join('.*').replace(/\\\$$/,'$');
+        return new RegExp('^'+pattern).test(pathname);
+      }).sort((a,b)=>b.value.replace(/\*/g,'').length-a.value.replace(/\*/g,'').length||Number(b.allow)-Number(a.allow));
+      assert(!matching.length||matching[0].allow,agent+' cannot crawl '+pathname);
+    }
   }
 });
 

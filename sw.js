@@ -1,11 +1,11 @@
 /* 本体は先に保存。大きな絵巻は、実際に開いたものから保存します。 */
-const RELEASE='5.0.2-20261126';
+const RELEASE='5.0.3-20261126';
 const CACHE='sengoku-taisen-v'+RELEASE;
 const scopeURL=()=>self.registration?.scope||self.location.origin+'/';
 const currentMatch=(request,name=CACHE)=>caches.open(name).then(cache=>cache.match(request));
 const pages=new Set(['./','./guide/','./guide/data-recovery/','./about/','./premium/','./sengoku-vs/','./tools/music-audition.html']);
 const optionalCode=new Set([
-  './guide.css','./share.css','./public-luxury.js','./public-luxury.css','./premium-catalog.js','./premium.js','./premium.css',
+  './guide.css','./share.css','./brand-discovery.css','./public-luxury.js','./public-luxury.css','./premium-catalog.js','./premium.js','./premium.css',
   './interaction-motion.js','./interaction-motion.css','./selection-lock.js','./selection-lock.css','./image-protect.js','./image-protect.css','./button-artwork.css',
   './premium-runtime.js','./premium-appearance.css','./music.js','./tools/music-audition.js','./map-data.js'
 ]);
@@ -182,7 +182,7 @@ self.addEventListener('fetch', event => {
 self.addEventListener('push',event=>{
  let payload={};try{payload=event.data?.json()||{};}catch(_){}
  const title=typeof payload.title==='string'?payload.title.slice(0,100):'戦国VSのお知らせ';
- event.waitUntil(self.registration.showNotification(title,{body:typeof payload.body==='string'?payload.body.slice(0,240):'領国の報告を確認してください。',icon:'./assets/branding/sengoku-vs-icon-192-20261122.png',badge:'./assets/branding/sengoku-vs-favicon-32-20261122.png',tag:'sengoku-update',renotify:false,data:{url:'/?notice=1'}}));
+ event.waitUntil(self.registration.showNotification(title,{body:typeof payload.body==='string'?payload.body.slice(0,240):'領国の報告を確認してください。',icon:'./assets/branding/sengoku-vs-icon-192-20261126.png',badge:'./assets/branding/sengoku-vs-badge-96-20261126.png',tag:'sengoku-update',renotify:false,data:{url:'/?notice=1'}}));
 });
 self.addEventListener('notificationclick',event=>{
  event.notification.close();event.waitUntil((async()=>{const clients=await self.clients.matchAll({type:'window',includeUncontrolled:true});for(const client of clients){if(new URL(client.url).origin===self.location.origin){await client.focus();client.postMessage({type:'sengoku-open-recap'});return;}}await self.clients.openWindow('./?notice=1');})());

@@ -1,6 +1,39 @@
 # 検索向け公開情報・通知の方針と公式出典
 
-確認日：2026年11月22日。正規の公開ドメインは `https://www.kasai-solutions-inc.com/`、運営者・著作権者の表記は **KASAI SOLUTIONS** です。
+## 2026年11月26日：ブランド画像・サイト概要・検索情報の更新
+
+正規の公開ドメインは `https://www.kasai-solutions-inc.com/`、作品名は **戦国VS / SENGOKU VS**、運営者・著作権者は **KASAI SOLUTIONS** です。現在の公開用データは `site-metadata.json` を正とします。以下に残すバージョン別の記録は、各変更時点の履歴であり、現行の商品状態・ゲーム仕様・画像パスを指定するものではありません。
+
+### アイコンと共有画像
+
+- 墨色、金の城と軍扇、朱の旭日を使う紋章に統一。favicon は小さな表示用の SVG と 32px PNG、検索・高密度表示用の 192px PNG を指定します。ルートの `favicon.ico` は **16・32・48・96・192px** の実画像を収録します。
+- ホーム画面用は通常の **192・512px PNG** と **180px Apple touch icon**。Android等の形状変更に備え、背景が不透明な専用 **512px maskable icon** を分けて用意します。主要な図案は中央の半径40%の安全円内へ収めます。Safari pinned tab 用は単色 SVG と明示色を使用します。
+- favicon のURLにはゲームバージョンのクエリを付けません。今回の図案変更を区切りに `20261126` のパスへ切り替え、以降、図案が変わらないリリースでは同じURLを使います。ルートの `favicon.ico` と `apple-touch-icon.png` も現行図案にそろえます。
+- OGPは **1200×630px JPEG**。トップ・ゲーム紹介は共通の作品画像、遊び方・引き継ぎ・作品概要・プレミアムには内容別の共有画像を設定します。`og:image`、`twitter:image`、画像のMIME型・実寸・代替テキストを対応させます。各画像はプロジェクトの配信予算として1MiB未満にします。
+
+Googleのfavicon仕様は、正方形、最低8px、48pxより大きい画像の推奨、取得可能な画像と安定したURLを定めています。Google検索での表示は保証されません。[Google：検索結果のfavicon](https://developers.google.com/search/docs/appearance/favicon-in-search)
+
+maskableの安全領域は中央を中心とする半径2/5の円です。通常アイコンと専用maskableを分け、図案の欠けと端末側の白い背景の付加を避けます。[W3C Web Application Manifest：Icon masks and safe zone](https://www.w3.org/TR/appmanifest/#icon-masks)、[web.dev：maskable icons](https://web.dev/articles/maskable-icon)
+
+Open Graphは画像の型・寸法を補助プロパティで示し、画像がある場合は内容を説明する `og:image:alt` の指定を勧めています。[Open Graph protocol](https://ogp.me/)
+
+### サイト概要と検索情報
+
+公開6ページのタイトル・概要・本文、canonical、OGP・Twitter Card、JSON-LD、Web App Manifestとサイトマップを同じ公開用データにそろえます。遊び方や作品の説明はJavaScriptを実行しなくても読めるHTML本文として掲載し、通常の内部リンクで到達できるようにします。
+
+サイト名はホームページの `WebSite` 構造化データと画面上の **戦国VS** に統一します。ページ別タイトルと概要は実際の内容を説明し、レビュー件数・星・受賞歴・検索機能など、存在しない情報は追加しません。ゲームの構造化データは内容理解を助けるためのもので、Software Appのリッチリザルトの掲載を約束するものではありません。[Google：サイト名](https://developers.google.com/search/docs/appearance/site-names)、[タイトルリンク](https://developers.google.com/search/docs/appearance/title-link)、[スニペット](https://developers.google.com/search/docs/appearance/snippet)、[構造化データの共通要件](https://developers.google.com/search/docs/appearance/structured-data/sd-policies)
+
+サイトマップには正規URLを載せ、更新日は実際に主要な内容を更新した日とします。ゲーム内の資産変動や単なるビルド時刻で `lastmod` を更新しません。[Google：サイトマップの作成](https://developers.google.com/search/docs/crawling-indexing/sitemaps/build-sitemap)、[canonicalの指定](https://developers.google.com/search/docs/crawling-indexing/consolidate-duplicate-urls)
+
+### 公開前の検証と更新後の扱い
+
+`node tools/build-public-pages.cjs --check` で公開文書と生成元の一致を確認します。`tests/test-seo.cjs` は画像実体と宣言寸法、SVGの自己完結性、ICOの5サイズ、maskableの不透明性、ページ別情報と構造化データ、モックによるIndexNow通信を検証します。公開リンク、レスポンシブ画像、現在のブランドのキャッシュ、オフライン用アセットと公開ページの制約は既存テストで確認し、`.github/workflows/brand-seo.yml` から同じ検証を実行します。CIから検索エンジンへ通知は送りません。
+
+公開の完了、検索エンジンへの更新通知、検索結果への反映はそれぞれ確認対象が異なります。この文書自体はSearch Consoleへの申請完了・インデックス登録・SNSキャッシュ更新を示しません。検索結果の名称・概要・faviconは再取得と再処理を経て反映されるため、指定文字列の採用・順位・即時反映は保証しません。[Google：再クロールのリクエスト](https://developers.google.com/search/docs/crawling-indexing/ask-google-to-recrawl)
+
+## 過去の実装記録
+
+以下は2026年11月22日までに記録した設計経緯です。現行の仕様・価格・画像は上の更新項目と公開用データを参照してください。
 
 ## v3.22.0 の京都御所・参内と謁見・支拠点
 

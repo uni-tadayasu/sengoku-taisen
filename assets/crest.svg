@@ -1,23 +1,23 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" aria-label="戦国VSの城と軍扇の紋章">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="brand-title brand-desc">
+  <title id="brand-title">戦国VS</title>
+  <desc id="brand-desc">墨色の地に、金の城と軍扇、朱の旭日を配した戦国VSの紋章。</desc>
   <defs>
-    <linearGradient id="lacquer" x2=".75" y2="1"><stop stop-color="#31424b"/><stop offset=".44" stop-color="#202232"/><stop offset="1" stop-color="#091520"/></linearGradient>
-    <linearGradient id="gilt" x2=".36" y2="1"><stop stop-color="#fff1c0"/><stop offset=".46" stop-color="#e1bd73"/><stop offset="1" stop-color="#a77643"/></linearGradient>
+    <linearGradient id="ink" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#24323b"/><stop offset=".54" stop-color="#141d25"/><stop offset="1" stop-color="#0c131a"/></linearGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2=".3" y2="1"><stop stop-color="#fff0bf"/><stop offset=".45" stop-color="#e5c17b"/><stop offset="1" stop-color="#b58a4b"/></linearGradient>
   </defs>
-  <rect width="256" height="256" rx="42" fill="url(#lacquer)"/>
-  <rect x="9" y="9" width="238" height="238" rx="35" fill="none" stroke="#a78251" stroke-width="2.5"/>
-  <circle cx="128" cy="128" r="98" fill="none" stroke="url(#gilt)" stroke-width="4"/>
-  <circle cx="128" cy="128" r="90" fill="none" stroke="#ad8755" stroke-width="1.5" stroke-dasharray="2 4"/>
-  <circle cx="128" cy="80" r="29" fill="#c45437"/>
-  <g fill="url(#gilt)">
-    <path d="M47 119Q77 120 103 101Q105 130 122 153Q81 140 47 119Z"/>
-    <path d="M41 136Q85 144 115 157L123 171Q77 163 41 136Z"/>
-    <path d="M55 160Q93 169 122 174L126 188Q81 180 55 160Z"/>
-    <path d="M209 119Q179 120 153 101Q151 130 134 153Q175 140 209 119Z"/>
-    <path d="M215 136Q171 144 141 157L133 171Q179 163 215 136Z"/>
-    <path d="M201 160Q163 169 134 174L130 188Q175 180 201 160Z"/>
-    <path d="M91 116Q112 107 128 88Q144 107 165 116L142 113V125H114V113ZM83 138Q109 132 128 116Q147 132 173 138L148 136L143 149H113L108 136Z"/>
-    <path d="M120 156L128 145L136 156L128 181Z"/>
+  <rect width="512" height="512" rx="100" fill="url(#ink)"/>
+  <rect x="11" y="11" width="490" height="490" rx="91" fill="none" stroke="#c9a362" stroke-opacity=".45" stroke-width="2"/>
+  <circle cx="256" cy="256" r="211" fill="none" stroke="url(#gold)" stroke-width="9"/>
+  <g>
+  <circle cx="256" cy="176" r="66" fill="#b44c37"/>
+  <g fill="url(#gold)">
+    <path d="M173 208 Q221 188 256 144 Q291 188 339 208 L296 202 L296 228 L216 228 L216 202 Z"/>
+    <path d="M137 270 Q205 248 256 211 Q307 248 375 270 L318 264 L318 293 L194 293 L194 264 Z"/>
+    <path d="M124 317 Q191 301 256 271 Q321 301 388 317 Q325 328 256 357 Q187 328 124 317 Z"/>
+    <path d="M153 345 Q198 348 242 370 L251 393 Q197 378 153 345 Z"/>
+    <path d="M359 345 Q314 348 270 370 L261 393 Q315 378 359 345 Z"/>
   </g>
-  <path d="M125 109H131M121 132H135" stroke="#302734" stroke-width="3.5"/>
-  <path d="M128 186l11 11-11 10-11-10Z" fill="#c75839" stroke="url(#gilt)" stroke-width="2.5"/>
+  <path d="M249 190h14v17h-14z M229 249h15v20h-15z M268 249h15v20h-15z" fill="#131b22"/>
+  <path d="M256 359 L270 380 L256 400 L242 380 Z" fill="#b44c37"/>
+</g>
 </svg>

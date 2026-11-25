@@ -3,17 +3,19 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const source = fs.readFileSync(require('node:path').join(__dirname, '../sw.js'), 'utf8');
-const release = JSON.parse(fs.readFileSync(require('node:path').join(__dirname, '../site-metadata.json'), 'utf8')).release;
+const site = JSON.parse(fs.readFileSync(require('node:path').join(__dirname, '../site-metadata.json'), 'utf8'));
+const release = site.release;
 const current = 'sengoku-taisen-v' + release;
-const origin = 'https://www.kasai-solutions-inc.com';
+const origin = site.origin;
+const iconURL = origin + '/' + site.favicon.path;
 
 function fixture({offline = false, failInstall = false, updating = false, cacheControl = ''} = {}) {
   const listeners = {}, deleted = [], calls = [], records = new Map();
   const key = request => typeof request === 'string' ? new URL(request, origin + '/').href : request.url;
   for (const name of ['pachi-shell-v1', 'pachi-art-v1', 'pachi-fonts-v1', 'sengoku-taisen-v-old', 'unrelated-records', current]) records.set(name, new Map());
-  records.get('pachi-art-v1').set(origin + '/assets/icon-192.png', {brand: 'retired'});
+  records.get('pachi-art-v1').set(iconURL, {brand: 'retired'});
   records.get('pachi-shell-v1').set(origin + '/index.html', {brand: 'retired'});
-  records.get(current).set(origin + '/assets/icon-192.png', {brand: 'sengoku'});
+  records.get(current).set(iconURL, {brand: 'sengoku'});
   records.get(current).set(origin + '/index.html', {brand: 'sengoku'});
   const caches = {
     async keys() { return [...records.keys()]; },
@@ -46,16 +48,16 @@ function fixture({offline = false, failInstall = false, updating = false, cacheC
 }
 (async () => {
   const online = fixture();
-  assert.equal((await online.dispatch('fetch', {method: 'GET', url: origin + '/assets/icon-192.png'})).brand, 'sengoku');
-  online.records.get(current).delete(origin + '/assets/icon-192.png');
-  assert.equal((await online.dispatch('fetch', {method: 'GET', url: origin + '/assets/icon-192.png'})).brand, 'network');
+  assert.equal((await online.dispatch('fetch', {method: 'GET', url: iconURL})).brand, 'sengoku');
+  online.records.get(current).delete(iconURL);
+  assert.equal((await online.dispatch('fetch', {method: 'GET', url: iconURL})).brand, 'network');
   assert.equal(await online.dispatch('fetch', {method: 'GET', url: origin + '/api/v1/premium'}), undefined);
   for (const request of [
     {url: origin + '/private/document'},
-    {url: origin + '/assets/icon-192.png', headers: new Headers({Authorization: 'Bearer fixture'})},
-    {url: origin + '/assets/icon-192.png', headers: new Headers({Cookie:'fixture=private'})},
-    {url: origin + '/assets/icon-192.png', headers: new Headers({Range: 'bytes=0-10'})},
-    {url: origin + '/assets/icon-192.png', cache: 'no-store'}
+    {url: iconURL, headers: new Headers({Authorization: 'Bearer fixture'})},
+    {url: iconURL, headers: new Headers({Cookie:'fixture=private'})},
+    {url: iconURL, headers: new Headers({Range: 'bytes=0-10'})},
+    {url: iconURL, cache: 'no-store'}
   ]) assert.equal(await online.dispatch('fetch', {method: 'GET', ...request}), undefined);
   const returnURL = origin + '/?notice=1';
   assert.equal((await online.dispatch('fetch', {method: 'GET', url: returnURL, mode: 'navigate'})).brand, 'network');

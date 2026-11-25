@@ -26,8 +26,8 @@ if __name__ == '__main__':
         variants(chapter, f'chronicle/{chapter}.webp', (240, 400, 640, 960, 1200))
         variants(f'{chapter}-panel', f'chronicle/{chapter}.webp', (400, 640, 900), crop_width=900)
     variants('music', 'chronicle/music.webp', (240, 440, 720, 900), 82)
-    variants('brand', 'branding/sengoku-vs-icon-192-20261122.png', (48, 96, 144), 88)
-    variants('emblem', 'emblem.webp', (96, 192), 86)
+    # Brand and emblem variants are built by build-brand-icons.py. Its small
+    # favicon design omits fine details; do not overwrite it by shrinking art.
     variants('castle-town', 'castle-town.webp', (400, 720, 1080, 1536))
     variants('moonlit-castle', 'premium/moonlit-castle-v1.png', (400, 720, 1080, 1536))
     variants('gold-banner', 'premium/gold-banner-v1.png', (160, 320, 512, 768), 82)
