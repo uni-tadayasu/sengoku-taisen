@@ -14,7 +14,7 @@ function fn(name){
 function declaration(name){const start=source.indexOf(`  const ${name}=`);assert(start>=0,name);return source.slice(start,source.indexOf('\n',start));}
 function create({all=false}={}){
   const game=new E({officers:plain(roster),clan:'織田家',seed:17});
-  if(all){for(const officer of roster)game._grantOfficerVariant(officer.id,'S');for(const building of D.buildings)game.state.buildings[building.id]=Math.max(1,game.state.buildings[building.id]);}
+  if(all){for(const officer of roster)game._grantOfficerVariant(officer.id,'S');for(const building of D.buildings)game.state.buildings[building.id]=16;}
   return game;
 }
 function staffFixture({projected=true}={}){
@@ -101,6 +101,16 @@ await test('one real click assigns all built facilities despite search/page filt
   const result=h.modals.at(-1);assert.equal(result.kind,'governor-result');assert.equal((result.body.match(/class="governor-result-row/g)||[]).length,64);
   assert.equal(h.c.facilityCategory,'gold');assert.equal(h.c.facilityQuery,'金山');
   assert.deepEqual(E.fromSave(h.stored.get('save'),roster).state.governors,h.game.state.governors);
+});
+
+await test('a real assignment click reports payroll-limited vacancies separately from a shortage of officers',async()=>{
+  const game=create();for(const officer of roster)game._grantOfficerVariant(officer.id,'S');game.state.buildings.keep=4;
+  for(const building of D.buildings)if(building.requiredKeep<=4)game.state.buildings[building.id]=Math.max(1,game.state.buildings[building.id]);
+  const expected=game.planGovernorAssignments();assert(expected.budgetLimitedCount>0);assert.equal(expected.staffingVacantCount,0);
+  const h=harness(game);await h.click();const result=h.modals.at(-1);
+  assert.equal(h.writes.length,1);assert(h.game.income().gold>=0);assert.equal(h.game.governorPayroll().gold,expected.monthlySalary);
+  assert(result.body.includes('給与による赤字を抑えるため'));assert(result.body.includes('任命を見送りました'));assert(!result.body.includes('家臣が足りない施設は未任命'));
+  assert(result.body.includes('現在の給与総額は金銭'+expected.monthlySalary.toLocaleString('ja-JP')+'／月'));
 });
 
 await test('insufficient candidates leave explicit vacancies and a repeated click preserves the existing optimal formation',async()=>{
