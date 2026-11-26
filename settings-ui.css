@@ -136,3 +136,10 @@
   #modal .settings-hub .settings-row { min-height: 44px; padding-block: 4px; }
   #modal .settings-hub .settings-explanation { margin-block: 5px; }
 }
+
+#modal .settings-hub .settings-quick-volume .settings-volume {
+  grid-template-columns: minmax(0,1fr) auto; gap: 0 8px;
+}
+#modal .settings-hub .settings-quick-volume .settings-volume > label { grid-area: 1 / 1; }
+#modal .settings-hub .settings-quick-volume output { grid-area: 1 / 2; text-align: end; }
+#modal .settings-hub .settings-quick-volume input { grid-area: 2 / 1 / auto / -1; }

@@ -551,6 +551,23 @@ test('IME text is only reflected after composition, malformed storage and inacce
   assert.equal(h.get('#navigation-results').querySelector('img'),null); assert(h.get('#navigation-results').textContent.includes('<img src=x>'));
 });
 
+test('a direct route and a menu route each scroll to the game content once', () => {
+  const s = fixture({touch: true});
+  s.main.setAttribute('data-view', 'map');
+  s.api.revealView('map');
+  assert.deepEqual(s.scrolls, [{block: 'start', behavior: 'instant'}]);
+  assert.equal(s.doc.activeElement, s.main);
+
+  // The game calls the same hook after the menu's canonical button renders.
+  s.doc.addEventListener('click', event => {
+    const view = event.target.closest('[data-view]')?.getAttribute('data-view');
+    if (view) s.api.revealView(view);
+  });
+  assert(s.api.activate('view:army'));
+  s.drain();
+  assert.equal(s.scrolls.length, 2);
+  assert.equal(s.main.getAttribute('data-view'), 'army');
+});
 let failed = 0;
 for (const [name, run] of tests) { try { run(); console.log('PASS', name); } catch (error) { failed++; console.error('FAIL', name, error.stack); } }
 console.log(`${tests.length - failed}/${tests.length} navigation usability checks passed`);

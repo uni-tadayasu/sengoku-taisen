@@ -140,6 +140,10 @@
       main.focus({ preventScroll: true });
     }
     function cancelPendingNavigation() { pendingNavigation = null; }
+    function revealView(view) {
+      pendingNavigation = { view };
+      finishNavigation();
+    }
     function sourceLabel(node) {
       const label = [...node.children].find(child => child.tagName === 'SPAN' && !hasClass(child, 'nav-count') && !child.hasAttribute('data-icon'));
       return (label?.textContent || node.getAttribute('aria-label') || node.textContent || '').trim().slice(0, 80);
@@ -630,7 +634,7 @@
       const utilityObserver = new win.MutationObserver(schedule);
       utilityObserver.observe(bottom, { childList: true }); observers.push(utilityObserver);
     }
-    return { open, close, refresh, activate, destroy, toggleFavorite, clearRecent, setDockSlot, resetDock, getDock: () => resolvedDock(collect()), isOpen: () => dialog.open, getPreferences: () => ({ favorites: availableKeys(favorites, collect()), recent: availableKeys(recent, collect()) }), getEntries: () => collect().map(({ source, icon, ...entry }) => entry) };
+    return { open, close, refresh, activate, revealView, destroy, toggleFavorite, clearRecent, setDockSlot, resetDock, getDock: () => resolvedDock(collect()), isOpen: () => dialog.open, getPreferences: () => ({ favorites: availableKeys(favorites, collect()), recent: availableKeys(recent, collect()) }), getEntries: () => collect().map(({ source, icon, ...entry }) => entry) };
   }
   if (typeof module !== 'undefined' && module.exports) module.exports = { createNavigationUI, normalizeQuery, filterEntries, highlightMatch };
   if (!global.document || global.SengokuNavigation) return;

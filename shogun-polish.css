@@ -263,6 +263,15 @@ html:not(.sengoku-desktop-fit) #main .geographic-map-panel .sg-map { min-height:
   }
   #app.chronicle-shell #main > .page-heading .chapter-copy .eyebrow { width: 100%; margin: 0; }
   #app.chronicle-shell #main > .page-heading .chapter-copy .subtitle { flex: 1 1 12rem; margin: 0; }
+  @container game-content (min-width:54rem) {
+    #app.chronicle-shell #main[data-view="map"] > .page-heading {
+      grid-template-columns: minmax(0,1.2fr) minmax(0,1fr); grid-template-rows: auto;
+    }
+    #app.chronicle-shell #main[data-view="map"] > .page-heading .page-heading-actions {
+      grid-column: 2; grid-row: 1; z-index: 1; align-self: end; justify-content: end;
+      gap: 4px; border: 0; padding: 4px 6px; background: transparent;
+    }
+  }
 }
 @media (max-width:580px) {
   #app.chronicle-shell #main .town-workspace .town-command-shortcuts {
@@ -276,8 +285,6 @@ html:not(.sengoku-desktop-fit) #main .geographic-map-panel .sg-map { min-height:
   #app.chronicle-shell #main .map-toolbar { gap: 4px 6px; margin-block: 6px; padding: 4px; }
   #app.chronicle-shell #main .map-toolbar .search-box { flex: 1 1 9rem; min-width: min(100%,9rem); }
   #app.chronicle-shell #main .map-toolbar > :is(.select,.button) { min-height: 44px; padding-block: 4px; }
-  /* The mounted map has these same two camera controls inside the canvas. */
-  #app.chronicle-shell #main:has(#world-map .sg-map-zoom) .map-toolbar > :is([data-action="map-fit"],[data-action="map-home"]) { display: none; }
 }
 @media (max-width: 700px) {
   #launch-screen .edition-story { padding: 0 16px 18px; }
