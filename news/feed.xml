@@ -9,6 +9,15 @@
     <ttl>60</ttl>
     <atom:link href="https://www.kasai-solutions-inc.com/news/feed.xml" rel="self" type="application/rss+xml"/>
     <item>
+      <title>Ver.5.9.1｜天下地図の読み込みデータを軽量化</title>
+      <link>https://www.kasai-solutions-inc.com/news/#v5-9-1</link>
+      <guid isPermaLink="true">https://www.kasai-solutions-inc.com/news/#v5-9-1</guid>
+      <dc:date>2026-11-27</dc:date>
+      <description>天下地図を初めて開く際に取得する地理データを小さくしました。全国129城の位置と街道の距離計算はこれまでと同じです。
+
+海岸線・県境・水系を軽いデータで表示：地図の線を描く座標を小数点以下6桁に整理しました。離島、県境、河川、湖の形を構成する全頂点を収録しています。</description>
+    </item>
+    <item>
       <title>Ver.5.9.0｜予定表・資源計画から詳細へ直結し、建設条件と編成の確認を改善</title>
       <link>https://www.kasai-solutions-inc.com/news/#v5-9-0</link>
       <guid isPermaLink="true">https://www.kasai-solutions-inc.com/news/#v5-9-0</guid>
