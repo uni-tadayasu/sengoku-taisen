@@ -196,6 +196,6 @@ RGBから公式仕様の24ビット符号値を復号し、0.01mの数値単位�
 
 ## 再生成と確認
 
-`assets/map/rebuild-vectors.py` は公式のNatural Earth元ZIPから陸域・県ポリゴンを再生成します。`rebuild-relief.py` は国土地理院タイルを取得して段彩・陰影WebPを作成します（Python、NumPy、Pillow）。`rebuild-map-data.py` は同じフォルダのGeoJSON・城位置JSONをまとめ、サイト直下の `map-data.js` に自己完結のブラウザ用データを出力します。通常の閲覧にはこれらのPythonスクリプトや外部地図サービスとの通信は不要です。
+`assets/map/rebuild-vectors.py` は公式のNatural Earth元ZIPから陸域・県ポリゴンを再生成します。`rebuild-relief.py` は国土地理院タイルを取得して段彩・陰影WebPを作成します（Python、NumPy、Pillow）。`rebuild-map-data.py` は同じフォルダのGeoJSON・城位置JSONをまとめ、サイト直下の `map-data.js` に自己完結のブラウザ用データを出力します。配信用データでは海岸線・都道府県・河川・湖沼の各頂点を小数点以下6桁に丸め、元のGeoJSONと城の代表点は元精度で保持します。通常の閲覧にはこれらのPythonスクリプトや外部地図サービスとの通信は不要です。
 
 緯度経度の範囲、128件のID一意性、ゲーム内の城名対応、ポリゴンの閉鎖、非有限値の不在、47県のレコード、画像寸法・投影範囲を確認しています。オンライン地図のライブタイルに依存せず、配布版でも同じ地形と位置を利用できます。

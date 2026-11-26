@@ -37,5 +37,17 @@ if coords.exists():
 terrain={'url':'assets/map/japan-terrain-gsi-z8.webp','bounds':[122.34375,23.24134610238614,154.6875,46.07323062540836],'projection':'mercator','crs':'EPSG:3857','kind':'color','width':5888,'height':5120,'tileZoom':8,'sourceID':'gsi-dem','description':'国土地理院の標高・陰影起伏データによる段彩地形。衛星写真ではありません。'}
 sources=[{'id':'natural-earth-land','label':'Natural Earth 1:10m（海岸線・参考県境）','url':'https://www.naturalearthdata.com/downloads/10m-cultural-vectors/','license':'Public domain','version':'5.1.1'},{'id':'gsi-dem','label':'地理院タイル（国土地理院）を加工して作成','url':'https://maps.gsi.go.jp/development/ichiran.html','specificationURL':'https://maps.gsi.go.jp/development/demtile.html'},{'id':'natural-earth-water','label':'Natural Earth 1:10m（主要河川・湖）','url':'https://www.naturalearthdata.com/downloads/10m-physical-vectors/','license':'Public domain'},{'id':'codh','label':'歴史地名データ：CODH','url':'https://geoshape.ex.nii.ac.jp/nrct-poi/'},{'id':'castle-coordinates','label':'城の位置・地図データの出典','url':'SOURCES-MAP.md'}]
 geo={'version':1,'projection':{'type':'mercator','crs':'EPSG:3857','coordinateOrder':'longitude,latitude'},'bounds':[122,24,149,46],'dataBounds':[122.93816165500004,24.212103583000044,153.98560631600003,45.520412502000056],'land':land,'prefectures':prefs,'boundaries':boundaries,'lakes':lakes,'rivers':rivers,'terrain':terrain,'hillshadeAlternative':{**terrain,'url':'assets/map/japan-hillshade-gsi-z8.webp','kind':'hillshade'},'castles':castles,'sources':sources,'notes':['海岸線・地形は現代の地理資料を使用しています。戦国時代の海岸線そのものを復元したものではありません。','県境は現代の位置把握のための参考表示です。勢力・領地はゲームの状態を表します。','城の座標は史跡・施設の代表点です。構内の天守中心や測量基準点を意味しません。']}
+# Keep source GeoJSON and castle records at their original precision. The
+# browser draws these geographic layers at a much coarser scale than 1e-6°.
+def compact_coordinates(values):
+    if values and isinstance(values[0], (list, tuple)):
+        return [compact_coordinates(value) for value in values]
+    return [round(value, 6) for value in values]
+
+for layer in (land, prefs, boundaries, rivers, lakes):
+    for feature in layer['features']:
+        geometry = feature['geometry']
+        geometry['coordinates'] = compact_coordinates(geometry['coordinates'])
+
 (ROOT/'map-data.js').write_text('/* 実地理資料から作成。出典・精度・加工方法は SOURCES-MAP.md を参照。 */\n(function(root){\n\'use strict\';\nroot.SENGOKU_GEOGRAPHY='+json.dumps(geo,ensure_ascii=False,separators=(',',':'))+';\n})(typeof window!==\'undefined\'?window:globalThis);\n')
 print(json.dumps({'mapDataBytes':(ROOT/'map-data.js').stat().st_size,'landPolygons':len(land['features'][0]['geometry']['coordinates']),'prefectures':len(prefs['features']),'boundarySegments':len(lines),'boundaryVertices':sum(len(line) for line in lines),'castles':len(castles),'terrain':terrain},ensure_ascii=False))
