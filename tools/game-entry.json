@@ -87,6 +87,7 @@
     "presentation.js"
   ],
   "game-core.bundle.js": [
+    "variant-text.js",
     "officers-data.js",
     "travel.js",
     "engine.js",

@@ -18,7 +18,10 @@ const totalGzipBytes = rows.reduce((sum,row)=>sum+row.gzipBytes,0);
 // theme and locally hosted calligraphic font declarations.
 // Allow their measured footprint explicitly while keeping a bounded entry;
 // runtime work reductions are measured separately, not inferred from bytes.
-const rawBudget=3160000,gzipBudget=910000;
+// v5.6.2 adds exact variant font ranges, visible update discovery and the
+// stronger cyber theme. Glyph files remain lazy and are measured separately
+// in the font manifest, while these limits keep the entry below 3.26 MB raw.
+const rawBudget=3260000,gzipBudget=940000;
 assert(totalBytes <= rawBudget, `Initial bundles exceed the ${rawBudget} byte budget: ${totalBytes}`);
 assert(totalGzipBytes <= gzipBudget, `Initial bundles exceed the ${gzipBudget} gzip byte budget: ${totalGzipBytes}`);
 const html = fs.readFileSync(path.join(root,'index.html'),'utf8');

@@ -32,20 +32,48 @@ function paidFixture(h,actor){
 }
 
 try{
-await scope('names use registration normalization, Unicode length and unique keys without trusting target or role fields',async h=>{
+await scope('health and config advertise the deployed name-preservation capability',async h=>{
+  for(const route of ['/health','/config']){const result=(await h.api(route)).data;assert.equal(result.version,'5.6.2');assert.equal(result.features.displayNameVariants,true);}
+});
+
+await scope('names preserve display spelling, Unicode limits and unique keys without trusting target or role fields',async h=>{
   const actor=await h.session('変更する甲'),other=await h.session('ＡＢＣ');
   await rename(h,null,{name:'認証なし'},401);await rename(h,{token:'invalid'},{name:'不正認証'},401);
   for(const invalid of [undefined,null,7,{},'', '   ','字'.repeat(25),'城\u0000主','城\u000b主','城\u007f主'])await rename(h,actor,{name:invalid},400);
   for(const invalid of [null,2,''])await rename(h,actor,{name:'有効な名前',expectedName:invalid},400);
   assert.equal((await rename(h,actor,{name:'abc'},409)).data.error.code,'NAME_TAKEN');
   assert.equal((await h.api('/session',post(null,{name:'abc'},409))).data.error.code,'NAME_TAKEN');
-  const normalized=(await rename(h,actor,{name:'  e\u0301武将  ',expectedName:actor.user.name})).data.user;assert.equal(normalized.name,'é武将');assert.equal(name(h,actor),'é武将');
-  assert.equal((await h.api('/session',post(null,{name:'e\u0301武将'},409))).data.error.code,'NAME_TAKEN');
+  const preserved=(await rename(h,actor,{name:'  e\u0301武将  ',expectedName:actor.user.name})).data.user;assert.equal(preserved.name,'e\u0301武将');assert.equal(name(h,actor),'e\u0301武将');
+  assert.equal((await h.api('/session',post(null,{name:'é武将'},409))).data.error.code,'NAME_TAKEN');
   await rename(h,actor,{name:'将'});assert.equal(name(h,actor),'将');
   const emoji='🏯'.repeat(24);await rename(h,actor,{name:emoji});assert.equal(Array.from(name(h,actor)).length,24);
   await rename(h,actor,{name:'🏯'.repeat(25)},400);
   const otherBefore=row(h,other),forged=(await rename(h,actor,{name:'自分だけ変更',userId:other.user.id,id:other.user.id,isAdmin:true,isStaff:true,role:'admin'})).data.user;
   assert.equal(forged.id,actor.user.id);assert.equal(forged.isAdmin,false);assert.equal(forged.isStaff,false);assert.deepEqual(row(h,other),otherBefore);
+});
+
+await scope('registration and reload retain compatibility ideographs and variation selectors without weakening name uniqueness',async h=>{
+  const registeredName='神葛\u{E0100}か\u3099𠮷',actor=await h.session('  '+registeredName+'  ');
+  assert.equal(actor.user.name,registeredName);assert.equal(name(h,actor),registeredName);assert.equal(row(h,actor).name_key,registeredName.normalize('NFKC').toLocaleLowerCase('ja'));
+  assert.equal((await h.api('/me',{token:actor.token})).data.user.name,registeredName);
+  assert.equal((await h.api('/session',post(null,{name:registeredName.normalize('NFC')},409))).data.error.code,'NAME_TAKEN');
+  for(const part of ['葛\u{E0100}','か\u3099']){
+    const boundary=part.repeat(12);await rename(h,actor,{name:boundary,expectedName:name(h,actor)});assert.equal(name(h,actor),boundary);assert.equal((await h.api('/me',{token:actor.token})).data.user.name,boundary);
+    await rename(h,actor,{name:part.repeat(13),expectedName:boundary},400);assert.equal(name(h,actor),boundary);
+    await h.api('/session',post(null,{name:part.repeat(13)},400));
+  }
+});
+
+await scope('exact name expectations preserve legacy NFC accounts and fence canonically equivalent glyph changes',async h=>{
+  const actor=await h.session('é旧領主');
+  await rename(h,actor,{name:'神の領主',expectedName:'é旧領主'});assert.equal(name(h,actor),'神の領主');
+  await rename(h,actor,{name:'神の領主',expectedName:'神の領主'});assert.equal(name(h,actor),'神の領主');
+  assert.equal((await rename(h,actor,{name:'古い期待値の変更',expectedName:'神の領主'},409)).data.error.code,'PROFILE_CHANGED');
+  await rename(h,actor,{name:'神の領主',expectedName:'神の領主'});assert.equal(name(h,actor),'神の領主');
+  assert.equal((await rename(h,actor,{name:'異体字を見ていた端末',expectedName:'神の領主'},409)).data.error.code,'PROFILE_CHANGED');
+  await rename(h,actor,{name:'葛\u{E0100}の領主',expectedName:'神の領主'});assert.equal(name(h,actor),'葛\u{E0100}の領主');
+  assert.equal((await rename(h,actor,{name:'指定を失った端末',expectedName:'葛の領主'},409)).data.error.code,'PROFILE_CHANGED');
+  await rename(h,actor,{name:'葛\u{E0101}の領主',expectedName:'葛\u{E0100}の領主'});assert.equal(name(h,actor),'葛\u{E0101}の領主');
 });
 
 await scope('linked devices can rename without taking a gameplay lease or changing saves, guilds, purchases or authentication',async h=>{

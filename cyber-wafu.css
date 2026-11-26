@@ -2,10 +2,12 @@
    remain with their existing modules. Illustrations retain their own layers. */
 @media (forced-colors: none) {
 :root {
-  --cyber-ink:#070e17; --cyber-panel:#101f2d; --cyber-raised:#172b39;
-  --cyber-line:#375565; --cyber-soft-line:#29404f; --cyber-cyan:#68e4db;
-  --cyber-cyan-dim:#173e46; --cyber-coral:#c74b45; --cyber-gold:#e9c88e;
-  --cyber-copy:#edf5f4; --cyber-muted:#b4c7d0;
+  --cyber-ink:#030a12; --cyber-panel:#0d1c2a; --cyber-raised:#182d3d;
+  --cyber-line:#53747d; --cyber-soft-line:#354e5d; --cyber-cyan:#7df8e5;
+  --cyber-cyan-dim:#17464c; --cyber-coral:#f3907f; --cyber-gold:#f6d79b;
+  --cyber-copy:#f1f6f4; --cyber-muted:#c4d2da;
+  --cyber-gilt-line:#9f8758; --cyber-gilt-light:#ffeac0; --cyber-gilt-shadow:#5f4c2d;
+  --cyber-frame:inset 0 1px #fff0cc4d,inset 1px 0 #d5af6326,inset -1px -1px #02070dd9,0 0 0 1px #02070c99,0 7px 18px #0005;
 }
 body, body:not(.at-title) {
   --bg:var(--cyber-ink); --panel:var(--cyber-panel); --panel-2:var(--cyber-raised);
@@ -390,3 +392,243 @@ body.public-luxury .site-header :focus-visible { outline-color:var(--cyber-cyan)
   #launch-screen :is(.edition-story,.launch-guide-nav img) { animation:none; transition:none; }
 }
 html[data-presentation-motion="quiet"] body :is(.button,.icon-button,.social-button,.events-button,.navigation-entry) { transition:none; }
+
+/* Lacquer and gilded metal. Decoration remains in the paint layers: no new
+   positioning contexts, clipped controls, fixed ornaments or layout changes. */
+@media (forced-colors:none) {
+  #app.chronicle-shell #main {
+    background:
+      radial-gradient(ellipse at 100% 0%,#1c626c30,transparent 48%),
+      linear-gradient(90deg,#78e8d805 1px,transparent 1px) 0 0/32px 32px,
+      linear-gradient(#78e8d805 1px,transparent 1px) 0 0/32px 32px,
+      linear-gradient(135deg,#0a1724,#030a12 72%);
+    scrollbar-color:#7a9a9d #07131f;
+  }
+  #app.chronicle-shell .chronicle-rail {
+    background:
+      linear-gradient(135deg,#ecd08a06 25%,transparent 25%,transparent 75%,#ecd08a06 75%) 0 0/22px 22px,
+      linear-gradient(135deg,#ecd08a06 25%,transparent 25%,transparent 75%,#ecd08a06 75%) 11px 11px/22px 22px,
+      linear-gradient(105deg,#152c3b,#07131e 78%);
+    border-color:#82744f;
+    box-shadow:inset -1px 0 #f2cf8a8a,inset -3px 0 #071019,5px 0 20px #0005;
+  }
+  #app.chronicle-shell .brand {
+    border-color:#977e50;
+    background:linear-gradient(90deg,#ffce7620,transparent 82%);
+    box-shadow:0 1px #060c14,inset 0 -1px #fff0c21a;
+  }
+  #app.chronicle-shell .brand-crest { filter:drop-shadow(0 2px 3px #0009); }
+  #app.chronicle-shell .clan-panel {
+    background:linear-gradient(125deg,#203543,#0c1c29 78%);
+    border-color:#a58b59; border-inline-start-color:#efd594;
+    box-shadow:var(--cyber-frame);
+  }
+  #app.chronicle-shell .clan-progress { box-shadow:inset 0 1px 3px #000b; }
+  #app.chronicle-shell .clan-progress i {
+    background:linear-gradient(90deg,#378d89,#7bf2d9 68%,#d4fff0);
+    box-shadow:0 0 8px #55e5cc38;
+  }
+  #app.chronicle-shell .sidebar .nav-item,
+  html.sengoku-desktop-fit #app.chronicle-shell #navigation .nav-item {
+    color:#dce5e9;
+    transition:background-color .14s,border-color .14s,box-shadow .14s,color .14s;
+  }
+  #app.chronicle-shell .sidebar .nav-item.active,
+  html.sengoku-desktop-fit #app.chronicle-shell .sidebar .nav-item.active,
+  html.sengoku-desktop-fit #app.chronicle-shell #navigation .nav-item.active {
+    background:#153c48!important; color:#f2fff9; border-color:#9cba9f;
+    border-inline-start-color:#ffdfa0;
+    box-shadow:inset 0 1px #ffe2a45c,inset 0 -2px #7af4de,inset -1px 0 #58bdb061,0 0 14px #48cfb91c;
+  }
+  #app.chronicle-shell .sidebar .navigation-menu-trigger {
+    background:#162f3f; border-color:#a18b5c; box-shadow:var(--cyber-frame);
+  }
+  body :is(.navigation-quick-dock,.navigation-favorites-rail) {
+    background:#081724; border-color:#a38753; box-shadow:inset 0 1px #ffe6ae38,0 -4px 20px #0006;
+  }
+
+  /* Header readings stay opaque; the glow is on the frame, never the numbers. */
+  #app.chronicle-shell .chronicle-ledger,
+  html:not(.sengoku-desktop-fit) #app.chronicle-shell .chronicle-ledger {
+    background:linear-gradient(105deg,#1b3341,#081724 74%);
+    border-color:#b4945d;
+    box-shadow:inset 0 1px #ffebbf45,inset 0 -1px #78e6d97d,0 3px 0 #02070d,0 7px 22px #0006;
+  }
+  html.sengoku-desktop-fit #app .header-balances { background:#060f18; border-color:#6c7c78; }
+  #app.chronicle-shell .chronicle-ledger .resource,
+  html:not(.sengoku-desktop-fit) #app.chronicle-shell .chronicle-ledger .resource,
+  html.sengoku-desktop-fit #app .header-balances .touch-header-stat {
+    background:#112634!important; border-color:#567278;
+    box-shadow:inset 0 2px var(--resource-accent,#8cddd0),inset 0 -1px #0009;
+  }
+  #app.chronicle-shell .chronicle-ledger :is(.resource-amount,.touch-header-stat-value) { color:#f8fffb; text-shadow:none; }
+  body:not(.at-title) .announcement-bar {
+    background:#102431; border-color:#a08a5e;
+    box-shadow:inset 0 1px #ffe3a421,inset 0 -1px #61d8cd1f;
+  }
+
+  /* Gold edging and shadow establish depth without reducing text contrast. */
+  #app.chronicle-shell #main :is(.page-heading,.roaming-heading,.court-heading,.covert-heading),
+  #app.chronicle-shell #main>.page-heading {
+    background:
+      linear-gradient(115deg,transparent 72%,#7de6d40a 72%,#7de6d40a 72.4%,transparent 72.4%),
+      linear-gradient(110deg,#203744,#102431 60%,#081621);
+    border-color:#a48957; border-top-color:#f3d593;
+    box-shadow:var(--cyber-frame),inset 0 -2px #50d0bd52;
+  }
+  #app.chronicle-shell #main :is(.page-heading,.roaming-heading,.court-heading,.covert-heading) h1 { text-shadow:none; }
+  #app.chronicle-shell #main .chapter-symbol {
+    background:linear-gradient(135deg,#284a52,#12323c); color:#ffe5ad;
+    border-color:#dab776; box-shadow:inset 0 1px #fff1c45e,inset 0 -2px #07111b,0 0 14px #5de2cc1a;
+  }
+  #app.chronicle-shell #main :is(.panel,.research-card,.building-card,.quest-row,.army-slot,.officer-card,.facility-entry),
+  body :is(.roaming-panel,.covert-panel,.court-panel,.field-card,.field-base-card,.progress-card,.alliance-panel,.cq-card) {
+    background:linear-gradient(135deg,#192f3e,#0a1825 75%);
+    border-color:#7f7555; box-shadow:var(--cyber-frame);
+  }
+  #app.chronicle-shell #main :is(.panel-heading,.facility-entry-heading) { border-color:#837650; }
+  #app.chronicle-shell #main :is(.town-overview,.town-workspace .town-panel) {
+    background:#0b1b28; border-color:#b59860; box-shadow:var(--cyber-frame),0 0 18px #52d1be0c;
+  }
+  #app.chronicle-shell #main :is(.town-workspace .town-scene-heading,.town-castle-heading,.town-style-strip) {
+    background:linear-gradient(110deg,#203b45,#102735); border-color:#8e895e;
+    box-shadow:inset 0 1px #ffe5b52b;
+  }
+  #app.chronicle-shell #main .town-scene-board { border-color:#d2b67a; box-shadow:inset 0 0 0 1px #020910,0 1px #68ddca52; }
+  #app.chronicle-shell #main .town-scene-board .hotspot .pin {
+    background:linear-gradient(135deg,#304b50,#0a2632 76%); color:#ffe1a0; border-color:#e9cf8c;
+    box-shadow:inset 0 1px #fff5c86b,inset 0 -2px #030c14,0 0 0 3px #06121ac4,0 3px 9px #0009;
+  }
+  #app.chronicle-shell #main .town-scene-board .hotspot .label { background:#071b29; color:#f4fcf7; border-color:#a7baa0; text-shadow:none; }
+  #app.chronicle-shell #main .town-scene-board .hotspot:is(:hover,:focus-visible) .pin { color:#fff4ce; border-color:#c4ffe9; box-shadow:0 0 0 3px #06121ae6,0 0 14px #71f5d899; }
+  #app.chronicle-shell #main :is(.building-art,.facility-art,.facility-modal-art,.portrait-frame) {
+    border-color:#bc9c61; box-shadow:inset 0 0 0 1px #f9de9c30,0 1px #f2d49370,0 4px 10px #0005;
+  }
+  #app.chronicle-shell #main :is(.building-level,.facility-seal) { background:#122e39; color:#ffe4ad; border-color:#b39661; text-shadow:none; }
+
+  /* Solid control surfaces have metal bevels and distinct pressed states. */
+  body :is(.button,.social-button,.events-button,.covert-button,.court-button,.field-button,.roaming-button,.trade-button,.letters-button,.hints-action,.moderation-button,.premium-admin-button,.icon-button,.social-icon-button,.modal-close,.navigation-close) {
+    background-color:#1a3443; border-color:#70878a; color:#f4faf6;
+    box-shadow:inset 0 1px #ddf8ef33,inset 0 -2px #040c16,0 2px 5px #0004;
+    text-shadow:none;
+  }
+  #app.chronicle-shell .button.primary,body #modal .button.primary,
+  body :is(.social-button,.events-button,.field-button,.trade-button,.letters-button,.moderation-button,.premium-admin-button):is(.primary,.is-primary),
+  body .hints-card:first-child.is-recommended .hints-action {
+    background:#943b39!important; border-color:#e9ba82; color:#fff8ef;
+    box-shadow:inset 0 1px #ffe0ac78,inset 0 -2px #4b161e,0 3px 10px #0006;
+  }
+  #app.chronicle-shell .button.gold,body #modal .button.gold,
+  body :is(.social-button,.events-button,.field-button).gold {
+    background:#eccb88!important; border-color:#ffeac0; color:#211a0c;
+    box-shadow:inset 0 1px #fff7d9,inset 0 -3px #94733a,0 2px 0 #020911,0 4px 12px #e5be6321;
+  }
+  body .button.ghost { background-color:#0b1c29; color:#dce8eb; border-color:#56727d; }
+  #app.chronicle-shell #main .catalog-filter-chips button:is(.active,[aria-pressed="true"]),
+  #app.chronicle-shell #main .tabs button:is(.active,[aria-selected="true"]),
+  #app.chronicle-shell #main .town-console-nav>button:is(.active,[aria-selected="true"]),
+  body :is(.field-tabs,.covert-tabs,.court-tabs,.social-tabs,.progress-tabs,.alliance-tabs,.cq-tabs,.travel-stage-tabs,.command-activity-filters) button:is(.active,[aria-selected="true"],[aria-pressed="true"]) {
+    background:#16434c!important; color:#effff8; border-color:#9dbba1;
+    box-shadow:inset 0 1px #ffe0a757,inset 0 -3px #7df8e5,0 0 10px #70ebd314;
+  }
+  body :is(.navigation-entry,.navigation-entry.is-current) { box-shadow:inset 0 1px #e8ddae26,inset 0 -1px #030b13; }
+  body .navigation-entry.is-current { background:#153b47; border-color:#d2b679; color:#f1fff8; box-shadow:inset 3px 0 #7df8e5,inset 0 1px #ffe3a84d,0 0 12px #71e4d414; }
+  body .navigation-entry-icon { background:#173b47; border-color:#b39b67; color:#b9ffe5; box-shadow:inset 0 1px #ffe7b32e; }
+
+  /* Dialogs read as a raised lacquer tray; their content stays evenly lit. */
+  body :is(.modal,.social-dialog,.events-dialog,.progress-dialog,.alliance-dialog,.cq-dialog,.premium-dialog,.navigation-dialog,.walking-dialog,.letters-dialog,.trade-dialog,.strategy-dialog,.hints-dialog,.travel-dialog,.command-activity-dialog,.resource-plan-dialog,.army-planner-modal) {
+    background:#0b1c29; border-color:#c5a66d;
+    box-shadow:inset 0 1px #ffedbc8f,inset 1px 0 #e6c6853d,inset -1px -1px #030a12,0 0 0 3px #040b12a8,0 0 34px #5ccfba1a,0 28px 90px #000c;
+  }
+  body dialog::backdrop { background:#02070cde; backdrop-filter:none; }
+  body :is(.modal-header,.social-header,.events-header,.progress-header,.alliance-dialog-top,.cq-dialog-top,.premium-header,.navigation-dialog-header,.walking-header,.letters-header,.trade-header,.strategy-header,.hints-header,.command-activity-header),
+  body:not(.at-title) #modal .modal-header {
+    background:linear-gradient(110deg,#24404c,#112a38 76%); border-color:#aa9364;
+    box-shadow:inset 0 1px #ffe4a93b,inset 0 -1px #80e6cf29;
+  }
+  body :is(.modal-body,.social-body,.events-main,.progress-content,.cq-dialog-body,.alliance-dialog-content,.resource-plan-scroll) { background-color:#0c1e2c; }
+  body :is(.social-profile-section,.social-guild-card,.events-stage,.progress-summary,.premium-product-card,.army-plan-card,.travel-report,.command-operation,.resource-plan-card,.resource-plan-reserve,.resource-plan-basket) { background:#132b38; border-color:#708277; box-shadow:inset 0 1px #e8e2b41c; }
+  #app #main .domain-briefing { background:#0b202d; border-color:#b29761; box-shadow:var(--cyber-frame); }
+  #app #main .domain-briefing>header { background:linear-gradient(110deg,#23444c,#142e3b); border-color:#a78f5f; box-shadow:inset 0 1px #ffe7b53b; }
+  #app #main .domain-briefing-tile { background:#132f3e; box-shadow:inset 0 1px #6bb9b22e,inset 0 -1px #030a15; }
+  body :is(.army-planner-entry,.domain-budget-entry,.domain-activity-entry) { background-color:#153541; border-color:#a08e61; box-shadow:inset 0 1px #f2d59b38,inset 0 -1px #6de7d343; }
+  #app.chronicle-shell #main :is(p,label,dt,dd,td,th,.subtitle,.resource-label,.resource-amount),
+  body :is(.modal,.social-dialog,.events-dialog,.progress-dialog,.navigation-dialog,.command-activity-dialog) :is(p,label,dt,dd,td,th,small) { text-shadow:none; }
+
+  /* The illustrated title is framed like a gilded folding screen. */
+  #launch-screen.launch-screen {
+    background:
+      radial-gradient(ellipse at 85% 0%,#184e5c70,transparent 50%),
+      linear-gradient(90deg,#e9c47c06 1px,transparent 1px) 0 0/34px 34px,
+      linear-gradient(#e9c47c06 1px,transparent 1px) 0 0/34px 34px,#050e19;
+  }
+  #launch-screen .edition-mast { border-color:#baa06a; box-shadow:0 1px #050b12; }
+  #launch-screen .edition-cover { border-color:#d9b97b; box-shadow:inset 0 0 0 1px #ffe7a74d,0 0 0 3px #030b1480,0 0 26px #50c9b81c,0 22px 48px #0008; }
+  #launch-screen .edition-cover::after { border-color:#f1d9a5a6; }
+  #launch-screen #launch-title,#launch-screen #launch-title span,#launch-screen .edition-tagline { text-shadow:none; }
+  #launch-screen #launch-enter.edition-enter {
+    background:#edcc87!important; color:#211a0c; border-color:#fff0c9;
+    box-shadow:inset 0 1px #fff8dc,inset 0 -3px #987237,0 3px 0 #040c17,0 7px 22px #e8bc552e;
+  }
+  #launch-screen #launch-enter.edition-enter:hover:not(:disabled) { background:#f7dba3!important; color:#17140b; border-color:#fff5d9; }
+  #launch-screen #launch-enter.edition-enter:active:not(:disabled) { background:#d7b56e!important; box-shadow:inset 0 3px 9px #6b4f236b,inset 0 -1px #ffefb3; }
+  #launch-screen .edition-resume { background:linear-gradient(90deg,#173e48f5,#102c3ce6); border-color:#a99464; box-shadow:inset 0 1px #ffdfa82e; }
+  #launch-screen .launch-guide-nav a { border-color:#a58f61; box-shadow:inset 0 1px #ffe6ab38,0 3px 10px #0005; }
+  #launch-screen .edition-foot { border-color:#84734f; color:#d0dde1; }
+
+  /* Public covers carry the same frame. Long instructions retain dark ink on
+     an opaque light paper surface, rather than a patterned reading backdrop. */
+  body.public-luxury :is(.site-header,.site-footer) {
+    background:linear-gradient(105deg,#17313f,#071724 78%); border-color:#be9f65;
+    box-shadow:inset 0 1px #ffe5a43d,inset 0 -1px #7cd7c77a;
+  }
+  body.public-luxury :is(.header-navigation .nav-play,.action-link,.premium-page-hero .action-link,.reading-actions a:last-child) {
+    background:#eccb88!important; color:#211a0c; border-color:#fff0c5;
+    box-shadow:inset 0 1px #fff8df,inset 0 -3px #96733a,0 3px 8px #0004;
+    text-shadow:none;
+  }
+  body.public-luxury .folio-hero { background:linear-gradient(115deg,#1d3946,#0a1d2b); border-color:#bd9e65; border-bottom-color:#62d8c6; box-shadow:var(--cyber-frame); }
+  body.public-luxury .chapter-art { border-color:#d3b477; }
+  body.public-luxury .chapter-art::after { border-color:#ffebae99; }
+  body.public-luxury :is(.folio-index,.toc) { background:#102937; border-color:#b99f69; box-shadow:var(--cyber-frame); }
+  body.public-luxury .public-current-chapter { background:#1b3b47; border-color:#bfa672; box-shadow:inset 3px 0 #7de6d0; }
+  body.public-luxury .toc a[aria-current="location"] { color:#fff0c1; border-left-color:#7df8e5; background:#1b3c47; }
+  body.public-luxury .share-feature-list>li { border-color:#ae9463; box-shadow:inset 0 1px #fff8dc,0 8px 18px #20313b18; }
+  body.public-luxury .share-feature-list .feature-art { border-color:#b08c4f; }
+  body.public-luxury .article { background:#fffdf5; box-shadow:inset 0 0 0 1px #bda16c,0 12px 26px #172a3612; }
+  body.public-luxury .article :is(p,li,label,dt,dd,td,th,small) { text-shadow:none; }
+  body.public-luxury .premium-catalog { background:#0c2432; border-color:#c1a169; }
+  body.public-luxury .premium-catalog .premium-product { background:#17313e; border-color:#8e805b; box-shadow:var(--cyber-frame); }
+  body.public-luxury .reading-actions { background:#102a37; border-color:#bea26e; box-shadow:0 5px 20px #0005,inset 0 1px #ffdda830; }
+
+  @media (hover:hover) and (pointer:fine) {
+    #app.chronicle-shell .sidebar .nav-item:not(.active):hover { background-color:#183846; border-color:#638d8e; box-shadow:inset 2px 0 #73dfd1; }
+    #app.chronicle-shell #main :is(.building-card,.facility-entry,.research-card):hover { border-color:#d8c083; box-shadow:var(--cyber-frame),0 0 14px #6cccb51a; }
+    body :is(.button,.icon-button,.social-button,.events-button,.navigation-entry):not(:disabled):hover { background-color:#244955; border-color:#a3f3dc; box-shadow:inset 0 1px #eaffd83b,inset 0 -2px #061220,0 0 12px #67d8c326; }
+    #app.chronicle-shell .button.primary:not(:disabled):hover,body #modal .button.primary:not(:disabled):hover { background:#a7453f!important; border-color:#ffdaa4; }
+    #app.chronicle-shell .button.gold:not(:disabled):hover,body #modal .button.gold:not(:disabled):hover { background:#f6dca6!important; color:#211a0c; border-color:#fff7d8; box-shadow:inset 0 1px #fffce9,inset 0 -3px #a48347,0 0 14px #edca7d3d; }
+    body.public-luxury :is(.nav-play,.action-link,.reading-actions a:last-child):hover { background:#f6dba2!important; color:#211a0c; border-color:#fff5d2; }
+  }
+  body :is(.button,.icon-button,.social-button,.events-button,.navigation-entry):not(:disabled):not([aria-disabled="true"]):active {
+    transform:none; box-shadow:inset 0 3px 8px #0009,inset 0 -1px #b3dfd63d; border-color:#8dedd9;
+  }
+  #app.chronicle-shell .button.gold:not(:disabled):active,body #modal .button.gold:not(:disabled):active {
+    background:#d2b16f!important; color:#211a0c; border-color:#ffe9ac;
+    box-shadow:inset 0 3px 8px #70502270,inset 0 -1px #fff1bb;
+  }
+  body.public-luxury :is(.header-navigation .nav-play,.action-link,.reading-actions a:last-child):active {
+    background:#d2b16f!important; color:#211a0c;
+    box-shadow:inset 0 3px 8px #70502270,inset 0 -1px #fff1bb;
+  }
+  @media (max-width:600px) {
+    #app.chronicle-shell .chronicle-rail { box-shadow:inset 0 -1px #ebd09b61; }
+    body :is(.modal,.social-dialog,.events-dialog,.progress-dialog,.navigation-dialog,.command-activity-dialog) { box-shadow:inset 0 1px #ffe8bb8c,0 0 0 1px #050c14,0 14px 35px #000b; }
+  }
+}
+@media (prefers-reduced-motion:reduce) {
+  #app.chronicle-shell .sidebar .nav-item,
+  html.sengoku-desktop-fit #app.chronicle-shell #navigation .nav-item,
+  body :is(.button,.icon-button,.social-button,.events-button,.navigation-entry) { transition:none; animation:none; }
+}
+html[data-presentation-motion="quiet"] #app.chronicle-shell .sidebar .nav-item,
+html.sengoku-desktop-fit[data-presentation-motion="quiet"] #app.chronicle-shell #navigation .nav-item { transition:none; }

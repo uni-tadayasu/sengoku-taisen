@@ -6,7 +6,7 @@ const ranks=new Set(['D','C','B','A','S','SS','SSS','U']);
 const officers=new Map((global.SENGOKU_OFFICERS||[]).map(person=>[person.id,person]));
 const esc=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const validId=id=>typeof id==='string'&&/^u_[A-Za-z0-9_]{1,96}$/.test(id);
-const clanName=clan=>clan==='德川家'?'徳川家':clan||'浪人';
+const clanName=clan=>clan||'浪人';
 const searches=new WeakMap();
 let dialog=null,selection=null,sequence=0,timer=null,opener=null,activeRead=null;
 function patch(host,html,key){
@@ -24,7 +24,7 @@ function commanderCard(commander){
   }
   const officer=officers.get(commander.officerId);
   if(!officer||!ranks.has(commander.rank))return '<section class="lord-commander lord-commander-empty"><div><h3>総大将</h3><p>武将情報を確認できません</p></div></section>';
-  const name=officer.name==='德川家康'?'徳川家康':officer.name;
+  const name=officer.name;
   const portrait=global.SengokuArt?.portrait?.({...officer,rank:commander.rank})||'';
   return `<section class="lord-commander" data-officer-id="${esc(officer.id)}" data-officer-rank="${commander.rank}"><div class="lord-commander-portrait">${portrait}</div><div class="lord-commander-copy"><h3>総大将</h3><p class="lord-commander-name">${esc(name)}</p><p class="lord-commander-rank">ランク <b>${commander.rank}</b></p></div></section>`;
 }

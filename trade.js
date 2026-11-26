@@ -33,7 +33,7 @@ function publicEvaluation(value){
 }
 function person(value){
   const id=String(value?.playerId??value?.id??'');
-  return PLAYER.test(id)&&typeof value?.name==='string'?{playerId:id,name:value.name.slice(0,80),clan:String(value.clan==='德川家'?'徳川家':value.clan||'').slice(0,60),avatarVersion:typeof value.avatarVersion==='string'&&/^[a-f0-9]{64}$/.test(value.avatarVersion)?value.avatarVersion:null,evaluation:publicEvaluation(value.evaluation),appearance:global.SengokuPremiumRuntime?.cleanAppearance?.(value.appearance)||null}:null;
+  return PLAYER.test(id)&&typeof value?.name==='string'?{playerId:id,name:value.name.slice(0,80),clan:String(value.clan||'').slice(0,60),avatarVersion:typeof value.avatarVersion==='string'&&/^[a-f0-9]{64}$/.test(value.avatarVersion)?value.avatarVersion:null,evaluation:publicEvaluation(value.evaluation),appearance:global.SengokuPremiumRuntime?.cleanAppearance?.(value.appearance)||null}:null;
 }
 function cleanTrade(value){
   const sender=person(value?.sender),recipient=person(value?.recipient),offer=assets(value?.offer),want=assets(value?.want);

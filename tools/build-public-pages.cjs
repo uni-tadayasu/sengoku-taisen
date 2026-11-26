@@ -239,6 +239,7 @@ function guideContent(p) {
       <h3>迷ったら「ヒント」、操作に困ったら「保存・設定」</h3>
       <p><strong>「ヒント」</strong>は今の領国に合う次の行動を案内します。<strong>「保存・設定」</strong>は「音・表示」「保存・引き継ぎ」「便利な機能」「戦役の設定」の4分類です。目的の項目を開き、音量やバックアップなどを確認できます。初めての人は、まず城下町の田畑・商家と軍団を整え、戦いの前に軍師の提案を確認すると進めやすくなります。</p>
       <p>文字を読みやすくしたいときは、<strong>「保存・設定」→「音・表示」→「文字の大きさ」</strong>で「標準」「大きめ」を選べます。この表示設定は端末ごとに保存されます。</p>
+      <p>メニュー・本文・ボタン・入力欄・英数字は、強い崩しを抑えた筆文字で表示します。髙・﨑・𠮷・德などを補完し、<strong>葛󠄀</strong>のように字形を指定した漢字は異体字対応の書体で描画します。名前や文章の文字列は変えずに表示します。</p>
       <p>入力欄で検索・絞り込みを使うときは、条件を解除すると元の一覧へ戻れます。画面を閉じるときは、その画面の<strong>「閉じる」</strong>を使ってください。保存・引き継ぎの操作は、<a href="${p.dir('guide/data-recovery')}">データ復元ガイド</a>で手順を確認できます。</p>
     `, 'section-town'),
     section('next-hints', '迷ったときの道しるべ', '次に何をするか、ヒントで確認', `
@@ -632,6 +633,9 @@ function guideContent(p) {
     section('save-and-sync', '端末同期とデータ保存', '自動保存・端末間の同期・データ復元', `
       <p>城を選んで開始した後の未連携の進行は、そのブラウザに自動保存されます。未確定の城選択は保存・自動送信しません。領主登録・端末連携後はクラウドにも保存し、同じ領主IDの端末へ自動同期します。世界時計・同期・交流にはインターネット接続が必要です。</p>
       <p>進行を操作する端末は同時に1台です。ほかの端末は最新状態を表示し、操作権を切り替えて続きを遊べます。自動同期では開いている画面・スクロール位置・入力途中の内容を保ちます。通信が切れた場合や別の端末へ操作権が移った場合は、保存の競合を防ぐため操作を待機します。</p>
+      <h3 id="game-updates">新版へ切り替えるには</h3>
+      <p>オンラインで画面を表示している間は、約1分ごとに新しい版を確認します。上部に<strong>「新版あり」</strong>が出たら、入力や通話を終えてから<strong>「保存してタイトルへ」→「新版を開く」</strong>の順に選んでください。タイトルやメニューの<strong>「更新を確認」</strong>で手動確認もできます。保存・同期を確認できないときは、その理由を表示して現在の画面を保ちます。</p>
+      <p>更新は各プレイヤーの端末で行います。管理者の再読み込みキーで、他の人の画面を一斉に更新することはできません。旧版を以前から開き続けている端末は、一度新版へ切り替えると、この自動確認と案内を利用できるようになります。</p>
       <p>以前に書き出したセーブも、引き継ぎ画面から確認できます。古い体力・時刻の形式や、旧京都御所の個人工事がある保存については、<a href="${p.dir('guide/data-recovery')}#legacy-save">旧セーブを読み込むときの案内</a>をご覧ください。</p>
       ${callout('機種変更・URL変更の前に', '「領主データ」は同じ領主へ接続するための本人情報、「セーブデータ」は城・武将・資源などの進行です。「統合バックアップ」では両方をまとめて保管できます。')}
       <a class="chapter-link" href="${p.dir('guide/data-recovery')}">端末変更・データ復元の手順を読む</a>
@@ -1030,6 +1034,9 @@ for (const [name, html] of outputs) {
       });
       const links = appearance.map(stylesheet => `<link rel="stylesheet" href="${name === '404.html' ? '/' + stylesheet : paths(name).file(stylesheet)}?v=${release}">`);
       themed = themed.replace(/\s*<\/head>/, '\n  ' + links.join('\n  ') + '\n</head>');
+      themed = themed.replace(/(?:\r?\n)?[ \t]*<script\b[^>]*src=["'][^"']*variant-text\.js(?:\?[^"']*)?["'][^>]*><\/script>/gi, '');
+      const variantScript = name === '404.html' ? '/variant-text.js' : paths(name).file('variant-text.js');
+      themed = themed.replace('</head>', `  <script defer src="${variantScript}?v=${release}"></script>\n</head>`);
     }
     if (['404.html', 'tools/music-audition.html'].includes(name)) {
       const href = name === '404.html' ? '/en/' : paths(name).dir('en');

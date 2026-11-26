@@ -27,8 +27,8 @@ import {relocateResidence} from './relocation.js';
 import {requirePromotionOrigin,recordPromotion,readPromotionReport} from './promotion.js';
 import {ensureResidency,residencySnapshot,residencyDirectory,residencyStart,initialResidencyStatements,residencyTargetGuard,prepareResidencySuccession,prepareResidencyCpuLosses} from './residency.js';
 const API = '/api/v1';
-const API_VERSION = '5.4.0';
-const API_FEATURES = Object.freeze({trades:true,moderation:true,premium:true,timedEvents:true,troopTrades:true,roamingBattles:true,roamingDeployment:true,covertDispatch:true,privatePlayerRoles:true,guildIcons:true,court:true,kyotoGosho:true,branches:true,branchBattles:true,branchFacilities:true,audioCalls:true,progression:true,armyPresets:true,allianceStrategy:true,sharedConquest:true,newcomerProtection:true,webPush:true,battleAdviser:true,battleCatalog:true,eventBattleRewards:true,shogunate:true,attackTravel:true,castleResidency:true,residencyRelocation:true,maintenanceUpkeep:true,strongholdDurability:true,chatReplies:true,chatMentions:true,covertReturnTravel:true,allianceUnitTravel:true,legacySaveRecovery:true});
+const API_VERSION = '5.6.2';
+const API_FEATURES = Object.freeze({trades:true,moderation:true,premium:true,timedEvents:true,troopTrades:true,roamingBattles:true,roamingDeployment:true,covertDispatch:true,privatePlayerRoles:true,guildIcons:true,court:true,kyotoGosho:true,branches:true,branchBattles:true,branchFacilities:true,audioCalls:true,progression:true,armyPresets:true,allianceStrategy:true,sharedConquest:true,newcomerProtection:true,webPush:true,battleAdviser:true,battleCatalog:true,eventBattleRewards:true,shogunate:true,attackTravel:true,castleResidency:true,residencyRelocation:true,maintenanceUpkeep:true,strongholdDurability:true,chatReplies:true,chatMentions:true,covertReturnTravel:true,allianceUnitTravel:true,legacySaveRecovery:true,displayNameVariants:true});
 const MAX_BODY = 16 * 1024;
 const MAX_SAVE_BODY = 2 * 1024 * 1024;
 const MAX_AVATAR_BYTES = 48 * 1024;
@@ -72,10 +72,10 @@ const pair = (a, b) => a < b ? [a, b] : [b, a];
 const uid = prefix => prefix + crypto.randomUUID().replaceAll('-', '');
 const nameKey = text => text.normalize('NFKC').toLocaleLowerCase('ja');
 
-function textField(value, name, max, { optional = false, min = 1 } = {}) {
+function textField(value, name, max, { optional = false, min = 1, preserveUnicode = false } = {}) {
   if (optional && (value === undefined || value === null || value === '')) return '';
   if (typeof value !== 'string') fail(400, 'INVALID_INPUT', `${name}を入力してください。`);
-  const text = value.normalize('NFC').trim();
+  const text = (preserveUnicode ? value : value.normalize('NFC')).trim();
   if (/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/u.test(text)) fail(400, 'INVALID_INPUT', `${name}に使用できない文字が含まれています。`);
   if (Array.from(text).length < min || Array.from(text).length > max) fail(400, 'INVALID_INPUT', `${name}は${min}～${max}文字にしてください。`);
   return text;
@@ -2705,7 +2705,7 @@ async function route(request, env, now) {
     const body = await readBody(request);
     const scope = await ipScope(request, env, 'session');
     if (scope) await budget(db, scope, 30, 60*60*1000, now);
-    const name = textField(body.name, '領主名', 24, {optional:true}) || '旅の領主' + crypto.randomUUID().slice(0,6);
+    const name = textField(body.name, '領主名', 24, {optional:true,preserveUnicode:true}) || '旅の領主' + crypto.randomUUID().slice(0,6);
     const clan = textField(body.clan, '勢力名', 24, {optional:true}) || '織田家';
     if(clan===ADMIN_CLAN)fail(403,'ADMIN_CLAN_REQUIRED','この家名は選択できません。徳川家を選択してください。');
     const id = uid('u_'), token = gameToken();
@@ -2965,7 +2965,9 @@ async function route(request, env, now) {
     return {ok:true,user:{...mapUser(user,now),commander:null},...(user.is_admin?{management:{recoveryAvailable:typeof env.SENGOKU_ADMIN_KEY==='string'&&env.SENGOKU_ADMIN_KEY.length>0}}:{}),friends:rows(result[0]).map(r=>mapUser(r,now)),requests:rows(result[1]).map(r=>({id:r.id,name:r.name,clan:publicClan(r.clan,r.is_admin,r.is_staff,r.personal_clan),avatarVersion:r.avatar_version||null,evaluation:evaluationRef(r.id),direction:r.requested_by===user.id?'outgoing':'incoming',createdAt:iso(r.created_at)})),unreadMail:Number(rows(result[2])[0]?.count || 0)};
   }
   if (path === '/profile' && method === 'PATCH') {
-    const body = await readBody(request), name = textField(body.name,'領主名',24),expectedName=Object.hasOwn(body,'expectedName')?textField(body.expectedName,'変更前の領主名',24):null;
+    const body = await readBody(request), name = textField(body.name,'領主名',24,{preserveUnicode:true}),expectedName=Object.hasOwn(body,'expectedName')?textField(body.expectedName,'変更前の領主名',24,{preserveUnicode:true}):null;
+    // Both old and current clients echo the server's exact display name. Keep
+    // that spelling in the concurrency guard, including an existing NFC name.
     if(!user.is_admin&&!user.is_staff&&typeof body.clan==='string'&&body.clan.normalize('NFC').trim()===ADMIN_CLAN)fail(403,'ADMIN_CLAN_REQUIRED','この家名は選択できません。徳川家を選択してください。');
     if(name!==user.name)await budget(db,'profile-name:'+user.id,20,60000,now);
     const access=accountCommitGuard(user);let changed;

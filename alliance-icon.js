@@ -11,7 +11,7 @@ function imageURL(guild){
  if(!ID.test(String(guild?.id||''))||!cleanVersion(guild?.iconVersion))return '';
  try{const base=new URL(String(global.SENGOKU_API_BASE||''));if(!['https:','http:'].includes(base.protocol)||base.username||base.password)return '';return base.href.replace(/\/+$/,'').replace(/\/api\/v1$/,'')+'/api/v1/guild-icons/'+encodeURIComponent(guild.id)+'?v='+guild.iconVersion;}catch(_){return '';}
 }
-function contents(guild){const letter=esc(Array.from(String(guild?.name||'同盟'))[0]),url=imageURL(guild);return `<span class="social-alliance-initial" aria-hidden="true">${letter}</span>${url?`<img data-alliance-icon-image src="${esc(url)}" width="256" height="256" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" draggable="false">`:''}`;}
+function contents(guild){const name=String(guild?.name||'同盟'),letter=esc(global.SengokuVariants?.firstGrapheme?.(name)||Array.from(name)[0]||''),url=imageURL(guild);return `<span class="social-alliance-initial" aria-hidden="true">${letter}</span>${url?`<img data-alliance-icon-image src="${esc(url)}" width="256" height="256" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" draggable="false">`:''}`;}
 function markup(guild,size=''){
  const current=resolve(guild),kind=['small','profile','inline'].includes(size)?size:'',url=imageURL(current);
  return `<span class="social-alliance-icon${kind?' social-alliance-icon-'+kind:''}${url?' has-photo':''}" data-guild-icon="${esc(current.id)}" data-guild-icon-name="${esc(current.name)}" data-guild-icon-version="${esc(current.iconVersion||'')}" aria-hidden="true">${contents(current)}</span>`;

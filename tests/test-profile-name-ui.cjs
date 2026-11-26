@@ -1,7 +1,7 @@
 /* Synthetic-only regression coverage for the real profile name form and transport. */
 'use strict';
 const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),crypto=require('node:crypto');
-const premium=require('../premium-runtime.js');
+const premium=require('../premium-runtime.js'),variants=require('../variant-text.js');
 const SOURCE=fs.readFileSync(require.resolve('../social.js'),'utf8');
 const copy=value=>JSON.parse(JSON.stringify(value));
 function harness(){
@@ -17,7 +17,7 @@ function harness(){
   FormData:class{constructor(f){this.form=f;}get(key){return key==='name'?this.form.querySelector('[name=name]')?.value:null;}},
   localStorage:{getItem:key=>storage.get(key)??null,setItem:(key,value)=>{writes.push({key,value});storage.set(key,value);},removeItem:key=>{writes.push({key});storage.delete(key);}},
   fetch:async(url,options)=>{requests.push({url,options,payload:options.body?JSON.parse(options.body):null});const result=await handler(url,options);return{ok:!result.__status,status:result.__status||200,json:async()=>result};},
-  SENGOKU_API_BASE:'https://api.example.invalid',
+  SENGOKU_API_BASE:'https://api.example.invalid',SengokuVariants:variants,
   SengokuBridge:{setRoleAccess(){},setSyncAccess(){},toast:(message,error)=>notices.push({message,error})},
   SengokuCloudSync:{start(){},stop(){},refresh:async()=>{calls.sync++;},getDevice:()=>({id:'device',name:'確認端末'}),getStatus:()=>({linked:true,ready:true,writable:false})},
   SengokuPremiumRuntime:{...premium,getAppearance:()=>copy(original.appearance),refreshIdentity(){},refresh:async()=>{calls.premium++;},disconnect(){}}
@@ -36,13 +36,27 @@ const failure=(code,message,status=409)=>({ok:false,__status:status,error:{code,
 test('the owner profile shows an escaped current name and registration shares Unicode-aware limits',()=>{
  const h=harness();h.t.s.user.name='<名&旗>';const html=h.t.profileView();
  assert(html.includes('領主名を変更'));assert(html.includes('value="&lt;名&amp;旗&gt;"'));assert(html.includes('data-player-id="'+h.id+'"'));assert(html.includes('1〜24文字'));assert(!html.includes('maxlength="24"'));const identity=h.t.s.identity;h.t.s.identity=null;assert(h.t.registerView().includes('領主名（1〜24文字）'));h.t.s.identity=identity;
- assert.equal(h.t.normalizedPlayerName('  Cafe\u0301  '),'Café');assert.equal(h.t.normalizedPlayerName('家'),'家');assert.equal(h.t.normalizedPlayerName('🏯'.repeat(24)),'🏯'.repeat(24));
+ assert.equal(h.t.normalizedPlayerName('  Cafe\u0301  '),'Cafe\u0301');assert.equal(h.t.normalizedPlayerName('家'),'家');assert.equal(h.t.normalizedPlayerName('🏯'.repeat(24)),'🏯'.repeat(24));
  for(const value of ['', '  ','家'.repeat(25),'🏯'.repeat(25),'領\u0000主'])assert.throws(()=>h.t.normalizedPlayerName(value));
 });
 test('a successful owner-only rename preserves identity, purchases and saved state and refreshes account data',async()=>{
  const h=harness(),before=JSON.stringify(h.t.s.identity),appearance=copy(h.t.s.user.appearance);h.enter('  さくらCafe\u0301  ');
- h.setHandler(async(url,options)=>{if(options.method==='PATCH'){assert(url.endsWith('/profile'));assert.deepEqual(JSON.parse(options.body),{name:'さくらCafé',expectedName:'元の領主'});h.setUser({...h.original,name:'さくらCafé'});return{ok:true,user:h.user()};}assert(url.endsWith('/me'));return{ok:true,user:h.user(),friends:[],requests:[]};});
- await h.submit();assert.equal(h.t.s.user.name,'さくらCafé');assert.equal(h.input.value,'さくらCafé');assert.equal(h.form.dataset.currentName,'さくらCafé');assert.equal(JSON.stringify(h.t.s.identity),before);assert.deepEqual(copy(h.t.s.user.appearance),appearance);assert(h.nameSlot.innerHTML.includes('さくらCafé'));assert(h.nameSlot.innerHTML.includes('data-premium-product="gold-banner"'));assert.equal(h.calls.sync,1);assert.equal(h.calls.premium,1);assert.equal(h.writes.length,0);assert.equal(h.input.disabled,false);assert.equal(h.button.disabled,false);assert(h.feedback.textContent.includes('変更しました'));
+ h.setHandler(async(url,options)=>{if(options.method==='PATCH'){assert(url.endsWith('/profile'));assert.deepEqual(JSON.parse(options.body),{name:'さくらCafe\u0301',expectedName:'元の領主'});h.setUser({...h.original,name:'さくらCafe\u0301'});return{ok:true,user:h.user()};}assert(url.endsWith('/me'));return{ok:true,user:h.user(),friends:[],requests:[]};});
+ await h.submit();assert.equal(h.t.s.user.name,'さくらCafe\u0301');assert.equal(h.input.value,'さくらCafe\u0301');assert.equal(h.form.dataset.currentName,'さくらCafe\u0301');assert.equal(JSON.stringify(h.t.s.identity),before);assert.deepEqual(copy(h.t.s.user.appearance),appearance);assert(h.nameSlot.innerHTML.includes('さくらCafe\u0301'));assert(h.nameSlot.innerHTML.includes('data-premium-product="gold-banner"'));assert.equal(h.calls.sync,1);assert.equal(h.calls.premium,1);assert.equal(h.writes.length,0);assert.equal(h.input.disabled,false);assert.equal(h.button.disabled,false);assert(h.feedback.textContent.includes('変更しました'));
+});
+test('compatibility kanji, IVS and combining marks remain exact while the existing storage limit stays enforced',()=>{
+ const h=harness();
+ for(const name of ['神の領主','𠮷良','葛\u{E0100}西','か\u3099城','葛\u{E0100}'.repeat(12),'か\u3099'.repeat(12)])assert.equal(h.t.normalizedPlayerName(' '+name+' '),name);
+ for(const name of ['葛\u{E0100}'.repeat(13),'か\u3099'.repeat(13),'👩\u200d👩\u200d👧\u200d👦'.repeat(4)])assert.throws(()=>h.t.normalizedPlayerName(name),/異体字の指定や結合文字/);
+});
+test('a glyph-only change is submitted with the exact current name and reflected unchanged in the form',async()=>{
+ const h=harness(),before='神の領主',after='神の領主';h.t.s.user.name=before;h.form.dataset.currentName=before;h.enter(after);
+ h.setHandler(async(url,options)=>{if(options.method==='PATCH'){assert.deepEqual(JSON.parse(options.body),{name:after,expectedName:before});h.setUser({...h.original,name:after});}return{ok:true,user:h.user(),friends:[],requests:[]};});
+ await h.submit();assert.equal(h.requests.filter(r=>r.options.method==='PATCH').length,1);assert.equal(h.t.s.user.name,after);assert.equal(h.input.value,after);assert.equal(h.form.dataset.currentName,after);assert(h.nameSlot.innerHTML.includes(after));
+});
+test('a server that changes the requested glyphs cannot report a successful exact-name save',async()=>{
+ const h=harness(),draft='神の領主';h.enter(draft);h.setHandler(async()=>({ok:true,user:{...h.original,name:draft.normalize('NFC')}}));
+ await h.submit();assert.equal(h.t.s.user.name,h.original.name);assert.equal(h.input.value,draft);assert.match(h.feedback.textContent,/入力した文字のまま/);assert(!h.notices.some(row=>row.message.includes('変更しました')));assert.equal(h.calls.sync,0);assert.equal(h.input.disabled,false);
 });
 test('unchanged, invalid or another player form cannot issue a rename request',async()=>{
  const h=harness();h.enter(' 元の領主 ');await h.submit();assert.equal(h.requests.length,0);assert(h.feedback.textContent.includes('同じ'));

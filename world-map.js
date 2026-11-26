@@ -115,7 +115,7 @@ function markerPresentation(marker,options={}){
   // their original symbols.
   try{if(!marker.cluster&&typeof options.markerAppearance==='function')appearance=options.markerAppearance(marker);}catch(_){}
   const custom=Boolean(appearance&&typeof appearance.html==='string'&&appearance.html);
-  const label=marker.cluster?`${marker.points.length}${options.countUnit||'城'}の地域を拡大：${marker.points.map(p=>p.name).join('、')}`:`${marker.name} ${marker.owner==='德川家'?'徳川家':marker.owner||''} ${marker.home?'本拠 ':''}${marker.disabled?(marker.restrictedLabel||'専用拠点')+' ':''}${marker.reachable?'進軍可能 ':''}Lv.${marker.level||1}`;
+  const label=marker.cluster?`${marker.points.length}${options.countUnit||'城'}の地域を拡大：${marker.points.map(p=>p.name).join('、')}`:`${marker.name} ${marker.owner||''} ${marker.home?'本拠 ':''}${marker.disabled?(marker.restrictedLabel||'専用拠点')+' ':''}${marker.reachable?'進軍可能 ':''}Lv.${marker.level||1}`;
   return{custom,html:custom?appearance.html:marker.cluster?`<b>${marker.points.length}</b>`:marker.home?icon('home'):icon('castle'),label:custom&&typeof appearance.label==='string'?appearance.label:label};
 }
 function safeUrl(value){return typeof value==='string'&&/^(?:https?:\/\/|(?:\.\/)?assets\/|data:image\/)/i.test(value)?value:'';}
@@ -249,7 +249,7 @@ function mount(container,options={}){
     let contents;
     if(custom&&typeof custom==='object')contents=`<strong>${esc(custom.title||marker.name)}</strong>${custom.description?`<p>${esc(custom.description)}</p>`:''}${custom.detail?`<small>${esc(custom.detail)}</small>`:''}`;
     else if(marker.branch)contents=`<strong>${esc(marker.name)}</strong><p>Lv.${Number(marker.level)||0} · ${marker.fallen?'陥落':marker.building?'普請中':'防衛中'}</p><small>本城の方位を示す配置です。史実の所在地・距離ではありません。</small>`;
-    else contents=marker.cluster?`<strong>${marker.points.length}${esc(opts.countUnit||'城')}がこの地域にあります</strong><p>${esc(marker.points.slice(0,5).map(p=>p.name).join('・'))}${marker.points.length>5?' ほか':''}</p><small>クリック・タップで拡大</small>`:`<div class="sg-map-tooltip-heading">${crest}<div><strong>${esc(marker.name)}</strong><p>${esc(marker.owner==='德川家'?'徳川家':marker.owner||'')} · Lv.${Number(marker.level)||1}${marker.disabled?' · '+esc(marker.restrictedLabel):''}</p></div></div><small>${Number(marker.troops||0).toLocaleString('ja-JP')}兵 · ${marker.lat.toFixed(4)}°N ${marker.lon.toFixed(4)}°E</small>`;
+    else contents=marker.cluster?`<strong>${marker.points.length}${esc(opts.countUnit||'城')}がこの地域にあります</strong><p>${esc(marker.points.slice(0,5).map(p=>p.name).join('・'))}${marker.points.length>5?' ほか':''}</p><small>クリック・タップで拡大</small>`:`<div class="sg-map-tooltip-heading">${crest}<div><strong>${esc(marker.name)}</strong><p>${esc(marker.owner||'')} · Lv.${Number(marker.level)||1}${marker.disabled?' · '+esc(marker.restrictedLabel):''}</p></div></div><small>${Number(marker.troops||0).toLocaleString('ja-JP')}兵 · ${marker.lat.toFixed(4)}°N ${marker.lon.toFixed(4)}°E</small>`;
     paintLayer(tooltip,contents);
     tooltip.hidden=false;const box=tooltip.getBoundingClientRect(),surfaceBounds=surface.getBoundingClientRect(),sx=width/Math.max(1,surfaceBounds.width),sy=height/Math.max(1,surfaceBounds.height),x=clamp(marker.sx+16,8,Math.max(8,width-box.width*sx-8)),y=clamp(marker.sy+24,64,Math.max(64,height-box.height*sy-70));tooltip.style.left=x+'px';tooltip.style.top=y+'px';
   }
