@@ -1,0 +1,11 @@
+{
+  "result": "PASS",
+  "method": "All subsets regenerated from hash-pinned originals with the frozen manifest allocation; compared every filename, SHA-256, byte count, Unicode range and final CSS hash.",
+  "files": 112,
+  "fontBytes": 25530492,
+  "cssSha256": "b99206dcac42fa82beffab8cef8f1b187d3aeb5a08cf381e421f21ed76604b85",
+  "fontToolsVersion": "4.61.1",
+  "brotliVersion": "1.2.1",
+  "cssBytes": 103768,
+  "cssRevalidation": "After adding variant-field descendant inheritance, regenerated CSS twice with verified immutable assets; byte-identical. All 112 font hashes are unchanged from the complete reconstruction check."
+}

@@ -4,8 +4,8 @@
   "name": "戦国VS",
   "alternateName": "SENGOKU VS",
   "publisher": "KASAI SOLUTIONS",
-  "release": "5.6.1-20261127",
-  "version": "5.6.1",
+  "release": "5.6.2-20261127",
+  "version": "5.6.2",
   "dateModified": "2026-11-27",
   "language": "ja",
   "locale": "ja_JP",
@@ -94,7 +94,7 @@
       "path": "/sengoku-vs/",
       "title": "戦国VS ゲーム紹介｜遊び方・無料範囲・対応端末",
       "description": "戦国VSの公式紹介。城下町づくり、武将編成、CPU勢力との合戦、領主同士の同盟・交易を紹介します。基本プレイ無料の範囲、PC・スマホの対応、始め方、データの引き継ぎも確認できます。",
-      "dateModified": "2026-11-26",
+      "dateModified": "2026-11-27",
       "artwork": {
         "path": "assets/chronicle/war.webp",
         "alt": "軍旗の列を背に、白馬の上で指揮を執る武将",
@@ -110,7 +110,7 @@
       "path": "/premium/",
       "title": "戦国VS プレミアム｜外観アイテム・月額支援の内容と料金",
       "description": "戦国VSの外観アイテム・月額支援を紹介。旗印、勲章、城下町の外観など全8商品の見本・税込料金、買い切りと月額の違い、購入後の反映を確認できます。基本プレイは無料で、戦力や資源の優遇はありません。",
-      "dateModified": "2026-11-26",
+      "dateModified": "2026-11-27",
       "artwork": {
         "path": "assets/chronicle/court.webp",
         "alt": "金色の庭園に面した朱塗りの御殿",
@@ -134,7 +134,7 @@
       "path": "/guide/",
       "title": "戦国VS 攻略ガイド｜城選び・内政・武将編成・合戦",
       "description": "戦国VSの公式攻略ガイド。最初の城選びから、内政、天守と城郭の強化、武将編成、軍師AI、対人戦・イベントの報酬まで解説。PC・スマホの操作や保存・端末同期も、目的別に確認できます。",
-      "dateModified": "2026-11-26",
+      "dateModified": "2026-11-27",
       "artwork": {
         "path": "assets/chronicle/town.webp",
         "alt": "宵の城下町に架かる橋と、行き交う人々",
@@ -153,7 +153,7 @@
       "path": "/guide/data-recovery/",
       "title": "戦国VS 引き継ぎ・データ復元｜機種変更とバックアップ",
       "description": "機種変更やサイト移転後も、同じ領主で戦国VSを再開するための公式ガイド。接続コード、統合バックアップ、旧形式のセーブなど、手元にあるデータから引き継ぎ・復元の手順を確認できます。",
-      "dateModified": "2026-11-26",
+      "dateModified": "2026-11-27",
       "artwork": {
         "path": "assets/chronicle/archive.webp",
         "alt": "灯りに照らされた書院で二人が絵巻を調べる様子",
@@ -172,7 +172,7 @@
       "path": "/about/",
       "title": "戦国VSの作品概要｜世界観・収録内容・制作資料",
       "description": "戦国VSの世界観・対応端末・利用料金と、256人の武将、129の城と拠点、64種類の施設を紹介。人物・地図・家紋の資料、イラストの制作方針、KASAI SOLUTIONSの著作権表記を確認できます。",
-      "dateModified": "2026-11-26",
+      "dateModified": "2026-11-27",
       "artwork": {
         "path": "assets/chronicle/court.webp",
         "alt": "庭園に面した御殿で向かい合う二人の使者",
@@ -191,7 +191,7 @@
       "path": "/press/",
       "title": "戦国VS 紹介・掲載用素材｜画像・ロゴ・動画・公式情報",
       "description": "戦国VSを記事・動画・SNSで紹介するための公式素材ページ。作品情報、基本プレイ無料の範囲、日本語の紹介文、共有画像・ロゴ・短い紹介動画と英語の作品概要をまとめています。",
-      "dateModified": "2026-11-26",
+      "dateModified": "2026-11-27",
       "artwork": {
         "path": "assets/chronicle/court.webp",
         "alt": "秋の庭園に面した御殿で向かい合う二人の使者",
@@ -217,7 +217,7 @@
       "locale": "en_US",
       "title": "SENGOKU VS | Free-to-play Japanese browser strategy game",
       "description": "Build a castle town, recruit officers and conquer rival castles in SENGOKU VS. An English introduction to the Japanese-language browser game: how to start, screenshots, free play and online features.",
-      "dateModified": "2026-11-26",
+      "dateModified": "2026-11-27",
       "artwork": {
         "path": "assets/chronicle/war.webp",
         "alt": "軍旗の列を背に、白馬の上で指揮を執る武将",

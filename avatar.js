@@ -44,7 +44,7 @@ function imageURL(user){
  if(!user?.id||typeof user.avatarVersion!=='string'||!/^[a-f0-9]{64}$/.test(user.avatarVersion))return '';
  try{const base=new URL(String(global.SENGOKU_API_BASE||''));if(!['https:','http:'].includes(base.protocol)||base.username||base.password)return '';return base.href.replace(/\/+$/,'').replace(/\/api\/v1$/,'')+'/api/v1/avatars/'+encodeURIComponent(user.id)+'?v='+user.avatarVersion;}catch(_){return '';}
 }
-function contents(user){const letter=esc(Array.from(String(user?.name||'領主'))[0]),url=imageURL(user);return `<span class="social-avatar-initial" aria-hidden="true">${letter}</span>${url?`<img data-avatar-image src="${esc(url)}" width="256" height="256" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" draggable="false">`:''}`;}
+function contents(user){const name=String(user?.name||'領主'),letter=esc(global.SengokuVariants?.firstGrapheme?.(name)||Array.from(name)[0]||''),url=imageURL(user);return `<span class="social-avatar-initial" aria-hidden="true">${letter}</span>${url?`<img data-avatar-image src="${esc(url)}" width="256" height="256" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" draggable="false">`:''}`;}
 function markup(user,size=''){
  const person=current(user),kind=['small','profile','inline'].includes(size)?size:'',cls=kind==='small'?' small':kind==='profile'?' social-avatar-profile':kind==='inline'?' social-avatar-inline':'',url=imageURL(person);
  return `<span class="social-avatar${cls}${url?' has-photo':''}" data-player-avatar="${esc(person.id)}" data-player-avatar-name="${esc(person.name)}" data-avatar-version="${esc(person.avatarVersion||'')}" data-avatar-size="${kind}" aria-hidden="true">${contents(person)}</span>`;

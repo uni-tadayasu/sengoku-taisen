@@ -69,6 +69,7 @@
         setHTML(selected, state.mentions.map(p => `<button type="button" class="social-chat-recipient" data-chat-action="mention-remove" data-chat-user="${esc(p.userId)}" aria-label="${esc(p.name)}へのメンションを解除">@${esc(p.name)} <span aria-hidden="true">×</span></button>`).join(''));
       }
       if (count) count.textContent = state.text.length + '/300';
+      const input = find('#social-chat-input'); if (input) global.SengokuVariants?.instance?.refresh?.(input);
       const mentionButton = find('[data-chat-action="mention-open"]'); if (mentionButton) mentionButton.hidden = !capabilities().chatMentions;
     }
     function syncText() {

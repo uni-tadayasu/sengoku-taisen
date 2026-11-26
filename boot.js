@@ -91,39 +91,127 @@ async function registerOfflineEntry(){
  const action=document.getElementById('game-update-action'),button=document.getElementById('game-update-open'),status=document.getElementById('game-update-status');
  if(!action||!button||!status||!global.MessageChannel)return;
  const release=new URL(document.querySelector('link[rel="manifest"]').href).searchParams.get('v');
- let target=null,checking=0,lastCheck=Date.now(),switching=false;
+ const interval=60000,manualCooldown=10000,checkButtons=[];
+ const checkRow=document.createElement('div');checkRow.id='game-update-check';
+ const checkButton=document.createElement('button');checkButton.id='game-update-check-button';checkButton.type='button';checkButton.className='edition-profile-link';checkButton.textContent='更新を確認';
+ const checkStatus=document.createElement('span');checkStatus.id='game-update-check-status';checkStatus.setAttribute('role','status');
+ checkRow.append(checkButton,checkStatus);action.parentNode.insertBefore(checkRow,action);checkButtons.push(checkButton);
+ const help=document.createElement('p');help.className='game-update-help';help.textContent='新版を開くと画面を再読み込みします。入力や通話を終えてからお進みください。';action.appendChild(help);
+ const menu=document.querySelector('#app .sidebar-bottom');
+ if(menu){
+  const menuButton=document.createElement('button');menuButton.id='game-update-menu-check';menuButton.type='button';menuButton.className='nav-item';menuButton.setAttribute('data-action','check-update');menuButton.textContent='更新を確認';
+  menu.insertBefore(menuButton,menu.querySelector('.version-label'));checkButtons.push(menuButton);
+ }
+ const notice=document.createElement('aside');notice.id='game-update-notice';notice.hidden=true;notice.setAttribute('aria-label','ゲームの更新');
+ const noticeLabel=document.createElement('span');noticeLabel.id='game-update-notice-label';noticeLabel.setAttribute('role','status');
+ const returnButton=document.createElement('button');returnButton.id='game-update-return';returnButton.type='button';returnButton.textContent='保存してタイトルへ';returnButton.setAttribute('aria-describedby','game-update-notice-label');
+ const noticeStatus=document.createElement('span');noticeStatus.id='game-update-notice-status';noticeStatus.setAttribute('role','status');
+ notice.append(noticeLabel,returnButton,noticeStatus);document.querySelector('#app .topbar')?.appendChild(notice);
+ let target=null,targetWorker=null,checking=0,inspecting=null,inspectedWorker=null,switching=false;
+ let timer=null,inFlight=null,lastRequest=-Infinity,nextCheck=Date.now()+interval,pageActive=true,lastOutcome='current';
+ const canCheck=()=>pageActive&&document.visibilityState==='visible'&&global.navigator.onLine!==false;
+ function stopTimer(){clearTimeout(timer);timer=null;}
+ function schedule(){
+  stopTimer();
+  if(canCheck()&&!inFlight)timer=setTimeout(()=>{timer=null;void checkForUpdates();},Math.max(1,nextCheck-Date.now()));
+ }
+ function setChecking(value){for(const control of checkButtons){control.disabled=value;control.setAttribute('aria-busy',String(value));}}
+ function showCheckResult(result){
+  const message=target?'新版の準備ができています。区切りのよいときに開けます。':
+   result==='offline'?'オフラインです。通信が戻ると自動で確認します。':
+   result==='error'?'更新を確認できませんでした。通信状況を確認して、もう一度お試しください。':
+   registration.installing?'新版を準備中です。準備ができるとお知らせします。':
+   result==='recent'?'直前に確認しました。約1分ごとに自動で確認します。':'現在、新しい更新はありません。';
+  checkStatus.textContent=message;
+  if(global.SENGOKU_AT_TITLE===false)global.SengokuBridge?.toast?.(message);
+ }
  async function inspect(){
-  const turn=++checking,worker=registration.waiting;
-  const version=worker&&await reportedRelease(worker);
-  if(turn!==checking)return;
-  target=worker&&registration.waiting===worker&&version!==release&&/^\d+\.\d+\.\d+-\d{8}$/.test(version)?version:null;
-  action.hidden=!target;
+  const worker=registration.waiting;
+  if(inspecting&&inspectedWorker===worker)return inspecting;
+  const turn=++checking;inspectedWorker=worker;
+  const task=Promise.resolve().then(async()=>{
+   const version=worker&&await reportedRelease(worker);
+   if(turn!==checking)return;
+   const previous=target;
+   target=worker&&registration.waiting===worker&&version!==release&&/^\d+\.\d+\.\d+-\d{8}$/.test(version)?version:null;
+   targetWorker=target?worker:null;action.hidden=!target;notice.hidden=!target;
+   if(previous!==target){noticeLabel.textContent=target?'新版あり':'';noticeStatus.textContent='';}
+  });
+  inspecting=task;
+  try{await task;}finally{if(inspecting===task)inspecting=null;}
+ }
+ async function checkForUpdates(manual=false){
+  if(!canCheck()){
+   stopTimer();if(manual)showCheckResult(global.navigator.onLine===false?'offline':'recent');return;
+  }
+  if(manual)checkStatus.textContent='更新を確認しています…';
+  if(!inFlight){
+   const now=Date.now();
+   if(now<(manual?lastRequest+manualCooldown:nextCheck)){
+    await inspect();schedule();if(manual)showCheckResult(lastOutcome==='error'?'error':'recent');return;
+   }
+   lastRequest=now;nextCheck=now+interval;stopTimer();setChecking(true);
+   // A shared promise also coalesces a focus/visibility pair and rapid clicks.
+   inFlight=Promise.resolve().then(async()=>{
+    try{await registration.update();await inspect();lastOutcome='current';}
+    catch{lastOutcome='error';}
+    return lastOutcome;
+   }).finally(()=>{inFlight=null;setChecking(false);schedule();});
+  }
+  const result=await inFlight;
+  if(manual)showCheckResult(result);
+ }
+ function resume(online=false){
+  if(!canCheck()){stopTimer();return;}
+  if(online)nextCheck=Math.min(nextCheck,Math.max(Date.now(),lastRequest+manualCooldown));
+  void inspect();void checkForUpdates();schedule();
  }
  const watch=worker=>worker?.addEventListener('statechange',inspect);
  registration.addEventListener('updatefound',()=>{watch(registration.installing);void inspect();});
  global.navigator.serviceWorker.addEventListener('controllerchange',inspect);
- watch(registration.installing);void inspect();
- document.addEventListener('visibilitychange',()=>{
-  if(document.visibilityState!=='visible')return;
-  void inspect();
-  if(Date.now()-lastCheck>=5*60*1000){lastCheck=Date.now();registration.update().catch(()=>{});}
+ watch(registration.installing);void inspect();schedule();
+ document.addEventListener('visibilitychange',()=>resume());
+ global.addEventListener('focus',()=>resume());
+ global.addEventListener('online',()=>resume(true));
+ global.addEventListener('offline',stopTimer);
+ global.addEventListener('pagehide',()=>{pageActive=false;stopTimer();});
+ global.addEventListener('pageshow',()=>{pageActive=true;resume();});
+ for(const control of checkButtons)control.addEventListener('click',()=>checkForUpdates(true));
+ function setSwitching(value){switching=value;button.disabled=value;returnButton.disabled=value;}
+ async function saveBeforeSwitch(selected,output){
+  const name='sengoku-taisen-v'+selected;
+  if(!await global.caches.has(name)||!await (await global.caches.open(name)).match(new URL('index.html',registration.scope).href)){
+   output.textContent='新版の準備を確認できませんでした。通信状況をご確認ください。';return false;
+  }
+  const ready=await global.SengokuBridge?.prepareReleaseSwitch?.();
+  if(!ready?.ok){output.textContent=ready?.message||'保存状態を確認できませんでした。';return false;}
+  return true;
+ }
+ // Gameplay never reloads itself: save first, then let the player choose the
+ // existing title action. Calls and input remain untouched by update discovery.
+ returnButton.addEventListener('click',async()=>{
+  if(switching||!target||global.SENGOKU_AT_TITLE!==false)return;
+  let returned=false;setSwitching(true);noticeStatus.textContent='保存を確認しています…';
+  try{
+   const selected=target,worker=targetWorker;
+   if(!await saveBeforeSwitch(selected,noticeStatus))return;
+   if(registration.waiting!==worker||selected!==target){await inspect();return;}
+   global.SengokuTitle.home();returned=true;status.textContent='保存を確認しました。新版を開く準備ができています。';
+  }catch{noticeStatus.textContent='保存状態を確認できませんでした。もう一度お試しください。';}
+  finally{setSwitching(false);if(noticeStatus.textContent==='保存を確認しています…')noticeStatus.textContent='';if(returned)button.focus({preventScroll:true});}
  });
  button.addEventListener('click',async()=>{
-  if(switching||!target)return;
-   switching=true;button.disabled=true;status.textContent='';
+  if(switching||!target||global.SENGOKU_AT_TITLE===false)return;
+  setSwitching(true);status.textContent='保存を確認しています…';
   try{
-   const selected=target,name='sengoku-taisen-v'+selected;
-   if(!await global.caches.has(name)||!await (await global.caches.open(name)).match(new URL('index.html',registration.scope).href)){
-    status.textContent='新版の準備を確認できませんでした。通信状況をご確認ください。';return;
-   }
-   const ready=await global.SengokuBridge?.prepareReleaseSwitch?.();
-   if(!ready?.ok){status.textContent=ready?.message||'保存状態を確認できませんでした。';return;}
+   const selected=target,worker=targetWorker;
+   if(!await saveBeforeSwitch(selected,status))return;
    if(global.SENGOKU_AT_TITLE===false){status.textContent='';return;}
-    if(!registration.waiting||selected!==target){status.textContent='';await inspect();return;}
+   if(registration.waiting!==worker||selected!==target){status.textContent='';await inspect();return;}
    const url=new URL(global.location.href);url.searchParams.set('sengoku-version',selected);
    global.location.replace(url.href);
   }catch{status.textContent='新版を開けませんでした。もう一度お試しください。';}
-  finally{switching=false;button.disabled=false;}
+  finally{setSwitching(false);}
  });
 }
 // Let the browser finish the visible entry before preparing offline play.

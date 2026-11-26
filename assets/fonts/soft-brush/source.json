@@ -1,0 +1,46 @@
+{
+  "format": 1,
+  "sources": {
+    "yuji": {
+      "family": "Yuji Syuku",
+      "weight": 400,
+      "author": "The Yuji Project Authors / Kinuta Font Factory / Yuji Kataoka",
+      "license": "SIL Open Font License 1.1",
+      "licenseFile": "OFL-Yuji.txt",
+      "upstream": "https://github.com/Kinutafontfactory/Yuji",
+      "commit": "efec977b14b57c19eb85d468edcfbbad13139e67",
+      "download": "https://raw.githubusercontent.com/Kinutafontfactory/Yuji/efec977b14b57c19eb85d468edcfbbad13139e67/fonts/ttf/YujiSyuku-Regular.ttf",
+      "filename": "YujiSyuku-Regular.ttf",
+      "bytes": 8430348,
+      "sha256": "82728ebafc8c97391e2dab633414a806f344b8e4e2227d307179f07b548fca61"
+    },
+    "klee": {
+      "family": "Klee One SemiBold",
+      "weight": 600,
+      "author": "The Klee Project Authors / Fontworks",
+      "license": "SIL Open Font License 1.1",
+      "licenseFile": "OFL-Klee.txt",
+      "upstream": "https://github.com/fontworks-fonts/Klee",
+      "commit": "8b0532731b63ad8a445ca341d8d7d941079b83ab",
+      "download": "https://raw.githubusercontent.com/fontworks-fonts/Klee/8b0532731b63ad8a445ca341d8d7d941079b83ab/fonts/ttf/KleeOne-SemiBold.ttf",
+      "filename": "KleeOne-SemiBold.ttf",
+      "bytes": 8905628,
+      "sha256": "9dbb25466c575f6dc8768a28845798f67fa5d47a5d20a6408c30c58d700a1044"
+    },
+    "noto": {
+      "family": "Noto Serif CJK JP",
+      "version": "2.003",
+      "fontNumber": 0,
+      "weight": 400,
+      "author": "Adobe / Google / Noto Project Authors",
+      "license": "SIL Open Font License 1.1",
+      "licenseFile": "OFL-Noto.txt",
+      "upstream": "https://github.com/notofonts/noto-cjk",
+      "commit": "f8d157532fbfaeda587e826d4cd5b21a49186f7c",
+      "download": "https://raw.githubusercontent.com/notofonts/noto-cjk/f8d157532fbfaeda587e826d4cd5b21a49186f7c/Serif/OTC/NotoSerifCJK-Regular.ttc",
+      "filename": "NotoSerifCJK-Regular.ttc",
+      "bytes": 26411360,
+      "sha256": "5d9c31a059600193c9d7968a998bde886ccdc77e934006ad243b41794c496a7d"
+    }
+  }
+}

@@ -170,12 +170,21 @@ permissions, guild, evaluation and purchase appearance. Clients must confirm
 that the returned `user.id` still matches their active identity before accepting
 it, then refresh their current identity and cached participant labels.
 
-Names use the existing registration validator: normalize to NFC, trim outer
-whitespace, then require 1–24 Unicode code points. Unsupported controls
+As of 5.6.2, registration and profile changes preserve the supplied Unicode
+spelling, including compatibility ideographs and variation selectors. They trim
+outer whitespace, then require 1–24 Unicode code points. A variation selector
+counts toward this existing limit. Display spelling is never normalized to NFC.
+Unsupported controls
 `U+0000–0008`, `U+000B–000C`, `U+000E–001F` and `U+007F` are rejected. Invalid
 input is 400 `INVALID_INPUT`. The unique key uses NFKC and Japanese-locale
 lowercasing, so width/case-compatible duplicates return 409 `NAME_TAKEN`.
 No name is generated for an empty rename request.
+
+`GET /health` and `GET /config` expose `features.displayNameVariants:true` when
+this name-preserving implementation is deployed. Existing stored names are not
+rewritten. Comparison keys still use NFKC, and `expectedName` is the exact stored
+display string; canonically equivalent but differently spelled expectations do
+not bypass a concurrent edit.
 
 The update atomically requires that the stored name still equals `expectedName`
 or already equals the requested name. A competing different edit returns 409

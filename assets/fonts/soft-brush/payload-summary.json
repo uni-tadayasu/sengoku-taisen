@@ -1,0 +1,64 @@
+{
+  "measurement": "theoretical cold-cache WOFF2 payload; actual local file sizes, not observed HTTP transfer or latency",
+  "excludes": "CSS/HTML/JS, response headers, browser/system fallbacks and cache reuse; browsers may load additional files for text not in the sample",
+  "variantSampleAssumption": "The complete variants sample is an explicitly marked existing text parent, matching the conservative field/label CSS behavior.",
+  "assetBytes": 25530492,
+  "assetFiles": 112,
+  "largestFileBytes": 456972,
+  "cssBytes": 103768,
+  "cssGzipBytes": 34703,
+  "samples": {
+    "town": {
+      "fontBytes": 570580,
+      "fontFiles": 2,
+      "files": [
+        "yuji-core-8be25fa3b290.woff2",
+        "yuji-launch-b981dedac931.woff2"
+      ],
+      "legacyFontBytes": 2952592,
+      "legacyFontFiles": 16,
+      "payloadReductionPercent": 80.68,
+      "uncoveredCodepoints": [],
+      "legacyComparisonLimit": "The old font did not support every character/sequence. This comparison sums its covered-character files and does not claim equal old coverage."
+    },
+    "title": {
+      "fontBytes": 235996,
+      "fontFiles": 1,
+      "files": [
+        "yuji-launch-b981dedac931.woff2"
+      ],
+      "legacyFontBytes": 180920,
+      "legacyFontFiles": 1,
+      "payloadReductionPercent": -30.44,
+      "uncoveredCodepoints": [],
+      "legacyComparisonLimit": "The old font did not support every character/sequence. This comparison sums its covered-character files and does not claim equal old coverage."
+    },
+    "planner": {
+      "fontBytes": 791440,
+      "fontFiles": 3,
+      "files": [
+        "yuji-core-8be25fa3b290.woff2",
+        "yuji-interface-01-58556b1ec7f2.woff2",
+        "yuji-launch-b981dedac931.woff2"
+      ],
+      "legacyFontBytes": 1472808,
+      "legacyFontFiles": 8,
+      "payloadReductionPercent": 46.26,
+      "uncoveredCodepoints": [],
+      "legacyComparisonLimit": "The old font did not support every character/sequence. This comparison sums its covered-character files and does not claim equal old coverage."
+    },
+    "variants": {
+      "fontBytes": 430116,
+      "fontFiles": 2,
+      "files": [
+        "noto-variants-core-c3b8ea6adf29.woff2",
+        "yuji-launch-b981dedac931.woff2"
+      ],
+      "legacyFontBytes": 1357896,
+      "legacyFontFiles": 7,
+      "payloadReductionPercent": 68.32,
+      "uncoveredCodepoints": [],
+      "legacyComparisonLimit": "The old font did not support every character/sequence. This comparison sums its covered-character files and does not claim equal old coverage."
+    }
+  }
+}
