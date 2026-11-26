@@ -2,16 +2,17 @@
 
 記録日：2026年11月26日。基準コミットは `569cac4de291f8e10ea5d26b890b2819ad0e18d4`（公開済みv5.4.0）。
 
-**この記録は公開前の実装・検証記録。** 公開日時、main反映、CI、本番配信との照合は最終確認後に追記する。実装した機能と、実際に確認した範囲を以下に分けて記録する。
+**v5.5.0は公開済み。** 2026年11月26日19:17:54 JSTにフロントエンドの配備が成功した。既存のタイトル画面に出る「新版を開く」から5.5.0へ切り替わり、保存済みの家名・本拠の案内が残ることを実ブラウザで確認した。19:19:27 JSTに公開14ファイルを取得し、すべて検証済みのローカル生成物とSHA-256が一致した。
 
 | 公開記録 | 状態 |
 | --- | --- |
-| 実装コミット | 最終コミット時に追記 |
-| mainへの反映 | 未確認・最終反映時に追記 |
-| GitHub Actions | 未確認・結果取得後に追記 |
-| フロントエンド公開 | 未確認・公開結果取得後に追記 |
-| 本番の配信ファイル照合 | 未確認・公開後に追記 |
+| 実装コミット | `73d67651cf06cab523944c7c98ef8e8a167b2622`。検証済みローカル版とtree `173ba1fdb04f8bfef9878a71cd96888838d4f81f`が一致 |
+| mainへの反映 | [PR #39](https://github.com/uni-tadayasu/sengoku-taisen/pull/39)、merge `0ffc451748ef115c5e157a63db710057f4cff417` |
+| GitHub Actions | PR上の全6 job成功。mainの検証・Pages全9 job成功 |
+| フロントエンド公開 | [戦国VS v5.5.0](https://www.kasai-solutions-inc.com/?sengoku-version=5.5.0-20261126)・2026-11-26 19:17:54 JST |
+| 本番の配信ファイル照合 | 入口HTML・6bundle・Service Worker・ガイド2ページ・ニュース本文とRSS・press kit・検索索引の14ファイルが一致 |
 | API Worker | 今回の変更対象外。既存v5.4.0の処理を使用 |
+| 公開・配信照合記録 | [release-5.5.0-publication.json](release-5.5.0-publication.json) |
 | ローカル検証・ブラウザ確認記録 | [release-5.5.0-verification.json](release-5.5.0-verification.json) |
 
 ## 変更と使い方
@@ -129,9 +130,9 @@ rawの上限は2,950,000 Bから3,025,000 B、gzipの上限は850,000 Bから870
 | 320×568・文字大きめ18px・資源計画 | `clientWidth` と `scrollWidth` はともに287px。「施設を見る」で既存の施設画面へ移動できる | 確認済み |
 | 1024×768・文字大きめ・施設詳細との往復 | 田畑の詳細から資源計画へ進み、Escapeで閉じると下の `#modal` と起動元へのフォーカスを保持。モーダルの `clientWidth` と `scrollWidth` はともに898px | 確認済み |
 | PC 1363×936・天下地図 | 拡大と本拠への移動を操作。ゲーム由来のコンソールエラー0件を確認。拡張機能由来のエラーはこの集計に含めない | 確認済み |
-| 本番での更新導線・配信一致 | 公開後に確認結果を追記 | 公開待ち |
+| 本番での更新導線・配信一致 | 既存の「新版を開く」で5.5.0へ移動。家名・本拠の再開案内を保持。公開14ファイルが検証済み生成物と一致 | 確認済み |
 
-ブラウザ確認は、API通信を遮断した検証環境で、メモリー内の人工データを使用した。本番アカウントの状態・セーブ・資産へ変更していない。上記はブラウザの表示寸法を変えた確認で、実機のiOS・SafariやすべてのOS・画面サイズを網羅した結果ではない。
+機能操作と表示寸法のブラウザ確認は、API通信を遮断した検証環境で、メモリー内の人工データを使用した。本番では別途、タイトルの新版切替と配信ファイルを確認した。本番アカウントの状態・セーブ・資産へ変更していない。上記はブラウザの表示寸法を変えた確認で、実機のiOS・SafariやすべてのOS・画面サイズを網羅した結果ではない。
 
 ## 再現用の主要コマンド
 
@@ -156,3 +157,16 @@ python3 tests/test-news-feed.py
 node tests/test-page-security.cjs
 python3 tools/build-press-kit.py --check
 ```
+
+## 公開後のGitHub Actions
+
+mainの実装merge `0ffc451748ef115c5e157a63db710057f4cff417` に対する結果。
+
+| Workflow | Run | 結果 |
+| --- | --- | --- |
+| performance | [45799888505](https://github.com/uni-tadayasu/sengoku-taisen/actions/runs/45799888505) | browser-assets・chat-server・dispatch-travel・save-recoveryの4 job成功 |
+| brand-seo | [45799888455](https://github.com/uni-tadayasu/sengoku-taisen/actions/runs/45799888455) | 成功 |
+| music | [45799888564](https://github.com/uni-tadayasu/sengoku-taisen/actions/runs/45799888564) | 成功 |
+| Pages | [45799887984](https://github.com/uni-tadayasu/sengoku-taisen/actions/runs/45799887984) | build・report-build-status・deployの3 job成功 |
+
+CIでは保存復元・同期・共同普請・部隊移動・音楽を含む既存の回帰検査も成功した。本番確認では保存済み戦役へ入らず、タイトルの新版切替と配信内容を確認した。

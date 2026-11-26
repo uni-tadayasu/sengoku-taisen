@@ -1,0 +1,264 @@
+{
+  "version": "5.5.0",
+  "checkedAt": "2026-11-26T19:19:27.554747+09:00",
+  "files": [
+    {
+      "file": "index.html",
+      "url": "https://www.kasai-solutions-inc.com/index.html?release-verify=5.5.0-20261126",
+      "status": 200,
+      "bytes": 18812,
+      "sha256": "d6f9d3d66eb0aabb59c0d6b0b331acef99c0e29f979e757e050f8d0e877e528d",
+      "expectedSha256": "d6f9d3d66eb0aabb59c0d6b0b331acef99c0e29f979e757e050f8d0e877e528d",
+      "matches": true
+    },
+    {
+      "file": "game-layout.bundle.css",
+      "url": "https://www.kasai-solutions-inc.com/game-layout.bundle.css?release-verify=5.5.0-20261126",
+      "status": 200,
+      "bytes": 876236,
+      "sha256": "6f3edd9b50e8cb36221345ca7557a4c304ef98e3c144568c7ed08efae1f19269",
+      "expectedSha256": "6f3edd9b50e8cb36221345ca7557a4c304ef98e3c144568c7ed08efae1f19269",
+      "matches": true
+    },
+    {
+      "file": "game-preferences.bundle.js",
+      "url": "https://www.kasai-solutions-inc.com/game-preferences.bundle.js?release-verify=5.5.0-20261126",
+      "status": 200,
+      "bytes": 7330,
+      "sha256": "c6e04c260a89a2ef74eccb36924fec8163deffbabb76fb64dd4d1ec3bf9a285a",
+      "expectedSha256": "c6e04c260a89a2ef74eccb36924fec8163deffbabb76fb64dd4d1ec3bf9a285a",
+      "matches": true
+    },
+    {
+      "file": "game-core.bundle.js",
+      "url": "https://www.kasai-solutions-inc.com/game-core.bundle.js?release-verify=5.5.0-20261126",
+      "status": 200,
+      "bytes": 645923,
+      "sha256": "09a5e8713694d677b28323b8d2bffeb6feb2ffc51202d734a737118e033641c5",
+      "expectedSha256": "09a5e8713694d677b28323b8d2bffeb6feb2ffc51202d734a737118e033641c5",
+      "matches": true
+    },
+    {
+      "file": "game-campaign.bundle.js",
+      "url": "https://www.kasai-solutions-inc.com/game-campaign.bundle.js?release-verify=5.5.0-20261126",
+      "status": 200,
+      "bytes": 477209,
+      "sha256": "d0097d5c32ed97729c45874d10701657e50fcc18f5679e65c31fdbb04115dff3",
+      "expectedSha256": "d0097d5c32ed97729c45874d10701657e50fcc18f5679e65c31fdbb04115dff3",
+      "matches": true
+    },
+    {
+      "file": "game-interface.bundle.js",
+      "url": "https://www.kasai-solutions-inc.com/game-interface.bundle.js?release-verify=5.5.0-20261126",
+      "status": 200,
+      "bytes": 407246,
+      "sha256": "88655676132692d45dd3187537cd07e9a6da0349ee158ad19a87d0efe3dd0d58",
+      "expectedSha256": "88655676132692d45dd3187537cd07e9a6da0349ee158ad19a87d0efe3dd0d58",
+      "matches": true
+    },
+    {
+      "file": "game-community.bundle.js",
+      "url": "https://www.kasai-solutions-inc.com/game-community.bundle.js?release-verify=5.5.0-20261126",
+      "status": 200,
+      "bytes": 586183,
+      "sha256": "78c61364a0451be120d57a5ba37bd9a5c8bd3724bc6acbe884e43501b5656644",
+      "expectedSha256": "78c61364a0451be120d57a5ba37bd9a5c8bd3724bc6acbe884e43501b5656644",
+      "matches": true
+    },
+    {
+      "file": "sw.js",
+      "url": "https://www.kasai-solutions-inc.com/sw.js?release-verify=5.5.0-20261126",
+      "status": 200,
+      "bytes": 13247,
+      "sha256": "005a6e279802bda8d2a0b8955d5928cf85cf99a1021b0c6a434546d9d9a08db1",
+      "expectedSha256": "005a6e279802bda8d2a0b8955d5928cf85cf99a1021b0c6a434546d9d9a08db1",
+      "matches": true
+    },
+    {
+      "file": "guide/index.html",
+      "url": "https://www.kasai-solutions-inc.com/guide/index.html?release-verify=5.5.0-20261126",
+      "status": 200,
+      "bytes": 134322,
+      "sha256": "154793e106ecf1b2e380c540e2062c251a0a3f2b6aef0bbee84b07694e2f58c9",
+      "expectedSha256": "154793e106ecf1b2e380c540e2062c251a0a3f2b6aef0bbee84b07694e2f58c9",
+      "matches": true
+    },
+    {
+      "file": "guide/data-recovery/index.html",
+      "url": "https://www.kasai-solutions-inc.com/guide/data-recovery/index.html?release-verify=5.5.0-20261126",
+      "status": 200,
+      "bytes": 34008,
+      "sha256": "95ead8a652a2dc89eebb9677bd319430b7db3c69111296f88e8d9ee73753b0fe",
+      "expectedSha256": "95ead8a652a2dc89eebb9677bd319430b7db3c69111296f88e8d9ee73753b0fe",
+      "matches": true
+    },
+    {
+      "file": "news/index.html",
+      "url": "https://www.kasai-solutions-inc.com/news/index.html?release-verify=5.5.0-20261126",
+      "status": 200,
+      "bytes": 36493,
+      "sha256": "d2dca8d1449d4426026f4c60ec5ff892d81b8c86bba0b5bbf91b93460d18bba7",
+      "expectedSha256": "d2dca8d1449d4426026f4c60ec5ff892d81b8c86bba0b5bbf91b93460d18bba7",
+      "matches": true
+    },
+    {
+      "file": "news/feed.xml",
+      "url": "https://www.kasai-solutions-inc.com/news/feed.xml?release-verify=5.5.0-20261126",
+      "status": 200,
+      "bytes": 15179,
+      "sha256": "88dae305655d94008fdcf2d54fc4cca8e37637c2ac9350d64f23a7dc796300c6",
+      "expectedSha256": "88dae305655d94008fdcf2d54fc4cca8e37637c2ac9350d64f23a7dc796300c6",
+      "matches": true
+    },
+    {
+      "file": "assets/promo/sengoku-vs-press-kit-20261126.zip",
+      "url": "https://www.kasai-solutions-inc.com/assets/promo/sengoku-vs-press-kit-20261126.zip?release-verify=5.5.0-20261126",
+      "status": 200,
+      "bytes": 8967877,
+      "sha256": "aa5c9f4734c3a0ed33e1733db81da0dc18d8ebf14272cad2d7ec48bd8c833e03",
+      "expectedSha256": "aa5c9f4734c3a0ed33e1733db81da0dc18d8ebf14272cad2d7ec48bd8c833e03",
+      "matches": true
+    },
+    {
+      "file": "public-search-index.json",
+      "url": "https://www.kasai-solutions-inc.com/public-search-index.json?release-verify=5.5.0-20261126",
+      "status": 200,
+      "bytes": 149688,
+      "sha256": "cf972aa28255a243eab80c04c2862f3d474d6c5384ef80690754e6691e192274",
+      "expectedSha256": "cf972aa28255a243eab80c04c2862f3d474d6c5384ef80690754e6691e192274",
+      "matches": true
+    }
+  ],
+  "allMatch": true,
+  "repository": "uni-tadayasu/sengoku-taisen",
+  "pullRequest": {
+    "number": 39,
+    "url": "https://github.com/uni-tadayasu/sengoku-taisen/pull/39",
+    "head": "73d67651cf06cab523944c7c98ef8e8a167b2622",
+    "merge": "0ffc451748ef115c5e157a63db710057f4cff417"
+  },
+  "verifiedTree": "173ba1fdb04f8bfef9878a71cd96888838d4f81f",
+  "pullRequestChecks": [
+    {
+      "name": "save-recovery",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/uni-tadayasu/sengoku-taisen/actions/runs/45799719402/job/139839456171",
+      "completedAt": "2026-11-26T10:16:31Z"
+    },
+    {
+      "name": "chat-server",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/uni-tadayasu/sengoku-taisen/actions/runs/45799719402/job/139839456143",
+      "completedAt": "2026-11-26T10:16:21Z"
+    },
+    {
+      "name": "playback",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/uni-tadayasu/sengoku-taisen/actions/runs/45799719343/job/139839455912",
+      "completedAt": "2026-11-26T10:16:23Z"
+    },
+    {
+      "name": "dispatch-travel",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/uni-tadayasu/sengoku-taisen/actions/runs/45799719402/job/139839455898",
+      "completedAt": "2026-11-26T10:16:40Z"
+    },
+    {
+      "name": "browser-assets",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/uni-tadayasu/sengoku-taisen/actions/runs/45799719402/job/139839455626",
+      "completedAt": "2026-11-26T10:16:33Z"
+    },
+    {
+      "name": "public-discovery",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/uni-tadayasu/sengoku-taisen/actions/runs/45799719262/job/139839455343",
+      "completedAt": "2026-11-26T10:16:26Z"
+    }
+  ],
+  "mainChecks": [
+    {
+      "name": "report-build-status",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/uni-tadayasu/sengoku-taisen/actions/runs/45799887984/job/139840246490",
+      "completedAt": "2026-11-26T10:17:39Z"
+    },
+    {
+      "name": "deploy",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/uni-tadayasu/sengoku-taisen/actions/runs/45799887984/job/139840246463",
+      "completedAt": "2026-11-26T10:17:54Z"
+    },
+    {
+      "name": "build",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/uni-tadayasu/sengoku-taisen/actions/runs/45799887984/job/139840057791",
+      "completedAt": "2026-11-26T10:17:31Z"
+    },
+    {
+      "name": "playback",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/uni-tadayasu/sengoku-taisen/actions/runs/45799888564/job/139840052000",
+      "completedAt": "2026-11-26T10:17:44Z"
+    },
+    {
+      "name": "dispatch-travel",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/uni-tadayasu/sengoku-taisen/actions/runs/45799888505/job/139840051839",
+      "completedAt": "2026-11-26T10:17:48Z"
+    },
+    {
+      "name": "chat-server",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/uni-tadayasu/sengoku-taisen/actions/runs/45799888505/job/139840051785",
+      "completedAt": "2026-11-26T10:17:29Z"
+    },
+    {
+      "name": "save-recovery",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/uni-tadayasu/sengoku-taisen/actions/runs/45799888505/job/139840051772",
+      "completedAt": "2026-11-26T10:17:37Z"
+    },
+    {
+      "name": "browser-assets",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/uni-tadayasu/sengoku-taisen/actions/runs/45799888505/job/139840051386",
+      "completedAt": "2026-11-26T10:17:34Z"
+    },
+    {
+      "name": "public-discovery",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/uni-tadayasu/sengoku-taisen/actions/runs/45799888455/job/139840050971",
+      "completedAt": "2026-11-26T10:17:29Z"
+    }
+  ],
+  "publishedAt": "2026-11-26T19:17:54+09:00",
+  "browserVerification": {
+    "url": "https://www.kasai-solutions-inc.com/?sengoku-version=5.5.0-20261126",
+    "actions": [
+      "Observed the existing title with saved clan/home notice and a new-version button",
+      "Clicked the existing new-version button",
+      "Confirmed navigation to5.5.0 version URL and matching current bundle fingerprints",
+      "Saved clan/home notice remained on the title"
+    ],
+    "limits": [
+      "Did not enter or mutate the live saved campaign",
+      "Responsive interactive QA used the artificial local fixture documented in the verification record"
+    ]
+  }
+}
