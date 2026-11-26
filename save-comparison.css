@@ -1,0 +1,14 @@
+.save-comparison { display: grid; gap: .7rem; min-width: 0; }
+.save-comparison-file { display: grid; gap: .25rem; margin: 0; overflow-wrap: anywhere; }
+.save-comparison-file small,.save-comparison-note { color: #c8d9da; }
+.save-comparison-relation { margin: 0; padding: .55rem .7rem; border-inline-start: 3px solid #6bddc7; background: #152d31; color: #effaf6; }
+.save-comparison .save-comparison-table { table-layout: fixed; border-collapse: collapse; width: 100%; margin: 0; color: #e3edec; font-variant-numeric: tabular-nums; }
+.save-comparison-table col:first-child { width: 25%; }
+.save-comparison-table :is(th,td) { padding: .45rem .5rem; border-bottom: 1px solid #39505a; text-align: start; vertical-align: top; line-height: 1.45; overflow-wrap: anywhere; }
+.save-comparison-table thead th { color: #b7eade; background: #163039; }
+.save-comparison-table .save-value-changed { color: #ffe4a7; font-weight: 700; }
+.save-comparison details > summary { cursor: pointer; padding: .5rem .2rem; color: #c3f5e9; }
+.save-comparison-note { margin: 0; line-height: 1.5; }
+@media (max-width: 420px) {
+  .save-comparison-table :is(th,td) { padding: .35rem .23rem; }
+}
