@@ -53,7 +53,7 @@
   display: grid;
   min-width: 0;
   gap: 5px;
-  grid-template-columns: repeat(auto-fit,minmax(min(100%,8rem),1fr));
+  grid-template-columns: repeat(auto-fit,minmax(min(100%,8rem,132px),1fr));
 }
 html:not(.sengoku-desktop-fit) #app.chronicle-shell .chronicle-ledger .header-balances {
   grid-column: 1 / -1;
@@ -74,7 +74,9 @@ html:not(.sengoku-desktop-fit) #app.chronicle-shell .chronicle-ledger .header-ba
   @container balances (max-width: 24rem) {
     #app.chronicle-shell .chronicle-ledger .header-balances :is(#resources,#touch-header-status) > button { grid-column: span 3; }
   }
-  @container balances (max-width: 15rem) {
+  /* At 320px an enlarged root still leaves room for two cards. Reserve
+     the single column for a physically narrower ledger. */
+  @container balances (max-width: 230px) {
     #app.chronicle-shell .chronicle-ledger .header-balances :is(#resources,#touch-header-status) > button { grid-column: 1 / -1; }
   }
 }
@@ -89,6 +91,15 @@ html:not(.sengoku-desktop-fit) #app.chronicle-shell .chronicle-ledger .header-ba
   font-size: clamp(.875rem,12.75cqi,1.3125rem);
   white-space: normal;
   overflow-wrap: anywhere;
+}
+/* In a very narrow ledger with externally enlarged type, cap the
+   numeric minimum at 14px so that two cards fit above the touch dock.
+   The normal scale still follows the width of each individual card. */
+@container balances (max-width: 15rem) {
+  #app.chronicle-shell .chronicle-ledger #resources .resource-amount,
+  #app.chronicle-shell .chronicle-ledger #touch-header-status .touch-header-stat-value {
+    font-size: clamp(14px,12.75cqi,1.3125rem);
+  }
 }
 #app.chronicle-shell .chronicle-ledger #resources .resource-amount > span {
   display: block;
