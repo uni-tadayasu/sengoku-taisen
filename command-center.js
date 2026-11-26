@@ -121,11 +121,14 @@
       const category=job.kind==='research'?'research':'construction',remaining=nonnegative(job.remainingSeconds??job.remaining*60),startsInMs=nonnegative(job.startsInSeconds)*1000;
       const total=nonnegative(job.totalSeconds??job.total*60),name=job.name||jobCatalog[job.kind]?.find(item=>item.id===job.id)?.name||(job.kind==='branch'?branchName(job):job.kind==='research'?'研究':job.kind==='castle'?'城郭':'施設');
       const scope=job.shared?'共同':game?.isStaff?'個人':'',level=Number.isSafeInteger(job.targetLevel)?' Lv.'+job.targetLevel:'';
-      const row={id:'job:'+job.kind+':'+job.id+':'+(job.shared?'shared':'personal')+':'+(job.facilityId||'')+':'+(job.targetLevel??index)+':'+(job.queuePosition??index),category,
+      const target={kind:job.kind,id:job.id,shared:job.shared===true};
+      if(job.kind==='castle')target.parentCastleId=job.id;
+      if(job.kind==='branch')target.parentCastleId=branches.get(job.id)?.parentCastleId||'';
+      const row={id:'job:'+job.kind+':'+job.id+':'+(job.shared?'shared':'personal')+':'+(job.facilityId||'')+':'+(job.targetLevel??index)+':'+(job.queuePosition??index),category,target,
         name:name+level,detail:[scope,job.repair?'復旧工事':job.kind==='branch'?'支拠点の普請':'',job.queued?'予約 '+number(job.queuePosition||1)+'番目':'進行中'].filter(Boolean).join(' · '),
         remainingMs:nonnegative(job.finishesInSeconds??(startsInMs/1000+remaining))*1000,startsInMs,queued:job.queued===true,timeBasis:'world',
         progress:job.queued||!total?0:Math.max(0,Math.min(100,(1-remaining/total)*100)),destination:job.kind==='research'?'research':job.kind==='branch'||job.kind==='castle'?'map':'facilities',
-        actionLabel:job.kind==='research'?'研究を見る':job.kind==='branch'||job.kind==='castle'?'地図を見る':'施設を見る'};
+        actionLabel:job.kind==='research'?'この研究を見る':job.kind==='branch'?'この支拠点を開く':job.kind==='castle'?'この城郭を開く':'この施設を開く'};
       items.push({...row,...operationTiming(row,clock)});
     }
     const seen=new Set();
@@ -225,10 +228,10 @@
     return model.items.filter(row=>(filter==='all'||row.category===filter)&&words.every(word=>normalize(row.name+' '+row.detail+' '+filters[row.category]).includes(word)));
   }
   function operationRow(row) {
-    return `<li class="command-operation" data-stable-key="${esc(row.id)}" data-command-operation="${esc(row.id)}" data-kind="${row.category}"><div class="command-operation-content"><div class="command-operation-heading"><span class="command-operation-kind">${filters[row.category]}</span>${row.queued?'<span class="command-operation-queued">予約待ち</span>':''}</div><h3>${esc(row.name)}</h3><p>${esc(row.detail)}</p></div><div class="command-operation-time"><strong data-command-time="${esc(row.id)}">${esc(row.time)}</strong><small data-command-timing="${esc(row.id)}">${esc(row.timingNote)}</small></div><div class="command-operation-track" aria-hidden="true"><i data-command-progress="${esc(row.id)}" style="width:${Math.round(row.progress)}%"></i></div><button type="button" class="button small command-operation-open" data-command-go="${row.destination}" data-command-key="${esc(row.id)}"${row.destination==='alliance'?' data-action="alliance-strategy" data-command-dismiss':''}>${row.actionLabel}</button></li>`;
+    return `<li class="command-operation" data-stable-key="${esc(row.id)}" data-command-operation="${esc(row.id)}" data-kind="${row.category}"><div class="command-operation-content"><div class="command-operation-heading"><span class="command-operation-kind">${filters[row.category]}</span>${row.queued?'<span class="command-operation-queued">予約待ち</span>':''}</div><h3>${esc(row.name)}</h3><p>${esc(row.detail)}</p></div><div class="command-operation-time"><strong data-command-time="${esc(row.id)}">${esc(row.time)}</strong><small data-command-timing="${esc(row.id)}">${esc(row.timingNote)}</small></div><div class="command-operation-track" aria-hidden="true"><i data-command-progress="${esc(row.id)}" style="width:${Math.round(row.progress)}%"></i></div><button type="button" class="button small command-operation-open" data-command-go="${row.destination}" data-command-key="${esc(row.id)}" aria-label="${esc(row.name+'：'+row.actionLabel)}"${row.destination==='alliance'?' data-action="alliance-strategy" data-command-dismiss':''}>${row.actionLabel}</button></li>`;
   }
 
-  let activityDialog=null,activitySession=null;
+  let activityDialog=null,activitySession=null,activityDraft=null;
   const transientCampaignScopes=new WeakMap();let transientCampaignSequence=0;
   function liveCampaignScope(game) {
     const campaign=game?.state?.walking?.campaignId||game?.state?.campaignId;
@@ -246,6 +249,8 @@
   function finishActivity() {
     const current=activitySession;
     if(!current)return;
+    activityDraft={scope:current.scope,filter:current.filter,query:current.query,limit:current.limit,
+      top:activityDialog.querySelector('[data-command-scroll]').scrollTop,dialogTop:activityDialog.scrollTop};
     activitySession=null;
     current.unsubscribe?.();
     if(current.returnFocus?.isConnected)current.returnFocus.focus({preventScroll:true});
@@ -253,6 +258,12 @@
   function close() {
     if(activityDialog?.open)activityDialog.close();
     finishActivity();
+  }
+  function currentActivityGame() {
+    const session=activitySession;if(!session)return null;
+    const game=session.options.getGame?.()||session.options.game,access=global.SengokuSocial?.getExpansionContext?.()||{},role=global.SengokuBridge?.getRoleAccess?.()||{};
+    if(!game||identity(game)!==session.scope||global.SENGOKU_AT_TITLE===true||access.pending===true||access.banned===true||access.rolePending===true||access.user?.isBanned===true||role.pending===true||global.SengokuBridge?.hasStarted?.()===false){close();return null;}
+    return game;
   }
   function ensureActivityDialog() {
     if(activityDialog)return activityDialog;
@@ -262,25 +273,43 @@
     activityDialog.className='command-activity-dialog';
     activityDialog.setAttribute('aria-labelledby','command-activity-title');
     activityDialog.setAttribute('aria-describedby','command-activity-note');
-    activityDialog.innerHTML='<header class="command-activity-header"><div><p>領国の進行状況</p><h2 id="command-activity-title">行動予定表</h2></div><button type="button" class="button" data-command-close>閉じる</button></header><div class="command-activity-tools"><p class="command-activity-clock" data-command-clock></p><label class="command-activity-search"><span>城・施設・研究を探す</span><input type="search" class="input" data-command-query placeholder="例：田畑、清洲城、帰還" autocomplete="off"></label><div class="command-activity-filters" role="group" aria-label="予定の種類">'+Object.entries(filters).map(([key,label])=>'<button type="button" data-command-filter="'+key+'" aria-pressed="'+(key==='all')+'">'+label+'<span data-command-count="'+key+'">0</span></button>').join('')+'</div><p class="command-activity-count" data-command-result-count role="status" aria-live="polite"></p></div><div class="command-activity-scroll" data-command-scroll><ul class="command-operation-list" data-command-list></ul><div class="command-activity-empty" data-command-empty hidden><strong>該当する予定はありません</strong><p>普請・研究・進軍・帰還が始まると、ここに表示されます。</p><button type="button" class="button" data-command-reset>条件を解除</button></div><button type="button" class="button command-activity-more" data-command-more hidden>さらに40件を表示</button></div><footer class="command-activity-footer"><p id="command-activity-note">残り時間は現在の速度での目安です。速度・停止に連動し、完成・到着は確定後に各画面へ反映されます。</p><p><span data-command-alliance-note>同盟部隊は未取得です。</span><button type="button" class="text-link" data-action="alliance-strategy" data-command-dismiss>同盟作戦で確認</button></p></footer>';
+    activityDialog.innerHTML='<header class="command-activity-header"><div><p>領国の進行状況</p><h2 id="command-activity-title">行動予定表</h2></div><button type="button" class="button" data-command-close>閉じる</button></header><div class="command-activity-tools"><p class="command-activity-clock" data-command-clock></p><label class="command-activity-search"><span>城・施設・研究を探す</span><input type="search" class="input" data-command-query maxlength="100" placeholder="例：田畑、清洲城、帰還" autocomplete="off"></label><div class="command-activity-filters" role="group" aria-label="予定の種類">'+Object.entries(filters).map(([key,label])=>'<button type="button" data-command-filter="'+key+'" aria-pressed="'+(key==='all')+'">'+label+'<span data-command-count="'+key+'">0</span></button>').join('')+'</div><p class="command-activity-count" data-command-result-count role="status" aria-live="polite"></p></div><div class="command-activity-scroll" data-command-scroll><ul class="command-operation-list" data-command-list></ul><div class="command-activity-empty" data-command-empty hidden><strong>該当する予定はありません</strong><p>普請・研究・進軍・帰還が始まると、ここに表示されます。</p><button type="button" class="button" data-command-reset>条件を解除</button></div><button type="button" class="button command-activity-more" data-command-more hidden>さらに40件を表示</button></div><footer class="command-activity-footer"><p id="command-activity-note">残り時間は現在の速度での目安です。速度・停止に連動し、完成・到着は確定後に各画面へ反映されます。</p><p><span data-command-alliance-note>同盟部隊は未取得です。</span><button type="button" class="text-link" data-action="alliance-strategy" data-command-dismiss>同盟作戦で確認</button></p></footer>';
     activityDialog.addEventListener('cancel',event=>{event.preventDefault();close();});
+    // Keep Escape local to this layer; the underlying detail retains its live
+    // refresh context and receives focus again after native cancellation.
+    activityDialog.addEventListener('keydown',event=>{if(event.key==='Escape')event.stopPropagation?.();});
+    activityDialog.addEventListener('compositionstart',event=>{if(activitySession&&event.target.matches?.('[data-command-query]'))activitySession.composing=true;});
+    activityDialog.addEventListener('compositionend',event=>{
+      if(!event.target.matches?.('[data-command-query]')||!currentActivityGame())return;
+      activitySession.composing=false;activitySession.query=event.target.value.slice(0,100);activitySession.limit=40;renderActivity();
+    });
     // Native close events are queued; an earlier close can arrive after reopen.
     activityDialog.addEventListener('close',()=>{if(!activityDialog.open)finishActivity();});
     activityDialog.addEventListener('input',event=>{
-      if(!activitySession||!event.target.matches?.('[data-command-query]'))return;
-      activitySession.query=event.target.value;
+      if(!event.target.matches?.('[data-command-query]')||!currentActivityGame())return;
+      if(event.isComposing||activitySession.composing)return;
+      activitySession.query=event.target.value.slice(0,100);
       activitySession.limit=40;
       renderActivity();
     });
     activityDialog.addEventListener('click',event=>{
+      if(event.target===activityDialog&&event.detail>0&&(event.button??0)===0){
+        const rect=activityDialog.getBoundingClientRect();
+        if(event.clientX<rect.left||event.clientX>rect.right||event.clientY<rect.top||event.clientY>rect.bottom){close();return;}
+      }
       const button=event.target.closest?.('[data-command-close],[data-command-filter],[data-command-reset],[data-command-more],[data-command-go],[data-command-dismiss]');
-      if(!button||!activitySession)return;
+      if(!button||button.disabled)return;
+      if(!currentActivityGame()){event.preventDefault?.();event.stopPropagation?.();return;}
       if(button.hasAttribute('data-command-close')||button.hasAttribute('data-command-dismiss'))return close();
       if(button.hasAttribute('data-command-filter')){activitySession.filter=Object.hasOwn(filters,button.dataset.commandFilter)?button.dataset.commandFilter:'all';activitySession.limit=40;renderActivity();return;}
       if(button.hasAttribute('data-command-reset')){activitySession.filter='all';activitySession.query='';activitySession.limit=40;activityDialog.querySelector('[data-command-query]').value='';renderActivity();return;}
       if(button.hasAttribute('data-command-more')){activitySession.limit+=40;renderActivity();return;}
       const destination=button.dataset.commandGo,options=activitySession.options;
+      const target=activitySession.model?.items.find(row=>row.id===button.dataset.commandKey)?.target;
       close();
+      // Route from the rendered read-only model. The app rechecks the current
+      // target before opening it, including completed work and lost castles.
+      if(target&&typeof options.openOperation==='function'&&options.openOperation({...target})===true)return;
       if(destination==='marches')global.SengokuTravelUI?.open?.();else if(['research','map','facilities'].includes(destination))options.navigate?.(destination);
     });
     document.body.appendChild(activityDialog);
@@ -289,11 +318,11 @@
   function renderActivity(data,clock) {
     const session=activitySession;
     if(!session||!activityDialog?.open)return;
-    const game=session.options.getGame?.()||session.options.game;
-    if(!game||identity(game)!==session.scope||global.SENGOKU_AT_TITLE===true){close();return;}
+    const game=currentActivityGame();if(!game)return;
     if(data)session.data=data;
     if(clock)session.clock=clock;
     const model=buildOperations(game,{catalog:session.options.catalog,marches:session.data?.active||[],clock:session.clock});
+    session.model=model;
     const rows=matchingOperations(model,session.filter,session.query),visible=rows.slice(0,session.limit),byId=new Map(visible.map(row=>[row.id,row]));
     const text=(selector,value)=>{const node=activityDialog.querySelector(selector);if(node&&node.textContent!==value)node.textContent=value;};
     text('[data-command-clock]',model.clockLabel);
@@ -305,7 +334,7 @@
     }
     text('[data-command-result-count]',rows.length?number(visible.length)+' / '+number(rows.length)+'件を表示 · 予約待ち '+number(rows.filter(row=>row.queued).length)+'件':'該当する予定はありません');
     const list=activityDialog.querySelector('[data-command-list]'),scroll=activityDialog.querySelector('[data-command-scroll]');
-    const shape=JSON.stringify(visible.map(row=>[row.id,row.name,row.detail,row.category,row.queued,row.destination]));
+    const shape=JSON.stringify(visible.map(row=>[row.id,row.name,row.detail,row.category,row.queued,row.destination,row.target]));
     if(list.dataset.shape!==shape) {
       const top=scroll.scrollTop,dialogTop=activityDialog.scrollTop,focused=global.document.activeElement,focusKey=list.contains(focused)?focused?.dataset?.commandKey:null;
       const html=visible.map(operationRow).join('');
@@ -332,9 +361,11 @@
     if(!dialog)return false;
     if(plannerSession)closePlanner();
     if(activitySession)close();
-    const session={options,scope:identity(game),returnFocus:global.document.activeElement,filter:Object.hasOwn(filters,options.filter)?options.filter:'all',query:'',limit:40,unsubscribe:null};
+    const scope=identity(game),saved=activityDraft?.scope===scope?activityDraft:null,explicit=Object.hasOwn(filters,options.filter);
+    if(!saved)activityDraft=null;
+    const session={options,scope,returnFocus:global.document.activeElement,filter:explicit?options.filter:saved?.filter||'all',query:explicit?'':saved?.query||'',limit:explicit?40:saved?.limit||40,composing:false,model:null,unsubscribe:null};
     activitySession=session;
-    dialog.querySelector('[data-command-query]').value='';
+    dialog.querySelector('[data-command-query]').value=session.query;
     dialog.showModal();
     if(typeof global.SengokuTravelUI?.subscribe==='function'){
       session.unsubscribe=global.SengokuTravelUI.subscribe((data,clock)=>{if(activitySession===session)renderActivity(data,clock);});
@@ -342,6 +373,10 @@
     }
     else renderActivity(global.SengokuTravelUI?.snapshot?.()||{active:[]});
     if(activitySession!==session)return false;
+    // Restore after the rows exist so a previous short list cannot clamp the
+    // saved scroll position before its expanded page has been rebuilt.
+    dialog.scrollTop=explicit?0:saved?.dialogTop||0;
+    dialog.querySelector('[data-command-scroll]').scrollTop=explicit?0:saved?.top||0;
     dialog.querySelector('[data-command-close]')?.focus({preventScroll:true});
     return true;
   }
@@ -466,7 +501,8 @@
   function finishPlanner() {
     const session=plannerSession;if(!session)return;
     flushPlanner(session);
-    plannerDraft={scope:session.scope,...snapshotPlanner(session),baseline:session.baseline,dirty:session.dirty,persistenceError:session.persistenceError};
+    plannerDraft={scope:session.scope,...snapshotPlanner(session),baseline:session.baseline,dirty:session.dirty,persistenceError:session.persistenceError,
+      view:{top:plannerDialog.scrollTop,scroll:plannerDialog.querySelector('.resource-plan-scroll').scrollTop,reserve:plannerDialog.querySelector('.resource-plan-reserve').open,forecast:plannerDialog.querySelector('.resource-plan-forecast').open}};
     plannerSession=null;session.unsubscribe?.();
     if(session.returnFocus?.isConnected)session.returnFocus.focus({preventScroll:true});
   }
@@ -484,7 +520,7 @@
       '<div class="resource-plan-grid">'+Object.entries(resources).map(([key,label])=>'<section class="resource-plan-card" data-budget-card="'+key+'"><h3>'+label+'</h3><dl><div><dt>現在</dt><dd data-budget-current="'+key+'"></dd></div><div><dt>毎月の差引</dt><dd data-budget-rate="'+key+'"></dd></div></dl><label><span>目標の費用</span><input class="input" type="number" min="0" step="1" inputmode="numeric" aria-label="'+label+'の必要な合計" data-budget-target="'+key+'"></label><dl class="resource-plan-reserve-values"><div><dt>残す備蓄</dt><dd data-budget-reserved="'+key+'">0</dd></div><div><dt>必要な総額</dt><dd data-budget-required="'+key+'"></dd></div></dl><div class="resource-plan-gap"><span>不足</span><strong data-budget-gap="'+key+'"></strong></div><div class="resource-plan-track" aria-hidden="true"><i data-budget-track="'+key+'"></i></div></section>').join('')+'</div>' +
       '<details class="resource-plan-reserve"><summary>使わずに残す備蓄を決める<span data-budget-reserve-summary></span></summary><p class="resource-plan-note">費用を支払った後も手元に残したい量です。「費用＋備蓄」が全資源で揃う時点を試算します。実際の資源を取り置く操作は行いません。</p><div class="resource-plan-reserve-grid">'+Object.entries(resources).map(([key,label])=>'<label><span>'+label+'</span><input class="input" type="number" min="0" step="1" inputmode="numeric" value="0" aria-label="使わずに残す'+label+'の備蓄" data-budget-reserve="'+key+'"></label>').join('')+'</div><button type="button" class="text-link" data-budget-reserve-reset>備蓄をすべて0に戻す</button></details>' +
       '<details class="resource-plan-forecast"><summary>1・3・6か月後の残高を試算</summary><p class="resource-plan-note">ゲーム内の月数です。現在の差引がそのまま続く場合を表示します。計画の費用を支払う前の残高です。</p><div class="resource-plan-table"><table><thead><tr><th scope="col">資源</th>'+[1,3,6].map(month=>'<th scope="col">'+month+'か月後</th>').join('')+'</tr></thead><tbody>'+Object.entries(resources).map(([key,label])=>'<tr><th scope="row">'+label+'</th>'+[0,1,2].map(index=>'<td data-budget-after="'+key+':'+index+'"></td>').join('')+'</tr>').join('')+'</tbody></table></div></details>' +
-      '<p class="resource-plan-note resource-plan-warning" data-budget-military hidden>金銭・兵糧の赤字は月替わりの自動減兵で変わるため、この試算どおりには進まない場合があります。</p><p class="resource-plan-note">施設・研究は現在の進行から次の1段階を選びます。普請を予約するとその先の段階へ進み、研究中の目標は完成後に次の費用を計算します。費用や待ち時間は固定されません。</p><p class="resource-plan-note">生産・維持費・給与・次回修復費を含む現在の差引を固定した概算です。工事完成、報酬、戦闘、売買、追加支出などによる変化や月末の精算時点は含みません。自動で購入・建設・予約はしません。</p><div class="resource-plan-actions"><button type="button" class="button gold" data-budget-go="facilities">施設を見る</button><button type="button" class="button" data-budget-go="research">研究を見る</button></div></div>';
+      '<p class="resource-plan-note resource-plan-warning" data-budget-military hidden>金銭・兵糧の赤字は月替わりの自動減兵で変わるため、この試算どおりには進まない場合があります。</p><p class="resource-plan-note">施設・研究は現在の進行から次の1段階を選びます。普請を予約するとその先の段階へ進み、研究中の目標は完成後に次の費用を計算します。費用や待ち時間は固定されません。</p><p class="resource-plan-note">生産・維持費・給与・次回修復費を含む現在の差引を固定した概算です。工事完成、報酬、戦闘、売買、追加支出などによる変化や月末の精算時点は含みません。自動で購入・建設・予約はしません。</p><div class="resource-plan-actions"><button type="button" class="button gold resource-plan-target" data-budget-open-target hidden></button><button type="button" class="button" data-budget-go="facilities">施設を見る</button><button type="button" class="button" data-budget-go="research">研究を見る</button></div></div>';
     dialog.addEventListener('cancel',event=>{event.preventDefault();closePlanner();});
     // A facility detail may remain beneath this dialog. Its global Escape
     // handler must not clear that underlying modal's live-refresh context.
@@ -512,6 +548,16 @@
       if(remove){const next=session.plan.filter(row=>row.kind+':'+row.id!==remove.dataset.budgetRemove);if(next.length!==session.plan.length){session.plan=next;plannerEdited(session);}renderPlanner();announce('計画から目標を外しました。');return;}
       if(event.target.closest?.('[data-budget-clear-plan]')){if(session.plan.length){session.plan=[];plannerEdited(session);}renderPlanner();announce('計画を空にしました。');dialog.querySelector('[data-budget-choice]').focus({preventScroll:true});return;}
       if(event.target.closest?.('[data-budget-reserve-reset]')){if(Object.values(session.reserve).some(value=>value!=='0')){for(const input of dialog.querySelectorAll('[data-budget-reserve]')){session.reserve[input.dataset.budgetReserve]='0';input.value='0';}plannerEdited(session);}renderPlanner();announce('残す備蓄をすべて0に戻しました。');return;}
+      if(event.target.closest?.('[data-budget-open-target]')){
+        const {kind,id}=session.selection,catalog=session.options.catalog;
+        if(!['building','research'].includes(kind)||!(kind==='building'?catalog.buildings:catalog.techs)?.some(row=>row.id===id))return;
+        const options=session.options,target={kind,id,shared:kind==='building'&&game.isStaff===true};
+        // Finish saving the draft and release its clock listener before the
+        // existing application route checks the current target and opens it.
+        closePlanner();
+        if(options.openOperation?.(target)!==true)options.navigate?.(kind==='building'?'facilities':'research');
+        return;
+      }
       const button=event.target.closest?.('[data-budget-close],[data-budget-go]');
       if(button){const destination=button.dataset.budgetGo,options=plannerSession.options;closePlanner();if(['facilities','research'].includes(destination))options.navigate?.(destination);return;}
       if(event.target===dialog){const r=dialog.getBoundingClientRect();if(event.clientX<r.left||event.clientX>r.right||event.clientY<r.top||event.clientY>r.bottom)closePlanner();}
@@ -544,6 +590,10 @@
     const model=buildBudget(game,goal.targets,{catalog:session.options.catalog,clock:session.clock,reserve:session.reserve}),dialog=plannerDialog;
     const text=(selector,value)=>{const node=dialog.querySelector(selector);if(node&&node.textContent!==value)node.textContent=value;};
     text('[data-budget-goal]',goal.title);text('[data-budget-goal-note]',goal.note);
+    const target=dialog.querySelector('[data-budget-open-target]'),targetKind=session.selection.kind,
+      targetRow=(targetKind==='building'?session.options.catalog.buildings:targetKind==='research'?session.options.catalog.techs:[])?.find(row=>row.id===session.selection.id);
+    const targetHidden=!targetRow;if(target.hidden!==targetHidden)target.hidden=targetHidden;if(target.disabled!==targetHidden)target.disabled=targetHidden;
+    if(targetRow)text('[data-budget-open-target]',targetRow.name+(targetKind==='building'?'の詳細を開く':'の研究を見る'));
     text('[data-budget-title]',goal.unavailable?'費用の試算はできません':model.title);
     text('[data-budget-detail]',goal.unavailable?'目標を変更するか、各画面で現在の状態を確認してください。':model.detail);
     dialog.querySelector('[data-budget-summary]').dataset.state=goal.unavailable?'unavailable':model.status;
@@ -636,6 +686,12 @@
       if(plannerSession!==session){session.unsubscribe?.();return false;}
     }else renderPlanner();
     if(plannerSession!==session)return false;
+    const view=memory?.selection.kind===selectedKind&&memory.selection.id===selectedId?memory.view:null;
+    dialog.querySelector('.resource-plan-reserve').open=view?.reserve===true;
+    dialog.querySelector('.resource-plan-forecast').open=view?.forecast===true;
+    // Restore only this goal's in-memory position, after its rows exist. A
+    // different goal or campaign starts at its heading instead of stale content.
+    dialog.scrollTop=view?.top||0;dialog.querySelector('.resource-plan-scroll').scrollTop=view?.scroll||0;
     if(memory?.dirty||explicit&&(!saved||saved.selection.kind!==selectedKind||saved.selection.id!==selectedId))plannerEdited(session);
     dialog.querySelector('[data-budget-close]')?.focus({preventScroll:true});return true;
   }

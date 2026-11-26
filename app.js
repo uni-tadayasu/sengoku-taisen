@@ -881,10 +881,28 @@
     const chain=buildingChain(id);if(!chain.length)return '';
     return `<section class="construction-queue"><h3>${icon('castle')}連続増築 <small>Lv.${chain[chain.length-1].targetLevel}まで手配済み</small></h3><div class="jobs-list">${chain.map(job=>`<div class="job-item${job.shared?' staff-base-job':''}"><div class="job-top"><span>Lv.${job.targetLevel}へ · ${job.queued?'予約済み':'普請中'}</span><small data-job-clock="${jobKey(job)}">${esc(jobClockText(job))}</small></div>${sharedJobAttribution(job)}<div class="progress"><i data-job-progress="${jobKey(job)}" style="width:${job.queued?0:game.constructionProgress(job)}%"></i></div></div>`).join('')}</div><p class="subtitle">前の工事が終わると、次の段階へ順番に着工します。</p></section>`;
   }
+  function buildingAvailability(id,{cost,chain,usedSlots,writable=canMutate()}={}){
+    const s=state(),building=data.buildings.find(row=>row.id===id);
+    if(!building)return{ok:false,state:'waiting',reason:'施設が見つかりません。'};
+    if(game.isStaff&&!staffConstructionReady())return{ok:false,state:'waiting',reason:''};
+    const queue=chain||buildingChain(id),level=s.buildings[id]||0,tail=Math.max(level,...queue.map(job=>job.targetLevel)),maximum=game.buildingMax(id);
+    if(tail>=maximum)return{ok:false,state:'complete',reason:queue.length?`Lv.${maximum}まで予約済みです。完成をお待ちください。`:'最高レベルに達しています。'};
+    if(s.gameOver)return{ok:false,state:'waiting',reason:'本拠を失いました。新しい物語を始めると普請できます。'};
+    const unlock=game.buildingUnlock(id);
+    if(!unlock.ok)return{ok:false,state:'locked',reason:unlock.reason||`天守をLv.${unlock.requiredLevel}以上にすると建設・増築できます。`};
+    if(!saveEnabled)return{ok:false,state:'waiting',reason:'現在の進行を保存できる状態にしてから普請できます。'};
+    if(!writable&&!window.SengokuSyncNotices?.isTransientStatus?.(syncAccess))return{ok:false,state:'waiting',reason:'この端末で最新の進行を確認してから普請できます。'};
+    if(s.command<1)return{ok:false,state:'command',reason:'指令が1回必要です。1倍速では20秒ごとに1回復します。'};
+    const occupied=usedSlots??constructionCount(Boolean(game.isStaff)),slots=game.constructionSlots();
+    if(!queue.length&&occupied>=slots)return{ok:false,state:'slots',reason:`普請枠は${occupied} / ${slots}件を使用中です。施設・城郭・支拠点のいずれかの完成をお待ちください。`};
+    const price=cost||game.costs(id),missing=Object.keys(resNames).filter(key=>s.resources[key]<(price?.[key]||0));
+    if(missing.length)return{ok:false,state:'resources',reason:`${missing.map(key=>resNames[key]).join('・')}が不足しています。上の費用欄で不足量を確認できます。`};
+    return{ok:writable,state:'available',reason:queue.length?'指令1回と表示の資源を支払い、前の工事に続く1段階を予約します。追加の普請枠は使いません。':'指令1回と表示の資源を支払い、普請1枠を使って建設・増築します。'};
+  }
   function buildingModal(id){
     const b=data.buildings.find(b=>b.id===id);if(!b)return;
-    const s=state(),lv=s.buildings[id]||0,chain=buildingChain(id),tail=buildingTailLevel(id),max=game.buildingMax(id),cost=game.costs(id),unlock=game.buildingUnlock(id),governor=game.officer(s.governors[id]),canGov=lv>0,canQueue=tail<max;
-    modal(`${b.name}　${lv?`Lv.${lv} / ${max}`:'未建設'}`,game.isStaff?'共同普請 · 京都御所':'城下町の発展',`${window.SengokuArt?.facility(id,'facility-modal-art',lv||1)||''}${game.isStaff?'<p class="notice staff-base-note">共同の城下町で成長を共有します。予約した領主が自分の資源と指令1回を支払います。奉行はあなた個人の任命です。</p>':''}${id==='keep'?`<button type="button" class="button small full level-guide-entry" data-action="level-guide" data-id="${s.home}">${icon('book')}レベル上げガイド</button>`:''}<p>${esc(b.description)}</p><div class="stat-row"><span>現在の効果 · Lv.${lv}</span><b>${buildingOutput(id)}</b></div>${facilityMaintenanceHtml(id,lv,canQueue?tail+1:null)}<button class="button small full" style="margin:13px 0" data-action="preview-art" data-kind="facility" data-id="${id}">${icon('eye')}32段階の姿を見る</button>${buildingQueueHtml(id)}${canQueue?`<h3>${chain.length?`次の増築を予約 · Lv.${tail+1}へ`:lv?`Lv.${lv+1}へ増築`:'Lv.1を建設'}</h3>${!unlock.ok?`<div class="notice">${esc(unlock.reason)}</div>`:''}<p>1回の操作で1段階を手配し、その資源と指令1回を今支払います。同じ施設の予約はまとめて普請1枠を使います（同時${game.constructionSlots()}枠）。</p>${costHtml(cost)}<button type="button" class="button small" data-action="resource-planner" data-kind="building" data-id="${esc(id)}">${icon('coins')}資源が揃う目安</button><p class="subtitle">施設の効果と表示レベルは、各段階の完成時に上がります。予約の取り消しはできません。</p>`:`<div class="notice">${chain.length?`Lv.${max}まで予約済みです。完成をお待ちください。`:'最高レベルに達しています。'}</div>`}${canGov?`<hr class="divider"><div class="stat-row"><span>奉行</span><b>${governor?esc(governor.name):'未任命'}</b></div><p>${esc(game.governorDescription?.(id)||governorHelp[id]||b.description)}軍団との兼任はできません。任命時の指令・金銭は不要です。任命中は金銭${num(data.maintenance.governorMonthlyGold)}／月を在任時間に応じて支払います。</p><button class="button small gold" style="margin-top:14px" data-action="pick-governor" data-id="${id}">${icon('users')}奉行を選ぶ</button>`:''}`,`<button class="button" data-action="close">閉じる</button>${canQueue?`<button class="button primary" data-action="upgrade" data-id="${id}" ${!hasResources(cost)||!unlock.ok||s.command<1||s.gameOver?'disabled':''}>${icon('castle')}${chain.length?'次の増築を予約':game.isStaff?'共同普請する':lv?'増築する':'建設する'}</button>`:''}`,'building',{id});
+    const s=state(),lv=s.buildings[id]||0,chain=buildingChain(id),tail=Math.max(lv,...chain.map(job=>job.targetLevel)),max=game.buildingMax(id),cost=game.costs(id),governor=game.officer(s.governors[id]),canGov=lv>0,canQueue=tail<max,availability=buildingAvailability(id,{cost,chain});
+    modal(`${b.name}　${lv?`Lv.${lv} / ${max}`:'未建設'}`,game.isStaff?'共同普請 · 京都御所':'城下町の発展',`${window.SengokuArt?.facility(id,'facility-modal-art',lv||1)||''}${game.isStaff?'<p class="notice staff-base-note">共同の城下町で成長を共有します。予約した領主が自分の資源と指令1回を支払います。奉行はあなた個人の任命です。</p>':''}${id==='keep'?`<button type="button" class="button small full level-guide-entry" data-action="level-guide" data-id="${s.home}">${icon('book')}レベル上げガイド</button>`:''}<p>${esc(b.description)}</p><div class="stat-row"><span>現在の効果 · Lv.${lv}</span><b>${buildingOutput(id)}</b></div>${facilityMaintenanceHtml(id,lv,canQueue?tail+1:null)}<button class="button small full" style="margin:13px 0" data-action="preview-art" data-kind="facility" data-id="${id}">${icon('eye')}32段階の姿を見る</button>${buildingQueueHtml(id)}${canQueue?`<h3>${chain.length?`次の増築を予約 · Lv.${tail+1}へ`:lv?`Lv.${lv+1}へ増築`:'Lv.1を建設'}</h3><p>1回の操作で1段階を手配し、その資源と指令1回を今支払います。同じ施設の予約はまとめて普請1枠を使います（同時${game.constructionSlots()}枠）。</p>${costHtml(cost)}<div class="facility-order-status" data-building-availability="${id}" data-building-state="${availability.state}"${availability.reason?'':' hidden'}><p id="building-order-reason-${id}" data-building-order-reason aria-live="polite">${esc(availability.reason)}</p><button type="button" class="button small" data-building-next-step="slots" data-action="command-activity" data-filter="construction"${availability.state==='slots'?'':' hidden'}>${icon('calendar')}普請の完成予定を見る</button><button type="button" class="button small" data-building-next-step="locked" data-action="building" data-id="keep"${availability.state==='locked'&&id!=='keep'?'':' hidden'}>${icon('castle')}天守を確認・増築</button></div><button type="button" class="button small" data-action="resource-planner" data-kind="building" data-id="${esc(id)}">${icon('coins')}資源が揃う目安</button><p class="subtitle">施設の効果と表示レベルは、各段階の完成時に上がります。予約の取り消しはできません。</p>`:`<div class="notice">${chain.length?`Lv.${max}まで予約済みです。完成をお待ちください。`:'最高レベルに達しています。'}</div>`}${canGov?`<hr class="divider"><div class="stat-row"><span>奉行</span><b>${governor?esc(governor.name):'未任命'}</b></div><p>${esc(game.governorDescription?.(id)||governorHelp[id]||b.description)}軍団との兼任はできません。任命時の指令・金銭は不要です。任命中は金銭${num(data.maintenance.governorMonthlyGold)}／月を在任時間に応じて支払います。</p><button class="button small gold" style="margin-top:14px" data-action="pick-governor" data-id="${id}">${icon('users')}奉行を選ぶ</button>`:''}`,`<button class="button" data-action="close">閉じる</button>${canQueue?`<button class="button primary" data-action="upgrade" data-id="${id}" aria-describedby="building-order-reason-${id}" ${availability.ok?'':'disabled'}>${icon('castle')}${chain.length?'次の増築を予約':game.isStaff?'共同普請する':lv?'増築する':'建設する'}</button>`:''}`,'building',{id});
   }
 
   let worldMapController=null,worldMapElement=null,fieldController=null,roamingController=null,covertController=null,courtController=null,courtManagementRequested=false;
@@ -977,6 +995,23 @@
     return window.SengokuDefenseLedger?.open?.({getGame:()=>game,catalog:data,getContext:defenseLedgerContext,
       getClock:confirmedWorldClock,staffReady:staffConstructionReady,
       subscribe:listener=>window.SengokuTravelUI?.subscribe?.(listener),openBase:openDefenseBase})===true;
+  }
+  function openCommandOperation(target={}){
+    if(!target||typeof target.id!=='string'||startPending||syncAccess.banned||syncAccess.rolePending)return false;
+    if(target.kind==='building'){
+      if(target.shared!==(game.isStaff===true)||!data.buildings.some(item=>item.id===target.id))return false;
+      buildingModal(target.id);return true;
+    }
+    if(target.kind==='research'){
+      if(target.shared||!data.techs.some(item=>item.id===target.id))return false;
+      go('research');
+      const card=Array.from($('#main').querySelectorAll('[data-research-card]')).find(node=>node.dataset.researchCard===target.id);
+      const heading=card?.querySelector('h3');
+      if(heading){card.setAttribute('data-command-target','');heading.setAttribute('tabindex','-1');heading.focus({preventScroll:true});heading.scrollIntoView({block:'center',behavior:'instant'});}
+      return true;
+    }
+    if(target.kind==='castle'||target.kind==='branch')return openDefenseBase(target);
+    return false;
   }
   function castleUpgradeModal(id){
     const c=levelGuideCastle(id);if(!c)return;
@@ -1674,8 +1709,8 @@
       window.SengokuDesktopFit?.refresh();break;
     }
     case 'officer-page':filter.page+=Number(node.dataset.delta);patchHTML($('#officer-results'),officersResults());window.SengokuDesktopFit?.refresh();break;
-    case 'command-activity':window.SengokuCommandCenter?.open?.({getGame:()=>game,navigate:go,filter:node.dataset.filter});break;
-    case 'resource-planner':window.SengokuCommandCenter?.openPlanner?.({getGame:()=>game,navigate:go,kind:node.dataset.kind,id:node.dataset.id,staffReady:()=>staffConstructionReady()});break;
+    case 'command-activity':window.SengokuCommandCenter?.open?.({getGame:()=>game,navigate:go,openOperation:openCommandOperation,filter:node.dataset.filter});break;
+    case 'resource-planner':window.SengokuCommandCenter?.openPlanner?.({getGame:()=>game,navigate:go,openOperation:openCommandOperation,kind:node.dataset.kind,id:node.dataset.id,staffReady:()=>staffConstructionReady()});break;
     case 'defense-ledger':openDefenseLedger();break;
     case 'campaign-records':window.SengokuCampaignRecords?.open?.({getGame:()=>game,formatDate:shortDate,formatText:logText});break;
     case 'facility-refresh':preserveInteraction($('#main'),()=>{patchHTML($('#facility-results'),facilitiesResults());refreshLiveControls();});break;
@@ -1788,7 +1823,17 @@
         case 'relocate-back':disabled=relocationBusy;break;
         case 'relocate-confirm':{const reason=relocationBlock(relocationView),status=$('#relocate-sync-status'),dismiss=$('#relocate-dismiss'),dismissLabel=relocationBusy||relocationView.pending?'閉じる':'やめる';if(dismiss&&dismiss.textContent!==dismissLabel)dismiss.textContent=dismissLabel;const visible=window.SengokuSyncNotices?.visibleText?.(reason)??reason;if(status&&status.textContent!==visible)status.textContent=visible;disabled=Boolean(reason);break;}
         case 'start-new':disabled=!canStartNew()||residencyStartPending||(!game.isAdmin&&!game.isStaff&&newResidencyMode!=='local'&&syncAccess.linked&&newResidencyLoading)||!admissionCastleAllowed(game.isAdmin?'edo':game.isStaff?staffBaseId:$('#new-start-castle')?.value||newStartCastle);break;
-        case 'upgrade':{const b=data.buildings.find(b=>b.id===id),view=construction(),chain=view.chains.get(id+':'+(game.isStaff?1:0))||[];disabled=!b||!canCommand||!saveEnabled||!game.buildingUnlock(id).ok||Math.max(s.buildings[id]||0,...chain.map(job=>job.targetLevel))>=game.buildingMax(id)||!chain.length&&view.counts[game.isStaff?1:0]>=game.constructionSlots()||game.isStaff&&!staffConstructionReady()||!hasResources(game.costs(id));break;}
+        case 'upgrade':{
+          const view=construction(),shared=game.isStaff?1:0,availability=buildingAvailability(id,{chain:view.chains.get(id+':'+shared)||[],usedSlots:view.counts[shared],writable});disabled=!availability.ok;
+          const reason=$('#building-order-reason-'+id),section=reason?.closest?.('[data-building-availability]');
+          if(reason&&reason.textContent!==availability.reason)reason.textContent=availability.reason;
+          if(section){
+            if(section.hidden!==!availability.reason)section.hidden=!availability.reason;
+            if(section.getAttribute('data-building-state')!==availability.state)section.setAttribute('data-building-state',availability.state);
+            for(const next of section.querySelectorAll('[data-building-next-step]')){const hidden=next.dataset.buildingNextStep!==availability.state||availability.state==='locked'&&id==='keep';if(next.hidden!==hidden)next.hidden=hidden;}
+          }
+          break;
+        }
         case 'upgrade-castle':{const c=game.castle(id);disabled=!saveEnabled||!canCommand||!c||c.owner!==s.clan||c.level>=castleLevelLimit(id)||!!currentJob('castle',id)||construction().counts[game.isStaff&&id===staffBaseId?1:0]>=game.constructionSlots()||game.isStaff&&id===staffBaseId&&!staffConstructionReady()||!hasResources(game.castleUpgradeCost(id));if(node.dataset.homeUpgrade==='true'){const hint=$('#home-castle-upgrade-hint');if(hint){const message=homeCastleUpgradeHint(id);if(hint.textContent!==message)hint.textContent=message;}}break;}
         case 'build-branch':case 'upgrade-branch':case 'repair-branch':case 'build-branch-facility':case 'upgrade-branch-facility':{const action=node.dataset.action.replace('-branch',''),quote=window.SengokuBranches?.quote?.(game,action,action==='build'?{parentCastleId:id,direction:node.dataset.direction}:action.endsWith('-facility')?{branchId:id,facilityId:node.dataset.facility}:{branchId:id});disabled=branchBookingPending||!saveEnabled||!canCommand||quote?.ok!==true||!hasResources(quote?.cost);
           const hint=node.nextElementSibling;

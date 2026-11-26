@@ -74,6 +74,14 @@ test('closing, hiding and leaving flush the final edit before its debounce fires
   const fresh=mount({storage:h.storage,current:reloadGame(h.game)});fresh.open();assert.equal(fresh.q('[data-budget-target="stone"]').value,'5678');fresh.close();h.close();
  }
 });
+test('opening the selected detail flushes every edited value before handing control back to the application',()=>{
+ const h=mount({access:owner('u_one')}),opened=[],before=JSON.stringify(h.game.state);
+ h.open({kind:'building',id:'farm',openOperation(target){assert.equal(h.dialog.open,false);assert.equal(h.subscribed,0);assert.equal(h.timers.size,0);assert.equal(h.storage.parsed().records[0].data.reserve.wood,'004321');opened.push(JSON.parse(JSON.stringify(target)));return true;}});
+ h.edit('reserve','wood','004321');h.q('.resource-plan-scroll').scrollTop=419;h.q('.resource-plan-reserve').open=true;h.click('[data-budget-open-target]');
+ assert.deepEqual(opened,[{kind:'building',id:'farm',shared:false}]);h.open({kind:'building',id:'farm'});assert.equal(h.q('[data-budget-reserve="wood"]').value,'004321');assert.equal(h.q('.resource-plan-scroll').scrollTop,419);assert(h.q('.resource-plan-reserve').open);h.close();
+ assert.equal(JSON.stringify(h.game.state),before);assert.equal(h.storage.values.get(SAVE_KEY),'original campaign save');assert(h.storage.writes.every(([key])=>key===PLAN_KEY));
+ const reloaded=mount({storage:h.storage,current:reloadGame(h.game),access:owner('u_one')});reloaded.open();assert.equal(reloaded.q('.resource-plan-scroll').scrollTop,0);assert(!reloaded.q('.resource-plan-reserve').open);reloaded.close();
+});
 test('another account, an offline owner and a new campaign get independent plans',()=>{
  const a=seeded(),raw=a.storage.raw();
  for(const access of [owner('u_two'),{}]){

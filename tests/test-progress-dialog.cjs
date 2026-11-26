@@ -99,5 +99,57 @@ async function test(name,run){await run();console.log('PASS '+name);count++;}
   h.requests[2].resolve({ok:true,progress:progressData('retried')});await retry;
   assert.equal(h.api.getState().busy,false);assert.equal(h.api.getState().hasPending,false);assert.equal(h.api.getState().data.marker,'retried');h.finish();
  });
+
+ await test('preset adoption rechecks a synchronized replacement and requires review of the new exact army',async()=>{
+  const h=fixture(),current=[...h.game.state.army],reserve=h.game.state.officers.find(id=>!current.includes(id)),first=[reserve,current[0],current[1]],next=[reserve,current[1],current[2]];
+  assert(h.game.saveArmyPreset(0,'攻城用',first).ok);h.api.open('army');h.click(h.$('[data-progress-action="preview-preset"][data-slot="0"]'));
+  assert(h.game.saveArmyPreset(0,'守備用',next).ok);const before=JSON.stringify(h.game.state);
+  h.click(h.$('[data-progress-action="apply-preset"]'));await settle();assert.deepEqual([...h.game.state.army],current);assert.equal(JSON.stringify(h.game.state),before);
+  assert.match(h.$('.progress-status').textContent,/変わ|更新|確認/);assert.match(h.$('.progress-preset-confirm').textContent,/守備用/);
+  assert.equal(h.doc.activeElement,h.$('.progress-preset-confirm h3'));
+  h.click(h.$('[data-progress-action="apply-preset"]'));await settle();assert.deepEqual([...h.game.state.army],next);assert.equal(h.$('.progress-preset-confirm'),null);h.finish();
+ });
+ await test('new governor removals are reviewed before a preset can leave a facility unstaffed',async()=>{
+  const h=fixture(),current=[...h.game.state.army],reserve=h.game.state.officers.find(id=>!current.includes(id)),ids=[reserve,...current.slice(0,2)];
+  h.game.saveArmyPreset(0,'出陣',ids);h.api.open('army');h.click(h.$('[data-progress-action="preview-preset"][data-slot="0"]'));
+  assert(h.game.assignGovernor('farm',reserve).ok);const before=JSON.stringify(h.game.state);h.click(h.$('[data-progress-action="apply-preset"]'));await settle();
+  assert.equal(JSON.stringify(h.game.state),before);assert.equal(h.game.state.governors.farm,reserve);assert.match(h.$('.progress-preset-confirm').textContent,/田畑/);
+  h.click(h.$('[data-progress-action="apply-preset"]'));await settle();assert.deepEqual([...h.game.state.army],ids);assert.equal(h.game.state.governors.farm,undefined);h.finish();
+ });
+ await test('changed ranks or materially changed health refresh the comparison before applying it',async()=>{
+  for(const kind of ['rank','health']){
+   const h=fixture(),current=[...h.game.state.army],reserve=h.game.state.officers.find(id=>!current.includes(id)),ids=[reserve,...current.slice(0,2)];
+   h.game.saveArmyPreset(0,'出陣',ids);h.api.open('army');h.click(h.$('[data-progress-action="preview-preset"][data-slot="0"]'));
+   if(kind==='rank')h.game._grantOfficerVariant(reserve,'U');else h.game.state.officerHealth.values[reserve]=0;
+   const before=JSON.stringify(h.game.state);h.click(h.$('[data-progress-action="apply-preset"]'));await settle();assert.equal(JSON.stringify(h.game.state),before,kind);assert.match(h.$('.progress-status').textContent,/変わ|更新|確認/);
+   const cells=h.$('.progress-preset-confirm tbody tr').querySelectorAll('td');assert.equal(Number(cells[2].textContent),h.game.armyStats(ids).lead);h.finish();
+  }
+ });
+ await test('the final mutation callback rechecks the reviewed preset instead of relying on an earlier read',async()=>{
+  const h=fixture(),current=[...h.game.state.army],reserve=h.game.state.officers.find(id=>!current.includes(id)),ids=[reserve,...current.slice(0,2)],next=[reserve,...current.slice(1)];
+  h.game.saveArmyPreset(0,'出陣',ids);h.api.open('army');h.click(h.$('[data-progress-action="preview-preset"][data-slot="0"]'));
+  h.api.configure({mutate:fn=>{h.game.saveArmyPreset(0,'同期された編成',next);return fn(h.game);}});
+  h.click(h.$('[data-progress-action="apply-preset"]'));await settle();assert.deepEqual([...h.game.state.army],current);assert.match(h.$('.progress-preset-confirm').textContent,/同期された編成/);h.finish();
+ });
+ await test('deleted presets never render a broken confirmation or apply a different slot',async()=>{
+  for(const phase of ['before-preview','before-apply']){
+   const h=fixture();h.game.saveArmyPreset(0,'消えた編成');h.api.open('army');h.$('[data-preset-name="1"]').value='未保存の控え';
+   if(phase==='before-apply')h.click(h.$('[data-progress-action="preview-preset"][data-slot="0"]'));
+   h.game.deleteArmyPreset(0);const before=JSON.stringify(h.game.state);h.click(h.$('[data-progress-action="'+(phase==='before-apply'?'apply-preset':'preview-preset')+'"]'));await settle();
+   assert.equal(JSON.stringify(h.game.state),before);assert.equal(h.$('.progress-preset-confirm'),null);assert.match(h.$('.progress-status').textContent,/編成セット|編成/);assert(!/undefined|Cannot read/.test(h.$('.progress-status').textContent));assert.equal(h.$('[data-preset-name="1"]').value,'未保存の控え');h.finish();
+  }
+ });
+ await test('a stationed officer makes the comparison unavailable without clearing their branch duty',async()=>{
+  const h=fixture(),reserve=h.game.state.officers.find(id=>!h.game.state.army.includes(id)),ids=[reserve,...h.game.state.army.slice(0,2)];
+  h.game.saveArmyPreset(0,'待機予定',ids);h.game.state.branches=[{id:'nijo_north',parentCastleId:'nijo',direction:'north',level:1,commanders:[reserve]}];
+  const before=JSON.stringify(h.game.state);h.api.open('army');h.click(h.$('[data-progress-action="preview-preset"][data-slot="0"]'));await settle();
+  assert(h.$('[data-progress-action="apply-preset"]').disabled);assert.match(h.$('.progress-preset-confirm').textContent,/支拠点|配置/);assert.equal(JSON.stringify(h.game.state),before);h.finish();
+ });
+ await test('an unchanged reviewed preset adopts exactly its members without changing assets or commands',async()=>{
+  const h=fixture(),current=[...h.game.state.army],reserve=h.game.state.officers.find(id=>!current.includes(id)),ids=[reserve,...current.slice(0,2)];
+  h.game.saveArmyPreset(0,'確認済み',ids);h.api.open('army');h.click(h.$('[data-progress-action="preview-preset"][data-slot="0"]'));const before=JSON.parse(JSON.stringify(h.game.state));
+  assert.match(h.$('.progress-preset-confirm').textContent,new RegExp(h.game.officer(reserve).name));h.click(h.$('[data-progress-action="apply-preset"]'));await settle();
+  assert.deepEqual([...h.game.state.army],ids);assert.deepEqual(h.game.state.resources,before.resources);assert.equal(h.game.state.command,before.command);assert.deepEqual(h.game.state.progress.presets,before.progress.presets);h.finish();
+ });
  console.log(count+' progression dialog lifecycle and interaction scenarios passed.');
 })().catch(error=>{console.error(error);process.exitCode=1;});

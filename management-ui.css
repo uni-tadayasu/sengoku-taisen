@@ -22,6 +22,13 @@
 .facility-readiness[data-facility-status="shortage"] { color: #ffcfb9; background: #57322970; border-color: #d89d815e; }
 .facility-readiness[data-facility-status="working"] { color: #f5d7a0; background: #61502b70; border-color: #d7b16d70; }
 .facility-readiness[data-facility-status="locked"] { color: #c5cdd4; background: #35434b70; border-color: #99aab85e; }
+.facility-order-status { display: grid; gap: 10px; min-width: 0; margin: 12px 0; padding: 12px 14px; border-left: 3px solid #cfb67c; background: #cfb67c10; }
+.facility-order-status[hidden] { display: none; }
+.facility-order-status > p { margin: 0; font-size: .9375rem; line-height: 1.8; overflow-wrap: anywhere; }
+.facility-order-status > p:empty { display: none; }
+.facility-order-status > .button { justify-self: start; max-width: 100%; min-height: 44px; white-space: normal; text-align: left; }
+.facility-order-status > .button[hidden] { display: none; }
+.facility-order-status[data-building-state="available"] { border-color: #90b6a0; }
 #app.chronicle-shell #main .facility-catalog-list { grid-template-columns: minmax(0,1fr); gap: 10px; }
 #app.chronicle-shell #main .facility-catalog-list .facility-entry {
   display: grid; grid-template-columns: 70px minmax(140px,.85fr) minmax(210px,1.5fr) minmax(140px,.85fr);
