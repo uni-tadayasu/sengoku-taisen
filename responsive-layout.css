@@ -80,3 +80,58 @@ html:not(.sengoku-desktop-fit) .social-dialog{width:calc(100vw - 24px);height:ca
  html:not(.sengoku-desktop-fit) .launch-screen{padding:18px;overflow-y:auto;align-items:flex-start}html:not(.sengoku-desktop-fit) .launch-card{width:100%;min-width:0;margin:auto 0}html:not(.sengoku-desktop-fit) .launch-topline{font-size:13px}html:not(.sengoku-desktop-fit) .launch-topline span:last-child{display:none}html:not(.sengoku-desktop-fit) .launch-subtitle{font-size:23px}html:not(.sengoku-desktop-fit) .launch-introduction{font-size:16px;line-height:1.8;margin:14px 0}html:not(.sengoku-desktop-fit) .launch-features{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}html:not(.sengoku-desktop-fit) .title-feature{font-size:14px;padding:10px 8px}html:not(.sengoku-desktop-fit) .title-feature strong{font-size:25px}html:not(.sengoku-desktop-fit) .launch-enter{min-height:54px;width:100%;font-size:23px}html:not(.sengoku-desktop-fit) .launch-status,html:not(.sengoku-desktop-fit) .launch-footnote{font-size:14px}html:not(.sengoku-desktop-fit) .launch-guide-nav{display:flex;flex-wrap:wrap;justify-content:center;gap:8px 18px;margin:15px 0}html:not(.sengoku-desktop-fit) .launch-guide-nav a{display:inline-flex;align-items:center;min-height:44px;font-size:14px}
 }
 @media(max-width:360px){html:not(.sengoku-desktop-fit) .sidebar,html:not(.sengoku-desktop-fit) #main{padding-left:12px;padding-right:12px}html:not(.sengoku-desktop-fit) .topbar{padding:14px 12px}html:not(.sengoku-desktop-fit) .mobile-brand{font-size:21px}html:not(.sengoku-desktop-fit) .mobile-brand img{width:30px;height:30px}html:not(.sengoku-desktop-fit) .resource-amount{font-size:22px}html:not(.sengoku-desktop-fit) .resource-gain{display:block;margin:0}html:not(.sengoku-desktop-fit) .officers-grid{grid-template-columns:1fr}html:not(.sengoku-desktop-fit) .navigation .nav-item{font-size:13px}html:not(.sengoku-desktop-fit) .sidebar-bottom{grid-template-columns:repeat(3,minmax(0,1fr)) 90px}html:not(.sengoku-desktop-fit) .sidebar-bottom .nav-item{font-size:11px}html:not(.sengoku-desktop-fit) .social-launcher{max-width:84px;padding:10px 8px;font-size:13px}html:not(.sengoku-desktop-fit) .social-launcher svg{display:none}}
+
+/* Free the work area on short screens while keeping every balance in its
+   original button, including its detail action and live value. */
+#app.chronicle-shell .topbar .ledger-disclosure {
+  display: inline-flex; flex: 0 0 auto; align-items: center; justify-content: center; gap: 5px;
+  min-height: 44px; margin: 0; padding: 5px 8px; border-radius: 6px;
+  border: 1px solid #679a90; color: #e2f9ea; background: #122c33;
+  font: inherit; font-size: .875rem; line-height: 1.2; white-space: nowrap; cursor: pointer;
+}
+#app.chronicle-shell .topbar .ledger-disclosure::after {
+  content: ''; width: .4em; height: .4em; border: solid currentColor;
+  border-width: 0 2px 2px 0; transform: translateY(-2px) rotate(45deg);
+}
+#app.chronicle-shell .topbar .ledger-disclosure[aria-expanded="true"]::after {
+  transform: translateY(2px) rotate(225deg);
+}
+#app.chronicle-shell .topbar .ledger-disclosure:focus-visible { outline: 2px solid #adffdc; outline-offset: 2px; }
+#app.chronicle-shell .topbar .ledger-disclosure[hidden],
+#app.chronicle-shell .topbar .header-balances[hidden] { display: none !important; }
+@media (max-width:700px) {
+  html:not(.sengoku-desktop-fit) #app.chronicle-shell .topbar .calendar { grid-column: 1 / 4; }
+  html:not(.sengoku-desktop-fit) #app.chronicle-shell .topbar .header-actions { grid-column: 4 / -1; flex-wrap: wrap; gap: 4px; }
+}
+@media (max-width:380px) {
+  html:not(.sengoku-desktop-fit) #app.chronicle-shell .topbar .calendar { grid-column: 1 / 3; }
+  html:not(.sengoku-desktop-fit) #app.chronicle-shell .topbar .header-actions { grid-column: 3 / -1; }
+}
+
+html.sengoku-desktop-fit #app.chronicle-shell .chronicle-ledger:has(.header-balances[hidden]) .header-actions {
+  grid-column: -2 / -1;
+}
+
+/* Fixed controls may outgrow the dialog at large text sizes or when the
+   keyboard opens. Keep a usable results pane and let the frame scroll too. */
+html dialog.navigation-dialog[open] {
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+}
+html dialog.navigation-dialog[open] #navigation-results {
+  flex: 1 0 7rem;
+  overscroll-behavior-y: auto;
+}
+html.sengoku-short-viewport dialog.navigation-dialog[open] .navigation-dock-editor[open] {
+  max-height: min(10rem, calc(var(--visible-height, 100dvh) * .4));
+  overscroll-behavior-y: auto;
+}
+html.sengoku-short-viewport #modal[open] #modal-content {
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+}
+html.sengoku-short-viewport #modal[open] .modal-body {
+  flex: 1 1 auto;
+  min-height: min(6rem, calc(var(--visible-height, 100dvh) * .35));
+  overscroll-behavior-y: auto;
+}

@@ -477,6 +477,79 @@ test('current location and category counts update from visible canonical control
   assert.equal(s.get('#navigation-query'), input); assert.deepEqual(s.calls, ['view:army']);
 });
 
+// Use browser-shaped, shared search storage so canonical navigation tests above
+// keep their stricter assertion that ordinary menu actions only read preferences.
+function savedSearchFixture(options = {}) {
+  const h = fixture(options), data = options.data || new Map();
+  const owner = {playerId:'lord-a', campaign:'campaign-a', pending:false};
+  h.win.SengokuBridge = {hasStarted: () => true, getState: () => ({walking:{campaignId:owner.campaign}})};
+  h.win.SengokuSocial = {getExpansionContext: () => ({playerId:owner.playerId, user:{id:owner.playerId}, pending:owner.pending})};
+  const legacy = h.win.localStorage;
+  h.win.localStorage = {
+    get length() { return data.size; },
+    key: i => [...data.keys()][i] ?? null,
+    getItem: key => key === preferenceKey ? legacy.getItem(key) : data.get(key) ?? null,
+    setItem: (key, value) => key === preferenceKey ? legacy.setItem(key, value) : data.set(key, value),
+    removeItem: key => data.delete(key)
+  };
+  const query = h.get('#navigation-query'), category = h.get('#navigation-category');
+  function type(text, group = '') {
+    query.value = text; query.dispatch('input'); category.value = group; category.dispatch('change');
+  }
+  function clear() { h.get('[data-navigation-reset]').click(); }
+  return {...h, data, owner, query, category, type, clear};
+}
+
+test('an explicit saved search restores its words and category after reload without executing a command', () => {
+  const h = savedSearchFixture(); h.api.open();
+  h.type('移動時間', '合戦と天下'); assert.equal(h.data.size, 0);
+  h.get('[data-filter-save]').click(); assert.equal(h.data.size, 1);
+  assert(h.get('[data-filter-save]').disabled);
+  const next = savedSearchFixture({data:h.data, touch:true}); next.api.open();
+  const recall = next.get('[data-filter-recall]'); assert(recall); recall.click();
+  assert.equal(next.query.value,'移動時間'); assert.equal(next.category.value,'合戦と天下');
+  assert(next.get('[data-navigation-target="view:covert"]')); assert.deepEqual(next.calls,[]);
+  assert(next.doc.activeElement.hasAttribute('data-navigation-target'));
+});
+
+test('saved conditions retain other tabs’ independent changes and reload normalized duplicates only once', () => {
+  const a = savedSearchFixture(), b = savedSearchFixture({data:a.data});
+  a.api.open(); b.api.open(); a.type('ブショウ'); a.get('[data-filter-save]').click();
+  b.type('施設'); b.get('[data-filter-save]').click(); assert.equal(a.data.size,2);
+  a.clear(); a.doc.dispatch.call(a.win,'storage', null, {key:[...a.data.keys()].at(-1)});
+  assert.equal(a.get('#navigation-results').querySelectorAll('[data-filter-recall]').length,2);
+  a.type('ぶしょう'); assert(a.get('[data-filter-save]').disabled);
+  a.clear(); a.get('[data-filter-remove]').click(); assert.equal(a.data.size,1);
+  b.clear(); b.doc.dispatch.call(b.win,'storage', null, {key:null}); assert.equal(b.get('#navigation-results').querySelectorAll('[data-filter-recall]').length,1);
+});
+
+test('saved search actions check fresh identity and visible sources, including detached or blocked controls', () => {
+  const h = savedSearchFixture(); h.api.open(); h.type('派遣'); h.get('[data-filter-save]').click(); h.clear();
+  const original = h.get('[data-filter-recall]'); h.owner.playerId = 'lord-b'; original.click();
+  assert.equal(h.query.value,''); assert.equal(h.get('[data-filter-recall]'),null); assert.deepEqual(h.calls,[]);
+  h.owner.playerId = 'lord-a'; h.owner.campaign = 'campaign-b'; h.api.refresh(); assert.equal(h.get('[data-filter-recall]'),null);
+  h.owner.campaign = 'campaign-a'; h.api.refresh(); const fresh = h.get('[data-filter-recall]'); assert(fresh);
+  const other = h.doc.createElement('dialog'); h.doc.body.append(other); other.showModal(); fresh.click(); assert.equal(h.query.value,''); other.close();
+  h.nav.querySelector('[data-view="covert"]').hidden = true; fresh.click(); assert.equal(h.get('[data-navigation-target="view:covert"]'),null);
+  h.clear(); h.owner.pending = true; h.api.refresh(); assert.equal(h.get('[data-filter-recall]'),null);
+  h.owner.pending = false; h.owner.campaign = 'legacy_v1'; h.type('守備'); assert.equal(h.get('[data-filter-save]'),null);
+});
+
+test('IME text is only reflected after composition, malformed storage and inaccessible writes stay harmless', () => {
+  const h = savedSearchFixture(); h.api.open();
+  h.query.dispatch('compositionstart'); h.query.value='家臣'; h.query.dispatch('input');
+  h.api.refresh(); assert.equal(h.get('[data-filter-save]'),null);
+  h.query.focus(); const enter = h.get('#navigation-dialog').dispatch('keydown',h.query,{key:'Enter'});
+  assert.equal(enter.prevented,false); assert.deepEqual(h.calls,[]);
+  h.query.dispatch('compositionend'); assert(h.get('[data-filter-save]')); h.get('[data-filter-save]').click();
+  const key = [...h.data.keys()][0]; h.data.set(key + 'invalid','{'); h.data.set(key + 'wrong','["武将","unknown"]');
+  h.clear(); h.api.close(); h.api.open(); assert.equal(h.get('#navigation-results').querySelectorAll('[data-filter-recall]').length,1);
+  h.type('<img src=x>'); const write = h.win.localStorage.setItem; h.win.localStorage.setItem = () => {throw Error('quota');};
+  h.get('[data-filter-save]').click(); assert(h.get('#navigation-result-status').textContent.includes('更新できません'));
+  h.win.localStorage.setItem = write; h.get('[data-filter-save]').click(); h.clear();
+  assert.equal(h.get('#navigation-results').querySelector('img'),null); assert(h.get('#navigation-results').textContent.includes('<img src=x>'));
+});
+
 let failed = 0;
 for (const [name, run] of tests) { try { run(); console.log('PASS', name); } catch (error) { failed++; console.error('FAIL', name, error.stack); } }
 console.log(`${tests.length - failed}/${tests.length} navigation usability checks passed`);

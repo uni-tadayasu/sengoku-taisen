@@ -18,6 +18,52 @@ function planViewport(width,height,announcementHeight=0){
 function desktopMode(finePointer,touchPoints=0,coarsePointer=false,viewportWidth=Infinity){return Number(viewportWidth)>1024&&Boolean(finePointer)&&!(Number(touchPoints)>0||coarsePointer);}
 const root=global.document?.documentElement,doc=global.document;
 let initialized=false,destroyed=false,pending=0,resizeObserver=null,mutationObserver=null,media=null,coarseMedia=null,status={active:false,mode:'flow',scale:1},listeners=[],navigationState='';
+// The resource ledger shares the viewport with the dock on small screens.
+const ledgerKey='sengoku-ledger-display-v1';
+let ledgerButton=null,balances=null,ledgerActions=null,groupLabel=null,ledgerPreference=null;
+function readLedgerPreference(){
+  try{const value=global.localStorage?.getItem(ledgerKey);return value==='expanded'||value==='collapsed'?value:null;}
+  catch{return null;}
+}
+function mountLedger(){
+  const header=doc.querySelector?.('#app .topbar');
+  balances=header?.querySelector?.('.header-balances');ledgerActions=header?.querySelector?.('.header-actions');
+  if(!balances||!ledgerActions)return;
+  ledgerPreference=readLedgerPreference();groupLabel=ledgerActions.getAttribute('aria-label');
+  ledgerButton=doc.createElement('button');ledgerButton.type='button';ledgerButton.className='ledger-disclosure';
+  ledgerButton.textContent='資産欄';ledgerButton.hidden=true;
+  ledgerButton.setAttribute('aria-controls','resources touch-header-status');
+  ledgerActions.insertBefore(ledgerButton,ledgerActions.firstChild);
+  listen(ledgerButton,'click',()=>{
+    ledgerPreference=balances.hidden?'expanded':'collapsed';
+    try{global.localStorage?.setItem(ledgerKey,ledgerPreference);}catch{/* Use the choice for this session. */}
+    updateLedger(root.classList.contains('sengoku-desktop-fit'),global.innerHeight);refresh();
+  });
+  listen(global,'storage',event=>{
+    if(event.key!==ledgerKey&&event.key!==null)return;
+    ledgerPreference=readLedgerPreference();refresh();
+  });
+}
+function updateLedger(desktop,height){
+  if(!ledgerButton)return;
+  const available=!desktop||height<=600;
+  const expanded=!available||(ledgerPreference===null?height>480:ledgerPreference==='expanded');
+  if(ledgerButton.hidden===available){
+    if(!available&&doc.activeElement===ledgerButton)ledgerActions.querySelector('.icon-button')?.focus({preventScroll:true});
+    ledgerButton.hidden=!available;
+    if(available)ledgerActions.setAttribute('aria-label','資産・音声・設定');
+    else if(groupLabel===null)ledgerActions.removeAttribute('aria-label');
+    else ledgerActions.setAttribute('aria-label',groupLabel);
+  }
+  if(balances.hidden===expanded){
+    if(!expanded&&balances.contains(doc.activeElement))ledgerButton.focus({preventScroll:true});
+    balances.hidden=!expanded;
+  }
+  if(ledgerButton.getAttribute('aria-expanded')!==String(expanded)){
+    ledgerButton.setAttribute('aria-expanded',String(expanded));
+    ledgerButton.setAttribute('aria-label',expanded?'資産欄をたたむ':'資産欄を開く');
+  }
+}
 const raf=callback=>global.requestAnimationFrame?global.requestAnimationFrame(callback):global.setTimeout(callback,16);
 const caf=id=>global.cancelAnimationFrame?global.cancelAnimationFrame(id):global.clearTimeout(id);
 function setVar(name,value){if(root.style.getPropertyValue(name)!==value)root.style.setProperty(name,value);}
@@ -46,6 +92,9 @@ function update(){
   if(!Number.isFinite(viewportWidth)||!Number.isFinite(viewportHeight)||viewportWidth<=0||viewportHeight<=0)return;
   const active=desktopMode(media?.matches,global.navigator?.maxTouchPoints,coarseMedia?.matches,viewportWidth);
   root.classList.toggle('sengoku-desktop-fit',active);
+  root.classList.toggle('sengoku-short-viewport',viewportHeight<=500);
+  // A keyboard can reduce visualViewport.height while the device stays upright.
+  updateLedger(active,global.innerHeight);
   // Mobile browsers can leave the layout viewport tall while the keyboard
   // covers the visual viewport. Only release fixed chrome during game input.
   const editingMain = doc.activeElement?.matches?.('#main textarea, #main input:not([type]), #main input:is([type=text],[type=search],[type=number],[type=email],[type=url],[type=tel],[type=password])');
@@ -74,6 +123,7 @@ function refresh(){if(!root||destroyed)return;if(!initialized)start();if(!pendin
 function start(){
   if(initialized||destroyed||!doc.body)return;initialized=true;
   media=global.matchMedia?.('(hover: hover) and (pointer: fine)');coarseMedia=global.matchMedia?.('(any-pointer: coarse)');
+  mountLedger();
   listen(media,'change',refresh);listen(coarseMedia,'change',refresh);listen(global,'resize',refresh);listen(global,'orientationchange',refresh);listen(global.visualViewport,'resize',refresh);listen(global.visualViewport,'scroll',refresh);listen(doc,'focusin',refresh);listen(doc,'focusout',refresh);listen(doc,'visibilitychange',refresh);listen(doc,'fullscreenchange',refresh);
   if(global.ResizeObserver){resizeObserver=new global.ResizeObserver(refresh);for(const node of doc.querySelectorAll('#announcement-bar,.topbar'))resizeObserver.observe(node);}
   if(global.MutationObserver){mutationObserver=new global.MutationObserver(records=>{
@@ -100,7 +150,8 @@ function start(){
   doc.fonts?.ready?.then(refresh).catch(()=>{});refresh();
 }
 function destroy(){
-  destroyed=true;if(pending)caf(pending);pending=0;for(const remove of listeners)remove();listeners=[];resizeObserver?.disconnect();mutationObserver?.disconnect();root?.classList.remove('sengoku-desktop-fit');root?.classList.remove('sengoku-compact-input');
+  destroyed=true;if(pending)caf(pending);pending=0;for(const remove of listeners)remove();listeners=[];resizeObserver?.disconnect();mutationObserver?.disconnect();root?.classList.remove('sengoku-desktop-fit');root?.classList.remove('sengoku-compact-input');root?.classList.remove('sengoku-short-viewport');
+  if(ledgerButton){balances.hidden=false;ledgerButton.remove();if(groupLabel===null)ledgerActions.removeAttribute('aria-label');else ledgerActions.setAttribute('aria-label',groupLabel);ledgerButton=null;}
   for(const node of doc?.querySelectorAll?.('#app,.launch-card,dialog[data-desktop-scale]')||[])clearLegacyGeometry(node);
   if(root)setVar('--touch-header-height','0px');
   if(root)setVar('--touch-announcement-height','0px');

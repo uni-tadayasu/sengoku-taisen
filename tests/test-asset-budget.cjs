@@ -31,7 +31,9 @@ const totalGzipBytes = rows.reduce((sum,row)=>sum+row.gzipBytes,0);
 // v5.9.4 adds the luminous title/command surfaces and persistent FX controls.
 // Measured against v5.9.3: +16,284 raw / +4,083 gzip. Hero images are separate
 // responsive files; the smallest is 47,724 bytes and fits the offline art budget.
-const rawBudget=3357000,gzipBudget=965000;
+// v5.9.5 uses named-function-preserving minification and a compact officer
+// roster. Keep the previous raw ceiling and tighten the shipped gzip ceiling.
+const rawBudget=3357000,gzipBudget=932000;
 assert(totalBytes <= rawBudget, `Initial bundles exceed the ${rawBudget} byte budget: ${totalBytes}`);
 assert(totalGzipBytes <= gzipBudget, `Initial bundles exceed the ${gzipBudget} gzip byte budget: ${totalGzipBytes}`);
 const html = fs.readFileSync(path.join(root,'index.html'),'utf8');
