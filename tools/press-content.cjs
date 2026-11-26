@@ -2,7 +2,7 @@
 
 // Public editorial material only. No account, analytics or posting action runs here.
 const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-const { trailer, renderTrailer } = require('./promotion-content.cjs');
+const { trailer, firstSteps, renderTrailer, renderFirstSteps } = require('./promotion-content.cjs');
 const copy = {
   "short": "戦国VSは、城下町を育て、256人の武将を編成し、城をめぐる合戦を楽しむ戦国ブラウザゲーム。軍師の助言を読み、一城から天下統一へ。PC・スマホ・タブレットで、インストールせず基本プレイ無料で始められます。",
   "standard": "戦国VSは、内政・武将編成・攻城戦を楽しむ基本プレイ無料の戦国戦略シミュレーションです。124の開始候補から一城を選び、田畑や商家を育てて領国の力を蓄えます。256人の武将、129の城と拠点、64種類の施設を収録。個人の戦役ではCPU勢力と戦い、領主を登録すると同盟・書状・交易などの交流にも参加できます。軍師AIが戦況に合う準備や戦法を提案。PC・スマホ・タブレットのブラウザで遊べます。有料商品は外観アイテムと月額支援で、戦力を優遇する特典はありません。",
@@ -72,6 +72,9 @@ function renderPressContent(p, { section, table, site }) {
       <div class="press-logo"><img src="${esc(p.file(site.logo.path))}" alt="戦国VSの城・軍扇・旭日を組み合わせたブランド紋章" width="128" height="128" loading="lazy" decoding="async"><ul class="press-downloads"><li>${link('assets/branding/sengoku-vs-mark-20261126.svg', '紋章のベクターデータを保存（SVG）')}</li><li>${link(site.logo.path, '紋章の画像を保存（512×512px PNG）')}</li></ul></div>
       ${renderTrailer(p, { id: 'press-trailer', title: 'そのまま見られる、24秒の紹介動画。' })}
       <ul class="press-downloads"><li>${link('assets/promo/sengoku-vs-intro-ja-20261126.mp4', '紹介動画を保存（MP4）')}</li><li>${link('assets/promo/sengoku-vs-video-copy-ja-20261126.txt', '動画用のタイトル・説明文を保存（TXT）')}</li></ul>
+      ${renderFirstSteps(p)}
+      <ul class="press-downloads"><li>${link(firstSteps.poster, 'はじめての3手のポスターを保存（JPEG）')}</li><li>${link(firstSteps.captions, 'はじめての3手の日本語字幕を保存（VTT）')}</li><li>${link(firstSteps.metadata, '動画仕様・素材情報を保存（JSON）')}</li><li>${link(firstSteps.production, '制作内容・確認結果を保存（Markdown）')}</li></ul>
+      <p>新しい36秒動画とポスター・字幕・素材情報は、<a href="${esc(p.file('assets/promo/sengoku-vs-press-kit-20261126.zip'))}" download>紹介用素材ZIP</a>にも収録しています。24秒のイラスト紹介動画は引き続き個別に保存できます。</p>
     `),
     section('press-copy', '紹介文・投稿文', '掲載先に合わせて使える日本語の紹介文', `
       <p>紹介文はそのまま読むほか、欄内の文章を選択してコピーできます。文字数は改行を除いた目安です。テキストファイルにも同じ文を収録しています。</p>

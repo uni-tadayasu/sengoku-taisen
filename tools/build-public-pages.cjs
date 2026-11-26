@@ -10,15 +10,19 @@ const renderPressContent = require('./press-content.cjs');
 const { releases, releaseId, renderNewsContent, renderRss, validateReleases } = require('./news-content.cjs');
 const { pageSecurity } = require('./page-security.cjs');
 const renderPremiumPage = require('./premium-page.cjs');
+const {renderEnglishPage} = require('./build-english-page.cjs');
 const root = path.resolve(__dirname, '..');
 const site = JSON.parse(fs.readFileSync(path.join(root, 'site-metadata.json'), 'utf8'));
+const publicConfig = fs.readFileSync(path.join(root, 'config.js'), 'utf8');
+const publicApiBase = /window\.SENGOKU_API_BASE\s*=\s*['"]([^'"]*)['"]/.exec(publicConfig)?.[1];
+if (publicApiBase === undefined) throw Error('config.js must declare the public API base URL');
 const {SengokuEngine, SENGOKU_DATA} = require(path.join(root, 'engine.js'));
 const {origin, release} = site;
 const brandEdition = /-(\d{8})\.png$/.exec(site.favicon.path)?.[1];
 if (!brandEdition) throw Error('site-metadata.json: dated brand artwork is required');
 // Dates are editorial inputs. A new build or deployment must not change them.
 if (site.schemaVersion !== 1 || new URL(origin).origin !== origin || !origin.startsWith('https://')) throw Error('site-metadata.json: canonical HTTPS origin is required');
-for (const key of ['home', 'share', 'premium', 'guide', 'recovery', 'about', 'press', 'news']) {
+for (const key of ['home', 'share', 'premium', 'guide', 'recovery', 'about', 'press', 'news', 'english']) {
   const page = site.pages[key];
   if (!page || !/^\/(?:[a-z0-9-]+\/)*$/.test(page.path) || !page.title || !page.description || !/^\d{4}-\d{2}-\d{2}$/.test(page.dateModified)) throw Error(`site-metadata.json: invalid ${key} page`);
 }
@@ -57,7 +61,7 @@ function metadataEntries(key) {
     ['name', 'author', site.publisher], ['name', 'copyright', site.publisher],
     ['name', 'application-name', site.name], ['name', 'apple-mobile-web-app-title', site.name], ['name', 'description', page.description],
     ['name', 'robots', 'index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1'],
-    ['property', 'og:type', 'website'], ['property', 'og:locale', site.locale],
+    ['property', 'og:type', 'website'], ['property', 'og:locale', page.locale || site.locale],
     ['property', 'og:site_name', site.name], ['property', 'og:title', page.title],
     ['property', 'og:description', page.description], ['property', 'og:url', canonical(key)],
     ['property', 'og:image', absolute(image.path)], ['property', 'og:image:secure_url', absolute(image.path)],
@@ -69,6 +73,13 @@ function metadataEntries(key) {
   ];
 }
 const metaTag = ([attribute, name, value]) => `<meta ${attribute}="${esc(name)}" content="${esc(value)}">`;
+
+function languageLinks(key) {
+  if (!['share', 'english'].includes(key)) return '';
+  return [['ja', 'share'], ['en', 'english'], ['x-default', 'share']].map(([language, page]) =>
+    `<link rel="alternate" hreflang="${language}" href="${canonical(page)}">`
+  ).join('\n  ');
+}
 
 // Keep brand URLs stable between game releases; use a new pathname when the
 // artwork changes so browser/SNS image caches can fetch the new identity.
@@ -93,11 +104,12 @@ function structuredData(key, breadcrumbItems = []) {
   const organizationId = `${home}#organization`, websiteId = `${home}#website`, gameId = `${home}#game`;
   const webPage = {
     '@type':'WebPage', '@id':`${url}#webpage`, url, name:page.title,
-    description:page.description, inLanguage:site.language, dateModified:page.dateModified,
+    description:page.description, inLanguage:page.language || site.language, dateModified:page.dateModified,
     isPartOf:{'@id':websiteId}, publisher:{'@id':organizationId},
     about:{'@id':gameId}, primaryImageOfPage:{'@type':'ImageObject',url:absolute(page.artwork.path),contentUrl:absolute(page.artwork.path),caption:page.artwork.alt,width:page.artwork.width,height:page.artwork.height}
   };
-  if (['home', 'share', 'about'].includes(key)) webPage.mainEntity = {'@id':gameId};
+  if (['home', 'share', 'about', 'english'].includes(key)) webPage.mainEntity = {'@id':gameId};
+  if (key === 'english') webPage.translationOfWork = {'@id':`${canonical('share')}#webpage`};
   const graph = [
     {'@type':'Organization','@id':organizationId,name:site.publisher,url:home,logo:{'@type':'ImageObject',url:absolute(site.logo.path),width:site.logo.width,height:site.logo.height}},
     {'@type':'WebSite','@id':websiteId,name:site.name,alternateName:site.alternateName,url:home,inLanguage:site.language,publisher:{'@id':organizationId}},
@@ -688,20 +700,20 @@ function render(page) {
     <button class="public-nav-toggle" type="button" hidden aria-expanded="false" aria-controls="public-site-nav"><span class="menu-lines" aria-hidden="true"></span>メニュー</button>
     <nav class="header-navigation" id="public-site-nav" aria-label="サイトの案内">${nav}<a class="nav-play" href="${p.dir('')}">ゲームを開く</a></nav>
   </div></header>`;
-  const footer = `<footer class="site-footer"><div class="footer-inner page-width"><a class="footer-brand" href="${p.dir('')}">${esc(site.name)} <span>SENGOKU VS</span></a><nav class="footer-nav" aria-label="フッターの案内">${nav}<a href="${p.dir('press')}"${page.key === 'press' ? ' aria-current="page"' : ''}>紹介・掲載用素材</a></nav><p class="copyright">© ${esc(site.publisher)}</p><p class="footer-note"><a href="${p.dir('about')}#copyright">著作権・作品資料</a>${['share','premium'].includes(page.key)?` <span>更新 <time datetime="${page.dateModified}">${modifiedLabel(page.dateModified)}</time></span>`: ''}</p></div></footer>`;
+  const footer = `<footer class="site-footer"><div class="footer-inner page-width"><a class="footer-brand" href="${p.dir('')}">${esc(site.name)} <span>SENGOKU VS</span></a><nav class="footer-nav" aria-label="フッターの案内">${nav}<a href="${p.dir('press')}"${page.key === 'press' ? ' aria-current="page"' : ''}>紹介・掲載用素材</a><a href="${p.dir('en')}" lang="en" hreflang="en">English</a></nav><p class="copyright">© ${esc(site.publisher)}</p><p class="footer-note"><a href="${p.dir('about')}#copyright">著作権・作品資料</a>${['share','premium'].includes(page.key)?` <span>更新 <time datetime="${page.dateModified}">${modifiedLabel(page.dateModified)}</time></span>`: ''}</p></div></footer>`;
   const chapter = path.basename(page.artwork.path, '.webp');
   const chapterSources = [240,400,640,960,1200].map(width => `${p.file(`assets/responsive/${chapter}-${width}.webp`)} ${width}w`).join(', ');
   const panelSources = [400,640,900].map(width => `${p.file(`assets/responsive/${chapter}-panel-${width}.webp`)} ${width}w`).join(', ');
   const artwork = `<picture class="chapter-art"><source media="(min-width: 651px)" srcset="${panelSources}" sizes="(max-width: 900px) 640px, (min-width: 1380px) 850px, max(650px, 58vw)"><img src="${p.file(page.artwork.path)}" srcset="${chapterSources}" sizes="(max-width: 650px) calc(100vw - 24px), (max-width: 900px) 47vw, (min-width: 1460px) 755px, 52vw" alt="${esc(page.artwork.alt)}" width="${page.artwork.width}" height="${page.artwork.height}" fetchpriority="high" decoding="async"></picture>`;
   if (['share', 'premium'].includes(page.key)) return (page.key === 'share' ? renderSharePage : renderPremiumPage)({
     site, header, footer, artwork,
-    metadataHtml: metadataEntries(page.key).map(metaTag).join('\n  ') + `\n  <link rel="canonical" href="${url}">`,
+    metadataHtml: metadataEntries(page.key).map(metaTag).join('\n  ') + `\n  <link rel="canonical" href="${url}">` + (languageLinks(page.key) ? `\n  ${languageLinks(page.key)}` : ''),
     jsonLd: jsonScript(jsonld),
     iconHtml: brandLinks(p.file).join('\n  ') + `\n  <link rel="manifest" href="${p.file('manifest.webmanifest')}?v=${release}">`
   });
   const secondaryHref = page.secondary[1].startsWith('#') ? page.secondary[1] : p.dir(page.secondary[1]);
   return `<!doctype html>
-<html lang="${esc(site.language)}">
+<html lang="${esc(page.language || site.language)}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -772,6 +784,16 @@ function withButtonArtwork(html, href) {
   return replaceHeadTag(html, 'link', attrs => attrs.rel === 'stylesheet' && /(?:^|\/)button-artwork\.css(?:\?|$)/.test(attrs.href || ''), `<link rel="stylesheet" href="${href}?v=${release}">`);
 }
 
+function withPromotion(html, file) {
+  const english = file === 'en/index.html';
+  const notice = english
+    ? 'We count introduction-page visits and play-link clicks by referral source, without account identifiers or game data. We respect your browser’s tracking opt-out settings.'
+    : '紹介ページの閲覧とゲームを開く操作を、案内元ごとに匿名集計します。個人を識別する情報やゲームデータは保存せず、ブラウザの追跡拒否設定を尊重します。';
+  const script = `<script defer src="${paths(file).file('public-growth.js')}?v=${release}" data-api="${esc(publicApiBase)}"></script>`;
+  return html.replace('</head>', `  ${script}\n</head>`)
+    .replace('<p class="copyright">', `<p class="footer-note" data-promotion-notice>${notice}</p><p class="copyright">`);
+}
+
 function updateHome() {
   let html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
   const page = site.pages.home;
@@ -807,7 +829,7 @@ function updateHome() {
   if (!hasLaunchGuide) html = html.replace(/<p class="launch-copyright">/, `${launchGuide}\n      <p class="launch-copyright">`);
   html = html.replace(/(<p class="launch-copyright">)([\s\S]*?)(<\/p>)/, (_, before, content, after) => {
     const platform = content.includes('©') ? content.slice(0, content.indexOf('©')) : '';
-    return before + platform + `© <a href="about/" aria-label="${esc(site.publisher)}の戦国VSについて">${esc(site.publisher)}</a> · <a href="news/">更新情報</a> · <a href="press/">紹介素材</a>` + after;
+    return before + platform + `© <a href="about/" aria-label="${esc(site.publisher)}の戦国VSについて">${esc(site.publisher)}</a> · <a href="news/">更新情報</a> · <a href="sengoku-vs/#share">友人に紹介</a> · <a href="press/">紹介素材</a> · <a href="en/" lang="en" hreflang="en">English</a>` + after;
   });
   html = html.replace(/(<a href="about\/" data-action="about">)[^<]*(<\/a>)/, '$1ゲーム概要・出典$2');
   html = html.replace(/(<div class="version-label">)群雄集結 · Ver\. [^<]+(<\/div>)/, `$1群雄集結 · Ver. ${esc(site.version)}$2`);
@@ -847,6 +869,12 @@ function sitemap() {
 // Compute everything before writing so malformed metadata cannot leave a
 // partially regenerated public surface. Unchanged files keep their mtime.
 const outputs = new Map(pages.map(page => [page.file, withButtonArtwork(render(page), paths(page.file).file('button-artwork.css'))]));
+const englishPaths = paths('en/index.html');
+outputs.set('en/index.html', withButtonArtwork(renderEnglishPage({
+  metadataHtml: metadataEntries('english').map(metaTag).join('\n  ') + `\n  <link rel="canonical" href="${canonical('english')}">\n  ${languageLinks('english')}`,
+  jsonLd: jsonScript(structuredData('english', [{name:'SENGOKU VS',url:canonical('home')},{name:'English introduction',url:canonical('english')}])),
+  iconHtml: brandLinks(englishPaths.file).join('\n  ')
+}), englishPaths.file('button-artwork.css')));
 outputs.set('index.html', updateHome());
 outputs.set('404.html', updateNotFound());
 outputs.set('manifest.webmanifest', updateManifest());
@@ -866,13 +894,20 @@ const auditionHtml = fs.readFileSync(path.join(root, 'tools/music-audition.html'
   .replace(/(<a\b[^>]*class="brand"[^>]*><img\s+src=")[^"]+("[^>]*>)/, (_, before, after) => before + auditionPaths.file(site.favicon.path) + after)
   .replace(/(<script\b[^>]*\bsrc=")(\.\.\/music\.js|music-audition\.js)(?:\?[^"]*)?("[^>]*>)/g, (_, before, source, after) => `${before}${source}?v=${esc(release)}${after}`);
 outputs.set('tools/music-audition.html', withBrandLinks(auditionHtml, auditionPaths.file));
-const securePage = pageSecurity(fs.readFileSync(path.join(root, 'config.js'), 'utf8'));
+const securePage = pageSecurity(publicConfig);
 for (const [name, html] of outputs) {
   if (name.endsWith('.html')) {
     const currentBrand = html.replace(/assets\/responsive\/(brand|emblem)-(?:\d{8}-)?(\d+)\.webp/g, (_, kind, width) => `assets/responsive/${kind}-${brandEdition}-${width}.webp`);
     let themed = replaceHeadTag(currentBrand, 'meta', attrs => attrs.name === 'theme-color', `<meta name="theme-color" content="${esc(site.themeColor)}">`);
     if (name === 'index.html' || pages.some(page => page.file === name)) themed = replaceHeadTag(themed, 'link', attrs => attrs.rel === 'alternate' && attrs.type === 'application/rss+xml', `<link rel="alternate" type="application/rss+xml" title="戦国VS 公式更新情報" href="${origin}/news/feed.xml">`);
-    outputs.set(name, securePage(themed, name === 'index.html'));
+    const promotion = ['sengoku-vs/index.html', 'en/index.html'].includes(name);
+    if (promotion) themed = withPromotion(themed, name);
+    if (['404.html', 'tools/music-audition.html'].includes(name)) {
+      const href = name === '404.html' ? '/en/' : paths(name).dir('en');
+      themed = themed.replace(/(<footer\b[^>]*>)([\s\S]*?)(<\/footer>)/g, (match, before, content, after) =>
+        /hreflang="en"/.test(content) ? match : `${before}${content} · <a href="${href}" lang="en" hreflang="en">English</a>${after}`);
+    }
+    outputs.set(name, securePage(themed, name === 'index.html', {promotion}));
   }
 }
 const checkOnly = process.argv.includes('--check');

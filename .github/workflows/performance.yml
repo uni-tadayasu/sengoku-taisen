@@ -76,3 +76,5 @@ jobs:
           node-version: '24'
       - name: Verify chat replies, mentions and room authorization
         run: node server/test-chat-replies.mjs
+      - name: Verify anonymous promotion counters and operator authorization
+        run: node server/test-promotion.mjs

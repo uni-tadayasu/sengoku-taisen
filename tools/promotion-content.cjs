@@ -13,6 +13,27 @@ const trailer = Object.freeze({
   description: '城下町づくり、武将編成、合戦を楽しむ日本語ブラウザゲーム「戦国VS」を、公式イラストで紹介する24秒の動画です。'
 });
 
+// First-steps video is hosted with the official press assets. It is a slideshow
+// of captured demo UI, not an assertion that a new YouTube upload is live.
+const firstSteps = Object.freeze({
+  video: 'assets/promo/sengoku-vs-first-steps-ja-20261126.mp4',
+  poster: 'assets/promo/sengoku-vs-first-steps-ja-20261126-poster.jpg',
+  captions: 'assets/promo/sengoku-vs-first-steps-ja-20261126.vtt',
+  metadata: 'assets/promo/sengoku-vs-first-steps-ja-20261126.json',
+  production: 'assets/promo/FIRST-STEPS-PRODUCTION.md',
+  seconds: 36,
+  bytes: 5683022,
+  title: '戦国VS｜はじめての3手',
+  description: '撮影用デモの実ゲーム静止画を使い、城下町の育成・武将編成・天下地図からの出陣という最初の流れを伝える36秒の紹介です。'
+});
+
+function renderFirstSteps(p) {
+  return `<section class="promotion-trailer" id="press-first-steps" aria-labelledby="press-first-steps-title">
+    <div class="promotion-trailer-copy"><p class="section-kicker">ゲーム画面で、始め方を知る</p><h2 id="press-first-steps-title">はじめての3手を、36秒で。</h2><p>${esc(firstSteps.description)}</p><ul class="promotion-video-points"><li>田畑や商家を育てて、領国の土台をつくる</li><li>武将の能力と役目を見比べ、軍団を整える</li><li>天下地図で戦況を確認し、軍師の助言を読む</li></ul><div class="promotion-actions"><a href="${esc(p.file(firstSteps.video))}" download>36秒の動画を保存</a><a class="promotion-secondary" href="${esc(p.dir('guide'))}#first-steps">詳しい始め方を読む</a></div><p class="promotion-trailer-note">撮影用デモ進行の静止画に移動・拡大を加えた紹介です。ゲームプレイの録画ではありません。城下町は5.1.0、武将・地図は5.0.5の画面を使用しています。</p></div>
+    <figure class="promotion-trailer-media"><video class="press-video" controls preload="none" playsinline poster="${esc(p.file(firstSteps.poster))}" width="720" height="1280" aria-label="${esc(firstSteps.title)}"><source src="${esc(p.file(firstSteps.video))}" type="video/mp4"><track kind="captions" src="${esc(p.file(firstSteps.captions))}" srclang="ja" label="日本語"><p><a href="${esc(p.file(firstSteps.video))}">36秒の紹介動画を開く</a></p></video><figcaption>36秒・720×1280px・約5.68MB<span>日本語文字とBGM付き・ナレーションなし</span></figcaption></figure>
+  </section>`;
+}
+
 function videoSchema(site) {
   return {
     '@type': 'VideoObject',
@@ -50,4 +71,4 @@ function renderScreenshots(p) {
   }).join('')}</div><p class="promotion-screens-note">2026年11月26日に撮影用デモ進行を使用した実ゲーム画面です。城下町は5.1.0の名古屋城で、公開御触書を表示しています。画面の表示は更新により変わる場合があります。</p></section>`;
 }
 
-module.exports = { trailer, videoSchema, renderTrailer, renderScreenshots };
+module.exports = { trailer, firstSteps, videoSchema, renderTrailer, renderFirstSteps, renderScreenshots };

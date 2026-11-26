@@ -73,6 +73,8 @@ body.at-title #app { display: none; }
 #launch-screen .launch-copyright { border:0; padding:0; margin:0; font:inherit; color:inherit; text-align:right; }
 #launch-screen .launch-copyright a { color:inherit; text-decoration:none; }
 #launch-screen a:hover { color:#ffdb95; }
+#launch-screen .launch-start-note { margin:0 0 14px; color:#f4dfb8; font-size:.87rem; line-height:1.7; overflow-wrap:anywhere; }
+#launch-screen .launch-start-note a { color:#f1e9d9; text-underline-offset:.2em; }
 #launch-screen :is(a,button):focus-visible { outline:3px solid #f8cc76; outline-offset:-3px; }
 @media (min-width:701px) and (max-width:980px) and (orientation:portrait) {
  .edition-cover { min-height:clamp(510px,65svh,680px); }

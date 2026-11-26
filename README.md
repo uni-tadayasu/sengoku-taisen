@@ -6,6 +6,23 @@
 
 **© KASAI SOLUTIONS**
 
+## 遊ぶ・紹介する
+
+[**ブラウザで遊ぶ**](https://www.kasai-solutions-inc.com/) · [ゲーム紹介と最初の3手](https://www.kasai-solutions-inc.com/sengoku-vs/) · [English introduction](https://www.kasai-solutions-inc.com/en/)
+
+[![戦国VSの実ゲーム画面：城下町](assets/promo/screenshots/sengoku-vs-town-20261126.jpg)](https://www.kasai-solutions-inc.com/sengoku-vs/)
+
+城下町を育て、256人の武将から軍団を編成し、城をめぐる戦役へ。129の城と拠点、64種類の施設を収録しています。画像は撮影用デモ進行を使った実際の操作画面です。
+
+- **端末だけで試す:** タイトルの「城を選んで始める」から「端末だけで遊ぶ」を選べます。領主登録せずCPU勢力との戦役を開始できます。
+- **ほかの領主と遊ぶ:** 領主登録後に、共通フィールドの対人戦・同盟・書状・交易、端末間の同期を利用できます。
+- **料金:** 基本プレイ無料。外観アイテムと月額支援は任意で、能力・兵力・資源生産・指令回復の優遇はありません。
+- **紹介・掲載:** [友人向けの紹介文と共有](https://www.kasai-solutions-inc.com/sengoku-vs/#share)、[公式画像・動画・日英資料](https://www.kasai-solutions-inc.com/press/)、[更新情報](https://www.kasai-solutions-inc.com/news/)をご利用ください。
+
+The game interface is in Japanese. The [English introduction](https://www.kasai-solutions-inc.com/en/) explains the first buttons, free play, optional purchases and online features.
+
+---
+
 ## Ver.5.1.1 — チャットの返信・メンション、レスポンシブ修正と軽量化
 
 交流の世界・同盟・フレンド・運営チャットに、発言を指定する返信と、最大8人の領主を選べるメンションを追加しました。返信先の引用、明示した宛先、自分宛ての表示を確認できます。入力は会話ごとに保持し、送信失敗や別の会話への移動で書きかけを消しません。スマホでは改行と「送信」ボタン、PCではEnter送信・Shift+Enter改行を使います。

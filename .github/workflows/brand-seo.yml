@@ -12,6 +12,12 @@ on:
       - 'brand-discovery.css'
       - 'promotion.css'
       - 'promotion-share.js'
+      - 'public-growth.js'
+      - 'promotion-admin.js'
+      - 'promotion-admin.css'
+      - 'social.js'
+      - 'english-introduction.css'
+      - 'tools/game-entry.json'
       - 'assets/promo/**'
       - 'public-luxury.css'
       - 'assets/crest.svg'
@@ -51,6 +57,9 @@ on:
       - 'tests/test-public-pages.cjs'
       - 'tests/test-news-feed.py'
       - 'tests/test-promotion-sharing.cjs'
+      - 'tests/test-public-growth.cjs'
+      - 'tests/test-promotion-admin.cjs'
+      - 'tests/test-promotion-invites.cjs'
       - 'tests/test-responsive-images.cjs'
       - 'tests/test-service-worker-brand.cjs'
       - 'tests/test-release-assets.cjs'
@@ -66,6 +75,12 @@ on:
       - 'brand-discovery.css'
       - 'promotion.css'
       - 'promotion-share.js'
+      - 'public-growth.js'
+      - 'promotion-admin.js'
+      - 'promotion-admin.css'
+      - 'social.js'
+      - 'english-introduction.css'
+      - 'tools/game-entry.json'
       - 'assets/promo/**'
       - 'public-luxury.css'
       - 'assets/crest.svg'
@@ -105,6 +120,9 @@ on:
       - 'tests/test-public-pages.cjs'
       - 'tests/test-news-feed.py'
       - 'tests/test-promotion-sharing.cjs'
+      - 'tests/test-public-growth.cjs'
+      - 'tests/test-promotion-admin.cjs'
+      - 'tests/test-promotion-invites.cjs'
       - 'tests/test-responsive-images.cjs'
       - 'tests/test-service-worker-brand.cjs'
       - 'tests/test-release-assets.cjs'
@@ -143,6 +161,12 @@ jobs:
         run: python3 tests/test-news-feed.py
       - name: Check sharing and clipboard recovery
         run: node tests/test-promotion-sharing.cjs
+      - name: Check anonymous introduction counters
+        run: node tests/test-public-growth.cjs
+      - name: Check owner-only promotion reporting
+        run: node tests/test-promotion-admin.cjs
+      - name: Check invitation links and copy feedback
+        run: node tests/test-promotion-invites.cjs
       - name: Check responsive artwork and image preload
         run: node tests/test-responsive-images.cjs
       - name: Check current-brand cache behavior

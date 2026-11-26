@@ -24,6 +24,7 @@ import {handleProtection,enrollProtection,prepareProtection,protectionBattleStat
 import {handleVacantGarrisons} from './vacant-garrisons.js';
 import {handleBranches,projectBranchState,applyBranchProgress,reconcileBranchProgress,branchProgressStatements,branchStateGuard,troopTransferGuard} from './branches.js';
 import {relocateResidence} from './relocation.js';
+import {requirePromotionOrigin,recordPromotion,readPromotionReport} from './promotion.js';
 import {ensureResidency,residencySnapshot,residencyDirectory,residencyStart,initialResidencyStatements,residencyTargetGuard,prepareResidencySuccession,prepareResidencyCpuLosses} from './residency.js';
 const API = '/api/v1';
 const API_VERSION = '5.1.1';
@@ -3153,10 +3154,23 @@ export default {
       }
       if(!path.startsWith(API+'/')) fail(404,'NOT_FOUND','その通信機能は見つかりませんでした。');
       origin=allowedOrigin(request,env);
+      if(path===API+'/promotion/event')requirePromotionOrigin(request,fail);
       if(request.method==='OPTIONS') {
         const headers=new Headers({'Access-Control-Allow-Methods':'GET,POST,PUT,PATCH,DELETE,OPTIONS','Access-Control-Allow-Headers':'Authorization,Content-Type','Access-Control-Max-Age':'600','Cache-Control':'no-store','Vary':'Origin','X-Content-Type-Options':'nosniff'});
         if(origin!==null) headers.set('Access-Control-Allow-Origin',origin);
         return new Response(null,{status:204,headers});
+      }
+      // Public discovery counters do not run gameplay projection, marches or
+      // notification dispatch. A missing analytics migration affects only them.
+      if(path===API+'/promotion/event'&&request.method==='POST')return response(await recordPromotion({db:env.DB,request,now:Date.now(),helpers:{fail,readBody,budget}}),200,origin);
+      if(path===API+'/admin/promotion'&&request.method==='GET'){
+        if(!env.DB?.prepare||!env.DB?.batch)fail(503,'PROMOTION_UNAVAILABLE','紹介の集計を現在利用できません。ゲームはそのまま遊べます。');
+        const now=Date.now(),user=await authenticate(request,env.DB,now);
+        const report=await readPromotionReport({db:env.DB,user,url:new URL(request.url),now,helpers:{fail,requireAdmin,budget}});
+        await requireAccountAccess(env.DB,user);
+        // Recheck owner access after the final asynchronous account check.
+        if(!await stmt(env.DB,"SELECT 1 AS allowed FROM settings WHERE key='adminUserId' AND value=?",user.id).first())fail(403,'ADMIN_REQUIRED','運営専用の機能です。');
+        return response(report,200,origin);
       }
       if(path.startsWith(API+'/avatars/')&&request.method==='GET')return await getAvatar(request,env,origin);
       if(path.startsWith(API+'/guild-icons/')&&request.method==='GET')return await getGuildIcon(request,env,origin);

@@ -4,7 +4,7 @@
   "name": "戦国VS",
   "alternateName": "SENGOKU VS",
   "publisher": "KASAI SOLUTIONS",
-  "release": "5.1.1-20261126-r2",
+  "release": "5.1.1-20261126-r3",
   "version": "5.1.1",
   "dateModified": "2026-11-26",
   "language": "ja",
@@ -204,6 +204,32 @@
         "width": 1200,
         "height": 500
       }
+    },
+    "english": {
+      "path": "/en/",
+      "language": "en",
+      "locale": "en_US",
+      "title": "SENGOKU VS | Free-to-play Japanese browser strategy game",
+      "description": "Build a castle town, recruit officers and conquer rival castles in SENGOKU VS. An English introduction to the Japanese-language browser game: how to start, screenshots, free play and online features.",
+      "dateModified": "2026-11-26",
+      "artwork": {
+        "path": "assets/chronicle/war.webp",
+        "alt": "軍旗の列を背に、白馬の上で指揮を執る武将",
+        "width": 1200,
+        "height": 500
+      },
+      "socialImage": {
+        "path": "assets/branding/sengoku-vs-ogp-20261126.jpg",
+        "type": "image/jpeg",
+        "width": 1200,
+        "height": 630,
+        "alt": "Official SENGOKU VS artwork: a commander overlooking a castle town beneath gold Japanese title lettering"
+      },
+      "additionalImages": [
+        "assets/promo/screenshots/sengoku-vs-town-20261126.jpg",
+        "assets/promo/screenshots/sengoku-vs-officers-20261126.jpg",
+        "assets/promo/screenshots/sengoku-vs-map-20261126.jpg"
+      ]
     }
   },
   "faviconSvg": {

@@ -42,7 +42,44 @@ Resolved destructive sieges persist their damage and `battle.durability` receipt
 
 
 Base path: `/api/v1`. UTF-8 JSON, except public avatar image responses. JSON success always includes `ok: true`.
-All routes except GET `/config`, GET `/health`, GET `/online`, GET `/players`, GET `/players/:id/profile`, GET `/world-clock`, GET `/field`, GET `/guild/rankings`, GET `/achievements`, GET `/avatars/:userId`, POST `/session`, POST `/devices/link`, and POST `/admin/recover` require `Authorization: Bearer <game-token>`. Administrator recovery requires the original operator registration key in its JSON body instead of an existing game token.
+All routes except GET `/config`, GET `/health`, GET `/online`, GET `/players`, GET `/players/:id/profile`, GET `/world-clock`, GET `/field`, GET `/guild/rankings`, GET `/achievements`, GET `/avatars/:userId`, POST `/session`, POST `/devices/link`, POST `/promotion/event`, and POST `/admin/recover` require `Authorization: Bearer <game-token>`. Administrator recovery requires the original operator registration key in its JSON body instead of an existing game token.
+
+## Promotion event counts and operator report
+
+These routes use the `/api/v1` prefix. They are isolated from game-state projection, background marches and notification delivery. Visiting a promotional page never registers an account or changes a save.
+
+| Method / path | Access | Contract |
+| --- | --- | --- |
+| POST `/promotion/event` | Public; exact official Origin required | JSON `{event,source}` only; returns `{ok:true,accepted:true}` after its counter is stored. |
+| GET `/admin/promotion?days=14` | Current primary operator only | Returns daily event counts and aggregate registration counts for the requested JST calendar range. |
+
+`event` is exactly `landing` or `play_click`. `source` is exactly one of `direct`, `x`, `line`, `youtube`, `press`, `friend`, `discord`, `copy_link`, `share_text`, `native_share`, `english`, `other`. Unknown values, missing fields and additional fields are rejected with HTTP 400 `INVALID_PROMOTION_EVENT`. There is no campaign, URL, referrer, visitor or player identifier input. JSON bodies are limited to 256 bytes; oversize is 413 and non-JSON content type is 415.
+
+The input endpoint accepts only Origin `https://www.kasai-solutions-inc.com` or `https://uni-tadayasu.github.io`, including its OPTIONS preflight. Missing Origin, `null`, development origins and other origins are rejected with 403 `ORIGIN_DENIED`. Origin validation is a browser boundary, not a proof of a human visitor. The endpoint does not authenticate, read cookies or derive an IP scope. Clients should use `credentials:'omit'`, omit Authorization, send asynchronously without delaying navigation, and not automatically retry failed events.
+
+Migration `0037_promotion_aggregate` adds only `promotion_daily(day,source,event,count)`, keyed by day/source/event. Counts increment with one atomic UPSERT. Calendar days are derived from server time in Asia/Tokyo. No raw events, request bodies, IPs, cookies, account IDs or persistent visitor IDs are stored. Two fixed scopes in the existing `rate_limits` table cap accepted traffic at 120 requests per minute and 6,000 requests per 24 hours, across all sources. Windows begin with their first accepted request. Exceeding either limit returns 429 `RATE_LIMITED` with Retry-After; it does not increment the aggregate. These limits protect writes but can cause undercounting during bursts or abuse.
+
+The report's `days` is a single integer from 1 to 90, default 14. Its range includes today in JST, through the current server time. Other query keys or repeated `days` are rejected with 400 `INVALID_PROMOTION_RANGE`. The existing primary-operator authentication and current settings are checked, with SQL-level authorization on every aggregate query and another check before responding. Staff and ordinary players receive 403; missing authentication receives 401. Report reads are capped at 30 per minute using one fixed rate-limit scope.
+
+```js
+{
+  ok: true,
+  timezone: 'Asia/Tokyo',
+  range: {from:'2026-11-13',to:'2026-11-26',days:14},
+  events: [{day:'2026-11-26',source:'x',event:'landing',count:3}],
+  totals: {landing:3,play_click:0},
+  accounts: {total:10,createdInRange:2},
+  definitions: {events:'…',accounts:'…'},
+  limits: {eventsPerMinute:120,eventsPer24Hours:6000},
+  serverNow: '2026-11-26T03:00:00.000Z'
+}
+```
+
+`events` omits zero-count rows; an empty result is `[]`. Event counts are accepted requests, not unique people, real players or completed gameplay. `play_click` records the start-link action, not a successful game session. Reloads, browser storage restrictions, bots and blocked requests may change these numbers. Client tab-level deduplication can reduce repeated events without proving uniqueness. An unavailable or missing collection period is not evidence of zero visitors. The aggregate cannot reconstruct activity before this feature was deployed.
+
+`accounts.total` is the current number of rows in `users`; `createdInRange` counts creation timestamps from the first requested JST midnight through `serverNow`. Both include operator, staff and banned accounts, exclude people who play only on their device, and are not counts of distinct humans. No account identity rows are included in the response.
+
+Missing/unavailable aggregate storage returns 503 `PROMOTION_UNAVAILABLE` for these routes only. The existing game health check deliberately does not require this table. Apply the additive migration with the Worker deployment while preserving existing D1/R2 bindings. `node server/test-promotion.mjs` verifies input and Origin boundaries, atomic increments, quotas, JST day changes, operator authorization and revocation races, anonymous storage, and continued game health when the aggregate table is absent.
 No cookies are used. Never put a token or pairing code in a URL. POST/PUT/PATCH/DELETE bodies require `Content-Type: application/json`, including `{}` for an empty body. DELETE `/me/avatar` also accepts no body.
 
 ## 送信時の敬語

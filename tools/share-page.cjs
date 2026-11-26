@@ -7,10 +7,26 @@ const { renderTrailer, renderScreenshots, videoSchema } = require('./promotion-c
 function renderSharePage({ site, metadataHtml, jsonLd, iconHtml, header, footer, artwork }) {
   const page = site.pages.share, release = esc(site.release);
   const asset = name => `../${name}?v=${release}`;
-  const shareURL = site.origin + page.path;
-  const shareText = '一城から、天下へ。城下町づくり・武将編成・合戦を楽しむ「戦国VS」。PC・スマホで基本プレイ無料、インストール不要。';
-  const xURL = 'https://twitter.com/intent/tweet?' + new URLSearchParams({text:shareText, url:shareURL, hashtags:'戦国VS,ブラウザゲーム'});
-  const lineURL = 'https://social-plugins.line.me/lineit/share?' + new URLSearchParams({url:shareURL, text:shareText});
+  // Only fixed campaign labels travel with a shared link. No player ID, account
+  // code, current URL parameters or browser state is copied into an invitation.
+  const campaignURL = (source, medium = 'referral', content = 'social') => {
+    const url = new URL(site.origin + page.path);
+    url.search = new URLSearchParams({utm_source:source, utm_medium:medium, utm_campaign:'player_invite', utm_content:content});
+    return url.href;
+  };
+  const invitePresets = [
+    {id:'social', label:'SNSで紹介', source:'share_text', text:'一城から、天下へ。城下町づくり・武将編成・合戦を楽しむ「戦国VS」。PC・スマホで基本プレイ無料、インストール不要。'},
+    {id:'friend', label:'友だちを誘う', source:'friend', xText:'一緒に一城から始めてみませんか？城下町を育て、武将を率いる「戦国VS」。PC・スマホで基本プレイ無料、インストール不要。ひとりのCPU戦役から試せます。', text:'城下町を育てて、武将を率いて天下を目指す「戦国VS」。一緒に一城から始めてみませんか？PC・スマホのブラウザで基本プレイ無料。まずは「端末だけで遊ぶ」で試せて、領主登録後は同盟や交易も楽しめます。'},
+    {id:'discord', label:'Discordに紹介', source:'discord', xText:'城下町を育て、武将を編成して攻城戦へ。「戦国VS」はPC・スマホで遊べる基本プレイ無料のブラウザ戦略ゲーム。領主登録後は同盟や交易も楽しめます。', text:'【ゲーム紹介】戦国ブラウザゲーム「戦国VS」。内政・武将編成・攻城戦を楽しめます。PC・スマホ・タブレット対応、基本プレイ無料。個人戦役はCPU戦、領主登録後は同盟や交易も利用できます。\n有料の外観アイテム・月額支援は任意です。遊び方・ゲーム画面はこちら。'}
+  ];
+  const shareURL = campaignURL('copy_link');
+  const nativeURL = campaignURL('native_share');
+  const shareText = invitePresets[0].text;
+  const xLink = preset => 'https://twitter.com/intent/tweet?' + new URLSearchParams({text:preset.xText || preset.text, url:campaignURL('x','social',preset.id), hashtags:'戦国VS,ブラウザゲーム'});
+  const lineLink = preset => 'https://social-plugins.line.me/lineit/share?' + new URLSearchParams({url:campaignURL('line','social',preset.id), text:preset.text});
+  const messageFor = preset => preset.text + '\n' + campaignURL(preset.source, 'referral', preset.id);
+  const xURL = xLink(invitePresets[0]);
+  const lineURL = lineLink(invitePresets[0]);
   const p = { file: name => '../' + name, dir: name => name ? '../' + name + '/' : '../' };
   const schema = JSON.parse(jsonLd);
   schema['@graph'].push(videoSchema(site));
@@ -108,12 +124,14 @@ function renderSharePage({ site, metadataHtml, jsonLd, iconHtml, header, footer,
       </div>
     </section>
 
-    <section id="share" class="promotion-panel" aria-labelledby="share-title" data-share-url="${esc(shareURL)}" data-share-title="戦国VS｜一城から、天下へ。" data-share-text="${esc(shareText)}">
+    <section id="share" class="promotion-panel" aria-labelledby="share-title" data-share-url="${esc(nativeURL)}" data-share-title="戦国VS｜一城から、天下へ。" data-share-text="${esc(shareText)}">
       <div class="promotion-heading"><p class="section-kicker">戦国好きの友だちへ</p><h2 id="share-title">この一城を、誰かに紹介する。</h2><p>気になったら、遊び方や無料の範囲がわかる紹介ページを共有できます。</p></div>
       <div class="promotion-copy-block"><label for="game-share-url">公式の紹介ページ</label><div class="promotion-url-row"><input id="game-share-url" type="url" value="${esc(shareURL)}" readonly spellcheck="false"><button type="button" class="promotion-copy-button" data-copy-target="game-share-url" hidden>URLをコピー</button></div><p class="promotion-copy-status" role="status" aria-live="polite"></p></div>
-      <div class="promotion-copy-block"><label for="game-share-message">紹介文とURLをまとめてコピー</label><textarea id="game-share-message" class="press-copy-text" rows="4" readonly spellcheck="false">${esc(shareText + '\n' + shareURL)}</textarea><button type="button" class="promotion-copy-button" data-copy-target="game-share-message" hidden>紹介文をコピー</button><p class="promotion-copy-status" role="status" aria-live="polite"></p></div>
-      <div class="promotion-actions"><a href="${esc(xURL)}" target="_blank" rel="noopener noreferrer">Xで紹介</a><a href="${esc(lineURL)}" target="_blank" rel="noopener noreferrer">LINEで送る</a><button type="button" data-share-native hidden>端末の共有を開く</button></div>
+      <div class="promotion-invite-presets" data-share-presets hidden role="group" aria-label="紹介文の用途"><p>紹介する相手に合わせて、文章を選べます。</p><div class="promotion-preset-options">${invitePresets.map((preset, index) => `<button type="button" data-share-preset="${preset.id}" data-share-text="${esc(preset.text)}" data-share-copy="${esc(messageFor(preset))}" data-share-native-url="${esc(campaignURL('native_share','referral',preset.id))}" data-share-x="${esc(xLink(preset))}" data-share-line="${esc(lineLink(preset))}" aria-pressed="${index === 0}" aria-controls="game-share-message">${preset.label}</button>`).join('')}</div></div>
+      <div class="promotion-copy-block"><label for="game-share-message">紹介文とURLをまとめてコピー</label><textarea id="game-share-message" data-share-message class="press-copy-text" rows="5" readonly spellcheck="false">${esc(messageFor(invitePresets[0]))}</textarea><button type="button" class="promotion-copy-button" data-copy-target="game-share-message" hidden>紹介文をコピー</button><p class="promotion-copy-status" role="status" aria-live="polite"></p></div>
+      <div class="promotion-actions"><a data-share-x href="${esc(xURL)}" target="_blank" rel="noopener noreferrer">Xで紹介</a><a data-share-line href="${esc(lineURL)}" target="_blank" rel="noopener noreferrer">LINEで送る</a><button type="button" data-share-native hidden>端末の共有を開く</button></div>
       <p class="promotion-share-status" role="status" aria-live="polite"></p>
+      <p class="promotion-invite-note">紹介文は送信先で編集できます。Xでは短い紹介文が開きます。Discordなどのコミュニティでは、ゲーム紹介が認められている場所でご利用ください。リンクを開くだけで同盟への参加や領主登録が行われることはありません。</p>
       <div class="promotion-press-link"><div><h3>記事・動画で紹介したい方へ</h3><p>公式画像、紋章、短い動画、日本語と英語の作品情報を用意しました。</p></div><a href="../press/">紹介・掲載用素材を見る</a></div>
     </section>
     <section class="closing share-closing" aria-labelledby="share-closing-title"><div><h2 id="share-closing-title">あなたの一城から、始めましょう。</h2><p>城下町を育て、群雄とともに、次の戦記へ。</p></div><a class="action-link" href="../">戦国VSを遊ぶ</a></section>
