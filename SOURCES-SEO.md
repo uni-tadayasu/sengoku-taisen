@@ -187,3 +187,8 @@ Googleは正確な `lastmod` を利用し、`priority` と `changefreq` は使�
 `tests/test-seo.cjs` は公開データの一致とモック通信によるIndexNowの挙動を確認します。`tests/test-public-pages.cjs` は生成HTMLを読み、内部リンク・節リンク・公開アセット・Googlebot/Bingbotからのクロール可否・404の検索除外を確認します。自動メールや成長上限の説明は、JavaScriptを実行しないHTML本文にあることも検証します。
 
 `site:` 検索は補助的な観測です。一致結果が見つからなくても未登録とは断定せず、GoogleのURL検査やBing Webmaster Toolsでの状態確認と区別します。参照：[Googleのsite検索演算子と制限](https://developers.google.com/search/docs/monitor-debug/search-operators/all-search-site)。
+
+
+## Ver.5.1.0の公開後通知（2026年11月26日09:38 JST）
+
+本番反映後に `node tools/notify-indexnow.mjs --submit` を1回実行し、7つの正規URLの更新通知がHTTP 200で受理された。確認キー・サイトマップ・7公開ページの事前検証も成功した。結果は `received`、`keyValidationPending: false`、`indexingVerified: false`。Google向けの索引登録依頼や検索掲載の確認ではない。

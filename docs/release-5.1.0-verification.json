@@ -1,0 +1,91 @@
+{
+  "version": "5.1.0",
+  "dateJST": "2026-11-26",
+  "frontendCommit": "3a7395c74feec2a201332f7012afd5890a55ac93",
+  "backend": {
+    "version": 66,
+    "status": "succeeded",
+    "sourceCommit": "e4e09aef2da1e2bfdbd65622ed462f91a787537b"
+  },
+  "ci": [
+    {
+      "name": "Check game music",
+      "status": "success",
+      "url": "https://github.com/uni-tadayasu/sengoku-taisen/actions/runs/45729766239"
+    },
+    {
+      "name": "Check brand and public discovery",
+      "status": "success",
+      "url": "https://github.com/uni-tadayasu/sengoku-taisen/actions/runs/45729766274"
+    },
+    {
+      "name": "pages build and deployment",
+      "status": "success",
+      "url": "https://github.com/uni-tadayasu/sengoku-taisen/actions/runs/45729765578"
+    }
+  ],
+  "indexNow": {
+    "ok": true,
+    "mode": "submit",
+    "host": "www.kasai-solutions-inc.com",
+    "notice": "IndexNow は対応検索エンジンへの更新通知です。Google は未対応です。受理は検索掲載や順位を保証しません。",
+    "keyFile": "c948c93d192318b3d0a1ff31ab1f5afc.txt",
+    "urlCount": 7,
+    "urls": [
+      "https://www.kasai-solutions-inc.com/",
+      "https://www.kasai-solutions-inc.com/guide/",
+      "https://www.kasai-solutions-inc.com/guide/data-recovery/",
+      "https://www.kasai-solutions-inc.com/about/",
+      "https://www.kasai-solutions-inc.com/sengoku-vs/",
+      "https://www.kasai-solutions-inc.com/premium/",
+      "https://www.kasai-solutions-inc.com/press/"
+    ],
+    "keyVerified": true,
+    "sitemapVerified": true,
+    "pagesVerified": 7,
+    "notificationAttempted": true,
+    "accepted": true,
+    "httpStatus": 200,
+    "result": "received",
+    "keyValidationPending": false,
+    "indexingVerified": false,
+    "message": "更新通知は受理されました。検索掲載の確認ではありません。"
+  },
+  "verification": {
+    "local": [
+      "PC 1440×900・スマホ390×844・タブレット768×1024で閲覧位置・入力値・選択範囲を保持する回帰検査",
+      "通常の保存ACK100回で金庫・駐留ダイアログの不要な再描画0回",
+      "城下タブ・ショートカット設定・メニュー検索のUI動作",
+      "課金・購入権・返金・旧3商品との互換性・0035移行",
+      "都市勲章の現在の所有者・任期終了・剥奪・古い応答の順序・匿名公開・私的保存の除外",
+      "ゲーム・経済・城修復・施設・武将等の回帰検査",
+      "公開7ページ・632リンク/素材参照・レスポンシブ画像・CSP・Service Worker・生成物一致"
+    ],
+    "browser": [
+      "390pxスマホ・768pxタブレット・1280×600短いPC画面で操作を目視確認",
+      "本番の新版切替から5.1.0表示を確認",
+      "未登録の公開領主検索とプロフィールで江戸城の勲章を確認、384px WebP読み込み成功",
+      "本番の8商品価格表示と桜雲の城下プレビューを確認",
+      "本番の紹介・プレス素材ページと最新スクリーンショット説明を確認"
+    ],
+    "livePurchasesPerformed": false,
+    "physicalDeviceCoverage": "ブラウザーの画面寸法検証。実機の全OS・全機種を網羅した保証ではない。"
+  },
+  "promotion": {
+    "outletsSent": 4,
+    "outlets": [
+      "ファミ通.com",
+      "AUTOMATON",
+      "GAME Watch",
+      "Games Press"
+    ],
+    "readback": "Gmail SENT、宛先、件名を照合",
+    "publicationByOutlets": "unconfirmed",
+    "paidAdvertisingSpendJPY": 0,
+    "existingVideoIntegrated": "https://www.youtube.com/watch?v=NWzewQEJyz0"
+  },
+  "screenshots": [
+    "assets/promo/screenshots/sengoku-vs-town-20261126.jpg",
+    "docs/screenshots/public-city-honor-5.1.0.jpg"
+  ]
+}
