@@ -111,11 +111,24 @@ test('sliders, selects and buttons still change values or activate by pointer an
   assert(!h.dispatch('selectstart', element('option', {}, element('select'))).defaultPrevented);
 });
 
-test('image protection retains copy menus and text dragging inside editable fields while still protecting artwork', () => {
-  const h = harness({ images: true }), artwork = element('div');
+test('desktop right-click is disabled throughout the page, including editors and newly opened dialogs', () => {
+  for (const touch of [false, true]) {
+    const h = harness({ touch });
+    for (const target of [element('p'), element('a'), element('canvas'), element('input'), element('textarea'), element('button', {}, element('dialog'))]) {
+      let opened = false;
+      assert(h.dispatch('contextmenu', target, { button: 2, pointerType: 'mouse' }, () => opened = true).defaultPrevented);
+      assert.equal(opened, false);
+      assert(!h.dispatch('click', target, { button: 0 }).defaultPrevented);
+      assert(!h.dispatch('contextmenu', target, { button: 2, cancelable: false }).defaultPrevented);
+    }
+  }
+});
+
+test('touch editing menus and keyboard copy remain usable while artwork stays protected', () => {
+  const h = harness({ touch: true, images: true }), artwork = element('div');
   for (const field of [element('input', { readonly: '' }, artwork), element('textarea', { readonly: '' }, artwork), element('span', {}, element('div', { contenteditable: '' }, artwork))]) {
     field.closest = () => artwork;
-    assert(!h.dispatch('contextmenu', field).defaultPrevented);
+    assert(!h.dispatch('contextmenu', field, { pointerType: 'touch', button: 0 }).defaultPrevented);
     assert(!h.dispatch('dragstart', field).defaultPrevented);
     assert(!h.dispatch('selectstart', field).defaultPrevented);
   }

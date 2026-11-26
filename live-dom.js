@@ -5,7 +5,8 @@
   '[data-action]','[data-recruit-reason]','[data-branch-parent]',
   '#new-start-castle,#new-difficulty,.clan-choice,[data-action="choose-residency-mode"],[data-action="residency-retry"]',
   '[data-magatama-balance]','[data-cost-resource]','[data-branch-commands]',
-  '[data-army-health-stat]','[data-army-health-stat-bar]','[data-job-clock]','[data-job-progress]'
+  '[data-army-health-stat]','[data-army-health-stat-bar]','[data-job-clock]','[data-job-progress]',
+  '[data-officer-health]','[data-durability-live]'
  ];
  const dependencies=selector=>new Set([
   ...Array.from(selector.matchAll(/\[([\w-]+)/g),match=>match[1]),

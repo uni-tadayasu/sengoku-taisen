@@ -120,7 +120,7 @@ function unobservePaint(el){
  if(observer&&observedPaints.has(el)){observer.unobserve(el);observedPaints.delete(el);}
 }
 function canPaint(el){
- if(el.isConnected===false)return false;
+ if(document.hidden||el.isConnected===false)return false;
  // A closed dialog can keep hundreds of cards in the DOM. Do not measure or
  // upgrade those images while another screen is open.
  if(el.closest?.('[hidden],[inert],dialog:not([open])'))return false;
@@ -166,10 +166,11 @@ function reveal(el,rect){
    }
    try{await load(source.url);}catch(error){
     if(source.url===canonical||!current())throw error;
+    if(!canPaint(el)){observePaint(el);return;}
     source={url:canonical,kind:'original'};await load(canonical);
    }
    if(current()){if(canPaint(el))paint(source);else observePaint(el);}
-  }catch(_){if(current()){el.classList.add('art-error');el.setAttribute('aria-busy','false');}}
+  }catch(_){if(current()){if(canPaint(el)){el.classList.add('art-error');el.setAttribute('aria-busy','false');}else observePaint(el);}}
   finally{if(paintRequests.get(el)===request){paintRequests.delete(el);delete el.dataset.artLoading;}}
  })();
  return request.done;
@@ -280,6 +281,7 @@ function visiblePaints({skipReadyControls=false}={}){
  });
 }
 async function readyCurrent(onProgress){
+ if(document.hidden)return;
  flushDecorations();
  if(!global.SENGOKU_AT_TITLE){
   for(const el of deferredTitle){
@@ -306,10 +308,11 @@ function init(){
  }),{rootMargin:'96px'});
  let resizeFrame;
  const repaintVisible=()=>{
-  if(resizeFrame)return;
-  resizeFrame=requestAnimationFrame(()=>{resizeFrame=null;visiblePaints().forEach(({el,rect})=>reveal(el,rect));});
+  if(document.hidden||resizeFrame)return;
+  resizeFrame=requestAnimationFrame(()=>{resizeFrame=null;if(!document.hidden)visiblePaints({skipReadyControls:true}).forEach(({el,rect})=>reveal(el,rect));});
  };
  global.addEventListener?.('resize',repaintVisible);
+ document.addEventListener('visibilitychange',()=>{if(!document.hidden)repaintVisible();});
  if(!observer)global.addEventListener?.('scroll',repaintVisible,{capture:true,passive:true});
  new MutationObserver(artworkMutations).observe(document.body,{childList:true,subtree:true});decorate();}
 global.SengokuArt={portrait,castle:(id,c='',level=1)=>tile('castle',id,c,level),facility:(id,c='',level=1)=>tile('facility',id,c,level),icon,tileInfo,facilityFrame,load,readyCurrent,decorate,schedule,totalIllustrations:8224};

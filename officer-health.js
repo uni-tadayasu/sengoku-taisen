@@ -22,8 +22,11 @@
   return `<section class="officer-health-squad" aria-label="${escape(options.title||'出陣する武将の体力')}" data-stable-key="officer-health-squad"><h4>${escape(options.title||'出陣する武将の体力')}</h4><div class="officer-health-members">${ids.map(id=>`<div class="officer-health-member" data-stable-key="health-member-${escape(id)}"><strong class="officer-health-name">${escape(game.officer?.(id)?.name||id)}</strong>${markup(game,id,{compact:true,deferred:options.deferred})}</div>`).join('')}</div>${options.explain===false?'':`<details class="officer-health-help"><summary>体力の消耗・回復と戦闘への影響</summary><p>${explanation(game)}</p></details>`}</section>`;
  }
  function refresh(root=global.document,game=global.SengokuBridge?.getGame?.()){
-  if(typeof game?.officerHealth!=='function'||!root?.querySelectorAll)return;
-  const nodes=[...(root.matches?.('[data-officer-health]')?[root]:[]),...root.querySelectorAll('[data-officer-health]')];if(!nodes.length)return;
+  if(typeof game?.officerHealth!=='function'||!root?.querySelectorAll||(root.ownerDocument||root).hidden)return;
+  // Retained rosters and closed dialogs need no health projection. The shared
+  // registry tracks additions and removals without rescanning every view.
+  const indexed=root===global.document&&global.SengokuLiveDOM?.nodes?.('[data-officer-health]');
+  const nodes=(indexed||[...(root.matches?.('[data-officer-health]')?[root]:[]),...root.querySelectorAll('[data-officer-health]')]).filter(node=>node.isConnected!==false&&!node.closest?.('[hidden],[inert],dialog:not([open])')&&!(global.SENGOKU_AT_TITLE===true&&node.closest?.('#app')));if(!nodes.length)return;
   const ids=[...new Set(nodes.map(node=>node.getAttribute('data-officer-health')))],rows=game.armyHealth?.(ids)?.officers,health=new Map(ids.map(id=>[id,display(null)]));
   for(const row of rows||ids.map(id=>({id,...game.officerHealth(id)})))health.set(row.id,display(Number.isFinite(row.current)?row:null));
   const text=(node,value)=>{if(node&&node.textContent!==value)node.textContent=value;},attribute=(node,name,value)=>{if(!node)return;if(value===null){if(node.hasAttribute(name))node.removeAttribute(name);}else if(node.getAttribute(name)!==value)node.setAttribute(name,value);};

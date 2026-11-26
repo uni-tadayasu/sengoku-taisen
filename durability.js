@@ -24,11 +24,11 @@
  }
  function explanation(){return '耐久は城や支拠点の守りの状態です。城郭・城壁・支拠点のレベルで最大値が増え、損傷すると城壁などの防御効果が弱まります。自領の城と稼働中の支拠点は、月替わりに最大耐久の10%まで修復します。回復100につき木材5・石材4を使い、月途中の損傷は経過時間に応じて計算します。資材不足時は回復量を抑え、満タン後は消費しません。陥落した支拠点は、見積額を一括払いする復旧工事が必要です。';}
  function refresh(root=global.document,game=global.SengokuBridge?.getGame?.()){
-  if(!root?.querySelectorAll||!game)return;
-  const nodes=[...(root.matches?.('[data-durability-live]')?[root]:[]),...root.querySelectorAll('[data-durability-live]')];if(!nodes.length)return;
+  if(!root?.querySelectorAll||!game||(root.ownerDocument||root).hidden)return;
+  const indexed=root===global.document&&global.SengokuLiveDOM?.nodes?.('[data-durability-live]');
+  const nodes=(indexed||[...(root.matches?.('[data-durability-live]')?[root]:[]),...root.querySelectorAll('[data-durability-live]')]).filter(node=>node.isConnected!==false&&!node.closest?.('[hidden],[inert],dialog:not([open])')&&!(global.SENGOKU_AT_TITLE===true&&node.closest?.('#app')));if(!nodes.length)return;
   const views=new Map(),text=(node,value)=>{if(node&&node.textContent!==value)node.textContent=value;},attr=(node,key,value)=>{if(node&&node.getAttribute(key)!==value)node.setAttribute(key,value);};
   for(const node of nodes){
-   if(node.closest?.('dialog')?.open===false||node.closest?.('[hidden]'))continue;
    const kind=node.getAttribute('data-durability-live'),id=node.getAttribute('data-durability-id'),key=kind+':'+id;
    if(!views.has(key))views.set(key,display((kind==='branch'?game.branch?.(id):game.castle?.(id))?.durability));
    const view=views.get(key);if(!view)continue;
