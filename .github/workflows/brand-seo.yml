@@ -6,6 +6,9 @@ on:
     paths:
       - '.github/workflows/brand-seo.yml'
       - 'site-metadata.json'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'tools/build-game-entry.cjs'
       - 'brand-discovery.css'
       - 'promotion.css'
       - 'promotion-share.js'
@@ -34,6 +37,11 @@ on:
       - 'tools/*page.cjs'
       - 'tools/about-content.cjs'
       - 'tools/press-content.cjs'
+      - 'tools/promotion-content.cjs'
+      - 'tools/build-promotion-text.cjs'
+      - 'tools/news-content.cjs'
+      - 'tools/news-releases.json'
+      - 'news/feed.xml'
       - 'tools/build-press-kit.py'
       - 'tools/build-promo-video.py'
       - 'tools/page-security.cjs'
@@ -41,6 +49,8 @@ on:
       - 'tools/indexnow-config.json'
       - 'tests/test-seo.cjs'
       - 'tests/test-public-pages.cjs'
+      - 'tests/test-news-feed.py'
+      - 'tests/test-promotion-sharing.cjs'
       - 'tests/test-responsive-images.cjs'
       - 'tests/test-service-worker-brand.cjs'
       - 'tests/test-release-assets.cjs'
@@ -50,6 +60,9 @@ on:
     paths:
       - '.github/workflows/brand-seo.yml'
       - 'site-metadata.json'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'tools/build-game-entry.cjs'
       - 'brand-discovery.css'
       - 'promotion.css'
       - 'promotion-share.js'
@@ -78,6 +91,11 @@ on:
       - 'tools/*page.cjs'
       - 'tools/about-content.cjs'
       - 'tools/press-content.cjs'
+      - 'tools/promotion-content.cjs'
+      - 'tools/build-promotion-text.cjs'
+      - 'tools/news-content.cjs'
+      - 'tools/news-releases.json'
+      - 'news/feed.xml'
       - 'tools/build-press-kit.py'
       - 'tools/build-promo-video.py'
       - 'tools/page-security.cjs'
@@ -85,6 +103,8 @@ on:
       - 'tools/indexnow-config.json'
       - 'tests/test-seo.cjs'
       - 'tests/test-public-pages.cjs'
+      - 'tests/test-news-feed.py'
+      - 'tests/test-promotion-sharing.cjs'
       - 'tests/test-responsive-images.cjs'
       - 'tests/test-service-worker-brand.cjs'
       - 'tests/test-release-assets.cjs'
@@ -108,6 +128,9 @@ jobs:
       - uses: actions/setup-node@v7.1.0
         with:
           node-version: '22'
+          cache: npm
+      - name: Install pinned build tooling
+        run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Check generated public documents
         run: node tools/build-public-pages.cjs --check
       - name: Check the downloadable press kit
@@ -116,6 +139,10 @@ jobs:
         run: node tests/test-seo.cjs
       - name: Check crawlable links and structured data
         run: node tests/test-public-pages.cjs
+      - name: Check release feed and permanent update links
+        run: python3 tests/test-news-feed.py
+      - name: Check sharing and clipboard recovery
+        run: node tests/test-promotion-sharing.cjs
       - name: Check responsive artwork and image preload
         run: node tests/test-responsive-images.cjs
       - name: Check current-brand cache behavior

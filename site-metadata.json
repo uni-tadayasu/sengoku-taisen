@@ -4,8 +4,8 @@
   "name": "戦国VS",
   "alternateName": "SENGOKU VS",
   "publisher": "KASAI SOLUTIONS",
-  "release": "5.1.0-20261126",
-  "version": "5.1.0",
+  "release": "5.1.1-20261126",
+  "version": "5.1.1",
   "dateModified": "2026-11-26",
   "language": "ja",
   "locale": "ja_JP",
@@ -103,7 +103,7 @@
     "premium": {
       "path": "/premium/",
       "title": "戦国VS プレミアム｜外観アイテム・月額支援の内容と料金",
-      "description": "戦国VSの外観アイテムと月額支援の公式案内。金彩の旗印480円、月影の城下980円、サポーター月額780円（税込）。装備見本、買い切りと月額の違い、購入後の反映を確認できます。",
+      "description": "戦国VSの外観アイテム・月額支援を紹介。旗印、勲章、城下町の外観など全8商品の見本・税込料金、買い切りと月額の違い、購入後の反映を確認できます。基本プレイは無料で、戦力や資源の優遇はありません。",
       "dateModified": "2026-11-26",
       "artwork": {
         "path": "assets/chronicle/court.webp",
@@ -189,6 +189,18 @@
       "artwork": {
         "path": "assets/chronicle/court.webp",
         "alt": "秋の庭園に面した御殿で向かい合う二人の使者",
+        "width": 1200,
+        "height": 500
+      }
+    },
+    "news": {
+      "path": "/news/",
+      "title": "戦国VS 更新情報｜操作改善・追加機能・公式のお知らせ",
+      "description": "戦国VSの公式更新情報。城下町の操作画面、大都市の都市勲章、拠点修復や奉行の給与など、遊び方に関わる主な変更を紹介します。詳しい攻略ガイドと公式素材へのリンク、RSSでの更新情報の購読はこちら。",
+      "dateModified": "2026-11-26",
+      "artwork": {
+        "path": "assets/chronicle/archive.webp",
+        "alt": "灯りのともる書院で、絵巻を広げて戦記を読み進める二人",
         "width": 1200,
         "height": 500
       }

@@ -80,7 +80,7 @@ function jpegSize(image){
 }
 
 test('one metadata source matches every title, description, canonical and social preview',()=>{
-  assert.equal(site.schemaVersion,1);assert.equal(site.origin,'https://www.kasai-solutions-inc.com');assert.deepEqual(Object.keys(site.pages).sort(),['about','guide','home','premium','press','recovery','share']);assert.equal(site.pages.home.path,'/');assert.equal(site.pages.share.path,'/sengoku-vs/');assert.equal(site.pages.premium.path,'/premium/');
+  assert.equal(site.schemaVersion,1);assert.equal(site.origin,'https://www.kasai-solutions-inc.com');assert.deepEqual(Object.keys(site.pages).sort(),['about','guide','home','news','premium','press','recovery','share']);assert.equal(site.pages.home.path,'/');assert.equal(site.pages.share.path,'/sengoku-vs/');assert.equal(site.pages.premium.path,'/premium/');
   for(const page of pages){
     const image = page.socialImage || site.ogImage;
     const meta=tags(page.html,'meta'),links=tags(page.html,'link'),value=(kind,key)=>{const matches=meta.filter(m=>m[kind]===key);assert.equal(matches.length,1,key+' on '+page.path);return matches[0].content;};

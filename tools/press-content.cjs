@@ -38,6 +38,7 @@ function renderPressContent(p, { section, table, site }) {
     section('press-facts', '作品の基本情報', '戦国VSの紹介に使える情報', `
       <p class="lead-paragraph">ゲーム紹介の記事、動画・配信の案内、SNSでの紹介に使える、公式の情報と素材をまとめました。短い説明から詳しい紹介文まで、このページで確認できます。</p>
       <div class="press-current-release"><span>現在の公開版</span><strong>Ver.${esc(site.version)}</strong><span>更新 <time datetime="${esc(site.dateModified)}">${esc(site.dateModified)}</time></span><a href="${esc(p.dir(''))}">ゲームを開く</a></div>
+      <p>主な変更は<a href="${esc(p.dir('news'))}">公式の更新情報</a>にまとめています。記事・配信の準備に、<a href="${esc(p.file('news/feed.xml'))}" type="application/rss+xml">RSSで新しいお知らせを受け取る</a>こともできます。</p>
       ${table('戦国VSの掲載用基本情報', ['項目', '内容'], [
         ['作品名', '戦国VS（SENGOKU VS）'],
         ['キャッチコピー', '一城から、天下へ。'],

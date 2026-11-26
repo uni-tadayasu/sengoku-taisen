@@ -8,11 +8,14 @@ const site = require('../site-metadata.json');
 const { copy } = require('./press-content.cjs');
 const { trailer } = require('./promotion-content.cjs');
 const characters = value => Array.from(value.replace(/\r?\n/g, '')).length;
+const updatedDate = site.dateModified;
+const updatedDateJapanese = updatedDate.replace(/^(\d{4})-(\d{2})-(\d{2})$/, (_, year, month, day) => `${year}年${Number(month)}月${Number(day)}日`);
 const output = (name, text) => fs.writeFileSync(path.join(root, 'assets/promo', name + '-20261126.txt'), text.trim() + '\n');
-const publicLinks = `公式サイト: ${site.origin}/\nゲーム紹介: ${site.origin}/sengoku-vs/\n紹介・掲載用素材: ${site.origin}/press/\n公開済み紹介動画: ${trailer.url}\n遊び方: ${site.origin}/guide/\n引き継ぎ: ${site.origin}/guide/data-recovery/`;
+const newsLinks = site.pages.news ? `\n更新情報: ${site.origin}${site.pages.news.path}\n更新情報のRSS: ${site.origin}${site.pages.news.path}feed.xml` : '';
+const publicLinks = `公式サイト: ${site.origin}/\nゲーム紹介: ${site.origin}/sengoku-vs/\n紹介・掲載用素材: ${site.origin}/press/\n公開済み紹介動画: ${trailer.url}\n遊び方: ${site.origin}/guide/\n引き継ぎ: ${site.origin}/guide/data-recovery/${newsLinks}`;
 
 output('sengoku-vs-facts-ja', `戦国VS（SENGOKU VS） 紹介・掲載用 基本情報
-更新日: 2026年11月26日
+更新日: ${updatedDateJapanese}
 公開版: Ver.${site.version}
 
 キャッチコピー: 一城から、天下へ。
@@ -41,7 +44,7 @@ ${site.origin}/about/
 © KASAI SOLUTIONS`);
 
 output('sengoku-vs-posts-ja', `戦国VS（SENGOKU VS） 日本語投稿文
-更新日: 2026年11月26日
+更新日: ${updatedDateJapanese}
 
 開発・運営の立場を明らかにして紹介するための文例です。
 掲載先の投稿ルールに沿って使ってください。
@@ -52,12 +55,12 @@ ${[['X向け・1投稿',copy.x],['LINEで友人へ紹介する文',copy.line],['
 ${trailer.url}
 
 紹介素材と作品情報
-${site.origin}/press/
+${site.origin}/press/${newsLinks}
 
 © KASAI SOLUTIONS`);
 
 output('sengoku-vs-facts-en', `SENGOKU VS — Official fact sheet
-Updated: 2026-11-26
+Updated: ${updatedDate}
 Version: ${site.version}
 
 ${copy.english}
@@ -74,6 +77,7 @@ Official website: ${site.origin}/
 Game introduction: ${site.origin}/sengoku-vs/
 Press kit: ${site.origin}/press/
 Published introduction video: ${trailer.url}
+${site.pages.news ? `Official updates: ${site.origin}${site.pages.news.path}\nUpdates RSS: ${site.origin}${site.pages.news.path}feed.xml\n` : ''}
 
 The 24-second introduction uses official illustrations. Actual gameplay screenshots are provided separately in the press kit.
 Historical people and places inspire the game; character abilities, faction placement, and progression use the game’s own rules.

@@ -137,4 +137,30 @@ test('the shipped geography provides all 129 actual castle positions and offline
   assert.equal(markers.flatMap(m=>m.points).length,129);assert(markers.length>8,'Japan must retain regional detail at its initial overview');
   assert(markers.every(m=>m.points.length<32),'no cluster should span most of the country');
 });
+test('camera-only redraws reuse routes while fresh ownership, access and regional data invalidate them',()=>{
+  const fs=require('node:fs'),vm=require('node:vm'),{setup,Node}=require('./helpers/dom-model.cjs'),{doc,host}=setup();
+  if(!Object.getOwnPropertyDescriptor(Node.prototype,'lastElementChild'))Object.defineProperty(Node.prototype,'lastElementChild',{get(){return [...this.childNodes].reverse().find(node=>node.nodeType===1)||null;}});
+  let visits=0,stamp=0,frameId=0;const frames=new Map(),neighbors=ids=>({*[Symbol.iterator](){visits++;yield* ids;}});
+  const castles=[
+    {id:'a',name:'東の城',owner:'自領',region:'東',neighbors:neighbors(['b'])},
+    {id:'b',name:'西の城',owner:'他領',region:'西',neighbors:neighbors(['a','c','edo'])},
+    {id:'c',name:'西の支城',owner:'他領',region:'西',neighbors:neighbors(['b'])},
+    {id:'edo',name:'江戸城',owner:'他領',region:'東',neighbors:neighbors(['b'])}
+  ];
+  const geography={bounds:[130,30,145,42],land:{type:'Polygon',coordinates:[[[130,30],[145,30],[145,42],[130,42],[130,30]]]},castles:{a:[135,35],b:[135.5,35.3],c:[136,35.4],edo:[139.7547,35.6852]}};
+  const win={document:doc,performance:{now:()=>stamp},requestAnimationFrame:callback=>{frames.set(++frameId,callback);return frameId;},cancelAnimationFrame:id=>frames.delete(id),addEventListener(){},removeEventListener(){},matchMedia:()=>({matches:true})};
+  vm.runInNewContext(fs.readFileSync(require.resolve('../world-map.js'),'utf8'),{window:win});
+  const controller=win.SengokuWorldMap.mount(host,{geography,castles,clan:'自領'}),flush=()=>{let limit=100;while(frames.size){assert(limit-->0);const queued=[...frames.values()];frames.clear();stamp+=16;for(const fn of queued)fn(stamp);}},click=action=>host.dispatchEvent({type:'click',target:host.querySelector(`[data-map-action="${action}"]`),stopPropagation(){}}),routes=()=>host.querySelector('[data-map-routes]').innerHTML;
+  flush();assert.equal(visits,0,'Hidden routes must not walk the graph');click('routes');assert.equal(visits,4);assert.equal((routes().match(/<path /g)||[]).length,2);assert(routes().includes('is-own'));
+  const initial=routes();visits=0;
+  for(let frame=0;frame<60;frame++){controller.fit('nation',false);flush();}
+  assert.equal(visits,0,'60 camera frames do not rescan unchanged routes');assert.equal(routes(),initial);
+  click('routes');assert.equal(routes(),'');click('routes');assert.equal(routes(),initial);assert.equal(visits,0,'Toggling the layer retains its unchanged route data');
+  controller.update({isAdmin:true});flush();assert.equal(visits,4);assert.equal((routes().match(/<path /g)||[]).length,3,'New role access immediately changes route restrictions');
+  castles[0].owner='他領';controller.update({castles});flush();assert(!routes().includes('is-own'),'In-place source edits still invalidate through update');
+  controller.update({region:'東'});flush();assert.equal((routes().match(/<path /g)||[]).length,2);assert(host.querySelector('[data-map-count]').textContent.startsWith('2城'));
+  castles[1].disabled=true;controller.update({castles});flush();assert.equal(routes(),'','Newly restricted endpoints disappear');
+  controller.update({countLabel:'最新の公開拠点'});flush();assert.equal(host.querySelector('[data-map-count]').textContent,'最新の公開拠点');
+  controller.destroy();
+});
 console.log(`${count} real-geography projection, interaction and layout checks passed.`);

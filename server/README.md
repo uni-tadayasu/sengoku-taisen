@@ -1,5 +1,13 @@
 # 戦国VS（SENGOKU VS）― 交流・同期・共通時計サーバー
 
+## v5.1.1 チャットの返信・メンション
+
+世界・同盟・フレンド・運営チャットで `replyToId` と最大8人の `mentionIds` を受け付けます。返信プレビューは同じ部屋の元投稿だけを120文字まで表示し、元の本文を別の行に複製しません。削除された投稿への返信は「参照不可」になり、同盟員・友達・担当者の権限と宛先は保存時・応答時にも確認します。通常投稿の300文字・5秒間隔、敬語変換、利用停止と削除の仕組みを維持します。詳細は `API_CONTRACT.md` の Chat を参照してください。
+
+公開時には最新のSitesサーバーソースへ `server/*.js` を `worker/` として反映し、既存の `drizzle/` と journal を維持して `0036_chat_replies_mentions.sql` を追加します。`node server/build-worker.mjs server <checkout>/dist/server/index.js` でビルドし、D1 `DB` とR2 `BUCKET` の設定を保ったままWorkerと移行を同じリリースに含めます。GitHub Pagesだけの更新ではAPIは更新されません。移行は列の追加のみで、既存投稿や旧クライアントの投稿を削除・変換しません。公開後は `/api/v1/health` の `version:"5.1.1"`、`features.chatReplies:true` と `features.chatMentions:true` を確認します。新しい列が欠けている場合はhealthが503を返します。
+
+`node server/test-chat-replies.mjs` は実際の移行SQLとWorkerで、旧INSERTとの互換性、Unicode長、部屋間の引用防止、メンション参加資格、削除時の本文非保持、投稿・返却直前の権限競合を検証します。本番への投稿や通知送信は行いません。
+
 ## v4.9.12 武将の体力
 
 武将の人物IDごとの体力（0〜100）を保存・同期し、実戦の勝利で15、敗北で25を消耗させます。共通時間で1か月あたり10回復し、行軍中の参加武将は回復を待機します。通常攻城・支拠点・野良兵戦・対人戦・イベント・同盟の指揮軍団など、実際に参加する本人の武将を対象にします。

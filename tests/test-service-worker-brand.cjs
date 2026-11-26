@@ -71,6 +71,13 @@ function fixture({offline = false, failInstall = false, updating = false, cacheC
   const offline = fixture({offline: true});
   assert.equal((await offline.dispatch('fetch', {method: 'GET', url: returnURL, mode: 'navigate'})).brand, 'sengoku');
   assert.equal((await offline.dispatch('fetch', {method: 'GET', url: origin + '/', mode: 'navigate'})).brand, 'sengoku');
+  const newsURL=origin+'/news/',newsRequest={method:'GET',url:newsURL,mode:'navigate'};
+  online.records.get(current).set(newsURL,{brand:'earlier-news'});
+  assert.equal((await online.dispatch('fetch',newsRequest)).brand,'network','Connected news visits must refresh an earlier announcement');
+  assert.equal(online.records.get(current).get(newsURL).brand,'network','A public announcement remains available offline');
+  offline.records.get(current).set(newsURL,{brand:'saved-news'});
+  assert.equal((await offline.dispatch('fetch',newsRequest)).brand,'saved-news','Offline news visits retain the saved announcement');
+  assert.equal(await online.dispatch('fetch',{method:'GET',url:origin+'/news/feed.xml'}),undefined,'RSS remains a normal network resource, without a stale worker copy');
   await online.dispatch('activate');
   assert.deepEqual(online.deleted.sort(), ['pachi-art-v1', 'pachi-fonts-v1', 'pachi-shell-v1', 'sengoku-taisen-v-old'].sort());
   assert(online.records.has(current)); assert(online.records.has('unrelated-records'));

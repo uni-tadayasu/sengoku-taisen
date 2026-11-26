@@ -1,0 +1,139 @@
+/* A base detail panel can be narrow even on a large map. Size its identity
+   against the panel itself, and let names and honors keep their full text. */
+.sengoku-field .field-sidebar {
+  container: field-profile / inline-size;
+  min-width: 0;
+  max-width: 100%;
+}
+.sengoku-field .field-detail,
+.sengoku-field .field-base-heading > div {
+  min-width: 0;
+  max-width: 100%;
+}
+.sengoku-field .field-sidebar .field-base-heading {
+  grid-template-columns: 88px minmax(0, 1fr);
+  align-items: start;
+  gap: 12px;
+}
+.sengoku-field .field-sidebar .field-base-heading > .field-castle-visual {
+  width: 88px;
+  height: 88px;
+  max-width: 100%;
+}
+.sengoku-field .field-base-heading .field-lord-heading {
+  align-items: flex-start;
+  min-width: 0;
+  max-width: 100%;
+  gap: 8px;
+  font-size: 1.375rem;
+  line-height: 1.5;
+}
+.sengoku-field .field-lord-heading > .player-evaluation-person {
+  flex: 1 1 0;
+  min-width: 0;
+  align-items: center;
+  row-gap: 7px;
+}
+.sengoku-field .field-lord-heading .player-evaluation-name,
+.sengoku-field .field-lord-heading .sengoku-premium-name {
+  white-space: normal;
+  overflow: visible;
+  overflow-wrap: anywhere;
+  word-break: normal;
+  text-overflow: clip;
+}
+.sengoku-field .field-lord-heading > .social-avatar {
+  flex: 0 0 34px;
+  width: 34px;
+  height: 34px;
+  min-width: 34px;
+  margin-top: 3px;
+}
+.sengoku-field .field-base-heading :is(.field-eyebrow, p, .field-online) {
+  font-size: .875rem;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.sengoku-field .field-base-heading .lord-profile-link {
+  max-width: 100%;
+  min-height: 44px;
+  padding: 8px 0;
+  font-size: 1rem;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.sengoku-field .field-tabs button {
+  min-width: 0;
+  min-height: 44px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.4;
+}
+.sengoku-field .field-base-stats > div {
+  min-width: 0;
+  padding-inline: 4px;
+  overflow-wrap: anywhere;
+}
+.sengoku-field .field-base-stats b {
+  font-size: 1.125rem;
+}
+
+@container field-profile (max-width: 440px) {
+  .sengoku-field .field-sidebar .field-base-heading {
+    grid-template-columns: 72px minmax(0, 1fr);
+    gap: 8px 12px;
+  }
+  .sengoku-field .field-sidebar .field-base-heading > .field-castle-visual {
+    grid-column: 1;
+    grid-row: 1;
+    width: 72px;
+    height: 72px;
+  }
+  .sengoku-field .field-base-heading > div { display: contents; }
+  .sengoku-field .field-base-heading .field-eyebrow {
+    grid-column: 2;
+    grid-row: 1;
+    align-self: center;
+  }
+  .sengoku-field .field-base-heading :is(.field-lord-heading, p, .lord-profile-link, .field-online) {
+    grid-column: 1 / -1;
+    margin: 0;
+    justify-self: start;
+  }
+  .sengoku-field .field-base-heading .field-lord-heading {
+    width: 100%;
+    margin-top: 5px;
+  }
+  .sengoku-field .field-tabs button { font-size: .875rem; padding-inline: 5px; }
+  .sengoku-field .field-tabs button svg { width: 16px; height: 16px; }
+}
+
+@container field-profile (max-width: 360px) {
+  .sengoku-field .field-base-stats { grid-template-columns: minmax(0, 1fr); }
+  .sengoku-field .field-base-stats > div {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 12px;
+    padding: 7px 2px;
+    border-right: 0;
+  }
+  .sengoku-field .field-base-stats span { margin: 0; }
+  .sengoku-field .field-base-stats b { white-space: nowrap; }
+}
+
+/* Older browsers still get the same full-width identity on phone screens. */
+@supports not (container-type: inline-size) {
+  @media (max-width: 600px) {
+    .sengoku-field .field-sidebar .field-base-heading { grid-template-columns: minmax(0, 1fr); }
+    .sengoku-field .field-sidebar .field-base-heading > .field-castle-visual { width: 72px; height: 72px; }
+  }
+}
+
+@media (max-width: 600px) {
+  html .sengoku-field .field-workspace { grid-template-columns: minmax(0, 1fr); }
+  html .sengoku-field .field-detail { padding: 16px; }
+  .sengoku-field .field-actions { flex-wrap: wrap; }
+  .sengoku-field .field-actions > .field-button { flex: 1 1 8rem; min-height: 44px; }
+  .sengoku-field .field-player-meta { max-width: 38%; }
+}

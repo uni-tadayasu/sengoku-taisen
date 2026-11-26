@@ -69,7 +69,10 @@
     "command-ui.css",
     "settings-ui.css",
     "town-command-tabs.css",
-    "shogun-polish.css"
+    "shogun-polish.css",
+    "field-responsive.css",
+    "social-chat.css",
+    "responsive-text.css"
   ],
   "game-preferences.bundle.js": [
     "viewport-lock.js",
@@ -127,6 +130,7 @@
     "alliance-icon.js",
     "voice.js",
     "public-profile.js",
+    "social-chat.js",
     "social.js",
     "letters.js",
     "trade.js",

@@ -1,0 +1,60 @@
+/* Reply context and mention controls stay beside the active composer. */
+.social-dialog .social-chat-message-actions{display:flex;gap:8px;margin-top:3px}
+.social-dialog :is(.social-chat-reply-button,.social-chat-tool){display:inline-flex;align-items:center;justify-content:center;min-height:38px;padding:5px 10px;border:1px solid #b7a57845;border-radius:5px;color:#e8d3a2;background:#263332;font-family:inherit;font-size:14px;font-weight:500;line-height:1.4;cursor:pointer}
+.social-dialog .social-chat-reply-button:hover,.social-dialog .social-chat-tool:hover{background:#39443a;border-color:#dcc18b}
+.social-dialog .social-chat-tool[hidden]{display:none}
+.social-dialog .social-message.is-mentioned{border-left:3px solid #e2b660;padding-left:8px}
+.social-dialog .social-message:focus{outline:2px solid #c9ad77;outline-offset:4px}
+.social-dialog .social-chat-quote{display:flex;flex-direction:column;gap:2px;width:100%;max-width:100%;padding:7px 10px;margin:0 0 5px;border:0;border-left:3px solid #a38b62;border-radius:3px;background:#a5a78412;color:#bfc9bf;text-align:left;overflow-wrap:anywhere}
+.social-dialog button.social-chat-quote{cursor:pointer;min-height:44px}
+.social-dialog .social-chat-quote strong{font-size:13px;color:#dfcda5}
+.social-dialog .social-chat-quote span{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-size:13px;line-height:1.5}
+.social-dialog .social-chat-quote.is-unavailable{font-size:13px;color:#abb6af}
+.social-dialog .social-chat-message-mentions{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:5px}
+.social-dialog .social-chat-mention-chip{font-size:13px;line-height:1.5;padding:2px 6px;border:1px solid #97bda44f;border-radius:4px;background:#2d443b;color:#c6e8d1;overflow-wrap:anywhere}
+.social-dialog .social-chat-mention-chip.is-self{background:#564728;border-color:#e2b66090;color:#ffe1a2}
+.social-dialog .social-chat-mention-text{color:#ffe0a2;background:#79623650;border-radius:3px;padding:0 2px}
+.social-dialog .social-chat-form.social-chat-enhanced{position:relative;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:end;gap:7px 10px}
+.social-dialog .social-chat-enhanced :is(.social-chat-compose-context,.social-chat-compose-tools){grid-column:1/-1;min-width:0}
+.social-dialog .social-chat-compose-context{display:grid;gap:5px;min-width:0}
+.social-dialog .social-chat-compose-context>div{min-width:0}
+.social-dialog .social-chat-enhanced textarea#social-chat-input{grid-column:1;grid-row:auto;min-width:0;width:100%;margin:0;font-size:16px}
+.social-dialog .social-chat-enhanced .social-chat-form-bottom{grid-column:2;grid-row:auto;margin:0;display:flex;flex-direction:column;justify-content:end;align-items:stretch;gap:5px}
+.social-dialog .social-chat-enhanced .social-chat-form-bottom>span{display:none}
+.social-dialog .social-chat-enhanced .social-chat-form-bottom>.social-button{min-height:48px;min-width:70px;padding:8px 12px}
+.social-dialog .social-chat-compose-tools{display:flex;align-items:center;gap:8px;min-width:0}
+.social-dialog .social-chat-compose-tools small{flex:1;font-size:12px;color:#bac3b7;line-height:1.4}
+.social-dialog #social-chat-count{margin-left:auto;white-space:nowrap;font-size:12px;color:#b4bfb5;font-variant-numeric:tabular-nums}
+.social-dialog .social-chat-reply-draft{display:flex;align-items:center;gap:8px;padding:7px 9px;border-left:3px solid #c8ad76;background:#c8ad7617;border-radius:4px}
+.social-dialog .social-chat-reply-draft>div{min-width:0;flex:1}
+.social-dialog .social-chat-reply-draft strong{display:block;font-size:13px;color:#edd8aa;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.social-dialog .social-chat-reply-draft span{display:block;font-size:12px;color:#c5cbbf;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.social-dialog .social-chat-selected-mentions{display:flex;flex-wrap:wrap;gap:5px;max-height:88px;overflow:auto}
+.social-dialog :is(.social-chat-compose-context,#social-chat-reply-preview,.social-chat-selected-mentions,.social-chat-mention-menu)[hidden]{display:none!important}
+.social-dialog .social-chat-recipient{display:inline-flex;align-items:center;gap:7px;min-height:36px;max-width:100%;padding:4px 8px;border:1px solid #cdb77d65;border-radius:5px;color:#efdbaf;background:#3d402f;font-size:13px;overflow-wrap:anywhere}
+.social-dialog .social-chat-recipient span{font-size:19px;line-height:1}
+.social-dialog .social-chat-mention-menu{position:absolute;z-index:8;left:0;right:0;bottom:calc(100% + 5px);padding:8px;border:1px solid #baa375;border-radius:7px;background:#17272c;box-shadow:0 -7px 24px #0006;max-height:min(260px,40dvh);overflow-y:auto;overscroll-behavior:contain}
+.social-dialog .social-chat-mention-heading{display:flex;align-items:center;justify-content:space-between;gap:8px;color:#eed9aa;font-size:13px}
+.social-dialog #social-chat-mention-list{display:grid;gap:3px;margin-top:5px}
+.social-dialog .social-chat-mention-option{display:flex;align-items:center;gap:8px;min-height:44px;width:100%;padding:7px 9px;text-align:left;border:1px solid transparent;border-radius:4px;color:#e0e7dc;background:#26363a}
+.social-dialog .social-chat-mention-option strong{font-size:14px;font-weight:500;overflow-wrap:anywhere}
+.social-dialog .social-chat-mention-option small{min-width:0;max-width:40%;margin-left:auto;font-size:11px;color:#a8b6ae;text-overflow:ellipsis;overflow:hidden;white-space:nowrap}
+.social-dialog .social-chat-mention-option:is(:hover,[aria-selected=true]){background:#44503c;border-color:#c9ad77}
+.social-dialog #social-chat-mention-status{display:block;margin:6px 2px 0;color:#bcc8bc;font-size:12px;line-height:1.5}
+/* Override the compact grid coordinates defined for the legacy plain form. */
+html:not(.sengoku-desktop-fit) .social-dialog .social-body[data-touch-chat-layout] .social-chat-form.social-chat-enhanced{position:relative;grid-template-columns:minmax(0,1fr) auto;gap:5px 8px}
+html:not(.sengoku-desktop-fit) .social-dialog .social-body[data-touch-chat-layout] .social-chat-enhanced textarea{grid-row:auto;height:68px;min-height:60px}
+html:not(.sengoku-desktop-fit) .social-dialog .social-body[data-touch-chat-layout] .social-chat-enhanced .social-chat-form-bottom{grid-row:auto}
+/* Above a software keyboard, selected recipients share one scrollable row
+   with the reply. The form can shrink and scroll at unusually short heights. */
+html:not(.sengoku-desktop-fit) .social-dialog[data-touch-compact] .social-body[data-touch-chat-layout] .social-chat-form.social-chat-enhanced{flex:0 1 auto;min-height:100px;max-height:100%;overflow-y:auto;overscroll-behavior:contain;margin-top:3px;padding-top:4px;gap:4px 8px}
+html:not(.sengoku-desktop-fit) .social-dialog[data-touch-compact] .social-chat-compose-context{display:flex;align-items:center;gap:5px}
+html:not(.sengoku-desktop-fit) .social-dialog[data-touch-compact] .social-chat-compose-context>div{flex:1 1 0}
+html:not(.sengoku-desktop-fit) .social-dialog[data-touch-compact] .social-chat-reply-draft{padding:2px 4px;gap:4px;min-height:38px}
+html:not(.sengoku-desktop-fit) .social-dialog[data-touch-compact] .social-chat-reply-draft span{display:none}
+html:not(.sengoku-desktop-fit) .social-dialog[data-touch-compact] .social-chat-reply-draft .social-chat-tool{min-height:36px;padding:4px 6px}
+html:not(.sengoku-desktop-fit) .social-dialog[data-touch-compact] .social-chat-selected-mentions{flex-wrap:nowrap;max-height:40px;overflow-x:auto;overflow-y:hidden}
+html:not(.sengoku-desktop-fit) .social-dialog[data-touch-compact] .social-chat-recipient{flex:none;max-width:none;white-space:nowrap;min-height:38px}
+html:not(.sengoku-desktop-fit) .social-dialog[data-touch-compact] .social-chat-compose-tools .social-chat-tool{min-height:36px;padding:4px 8px}
+html:not(.sengoku-desktop-fit) .social-dialog[data-touch-compact] .social-body[data-touch-chat-layout] .social-chat-enhanced textarea{height:52px;min-height:52px;max-height:68px;padding:5px 8px}
+@media(max-width:480px){.social-dialog .social-chat-compose-tools small{display:none}.social-dialog .social-chat-reply-button{min-height:40px}.social-dialog .social-chat-tool{min-height:40px}.social-dialog .social-chat-enhanced{padding-top:7px}.social-dialog .social-chat-mention-menu{max-height:min(220px,35dvh)}}

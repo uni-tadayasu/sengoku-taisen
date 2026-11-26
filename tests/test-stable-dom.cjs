@@ -187,4 +187,27 @@ test('a keyboard/browser viewport change cancels delayed restoration without mov
  doc.defaultView.visualViewport.offsetTop=0;doc.defaultView.visualViewport.height=160;assert.equal(restoreScroll(snapshot),false,'an obsolete pending frame must not resume later');
 });
 
+test('a large reordered roster retains keyed rows, listeners and a focused draft',()=>{
+ const {doc,host}=setup(),ids=Array.from({length:129},(_,i)=>'lord-'+i),markup=(rows,version)=>rows.map(id=>`<article data-player-id="${id}"><input name="draft" value="default"><span>${version}:${id}</span></article>`).join('');
+ patch(host,markup(ids,1));const nodes=new Map(host.childNodes.map(node=>[node.dataset.playerId,node])),row=nodes.get('lord-63'),draft=row.querySelector('input');let clicks=0;row.addEventListener('click',()=>clicks++);
+ draft.value='書きかけの紹介文';draft.focus();draft.setSelectionRange(2,6,'backward');
+ const next=['new-first',...ids.slice(5).reverse(),'new-last'],stats=patch(host,markup(next,2));
+ assert.equal(stats.removed,5);assert.equal(stats.added,2);assert.deepEqual(host.childNodes.map(node=>node.dataset.playerId),next);
+ for(const id of ids.slice(5))assert.strictEqual(host.querySelector(`[data-player-id="${id}"]`),nodes.get(id));
+ assert.strictEqual(doc.activeElement,draft);assert.equal(draft.value,'書きかけの紹介文');assert.deepEqual([draft.selectionStart,draft.selectionEnd,draft.selectionDirection],[2,6,'backward']);
+ row.dispatchEvent({type:'click'});assert.equal(clicks,1);assert.equal(row.querySelector('span').textContent,'2:lord-63');
+});
+test('long unkeyed lists consume repeated shapes in source order without recycling incompatible nodes',()=>{
+ const {host}=setup(),markup=(groups,version)=>groups.map(group=>`<!--${group}--><section class="${group}"><b>${version}:${group}</b></section>\n`).join(''),groups=Array.from({length:48},(_,i)=>i%3?'detail':'summary');
+ patch(host,markup(groups,1));const old=new Map(['detail','summary'].map(group=>[group,host.querySelectorAll('section.'+group)]));
+ const order=[...groups].reverse(),stats=patch(host,markup(order,2));assert.equal(stats.added,0);assert.equal(stats.removed,0);
+ const used={detail:0,summary:0};for(const [index,row]of host.querySelectorAll('section').entries()){
+  const group=order[index];assert.strictEqual(row,old.get(group)[used[group]++]);assert.equal(row.textContent,'2:'+group);
+ }
+ // Existing keyed rows with a changed element kind must be replaced even in
+ // a long sibling list; a shared key never overrides type compatibility.
+ const keyed=tag=>Array.from({length:32},(_,i)=>`<${i===15?tag:'article'} data-key="row-${i}">row ${i}</${i===15?tag:'article'}>`).join('');
+ patch(host,keyed('article'));const before=host.querySelector('[data-key="row-15"]');patch(host,keyed('aside'));assert.notStrictEqual(host.querySelector('[data-key="row-15"]'),before);assert.equal(host.querySelector('[data-key="row-15"]').localName,'aside');
+});
+
 for(const[name,run]of tests){run();console.log('PASS '+name);}console.log(`${tests.length} stable DOM scenarios passed with deterministic DOM fixtures; no browser launched.`);

@@ -85,6 +85,28 @@ await test('saving uses only the current authenticated avatar endpoint and retai
 await test('routine profile checks never remount an in-progress editor',async()=>{
  const b=setup();b.t.render();b.setHandler(async()=>({ok:true,user:b.actor,friends:[],requests:[]}));await b.t.loadMe();const marks=b.marks.length;await b.t.loadMe();assert.equal(b.marks.length,marks,'Unchanged profile metadata does not recreate its image');assert.equal(b.mounts.length,1);assert.equal(b.destroyCount(),0);b.setHandler(async()=>({ok:true,user:{...b.actor,avatarVersion:NEW},friends:[],requests:[]}));await b.t.loadMe();assert.equal(b.mounts.length,1);assert.equal(b.mounts[0].updates.at(-1).avatarVersion,NEW,'Other-device updates reach the mounted editor without dropping a crop');
 });
+await test('profile cards remain outside the bounded body grid and preserve the live name and photo editor',()=>{
+ const b=setup(),{doc,host}=require('./helpers/dom-model.cjs').setup();
+ host.innerHTML='<nav id="social-tabs"></nav><div class="social-body"></div><div id="social-confirm-host"></div>';
+ const body=host.querySelector('.social-body');
+ b.c.document=doc;b.c.SengokuStableDOM=require('../stable-dom.js');b.t.setUI(host,body);b.t.render();
+ const layout=body.querySelector('.social-profile-layout'),input=body.querySelector('#social-profile-name'),editor=body.querySelector('#social-avatar-editor');
+ const children=body.childNodes.filter(node=>node.nodeType===1);assert.equal(children.length,1);assert.strictEqual(children[0],layout);
+ assert.notStrictEqual(body.querySelector('.social-profile-heading').parentElement,body,'The bounded body must not match the legacy profile grid selector');
+ assert.strictEqual(input.closest('section').parentElement,layout);
+ assert.strictEqual(editor.parentElement,layout);
+ editor.innerHTML='<canvas data-avatar-canvas></canvas><input data-avatar-zoom type="range" value="1.5">';
+ const canvas=editor.querySelector('canvas'),zoom=editor.querySelector('input');
+ input.value='編集中の領主名';input.focus();input.setSelectionRange(2,5);body.scrollTop=251;
+ b.t.s.user.clan='武田家';b.t.render();
+ assert.strictEqual(body.querySelector('.social-profile-layout'),layout);
+ assert.strictEqual(body.querySelector('#social-profile-name'),input);assert.equal(input.value,'編集中の領主名');
+ assert.strictEqual(doc.activeElement,input);assert.equal(input.selectionStart,2);assert.equal(input.selectionEnd,5);
+ assert.strictEqual(body.querySelector('#social-avatar-editor'),editor);assert.strictEqual(editor.querySelector('canvas'),canvas);assert.strictEqual(editor.querySelector('input'),zoom);assert.equal(zoom.value,'1.5');
+ assert.equal(body.scrollTop,251);assert.equal(b.mounts.length,1);assert.equal(b.destroyCount(),0);
+ for(const action of ['sync-open','identity-export','recovery-open','recovery-export','logout'])assert(body.querySelector('[data-social="'+action+'"]'),action);
+ assert(!body.querySelector('[data-social="admin-restore"]'),'Ordinary profiles keep no owner controls');
+});
 await test('an older metadata response cannot restore a pre-upload avatar version',async()=>{
  const b=setup();b.t.render();const late=deferred();b.setHandler(()=>late.promise);const me=b.t.loadMe();b.mounts[0].onUser({...b.actor,avatarVersion:NEW});late.resolve({ok:true,user:{...b.actor,avatarVersion:OLD},friends:[],requests:[]});await me;assert.equal(b.t.s.user.avatarVersion,NEW);assert.equal(b.mounts.length,1);
 });
