@@ -17,6 +17,7 @@
   const selector = '.social-dialog, .letters-dialog, .trade-dialog, .troop-garrison-dialog, .moderation-dialog, .hints-dialog';
   const coarse = global.matchMedia?.('(any-pointer: coarse)');
   const removers = [];
+  const revealedTabs = new WeakMap();
   let frame = 0, observer, destroyed = false, started = false;
   const raf = global.requestAnimationFrame?.bind(global) || (callback => global.setTimeout(callback, 16));
   const caf = global.cancelAnimationFrame?.bind(global) || global.clearTimeout.bind(global);
@@ -28,6 +29,21 @@
   function listen(target, type, listener, options) {
     target?.addEventListener?.(type, listener, options);
     removers.push(() => target?.removeEventListener?.(type, listener, options));
+  }
+  function revealSelectedTab(dialog) {
+    const tabs = dialog.querySelector('.social-tabs');
+    if (!tabs || !dialog.open) { if (tabs) revealedTabs.delete(tabs); return; }
+    const selected = tabs.querySelector?.('[aria-selected="true"]');
+    if (!selected || !tabs.clientWidth) return;
+    const previous = revealedTabs.get(tabs);
+    if (previous?.selected === selected && previous.width === tabs.clientWidth) return;
+    revealedTabs.set(tabs, { selected, width: tabs.clientWidth });
+    if (tabs.scrollWidth <= tabs.clientWidth) return;
+    // Move only the tab strip. scrollIntoView would also move the profile body
+    // or the page. Repeated sync checks must not undo a user's manual scrolling.
+    const bounds = tabs.getBoundingClientRect(), item = selected.getBoundingClientRect();
+    if (item.left < bounds.left + 8) tabs.scrollLeft += item.left - bounds.left - 8;
+    else if (item.right > bounds.right - 8) tabs.scrollLeft += item.right - bounds.right + 8;
   }
   function update() {
     frame = 0;
@@ -43,12 +59,15 @@
       const compact = visible && box.height < 560;
       attr(dialog, 'data-touch-compact', compact);
       if (!dialog.matches('.social-dialog')) continue;
+      revealSelectedTab(dialog);
       const body = dialog.querySelector('.social-body');
       const chat = body?.querySelector('.social-chat');
       const form = chat?.querySelector('.social-chat-form');
+      const mentionMenu = dialog.querySelector('#social-chat-mention-menu');
       // Keep the compact composer while its Send button has focus too, so a
-      // tap cannot move the button between pointerdown and click.
-      const composing = Boolean(compact && form?.contains(doc.activeElement));
+      // tap cannot move the button between pointerdown and click. The mention
+      // picker is portalled outside the form to avoid the clipped chat column.
+      const composing = Boolean(compact && form && (form.contains(doc.activeElement) || mentionMenu?.contains(doc.activeElement)));
       attr(dialog, 'data-touch-chat', visible && Boolean(chat));
       attr(dialog, 'data-touch-composing', composing);
       attr(body, 'data-touch-chat-layout', visible && Boolean(chat) && (chat.parentElement === body || composing));
@@ -75,7 +94,7 @@
           return target?.matches?.(selector) || target?.closest?.(selector) || [...record.addedNodes || []].some(node => node.nodeType === 1 && (node.matches?.(selector) || node.querySelector?.(selector)));
         })) refresh();
       });
-      observer.observe(doc.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['open'] });
+      observer.observe(doc.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['open', 'aria-selected'] });
     }
     refresh();
   }

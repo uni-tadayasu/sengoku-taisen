@@ -26,8 +26,8 @@ import {handleBranches,projectBranchState,applyBranchProgress,reconcileBranchPro
 import {relocateResidence} from './relocation.js';
 import {ensureResidency,residencySnapshot,residencyDirectory,residencyStart,initialResidencyStatements,residencyTargetGuard,prepareResidencySuccession,prepareResidencyCpuLosses} from './residency.js';
 const API = '/api/v1';
-const API_VERSION = '4.9.12';
-const API_FEATURES = Object.freeze({trades:true,moderation:true,premium:true,timedEvents:true,troopTrades:true,roamingBattles:true,roamingDeployment:true,covertDispatch:true,privatePlayerRoles:true,guildIcons:true,court:true,kyotoGosho:true,branches:true,branchBattles:true,branchFacilities:true,audioCalls:true,progression:true,armyPresets:true,allianceStrategy:true,sharedConquest:true,newcomerProtection:true,webPush:true,battleAdviser:true,battleCatalog:true,eventBattleRewards:true,shogunate:true,attackTravel:true,castleResidency:true,residencyRelocation:true,maintenanceUpkeep:true,strongholdDurability:true});
+const API_VERSION = '5.1.1';
+const API_FEATURES = Object.freeze({trades:true,moderation:true,premium:true,timedEvents:true,troopTrades:true,roamingBattles:true,roamingDeployment:true,covertDispatch:true,privatePlayerRoles:true,guildIcons:true,court:true,kyotoGosho:true,branches:true,branchBattles:true,branchFacilities:true,audioCalls:true,progression:true,armyPresets:true,allianceStrategy:true,sharedConquest:true,newcomerProtection:true,webPush:true,battleAdviser:true,battleCatalog:true,eventBattleRewards:true,shogunate:true,attackTravel:true,castleResidency:true,residencyRelocation:true,maintenanceUpkeep:true,strongholdDurability:true,chatReplies:true,chatMentions:true});
 const MAX_BODY = 16 * 1024;
 const MAX_SAVE_BODY = 2 * 1024 * 1024;
 const MAX_AVATAR_BYTES = 48 * 1024;
@@ -55,6 +55,7 @@ const BASE_ORIGINS = new Set(['https://uni-tadayasu.github.io', 'https://www.kas
 const encoder = new TextEncoder();
 const authenticatedRequests = new WeakMap();
 const courtResponseGuards = new WeakMap();
+const chatResponseGuards = new WeakMap();
 const eventDefenseResponseGuards = new WeakMap();
 
 class ApiError extends Error {
@@ -790,13 +791,50 @@ async function roomFor(db, user, channel, target) {
   fail(400, 'INVALID_CHANNEL', 'チャットの種類が正しくありません。');
 }
 function mapMessage(row) {
-  return {id:Number(row.id),userId:row.user_id,name:row.name,avatarVersion:row.avatar_version||null,text:row.body,createdAt:iso(row.created_at),isAdmin:!!row.is_admin,isStaff:!!row.is_staff&&!row.is_admin,evaluation:evaluationRef(row.user_id)};
+  const replyToId=row.reply_to_id===null||row.reply_to_id===undefined?null:Number(row.reply_to_id);
+  const preview=row.reply_id?Array.from(row.reply_body):[];
+  const replyTo=replyToId===null?null:row.reply_id?{id:Number(row.reply_id),userId:row.reply_user_id,name:row.reply_name,text:preview.slice(0,120).join(''),createdAt:iso(row.reply_created_at),truncated:preview.length>120}:{id:replyToId,unavailable:true};
+  return {id:Number(row.id),userId:row.user_id,name:row.name,avatarVersion:row.avatar_version||null,text:row.body,createdAt:iso(row.created_at),isAdmin:!!row.is_admin,isStaff:!!row.is_staff&&!row.is_admin,evaluation:evaluationRef(row.user_id),replyToId,replyTo,mentions:JSON.parse(row.mention_users_json||'[]')};
 }
 const MESSAGE_SELECT = `SELECT m.id,m.user_id,m.body,m.created_at,u.name,
  (SELECT a.version FROM user_avatars a WHERE a.user_id=m.user_id) AS avatar_version,
  CASE WHEN m.user_id=(SELECT value FROM settings WHERE key='adminUserId') THEN 1 ELSE 0 END AS is_admin,
- EXISTS(SELECT 1 FROM staff_members sm WHERE sm.user_id=m.user_id) AS is_staff
- FROM messages m JOIN users u ON u.id=m.user_id`;
+ EXISTS(SELECT 1 FROM staff_members sm WHERE sm.user_id=m.user_id) AS is_staff,
+ m.reply_to_id,rp.id AS reply_id,rp.user_id AS reply_user_id,pu.name AS reply_name,rp.body AS reply_body,rp.created_at AS reply_created_at,
+ (SELECT json_group_array(json_object('userId',mu.id,'name',mu.name)) FROM json_each(m.mentions_json) mi JOIN users mu ON mu.id=mi.value WHERE NOT EXISTS(SELECT 1 FROM player_bans mb WHERE mb.user_id=mu.id AND mb.active=1)) AS mention_users_json
+ FROM messages m JOIN users u ON u.id=m.user_id
+ LEFT JOIN messages rp ON rp.id=m.reply_to_id AND rp.room_key=m.room_key AND NOT EXISTS(SELECT 1 FROM player_bans pb WHERE pb.user_id=rp.user_id AND pb.active=1)
+ LEFT JOIN users pu ON pu.id=rp.user_id`;
+function chatAccessGuard(user,channel,target){
+  const account=accountCommitGuard(user);
+  const channelSql=channel==='admin'?STAFF_CHAT_GUARD:channel==='guild'?GUILD_MEMBER_GUARD:channel==='friend'?"EXISTS(SELECT 1 FROM friendships WHERE user_a=? AND user_b=? AND status='accepted')":'1';
+  const channelArgs=channel==='admin'?[user.id,user.id]:channel==='guild'?[user.id,user.guild_id]:channel==='friend'?pair(user.id,idField(target,'友達の識別子')):[];
+  return {sql:channelSql+' AND '+account.sql,args:[...channelArgs,...account.args],code:channel==='admin'?'STAFF_CHAT_REQUIRED':channel==='friend'?'FRIENDSHIP_REQUIRED':'GUILD_REQUIRED'};
+}
+function chatMetadata(body){
+  const replyToId=body.replyToId??null,mentionIds=body.mentionIds===undefined?[]:body.mentionIds;
+  if(replyToId!==null&&(!Number.isSafeInteger(replyToId)||replyToId<=0))fail(400,'INVALID_REPLY','返信先のメッセージ番号が正しくありません。');
+  if(!Array.isArray(mentionIds)||mentionIds.length>8||mentionIds.some(id=>typeof id!=='string'||!publicPlayerId.test(id))||new Set(mentionIds).size!==mentionIds.length)fail(400,'INVALID_MENTIONS','メンションは重複のない領主IDを8人まで指定してください。');
+  return {replyToId,mentionIds};
+}
+function chatContextGuard(user,channel,target,room,{replyToId,mentionIds}){
+  const reply=replyToId===null?{sql:'1',args:[]}:{sql:'EXISTS(SELECT 1 FROM messages parent WHERE parent.id=? AND parent.room_key=? AND NOT EXISTS(SELECT 1 FROM player_bans banned WHERE banned.user_id=parent.user_id AND banned.active=1))',args:[replyToId,room]};
+  const scope=channel==='guild'?'EXISTS(SELECT 1 FROM guild_members gm WHERE gm.user_id=mu.id AND gm.guild_id=?)':channel==='friend'?'mu.id IN (?,?)':channel==='admin'?"(mu.id=(SELECT value FROM settings WHERE key='adminUserId') OR EXISTS(SELECT 1 FROM staff_members sm WHERE sm.user_id=mu.id))":'1';
+  const scopeArgs=channel==='guild'?[user.guild_id]:channel==='friend'?[user.id,idField(target,'友達の識別子')]:[];
+  const mentions=mentionIds.length?{sql:'(SELECT COUNT(*) FROM json_each(?) wanted JOIN users mu ON mu.id=wanted.value WHERE NOT EXISTS(SELECT 1 FROM player_bans banned WHERE banned.user_id=mu.id AND banned.active=1) AND '+scope+')=?',args:[JSON.stringify(mentionIds),...scopeArgs,mentionIds.length]}:{sql:'1',args:[]};
+  return {reply,mentions,sql:reply.sql+' AND '+mentions.sql,args:[...reply.args,...mentions.args]};
+}
+async function checkChatContext(db,user,access,context,{conflict=false}={}){
+  const state=await stmt(db,'SELECT ('+context.reply.sql+') AS reply_ok,('+context.mentions.sql+') AS mentions_ok WHERE '+access.sql,...context.reply.args,...context.mentions.args,...access.args).first();
+  if(!state){await requireAccountAccess(db,user);fail(403,access.code,'このチャットの参加権限がありません。');}
+  if(!state.reply_ok||!state.mentions_ok)fail(conflict?409:400,conflict?'CHAT_CONTEXT_CHANGED':!state.reply_ok?'CHAT_REPLY_UNAVAILABLE':'CHAT_MENTION_UNAVAILABLE',conflict?'返信先またはメンション先の状況が変わりました。最新の会話を確認してください。':!state.reply_ok?'この会話で返信できるメッセージではありません。':'この会話でメンションできない領主が含まれています。');
+}
+async function verifyChatResponse(db,request){
+  const guard=chatResponseGuards.get(request);if(!guard)return;
+  const current=await stmt(db,'SELECT EXISTS(SELECT 1 WHERE '+guard.access.sql+') AS allowed,(SELECT content_revision FROM moderation_state WHERE id=1) AS content_revision',...guard.access.args).first();
+  if(!current?.allowed){await requireAccountAccess(db,guard.user);fail(403,guard.access.code,'このチャットの参加権限がありません。');}
+  if(Number(current.content_revision)!==guard.contentRevision)fail(409,'CONTENT_CHANGED','投稿が更新されました。最新の一覧を確認してください。');
+}
 const GUILD_SELECT = `SELECT g.id,g.name,g.owner_id,u.name AS owner_name,g.created_at,
  (SELECT gi.version FROM guild_icons gi WHERE gi.guild_id=g.id) AS icon_version,
  (SELECT COUNT(*) FROM guild_members gm WHERE gm.guild_id=g.id) AS member_count FROM guilds g JOIN users u ON u.id=g.owner_id`;
@@ -2574,6 +2612,7 @@ async function route(request, env, now) {
       await stmt(db, 'SELECT (SELECT COUNT(*) FROM users) AS count,EXISTS(SELECT 1 FROM trades) AS trade_schema,EXISTS(SELECT 1 FROM trade_requests) AS trade_request_schema,EXISTS(SELECT 1 FROM trade_deliveries) AS trade_delivery_schema,EXISTS(SELECT 1 FROM player_bans) AS ban_schema,EXISTS(SELECT 1 FROM moderation_requests) AS moderation_schema,(SELECT content_revision FROM moderation_state WHERE id=1) AS content_revision,EXISTS(SELECT 1 FROM premium_orders) AS premium_order_schema,EXISTS(SELECT 1 FROM premium_events) AS premium_event_schema,EXISTS(SELECT 1 FROM premium_grants) AS premium_grant_schema,EXISTS(SELECT 1 FROM premium_appearances) AS premium_appearance_schema,EXISTS(SELECT 1 FROM timed_events) AS timed_event_schema,EXISTS(SELECT 1 FROM timed_event_requests) AS timed_event_request_schema,EXISTS(SELECT 1 FROM timed_event_participants) AS timed_event_participant_schema,EXISTS(SELECT 1 FROM timed_event_rewards) AS timed_event_reward_schema,EXISTS(SELECT 1 FROM roaming_battles) AS roaming_battle_schema,EXISTS(SELECT 1 FROM covert_states) AS covert_state_schema,EXISTS(SELECT 1 FROM covert_requests) AS covert_request_schema,EXISTS(SELECT 1 FROM covert_battles) AS covert_battle_schema,EXISTS(SELECT 1 FROM covert_incidents) AS covert_incident_schema,EXISTS(SELECT 1 FROM roaming_deployment) AS roaming_deployment_schema,EXISTS(SELECT 1 FROM roaming_deployment_proposals) AS roaming_deployment_proposal_schema,EXISTS(SELECT 1 FROM roaming_deployment_requests) AS roaming_deployment_request_schema,EXISTS(SELECT 1 FROM roaming_unit_cooldowns) AS roaming_unit_cooldown_schema,EXISTS(SELECT 1 FROM court_contributions) AS court_contribution_schema,EXISTS(SELECT 1 FROM court_leader) AS court_leader_schema,EXISTS(SELECT 1 FROM court_chat) AS court_chat_schema,EXISTS(SELECT 1 FROM court_audience_threads) AS court_audience_schema,EXISTS(SELECT 1 FROM court_audience_messages) AS court_audience_message_schema,EXISTS(SELECT 1 FROM court_requests) AS court_request_schema,EXISTS(SELECT 1 FROM branch_states) AS branch_state_schema,EXISTS(SELECT 1 FROM branch_requests) AS branch_request_schema').first();
       const voiceSchema=await stmt(db,"SELECT EXISTS(SELECT 1 FROM voice_sessions WHERE lease_until>=0) AS sessions,EXISTS(SELECT 1 FROM voice_signals WHERE acknowledged>=0) AS signals,EXISTS(SELECT 1 FROM voice_membership_epochs WHERE epoch>=1) AS membership,(SELECT COUNT(*) FROM sqlite_master WHERE type='trigger' AND name IN ('voice_guild_join','voice_guild_leave','voice_guild_move')) AS trigger_count").first();
       if(Number(voiceSchema?.trigger_count)!==3)throw Error('Voice membership migration incomplete');
+      await stmt(db,'SELECT reply_to_id,mentions_json FROM messages LIMIT 1').first();
       await stmt(db,'SELECT (SELECT COUNT(*) FROM progress_accounts) AS progression,(SELECT COUNT(*) FROM alliance_operations) AS alliance,(SELECT COUNT(*) FROM conquest_seasons) AS conquest,(SELECT COUNT(*) FROM pvp_protection) AS protection,(SELECT COUNT(*) FROM notification_outbox) AS notifications,(SELECT COUNT(*) FROM shogunate_rights) AS shogunate,(SELECT COUNT(*) FROM shogunate_requests) AS shogunate_requests,(SELECT COUNT(*) FROM battle_marches) AS battle_marches,(SELECT COUNT(*) FROM conquest_marches) AS conquest_marches,(SELECT COUNT(*) FROM castle_seats) AS castle_residency,(SELECT COUNT(*) FROM castle_successions) AS castle_successions,(SELECT 1 FROM castle_retired_campaigns LIMIT 1) AS retired_campaign,(SELECT campaign_retired FROM alliance_units LIMIT 1) AS retired_unit,(SELECT COUNT(*) FROM external_troop_accounts) AS maintenance_accounts,(SELECT COUNT(*) FROM external_troop_snapshots) AS maintenance_snapshots').first();
     } catch { fail(503, 'SERVICE_UNAVAILABLE', '通信サービスの準備中です。'); }
     return {ok:true,status:'ready',version:API_VERSION,features:API_FEATURES};
@@ -2932,7 +2971,7 @@ async function route(request, env, now) {
     const room = await roomFor(db,user,channel,url.searchParams.get('target'));
     const afterText = url.searchParams.get('after') || '0';
     if (!/^\d{1,15}$/.test(afterText)) fail(400,'INVALID_CURSOR','読み込み位置が正しくありません。');
-    const after=Number(afterText),known=contentRevisionInput(url),access=accountCommitGuard(user),channelGuard=channel==='admin'?STAFF_CHAT_GUARD:channel==='guild'?GUILD_MEMBER_GUARD:'1',channelArgs=channel==='admin'?[user.id,user.id]:channel==='guild'?[user.id,user.guild_id]:[],guard=channelGuard+' AND '+access.sql,guardParams=[...channelArgs,...access.args];
+    const after=Number(afterText),known=contentRevisionInput(url),access=chatAccessGuard(user,channel,url.searchParams.get('target')),guard=access.sql,guardParams=access.args;
     // Revision and messages share one snapshot. A stale delta cursor is replaced
     // by the latest page, so deleted messages cannot remain in a merged cache.
     const query=MESSAGE_SELECT+` CROSS JOIN moderation_state mc WHERE mc.id=1 AND m.room_key=? AND ${guard}
@@ -2943,26 +2982,28 @@ async function route(request, env, now) {
       stmt(db,'SELECT DISTINCT user_id FROM (SELECT m.user_id FROM messages m WHERE m.room_key=? AND '+guard+' ORDER BY m.id DESC LIMIT 100)',room,...guardParams),
       stmt(db,'SELECT content_revision FROM moderation_state WHERE id=1')
     ]);
-    const allowed=rows(read[0])[0];if(!allowed){await requireAccountAccess(db,user);fail(403,channel==='admin'?'STAFF_CHAT_REQUIRED':'GUILD_REQUIRED','このチャットの参加権限がありません。');}
+    const allowed=rows(read[0])[0];if(!allowed){await requireAccountAccess(db,user);fail(403,access.code,'このチャットの参加権限がありません。');}
     const contentRevision=Number(rows(read[3])[0].content_revision),reset=known!==contentRevision,delta=after>0&&!reset,messages=rows(read[1]).map(mapMessage);
     if(!delta)messages.reverse();
+    chatResponseGuards.set(request,{user,access,contentRevision});
     return {ok:true,channel,contentRevision,reset,messages,playerEvaluations:evaluationUpdates([...messages.map(message=>message.userId),...rows(read[2]).map(row=>row.user_id)]),nextAfter:messages.at(-1)?.id||(delta?after:0),hasMore:messages.length===100};
   }
   if (path === '/chat' && method === 'POST') {
-    const body=await readBody(request), channel=textField(body.channel,'チャット種別',12), text=textField(body.text,'メッセージ',300);
+    const body=await readBody(request), channel=textField(body.channel,'チャット種別',12), text=textField(body.text,'メッセージ',300),metadata=chatMetadata(body);
     const room=await roomFor(db,user,channel,body.target);
     await budget(db,'chat:'+user.id,1,5000,now);
-    const access=accountCommitGuard(user),guard=(channel==='admin'?STAFF_CHAT_GUARD:channel==='guild'?GUILD_MEMBER_GUARD:'1')+' AND '+access.sql,guardParams=[...(channel==='admin'?[user.id,user.id]:channel==='guild'?[user.id,user.guild_id]:[]),...access.args];
+    const access=chatAccessGuard(user,channel,body.target),context=chatContextGuard(user,channel,body.target,room,metadata);
+    if(metadata.replyToId!==null||metadata.mentionIds.length)await checkChatContext(db,user,access,context);
     const audience=channel==='friend'?{kind:'person',id:idField(body.target,'友達の識別子')}:channel==='guild'?{kind:'guild',id:user.guild_id}:{kind:channel==='admin'?'officials':'public'};
     const register=await resolveMessageRegister(db,user,audience,now),spoken=await register.write(text);
-    const peerGuard=channel==='friend'?" AND EXISTS(SELECT 1 FROM friendships WHERE user_a=? AND user_b=? AND status='accepted')":'';
-    const peers=channel==='friend'?pair(user.id,audience.id):[];
-    const inserted=await stmt(db,'INSERT INTO messages(room_key,channel,user_id,body,created_at) SELECT ?,?,?,?,? WHERE '+guard+peerGuard+' AND '+register.guard.sql+' RETURNING id',room,channel,user.id,spoken,now,...guardParams,...peers,...register.guard.args).first();
-    if(!inserted){await requireAccountAccess(db,user);await roomFor(db,await getUser(db,user.id),channel,body.target);fail(409,'MESSAGE_AUDIENCE_CHANGED','宛先の状況が変わりました。もう一度送信してください。');}
+    const inserted=await stmt(db,'INSERT INTO messages(room_key,channel,user_id,body,created_at,reply_to_id,mentions_json) SELECT ?,?,?,?,?,?,? WHERE '+access.sql+' AND '+context.sql+' AND '+register.guard.sql+' RETURNING id',room,channel,user.id,spoken,now,metadata.replyToId,JSON.stringify(metadata.mentionIds),...access.args,...context.args,...register.guard.args).first();
+    if(!inserted){await requireAccountAccess(db,user);await roomFor(db,await getUser(db,user.id),channel,body.target);await checkChatContext(db,user,access,context,{conflict:true});fail(409,'MESSAGE_AUDIENCE_CHANGED','宛先の状況が変わりました。もう一度送信してください。');}
     await requireAccountAccess(db,user);
-    const message=await stmt(db,MESSAGE_SELECT+' WHERE m.id=?',inserted.id).first();
+    const read=await db.batch([stmt(db,MESSAGE_SELECT+' WHERE m.id=? AND m.room_key=? AND '+access.sql,inserted.id,room,...access.args),stmt(db,'SELECT content_revision FROM moderation_state WHERE id=1')]);
+    const message=rows(read[0])[0],contentRevision=Number(rows(read[1])[0].content_revision);
     if(!message){await requireAccountAccess(db,user);fail(409,'CONTENT_CHANGED','投稿が更新されました。最新の一覧を確認してください。');}
-    return {ok:true,message:mapMessage(message),contentRevision:Number((await stmt(db,'SELECT content_revision FROM moderation_state WHERE id=1').first()).content_revision)};
+    chatResponseGuards.set(request,{user,access,contentRevision});
+    return {ok:true,message:mapMessage(message),contentRevision};
   }
   if (path === '/guilds' && method === 'GET') {
     const result=await stmt(db,GUILD_SELECT+' ORDER BY member_count DESC,g.name LIMIT 50').all();
@@ -3130,6 +3171,7 @@ export default {
       // A battle may already be committed. Withdraw only stale private advice
       // so its receipt and command reconciliation remain successful/replayable.
       if(defenseGuard&&visible.progress&&!await stmt(env.DB,'SELECT 1 AS event_defense_current WHERE '+defenseGuard.sql,...defenseGuard.args).first()){visible.progress.defenseAdviser=null;visible.progress.battleEligibility={canAttack:false,reason:'refresh_required'};}
+      await verifyChatResponse(env.DB,request);
       return response(visible,200,origin);
     }catch(error){
       const authenticated=authenticatedRequests.get(request);if(authenticated)try{await requireAccountAccess(env.DB,authenticated);}catch(accessError){error=accessError;}

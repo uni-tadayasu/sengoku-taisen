@@ -60,6 +60,9 @@ jobs:
       - uses: actions/setup-node@v7.1.0
         with:
           node-version: '22'
+          cache: npm
+      - name: Install the pinned asset compiler
+        run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Check game entry and audition syntax
         run: |
           node tools/build-game-entry.cjs --check

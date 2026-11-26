@@ -358,3 +358,138 @@ html:not(.sengoku-desktop-fit) .letters-dialog[data-touch-compact] .letters-feed
   padding: 6px 12px;
   font-size: 13px;
 }
+
+/* Keep the community's controls compact on desktop as well as touch screens.
+   A single tab strip leaves the available height to the current conversation. */
+.social-dialog .social-header {
+  gap: 12px;
+  min-width: 0;
+  padding: 9px 16px;
+}
+.social-dialog .social-header-mon { width: 38px; height: 38px; }
+.social-dialog .social-header .social-eyebrow { display: none; }
+.social-dialog .social-header h1 { font-size: 24px; line-height: 1.3; letter-spacing: .06em; }
+.social-dialog .social-header-status { min-width: 0; font-size: 13px; }
+.social-dialog .social-header-status small { margin-top: 0; font-size: 11px; }
+.social-dialog .social-header .social-icon-button { flex: none; width: 44px; height: 44px; }
+.social-dialog .social-tabs {
+  display: flex;
+  flex: none;
+  flex-wrap: nowrap;
+  gap: 2px;
+  min-width: 0;
+  max-width: 100%;
+  padding: 0 8px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scroll-padding-inline: 8px;
+  scrollbar-width: thin;
+}
+.social-dialog .social-tabs::-webkit-scrollbar { display: block; height: 4px; }
+.social-dialog .social-tabs button {
+  flex: 0 0 auto;
+  min-height: 44px;
+  gap: 6px;
+  padding: 8px 11px;
+  font-size: 14px;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+.social-dialog .social-tabs button svg { width: 17px; height: 17px; }
+.social-dialog .social-body { min-width: 0; scrollbar-gutter: stable; }
+.social-dialog .social-footer { padding: 8px 16px; font-size: 12px; line-height: 1.5; }
+
+/* The body is the only profile scroller. A natural-height inner grid prevents
+   illustrated cards (overflow:hidden) from collapsing to their padding when
+   the dialog is shorter than their combined content. */
+.social-dialog .social-profile-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-auto-rows: max-content;
+  align-items: start;
+  align-content: start;
+  gap: 16px;
+  min-width: 0;
+}
+.social-dialog .social-profile-layout > * { min-width: 0; }
+.social-dialog .social-profile-layout > :not(.social-profile-name-section):not(#social-avatar-editor) { grid-column: 1 / -1; }
+.social-dialog .social-profile-overview {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--sc-line);
+}
+.social-dialog .social-profile-overview .social-profile-heading {
+  flex: 1 1 320px;
+  align-items: flex-start;
+  gap: 14px;
+  min-width: 0;
+  margin: 0;
+}
+.social-dialog .social-profile-heading > #social-profile-avatar { flex: none; margin-top: 2px; }
+.social-dialog .social-profile-heading :is(.player-evaluation-name, .sengoku-premium-name) {
+  white-space: normal;
+  overflow: visible;
+  overflow-wrap: anywhere;
+  word-break: normal;
+  text-overflow: clip;
+}
+.social-dialog .social-profile-details { min-width: 0; overflow-wrap: anywhere; }
+.social-dialog .social-profile-details h2 { margin: 0; font-size: 24px; line-height: 1.4; }
+.social-dialog .social-profile-details p { margin: 4px 0; }
+.social-dialog .social-profile-links { display: flex; flex-wrap: wrap; gap: 4px 12px; }
+.social-dialog .social-profile-links .social-text-button { min-height: 44px; padding: 6px 0; }
+.social-dialog .social-profile-overview .social-profile-id {
+  display: block;
+  flex: 0 1 290px;
+  min-width: 0;
+  padding: 10px 12px;
+}
+.social-dialog .social-profile-id code { display: block; margin-top: 3px; font-size: 12px; }
+.social-dialog .social-profile-layout .social-profile-section {
+  min-width: 0;
+  height: auto;
+  max-height: none;
+  margin: 0;
+  padding: 18px;
+  border: 1px solid var(--sc-line);
+  border-radius: 8px;
+  overflow: visible;
+}
+.social-dialog .social-profile-layout .social-profile-section.illustrated-item::before { border-radius: inherit; }
+.social-dialog .social-profile-layout .social-profile-section h3 { margin: 0 0 10px; font-size: 19px; line-height: 1.5; }
+.social-dialog .social-profile-layout .social-profile-section p { font-size: 15px; line-height: 1.75; }
+.social-dialog .social-profile-layout .social-inline-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  margin: 14px 0;
+}
+.social-dialog .social-profile-layout .social-actions { flex-wrap: wrap; align-items: stretch; gap: 8px; }
+.social-dialog .social-profile-layout .social-button { min-height: 44px; white-space: normal; }
+.social-dialog .social-profile-layout .social-profile-devices .social-actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr));
+}
+.social-dialog .social-profile-layout .social-profile-devices .social-notice { margin-top: 14px; }
+.social-dialog .social-profile-layout .avatar-editor-heading { align-items: flex-start; gap: 12px; }
+.social-dialog .social-profile-layout .avatar-editor-heading .social-avatar { width: 60px; min-width: 60px; height: 60px; }
+.social-dialog .social-profile-layout .avatar-crop { grid-template-columns: minmax(0, 1fr); gap: 12px; padding: 14px; }
+.social-dialog .social-profile-layout .lord-own-section { margin: 0; }
+.social-dialog .social-profile-disconnect { padding-top: 4px; }
+.social-dialog .social-profile-disconnect .social-text-button { min-height: 44px; white-space: normal; }
+@media (min-width: 800px) {
+  .social-dialog .social-profile-layout { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 600px) {
+  .social-dialog .social-profile-layout { gap: 12px; }
+  .social-dialog .social-profile-overview .social-profile-id { flex-basis: 100%; }
+  .social-dialog .social-profile-layout .social-profile-section { padding: 14px; }
+  .social-dialog .social-profile-details h2 { font-size: 22px; }
+}
+@media (max-width: 420px) {
+  .social-dialog .social-profile-layout .social-inline-form { grid-template-columns: minmax(0, 1fr); }
+}

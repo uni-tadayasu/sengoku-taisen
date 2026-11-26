@@ -1,9 +1,9 @@
 /* 本体は先に保存。大きな絵巻は、実際に開いたものから保存します。 */
-const RELEASE='5.1.0-20261126';
+const RELEASE='5.1.1-20261126';
 const CACHE='sengoku-taisen-v'+RELEASE;
 const scopeURL=()=>self.registration?.scope||self.location.origin+'/';
 const currentMatch=(request,name=CACHE)=>caches.open(name).then(cache=>cache.match(request));
-const pages=new Set(['./','./guide/','./guide/data-recovery/','./about/','./premium/','./sengoku-vs/','./press/','./tools/music-audition.html']);
+const pages=new Set(['./','./guide/','./guide/data-recovery/','./about/','./premium/','./sengoku-vs/','./press/','./news/','./tools/music-audition.html']);
 const optionalCode=new Set([
   './promotion.css','./promotion-share.js','./guide.css','./share.css','./brand-discovery.css','./public-luxury.js','./public-luxury.css','./premium-catalog.js','./premium.js','./premium.css',
   './interaction-motion.js','./interaction-motion.css','./selection-lock.js','./selection-lock.css','./image-protect.js','./image-protect.css','./button-artwork.css',
@@ -152,7 +152,9 @@ self.addEventListener('fetch', event => {
   const indexURL=new URL('index.html',scopeURL()).href;
   const cacheKey=page?(pageKey==='./'?indexURL:new URL(pageKey,scopeURL()).href):request.url;
   const updateVisit=pageKey==='./'&&!!chosenRelease(url.href);
-  const refresh=page&&!updateVisit&&(url.search||request.cache==='reload'||request.cache==='no-cache');
+  // The release archive is useful offline, but each connected news visit
+  // should see the latest public announcement, even with an older game tab.
+  const refresh=page&&!updateVisit&&(pageKey==='./news/'||url.search||request.cache==='reload'||request.cache==='no-cache');
   const offline=async (cached,cacheName)=>{
     if(cached)return cached;
     if(page&&pageKey!=='./')return Response.redirect(scopeURL(),302);

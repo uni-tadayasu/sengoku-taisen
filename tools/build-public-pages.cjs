@@ -7,6 +7,7 @@ const path = require('node:path');
 const renderSharePage = require('./share-page.cjs');
 const renderAboutContent = require('./about-content.cjs');
 const renderPressContent = require('./press-content.cjs');
+const { releases, releaseId, renderNewsContent, renderRss, validateReleases } = require('./news-content.cjs');
 const { pageSecurity } = require('./page-security.cjs');
 const renderPremiumPage = require('./premium-page.cjs');
 const root = path.resolve(__dirname, '..');
@@ -17,10 +18,11 @@ const brandEdition = /-(\d{8})\.png$/.exec(site.favicon.path)?.[1];
 if (!brandEdition) throw Error('site-metadata.json: dated brand artwork is required');
 // Dates are editorial inputs. A new build or deployment must not change them.
 if (site.schemaVersion !== 1 || new URL(origin).origin !== origin || !origin.startsWith('https://')) throw Error('site-metadata.json: canonical HTTPS origin is required');
-for (const key of ['home', 'share', 'premium', 'guide', 'recovery', 'about', 'press']) {
+for (const key of ['home', 'share', 'premium', 'guide', 'recovery', 'about', 'press', 'news']) {
   const page = site.pages[key];
   if (!page || !/^\/(?:[a-z0-9-]+\/)*$/.test(page.path) || !page.title || !page.description || !/^\d{4}-\d{2}-\d{2}$/.test(page.dateModified)) throw Error(`site-metadata.json: invalid ${key} page`);
 }
+validateReleases(site);
 const esc = value => String(value).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
 const absolute = relative => new URL(relative, `${origin}/`).href;
 const canonical = key => absolute(site.pages[key].path);
@@ -125,13 +127,18 @@ function quickTopics(key, p) {
       ['#collection','収録内容','武将・城・施設の数と成長'], ['#artwork','戦国の絵巻','人物・建物の作品資料'],
       ['#geography','地図と出典','拠点・地形の参考資料']
     ],
+    news: [
+      ['#' + releaseId(releases[0]), '最新の更新', 'Ver.' + releases[0].version + 'の主な変更'],
+      ['#follow-updates', '更新情報を受け取る', 'RSSと公式の紹介動画'],
+      [p.dir('guide'), '遊び方を確認', '操作・内政・武将・合戦']
+    ],
     press: [
       ['#press-facts','作品情報を確認','料金・端末・ゲームの特徴'],
       ['#press-media','素材を保存','画像・ロゴ・短い紹介動画'],
       ['#press-copy','紹介文を使う','記事・SNS向けの日本語文例']
     ]
   }[key];
-  const title = {guide:'目的から探す', recovery:'手元のデータから選ぶ', about:'作品資料を開く', press:'紹介に必要なものを探す'}[key];
+  const title = {guide:'目的から探す', recovery:'手元のデータから選ぶ', about:'作品資料を開く', press:'紹介に必要なものを探す', news:'新しい戦国VSを知る'}[key];
   return `<nav class="guide-quick" aria-labelledby="quick-topics-title"><div class="quick-heading"><h2 id="quick-topics-title">${title}</h2><a class="guide-quick-all" href="#page-contents">すべての項目を見る</a></div><ul>${topics.map(([href,title,description])=>`<li><a href="${href}"><strong>${title}</strong><span>${description}</span></a></li>`).join('')}</ul></nav>`;
 }
 
@@ -154,11 +161,11 @@ function guideContent(p) {
       <p class="lead-paragraph">画面幅に合わせてメニューと操作欄が切り替わります。目的の機能が見つからないときは<strong>「すべてのメニュー」</strong>を開き、機能名や目的で検索してください。「育成」「戦い」などの目的から、必要な画面を見つけられます。</p>
       ${table('端末ごとの基本操作', ['端末', '操作と画面の使い方'], [
         ['PC', 'マウスのクリックとホイールで操作します。Tabキーでボタンや入力欄へ移り、Enterキーで選択できます。左側のメニューから移動でき、「すべてのメニュー」では名前や目的で探せます。入力中や別の画面を開いているとき以外は、Ctrl+K（MacはCommand+K）でもメニューを開けます。'],
-        ['スマホ', '画面下部の「城下町」「天下地図」「軍団編成」「メニュー」「交流」から、よく使う画面へ移動します。「メニュー」を開くと、ほかのすべての機能を探せます。一覧や本文は上下へスクロールし、地図の拡大・縮小は地図内の操作を使います。'],
+        ['スマホ', '画面下部のショートカットから、よく使う画面へ移動します。3つの機能を自分で選んで保存でき、「メニュー」からほかの機能も探せます。一覧や本文は上下へスクロールし、地図の拡大・縮小は地図内の操作を使います。'],
         ['タブレット・狭いPC', 'ウィンドウ幅や端末の向きに応じた配置で操作できます。縦向きでも横向きでも同じ機能を利用でき、幅が狭いときはコンパクトなメニューになります。']
       ])}
       <p>「すべてのメニュー」の<strong>「機能名や目的で検索」</strong>には、例えば「兵」「報酬」「保存」などを入力できます。検索を消すと全項目へ戻ります。各項目の星で<strong>最大6件をお気に入り</strong>に登録できます。検索欄から上下の矢印キーで項目へ移り、Enterキーでも開けます。メニューの選択だけで、出陣や資源の消費は行いません。</p>
-      <p>城下町の<strong>「本拠」「施設」「報告」</strong>を押すと、それぞれの操作欄へ移動できます。施設アイコンと施設名・Lvは、画面幅に応じて間隔を調整します。町並みが小さく、すべての表示を収められない場合は、町並みのそばにある施設一覧で名前とLvを確認できます。</p>
+      <p>城下町の<strong>「本拠」「施設」「報告」</strong>を押すと、タブを切り替えて必要な操作欄を開けます。施設管理・軍団編成・天下地図・任務へ直接進むボタンも使えます。施設アイコンと施設名・Lvは、画面幅に応じて間隔を調整します。町並みが小さく、すべての表示を収められない場合は、町並みのそばにある施設一覧で名前とLvを確認できます。</p>
       <h3>迷ったら「ヒント」、操作に困ったら「保存・設定」</h3>
       <p><strong>「ヒント」</strong>は今の領国に合う次の行動を案内します。<strong>「保存・設定」</strong>は「音・表示」「保存・引き継ぎ」「便利な機能」「戦役の設定」の4分類です。目的の項目を開き、音量やバックアップなどを確認できます。初めての人は、まず城下町の田畑・商家と軍団を整え、戦いの前に軍師の提案を確認すると進めやすくなります。</p>
       <p>入力欄で検索・絞り込みを使うときは、条件を解除すると元の一覧へ戻れます。画面を閉じるときは、その画面の<strong>「閉じる」</strong>を使ってください。保存・引き継ぎの操作は、<a href="${p.dir('guide/data-recovery')}">データ復元ガイド</a>で手順を確認できます。</p>
@@ -358,6 +365,9 @@ function guideContent(p) {
       <p>「交流」で領主名を登録すると、世界チャット、同盟、フレンド、郵便などを使えます。「接続一覧」では現在オンラインの領主と所属・位階・購入商品の印を確認できます。同じ領主の複数端末は一人にまとめて表示されます。</p>
       <p>登録後は、交流の間の本人プロフィールにある「領主名を変更」から名前を変更できます。領主ID、セーブ、購入済みの商品は引き継がれます。他の領主と重複する名前は使用できません。</p>
       <p>接続状態は定期的に更新され、直近90秒以内に接続確認のあった領主をオンラインとして表示します。端末を閉じた直後などは、表示が変わるまで少し時間がかかります。</p>
+      <h3>チャットの返信とメンション</h3>
+      <p>世界・同盟・フレンドのチャットでは、発言の「返信」を押すと、返信先を確認しながら書けます。返信先は送信前に「解除」で取り消せます。「@ メンション」または入力中の @ から宛先を選び、一度に8人まで指定できます。宛先の × を押すと解除できます。メンション先は発言に表示され、自分宛てのものには「あなた宛て」と表示されます。</p>
+      <p>パソコンでは候補を上下キーで選び、Enterで確定、Escで閉じられます。文章はEnterで送信、Shift+Enterで改行します。スマートフォンでは入力欄で改行し、「送信」ボタンで届けます。送信に失敗した場合は入力が残るため、案内を確認して再送してください。下書きは、この画面を利用している間、会話ごとに保持します。</p>
       <h3>御触書と領主の達成</h3>
       <p>画面上部の「御触書」にはゲームからのお知らせと、領主の名前付きの達成記録を表示します。「御触書」を押すか、「交流」→「御触書」を開くと、達成内容と日本時間の日時を一覧で読めます。30秒ごとに更新し、以前の知らせも確認できます。</p>
       <p>達成記録はサーバーに反映されたゲームの進行をもとに届けます。私信や同盟金庫の明細は公開のお知らせに表示しません。</p>
@@ -603,6 +613,10 @@ function pressContent(p) {
   return renderPressContent(p, { section, table, site });
 }
 
+function newsContent(p) {
+  return renderNewsContent(p, { section, site });
+}
+
 const pages = [
   {
     ...site.pages.share,
@@ -647,6 +661,15 @@ const pages = [
     heroAction: '素材をまとめて保存', heroHref: 'assets/promo/sengoku-vs-press-kit-20261126.zip', secondary: ['ゲーム紹介を読む', 'sengoku-vs'],
     toc: [['press-facts','作品情報'],['press-media','画像・動画・ロゴ'],['press-copy','日本語の紹介文'],['press-english','English information']],
     content: pressContent, closingTitle: '一城から、広がる戦記。', closingText: '紹介の前に、ブラウザで戦国VSをお試しください。'
+  },
+  {
+    ...site.pages.news,
+    file: 'news/index.html', slug: 'news', key: 'news', label: '更新情報',
+    eyebrow: '公式の更新情報', heading: '戦国VSのいま',
+    lead: '操作画面の改善、城と武将の新しい仕組み、遊び方に関わる変更をお伝えします。気になる更新から、詳しいガイドへ進めます。',
+    heroAction: 'ゲームを開く', secondary: ['RSSで更新を受け取る', '#follow-updates'],
+    toc: [...releases.map(item => [releaseId(item), 'Ver.' + item.version + ' · ' + item.title]), ['follow-updates', 'RSS・紹介動画']],
+    content: newsContent, closingTitle: '育てた領国の、その先へ。', closingText: 'いつもの城下町から、新しい戦国VSをお楽しみください。'
   }
 ];
 
@@ -657,7 +680,7 @@ function render(page) {
   if (page.key === 'recovery') breadcrumbItems.push({name:'遊び方',url:canonical('guide'),href:p.dir('guide')});
   breadcrumbItems.push({name:page.label,url});
   const jsonld = structuredData(page.key, breadcrumbItems);
-  const nav = ['share','guide','recovery','about','premium'].map(key=>pages.find(item=>item.key===key)).map(({key, label, slug}) =>
+  const nav = ['share','guide','recovery','about','premium','news'].map(key=>pages.find(item=>item.key===key)).map(({key, label, slug}) =>
     `<a href="${p.dir(slug)}"${page.key === key ? ' aria-current="page"' : ''}>${esc(label)}</a>`
   ).join('');
   const header = `<header class="site-header"><div class="site-header-inner page-width">
@@ -698,7 +721,7 @@ function render(page) {
   <script type="application/ld+json">${jsonScript(jsonld)}</script>
   <link rel="stylesheet" href="${p.file('button-artwork.css')}?v=${release}">
   <link rel="stylesheet" href="${p.file('public-luxury.css')}?v=${release}">
-${page.key === 'press' ? `  <link rel="stylesheet" href="${p.file('promotion.css')}?v=${release}">\n  <script defer src="${p.file('promotion-share.js')}?v=${release}"></script>\n` : ''}  <script defer src="${p.file('public-luxury.js')}?v=${release}"></script>
+${['press','news'].includes(page.key) ? `  <link rel="stylesheet" href="${p.file('promotion.css')}?v=${release}">\n  <script defer src="${p.file('promotion-share.js')}?v=${release}"></script>\n` : ''}  <script defer src="${p.file('public-luxury.js')}?v=${release}"></script>
 </head>
 <body class="public-luxury" data-page="${page.key}">
   <a class="skip-link" href="#content">本文へ移動</a>
@@ -756,6 +779,7 @@ function updateHome() {
   html = html.replace(/<title>[\s\S]*?<\/title>/i, `<title>${esc(page.title)}</title>`);
   for (const entry of metadataEntries('home')) html = replaceHeadTag(html, 'meta', attrs => attrs[entry[0]] === entry[1], metaTag(entry));
   html = replaceHeadTag(html, 'link', attrs => attrs.rel === 'canonical', `<link rel="canonical" href="${canonical('home')}">`);
+  html = replaceHeadTag(html, 'link', attrs => attrs.rel === 'alternate' && attrs.type === 'application/rss+xml', `<link rel="alternate" type="application/rss+xml" title="戦国VS 公式更新情報" href="${origin}/news/feed.xml">`);
   html = withBrandLinks(html);
   html = replaceHeadTag(html, 'meta', attrs => attrs.name === 'theme-color', `<meta name="theme-color" content="${esc(site.themeColor)}">`);
   html = html.replace(/(<a\b[^>]*class="edition-wordmark"[^>]*><img\s+src=")[^"]+("[^>]*>)/, (_, before, after) => before + site.favicon.path + after);
@@ -783,7 +807,7 @@ function updateHome() {
   if (!hasLaunchGuide) html = html.replace(/<p class="launch-copyright">/, `${launchGuide}\n      <p class="launch-copyright">`);
   html = html.replace(/(<p class="launch-copyright">)([\s\S]*?)(<\/p>)/, (_, before, content, after) => {
     const platform = content.includes('©') ? content.slice(0, content.indexOf('©')) : '';
-    return before + platform + `© <a href="about/" aria-label="${esc(site.publisher)}の戦国VSについて">${esc(site.publisher)}</a> · <a href="press/">紹介素材</a>` + after;
+    return before + platform + `© <a href="about/" aria-label="${esc(site.publisher)}の戦国VSについて">${esc(site.publisher)}</a> · <a href="news/">更新情報</a> · <a href="press/">紹介素材</a>` + after;
   });
   html = html.replace(/(<a href="about\/" data-action="about">)[^<]*(<\/a>)/, '$1ゲーム概要・出典$2');
   html = html.replace(/(<div class="version-label">)群雄集結 · Ver\. [^<]+(<\/div>)/, `$1群雄集結 · Ver. ${esc(site.version)}$2`);
@@ -827,6 +851,7 @@ outputs.set('index.html', updateHome());
 outputs.set('404.html', updateNotFound());
 outputs.set('manifest.webmanifest', updateManifest());
 outputs.set('sitemap.xml', sitemap());
+outputs.set('news/feed.xml', renderRss(site));
 const imageEntries = Object.entries(site.pages).map(([key, page]) => {
   const locations = [page.artwork.path, ...(page.additionalImages || [])];
   return `  <url><loc>${esc(canonical(key))}</loc>\n` + locations.map(file =>
@@ -845,7 +870,8 @@ const securePage = pageSecurity(fs.readFileSync(path.join(root, 'config.js'), 'u
 for (const [name, html] of outputs) {
   if (name.endsWith('.html')) {
     const currentBrand = html.replace(/assets\/responsive\/(brand|emblem)-(?:\d{8}-)?(\d+)\.webp/g, (_, kind, width) => `assets/responsive/${kind}-${brandEdition}-${width}.webp`);
-    const themed = replaceHeadTag(currentBrand, 'meta', attrs => attrs.name === 'theme-color', `<meta name="theme-color" content="${esc(site.themeColor)}">`);
+    let themed = replaceHeadTag(currentBrand, 'meta', attrs => attrs.name === 'theme-color', `<meta name="theme-color" content="${esc(site.themeColor)}">`);
+    if (name === 'index.html' || pages.some(page => page.file === name)) themed = replaceHeadTag(themed, 'link', attrs => attrs.rel === 'alternate' && attrs.type === 'application/rss+xml', `<link rel="alternate" type="application/rss+xml" title="戦国VS 公式更新情報" href="${origin}/news/feed.xml">`);
     outputs.set(name, securePage(themed, name === 'index.html'));
   }
 }

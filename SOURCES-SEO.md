@@ -192,3 +192,16 @@ Googleは正確な `lastmod` を利用し、`priority` と `changefreq` は使�
 ## Ver.5.1.0の公開後通知（2026年11月26日09:38 JST）
 
 本番反映後に `node tools/notify-indexnow.mjs --submit` を1回実行し、7つの正規URLの更新通知がHTTP 200で受理された。確認キー・サイトマップ・7公開ページの事前検証も成功した。結果は `received`、`keyValidationPending: false`、`indexingVerified: false`。Google向けの索引登録依頼や検索掲載の確認ではない。
+
+
+## 公式更新情報とRSSの公開用整備（2026年11月26日）
+
+`/news/` に、遊び方に関わる主な更新をまとめます。更新ごとに独立した薄いページを増やさず、1ページ内の版番号ごとの節で案内します。本文は通常のHTMLとして読め、攻略ガイド・商品案内・公式素材・公開済み紹介動画へ進めます。公開ページはこのページを加えた8つの正規URLとなり、自己参照canonical・ページ別metadata・JSON-LD・サイトマップ・画像サイトマップ・ナビゲーションを同じ生成処理でそろえます。
+
+継続的に読む入口として `/news/feed.xml` を追加し、全8公開ページの `rel="alternate"` から見つけられるようにします。RSSの情報は `tools/news-releases.json` の公開用本文から生成し、項目のGUIDは `/news/#v5-1-0` のような版番号の節URLを使います。ビルドのたびにGUIDや日付を変更しません。確認できる日付の精度を守り、更新日だけが分かる記録には `dc:date` を使い、推測した時分秒を `pubDate` に入れません。RSSは更新情報の購読用で、SNSへの自動投稿やプッシュ通知の追加ではありません。
+
+プレミアムの概要を実際の全8商品の案内に合わせ、攻略ガイドの城下町3タブ・モバイルの選べる3ショートカットも現在の画面へそろえました。既存のGoogle検証情報、robots方針、作品・運営者の識別子を保持し、架空のレビュー・評価・利用者数は追加しません。
+
+`tests/test-news-feed.py` は独立したXMLパーサーで出力を読み、RSS形式、固定GUID、実際に存在する節へのリンク、更新日の順序、8ページからの購読導線を確認します。既存の公開ページ・SEOテストは8URLで検査します。IndexNow CLIも固定した8正規URLを検証するよう更新しました。**この段落はソースの変更記録であり、今回の通知送信・検索掲載の完了記録ではありません。** 公開後の通知を実施した場合は、応答と日時を別途記録します。
+
+公開した更新内容を読者に伝える導線と、Googleに認識される段階は区別します。HTMLの本文・通常のリンク・明確な正規URLについては、[JavaScript SEOの基本](https://developers.google.com/search/docs/crawling-indexing/javascript/javascript-seo-basics)、[canonicalの指定](https://developers.google.com/search/docs/crawling-indexing/consolidate-duplicate-urls)、[サイトマップの作成と送信](https://developers.google.com/search/docs/crawling-indexing/sitemaps/build-sitemap)を参照しています。

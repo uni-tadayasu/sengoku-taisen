@@ -29,4 +29,7 @@
   <url><loc>https://www.kasai-solutions-inc.com/press/</loc>
     <image:image><image:loc>https://www.kasai-solutions-inc.com/assets/chronicle/court.webp</image:loc></image:image>
   </url>
+  <url><loc>https://www.kasai-solutions-inc.com/news/</loc>
+    <image:image><image:loc>https://www.kasai-solutions-inc.com/assets/chronicle/archive.webp</image:loc></image:image>
+  </url>
 </urlset>

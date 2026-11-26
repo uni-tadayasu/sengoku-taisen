@@ -1,6 +1,6 @@
 戦国VS（SENGOKU VS） 紹介・掲載用 基本情報
 更新日: 2026年11月26日
-公開版: Ver.5.1.0
+公開版: Ver.5.1.1
 
 キャッチコピー: 一城から、天下へ。
 制作・運営: KASAI SOLUTIONS
@@ -12,6 +12,8 @@
 公開済み紹介動画: https://www.youtube.com/watch?v=NWzewQEJyz0
 遊び方: https://www.kasai-solutions-inc.com/guide/
 引き継ぎ: https://www.kasai-solutions-inc.com/guide/data-recovery/
+更新情報: https://www.kasai-solutions-inc.com/news/
+更新情報のRSS: https://www.kasai-solutions-inc.com/news/feed.xml
 
 対応端末: PC・スマートフォン・タブレットのブラウザ。アプリのインストール不要。
 表示言語: 日本語。SENGOKU VSは作品名の英字表記です。ゲームUIと公式ガイドは現在日本語です。

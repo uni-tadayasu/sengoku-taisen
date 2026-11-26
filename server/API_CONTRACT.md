@@ -554,7 +554,7 @@ Requests are limited to 30 new raid attempts and 20 new diplomatic attempts per 
 | Method / path | Body / query | Result |
 |---|---|---|
 | GET `/chat` | `?channel=world|guild|friend|admin&target=…&after=…` | `{messages:message[],channel,nextAfter:number,hasMore:boolean,playerEvaluations}` |
-| POST `/chat` | `{channel,target?,text}` | `{message}` |
+| POST `/chat` | `{channel,target?,text,replyToId?:number|null,mentionIds?:string[]}` | `{message,contentRevision}` |
 
 Messages are limited to 300 Unicode characters. Sending is limited to one message per player per five seconds across channels. Reads return at most 100 messages.
 Without `after`, GET returns the newest 100 in chronological order; `after` is the numeric message ID returned in `nextAfter`.
@@ -562,6 +562,26 @@ Without `after`, GET returns the newest 100 in chronological order; `after` is t
 `guild` requires current membership; `target` is optional and, if supplied, must be the current guild ID.
 `friend` requires `target` to be a mutually accepted friend's user ID. The server derives the pair room in a consistent order.
 `admin` is restricted to the single primary operator and currently appointed support staff. Staff membership is checked from the database on each request and again in the actual private-message read/insert SQL. A dismissal that commits after authentication but before that SQL prevents both reads and sends with HTTP 403 `STAFF_CHAT_REQUIRED`. The client cannot choose the sender or supply operator/staff flags. Message role badges reflect each author's current server-owned role.
+
+### Replies and mentions
+
+`features.chatReplies` and `features.chatMentions` advertise support. Both additions are optional; old clients keep sending `{channel,target?,text}` and receive their existing message fields plus `replyToId:null`, `replyTo:null` and `mentions:[]`. Migration `0036_chat_replies_mentions` adds only `messages.reply_to_id` and `messages.mentions_json`; pre-existing rows and old Worker INSERTs that omit the columns keep those defaults.
+
+`replyToId` must be a positive safe-integer message ID or `null`. The parent must still exist in the exact same server-derived room and be readable by the sender. A message in another guild, another friend pair, or another channel cannot be quoted, even if its ID is known or the sender can independently access that room. The response includes one level of preview:
+
+```js
+{
+  replyToId: 123,
+  replyTo: {id:123,userId:"u_…",name:"領主名",text:"引用する本文",createdAt:"…",truncated:false},
+  mentions: [{userId:"u_…",name:"領主名",avatarVersion:null}]
+}
+```
+
+Preview text is at most 120 Unicode codepoints, with `truncated:true` when shortened. Names and photos are current server projections. Parent text is read from the original row on each request and is never copied into a reply or moderation record. After removal, existing replies retain `replyToId` and expose only `replyTo:{id:123,unavailable:true}`; they cannot restore the deleted body. A parent author's subsequent departure from a guild does not invalidate historical readable conversation. Replying does not automatically mention that author.
+
+`mentionIds` must be an array of at most eight distinct player IDs. The server verifies that each player exists and is not currently banned. Guild recipients must be current members of that guild; friend recipients are limited to the two participants; operator-room recipients must currently be the operator or staff. World mentions can name any existing available player. IDs are stored separately from message text, and names/avatars are resolved by the server, so client-supplied names, role flags and quote bodies are not trusted. A plain `@name` in text has no addressing effect without an explicit ID. There are no character offsets: the established honorific conversion can change text before storage. This metadata identifies recipients in the conversation; it does not send an external or push notification.
+
+Validation runs before submission and again in the guarded INSERT. Every private read and write verifies current room access, including mutual friendship; access and moderation content revision are checked again immediately before the response is returned. Errors are HTTP 400 `INVALID_REPLY`, `INVALID_MENTIONS`, `CHAT_REPLY_UNAVAILABLE` or `CHAT_MENTION_UNAVAILABLE`; a parent/recipient change during submission is 409 `CHAT_CONTEXT_CHANGED`. Revoked room access retains the existing 403 room error. A moderation purge after the read snapshot returns 409 `CONTENT_CHANGED` with no message payload; refresh the page and its `contentRevision` before retrying. The original 300-character and five-second limits still apply. The ordinary chat endpoint does not add request-ID deduplication in this change.
 
 ## Guilds
 

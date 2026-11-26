@@ -16,6 +16,7 @@ body.public-luxury {
 .public-luxury .site-header { background:var(--navy); border:0; border-bottom:3px double var(--gold); position:relative; z-index:3; }
 .public-luxury .site-header-inner { min-height:76px; gap:1.6rem; }
 .public-luxury .site-brand { gap:.65rem; }
+.public-luxury .site-brand>span { min-width:0; overflow-wrap:anywhere; }
 .public-luxury .site-brand img { width:48px; height:48px; }
 .public-luxury .site-brand b { font-weight:750; color:#fff5dc; letter-spacing:.08em; }
 .public-luxury .site-brand small,.public-luxury .footer-brand span { color:#cfb77d; letter-spacing:.19em; font:600 .75rem/1.3 Georgia,serif; }
@@ -56,6 +57,7 @@ body.public-luxury {
 .public-luxury .folio-hero .hero-lead { margin:0; color:#3d4b4b; font:500 1rem/1.85 var(--sans); }
 .public-luxury .share-tagline { margin:.35rem 0 .8rem; color:#6a422b; font:650 clamp(1.08rem,1.7vw,1.5rem)/1.55 var(--serif); }
 .public-luxury .hero-actions { display:flex; flex-wrap:wrap; align-items:center; gap:.45rem 1.2rem; margin:1.25rem 0 0; }
+.public-luxury .hero-actions .action-link { min-width:0; max-width:100%; text-align:center; overflow-wrap:anywhere; }
 .public-luxury .hero-actions .text-link,.public-luxury .share-platform a { color:#653522; text-underline-offset:4px; }
 .public-luxury .share-platform { margin:.8rem 0 0; color:#535c57; font-size:.875rem; line-height:1.55; }
 .public-luxury .share-platform a { display:inline; }
@@ -101,8 +103,8 @@ body.public-luxury {
 .public-search-empty { padding-inline:.8rem; }
 .public-current-chapter { padding:.7rem .75rem; margin-bottom:1rem; border:1px solid #8d815c; background:linear-gradient(120deg,#294350,#1b3444); }
 .public-current-chapter>span { display:block; color:#cfba8c; font-size:.875rem; line-height:1.5; }
-.public-luxury .public-current-chapter a { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; min-height:3.2em; overflow:hidden; padding:0; margin-top:.25rem; color:#fff0c9; font:600 .9375rem/1.6 var(--sans); text-decoration:none; }
-.public-luxury .toc-chapters ul { scrollbar-gutter:stable; max-height:min(45vh,30rem,calc(100dvh - 25rem)); }
+.public-luxury .public-current-chapter a { display:block; min-height:3.2em; padding:0; margin-top:.25rem; color:#fff0c9; font:600 .9375rem/1.6 var(--sans); text-decoration:none; overflow-wrap:anywhere; }
+.public-luxury .toc-chapters ul { scrollbar-gutter:stable; max-height:min(45vh,30rem); }
 .public-reading-progress { position:fixed; z-index:60; inset:0 0 auto; height:3px; pointer-events:none; }
 .public-reading-progress span { display:block; height:100%; transform:scaleX(0); transform-origin:left; background:#d5a661; }
 .public-luxury .article { max-width:none; min-width:0; margin:0; border:0; border-top:2px solid #243d46; padding:clamp(1.3rem,3.5vw,3rem) clamp(1.1rem,3.6vw,3.2rem);
@@ -115,10 +117,17 @@ body.public-luxury {
 .public-luxury .article h3 { color: #27353c; font-size: 1.115rem; }
 .public-luxury .article :is(p, ol, ul, th, td) { color: #354043; }
 .public-luxury .article .lead-paragraph { color: var(--paper-ink) !important; }
+.public-luxury .release-changes { margin:1.5rem 0; }
+.public-luxury .release-changes > div { padding:1rem 0; border-top:1px solid var(--paper-line); }
+.public-luxury .release-changes dt { color:var(--ink); font:700 1.08rem/1.6 var(--serif); }
+.public-luxury .release-changes dd { margin:.4rem 0 0; color:#354043; line-height:1.85; }
+.public-luxury :is(.release-links,.news-follow) { display:flex; align-items:center; flex-wrap:wrap; gap:.65rem 1.25rem; }
+.public-luxury .release-links a { display:inline-flex; align-items:center; min-height:44px; text-underline-offset:4px; }
 .public-luxury .article strong { color: #202b30; }
 .public-luxury .article :is(.section-kicker, .collection-total b) { color: #884130; }
 .public-luxury .article :is(.table-note, .small-note, .collection-total span, .source-list small, .art-feature figcaption) { color: #505957; }
 .public-luxury .article a { color: var(--paper-accent); }
+.public-luxury .article a,.public-luxury .site-footer a,.public-luxury .share-platform a { min-width:0; overflow-wrap:anywhere; }
 .public-luxury .article a:hover { color: #5c291d; }
 .public-luxury .article p a { display: inline; }
 .public-luxury .article a:focus-visible, .public-luxury .guide-quick a:focus-visible { outline-color: #863c29; }
@@ -184,6 +193,8 @@ body.public-luxury {
 .public-luxury .site-footer { margin:0; border-top:3px double #ba9a61; background:#102338; }
 .public-luxury .footer-inner { padding-block:clamp(1.5rem,4vw,3rem); gap:.6rem 1.5rem; }
 .public-luxury .footer-brand { display:flex; align-items:baseline; gap:.65rem; color:#fff0ce; text-decoration:none; font:650 1.45rem/1.6 var(--serif); }
+.public-luxury .footer-inner>* { min-width:0; }
+.public-luxury .footer-brand { flex-wrap:wrap; }
 .public-luxury :is(.footer-nav a,.footer-note a,.footer-note,.copyright) { color:#d4d5c9; }
 .public-luxury .footer-note span { margin-left:1rem; }
 .public-luxury .footer-note a { display:inline; }
@@ -199,6 +210,16 @@ body.public-luxury {
 .public-luxury .lost-copy .text-link { display:inline-flex; align-items:center; min-height:44px; color:var(--paper-accent); }
 .public-luxury .lost-art { display:block; width:100%; height:100%; min-height:0; min-width:0; object-fit:cover; }
 .public-luxury .lost-copy footer { color:#55605d; font-size:.875rem; }
+/* Keep the whole desktop contents panel reachable when text is enlarged.
+   Short windows use normal page flow; their chapter list still has a positive
+   scroll area instead of subtracting a fixed header height from the viewport. */
+@media(min-width:901px) and (min-height:701px) {
+  .public-luxury .toc { max-height:calc(100dvh - 2rem); overflow-y:auto; overscroll-behavior:contain; scrollbar-gutter:stable; }
+  .public-luxury .toc-chapters ul { max-height:none; overflow:visible; }
+}
+@media(min-width:901px) and (max-height:700px) {
+  .public-luxury .toc { position:static; }
+}
 @media(max-width:1050px) and (min-width:901px) {
   .public-luxury .site-header-inner { column-gap:.8rem; }
   .public-luxury .header-navigation { gap:.6rem; }
@@ -232,7 +253,10 @@ body.public-luxury {
   .public-luxury .hero-copy { padding:1.15rem 1.1rem 1.3rem; }
   .public-luxury .folio-hero h1 { margin:.4rem 0 .6rem; font-size:clamp(1.8rem,6.7vw,2.45rem); }
   .public-luxury .share-hero h1 { font-size:clamp(2.65rem,10vw,3.7rem); }
-  .public-luxury .hero-actions { margin-top:.85rem; }
+  .public-luxury .hero-actions { margin-top:.85rem; align-items:stretch; }
+  /* Both actions need their own line: a long secondary link must not squeeze
+     the primary button into a one-character column. */
+  .public-luxury .hero-actions>a { flex:1 1 100%; width:100%; min-width:0; justify-content:center; text-align:center; overflow-wrap:anywhere; }
   .public-luxury .folio-index { margin-bottom:1.6rem; }
   .public-luxury .folio-index a { align-items:start; padding:.85rem .55rem; flex-direction:column; }
   .public-luxury .folio-index a>strong { font-size:1.55rem; }
@@ -246,12 +270,14 @@ body.public-luxury {
   .public-luxury .share-feature-list .feature-art { min-height:0; height:auto; aspect-ratio:2.55; }
   .public-luxury .share-support-copy { grid-template-columns:minmax(0,1fr); }
   .public-luxury .share-support-copy>section+section { padding:1rem 0 0; border:0; border-top:1px solid var(--paper-line); }
-  .public-luxury .reading-actions { left:auto; right:max(.45rem,env(safe-area-inset-right)); flex-wrap:nowrap; }
+  .public-luxury .reading-actions { left:auto; right:max(.45rem,env(safe-area-inset-right)); flex-wrap:wrap; }
   .public-luxury .reading-actions a { padding-inline:.75rem; }
   .public-luxury .reading-actions { max-width:calc(100% - max(.9rem,env(safe-area-inset-right)) - env(safe-area-inset-left)); gap:.25rem; }
-  .public-luxury .reading-actions a { white-space:nowrap; font-size:.875rem; }
+  .public-luxury .reading-actions a { min-width:0; white-space:normal; overflow-wrap:anywhere; text-align:center; font-size:.875rem; }
   .public-luxury .section-navigation { grid-template-columns:minmax(0,1fr); }
   .public-luxury .section-navigation .section-return { justify-self:start; }
+  .public-luxury .article .art-feature { grid-template-columns:minmax(0,1fr); gap:1rem; }
+  .public-luxury .crest-row { grid-template-columns:repeat(2,minmax(0,1fr)); }
   .public-luxury .data-table-wrap table:has(thead th:nth-child(3)) { min-width:30rem; }
   .public-luxury .footer-inner { grid-template-columns:1fr; }
   .public-luxury .footer-nav { justify-content:flex-start; gap:0 1.1rem; }

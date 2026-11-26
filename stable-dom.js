@@ -112,12 +112,29 @@
    if(index>=0){entry.node=candidates.splice(index,1)[0];known.add(entry.node);}
   }
  }
+ function matchKey(type,name,namespace,key,shape){return JSON.stringify([type,name,namespace,key,key===null?shape:null]);}
+ function indexRecords(parent,records){
+  const index=new Map();
+  for(const entry of records){
+   if(entry.node.parentNode!==parent)continue;
+   const key=matchKey(entry.type,entry.tag,entry.namespace,entry.key,entry.shape);
+   let bucket=index.get(key);if(!bucket){bucket={records:[],next:0};index.set(key,bucket);}
+   bucket.records.push(entry);
+  }
+  return index;
+ }
  function patchChildren(parent,oldRecords,freshNodes,options,stats){
   rebindMissing(parent,oldRecords);
+  // Large ledgers/rosters used to rescan every preceding sibling for each
+  // match. Keep source order within each compatible bucket, including repeated
+  // unkeyed rows and whitespace, while looking up each sibling just once.
+  // Tiny child lists avoid allocating an index at every nested text/span node.
+  const index=oldRecords.length>=16?indexRecords(parent,oldRecords):null;
   const available=new Set(oldRecords),nextRecords=[];let artwork=false;
   for(const fresh of freshNodes){
-   const key=element(fresh)?keyOf(fresh):null,s=shape(fresh);let previous;
-   if(key!==null)previous=oldRecords.find(r=>available.has(r)&&r.node.parentNode===parent&&r.key===key&&compatible(r,fresh));
+   const source=element(fresh)?attrs(fresh):null,key=source?keyOf(fresh,source):null,s=shape(fresh,source);let previous;
+   if(index){const bucket=index.get(matchKey(fresh.nodeType,source?tag(fresh):null,fresh.namespaceURI,key,s));if(bucket)previous=bucket.records[bucket.next++];}
+   else if(key!==null)previous=oldRecords.find(r=>available.has(r)&&r.node.parentNode===parent&&r.key===key&&compatible(r,fresh));
    else previous=oldRecords.find(r=>available.has(r)&&r.node.parentNode===parent&&r.key===null&&r.shape===s&&compatible(r,fresh));
    if(previous){available.delete(previous);artwork=patchRecord(previous,fresh,options,stats)||artwork;nextRecords.push(previous);}
    else {const added=record(fresh);nextRecords.push(added);stats.added++;if(element(fresh)&&(fresh.hasAttribute('data-art-url')||fresh.querySelector?.('[data-art-url]')))artwork=true;}

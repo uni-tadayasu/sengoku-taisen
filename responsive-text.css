@@ -1,0 +1,218 @@
+/* Content must remain readable when a panel narrows or text is enlarged.
+   Leave map canvases, portrait crops, and deliberately shortened list previews
+   to their own styles; these rules only change text and content layout. */
+
+#app #main :is(h1,h2,h3,h4,p,dt,dd),
+#modal :is(h1,h2,h3,h4,p,dt,dd),
+.cq-shell :is(h2,h3,h4,p,label),
+.events-dialog :is(h2,h3,h4,p,dt,dd),
+.moderation-dialog :is(h2,h3,h4,p,dt,dd) {
+  overflow-wrap: anywhere;
+}
+
+#app #main :is(h1,h2,h3,h4),
+#modal :is(h1,h2,h3,h4),
+#app #main .section-heading > *,
+#modal .modal-header > div {
+  min-width: 0;
+  max-width: 100%;
+}
+
+#app #main .section-heading {
+  flex-wrap: wrap;
+}
+
+#app #main .stat-row {
+  flex-wrap: wrap;
+  column-gap: 12px;
+  row-gap: 4px;
+}
+
+#app #main .stat-row > * {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+#app #main .town-lord-identity :is(.player-evaluation-name,.sengoku-premium-name) {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  overflow-wrap: anywhere;
+}
+
+#app #main .territory-row {
+  flex-wrap: wrap;
+}
+
+#app #main .territory-numbers {
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  margin-left: auto;
+}
+
+#app #main .territory-numbers > .base-durability {
+  min-width: 0;
+  width: min(100%,10rem);
+}
+
+#app #main .button,
+#modal .button,
+.cq-shell .cq-button,
+.events-dialog .events-button,
+.moderation-dialog .moderation-button {
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+/* Descriptions are information, not single-line previews. The building art
+   continues to be clipped by its original card/portrait container. */
+#app #main .building-card p {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  overflow-wrap: anywhere;
+}
+
+/* A bounded scrolling grid must scroll its natural-height rows. An auto row
+   can otherwise shrink a decorated (overflow:hidden) card to its padding. */
+.sengoku-desktop-fit .world-layout-real .castle-detail,
+.officer-choice-list,
+.court-message-list,
+.court-thread-list,
+.cq-castle-list {
+  grid-auto-rows: max-content;
+  align-content: start;
+}
+
+/* Keep both the label and every digit of a balance available. The old auto
+   value column could consume all of a narrow card's width. */
+#app #main .economy-row {
+  grid-template-columns: minmax(0,1fr) minmax(0,1.15fr);
+}
+
+#app #main .economy-row :is(dt,dd),
+#app #main .economy-breakdown :is(dt,dd),
+#app #main .recruit-recommendation strong,
+#app #main .recruit-preview :is(th,td),
+#modal .facility-maintenance :is(th,td) {
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+#app #main .recruit-recommendation strong {
+  max-width: 100%;
+}
+
+/* Recruiting, research and council totals share the same long-number risk.
+   A draw's NEW/duplicate label is part of the result, not a shortened title. */
+#app #main .army-muster-overview strong,
+#app #main .research-overview-metrics strong,
+#app #main .gacha-balance b,
+#app #main .gacha-source b,
+#modal .gacha-result-summary b,
+#modal .gacha-result-label,
+#modal .governor-result-summary b {
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+#app #main .gacha-source {
+  flex-wrap: wrap;
+  row-gap: 4px;
+}
+
+#app #main .gacha-source b {
+  margin-left: auto;
+  text-align: right;
+}
+
+/* The territorial search sits inside a clipped map frame. Explicitly shrink
+   its controls, and use a single column on phones rather than clipping one. */
+.cq-shell .cq-search {
+  grid-template-columns: minmax(0,1.5fr) minmax(0,1fr);
+}
+
+.cq-shell :is(label,input,select,textarea),
+.cq-shell :is(.cq-heading,.cq-search) > * {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.cq-shell :is(.cq-reserves,.cq-metrics) > div,
+:is(.events-progress,.events-adviser-stats,.moderation-counts) > div {
+  min-width: 0;
+}
+
+.cq-shell :is(.cq-reserves,.cq-metrics) :is(strong,small),
+:is(.events-progress,.events-adviser-stats,.moderation-counts) :is(dt,dd,small) {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+/* Size these columns from the actual panel width, including zoomed desktop
+   dialogs. Unlike a viewport-only breakpoint, this also protects side panes. */
+.cq-shell .cq-reserves {
+  grid-template-columns: repeat(auto-fit,minmax(min(100%,10rem),1fr));
+}
+
+.cq-shell .cq-metrics,
+.events-progress,
+.events-adviser-stats,
+.moderation-counts {
+  grid-template-columns: repeat(auto-fit,minmax(min(100%,9rem),1fr));
+}
+
+/* A native selector needs the whole row at phone widths. Range controls keep
+   their existing behavior, with the label above the slider when necessary. */
+@media (max-width: 480px) {
+  .cq-shell .cq-heading {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .cq-shell .cq-heading > .cq-button {
+    flex: none;
+    width: auto;
+    max-width: 100%;
+  }
+
+  .cq-shell .cq-search {
+    grid-template-columns: minmax(0,1fr);
+  }
+
+  #modal .settings-hub .settings-row:has(> .select) {
+    display: grid;
+    grid-template-columns: minmax(0,1fr);
+    gap: 6px;
+  }
+
+  #modal .settings-hub .settings-row > .select,
+  #modal .settings-hub .settings-row > #tips {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    justify-self: stretch;
+  }
+
+  #modal .settings-hub .settings-row > label {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  #modal .settings-hub .settings-volume {
+    grid-template-columns: minmax(0,1fr) 4ch;
+  }
+
+  #modal .settings-hub .settings-volume > label {
+    grid-column: 1 / -1;
+  }
+}
