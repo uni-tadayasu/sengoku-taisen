@@ -89,13 +89,16 @@ test('removing the last comparison with no visible results returns focus to sear
 test('the archive menu opens the collection while explicit gacha actions and in-screen tabs keep their destination',async()=>{
  const f=fixture(),{c,doc,host,dialog}=f,rendered=[],hashes=[];
  Object.assign(c,{interactionEpoch:0,currentView:'town',officerSection:'gacha',closeModal:()=>dialog.close(),syncMusic(){},history:{replaceState:(_state,_title,url)=>hashes.push(url)},render:()=>rendered.push([c.currentView,c.officerSection])});
- c.window.scrollTo=()=>{};vm.runInContext(fn('go'),c);
+ doc.documentElement=doc.createElement('html');
+ const revealed=[];
+ c.window.SengokuNavigation={revealView:view=>revealed.push(view)};
+ vm.runInContext(fn('go'),c);
  const nav=doc.createElement('nav');nav.id='navigation';nav.innerHTML='<button data-view="officers">武将名鑑</button>';doc.body.appendChild(nav);
  await f.click(nav.querySelector('button'));assert.equal(c.currentView,'officers');assert.equal(c.officerSection,'archive');assert.deepEqual(rendered.at(-1),['officers','archive']);
  host.innerHTML='<button data-action="officer-section" data-id="gacha">武将招集</button><button data-action="officer-section" data-id="archive">武将名鑑</button><button data-action="open-gacha">招集へ</button>';
  await f.click(host.querySelector('[data-id="gacha"]'));assert.equal(c.officerSection,'gacha');c.go('officers');assert.equal(c.officerSection,'gacha');
  await f.click(host.querySelector('[data-id="archive"]'));assert.equal(c.officerSection,'archive');await f.click(host.querySelector('[data-action="open-gacha"]'));assert.equal(c.officerSection,'gacha');
- await f.click(nav.querySelector('button'));assert.equal(c.officerSection,'archive');assert.equal(hashes.at(-1),'#officers');assert.equal(c.interactionEpoch,6);
+ await f.click(nav.querySelector('button'));assert.equal(c.officerSection,'archive');assert.equal(hashes.at(-1),'#officers');assert.equal(c.interactionEpoch,6);assert(revealed.length>0&&revealed.every(view=>view==='officers'));
 });
 test('comparison distinguishes selected owned/unowned ranks from highest owned and renders the selected abilities',async()=>{
  const f=fixture(),{game,c,host,dialog,dialogs}=f,available=roster.filter(row=>!game.state.officers.includes(row.id)),owned=available[0].id,unowned=available[1].id;
