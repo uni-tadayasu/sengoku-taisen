@@ -3,6 +3,7 @@
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
 const {SengokuEngine:E,SENGOKU_DATA:D}=require('../engine.js');
 const durabilityUI=require('../durability.js');
+const managementModel=require('../management-model.js');
 const source=fs.readFileSync(path.join(__dirname,'../app.js'),'utf8'),scope={window:{}};
 vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../officers-data.js'),'utf8'),scope);
 const roster=JSON.parse(JSON.stringify(scope.window.SENGOKU_OFFICERS)),plain=value=>JSON.parse(JSON.stringify(value));
@@ -45,13 +46,14 @@ function fullBranchFixture(){
 function harness(game=create()){
   const stored=new Map([['save',game.exportSave()]]),writes=[],events=[],modals=[],toasts=[],handlers=new Map();
   const flags={failSave:false},calls={render:0,header:0,sound:0},nodes=new Map([['#main',{}],['#save-indicator',{textContent:''}]]);
-  const controls=[0,1].map(index=>({id:`governor-button-${index}`,dataset:{action:'auto-governors'},disabled:false,closest(){return this;}}));
+  const actionControl=()=>({dataset:{action:'auto-governors'},disabled:false,closest(selector){return selector==='[data-action]'||selector==='[data-action],[data-view]:not(#main)'?this:null;}});
+  const controls=[0,1].map(index=>({...actionControl(),id:`governor-button-${index}`}));
   const c={game,SengokuEngine:E,staffBaseId:'kyoto_gosho',data:D,roster:plain(roster),state:()=>c.game.state,console,Date,Math,JSON,Number,String,Set,
     syncAccess:{linked:false,ready:true,writable:true,rolePending:false},lastLocalSaveRaw:null,lastLocalSaveGame:null,localCampaignRefreshPending:false,saveKey:'save',saveEnabled:true,saveWarning:'',
     branchBookingPending:false,worldCatchingUp:false,worldSettlementPending:false,fieldActionPending:false,walkingActionPending:false,strategyActionPending:false,startPending:false,
-    staffBaseReady:game.isStaff&&Boolean(game.getStaffBase()),settings:{tips:false},currentView:'town',townSection:'town-overview',townSections:['town-overview','town-facilities-section','town-reports-section'],facilityCategory:'all',facilityQuery:'',facilityState:'all',facilityPage:1,
+    staffBaseReady:game.isStaff&&Boolean(game.getStaffBase()),settings:{tips:false},currentView:'town',townSection:'town-overview',townSections:['town-overview','town-facilities-section','town-reports-section'],facilityCategory:'all',facilityQuery:'',facilityState:'all',facilityPage:1,facilitySort:'default',facilityLayout:'cards',
     document:{querySelectorAll:selector=>selector==='[data-action]'?controls:[],addEventListener:(type,listener)=>handlers.set(type,listener)},
-    window:{SengokuDurabilityUI:durabilityUI,dispatchEvent:event=>events.push(event.type)},CustomEvent:class{constructor(type){this.type=type;}},
+    window:{SengokuDurabilityUI:durabilityUI,SengokuManagement:managementModel,dispatchEvent:event=>events.push(event.type)},CustomEvent:class{constructor(type){this.type=type;}},
     localStorage:{getItem:key=>stored.get(key)??null,setItem:(key,value)=>{if(flags.failSave)throw Error('QuotaExceededError');stored.set(key,value);writes.push({key,value});}},
     $:selector=>nodes.get(selector)||null,icon:()=>'',num:value=>Number(value||0).toLocaleString('ja-JP'),
     esc:value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char])),
@@ -62,10 +64,10 @@ function harness(game=create()){
     constructionJobs:()=>[],currentJob:()=>null,castleLevelLimit:id=>c.game.castleLevelLimit(id),date:()=>({year:1560,month:1,season:'春'}),costHtml:()=>''
   };
   vm.createContext(c);
-  vm.runInContext([declaration('mutationActions'),declaration('categoryNames'),declaration('resNames'),declaration('resIcons'),...['confirmedWorldClock','clockIsApplied','canMutate','syncMessage','requireWritable','changedLocalCampaign','save','requestBranches','staffConstructionReady','governorAssignmentStatus','governorAssignmentEntry','facilityGovernorLabel','governorAssignmentResult','autoAssignGovernors','buildingOutput','buildingCard','catalogMatches','catalogChips','facilitiesResults','economyNumber','economyPanel','renderFacilities','premiumTownProduct','premiumTownImage','premiumTownDescription','townSceneSources','premiumTownBanner','premiumLord','durabilityMarkup','durabilityHelp','townPanelAttributes','townTabMarkup','renderTown','refreshLiveControls'].map(fn)].join('\n'),c);
+  vm.runInContext([declaration('mutationActions'),declaration('categoryNames'),declaration('resNames'),declaration('resIcons'),...['confirmedWorldClock','clockIsApplied','canMutate','syncMessage','requireWritable','changedLocalCampaign','save','requestBranches','staffConstructionReady','governorAssignmentStatus','governorAssignmentEntry','facilityGovernorLabel','governorAssignmentResult','autoAssignGovernors','buildingOutput','buildingCard','catalogMatches','catalogChips','facilityPlannerTools','facilitiesResults','economyNumber','economyPanel','renderFacilities','premiumTownProduct','premiumTownImage','premiumTownDescription','townSceneSources','premiumTownBanner','premiumLord','durabilityMarkup','durabilityHelp','townPanelAttributes','townTabMarkup','renderTown','refreshLiveControls'].map(fn)].join('\n'),c);
   const clickStart=source.indexOf("  document.addEventListener('click',async event=>"),clickEnd=source.indexOf("  document.addEventListener('input'",clickStart);
   assert(clickStart>=0&&clickEnd>clickStart);vm.runInContext(source.slice(clickStart,clickEnd),c);
-  const click=async({force=false}={})=>{const target=force?{dataset:{action:'auto-governors'},disabled:false,closest(){return this;}}:controls[0];await handlers.get('click')({target});};
+  const click=async({force=false}={})=>{const target=force?actionControl():controls[0];await handlers.get('click')({target});};
   return{c,get game(){return c.game;},stored,writes,events,modals,toasts,controls,flags,calls,click};
 }
 function withoutGovernors(state){const copy=plain(state);delete copy.governors;return copy;}

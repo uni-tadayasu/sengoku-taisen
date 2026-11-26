@@ -13,8 +13,12 @@ const rows = Object.keys(groups).map(file => {
 });
 const totalBytes = rows.reduce((sum,row)=>sum+row.bytes,0);
 const totalGzipBytes = rows.reduce((sum,row)=>sum+row.gzipBytes,0);
-assert(totalBytes <= 2950000, `Initial bundles exceed the 2,950,000 byte budget: ${totalBytes}`);
-assert(totalGzipBytes <= 850000, `Initial bundles exceed the 850,000 gzip byte budget: ${totalGzipBytes}`);
+// v5.5 adds the resource planner, searchable records and live-control index.
+// Allow their measured footprint explicitly while keeping a bounded entry;
+// runtime work reductions are measured separately, not inferred from bytes.
+const rawBudget=3025000,gzipBudget=870000;
+assert(totalBytes <= rawBudget, `Initial bundles exceed the ${rawBudget} byte budget: ${totalBytes}`);
+assert(totalGzipBytes <= gzipBudget, `Initial bundles exceed the ${gzipBudget} gzip byte budget: ${totalGzipBytes}`);
 const html = fs.readFileSync(path.join(root,'index.html'),'utf8');
 for (const file of Object.keys(groups)) assert(html.includes(file+'?v='), 'Budget must cover the shipped entry: '+file);
-console.log(JSON.stringify({entryBundles:rows,totalBytes,totalGzipBytes,rawBudget:2950000,gzipBudget:850000}));
+console.log(JSON.stringify({entryBundles:rows,totalBytes,totalGzipBytes,rawBudget,gzipBudget}));

@@ -75,6 +75,8 @@
     "social-chat.css",
     "command-center.css",
     "management-ui.css",
+    "campaign-records.css",
+    "command-polish.css",
     "responsive-text.css"
   ],
   "game-preferences.bundle.js": [
@@ -100,7 +102,8 @@
     "kamon.js",
     "world-map.js",
     "command-center.js",
-    "management-model.js"
+    "management-model.js",
+    "campaign-records.js"
   ],
   "game-campaign.bundle.js": [
     "desktop-fit.js",
@@ -124,6 +127,7 @@
     "public-court.js"
   ],
   "game-interface.bundle.js": [
+    "live-dom.js",
     "app.js",
     "hints-ui.js",
     "scroll-top.js",

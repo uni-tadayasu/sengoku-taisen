@@ -170,7 +170,7 @@ function mount(container,options={}){
   const id='sengoku-geography-'+(++sequence),stored=savedViews.get(key);
   let width=800,height=600,baseView=fitBounds(countryBounds,width,height,28),view={...baseView},points=[],markersByKey=new Map(),frame=0,animation=0,destroyed=false,region=opts.region;
   let labels=stored?.labels!==false,routes=stored?.routes===true,terrain=stored?.terrain!==false,pointers=new Map(),gesture=null,dragged=false,clickUntil=0;
-  let firstSize=true,tooltipKey=null,lastView=stored?.camera||null,routePoints=null,routeRegion='',routeContent='',countText='';
+  let firstSize=true,tooltipKey=null,lastView=stored?.camera||null,routePoints=null,routeRegion='',routeContent='',countText='',presentationVersion=0;
   const sourceList=(geography.sources||[]).map(source=>{const url=safeUrl(source.url||source.href);return url?`<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(source.label||source.name||'地図出典')}</a>`:'';}).filter(Boolean).join('<span>·</span>');
   const terrainEntries=Array.isArray(geography.terrain)?geography.terrain:geography.terrain?.images||geography.terrain?.layers||[geography.terrain].filter(Boolean);
   const terrainHtml=terrainEntries.map(layer=>{
@@ -182,6 +182,11 @@ function mount(container,options={}){
   container.classList.add('sg-map-host');
   container.innerHTML=`<div class="sg-map"><div class="sg-map-surface" tabindex="0" role="group" aria-label="${esc(opts.surfaceLabel||'日本の実地形と城の地図。矢印キーで移動、プラス・マイナスで拡大縮小、Homeで本拠へ。')}"><svg class="sg-map-geography" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="${id}-sea" x1="0" y1="0" x2=".7" y2="1"><stop stop-color="#153b49"/><stop offset=".55" stop-color="#0b2739"/><stop offset="1" stop-color="#061b2e"/></linearGradient><linearGradient id="${id}-land" x1="0" y1="0" x2=".4" y2="1"><stop stop-color="#82906c"/><stop offset=".5" stop-color="#708366"/><stop offset="1" stop-color="#526f55"/></linearGradient><clipPath id="${id}-clip"><path d="${landPath}" fill-rule="evenodd"/></clipPath></defs><rect data-map-ocean fill="url(#${id}-sea)"/><g data-map-grid class="sg-map-grid"></g><path class="sg-map-coast-shadow" d="${landPath}" fill-rule="evenodd"/><path class="sg-map-land" d="${landPath}" fill="url(#${id}-land)" fill-rule="evenodd"/><g class="sg-map-relief" data-map-terrain clip-path="url(#${id}-clip)">${terrainHtml}</g><path class="sg-map-prefectures" d="${geometryPath(geography.boundaries||geography.prefectures)}"/><path class="sg-map-lakes" d="${geometryPath(geography.lakes)}"/><path class="sg-map-rivers" d="${geometryPath(geography.rivers)}"/><path class="sg-map-coastline" d="${geometryPath(geography.coastline)||landPath}" fill-rule="evenodd"/><g data-map-routes class="sg-map-routes"></g><g data-map-seas class="sg-map-seas"></g></svg><div class="sg-map-markers" data-map-markers></div></div><div class="sg-map-heading"><span class="sg-map-heading-label">${esc(opts.eyebrow||'JAPAN · TERRAIN MAP')}</span><strong>${esc(opts.title||'日本列島')}<span data-map-region></span></strong><span class="sg-map-heading-detail" data-map-count></span></div><div class="sg-map-north" title="北が上の地図">${icon('north')}<span>N</span></div><div class="sg-map-zoom">${button('zoom-in','地図を拡大','plus')}${button('zoom-out','地図を縮小','minus')}<span class="sg-map-control-divider"></span>${button('home','本拠を中心に表示','home')}${button('selected',opts.selectedLabel||'選択した城を中心に表示','focus')}${button('nation','日本列島の全景','fit')}</div><div class="sg-map-layers" role="group" aria-label="地図の表示">${button('terrain','地形の陰影を表示','layers',terrain)}${button('labels',opts.labelsLabel||'城名を表示','label',labels)}${button('routes','ゲームの進軍経路を表示','route',routes)}</div><div class="sg-map-tooltip" data-map-tooltip hidden></div><div class="sg-map-bottom"><div class="sg-map-legend"><span class="sg-map-legend-own">${esc(opts.legend?.own||'自領')}</span><span class="sg-map-legend-ally">${esc(opts.legend?.ally||'同盟')}</span><span class="sg-map-legend-reachable">${esc(opts.legend?.reachable||'進軍可能')}</span><span class="sg-map-legend-other">${esc(opts.legend?.other||'他勢力')}</span></div><div class="sg-map-scale"><span data-map-scale-label></span><i data-map-scale-bar></i></div></div><div class="sg-map-footer"><span class="sg-map-instruction">ドラッグで移動 · スクロール／ピンチで拡大</span><span data-map-position></span><span class="sg-map-sources">${sourceList}</span></div><span class="sg-map-sr" data-map-live role="status" aria-live="polite"></span></div>`;
   const surface=container.querySelector('.sg-map-surface'),svg=container.querySelector('.sg-map-geography'),markerLayer=container.querySelector('[data-map-markers]'),tooltip=container.querySelector('[data-map-tooltip]'),ocean=container.querySelector('[data-map-ocean]');
+  // The map owns this subtree for its lifetime. Keep direct references so
+  // camera frames do not repeatedly walk the terrain and marker DOM.
+  const parts=Object.fromEntries(['terrain','grid','routes','seas','scale-label','scale-bar','region','count','live','position'].map(name=>[name,container.querySelector('[data-map-'+name+']')]));
+  const controls=Object.fromEntries(['labels','routes','terrain','zoom-in','zoom-out'].map(action=>[action,container.querySelector('[data-map-action="'+action+'"]')]));
+  const mapRoot=container.querySelector('.sg-map');
   const listeners=[];
   function listen(node,type,handler,settings){node.addEventListener(type,handler,settings);listeners.push(()=>node.removeEventListener(type,handler,settings));}
   const raf=global.requestAnimationFrame?.bind(global)||(fn=>global.setTimeout(fn,16)),caf=global.cancelAnimationFrame?.bind(global)||global.clearTimeout.bind(global);
@@ -215,6 +220,7 @@ function mount(container,options={}){
   function hideTooltip(){tooltip.hidden=true;tooltipKey=null;}
   const layerSources=new WeakMap();
   function refreshPoints(){
+    presentationVersion++;
     points=castlePoints(opts.castles,coordinates(),opts);
     const valid=points.filter(p=>opts.region==='all'||p.region===opts.region).length,total=(opts.castles||[]).filter(p=>opts.region==='all'||p.region===opts.region).length;
     countText=opts.countLabel||`${valid}${opts.countUnit||'城'}の実位置${valid<total?` · ${total-valid}${opts.countUnit||'城'}は位置を確認中`:''}${terrainHtml?' · 標高データによる陰影':''}`;
@@ -250,7 +256,7 @@ function mount(container,options={}){
   function selectMarker(marker){
     if(!marker||destroyed)return;
     if(marker.cluster){hideTooltip();setView(fitBounds(marker.bounds,width,height,100),{animate:true});return;}
-    if(marker.disabled){container.querySelector('[data-map-live]').textContent=marker.name+'は'+(marker.restrictedLabel||'専用拠点')+'です。';return;}
+    if(marker.disabled){parts['live'].textContent=marker.name+'は'+(marker.restrictedLabel||'専用拠点')+'です。';return;}
     if(marker.branch){opts.onBranchSelect?.(marker.parentCastleId,marker.branchId);return;}
     opts.selectedId=marker.id;opts.onSelect?.(marker.id);
     if(!destroyed){refreshPoints();schedule();}
@@ -264,7 +270,11 @@ function mount(container,options={}){
       if(!entry){const button=global.document.createElement('button');button.type='button';button.className='sg-map-marker';button.dataset.mapMarker=marker.key;button.innerHTML='<span class="sg-map-marker-symbol"></span><span class="sg-map-marker-label"></span>';markerLayer.appendChild(button);entry={node:button,marker};markersByKey.set(marker.key,entry);}
       entry.marker=marker;const button=entry.node,symbol=button.firstElementChild,label=button.lastElementChild;
       button.style.left=marker.sx+'px';button.style.top=marker.sy+'px';button.style.zIndex=String(marker.priority);
-      const presentation=markerPresentation(marker,opts);
+      // Normal symbols and explicitly stable local artwork depend on the
+      // latest map data, not on a drag frame. update() invalidates even in-place
+      // source edits. Callbacks that depend on camera geometry remain live.
+      if(entry.presentationVersion!==presentationVersion||typeof opts.markerAppearance==='function'&&opts.cacheMarkerPresentation!==true){entry.presentation=markerPresentation(marker,opts);entry.presentationVersion=presentationVersion;}
+      const presentation=entry.presentation;
       const flags=[marker.cluster?'is-cluster':'',marker.own?'is-own':marker.ally?'is-ally':'is-other',marker.reachable?'is-reachable':'',marker.selected?'is-selected':'',marker.home?'is-home':'',marker.disabled?'is-disabled':'',marker.branch?'is-branch':'',presentation.custom?'has-custom-art':''].filter(Boolean);
       const nextFlags=flags.join(' ');
       if(entry.flags!==nextFlags){
@@ -287,21 +297,21 @@ function mount(container,options={}){
   function render(){
     if(destroyed)return;frame=0;paintAttribute(svg,'viewBox',`${view.x} ${view.y} ${view.width} ${view.height}`);
     for(const [name,value]of Object.entries({x:view.x,y:view.y,width:view.width,height:view.height}))paintAttribute(ocean,name,String(value));
-    container.querySelector('[data-map-terrain]').style.display=terrain?'':'none';
+    parts['terrain'].style.display=terrain?'':'none';
     const zoom=baseView.width/view.width,nw=unproject(view.x,view.y),se=unproject(view.x+view.width,view.y+view.height),step=zoom>10?.5:zoom>3?1:2,grid=[];
     for(let lon=Math.ceil(nw[0]/step)*step;lon<se[0]&&grid.length<100;lon+=step){const x=project(lon,36)[0];grid.push(`M${x},${view.y}V${view.y+view.height}`);}
     for(let lat=Math.ceil(se[1]/step)*step;lat<nw[1]&&grid.length<100;lat+=step){const y=project(135,lat)[1];grid.push(`M${view.x},${y}H${view.x+view.width}`);}
-    paintLayer(container.querySelector('[data-map-grid]'),`<path d="${grid.join('')}"/>`);
-    paintLayer(container.querySelector('[data-map-routes]'),routeMarkup());
+    paintLayer(parts['grid'],`<path d="${grid.join('')}"/>`);
+    paintLayer(parts['routes'],routeMarkup());
     const seas=[[134.3,39.1,'日 本 海'],[143.1,33.1,'太 平 洋'],[126.4,29.2,'東 シ ナ 海'],[144.3,45.5,'オホーツク海']];
-    paintLayer(container.querySelector('[data-map-seas]'),seas.map(([lon,lat,name])=>{const [x,y]=project(lon,lat);return`<text x="${x}" y="${y}" font-size="${view.width/width*(name.length>6?14:18)}" text-anchor="middle">${name}</text>`;}).join(''));
-    renderMarkers();const scale=scaleForView(view,width);paintText(container.querySelector('[data-map-scale-label]'),scale.label);container.querySelector('[data-map-scale-bar]').style.width=scale.pixels+'px';
-    paintText(container.querySelector('[data-map-region]'),opts.region==='all'?'':` / ${opts.region}`);
-    paintText(container.querySelector('[data-map-count]'),countText);
-    for(const action of ['labels','routes','terrain'])paintAttribute(container.querySelector(`[data-map-action="${action}"]`),'aria-pressed',String(action==='labels'?labels:action==='routes'?routes:terrain));
+    paintLayer(parts['seas'],seas.map(([lon,lat,name])=>{const [x,y]=project(lon,lat);return`<text x="${x}" y="${y}" font-size="${view.width/width*(name.length>6?14:18)}" text-anchor="middle">${name}</text>`;}).join(''));
+    renderMarkers();const scale=scaleForView(view,width);paintText(parts['scale-label'],scale.label);parts['scale-bar'].style.width=scale.pixels+'px';
+    paintText(parts['region'],opts.region==='all'?'':` / ${opts.region}`);
+    paintText(parts['count'],countText);
+    for(const action of ['labels','routes','terrain'])paintAttribute(controls[action],'aria-pressed',String(action==='labels'?labels:action==='routes'?routes:terrain));
     const limits=[['terrain','disabled',!terrainHtml],['routes','hidden',opts.hideRoutes===true],['zoom-out','disabled',zoom<=1.001],['zoom-in','disabled',zoom>=127.99]];
     for(const [action,property,active] of limits){
-      const control=container.querySelector(`[data-map-action="${action}"]`);
+      const control=controls[action];
       if(control[property]!==active)control[property]=active;
     }
   }
@@ -309,7 +319,7 @@ function mount(container,options={}){
   function resize(){
     if(destroyed)return;const bounds=surface.getBoundingClientRect();if(bounds.width<1||bounds.height<1)return;
     const camera=firstSize?lastView:{x:view.x+view.width/2,y:view.y+view.height/2,zoom:baseView.width/view.width};width=surface.clientWidth||bounds.width;height=surface.clientHeight||bounds.height;baseView=fitBounds(countryBounds,width,height,28);
-    container.querySelector('.sg-map').classList.toggle('is-compact',height<420);
+    mapRoot.classList.toggle('is-compact',height<420);
     if(camera){const w=baseView.width/clamp(camera.zoom,1,128),h=w*height/width;view=constrain({x:camera.x-w/2,y:camera.y-h/2,width:w,height:h});}
     else{view={...baseView};fit(opts.region!=='all'?'region':['castles','home','selected'].includes(opts.initialView)?opts.initialView:'nation',false);}
     firstSize=false;render();remember();
@@ -325,7 +335,7 @@ function mount(container,options={}){
   }
   function pointerMove(event){
     const [x,y]=relative(event),previous=pointers.get(event.pointerId);
-    if(!previous){const [lon,lat]=unproject(view.x+x/width*view.width,view.y+y/height*view.height);container.querySelector('[data-map-position]').textContent=`${lat.toFixed(3)}° N  ${lon.toFixed(3)}° E`;return;}
+    if(!previous){const [lon,lat]=unproject(view.x+x/width*view.width,view.y+y/height*view.height);parts['position'].textContent=`${lat.toFixed(3)}° N  ${lon.toFixed(3)}° E`;return;}
     pointers.set(event.pointerId,{...previous,x,y});
     if(pointers.size>=2&&gesture){const [a,b]=[...pointers.values()],distance=Math.max(1,Math.hypot(a.x-b.x,a.y-b.y)),factor=gesture.distance/distance,w=gesture.view.width*factor,h=gesture.view.height*factor,center=[(a.x+b.x)/2,(a.y+b.y)/2];setView({x:gesture.world[0]-center[0]/width*w,y:gesture.world[1]-center[1]/height*h,width:w,height:h});}
     else if(pointers.size===1){if(Math.hypot(x-previous.startX,y-previous.startY)>5)dragged=true;if(dragged){surface.classList.add('is-dragging');setView({...view,x:view.x-(x-previous.x)/width*view.width,y:view.y-(y-previous.y)/height*view.height});}}

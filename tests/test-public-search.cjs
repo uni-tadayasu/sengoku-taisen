@@ -65,6 +65,8 @@ async function test(name,fn){await fn();passed++;console.log('PASS '+name);}
     await f.search('城の強化');assert.match(f.get('.public-search-results strong').textContent,/城郭/);
     await f.search('ＢＧＭ');assert.equal(f.get('.public-search-results strong').textContent,'よくある質問');
     await f.search('せーぶ');assert.equal(f.get('.public-search-results strong').textContent,'保存と端末同期');
+    await f.search('戦記');assert.match(f.get('.public-search-results a').href, /guide\/#campaign-records$/);
+    await f.search('待ち時間');assert.match(f.get('.public-search-results a').href, /guide\/#resource-planner$/);
     await f.search('武将 編成');assert.equal(f.get('.public-search-results strong').textContent,'武将・軍団・勾玉');
     await f.search('<img src=x onerror=alert(1)>');assert.equal(f.all('.public-search-results a').length,0);assert(f.get('.public-search-no-results'));
     assert.equal(f.get('.public-search-results img'),null);f.get('.public-search-reset').click();assert.equal(f.get('#public-search-input').value,'');assert.equal(f.all('.public-search-results a').length,8);

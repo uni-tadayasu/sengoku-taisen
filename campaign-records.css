@@ -1,0 +1,102 @@
+/* Read-only campaign journal: one results scroll surface and stable controls. */
+dialog.campaign-records-dialog {
+  --records-top-gap:max(12px,env(safe-area-inset-top,0px));
+  --records-bottom-gap:max(12px,env(safe-area-inset-bottom,0px));
+  width:min(900px,calc(var(--social-viewport-width,100vw) - 24px));
+  height:min(850px,calc(var(--social-viewport-height,var(--visible-height,100dvh)) - var(--records-top-gap) - var(--records-bottom-gap)));
+  max-width:calc(100vw - 24px); max-height:calc(var(--social-viewport-height,var(--visible-height,100dvh)) - var(--records-top-gap) - var(--records-bottom-gap));
+  position:fixed; inset:auto; margin:0; padding:0; min-width:0; min-height:0;
+  left:calc(var(--social-viewport-left,0px) + var(--social-viewport-width,100vw) / 2);
+  top:calc(var(--social-viewport-top,0px) + var(--records-top-gap)); transform:translateX(-50%);
+  border:1px solid #c3a779; border-radius:10px; background:#132733; color:#f2eddf;
+  box-shadow:0 24px 80px #02070bbb; overflow:hidden; font-size:1rem; line-height:1.65;
+}
+.campaign-records-dialog[open] { display:flex; flex-direction:column; }
+.campaign-records-dialog::backdrop { background:#050e16bf; }
+.campaign-records-dialog :is(button,input,select) { font:inherit; border-radius:5px; }
+.campaign-records-dialog button { min-width:0; max-width:100%; min-height:44px; padding:9px 14px; border:1px solid #a799745e; color:#f2e5c9; background:#263c45; background-image:none !important; cursor:pointer; line-height:1.45; overflow-wrap:anywhere; }
+.campaign-records-dialog button:disabled { opacity:.5; cursor:not-allowed; }
+.campaign-records-dialog :is(button,input,select,[tabindex]):focus-visible { outline:2px solid #f0ce8c; outline-offset:-3px; }
+.campaign-records-header { display:flex; align-items:center; justify-content:space-between; gap:16px; flex:none; padding:18px 22px; border-bottom:1px solid #c5a67377; background:linear-gradient(110deg,#33433f,#1a303a); }
+.campaign-records-header > div { min-width:0; }
+.campaign-records-header p { margin:0 0 3px; font-size:.75rem; letter-spacing:.13em; color:#c5b690; }
+.campaign-records-header h2 { margin:0; font:700 1.65rem/1.4 var(--serif,serif); color:#ffedc6; letter-spacing:.06em; }
+.campaign-records-header > button { flex:none; }
+.campaign-records-tools { flex:none; padding:16px 22px 0; }
+.campaign-records-tools label { min-width:0; display:grid; gap:5px; font-size:.875rem; color:#ced7cf; }
+.campaign-records-tools :is(input,select) { width:100%; min-width:0; min-height:44px; padding:9px 12px; color:#f3ecd9; background:#0b202c; border:1px solid #9fae9f66; font-size:1rem; }
+.campaign-records-tools input::placeholder { color:#aebfc4; opacity:1; }
+.campaign-records-selects { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; margin-top:10px; }
+.campaign-records-status { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px 12px; padding-block:7px; }
+.campaign-records-status p { margin:0; color:#dbc49a; font-size:.875rem; font-variant-numeric:tabular-nums; }
+.campaign-records-status button { padding-inline:5px; background:transparent; border-color:transparent; font-size:.875rem; text-decoration:underline; text-underline-offset:3px; }
+.campaign-records-scroll { flex:1; min-height:0; min-width:0; overflow-y:auto; overflow-x:hidden; padding:0 22px 16px; overscroll-behavior:contain; scrollbar-gutter:stable; scrollbar-width:thin; scrollbar-color:#8b9c98 #142731; }
+.campaign-records-list { list-style:none; padding:0; margin:0; display:grid; gap:10px; }
+.campaign-record { padding:14px 16px; border:1px solid #a3b29a33; border-inline-start:3px solid #b7a077; border-radius:5px; background:#1b303a; min-width:0; }
+.campaign-record[data-records-kind="campaign"] { border-inline-start-color:#c88f78; }
+.campaign-record[data-records-kind="development"] { border-inline-start-color:#8db5a2; }
+.campaign-record[data-records-kind="people"] { border-inline-start-color:#a1b4d2; }
+.campaign-record[data-records-kind="rewards"] { border-inline-start-color:#d8b87d; }
+.campaign-record > div { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:5px 12px; }
+.campaign-record time { color:#d9c9a6; font-size:.875rem; font-variant-numeric:tabular-nums; }
+.campaign-record > div > span { font-size:.8125rem; color:#c9d8cf; border:1px solid #a3b69c33; border-radius:3px; padding:1px 6px; }
+.campaign-record > p { margin:8px 0 0; font-size:1rem; line-height:1.85; overflow-wrap:anywhere; white-space:pre-wrap; }
+.campaign-records-empty { padding:30px 12px; text-align:center; border:1px dashed #b3a07566; border-radius:6px; }
+.campaign-records-empty[hidden] { display:none; }
+.campaign-records-empty p { margin:8px 0 0; font-size:.875rem; color:#c5d1cf; }
+.campaign-records-pagination { flex:none; display:flex; justify-content:center; align-items:center; gap:16px; border-top:1px solid #a6a88833; padding:8px 22px; }
+.campaign-records-pagination > span { font-size:.875rem; font-variant-numeric:tabular-nums; color:#d9d7c6; white-space:nowrap; }
+.campaign-records-footer { flex:none; padding:12px 22px; border-top:1px solid #ad956255; background:#10232e; }
+.campaign-records-footer > p { margin:0 0 10px; color:#c6d0cb; font-size:.8125rem; line-height:1.7; }
+.campaign-records-footer > div { display:flex; gap:9px; flex-wrap:wrap; }
+.campaign-records-footer .campaign-records-feedback { margin:7px 0 0; color:#ebd29f; min-height:0; }
+.campaign-records-feedback:empty { display:none; }
+@media (max-width:600px) {
+  dialog.campaign-records-dialog { --records-top-gap:max(6px,env(safe-area-inset-top,0px)); --records-bottom-gap:max(6px,env(safe-area-inset-bottom,0px)); width:calc(var(--social-viewport-width,100vw) - 12px); max-width:calc(100vw - 12px); border-radius:8px; }
+  .campaign-records-header { padding:12px 14px; gap:10px; }
+  .campaign-records-header h2 { font-size:1.4rem; }
+  .campaign-records-header p { display:none; }
+  .campaign-records-tools { padding:12px 14px 0; }
+  .campaign-records-selects { gap:8px; margin-top:8px; }
+  .campaign-records-tools :is(input,select) { padding-inline:8px; }
+  .campaign-records-scroll { padding:0 14px 12px; }
+  .campaign-record { padding:12px; }
+  .campaign-records-pagination { gap:8px; padding:7px 14px; }
+  .campaign-records-pagination button { padding-inline:10px; }
+  .campaign-records-footer { padding:10px 14px; }
+  .campaign-records-footer > div > button { flex:1 1 130px; padding-inline:8px; font-size:.875rem; }
+}
+@media (max-height:540px) {
+  .campaign-records-header { padding-block:8px; }
+  .campaign-records-header p { display:none; }
+  .campaign-records-tools { padding-top:8px; }
+  .campaign-records-status { grid-column:1/-1; padding-block:0; }
+  .campaign-records-tools label > span { font-size:.8125rem; }
+  .campaign-records-header h2 { font-size:1.25rem; }
+  .campaign-records-footer { padding-block:7px; }
+  .campaign-records-footer > p:first-child { display:none; }
+}
+@media (max-height:540px) and (min-width:600px) {
+  .campaign-records-tools { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:4px 10px; }
+  .campaign-records-selects { margin:0; gap:6px; }
+}
+/* Fixed tools can exceed a short viewport, especially at the 18px text size.
+   Let the complete dialog scroll instead of crushing the record list between
+   its controls. Keep the list's scroll owner so paging and refresh anchors
+   behave consistently, and allow touch scrolling to continue to the footer. */
+@media (max-width:600px), (max-height:620px) {
+  dialog.campaign-records-dialog[open] {
+    overflow-y:auto; overflow-x:hidden; overscroll-behavior:contain;
+    scrollbar-width:thin; scrollbar-color:#8b9c98 #142731;
+  }
+  .campaign-records-header { position:sticky; top:0; z-index:2; }
+  .campaign-records-scroll {
+    flex:0 0 auto; height:clamp(16rem,50dvh,24rem); min-height:16rem;
+    max-height:none; overscroll-behavior-y:auto;
+  }
+}
+@media (forced-colors:active) {
+  .campaign-records-dialog,.campaign-records-header,.campaign-records-footer,.campaign-record { background:Canvas; color:CanvasText; border-color:CanvasText; }
+  .campaign-records-dialog :is(input,select,button) { background:ButtonFace !important; color:ButtonText; border-color:ButtonText; }
+  .campaign-records-dialog :is(h2,p,time,label,span) { color:CanvasText; }
+}
