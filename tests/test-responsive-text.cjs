@@ -207,4 +207,16 @@ test('the ledger can reflow with its available width and has a fallback for over
   property(ledger + ' #resources .resource-gain', 'display', 'block');
 });
 
+test('the clock, balances and controls share one header row on a landscape tablet', () => {
+  const wide = scopedRules(/@container\s+ledger\s*\(min-width:\s*810px\)\s*\{/g);
+  const group = 'html #app.chronicle-shell header.topbar.chronicle-ledger .header-balances';
+  property(group, 'grid-column', '2', wide);
+  property(group, 'grid-row', '1', wide);
+  property(group, 'grid-template-columns', 'repeat(4,minmax(0,1fr)) minmax(0,.55fr) minmax(0,1fr)', wide);
+  const header = parseRules(read('chronicle-game.css'));
+  property('#app #calendar', 'grid-row', '1', header);
+  property('#app.chronicle-shell .topbar.chronicle-ledger .header-actions', 'grid-column', '3', header);
+  property('#app.chronicle-shell .topbar.chronicle-ledger .header-actions', 'grid-row', '1', header);
+});
+
 console.log(count + ' responsive text structure checks passed. Rendered bounds require browser QA.');

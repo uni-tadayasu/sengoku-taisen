@@ -131,7 +131,9 @@
       if (scene.closest('.town-workspace') && panel) {
         // The artwork gets the whole independent PC canvas. The command pane
         // may scroll or grow internally without changing this available height.
-        height = panelSceneHeight(panel.clientHeight, panel.querySelector('.town-scene-heading')?.offsetHeight, (panel.querySelector('.scene-caption')?.offsetHeight||0)+(panel.querySelector('.town-premium-lord')?.offsetHeight||0)+(panel.querySelector('.town-command-shortcuts')?.offsetHeight||0), manualHeight);
+        const shortcuts = panel.querySelector('.town-command-shortcuts');
+        const shortcutRow = shortcuts && global.getComputedStyle(shortcuts).gridColumnStart !== '2' ? shortcuts.offsetHeight : 0;
+        height = panelSceneHeight(panel.clientHeight, panel.querySelector('.town-scene-heading')?.offsetHeight, (panel.querySelector('.scene-caption')?.offsetHeight||0)+(panel.querySelector('.town-premium-lord')?.offsetHeight||0)+shortcutRow, manualHeight);
       } else {
         const mainBox = main.getBoundingClientRect(), sceneBox = scene.getBoundingClientRect();
         const preferred = manualHeight || parseFloat(rootStyle.getPropertyValue('--desktop-town-height')) || 460;

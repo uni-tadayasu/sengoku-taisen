@@ -193,7 +193,7 @@ function quickTopics(key, p) {
     ]
   }[key];
   const title = {guide:'目的から探す', recovery:'手元のデータから選ぶ', about:'作品資料を開く', press:'紹介に必要なものを探す', news:'新しい戦国VSを知る'}[key];
-  return `<nav class="guide-quick" aria-labelledby="quick-topics-title"><div class="quick-heading"><h2 id="quick-topics-title">${title}</h2><a class="guide-quick-all" href="#page-contents">すべての項目を見る</a></div><ul>${topics.map(([href,title,description])=>`<li><a href="${href}"><strong>${title}</strong><span>${description}</span></a></li>`).join('')}</ul></nav>`;
+  return `<nav class="guide-quick" aria-labelledby="quick-topics-title"><details class="quick-topics"><summary class="quick-heading"><h2 id="quick-topics-title">${title}</h2></summary><ul>${topics.map(([href,title,description])=>`<li><a href="${href}"><strong>${title}</strong><span>${description}</span></a></li>`).join('')}</ul><a class="guide-quick-all" href="#page-contents">すべての項目を見る</a></details></nav>`;
 }
 
 function guideContent(p) {
@@ -887,7 +887,7 @@ ${['press','news'].includes(page.key) ? `  <link rel="stylesheet" href="${p.file
     <nav aria-label="パンくず"><ol class="breadcrumbs">${breadcrumbItems.map((item,i)=>`<li>${i===breadcrumbItems.length-1?`<span aria-current="page">${item.name}</span>`:`<a href="${item.href}">${item.name}</a>`}</li>`).join('')}</ol></nav>
     <section class="hero chapter-hero folio-hero" aria-labelledby="page-title">${artwork}<div class="hero-copy"><p class="eyebrow">${page.eyebrow}</p><h1 id="page-title">${page.heading}</h1><p class="hero-lead">${page.lead}</p><div class="hero-actions"><a class="action-link" href="${page.heroHref ? p.file(page.heroHref) : p.dir('')}"${page.heroHref ? ' download' : ''}>${page.heroAction}</a><a class="text-link" href="${secondaryHref}">${page.secondary[0]}</a></div></div></section>
 ${quickTopics(page.key, p)}
-    <div class="reading-layout"><aside id="page-contents" class="toc" tabindex="-1"><nav aria-label="このページの目次"><h2 class="toc-title">目次</h2><details class="toc-chapters" open><summary>すべての項目 <span>${page.toc.length}項目</span></summary><ul>${page.toc.map(([id,label])=>`<li><a href="#${id}">${label}</a></li>`).join('')}</ul></details></nav></aside><article class="article" aria-label="${page.label}の本文"><div class="article-edition"><span>${page.label} <b>${String(page.toc.length).padStart(2, '0')}</b> 項目</span><p class="article-updated">内容更新 <time datetime="${page.dateModified}">${modifiedLabel(page.dateModified)}</time></p></div>${readingContent(page, p)}</article></div>
+    <div class="reading-layout"><aside id="page-contents" class="toc" tabindex="-1"><nav aria-label="このページの目次"><details class="toc-chapters"><summary>このページの目次 <span>${page.toc.length}項目</span></summary><ul>${page.toc.map(([id,label])=>`<li><a href="#${id}">${label}</a></li>`).join('')}</ul></details></nav></aside><article class="article" aria-label="${page.label}の本文"><div class="article-edition"><span>${page.label} <b>${String(page.toc.length).padStart(2, '0')}</b> 項目</span><p class="article-updated">内容更新 <time datetime="${page.dateModified}">${modifiedLabel(page.dateModified)}</time></p></div>${readingContent(page, p)}</article></div>
     <section class="closing"><div><h2>${page.closingTitle}</h2><p>${page.closingText}</p></div><a class="action-link" href="${p.dir('')}">ゲームを開く</a></section>
   </main>
   <nav class="reading-actions" aria-label="読書中の案内"><a href="#page-contents">目次へ</a><a href="${p.dir('guide')}#page-contents" data-public-search>検索</a><a href="${p.dir('')}">ゲームを開く</a></nav>

@@ -24,7 +24,7 @@ function surface(){
 }
 (async()=>{
 await test('explicit desktop navigation resets the content pane, while choosing no unsupported view',()=>{
-  const main={scrollTop:640,scrollLeft:30},calls=[],c=load(context({currentView:'facilities',window:{scrollTo:value=>calls.push(value)},history:{replaceState(...args){calls.push(args);}},$:()=>main,closeModal(){},syncMusic(){},render(){}}),'go');
+  const main={scrollTop:640,scrollLeft:30},calls=[],c=load(context({currentView:'facilities',document:{documentElement:{classList:{contains:name=>name==='sengoku-desktop-fit'}}},window:{scrollTo:value=>calls.push(value)},history:{replaceState(...args){calls.push(args);}},$:()=>main,closeModal(){},syncMusic(){},render(){}}),'go');
   c.go('town');assert.equal(main.scrollTop,0);assert.equal(main.scrollLeft,0);assert.equal(c.currentView,'town');assert.equal(c.interactionEpoch,1);assert.equal(calls.at(-1).top,0);
   c.go('unknown');assert.equal(c.currentView,'town');assert.equal(c.interactionEpoch,1);
 });

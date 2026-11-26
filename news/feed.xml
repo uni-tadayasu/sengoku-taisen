@@ -9,6 +9,19 @@
     <ttl>60</ttl>
     <atom:link href="https://www.kasai-solutions-inc.com/news/feed.xml" rel="self" type="application/rss+xml"/>
     <item>
+      <title>Ver.5.9.10｜暦・資産6項目・操作を横一列に、短い画面のスクロールを削減</title>
+      <link>https://www.kasai-solutions-inc.com/news/#v5-9-10</link>
+      <guid isPermaLink="true">https://www.kasai-solutions-inc.com/news/#v5-9-10</guid>
+      <dc:date>2026-11-27</dc:date>
+      <description>年月と共通時間、資産6項目、音量・設定をひと続きに表示し、短い画面でも城下町や主要な操作に使える高さを増やしました。
+
+ヘッダー全体を横一列に：十分な幅があれば、年月・共通時間、金銭・兵糧・木材・石材・指令・勾玉と右側の操作ボタンを同じ段に表示します。幅が足りない端末では読みやすい配置に切り替えます。残高と月間収支は全桁を確認できます。
+
+主要な操作に早く届く画面配置：タイトルでは開始ボタンを先に表示します。横幅を使える画面では設定やメニューの操作を横に並べ、短い画面の城下町・地図・軍団でも、領主がよく使う操作を見つけやすくしました。攻略ガイドは、狭い画面で目次を必要なときに開けます。
+
+スマホの設定と画面移動：スマホで歯車を開くと「音・表示」「ゲームの更新」などの項目が並びます。「音・表示」を押すとBGMと効果音の音量を続けて調整でき、「ゲームの更新」から最新版を確認できます。城下町のショートカットから移動すると、移動先の内容を直接表示します。</description>
+    </item>
+    <item>
       <title>Ver.5.9.9｜資産6項目を横一列に、ゲーム画面を表示領域に合わせて拡大</title>
       <link>https://www.kasai-solutions-inc.com/news/#v5-9-9</link>
       <guid isPermaLink="true">https://www.kasai-solutions-inc.com/news/#v5-9-9</guid>
