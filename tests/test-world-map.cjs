@@ -163,4 +163,23 @@ test('camera-only redraws reuse routes while fresh ownership, access and regiona
   controller.update({countLabel:'最新の公開拠点'});flush();assert.equal(host.querySelector('[data-map-count]').textContent,'最新の公開拠点');
   controller.destroy();
 });
+test('stable castle artwork and map elements are reused for 60 camera frames, then refreshed by new data',()=>{
+  const fs=require('node:fs'),vm=require('node:vm'),{setup,Node}=require('./helpers/dom-model.cjs'),{doc,host}=setup();
+  if(!Object.getOwnPropertyDescriptor(Node.prototype,'lastElementChild'))Object.defineProperty(Node.prototype,'lastElementChild',{get(){return [...this.childNodes].reverse().find(node=>node.nodeType===1)||null;}});
+  let stamp=1,frameId=0,presentations=0,queries=0;const frames=new Map(),originalQuery=host.querySelector.bind(host);
+  host.querySelector=selector=>{queries++;return originalQuery(selector);};
+  const win={document:doc,performance:{now:()=>stamp},requestAnimationFrame:callback=>{frames.set(++frameId,callback);return frameId;},cancelAnimationFrame:id=>frames.delete(id),addEventListener(){},removeEventListener(){},matchMedia:()=>({matches:true})};
+  vm.runInNewContext(fs.readFileSync(require.resolve('../world-map.js'),'utf8'),{window:win});
+  const castles=[{id:'a',name:'本拠',owner:'自領',level:1},{id:'b',name:'隣城',owner:'他領',level:2}];
+  const geography={bounds:[130,30,145,42],land:{type:'Polygon',coordinates:[[[130,30],[145,30],[145,42],[130,42],[130,30]]]},castles:{a:[135,35],b:[139,37]}};
+  const appearance=marker=>{presentations++;return{html:'<b>城郭 '+marker.level+'</b>',label:marker.name+' Lv.'+marker.level};};
+  const controller=win.SengokuWorldMap.mount(host,{geography,castles,clan:'自領',homeId:'a',selectedId:'b',cacheMarkerPresentation:true,markerAppearance:appearance});
+  const flush=()=>{let limit=100;while(frames.size){assert(limit-->0);const queued=[...frames.values()];frames.clear();stamp+=16;for(const fn of queued)fn(stamp);}};
+  flush();const marker=originalQuery('[data-map-marker="a"]');assert(marker);assert.equal(presentations,2);queries=0;presentations=0;
+  for(let frame=0;frame<60;frame++){controller.fit('nation',false);flush();}
+  assert.equal(queries,0,'Camera paints reuse the map-owned nodes');assert.equal(presentations,0,'Stable local atlas markup is not regenerated');assert.strictEqual(originalQuery('[data-map-marker="a"]'),marker);
+  castles[0].level=9;controller.update({castles});flush();assert.equal(presentations,2);assert.match(marker.innerHTML,/城郭 9/);assert.equal(marker.getAttribute('aria-label'),'本拠 Lv.9');
+  presentations=0;controller.update({cacheMarkerPresentation:false});flush();const first=presentations;controller.fit('nation',false);flush();assert(presentations>first,'Camera-dependent callbacks preserve their original live contract');
+  controller.destroy();
+});
 console.log(`${count} real-geography projection, interaction and layout checks passed.`);

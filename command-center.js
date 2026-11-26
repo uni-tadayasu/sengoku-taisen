@@ -18,6 +18,57 @@
     const speed=Number(live.speed??realtime.speed),elapsedMs=live.elapsedMs??stored.elapsedMs??((state.turn||0)*60000+(realtime.elapsed||0)*1000);
     return {elapsedMs:nonnegative(elapsedMs),realNowMs:nonnegative(live.realNowMs??Date.now()),running:(live.running??realtime.running)!==false,speed:[1,2,4].includes(speed)?speed:1};
   }
+  // A budget is a transparent fixed-income projection, never a future save or
+  // permission to spend. In particular, deficits may change at month-end.
+  function buildBudget(game, targets = {}, options = {}) {
+    const catalog=options.catalog||global.SENGOKU_DATA||{},cap=catalog.assetCap||100000000,monthMs=(catalog.secondsPerMonth||60)*1000;
+    const income=options.income||game?.income?.()||{},clock=operationClock(game,options.clock),rows=[];
+    let earliest=0,latest=Infinity;
+    for(const [key,label] of Object.entries(resources)) {
+      const raw=targets[key]??0,target=raw===''?0:Number(raw),valid=Number.isSafeInteger(target)&&target>=0;
+      const current=Math.min(cap,Math.floor(nonnegative(game?.state?.resources?.[key]))),rawRate=Number(income.net?.[key]??income[key]??0),rate=Number.isFinite(rawRate)?rawRate:0;
+      const deficit=valid?Math.max(0,target-current):0,months=deficit&&rate>0?deficit/rate:0;
+      if(months>earliest)earliest=months;
+      if(rate<0&&valid&&target>0&&current>=target)latest=Math.min(latest,(current-target)/-rate);
+      rows.push({key,label,current,target,valid,rate,deficit,months,overCap:valid&&target>cap,blocked:deficit>0&&rate<=0,
+        after:[1,3,6].map(month=>Math.max(0,Math.min(cap,Math.floor(current+rate*month))))});
+    }
+    const invalid=rows.some(row=>!row.valid),overCap=rows.filter(row=>row.overCap),blocked=rows.filter(row=>row.blocked);
+    const ready=!invalid&&!overCap.length&&rows.every(row=>row.deficit===0),expires=!ready&&earliest>latest+1e-9;
+    const status=invalid?'invalid':overCap.length?'cap':ready?'ready':blocked.length?'blocked':!clock.running?'paused':expires?'expires':'waiting';
+    const limiting=rows.filter(row=>row.deficit&&row.rate>0&&Math.abs(row.months-earliest)<1e-9).map(row=>row.label);
+    const waitMs=status==='waiting'?Math.ceil(earliest*monthMs/clock.speed/1000)*1000:null;
+    const title={invalid:'目標は0以上の整数で入力',cap:'保有上限を超える予算です',ready:'必要な資源は揃っています',blocked:'現在の収支では不足を解消できません',paused:'共通時間は停止中です',expires:'揃う前に別の資源が不足します',waiting:'約'+duration(waitMs)+'で資源が揃う試算'}[status];
+    const detail={invalid:'空欄は0として扱います。小数・負数は使えません。',cap:overCap.map(row=>row.label).join('・')+'は保有上限 '+number(cap)+' を超えています。',ready:'資源だけの判定です。必要な指令・解放条件・普請枠は各画面で確認できます。',blocked:blocked.map(row=>row.label).join('・')+'の生産を増やすか、予算を見直してください。',paused:'不足額は表示します。時間が動き始めると待ち時間を試算します。',expires:'赤字の資源が先に減るため、4資源が同時には揃わない試算です。',waiting:limiting.join('・')+'が揃うまでの目安 · 現在 '+clock.speed+'倍速'}[status];
+    return {rows,status,title,detail,waitMs,clock,cap,earliest,latest,militaryDeficit:rows.some(row=>['gold','rice'].includes(row.key)&&row.rate<0)};
+  }
+  function budgetGoal(game, selection = {}, options = {}) {
+    const catalog=options.catalog||global.SENGOKU_DATA||{},kind=selection.kind,id=selection.id,state=game?.state||{};
+    if(kind==='custom')return {kind,title:'自由な予算',targets:selection.targets||{},note:'使いたい資源の合計を入力してください。',destination:'facilities'};
+    if(!['building','research'].includes(kind))return {unavailable:true,title:'目標を選んでください',note:'施設・研究、または自由入力から選べます。'};
+    const item=(kind==='building'?catalog.buildings:catalog.techs)?.find(row=>row.id===id);
+    if(!item)return {unavailable:true,title:'目標が見つかりません',note:'一覧から選び直してください。'};
+    if(game?.isStaff&&options.staffReady!==true)return {unavailable:true,title:'共同拠点を確認中です',note:'共同拠点の最新情報を確認してから費用を表示します。'};
+    const jobs=game?.constructionJobs?.()||state.jobs||[];
+    if(kind==='research'&&jobs.some(job=>job.kind==='research'&&job.id===id))return {unavailable:true,title:item.name+'は研究中です',note:'完成後の新しい段階で、次の費用を試算できます。'};
+    const chain=jobs.filter(job=>job.kind===kind&&job.id===id&&(game?.isStaff?job.shared:!job.shared));
+    const level=kind==='building'?Math.max(state.buildings?.[id]||0,...chain.map(job=>job.targetLevel||0)):state.tech?.[id]||0;
+    const limit=kind==='building'?(catalog.buildingLimit||32):item.max;
+    if(level>=limit)return {unavailable:true,title:item.name+'は最高段階です',note:'別の施設・研究を選んでください。'};
+    const cost=kind==='building'?game?.costs?.(id,level):game?.researchCost?.(id);
+    if(!cost)return {unavailable:true,title:'費用を確認できません',note:'施設・研究の詳細で確認してください。'};
+    const notes=[];
+    if(game?.isStaff)notes.push(kind==='building'?'共同普請の費用は着手する本人の資源から支払います。':'研究は個人の進行です。本人の資源から費用を支払います。');
+    if(kind==='building') {
+      const unlock=game?.buildingUnlock?.(id);if(unlock?.ok===false)notes.push(unlock.reason);
+      if(chain.length)notes.push('予約済みの普請の、さらに次の段階です。');
+    } else {
+      if(level>=(state.buildings?.academy||0))notes.push('先に学問所の増築が必要です。');
+      if(jobs.some(job=>job.kind==='research'))notes.push('進行中の研究が完了してから開始できます。');
+    }
+    notes.push('着手・予約は行いません。実行時の費用と条件は詳細で再確認できます。');
+    return {kind,id,title:item.name+' Lv.'+(level+1)+' の必要資源',targets:cost,note:notes.join(' '),destination:kind==='building'?'facilities':'research'};
+  }
   function operationTiming(row,clock) {
     const world=row.timeBasis!=='real',paused=world&&!clock.running,remaining=nonnegative(row.remainingMs),speed=world?clock.speed:1;
     const terminal=row.category==='construction'||row.category==='research'?'完成':row.category==='returning'?'帰還':'到着';
@@ -118,7 +169,7 @@
     const model = build(game, options);
     const icon = name => typeof options.icon === 'function' ? options.icon(name) : `<span data-icon="${name}" aria-hidden="true"></span>`;
     const tile = (key, label, unit, symbol, action, detail) => `<button type="button" class="domain-briefing-tile" ${action}><span class="domain-briefing-label">${icon(symbol)}${label}</span><strong class="${model[key].length>7?'domain-briefing-long-number':''}"><span data-briefing-value="${key}">${esc(model[key])}</span><small>${unit}</small></strong><span class="domain-briefing-detail" data-briefing-value="${detail}">${esc(model[detail])}</span></button>`;
-    return `<section class="domain-briefing" id="domain-briefing" data-tone="${model.tone}" aria-labelledby="domain-briefing-title"><header><div><span class="domain-briefing-kicker">COMMAND DESK</span><h2 id="domain-briefing-title">領国の指揮台</h2></div><span class="domain-briefing-caption">いまの状況を、一目で。</span></header><div class="domain-briefing-grid">${tile('jobs','普請・研究','件','castle','data-action="town-section" data-id="town-reports-section"','jobsDetail')}${tile('marches','進軍・帰還','部隊','flag','data-action="command-activity" aria-haspopup="dialog"','marchesDetail')}${tile('quests','達成済み任務','件','scroll','data-view="council"','questsDetail')}${tile('troops','本隊の兵数','人','swords','data-view="army"','troopsDetail')}</div><button type="button" class="domain-activity-entry" data-action="command-activity" aria-haspopup="dialog"><span class="domain-activity-heading"><b>行動予定表</b><small><span data-briefing-value="operations">${esc(model.operations)}</span>件 · 一覧を見る</small></span><span class="domain-activity-next"><strong data-briefing-value="nextTitle">${esc(model.nextTitle)}</strong><small data-briefing-value="nextTime">${esc(model.nextTime)}</small></span><span class="domain-activity-next" data-briefing-second ${model.hasSecond?'':'hidden'}><strong data-briefing-value="nextTitle2">${esc(model.nextTitle2)}</strong><small data-briefing-value="nextTime2">${esc(model.nextTime2)}</small></span></button><button type="button" class="domain-briefing-ledger" data-action="economy-details" aria-haspopup="dialog"><span class="domain-briefing-ledger-title">${icon('coins')}毎月の収支 <small>見込み</small></span><span class="domain-briefing-ledger-values"><span>金銭 <b data-briefing-value="gold" class="${model.goldNegative?'is-negative':''}">${esc(model.gold)}</b></span><span>兵糧 <b data-briefing-value="rice" class="${model.riceNegative?'is-negative':''}">${esc(model.rice)}</b></span></span><span class="domain-briefing-ledger-open">内訳を見る ${icon('chevron')}</span></button><p class="domain-briefing-note" data-briefing-value="note">${esc(model.note)}</p></section>`;
+    return `<section class="domain-briefing" id="domain-briefing" data-tone="${model.tone}" aria-labelledby="domain-briefing-title"><header><div><span class="domain-briefing-kicker">COMMAND DESK</span><h2 id="domain-briefing-title">領国の指揮台</h2></div><span class="domain-briefing-caption">いまの状況を、一目で。</span></header><div class="domain-briefing-grid">${tile('jobs','普請・研究','件','castle','data-action="town-section" data-id="town-reports-section"','jobsDetail')}${tile('marches','進軍・帰還','部隊','flag','data-action="command-activity" aria-haspopup="dialog"','marchesDetail')}${tile('quests','達成済み任務','件','scroll','data-view="council"','questsDetail')}${tile('troops','本隊の兵数','人','swords','data-view="army"','troopsDetail')}</div><button type="button" class="domain-activity-entry" data-action="command-activity" aria-haspopup="dialog"><span class="domain-activity-heading"><b>行動予定表</b><small><span data-briefing-value="operations">${esc(model.operations)}</span>件 · 一覧を見る</small></span><span class="domain-activity-next"><strong data-briefing-value="nextTitle">${esc(model.nextTitle)}</strong><small data-briefing-value="nextTime">${esc(model.nextTime)}</small></span><span class="domain-activity-next" data-briefing-second ${model.hasSecond?'':'hidden'}><strong data-briefing-value="nextTitle2">${esc(model.nextTitle2)}</strong><small data-briefing-value="nextTime2">${esc(model.nextTime2)}</small></span></button><button type="button" class="domain-briefing-ledger" data-action="economy-details" aria-haspopup="dialog"><span class="domain-briefing-ledger-title">${icon('coins')}毎月の収支 <small>見込み</small></span><span class="domain-briefing-ledger-values"><span>金銭 <b data-briefing-value="gold" class="${model.goldNegative?'is-negative':''}">${esc(model.gold)}</b></span><span>兵糧 <b data-briefing-value="rice" class="${model.riceNegative?'is-negative':''}">${esc(model.rice)}</b></span></span><span class="domain-briefing-ledger-open">内訳を見る ${icon('chevron')}</span></button><p class="domain-briefing-note" data-briefing-value="note">${esc(model.note)}</p><button type="button" class="domain-budget-entry" data-action="resource-planner" aria-haspopup="dialog">${icon('coins')}<span><b>資源計画</b><small>次の普請・研究までの不足と待ち時間</small></span>${icon('chevron')}</button></section>`;
   }
 
   function refresh(game, options = {}) {
@@ -238,6 +289,7 @@
     if(!game)return false;
     const dialog=ensureActivityDialog();
     if(!dialog)return false;
+    if(plannerSession)closePlanner();
     if(activitySession)close();
     const session={options,scope:identity(game),returnFocus:global.document.activeElement,filter:Object.hasOwn(filters,options.filter)?options.filter:'all',query:'',limit:40,unsubscribe:null};
     activitySession=session;
@@ -253,7 +305,87 @@
     return true;
   }
 
-  const api = {build, markup, refresh, buildOperations, matchingOperations, open, close};
+  let plannerDialog=null,plannerSession=null;
+  function finishPlanner() {
+    const session=plannerSession;if(!session)return;
+    plannerSession=null;session.unsubscribe?.();
+    if(session.returnFocus?.isConnected)session.returnFocus.focus({preventScroll:true});
+  }
+  function closePlanner() {if(plannerDialog?.open)plannerDialog.close();finishPlanner();}
+  function ensurePlannerDialog() {
+    if(plannerDialog)return plannerDialog;
+    const document=global.document;if(!document?.createElement)return null;
+    const dialog=document.createElement('dialog');plannerDialog=dialog;
+    dialog.className='command-activity-dialog resource-plan-dialog';
+    dialog.setAttribute('aria-labelledby','resource-plan-title');
+    dialog.innerHTML='<header class="command-activity-header"><div><p>次の一手の準備</p><h2 id="resource-plan-title">資源計画</h2></div><button type="button" class="button" data-budget-close>閉じる</button></header><div class="resource-plan-scroll"><label class="resource-plan-picker"><span>何を準備しますか</span><select class="select" data-budget-choice></select></label><h3 class="resource-plan-goal" data-budget-goal></h3><p class="resource-plan-note" data-budget-goal-note></p><section class="resource-plan-summary" aria-label="資源が揃う目安" data-budget-summary><strong data-budget-title></strong><p data-budget-detail></p></section><div class="resource-plan-grid">'+Object.entries(resources).map(([key,label])=>'<section class="resource-plan-card" data-budget-card="'+key+'"><h3>'+label+'</h3><dl><div><dt>現在</dt><dd data-budget-current="'+key+'"></dd></div><div><dt>毎月の差引</dt><dd data-budget-rate="'+key+'"></dd></div></dl><label><span>必要な合計</span><input class="input" type="number" min="0" step="1" inputmode="numeric" aria-label="'+label+'の必要な合計" data-budget-target="'+key+'"></label><div class="resource-plan-gap"><span>不足</span><strong data-budget-gap="'+key+'"></strong></div><div class="resource-plan-track" aria-hidden="true"><i data-budget-track="'+key+'"></i></div></section>').join('')+'</div><details class="resource-plan-forecast"><summary>1・3・6か月後の残高を試算</summary><p class="resource-plan-note">ゲーム内の月数です。現在の差引がそのまま続く場合を表示します。</p><div class="resource-plan-table"><table><thead><tr><th scope="col">資源</th>'+[1,3,6].map(month=>'<th scope="col">'+month+'か月後</th>').join('')+'</tr></thead><tbody>'+Object.entries(resources).map(([key,label])=>'<tr><th scope="row">'+label+'</th>'+[0,1,2].map(index=>'<td data-budget-after="'+key+':'+index+'"></td>').join('')+'</tr>').join('')+'</tbody></table></div></details><p class="resource-plan-note resource-plan-warning" data-budget-military hidden>金銭・兵糧の赤字は月替わりの自動減兵で変わるため、この試算どおりには進まない場合があります。</p><p class="resource-plan-note">生産・維持費・給与・次回修復費を含む現在の差引を固定した概算です。工事完成、報酬、戦闘、売買、追加支出などによる変化や月末の精算時点は含みません。自動で購入・建設・予約はしません。</p><div class="resource-plan-actions"><button type="button" class="button gold" data-budget-go="facilities">施設を見る</button><button type="button" class="button" data-budget-go="research">研究を見る</button></div></div>';
+    dialog.addEventListener('cancel',event=>{event.preventDefault();closePlanner();});
+    // A facility detail may remain beneath this dialog. Its global Escape
+    // handler must not clear that underlying modal's live-refresh context.
+    dialog.addEventListener('keydown',event=>{if(event.key==='Escape')event.stopPropagation?.();});
+    dialog.addEventListener('close',()=>{if(!dialog.open)finishPlanner();});
+    dialog.addEventListener('click',event=>{
+      if(!plannerSession)return;
+      const button=event.target.closest?.('[data-budget-close],[data-budget-go]');
+      if(button){const destination=button.dataset.budgetGo,options=plannerSession.options;closePlanner();if(['facilities','research'].includes(destination))options.navigate?.(destination);return;}
+      if(event.target===dialog){const r=dialog.getBoundingClientRect();if(event.clientX<r.left||event.clientX>r.right||event.clientY<r.top||event.clientY>r.bottom)closePlanner();}
+    });
+    dialog.addEventListener('change',event=>{if(plannerSession&&event.target.matches?.('[data-budget-choice]')){const [kind,id]=event.target.value.split(':');plannerSession.selection={kind,id,targets:plannerSession.draft};if(kind==='custom')for(const input of dialog.querySelectorAll('[data-budget-target]'))input.value=plannerSession.draft[input.dataset.budgetTarget];renderPlanner();}});
+    dialog.addEventListener('input',event=>{
+      if(!plannerSession||plannerSession.selection.kind!=='custom'||!event.target.matches?.('[data-budget-target]'))return;
+      plannerSession.draft[event.target.dataset.budgetTarget]=event.target.value;renderPlanner();
+    });
+    document.body.appendChild(dialog);return dialog;
+  }
+  function renderPlanner(clock) {
+    const session=plannerSession;if(!session||!plannerDialog?.open)return;
+    const game=session.options.getGame?.()||session.options.game;
+    if(!game||identity(game)!==session.scope||global.SENGOKU_AT_TITLE===true){closePlanner();return;}
+    if(clock)session.clock=clock;
+    const goal=budgetGoal(game,session.selection,{catalog:session.options.catalog,staffReady:session.options.staffReady?.()===true});
+    const model=buildBudget(game,goal.targets,{catalog:session.options.catalog,clock:session.clock}),dialog=plannerDialog;
+    const text=(selector,value)=>{const node=dialog.querySelector(selector);if(node&&node.textContent!==value)node.textContent=value;};
+    text('[data-budget-goal]',goal.title);text('[data-budget-goal-note]',goal.note);
+    text('[data-budget-title]',goal.unavailable?'費用の試算はできません':model.title);
+    text('[data-budget-detail]',goal.unavailable?'目標を変更するか、各画面で現在の状態を確認してください。':model.detail);
+    dialog.querySelector('[data-budget-summary]').dataset.state=goal.unavailable?'unavailable':model.status;
+    for(const row of model.rows) {
+      const input=dialog.querySelector('[data-budget-target="'+row.key+'"]');
+      const auto=goal.kind!=='custom';input.readOnly=auto;input.disabled=goal.unavailable===true;
+      if(auto){const value=goal.unavailable?'':String(row.target);if(input.value!==value)input.value=value;}
+      input.setAttribute('aria-invalid',String(!row.valid));
+      text('[data-budget-current="'+row.key+'"]',number(row.current));
+      text('[data-budget-rate="'+row.key+'"]',signed(row.rate));
+      dialog.querySelector('[data-budget-rate="'+row.key+'"]').classList.toggle('is-negative',row.rate<0);
+      text('[data-budget-gap="'+row.key+'"]',goal.unavailable||!row.valid?'—':number(row.deficit));
+      const track=dialog.querySelector('[data-budget-track="'+row.key+'"]'),width=(goal.unavailable||!row.valid?0:row.target?Math.min(100,row.current/row.target*100):100).toFixed(1)+'%';
+      if(track.style.width!==width)track.style.width=width;
+      row.after.forEach((value,index)=>text('[data-budget-after="'+row.key+':'+index+'"]',number(value)));
+    }
+    dialog.querySelector('[data-budget-military]').hidden=!model.militaryDeficit;
+  }
+  function openPlanner(options = {}) {
+    const game=options.getGame?.()||options.game;if(!game)return false;
+    const dialog=ensurePlannerDialog();if(!dialog)return false;
+    if(activitySession)close();if(plannerSession)closePlanner();
+    const catalog=options.catalog||global.SENGOKU_DATA||{},choice=dialog.querySelector('[data-budget-choice]');
+    choice.innerHTML='<option value="custom">自由入力で予算を組む</option><optgroup label="施設の次の普請">'+(catalog.buildings||[]).map(row=>'<option value="building:'+esc(row.id)+'">'+esc(row.name)+'</option>').join('')+'</optgroup><optgroup label="次の研究">'+(catalog.techs||[]).map(row=>'<option value="research:'+esc(row.id)+'">'+esc(row.name)+'</option>').join('')+'</optgroup>';
+    const kind=['building','research','custom'].includes(options.kind)?options.kind:'building',id=options.id||'farm';
+    const selected=Array.from(choice.options).some(option=>option.value===kind+':'+id)?kind+':'+id:kind==='custom'?'custom':catalog.buildings?.length?'building:'+catalog.buildings[0].id:'custom';
+    choice.value=selected;const [selectedKind,selectedId]=selected.split(':');
+    const draft=Object.fromEntries(Object.keys(resources).map(key=>[key,String(Math.floor(nonnegative(game.state?.resources?.[key])))]));
+    for(const input of dialog.querySelectorAll('[data-budget-target]'))input.value=draft[input.dataset.budgetTarget];
+    const session={options,scope:identity(game),selection:{kind:selectedKind,id:selectedId,targets:draft},draft,returnFocus:global.document.activeElement,unsubscribe:null};
+    plannerSession=session;dialog.showModal();dialog.scrollTop=0;dialog.querySelector('.resource-plan-scroll').scrollTop=0;
+    if(typeof global.SengokuTravelUI?.subscribe==='function'){
+      session.unsubscribe=global.SengokuTravelUI.subscribe((_data,clock)=>{if(plannerSession===session)renderPlanner(clock);});
+      if(plannerSession!==session){session.unsubscribe?.();return false;}
+    }else renderPlanner();
+    if(plannerSession!==session)return false;
+    dialog.querySelector('[data-budget-close]')?.focus({preventScroll:true});return true;
+  }
+
+  const api = {build, markup, refresh, buildOperations, matchingOperations, open, close, buildBudget, budgetGoal, openPlanner, closePlanner};
   global.SengokuCommandCenter = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis);

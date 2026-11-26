@@ -1,0 +1,348 @@
+{
+  "version": "5.5.0",
+  "recordedAt": "2026-11-26T19:10:28.299114+09:00",
+  "baselineCommit": "569cac4de291f8e10ea5d26b890b2819ad0e18d4",
+  "localVerification": {
+    "commands": 20,
+    "passed": 20,
+    "results": [
+      {
+        "command": "npm run check:build",
+        "exitCode": 0,
+        "seconds": 2.021,
+        "output": "npm warn Unknown env config \"http-proxy\". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.\n\n> sengoku-vs-web@5.5.0 check:build\n> node tools/build-public-pages.cjs --check && node tools/build-game-entry.cjs --check\n\nPASS 16 public documents match site-metadata.json and their templates.\n"
+      },
+      {
+        "command": "npm run test:interface",
+        "exitCode": 0,
+        "seconds": 4.236,
+        "output": "npm warn Unknown env config \"http-proxy\". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.\n\n> sengoku-vs-web@5.5.0 test:interface\n> node tests/test-command-center.cjs && node tests/test-command-operations.cjs && node tests/test-alliance-operations.cjs && node tests/test-management-model.cjs && node tests/test-management-ui.cjs && node tests/test-travel-performance.cjs && node tests/test-navigation-ui.cjs && node tests/test-presentation.cjs && node tests/test-branch-commanders-ui.cjs && node tests/test-artwork-lifecycle.cjs && node tests/test-desktop-fit.cjs && node tests/test-social-viewport.cjs && node tests/test-public-search.cjs && node tests/test-resource-planner.cjs && node tests/test-campaign-records.cjs && node tests/test-live-dom.cjs\n\nPASS briefing reads the real campaign without changing the save or consuming commands\nPASS queued work and completed unclaimed quests follow actual game transitions\nPASS outbound and returning troops count once and completed receipts do not appear active\nPASS budget messaging distinguishes military deficits from repair-material deficits\nPASS using the header income avoids an extra economy calculation and preserves maximum values\nPASS live briefing refresh preserves focused buttons and updates values without replacing nodes\nPASS resource tabs retain their panels and keyboard navigation ignores Japanese composition\nPASS background refresh does not traverse a retained closed ledger\n8 command desk and resource ledger checks passed.\nPASS the real construction queue and research are projected without changing campaign state\nPASS queued completion includes preceding work and the current speed, while progress remains zero\nPASS paused shared time has no promised finish time, while real-time travel continues\nPASS due arrivals remain pending authority and do not turn into battle results\nPASS all existing travel kinds appear once and reverse legs retain their actual route\nPASS shared and personal jobs have separate keys and branch facility names stay visible\nPASS search accepts Japanese names and full-width letters without altering counts or data\nPASS mounted countdowns preserve search, focus, selected filter and scroll position\nPASS a finished focused row moves focus to close, without erasing the search\nPASS completed jobs disappear and the filter can be cleared without recreating the dialog\nPASS work navigation closes the read-only ledger and disconnects its subscription first\nPASS troop navigation opens the existing travel UI after releasing the operations listener\nPASS account or campaign changes close the ledger and ignore later stale ticks\nPASS an account switch or access hold closes the ledger before campaign replacement\nPASS names are escaped as text and never become executable markup\nPASS large queues are paged while every job remains discoverable\nPASS reopening keeps one listener and close remains idempotent\nPASS a queued native close event cannot tear down a newly reopened ledger\nPASS an immediate subscription rejection releases the listener without focusing a closed dialog\nPASS authorized alliance movements appear in the briefing and retain the existing alliance action\nPASS revoked alliance snapshots remove only their rows and preserve ongoing search\nPASS the same movement supplied by both read sources is counted only once\n22 operations ledger checks passed. No external requests or writes.\nPASS unknown alliance movements remain explicitly unloaded without fetching\nPASS only authenticated personal moving units are retained from an authorized alliance response\nPASS closing the alliance view preserves a read-only copy without extra requests\nPASS account, membership and privilege epochs each invalidate retained private movements\nPASS pending, banned, sign-out and another account invalidate cached units without a request\nPASS changing campaign data invalidates movements belonging to the old campaign\nPASS a response begun in the previous campaign cannot be attached to the new campaign\nPASS late responses for a former member never populate the command desk\nPASS an older server snapshot cannot replace a newer response from another view instance\nPASS uncertain mutations invalidate old movements instead of guessing their new direction\nPASS a read begun before a mutation cannot restore outbound units while recall is pending\nPASS another view cannot publish a snapshot fetched during an unresolved mutation\nPASS an existing post-mutation refresh supplies the confirmed new return route\nPASS a successful empty list is distinguished from movements that were never loaded\nPASS a former member can still see their own returning soldiers supplied by the server\nPASS server and client membership mismatches do not turn private data into a cached snapshot\nPASS authorization errors clear the last successful snapshot\nPASS an authorization failure also invalidates successful responses already in flight\nPASS elapsed countdowns never settle a cached arrival or award returning troops\n19 alliance operations projection checks passed. No external requests.\nPASS facility planning leaves a live army, queued construction and all campaign data unchanged\nPASS funding requires every resource and uses the exact next upgrade cost\nPASS locked, working, unbuilt, vacant and completed filters stay distinct\nPASS staff planning follows shared work without mistaking retained personal jobs for shared jobs\nPASS all sort modes preserve row input order and ties are deterministic\nPASS category and search combine without allowing stale preferences to hide all facilities\nPASS malformed preferences normalize safely and storage failure never blocks play\nPASS comparison selection adds up to three, replaces rank, removes and rejects invalid ids\nPASS officer comparison uses selected ranks and ownership without granting variants or altering army health\nPASS comparison ignores malformed and duplicate identities before applying the three-slot limit\nPASS live funding refresh updates only eligible visible cards and never rebuilds unchanged labels\n11 facility planner/officer comparison model checks passed. No external requests or game writes.\nPASS comparison clicks retain mounted cards, painted portraits, focused buttons and input selection\nPASS one officer occupies one comparison slot across ranks and three slots are enforced by real handlers\nPASS removing a focused pick and clearing the tray always leave a valid keyboard destination\nPASS removing the last comparison with no visible results returns focus to search, never a closed detail\nPASS the archive menu opens the collection while explicit gacha actions and in-screen tabs keep their destination\nPASS comparison distinguishes selected owned/unowned ranks from highest owned and renders the selected abilities\nPASS compact facilities show sixteen entries, clamp pagination and keep management access at maximum level\nPASS facility controls persist search, state, category, sort and layout through their real event handlers\nPASS sorting orders real levels and costs; resetting conditions keeps display preference and restores search focus\nPASS the affordable filter can be refreshed explicitly after income changes without mutating the campaign\nPASS a denied localStorage getter leaves facility controls and in-memory preferences usable\nPASS planner counts construction chains once, includes castle/branch slots and excludes research\n12 management UI interaction regression checks passed.\nPASS 60 clock updates read local journeys once each and never scan the whole document again\nPASS mounted countdowns are tracked, unchanged text is untouched, and hidden or detached views do no work\nPASS a reconciled existing node can gain or lose its countdown role without a whole-page scan\nPASS open list retains its countdown nodes and focus while the world is paused\nPASS subscribers share the refresh snapshot and stop receiving updates when removed\nPASS hidden tabs cancel the fallback and resume immediately without synthesizing an arrival\nPASS a corrected report with the same id updates losses while keeping the back button and scroll\nPASS late server results from another campaign cannot replace a new scope\n8 travel work/continuity checks passed. 60 ticks: 60 local reads, 0 document rescans; unchanged counters: 0 DOM text writes.\nPASS enhancement preserves all original destinations and never executes a game command while opening\nPASS search understands full-width letters, kana and multiple purpose words without replacing the input\nPASS a new search or clearing a query starts at the first match while refresh retains a focused guide link\nPASS the menu retains combined filters and scroll on reopening and explicitly clears all conditions\nPASS choosing a page delegates exactly once to its original control and updates the quick dock\nPASS disabled, removed and unknown routes cannot execute stale controls\nPASS new source destinations remain discoverable without maintaining a second route list\nPASS keyboard shortcuts respect title/loading, other dialogs and editing fields\nPASS touch opening avoids the software keyboard and closing restores the initiating control\nPASS opening another feature dialog never steals its focus on menu close\nPASS compact destinations scroll below sticky headers once after loading completes\nPASS manual scrolling or new user intent cancels deferred scroll and focus\nPASS changed routes, title and recovery dialogs cancel pending navigation permanently\nPASS desktop navigation focuses its pane without scrolling the document\nPASS public help links preserve the game in its tab and source labels are escaped\nPASS unsupported dialog and teardown keep original navigation available\nPASS favorite controls are separate buttons, preserve focus and never execute destinations\nPASS favorites are capped at six and restore from preferences without storing game state\nPASS unknown, hidden and removed sources never appear through saved favorites or recent history\nPASS blocked storage and malformed preferences retain a working in-memory menu\nPASS recent destinations record accepted controls once, deduplicate, cap at five and clear\nPASS failed or disabled navigation does not create recent history and refresh leaves controls attached\nPASS pinned desktop shortcuts delegate to current sources once and disappear when no favorites remain\nPASS pinned help links preserve normal link behavior and editing opens the existing finder\nPASS search keyboard travel skips disabled entries and leaves text editing native\nPASS backdrop dismissal requires a pointer press outside and ignores dialog padding or drags from controls\nPASS personal dock selections swap duplicate slots, persist and delegate exactly once\nPASS dock uses only live canonical sources and rejects unavailable or external destinations\nPASS dock edits respect loading, title and other modal surfaces\nPASS dock accepts legacy preferences and survives malformed or denied storage\nPASS purpose choices refine discovery without issuing game commands and reset restores all purposes\nPASS search prioritizes visible destination names and discovers travel, repair and payroll terms\nPASS search highlights remain escaped and handle overlapping words and normalized kana safely\nPASS empty results can expand the category without losing the query or execute a destination\nPASS Enter opens a unique live destination once and never treats IME or ambiguous input as navigation\nPASS current location and category counts update from visible canonical controls without replacing the input\n36/36 navigation usability checks passed\nPASS missing, malformed and unsupported stored settings use the standard preference\nPASS quiet selection applies immediately, emits a change, and persists separately for reload\nPASS system reduced motion overrides standard and live system changes keep the chosen preference\nPASS blocked storage never prevents immediate local presentation changes\nPASS rendered settings expose a label, selected value and accessible explanation\nPASS legacy media listeners are supported and disposing stops further updates\nPASS legacy motion preferences retain their meaning without an automatic storage rewrite\nPASS text size applies immediately, reloads independently, and never resets a motion choice\nPASS large text remains independent of system reduced motion and unavailable storage\nPASS text settings have an explicit label and retain the selected option when reopened\n10 presentation preference checks passed.\nPASS Edo has one placement slot and each other major city has two, with actual owned officer art and rank\nPASS army and another branch assignments remain reserved, with actual location and capacity reasons\nPASS governor transfer names the former facility before committing, preserving other posts and all resources\nPASS fallen branches keep removal available, while unavailable persistence blocks both mutations\nPASS focused candidate and painted portrait survive refresh, including a canonical save replacement\nPASS map and modal placement controls have unique labels and foreign branches expose no picker\nPASS automatic placement previews exact candidates, preserves reserved posts and keeps optimal full formations available\n7 branch officer UI checks passed. No live requests.\nPASS 240 detached targets released, reused dialogs restored, connected moves preserved, stale callbacks ignored.\nPASS hidden dialogs avoid layout and image work until they are opened.\nPASS dialogs closed during preview or full-image decoding remain idle and reuse decoded images on reopen.\nPASS desktop uses every available CSS pixel through 200 percent browser zoom\nPASS announcement cannot produce a negative or offscreen content rectangle\nPASS touch tablets retain document flow with an attached fine pointer\nPASS phone and tablet widths use the same compact layout with a desktop mouse\nPASS game text entry releases fixed navigation only when the keyboard occupies the visual viewport\nPASS actual runtime removes a legacy scale without reading long-page dimensions\nPASS zoom, viewport offsets, and repeated refresh keep native scale\nPASS switching to touch clears desktop geometry and retains keyboard viewport height\nPASS resizing a desktop to compact width and back preserves normal desktop geometry\nPASS horizontal menu reveals a new selection without resetting deliberate menu or form scrolling\nPASS short-window headers reserve scroll space only while they are sticky\nPASS routine text-only updates do not schedule viewport measurements\nPASS real structure, view and dialog visibility changes still schedule layout\nPASS button ripple layers do not remeasure the whole viewport\nPASS decoded artwork changes no viewport geometry while meaningful classes still do\nPASS closed dialog changes stay idle but opening and closing still update shell geometry\nPASS text-caused header resizing still updates viewport through ResizeObserver\nPASS destroy removes legacy geometry and releases desktop overflow mode\nPASS desktop shell fixes the viewport while main content can scroll at readable size\nPASS dialogs have bounded middle panes and never scale long histories\nPASS touch navigation, map controls, and footer reserve safe touch areas\n21 responsive viewport checks passed.\nPASS narrow mouse windows use a bounded chat history and visible composer\nPASS keyboard resize preserves the draft, caret and send-button position\nPASS desktop resizing restores normal chat layout without replacing its input\nPASS wide touch tablets retain their composer with an attached fine pointer\nPASS keyboard focus inside the portalled mention picker keeps the same compact composer\nPASS closing and disposing dialogs releases temporary layout without altering text\nPASS offscreen selected tabs reveal within their strip without moving the profile or draft\nPASS reopening and resizing reveal the selected tab while closed dialogs never move\nPASS background conversation updates never schedule layout for retained closed dialogs\n9 compact conversation behavior checks passed.\nPASS every index entry links to a real guide or subheading and every contents entry is searchable\nPASS the index loads only on demand and is reused when search reopens\nPASS Japanese aliases, multiple words, and missing queries preserve safe text and real links\nPASS IME confirmation does not navigate and keyboard arrows select the results after composition\nPASS one Escape closes a nonempty search while IME composition keeps the dialog open\nPASS a failed network request exposes a working retry and a static guide fallback\nPASS unsafe index URLs are omitted and markup in an entry is rendered as text\nPASS unsupported dialogs preserve links and slash never interrupts an editable field\n8 public search checks passed.\nPASS real facility and research plans read costs without touching resources, commands or jobs\nPASS facility reservations advance the target and keep the full scaled price\nPASS completed levels, unknown targets and already-running research do not quote stale costs\nPASS shared-court costs stay unavailable until the supplied readiness gate confirms them\nPASS multiple shortages use the slowest resource and honor each supported speed\nPASS zero and negative income are never presented as a countdown\nPASS a declining resource must remain sufficient when all other resources finally arrive\nPASS paused time suppresses estimates but keeps already-funded budgets funded\nPASS invalid target inputs and costs above the real asset cap remain visibly blocked\nPASS forecasts apply the displayed net rate and clamp to real balance bounds\nPASS a caller-supplied income projection is reused and neither target nor state is changed\nPASS live custom-budget updates preserve typed digits, focus, scroll and open forecast\nPASS switching from a preset back to custom restores the exact custom draft\nPASS preset costs track new reservations without replacing focused controls\nPASS navigation and account changes release the shared subscription before leaving\nPASS operations and planner dialogs never retain simultaneous subscriptions\nPASS a delayed close event cannot tear down a reopened planner session\nPASS Escape closes only the planner and preserves an underlying detail refresh context\nPASS title-screen rejection returns the listener and backdrop dismissal spends nothing\nPASS untrusted catalog names remain text in the goal and selection controls\n20 resource planning checks passed. No campaign writes or network requests.\nPASS snapshot is bounded, copied and preserves source order through calendar wrap\nPASS literal search normalizes half-width, case and kana without interpreting regular expressions\nPASS bad log entries are omitted and unknown kind falls into the honest other group\nPASS engine defeats, scouting and diplomacy stay with military actions; completed work stays with development\nPASS export contains all filtered rows and clearly separates itself from a restore save\nPASS mounted search keeps input focus and selection, respects IME, and paginates 20 records\nPASS background save/sync notifications never replace rows or reset reading position\nPASS manual refresh retains active query, kind and order, including literal HTML as text\nPASS current filtered results download as UTF-8 text and object URL is released\nPASS failed download removes its anchor and still releases its object URL\nPASS cancel/backdrop close restores focus, clears player data and releases subscriptions\nPASS source game replacement, campaign and identity changes close without leaking prior rows\nPASS empty results disable download and closed dialogs remain dormant through stale callbacks\nPASS Escape stays scoped to the journal without preventing native cancellation\nPASS a queued native close event cannot tear down a newly reopened journal\n15 campaign journal behavior checks passed.\nPASS 60 unchanged ticks and changing clock text never rescan the document\nPASS new views, moved nodes, detached trees and same-task refresh retain the right controls\nPASS selector-changing attributes update membership without watching every decoration attribute\nPASS unsupported queries, old browsers and a disposed index use current DOM directly\nPASS mounted recruitment buttons share one fresh batch and hidden panes do no quote work\nPASS visually present decorative ability bars update even when hidden from assistive reading\n6 live DOM and recruitment checks passed. 60 unchanged ticks: 0 document rescans after the initial three selector reads.\n"
+      },
+      {
+        "command": "npm run test:entry",
+        "exitCode": 0,
+        "seconds": 3.651,
+        "output": "npm warn Unknown env config \"http-proxy\". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.\n\n> sengoku-vs-web@5.5.0 test:entry\n> node tests/test-css-compaction.cjs && node tests/test-game-entry.cjs && node tests/test-release-assets.cjs && node tests/test-offline-entry-http.cjs && node tests/test-public-search-cache.cjs\n\nPASS known redundant declarations shrink without changing selector specificity\nPASS responsive and feature conditions retain their order and never combine across intervening rules\nPASS modern units and unknown functions retain earlier supported fallbacks in source order\nPASS font shorthands preserve clamp sizes, line heights and fallback fonts without warnings\nPASS custom properties, logical properties, content strings, URL fragments and precise values stay intact\n{\"cssBytesBefore\":887431,\"cssBytesAfter\":876152,\"savedBytes\":11279,\"gzipBytesBefore\":172074,\"gzipBytesAfter\":169471}\nPASS the real stylesheet compacts reproducibly, remains parseable and decreases shipped bytes\n6 CSS distribution compaction checks passed.\nPASS bundled source parity and deferred geography single fetch, retry, latest draw and detached view.\nPASS offline entry includes 9 fingerprinted scripts/styles and 16 required resources.\n{\"installRequests\":17,\"installBytes\":3118604,\"warmNavigationNetworkRequests\":0,\"offlineEntryAssets\":9,\"offlineMap\":true,\"offlineGuide\":true,\"offlineArtworkFallback\":true}\nPASS search is cached only after use, remains available offline, validates JSON MIME and bypasses private/unrelated requests.\n"
+      },
+      {
+        "command": "node tests/test-asset-budget.cjs",
+        "exitCode": 0,
+        "seconds": 0.146,
+        "output": "{\"entryBundles\":[{\"file\":\"game-layout.bundle.css\",\"bytes\":876236,\"gzipBytes\":169527},{\"file\":\"game-preferences.bundle.js\",\"bytes\":7330,\"gzipBytes\":2876},{\"file\":\"game-core.bundle.js\",\"bytes\":645923,\"gzipBytes\":207658},{\"file\":\"game-campaign.bundle.js\",\"bytes\":477209,\"gzipBytes\":157495},{\"file\":\"game-interface.bundle.js\",\"bytes\":407246,\"gzipBytes\":136998},{\"file\":\"game-community.bundle.js\",\"bytes\":586183,\"gzipBytes\":184032}],\"totalBytes\":3000127,\"totalGzipBytes\":858586,\"rawBudget\":3025000,\"gzipBudget\":870000}\n"
+      },
+      {
+        "command": "node tests/test-minified-runtime.cjs",
+        "exitCode": 0,
+        "seconds": 0.392,
+        "output": "PASS 61 classic globals, function names, initialization order and real game data match after four bundles\nPASS 62 source/minified campaign checkpoints, economy, recruitment, gacha, construction, battle and bidirectional save continuation\nPASS corrupt-save rejection and cross-bundle hints, ranks, artwork and travel remain equivalent; no network or real browser used\n"
+      },
+      {
+        "command": "node tests/test-world-map.cjs",
+        "exitCode": 0,
+        "seconds": 0.214,
+        "output": "PASS real longitude/latitude round-trip through north-up Web Mercator\nPASS GeoJSON coastline rings and holes retain their exact topology\nPASS fit bounds keeps all geography visible with the viewport aspect ratio\nPASS wheel/pinch zoom retains the geographic point below the gesture\nPASS markers require supplied real coordinates and enforce Edo role access\nPASS clustering retains every castle and selected/home positions stay exact\nPASS Kyoto palace is reserved for staff and shared field selection is independent of attack permission\nPASS dense chains never merge distant provinces into one unbounded cluster\nPASS ordinary castle labels do not overlap other chosen label boxes\nPASS castle artwork is opt-in and clusters or views without a callback keep their normal symbols\nPASS larger shared castle symbols reserve enough room for map labels\nPASS selected and home labels never cover castle artwork in the narrow Kiyosu home view\nPASS map scale uses latitude-correct ground distance and useful metric units\nPASS the shipped geography provides all 129 actual castle positions and offline terrain\nPASS camera-only redraws reuse routes while fresh ownership, access and regional data invalidate them\nPASS stable castle artwork and map elements are reused for 60 camera frames, then refreshed by new data\n16 real-geography projection, interaction and layout checks passed.\n"
+      },
+      {
+        "command": "node tests/test-render-work.cjs",
+        "exitCode": 0,
+        "seconds": 0.396,
+        "output": "PASS batched recruitment matches individual quotes across roles and fresh state changes\nPASS each quote batch computes facility modifiers once and never authorizes a later action\nPASS hints keep the same recommendations while using current batched recruitment rules\nPASS facility descriptions do not recalculate the unrelated whole-domain economy\nPASS a screen render evaluates fresh hints once, including after the throttle interval\nPASS independent control refreshes still update hints and respect their normal throttle\nPASS an access transition immediately updates hints once and keeps action guards current\nPASS controller and initial-selection render branches do not double-evaluate hints\n8 render-work checks passed.\n"
+      },
+      {
+        "command": "node tests/test-auto-governors-ui.cjs",
+        "exitCode": 0,
+        "seconds": 0.648,
+        "output": "PASS both town and facility screens render the assignment entry with live counts\nPASS one real click assigns all built facilities despite search/page filters and saves once without changing the army\nPASS a real assignment click reports payroll-limited vacancies separately from a shortage of officers\nPASS insufficient candidates leave explicit vacancies and a repeated click preserves the existing optimal formation\nPASS a real click fills branch army slots before governors in one saved clone, without duplicate posts or costs\nPASS one real click replaces full branches from governors and assigns the displaced officers back to facilities\nPASS a failed replacement restores full branch formations and every governor atomically\nPASS a failed branch-first save restores branch commanders and governors together without a success dialog\nPASS durable storage failure rolls back the exact governor map and never reports success or emits a save event\nPASS unverified roles, pending sync, followers and expired leases disable controls and reject direct action dispatch\nPASS clock catch-up, pending field/walking actions and a prior storage failure also leave assignments untouched\nPASS staff assignment waits for both an actual shared projection and application readiness\nPASS verified staff assignments use shared built facilities but persist only personal building levels\nPASS no non-army candidates disables the entry and a normal click cannot save\nPASS already posted eligible branch commanders keep global optimization available without spare officers\nPASS result rows and facility labels escape officer names and omit labels for unbuilt facilities\n16 automatic governor UI scenarios passed. No external requests or player data changes.\n"
+      },
+      {
+        "command": "node tests/test-ui-continuity.cjs",
+        "exitCode": 0,
+        "seconds": 0.301,
+        "output": "PASS explicit desktop navigation resets the content pane, while choosing no unsupported view\nPASS moving between modal views restores a valid keyboard target without disturbing retained fields\nPASS sync redraw retains nested scroll offsets, draft text, keyboard focus and selected text\nPASS late restoration yields to a new user scroll or navigation\nPASS a second redraw invalidates old animation-frame callbacks for the same pane\nPASS five consecutive town sync redraws carry the console position through temporary zero-height layout\nPASS a user gesture invalidates a pending town console position between sync redraws\nPASS real app preservation and StableDOM retain document/pane reading positions through phone, tablet and PC sync batches\nPASS unchanged verified operator role does not rebuild the page or modal\nPASS map synchronization updates the existing controller and retains its camera\nPASS elapsed construction uses actual progress and remaining time follows current speed or pause\nPASS cycle settlement persists final occupation, blocks mutations, flushes and only then refreshes\nPASS cycle reconciliation failure has a bounded retry and never treats the old cycle as settled\nPASS failed local durability prevents cycle transfer; guests never call settlement APIs\n14 live UI continuity, elapsed timer and cycle settlement checks passed.\n"
+      },
+      {
+        "command": "node tests/test-quiet-sync-layout.cjs",
+        "exitCode": 0,
+        "seconds": 0.108,
+        "output": "PASS castle guidance keeps its text through normal sync barriers while the action stays blocked\nPASS research labels and state retain their size during sync but still disable the real action\nPASS routine save acknowledgements do not redraw open garrison or treasury dialogs\nPASS follower device-switch guidance does not disappear while a new snapshot is applied\nPASS actual personal treasury balances still refresh during an otherwise identical save acknowledgement\nPASS treasury controls keep normal sync silent while retaining real balance changes and errors\nPASS action-required sync failures remain visible until a confirmed recovery\nPASS initialization, ordinary saves and sync progress remain silent; errors are not filtered\n8 quiet sync presentation scenarios passed. No external requests.\n"
+      },
+      {
+        "command": "node tests/test-stable-dom.cjs",
+        "exitCode": 0,
+        "seconds": 1.347,
+        "output": "PASS equal generated HTML is a true no-op after runtime artwork and icons are added\nPASS changing a resource amount updates one text node and keeps SVG and image identities\nPASS runtime replacement of a timer text node is adopted rather than duplicated\nPASS source class deltas retain art classes while removing only obsolete source state\nPASS source style deltas preserve runtime town geometry and decoration properties\nPASS changed and removed source attributes do not remove runtime-only metadata\nPASS focused input text, selection and native select node survive a background form refresh\nPASS explicit source-controlled forms can update values and checkbox state\nPASS refocusing a moved keyed control respects input policy and preserves unchanged selection\nPASS explicit reset also restores edited controls when its generated HTML is unchanged\nPASS details open state survives content and source open-attribute changes\nPASS inserting a same-tag notice before the town does not recycle or detach the town board\nPASS keyed rows reorder and insert without replacing attached listeners or focused controls\nPASS runtime decorator children stay in place while managed children update and grow\nPASS map island keeps mounted canvas and camera state while adjacent details update\nPASS array keys compare by value, and actual context changes reset mounted content\nPASS same artwork URL retains loaded surface while tile and ghost positions change\nPASS changed artwork URL reobserves only the affected art and retains old image during load\nPASS changed nested artwork resets only its parent ghost binding for the existing decorator\nPASS removed source rows disappear while unrelated runtime nodes survive\nPASS element namespace or tag changes replace the old node safely\nPASS background insertions restore existing scrolled regions and do not steal outside focus\nPASS repeated source changes do not accumulate icons or recreate stable form controls\nPASS explicit forget resets stale patch metadata on the next render\nPASS a parent adopts an independently patched child page without duplicating cards\nPASS an independently patched descendant invalidates an otherwise equal parent HTML cache\nPASS artwork-only attribute changes explicitly report the decorator work to callers\nPASS prepending rows preserves visible content in an ancestor dialog and keeps a focused draft attached\nPASS document scrolling preserves the same reading position when rows arrive above it\nPASS scroll restoration requests an instant move even when the page uses smooth scrolling\nPASS the first nested patch inherits ancestor source records without remounting focused or decorated content\nPASS nested adoption does not capture unmanaged DOM, explicitly forgotten content or another ancestor context\nPASS removing the first visible row uses a surviving visible anchor and deleting all anchors safely falls back\nPASS a pane at the top stays at the top when a new item is inserted\nPASS fixed and unrelated earlier headers cannot displace the actual content anchor\nPASS reusing a snapshot never undoes scrolling performed after its first restoration\nPASS an old scroll snapshot cannot affect a newly selected patch context or a detached page\nPASS native hit testing bounds anchor geometry reads on a long list and retains visible content\nPASS unavailable or failed native hit testing preserves the deterministic geometry fallback\nPASS mobile and tablet keyboard viewports anchor the content actually visible above the keyboard\nPASS a keyboard/browser viewport change cancels delayed restoration without moving the document\nPASS a large reordered roster retains keyed rows, listeners and a focused draft\nPASS long unkeyed lists consume repeated shapes in source order without recycling incompatible nodes\n43 stable DOM scenarios passed with deterministic DOM fixtures; no browser launched.\n"
+      },
+      {
+        "command": "node tests/test-responsive-text.cjs",
+        "exitCode": 0,
+        "seconds": 0.157,
+        "output": "PASS content corrections load after every legacy game layout and compile cleanly\nPASS bounded scrolling collections keep natural-height rows instead of shrinking cards\nPASS building descriptions and the player heading cannot return to ellipsis\nPASS ledger and recruitment table cells preserve all balance digits at narrow widths\nPASS territorial search controls can shrink inside the clipped geography frame\nPASS recruiting results and major army/research totals cannot conceal long values\nPASS operational count cards adapt to panel width and enlarged root text\nPASS phone settings place labels above full-width selects and preserve slider space\nPASS action labels and territory totals remain available without changing map surfaces\n9 responsive text structure checks passed. Rendered bounds require browser QA.\n"
+      },
+      {
+        "command": "node tests/test-research-council-ui.cjs",
+        "exitCode": 0,
+        "seconds": 0.145,
+        "output": "PASS research readiness agrees with real engine acceptance across prerequisites and insufficient resources\nPASS read-only and unsavable sessions expose the actual UI guard without spending resources\nPASS live resource and command changes update the same research button and reason nodes\nPASS completed unclaimed quests appear first and each state filter reflects real reward status\nPASS claiming a reward removes it from ready results without allowing a second credit\nPASS empty state filters keep a clear route back to every quest\n6 research availability and council reward checks passed.\n"
+      },
+      {
+        "command": "node tests/test-construction-queue-ui.cjs",
+        "exitCode": 0,
+        "seconds": 0.165,
+        "output": "PASS repeated facility upgrades keep the modal open, pay the next level once and show current versus reserved levels\nPASS a full construction allotment permits another stage of the same facility but rejects a new chain\nPASS each queued stage has its own clock and stays at zero progress until it actually starts\nPASS level 32 is the last reservation and the displayed facility remains at its completed level\nPASS failed durability restores the resources, command and complete queue without redrawing or adding a receipt\nPASS staff shared reservations distinguish their actor and timing from a surviving personal chain\n6 sequential construction UI checks passed. No external requests.\n"
+      },
+      {
+        "command": "node tests/test-seo.cjs",
+        "exitCode": 0,
+        "seconds": 0.366,
+        "output": "PASS one metadata source matches every title, description, canonical and social preview\nPASS all public JSON-LD graphs share one publisher, site and game identity with truthful page metadata\nPASS Japanese and English introductions advertise reciprocal languages and remain statically discoverable\nPASS anonymous counters and their notice are limited to the two introduction pages\nPASS reading-page breadcrumb markup matches visible labels and actual canonical ancestors\nPASS sitemap dates, install metadata and stable square favicon reflect the same public site\nPASS image sitemap sends crawlers to visible artwork on each canonical page\nPASS social metadata points to the real VS JPEG and the legacy card URL serves the same image\nPASS public pages and nested 404 use the current favicon family, Apple icon and pinned-tab mark\nPASS root favicon contains real small-to-large PNG frames and Apple fallback matches the current icon\nPASS existing icon aliases no longer return the retired brand artwork\nPASS search-image and social crawlers can fetch every public page, preview and brand icon\nPASS the home introduction is visible HTML and still preserves the existing game entry\nPASS current battle limits and automatic mail are explained in public HTML without loading the game\nPASS the beginner upgrade guide gives separate keep and castle steps, actual controls and reservation limits\nPASS public discovery identifies only Sengoku VS and does not explain privileged player identities\nPASS default dry run reads existing files without network, key rotation or payload logging\nPASS metadata additions update the full plan and help count and receive public preflight checks\nPASS invalid metadata origins, paths and duplicates fail locally before any request\nPASS CLI rejects arbitrary endpoints/URLs and incompatible local key configuration before any request\nPASS only the known same-host canonical sitemap URLs and valid dates can become a notification\nPASS submit waits for every published check, then sends exactly one bounded canonical-URL POST\nPASS 202 is reported as key validation pending rather than confirmed 200 or indexing\nPASS missing/mismatched public key or changed sitemap stops before any POST\nPASS non-200, noindex, wrong canonical, non-HTML and redirected pages never get notified\nPASS 429 and other rejection statuses are non-success, retain Retry-After and never retry\nPASS network loss and timeouts distinguish unattempted preflight from uncertain POST receipt\n{\"passed\":27,\"realIndexNowNotifications\":0,\"mockTransportOnly\":true}\n"
+      },
+      {
+        "command": "node tests/test-public-pages.cjs",
+        "exitCode": 0,
+        "seconds": 0.245,
+        "output": "PASS 9 canonical pages, 9 JSON-LD blocks, 874 local links/assets, static discovery, section links, crawler access, sitemap, domain and 404.\n"
+      },
+      {
+        "command": "python3 tests/test-news-feed.py",
+        "exitCode": 0,
+        "seconds": 0.08,
+        "output": "PASS valid RSS XML, 8 permanent release links, verified dates, and 9 discovery links\n"
+      },
+      {
+        "command": "node tests/test-page-security.cjs",
+        "exitCode": 0,
+        "seconds": 0.068,
+        "output": "PASS generated CSP, local scripts, scoped API and referrer policies for every game, guide and audition entry.\n"
+      },
+      {
+        "command": "python3 tools/build-press-kit.py --check",
+        "exitCode": 0,
+        "seconds": 0.292,
+        "output": "PASS press kit: 23 files, 8,967,877 bytes, matching public source material.\n"
+      },
+      {
+        "command": "git diff --check",
+        "exitCode": 0,
+        "seconds": 0.078,
+        "output": ""
+      }
+    ]
+  },
+  "entryAssets": {
+    "entryBundles": [
+      {
+        "file": "game-layout.bundle.css",
+        "bytes": 876236,
+        "gzipBytes": 169527,
+        "sha256": "6f3edd9b50e8cb36221345ca7557a4c304ef98e3c144568c7ed08efae1f19269"
+      },
+      {
+        "file": "game-preferences.bundle.js",
+        "bytes": 7330,
+        "gzipBytes": 2876,
+        "sha256": "c6e04c260a89a2ef74eccb36924fec8163deffbabb76fb64dd4d1ec3bf9a285a"
+      },
+      {
+        "file": "game-core.bundle.js",
+        "bytes": 645923,
+        "gzipBytes": 207658,
+        "sha256": "09a5e8713694d677b28323b8d2bffeb6feb2ffc51202d734a737118e033641c5"
+      },
+      {
+        "file": "game-campaign.bundle.js",
+        "bytes": 477209,
+        "gzipBytes": 157495,
+        "sha256": "d0097d5c32ed97729c45874d10701657e50fcc18f5679e65c31fdbb04115dff3"
+      },
+      {
+        "file": "game-interface.bundle.js",
+        "bytes": 407246,
+        "gzipBytes": 136998,
+        "sha256": "88655676132692d45dd3187537cd07e9a6da0349ee158ad19a87d0efe3dd0d58"
+      },
+      {
+        "file": "game-community.bundle.js",
+        "bytes": 586183,
+        "gzipBytes": 184032,
+        "sha256": "78c61364a0451be120d57a5ba37bd9a5c8bd3724bc6acbe884e43501b5656644"
+      }
+    ],
+    "totalBytes": 3000127,
+    "totalGzipBytes": 858586,
+    "rawBudget": 3025000,
+    "gzipBudget": 870000
+  },
+  "browserQA": {
+    "environment": "Chromium browser with same-origin iframe viewport sizes and artificial offline fixture; storage is an in-memory map; external API requests disabled",
+    "observations": [
+      {
+        "viewport": [
+          1363,
+          936
+        ],
+        "text": "standard",
+        "surface": "resource planner",
+        "observed": [
+          "Actual building target opens",
+          "Custom gold budget50000 calculates waiting estimate",
+          "1/3/6month forecast expands"
+        ]
+      },
+      {
+        "viewport": [
+          320,
+          568
+        ],
+        "text": "standard",
+        "surface": "resource planner",
+        "dialogClientWidth": 287,
+        "dialogScrollWidth": 287
+      },
+      {
+        "viewport": [
+          320,
+          568
+        ],
+        "text": "standard",
+        "surface": "campaign journal",
+        "dialogClientHeight": 542,
+        "dialogScrollHeight": 907,
+        "dialogClientWidth": 281,
+        "dialogScrollWidth": 281,
+        "listHeight": 284,
+        "observed": [
+          "Prior12px list repaired",
+          "Next20 reaches page2/5",
+          "Manual refresh preserves page2/5",
+          "Footer controls reachable",
+          "Sticky close remains reachable"
+        ]
+      },
+      {
+        "viewport": [
+          844,
+          390
+        ],
+        "text": "standard",
+        "surface": "campaign journal",
+        "dialogClientHeight": 364,
+        "dialogClientWidth": 793,
+        "dialogScrollWidth": 793,
+        "listHeight": 256,
+        "observed": [
+          "Landscape list usable",
+          "Footer and close reachable"
+        ]
+      },
+      {
+        "viewport": [
+          768,
+          1024
+        ],
+        "text": "standard",
+        "surface": "campaign journal",
+        "dialogClientHeight": 848,
+        "dialogClientWidth": 727,
+        "dialogScrollWidth": 727,
+        "listHeight": 307,
+        "observed": [
+          "No results message",
+          "Export and page buttons disabled for zero results"
+        ]
+      },
+      {
+        "viewport": [
+          390,
+          844
+        ],
+        "text": "large",
+        "rootFontSize": 18,
+        "surface": "campaign journal",
+        "dialogClientHeight": 818,
+        "dialogClientWidth": 351,
+        "dialogScrollWidth": 351,
+        "listHeight": 422
+      },
+      {
+        "viewport": [
+          320,
+          568
+        ],
+        "text": "large",
+        "rootFontSize": 18,
+        "surface": "campaign journal",
+        "dialogClientHeight": 542,
+        "dialogClientWidth": 296,
+        "dialogScrollWidth": 296,
+        "listHeight": 288
+      },
+      {
+        "viewport": [
+          320,
+          568
+        ],
+        "text": "large",
+        "rootFontSize": 18,
+        "surface": "resource planner",
+        "dialogClientWidth": 287,
+        "dialogScrollWidth": 287,
+        "observed": [
+          "Facilities navigation works"
+        ]
+      },
+      {
+        "viewport": [
+          1024,
+          768
+        ],
+        "text": "large",
+        "surface": "facility detail and nested resource planner",
+        "dialogClientWidth": 898,
+        "dialogScrollWidth": 898,
+        "observed": [
+          "Farm target correct",
+          "Escape closes planner only",
+          "Underlying facility dialog retained",
+          "Focus returns to resource estimate button"
+        ]
+      },
+      {
+        "viewport": [
+          1363,
+          936
+        ],
+        "text": "large",
+        "surface": "campaign map",
+        "observed": [
+          "Zoom control works",
+          "Home centering works",
+          "Observed game-origin console errors0; extension messages excluded"
+        ]
+      }
+    ],
+    "limitations": [
+      "Not physical iOS/Safari hardware verification",
+      "No authenticated production mutations tested",
+      "No measured device FPS or latency claim"
+    ]
+  },
+  "resolvedFindings": [
+    "Keep responsive-text.css last in the production cascade",
+    "Regenerate press kit against the updated public version",
+    "Keep save/sync the top result for the save alias by using a distinct journal export heading",
+    "Prevent journal list collapse at narrow or short viewport sizes"
+  ],
+  "runtimeOperationCounters": {
+    "liveDom": {
+      "repeatedUpdates": 60,
+      "additionalWholeDocumentQueries": 0
+    },
+    "worldMap": {
+      "cameraFrames": 60,
+      "fixedElementQueries": 0,
+      "repeatedStableCastleArtCalls": 0
+    }
+  },
+  "serverChanges": false,
+  "saveSchemaChanges": false
+}

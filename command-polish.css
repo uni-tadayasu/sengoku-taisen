@@ -1,0 +1,251 @@
+/* v5.5 command surfaces. Geometry and scrolling remain with their components.
+   This final layer distinguishes primary actions, selection and passive data
+   without adding paint loops, images, listeners or another layout owner. */
+
+/* Vermilion actions, gold selection and quiet secondary controls. */
+#app.chronicle-shell .button.primary,
+body:not(.at-title) #modal .button.primary {
+  --button-wash-start: #aa4937;
+  --button-wash-end: #73302b;
+  background-image: linear-gradient(135deg,var(--button-wash-start),var(--button-wash-end)) !important;
+  border-color: #e1a578;
+  color: #fff5e5;
+  box-shadow: inset 0 1px #ffd6a94d,0 3px 9px #060b123d;
+}
+#app.chronicle-shell .button.gold,
+body:not(.at-title) #modal .button.gold {
+  --button-wash-start: #735b37;
+  --button-wash-end: #493b2a;
+  background-image: linear-gradient(135deg,var(--button-wash-start),var(--button-wash-end)) !important;
+  border-color: #bda06b;
+  color: #fff0c9;
+  box-shadow: inset 0 1px #ffe6a924;
+}
+#app.chronicle-shell .button.danger,
+body:not(.at-title) #modal .button.danger {
+  --button-wash-start: #5c302e;
+  --button-wash-end: #3b2328;
+  background-image: linear-gradient(135deg,var(--button-wash-start),var(--button-wash-end)) !important;
+  border-color: #c77b6d;
+  color: #ffcfbf;
+}
+#app.chronicle-shell :is(.button,.icon-button):disabled,
+body:not(.at-title) #modal :is(.button,.icon-button):disabled {
+  opacity: .62;
+  box-shadow: none;
+}
+#app.chronicle-shell :is(.button,.icon-button):not(:disabled):active,
+body:not(.at-title) #modal :is(.button,.icon-button):not(:disabled):active {
+  transform: none;
+  box-shadow: inset 0 2px 6px #0005;
+}
+
+/* Distinct materials identify the four resources even in a dense header. */
+#app.chronicle-shell .chronicle-ledger .resource {
+  --resource-accent: #d8b574;
+  border-top-color: var(--resource-accent);
+  background-image: linear-gradient(120deg,#30424a,#1d303a) !important;
+}
+#app.chronicle-shell .chronicle-ledger .resource:has(.rice) { --resource-accent: #c4c583; }
+#app.chronicle-shell .chronicle-ledger .resource:has(.wood) { --resource-accent: #8dbca0; }
+#app.chronicle-shell .chronicle-ledger .resource:has(.stone) { --resource-accent: #9fbed8; }
+#app.chronicle-shell .chronicle-ledger .resource :is(.resource-amount,.resource-gain) {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+#app.chronicle-shell .chronicle-ledger .resource.resource-inspect {
+  cursor: pointer;
+}
+#app.chronicle-shell .chronicle-ledger .resource.resource-inspect:focus-visible {
+  outline: 2px solid #ffe1a0;
+  outline-offset: -4px;
+}
+
+/* A legible rail keeps the selected destination distinct from every button. */
+html.sengoku-desktop-fit #app.chronicle-shell #navigation .nav-item {
+  line-height: 1.45;
+  min-width: 0;
+  gap: 10px;
+}
+html.sengoku-desktop-fit #app.chronicle-shell #navigation .nav-item > span:not(.nav-count) {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+html.sengoku-desktop-fit #app.chronicle-shell .sidebar .nav-item.active {
+  --button-wash-start: #655136;
+  --button-wash-end: #34382f;
+  border-inline-start-color: #f4d190;
+  color: #fff1ce;
+}
+#app.chronicle-shell .navigation-menu-trigger {
+  border-color: #b9a07796;
+  box-shadow: inset 0 1px #ffe2ad17,0 3px 10px #030a1229;
+}
+#app.chronicle-shell .navigation-trigger-copy small { color: #c7d4d8; }
+html.sengoku-navigation-ready:not(.sengoku-desktop-fit) #app.chronicle-shell .sidebar-bottom .navigation-quick.active {
+  box-shadow: inset 0 3px #e7c381;
+}
+
+/* Selection has a solid edge and high-contrast text, including keyboard use. */
+#app.chronicle-shell #main .catalog-filter-chips button:is(.active,[aria-pressed="true"]),
+#app.chronicle-shell #main .tabs button:is(.active,[aria-selected="true"]),
+#app.chronicle-shell #main .facility-layout-switch button[aria-pressed="true"] {
+  background: #d7b77f !important;
+  border-color: #f0d398;
+  color: #18252b;
+  box-shadow: inset 0 -2px #8f6c39;
+  font-weight: 700;
+}
+#app.chronicle-shell #main :is(.catalog-filter-toolbar,.officer-filter-bar,.facility-planner-tools) {
+  border-color: #9babac55;
+  background: #172b36;
+}
+#app.chronicle-shell #main :is(.catalog-filter-toolbar,.officer-filter-bar,.facility-planner-tools) :is(input,select) {
+  background-color: #0c202c;
+  border-color: #9fb6b06e;
+  color: #f4efdf;
+}
+#app.chronicle-shell #main :is(.catalog-filter-toolbar,.officer-filter-bar,.facility-planner-tools) input::placeholder {
+  color: #bbcbcc;
+  opacity: 1;
+}
+#app.chronicle-shell #main :is(.catalog-result-summary,.officer-choice-count) {
+  color: #d1ddd9;
+  font-variant-numeric: tabular-nums;
+}
+#app.chronicle-shell #main .catalog-result-summary strong {
+  color: #ffe0a7;
+  font-size: 1.125rem;
+}
+#app.chronicle-shell #main .catalog-empty {
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 14px;
+  padding: clamp(24px,4vw,42px) 18px;
+  border: 1px dashed #a7956d7a;
+  border-radius: 8px;
+  background: #142733;
+  color: #d4dedb;
+  text-align: center;
+}
+#app.chronicle-shell #main .catalog-empty p { margin: 0; font-size: .9375rem; line-height: 1.8; }
+#app.chronicle-shell #main .catalog-empty .button { min-height: 44px; }
+
+/* Numeric panels read like a ledger; figures stay aligned without truncation. */
+#app.chronicle-shell #main .economy-resource {
+  border-color: #98a99d4f;
+  background: #10242e;
+  border-top: 2px solid #baa073;
+}
+#app.chronicle-shell #main .economy-resource h3 { padding-bottom: 8px; border-bottom: 1px solid #93a79933; }
+#app.chronicle-shell #main .economy-net { padding-top: 10px; border-top-color: #bfa3756b; }
+#app.chronicle-shell #main .economy-net dd { font-weight: 700; font-size: 1rem; }
+#app.chronicle-shell #main .recruit-preview tbody tr:nth-child(even),
+#modal .facility-maintenance tbody tr:nth-child(even) { background: #ffffff05; }
+#app.chronicle-shell #main .recruit-preview :is(th,td),
+#modal .facility-maintenance :is(th,td) { padding-block: 10px; }
+#app.chronicle-shell #main .army-ability {
+  font-size: .875rem;
+  line-height: 1.5;
+}
+#app.chronicle-shell #main .army-officer-skill,
+#app.chronicle-shell #main .army-slot-heading .slot-label { font-size: .875rem; }
+#app.chronicle-shell #main .research-state { font-size: .875rem; line-height: 1.5; }
+#app.chronicle-shell #main .quest-row[data-quest-state="ready"] {
+  border-inline-start-width: 3px;
+  background: linear-gradient(110deg,#443b2b,#1e3039);
+}
+#app.chronicle-shell #main .quest-row[data-quest-state="claimed"] { background: #152c33; }
+
+/* Dialog headers and footers frame the scrollable body with a stable edge. */
+body:not(.at-title) #modal .modal-header {
+  background: linear-gradient(105deg,#34423d,#172b36);
+  border-bottom-color: #b9a17596;
+}
+body:not(.at-title) #modal .modal-header h2 { color: #ffedc7; line-height: 1.5; }
+body:not(.at-title) #modal .modal-header p { color: #cdd8d4; }
+body:not(.at-title) #modal .modal-body { scrollbar-color: #889d9c #132732; }
+body:not(.at-title) #modal .modal-footer {
+  gap: 10px;
+  background: #10222d;
+  border-top: 1px solid #a38d635f;
+}
+body:not(.at-title) #modal .modal-footer > .button { min-height: 44px; }
+body:not(.at-title) .navigation-dialog .navigation-search:focus-within {
+  border-color: #e2c28a;
+  box-shadow: 0 0 0 2px #e2c28a29;
+}
+body:not(.at-title) .navigation-dialog .navigation-entry-row:has(.is-current) {
+  border-color: #d8b87c;
+  box-shadow: inset 3px 0 #d8b87c;
+}
+body:not(.at-title) .navigation-dialog .navigation-current {
+  padding: 3px 6px;
+  background: #d1b171;
+  color: #17282e;
+  font-weight: 700;
+}
+body:not(.at-title) .navigation-dialog .navigation-entry-icon { color: #ebce96; }
+
+/* The title retains its illustration and gives the start/continue action a
+   stable, solid frame. No additional assets or animation are loaded. */
+#launch-screen .edition-cover { border-top: 2px solid #e2c08a; }
+#launch-screen #launch-enter.edition-enter {
+  border-color: #f0c992;
+  box-shadow: inset 0 0 0 2px #722b22,inset 0 0 0 3px #f6d39a72,0 5px 16px #050a124d;
+}
+#launch-screen .edition-resume { border-inline-start: 1px solid #d2af70; }
+#launch-screen .launch-guide-nav a { border-radius: 4px; }
+#launch-screen .launch-guide-nav strong { text-shadow: 0 2px 8px #0008; }
+
+@media (hover:hover) and (pointer:fine) {
+  #app.chronicle-shell .button.primary:not(:disabled):hover,
+  body:not(.at-title) #modal .button.primary:not(:disabled):hover {
+    --button-wash-start: #b75a41; --button-wash-end: #813c2e;
+    border-color: #f0c38e;
+  }
+  #app.chronicle-shell .chronicle-ledger .resource.resource-inspect:hover {
+    border-color: var(--resource-accent);
+  }
+}
+
+@media (max-width:700px), (pointer:coarse) {
+  #app.chronicle-shell .page-heading-actions .button,
+  #app.chronicle-shell #main .catalog-result-summary button,
+  #app.chronicle-shell #main .facility-layout-switch button,
+  #app.chronicle-shell #main .officer-compare-pick,
+  #app.chronicle-shell #main .officer-compare-actions .text-link { min-height: 44px; }
+  body:not(.at-title) #modal .modal-header > .icon-button {
+    width: 44px; min-width: 44px; height: 44px;
+  }
+  body:not(.at-title) #modal .modal-footer > .button { flex: 1 1 120px; padding: 10px 12px; }
+  #app.chronicle-shell #main .army-muster-overview > div { padding-inline: 10px; }
+  #app.chronicle-shell #main .army-officer-house { font-size: .8125rem; }
+  #app.chronicle-shell #main .catalog-empty { padding-block: 26px; }
+}
+@media (max-width:420px) {
+  #app.chronicle-shell #main .army-ability { column-gap: 6px; padding: 6px; }
+  #app.chronicle-shell #main .research-state { right: 10px; bottom: 10px; padding: 4px 8px; }
+  #launch-screen .edition-mast nav { gap: 7px; }
+  #launch-screen .edition-settings { padding-inline: 8px; }
+}
+@media (forced-colors:active) {
+  #app.chronicle-shell :is(.button.primary,.button.gold,.button.danger),
+  body:not(.at-title) #modal :is(.button.primary,.button.gold,.button.danger),
+  #app.chronicle-shell .chronicle-ledger .resource,
+  #app.chronicle-shell #main :is(.catalog-empty,.economy-resource),
+  #launch-screen #launch-enter.edition-enter {
+    background: ButtonFace !important; color: ButtonText;
+    border-color: ButtonText; box-shadow: none;
+  }
+  #app.chronicle-shell #main .catalog-filter-chips button:is(.active,[aria-pressed="true"]),
+  #app.chronicle-shell #main .tabs button:is(.active,[aria-selected="true"]),
+  #app.chronicle-shell #main .facility-layout-switch button[aria-pressed="true"],
+  body:not(.at-title) .navigation-dialog .navigation-current {
+    background: Highlight !important; color: HighlightText; border-color: Highlight; box-shadow: none;
+  }
+  body:not(.at-title) #modal .modal-header,
+  body:not(.at-title) #modal .modal-footer { background: Canvas; border-color: CanvasText; }
+  body:not(.at-title) #modal .modal-header :is(h2,p) { color: CanvasText; }
+}
