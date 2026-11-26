@@ -47,6 +47,17 @@ test('roster is private to staff and operator; appointment is operator-only even
  const staff=harness({staff:true});await staff.api.courtRequest('/staff/court');await assert.rejects(staff.api.courtRequest('/admin/court/leader',{method:'POST',data:{...payload,targetPlayerId:PLAYER}}),error=>error.status===403);assert.equal(staff.calls.length,1);
  const admin=harness({admin:true});await admin.api.courtRequest('/staff/court');await admin.api.courtRequest('/admin/court/leader',{method:'POST',data:{requestId:payload.requestId,targetPlayerId:null}});assert.equal(admin.calls.length,2);
 });
+test('external court office reads and writes require the operator and use the verified bearer',async()=>{
+ const options={method:'POST',data:{requestId:payload.requestId,action:'appoint',officeId:'chunagon',targetPlayerId:'u_other',expectedRevision:7}};
+ for(const roles of [{},{staff:true}]){const h=harness(roles);h.control.s.user.title='太政大臣';for(const [route,args]of [['/admin/court/offices?q=葛西&limit=20',{}],['/admin/court/offices',options]])await assert.rejects(h.api.courtRequest(route,args),error=>error.status===403);assert.equal(h.calls.length,0);}
+ const h=harness({admin:true});await h.api.courtRequest('/admin/court/offices?q='+encodeURIComponent('葛󠄀西 & 国主')+'&limit=20');await h.api.courtRequest('/admin/court/offices',options);assert.equal(h.calls.length,2);assert(h.calls.every(row=>row.headers.Authorization==='Bearer '+TOKEN));assert.deepEqual(h.calls[1].body,options.data);
+});
+test('office search validates bounded query keys and does not allow writes with a query',async()=>{
+ const h=harness({admin:true});for(const [route,method]of [['/admin/court/offices?q=x&q=y','GET'],['/admin/court/offices?q='+encodeURIComponent('a'.repeat(81)),'GET'],['/admin/court/offices?q=%00','GET'],['/admin/court/offices?role=admin','GET'],['/admin/court/offices?limit=0','GET'],['/admin/court/offices?limit=51','GET'],['/admin/court/offices?q=x','POST'],['/admin/court/offices/leader','GET'],['/admin/court/offices','DELETE']])await assert.rejects(h.api.courtRequest(route,{method,data:payload}),error=>error.status===400);assert.equal(h.calls.length,0);
+});
+test('a role change discards a delayed external court office response',async()=>{
+ const h=harness({admin:true}),pause=deferred();h.setTransport(()=>pause.promise);const request=h.api.courtRequest('/admin/court/offices?q=&limit=20');h.control.changeRole();pause.resolve({data:{ok:true,offices:[{id:'sangi',holder:{id:'secret-person',name:'private'}}]}});await assert.rejects(request,error=>error.code==='STALE_IDENTITY');
+});
 test('identity, role or account changes discard delayed private reads, sends and appointments',async()=>{
  for(const change of ['changeIdentity','changeRole','pending','hold'])for(const [route,options]of [['/court',{}],['/court/chat',{method:'POST',data:payload}],['/admin/court/leader',{method:'POST',data:{requestId:payload.requestId,targetPlayerId:PLAYER}}]]){
   const h=harness({admin:true}),pause=deferred();h.setTransport(()=>pause.promise);const request=h.api.courtRequest(route,options);h.control[change]();pause.resolve({data:{ok:true,self:{isCourtEmperor:true}}});await assert.rejects(request,error=>error.code==='STALE_IDENTITY');assert.equal(h.authority.length,0);

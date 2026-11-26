@@ -1,5 +1,6 @@
 // Public offices are presentation data. Authority remains in the existing
 // account, staff-term and appointment guards; no role flag is projected here.
+import {COURT_OFFICES} from './court-offices.js';
 const statement=(db,sql,...args)=>db.prepare(sql).bind(...args);
 const validId=value=>typeof value==='string'&&/^u_[A-Za-z0-9_]{1,96}$/.test(value);
 const SKIP=new Set(['save','state','entitlements','staffBase','appearance','courtOffice']);
@@ -14,10 +15,7 @@ const FIELDS=[
  ['lordPlayerId','lordName','lordCourtOffice'],
  ['previousLordPlayerId','previousLordName','previousLordCourtOffice']
 ];
-export const PUBLIC_COURT_TITLES=Object.freeze([
- {title:'参議',minMerit:0},{title:'中納言',minMerit:50},{title:'大納言',minMerit:200},
- {title:'内大臣',minMerit:500},{title:'右大臣',minMerit:1000},{title:'左大臣',minMerit:2000}
-]);
+export const PUBLIC_COURT_TITLES=Object.freeze(COURT_OFFICES.map(({title,minMerit})=>({title,minMerit})));
 
 export async function resolvePublicCourtOffices(db,payload,now=Date.now()){
  const refs=[],ids=new Set(),voiceRefs=[];
@@ -49,16 +47,18 @@ export async function resolvePublicCourtOffices(db,payload,now=Date.now()){
    CASE WHEN sm.user_id IS NOT NULL AND sm.appointed_at<=? THEN 1 ELSE 0 END AS official,
    EXISTS(SELECT 1 FROM court_leader l WHERE l.id=1 AND l.user_id=u.id
     AND l.term_id=COALESCE(sm.term_id,'legacy:'||sm.appointed_at) AND l.updated_at<=?) AS emperor,
-   COALESCE((SELECT SUM(c.points) FROM court_contributions c WHERE c.actor_id=u.id),0) AS merit
+   COALESCE((SELECT SUM(c.points) FROM court_contributions c WHERE c.actor_id=u.id),0) AS merit,
+   (SELECT a.office_id FROM court_external_offices a WHERE a.user_id=u.id AND a.appointed_at<=?) AS external_office
    FROM users u LEFT JOIN staff_members sm ON sm.user_id=u.id
    WHERE u.id IN (${page.map(()=>'?').join(',')})
-    AND NOT EXISTS(SELECT 1 FROM player_bans b WHERE b.user_id=u.id AND b.active=1)`,now,now,...page));
+    AND NOT EXISTS(SELECT 1 FROM player_bans b WHERE b.user_id=u.id AND b.active=1)`,now,now,now,...page));
  }
  // One ordered batch supplies a consistent snapshot for every visible label.
  const result=await db.batch(queries),offices=new Map();
  for(const batch of result)for(const row of batch.results||[]){
   if(row.chancellor)offices.set(row.id,{title:'太政大臣',kind:'chancellor'});
   else if(row.official){const title=row.emperor?'天皇':[...PUBLIC_COURT_TITLES].reverse().find(item=>Number(row.merit)>=item.minMerit).title;offices.set(row.id,{title,kind:row.emperor?'emperor':'official'});}
+  else if(row.external_office){const office=COURT_OFFICES.find(definition=>definition.id===row.external_office);if(office)offices.set(row.id,{title:office.title,kind:'official'});}
  }
  for(const ref of refs)ref.value[ref.key]=offices.has(ref.id)?{...offices.get(ref.id)}:null;
  return payload;

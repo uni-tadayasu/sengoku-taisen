@@ -7,6 +7,9 @@ const offices=['',...PUBLIC_COURT_TITLES.map(row=>row.title),'太政大臣','天
 const tier=person=>Math.max(0,offices.indexOf(person.courtOffice?.title||''));
 const PUBLIC_PEER_LIMIT=32;
 const officials="SELECT value AS id FROM settings WHERE key='adminUserId' UNION SELECT user_id AS id FROM staff_members";
+// The public room reaches all current titles, including the six external
+// appointments. Keep the private court's recipients limited to its real staff.
+const publicOfficeHolders=officials+' UNION SELECT user_id AS id FROM court_external_offices';
 const active=id=>`NOT EXISTS(SELECT 1 FROM player_bans ban WHERE ban.user_id=${id} AND ban.active=1)`;
 
 function recipients(audience,senderId){
@@ -22,8 +25,8 @@ function recipients(audience,senderId){
   case 'public': {
    // A public room also reaches offline players. Read at most one more than
    // the peer limit from the save index, never decode the whole population.
-   const ordinary=`SELECT ps.user_id AS id FROM player_saves ps WHERE ps.user_id<>? AND ps.save_json IS NOT NULL AND ${active('ps.user_id')} AND ps.user_id NOT IN (SELECT id FROM (${officials}) WHERE id IS NOT NULL) ORDER BY ps.user_id LIMIT ${PUBLIC_PEER_LIMIT+1}`;
-   return {sql:`${officials} UNION SELECT id FROM (${ordinary})`,args:[senderId]};
+   const ordinary=`SELECT ps.user_id AS id FROM player_saves ps WHERE ps.user_id<>? AND ps.save_json IS NOT NULL AND ${active('ps.user_id')} AND ps.user_id NOT IN (SELECT id FROM (${publicOfficeHolders}) WHERE id IS NOT NULL) ORDER BY ps.user_id LIMIT ${PUBLIC_PEER_LIMIT+1}`;
+   return {sql:`${publicOfficeHolders} UNION SELECT id FROM (${ordinary})`,args:[senderId]};
   }
   default: throw new Error('Unknown message audience');
  }
@@ -42,7 +45,8 @@ function audienceSnapshot(audience,senderId){
    LEFT JOIN staff_campaign_backups b ON b.user_id=u.id WHERE ${active('u.id')} ORDER BY u.id`;
  const sql=`SELECT json_array((SELECT revision FROM world_clock WHERE id='world-v1'),
    (SELECT value FROM settings WHERE key='cyclePolicyStart'),(SELECT revision FROM staff_base WHERE id='kyoto_gosho'),
-   json_group_array(json_array(id,saveRevision,chancellor,appointed_at,term_id,appointment_token,active,transition_token,backupUpdated,merit))) AS version FROM (${seats})`;
+   json_group_array(json_array(id,saveRevision,chancellor,appointed_at,term_id,appointment_token,active,transition_token,backupUpdated,merit)),
+   COALESCE((SELECT revision FROM court_office_state WHERE id=1),0)) AS version FROM (${seats})`;
  return {sql,args:[...recipientsQuery.args,senderId]};
 }
 
