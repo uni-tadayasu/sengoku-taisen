@@ -33,7 +33,7 @@ function paidFixture(h,actor){
 
 try{
 await scope('health and config advertise the deployed name-preservation capability',async h=>{
-  for(const route of ['/health','/config']){const result=(await h.api(route)).data;assert.equal(result.version,'5.6.2');assert.equal(result.features.displayNameVariants,true);}
+  for(const route of ['/health','/config']){const result=(await h.api(route)).data;assert.equal(result.version,'5.7.0');assert.equal(result.features.displayNameVariants,true);}
 });
 
 await scope('names preserve display spelling, Unicode limits and unique keys without trusting target or role fields',async h=>{

@@ -9,6 +9,19 @@
     <ttl>60</ttl>
     <atom:link href="https://www.kasai-solutions-inc.com/news/feed.xml" rel="self" type="application/rss+xml"/>
     <item>
+      <title>Ver.5.7.0｜修復・守備台帳と資源計画の端末保存を追加</title>
+      <link>https://www.kasai-solutions-inc.com/news/#v5-7-0</link>
+      <guid isPermaLink="true">https://www.kasai-solutions-inc.com/news/#v5-7-0</guid>
+      <dc:date>2026-11-27</dc:date>
+      <description>領国の城と支拠点の耐久・守備・修復資材を一つの台帳で確認できます。資源計画は同じ端末で次回も復元できるようになりました。
+
+修復・守備台帳で領国の損傷と資材を確認：「城と内政」の「修復・守備台帳」から、自領の城と支拠点の耐久、守備・配置兵、次の月替わりの修復見込みを確認できます。木材と石材は現在の所持分だけでの見込みと、生産・維持費を含む次月の見込みを表示します。城名・国名で検索し、損傷や資材不足で絞り込み、詳細画面へ進めます。台帳を見たり並べ替えたりしても、資材や指令は消費しません。
+
+資源計画を同じ端末で次回も復元：目標、自由入力の予算、残す備蓄を同じ端末へ保存します。同じ領主・戦役の計画を開き直せます。最近編集した6組まで保持し、保存容量不足や保存できない状態は画面に表示します。複数の画面で計画を開いた場合は、その画面で編集した項目だけを最新の保存内容へ反映します。識別できない旧セーブでは、その起動中だけ計画を保ちます。計画は工事の予約や資源の取り置きではありません。
+
+保存待ち中の画面移動と共通時刻の確認表示を修正：新版を開く操作やタイトルへ戻る操作の保存待ち中に別の画面へ進んだ場合、以前の操作による再読み込みや画面切り替えを取り消します。共通時刻がまだ確認できない間は、修復・守備台帳も月替わりまでの秒数を確定表示しません。</description>
+    </item>
+    <item>
       <title>Ver.5.6.2｜読みやすい筆文字と異体字対応、和風サイバーの画面装飾を強化</title>
       <link>https://www.kasai-solutions-inc.com/news/#v5-6-2</link>
       <guid isPermaLink="true">https://www.kasai-solutions-inc.com/news/#v5-6-2</guid>

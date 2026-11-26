@@ -74,6 +74,7 @@
     "field-responsive.css",
     "social-chat.css",
     "command-center.css",
+    "defense-ledger.css",
     "management-ui.css",
     "campaign-records.css",
     "command-polish.css",
@@ -106,6 +107,7 @@
     "kamon.js",
     "world-map.js",
     "command-center.js",
+    "defense-ledger.js",
     "management-model.js",
     "campaign-records.js",
     "army-planner.js"

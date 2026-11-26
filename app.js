@@ -220,7 +220,7 @@
     return `<div class="cost">${items.join('')}</div>${multiplier>1?`<p class="upgrade-cost-note">領有${num(castles)}城 · 強化資産 ${multiplierText}倍（上限16倍）。施設維持費は変わりません。</p>`:''}`;
   }
   const navSections = [
-    ['城と内政', [['town','castle','城下町'], ['facilities','castle','城下普請帳'], ['resource-planner','coins','資源計画','dialog'], ['research','book','技術研究'], ['court','scroll','京都御所']]],
+    ['城と内政', [['town','castle','城下町'], ['facilities','castle','城下普請帳'], ['resource-planner','coins','資源計画','dialog'], ['defense-ledger','shield','修復・守備台帳','dialog'], ['research','book','技術研究'], ['court','scroll','京都御所']]],
     ['合戦と天下', [['map','map','天下地図'], ['field','flag','共通フィールド'], ['roaming','swords','野良兵戦'], ['covert','eye','派遣部隊']]],
     ['武将と軍団', [['officers','users','武将名鑑'], ['army','swords','軍団編成'], ['crests','flag','家紋帳']]],
     ['軍議と記録', [['command-activity','calendar','行動予定表','dialog'], ['campaign-records','scroll','戦記検索','dialog'], ['council','scroll','軍議'], ['progress','book','成長手帳','dialog'], ['shogunate','scroll','幕府の記録','dialog']]],
@@ -956,6 +956,28 @@
   }
 
   function levelGuideCastle(id){const s=state(),chosen=game.castle(id);return chosen&&chosen.owner===s.clan&&game.canOwnCastle?.(chosen.id)!==false?chosen:game.castle(s.home);}
+  function defenseLedgerContext(){
+    const access=getExpansionAccess();
+    return {...access,roleEpoch,banned:syncAccess.banned===true||access.banned===true,rolePending:syncAccess.rolePending===true||access.rolePending===true};
+  }
+  function openDefenseBase({kind,id,parentCastleId}={}){
+    const parent=game.castle(parentCastleId),branch=kind==='branch'?game.branch?.(id):null;
+    if(startPending||syncAccess.banned||syncAccess.rolePending||!parent||parent.owner!==state().clan||game.canOwnCastle?.(parentCastleId)===false||
+      !['castle','branch'].includes(kind)||kind==='castle'&&id!==parentCastleId||kind==='branch'&&branch?.parentCastleId!==parentCastleId)return false;
+    castleUpgradeModal(parentCastleId);
+    if(kind==='branch'){
+      const card=Array.from($('#modal-content').querySelectorAll('.branch-card')).find(node=>node.getAttribute('data-stable-key')==='branch-'+id);
+      const target=card?.querySelector('h4')||card;
+      if(target){target.setAttribute('tabindex','-1');target.focus({preventScroll:true});card.scrollIntoView({block:'start',behavior:'instant'});}
+    }
+    return true;
+  }
+  function openDefenseLedger(){
+    if(startPending){toast('はじめに本拠を選んでください。',true);return false;}
+    return window.SengokuDefenseLedger?.open?.({getGame:()=>game,catalog:data,getContext:defenseLedgerContext,
+      getClock:confirmedWorldClock,staffReady:staffConstructionReady,
+      subscribe:listener=>window.SengokuTravelUI?.subscribe?.(listener),openBase:openDefenseBase})===true;
+  }
   function castleUpgradeModal(id){
     const c=levelGuideCastle(id);if(!c)return;
     if(game.isStaff&&c.id===staffBaseId){staffBaseModal();return;}
@@ -1654,6 +1676,7 @@
     case 'officer-page':filter.page+=Number(node.dataset.delta);patchHTML($('#officer-results'),officersResults());window.SengokuDesktopFit?.refresh();break;
     case 'command-activity':window.SengokuCommandCenter?.open?.({getGame:()=>game,navigate:go,filter:node.dataset.filter});break;
     case 'resource-planner':window.SengokuCommandCenter?.openPlanner?.({getGame:()=>game,navigate:go,kind:node.dataset.kind,id:node.dataset.id,staffReady:()=>staffConstructionReady()});break;
+    case 'defense-ledger':openDefenseLedger();break;
     case 'campaign-records':window.SengokuCampaignRecords?.open?.({getGame:()=>game,formatDate:shortDate,formatText:logText});break;
     case 'facility-refresh':preserveInteraction($('#main'),()=>{patchHTML($('#facility-results'),facilitiesResults());refreshLiveControls();});break;
     case 'facility-layout':if(!['cards','list'].includes(id))break;facilityLayout=id;facilityPage=1;saveFacilityPreferences();preserveInteraction($('#main'),render);break;
@@ -2080,6 +2103,7 @@
     Promise.resolve().then(()=>window.SengokuBridge?.primeProgress?.());
     const previous=syncAccess,wasWritable=canMutate(),wasReady=previous.linked&&previous.ready,previousOwner=evaluationOwnerId;
     syncAccess={...previous,...access};
+    globalThis.window?.SengokuDefenseLedger?.refreshAccess?.();
     if(!syncAccess.linked||syncAccess.banned||['initializing','auth','access-changed'].includes(syncAccess.reason)){game.setBranchAuthority?.({resolvedElapsedMs:0});game.setMaintenanceAuthority?.(null);}
     if(!syncAccess.linked)evaluationOwnerId='';else if(!wasReady&&syncAccess.ready&&!syncAccess.rolePending)evaluationOwnerId=String(window.SengokuSocial?.getUser?.()?.id||'');
     const writableChanged=wasWritable!==canMutate(),accessChanged=['linked','ready','writable','banned','rolePending','reason'].some(key=>previous[key]!==syncAccess[key]);
@@ -2100,6 +2124,7 @@
     syncAccess.rolePending=pending;if(pending){game.setBranchAuthority?.({resolvedElapsedMs:0});game.setMaintenanceAuthority?.(null);}
     const changed=game.isAdmin!==isAdmin||Boolean(game.isStaff)!==isStaff;
     if(changed||wasPending!==pending){roleEpoch++;staffBaseReady=false;stopStrategy();}
+    globalThis.window?.SengokuDefenseLedger?.refreshAccess?.();
     if(!pending&&wasPending&&pendingRoleSave){
       try{game=SengokuEngine.fromSave(pendingRoleSave,roster,{isAdmin,isStaff});pendingRoleSave=null;}
       catch(_){syncAccess.rolePending=true;return{ok:false,message:'元のセーブを確認できるまで、操作と保存を待機しています。'};}

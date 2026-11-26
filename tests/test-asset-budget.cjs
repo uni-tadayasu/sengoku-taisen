@@ -20,8 +20,10 @@ const totalGzipBytes = rows.reduce((sum,row)=>sum+row.gzipBytes,0);
 // runtime work reductions are measured separately, not inferred from bytes.
 // v5.6.2 adds exact variant font ranges, visible update discovery and the
 // stronger cyber theme. Glyph files remain lazy and are measured separately
-// in the font manifest, while these limits keep the entry below 3.26 MB raw.
-const rawBudget=3260000,gzipBudget=940000;
+// in the font manifest. v5.7 adds the read-only defense ledger and scoped local
+// plan persistence: 3,283,130 raw / 942,953 gzip bytes, +48,194 / +14,346 from
+// v5.6.2. Keep modest headroom without treating byte size as loading latency.
+const rawBudget=3300000,gzipBudget=950000;
 assert(totalBytes <= rawBudget, `Initial bundles exceed the ${rawBudget} byte budget: ${totalBytes}`);
 assert(totalGzipBytes <= gzipBudget, `Initial bundles exceed the ${gzipBudget} gzip byte budget: ${totalGzipBytes}`);
 const html = fs.readFileSync(path.join(root,'index.html'),'utf8');
