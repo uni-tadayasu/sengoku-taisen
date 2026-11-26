@@ -2,11 +2,11 @@
 
 日付・時刻は日本時間（JST）。対象作品は [戦国VS / SENGOKU VS](https://www.kasai-solutions-inc.com/)、制作者表記は KASAI SOLUTIONS。
 
-**実施結果の集計時点：2026年11月26日13:26 JST。** 媒体送信は13:23:30まで、配信不能通知の追跡は13:26までの記録を反映した。1時間の活動全体の終了時刻とは区別する。
+**実施結果の集計時点：2026年11月26日13:32 JST。** 媒体送信は13:32:13まで、確認済みの配信不能通知を反映した。1時間の活動全体の終了時刻とは区別する。
 
 ## 確認できた成果
 
-今回の作業では、**11媒体への連絡を試行した。10媒体はメール9件の送信済みと、4Gamer.net公式フォーム1件の完了を確認。別の1媒体（Siliconera）は送信後に配信失敗・未達を確認した。** メール9件には現時点で配信エラー通知を確認していないが、受信確認を意味しない。indiegamesjapanからは自動受付返信を確認した。編集部による掲載・記事化・読者到達数・新規利用者の増加は未確認である。
+今回の作業では、**12媒体への連絡を試行した。11媒体はメール10件の送信済みと、4Gamer.net公式フォーム1件の完了を確認。別の1媒体（Siliconera）は送信後に配信失敗・未達を確認した。** メール10件には現時点で配信エラー通知を確認していないが、受信確認を意味しない。indiegamesjapanからは自動受付返信を確認した。編集部による掲載・記事化・読者到達数・新規利用者の増加は未確認である。
 
 公式サイトには、英語の作品紹介、紹介文の切替と共有導線、36秒の実ゲーム画面紹介、更新した素材ZIP、紹介ページの匿名集計と運営本人向けの集計画面を公開した。[PR #35](https://github.com/uni-tadayasu/sengoku-taisen/pull/35) はマージ済みで、GitHub Pagesの公開成功を確認した。
 
@@ -27,10 +27,11 @@
 | Gamer | `press@gamer.ne.jp`／[公式編集部案内](https://www.gamer.ne.jp/editorial/) | **13:20:07** | 送信済み照合。返信・掲載未確認。 |
 | Siliconera | `tips@siliconera.com`／[公式編集部案内](https://www.siliconera.com/contact-siliconera/) | **13:23:29に送信試行** | **配信失敗・未達。** 13:23:33の配信不能通知を13:26に確認。再送なし。 |
 | Gematsu | `editor@gematsu.com`／[公式About](https://www.gematsu.com/about) | **13:23:30** | 送信済み照合。返信・掲載未確認。 |
+| Indie Games Plus | `editors@indiegamesplus.com`／[公式の作品紹介受付](https://indiegamesplus.com/contact/) | **13:32:13** | 送信済み照合。返信・掲載未確認。 |
 
 各メールは公示された作品情報・プレスリリース受付を確認し、送信履歴を調べて重複を避けてから個別に送信した。Gamerの宛先は公式ページの「リリース用メールアドレス」画像をブラウザで確認した。
 
-初回4メールとフォームの記録は [promotion-outreach-20261126-afternoon.json](promotion-outreach-20261126-afternoon.json)、追加3メールは [promotion-outreach-20261126-additional.json](promotion-outreach-20261126-additional.json)、Gamer・Siliconera・Gematsuの3メールは [promotion-outreach-20261126-final.json](promotion-outreach-20261126-final.json)、4Gamerの送信本文は [promotion-4gamer-20261126.md](promotion-4gamer-20261126.md) にある。Gmailの非公開メッセージIDや内部サービスIDは、この報告書に含めない。
+初回4メールとフォームの記録は [promotion-outreach-20261126-afternoon.json](promotion-outreach-20261126-afternoon.json)、追加3メールは [promotion-outreach-20261126-additional.json](promotion-outreach-20261126-additional.json)、Gamer・Siliconera・Gematsuの3メールは [promotion-outreach-20261126-final.json](promotion-outreach-20261126-final.json)、Indie Games Plusへの追加1メールは [promotion-outreach-20261126-indiegamesplus.json](promotion-outreach-20261126-indiegamesplus.json)、4Gamerの送信本文は [promotion-4gamer-20261126.md](promotion-4gamer-20261126.md) にある。Gmailの非公開メッセージIDや内部サービスIDは、この報告書に含めない。
 
 ### Gamerへの追加案内
 
@@ -38,9 +39,11 @@
 
 追加媒体JSONの電ファミニコゲーマー宛て本文を基に、宛名・冒頭の紹介・紹介URLの `utm_content=gamer` を変更した。36秒動画について、撮影用デモ進行の実ゲーム静止画に移動・拡大を加えた紹介であり、プレイの録画ではないこと、公式素材ZIPから取得できることを追記した。作品仕様・登録が必要な機能・任意課金・生成AIを使ったイラスト素材の説明は、公開情報に合わせた。
 
-### 海外2媒体への英語案内
+### 海外媒体への英語案内
 
 SiliconeraとGematsuへは英語で個別送信した。新しい英語紹介ページと素材ZIPを案内し、ゲーム自体は日本語であること、無料範囲、任意課金、登録が必要な機能、動画の撮影条件、イラストの生成AI使用を明示した。両宛先とも公式窓口と過去送信がないことを確認し、送信後に宛先・件名・送信済み状態を照合した。その後、Siliconera宛てには配信不能通知が届いた。通知は「Google Groupが存在しない、または外部からの投稿が許可されていない」という理由で、13:23:33の通知を13:26に確認した。Siliconeraは未達として別枠にし、再送はしていない。Gematsuには現時点で配信エラー通知を確認していないが、受信・掲載は未確認である。
+
+13:32:13にはIndie Games Plusへ追加送信した。ゲーム紹介を歓迎する公式編集部窓口を確認し、同宛先への送信履歴がないことを確認してから1通を送信。送信後に宛先・件名・送信済み状態を照合した。件名は「Game submission: SENGOKU VS — build a castle town and plan a Sengoku campaign in your browser」。受信・掲載は未確認である。
 
 ### 今回の件数に含めない既存履歴
 
@@ -92,7 +95,7 @@ SiliconeraとGematsuへは英語で個別送信した。新しい英語紹介ペ
 - ブラウザで開始画面・英語紹介・共有文の切替とコピーを確認。新動画は全体デコードと5場面の目視確認を行った。
 - 公開後は9ページすべてのHTTP 200・リリース識別子r3・canonical、MP4とZIPの実サイズ一致を確認。実ブラウザで英語ページの表示と画像、3種類の共有プリセットの内容・選択色を確認した。
 - 本番の36秒動画は実際に10.57秒まで再生し、720×1280、`readyState: 4`、エラーなしを確認した。これは本番再生の確認位置であり、全体デコードは別途完了している。
-- 公開後の点検で、英語の最初の2手順を実際のUI順へ補正した。「端末だけで遊ぶ」の選択を先に、勢力・難易度・本拠選択と開始確定を後に説明する。変更は英語本文とその生成元だけで、ゲームの動作は変更しない。この補正は本報告と同じ追補PRに含める。
+- 公開後の点検で、英語の最初の2手順を実際のUI順へ補正した。「端末だけで遊ぶ」の選択を先に、勢力・難易度・本拠選択と開始確定を後に説明する。変更は英語本文とその生成元だけで、ゲームの動作は変更しない。この補正は [追補PR #36](https://github.com/uni-tadayasu/sengoku-taisen/pull/36) でマージされ、GitHub Pagesへの公開も確認した。
 
 検証のアクセスや操作は、利用者増加の実績として計上しない。有料広告の発注・有料の掲載枠購入は行っていない。
 
@@ -104,7 +107,7 @@ SiliconeraとGematsuへは英語で個別送信した。新しい英語紹介ペ
 
 ## 未完了・未確認の項目
 
-- 送信済みメール9件とフォーム1件の受信・掲載・記事化。indiegamesjapanの自動受付は編集部の採用判断ではない。Siliconeraへの1件は配信失敗と判明しており、送信完了実績から除外した。
+- 送信済みメール10件とフォーム1件の受信・掲載・記事化。indiegamesjapanの自動受付は編集部の採用判断ではない。Siliconeraへの1件は配信失敗と判明しており、送信完了実績から除外した。
 - 新しい36秒動画のYouTube公開。現在は下書き保存まで。
 - フリーゲーム夢現、WebGameJp等のゲーム掲載サイトへの登録申請。条件調査や原稿準備を掲載完了として数えない。
 - 実人数としての新規利用者増加や継続利用。今回追加した集計も、人数と操作回数を混同せず読む。
@@ -115,4 +118,6 @@ READMEや [SOURCES-SEO.md](../SOURCES-SEO.md) の7URL・8URLという表記は�
 
 [promotion-audit-20261126.md](promotion-audit-20261126.md) の4Gamer「送信未実施」は今回の送信前の点検状態であり、本報告の送信完了記録がその後の状態を示す。[promotion-4gamer-20261126.md](promotion-4gamer-20261126.md) に残る準備手順や長文候補も、実際に送信した短い本文とは区別する。
 
-午前の [press-outreach-20261126.json](press-outreach-20261126.json) には準備時の未公開表記も残るが、同ファイルの `publicationVerification` と送信時刻が実行結果を記録している。午後の11媒体への連絡試行（10媒体の送信・フォーム完了確認、1媒体への配信失敗）とは別の履歴である。
+午前の [press-outreach-20261126.json](press-outreach-20261126.json) には準備時の未公開表記も残るが、同ファイルの `publicationVerification` と送信時刻が実行結果を記録している。午後の12媒体への連絡試行（11媒体の送信・フォーム完了確認、1媒体への配信失敗）とは別の履歴である。
+
+13:26時点の途中集計は「11媒体へ試行／10媒体の送信・フォーム完了確認／1媒体未達」だった。13:32のIndie Games Plusへの追加案内を反映し、本報告の最終集計を「12／11／1」に更新した。過去の資料に残る途中集計を、今回の最終件数に重ねて加算しない。
