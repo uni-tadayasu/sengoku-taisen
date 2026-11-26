@@ -2,10 +2,11 @@
 const assert=require('node:assert/strict');
 const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path');
 const {planViewport,desktopMode}=require('../desktop-fit.js');
+const {setup}=require('./helpers/dom-model.cjs');
 const source=fs.readFileSync(path.join(__dirname,'../desktop-fit.js'),'utf8');
 const css=fs.readFileSync(path.join(__dirname,'../desktop-fit.css'),'utf8'),responsive=fs.readFileSync(path.join(__dirname,'../responsive-layout.css'),'utf8');
 let count=0;function test(name,fn){fn();count++;console.log('PASS '+name);}
-function harness({width=1366,height=936,touch=0,fine=true,coarse=false,announcement=37}={}){
+function harness({width=1366,height=936,touch=0,fine=true,coarse=false,announcement=37,storage=null}={}){
  const classes=new Set(),vars=new Map(),frames=new Map(),mutations=[],resizes=[];let nextFrame=0;
  const classList={contains:name=>classes.has(name),toggle(name,on){if(on)classes.add(name);else classes.delete(name);},remove(name){classes.delete(name);}};
  const root={classList,style:{getPropertyValue:name=>vars.get(name)||'',setProperty:(name,value)=>vars.set(name,value)}};
@@ -22,10 +23,23 @@ function harness({width=1366,height=936,touch=0,fine=true,coarse=false,announcem
  const media={matches:fine,addEventListener(){},removeEventListener(){}},coarseMedia={...media,matches:coarse};
  const environment={document,navigator:{maxTouchPoints:touch},innerWidth:width,innerHeight:height,visualViewport:{width,height,offsetLeft:0,offsetTop:0,addEventListener(){},removeEventListener(){}},getComputedStyle:node=>({position:node.position||'static'}),matchMedia:q=>q==='(any-pointer: coarse)'?coarseMedia:media,addEventListener(){},removeEventListener(){},requestAnimationFrame(callback){frames.set(++nextFrame,callback);return nextFrame;},cancelAnimationFrame:id=>frames.delete(id),module:{exports:{}}};
  for(const [name,list]of [['MutationObserver',mutations],['ResizeObserver',resizes]])environment[name]=class{constructor(callback){this.callback=callback;this.observed=[];list.push(this);}observe(node,options){this.observed.push({node,options});}disconnect(){this.observed=[];}};
+ // Mount the real ledger elements around stable game-owned resources.
+ const fixture=setup();
+ fixture.host.innerHTML='<header><div class="header-balances"><div id="resources"></div><button id="touch-header-status"></button></div><div class="header-actions" aria-label="音声と設定"><button class="icon-button"></button></div></header>';
+ const balances=fixture.$('.header-balances'),actions=fixture.$('.header-actions'),sound=fixture.$('.icon-button');
+ balances.hidden=false;
+ header.querySelector=selector=>fixture.$(selector);
+ document.createElement=name=>fixture.doc.createElement(name);
+ Object.defineProperty(document,'activeElement',{get:()=>fixture.doc.activeElement,set:node=>{fixture.doc.activeElement=node;}});
+ environment.localStorage=storage;
+ const events=new Map();
+ environment.addEventListener=(type,fn)=>events.set(type,fn);
+ environment.removeEventListener=(type,fn)=>{if(events.get(type)===fn)events.delete(type);};
+ const resize=(w,h)=>{environment.innerWidth=w;environment.innerHeight=h;Object.assign(environment.visualViewport,{width:w,height:h});refresh();};
  vm.runInNewContext(source,environment);const api=environment.module.exports;
  function flush(){let turns=0;while(frames.size){assert(++turns<10,'Responsive refresh must settle without a feedback loop');const queued=[...frames.values()];frames.clear();queued.forEach(callback=>callback());}}
  function refresh(){api.refresh();flush();}
- return{api,environment,app,launch,dialog,bodyPane,vars,classes,media,coarseMedia,header,announcementNode,navigation,selected,refresh,flush,mutations,resizes,pendingFrames:()=>frames.size};
+ return{api,environment,app,launch,dialog,bodyPane,vars,classes,media,coarseMedia,header,announcementNode,navigation,selected,balances,actions,sound,events,resize,refresh,flush,mutations,resizes,pendingFrames:()=>frames.size};
 }
 test('desktop uses every available CSS pixel through 200 percent browser zoom',()=>{
  for(const [w,h]of [[1920,1080],[1440,900],[1366,936],[1280,720]])for(const zoom of [1,1.25,1.5,1.75,2]){
@@ -53,6 +67,36 @@ test('game text entry releases fixed navigation only when the keyboard occupies 
  h.environment.visualViewport.height=480;h.refresh();assert(h.classes.has('sengoku-compact-input'));
  h.environment.visualViewport.scale=1.5;h.refresh();assert(!h.classes.has('sengoku-compact-input'));
  h.environment.visualViewport.scale=1;h.environment.document.activeElement={matches:()=>false};h.refresh();assert(!h.classes.has('sengoku-compact-input'));
+});
+test('phone ledger remembers the choice locally without replacing resources or focus',()=>{
+ const values=new Map(),storage={getItem:key=>values.get(key),setItem:(key,value)=>values.set(key,value)};
+ const h=harness({width:320,height:568,storage});h.refresh();
+ const trigger=h.actions.firstChild,resource=h.balances.firstChild;
+ assert.equal(trigger.textContent,'資産欄');assert.equal(trigger.hidden,false);assert.equal(trigger.getAttribute('aria-expanded'),'true');
+ trigger.focus();trigger.dispatchEvent({type:'click'});h.flush();
+ assert.equal(h.balances.hidden,true);assert.equal(trigger.getAttribute('aria-expanded'),'false');assert.equal(h.environment.document.activeElement,trigger);
+ h.refresh();assert.equal(h.actions.firstChild,trigger);assert.equal(h.balances.firstChild,resource);
+ const next=harness({width:768,height:1024,storage});next.refresh();
+ assert.equal(next.balances.hidden,true);assert.equal(next.actions.firstChild.getAttribute('aria-label'),'資産欄を開く');
+ values.clear();next.events.get('storage')({key:null});next.flush();assert.equal(next.balances.hidden,false);
+});
+test('landscape automatically folds the ledger and preserves keyboard access across rotation',()=>{
+ const h=harness({width:768,height:1024});h.refresh();
+ h.balances.querySelector('button').focus();h.resize(844,390);
+ const trigger=h.actions.firstChild;assert.equal(h.balances.hidden,true);assert.equal(h.environment.document.activeElement,trigger);
+ trigger.dispatchEvent({type:'click'});h.flush();assert.equal(h.balances.hidden,false);
+ trigger.dispatchEvent({type:'click'});h.flush();assert.equal(h.balances.hidden,true);
+ h.resize(1366,900);
+ assert.equal(trigger.hidden,true);assert.equal(h.balances.hidden,false);assert.equal(h.environment.document.activeElement,h.sound);assert.equal(h.actions.getAttribute('aria-label'),'音声と設定');
+ h.resize(1366,560);assert.equal(trigger.hidden,false);assert.equal(h.balances.hidden,true);
+ h.api.destroy();assert.equal(h.actions.firstChild,h.sound);assert.equal(h.balances.hidden,false);
+});
+test('keyboard-only resizing keeps the ledger while dialogs can adapt to the visible height',()=>{
+ const storage={getItem(){throw Error('Unavailable');},setItem(){throw Error('Unavailable');}};
+ const h=harness({width:390,height:844,touch:1,storage});h.refresh();assert.equal(h.balances.hidden,false);
+ h.environment.visualViewport.height=345;h.refresh();assert.equal(h.balances.hidden,false);assert(h.classes.has('sengoku-short-viewport'));
+ h.actions.firstChild.dispatchEvent({type:'click'});h.flush();assert.equal(h.balances.hidden,true);
+ h.environment.visualViewport.height=844;h.refresh();assert(!h.classes.has('sengoku-short-viewport'));
 });
 test('actual runtime removes a legacy scale without reading long-page dimensions',()=>{
  const h=harness();h.refresh();const s=h.api.getStatus();assert.equal(s.active,true);assert.equal(s.mode,'desktop');assert.equal(s.scale,1);assert.equal(s.visibleWidth,1366);assert.equal(s.visibleHeight,899);assert.equal(h.vars.get('--desktop-layout-width'),'1366.000px');assert.equal(h.vars.get('--desktop-offset-top'),'37.000px');

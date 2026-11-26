@@ -353,3 +353,15 @@ dialog.navigation-dialog {
   .navigation-dialog .navigation-entry-copy mark { color: HighlightText; background: Highlight; }
   .navigation-dialog :is(.navigation-search-suggestions button,.navigation-search-recovery) { color: ButtonText; background: ButtonFace; border-color: ButtonText; }
 }
+
+.navigation-dialog .navigation-filter-save,
+.navigation-dialog .navigation-filter-row button {
+  min-width: 0; min-height: 44px; padding: .4rem .7rem; border: 1px solid #63958b;
+  border-radius: 6px; background: #123038; color: #e4f9ec; font: inherit;
+  line-height: 1.4; text-align: start; overflow-wrap: anywhere; cursor: pointer;
+}
+.navigation-dialog .navigation-filter-save { margin-block: 0 .45rem; }
+.navigation-dialog .navigation-filter-save:disabled { color: #bbc8c5; cursor: default; }
+.navigation-filter-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr)); gap: 6px; }
+.navigation-filter-row { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 4px; }
+.navigation-dialog .navigation-filter-row [data-filter-remove] { color: #f1d5bf; background: #30282c; border-color: #9d8077; }

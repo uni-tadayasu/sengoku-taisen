@@ -104,7 +104,8 @@
     if (typeof dialog.showModal !== 'function') return null;
     let initialized = false, frame = 0, returnFocus = null, restoreFocus = true, entries = [], signature = '', pendingNavigation = null;
     let favorites = [], recent = [], dockKeys = [...DEFAULT_DOCK], railSignature = '', dockOptionsSignature = '', categorySignature = '';
-    let rememberedScroll = 0;
+    let rememberedScroll = 0, composing = false, filterScope = null;
+    let savedFilters = new Map();
     let backdropPointer = false;
     try {
       const saved = JSON.parse(win.localStorage?.getItem(PREFERENCE_KEY) || 'null');
@@ -296,15 +297,99 @@
       const destination = entry.href ? '<a class="navigation-entry" data-navigation-help="' + esc(entry.key) + '" href="' + entry.href + '" target="_blank" rel="noopener">' + content + '</a>' : '<button type="button" class="navigation-entry' + (entry.current ? ' is-current' : '') + '" data-navigation-target="' + esc(entry.key) + '"' + (entry.disabled ? ' disabled' : '') + (entry.current ? ' aria-current="page"' : '') + '>' + content + '</button>';
       return '<div class="navigation-entry-row" data-navigation-scope="' + scope + '">' + destination + '<button type="button" class="navigation-pin' + (pinned ? ' is-pinned' : '') + '" data-navigation-pin="' + esc(entry.key) + '" aria-pressed="' + pinned + '" aria-label="' + esc(entry.label) + 'をお気に入り' + (pinned ? 'から外す' : 'に追加') + '" title="' + (pinned ? 'お気に入りから外す' : 'お気に入りに追加') + '">' + svg('star') + '</button></div>';
     }
+    function searchFilterScope() {
+      const bridge = win.SengokuBridge, state = bridge?.getState?.();
+      const campaign = state?.walking?.campaignId;
+      if (!campaign || campaign === 'legacy_v1' || bridge.hasStarted?.() === false) return '';
+      const access = win.SengokuSocial?.getExpansionContext?.() || {};
+      if (access.pending || access.banned || (access.playerId && access.user?.id !== access.playerId)) return '';
+      return 'sengoku-navigation-search-v1:' + JSON.stringify([access.playerId || '', campaign]) + ':';
+    }
+    function filterKey(query, group) { return JSON.stringify([normalizeQuery(query), group]); }
+    function readSavedFilters(force = false) {
+      const next = searchFilterScope();
+      if (!force && next === filterScope) return;
+      if (filterScope !== null && next !== filterScope) {
+        search.value = ''; category.value = ''; rememberedScroll = 0; composing = false;
+      }
+      filterScope = next; savedFilters = new Map();
+      if (!next) return;
+      try {
+        const store = win.localStorage;
+        for (let i = 0; i < store.length; i++) {
+          const key = store.key(i);
+          if (!key?.startsWith(next)) continue;
+          const id = key.slice(next.length);
+          let pair;
+          try { pair = JSON.parse(store.getItem(key)); } catch (_) { continue; }
+          if (!Array.isArray(pair) || pair.length !== 2) continue;
+          const [query, group] = pair;
+          if (typeof query !== 'string' || query.length > 80 || (!group && !query.trim()) ||
+            (group !== '' && !GROUPS.includes(group)) || filterKey(query, group) !== id) continue;
+          savedFilters.set(id, { query, group });
+        }
+      } catch (_) { /* Keep live search usable when local storage is unavailable. */ }
+    }
+    function savedFilterMarkup() {
+      if (!filterScope) return '';
+      const query = search.value.trim(), group = category.value;
+      if (query || group) {
+        const saved = savedFilters.has(filterKey(query, group));
+        return '<button type="button" class="navigation-filter-save" data-filter-save' + (saved ? ' disabled' : '') + '>' +
+          (saved ? '検索条件を保存済み' : 'この検索条件を保存') + '</button>';
+      }
+      if (!savedFilters.size) return '';
+      const rows = [...savedFilters].sort(([a], [b]) => a.localeCompare(b, 'ja')).map(([id, row]) => {
+        const label = [row.group, row.query].filter(Boolean).join(' · ');
+        return '<div class="navigation-filter-row"><button type="button" data-filter-recall="' + esc(id) + '">' +
+          esc(label) + '</button><button type="button" data-filter-remove="' + esc(id) + '" aria-label="' +
+          esc(label + 'の検索条件を削除') + '">削除</button></div>';
+      });
+      return '<section class="navigation-group" aria-label="保存した検索条件"><h3>保存した検索条件</h3><div class="navigation-filter-list">' + rows.join('') + '</div></section>';
+    }
+    function editSearchFilter(button) {
+      if (!dialog.open || unavailable() || composing || !results.contains(button)) return;
+      const scope = filterScope;
+      readSavedFilters(true);
+      if (!scope || scope !== filterScope) { renderResults(true); return; }
+      const query = search.value.trim(), group = category.value;
+      const id = button.getAttribute('data-filter-recall') || button.getAttribute('data-filter-remove');
+      const row = savedFilters.get(id);
+      let message;
+      entries = collect(); renderCategories();
+      if (button.hasAttribute('data-filter-recall')) {
+        if (!row || (row.group && !entries.some(entry => entry.group === row.group))) {
+          renderResults(); status.textContent = '現在のメニューではこの検索条件を使えません。'; return;
+        }
+        search.value = row.query; category.value = row.group; renderResults(true);
+        const first = [...results.querySelectorAll('[data-navigation-target], [data-navigation-help]')].find(node => !node.disabled);
+        (touch() ? first || resetButton : search).focus({ preventScroll: true }); return;
+      }
+      try {
+        if (button.hasAttribute('data-filter-remove') && row) {
+          win.localStorage.removeItem(scope + id); savedFilters.delete(id); message = '検索条件を削除しました。';
+        } else if (button.hasAttribute('data-filter-save') && (query || group) && group === category.value) {
+          if (query.length > 80) { status.textContent = '検索条件は80文字以内で保存できます。'; return; }
+          // Each condition has its own key, so separate tabs never replace an unrelated condition.
+          const key = filterKey(query, group);
+          win.localStorage.setItem(scope + key, JSON.stringify([query, group]));
+          savedFilters.set(key, {query, group}); message = '検索条件を保存しました。全条件をクリアすると一覧から呼び出せます。';
+        } else { renderResults(); return; }
+      } catch (_) { status.textContent = '端末の検索条件を更新できませんでした。'; return; }
+      renderResults(); status.textContent = message;
+      (touch() ? results.querySelector('[data-filter-recall]') || dialog.querySelector('[data-navigation-close]') : search).focus({ preventScroll: true });
+    }
     function renderResults(resetScroll = false) {
+      readSavedFilters();
+      if (composing) return;
       const groupEntries = category.value ? entries.filter(entry => entry.group === category.value) : entries;
       const matches = filterEntries(groupEntries, search.value);
       const visibleFavorites = availableKeys(favorites), visibleRecent = availableKeys(recent).filter(key => !visibleFavorites.includes(key));
-      const next = JSON.stringify([search.value, category.value, visibleFavorites, visibleRecent, matches.map(entry => [entry.key, entry.label, entry.disabled, entry.current])]);
+      const next = JSON.stringify([filterScope, [...savedFilters], search.value, category.value, visibleFavorites, visibleRecent, matches.map(entry => [entry.key, entry.label, entry.disabled, entry.current])]);
       if (next === signature) return;
       signature = next;
       const focused = doc.activeElement;
-      const focusAttribute = ['data-navigation-pin','data-navigation-target','data-navigation-help'].find(attribute => focused?.hasAttribute?.(attribute));
+      const focusAttribute = ['data-navigation-pin','data-navigation-target','data-navigation-help','data-filter-recall','data-filter-remove'].find(attribute => focused?.hasAttribute?.(attribute));
       const focusKey = focusAttribute && focused.getAttribute(focusAttribute);
       const focusScope = focused?.closest?.('[data-navigation-scope]')?.getAttribute('data-navigation-scope');
       const scroll = resetScroll ? 0 : results.scrollTop;
@@ -313,7 +398,7 @@
       resetButton.disabled = !search.value && !category.value;
       dialog.classList.toggle('is-filtered', Boolean(search.value.trim() || category.value));
       purposes.hidden = Boolean(search.value.trim() || category.value);
-      const groups = [];
+      const groups = [savedFilterMarkup()];
       if (!search.value.trim() && !category.value && visibleFavorites.length) {
         const cards = visibleFavorites.map(key => entryMarkup(entries.find(entry => entry.key === key), 'favorites')).join('');
         groups.push('<section class="navigation-group navigation-favorites" aria-label="お気に入り"><div class="navigation-group-heading"><h3>' + svg('star') + 'お気に入り</h3><small>' + visibleFavorites.length + ' / ' + FAVORITE_LIMIT + '</small></div><div class="navigation-entry-grid">' + cards + '</div></section>');
@@ -390,7 +475,7 @@
       if (!initialized || unavailable()) return false;
       if (dialog.open) return true;
       entries = collect(); returnFocus = from || doc.activeElement; restoreFocus = true;
-      renderCategories(); renderCurrentLocation();
+      readSavedFilters(true); renderCategories(); renderCurrentLocation();
       const scroll = rememberedScroll;
       signature = ''; renderResults(); renderDockEditor();
       dialog.showModal(); expanded(true); results.scrollTop = scroll;
@@ -445,6 +530,8 @@
         if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) close();
       }
       backdropPointer = false;
+      const filterButton = event.target.closest('[data-filter-save], [data-filter-recall], [data-filter-remove]');
+      if (filterButton) { editSearchFilter(filterButton); return; }
       const pin = event.target.closest('[data-navigation-pin]');
       if (pin) { toggleFavorite(pin.getAttribute('data-navigation-pin')); return; }
       const target = event.target.closest('[data-navigation-target]');
@@ -468,7 +555,7 @@
     listen(dialog, 'close', () => {
       // A queued close event must not undo a menu reopened in the meantime.
       if (dialog.open) return;
-      expanded(false);
+      composing = false; expanded(false);
       if (restoreFocus && !otherDialog() && !unavailable()) {
         const visibleMenu = hasClass(root, 'sengoku-desktop-fit') ? trigger : quickButtons.get('menu');
         const target = returnFocus?.isConnected && returnFocus.getClientRects?.().length ? returnFocus : visibleMenu;
@@ -478,12 +565,20 @@
     });
     listen(dialog, 'cancel', () => { rememberedScroll = results.scrollTop; });
     listen(results, 'scroll', () => { if (dialog.open) rememberedScroll = results.scrollTop; }, { passive: true });
-    listen(search, 'input', () => renderResults(true));
+    listen(search, 'compositionstart', () => { composing = true; });
+    listen(search, 'compositionend', () => { composing = false; if (dialog.open) renderResults(true); });
+    listen(search, 'input', event => { if (!composing && !event.isComposing) renderResults(true); });
+    listen(win, 'storage', event => {
+      if (dialog.open && filterScope && (event.key === null || event.key?.startsWith(filterScope))) {
+        readSavedFilters(true); renderResults();
+      }
+    });
     for (const select of slotSelects) listen(select, 'change', () => { if (!setDockSlot(Number(select.getAttribute('data-navigation-slot')), select.value)) renderDockEditor(); });
     // Search results support keyboard travel without changing the native Tab order.
     listen(dialog, 'keydown', event => {
-      if (!dialog.open || event.defaultPrevented || event.isComposing || event.keyCode === 229 || event.ctrlKey || event.metaKey || event.altKey) return;
+      if (!dialog.open || composing || event.defaultPrevented || event.isComposing || event.keyCode === 229 || event.ctrlKey || event.metaKey || event.altKey) return;
       const keys = ['ArrowDown', 'ArrowUp', 'Home', 'End'];
+      if ((event.key === 'Enter' || keys.includes(event.key)) && otherDialog()) return;
       const active = doc.activeElement;
       if (event.key === 'Enter' && active === search && !event.repeat && !event.shiftKey) {
         const query = normalizeQuery(search.value);

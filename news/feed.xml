@@ -9,6 +9,19 @@
     <ttl>60</ttl>
     <atom:link href="https://www.kasai-solutions-inc.com/news/feed.xml" rel="self" type="application/rss+xml"/>
     <item>
+      <title>Ver.5.9.5｜軽い天下地図とゲーム起動、資産欄の開閉・検索条件の保存</title>
+      <link>https://www.kasai-solutions-inc.com/news/#v5-9-5</link>
+      <guid isPermaLink="true">https://www.kasai-solutions-inc.com/news/#v5-9-5</guid>
+      <dc:date>2026-11-27</dc:date>
+      <description>天下地図の地形を小さなデータで配信し、ゲーム起動時のスクリプトも圧縮しました。縦に狭い画面では資産欄を畳み、いつもの機能検索は条件を保存して呼び出せます。
+
+地形と起動スクリプトの軽量化：繰り返し使う地理座標をまとめ、地図を開くときに22,779頂点を復元します。全国129城の記録と地形はそのままです。武将名簿とゲームのスクリプトも小さく配信します。
+
+端末の向きに合わせて資産欄を開閉：スマホ・タブレットや高さの小さいPC画面に「資産欄」を追加しました。短い横画面では初回は畳み、使いたいときに開けます。小さな画面で文字を大きくしたときは操作ボタンが折り返されます。
+
+自分の検索条件を保存：「すべてのメニュー」で検索語と分類の組み合わせを保存し、次からタップで再利用できます。保存内容はこの端末の領主・戦役ごとに分かれます。</description>
+    </item>
+    <item>
       <title>Ver.5.9.4｜月夜の天守と翡翠の軍議室へ。戦国VSの和風サイバーデザインを刷新</title>
       <link>https://www.kasai-solutions-inc.com/news/#v5-9-4</link>
       <guid isPermaLink="true">https://www.kasai-solutions-inc.com/news/#v5-9-4</guid>
