@@ -1,0 +1,198 @@
+/* A lacquer title screen with luminous geometric inlay and the moonlit painted
+   battlefield. Decorations remain on the frame, outside the reading surface. */
+@media (forced-colors: none) {
+  #launch-screen.launch-screen {
+    --title-ink: #07131d;
+    --title-jade: #8fffe0;
+    --title-gold: #e9c989;
+    --title-edge: #467c77;
+    --title-halo: #36dab638;
+    background:
+      radial-gradient(ellipse at 92% 4%, #11494392, transparent 40%),
+      repeating-linear-gradient(60deg, transparent 0 31px, #7fa7880b 31px 32px, transparent 32px 63px),
+      repeating-linear-gradient(-60deg, transparent 0 31px, #7fa7880b 31px 32px, transparent 32px 63px),
+      linear-gradient(120deg, #030910, #0a1925 70%, #07121a);
+  }
+  #launch-screen .edition-mast,
+  #launch-screen .edition-foot {
+    border-color: transparent;
+    border-image: linear-gradient(90deg, var(--title-jade), var(--title-edge) 20%, #30404a 68%, var(--title-gold)) 1;
+  }
+  #launch-screen .edition-wordmark { color: #f8e9c7; }
+  #launch-screen .edition-wordmark img {
+    border: 1px solid #d7bc83;
+    box-shadow: 0 0 0 2px #091819, 0 0 14px var(--title-halo);
+  }
+  #launch-screen .edition-cover {
+    border: 1px solid var(--title-edge);
+    border-top: 2px solid #68c9b3;
+    border-radius: 2px;
+    background: var(--title-ink);
+    box-shadow: 0 2px #010709, 0 0 22px var(--title-halo);
+  }
+  #launch-screen .edition-cover::before {
+    content: "";
+    background:
+      linear-gradient(90deg, #041019 0%, #05141ff7 23%, #081b28eb 36%, #0a202c8f 49%, transparent 65%),
+      linear-gradient(0deg, #031119ab, transparent 25%);
+  }
+  /* The existing castle crest sits in a backlit mon-shaped seal. It uses the
+     same compact image as the offline shell, and never covers the warrior's face. */
+  #launch-screen .edition-print::before {
+    content: "";
+    position: absolute;
+    z-index: 1;
+    pointer-events: none;
+    right: clamp(16px, 2.3vw, 46px);
+    bottom: clamp(15px, 2.2vw, 40px);
+    width: clamp(54px, 6.4vw, 98px);
+    aspect-ratio: 1;
+    border: 1px solid #92d8bdb8;
+    border-radius: 50%;
+    background:
+      url("assets/responsive/emblem-20261127-96.webp") center / 63% no-repeat,
+      radial-gradient(circle at center, transparent 54%, #ebd298a8 55% 56%, #0b242d 57% 62%, transparent 63%),
+      repeating-conic-gradient(from 15deg, #8ddbbd 0deg 2deg, #0b2430c4 2deg 30deg);
+    box-shadow: inset 0 0 0 2px #0c2429b0, 0 0 15px var(--title-halo);
+  }
+  #launch-screen .edition-cover::after {
+    /* Two elbow rails and calibration notches, painted only at the perimeter. */
+    inset: 7px;
+    border: 0;
+    clip-path: none;
+    background:
+      linear-gradient(var(--title-jade), var(--title-jade)) left top / 62px 2px no-repeat,
+      linear-gradient(var(--title-jade), var(--title-jade)) left top / 2px 28px no-repeat,
+      linear-gradient(var(--title-gold), var(--title-gold)) right bottom / 2px 28px no-repeat,
+      linear-gradient(var(--title-gold), var(--title-gold)) right bottom / 62px 2px no-repeat,
+      repeating-linear-gradient(115deg, transparent 0 4px, #e9cc95bb 4px 6px) right 5px top / 50px 3px no-repeat;
+  }
+  #launch-screen .edition-story { position: relative; min-width: 0; }
+  #launch-screen .edition-genre {
+    color: #a1ead5;
+    letter-spacing: .14em;
+  }
+  #launch-screen .edition-genre::before {
+    width: 30px;
+    height: 8px;
+    background: repeating-linear-gradient(115deg, #9aecd4 0 2px, transparent 2px 6px);
+    box-shadow: none;
+  }
+  #launch-screen #launch-title {
+    color: #faf4db;
+    text-shadow: 2px 2px #244e4f, 0 3px 14px #030b13;
+  }
+  #launch-screen #launch-title span {
+    color: var(--title-jade);
+    text-shadow: 1px 2px #15463e, 0 0 18px var(--title-halo);
+  }
+  #launch-screen .edition-tagline { color: #f6d39a; }
+  #launch-screen .launch-introduction { color: #edf4ed; }
+  #launch-screen .launch-start-note a { color: #a6efdf; }
+
+  #launch-screen #launch-enter.edition-enter {
+    position: relative;
+    border: 1px solid #ffbea0;
+    border-inline-start: 4px solid #ffcb99;
+    border-radius: 2px;
+    background: linear-gradient(102deg, #9d312e, #903033 62%, #782533) !important;
+    color: #fff6e7;
+    box-shadow: inset 0 1px #ffd0ab57, inset 0 -2px #591f2f, 0 4px 14px #040b1180;
+  }
+  #launch-screen #launch-enter.edition-enter::after {
+    content: "";
+    position: absolute;
+    pointer-events: none;
+    inset: 4px;
+    border: 1px solid #ffd6b342;
+  }
+  #launch-screen #launch-enter.edition-enter:hover:not(:disabled) {
+    background: linear-gradient(102deg, #af3932, #99353b) !important;
+    color: #fff9ed;
+    border-color: #ffdeba;
+  }
+  #launch-screen #launch-enter.edition-enter:active:not(:disabled) {
+    background: #792a30 !important;
+    color: #fff6e7;
+    box-shadow: inset 0 2px 5px #431523;
+  }
+  #launch-screen :is(.edition-settings, .title-music-toggle) {
+    color: #dbf5e9;
+    border-color: var(--title-edge);
+    --button-wash-start: #102c35f2;
+    --button-wash-end: #0d202af2;
+  }
+  #launch-screen .edition-resume {
+    background: linear-gradient(90deg, #0e3037, #0b202be8);
+    border-color: var(--title-edge);
+    box-shadow: none;
+  }
+  #launch-screen .edition-resume::before { background: var(--title-jade); }
+  #launch-screen .launch-guide-nav a {
+    --guide-edge: #83ddbf;
+    border-color: #3d635e;
+    border-inline-start: 3px solid var(--guide-edge);
+    border-radius: 2px;
+    box-shadow: inset 0 1px #fff0d81c;
+  }
+  #launch-screen .launch-guide-nav a:nth-child(2) { --guide-edge: #e5c188; }
+  #launch-screen .launch-guide-nav a:nth-child(3) { --guide-edge: #da8e7b; }
+  #launch-screen .launch-guide-nav a::before {
+    background: linear-gradient(82deg, #05131ff5, #071822e3 35%, #10202d52 76%);
+  }
+  #launch-screen .launch-guide-nav strong { color: #fff1d2; text-shadow: none; }
+  #launch-screen .launch-guide-nav small { color: #dce9e5; }
+  #launch-screen :is(a, button):focus-visible {
+    outline: 3px solid #b2ffe8;
+    outline-offset: -3px;
+  }
+}
+@media (forced-colors: none) and (min-width: 981px) {
+  #launch-screen .edition-story::before {
+    content: "";
+    position: absolute;
+    pointer-events: none;
+    top: 15%;
+    bottom: 15%;
+    left: clamp(10px, 1.25vw, 24px);
+    width: 3px;
+    background: linear-gradient(var(--title-gold) 0 8%, transparent 8% 10%, #6bb29e70 10% 88%, transparent 88% 90%, var(--title-jade) 90%);
+  }
+}
+@media (forced-colors: none) and (max-width: 700px) {
+  #launch-screen .edition-print::before {
+    width: 44px;
+    right: 13px;
+    bottom: 10px;
+  }
+  #launch-screen .edition-print::after {
+    background: linear-gradient(0deg, var(--title-ink), transparent 37%);
+  }
+  #launch-screen .edition-cover::before { content: none; }
+  #launch-screen .edition-story {
+    background: var(--title-ink);
+    padding-inline: clamp(14px, 4vw, 24px);
+  }
+  #launch-screen .launch-guide-nav a::before {
+    background: linear-gradient(0deg, #04121ef5, #061623a6 56%, #06172329);
+  }
+}
+@media (forced-colors: none) and (max-height: 520px) and (min-width: 555px) and (orientation: landscape) {
+  #launch-screen .edition-cover::before {
+    content: "";
+    background: linear-gradient(90deg, #06131bf9 9%, #0a1c2ae8 43%, transparent 78%);
+  }
+  #launch-screen .edition-story { background: transparent; }
+}
+@media (forced-colors: none) {
+  html[data-cyber-fx="low"] #launch-screen.launch-screen {
+    --title-halo: transparent;
+    --title-jade: #afd9c9;
+    --title-edge: #48625e;
+    background: #0b1620;
+  }
+  html[data-cyber-fx="low"] #launch-screen .edition-cover::after,
+  html[data-cyber-fx="low"] #launch-screen .edition-story::before,
+  html[data-cyber-fx="low"] #launch-screen .edition-print::before { content: none; }
+  html[data-cyber-fx="low"] #launch-screen :is(#launch-title, #launch-title span) { text-shadow: none; }
+}
