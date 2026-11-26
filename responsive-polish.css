@@ -285,3 +285,26 @@ html:not(.sengoku-desktop-fit) .modal-footer .button { min-height: 44px; }
     overflow-wrap: normal;
   }
 }
+
+/* Catalogs, comparisons and multi-pane dialogs can use the whole work area.
+   Small actions and confirmations keep their content-sized windows. */
+#modal:is(.start-castle-modal,.level-guide-modal,.officer-comparison-modal,.army-planner-modal),
+#modal:has(.settings-hub,.illustrated-officer,.art-preview-stage,.gacha-result-grid:not(.single-draw)) {
+  --dialog-preferred-width: var(--social-viewport-width, 100vw);
+}
+html.sengoku-desktop-fit #modal:is(.start-castle-modal,.level-guide-modal,.officer-comparison-modal,.army-planner-modal),
+html.sengoku-desktop-fit #modal:has(.settings-hub,.illustrated-officer,.art-preview-stage,.gacha-result-grid:not(.single-draw)),
+html.sengoku-desktop-fit dialog:is(.social-dialog,.letters-dialog,.campaign-records-dialog,.events-dialog,.trade-dialog,.troop-garrison-dialog,.premium-dialog,.premium-admin-dialog,.hints-dialog,.alliance-dialog,.cq-dialog,.command-activity-dialog) {
+  width: calc(var(--social-viewport-width,100vw) - 32px);
+  max-width: calc(var(--social-viewport-width,100vw) - 32px);
+}
+html.sengoku-desktop-fit dialog:is(.social-dialog,.letters-dialog,.campaign-records-dialog,.events-dialog,.trade-dialog,.troop-garrison-dialog,.premium-dialog,.premium-admin-dialog,.hints-dialog,.alliance-dialog) {
+  height: calc(var(--social-viewport-height,var(--visible-height,100dvh)) - 32px);
+}
+html.sengoku-desktop-fit #modal .art-preview-stage {
+  width: min(100%, max(460px, 66dvh));
+}
+html.sengoku-desktop-fit #modal .officer-detail-portrait:not(:has(.operator-portrait)) {
+  width: clamp(180px, 17vw, 30dvh);
+  flex-basis: auto;
+}

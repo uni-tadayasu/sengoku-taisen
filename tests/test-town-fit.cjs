@@ -78,10 +78,15 @@ for(const width of [290,307.5,339,400,440,480,570,619,620,705,819]){
     for(const marker of items){const b={left:marker.x-22,top:marker.y-22,width:44,height:44};assert(a.left+a.width+3.9<=b.left||b.left+b.width+3.9<=a.left||a.top+a.height+3.9<=b.top||b.top+b.height+3.9<=a.top,'A label must not cover any facility icon at '+width+'px');}
   }
 }
-assert.equal(kamon.url('德川家'), kamon.url('徳川家'));
-assert.match(kamon.render('德川家'), /aria-label="徳川家：/);
-assert.equal(kamon.render('德川家'),kamon.render('徳川家'),'Public clan labels must not distinguish verified roles');
-assert.match(kamon.render('徳川家'), /aria-label="徳川家：/);
+for (const clan of ['德川家', '徳川家']) {
+  const crest = kamon.render(clan, {label: true});
+  const name = clan + '：三つ葉葵';
+  assert.equal(kamon.url(clan), 'assets/kamon/tokugawa.svg');
+  assert.match(crest, /<img src="assets\/kamon\/tokugawa\.svg"/);
+  assert(crest.includes('aria-label="' + name + '"'));
+  assert(crest.includes('title="' + name + '"'));
+  assert(crest.includes('<b>' + clan + '</b>'));
+}
 
 // Repeated observer notifications can reuse geometry, while every input that
 // can move a label must still run the original, unchanged collision solver.
@@ -144,4 +149,4 @@ assert.match(kamon.render('徳川家'), /aria-label="徳川家：/);
   assert.equal(events.filter(event=>event.startsWith('write:')).length,6);
   for(const label of replacement.labels)assert(label.style.getPropertyValue('--town-label-left'),'A replaced board inside a retained scene also receives fresh positions');
 }
-console.log(`PASS ${cases} town fit/label geometries, eight labels avoiding every facility icon or an explicit compact-list fallback, full-height PC canvas, drag limits, zero-size startup, uniform public Tokugawa crest labels, unchanged-layout reuse and batched geometry reads.`);
+console.log(`PASS ${cases} town fit/label geometries, eight labels avoiding every facility icon or an explicit compact-list fallback, full-height PC canvas, drag limits, zero-size startup, shared Tokugawa artwork and exact labels, unchanged-layout reuse and batched geometry reads.`);

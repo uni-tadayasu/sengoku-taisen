@@ -11,7 +11,7 @@ body.at-title #app { display: none; }
 #launch-screen[hidden] { display:none; }
 #launch-screen.launch-screen::before, #launch-screen.launch-screen::after { content:none; }
 .edition-shell {
-  width:min(100%,1880px); margin:auto; min-height:100%; padding-inline: clamp(14px,3.6vw,70px);
+  width:100%; min-height:100%; padding-inline:max(12px,1vw,env(safe-area-inset-left)) max(12px,1vw,env(safe-area-inset-right));
   display:flex; flex-direction:column;
 }
 .edition-mast,.edition-foot { display:flex; justify-content:space-between; align-items:center; gap:12px; }

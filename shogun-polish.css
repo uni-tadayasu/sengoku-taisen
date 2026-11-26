@@ -206,7 +206,7 @@ body:not(.at-title) .navigation-dialog .navigation-result.is-current { backgroun
 #launch-screen .title-music-toggle { background: #152832e6; background-image: none !important; }
 #launch-screen .launch-guide-nav a { border-color: #ceae7182; box-shadow: inset 0 1px #fff1c515; }
 @media (min-width: 981px) and (min-height: 700px) {
-  #launch-screen .edition-shell { min-height: 100dvh; padding-inline: clamp(24px,3.5vw,64px); }
+  #launch-screen .edition-shell { min-height: 100dvh; }
   #launch-screen .edition-mast { min-height: 58px; }
   #launch-screen .edition-cover { flex: 1 0 auto; min-height: 0; margin-top: 15px; }
   #launch-screen .edition-story { padding-block: 22px; }
@@ -216,10 +216,22 @@ body:not(.at-title) .navigation-dialog .navigation-result.is-current { backgroun
   #launch-screen .edition-foot { min-height: 36px; }
 }
 @media (min-width: 1025px) {
-  html.sengoku-desktop-fit #app.chronicle-shell #main { padding: 16px 20px; }
-  html.sengoku-desktop-fit #app.chronicle-shell #main[data-view="town"] { padding: 12px; }
+  html.sengoku-desktop-fit #app.chronicle-shell #main,
+  html.sengoku-desktop-fit #app.chronicle-shell #main[data-view="town"] { padding: clamp(6px,.7vw,12px); }
+  html.sengoku-desktop-fit #app.chronicle-shell #main[data-view="town"] { overflow-y: auto; }
+  html.sengoku-desktop-fit #app.chronicle-shell #main .town-workspace.dashboard-grid { min-height: 25rem; }
   html.sengoku-desktop-fit:not([data-layout-townratio]) #app.chronicle-shell #main .town-workspace.dashboard-grid { grid-template-columns: minmax(0,1fr) clamp(310px,30%,390px); gap: 14px; }
 }
+html:not(.sengoku-desktop-fit) #app.chronicle-shell #main {
+  --pane-gutter: clamp(6px,1vw,12px);
+  padding-inline: max(var(--pane-gutter),env(safe-area-inset-left,0px)) max(var(--pane-gutter),env(safe-area-inset-right,0px));
+}
+/* Once scrolled into view the map can occupy all the space between the sticky
+   HUD and the navigation dock. Its controls still fit on a short viewport. */
+html:not(.sengoku-desktop-fit) #main .geographic-map-panel {
+  height: max(260px,calc(var(--visible-height,100dvh) - var(--touch-header-height,0px) - var(--touch-announcement-height,0px) - var(--compact-dock-height,76px) - env(safe-area-inset-bottom,0px) - 12px));
+}
+html:not(.sengoku-desktop-fit) #main .geographic-map-panel .sg-map { min-height: 0; }
 @media (max-width: 700px) {
   #launch-screen .edition-story { padding: 0 16px 18px; }
   #launch-screen .edition-print { aspect-ratio: 2; }
