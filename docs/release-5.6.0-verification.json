@@ -2,7 +2,7 @@
   "version": "5.6.0",
   "date": "2026-11-27",
   "baselineCommit": "dbec77ae2dfe285b34992d23df9a696635c016ec",
-  "status": "local-verification-passed-awaiting-remote-ci",
+  "status": "published-and-production-verified",
   "node": "v24.22.3",
   "workflowContinuity": [
     {
@@ -272,6 +272,10 @@
     {
       "surface": "effects settings",
       "result": "Set effects to0: muted label and audition disabled while BGM remains10. Set back above0 persisted across page reload."
+    },
+    {
+      "surface": "320px final title",
+      "result": "Logo and whole navigation items wrap to separate rows. body clientWidth and scrollWidth both320."
     }
   ],
   "limitations": [
@@ -746,5 +750,31 @@
     "fontAllRangesBytes": 3099976,
     "fontCoreBytes": 180920,
     "fontLoading": "unicode-range on demand"
+  },
+  "productionRecord": "release-5.6.0-production.json",
+  "pullRequest": "https://github.com/uni-tadayasu/sengoku-taisen/pull/40",
+  "releaseCommit": "7fb4adae4948e6030aecd164ea7c15a91c656193",
+  "mergeCommit": "8ed73f77099c2e5011e8f8c5ea13e3956652b6e4",
+  "remoteCI": {
+    "pullRequest": {
+      "passedJobs": 6,
+      "runs": [
+        45874882521,
+        45874882007,
+        45874881902
+      ]
+    },
+    "main": {
+      "passedJobs": 6,
+      "runs": [
+        45875006228,
+        45875006398,
+        45875006236
+      ]
+    },
+    "pages": {
+      "run": 45875005501,
+      "conclusion": "success"
+    }
   }
 }

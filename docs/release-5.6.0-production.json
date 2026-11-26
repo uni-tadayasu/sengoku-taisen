@@ -1,0 +1,423 @@
+{
+  "startedAt": "2026-11-26T18:20:47.618687+00:00",
+  "origin": "https://www.kasai-solutions-inc.com",
+  "repository": "/workspace/scratch/b8bfcbab0b54/sengoku-taisen",
+  "concurrency": 4,
+  "timeoutSeconds": 20,
+  "method": "GET",
+  "ok": true,
+  "results": [
+    {
+      "category": "home",
+      "localFile": "index.html",
+      "url": "https://www.kasai-solutions-inc.com/?verify_release=5.6.0-20261127",
+      "expectedBytes": 18812,
+      "expectedSHA256": "7fe99b3d6e386967b7f93a9e66b1bec5c7cf12f43ffeff99831d92de636da7c1",
+      "ok": true,
+      "httpStatus": 200,
+      "finalURL": "https://www.kasai-solutions-inc.com/?verify_release=5.6.0-20261127",
+      "headers": {
+        "Content-Type": "text/html; charset=utf-8",
+        "Content-Length": "18812",
+        "ETag": "\"6b087860-497c\"",
+        "Last-Modified": "Thu, 26 Nov 2026 18:20:16 GMT",
+        "Cache-Control": "max-age=600",
+        "Age": "0"
+      },
+      "receivedBytes": 18812,
+      "receivedSHA256": "7fe99b3d6e386967b7f93a9e66b1bec5c7cf12f43ffeff99831d92de636da7c1",
+      "elapsedSeconds": 5.236
+    },
+    {
+      "category": "service-worker",
+      "localFile": "sw.js",
+      "url": "https://www.kasai-solutions-inc.com/sw.js?v=5.6.0-20261127&verify_release=5.6.0-20261127",
+      "expectedBytes": 13247,
+      "expectedSHA256": "7d135c9597247c507017d07bf803d2994778aef413bd2f9c325f1b896994c7c3",
+      "ok": true,
+      "httpStatus": 200,
+      "finalURL": "https://www.kasai-solutions-inc.com/sw.js?v=5.6.0-20261127&verify_release=5.6.0-20261127",
+      "headers": {
+        "Content-Type": "application/javascript; charset=utf-8",
+        "Content-Length": "13247",
+        "ETag": "\"6b08785f-33bf\"",
+        "Last-Modified": "Thu, 26 Nov 2026 18:20:15 GMT",
+        "Cache-Control": "max-age=600",
+        "Age": "0"
+      },
+      "receivedBytes": 13247,
+      "receivedSHA256": "7d135c9597247c507017d07bf803d2994778aef413bd2f9c325f1b896994c7c3",
+      "elapsedSeconds": 5.223
+    },
+    {
+      "category": "manifest",
+      "localFile": "manifest.webmanifest",
+      "url": "https://www.kasai-solutions-inc.com/manifest.webmanifest?v=5.6.0-20261127&verify_release=5.6.0-20261127",
+      "expectedBytes": 1121,
+      "expectedSHA256": "8096cfd55c3de2f1d1c69aa7a0ecf8113e82614defedc7348e4512803bc19cbd",
+      "ok": true,
+      "httpStatus": 200,
+      "finalURL": "https://www.kasai-solutions-inc.com/manifest.webmanifest?v=5.6.0-20261127&verify_release=5.6.0-20261127",
+      "headers": {
+        "Content-Type": "application/manifest+json; charset=utf-8",
+        "Content-Length": "1121",
+        "ETag": "\"6b087860-461\"",
+        "Last-Modified": "Thu, 26 Nov 2026 18:20:16 GMT",
+        "Cache-Control": "max-age=600",
+        "Age": "0"
+      },
+      "receivedBytes": 1121,
+      "receivedSHA256": "8096cfd55c3de2f1d1c69aa7a0ecf8113e82614defedc7348e4512803bc19cbd",
+      "elapsedSeconds": 4.961
+    },
+    {
+      "category": "entry-bundle",
+      "localFile": "game-layout.bundle.css",
+      "url": "https://www.kasai-solutions-inc.com/game-layout.bundle.css?v=f2a09da4a886&verify_release=5.6.0-20261127",
+      "expectedBytes": 932751,
+      "expectedSHA256": "f2a09da4a886dcba886409fa33f5f32b26a135c8a2373990946e133487b2ab6e",
+      "ok": true,
+      "httpStatus": 200,
+      "finalURL": "https://www.kasai-solutions-inc.com/game-layout.bundle.css?v=f2a09da4a886&verify_release=5.6.0-20261127",
+      "headers": {
+        "Content-Type": "text/css; charset=utf-8",
+        "Content-Length": "932751",
+        "ETag": "\"6b08785f-e3b8f\"",
+        "Last-Modified": "Thu, 26 Nov 2026 18:20:15 GMT",
+        "Cache-Control": "max-age=600",
+        "Age": "0"
+      },
+      "receivedBytes": 932751,
+      "receivedSHA256": "f2a09da4a886dcba886409fa33f5f32b26a135c8a2373990946e133487b2ab6e",
+      "elapsedSeconds": 5.0
+    },
+    {
+      "category": "entry-bundle",
+      "localFile": "game-preferences.bundle.js",
+      "url": "https://www.kasai-solutions-inc.com/game-preferences.bundle.js?v=c6e04c260a89&verify_release=5.6.0-20261127",
+      "expectedBytes": 7330,
+      "expectedSHA256": "c6e04c260a89a2ef74eccb36924fec8163deffbabb76fb64dd4d1ec3bf9a285a",
+      "ok": true,
+      "httpStatus": 200,
+      "finalURL": "https://www.kasai-solutions-inc.com/game-preferences.bundle.js?v=c6e04c260a89&verify_release=5.6.0-20261127",
+      "headers": {
+        "Content-Type": "application/javascript; charset=utf-8",
+        "Content-Length": "7330",
+        "ETag": "\"6b087860-1ca2\"",
+        "Last-Modified": "Thu, 26 Nov 2026 18:20:16 GMT",
+        "Cache-Control": "max-age=600",
+        "Age": "0"
+      },
+      "receivedBytes": 7330,
+      "receivedSHA256": "c6e04c260a89a2ef74eccb36924fec8163deffbabb76fb64dd4d1ec3bf9a285a",
+      "elapsedSeconds": 4.499
+    },
+    {
+      "category": "entry-bundle",
+      "localFile": "game-core.bundle.js",
+      "url": "https://www.kasai-solutions-inc.com/game-core.bundle.js?v=a6d23a2e5d46&verify_release=5.6.0-20261127",
+      "expectedBytes": 682170,
+      "expectedSHA256": "a6d23a2e5d4683bec8a6d41d55eb962d5baad3f30ad656bd6374e80d88cc73df",
+      "ok": true,
+      "httpStatus": 200,
+      "finalURL": "https://www.kasai-solutions-inc.com/game-core.bundle.js?v=a6d23a2e5d46&verify_release=5.6.0-20261127",
+      "headers": {
+        "Content-Type": "application/javascript; charset=utf-8",
+        "Content-Length": "682170",
+        "ETag": "\"6b08785f-a68ba\"",
+        "Last-Modified": "Thu, 26 Nov 2026 18:20:15 GMT",
+        "Cache-Control": "max-age=600",
+        "Age": "0"
+      },
+      "receivedBytes": 682170,
+      "receivedSHA256": "a6d23a2e5d4683bec8a6d41d55eb962d5baad3f30ad656bd6374e80d88cc73df",
+      "elapsedSeconds": 4.59
+    },
+    {
+      "category": "entry-bundle",
+      "localFile": "game-campaign.bundle.js",
+      "url": "https://www.kasai-solutions-inc.com/game-campaign.bundle.js?v=d0097d5c32ed&verify_release=5.6.0-20261127",
+      "expectedBytes": 477209,
+      "expectedSHA256": "d0097d5c32ed97729c45874d10701657e50fcc18f5679e65c31fdbb04115dff3",
+      "ok": true,
+      "httpStatus": 200,
+      "finalURL": "https://www.kasai-solutions-inc.com/game-campaign.bundle.js?v=d0097d5c32ed&verify_release=5.6.0-20261127",
+      "headers": {
+        "Content-Type": "application/javascript; charset=utf-8",
+        "Content-Length": "477209",
+        "ETag": "\"6b087860-74819\"",
+        "Last-Modified": "Thu, 26 Nov 2026 18:20:16 GMT",
+        "Cache-Control": "max-age=600",
+        "Age": "0"
+      },
+      "receivedBytes": 477209,
+      "receivedSHA256": "d0097d5c32ed97729c45874d10701657e50fcc18f5679e65c31fdbb04115dff3",
+      "elapsedSeconds": 4.313
+    },
+    {
+      "category": "entry-bundle",
+      "localFile": "game-interface.bundle.js",
+      "url": "https://www.kasai-solutions-inc.com/game-interface.bundle.js?v=f3cb6cd0dbc4&verify_release=5.6.0-20261127",
+      "expectedBytes": 417302,
+      "expectedSHA256": "f3cb6cd0dbc4e1a6deecf777650e8e6ef6c42452c97806bd0b719811964cd443",
+      "ok": true,
+      "httpStatus": 200,
+      "finalURL": "https://www.kasai-solutions-inc.com/game-interface.bundle.js?v=f3cb6cd0dbc4&verify_release=5.6.0-20261127",
+      "headers": {
+        "Content-Type": "application/javascript; charset=utf-8",
+        "Content-Length": "417302",
+        "ETag": "\"6b087860-65e16\"",
+        "Last-Modified": "Thu, 26 Nov 2026 18:20:16 GMT",
+        "Cache-Control": "max-age=600",
+        "Age": "0"
+      },
+      "receivedBytes": 417302,
+      "receivedSHA256": "f3cb6cd0dbc4e1a6deecf777650e8e6ef6c42452c97806bd0b719811964cd443",
+      "elapsedSeconds": 4.36
+    },
+    {
+      "category": "entry-bundle",
+      "localFile": "game-community.bundle.js",
+      "url": "https://www.kasai-solutions-inc.com/game-community.bundle.js?v=d6af8ed624b8&verify_release=5.6.0-20261127",
+      "expectedBytes": 586235,
+      "expectedSHA256": "d6af8ed624b8c3714c8ff02ad30cc8af3741da406ecaa99337727ea953be78c7",
+      "ok": true,
+      "httpStatus": 200,
+      "finalURL": "https://www.kasai-solutions-inc.com/game-community.bundle.js?v=d6af8ed624b8&verify_release=5.6.0-20261127",
+      "headers": {
+        "Content-Type": "application/javascript; charset=utf-8",
+        "Content-Length": "586235",
+        "ETag": "\"6b087860-8f1fb\"",
+        "Last-Modified": "Thu, 26 Nov 2026 18:20:16 GMT",
+        "Cache-Control": "max-age=600",
+        "Age": "0"
+      },
+      "receivedBytes": 586235,
+      "receivedSHA256": "d6af8ed624b8c3714c8ff02ad30cc8af3741da406ecaa99337727ea953be78c7",
+      "elapsedSeconds": 4.21
+    },
+    {
+      "category": "guide",
+      "localFile": "guide/index.html",
+      "url": "https://www.kasai-solutions-inc.com/guide/?verify_release=5.6.0-20261127",
+      "expectedBytes": 142342,
+      "expectedSHA256": "cb7788b81aed7ed3bbd6590ebff234b858693c5078e54ea7852ed886fcf2c41d",
+      "ok": true,
+      "httpStatus": 200,
+      "finalURL": "https://www.kasai-solutions-inc.com/guide/?verify_release=5.6.0-20261127",
+      "headers": {
+        "Content-Type": "text/html; charset=utf-8",
+        "Content-Length": "142342",
+        "ETag": "\"6b087860-22c06\"",
+        "Last-Modified": "Thu, 26 Nov 2026 18:20:16 GMT",
+        "Cache-Control": "max-age=600",
+        "Age": "0"
+      },
+      "receivedBytes": 142342,
+      "receivedSHA256": "cb7788b81aed7ed3bbd6590ebff234b858693c5078e54ea7852ed886fcf2c41d",
+      "elapsedSeconds": 4.163
+    },
+    {
+      "category": "news",
+      "localFile": "news/index.html",
+      "url": "https://www.kasai-solutions-inc.com/news/?verify_release=5.6.0-20261127",
+      "expectedBytes": 41521,
+      "expectedSHA256": "e75aae4a907693e6ac8608d5741f2b7c095256496b1a8abb01d19f231bcb0856",
+      "ok": true,
+      "httpStatus": 200,
+      "finalURL": "https://www.kasai-solutions-inc.com/news/?verify_release=5.6.0-20261127",
+      "headers": {
+        "Content-Type": "text/html; charset=utf-8",
+        "Content-Length": "41521",
+        "ETag": "\"6b087860-a231\"",
+        "Last-Modified": "Thu, 26 Nov 2026 18:20:16 GMT",
+        "Cache-Control": "max-age=600",
+        "Age": "0"
+      },
+      "receivedBytes": 41521,
+      "receivedSHA256": "e75aae4a907693e6ac8608d5741f2b7c095256496b1a8abb01d19f231bcb0856",
+      "elapsedSeconds": 4.052
+    },
+    {
+      "category": "brand-icon-512",
+      "localFile": "assets/branding/sengoku-vs-icon-512-20261127.png",
+      "url": "https://www.kasai-solutions-inc.com/assets/branding/sengoku-vs-icon-512-20261127.png?verify_release=5.6.0-20261127",
+      "expectedBytes": 388827,
+      "expectedSHA256": "84445e0ed8729f3584ef76de63a6b392a5030db23bee244477e1b27917a9e944",
+      "ok": true,
+      "httpStatus": 200,
+      "finalURL": "https://www.kasai-solutions-inc.com/assets/branding/sengoku-vs-icon-512-20261127.png?verify_release=5.6.0-20261127",
+      "headers": {
+        "Content-Type": "image/png",
+        "Content-Length": "388827",
+        "ETag": "\"6b08785f-5eedb\"",
+        "Last-Modified": "Thu, 26 Nov 2026 18:20:15 GMT",
+        "Cache-Control": "max-age=600",
+        "Age": "0"
+      },
+      "receivedBytes": 388827,
+      "receivedSHA256": "84445e0ed8729f3584ef76de63a6b392a5030db23bee244477e1b27917a9e944",
+      "elapsedSeconds": 3.996
+    },
+    {
+      "category": "favicon-ico",
+      "localFile": "favicon.ico",
+      "url": "https://www.kasai-solutions-inc.com/favicon.ico?verify_release=5.6.0-20261127",
+      "expectedBytes": 94415,
+      "expectedSHA256": "842203dea90deeda167244c71c1bf7a67bdb1a7149cfbf58052efa8e42ef1efd",
+      "ok": true,
+      "httpStatus": 200,
+      "finalURL": "https://www.kasai-solutions-inc.com/favicon.ico?verify_release=5.6.0-20261127",
+      "headers": {
+        "Content-Type": "image/vnd.microsoft.icon",
+        "Content-Length": "94415",
+        "ETag": "\"6b087860-170cf\"",
+        "Last-Modified": "Thu, 26 Nov 2026 18:20:16 GMT",
+        "Cache-Control": "max-age=600",
+        "Age": "0"
+      },
+      "receivedBytes": 94415,
+      "receivedSHA256": "842203dea90deeda167244c71c1bf7a67bdb1a7149cfbf58052efa8e42ef1efd",
+      "elapsedSeconds": 4.591
+    },
+    {
+      "category": "favicon-search",
+      "localFile": "favicon.png",
+      "url": "https://www.kasai-solutions-inc.com/favicon.png?verify_release=5.6.0-20261127",
+      "expectedBytes": 19742,
+      "expectedSHA256": "3ccab3b4baa4c7678affdba606b31f76eb28420d5392ffea57170e8e84da9318",
+      "ok": true,
+      "httpStatus": 200,
+      "finalURL": "https://www.kasai-solutions-inc.com/favicon.png?verify_release=5.6.0-20261127",
+      "headers": {
+        "Content-Type": "image/png",
+        "Content-Length": "19742",
+        "ETag": "\"6b087860-4d1e\"",
+        "Last-Modified": "Thu, 26 Nov 2026 18:20:16 GMT",
+        "Cache-Control": "max-age=600",
+        "Age": "0"
+      },
+      "receivedBytes": 19742,
+      "receivedSHA256": "3ccab3b4baa4c7678affdba606b31f76eb28420d5392ffea57170e8e84da9318",
+      "elapsedSeconds": 4.524
+    },
+    {
+      "category": "favicon-small",
+      "localFile": "assets/branding/sengoku-vs-favicon-32-20261127.png",
+      "url": "https://www.kasai-solutions-inc.com/assets/branding/sengoku-vs-favicon-32-20261127.png?verify_release=5.6.0-20261127",
+      "expectedBytes": 2385,
+      "expectedSHA256": "90cbb608fdd523862e94b1cac7cd2a24df3062e0e4f0275d53c82be7c9176bb2",
+      "ok": true,
+      "httpStatus": 200,
+      "finalURL": "https://www.kasai-solutions-inc.com/assets/branding/sengoku-vs-favicon-32-20261127.png?verify_release=5.6.0-20261127",
+      "headers": {
+        "Content-Type": "image/png",
+        "Content-Length": "2385",
+        "ETag": "\"6b087860-951\"",
+        "Last-Modified": "Thu, 26 Nov 2026 18:20:16 GMT",
+        "Cache-Control": "max-age=600",
+        "Age": "0"
+      },
+      "receivedBytes": 2385,
+      "receivedSHA256": "90cbb608fdd523862e94b1cac7cd2a24df3062e0e4f0275d53c82be7c9176bb2",
+      "elapsedSeconds": 4.449
+    },
+    {
+      "category": "favicon-vector",
+      "localFile": "assets/branding/sengoku-vs-favicon-20261127.svg",
+      "url": "https://www.kasai-solutions-inc.com/assets/branding/sengoku-vs-favicon-20261127.svg?verify_release=5.6.0-20261127",
+      "expectedBytes": 1126,
+      "expectedSHA256": "894b50ea6863126842a61af7ed3e90ea1d792f59d723aaeea403444ef9111180",
+      "ok": true,
+      "httpStatus": 200,
+      "finalURL": "https://www.kasai-solutions-inc.com/assets/branding/sengoku-vs-favicon-20261127.svg?verify_release=5.6.0-20261127",
+      "headers": {
+        "Content-Type": "image/svg+xml",
+        "Content-Length": "1126",
+        "ETag": "\"6b08785f-466\"",
+        "Last-Modified": "Thu, 26 Nov 2026 18:20:15 GMT",
+        "Cache-Control": "max-age=600",
+        "Age": "0"
+      },
+      "receivedBytes": 1126,
+      "receivedSHA256": "894b50ea6863126842a61af7ed3e90ea1d792f59d723aaeea403444ef9111180",
+      "elapsedSeconds": 4.425
+    },
+    {
+      "category": "typography",
+      "localFile": "typography-gyosho.css",
+      "url": "https://www.kasai-solutions-inc.com/typography-gyosho.css?verify_release=5.6.0-20261127",
+      "expectedBytes": 11126,
+      "expectedSHA256": "57b26c2024fe9dce913d405f9f9bf22fe815212d581630ad6a1b8efb4b80d339",
+      "ok": true,
+      "httpStatus": 200,
+      "finalURL": "https://www.kasai-solutions-inc.com/typography-gyosho.css?verify_release=5.6.0-20261127",
+      "headers": {
+        "Content-Type": "text/css; charset=utf-8",
+        "Content-Length": "11126",
+        "ETag": "\"6b087860-2b76\"",
+        "Last-Modified": "Thu, 26 Nov 2026 18:20:16 GMT",
+        "Cache-Control": "max-age=600",
+        "Age": "0"
+      },
+      "receivedBytes": 11126,
+      "receivedSHA256": "57b26c2024fe9dce913d405f9f9bf22fe815212d581630ad6a1b8efb4b80d339",
+      "elapsedSeconds": 4.85
+    },
+    {
+      "category": "typography-core-font",
+      "localFile": "assets/fonts/kouzan-gyosho/kouzan-gyosho-core.woff2",
+      "url": "https://www.kasai-solutions-inc.com/assets/fonts/kouzan-gyosho/kouzan-gyosho-core.woff2?verify_release=5.6.0-20261127",
+      "expectedBytes": 180920,
+      "expectedSHA256": "f9d79bd20b5898a433070e47465d224cc2fb6c43656a13390f03e3b669202dab",
+      "ok": true,
+      "httpStatus": 200,
+      "finalURL": "https://www.kasai-solutions-inc.com/assets/fonts/kouzan-gyosho/kouzan-gyosho-core.woff2?verify_release=5.6.0-20261127",
+      "headers": {
+        "Content-Type": "font/woff2",
+        "Content-Length": "180920",
+        "ETag": "\"6b08785f-2c2b8\"",
+        "Last-Modified": "Thu, 26 Nov 2026 18:20:15 GMT",
+        "Cache-Control": "max-age=600",
+        "Age": "0"
+      },
+      "receivedBytes": 180920,
+      "receivedSHA256": "f9d79bd20b5898a433070e47465d224cc2fb6c43656a13390f03e3b669202dab",
+      "elapsedSeconds": 4.863
+    },
+    {
+      "category": "public-theme",
+      "localFile": "cyber-wafu.css",
+      "url": "https://www.kasai-solutions-inc.com/cyber-wafu.css?verify_release=5.6.0-20261127",
+      "expectedBytes": 29194,
+      "expectedSHA256": "6a89a80f9e871405d345e8dcb0c64db91ba29b18dbab2eed59663b44a7cdba41",
+      "ok": true,
+      "httpStatus": 200,
+      "finalURL": "https://www.kasai-solutions-inc.com/cyber-wafu.css?verify_release=5.6.0-20261127",
+      "headers": {
+        "Content-Type": "text/css; charset=utf-8",
+        "Content-Length": "29194",
+        "ETag": "\"6b087860-720a\"",
+        "Last-Modified": "Thu, 26 Nov 2026 18:20:16 GMT",
+        "Cache-Control": "max-age=600",
+        "Age": "0"
+      },
+      "receivedBytes": 29194,
+      "receivedSHA256": "6a89a80f9e871405d345e8dcb0c64db91ba29b18dbab2eed59663b44a7cdba41",
+      "elapsedSeconds": 4.816
+    }
+  ],
+  "release": "5.6.0-20261127",
+  "checked": 19,
+  "passed": 19,
+  "failed": 0,
+  "finishedAt": "2026-11-26T18:21:10.629807+00:00",
+  "releaseCommit": "7fb4adae4948e6030aecd164ea7c15a91c656193",
+  "mergeCommit": "8ed73f77099c2e5011e8f8c5ea13e3956652b6e4",
+  "pullRequest": "https://github.com/uni-tadayasu/sengoku-taisen/pull/40",
+  "deployment": "https://github.com/uni-tadayasu/sengoku-taisen/actions/runs/45875005501",
+  "productionBrowser": {
+    "url": "https://www.kasai-solutions-inc.com/?sengoku-version=5.6.0-20261127",
+    "result": "Existing 5.5 service worker showed the normal new-version button. Activating it loaded the 5.6 luxury crest, cyber palette and Sengoku Gyosho 18px. Settings displayed independent BGM10% and effects10% sliders, test sound, and persistent-setting guidance. No application or font errors observed. No game save reset or account login performed."
+  }
+}
