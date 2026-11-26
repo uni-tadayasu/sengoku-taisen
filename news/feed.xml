@@ -9,6 +9,17 @@
     <ttl>60</ttl>
     <atom:link href="https://www.kasai-solutions-inc.com/news/feed.xml" rel="self" type="application/rss+xml"/>
     <item>
+      <title>Ver.5.9.9｜資産6項目を横一列に、ゲーム画面を表示領域に合わせて拡大</title>
+      <link>https://www.kasai-solutions-inc.com/news/#v5-9-9</link>
+      <guid isPermaLink="true">https://www.kasai-solutions-inc.com/news/#v5-9-9</guid>
+      <dc:date>2026-11-27</dc:date>
+      <description>金銭・兵糧・木材・石材・指令・勾玉を、幅に余裕のある画面では横一列に表示します。ゲーム画面、設定やメニュー、公式ページも、端末に合わせて使える領域を広げました。
+
+資産欄を横一列で確認：6項目が収まる幅では残高を一度に見渡せます。窮屈な配置では暦と操作ボタンの位置を調整し、資産欄に横幅を割り当てます。狭い画面ではカードを折り返し、上限の100,000,000も桁を省略せず表示します。
+
+画面の余白を見直し：ゲーム画面とダイアログの表示領域を見直し、横幅や高さに合わせて地図、一覧、設定などを読みやすくしました。公式紹介・攻略ページでも、広い画面では画像やカードに使える幅を広げました。</description>
+    </item>
+    <item>
       <title>Ver.5.9.8｜月夜の城下から、天下地図へ。日英の新作映像とゲーム内更新を公開</title>
       <link>https://www.kasai-solutions-inc.com/news/#v5-9-8</link>
       <guid isPermaLink="true">https://www.kasai-solutions-inc.com/news/#v5-9-8</guid>

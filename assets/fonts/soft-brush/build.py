@@ -167,7 +167,7 @@ def main():
         # missing characters, before it for explicitly marked variant text.
         # This avoids duplicating two large, mostly complementary range lists.
         family = VARIANT_FAMILY if row['source'] == 'noto' else BRUSH_FAMILY
-        faces.append('@font-face{font-family:"' + family + '";font-style:normal;font-weight:400;font-display:swap;src:url("assets/fonts/soft-brush/' + row['file'] + '") format("woff2");unicode-range:' + ranges(points) + ';}')
+        faces.append('@font-face{font-family:"' + family + '";font-display:swap;src:url("assets/fonts/soft-brush/' + row['file'] + '") format("woff2");unicode-range:' + ranges(points) + ';}')
     manifest = {'format':1,'family':BRUSH_FAMILY,'variantFamily':VARIANT_FAMILY,'normalFallbackFamily':VARIANT_FAMILY,
                 'fontToolsVersion':fontTools.__version__,'brotliVersion':brotli.__version__,
                 'sourceDefinitionSha256':sha256((HERE/'source.json').read_bytes()).hexdigest(),

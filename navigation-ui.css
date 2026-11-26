@@ -39,12 +39,12 @@ dialog.navigation-dialog {
   --navigation-top-gap: max(12px, env(safe-area-inset-top, 0px));
   --navigation-bottom-gap: max(12px, env(safe-area-inset-bottom, 0px));
   position: fixed; inset: auto; margin: 0;
-  left: calc(var(--social-viewport-left, 0px) + var(--social-viewport-width, 100vw) / 2);
-  top: calc(var(--social-viewport-top, 0px) + var(--navigation-top-gap)); transform: translateX(-50%);
-  width: min(820px, calc(var(--social-viewport-width, 100vw) - var(--navigation-left-gap) - var(--navigation-right-gap)));
-  max-width: calc(var(--social-viewport-width, 100vw) - var(--navigation-left-gap) - var(--navigation-right-gap));
-  height: min(800px, calc(var(--social-viewport-height, var(--visible-height, 100dvh)) - var(--navigation-top-gap) - var(--navigation-bottom-gap)));
-  max-height: calc(var(--social-viewport-height, var(--visible-height, 100dvh)) - var(--navigation-top-gap) - var(--navigation-bottom-gap));
+  left: calc(var(--social-viewport-left, 0px) + var(--navigation-left-gap));
+  top: calc(var(--social-viewport-top, 0px) + var(--navigation-top-gap));
+  width: calc(var(--social-viewport-width, 100vw) - var(--navigation-left-gap) - var(--navigation-right-gap));
+  max-width: none;
+  height: calc(var(--social-viewport-height, var(--visible-height, 100dvh)) - var(--navigation-top-gap) - var(--navigation-bottom-gap));
+  max-height: none;
   min-width: 0; min-height: 0; padding: 0; overflow: hidden; box-sizing: border-box;
   border: 1px solid #c7ad6e77; border-radius: 14px; background: #172b35; color: #f5f0e3;
   box-shadow: 0 24px 100px #0009; font-size: 16px; line-height: 1.6;
@@ -69,7 +69,7 @@ dialog.navigation-dialog[open] { display: flex; flex-direction: column; }
 .navigation-group { margin: 0 0 17px; }
 .navigation-group:last-child { margin-bottom: 0; }
 .navigation-group h3 { margin: 8px 0; color: #e9d6a0; font-size: 15px; line-height: 1.5; font-weight: 700; }
-.navigation-entry-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.navigation-entry-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 19rem), 1fr)); gap: 8px; }
 .navigation-dialog .navigation-entry {
   display: flex; align-items: center; gap: 11px; min-width: 0; min-height: 82px; position: relative;
   padding: 12px; border: 1px solid #7f949d55; border-radius: 9px; color: #f7f1e4; background-color: #223b46;

@@ -52,8 +52,8 @@
 #app.chronicle-shell .chronicle-ledger .header-balances {
   display: grid;
   min-width: 0;
-  gap: 5px;
-  grid-template-columns: repeat(auto-fit,minmax(min(100%,8rem,132px),1fr));
+  gap: 4px;
+  grid-template-columns: repeat(auto-fit,minmax(min(100%,116px),1fr));
 }
 html:not(.sengoku-desktop-fit) #app.chronicle-shell .chronicle-ledger .header-balances {
   grid-column: 1 / -1;
@@ -62,16 +62,17 @@ html:not(.sengoku-desktop-fit) #app.chronicle-shell .chronicle-ledger .header-ba
 #app.chronicle-shell .chronicle-ledger .header-balances :is(#resources,#touch-header-status) > button {
   grid-column: auto;
   container-type: inline-size;
+  padding-inline: 5px;
 }
 @supports (container-type: inline-size) {
   #app.chronicle-shell .chronicle-ledger .header-balances {
     container: balances / inline-size;
     grid-template-columns: repeat(6,minmax(0,1fr));
   }
-  @container balances (max-width: 45rem) {
+  @container balances (max-width: 715px) {
     #app.chronicle-shell .chronicle-ledger .header-balances :is(#resources,#touch-header-status) > button { grid-column: span 2; }
   }
-  @container balances (max-width: 24rem) {
+  @container balances (max-width: 375px) {
     #app.chronicle-shell .chronicle-ledger .header-balances :is(#resources,#touch-header-status) > button { grid-column: span 3; }
   }
   /* At 320px an enlarged root still leaves room for two cards. Reserve
@@ -88,21 +89,17 @@ html:not(.sengoku-desktop-fit) #app.chronicle-shell .chronicle-ledger .header-ba
 #app.chronicle-shell .chronicle-ledger #touch-header-status .touch-header-stat-value {
   min-width: 0;
   font-size: 1rem;
-  font-size: clamp(.875rem,12.75cqi,1.3125rem);
+  font-size: clamp(14px,12.75cqi,1.3125rem);
   white-space: normal;
   overflow-wrap: anywhere;
 }
-/* In a very narrow ledger with externally enlarged type, cap the
-   numeric minimum at 14px so that two cards fit above the touch dock.
-   The normal scale still follows the width of each individual card. */
-@container balances (max-width: 15rem) {
-  #app.chronicle-shell .chronicle-ledger #resources .resource-amount,
-  #app.chronicle-shell .chronicle-ledger #touch-header-status .touch-header-stat-value {
-    font-size: clamp(14px,12.75cqi,1.3125rem);
-  }
-}
 #app.chronicle-shell .chronicle-ledger #resources .resource-amount > span {
   display: block;
+}
+#app.chronicle-shell .chronicle-ledger #resources .resource-gain {
+  display: block;
+  margin: 0;
+  font-size: clamp(12px,10cqi,.875rem);
 }
 
 #app #main :is(h1,h2,h3,h4,p,dt,dd),

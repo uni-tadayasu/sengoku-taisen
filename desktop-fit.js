@@ -104,8 +104,19 @@ function update(){
   const offsetX=viewport?.offsetLeft||0,offsetY=viewport?.offsetTop||0,atTitle=doc.body.classList.contains('at-title');
   const announcement=doc.getElementById('announcement-bar'),announcementHeight=!atTitle&&announcement&&!announcement.hidden?announcement.offsetHeight:0;
   const plan=planViewport(viewportWidth,viewportHeight,announcementHeight);
-  for(const [name,value]of Object.entries({'viewport-width':plan.viewportWidth,'viewport-height':plan.viewportHeight,'layout-width':plan.layoutWidth,'layout-height':plan.layoutHeight,'map-height':plan.mapHeight,'town-height':plan.townHeight,'offset-left':offsetX,'offset-top':offsetY+plan.top}))setVar('--desktop-'+name,value.toFixed(3)+'px');
+  for(const [name,value]of Object.entries({'viewport-width':plan.viewportWidth,'viewport-height':plan.viewportHeight,'layout-width':plan.layoutWidth,'layout-height':plan.layoutHeight,'town-height':plan.townHeight,'offset-left':offsetX,'offset-top':offsetY+plan.top}))setVar('--desktop-'+name,value.toFixed(3)+'px');
   setVar('--visible-height',plan.viewportHeight.toFixed(3)+'px');
+  const main=active&&!atTitle?doc.getElementById('main'):null;
+  if(main?.dataset.view==='map'||main?.dataset.view==='field'){
+    const panel=main.querySelector('.geographic-map-panel');
+    if(panel){
+      // Measure from the start of the document in this pane, even when the
+      // player has scrolled down to castle results or another lord's details.
+      const available=main.getBoundingClientRect().bottom-panel.getBoundingClientRect().top-main.scrollTop;
+      plan.mapHeight=Math.max(300,available-(parseFloat(global.getComputedStyle(main).paddingBottom)||0));
+    }
+  }
+  setVar('--desktop-map-height',plan.mapHeight.toFixed(3)+'px');
   for(const node of doc.querySelectorAll('#app,.launch-card,dialog:not(.game-loading)'))clearLegacyGeometry(node);
   // Sticky touch headers remain in document flow. Only their measured height
   // is needed to keep focus/anchor scrolling below the visible information.

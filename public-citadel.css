@@ -149,6 +149,28 @@
   body:not(.public-luxury) .player button:hover:enabled { background: #9e3840; }
 }
 
+/* Keep the space for wide tables and illustrations while bounding prose. */
+@media screen and (min-width: 65rem) {
+  body.public-luxury .page-width,
+  body:not(.public-luxury) > :is(.mast,main,footer) {
+    width: calc(100% - clamp(2.5rem,4vw,5rem));
+  }
+  body.public-luxury[data-page="not-found"] { padding-inline: clamp(1.25rem,2vw,2.5rem); }
+  body.public-luxury .lost-layout { width: 100%; }
+  body.public-luxury .folio-hero { min-height: clamp(21rem,min(30vw,54vh),36rem); }
+  body.public-luxury .reading-layout {
+    grid-template-columns: clamp(17rem,19vw,24rem) minmax(0,1fr);
+  }
+  body.public-luxury .article :is(p,ul:not([class]),ol:not([class])),
+  body.public-luxury .lost-copy p,
+  body:not(.public-luxury) :is(.album-description,#track-description) {
+    max-inline-size: 48em;
+  }
+  body.english-introduction :is(.english-start,.english-mode-columns,.english-faq) p {
+    max-inline-size: 68ch;
+  }
+}
+
 @media screen and (max-width: 900px) {
   .public-luxury :is(.site-header-inner,.header-navigation,.reading-layout,.guide-quick,.hero-copy,.lost-copy,.english-section,.english-hero-copy) > * { min-width: 0; }
   .public-luxury :is(.article p,.data-table-wrap td,.english-hero-copy p,.promotion-url-row,.lost-copy) { overflow-wrap: anywhere; }

@@ -189,6 +189,11 @@ test('the ledger can reflow with its available width and has a fallback for over
   const columns = scopedRules(condition)
     .filter(rule => rule.selectors.includes(card))
     .map(rule => compact(rule.declarations['grid-column'] || ''));
+  property(container, 'grid-template-columns', 'repeat(6,minmax(0,1fr))');
+  for (const match of css.matchAll(condition)) {
+    const width = match[0].match(/max-width:\s*(\d+)px/);
+    assert(width && Number(width[1]) < 744, 'A 768px tablet with 12px gutters must show all six counters in one row at every game text setting');
+  }
   assert(columns.some(value => /^span[2-5]$/.test(value)), 'Six counters should share fewer columns when the ledger narrows');
   assert(columns.includes('1/-1'), 'A very narrow ledger must allow a whole row per counter');
   property(card, 'container-type', 'inline-size');
@@ -199,6 +204,7 @@ test('the ledger can reflow with its available width and has a fallback for over
     property(selector, 'overflow-wrap', 'anywhere');
   }
   property(ledger + ' #resources .resource-amount > span', 'display', 'block');
+  property(ledger + ' #resources .resource-gain', 'display', 'block');
 });
 
 console.log(count + ' responsive text structure checks passed. Rendered bounds require browser QA.');

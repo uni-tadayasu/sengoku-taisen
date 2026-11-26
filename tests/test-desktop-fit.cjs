@@ -188,4 +188,22 @@ test('touch navigation, map controls, and footer reserve safe touch areas',()=>{
  assert(block(responsive,'html:not(.sengoku-desktop-fit) #app.game-shell').includes('flex-direction:column'));assert(block(responsive,'html:not(.sengoku-desktop-fit) #main').includes('overflow:visible'));const nav=block(responsive,'html:not(.sengoku-desktop-fit) .navigation .nav-item');assert(nav.includes('min-height:54px'));
  const map=block(responsive,'html:not(.sengoku-desktop-fit) .sg-map-control');assert(map.includes('height:44px!important'));assert(map.includes('width:44px!important'));assert(block(responsive,'html:not(.sengoku-desktop-fit) .sidebar-bottom').includes('env(safe-area-inset-bottom)'));assert(block(responsive,'html:not(.sengoku-desktop-fit) .game-footer').includes('92px + env(safe-area-inset-bottom)'));
 });
+test('map views fill the visible pane across toolbar wraps and ordinary result scrolling',()=>{
+ const h=harness({width:1920,height:1440}),doc=h.environment.document;
+ let panelTop=280;
+ const main={dataset:{view:'map'},scrollTop:0,getBoundingClientRect:()=>({bottom:1390}),
+   querySelector:()=>({getBoundingClientRect:()=>({top:panelTop-main.scrollTop})})};
+ const byId=doc.getElementById;
+ doc.getElementById=id=>id==='main'?main:byId(id);
+ const computed=h.environment.getComputedStyle;
+ h.environment.getComputedStyle=node=>node===main?{paddingBottom:'12px'}:computed(node);
+ h.refresh();
+ assert.equal(h.api.getStatus().mapHeight,1098);
+ main.scrollTop=280;h.refresh();
+ assert.equal(h.vars.get('--desktop-map-height'),'1098.000px');
+ main.dataset.view='field';panelTop=352;h.refresh();
+ assert.equal(h.api.getStatus().mapHeight,1026);
+ panelTop=1250;h.refresh();
+ assert.equal(h.api.getStatus().mapHeight,300);
+});
 console.log(count+' responsive viewport checks passed.');
