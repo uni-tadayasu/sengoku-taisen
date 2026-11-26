@@ -67,16 +67,21 @@ function layoutMarkers(points,view,width,height,{distance=27,labels=true,markerS
   const visible=points.map(point=>({...point,sx:(point.x-view.x)/view.width*width,sy:(point.y-view.y)/view.height*height})).filter(p=>p.sx>-30&&p.sx<width+30&&p.sy>-30&&p.sy<height+30);
   // Complete-link groups have a bounded on-screen diameter. A chain of nearby
   // castles must never merge distant provinces into a single nation-wide cluster.
-  const groups=[];
+  const groups=[],nearby=[];let firstNearby=0;
   for(const point of [...visible].sort((a,b)=>a.sx-b.sx||a.sy-b.sy||a.id.localeCompare(b.id))){
     if(point.selected||point.home||distance<=0){groups.push([point]);continue;}
+    // Points arrive in increasing x order. Complete-link membership requires
+    // being within distance of the group's leftmost member too. Once that
+    // member is too far left, this group cannot accept this or any later point.
+    while(firstNearby<nearby.length&&point.sx-nearby[firstNearby][0].sx>=distance)firstNearby++;
     let best=null,bestDistance=Infinity;
-    for(const group of groups){
-      if(group[0].selected||group[0].home||!group.every(member=>Math.hypot(member.sx-point.sx,member.sy-point.sy)<distance))continue;
+    for(let index=firstNearby;index<nearby.length;index++){
+      const group=nearby[index];
+      if(!group.every(member=>Math.hypot(member.sx-point.sx,member.sy-point.sy)<distance))continue;
       const cx=group.reduce((n,p)=>n+p.sx,0)/group.length,cy=group.reduce((n,p)=>n+p.sy,0)/group.length,d=Math.hypot(point.sx-cx,point.sy-cy);
       if(d<bestDistance){best=group;bestDistance=d;}
     }
-    if(best)best.push(point);else groups.push([point]);
+    if(best)best.push(point);else{const group=[point];groups.push(group);nearby.push(group);}
   }
   const markers=groups.map(group=>{
     if(group.length===1)return{...group[0],key:group[0].id,points:group,cluster:false,priority:group[0].selected?100:group[0].home?90:group[0].own?60:group[0].reachable?40:20};

@@ -1,0 +1,40 @@
+{
+  "commit": "5323f2c406531dddd925d22c5a83d89ecb6f155e",
+  "files": [
+    {
+      "path": "index.html",
+      "status": 200,
+      "bytes": 18812,
+      "equal": true,
+      "sha256": "66486738fefa48bd0fa44fd03cf48d5e6525bfccc3d54afb69da17b7fbf535b6"
+    },
+    {
+      "path": "selection-lock.js",
+      "status": 200,
+      "bytes": 2315,
+      "equal": true,
+      "sha256": "172d1a1ee5e1b95513fcced233604852da8ae3402f68869ed78f2fced81723d3"
+    },
+    {
+      "path": "game-core.bundle.js",
+      "status": 200,
+      "bytes": 724541,
+      "equal": true,
+      "sha256": "a73f90d60da8f77f332471b869411ff081ce5371bf90a89476d33cf326018439"
+    },
+    {
+      "path": "game-interface.bundle.js",
+      "status": 200,
+      "bytes": 418836,
+      "equal": true,
+      "sha256": "49ace2d786b9e642ca89c41848e33e47626dfaf47d0371b8491cd3e9d5ce9bae"
+    },
+    {
+      "path": "sw.js",
+      "status": 200,
+      "bytes": 13267,
+      "equal": true,
+      "sha256": "572a6fcedd90f6cb0ae525bad929a94787e53769dd74aa11f36109ccd84b5ac3"
+    }
+  ]
+}

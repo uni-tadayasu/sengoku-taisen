@@ -166,4 +166,100 @@ test('the same movement supplied by both read sources is counted only once',()=>
   const model=h.ui.buildOperations(h.game,{marches:[allied],clock});assert.equal(model.items.length,1);assert.equal(model.items[0].destination,'alliance');assert.equal(h.ui.build(h.game,{marches:[allied]}).marches,'1');
 });
 
+
+test('construction targets keep exact identities and shared/private scope apart',()=>{
+  const game=createGame();game.state.branches=[{id:'nijo_north',parentCastleId:'nijo',direction:'north',level:1}];
+  const jobs=[{kind:'building',id:'farm',shared:false},{kind:'building',id:'farm',shared:true},{kind:'research',id:'cultivation'},{kind:'castle',id:'nijo'},{kind:'branch',id:'nijo_north'},{kind:'branch',id:'gone'}];
+  const before=JSON.stringify({state:game.state,jobs}),model=command.buildOperations(game,{catalog,jobs,clock});
+  const targets=model.items.map(row=>row.target);
+  assert(targets.some(row=>row.kind==='building'&&row.id==='farm'&&row.shared===false));
+  assert(targets.some(row=>row.kind==='building'&&row.id==='farm'&&row.shared===true));
+  assert.equal(targets.find(row=>row.id==='nijo').parentCastleId,'nijo');
+  assert.equal(targets.find(row=>row.id==='nijo_north').parentCastleId,'nijo');
+  assert.equal(targets.find(row=>row.id==='gone').parentCastleId,'');
+  assert.equal(JSON.stringify({state:game.state,jobs}),before);
+});
+test('a detail route releases the ledger before opening the exact selected facility',()=>{
+  const h=mount(),targets=[];h.open({openOperation(target){assert.equal(h.dialog.open,false);assert.equal(h.counts.listeners,0);targets.push(target);return true;}});
+  const before=JSON.stringify(h.game.state),button=h.dialog.querySelector('[data-command-go="facilities"]');
+  assert.match(button.getAttribute('aria-label'),/田畑.*この施設を開く/);button.dispatchEvent({type:'click'});
+  assert.equal(targets.length,1);assert.deepEqual(JSON.parse(JSON.stringify(targets[0])),{kind:'building',id:'farm',shared:false});
+  assert.deepEqual(h.navigated,[]);assert.equal(JSON.stringify(h.game.state),before);
+});
+test('unavailable target details use the existing destination without inventing another target',()=>{
+  const h=mount(),targets=[];h.open({openOperation(target){targets.push(target);return false;}});
+  h.dialog.querySelector('[data-command-go="research"]').dispatchEvent({type:'click'});
+  assert.equal(targets.length,1);assert.equal(targets[0].id,'cultivation');assert.deepEqual(h.navigated,['research']);assert.equal(h.counts.listeners,0);
+});
+test('IME conversion keeps the committed search and stable rows until composition finishes',()=>{
+  const h=mount();h.open();const search=h.dialog.querySelector('[data-command-query]'),scroll=h.dialog.querySelector('[data-command-scroll]');
+  search.focus();search.value='田';search.setSelectionRange(0,1);search.dispatchEvent({type:'compositionstart'});search.dispatchEvent({type:'input',isComposing:true});scroll.scrollTop=75;
+  for(let i=0;i<60;i++)h.emit([],{...clock,elapsedMs:i*1000});
+  assert.equal(h.dialog.querySelectorAll('[data-command-operation]').length,3);assert.equal(h.dialog.querySelector('[data-command-query]'),search);assert.equal(h.doc.activeElement,search);assert.equal(search.selectionStart,0);assert.equal(search.selectionEnd,1);assert.equal(scroll.scrollTop,75);
+  search.value='田畑';search.dispatchEvent({type:'compositionend'});
+  assert.equal(h.dialog.querySelectorAll('[data-command-operation]').length,2);assert.equal(h.doc.activeElement,search);assert.equal(h.counts.listeners,1);h.ui.close();
+});
+test('detail round trips preserve filters, pagination and reading position only within the same campaign',()=>{
+  const h=mount();h.open();const search=h.dialog.querySelector('[data-command-query]'),scroll=h.dialog.querySelector('[data-command-scroll]');
+  search.value='田畑';search.dispatchEvent({type:'input'});h.dialog.querySelector('[data-command-filter="construction"]').dispatchEvent({type:'click'});scroll.scrollTop=81;h.dialog.scrollTop=28;h.ui.close();
+  h.open();assert.equal(search.value,'田畑');assert.equal(h.dialog.querySelector('[data-command-filter="construction"]').getAttribute('aria-pressed'),'true');assert.equal(scroll.scrollTop,81);assert.equal(h.dialog.scrollTop,28);assert.equal(h.dialog.querySelectorAll('[data-command-operation]').length,2);h.ui.close();
+  h.open({filter:'research'});assert.equal(search.value,'');assert.equal(scroll.scrollTop,0);assert.equal(h.dialog.scrollTop,0);assert.equal(h.dialog.querySelectorAll('[data-command-operation]').length,1);h.ui.close();
+  const next=queuedGame();next.state.walking.campaignId='another_campaign';h.setGame(next);h.open();assert.equal(search.value,'');assert.equal(scroll.scrollTop,0);assert.equal(h.dialog.querySelector('[data-command-filter="all"]').getAttribute('aria-pressed'),'true');h.ui.close();
+});
+test('expanded pages are retained when the same campaign ledger is reopened',()=>{
+  const game=createGame();game.constructionJobs=()=>Array.from({length:85},(_,i)=>({kind:'building',id:'farm_'+i,name:'田畑 '+i,remainingSeconds:60+i,totalSeconds:180,targetLevel:2}));
+  const h=mount(game);h.open();h.dialog.querySelector('[data-command-more]').dispatchEvent({type:'click'});h.dialog.querySelector('[data-command-more]').dispatchEvent({type:'click'});h.dialog.querySelector('[data-command-scroll]').scrollTop=520;h.ui.close();
+  h.open();assert.equal(h.dialog.querySelectorAll('[data-command-operation]').length,85);assert.equal(h.dialog.querySelector('[data-command-scroll]').scrollTop,520);h.ui.close();
+});
+test('Escape stays in the top layer and only a primary pointer outside its rectangle dismisses it',()=>{
+  const h=mount();h.open();let stopped=false;h.dialog.dispatchEvent({type:'keydown',key:'Escape',stopPropagation(){stopped=true;}});assert(stopped);assert(h.dialog.open);
+  h.dialog.dispatchEvent({type:'click',detail:0,clientX:150,clientY:150});assert(h.dialog.open);
+  h.dialog.dispatchEvent({type:'click',detail:1,button:2,clientX:150,clientY:150});assert(h.dialog.open);
+  h.dialog.dispatchEvent({type:'click',detail:1,button:0,clientX:50,clientY:50});assert(h.dialog.open);
+  h.dialog.dispatchEvent({type:'click',detail:1,button:0,clientX:150,clientY:150});assert(!h.dialog.open);assert.equal(h.counts.listeners,0);assert.equal(h.doc.activeElement,h.launch);
+});
+test('access changes are checked on a click before the next clock notification',()=>{
+  for(const change of [access=>({...access,playerId:'another'}),access=>({...access,pending:true}),access=>({...access,banned:true}),access=>({...access,rolePending:true})]){
+    const h=mount(),targets=[];let access={playerId:'self',pending:false,banned:false,rolePending:false};h.win.SengokuSocial={getExpansionContext:()=>access};
+    h.open({openOperation(target){targets.push(target);return true;}});const button=h.dialog.querySelector('[data-command-go="facilities"]');access=change(access);let stopped=false;button.dispatchEvent({type:'click',stopPropagation(){stopped=true;}});assert(stopped);
+    assert(!h.dialog.open);assert.equal(h.counts.listeners,0);assert.deepEqual(targets,[]);assert.deepEqual(h.navigated,[]);
+  }
+});
+test('an already pending role cannot open a snapshot of the previous campaign',()=>{
+  const h=mount();h.win.SengokuSocial={getExpansionContext:()=>({playerId:'self',pending:true})};assert.equal(h.open(),false);assert(!h.dialog.open);assert.equal(h.counts.listeners,0);
+});
+
+const appSource=fs.readFileSync(require.resolve('../app.js'),'utf8');
+function appFunction(name){const start=appSource.indexOf('  function '+name+'(');assert(start>=0,name);const lineEnd=appSource.indexOf('\n',start);if(appSource.slice(start,lineEnd).endsWith('}'))return appSource.slice(start,lineEnd);const end=appSource.indexOf('\n  }',start);assert(end>start,name);return appSource.slice(start,end+4);}
+function routeFixture(){
+  const {doc,host}=setup();host.id='main';const modal=doc.createElement('dialog');modal.innerHTML='<div id="modal-content"></div>';doc.body.appendChild(modal);
+  const game=queuedGame();game.state.castles.nijo.owner=game.state.clan;game.state.branches=[{id:'nijo_north',parentCastleId:'nijo',direction:'north',level:1}];
+  const opened=[],views=[],ctx={document:doc,window:{scrollTo(){}},$:s=>doc.querySelector(s),game,data:catalog,state:()=>game.state,startPending:false,syncAccess:{banned:false,rolePending:false},interactionEpoch:0,currentView:'town',
+    closeModal(){modal.close();},syncMusic(){},history:{replaceState(){}},
+    buildingModal(id){opened.push({kind:'building',id});modal.showModal();},
+    castleUpgradeModal(id){opened.push({kind:'castle',id});modal.querySelector('#modal-content').innerHTML='<article class="branch-card" data-stable-key="branch-nijo_north"><h4>二条城 北支拠点</h4></article>';modal.showModal();},
+    render(){views.push(ctx.currentView);host.innerHTML=ctx.currentView==='research'?catalog.techs.map(t=>'<section data-research-card="'+t.id+'"><h3>'+t.name+'</h3></section>').join(''):'';}};
+  vm.createContext(ctx);vm.runInContext(['go','openDefenseBase','openCommandOperation'].map(appFunction).join('\n'),ctx);
+  return{ctx,game,doc,host,modal,opened,views,open:target=>ctx.openCommandOperation(target)};
+}
+test('the app opens completed or cancelled construction targets without spending or starting new work',()=>{
+  const f=routeFixture(),model=command.buildOperations(f.game,{catalog,clock});
+  const facility=model.items.find(row=>row.target.kind==='building').target,research=model.items.find(row=>row.target.kind==='research').target;
+  f.game.state.jobs=[];f.game.state.tech.cultivation=5;const before=JSON.stringify(f.game.state);
+  assert.equal(f.open(facility),true);assert.deepEqual(f.opened,[{kind:'building',id:'farm'}]);assert.equal(f.open(research),true);
+  assert.deepEqual(f.views,['research']);const card=f.host.querySelector('[data-research-card="cultivation"]'),heading=card.querySelector('h3');assert.equal(f.doc.activeElement,heading);assert.equal(heading.scrollIntoViewCalls,1);assert(card.hasAttribute('data-command-target'));assert(!f.modal.open);assert.equal(JSON.stringify(f.game.state),before);
+});
+test('the app opens the exact owned castle or branch and never falls through to the home castle',()=>{
+  const f=routeFixture(),before=JSON.stringify(f.game.state);assert(f.open({kind:'castle',id:'nijo',parentCastleId:'nijo'}));assert(f.open({kind:'branch',id:'nijo_north',parentCastleId:'nijo'}));
+  assert.deepEqual(f.opened,[{kind:'castle',id:'nijo'},{kind:'castle',id:'nijo'}]);assert.equal(f.doc.activeElement,f.modal.querySelector('h4'));assert.equal(f.modal.querySelector('.branch-card').scrollIntoViewCalls,1);assert.equal(JSON.stringify(f.game.state),before);
+  for(const target of [{kind:'castle',id:'nijo',parentCastleId:'kiyosu'},{kind:'branch',id:'nijo_north',parentCastleId:'kiyosu'},{kind:'branch',id:'missing',parentCastleId:'nijo'},{kind:'building',id:'missing',shared:false},{kind:'research',id:'missing'},null,{kind:'unknown',id:'nijo'}])assert.equal(f.open(target),false);
+  f.game.state.castles.nijo.owner='他勢力';assert.equal(f.open({kind:'castle',id:'nijo',parentCastleId:'nijo'}),false);assert.equal(f.open({kind:'branch',id:'nijo_north',parentCastleId:'nijo'}),false);assert.equal(f.opened.length,2);
+});
+test('old personal and shared facility routes cannot open each other after a role transition',()=>{
+  const f=routeFixture();assert.equal(f.open({kind:'building',id:'farm',shared:true}),false);
+  Object.defineProperty(f.game,'isStaff',{value:true,configurable:true});assert.equal(f.open({kind:'building',id:'farm',shared:false}),false);assert.equal(f.open({kind:'building',id:'farm',shared:true}),true);
+  for(const flag of ['startPending','banned','rolePending']){if(flag==='startPending')f.ctx.startPending=true;else f.ctx.syncAccess[flag]=true;assert.equal(f.open({kind:'building',id:'farm',shared:true}),false);f.ctx.startPending=false;f.ctx.syncAccess.banned=false;f.ctx.syncAccess.rolePending=false;}
+  assert.equal(f.opened.length,1);
+});
+
 console.log(checks+' operations ledger checks passed. No external requests or writes.');

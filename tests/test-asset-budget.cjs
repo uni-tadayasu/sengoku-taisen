@@ -23,7 +23,10 @@ const totalGzipBytes = rows.reduce((sum,row)=>sum+row.gzipBytes,0);
 // in the font manifest. v5.7 adds the read-only defense ledger and scoped local
 // plan persistence: 3,283,130 raw / 942,953 gzip bytes, +48,194 / +14,346 from
 // v5.6.2. Keep modest headroom without treating byte size as loading latency.
-const rawBudget=3300000,gzipBudget=950000;
+// v5.9 adds direct operation/plan destinations, persistent reading position,
+// construction blockers and confirmation-time preset validation. Measured:
+// 3,309,958 raw / 950,478 gzip (+11,264 / +3,341 from v5.8.1).
+const rawBudget=3320000,gzipBudget=955000;
 assert(totalBytes <= rawBudget, `Initial bundles exceed the ${rawBudget} byte budget: ${totalBytes}`);
 assert(totalGzipBytes <= gzipBudget, `Initial bundles exceed the ${gzipBudget} gzip byte budget: ${totalGzipBytes}`);
 const html = fs.readFileSync(path.join(root,'index.html'),'utf8');

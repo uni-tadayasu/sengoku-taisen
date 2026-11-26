@@ -304,6 +304,8 @@ dialog.command-activity-dialog[open] { display: flex; flex-direction: column; }
 .command-operation-track { align-self: center; height: 5px; overflow: hidden; border-radius: 3px; background: #091a23; }
 .command-operation-track > i { display: block; height: 100%; background: #cdb47a; }
 .command-operation-open { justify-self: end; min-height: 40px; }
+#app #main .research-card[data-command-target] { border-color: #e7c98a; box-shadow: inset 0 0 0 1px #e7c98a60; }
+#app #main .research-card[data-command-target] h3:focus { outline: 2px solid #f7d995; outline-offset: 5px; scroll-margin-block: 100px; }
 .command-activity-empty { padding: 25px 15px; border: 1px dashed #bca77a6b; border-radius: 7px; text-align: center; }
 .command-activity-empty strong { color: #eed4a6; font-size: 1rem; }
 .command-activity-empty p { margin: 10px auto 15px; max-width: 38ch; color: #c2d2d0; font-size: .85rem; line-height: 1.75; }
@@ -392,6 +394,8 @@ dialog.command-activity-dialog[open] { display: flex; flex-direction: column; }
 .resource-plan-warning { padding:10px 12px; color:#f4cba2; background:#59402c55; border-left:3px solid #c79d67; }
 .resource-plan-actions { display:flex; flex-wrap:wrap; gap:10px; margin-top:18px; }
 .resource-plan-actions > .button { flex:1; min-height:46px; font-size:.94rem; }
+.resource-plan-actions > .resource-plan-target { flex-basis:100%; min-width:0; white-space:normal; overflow-wrap:anywhere; }
+.resource-plan-actions > .resource-plan-target[hidden] { display:none; }
 .resource-plan-dialog :is(input,select,summary):focus-visible { outline:3px solid #f7d995; outline-offset:2px; }
 .resource-plan-select-row { display:grid; grid-template-columns:minmax(0,1fr) max-content; align-items:end; gap:12px; }
 .resource-plan-select-row .resource-plan-picker { grid-template-columns:minmax(0,1fr); gap:7px; }
@@ -429,6 +433,10 @@ dialog.command-activity-dialog[open] { display: flex; flex-direction: column; }
 .resource-plan-reserve-grid input { width:100%; min-width:0; box-sizing:border-box; min-height:44px; padding:9px 7px; font-size:1rem; font-variant-numeric:tabular-nums; }
 .resource-plan-reserve-grid input[aria-invalid="true"] { border-color:#ffbc92; }
 .resource-plan-dialog :is([data-budget-add],[data-budget-remove],[data-budget-total],[data-budget-clear-plan],[data-budget-reserve-reset]):focus-visible { outline:3px solid #f7d995; outline-offset:2px; }
+@media (min-width:701px) and (max-width:900px) {
+  .resource-plan-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .resource-plan-reserve-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+}
 @media (max-width:700px) {
   .resource-plan-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
   .resource-plan-scroll { padding:15px 13px; }

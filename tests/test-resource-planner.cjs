@@ -158,6 +158,37 @@ test('navigation and account changes release the shared subscription before leav
   h.open();const next=makeGame();next.state.walking.campaignId='new_campaign';h.setGame(next);h.emit();assert.equal(h.dialog.open,false);assert.equal(h.counts.listeners,0);
   let access={playerId:'one',epoch:1};h.win.SengokuSocial={getExpansionContext:()=>access};h.open();access={playerId:'two',epoch:2};h.emit();assert.equal(h.dialog.open,false);assert.equal(h.counts.listeners,0);
 });
+test('the selected facility or research opens its exact current detail after the planner releases its listener',()=>{
+  for(const [kind,id,completed]of [['building','farm',false],['building','farm',true],['research','cultivation',false],['research','cultivation',true]]){
+    const h=mount(),opened=[];if(completed){if(kind==='building')h.game.state.buildings[id]=32;else h.game.state.tech[id]=5;}
+    const before=JSON.stringify(h.game.state);h.open({kind,id,openOperation(target){assert.equal(h.dialog.open,false);assert.equal(h.counts.listeners,0);opened.push(JSON.parse(JSON.stringify(target)));return true;}});
+    const button=h.dialog.querySelector('[data-budget-open-target]');assert.equal(button.hidden,false);assert.equal(button.disabled,false);assert.match(button.textContent,kind==='building'?/田畑.*詳細/:/研究を見る/);button.dispatchEvent({type:'click'});
+    assert.deepEqual(opened,[{kind,id,shared:false}]);assert.deepEqual(h.navigated,[]);assert.equal(JSON.stringify(h.game.state),before);
+  }
+});
+test('shared targets keep their scope and unavailable routing falls back only to the matching read-only screen',()=>{
+  const shared=mount(),opened=[];Object.defineProperty(shared.game,'isStaff',{value:true});shared.open({kind:'building',id:'farm',openOperation(target){opened.push(JSON.parse(JSON.stringify(target)));return true;}});shared.dialog.querySelector('[data-budget-open-target]').dispatchEvent({type:'click'});assert.deepEqual(opened,[{kind:'building',id:'farm',shared:true}]);
+  for(const [kind,id,destination]of [['building','farm','facilities'],['research','cultivation','research']]){
+    const h=mount();h.open({kind,id,openOperation:()=>false});h.dialog.querySelector('[data-budget-open-target]').dispatchEvent({type:'click'});assert.deepEqual(h.navigated,[destination]);assert.equal(h.counts.listeners,0);
+  }
+});
+test('free budgets and combined plans never pretend to have a single detail target',()=>{
+  const h=mount();for(const kind of ['custom','plan']){h.open({kind,openOperation(){assert.fail('No target exists for this budget');}});const button=h.dialog.querySelector('[data-budget-open-target]');assert(button.hidden);assert(button.disabled);button.dispatchEvent({type:'click'});assert(h.dialog.open);assert.deepEqual(h.navigated,[]);h.ui.closePlanner();}
+});
+test('a stale target click after a role or account change never routes the previous selection',()=>{
+  for(const change of ['account','role','pending','title']){
+    const h=mount();let access={playerId:'one',epoch:1};h.win.SengokuSocial={getExpansionContext:()=>access};h.open({kind:'building',id:'farm',openOperation(){assert.fail('A stale planner cannot open a target');}});
+    if(change==='account')access={playerId:'two',epoch:2};if(change==='role')Object.defineProperty(h.game,'isStaff',{value:true});if(change==='pending')access={...access,pending:true};if(change==='title')h.win.SENGOKU_AT_TITLE=true;
+    h.dialog.querySelector('[data-budget-open-target]').dispatchEvent({type:'click'});assert.equal(h.dialog.open,false,change);assert.equal(h.counts.listeners,0);assert.deepEqual(h.navigated,[]);
+  }
+});
+test('returning to the same goal restores its position and open details while a different goal or owner starts fresh',()=>{
+  const h=mount();let access={playerId:'one',epoch:1};h.win.SengokuSocial={getExpansionContext:()=>access};h.open({kind:'building',id:'farm'});const dialog=h.dialog,scroll=dialog.querySelector('.resource-plan-scroll'),reserve=dialog.querySelector('.resource-plan-reserve'),forecast=dialog.querySelector('.resource-plan-forecast');
+  scroll.scrollTop=341;dialog.scrollTop=27;reserve.open=true;forecast.open=true;h.ui.closePlanner();h.open({kind:'building',id:'farm'});
+  assert.equal(scroll.scrollTop,341);assert.equal(dialog.scrollTop,27);assert(reserve.open);assert(forecast.open);h.ui.closePlanner();h.open({kind:'research',id:'cultivation'});
+  assert.equal(scroll.scrollTop,0);assert.equal(dialog.scrollTop,0);assert(!reserve.open);assert(!forecast.open);scroll.scrollTop=230;reserve.open=true;h.ui.closePlanner();
+  access={playerId:'two',epoch:2};h.open({kind:'research',id:'cultivation'});assert.equal(scroll.scrollTop,0);assert(!reserve.open);h.ui.closePlanner();
+});
 test('operations and planner dialogs never retain simultaneous subscriptions',()=>{
   const h=mount();h.open();assert.equal(h.counts.listeners,1);h.ui.open(h.options);assert.equal(h.dialog.open,false);assert.equal(h.counts.listeners,1);
   h.open();assert.equal(h.doc.querySelector('.command-activity-dialog:not(.resource-plan-dialog)').open,false);assert.equal(h.counts.listeners,1);h.ui.closePlanner();assert.equal(h.counts.listeners,0);
