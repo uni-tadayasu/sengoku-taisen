@@ -78,6 +78,7 @@ await scope('rally escrow remains locked in transit and surviving units return t
  const cmd=async(actor,path,extra,expected=200)=>(await h.api('/alliance/'+path,post(actor,{requestId:crypto.randomUUID(),deviceId:actor.deviceId,expectedRevision:row(h,actor).revision,...extra},expected))).data;
  const op=(await cmd(p,'operations/create',{kind:'attack',title:'進軍試験',note:'到着後に戦う',targetPlayerId:t.user.id,castleId:state(h,t).home,tactic:'balanced',startsAt:h.now,expiresAt:h.now+60000})).result.operationId;
  const a=(await cmd(p,'rally/join',{operationId:op,troops:1000})).result.unitId,b=(await cmd(ally,'rally/join',{operationId:op,troops:1500})).result.unitId,standing=state(h,p).troops;
+ assert.equal((await h.api('/alliance',{token:p.token})).data.operations[0].troops,0);h.now+=15000;
  const r=await cmd(p,'rally/launch',{operationId:op});assert(r.marching);assert.equal(r.battle,null);assert.equal(state(h,p).troops,standing);assert.equal(count(h,'field_battles'),0);
  const view=(await h.api('/alliance',{token:ally.token})).data;assert.equal(view.operations[0].march.id,r.march.id);assert.equal(view.units.find(u=>u.id===b).state,'marching');assert.equal((await cmd(ally,'units/recall',{unitId:b},409)).error.code,'ARMY_MARCHING');await cmd(p,'operations/cancel',{operationId:op},409);
  const done=await arrive(h,p,r.march);assert.equal(done.history[0].status,'resolved');assert.equal(state(h,p).troops,standing);const battle=done.history[0].battle,units=h.sql.prepare('SELECT * FROM alliance_units WHERE id IN (?,?)').all(a,b);assert.equal(units.reduce((n,u)=>n+u.troops,0)+battle.attackerLost+(battle.capture?.garrison||0),2500);assert(units.every(u=>u.march_id===null&&['returning','claimed'].includes(u.state)));assert.equal(h.sql.prepare('SELECT status FROM alliance_operations WHERE id=?').get(op).status,'completed');
@@ -126,6 +127,30 @@ await scope('field capture credits loot after journey income and freezes the dep
 await scope('troops already stationed at their target retaliate without a second geographical journey',async h=>{
  const p=await player(h,'常駐からの反撃',s=>{s.castles.nijo.owner=s.clan;s.castles.nijo.troops=50000;}),t=await enemy(h,'常駐相手'),body=extra=>({requestId:crypto.randomUUID(),deviceId:p.deviceId,expectedRevision:row(h,p).revision,campaignId:state(h,p).walking.campaignId,sequence:state(h,p).covert.sequence,...extra});await h.api('/covert/hire',post(p,body({sourceCastleId:'nijo',count:100})));const r=(await h.api('/covert/dispatch',post(p,body({sourceCastleId:'nijo',target:{kind:'player',playerId:t.user.id,castleId:state(h,t).home},count:50,mode:'station'})))).data,arrived=await arrive(h,p,r.march),station=arrived.save.state.covert.stations[0];assert(station);const incident='fixture-incoming-after-arrival';h.sql.prepare('INSERT INTO field_battles(id,attacker_id,defender_id,defender_campaign_id,occurred_elapsed_ms,result_json,created_at) VALUES(?,?,?,?,?,?,?)').run(incident,t.user.id,p.user.id,state(h,p).walking.campaignId,arrived.clock.elapsedMs,JSON.stringify({castleId:'nijo'}),h.now);await h.api('/sync/lease',post(p,{deviceId:p.deviceId}));const counter=(await h.api('/covert/retaliate',post(p,body({stationId:station.id,incidentId:incident})))).data;assert(counter.result.battle);assert.equal(counter.marching,undefined);assert.equal(counter.save.state.covert.dispatches.length,0);assert.equal(count(h,'covert_battles'),1);
 });
+await scope('scout returns stay reserved, survive target disappearance and settle once without a writer lease',async h=>{
+ const p=await player(h,'復路の偵察隊',s=>{s.castles.nijo.owner=s.clan;s.castles.nijo.troops=50000;}),t=await enemy(h,'偵察後に不在の領主');
+ const body=extra=>({requestId:crypto.randomUUID(),deviceId:p.deviceId,expectedRevision:row(h,p).revision,campaignId:state(h,p).walking.campaignId,sequence:state(h,p).covert.sequence,...extra});
+ await h.api('/covert/hire',post(p,body({sourceCastleId:'nijo',count:100})));
+ const request=body({sourceCastleId:'nijo',target:{kind:'player',playerId:t.user.id,castleId:state(h,t).home},count:40,mode:'scout'}),departure=(await h.api('/covert/dispatch',post(p,request))).data;
+ const arrived=await arrive(h,p,departure.march),back=arrived.active.find(m=>m.id===departure.march.id);
+ assert.equal(back.phase,'returning');assert.equal(back.sourceCastleId,'inuyama');assert.equal(back.targetCastleId,'nijo');assert.equal(arrived.save.state.covert.reserves.nijo,60);assert.equal(arrived.save.state.covert.reports.length,1);
+ const replay=(await h.api('/covert/dispatch',post(p,request))).data;assert(replay.idempotent&&replay.marching);assert.equal(replay.result.foodCost,departure.result.foodCost);assert.equal(replay.result.commandCost,1);assert(replay.result.report);
+ // Compact save history may roll over while a long return is still underway.
+ // Its durable request receipt must retain the original cost and intelligence.
+ h.sql.prepare("UPDATE player_saves SET save_json=json_set(save_json,'$.state.covert.history',json('[]')) WHERE user_id=?").run(p.user.id);
+ h.sql.prepare("UPDATE covert_states SET state_json=json_set(state_json,'$.history',json('[]')) WHERE actor_id=?").run(p.user.id);
+ h.sql.prepare('UPDATE player_saves SET save_json=NULL WHERE user_id=?').run(t.user.id);h.sql.prepare('UPDATE player_saves SET lease_expires_at=0 WHERE user_id=?').run(p.user.id);
+ h.now+=back.remainingMs-1;assert.equal((await status(h,p)).active.find(m=>m.id===back.id).phase,'returning');assert.equal(state(h,p).covert.reserves.nijo,60);
+ h.now++;await worker.scheduled({},h.env,{});const done=await status(h,p);assert.equal(done.active.length,0);assert.equal(done.save.state.covert.reserves.nijo,100);assert.equal(done.save.state.covert.reports.length,1);assert.equal(row(h,p).lease_expires_at,0);
+ const finished=(await h.api('/covert/dispatch',post(p,request))).data;assert(finished.idempotent);assert.equal(finished.march.status,'resolved');assert.equal(finished.result.foodCost,departure.result.foodCost);assert.equal(finished.result.commandCost,1);assert.equal(finished.result.createdElapsedMs,departure.result.createdElapsedMs);assert.equal(finished.result.report.snapshot.garrison,replay.result.report.snapshot.garrison);await status(h,p);assert.equal(state(h,p).covert.reserves.nijo,100);
+});
+await scope('a delayed offline scout sweep completes both legs against the original travel deadline',async h=>{
+ const p=await player(h,'留守中の往復',s=>{s.castles.nijo.owner=s.clan;s.castles.nijo.troops=50000;}),body=extra=>({requestId:crypto.randomUUID(),deviceId:p.deviceId,expectedRevision:row(h,p).revision,campaignId:state(h,p).walking.campaignId,sequence:state(h,p).covert.sequence,...extra});
+ await h.api('/covert/hire',post(p,body({sourceCastleId:'nijo',count:100})));const request=body({sourceCastleId:'nijo',target:{kind:'castle',castleId:'osaka'},count:40,mode:'scout'}),departure=(await h.api('/covert/dispatch',post(p,request))).data;
+ h.now+=departure.march.durationMs*2+1000;await worker.scheduled({},h.env,{});
+ const canonical=JSON.parse(h.sql.prepare('SELECT state_json FROM covert_states WHERE actor_id=?').get(p.user.id).state_json);assert.equal(canonical.dispatches.length,0);assert.equal(canonical.reserves.nijo,100);assert.equal(canonical.reports.length,1);assert.equal(canonical.history[0].status,'resolved');assert.equal(canonical.history[0].march.arrivesElapsedMs,departure.march.arrivesAtMs+departure.march.durationMs);
+ await worker.scheduled({},h.env,{});assert.equal(JSON.parse(h.sql.prepare('SELECT state_json FROM covert_states WHERE actor_id=?').get(p.user.id).state_json).reserves.nijo,100);
+});
 await scope('older long covert journeys cannot starve a later short journey in the bounded background sweep',async h=>{
  await h.api('/world-clock');const long=[];let short;
  for(let i=0;i<14;i++){
@@ -134,7 +159,7 @@ await scope('older long covert journeys cannot starve a later short journey in t
  }
  h.now+=15000;await worker.scheduled({},h.env,{});
  const canonical=p=>JSON.parse(h.sql.prepare('SELECT state_json FROM covert_states WHERE actor_id=?').get(p.user.id).state_json);
- assert.equal(canonical(short).dispatches.length,0);assert.equal(canonical(short).reports.length,1);assert.equal(canonical(short).history[0].status,'resolved');assert(long.every(p=>canonical(p).dispatches.length===1),'long journeys must remain pending without occupying the due work budget');
+ assert.equal(canonical(short).dispatches.length,1);assert.equal(canonical(short).dispatches[0].phase,'returning');assert.equal(canonical(short).reports.length,1);assert.equal(canonical(short).history[0].status,'marching');assert(long.every(p=>canonical(p).dispatches.length===1),'long journeys must remain pending without occupying the due work budget');h.now+=15000;await worker.scheduled({},h.env,{});assert.equal(canonical(short).dispatches.length,0);assert.equal(canonical(short).history[0].status,'resolved');
 });
 console.log(`${scenarios} durable travel scenarios passed (${calls} isolated HTTP requests).`);
 }finally{globalThis.fetch=originalFetch;}

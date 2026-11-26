@@ -1,6 +1,8 @@
 /* Private dispatch controller: real engine, isolated persistence, no live API. */
 'use strict';
 const assert=require('node:assert/strict');
+global.SengokuTravel=require('../travel.js');
+global.SengokuTravelUI=require('../travel-ui.js');
 const {SengokuEngine:E}=require('../engine.js');
 const {createController,markup,cleanSnapshot,cleanReceipt,targetKey}=require('../covert.js');
 const clone=value=>JSON.parse(JSON.stringify(value));
@@ -15,13 +17,14 @@ function setup(extra={}){
   if(hook)return hook(action,data);
   return execute(action,data);
  },onResult:()=>resultCount++};
- function execute(action,data){const r=action==='hire'?game.hireCovert(data.sourceCastleId,data.count,data):action==='dispatch'?game.dispatchCovert(data.sourceCastleId,data.target,data.count,data.mode,data):action==='recall'?game.recallCovert(data.stationId,data):game.retaliateCovert(data.stationId,data.incidentId,data);return{...r,covert:game.covertStatus()};}
+ function execute(action,data){const r=action==='hire'?game.hireCovert(data.sourceCastleId,data.count,data):action==='dispatch'?game.departCovertDispatch(data.sourceCastleId,data.target,data.count,data.mode,data):action==='recall'?game.recallCovert(data.stationId,data):game.retaliateCovert(data.stationId,data.incidentId,data);return{...r,covert:game.covertStatus()};}
  const controller=createController(options);
  return{controller,options,store,requests,execute,get game(){return game;},set game(value){game=value;},get status(){return status;},set status(value){status=value;},set hook(value){hook=value;},set loadHook(value){loadHook=value;},get calls(){return calls;},get resultCount(){return resultCount;}};
 }
 const tests=[],test=(name,fn)=>tests.push([name,fn]);
 async function hire(h,count=20){h.controller.update('hireInput',count);assert(h.controller.prepare('hire'));assert(await h.controller.submit());return h.controller.snapshot();}
-async function station(h,count=10){await hire(h,count);h.controller.update('targetId',targetKey(h.controller.snapshot().covert.targets.find(t=>t.castleId==='odawara')));h.controller.update('mode','station');h.controller.update('countInput',count);assert(h.controller.prepare('dispatch'));assert(await h.controller.submit());return h.controller.snapshot().stations[0];}
+function advanceDispatch(h){const arrival=h.game.state.covert.dispatches[0]?.arrivesElapsedMs;assert(Number.isFinite(arrival));h.game.state.turn=Math.floor(arrival/60000);h.game.state.realtime.elapsed=arrival%60000/1000;h.game.settleCovertDue();h.controller.refresh();}
+async function station(h,count=10){await hire(h,count);h.controller.update('targetId',targetKey(h.controller.snapshot().covert.targets.find(t=>t.castleId==='odawara')));h.controller.update('mode','station');h.controller.update('countInput',count);assert(h.controller.prepare('dispatch'));assert(await h.controller.submit());assert.equal(h.controller.snapshot().stations.length,0);advanceDispatch(h);return h.controller.snapshot().stations[0];}
 
 test('owned major-city sources expose exact ninja costs and all 129 destinations',()=>{
  const h=setup(),s=h.controller.snapshot();assert.equal(s.source.castleId,'edo');assert.equal(s.source.unitName,'忍者');assert.deepEqual(s.hirePreview.costs,{gold:30,rice:20,command:1});assert.equal(s.totalTargets,129);assert.equal(s.targets.length,12);assert.equal(s.pages,11);
@@ -41,13 +44,27 @@ test('all destinations remain searchable and selectable through pagination and f
  h.controller.update('query','');h.controller.update('filter','castle');assert.equal(h.controller.snapshot().targetCount,129);h.controller.update('sort','owner');assert.equal(h.controller.snapshot().targetCount,129);
 });
 
-test('scouting records private intelligence and returns the same reserve',async()=>{
- const h=setup();await hire(h,12);h.controller.update('countInput','12');h.controller.update('targetId',targetKey(h.controller.snapshot().covert.targets.find(t=>t.castleId==='nagoya')));assert(h.controller.prepare('dispatch'));const preview=h.controller.snapshot().confirmation;assert.deepEqual(preview.costs,{gold:0,rice:23,command:1});const before=h.game.state.resources.rice;assert(await h.controller.submit());const s=h.controller.snapshot();assert.equal(s.covert.reports.length,1);assert.equal(s.covert.stations.length,0);assert.equal(s.source.reserve,12);assert.equal(h.game.state.resources.rice,before-23);assert.match(markup(s),/調査報告/);assert.equal(s.covert.reports[0].target.castleId,'nagoya');
+test('scouting shows round-trip time, reports on arrival and waits for the return before reuse',async()=>{
+ const h=setup();await hire(h,12);h.controller.update('countInput','12');h.controller.update('targetId',targetKey(h.controller.snapshot().covert.targets.find(t=>t.castleId==='nagoya')));assert(h.controller.prepare('dispatch'));const preview=h.controller.snapshot().confirmation;assert.deepEqual(preview.costs,{gold:0,rice:23,command:1});const before=h.game.state.resources.rice;assert(preview.travel);assert(preview.returnTravel);assert.match(markup(h.controller.snapshot()),/往復合計/);assert(await h.controller.submit());assert.equal(h.controller.snapshot().source.reserve,0);assert.equal(h.controller.snapshot().covert.reports.length,0);advanceDispatch(h);let s=h.controller.snapshot();assert.equal(s.covert.reports.length,1);assert.equal(s.covert.stations.length,0);assert.equal(s.source.reserve,0);assert.equal(s.covert.dispatches[0].phase,'returning');assert.equal(s.covert.dispatches[0].sourceCastleId,'nagoya');assert.match(markup(s),/帰還中/);assert.match(markup(s),/帰還まで/);assert.equal(h.controller.prepare('dispatch'),false);advanceDispatch(h);s=h.controller.snapshot();assert.equal(s.source.reserve,12);assert.equal(s.covert.dispatches.length,0);assert.equal(s.receipt.accepted,false);assert.equal(h.game.state.resources.rice,before-23);assert.match(markup(s),/調査と帰還を完了/);assert.equal(s.covert.reports[0].target.castleId,'nagoya');
 });
 
 test('stationing moves reserve, requires a later eligible incident, and recalls free with zero commands',async()=>{
  const h=setup(),st=await station(h,8);assert.equal(h.controller.snapshot().source.reserve,0);assert.equal(h.controller.snapshot().source.stationed,8);assert.equal(h.controller.prepare('retaliate',{stationId:st.id}),false);
- h.game.state.command=0;h.controller.refresh();assert(h.controller.prepare('recall',{stationId:st.id}));assert.deepEqual(h.controller.snapshot().confirmation.costs,{gold:0,rice:0,command:0});assert(await h.controller.submit());assert.equal(h.controller.snapshot().source.reserve,8);assert.equal(h.controller.snapshot().stations.length,0);
+ h.game.state.command=0;h.controller.refresh();assert(h.controller.prepare('recall',{stationId:st.id}));assert.deepEqual(h.controller.snapshot().confirmation.costs,{gold:0,rice:0,command:0});const trip=h.controller.snapshot().confirmation.travel;assert.equal(trip.sourceCastleId,'odawara');assert.equal(trip.targetCastleId,'edo');assert(await h.controller.submit());assert.equal(h.controller.snapshot().source.reserve,0);assert.equal(h.controller.snapshot().stations.length,0);assert.equal(h.controller.snapshot().covert.dispatches[0].phase,'returning');assert.match(h.controller.snapshot().message,/帰還中/);advanceDispatch(h);assert.equal(h.controller.snapshot().source.reserve,8);
+});
+
+test('a recall response loss keeps the same return and replays its arrival without adding troops twice',async()=>{
+ const h=setup(),st=await station(h,10);h.game.state.command=0;h.controller.refresh();
+ h.hook=async(action,data)=>{h.execute(action,data);throw Error('lost recall response');};
+ assert(h.controller.prepare('recall',{stationId:st.id}));assert.equal(await h.controller.submit(),false);const original=h.controller.snapshot().pending.data.requestId;
+ assert.equal(h.game.state.covert.reserves.edo,0);assert.equal(h.game.state.covert.dispatches.length,1);assert.equal(h.game.state.covert.stations.length,0);
+ advanceDispatch(h);assert.equal(h.game.state.covert.reserves.edo,10);const sequence=h.game.state.covert.sequence;
+ h.hook=async(action,data)=>{assert.equal(data.requestId,original);return h.execute(action,data);};assert.equal(await h.controller.submit(),true,h.controller.snapshot().error);
+ assert.equal(h.game.state.covert.sequence,sequence);assert.equal(h.game.state.covert.reserves.edo,10);assert.equal(h.controller.snapshot().pending,null);assert.equal(h.store.values.size,0);assert.equal(h.controller.snapshot().receipt.accepted,false);
+});
+
+test('recall receipt rejects an outbound phase or a mismatched return route',async()=>{
+ for(const changed of ['phase','route']){const h=setup(),st=await station(h,6);h.hook=async(action,data)=>{const response=h.execute(action,data);if(changed==='phase')response.result.march.phase='outbound';else response.result.march.travel=global.SengokuTravel.plan({sourceCastleId:'edo',targetCastleId:'odawara'});return response;};assert(h.controller.prepare('recall',{stationId:st.id}));assert.equal(await h.controller.submit(),false);assert(h.controller.snapshot().pending);assert.equal(h.game.state.covert.reserves.edo,0);}
 });
 
 test('station eligibility honors server stationIds and never enables retroactive counterattacks',async()=>{
@@ -65,7 +82,7 @@ test('Kyoto-origin retaliation at Edo uses the private Emperor capability while 
 });
 
 test('a lost source disables new hire and dispatch while existing forces can return',async()=>{
- const h=setup(),st=await station(h,10);h.game.state.castles.edo.owner='他勢力';h.game.state.command=0;h.controller.refresh();const s=h.controller.snapshot();assert.equal(s.source,undefined);assert.match(markup(s),/大都市拠点の確保が必要/);assert.equal(h.controller.prepare('hire'),false);assert(h.controller.prepare('recall',{stationId:st.id}));assert(await h.controller.submit());assert.equal(h.game.state.covert.reserves.edo,10);
+ const h=setup(),st=await station(h,10);h.game.state.castles.edo.owner='他勢力';h.game.state.command=0;h.controller.refresh();const s=h.controller.snapshot();assert.equal(s.source,undefined);assert.match(markup(s),/大都市拠点の確保が必要/);assert.equal(h.controller.prepare('hire'),false);assert(h.controller.prepare('recall',{stationId:st.id}));assert(await h.controller.submit());assert.equal(h.game.state.covert.reserves.edo,0);advanceDispatch(h);assert.equal(h.game.state.covert.reserves.edo,10);
 });
 
 test('a changed sequence invalidates a prepared operation without a write',async()=>{

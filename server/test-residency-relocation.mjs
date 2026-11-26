@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {harness} from './test-support.mjs';
+import {harness,syncFieldWriter} from './test-support.mjs';
 const post=(p,body,expected=200)=>({method:'POST',token:p.token,body,expected});
 const current=(h,p)=>h.sql.prepare('SELECT * FROM player_saves WHERE user_id=?').get(p.user.id);
 const save=(h,p)=>JSON.parse(current(h,p).save_json);
@@ -15,6 +15,11 @@ async function actor(h,name,castleId,mode='lord'){
 const command=(h,p,path,extra={},expected=200)=>h.api(path,post(p,{requestId:crypto.randomUUID(),expectedRevision:current(h,p).revision,deviceId:p.deviceId,...extra},expected)).then(r=>r.data);
 const read=(h,p,path)=>h.api(path,{token:p.token}).then(r=>r.data);
 const unit=(h,id)=>h.sql.prepare('SELECT * FROM alliance_units WHERE id=?').get(id);
+async function finishUnitTravel(h,...actors){
+ let remaining=0;for(const actor of actors){const view=await read(h,actor,'/alliance');remaining=Math.max(remaining,...view.units.filter(u=>u.ownerId===actor.user.id&&u.phase).map(u=>Math.ceil(u.remainingMs/view.clock.speed)));}
+ h.now+=remaining;for(const actor of actors){await read(h,actor,'/alliance');await syncFieldWriter(h,actor);}
+}
+
 const change=async(h,p,update)=>{
  const s=save(h,p);update(s.state);
  await h.api('/sync',{method:'PUT',token:p.token,body:{deviceId:p.deviceId,revision:current(h,p).revision,save:s}});
@@ -28,6 +33,7 @@ const rally=async(h,leader,ally,target)=>{
  const op=(await command(h,leader,'/alliance/operations/create',{kind:'attack',title:'連合軍出陣',targetPlayerId:target.user.id,castleId:save(h,target).state.home,tactic:'balanced',startsAt:h.now,expiresAt:h.now+3600000})).result.operationId;
  const own=(await command(h,leader,'/alliance/rally/join',{operationId:op,troops:600})).result.unitId;
  const remote=(await command(h,ally,'/alliance/rally/join',{operationId:op,troops:700})).result.unitId;
+ await finishUnitTravel(h,leader,ally);await syncFieldWriter(h,target);
  const launch=await command(h,leader,'/alliance/rally/launch',{operationId:op});
  assert(launch.marching);return {own,remote,march:launch.march,op};
 };
@@ -103,6 +109,7 @@ await test('departing a commanded rally closes walking and conquest, preserves f
  assert.equal(h.sql.prepare('SELECT active_session_id FROM walking_accounts WHERE user_id=?').get(a.user.id).active_session_id,null);
  assert.equal(h.sql.prepare('SELECT status FROM battle_marches WHERE id=?').get(field.march.id).status,'cancelled');
  assert.equal(unit(h,field.own).state,'claimed');assert.equal(unit(h,field.own).troops,0);
+ await finishUnitTravel(h,b);
  for(const [id,count] of [[field.remote,700],[aid,300]]){
   assert.equal(unit(h,id).state,'returning');assert.equal(unit(h,id).troops,count);
   assert.equal((await command(h,b,'/alliance/units/claim',{unitId:id})).result.receivedTroops,count);

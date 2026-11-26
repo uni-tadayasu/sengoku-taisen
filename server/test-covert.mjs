@@ -44,12 +44,16 @@ async function importAtCurrentClock(h,p,imported){
  return(await h.api('/sync',{method:'PUT',token:p.token,body:{deviceId:p.deviceId,revision:row(h,p).revision,save:value}})).data;
 }
 async function finishDispatch(h,p,request,departure){
- assert.equal(departure.march.status,'marching');h.now+=departure.march.remainingMs;
- const settled=(await h.api('/marches?deviceId='+p.deviceId,{token:p.token})).data;
- assert.equal(settled.history.find(m=>m.id===departure.march.id)?.status,'resolved');
- await h.api('/sync/lease',post(p,{deviceId:p.deviceId}));
- const replay=(await h.api('/covert/dispatch',post(p,request))).data;assert(replay.idempotent);
- return replay;
+ assert.equal(departure.march.status,'marching');let current=departure;
+ for(let leg=0;leg<2;leg++){
+  h.now+=current.march.remainingMs;
+  const settled=(await h.api('/marches?deviceId='+p.deviceId,{token:p.token})).data;
+  await h.api('/sync/lease',post(p,{deviceId:p.deviceId}));
+  const replay=(await h.api('/covert/dispatch',post(p,request))).data;assert(replay.idempotent);
+  if(replay.march.status==='resolved'){assert.equal(settled.history.find(m=>m.id===departure.march.id)?.status,'resolved');return replay;}
+  assert.equal(replay.march.phase,'returning');assert.equal(replay.march.status,'marching');current=replay;
+ }
+ assert.fail('The dispatched party did not finish its outward and return journey');
 }
 async function op(h,p,action,extra={},expected=200){
  const request=body(h,p,extra),response=(await h.api('/covert/'+action,post(p,request,expected))).data;
@@ -84,15 +88,15 @@ try{
   assert.equal(r.result.foodCost,24);assert.equal(r.covert.reports.length,1);assert.equal(r.covert.sources[0].reserve,200);assert.deepEqual(r.result.report.snapshot.resources,save(h,d).state.resources);assert.equal(r.result.report.snapshot.army.count,3);
   const text=JSON.stringify(r.covert);for(const key of ['token_hash','is_admin','isAdmin','isStaff','staff_term','deviceId','writerDeviceId'])assert(!text.includes(key),key);assert.equal(row(h,d).save_json,targetSave);assert.equal(row(h,d).revision,targetRevision);assert.equal(count(h,'mail_campaigns'),mailCount);
   assert.equal((await h.api('/covert',{token:d.token})).data.covert.reports.length,0);
-  const distant=await op(h,p,'dispatch',{sourceCastleId:'edo',count:1,mode:'scout',target:{kind:'castle',castleId:'kagoshima'}});assert.equal(distant.result.report.target.castleId,'kagoshima');assert.equal(distant.save.state.scouted.kagoshima,distant.save.state.turn+3);
+  const distant=await op(h,p,'dispatch',{sourceCastleId:'edo',count:1,mode:'scout',target:{kind:'castle',castleId:'kagoshima'}});assert.equal(distant.result.report.target.castleId,'kagoshima');const scoutedUntil=Math.floor(distant.result.report.observedElapsedMs/60000)+3;assert.equal(distant.save.state.scouted.kagoshima,scoutedUntil>distant.save.state.turn?scoutedUntil:undefined);
   await op(h,p,'dispatch',{sourceCastleId:'edo',count:1,mode:'scout',target:{kind:'player',playerId:p.user.id,castleId:'edo'}},400);
   await op(h,p,'dispatch',{sourceCastleId:'edo',count:1,mode:'scout',target:{kind:'player',playerId:d.user.id,castleId:'kiyosu',isAdmin:true}},400);
  });
  await scope('station and recall persist survivor inventory with free recall and durable replay',async h=>{
   const p=await fixture(h,'常駐元',{admin:true}),id=await armed(h,p),station=save(h,p).state.covert.stations[0];assert.equal(station.id,id);assert.equal(station.count,300);assert.equal(save(h,p).state.covert.reserves.edo,100);
   const before=save(h,p),request=body(h,p,{stationId:id}),r=(await h.api('/covert/recall',post(p,request))).data;
-  assert.equal(r.result.count,300);assert.equal(r.save.state.command,before.state.command);assert.deepEqual(r.save.state.resources,before.state.resources);assert.equal(r.save.state.covert.reserves.edo,400);assert.equal(r.save.state.covert.stations.length,0);
-  const stored=row(h,p).save_json;assert.equal((await h.api('/covert/recall',post(p,request))).data.idempotent,true);assert.equal(row(h,p).save_json,stored);await op(h,p,'recall',{stationId:id},409);
+  assert.equal(r.result.count,300);assert.equal(r.save.state.command,before.state.command);assert.deepEqual(r.save.state.resources,before.state.resources);assert(r.accepted&&r.marching);assert.equal(r.march.phase,'returning');assert.equal(r.save.state.covert.reserves.edo,100);assert.equal(r.save.state.covert.stations.length,0);
+  const stored=row(h,p).save_json;assert.equal((await h.api('/covert/recall',post(p,request))).data.idempotent,true);assert.equal(row(h,p).save_json,stored);await op(h,p,'recall',{stationId:id},409);h.now+=r.march.remainingMs;const arrived=(await h.api('/marches?deviceId='+p.deviceId,{token:p.token})).data;assert.equal(arrived.save.state.covert.reserves.edo,400);assert.equal(arrived.save.state.covert.dispatches.length,0);const done=(await h.api('/covert/recall',post(p,request))).data;assert(done.idempotent);assert.equal(done.march.status,'resolved');
  });
  await scope('real incoming attack enables one stationed NPC retaliation without capturing or minting rewards',async h=>{
   const p=await fixture(h,'被攻撃元',{admin:true}),a=await fixture(h,'襲撃元',{home:'kawagoe'}),stationId=await armed(h,p);let status=(await h.api('/covert',{token:p.token})).data;assert.equal(status.covert.incidents.length,0);

@@ -19,7 +19,7 @@ import {handleShogunate,campaignShogunateStatements} from './shogunate.js';
 import {resolvePublicCourtOffices} from './public-court.js';
 import {resolvePublicCityHonors} from './city-honors.js';
 import {messageRegister} from './message-addressing.js';
-import {handleAlliance,assertGuildJoinAllowed,treasuryGuard,treasuryContributionStatements,prepareRallyAttack,getAllianceDefense,rallyMarchStatements,rallyMarchCancellation} from './alliance.js';
+import {handleAlliance,assertGuildJoinAllowed,treasuryGuard,treasuryContributionStatements,prepareRallyAttack,getAllianceDefense,rallyMarchStatements,rallyMarchCancellation,settleAllianceUnits} from './alliance.js';
 import {handleProtection,enrollProtection,prepareProtection,protectionBattleStatements,decorateProtectedTargets,protectionStatus} from './protection.js';
 import {handleVacantGarrisons} from './vacant-garrisons.js';
 import {handleBranches,projectBranchState,applyBranchProgress,reconcileBranchProgress,branchProgressStatements,branchStateGuard,troopTransferGuard} from './branches.js';
@@ -27,8 +27,8 @@ import {relocateResidence} from './relocation.js';
 import {requirePromotionOrigin,recordPromotion,readPromotionReport} from './promotion.js';
 import {ensureResidency,residencySnapshot,residencyDirectory,residencyStart,initialResidencyStatements,residencyTargetGuard,prepareResidencySuccession,prepareResidencyCpuLosses} from './residency.js';
 const API = '/api/v1';
-const API_VERSION = '5.1.1';
-const API_FEATURES = Object.freeze({trades:true,moderation:true,premium:true,timedEvents:true,troopTrades:true,roamingBattles:true,roamingDeployment:true,covertDispatch:true,privatePlayerRoles:true,guildIcons:true,court:true,kyotoGosho:true,branches:true,branchBattles:true,branchFacilities:true,audioCalls:true,progression:true,armyPresets:true,allianceStrategy:true,sharedConquest:true,newcomerProtection:true,webPush:true,battleAdviser:true,battleCatalog:true,eventBattleRewards:true,shogunate:true,attackTravel:true,castleResidency:true,residencyRelocation:true,maintenanceUpkeep:true,strongholdDurability:true,chatReplies:true,chatMentions:true});
+const API_VERSION = '5.2.0';
+const API_FEATURES = Object.freeze({trades:true,moderation:true,premium:true,timedEvents:true,troopTrades:true,roamingBattles:true,roamingDeployment:true,covertDispatch:true,privatePlayerRoles:true,guildIcons:true,court:true,kyotoGosho:true,branches:true,branchBattles:true,branchFacilities:true,audioCalls:true,progression:true,armyPresets:true,allianceStrategy:true,sharedConquest:true,newcomerProtection:true,webPush:true,battleAdviser:true,battleCatalog:true,eventBattleRewards:true,shogunate:true,attackTravel:true,castleResidency:true,residencyRelocation:true,maintenanceUpkeep:true,strongholdDurability:true,chatReplies:true,chatMentions:true,covertReturnTravel:true,allianceUnitTravel:true});
 const MAX_BODY = 16 * 1024;
 const MAX_SAVE_BODY = 2 * 1024 * 1024;
 const MAX_AVATAR_BYTES = 48 * 1024;
@@ -2261,7 +2261,7 @@ function marchContext(db,user,now,env=null){
 }
 async function departFieldMarch({db,user,target,body,now,clock,attacker,attackerRow,defenderRow,defender,castleId,digest,foodCost,courtGuard,sharedGuard,attackerBranches,defenderBranches,protection,support,rally,residencyGuard}){
   const a=attacker.state,site=body.targetBranchId?branchSite(body.targetBranchId):null;
-  const travel=globalThis.SengokuTravel.plan({sourceCastleId:a.home,targetCastleId:castleId,...(site?{branchDirection:site.direction}:{} )});
+  const travel=globalThis.SengokuTravel.plan({sourceCastleId:rally?.stagingCastleId||a.home,targetCastleId:castleId,...(site?{branchDirection:site.direction}:{} )});
   if(!travel)fail(409,'MARCH_ROUTE_UNAVAILABLE','この拠点への進軍経路を確認できません。');
   const record=marchRecord({user,requestId:body.requestId,kind:rally?'rally':'field',save:attacker,travel,targetPlayerId:target.id,targetCampaignId:defender.state.walking.campaignId,targetName:target.name+'・'+(site?.name||CASTLE_BY_ID[castleId].name),troops:body.troops,tactic:body.tactic,foodCost,clock,now,digest,payload:{body:{...body},residencyTerm:residencyGuard.term,attackProfile:copy({morale:a.morale,tech:a.tech,army:a.army,officerVariants:a.officerVariants,officerHealth:GameEngine.projectOfficerHealth(a,clock.elapsedMs)}),roll:crypto.getRandomValues(new Uint32Array(1))[0]/4294967296,rally:rally?.snapshot||null}});
   if(rally){const payload=JSON.parse(record.payload_json);payload.rally.marchId=record.id;record.payload_json=JSON.stringify(payload);}
@@ -2378,7 +2378,7 @@ async function backgroundMarchSweep(env,now){
   // the same settlers; an open browser is never needed to retain progress.
   const tick=await stmt(env.DB,"INSERT INTO settings(key,value,updated_at) VALUES('battleMarchTick',?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at WHERE settings.updated_at<=? RETURNING key",String(now),now,now-1000).first();
   if(!tick)return;
-  const context=marchContext(env.DB,null,now,env);await settleBattleMarches(context,{limit:8});await settleConquestMarches(context);await settleCovertDispatches(context,{limit:4});
+  const context=marchContext(env.DB,null,now,env);await settleBattleMarches(context,{limit:8});await settleConquestMarches(context);await settleCovertDispatches(context,{limit:4});await settleAllianceUnits(context);
 }
 async function marchStatus(ctx,url){
   await settleBattleMarches(ctx,{actorId:ctx.user.id,limit:4});
@@ -2416,12 +2416,12 @@ async function fieldAttack(db,user,raw,now,internal={}) {
   const journey=flight?await advanceReservedMarch(marchContext(db,user,now),attackerRow,clock):null;
   const defenderJourney=flight&&!rewardOnly?await advanceReservedMarch(marchContext(db,target,now),defenderRow,clock):null;
   const attacker=journey?.save||normalizeGameSave(JSON.parse(attackerRow.save_json),user,now,{reading:true,clock}),defender=defenderJourney?.save||normalizeGameSave(JSON.parse(defenderRow.save_json),target,now,{reading:true,clock}),a=attacker.state,d=defender.state;
-  if(flight&&(clock.elapsedMs<flight.arrives_ms||a.walking.campaignId!==flight.campaign_id||d.walking.campaignId!==flight.target_campaign_id||Math.floor(clock.elapsedMs/WORLD_CYCLE_MS)!==flightPayload.marker.cycle||a.clan!==flightPayload.marker.clan||a.castles[flight.source_castle_id]?.owner!==a.clan))fail(409,'MARCH_TARGET_CHANGED','進軍中に物語・拠点・年月が変わったため帰還しました。');
+  if(flight&&(clock.elapsedMs<flight.arrives_ms||a.walking.campaignId!==flight.campaign_id||d.walking.campaignId!==flight.target_campaign_id||Math.floor(clock.elapsedMs/WORLD_CYCLE_MS)!==flightPayload.marker.cycle||a.clan!==flightPayload.marker.clan||a.castles[rally?a.home:flight.source_castle_id]?.owner!==a.clan))fail(409,'MARCH_TARGET_CHANGED','進軍中に物語・拠点・年月が変わったため帰還しました。');
   if(flight)a.march=null;
   const attackerBranches=journey?.branches||await branchStateGuard(db,user.id,a.walking.campaignId),defenderBranches=defenderJourney?.branches||await branchStateGuard(db,target.id,d.walking.campaignId);
   if(!journey)await reconcileBranchProgress(db,user.id,attacker,clock);if(!defenderJourney)await reconcileBranchProgress(db,target.id,defender,clock,{projectToClock:true});
   const defenderHomeBefore=d.home,castleId=flight?.target_castle_id||body.targetCastleId||d.home,battleMode=body.targetBranchId?'branch':fieldBattleMode(target,castleId,{legacy:body.targetCastleId===undefined});
-  const courtGuard=await courtAttackAuthority(db,user,flight?.source_castle_id||a.home,castleId);
+  const courtGuard=await courtAttackAuthority(db,user,flight?.source_castle_id||rally?.stagingCastleId||a.home,castleId);
   const residencyGuard=await residencyTargetGuard(db,{attackerId:user.id,targetId:target.id,castleId,isHome:castleId===d.home&&!body.targetBranchId,term:flightPayload?.residencyTerm||null,now,fail});
   const protection=await prepareProtection(db,user,target,now,{reward:battleMode==='reward',fail});
   const support=await getAllianceDefense(db,target,castleId,now);
@@ -2614,6 +2614,8 @@ async function route(request, env, now) {
       const voiceSchema=await stmt(db,"SELECT EXISTS(SELECT 1 FROM voice_sessions WHERE lease_until>=0) AS sessions,EXISTS(SELECT 1 FROM voice_signals WHERE acknowledged>=0) AS signals,EXISTS(SELECT 1 FROM voice_membership_epochs WHERE epoch>=1) AS membership,(SELECT COUNT(*) FROM sqlite_master WHERE type='trigger' AND name IN ('voice_guild_join','voice_guild_leave','voice_guild_move')) AS trigger_count").first();
       if(Number(voiceSchema?.trigger_count)!==3)throw Error('Voice membership migration incomplete');
       await stmt(db,'SELECT reply_to_id,mentions_json FROM messages LIMIT 1').first();
+      await stmt(db,'SELECT home_castle_id,travel_phase,travel_json,return_travel_json,departed_elapsed_ms,arrives_elapsed_ms FROM alliance_units LIMIT 1').first();
+      await stmt(db,'SELECT staging_castle_id FROM alliance_operations LIMIT 1').first();
       await stmt(db,'SELECT (SELECT COUNT(*) FROM progress_accounts) AS progression,(SELECT COUNT(*) FROM alliance_operations) AS alliance,(SELECT COUNT(*) FROM conquest_seasons) AS conquest,(SELECT COUNT(*) FROM pvp_protection) AS protection,(SELECT COUNT(*) FROM notification_outbox) AS notifications,(SELECT COUNT(*) FROM shogunate_rights) AS shogunate,(SELECT COUNT(*) FROM shogunate_requests) AS shogunate_requests,(SELECT COUNT(*) FROM battle_marches) AS battle_marches,(SELECT COUNT(*) FROM conquest_marches) AS conquest_marches,(SELECT COUNT(*) FROM castle_seats) AS castle_residency,(SELECT COUNT(*) FROM castle_successions) AS castle_successions,(SELECT 1 FROM castle_retired_campaigns LIMIT 1) AS retired_campaign,(SELECT campaign_retired FROM alliance_units LIMIT 1) AS retired_unit,(SELECT COUNT(*) FROM external_troop_accounts) AS maintenance_accounts,(SELECT COUNT(*) FROM external_troop_snapshots) AS maintenance_snapshots').first();
     } catch { fail(503, 'SERVICE_UNAVAILABLE', '通信サービスの準備中です。'); }
     return {ok:true,status:'ready',version:API_VERSION,features:API_FEATURES};
@@ -3144,7 +3146,7 @@ async function route(request, env, now) {
 }
 
 export default {
-  async scheduled(_event,env,ctx){const now=Date.now(),context=marchContext(env.DB,null,now,env);const run=(async()=>{await settleBattleMarches(context,{limit:24});await settleConquestMarches(context);await settleCovertDispatches(context,{limit:12});await dispatchNotifications(env,await getWorldClock(env.DB,now));})();if(ctx?.waitUntil)ctx.waitUntil(run);else await run;},
+  async scheduled(_event,env,ctx){const now=Date.now(),context=marchContext(env.DB,null,now,env);const run=(async()=>{await settleBattleMarches(context,{limit:24});await settleConquestMarches(context);await settleCovertDispatches(context,{limit:12});await settleAllianceUnits(context);await dispatchNotifications(env,await getWorldClock(env.DB,now));})();if(ctx?.waitUntil)ctx.waitUntil(run);else await run;},
   async fetch(request, env, ctx) {
     let origin=null;
     try {

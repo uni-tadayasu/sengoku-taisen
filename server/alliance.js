@@ -56,17 +56,46 @@ async function saved(ctx,body){
 function saveStatement(ctx,body,save,gate,args){return stmt(ctx.db,'UPDATE player_saves SET save_json=?,revision=revision+1,updated_at=?,lease_expires_at=? WHERE user_id=? AND '+gate,JSON.stringify(save),ctx.now,ctx.now+(ctx.helpers.syncLease||30000),ctx.user.id,...args);}
 function contribution(db,key,guildId,userId,kind,amount,detail,now,gate='1=1',args=[]){return stmt(db,'INSERT INTO alliance_contributions(id,guild_id,user_id,kind,amount,detail,created_at) SELECT ?,?,?,?,?,?,? WHERE '+gate+' ON CONFLICT(id) DO NOTHING',key,guildId,userId,kind,amount,detail,now,...args);}
 function unitGuard(unit){return{sql:"EXISTS(SELECT 1 FROM alliance_units WHERE id=? AND revision=? AND state=? AND troops=?)",args:[unit.id,unit.revision,unit.state,unit.troops]};}
-function unitLiveSql(alias='u'){return alias+".state='stationed' AND "+alias+".expires_at>? AND EXISTS(SELECT 1 FROM guild_members gm WHERE gm.user_id="+alias+".owner_id AND gm.guild_id="+alias+".guild_id) AND COALESCE((SELECT epoch FROM voice_membership_epochs WHERE user_id="+alias+".owner_id),0)="+alias+".owner_epoch AND NOT EXISTS(SELECT 1 FROM player_bans WHERE user_id="+alias+".owner_id AND active=1)";}
+function unitLiveSql(alias='u'){return alias+".state='stationed' AND ("+alias+".travel_phase IS NULL OR "+alias+".travel_phase='stationed') AND "+alias+".march_id IS NULL AND "+alias+".expires_at>? AND EXISTS(SELECT 1 FROM guild_members gm WHERE gm.user_id="+alias+".owner_id AND gm.guild_id="+alias+".guild_id) AND COALESCE((SELECT epoch FROM voice_membership_epochs WHERE user_id="+alias+".owner_id),0)="+alias+".owner_epoch AND NOT EXISTS(SELECT 1 FROM player_bans WHERE user_id="+alias+".owner_id AND active=1)";}
 function rosterGuard(units,now){
  // D1 accepts at most 100 bindings in one statement. A single JSON snapshot
  // keeps the atomic roster check bounded even when 200 aid units participate.
  return{sql:"NOT EXISTS(SELECT 1 FROM json_each(?) snapshot LEFT JOIN alliance_units u ON u.id=json_extract(snapshot.value,'$.id') WHERE u.id IS NULL OR u.revision<>json_extract(snapshot.value,'$.revision') OR u.troops<>json_extract(snapshot.value,'$.troops') OR NOT ("+unitLiveSql('u')+"))",args:[JSON.stringify(units.map(u=>({id:u.id,revision:u.revision,troops:u.troops}))),now]};
 }
-async function settleUnits(db,now,userId=null){
- // Expiry or a changed membership never deletes escrow. It becomes claimable.
- const scope=userId?' AND (u.owner_id=? OR u.target_id=?)':'';
- await stmt(db,"UPDATE alliance_units AS u SET state='returning',revision=revision+1 WHERE u.state='stationed' AND u.march_id IS NULL"+scope+" AND (u.expires_at<=? OR NOT EXISTS(SELECT 1 FROM guild_members gm WHERE gm.user_id=u.owner_id AND gm.guild_id=u.guild_id) OR COALESCE((SELECT epoch FROM voice_membership_epochs WHERE user_id=u.owner_id),0)<>u.owner_epoch OR NOT EXISTS(SELECT 1 FROM guilds g WHERE g.id=u.guild_id) OR EXISTS(SELECT 1 FROM player_bans WHERE user_id=u.owner_id AND active=1) OR (u.kind='aid' AND (NOT EXISTS(SELECT 1 FROM guild_members gm WHERE gm.user_id=u.target_id AND gm.guild_id=u.guild_id) OR COALESCE((SELECT epoch FROM voice_membership_epochs WHERE user_id=u.target_id),0)<>u.target_epoch OR EXISTS(SELECT 1 FROM player_bans WHERE user_id=u.target_id AND active=1) OR NOT EXISTS(SELECT 1 FROM player_saves ps WHERE ps.user_id=u.target_id AND json_extract(ps.save_json,'$.state.castles.'||u.castle_id||'.owner')=json_extract(ps.save_json,'$.state.clan')))) OR (u.kind='rally' AND NOT EXISTS(SELECT 1 FROM alliance_operations o WHERE o.id=u.operation_id AND o.status='planned' AND o.expires_at>?)))",...(userId?[userId,userId]:[]),now,now).run();
+// Unit clocks use the same authoritative projection as the main-army clock.
+// Keep this reader independent of index.js so defending another player does not
+// introduce a circular import or trust a caller-supplied elapsed time.
+async function unitClock(db,now){
+ const row=await stmt(db,"SELECT * FROM world_clock WHERE id='world-v1'").first();
+ if(!row)return{id:'world-v1',elapsedMs:0,running:false,speed:1,revision:-1,serverTime:new Date(now).toISOString(),baseElapsedMs:0,anchorRealMs:now};
+ return{id:row.id,elapsedMs:Number(row.base_elapsed_ms)+(row.running?Math.max(0,now-Number(row.anchor_real_ms))*Number(row.speed):0),running:!!row.running,speed:Number(row.speed),revision:Number(row.revision),serverTime:new Date(now).toISOString(),baseElapsedMs:Number(row.base_elapsed_ms),anchorRealMs:Number(row.anchor_real_ms)};
 }
+const clockGuard=clock=>({sql:'EXISTS(SELECT 1 FROM world_clock WHERE id=? AND revision=?)',args:[clock.id,clock.revision]});
+const elapsedSql=now=>"(SELECT base_elapsed_ms+CASE WHEN running=1 THEN MAX(0,"+Math.floor(now)+"-anchor_real_ms)*speed ELSE 0 END FROM world_clock WHERE id='world-v1')";
+function returnAssignments(clock,start=clock?String(Math.floor(clock.elapsedMs)):elapsedSql(Date.now())){
+ // Old units have no route: preserve their already-stationed/claimable state.
+ // New units always retain their original home and an immutable return route.
+ const modern='home_castle_id IS NOT NULL AND return_travel_json IS NOT NULL',duration="CAST(json_extract(return_travel_json,'$.durationMs') AS INTEGER)",spent='MIN('+duration+',MAX(0,('+start+')-departed_elapsed_ms))',turning="travel_phase='outbound' AND ("+start+")<arrives_elapsed_ms";
+ const partial="json_set(return_travel_json,'$.durationMs',MAX(1000,CAST(("+spent+"+999)/1000 AS INTEGER)*1000),'$.distanceKm',ROUND(json_extract(return_travel_json,'$.distanceKm')*"+spent+"/"+duration+",3),'$.sourceName',json_extract(return_travel_json,'$.sourceName')||'への道中')",route='CASE WHEN '+turning+' THEN '+partial+' ELSE return_travel_json END';
+ return "travel_phase=CASE WHEN "+modern+" THEN 'returning' ELSE NULL END,travel_json=CASE WHEN "+modern+" THEN "+route+" ELSE travel_json END,return_travel_json=CASE WHEN "+modern+" THEN "+route+" ELSE return_travel_json END,departed_elapsed_ms=CASE WHEN "+modern+" THEN "+start+" ELSE NULL END,arrives_elapsed_ms=CASE WHEN "+modern+" THEN ("+start+")+CAST(json_extract(("+route+"),'$.durationMs') AS INTEGER) ELSE NULL END";
+}
+async function settleUnits(db,now,userId=null,providedClock=null){
+ const clock=providedClock||await unitClock(db,now),guard=clockGuard(clock),scope=userId?' AND (u.owner_id=? OR u.target_id=?)':'',scopeArgs=userId?[userId,userId]:[];
+ // Preserve escrow after expiry, membership changes, lost castles or a closed
+ // operation. Late arrivals never become defenders or join an army already away.
+ const invalid="u.expires_at<=? OR NOT EXISTS(SELECT 1 FROM guild_members gm WHERE gm.user_id=u.owner_id AND gm.guild_id=u.guild_id) OR COALESCE((SELECT epoch FROM voice_membership_epochs WHERE user_id=u.owner_id),0)<>u.owner_epoch OR NOT EXISTS(SELECT 1 FROM guilds g WHERE g.id=u.guild_id) OR EXISTS(SELECT 1 FROM player_bans WHERE user_id=u.owner_id AND active=1) OR (u.kind='aid' AND (NOT EXISTS(SELECT 1 FROM guild_members gm WHERE gm.user_id=u.target_id AND gm.guild_id=u.guild_id) OR COALESCE((SELECT epoch FROM voice_membership_epochs WHERE user_id=u.target_id),0)<>u.target_epoch OR EXISTS(SELECT 1 FROM player_bans WHERE user_id=u.target_id AND active=1) OR NOT EXISTS(SELECT 1 FROM player_saves ps WHERE ps.user_id=u.target_id AND json_extract(ps.save_json,'$.state.castles.'||u.castle_id||'.owner')=json_extract(ps.save_json,'$.state.clan')))) OR (u.kind='rally' AND NOT EXISTS(SELECT 1 FROM alliance_operations o WHERE o.id=u.operation_id AND o.status='planned' AND o.march_id IS NULL AND o.expires_at>? AND (o.staging_castle_id IS NULL OR EXISTS(SELECT 1 FROM player_saves ps WHERE ps.user_id=o.creator_id AND json_extract(ps.save_json,'$.state.home')=o.staging_castle_id AND COALESCE(json_extract(ps.save_json,'$.state.gameOver'),0)=0))))";
+ // An expiry within the current clock epoch can be dated exactly. For an
+ // earlier epoch, its anchor is a conservative latest departure; never invent
+ // a historic speed or advance travel while the world clock is paused.
+ const expiryStart="CASE WHEN expires_at<="+Math.floor(now)+" THEN MAX(COALESCE(departed_elapsed_ms,0),"+clock.baseElapsedMs+"+MAX(0,expires_at-"+clock.anchorRealMs+")*"+(clock.running?clock.speed:0)+") ELSE "+Math.floor(clock.elapsedMs)+" END";
+ await db.batch([
+  stmt(db,"UPDATE alliance_units AS u SET state='returning',revision=revision+1 WHERE u.state='stationed' AND u.march_id IS NULL"+scope+" AND ("+invalid+") AND "+guard.sql,...scopeArgs,now,now,...guard.args),
+  stmt(db,"UPDATE alliance_units AS u SET "+returnAssignments(clock,expiryStart)+",revision=revision+1 WHERE u.state='returning' AND u.march_id IS NULL AND u.travel_phase IN ('outbound','stationed')"+scope+" AND "+guard.sql,...scopeArgs,...guard.args),
+  stmt(db,"UPDATE alliance_units AS u SET travel_phase=CASE WHEN travel_phase='outbound' THEN 'stationed' ELSE 'arrived' END,revision=revision+1 WHERE u.march_id IS NULL AND ((u.state='stationed' AND u.travel_phase='outbound') OR (u.state='returning' AND u.travel_phase='returning')) AND u.arrives_elapsed_ms<=?"+scope+" AND "+guard.sql,clock.elapsedMs,...scopeArgs,...guard.args)
+ ]);
+ return clock;
+}
+export async function settleAllianceUnits(ctx){return settleUnits(ctx.db,ctx.now);}
 export async function assertGuildJoinAllowed(ctx,guildId){
  const {db,user,helpers:h}=ctx,p=await policy(db,guildId);if(p.joinMode==='open')return p.guard;
  const app=await stmt(db,"SELECT * FROM alliance_applications WHERE guild_id=? AND user_id=? AND status IN ('approved','invited') AND expires_at>?",guildId,user.id,ctx.now).first();
@@ -91,14 +120,14 @@ export async function treasuryGuard(ctx,body){
 }
 export function treasuryContributionStatements(db,user,body,now,gate,args){return body.direction==='deposit'?[contribution(db,'treasury:'+user.id+':'+body.requestId,body.guildId,user.id,'treasury',body.amount,body.resource+'を寄付',now,gate,args)]:[];}
 async function status(ctx){
- const {db,user,helpers:h,now}=ctx;await settleUnits(db,now,user.id);
+ const {db,user,helpers:h,now}=ctx,worldClock=await unitClock(db,now);await settleUnits(db,now,null,worldClock);
  const current=await h.getUser(db,user.id),m=current.guild_id?await membership(db,user.id,current.guild_id):null;
  const own=rows(await stmt(db,'SELECT u.*,p.name AS owner_name,t.name AS target_name FROM alliance_units u JOIN users p ON p.id=u.owner_id LEFT JOIN users t ON t.id=u.target_id WHERE u.owner_id=? AND u.state<>? ORDER BY u.created_at DESC LIMIT 100',user.id,'claimed').all());
  const directory=rows(await stmt(db,'SELECT g.id,g.name,COUNT(gm.user_id) AS members,p.join_mode,p.description,p.activity FROM guilds g LEFT JOIN guild_members gm ON gm.guild_id=g.id LEFT JOIN alliance_policies p ON p.guild_id=g.id GROUP BY g.id ORDER BY members DESC,g.name LIMIT 100').all()).map(g=>({id:g.id,name:g.name,members:g.members,joinMode:g.join_mode||'open',description:g.description||'',activity:g.activity||''}));
  const applications=rows(await stmt(db,'SELECT a.*,g.name AS guild_name,u.name AS player_name FROM alliance_applications a JOIN guilds g ON g.id=a.guild_id JOIN users u ON u.id=a.user_id WHERE a.user_id=? OR (a.guild_id=? AND ?=1) ORDER BY a.updated_at DESC LIMIT 100',user.id,m?.guild_id||'',m&&(m.owner_id===user.id||m.officer)?1:0).all());
- if(!m){await h.requireAccountAccess(db,user);return{ok:true,guild:null,policy:null,operations:[],members:[],units:own.map(unitDto),directory,applications:applications.map(applicationDto),withdrawals:[],contributions:[],serverNow:now};}
- const ops=rows(await stmt(db,'SELECT * FROM alliance_operations WHERE guild_id=? ORDER BY created_at DESC LIMIT 50',m.guild_id).all());
- const marchRows=rows(await stmt(db,"SELECT bm.* FROM battle_marches bm JOIN alliance_operations o ON o.march_id=bm.id WHERE o.guild_id=? AND bm.status='marching'",m.guild_id).all()),worldClock=await h.getWorldClock(db,now),marchMap=new Map(marchRows.map(row=>[row.id,marchDto(row,worldClock,now)]));
+ if(!m){await h.requireAccountAccess(db,user);return{ok:true,guild:null,policy:null,operations:[],members:[],units:own.map(u=>unitDto(u,worldClock)),directory,applications:applications.map(applicationDto),withdrawals:[],contributions:[],clock:worldClock,serverNow:now};}
+ const ops=rows(await stmt(db,"SELECT o.*,COALESCE(o.staging_castle_id,json_extract(ps.save_json,'$.state.home')) AS staging_castle_id FROM alliance_operations o LEFT JOIN player_saves ps ON ps.user_id=o.creator_id WHERE o.guild_id=? ORDER BY o.created_at DESC LIMIT 50",m.guild_id).all());
+ const marchRows=rows(await stmt(db,"SELECT bm.* FROM battle_marches bm JOIN alliance_operations o ON o.march_id=bm.id WHERE o.guild_id=? AND bm.status='marching'",m.guild_id).all()),marchMap=new Map(marchRows.map(row=>[row.id,marchDto(row,worldClock,now)]));
  const rsvps=rows(await stmt(db,'SELECT r.*,u.name FROM alliance_rsvps r JOIN users u ON u.id=r.user_id JOIN alliance_operations o ON o.id=r.operation_id WHERE o.guild_id=? AND EXISTS(SELECT 1 FROM guild_members gm WHERE gm.user_id=r.user_id AND gm.guild_id=o.guild_id)',m.guild_id).all());
  const members=rows(await stmt(db,'SELECT gm.user_id AS id,u.name,gm.joined_at,EXISTS(SELECT 1 FROM guild_officers go WHERE go.user_id=gm.user_id AND go.guild_id=gm.guild_id) AS officer FROM guild_members gm JOIN users u ON u.id=gm.user_id WHERE gm.guild_id=? ORDER BY gm.joined_at',m.guild_id).all()).map(p=>({id:p.id,name:p.name,role:p.id===m.owner_id?'owner':p.officer?'officer':'member',joinedAt:p.joined_at}));
  const units=rows(await stmt(db,"SELECT u.*,p.name AS owner_name,t.name AS target_name FROM alliance_units u JOIN users p ON p.id=u.owner_id LEFT JOIN users t ON t.id=u.target_id WHERE u.guild_id=? AND u.state='stationed' ORDER BY u.created_at DESC LIMIT 200",m.guild_id).all());
@@ -106,10 +135,13 @@ async function status(ctx){
  const contributions=rows(await stmt(db,'SELECT c.*,u.name FROM alliance_contributions c JOIN users u ON u.id=c.user_id WHERE c.guild_id=? ORDER BY c.created_at DESC LIMIT 100',m.guild_id).all()).map(c=>({id:c.id,playerId:c.user_id,name:c.name,kind:c.kind,amount:c.amount,detail:c.detail,createdAt:c.created_at}));
  const guard=m.owner_id===user.id?officerGuard(m,true):m.officer?officerGuard(m):memberGuard(m);if(!await stmt(db,'SELECT 1 AS ok WHERE '+guard.sql,...guard.args).first())h.fail(409,'ALLIANCE_STATE_CHANGED','同盟の所属・役職が変わりました。');
  await h.requireAccountAccess(db,user);
- return{ok:true,guild:{id:m.guild_id,name:current.guild_name,role:m.owner_id===user.id?'owner':m.officer?'officer':'member'},policy:policyDto(await stmt(db,'SELECT * FROM alliance_policies WHERE guild_id=?',m.guild_id).first()),operations:ops.map(o=>({...operationDto(o),march:o.march_id?marchMap.get(o.march_id)||null:null,rsvps:rsvps.filter(r=>r.operation_id===o.id).map(r=>({playerId:r.user_id,name:r.name,response:r.response})),troops:units.filter(u=>u.operation_id===o.id).reduce((s,u)=>s+u.troops,0)})),members,units:[...new Map([...own,...units].map(u=>[u.id,unitDto(u)])).values()],directory,applications:applications.map(applicationDto),withdrawals:withdrawals.map(withdrawalDto),contributions,serverNow:now};
+ return{ok:true,guild:{id:m.guild_id,name:current.guild_name,role:m.owner_id===user.id?'owner':m.officer?'officer':'member'},policy:policyDto(await stmt(db,'SELECT * FROM alliance_policies WHERE guild_id=?',m.guild_id).first()),operations:ops.map(o=>({...operationDto(o),march:o.march_id?marchMap.get(o.march_id)||null:null,rsvps:rsvps.filter(r=>r.operation_id===o.id).map(r=>({playerId:r.user_id,name:r.name,response:r.response})),troops:units.filter(u=>u.operation_id===o.id&&(!u.travel_phase||u.travel_phase==='stationed')).reduce((s,u)=>s+u.troops,0),travelingTroops:units.filter(u=>u.operation_id===o.id&&u.travel_phase==='outbound').reduce((s,u)=>s+u.troops,0)})),members,units:[...new Map([...own,...units].map(u=>[u.id,unitDto(u,worldClock)])).values()],directory,applications:applications.map(applicationDto),withdrawals:withdrawals.map(withdrawalDto),contributions,clock:worldClock,serverNow:now};
 }
-const operationDto=o=>({id:o.id,title:o.title,note:o.note,kind:o.kind,creatorId:o.creator_id,targetPlayerId:o.target_player_id,castleId:o.castle_id,castleName:cast(o.castle_id)?.name||o.castle_id,branchId:o.branch_id,tactic:o.tactic,startsAt:o.starts_at,expiresAt:o.expires_at,status:o.status,assignments:JSON.parse(o.assignments_json),result:o.result_json?JSON.parse(o.result_json):null,revision:o.revision});
-const unitDto=u=>({id:u.id,ownerId:u.owner_id,ownerName:u.owner_name||'',targetPlayerId:u.target_id,targetName:u.target_name||'',castleId:u.castle_id,castleName:cast(u.castle_id)?.name||u.castle_id,operationId:u.operation_id,marchId:u.march_id||null,kind:u.kind,state:u.march_id?'marching':u.state,troops:u.troops,sent:u.sent,expiresAt:u.expires_at,revision:u.revision});
+const operationDto=o=>({id:o.id,title:o.title,note:o.note,kind:o.kind,creatorId:o.creator_id,stagingCastleId:o.staging_castle_id||null,stagingCastleName:cast(o.staging_castle_id)?.name||null,targetPlayerId:o.target_player_id,castleId:o.castle_id,castleName:cast(o.castle_id)?.name||o.castle_id,branchId:o.branch_id,tactic:o.tactic,startsAt:o.starts_at,expiresAt:o.expires_at,status:o.march_id?'marching':o.status,assignments:JSON.parse(o.assignments_json),result:o.result_json?JSON.parse(o.result_json):null,revision:o.revision});
+function unitDto(u,clock){
+ const phase=['outbound','returning'].includes(u.travel_phase)?u.travel_phase:null,travel=u.travel_json?JSON.parse(u.travel_json):null;
+ return{id:u.id,ownerId:u.owner_id,ownerName:u.owner_name||'',targetPlayerId:u.target_id,targetName:u.target_name||'',castleId:u.castle_id,castleName:cast(u.castle_id)?.name||u.castle_id,operationId:u.operation_id,marchId:u.march_id||null,kind:u.kind,state:u.march_id?'marching':phase==='outbound'?'outbound':u.state,phase,timeBasis:'world',travel,returnTravel:u.return_travel_json?JSON.parse(u.return_travel_json):null,departedElapsedMs:u.departed_elapsed_ms??null,arrivesElapsedMs:u.arrives_elapsed_ms??null,remainingMs:phase?Math.max(0,Number(u.arrives_elapsed_ms)-clock.elapsedMs):0,canClaim:u.state==='returning'&&!u.march_id&&(!u.travel_phase||u.travel_phase==='arrived'),troops:u.troops,sent:u.sent,expiresAt:u.expires_at,revision:u.revision};
+}
 const applicationDto=a=>({guildId:a.guild_id,guildName:a.guild_name,playerId:a.user_id,name:a.player_name,status:a.status,message:a.message,expiresAt:a.expires_at,revision:a.revision});
 const withdrawalDto=w=>({id:w.id,playerId:w.actor_id,name:w.player_name,resource:w.resource,amount:w.amount,status:w.status,transferRequestId:w.transfer_request_id,expiresAt:w.expires_at,revision:w.revision});
 
@@ -151,10 +183,13 @@ async function createOperation(ctx,b){
  if(b.kind==='attack'&&!targetId)h.fail(400,'TARGET_REQUIRED','集結攻撃では相手の領主を選んでください。');
  if(targetId){const target=await h.getUser(db,targetId);if(!target||target.ban_active)h.fail(404,'PLAYER_NOT_FOUND','対象の領主が見つかりません。');if(b.kind==='attack'&&target.guild_id===m.guild_id)h.fail(409,'ALLIED_TARGET','同じ同盟の領主へ攻撃作戦は作成できません。');}
  if(branchId&&branchId!==castleId+'_north'&&branchId!==castleId+'_east'&&branchId!==castleId+'_south'&&branchId!==castleId+'_west')h.fail(400,'INVALID_INPUT','対象都市の支拠点を選んでください。');
+ const stagingRow=b.kind==='attack'?await h.getSyncRow(db,user.id):null,stagingCastleId=stagingRow?.save_json?JSON.parse(stagingRow.save_json).state.home:null;
+ if(b.kind==='attack'&&!cast(stagingCastleId))h.fail(409,'BASE_UNAVAILABLE','集結拠点となる本拠を共有してください。');
+ const stagingGuard=stagingRow?{sql:'EXISTS(SELECT 1 FROM player_saves WHERE user_id=? AND revision=?)',args:[user.id,stagingRow.revision]}:emptyGuard();
  const operationId='ao_'+crypto.randomUUID().replaceAll('-',''),limit={sql:"(SELECT COUNT(*) FROM alliance_operations WHERE guild_id=? AND status='planned' AND expires_at>?)<30",args:[m.guild_id,now]};
  const register=note?await h.resolveMessageRegister(db,user,{kind:'guild',id:m.guild_id},now):null;
  const spokenNote=register?await register.write(note):note;
- return commit(ctx,b,'operation-create',and(memberGuard(m),limit,register?.guard||emptyGuard()),(gate,args)=>[stmt(db,'INSERT INTO alliance_operations(id,guild_id,creator_id,title,note,kind,target_player_id,castle_id,branch_id,tactic,starts_at,expires_at,created_at,resolution_seed) SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?,? WHERE '+gate,operationId,m.guild_id,user.id,title,spokenNote,b.kind,targetId,castleId,branchId,b.tactic||'balanced',startsAt,expiresAt,now,crypto.randomUUID(),...args)],{operationId,message:'作戦と同盟専用の地図マークを登録しました。'});
+ return commit(ctx,b,'operation-create',and(memberGuard(m),limit,stagingGuard,register?.guard||emptyGuard()),(gate,args)=>[stmt(db,'INSERT INTO alliance_operations(id,guild_id,creator_id,title,note,kind,target_player_id,castle_id,branch_id,tactic,starts_at,expires_at,created_at,resolution_seed,staging_castle_id) SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?,?,? WHERE '+gate,operationId,m.guild_id,user.id,title,spokenNote,b.kind,targetId,castleId,branchId,b.tactic||'balanced',startsAt,expiresAt,now,crypto.randomUUID(),stagingCastleId,...args)],{operationId,message:'作戦と同盟専用の地図マークを登録しました。'});
 }
 async function updateOperation(ctx,b,action){
  const {db,user,helpers:h}=ctx,m=await requireMember(ctx),o=await getOperation(ctx,b);
@@ -180,17 +215,19 @@ async function updateOperation(ctx,b,action){
   return commit(ctx,b,action,and(roleGuard,assignmentGuard,opGuard(o)),(gate,args)=>[stmt(db,'UPDATE alliance_operations SET assignments_json=?,revision=revision+1 WHERE id=? AND '+gate,JSON.stringify(assignments),o.id,...args)],{message:'担当と進行状況を更新しました。'});
  }
  if(!organizer)h.fail(403,'GUILD_ROLE_REQUIRED','作戦を作った領主または同盟役職者が終了できます。');
- const next=action==='operation-cancel'?'cancelled':'completed';
- return commit(ctx,b,action,and(o.creator_id===user.id?memberGuard(m):officerGuard(m),opGuard(o)),(gate,args)=>[
+ const next=action==='operation-cancel'?'cancelled':'completed',clock=await unitClock(db,ctx.now);
+ return commit(ctx,b,action,and(o.creator_id===user.id?memberGuard(m):officerGuard(m),opGuard(o),clockGuard(clock)),(gate,args)=>[
  stmt(db,'UPDATE alliance_operations SET status=?,revision=revision+1 WHERE id=? AND '+gate,next,o.id,...args),
- stmt(db,"UPDATE alliance_units SET state='returning',revision=revision+1 WHERE operation_id=? AND state='stationed' AND "+gate,o.id,...args),
- ],{message:next==='cancelled'?'作戦を取り下げました。集結中の兵は受取待ちへ戻ります。':'作戦を完了しました。集結中の兵は受取待ちへ戻ります。'});
+ stmt(db,"UPDATE alliance_units SET state='returning',"+returnAssignments(clock)+",revision=revision+1 WHERE operation_id=? AND state='stationed' AND "+gate,o.id,...args),
+ ],{message:next==='cancelled'?'作戦を取り下げました。各部隊が本拠へ帰還を始めました。':'作戦を完了しました。各部隊が本拠へ帰還を始めました。'});
 }
 async function sendUnits(ctx,b,kind){
- const {db,user,helpers:h,now}=ctx,m=await requireMember(ctx),troops=integer(h,b.troops,'派遣兵数',1,50000);let targetId=null,targetEpoch=null,castleId,operationId=null,expiresAt,extra=emptyGuard();
+ const {db,user,helpers:h,now}=ctx,m=await requireMember(ctx),troops=integer(h,b.troops,'派遣兵数',1,50000);let targetId=null,targetEpoch=null,castleId,stagingCastleId=null,operationId=null,expiresAt,extra=emptyGuard();
  if(kind==='rally'){
   const o=await getOperation(ctx,b);if(o.kind!=='attack'||o.status!=='planned'||o.march_id||o.expires_at<=now)h.fail(409,'OPERATION_CLOSED','集結できる攻撃作戦を選んでください。');
-  operationId=o.id;castleId=o.castle_id;targetId=o.target_player_id;expiresAt=o.expires_at;extra=and(opGuard(o),{sql:"COALESCE((SELECT SUM(troops) FROM alliance_units WHERE operation_id=? AND state='stationed'),0)+?<=? AND (SELECT COUNT(*) FROM alliance_units WHERE operation_id=? AND state='stationed')<50",args:[o.id,troops,MAX_RALLY,o.id]});
+  const organizerRow=await h.getSyncRow(db,o.creator_id),organizerState=organizerRow?.save_json?JSON.parse(organizerRow.save_json).state:null;
+  stagingCastleId=o.staging_castle_id||organizerState?.home;if(!cast(stagingCastleId)||organizerState?.gameOver||organizerState?.home!==stagingCastleId)h.fail(409,'RALLY_BASE_CHANGED','主催者の集結拠点が変わりました。新しい作戦を作成してください。');
+  operationId=o.id;castleId=o.castle_id;targetId=o.target_player_id;expiresAt=o.expires_at;extra=and(opGuard(o),{sql:'EXISTS(SELECT 1 FROM player_saves WHERE user_id=? AND revision=?)',args:[o.creator_id,organizerRow.revision]},{sql:"COALESCE((SELECT SUM(troops) FROM alliance_units WHERE operation_id=? AND state='stationed'),0)+?<=? AND (SELECT COUNT(*) FROM alliance_units WHERE operation_id=? AND state='stationed')<50",args:[o.id,troops,MAX_RALLY,o.id]});
  }else{
   targetId=id(h,b.targetPlayerId,'援軍先');castleId=id(h,b.castleId,'守備する城');if(targetId===user.id)h.fail(400,'INVALID_TARGET','援軍は同盟の仲間へ派遣してください。');
   const target=await membership(db,targetId,m.guild_id);if(!target)h.fail(403,'GUILD_REQUIRED','援軍を送れるのは同じ同盟の領主です。');targetEpoch=target.epoch;
@@ -200,21 +237,29 @@ async function sendUnits(ctx,b,kind){
  }
  const state=await saved(ctx,b);if(state.save.state.troops<troops)h.fail(409,'INSUFFICIENT_FORCE','本隊の兵数が足りません。');
  if(state.save.state.gameOver)h.fail(409,'BASE_UNAVAILABLE','本拠を失っている間は兵を派遣できません。');
+ if(!state.clock.running)h.fail(409,'WORLD_PAUSED','共通時間が停止中です。');
+ const travel=globalThis.SengokuTravel.plan({sourceCastleId:state.save.state.home,targetCastleId:stagingCastleId||castleId}),returnTravel=travel&&globalThis.SengokuTravel.plan({sourceCastleId:travel.targetCastleId,targetCastleId:travel.sourceCastleId});
+ if(!travel||!returnTravel)h.fail(409,'MARCH_ROUTE_UNAVAILABLE','派遣部隊の移動経路を確認できません。');
+ const departedElapsedMs=Math.floor(state.clock.elapsedMs),arrivesElapsedMs=departedElapsedMs+travel.durationMs;
  state.save.state.troops-=troops;const unitId='au_'+crypto.randomUUID().replaceAll('-',''),limit={sql:"(SELECT COUNT(*) FROM alliance_units WHERE owner_id=? AND state<>'claimed')<?",args:[user.id,MAX_UNITS]};
  return commit(ctx,b,kind==='rally'?'rally-join':'aid-send',and(memberGuard(m),state.guard,extra,limit),(gate,args)=>[
  saveStatement(ctx,b,state.save,gate,args),
- stmt(db,"INSERT INTO alliance_units(id,guild_id,owner_id,owner_epoch,target_id,target_epoch,castle_id,operation_id,kind,state,troops,sent,expires_at,created_at) SELECT ?,?,?,?,?,?,?,?,?,'stationed',?,?,?,? WHERE "+gate,unitId,m.guild_id,user.id,m.epoch,targetId,targetEpoch,castleId,operationId,kind,troops,troops,expiresAt,now,...args),
+ stmt(db,"INSERT INTO alliance_units(id,guild_id,owner_id,owner_epoch,target_id,target_epoch,castle_id,operation_id,kind,state,troops,sent,expires_at,created_at,home_castle_id,travel_phase,travel_json,return_travel_json,departed_elapsed_ms,arrives_elapsed_ms) SELECT ?,?,?,?,?,?,?,?,?,'stationed',?,?,?,?,?,'outbound',?,?,?,? WHERE "+gate,unitId,m.guild_id,user.id,m.epoch,targetId,targetEpoch,castleId,operationId,kind,troops,troops,expiresAt,now,state.save.state.home,JSON.stringify(travel),JSON.stringify(returnTravel),departedElapsedMs,arrivesElapsedMs,...args),
  contribution(db,'send:'+unitId,m.guild_id,user.id,kind==='rally'?'rally':'aid',troops,kind==='rally'?'集結に兵を提供':'仲間の城へ援軍',now,gate,args),...state.extra(gate,args),
- ],{unitId,message:kind==='rally'?'兵を集結へ派遣しました。出陣後の生存兵は各参加者へ戻ります。':'援軍を派遣しました。期限・脱退・撤収で生存兵が受取待ちへ戻ります。'});
+ ],{unitId,phase:'outbound',travel,departedElapsedMs,arrivesElapsedMs,message:(kind==='rally'?'集結拠点へ兵を派遣しました。':'援軍が出発しました。')+'到着まで'+globalThis.SengokuTravel.formatDuration(travel.durationMs)+'（1倍速）。到着後に現地の兵力へ加わります。'});
 }
 async function unitsAction(ctx,b,action){
- const {db,user,helpers:h}=ctx;await settleUnits(db,ctx.now,user.id);const unit=await stmt(db,'SELECT * FROM alliance_units WHERE id=? AND owner_id=?',id(h,b.unitId,'部隊'),user.id).first();if(!unit)h.fail(404,'UNIT_NOT_FOUND','自分の派遣部隊を選んでください。');
+ const {db,user,helpers:h}=ctx,clock=await settleUnits(db,ctx.now,user.id);const unit=await stmt(db,'SELECT * FROM alliance_units WHERE id=? AND owner_id=?',id(h,b.unitId,'部隊'),user.id).first();if(!unit)h.fail(404,'UNIT_NOT_FOUND','自分の派遣部隊を選んでください。');
  if(unit.march_id)h.fail(409,'ARMY_MARCHING','この部隊は進軍中です。到着して生存兵が戻るまでお待ちください。');
  if(action==='unit-recall'){
   if(unit.state==='claimed')h.fail(409,'UNIT_RETURNED','この部隊は帰還済みです。');
-  return commit(ctx,b,action,unitGuard(unit),(gate,args)=>[stmt(db,"UPDATE alliance_units SET state='returning',revision=revision+1 WHERE id=? AND "+gate,unit.id,...args)],{message:'撤収しました。生存兵を「本隊へ受取」で戻せます。'});
+  if(unit.state==='returning')return commit(ctx,b,action,unitGuard(unit),()=>[],{message:unit.travel_phase==='returning'?'この部隊は既に帰還中です。到着後に受け取れます。':'この部隊は帰還済みです。本隊へ受け取れます。'});
+  const original=unit.return_travel_json?JSON.parse(unit.return_travel_json):null,spent=unit.travel_phase==='outbound'?Math.max(0,Math.min(Number(unit.arrives_elapsed_ms)-Number(unit.departed_elapsed_ms),clock.elapsedMs-Number(unit.departed_elapsed_ms))):null;
+  const route=original&&spent!==null?{...original,sourceName:original.sourceName+'への道中',distanceKm:Math.round(original.distanceKm*spent/original.durationMs*1000)/1000,durationMs:Math.max(1000,Math.ceil(spent/1000)*1000)}:original;
+  const extra=route?{phase:'returning',travel:route,departedElapsedMs:clock.elapsedMs,arrivesElapsedMs:clock.elapsedMs+route.durationMs}:{};
+  return commit(ctx,b,action,and(unitGuard(unit),clockGuard(clock)),(gate,args)=>[route?stmt(db,"UPDATE alliance_units SET state='returning',travel_phase='returning',travel_json=?,return_travel_json=?,departed_elapsed_ms=?,arrives_elapsed_ms=?,revision=revision+1 WHERE id=? AND "+gate,JSON.stringify(route),JSON.stringify(route),clock.elapsedMs,clock.elapsedMs+route.durationMs,unit.id,...args):stmt(db,"UPDATE alliance_units SET state='returning',revision=revision+1 WHERE id=? AND "+gate,unit.id,...args)],{...extra,message:'撤収を開始しました。帰還完了後に生存兵を「本隊へ受取」で戻せます。'});
  }
- if(unit.state!=='returning')h.fail(409,'UNIT_NOT_RETURNED','部隊が帰還待ちになってから受け取れます。');
+ if(unit.state!=='returning'||unit.travel_phase&&unit.travel_phase!=='arrived')h.fail(409,'UNIT_NOT_RETURNED','部隊の帰還が完了してから受け取れます。');
  const s=await saved(ctx,b),shared=user.is_staff&&!user.is_admin&&h.staffBaseDto?await h.staffBaseDto(db,user,s.clock,ctx.now):null;
  const game=GameEngine.fromSave(s.save,GAME_OFFICERS,{isAdmin:!!user.is_admin,isStaff:!!user.is_staff,staffBase:shared});
  const room=Math.max(0,Math.min(ASSET_LIMIT,game.availableTroopCapacity?game.availableTroopCapacity():game.troopCapacity())-s.save.state.troops),amount=Math.min(unit.troops,room);
@@ -244,20 +289,24 @@ async function withdrawAction(ctx,b,action){
 // uses the original target/branch/protection/court rules, then adds force to its
 // calculation; the frozen guard and statements join the same battle receipt.
 export async function prepareRallyAttack(db,user,operationId,now,h,frozen=null){
- const ctx={db,user,now,helpers:h};await settleUnits(db,now);const m=await requireMember(ctx),o=await getOperation(ctx,{operationId});
+ const ctx={db,user,now,helpers:h},clock=await settleUnits(db,now);const m=await requireMember(ctx),o=await getOperation(ctx,{operationId});
  if(o.kind!=='attack'||o.status!=='planned'||(frozen?o.march_id!==frozen.marchId:o.march_id||o.starts_at>now||o.expires_at<=now))h.fail(409,'RALLY_NOT_READY','作戦の開始時刻から終了時刻までに出陣してください。');
  if(o.creator_id!==user.id&&m.owner_id!==user.id&&!m.officer)h.fail(403,'GUILD_ROLE_REQUIRED','作戦を作った領主または同盟役職者が出陣できます。');
+ const stagingRow=await stmt(db,'SELECT save_json,revision FROM player_saves WHERE user_id=?',o.creator_id).first(),stagingState=stagingRow?.save_json?JSON.parse(stagingRow.save_json).state:null,stagingCastleId=frozen?.stagingCastleId||o.staging_castle_id||stagingState?.home;
+ if(!frozen&&(!cast(stagingCastleId)||!stagingState||stagingState.gameOver||stagingState.home!==stagingCastleId))h.fail(409,'RALLY_BASE_CHANGED','集結拠点が変わりました。各部隊は帰還します。新しい作戦を作成してください。');
+ const stagingGuard=!frozen?{sql:'EXISTS(SELECT 1 FROM player_saves WHERE user_id=? AND revision=?)',args:[o.creator_id,stagingRow.revision]}:emptyGuard();
  const units=rows(await stmt(db,"SELECT u.* FROM alliance_units u WHERE u.operation_id=? AND "+(frozen?"u.state='stationed' AND u.march_id=?":unitLiveSql('u'))+' ORDER BY u.id LIMIT 51',o.id,frozen?frozen.marchId:now).all());
  if(frozen&&(units.length!==frozen.units.length||units.some(u=>!frozen.units.some(v=>v.id===u.id&&v.troops===u.troops&&v.revision+1===u.revision))))h.fail(409,'RALLY_CHANGED','進軍中の集結部隊が変わったため帰還しました。');
  const frozenRoster={sql:"NOT EXISTS(SELECT 1 FROM json_each(?) snapshot LEFT JOIN alliance_units u ON u.id=json_extract(snapshot.value,'$.id') WHERE u.id IS NULL OR u.revision<>json_extract(snapshot.value,'$.revision') OR u.troops<>json_extract(snapshot.value,'$.troops') OR u.state<>'stationed' OR u.march_id<>? OR NOT EXISTS(SELECT 1 FROM guild_members gm WHERE gm.user_id=u.owner_id AND gm.guild_id=u.guild_id) OR COALESCE((SELECT epoch FROM voice_membership_epochs WHERE user_id=u.owner_id),0)<>u.owner_epoch OR EXISTS(SELECT 1 FROM player_bans WHERE user_id=u.owner_id AND active=1))",args:[JSON.stringify(units.map(u=>({id:u.id,revision:u.revision,troops:u.troops}))),frozen?.marchId||'']};
  if(frozen){for(const unit of units){const member=await membership(db,unit.owner_id,unit.guild_id);if(!member||member.epoch!==unit.owner_epoch||await stmt(db,'SELECT 1 AS banned FROM player_bans WHERE user_id=? AND active=1',unit.owner_id).first())h.fail(409,'RALLY_CHANGED','参加者の所属が変わったため、各部隊へ兵を返還します。');}}
  const troops=units.reduce((n,u)=>n+u.troops,0);if(units.length>50||troops<300||troops>MAX_RALLY)h.fail(409,'RALLY_FORCE','集結兵は300〜100,000人で出陣できます。');
- const exact={sql:"(SELECT COUNT(*) FROM alliance_units WHERE operation_id=? AND state='stationed')=? AND (SELECT COALESCE(SUM(troops),0) FROM alliance_units WHERE operation_id=? AND state='stationed')=?",args:[o.id,units.length,o.id,troops]};
+ const ready=frozen?"state='stationed' AND march_id=?":"state='stationed' AND march_id IS NULL AND (travel_phase IS NULL OR travel_phase='stationed')",exact={sql:'(SELECT COUNT(*) FROM alliance_units WHERE operation_id=? AND '+ready+')=? AND (SELECT COALESCE(SUM(troops),0) FROM alliance_units WHERE operation_id=? AND '+ready+')=?',args:[o.id,...(frozen?[frozen.marchId]:[]),units.length,o.id,...(frozen?[frozen.marchId]:[]),troops]};
  const organizer=o.creator_id===user.id?memberGuard(m):officerGuard(m);
  const rollBytes=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(['alliance-battle-v1',o.resolution_seed,o.id,units.map(u=>[u.id,u.troops])])));
  const roll=new DataView(rollBytes).getUint32(0)/4294967296;
+ const returnTrips=units.filter(u=>u.home_castle_id).map(u=>({id:u.id,travel:globalThis.SengokuTravel.plan({sourceCastleId:o.castle_id,targetCastleId:u.home_castle_id,...(o.branch_id?{localOffsetKm:2}:{})})}));
  let allocation=null;
- return{maintenanceOwnerIds:[...new Set(units.map(u=>u.owner_id))],operationId:o.id,snapshot:{operationId:o.id,units:units.map(u=>({id:u.id,troops:u.troops,revision:u.revision}))},troops,roll,targetPlayerId:o.target_player_id,targetCastleId:o.castle_id,targetBranchId:o.branch_id||undefined,tactic:o.tactic,guard:and(organizer,opGuard(o),exact,frozen?frozenRoster:rosterGuard(units,now)),
+ return{stagingCastleId,returnTrips,maintenanceOwnerIds:[...new Set(units.map(u=>u.owner_id))],operationId:o.id,snapshot:{operationId:o.id,stagingCastleId,units:units.map(u=>({id:u.id,troops:u.troops,revision:u.revision}))},troops,roll,targetPlayerId:o.target_player_id,targetCastleId:o.castle_id,targetBranchId:o.branch_id||undefined,tactic:o.tactic,guard:and(organizer,opGuard(o),exact,frozen?frozenRoster:rosterGuard(units,now),clockGuard(clock),stagingGuard),
   applyResult(battle,attackerState){
    const spent=Math.min(troops,Number(battle.attackerLost||0)+Number(battle.capture?.garrison||0)),returned=troops-spent;
    // Existing capture logic subtracts its new garrison too. Removing the
@@ -270,25 +319,25 @@ export async function prepareRallyAttack(db,user,operationId,now,h,frozen=null){
    if(!allocation)throw Error('Rally result must be allocated before committing');
    return[
     stmt(db,"UPDATE alliance_operations SET status='completed',result_json=?,march_id=NULL,revision=revision+1 WHERE id=? AND "+gate,JSON.stringify({battleId:battle.id,won:battle.won,pooledTroops:troops,attackerLost:battle.attackerLost,castleName:battle.castleName,branchName:battle.branchName||null}),o.id,...args),
-    ...allocation.flatMap(a=>[stmt(db,"UPDATE alliance_units SET troops=CASE WHEN campaign_retired=1 THEN 0 ELSE ? END,state=CASE WHEN campaign_retired=1 THEN 'claimed' ELSE ? END,march_id=NULL,revision=revision+1 WHERE id=? AND "+gate,a.returned,a.returned?'returning':'claimed',a.unit.id,...args),contribution(db,'rally:'+battle.id+':'+a.unit.id,o.guild_id,a.unit.owner_id,'attack',a.unit.troops,o.title+'：'+(battle.won?'勝利':'撤退')+'・生存兵'+a.returned,now,gate,args)]),
+    ...allocation.flatMap(a=>[stmt(db,"UPDATE alliance_units SET troops=CASE WHEN campaign_retired=1 THEN 0 ELSE ? END,state=CASE WHEN campaign_retired=1 THEN 'claimed' ELSE ? END,march_id=NULL,"+returnAssignments(clock)+",revision=revision+1 WHERE id=? AND "+gate,a.returned,a.returned?'returning':'claimed',a.unit.id,...args),contribution(db,'rally:'+battle.id+':'+a.unit.id,o.guild_id,a.unit.owner_id,'attack',a.unit.troops,o.title+'：'+(battle.won?'勝利':'撤退')+'・生存兵'+a.returned,now,gate,args)]),
    ];
   }};
 }
 export function rallyMarchStatements(db,rally,marchId,gate,args){
- return [stmt(db,"UPDATE alliance_operations SET march_id=?,revision=revision+1 WHERE id=? AND "+gate,marchId,rally.operationId,...args),stmt(db,"UPDATE alliance_units SET march_id=?,revision=revision+1 WHERE operation_id=? AND state='stationed' AND "+gate,marchId,rally.operationId,...args)];
+ return [stmt(db,"UPDATE alliance_operations SET march_id=?,revision=revision+1 WHERE id=? AND "+gate,marchId,rally.operationId,...args),stmt(db,"UPDATE alliance_units SET march_id=?,revision=revision+1 WHERE id IN (SELECT json_extract(value,'$.id') FROM json_each(?)) AND state='stationed' AND (travel_phase IS NULL OR travel_phase='stationed') AND "+gate,marchId,JSON.stringify(rally.snapshot.units),...args),...rally.returnTrips.map(unit=>stmt(db,'UPDATE alliance_units SET return_travel_json=? WHERE id=? AND march_id=? AND '+gate,JSON.stringify(unit.travel),unit.id,marchId,...args))];
 }
 export function rallyMarchCancellation(db,march,gate,args){
- return [stmt(db,"UPDATE alliance_operations SET status='cancelled',march_id=NULL,revision=revision+1 WHERE march_id=? AND "+gate,march.id,...args),stmt(db,"UPDATE alliance_units SET troops=CASE WHEN campaign_retired=1 THEN 0 ELSE troops END,state=CASE WHEN campaign_retired=1 THEN 'claimed' ELSE 'returning' END,march_id=NULL,revision=revision+1 WHERE march_id=? AND state='stationed' AND "+gate,march.id,...args)];
+ return [stmt(db,"UPDATE alliance_operations SET status='cancelled',march_id=NULL,revision=revision+1 WHERE march_id=? AND "+gate,march.id,...args),stmt(db,"UPDATE alliance_units SET troops=CASE WHEN campaign_retired=1 THEN 0 ELSE troops END,state=CASE WHEN campaign_retired=1 THEN 'claimed' ELSE 'returning' END,march_id=NULL,"+returnAssignments(null)+",revision=revision+1 WHERE march_id=? AND state='stationed' AND "+gate,march.id,...args)];
 }
 export async function getAllianceDefense(db,target,castleId,now){
- await settleUnits(db,now,target.id);const m=target.guild_id?await membership(db,target.id,target.guild_id):null;
- if(!m){const epoch=await stmt(db,'SELECT COALESCE((SELECT epoch FROM voice_membership_epochs WHERE user_id=?),0) AS epoch',target.id).first();return{troops:0,guard:{sql:"NOT EXISTS(SELECT 1 FROM guild_members WHERE user_id=?) AND COALESCE((SELECT epoch FROM voice_membership_epochs WHERE user_id=?),0)=? AND NOT EXISTS(SELECT 1 FROM alliance_units WHERE target_id=? AND castle_id=? AND kind='aid' AND state='stationed' AND expires_at>?)",args:[target.id,target.id,epoch.epoch,target.id,castleId,now]},statements:()=>[]};}
+ const clock=await settleUnits(db,now,target.id);const m=target.guild_id?await membership(db,target.id,target.guild_id):null;
+ if(!m){const epoch=await stmt(db,'SELECT COALESCE((SELECT epoch FROM voice_membership_epochs WHERE user_id=?),0) AS epoch',target.id).first();return{troops:0,guard:{sql:"NOT EXISTS(SELECT 1 FROM guild_members WHERE user_id=?) AND COALESCE((SELECT epoch FROM voice_membership_epochs WHERE user_id=?),0)=? AND NOT EXISTS(SELECT 1 FROM alliance_units WHERE target_id=? AND castle_id=? AND kind='aid' AND state='stationed' AND (travel_phase IS NULL OR travel_phase='stationed') AND expires_at>?)",args:[target.id,target.id,epoch.epoch,target.id,castleId,now]},statements:()=>[]};}
  const units=rows(await stmt(db,"SELECT u.* FROM alliance_units u WHERE u.kind='aid' AND u.target_id=? AND u.castle_id=? AND "+unitLiveSql('u')+' AND u.target_epoch=? ORDER BY u.id LIMIT 201',target.id,castleId,now,m.epoch).all());
- const troops=units.reduce((n,u)=>n+u.troops,0),exact={sql:"(SELECT COUNT(*) FROM alliance_units WHERE target_id=? AND castle_id=? AND kind='aid' AND state='stationed' AND expires_at>?)=? AND (SELECT COALESCE(SUM(troops),0) FROM alliance_units WHERE target_id=? AND castle_id=? AND kind='aid' AND state='stationed' AND expires_at>?)=?",args:[target.id,castleId,now,units.length,target.id,castleId,now,troops]};
- const guard=and(memberGuard(m),exact,rosterGuard(units,now));
+ const troops=units.reduce((n,u)=>n+u.troops,0),exact={sql:"(SELECT COUNT(*) FROM alliance_units WHERE target_id=? AND castle_id=? AND kind='aid' AND state='stationed' AND (travel_phase IS NULL OR travel_phase='stationed') AND expires_at>?)=? AND (SELECT COALESCE(SUM(troops),0) FROM alliance_units WHERE target_id=? AND castle_id=? AND kind='aid' AND state='stationed' AND (travel_phase IS NULL OR travel_phase='stationed') AND expires_at>?)=?",args:[target.id,castleId,now,units.length,target.id,castleId,now,troops]};
+ const guard=and(memberGuard(m),exact,rosterGuard(units,now),clockGuard(clock));
  return{maintenanceOwnerIds:[...new Set(units.map(u=>u.owner_id))],troops,guard,statements:(battle,gate,args)=>units.flatMap(u=>{
   const loss=battle.battleMode==='reward'||battle.battleMode==='branch'?0:Math.min(u.troops,Math.floor(u.troops*(battle.won?.1:.03))),survivors=u.troops-loss;
-  return[stmt(db,'UPDATE alliance_units SET troops=?,state=?,revision=revision+1 WHERE id=? AND '+gate,survivors,survivors?(battle.capture?.captured?'returning':'stationed'):'claimed',u.id,...args),contribution(db,'defense:'+battle.id+':'+u.id,u.guild_id,u.owner_id,'defense',u.troops,battle.castleName+'を援軍で防衛・兵損'+loss,now,gate,args)];
+  return[stmt(db,'UPDATE alliance_units SET troops=?,state=?,'+(survivors&&battle.capture?.captured?returnAssignments(clock)+',':'')+'revision=revision+1 WHERE id=? AND '+gate,survivors,survivors?(battle.capture?.captured?'returning':'stationed'):'claimed',u.id,...args),contribution(db,'defense:'+battle.id+':'+u.id,u.guild_id,u.owner_id,'defense',u.troops,battle.castleName+'を援軍で防衛・兵損'+loss,now,gate,args)];
  })};
 }
 export async function handleAlliance(ctx){
@@ -302,10 +351,10 @@ export async function handleAlliance(ctx){
   '/alliance/treasury/request':'treasury-request','/alliance/treasury/approve':'treasury-approve',
  };
  if(path==='/alliance/rally/launch'){
-  const operationId=id(h,body.operationId,'作戦'),o=await getOperation(ctx,{operationId});
+  await settleUnits(db,ctx.now);const operationId=id(h,body.operationId,'作戦'),o=await getOperation(ctx,{operationId});
   if(!h.fieldAttack)h.fail(503,'RALLY_UNAVAILABLE','集結出陣を準備しています。しばらくしてからお試しください。');
   // Frozen target and tactic come from the operation, not the request body.
-  const units=rows(await stmt(db,"SELECT troops FROM alliance_units WHERE operation_id=? AND state='stationed'",operationId).all()),troops=o.result_json?JSON.parse(o.result_json).pooledTroops:units.reduce((n,u)=>n+u.troops,0);
+  const units=rows(await stmt(db,"SELECT troops FROM alliance_units WHERE operation_id=? AND state='stationed' AND (travel_phase IS NULL OR travel_phase='stationed')",operationId).all()),troops=o.result_json?JSON.parse(o.result_json).pooledTroops:units.reduce((n,u)=>n+u.troops,0);
   return h.fieldAttack(db,user,{targetPlayerId:o.target_player_id,targetCastleId:o.castle_id,...(o.branch_id?{targetBranchId:o.branch_id}:{}),troops:Math.max(300,troops),tactic:o.tactic,requestId:body.requestId,deviceId:body.deviceId,expectedRevision:body.expectedRevision},ctx.now,{rallyId:operationId});
  }
  if(path==='/alliance/treasury/claim'){

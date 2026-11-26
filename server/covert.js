@@ -164,7 +164,7 @@ async function mutation(ctx,action){
  const result=action==='hire'?game.hireCovert(body.sourceCastleId,body.count,options):action==='dispatch'?game.departCovertDispatch(body.sourceCastleId,body.target,body.count,body.mode,options):action==='recall'?game.recallCovert(body.stationId,options):game.retaliateCovert(body.stationId,body.incidentId,options);
  if(!result.ok)h.fail(409,result.code||'COVERT_UNAVAILABLE',result.message);
  if(result.idempotent)h.fail(409,'COVERT_ALREADY_RECORDED','この操作は記録済みです。派遣画面を更新してください。');
- if(action==='dispatch'&&result.accepted){const dispatch=game.state.covert.dispatches.find(v=>v.id===result.march.id);dispatch.authority='server';dispatch.departedElapsedMs=Math.floor(clock.elapsedMs);dispatch.arrivesElapsedMs=dispatch.departedElapsedMs+dispatch.travel.durationMs;const history=game.state.covert.history.find(v=>v.requestId===body.requestId);history.march=JSON.parse(JSON.stringify(dispatch));result.result.march=history.march;result.march=history.march;}
+ if(result.accepted&&result.march){const dispatch=game.state.covert.dispatches.find(v=>v.id===result.march.id);dispatch.authority='server';dispatch.departedElapsedMs=Math.floor(clock.elapsedMs);dispatch.arrivesElapsedMs=dispatch.departedElapsedMs+dispatch.travel.durationMs;const history=game.state.covert.history.find(v=>v.requestId===body.requestId);history.march=JSON.parse(JSON.stringify(dispatch));result.result.march=history.march;result.march=history.march;}
  await h.budget(db,'covert:'+user.id,60,60000,ctx.now);
  const now=Date.now(),nonce=crypto.randomUUID(),role=h.roleCommitGuard(user),gateArgs=[user.id,body.requestId,nonce];
  const incomingBattle=action==='retaliate'&&target?{battleMode:target.rewardOnly?'reward':'raid',id:'cb_'+crypto.randomUUID().replaceAll('-',''),attackerPlayerId:user.id,defenderPlayerId:target.target.id,castleId:targetSpec.castleId,castleName:castleMap.get(targetSpec.castleId).name,won:result.result.battle.won,defenderLost:result.result.battle.defenderLost,occurredElapsedMs:clock.elapsedMs}:null;
@@ -217,7 +217,7 @@ async function mutation(ctx,action){
  return response(ctx,committed,body.deviceId,committed.commit_token!==nonce);
 }
 function covertMarchDto(dispatch,clock,result=null){
- const status=result?.status||'marching';return{id:dispatch.id,requestId:dispatch.requestId,kind:'covert',status,timeBasis:'world',sourceCastleId:dispatch.sourceCastleId,sourceName:dispatch.travel.sourceName,targetCastleId:dispatch.targetCastleId,targetPlayerId:dispatch.target.playerId||null,targetName:dispatch.target.name,distanceKm:dispatch.travel.distanceKm,durationMs:dispatch.travel.durationMs,departedAtMs:dispatch.departedElapsedMs,arrivesAtMs:dispatch.arrivesElapsedMs,remainingMs:status==='marching'?Math.max(0,dispatch.arrivesElapsedMs-clock.elapsedMs):0,troops:dispatch.count,travel:dispatch.travel,battle:null,message:result?.retiredCampaign?'本拠移転で旧戦役の派遣を終了しました。':status==='cancelled'?'派遣を取りやめ、部隊と出陣費用を戻しました。':status==='resolved'?dispatch.mode==='station'?'部隊が到着し、常駐を開始しました。':'偵察が完了し、部隊が帰還しました。':'目的地へ部隊を派遣しています。到着後に報告を確認できます。'};
+ const status=result?.status||'marching',phase=dispatch.phase||'outbound',returning=phase==='returning';return{id:dispatch.id,requestId:dispatch.requestId,kind:'covert',phase,status,timeBasis:'world',sourceCastleId:dispatch.travel.sourceCastleId,sourceName:dispatch.travel.sourceName,targetCastleId:dispatch.travel.targetCastleId,targetPlayerId:dispatch.target.playerId||null,targetName:dispatch.travel.targetName,distanceKm:dispatch.travel.distanceKm,durationMs:dispatch.travel.durationMs,departedAtMs:dispatch.departedElapsedMs,arrivesAtMs:dispatch.arrivesElapsedMs,remainingMs:status==='marching'?Math.max(0,dispatch.arrivesElapsedMs-clock.elapsedMs):0,troops:dispatch.count,travel:dispatch.travel,battle:null,message:result?.retiredCampaign?'本拠移転で旧戦役の派遣を終了しました。':status==='cancelled'?returning?'帰還中の部隊を待機人数へ戻しました。':'派遣を取りやめ、部隊と出陣費用を戻しました。':status==='resolved'?returning?'部隊が帰還しました。再び派遣できます。':dispatch.mode==='station'?'部隊が到着し、常駐を開始しました。':'偵察が完了し、部隊が帰還しました。':returning?'部隊が帰還中です。到着後に再び派遣できます。':'目的地へ部隊を派遣しています。到着後に報告を確認できます。'};
 }
 export async function covertMarches(ctx){
  const row=await ctx.helpers.getSyncRow(ctx.db,ctx.user.id);if(!row?.save_json)return{active:[],history:[]};const save=JSON.parse(row.save_json),found=await canonical(ctx.db,ctx.user.id,save.state.walking?.campaignId||'legacy_v1'),clock=await ctx.helpers.getWorldClock(ctx.db,ctx.now);
@@ -242,7 +242,7 @@ export async function settleCovertDispatches(ctx,{actorId=null,limit=8}={}){
   for(const dispatch of [...game.state.covert.dispatches]){
    if(dispatch.arrivesElapsedMs>clock.elapsedMs&&dispatch.cycle===game.state.cycle.index)continue;
    if(user.ban_active){const result=game.cancelCovertDispatch(dispatch.id,'利用状況が変わったため派遣を取りやめました。',{authoritative:true});if(result)completed.push(result);continue;}
-   if(dispatch.target.kind!=='player')continue;
+   if(dispatch.phase==='returning'||dispatch.target.kind!=='player')continue;
    if(playerTargets++>=1)continue; // Keep D1 arrival guards below 100 bindings.
    try{
     const receipt=await stmt(db,'SELECT march_target_campaign_id,march_target_residency_json FROM covert_requests WHERE actor_id=? AND request_id=?',user.id,dispatch.requestId).first(),term=receipt?.march_target_residency_json?JSON.parse(receipt.march_target_residency_json):null,target=await playerTarget(own,dispatch.target,clock,'dispatch',term);
@@ -254,7 +254,13 @@ export async function settleCovertDispatches(ctx,{actorId=null,limit=8}={}){
   const cpuLosses=await prepareResidencyCpuLosses(db,{userId:user.id,events:game.takeHomeDefenseLosses(),now,state:game.state});
   const next=h.normalizeGameSave(JSON.parse(game.exportSave()),user,now,{clock}),nonce=crypto.randomUUID(),role=user.ban_active?safe:h.roleCommitGuard(user),guards=[role,branches.guard,cpuLosses.guard,...targetGuards,...(shared?[{sql:"EXISTS(SELECT 1 FROM staff_base WHERE id='kyoto_gosho' AND revision=?)",args:[shared.revision]}]:[])],commitGate='EXISTS(SELECT 1 FROM player_saves WHERE user_id=? AND cycle_commit=?)',args=[user.id,nonce];
   const statements=[stmt(db,`UPDATE player_saves SET save_json=?,revision=revision+1,updated_at=?,cycle_commit=? WHERE user_id=? AND revision=? AND EXISTS(SELECT 1 FROM covert_states WHERE actor_id=? AND campaign_id=? AND state_json=?) AND EXISTS(SELECT 1 FROM world_clock WHERE id=? AND revision=?) AND ${guards.map(g=>'('+g.sql+')').join(' AND ')} RETURNING user_id`,JSON.stringify(next),now,nonce,user.id,saved.revision,user.id,ledger.campaign_id,found.row.state_json,h.worldClockId,clock.revision,...guards.flatMap(g=>g.args)),stmt(db,`UPDATE covert_states SET sequence=?,state_json=?,updated_at=? WHERE actor_id=? AND campaign_id=? AND ${commitGate}`,next.state.covert.sequence,JSON.stringify(next.state.covert),now,user.id,ledger.campaign_id,...args),...h.branchProgressStatements(db,user.id,next,now,commitGate,args,{resolvedElapsedMs:Math.min(clock.elapsedMs,next.state.worldClock?.elapsedMs||0)}),...covertIncidentStatements(db,user.id,next,now,commitGate,args)];
-  for(const result of completed)statements.push(stmt(db,`UPDATE covert_requests SET result_json=? WHERE actor_id=? AND request_id=? AND ${commitGate}`,JSON.stringify(result),user.id,result.requestId,...args));
+  for(const result of completed){
+   // The compact save history can roll over during a long return. Preserve
+   // the original paid cost and intelligence in the durable request receipt.
+   const record=await stmt(db,'SELECT result_json FROM covert_requests WHERE actor_id=? AND request_id=?',user.id,result.requestId).first(),prior=record?JSON.parse(record.result_json):{};
+   const receipt={...prior,...result,foodCost:prior.foodCost??result.foodCost,commandCost:prior.commandCost??result.commandCost,createdElapsedMs:prior.createdElapsedMs??result.createdElapsedMs};
+   statements.push(stmt(db,`UPDATE covert_requests SET result_json=? WHERE actor_id=? AND request_id=? AND ${commitGate}`,JSON.stringify(receipt),user.id,result.requestId,...args));
+  }
   const personal=await h.staffPersonalProgressStatement(db,user,next,now,commitGate,args,game.getStaffPersonalProgress?.());if(personal)statements.push(personal);
   statements.push(...cpuLosses.statements(commitGate,args));
   await db.batch(statements);

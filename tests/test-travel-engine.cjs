@@ -115,7 +115,7 @@ test('covert troops travel in escrow; reports and stations appear only at arriva
 });
 
 test('covert scouting reserves the party then returns it after reporting current defenses',()=>{
-  const g=covertGame(),result=dispatch(g,'scout');g.state.castles.kawagoe.troops=777;advance(g,result.march.travel.durationMs/1000);assert.equal(g.state.covert.reserves.edo,100);assert.equal(g.state.covert.stations.length,0);assert.equal(g.state.covert.reports[0].snapshot.garrison,777);assert.equal(g.state.scouted.kawagoe,g.state.turn+3);assert.equal(load(g,{isAdmin:true}).state.covert.history[0].status,'resolved');
+  const g=covertGame(),result=dispatch(g,'scout');g.state.castles.kawagoe.troops=777;advance(g,result.march.travel.durationMs/1000);assert.equal(g.state.covert.reserves.edo,60);assert.equal(g.state.covert.stations.length,0);assert.equal(g.state.covert.reports[0].snapshot.garrison,777);assert.equal(g.state.scouted.kawagoe,g.state.turn+3);assert.equal(load(g,{isAdmin:true}).state.covert.history[0].status,'marching');assert.equal(g.state.covert.dispatches[0].phase,'returning');advance(g,g.state.covert.dispatches[0].travel.durationMs/1000);assert.equal(g.state.covert.reserves.edo,100);assert.equal(load(g,{isAdmin:true}).state.covert.history[0].status,'resolved');
 });
 
 test('covert player reports require a fresh arrival snapshot and cannot leak departure intelligence',()=>{

@@ -1,7 +1,7 @@
 // Real Worker routes and transactional local SQLite. No production services.
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {harness,settleFieldMarch} from './test-support.mjs';
+import {harness,settleFieldMarch,syncFieldWriter} from './test-support.mjs';
 import {fixture,post,row,save} from './test-court-support.mjs';
 import {GameEngine,GAME_OFFICERS} from './game-runtime.js';
 import {maintenanceContext,externalTroopSnapshotStatements} from './maintenance.js';
@@ -162,9 +162,11 @@ try{
   const owner=await fixture(h,'援軍の所有者',{startCastle:'himeji'}),defender=await fixture(h,'援軍の駐屯先',{startCastle:'kiyosu'}),attacker=await fixture(h,'援軍との戦闘',{startCastle:'inuyama'});
   const guild=(await h.api('/guild',post(owner,{name:'維持費の援軍同盟'}))).data.guild.id;await h.api('/guild/join',post(defender,{guildId:guild}));
   const sent=(await h.api('/alliance/reinforcements/send',post(owner,envelope(h,owner,{targetPlayerId:defender.user.id,castleId:'kiyosu',troops:600,hours:6})))).data;assert.equal(account(h,owner).alliance_troops,600);assert.equal(account(h,defender).alliance_troops,0);
+  h.now+=sent.result.travel.durationMs;await h.api('/alliance',{token:owner.token});await syncFieldWriter(h,attacker);
   const departure=(await h.api('/field/attack',post(attacker,envelope(h,attacker,{targetPlayerId:defender.user.id,targetCastleId:'kiyosu',troops:3000,tactic:'balanced'})))).data;
   const battle=await settleFieldMarch(h,attacker,departure),remaining=h.sql.prepare('SELECT troops FROM alliance_units WHERE id=?').get(sent.result.unitId).troops;assert(remaining<600);assert.equal(account(h,owner).alliance_troops,remaining);assert.equal(history(h,owner).at(-1).effective_elapsed_ms,battle.occurredElapsedMs);
   const stable=copy(account(h,owner)),revision=stable.revision;await h.api('/alliance/units/recall',post(owner,envelope(h,owner,{unitId:sent.result.unitId})));assert.equal(account(h,owner).revision,revision,'returning troops still belong to their owner');
+  const returning=(await h.api('/alliance',{token:owner.token})).data.units.find(u=>u.id===sent.result.unitId);assert.equal(returning.canClaim,false);h.now+=returning.remainingMs;await h.api('/alliance',{token:owner.token});
   const leased=(await h.api('/sync/lease',post(owner,{deviceId:owner.deviceId}))).data,g=GameEngine.fromSave(leased.save,GAME_OFFICERS,{maintenanceAuthority:leased.maintenanceAuthority});g.applyWorldClock(leased.clock);await put(h,owner,JSON.parse(g.exportSave()));
   // Claim capacity remains the alliance API's existing recruitment rule.
   const value=save(h,owner);value.state.troops=0;h.sql.prepare('UPDATE player_saves SET save_json=? WHERE user_id=?').run(JSON.stringify(value),owner.user.id);

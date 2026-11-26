@@ -629,10 +629,11 @@
   }
   function normalizeCovertDispatch(raw,campaignId,sequence){
     const bad=()=>{throw new Error('派遣部隊の進軍情報が正しくありません。');},num=(v,max=Number.MAX_SAFE_INTEGER)=>Number.isSafeInteger(v)&&v>=0&&v<=max;
-    if(!raw||typeof raw!=='object'||raw.version!==1||raw.kind!=='covert'||raw.authority!==undefined&&!['local','server'].includes(raw.authority)||!walkingId(raw.id)||!walkingId(raw.requestId)||raw.campaignId!==campaignId||!num(raw.sequence,sequence-1)||!num(raw.cycle,Math.floor(MAX_TURN/672))||typeof raw.clan!=='string'||!raw.clan||raw.clan.length>80||!MAJOR_CITY_IDS.includes(raw.sourceCastleId)||!num(raw.count,COVERT_RULES.maxCount)||raw.count<1||raw.troops!==raw.count||!['scout','station'].includes(raw.mode)||!num(raw.foodCost,ASSET_CAP)||raw.commandCost!==1||!num(raw.departedElapsedMs)||!num(raw.arrivesElapsedMs)||!num(raw.battleCursor??0)||!raw.travel)bad();
-    const target=covertTarget(raw.target),travel=travelRules()?.plan({sourceCastleId:raw.sourceCastleId,targetCastleId:target.castleId});
+    const phase=raw?.phase??'outbound',returning=phase==='returning';
+    if(!raw||typeof raw!=='object'||raw.version!==1||raw.kind!=='covert'||!['outbound','returning'].includes(phase)||raw.authority!==undefined&&!['local','server'].includes(raw.authority)||!walkingId(raw.id)||!walkingId(raw.requestId)||raw.campaignId!==campaignId||!num(raw.sequence,sequence-1)||!num(raw.cycle,Math.floor(MAX_TURN/672))||typeof raw.clan!=='string'||!raw.clan||raw.clan.length>80||!MAJOR_CITY_IDS.includes(raw.sourceCastleId)||!num(raw.count,COVERT_RULES.maxCount)||raw.count<1||raw.troops!==raw.count||!['scout','station'].includes(raw.mode)||!num(raw.foodCost,ASSET_CAP)||raw.commandCost!==(returning?0:1)||returning&&raw.foodCost!==0||returning&&raw.mode==='station'&&!walkingId(raw.stationId)||!num(raw.departedElapsedMs)||!num(raw.arrivesElapsedMs)||!num(raw.battleCursor??0)||!raw.travel)bad();
+    const target=covertTarget(raw.target),travel=travelRules()?.plan(returning?{sourceCastleId:target.castleId,targetCastleId:raw.sourceCastleId}:{sourceCastleId:raw.sourceCastleId,targetCastleId:target.castleId});
     if(!travel||raw.targetCastleId!==target.castleId||travel.durationMs!==raw.travel.durationMs||travel.distanceKm!==raw.travel.distanceKm||raw.arrivesElapsedMs!==raw.departedElapsedMs+travel.durationMs)bad();
-    return{version:1,kind:'covert',...(raw.authority?{authority:raw.authority}:{}),id:raw.id,requestId:raw.requestId,campaignId,sequence:raw.sequence,cycle:raw.cycle,clan:raw.clan,sourceCastleId:raw.sourceCastleId,targetCastleId:target.castleId,troops:raw.count,count:raw.count,mode:raw.mode,target,foodCost:raw.foodCost,commandCost:1,departedElapsedMs:raw.departedElapsedMs,arrivesElapsedMs:raw.arrivesElapsedMs,travel,battleCursor:raw.battleCursor??0};
+    return{version:1,kind:'covert',phase,...(raw.authority?{authority:raw.authority}:{}),id:raw.id,requestId:raw.requestId,campaignId,sequence:raw.sequence,cycle:raw.cycle,clan:raw.clan,sourceCastleId:raw.sourceCastleId,targetCastleId:target.castleId,troops:raw.count,count:raw.count,mode:raw.mode,target,...(returning&&raw.mode==='station'?{stationId:raw.stationId}:{}),foodCost:raw.foodCost,commandCost:raw.commandCost,departedElapsedMs:raw.departedElapsedMs,arrivesElapsedMs:raw.arrivesElapsedMs,travel,battleCursor:raw.battleCursor??0};
   }
   function covertState(raw,campaignId){
     const invalid=()=>{throw new Error('派遣部隊の保存情報が正しくありません。');};
@@ -669,7 +670,7 @@
       if(v.battle!==undefined){const b=v.battle;if(!obj(b)||typeof b.won!=='boolean'||b.captured!==false||!['deployed','ourLost','survivors','attackPower','defensePower'].every(key=>num(b[key],1000000000000))||b.ourLost>b.deployed||b.survivors!==b.deployed-b.ourLost||!obj(b.defenderLost)||!num(b.defenderLost.troops)||!num(b.defenderLost.garrison))invalid();result.battle={won:b.won,captured:false,deployed:b.deployed,ourLost:b.ourLost,survivors:b.survivors,attackPower:b.attackPower,defensePower:b.defensePower,defenderLost:{troops:b.defenderLost.troops,garrison:b.defenderLost.garrison},...(b.durability!==undefined?{durability:normalizeDurabilityBattle(b.durability)}:{})};}
       return result;
     });
-    if(stations.length+dispatches.filter(v=>v.mode==='station').length>COVERT_RULES.stationLimit||!unique(dispatches,'id')||!unique(dispatches,'requestId')||!unique(dispatches,'sequence')||!unique(stations,'id')||!unique(reports,'id')||!unique(incidents,'id')||!unique(history,'requestId')||!unique(history,'sequence')||history.some((v,i)=>i&&v.sequence>=history[i-1].sequence))invalid();
+    if(stations.length+dispatches.filter(v=>v.mode==='station'&&v.phase!=='returning').length>COVERT_RULES.stationLimit||!unique(dispatches,'id')||!unique(dispatches,'requestId')||!unique(dispatches,'sequence')||!unique(stations,'id')||!unique(reports,'id')||!unique(incidents,'id')||!unique(history,'requestId')||!unique(history,'sequence')||history.some((v,i)=>i&&v.sequence>=history[i-1].sequence))invalid();
     return{version:1,campaignId,sequence:raw.sequence,reserves,stations,dispatches,reports,incidents,history};
   }
   const MARCH_CONTEXT=new WeakMap();
@@ -1787,7 +1788,7 @@
       const c=this.state.covert||(this.state.covert=covertState(undefined,this.state.walking.campaignId)),requestId=options.requestId??newWalkingCampaign();
       if(!walkingId(requestId))return covertError('INVALID_INPUT','操作番号が正しくありません。');
       const signature=value=>JSON.stringify([value.action,value.sourceCastleId,value.count,value.mode,value.target?.kind,value.target?.playerId,value.target?.castleId,value.stationId,value.incidentId]);
-      const pendingDispatch=c.dispatches.find(v=>v.requestId===requestId),old=c.history.find(v=>v.requestId===requestId)||(pendingDispatch?{...copy(pendingDispatch),action:'dispatch',accepted:true,dispatchId:pendingDispatch.id,march:copy(pendingDispatch),status:'marching'}:null);
+      const pendingDispatch=c.dispatches.find(v=>v.requestId===requestId),old=c.history.find(v=>v.requestId===requestId)||(pendingDispatch?{...copy(pendingDispatch),action:pendingDispatch.phase==='returning'&&pendingDispatch.mode==='station'?'recall':'dispatch',accepted:true,dispatchId:pendingDispatch.id,march:copy(pendingDispatch),status:'marching'}:null);
       if(old){const compare={...old};for(const key of ['sourceCastleId','count','mode','target','stationId','incidentId'])if(intent[key]===undefined)delete compare[key];if(signature(compare)!==signature({action,...intent}))return covertError('REQUEST_ID_REUSED','この操作番号は別の派遣に使用されています。');return{ok:true,idempotent:true,result:copy(old),...(old.accepted?{accepted:true,marching:true,march:copy(old.march)}:{}),message:old.accepted?'この部隊はすでに進軍中です。':'記録済みの結果を表示しました。'};}
       if(options.campaignId!==undefined&&options.campaignId!==c.campaignId)return covertError('COVERT_SCOPE_CHANGED','物語が切り替わりました。派遣画面を更新してください。');
       if(options.sequence!==undefined&&options.sequence!==c.sequence)return covertError('COVERT_STATE_CHANGED','派遣部隊が更新されました。最新の状態を確認してください。');
@@ -1839,29 +1840,40 @@
       if(!source)return covertError('COVERT_SOURCE_UNAVAILABLE','派遣できる大都市拠点を選んでください。');
       if(!['scout','station'].includes(mode)||!Number.isSafeInteger(count)||count<1||count>COVERT_RULES.maxCount)return covertError('INVALID_INPUT','派遣方法と1〜20,000人の人数を指定してください。');
       if(count>source.reserve)return covertError('INSUFFICIENT_FORCE','拠点で待機している部隊が足りません。');
-      if(c.dispatches.length>=COVERT_RULES.stationLimit||mode==='station'&&c.stations.length+c.dispatches.filter(v=>v.mode==='station').length>=COVERT_RULES.stationLimit)return covertError('COVERT_STATION_LIMIT','派遣部隊が上限です。到着または帰還をお待ちください。');
+      if(c.dispatches.length>=COVERT_RULES.stationLimit||mode==='station'&&c.stations.length+c.dispatches.filter(v=>v.mode==='station'&&v.phase!=='returning').length>=COVERT_RULES.stationLimit)return covertError('COVERT_STATION_LIMIT','派遣部隊が上限です。到着または帰還をお待ちください。');
       if(dest.kind==='player'){try{this._covertTargetSnapshot(dest,options);}catch(error){return covertError('ONLINE_REQUIRED',error.message);}}
       const travel=travelRules()?.plan({sourceCastleId,targetCastleId:dest.castleId});if(!travel)return covertError('INVALID_TARGET','派遣先までの距離を確認できません。');
       const rule=COVERT_RULES[mode],foodCost=rule.riceBase+Math.ceil(count*rule.ricePerUnit);if(this.state.resources.rice<foodCost)return covertError('INSUFFICIENT_RESOURCES','派遣に必要な兵糧が足りません。');
-      const departedElapsedMs=this._covertElapsed(),id='cd_'+covertHash(c.campaignId)+'_'+c.sequence,march={version:1,authority:'local',kind:'covert',id,requestId:start.requestId,campaignId:c.campaignId,sequence:c.sequence,cycle:this.state.cycle.index,clan:this.state.clan,sourceCastleId,targetCastleId:dest.castleId,troops:count,count,mode,target:dest,foodCost,commandCost:1,departedElapsedMs,arrivesElapsedMs:departedElapsedMs+travel.durationMs,travel,battleCursor:Number.isSafeInteger(options.battleCursor)?Math.max(0,options.battleCursor):0};
+      const departedElapsedMs=this._covertElapsed(),id='cd_'+covertHash(c.campaignId)+'_'+c.sequence,march={version:1,authority:'local',kind:'covert',phase:'outbound',id,requestId:start.requestId,campaignId:c.campaignId,sequence:c.sequence,cycle:this.state.cycle.index,clan:this.state.clan,sourceCastleId,targetCastleId:dest.castleId,troops:count,count,mode,target:dest,foodCost,commandCost:1,departedElapsedMs,arrivesElapsedMs:departedElapsedMs+travel.durationMs,travel,battleCursor:Number.isSafeInteger(options.battleCursor)?Math.max(0,options.battleCursor):0};
       this._pay({rice:foodCost});c.reserves[sourceCastleId]-=count;c.dispatches.push(march);
       const result=this._covertCommit(start,{accepted:true,status:'marching',dispatchId:id,march:copy(march),foodCost,commandCost:1},`${source.name}から${dest.name}へ${source.unitName}${count.toLocaleString()}人を派遣しました。到着まで${travelRules().formatDuration(travel.durationMs)}（1倍速）。`);
       return{...result,accepted:true,marching:true,march:copy(march)};
     }
     _completeCovertDispatch(dispatch,{snapshot,battleCursor,cancelMessage}={}){
-      const s=this.state,c=s.covert,key=covertHash(c.campaignId)+'_'+dispatch.sequence,elapsed=this._covertElapsed();
+      const s=this.state,c=s.covert,key=covertHash(c.campaignId)+'_'+dispatch.sequence,elapsed=this._covertElapsed(),returning=dispatch.phase==='returning',previous=c.history.find(v=>v.requestId===dispatch.requestId);
       c.dispatches=c.dispatches.filter(v=>v.id!==dispatch.id);
-      const result={requestId:dispatch.requestId,campaignId:c.campaignId,sequence:dispatch.sequence,action:'dispatch',sourceCastleId:dispatch.sourceCastleId,target:copy(dispatch.target),count:dispatch.count,mode:dispatch.mode,foodCost:dispatch.foodCost,commandCost:1,createdElapsedMs:dispatch.departedElapsedMs,accepted:false,dispatchId:dispatch.id,march:copy(dispatch),status:cancelMessage?'cancelled':'resolved',resolvedElapsedMs:elapsed};
+      const result={...(previous?copy(previous):{}),requestId:dispatch.requestId,campaignId:c.campaignId,sequence:dispatch.sequence,action:returning&&dispatch.mode==='station'?'recall':'dispatch',sourceCastleId:dispatch.sourceCastleId,target:copy(dispatch.target),count:dispatch.count,mode:dispatch.mode,...(dispatch.stationId?{stationId:dispatch.stationId}:{}),foodCost:previous?.foodCost??dispatch.foodCost,commandCost:previous?.commandCost??dispatch.commandCost,createdElapsedMs:previous?.createdElapsedMs??dispatch.departedElapsedMs,accepted:false,dispatchId:dispatch.id,march:copy(dispatch),status:cancelMessage?'cancelled':'resolved',resolvedElapsedMs:elapsed};
       let message;
-      if(cancelMessage){c.reserves[dispatch.sourceCastleId]+=dispatch.count;s.resources.rice=Math.min(ASSET_CAP,s.resources.rice+dispatch.foodCost);s.command=Math.min(this.commandMax(),s.command+1);message=cancelMessage+' 派遣人数と出陣費用を戻しました。';}
+      if(cancelMessage){c.reserves[dispatch.sourceCastleId]+=dispatch.count;s.resources.rice=Math.min(ASSET_CAP,s.resources.rice+dispatch.foodCost);s.command=Math.min(this.commandMax(),s.command+dispatch.commandCost);message=cancelMessage+(returning?' 帰還中の部隊を待機人数へ戻しました。':' 派遣人数と出陣費用を戻しました。');}
+      else if(returning){c.reserves[dispatch.sourceCastleId]+=dispatch.count;message=CASTLE_BY_ID[dispatch.sourceCastleId].name+'へ部隊'+dispatch.count.toLocaleString()+'人が帰還しました。再び派遣できます。';}
       else{
         const report={id:'cr_'+key,sourceCastleId:dispatch.sourceCastleId,target:copy(dispatch.target),observedElapsedMs:elapsed,snapshot:covertSnapshot(snapshot)};c.reports.unshift(report);c.reports=c.reports.slice(0,COVERT_RULES.reportLimit);result.report=copy(report);
         if(dispatch.mode==='station'){
           const stationId='cs_'+key;result.stationId=stationId;c.stations.push({id:stationId,sourceCastleId:dispatch.sourceCastleId,unitType:dispatch.sourceCastleId==='edo'?'ninja':'ashigaru',unitName:dispatch.sourceCastleId==='edo'?'忍者':'足軽',count:dispatch.count,target:copy(dispatch.target),createdElapsedMs:elapsed,battleCursor:Number.isSafeInteger(battleCursor)?Math.max(0,battleCursor):dispatch.battleCursor,deploymentSequence:Math.max(0,c.sequence-1)});
           message=dispatch.target.name+'へ部隊が到着し、常駐を開始しました。到着時の状況を報告しました。';
-        }else{c.reserves[dispatch.sourceCastleId]+=dispatch.count;if(dispatch.target.kind==='castle')s.scouted[dispatch.target.castleId]=s.turn+3;message=dispatch.target.name+'へ偵察部隊が到着し、状況を確認しました。部隊は全員帰還しました。';}
+        }else{
+          if(dispatch.target.kind==='castle')s.scouted[dispatch.target.castleId]=s.turn+3;
+          // The return starts at the scheduled arrival, so reopening an offline
+          // save or a delayed server poll never adds an extra journey's wait.
+          const travel=travelRules().plan({sourceCastleId:dispatch.target.castleId,targetCastleId:dispatch.sourceCastleId}),departedElapsedMs=dispatch.arrivesElapsedMs;
+          const back={...copy(dispatch),phase:'returning',foodCost:0,commandCost:0,travel,departedElapsedMs,arrivesElapsedMs:departedElapsedMs+travel.durationMs};
+          c.dispatches.push(back);result.accepted=true;result.status='marching';result.march=copy(back);delete result.resolvedElapsedMs;
+          message=dispatch.target.name+'の偵察報告が届きました。部隊は'+CASTLE_BY_ID[dispatch.sourceCastleId].name+'へ帰還中です。帰還後に再び派遣できます。';
+        }
       }
-      const index=c.history.findIndex(v=>v.requestId===dispatch.requestId);if(index>=0)c.history[index]=copy(result);this.log(message,'covert');return{...copy(result),message};
+      const index=c.history.findIndex(v=>v.requestId===dispatch.requestId);if(index>=0)c.history[index]=copy(result);this.log(message,'covert');
+      if(result.accepted&&result.march.arrivesElapsedMs<=elapsed)return this._completeCovertDispatch(result.march);
+      return{...copy(result),message};
     }
     _cancelCovertDispatches(message){return(this.state.covert.dispatches||[]).filter(v=>v.authority!=='server').map(dispatch=>this._completeCovertDispatch(dispatch,{cancelMessage:message}));}
     cancelCovertDispatch(id,message,{authoritative=false}={}){const dispatch=(this.state.covert.dispatches||[]).find(v=>v.id===id);if(!dispatch||dispatch.authority==='server'&&!authoritative)return null;return this._completeCovertDispatch(dispatch,{cancelMessage:message||'派遣を中止し、部隊が帰還しました。'});}
@@ -1871,6 +1883,7 @@
         if(dispatch.authority==='server'&&!authoritative)continue;
         if(dispatch.campaignId!==s.walking.campaignId||dispatch.cycle!==s.cycle.index||dispatch.clan!==s.clan||!this._covertSourceAvailable(dispatch.sourceCastleId)||s.gameOver){results.push(this._completeCovertDispatch(dispatch,{cancelMessage:'派遣元や周回の変更により部隊が帰還しました。'}));continue;}
         if(this._covertElapsed()<dispatch.arrivesElapsedMs)continue;
+        if(dispatch.phase==='returning'){results.push(this._completeCovertDispatch(dispatch));continue;}
         let snapshot,battleCursor;
         if(dispatch.target.kind==='player'){
           const key=dispatch.target.playerId+':'+dispatch.target.castleId,value=targetSnapshots instanceof Map?targetSnapshots.get(key):targetSnapshots[key];if(!value)continue;
@@ -1883,8 +1896,12 @@
     recallCovert(stationId,options={}){
       const start=this._covertStart('recall',{stationId},options);if(!start.pending)return start;
       const c=this.state.covert,station=c.stations.find(v=>v.id===stationId);if(!station)return covertError('COVERT_STATION_NOT_FOUND','常駐部隊が見つかりません。');
-      c.reserves[station.sourceCastleId]+=station.count;c.stations=c.stations.filter(v=>v.id!==stationId);
-      return this._covertCommit(start,{sourceCastleId:station.sourceCastleId,target:station.target,count:station.count,foodCost:0,commandCost:0},station.unitName+station.count.toLocaleString()+'人が'+CASTLE_BY_ID[station.sourceCastleId].name+'へ帰還しました。');
+      if(c.dispatches.length>=COVERT_RULES.stationLimit)return covertError('COVERT_STATION_LIMIT','移動中の部隊が上限です。到着または帰還をお待ちください。');
+      const travel=travelRules()?.plan({sourceCastleId:station.target.castleId,targetCastleId:station.sourceCastleId});if(!travel)return covertError('INVALID_TARGET','帰還先までの距離を確認できません。');
+      const departedElapsedMs=this._covertElapsed(),id='cd_'+covertHash(c.campaignId)+'_'+c.sequence,march={version:1,authority:'local',kind:'covert',phase:'returning',id,requestId:start.requestId,campaignId:c.campaignId,sequence:c.sequence,cycle:this.state.cycle.index,clan:this.state.clan,sourceCastleId:station.sourceCastleId,targetCastleId:station.target.castleId,troops:station.count,count:station.count,mode:'station',stationId,target:copy(station.target),foodCost:0,commandCost:0,departedElapsedMs,arrivesElapsedMs:departedElapsedMs+travel.durationMs,travel,battleCursor:station.battleCursor};
+      c.stations=c.stations.filter(v=>v.id!==stationId);c.dispatches.push(march);
+      const result=this._covertCommit(start,{sourceCastleId:station.sourceCastleId,target:station.target,count:station.count,mode:'station',accepted:true,status:'marching',dispatchId:id,march:copy(march),foodCost:0,commandCost:0},station.unitName+station.count.toLocaleString()+'人が'+CASTLE_BY_ID[station.sourceCastleId].name+'への帰還を開始しました。到着まで'+travelRules().formatDuration(travel.durationMs)+'（1倍速）。');
+      return{...result,accepted:true,marching:true,march:copy(march)};
     }
     _recordCovertIncident(sourceCastleId,fromCastleId){
       if(!this._covertSourceAvailable(sourceCastleId))return;
@@ -2397,7 +2414,7 @@
           if(start>elapsed+.00001)nextBranchStart=Math.min(nextBranchStart,start);
           else activeJobs.add(job);
         }
-        const nextMarch=s.march?.authority==='local'?s.march.arrivesElapsedMs:Infinity,nextCovert=Math.min(Infinity,...(s.covert.dispatches||[]).filter(v=>v.authority!=='server'&&v.target.kind==='castle'&&v.arrivesElapsedMs>elapsed).map(v=>v.arrivesElapsedMs));
+        const nextMarch=s.march?.authority==='local'?s.march.arrivesElapsedMs:Infinity,nextCovert=Math.min(Infinity,...(s.covert.dispatches||[]).filter(v=>v.authority!=='server'&&(v.target.kind==='castle'||v.phase==='returning')&&v.arrivesElapsedMs>elapsed).map(v=>v.arrivesElapsedMs));
         // A defender can receive a server-completed facility while its normal
         // checkpoint is still older. Its recorded completion boundary prevents
         // retroactive resource production during later clock catch-up.

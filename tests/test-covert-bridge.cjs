@@ -130,6 +130,8 @@ test('local paid hire and scouting persist once and keep the military soldier ba
  const arrival={...h.control.clock,elapsedMs:march.arrivesElapsedMs,confirmedElapsedMs:march.arrivesElapsedMs};
  h.control.clock=arrival;const advanced=h.c.game.applyWorldClock(arrival);
  assert.equal(advanced.covertResults.length,1);assert.equal(advanced.covertResults[0].dispatchId,march.id);
+ assert.equal(h.c.state().covert.dispatches[0].phase,'returning');assert.equal(h.c.state().covert.reserves.edo,0);
+ const homeArrival={...arrival,elapsedMs:h.c.state().covert.dispatches[0].arrivesElapsedMs,confirmedElapsedMs:h.c.state().covert.dispatches[0].arrivesElapsedMs};h.control.clock=homeArrival;h.c.game.applyWorldClock(homeArrival);
  assert.equal(h.c.state().covert.dispatches.length,0);assert.equal(h.c.state().covert.reserves.edo,10);
  const status=await h.c.requestCovert('/covert');assert.equal(status.covert.reports.length,1);
  assert.equal(status.covert.reports[0].target.castleId,'odawara');assert.equal(h.c.state().troops,before.troops);

@@ -1,5 +1,9 @@
 const assert=require('node:assert/strict');
-const {createController,parseDate,inputDate,operationCard,policyView}=require('../alliance.js');
+const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path');
+const {setup:domSetup}=require('./helpers/dom-model.cjs');
+global.SengokuTravel=require('../travel.js');
+global.SengokuTravelUI=require('../travel-ui.js');
+const {createController,parseDate,inputDate,operationCard,policyView,unitsView,unitJourney,unitCanClaim}=require('../alliance.js');
 const now=Date.parse('2026-11-22T03:00:00Z');
 const context=()=>({playerId:'u_one',epoch:1,guildId:'g_one'});
 const data=()=>({ok:true,serverNow:now,guild:{id:'g_one',name:'同盟',role:'member'},policy:{joinMode:'approval',description:'参加歓迎',activity:'20時〜',withdrawRole:'officers',dailyLimit:100000000,approvalThreshold:500,newcomerHours:24,revision:1},operations:[],members:[],units:[],directory:[],applications:[],withdrawals:[],contributions:[]});
@@ -67,6 +71,30 @@ async function test(name,run){await run();count++;console.log('PASS '+name);}
   d.guild.role='owner';const owner=operationCard(op,d,{id:'u_one'});assert(owner.includes('data-alliance="launch"'));assert(owner.includes('data-alliance-form="assignment"'));
   assert(policyView(d,{id:'u_one'}).includes('max="100000000"'));
   d.guild.role='member';assert(!policyView(d,{id:'u_one'}).includes('data-alliance-form="policy"'));
+ });
+ await test('aid and rally units show travel and cannot be claimed until authoritative return arrival',()=>{
+  const d=data(),route=global.SengokuTravel.plan({sourceCastleId:'kiyosu',targetCastleId:'odawara'});d.clock={elapsedMs:1000,running:true};
+  const unit={id:'au_trip',ownerId:'u_one',targetPlayerId:'u_two',targetName:'仲間',castleId:'odawara',castleName:'小田原城',kind:'aid',state:'outbound',phase:'outbound',travel:route,departedElapsedMs:1000,arrivesElapsedMs:1000+route.durationMs,remainingMs:route.durationMs,canClaim:false,troops:600,expiresAt:now+3600000};d.units=[unit];
+  let html=unitsView(d,{id:'u_one'});assert.match(html,/援軍先へ移動中/);assert.match(html,/到着まで/);assert(!html.includes('data-alliance="claim"'));assert(html.includes('data-alliance="recall"'));assert.equal(unitJourney(unit).travel.sourceCastleId,'kiyosu');
+  const back=global.SengokuTravel.plan({sourceCastleId:'odawara',targetCastleId:'kiyosu'});Object.assign(unit,{phase:'returning',state:'returning',travel:back});html=unitsView(d,{id:'u_one'});assert.match(html,/帰還中/);assert.match(html,/帰還まで/);assert(!html.includes('data-alliance="claim"'));assert.equal(unitCanClaim(unit),false);
+  d.clock.elapsedMs=unit.arrivesElapsedMs+1;html=unitsView(d,{id:'u_one'});assert.match(html,/帰還を確認中/);assert(!html.includes('data-alliance="claim"'),'a client clock cannot settle an arrival');
+  Object.assign(unit,{phase:null,canClaim:true});html=unitsView(d,{id:'u_one'});assert(html.includes('data-alliance="claim"'));assert.equal(unitCanClaim(unit),true);
+  Object.assign(unit,{phase:'outbound',state:'outbound',kind:'rally',canClaim:false});assert.match(unitsView(d,{id:'u_one'}),/集結地点へ移動中/);
+  const legacy={state:'returning'};assert.equal(unitCanClaim(legacy),true);assert.equal(unitCanClaim({...legacy,canClaim:false}),false);
+ });
+ await test('gathering preview uses the fixed rally origin and reports soldiers still in transit',()=>{
+  const d=data(),op={id:'ao_trip',title:'集結',note:'',kind:'attack',creatorId:'u_one',stagingCastleId:'edo',castleId:'odawara',castleName:'小田原城',startsAt:now,expiresAt:now+600000,status:'planned',troops:300,travelingTroops:700,assignments:[],rsvps:[]};
+  const html=operationCard(op,d,{id:'u_one'},{game:{state:{home:'kiyosu'}}});assert.match(html,/移動中 700人/);assert.match(html,/集結地点へ到着してから/);assert.match(html,/江戸城/);assert.match(html,/清洲城/);
+ });
+ await test('mounted alliance countdown updates each second without rebuilding an edited form',async()=>{
+  const {host,doc}=domSetup(),timers=[],d=data(),route=global.SengokuTravel.plan({sourceCastleId:'kiyosu',targetCastleId:'odawara'});let elapsed=1000;
+  d.units=[{id:'au_timer',ownerId:'u_one',kind:'aid',state:'outbound',phase:'outbound',travel:route,departedElapsedMs:1000,arrivesElapsedMs:1000+route.durationMs,remainingMs:route.durationMs,troops:400,expiresAt:now+3600000}];
+  const window={document:doc,SengokuStableDOM:require('../stable-dom.js'),SengokuTravel:global.SengokuTravel,SengokuTravelUI:global.SengokuTravelUI,SengokuWorldClock:{snapshot:()=>({clock:{elapsedMs:elapsed,running:true}})},setInterval:fn=>{timers.push(fn);return timers.length;},clearInterval:()=>{}};
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../alliance.js'),'utf8'),{window,Intl,Date,FormData,Map,Set,Number,String,Object,Math,JSON});
+  const mounted=window.SengokuAlliance.mount(host,{getContext:context,storage:store(),request:async()=>d,getGame:()=>({state:{home:'kiyosu'}})});for(let i=0;i<30;i++)await Promise.resolve();
+  host.querySelector('[data-alliance="tab"][data-id="units"]').dispatchEvent({type:'click'});
+  const counter=host.querySelector('[data-alliance-unit-countdown]'),input=host.querySelector('input[name="troops"]');assert(counter);assert(input);const before=counter.textContent;input.focus();input.value='735';host.scrollTop=250;
+  elapsed+=1000;timers[0]();assert.strictEqual(host.querySelector('[data-alliance-unit-countdown]'),counter);assert.notEqual(counter.textContent,before);assert.strictEqual(doc.activeElement,input);assert.equal(input.value,'735');assert.equal(host.scrollTop,250);mounted.destroy();
  });
  console.log('Alliance browser: '+count+' scenarios passed.');
 })().catch(error=>{console.error(error);process.exitCode=1;});

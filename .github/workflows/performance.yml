@@ -78,3 +78,30 @@ jobs:
         run: node server/test-chat-replies.mjs
       - name: Verify anonymous promotion counters and operator authorization
         run: node server/test-promotion.mjs
+  dispatch-travel:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: '24'
+      - name: Verify dispatch return boundaries and save recovery
+        run: |
+          node tests/test-covert-return-travel.cjs
+          node tests/test-travel-engine.cjs
+          node tests/test-covert-engine.cjs
+      - name: Verify route previews and countdown continuity
+        run: |
+          node tests/test-covert-ui.cjs
+          node tests/test-covert-dom.cjs
+          node tests/test-travel-ui.cjs
+          node tests/test-alliance-strategy.cjs
+      - name: Verify authoritative arrival, defense and troop returns
+        run: |
+          node server/test-alliance-travel.mjs
+          node server/test-alliance-strategy.mjs
+          node server/test-covert.mjs
+          node server/test-battle-travel.mjs
