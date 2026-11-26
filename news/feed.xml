@@ -9,6 +9,19 @@
     <ttl>60</ttl>
     <atom:link href="https://www.kasai-solutions-inc.com/news/feed.xml" rel="self" type="application/rss+xml"/>
     <item>
+      <title>Ver.5.8.0｜太政官の任命・解任と役職の重複防止に対応</title>
+      <link>https://www.kasai-solutions-inc.com/news/#v5-8-0</link>
+      <guid isPermaLink="true">https://www.kasai-solutions-inc.com/news/#v5-8-0</guid>
+      <dc:date>2026-11-27</dc:date>
+      <description>太政大臣による他拠点の領主への太政官任命・解任に対応しました。京都御所の在任官職と重ならないよう、役職の変化にも連動します。
+
+6つの官職を任命・解任：太政大臣は「京都御所」の「朝廷の役職」から、他拠点の領主を名前で検索し、参議・中納言・大納言・内大臣・右大臣・左大臣の空席へ任命できます。各官職は1名、領主1名につき1職です。対象と官職を画面で確認して確定し、現在の任命も同じ画面で解任できます。太政大臣は固定の地位として、この任命・解任の対象には含みません。
+
+京都御所の役職と重複しない任命：京都御所のメンバーが在任中の官職は選べません。京都御所側の昇進や役職変更で重なる場合は、京都御所側を優先して外部への任命を解除します。後で京都御所の官職が空いても、解除された外部任命が自動で戻ることはありません。
+
+確認した内容と現在の役職を照合：確認中に在任状況が変わった場合は、最新の情報を読み直してから確認します。通信結果が分からない場合には同じ受付番号で再確認し、二重の任命を防ぎます。任命後の官職は領主の名前表示や敬語変換へ反映します。</description>
+    </item>
+    <item>
       <title>Ver.5.7.0｜修復・守備台帳と資源計画の端末保存を追加</title>
       <link>https://www.kasai-solutions-inc.com/news/#v5-7-0</link>
       <guid isPermaLink="true">https://www.kasai-solutions-inc.com/news/#v5-7-0</guid>

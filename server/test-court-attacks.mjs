@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {harness,settleFieldMarch,syncFieldWriter} from './test-support.mjs';
 import {fixture,post,row,save,count,appoint,updateSave} from './test-court-support.mjs';
+import {GameEngine,GAME_OFFICERS} from './game-runtime.js';
 
 const attackBody=(h,actor,target,castleId='edo')=>({requestId:crypto.randomUUID(),targetPlayerId:target.user.id,targetCastleId:castleId,troops:1000,tactic:'balanced',deviceId:actor.deviceId,expectedRevision:row(h,actor).revision});
 const attack=(h,actor,body,expected=200)=>h.api('/field/attack',post(actor,body,expected));
@@ -53,14 +54,32 @@ try{
  });
  await scope('revocation at the arrival transaction returns the army without an Edo battle',async h=>{
   const admin=await fixture(h,'到着先の江戸',{admin:true}),staff=await fixture(h,'到着前の御所担当',{staff:true});await appoint(h,staff);
-  const before=save(h,staff),sent=(await attack(h,staff,attackBody(h,staff,admin))).data,escrow=effects(h);
+  const before=save(h,staff),sent=(await attack(h,staff,attackBody(h,staff,admin))).data;
   assert(sent.marching);h.now+=sent.march.remainingMs;
+  // Normal monthly upkeep still runs during a cancelled journey. Project that
+  // elapsed time separately, leaving the server march reserved and unresolved.
+  const pending=(await h.api('/sync?deviceId='+staff.deviceId,{token:staff.token})).data;
+  assert.equal(pending.save.state.troops,before.state.troops-sent.march.troops);
+  const transit=GameEngine.fromSave(pending.save,GAME_OFFICERS,{isAdmin:pending.user.isAdmin,isStaff:pending.user.isStaff,staffBase:pending.staffBase,maintenanceAuthority:pending.maintenanceAuthority,branchAuthority:{resolvedElapsedMs:pending.branchResolvedElapsedMs}});
+  const track=transit.beginUpkeepTracking(),advanced=transit.applyWorldClock(pending.clock,{maxSeconds:86400,deferCycleSettlement:true}),upkeep=track();
+  assert(advanced.ok&&!advanced.pending&&!advanced.maintenancePending);assert(!upkeep.overflow);
+  const upkeepLoss=upkeep.records.reduce((total,record)=>total+record.before.army-record.after.army,0);
+  assert(upkeepLoss>0,'This journey must cross an actual monthly deficit settlement');
+  assert.equal(transit.state.troops,pending.save.state.troops-upkeepLoss,'The elapsed-time projection loses troops only to upkeep');
+  const expectedTroops=transit.state.troops+sent.march.troops,escrow=effects(h);
   h.beforeBatch=statements=>{if(!statements.some(s=>s.sql.includes('INSERT INTO field_requests')))return;h.beforeBatch=null;h.sql.exec('DELETE FROM court_leader');};
   const attempted=(await h.api('/marches',{token:staff.token})).data;
   if(attempted.active.length){assert.deepEqual(effects(h),escrow);assert.equal(attempted.active[0].id,sent.march.id);}
   const returned=(await h.api('/marches',{token:staff.token})).data;
   assert.equal(returned.history[0].id,sent.march.id);assert.equal(returned.history[0].status,'cancelled');assert.equal(returned.history[0].battle,null);
-  assert.equal(returned.save.state.troops,before.state.troops);assert.equal(count(h,'field_battles'),0);assert.equal(count(h,'field_requests'),0);assert.equal(count(h,'mail_campaigns'),0);
+  const receipt=JSON.parse(h.sql.prepare('SELECT result_json FROM battle_marches WHERE id=?').get(sent.march.id).result_json);
+  assert.deepEqual(receipt.refund,{troops:sent.march.troops,rice:sent.save.state.march.foodCost,command:sent.save.state.march.commandCost});
+  assert.equal(returned.save.state.troops,expectedTroops,'Cancellation returns every reserved soldier without additional combat losses');
+  assert.equal(before.state.troops-returned.save.state.troops,upkeepLoss);
+  assert.equal(returned.save.state.worldClock.elapsedMs,pending.clock.elapsedMs);
+  assert.equal(count(h,'field_battles'),0);assert.equal(count(h,'field_requests'),0);assert.equal(count(h,'mail_campaigns'),0);
+  const committed=effects(h),repeated=(await h.api('/marches',{token:staff.token})).data;
+  assert.equal(repeated.save.state.troops,expectedTroops);assert.deepEqual(effects(h),committed,'Polling a cancelled march cannot refund the army twice');
  });
  await scope('Kyoto scouts and stationed units remain available while only the current Emperor can retaliate at Edo',async h=>{
   const{admin,staff,stationId,incidentId}=await provision(h);const status=(await h.api('/covert',{token:staff.token})).data;assert.equal(status.covert.rules.canAttackEdoFromKyoto,false);assert(status.covert.incidents.some(v=>v.id===incidentId));

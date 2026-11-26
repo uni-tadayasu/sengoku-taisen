@@ -274,6 +274,13 @@
       "when": 1798416000000,
       "tag": "0038_alliance_unit_travel",
       "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "6",
+      "when": 1798502400000,
+      "tag": "0039_external_court_offices",
+      "breakpoints": true
     }
   ]
 }

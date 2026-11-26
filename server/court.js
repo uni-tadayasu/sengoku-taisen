@@ -1,8 +1,9 @@
 // Admission derives from the current authoritative save. Public conversation
 // represents all court officials as 朝廷; private personnel stay staff-only.
+import {COURT_OFFICES,handleCourtOffices} from './court-offices.js';
 const stmt=(db,sql,...args)=>db.prepare(sql).bind(...args),rows=value=>value?.results||[],iso=value=>new Date(Number(value)).toISOString();
 const REQUIREMENT=Object.freeze({rankId:'court-7',rankName:'従五位',minScore:35000});
-const THRESHOLDS=Object.freeze([{title:'参議',minMerit:0},{title:'中納言',minMerit:50},{title:'大納言',minMerit:200},{title:'内大臣',minMerit:500},{title:'右大臣',minMerit:1000},{title:'左大臣',minMerit:2000}]);
+const THRESHOLDS=Object.freeze(COURT_OFFICES.map(({title,minMerit})=>({title,minMerit})));
 const TERM="COALESCE(sm.term_id,'legacy:'||sm.appointed_at)";
 const GATE='EXISTS(SELECT 1 FROM court_requests WHERE actor_id=? AND request_id=? AND commit_token=?)';
 const activeAuthor=alias=>`NOT EXISTS(SELECT 1 FROM player_bans pb WHERE pb.user_id=${alias} AND pb.active=1)`;
@@ -42,10 +43,11 @@ async function roster(ctx,access){
  return{ok:true,roster:people,leaderId:people.find(row=>row.isLeader)?.id||null,thresholds:THRESHOLDS};
 }
 async function info(ctx,access){
- const result=await read(ctx,access,[stmt(ctx.db,`SELECT COALESCE((SELECT SUM(points) FROM court_contributions WHERE actor_id=?),0) AS merit,EXISTS(SELECT 1 FROM court_leader l JOIN staff_members sm ON sm.user_id=l.user_id WHERE l.user_id=? AND l.term_id=${TERM}) AS leader`,ctx.user.id,ctx.user.id)]),self=rows(result[0])[0],state=access.shared;
- const title=ctx.user.is_admin?'太政大臣':ctx.user.is_staff?titleFor(Number(self.merit),false,!!self.leader):access.evaluation?.rankName||'無位';
+ const result=await read(ctx,access,[stmt(ctx.db,`SELECT COALESCE((SELECT SUM(points) FROM court_contributions WHERE actor_id=?),0) AS merit,EXISTS(SELECT 1 FROM court_leader l JOIN staff_members sm ON sm.user_id=l.user_id WHERE l.user_id=? AND l.term_id=${TERM}) AS leader,(SELECT office_id FROM court_external_offices WHERE user_id=?) AS external_office,(SELECT appointment_token FROM court_external_offices WHERE user_id=?) AS external_token`,ctx.user.id,ctx.user.id,ctx.user.id,ctx.user.id)]),self=rows(result[0])[0],state=access.shared;
+ const title=ctx.user.is_admin?'太政大臣':ctx.user.is_staff?titleFor(Number(self.merit),false,!!self.leader):COURT_OFFICES.find(office=>office.id===self.external_office)?.title||access.evaluation?.rankName||'無位';
  // Bind the title/capability to the same appointment observed for accessStamp.
  access.guard={sql:access.guard.sql+` AND COALESCE((SELECT l.appointment_token FROM court_leader l JOIN staff_members sm ON sm.user_id=l.user_id WHERE l.user_id=? AND l.term_id=${TERM} AND NOT EXISTS(SELECT 1 FROM settings WHERE key='adminUserId' AND value=l.user_id)),'')=?`,args:[...access.guard.args,ctx.user.id,access.emperor.token||'']};
+ access.guard={sql:access.guard.sql+` AND COALESCE((SELECT appointment_token FROM court_external_offices WHERE user_id=?),'')=?`,args:[...access.guard.args,ctx.user.id,self.external_token||'']};
  return finish(ctx,access,{ok:true,eligible:access.eligible,requirement:REQUIREMENT,evaluation:access.evaluation,accessStamp:access.accessStamp,self:{id:ctx.user.id,name:ctx.user.name,title,merit:Number(self.merit),canRespond:access.privileged,canAppoint:!!ctx.user.is_admin,isCourtEmperor:access.emperor.isCourtEmperor},palace:{id:'kyoto_gosho',name:'京都御所',level:state.castleLevel,maxLevel:128,buildings:state.buildings,jobCount:state.jobs.length,updatedElapsedMs:state.updatedElapsedMs},features:{conversation:access.eligible,audience:access.eligible,roster:access.privileged},thresholds:THRESHOLDS,serverNow:iso(ctx.now)});
 }
 const messageSelect=table=>`SELECT m.*,u.name,CASE WHEN m.author_kind='court' OR ${currentOfficial('m.author_id')} THEN 1 ELSE 0 END AS official FROM ${table} m JOIN users u ON u.id=m.author_id`;
@@ -115,6 +117,7 @@ export async function handleCourt(ctx){
  if(path==='/court'&&method==='GET')return info(ctx,access);
  if(path==='/staff/court'&&method==='GET')return finish(ctx,access,await roster(ctx,access));
  if(path==='/admin/court/leader'&&method==='POST')return appoint(ctx,access);
+ if(path==='/admin/court/offices')return finish(ctx,access,await handleCourtOffices(ctx,access));
  requireEntry(ctx,access);
  if(path==='/court/chat'&&method==='GET')return chat(ctx,access);
  if(path==='/court/chat'&&method==='POST')return chatWrite(ctx,access);

@@ -139,3 +139,26 @@ jobs:
           node server/test-kyoto-migration.mjs
           node server/test-staff-base.mjs
           node server/test-construction-queues.mjs
+
+  court-appointments:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: '24'
+      - name: Verify fixed chancellor, exclusive offices and atomic appointments
+        run: |
+          node server/test-court-offices.mjs
+          node server/test-court-office-messaging.mjs
+      - name: Verify court privacy, public titles and Kyoto continuity
+        run: |
+          node server/test-court.mjs
+          node server/test-public-court.mjs
+          node server/test-court-moderation.mjs
+          node server/test-court-attacks.mjs
+          node server/test-honorific-messaging.mjs
+          node server/test-kyoto-migration.mjs
