@@ -6,6 +6,7 @@
   const number = value => Math.max(0, Math.floor(Number(value) || 0)).toLocaleString('ja-JP');
   const signed = value => { const n = Number(value) || 0; return (n < 0 ? '−' : n > 0 ? '+' : '') + number(Math.abs(n)); };
   const filters = {all:'すべて',construction:'普請',research:'研究',marching:'進軍・派遣',returning:'帰還'};
+  const timeWindows = {all:'すべての予定',minute:'残り1分以内',fiveMinutes:'残り5分以内',due:'確定待ち',paused:'再開待ち'};
   const PLAN_LIMIT = 8;
   const PLAN_STORAGE_KEY = 'sengoku-resource-plans-v1', PLAN_STORAGE_VERSION = 1;
   const PLAN_STORAGE_LIMIT = 6, PLAN_STORAGE_BYTES = 16384, PLAN_SAVE_DELAY = 350;
@@ -17,9 +18,10 @@
     return (hours?hours+'時間':'')+(minutes?minutes+'分':'')+(rest||!hours&&!minutes?rest+'秒':'');
   }
   function operationClock(game, supplied) {
-    const state=game?.state||{},live=supplied||global.SengokuWorldClock?.snapshot?.()?.clock||{},stored=state.worldClock||{},realtime=state.realtime||{};
+    const shared=global.SengokuWorldClock?.snapshot?.();
+    const state=game?.state||{},live=supplied||shared?.clock||{},stored=state.worldClock||{},realtime=state.realtime||{};
     const speed=Number(live.speed??realtime.speed),elapsedMs=live.elapsedMs??stored.elapsedMs??((state.turn||0)*60000+(realtime.elapsed||0)*1000);
-    return {elapsedMs:nonnegative(elapsedMs),realNowMs:nonnegative(live.realNowMs??Date.now()),running:(live.running??realtime.running)!==false,speed:[1,2,4].includes(speed)?speed:1};
+    return {ready:shared?.ready!==false&&supplied?.ready!==false,elapsedMs:nonnegative(elapsedMs),realNowMs:nonnegative(live.realNowMs??Date.now()),running:(live.running??realtime.running)!==false,speed:[1,2,4].includes(speed)?speed:1};
   }
   // A budget is a transparent fixed-income projection, never a future save or
   // permission to spend. In particular, deficits may change at month-end.
@@ -103,6 +105,7 @@
   function operationTiming(row,clock) {
     const world=row.timeBasis!=='real',paused=world&&!clock.running,remaining=nonnegative(row.remainingMs),speed=world?clock.speed:1;
     const terminal=row.category==='construction'||row.category==='research'?'完成':row.category==='returning'?'帰還':'到着';
+    if(world&&!clock.ready)return {time:'共通時刻を確認中',timingNote:'受信後に残り時間を表示',sortMs:Infinity,paused:false};
     return {time:remaining<=0?terminal+'を確認中':paused?'停止中 · 時刻未定':terminal+'まで '+duration(remaining/speed),
       timingNote:paused?'残り '+duration(remaining)+'（1倍速）':row.queued?'着工まで '+duration(row.startsInMs/speed):world&&clock.speed!==1?clock.speed+'倍速の目安':world?'1倍速の目安':'実時間で移動',
       sortMs:paused&&remaining>0?Infinity:remaining/speed,paused};
@@ -149,7 +152,7 @@
     const counts=Object.fromEntries(Object.keys(filters).map(key=>[key,key==='all'?items.length:items.filter(row=>row.category===key).length]));
     const checkedAt=Number.isFinite(alliance.fetchedAt)?checkedTimeFormat.format(new Date(alliance.fetchedAt)):'';
     const allianceNote=alliance.available?'同盟部隊は '+checkedAt+' JST の取得情報です。移動の変更・到着結果は同盟作戦で再確認できます。':alliance.status==='unregistered'?'同盟部隊は領主登録後に確認できます。':alliance.status==='unavailable'?'同盟部隊を表示できません。領主の利用状態を同盟作戦で確認してください。':'同盟部隊は未取得です。同盟作戦を開くと、本人の援軍・集結の往復をここにも表示します。';
-    return {items,counts,clock,allianceNote,allianceCount:allianceMarches.length,queued:items.filter(row=>row.queued).length,clockLabel:clock.running?'現在 '+clock.speed+'倍速 · 完成・到着が近い順':'共通時間は停止中 · 完成・到着時刻は未定'};
+    return {items,counts,clock,allianceNote,allianceCount:allianceMarches.length,queued:items.filter(row=>row.queued).length,clockLabel:!clock.ready?'共通時刻を確認中 · 実時間の移動は継続':clock.running?'現在 '+clock.speed+'倍速 · 完成・到着が近い順':'共通時間は停止中 · 実時間の移動は継続'};
   }
 
   function build(game, options = {}) {
@@ -222,10 +225,19 @@
     if (host.dataset.tone !== model.tone) host.dataset.tone = model.tone;
   }
 
-  function matchingOperations(model,filter='all',query='') {
+  function withinTimeWindow(row,window) {
+    switch(window) {
+      case 'minute': return row.sortMs > 0 && row.sortMs <= 60000;
+      case 'fiveMinutes': return row.sortMs > 0 && row.sortMs <= 300000;
+      case 'due': return row.sortMs === 0;
+      case 'paused': return row.paused && row.remainingMs > 0;
+      default: return true;
+    }
+  }
+  function matchingOperations(model,filter='all',query='',timeWindow='all') {
     const normalize=value=>String(value??'').normalize('NFKC').toLocaleLowerCase('ja-JP');
     const words=normalize(query).trim().split(/\s+/).filter(Boolean);
-    return model.items.filter(row=>(filter==='all'||row.category===filter)&&words.every(word=>normalize(row.name+' '+row.detail+' '+filters[row.category]).includes(word)));
+    return model.items.filter(row=>(filter==='all'||row.category===filter)&&withinTimeWindow(row,timeWindow)&&words.every(word=>normalize(row.name+' '+row.detail+' '+filters[row.category]).includes(word)));
   }
   function operationRow(row) {
     return `<li class="command-operation" data-stable-key="${esc(row.id)}" data-command-operation="${esc(row.id)}" data-kind="${row.category}"><div class="command-operation-content"><div class="command-operation-heading"><span class="command-operation-kind">${filters[row.category]}</span>${row.queued?'<span class="command-operation-queued">予約待ち</span>':''}</div><h3>${esc(row.name)}</h3><p>${esc(row.detail)}</p></div><div class="command-operation-time"><strong data-command-time="${esc(row.id)}">${esc(row.time)}</strong><small data-command-timing="${esc(row.id)}">${esc(row.timingNote)}</small></div><div class="command-operation-track" aria-hidden="true"><i data-command-progress="${esc(row.id)}" style="width:${Math.round(row.progress)}%"></i></div><button type="button" class="button small command-operation-open" data-command-go="${row.destination}" data-command-key="${esc(row.id)}" aria-label="${esc(row.name+'：'+row.actionLabel)}"${row.destination==='alliance'?' data-action="alliance-strategy" data-command-dismiss':''}>${row.actionLabel}</button></li>`;
@@ -249,7 +261,7 @@
   function finishActivity() {
     const current=activitySession;
     if(!current)return;
-    activityDraft={scope:current.scope,filter:current.filter,query:current.query,limit:current.limit,
+    activityDraft={scope:current.scope,filter:current.filter,timeWindow:current.timeWindow,query:current.query,limit:current.limit,
       top:activityDialog.querySelector('[data-command-scroll]').scrollTop,dialogTop:activityDialog.scrollTop};
     activitySession=null;
     current.unsubscribe?.();
@@ -273,7 +285,7 @@
     activityDialog.className='command-activity-dialog';
     activityDialog.setAttribute('aria-labelledby','command-activity-title');
     activityDialog.setAttribute('aria-describedby','command-activity-note');
-    activityDialog.innerHTML='<header class="command-activity-header"><div><p>領国の進行状況</p><h2 id="command-activity-title">行動予定表</h2></div><button type="button" class="button" data-command-close>閉じる</button></header><div class="command-activity-tools"><p class="command-activity-clock" data-command-clock></p><label class="command-activity-search"><span>城・施設・研究を探す</span><input type="search" class="input" data-command-query maxlength="100" placeholder="例：田畑、清洲城、帰還" autocomplete="off"></label><div class="command-activity-filters" role="group" aria-label="予定の種類">'+Object.entries(filters).map(([key,label])=>'<button type="button" data-command-filter="'+key+'" aria-pressed="'+(key==='all')+'">'+label+'<span data-command-count="'+key+'">0</span></button>').join('')+'</div><p class="command-activity-count" data-command-result-count role="status" aria-live="polite"></p></div><div class="command-activity-scroll" data-command-scroll><ul class="command-operation-list" data-command-list></ul><div class="command-activity-empty" data-command-empty hidden><strong>該当する予定はありません</strong><p>普請・研究・進軍・帰還が始まると、ここに表示されます。</p><button type="button" class="button" data-command-reset>条件を解除</button></div><button type="button" class="button command-activity-more" data-command-more hidden>さらに40件を表示</button></div><footer class="command-activity-footer"><p id="command-activity-note">残り時間は現在の速度での目安です。速度・停止に連動し、完成・到着は確定後に各画面へ反映されます。</p><p><span data-command-alliance-note>同盟部隊は未取得です。</span><button type="button" class="text-link" data-action="alliance-strategy" data-command-dismiss>同盟作戦で確認</button></p></footer>';
+    activityDialog.innerHTML='<header class="command-activity-header"><div><p>領国の進行状況</p><h2 id="command-activity-title">行動予定表</h2></div><button type="button" class="button" data-command-close>閉じる</button></header><div class="command-activity-tools"><p class="command-activity-clock" data-command-clock></p><div class="command-activity-fields"><label class="command-activity-search"><span>城・施設・研究を探す</span><input type="search" class="input" data-command-query maxlength="100" placeholder="例：田畑、清洲城、帰還" autocomplete="off"></label><label class="command-activity-window"><span>残り時間・状態</span><select class="select" data-command-window>'+Object.entries(timeWindows).map(([key,label])=>'<option value="'+key+'">'+label+'</option>').join('')+'</select></label></div><div class="command-activity-filters" role="group" aria-label="予定の種類">'+Object.entries(filters).map(([key,label])=>'<button type="button" data-command-filter="'+key+'" aria-pressed="'+(key==='all')+'">'+label+'<span data-command-count="'+key+'">0</span></button>').join('')+'</div><p class="command-activity-count" data-command-result-count role="status" aria-live="polite"></p></div><div class="command-activity-scroll" data-command-scroll><ul class="command-operation-list" data-command-list></ul><div class="command-activity-empty" data-command-empty hidden><strong>該当する予定はありません</strong><p data-command-empty-note>普請・研究・進軍・帰還が始まると、ここに表示されます。</p><button type="button" class="button" data-command-reset>条件を解除</button></div><button type="button" class="button command-activity-more" data-command-more hidden>さらに40件を表示</button></div><footer class="command-activity-footer"><p id="command-activity-note">残り時間は現在の速度での目安です。速度・停止に連動し、完成・到着は確定後に各画面へ反映されます。</p><p><span data-command-alliance-note>同盟部隊は未取得です。</span><button type="button" class="text-link" data-action="alliance-strategy" data-command-dismiss>同盟作戦で確認</button></p></footer>';
     activityDialog.addEventListener('cancel',event=>{event.preventDefault();close();});
     // Keep Escape local to this layer; the underlying detail retains its live
     // refresh context and receives focus again after native cancellation.
@@ -285,6 +297,12 @@
     });
     // Native close events are queued; an earlier close can arrive after reopen.
     activityDialog.addEventListener('close',()=>{if(!activityDialog.open)finishActivity();});
+    activityDialog.addEventListener('change',event=>{
+      if(!event.target.matches?.('[data-command-window]')||!currentActivityGame())return;
+      activitySession.timeWindow=Object.hasOwn(timeWindows,event.target.value)?event.target.value:'all';
+      activitySession.limit=40;
+      renderActivity();
+    });
     activityDialog.addEventListener('input',event=>{
       if(!event.target.matches?.('[data-command-query]')||!currentActivityGame())return;
       if(event.isComposing||activitySession.composing)return;
@@ -302,7 +320,8 @@
       if(!currentActivityGame()){event.preventDefault?.();event.stopPropagation?.();return;}
       if(button.hasAttribute('data-command-close')||button.hasAttribute('data-command-dismiss'))return close();
       if(button.hasAttribute('data-command-filter')){activitySession.filter=Object.hasOwn(filters,button.dataset.commandFilter)?button.dataset.commandFilter:'all';activitySession.limit=40;renderActivity();return;}
-      if(button.hasAttribute('data-command-reset')){activitySession.filter='all';activitySession.query='';activitySession.limit=40;activityDialog.querySelector('[data-command-query]').value='';renderActivity();return;}
+      if(button.hasAttribute('data-command-reset')){activitySession.filter='all';activitySession.timeWindow='all';activitySession.query='';activitySession.limit=40;
+        activityDialog.querySelector('[data-command-window]').value='all';activityDialog.querySelector('[data-command-query]').value='';renderActivity();return;}
       if(button.hasAttribute('data-command-more')){activitySession.limit+=40;renderActivity();return;}
       const destination=button.dataset.commandGo,options=activitySession.options;
       const target=activitySession.model?.items.find(row=>row.id===button.dataset.commandKey)?.target;
@@ -323,7 +342,7 @@
     if(clock)session.clock=clock;
     const model=buildOperations(game,{catalog:session.options.catalog,marches:session.data?.active||[],clock:session.clock});
     session.model=model;
-    const rows=matchingOperations(model,session.filter,session.query),visible=rows.slice(0,session.limit),byId=new Map(visible.map(row=>[row.id,row]));
+    const rows=matchingOperations(model,session.filter,session.query,session.timeWindow),visible=rows.slice(0,session.limit),byId=new Map(visible.map(row=>[row.id,row]));
     const text=(selector,value)=>{const node=activityDialog.querySelector(selector);if(node&&node.textContent!==value)node.textContent=value;};
     text('[data-command-clock]',model.clockLabel);
     text('[data-command-alliance-note]',model.allianceNote);
@@ -351,7 +370,8 @@
       else {const value=node.hasAttribute('data-command-time')?row.time:row.timingNote;if(node.textContent!==value)node.textContent=value;}
     }
     activityDialog.querySelector('[data-command-empty]').hidden=rows.length>0;
-    activityDialog.querySelector('[data-command-reset]').hidden=session.filter==='all'&&!session.query;
+    if(!rows.length)text('[data-command-empty-note]',model.items.length?'条件を変更すると、ほかの予定を確認できます。':'普請・研究・進軍・帰還が始まると、ここに表示されます。');
+    activityDialog.querySelector('[data-command-reset]').hidden=session.filter==='all'&&session.timeWindow==='all'&&!session.query;
     activityDialog.querySelector('[data-command-more]').hidden=rows.length<=session.limit;
   }
   function open(options = {}) {
@@ -363,9 +383,10 @@
     if(activitySession)close();
     const scope=identity(game),saved=activityDraft?.scope===scope?activityDraft:null,explicit=Object.hasOwn(filters,options.filter);
     if(!saved)activityDraft=null;
-    const session={options,scope,returnFocus:global.document.activeElement,filter:explicit?options.filter:saved?.filter||'all',query:explicit?'':saved?.query||'',limit:explicit?40:saved?.limit||40,composing:false,model:null,unsubscribe:null};
+    const session={options,scope,returnFocus:global.document.activeElement,filter:explicit?options.filter:saved?.filter||'all',timeWindow:explicit?'all':saved?.timeWindow||'all',query:explicit?'':saved?.query||'',limit:explicit?40:saved?.limit||40,composing:false,model:null,unsubscribe:null};
     activitySession=session;
     dialog.querySelector('[data-command-query]').value=session.query;
+    dialog.querySelector('[data-command-window]').value=session.timeWindow;
     dialog.showModal();
     if(typeof global.SengokuTravelUI?.subscribe==='function'){
       session.unsubscribe=global.SengokuTravelUI.subscribe((data,clock)=>{if(activitySession===session)renderActivity(data,clock);});

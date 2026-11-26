@@ -9,6 +9,17 @@
     <ttl>60</ttl>
     <atom:link href="https://www.kasai-solutions-inc.com/news/feed.xml" rel="self" type="application/rss+xml"/>
     <item>
+      <title>Ver.5.9.3｜セーブ読み込み前の戦役比較と、行動予定表の時間絞り込み</title>
+      <link>https://www.kasai-solutions-inc.com/news/#v5-9-3</link>
+      <guid isPermaLink="true">https://www.kasai-solutions-inc.com/news/#v5-9-3</guid>
+      <dc:date>2026-11-27</dc:date>
+      <description>ファイルを読み込む前に現在の戦役との差を見比べられます。行動予定表では、まもなく終わる普請や部隊の到着、確定・再開を待っている予定を探せます。
+
+読み込み前に2つの戦役を照合：勢力・本拠・進行年月・家臣・領有拠点・手持ち兵を横に並べ、資源も展開して比較できます。同じ戦役では進行月の差を案内し、保存日時がない古い記録にはその旨を示します。
+
+必要な時間帯と状態だけを表示：行動予定表を残り1分以内・5分以内・確定待ち・再開待ちで絞り込めます。検索語や予定の種類とも併用でき、共通時計の状態と実時間移動を考慮します。</description>
+    </item>
+    <item>
       <title>Ver.5.9.2｜注目城の登録、予備兵・兵糧を残す軍議、出陣戦績の比較</title>
       <link>https://www.kasai-solutions-inc.com/news/#v5-9-2</link>
       <guid isPermaLink="true">https://www.kasai-solutions-inc.com/news/#v5-9-2</guid>

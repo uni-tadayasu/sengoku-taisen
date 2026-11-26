@@ -1504,8 +1504,40 @@
     if(progress?.ok===false)throw fileImportFailure('共通時計と維持費の履歴を同期してから、もう一度読み込んでください。現在の進行は変更していません。');
     return{candidate,pending:Boolean(progress?.pending)};
   }
+  function saveComparisonMarkup(current,candidate,record,fileName){
+    const currentId=current.state.walking?.campaignId;
+    const fileId=(record.state||record).walking?.campaignId;
+    const identified=currentId&&fileId&&currentId!=='legacy_v1'&&fileId!=='legacy_v1';
+    const monthDiff=candidate.state.turn-current.state.turn;
+    const relation=!identified?'戦役の識別情報がないため、本拠と進行を確認してください。':
+      fileId!==currentId?'別の戦役のセーブです。':
+      monthDiff===0?'同じ戦役・同じ進行月です。':
+      '同じ戦役の、現在より'+Math.abs(monthDiff).toLocaleString('ja-JP')+'か月'+(monthDiff<0?'前':'先')+'の記録です。';
+    const timestamp=typeof record.savedAt==='string'&&/^\d{4}-\d{2}-\d{2}T/.test(record.savedAt)?new Date(record.savedAt):null;
+    const savedAt=timestamp&&Number.isFinite(timestamp.getTime())?timestamp.toLocaleString('ja-JP',{year:'numeric',month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit',timeZoneName:'short'}):'記録なし';
+    function comparisonTable(caption,fields){
+      const rows=fields.map(([label,read])=>{
+        const before=read(current),after=read(candidate);
+        return `<tr><th scope="row">${label}</th><td>${esc(before)}</td><td${before===after?'':' class="save-value-changed"'}>${esc(after)}</td></tr>`;
+      }).join('');
+      return `<table class="save-comparison-table" aria-label="${caption}"><colgroup><col><col><col></colgroup><thead><tr><th scope="col">項目</th><th scope="col">現在の戦役</th><th scope="col">読み込むセーブ</th></tr></thead><tbody>${rows}</tbody></table>`;
+    }
+    const progress=comparisonTable('戦役の比較',[
+      ['勢力',g=>g.state.clan],['本拠',g=>g.data.castles.find(c=>c.id===g.state.home)?.name||g.state.home],
+      ['進行年月',g=>{const d=g.calendar();return `第${d.cycle}周 · ${d.year}年${d.month}月`;}],
+      ['家臣',g=>g.state.officers.length.toLocaleString('ja-JP')+'名'],
+      ['領有拠点',g=>g.ownedCastleIds().length.toLocaleString('ja-JP')+'城'],
+      ['手持ち兵',g=>g.state.troops.toLocaleString('ja-JP')+'人']
+    ]);
+    const resources=comparisonTable('資源の比較',[
+      ['金銭',g=>g.state.resources.gold.toLocaleString('ja-JP')],['兵糧',g=>g.state.resources.rice.toLocaleString('ja-JP')],
+      ['木材',g=>g.state.resources.wood.toLocaleString('ja-JP')],['石材',g=>g.state.resources.stone.toLocaleString('ja-JP')],
+      ['勾玉',g=>g.state.magatama.toLocaleString('ja-JP')]
+    ]);
+    return `<section class="save-comparison" aria-label="読み込み前の確認"><p class="save-comparison-file"><b>${esc(fileName||'選択したファイル')}</b><small>ファイル内の保存日時　${esc(savedAt)}</small></p><p class="save-comparison-relation">${esc(relation)}</p>${progress}<details><summary>資源も比較する</summary>${resources}</details><p class="save-comparison-note">確認画面を開いた時点の比較です。読み込み後は共通時刻まで進行を反映します。</p></section>`;
+  }
   function confirmFileImport(){
-    if(!importedGame)return false;
+    if(activeModal!=='import'||!importedGame)return false;
     let prepared;try{prepared=prepareFileImport(importedGame.exportSave(),importedScope,{advance:true});}catch(error){importedGame=null;importedScope=null;importReadGeneration++;closeModal();toast(fileImportMessage(error),true);return false;}
     try{backupCurrentSave('manual-import');}catch(_){toast('バックアップを保存できませんでした。先にセーブを書き出してください。',true);return false;}
     lastRealtime=performance.now();game=prepared.candidate;worldCatchingUp=prepared.pending;importedGame=null;importedScope=null;importReadGeneration++;saveEnabled=true;saveWarning='';selectedCastle='';retireLocalWalkingContext();closeModal();save({replaceCampaign:true});render();toast(worldCatchingUp?'セーブを読み込み、共通時刻までの進行を反映しています。':'セーブデータを読み込みました。');queueWorldProgress();return true;
@@ -1519,7 +1551,7 @@
     try{
       const [raw]=await Promise.all([file.text(),window.SengokuWorldClock?.refresh()]);if(generation!==importReadGeneration)return;
       importedGame=prepareFileImport(raw,scope).candidate;importedScope=scope;
-      modal('セーブを読み込みますか？','現在のプレイは読み込んだ内容に置き換わります。',`<p>${esc(importedGame.state.clan)} · ${shortDate(importedGame.state.turn)}</p><div class="stat-row"><span>家臣</span><b>${importedGame.state.officers.length}名</b></div><div class="stat-row"><span>領有拠点</span><b>${importedGame.ownedCastles().length}城</b></div>`,`<button class="button" data-action="close">やめる</button><button class="button primary" data-action="confirm-import">読み込む</button>`,'import');
+      modal('セーブを読み込みますか？','現在のプレイは読み込んだ内容に置き換わります。',saveComparisonMarkup(game,importedGame,JSON.parse(raw),file.name),`<button class="button" data-action="close">やめる</button><button class="button primary" data-action="confirm-import">読み込む</button>`,'import');
     }catch(error){if(generation!==importReadGeneration)return;importedGame=null;importedScope=null;toast(fileImportMessage(error),true);}
   });
 

@@ -460,3 +460,37 @@ dialog.command-activity-dialog[open] { display: flex; flex-direction: column; }
   .resource-plan-summary,.resource-plan-card,.resource-plan-forecast,.resource-plan-basket,.resource-plan-reserve { border:1px solid CanvasText; }
   .resource-plan-track i { background:Highlight; }
 }
+
+.command-activity-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(9rem, .55fr);
+  gap: 12px;
+  align-items: end;
+}
+.command-activity-fields > label {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 4px;
+  min-width: 0;
+  color: #c6d3d2;
+  font-size: .875rem;
+}
+.command-activity-window select {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  font: inherit;
+  font-size: 1rem;
+}
+.command-activity-window select:focus-visible {
+  outline: 3px solid #f7d995;
+  outline-offset: 2px;
+}
+@media (max-width:420px) {
+  .command-activity-fields { grid-template-columns: minmax(0, 1fr); gap: 6px; }
+  .command-activity-fields .command-activity-window {
+    grid-template-columns: max-content minmax(0, 1fr);
+    align-items: center;
+    gap: 8px;
+  }
+}
