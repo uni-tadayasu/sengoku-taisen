@@ -2,6 +2,48 @@
    Leave map canvases, portrait crops, and deliberately shortened list previews
    to their own styles; these rules only change text and content layout. */
 
+/* The resume label is longer than the first-play label. Allow enlarged text
+   to wrap inside the title action instead of extending beyond its frame. */
+#launch-screen #launch-enter.edition-enter {
+  min-width: 0;
+  max-width: 100%;
+  height: auto;
+  white-space: normal;
+}
+#launch-screen #launch-enter [data-enter-label] {
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-wrap: balance;
+}
+
+/* Share the text-scaled minimum with the existing footer/toast reservation.
+   At 320px and the default 16px root font this keeps 62px buttons / 75px dock.
+   Enlarged text gets taller buttons without introducing a fixed text height. */
+@media (max-width:700px) {
+  html.sengoku-navigation-ready:not(.sengoku-desktop-fit) {
+    --compact-dock-button-min: 4.75rem;
+    --compact-dock-height: calc(var(--compact-dock-button-min) + .8125rem);
+  }
+  html.sengoku-navigation-ready:not(.sengoku-desktop-fit) #app.chronicle-shell .sidebar-bottom .navigation-quick,
+  html.sengoku-navigation-ready:not(.sengoku-desktop-fit) body:not(.at-title) .social-launcher {
+    height: auto;
+    min-height: var(--compact-dock-button-min);
+    grid-template-rows: 20px max-content;
+  }
+  html.sengoku-navigation-ready:not(.sengoku-desktop-fit) #app.chronicle-shell .sidebar-bottom .navigation-quick > span {
+    min-width: 0;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
+}
+@media (max-width:360px) {
+  html.sengoku-navigation-ready:not(.sengoku-desktop-fit) {
+    --compact-dock-button-min: 3.875rem;
+  }
+}
+
 #app #main :is(h1,h2,h3,h4,p,dt,dd),
 #modal :is(h1,h2,h3,h4,p,dt,dd),
 .cq-shell :is(h2,h3,h4,p,label),

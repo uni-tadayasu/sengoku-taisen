@@ -115,6 +115,18 @@ test('phone settings place labels above full-width selects and preserve slider s
 });
 
 test('action labels and territory totals remain available without changing map surfaces', () => {
+  property('#launch-screen #launch-enter.edition-enter', 'height', 'auto');
+  property('#launch-screen #launch-enter.edition-enter', 'min-width', '0');
+  property('#launch-screen #launch-enter [data-enter-label]', 'min-width', '0');
+  property('#launch-screen #launch-enter [data-enter-label]', 'white-space', 'normal');
+  property('#launch-screen #launch-enter [data-enter-label]', 'overflow-wrap', 'anywhere');
+  const dock = 'html.sengoku-navigation-ready:not(.sengoku-desktop-fit) #app.chronicle-shell .sidebar-bottom .navigation-quick';
+  property(dock, 'height', 'auto');
+  property(dock, 'min-height', 'var(--compact-dock-button-min)');
+  property(dock, 'grid-template-rows', '20px max-content');
+  property('html.sengoku-navigation-ready:not(.sengoku-desktop-fit)', '--compact-dock-button-min', '3.875rem');
+  property('html.sengoku-navigation-ready:not(.sengoku-desktop-fit)', '--compact-dock-height', 'calc(var(--compact-dock-button-min) + .8125rem)');
+  assert(read('responsive-polish.css').includes('padding-bottom: calc(var(--compact-dock-height) + 20px + env(safe-area-inset-bottom, 0px))'));
   for (const selector of ['#app #main .button', '#modal .button', '.cq-shell .cq-button', '.events-dialog .events-button', '.moderation-dialog .moderation-button']) {
     property(selector, 'min-width', '0');
     property(selector, 'max-width', '100%');
@@ -129,7 +141,7 @@ test('action labels and territory totals remain available without changing map s
   assert(!/\.cq-map\b|\.cq-marker\b|\.sg-map\b|\.hotspot\b|\.painted-portrait\b|\.letters-preview\b|\[data-job-clock\]/.test(selectors));
   for (const rule of rules) {
     assert(!/hidden|clip/.test(rule.declarations.overflow || ''), 'New content rules must not conceal overflow');
-    assert(!('height' in rule.declarations) && !('max-height' in rule.declarations), 'Text rules must not force card heights');
+    assert((!('height' in rule.declarations) || rule.declarations.height === 'auto') && !('max-height' in rule.declarations), 'Text rules must not force card heights');
     assert(!('display' in rule.declarations) || rule.declarations.display !== 'none', 'Text rules must not hide existing controls');
   }
 });
