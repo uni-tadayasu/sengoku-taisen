@@ -22,22 +22,22 @@ body:not(.at-title) {
   background: var(--bg);
 }
 #app #main {
-  --chapter-art: url("assets/chronicle/town.webp");
+  --chapter-art: var(--chapter-town-art);
   --chapter-focus: 70% 53%;
   --chapter-rule: #d3ae74;
   background: radial-gradient(ellipse at 80% 0, #46556135, transparent 45%), #101c28;
   scrollbar-color: #536471 #13202c;
 }
 #app #main:is([data-view="map"],[data-view="field"],[data-view="roaming"],[data-view="covert"],[data-view="army"]) {
-  --chapter-art: url("assets/chronicle/war.webp");
+  --chapter-art: var(--chapter-war-art);
   --chapter-rule: #e0917a;
 }
 #app #main:is([data-view="council"],[data-view="court"]) {
-  --chapter-art: url("assets/chronicle/court.webp");
+  --chapter-art: var(--chapter-court-art);
   --chapter-rule: #d5b48b;
 }
 #app #main:is([data-view="research"],[data-view="officers"],[data-view="crests"]) {
-  --chapter-art: url("assets/chronicle/archive.webp");
+  --chapter-art: var(--chapter-archive-art);
   --chapter-rule: #aac8cb;
 }
 
@@ -243,7 +243,7 @@ body:not(.at-title) .navigation-dialog .navigation-pin.is-pinned {
 body:not(.at-title) :is(.social-profile-section,.social-guild-card,.social-friend-card,.social-message-content,.events-stage,.events-adviser,.progress-summary,.premium-product-card,.letters-message,.trade-offer) {
   color: var(--text); border-color: var(--line); background-color: #1d3340;
 }
-body:not(.at-title) .events-hero { background: linear-gradient(90deg,#182b39f5,#1d2d38a3),url("assets/chronicle/war.webp") right center / cover; }
+body:not(.at-title) .events-hero { background: linear-gradient(90deg,#182b39f5,#1d2d38a3),var(--chapter-war-art) right center / cover; }
 body:not(.at-title) .events-stage:is(.active,.selected) { background: #34424a; border-color: #cfb07b; }
 body:not(.at-title) :is(.empty,.field-empty,.court-empty,.covert-empty,.roaming-empty,.events-empty,.navigation-empty) {
   color: #c8d7d8; border-color: #9bb2b56e; background: #192b38; border-radius: 4px;

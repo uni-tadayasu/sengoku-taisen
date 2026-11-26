@@ -135,7 +135,7 @@ body.at-title #app { display: none; }
 }
 
 /* Reuse the title’s town thumbnail for its small painted controls. */
-#launch-screen { --item-art: url("assets/responsive/town-240.webp"); }
+#launch-screen { --item-art: var(--chapter-town-thumb); }
 
 /* A restrained continuation card gives returning players a clear starting point. */
 .edition-mast .edition-settings { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 10px; border: 1px solid #bfa27355; border-radius: 4px; color: #e9d5af; font: inherit; font-size: .9rem; background: #1b2b3a; cursor: pointer; }

@@ -1,0 +1,171 @@
+/* Official editions use a lacquer cover, illuminated brass fittings and a
+   warm reading surface. All decoration is static and uses existing artwork. */
+@media screen and (forced-colors: none) {
+  :root {
+    --folio-indigo: #091523;
+    --folio-panel: #102634;
+    --folio-gold: #f2d296;
+    --folio-jade: #96f3d5;
+    --folio-light: #edf3ec;
+    --folio-muted: #bfd2d2;
+    --folio-edge: #688588;
+    --folio-paper: #f6f4e9;
+    --folio-braid: repeating-linear-gradient(60deg,transparent 0 21px,#90e7ca13 21px 22px,transparent 22px 43px),
+      repeating-linear-gradient(-60deg,transparent 0 21px,#d9bc7b14 21px 22px,transparent 22px 43px);
+    --folio-lacquer: linear-gradient(115deg,#172f41,#0b1d2e 62%,#0a2026);
+    --folio-inlay: linear-gradient(90deg,#72dbc1 0 12%,#193743 12% 13%,#d9b477 13% 28%,#456772 28% 94%,#ac8758 94%);
+  }
+  body.public-luxury,
+  body:not(.public-luxury) {
+    background: radial-gradient(ellipse at top left,#153443 0,transparent 39rem),var(--folio-indigo);
+  }
+  body.public-luxury :is(.site-header,.site-footer),
+  body:not(.public-luxury) .mast {
+    background: var(--folio-inlay) left bottom / 100% 2px no-repeat,var(--folio-braid),var(--folio-lacquer);
+    border-color: #90744b;
+  }
+  body.public-luxury .site-brand img,
+  body:not(.public-luxury) .mast .brand img {
+    border: 1px solid #c5a569;
+    border-radius: 22%;
+    box-shadow: 0 0 0 2px #0b1925,0 0 0 3px #41706e;
+  }
+  body.public-luxury .breadcrumbs,
+  body.public-luxury .breadcrumbs a { color: var(--folio-muted); }
+  body.public-luxury .breadcrumbs [aria-current] { color: var(--folio-gold); }
+  body.public-luxury :is(.folio-hero,.english-hero,.lost-layout),
+  body:not(.public-luxury) .player {
+    background: var(--folio-inlay) left bottom / 100% 3px no-repeat,var(--folio-braid),var(--folio-lacquer);
+    color: var(--folio-light);
+    border: 1px solid #aa8e62;
+    border-radius: 3px 15px 3px 3px;
+    box-shadow: inset 0 0 0 3px #101e2b,inset 0 0 0 4px #577377,0 8px 20px #020a1247;
+  }
+  body.public-luxury :is(.hero-copy,.english-hero-copy,.lost-copy) {
+    background: linear-gradient(90deg,#0c1f2bea,#0b203099 75%,transparent);
+  }
+  body.public-luxury :is(.folio-hero,.english-hero,.lost-copy) h1 { color: #ffebba; }
+  body.public-luxury :is(.folio-hero,.english-hero) h1 span { color: var(--folio-jade); }
+  body.public-luxury :is(.folio-hero,.english-hero,.lost-copy) :is(.hero-lead,.english-availability,p:not(.section-kicker,.eyebrow)) { color: var(--folio-light); }
+  body.public-luxury :is(.folio-hero,.english-hero,.lost-copy) :is(.text-link,.share-platform a,.english-ui-label,.eyebrow,.section-kicker,.lost-brand,.english-actions a:not(.action-link)) { color: var(--folio-jade); }
+  body.public-luxury :is(.header-navigation .nav-play,.action-link,.reading-actions a:last-child) {
+    --button-wash-start: #8b303af7;
+    --button-wash-end: #652733f2;
+    background-color: #782d37;
+    color: #fff5e6;
+    border-color: #d19d76;
+    box-shadow: inset 2px 0 #eac394;
+  }
+  body.public-luxury :is(.header-navigation .nav-play,.action-link,.reading-actions a:last-child):hover {
+    --button-wash-start: #a53f48f7;
+    --button-wash-end: #80303bf2;
+    background-color: #963a43;
+    color: #fff;
+  }
+  body.public-luxury .lost-copy :is(footer,footer a) { color: var(--folio-muted); }
+  body.public-luxury .english-language-note { background: #173443; border-color: var(--folio-gold); }
+  body.public-luxury :is(.chapter-art,.english-hero-art,.lost-art) { border-color: #bda372; }
+  body.public-luxury .chapter-art::after {
+    inset: 8px;
+    border: 1px solid #ffebba4d;
+    background:
+      linear-gradient(var(--folio-jade),var(--folio-jade)) left top / 26px 2px no-repeat,
+      linear-gradient(var(--folio-jade),var(--folio-jade)) left top / 2px 22px no-repeat,
+      linear-gradient(var(--folio-gold),var(--folio-gold)) right bottom / 40px 2px no-repeat,
+      linear-gradient(var(--folio-gold),var(--folio-gold)) right bottom / 2px 22px no-repeat;
+  }
+  body.public-luxury :is(.folio-index,.english-content-counts,.toc,.premium-catalog,.reading-actions,.promotion-trailer) {
+    background: var(--folio-inlay) left top / 100% 2px no-repeat,var(--folio-lacquer);
+    border-color: #9e885f;
+  }
+  body.public-luxury .public-current-chapter,
+  body.public-luxury .toc a[aria-current="location"] {
+    color: #f5f7e9;
+    border-color: #648c88;
+    background: #173a40;
+    box-shadow: inset 3px 0 var(--folio-jade);
+  }
+  body.public-luxury .public-reading-progress span { background: linear-gradient(90deg,#65ccb6,#f2c680); }
+  body.public-luxury .guide-quick {
+    padding: clamp(.85rem,2.2vw,1.75rem);
+    background: var(--folio-lacquer);
+    border: 1px solid #577178;
+    border-inline-start: 3px solid #a78b60;
+  }
+  body.public-luxury .guide-quick .quick-heading { border-color: #52707a; }
+  body.public-luxury .guide-quick :is(h2,li strong) { color: var(--folio-light); }
+  body.public-luxury .guide-quick .guide-quick-all { color: var(--folio-jade); }
+  body.public-luxury .guide-quick li a { border-color: #4c6873; background: #122938; }
+  body.public-luxury .guide-quick li a:hover { background: #204148; }
+  body.public-luxury .guide-quick li a::before { background: #d6ae72; }
+  body.public-luxury .guide-quick li span { color: var(--folio-muted); }
+
+  body.public-luxury .article {
+    background: var(--folio-inlay) left top / 100% 4px no-repeat,var(--folio-paper);
+    border: 1px solid #ae956a;
+    box-shadow: inset 0 0 0 4px #eeeadb,0 7px 17px #020d1740;
+  }
+  body.public-luxury .article-section > h2 {
+    gap: .65rem;
+    border-bottom: 1px solid #aca585;
+    padding-block-end: .45rem;
+  }
+  body.public-luxury .article-section > h2::before {
+    align-self: center;
+    padding: .3em .4em;
+    border: 1px solid #756542;
+    background: #19333c;
+    color: #f5dfa6;
+    font: 600 .55em/1.25 ui-monospace,monospace;
+  }
+  body.public-luxury .article :is(.callout,.step-list .step-marker) { border-inline-start-color: #246b67; }
+  body.public-luxury .article .section-next { background: #e0e7dc; border-color: #7b998b; box-shadow: inset -3px 0 #41877a; }
+  body.public-luxury .data-table-wrap { border-color: #89968a; scrollbar-color: #486d68 #e5e4d5; }
+  body.public-luxury .article thead th { background: #18343d; color: #f5e7c3; }
+  body.public-luxury .premium-page-return a:not(.action-link) { color: var(--folio-jade); }
+  body.public-luxury :is(.share-journey,.share-support,.discovery-opening,.promotion-first-castle,.promotion-screens,.english-section,.english-closing) {
+    padding: clamp(1.1rem,3vw,2.4rem);
+    border-block-start: 2px solid #74948c;
+    background: var(--folio-paper);
+    color: #26373c;
+  }
+  body.public-luxury :is(.share-feature-list>li,.english-screenshots figure,.promotion-screen-grid figure,.premium-product) {
+    border-color: #a28b63;
+    border-block-end: 3px double #717b69;
+  }
+  body.public-luxury :is(.site-header,.toc,.guide-quick,.folio-hero,.reading-actions,.english-hero,.lost-layout,.premium-catalog,.site-footer) :focus-visible,
+  body:not(.public-luxury) :focus-visible { outline: 3px solid var(--folio-jade); outline-offset: -3px; }
+  body.public-luxury .article :focus-visible { outline: 3px solid #15695f; outline-offset: 1px; }
+
+  /* The audition document is the one public edition with a dedicated album
+     layout. Its long programme notes and native audio controls stay in flow. */
+  body:not(.public-luxury) .album-copy { border-inline-start: 2px solid #9c815c; padding-inline-start: clamp(.7rem,1.6vw,1.35rem); }
+  body:not(.public-luxury) :is(.album-type,.mast-guide,.save) { color: var(--folio-jade); }
+  body:not(.public-luxury) .jacket { border-color: #d3b378; box-shadow: inset 0 0 0 3px #18353a,0 6px 14px #020a123d; }
+  body:not(.public-luxury) .selected { background: var(--folio-braid),linear-gradient(110deg,#1d3c47,#102536); color: var(--folio-gold); border-color: #ada077; }
+  body:not(.public-luxury) .selected::before { background: var(--folio-jade); }
+  body:not(.public-luxury) .selected :is(small,#track-description) { color: var(--folio-muted); }
+  body:not(.public-luxury) .player button { border-color: #d09b72; background: #862f37; color: #fff5e5; }
+  body:not(.public-luxury) .player button:hover:enabled { background: #9e3840; }
+}
+
+@media screen and (max-width: 900px) {
+  .public-luxury :is(.site-header-inner,.header-navigation,.reading-layout,.guide-quick,.hero-copy,.lost-copy,.english-section,.english-hero-copy) > * { min-width: 0; }
+  .public-luxury :is(.article p,.data-table-wrap td,.english-hero-copy p,.promotion-url-row,.lost-copy) { overflow-wrap: anywhere; }
+  .public-luxury :is(.data-table-wrap,.premium-comparison-wrap) { max-width: 100%; }
+}
+/* At phone widths the long album introduction used to share a narrow column
+   with its cover. Put the title next to the art and all notes below both. */
+@media screen and (max-width: 39rem) {
+  .album { grid-template-columns: minmax(0,1fr) minmax(0,1.45fr); grid-template-rows: auto auto 1fr; align-items: center; }
+  .album-copy { display: contents; }
+  .album-copy .album-type { grid-column: 2; grid-row: 1; align-self: end; }
+  .album-copy h1 { grid-column: 2; grid-row: 2 / span 2; align-self: start; }
+  .album .sleeve { grid-column: 1; grid-row: 1 / span 3; }
+  .album-copy .album-description { grid-column: 1 / -1; margin: 0; font-size: 1rem; }
+  .public-luxury .article { padding-inline: clamp(.85rem,4vw,1.45rem); }
+  .public-luxury .article-section > h2 { overflow-wrap: anywhere; }
+}
+@media screen and (max-height: 480px) and (orientation: landscape) {
+  .public-luxury .reading-actions { position: static; width: fit-content; margin: .75rem auto; }
+}

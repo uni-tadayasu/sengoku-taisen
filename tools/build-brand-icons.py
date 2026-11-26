@@ -11,66 +11,53 @@ Maskable artwork fits inside the centered 80%-diameter safe circle.
 No game-play family crests are changed by this script.
 """
 import argparse
-from base64 import b64encode
 from hashlib import sha256
 from pathlib import Path
 import shutil
 import struct
 import subprocess
 import tempfile
-from PIL import Image, ImageDraw, ImageOps
+from PIL import Image, ImageOps
 
 ROOT = Path(__file__).resolve().parents[1]
 DEST = ROOT / 'assets' / 'branding'
 RESPONSIVE = ROOT / 'assets' / 'responsive'
-EDITION = '20261127'
+EDITION = '20261127-jade'
 MASTER = DEST / f'sengoku-vs-master-{EDITION}.png'
-INK = '#081419'
-GOLD = '#f0ce80'
-RED = '#cc342b'
-# A castle above an open command fan. The broad open shapes remain distinct at
-# tab size, while the large master uses softly lit gold instead of fine texture.
-MARK = '''
-  <circle cx="256" cy="176" r="66" fill="{red}"/>
-  <g fill="{gold}">
-    <path d="M173 208 Q221 188 256 144 Q291 188 339 208 L296 202 L296 228 L216 228 L216 202 Z"/>
-    <path d="M137 270 Q205 248 256 211 Q307 248 375 270 L318 264 L318 293 L194 293 L194 264 Z"/>
-    <path d="M124 317 Q191 301 256 271 Q321 301 388 317 Q325 328 256 357 Q187 328 124 317 Z"/>
-    <path d="M153 345 Q198 348 242 370 L251 393 Q197 378 153 345 Z"/>
-    <path d="M359 345 Q314 348 270 370 L261 393 Q315 378 359 345 Z"/>
-  </g>
-  {windows}
-  <path d="M256 359 L270 380 L256 400 L242 380 Z" fill="{red}"/>
-'''
-WINDOWS = '<path d="M249 190h14v17h-14z M229 249h15v20h-15z M268 249h15v20h-15z" fill="#131b22"/>'
-DEFS = '''<defs>
-    <linearGradient id="ink" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#24323b"/><stop offset=".54" stop-color="#141d25"/><stop offset="1" stop-color="#0c131a"/></linearGradient>
-    <linearGradient id="gold" x1="0" y1="0" x2=".3" y2="1"><stop stop-color="#fff0bf"/><stop offset=".45" stop-color="#e5c17b"/><stop offset="1" stop-color="#b58a4b"/></linearGradient>
-  </defs>'''
+INK = '#050b1d'
+GOLD = '#f7c45a'
+JADE = '#14c99b'
+
+# The same roof and fan silhouettes appear in the painted master. At the tab
+# sizes, positive/negative space carries the motif in place of metal texture.
+OCTAGON = 'M149 17H363L495 149V363L363 495H149L17 363V149Z'
+ROOFS = (
+    'M145 122Q186 136 256 76Q326 136 367 122Q354 153 321 152H191Q158 153 145 122Z '
+    'M110 179Q145 194 176 169H336Q368 194 402 179Q393 214 357 215H155Q119 213 110 179Z '
+    'M70 246Q109 265 148 232H364Q403 265 442 246Q432 287 378 289H134Q81 287 70 246Z'
+)
+FAN = (
+    'M77 368Q107 341 142 337L217 432Z M147 329Q183 303 214 318L239 425Z '
+    'M219 316Q255 304 294 316L271 423H242Z M301 318Q337 307 365 328L284 433Z '
+    'M369 337Q405 341 436 368L294 443Z M219 453Q226 428 256 428Q286 428 294 453Z'
+)
+WINDOWS = 'M226 157h10v9h-10z M251 157h10v9h-10z M276 157h10v9h-10z M215 217h12v12h-12z M250 217h12v12h-12z M285 217h12v12h-12z'
 
 
-def svg(*, simple=False, maskable=False, apple=False, mono=False):
-    if mono:
-        mark = MARK.format(red='#000', gold='#000', windows='')
-        return f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><title>戦国VSの城と軍扇の紋章</title><circle cx="256" cy="256" r="204" fill="none" stroke="#000" stroke-width="13"/>{mark}</svg>\n'''
-    # The maskable ring's outer edge is at r=194 (37.9% of 512), within
-    # the mandatory 40% safe radius. Everything meaningful fits inside it.
-    radius = 186 if maskable else 211
-    transform = ' transform="translate(25.6 25.6) scale(.9)"' if maskable else ''
-    red = RED if simple else '#b44c37'
-    gold = GOLD if simple else 'url(#gold)'
-    windows = '' if simple else WINDOWS
-    mark = MARK.format(red=red, gold=gold, windows=windows)
-    border = '' if simple or maskable else '<rect x="11" y="11" width="490" height="490" rx="91" fill="none" stroke="#c9a362" stroke-opacity=".45" stroke-width="2"/>'
+def svg(*, small=False, mono=False):
+    gold = '#000' if mono else GOLD if small else 'url(#gilt)'
+    background = '' if mono else f'<rect width="512" height="512" rx="46" fill="{INK}"/><circle cx="256" cy="182" r="136" fill="{JADE if small else "url(#stone)"}"/>'
+    highlights = '' if mono or small else '<path d="M56 111l52-52m296 0 52 52M195 495h122" stroke="#54ecc4" stroke-width="16"/>'
+    windows = '' if small or mono else f'<path d="{WINDOWS}" fill="{GOLD}"/>'
+    definitions = '' if small or mono else '''<defs>
+  <linearGradient id="gilt" x2=".35" y2="1"><stop stop-color="#fff0a7"/><stop offset=".48" stop-color="#efb643"/><stop offset="1" stop-color="#a87220"/></linearGradient>
+  <radialGradient id="stone"><stop stop-color="#22d39b"/><stop offset="1" stop-color="#10816d"/></radialGradient></defs>'''
+    eaves = '' if mono else f'<path d="{ROOFS}" fill="{INK}" stroke="{INK}" stroke-width="{12 if small else 6}"/>'
+    backdrop = '  ' + definitions + background + '\n' if definitions or background else ''
     return f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="brand-title brand-desc">
-  <title id="brand-title">戦国VS</title>
-  <desc id="brand-desc">墨色の地に、金の城と軍扇、朱の旭日を配した戦国VSの紋章。</desc>
-  {'' if simple else DEFS}
-  <rect width="512" height="512" rx="{0 if maskable or apple else 100}" fill="{INK if simple else 'url(#ink)'}"/>
-  {border}
-  <circle cx="256" cy="256" r="{radius}" fill="none" stroke="{gold}" stroke-width="{16 if simple else 9}"/>
-  <path d="M256 39v13 M256 460v13 M39 256h13 M460 256h13" fill="none" stroke="#60ddcc" stroke-width="5"/>
-  <g{transform}>{mark}</g>
+  <title id="brand-title">戦国VS</title><desc id="brand-desc">翡翠色の月を背に、金の三層天守と軍扇を八角の額に収めた紋章。</desc>
+{backdrop}  <path d="{OCTAGON}" fill="none" stroke="{gold}" stroke-width="{21 if small else 13}" stroke-linejoin="round"/>
+  {highlights}{eaves}<path d="{ROOFS}" fill="{gold}"/><path d="{FAN}" fill="{gold}"/>{windows}
 </svg>\n'''
 
 
@@ -87,15 +74,16 @@ def render(source, size):
 
 
 def png(image, path):
+    if image.mode == 'RGBA' and image.getextrema()[3] == (255, 255):
+        image = image.convert('RGB').quantize(colors=256, method=Image.Quantize.MEDIANCUT)
     image.save(path, format='PNG', optimize=True)
 
 
 def responsive(image, path):
     # The offline shell includes the 48/96px marks. At these display sizes,
     # high-quality WebP preserves the crest while keeping its six images below
-    # the existing 100 KiB installation budget. Larger exports stay lossless.
-    options = {'quality': 96} if image.width <= 96 else {'lossless': True}
-    image.save(path, format='WEBP', method=6, **options)
+    # the existing 100 KiB installation budget.
+    image.save(path, format='WEBP', method=6, quality=91)
 
 
 def name(kind, size=None, suffix='png'):
@@ -126,15 +114,11 @@ def painted(master, size):
 
 
 def maskable(master, size=512):
-    # Place the complete circular medallion in a 77%-diameter disc. This leaves
-    # 1.5% margin inside the standard 80% safe circle, including antialiasing.
-    # Square background corners are decorative, never part of the crest.
-    diameter = round(size * .77)
-    disc = Image.new('L', master.size)
-    ImageDraw.Draw(disc).ellipse((0, 0, master.width - 1, master.height - 1), fill=255)
-    disc = disc.resize((diameter, diameter), Image.Resampling.LANCZOS)
+    # The complete octagon, including its four inset diagonal tips, fits in
+    # the central 80%-diameter safe circle at a 65% square side length.
+    side = round(size * .65)
     result = Image.new('RGB', (size, size), INK)
-    result.paste(painted(opaque(master), diameter), ((size - diameter) // 2,) * 2, disc)
+    result.paste(painted(opaque(master), side), ((size - side) // 2,) * 2)
     return result
 
 
@@ -151,26 +135,21 @@ def main():
     RESPONSIVE.mkdir(exist_ok=True)
     if source != MASTER.resolve():
         shutil.copyfile(source, MASTER)
-    name('favicon', suffix='svg').write_text(svg(simple=True), encoding='utf-8')
+    name('favicon', suffix='svg').write_text(svg(small=True), encoding='utf-8')
     name('pinned-tab', suffix='svg').write_text(svg(mono=True), encoding='utf-8')
     # Android notification badges use the alpha mask, not the full app tile.
     badge = render(svg(mono=True).replace('#000', '#fff'), 384).resize((96, 96), Image.Resampling.LANCZOS)
     png(badge, name('badge', 96))
     renders = {}
     for size in (16, 32, 48, 96, 192, 512):
-        rendered = (render(svg(simple=True), size * 4).resize((size, size), Image.Resampling.LANCZOS)
+        rendered = (render(svg(small=True), size * 4).resize((size, size), Image.Resampling.LANCZOS)
                     if size <= 32 else painted(painted_master, size))
         kind = 'favicon' if size <= 96 else 'icon'
         png(rendered, name(kind, size))
         renders[size] = rendered
-    # A portable SVG container for the painted artwork embeds only the exported
-    # 512px PNG, not the 2MB+ original. The favicon/pinned SVGs remain true vectors.
-    embedded = b64encode(name('icon', 512).read_bytes()).decode('ascii')
-    master_svg = f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="brand-title brand-desc">
-  <title id="brand-title">戦国VS</title>
-  <desc id="brand-desc">金の城と軍扇、朱の旭日、青緑の光を配した戦国VSの紋章。512pxの公式画像を内包。</desc>
-  <image width="512" height="512" href="data:image/png;base64,{embedded}"/>
-</svg>\n'''
+    # Native paths provide an independently scalable and compact wordless mark
+    # for public links, printed press artwork and the crest compatibility URL.
+    master_svg = svg()
     name('mark', suffix='svg').write_text(master_svg, encoding='utf-8')
     (ROOT / 'assets' / 'crest.svg').write_text(master_svg, encoding='utf-8')
     # Keep one permanent, crawlable PNG URL for search results. It must always
@@ -201,7 +180,7 @@ def main():
         image = renders[size]
         responsive(image, RESPONSIVE / f'emblem-{size}.webp')
         shutil.copyfile(RESPONSIVE / f'emblem-{size}.webp', RESPONSIVE / f'emblem-{EDITION}-{size}.webp')
-    renders[512].save(ROOT / 'assets' / 'emblem.webp', format='WEBP', lossless=True, method=6)
+    responsive(renders[512], ROOT / 'assets' / 'emblem.webp')
     # Keep fallback/legacy image URLs consistent for installed home-screen apps.
     for filename, image in [('icon-192.png', renders[192]), ('icon-512.png', renders[512]),
                             ('favicon-32.png', renders[32]), ('apple-touch-icon.png', apple),

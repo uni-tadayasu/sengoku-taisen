@@ -31,7 +31,7 @@ for suffix in ('.mp4', '-poster.jpg', '.vtt', '.json'):
 FILES['video/FIRST-STEPS-PRODUCTION.md'] = 'assets/promo/FIRST-STEPS-PRODUCTION.md'
 
 README = f'''戦国VS / SENGOKU VS — 紹介・掲載用素材
-更新日: 2026年11月26日
+更新日: {SITE['dateModified']}
 
 公式サイト: {SITE['origin']}/
 ゲーム紹介: {SITE['origin']}/sengoku-vs/

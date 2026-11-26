@@ -39,6 +39,10 @@ const vm=require('node:vm');
     const request=(relative,mode='cors',params={})=>({method:'GET',url:new URL(relative,scope).href,mode,headers:new Headers(),...params});
     await emit('install');await emit('activate');assert.equal(skipped,1);
     const installRequests=requests.length,installBytes=[...stored.values()].reduce((sum,n)=>sum+n,0);
+    const brandEdition=/-(\d{8}(?:-[a-z]+)?)\.png$/.exec(JSON.parse(await readFile(path.join(root,'site-metadata.json'),'utf8')).favicon.path)[1];
+    const chapters=['war','town','archive'];
+    const installedArt=['neon-command-480',...chapters.map(name=>name+'-jade-240'),'brand-'+brandEdition+'-48','emblem-'+brandEdition+'-96'];
+    assert.deepEqual([...stored.keys()].filter(key=>key.startsWith(scope+'assets/')).sort(),installedArt.map(stem=>scope+'assets/responsive/'+stem+'.webp').sort(),'Install only the six compact illustrations');
     const home=await (await emit('fetch',request('./','navigate'))).text();
     const scripts=[...home.matchAll(/(?:src|href)="([^"]+\.(?:js|css)(?:\?[^"]*)?)"/g)].map(m=>m[1].replaceAll('&amp;','&'));
     for(const file of scripts)assert((await (await emit('fetch',request(file))).arrayBuffer()).byteLength>100);
@@ -51,7 +55,22 @@ const vm=require('node:vm');
     assert.equal(await (await emit('fetch',request(map))).text(),onlineMap);
     assert.equal(await (await emit('fetch',request('guide/','navigate'))).text(),guide);
     assert.equal(await (await emit('fetch',request('./?notice=1','navigate'))).text(),home);
-    assert.equal((await (await emit('fetch',request('assets/responsive/neon-command-1536.webp'))).arrayBuffer()).byteLength,stored.get(scope+'assets/responsive/neon-command-480.webp'));
+    async function matchesCompact(file,stem){
+      const actual=await emit('fetch',request(file)),expected=records.get(scope+'assets/responsive/'+stem+'.webp');
+      assert.equal(actual.headers.get('Content-Type'),'image/webp',file);
+      assert.deepEqual(Buffer.from(await actual.arrayBuffer()),Buffer.from(await expected.clone().arrayBuffer()),file);
+    }
+    await matchesCompact('assets/responsive/neon-command-1536.webp','neon-command-480');
+    for(const name of chapters){
+      const stem=name+'-jade';
+      await matchesCompact('assets/responsive/'+stem+'-1200.webp',stem+'-240');
+      await matchesCompact('assets/responsive/'+stem+'-panel-900.webp',stem+'-240');
+      await matchesCompact('assets/chronicle/'+stem+'.webp',stem+'-240');
+      await matchesCompact('assets/responsive/'+name+'-panel-640.webp',stem+'-240');
+    }
+    await matchesCompact('assets/responsive/brand-'+brandEdition+'-144.webp','brand-'+brandEdition+'-48');
+    await matchesCompact('assets/responsive/emblem-'+brandEdition+'-192.webp','emblem-'+brandEdition+'-96');
+    assert.equal((await emit('fetch',request('assets/responsive/other-panel-900.webp'))).type,'error');
     assert.equal(await emit('fetch',request('api/v1/me')),undefined);
     assert.equal(await emit('fetch',request('assets/example.webp','cors',{headers:new Headers({Authorization:'Bearer local-test'})})),undefined);
     assert(![...records.keys()].some(key=>/notice=|api\/|token=/.test(key)));
