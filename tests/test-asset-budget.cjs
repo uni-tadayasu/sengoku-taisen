@@ -28,7 +28,10 @@ const totalGzipBytes = rows.reduce((sum,row)=>sum+row.gzipBytes,0);
 // 3,309,958 raw / 950,478 gzip (+11,264 / +3,341 from v5.8.1).
 // The watchlist, reserve planning and battle reports add 20,358 raw / 5,871
 // gzip bytes to the v5.9.1 entry. The map's deferred payload is measured separately.
-const rawBudget=3336000,gzipBudget=959000;
+// v5.9.4 adds the luminous title/command surfaces and persistent FX controls.
+// Measured against v5.9.3: +16,284 raw / +4,083 gzip. Hero images are separate
+// responsive files; the smallest is 47,724 bytes and fits the offline art budget.
+const rawBudget=3357000,gzipBudget=965000;
 assert(totalBytes <= rawBudget, `Initial bundles exceed the ${rawBudget} byte budget: ${totalBytes}`);
 assert(totalGzipBytes <= gzipBudget, `Initial bundles exceed the ${gzipBudget} gzip byte budget: ${totalGzipBytes}`);
 const html = fs.readFileSync(path.join(root,'index.html'),'utf8');

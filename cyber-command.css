@@ -1,0 +1,184 @@
+/* The command room uses the existing art and control geometry. The lacquer,
+   armour lacing and illuminated inlays are static surface materials. */
+@media (forced-colors: none) {
+  :root {
+    --command-jade: #57f4c8;
+    --command-gold: #f2cc81;
+    --command-vermilion: #ff786b;
+    --command-ink: #070d1c;
+    --command-rib: #568fa2;
+    --command-wire: #4beec033;
+    --command-gilt-wire: #f2c47d29;
+    --command-bloom: #46eabd32;
+    --command-inlay: linear-gradient(90deg, var(--command-jade) 0 19%, transparent 19% 21%, var(--command-jade) 21% 23%, transparent 23% 25%, var(--command-gold) 25% 46%, transparent 46%);
+    --command-weave: repeating-linear-gradient(60deg, transparent 0 17px, var(--command-wire) 17px 18px, transparent 18px 35px),
+                     repeating-linear-gradient(-60deg, transparent 0 17px, var(--command-wire) 17px 18px, transparent 18px 35px),
+                     repeating-linear-gradient(0deg, transparent 0 17px, var(--command-gilt-wire) 17px 18px, transparent 18px 35px);
+    --command-panel: linear-gradient(125deg,#192840 0%,#0e172a 43%,#080f1d 100%);
+    --command-frame: inset 0 1px #d3e5f12b, inset 0 -1px #02060e, 0 3px 10px #01040b69;
+  }
+
+  /* A dark woven side rail, a tournament crest, and a bright selection
+     indicator locate the player without competing with the city illustration. */
+  #app.chronicle-shell #main {
+    background: radial-gradient(ellipse at 0 0,#153147 0,transparent 53%),
+                linear-gradient(125deg,#0a1226 15%,#090e19 70%,#102429);
+    scrollbar-color: #599c9c #080f1e;
+  }
+  #app.chronicle-shell .chronicle-rail {
+    background: linear-gradient(90deg,rgba(6,12,27,.46),rgba(7,13,28,.87) 80%),
+                var(--command-weave),#0b1b2d;
+    border-inline-end-color: var(--command-rib);
+    box-shadow: inset -2px 0 var(--command-wire), inset -5px 0 #050a16, 3px 0 12px #01050d70;
+  }
+  #app.chronicle-shell .chronicle-rail .brand {
+    color: #f6deb2;
+    border-color: #557b86;
+    background: var(--command-inlay) left bottom / 100% 2px no-repeat,
+                linear-gradient(105deg,#142f3f,#0c1b31 70%);
+  }
+  #app.chronicle-shell .brand-crest {
+    background: radial-gradient(circle at 50% 48%,#17615b,#08151d 64%);
+    border-radius: 50%;
+    box-shadow: 0 0 0 1px var(--command-gold),0 0 0 3px #0b1b2b,0 0 0 4px var(--command-rib),0 0 14px var(--command-bloom);
+  }
+  #app.chronicle-shell .chronicle-rail .clan-panel {
+    background: var(--command-inlay) top left / 100% 2px no-repeat, var(--command-panel);
+    border-color: #517380; border-radius: 2px 10px 2px 2px;
+    box-shadow: var(--command-frame);
+  }
+  #app.chronicle-shell .sidebar .nav-item.active,
+  html.sengoku-desktop-fit #app.chronicle-shell #navigation .nav-item.active,
+  html.sengoku-navigation-ready:not(.sengoku-desktop-fit) #app.chronicle-shell .sidebar-bottom .navigation-quick.active,
+  body:not(.at-title) .navigation-dialog .navigation-entry.is-current {
+    background: linear-gradient(102deg,#155450 0%,#143344 51%,#17273d 90%,#24534e 90%) !important;
+    color: #f5fff9;
+    border-color: #74cbb9; border-inline-start-color: var(--command-jade);
+    border-radius: 2px 9px 2px 2px;
+    box-shadow: inset 3px 0 var(--command-jade),inset 0 -1px #76b5a6,0 0 12px var(--command-bloom);
+  }
+  #app.chronicle-shell .sidebar .nav-item.active > .icon,
+  #app.chronicle-shell .sidebar .nav-item.active > [data-icon] { color: var(--command-jade); }
+  html.sengoku-desktop-fit #app.chronicle-shell .nav-section-name { color: #c2d1e5; }
+  body:not(.at-title) .navigation-quick-dock {
+    border-color: var(--command-rib);
+    background: linear-gradient(0deg,#070d1d,#102332); box-shadow: inset 0 1px var(--command-wire);
+  }
+
+  /* Resource accents keep their established meanings. Segmented borders
+     echo armour lacing; numeric readings sit on a solid dark background. */
+  #app.chronicle-shell .chronicle-ledger,
+  html:not(.sengoku-desktop-fit) #app.chronicle-shell .chronicle-ledger {
+    background: linear-gradient(90deg,#0d1b31,#102e3c 52%,#111b34);
+    border-color: #53758b;
+    box-shadow: inset 0 -2px var(--command-jade),inset 0 -4px #070e1b,0 2px 10px #050a1666;
+  }
+  #app.chronicle-shell .chronicle-ledger .resource,
+  html:not(.sengoku-desktop-fit) #app.chronicle-shell .chronicle-ledger .resource,
+  html.sengoku-desktop-fit #app.chronicle-shell .header-balances .touch-header-stat {
+    background: linear-gradient(90deg,var(--resource-accent,#58dbce) 0 19%,transparent 19% 22%,var(--resource-accent,#58dbce) 22% 26%,transparent 26%) left bottom / 100% 2px no-repeat,
+                linear-gradient(110deg,#183343,#0a1628 68%) !important;
+    border-color:#466677; box-shadow: inset 0 1px #adcbd322;
+  }
+  #app.chronicle-shell .chronicle-ledger .resource-amount,
+  #app.chronicle-shell .chronicle-ledger .touch-header-stat-value { font-variant-numeric: tabular-nums; }
+
+  /* Reserve the denser kumiko pattern for header bands. Descriptions, rows
+     and images below them retain opaque, low-detail surfaces. */
+  #app.chronicle-shell #main :is(.page-heading,.roaming-heading,.court-heading,.covert-heading),
+  #app.chronicle-shell #main :is(.town-workspace .town-scene-heading,.town-castle-heading),
+  #app.chronicle-shell #main .domain-briefing > header,
+  body:not(.at-title) :is(dialog .modal-header,dialog .navigation-dialog-header,dialog .social-header,dialog .progress-header,dialog .command-activity-header,dialog .defense-ledger-header,dialog .campaign-records-header),
+  body:not(.at-title) #modal .modal-header {
+    background: var(--command-inlay) top left / 100% 3px no-repeat,
+                linear-gradient(105deg,#102338 3%,#111e37 54%,rgba(21,54,66,.78) 79%,rgba(14,36,47,.3) 100%),
+                var(--command-weave),#123542;
+    border-color: #69a59d; border-top-color: #96d6bb;
+    box-shadow: var(--command-frame);
+  }
+  #app.chronicle-shell #main .chapter-symbol {
+    border: 1px solid var(--command-gold); border-radius: 50%;
+    background: radial-gradient(circle,#175449,#0a2230 70%);
+    color: #c0ffe6; box-shadow: inset 0 0 0 2px #0c202d,0 0 8px var(--command-bloom);
+  }
+  #app.chronicle-shell #main .page-heading-actions,
+  #app.chronicle-shell #main .town-console-nav,
+  body:not(.at-title) #modal .modal-footer {
+    background: linear-gradient(90deg,#0b1527,#152735);
+    border-color: #375563;
+  }
+  #app.chronicle-shell #main .command-pips i.filled {
+    background: var(--command-jade); box-shadow: 0 0 5px var(--command-bloom);
+  }
+
+  #app.chronicle-shell #main :is(.town-workspace .town-panel,.town-overview,.geographic-map-panel,.domain-briefing),
+  body:not(.at-title) dialog:is(.modal,.navigation-dialog,.command-activity-dialog,.resource-plan-dialog,.campaign-records-dialog,.defense-ledger,.social-dialog,.progress-dialog) {
+    background-color: var(--command-ink);
+    border-color: var(--command-rib); border-radius: 3px 12px 3px 12px;
+    box-shadow: inset 0 0 0 1px #243749,0 0 0 1px #030811,0 0 13px var(--command-bloom),0 8px 22px #03071166;
+  }
+  #app.chronicle-shell #main :is(.panel,.army-slot,.building-card,.research-card,.facility-entry,.tactic-card,.quest-row,.castle-detail,.facility-planner-overview,.army-muster-overview,.officer-card) {
+    background: linear-gradient(135deg,transparent 5px,var(--command-wire) 5px 6px,transparent 6px) top right / 24px 24px no-repeat,
+                var(--command-panel);
+    border-color: #476575; border-radius: 2px 9px 2px 9px; box-shadow: var(--command-frame);
+  }
+  #app.chronicle-shell #main :is(.panel-heading,.facility-entry-heading,.section-heading) {
+    border-color: #3c6f76;
+  }
+  #app.chronicle-shell #main :is(.panel-heading,.facility-entry-heading,.section-heading) h2,
+  #app.chronicle-shell #main .town-scene-name { color:#ffdfa6; }
+  #app.chronicle-shell #main .town-console-nav > button[aria-selected="true"],
+  #app.chronicle-shell #main .tabs button:is(.active,[aria-selected="true"]),
+  body:not(.at-title) .campaign-records-dialog .campaign-records-views button[aria-pressed="true"] {
+    background: linear-gradient(110deg,#164840,#153346 75%,#245049) !important;
+    color: #e7fff3; border-color: #76ae9c;
+    box-shadow: inset 0 -3px var(--command-jade),inset 0 1px #d6e1b633;
+  }
+  #app.chronicle-shell #main .town-scene-board .hotspot .label {
+    background: #091d29ef; border-color: #89bdba; color: #f3fff8;
+    box-shadow: inset 2px 0 var(--command-gold),0 2px 5px #030912a1;
+  }
+
+  /* The map geography is the play surface. Illuminate its instrument case
+     and coastline, leaving marker hit areas, routes and terrain unobstructed. */
+  #app.chronicle-shell #main .sg-map :is(.sg-map-heading,.sg-watch-panel,.sg-map-zoom,.sg-map-layers,.sg-map-tooltip) {
+    background: linear-gradient(130deg,#122b3cf7,#0b1527fa);
+    border-color:#6faaa2; box-shadow: inset 0 1px #94d1bc4d,0 3px 9px #0309167a;
+  }
+  #app.chronicle-shell #main .sg-map .sg-map-heading-label { color: var(--command-jade); }
+  #app.chronicle-shell #main .sg-map .sg-map-coastline { stroke: #bbe8cd; }
+  #app.chronicle-shell #main .sg-map .sg-map-control[aria-pressed="true"] {
+    color: #e6fff6; border-color: var(--command-jade);
+    box-shadow: inset 0 -2px var(--command-jade);
+  }
+
+  /* Vermilion is the decisive action colour. Gold retains the reward and
+     resource affordance. The accent sits behind an opaque text surface. */
+  #app.chronicle-shell .button.primary:not(:disabled),
+  body:not(.at-title) #modal .button.primary:not(:disabled) {
+    background: linear-gradient(108deg,#a13539 0%,#812f40 76%,#9d4546 76% 80%,#74283a 80%) !important;
+    color:#fff9ed; border-color: #ffc38d;
+    box-shadow: inset 3px 0 var(--command-vermilion),inset 0 1px #ffdcc287,0 2px 6px #16050b66;
+  }
+  #app.chronicle-shell .button.gold:not(:disabled),
+  body:not(.at-title) #modal .button.gold:not(:disabled) {
+    background: linear-gradient(107deg,#f7d697,#e6b660 66%,#f0c780 66% 71%,#deb16a 71%) !important;
+    color:#221c13; border-color:#ffe4af; box-shadow: inset 0 1px #fff5d8ad,inset 0 -2px #9c7335,0 2px 5px #02050b55;
+  }
+  #app.chronicle-shell :is(button,a,summary,input,select,textarea):focus-visible,
+  body:not(.at-title) dialog :is(button,a,summary,input,select,textarea):focus-visible {
+    outline: 2px solid #abffdd; outline-offset: 2px;
+  }
+
+  html[data-cyber-fx="low"] {
+    --command-wire: transparent;
+    --command-gilt-wire: transparent;
+    --command-bloom: transparent;
+    --command-weave: linear-gradient(transparent,transparent);
+    --command-inlay: linear-gradient(90deg,#609b93,transparent 52%);
+    --command-rib: #536e76;
+  }
+  @media (max-width:700px) {
+    #app.chronicle-shell #main :is(.town-workspace .town-panel,.town-overview,.geographic-map-panel) { border-radius: 2px 7px 2px 7px; }
+  }
+}

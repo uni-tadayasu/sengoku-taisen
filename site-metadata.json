@@ -4,8 +4,8 @@
   "name": "戦国VS",
   "alternateName": "SENGOKU VS",
   "publisher": "KASAI SOLUTIONS",
-  "release": "5.9.3-20261127",
-  "version": "5.9.3",
+  "release": "5.9.4-20261127",
+  "version": "5.9.4",
   "dateModified": "2026-11-27",
   "language": "ja",
   "locale": "ja_JP",
@@ -79,8 +79,8 @@
       "description": "戦国VS公式。城下町の内政、武将編成、城をめぐる合戦を楽しむ戦国戦略シミュレーション。軍師AIの助言、同盟・交易、端末間の引き継ぎに対応。PC・スマホ・タブレットで、インストールせず基本プレイ無料で始められます。",
       "dateModified": "2026-11-27",
       "artwork": {
-        "path": "assets/chronicle/cover.webp",
-        "alt": "軍扇を持つ武将が、城のある領国を見渡す戦国VSのメインビジュアル",
+        "path": "assets/responsive/neon-command-1536.webp",
+        "alt": "月夜の天守と朱の軍旗を背に、翡翠色に光る甲冑をまとい金の軍扇を持つ女武将",
         "width": 1536,
         "height": 1024
       },

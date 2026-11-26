@@ -13,7 +13,7 @@
   justify-content: space-between;
   gap: 16px;
 }
-.presentation-text-row { margin-top: 16px; padding-top: 16px; border-top: 1px solid #d9b66f30; }
+.presentation-settings p + .presentation-setting-row { margin-top: 16px; padding-top: 16px; border-top: 1px solid #d9b66f30; }
 .presentation-setting-row label { color: var(--text, #eee8da); font-size: 15px; font-weight: 600; }
 .presentation-setting-row .select { min-height: 44px; width: 132px; max-width: 55%; }
 .presentation-settings p {

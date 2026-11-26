@@ -51,7 +51,7 @@ const vm=require('node:vm');
     assert.equal(await (await emit('fetch',request(map))).text(),onlineMap);
     assert.equal(await (await emit('fetch',request('guide/','navigate'))).text(),guide);
     assert.equal(await (await emit('fetch',request('./?notice=1','navigate'))).text(),home);
-    assert.equal((await (await emit('fetch',request('assets/responsive/cover-1536.webp'))).arrayBuffer()).byteLength,stored.get(scope+'assets/responsive/cover-480.webp'));
+    assert.equal((await (await emit('fetch',request('assets/responsive/neon-command-1536.webp'))).arrayBuffer()).byteLength,stored.get(scope+'assets/responsive/neon-command-480.webp'));
     assert.equal(await emit('fetch',request('api/v1/me')),undefined);
     assert.equal(await emit('fetch',request('assets/example.webp','cors',{headers:new Headers({Authorization:'Bearer local-test'})})),undefined);
     assert(![...records.keys()].some(key=>/notice=|api\/|token=/.test(key)));
