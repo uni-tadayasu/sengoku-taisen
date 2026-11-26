@@ -26,7 +26,9 @@ const totalGzipBytes = rows.reduce((sum,row)=>sum+row.gzipBytes,0);
 // v5.9 adds direct operation/plan destinations, persistent reading position,
 // construction blockers and confirmation-time preset validation. Measured:
 // 3,309,958 raw / 950,478 gzip (+11,264 / +3,341 from v5.8.1).
-const rawBudget=3320000,gzipBudget=955000;
+// The watchlist, reserve planning and battle reports add 20,358 raw / 5,871
+// gzip bytes to the v5.9.1 entry. The map's deferred payload is measured separately.
+const rawBudget=3336000,gzipBudget=959000;
 assert(totalBytes <= rawBudget, `Initial bundles exceed the ${rawBudget} byte budget: ${totalBytes}`);
 assert(totalGzipBytes <= gzipBudget, `Initial bundles exceed the ${gzipBudget} gzip byte budget: ${totalGzipBytes}`);
 const html = fs.readFileSync(path.join(root,'index.html'),'utf8');

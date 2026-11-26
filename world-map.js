@@ -164,6 +164,102 @@ function prepareGeography(container, redraw) {
   });
   return false;
 }
+// Campaign bookmarks live outside the game save. Each castle has its own key so
+// two tabs can update different castles without replacing one another's lists.
+function watchScope(){
+  const bridge=global.SengokuBridge,state=bridge?.getState?.();
+  const campaign=state?.walking?.campaignId||state?.campaignId;
+  if(!campaign||bridge.hasStarted?.()===false)return '';
+  const access=global.SengokuSocial?.getExpansionContext?.()||{};
+  if(access.pending||access.banned||access.playerId&&access.user?.id!==access.playerId)return '';
+  return 'sengoku.watch.1.'+JSON.stringify([access.playerId||'local',campaign,state.home,state.clan])+':';
+}
+
+function mountWatchlist(container,listen,points,selectedId,visit){
+  const opener=container.querySelector('[data-watch-open]'),panel=container.querySelector('[data-watch-panel]');
+  const closeButton=panel.querySelector('[data-watch-close]'),toggle=panel.querySelector('[data-watch-toggle]');
+  const list=panel.querySelector('[data-watch-list]'),status=panel.querySelector('[data-watch-status]');
+  let scope='',pinned=new Set(),lastRows='',readFailed=false;
+  panel.hidden=true;
+  function read(next){
+    scope=next;pinned=new Set();readFailed=false;
+    if(!scope)return;
+    try{
+      const storage=global.localStorage;
+      for(const point of points())if(storage.getItem(scope+point.id)==='1')pinned.add(point.id);
+    }catch(_){readFailed=true;}
+  }
+  function refresh(){
+    if(panel.hidden)return;
+    const next=watchScope();
+    if(next!==scope)read(next);
+    const data=points(),current=data.find(point=>point.id===selectedId());
+    const saved=Boolean(current&&pinned.has(current.id));
+    toggle.disabled=!scope||readFailed||!current||current.disabled;
+    toggle.setAttribute('aria-pressed',String(saved));
+    toggle.textContent=current?(saved?current.name+'を登録解除':current.name+'を登録'):'城を選んで登録';
+    const rows=data.filter(point=>pinned.has(point.id));
+    const message=!scope?'領主と戦役を確認してから登録できます。':readFailed?'端末の保存領域を利用できません。':
+      rows.length?'この端末に登録した城 '+rows.length+'件':'地図で城を選び、ここから登録できます。';
+    if(status.textContent!==message)status.textContent=message;
+    const html=rows.map(point=>{
+      const relation=point.disabled?(point.restrictedLabel||'選択不可'):point.home?'本拠':point.own?'自領':point.ally?'同盟':point.reachable?'自領に隣接':'他勢力';
+      return `<li data-stable-key="${esc(point.id)}"><button type="button" data-watch-visit="${esc(point.id)}" aria-label="${esc(point.name)}を地図で表示"${point.disabled?' disabled':''}><b>${esc(point.name)}</b><small>${esc([point.region,point.owner,relation].filter(Boolean).join(' · '))} · ${Number(point.troops||0).toLocaleString('ja-JP')}兵</small></button><button type="button" data-watch-remove="${esc(point.id)}" aria-label="${esc(point.name)}を注目城から解除">解除</button></li>`;
+    }).join('');
+    if(html!==lastRows){
+      if(global.SengokuStableDOM)global.SengokuStableDOM.patch(list,html);
+      else list.innerHTML=html;
+      lastRows=html;
+    }
+  }
+  function close(returnFocus=true){
+    panel.hidden=true;opener.setAttribute('aria-expanded','false');
+    if(returnFocus)opener.focus({preventScroll:true});
+  }
+  function edit(castleId,add){
+    if(!scope||scope!==watchScope()){refresh();return;}
+    const point=points().find(row=>row.id===castleId);
+    if(!point||add&&point.disabled)return;
+    try{
+      if(add){global.localStorage.setItem(scope+castleId,'1');pinned.add(castleId);}
+      else{global.localStorage.removeItem(scope+castleId);pinned.delete(castleId);}
+    }catch(_){status.textContent='端末に変更を保存できませんでした。';return;}
+    refresh();
+  }
+  listen(opener,'click',()=>{
+    if(!panel.hidden){close();return;}
+    panel.hidden=false;opener.setAttribute('aria-expanded','true');read(watchScope());refresh();closeButton.focus({preventScroll:true});
+  });
+  listen(closeButton,'click',()=>close());
+  listen(toggle,'click',()=>{
+    if(!toggle.disabled)edit(selectedId(),toggle.getAttribute('aria-pressed')!=='true');
+  });
+  listen(list,'click',event=>{
+    const button=event.target.closest?.('button');
+    if(!button||button.disabled||!scope||scope!==watchScope()){refresh();return;}
+    if(button.dataset.watchRemove){
+      edit(button.dataset.watchRemove,false);
+      if(!list.contains(button))closeButton.focus({preventScroll:true});
+    }else if(button.dataset.watchVisit){
+      const point=points().find(row=>row.id===button.dataset.watchVisit);
+      if(point&&!point.disabled&&pinned.has(point.id)){close();visit(point);}
+    }
+  });
+  listen(container,'keydown',event=>{
+    if(!panel.hidden&&event.key==='Escape'&&!event.isComposing){
+      event.preventDefault();event.stopPropagation();close();
+    }
+  });
+  listen(container,'pointerdown',event=>{
+    if(!panel.hidden&&!panel.contains(event.target)&&!opener.contains(event.target))close(false);
+  });
+  listen(global,'storage',event=>{
+    if(panel.hidden||event.key!==null&&!event.key?.startsWith(scope))return;
+    read(watchScope());refresh();
+  });
+  return refresh;
+}
+
 function mount(container,options={}){
   if(!container||typeof container.querySelector!=='function')return null;
   const previous=mounted.get(container);if(previous){previous.update(options);return previous;}
@@ -184,8 +280,11 @@ function mount(container,options={}){
     return`<image data-terrain-kind="${layer.kind==='color'?'color':'hillshade'}" href="${esc(url)}" x="${bounds.x}" y="${bounds.y}" width="${bounds.width}" height="${bounds.height}" preserveAspectRatio="none"/>`;
   }).join('');
   const button=(action,title,symbol,pressed)=>`<button type="button" class="sg-map-control" data-map-action="${action}" title="${title}" aria-label="${title}"${pressed===undefined?'':` aria-pressed="${pressed}"`}>${icon(symbol)}</button>`;
+  const enableWatch=options.stateKey==='campaign-map';
+  const watchOpener=enableWatch?`<button type="button" class="sg-watch-opener" data-watch-open aria-controls="${id}-watch" aria-expanded="false">注目城</button>`:'';
+  const watchPanel=enableWatch?`<section class="sg-watch-panel" data-watch-panel id="${id}-watch" aria-label="注目城" hidden><header><h3>注目城</h3><button type="button" data-watch-close>閉じる</button></header><button type="button" data-watch-toggle aria-pressed="false"></button><p role="status" data-watch-status></p><ul data-watch-list></ul></section>`:'';
   container.classList.add('sg-map-host');
-  container.innerHTML=`<div class="sg-map"><div class="sg-map-surface" tabindex="0" role="group" aria-label="${esc(opts.surfaceLabel||'日本の実地形と城の地図。矢印キーで移動、プラス・マイナスで拡大縮小、Homeで本拠へ。')}"><svg class="sg-map-geography" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="${id}-sea" x1="0" y1="0" x2=".7" y2="1"><stop stop-color="#153b49"/><stop offset=".55" stop-color="#0b2739"/><stop offset="1" stop-color="#061b2e"/></linearGradient><linearGradient id="${id}-land" x1="0" y1="0" x2=".4" y2="1"><stop stop-color="#82906c"/><stop offset=".5" stop-color="#708366"/><stop offset="1" stop-color="#526f55"/></linearGradient><clipPath id="${id}-clip"><path d="${landPath}" fill-rule="evenodd"/></clipPath></defs><rect data-map-ocean fill="url(#${id}-sea)"/><g data-map-grid class="sg-map-grid"></g><path class="sg-map-coast-shadow" d="${landPath}" fill-rule="evenodd"/><path class="sg-map-land" d="${landPath}" fill="url(#${id}-land)" fill-rule="evenodd"/><g class="sg-map-relief" data-map-terrain clip-path="url(#${id}-clip)">${terrainHtml}</g><path class="sg-map-prefectures" d="${geometryPath(geography.boundaries||geography.prefectures)}"/><path class="sg-map-lakes" d="${geometryPath(geography.lakes)}"/><path class="sg-map-rivers" d="${geometryPath(geography.rivers)}"/><path class="sg-map-coastline" d="${geometryPath(geography.coastline)||landPath}" fill-rule="evenodd"/><g data-map-routes class="sg-map-routes"></g><g data-map-seas class="sg-map-seas"></g></svg><div class="sg-map-markers" data-map-markers></div></div><div class="sg-map-heading"><span class="sg-map-heading-label">${esc(opts.eyebrow||'JAPAN · TERRAIN MAP')}</span><strong>${esc(opts.title||'日本列島')}<span data-map-region></span></strong><span class="sg-map-heading-detail" data-map-count></span></div><div class="sg-map-north" title="北が上の地図">${icon('north')}<span>N</span></div><div class="sg-map-zoom">${button('zoom-in','地図を拡大','plus')}${button('zoom-out','地図を縮小','minus')}<span class="sg-map-control-divider"></span>${button('home','本拠を中心に表示','home')}${button('selected',opts.selectedLabel||'選択した城を中心に表示','focus')}${button('nation','日本列島の全景','fit')}</div><div class="sg-map-layers" role="group" aria-label="地図の表示">${button('terrain','地形の陰影を表示','layers',terrain)}${button('labels',opts.labelsLabel||'城名を表示','label',labels)}${button('routes','ゲームの進軍経路を表示','route',routes)}</div><div class="sg-map-tooltip" data-map-tooltip hidden></div><div class="sg-map-bottom"><div class="sg-map-legend"><span class="sg-map-legend-own">${esc(opts.legend?.own||'自領')}</span><span class="sg-map-legend-ally">${esc(opts.legend?.ally||'同盟')}</span><span class="sg-map-legend-reachable">${esc(opts.legend?.reachable||'進軍可能')}</span><span class="sg-map-legend-other">${esc(opts.legend?.other||'他勢力')}</span></div><div class="sg-map-scale"><span data-map-scale-label></span><i data-map-scale-bar></i></div></div><div class="sg-map-footer"><span class="sg-map-instruction">ドラッグで移動 · スクロール／ピンチで拡大</span><span data-map-position></span><span class="sg-map-sources">${sourceList}</span></div><span class="sg-map-sr" data-map-live role="status" aria-live="polite"></span></div>`;
+  container.innerHTML=`<div class="sg-map"><div class="sg-map-surface" tabindex="0" role="group" aria-label="${esc(opts.surfaceLabel||'日本の実地形と城の地図。矢印キーで移動、プラス・マイナスで拡大縮小、Homeで本拠へ。')}"><svg class="sg-map-geography" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="${id}-sea" x1="0" y1="0" x2=".7" y2="1"><stop stop-color="#153b49"/><stop offset=".55" stop-color="#0b2739"/><stop offset="1" stop-color="#061b2e"/></linearGradient><linearGradient id="${id}-land" x1="0" y1="0" x2=".4" y2="1"><stop stop-color="#82906c"/><stop offset=".5" stop-color="#708366"/><stop offset="1" stop-color="#526f55"/></linearGradient><clipPath id="${id}-clip"><path d="${landPath}" fill-rule="evenodd"/></clipPath></defs><rect data-map-ocean fill="url(#${id}-sea)"/><g data-map-grid class="sg-map-grid"></g><path class="sg-map-coast-shadow" d="${landPath}" fill-rule="evenodd"/><path class="sg-map-land" d="${landPath}" fill="url(#${id}-land)" fill-rule="evenodd"/><g class="sg-map-relief" data-map-terrain clip-path="url(#${id}-clip)">${terrainHtml}</g><path class="sg-map-prefectures" d="${geometryPath(geography.boundaries||geography.prefectures)}"/><path class="sg-map-lakes" d="${geometryPath(geography.lakes)}"/><path class="sg-map-rivers" d="${geometryPath(geography.rivers)}"/><path class="sg-map-coastline" d="${geometryPath(geography.coastline)||landPath}" fill-rule="evenodd"/><g data-map-routes class="sg-map-routes"></g><g data-map-seas class="sg-map-seas"></g></svg><div class="sg-map-markers" data-map-markers></div></div><div class="sg-map-heading"><span class="sg-map-heading-label">${esc(opts.eyebrow||'JAPAN · TERRAIN MAP')}</span><strong>${esc(opts.title||'日本列島')}<span data-map-region></span></strong><span class="sg-map-heading-detail" data-map-count></span>${watchOpener}</div>${watchPanel}<div class="sg-map-north" title="北が上の地図">${icon('north')}<span>N</span></div><div class="sg-map-zoom">${button('zoom-in','地図を拡大','plus')}${button('zoom-out','地図を縮小','minus')}<span class="sg-map-control-divider"></span>${button('home','本拠を中心に表示','home')}${button('selected',opts.selectedLabel||'選択した城を中心に表示','focus')}${button('nation','日本列島の全景','fit')}</div><div class="sg-map-layers" role="group" aria-label="地図の表示">${button('terrain','地形の陰影を表示','layers',terrain)}${button('labels',opts.labelsLabel||'城名を表示','label',labels)}${button('routes','ゲームの進軍経路を表示','route',routes)}</div><div class="sg-map-tooltip" data-map-tooltip hidden></div><div class="sg-map-bottom"><div class="sg-map-legend"><span class="sg-map-legend-own">${esc(opts.legend?.own||'自領')}</span><span class="sg-map-legend-ally">${esc(opts.legend?.ally||'同盟')}</span><span class="sg-map-legend-reachable">${esc(opts.legend?.reachable||'進軍可能')}</span><span class="sg-map-legend-other">${esc(opts.legend?.other||'他勢力')}</span></div><div class="sg-map-scale"><span data-map-scale-label></span><i data-map-scale-bar></i></div></div><div class="sg-map-footer"><span class="sg-map-instruction">ドラッグで移動 · スクロール／ピンチで拡大</span><span data-map-position></span><span class="sg-map-sources">${sourceList}</span></div><span class="sg-map-sr" data-map-live role="status" aria-live="polite"></span></div>`;
   const surface=container.querySelector('.sg-map-surface'),svg=container.querySelector('.sg-map-geography'),markerLayer=container.querySelector('[data-map-markers]'),tooltip=container.querySelector('[data-map-tooltip]'),ocean=container.querySelector('[data-map-ocean]');
   // The map owns this subtree for its lifetime. Keep direct references so
   // camera frames do not repeatedly walk the terrain and marker DOM.
@@ -194,6 +293,11 @@ function mount(container,options={}){
   const mapRoot=container.querySelector('.sg-map');
   const listeners=[];
   function listen(node,type,handler,settings){node.addEventListener(type,handler,settings);listeners.push(()=>node.removeEventListener(type,handler,settings));}
+  const refreshWatch=enableWatch?mountWatchlist(container,listen,()=>points,()=>opts.selectedId,point=>{
+    // Store the camera before selection. The normal selection callback may
+    // synchronously replace the map host during its render.
+    opts.selectedId=point.id;fit('selected',false);selectMarker(point);
+  }):null;
   const raf=global.requestAnimationFrame?.bind(global)||(fn=>global.setTimeout(fn,16)),caf=global.cancelAnimationFrame?.bind(global)||global.clearTimeout.bind(global);
   function remember(){savedViews.set(key,{camera:{x:view.x+view.width/2,y:view.y+view.height/2,zoom:baseView.width/view.width},labels,routes,terrain,region:opts.region});}
   function constrain(candidate){
@@ -227,6 +331,7 @@ function mount(container,options={}){
   function refreshPoints(){
     presentationVersion++;
     points=castlePoints(opts.castles,coordinates(),opts);
+    refreshWatch?.();
     const valid=points.filter(p=>opts.region==='all'||p.region===opts.region).length,total=(opts.castles||[]).filter(p=>opts.region==='all'||p.region===opts.region).length;
     countText=opts.countLabel||`${valid}${opts.countUnit||'城'}の実位置${valid<total?` · ${total-valid}${opts.countUnit||'城'}は位置を確認中`:''}${terrainHtml?' · 標高データによる陰影':''}`;
   }

@@ -120,3 +120,20 @@
 .sg-map.is-compact .sg-map-layers{left:10px;bottom:86px;padding:3px}.sg-map.is-compact .sg-map-bottom{left:10px;right:10px;bottom:38px;gap:7px}.sg-map.is-compact .sg-map-legend{font-size:10px;gap:5px 9px;padding:6px 8px}
 .sg-map.is-compact .sg-map-scale span{font-size:10px}.sg-map.is-compact .sg-map-footer{font-size:9px;padding:6px 10px;min-height:28px}.sg-map.is-compact .sg-map-tooltip{padding:7px 11px}.sg-map.is-compact .sg-map-tooltip strong{font-size:15px}.sg-map.is-compact .sg-map-tooltip p{font-size:12px}.sg-map.is-compact .sg-map-tooltip small{font-size:10px}
 @media(prefers-reduced-motion:reduce){.sg-map *{transition:none!important}}
+
+/* Campaign watchlist stays within the map frame, including short landscape views. */
+#world-map .sg-watch-opener,#world-map .sg-watch-panel button{appearance:none;margin:0;border:1px solid #aebf9f73;border-radius:5px;background:#12323b;color:#f8f1d7;font:inherit;font-size:14px;line-height:1.4;cursor:pointer}
+#world-map .sg-watch-opener{pointer-events:auto;min-height:36px;padding:5px 12px;margin-top:6px;border-color:#d7bd81;color:#ffe2a5}
+#world-map .sg-watch-opener:focus-visible,#world-map .sg-watch-panel button:focus-visible{outline:2px solid #ffe3a7;outline-offset:2px}
+#world-map .sg-watch-panel{position:absolute;z-index:180;top:10px;left:10px;bottom:auto;display:flex;flex-direction:column;gap:9px;width:min(380px,calc(100% - 20px));max-height:calc(100% - 20px);padding:14px;border:1px solid #c5ad77;border-radius:8px;background:#102b34fa;box-shadow:0 8px 32px #00141fcc;color:#f5efdf}
+#world-map .sg-watch-panel[hidden]{display:none!important}
+#world-map .sg-watch-panel header{position:static;display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0;padding:0;background:none;border:0;box-shadow:none}
+#world-map .sg-watch-panel h3,#world-map .sg-watch-panel p{margin:0;line-height:1.4}
+#world-map .sg-watch-panel p{font-size:14px;color:#d2e1db}
+#world-map .sg-watch-panel button{min-height:40px;padding:6px 11px}
+#world-map .sg-watch-panel button:disabled{cursor:default;opacity:.6}
+#world-map .sg-watch-panel ul{list-style:none;overflow:auto;overscroll-behavior:contain;min-height:0;margin:0;padding:0 3px;scrollbar-gutter:stable}
+#world-map .sg-watch-panel li{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:6px;margin:0;padding:7px 0;border-top:1px solid #d1d8c137}
+#world-map [data-watch-visit]{display:grid;gap:2px;justify-items:start;text-align:start;overflow-wrap:anywhere}
+#world-map [data-watch-visit] small{font-size:13px;line-height:1.4;color:#c9dbd5}
+@media(pointer:coarse){#world-map .sg-watch-opener,#world-map .sg-watch-panel button{min-height:44px}}

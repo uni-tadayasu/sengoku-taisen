@@ -9,6 +9,19 @@
     <ttl>60</ttl>
     <atom:link href="https://www.kasai-solutions-inc.com/news/feed.xml" rel="self" type="application/rss+xml"/>
     <item>
+      <title>Ver.5.9.2｜注目城の登録、予備兵・兵糧を残す軍議、出陣戦績の比較</title>
+      <link>https://www.kasai-solutions-inc.com/news/#v5-9-2</link>
+      <guid isPermaLink="true">https://www.kasai-solutions-inc.com/news/#v5-9-2</guid>
+      <dc:date>2026-11-27</dc:date>
+      <description>注目している城へすぐ戻り、守備に残す兵と兵糧を決めて出陣を計画できます。合戦後は、直近の戦績から武将の編成と損失を比較できます。
+
+天下地図の「注目城」：城を選んで登録すると、一覧から地方・勢力・兵数・自領との関係を確認して城の詳細へ戻れます。登録内容はこの端末の領主と戦役ごとに保存します。
+
+軍師に残したい兵と兵糧を指定：攻城戦・支拠点戦の準備で、出陣後に手元に残す最低兵数と兵糧を入力して軍師に再提案させられます。条件に合う案がないときは理由を表示します。
+
+出陣戦績を検索して2戦を比較：攻城戦・支拠点戦・野良兵戦の直近30戦を武将名・戦場・勝敗で絞り込めます。2戦の戦力・兵損・合戦時の見込み・編成を並べて確認し、結果をテキストで保存できます。</description>
+    </item>
+    <item>
       <title>Ver.5.9.1｜天下地図の読み込みデータを軽量化</title>
       <link>https://www.kasai-solutions-inc.com/news/#v5-9-1</link>
       <guid isPermaLink="true">https://www.kasai-solutions-inc.com/news/#v5-9-1</guid>

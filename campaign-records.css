@@ -23,6 +23,9 @@ dialog.campaign-records-dialog {
 .campaign-records-header h2 { margin:0; font:700 1.65rem/1.4 var(--serif,serif); color:#ffedc6; letter-spacing:.06em; }
 .campaign-records-header > button { flex:none; }
 .campaign-records-tools { flex:none; padding:16px 22px 0; }
+.campaign-records-views { display:flex; grid-column:1/-1; gap:4px; padding:3px; margin-bottom:10px; border:1px solid #85978a66; border-radius:7px; background:#10242e; }
+.campaign-records-views button { flex:1; background:transparent; border-color:transparent; }
+.campaign-records-views button[aria-pressed="true"] { font-weight:700; background:#38504f; border-color:#c8af7d; color:#ffedc6; }
 .campaign-records-tools label { min-width:0; display:grid; gap:5px; font-size:.875rem; color:#ced7cf; }
 .campaign-records-tools :is(input,select) { width:100%; min-width:0; min-height:44px; padding:9px 12px; color:#f3ecd9; background:#0b202c; border:1px solid #9fae9f66; font-size:1rem; }
 .campaign-records-tools input::placeholder { color:#aebfc4; opacity:1; }
@@ -41,6 +44,23 @@ dialog.campaign-records-dialog {
 .campaign-record time { color:#d9c9a6; font-size:.875rem; font-variant-numeric:tabular-nums; }
 .campaign-record > div > span { font-size:.8125rem; color:#c9d8cf; border:1px solid #a3b69c33; border-radius:3px; padding:1px 6px; }
 .campaign-record > p { margin:8px 0 0; font-size:1rem; line-height:1.85; overflow-wrap:anywhere; white-space:pre-wrap; }
+.campaign-battle-overview { padding:12px 14px; margin-bottom:10px; border:1px solid #a89c754f; border-radius:5px; background:#23383d; }
+.campaign-battle-overview[hidden],.campaign-battle-overview details[hidden] { display:none; }
+.campaign-battle-overview > p { margin:0; font-weight:650; color:#efdfbf; overflow-wrap:anywhere; }
+.campaign-battle-overview summary { padding-block:9px; min-height:44px; box-sizing:border-box; cursor:pointer; }
+.campaign-battle-overview summary:focus-visible { outline:2px solid #f0ce8c; outline-offset:2px; }
+.campaign-battle-selects,.campaign-battle-stats { display:grid; gap:8px; grid-template-columns:repeat(2,minmax(0,1fr)); }
+.campaign-battle-selects label { min-width:0; }
+.campaign-battle-selects select { display:block; width:100%; min-height:44px; margin-top:3px; padding:8px; border:1px solid #aebbb166; background:#10242e; color:#f2eddf; }
+.campaign-battle-table { width:100%; margin-top:10px; table-layout:fixed; border-collapse:collapse; font-size:.9375rem; }
+.campaign-battle-table :is(td,th) { padding:6px 8px; text-align:start; vertical-align:top; border-bottom:1px solid #acb3a73d; overflow-wrap:anywhere; }
+.campaign-battle-table th { color:#e1d2b3; }
+.campaign-battle[data-outcome="won"] { border-inline-start-color:#8db5a2; }
+.campaign-battle[data-outcome="lost"] { border-inline-start-color:#d69885; }
+.campaign-battle h3 { margin:6px 0; color:#f3e6cb; font-size:1.125rem; overflow-wrap:anywhere; }
+.campaign-battle-stats { grid-template-columns:repeat(4,minmax(0,1fr)); margin:8px 0; }
+.campaign-battle-stats dt { color:#c7d3cb; font-size:.875rem; }
+.campaign-battle-stats dd { margin:0; font-variant-numeric:tabular-nums; overflow-wrap:anywhere; }
 .campaign-records-empty { padding:30px 12px; text-align:center; border:1px dashed #b3a07566; border-radius:6px; }
 .campaign-records-empty[hidden] { display:none; }
 .campaign-records-empty p { margin:8px 0 0; font-size:.875rem; color:#c5d1cf; }
@@ -61,6 +81,9 @@ dialog.campaign-records-dialog {
   .campaign-records-tools :is(input,select) { padding-inline:8px; }
   .campaign-records-scroll { padding:0 14px 12px; }
   .campaign-record { padding:12px; }
+  .campaign-battle-stats { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .campaign-battle-selects { grid-template-columns:minmax(0,1fr); }
+  .campaign-battle-table :is(td,th) { padding:5px 3px; }
   .campaign-records-pagination { gap:8px; padding:7px 14px; }
   .campaign-records-pagination button { padding-inline:10px; }
   .campaign-records-footer { padding:10px 14px; }
