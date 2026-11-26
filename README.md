@@ -12,7 +12,7 @@
 
 [![戦国VSの実ゲーム画面：城下町](assets/promo/screenshots/sengoku-vs-town-20261126.jpg)](https://www.kasai-solutions-inc.com/sengoku-vs/)
 
-**最新映像**　翡翠の天守紋と月夜の城下町から、武将と天下地図のゲーム画面へ。日本語・英語の字幕で紹介します。[月夜の城下から、天下地図へ](https://www.kasai-solutions-inc.com/sengoku-vs/#jade-trailer)
+**最新映像**　翡翠の天守紋と月夜の城下町から、武将と天下地図のゲーム画面へ。日本語・英語の字幕で紹介します。[月夜の城下から、天下地図へ](https://www.kasai-solutions-inc.com/sengoku-vs/#jade-trailer) · [YouTube](https://www.youtube.com/watch?v=KFzGnhcSRIA)
 
 城下町を育て、256人の武将から軍団を編成し、城をめぐる戦役へ。129の城と拠点、64種類の施設を収録しています。画像は撮影用デモ進行を使った実際の操作画面です。
 

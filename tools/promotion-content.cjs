@@ -28,6 +28,7 @@ const firstSteps = Object.freeze({
 
 const jadePath = 'assets/promo/sengoku-vs-jade-campaign-ja-en-20261127';
 const jadeTrailer = Object.freeze({
+  url: 'https://www.youtube.com/watch?v=KFzGnhcSRIA',
   video: jadePath + '.mp4', poster: jadePath + '-poster.jpg',
   japaneseCaptions: jadePath + '-ja.vtt', englishCaptions: jadePath + '-en.vtt',
   title: '月夜の城下から、天下地図へ', englishTitle: 'From a moonlit castle to the campaign map',
@@ -42,7 +43,7 @@ function jadePlayer(file, language) {
       <track kind="captions" src="${esc(file(jadeTrailer.japaneseCaptions))}" srclang="ja" label="日本語">
       <track kind="captions" src="${esc(file(jadeTrailer.englishCaptions))}" srclang="en" label="English">
       <p><a href="${esc(file(jadeTrailer.video))}">${english ? 'Open the MP4' : '動画を開く（MP4）'}</a></p>
-    </video><figcaption>${english ? jadeTrailer.seconds + ' seconds · Japanese and English captions' : jadeTrailer.seconds + '秒・日本語／English字幕'}</figcaption></figure>`;
+    </video><figcaption>${english ? jadeTrailer.seconds + ' seconds · Japanese and English captions' : jadeTrailer.seconds + '秒・日本語／English字幕'} · <a href="${esc(jadeTrailer.url)}" target="_blank" rel="noopener noreferrer">${english ? 'Watch on YouTube' : 'YouTubeで見る'}</a></figcaption></figure>`;
 }
 
 function videoSchema(site) {
@@ -52,7 +53,7 @@ function videoSchema(site) {
     name: '戦国VS｜' + jadeTrailer.title, description: jadeTrailer.description,
     thumbnailUrl: site.origin + '/' + jadeTrailer.poster, uploadDate: '2026-11-27',
     duration: 'PT' + jadeTrailer.seconds + 'S', contentUrl: site.origin + '/' + jadeTrailer.video,
-    encodingFormat: 'video/mp4', inLanguage: ['ja', 'en'],
+    encodingFormat: 'video/mp4', inLanguage: ['ja', 'en'], sameAs: jadeTrailer.url,
     publisher: { '@id': site.origin + '/#organization' }, about: { '@id': site.origin + '/#game' }
   };
 }
