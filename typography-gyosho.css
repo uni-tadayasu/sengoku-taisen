@@ -1,0 +1,67 @@
+/* Local public-domain Kouzan Gyosho subsets. See assets/fonts/kouzan-gyosho/SOURCE.md. */
+@font-face{font-family:"Sengoku Gyosho";font-style:normal;font-weight:400;font-display:swap;src:url("assets/fonts/kouzan-gyosho/kouzan-gyosho-core.woff2") format("woff2");unicode-range:U+20-7E,U+2026,U+3000-3003,U+3005-3015,U+301D,U+301F,U+3041-3093,U+309B-309E,U+30A1-30F6,U+30FB-30FE,U+4E00,U+4E0A-4E0B,U+4E0D-4E0E,U+4E2D,U+4E3B,U+4E88,U+4EA4,U+4EAC,U+4EBA,U+4ECB,U+4EE4-4EE5,U+4EF6,U+4EFB,U+4F4D,U+4F5C,U+4FDD,U+4FEE,U+500D,U+505C,U+5099,U+5143,U+5148,U+5165,U+5168,U+516C,U+5171,U+5175,U+5178,U+5185,U+518D,U+51FA,U+5206,U+5225,U+5230,U+523B,U+524D,U+529B,U+52A0,U+52A9,U+52B9,U+52D5,U+52D9,U+52E2,U+52FE,U+53CB,U+53CD-53CE,U+53D6-53D7,U+5404,U+5408,U+540C-540D,U+547D,U+56DE,U+56E3,U+56FD,U+5728,U+5730,U+57CE,U+57FA,U+5831,U+5897,U+58F0,U+5909,U+5916,U+5927,U+5929,U+5949,U+5973,U+59CB,U+5B57-5B58,U+5B88,U+5B8C,U+5B9A,U+5B9F,U+5BB6,U+5BFE,U+5C06,U+5DDD,U+5DE5,U+5DFB,U+5E2B,U+5E30,U+5EA6,U+5EB7,U+5F0F,U+5F15,U+5F79,U+5F85,U+5F8C,U+5F97,U+5FA1,U+5FA9,U+5FB3,U+5FC5,U+5FDC,U+60C5,U+614B,U+6210,U+6226,U+623B,U+6240,U+6247,U+624B,U+6255,U+6280,U+62DB,U+62E0,U+6301,U+6307,U+633F,U+63A2,U+63A5,U+63F4,U+64CD,U+652F,U+653B,U+653F,U+6570,U+6574-6575,U+6587,U+6599,U+65B0,U+65B9,U+65BD,U+65D7,U+6613,U+6620,U+6642,U+666E,U+66A6,U+66F2,U+66F4,U+66FF-6700,U+6708-6709,U+671B,U+671D,U+671F,U+672A-672C,U+6750,U+6761,U+679C,U+67A0,U+6848,U+697D,U+6982,U+6B21,U+6B62,U+6B66,U+6B8B,U+6BB5,U+6BD4,U+6CBB,U+6CC1,U+6D41,U+6D88,U+6E08,U+6E21,U+6E90,U+6E96,U+70B9,U+7121,U+713C,U+7248,U+7269,U+72B6,U+7387,U+7389,U+73FE,U+751F,U+7523,U+7528,U+753A-753B,U+7565,U+767B,U+76DF,U+76EE,U+76F4,U+7740,U+77E5,U+7814,U+78BA,U+793A,U+79D2,U+79FB,U+7A76,U+7AEF,U+7B97,U+7BC9,U+7CE7,U+7D04,U+7D20,U+7D39,U+7D42,U+7D50,U+7D66,U+7D71,U+7D75,U+7D99-7D9A,U+7DAD,U+7DE8,U+7F6E,U+7FA4,U+8074,U+80B2,U+80FD,U+81E3,U+81EA,U+8272,U+884C,U+8868,U+8981,U+898B,U+89E3,U+8A00,U+8A08,U+8A2D,U+8A66,U+8A8D,U+8A9E,U+8AAD,U+8ACB,U+8CBB,U+8CC7,U+8D64,U+8ECD,U+8EE2,U+8F03,U+8FBC,U+8FFD,U+901A,U+901F,U+9032,U+904A,U+9078,U+9084,U+90E8,U+90ED,U+90FD,U+914D,U+916C,U+91D1,U+92AD,U+9332,U+9589,U+958B,U+9593,U+9650,U+9663,U+968A,U+968E,U+96C4,U+96C6,U+9762,U+97F3,U+9806,U+9818,U+9AD8,U+FF01,U+FF03-FF06,U+FF08-FF5E,U+FF61-FF9F,U+FFE0-FFE1,U+FFE3,U+FFE5;}
+@font-face{font-family:"Sengoku Gyosho";font-style:normal;font-weight:400;font-display:swap;src:url("assets/fonts/kouzan-gyosho/kouzan-gyosho-range-01.woff2") format("woff2");unicode-range:U+A0-2025,U+2027-2FFF,U+3004,U+3016-301C,U+301E,U+3020-3040,U+3094-309A,U+309F-30A0,U+30F7-30FA,U+30FF-4DFF,U+4E01-4E09,U+4E0C,U+4E0F-4E2C,U+4E2E-4E3A,U+4E3C-4E87,U+4E89-4EA3,U+4EA5-4EAB,U+4EAD-4EB9,U+4EBB-4ECA,U+4ECC-4EE3,U+4EE6-4EF5,U+4EF7-4EFA,U+4EFC-4F4C,U+4F4E-4F5B,U+4F5D-4FDC,U+4FDE-4FED,U+4FEF-500C,U+500E-505B,U+505D-5098,U+509A-50AC;}
+@font-face{font-family:"Sengoku Gyosho";font-style:normal;font-weight:400;font-display:swap;src:url("assets/fonts/kouzan-gyosho/kouzan-gyosho-range-02.woff2") format("woff2");unicode-range:U+50AD-5142,U+5144-5147,U+5149-5164,U+5166-5167,U+5169-516B,U+516D-5170,U+5172-5174,U+5176-5177,U+5179-5184,U+5186-518C,U+518E-51F9,U+51FB-5205,U+5207-5224,U+5226-522F,U+5231-523A,U+523C-524C,U+524E-529A,U+529C-529F,U+52A1-52A8,U+52AA-52B8,U+52BA-52D4,U+52D6-52D8,U+52DA-52E1,U+52E3-52FD,U+52FF-53CA,U+53CC,U+53CF-53D5,U+53D8-5403,U+5405-5407,U+5409-540B,U+540E-547C,U+547E-54C4;}
+@font-face{font-family:"Sengoku Gyosho";font-style:normal;font-weight:400;font-display:swap;src:url("assets/fonts/kouzan-gyosho/kouzan-gyosho-range-03.woff2") format("woff2");unicode-range:U+54C7-56DD,U+56DF-56E2,U+56E4-56FC,U+56FE-5727,U+5729-572F,U+5731-57CD,U+57CF-57F9,U+57FB-5830,U+5832-5896,U+5898-58EF,U+58F1-5908,U+590A-5915,U+5917-5926,U+5928,U+592A-5948,U+594A-5972,U+5974-59CA,U+59CC-5ACC;}
+@font-face{font-family:"Sengoku Gyosho";font-style:normal;font-weight:400;font-display:swap;src:url("assets/fonts/kouzan-gyosho/kouzan-gyosho-range-04.woff2") format("woff2");unicode-range:U+5AD0-5B56,U+5B59-5B87,U+5B89-5B8B,U+5B8D-5B99,U+5B9B-5B9E,U+5BA0-5BB5,U+5BB7-5BFD,U+5BFF-5C05,U+5C07-5DDC,U+5DDE-5DE4,U+5DE6-5DFA,U+5DFC-5E2A,U+5E2C-5E2F,U+5E31-5EA5,U+5EA7-5EB6,U+5EB8-5F0E,U+5F10-5F14,U+5F16-5F6B;}
+@font-face{font-family:"Sengoku Gyosho";font-style:normal;font-weight:400;font-display:swap;src:url("assets/fonts/kouzan-gyosho/kouzan-gyosho-range-05.woff2") format("woff2");unicode-range:U+5F6C-5F78,U+5F7A-5F84,U+5F86-5F8B,U+5F8D-5F96,U+5F98-5FA0,U+5FA2-5FA8,U+5FAA-5FB2,U+5FB4-5FC4,U+5FC6-5FDB,U+5FDD-60C4,U+60C6-614A,U+614C-620F,U+6211-6225,U+6227-623A,U+623C-623F,U+6241-6246,U+6248-624A,U+624C-6254,U+6256-627F,U+6281-62DA,U+62DC-62DF,U+62E1-6300,U+6302-6306,U+6308-633E,U+6340-63A1,U+63A3-63A4,U+63A6-63AC;}
+@font-face{font-family:"Sengoku Gyosho";font-style:normal;font-weight:400;font-display:swap;src:url("assets/fonts/kouzan-gyosho/kouzan-gyosho-range-06.woff2") format("woff2");unicode-range:U+63B2-63F3,U+63F5-64CC,U+64CE-652E,U+6530-653A,U+653C-653E,U+6540-656F,U+6571-6573,U+6576-6586,U+6588-6598,U+659A-65AF,U+65B1-65B8,U+65BA-65BC,U+65BE-65D6,U+65D8-6612,U+6614-661F,U+6621-6641,U+6643-666D,U+666F-66A5,U+66A7-66F1,U+66F3,U+66F5-66FE,U+6701-6707,U+670A-671A,U+671C,U+671E,U+6720-6729,U+672D-674F,U+6751-6760,U+6762-679B,U+679D-679F,U+67A1-6847,U+6849-6893;}
+@font-face{font-family:"Sengoku Gyosho";font-style:normal;font-weight:400;font-display:swap;src:url("assets/fonts/kouzan-gyosho/kouzan-gyosho-range-07.woff2") format("woff2");unicode-range:U+6894-697C,U+697E-6981,U+6983-6B20,U+6B22-6B61,U+6B63-6B65,U+6B67-6B8A,U+6B8C-6BB4,U+6BB6-6BD3,U+6BD5-6CBA,U+6CBC-6CC0,U+6CC2-6D40,U+6D42-6D79;}
+@font-face{font-family:"Sengoku Gyosho";font-style:normal;font-weight:400;font-display:swap;src:url("assets/fonts/kouzan-gyosho/kouzan-gyosho-range-08.woff2") format("woff2");unicode-range:U+6D85-6D87,U+6D89-6E07,U+6E09-6E20,U+6E22-6E8F,U+6E91-6E95,U+6E97-70B8,U+70BA-7120,U+7122-713B,U+713D-7247,U+7249-7268,U+726A-72B5,U+72B7-7378;}
+@font-face{font-family:"Sengoku Gyosho";font-style:normal;font-weight:400;font-display:swap;src:url("assets/fonts/kouzan-gyosho/kouzan-gyosho-range-09.woff2") format("woff2");unicode-range:U+737A-7386,U+7388,U+738A-73FD,U+73FF-751E,U+7520-7522,U+7524-7527,U+7529-7539,U+753C-7564,U+7566-767A,U+767C-76DE,U+76E0-76ED,U+76EF-76F3,U+76F5-773F,U+7741-77E4,U+77E6-7813,U+7815-78B9,U+78BB-7939,U+793B-795A;}
+@font-face{font-family:"Sengoku Gyosho";font-style:normal;font-weight:400;font-display:swap;src:url("assets/fonts/kouzan-gyosho/kouzan-gyosho-range-10.woff2") format("woff2");unicode-range:U+795D-79D1,U+79D3-79FA,U+79FC-7A75,U+7A77-7AEE,U+7AF0-7B96,U+7B98-7BC8,U+7BCA-7CE6,U+7CE8-7D03,U+7D05-7D1F,U+7D21-7D38,U+7D3A-7D41,U+7D43-7D4F,U+7D51-7D65,U+7D67-7D70,U+7D72-7D74,U+7D76-7D98,U+7D9B-7DAC,U+7DAE-7DE7,U+7DE9-7DFB;}
+@font-face{font-family:"Sengoku Gyosho";font-style:normal;font-weight:400;font-display:swap;src:url("assets/fonts/kouzan-gyosho/kouzan-gyosho-range-11.woff2") format("woff2");unicode-range:U+7E01-7F6D,U+7F6F-7FA3,U+7FA5-8073,U+8075-80B1,U+80B3-80FC,U+80FE-81E2,U+81E4-81E9,U+81EB-8271,U+8273-8318;}
+@font-face{font-family:"Sengoku Gyosho";font-style:normal;font-weight:400;font-display:swap;src:url("assets/fonts/kouzan-gyosho/kouzan-gyosho-range-12.woff2") format("woff2");unicode-range:U+831C-884B,U+884D-8867,U+8869-88C5;}
+@font-face{font-family:"Sengoku Gyosho";font-style:normal;font-weight:400;font-display:swap;src:url("assets/fonts/kouzan-gyosho/kouzan-gyosho-range-13.woff2") format("woff2");unicode-range:U+88CF-8980,U+8982-898A,U+898C-89E2,U+89E4-89FF,U+8A01-8A07,U+8A09-8A2C,U+8A2E-8A65,U+8A67-8A8C,U+8A8E-8A9D,U+8A9F-8AAC,U+8AAE-8ACA,U+8ACC-8CBA,U+8CBC-8CC6,U+8CC8-8D63,U+8D65-8E84;}
+@font-face{font-family:"Sengoku Gyosho";font-style:normal;font-weight:400;font-display:swap;src:url("assets/fonts/kouzan-gyosho/kouzan-gyosho-range-14.woff2") format("woff2");unicode-range:U+8E85-8ECC,U+8ECE-8EE1,U+8EE3-8F02,U+8F04-8FBB,U+8FBD-8FFC,U+8FFE-9019,U+901B-901E,U+9020-9031,U+9033-9049,U+904B-9077,U+9079-9083,U+9085-90E7,U+90E9-90EC,U+90EE-90FC,U+90FE-914C,U+914E-916B,U+916D-91D0,U+91D2-92AC,U+92AE-9331,U+9333-945A;}
+@font-face{font-family:"Sengoku Gyosho";font-style:normal;font-weight:400;font-display:swap;src:url("assets/fonts/kouzan-gyosho/kouzan-gyosho-range-15.woff2") format("woff2");unicode-range:U+945B-9588,U+958A,U+958C-9592,U+9594-964F,U+9651-9662,U+9664-9689,U+968B-968D,U+968F-96C3,U+96C5,U+96C7-9761,U+9763-97F2,U+97F4-9805,U+9807-9817,U+9819-9AD7,U+9AD9-9B18;}
+@font-face{font-family:"Sengoku Gyosho";font-style:normal;font-weight:400;font-display:swap;src:url("assets/fonts/kouzan-gyosho/kouzan-gyosho-range-16.woff2") format("woff2");unicode-range:U+9B1A-9FA0;}
+
+/* Legible gyosho typography. */
+:root {
+  --font-gyosho: "Sengoku Gyosho", "Yu Mincho", "Hiragino Mincho ProN", "Noto Serif JP", serif;
+  --font-numerals: "Segoe UI", "Helvetica Neue", Arial, "Hiragino Kaku Gothic ProN", "Yu Gothic", Meiryo, sans-serif;
+  --serif: var(--font-gyosho);
+  --sans: var(--font-gyosho);
+  --mincho: var(--font-gyosho);
+}
+body { font-family: var(--font-gyosho); font-size: 18px; line-height: 1.7; }
+body.public-luxury, #app.chronicle-shell {
+  --serif: var(--font-gyosho); --sans: var(--font-gyosho); --mincho: var(--font-gyosho);
+  font-family: var(--font-gyosho);
+}
+button, input, select, textarea, summary { font-family: var(--font-gyosho); }
+h1, h2, h3, h4, h5, h6, .brand b, .site-brand b, .footer-brand {
+  font-family: var(--font-gyosho); font-synthesis: none;
+}
+body:not(.at-title) :is(.modal-header,.navigation-dialog-header,.premium-dialog-header) h2 {
+  font-family: var(--font-gyosho);
+}
+:is(.button,.text-link,.nav-item,.navigation-quick,.select,.input) {
+  font-family: var(--font-gyosho);
+}
+:is(#app,#modal,.navigation-dialog,.resource-planner-dialog) :is(.button,.select,.input) {
+  font-size: max(16px,1rem);
+}
+:is(.article,.hero-lead,.level-guide-body,.modal-body,.notice,.subtitle) { line-height: 1.75; }
+body[data-page] { font-size: 18px; line-height: 1.8; }
+/* Prices, time and ability numbers keep clear, stable-width numerals. */
+:is(.resource-amount,.resource-gain,.nav-count,.building-level,.territory-numbers,
+    .stat-value,.stat-number,.stat-row b,.officer-stat-value,.army-stat-value,.track-duration,
+    .settings-volume output,.settings-volume-value,.resource-plan-card dd,
+    .resource-plan-gap strong,.economy-row dd,.economy-breakdown dd,
+    .command-center-value,.command-metric-value,.battle-advisor-metrics dd,
+    .battle-advisor-readiness dd,.army-planner-stats dd,.army-planner-delta,
+    [data-clock-time],[data-budget-current],[data-budget-target],
+    [data-budget-required],[data-budget-gap],[data-budget-reserve],
+    input[type="number"],input[type="range"],code,pre,kbd) {
+  font-family: var(--font-numerals);
+  font-variant-numeric: tabular-nums lining-nums;
+}
+/* Latin documentation stays in the local system text face. */
+html[lang="en"] body { font-family: var(--font-numerals); }
+@media (max-width: 600px) {
+  body { font-size: 17px; line-height: 1.7; }
+  body[data-page] { font-size: 17px; line-height: 1.8; }
+  :is(.button,.select,.input) { line-height: 1.55; }
+}

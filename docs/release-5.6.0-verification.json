@@ -1,0 +1,750 @@
+{
+  "version": "5.6.0",
+  "date": "2026-11-27",
+  "baselineCommit": "dbec77ae2dfe285b34992d23df9a696635c016ec",
+  "status": "local-verification-passed-awaiting-remote-ci",
+  "node": "v24.22.3",
+  "workflowContinuity": [
+    {
+      "command": "node tests/test-stable-dom.cjs",
+      "exitCode": 0,
+      "seconds": 2.394,
+      "logFile": "tests-test-stable-dom.cjs.log",
+      "tail": "ct a newly selected patch context or a detached page\nPASS native hit testing bounds anchor geometry reads on a long list and retains visible content\nPASS unavailable or failed native hit testing preserves the deterministic geometry fallback\nPASS mobile and tablet keyboard viewports anchor the content actually visible above the keyboard\nPASS a keyboard/browser viewport change cancels delayed restoration without moving the document\nPASS a large reordered roster retains keyed rows, listeners and a focused draft\nPASS long unkeyed lists consume repeated shapes in source order without recycling incompatible nodes\n43 stable DOM scenarios passed with deterministic DOM fixtures; no browser launched.\n"
+    },
+    {
+      "command": "node tests/test-world-map.cjs",
+      "exitCode": 0,
+      "seconds": 0.213,
+      "logFile": "tests-test-world-map.cjs.log",
+      "tail": " boxes\nPASS castle artwork is opt-in and clusters or views without a callback keep their normal symbols\nPASS larger shared castle symbols reserve enough room for map labels\nPASS selected and home labels never cover castle artwork in the narrow Kiyosu home view\nPASS map scale uses latitude-correct ground distance and useful metric units\nPASS the shipped geography provides all 129 actual castle positions and offline terrain\nPASS camera-only redraws reuse routes while fresh ownership, access and regional data invalidate them\nPASS stable castle artwork and map elements are reused for 60 camera frames, then refreshed by new data\n16 real-geography projection, interaction and layout checks passed.\n"
+    },
+    {
+      "command": "node tests/test-ui-continuity.cjs",
+      "exitCode": 0,
+      "seconds": 0.388,
+      "logFile": "tests-test-ui-continuity.cjs.log",
+      "tail": "nd StableDOM retain document/pane reading positions through phone, tablet and PC sync batches\nPASS unchanged verified operator role does not rebuild the page or modal\nPASS map synchronization updates the existing controller and retains its camera\nPASS elapsed construction uses actual progress and remaining time follows current speed or pause\nPASS cycle settlement persists final occupation, blocks mutations, flushes and only then refreshes\nPASS cycle reconciliation failure has a bounded retry and never treats the old cycle as settled\nPASS failed local durability prevents cycle transfer; guests never call settlement APIs\n14 live UI continuity, elapsed timer and cycle settlement checks passed.\n"
+    },
+    {
+      "command": "node tests/test-quiet-sync-layout.cjs",
+      "exitCode": 0,
+      "seconds": 0.117,
+      "logFile": "tests-test-quiet-sync-layout.cjs.log",
+      "tail": "ASS research labels and state retain their size during sync but still disable the real action\nPASS routine save acknowledgements do not redraw open garrison or treasury dialogs\nPASS follower device-switch guidance does not disappear while a new snapshot is applied\nPASS actual personal treasury balances still refresh during an otherwise identical save acknowledgement\nPASS treasury controls keep normal sync silent while retaining real balance changes and errors\nPASS action-required sync failures remain visible until a confirmed recovery\nPASS initialization, ordinary saves and sync progress remain silent; errors are not filtered\n8 quiet sync presentation scenarios passed. No external requests.\n"
+    },
+    {
+      "command": "node tests/test-social-viewport.cjs",
+      "exitCode": 0,
+      "seconds": 0.128,
+      "logFile": "tests-test-social-viewport.cjs.log",
+      "tail": "yboard resize preserves the draft, caret and send-button position\nPASS desktop resizing restores normal chat layout without replacing its input\nPASS wide touch tablets retain their composer with an attached fine pointer\nPASS keyboard focus inside the portalled mention picker keeps the same compact composer\nPASS closing and disposing dialogs releases temporary layout without altering text\nPASS offscreen selected tabs reveal within their strip without moving the profile or draft\nPASS reopening and resizing reveal the selected tab while closed dialogs never move\nPASS background conversation updates never schedule layout for retained closed dialogs\n9 compact conversation behavior checks passed.\n"
+    },
+    {
+      "command": "node tests/test-social-chat.cjs",
+      "exitCode": 0,
+      "seconds": 0.54,
+      "logFile": "tests-test-social-chat.cjs.log",
+      "tail": "recipient limits and stale remote search results cannot cross conversations\nPASS real chat submits stable reply and mention IDs; failed sends preserve the complete draft\nPASS a delayed world send cannot clear or redirect the selected friend draft\nPASS an in-flight send preserves new typing, and server content updates preserve draft and DOM focus\nPASS real delegated key handler permits mobile newlines and IME while desktop Enter sends once\nPASS disabling a focused Send button returns focus after success without stealing a later deliberate focus\nPASS identity replacement clears private drafts and makes an old send response harmless\n13 chat UI checks passed. Requests used an isolated mock API.\n"
+    },
+    {
+      "command": "node tests/test-social-avatar.cjs",
+      "exitCode": 0,
+      "seconds": 0.215,
+      "logFile": "tests-test-social-avatar.cjs.log",
+      "tail": "meline\nPASS every registered role receives the profile editor and guests do not\nPASS player surfaces use the shared photo renderer and chat normalizes userId with avatar refresh signatures\nPASS saving uses only the current authenticated avatar endpoint and retains the editor success state\nPASS routine profile checks never remount an in-progress editor\nPASS profile cards remain outside the bounded body grid and preserve the live name and photo editor\nPASS an older metadata response cannot restore a pre-upload avatar version\nPASS close, identity switch, role change and disposal retire old request and callback lifetimes\n10 social/avatar integration checks passed. No network requests were made.\n"
+    },
+    {
+      "command": "node tests/test-profile-name-ui.cjs",
+      "exitCode": 0,
+      "seconds": 0.111,
+      "logFile": "tests-test-profile-name-ui.cjs.log",
+      "tail": "cating the input\nPASS duplicate names keep the draft and current identity while restoring the controls\nPASS a concurrent device rename reloads the current name and never retries an old expectation automatically\nPASS one in-flight rename disables both controls and ignores a second submission\nPASS an unknown network outcome can resend the same desired name and expected name safely\nPASS older me and sync responses cannot roll the committed name back\nPASS late rename responses cannot cross an identity change\nPASS a failed post-commit refresh reports a completed rename without restoring the old name\n11 profile-name UI checks passed. Synthetic data only; no network, storage changes, or purchases.\n"
+    },
+    {
+      "command": "node tests/test-responsive-text.cjs",
+      "exitCode": 0,
+      "seconds": 0.227,
+      "logFile": "tests-test-responsive-text.cjs.log",
+      "tail": "ns keep natural-height rows instead of shrinking cards\nPASS building descriptions and the player heading cannot return to ellipsis\nPASS ledger and recruitment table cells preserve all balance digits at narrow widths\nPASS territorial search controls can shrink inside the clipped geography frame\nPASS recruiting results and major army/research totals cannot conceal long values\nPASS operational count cards adapt to panel width and enlarged root text\nPASS phone settings place labels above full-width selects and preserve slider space\nPASS action labels and territory totals remain available without changing map surfaces\n9 responsive text structure checks passed. Rendered bounds require browser QA.\n"
+    },
+    {
+      "command": "node server/test-chat-replies.mjs",
+      "exitCode": 0,
+      "seconds": 1.152,
+      "logFile": "server-test-chat-replies.mjs.log",
+      "tail": "a accepts only positive IDs and at most eight distinct valid recipients\nPASS honorific conversion keeps explicit recipient IDs and the transformed reply body\nPASS reply IDs cannot cross world, guild, friend or operator rooms\nPASS mention scope uses current guild membership, friend pair and operator roster\nPASS moderation removes referenced bodies without copying them into replies or mention metadata\nPASS parent deletion and recipient departure are checked again in the INSERT\nPASS friend revocation is enforced inside reads and writes and after response projection\nPASS a purge after the message snapshot cannot return stale quoted text\n{\"ok\":true,\"checks\":10,\"calls\":126,\"productionRequests\":0}\n"
+    },
+    {
+      "command": "node server/test-promotion.mjs",
+      "exitCode": 0,
+      "seconds": 0.65,
+      "logFile": "server-test-promotion.mjs.log",
+      "tail": "ounters and avoid gameplay work\nPASS unknown fields, personal data, invalid values and oversized requests never increment\nPASS official origins and preflight work while foreign, missing and file origins are rejected\nPASS concurrent increments are atomic and JST midnight creates a separate day\nPASS fixed global quotas cap writes without a visitor key and recover at the boundary\nPASS reports require the sole current operator and expose counts without identity rows\nPASS operator revocation around the aggregate transaction cannot leak a report\nPASS a missing analytics migration fails only analytics and preserves game health/config\nPromotion aggregate: 8 scenarios, 121 local Worker calls passed.\n"
+    },
+    {
+      "command": "node tests/test-covert-return-travel.cjs",
+      "exitCode": 0,
+      "seconds": 0.18,
+      "logFile": "tests-test-covert-return-travel.cjs.log",
+      "tail": "PASS scouts report at outbound arrival but remain unavailable until the exact return boundary\nPASS recall starts a free return trip and keeps its identity after local receipt history is trimmed\nPASS late settlement catches up both legs in one pass without changing the travel deadline\nPASS a player scouting return needs no second target snapshot and local ticks settle it on time\nPASS canceling the return never refunds an already completed scouting mission twice\nPASS authoritative returning parties cannot settle or refund through a client clock\nPASS return routing and cost data are validated while old outbound saves remain readable\nCovert return travel: 7 scenarios passed.\n"
+    },
+    {
+      "command": "node tests/test-travel-engine.cjs",
+      "exitCode": 0,
+      "seconds": 0.485,
+      "logFile": "tests-test-travel-engine.cjs.log",
+      "tail": " support semantic idempotent recovery\nPASS retrying a cancelled roaming request returns its receipt without deploying again\nPASS automatic strategy waits for arrival, counting only finished castle battles\nPASS covert troops travel in escrow; reports and stations appear only at arrival\nPASS covert scouting reserves the party then returns it after reporting current defenses\nPASS covert player reports require a fresh arrival snapshot and cannot leak departure intelligence\nPASS server covert dispatches never settle or cancel locally; authoritative arrival settles once\nPASS covert hiring includes traveling parties and cycle cancellation returns all reserved people\nTravel engine: 21 tests passed.\n"
+    },
+    {
+      "command": "node tests/test-covert-engine.cjs",
+      "exitCode": 0,
+      "seconds": 0.2,
+      "logFile": "tests-test-covert-engine.cjs.log",
+      "tail": "reates one opportunity without altering protected defender assets\nPASS retaliation consumes one actual incident, changes real garrison and stationed counts, and never captures or rewards\nPASS fabricated, too-early or different-source incidents, lost sources and allied/own destinations fail atomically\nPASS survivors remain stationed after defeat, can be recalled from a lost source and do not hit protected castles\nPASS legacy saves default safely, strict loading rejects malformed data and private report allowlist strips unrelated fields\nPASS local history trims at40 and old pruned request sequence cannot hire or deploy twice\n10 covert engine scenarios passed; browser and server engines match.\n"
+    },
+    {
+      "command": "node tests/test-covert-ui.cjs",
+      "exitCode": 0,
+      "seconds": 0.255,
+      "logFile": "tests-test-covert-ui.cjs.log",
+      "tail": " mismatched successful receipts never clear the durable request\nPASS double activation coalesces and pending locks source/target edits\nPASS storage failure blocks writes before transmission\nPASS account/campaign/dispose changes suppress an old result and keep its owner-scoped retry\nPASS registered target pagination drains all pages, deduplicates NPCs and searches later players\nPASS read responses after identity change cannot leak private reports to the new player\nPASS automatic refresh keeps an existing snapshot quiet while initial and requested reads show progress\nPASS markup escapes player-controlled names and uses genuine locked availability\n22 covert UI scenarios passed; no live writes.\n"
+    },
+    {
+      "command": "node tests/test-covert-dom.cjs",
+      "exitCode": 0,
+      "seconds": 1.018,
+      "logFile": "tests-test-covert-dom.cjs.log",
+      "tail": "PASS resource ticks keep real decorated artwork, metadata, controls, open reports and caret\nPASS 45-second background reads do not change mounted refresh labels or disabled state\nPASS Max, All, native selects and changed source artwork remain authoritative\nPASS keyed reports and stations keep their own details, selection and listeners through reorder and removal\nPASS a changed account context clears old private details, native drafts and focus\n5/5 mounted covert DOM scenarios passed with production artwork; no live writes.\n"
+    },
+    {
+      "command": "node tests/test-travel-ui.cjs",
+      "exitCode": 0,
+      "seconds": 0.28,
+      "logFile": "tests-test-travel-ui.cjs.log",
+      "tail": "aced by the engine arrival receipt\nPASS roaming acceptance clears transport uncertainty but has no battle or reward yet\nPASS roaming retry after arrival or cancellation clears the same request without another departure\nPASS covert accepts a moving dispatch without a premature report or station\nPASS rally accepts travel, clears its retry record and keeps result absent\nPASS AI records a departure as marching, waits, and only stops on confirmed arrival defeat\nPASS persistent panel preserves countdown focus, does not open on arrival, and shows conquest losses and return escrow\nPASS conquest first landing uses staging origin and blocks an already departing landing\nTravel UI: 13 scenarios passed.\n"
+    },
+    {
+      "command": "node tests/test-alliance-strategy.cjs",
+      "exitCode": 0,
+      "seconds": 0.125,
+      "logFile": "tests-test-alliance-strategy.cjs.log",
+      "tail": "tted intent, allowing correction\nPASS late data and target requests are discarded on membership changes\nPASS an old account mutation cannot publish data or block a new account\nPASS a slow background read cannot overwrite the post-commit refresh\nPASS storage failure never sends a nonrecoverable asset mutation\nPASS private plan cards escape names and only show authorized assignment controls\nPASS aid and rally units show travel and cannot be claimed until authoritative return arrival\nPASS gathering preview uses the fixed rally origin and reports soldiers still in transit\nPASS mounted alliance countdown updates each second without rebuilding an edited form\nAlliance browser: 12 scenarios passed.\n"
+    },
+    {
+      "command": "node server/test-alliance-travel.mjs",
+      "exitCode": 0,
+      "seconds": 2.287,
+      "logFile": "server-test-alliance-travel.mjs.log",
+      "tail": "      \"maxBindings\": 88\n    },\n    {\n      \"name\": \"a guild leader launching another creator’s operation departs from its fixed assembly castle\",\n      \"calls\": 19,\n      \"maxBindings\": 92\n    },\n    {\n      \"name\": \"closed operations, lost targets and expired contracts preserve soldiers until their return completes\",\n      \"calls\": 22,\n      \"maxBindings\": 47\n    },\n    {\n      \"name\": \"clock revision and transaction faults cannot complete or double an arrival\",\n      \"calls\": 9,\n      \"maxBindings\": 47\n    },\n    {\n      \"name\": \"legacy stationed and returning units remain usable without retroactive travel\",\n      \"calls\": 11,\n      \"maxBindings\": 40\n    }\n  ],\n  \"productionRequests\": 0\n}\n"
+    },
+    {
+      "command": "node server/test-alliance-strategy.mjs",
+      "exitCode": 0,
+      "seconds": 4.246,
+      "logFile": "server-test-alliance-strategy.mjs.log",
+      "tail": "ings\": 41\n    },\n    {\n      \"name\": \"Troop escrow is atomic, replayable, capacity-safe and survives leaving or expiration\",\n      \"calls\": 58,\n      \"maxBindings\": 47\n    },\n    {\n      \"name\": \"A real pooled battle consumes only escrow, allocates losses and recovers a lost response once\",\n      \"calls\": 44,\n      \"maxBindings\": 88\n    },\n    {\n      \"name\": \"Stationed aid changes real defense; membership and zero-support races cancel the attack\",\n      \"calls\": 39,\n      \"maxBindings\": 81\n    },\n    {\n      \"name\": \"Rallies honor target protection and intact branches, and escrow funds the captured garrison\",\n      \"calls\": 47,\n      \"maxBindings\": 87\n    }\n  ],\n  \"productionRequests\": 0\n}\n"
+    },
+    {
+      "command": "node server/test-covert.mjs",
+      "exitCode": 0,
+      "seconds": 8.146,
+      "logFile": "server-test-covert.mjs.log",
+      "tail": "r casualties, mail and receipt together\nPASS stale same-campaign imports preserve canonical casualties/reports and fresh campaigns cannot clone units\nPASS paginated targets expose every registered base and no public role or private reports\nPASS an incoming attack committed during station preparation cannot authorize that new station\nPASS an attack on a different active campaign cannot unlock an older imported campaign station\nPASS real server-advanced CPU invasions issue immutable opportunities; late stations and old saves cannot reuse them\nPASS failed authoritative CPU advance rolls every generated incident back with the save\n16 covert transaction scenarios passed (342 local API requests).\n"
+    },
+    {
+      "command": "node server/test-battle-travel.mjs",
+      "exitCode": 0,
+      "seconds": 6.886,
+      "logFile": "server-test-battle-travel.mjs.log",
+      "tail": "rves one fixed arrival deadline and settles offline\nPASS a covert dispatch from an earlier world cycle cancels offline without requiring a browser lease\nPASS field capture credits loot after journey income and freezes the departing combat profile\nPASS troops already stationed at their target retaliate without a second geographical journey\nPASS scout returns stay reserved, survive target disappearance and settle once without a writer lease\nPASS a delayed offline scout sweep completes both legs against the original travel deadline\nPASS older long covert journeys cannot starve a later short journey in the bounded background sweep\n21 durable travel scenarios passed (259 isolated HTTP requests).\n"
+    },
+    {
+      "command": "node server/test-legacy-save-recovery.mjs",
+      "exitCode": 0,
+      "seconds": 1.11,
+      "logFile": "server-test-legacy-save-recovery.mjs.log",
+      "tail": "PASS legacy local month 100 joins shared time 0 without retroactive charges or grants\nPASS legacy local month 0 joins shared time 123000 without retroactive charges or grants\nPASS legacy local month 1000 joins shared time 41700000 without retroactive charges or grants\nPASS bad old saves and forged roles keep the last good cloud save\nPASS legacy Kyoto castle work survives cloud round trips without changing the shared palace\nPASS a legacy private palace job cannot affect shared income or complete twice\n{\"ok\":true,\"checks\":6,\"calls\":36,\"productionRequests\":0}\n"
+    },
+    {
+      "command": "node server/test-world-clock.mjs",
+      "exitCode": 0,
+      "seconds": 0.566,
+      "logFile": "server-test-world-clock.mjs.log",
+      "tail": "se/resume/speed\",\n    \"revision compare-and-swap including concurrent controls\",\n    \"rate changes preserve cumulative elapsed time\",\n    \"1560–1615 calendar loop without resetting elapsed\",\n    \"clock in config and every sync response\",\n    \"legacy save migration compatibility\",\n    \"retained validated worldClock checkpoints\",\n    \"server-owned running and speed on writes\",\n    \"stable save content across global control changes\",\n    \"private economic horizon rejects future anchors within public tolerance\",\n    \"consistent turn and fractional phase\",\n    \"atomic rejection of legacy regression\",\n    \"settled checkpoint rollback rejection\",\n    \"turn/log/treaty beyond old 100000 limit\"\n  ]\n}\n"
+    },
+    {
+      "command": "node server/test-officer-health.mjs",
+      "exitCode": 0,
+      "seconds": 5.094,
+      "logFile": "server-test-officer-health.mjs.log",
+      "tail": "n when an upload claims full health\nPASS event wins and defeats consume only participants and receipts survive lost responses\nPASS an event ahead of the ordinary save anchor cannot recover its old interval twice\nPASS public field strength uses the same current health without writing a player save\nPASS field departure freezes officers and strength while a replacement army cannot heal the march\nPASS branch defense consumes its assigned commanders and preserves the home army\nPASS staff appointment and return preserve the current officers rather than the old backup health\nPASS event reference defenders and Edo reward defenders retain their stored health and revision\n{\"checks\":14,\"apiCalls\":135}\n"
+    },
+    {
+      "command": "node server/test-sync.mjs",
+      "exitCode": 0,
+      "seconds": 1.064,
+      "logFile": "server-test-sync.mjs.log",
+      "tail": "nchored save\",\n    \"cross-user isolation\",\n    \"single writer lease and explicit takeover\",\n    \"atomic concurrent revision conflict\",\n    \"read-only sync does not renew lease\",\n    \"30-second lease expiry\",\n    \"2MiB body limit\",\n    \"server-exclusive Edo and U Ieyasu\",\n    \"idempotent administrator restoration\",\n    \"revoked-role read migration preserves progress and strict write restrictions\",\n    \"hashed expiring one-time pairing\",\n    \"concurrent redemption and per-device tokens\",\n    \"original recovery token compatibility\",\n    \"pairing IP rate limit\",\n    \"public privacy-safe paginated presence\",\n    \"deduplicated foreground-only online count\",\n    \"90-second disconnect expiry\"\n  ]\n}\n"
+    },
+    {
+      "command": "node server/test-field-migration.mjs",
+      "exitCode": 0,
+      "seconds": 0.6,
+      "logFile": "server-test-field-migration.mjs.log",
+      "tail": "{\n  \"ok\": true,\n  \"calls\": 29,\n  \"checks\": [\n    \"legacy levels 49, 63 and 64 read as 48 with all other state preserved\",\n    \"migrated state reuploads unchanged with a new save timestamp and reloads stably\",\n    \"a historical level-48 to 49 job is removed even when its castle is already at the new cap\",\n    \"invalid levels, skipped targets, ownership and job timing are still rejected before migration\",\n    \"new uploads cannot increase metropolitan castles beyond 48\",\n    \"staff personal-home DTO projects legacy 64 as 48 without changing its backup\",\n    \"staff dismissal preserves development and restores the migrated home safely\"\n  ]\n}\n"
+    },
+    {
+      "command": "node server/test-world-cycles.mjs",
+      "exitCode": 0,
+      "seconds": 1.545,
+      "logFile": "server-test-world-cycles.mjs.log",
+      "tail": "ed milestones only, no historical seeding\",\"bounded multi-cycle catch-up without repeated captured rewards\",\"transaction rollback and retry\",\"rollout anchor prevents retroactive rewards\",\"active writer dirty snapshot protected from reader and field polls\",\"final preboundary capture included before reset\",\"unchanged checkpoint explicit settlement and follower denial\",\"public field and guild counts project new cycle immediately\",\"legacy fractional clock migration\",\"operator Edo/U retained and demotion restrictions preserved\",\"commit-time writer takeover and resumed-target lease race\",\"stale commands cannot force another writer settlement\",\"server-completed construction announced atomically\"]}\n"
+    },
+    {
+      "command": "node tests/test-sync-integration.mjs",
+      "exitCode": 0,
+      "seconds": 3.187,
+      "logFile": "tests-test-sync-integration.mjs.log",
+      "tail": "uture time\nPASS reconnect, takeover and calendar wrap share one confirmed timeline without double production\nPASS real field raids update both writers and preserve an overwritten defender action as a backup\nPASS mutual field diplomacy preserves game revisions and blocks raids after acceptance\nPASS a server-claimed magatama gift survives failed local storage and syncs exactly once after retry\nPASS a normal poll preserves a dirty writer’s final capture until its own save closes the cycle\nPASS an unchanged boundary checkpoint sends an explicit settlement rather than looping forever\n{\n  \"ok\": true,\n  \"integrationChecks\": 14,\n  \"httpRequests\": 148,\n  \"saveWrites\": 15,\n  \"productionRequests\": 0\n}\n"
+    },
+    {
+      "command": "node tests/test-kyoto-gosho-engine.cjs",
+      "exitCode": 0,
+      "seconds": 0.211,
+      "logFile": "tests-test-kyoto-gosho-engine.cjs.log",
+      "tail": "pointment home and survives shared projection/departure\nPASS promotion from a128-level court save clamps Edo64 while protected occupations and AI goals remain denied\nPASS CPU attacks on the court create real covert incidents without seizing or damaging its assets\nPASS retaliation protects Edo and Kyoto while ordinary Sunpu garrison takes the normal battle loss\nPASS Kyoto-to-Edo attack authority comes only from current trusted Emperor metadata, never save flags or evaluation\nPASS covert counterattack rechecks Emperor authority at execution; ordinary other-origin attacks are unchanged\n14 Kyoto court, migration, personal progress, cap and protection groups passed; browser/Worker engines match.\n"
+    },
+    {
+      "command": "node tests/test-staff-base-sync.cjs",
+      "exitCode": 0,
+      "seconds": 0.328,
+      "logFile": "tests-test-staff-base-sync.cjs.log",
+      "tail": "PASS staff role and source arrive together, and a base-only revision never writes the personal save\nPASS same-revision shared growth preserves dirty personal resource changes before flushing them\nPASS a canonical PUT reply projects the shared base while preserving personal actions made during the request\nPASS an old staff poll arriving after verified revocation cannot regrant the role or shared view\nPASS operator metadata takes precedence and never projects a staff source; disconnect clears staff access\nPASS bounded staff transition checkpoints retry automatically and remain read-only until synchronization completes\n6 shared staff-base coordinator scenarios passed. No external requests.\n"
+    },
+    {
+      "command": "node server/test-kyoto-migration.mjs",
+      "exitCode": 0,
+      "seconds": 1.22,
+      "logFile": "server-test-kyoto-migration.mjs.log",
+      "tail": "PASS SQL migration preserves all shared progress, queues, personal resources and request hashes; only proven completions earn merit\nPASS legacy staff 128-castle cloud saves and private dispatch sources project to Kyoto without rewriting a read\nPASS ordinary Sunpu is playable at32 while historical64 and over-cap work safely normalize\nPASS completed shared upgrades credit their initiator exactly once and never count queued work or Court activity\nPASS merit thresholds use verified ledger totals while operator and current Emperor offices take precedence\n{\"ok\":true,\"checks\":5,\"calls\":66,\"productionRequests\":0}\n"
+    },
+    {
+      "command": "node server/test-staff-base.mjs",
+      "exitCode": 0,
+      "seconds": 3.788,
+      "logFile": "server-test-staff-base.mjs.log",
+      "tail": "t change shared growth\",\n    \"shared castle level 128, facility level 32 and completed jobs advance for every member\",\n    \"Kyoto palace reward victory preserves both staff saves/shared base/backups, shares its protection period, and rejects a staff promotion at departure with 409\",\n    \"dismissal removes shared read/replay access without erasing growth; completion notices expose no private fields\",\n    \"private shared-base read rechecks live membership after assembling its source\",\n    \"long offline dismissal checkpoints at 24-hour bounds, aborts on term races, stops shared production at departure, and restores original home growth without duplicate awards\"\n  ],\n  \"productionRequests\": 0\n}\n"
+    },
+    {
+      "command": "node server/test-construction-queues.mjs",
+      "exitCode": 0,
+      "seconds": 3.023,
+      "logFile": "server-test-construction-queues.mjs.log",
+      "tail": "PASS shared facility stages charge their future-level price and share one construction slot\nPASS concurrent staff queue reservations and lost responses never create a free or duplicate stage\nPASS pending level32 is the cap, resources are paid per stage, and castle upgrades remain single\nPASS appointment preserves a personal facility chain and dismissal restores its exact progress\nPASS queued buildings survive a world-cycle settlement while reservations remain paid once\nPASS cloud save validation accepts sequential chains but rejects gaps, duplicate targets and progressed future work\n{\"passed\":6,\"localHttpCalls\":144,\"productionRequests\":0}\n"
+    }
+  ],
+  "browserChecks": [
+    {
+      "surface": "desktop 1363px title and game",
+      "result": "Luxury crest, midnight/cyan/gold theme and Sengoku Gyosho font rendered. body computed 18px; clientWidth == scrollWidth == 1363. No application or font errors; only extension metadata messages."
+    },
+    {
+      "surface": "390x844 iframe (375px content)",
+      "result": "Gyosho title and game rendered. Settings dialog 349px client/scroll width; no horizontal overflow. Independent effects and BGM labels, values and sliders present. Main header figures remain a separate readable numerical font."
+    },
+    {
+      "surface": "public guide desktop",
+      "result": "Gyosho at 18px. Light article background rgb(250,246,233), text rgb(32,46,53). client/scroll width both1348."
+    },
+    {
+      "surface": "facility dialog",
+      "result": "Lv8 art fills square frame without black sidebars; changing to Lv32 updates SVG viewBox to 21 12 3 4 with same loaded atlas."
+    },
+    {
+      "surface": "army proposals desktop/mobile",
+      "result": "Actual 24-officer local QA campaign. Four-tactic proposals; switching to ambush refreshed candidates. Mobile dialog client/scroll width349; comparison and adoption controls wrap."
+    },
+    {
+      "surface": "resource planner mobile",
+      "result": "Added farm1342 and market1548 gold targets: sum2890. Reserve5000 changes required gold to7890. No game resource spending; dialog width372 equals scroll width and focused input preserved."
+    },
+    {
+      "surface": "effects settings",
+      "result": "Set effects to0: muted label and audition disabled while BGM remains10. Set back above0 persisted across page reload."
+    }
+  ],
+  "limitations": [
+    "Responsive browser checks are desktop Chromium with same-origin frames, not physical mobile devices",
+    "No end-to-end listening test on the reporting device",
+    "Synthetic performance fixtures are not whole-game FPS/loading measurements",
+    "API Worker deployment is separate from frontend publication"
+  ],
+  "browserLimitations": [
+    "Remote Chromium desktop and width-controlled same-origin mobile iframes; not physical iOS/Android device audio or layout tests.",
+    "No assertion of audible quality or full identification of user-device cause; overlap and playback lifecycle verified with reproducible audio fixtures.",
+    "No production Worker deployment. Existing API contract and economic rules preserved."
+  ],
+  "musicFinal": {
+    "startedAt": "2026-11-26T18:12:45.760639+00:00",
+    "finishedAt": "2026-11-26T18:13:39.232193+00:00",
+    "repository": "/workspace/scratch/b8bfcbab0b54/sengoku-taisen",
+    "nodeVersion": "v24.22.3",
+    "workflowsInspected": [
+      ".github/workflows/brand-seo.yml",
+      ".github/workflows/music.yml",
+      ".github/workflows/notifications.yml",
+      ".github/workflows/performance.yml"
+    ],
+    "musicWorkflows": [
+      ".github/workflows/music.yml"
+    ],
+    "sourceSHA256": {
+      "music.js": "56f800ad61280d96e421838aae6bdf2dcd967b98eec0c4db5e98b770241dd8d1"
+    },
+    "network": "Tests use local fixtures; no production requests requested.",
+    "results": [
+      {
+        "test": "tests/test-supplied-recordings.cjs",
+        "command": [
+          "node",
+          "tests/test-supplied-recordings.cjs"
+        ],
+        "exitCode": 0,
+        "elapsedSeconds": 0.118,
+        "stdout": "PASS 支度: verified audio, catalogue and provenance agree (1400007 bytes).\nPASS 朝活: verified audio, catalogue and provenance agree (4853799 bytes).\nPASS 昼活: verified audio, catalogue and provenance agree (8382855 bytes).\nPASS 夜活: verified audio, catalogue and provenance agree (4047015 bytes).\n",
+        "stderr": ""
+      },
+      {
+        "test": "tests/test-music.mjs",
+        "command": [
+          "node",
+          "tests/test-music.mjs"
+        ],
+        "exitCode": 0,
+        "elapsedSeconds": 2.359,
+        "stdout": "{\n  \"tracks\": 16,\n  \"distinctScores\": 16,\n  \"sectionsPerTrack\": 7,\n  \"scenarios\": 20,\n  \"measuredPeak\": {\n    \"voices\": 28,\n    \"sources\": 36\n  },\n  \"voiceBudget\": {\n    \"voices\": 40,\n    \"sources\": 88\n  },\n  \"lifecycle\": \"Native playback category, real media sink fallback, gesture ordering, mute, rejection/retry, pause race, visibility, interruptions, bfcache, voice-call focus, bounded orchestral voices and complete graph cleanup.\"\n}\n",
+        "stderr": ""
+      },
+      {
+        "test": "tests/test-music-time-of-day.mjs",
+        "command": [
+          "node",
+          "tests/test-music-time-of-day.mjs"
+        ],
+        "exitCode": 0,
+        "elapsedSeconds": 1.533,
+        "stdout": "PASS the four supplied recordings coexist with all sixteen composed tracks\nPASS 05:00, 12:00 and 18:00 use the device local clock, including midnight and a non-UTC timezone\nPASS an idle player does not start from a mode, clock or restoration event alone\nPASS all three live boundaries switch once and retire the preceding recording\nPASS clock polls and screen changes keep the same recording and playback position\nPASS visibility and page restoration catch up after a throttled background period without duplicate recordings\nPASS manual selection survives time changes and returning to automatic mode selects the current period\nPASS stopping in either mode prevents clock, visibility and auto-mode selection from restarting playback\nPASS zero volume postpones a boundary switch until unmuted and preserves the chosen volume\nPASS voice calls suppress clock changes and resume the correct period only if playback is still requested\nPASS platform interruptions do not fight for audio focus at a boundary\nPASS a refused user start remains stopped through boundary and restore events and can be retried explicitly\nPASS a rejected boundary switch stops the player and does not repeatedly retry without a user action\nPASS a pending automatic resume cannot restart music after the user stops it\nPASS late failures from replaced automatic recordings cannot stop a newly selected manual track\nPASS failed supplied audio stays silent instead of playing an unrelated generated score\nPASS title and initial castle selection keep Shitaku, then campaign entry and return select the correct recording\nPASS title playback survives time boundaries and background restoration without restarting its recording\nPASS title and game transitions preserve manual choice and remain silent at zero volume\nPASS a fresh allowed startup requests Shitaku once with the new audible default\nPASS saved mute and zero volume survive startup and ordinary trusted interactions\nPASS blocked autoplay retains intent without claiming playback and retries on a trusted interaction\nPASS a blocked gesture retry is bounded and the explicit resume control remains available\nPASS a trusted retry replaces an unresolved resume before or after its waiting deadline\nPASS explicit mute or zero volume wins over a pending startup, its late resolution and later trusted clicks\nPASS raising saved zero volume starts enabled audio explicitly while a saved stop remains stopped\nPASS a first foreground resume blocked after hidden startup is recoverable by the next trusted click\nPASS stopping during a pending first foreground resume wins over its deadline and late resolution\nPASS a restoration deadline preserves playback intent when volume, visibility, a call or the platform suppresses audio\n29 local-time selection, recording lifecycle and production UI integration checks passed.\n",
+        "stderr": ""
+      },
+      {
+        "test": "tests/test-settings-usability.cjs",
+        "command": [
+          "node",
+          "tests/test-settings-usability.cjs"
+        ],
+        "exitCode": 0,
+        "elapsedSeconds": 0.411,
+        "stdout": "PASS stored volume is compatible with old numeric preferences and safely normalizes damaged values\nPASS the one-time audio migration unmutes old preferences but preserves later explicit mute and manual selection\nPASS grouped settings retain every existing action and protect the administrator-only route\nPASS volume feedback and audio update in place while only preferences are saved\nPASS explicit BGM controls honor saved volume and manual track without changing the campaign\nPASS a policy-blocked preference is shown as waiting with a working explicit resume control\nPASS all save and utility actions keep their established routes and import/new-game remain review steps\nPASS administrator restoration still requires a writable session and optional plugin failures remain contained\n8 settings preference, action and save-boundary checks passed.\n",
+        "stderr": ""
+      },
+      {
+        "test": "tests/test-title-entry.cjs",
+        "command": [
+          "node",
+          "tests/test-title-entry.cjs"
+        ],
+        "exitCode": 0,
+        "elapsedSeconds": 0.602,
+        "stdout": "PASS title entry, audio startup/scene wiring, skip targets and stale-artwork handling while images are still downloading.\n",
+        "stderr": ""
+      },
+      {
+        "test": "tests/test-music-cache.cjs",
+        "command": [
+          "node",
+          "tests/test-music-cache.cjs"
+        ],
+        "exitCode": 0,
+        "elapsedSeconds": 0.1,
+        "stdout": "PASS complete and partial BGM playback, one download, offline seeking, bounded ranges and private response bypass.\nPASS all four supplied recording URLs use the same cache/range route and remain independent of release query values.\n",
+        "stderr": ""
+      },
+      {
+        "test": "tests/test-music-normal-speed.mjs",
+        "command": [
+          "node",
+          "tests/test-music-normal-speed.mjs"
+        ],
+        "exitCode": 0,
+        "elapsedSeconds": 0.51,
+        "stdout": "PASS rapid song changes retain only one fading predecessor, never three or four layered recordings\nPASS same-song pause and immediate resume stop the old loop before starting the saved position\nPASS a rejected stop still disconnects every superseded recording output\nPASS a repeated play/resume of the active song keeps one source and one unchanged playhead\nPASS recorded sources start at normal speed and media rate changes are reset to one\nPASS long scheduler suspension skips obsolete notes in one seek and keeps the written note timings\nPASS fallback-to-recording handoff stays on a single active score under repeated visibility notifications\n7 normal-speed, bounded handoff and absolute-time scheduling checks passed.\n",
+        "stderr": ""
+      },
+      {
+        "test": "tests/test-sound-effects-volume.cjs",
+        "command": [
+          "node",
+          "tests/test-sound-effects-volume.cjs"
+        ],
+        "exitCode": 0,
+        "elapsedSeconds": 0.262,
+        "stdout": "PASS fresh effects default to 10 while old saved music mute and zero volume remain silent\nPASS saved effect values normalize to safe percentages and cannot inject settings markup\nPASS settings expose independent labeled controls and moving SFX saves no game data or starts audio\nPASS audition works with BGM stopped, stays on the effect gain, and 0 immediately mutes active sounds\nPASS effect volume changes only its own gain and never changes BGM playback, gain or selected track\nPASS hidden pages, calls and pagehide stop effects without auto-playing on return\nPASS rejected or delayed browser unlock never queues a surprise sound and later explicit retry works\nPASS an indefinitely pending browser unlock returns after one second and cannot emit a late effect\nPASS rapid effects are bounded and sources disconnect after the final note\n9 independent sound effects volume, routing and preference checks passed.\n",
+        "stderr": ""
+      }
+    ],
+    "passed": 8,
+    "failed": 0,
+    "indirectWorkflowCoverage": {
+      ".github/workflows/performance.yml": {
+        "command": "npm run test:interface",
+        "additionalAudioTests": [
+          "tests/test-music-normal-speed.mjs",
+          "tests/test-sound-effects-volume.cjs"
+        ]
+      }
+    },
+    "syntaxAndBuildChecks": [
+      {
+        "command": [
+          "node",
+          "--check",
+          "tools/music-audition.js"
+        ],
+        "exitCode": 0,
+        "elapsedSeconds": 0.077,
+        "stdout": "",
+        "stderr": ""
+      },
+      {
+        "command": [
+          "node",
+          "--check",
+          "music.js"
+        ],
+        "exitCode": 0,
+        "elapsedSeconds": 0.096,
+        "stdout": "",
+        "stderr": ""
+      },
+      {
+        "command": [
+          "node",
+          "tools/build-game-entry.cjs",
+          "--check"
+        ],
+        "exitCode": 0,
+        "elapsedSeconds": 2.118,
+        "stdout": "",
+        "stderr": ""
+      }
+    ],
+    "sourceUnchanged": true
+  },
+  "verifiedAtUTC": "2026-11-26T18:17:21.714781+00:00",
+  "finalGates": [
+    {
+      "command": "npm run test:interface",
+      "exit": 0,
+      "seconds": 11.244,
+      "outputTail": "me list\nPASS readiness is derived from the supplied preview, omits unknowns, and warns only on known exhausted reserves\nPASS deterministic loss and public estimates retain distinct uncertainty labels\nPASS comparison table exposes actual deltas and does not turn missing costs into zero\n11 operations board and battle readiness checks passed.\nPASS planning is deterministic and read only even with frozen state and no RNG access\nPASS all four tactics choose a three-person army matching the actual combat-preview oracle\nPASS fixed officers remain selected and one, two, or three locks still respect the actual combat optimum\nPASS military governor reassignment includes its lost facility attack bonus in the chosen formation\nPASS stationed and unauthorized governor candidates stay excluded, and validity rejects stale ownership\nPASS empty and small rosters remain usable; ties favor a medic then retained officers and preserve slots\nPASS the real app handler changes assignments only after adoption and spends no resources or command\nPASS the real app handler rejects scope changes and read-only or disabled saving without mutations\nPASS the real app handler detects newly assigned duty, removed ownership, and rank changes\nPASS the real app handler reopens materially changed health estimates instead of adopting a stale review\nPASS adopting an explicitly reviewed governor transfer clears only that appointment and spends nothing\n11 army planner and real adoption-handler checks passed.\nPASS dominated candidates are pruned without changing first-result, medic, retention or fixed-officer ties\nPASS randomized ranks, fractional health, governors, stationing and locks match exhaustive public-engine reads\nPASS health near half-rounding boundaries and military-governor losses retain exhaustive choices\nPASS the full 256-officer collection searches fewer than one tenth of the possible trios\n4 formation search groups passed; 76 independent exhaustive comparisons, with no saved-game changes or network requests.\nPASS every rank, specialty and runtime role has the same political bonus as its public officer view\nPASS same-length rank replacement, reassignment and role changes update the very next economic read\nPASS income, upkeep and capacity avoid constructing any castle or full officer display view\nPASS ownership IDs are independent fresh snapshots that obey administrator and staff access\n4 economic read correctness/work groups passed. 60 developed-state ticks: 0 castle or complete officer display models.\nPASS fresh effects default to 10 while old saved music mute and zero volume remain silent\nPASS saved effect values normalize to safe percentages and cannot inject settings markup\nPASS settings expose independent labeled controls and moving SFX saves no game data or starts audio\nPASS audition works with BGM stopped, stays on the effect gain, and 0 immediately mutes active sounds\nPASS effect volume changes only its own gain and never changes BGM playback, gain or selected track\nPASS hidden pages, calls and pagehide stop effects without auto-playing on return\nPASS rejected or delayed browser unlock never queues a surprise sound and later explicit retry works\nPASS an indefinitely pending browser unlock returns after one second and cannot emit a late effect\nPASS rapid effects are bounded and sources disconnect after the final note\n9 independent sound effects volume, routing and preference checks passed.\nPASS all 2,048 facility levels and real preview dimensions preserve aspect, subject and crop boundaries\nPASS small/native/original SVG crops, stable updates and a new level in the same loaded atlas\nPASS rapid song changes retain only one fading predecessor, never three or four layered recordings\nPASS same-song pause and immediate resume stop the old loop before starting the saved position\nPASS a rejected stop still disconnects every superseded recording output\nPASS a repeated play/resume of the active song keeps one source and one unchanged playhead\nPASS recorded sources start at normal speed and media rate changes are reset to one\nPASS long scheduler suspension skips obsolete notes in one seek and keeps the written note timings\nPASS fallback-to-recording handoff stays on a single active score under repeated visibility notifications\n7 normal-speed, bounded handoff and absolute-time scheduling checks passed.\nnpm warn Unknown env config \"http-proxy\". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.\n"
+    },
+    {
+      "command": "npm run check:build",
+      "exit": 0,
+      "seconds": 2.425,
+      "outputTail": "\n> sengoku-vs-web@5.6.0 check:build\n> node tools/build-public-pages.cjs --check && node tools/build-game-entry.cjs --check\n\nPASS 16 public documents match site-metadata.json and their templates.\nnpm warn Unknown env config \"http-proxy\". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.\n"
+    },
+    {
+      "command": "npm run test:entry",
+      "exit": 0,
+      "seconds": 4.883,
+      "outputTail": "\n> sengoku-vs-web@5.6.0 test:entry\n> node tests/test-css-compaction.cjs && node tests/test-game-entry.cjs && node tests/test-release-assets.cjs && node tests/test-offline-entry-http.cjs && node tests/test-public-search-cache.cjs\n\nPASS known redundant declarations shrink without changing selector specificity\nPASS responsive and feature conditions retain their order and never combine across intervening rules\nPASS modern units and unknown functions retain earlier supported fallbacks in source order\nPASS font shorthands preserve clamp sizes, line heights and fallback fonts without warnings\nPASS custom properties, logical properties, content strings, URL fragments and precise values stay intact\n{\"cssBytesBefore\":944214,\"cssBytesAfter\":932667,\"savedBytes\":11547,\"gzipBytesBefore\":185187,\"gzipBytesAfter\":182570}\nPASS the real stylesheet compacts reproducibly, remains parseable and decreases shipped bytes\n6 CSS distribution compaction checks passed.\nPASS bundled source parity and deferred geography single fetch, retry, latest draw and detached view.\nPASS offline entry includes 9 fingerprinted scripts/styles and 16 required resources.\n{\"installRequests\":17,\"installBytes\":3221524,\"warmNavigationNetworkRequests\":0,\"offlineEntryAssets\":9,\"offlineMap\":true,\"offlineGuide\":true,\"offlineArtworkFallback\":true}\nPASS search is cached only after use, remains available offline, validates JSON MIME and bypasses private/unrelated requests.\nnpm warn Unknown env config \"http-proxy\". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.\n"
+    },
+    {
+      "command": "node tests/test-asset-budget.cjs",
+      "exit": 0,
+      "seconds": 0.165,
+      "outputTail": "{\"entryBundles\":[{\"file\":\"game-layout.bundle.css\",\"bytes\":932751,\"gzipBytes\":182629},{\"file\":\"game-preferences.bundle.js\",\"bytes\":7330,\"gzipBytes\":2876},{\"file\":\"game-core.bundle.js\",\"bytes\":682170,\"gzipBytes\":218716},{\"file\":\"game-campaign.bundle.js\",\"bytes\":477209,\"gzipBytes\":157495},{\"file\":\"game-interface.bundle.js\",\"bytes\":417302,\"gzipBytes\":140069},{\"file\":\"game-community.bundle.js\",\"bytes\":586235,\"gzipBytes\":184080}],\"totalBytes\":3102997,\"totalGzipBytes\":885865,\"rawBudget\":3160000,\"gzipBudget\":910000}\n"
+    },
+    {
+      "command": "node tests/test-minified-runtime.cjs",
+      "exit": 0,
+      "seconds": 0.63,
+      "outputTail": "PASS 63 classic globals, function names, initialization order and real game data match after four bundles\nPASS 62 source/minified campaign checkpoints, economy, recruitment, gacha, construction, battle and bidirectional save continuation\nPASS corrupt-save rejection and cross-bundle hints, ranks, artwork and travel remain equivalent; no network or real browser used\n"
+    },
+    {
+      "command": "git diff --check",
+      "exit": 0,
+      "seconds": 0.15,
+      "outputTail": ""
+    },
+    {
+      "command": "cmp -s engine.js server/game-engine.js",
+      "exit": 0,
+      "seconds": 0.008,
+      "outputTail": ""
+    }
+  ],
+  "publicDiscovery": {
+    "startedAt": "2026-11-26 18:12:38 UTC",
+    "cwd": "/workspace/scratch/b8bfcbab0b54/sengoku-taisen",
+    "checks": [
+      {
+        "command": "node tools/build-public-pages.cjs --check",
+        "chunk_id": "c2362b",
+        "wall_time_seconds": 0.346128909,
+        "exit_code": 1,
+        "original_token_count": 15,
+        "output": "Public build differs: 404.html, tools/music-audition.html\n"
+      },
+      {
+        "command": "python3 tools/build-press-kit.py --check",
+        "chunk_id": "f35b37",
+        "wall_time_seconds": 0.590331102,
+        "exit_code": 0,
+        "original_token_count": 19,
+        "output": "PASS press kit: 23 files, 9,653,049 bytes, matching public source material.\n"
+      },
+      {
+        "command": "node tests/test-seo.cjs",
+        "chunk_id": "8d35b3",
+        "wall_time_seconds": 0.572442265,
+        "exit_code": 0,
+        "original_token_count": 638,
+        "output": "PASS one metadata source matches every title, description, canonical and social preview\nPASS all public JSON-LD graphs share one publisher, site and game identity with truthful page metadata\nPASS Japanese and English introductions advertise reciprocal languages and remain statically discoverable\nPASS anonymous counters and their notice are limited to the two introduction pages\nPASS reading-page breadcrumb markup matches visible labels and actual canonical ancestors\nPASS sitemap dates, install metadata and stable square favicon reflect the same public site\nPASS image sitemap sends crawlers to visible artwork on each canonical page\nPASS social metadata points to the real VS JPEG and the legacy card URL serves the same image\nPASS public pages and nested 404 use the current favicon family, Apple icon and pinned-tab mark\nPASS root favicon contains real small-to-large PNG frames and Apple fallback matches the current icon\nPASS existing icon aliases no longer return the retired brand artwork\nPASS search-image and social crawlers can fetch every public page, preview and brand icon\nPASS the home introduction is visible HTML and still preserves the existing game entry\nPASS current battle limits and automatic mail are explained in public HTML without loading the game\nPASS the beginner upgrade guide gives separate keep and castle steps, actual controls and reservation limits\nPASS public discovery identifies only Sengoku VS and does not explain privileged player identities\nPASS default dry run reads existing files without network, key rotation or payload logging\nPASS metadata additions update the full plan and help count and receive public preflight checks\nPASS invalid metadata origins, paths and duplicates fail locally before any request\nPASS CLI rejects arbitrary endpoints/URLs and incompatible local key configuration before any request\nPASS only the known same-host canonical sitemap URLs and valid dates can become a notification\nPASS submit waits for every published check, then sends exactly one bounded canonical-URL POST\nPASS 202 is reported as key validation pending rather than confirmed 200 or indexing\nPASS missing/mismatched public key or changed sitemap stops before any POST\nPASS non-200, noindex, wrong canonical, non-HTML and redirected pages never get notified\nPASS 429 and other rejection statuses are non-success, retain Retry-After and never retry\nPASS network loss and timeouts distinguish unattempted preflight from uncertain POST receipt\n{\"passed\":27,\"realIndexNowNotifications\":0,\"mockTransportOnly\":true}\n"
+      },
+      {
+        "command": "node tests/test-public-search.cjs",
+        "chunk_id": "706491",
+        "wall_time_seconds": 0.803693355,
+        "exit_code": 0,
+        "original_token_count": 180,
+        "output": "PASS every index entry links to a real guide or subheading and every contents entry is searchable\nPASS the index loads only on demand and is reused when search reopens\nPASS Japanese aliases, multiple words, and missing queries preserve safe text and real links\nPASS IME confirmation does not navigate and keyboard arrows select the results after composition\nPASS one Escape closes a nonempty search while IME composition keeps the dialog open\nPASS a failed network request exposes a working retry and a static guide fallback\nPASS unsafe index URLs are omitted and markup in an entry is rendered as text\nPASS unsupported dialogs preserve links and slash never interrupts an editable field\n8 public search checks passed.\n"
+      },
+      {
+        "command": "node tests/test-public-pages.cjs",
+        "chunk_id": "e84c50",
+        "wall_time_seconds": 0.478391621,
+        "exit_code": 1,
+        "original_token_count": 218,
+        "output": "node:internal/assert/utils:77\n    throw err;\n    ^\n\nAssertionError [ERR_ASSERTION]: 404 asset must resolve from a nested missing URL: cyber-wafu.css?v=5.6.0-20261127\n    at Object.<anonymous> (/workspace/scratch/b8bfcbab0b54/sengoku-taisen/tests/test-public-pages.cjs:63:214)\n    at Module._compile (node:internal/modules/cjs/loader:1929:14)\n    at Object..js (node:internal/modules/cjs/loader:2060:10)\n    at Module.load (node:internal/modules/cjs/loader:1651:32)\n    at Module._load (node:internal/modules/cjs/loader:1443:12)\n    at wrapModuleLoad (node:internal/modules/cjs/loader:261:19)\n    at Module.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:154:5)\n    at node:internal/main/run_main_module:33:47 {\n  generatedMessage: false,\n  code: 'ERR_ASSERTION',\n  actual: false,\n  expected: true,\n  operator: '==',\n  diff: 'simple'\n}\n\nNode.js v24.22.3\n"
+      },
+      {
+        "command": "python3 tests/test-news-feed.py",
+        "chunk_id": "7c92f2",
+        "wall_time_seconds": 0.204371772,
+        "exit_code": 0,
+        "original_token_count": 22,
+        "output": "PASS valid RSS XML, 9 permanent release links, verified dates, and 9 discovery links\n"
+      },
+      {
+        "command": "node tests/test-promotion-sharing.cjs",
+        "chunk_id": "6ad5de",
+        "wall_time_seconds": 0.130729775,
+        "exit_code": 0,
+        "original_token_count": 35,
+        "output": "PASS promotion copy/share: native copy, permission denial, legacy selection, manual recovery, native support and cancelled/denied sharing.\n"
+      },
+      {
+        "command": "node tests/test-public-growth.cjs",
+        "chunk_id": "49ba17",
+        "wall_time_seconds": 0.163042723,
+        "exit_code": 0,
+        "original_token_count": 38,
+        "output": "PASS anonymous public growth: privacy opt-outs, fixed payloads, source allowlist, per-tab de-duplication, failure isolation and unmodified navigation.\n"
+      },
+      {
+        "command": "node tests/test-promotion-admin.cjs",
+        "chunk_id": "f84db7",
+        "wall_time_seconds": 0.315611676,
+        "exit_code": 0,
+        "original_token_count": 39,
+        "output": "PASS promotion report: validated totals, honest labels, operator-only read routes, identity/role races, closed-dialog data removal and network recovery.\n"
+      },
+      {
+        "command": "node tests/test-promotion-invites.cjs",
+        "chunk_id": "c85517",
+        "wall_time_seconds": 0.160062222,
+        "exit_code": 0,
+        "original_token_count": 31,
+        "output": "PASS invitation presets, campaign-only URLs, short X intents, live native payload, no-JS copy and cancelled-share recovery.\n"
+      },
+      {
+        "command": "node tests/test-responsive-images.cjs",
+        "chunk_id": "3ab825",
+        "wall_time_seconds": 0.286947342,
+        "exit_code": 0,
+        "original_token_count": 24,
+        "output": "PASS responsive artwork for 9 pages, 66 referenced image variants and matching title preload.\n"
+      },
+      {
+        "command": "node tests/test-service-worker-brand.cjs",
+        "chunk_id": "0aaec9",
+        "wall_time_seconds": 0.288853157,
+        "exit_code": 0,
+        "original_token_count": 32,
+        "output": "PASS current-brand asset/offline responses, retired-cache cleanup, unrelated-cache retention, API bypass and safe activation.\n"
+      },
+      {
+        "command": "node tests/test-release-assets.cjs",
+        "chunk_id": "cc1a8c",
+        "wall_time_seconds": 0.343690968,
+        "exit_code": 1,
+        "original_token_count": 232,
+        "output": "node:internal/assert/utils:77\n    throw err;\n    ^\n\nAssertionError [ERR_ASSERTION]: The expression evaluated to a falsy value:\n\n  assert(compact.reduce((bytes,url)=>bytes+fs.statSync(path.join(root,url)).size,0)<100*1024)\n\n    at Object.<anonymous> (/workspace/scratch/b8bfcbab0b54/sengoku-taisen/tests/test-release-assets.cjs:21:1)\n    at Module._compile (node:internal/modules/cjs/loader:1929:14)\n    at Object..js (node:internal/modules/cjs/loader:2060:10)\n    at Module.load (node:internal/modules/cjs/loader:1651:32)\n    at Module._load (node:internal/modules/cjs/loader:1443:12)\n    at wrapModuleLoad (node:internal/modules/cjs/loader:261:19)\n    at Module.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:154:5)\n    at node:internal/main/run_main_module:33:47 {\n  generatedMessage: true,\n  code: 'ERR_ASSERTION',\n  actual: false,\n  expected: true,\n  operator: '==',\n  diff: 'simple'\n}\n\nNode.js v24.22.3\n"
+      },
+      {
+        "command": "node tests/test-page-security.cjs",
+        "chunk_id": "cb5264",
+        "wall_time_seconds": 0.27160906,
+        "exit_code": 0,
+        "original_token_count": 28,
+        "output": "PASS generated CSP, local scripts, scoped API and referrer policies for every game, guide and audition entry.\n"
+      },
+      {
+        "command": "python assets/fonts/kouzan-gyosho/verify.py",
+        "chunk_id": "ecd343",
+        "wall_time_seconds": 5.583867769,
+        "exit_code": 0,
+        "original_token_count": 48,
+        "output": "PASS 17 local WOFF2 subsets; 6986 real codepoints; no blank placeholders or overlapping ranges\nPASS core 180920 bytes; total 3099976 bytes; local sources, fallback, numerals and source hashes\n"
+      }
+    ],
+    "completedAt": "2026-11-26 18:16:01 UTC",
+    "finalChecks": [
+      {
+        "command": "node tools/build-public-pages.cjs --check",
+        "chunk_id": "f1ae42",
+        "wall_time_seconds": 0.523595458,
+        "exit_code": 0,
+        "original_token_count": 18,
+        "output": "PASS 16 public documents match site-metadata.json and their templates.\n"
+      },
+      {
+        "command": "python3 tools/build-press-kit.py --check",
+        "chunk_id": "947785",
+        "wall_time_seconds": 0.642807654,
+        "exit_code": 0,
+        "original_token_count": 19,
+        "output": "PASS press kit: 23 files, 9,653,049 bytes, matching public source material.\n"
+      },
+      {
+        "command": "node tests/test-seo.cjs",
+        "chunk_id": "6da503",
+        "wall_time_seconds": 0.610681364,
+        "exit_code": 0,
+        "original_token_count": 638,
+        "output": "PASS one metadata source matches every title, description, canonical and social preview\nPASS all public JSON-LD graphs share one publisher, site and game identity with truthful page metadata\nPASS Japanese and English introductions advertise reciprocal languages and remain statically discoverable\nPASS anonymous counters and their notice are limited to the two introduction pages\nPASS reading-page breadcrumb markup matches visible labels and actual canonical ancestors\nPASS sitemap dates, install metadata and stable square favicon reflect the same public site\nPASS image sitemap sends crawlers to visible artwork on each canonical page\nPASS social metadata points to the real VS JPEG and the legacy card URL serves the same image\nPASS public pages and nested 404 use the current favicon family, Apple icon and pinned-tab mark\nPASS root favicon contains real small-to-large PNG frames and Apple fallback matches the current icon\nPASS existing icon aliases no longer return the retired brand artwork\nPASS search-image and social crawlers can fetch every public page, preview and brand icon\nPASS the home introduction is visible HTML and still preserves the existing game entry\nPASS current battle limits and automatic mail are explained in public HTML without loading the game\nPASS the beginner upgrade guide gives separate keep and castle steps, actual controls and reservation limits\nPASS public discovery identifies only Sengoku VS and does not explain privileged player identities\nPASS default dry run reads existing files without network, key rotation or payload logging\nPASS metadata additions update the full plan and help count and receive public preflight checks\nPASS invalid metadata origins, paths and duplicates fail locally before any request\nPASS CLI rejects arbitrary endpoints/URLs and incompatible local key configuration before any request\nPASS only the known same-host canonical sitemap URLs and valid dates can become a notification\nPASS submit waits for every published check, then sends exactly one bounded canonical-URL POST\nPASS 202 is reported as key validation pending rather than confirmed 200 or indexing\nPASS missing/mismatched public key or changed sitemap stops before any POST\nPASS non-200, noindex, wrong canonical, non-HTML and redirected pages never get notified\nPASS 429 and other rejection statuses are non-success, retain Retry-After and never retry\nPASS network loss and timeouts distinguish unattempted preflight from uncertain POST receipt\n{\"passed\":27,\"realIndexNowNotifications\":0,\"mockTransportOnly\":true}\n"
+      },
+      {
+        "command": "node tests/test-public-search.cjs",
+        "chunk_id": "237a8d",
+        "wall_time_seconds": 1.003711101,
+        "exit_code": 0,
+        "original_token_count": 180,
+        "output": "PASS every index entry links to a real guide or subheading and every contents entry is searchable\nPASS the index loads only on demand and is reused when search reopens\nPASS Japanese aliases, multiple words, and missing queries preserve safe text and real links\nPASS IME confirmation does not navigate and keyboard arrows select the results after composition\nPASS one Escape closes a nonempty search while IME composition keeps the dialog open\nPASS a failed network request exposes a working retry and a static guide fallback\nPASS unsafe index URLs are omitted and markup in an entry is rendered as text\nPASS unsupported dialogs preserve links and slash never interrupts an editable field\n8 public search checks passed.\n"
+      },
+      {
+        "command": "node tests/test-public-pages.cjs",
+        "chunk_id": "520a6b",
+        "wall_time_seconds": 0.644035196,
+        "exit_code": 0,
+        "original_token_count": 35,
+        "output": "PASS 9 canonical pages, 9 JSON-LD blocks, 899 local links/assets, static discovery, section links, crawler access, sitemap, domain and 404.\n"
+      },
+      {
+        "command": "python3 tests/test-news-feed.py",
+        "chunk_id": "dbcd84",
+        "wall_time_seconds": 0.161056819,
+        "exit_code": 0,
+        "original_token_count": 22,
+        "output": "PASS valid RSS XML, 9 permanent release links, verified dates, and 9 discovery links\n"
+      },
+      {
+        "command": "node tests/test-promotion-sharing.cjs",
+        "chunk_id": "633139",
+        "wall_time_seconds": 0.272454041,
+        "exit_code": 0,
+        "original_token_count": 35,
+        "output": "PASS promotion copy/share: native copy, permission denial, legacy selection, manual recovery, native support and cancelled/denied sharing.\n"
+      },
+      {
+        "command": "node tests/test-public-growth.cjs",
+        "chunk_id": "11a442",
+        "wall_time_seconds": 0.458188069,
+        "exit_code": 0,
+        "original_token_count": 38,
+        "output": "PASS anonymous public growth: privacy opt-outs, fixed payloads, source allowlist, per-tab de-duplication, failure isolation and unmodified navigation.\n"
+      },
+      {
+        "command": "node tests/test-promotion-admin.cjs",
+        "chunk_id": "5b20d8",
+        "wall_time_seconds": 0.399121352,
+        "exit_code": 0,
+        "original_token_count": 39,
+        "output": "PASS promotion report: validated totals, honest labels, operator-only read routes, identity/role races, closed-dialog data removal and network recovery.\n"
+      },
+      {
+        "command": "node tests/test-promotion-invites.cjs",
+        "chunk_id": "a84685",
+        "wall_time_seconds": 0.378541406,
+        "exit_code": 0,
+        "original_token_count": 31,
+        "output": "PASS invitation presets, campaign-only URLs, short X intents, live native payload, no-JS copy and cancelled-share recovery.\n"
+      },
+      {
+        "command": "node tests/test-responsive-images.cjs",
+        "chunk_id": "9978bb",
+        "wall_time_seconds": 0.443402107,
+        "exit_code": 0,
+        "original_token_count": 24,
+        "output": "PASS responsive artwork for 9 pages, 66 referenced image variants and matching title preload.\n"
+      },
+      {
+        "command": "node tests/test-service-worker-brand.cjs",
+        "chunk_id": "a84631",
+        "wall_time_seconds": 0.415728072,
+        "exit_code": 0,
+        "original_token_count": 32,
+        "output": "PASS current-brand asset/offline responses, retired-cache cleanup, unrelated-cache retention, API bypass and safe activation.\n"
+      },
+      {
+        "command": "node tests/test-release-assets.cjs",
+        "chunk_id": "e382fe",
+        "wall_time_seconds": 0.374024485,
+        "exit_code": 0,
+        "original_token_count": 22,
+        "output": "PASS offline entry includes 9 fingerprinted scripts/styles and 16 required resources.\n"
+      },
+      {
+        "command": "node tests/test-page-security.cjs",
+        "chunk_id": "6fd094",
+        "wall_time_seconds": 0.403942398,
+        "exit_code": 0,
+        "original_token_count": 28,
+        "output": "PASS generated CSP, local scripts, scoped API and referrer policies for every game, guide and audition entry.\n"
+      },
+      {
+        "command": "python assets/fonts/kouzan-gyosho/verify.py",
+        "chunk_id": "5b07e6",
+        "wall_time_seconds": 6.161890571,
+        "exit_code": 0,
+        "original_token_count": 48,
+        "output": "PASS 17 local WOFF2 subsets; 6986 real codepoints; no blank placeholders or overlapping ranges\nPASS core 180920 bytes; total 3099976 bytes; local sources, fallback, numerals and source hashes\n"
+      }
+    ],
+    "finalStatus": "passed"
+  },
+  "assetSize": {
+    "entryRawBytes": 3102997,
+    "entryGzipBytes": 885865,
+    "baselineRawBytes": 3000127,
+    "baselineGzipBytes": 858586,
+    "offlineCompactImagesBytes": 95574,
+    "pressKitBytes": 9653049,
+    "fontAllRangesBytes": 3099976,
+    "fontCoreBytes": 180920,
+    "fontLoading": "unicode-range on demand"
+  }
+}

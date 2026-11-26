@@ -6,6 +6,7 @@
   const number = value => Math.max(0, Math.floor(Number(value) || 0)).toLocaleString('ja-JP');
   const signed = value => { const n = Number(value) || 0; return (n < 0 ? '−' : n > 0 ? '+' : '') + number(Math.abs(n)); };
   const filters = {all:'すべて',construction:'普請',research:'研究',marching:'進軍・派遣',returning:'帰還'};
+  const PLAN_LIMIT = 8;
   const checkedTimeFormat = new Intl.DateTimeFormat('ja-JP',{timeZone:'Asia/Tokyo',month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit',hourCycle:'h23'});
   const marchKinds = {castle:'城への出陣',branch:'支拠点への出陣',field:'共通フィールド',roaming:'野良兵への出陣',rally:'同盟の集結軍',conquest:'天下争覇',covert:'部隊の派遣'};
   const nonnegative = value => Number.isFinite(Number(value)) ? Math.max(0,Number(value)) : 0;
@@ -25,12 +26,14 @@
     const income=options.income||game?.income?.()||{},clock=operationClock(game,options.clock),rows=[];
     let earliest=0,latest=Infinity;
     for(const [key,label] of Object.entries(resources)) {
-      const raw=targets[key]??0,target=raw===''?0:Number(raw),valid=Number.isSafeInteger(target)&&target>=0;
+      const raw=targets[key]??0,target=raw===''?0:Number(raw),rawReserve=options.reserve?.[key]??0,reserve=rawReserve===''?0:Number(rawReserve),required=target+reserve;
+      const targetValid=Number.isSafeInteger(target)&&target>=0,reserveValid=Number.isSafeInteger(reserve)&&reserve>=0;
+      const valid=targetValid&&reserveValid&&Number.isSafeInteger(required);
       const current=Math.min(cap,Math.floor(nonnegative(game?.state?.resources?.[key]))),rawRate=Number(income.net?.[key]??income[key]??0),rate=Number.isFinite(rawRate)?rawRate:0;
-      const deficit=valid?Math.max(0,target-current):0,months=deficit&&rate>0?deficit/rate:0;
+      const deficit=valid?Math.max(0,required-current):0,months=deficit&&rate>0?deficit/rate:0;
       if(months>earliest)earliest=months;
-      if(rate<0&&valid&&target>0&&current>=target)latest=Math.min(latest,(current-target)/-rate);
-      rows.push({key,label,current,target,valid,rate,deficit,months,overCap:valid&&target>cap,blocked:deficit>0&&rate<=0,
+      if(rate<0&&valid&&required>0&&current>=required)latest=Math.min(latest,(current-required)/-rate);
+      rows.push({key,label,current,target,reserve,required,targetValid,reserveValid,valid,rate,deficit,months,overCap:valid&&required>cap,blocked:deficit>0&&rate<=0,
         after:[1,3,6].map(month=>Math.max(0,Math.min(cap,Math.floor(current+rate*month))))});
     }
     const invalid=rows.some(row=>!row.valid),overCap=rows.filter(row=>row.overCap),blocked=rows.filter(row=>row.blocked);
@@ -38,18 +41,20 @@
     const status=invalid?'invalid':overCap.length?'cap':ready?'ready':blocked.length?'blocked':!clock.running?'paused':expires?'expires':'waiting';
     const limiting=rows.filter(row=>row.deficit&&row.rate>0&&Math.abs(row.months-earliest)<1e-9).map(row=>row.label);
     const waitMs=status==='waiting'?Math.ceil(earliest*monthMs/clock.speed/1000)*1000:null;
-    const title={invalid:'目標は0以上の整数で入力',cap:'保有上限を超える予算です',ready:'必要な資源は揃っています',blocked:'現在の収支では不足を解消できません',paused:'共通時間は停止中です',expires:'揃う前に別の資源が不足します',waiting:'約'+duration(waitMs)+'で資源が揃う試算'}[status];
-    const detail={invalid:'空欄は0として扱います。小数・負数は使えません。',cap:overCap.map(row=>row.label).join('・')+'は保有上限 '+number(cap)+' を超えています。',ready:'資源だけの判定です。必要な指令・解放条件・普請枠は各画面で確認できます。',blocked:blocked.map(row=>row.label).join('・')+'の生産を増やすか、予算を見直してください。',paused:'不足額は表示します。時間が動き始めると待ち時間を試算します。',expires:'赤字の資源が先に減るため、4資源が同時には揃わない試算です。',waiting:limiting.join('・')+'が揃うまでの目安 · 現在 '+clock.speed+'倍速'}[status];
-    return {rows,status,title,detail,waitMs,clock,cap,earliest,latest,militaryDeficit:rows.some(row=>['gold','rice'].includes(row.key)&&row.rate<0)};
+    const hasReserve=rows.some(row=>row.valid&&row.reserve>0);
+    const title={invalid:'費用と備蓄は0以上の整数で入力',cap:'保有上限を超える予算です',ready:hasReserve?'費用と残す備蓄が揃っています':'必要な資源は揃っています',blocked:'現在の収支では不足を解消できません',paused:'共通時間は停止中です',expires:'揃う前に別の資源が不足します',waiting:'約'+duration(waitMs)+'で資源が揃う試算'}[status];
+    const detail={invalid:'空欄は0として扱います。小数・負数は使えません。',cap:overCap.map(row=>row.label).join('・')+'の費用と備蓄の合計が保有上限 '+number(cap)+' を超えています。',ready:'資源だけの判定です。必要な指令・解放条件・普請枠は各画面で確認できます。',blocked:blocked.map(row=>row.label).join('・')+'の生産を増やすか、予算を見直してください。',paused:'不足額は表示します。時間が動き始めると待ち時間を試算します。',expires:'赤字の資源が先に減るため、4資源が同時には揃わない試算です。',waiting:limiting.join('・')+'が揃うまでの目安 · 現在 '+clock.speed+'倍速'}[status];
+    return {rows,status,title,detail,hasReserve,waitMs,clock,cap,earliest,latest,militaryDeficit:rows.some(row=>['gold','rice'].includes(row.key)&&row.rate<0)};
   }
   function budgetGoal(game, selection = {}, options = {}) {
     const catalog=options.catalog||global.SENGOKU_DATA||{},kind=selection.kind,id=selection.id,state=game?.state||{};
+    if(kind==='plan')return combinedBudgetGoal(game,selection.items,options);
     if(kind==='custom')return {kind,title:'自由な予算',targets:selection.targets||{},note:'使いたい資源の合計を入力してください。',destination:'facilities'};
     if(!['building','research'].includes(kind))return {unavailable:true,title:'目標を選んでください',note:'施設・研究、または自由入力から選べます。'};
     const item=(kind==='building'?catalog.buildings:catalog.techs)?.find(row=>row.id===id);
     if(!item)return {unavailable:true,title:'目標が見つかりません',note:'一覧から選び直してください。'};
     if(game?.isStaff&&options.staffReady!==true)return {unavailable:true,title:'共同拠点を確認中です',note:'共同拠点の最新情報を確認してから費用を表示します。'};
-    const jobs=game?.constructionJobs?.()||state.jobs||[];
+    const jobs=options.jobs??game?.constructionJobs?.()??state.jobs??[];
     if(kind==='research'&&jobs.some(job=>job.kind==='research'&&job.id===id))return {unavailable:true,title:item.name+'は研究中です',note:'完成後の新しい段階で、次の費用を試算できます。'};
     const chain=jobs.filter(job=>job.kind===kind&&job.id===id&&(game?.isStaff?job.shared:!job.shared));
     const level=kind==='building'?Math.max(state.buildings?.[id]||0,...chain.map(job=>job.targetLevel||0)):state.tech?.[id]||0;
@@ -68,6 +73,30 @@
     }
     notes.push('着手・予約は行いません。実行時の費用と条件は詳細で再確認できます。');
     return {kind,id,title:item.name+' Lv.'+(level+1)+' の必要資源',targets:cost,note:notes.join(' '),destination:kind==='building'?'facilities':'research'};
+  }
+  // Plan rows are distinct next-stage goals. Reading a plan never queues work,
+  // changes a facility level, or treats one purchase as already completed.
+  function combinedBudgetGoal(game, selections = [], options = {}) {
+    const items=[],seen=new Set(),targets=Object.fromEntries(Object.keys(resources).map(key=>[key,0]));
+    if(!Array.isArray(selections)||selections.length>PLAN_LIMIT)return {kind:'plan',unavailable:true,items,title:'計画は'+PLAN_LIMIT+'件までです',note:'施設・研究の異なる目標を選び直してください。'};
+    const sharedOptions=selections.length?{...options,jobs:options.jobs??game?.constructionJobs?.()??game?.state?.jobs??[]}:options;
+    for(const selection of selections){
+      if(!selection||!['building','research'].includes(selection.kind)||typeof selection.id!=='string')return {kind:'plan',unavailable:true,items,title:'計画の目標を確認してください',note:'施設・研究から選び直してください。'};
+      const key=selection.kind+':'+selection.id;
+      if(seen.has(key))continue;
+      seen.add(key);
+      const goal=budgetGoal(game,selection,sharedOptions);
+      items.push({...goal,key});
+      if(!goal.unavailable)for(const resource of Object.keys(resources)){
+        const cost=Number(goal.targets?.[resource]??0);
+        if(!Number.isSafeInteger(cost)||cost<0||!Number.isSafeInteger(targets[resource]+cost))return {kind:'plan',unavailable:true,items,title:'計画の費用を確認できません',note:'各目標の詳細で費用を確認してください。'};
+        targets[resource]+=cost;
+      }
+    }
+    const unavailable=items.filter(item=>item.unavailable);
+    if(!items.length)return {kind:'plan',unavailable:true,items,title:'計画に目標を追加してください',note:'施設・研究を選び「計画へ追加」を押すと、まとめて費用を試算できます。'};
+    return {kind:'plan',items,targets,unavailable:unavailable.length>0,title:items.length+'件の普請・研究をまとめて準備',
+      note:unavailable.length?'確認が必要な目標が'+unavailable.length+'件あります。項目を見直すまで、合計の試算を保留します。':'各目標の次の1段階を合算しています。新しい予約・完成後は、次の段階へ見積もりを更新します。研究は同時1件です。実際の着手順・条件は各画面で確認できます。',destination:'facilities'};
   }
   function operationTiming(row,clock) {
     const world=row.timeBasis!=='real',paused=world&&!clock.running,remaining=nonnegative(row.remainingMs),speed=world?clock.speed:1;
@@ -305,9 +334,10 @@
     return true;
   }
 
-  let plannerDialog=null,plannerSession=null;
+  let plannerDialog=null,plannerSession=null,plannerDraft=null;
   function finishPlanner() {
     const session=plannerSession;if(!session)return;
+    plannerDraft={scope:session.scope,plan:session.plan.map(row=>({...row})),reserve:{...session.reserve},draft:{...session.draft},selection:{kind:session.selection.kind,id:session.selection.id}};
     plannerSession=null;session.unsubscribe?.();
     if(session.returnFocus?.isConnected)session.returnFocus.focus({preventScroll:true});
   }
@@ -318,7 +348,14 @@
     const dialog=document.createElement('dialog');plannerDialog=dialog;
     dialog.className='command-activity-dialog resource-plan-dialog';
     dialog.setAttribute('aria-labelledby','resource-plan-title');
-    dialog.innerHTML='<header class="command-activity-header"><div><p>次の一手の準備</p><h2 id="resource-plan-title">資源計画</h2></div><button type="button" class="button" data-budget-close>閉じる</button></header><div class="resource-plan-scroll"><label class="resource-plan-picker"><span>何を準備しますか</span><select class="select" data-budget-choice></select></label><h3 class="resource-plan-goal" data-budget-goal></h3><p class="resource-plan-note" data-budget-goal-note></p><section class="resource-plan-summary" aria-label="資源が揃う目安" data-budget-summary><strong data-budget-title></strong><p data-budget-detail></p></section><div class="resource-plan-grid">'+Object.entries(resources).map(([key,label])=>'<section class="resource-plan-card" data-budget-card="'+key+'"><h3>'+label+'</h3><dl><div><dt>現在</dt><dd data-budget-current="'+key+'"></dd></div><div><dt>毎月の差引</dt><dd data-budget-rate="'+key+'"></dd></div></dl><label><span>必要な合計</span><input class="input" type="number" min="0" step="1" inputmode="numeric" aria-label="'+label+'の必要な合計" data-budget-target="'+key+'"></label><div class="resource-plan-gap"><span>不足</span><strong data-budget-gap="'+key+'"></strong></div><div class="resource-plan-track" aria-hidden="true"><i data-budget-track="'+key+'"></i></div></section>').join('')+'</div><details class="resource-plan-forecast"><summary>1・3・6か月後の残高を試算</summary><p class="resource-plan-note">ゲーム内の月数です。現在の差引がそのまま続く場合を表示します。</p><div class="resource-plan-table"><table><thead><tr><th scope="col">資源</th>'+[1,3,6].map(month=>'<th scope="col">'+month+'か月後</th>').join('')+'</tr></thead><tbody>'+Object.entries(resources).map(([key,label])=>'<tr><th scope="row">'+label+'</th>'+[0,1,2].map(index=>'<td data-budget-after="'+key+':'+index+'"></td>').join('')+'</tr>').join('')+'</tbody></table></div></details><p class="resource-plan-note resource-plan-warning" data-budget-military hidden>金銭・兵糧の赤字は月替わりの自動減兵で変わるため、この試算どおりには進まない場合があります。</p><p class="resource-plan-note">生産・維持費・給与・次回修復費を含む現在の差引を固定した概算です。工事完成、報酬、戦闘、売買、追加支出などによる変化や月末の精算時点は含みません。自動で購入・建設・予約はしません。</p><div class="resource-plan-actions"><button type="button" class="button gold" data-budget-go="facilities">施設を見る</button><button type="button" class="button" data-budget-go="research">研究を見る</button></div></div>';
+    dialog.innerHTML='<header class="command-activity-header"><div><p>次の一手の準備</p><h2 id="resource-plan-title">資源計画</h2></div><button type="button" class="button" data-budget-close>閉じる</button></header><div class="resource-plan-scroll">' +
+      '<div class="resource-plan-select-row"><label class="resource-plan-picker"><span>何を準備しますか</span><select class="select" data-budget-choice></select></label><button type="button" class="button gold" data-budget-add>計画へ追加</button></div>' +
+      '<p class="resource-plan-feedback" data-budget-feedback role="status" aria-live="polite"></p><section class="resource-plan-basket" data-budget-basket hidden aria-labelledby="resource-plan-basket-title"><header><div><h3 id="resource-plan-basket-title">まとめて準備</h3><p><span data-budget-plan-count>0</span> / '+PLAN_LIMIT+'件 · 異なる目標の次の1段階</p></div><button type="button" class="button" data-budget-total>合計を試算</button></header><ul data-budget-plan-list></ul><div class="resource-plan-basket-footer"><small>この起動中に保持 · 領主・領国が変わると解除</small><button type="button" class="text-link" data-budget-clear-plan>計画を空にする</button></div></section>' +
+      '<h3 class="resource-plan-goal" data-budget-goal></h3><p class="resource-plan-note" data-budget-goal-note></p><section class="resource-plan-summary" aria-label="資源が揃う目安" data-budget-summary><strong data-budget-title></strong><p data-budget-detail></p></section>' +
+      '<div class="resource-plan-grid">'+Object.entries(resources).map(([key,label])=>'<section class="resource-plan-card" data-budget-card="'+key+'"><h3>'+label+'</h3><dl><div><dt>現在</dt><dd data-budget-current="'+key+'"></dd></div><div><dt>毎月の差引</dt><dd data-budget-rate="'+key+'"></dd></div></dl><label><span>目標の費用</span><input class="input" type="number" min="0" step="1" inputmode="numeric" aria-label="'+label+'の必要な合計" data-budget-target="'+key+'"></label><dl class="resource-plan-reserve-values"><div><dt>残す備蓄</dt><dd data-budget-reserved="'+key+'">0</dd></div><div><dt>必要な総額</dt><dd data-budget-required="'+key+'"></dd></div></dl><div class="resource-plan-gap"><span>不足</span><strong data-budget-gap="'+key+'"></strong></div><div class="resource-plan-track" aria-hidden="true"><i data-budget-track="'+key+'"></i></div></section>').join('')+'</div>' +
+      '<details class="resource-plan-reserve"><summary>使わずに残す備蓄を決める<span data-budget-reserve-summary></span></summary><p class="resource-plan-note">費用を支払った後も手元に残したい量です。「費用＋備蓄」が全資源で揃う時点を試算します。実際の資源を取り置く操作は行いません。</p><div class="resource-plan-reserve-grid">'+Object.entries(resources).map(([key,label])=>'<label><span>'+label+'</span><input class="input" type="number" min="0" step="1" inputmode="numeric" value="0" aria-label="使わずに残す'+label+'の備蓄" data-budget-reserve="'+key+'"></label>').join('')+'</div><button type="button" class="text-link" data-budget-reserve-reset>備蓄をすべて0に戻す</button></details>' +
+      '<details class="resource-plan-forecast"><summary>1・3・6か月後の残高を試算</summary><p class="resource-plan-note">ゲーム内の月数です。現在の差引がそのまま続く場合を表示します。計画の費用を支払う前の残高です。</p><div class="resource-plan-table"><table><thead><tr><th scope="col">資源</th>'+[1,3,6].map(month=>'<th scope="col">'+month+'か月後</th>').join('')+'</tr></thead><tbody>'+Object.entries(resources).map(([key,label])=>'<tr><th scope="row">'+label+'</th>'+[0,1,2].map(index=>'<td data-budget-after="'+key+':'+index+'"></td>').join('')+'</tr>').join('')+'</tbody></table></div></details>' +
+      '<p class="resource-plan-note resource-plan-warning" data-budget-military hidden>金銭・兵糧の赤字は月替わりの自動減兵で変わるため、この試算どおりには進まない場合があります。</p><p class="resource-plan-note">生産・維持費・給与・次回修復費を含む現在の差引を固定した概算です。工事完成、報酬、戦闘、売買、追加支出などによる変化や月末の精算時点は含みません。自動で購入・建設・予約はしません。</p><div class="resource-plan-actions"><button type="button" class="button gold" data-budget-go="facilities">施設を見る</button><button type="button" class="button" data-budget-go="research">研究を見る</button></div></div>';
     dialog.addEventListener('cancel',event=>{event.preventDefault();closePlanner();});
     // A facility detail may remain beneath this dialog. Its global Escape
     // handler must not clear that underlying modal's live-refresh context.
@@ -326,12 +363,31 @@
     dialog.addEventListener('close',()=>{if(!dialog.open)finishPlanner();});
     dialog.addEventListener('click',event=>{
       if(!plannerSession)return;
+      const session=plannerSession,game=session.options.getGame?.()||session.options.game;
+      const announce=message=>{dialog.querySelector('[data-budget-feedback]').textContent=message;};
+      const showPlan=()=>{session.selection={kind:'plan'};dialog.querySelector('[data-budget-choice]').value='plan';renderPlanner();};
+      if(event.target.closest?.('[data-budget-add]')){
+        if(!game||identity(game)!==session.scope)return closePlanner();
+        const selection=session.selection,key=selection.kind+':'+selection.id;
+        if(!['building','research'].includes(selection.kind))return;
+        if(session.plan.some(row=>row.kind+':'+row.id===key)){announce('この目標は計画に入っています。');return;}
+        if(session.plan.length>=PLAN_LIMIT){announce('計画は'+PLAN_LIMIT+'件までです。項目を外してから追加してください。');return;}
+        const goal=budgetGoal(game,selection,{catalog:session.options.catalog,staffReady:session.options.staffReady?.()===true});
+        if(goal.unavailable){announce(goal.title);renderPlanner();return;}
+        session.plan.push({kind:selection.kind,id:selection.id});showPlan();announce(goal.title+'を計画に追加しました。');dialog.querySelector('[data-budget-total]').focus({preventScroll:true});return;
+      }
+      if(event.target.closest?.('[data-budget-total]')){showPlan();announce(session.plan.length+'件の合計を表示しています。');return;}
+      const remove=event.target.closest?.('[data-budget-remove]');
+      if(remove){session.plan=session.plan.filter(row=>row.kind+':'+row.id!==remove.dataset.budgetRemove);renderPlanner();announce('計画から目標を外しました。');return;}
+      if(event.target.closest?.('[data-budget-clear-plan]')){session.plan=[];renderPlanner();announce('計画を空にしました。');dialog.querySelector('[data-budget-choice]').focus({preventScroll:true});return;}
+      if(event.target.closest?.('[data-budget-reserve-reset]')){for(const input of dialog.querySelectorAll('[data-budget-reserve]')){session.reserve[input.dataset.budgetReserve]='0';input.value='0';}renderPlanner();announce('残す備蓄をすべて0に戻しました。');return;}
       const button=event.target.closest?.('[data-budget-close],[data-budget-go]');
       if(button){const destination=button.dataset.budgetGo,options=plannerSession.options;closePlanner();if(['facilities','research'].includes(destination))options.navigate?.(destination);return;}
       if(event.target===dialog){const r=dialog.getBoundingClientRect();if(event.clientX<r.left||event.clientX>r.right||event.clientY<r.top||event.clientY>r.bottom)closePlanner();}
     });
-    dialog.addEventListener('change',event=>{if(plannerSession&&event.target.matches?.('[data-budget-choice]')){const [kind,id]=event.target.value.split(':');plannerSession.selection={kind,id,targets:plannerSession.draft};if(kind==='custom')for(const input of dialog.querySelectorAll('[data-budget-target]'))input.value=plannerSession.draft[input.dataset.budgetTarget];renderPlanner();}});
+    dialog.addEventListener('change',event=>{if(plannerSession&&event.target.matches?.('[data-budget-choice]')){const [kind,id]=event.target.value.split(':');plannerSession.selection={kind,id,targets:plannerSession.draft};if(kind==='custom')for(const input of dialog.querySelectorAll('[data-budget-target]'))input.value=plannerSession.draft[input.dataset.budgetTarget];dialog.querySelector('[data-budget-feedback]').textContent='';renderPlanner();}});
     dialog.addEventListener('input',event=>{
+      if(plannerSession&&event.target.matches?.('[data-budget-reserve]')){plannerSession.reserve[event.target.dataset.budgetReserve]=event.target.value;renderPlanner();return;}
       if(!plannerSession||plannerSession.selection.kind!=='custom'||!event.target.matches?.('[data-budget-target]'))return;
       plannerSession.draft[event.target.dataset.budgetTarget]=event.target.value;renderPlanner();
     });
@@ -342,23 +398,43 @@
     const game=session.options.getGame?.()||session.options.game;
     if(!game||identity(game)!==session.scope||global.SENGOKU_AT_TITLE===true){closePlanner();return;}
     if(clock)session.clock=clock;
-    const goal=budgetGoal(game,session.selection,{catalog:session.options.catalog,staffReady:session.options.staffReady?.()===true});
-    const model=buildBudget(game,goal.targets,{catalog:session.options.catalog,clock:session.clock}),dialog=plannerDialog;
+    const goalOptions={catalog:session.options.catalog,staffReady:session.options.staffReady?.()===true,jobs:game?.constructionJobs?.()??game?.state?.jobs??[]};
+    const plan=combinedBudgetGoal(game,session.plan,goalOptions);
+    const goal=session.selection.kind==='plan'?plan:budgetGoal(game,session.selection,goalOptions);
+    const model=buildBudget(game,goal.targets,{catalog:session.options.catalog,clock:session.clock,reserve:session.reserve}),dialog=plannerDialog;
     const text=(selector,value)=>{const node=dialog.querySelector(selector);if(node&&node.textContent!==value)node.textContent=value;};
     text('[data-budget-goal]',goal.title);text('[data-budget-goal-note]',goal.note);
     text('[data-budget-title]',goal.unavailable?'費用の試算はできません':model.title);
     text('[data-budget-detail]',goal.unavailable?'目標を変更するか、各画面で現在の状態を確認してください。':model.detail);
     dialog.querySelector('[data-budget-summary]').dataset.state=goal.unavailable?'unavailable':model.status;
+    const add=dialog.querySelector('[data-budget-add]'),key=session.selection.kind+':'+session.selection.id,inPlan=session.plan.some(row=>row.kind+':'+row.id===key);
+    add.disabled=goal.unavailable===true||!['building','research'].includes(session.selection.kind)||inPlan||session.plan.length>=PLAN_LIMIT;
+    text('[data-budget-add]',inPlan?'追加済み':'計画へ追加');
+    const basket=dialog.querySelector('[data-budget-basket]');basket.hidden=!session.plan.length;
+    text('[data-budget-plan-count]',number(session.plan.length));
+    const list=dialog.querySelector('[data-budget-plan-list]');
+    const shape=JSON.stringify(plan.items.map(item=>[item.key,item.title,item.targets,item.note,item.unavailable]));
+    if(list.dataset.shape!==shape){
+      const scroll=dialog.querySelector('.resource-plan-scroll'),top=scroll.scrollTop,focused=global.document.activeElement,focusKey=list.contains(focused)?focused?.dataset?.budgetRemove:null;
+      const html=plan.items.map(item=>'<li data-stable-key="'+esc(item.key)+'" data-budget-plan-item="'+esc(item.key)+'"'+(item.unavailable?' class="is-unavailable"':'')+'><div><strong>'+esc(item.title)+'</strong><p class="resource-plan-item-cost">'+(item.unavailable?'現在は費用を確認できません':Object.entries(resources).filter(([key])=>Number(item.targets?.[key])>0).map(([key,label])=>label+' '+number(item.targets[key])).join(' · ')||'資源の費用なし')+'</p><details><summary>着手条件・注意点</summary><p>'+esc(item.note)+'</p></details></div><button type="button" class="button small" data-budget-remove="'+esc(item.key)+'" aria-label="'+esc(item.title)+'を計画から外す">外す</button></li>').join('');
+      if(global.SengokuStableDOM?.patch)global.SengokuStableDOM.patch(list,html);else list.innerHTML=html;
+      list.dataset.shape=shape;scroll.scrollTop=top;
+      if(focusKey){const next=Array.from(list.querySelectorAll('[data-budget-remove]')).find(node=>node.dataset.budgetRemove===focusKey);(next||dialog.querySelector('[data-budget-choice]')).focus({preventScroll:true});}
+    }
+    text('[data-budget-reserve-summary]',model.rows.some(row=>!row.reserveValid)?'入力を確認':model.hasReserve?'設定あり':'未設定');
     for(const row of model.rows) {
       const input=dialog.querySelector('[data-budget-target="'+row.key+'"]');
       const auto=goal.kind!=='custom';input.readOnly=auto;input.disabled=goal.unavailable===true;
       if(auto){const value=goal.unavailable?'':String(row.target);if(input.value!==value)input.value=value;}
-      input.setAttribute('aria-invalid',String(!row.valid));
+      input.setAttribute('aria-invalid',String(!row.targetValid));
+      dialog.querySelector('[data-budget-reserve="'+row.key+'"]').setAttribute('aria-invalid',String(!row.reserveValid));
       text('[data-budget-current="'+row.key+'"]',number(row.current));
       text('[data-budget-rate="'+row.key+'"]',signed(row.rate));
       dialog.querySelector('[data-budget-rate="'+row.key+'"]').classList.toggle('is-negative',row.rate<0);
+      text('[data-budget-reserved="'+row.key+'"]',row.reserveValid?number(row.reserve):'入力を確認');
+      text('[data-budget-required="'+row.key+'"]',goal.unavailable||!row.valid?'—':number(row.required));
       text('[data-budget-gap="'+row.key+'"]',goal.unavailable||!row.valid?'—':number(row.deficit));
-      const track=dialog.querySelector('[data-budget-track="'+row.key+'"]'),width=(goal.unavailable||!row.valid?0:row.target?Math.min(100,row.current/row.target*100):100).toFixed(1)+'%';
+      const track=dialog.querySelector('[data-budget-track="'+row.key+'"]'),width=(goal.unavailable||!row.valid?0:row.required?Math.min(100,row.current/row.required*100):100).toFixed(1)+'%';
       if(track.style.width!==width)track.style.width=width;
       row.after.forEach((value,index)=>text('[data-budget-after="'+row.key+':'+index+'"]',number(value)));
     }
@@ -369,13 +445,18 @@
     const dialog=ensurePlannerDialog();if(!dialog)return false;
     if(activitySession)close();if(plannerSession)closePlanner();
     const catalog=options.catalog||global.SENGOKU_DATA||{},choice=dialog.querySelector('[data-budget-choice]');
-    choice.innerHTML='<option value="custom">自由入力で予算を組む</option><optgroup label="施設の次の普請">'+(catalog.buildings||[]).map(row=>'<option value="building:'+esc(row.id)+'">'+esc(row.name)+'</option>').join('')+'</optgroup><optgroup label="次の研究">'+(catalog.techs||[]).map(row=>'<option value="research:'+esc(row.id)+'">'+esc(row.name)+'</option>').join('')+'</optgroup>';
-    const kind=['building','research','custom'].includes(options.kind)?options.kind:'building',id=options.id||'farm';
-    const selected=Array.from(choice.options).some(option=>option.value===kind+':'+id)?kind+':'+id:kind==='custom'?'custom':catalog.buildings?.length?'building:'+catalog.buildings[0].id:'custom';
+    choice.innerHTML='<option value="custom">自由入力で予算を組む</option><option value="plan">まとめた計画の合計</option><optgroup label="施設の次の普請">'+(catalog.buildings||[]).map(row=>'<option value="building:'+esc(row.id)+'">'+esc(row.name)+'</option>').join('')+'</optgroup><optgroup label="次の研究">'+(catalog.techs||[]).map(row=>'<option value="research:'+esc(row.id)+'">'+esc(row.name)+'</option>').join('')+'</optgroup>';
+    const scope=identity(game),saved=plannerDraft?.scope===scope?plannerDraft:null;
+    if(!saved)plannerDraft=null;
+    const kind=['building','research','custom','plan'].includes(options.kind)?options.kind:saved?.selection.kind||'building',id=options.id||saved?.selection.id||'farm';
+    const selected=Array.from(choice.options).some(option=>option.value===kind+':'+id)?kind+':'+id:['custom','plan'].includes(kind)?kind:catalog.buildings?.length?'building:'+catalog.buildings[0].id:'custom';
     choice.value=selected;const [selectedKind,selectedId]=selected.split(':');
-    const draft=Object.fromEntries(Object.keys(resources).map(key=>[key,String(Math.floor(nonnegative(game.state?.resources?.[key])))]));
+    const draft=saved?{...saved.draft}:Object.fromEntries(Object.keys(resources).map(key=>[key,String(Math.floor(nonnegative(game.state?.resources?.[key])))]));
+    const reserve=saved?{...saved.reserve}:Object.fromEntries(Object.keys(resources).map(key=>[key,'0']));
     for(const input of dialog.querySelectorAll('[data-budget-target]'))input.value=draft[input.dataset.budgetTarget];
-    const session={options,scope:identity(game),selection:{kind:selectedKind,id:selectedId,targets:draft},draft,returnFocus:global.document.activeElement,unsubscribe:null};
+    for(const input of dialog.querySelectorAll('[data-budget-reserve]'))input.value=reserve[input.dataset.budgetReserve];
+    dialog.querySelector('[data-budget-feedback]').textContent='';
+    const session={options,scope,selection:{kind:selectedKind,id:selectedId,targets:draft},draft,reserve,plan:saved?saved.plan.map(row=>({...row})):[],returnFocus:global.document.activeElement,unsubscribe:null};
     plannerSession=session;dialog.showModal();dialog.scrollTop=0;dialog.querySelector('.resource-plan-scroll').scrollTop=0;
     if(typeof global.SengokuTravelUI?.subscribe==='function'){
       session.unsubscribe=global.SengokuTravelUI.subscribe((_data,clock)=>{if(plannerSession===session)renderPlanner(clock);});
@@ -385,7 +466,7 @@
     dialog.querySelector('[data-budget-close]')?.focus({preventScroll:true});return true;
   }
 
-  const api = {build, markup, refresh, buildOperations, matchingOperations, open, close, buildBudget, budgetGoal, openPlanner, closePlanner};
+  const api = {build, markup, refresh, buildOperations, matchingOperations, open, close, buildBudget, budgetGoal, combinedBudgetGoal, openPlanner, closePlanner};
   global.SengokuCommandCenter = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -101,3 +101,8 @@ html[data-presentation-motion="quiet"] .painted-art>.art-surface{transition:none
  background-size:var(--native-size);
  background-position:var(--native-x) var(--native-y);
 }
+
+/* Each facility uses its own atlas cell with proportional cover cropping. */
+.facility-painting > .art-surface,
+.facility-painting.portrait-cell > .art-surface { inset: 0; box-shadow: none; }
+.facility-art-viewport { display: block; width: 100%; height: 100%; overflow: hidden; }

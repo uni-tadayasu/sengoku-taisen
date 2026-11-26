@@ -1,0 +1,14 @@
+{
+  "name": "衡山毛筆フォント行書",
+  "author": "青柳衡山 / Kouzan Aoyagi",
+  "version": "2.1",
+  "license": "public-domain",
+  "verifiedOn": "2026-11-27",
+  "upstream": "https://opentype.jp/kouzangyousho.htm",
+  "authorLicense": "https://www7a.biglobe.ne.jp/~kouzan/",
+  "download": "https://opentype.jp/bin/KouzanGyousho.zip",
+  "archiveSha256": "49b01ea6ef22001bc0a6a4f7e63675073e49e3ea85c68506c95c1b28ce87510a",
+  "fontSha256": "6b063cc0f9591ea2e71c97f06c8e663d04a0b0ac4bbe6c0e4c3b49a13215db99",
+  "sourceFontBytes": 5640044,
+  "processing": "WOFF2 conversion and disjoint unicode-range subsets; no glyph outlines redrawn; empty placeholders omitted for system fallback."
+}

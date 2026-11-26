@@ -1,0 +1,67 @@
+{
+  "scope": "Sengoku VS 5.6.0 economic-read and live-control work reduction",
+  "baselineCommit": "dbec77ae2dfe285b34992d23df9a696635c016ec",
+  "baselineRelease": "5.5.0",
+  "baselineSource": "engine.js",
+  "comparisonSource": "engine.js with 5.6.0 economic projection changes",
+  "environment": {
+    "runtime": "Node.js v24.22.3",
+    "architecture": "x86_64",
+    "networkRequests": 0,
+    "playerSavesUsed": false
+  },
+  "methodology": {
+    "measurement": "Median elapsed milliseconds per synchronous method read, using performance.now()",
+    "warmupReads": 80,
+    "measuredRounds": 5,
+    "readsPerRound": 300,
+    "baselineAndComparison": "Baseline and changed engine constructors in the same process, each receiving an independent structured clone of the identical fixture state. Baseline is measured first for each operation.",
+    "fixture": "tools/audit-economy.cjs fixture(32, castleCount), Takeda, seed 4915; every eligible facility at level 32 and all research at level 5. All 256 officers and all ordinarily eligible variants, with one governor assigned to each of the 64 facilities from roster positions 3 onward. Eligible owned castles are level 32 with 1200 defenders each. CPU events are not run by these read-only measurements.",
+    "correctness": "Every baseline method result was deep-equal to the changed result before timing. tests/test-economy-read-work.cjs separately covers every rank, specialty and runtime role; fresh rank/appointment/ownership changes; nonmutation; and 60 repeated developed-state reads.",
+    "interpretation": "These are synthetic calculation microbenchmarks. They do not measure browser frame rate, network speed, page-load time, or user-device performance. Absolute timings and percentages vary by runtime and machine."
+  },
+  "measurements": [
+    {"ownedCastles":1,"operation":"income","beforeMs":0.3596,"afterMs":0.2373,"reductionPercent":34.0},
+    {"ownedCastles":1,"operation":"maintenance","beforeMs":0.0251,"afterMs":0.0239,"reductionPercent":4.7},
+    {"ownedCastles":1,"operation":"troopCapacity","beforeMs":0.0804,"afterMs":0.0636,"reductionPercent":20.9},
+    {"ownedCastles":1,"operation":"trainingGain","beforeMs":0.0779,"afterMs":0.0637,"reductionPercent":18.2},
+    {"ownedCastles":1,"operation":"scoutCost","beforeMs":0.1108,"afterMs":0.0953,"reductionPercent":14.0},
+    {"ownedCastles":20,"operation":"income","beforeMs":0.3480,"afterMs":0.2213,"reductionPercent":36.4},
+    {"ownedCastles":20,"operation":"maintenance","beforeMs":0.0296,"afterMs":0.0219,"reductionPercent":26.3},
+    {"ownedCastles":20,"operation":"troopCapacity","beforeMs":0.0790,"afterMs":0.0612,"reductionPercent":22.5},
+    {"ownedCastles":20,"operation":"trainingGain","beforeMs":0.0650,"afterMs":0.0490,"reductionPercent":24.6},
+    {"ownedCastles":20,"operation":"scoutCost","beforeMs":0.0988,"afterMs":0.0809,"reductionPercent":18.1},
+    {"ownedCastles":100,"operation":"income","beforeMs":0.3913,"afterMs":0.2479,"reductionPercent":36.7},
+    {"ownedCastles":100,"operation":"maintenance","beforeMs":0.0620,"afterMs":0.0368,"reductionPercent":40.6},
+    {"ownedCastles":100,"operation":"troopCapacity","beforeMs":0.0960,"afterMs":0.0618,"reductionPercent":35.6},
+    {"ownedCastles":100,"operation":"trainingGain","beforeMs":0.0597,"afterMs":0.0466,"reductionPercent":21.9},
+    {"ownedCastles":100,"operation":"scoutCost","beforeMs":0.0934,"afterMs":0.0837,"reductionPercent":10.4}
+  ],
+  "deterministicWorkChecks": {
+    "economicReads": "60 repetitions each of income, maintenance and troopCapacity with 100 owned castles: zero castle display-model or complete officer display-model constructions, with unchanged results and save data.",
+    "liveDomInsertions": "1024 sibling sections and 1024 nested buttons delivered as mutation records: zero pairwise inserted-subtree contains() comparisons and exactly 1024 outer-subtree selector queries.",
+    "liveDomUnchangedTicks": "60 unchanged clock ticks: zero additional whole-document selector queries after initial membership reads."
+  },
+  "formationPlanner": {
+    "baseline": "Unpruned exhaustive implementation of the newly added 5.6.0 army planner, not a feature or timing from the published 5.5.0 game",
+    "baselineSourceSha256": "9887eed548b088eb57fd4431c4f73d9f186d3ce98f9f20ef25b0e7fccf56ab7f",
+    "fixture": "256 officers, all ordinarily eligible variants, 100 health, first three officers in the current army, no governors or fixed officers; otherwise the same developed fixture with 20 owned castles",
+    "methodology": "Same-process paired baseline/optimized runs; 3 warmup searches per tactic and implementation, followed by 7 single-search timings, reporting the median. Full result objects deep-equal before/after except examined and prunedCandidates diagnostics.",
+    "optimization": "Remove a candidate only if at least the number of remaining open slots can be filled by earlier retained candidates with the same skill mask and no worse relevant stats/retention. Both candidate and dominators must have zero military-facility loss. Fractional recovery values use guarded strict comparisons unless every value in that dimension lies on an exact binary grid. All military-governor loss alternatives remain explicitly searched.",
+    "correctness": "tests/test-army-planner-performance.cjs: 76 independent exhaustive public-engine comparisons cover all four tactics, fixed officers, deterministic ties, ranks, fractional health, military-governor effects and stationed exclusions. The separate actual-combat and adoption-handler suite also passes.",
+    "measurements": [
+      {"tactic":"balanced","beforeMs":235.338,"afterMs":7.645,"reductionPercent":96.8,"beforeExamined":2763520,"afterExamined":64824,"prunedCandidates":182},
+      {"tactic":"assault","beforeMs":231.719,"afterMs":7.612,"reductionPercent":96.7,"beforeExamined":2763520,"afterExamined":64824,"prunedCandidates":182},
+      {"tactic":"siege","beforeMs":252.843,"afterMs":7.339,"reductionPercent":97.1,"beforeExamined":2763520,"afterExamined":64824,"prunedCandidates":182},
+      {"tactic":"ambush","beforeMs":256.133,"afterMs":10.507,"reductionPercent":95.9,"beforeExamined":2763520,"afterExamined":105995,"prunedCandidates":169}
+    ],
+    "interpretation": "This compares two implementations of the new planner, not overall game speed. Search work depends on the actual roster, health, role assignments and fixed officers; arbitrary rosters can require more combinations. Browser/mobile performance is not measured here."
+  },
+  "compatibility": {
+    "saveSchemaChanged": false,
+    "economicRulesChanged": false,
+    "balanceValuesChanged": false,
+    "serverMirror": "server/game-engine.js is byte-identical to engine.js",
+    "deployment": "The existing Worker remains numerically compatible; this document does not claim a Worker deployment."
+  }
+}

@@ -56,6 +56,24 @@ test('unsupported queries, old browsers and a disposed index use current DOM dir
  const noObserver=create(f.doc,null);assert.equal(noObserver.nodes('[data-action]').length,0);second.dataset.action='train';assert.equal(noObserver.nodes('[data-action]').length,1);
  f.registry.dispose();assert(f.observer.disconnected);second.removeAttribute('data-action');assert.equal(f.registry.nodes('[data-action]').length,0);
 });
+test('a large insertion batch avoids pairwise subtree comparisons and visits nested insertions once',()=>{
+ const f=fixture();f.registry.nodes('[data-action]');
+ let subtreeComparisons=0,subtreeQueries=0;
+ // Model the browser's native connection test separately from the intentionally
+ // recursive fixture implementation, then count actual root-selection work.
+ f.doc.body.contains=()=>true;
+ const nodes=[];
+ for(let i=0;i<1024;i++){
+  const row=f.doc.createElement('section'),button=f.doc.createElement('button');button.dataset.action='train';row.appendChild(button);f.host.appendChild(row);
+  const contains=row.contains.bind(row),query=row.querySelectorAll.bind(row);
+  row.contains=node=>{subtreeComparisons++;return contains(node);};
+  row.querySelectorAll=selector=>{subtreeQueries++;return query(selector);};
+  f.children(f.host,[row]);f.children(row,[button]);nodes.push(button);
+ }
+ assert.deepEqual(f.registry.nodes('[data-action]'),nodes);
+ assert.equal(subtreeComparisons,0,'No all-pairs inserted-tree contains() work');
+ assert.equal(subtreeQueries,1024,'Each outer insertion is inspected exactly once');
+});
 function liveFunction(){const start=source.indexOf('  function refreshLiveControls('),end=source.indexOf('\n  function ',start+1);assert(start>=0&&end>start);return source.slice(start,end);}
 test('mounted recruitment buttons share one fresh batch and hidden panes do no quote work',()=>{
  const rosterScope={window:{}};vm.runInNewContext(fs.readFileSync(require.resolve('../officers-data.js'),'utf8'),rosterScope);

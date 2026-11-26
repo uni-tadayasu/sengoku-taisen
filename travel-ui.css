@@ -8,3 +8,76 @@ dialog.travel-dialog{width:min(600px,calc(100vw - 24px));max-height:calc(100dvh 
 
 html:not(.sengoku-desktop-fit) body:has(.travel-launcher:not([hidden])) .toast{bottom:calc(var(--compact-dock-height,76px) + 64px + env(safe-area-inset-bottom,0px))}
 html:not(.sengoku-desktop-fit) body:has(.travel-launcher:not([hidden])) #app .game-footer{padding-bottom:calc(var(--compact-dock-height,76px) + 70px + env(safe-area-inset-bottom,0px))}
+
+/* The controls stay mounted while countdowns update, so IME entry and focus
+   remain stable. Only the card area scrolls on short/mobile viewports. */
+dialog.travel-dialog{width:min(860px,calc(100vw - 24px));box-sizing:border-box;overflow:hidden}
+dialog.travel-dialog[open]{display:flex;flex-direction:column}
+.travel-dialog *{box-sizing:border-box}
+.travel-dialog>header{flex:none;background:linear-gradient(110deg,#25352e,#1c2424)}
+.travel-dialog header small{font-size:12px;letter-spacing:.08em}
+.travel-tools{padding:16px 20px 12px;border-bottom:1px solid #ffffff1c;flex:none;min-width:0;background:#1b2521}
+.travel-tools[hidden]{display:none}
+.travel-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:15px}
+.travel-summary>div{display:grid;gap:5px;padding:10px 12px;border-left:2px solid #b9a364;background:#ffffff05;min-width:0}
+.travel-summary span{font-size:13px;color:#c4cdc1}
+.travel-summary strong{font-size:22px;line-height:1.35;color:#f2e2bc;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.travel-stage-tabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px;margin-bottom:12px}
+.travel-stage-tabs button{min-width:0;min-height:42px;padding:8px 10px;display:flex;align-items:center;justify-content:center;gap:8px;border:1px solid #92a49140;border-radius:8px;background:#26322b;color:#d6dfd4;font:inherit;font-size:14px;cursor:pointer;line-height:1.5}
+.travel-stage-tabs button[aria-pressed="true"]{border-color:#d1b97a;background:#3d3b26;color:#fff0c8;box-shadow:inset 0 0 0 1px #d1b97a33}
+.travel-stage-tabs button span{font-size:12px;color:#d1bd8b;font-variant-numeric:tabular-nums}
+.travel-filters{display:grid;grid-template-columns:minmax(160px,1.5fr) minmax(130px,1fr) minmax(130px,1fr) auto;gap:10px;align-items:end;min-width:0}
+.travel-filters label{display:grid;gap:5px;min-width:0;font-size:13px;color:#c4cdc1}
+.travel-filters input,.travel-filters select{display:block;width:100%;min-width:0;min-height:44px;border:1px solid #94a89155;border-radius:8px;background:#15211c;color:#f4ecda;padding:9px 10px;font:inherit;font-size:14px}
+.travel-filters input::placeholder{color:#adb7a9}
+.travel-filters .button{min-height:44px;margin:0;font-size:13px;white-space:normal}
+.travel-stage-tabs button:focus-visible,.travel-filters input:focus-visible,.travel-filters select:focus-visible{outline:2px solid #e4c884;outline-offset:2px}
+.travel-body{min-height:0;max-height:none;flex:1 1 auto;font-size:16px;scrollbar-gutter:stable}
+.travel-explainer,.travel-empty{font-size:14px;line-height:1.8;margin-top:0}
+.travel-result-count{font-size:13px;color:#d4c496;margin:0 0 16px;font-variant-numeric:tabular-nums}
+.travel-body>h3{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 12px;font-size:17px;margin:18px 0 10px}
+.travel-body>h3 small{font-size:12px;color:#b5c0b1;font-weight:400}
+.travel-list{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.travel-list li{background:linear-gradient(135deg,#26372b88,#202923);padding:15px}
+.travel-card-heading{display:flex;justify-content:space-between;align-items:center;gap:8px;min-width:0}
+.travel-kind{font-size:12px;overflow-wrap:anywhere}
+.travel-clock-tag,.travel-result-tag{flex:none;border:1px solid #b4c8b335;border-radius:5px;padding:3px 6px;font-size:12px;color:#ccd8c5;line-height:1.3}
+.travel-result-tag.is-victory{border-color:#81b89a77;color:#b9efd0;background:#3b80542b}
+.travel-result-tag.is-retreat{border-color:#cca27266;color:#f5d0a6;background:#80552e2b}
+.travel-list h4{font-size:16px;line-height:1.65;margin:10px 0 5px}
+.travel-list p{font-size:14px;line-height:1.6}
+.travel-list strong{display:block;font-size:15px;font-variant-numeric:tabular-nums}
+.travel-list progress{display:block;width:100%;height:6px;margin:10px 0 8px;appearance:none;border:0;border-radius:9px;overflow:hidden;background:#ffffff16;accent-color:#cebb81}
+.travel-list progress::-webkit-progress-bar{background:#ffffff16;border-radius:9px}
+.travel-list progress::-webkit-progress-value{background:linear-gradient(90deg,#81a88b,#d0b674);border-radius:9px}
+.travel-list progress::-moz-progress-bar{background:#cebb81;border-radius:9px}
+.travel-list small[data-travel-wait]{display:block;font-size:12px;line-height:1.65;color:#bac7b6;overflow-wrap:anywhere}
+.travel-history .button{min-height:40px}
+.travel-report h3{font-size:20px;line-height:1.6}
+.travel-report p,.travel-report dl{font-size:15px}
+@media(max-width:680px){
+ .travel-filters{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .travel-filters .travel-search{grid-column:1/-1}
+ .travel-filters .button{grid-column:1/-1;min-height:38px}
+ .travel-list{grid-template-columns:1fr}
+ .travel-tools{padding:12px 14px}
+ .travel-summary{gap:6px;margin-bottom:12px}
+ .travel-summary>div{padding:8px}
+ .travel-summary span{font-size:12px}
+ .travel-summary strong{font-size:19px}
+ .travel-stage-tabs{gap:5px}
+ .travel-stage-tabs button{font-size:13px;gap:4px;padding:8px 5px;flex-wrap:wrap}
+}
+@media(max-height:620px){
+ .travel-summary{display:none}
+ .travel-dialog>header{padding:10px 14px}
+ .travel-dialog h2{font-size:18px}
+ .travel-tools{padding:8px 14px}
+ .travel-stage-tabs{margin-bottom:7px}
+ .travel-stage-tabs button{min-height:36px;padding:6px}
+ .travel-filters{grid-template-columns:minmax(90px,1.3fr) repeat(2,minmax(70px,1fr))}
+ .travel-filters .travel-search{grid-column:auto}
+ .travel-filters .button{display:none}
+ .travel-filters input,.travel-filters select{min-height:38px;padding:7px 8px}
+ .travel-body{padding-top:12px}
+}
