@@ -23,20 +23,38 @@ function splitSelectors(value) {
   result.push(value.slice(start).trim());
   return result;
 }
-const rules = [...withoutComments(css).matchAll(/([^{}]+)\{([^{}]*)\}/g)].map(match => ({
+const parseRules = source => [...withoutComments(source).matchAll(/([^{}]+)\{([^{}]*)\}/g)].map(match => ({
   selectors: splitSelectors(match[1]),
   declarations: Object.fromEntries(match[2].split(';').filter(value => value.includes(':')).map(value => {
     const colon = value.indexOf(':');
     return [value.slice(0, colon).trim(), value.slice(colon + 1).trim()];
   }))
 }));
-function declarations(selector) {
-  const matched = rules.filter(rule => rule.selectors.some(value => compact(value) === compact(selector)));
+const rules = parseRules(css);
+function rulesInMaxWidth(width) {
+  const source = withoutComments(css), result = [];
+  const query = new RegExp('@media\\s*\\(max-width:\\s*' + width + 'px\\)\\s*\\{', 'g');
+  for (const match of source.matchAll(query)) {
+    const start = match.index + match[0].length;
+    let depth = 1, end = start;
+    while (end < source.length && depth) {
+      if (source[end] === '{') depth++;
+      if (source[end] === '}') depth--;
+      end++;
+    }
+    assert.equal(depth, 0, 'Unclosed max-width media block: ' + width);
+    result.push(...parseRules(source.slice(start, end - 1)));
+  }
+  assert(result.length, 'Missing max-width media block: ' + width);
+  return result;
+}
+function declarations(selector, scope = rules) {
+  const matched = scope.filter(rule => rule.selectors.some(value => compact(value) === compact(selector)));
   assert(matched.length, 'Missing production rule: ' + selector);
   return Object.assign({}, ...matched.map(rule => rule.declarations));
 }
-function property(selector, name, expected) {
-  assert.equal(compact(declarations(selector)[name] || ''), compact(expected), selector + ' / ' + name);
+function property(selector, name, expected, scope = rules) {
+  assert.equal(compact(declarations(selector, scope)[name] || ''), compact(expected), selector + ' / ' + name);
 }
 let count = 0;
 function test(name, run) { run(); count++; console.log('PASS ' + name); }
@@ -124,7 +142,7 @@ test('action labels and territory totals remain available without changing map s
   property(dock, 'height', 'auto');
   property(dock, 'min-height', 'var(--compact-dock-button-min)');
   property(dock, 'grid-template-rows', '20px max-content');
-  property('html.sengoku-navigation-ready:not(.sengoku-desktop-fit)', '--compact-dock-button-min', '3.875rem');
+  property('html.sengoku-navigation-ready:not(.sengoku-desktop-fit)', '--compact-dock-button-min', '4.25rem');
   property('html.sengoku-navigation-ready:not(.sengoku-desktop-fit)', '--compact-dock-height', 'calc(var(--compact-dock-button-min) + .8125rem)');
   assert(read('responsive-polish.css').includes('padding-bottom: calc(var(--compact-dock-height) + 20px + env(safe-area-inset-bottom, 0px))'));
   for (const selector of ['#app #main .button', '#modal .button', '.cq-shell .cq-button', '.events-dialog .events-button', '.moderation-dialog .moderation-button']) {
@@ -143,6 +161,25 @@ test('action labels and territory totals remain available without changing map s
     assert(!/hidden|clip/.test(rule.declarations.overflow || ''), 'New content rules must not conceal overflow');
     assert((!('height' in rule.declarations) || rule.declarations.height === 'auto') && !('max-height' in rule.declarations), 'Text rules must not force card heights');
     assert(!('display' in rule.declarations) || rule.declarations.display !== 'none', 'Text rules must not hide existing controls');
+  }
+});
+
+test('phone breakpoints reserve brush-label height, a separate community slot and full resource totals', () => {
+  const compactRoot = 'html.sengoku-navigation-ready:not(.sengoku-desktop-fit)';
+  const phone = rulesInMaxWidth(700), narrow = rulesInMaxWidth(360), resources = rulesInMaxWidth(480);
+  // The new brush face needs 68px buttons at a 16px root on the narrowest
+  // phones. The shared dock reservation must scale with that text minimum.
+  property(compactRoot, '--compact-dock-button-min', '4.75rem', phone);
+  property(compactRoot, '--compact-dock-height', 'calc(var(--compact-dock-button-min) + .8125rem)', phone);
+  property(compactRoot, '--compact-dock-button-min', '4.25rem', narrow);
+  for (const selector of [compactRoot + ' #app.chronicle-shell .sidebar-bottom .navigation-quick', compactRoot + ' body:not(.at-title) .social-launcher']) {
+    property(selector, 'height', 'auto', phone);
+    property(selector, 'min-height', 'var(--compact-dock-button-min)', phone);
+    property(selector, 'grid-template-rows', '20px max-content', phone);
+  }
+  property(compactRoot + ' #app.chronicle-shell .sidebar-bottom', 'grid-template-columns', 'repeat(3,minmax(0,1fr)) minmax(0,1.3fr) var(--compact-dock-slot)', narrow);
+  for (const selector of ['html:not(.sengoku-desktop-fit) #app.chronicle-shell .topbar #resources .resource', 'html:not(.sengoku-desktop-fit) #app.chronicle-shell .topbar #touch-header-status > button']) {
+    property(selector, 'grid-column', 'span 3', resources);
   }
 });
 
