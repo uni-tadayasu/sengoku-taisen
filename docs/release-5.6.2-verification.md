@@ -30,3 +30,9 @@
 - 別枠の `server/test-voice.mjs` には、既存の参加者キー一覧の期待値が `cityHonors` を含まない不一致がある。本記録はそのテストや全サーバーテストの成功を主張しない。
 
 旧版を既に開き続けている端末へ、新しい更新確認コードを遡って実行することはできない。新版へ切り替えた後、表示中・オンライン時の約1分ごとの確認と、利用者が保存を確認して切り替える案内が有効になる。
+
+## 本番公開の確認
+
+PR [#42](https://github.com/uni-tadayasu/sengoku-taisen/pull/42) を main commit `524147e7d77bbe48abda554f2f8a3753697dc538` へ統合。performance・music・branding のチェックと GitHub Pages の公開ジョブ（45889775825）は成功した。
+
+本番 `https://www.kasai-solutions-inc.com/` で index、metadata、SW、boot、異体字処理、二つの表示 CSS、六つの game bundle、主書体、フォント manifest、news の計16資源を取得し、HTTP 200 と公開元の SHA-256 一致を確認した。公開前に残っていた responsive test の旧寸法期待値は、実際の phone breakpoint と操作領域を検証する内容へ更新して通過済み。

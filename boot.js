@@ -1,7 +1,7 @@
 /* 起動画面と、実際の読込を待つ共通ローディング表示。 */
 (function(global){
 'use strict';
-const jobs=new Map();let sequence=0,overlay,title,enterButton,started=false;
+const jobs=new Map();let sequence=0,overlay,title,enterButton,started=false,screenEpoch=0;
 function refresh(){if(!overlay)return;const values=[...jobs.values()],latest=values.at(-1);overlay.hidden=!latest;if(latest&&!overlay.open)requestAnimationFrame(()=>{if(jobs.size&&!overlay.open)overlay.showModal();});if(!latest&&overlay.open)overlay.close();document.body.classList.toggle('is-loading',Boolean(latest));if(!latest)return;overlay.querySelector('[data-loading-label]').textContent=latest.label;const progress=overlay.querySelector('[data-loading-progress]');progress.hidden=!latest.total;if(latest.total){progress.max=latest.total;progress.value=latest.done;}overlay.querySelector('[data-loading-detail]').textContent=latest.total?`${latest.done} / ${latest.total} 点`:'画面を整えています';}
 function begin(label='読み込み中…'){const id=++sequence;jobs.set(id,{label,start:performance.now(),done:0,total:0});refresh();return id;}
 function progress(id,done,total){const job=jobs.get(id);if(job){job.done=done;job.total=total;refresh();}}
@@ -35,6 +35,7 @@ function setSkipTarget(atTitle){
 }
 function enter(){
  if(started)return;
+ screenEpoch++;
  started=true;enterButton.disabled=true;
  const app=document.getElementById('app');
  app.hidden=false;app.inert=false;app.removeAttribute('aria-hidden');
@@ -65,7 +66,7 @@ function updateTitleAction(){
  }
  enterButton.disabled=false;
 }
-function home(){artworkGeneration++;const status=document.getElementById('art-load-status');if(status)status.hidden=true;setSkipTarget(true);global.SENGOKU_AT_TITLE=true;started=false;document.body.classList.add('at-title');document.getElementById('app').inert=true;document.getElementById('app').setAttribute('aria-hidden','true');title.hidden=false;updateTitleAction();global.SengokuBridge?.syncMusic?.();enterButton.focus({preventScroll:true});}
+function home(){screenEpoch++;artworkGeneration++;const status=document.getElementById('art-load-status');if(status)status.hidden=true;setSkipTarget(true);global.SENGOKU_AT_TITLE=true;started=false;document.body.classList.add('at-title');document.getElementById('app').inert=true;document.getElementById('app').setAttribute('aria-hidden','true');title.hidden=false;updateTitleAction();global.SengokuBridge?.syncMusic?.();enterButton.focus({preventScroll:true});}
 function init(){title=document.getElementById('launch-screen');enterButton=document.getElementById('launch-enter');overlay=document.getElementById('game-loading');overlay.addEventListener('cancel',e=>e.preventDefault());
  // Only the named start button enters the game. Touching artwork or the
  // continuation summary must not accidentally start a campaign.
@@ -193,8 +194,9 @@ async function registerOfflineEntry(){
   if(switching||!target||global.SENGOKU_AT_TITLE!==false)return;
   let returned=false;setSwitching(true);noticeStatus.textContent='保存を確認しています…';
   try{
-   const selected=target,worker=targetWorker;
+   const selected=target,worker=targetWorker,fromScreen=screenEpoch;
    if(!await saveBeforeSwitch(selected,noticeStatus))return;
+   if(fromScreen!==screenEpoch)return;
    if(registration.waiting!==worker||selected!==target){await inspect();return;}
    global.SengokuTitle.home();returned=true;status.textContent='保存を確認しました。新版を開く準備ができています。';
   }catch{noticeStatus.textContent='保存状態を確認できませんでした。もう一度お試しください。';}
@@ -204,9 +206,11 @@ async function registerOfflineEntry(){
   if(switching||!target||global.SENGOKU_AT_TITLE===false)return;
   setSwitching(true);status.textContent='保存を確認しています…';
   try{
-   const selected=target,worker=targetWorker;
+   const selected=target,worker=targetWorker,fromScreen=screenEpoch;
    if(!await saveBeforeSwitch(selected,status))return;
-   if(global.SENGOKU_AT_TITLE===false){status.textContent='';return;}
+   // Leaving and returning to the title is a new visit, even if the boolean
+   // is unchanged when a slow save finishes. Keep the player's newer choice.
+   if(fromScreen!==screenEpoch||global.SENGOKU_AT_TITLE===false){status.textContent='';return;}
    if(registration.waiting!==worker||selected!==target){status.textContent='';await inspect();return;}
    const url=new URL(global.location.href);url.searchParams.set('sengoku-version',selected);
    global.location.replace(url.href);

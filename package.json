@@ -1,13 +1,13 @@
 {
   "name": "sengoku-vs-web",
-  "version": "5.6.2",
+  "version": "5.7.0",
   "private": true,
   "description": "Reproducible production assets for the Sengoku VS browser game",
   "scripts": {
-    "build": "node tools/build-public-pages.cjs && node tools/build-game-entry.cjs",
-    "check:build": "node tools/build-public-pages.cjs --check && node tools/build-game-entry.cjs --check",
+    "build": "node tools/build-public-pages.cjs && node tools/build-game-entry.cjs && python3 tools/build-press-kit.py",
+    "check:build": "node tools/build-public-pages.cjs --check && node tools/build-game-entry.cjs --check && python3 tools/build-press-kit.py --check",
     "test:entry": "node tests/test-css-compaction.cjs && node tests/test-game-entry.cjs && node tests/test-release-assets.cjs && node tests/test-offline-entry-http.cjs && node tests/test-public-search-cache.cjs",
-    "test:interface": "node tests/test-command-center.cjs && node tests/test-command-operations.cjs && node tests/test-alliance-operations.cjs && node tests/test-management-model.cjs && node tests/test-management-ui.cjs && node tests/test-travel-performance.cjs && node tests/test-navigation-ui.cjs && node tests/test-presentation.cjs && node tests/test-branch-commanders-ui.cjs && node tests/test-artwork-lifecycle.cjs && node tests/test-desktop-fit.cjs && node tests/test-social-viewport.cjs && node tests/test-public-search.cjs && node tests/test-resource-planner.cjs && node tests/test-campaign-records.cjs && node tests/test-live-dom.cjs && node tests/test-operations-board.cjs && node tests/test-army-planner.cjs && node tests/test-army-planner-performance.cjs && node tests/test-economy-read-work.cjs && node tests/test-sound-effects-volume.cjs && node tests/test-facility-framing.cjs && node tests/test-music-normal-speed.mjs && node tests/test-progress-dialog.cjs && node tests/test-ui-sounds.cjs && node tests/test-world-clock-polling.cjs && node tests/test-variant-text.cjs && node tests/test-staged-update.cjs && node tests/test-variant-name-display.cjs"
+    "test:interface": "node tests/test-command-center.cjs && node tests/test-command-operations.cjs && node tests/test-alliance-operations.cjs && node tests/test-management-model.cjs && node tests/test-management-ui.cjs && node tests/test-travel-performance.cjs && node tests/test-navigation-ui.cjs && node tests/test-presentation.cjs && node tests/test-branch-commanders-ui.cjs && node tests/test-artwork-lifecycle.cjs && node tests/test-desktop-fit.cjs && node tests/test-social-viewport.cjs && node tests/test-public-search.cjs && node tests/test-resource-planner.cjs && node tests/test-campaign-records.cjs && node tests/test-live-dom.cjs && node tests/test-operations-board.cjs && node tests/test-army-planner.cjs && node tests/test-army-planner-performance.cjs && node tests/test-economy-read-work.cjs && node tests/test-sound-effects-volume.cjs && node tests/test-facility-framing.cjs && node tests/test-music-normal-speed.mjs && node tests/test-progress-dialog.cjs && node tests/test-ui-sounds.cjs && node tests/test-world-clock-polling.cjs && node tests/test-variant-text.cjs && node tests/test-staged-update.cjs && node tests/test-variant-name-display.cjs && node tests/test-resource-planner-persistence.cjs && node tests/test-defense-ledger.cjs && node tests/test-defense-ledger-integration.cjs"
   },
   "devDependencies": {
     "clean-css": "5.3.3",

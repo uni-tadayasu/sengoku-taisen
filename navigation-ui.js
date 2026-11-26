@@ -15,6 +15,7 @@
     'view:town': ['城と内政', '施設の増築と本拠の成長', 'まち 城下 施設 建設 建築 増築 育成 レベル上げ 資源 金銭 お金 兵糧 木材 石材 収入 支出 収支 経済 修復 修理 耐久 給料 給与'],
     'view:facilities': ['城と内政', '施設の一覧・検索・増築と奉行の任命', 'ふしん 施設 建築 整備 強化 レベルアップ 生産 軍備 奉行 城下町 給料 給与 月給 俸禄 修復 修理 耐久'],
     'action:resource-planner': ['城と内政', '複数の普請・研究と残す備蓄をまとめて試算', 'しげん けいかく 予算 見積もり 目標 貯める あと 何分 待ち時間 不足 収支 生産 金銭 兵糧 木材 石材 施設 研究 備蓄 びちく 残す 複数 合計 まとめて 計画'],
+    'action:defense-ledger': ['城と内政', '城・支拠点の耐久、守備兵、修復に使う資材を確認', 'しゅうふく しゅうり 修復 修理 守備 防衛 耐久 損傷 資材 木材 石材 不足 回復 陥落 復旧 支城 支拠点 台帳'],
     'view:research': ['城と内政', '技術を研究して国力を高める', 'けんきゅう 内政 育成 レベル上げ 資源 強化 技術'],
     'view:court': ['城と内政', '京都御所への参内と朝廷との交流', 'きょうと ごしょ 位階 朝廷 参内 貢献'],
     'view:map': ['合戦と天下', '城・支城を選び、軍師と攻略を考える', 'ちず マップ 天下 統一 城攻め 支城 戦い CPU 軍師 ぐんし AI 外交 同盟 交渉'],
@@ -400,7 +401,15 @@
       if (unavailable()) return false;
       const entry = collect().find(entry => entry.key === key);
       if (!entry?.source?.isConnected || entry.disabled) return false;
+      const ledgerReturn = key === 'action:defense-ledger' ? (dialog.open ? returnFocus : doc.activeElement) : null;
       close(false); pendingNavigation = key.startsWith('view:') ? { view: key.slice(5) } : null;
+      if (key === 'action:defense-ledger') {
+        // The canonical sidebar control may be hidden on a phone. Give the
+        // new dialog a visible launcher to restore when the ledger closes.
+        const visibleMenu = hasClass(root, 'sengoku-desktop-fit') ? trigger : quickButtons.get('menu');
+        const target = ledgerReturn?.isConnected && ledgerReturn.getClientRects?.().length && !ledgerReturn.closest('dialog') && ledgerReturn !== doc.body ? ledgerReturn : visibleMenu;
+        target.focus({ preventScroll: true });
+      }
       entry.source.click();
       // Record an accepted destination only after its canonical control runs.
       // No command, account data or game save is stored in these preferences.

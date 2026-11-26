@@ -75,6 +75,31 @@ async function discoveryTest(){
  await win.fire('pageshow');await settle();assert.equal(calls.updates,afterLong+2);assert.equal(calls.saves,0);assert.deepEqual(calls.visits,[]);
 }
 
+async function navigationDuringSaveTest(){
+ for(const fromTitle of [true,false]){
+  const {win,document,calls,click,stage,node}=await bootFixture();
+  if(!fromTitle)win.SengokuTitle.enter();
+  await stage();
+  const save=deferred();calls.save=()=>save.promise;
+  const pending=click(fromTitle?'game-update-open':'game-update-return');await settle();
+  assert.equal(calls.saves,1);
+  // A slow save may finish after the player has left and returned to the
+  // same screen. Its boolean state alone cannot identify the original visit.
+  if(fromTitle){win.SengokuTitle.enter();win.SengokuTitle.home();}
+  else{win.SengokuTitle.home();win.SengokuTitle.enter();}
+  const focusAfterNavigation=document.activeElement;
+  save.resolve({ok:true});await pending;
+  assert.deepEqual(calls.visits,[],'An earlier update choice must not reload a later title visit');
+  assert.equal(win.SENGOKU_AT_TITLE,fromTitle,'A completed save must not undo the newer navigation');
+  assert.equal(node('game-update-open').disabled,false);assert.equal(node('game-update-return').disabled,false);
+  assert.equal(node(fromTitle?'game-update-status':'game-update-notice-status').textContent,'');
+  assert.equal(document.activeElement,focusAfterNavigation,'A stale save must not steal focus from the newer screen');
+  calls.save=async()=>({ok:true});await click(fromTitle?'game-update-open':'game-update-return');
+  if(fromTitle)assert.equal(calls.visits.length,1,'A fresh explicit update choice remains usable');
+  else assert.equal(win.SENGOKU_AT_TITLE,true,'A fresh explicit return choice remains usable');
+ }
+}
+
 async function manualTest(){
  const {calls,click,clock,node}=await bootFixture();
  const update=deferred();calls.update=()=>update.promise;
@@ -122,4 +147,4 @@ async function saveTest(){
  ctx.saveChangedInAnotherTab=false;local=live;ctx.window.SengokuCloudSync.flush=async()=>({ok:false});assert(!(await ctx.check()).ok);
 }
 
-(async()=>{await bootTest();await discoveryTest();await manualTest();await workerTest();await saveTest();console.log('PASS visible/online update discovery, focus and manual coalescing, saved gameplay-to-title choice, save-failure retention, chosen-tab staged offline load and older-tab continuity, including worker restart.');})().catch(error=>{console.error(error);process.exitCode=1;});
+(async()=>{await bootTest();await navigationDuringSaveTest();await discoveryTest();await manualTest();await workerTest();await saveTest();console.log('PASS visible/online update discovery, focus and manual coalescing, saved gameplay-to-title choice, save-failure retention, chosen-tab staged offline load and older-tab continuity, including worker restart.');})().catch(error=>{console.error(error);process.exitCode=1;});
