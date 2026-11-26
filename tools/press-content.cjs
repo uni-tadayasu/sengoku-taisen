@@ -2,7 +2,7 @@
 
 // Public editorial material only. No account, analytics or posting action runs here.
 const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-const { trailer, firstSteps, renderTrailer, renderFirstSteps } = require('./promotion-content.cjs');
+const { trailer, firstSteps, jadeTrailer, jadePlayer } = require('./promotion-content.cjs');
 const copy = {
   "short": "戦国VSは、城下町を育て、256人の武将を編成し、城をめぐる合戦を楽しむ戦国ブラウザゲーム。軍師の助言を読み、一城から天下統一へ。PC・スマホ・タブレットで、インストールせず基本プレイ無料で始められます。",
   "standard": "戦国VSは、内政・武将編成・攻城戦を楽しむ基本プレイ無料の戦国戦略シミュレーションです。124の開始候補から一城を選び、田畑や商家を育てて領国の力を蓄えます。256人の武将、129の城と拠点、64種類の施設を収録。個人の戦役ではCPU勢力と戦い、領主を登録すると同盟・書状・交易などの交流にも参加できます。軍師AIが戦況に合う準備や戦法を提案。PC・スマホ・タブレットのブラウザで遊べます。有料商品は外観アイテムと月額支援で、戦力を優遇する特典はありません。",
@@ -46,7 +46,7 @@ function renderPressContent(p, { section, table, site }) {
         ['ジャンル', '戦国戦略シミュレーション・ブラウザゲーム'],
         ['公式URL', `<a href="${esc(origin)}/">${esc(origin)}/</a>`],
         ['紹介ページ', `<a href="${esc(p.dir('sengoku-vs'))}">${esc(origin)}/sengoku-vs/</a>`],
-        ['公開済み紹介動画', `<a href="${esc(trailer.url)}" target="_blank" rel="noopener noreferrer">YouTubeで戦国VSの紹介動画を見る</a>（24秒・公式イラスト）`],
+        ['公開済み紹介動画', `<a href="${esc(trailer.url)}" target="_blank" rel="noopener noreferrer">絵巻で見る戦国VS</a>（24秒） · <a href="${esc(firstSteps.url)}" target="_blank" rel="noopener noreferrer">はじめての3手</a>（36秒）`],
         ['対応端末', 'PC・スマートフォン・タブレットのブラウザ。アプリのインストールは不要です。'],
         ['表示言語', '日本語。英語表記の作品名はSENGOKU VSです。ゲームUIと公式ガイドは日本語です。'],
         ['料金', `基本プレイ無料。別売りの外観アイテムと月額支援は任意です。<a href="${esc(p.dir('premium'))}">商品・料金の案内</a>`],
@@ -70,11 +70,17 @@ function renderPressContent(p, { section, table, site }) {
       <ul class="press-media-grid">${media.map(([label, image]) => `<li><figure><img src="${esc(p.file(image.path))}" alt="${esc(image.alt)}" width="${image.width}" height="${image.height}" loading="lazy" decoding="async"><figcaption><strong>${esc(label)}</strong><span>JPEG · ${image.width}×${image.height}px</span></figcaption></figure>${link(image.path, `${label}の画像を保存（JPEG）`)}</li>`).join('')}</ul>
       <h3>ブランド紋章</h3>
       <div class="press-logo"><img src="${esc(p.file(site.logo.path))}" alt="翡翠色の月を背に、金の三層天守と軍扇を八角に収めた戦国VSの紋章" width="128" height="128" loading="lazy" decoding="async"><ul class="press-downloads"><li>${link(site.logo.vectorPath, '紋章のベクター画像を保存（SVG）')}</li><li>${link(site.logo.path, '紋章の画像を保存（512×512px PNG）')}</li></ul></div>
-      ${renderTrailer(p, { id: 'press-trailer', title: 'そのまま見られる、24秒の紹介動画。' })}
-      <ul class="press-downloads"><li>${link('assets/promo/sengoku-vs-intro-ja-20261126.mp4', '紹介動画を保存（MP4）')}</li><li>${link('assets/promo/sengoku-vs-video-copy-ja-20261126.txt', '動画用のタイトル・説明文を保存（TXT）')}</li></ul>
-      ${renderFirstSteps(p)}
-      <ul class="press-downloads"><li>${link(firstSteps.poster, 'はじめての3手のポスターを保存（JPEG）')}</li><li>${link(firstSteps.captions, 'はじめての3手の日本語字幕を保存（VTT）')}</li><li>${link(firstSteps.metadata, '動画仕様・素材情報を保存（JSON）')}</li><li>${link(firstSteps.production, '制作内容・確認結果を保存（Markdown）')}</li></ul>
-      <p>新しい36秒動画とポスター・字幕・素材情報は、<a href="${esc(p.file('assets/promo/sengoku-vs-press-kit-20261126.zip'))}" download>紹介用素材ZIP</a>にも収録しています。24秒のイラスト紹介動画は引き続き個別に保存できます。</p>
+      <section class="promotion-trailer" id="press-jade-trailer" aria-labelledby="press-jade-trailer-title">
+        <div class="promotion-trailer-copy"><h3 id="press-jade-trailer-title">${esc(jadeTrailer.title)}</h3><p>${esc(jadeTrailer.description)}</p>
+          <ul class="press-downloads"><li>${link(jadeTrailer.video, '日本語・英語の縦型動画を保存（MP4）')}</li><li>${link(jadeTrailer.poster, '表紙を保存（JPEG）')}</li><li>${link(jadeTrailer.japaneseCaptions, '日本語字幕を保存（VTT）')}</li><li>${link(jadeTrailer.englishCaptions, 'Download English captions (VTT)')}</li></ul>
+        </div>${jadePlayer(p.file, 'ja')}
+      </section>
+      <h3 id="press-trailer">絵巻で見る戦国VS（24秒）</h3>
+      <ul class="press-downloads"><li><a href="${esc(trailer.url)}">YouTubeで見る</a></li><li>${link(trailer.video, '24秒の紹介動画を保存（MP4）')}</li><li>${link('assets/promo/sengoku-vs-video-copy-ja-20261126.txt', '動画用のタイトル・説明文を保存（TXT）')}</li></ul>
+      <h3 id="press-first-steps">はじめての3手（36秒）</h3>
+      <p>${esc(firstSteps.description)} 城下町は5.1.0、武将・地図は5.0.5の画面です。</p>
+      <ul class="press-downloads"><li><a href="${esc(firstSteps.url)}">YouTubeで見る</a></li><li>${link(firstSteps.video, '36秒の紹介動画を保存（MP4）')}</li><li>${link(firstSteps.poster, 'はじめての3手のポスターを保存（JPEG）')}</li><li>${link(firstSteps.captions, 'はじめての3手の日本語字幕を保存（VTT）')}</li><li>${link(firstSteps.metadata, '動画仕様・素材情報を保存（JSON）')}</li><li>${link(firstSteps.production, '制作内容・確認結果を保存（Markdown）')}</li></ul>
+      <p>36秒の動画とポスター・字幕・素材情報は、<a href="${esc(p.file('assets/promo/sengoku-vs-press-kit-20261126.zip'))}" download>紹介用素材ZIP</a>にも収録しています。</p>
     `),
     section('press-copy', '紹介文・投稿文', '掲載先に合わせて使える日本語の紹介文', `
       <p>紹介文はそのまま読むほか、欄内の文章を選択してコピーできます。文字数は改行を除いた目安です。テキストファイルにも同じ文を収録しています。</p>

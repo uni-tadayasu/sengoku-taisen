@@ -166,6 +166,7 @@
       const social = doc.querySelector('.social-launcher');
       if (social && !sourceHidden(social)) add(item('utility:social', social, '交流'));
       add({ key: 'help:guide', label: '遊び方', group: '設定・案内', description: '端末ごとの操作と遊び方を別タブで確認', keywords: '操作 ガイド スマホ PC タブレット 初心者 はじめて', href: 'guide/', icon: svg('book') });
+      add({ key: 'help:invite', label: '友人に戦国VSを紹介', group: '交流・記録', description: '日本語・英語の公式紹介文とURLを別タブで開く', keywords: '友達 ともだち 招待 海外 英語 シェア 共有 SNS X LINE Discord invite share', href: 'sengoku-vs/#share', icon: svg('external') });
       add({ key: 'help:recovery', label: '引き継ぎ・復元', group: '設定・案内', description: '端末変更とデータの復元を別タブで確認', keywords: '引継ぎ データ 同期 セーブ 復旧 スマホ パソコン バックアップ', href: 'guide/data-recovery/', icon: svg('book') });
       return list;
     }

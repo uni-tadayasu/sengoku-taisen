@@ -1,13 +1,26 @@
 /* User-initiated copying and native sharing. No trackers or remote SDKs. */
 (function () {
   'use strict';
-  const defaultCopiedMessage = 'コピーしました。紹介したい場所に貼り付けてください。';
+  const english = document.documentElement?.lang === 'en';
+  const messages = english ? {
+    copied: 'Copied. Paste it wherever you want to share.',
+    selected: 'Text selected. Use your device’s copy command.',
+    unavailable: 'Automatic copy is unavailable. Select the text and copy it.',
+    shared: 'Opened your device’s share sheet. Check the destination app.',
+    shareFailed: 'Could not open the share sheet. Use Copy link instead.'
+  } : {
+    copied: 'コピーしました。紹介したい場所に貼り付けてください。',
+    selected: '文章を選択しました。端末のコピー操作で保存してください。',
+    unavailable: '自動コピーできませんでした。欄内の文章を選択してコピーしてください。',
+    shared: '端末の共有機能へ渡しました。送信先の画面でご確認ください。',
+    shareFailed: '共有画面を開けませんでした。URLのコピーをご利用ください。'
+  };
   function focusWithoutScroll(element) {
     try { element.focus({preventScroll:true}); }
     catch { try { element.focus(); } catch {} }
   }
   for (const button of document.querySelectorAll('[data-copy-target]')) {
-    const copiedMessage = button.dataset.copySuccess || defaultCopiedMessage;
+    const copiedMessage = button.dataset.copySuccess || messages.copied;
     const field = document.getElementById(button.dataset.copyTarget);
     if (!field || !['INPUT', 'TEXTAREA'].includes(field.tagName)) continue;
     const block = button.closest('.press-copy-block, .promotion-copy-block');
@@ -40,8 +53,7 @@
         // Do not copy an unrelated selection if this field could not be selected.
         if (selected) try { copied = document.execCommand?.('copy') === true; } catch {}
         if (status) status.textContent = copied ? copiedMessage : selected
-          ? '文章を選択しました。端末のコピー操作で保存してください。'
-          : '自動コピーできませんでした。欄内の文章を選択してコピーしてください。';
+          ? messages.selected : messages.unavailable;
         restoreButtonFocus = copied;
       } finally {
         button.disabled = false;
@@ -88,9 +100,9 @@
       if (status) status.textContent = '';
       try {
         await navigator.share(shareData());
-        if (status) status.textContent = '端末の共有機能へ渡しました。送信先の画面でご確認ください。';
+        if (status) status.textContent = messages.shared;
       } catch (error) {
-        if (status) status.textContent = error?.name === 'AbortError' ? '' : '共有画面を開けませんでした。URLのコピーをご利用ください。';
+        if (status) status.textContent = error?.name === 'AbortError' ? '' : messages.shareFailed;
       } finally {
         button.disabled = false;
         focusWithoutScroll(button);

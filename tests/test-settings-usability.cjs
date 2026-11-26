@@ -109,6 +109,13 @@ async function test(name, run) { await run(); passed++; console.log('PASS ' + na
       assert.equal(f.doc.querySelector('[role="alert"]').textContent, '<img src=x onerror=alert(1)>保存の確認'); assert.equal(f.doc.querySelector('img'), null);
       assert.equal(JSON.stringify(f.game.state), before); assert.equal(f.writes.length, 0); assert.equal(f.calls.length, 0, 'Settings must not autoplay audio');
     }
+    const updates = fixture();let renders=0;
+    updates.c.window.SengokuUpdates={renderSettings(){renders++;}};
+    updates.c.settingsModal();
+    assert.equal(renders,1,'The normal settings entry displays the shared updater');
+    assert.equal(updates.doc.querySelector('#settings-release-check').textContent,'更新を確認');
+    assert.equal(updates.doc.querySelector('#settings-release-open').textContent,'保存して新版を開く');
+    assert.equal(updates.doc.querySelector('#settings-release-status').getAttribute('role'),'status');
     const linked = fixture({ linked: true }); linked.c.settingsModal(); assert.match(linked.host.textContent, /同時に操作できる端末は1台/);
   });
   await test('volume feedback and audio update in place while only preferences are saved', async () => {

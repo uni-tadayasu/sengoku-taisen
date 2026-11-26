@@ -63,7 +63,7 @@ function delayedNavigation(s) {
 test('enhancement preserves all original destinations and never executes a game command while opening', () => {
   const s = fixture(), originals = [...s.nav.children, ...s.bottom.children.filter(node => node.tagName === 'BUTTON')];
   assert(s.api); assert(s.doc.documentElement.classList.contains('sengoku-navigation-ready'));
-  const entries = s.api.getEntries(); assert.equal(entries.length, 25);
+  const entries = s.api.getEntries(); assert.equal(entries.length, 26);
   for (const [id] of views) assert(entries.some(entry => entry.key === 'view:' + id));
   for (const [id] of actions) assert(entries.some(entry => entry.key === 'action:' + id));
   for (const id of ['settings', 'hints', 'premium', 'title-screen']) assert(entries.some(entry => entry.key === 'action:' + id));
@@ -204,7 +204,7 @@ test('desktop navigation focuses its pane without scrolling the document', () =>
 test('public help links preserve the game in its tab and source labels are escaped', () => {
   const s = fixture(); const unknown = s.source(s.nav, 'action', 'custom', 'temporary'); unknown.children[0].textContent = '<img src=x onerror=bad()>';
   s.api.open(); const links = s.get('#navigation-results').querySelectorAll('a');
-  assert.equal(links.length, 2); for (const link of links) { assert.equal(link.getAttribute('target'), '_blank'); assert.equal(link.getAttribute('rel'), 'noopener'); }
+  assert.equal(links.length, 3); assert(links.some(link => link.getAttribute('href') === 'sengoku-vs/#share')); for (const link of links) { assert.equal(link.getAttribute('target'), '_blank'); assert.equal(link.getAttribute('rel'), 'noopener'); }
   assert.equal(s.get('#navigation-results').querySelector('img'), null); assert.deepEqual(s.calls, []);
 });
 
@@ -469,11 +469,12 @@ test('Enter opens a unique live destination once and never treats IME or ambiguo
 test('current location and category counts update from visible canonical controls without replacing the input', () => {
   const s = fixture(); s.api.open(); const input = s.get('#navigation-query');
   assert.equal(s.get('#navigation-current-location').textContent, '現在の画面：城下町');
-  assert(s.get('#navigation-category').textContent.includes('全分類 · 25項目'));
+  const destinationCount = s.api.getEntries().length;
+  assert(s.get('#navigation-category').textContent.includes(`全分類 · ${destinationCount}項目`));
   s.api.activate('view:army'); s.drain(); s.api.open();
   assert.equal(s.get('#navigation-current-location').textContent, '現在の画面：軍団編成');
   s.nav.querySelector('[data-view="officers"]').hidden = true; s.api.refresh();
-  assert(s.get('#navigation-category').textContent.includes('全分類 · 24項目'));
+  assert(s.get('#navigation-category').textContent.includes(`全分類 · ${destinationCount - 1}項目`));
   assert.equal(s.get('#navigation-query'), input); assert.deepEqual(s.calls, ['view:army']);
 });
 

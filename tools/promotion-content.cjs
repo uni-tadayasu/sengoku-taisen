@@ -13,9 +13,8 @@ const trailer = Object.freeze({
   description: '城下町づくり、武将編成、合戦を楽しむ日本語ブラウザゲーム「戦国VS」を、公式イラストで紹介する24秒の動画です。'
 });
 
-// First-steps video is hosted with the official press assets. It is a slideshow
-// of captured demo UI, not an assertion that a new YouTube upload is live.
 const firstSteps = Object.freeze({
+  url: 'https://www.youtube.com/watch?v=j7TEhAidQjw',
   video: 'assets/promo/sengoku-vs-first-steps-ja-20261126.mp4',
   poster: 'assets/promo/sengoku-vs-first-steps-ja-20261126-poster.jpg',
   captions: 'assets/promo/sengoku-vs-first-steps-ja-20261126.vtt',
@@ -27,36 +26,35 @@ const firstSteps = Object.freeze({
   description: '撮影用デモの実ゲーム静止画を使い、城下町の育成・武将編成・天下地図からの出陣という最初の流れを伝える36秒の紹介です。'
 });
 
-function renderFirstSteps(p) {
-  return `<section class="promotion-trailer" id="press-first-steps" aria-labelledby="press-first-steps-title">
-    <div class="promotion-trailer-copy"><p class="section-kicker">ゲーム画面で、始め方を知る</p><h2 id="press-first-steps-title">はじめての3手を、36秒で。</h2><p>${esc(firstSteps.description)}</p><ul class="promotion-video-points"><li>田畑や商家を育てて、領国の土台をつくる</li><li>武将の能力と役目を見比べ、軍団を整える</li><li>天下地図で戦況を確認し、軍師の助言を読む</li></ul><div class="promotion-actions"><a href="${esc(p.file(firstSteps.video))}" download>36秒の動画を保存</a><a class="promotion-secondary" href="${esc(p.dir('guide'))}#first-steps">詳しい始め方を読む</a></div><p class="promotion-trailer-note">撮影用デモ進行の静止画に移動・拡大を加えた紹介です。ゲームプレイの録画ではありません。城下町は5.1.0、武将・地図は5.0.5の画面を使用しています。</p></div>
-    <figure class="promotion-trailer-media"><video class="press-video" controls preload="none" playsinline poster="${esc(p.file(firstSteps.poster))}" width="720" height="1280" aria-label="${esc(firstSteps.title)}"><source src="${esc(p.file(firstSteps.video))}" type="video/mp4"><track kind="captions" src="${esc(p.file(firstSteps.captions))}" srclang="ja" label="日本語"><p><a href="${esc(p.file(firstSteps.video))}">36秒の紹介動画を開く</a></p></video><figcaption>36秒・720×1280px・約5.68MB<span>日本語文字とBGM付き・ナレーションなし</span></figcaption></figure>
-  </section>`;
+const jadePath = 'assets/promo/sengoku-vs-jade-campaign-ja-en-20261127';
+const jadeTrailer = Object.freeze({
+  video: jadePath + '.mp4', poster: jadePath + '-poster.jpg',
+  japaneseCaptions: jadePath + '-ja.vtt', englishCaptions: jadePath + '-en.vtt',
+  title: '月夜の城下から、天下地図へ', englishTitle: 'From a moonlit castle to the campaign map',
+  description: '翡翠の天守紋と月夜の城下町を描いた公式イラストから、武将と天下地図のゲーム画面へ。日本語と英語で戦国VSを紹介する短編映像です。',
+  seconds: 28
+});
+
+function jadePlayer(file, language) {
+  const english = language === 'en';
+  return `<figure class="promotion-trailer-media"><video class="press-video" controls preload="none" playsinline width="720" height="1280" poster="${esc(file(jadeTrailer.poster))}" aria-label="${esc(english ? jadeTrailer.englishTitle : jadeTrailer.title)}">
+      <source src="${esc(file(jadeTrailer.video))}" type="video/mp4">
+      <track kind="captions" src="${esc(file(jadeTrailer.japaneseCaptions))}" srclang="ja" label="日本語">
+      <track kind="captions" src="${esc(file(jadeTrailer.englishCaptions))}" srclang="en" label="English">
+      <p><a href="${esc(file(jadeTrailer.video))}">${english ? 'Open the MP4' : '動画を開く（MP4）'}</a></p>
+    </video><figcaption>${english ? jadeTrailer.seconds + ' seconds · Japanese and English captions' : jadeTrailer.seconds + '秒・日本語／English字幕'}</figcaption></figure>`;
 }
 
 function videoSchema(site) {
   return {
     '@type': 'VideoObject',
-    '@id': site.origin + '/sengoku-vs/#intro-video',
-    name: trailer.title,
-    description: trailer.description,
-    thumbnailUrl: site.origin + '/' + trailer.poster,
-    uploadDate: trailer.publishedAt,
-    duration: 'PT24S',
-    contentUrl: site.origin + '/' + trailer.video,
-    encodingFormat: 'video/mp4',
-    inLanguage: 'ja',
-    sameAs: trailer.url,
-    publisher: { '@id': site.origin + '/#organization' },
-    about: { '@id': site.origin + '/#game' }
+    '@id': site.origin + '/sengoku-vs/#jade-trailer',
+    name: '戦国VS｜' + jadeTrailer.title, description: jadeTrailer.description,
+    thumbnailUrl: site.origin + '/' + jadeTrailer.poster, uploadDate: '2026-11-27',
+    duration: 'PT' + jadeTrailer.seconds + 'S', contentUrl: site.origin + '/' + jadeTrailer.video,
+    encodingFormat: 'video/mp4', inLanguage: ['ja', 'en'],
+    publisher: { '@id': site.origin + '/#organization' }, about: { '@id': site.origin + '/#game' }
   };
-}
-
-function renderTrailer(p, { id = 'intro-video', title = '24秒で、戦国VSの世界へ。', showScreenshots = false } = {}) {
-  return `<section class="promotion-trailer" id="${esc(id)}" aria-labelledby="${esc(id)}-title">
-    <div class="promotion-trailer-copy"><p class="section-kicker">一城から始まる、あなたの戦記</p><h2 id="${esc(id)}-title">${esc(title)}</h2><p>町を育て、武将を迎え、次の城へ。国づくりから合戦へ広がる戦国VSを、短い動画で紹介します。</p><ul class="promotion-video-points"><li>城下町で、領国の土台をつくる</li><li>武将を選び、自分の軍団を組む</li><li>軍師と戦況を読み、城を攻める</li></ul><div class="promotion-actions"><a href="${esc(p.dir(''))}">基本プレイ無料で始める</a><a class="promotion-secondary" href="${esc(trailer.url)}" target="_blank" rel="noopener noreferrer">YouTubeで見る</a></div><p class="promotion-trailer-note">公式イラストを使った作品紹介です。${showScreenshots ? '<a href="#game-screens">実際のゲーム画面を見る</a>' : '操作画面は、このページの実ゲーム画面で確認できます。'}</p></div>
-    <figure class="promotion-trailer-media"><video class="press-video" controls preload="none" playsinline poster="${esc(p.file(trailer.poster))}" width="720" height="1280" aria-label="${esc(trailer.title)}"><source src="${esc(p.file(trailer.video))}" type="video/mp4"><track kind="captions" src="${esc(p.file(trailer.captions))}" srclang="ja" label="日本語" default><p><a href="${esc(trailer.url)}" target="_blank" rel="noopener noreferrer">YouTubeで紹介動画を見る</a></p></video><figcaption>24秒・日本語字幕付き<span>再生ボタンを押すと動画が始まります</span></figcaption></figure>
-  </section>`;
 }
 
 function renderScreenshots(p) {
@@ -71,4 +69,12 @@ function renderScreenshots(p) {
   }).join('')}</div><p class="promotion-screens-note">2026年11月26日に撮影用デモ進行を使用した実ゲーム画面です。城下町は5.1.0の名古屋城で、公開御触書を表示しています。画面の表示は更新により変わる場合があります。</p></section>`;
 }
 
-module.exports = { trailer, firstSteps, videoSchema, renderTrailer, renderFirstSteps, renderScreenshots };
+// Invitation destinations come only from the site's build metadata; game URLs
+// and save data never enter a shared message.
+function invitationURL(site, page, source, medium = 'referral', content = 'social') {
+  const url = new URL(site.pages[page].path, site.origin);
+  url.search = new URLSearchParams({utm_source: source, utm_medium: medium, utm_campaign: 'player_invite', utm_content: content});
+  return url.href;
+}
+
+module.exports = { invitationURL, trailer, firstSteps, jadeTrailer, jadePlayer, videoSchema, renderScreenshots };

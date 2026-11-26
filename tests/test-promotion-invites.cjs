@@ -45,6 +45,29 @@ for (const preset of presets) {
 assert(html.includes('data-share-presets hidden'), 'Unusable selectors must stay hidden when JavaScript is disabled');
 assert(html.includes(presets[0].attributes['data-share-copy'].replaceAll('&','&amp;')), 'A default invitation must be present without JavaScript');
 
+const english = require('../tools/build-english-page.cjs').renderEnglishPage({metadataHtml:'<meta charset="utf-8">', jsonLd:'{}', iconHtml:'<link rel="icon">'});
+const enSection = attrs(english.match(/<section\b[^>]*id="share"[^>]*>/)[0]);
+const enLink = attrs(english.match(/<input\b[^>]*id="english-invite-url"[^>]*>/)[0]).value;
+const enMessage = decode(english.match(/<textarea\b[^>]*id="english-invite-message"[^>]*>([\s\S]*?)<\/textarea>/)[1]);
+const enX = new URL(decode(english.match(/href="([^"]+)"[^>]*>Share on X</)[1]));
+const destinations = [
+  [enSection['data-share-url'], 'native_share'], [enLink, 'copy_link'],
+  [enMessage.split('\n').at(-1), 'friend'], [enX.searchParams.get('url'), 'x']
+];
+for (const [link, source] of destinations) {
+  const url = new URL(link);
+  assert.equal(url.origin + url.pathname, site.origin + site.pages.english.path);
+  assert.equal(url.hash, '');
+  assert.deepEqual([...url.searchParams.keys()].sort(), ['utm_campaign','utm_content','utm_medium','utm_source']);
+  assert.equal(url.searchParams.get('utm_source'), source);
+  assert.equal(url.searchParams.get('utm_content'), 'english');
+  assert.equal(url.searchParams.get('utm_campaign'), 'player_invite');
+}
+assert(enX.searchParams.get('text').length + 24 <= 280);
+assert.match(enMessage, /game is in Japanese/);
+assert(html.includes('href="../en/#share"') && english.includes('href="../sengoku-vs/#share"'));
+assert(english.includes('promotion-share.js') && english.includes('data-share-native hidden'));
+
 function fixture({shareMissing=false, shareError}={}) {
   const copyStatus={textContent:''}, status={textContent:''};
   const message={tagName:'TEXTAREA',value:'original',closest:()=>({querySelector:()=>copyStatus})};
