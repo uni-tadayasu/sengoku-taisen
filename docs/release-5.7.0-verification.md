@@ -13,6 +13,7 @@
 
 | 対象 | 確認した結果 |
 | --- | --- |
+| 紹介素材ZIP | 現行版の表記で再生成し、`build-press-kit.py --check` 成功。通常の build / check:build にも追加し、次回以降の更新漏れを防ぐ。 |
 | 生成物 | `npm run build` と `npm run check:build` 成功。公開ページと source/minified parity を確認。 |
 | entry/interface | 最終修正後に両 npm test script 成功。回帰シナリオに、別タブの金銭目標を石材編集が巻き戻さないこと、保存エラーからの回復、画面往復中の古い遷移、共通時計の未確認・確認済み切替を含む。 |
 | 資源計画 | 保存・復元18、planner31、command-center8、operations22 の各検証成功（各専用 script の報告件数）。 |
