@@ -50,7 +50,7 @@
     border: 1px solid #92d8bdb8;
     border-radius: 50%;
     background:
-      url("assets/responsive/emblem-20261127-96.webp") center / 63% no-repeat,
+      url("assets/responsive/emblem-20261127-jade-96.webp") center / 63% no-repeat,
       radial-gradient(circle at center, transparent 54%, #ebd298a8 55% 56%, #0b242d 57% 62%, transparent 63%),
       repeating-conic-gradient(from 15deg, #8ddbbd 0deg 2deg, #0b2430c4 2deg 30deg);
     box-shadow: inset 0 0 0 2px #0c2429b0, 0 0 15px var(--title-halo);

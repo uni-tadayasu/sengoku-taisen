@@ -18,7 +18,7 @@ const publicApiBase = /window\.SENGOKU_API_BASE\s*=\s*['"]([^'"]*)['"]/.exec(pub
 if (publicApiBase === undefined) throw Error('config.js must declare the public API base URL');
 const {SengokuEngine, SENGOKU_DATA} = require(path.join(root, 'engine.js'));
 const {origin, release} = site;
-const brandEdition = /-(\d{8})\.png$/.exec(site.favicon.path)?.[1];
+const brandEdition = /-(\d{8}(?:-[a-z]+)?)\.png$/.exec(site.favicon.path)?.[1];
 if (!brandEdition) throw Error('site-metadata.json: dated brand artwork is required');
 // Dates are editorial inputs. A new build or deployment must not change them.
 if (site.schemaVersion !== 1 || new URL(origin).origin !== origin || !origin.startsWith('https://')) throw Error('site-metadata.json: canonical HTTPS origin is required');
@@ -962,7 +962,7 @@ function updateHome() {
   if (!hasGraph) html = html.replace('</head>', `  ${graph}\n</head>`);
   // Keep the title concise while exposing help and recovery without entering the game.
   html = html.replace(/(<p class="launch-introduction">)[\s\S]*?(<\/p>)/, (_, before, after) => before + site.launchIntroduction.map(esc).join('<br>') + after);
-  const launchGuide = '<nav class="launch-guide-nav" aria-label="戦国VSの案内"><a href="sengoku-vs/"><img src="assets/chronicle/war.webp" srcset="assets/responsive/war-240.webp 240w, assets/responsive/war-400.webp 400w, assets/responsive/war-640.webp 640w, assets/responsive/war-960.webp 960w, assets/responsive/war-1200.webp 1200w" sizes="(max-width: 700px) 58vw, (min-width: 1880px) 573px, 30vw" width="1200" height="500" alt="" decoding="async"><span><strong>ゲーム紹介</strong><small>内政・編成・合戦の流れ</small></span></a><a href="guide/"><img src="assets/chronicle/town.webp" srcset="assets/responsive/town-240.webp 240w, assets/responsive/town-400.webp 400w, assets/responsive/town-640.webp 640w, assets/responsive/town-960.webp 960w, assets/responsive/town-1200.webp 1200w" sizes="(max-width: 700px) 58vw, (min-width: 1880px) 573px, 30vw" width="1200" height="500" alt="" decoding="async"><span><strong>遊び方</strong><small>城を選んだ後の進め方</small></span></a><a href="guide/data-recovery/"><img src="assets/chronicle/archive.webp" srcset="assets/responsive/archive-240.webp 240w, assets/responsive/archive-400.webp 400w, assets/responsive/archive-640.webp 640w, assets/responsive/archive-960.webp 960w, assets/responsive/archive-1200.webp 1200w" sizes="(max-width: 700px) 58vw, (min-width: 1880px) 573px, 30vw" width="1200" height="500" alt="" decoding="async"><span><strong>引き継ぎ・復元</strong><small>領主とセーブデータの移行</small></span></a></nav>';
+  const launchGuide = '<nav class="launch-guide-nav" aria-label="戦国VSの案内"><a href="sengoku-vs/"><img src="assets/chronicle/war-jade.webp" srcset="assets/responsive/war-jade-240.webp 240w, assets/responsive/war-jade-400.webp 400w, assets/responsive/war-jade-640.webp 640w, assets/responsive/war-jade-960.webp 960w, assets/responsive/war-jade-1200.webp 1200w" sizes="(max-width: 700px) 58vw, (min-width: 1880px) 573px, 30vw" width="1200" height="500" alt="" decoding="async"><span><strong>ゲーム紹介</strong><small>内政・編成・合戦の流れ</small></span></a><a href="guide/"><img src="assets/chronicle/town-jade.webp" srcset="assets/responsive/town-jade-240.webp 240w, assets/responsive/town-jade-400.webp 400w, assets/responsive/town-jade-640.webp 640w, assets/responsive/town-jade-960.webp 960w, assets/responsive/town-jade-1200.webp 1200w" sizes="(max-width: 700px) 58vw, (min-width: 1880px) 573px, 30vw" width="1200" height="500" alt="" decoding="async"><span><strong>遊び方</strong><small>城を選んだ後の進め方</small></span></a><a href="guide/data-recovery/"><img src="assets/chronicle/archive-jade.webp" srcset="assets/responsive/archive-jade-240.webp 240w, assets/responsive/archive-jade-400.webp 400w, assets/responsive/archive-jade-640.webp 640w, assets/responsive/archive-jade-960.webp 960w, assets/responsive/archive-jade-1200.webp 1200w" sizes="(max-width: 700px) 58vw, (min-width: 1880px) 573px, 30vw" width="1200" height="500" alt="" decoding="async"><span><strong>引き継ぎ・復元</strong><small>領主とセーブデータの移行</small></span></a></nav>';
   // Keep an authored title composition intact: the story owns its guide nav,
   // and the subtitle's intentional line break is not a metadata replacement.
   let hasLaunchGuide = false;
@@ -1041,24 +1041,34 @@ const auditionHtml = fs.readFileSync(path.join(root, 'tools/music-audition.html'
   .replace(/(<script\b[^>]*\bsrc=")(\.\.\/music\.js|music-audition\.js)(?:\?[^"]*)?("[^>]*>)/g, (_, before, source, after) => `${before}${source}?v=${esc(release)}${after}`);
 outputs.set('tools/music-audition.html', withBrandLinks(auditionHtml, auditionPaths.file));
 const securePage = pageSecurity(publicConfig);
+const publicStyles = require('./build-public-styles.cjs').buildPublicStyles(root, outputs);
 for (const [name, html] of outputs) {
   if (name.endsWith('.html')) {
-    const currentBrand = html.replace(/assets\/responsive\/(brand|emblem)-(?:\d{8}-)?(\d+)\.webp/g, (_, kind, width) => `assets/responsive/${kind}-${brandEdition}-${width}.webp`);
+    const currentBrand = html.replace(/assets\/responsive\/(brand|emblem)-(?:\d{8}(?:-[a-z]+)?-)?(\d+)\.webp/g, (_, kind, width) => `assets/responsive/${kind}-${brandEdition}-${width}.webp`);
     let themed = replaceHeadTag(currentBrand, 'meta', attrs => attrs.name === 'theme-color', `<meta name="theme-color" content="${esc(site.themeColor)}">`);
     if (pages.some(page => page.file === name)) themed = themed.replace('</head>', `  <script defer src="${paths(name).file('public-search.js')}?v=${release}"></script>\n</head>`);
     if (name === 'index.html' || pages.some(page => page.file === name)) themed = replaceHeadTag(themed, 'link', attrs => attrs.rel === 'alternate' && attrs.type === 'application/rss+xml', `<link rel="alternate" type="application/rss+xml" title="戦国VS 公式更新情報" href="${origin}/news/feed.xml">`);
     const promotion = ['sengoku-vs/index.html', 'en/index.html'].includes(name);
     if (promotion) themed = withPromotion(themed, name);
     if (name !== 'index.html') {
-      const appearance = ['cyber-wafu.css', 'typography-gyosho.css'];
+      const appearance = ['cyber-wafu.css', 'typography-gyosho.css', 'public-citadel.css', 'public-theme.bundle.css'];
+      // These pages declare the three reading styles consecutively, in this order.
+      // Other templates interleave their own rules and retain those original links.
+      const useReadingBundle = pages.some(page => page.file === name) && name !== 'en/index.html';
       // The 404 may be served at any missing nested URL. Normalize both links
       // after brand insertion so repeated builds keep the exact same order.
       themed = themed.replace(/(?:\r?\n)?[ \t]*<link\b[^>]*>/gi, tag => {
         const attrs = tagAttributes(tag), basename = (attrs.href || '').split('?')[0].split('/').pop();
-        return attrs.rel === 'stylesheet' && appearance.includes(basename) ? '' : tag;
+        if (attrs.rel !== 'stylesheet') return tag;
+        if (appearance.includes(basename)) return '';
+        if (useReadingBundle && basename === 'image-protect.css')
+          return '\n  <link rel="stylesheet" href="' + paths(name).file(publicStyles['public-reading.bundle.css']) + '">';
+        if (useReadingBundle && ['button-artwork.css', 'public-luxury.css'].includes(basename)) return '';
+        return tag;
       });
-      const links = appearance.map(stylesheet => `<link rel="stylesheet" href="${name === '404.html' ? '/' + stylesheet : paths(name).file(stylesheet)}?v=${release}">`);
-      themed = themed.replace(/\s*<\/head>/, '\n  ' + links.join('\n  ') + '\n</head>');
+      const stylesheet = publicStyles['public-theme.bundle.css'];
+      const themeHref = name === '404.html' ? '/' + stylesheet : paths(name).file(stylesheet);
+      themed = themed.replace(/\s*<\/head>/, '\n  <link rel="stylesheet" href="' + themeHref + '">\n</head>');
       themed = themed.replace(/(?:\r?\n)?[ \t]*<script\b[^>]*src=["'][^"']*variant-text\.js(?:\?[^"']*)?["'][^>]*><\/script>/gi, '');
       const variantScript = name === '404.html' ? '/variant-text.js' : paths(name).file('variant-text.js');
       themed = themed.replace('</head>', `  <script defer src="${variantScript}?v=${release}"></script>\n</head>`);

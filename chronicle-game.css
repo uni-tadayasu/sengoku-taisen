@@ -11,18 +11,18 @@ body:not(.at-title) {
   --palace-surface: var(--polished-wood); background: var(--lacquer);
 }
 #app.chronicle-shell #main {
-  --chapter-art: url("assets/chronicle/town.webp"); --chapter-position: 65% 28%; --chapter-rule: #bf8b4f;
+  --chapter-art: var(--chapter-town-art); --chapter-position: 65% 28%; --chapter-rule: #bf8b4f;
   background: linear-gradient(115deg,#19212d,#101924 48%,#1d2933);
   scrollbar-color: #997c58 #17222d;
 }
 #app.chronicle-shell #main:is([data-view="map"],[data-view="field"],[data-view="covert"],[data-view="roaming"],[data-view="army"]) {
-  --chapter-art: url("assets/chronicle/war.webp"); --chapter-position: 69% 24%; --chapter-rule: #b45c44;
+  --chapter-art: var(--chapter-war-art); --chapter-position: 69% 24%; --chapter-rule: #b45c44;
 }
 #app.chronicle-shell #main:is([data-view="court"],[data-view="council"]) {
-  --chapter-art: url("assets/chronicle/court.webp"); --chapter-position: 60% 35%; --chapter-rule: #9b674c;
+  --chapter-art: var(--chapter-court-art); --chapter-position: 60% 35%; --chapter-rule: #9b674c;
 }
 #app.chronicle-shell #main:is([data-view="officers"],[data-view="crests"],[data-view="research"]) {
-  --chapter-art: url("assets/chronicle/archive.webp"); --chapter-position: 62% 36%; --chapter-rule: #678277;
+  --chapter-art: var(--chapter-archive-art); --chapter-position: 62% 36%; --chapter-rule: #678277;
 }
 
 /* A vertical family standard sits beside the workspace. Its sections remain in source order. */

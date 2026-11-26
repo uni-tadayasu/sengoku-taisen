@@ -18,8 +18,20 @@ def variants(name, source, widths, quality=80, crop_width=None):
             image.save(DEST / f'{name}-{width}.webp', 'WEBP', quality=quality, method=6)
 
 
+def jade_chapters():
+    # The archive keeps earlier chapter files for existing links. New public
+    # page and game references share the same versioned responsive variants.
+    for chapter in ('war', 'town', 'archive', 'court'):
+        name = f'{chapter}-jade'
+        src = f'chronicle/{name}.webp'
+        variants(name, src, (240, 400, 640, 960, 1200), quality=73)
+        variants(f'{name}-panel', src, (400, 640, 900), quality=73, crop_width=900)
+    variants('music-jade', 'chronicle/music-jade.webp', (240, 440, 720, 900), quality=76)
+
+
 if __name__ == '__main__':
     DEST.mkdir(exist_ok=True)
+    jade_chapters()
     variants('cover', 'chronicle/cover-small.webp', (480, 840), 82)
     variants('cover', 'chronicle/cover.webp', (1200, 1536), 82)
     for chapter in ('war', 'town', 'archive', 'court'):

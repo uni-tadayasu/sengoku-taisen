@@ -114,6 +114,10 @@ async function manualTest(){
 async function workerTest(){
  const events={},old='sengoku-taisen-v'+edition,next='sengoku-taisen-v'+staged;
  const rows=new Map([[old,new Map([[url('index.html'),'OLD DOC'],[url('same.bundle.js?v=oldhash'),'OLD CODE']])],[next,new Map([[url('index.html'),'NEW DOC'],[url('same.bundle.js?v=newhash'),'NEW CODE']])]]);
+ const art=(cache,stem,value)=>rows.get(cache).set(url('assets/responsive/'+stem+'.webp'),value);
+ art(old,'war-jade-240','current chapter');art(next,'war-jade-240','waiting chapter');
+ art(old,'war-240','legacy chapter');art(next,'war-kasumi-240','future chapter');
+ art(old,'brand-20261127-jade-48','current crest');art(next,'brand-20270101-kasumi-48','future crest');
  const clients=new Map([['selected',{url:scope+'?sengoku-version='+staged}],['other',{url:scope}]]);
  let forced=0;
  const self={location:{origin},registration:{scope,waiting:{}},clients:{get:async id=>clients.get(id)},skipWaiting:()=>forced++,addEventListener:(type,cb)=>{events[type]=cb;}};
@@ -132,6 +136,12 @@ async function workerTest(){
  restart();
  assert.equal(await req('same.bundle.js?v=newhash','cors','selected'),'NEW CODE');
  assert.equal(await req('same.bundle.js?v=oldhash','cors','other'),'OLD CODE');
+ assert.equal(await req('assets/responsive/war-jade-panel-900.webp','cors','selected'),'waiting chapter');
+ assert.equal(await req('assets/responsive/war-jade-panel-900.webp','cors','other'),'current chapter');
+ assert.equal(await req('assets/responsive/war-panel-900.webp','cors','other'),'legacy chapter');
+ assert.equal(await req('assets/chronicle/war-kasumi.webp','cors','selected'),'future chapter');
+ assert.equal(await req('assets/responsive/brand-20270101-kasumi-144.webp','cors','selected'),'future crest');
+ assert.equal(await req('assets/responsive/brand-20261127-jade-144.webp','cors','other'),'current crest');
  assert.equal(forced,0);
 }
 

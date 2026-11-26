@@ -1,16 +1,31 @@
 /* 本体は先に保存。大きな絵巻は、実際に開いたものから保存します。 */
-const RELEASE='5.9.5-20261127';
+const RELEASE='5.9.6-20261127';
 const CACHE='sengoku-taisen-v'+RELEASE;
 const scopeURL=()=>self.registration?.scope||self.location.origin+'/';
 const currentMatch=(request,name=CACHE)=>caches.open(name).then(cache=>cache.match(request));
 const pages=new Set(['./','./guide/','./guide/data-recovery/','./about/','./premium/','./sengoku-vs/','./en/','./press/','./news/','./tools/music-audition.html']);
 const optionalCode=new Set([
+  './public-theme.bundle.css','./public-reading.bundle.css',
   './promotion.css','./promotion-share.js','./public-growth.js','./english-introduction.css','./guide.css','./share.css','./brand-discovery.css','./public-luxury.js','./public-luxury.css','./public-search.js','./variant-text.js','./premium-catalog.js','./premium.js','./premium.css',
   './interaction-motion.js','./interaction-motion.css','./selection-lock.js','./selection-lock.css','./image-protect.js','./image-protect.css','./button-artwork.css',
   './premium-runtime.js','./premium-appearance.css','./music.js','./tools/music-audition.js','./map-data.js'
 ]);
 const compactArtwork={'neon-command':480,war:240,town:240,archive:240,brand:48,emblem:96};
-const compactURL=name=>'./assets/responsive/'+name+'-'+(name==='brand'||name==='emblem'?'20261127-':'')+compactArtwork[name]+'.webp';
+const brandEdition='20261127-jade';
+const installedStems={war:'war-jade',town:'town-jade',archive:'archive-jade',brand:'brand-'+brandEdition,emblem:'emblem-'+brandEdition};
+const compactURL=(family,stem)=>'./assets/responsive/'+(stem||installedStems[family]||family)+'-'+compactArtwork[family]+'.webp';
+
+// A staged tab can read a different edition while this worker still controls
+// both tabs. Derive the compact filename from the requested artwork first.
+function compactAlternatives(relative){
+  const responsive=relative.replace(/-panel-(?=\d+\.webp$)/,'-');
+  const match=/^\.\/assets\/responsive\/(neon-command|war|town|archive|brand|emblem)((?:-[a-z]+|-\d{8}(?:-[a-z]+)?)?)-\d+\.webp$/.exec(responsive)
+    || /^\.\/assets\/chronicle\/(war|town|archive)((?:-[a-z]+)?)\.webp$/.exec(relative);
+  if(!match)return [];
+  const [,family,edition]=match;
+  const requested=compactURL(family,family+edition),installed=compactURL(family);
+  return requested===installed?[requested]:[requested,installed];
+}
 
 // The current HTML names the real hashed bundles. Require the matching release
 // before adopting it, even if a CDN serves the previous HTML during a rollout.
@@ -27,7 +42,7 @@ function shellEntries(html){
     entries.add('./'+path.replace(/^\.\//,''));
   }
   if(!entries.has('./manifest.webmanifest?v='+RELEASE)||![...entries].some(url=>/\.js\?/.test(url)))throw Error('Release entry is unavailable');
-  return [...entries,...Object.keys(compactArtwork).map(compactURL)];
+  return [...entries,...Object.keys(compactArtwork).map(name=>compactURL(name))];
 }
 function entryMime(url,response){
   const type=(response.headers.get('Content-Type')||'').split(';')[0].trim().toLowerCase(),path=new URL(url).pathname;
@@ -162,8 +177,12 @@ self.addEventListener('fetch', event => {
   const offline=async (cached,cacheName)=>{
     if(cached)return cached;
     if(page&&pageKey!=='./')return Response.redirect(scopeURL(),302);
-    const compact=artwork&&/^\.\/assets\/responsive\/(neon-command|war|town|archive|brand|emblem)-(?:\d{8}-)?\d+\.webp$/.exec(relative);
-    if(compact)return await currentMatch(new URL(compactURL(compact[1]),scopeURL()).href,cacheName)||Response.error();
+    if(artwork){
+      for(const path of compactAlternatives(relative)){
+        const image=await currentMatch(new URL(path,scopeURL()).href,cacheName);
+        if(image)return image;
+      }
+    }
     return Response.error();
   };
   event.respondWith((async()=>{
@@ -189,7 +208,7 @@ self.addEventListener('fetch', event => {
 self.addEventListener('push',event=>{
  let payload={};try{payload=event.data?.json()||{};}catch(_){}
  const title=typeof payload.title==='string'?payload.title.slice(0,100):'戦国VSのお知らせ';
- event.waitUntil(self.registration.showNotification(title,{body:typeof payload.body==='string'?payload.body.slice(0,240):'領国の報告を確認してください。',icon:'./assets/branding/sengoku-vs-icon-192-20261127.png',badge:'./assets/branding/sengoku-vs-badge-96-20261127.png',tag:'sengoku-update',renotify:false,data:{url:'/?notice=1'}}));
+ event.waitUntil(self.registration.showNotification(title,{body:typeof payload.body==='string'?payload.body.slice(0,240):'領国の報告を確認してください。',icon:'./assets/branding/sengoku-vs-icon-192-'+brandEdition+'.png',badge:'./assets/branding/sengoku-vs-badge-96-'+brandEdition+'.png',tag:'sengoku-update',renotify:false,data:{url:'/?notice=1'}}));
 });
 self.addEventListener('notificationclick',event=>{
  event.notification.close();event.waitUntil((async()=>{const clients=await self.clients.matchAll({type:'window',includeUncontrolled:true});for(const client of clients){if(new URL(client.url).origin===self.location.origin){await client.focus();client.postMessage({type:'sengoku-open-recap'});return;}}await self.clients.openWindow('./?notice=1');})());

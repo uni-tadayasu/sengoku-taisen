@@ -4,8 +4,8 @@
   "name": "戦国VS",
   "alternateName": "SENGOKU VS",
   "publisher": "KASAI SOLUTIONS",
-  "release": "5.9.5-20261127",
-  "version": "5.9.5",
+  "release": "5.9.6-20261127",
+  "version": "5.9.6",
   "dateModified": "2026-11-27",
   "language": "ja",
   "locale": "ja_JP",
@@ -15,25 +15,25 @@
     "軍師とともに、天下統一を目指す戦国戦略ゲーム。"
   ],
   "ogImage": {
-    "path": "assets/branding/sengoku-vs-ogp-20261126.jpg",
+    "path": "assets/branding/sengoku-vs-ogp-20261127.jpg",
     "type": "image/jpeg",
     "width": 1200,
     "height": 630,
-    "alt": "金色の「戦国VS」と「一城から、天下へ。」の文字、城下を望む軍扇の女武将と赤い軍旗"
+    "alt": "「戦国VS 一城から、天下へ。」と天守紋。月夜の城下を背に、金の軍扇を持つ女武将が立つ"
   },
   "logo": {
-    "path": "assets/branding/sengoku-vs-icon-512-20261127.png",
+    "path": "assets/branding/sengoku-vs-icon-512-20261127-jade.png",
     "width": 512,
     "height": 512,
-    "vectorPath": "assets/branding/sengoku-vs-mark-20261127.svg"
+    "vectorPath": "assets/branding/sengoku-vs-mark-20261127-jade.svg"
   },
   "favicon": {
-    "path": "assets/branding/sengoku-vs-icon-192-20261127.png",
+    "path": "assets/branding/sengoku-vs-icon-192-20261127-jade.png",
     "sizes": "192x192",
     "type": "image/png"
   },
   "faviconSmall": {
-    "path": "assets/branding/sengoku-vs-favicon-32-20261127.png",
+    "path": "assets/branding/sengoku-vs-favicon-32-20261127-jade.png",
     "sizes": "32x32",
     "type": "image/png"
   },
@@ -48,25 +48,25 @@
     "type": "image/x-icon"
   },
   "appleTouchIcon": {
-    "path": "assets/branding/sengoku-vs-apple-touch-icon-180-20261127.png",
+    "path": "assets/branding/sengoku-vs-apple-touch-icon-180-20261127-jade.png",
     "sizes": "180x180",
     "type": "image/png"
   },
   "appIcons": [
     {
-      "src": "assets/branding/sengoku-vs-icon-192-20261127.png",
+      "src": "assets/branding/sengoku-vs-icon-192-20261127-jade.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "assets/branding/sengoku-vs-icon-512-20261127.png",
+      "src": "assets/branding/sengoku-vs-icon-512-20261127-jade.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "assets/branding/sengoku-vs-maskable-512-20261127.png",
+      "src": "assets/branding/sengoku-vs-maskable-512-20261127-jade.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
@@ -85,9 +85,9 @@
         "height": 1024
       },
       "additionalImages": [
-        "assets/chronicle/war.webp",
-        "assets/chronicle/town.webp",
-        "assets/chronicle/archive.webp"
+        "assets/chronicle/war-jade.webp",
+        "assets/chronicle/town-jade.webp",
+        "assets/chronicle/archive-jade.webp"
       ]
     },
     "share": {
@@ -96,14 +96,14 @@
       "description": "戦国VSの公式紹介。城下町づくり、武将編成、CPU勢力との合戦、領主同士の同盟・交易を紹介します。基本プレイ無料の範囲、PC・スマホの対応、始め方、データの引き継ぎも確認できます。",
       "dateModified": "2026-11-27",
       "artwork": {
-        "path": "assets/chronicle/war.webp",
-        "alt": "軍旗の列を背に、白馬の上で指揮を執る武将",
+        "path": "assets/chronicle/war-jade.webp",
+        "alt": "金の紋を染めた旗を従え、朝日の峠を白馬で進む朱の衣の騎手",
         "width": 1200,
         "height": 500
       },
       "additionalImages": [
-        "assets/chronicle/town.webp",
-        "assets/chronicle/court.webp"
+        "assets/chronicle/town-jade.webp",
+        "assets/chronicle/court-jade.webp"
       ]
     },
     "premium": {
@@ -112,17 +112,17 @@
       "description": "戦国VSの外観アイテム・月額支援を紹介。旗印、勲章、城下町の外観など全8商品の見本・税込料金、買い切りと月額の違い、購入後の反映を確認できます。基本プレイは無料で、戦力や資源の優遇はありません。",
       "dateModified": "2026-11-27",
       "artwork": {
-        "path": "assets/chronicle/court.webp",
-        "alt": "金色の庭園に面した朱塗りの御殿",
+        "path": "assets/chronicle/court-jade.webp",
+        "alt": "翡翠色の格子と金屏風を備えた御殿で、使者二人が庭の水辺を背に向かい合う",
         "width": 1200,
         "height": 500
       },
       "socialImage": {
-        "path": "assets/branding/sengoku-vs-premium-20261126.jpg",
+        "path": "assets/branding/sengoku-vs-premium-20261127.jpg",
         "type": "image/jpeg",
         "width": 1200,
         "height": 630,
-        "alt": "「戦国VS プレミアム」の文字と、月明かりに照らされた城下町の外観"
+        "alt": "「戦国VS プレミアム」と天守紋。灯りが水面に映る城下町で、人々が朱塗りの橋を渡る"
       },
       "additionalImages": [
         "assets/premium/gold-banner-v1.webp",
@@ -136,17 +136,17 @@
       "description": "戦国VSの公式攻略ガイド。最初の城選びから、内政、天守と城郭の強化、武将編成、軍師AI、対人戦・イベントの報酬まで解説。PC・スマホの操作や保存・端末同期も、目的別に確認できます。",
       "dateModified": "2026-11-27",
       "artwork": {
-        "path": "assets/chronicle/town.webp",
-        "alt": "宵の城下町に架かる橋と、行き交う人々",
+        "path": "assets/chronicle/town-jade.webp",
+        "alt": "月夜の城下町で、運河に映る灯籠と金色の天守を望む橋を人馬が渡る",
         "width": 1200,
         "height": 500
       },
       "socialImage": {
-        "path": "assets/branding/sengoku-vs-guide-20261126.jpg",
+        "path": "assets/branding/sengoku-vs-guide-20261127.jpg",
         "type": "image/jpeg",
         "width": 1200,
         "height": 630,
-        "alt": "「戦国VS 攻略ガイド」の文字と、灯りのともる城下町を歩く武将たち"
+        "alt": "「戦国VS 攻略ガイド」と天守紋。朝日が差す峠を、金と朱の武将が白馬で進む"
       }
     },
     "recovery": {
@@ -155,17 +155,17 @@
       "description": "機種変更やサイト移転後も、同じ領主で戦国VSを再開するための公式ガイド。接続コード、統合バックアップ、旧形式のセーブなど、手元にあるデータから引き継ぎ・復元の手順を確認できます。",
       "dateModified": "2026-11-27",
       "artwork": {
-        "path": "assets/chronicle/archive.webp",
-        "alt": "灯りに照らされた書院で二人が絵巻を調べる様子",
+        "path": "assets/chronicle/archive-jade.webp",
+        "alt": "黒漆の机に広げた金箔の絵図から、翡翠色の山並みと城駒が浮かび上がる",
         "width": 1200,
         "height": 500
       },
       "socialImage": {
-        "path": "assets/branding/sengoku-vs-recovery-20261126.jpg",
+        "path": "assets/branding/sengoku-vs-recovery-20261127.jpg",
         "type": "image/jpeg",
         "width": 1200,
         "height": 630,
-        "alt": "「戦国VS 引き継ぎ・復元」の文字と、書院で絵巻を調べる二人"
+        "alt": "「戦国VS 引き継ぎ・復元」と天守紋。月明かりの書院で、巻物に翡翠色の山河が浮かぶ"
       }
     },
     "about": {
@@ -174,17 +174,17 @@
       "description": "戦国VSの世界観・対応端末・利用料金と、256人の武将、129の城と拠点、64種類の施設を紹介。人物・地図・家紋の資料、イラストの制作方針、KASAI SOLUTIONSの著作権表記を確認できます。",
       "dateModified": "2026-11-27",
       "artwork": {
-        "path": "assets/chronicle/court.webp",
-        "alt": "庭園に面した御殿で向かい合う二人の使者",
+        "path": "assets/chronicle/court-jade.webp",
+        "alt": "翡翠色の格子と金屏風を備えた御殿で、使者二人が庭の水辺を背に向かい合う",
         "width": 1200,
         "height": 500
       },
       "socialImage": {
-        "path": "assets/branding/sengoku-vs-about-20261126.jpg",
+        "path": "assets/branding/sengoku-vs-about-20261127.jpg",
         "type": "image/jpeg",
         "width": 1200,
         "height": 630,
-        "alt": "「戦国VS 作品概要」の文字と、秋の庭園に面した御殿で向かい合う使者"
+        "alt": "「戦国VS 作品概要」と天守紋。金色の襖に囲まれた御殿で二人の使者が向かい合う"
       }
     },
     "press": {
@@ -193,8 +193,8 @@
       "description": "戦国VSを記事・動画・SNSで紹介するための公式素材ページ。作品情報、基本プレイ無料の範囲、日本語の紹介文、共有画像・ロゴ・短い紹介動画と英語の作品概要をまとめています。",
       "dateModified": "2026-11-27",
       "artwork": {
-        "path": "assets/chronicle/court.webp",
-        "alt": "秋の庭園に面した御殿で向かい合う二人の使者",
+        "path": "assets/chronicle/court-jade.webp",
+        "alt": "翡翠色の格子と金屏風を備えた御殿で、使者二人が庭の水辺を背に向かい合う",
         "width": 1200,
         "height": 500
       }
@@ -205,8 +205,8 @@
       "description": "戦国VSの公式更新情報。城下町の操作画面、大都市の都市勲章、拠点修復や奉行の給与など、遊び方に関わる主な変更を紹介します。詳しい攻略ガイドと公式素材へのリンク、RSSでの更新情報の購読はこちら。",
       "dateModified": "2026-11-27",
       "artwork": {
-        "path": "assets/chronicle/archive.webp",
-        "alt": "灯りのともる書院で、絵巻を広げて戦記を読み進める二人",
+        "path": "assets/chronicle/archive-jade.webp",
+        "alt": "黒漆の机に広げた金箔の絵図から、翡翠色の山並みと城駒が浮かび上がる",
         "width": 1200,
         "height": 500
       }
@@ -219,17 +219,17 @@
       "description": "Build a castle town, recruit officers and conquer rival castles in SENGOKU VS. An English introduction to the Japanese-language browser game: how to start, screenshots, free play and online features.",
       "dateModified": "2026-11-27",
       "artwork": {
-        "path": "assets/chronicle/war.webp",
-        "alt": "軍旗の列を背に、白馬の上で指揮を執る武将",
+        "path": "assets/chronicle/war-jade.webp",
+        "alt": "A rider in vermilion on a white horse leads a procession of gold-crested banners through a mountain pass at sunrise.",
         "width": 1200,
         "height": 500
       },
       "socialImage": {
-        "path": "assets/branding/sengoku-vs-ogp-20261126.jpg",
+        "path": "assets/branding/sengoku-vs-ogp-20261127.jpg",
         "type": "image/jpeg",
         "width": 1200,
         "height": 630,
-        "alt": "Official SENGOKU VS artwork: a commander overlooking a castle town beneath gold Japanese title lettering"
+        "alt": "A commander holds a gold fan above a moonlit castle town, beside the Sengoku VS title and its gold castle crest."
       },
       "additionalImages": [
         "assets/promo/screenshots/sengoku-vs-town-20261126.jpg",
@@ -239,12 +239,12 @@
     }
   },
   "faviconSvg": {
-    "path": "assets/branding/sengoku-vs-favicon-20261127.svg",
+    "path": "assets/branding/sengoku-vs-favicon-20261127-jade.svg",
     "sizes": "any",
     "type": "image/svg+xml"
   },
   "maskIcon": {
-    "path": "assets/branding/sengoku-vs-pinned-tab-20261127.svg",
+    "path": "assets/branding/sengoku-vs-pinned-tab-20261127-jade.svg",
     "color": "#c7a35b"
   },
   "themeColor": "#131b22",

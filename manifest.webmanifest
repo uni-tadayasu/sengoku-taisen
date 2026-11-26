@@ -11,19 +11,19 @@
   "theme_color": "#131b22",
   "icons": [
     {
-      "src": "assets/branding/sengoku-vs-icon-192-20261127.png",
+      "src": "assets/branding/sengoku-vs-icon-192-20261127-jade.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "assets/branding/sengoku-vs-icon-512-20261127.png",
+      "src": "assets/branding/sengoku-vs-icon-512-20261127-jade.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "assets/branding/sengoku-vs-maskable-512-20261127.png",
+      "src": "assets/branding/sengoku-vs-maskable-512-20261127-jade.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
