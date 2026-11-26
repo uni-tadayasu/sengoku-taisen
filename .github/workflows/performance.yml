@@ -10,6 +10,7 @@ on:
       - '*.css'
       - 'index.html'
       - 'tools/build-game-entry.cjs'
+      - 'tools/compact-css.cjs'
       - 'tools/game-entry.json'
       - 'tests/**'
       - 'server/**'
@@ -22,6 +23,7 @@ on:
       - '*.css'
       - 'index.html'
       - 'tools/build-game-entry.cjs'
+      - 'tools/compact-css.cjs'
       - 'tools/game-entry.json'
       - 'tests/**'
       - 'server/**'
@@ -49,7 +51,7 @@ jobs:
         run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Verify compiled entry and offline loading
         run: npm run test:entry
-      - name: Check the command desk, navigation and deferred UI
+      - name: Check planning, comparison, navigation and deferred UI
         run: npm run test:interface
       - name: Check shipped asset budgets and runtime parity
         run: |
@@ -107,3 +109,31 @@ jobs:
           node server/test-alliance-strategy.mjs
           node server/test-covert.mjs
           node server/test-battle-travel.mjs
+  save-recovery:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: '24'
+      - name: Verify legacy saves, world clocks and officer health
+        run: |
+          node server/test-legacy-save-recovery.mjs
+          node server/test-world-clock.mjs
+          node server/test-officer-health.mjs
+      - name: Verify authoritative sync, field migration and world cycles
+        run: |
+          node server/test-sync.mjs
+          node server/test-field-migration.mjs
+          node server/test-world-cycles.mjs
+          node tests/test-sync-integration.mjs
+      - name: Verify shared construction and private Kyoto migration
+        run: |
+          node tests/test-kyoto-gosho-engine.cjs
+          node tests/test-staff-base-sync.cjs
+          node server/test-kyoto-migration.mjs
+          node server/test-staff-base.mjs
+          node server/test-construction-queues.mjs

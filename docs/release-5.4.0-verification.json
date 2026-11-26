@@ -1,0 +1,2758 @@
+{
+  "recordedAt": "2026-11-26T09:23:29.955+00:00",
+  "startedAt": "2026-11-26T09:08:29.267+00:00",
+  "baseline": "5a692dcb1990f02b957709ec97626dc99bc7bdc6",
+  "branch": "codex/overhaul-5-4-0-20261126",
+  "release": "5.4.0-20261126",
+  "scope": "Local equivalents of the three verification workflows, including the new save-recovery job, plus targeted changed-surface regressions. No remote CI or publication check is claimed.",
+  "status": "PASS",
+  "environment": {
+    "platform": "Linux-6.18.57-x86_64-with-glibc2.41",
+    "nodeVersions": {
+      "22": "v22.23.5",
+      "24": "v24.22.3"
+    },
+    "npm": "11.19.1",
+    "python": "3.12.14",
+    "node22Provider": "Isolated npm node@22 installation under scratch/qa-final/runtime-node22",
+    "pinnedBuildDependencies": {
+      "clean-css": "5.3.3",
+      "esbuild": "0.28.2"
+    }
+  },
+  "buildPrerequisite": {
+    "command": "npm run build",
+    "status": "PASS",
+    "exitCode": 0,
+    "evidence": "Parent agent confirmed successful completion of build session 52710 before these gates started. The build is not repeated by this harness."
+  },
+  "inputs": {
+    "initialSha256": "9b5017138a31a0f69bb072b3a5aa2b14fce9b84cbd604d14d57e030ceb420707",
+    "initialFileCount": 610,
+    "initialManifest": "qa-final/input-manifest.json",
+    "initialRunEndSha256": "9b5017138a31a0f69bb072b3a5aa2b14fce9b84cbd604d14d57e030ceb420707",
+    "unchangedDuringInitialRun": true,
+    "finalSha256": "d154a9804efc7f6c90529b59cb6c9f749dabedd8419dabec8aa12cb764d644ad",
+    "finalFileCount": 610,
+    "finalManifest": "qa-final/final-input-manifest.json",
+    "changesAfterInitialRun": [
+      ".github/workflows/brand-seo.yml",
+      ".github/workflows/music.yml",
+      ".github/workflows/performance.yml",
+      "app.js",
+      "game-interface.bundle.js",
+      "game-layout.bundle.css",
+      "index.html",
+      "management-ui.css",
+      "tests/test-economy-ui.cjs",
+      "tests/test-management-ui.cjs"
+    ],
+    "unchangedDuringFinalRecheck": true,
+    "unexpectedChangesDuringFinalRecheck": [],
+    "scope": "Tracked and untracked source, tests, workflow configuration, public markup/metadata, generated entry assets and the release press kit. The verification documents themselves are excluded."
+  },
+  "commands": [
+    {
+      "id": 1,
+      "command": "npm ci --ignore-scripts --no-audit --no-fund",
+      "nodeMajor": "22",
+      "status": "PASS",
+      "requiredBy": [
+        "performance.yml:browser-assets:Install the pinned asset compiler",
+        "brand-seo.yml:public-discovery:Install pinned build tooling",
+        "music.yml:playback:Install the pinned asset compiler"
+      ],
+      "coveredCommands": [
+        "npm ci --ignore-scripts --no-audit --no-fund"
+      ],
+      "implicitChecks": [],
+      "log": "qa-final/logs/01-npm-ci---ignore-scripts---no-audit---no-fund.log",
+      "startedAt": "2026-11-26T09:08:29.621+00:00",
+      "exitCode": 0,
+      "seconds": 0.716,
+      "finishedAt": "2026-11-26T09:08:30.337+00:00"
+    },
+    {
+      "id": 2,
+      "command": "npm run test:entry",
+      "nodeMajor": "22",
+      "status": "PASS",
+      "requiredBy": [
+        "performance.yml:browser-assets:Verify compiled entry and offline loading",
+        "brand-seo.yml:public-discovery:Check offline release and asset fingerprints",
+        "music.yml:playback:Check game entry and audition syntax"
+      ],
+      "coveredCommands": [
+        "node tests/test-css-compaction.cjs",
+        "node tests/test-game-entry.cjs",
+        "node tests/test-release-assets.cjs",
+        "node tests/test-offline-entry-http.cjs",
+        "node tests/test-public-search-cache.cjs"
+      ],
+      "implicitChecks": [
+        "node tools/build-game-entry.cjs --check"
+      ],
+      "log": "qa-final/logs/02-attempt-4-npm-run-test-entry.log",
+      "startedAt": "2026-11-26T09:23:25.629+00:00",
+      "exitCode": 0,
+      "seconds": 4.099,
+      "finishedAt": "2026-11-26T09:23:29.728+00:00",
+      "reportedResults": [
+        {
+          "cssBytesBefore": 866366,
+          "cssBytesAfter": 855123,
+          "savedBytes": 11243,
+          "gzipBytesBefore": 168291,
+          "gzipBytesAfter": 165704
+        },
+        {
+          "installRequests": 17,
+          "installBytes": 3067661,
+          "warmNavigationNetworkRequests": 0,
+          "offlineEntryAssets": 9,
+          "offlineMap": true,
+          "offlineGuide": true,
+          "offlineArtworkFallback": true
+        }
+      ],
+      "attempts": [
+        {
+          "status": "PASS",
+          "exitCode": 0,
+          "seconds": 3.902,
+          "startedAt": "2026-11-26T09:08:30.338+00:00",
+          "finishedAt": "2026-11-26T09:08:34.240+00:00",
+          "log": "qa-final/logs/02-npm-run-test-entry.log",
+          "reportedResults": [
+            {
+              "cssBytesBefore": 866051,
+              "cssBytesAfter": 854808,
+              "savedBytes": 11243,
+              "gzipBytesBefore": 168246,
+              "gzipBytesAfter": 165660
+            },
+            {
+              "installRequests": 17,
+              "installBytes": 3067172,
+              "warmNavigationNetworkRequests": 0,
+              "offlineEntryAssets": 9,
+              "offlineMap": true,
+              "offlineGuide": true,
+              "offlineArtworkFallback": true
+            }
+          ]
+        },
+        {
+          "status": "PASS",
+          "exitCode": 0,
+          "seconds": 3.894,
+          "startedAt": "2026-11-26T09:13:20.183+00:00",
+          "finishedAt": "2026-11-26T09:13:24.078+00:00",
+          "log": "qa-final/logs/02b-npm-run-test-entry.log",
+          "reason": "Approved final CSS spacing change and regenerated entry assets",
+          "reportedResults": [
+            {
+              "cssBytesBefore": 866293,
+              "cssBytesAfter": 855050,
+              "savedBytes": 11243,
+              "gzipBytesBefore": 168282,
+              "gzipBytesAfter": 165695
+            },
+            {
+              "installRequests": 17,
+              "installBytes": 3067414,
+              "warmNavigationNetworkRequests": 0,
+              "offlineEntryAssets": 9,
+              "offlineMap": true,
+              "offlineGuide": true,
+              "offlineArtworkFallback": true
+            }
+          ]
+        },
+        {
+          "status": "PASS",
+          "exitCode": 0,
+          "seconds": 3.635,
+          "startedAt": "2026-11-26T09:19:07.128+00:00",
+          "finishedAt": "2026-11-26T09:19:10.763+00:00",
+          "log": "qa-final/logs/02-attempt-3-npm-run-test-entry.log",
+          "reason": "Final comparison-focus and archive-navigation fixes and regenerated interface/entry assets",
+          "reportedResults": [
+            {
+              "cssBytesBefore": 866293,
+              "cssBytesAfter": 855050,
+              "savedBytes": 11243,
+              "gzipBytesBefore": 168282,
+              "gzipBytesAfter": 165695
+            },
+            {
+              "installRequests": 17,
+              "installBytes": 3067588,
+              "warmNavigationNetworkRequests": 0,
+              "offlineEntryAssets": 9,
+              "offlineMap": true,
+              "offlineGuide": true,
+              "offlineArtworkFallback": true
+            }
+          ],
+          "reportedSummaries": [
+            "6 CSS distribution compaction checks passed."
+          ]
+        },
+        {
+          "status": "PASS",
+          "exitCode": 0,
+          "seconds": 4.099,
+          "startedAt": "2026-11-26T09:23:25.629+00:00",
+          "finishedAt": "2026-11-26T09:23:29.728+00:00",
+          "log": "qa-final/logs/02-attempt-4-npm-run-test-entry.log",
+          "reason": "One CSS rule protects hidden comparison buttons from existing display:flex styles; regenerated CSS and entry fingerprint",
+          "reportedResults": [
+            {
+              "cssBytesBefore": 866366,
+              "cssBytesAfter": 855123,
+              "savedBytes": 11243,
+              "gzipBytesBefore": 168291,
+              "gzipBytesAfter": 165704
+            },
+            {
+              "installRequests": 17,
+              "installBytes": 3067661,
+              "warmNavigationNetworkRequests": 0,
+              "offlineEntryAssets": 9,
+              "offlineMap": true,
+              "offlineGuide": true,
+              "offlineArtworkFallback": true
+            }
+          ],
+          "reportedSummaries": [
+            "6 CSS distribution compaction checks passed."
+          ]
+        }
+      ],
+      "reason": "One CSS rule protects hidden comparison buttons from existing display:flex styles; regenerated CSS and entry fingerprint",
+      "recheckReason": "Final change is CSS-only; unchanged JavaScript interaction and server gates are carried forward.",
+      "reportedSummaries": [
+        "6 CSS distribution compaction checks passed."
+      ]
+    },
+    {
+      "id": 3,
+      "command": "npm run test:interface",
+      "nodeMajor": "22",
+      "status": "PASS",
+      "requiredBy": [
+        "performance.yml:browser-assets:Check planning, comparison, navigation and deferred UI",
+        "performance.yml:browser-assets:Verify list, map and input continuity",
+        "brand-seo.yml:public-discovery:Check on-demand public guide search"
+      ],
+      "coveredCommands": [
+        "node tests/test-command-center.cjs",
+        "node tests/test-command-operations.cjs",
+        "node tests/test-alliance-operations.cjs",
+        "node tests/test-management-model.cjs",
+        "node tests/test-management-ui.cjs",
+        "node tests/test-travel-performance.cjs",
+        "node tests/test-navigation-ui.cjs",
+        "node tests/test-presentation.cjs",
+        "node tests/test-branch-commanders-ui.cjs",
+        "node tests/test-artwork-lifecycle.cjs",
+        "node tests/test-desktop-fit.cjs",
+        "node tests/test-social-viewport.cjs",
+        "node tests/test-public-search.cjs"
+      ],
+      "implicitChecks": [],
+      "log": "qa-final/logs/03-npm-run-test-interface.log",
+      "startedAt": "2026-11-26T09:08:34.242+00:00",
+      "exitCode": 0,
+      "seconds": 2.981,
+      "finishedAt": "2026-11-26T09:08:37.224+00:00"
+    },
+    {
+      "id": 4,
+      "command": "node tests/test-asset-budget.cjs",
+      "nodeMajor": "22",
+      "status": "PASS",
+      "requiredBy": [
+        "performance.yml:browser-assets:Check shipped asset budgets and runtime parity"
+      ],
+      "coveredCommands": [
+        "node tests/test-asset-budget.cjs"
+      ],
+      "implicitChecks": [],
+      "log": "qa-final/logs/04-attempt-4-node-tests-test-asset-budget-cjs.log",
+      "startedAt": "2026-11-26T09:23:29.728+00:00",
+      "exitCode": 0,
+      "seconds": 0.165,
+      "finishedAt": "2026-11-26T09:23:29.893+00:00",
+      "reportedResults": [
+        {
+          "entryBundles": [
+            {
+              "file": "game-layout.bundle.css",
+              "bytes": 855207,
+              "gzipBytes": 165760
+            },
+            {
+              "file": "game-preferences.bundle.js",
+              "bytes": 7330,
+              "gzipBytes": 2876
+            },
+            {
+              "file": "game-core.bundle.js",
+              "bytes": 620430,
+              "gzipBytes": 199395
+            },
+            {
+              "file": "game-campaign.bundle.js",
+              "bytes": 477209,
+              "gzipBytes": 157495
+            },
+            {
+              "file": "game-interface.bundle.js",
+              "bytes": 403313,
+              "gzipBytes": 135491
+            },
+            {
+              "file": "game-community.bundle.js",
+              "bytes": 585695,
+              "gzipBytes": 183739
+            }
+          ],
+          "totalBytes": 2949184,
+          "totalGzipBytes": 844756,
+          "rawBudget": 2950000,
+          "gzipBudget": 850000
+        }
+      ],
+      "attempts": [
+        {
+          "status": "PASS",
+          "exitCode": 0,
+          "seconds": 0.164,
+          "startedAt": "2026-11-26T09:08:37.226+00:00",
+          "finishedAt": "2026-11-26T09:08:37.390+00:00",
+          "log": "qa-final/logs/04-node-tests-test-asset-budget-cjs.log",
+          "reportedResults": [
+            {
+              "entryBundles": [
+                {
+                  "file": "game-layout.bundle.css",
+                  "bytes": 854892,
+                  "gzipBytes": 165715
+                },
+                {
+                  "file": "game-preferences.bundle.js",
+                  "bytes": 7330,
+                  "gzipBytes": 2876
+                },
+                {
+                  "file": "game-core.bundle.js",
+                  "bytes": 620430,
+                  "gzipBytes": 199395
+                },
+                {
+                  "file": "game-campaign.bundle.js",
+                  "bytes": 477209,
+                  "gzipBytes": 157495
+                },
+                {
+                  "file": "game-interface.bundle.js",
+                  "bytes": 403139,
+                  "gzipBytes": 135428
+                },
+                {
+                  "file": "game-community.bundle.js",
+                  "bytes": 585695,
+                  "gzipBytes": 183739
+                }
+              ],
+              "totalBytes": 2948695,
+              "totalGzipBytes": 844648,
+              "rawBudget": 2950000,
+              "gzipBudget": 850000
+            }
+          ]
+        },
+        {
+          "status": "PASS",
+          "exitCode": 0,
+          "seconds": 0.17,
+          "startedAt": "2026-11-26T09:13:24.078+00:00",
+          "finishedAt": "2026-11-26T09:13:24.248+00:00",
+          "log": "qa-final/logs/04b-node-tests-test-asset-budget-cjs.log",
+          "reason": "Approved final CSS spacing change and regenerated entry assets",
+          "reportedResults": [
+            {
+              "entryBundles": [
+                {
+                  "file": "game-layout.bundle.css",
+                  "bytes": 855134,
+                  "gzipBytes": 165751
+                },
+                {
+                  "file": "game-preferences.bundle.js",
+                  "bytes": 7330,
+                  "gzipBytes": 2876
+                },
+                {
+                  "file": "game-core.bundle.js",
+                  "bytes": 620430,
+                  "gzipBytes": 199395
+                },
+                {
+                  "file": "game-campaign.bundle.js",
+                  "bytes": 477209,
+                  "gzipBytes": 157495
+                },
+                {
+                  "file": "game-interface.bundle.js",
+                  "bytes": 403139,
+                  "gzipBytes": 135428
+                },
+                {
+                  "file": "game-community.bundle.js",
+                  "bytes": 585695,
+                  "gzipBytes": 183739
+                }
+              ],
+              "totalBytes": 2948937,
+              "totalGzipBytes": 844684,
+              "rawBudget": 2950000,
+              "gzipBudget": 850000
+            }
+          ]
+        },
+        {
+          "status": "PASS",
+          "exitCode": 0,
+          "seconds": 0.165,
+          "startedAt": "2026-11-26T09:19:10.763+00:00",
+          "finishedAt": "2026-11-26T09:19:10.928+00:00",
+          "log": "qa-final/logs/04-attempt-3-node-tests-test-asset-budget-cjs.log",
+          "reason": "Final comparison-focus and archive-navigation fixes and regenerated interface/entry assets",
+          "reportedResults": [
+            {
+              "entryBundles": [
+                {
+                  "file": "game-layout.bundle.css",
+                  "bytes": 855134,
+                  "gzipBytes": 165751
+                },
+                {
+                  "file": "game-preferences.bundle.js",
+                  "bytes": 7330,
+                  "gzipBytes": 2876
+                },
+                {
+                  "file": "game-core.bundle.js",
+                  "bytes": 620430,
+                  "gzipBytes": 199395
+                },
+                {
+                  "file": "game-campaign.bundle.js",
+                  "bytes": 477209,
+                  "gzipBytes": 157495
+                },
+                {
+                  "file": "game-interface.bundle.js",
+                  "bytes": 403313,
+                  "gzipBytes": 135491
+                },
+                {
+                  "file": "game-community.bundle.js",
+                  "bytes": 585695,
+                  "gzipBytes": 183739
+                }
+              ],
+              "totalBytes": 2949111,
+              "totalGzipBytes": 844747,
+              "rawBudget": 2950000,
+              "gzipBudget": 850000
+            }
+          ]
+        },
+        {
+          "status": "PASS",
+          "exitCode": 0,
+          "seconds": 0.165,
+          "startedAt": "2026-11-26T09:23:29.728+00:00",
+          "finishedAt": "2026-11-26T09:23:29.893+00:00",
+          "log": "qa-final/logs/04-attempt-4-node-tests-test-asset-budget-cjs.log",
+          "reason": "One CSS rule protects hidden comparison buttons from existing display:flex styles; regenerated CSS and entry fingerprint",
+          "reportedResults": [
+            {
+              "entryBundles": [
+                {
+                  "file": "game-layout.bundle.css",
+                  "bytes": 855207,
+                  "gzipBytes": 165760
+                },
+                {
+                  "file": "game-preferences.bundle.js",
+                  "bytes": 7330,
+                  "gzipBytes": 2876
+                },
+                {
+                  "file": "game-core.bundle.js",
+                  "bytes": 620430,
+                  "gzipBytes": 199395
+                },
+                {
+                  "file": "game-campaign.bundle.js",
+                  "bytes": 477209,
+                  "gzipBytes": 157495
+                },
+                {
+                  "file": "game-interface.bundle.js",
+                  "bytes": 403313,
+                  "gzipBytes": 135491
+                },
+                {
+                  "file": "game-community.bundle.js",
+                  "bytes": 585695,
+                  "gzipBytes": 183739
+                }
+              ],
+              "totalBytes": 2949184,
+              "totalGzipBytes": 844756,
+              "rawBudget": 2950000,
+              "gzipBudget": 850000
+            }
+          ]
+        }
+      ],
+      "reason": "One CSS rule protects hidden comparison buttons from existing display:flex styles; regenerated CSS and entry fingerprint",
+      "recheckReason": "Final change is CSS-only; unchanged JavaScript interaction and server gates are carried forward."
+    },
+    {
+      "id": 5,
+      "command": "node tests/test-minified-runtime.cjs",
+      "nodeMajor": "22",
+      "status": "PASS",
+      "requiredBy": [
+        "performance.yml:browser-assets:Check shipped asset budgets and runtime parity"
+      ],
+      "coveredCommands": [
+        "node tests/test-minified-runtime.cjs"
+      ],
+      "implicitChecks": [],
+      "log": "qa-final/logs/05-node-tests-test-minified-runtime-cjs.log",
+      "startedAt": "2026-11-26T09:08:37.393+00:00",
+      "exitCode": 0,
+      "seconds": 0.415,
+      "finishedAt": "2026-11-26T09:08:37.808+00:00"
+    },
+    {
+      "id": 6,
+      "command": "node tests/test-stable-dom.cjs",
+      "nodeMajor": "22",
+      "status": "PASS",
+      "requiredBy": [
+        "performance.yml:browser-assets:Verify list, map and input continuity"
+      ],
+      "coveredCommands": [
+        "node tests/test-stable-dom.cjs"
+      ],
+      "implicitChecks": [],
+      "log": "qa-final/logs/06-node-tests-test-stable-dom-cjs.log",
+      "startedAt": "2026-11-26T09:08:37.810+00:00",
+      "exitCode": 0,
+      "seconds": 1.424,
+      "finishedAt": "2026-11-26T09:08:39.234+00:00"
+    },
+    {
+      "id": 7,
+      "command": "node tests/test-world-map.cjs",
+      "nodeMajor": "22",
+      "status": "PASS",
+      "requiredBy": [
+        "performance.yml:browser-assets:Verify list, map and input continuity"
+      ],
+      "coveredCommands": [
+        "node tests/test-world-map.cjs"
+      ],
+      "implicitChecks": [],
+      "log": "qa-final/logs/07-node-tests-test-world-map-cjs.log",
+      "startedAt": "2026-11-26T09:08:39.237+00:00",
+      "exitCode": 0,
+      "seconds": 0.265,
+      "finishedAt": "2026-11-26T09:08:39.501+00:00"
+    },
+    {
+      "id": 8,
+      "command": "node tests/test-ui-continuity.cjs",
+      "nodeMajor": "22",
+      "status": "PASS",
+      "requiredBy": [
+        "performance.yml:browser-assets:Verify list, map and input continuity"
+      ],
+      "coveredCommands": [
+        "node tests/test-ui-continuity.cjs"
+      ],
+      "implicitChecks": [],
+      "log": "qa-final/logs/08-attempt-2-node-tests-test-ui-continuity-cjs.log",
+      "startedAt": "2026-11-26T09:19:06.813+00:00",
+      "exitCode": 0,
+      "seconds": 0.315,
+      "finishedAt": "2026-11-26T09:19:07.128+00:00",
+      "attempts": [
+        {
+          "status": "PASS",
+          "exitCode": 0,
+          "seconds": 0.415,
+          "startedAt": "2026-11-26T09:08:39.503+00:00",
+          "finishedAt": "2026-11-26T09:08:39.918+00:00",
+          "log": "qa-final/logs/08-node-tests-test-ui-continuity-cjs.log"
+        },
+        {
+          "status": "PASS",
+          "exitCode": 0,
+          "seconds": 0.315,
+          "startedAt": "2026-11-26T09:19:06.813+00:00",
+          "finishedAt": "2026-11-26T09:19:07.128+00:00",
+          "log": "qa-final/logs/08-attempt-2-node-tests-test-ui-continuity-cjs.log",
+          "reason": "Final comparison-focus and archive-navigation fixes and regenerated interface/entry assets",
+          "reportedSummaries": [
+            "14 live UI continuity, elapsed timer and cycle settlement checks passed."
+          ]
+        }
+      ],
+      "reason": "Final comparison-focus and archive-navigation fixes and regenerated interface/entry assets",
+      "reportedSummaries": [
+        "14 live UI continuity, elapsed timer and cycle settlement checks passed."
+      ],
+      "recheckReason": "Targeted verification of the final app changes; unrelated already-passing gates are carried forward."
+    },
+    {
+      "id": 9,
+      "command": "node tests/test-quiet-sync-layout.cjs",
+      "nodeMajor": "22",
+      "status": "PASS",
+      "requiredBy": [
+        "performance.yml:browser-assets:Verify list, map and input continuity"
+      ],
+      "coveredCommands": [
+        "node tests/test-quiet-sync-layout.cjs"
+      ],
+      "implicitChecks": [],
+      "log": "qa-final/logs/09-node-tests-test-quiet-sync-layout-cjs.log",
+      "startedAt": "2026-11-26T09:08:39.920+00:00",
+      "exitCode": 0,
+      "seconds": 0.114,
+      "finishedAt": "2026-11-26T09:08:40.035+00:00"
+    },
+    {
+      "id": 10,
+      "command": "node tests/test-social-chat.cjs",
+      "nodeMajor": "22",
+      "status": "PASS",
+      "requiredBy": [
+        "performance.yml:browser-assets:Verify list, map and input continuity"
+      ],
+      "coveredCommands": [
+        "node tests/test-social-chat.cjs"
+      ],
+      "implicitChecks": [],
+      "log": "qa-final/logs/10-node-tests-test-social-chat-cjs.log",
+      "startedAt": "2026-11-26T09:08:40.037+00:00",
+      "exitCode": 0,
+      "seconds": 0.515,
+      "finishedAt": "2026-11-26T09:08:40.552+00:00"
+    },
+    {
+      "id": 11,
+      "command": "node tests/test-social-avatar.cjs",
+      "nodeMajor": "22",
+      "status": "PASS",
+      "requiredBy": [
+        "performance.yml:browser-assets:Verify list, map and input continuity"
+      ],
+      "coveredCommands": [
+        "node tests/test-social-avatar.cjs"
+      ],
+      "implicitChecks": [],
+      "log": "qa-final/logs/11-node-tests-test-social-avatar-cjs.log",
+      "startedAt": "2026-11-26T09:08:40.554+00:00",
+      "exitCode": 0,
+      "seconds": 0.215,
+      "finishedAt": "2026-11-26T09:08:40.769+00:00"
+    },
+    {
+      "id": 12,
+      "command": "node tests/test-profile-name-ui.cjs",
+      "nodeMajor": "22",
+      "status": "PASS",
+      "requiredBy": [
+        "performance.yml:browser-assets:Verify list, map and input continuity"
+      ],
+      "coveredCommands": [
+        "node tests/test-profile-name-ui.cjs"
+      ],
+      "implicitChecks": [],
+      "log": "qa-final/logs/12-node-tests-test-profile-name-ui-cjs.log",
+      "startedAt": "2026-11-26T09:08:40.771+00:00",
+      "exitCode": 0,
+      "seconds": 0.115,
+      "finishedAt": "2026-11-26T09:08:40.886+00:00"
+    },
+    {
+      "id": 13,
+      "command": "node tests/test-responsive-text.cjs",
+      "nodeMajor": "22",
+      "status": "PASS",
+      "requiredBy": [
+        "performance.yml:browser-assets:Verify list, map and input continuity"
+      ],
+      "coveredCommands": [
+        "node tests/test-responsive-text.cjs"
+      ],
+      "implicitChecks": [],
+      "log": "qa-final/logs/13-node-tests-test-responsive-text-cjs.log",
+      "startedAt": "2026-11-26T09:08:40.888+00:00",
+      "exitCode": 0,
+      "seconds": 0.165,
+      "finishedAt": "2026-11-26T09:08:41.054+00:00"
+    },
+    {
+      "id": 14,
+      "command": "node server/test-chat-replies.mjs",
+      "nodeMajor": "24",
+      "status": "PASS",
+      "requiredBy": [
+        "performance.yml:chat-server:Verify chat replies, mentions and room authorization"
+      ],
+      "coveredCommands": [
+        "node server/test-chat-replies.mjs"
+      ],
+      "implicitChecks": [],
+      "log": "qa-final/logs/14-node-server-test-chat-replies-mjs.log",
+      "startedAt": "2026-11-26T09:08:41.056+00:00",
+      "exitCode": 0,
+      "seconds": 1.023,
+      "finishedAt": "2026-11-26T09:08:42.079+00:00",
+      "reportedResults": [
+        {
+          "ok": true,
+          "checks": 10,
+          "calls": 126,
+          "productionRequests": 0
+        }
+      ]
+    },
+    {
+      "id": 15,
+      "command": "node server/test-promotion.mjs",
+      "nodeMajor": "24",
+      "status": "PASS",
+      "requiredBy": [
+        "performance.yml:chat-server:Verify anonymous promotion counters and operator authorization"
+      ],
+      "coveredCommands": [
+        "node server/test-promotion.mjs"
+      ],
+      "implicitChecks": [],
+      "log": "qa-final/logs/15-node-server-test-promotion-mjs.log",
+      "startedAt": "2026-11-26T09:08:42.081+00:00",
+      "exitCode": 0,
+      "seconds": 0.565,
+      "finishedAt": "2026-11-26T09:08:42.646+00:00"
+    },
+    {
+      "id": 16,
+      "command": "node tests/test-covert-return-travel.cjs",
+      "nodeMajor": "24",
+      "status": "PASS",
+      "requiredBy": [
+        "performance.yml:dispatch-travel:Verify dispatch return boundaries and save recovery"
+      ],
+      "coveredCommands": [
+        "node tests/test-covert-return-travel.cjs"
+      ],
+      "implicitChecks": [],
+      "log": "qa-final/logs/16-node-tests-test-covert-return-travel-cjs.log",
+      "startedAt": "2026-11-26T09:08:42.648+00:00",
+      "exitCode": 0,
+      "seconds": 0.217,
+      "finishedAt": "2026-11-26T09:08:42.865+00:00"
+    },
+    {
+      "id": 17,
+      "command": "node tests/test-travel-engine.cjs",
+      "nodeMajor": "24",
+      "status": "PASS",
+      "requiredBy": [
+        "performance.yml:dispatch-travel:Verify dispatch return boundaries and save recovery"
+      ],
+      "coveredCommands": [
+        "node tests/test-travel-engine.cjs"
+      ],
+      "implicitChecks": [],
+      "log": "qa-final/logs/17-node-tests-test-travel-engine-cjs.log",
+      "startedAt": "2026-11-26T09:08:42.868+00:00",
+      "exitCode": 0,
+      "seconds": 0.365,
+      "finishedAt": "2026-11-26T09:08:43.232+00:00"
+    },
+    {
+      "id": 18,
+      "command": "node tests/test-covert-engine.cjs",
+      "nodeMajor": "24",
+      "status": "PASS",
+      "requiredBy": [
+        "performance.yml:dispatch-travel:Verify dispatch return boundaries and save recovery"
+      ],
+      "coveredCommands": [
+        "node tests/test-covert-engine.cjs"
+      ],
+      "implicitChecks": [],
+      "log": "qa-final/logs/18-node-tests-test-covert-engine-cjs.log",
+      "startedAt": "2026-11-26T09:08:43.236+00:00",
+      "exitCode": 0,
+      "seconds": 0.164,
+      "finishedAt": "2026-11-26T09:08:43.400+00:00"
+    },
+    {
+      "id": 19,
+      "command": "node tests/test-covert-ui.cjs",
+      "nodeMajor": "24",
+      "status": "PASS",
+      "requiredBy": [
+        "performance.yml:dispatch-travel:Verify route previews and countdown continuity"
+      ],
+      "coveredCommands": [
+        "node tests/test-covert-ui.cjs"
+      ],
+      "implicitChecks": [],
+      "log": "qa-final/logs/19-node-tests-test-covert-ui-cjs.log",
+      "startedAt": "2026-11-26T09:08:43.402+00:00",
+      "exitCode": 0,
+      "seconds": 0.265,
+      "finishedAt": "2026-11-26T09:08:43.667+00:00"
+    },
+    {
+      "id": 20,
+      "command": "node tests/test-covert-dom.cjs",
+      "nodeMajor": "24",
+      "status": "PASS",
+      "requiredBy": [
+        "performance.yml:dispatch-travel:Verify route previews and countdown continuity"
+      ],
+      "coveredCommands": [
+        "node tests/test-covert-dom.cjs"
+      ],
+      "implicitChecks": [],
+      "log": "qa-final/logs/20-node-tests-test-covert-dom-cjs.log",
+      "startedAt": "2026-11-26T09:08:43.670+00:00",
+      "exitCode": 0,
+      "seconds": 0.969,
+      "finishedAt": "2026-11-26T09:08:44.639+00:00"
+    },
+    {
+      "id": 21,
+      "command": "node tests/test-travel-ui.cjs",
+      "nodeMajor": "24",
+      "status": "PASS",
+      "requiredBy": [
+        "performance.yml:dispatch-travel:Verify route previews and countdown continuity"
+      ],
+      "coveredCommands": [
+        "node tests/test-travel-ui.cjs"
+      ],
+      "implicitChecks": [],
+      "log": "qa-final/logs/21-node-tests-test-travel-ui-cjs.log",
+      "startedAt": "2026-11-26T09:08:44.641+00:00",
+      "exitCode": 0,
+      "seconds": 0.267,
+      "finishedAt": "2026-11-26T09:08:44.908+00:00"
+    },
+    {
+      "id": 22,
+      "command": "node tests/test-alliance-strategy.cjs",
+      "nodeMajor": "24",
+      "status": "PASS",
+      "requiredBy": [
+        "performance.yml:dispatch-travel:Verify route previews and countdown continuity"
+      ],
+      "coveredCommands": [
+        "node tests/test-alliance-strategy.cjs"
+      ],
+      "implicitChecks": [],
+      "log": "qa-final/logs/22-node-tests-test-alliance-strategy-cjs.log",
+      "startedAt": "2026-11-26T09:08:44.910+00:00",
+      "exitCode": 0,
+      "seconds": 0.164,
+      "finishedAt": "2026-11-26T09:08:45.075+00:00"
+    },
+    {
+      "id": 23,
+      "command": "node server/test-alliance-travel.mjs",
+      "nodeMajor": "24",
+      "status": "PASS",
+      "requiredBy": [
+        "performance.yml:dispatch-travel:Verify authoritative arrival, defense and troop returns"
+      ],
+      "coveredCommands": [
+        "node server/test-alliance-travel.mjs"
+      ],
+      "implicitChecks": [],
+      "log": "qa-final/logs/23-node-server-test-alliance-travel-mjs.log",
+      "startedAt": "2026-11-26T09:08:45.077+00:00",
+      "exitCode": 0,
+      "seconds": 2.021,
+      "finishedAt": "2026-11-26T09:08:47.097+00:00"
+    },
+    {
+      "id": 24,
+      "command": "node server/test-alliance-strategy.mjs",
+      "nodeMajor": "24",
+      "status": "PASS",
+      "requiredBy": [
+        "performance.yml:dispatch-travel:Verify authoritative arrival, defense and troop returns"
+      ],
+      "coveredCommands": [
+        "node server/test-alliance-strategy.mjs"
+      ],
+      "implicitChecks": [],
+      "log": "qa-final/logs/24-node-server-test-alliance-strategy-mjs.log",
+      "startedAt": "2026-11-26T09:08:47.100+00:00",
+      "exitCode": 0,
+      "seconds": 3.581,
+      "finishedAt": "2026-11-26T09:08:50.681+00:00"
+    },
+    {
+      "id": 25,
+      "command": "node server/test-covert.mjs",
+      "nodeMajor": "24",
+      "status": "PASS",
+      "requiredBy": [
+        "performance.yml:dispatch-travel:Verify authoritative arrival, defense and troop returns"
+      ],
+      "coveredCommands": [
+        "node server/test-covert.mjs"
+      ],
+      "implicitChecks": [],
+      "log": "qa-final/logs/25-node-server-test-covert-mjs.log",
+      "startedAt": "2026-11-26T09:08:50.684+00:00",
+      "exitCode": 0,
+      "seconds": 6.695,
+      "finishedAt": "2026-11-26T09:08:57.379+00:00"
+    },
+    {
+      "id": 26,
+      "command": "node server/test-battle-travel.mjs",
+      "nodeMajor": "24",
+      "status": "PASS",
+      "requiredBy": [
+        "performance.yml:dispatch-travel:Verify authoritative arrival, defense and troop returns"
+      ],
+      "coveredCommands": [
+        "node server/test-battle-travel.mjs"
+      ],
+      "implicitChecks": [],
+      "log": "qa-final/logs/26-node-server-test-battle-travel-mjs.log",
+      "startedAt": "2026-11-26T09:08:57.381+00:00",
+      "exitCode": 0,
+      "seconds": 5.834,
+      "finishedAt": "2026-11-26T09:09:03.215+00:00"
+    },
+    {
+      "id": 27,
+      "command": "node server/test-legacy-save-recovery.mjs",
+      "nodeMajor": "24",
+      "status": "PASS",
+      "requiredBy": [
+        "performance.yml:save-recovery:Verify legacy saves, world clocks and officer health"
+      ],
+      "coveredCommands": [
+        "node server/test-legacy-save-recovery.mjs"
+      ],
+      "implicitChecks": [],
+      "log": "qa-final/logs/27-node-server-test-legacy-save-recovery-mjs.log",
+      "startedAt": "2026-11-26T09:09:03.228+00:00",
+      "exitCode": 0,
+      "seconds": 1.021,
+      "finishedAt": "2026-11-26T09:09:04.250+00:00",
+      "reportedResults": [
+        {
+          "ok": true,
+          "checks": 6,
+          "calls": 36,
+          "productionRequests": 0
+        }
+      ]
+    },
+    {
+      "id": 28,
+      "command": "node server/test-world-clock.mjs",
+      "nodeMajor": "24",
+      "status": "PASS",
+      "requiredBy": [
+        "performance.yml:save-recovery:Verify legacy saves, world clocks and officer health"
+      ],
+      "coveredCommands": [
+        "node server/test-world-clock.mjs"
+      ],
+      "implicitChecks": [],
+      "log": "qa-final/logs/28-node-server-test-world-clock-mjs.log",
+      "startedAt": "2026-11-26T09:09:04.252+00:00",
+      "exitCode": 0,
+      "seconds": 0.567,
+      "finishedAt": "2026-11-26T09:09:04.819+00:00"
+    },
+    {
+      "id": 29,
+      "command": "node server/test-officer-health.mjs",
+      "nodeMajor": "24",
+      "status": "PASS",
+      "requiredBy": [
+        "performance.yml:save-recovery:Verify legacy saves, world clocks and officer health"
+      ],
+      "coveredCommands": [
+        "node server/test-officer-health.mjs"
+      ],
+      "implicitChecks": [],
+      "log": "qa-final/logs/29-node-server-test-officer-health-mjs.log",
+      "startedAt": "2026-11-26T09:09:04.821+00:00",
+      "exitCode": 0,
+      "seconds": 3.178,
+      "finishedAt": "2026-11-26T09:09:07.999+00:00",
+      "reportedResults": [
+        {
+          "checks": 14,
+          "apiCalls": 135
+        }
+      ]
+    },
+    {
+      "id": 30,
+      "command": "node server/test-sync.mjs",
+      "nodeMajor": "24",
+      "status": "PASS",
+      "requiredBy": [
+        "performance.yml:save-recovery:Verify authoritative sync, field migration and world cycles"
+      ],
+      "coveredCommands": [
+        "node server/test-sync.mjs"
+      ],
+      "implicitChecks": [],
+      "log": "qa-final/logs/30-node-server-test-sync-mjs.log",
+      "startedAt": "2026-11-26T09:09:08.001+00:00",
+      "exitCode": 0,
+      "seconds": 0.866,
+      "finishedAt": "2026-11-26T09:09:08.867+00:00"
+    },
+    {
+      "id": 31,
+      "command": "node server/test-field-migration.mjs",
+      "nodeMajor": "24",
+      "status": "PASS",
+      "requiredBy": [
+        "performance.yml:save-recovery:Verify authoritative sync, field migration and world cycles"
+      ],
+      "coveredCommands": [
+        "node server/test-field-migration.mjs"
+      ],
+      "implicitChecks": [],
+      "log": "qa-final/logs/31-node-server-test-field-migration-mjs.log",
+      "startedAt": "2026-11-26T09:09:08.870+00:00",
+      "exitCode": 0,
+      "seconds": 0.515,
+      "finishedAt": "2026-11-26T09:09:09.385+00:00"
+    },
+    {
+      "id": 32,
+      "command": "node server/test-world-cycles.mjs",
+      "nodeMajor": "24",
+      "status": "PASS",
+      "requiredBy": [
+        "performance.yml:save-recovery:Verify authoritative sync, field migration and world cycles"
+      ],
+      "coveredCommands": [
+        "node server/test-world-cycles.mjs"
+      ],
+      "implicitChecks": [],
+      "log": "qa-final/logs/32-node-server-test-world-cycles-mjs.log",
+      "startedAt": "2026-11-26T09:09:09.388+00:00",
+      "exitCode": 0,
+      "seconds": 1.568,
+      "finishedAt": "2026-11-26T09:09:10.956+00:00",
+      "reportedResults": [
+        {
+          "ok": true,
+          "calls": 87,
+          "checks": [
+            "concurrent same-boundary CAS",
+            "exact one reward receipt and public event",
+            "home and development retained",
+            "captured castles and foreign jobs reset",
+            "old save/revision cannot repeat grant",
+            "public bounded feed with pagination and privacy",
+            "accepted milestones only, no historical seeding",
+            "bounded multi-cycle catch-up without repeated captured rewards",
+            "transaction rollback and retry",
+            "rollout anchor prevents retroactive rewards",
+            "active writer dirty snapshot protected from reader and field polls",
+            "final preboundary capture included before reset",
+            "unchanged checkpoint explicit settlement and follower denial",
+            "public field and guild counts project new cycle immediately",
+            "legacy fractional clock migration",
+            "operator Edo/U retained and demotion restrictions preserved",
+            "commit-time writer takeover and resumed-target lease race",
+            "stale commands cannot force another writer settlement",
+            "server-completed construction announced atomically"
+          ]
+        }
+      ]
+    },
+    {
+      "id": 33,
+      "command": "node tests/test-sync-integration.mjs",
+      "nodeMajor": "24",
+      "status": "PASS",
+      "requiredBy": [
+        "performance.yml:save-recovery:Verify authoritative sync, field migration and world cycles"
+      ],
+      "coveredCommands": [
+        "node tests/test-sync-integration.mjs"
+      ],
+      "implicitChecks": [],
+      "log": "qa-final/logs/33-node-tests-test-sync-integration-mjs.log",
+      "startedAt": "2026-11-26T09:09:10.959+00:00",
+      "exitCode": 0,
+      "seconds": 3.324,
+      "finishedAt": "2026-11-26T09:09:14.282+00:00"
+    },
+    {
+      "id": 34,
+      "command": "node tests/test-kyoto-gosho-engine.cjs",
+      "nodeMajor": "24",
+      "status": "PASS",
+      "requiredBy": [
+        "performance.yml:save-recovery:Verify shared construction and private Kyoto migration"
+      ],
+      "coveredCommands": [
+        "node tests/test-kyoto-gosho-engine.cjs"
+      ],
+      "implicitChecks": [],
+      "log": "qa-final/logs/34-node-tests-test-kyoto-gosho-engine-cjs.log",
+      "startedAt": "2026-11-26T09:09:14.285+00:00",
+      "exitCode": 0,
+      "seconds": 0.214,
+      "finishedAt": "2026-11-26T09:09:14.499+00:00"
+    },
+    {
+      "id": 35,
+      "command": "node tests/test-staff-base-sync.cjs",
+      "nodeMajor": "24",
+      "status": "PASS",
+      "requiredBy": [
+        "performance.yml:save-recovery:Verify shared construction and private Kyoto migration"
+      ],
+      "coveredCommands": [
+        "node tests/test-staff-base-sync.cjs"
+      ],
+      "implicitChecks": [],
+      "log": "qa-final/logs/35-node-tests-test-staff-base-sync-cjs.log",
+      "startedAt": "2026-11-26T09:09:14.501+00:00",
+      "exitCode": 0,
+      "seconds": 0.315,
+      "finishedAt": "2026-11-26T09:09:14.816+00:00"
+    },
+    {
+      "id": 36,
+      "command": "node server/test-kyoto-migration.mjs",
+      "nodeMajor": "24",
+      "status": "PASS",
+      "requiredBy": [
+        "performance.yml:save-recovery:Verify shared construction and private Kyoto migration"
+      ],
+      "coveredCommands": [
+        "node server/test-kyoto-migration.mjs"
+      ],
+      "implicitChecks": [],
+      "log": "qa-final/logs/36-node-server-test-kyoto-migration-mjs.log",
+      "startedAt": "2026-11-26T09:09:14.818+00:00",
+      "exitCode": 0,
+      "seconds": 1.166,
+      "finishedAt": "2026-11-26T09:09:15.984+00:00",
+      "reportedResults": [
+        {
+          "ok": true,
+          "checks": 5,
+          "calls": 66,
+          "productionRequests": 0
+        }
+      ]
+    },
+    {
+      "id": 37,
+      "command": "node server/test-staff-base.mjs",
+      "nodeMajor": "24",
+      "status": "PASS",
+      "requiredBy": [
+        "performance.yml:save-recovery:Verify shared construction and private Kyoto migration"
+      ],
+      "coveredCommands": [
+        "node server/test-staff-base.mjs"
+      ],
+      "implicitChecks": [],
+      "log": "qa-final/logs/37-node-server-test-staff-base-mjs.log",
+      "startedAt": "2026-11-26T09:09:15.987+00:00",
+      "exitCode": 0,
+      "seconds": 3.855,
+      "finishedAt": "2026-11-26T09:09:19.842+00:00"
+    },
+    {
+      "id": 38,
+      "command": "node server/test-construction-queues.mjs",
+      "nodeMajor": "24",
+      "status": "PASS",
+      "requiredBy": [
+        "performance.yml:save-recovery:Verify shared construction and private Kyoto migration"
+      ],
+      "coveredCommands": [
+        "node server/test-construction-queues.mjs"
+      ],
+      "implicitChecks": [],
+      "log": "qa-final/logs/38-node-server-test-construction-queues-mjs.log",
+      "startedAt": "2026-11-26T09:09:19.845+00:00",
+      "exitCode": 0,
+      "seconds": 2.071,
+      "finishedAt": "2026-11-26T09:09:21.916+00:00",
+      "reportedResults": [
+        {
+          "passed": 6,
+          "localHttpCalls": 144,
+          "productionRequests": 0
+        }
+      ]
+    },
+    {
+      "id": 39,
+      "command": "node tools/build-public-pages.cjs --check",
+      "nodeMajor": "22",
+      "status": "PASS",
+      "requiredBy": [
+        "brand-seo.yml:public-discovery:Check generated public documents"
+      ],
+      "coveredCommands": [
+        "node tools/build-public-pages.cjs --check"
+      ],
+      "implicitChecks": [],
+      "log": "qa-final/logs/39-node-tools-build-public-pages-cjs---check.log",
+      "startedAt": "2026-11-26T09:09:21.919+00:00",
+      "exitCode": 0,
+      "seconds": 0.166,
+      "finishedAt": "2026-11-26T09:09:22.084+00:00"
+    },
+    {
+      "id": 40,
+      "command": "python3 tools/build-press-kit.py --check",
+      "nodeMajor": "22",
+      "status": "PASS",
+      "requiredBy": [
+        "brand-seo.yml:public-discovery:Check the downloadable press kit"
+      ],
+      "coveredCommands": [
+        "python3 tools/build-press-kit.py --check"
+      ],
+      "implicitChecks": [],
+      "log": "qa-final/logs/40-python3-tools-build-press-kit-py---check.log",
+      "startedAt": "2026-11-26T09:09:22.087+00:00",
+      "exitCode": 0,
+      "seconds": 0.315,
+      "finishedAt": "2026-11-26T09:09:22.402+00:00"
+    },
+    {
+      "id": 41,
+      "command": "node tests/test-seo.cjs",
+      "nodeMajor": "22",
+      "status": "PASS",
+      "requiredBy": [
+        "brand-seo.yml:public-discovery:Check metadata, artwork and notification contracts"
+      ],
+      "coveredCommands": [
+        "node tests/test-seo.cjs"
+      ],
+      "implicitChecks": [],
+      "log": "qa-final/logs/41-node-tests-test-seo-cjs.log",
+      "startedAt": "2026-11-26T09:09:22.405+00:00",
+      "exitCode": 0,
+      "seconds": 0.265,
+      "finishedAt": "2026-11-26T09:09:22.670+00:00",
+      "reportedResults": [
+        {
+          "passed": 27,
+          "realIndexNowNotifications": 0,
+          "mockTransportOnly": true
+        }
+      ]
+    },
+    {
+      "id": 42,
+      "command": "node tests/test-public-pages.cjs",
+      "nodeMajor": "22",
+      "status": "PASS",
+      "requiredBy": [
+        "brand-seo.yml:public-discovery:Check crawlable links and structured data"
+      ],
+      "coveredCommands": [
+        "node tests/test-public-pages.cjs"
+      ],
+      "implicitChecks": [],
+      "log": "qa-final/logs/42-node-tests-test-public-pages-cjs.log",
+      "startedAt": "2026-11-26T09:09:22.672+00:00",
+      "exitCode": 0,
+      "seconds": 0.265,
+      "finishedAt": "2026-11-26T09:09:22.937+00:00"
+    },
+    {
+      "id": 43,
+      "command": "python3 tests/test-news-feed.py",
+      "nodeMajor": "22",
+      "status": "PASS",
+      "requiredBy": [
+        "brand-seo.yml:public-discovery:Check release feed and permanent update links"
+      ],
+      "coveredCommands": [
+        "python3 tests/test-news-feed.py"
+      ],
+      "implicitChecks": [],
+      "log": "qa-final/logs/43-python3-tests-test-news-feed-py.log",
+      "startedAt": "2026-11-26T09:09:22.940+00:00",
+      "exitCode": 0,
+      "seconds": 0.115,
+      "finishedAt": "2026-11-26T09:09:23.054+00:00"
+    },
+    {
+      "id": 44,
+      "command": "node tests/test-promotion-sharing.cjs",
+      "nodeMajor": "22",
+      "status": "PASS",
+      "requiredBy": [
+        "brand-seo.yml:public-discovery:Check sharing and clipboard recovery"
+      ],
+      "coveredCommands": [
+        "node tests/test-promotion-sharing.cjs"
+      ],
+      "implicitChecks": [],
+      "log": "qa-final/logs/44-node-tests-test-promotion-sharing-cjs.log",
+      "startedAt": "2026-11-26T09:09:23.057+00:00",
+      "exitCode": 0,
+      "seconds": 0.064,
+      "finishedAt": "2026-11-26T09:09:23.122+00:00"
+    },
+    {
+      "id": 45,
+      "command": "node tests/test-public-growth.cjs",
+      "nodeMajor": "22",
+      "status": "PASS",
+      "requiredBy": [
+        "brand-seo.yml:public-discovery:Check anonymous introduction counters"
+      ],
+      "coveredCommands": [
+        "node tests/test-public-growth.cjs"
+      ],
+      "implicitChecks": [],
+      "log": "qa-final/logs/45-node-tests-test-public-growth-cjs.log",
+      "startedAt": "2026-11-26T09:09:23.125+00:00",
+      "exitCode": 0,
+      "seconds": 0.114,
+      "finishedAt": "2026-11-26T09:09:23.239+00:00"
+    },
+    {
+      "id": 46,
+      "command": "node tests/test-promotion-admin.cjs",
+      "nodeMajor": "22",
+      "status": "PASS",
+      "requiredBy": [
+        "brand-seo.yml:public-discovery:Check owner-only promotion reporting"
+      ],
+      "coveredCommands": [
+        "node tests/test-promotion-admin.cjs"
+      ],
+      "implicitChecks": [],
+      "log": "qa-final/logs/46-node-tests-test-promotion-admin-cjs.log",
+      "startedAt": "2026-11-26T09:09:23.241+00:00",
+      "exitCode": 0,
+      "seconds": 0.114,
+      "finishedAt": "2026-11-26T09:09:23.355+00:00"
+    },
+    {
+      "id": 47,
+      "command": "node tests/test-promotion-invites.cjs",
+      "nodeMajor": "22",
+      "status": "PASS",
+      "requiredBy": [
+        "brand-seo.yml:public-discovery:Check invitation links and copy feedback"
+      ],
+      "coveredCommands": [
+        "node tests/test-promotion-invites.cjs"
+      ],
+      "implicitChecks": [],
+      "log": "qa-final/logs/47-node-tests-test-promotion-invites-cjs.log",
+      "startedAt": "2026-11-26T09:09:23.358+00:00",
+      "exitCode": 0,
+      "seconds": 0.064,
+      "finishedAt": "2026-11-26T09:09:23.422+00:00"
+    },
+    {
+      "id": 48,
+      "command": "node tests/test-responsive-images.cjs",
+      "nodeMajor": "22",
+      "status": "PASS",
+      "requiredBy": [
+        "brand-seo.yml:public-discovery:Check responsive artwork and image preload"
+      ],
+      "coveredCommands": [
+        "node tests/test-responsive-images.cjs"
+      ],
+      "implicitChecks": [],
+      "log": "qa-final/logs/48-node-tests-test-responsive-images-cjs.log",
+      "startedAt": "2026-11-26T09:09:23.425+00:00",
+      "exitCode": 0,
+      "seconds": 0.115,
+      "finishedAt": "2026-11-26T09:09:23.540+00:00"
+    },
+    {
+      "id": 49,
+      "command": "node tests/test-service-worker-brand.cjs",
+      "nodeMajor": "22",
+      "status": "PASS",
+      "requiredBy": [
+        "brand-seo.yml:public-discovery:Check current-brand cache behavior"
+      ],
+      "coveredCommands": [
+        "node tests/test-service-worker-brand.cjs"
+      ],
+      "implicitChecks": [],
+      "log": "qa-final/logs/49-node-tests-test-service-worker-brand-cjs.log",
+      "startedAt": "2026-11-26T09:09:23.542+00:00",
+      "exitCode": 0,
+      "seconds": 0.114,
+      "finishedAt": "2026-11-26T09:09:23.657+00:00"
+    },
+    {
+      "id": 50,
+      "command": "node tests/test-page-security.cjs",
+      "nodeMajor": "22",
+      "status": "PASS",
+      "requiredBy": [
+        "brand-seo.yml:public-discovery:Check public page content policies"
+      ],
+      "coveredCommands": [
+        "node tests/test-page-security.cjs"
+      ],
+      "implicitChecks": [],
+      "log": "qa-final/logs/50-node-tests-test-page-security-cjs.log",
+      "startedAt": "2026-11-26T09:09:23.661+00:00",
+      "exitCode": 0,
+      "seconds": 0.123,
+      "finishedAt": "2026-11-26T09:09:23.784+00:00"
+    },
+    {
+      "id": 51,
+      "command": "node --check tools/music-audition.js",
+      "nodeMajor": "22",
+      "status": "PASS",
+      "requiredBy": [
+        "music.yml:playback:Check game entry and audition syntax"
+      ],
+      "coveredCommands": [
+        "node --check tools/music-audition.js"
+      ],
+      "implicitChecks": [],
+      "log": "qa-final/logs/51-node---check-tools-music-audition-js.log",
+      "startedAt": "2026-11-26T09:09:23.792+00:00",
+      "exitCode": 0,
+      "seconds": 0.066,
+      "finishedAt": "2026-11-26T09:09:23.858+00:00"
+    },
+    {
+      "id": 52,
+      "command": "node tests/test-supplied-recordings.cjs",
+      "nodeMajor": "22",
+      "status": "PASS",
+      "requiredBy": [
+        "music.yml:playback:Check supplied recordings against the verified originals"
+      ],
+      "coveredCommands": [
+        "node tests/test-supplied-recordings.cjs"
+      ],
+      "implicitChecks": [],
+      "log": "qa-final/logs/52-node-tests-test-supplied-recordings-cjs.log",
+      "startedAt": "2026-11-26T09:09:23.860+00:00",
+      "exitCode": 0,
+      "seconds": 0.116,
+      "finishedAt": "2026-11-26T09:09:23.975+00:00"
+    },
+    {
+      "id": 53,
+      "command": "node tests/test-music.mjs",
+      "nodeMajor": "22",
+      "status": "PASS",
+      "requiredBy": [
+        "music.yml:playback:Check original scores and playback lifecycle"
+      ],
+      "coveredCommands": [
+        "node tests/test-music.mjs"
+      ],
+      "implicitChecks": [],
+      "log": "qa-final/logs/53-node-tests-test-music-mjs.log",
+      "startedAt": "2026-11-26T09:09:23.982+00:00",
+      "exitCode": 0,
+      "seconds": 1.923,
+      "finishedAt": "2026-11-26T09:09:25.905+00:00"
+    },
+    {
+      "id": 54,
+      "command": "node tests/test-music-time-of-day.mjs",
+      "nodeMajor": "22",
+      "status": "PASS",
+      "requiredBy": [
+        "music.yml:playback:Check menu and time-of-day selection"
+      ],
+      "coveredCommands": [
+        "node tests/test-music-time-of-day.mjs"
+      ],
+      "implicitChecks": [],
+      "log": "qa-final/logs/54-node-tests-test-music-time-of-day-mjs.log",
+      "startedAt": "2026-11-26T09:09:25.907+00:00",
+      "exitCode": 0,
+      "seconds": 1.323,
+      "finishedAt": "2026-11-26T09:09:27.230+00:00"
+    },
+    {
+      "id": 55,
+      "command": "node tests/test-settings-usability.cjs",
+      "nodeMajor": "22",
+      "status": "PASS",
+      "requiredBy": [
+        "music.yml:playback:Check music preferences and save boundaries"
+      ],
+      "coveredCommands": [
+        "node tests/test-settings-usability.cjs"
+      ],
+      "implicitChecks": [],
+      "log": "qa-final/logs/55-node-tests-test-settings-usability-cjs.log",
+      "startedAt": "2026-11-26T09:09:27.233+00:00",
+      "exitCode": 0,
+      "seconds": 0.415,
+      "finishedAt": "2026-11-26T09:09:27.648+00:00"
+    },
+    {
+      "id": 56,
+      "command": "node tests/test-title-entry.cjs",
+      "nodeMajor": "22",
+      "status": "PASS",
+      "requiredBy": [
+        "music.yml:playback:Check music preferences and save boundaries"
+      ],
+      "coveredCommands": [
+        "node tests/test-title-entry.cjs"
+      ],
+      "implicitChecks": [],
+      "log": "qa-final/logs/56-node-tests-test-title-entry-cjs.log",
+      "startedAt": "2026-11-26T09:09:27.650+00:00",
+      "exitCode": 0,
+      "seconds": 0.516,
+      "finishedAt": "2026-11-26T09:09:28.166+00:00"
+    },
+    {
+      "id": 57,
+      "command": "node tests/test-music-cache.cjs",
+      "nodeMajor": "22",
+      "status": "PASS",
+      "requiredBy": [
+        "music.yml:playback:Check partial and offline audio delivery"
+      ],
+      "coveredCommands": [
+        "node tests/test-music-cache.cjs"
+      ],
+      "implicitChecks": [],
+      "log": "qa-final/logs/57-node-tests-test-music-cache-cjs.log",
+      "startedAt": "2026-11-26T09:09:28.169+00:00",
+      "exitCode": 0,
+      "seconds": 0.117,
+      "finishedAt": "2026-11-26T09:09:28.286+00:00"
+    },
+    {
+      "id": 58,
+      "command": "node tests/test-catalog-usability.cjs",
+      "nodeMajor": "22",
+      "status": "PASS",
+      "requiredBy": [
+        "Additional changed-surface regression: Changed facility filters, officer archive and focus behavior"
+      ],
+      "coveredCommands": [
+        "node tests/test-catalog-usability.cjs"
+      ],
+      "implicitChecks": [],
+      "log": "qa-final/logs/58-node-tests-test-catalog-usability-cjs.log",
+      "startedAt": "2026-11-26T09:09:28.291+00:00",
+      "exitCode": 0,
+      "seconds": 0.165,
+      "finishedAt": "2026-11-26T09:09:28.456+00:00"
+    },
+    {
+      "id": 59,
+      "command": "node tests/test-ui-helpers.cjs",
+      "nodeMajor": "22",
+      "status": "PASS",
+      "requiredBy": [
+        "Additional changed-surface regression: Changed live controls, rendering and management helpers"
+      ],
+      "coveredCommands": [
+        "node tests/test-ui-helpers.cjs"
+      ],
+      "implicitChecks": [],
+      "log": "qa-final/logs/59-node-tests-test-ui-helpers-cjs.log",
+      "startedAt": "2026-11-26T09:09:28.458+00:00",
+      "exitCode": 0,
+      "seconds": 0.465,
+      "finishedAt": "2026-11-26T09:09:28.923+00:00"
+    },
+    {
+      "id": 60,
+      "command": "node tests/test-economy-ui.cjs",
+      "nodeMajor": "22",
+      "status": "PASS",
+      "requiredBy": [
+        "Additional changed-surface regression: Resource ledger and live display integration"
+      ],
+      "coveredCommands": [
+        "node tests/test-economy-ui.cjs"
+      ],
+      "implicitChecks": [],
+      "log": "qa-final/logs/60b-node-tests-test-economy-ui-cjs.log",
+      "startedAt": "2026-11-26T09:11:03.898+00:00",
+      "exitCode": 0,
+      "seconds": 0.372,
+      "finishedAt": "2026-11-26T09:11:04.270+00:00",
+      "attempts": [
+        {
+          "status": "FAIL",
+          "exitCode": 1,
+          "seconds": 0.114,
+          "startedAt": "2026-11-26T09:09:28.926+00:00",
+          "finishedAt": "2026-11-26T09:09:29.040+00:00",
+          "log": "qa-final/logs/60-node-tests-test-economy-ui-cjs.log",
+          "failureEvidence": "command: node tests/test-economy-ui.cjs\nstartedAt: 2026-11-26T09:09:28.926+00:00\nnode: v22.23.5\n\nevalmachine.<anonymous>:122\n    return heading('城下普請帳','CONSTRUCTION LEDGER · 六十四の礎',`${data.buildings.length}種類の施設を、各32段階まで育てる。`)+`${game.isStaff?`<div class=\"notice staff-base-note\"><span role=\"status\">${staffConstructionReady()?'京都御所の共同普請。着手者の資源・指令1回を使用。':'京都御所の共同拠点を確認中です。確認後に共同普請できます。'}</span> <button type=\"button\" class=\"text-link\" data-action=\"staff-base-detail\">共同拠点の詳細</button></div>`:''}<div class=\"toolbar\"><div class=\"search-box\">${icon('search')}<input class=\"input\" id=\"facility-search\" type=\"search\" maxlength=\"80\" autocomplete=\"off\" placeholder=\"施設名・効果を検索\" value=\"${esc(facilityQuery)}\" aria-label=\"施設を検索\"></div><select id=\"facility-category\" class=\"select\" aria-label=\"施設の分類\"><option value=\"all\">すべての施設</option>${Object.entries(categoryNames).map(([k,n])=>`<option value=\"${k}\" ${facilityCategory===k?'selected':''}>${n}</option>`).join('')}</select><button type=\"button\" class=\"button\" data-action=\"level-guide\" data-id=\"${state().home}\">${icon('book')}レベル上げガイド</button><button class=\"button\" data-view=\"town\">${icon('castle')}城下町に戻る</button></div>${facilityPlannerTools()}<div id=\"facility-results\">${facilitiesResults()}</div><section class=\"facility-ledger-support\" aria-label=\"普請を支える領国情報\"><details id=\"facility-economy-support\" class=\"economy-details facility-support-details\"><summary>毎月の収支・維持費を確認</summary>${economyPanel('facilities')}</details><details id=\"facility-governor-support\" class=\"economy-details facility-support-details\"><summary>奉行をまとめて配置</summary>${governorAssignmentEntry()}</details><details id=\"facility-rules-support\" class=\"economy-details facility-support-details\"><summary>普請の上限・共同拠点のルール</summary>${staffBaseNotice()}<div class=\"notice\">施設と城郭を合わせて同時に${game.constructionSlots()}件まで普請できます。未建設の施設はLv.1から育成し、全施設の上限はLv.32です。奉行に任命した家臣の能力・特技も効果に影響します。</div></details></section>`;\n                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           ^\n\nReferenceError: facilityPlannerTools is not defined\n    at Object.renderFacilities (evalmachine.<anonymous>:122:1004)\n    at /workspace/scratch/b180dedfe487/sengoku-taisen/tests/test-economy-ui.cjs:27:38\n    at test (/workspace/scratch/b180dedfe487/sengoku-taisen/tests/test-economy-ui.cjs:22:37)\n    at Object.<anonymous> (/workspace/scratch/b180dedfe487/sengoku-taisen/tests/test-economy-ui.cjs:24:1)\n    at Module._compile (node:internal/modules/cjs/loader:1781:14)\n    at Object..js (node:internal/modules/cjs/loader:1913:10)\n    at Module.load (node:internal/modules/cjs/loader:1505:32)\n    at Function._load (node:internal/modules/cjs/loader:1309:12)\n    at wrapModuleLoad (node:internal/modules/cjs/loader:254:19)\n    at Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:171:5)\n\nNode.js v22.23.5\n\nstatus: FAIL\nfinishedAt: 2026-11-26T09:09:29.040+00:00\nseconds: 0.114"
+        },
+        {
+          "status": "PASS",
+          "exitCode": 0,
+          "seconds": 0.372,
+          "startedAt": "2026-11-26T09:11:03.898+00:00",
+          "finishedAt": "2026-11-26T09:11:04.270+00:00",
+          "log": "qa-final/logs/60b-node-tests-test-economy-ui-cjs.log"
+        }
+      ],
+      "initialStatus": "FAIL",
+      "resolution": "Updated only the economy-test fixture to extract the real constructionJobs/facilityPlannerTools functions and initialize facilitySort/facilityLayout. The product source and generated assets are unchanged by this fix."
+    },
+    {
+      "id": 61,
+      "command": "node tests/test-public-luxury.cjs",
+      "nodeMajor": "22",
+      "status": "PASS",
+      "requiredBy": [
+        "Additional changed-surface regression: Public presentation after CSS and entry changes"
+      ],
+      "coveredCommands": [
+        "node tests/test-public-luxury.cjs"
+      ],
+      "implicitChecks": [],
+      "log": "qa-final/logs/61-node-tests-test-public-luxury-cjs.log",
+      "startedAt": "2026-11-26T09:09:29.043+00:00",
+      "exitCode": 0,
+      "seconds": 0.918,
+      "finishedAt": "2026-11-26T09:09:29.961+00:00"
+    },
+    {
+      "id": 62,
+      "command": "node tests/test-staff-base-ui.cjs",
+      "nodeMajor": "22",
+      "status": "PASS",
+      "requiredBy": [
+        "Additional changed-surface regression: Shared construction display after legacy projection recovery"
+      ],
+      "coveredCommands": [
+        "node tests/test-staff-base-ui.cjs"
+      ],
+      "implicitChecks": [],
+      "log": "qa-final/logs/62-node-tests-test-staff-base-ui-cjs.log",
+      "startedAt": "2026-11-26T09:09:29.964+00:00",
+      "exitCode": 0,
+      "seconds": 1.116,
+      "finishedAt": "2026-11-26T09:09:31.080+00:00"
+    },
+    {
+      "id": 63,
+      "command": "node tests/test-staff-timeline.cjs",
+      "nodeMajor": "22",
+      "status": "PASS",
+      "requiredBy": [
+        "Additional changed-surface regression: Personal/shared construction continuity across role and clock transitions"
+      ],
+      "coveredCommands": [
+        "node tests/test-staff-timeline.cjs"
+      ],
+      "implicitChecks": [],
+      "log": "qa-final/logs/63-node-tests-test-staff-timeline-cjs.log",
+      "startedAt": "2026-11-26T09:09:31.083+00:00",
+      "exitCode": 0,
+      "seconds": 0.316,
+      "finishedAt": "2026-11-26T09:09:31.399+00:00"
+    },
+    {
+      "id": 64,
+      "command": "cmp engine.js server/game-engine.js",
+      "nodeMajor": null,
+      "status": "PASS",
+      "requiredBy": [
+        "Additional changed-surface regression: Browser and Worker engine source parity"
+      ],
+      "coveredCommands": [
+        "cmp engine.js server/game-engine.js"
+      ],
+      "implicitChecks": [],
+      "log": "qa-final/logs/64-cmp-engine-js-server-game-engine-js.log",
+      "startedAt": "2026-11-26T09:09:31.402+00:00",
+      "exitCode": 0,
+      "seconds": 0.004,
+      "finishedAt": "2026-11-26T09:09:31.405+00:00"
+    },
+    {
+      "id": 65,
+      "command": "node tests/test-management-ui.cjs",
+      "nodeMajor": "22",
+      "status": "PASS",
+      "requiredBy": [
+        "Targeted recheck after final comparison-focus and archive-navigation fixes"
+      ],
+      "coveredCommands": [
+        "node tests/test-management-ui.cjs"
+      ],
+      "implicitChecks": [],
+      "attempts": [
+        {
+          "status": "PASS",
+          "exitCode": 0,
+          "seconds": 0.572,
+          "startedAt": "2026-11-26T09:19:05.572+00:00",
+          "finishedAt": "2026-11-26T09:19:06.144+00:00",
+          "log": "qa-final/logs/65-attempt-1-node-tests-test-management-ui-cjs.log",
+          "reason": "Final comparison-focus and archive-navigation fixes and regenerated interface/entry assets",
+          "reportedSummaries": [
+            "12 management UI interaction regression checks passed."
+          ]
+        }
+      ],
+      "exitCode": 0,
+      "seconds": 0.572,
+      "startedAt": "2026-11-26T09:19:05.572+00:00",
+      "finishedAt": "2026-11-26T09:19:06.144+00:00",
+      "log": "qa-final/logs/65-attempt-1-node-tests-test-management-ui-cjs.log",
+      "reason": "Final comparison-focus and archive-navigation fixes and regenerated interface/entry assets",
+      "reportedSummaries": [
+        "12 management UI interaction regression checks passed."
+      ],
+      "recheckReason": "Targeted verification of the final app changes; unrelated already-passing gates are carried forward."
+    },
+    {
+      "id": 66,
+      "command": "node tests/test-navigation-ui.cjs",
+      "nodeMajor": "22",
+      "status": "PASS",
+      "requiredBy": [
+        "Targeted recheck after final comparison-focus and archive-navigation fixes"
+      ],
+      "coveredCommands": [
+        "node tests/test-navigation-ui.cjs"
+      ],
+      "implicitChecks": [],
+      "attempts": [
+        {
+          "status": "PASS",
+          "exitCode": 0,
+          "seconds": 0.668,
+          "startedAt": "2026-11-26T09:19:06.144+00:00",
+          "finishedAt": "2026-11-26T09:19:06.812+00:00",
+          "log": "qa-final/logs/66-attempt-1-node-tests-test-navigation-ui-cjs.log",
+          "reason": "Final comparison-focus and archive-navigation fixes and regenerated interface/entry assets",
+          "reportedSummaries": [
+            "36/36 navigation usability checks passed"
+          ]
+        }
+      ],
+      "exitCode": 0,
+      "seconds": 0.668,
+      "startedAt": "2026-11-26T09:19:06.144+00:00",
+      "finishedAt": "2026-11-26T09:19:06.812+00:00",
+      "log": "qa-final/logs/66-attempt-1-node-tests-test-navigation-ui-cjs.log",
+      "reason": "Final comparison-focus and archive-navigation fixes and regenerated interface/entry assets",
+      "reportedSummaries": [
+        "36/36 navigation usability checks passed"
+      ],
+      "recheckReason": "Targeted verification of the final app changes; unrelated already-passing gates are carried forward."
+    }
+  ],
+  "workflowCoverage": [
+    {
+      "file": ".github/workflows/performance.yml",
+      "name": "Check game performance and continuity",
+      "jobs": [
+        {
+          "id": "browser-assets",
+          "nodeMajor": "22",
+          "requirements": [
+            {
+              "command": "npm ci --ignore-scripts --no-audit --no-fund",
+              "executedBy": 1
+            },
+            {
+              "command": "npm run test:entry",
+              "executedBy": 2
+            },
+            {
+              "command": "npm run test:interface",
+              "executedBy": 3
+            },
+            {
+              "command": "node tests/test-asset-budget.cjs",
+              "executedBy": 4
+            },
+            {
+              "command": "node tests/test-minified-runtime.cjs",
+              "executedBy": 5
+            },
+            {
+              "command": "node tests/test-stable-dom.cjs",
+              "executedBy": 6
+            },
+            {
+              "command": "node tests/test-world-map.cjs",
+              "executedBy": 7
+            },
+            {
+              "command": "node tests/test-ui-continuity.cjs",
+              "executedBy": 8
+            },
+            {
+              "command": "node tests/test-quiet-sync-layout.cjs",
+              "executedBy": 9
+            },
+            {
+              "command": "node tests/test-social-viewport.cjs",
+              "executedBy": 3
+            },
+            {
+              "command": "node tests/test-social-chat.cjs",
+              "executedBy": 10
+            },
+            {
+              "command": "node tests/test-social-avatar.cjs",
+              "executedBy": 11
+            },
+            {
+              "command": "node tests/test-profile-name-ui.cjs",
+              "executedBy": 12
+            },
+            {
+              "command": "node tests/test-responsive-text.cjs",
+              "executedBy": 13
+            }
+          ],
+          "status": "PASS"
+        },
+        {
+          "id": "chat-server",
+          "nodeMajor": "24",
+          "requirements": [
+            {
+              "command": "node server/test-chat-replies.mjs",
+              "executedBy": 14
+            },
+            {
+              "command": "node server/test-promotion.mjs",
+              "executedBy": 15
+            }
+          ],
+          "status": "PASS"
+        },
+        {
+          "id": "dispatch-travel",
+          "nodeMajor": "24",
+          "requirements": [
+            {
+              "command": "node tests/test-covert-return-travel.cjs",
+              "executedBy": 16
+            },
+            {
+              "command": "node tests/test-travel-engine.cjs",
+              "executedBy": 17
+            },
+            {
+              "command": "node tests/test-covert-engine.cjs",
+              "executedBy": 18
+            },
+            {
+              "command": "node tests/test-covert-ui.cjs",
+              "executedBy": 19
+            },
+            {
+              "command": "node tests/test-covert-dom.cjs",
+              "executedBy": 20
+            },
+            {
+              "command": "node tests/test-travel-ui.cjs",
+              "executedBy": 21
+            },
+            {
+              "command": "node tests/test-alliance-strategy.cjs",
+              "executedBy": 22
+            },
+            {
+              "command": "node server/test-alliance-travel.mjs",
+              "executedBy": 23
+            },
+            {
+              "command": "node server/test-alliance-strategy.mjs",
+              "executedBy": 24
+            },
+            {
+              "command": "node server/test-covert.mjs",
+              "executedBy": 25
+            },
+            {
+              "command": "node server/test-battle-travel.mjs",
+              "executedBy": 26
+            }
+          ],
+          "status": "PASS"
+        },
+        {
+          "id": "save-recovery",
+          "nodeMajor": "24",
+          "requirements": [
+            {
+              "command": "node server/test-legacy-save-recovery.mjs",
+              "executedBy": 27
+            },
+            {
+              "command": "node server/test-world-clock.mjs",
+              "executedBy": 28
+            },
+            {
+              "command": "node server/test-officer-health.mjs",
+              "executedBy": 29
+            },
+            {
+              "command": "node server/test-sync.mjs",
+              "executedBy": 30
+            },
+            {
+              "command": "node server/test-field-migration.mjs",
+              "executedBy": 31
+            },
+            {
+              "command": "node server/test-world-cycles.mjs",
+              "executedBy": 32
+            },
+            {
+              "command": "node tests/test-sync-integration.mjs",
+              "executedBy": 33
+            },
+            {
+              "command": "node tests/test-kyoto-gosho-engine.cjs",
+              "executedBy": 34
+            },
+            {
+              "command": "node tests/test-staff-base-sync.cjs",
+              "executedBy": 35
+            },
+            {
+              "command": "node server/test-kyoto-migration.mjs",
+              "executedBy": 36
+            },
+            {
+              "command": "node server/test-staff-base.mjs",
+              "executedBy": 37
+            },
+            {
+              "command": "node server/test-construction-queues.mjs",
+              "executedBy": 38
+            }
+          ],
+          "status": "PASS"
+        }
+      ]
+    },
+    {
+      "file": ".github/workflows/brand-seo.yml",
+      "name": "Check brand and public discovery",
+      "jobs": [
+        {
+          "id": "public-discovery",
+          "nodeMajor": "22",
+          "requirements": [
+            {
+              "command": "npm ci --ignore-scripts --no-audit --no-fund",
+              "executedBy": 1
+            },
+            {
+              "command": "node tools/build-public-pages.cjs --check",
+              "executedBy": 39
+            },
+            {
+              "command": "python3 tools/build-press-kit.py --check",
+              "executedBy": 40
+            },
+            {
+              "command": "node tests/test-seo.cjs",
+              "executedBy": 41
+            },
+            {
+              "command": "node tests/test-public-search.cjs",
+              "executedBy": 3
+            },
+            {
+              "command": "node tests/test-public-pages.cjs",
+              "executedBy": 42
+            },
+            {
+              "command": "python3 tests/test-news-feed.py",
+              "executedBy": 43
+            },
+            {
+              "command": "node tests/test-promotion-sharing.cjs",
+              "executedBy": 44
+            },
+            {
+              "command": "node tests/test-public-growth.cjs",
+              "executedBy": 45
+            },
+            {
+              "command": "node tests/test-promotion-admin.cjs",
+              "executedBy": 46
+            },
+            {
+              "command": "node tests/test-promotion-invites.cjs",
+              "executedBy": 47
+            },
+            {
+              "command": "node tests/test-responsive-images.cjs",
+              "executedBy": 48
+            },
+            {
+              "command": "node tests/test-service-worker-brand.cjs",
+              "executedBy": 49
+            },
+            {
+              "command": "node tests/test-release-assets.cjs",
+              "executedBy": 2
+            },
+            {
+              "command": "node tests/test-page-security.cjs",
+              "executedBy": 50
+            }
+          ],
+          "status": "PASS"
+        }
+      ]
+    },
+    {
+      "file": ".github/workflows/music.yml",
+      "name": "Check game music",
+      "jobs": [
+        {
+          "id": "playback",
+          "nodeMajor": "22",
+          "requirements": [
+            {
+              "command": "npm ci --ignore-scripts --no-audit --no-fund",
+              "executedBy": 1
+            },
+            {
+              "command": "node tools/build-game-entry.cjs --check",
+              "executedBy": 2
+            },
+            {
+              "command": "node --check tools/music-audition.js",
+              "executedBy": 51
+            },
+            {
+              "command": "node tests/test-supplied-recordings.cjs",
+              "executedBy": 52
+            },
+            {
+              "command": "node tests/test-music.mjs",
+              "executedBy": 53
+            },
+            {
+              "command": "node tests/test-music-time-of-day.mjs",
+              "executedBy": 54
+            },
+            {
+              "command": "node tests/test-settings-usability.cjs",
+              "executedBy": 55
+            },
+            {
+              "command": "node tests/test-title-entry.cjs",
+              "executedBy": 56
+            },
+            {
+              "command": "node tests/test-music-cache.cjs",
+              "executedBy": 57
+            }
+          ],
+          "status": "PASS"
+        }
+      ]
+    }
+  ],
+  "deduplicatedRequirements": [
+    {
+      "command": "node tests/test-social-viewport.cjs",
+      "requiredBy": "performance.yml:browser-assets:Verify list, map and input continuity",
+      "coveredBy": "npm run test:interface"
+    },
+    {
+      "command": "npm ci --ignore-scripts --no-audit --no-fund",
+      "requiredBy": "brand-seo.yml:public-discovery:Install pinned build tooling",
+      "coveredBy": "npm ci --ignore-scripts --no-audit --no-fund"
+    },
+    {
+      "command": "node tests/test-public-search.cjs",
+      "requiredBy": "brand-seo.yml:public-discovery:Check on-demand public guide search",
+      "coveredBy": "npm run test:interface"
+    },
+    {
+      "command": "node tests/test-release-assets.cjs",
+      "requiredBy": "brand-seo.yml:public-discovery:Check offline release and asset fingerprints",
+      "coveredBy": "npm run test:entry"
+    },
+    {
+      "command": "npm ci --ignore-scripts --no-audit --no-fund",
+      "requiredBy": "music.yml:playback:Install the pinned asset compiler",
+      "coveredBy": "npm ci --ignore-scripts --no-audit --no-fund"
+    },
+    {
+      "command": "node tools/build-game-entry.cjs --check",
+      "requiredBy": "music.yml:playback:Check game entry and audition syntax",
+      "coveredBy": "npm run test:entry"
+    }
+  ],
+  "excludedWorkflows": [
+    {
+      "file": ".github/workflows/notifications.yml",
+      "reason": "Production notification delivery is an external messaging action, not a local release-verification gate."
+    }
+  ],
+  "limitations": [
+    "This record contains local executable checks only. Browser/device QA, remote workflow runs, backend deployment and public propagation are recorded separately."
+  ],
+  "total": 66,
+  "passed": 66,
+  "failed": 0,
+  "pending": 0,
+  "finishedAt": "2026-11-26T09:23:29.955+00:00",
+  "wallSeconds": 900.688,
+  "commandSeconds": 75.659,
+  "assetBudget": {
+    "rawBytes": 2949184,
+    "gzipBytes": 844756,
+    "rawLimit": 2950000,
+    "gzipLimit": 850000,
+    "rawHeadroom": 816,
+    "gzipHeadroom": 5244,
+    "entryBundles": [
+      {
+        "file": "game-layout.bundle.css",
+        "bytes": 855207,
+        "gzipBytes": 165760
+      },
+      {
+        "file": "game-preferences.bundle.js",
+        "bytes": 7330,
+        "gzipBytes": 2876
+      },
+      {
+        "file": "game-core.bundle.js",
+        "bytes": 620430,
+        "gzipBytes": 199395
+      },
+      {
+        "file": "game-campaign.bundle.js",
+        "bytes": 477209,
+        "gzipBytes": 157495
+      },
+      {
+        "file": "game-interface.bundle.js",
+        "bytes": 403313,
+        "gzipBytes": 135491
+      },
+      {
+        "file": "game-community.bundle.js",
+        "bytes": 585695,
+        "gzipBytes": 183739
+      }
+    ],
+    "scope": "Six game entry JavaScript/CSS bundles; excludes images, audio and deferred public search data."
+  },
+  "initialRun": {
+    "startedAt": "2026-11-26T09:08:29.267+00:00",
+    "finishedAt": "2026-11-26T09:09:31.470+00:00",
+    "wallSeconds": 62.203,
+    "total": 64,
+    "passed": 63,
+    "failed": 1,
+    "inputsUnchanged": true
+  },
+  "postRunChanges": [
+    {
+      "files": [
+        "tests/test-economy-ui.cjs"
+      ],
+      "kind": "Test fixture dependency update only",
+      "verificationCommands": [
+        "node tests/test-economy-ui.cjs"
+      ],
+      "status": "PASS"
+    },
+    {
+      "files": [
+        "management-ui.css",
+        "game-layout.bundle.css",
+        "index.html"
+      ],
+      "kind": "Final small-screen comparison spacing and its generated stylesheet/fingerprint",
+      "verificationCommands": [
+        "npm run test:entry",
+        "node tests/test-asset-budget.cjs"
+      ],
+      "compactionCoveredBy": "npm run test:entry",
+      "status": "PASS"
+    },
+    {
+      "files": [
+        ".github/workflows/performance.yml",
+        ".github/workflows/brand-seo.yml",
+        ".github/workflows/music.yml"
+      ],
+      "kind": "Trigger-path additions only; verification commands and Node versions are identical to the initial run",
+      "verification": "Parsed all three workflows and compared every job command and Node major with the recorded initial requirements",
+      "status": "PASS"
+    },
+    {
+      "files": [
+        "app.js",
+        "game-interface.bundle.js",
+        "index.html",
+        "tests/test-management-ui.cjs"
+      ],
+      "kind": "Comparison clear focuses a visible archive control instead of a closed modal; global archive navigation opens the archive after a prior gacha tab; comparison chip accessible names include the selected rank. Corresponding interaction regressions were added.",
+      "verificationCommands": [
+        "node tests/test-management-ui.cjs",
+        "node tests/test-navigation-ui.cjs",
+        "node tests/test-ui-continuity.cjs",
+        "npm run test:entry",
+        "node tests/test-asset-budget.cjs"
+      ],
+      "status": "PASS"
+    },
+    {
+      "files": [
+        "game-layout.bundle.css",
+        "index.html",
+        "management-ui.css"
+      ],
+      "kind": "One targeted hidden-button CSS override and its generated stylesheet/fingerprint. Product JavaScript and test sources are unchanged from the previous passing interaction recheck.",
+      "verificationCommands": [
+        "npm run test:entry",
+        "node tests/test-asset-budget.cjs"
+      ],
+      "compactionCoveredBy": "npm run test:entry",
+      "compiledCssContract": {
+        "selector": "#modal .officer-detail-comparison > .button[hidden]",
+        "declaration": "display:none!important",
+        "status": "PASS",
+        "scope": "Static inspection of the actual generated stylesheet; browser visibility is reviewed separately."
+      },
+      "status": "PASS"
+    }
+  ],
+  "pendingChecks": [],
+  "workflowTriggerChecks": [
+    {
+      "file": ".github/workflows/performance.yml",
+      "pullRequestPath": true,
+      "pushPath": true,
+      "testCommandsAndNodeVersionsUnchanged": true,
+      "status": "PASS"
+    },
+    {
+      "file": ".github/workflows/brand-seo.yml",
+      "pullRequestPath": true,
+      "pushPath": true,
+      "testCommandsAndNodeVersionsUnchanged": true,
+      "status": "PASS"
+    },
+    {
+      "file": ".github/workflows/music.yml",
+      "pullRequestPath": true,
+      "pushPath": true,
+      "testCommandsAndNodeVersionsUnchanged": true,
+      "status": "PASS"
+    }
+  ],
+  "finalRecheck": {
+    "startedAt": "2026-11-26T09:23:25.629+00:00",
+    "finishedAt": "2026-11-26T09:23:29.955+00:00",
+    "commands": [
+      {
+        "command": "npm run test:entry",
+        "status": "PASS",
+        "exitCode": 0,
+        "seconds": 4.099,
+        "startedAt": "2026-11-26T09:23:25.629+00:00",
+        "finishedAt": "2026-11-26T09:23:29.728+00:00",
+        "log": "qa-final/logs/02-attempt-4-npm-run-test-entry.log",
+        "reason": "One CSS rule protects hidden comparison buttons from existing display:flex styles; regenerated CSS and entry fingerprint",
+        "reportedResults": [
+          {
+            "cssBytesBefore": 866366,
+            "cssBytesAfter": 855123,
+            "savedBytes": 11243,
+            "gzipBytesBefore": 168291,
+            "gzipBytesAfter": 165704
+          },
+          {
+            "installRequests": 17,
+            "installBytes": 3067661,
+            "warmNavigationNetworkRequests": 0,
+            "offlineEntryAssets": 9,
+            "offlineMap": true,
+            "offlineGuide": true,
+            "offlineArtworkFallback": true
+          }
+        ],
+        "reportedSummaries": [
+          "6 CSS distribution compaction checks passed."
+        ]
+      },
+      {
+        "command": "node tests/test-asset-budget.cjs",
+        "status": "PASS",
+        "exitCode": 0,
+        "seconds": 0.165,
+        "startedAt": "2026-11-26T09:23:29.728+00:00",
+        "finishedAt": "2026-11-26T09:23:29.893+00:00",
+        "log": "qa-final/logs/04-attempt-4-node-tests-test-asset-budget-cjs.log",
+        "reason": "One CSS rule protects hidden comparison buttons from existing display:flex styles; regenerated CSS and entry fingerprint",
+        "reportedResults": [
+          {
+            "entryBundles": [
+              {
+                "file": "game-layout.bundle.css",
+                "bytes": 855207,
+                "gzipBytes": 165760
+              },
+              {
+                "file": "game-preferences.bundle.js",
+                "bytes": 7330,
+                "gzipBytes": 2876
+              },
+              {
+                "file": "game-core.bundle.js",
+                "bytes": 620430,
+                "gzipBytes": 199395
+              },
+              {
+                "file": "game-campaign.bundle.js",
+                "bytes": 477209,
+                "gzipBytes": 157495
+              },
+              {
+                "file": "game-interface.bundle.js",
+                "bytes": 403313,
+                "gzipBytes": 135491
+              },
+              {
+                "file": "game-community.bundle.js",
+                "bytes": 585695,
+                "gzipBytes": 183739
+              }
+            ],
+            "totalBytes": 2949184,
+            "totalGzipBytes": 844756,
+            "rawBudget": 2950000,
+            "gzipBudget": 850000
+          }
+        ]
+      }
+    ],
+    "inputManifest": "qa-final/final-input-manifest.json",
+    "inputSha256": "d154a9804efc7f6c90529b59cb6c9f749dabedd8419dabec8aa12cb764d644ad",
+    "inputsUnchanged": true,
+    "changeScope": [
+      "game-layout.bundle.css",
+      "index.html",
+      "management-ui.css"
+    ],
+    "compiledCssContract": {
+      "selector": "#modal .officer-detail-comparison > .button[hidden]",
+      "declaration": "display:none!important",
+      "status": "PASS",
+      "scope": "Static inspection of the actual generated stylesheet; browser visibility is reviewed separately."
+    }
+  },
+  "executionCount": 74,
+  "initialFailureCount": 1,
+  "resolvedInitialFailures": 1,
+  "timingNote": "wallSeconds includes diagnosis, parent-approved CSS/focus/navigation fixes and rebuilds. commandSeconds sums actual measured executions. Each followup repeats only gates affected by its change; initial unaffected gates are carried forward.",
+  "followupRuns": [
+    {
+      "startedAt": "2026-11-26T09:13:20.183+00:00",
+      "finishedAt": "2026-11-26T09:13:24.291+00:00",
+      "commands": [
+        {
+          "command": "npm run test:entry",
+          "status": "PASS",
+          "exitCode": 0,
+          "seconds": 3.894,
+          "startedAt": "2026-11-26T09:13:20.183+00:00",
+          "finishedAt": "2026-11-26T09:13:24.078+00:00",
+          "log": "qa-final/logs/02b-npm-run-test-entry.log",
+          "reason": "Approved final CSS spacing change and regenerated entry assets",
+          "reportedResults": [
+            {
+              "cssBytesBefore": 866293,
+              "cssBytesAfter": 855050,
+              "savedBytes": 11243,
+              "gzipBytesBefore": 168282,
+              "gzipBytesAfter": 165695
+            },
+            {
+              "installRequests": 17,
+              "installBytes": 3067414,
+              "warmNavigationNetworkRequests": 0,
+              "offlineEntryAssets": 9,
+              "offlineMap": true,
+              "offlineGuide": true,
+              "offlineArtworkFallback": true
+            }
+          ]
+        },
+        {
+          "command": "node tests/test-asset-budget.cjs",
+          "status": "PASS",
+          "exitCode": 0,
+          "seconds": 0.17,
+          "startedAt": "2026-11-26T09:13:24.078+00:00",
+          "finishedAt": "2026-11-26T09:13:24.248+00:00",
+          "log": "qa-final/logs/04b-node-tests-test-asset-budget-cjs.log",
+          "reason": "Approved final CSS spacing change and regenerated entry assets",
+          "reportedResults": [
+            {
+              "entryBundles": [
+                {
+                  "file": "game-layout.bundle.css",
+                  "bytes": 855134,
+                  "gzipBytes": 165751
+                },
+                {
+                  "file": "game-preferences.bundle.js",
+                  "bytes": 7330,
+                  "gzipBytes": 2876
+                },
+                {
+                  "file": "game-core.bundle.js",
+                  "bytes": 620430,
+                  "gzipBytes": 199395
+                },
+                {
+                  "file": "game-campaign.bundle.js",
+                  "bytes": 477209,
+                  "gzipBytes": 157495
+                },
+                {
+                  "file": "game-interface.bundle.js",
+                  "bytes": 403139,
+                  "gzipBytes": 135428
+                },
+                {
+                  "file": "game-community.bundle.js",
+                  "bytes": 585695,
+                  "gzipBytes": 183739
+                }
+              ],
+              "totalBytes": 2948937,
+              "totalGzipBytes": 844684,
+              "rawBudget": 2950000,
+              "gzipBudget": 850000
+            }
+          ]
+        }
+      ],
+      "inputsUnchanged": true,
+      "inputManifest": "qa-final/css-recheck-input-manifest.json",
+      "inputSha256": "361ae01c40800f27aa20870195ada24f5da384a4bbcfa50c1f10b4665fb88c7a"
+    },
+    {
+      "startedAt": "2026-11-26T09:19:05.572+00:00",
+      "finishedAt": "2026-11-26T09:19:10.983+00:00",
+      "commands": [
+        {
+          "command": "node tests/test-management-ui.cjs",
+          "status": "PASS",
+          "exitCode": 0,
+          "seconds": 0.572,
+          "startedAt": "2026-11-26T09:19:05.572+00:00",
+          "finishedAt": "2026-11-26T09:19:06.144+00:00",
+          "log": "qa-final/logs/65-attempt-1-node-tests-test-management-ui-cjs.log",
+          "reason": "Final comparison-focus and archive-navigation fixes and regenerated interface/entry assets",
+          "reportedSummaries": [
+            "12 management UI interaction regression checks passed."
+          ]
+        },
+        {
+          "command": "node tests/test-navigation-ui.cjs",
+          "status": "PASS",
+          "exitCode": 0,
+          "seconds": 0.668,
+          "startedAt": "2026-11-26T09:19:06.144+00:00",
+          "finishedAt": "2026-11-26T09:19:06.812+00:00",
+          "log": "qa-final/logs/66-attempt-1-node-tests-test-navigation-ui-cjs.log",
+          "reason": "Final comparison-focus and archive-navigation fixes and regenerated interface/entry assets",
+          "reportedSummaries": [
+            "36/36 navigation usability checks passed"
+          ]
+        },
+        {
+          "command": "node tests/test-ui-continuity.cjs",
+          "status": "PASS",
+          "exitCode": 0,
+          "seconds": 0.315,
+          "startedAt": "2026-11-26T09:19:06.813+00:00",
+          "finishedAt": "2026-11-26T09:19:07.128+00:00",
+          "log": "qa-final/logs/08-attempt-2-node-tests-test-ui-continuity-cjs.log",
+          "reason": "Final comparison-focus and archive-navigation fixes and regenerated interface/entry assets",
+          "reportedSummaries": [
+            "14 live UI continuity, elapsed timer and cycle settlement checks passed."
+          ]
+        },
+        {
+          "command": "npm run test:entry",
+          "status": "PASS",
+          "exitCode": 0,
+          "seconds": 3.635,
+          "startedAt": "2026-11-26T09:19:07.128+00:00",
+          "finishedAt": "2026-11-26T09:19:10.763+00:00",
+          "log": "qa-final/logs/02-attempt-3-npm-run-test-entry.log",
+          "reason": "Final comparison-focus and archive-navigation fixes and regenerated interface/entry assets",
+          "reportedResults": [
+            {
+              "cssBytesBefore": 866293,
+              "cssBytesAfter": 855050,
+              "savedBytes": 11243,
+              "gzipBytesBefore": 168282,
+              "gzipBytesAfter": 165695
+            },
+            {
+              "installRequests": 17,
+              "installBytes": 3067588,
+              "warmNavigationNetworkRequests": 0,
+              "offlineEntryAssets": 9,
+              "offlineMap": true,
+              "offlineGuide": true,
+              "offlineArtworkFallback": true
+            }
+          ],
+          "reportedSummaries": [
+            "6 CSS distribution compaction checks passed."
+          ]
+        },
+        {
+          "command": "node tests/test-asset-budget.cjs",
+          "status": "PASS",
+          "exitCode": 0,
+          "seconds": 0.165,
+          "startedAt": "2026-11-26T09:19:10.763+00:00",
+          "finishedAt": "2026-11-26T09:19:10.928+00:00",
+          "log": "qa-final/logs/04-attempt-3-node-tests-test-asset-budget-cjs.log",
+          "reason": "Final comparison-focus and archive-navigation fixes and regenerated interface/entry assets",
+          "reportedResults": [
+            {
+              "entryBundles": [
+                {
+                  "file": "game-layout.bundle.css",
+                  "bytes": 855134,
+                  "gzipBytes": 165751
+                },
+                {
+                  "file": "game-preferences.bundle.js",
+                  "bytes": 7330,
+                  "gzipBytes": 2876
+                },
+                {
+                  "file": "game-core.bundle.js",
+                  "bytes": 620430,
+                  "gzipBytes": 199395
+                },
+                {
+                  "file": "game-campaign.bundle.js",
+                  "bytes": 477209,
+                  "gzipBytes": 157495
+                },
+                {
+                  "file": "game-interface.bundle.js",
+                  "bytes": 403313,
+                  "gzipBytes": 135491
+                },
+                {
+                  "file": "game-community.bundle.js",
+                  "bytes": 585695,
+                  "gzipBytes": 183739
+                }
+              ],
+              "totalBytes": 2949111,
+              "totalGzipBytes": 844747,
+              "rawBudget": 2950000,
+              "gzipBudget": 850000
+            }
+          ]
+        }
+      ],
+      "inputManifest": "qa-final/ui-recheck-input-manifest.json",
+      "inputSha256": "dcbb709ed73f86a59bc562552f7e8168f3f283b87a63ac8eb8ea34e144a3c264",
+      "inputsUnchanged": true
+    },
+    {
+      "startedAt": "2026-11-26T09:23:25.629+00:00",
+      "finishedAt": "2026-11-26T09:23:29.955+00:00",
+      "commands": [
+        {
+          "command": "npm run test:entry",
+          "status": "PASS",
+          "exitCode": 0,
+          "seconds": 4.099,
+          "startedAt": "2026-11-26T09:23:25.629+00:00",
+          "finishedAt": "2026-11-26T09:23:29.728+00:00",
+          "log": "qa-final/logs/02-attempt-4-npm-run-test-entry.log",
+          "reason": "One CSS rule protects hidden comparison buttons from existing display:flex styles; regenerated CSS and entry fingerprint",
+          "reportedResults": [
+            {
+              "cssBytesBefore": 866366,
+              "cssBytesAfter": 855123,
+              "savedBytes": 11243,
+              "gzipBytesBefore": 168291,
+              "gzipBytesAfter": 165704
+            },
+            {
+              "installRequests": 17,
+              "installBytes": 3067661,
+              "warmNavigationNetworkRequests": 0,
+              "offlineEntryAssets": 9,
+              "offlineMap": true,
+              "offlineGuide": true,
+              "offlineArtworkFallback": true
+            }
+          ],
+          "reportedSummaries": [
+            "6 CSS distribution compaction checks passed."
+          ]
+        },
+        {
+          "command": "node tests/test-asset-budget.cjs",
+          "status": "PASS",
+          "exitCode": 0,
+          "seconds": 0.165,
+          "startedAt": "2026-11-26T09:23:29.728+00:00",
+          "finishedAt": "2026-11-26T09:23:29.893+00:00",
+          "log": "qa-final/logs/04-attempt-4-node-tests-test-asset-budget-cjs.log",
+          "reason": "One CSS rule protects hidden comparison buttons from existing display:flex styles; regenerated CSS and entry fingerprint",
+          "reportedResults": [
+            {
+              "entryBundles": [
+                {
+                  "file": "game-layout.bundle.css",
+                  "bytes": 855207,
+                  "gzipBytes": 165760
+                },
+                {
+                  "file": "game-preferences.bundle.js",
+                  "bytes": 7330,
+                  "gzipBytes": 2876
+                },
+                {
+                  "file": "game-core.bundle.js",
+                  "bytes": 620430,
+                  "gzipBytes": 199395
+                },
+                {
+                  "file": "game-campaign.bundle.js",
+                  "bytes": 477209,
+                  "gzipBytes": 157495
+                },
+                {
+                  "file": "game-interface.bundle.js",
+                  "bytes": 403313,
+                  "gzipBytes": 135491
+                },
+                {
+                  "file": "game-community.bundle.js",
+                  "bytes": 585695,
+                  "gzipBytes": 183739
+                }
+              ],
+              "totalBytes": 2949184,
+              "totalGzipBytes": 844756,
+              "rawBudget": 2950000,
+              "gzipBudget": 850000
+            }
+          ]
+        }
+      ],
+      "inputManifest": "qa-final/final-input-manifest.json",
+      "inputSha256": "d154a9804efc7f6c90529b59cb6c9f749dabedd8419dabec8aa12cb764d644ad",
+      "inputsUnchanged": true,
+      "changeScope": [
+        "game-layout.bundle.css",
+        "index.html",
+        "management-ui.css"
+      ],
+      "compiledCssContract": {
+        "selector": "#modal .officer-detail-comparison > .button[hidden]",
+        "declaration": "display:none!important",
+        "status": "PASS",
+        "scope": "Static inspection of the actual generated stylesheet; browser visibility is reviewed separately."
+      }
+    }
+  ],
+  "incrementalCoverage": {
+    "baseCommands": 64,
+    "initialPasses": 63,
+    "initialFailures": 1,
+    "fixtureFailureResolved": true,
+    "unchangedGatesCarriedForward": true,
+    "fullSuiteRepeated": false,
+    "finalAppSourceChanges": [
+      "app.js"
+    ],
+    "finalTestSourceChanges": [
+      "tests/test-management-ui.cjs"
+    ],
+    "finalGeneratedChanges": [
+      "game-interface.bundle.js",
+      "index.html"
+    ],
+    "latestChangeScope": "CSS-only hidden comparison-button override",
+    "latestRecheckCommands": [
+      "npm run test:entry",
+      "node tests/test-asset-budget.cjs"
+    ]
+  }
+}

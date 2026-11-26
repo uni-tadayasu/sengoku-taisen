@@ -38,6 +38,9 @@ function remainingMs(march,clock={}){
  const now=march.timeBasis==='real'?clock.realNowMs:clock.elapsedMs;
  return finite(now)?Math.max(0,march.arrivesAtMs-now):Math.max(0,march.remainingMs??march.durationMs);
 }
+// Compare arrival order in real waiting time even when a world clock is paused
+// or accelerated. Zero still means confirmation is due, never a settled battle.
+function arrivalDelay(march,clock={}){const left=remainingMs(march,clock);return !left||march.timeBasis==='real'?left:clock.running===false?Infinity:left/(finite(clock.speed)&&clock.speed>0?clock.speed:1);}
 function countdown(march,clock={}){const remaining=remainingMs(march,clock),arrival=march.phase==='returning'?'帰還':'到着';return remaining===0?arrival+'を確認中':march.timeBasis==='world'&&clock.running===false?'共通時間が停止中 · 残り '+formatDuration(remaining):arrival+'まで '+formatDuration(remaining);}
 function countdownMarkup(value,clock={}){const march=cleanMarch(value);return march?`<strong data-march-countdown="${esc(march.id)}" data-march-arrives="${march.arrivesAtMs}" data-march-basis="${march.timeBasis}" data-march-phase="${march.phase}">${esc(countdown(march,clock))}</strong>`:'';}
 function preview(value,{timeBasis='world',compact=false,purpose='battle'}={}){
@@ -59,44 +62,97 @@ function createStore(){
    const previous=new Map(remote);for(const [key,value] of remote)if(!kind||value.kind===kind)remote.delete(key);
    for(const row of rows)if(!kind||row.kind===kind)remote.set(row.id,newer(previous.get(row.id)||local.get(row.id),row));return true;
   },
-  snapshot(){const all=new Map(local);for(const [key,value] of remote)all.set(key,newer(all.get(key),value));const rows=[...all.values()];return{active:rows.filter(m=>m.status==='marching').sort((a,b)=>(a.remainingMs??a.durationMs)-(b.remainingMs??b.durationMs)),history:rows.filter(m=>m.status!=='marching').sort((a,b)=>b.arrivesAtMs-a.arrivesAtMs).slice(0,30)};}
+  snapshot(clock={}){const all=new Map(local);for(const [key,value] of remote)all.set(key,newer(all.get(key),value));const rows=[...all.values()];return{active:rows.filter(m=>m.status==='marching').sort((a,b)=>arrivalDelay(a,clock)-arrivalDelay(b,clock)||a.id.localeCompare(b.id)),history:rows.filter(m=>m.status!=='marching').sort((a,b)=>b.arrivesAtMs-a.arrivesAtMs).slice(0,30)};}
  };
 }
 const headlessStore=createStore();
-const api={cleanTravel,cleanMarch,acceptedMarch,completedMarch,commandMarch,formatDuration,remainingMs,countdown,countdownMarkup,preview,createStore,accept:(result,requestId)=>headlessStore.accept(result,requestId),record:value=>headlessStore.record(value),ingest:(payload,options)=>headlessStore.ingest(payload?.marches||payload,options),snapshot:()=>headlessStore.snapshot(),refresh(){},open(){}};
+const api={cleanTravel,cleanMarch,acceptedMarch,completedMarch,commandMarch,formatDuration,remainingMs,arrivalDelay,countdown,countdownMarkup,preview,createStore,accept:(result,requestId)=>headlessStore.accept(result,requestId),record:value=>headlessStore.record(value),ingest:(payload,options)=>headlessStore.ingest(payload?.marches||payload,options),snapshot:clock=>headlessStore.snapshot(clock),refresh(){},open(){},subscribe(listener){if(typeof listener==='function')listener(headlessStore.snapshot(),{});return()=>{};}};
 global.SengokuTravelUI=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;
 if(!global.document?.createElement)return;
+const doc=global.document,subscribers=new Set(),countdownNodes=new Set();
 let options={},store=createStore(),launcher=null,dialog=null,returnFocus=null,polling=false,pollAt=0,serverOffset=0,scope='',seen=new Set(),initialized=false,selectedReport=null;
+let refreshTimer=null,countdownObserver=null,countdownTracking=false,renderedShape='',dialogCounters=[];
 function context(){return options.getContext?.()||{};}
-function clocks(){const clock=global.SengokuWorldClock?.snapshot?.()?.clock;return{elapsedMs:clock?.elapsedMs??options.getElapsedMs?.(),running:clock?.running,realNowMs:Date.now()+serverOffset};}
-function checkScope(){const current=context(),next=String(current.scope||'');if(scope!==next){scope=next;store.reset(next);seen.clear();initialized=false;selectedReport=null;pollAt=0;close();}return current;}
-function snapshot(){checkScope();store.local(options.getLocal?.()||[]);return store.snapshot();}
+function clocks(){const clock=global.SengokuWorldClock?.snapshot?.()?.clock;return{elapsedMs:clock?.elapsedMs??options.getElapsedMs?.(),running:clock?.running,speed:clock?.speed,realNowMs:Date.now()+serverOffset};}
+function checkScope(){const current=context(),next=String(current.scope||'');if(scope!==next){scope=next;store.reset(next);seen.clear();initialized=false;selectedReport=null;pollAt=0;serverOffset=0;close();}return current;}
+// Capture each local/remote state once within an update. Never retain a local
+// save snapshot across an asynchronous request, an action or a clock tick.
+function capture(){const current=checkScope(),clock=clocks();store.local(options.getLocal?.()||[]);return{current,clock,data:store.snapshot(clock)};}
+function snapshot(){return capture().data;}
+function text(node,value){if(node.textContent!==value)node.textContent=value;}
+function trackCountdowns(root){if(root?.matches?.('[data-march-countdown]'))countdownNodes.add(root);for(const node of root?.querySelectorAll?.('[data-march-countdown]')||[])countdownNodes.add(node);}
+function startCountdownTracking(){
+ if(countdownTracking)return;countdownTracking=true;trackCountdowns(doc.body);
+ if(global.MutationObserver){countdownObserver=new global.MutationObserver(records=>{for(const record of records){if(record.type==='attributes'){const node=record.target;if(node.hasAttribute('data-march-countdown'))countdownNodes.add(node);else countdownNodes.delete(node);}else for(const node of record.addedNodes||[])if(node.nodeType===1)trackCountdowns(node);}for(const node of countdownNodes)if(!node.isConnected)countdownNodes.delete(node);});countdownObserver.observe(doc.body,{childList:true,subtree:true,attributes:true,attributeFilter:['data-march-countdown']});}
+}
+function updateCountdowns(data,clock){
+ // Browsers without MutationObserver keep the existing fallback. Normally only
+ // newly mounted subtrees are scanned, not the entire application every second.
+ if(!countdownObserver){countdownNodes.clear();trackCountdowns(doc.body);}
+ const active=new Map(data.active.map(row=>[row.id,row]));
+ for(const node of countdownNodes){
+  if(!node.isConnected){countdownNodes.delete(node);continue;}
+  if(node.closest('[hidden],[inert],dialog:not([open])'))continue;
+  const march=active.get(node.dataset.marchCountdown);
+  if(march)text(node,countdown(march,clock));
+  else if(finite(Number(node.dataset.marchArrives))&&['world','real'].includes(node.dataset.marchBasis))text(node,countdown({status:'marching',arrivesAtMs:Number(node.dataset.marchArrives),timeBasis:node.dataset.marchBasis,phase:node.dataset.marchPhase},clock));
+ }
+ return active;
+}
+function scheduleRefresh(){
+ if(refreshTimer!==null)global.clearTimeout?.(refreshTimer);refreshTimer=null;
+ if(!doc.hidden&&options.getContext&&global.setTimeout)refreshTimer=global.setTimeout(()=>{refreshTimer=null;refresh();},1000);
+}
+function notify(frame){for(const listener of subscribers){try{listener(frame.data,frame.clock);}catch(_){}}}
 function genericReport(march){const b=march.battle,n=value=>Math.max(0,Math.floor(Number(value)||0)).toLocaleString('ja-JP');return `<section class="travel-report"><h3>${esc(march.targetName)} · ${march.status==='cancelled'?'出陣の取り消し':b?b.won?'戦勝の報せ':'撤退の報せ':'到着の報せ'}</h3><p>${esc(march.message||'到着結果を反映しました。')}</p>${b?`<dl><div><dt>出陣兵</dt><dd>${n(b.ourBefore??b.deployed??b.troops??march.troops)}人</dd></div><div><dt>自軍の損失</dt><dd>${n(b.ourLost??b.attackerLost)}人</dd></div><div><dt>敵軍の損失</dt><dd>${n(b.enemyLost??b.defenderLost?.troops??b.defenderLost)}人</dd></div></dl>${b.rewards?`<p>戦利品 ${Object.entries(b.rewards).filter(([key,value])=>['gold','rice','wood','stone','magatama'].includes(key)&&Number(value)>0).map(([key,value])=>esc(({gold:'金銭',rice:'兵糧',wood:'木材',stone:'石材',magatama:'勾玉'})[key])+' '+n(value)).join(' / ')||'なし'}</p>`:''}`:''}${march.returnPendingTroops||march.returnPendingSupplies?`<p class="travel-return-pending">帰還待ち：兵 ${n(march.returnPendingTroops)}人 / 物資 ${n(march.returnPendingSupplies)}。保有上限の空きができると反映されます。</p>`:''}<button class="button" data-travel-back>進軍一覧へ</button></section>`;}
 function ensure(){
- if(!launcher){launcher=global.document.createElement('button');launcher.type='button';launcher.className='travel-launcher';launcher.setAttribute('aria-haspopup','dialog');launcher.setAttribute('aria-label','進軍中の部隊と戦果を確認');launcher.addEventListener('click',open);global.document.body.appendChild(launcher);}
- if(!dialog){dialog=global.document.createElement('dialog');dialog.className='travel-dialog';dialog.setAttribute('aria-labelledby','travel-title');dialog.innerHTML='<header><div><small>出陣状況</small><h2 id="travel-title">進軍と戦果</h2></div><button class="button small" data-travel-close>閉じる</button></header><div class="travel-body"></div>';dialog.addEventListener('click',event=>{const button=event.target.closest('[data-travel-close],[data-travel-report],[data-travel-back]');if(!button)return;if(button.hasAttribute('data-travel-close'))return close();if(button.hasAttribute('data-travel-back')){selectedReport=null;render();return;}const march=snapshot().history.find(row=>row.id===button.dataset.travelReport);if(!march)return;selectedReport=march;if(options.onReport?.(clone(march))===true){close();return;}render();});dialog.addEventListener('cancel',event=>{event.preventDefault();close();});global.document.body.appendChild(dialog);}
+ if(!launcher){launcher=doc.createElement('button');launcher.type='button';launcher.className='travel-launcher';launcher.setAttribute('aria-haspopup','dialog');launcher.setAttribute('aria-label','進軍中の部隊と戦果を確認');launcher.addEventListener('click',open);doc.body.appendChild(launcher);}
+ if(!dialog){dialog=doc.createElement('dialog');dialog.className='travel-dialog';dialog.setAttribute('aria-labelledby','travel-title');dialog.innerHTML='<header><div><small>出陣状況</small><h2 id="travel-title">進軍と戦果</h2></div><button class="button small" data-travel-close>閉じる</button></header><div class="travel-body"></div>';dialog.addEventListener('click',event=>{const button=event.target.closest('[data-travel-close],[data-travel-report],[data-travel-back]');if(!button)return;if(button.hasAttribute('data-travel-close'))return close();if(button.hasAttribute('data-travel-back')){selectedReport=null;paint();return;}const frame=capture(),march=frame.data.history.find(row=>row.id===button.dataset.travelReport);if(!march)return;selectedReport=march;if(options.onReport?.(clone(march))===true){close();return;}paint(frame);});dialog.addEventListener('cancel',event=>{event.preventDefault();close();});doc.body.appendChild(dialog);}
+ startCountdownTracking();
 }
-function render(){
- const current=checkScope();ensure();const data=snapshot(),clock=clocks();launcher.hidden=current.started===false||global.SENGOKU_AT_TITLE===true||!data.active.length&&!data.history.length;
- const label=data.active.length?`進軍中 ${data.active.length}隊 · ${countdown(data.active[0],clock)}`:'到着した部隊の結果を確認';if(launcher.textContent!==label)launcher.textContent=label;
- for(const node of global.document.querySelectorAll('[data-march-countdown]')){const m=data.active.find(row=>row.id===node.dataset.marchCountdown);if(m)node.textContent=countdown(m,clock);else if(finite(Number(node.dataset.marchArrives))&&['world','real'].includes(node.dataset.marchBasis))node.textContent=countdown({status:'marching',arrivesAtMs:Number(node.dataset.marchArrives),timeBasis:node.dataset.marchBasis,phase:node.dataset.marchPhase},clock);}
+function render(frame){
+ ensure();if(doc.hidden)return;
+ const {current,data,clock}=frame;launcher.hidden=current.started===false||global.SENGOKU_AT_TITLE===true||!data.active.length&&!data.history.length;
+ if(!launcher.hidden)text(launcher,data.active.length?`進軍中 ${data.active.length}隊 · ${countdown(data.active[0],clock)}`:'到着した部隊の結果を確認');
+ const active=updateCountdowns(data,clock);
  if(!dialog.open)return;
  const body=dialog.querySelector('.travel-body');if(selectedReport)selectedReport=data.history.find(m=>m.id===selectedReport.id)||selectedReport;
+ // Include every displayed field, but no changing countdown, in the structure
+ // key. A corrected result with the same id must still repaint its report.
+ const shape=JSON.stringify(selectedReport||[data.active.map(m=>[m.id,m.kind,m.phase,m.arrivesAtMs,m.timeBasis,m.troops,m.sourceName,m.targetName,m.distanceKm]),data.history.map(m=>[m.id,m.kind,m.status,m.phase,m.targetName,!!m.battle,m.battle?.won])]);
+ if(renderedShape!==shape){
  const html=selectedReport?genericReport(selectedReport):`<p class="travel-explainer">距離に応じて移動します。出陣済みの部隊は、軍師AIを停止しても到着まで進軍を続けます。</p>${data.active.length?`<h3>進軍中</h3><ul class="travel-list">${data.active.map(m=>`<li><span class="travel-kind">${esc(m.phase==='returning'?'部隊の帰還':kinds[m.kind])}</span><h4>${esc(m.sourceName)} → ${esc(m.targetName)}</h4><p>${m.distanceKm.toLocaleString('ja-JP',{maximumFractionDigits:1})} km · ${m.troops.toLocaleString('ja-JP')}人</p><strong data-travel-countdown="${esc(m.id)}">${esc(countdown(m,clock))}</strong></li>`).join('')}</ul>`:'<p class="travel-empty">進軍中の部隊はありません。</p>'}${data.history.length?`<h3>到着した部隊</h3><ul class="travel-list">${data.history.map(m=>`<li><span class="travel-kind">${esc(kinds[m.kind])}</span><h4>${esc(m.targetName)}</h4><p>${esc(m.status==='cancelled'?'出陣を取り消しました':m.battle?m.battle.won?'勝利しました':'撤退しました':m.phase==='returning'?'帰還しました':'到着しました')}</p><button class="button small" data-travel-report="${esc(m.id)}">${m.status==='cancelled'?'詳細を確認':m.battle?'戦果を確認':'結果を確認'}</button></li>`).join('')}</ul>`:''}`;
- // Keep the focused report/close button and scroll position during countdowns.
- const shape=JSON.stringify([selectedReport?.id,selectedReport?.returnPendingTroops,selectedReport?.returnPendingSupplies,data.active.map(m=>[m.id,m.phase,m.arrivesAtMs,m.troops,m.sourceCastleId,m.targetCastleId]),data.history.map(m=>[m.id,m.status,m.phase])]);
- if(body.dataset.shape!==shape){const scroll=body.scrollTop,focused=global.document.activeElement,reportFocus=body.contains(focused)?focused?.dataset?.travelReport:null,backFocus=body.contains(focused)&&focused?.hasAttribute?.('data-travel-back');if(global.SengokuStableDOM?.patch)global.SengokuStableDOM.patch(body,html);else body.innerHTML=html;body.dataset.shape=shape;body.scrollTop=scroll;if(reportFocus||backFocus){const next=[...body.querySelectorAll('[data-travel-report],[data-travel-back]')].find(node=>backFocus?node.hasAttribute('data-travel-back'):node.dataset.travelReport===reportFocus);if(next&&global.document.activeElement!==next)next.focus({preventScroll:true});}}else for(const node of body.querySelectorAll('[data-travel-countdown]')){const m=data.active.find(row=>row.id===node.dataset.travelCountdown);if(m)node.textContent=countdown(m,clock);}
+  const scroll=body.scrollTop,focused=doc.activeElement,reportFocus=body.contains(focused)?focused?.dataset?.travelReport:null,backFocus=body.contains(focused)&&focused?.hasAttribute?.('data-travel-back');
+  if(global.SengokuStableDOM?.patch)global.SengokuStableDOM.patch(body,html);else body.innerHTML=html;
+  renderedShape=shape;dialogCounters=[...body.querySelectorAll('[data-travel-countdown]')];body.scrollTop=scroll;
+  if(reportFocus||backFocus){const next=[...body.querySelectorAll('[data-travel-report],[data-travel-back]')].find(node=>backFocus?node.hasAttribute('data-travel-back'):node.dataset.travelReport===reportFocus);if(next&&doc.activeElement!==next)next.focus({preventScroll:true});}
+ }
+ for(const node of dialogCounters){const march=active.get(node.dataset.travelCountdown);if(march)text(node,countdown(march,clock));}
 }
-function open(){ensure();returnFocus=global.document.activeElement;selectedReport=null;if(!dialog.open)dialog.showModal();render();}
+function paint(frame=capture()){render(frame);notify(frame);return frame;}
+function open(){const frame=capture();ensure();returnFocus=doc.activeElement;selectedReport=null;if(!dialog.open)dialog.showModal();paint(frame);scheduleRefresh();}
 function close(){if(dialog?.open)dialog.close();if(returnFocus?.isConnected)returnFocus.focus({preventScroll:true});returnFocus=null;}
 async function poll(force=false){
  const current=checkScope();if(polling||!current.linked||!current.ready||!options.request||global.document.hidden||!force&&Date.now()-pollAt<10000)return;
  const expected=scope;polling=true;pollAt=Date.now();try{const result=await options.request();if(expected!==String(context().scope||''))return;if(result?.ok!==true)return;
  const serverNow=typeof result.serverNow==='string'?Date.parse(result.serverNow):result.serverNow;if(Number.isFinite(serverNow))serverOffset=serverNow-Date.now();
- store.ingest(result);render();options.onChange?.(store.snapshot());
+ store.ingest(result);const frame=paint();options.onChange?.(frame.data);
  }catch(_){/* Show the existing march until its authoritative result is known. */}finally{polling=false;}
 }
-function refresh(){const data=snapshot();for(const row of data.history){if(initialized&&!seen.has(row.id))options.onArrival?.(clone(row));seen.add(row.id);}initialized=true;render();poll();}
-Object.assign(api,{configure(next){options={...options,...next};refresh();},refresh,open,close,snapshot,record(value){checkScope();const march=store.record(value);if(march)render();return march;},accept(result,requestId){checkScope();const march=store.accept(result,requestId);if(march){render();poll(true);}return march;},ingest(payload,{kind}={}){checkScope();const serverNow=typeof payload?.serverNow==='string'?Date.parse(payload.serverNow):payload?.serverNow;if(Number.isFinite(serverNow))serverOffset=serverNow-Date.now();const result=store.ingest(payload?.marches||payload,{kind});render();return result;},poll});
-global.setInterval?.(()=>{if(!global.document.hidden&&options.getContext)refresh();},1000);
+function refresh(){
+ const frame=capture();for(const row of frame.data.history){if(initialized&&!seen.has(row.id))options.onArrival?.(clone(row));seen.add(row.id);}initialized=true;
+ paint(frame);scheduleRefresh();void poll();
+}
+Object.assign(api,{
+ configure(next){options={...options,...next};refresh();},refresh,open,close,snapshot,
+ // Views subscribe while open and reuse this update's read-only data, avoiding
+ // a second per-second timer and a second export of all local journeys.
+ subscribe(listener){if(typeof listener!=='function')return()=>{};subscribers.add(listener);const frame=capture();try{listener(frame.data,frame.clock);}catch(_){}return()=>subscribers.delete(listener);},
+ record(value){checkScope();const march=store.record(value);if(march)paint();return march;},
+ accept(result,requestId){checkScope();const march=store.accept(result,requestId);if(march){paint();void poll(true);}return march;},
+ ingest(payload,{kind}={}){checkScope();const serverNow=typeof payload?.serverNow==='string'?Date.parse(payload.serverNow):payload?.serverNow;if(Number.isFinite(serverNow))serverOffset=serverNow-Date.now();const result=store.ingest(payload?.marches||payload,{kind});paint();return result;},poll
+});
+// The game clock normally calls refresh. Each call rearms this fallback, so a
+// guarded/stopped simulation still updates travel without two permanent timers.
+doc.addEventListener?.('visibilitychange',()=>{if(doc.hidden)scheduleRefresh();else if(options.getContext)refresh();});
 })(typeof window!=='undefined'?window:globalThis);

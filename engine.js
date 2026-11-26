@@ -1012,7 +1012,18 @@
         for(const job of view.base.jobs){const author=incoming.get(job.jobId);if(author?.id&&author.id===job.startedBy?.id&&JSON.stringify(author)!==JSON.stringify(job.startedBy)){job.startedBy=copy(author);changed=true;}}
         return {ok:true,changed,...(changed?{displayOnly:true}:{})};
       }
-      if(!view){const personalHome=base.personalHome||STAFF_ORIGIN.get(this)?.home||this.state.home,personalBaseCastle=base.personalBaseCastle||this.state.castles[STAFF_BASE_ID];view={personalClan:base.personalClan||STAFF_ORIGIN.get(this)?.clan||'徳川家',personalBuildings:copy(this.state.buildings),personalBaseLevel:personalBaseCastle.level,personalBaseWall:personalBaseCastle.wall,personalBaseCastle:copy(personalBaseCastle),staffBaseTroops:this.state.castles[STAFF_BASE_ID].troops,personalHome,personalCycleHome:base.personalCycleHome||STAFF_ORIGIN.get(this)?.cycleHome||this.state.cycle.home,personalHomeCastle:copy(base.personalHomeCastle||STAFF_ORIGIN.get(this)?.homeCastle||this.state.castles[personalHome]),phase:null};}
+      if(!view){
+        const personalHome=base.personalHome||STAFF_ORIGIN.get(this)?.home||this.state.home;
+        // A staff export contains its private castle, not the shared projection.
+        // Keep that validated snapshot across reloads: the appointment backup
+        // may predate a legacy Kyoto upgrade and its still-running private job.
+        const privateBase=this.state.staffService?.baseId===STAFF_BASE_ID?this.state.castles[STAFF_BASE_ID]:null;
+        const personalBaseCastle=copy(base.personalBaseCastle||this.state.castles[STAFF_BASE_ID]);
+        // Ownership and the pre-appointment garrison still come from the
+        // verified backup; only private construction levels use the export.
+        if(privateBase){personalBaseCastle.level=privateBase.level;personalBaseCastle.wall=privateBase.wall;}
+        view={personalClan:base.personalClan||STAFF_ORIGIN.get(this)?.clan||'徳川家',personalBuildings:copy(this.state.buildings),personalBaseLevel:personalBaseCastle.level,personalBaseWall:personalBaseCastle.wall,personalBaseCastle:copy(personalBaseCastle),staffBaseTroops:this.state.castles[STAFF_BASE_ID].troops,personalHome,personalCycleHome:base.personalCycleHome||STAFF_ORIGIN.get(this)?.cycleHome||this.state.cycle.home,personalHomeCastle:copy(base.personalHomeCastle||STAFF_ORIGIN.get(this)?.homeCastle||this.state.castles[personalHome]),phase:null};
+      }
       if(base.personalHome&&base.personalHome!==view.personalHome){view.personalHome=base.personalHome;view.personalHomeCastle=copy(base.personalHomeCastle||this.state.castles[base.personalHome]);}
       if(base.personalCycleHome)view.personalCycleHome=base.personalCycleHome;if(base.personalClan)view.personalClan=base.personalClan;STAFF_ORIGIN.set(this,{clan:view.personalClan,home:view.personalHome,cycleHome:view.personalCycleHome,homeCastle:copy(view.personalHomeCastle)});
       if(base.personalHomeCastle)for(const key of ['troops','wall','level'])view.personalHomeCastle[key]=Math.max(view.personalHomeCastle[key],base.personalHomeCastle[key]);
@@ -2448,7 +2459,16 @@
                 this._anchorCastleDurability(staffView&&staffView.phase!=='personal'?staffView.personalHome:s.home,Math.round(elapsed+step*1000));this._rememberStaffPersonalProgress();
               }
             }
-            else if(job.kind==='castle'){s.castles[job.id].level=job.targetLevel;this._anchorCastleDurability(job.id,Math.round(elapsed+step*1000));s.stats.castleUpgrades++;this._rememberStaffPersonalProgress();}
+            else if(job.kind==='castle'){
+              const staffView=this.isStaff?STAFF_VIEW.get(this):null;
+              if(staffView&&job.id===STAFF_BASE_ID){
+                // An old private job never upgrades the shared palace. Its
+                // completion belongs to the private export and survives reload.
+                staffView.personalBaseLevel=job.targetLevel;staffView.personalBaseCastle.level=job.targetLevel;
+                if(staffView.phase==='personal'){s.castles[job.id].level=job.targetLevel;this._anchorCastleDurability(job.id,Math.round(elapsed+step*1000));}
+              }else{s.castles[job.id].level=job.targetLevel;this._anchorCastleDurability(job.id,Math.round(elapsed+step*1000));}
+              s.stats.castleUpgrades++;this._rememberStaffPersonalProgress();
+            }
             else if(job.kind==='branch'){const branch=s.branches.find(row=>row.id===job.id);if(!branch)continue;if(job.facilityId){if(!completeBranchFacility(branch,job,elapsed+step*1000))continue;}else{branch.level=job.targetLevel;branch.fallen=false;if(job.repair)delete branch.durability;else this._anchorBranchDurability(branch.id,Math.round(elapsed+step*1000));}}
             else{s.tech[job.id]=job.targetLevel;s.stats.researches++;}
             const name=job.kind==='branch'&&job.facilityId?BRANCH_BY_ID[job.id].name+'・'+def.name:def.name,text=`${name} Lv.${job.targetLevel}の${job.repair?'修復':job.kind==='research'?'研究':'普請'}が完成しました。`;

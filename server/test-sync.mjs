@@ -32,11 +32,18 @@ const db={
 };
 const env={DB:db,SENGOKU_ADMIN_KEY:crypto.randomUUID()+crypto.randomUUID()};
 let clock=1795219200000,calls=0;
-const originalNow=Date.now;
-Date.now=()=>clock;
+const OriginalDate=Date,snapshots=new Map();
+// The Worker timestamps requests with Date.now(), while the shared engine
+// timestamps canonical exports with new Date(). Both use the same test clock.
+globalThis.Date=class extends OriginalDate{
+  constructor(...args){super(...(args.length?args:[clock]));}
+  static now(){return clock;}
+};
 const tick=(milliseconds)=>{clock+=milliseconds;};
 const base=JSON.parse(readFileSync(new URL('./fixtures/valid-save.json',import.meta.url),'utf8'));
 const fresh=()=>structuredClone(base);
+const current=token=>{const snapshot=snapshots.get(token);assert(snapshot?.save,'Observe the accepted save before writing again');return structuredClone(snapshot.save);};
+const stored=user=>database.prepare('SELECT save_json,revision FROM player_saves WHERE user_id=?').get(user.id);
 const ieyasu='of_b0616adde162';
 async function api(path,{method='GET',token,body,expected=200,ip='192.0.2.1',rawBody}={}) {
   const headers={Origin:'http://127.0.0.1:4173','CF-Connecting-IP':ip};
@@ -48,10 +55,13 @@ async function api(path,{method='GET',token,body,expected=200,ip='192.0.2.1',raw
   calls++;
   assert.equal(response.status,expected,JSON.stringify({path,expected,status:response.status,data,sqlError:db.lastError}));
   assert.equal(response.headers.get('cache-control'),'no-store');
+  if(token&&data?.save&&data?.maintenanceAuthority)snapshots.set(token,data);
   return {data,response};
 }
 const post=(token,body,expected=200)=>({method:'POST',token,body,expected});
-const write=(token,deviceId,revision,save,expected=200)=>({method:'PUT',token,body:{deviceId,revision,save},expected});
+// Send only the private ledger revision actually returned to this token.
+// Deliberate old/malformed envelopes below bypass this helper.
+const write=(token,deviceId,revision,save,expected=200)=>({method:'PUT',token,body:{deviceId,revision,save,...(snapshots.has(token)?{maintenanceRevision:snapshots.get(token).maintenanceAuthority.revision}:{})},expected});
 const session=async name=>(await api('/session',post(null,{name,clan:'織田家'}))).data;
 const lease=async (token,deviceId,takeOver=false)=>(await api('/sync/lease',post(token,{deviceId,deviceName:deviceId,takeOver}))).data;
 const presence=async (token,deviceId,online)=>(await api('/presence',post(token,{deviceId,deviceName:deviceId,online}))).data;
@@ -76,17 +86,27 @@ try {
   let save=fresh();save.isAdmin=true;save.state.isAdmin=true;save.state.role='admin';save.state.resources.isAdmin=true;
   const saved=(await api('/sync',write(alice.token,'deviceA',0,save))).data;
   assert.equal(saved.revision,1);assert.equal(saved.save.state.isAdmin,undefined);assert.equal(saved.save.isAdmin,undefined);assert.equal(saved.save.state.role,undefined);assert.equal(saved.save.state.resources.isAdmin,undefined);
-  assert.equal(saved.save.savedAt,save.savedAt);assert.equal(saved.user.isAdmin,false);
+  assert.equal(saved.save.savedAt,new Date(clock).toISOString(),'The accepted canonical export records its save time');
+  assert.notEqual(saved.save.savedAt,save.savedAt,'A first import does not retain an obsolete file timestamp');assert.equal(saved.user.isAdmin,false);
+  assert.deepEqual(saved.save.state.resources,base.state.resources);
+  assert.equal(saved.save.state.troops,save.state.troops);
+  assert.deepEqual(saved.save.state.worldClock,{id:saved.clock.id,elapsedMs:saved.clock.elapsedMs});
   const secondDevice=(await api('/sync?deviceId=deviceB',{token:alice.token})).data;
   assert.deepEqual(secondDevice.save,saved.save);assert.equal(secondDevice.revision,1);
+  const accepted=stored(alice.user);
+  const missingAuthority=await api('/sync',{method:'PUT',token:alice.token,body:{deviceId:'deviceA',revision:1,save:current(alice.token)},expected:409});
+  assert.equal(missingAuthority.data.error.code,'MAINTENANCE_REFRESH_REQUIRED');assert.deepEqual(stored(alice.user),accepted);
+  const staleAuthority=write(alice.token,'deviceA',1,current(alice.token),409);staleAuthority.body.maintenanceRevision++;
+  assert.equal((await api('/sync',staleAuthority)).data.error.code,'MAINTENANCE_REFRESH_REQUIRED');assert.deepEqual(stored(alice.user),accepted);
+  assert.equal((await api('/sync',write(alice.token,'deviceA',1,fresh(),409))).data.error.code,'CLOCK_ANCHOR_REQUIRED');assert.deepEqual(stored(alice.user),accepted);
   const other=(await api('/sync?userId='+alice.user.id,{token:bob.token})).data;
   assert.equal(other.save,null,'another authenticated user cannot select someone else\'s cloud save');
   await lease(bob.token,'deviceA');
   await api('/sync',{method:'PUT',token:bob.token,body:{deviceId:'deviceA',revision:0,save:fresh(),userId:alice.user.id}});
   assert.equal((await api('/sync',{token:alice.token})).data.revision,1);
   const stale=await api('/sync',write(alice.token,'deviceA',0,fresh(),409));assert.equal(stale.data.error.code,'REVISION_CONFLICT');
-  const competing=[fresh(),fresh()];competing[0].state.resources.gold=4321;competing[1].state.resources.gold=5678;
-  const requests=competing.map(save=>new Request('https://communications.example/api/v1/sync',{method:'PUT',headers:{Authorization:'Bearer '+alice.token,'Content-Type':'application/json'},body:JSON.stringify({deviceId:'deviceA',revision:1,save})}));
+  const competing=[current(alice.token),current(alice.token)];competing[0].state.resources.gold=4321;competing[1].state.resources.gold=5678;
+  const requests=competing.map(save=>new Request('https://communications.example/api/v1/sync',{method:'PUT',headers:{Authorization:'Bearer '+alice.token,'Content-Type':'application/json'},body:JSON.stringify(write(alice.token,'deviceA',1,save).body)}));
   const results=await Promise.all(requests.map(request=>worker.fetch(request,env,{})));calls+=results.length;
   assert.deepEqual(results.map(r=>r.status).sort(),[200,409]);
   const afterRace=(await api('/sync',{token:alice.token})).data;
@@ -100,15 +120,15 @@ try {
   tick(30000);
   const expired=await api('/sync',write(alice.token,'deviceA',2,fresh(),409));assert.equal(expired.data.error.code,'LEASE_REQUIRED');
   await lease(alice.token,'deviceB');
-  await api('/sync',write(alice.token,'deviceB',2,fresh()));
-  const invalid=fresh();invalid.state.resources.gold=-1;
+  await api('/sync',write(alice.token,'deviceB',2,current(alice.token)));
+  const invalid=current(alice.token);invalid.state.resources.gold=-1;
   await api('/sync',write(alice.token,'deviceB',3,invalid,400));
-  const malicious=fresh();malicious.state.isAdmin=true;malicious.state.officers.push(ieyasu);malicious.state.officerVariants.push(ieyasu+':U');
+  const malicious=current(alice.token);malicious.state.isAdmin=true;malicious.state.officers.push(ieyasu);malicious.state.officerVariants.push(ieyasu+':U');
   const forbiddenOfficer=await api('/sync',write(alice.token,'deviceB',3,malicious,403));assert.equal(forbiddenOfficer.data.error.code,'ADMIN_ENTITLEMENT_REQUIRED');
-  const edo=fresh();edo.state.home='edo';edo.state.castles.edo.owner=edo.state.clan;
+  const edo=current(alice.token);edo.state.home='edo';edo.state.castles.edo.owner=edo.state.clan;
   await api('/sync',write(alice.token,'deviceB',3,edo,403));
   edo.state.home='kiyosu';await api('/sync',write(alice.token,'deviceB',3,edo,403));
-  const ordinaryIeyasu=fresh();ordinaryIeyasu.state.officers.push(ieyasu);ordinaryIeyasu.state.officerVariants.push(ieyasu+':SSS');
+  const ordinaryIeyasu=current(alice.token);ordinaryIeyasu.state.officers.push(ieyasu);ordinaryIeyasu.state.officerVariants.push(ieyasu+':SSS');
   await api('/sync',write(alice.token,'deviceB',3,ordinaryIeyasu));
   const beforeBad=(await api('/sync',{token:alice.token})).data;
   await api('/sync',{method:'PUT',token:alice.token,rawBody:' '.repeat(2*1024*1024+1),expected:413});
@@ -124,7 +144,7 @@ try {
   assert.equal(opSave.save.state.officerVariants.filter(id=>id===ieyasu+':U').length,1);
   const restored=(await api('/sync',write(operator.token,'operatorA',1,opSave.save))).data;
   assert.deepEqual(restored.save.state,opSave.save.state,'repeat restoration changes no resources or collection counts');
-  const opEdo=fresh();opEdo.state.home='edo';opEdo.state.castles.edo.owner=opEdo.state.clan;
+  const opEdo=current(operator.token);opEdo.state.home='edo';opEdo.state.castles.edo.owner=opEdo.state.clan;
   const selectedEdo=(await api('/sync',write(operator.token,'operatorA',2,opEdo))).data;
   const legacy=structuredClone(selectedEdo.save);
   legacy.state.castles.kiyosu.owner='在地衆';legacy.state.castles.edo.level=17;legacy.state.castles.edo.troops=3210;
@@ -187,7 +207,7 @@ try {
   await api('/me',{token:operator.token});assert.equal((await api('/online')).data.total,0,'at 90s the old presence expires even after authenticated reads');
   await presence(linked.token,'phone',true);assert.equal((await api('/online')).data.players[0].id,operator.user.id);
 
-  console.log(JSON.stringify({ok:true,calls,checks:['schema-only migrations','real save validation and authority-field removal','cross-user isolation','single writer lease and explicit takeover','atomic concurrent revision conflict','read-only sync does not renew lease','30-second lease expiry','2MiB body limit','server-exclusive Edo and U Ieyasu','idempotent administrator restoration','revoked-role read migration preserves progress and strict write restrictions','hashed expiring one-time pairing','concurrent redemption and per-device tokens','original recovery token compatibility','pairing IP rate limit','public privacy-safe paginated presence','deduplicated foreground-only online count','90-second disconnect expiry']},null,2));
+  console.log(JSON.stringify({ok:true,calls,checks:['schema-only migrations','real save validation and authority-field removal','canonical export timestamp and stable readback','first legacy import preserves resources and attaches the shared clock','missing and stale maintenance authority preserve the committed save','unanchored replay cannot replace an anchored save','cross-user isolation','single writer lease and explicit takeover','atomic concurrent revision conflict','read-only sync does not renew lease','30-second lease expiry','2MiB body limit','server-exclusive Edo and U Ieyasu','idempotent administrator restoration','revoked-role read migration preserves progress and strict write restrictions','hashed expiring one-time pairing','concurrent redemption and per-device tokens','original recovery token compatibility','pairing IP rate limit','public privacy-safe paginated presence','deduplicated foreground-only online count','90-second disconnect expiry']},null,2));
 } finally {
-  Date.now=originalNow;database.close();
+  globalThis.Date=OriginalDate;database.close();
 }

@@ -5,12 +5,77 @@
   const esc = value => String(value ?? '').replace(/[&<>"']/g, character => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[character]));
   const number = value => Math.max(0, Math.floor(Number(value) || 0)).toLocaleString('ja-JP');
   const signed = value => { const n = Number(value) || 0; return (n < 0 ? '−' : n > 0 ? '+' : '') + number(Math.abs(n)); };
+  const filters = {all:'すべて',construction:'普請',research:'研究',marching:'進軍・派遣',returning:'帰還'};
+  const checkedTimeFormat = new Intl.DateTimeFormat('ja-JP',{timeZone:'Asia/Tokyo',month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit',hourCycle:'h23'});
+  const marchKinds = {castle:'城への出陣',branch:'支拠点への出陣',field:'共通フィールド',roaming:'野良兵への出陣',rally:'同盟の集結軍',conquest:'天下争覇',covert:'部隊の派遣'};
+  const nonnegative = value => Number.isFinite(Number(value)) ? Math.max(0,Number(value)) : 0;
+  function duration(ms) {
+    const seconds=Math.max(0,Math.ceil(nonnegative(ms)/1000)),hours=Math.floor(seconds/3600),minutes=Math.floor(seconds%3600/60),rest=seconds%60;
+    return (hours?hours+'時間':'')+(minutes?minutes+'分':'')+(rest||!hours&&!minutes?rest+'秒':'');
+  }
+  function operationClock(game, supplied) {
+    const state=game?.state||{},live=supplied||global.SengokuWorldClock?.snapshot?.()?.clock||{},stored=state.worldClock||{},realtime=state.realtime||{};
+    const speed=Number(live.speed??realtime.speed),elapsedMs=live.elapsedMs??stored.elapsedMs??((state.turn||0)*60000+(realtime.elapsed||0)*1000);
+    return {elapsedMs:nonnegative(elapsedMs),realNowMs:nonnegative(live.realNowMs??Date.now()),running:(live.running??realtime.running)!==false,speed:[1,2,4].includes(speed)?speed:1};
+  }
+  function operationTiming(row,clock) {
+    const world=row.timeBasis!=='real',paused=world&&!clock.running,remaining=nonnegative(row.remainingMs),speed=world?clock.speed:1;
+    const terminal=row.category==='construction'||row.category==='research'?'完成':row.category==='returning'?'帰還':'到着';
+    return {time:remaining<=0?terminal+'を確認中':paused?'停止中 · 時刻未定':terminal+'まで '+duration(remaining/speed),
+      timingNote:paused?'残り '+duration(remaining)+'（1倍速）':row.queued?'着工まで '+duration(row.startsInMs/speed):world&&clock.speed!==1?clock.speed+'倍速の目安':world?'1倍速の目安':'実時間で移動',
+      sortMs:paused&&remaining>0?Infinity:remaining/speed,paused};
+  }
+  function buildOperations(game, options = {}) {
+    const state=game?.state||{},catalog=options.catalog||global.SENGOKU_DATA||{},clock=operationClock(game,options.clock);
+    const alliance=options.alliance??global.SengokuAlliance?.ownTravelSnapshot?.()??{available:false,status:'unloaded',active:[]};
+    const allianceMarches=alliance.available&&Array.isArray(alliance.active)?alliance.active:[],allianceIds=new Set(allianceMarches.map(row=>row.id));
+    const sourceJobs=options.jobs??game?.constructionJobs?.()??state.jobs??[],sourceMarches=options.marches??[];
+    const jobs=Array.isArray(sourceJobs)?sourceJobs:[],marches=[...(Array.isArray(sourceMarches)?sourceMarches:[]),...allianceMarches],items=[];
+    const jobCatalog={building:catalog.buildings||[],castle:catalog.castles||[],research:catalog.techs||[]};
+    const branches=new Map((state.branches||[]).map(branch=>[branch.id,branch]));
+    const branchName=job=>{const branch=branches.get(job.id),parent=(catalog.castles||[]).find(castle=>castle.id===branch?.parentCastleId)?.name;return branch?(parent||'拠点')+' '+({north:'北',east:'東',south:'南',west:'西'}[branch.direction]||'')+'支拠点'+(job.facilityId?'・'+(job.facilityName||(catalog.branchFacilities||[]).find(facility=>facility.id===job.facilityId)?.name||'施設'):''):'支拠点';};
+    for(const [index,job] of jobs.entries()) {
+      if(!job||!['building','castle','research','branch'].includes(job.kind))continue;
+      const category=job.kind==='research'?'research':'construction',remaining=nonnegative(job.remainingSeconds??job.remaining*60),startsInMs=nonnegative(job.startsInSeconds)*1000;
+      const total=nonnegative(job.totalSeconds??job.total*60),name=job.name||jobCatalog[job.kind]?.find(item=>item.id===job.id)?.name||(job.kind==='branch'?branchName(job):job.kind==='research'?'研究':job.kind==='castle'?'城郭':'施設');
+      const scope=job.shared?'共同':game?.isStaff?'個人':'',level=Number.isSafeInteger(job.targetLevel)?' Lv.'+job.targetLevel:'';
+      const row={id:'job:'+job.kind+':'+job.id+':'+(job.shared?'shared':'personal')+':'+(job.facilityId||'')+':'+(job.targetLevel??index)+':'+(job.queuePosition??index),category,
+        name:name+level,detail:[scope,job.repair?'復旧工事':job.kind==='branch'?'支拠点の普請':'',job.queued?'予約 '+number(job.queuePosition||1)+'番目':'進行中'].filter(Boolean).join(' · '),
+        remainingMs:nonnegative(job.finishesInSeconds??(startsInMs/1000+remaining))*1000,startsInMs,queued:job.queued===true,timeBasis:'world',
+        progress:job.queued||!total?0:Math.max(0,Math.min(100,(1-remaining/total)*100)),destination:job.kind==='research'?'research':job.kind==='branch'||job.kind==='castle'?'map':'facilities',
+        actionLabel:job.kind==='research'?'研究を見る':job.kind==='branch'||job.kind==='castle'?'地図を見る':'施設を見る'};
+      items.push({...row,...operationTiming(row,clock)});
+    }
+    const seen=new Set();
+    for(const march of marches) {
+      if(!march||march.status!=='marching'||!march.id||seen.has(march.id))continue;
+      seen.add(march.id);
+      const travel=march.travel||march,category=march.phase==='returning'?'returning':'marching',world=march.timeBasis!=='real';
+      const arrival=march.arrivesAtMs??march.arrivesElapsedMs,now=world?clock.elapsedMs:clock.realNowMs;
+      const remaining=Number.isFinite(arrival)?Math.max(0,arrival-now):nonnegative(march.remainingMs??travel.durationMs);
+      const source=travel.sourceName||march.sourceName||'派遣元',target=travel.targetName||march.targetName||'目的地';
+      const departed=march.departedAtMs??march.departedElapsedMs,total=Number.isFinite(arrival)&&Number.isFinite(departed)?arrival-departed:nonnegative(travel.durationMs);
+      const fromAlliance=allianceIds.has(march.id),purpose=fromAlliance?(march.allianceKind==='aid'?'同盟援軍':'同盟集結')+(category==='returning'?'の帰還':'への移動'):category==='returning'?'部隊の帰還':marchKinds[march.kind]||'部隊の移動';
+      const row={id:'march:'+march.id,category,name:source+' → '+target,detail:purpose+' · '+number(march.troops)+'人'+(fromAlliance?' · 最終確認の情報':''),fromAlliance,
+        remainingMs:remaining,queued:false,timeBasis:world?'world':'real',progress:total>0?Math.max(0,Math.min(100,(1-remaining/total)*100)):0,destination:fromAlliance?'alliance':'marches',actionLabel:fromAlliance?'同盟部隊を見る':'部隊を見る'};
+      items.push({...row,...operationTiming(row,clock)});
+    }
+    items.sort((a,b)=>a.sortMs-b.sortMs||a.remainingMs-b.remainingMs||a.id.localeCompare(b.id));
+    const counts=Object.fromEntries(Object.keys(filters).map(key=>[key,key==='all'?items.length:items.filter(row=>row.category===key).length]));
+    const checkedAt=Number.isFinite(alliance.fetchedAt)?checkedTimeFormat.format(new Date(alliance.fetchedAt)):'';
+    const allianceNote=alliance.available?'同盟部隊は '+checkedAt+' JST の取得情報です。移動の変更・到着結果は同盟作戦で再確認できます。':alliance.status==='unregistered'?'同盟部隊は領主登録後に確認できます。':alliance.status==='unavailable'?'同盟部隊を表示できません。領主の利用状態を同盟作戦で確認してください。':'同盟部隊は未取得です。同盟作戦を開くと、本人の援軍・集結の往復をここにも表示します。';
+    return {items,counts,clock,allianceNote,allianceCount:allianceMarches.length,queued:items.filter(row=>row.queued).length,clockLabel:clock.running?'現在 '+clock.speed+'倍速 · 完成・到着が近い順':'共通時間は停止中 · 完成・到着時刻は未定'};
+  }
 
   function build(game, options = {}) {
     const state = game?.state || {};
     const income = options.income || game?.income?.() || {};
     const jobs = options.jobs || game?.constructionJobs?.() || state.jobs || [];
     const marches = (options.marches || []).filter(march => march?.status === 'marching');
+    const alliance=options.alliance??global.SengokuAlliance?.ownTravelSnapshot?.()??{available:false,status:'unloaded',active:[]};
+    const knownMarches=new Set(marches.map(row=>row.id).filter(Boolean));
+    const alliedMarches=alliance.available&&Array.isArray(alliance.active)?alliance.active.filter(row=>row?.status==='marching'&&!knownMarches.has(row.id)):[];
+    const allMarches=[...marches,...alliedMarches];
     const queued = jobs.filter(job => job.queued === true).length;
     const available = (options.quests || []).filter(quest => {
       const status = game?.questStatus?.(quest.id);
@@ -20,11 +85,12 @@
     const army = (state.army || []).filter(Boolean).length;
     const morale = Math.min(100, Math.max(0, Number(state.morale) || 0));
     const militaryDeficit = deficit.some(key => key === 'gold' || key === 'rice');
+    const operations=buildOperations(game,{...options,jobs,marches,alliance});
     return {
       jobs: number(jobs.length),
       jobsDetail: jobs.length ? `${number(jobs.length - queued)}件進行 · ${number(queued)}件予約` : '普請と研究の状況',
-      marches: number(marches.length),
-      marchesDetail: marches.length ? `うち帰還中 ${number(marches.filter(march => march.phase === 'returning').length)}部隊` : '移動中の部隊を確認',
+      marches: number(allMarches.length),
+      marchesDetail: allMarches.length ? `うち帰還中 ${number(allMarches.filter(march => march.phase === 'returning').length)}部隊${alliedMarches.length?' · 同盟'+number(alliedMarches.length)+'（最終確認）':''}` : '移動中の部隊を確認',
       quests: number(available),
       questsDetail: available ? '領主任務の報酬を確認' : '次の目標を確認',
       troops: number(state.troops),
@@ -33,6 +99,12 @@
       rice: signed(income.net?.rice ?? income.rice),
       goldNegative: Number(income.net?.gold ?? income.gold ?? 0) < 0,
       riceNegative: Number(income.net?.rice ?? income.rice ?? 0) < 0,
+      operations: number(operations.items.length),
+      nextTitle: operations.items[0]?.name||'進行中の予定はありません',
+      nextTime: operations.items[0]?(operations.items[0].time+(operations.items[0].fromAlliance?' · 同盟の最終確認':'')):'普請・研究・移動を始めると表示します',
+      nextTitle2: operations.items[1]?.name||'',
+      nextTime2: operations.items[1]?(operations.items[1].time+(operations.items[1].fromAlliance?' · 同盟の最終確認':'')):'',
+      hasSecond: operations.items.length>1,
       tone: deficit.length ? 'attention' : 'steady',
       note: militaryDeficit
         ? `${deficit.map(key => resources[key]).join('・')}が赤字見込みです。金銭・兵糧の赤字は月替わりの自動減兵対象です。`
@@ -46,7 +118,7 @@
     const model = build(game, options);
     const icon = name => typeof options.icon === 'function' ? options.icon(name) : `<span data-icon="${name}" aria-hidden="true"></span>`;
     const tile = (key, label, unit, symbol, action, detail) => `<button type="button" class="domain-briefing-tile" ${action}><span class="domain-briefing-label">${icon(symbol)}${label}</span><strong class="${model[key].length>7?'domain-briefing-long-number':''}"><span data-briefing-value="${key}">${esc(model[key])}</span><small>${unit}</small></strong><span class="domain-briefing-detail" data-briefing-value="${detail}">${esc(model[detail])}</span></button>`;
-    return `<section class="domain-briefing" id="domain-briefing" data-tone="${model.tone}" aria-labelledby="domain-briefing-title"><header><div><span class="domain-briefing-kicker">COMMAND DESK</span><h2 id="domain-briefing-title">領国の指揮台</h2></div><span class="domain-briefing-caption">いまの状況を、一目で。</span></header><div class="domain-briefing-grid">${tile('jobs','普請・研究','件','castle','data-action="town-section" data-id="town-reports-section"','jobsDetail')}${tile('marches','進軍・帰還','部隊','flag','data-action="command-marches" aria-haspopup="dialog"','marchesDetail')}${tile('quests','達成済み任務','件','scroll','data-view="council"','questsDetail')}${tile('troops','本隊の兵数','人','swords','data-view="army"','troopsDetail')}</div><button type="button" class="domain-briefing-ledger" data-action="economy-details" aria-haspopup="dialog"><span class="domain-briefing-ledger-title">${icon('coins')}毎月の収支 <small>見込み</small></span><span class="domain-briefing-ledger-values"><span>金銭 <b data-briefing-value="gold" class="${model.goldNegative?'is-negative':''}">${esc(model.gold)}</b></span><span>兵糧 <b data-briefing-value="rice" class="${model.riceNegative?'is-negative':''}">${esc(model.rice)}</b></span></span><span class="domain-briefing-ledger-open">内訳を見る ${icon('chevron')}</span></button><p class="domain-briefing-note" data-briefing-value="note">${esc(model.note)}</p></section>`;
+    return `<section class="domain-briefing" id="domain-briefing" data-tone="${model.tone}" aria-labelledby="domain-briefing-title"><header><div><span class="domain-briefing-kicker">COMMAND DESK</span><h2 id="domain-briefing-title">領国の指揮台</h2></div><span class="domain-briefing-caption">いまの状況を、一目で。</span></header><div class="domain-briefing-grid">${tile('jobs','普請・研究','件','castle','data-action="town-section" data-id="town-reports-section"','jobsDetail')}${tile('marches','進軍・帰還','部隊','flag','data-action="command-activity" aria-haspopup="dialog"','marchesDetail')}${tile('quests','達成済み任務','件','scroll','data-view="council"','questsDetail')}${tile('troops','本隊の兵数','人','swords','data-view="army"','troopsDetail')}</div><button type="button" class="domain-activity-entry" data-action="command-activity" aria-haspopup="dialog"><span class="domain-activity-heading"><b>行動予定表</b><small><span data-briefing-value="operations">${esc(model.operations)}</span>件 · 一覧を見る</small></span><span class="domain-activity-next"><strong data-briefing-value="nextTitle">${esc(model.nextTitle)}</strong><small data-briefing-value="nextTime">${esc(model.nextTime)}</small></span><span class="domain-activity-next" data-briefing-second ${model.hasSecond?'':'hidden'}><strong data-briefing-value="nextTitle2">${esc(model.nextTitle2)}</strong><small data-briefing-value="nextTime2">${esc(model.nextTime2)}</small></span></button><button type="button" class="domain-briefing-ledger" data-action="economy-details" aria-haspopup="dialog"><span class="domain-briefing-ledger-title">${icon('coins')}毎月の収支 <small>見込み</small></span><span class="domain-briefing-ledger-values"><span>金銭 <b data-briefing-value="gold" class="${model.goldNegative?'is-negative':''}">${esc(model.gold)}</b></span><span>兵糧 <b data-briefing-value="rice" class="${model.riceNegative?'is-negative':''}">${esc(model.rice)}</b></span></span><span class="domain-briefing-ledger-open">内訳を見る ${icon('chevron')}</span></button><p class="domain-briefing-note" data-briefing-value="note">${esc(model.note)}</p></section>`;
   }
 
   function refresh(game, options = {}) {
@@ -60,10 +132,128 @@
       if (['jobs','marches','quests','troops'].includes(key)) node.parentElement?.classList.toggle('domain-briefing-long-number',model[key].length>7);
       if (key === 'gold' || key === 'rice') node.classList.toggle('is-negative', model[key + 'Negative']);
     }
+    const second=host.querySelector('[data-briefing-second]');
+    if(second)second.hidden=!model.hasSecond;
     if (host.dataset.tone !== model.tone) host.dataset.tone = model.tone;
   }
 
-  const api = {build, markup, refresh};
+  function matchingOperations(model,filter='all',query='') {
+    const normalize=value=>String(value??'').normalize('NFKC').toLocaleLowerCase('ja-JP');
+    const words=normalize(query).trim().split(/\s+/).filter(Boolean);
+    return model.items.filter(row=>(filter==='all'||row.category===filter)&&words.every(word=>normalize(row.name+' '+row.detail+' '+filters[row.category]).includes(word)));
+  }
+  function operationRow(row) {
+    return `<li class="command-operation" data-stable-key="${esc(row.id)}" data-command-operation="${esc(row.id)}" data-kind="${row.category}"><div class="command-operation-content"><div class="command-operation-heading"><span class="command-operation-kind">${filters[row.category]}</span>${row.queued?'<span class="command-operation-queued">予約待ち</span>':''}</div><h3>${esc(row.name)}</h3><p>${esc(row.detail)}</p></div><div class="command-operation-time"><strong data-command-time="${esc(row.id)}">${esc(row.time)}</strong><small data-command-timing="${esc(row.id)}">${esc(row.timingNote)}</small></div><div class="command-operation-track" aria-hidden="true"><i data-command-progress="${esc(row.id)}" style="width:${Math.round(row.progress)}%"></i></div><button type="button" class="button small command-operation-open" data-command-go="${row.destination}" data-command-key="${esc(row.id)}"${row.destination==='alliance'?' data-action="alliance-strategy" data-command-dismiss':''}>${row.actionLabel}</button></li>`;
+  }
+
+  let activityDialog=null,activitySession=null;
+  function identity(game) {
+    const state=game?.state||{},access=global.SengokuSocial?.getExpansionContext?.()||{};
+    return JSON.stringify([state.walking?.campaignId||state.campaignId||'',state.clan||'',game?.isStaff===true,game?.isAdmin===true,access.playerId||access.user?.id||'',access.epoch,access.accountEpoch,access.privilegeEpoch,access.pending===true,access.banned===true]);
+  }
+  function finishActivity() {
+    const current=activitySession;
+    if(!current)return;
+    activitySession=null;
+    current.unsubscribe?.();
+    if(current.returnFocus?.isConnected)current.returnFocus.focus({preventScroll:true});
+  }
+  function close() {
+    if(activityDialog?.open)activityDialog.close();
+    finishActivity();
+  }
+  function ensureActivityDialog() {
+    if(activityDialog)return activityDialog;
+    const document=global.document;
+    if(!document?.createElement)return null;
+    activityDialog=document.createElement('dialog');
+    activityDialog.className='command-activity-dialog';
+    activityDialog.setAttribute('aria-labelledby','command-activity-title');
+    activityDialog.setAttribute('aria-describedby','command-activity-note');
+    activityDialog.innerHTML='<header class="command-activity-header"><div><p>領国の進行状況</p><h2 id="command-activity-title">行動予定表</h2></div><button type="button" class="button" data-command-close>閉じる</button></header><div class="command-activity-tools"><p class="command-activity-clock" data-command-clock></p><label class="command-activity-search"><span>城・施設・研究を探す</span><input type="search" class="input" data-command-query placeholder="例：田畑、清洲城、帰還" autocomplete="off"></label><div class="command-activity-filters" role="group" aria-label="予定の種類">'+Object.entries(filters).map(([key,label])=>'<button type="button" data-command-filter="'+key+'" aria-pressed="'+(key==='all')+'">'+label+'<span data-command-count="'+key+'">0</span></button>').join('')+'</div><p class="command-activity-count" data-command-result-count role="status" aria-live="polite"></p></div><div class="command-activity-scroll" data-command-scroll><ul class="command-operation-list" data-command-list></ul><div class="command-activity-empty" data-command-empty hidden><strong>該当する予定はありません</strong><p>普請・研究・進軍・帰還が始まると、ここに表示されます。</p><button type="button" class="button" data-command-reset>条件を解除</button></div><button type="button" class="button command-activity-more" data-command-more hidden>さらに40件を表示</button></div><footer class="command-activity-footer"><p id="command-activity-note">残り時間は現在の速度での目安です。速度・停止に連動し、完成・到着は確定後に各画面へ反映されます。</p><p><span data-command-alliance-note>同盟部隊は未取得です。</span><button type="button" class="text-link" data-action="alliance-strategy" data-command-dismiss>同盟作戦で確認</button></p></footer>';
+    activityDialog.addEventListener('cancel',event=>{event.preventDefault();close();});
+    // Native close events are queued; an earlier close can arrive after reopen.
+    activityDialog.addEventListener('close',()=>{if(!activityDialog.open)finishActivity();});
+    activityDialog.addEventListener('input',event=>{
+      if(!activitySession||!event.target.matches?.('[data-command-query]'))return;
+      activitySession.query=event.target.value;
+      activitySession.limit=40;
+      renderActivity();
+    });
+    activityDialog.addEventListener('click',event=>{
+      const button=event.target.closest?.('[data-command-close],[data-command-filter],[data-command-reset],[data-command-more],[data-command-go],[data-command-dismiss]');
+      if(!button||!activitySession)return;
+      if(button.hasAttribute('data-command-close')||button.hasAttribute('data-command-dismiss'))return close();
+      if(button.hasAttribute('data-command-filter')){activitySession.filter=Object.hasOwn(filters,button.dataset.commandFilter)?button.dataset.commandFilter:'all';activitySession.limit=40;renderActivity();return;}
+      if(button.hasAttribute('data-command-reset')){activitySession.filter='all';activitySession.query='';activitySession.limit=40;activityDialog.querySelector('[data-command-query]').value='';renderActivity();return;}
+      if(button.hasAttribute('data-command-more')){activitySession.limit+=40;renderActivity();return;}
+      const destination=button.dataset.commandGo,options=activitySession.options;
+      close();
+      if(destination==='marches')global.SengokuTravelUI?.open?.();else if(['research','map','facilities'].includes(destination))options.navigate?.(destination);
+    });
+    document.body.appendChild(activityDialog);
+    return activityDialog;
+  }
+  function renderActivity(data,clock) {
+    const session=activitySession;
+    if(!session||!activityDialog?.open)return;
+    const game=session.options.getGame?.()||session.options.game;
+    if(!game||identity(game)!==session.scope||global.SENGOKU_AT_TITLE===true){close();return;}
+    if(data)session.data=data;
+    if(clock)session.clock=clock;
+    const model=buildOperations(game,{catalog:session.options.catalog,marches:session.data?.active||[],clock:session.clock});
+    const rows=matchingOperations(model,session.filter,session.query),visible=rows.slice(0,session.limit),byId=new Map(visible.map(row=>[row.id,row]));
+    const text=(selector,value)=>{const node=activityDialog.querySelector(selector);if(node&&node.textContent!==value)node.textContent=value;};
+    text('[data-command-clock]',model.clockLabel);
+    text('[data-command-alliance-note]',model.allianceNote);
+    for(const button of activityDialog.querySelectorAll('[data-command-filter]')) {
+      button.setAttribute('aria-pressed',String(button.dataset.commandFilter===session.filter));
+      const count=button.querySelector('[data-command-count]'),value=number(model.counts[button.dataset.commandFilter]);
+      if(count&&count.textContent!==value)count.textContent=value;
+    }
+    text('[data-command-result-count]',rows.length?number(visible.length)+' / '+number(rows.length)+'件を表示 · 予約待ち '+number(rows.filter(row=>row.queued).length)+'件':'該当する予定はありません');
+    const list=activityDialog.querySelector('[data-command-list]'),scroll=activityDialog.querySelector('[data-command-scroll]');
+    const shape=JSON.stringify(visible.map(row=>[row.id,row.name,row.detail,row.category,row.queued,row.destination]));
+    if(list.dataset.shape!==shape) {
+      const top=scroll.scrollTop,dialogTop=activityDialog.scrollTop,focused=global.document.activeElement,focusKey=list.contains(focused)?focused?.dataset?.commandKey:null;
+      const html=visible.map(operationRow).join('');
+      if(global.SengokuStableDOM?.patch)global.SengokuStableDOM.patch(list,html);else list.innerHTML=html;
+      list.dataset.shape=shape;
+      scroll.scrollTop=top;
+      activityDialog.scrollTop=dialogTop;
+      if(focusKey){const next=Array.from(list.querySelectorAll('[data-command-key]')).find(node=>node.dataset.commandKey===focusKey);if(next&&global.document.activeElement!==next)next.focus({preventScroll:true});else if(!next)activityDialog.querySelector('[data-command-close]')?.focus({preventScroll:true});}
+    }
+    for(const node of list.querySelectorAll('[data-command-time],[data-command-timing],[data-command-progress]')) {
+      const row=byId.get(node.dataset.commandTime||node.dataset.commandTiming||node.dataset.commandProgress);
+      if(!row)continue;
+      if(node.hasAttribute('data-command-progress')){const value=Math.round(row.progress)+'%';if(node.style.width!==value)node.style.width=value;}
+      else {const value=node.hasAttribute('data-command-time')?row.time:row.timingNote;if(node.textContent!==value)node.textContent=value;}
+    }
+    activityDialog.querySelector('[data-command-empty]').hidden=rows.length>0;
+    activityDialog.querySelector('[data-command-reset]').hidden=session.filter==='all'&&!session.query;
+    activityDialog.querySelector('[data-command-more]').hidden=rows.length<=session.limit;
+  }
+  function open(options = {}) {
+    const game=options.getGame?.()||options.game;
+    if(!game)return false;
+    const dialog=ensureActivityDialog();
+    if(!dialog)return false;
+    if(activitySession)close();
+    const session={options,scope:identity(game),returnFocus:global.document.activeElement,filter:Object.hasOwn(filters,options.filter)?options.filter:'all',query:'',limit:40,unsubscribe:null};
+    activitySession=session;
+    dialog.querySelector('[data-command-query]').value='';
+    dialog.showModal();
+    if(typeof global.SengokuTravelUI?.subscribe==='function'){
+      session.unsubscribe=global.SengokuTravelUI.subscribe((data,clock)=>{if(activitySession===session)renderActivity(data,clock);});
+      if(activitySession!==session){session.unsubscribe?.();return false;}
+    }
+    else renderActivity(global.SengokuTravelUI?.snapshot?.()||{active:[]});
+    if(activitySession!==session)return false;
+    dialog.querySelector('[data-command-close]')?.focus({preventScroll:true});
+    return true;
+  }
+
+  const api = {build, markup, refresh, buildOperations, matchingOperations, open, close};
   global.SengokuCommandCenter = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis);

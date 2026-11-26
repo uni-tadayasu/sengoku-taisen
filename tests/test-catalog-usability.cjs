@@ -9,8 +9,8 @@ function fn(name){const start=source.indexOf(`  function ${name}(`),lineEnd=sour
 let count=0;function test(name,run){run();count++;console.log('PASS '+name);}
 function fixture(){
  const game=new E({officers:roster,seed:4920}),{host,doc}=setup(),nodes=new Map(),handlers=new Map(),patches=[];
- const c={game,data:D,roster,state:()=>game.state,window:{},document:{addEventListener:(type,handler)=>handlers.set(type,handler)},
-  facilityState:'all',facilityCategory:'all',facilityQuery:'',facilityPage:1,territoryState:'all',mapRegion:'all',mapQuery:'',territoryPage:1,selectedCastle:'',staffBaseId:'kyoto_gosho',crestQuery:'',crestPage:1,
+ const c={game,data:D,roster,state:()=>game.state,window:{SengokuManagement:require('../management-model.js')},localStorage:{setItem(){}},document:{addEventListener:(type,handler)=>handlers.set(type,handler)},
+  facilitySort:'default',facilityLayout:'cards',facilityState:'all',facilityCategory:'all',facilityQuery:'',facilityPage:1,territoryState:'all',mapRegion:'all',mapQuery:'',territoryPage:1,selectedCastle:'',staffBaseId:'kyoto_gosho',crestQuery:'',crestPage:1,
   filter:{q:''},choiceFilters:{army:{q:''}},choiceMode:'army',choiceTarget:'0',choicePage:1,
   categoryNames:{economy:'生産',military:'軍備'},skillNames:{},num:String,icon:()=>'',clanCrest:()=>'',officerCrest:()=>'',portrait:()=>'',skillIcons:{},
   esc:value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char])),
@@ -18,7 +18,7 @@ function fixture(){
   $:selector=>nodes.get(selector),patchHTML:(node,html)=>{patches.push(node);if(node)node.innerHTML=html;},refreshLiveControls(){},syncWorldMap(){},updateBranchTroopDraft:()=>false,
   updateOfficerFilter(context,key,value){(context==='archive'?c.filter:c.choiceFilters[context])[key]=value;patches.push(context);}
  };
- vm.createContext(c);vm.runInContext(['catalogMatches','catalogChips','resetCatalogFilters','updateCatalogSearch','facilitiesResults','territoryResults','crestResults','officerFilterDefaults','normalizeOfficerFilter','filterOfficerList','officerDuty','officerChoiceResults','officerCard'].map(fn).join('\n'),c);
+ vm.createContext(c);vm.runInContext(['catalogMatches','catalogChips','saveFacilityPreferences','resetCatalogFilters','updateCatalogSearch','facilitiesResults','territoryResults','crestResults','officerFilterDefaults','normalizeOfficerFilter','filterOfficerList','officerDuty','officerChoiceResults','officerCard'].map(fn).join('\n'),c);
  return{c,game,host,doc,nodes,handlers,patches};
 }
 test('catalog search accepts full-width characters, old Tokugawa spelling and multiple terms',()=>{

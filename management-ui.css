@@ -1,0 +1,171 @@
+/* The ledger and comparison controls share the existing ink, bronze and gold palette. */
+#app.chronicle-shell #main .facility-planner {
+  margin: 0 0 16px; border: 1px solid #bfa36b68; border-radius: 8px;
+  background: linear-gradient(125deg,#253d43,#162932); overflow: hidden;
+}
+.facility-planner-overview { display: flex; flex-wrap: wrap; align-items: center; gap: 18px 32px; padding: 17px 20px; border-bottom: 1px solid #bfa36b35; }
+.facility-planner-overview > div { min-width: 115px; display: grid; gap: 4px; }
+.facility-planner-overview > div > span { color: #ced6d2; font-size: .875rem; }
+.facility-planner-overview strong { color: #fff1ca; font-size: 1.75rem; font-variant-numeric: tabular-nums; line-height: 1.2; }
+.facility-planner-overview strong small { font-size: .875rem; color: #d6d7c9; font-weight: 400; }
+.facility-planner-overview > button { margin-left: auto; }
+.facility-planner-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; padding: 12px 20px; }
+.facility-planner-tools > label { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; font-size: .875rem; color: #e3e8e1; }
+.facility-planner-tools .select { min-height: 42px; max-width: 100%; font-size: .875rem; }
+.facility-layout-switch { display: flex; gap: 6px; }
+#app.chronicle-shell #main .facility-layout-switch .button { min-height: 42px; padding: 8px 15px; }
+#app.chronicle-shell #main .facility-layout-switch .button[aria-pressed="true"] { border-color: #e4c789; background: #806c40; color: #fff8e6; box-shadow: inset 0 -2px #e5c78e; }
+.facility-planner-note { font-size: .8125rem; color: #bfcac9; margin-left: auto; }
+.facility-management-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; margin: 8px 0 14px; }
+.facility-management-meta .facility-governor { margin: 0; flex: 1; min-width: 110px; }
+.facility-readiness { display: inline-flex; align-items: center; padding: 4px 9px; border: 1px solid #91aa9c66; border-radius: 4px; color: #c9ead0; background: #24453570; font-size: .8125rem; line-height: 1.4; white-space: nowrap; }
+.facility-readiness[data-facility-status="shortage"] { color: #ffcfb9; background: #57322970; border-color: #d89d815e; }
+.facility-readiness[data-facility-status="working"] { color: #f5d7a0; background: #61502b70; border-color: #d7b16d70; }
+.facility-readiness[data-facility-status="locked"] { color: #c5cdd4; background: #35434b70; border-color: #99aab85e; }
+#app.chronicle-shell #main .facility-catalog-list { grid-template-columns: minmax(0,1fr); gap: 10px; }
+#app.chronicle-shell #main .facility-catalog-list .facility-entry {
+  display: grid; grid-template-columns: 70px minmax(140px,.85fr) minmax(210px,1.5fr) minmax(140px,.85fr);
+  grid-template-areas: "art title meta action" "art effect cost action";
+  column-gap: 16px; row-gap: 8px; align-items: center; padding: 15px 18px;
+}
+#app.chronicle-shell #main .facility-catalog-list .facility-art { grid-area: art; float: none; width: 70px; height: 90px; margin: 0; min-height: 0; aspect-ratio: auto; }
+#app.chronicle-shell #main .facility-catalog-list .facility-entry-heading { grid-area: title; margin: 0; padding: 0; border: 0; display: flex; flex-wrap: nowrap; gap: 10px; }
+#app.chronicle-shell #main .facility-catalog-list .facility-entry-heading h3 { font-size: 1.15rem; line-height: 1.5; }
+#app.chronicle-shell #main .facility-catalog-list .facility-entry-heading .building-symbol { display: none; }
+#app.chronicle-shell #main .facility-catalog-list .facility-entry-heading small { font-size: .8125rem; }
+#app.chronicle-shell #main .facility-catalog-list .facility-seal { margin-left: auto; padding: 3px 6px; }
+#app.chronicle-shell #main .facility-catalog-list .facility-seal b { font-size: 1.35rem; }
+#app.chronicle-shell #main .facility-catalog-list .facility-description { display: none; }
+#app.chronicle-shell #main .facility-catalog-list .facility-effect { grid-area: effect; margin: 0; min-height: 0; padding: 0; background: none; font-size: .875rem; }
+#app.chronicle-shell #main .facility-catalog-list .facility-management-meta { grid-area: meta; margin: 0; }
+#app.chronicle-shell #main .facility-catalog-list .cost { grid-area: cost; margin: 0; gap: 5px 12px; font-size: .8125rem; }
+#app.chronicle-shell #main .facility-catalog-list .facility-entry > .button { grid-area: action; margin: 0; width: 100%; min-height: 46px; align-self: center; }
+#app.chronicle-shell #main .facility-catalog-list .facility-entry > .notice { grid-area: cost; margin: 0; padding: 0; background: none; border: 0; font-size: .8125rem; }
+#app.chronicle-shell #main .facility-catalog-list .facility-entry > .progress { grid-column: 2 / -1; grid-row: 3; margin: 0; }
+#app.chronicle-shell #main .facility-catalog-list .upgrade-cost-note { grid-column: 2 / -1; margin: 0; font-size: .8125rem; }
+
+/* Comparison uses sibling controls, preserving the portrait as one accessible button. */
+#app.chronicle-shell #main .officer-comparison-card { min-width: 0; display: flex; flex-direction: column; border: 1px solid #bca16a70; border-radius: 8px; background: #152b35; overflow: hidden; box-shadow: 0 6px 16px #020b1235; }
+#app.chronicle-shell #main .officer-comparison-card .officer-card { flex: 1; width: 100%; margin: 0; border: 0; border-radius: 0; box-shadow: none; transform: none; }
+#app.chronicle-shell #main .officer-comparison-card.is-comparing { border-color: #f3d18b; box-shadow: 0 0 0 1px #d4b678,0 8px 24px #040b1555; }
+#app.chronicle-shell #main .officer-compare-toggle { display: flex; justify-content: center; align-items: center; gap: 8px; min-height: 46px; width: 100%; padding: 10px 12px; border: 0; border-top: 1px solid #bca16a66; border-radius: 0; background: #233b43; color: #e3d3b2; font-size: .875rem; cursor: pointer; }
+#app.chronicle-shell #main .officer-compare-toggle[aria-pressed="true"] { color: #fff4d7; background: #5f5235; }
+.officer-compare-toggle > .icon { width: 17px; height: 17px; flex: none; }
+.officer-compare-toggle:focus-visible, .officer-compare-pick:focus-visible { outline: 3px solid #ffe2a1; outline-offset: -3px; }
+#app.chronicle-shell #main .officer-compare-tray {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 14px; padding: 14px 16px; margin: 0 0 16px;
+  border: 1px solid #c2aa706e; border-left: 3px solid #d6b572; border-radius: 6px;
+  background: linear-gradient(110deg,#304349,#1a2e39); box-shadow: 0 6px 18px #06121b33;
+}
+.officer-compare-intro { display: grid; gap: 6px; flex: none; }
+.officer-compare-intro b { display: flex; align-items: center; gap: 8px; font-size: .9375rem; color: #f2e3bd; }
+.officer-compare-intro .icon { width: 18px; height: 18px; }
+.officer-compare-intro small { font-size: .8125rem; color: #c7d4d3; font-variant-numeric: tabular-nums; }
+.officer-compare-picks { display: flex; flex: 1; flex-wrap: wrap; gap: 7px; min-width: 150px; }
+.officer-compare-picks > p { margin: 0; font-size: .875rem; line-height: 1.7; color: #d2d9d3; }
+#app.chronicle-shell #main .officer-compare-pick { display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 7px 10px; border: 1px solid #9db0ac55; border-radius: 4px; background: #0f2532; color: #f1e8cc; font-size: .875rem; cursor: pointer; }
+.officer-compare-pick > span { display: flex; flex-wrap: wrap; gap: 6px; }
+.officer-compare-pick small { font-size: .8125rem; }
+.officer-compare-pick > .icon { width: 14px; height: 14px; flex: none; }
+.officer-compare-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+.officer-compare-actions > .button { min-height: 44px; }
+.officer-compare-actions .text-link { min-height: 40px; font-size: .8125rem; }
+#modal.officer-comparison-modal { width: min(1000px,calc(100vw - 24px)); }
+.officer-comparison { min-width: 0; }
+.comparison-explanation { margin: 0 0 18px; color: #d6dcd6; font-size: .9375rem; line-height: 1.8; }
+.comparison-people { display: grid; grid-template-columns: repeat(var(--comparison-count,3),minmax(0,1fr)); gap: 12px; margin-bottom: 22px; }
+.comparison-person { display: flex; align-items: flex-start; gap: 12px; padding: 14px; border: 1px solid #bca16a55; border-radius: 6px; background: #1b303a; min-width: 0; }
+.comparison-person > div:last-child { min-width: 0; }
+.comparison-person-art { width: 76px; aspect-ratio: 3/4; flex: none; border: 1px solid #cdb27a; border-radius: 3px; overflow: hidden; position: relative; background: #0f1d24; }
+.comparison-person-art .portrait-frame, .comparison-person-art .portrait { position: absolute; inset: 0; width: 100%; height: 100%; }
+.comparison-person .eyebrow { font-size: .75rem; letter-spacing: .02em; line-height: 1.6; }
+#modal .comparison-person h3 { font-size: 1.125rem; line-height: 1.5; margin: 4px 0; color: #ffedbf; overflow-wrap: anywhere; }
+.comparison-person p { margin: 0 0 8px; font-size: .8125rem; color: #ced4d1; }
+.comparison-person .officer-duty-badge { display: block; white-space: normal; margin: 6px 0; font-size: .8125rem; line-height: 1.5; }
+.comparison-highest { display: block; font-size: .8125rem; color: #c7d1ce; margin: 8px 0; }
+.comparison-person .text-link { font-size: .8125rem; min-height: 38px; text-align: left; overflow-wrap: anywhere; }
+.officer-comparison-table { width: 100%; table-layout: fixed; border-collapse: collapse; margin: 0 0 22px; }
+.officer-comparison-table caption { caption-side: top; text-align: left; padding: 0 0 10px; color: #d8d8c6; font-size: .875rem; line-height: 1.7; }
+.officer-comparison-table th, .officer-comparison-table td { border: 1px solid #9c9e7e50; padding: 12px; text-align: center; overflow-wrap: anywhere; }
+.officer-comparison-table th { font-weight: 500; color: #f4e3bf; background: #243a43; font-size: .9375rem; }
+.officer-comparison-table th:first-child { width: 62px; }
+.officer-comparison-table th small { display: block; margin-top: 5px; font-size: .8125rem; color: #c4cec9; }
+.officer-comparison-table td { background: #152b36; font-variant-numeric: tabular-nums; }
+.officer-comparison-table td strong { font-size: 1.6rem; line-height: 1.3; color: #edf2e4; }
+.officer-comparison-table td.comparison-best { background: #4d482c44; }
+.officer-comparison-table td.comparison-best strong { color: #ffe4a1; }
+.officer-comparison-table td small { display: block; margin-top: 5px; min-height: 1.3em; font-size: .75rem; color: #f3d99e; }
+.comparison-stat-track { display: block; height: 5px; margin: 7px auto 0; max-width: 160px; background: #c4c5a51a; border-radius: 2px; overflow: hidden; }
+.comparison-stat-track i { display: block; height: 100%; background: #94b7a6; }
+.comparison-best .comparison-stat-track i { background: #dfbd76; }
+.comparison-skills { display: grid; grid-template-columns: repeat(var(--comparison-count,3),minmax(0,1fr)); gap: 12px; margin-bottom: 18px; }
+.comparison-skills > section { min-width: 0; padding: 15px; background: #263b3d; border-left: 2px solid #bdaa6e; }
+.comparison-skills h4 { margin: 0 0 10px; font-size: 1rem; color: #f6e2b2; }
+.comparison-skills b { display: flex; align-items: center; gap: 8px; font-size: .875rem; color: #d5dfcf; }
+.comparison-skills b .icon { width: 18px; height: 18px; flex: none; }
+.comparison-skills p { margin: 10px 0 0; font-size: .875rem; line-height: 1.8; color: #d4dbd7; }
+.officer-detail-comparison { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 18px 0; }
+.officer-detail-comparison > .button { min-height: 44px; }
+#modal .officer-detail-comparison > .button[hidden] { display: none !important; }
+@media (max-width:1100px) {
+  #app.chronicle-shell #main .facility-catalog-list .facility-entry { grid-template-columns: 64px minmax(150px,1fr) minmax(130px,.8fr); grid-template-areas: "art title action" "art meta action" "effect effect effect" "cost cost cost"; }
+  #app.chronicle-shell #main .facility-catalog-list .facility-entry > .progress { grid-row: 5; grid-column: 1/-1; }
+  #app.chronicle-shell #main .facility-catalog-list .upgrade-cost-note { grid-column: 1/-1; }
+  #app.chronicle-shell #main .facility-catalog-list .facility-art { width: 64px; height: 80px; }
+  .comparison-person { display: block; }
+  .comparison-person-art { width: 84px; margin-bottom: 12px; }
+}
+@media (max-width:700px) {
+  .officer-comparison { display: flex; flex-direction: column; }
+  .officer-comparison > .comparison-people { order: 2; }
+  .officer-comparison > .officer-comparison-table { order: 1; }
+  .officer-comparison > .comparison-skills { order: 3; }
+  .officer-comparison > .comparison-explanation:last-child { order: 4; }
+  #modal.officer-comparison-modal .modal-footer { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; padding: 12px; }
+  #modal.officer-comparison-modal .modal-footer .button { min-width: 0; margin: 0; padding: 10px 8px; font-size: .875rem; }
+
+  .facility-planner-overview { padding: 14px; gap: 14px 20px; }
+  .facility-planner-overview > div { min-width: 100px; }
+  .facility-planner-overview > button { margin-left: 0; }
+  .facility-planner-tools { padding: 12px 14px; gap: 12px; }
+  .facility-planner-tools > label { width: 100%; justify-content: space-between; }
+  .facility-planner-tools .select { min-width: 0; width: min(220px,70%); }
+  .facility-planner-note { margin-left: 0; flex-basis: 100%; }
+  #app.chronicle-shell #main .facility-catalog-list .facility-entry { grid-template-columns: 54px minmax(0,1fr); grid-template-areas: "art title" "art meta" "effect effect" "cost cost" "action action"; padding: 13px; column-gap: 12px; row-gap: 10px; }
+  #app.chronicle-shell #main .facility-catalog-list .facility-art { width: 54px; height: 76px; }
+  #app.chronicle-shell #main .facility-catalog-list .facility-entry > .progress { grid-row: 6; }
+  #app.chronicle-shell #main .facility-catalog-list .facility-seal { min-width: 32px; }
+  #app.chronicle-shell #main .facility-catalog-list .cost { font-size: .875rem; gap: 7px 12px; }
+  #app.chronicle-shell #main .officer-compare-tray { padding: 13px; gap: 12px; }
+  .officer-compare-intro { display: flex; align-items: center; justify-content: space-between; width: 100%; gap: 10px; }
+  .officer-compare-picks { flex-basis: 100%; }
+  .officer-compare-actions { width: 100%; }
+  .officer-compare-actions > .button { flex: 1; }
+  .comparison-people { gap: 7px; }
+  .comparison-person { padding: 10px; }
+  .comparison-person-art { width: min(100%,76px); }
+  #modal .comparison-person h3 { font-size: 1rem; }
+  .comparison-person .text-link { min-height: 44px; }
+  .officer-comparison-table th, .officer-comparison-table td { padding: 7px 4px; line-height: 1.4; }
+  .officer-comparison-table th:first-child { width: 40px; }
+  .officer-comparison-table th { font-size: .875rem; }
+  .officer-comparison-table th small { font-size: .75rem; white-space: nowrap; margin-top: 3px; }
+  .officer-comparison-table td strong { font-size: 1.25rem; }
+  .officer-comparison-table td small { margin-top: 3px; line-height: 1.3; }
+  .officer-comparison-table .comparison-stat-track { height: 3px; margin-top: 5px; }
+  .comparison-skills { grid-template-columns: minmax(0,1fr); gap: 8px; }
+}
+@media (max-width:380px) {
+  .comparison-people { grid-template-columns: minmax(0,1fr); }
+  .comparison-person { display: flex; gap: 13px; }
+  .comparison-person-art { width: 60px; margin: 0; }
+  .comparison-person .comparison-highest { margin-block: 5px; }
+  .facility-planner-tools > label { display: grid; grid-template-columns: minmax(0,1fr); gap: 6px; }
+  .facility-planner-tools .select { width: 100%; }
+}
+@media (forced-colors:active) {
+  .facility-readiness, .officer-compare-toggle, .officer-compare-pick, .comparison-person, .comparison-skills > section { background: Canvas !important; color: CanvasText !important; border: 1px solid CanvasText !important; }
+  .comparison-stat-track { background: GrayText; }
+  .comparison-stat-track i { background: Highlight; }
+  .officer-comparison-table td.comparison-best { outline: 2px solid Highlight; outline-offset: -3px; }
+}

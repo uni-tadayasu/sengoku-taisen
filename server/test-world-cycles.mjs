@@ -29,7 +29,8 @@ try{
  const ancient=structuredClone(saved.save);await h.api('/sync',{method:'PUT',token:user.token,body:{deviceId:'device-a',revision:2,save:ancient},expected:409});
  assert.equal((await h.api('/sync',{token:user.token})).data.save.state.magatama,next.save.state.magatama,'old imported cycle cannot repeat or erase the grant');
  const feed=(await h.api('/achievements')).data;assert.equal(feed.events.length,1);assert.equal(feed.events[0].playerName,'周回検証の領主');assert.equal(feed.events[0].value,2);assert.equal(feed.events[0].kind,'cycle');
- assert.deepEqual(Object.keys(feed.events[0]).sort(),['id','playerId','playerName','playerEvaluation','playerAppearance','playerAvatarVersion','playerCourtOffice','avatarVersion','clan','kind','title','detail','targetId','targetName','value','occurredAt'].sort());
+ assert.deepEqual(Object.keys(feed.events[0]).sort(),['id','playerId','playerName','playerEvaluation','playerAppearance','playerAvatarVersion','playerCourtOffice','playerCityHonors','avatarVersion','clan','kind','title','detail','targetId','targetName','value','occurredAt'].sort());
+ assert.deepEqual(feed.events[0].playerCityHonors,[],'An ordinary castle holder has no public major-city distinction');
  await h.api('/achievements?limit=51',{expected:400});await h.api('/achievements?cursor=not-valid',{expected:400});
  const progress=structuredClone(next.save);progress.state.buildings.keep=4;progress.state.tech.commerce=1;
  const upgraded=(await h.api('/sync',{method:'PUT',token:user.token,body:{deviceId:'device-a',revision:2,save:progress}})).data;

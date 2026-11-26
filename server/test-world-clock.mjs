@@ -105,7 +105,8 @@ try {
 
   const leaseA=await lease(a.token,'a-device');assert.deepEqual(leaseA.clock,await getClock());
   const legacy=(await api('/sync',write(a.token,'a-device',0,fresh()))).data;
-  assert.equal(legacy.save.state.worldClock,undefined,'legacy saves remain importable until first attachment');assert(legacy.clock);
+  assert.deepEqual(legacy.save.state.worldClock,{id:'world-v1',elapsedMs:cycleMs},'legacy saves attach on their first upload before shared maintenance validation');assert(legacy.clock);
+  assert.deepEqual(legacy.save.state.resources,base.state.resources,'attachment does not simulate historical income or upkeep');
   let save=anchored((await getClock()).elapsedMs);save.state.realtime.running=false;save.state.realtime.speed=4;save.state.worldClock.isAdmin=true;
   const saved=(await api('/sync',write(a.token,'a-device',1,save))).data;
   assert.deepEqual(saved.save.state.worldClock,{id:'world-v1',elapsedMs:cycleMs});assert.equal(saved.save.state.realtime.running,true);assert.equal(saved.save.state.realtime.speed,1);
