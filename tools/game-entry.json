@@ -158,6 +158,7 @@
     "layout-controls.js",
     "interaction-motion.js",
     "image-protect.js",
-    "navigation-ui.js"
+    "navigation-ui.js",
+    "ui-sounds.js"
   ]
 }
