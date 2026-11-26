@@ -3,9 +3,11 @@
  'use strict';
  const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])),num=v=>Math.floor(Number(v)||0).toLocaleString('ja-JP'),copy=v=>JSON.parse(JSON.stringify(v));
  const RES={gold:'金銭',rice:'兵糧',wood:'木材',stone:'石材',magatama:'勾玉'},TAB={missions:'任務',army:'編成セット',analysis:'合戦研究',officers:'武将の成長',recap:'留守中の報告',history:'歴代の記録',guide:'初陣ガイド'},STAT={lead:'統率',valor:'武勇',intellect:'知略',politics:'政治'};
- let options={},overlay=null,tab='missions',data=null,busy=false,error='',message='',stamp='',generation=0,readSerial=0,writing=false,pending=null,confirmation=null,focused=null,tutorial=null,lastTutorial='',selection={castleId:'',tactic:'balanced',troops:'1000',preset:'current',officerId:'',exchangeId:'',rank:'S'};
+ const initialSelection=()=>({castleId:'',tactic:'balanced',troops:'1000',preset:'current',officerId:'',exchangeId:'',rank:'S'});
+ let options={},overlay=null,tab='missions',data=null,busy=false,error='',message='',stamp='',generation=0,readSerial=0,writing=false,pending=null,confirmation=null,focused=null,tutorial=null,lastTutorial='',selection=initialSelection();
+ let renderedTab='',drafts=new Map(),scrollPositions=new Map(),backdropPointer=false;
  const game=()=>options.getGame?.(),context=()=>options.getContext?.()||{},owner=()=>String(context().playerId||context().ownerId||context().user?.id||''),key=()=>`sengoku-progress-pending-v1:${owner()}`;
- function identity(){const current=owner()+':'+(game()?.state.walking.campaignId||'');if(current!==stamp){stamp=current;generation++;readSerial++;data=null;confirmation=null;pending=null;busy=false;writing=false;error='';message='';try{const restored=JSON.parse(global.localStorage?.getItem(key())||'null');if(restored&&['/progress/claim','/progress/exchange'].includes(restored.route)&&restored.payload&&typeof restored.payload.requestId==='string')pending=restored;}catch(_){}if(overlay)close();}return current;}
+ function identity(){const current=owner()+':'+(game()?.state.walking?.campaignId||'');if(current!==stamp){stamp=current;generation++;readSerial++;data=null;confirmation=null;pending=null;busy=false;writing=false;error='';message='';selection=initialSelection();drafts.clear();scrollPositions.clear();try{const restored=JSON.parse(global.localStorage?.getItem(key())||'null');if(restored&&['/progress/claim','/progress/exchange'].includes(restored.route)&&restored.payload&&typeof restored.payload.requestId==='string')pending=restored;}catch(_){}if(overlay)close({restoreFocus:false,remember:false});}return current;}
  const allowed=()=>context().writable!==false&&context().gameWritable!==false;
  const linked=()=>Boolean(owner());
  const resultMessage=r=>{if(r?.ok===false)throw Error(r.message||'操作を完了できませんでした。');message=r?.message||'更新しました。';return r;};
@@ -23,32 +25,150 @@
  function recapView(){const g=game(),r=data?.recap;if(!r)return`<p class="progress-intro">前回の確認から1分以上経つと、生産・普請・研究・本拠の変化をまとめて表示します。</p>${button('reload','最新の報告を確認')}<h3>最近の合戦</h3>${reportList(g.state.progress.reports.slice(0,5))}`;return`<p class="progress-intro">${date(r.since)} から ${date(r.until)} の領国の変化です。資源は消費・報酬を含む差し引きです。</p><div class="progress-summary">${Object.entries(r.resources).map(([k,v])=>`<div><span>${RES[k]}</span><b class="${v<0?'progress-loss':'progress-gain'}">${v>=0?'+':''}${num(v)}</b></div>`).join('')}</div><p>本隊の兵：${r.troopDelta>=0?'+':''}${num(r.troopDelta)}人 · 未読のシステム便 ${r.unreadMail}件 · 受取可能な任務 ${num(r.unclaimed)}件</p><h3>留守中の防衛 ${num(r.attackCount)}戦</h3><div class="progress-log">${(r.attacks||[]).map(b=>`<article><b>${esc(b.castleName)} · ${b.held?'防衛成功':'攻撃を受けました'}</b><p>${date(b.at)} · ${global.SengokuCityHonors?.slot?.(b.attackerPlayerId)||''}${esc(b.attackerName)}${global.SengokuPublicCourt?.slot?.(b.attackerPlayerId)||''} · 兵損 ${num(b.lost)}</p></article>`).join('')||'<p>この期間の対人防衛はありません。</p>'}</div>${r.home!==r.oldHome?`<p class="progress-warning">本拠が ${esc(g.data.castles.find(c=>c.id===r.oldHome)?.name||r.oldHome)} から ${esc(g.data.castles.find(c=>c.id===r.home)?.name||r.home)} へ変わりました。</p>`:''}<h3>完成した普請</h3><p>${r.completedBuildings.map(v=>`${esc(g.data.buildings.find(b=>b.id===v.id)?.name||v.id)} Lv.${v.level}`).join(' ／ ')||'この期間に完成した施設はありません。'}</p><p>${(r.completedCastles||[]).map(v=>`${esc(g.data.castles.find(c=>c.id===v.id)?.name||v.id)} 城郭 Lv.${v.level}`).join(' ／ ')}</p><h3>進んだ研究</h3><p>${r.completedResearch.map(v=>`${esc(g.data.techs.find(t=>t.id===v.id)?.name||v.id)} Lv.${v.level}`).join(' ／ ')||'この期間に完成した研究はありません。'}</p><div class="progress-inline">${button('acknowledge','報告を確認しました')}${button('tab','任務の報酬を確認','data-tab="missions"')}${button('mail','システム郵便を開く')}</div><h3>最近の合戦</h3>${reportList(g.state.progress.reports.slice(0,5))}`;}
  function historyView(){const p=game().state.progress;return`<div class="progress-summary"><div><span>最高占領城数（本拠除く）</span><b>${num(p.best.captured)}</b></div><div><span>記録された勝利</span><b>${num(Math.max(p.best.wins,game().state.stats.wins+game().state.roaming.wins))}</b></div><div><span>達成した成長任務</span><b>${num(data?.claimedCount)}</b></div></div><h3>歴代の領国</h3><div class="progress-log">${p.cycles.length?p.cycles.map(v=>`<article><span class="progress-pill">${esc(v.title)}</span><p>占領 ${num(v.captured)}城 · 累計攻城勝利 ${num(v.wins)}戦</p></article>`).join(''):'<p>次の領地精算から、成績と記念称号が残ります。</p>'}</div><h3>受け取った褒賞</h3><div class="progress-log">${data?.history?.length?data.history.map(v=>`<article><b>${esc(v.name)}</b><p>${date(v.at)} · ${v.kind==='exchange'?'絵巻の証 '+num(v.cost):rewards(v.rewards)}</p></article>`).join(''):'<p>日次・週次任務や絵巻交換の履歴をここに残します。</p>'}</div>`;}
  function guideView(){const g=game(),t=g.tutorialStatus(data?.claimedCount||0);return`<p class="progress-intro">実際の画面を操作して、「育てる・備える・戦う・受け取る」を一周します。途中で閉じても同じ段階から再開できます。</p><div class="progress-log">${g.constructor.tutorialSteps.map((v,i)=>`<article><b>${i+1}. ${esc(v.title)}</b> ${i<t.stage?'✓':''}<p>${esc(v.text)}</p></article>`).join('')}</div><div class="progress-inline" style="margin-top:16px">${button('tutorial-start',t.status==='complete'?'達成済み':t.status==='new'?'初陣ガイドを始める':'続きから再開', '',t.status==='complete'||!allowed())}${button('tutorial-restart','最初から確認', '',!allowed())}</div>`;}
- function render(){if(!overlay)return;const views={missions:missionsView,army:armyView,analysis:analysisView,officers:officersView,recap:recapView,history:historyView,guide:guideView};overlay.querySelector('.progress-tabs').innerHTML=Object.entries(TAB).map(([id,name])=>`<button type="button" role="tab" aria-selected="${tab===id}" data-progress-action="tab" data-tab="${id}">${name}</button>`).join('');overlay.querySelector('.progress-body').innerHTML=views[tab]();overlay.querySelector('.progress-pending').innerHTML=pending?`<div class="progress-warning">結果が未確認の${pending.route.endsWith('exchange')?'絵巻交換':'任務報酬'}があります。${button('retry','同じ操作を再確認','',busy)}</div>`:'';setStatus();}
- async function load(){identity();if(!linked()||!options.api||writing)return false;const expected=stamp,epoch=generation,request=++readSerial;busy=true;try{const r=await options.api('/progress');identity();if(stamp!==expected||generation!==epoch||request!==readSerial)return false;if(r?.ok===false)throw Error(r.error?.message||'成長記録を取得できません。');data=r.progress;error='';return true;}catch(e){identity();if(stamp===expected&&request===readSerial)error=e.message||'成長記録を取得できません。';return false;}finally{if(stamp===expected&&request===readSerial){busy=false;render();refresh();}}}
+ function fieldKey(node){
+  if(node.hasAttribute('data-preset-name'))return 'preset:'+node.getAttribute('data-preset-name');
+  const form=node.closest('[data-progress-form]'),name=node.getAttribute('name');
+  return form&&name?form.dataset.progressForm+':'+name:null;
+ }
+ function captureView(){
+  if(!overlay||!renderedTab)return;
+  const values=new Map();
+  for(const node of overlay.querySelectorAll('.progress-body input,.progress-body select,.progress-body textarea')){
+   const key=fieldKey(node);if(key)values.set(key,node.value);
+  }
+  drafts.set(renderedTab,values);
+  const pane=overlay.querySelector('.progress-content');
+  scrollPositions.set(renderedTab,{top:pane.scrollTop,left:pane.scrollLeft});
+ }
+ function patchRegion(node,html,key){
+  if(global.SengokuStableDOM?.patch)global.SengokuStableDOM.patch(node,html,{key,preserveInputs:true});
+  else if(node.innerHTML!==html)node.innerHTML=html;
+ }
+ function restoreFields(resetFields=[]){
+  const values=drafts.get(tab)||new Map();
+  for(const node of overlay.querySelectorAll('.progress-body input,.progress-body select,.progress-body textarea')){
+   const key=fieldKey(node);if(!key)continue;
+   let value=values.get(key);
+   if(resetFields.includes(key))value=node.localName==='select'?(Array.from(node.options).find(o=>o.hasAttribute('selected'))||node.options[0])?.value||'':node.getAttribute('value')||'';
+   if(value===undefined)continue;
+   if(node.localName==='select'&&!Array.from(node.options).some(o=>o.value===value))continue;
+   if(node.value!==value)node.value=value;
+   values.set(key,value);
+  }
+  drafts.set(tab,values);
+ }
+ function render({resetFields=[]}={}){
+  if(!overlay)return;
+  captureView();
+  const views={missions:missionsView,army:armyView,analysis:analysisView,officers:officersView,recap:recapView,history:historyView,guide:guideView};
+  const previous=global.document.activeElement,ownedFocus=previous&&overlay.contains(previous),oldKey=ownedFocus?fieldKey(previous):null;
+  const caret=oldKey?{start:previous.selectionStart,end:previous.selectionEnd,direction:previous.selectionDirection}:null;
+  const sameTab=renderedTab===tab;
+  patchRegion(overlay.querySelector('.progress-tabs'),Object.entries(TAB).map(([id,name])=>`<button type="button" id="progress-tab-${id}" role="tab" aria-controls="progress-panel" aria-selected="${tab===id}" tabindex="${tab===id?'0':'-1'}" data-progress-action="tab" data-tab="${id}">${name}</button>`).join(''),[stamp,'tabs']);
+  const body=overlay.querySelector('.progress-body');
+  patchRegion(body,views[tab](),[stamp,tab]);
+  body.setAttribute('aria-labelledby','progress-tab-'+tab);
+  restoreFields(resetFields);
+  patchRegion(overlay.querySelector('.progress-pending'),pending?`<div class="progress-warning">結果が未確認の${pending.route.endsWith('exchange')?'絵巻交換':'任務報酬'}があります。${button('retry','同じ操作を再確認','',busy)}</div>`:'',[stamp,'pending']);
+  setStatus();
+  // Source-aware updates normally retain the same node. This fallback also
+  // preserves a field when the DOM helper was unavailable during loading.
+  if(sameTab&&oldKey&&!previous.isConnected){
+   const replacement=Array.from(body.querySelectorAll('input,select,textarea')).find(node=>fieldKey(node)===oldKey);
+   replacement?.focus({preventScroll:true});
+   if(replacement&&typeof caret?.start==='number'&&replacement.setSelectionRange)try{replacement.setSelectionRange(caret.start,caret.end,caret.direction||'none');}catch(_){}
+  }else if(sameTab&&ownedFocus&&(!previous.isConnected||previous.disabled)){
+   overlay.querySelector('#progress-tab-'+tab)?.focus({preventScroll:true});
+  }
+  const position=scrollPositions.get(tab)||{top:0,left:0},pane=overlay.querySelector('.progress-content');
+  pane.scrollTop=position.top;pane.scrollLeft=position.left;renderedTab=tab;
+ }
+ function selectTab(next,{focus=false}={}){
+  if(!overlay||!Object.hasOwn(TAB,next))return false;
+  if(next!==tab){captureView();tab=next;confirmation=null;error='';message='';render();}
+  const target=overlay.querySelector('#progress-tab-'+tab),strip=overlay.querySelector('.progress-tabs');
+  if(focus)target?.focus({preventScroll:true});
+  // Only move the horizontal tab strip; never scroll the body or page.
+  const bounds=strip.getBoundingClientRect(),item=target?.getBoundingClientRect();
+  if(item&&strip.scrollWidth>strip.clientWidth){if(item.left<bounds.left)strip.scrollLeft+=item.left-bounds.left;else if(item.right>bounds.right)strip.scrollLeft+=item.right-bounds.right;}
+  return true;
+ }
+ async function load(){identity();if(!linked()||!options.api||writing)return false;const expected=stamp,epoch=generation,request=++readSerial;busy=true;try{const r=await options.api('/progress');identity();if(stamp!==expected||generation!==epoch||request!==readSerial)return false;if(r?.ok===false)throw Error(r.error?.message||'成長記録を取得できません。');data=r.progress;error='';return true;}catch(e){identity();if(stamp===expected&&generation===epoch&&request===readSerial)error=e.message||'成長記録を取得できません。';return false;}finally{if(stamp===expected&&generation===epoch&&request===readSerial){busy=false;render();refresh();}}}
  async function requestMutation(route,payload){identity();if(busy)return;if(!linked())throw Error('交流で領主登録してから受け取れます。');if(!allowed())throw Error(context().reason||'この端末の操作権を確認してください。');const expected=stamp,epoch=generation;busy=true;writing=true;readSerial++;error='';
    if(!pending){pending={route,payload:{...payload,requestId:global.crypto.randomUUID()}};try{global.localStorage.setItem(key(),JSON.stringify(pending));}catch(e){pending=null;busy=false;writing=false;throw Error('操作記録を保存できません。ブラウザの保存設定を確認してください。');}}
    render();try{const r=await options.api(pending.route,{method:'POST',data:pending.payload});identity();if(stamp!==expected||generation!==epoch)return;if(r?.ok===false)throw Object.assign(Error(r.error?.message||'受取を確認できません。'),{code:r.error?.code});data=r.progress||data;message=r.receipt?.name?`「${r.receipt.name}」を反映しました。`:'反映しました。';pending=null;global.localStorage.removeItem(key());confirmation=null;
-   }catch(e){identity();if(stamp===expected){error=e.message||'通信を確認して再試行してください。';if(['MISSION_EXPIRED','MISSION_CLAIMED','MISSION_INCOMPLETE','DAILY_LIMIT','EXCHANGE_SHORTAGE','VARIANT_OWNED','INVALID_INPUT','REQUEST_ID_REUSED'].includes(e.code)){pending=null;global.localStorage.removeItem(key());}}}finally{if(stamp===expected){busy=false;writing=false;render();refresh();}}
+   }catch(e){identity();if(stamp===expected&&generation===epoch){error=e.message||'通信を確認して再試行してください。';if(['MISSION_EXPIRED','MISSION_CLAIMED','MISSION_INCOMPLETE','DAILY_LIMIT','EXCHANGE_SHORTAGE','VARIANT_OWNED','INVALID_INPUT','REQUEST_ID_REUSED'].includes(e.code)){pending=null;global.localStorage.removeItem(key());}}}finally{if(stamp===expected&&generation===epoch){busy=false;writing=false;render();refresh();}}
  }
- async function action(e){const target=e.target.closest('[data-progress-action]');if(!target||target.disabled)return;const a=target.dataset.progressAction;error='';message='';try{
-  if(a==='close')return close();if(a==='tab'){tab=target.dataset.tab;confirmation=null;render();return;}
+ async function acknowledge(){
+  identity();if(busy)return false;
+  if(!linked()||!allowed())throw Error(context().reason||'この端末で操作できる状態を確認してください。');
+  const expected=stamp,epoch=generation;busy=true;writing=true;readSerial++;error='';render();
+  try{
+   const r=await options.api('/progress/acknowledge',{method:'POST',data:{}});identity();
+   if(stamp!==expected||generation!==epoch)return false;
+   if(r?.ok===false)throw Error(r.error?.message||'報告の確認を保存できませんでした。');
+   data=r.progress;message='留守中の報告を確認しました。';return true;
+  }catch(e){identity();if(stamp===expected&&generation===epoch)error=e.message||'報告の確認を保存できませんでした。';return false;}
+  finally{if(stamp===expected&&generation===epoch){busy=false;writing=false;render();refresh();}}
+ }
+ async function action(e){const surface=overlay;identity();const target=e.target.closest('[data-progress-action]');if(!surface||surface!==overlay||!target||!surface.contains(target)||target.disabled)return;const a=target.dataset.progressAction,expected=stamp,epoch=generation;error='';message='';try{
+  if(a==='close')return close();if(a==='tab'){selectTab(target.dataset.tab,{focus:true});return;}
   if(a==='reload'){await load();return;}if(a==='claim'){await requestMutation('/progress/claim',{key:target.dataset.key});return;}if(a==='retry'){await requestMutation(pending.route,pending.payload);return;}
-  if(a==='save-preset'){const slot=Number(target.dataset.slot),name=overlay.querySelector(`[data-preset-name="${slot}"]`).value;mutate(g=>g.saveArmyPreset(slot,name));}
+  if(a==='save-preset'){const slot=Number(target.dataset.slot),name=overlay.querySelector(`[data-preset-name="${slot}"]`).value;mutate(g=>g.saveArmyPreset(slot,name));const input=overlay?.querySelector(`[data-preset-name="${slot}"]`);if(input)input.value=game().state.progress.presets.find(v=>v.slot===slot)?.name||'';}
   if(a==='preview-preset')confirmation=game().previewArmyPreset(Number(target.dataset.slot));
   if(a==='apply-preset'){mutate(g=>g.applyArmyPreset(Number(target.dataset.slot),{confirmGovernors:true}));confirmation=null;}
-  if(a==='delete-preset')mutate(g=>g.deleteArmyPreset(Number(target.dataset.slot)));
+  if(a==='delete-preset'){const slot=Number(target.dataset.slot);mutate(g=>g.deleteArmyPreset(slot));const input=overlay?.querySelector(`[data-preset-name="${slot}"]`);if(input)input.value='';}
   if(a==='cancel-preset')confirmation=null;
   if(a==='officer-role')mutate(g=>g.setOfficerRole(selection.officerId,target.dataset.role));
   if(a==='exchange'){await requestMutation('/progress/exchange',{officerId:confirmation.officerId,rank:confirmation.rank});return;}
-  if(a==='acknowledge'){const expected=stamp,r=await options.api('/progress/acknowledge',{method:'POST',data:{}});if(expected!==stamp)return;data=r.progress;message='留守中の報告を確認しました。';}
+  if(a==='acknowledge'){await acknowledge();return;}
   if(a==='mail'){close();options.openMail?.();return;}
   if(a==='tutorial-start'||a==='tutorial-restart'){mutate(g=>g.updateTutorial(a==='tutorial-restart'?'restart':'start',data?.claimedCount||0));close();goTutorial();return;}
   render();refresh();
- }catch(e){error=e.message||'操作を完了できませんでした。';setStatus();}}
- function submit(e){const form=e.target.closest('[data-progress-form]');if(!form)return;e.preventDefault();error='';try{const v=Object.fromEntries(new FormData(form));if(form.dataset.progressForm==='analysis'){if(!Number.isSafeInteger(Number(v.troops))||Number(v.troops)<300||Number(v.troops)>game().state.troops)throw Error('兵数は300人以上、所持兵数以下で試算してください。');Object.assign(selection,v);}else if(form.dataset.progressForm==='officer'){selection.officerId=v.officerId;}else if(form.dataset.progressForm==='exchange'){Object.assign(selection,v);const g=game(),cost=data.exchange.costs[v.rank];if(g.ownsVariant(v.exchangeId,v.rank))throw Error('この絵巻は所持済みです。');if(data.exchange.available<cost)throw Error('絵巻の証が不足しています。');confirmation={exchange:true,officerId:v.exchangeId,rank:v.rank,cost,name:g.baseOfficer(v.exchangeId)?.name};}render();}catch(err){error=err.message;setStatus();}}
- function close(){if(!overlay)return;overlay.remove();overlay=null;global.document.removeEventListener('keydown',keyboard);try{focused?.focus?.();}catch(_){}options.onClose?.();refresh();}
- function keyboard(e){if(!overlay)return;if(e.key==='Escape'){e.preventDefault();close();}if(e.key==='Tab'){const items=[...overlay.querySelectorAll('button:not([disabled]),input:not([disabled]),select:not([disabled])')].filter(x=>x.offsetParent!==null),first=items[0],last=items.at(-1);if(e.shiftKey&&global.document.activeElement===first){e.preventDefault();last?.focus();}else if(!e.shiftKey&&global.document.activeElement===last){e.preventDefault();first?.focus();}}}
- function open(which='missions'){identity();if(!game()?.state?.progress)return;tab=TAB[which]?which:'missions';if(overlay){render();return;}focused=global.document.activeElement;overlay=global.document.createElement('div');overlay.className='progress-overlay';overlay.innerHTML='<section class="progress-dialog" role="dialog" aria-modal="true" aria-labelledby="progress-title"><header class="progress-header"><div><span class="progress-eyebrow">GROWTH & STRATEGY</span><h2 id="progress-title">成長と戦略の記録</h2><p>次の一手を選び、あなたの歩みを残す。</p></div><button type="button" class="progress-close" data-progress-action="close" aria-label="閉じる">×</button></header><nav class="progress-tabs" role="tablist" aria-label="成長の記録"></nav><div class="progress-content"><div class="progress-status" role="status"></div><div class="progress-pending"></div><div class="progress-body"></div></div></section>';global.document.body.appendChild(overlay);overlay.addEventListener('click',action);overlay.addEventListener('submit',submit);overlay.addEventListener('change',e=>{if(e.target.matches('[data-progress-rank]')){selection.rank=e.target.value;selection.exchangeId='';confirmation=null;render();}});global.document.addEventListener('keydown',keyboard);render();overlay.querySelector('.progress-close').focus();refresh();load();}
+ }catch(e){identity();if(stamp===expected&&generation===epoch){error=e.message||'操作を完了できませんでした。';setStatus();}}}
+ function submit(e){const surface=overlay;identity();const form=e.target.closest('[data-progress-form]');if(!surface||surface!==overlay||!form||!surface.contains(form))return;e.preventDefault();error='';try{const v=Object.fromEntries(new FormData(form));if(form.dataset.progressForm==='analysis'){if(!Number.isSafeInteger(Number(v.troops))||Number(v.troops)<300||Number(v.troops)>game().state.troops)throw Error('兵数は300人以上、所持兵数以下で試算してください。');Object.assign(selection,v);}else if(form.dataset.progressForm==='officer'){selection.officerId=v.officerId;}else if(form.dataset.progressForm==='exchange'){Object.assign(selection,v);const g=game(),cost=data.exchange.costs[v.rank];if(g.ownsVariant(v.exchangeId,v.rank))throw Error('この絵巻は所持済みです。');if(data.exchange.available<cost)throw Error('絵巻の証が不足しています。');confirmation={exchange:true,officerId:v.exchangeId,rank:v.rank,cost,name:g.baseOfficer(v.exchangeId)?.name};}render();}catch(err){error=err.message;setStatus();}}
+ function close({restoreFocus=true,remember=true}={}){
+  if(!overlay)return;
+  if(remember)captureView();
+  const dialog=overlay,returnFocus=focused;
+  overlay=null;renderedTab='';focused=null;confirmation=null;backdropPointer=false;
+  // A closed view must not adopt an old read into the next opening. An
+  // already-submitted claim keeps its receipt/idempotency path alive.
+  readSerial++;if(!writing)busy=false;
+  if(dialog.open)dialog.close();dialog.remove();
+  if(restoreFocus&&returnFocus?.isConnected)try{returnFocus.focus({preventScroll:true});}catch(_){}
+  options.onClose?.();refresh();
+ }
+ function keyboard(e){
+  if(!overlay||e.defaultPrevented||e.isComposing||e.keyCode===229||e.ctrlKey||e.metaKey||e.altKey)return;
+  const active=e.target.closest?.('[role="tab"]');
+  if(!active||!overlay.querySelector('.progress-tabs').contains(active))return;
+  if(!['ArrowLeft','ArrowRight','Home','End'].includes(e.key))return;
+  const tabs=Object.keys(TAB),index=tabs.indexOf(active.dataset.tab);
+  const next=e.key==='Home'?0:e.key==='End'?tabs.length-1:(index+(e.key==='ArrowLeft'?-1:1)+tabs.length)%tabs.length;
+  e.preventDefault();selectTab(tabs[next],{focus:true});
+ }
+ function open(which='missions'){
+  identity();if(!game()?.state?.progress||!global.document)return false;
+  const next=Object.hasOwn(TAB,which)?which:'missions';
+  if(overlay){selectTab(next,{focus:true});return true;}
+  const dialog=global.document.createElement('dialog');
+  if(typeof dialog.showModal!=='function'){options.notify?.('成長手帳を開けませんでした。対応するブラウザでお試しください。',true);return false;}
+  tab=next;focused=global.document.activeElement;overlay=dialog;renderedTab='';backdropPointer=false;
+  dialog.className='progress-overlay';dialog.setAttribute('aria-labelledby','progress-title');
+  dialog.innerHTML='<section class="progress-dialog"><header class="progress-header"><div><span class="progress-eyebrow">GROWTH & STRATEGY</span><h2 id="progress-title">成長と戦略の記録</h2><p>次の一手を選び、あなたの歩みを残す。</p></div><button type="button" class="progress-close" data-progress-action="close" aria-label="閉じる">×</button></header><nav class="progress-tabs" role="tablist" aria-label="成長の記録"></nav><div class="progress-content"><div class="progress-status" role="status" aria-live="polite"></div><div class="progress-pending"></div><div class="progress-body" id="progress-panel" role="tabpanel" tabindex="0"></div></div></section>';
+  global.document.body.appendChild(dialog);
+  dialog.addEventListener('pointerdown',e=>{backdropPointer=e.target===dialog;});
+  dialog.addEventListener('click',e=>{if(e.target===dialog&&backdropPointer){close();return;}backdropPointer=false;void action(e);});
+  dialog.addEventListener('submit',submit);
+  dialog.addEventListener('change',e=>{if(e.target.matches('[data-progress-rank]')){selection.rank=e.target.value;selection.exchangeId='';confirmation=null;render({resetFields:['exchange:exchangeId']});}});
+  dialog.addEventListener('keydown',keyboard);
+  // Native modal cancellation reaches only the topmost dialog. No document
+  // Escape listener can also close a different surface behind it.
+  dialog.addEventListener('cancel',e=>{if(e.target===dialog){e.preventDefault();close();}});
+  dialog.addEventListener('close',()=>{if(overlay===dialog)close();});
+  render();dialog.showModal();dialog.querySelector('.progress-close').focus({preventScroll:true});refresh();void load();return true;
+ }
  function clearHighlight(){global.document?.querySelectorAll('.progress-tutorial-target').forEach(n=>n.classList.remove('progress-tutorial-target'));}
  function goTutorial(){const t=game().tutorialStatus(data?.claimedCount||0);options.navigate?.(t.step.view);refresh();}
  function refresh(){if(!global.document)return;identity();const g=game();clearHighlight();if(!g?.state?.progress)return;global.SengokuOfficerHealthUI?.refresh(overlay,g);const t=g.tutorialStatus(data?.claimedCount||0);if(t.status!=='active'||overlay){tutorial?.remove();tutorial=null;lastTutorial='';return;}
@@ -57,7 +177,7 @@
   const candidate=global.document.querySelector(t.step.selector)||global.document.querySelector(`[data-view="${t.step.view}"]`);candidate?.classList.add('progress-tutorial-target');
  }
  function configure(opts={}){options={...options,...opts};identity();return api;}
- const api={configure,open,close,refresh,prime:load,claimMission:key=>requestMutation('/progress/claim',{key}),retry:()=>pending?requestMutation(pending.route,pending.payload):Promise.resolve(false),startTutorial(){identity();try{mutate(g=>g.updateTutorial('start',data?.claimedCount||0));goTutorial();}catch(e){options.notify?.(e.message);}},destroy(){close();tutorial?.remove();tutorial=null;clearHighlight();generation++;options={};},getState(){return{tab,busy,hasPending:Boolean(pending),loaded:Boolean(data),owner:owner(),data:data?copy(data):null};}};
+ const api={configure,open,close,refresh,prime:load,claimMission:key=>requestMutation('/progress/claim',{key}),retry:()=>pending?requestMutation(pending.route,pending.payload):Promise.resolve(false),startTutorial(){identity();try{mutate(g=>g.updateTutorial('start',data?.claimedCount||0));goTutorial();}catch(e){options.notify?.(e.message);}},destroy(){close({restoreFocus:false,remember:false});tutorial?.remove();tutorial=null;clearHighlight();generation++;readSerial++;busy=false;writing=false;drafts.clear();scrollPositions.clear();selection=initialSelection();options={};},getState(){return{tab,busy,hasPending:Boolean(pending),loaded:Boolean(data),owner:owner(),data:data?copy(data):null};}};
  global.SengokuProgress=api;
  if(typeof module!=='undefined'&&module.exports)module.exports={SengokuProgress:api,escape:esc};
 })(typeof window!=='undefined'?window:globalThis);

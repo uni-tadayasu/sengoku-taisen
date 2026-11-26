@@ -45,6 +45,22 @@ body:not(.at-title) :is(.modal-header,.navigation-dialog-header,.premium-dialog-
 }
 :is(.article,.hero-lead,.level-guide-body,.modal-body,.notice,.subtitle) { line-height: 1.75; }
 body[data-page] { font-size: 18px; line-height: 1.8; }
+/* Independent dialog modules define their own typefaces. Keep the same
+   calligraphy across those surfaces without changing their sizing or layout. */
+dialog:is(.social-dialog,.letters-dialog,.trade-dialog,.troop-garrison-dialog,
+    .moderation-dialog,.events-dialog,.hints-dialog,.premium-dialog,
+    .premium-admin-dialog,.command-activity-dialog),
+.progress-dialog,.voice-panel,.voice-dock,.premium-catalog,.scroll-top-button {
+  font-family: var(--font-gyosho);
+}
+dialog:is(.social-dialog,.letters-dialog,.trade-dialog,.troop-garrison-dialog,
+    .moderation-dialog,.events-dialog,.hints-dialog,.premium-dialog,
+    .premium-admin-dialog,.command-activity-dialog) :is(h1,h2,h3,h4,h5,h6),
+:is(.social-announcement-label,.social-footer span:first-child,.social-welcome-seal,
+    .social-avatar,.social-profile-mon,.lord-commander .lord-commander-name,
+    .trade-emblem,.events-event-card strong,.events-seal) {
+  font-family: var(--font-gyosho);
+}
 /* Prices, time and ability numbers keep clear, stable-width numerals. */
 :is(.resource-amount,.resource-gain,.nav-count,.building-level,.territory-numbers,
     .stat-value,.stat-number,.stat-row b,.officer-stat-value,.army-stat-value,.track-duration,
@@ -55,6 +71,12 @@ body[data-page] { font-size: 18px; line-height: 1.8; }
     [data-clock-time],[data-budget-current],[data-budget-target],
     [data-budget-required],[data-budget-gap],[data-budget-reserve],
     input[type="number"],input[type="range"],code,pre,kbd) {
+  font-family: var(--font-numerals);
+  font-variant-numeric: tabular-nums lining-nums;
+}
+dialog :is(input[type="number"],input[type="range"],code,pre,kbd),
+:is(.events-progress dd,.events-reward-points,.events-result-heading>strong,
+    .events-rank-number) {
   font-family: var(--font-numerals);
   font-variant-numeric: tabular-nums lining-nums;
 }

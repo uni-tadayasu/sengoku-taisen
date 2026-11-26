@@ -4,8 +4,8 @@
   "name": "戦国VS",
   "alternateName": "SENGOKU VS",
   "publisher": "KASAI SOLUTIONS",
-  "release": "5.6.0-20261127",
-  "version": "5.6.0",
+  "release": "5.6.1-20261127",
+  "version": "5.6.1",
   "dateModified": "2026-11-27",
   "language": "ja",
   "locale": "ja_JP",
@@ -77,7 +77,7 @@
       "path": "/",
       "title": "戦国VS｜基本プレイ無料の戦国ブラウザゲーム",
       "description": "戦国VS公式。城下町の内政、武将編成、城をめぐる合戦を楽しむ戦国戦略シミュレーション。軍師AIの助言、同盟・交易、端末間の引き継ぎに対応。PC・スマホ・タブレットで、インストールせず基本プレイ無料で始められます。",
-      "dateModified": "2026-11-26",
+      "dateModified": "2026-11-27",
       "artwork": {
         "path": "assets/chronicle/cover.webp",
         "alt": "軍扇を持つ武将が、城のある領国を見渡す戦国VSのメインビジュアル",
@@ -203,7 +203,7 @@
       "path": "/news/",
       "title": "戦国VS 更新情報｜操作改善・追加機能・公式のお知らせ",
       "description": "戦国VSの公式更新情報。城下町の操作画面、大都市の都市勲章、拠点修復や奉行の給与など、遊び方に関わる主な変更を紹介します。詳しい攻略ガイドと公式素材へのリンク、RSSでの更新情報の購読はこちら。",
-      "dateModified": "2026-11-26",
+      "dateModified": "2026-11-27",
       "artwork": {
         "path": "assets/chronicle/archive.webp",
         "alt": "灯りのともる書院で、絵巻を広げて戦記を読み進める二人",

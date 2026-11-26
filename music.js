@@ -1078,16 +1078,16 @@
         }
         if(token!==this._epoch||this._disposed||!this._volume||this._hidden()||this._context.state!=='running'||Date.now()-requestedAt>1000){if(!this._voices.size&&!this._pending)this._context.suspend().catch(()=>{});return false;}
         this._lastPlayed=Date.now();this._pending=null;this._setGain();
-        const ctx=this._context,notes=type==='victory'?[72,76,79]:type==='error'?[55,53]:[74,79],start=ctx.currentTime+.005;
+        const ctx=this._context,tap=type==='tap',notes=tap?[79]:type==='victory'?[72,76,79]:type==='error'?[55,53]:[74,79],start=ctx.currentTime+.005,release=tap ? .09 : .28,lifetime=tap ? .11 : .30;
         for(let index=0;index<notes.length;index++){
           const time=start+index*.075,envelope=ctx.createGain(),sources=[],nodes=[envelope];envelope.connect(this._gain);
-          envelope.gain.setValueAtTime(.0001,time);envelope.gain.linearRampToValueAtTime(.0272,time+.008);envelope.gain.exponentialRampToValueAtTime(.0001,time+.28);
+          envelope.gain.setValueAtTime(.0001,time);envelope.gain.linearRampToValueAtTime(.0272,time+(tap ? .004 : .008));envelope.gain.exponentialRampToValueAtTime(.0001,time+release);
           for(const [multiple,level] of [[1,1],[2.01,.20],[3.98,.045]]){
             const source=ctx.createOscillator();source.type='sine';source.frequency.setValueAtTime(frequency(notes[index])*multiple,time);
             if(level===1)source.connect(envelope);else{const partial=ctx.createGain();partial.gain.value=level;source.connect(partial);partial.connect(envelope);nodes.push(partial);}sources.push(source);
           }
-          const voice={sources,nodes,endTime:time+.30};this._voices.add(voice);let remaining=sources.length;
-          for(const source of sources){source.onended=()=>{if(--remaining===0)this._release(voice);};source.start(time);source.stop(time+.30);}
+          const voice={sources,nodes,endTime:time+lifetime};this._voices.add(voice);let remaining=sources.length;
+          for(const source of sources){source.onended=()=>{if(--remaining===0)this._release(voice);};source.start(time);source.stop(time+lifetime);}
         }
         return true;
       }catch(_){return false;}

@@ -208,7 +208,10 @@ body :is(.panel,.facility-entry,.quest-row,.roaming-panel,.covert-panel,.court-p
 #app.chronicle-shell #main .town-console-nav>button { color:#bdd2d8; background-color:#122836; border-color:#395d69; }
 #app.chronicle-shell #main .building-card .building-level { color:#bbf6e8; background:#123f45; border-color:#558e92; }
 #app.chronicle-shell #main .town-scene-board .hotspot .label { background:#0b2130ed; border-color:#73d9cf; color:#f1fff7; }
-#app.chronicle-shell #main .town-scene-board .hotspot .pin { border-color:#9cebdc; background:#102f3a; box-shadow:0 0 0 3px #071824a8,0 4px 8px #0006; }
+#app.chronicle-shell #main .town-scene-board .hotspot .pin { border-color:#9cebdc; background:#102f3a; color:#ffe1a0; box-shadow:0 0 0 3px #071824a8,0 4px 8px #0006; }
+#app.chronicle-shell #main .town-scene-board .hotspot .pin svg { color:inherit; stroke:currentColor; }
+#app.chronicle-shell #main .town-scene-board .hotspot:is(:hover,:focus-visible) .pin { background:#17616a; color:#fff4cf; border-color:#fff1b6; }
+#app.chronicle-shell #main .town-scene-board .hotspot.has-job .pin { background:#0f5548; color:#e1ffdd; }
 #app.chronicle-shell #main .building-track i.on { background:var(--cyber-cyan); }
 body :is(.progress,.progress-meter,.field-meter,.command-operation-track,.resource-plan-track) { background:#07141f; border-color:#355663; }
 body :is(.progress,.progress-meter,.command-operation-track,.resource-plan-track)>i { background:linear-gradient(90deg,#2c8398,#74e7cd); }
