@@ -1,5 +1,5 @@
 /* Prevent accidental page-text selection on every device. Native text fields
-   and editable regions keep selection, copy menus and caret positioning. */
+   keep selection and caret positioning; desktop context menus are guarded in JS. */
 html {
   -webkit-user-select: none;
   user-select: none;

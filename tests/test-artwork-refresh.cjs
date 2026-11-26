@@ -5,7 +5,7 @@ const vm=require('node:vm');
 const source=fs.readFileSync(require('node:path').join(__dirname,'../artwork.js'),'utf8');
 const start=source.indexOf('function load(url)'),end=source.indexOf('\nconst backgrounds=',start);
 function setup(){
- const requests=[],scope={global:{},observer:null,cache:new Map(),loaded:new Set(),paintRequests:new WeakMap(),Image:class{set src(url){this.url=url;requests.push(this);}}};
+ const requests=[],scope={global:{},document:{hidden:false},observer:null,cache:new Map(),loaded:new Set(),paintRequests:new WeakMap(),Image:class{set src(url){this.url=url;requests.push(this);}}};
  vm.createContext(scope);vm.runInContext(source.slice(start,end),scope);
  const classes=new Set(),attributes=new Map(),surface={style:{}};
  const el={dataset:{artUrl:'first.webp'},isConnected:true,style:{setProperty(){}},classList:{add:name=>classes.add(name),remove:name=>classes.delete(name),contains:name=>classes.has(name)},closest:()=>null,querySelector:()=>surface,setAttribute:(name,value)=>attributes.set(name,value)};

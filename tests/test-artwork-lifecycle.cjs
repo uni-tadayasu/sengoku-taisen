@@ -8,8 +8,9 @@ const {setup}=require('./helpers/dom-model.cjs');
 const source=fs.readFileSync(path.join(__dirname,'../artwork.js'),'utf8');
 
 function fixture(markup){
- const {doc,host,$}=setup(),observed=new Set(),requests=[],frames=[],handlers={};
- host.innerHTML=markup;doc.readyState='complete';
+ const {doc,host,$}=setup(),observed=new Set(),requests=[],frames=[],handlers={},documentHandlers={};
+ host.innerHTML=markup;doc.readyState='complete';doc.hidden=false;
+ doc.addEventListener=(name,fn)=>documentHandlers[name]=fn;
  let mutations,intersections;
  class IntersectionObserver{
   constructor(callback){intersections=callback;}
@@ -19,9 +20,10 @@ function fixture(markup){
  class MutationObserver{constructor(callback){mutations=callback;}observe(){}}
  const window={SENGOKU_AT_TITLE:false,innerWidth:1200,innerHeight:800,IntersectionObserver,addEventListener:(name,fn)=>handlers[name]=fn};
  vm.runInNewContext(source,{window,document:doc,IntersectionObserver,MutationObserver,requestAnimationFrame:fn=>frames.push(fn),Image:class{set src(url){this.url=url;requests.push(this);}}});
- return{doc,host,$,window,observed,requests,frames,handlers,mutate:records=>mutations(records),intersect:node=>intersections([{target:node,isIntersecting:true,boundingClientRect:node.getBoundingClientRect()}])};
+ return{doc,host,$,window,observed,requests,frames,handlers,mutate:records=>mutations(records),intersect:node=>intersections([{target:node,isIntersecting:true,boundingClientRect:node.getBoundingClientRect()}]),visibility:hidden=>{doc.hidden=hidden;documentHandlers.visibilitychange?.();}};
 }
 function row(){return '<section><span data-art-url="portrait.webp"></span><button>家臣を選ぶ</button></section>';}
+const deadline=setTimeout(()=>{throw Error('Artwork lifecycle checks did not settle');},5000);
 
 (async()=>{
  const f=fixture('<div id="roster">'+row().repeat(120)+'</div><div id="next"></div>');
@@ -69,4 +71,24 @@ function row(){return '<section><span data-art-url="portrait.webp"></span><butto
  dialog.open=false;pending.requests.at(-1).onload();await upgraded;assert.equal(painting.dataset.artSource,'small.webp','An in-flight full image waits until the dialog is visible before repainting');
  dialog.open=true;await pending.window.SengokuArt.readyCurrent();assert.equal(painting.dataset.artSource,'large.webp');assert.equal(pending.requests.length,2,'Reopening reuses both decoded atlases without another request');
  console.log('PASS dialogs closed during preview or full-image decoding remain idle and reuse decoded images on reopen.');
-})().catch(error=>{console.error(error);process.exitCode=1;});
+
+ const background=fixture('<section><span data-art-url="large.webp" data-art-small="small.webp" data-small-width="40" data-small-height="40"></span></section>'),backgroundArt=background.host.querySelector('[data-art-url]');
+ let backgroundMeasures=0;backgroundArt.getBoundingClientRect=()=>{backgroundMeasures++;return{top:0,left:0,right:200,bottom:200,width:200,height:200};};
+ const first=background.window.SengokuArt.readyCurrent();assert.equal(background.requests[0].url,'small.webp');background.visibility(true);backgroundMeasures=0;
+ background.requests[0].onload();for(let turn=0;turn<5;turn++)await Promise.resolve();
+ assert.equal(background.requests.length,1,'A background tab must not start the large atlas after its preview finishes');assert.equal(backgroundMeasures,0);assert.equal(backgroundArt.dataset.artReady,undefined);
+ await first;
+ await background.window.SengokuArt.readyCurrent();assert.equal(backgroundMeasures,0,'Explicit readiness checks must not measure a hidden tab');
+ background.visibility(false);assert.equal(background.frames.length,1,'Returning to a tab resumes its visible paintings');background.frames.shift()();
+ for(let turn=0;turn<5;turn++)await Promise.resolve();assert.equal(background.requests.length,2);assert.equal(background.requests[1].url,'large.webp');assert.equal(backgroundArt.dataset.artSource,'small.webp');
+ background.requests[1].onload();for(let turn=0;turn<5;turn++)await Promise.resolve();assert.equal(backgroundArt.dataset.artSource,'large.webp');
+ console.log('PASS hidden tabs stop preview-to-original upgrades and resume visible artwork once without repeating the preview request.');
+
+ const failed=fixture('<dialog id="failed" open><span data-art-url="fallback.webp" data-art-small="thumbnail.webp" data-small-width="80" data-small-height="80"></span></dialog>'),failedDialog=failed.$('#failed'),failedArt=failedDialog.querySelector('[data-art-url]');
+ failedArt.getBoundingClientRect=()=>({top:0,left:0,right:40,bottom:40,width:40,height:40});
+ const thumbnail=failed.window.SengokuArt.readyCurrent();assert.equal(failed.requests[0].url,'thumbnail.webp');failedDialog.open=false;failed.requests[0].onerror();for(let turn=0;turn<5;turn++)await Promise.resolve();
+ assert.equal(failed.requests.length,1,'A thumbnail failure cannot launch its full-size fallback for a closed dialog');assert(failed.observed.has(failedArt));assert(!failedArt.classList.contains('art-error'));
+ await thumbnail;
+ failedDialog.open=true;const retry=failed.window.SengokuArt.readyCurrent();assert.equal(failed.requests[1].url,'thumbnail.webp');failed.requests[1].onerror();for(let turn=0;turn<5;turn++)await Promise.resolve();assert.equal(failed.requests[2].url,'fallback.webp');failed.requests[2].onload();await retry;assert.equal(failedArt.dataset.artSource,'fallback.webp');
+ console.log('PASS thumbnail fallback stays deferred while a dialog is closed and recovers when it is reopened.');
+})().catch(error=>{console.error(error);process.exitCode=1;}).finally(()=>clearTimeout(deadline));

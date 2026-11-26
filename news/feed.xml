@@ -9,6 +9,19 @@
     <ttl>60</ttl>
     <atom:link href="https://www.kasai-solutions-inc.com/news/feed.xml" rel="self" type="application/rss+xml"/>
     <item>
+      <title>Ver.5.8.1｜PCの右クリックメニューを無効化し、体力・耐久と画像の更新を軽量化</title>
+      <link>https://www.kasai-solutions-inc.com/news/#v5-8-1</link>
+      <guid isPermaLink="true">https://www.kasai-solutions-inc.com/news/#v5-8-1</guid>
+      <dc:date>2026-11-27</dc:date>
+      <description>PCのゲーム画面内で右クリックメニューを開かないようにし、表示していない体力・耐久ゲージの計算と大型画像の追加読み込みを抑えました。
+
+PCの右クリックメニューを無効化：ゲーム画面・入力欄・ダイアログ内でのマウスの右クリックでは、ブラウザのメニューを開かないようにしました。タッチ対応PCでもマウスの右クリックを抑止します。
+
+表示中の体力・耐久ゲージへ更新を集中：閉じた詳細画面や非表示の一覧、タイトル画面の裏にあるゲージの更新計算を省きます。画面を開き直すと現在の値を表示します。体力や耐久の回復規則は変わりません。
+
+画面を離れた後の画像取得を抑制：別のタブへ移った後は、サムネイルから大型画像への追加読み込みを保留します。ゲームへ戻ると必要な画像の読み込みを再開します。</description>
+    </item>
+    <item>
       <title>Ver.5.8.0｜太政官の任命・解任と役職の重複防止に対応</title>
       <link>https://www.kasai-solutions-inc.com/news/#v5-8-0</link>
       <guid isPermaLink="true">https://www.kasai-solutions-inc.com/news/#v5-8-0</guid>
