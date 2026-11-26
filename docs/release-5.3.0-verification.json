@@ -403,5 +403,303 @@
     "Legacy raw save import without officerHealth/worldClock returns server500; current browser-normalized export positive control returns200. No save row written in failing fixture.",
     "Old Kyoto migration fixture retains an incompatible Lv64 construction job after shared projection, returning400.",
     "Broad pre-existing test corpus includes outdated DTO, maintenance authority and elapsed-time fixtures; the 53 selected release commands are not a claim that every repository test passes."
-  ]
+  ],
+  "deployment": {
+    "implementationCommit": "dc2cf1c1227af59a268578d4d102953b23d2f1ff",
+    "publishedAt": "2026-11-26T07:56:05Z",
+    "site": "https://www.kasai-solutions-inc.com/",
+    "artifacts": {
+      "checkedAt": "2026-11-26T07:57:33.021431+00:00",
+      "commit": "dc2cf1c1227af59a268578d4d102953b23d2f1ff",
+      "total": 24,
+      "matched": 24,
+      "results": [
+        {
+          "path": "404.html",
+          "url": "https://www.kasai-solutions-inc.com/404.html?release-check=5.3.0-20261126",
+          "httpStatus": 200,
+          "bytes": 3440,
+          "sha256": "8abe287dd95ef354f71b5bda303a327e83eaacc85b0ea07e5bb1ec27aba6b057",
+          "expectedSha256": "8abe287dd95ef354f71b5bda303a327e83eaacc85b0ea07e5bb1ec27aba6b057",
+          "match": true
+        },
+        {
+          "path": "about/index.html",
+          "url": "https://www.kasai-solutions-inc.com/about/index.html?release-check=5.3.0-20261126",
+          "httpStatus": 200,
+          "bytes": 38097,
+          "sha256": "b4a25dd7ab0ddaf017db1af3794e4c2d37203a905d326f245f634a14b2f65dc0",
+          "expectedSha256": "b4a25dd7ab0ddaf017db1af3794e4c2d37203a905d326f245f634a14b2f65dc0",
+          "match": true
+        },
+        {
+          "path": "assets/promo/sengoku-vs-press-kit-20261126.zip",
+          "url": "https://www.kasai-solutions-inc.com/assets/promo/sengoku-vs-press-kit-20261126.zip?release-check=5.3.0-20261126",
+          "httpStatus": 200,
+          "bytes": 8967878,
+          "sha256": "7146c7bcc880d4ac84c3cd9986709f6f53c5c5d17be4e189941451014d6ebad8",
+          "expectedSha256": "7146c7bcc880d4ac84c3cd9986709f6f53c5c5d17be4e189941451014d6ebad8",
+          "match": true
+        },
+        {
+          "path": "en/index.html",
+          "url": "https://www.kasai-solutions-inc.com/en/index.html?release-check=5.3.0-20261126",
+          "httpStatus": 200,
+          "bytes": 20807,
+          "sha256": "23d5c3a30acfba65ff35ed2a8254e2fe89acd27c177f080c979df59d5f0a780d",
+          "expectedSha256": "23d5c3a30acfba65ff35ed2a8254e2fe89acd27c177f080c979df59d5f0a780d",
+          "match": true
+        },
+        {
+          "path": "game-campaign.bundle.js",
+          "url": "https://www.kasai-solutions-inc.com/game-campaign.bundle.js?release-check=5.3.0-20261126",
+          "httpStatus": 200,
+          "bytes": 474676,
+          "sha256": "d85d41d9748776d3d8b9681bf55c73801c2082bb54b68b7f8c575799a82f2cd6",
+          "expectedSha256": "d85d41d9748776d3d8b9681bf55c73801c2082bb54b68b7f8c575799a82f2cd6",
+          "match": true
+        },
+        {
+          "path": "game-community.bundle.js",
+          "url": "https://www.kasai-solutions-inc.com/game-community.bundle.js?release-check=5.3.0-20261126",
+          "httpStatus": 200,
+          "bytes": 585447,
+          "sha256": "7c164e8336bfc96a46ea41348433e82111ede989baafd0e1866fd9ee645f9487",
+          "expectedSha256": "7c164e8336bfc96a46ea41348433e82111ede989baafd0e1866fd9ee645f9487",
+          "match": true
+        },
+        {
+          "path": "game-core.bundle.js",
+          "url": "https://www.kasai-solutions-inc.com/game-core.bundle.js?release-check=5.3.0-20261126",
+          "httpStatus": 200,
+          "bytes": 596445,
+          "sha256": "90f89e0783d69028040f027ff640a26ea995f872afa7be0a5b30f1897977ec31",
+          "expectedSha256": "90f89e0783d69028040f027ff640a26ea995f872afa7be0a5b30f1897977ec31",
+          "match": true
+        },
+        {
+          "path": "game-interface.bundle.js",
+          "url": "https://www.kasai-solutions-inc.com/game-interface.bundle.js?release-check=5.3.0-20261126",
+          "httpStatus": 200,
+          "bytes": 392950,
+          "sha256": "2b2bdc2ec6e3f0f5b1c82226281fe27f45674a7516405f2f1c9f2b25b321e634",
+          "expectedSha256": "2b2bdc2ec6e3f0f5b1c82226281fe27f45674a7516405f2f1c9f2b25b321e634",
+          "match": true
+        },
+        {
+          "path": "game-layout.bundle.css",
+          "url": "https://www.kasai-solutions-inc.com/game-layout.bundle.css?release-check=5.3.0-20261126",
+          "httpStatus": 200,
+          "bytes": 844551,
+          "sha256": "64d5a4b888e0185c6d7b25e55237fdb32c117e6eff3f3f2c015d09f60d3eb9f0",
+          "expectedSha256": "64d5a4b888e0185c6d7b25e55237fdb32c117e6eff3f3f2c015d09f60d3eb9f0",
+          "match": true
+        },
+        {
+          "path": "game-preferences.bundle.js",
+          "url": "https://www.kasai-solutions-inc.com/game-preferences.bundle.js?release-check=5.3.0-20261126",
+          "httpStatus": 200,
+          "bytes": 7330,
+          "sha256": "c6e04c260a89a2ef74eccb36924fec8163deffbabb76fb64dd4d1ec3bf9a285a",
+          "expectedSha256": "c6e04c260a89a2ef74eccb36924fec8163deffbabb76fb64dd4d1ec3bf9a285a",
+          "match": true
+        },
+        {
+          "path": "guide/data-recovery/index.html",
+          "url": "https://www.kasai-solutions-inc.com/guide/data-recovery/index.html?release-check=5.3.0-20261126",
+          "httpStatus": 200,
+          "bytes": 32710,
+          "sha256": "eceda4fe594f3ea12a7e7534d994c4f095eeef338dfcc8ab3b4b6c583f87505a",
+          "expectedSha256": "eceda4fe594f3ea12a7e7534d994c4f095eeef338dfcc8ab3b4b6c583f87505a",
+          "match": true
+        },
+        {
+          "path": "guide/index.html",
+          "url": "https://www.kasai-solutions-inc.com/guide/index.html?release-check=5.3.0-20261126",
+          "httpStatus": 200,
+          "bytes": 126272,
+          "sha256": "1788df311336d325fe50fe80d4ac022ee071320792073bd945445b9ed9ebc0e8",
+          "expectedSha256": "1788df311336d325fe50fe80d4ac022ee071320792073bd945445b9ed9ebc0e8",
+          "match": true
+        },
+        {
+          "path": "index.html",
+          "url": "https://www.kasai-solutions-inc.com/?release-check=5.3.0-20261126",
+          "httpStatus": 200,
+          "bytes": 18812,
+          "sha256": "85e44e777762979b77555feb98d0e79dbbcb1bfc232a3d8c988fc8373b49c370",
+          "expectedSha256": "85e44e777762979b77555feb98d0e79dbbcb1bfc232a3d8c988fc8373b49c370",
+          "match": true
+        },
+        {
+          "path": "news/feed.xml",
+          "url": "https://www.kasai-solutions-inc.com/news/feed.xml?release-check=5.3.0-20261126",
+          "httpStatus": 200,
+          "bytes": 10810,
+          "sha256": "e1ffdf4b3a677de7cc037444f14609bf101143f7f2ad7b8df9a22f70ac944e10",
+          "expectedSha256": "e1ffdf4b3a677de7cc037444f14609bf101143f7f2ad7b8df9a22f70ac944e10",
+          "match": true
+        },
+        {
+          "path": "news/index.html",
+          "url": "https://www.kasai-solutions-inc.com/news/index.html?release-check=5.3.0-20261126",
+          "httpStatus": 200,
+          "bytes": 30455,
+          "sha256": "33ac25d17bdf25f9dc8d455710e48ecb9ac90500484f466f5de0a9ba223bf8f2",
+          "expectedSha256": "33ac25d17bdf25f9dc8d455710e48ecb9ac90500484f466f5de0a9ba223bf8f2",
+          "match": true
+        },
+        {
+          "path": "premium/index.html",
+          "url": "https://www.kasai-solutions-inc.com/premium/index.html?release-check=5.3.0-20261126",
+          "httpStatus": 200,
+          "bytes": 39781,
+          "sha256": "8ac4411b74fa983a74f3047da48e8174504d7aab3deabe4d26a41ead56cce7f5",
+          "expectedSha256": "8ac4411b74fa983a74f3047da48e8174504d7aab3deabe4d26a41ead56cce7f5",
+          "match": true
+        },
+        {
+          "path": "press/index.html",
+          "url": "https://www.kasai-solutions-inc.com/press/index.html?release-check=5.3.0-20261126",
+          "httpStatus": 200,
+          "bytes": 40199,
+          "sha256": "547f3664aaa7e0c487f19df75943a99d067964cd2b5bd4da8546d9b9778494dc",
+          "expectedSha256": "547f3664aaa7e0c487f19df75943a99d067964cd2b5bd4da8546d9b9778494dc",
+          "match": true
+        },
+        {
+          "path": "public-luxury.css",
+          "url": "https://www.kasai-solutions-inc.com/public-luxury.css?release-check=5.3.0-20261126",
+          "httpStatus": 200,
+          "bytes": 36140,
+          "sha256": "1d58d55fe4b939b3d4501e1762b4109fad38c4c1f796ccb259ab7e4d7270b69d",
+          "expectedSha256": "1d58d55fe4b939b3d4501e1762b4109fad38c4c1f796ccb259ab7e4d7270b69d",
+          "match": true
+        },
+        {
+          "path": "public-search-index.json",
+          "url": "https://www.kasai-solutions-inc.com/public-search-index.json?release-check=5.3.0-20261126",
+          "httpStatus": 200,
+          "bytes": 137147,
+          "sha256": "3a13744c1d7a9124855526205b1bfc96e54edf827f7761443c574b762ed16a34",
+          "expectedSha256": "3a13744c1d7a9124855526205b1bfc96e54edf827f7761443c574b762ed16a34",
+          "match": true
+        },
+        {
+          "path": "public-search.js",
+          "url": "https://www.kasai-solutions-inc.com/public-search.js?release-check=5.3.0-20261126",
+          "httpStatus": 200,
+          "bytes": 12136,
+          "sha256": "9b2f1956bb1fe137bade48043d1ece598ecd2f9e16f240800766fd688b32e03e",
+          "expectedSha256": "9b2f1956bb1fe137bade48043d1ece598ecd2f9e16f240800766fd688b32e03e",
+          "match": true
+        },
+        {
+          "path": "sengoku-vs/index.html",
+          "url": "https://www.kasai-solutions-inc.com/sengoku-vs/index.html?release-check=5.3.0-20261126",
+          "httpStatus": 200,
+          "bytes": 43567,
+          "sha256": "216501f8ec7982091423ffd8af519789b5c0c6fae8618544bfa23a787d122059",
+          "expectedSha256": "216501f8ec7982091423ffd8af519789b5c0c6fae8618544bfa23a787d122059",
+          "match": true
+        },
+        {
+          "path": "site-metadata.json",
+          "url": "https://www.kasai-solutions-inc.com/site-metadata.json?release-check=5.3.0-20261126",
+          "httpStatus": 200,
+          "bytes": 10440,
+          "sha256": "779e5af2e88b44387942daac6f6344826d0304a853e3cd457b6cb24108ec4d5c",
+          "expectedSha256": "779e5af2e88b44387942daac6f6344826d0304a853e3cd457b6cb24108ec4d5c",
+          "match": true
+        },
+        {
+          "path": "sw.js",
+          "url": "https://www.kasai-solutions-inc.com/sw.js?release-check=5.3.0-20261126",
+          "httpStatus": 200,
+          "bytes": 13247,
+          "sha256": "7884f956ed505adf7947e5c199b233bd7c04fecadfd295f25431e97379e7b8cf",
+          "expectedSha256": "7884f956ed505adf7947e5c199b233bd7c04fecadfd295f25431e97379e7b8cf",
+          "match": true
+        },
+        {
+          "path": "tools/music-audition.html",
+          "url": "https://www.kasai-solutions-inc.com/tools/music-audition.html?release-check=5.3.0-20261126",
+          "httpStatus": 200,
+          "bytes": 13747,
+          "sha256": "50cfdd3b615dc00679ff800b62ef61e3d538b6bea93f02c60957d034f88e1cbc",
+          "expectedSha256": "50cfdd3b615dc00679ff800b62ef61e3d538b6bea93f02c60957d034f88e1cbc",
+          "match": true
+        }
+      ]
+    },
+    "workflows": [
+      {
+        "name": "Performance and continuity",
+        "conclusion": "success",
+        "url": "https://github.com/uni-tadayasu/sengoku-taisen/actions/runs/45778926039"
+      },
+      {
+        "name": "Music",
+        "conclusion": "success",
+        "url": "https://github.com/uni-tadayasu/sengoku-taisen/actions/runs/45778926168"
+      },
+      {
+        "name": "Brand and public discovery",
+        "conclusion": "success",
+        "url": "https://github.com/uni-tadayasu/sengoku-taisen/actions/runs/45778926042"
+      },
+      {
+        "name": "Pages deployment",
+        "conclusion": "success",
+        "url": "https://github.com/uni-tadayasu/sengoku-taisen/actions/runs/45778925374"
+      }
+    ],
+    "browserSmoke": {
+      "completedAt": "2026-11-26T08:00:08Z",
+      "viewports": [
+        "390x844",
+        "1440x1000"
+      ],
+      "version": "5.3.0",
+      "pageErrors": 0,
+      "horizontalOverflow": 0,
+      "byteMatchedObservedAssetResponses": 18,
+      "checks": [
+        "title",
+        "command desk live values",
+        "resource ledger tabs and focus return",
+        "large text and quiet preference",
+        "in-game search",
+        "public search and arrows",
+        "IME229 ignored",
+        "one Escape closes",
+        "resources unchanged"
+      ],
+      "isolation": "Fresh contexts; deployed engine; service workers blocked for this UI smoke; cross-origin and non-GET/HEAD requests blocked; no real account.",
+      "transport": "Configured execution-environment HTTPS proxy; certificate errors ignored only in the isolated browser context for the managed proxy CA. This is not a TLS certificate-validation test."
+    },
+    "liveServiceWorker": {
+      "startedAt": "2026-11-26T08:04:24.396Z",
+      "finishedAt": "2026-11-26T08:04:44.300Z",
+      "release": "5.3.0-20261126",
+      "gameNavigationFromServiceWorker": true,
+      "guideNavigationFromServiceWorker": true,
+      "offlineSearchResults": 15,
+      "onlineOfflineResultsIdentical": true,
+      "saveByteIdentical": true,
+      "pageErrors": 0,
+      "externalWrites": 0,
+      "requestCount": 154,
+      "requestsOnly": "GET/HEAD",
+      "externalGetsBlocked": 12,
+      "installCacheEntries": 17,
+      "finalCacheEntries": 37,
+      "limitations": [
+        "The configured managed HTTPS proxy was required. Native Chromium trusted only the configured proxy CA through an SPKI pin; no global ignoreHTTPSErrors option or application source injection was used in the successful run. Direct public TLS-chain validation is outside this proxy-based smoke.",
+        "Fresh unauthenticated profile, all cross-origin and non-GET/HEAD requests blocked; no multiplayer/account/cloud handover was tested.",
+        "Paused local campaign; offline search verifies the previously opened guide and index, not unvisited destination pages."
+      ],
+      "harnessNote": "All browser/product assertions completed. The final request-summary assertion mistakenly called the already serialized method string as a function; that metadata assertion was corrected and separately verified against every recorded request."
+    }
+  }
 }

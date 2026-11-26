@@ -1,6 +1,21 @@
 # 戦国VS v5.3.0 — サイト全体の画面・検索・操作性改修
 
-記録日：2026年11月26日（JST）。基準コミットは `37a2ea35f849dc44ba40e77dd4074295df47ca3c`（v5.2.0）。本書は実装とローカル検証の記録で、公開処理の結果はこのリリースを含むmainのGitHub Actionsで確認できる。
+記録日：2026年11月26日（JST）。基準コミットは `37a2ea35f849dc44ba40e77dd4074295df47ca3c`（v5.2.0）。実装コミットは [dc2cf1c](https://github.com/uni-tadayasu/sengoku-taisen/commit/dc2cf1c1227af59a268578d4d102953b23d2f1ff)。**v5.3.0は16:56:05 JSTに本番公開が成功した。**
+
+## 公開後の確認
+
+[本番サイト](https://www.kasai-solutions-inc.com/)で、16:57 JSTにトップ・公開ページ・RSS・6 bundle・検索JS/JSON・Service Worker・配布ZIPなど24ファイルがHTTP 200となり、本文のSHA-256が検証済みのローカル生成物とすべて一致した。
+
+17:00 JSTに本番URLをChromiumの390×844px・1440×1000pxで操作し、v5.3.0のタイトル、指揮台、収支タブとフォーカス復帰、文字拡大、ゲーム内検索、公開ガイド検索を確認した。ページ例外・横はみ出しを検出せず、収支の確認後も資源は変わらなかった。公開検索はIME229で移動せず、Escape一回で閉じる。観測した配信アセット18応答もHTTP 200・本文一致。新規の隔離コンテキストで配信済みエンジンからローカル戦役を作り、外部接続・書き込みを遮断した検査で、実アカウントは使用していない。
+
+17:04 JSTには本番オリジンで実際のv5.3.0 Service Workerをインストールし、ガイドと検索を利用してから通信を切断した。ゲーム・ガイドのナビゲーション応答がService Worker由来であること、指揮台の表示、セーブの文字列単位の保持、「引き継ぎ」の検索結果15件とURLがオンライン時と一致することを確認した。ページ例外0件、外部書き込み0件。既に利用したガイドと検索データの確認であり、未訪問ページの先行保存を意味しない。実行環境の既定プロキシCAを限定的に信頼して行った検査で、外部のTLS証明書チェーンを直接検証する試験ではない。
+
+| GitHub Actions | 結果 |
+| --- | --- |
+| [表示・動作・継続性](https://github.com/uni-tadayasu/sengoku-taisen/actions/runs/45778926039) | success |
+| [音楽・設定](https://github.com/uni-tadayasu/sengoku-taisen/actions/runs/45778926168) | success |
+| [公開ページ・検索・メタデータ](https://github.com/uni-tadayasu/sengoku-taisen/actions/runs/45778926042) | success |
+| [Pages公開](https://github.com/uni-tadayasu/sengoku-taisen/actions/runs/45778925374) | success |
 
 ## 変更と使い方
 
