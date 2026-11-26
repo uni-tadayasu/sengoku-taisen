@@ -47,13 +47,62 @@
     grid-template-columns: repeat(3,minmax(0,1fr)) minmax(0,1.3fr) var(--compact-dock-slot);
   }
 }
-@media (max-width:480px) {
-  /* Keep all eleven digits and separators of 100,000,000 at the readable
-     numeric size. Two columns fit the brush face without clipping its ends. */
-  html:not(.sengoku-desktop-fit) #app.chronicle-shell .topbar #resources .resource,
-  html:not(.sengoku-desktop-fit) #app.chronicle-shell .topbar #touch-header-status > button {
-    grid-column: span 3;
+/* Size the six counters from the space left by the calendar, actions and
+   adjustable sidebar. Only complete rows of counters change column count. */
+#app.chronicle-shell .chronicle-ledger .header-balances {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+  grid-template-columns: repeat(auto-fit,minmax(min(100%,8rem,132px),1fr));
+}
+html:not(.sengoku-desktop-fit) #app.chronicle-shell .chronicle-ledger .header-balances {
+  grid-column: 1 / -1;
+  grid-row: 2;
+}
+#app.chronicle-shell .chronicle-ledger .header-balances :is(#resources,#touch-header-status) > button {
+  grid-column: auto;
+  container-type: inline-size;
+}
+@supports (container-type: inline-size) {
+  #app.chronicle-shell .chronicle-ledger .header-balances {
+    container: balances / inline-size;
+    grid-template-columns: repeat(6,minmax(0,1fr));
   }
+  @container balances (max-width: 45rem) {
+    #app.chronicle-shell .chronicle-ledger .header-balances :is(#resources,#touch-header-status) > button { grid-column: span 2; }
+  }
+  @container balances (max-width: 24rem) {
+    #app.chronicle-shell .chronicle-ledger .header-balances :is(#resources,#touch-header-status) > button { grid-column: span 3; }
+  }
+  /* At 320px an enlarged root still leaves room for two cards. Reserve
+     the single column for a physically narrower ledger. */
+  @container balances (max-width: 230px) {
+    #app.chronicle-shell .chronicle-ledger .header-balances :is(#resources,#touch-header-status) > button { grid-column: 1 / -1; }
+  }
+}
+
+/* Signed 100,000,000 occupies about 7.5em in the game's brush face. Query
+   the card's content box, after its padding. Keep a wrap fallback for larger
+   imported values or players who enlarge text beyond the normal scale. */
+#app.chronicle-shell .chronicle-ledger #resources .resource-amount,
+#app.chronicle-shell .chronicle-ledger #touch-header-status .touch-header-stat-value {
+  min-width: 0;
+  font-size: 1rem;
+  font-size: clamp(.875rem,12.75cqi,1.3125rem);
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+/* In a very narrow ledger with externally enlarged type, cap the
+   numeric minimum at 14px so that two cards fit above the touch dock.
+   The normal scale still follows the width of each individual card. */
+@container balances (max-width: 15rem) {
+  #app.chronicle-shell .chronicle-ledger #resources .resource-amount,
+  #app.chronicle-shell .chronicle-ledger #touch-header-status .touch-header-stat-value {
+    font-size: clamp(14px,12.75cqi,1.3125rem);
+  }
+}
+#app.chronicle-shell .chronicle-ledger #resources .resource-amount > span {
+  display: block;
 }
 
 #app #main :is(h1,h2,h3,h4,p,dt,dd),

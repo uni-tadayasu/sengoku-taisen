@@ -9,6 +9,15 @@
     <ttl>60</ttl>
     <atom:link href="https://www.kasai-solutions-inc.com/news/feed.xml" rel="self" type="application/rss+xml"/>
     <item>
+      <title>Ver.5.9.7｜資産欄の大きな残高を最後の桁まで表示</title>
+      <link>https://www.kasai-solutions-inc.com/news/#v5-9-7</link>
+      <guid isPermaLink="true">https://www.kasai-solutions-inc.com/news/#v5-9-7</guid>
+      <dc:date>2026-11-27</dc:date>
+      <description>金銭・兵糧・木材・石材が上限付近になったとき、資産カードの右端で数字が欠ける表示を修正しました。
+
+桁数に合わせた資産表示：資産欄に100,000,000などの長い残高が並んでも、金額と増減をそれぞれのカード内で読めるように調整しました。</description>
+    </item>
+    <item>
       <title>Ver.5.9.6｜翡翠の天守紋と五つの新絵巻で、戦国VSの装いを一新</title>
       <link>https://www.kasai-solutions-inc.com/news/#v5-9-6</link>
       <guid isPermaLink="true">https://www.kasai-solutions-inc.com/news/#v5-9-6</guid>
