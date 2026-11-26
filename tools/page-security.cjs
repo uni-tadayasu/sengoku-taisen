@@ -14,13 +14,14 @@ function pageSecurity(config) {
     }
     api = ' ' + url.origin;
   }
-  return (html, game) => {
+  return (html, game, {promotion = false} = {}) => {
     const services = game ? api : '';
+    const connections = game || promotion ? api : '';
     const policy = [
       "default-src 'none'", "base-uri 'none'", "object-src 'none'", "frame-src 'none'", "form-action 'none'",
       "script-src 'self' file:", "script-src-attr 'none'", "style-src 'self' file: 'unsafe-inline'",
       "font-src 'self' file:", "img-src 'self' file: data: blob:" + services, "media-src 'self' file: blob: mediastream:",
-      "manifest-src 'self' file:", "worker-src 'self'", "connect-src 'self' file:" + services
+      "manifest-src 'self' file:", "worker-src 'self'", "connect-src 'self' file:" + connections
     ].join('; ');
     const tags = '\n  <meta http-equiv="Content-Security-Policy" content="' + policy + '">' +
       '\n  <meta name="referrer" content="no-referrer">';

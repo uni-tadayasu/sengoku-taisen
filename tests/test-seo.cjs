@@ -80,13 +80,14 @@ function jpegSize(image){
 }
 
 test('one metadata source matches every title, description, canonical and social preview',()=>{
-  assert.equal(site.schemaVersion,1);assert.equal(site.origin,'https://www.kasai-solutions-inc.com');assert.deepEqual(Object.keys(site.pages).sort(),['about','guide','home','news','premium','press','recovery','share']);assert.equal(site.pages.home.path,'/');assert.equal(site.pages.share.path,'/sengoku-vs/');assert.equal(site.pages.premium.path,'/premium/');
+  assert.equal(site.schemaVersion,1);assert.equal(site.origin,'https://www.kasai-solutions-inc.com');assert.deepEqual(Object.keys(site.pages).sort(),['about','english','guide','home','news','premium','press','recovery','share']);assert.equal(site.pages.home.path,'/');assert.equal(site.pages.share.path,'/sengoku-vs/');assert.equal(site.pages.premium.path,'/premium/');assert.equal(site.pages.english.path,'/en/');assert.equal(site.pages.english.language,'en');assert.equal(site.pages.english.locale,'en_US');
   for(const page of pages){
     const image = page.socialImage || site.ogImage;
     const meta=tags(page.html,'meta'),links=tags(page.html,'link'),value=(kind,key)=>{const matches=meta.filter(m=>m[kind]===key);assert.equal(matches.length,1,key+' on '+page.path);return matches[0].content;};
     assert.equal(decode(page.html.match(/<title>([^<]+)<\/title>/)[1]),page.title);assert.equal(value('name','description'),page.description);
+    assert.equal(tags(page.html,'html')[0].lang,page.language||site.language);
     assert.equal(links.find(l=>l.rel==='canonical').href,page.url);
-    for(const [name,expected] of [['og:title',page.title],['og:description',page.description],['og:url',page.url],['og:site_name',site.name],['og:locale',site.locale],['og:image',site.origin+'/'+image.path],['og:image:secure_url',site.origin+'/'+image.path],['og:image:type',image.type],['og:image:width',String(image.width)],['og:image:height',String(image.height)],['og:image:alt',image.alt]])assert.equal(value('property',name),expected,name);
+    for(const [name,expected] of [['og:title',page.title],['og:description',page.description],['og:url',page.url],['og:site_name',site.name],['og:locale',page.locale||site.locale],['og:image',site.origin+'/'+image.path],['og:image:secure_url',site.origin+'/'+image.path],['og:image:type',image.type],['og:image:width',String(image.width)],['og:image:height',String(image.height)],['og:image:alt',image.alt]])assert.equal(value('property',name),expected,name);
     for(const [name,expected] of [['twitter:card','summary_large_image'],['twitter:title',page.title],['twitter:description',page.description],['twitter:image',site.origin+'/'+image.path],['twitter:image:alt',image.alt]])assert.equal(value('name',name),expected,name);
     assert.deepEqual(jpegSize(bytes(image.path)), { width: image.width, height: image.height });
     assert(bytes(image.path).length<1024*1024,'Social previews stay below the project 1 MiB image budget');
@@ -95,15 +96,48 @@ test('one metadata source matches every title, description, canonical and social
 
 test('all public JSON-LD graphs share one publisher, site and game identity with truthful page metadata',()=>{
   const home=site.origin+'/',commonIds={Organization:home+'#organization',WebSite:home+'#website',VideoGame:home+'#game'};
+  const homeNodes=graph(pages.find(page=>page.key==='home').html);
   for(const page of pages){
     const nodes=graph(page.html),ids=nodes.map(node=>node['@id']);assert.equal(new Set(ids).size,ids.length);
-    for(const [type,id] of Object.entries(commonIds))assert.equal(nodes.find(node=>node['@type']===type)?.['@id'],id);
+    for(const [type,id] of Object.entries(commonIds)){
+      assert.equal(nodes.find(node=>node['@type']===type)?.['@id'],id);
+      assert.deepEqual(nodes.find(node=>node['@type']===type),homeNodes.find(node=>node['@type']===type),'Shared identity must agree on '+page.path+': '+type);
+    }
     const organization=nodes.find(n=>n['@type']==='Organization'),website=nodes.find(n=>n['@type']==='WebSite'),game=nodes.find(n=>n['@type']==='VideoGame'),webpage=nodes.find(n=>n['@type']==='WebPage');
-    assert.equal(organization.name,site.publisher);assert.equal(organization.logo.url,site.origin+'/'+site.logo.path);assert.equal(organization.logo.width,site.logo.width);assert.equal(organization.logo.height,site.logo.height);
+    assert.equal(organization.name,site.publisher);assert.equal(organization.logo['@type'],'ImageObject');assert.equal(organization.logo.url,site.origin+'/'+site.logo.path);assert.equal(organization.logo.width,site.logo.width);assert.equal(organization.logo.height,site.logo.height);
     assert.equal(website.name,site.name);assert.equal(website.alternateName,site.alternateName);assert.equal(website.publisher['@id'],commonIds.Organization);
     assert.equal(game.url,home);assert.equal(game.name,site.name);assert.equal(game.description,site.pages.home.description);assert.equal(game.image,site.origin+'/'+site.ogImage.path);assert.equal(game.softwareVersion,site.version);assert.equal(game.dateModified,site.dateModified);assert.equal(game.publisher['@id'],commonIds.Organization);assert.equal(game.softwareHelp.url,site.origin+site.pages.guide.path);
-    assert.equal(webpage.url,page.url);assert.equal(webpage['@id'],page.url+'#webpage');assert.equal(webpage.name,page.title);assert.equal(webpage.description,page.description);assert.equal(webpage.dateModified,page.dateModified);assert.equal(webpage.inLanguage,site.language);assert.equal(webpage.isPartOf['@id'],commonIds.WebSite);assert.equal(webpage.publisher['@id'],commonIds.Organization);assert.equal(webpage.about['@id'],commonIds.VideoGame);if(['home','share','about'].includes(page.key))assert.equal(webpage.mainEntity['@id'],commonIds.VideoGame);
+    assert.equal(website.inLanguage,site.language);assert.equal(game.inLanguage,site.language);
+    assert.equal(webpage.url,page.url);assert.equal(webpage['@id'],page.url+'#webpage');assert.equal(webpage.name,page.title);assert.equal(webpage.description,page.description);assert.equal(webpage.dateModified,page.dateModified);assert.equal(webpage.inLanguage,page.language||site.language);assert.equal(webpage.isPartOf['@id'],commonIds.WebSite);assert.equal(webpage.publisher['@id'],commonIds.Organization);assert.equal(webpage.about['@id'],commonIds.VideoGame);if(['home','share','about','english'].includes(page.key))assert.equal(webpage.mainEntity['@id'],commonIds.VideoGame);
+    assert.deepEqual(webpage.primaryImageOfPage,{'@type':'ImageObject',url:site.origin+'/'+page.artwork.path,contentUrl:site.origin+'/'+page.artwork.path,caption:page.artwork.alt,width:page.artwork.width,height:page.artwork.height});
     const serialized=JSON.stringify(nodes);assert(!/"(?:aggregateRating|review|award|SearchAction)"/.test(serialized),'Do not claim unavailable reviews, awards or search functionality');
+  }
+});
+
+test('Japanese and English introductions advertise reciprocal languages and remain statically discoverable',()=>{
+  const expected=[['en',site.origin+site.pages.english.path],['ja',site.origin+site.pages.share.path],['x-default',site.origin+site.pages.share.path]];
+  for(const page of pages){
+    const alternates=tags(page.html,'link').filter(link=>link.rel==='alternate'&&link.hreflang).map(link=>[link.hreflang,link.href]).sort();
+    assert.deepEqual(alternates,['share','english'].includes(page.key)?expected:[],'Only corresponding introductions claim translations: '+page.path);
+    const footer=page.html.match(/<footer\b[^>]*>[\s\S]*?<\/footer>/i)?.[0];assert(footer,'Public footer on '+page.path);
+    const englishLinks=tags(footer,'a').filter(link=>link.hreflang==='en');assert.equal(englishLinks.length,1,'English discovery link in '+page.path);
+    assert.equal(new URL(englishLinks[0].href,page.url).href,site.origin+site.pages.english.path);assert.equal(englishLinks[0].lang,'en');
+  }
+  const english=pages.find(page=>page.key==='english');
+  assert(english.html.includes('The game is in Japanese.'));
+  assert.equal(graph(english.html).find(node=>node['@type']==='WebPage').translationOfWork['@id'],site.origin+site.pages.share.path+'#webpage');
+});
+
+test('anonymous counters and their notice are limited to the two introduction pages',()=>{
+  const api=/window\.SENGOKU_API_BASE\s*=\s*['"]([^'"]*)['"]/.exec(read('config.js'))[1];
+  for(const page of pages){
+    const enabled=['share','english'].includes(page.key);
+    const scripts=[...page.html.matchAll(/<script\b[^>]*>/gi)].filter(match=>/(?:^|\/)public-growth\.js(?:\?|$)/.test(attrs(match[0]).src||''));
+    assert.equal(scripts.length,enabled?1:0,'Introduction counters only: '+page.path);
+    assert.equal((page.html.match(/\bdata-promotion-notice\b/g)||[]).length,enabled?1:0,'Visible notice accompanies counters: '+page.path);
+    if(!enabled)continue;
+    const script=attrs(scripts[0][0]);assert(/\bdefer\b/.test(scripts[0][0]));assert.equal(script['data-api'],api);
+    const url=new URL(script.src,page.url);assert.equal(url.origin,site.origin);assert.equal(url.pathname,'/public-growth.js');assert.equal(url.searchParams.get('v'),site.release);
   }
 });
 
@@ -317,7 +351,7 @@ test('public discovery identifies only Sengoku VS and does not explain privilege
  }
  function fixture(change){
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'sengoku-seo-'));
-  fs.mkdirSync(path.join(dir,'tools'));fs.copyFileSync(path.join(root,'tools/indexnow-config.json'),path.join(dir,'tools/indexnow-config.json'));fs.copyFileSync(path.join(root,plan.keyFile),path.join(dir,plan.keyFile));fs.copyFileSync(path.join(root,'sitemap.xml'),path.join(dir,'sitemap.xml'));
+  fs.mkdirSync(path.join(dir,'tools'));fs.copyFileSync(path.join(root,'tools/indexnow-config.json'),path.join(dir,'tools/indexnow-config.json'));fs.copyFileSync(path.join(root,plan.keyFile),path.join(dir,plan.keyFile));fs.copyFileSync(path.join(root,'sitemap.xml'),path.join(dir,'sitemap.xml'));fs.copyFileSync(path.join(root,'site-metadata.json'),path.join(dir,'site-metadata.json'));
   change(dir);return dir;
  }
 
@@ -325,6 +359,25 @@ test('public discovery identifies only Sengoku VS and does not explain privilege
   const before=read('tools/indexnow-config.json'),keyBefore=read(plan.keyFile);let calls=0;
   const result=await notifier.run({root,fetchImpl:()=>{calls++;throw Error('Network must not run');}});
   assert(result.ok);assert.equal(result.mode,'dry-run');assert.equal(result.networkRequests,0);assert.equal(result.notificationAttempted,false);assert.equal(result.urlCount,pages.length);assert.equal(result.accepted,false);assert.equal(result.indexingVerified,false);assert.equal(calls,0);assert(!Object.hasOwn(result,'key'));assert(!Object.hasOwn(result,'payload'));assert.equal(read('tools/indexnow-config.json'),before);assert.equal(read(plan.keyFile),keyBefore);
+  assert.deepEqual(result.urls,pages.map(page=>page.url));assert(result.urls.includes(site.origin+'/en/'));
+ });
+ test('metadata additions update the full plan and help count and receive public preflight checks',async()=>{
+  const addedURL=site.origin+'/next-release/',addedPage=`<html><head><link rel="canonical" href="${addedURL}"></head><body>Release introduction</body></html>`;
+  const xml=read('sitemap.xml').replace('</urlset>',`  <url><loc>${addedURL}</loc><lastmod>${site.dateModified}</lastmod></url>\n</urlset>`);
+  const dir=fixture(dir=>{const metadata=JSON.parse(read('site-metadata.json'));metadata.pages.nextRelease={path:'/next-release/'};fs.writeFileSync(path.join(dir,'site-metadata.json'),JSON.stringify(metadata));fs.writeFileSync(path.join(dir,'sitemap.xml'),xml);});
+  try{
+   const dry=await notifier.run({root:dir,fetchImpl:()=>assert.fail('dry run must not fetch')});assert(dry.ok);assert.equal(dry.urlCount,pages.length+1);assert(dry.urls.includes(addedURL));
+   const help=await notifier.run({argv:['--help'],root:dir,fetchImpl:()=>assert.fail('help must not fetch')});assert(help.ok);assert(help.message.includes(`正規 ${pages.length+1} URL`));assert(help.message.includes(`${pages.length+1} ページ`));
+   const transport=mock((url,options)=>options.method==='GET'&&url===addedURL?response(addedPage):options.method==='GET'&&url===site.origin+'/sitemap.xml'?response(xml,200,'application/xml'):undefined);
+   const result=await notifier.run({argv:['--submit'],root:dir,fetchImpl:transport.fetchImpl});assert(result.ok);assert.equal(result.pagesVerified,pages.length+1);assert.equal(transport.posts().length,1);assert(transport.calls.some(call=>call.method==='GET'&&call.url===addedURL));assert.deepEqual(JSON.parse(transport.posts()[0].options.body).urlList,dry.urls);
+  }finally{fs.rmSync(dir,{recursive:true,force:true});}
+ });
+ test('invalid metadata origins, paths and duplicates fail locally before any request',async()=>{
+  const changes=[metadata=>{metadata.origin='https://other.invalid';},metadata=>{metadata.pages={};},...['//other.invalid/','/guide/../en/','/en/?tracking=1','/en/#private','/en/%2f/'].map(value=>metadata=>{metadata.pages.english.path=value;}),metadata=>{metadata.pages.english.path='/';}];
+  for(const change of changes){
+   const dir=fixture(dir=>{const metadata=JSON.parse(read('site-metadata.json'));change(metadata);fs.writeFileSync(path.join(dir,'site-metadata.json'),JSON.stringify(metadata));});
+   try{const result=await notifier.run({argv:['--submit'],root:dir,fetchImpl:()=>assert.fail('invalid metadata must not fetch')});assert.equal(result.ok,false);assert.equal(result.code,'INVALID_METADATA');assert.equal(result.notificationAttempted,false);}finally{fs.rmSync(dir,{recursive:true,force:true});}
+  }
  });
  test('CLI rejects arbitrary endpoints/URLs and incompatible local key configuration before any request',async()=>{
   for(const argv of [['--url','https://other.invalid/'],['https://other.invalid/'],['--submit','--host=other.invalid'],['--submit','--submit']]){const result=await notifier.run({argv,root,fetchImpl:()=>assert.fail('must not fetch')});assert.equal(result.ok,false);assert.equal(result.code,'INVALID_ARGUMENT');}
@@ -333,8 +386,9 @@ test('public discovery identifies only Sengoku VS and does not explain privilege
   }
  });
  test('only the known same-host canonical sitemap URLs and valid dates can become a notification',()=>{
-  const xml=read('sitemap.xml');assert.deepEqual(notifier.parseSitemap(xml),notifier.URLS);
-  for(const bad of [xml.replace(site.origin,'https://other.invalid'),xml.replace(site.origin+'/guide/',site.origin+'/guide/?tracking=1'),xml.replace(site.origin+'/about/',site.origin+'/guide/'),xml.replace('<urlset','<!DOCTYPE urlset><urlset'),xml.replace(/<lastmod>[^<]+<\/lastmod>/,'<lastmod>2026-02-30</lastmod>'),xml.replace('<urlset','<sitemapindex')])assert.throws(()=>notifier.parseSitemap(bad));
+  const xml=read('sitemap.xml');assert.deepEqual(notifier.parseSitemap(xml,plan.payload.urlList),pages.map(page=>page.url));
+  for(const bad of [xml.replace(site.origin,'https://other.invalid'),xml.replace(site.origin+'/guide/',site.origin+'/guide/?tracking=1'),xml.replace(site.origin+'/about/',site.origin+'/guide/'),xml.replace(/\s*<url><loc>[^<]+\/en\/<\/loc><lastmod>[^<]+<\/lastmod><\/url>/,''),xml.replace('</urlset>',`<url><loc>${site.origin}/extra/</loc><lastmod>${site.dateModified}</lastmod></url></urlset>`),xml.replace('<urlset','<!DOCTYPE urlset><urlset'),xml.replace(/<lastmod>[^<]+<\/lastmod>/,'<lastmod>2026-02-30</lastmod>'),xml.replace('<urlset','<sitemapindex')])assert.throws(()=>notifier.parseSitemap(bad,plan.payload.urlList));
+  assert.throws(()=>notifier.parseSitemap(xml,[...plan.payload.urlList,'https://other.invalid/']));
  });
  test('submit waits for every published check, then sends exactly one bounded canonical-URL POST',async()=>{
   let releasePage,seenPage;const seen=new Promise(resolve=>{seenPage=resolve;});

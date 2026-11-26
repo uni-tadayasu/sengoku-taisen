@@ -51,11 +51,35 @@
     });
   }
   for (const panel of document.querySelectorAll('[data-share-url]')) {
+    const presets = panel.querySelector('[data-share-presets]');
+    if (presets && typeof presets.querySelectorAll === 'function') {
+      const choices = [...presets.querySelectorAll('[data-share-preset]')];
+      const message = panel.querySelector('[data-share-message]');
+      const xLink = panel.querySelector('a[data-share-x]');
+      const lineLink = panel.querySelector('a[data-share-line]');
+      if (message?.tagName === 'TEXTAREA' && choices.length) {
+        presets.hidden = false;
+        for (const choice of choices) choice.addEventListener('click', () => {
+          message.value = choice.dataset.shareCopy;
+          panel.dataset.shareText = choice.dataset.shareText;
+          panel.dataset.shareUrl = choice.dataset.shareNativeUrl;
+          if (xLink) xLink.href = choice.dataset.shareX;
+          if (lineLink) lineLink.href = choice.dataset.shareLine;
+          for (const other of choices) other.setAttribute('aria-pressed', String(other === choice));
+          const status = message.closest('.promotion-copy-block')?.querySelector('.promotion-copy-status');
+          if (status) status.textContent = choice.textContent.trim() + 'の文章に切り替えました。';
+          const shareStatus = panel.querySelector('.promotion-share-status');
+          if (shareStatus) shareStatus.textContent = '';
+        });
+      }
+    }
     const button = panel.querySelector('[data-share-native]');
     if (!button || typeof navigator.share !== 'function') continue;
-    const data = {title:panel.dataset.shareTitle, text:panel.dataset.shareText, url:panel.dataset.shareUrl};
+    // Read the selected invitation when the user opens the share sheet, not
+    // when the page loads; otherwise the native share silently uses old copy.
+    const shareData = () => ({title:panel.dataset.shareTitle, text:panel.dataset.shareText, url:panel.dataset.shareUrl});
     try {
-      if (typeof navigator.canShare === 'function' && !navigator.canShare(data)) continue;
+      if (typeof navigator.canShare === 'function' && !navigator.canShare(shareData())) continue;
     } catch { continue; }
     const status = panel.querySelector('.promotion-share-status');
     button.hidden = false;
@@ -63,7 +87,7 @@
       button.disabled = true;
       if (status) status.textContent = '';
       try {
-        await navigator.share(data);
+        await navigator.share(shareData());
         if (status) status.textContent = '端末の共有機能へ渡しました。送信先の画面でご確認ください。';
       } catch (error) {
         if (status) status.textContent = error?.name === 'AbortError' ? '' : '共有画面を開けませんでした。URLのコピーをご利用ください。';

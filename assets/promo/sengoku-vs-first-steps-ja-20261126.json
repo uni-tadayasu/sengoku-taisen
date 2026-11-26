@@ -1,0 +1,152 @@
+{
+  "file": "sengoku-vs-first-steps-ja-20261126.mp4",
+  "createdDate": "2026-11-26",
+  "title": "戦国VS｜はじめての3手",
+  "seconds": 36.0,
+  "bytes": 5683022,
+  "sha256": "3c2cb3641a713d116976003b91f17dd6a0839f39d040d1da0753e69bd7bd9301",
+  "video": {
+    "codec_name": "h264",
+    "width": 720,
+    "height": 1280,
+    "pix_fmt": "yuv420p",
+    "r_frame_rate": "24/1",
+    "nb_frames": "864"
+  },
+  "audio": {
+    "codec_name": "aac",
+    "sample_rate": "44100",
+    "channels": 2
+  },
+  "notice": "ゲーム画面による紹介・撮影用デモ",
+  "presentationType": "Animated presentation of existing screenshot crops. Not a gameplay recording.",
+  "captureManifest": "assets/promo/screenshots/manifest.json",
+  "captureVersions": {
+    "town": "5.1.0",
+    "officers": "5.0.5",
+    "map": "5.0.5"
+  },
+  "music": {
+    "path": "assets/music/world-march.mp3",
+    "title": "旌旗越ゆる稜線",
+    "usage": "first 36 seconds, volume 0.88, fade in 0.5 seconds / fade out 2 seconds",
+    "provenance": [
+      "ARTWORK.md",
+      "assets/music/masters.json",
+      "music.js",
+      "tools/render-soundtrack.py"
+    ]
+  },
+  "sources": [
+    {
+      "path": "assets/branding/sengoku-vs-icon-512-20261126.png",
+      "sha256": "aed62411141c4754d8d52748ccb328422ae6349fe3978d02348b8eca46dffd20"
+    },
+    {
+      "path": "assets/music/world-march.mp3",
+      "sha256": "06627e878dbf404d5279b62eabc7dd6f16f5d8ffe8bf85f99722b16de4be1abe"
+    },
+    {
+      "path": "assets/promo/screenshots/sengoku-vs-map-20261126.jpg",
+      "sha256": "d0e870af6d1d566731a27f2bcc63d01283acc70b0817899a3e2e5f81545a38d5"
+    },
+    {
+      "path": "assets/promo/screenshots/sengoku-vs-officers-20261126.jpg",
+      "sha256": "6f3bcdda7e6d6192650493259fe4d8725687087ba81cc3d4ee895ccfebcb02cc"
+    },
+    {
+      "path": "assets/promo/screenshots/sengoku-vs-town-20261126.jpg",
+      "sha256": "45fdc6492b42fd30e3abf48e01ce8d1ca01eec3616cbfe285f7b90714f3cf187"
+    }
+  ],
+  "scenes": [
+    {
+      "key": "opening",
+      "start": 0,
+      "seconds": 4,
+      "image": "assets/promo/screenshots/sengoku-vs-town-20261126.jpg",
+      "crop": [
+        230,
+        180,
+        1000,
+        750
+      ],
+      "title": "あなたの一城から。",
+      "lines": [
+        "町を育て、武将を率い、",
+        "次の城へ。"
+      ]
+    },
+    {
+      "key": "town",
+      "start": 4,
+      "seconds": 8,
+      "image": "assets/promo/screenshots/sengoku-vs-town-20261126.jpg",
+      "crop": [
+        225,
+        180,
+        1005,
+        765
+      ],
+      "title": "城下町を育てる",
+      "lines": [
+        "田畑や商家を育てて、",
+        "領国の土台をつくる。"
+      ]
+    },
+    {
+      "key": "officers",
+      "start": 12,
+      "seconds": 8,
+      "image": "assets/promo/screenshots/sengoku-vs-officers-20261126.jpg",
+      "crop": [
+        239,
+        240,
+        1330,
+        890
+      ],
+      "title": "武将を編成する",
+      "lines": [
+        "能力と役目を見比べ、",
+        "自分の軍団を整える。"
+      ]
+    },
+    {
+      "key": "map",
+      "start": 20,
+      "seconds": 8,
+      "image": "assets/promo/screenshots/sengoku-vs-map-20261126.jpg",
+      "crop": [
+        235,
+        404,
+        1330,
+        885
+      ],
+      "title": "地図から、合戦へ",
+      "lines": [
+        "隣の城と戦況を確認。",
+        "軍師の助言を読み、出陣。"
+      ]
+    },
+    {
+      "key": "start",
+      "start": 28,
+      "seconds": 8,
+      "image": "assets/promo/screenshots/sengoku-vs-town-20261126.jpg",
+      "crop": [
+        225,
+        180,
+        1005,
+        765
+      ],
+      "title": "一城から、始めよう。",
+      "lines": [
+        "基本プレイ無料",
+        "インストール不要"
+      ]
+    }
+  ],
+  "sourceImagesUnchanged": true,
+  "narration": false,
+  "externalAssetsAdded": false
+}

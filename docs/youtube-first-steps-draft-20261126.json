@@ -1,0 +1,35 @@
+{
+  "edition": "20261126",
+  "status": "saved_draft_not_published",
+  "validationReady": true,
+  "channel": {
+    "displayName": "鳩倉",
+    "handle": "@hatokura30",
+    "url": "https://www.youtube.com/@hatokura30"
+  },
+  "title": "戦国ゲーム、最初に何をする？城下町→武将→出陣【戦国VS】",
+  "description": "城下町を育てる。武将を編成する。天下地図で次の一城へ。\n「戦国VS」の最初の流れを、36秒のゲーム画面紹介にまとめました。\n\n▼公式ゲーム紹介・始め方\nhttps://www.kasai-solutions-inc.com/sengoku-vs/?utm_source=youtube&utm_medium=social&utm_campaign=first_steps_20261126\n\n【最初の3手】\n1. 田畑や商家を育て、領国の土台をつくる\n2. 武将の能力と役目を見比べ、軍団を整える\n3. 天下地図で戦況を確認し、軍師の助言を読んで出陣する\n\n【遊ぶ前に】\n・PC・スマホ・タブレットのブラウザに対応。インストール不要。\n・基本プレイ無料。有料の外観アイテムと月額支援は任意です。\n・ひとりで試すなら「端末だけで遊ぶ」でCPUとの個人戦役から。\n・対人戦・同盟・交易は領主登録後に利用できます。\n・ゲームUIは現在、日本語です。The game interface is currently in Japanese.\n\n【この動画について】\n撮影用デモ進行の実ゲーム静止画に移動・拡大を加えた紹介です。ゲームプレイの録画ではありません。\n城下町はVer.5.1.0、武将・天下地図はVer.5.0.5の撮影画面を使用しています。\n日本語文字とBGMによる紹介で、ナレーションはありません。\n\n作品情報・公式素材\nhttps://www.kasai-solutions-inc.com/press/\n\n#戦国VS #ブラウザゲーム #戦国ゲーム\n© KASAI SOLUTIONS",
+  "tags": [
+    "戦国VS",
+    "ブラウザゲーム",
+    "戦国ゲーム",
+    "シミュレーションゲーム"
+  ],
+  "category": {
+    "id": 20,
+    "name": "Gaming"
+  },
+  "media": {
+    "path": "assets/promo/sengoku-vs-first-steps-ja-20261126.mp4",
+    "seconds": 36,
+    "bytes": 5683022,
+    "sha256": "3c2cb3641a713d116976003b91f17dd6a0839f39d040d1da0753e69bd7bd9301"
+  },
+  "privacyStatus": "not_selected",
+  "privacyNote": "The privacyStatus field was omitted. The saved draft response does not confirm a visibility setting. The creator must select a visibility before publication.",
+  "scheduledFor": null,
+  "scheduleNote": "No publication or schedule operation has been requested from the service.",
+  "publicationApproval": "pending_exact_content_and_visibility_review",
+  "quotedPublicationCredits": 0,
+  "note": "Internal draft identifiers, media-library identifiers and signed URLs are deliberately excluded from this public record."
+}

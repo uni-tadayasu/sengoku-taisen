@@ -1,0 +1,22 @@
+/* Report additions to the existing administrative dialog shell. */
+.promotion-admin-dialog .promotion-admin-range{margin:0 0 1rem;color:#e1cfaa;font-size:1rem}
+.promotion-admin-totals{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.8rem;margin:0 0 1rem}
+.promotion-admin-totals>div{padding:1rem;border:1px solid #c6ae7845;border-radius:8px;background:#0d1c2880}
+.promotion-admin-totals dt{font-size:.9375rem;color:#c6d1d0;line-height:1.5}
+.promotion-admin-totals dd{display:flex;align-items:baseline;gap:.4rem;flex-wrap:wrap;margin:.3rem 0 0;font-size:1.8rem;line-height:1.35;color:#f1d296;font-variant-numeric:tabular-nums}
+.promotion-admin-totals dd small{font-size:.875rem;color:#c6d1d0}
+.promotion-admin-note{font-size:.875rem;line-height:1.7;color:#c0cbc9;overflow-wrap:anywhere}
+.promotion-admin-tables{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1.5rem;margin-block:1.6rem}
+.promotion-admin-dialog h2{margin:0 0 .75rem;font-size:1.2rem;line-height:1.5;color:#ecdfc3}
+.promotion-admin-table-wrap{overflow-x:auto;max-width:100%;border:1px solid #c0b28a40;border-radius:6px}
+.promotion-admin-table-wrap:focus-visible{outline:2px solid #ecd391;outline-offset:3px}
+.promotion-admin-tables table{width:100%;border-collapse:collapse;font-size:.875rem;line-height:1.5;table-layout:fixed}
+.promotion-admin-tables th,.promotion-admin-tables td{padding:.65rem .5rem;border-bottom:1px solid #d2bd8c29;text-align:right;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
+.promotion-admin-tables th:first-child,.promotion-admin-tables td:first-child{text-align:left;width:44%}
+.promotion-admin-tables thead th{color:#efd6a4;background:#1b303e;font-weight:600}
+.promotion-admin-tables tbody th{color:#e0e6dd;font-weight:500}
+.promotion-admin-tables td{color:#e8e8da}
+.promotion-admin-tables tr:last-child>*{border-bottom:0}
+.promotion-admin-accounts{margin-top:1.5rem;padding-top:1.5rem;border-top:1px solid #bca87655}
+@media(max-width:650px){.promotion-admin-tables{grid-template-columns:minmax(0,1fr);gap:1.4rem}.promotion-admin-totals{gap:.5rem}.promotion-admin-totals>div{padding:.8rem}.promotion-admin-totals dt{font-size:.875rem}.promotion-admin-totals dd{font-size:1.6rem}}
+@media(max-width:360px){.promotion-admin-totals{grid-template-columns:minmax(0,1fr)}}

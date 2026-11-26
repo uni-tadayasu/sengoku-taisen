@@ -26,6 +26,9 @@ for key in ('guide', 'recovery', 'about', 'premium'):
 for key in ('title', 'town', 'map', 'officers'):
     FILES[f'screenshots/sengoku-vs-{key}.jpg'] = f'assets/promo/screenshots/sengoku-vs-{key}-{EDITION}.jpg'
 FILES['screenshots/capture-manifest.json'] = 'assets/promo/screenshots/manifest.json'
+for suffix in ('.mp4', '-poster.jpg', '.vtt', '.json'):
+    FILES[f'video/sengoku-vs-first-steps-ja{suffix}'] = f'assets/promo/sengoku-vs-first-steps-ja-{EDITION}{suffix}'
+FILES['video/FIRST-STEPS-PRODUCTION.md'] = 'assets/promo/FIRST-STEPS-PRODUCTION.md'
 
 README = f'''戦国VS / SENGOKU VS — 紹介・掲載用素材
 更新日: 2026年11月26日
@@ -39,7 +42,8 @@ README = f'''戦国VS / SENGOKU VS — 紹介・掲載用素材
 
 国内向けの日本語紹介文と投稿文、動画用タイトル・説明文、英語の作品概要、
 1200×630pxの共有画像5種類、ブランド紋章のSVG・512px PNG、
-1363×936pxの実ゲーム画面4枚を収録しています。
+1363×936pxの実ゲーム画面4枚、36秒の「はじめての3手」紹介動画、
+動画のポスター・日本語字幕・仕様と素材情報・制作記録を収録しています。
 ゲームUIと公式ガイドは現在、日本語です。
 
 作品紹介の際は、作品名「戦国VS」、公式URL、著作権表記を添えてください。
@@ -49,7 +53,10 @@ images/ は公式イラストによる紹介画像、screenshots/ は撮影用�
 人物・地図・家紋などの第三者資料の出典は公式サイトの
 作品概要・制作資料を参照してください。
 
-縦型の紹介動画はファイルサイズを抑えるため別配布です。
+video/ の36秒動画は、撮影用デモの実ゲーム静止画に移動・拡大を加えた紹介です。
+プレイ録画ではありません。全編に撮影用デモであることを表示しています。
+
+従来の24秒の公式イラスト紹介動画は、容量を抑えるため別配布です。
 {SITE['origin']}/assets/promo/sengoku-vs-intro-ja-{EDITION}.mp4
 
 manifest.jsonには各ファイルのSHA-256と元の公開パスを記載しています。
@@ -70,7 +77,10 @@ def build():
             info.compress_type = ZIP_DEFLATED
             info.external_attr = 0o100644 << 16
             archive.writestr(info, blob, compress_type=ZIP_DEFLATED, compresslevel=9)
-    return output.getvalue(), len(blobs)
+    data = output.getvalue()
+    if len(data) > 10_000_000:
+        raise SystemExit('Press kit exceeds the 10 MB download budget.')
+    return data, len(blobs)
 
 
 if __name__ == '__main__':

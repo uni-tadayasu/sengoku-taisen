@@ -13,13 +13,14 @@ function decode(value){return value.replace(/&(?:amp|lt|gt|quot|#39);/g,entity=>
 function tagAttrs(tag){return Object.fromEntries([...tag.matchAll(/([\w:-]+)\s*=\s*(["'])(.*?)\2/g)].map(m=>[m[1].toLowerCase(),decode(m[3])]));}
 for(const url of urls){
  const parsed=new URL(url);assert.equal(parsed.origin,origin);assert(!parsed.hash&&!parsed.search);
+ const page=Object.values(site.pages).find(page=>page.path===parsed.pathname);assert(page,'Sitemap URL needs page metadata: '+url);
  const file=path.join(root,parsed.pathname,'index.html');assert(fs.existsSync(file),'Sitemap target is missing: '+url);
- const html=fs.readFileSync(file,'utf8');assert(/<html[^>]*lang=["']ja["']/.test(html));
+ const html=fs.readFileSync(file,'utf8');assert.equal(tagAttrs(html.match(/<html\b[^>]*>/i)?.[0]||'').lang,page.language||site.language,'Declared page language: '+url);
  const pageTitles=[...html.matchAll(/<title>([^<]+)<\/title>/g)];assert.equal(pageTitles.length,1,'Exactly one title: '+url);const title=decode(pageTitles[0][1]);assert(title.length>=8);assert(!titles.has(title));titles.add(title);
  const meta=[...html.matchAll(/<meta\b[^>]*>/gi)].map(m=>tagAttrs(m[0]));
  const pageDescriptions=meta.filter(m=>m.name==='description');assert.equal(pageDescriptions.length,1,'Exactly one description: '+url);const description=pageDescriptions[0].content;assert(description?.length>=40);assert(!descriptions.has(description));descriptions.add(description);
  const canonicals=[...html.matchAll(/<link\b[^>]*>/gi)].map(m=>tagAttrs(m[0])).filter(a=>a.rel==='canonical');assert.equal(canonicals.length,1);assert.equal(canonicals[0].href,url);
- assert.equal(meta.find(m=>m.property==='og:url')?.content,url);assert.equal(meta.find(m=>m.property==='og:locale')?.content,'ja_JP');
+ assert.equal(meta.find(m=>m.property==='og:url')?.content,url);assert.equal(meta.find(m=>m.property==='og:locale')?.content,page.locale||site.locale);
  assert(meta.find(m=>m.property==='og:image')?.content.startsWith(origin+'/'));assert.equal(meta.find(m=>m.name==='twitter:card')?.content,'summary_large_image');
  const indexing=meta.filter(m=>['robots','googlebot','bingbot'].includes(m.name?.toLowerCase()));assert(indexing.some(m=>m.name==='robots'),'Missing robots metadata: '+url);assert(indexing.every(m=>!/(?:^|[\s,])(?:noindex|none)(?:[\s,]|$)/i.test(m.content||'')),'Page is excluded from indexing: '+url);
  assert.equal([...html.matchAll(/<h1\b/gi)].length,1,'One primary heading: '+url);assert(html.includes('KASAI SOLUTIONS'));connections.set(url,new Set());
