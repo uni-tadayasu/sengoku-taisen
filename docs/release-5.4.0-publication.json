@@ -1,0 +1,246 @@
+{
+  "release": "5.4.0-20261126",
+  "implementationCommit": "5854fa363266eecebb7093a6e03b010da6c08ae7",
+  "mainMergeCommit": "2ad156aebb50042efc5c7b0aea04530d741b89c7",
+  "pullRequest": "https://github.com/uni-tadayasu/sengoku-taisen/pull/38",
+  "frontend": {
+    "url": "https://www.kasai-solutions-inc.com/?sengoku-version=5.4.0-20261126",
+    "deployedAt": "2026-11-26T18:29:00+09:00",
+    "deploymentRun": "https://github.com/uni-tadayasu/sengoku-taisen/actions/runs/45792248248",
+    "assetVerification": {
+      "checkedAt": "2026-11-26T09:31:34.430383+00:00",
+      "release": "5.4.0-20261126",
+      "readOnly": true,
+      "files": [
+        {
+          "path": "index.html",
+          "url": "https://www.kasai-solutions-inc.com/",
+          "status": 200,
+          "bytes": 18812,
+          "sha256": "ac7e60792d52d92b206027272f8445f2ad1d296ddd281c005246eae1946196bb",
+          "localSha256": "ac7e60792d52d92b206027272f8445f2ad1d296ddd281c005246eae1946196bb",
+          "matches": true
+        },
+        {
+          "path": "game-preferences.bundle.js?v=c6e04c260a89",
+          "url": "https://www.kasai-solutions-inc.com/game-preferences.bundle.js?v=c6e04c260a89",
+          "status": 200,
+          "bytes": 7330,
+          "sha256": "c6e04c260a89a2ef74eccb36924fec8163deffbabb76fb64dd4d1ec3bf9a285a",
+          "localSha256": "c6e04c260a89a2ef74eccb36924fec8163deffbabb76fb64dd4d1ec3bf9a285a",
+          "matches": true
+        },
+        {
+          "path": "game-layout.bundle.css?v=5c567cf0a4ff",
+          "url": "https://www.kasai-solutions-inc.com/game-layout.bundle.css?v=5c567cf0a4ff",
+          "status": 200,
+          "bytes": 855207,
+          "sha256": "5c567cf0a4ffc9a672c20411717fd4a4836912f31b8b5dece2f36f1c5e57ed0c",
+          "localSha256": "5c567cf0a4ffc9a672c20411717fd4a4836912f31b8b5dece2f36f1c5e57ed0c",
+          "matches": true
+        },
+        {
+          "path": "game-core.bundle.js?v=86886444e678",
+          "url": "https://www.kasai-solutions-inc.com/game-core.bundle.js?v=86886444e678",
+          "status": 200,
+          "bytes": 620430,
+          "sha256": "86886444e67822daa093e32227345da3f68e1ebdfdd1cfc7e5801f728843a6bb",
+          "localSha256": "86886444e67822daa093e32227345da3f68e1ebdfdd1cfc7e5801f728843a6bb",
+          "matches": true
+        },
+        {
+          "path": "game-campaign.bundle.js?v=d0097d5c32ed",
+          "url": "https://www.kasai-solutions-inc.com/game-campaign.bundle.js?v=d0097d5c32ed",
+          "status": 200,
+          "bytes": 477209,
+          "sha256": "d0097d5c32ed97729c45874d10701657e50fcc18f5679e65c31fdbb04115dff3",
+          "localSha256": "d0097d5c32ed97729c45874d10701657e50fcc18f5679e65c31fdbb04115dff3",
+          "matches": true
+        },
+        {
+          "path": "game-interface.bundle.js?v=a4fa6715c26d",
+          "url": "https://www.kasai-solutions-inc.com/game-interface.bundle.js?v=a4fa6715c26d",
+          "status": 200,
+          "bytes": 403313,
+          "sha256": "a4fa6715c26db60abe51e27643d32f40a99d0c14a71a75c8b5c62d26366f21ab",
+          "localSha256": "a4fa6715c26db60abe51e27643d32f40a99d0c14a71a75c8b5c62d26366f21ab",
+          "matches": true
+        },
+        {
+          "path": "game-community.bundle.js?v=02965c03990a",
+          "url": "https://www.kasai-solutions-inc.com/game-community.bundle.js?v=02965c03990a",
+          "status": 200,
+          "bytes": 585695,
+          "sha256": "02965c03990a0e64572022d94060c54b21b0fe17e50e78c49052bd93ce57f14b",
+          "localSha256": "02965c03990a0e64572022d94060c54b21b0fe17e50e78c49052bd93ce57f14b",
+          "matches": true
+        },
+        {
+          "path": "sw.js",
+          "url": "https://www.kasai-solutions-inc.com/sw.js",
+          "status": 200,
+          "bytes": 13247,
+          "sha256": "e9285c89e121a00ee4c1a5b9bda7a4e984b9da63def4aa70fd7c7d4f509a51ea",
+          "localSha256": "e9285c89e121a00ee4c1a5b9bda7a4e984b9da63def4aa70fd7c7d4f509a51ea",
+          "matches": true
+        },
+        {
+          "path": "guide/index.html",
+          "url": "https://www.kasai-solutions-inc.com/guide/index.html",
+          "status": 200,
+          "bytes": 131679,
+          "sha256": "0038e4f4575ce69a73bd9233a45ba0104579b3bb5bfb403c75ac8a86da958fc1",
+          "localSha256": "0038e4f4575ce69a73bd9233a45ba0104579b3bb5bfb403c75ac8a86da958fc1",
+          "matches": true
+        },
+        {
+          "path": "guide/data-recovery/index.html",
+          "url": "https://www.kasai-solutions-inc.com/guide/data-recovery/index.html",
+          "status": 200,
+          "bytes": 34008,
+          "sha256": "ca5c067209594d04d0f61c474f97d01a391fc695e955a0265a6e17e3e09b5857",
+          "localSha256": "ca5c067209594d04d0f61c474f97d01a391fc695e955a0265a6e17e3e09b5857",
+          "matches": true
+        },
+        {
+          "path": "news/index.html",
+          "url": "https://www.kasai-solutions-inc.com/news/index.html",
+          "status": 200,
+          "bytes": 33672,
+          "sha256": "1fddbf4544336f9e3e9555773d2284feb32e8fdf1acac20d6f7913c752e4d641",
+          "localSha256": "1fddbf4544336f9e3e9555773d2284feb32e8fdf1acac20d6f7913c752e4d641",
+          "matches": true
+        },
+        {
+          "path": "news/feed.xml",
+          "url": "https://www.kasai-solutions-inc.com/news/feed.xml",
+          "status": 200,
+          "bytes": 13128,
+          "sha256": "c861baed3faf22dbb7022d2ec068b7118811cec37e7e1f36ed429405b1afc307",
+          "localSha256": "c861baed3faf22dbb7022d2ec068b7118811cec37e7e1f36ed429405b1afc307",
+          "matches": true
+        },
+        {
+          "path": "assets/promo/sengoku-vs-press-kit-20261126.zip",
+          "url": "https://www.kasai-solutions-inc.com/assets/promo/sengoku-vs-press-kit-20261126.zip",
+          "status": 200,
+          "bytes": 8967878,
+          "sha256": "c9332ba8b61085dc35d5853f085c8cc4279109ae81f573d0125b1aec8c79712f",
+          "localSha256": "c9332ba8b61085dc35d5853f085c8cc4279109ae81f573d0125b1aec8c79712f",
+          "matches": true
+        }
+      ],
+      "allMatch": true
+    }
+  },
+  "server": {
+    "url": "https://sengoku-tento.hisa-0128-1996.chatgpt.site",
+    "versionNumber": 70,
+    "sourceCommit": "3257b37201610a73356aa54c0c7269c8ee4d0dee",
+    "savedVersionId": "appgprj_6b0062efeeb88191b65f81b63db926dc~appgver_0c08c690c0a88191958694eb88acfc65",
+    "deploymentId": "appgdep_6b07f8772d6c8191b7395c04dd67be5c",
+    "deploymentStatus": "succeeded",
+    "deployedAt": "2026-11-26T09:14:49.190372+00:00",
+    "archiveSha256": "sha256:461b11fd54a72e1a675b9a744075c6b348ef4b748d10526eb5b07a9420c01590",
+    "newDatabaseMigrations": 0,
+    "bindingsPreserved": [
+      "DB",
+      "BUCKET"
+    ],
+    "verification": {
+      "sourceModulesMatched": 37,
+      "readOnlyLiveLogSample": {
+        "eventCount": 50,
+        "exceptions": 0,
+        "normalSync200": 10,
+        "periodUtc": [
+          "2026-11-26T09:15:28.588Z",
+          "2026-11-26T09:15:45.697Z"
+        ]
+      },
+      "directHealthRequest": "The CLI request was rejected by Cloudflare with HTTP 403 / code 1010. No access controls, headers intended to evade detection, or network routes were altered."
+    }
+  },
+  "mainWorkflowRuns": [
+    {
+      "id": 45792248758,
+      "url": "https://github.com/uni-tadayasu/sengoku-taisen/actions/runs/45792248758",
+      "name": "Check game performance and continuity",
+      "head": "2ad156aebb50042efc5c7b0aea04530d741b89c7",
+      "status": "completed",
+      "conclusion": "success",
+      "updatedAt": "2026-11-26T09:28:45Z"
+    },
+    {
+      "id": 45792248729,
+      "url": "https://github.com/uni-tadayasu/sengoku-taisen/actions/runs/45792248729",
+      "name": "Check brand and public discovery",
+      "head": "2ad156aebb50042efc5c7b0aea04530d741b89c7",
+      "status": "completed",
+      "conclusion": "success",
+      "updatedAt": "2026-11-26T09:28:30Z"
+    },
+    {
+      "id": 45792248745,
+      "url": "https://github.com/uni-tadayasu/sengoku-taisen/actions/runs/45792248745",
+      "name": "Check game music",
+      "head": "2ad156aebb50042efc5c7b0aea04530d741b89c7",
+      "status": "completed",
+      "conclusion": "success",
+      "updatedAt": "2026-11-26T09:28:36Z"
+    },
+    {
+      "id": 45792248248,
+      "url": "https://github.com/uni-tadayasu/sengoku-taisen/actions/runs/45792248248",
+      "name": "pages build and deployment",
+      "head": "2ad156aebb50042efc5c7b0aea04530d741b89c7",
+      "status": "completed",
+      "conclusion": "success",
+      "updatedAt": "2026-11-26T09:29:01Z"
+    }
+  ],
+  "browserChecks": [
+    {
+      "scope": "Public production",
+      "result": "Existing title tab displayed 新版を開く, opened release 5.4.0-20261126 and loaded the verified bundle fingerprints. The existing 織田家・清洲城 resume label remained present."
+    },
+    {
+      "scope": "Public production console",
+      "result": "No errors from the public frontend origin in the captured last 100 error log entries."
+    },
+    {
+      "scope": "Managed preview",
+      "viewports": [
+        "1363x936",
+        "390x844",
+        "320x568",
+        "768x844"
+      ],
+      "result": "Facility card/list and officer comparisons inspected. 320px comparison modal clientWidth=scrollWidth=279px, table height reduced from about522px to403px."
+    },
+    {
+      "scope": "Managed preview final regression",
+      "result": "Zero-result search then keyboard comparison clear focused the search field. Summon -> town -> menu search comparison navigated to the archive. Selected rank was included in chip labels. Detail comparison shortcut hidden/display:none/width0 for zero or one selection; visible for two selections."
+    },
+    {
+      "scope": "Read-only operation fixture using shipped UI",
+      "rows": [
+        17,
+        85
+      ],
+      "viewports": [
+        "320x568",
+        "390x844",
+        "844x390"
+      ],
+      "result": "Long titles wrapped, search and category retained during updates, paused world-clock times remained unknown, 40 -> 80 rows displayed, unrendered final item searchable. Dialog width=scrollWidth372px at390 and799px at844. Navigation closed dialog and subscriptions changed1->0; reopen restored1."
+    }
+  ],
+  "limitations": [
+    "No real iOS/Safari device testing.",
+    "Authenticated production purchases, battles, and migration writes were not initiated for QA.",
+    "Offline reload behavior was checked with the actual Service Worker in local tests; production browser offline mode was not exercised.",
+    "Live Worker logs are observations of ordinary traffic, not controlled writes against production player saves."
+  ],
+  "localVerification": "release-5.4.0-verification.json"
+}
