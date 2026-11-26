@@ -12,11 +12,12 @@ const test = (name, run) => tests.push([name, run]);
 const clone = value => JSON.parse(JSON.stringify(value));
 const baseTime = Date.parse('2026-11-21T12:00:00.000Z');
 const ids = ['gold-banner', 'moonlit-castle', 'supporter'];
-const slots = { 'gold-banner': 'nameplate', 'moonlit-castle': 'town', supporter: 'badge' };
+const slots = { 'gold-banner': 'nameplate', 'moonlit-castle': 'town', supporter: 'badge', 'vermilion-banner': 'nameplate', 'silver-banner': 'nameplate', 'phoenix-medallion': 'badge', 'sakura-town': 'town', 'snow-town': 'town' };
+const allIds = Object.keys(slots);
 const destinations = {
   'gold-banner': 'https://buy.stripe.com/fZu6oI3Iwdcd5kn4Um9MY04',
   'moonlit-castle': 'https://buy.stripe.com/dRmdRa6UI2xz6or1Ia9MY05',
-  supporter: 'https://buy.stripe.com/7sY8wQdj6dcdbILaeG9MY06'
+  supporter: 'https://buy.stripe.com/7sY8wQdj6dcdbILaeG9MY06', 'vermilion-banner': 'https://buy.stripe.com/aFa8wQ3Iw5JL1479aC9MY07', 'silver-banner': 'https://buy.stripe.com/aFacN65QE4FHeUXaeG9MY08', 'phoenix-medallion': 'https://buy.stripe.com/8x2aEY5QE5JL00386y9MY09', 'sakura-town': 'https://buy.stripe.com/3cI6oIfre5JLeUX5Yq9MY0a', 'snow-town': 'https://buy.stripe.com/28EaEYfrec893cfeuW9MY0b'
 };
 const reference = 'fixture_order_0123456789abcdef';
 const noAppearance = { nameplate: null, town: null, badge: null, ownedProducts: [] };
@@ -26,8 +27,8 @@ function identity(id = 'player-a', epoch = 1) {
 function response(id = 'player-a', { owned = [], equipped = [], expiresAt = baseTime + 2000, ready = true } = {}) {
   return {
     ok: true, player: { id, name: '認証済みの領主' }, ready,
-    products: ids.map(productId => ({ id: productId, owned: owned.includes(productId), equipped: equipped.includes(productId), canPurchase: !owned.includes(productId), expiresAt: productId === 'supporter' && owned.includes(productId) ? new Date(expiresAt).toISOString() : null, reason: '' })),
-    appearance: Object.fromEntries(ids.map(productId => [slots[productId], equipped.includes(productId) ? productId : null])),
+    products: allIds.map(productId => ({ id: productId, owned: owned.includes(productId), equipped: equipped.includes(productId), canPurchase: !owned.includes(productId), expiresAt: productId === 'supporter' && owned.includes(productId) ? new Date(expiresAt).toISOString() : null, reason: '' })),
+    appearance: Object.fromEntries(['nameplate', 'town', 'badge'].map(slot => [slot, allIds.find(productId => slots[productId] === slot && equipped.includes(productId)) || null])),
     portalUrl: '', serverNow: new Date(baseTime).toISOString()
   };
 }
@@ -401,6 +402,35 @@ test('public ownership icons are ordered, accessible and independent from staff 
   for (const label of ['金彩の旗印を所有', '月影の城下を所有', '戦国VSサポーター（有効）']) assert(html.includes('aria-label="' + label + '"'));
   assert(!/運営|スタッフ/.test(html)); assert.equal(ownershipLabel(look), '金彩の旗印を所有・月影の城下を所有・戦国VSサポーター（有効）');
   for (const invalid of [null, { isAdmin: true, isStaff: true }, { owned: true, purchased: ids }, { ownedProducts: 'supporter' }]) assert(!nameMarkup('領主', invalid).includes('data-premium-product='));
+  f.runtime.dispose();
+});
+
+test('alternative cosmetics preserve the selected shared slot and can be removed without owning the original', async () => {
+  const f = fixture();
+  const owned = ['silver-banner', 'phoenix-medallion', 'snow-town'];
+  await f.load(response('player-a', { owned, equipped: owned }));
+  assert.equal(f.runtime.getAppearance().nameplate, 'silver-banner');
+  assert.equal(f.runtime.getAppearance().town, 'snow-town');
+  assert.equal(f.runtime.getAppearance().badge, 'phoenix-medallion');
+  assert.equal(f.runtime.getContext().products.find(p => p.id === 'gold-banner').owned, false);
+  const clear = f.runtime.equip(null, 'nameplate');
+  assert.deepEqual(f.calls.at(-1).options, { method: 'PUT', data: { slot: 'nameplate', productId: null } });
+  f.calls.at(-1).resolve(response('player-a', { owned, equipped: ['phoenix-medallion', 'snow-town'] }));
+  await clear; assert.equal(f.runtime.getAppearance().nameplate, null);
+  assert.equal(f.runtime.getAppearance().town, 'snow-town');
+  const {nameMarkup}=f.sandbox.module.exports;
+  const markup=nameMarkup('新装の領主', f.runtime.getAppearance());
+  assert(markup.includes('phoenix-medallion-v1.svg'));assert(markup.includes('snow-town-v1.webp'));
+  f.runtime.dispose();
+});
+
+test('every new SKU validates only its own account-bound Stripe destination', async () => {
+  const f=fixture();await f.load(response());
+  for(const id of ['vermilion-banner','silver-banner','phoenix-medallion','sakura-town','snow-town']){
+    const pending=f.runtime.checkout(id);
+    f.calls.at(-1).resolve({ok:true,productId:id,url:destinations[id]+'?client_reference_id='+reference});
+    const destination=await pending;assert.equal(destination.productId,id);assert.equal(destination.playerId,'player-a');
+  }
   f.runtime.dispose();
 });
 

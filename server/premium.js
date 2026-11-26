@@ -4,7 +4,12 @@ const PREMIUM_VERSION='2026-09-30.endive';
 const PREMIUM_PRODUCTS=Object.freeze([
   {id:'gold-banner',slot:'nameplate',amount:480,mode:'payment',link:'plink_1UeEdvL3ZjL9QUmfKwCpWsEI',price:'price_1UeEcRL3ZjL9QUmf6snR2y5b',stripeProduct:'prod_VfZlNZd8yjCf4t',url:'https://buy.stripe.com/fZu6oI3Iwdcd5kn4Um9MY04'},
   {id:'moonlit-castle',slot:'town',amount:980,mode:'payment',link:'plink_1UeEg9L3ZjL9QUmf0Jiw1Inq',price:'price_1UeEfwL3ZjL9QUmfMZSVlcyg',stripeProduct:'prod_VfZpGdkUhwkdix',url:'https://buy.stripe.com/dRmdRa6UI2xz6or1Ia9MY05'},
-  {id:'supporter',slot:'badge',amount:780,mode:'subscription',link:'plink_1UeEiNL3ZjL9QUmf5805BE1t',price:'price_1UeEiFL3ZjL9QUmfkthlf1SJ',stripeProduct:'prod_VfZr9Vag05JWrT',url:'https://buy.stripe.com/7sY8wQdj6dcdbILaeG9MY06'}
+  {id:'supporter',slot:'badge',amount:780,mode:'subscription',link:'plink_1UeEiNL3ZjL9QUmf5805BE1t',price:'price_1UeEiFL3ZjL9QUmfkthlf1SJ',stripeProduct:'prod_VfZr9Vag05JWrT',url:'https://buy.stripe.com/7sY8wQdj6dcdbILaeG9MY06'},
+  {"id":"vermilion-banner","slot":"nameplate","amount":580,"mode":"payment","link":"plink_1Ufq0iL3ZjL9QUmfIWm7MlvY","price":"price_1Ufq0OL3ZjL9QUmf9LJWwrDP","stripeProduct":"prod_sengokuvs_20261126_vermilion_banner","url":"https://buy.stripe.com/aFa8wQ3Iw5JL1479aC9MY07"},
+  {"id":"silver-banner","slot":"nameplate","amount":580,"mode":"payment","link":"plink_1Ufq0jL3ZjL9QUmfnDoaBTMU","price":"price_1Ufq0VL3ZjL9QUmfZWpAzq76","stripeProduct":"prod_sengokuvs_20261126_silver_banner","url":"https://buy.stripe.com/aFacN65QE4FHeUXaeG9MY08"},
+  {"id":"phoenix-medallion","slot":"badge","amount":780,"mode":"payment","link":"plink_1Ufq0jL3ZjL9QUmfWThYEpqL","price":"price_1Ufq0WL3ZjL9QUmfgJALQNy2","stripeProduct":"prod_sengokuvs_20261126_phoenix_medallion","url":"https://buy.stripe.com/8x2aEY5QE5JL00386y9MY09"},
+  {"id":"sakura-town","slot":"town","amount":980,"mode":"payment","link":"plink_1Ufq0kL3ZjL9QUmfWmqjwuB7","price":"price_1Ufq0XL3ZjL9QUmfZn6HpE02","stripeProduct":"prod_sengokuvs_20261126_sakura_town","url":"https://buy.stripe.com/3cI6oIfre5JLeUX5Yq9MY0a"},
+  {"id":"snow-town","slot":"town","amount":980,"mode":"payment","link":"plink_1Ufq0lL3ZjL9QUmfn5BGoLuI","price":"price_1Ufq0XL3ZjL9QUmfT3rgvT9j","stripeProduct":"prod_sengokuvs_20261126_snow_town","url":"https://buy.stripe.com/28EaEYfrec893cfeuW9MY0b"}
 ]);
 const premiumStmt=(db,sql,...values)=>db.prepare(sql).bind(...values);
 const premiumRows=result=>result?.results||[];
@@ -64,7 +69,10 @@ async function premiumAppearanceRows(db,ids,now){
 }
 async function premiumSnapshot(ctx){
   const {db,user,now,env}=ctx,owned=await premiumOwnership(db,user.id,now),appearances=await premiumAppearanceRows(db,[user.id],now),appearance=appearances.get(user.id)||premiumEmpty(),ready=premiumReady(env),portalUrl=premiumPortal(env),subscriptionExists=await premiumSubscriptionExists(db,user.id,now);
-  return {ok:true,ready,player:{id:user.id,name:user.name,evaluation:ctx.helpers.evaluationRef(user.id)},products:PREMIUM_PRODUCTS.map(product=>{const value=owned.get(product.id)||{owned:false,expiresAt:null},blocked=product.mode==='subscription'&&subscriptionExists;return {id:product.id,owned:value.owned,equipped:appearance[product.slot]===product.id,expiresAt:value.expiresAt,canPurchase:ready&&!value.owned&&!blocked&&(product.mode!=='subscription'||!!portalUrl),purchaseBlockReason:blocked?'subscription_exists':value.owned?'owned':!ready?'preparing':product.mode==='subscription'&&!portalUrl?'portal_unavailable':null};}),appearance,portalUrl,serverNow:new Date(now).toISOString()};
+  // Older clients validate a fixed three-product response. Keep their existing
+  // purchases visible during the rollout; the current catalog explicitly opts in.
+  const visibleProducts=new URL(ctx.request.url).searchParams.get('catalog')==='3'?PREMIUM_PRODUCTS:PREMIUM_PRODUCTS.slice(0,3);
+  return {ok:true,ready,player:{id:user.id,name:user.name,evaluation:ctx.helpers.evaluationRef(user.id)},products:visibleProducts.map(product=>{const value=owned.get(product.id)||{owned:false,expiresAt:null},blocked=product.mode==='subscription'&&subscriptionExists;return {id:product.id,owned:value.owned,equipped:appearance[product.slot]===product.id,expiresAt:value.expiresAt,canPurchase:ready&&!value.owned&&!blocked&&(product.mode!=='subscription'||!!portalUrl),purchaseBlockReason:blocked?'subscription_exists':value.owned?'owned':!ready?'preparing':product.mode==='subscription'&&!portalUrl?'portal_unavailable':null};}),appearance,portalUrl,serverNow:new Date(now).toISOString()};
 }
 
 function premiumReviewDto(row){return {id:row.id,scope:row.scope,objectId:row.object_id,revision:Number(row.expected_revision),eventId:row.expected_event_id,reason:row.reason,createdAt:new Date(Number(row.created_at)).toISOString()};}

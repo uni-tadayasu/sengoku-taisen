@@ -67,7 +67,9 @@
     "officer-health.css",
     "durability.css",
     "command-ui.css",
-    "settings-ui.css"
+    "settings-ui.css",
+    "town-command-tabs.css",
+    "shogun-polish.css"
   ],
   "game-preferences.bundle.js": [
     "viewport-lock.js",

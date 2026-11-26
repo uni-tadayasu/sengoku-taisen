@@ -2,10 +2,11 @@
 
 // Public editorial material only. No account, analytics or posting action runs here.
 const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
+const { trailer, renderTrailer } = require('./promotion-content.cjs');
 const copy = {
   "short": "戦国VSは、城下町を育て、256人の武将を編成し、城をめぐる合戦を楽しむ戦国ブラウザゲーム。軍師の助言を読み、一城から天下統一へ。PC・スマホ・タブレットで、インストールせず基本プレイ無料で始められます。",
   "standard": "戦国VSは、内政・武将編成・攻城戦を楽しむ基本プレイ無料の戦国戦略シミュレーションです。124の開始候補から一城を選び、田畑や商家を育てて領国の力を蓄えます。256人の武将、129の城と拠点、64種類の施設を収録。個人の戦役ではCPU勢力と戦い、領主を登録すると同盟・書状・交易などの交流にも参加できます。軍師AIが戦況に合う準備や戦法を提案。PC・スマホ・タブレットのブラウザで遊べます。有料商品は外観アイテムと月額支援で、戦力を優遇する特典はありません。",
-  "media": "「戦国VS（SENGOKU VS）」は、KASAI SOLUTIONSが制作する日本語の戦国戦略シミュレーションです。「一城から、天下へ。」を合言葉に、城下町の内政、武将の登用と軍団編成、城をめぐる合戦を楽しめます。PC・スマートフォン・タブレットのブラウザから、アプリをインストールせず基本プレイ無料で始められます。\n\n収録内容は256人の武将、129の城と拠点、64種類の城下町施設。124の開始候補から本拠を選び、田畑や商家で資源を生産し、普請・研究・募兵へ配分します。軍師AIは現在の戦況から戦法や出陣兵数を提案。「次の一手」のヒントも、領国の状態に合う準備を案内します。\n\n個人の戦役ではCPU勢力の城を攻略し、領主を登録すると共通フィールドで対人戦・同盟・書状・交易へ参加できます。同じ領主へ連携すれば、PCとスマホなどの端末間で進行を引き継げます。操作する端末は同時に1台です。\n\n有料商品は旗印や城下町の外観、月額サポーターのバッジです。武将の能力、兵力、生産量や指令回復を優遇する特典はありません。人物・城・勢力配置は、史実を題材にしたゲーム独自の設定です。",
+  "media": "「戦国VS（SENGOKU VS）」は、KASAI SOLUTIONSが制作する日本語の戦国戦略シミュレーションです。「一城から、天下へ。」を合言葉に、城下町の内政、武将の登用と軍団編成、城をめぐる合戦を楽しめます。PC・スマートフォン・タブレットのブラウザから、アプリをインストールせず基本プレイ無料で始められます。\n\n収録内容は256人の武将、129の城と拠点、64種類の城下町施設。124の開始候補から本拠を選び、田畑や商家で資源を生産し、普請・研究・募兵へ配分します。軍師AIは現在の戦況から戦法や出陣兵数を提案。「次の一手」のヒントも、領国の状態に合う準備を案内します。\n\n個人の戦役ではCPU勢力の城を攻略し、領主を登録すると共通フィールドで対人戦・同盟・書状・交易へ参加できます。同じ領主へ連携すれば、PCとスマホなどの端末間で進行を引き継げます。操作する端末は同時に1台です。\n\n有料商品は旗印や城下町の外観、勲章、月額サポーターのバッジです。武将の能力、兵力、生産量や指令回復を優遇する特典はありません。人物・城・勢力配置は、史実を題材にしたゲーム独自の設定です。",
   "x": "【開発・運営より】\n一城から、天下へ。『戦国VS』は、城下町づくり・武将編成・合戦を楽しむブラウザゲームです。PC・スマホ対応、基本プレイ無料・インストール不要。\nhttps://www.kasai-solutions-inc.com/sengoku-vs/\n#戦国VS #ブラウザゲーム\n© KASAI SOLUTIONS",
   "line": "開発・運営している「戦国VS」を紹介します。城下町を育て、武将を集めて編成し、城をめぐる合戦を楽しむゲームです。\n\nPC・スマホのブラウザで、インストールせず基本プレイ無料で遊べます。ひとりでCPU勢力との戦役を進めることも、領主を登録して同盟や交易を楽しむこともできます。有料の外観アイテム・月額支援は任意です。\n\n戦国や国づくりが好きなら、まずは紹介ページをのぞいてみてください。\nhttps://www.kasai-solutions-inc.com/sengoku-vs/\n© KASAI SOLUTIONS",
   "community": "KASAI SOLUTIONSより、制作・運営している日本語ブラウザゲーム「戦国VS」を紹介します。\n\n田畑や商家を育てる内政、武将の登用・軍団編成、城をめぐる合戦を組み合わせた戦国戦略シミュレーションです。個人の戦役ではCPU勢力と戦い、領主を登録すると対人戦・同盟・書状・交易も利用できます。256人の武将、129の城と拠点、64種類の施設を収録しています。\n\nPC・スマホ・タブレットに対応し、インストール不要で基本プレイ無料。有料商品は外観と月額支援で、戦力や資産の優遇はありません。初めての方には「次の一手」のヒントと、出陣前の軍師AIの助言があります。\n\n作品紹介・遊び方はこちらです。\nhttps://www.kasai-solutions-inc.com/sengoku-vs/\n© KASAI SOLUTIONS",
@@ -28,7 +29,7 @@ function renderPressContent(p, { section, table, site }) {
     ['プレミアム', site.pages.premium.socialImage]
   ];
   const screenshots = [
-    ['town', '城下町', '清洲城の城下町。施設と本拠の状況が見える実ゲーム画面'],
+    ['town', '城下町', '名古屋城の城下町。施設と本拠の状況が見える実ゲーム画面'],
     ['map', '天下地図', '東海地方の城と地形、選択した城の情報が見える実ゲーム画面'],
     ['officers', '武将名鑑', '所持武将の肖像・能力・任命先を確認する実ゲーム画面'],
     ['title', 'タイトル', '戦国VSのタイトルと開始ボタンが見える実ゲーム画面']
@@ -36,6 +37,7 @@ function renderPressContent(p, { section, table, site }) {
   return [
     section('press-facts', '作品の基本情報', '戦国VSの紹介に使える情報', `
       <p class="lead-paragraph">ゲーム紹介の記事、動画・配信の案内、SNSでの紹介に使える、公式の情報と素材をまとめました。短い説明から詳しい紹介文まで、このページで確認できます。</p>
+      <div class="press-current-release"><span>現在の公開版</span><strong>Ver.${esc(site.version)}</strong><span>更新 <time datetime="${esc(site.dateModified)}">${esc(site.dateModified)}</time></span><a href="${esc(p.dir(''))}">ゲームを開く</a></div>
       ${table('戦国VSの掲載用基本情報', ['項目', '内容'], [
         ['作品名', '戦国VS（SENGOKU VS）'],
         ['キャッチコピー', '一城から、天下へ。'],
@@ -43,6 +45,7 @@ function renderPressContent(p, { section, table, site }) {
         ['ジャンル', '戦国戦略シミュレーション・ブラウザゲーム'],
         ['公式URL', `<a href="${esc(origin)}/">${esc(origin)}/</a>`],
         ['紹介ページ', `<a href="${esc(p.dir('sengoku-vs'))}">${esc(origin)}/sengoku-vs/</a>`],
+        ['公開済み紹介動画', `<a href="${esc(trailer.url)}" target="_blank" rel="noopener noreferrer">YouTubeで戦国VSの紹介動画を見る</a>（24秒・公式イラスト）`],
         ['対応端末', 'PC・スマートフォン・タブレットのブラウザ。アプリのインストールは不要です。'],
         ['表示言語', '日本語。英語表記の作品名はSENGOKU VSです。ゲームUIと公式ガイドは日本語です。'],
         ['料金', `基本プレイ無料。別売りの外観アイテムと月額支援は任意です。<a href="${esc(p.dir('premium'))}">商品・料金の案内</a>`],
@@ -50,24 +53,23 @@ function renderPressContent(p, { section, table, site }) {
         ['遊び方', '個人の戦役ではCPU勢力と対戦。領主を登録すると共通フィールドの対人戦・同盟・書状・交易を利用できます。'],
         ['引き継ぎ', `同じ領主へ登録・連携すると端末間で進行を同期できます。操作は同時に1台。<a href="${esc(p.dir('guide/data-recovery'))}">引き継ぎ手順</a>`]
       ])}
-      <p>有料商品は旗印・城下町の外観・サポーターバッジです。武将の能力、兵力、生産量や指令回復を優遇する特典はありません。人物・城・勢力配置は史実を題材にしたゲーム独自の設定です。</p>
+      <p>有料商品は旗印・城下町の外観・勲章・サポーターバッジです。武将の能力、兵力、生産量や指令回復を優遇する特典はありません。人物・城・勢力配置は史実を題材にしたゲーム独自の設定です。</p>
       <ul class="press-downloads"><li>${link('assets/promo/sengoku-vs-facts-ja-20261126.txt', '基本情報・紹介文を保存（日本語TXT）')}</li><li>${link('assets/promo/sengoku-vs-press-kit-20261126.zip', '紹介用素材をまとめて保存（ZIP）')}</li></ul>
     `),
     section('press-media', '画像・ロゴ・動画', '掲載に使える公式素材', `
       <p>作品紹介の際は、作品名<strong>「戦国VS」</strong>、公式URL<strong>${esc(origin)}/</strong>、<strong>© KASAI SOLUTIONS</strong>を添えてください。人物・地図・家紋など第三者資料の出典は、<a href="${esc(p.dir('about'))}">作品概要と制作資料</a>で確認できます。</p>
       <h3>実際のゲーム画面</h3>
-      <p>ローカルデモで新しく清洲城から始めた実画面です。城下町・天下地図・武将名鑑・タイトルの4枚を用意しました。撮影用デモの表示を残しており、実プレイヤーの記録は含みません。各画像は1363×936pxのJPEGです。</p>
+      <p>撮影用デモ進行を使用した実ゲーム画面です。城下町は5.1.0の名古屋城で、公開御触書を表示しています。城下町・天下地図・武将名鑑・タイトルの4枚を用意しました。各画像は1363×936pxのJPEGです。</p>
       <ul class="press-media-grid press-screenshot-grid">${screenshots.map(([key, label, alt]) => {
         const path = `assets/promo/screenshots/sengoku-vs-${key}-20261126.jpg`;
-        return `<li><figure><img src="${esc(p.file(path))}" alt="${esc(alt)}" width="1363" height="936" loading="lazy" decoding="async"><figcaption><strong>${esc(label)}</strong><span>ローカルデモの実画面 · JPEG</span></figcaption></figure>${link(path, `${label}の実画面を保存（JPEG）`)}</li>`;
+        return `<li><figure><img src="${esc(p.file(path))}" alt="${esc(alt)}" width="1363" height="936" loading="lazy" decoding="async"><figcaption><strong>${esc(label)}</strong><span>撮影用デモ進行の実画面 · JPEG</span></figcaption></figure>${link(path, `${label}の実画面を保存（JPEG）`)}</li>`;
       }).join('')}</ul>
       <h3>共有用画像</h3>
       <p>5種類とも1200×630pxのJPEGです。イラストを用いた紹介画像で、ゲームの操作画面を撮影したスクリーンショットとは異なります。</p>
       <ul class="press-media-grid">${media.map(([label, image]) => `<li><figure><img src="${esc(p.file(image.path))}" alt="${esc(image.alt)}" width="${image.width}" height="${image.height}" loading="lazy" decoding="async"><figcaption><strong>${esc(label)}</strong><span>JPEG · ${image.width}×${image.height}px</span></figcaption></figure>${link(image.path, `${label}の画像を保存（JPEG）`)}</li>`).join('')}</ul>
       <h3>ブランド紋章</h3>
       <div class="press-logo"><img src="${esc(p.file(site.logo.path))}" alt="戦国VSの城・軍扇・旭日を組み合わせたブランド紋章" width="128" height="128" loading="lazy" decoding="async"><ul class="press-downloads"><li>${link('assets/branding/sengoku-vs-mark-20261126.svg', '紋章のベクターデータを保存（SVG）')}</li><li>${link(site.logo.path, '紋章の画像を保存（512×512px PNG）')}</li></ul></div>
-      <h3>縦型の紹介動画</h3>
-      <figure class="press-video-figure"><video class="press-video" controls preload="none" playsinline poster="${esc(p.file('assets/promo/sengoku-vs-intro-ja-20261126-poster.jpg'))}" width="720" height="1280" aria-label="戦国VSの24秒紹介動画"><source src="${esc(p.file('assets/promo/sengoku-vs-intro-ja-20261126.mp4'))}" type="video/mp4"><track kind="captions" src="${esc(p.file('assets/promo/sengoku-vs-intro-ja-20261126.vtt'))}" srclang="ja" label="日本語"><p>${link('assets/promo/sengoku-vs-intro-ja-20261126.mp4', '紹介動画を保存して見る（MP4）')}</p></video><figcaption>戦国VSの紹介動画 · 縦720×1280px · 24秒 · MP4</figcaption></figure>
+      ${renderTrailer(p, { id: 'press-trailer', title: 'そのまま見られる、24秒の紹介動画。' })}
       <ul class="press-downloads"><li>${link('assets/promo/sengoku-vs-intro-ja-20261126.mp4', '紹介動画を保存（MP4）')}</li><li>${link('assets/promo/sengoku-vs-video-copy-ja-20261126.txt', '動画用のタイトル・説明文を保存（TXT）')}</li></ul>
     `),
     section('press-copy', '紹介文・投稿文', '掲載先に合わせて使える日本語の紹介文', `
@@ -106,3 +108,4 @@ function renderPressContent(p, { section, table, site }) {
 }
 
 module.exports = renderPressContent;
+module.exports.copy = Object.freeze(copy);

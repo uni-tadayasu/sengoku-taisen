@@ -1,0 +1,35 @@
+{
+  "created": "2026-11-26",
+  "generator": "OpenAI built-in image_gen",
+  "useCase": "stylized-concept",
+  "purpose": "Original 3D city ruler honor medals in Sengoku VS",
+  "commonPrompt": "One exquisite collectible city honor medal. High-end physically rendered 3D game UI inventory icon, sculpted metal bas-relief, polished antique gold with subtly worn beveled edges, colored translucent enamel, crisp studio highlights and dimensional depth. One centered complete mostly circular medal on a square canvas, with a few dignified decorative tips and no chains or ribbon tails. Straight-on view with slight relief perspective, light from upper left, a strong central motif readable at 32px. Genuinely transparent background, clean alpha edge, no ground plane, outside shadow, lettering, numbers, wordmarks, real insignia or watermark. Original fictional in-game honor.",
+  "processing": "Alpha-preserving technical downscale to 384 × 384 and WebP encoding quality 92; no alteration of the generated illustration.",
+  "assets": [
+    {
+      "id": "edo",
+      "subject": "Edo Castle: an imposing ivory Japanese castle keep in miniature relief over deep indigo enamel, with a small curved bridge and two sweeping gold waves; strong dignified tiered tower silhouette.",
+      "path": "assets/city-honors/edo-v1.webp"
+    },
+    {
+      "id": "kyoto_gosho",
+      "subject": "Kyoto Imperial Palace: an original graceful golden phoenix with broad wings rising above a miniature vermilion palace roof, purple amethyst enamel center; elegant ceremonial silhouette; no real imperial seal.",
+      "path": "assets/city-honors/kyoto_gosho-v1.webp"
+    },
+    {
+      "id": "nijo",
+      "subject": "Nijo Palace: an original miniature ornate black-and-gold karamon palace gate, jade-green enamel center, two subtle golden pine branches; clear architectural gate silhouette.",
+      "path": "assets/city-honors/nijo-v1.webp"
+    },
+    {
+      "id": "osaka",
+      "subject": "Osaka Castle: a miniature ivory-and-gold Japanese castle tower over rich vermilion enamel, flanked by two abstract golden tiger-like protective flourishes, bold radiant silhouette.",
+      "path": "assets/city-honors/osaka-v1.webp"
+    },
+    {
+      "id": "nagoya",
+      "subject": "Nagoya Castle: two sculptural golden shachihoko dolphin-like tiger-headed roof ornaments facing one another above a small emerald-roofed Japanese castle, deep teal enamel center, iconic high-curved fish silhouettes.",
+      "path": "assets/city-honors/nagoya-v1.webp"
+    }
+  ]
+}

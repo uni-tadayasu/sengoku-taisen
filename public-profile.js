@@ -57,7 +57,7 @@ function detail(person){
   const office=global.SengokuPublicCourt?.slot?.({playerId:person.id,courtOffice:person.courtOffice})||'';
   const evaluation=global.SengokuEvaluationUI?.badge?.(person.evaluation)||'';
   const guild=person.guildName?' · '+esc(person.guildName):'';
-  return `<div class="lord-public-identity">${avatar}<div><h3>${name}</h3><p>${esc(clanName(person.clan))}${guild}</p><div class="lord-public-badges">${office}${evaluation}</div></div></div><div data-public-commander>${commanderCard(person.commander)}</div>`;
+  return `<div class="lord-public-identity">${avatar}<div><h3 class="lord-public-name">${global.SengokuCityHonors?.slot?.(person.id)||''}<span class="player-evaluation-name" data-premium-player="${esc(person.id)}" data-premium-player-name="${esc(person.name)}">${name}</span></h3><p>${esc(clanName(person.clan))}${guild}</p><div class="lord-public-badges">${office}${evaluation}</div></div></div><div data-public-commander>${commanderCard(person.commander)}</div>`;
 }
 function status(text,retry=false){
   const node=dialog.querySelector('[data-profile-status]');
@@ -149,7 +149,7 @@ async function search(event){
     const result=await global.SengokuSocial.searchPublicPlayers(query);
     if(!current())return;
     const rows=(Array.isArray(result?.players)?result.players:[]).filter(person=>validId(person?.id));
-    patch(list,rows.map(person=>`<div class="lord-search-hit" data-stable-key="${esc(person.id)}"><div><strong>${esc(person.name)}</strong><small>${esc(clanName(person.clan))}</small></div>${profileButton(person,'プロフィール')}</div>`).join(''),'results');
+    patch(list,rows.map(person=>`<div class="lord-search-hit" data-stable-key="${esc(person.id)}"><div><strong class="player-evaluation-person">${global.SengokuAvatar?.markup?.(person,'inline')||''}${global.SengokuCityHonors?.slot?.(person.id)||''}<span class="player-evaluation-name" data-premium-player="${esc(person.id)}" data-premium-player-name="${esc(person.name)}">${global.SengokuPremiumRuntime?.nameMarkup?.(person.name,person.appearance)||esc(person.name)}</span></strong><small>${esc(clanName(person.clan))}</small></div>${profileButton(person,'プロフィール')}</div>`).join(''),'results');
     summary.textContent=rows.length?`「${query}」の検索結果 · ${rows.length}件`:`「${query}」に該当する領主はいません。`;
   }catch(_){if(current()){patch(list,'','results');summary.textContent='領主を検索できませんでした。もう一度検索してください。';}}
   finally{if(searches.get(form)===attempt)searches.delete(form);}

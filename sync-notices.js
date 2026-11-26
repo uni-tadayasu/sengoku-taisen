@@ -14,7 +14,11 @@
  ]);
  function isRoutine(value){return routine.has(String(value??'').trim().replace(/[。.…]+$/u,''));}
  function visibleText(value){const text=String(value??'');return isRoutine(text)?'':text;}
- const api={isRoutine,visibleText};
+ // This classifies presentation only. The engine/cloud write guards continue
+ // to block every action until the current authority is ready.
+ const transientReasons=new Set(['','local','writer','pending','initializing','applying','conflict','lease-expired','hidden']);
+ function isTransientStatus(value){return Boolean(value)&&value.banned!==true&&value.rolePending!==true&&transientReasons.has(String(value.reason||''));}
+ const api={isRoutine,visibleText,isTransientStatus};
  global.SengokuSyncNotices=api;
  if(typeof module==='object'&&module.exports)module.exports=api;
 })(typeof window!=='undefined'?window:globalThis);

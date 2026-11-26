@@ -9,6 +9,37 @@ const clamp=(n,min,max)=>Math.max(min,Math.min(max,n));
 const people=new Map(),VERSION=/^[a-f0-9]{64}$/,PLAYER=/^[A-Za-z0-9_-]{1,150}$/;
 let sequence=0;
 const cleanVersion=value=>typeof value==='string'&&VERSION.test(value)?value:null;
+// Public city honors are issued by the server. A name renderer, local save,
+// premium purchase or avatar upload cannot award a city to its caller.
+const CITY_HONORS=Object.freeze({edo:'江戸城',kyoto_gosho:'京都御所',nijo:'二条御所',osaka:'大坂城',nagoya:'名古屋城'});
+const cityHonors=new Map(),cityHonorVersions=new Map();
+let cityHonorFloor=0;
+const honorPlayerId=value=>typeof value==='string'?value:value?.playerId||value?.userId||value?.id||value?.sessionId;
+const validHonorPlayer=id=>typeof id==='string'&&(/^u_[A-Za-z0-9_]{1,96}$/.test(id)||/^vc_[a-f0-9]{32}$/.test(id));
+const honorFields=[['playerId','playerCityHonors'],['ownerId','ownerCityHonors'],['authorId','authorCityHonors'],['targetPlayerId','targetCityHonors'],['attackerPlayerId','attackerCityHonors'],['defenderPlayerId','defenderCityHonors'],['actorPlayerId','actorCityHonors'],['lordPlayerId','lordCityHonors'],['previousLordPlayerId','previousLordCityHonors']];
+function cleanCityHonors(value){
+ if(!Array.isArray(value))return[];
+ const ids=new Set(value.filter(row=>row&&typeof row==='object'&&Object.hasOwn(CITY_HONORS,row.id)).map(row=>row.id));
+ return Object.entries(CITY_HONORS).filter(([id])=>ids.has(id)).map(([id,cityName])=>({id,cityName,title:cityName+'の勲章'}));
+}
+function honorsFor(player){const id=honorPlayerId(player);return validHonorPlayer(id)?(cityHonors.get(id)||[]).map(row=>({...row})):[];}
+function honorLabel(row){return row.cityName+(row.id==='kyoto_gosho'?'の領主':'の城主');}
+function honorMarkup(rows){return rows.map(row=>{const label='都市勲章：'+honorLabel(row);return `<span class="city-honor" data-city-honor="${row.id}" data-stable-key="city-honor-${row.id}" title="${esc(label)}"><span class="city-honor-fallback" aria-hidden="true">${esc(Array.from(row.cityName)[0])}</span><img src="assets/city-honors/${row.id}-v1.webp" width="32" height="32" alt="${esc(label)}" decoding="async" loading="lazy" draggable="false"></span>`;}).join('');}
+function scopedHonors(player,cityId){const rows=honorsFor(player);return cityId?rows.filter(row=>row.id===cityId):rows;}
+function honorSlot(player,{cityId=''}={}){const id=honorPlayerId(player);if(!validHonorPlayer(id))return'';const rows=scopedHonors(id,cityId);return `<span class="city-honors-slot" data-city-honors-player="${esc(id)}"${cityId?` data-city-honors-city="${esc(cityId)}"`:''} data-city-honors-key="${rows.map(row=>row.id).join(',')}">${honorMarkup(rows)}</span>`;}
+function refreshCityHonors(root=global.document){
+ const nodes=[...(root?.matches?.('[data-city-honors-player]')?[root]:[]),...(root?.querySelectorAll?.('[data-city-honors-player]')||[])];
+ for(const node of nodes){const rows=scopedHonors(node.dataset.cityHonorsPlayer,node.dataset.cityHonorsCity),key=rows.map(row=>row.id).join(',');if(node.dataset.cityHonorsKey===key)continue;node.dataset.cityHonorsKey=key;const html=honorMarkup(rows);if(global.SengokuStableDOM)global.SengokuStableDOM.patch(node,html);else node.innerHTML=html;}
+}
+function observeCityHonors(payload,{requestSequence}={}){
+ const revision=Number.isSafeInteger(requestSequence)?requestSequence:beginRequest();sequence=Math.max(sequence,revision);if(revision<cityHonorFloor)return payload;
+ const seen=new Set(),skip=new Set(['save','state','entitlements','appearance','staffBase','cityHonors']);
+ const accept=(id,value)=>{if(!validHonorPlayer(id)||revision<(cityHonorVersions.get(id)||0))return;cityHonorVersions.set(id,revision);cityHonors.set(id,cleanCityHonors(value));if(cityHonors.size>4096){const oldest=cityHonors.keys().next().value;cityHonors.delete(oldest);cityHonorVersions.delete(oldest);}};
+ const visit=value=>{if(!value||typeof value!=='object'||seen.has(value))return;seen.add(value);if(Object.hasOwn(value,'cityHonors'))accept(honorPlayerId(value),value.cityHonors);for(const[idKey,honorsKey]of honorFields)if(Object.hasOwn(value,honorsKey))accept(value[idKey],value[honorsKey]);for(const[key,child]of Object.entries(value))if(!skip.has(key))visit(child);};
+ visit(payload);for(const job of Array.isArray(payload?.staffBase?.jobs)?payload.staffBase.jobs:[]){const person=job?.startedBy;if(person&&Object.hasOwn(person,'cityHonors'))accept(person.id,person.cityHonors);}
+ refreshCityHonors();return payload;
+}
+global.SengokuCityHonors=Object.freeze({slot:honorSlot,update:observeCityHonors,refresh:refreshCityHonors,resolve:honorsFor,text:player=>honorsFor(player).map(honorLabel).join('・'),clear(){cityHonors.clear();cityHonorVersions.clear();cityHonorFloor=beginRequest();refreshCityHonors();}});
 function beginRequest(){return ++sequence;}
 function current(user){const id=String(user?.playerId||user?.userId||user?.id||''),known=people.get(id);return {id,name:known?.name||String(user?.name||'領主'),avatarVersion:known?known.avatarVersion:cleanVersion(user?.avatarVersion)};}
 function imageURL(user){
@@ -37,7 +68,7 @@ function observe(payload,{requestSequence,pinnedUser}={}){
   for(const [idKey,nameKey,versionKey]of [['playerId','playerName','playerAvatarVersion'],['ownerId','ownerName','ownerAvatarVersion'],['authorId','authorName','authorAvatarVersion'],['targetPlayerId','targetName','targetAvatarVersion'],['attackerPlayerId','attackerName','attackerAvatarVersion'],['defenderPlayerId','defenderName','defenderAvatarVersion'],['actorPlayerId','actorName','actorAvatarVersion']])take(value,value[idKey],nameKey,versionKey);
   for(const [key,child]of Object.entries(value))if(!skip.has(key))visit(child);
  };
- visit(payload);refresh();return payload;
+ visit(payload);observeCityHonors(payload,{requestSequence:order});refresh();return payload;
 }
 function rename(user){const id=String(user?.id||'');if(!PLAYER.test(id)||typeof user.name!=='string')return;const prior=people.get(id);people.set(id,{name:user.name,avatarVersion:prior?prior.avatarVersion:cleanVersion(user.avatarVersion),sequence:prior?.sequence||0,nameSequence:beginRequest()});refresh();}
 function refresh(root=global.document){
@@ -107,7 +138,7 @@ function mountPhotoEditor(host,{user,request,onUser,adapter={}}={}){
  };
 }
 function mount(host,options){return mountPhotoEditor(host,options);}
-document.addEventListener('error',event=>{const image=event.target;if(image?.matches?.('img[data-avatar-image]')){image.hidden=true;image.parentElement?.classList.remove('has-photo');}},true);
+document.addEventListener('error',event=>{const image=event.target;if(image?.matches?.('img[data-avatar-image]')){image.hidden=true;image.parentElement?.classList.remove('has-photo');}else if(image?.matches?.('.city-honor img')){image.hidden=true;image.parentElement?.setAttribute?.('role','img');image.parentElement?.setAttribute?.('aria-label',image.alt);}},true);
 global.SengokuAvatar=Object.freeze({markup,mount,mountPhotoEditor,imageURL,observe,refresh,beginRequest,resolve:current,rename});
 })(window);
 
@@ -382,7 +413,7 @@ function markup(s,{channel,title}={}){
  const error=same||!active?s.error||s.rooms[channel]?.error||'':s.rooms[channel]?.error||'',roomFull=participants.length>=8&&!participants.some(p=>p.isSelf);
  const heading=title||room?.name||(channel==='admin'?'運営チャット':'同盟チャット');
  let body=`<section class="voice-panel" aria-label="${esc(heading)}の音声通話" data-voice-phase="${same?s.phase:'idle'}"><div class="voice-heading"><span class="voice-seal">${icon('phone')}</span><div><h4>音声通話</h4><p>${same&&s.phase==='active'?'チャットを閉じても通話を続けられます。':'同じ部屋の仲間と、声で話せます。'}</p></div><span class="voice-count" aria-label="参加者${participants.length}人、定員8人">${icon('people')}<b>${participants.length}</b><span>/ 8</span></span></div>`;
- if(participants.length)body+=`<ul class="voice-participants" aria-label="通話の参加者">${participants.map(p=>{const self=same&&p.sessionId===s.sessionId,muted=self?s.muted:p.muted,status=self?'あなた':same?stateLabel(s.peerStates[p.sessionId]):'参加中';return`<li data-stable-key="${esc(p.sessionId)}" class="voice-person${self?' self':''}" data-voice-peer="${esc(p.sessionId)}"><span class="voice-person-icon">${icon(muted?'muted':'mic')}</span><span class="voice-person-name">${esc(p.name)}${global.SengokuPublicCourt?.slot?.(p.sessionId)||''}</span><small>${esc(status)}</small></li>`;}).join('')}</ul>`;
+ if(participants.length)body+=`<ul class="voice-participants" aria-label="通話の参加者">${participants.map(p=>{const self=same&&p.sessionId===s.sessionId,muted=self?s.muted:p.muted,status=self?'あなた':same?stateLabel(s.peerStates[p.sessionId]):'参加中';return`<li data-stable-key="${esc(p.sessionId)}" class="voice-person${self?' self':''}" data-voice-peer="${esc(p.sessionId)}"><span class="voice-person-icon">${icon(muted?'muted':'mic')}</span><span class="voice-person-name">${global.SengokuCityHonors?.slot?.(p.sessionId)||''}${esc(p.name)}${global.SengokuPublicCourt?.slot?.(p.sessionId)||''}</span><small>${esc(status)}</small></li>`;}).join('')}</ul>`;
  if(same&&s.phase==='joining')body+=`<p class="voice-joining" role="status">${s.listenOnly?'通話に接続しています…':'マイクの許可と接続を確認しています…'}</p><div class="voice-actions">${actionButton('leave','参加を取り消す','leave',{danger:true})}</div>`;
  else if(same&&s.phase==='active'){
   body+=`<div class="voice-actions">${controls(s)}</div><label class="voice-volume">${icon('speaker')}<span>通話音量</span><input type="range" min="0" max="100" step="5" value="${s.volume}" data-voice-volume aria-label="通話の音量"><output>${s.volume}%</output></label>`;
@@ -486,7 +517,7 @@ function detail(person){
   const office=global.SengokuPublicCourt?.slot?.({playerId:person.id,courtOffice:person.courtOffice})||'';
   const evaluation=global.SengokuEvaluationUI?.badge?.(person.evaluation)||'';
   const guild=person.guildName?' · '+esc(person.guildName):'';
-  return `<div class="lord-public-identity">${avatar}<div><h3>${name}</h3><p>${esc(clanName(person.clan))}${guild}</p><div class="lord-public-badges">${office}${evaluation}</div></div></div><div data-public-commander>${commanderCard(person.commander)}</div>`;
+  return `<div class="lord-public-identity">${avatar}<div><h3 class="lord-public-name">${global.SengokuCityHonors?.slot?.(person.id)||''}<span class="player-evaluation-name" data-premium-player="${esc(person.id)}" data-premium-player-name="${esc(person.name)}">${name}</span></h3><p>${esc(clanName(person.clan))}${guild}</p><div class="lord-public-badges">${office}${evaluation}</div></div></div><div data-public-commander>${commanderCard(person.commander)}</div>`;
 }
 function status(text,retry=false){
   const node=dialog.querySelector('[data-profile-status]');
@@ -578,7 +609,7 @@ async function search(event){
     const result=await global.SengokuSocial.searchPublicPlayers(query);
     if(!current())return;
     const rows=(Array.isArray(result?.players)?result.players:[]).filter(person=>validId(person?.id));
-    patch(list,rows.map(person=>`<div class="lord-search-hit" data-stable-key="${esc(person.id)}"><div><strong>${esc(person.name)}</strong><small>${esc(clanName(person.clan))}</small></div>${profileButton(person,'プロフィール')}</div>`).join(''),'results');
+    patch(list,rows.map(person=>`<div class="lord-search-hit" data-stable-key="${esc(person.id)}"><div><strong class="player-evaluation-person">${global.SengokuAvatar?.markup?.(person,'inline')||''}${global.SengokuCityHonors?.slot?.(person.id)||''}<span class="player-evaluation-name" data-premium-player="${esc(person.id)}" data-premium-player-name="${esc(person.name)}">${global.SengokuPremiumRuntime?.nameMarkup?.(person.name,person.appearance)||esc(person.name)}</span></strong><small>${esc(clanName(person.clan))}</small></div>${profileButton(person,'プロフィール')}</div>`).join(''),'results');
     summary.textContent=rows.length?`「${query}」の検索結果 · ${rows.length}件`:`「${query}」に該当する領主はいません。`;
   }catch(_){if(current()){patch(list,'','results');summary.textContent='領主を検索できませんでした。もう一度検索してください。';}}
   finally{if(searches.get(form)===attempt)searches.delete(form);}
@@ -634,7 +665,7 @@ const role=()=>'';
 const evaluationKey=value=>global.SengokuEvaluationUI?.key?.(value)||'';
 const evaluationBadge=value=>global.SengokuEvaluationUI?.badge?.(value)||'';
 function publicEvaluation(value){if(!evaluationKey(value))return null;const {version,score,maxScore,rankId,rankName,rankIndex}=value;return{version,score,maxScore,rankId,rankName,rankIndex};}
-function playerName(name,evaluation,playerId='',appearance=null,avatarVersion,showAvatar=true){const own=String(playerId)===String(s.user?.id),look=own?global.SengokuPremiumRuntime?.getAppearance?.():appearance,photo=showAvatar&&playerId?global.SengokuAvatar?.markup?.({id:playerId,name,avatarVersion:own?s.user.avatarVersion:avatarVersion},'inline')||'':'';return `<span class="player-evaluation-person">${photo}<span class="player-evaluation-name" data-premium-player="${esc(playerId)}" data-premium-player-name="${esc(name)}">${global.SengokuPremiumRuntime?.nameMarkup?.(name,look)||esc(name)}</span><span class="player-evaluation-slot"${playerId?` data-player-evaluation="${esc(playerId)}"`:''} data-evaluation-key="${esc(evaluationKey(evaluation))}">${evaluationBadge(evaluation)}</span>${(own?global.SengokuPublicCourt?.selfSlot?.(playerId):global.SengokuPublicCourt?.slot?.(playerId))||''}</span>`;}
+function playerName(name,evaluation,playerId='',appearance=null,avatarVersion,showAvatar=true){const own=String(playerId)===String(s.user?.id),look=own?global.SengokuPremiumRuntime?.getAppearance?.():appearance,photo=showAvatar&&playerId?global.SengokuAvatar?.markup?.({id:playerId,name,avatarVersion:own?s.user.avatarVersion:avatarVersion},'inline')||'':'';return `<span class="player-evaluation-person">${photo}${global.SengokuCityHonors?.slot?.(playerId)||''}<span class="player-evaluation-name" data-premium-player="${esc(playerId)}" data-premium-player-name="${esc(name)}">${global.SengokuPremiumRuntime?.nameMarkup?.(name,look)||esc(name)}</span><span class="player-evaluation-slot"${playerId?` data-player-evaluation="${esc(playerId)}"`:''} data-evaluation-key="${esc(evaluationKey(evaluation))}">${evaluationBadge(evaluation)}</span>${(own?global.SengokuPublicCourt?.selfSlot?.(playerId):global.SengokuPublicCourt?.slot?.(playerId))||''}</span>`;}
 function playerText(name,evaluation,appearance=null){const label=global.SengokuEvaluationUI?.label?.(evaluation),owned=global.SengokuPremiumRuntime?.ownershipLabel?.(appearance);return String(name||'領主')+(label?`（${label}）`:'')+(owned?`［${owned}］`:'');}
 function applyPlayerEvaluations(rows){
  const updates=new Map();for(const row of Array.isArray(rows)?rows:[]){if(!row||!['string','number'].includes(typeof row.playerId))continue;const id=String(row.playerId),value=updates.get(id)||{};if(typeof row.name==='string')value.name=row.name;if(Object.hasOwn(row,'avatarVersion'))value.avatarVersion=row.avatarVersion||null;if(Object.hasOwn(row,'evaluation'))value.evaluation=publicEvaluation(row.evaluation);if(Object.hasOwn(row,'appearance'))value.appearance=global.SengokuPremiumRuntime?.cleanAppearance?.(row.appearance)||null;updates.set(id,value);}if(s.user?.id&&typeof s.user.name==='string'){const id=String(s.user.id);updates.set(id,{avatarVersion:s.user.avatarVersion||null,...updates.get(id),name:s.user.name});}if(!updates.size)return;
@@ -863,8 +894,8 @@ function personalGuildResource(resource){const game=global.SengokuBridge?.getSta
 function guildBalances(){return Object.entries(RES).map(([key,label])=>`<div><span>${label}</span><strong>${s.guildTreasury.loaded?num(s.guildTreasury.balance?.[key]):'—'}</strong></div>`).join('');}
 function guildLedgerRows(){const t=s.guildTreasury;if(!t.ledger.length)return empty(t.loaded?'出し入れの記録はまだありません':'共有金庫を読み込んでいます',t.loaded?'同盟のメンバーが出し入れすると、ここに記録されます。':'しばらくお待ちください。','gift');return t.ledger.map(entry=>`<article class="social-guild-ledger-entry" data-stable-key="${esc(entry.id)}"><div><strong>${playerName(entry.name||'領主',entry.playerEvaluation,entry.playerId,entry.appearance,entry.avatarVersion)}</strong><p>${entry.direction==='deposit'?'金庫に預け入れ':'金庫から受け取り'} · ${esc(RES[entry.resource]||entry.resource)}</p></div><b class="${entry.direction==='deposit'?'is-deposit':'is-withdraw'}">${entry.direction==='deposit'?'+':'−'}${num(entry.amount)}</b><time datetime="${esc(entry.createdAt)}">${esc(loginDate(entry.createdAt))}<small>JST</small></time></article>`).join('');}
 function guildTransferAvailable(){const sync=global.SengokuCloudSync?.getStatus?.();return Boolean(s.user?.guildId&&s.guildTreasury.loaded&&String(s.guildTreasury.guildId)===String(s.user.guildId)&&global.SengokuBridge?.hasStarted?.()!==false&&typeof global.SengokuBridge?.guildTransfer==='function'&&sync?.linked&&sync.ready&&sync.writable);}
-function guildTreasuryView(){return `<section class="social-guild-treasury"><div class="social-section-heading"><div><h3>みんなの共有金庫</h3><p>全メンバーが資源・勾玉を預け入れ、受け取って使用できます。</p></div><button class="social-icon-button" data-social="guild-treasury-refresh" aria-label="共有金庫を更新">${icon('refresh')}</button></div><div id="social-guild-balances" class="social-guild-balances">${guildBalances()}</div><form id="social-guild-transfer-form" class="social-guild-transfer-form"><label>操作<select name="direction" id="social-guild-direction"><option value="deposit">金庫へ預ける</option><option value="withdraw">受け取って使用</option></select></label><label>資産<select name="resource" id="social-guild-resource">${Object.entries(RES).map(([key,label])=>`<option value="${key}">${label}</option>`).join('')}</select></label><label>数量<input name="amount" type="number" min="1" max="1000000" step="1" value="100" inputmode="numeric" required></label><button id="social-guild-transfer-confirm" class="social-button primary" type="submit" ${!guildTransferAvailable()?'disabled':''}>出し入れを確認</button></form><p id="social-guild-personal-balance" class="social-guild-note"></p><p class="social-guild-note">出し入れは共有金庫とあなたの所持数へ同時に反映し、端末間で同期します。1回につき1〜1,000,000。金庫の資産と記録は所属メンバーだけが確認できます。</p><p id="social-guild-treasury-status" class="social-guild-status" role="status">${esc(s.guildTreasury.error||(!guildTransferAvailable()?'操作できる端末と保存・同期の状態を確認しています。':''))}</p><div class="social-section-heading"><div><h3>出し入れの記録</h3><p>日本時間 JST · 新しい記録から表示 · 30秒ごとに更新</p></div></div><div id="social-guild-ledger" class="social-guild-ledger">${guildLedgerRows()}</div><div class="social-actions"><button id="social-guild-ledger-more" class="social-button" data-social="guild-treasury-more" ${!s.guildTreasury.cursor?'hidden':''}>記録の続きを表示</button></div></section>`;}
-function refreshGuildTreasuryView({rows=false}={}){if(s.tab!=='guild'||s.guildSection!=='treasury'||!s.user?.guildId||s.confirm)return;const t=s.guildTreasury,balances=$('#social-guild-balances'),ledger=$('#social-guild-ledger'),status=$('#social-guild-treasury-status'),more=$('#social-guild-ledger-more'),submit=$('#social-guild-transfer-confirm'),personal=$('#social-guild-personal-balance'),resource=$('#social-guild-resource')?.value||'gold';if(balances)patchSocial(balances,guildBalances());if(ledger&&rows){const top=body?.scrollTop||0;patchSocial(ledger,guildLedgerRows());if(body&&!global.SengokuStableDOM)body.scrollTop=top;}if(status){status.textContent=t.error||(treasuryBusy&&!t.loaded?'共有金庫を読み込んでいます…':!guildTransferAvailable()?'この端末で保存・同期できる状態になると出し入れできます。':'');status.classList.toggle('is-error',Boolean(t.error));}if(more){if(!t.cursor&&document.activeElement===more)$('[data-social="guild-treasury-refresh"]')?.focus({preventScroll:true});more.hidden=!t.cursor;more.setAttribute('aria-disabled',String(treasuryBusy));}if(submit)submit.disabled=!guildTransferAvailable();if(personal)personal.textContent=`あなたの所持：${RES[resource]} ${num(personalGuildResource(resource))} · 共有金庫：${t.loaded?num(t.balance?.[resource]):'確認中'}`;}
+function guildTreasuryView(){return `<section class="social-guild-treasury"><div class="social-section-heading"><div><h3>みんなの共有金庫</h3><p>全メンバーが資源・勾玉を預け入れ、受け取って使用できます。</p></div><button class="social-icon-button" data-social="guild-treasury-refresh" aria-label="共有金庫を更新">${icon('refresh')}</button></div><div id="social-guild-balances" class="social-guild-balances">${guildBalances()}</div><form id="social-guild-transfer-form" class="social-guild-transfer-form"><label>操作<select name="direction" id="social-guild-direction"><option value="deposit">金庫へ預ける</option><option value="withdraw">受け取って使用</option></select></label><label>資産<select name="resource" id="social-guild-resource">${Object.entries(RES).map(([key,label])=>`<option value="${key}">${label}</option>`).join('')}</select></label><label>数量<input name="amount" type="number" min="1" max="1000000" step="1" value="100" inputmode="numeric" required></label><button id="social-guild-transfer-confirm" class="social-button primary" type="submit" ${!guildTransferAvailable()?'disabled':''}>出し入れを確認</button></form><p id="social-guild-personal-balance" class="social-guild-note"></p><p class="social-guild-note">出し入れは共有金庫とあなたの所持数へ同時に反映し、端末間で同期します。1回につき1〜1,000,000。金庫の資産と記録は所属メンバーだけが確認できます。</p><p id="social-guild-treasury-status" class="social-guild-status" role="status">${esc(s.guildTreasury.error||(!guildTransferAvailable()&&!global.SengokuSyncNotices?.isTransientStatus?.(s.syncStatus||global.SengokuCloudSync?.getStatus?.())?'操作できる端末と保存・同期の状態を確認しています。':''))}</p><div class="social-section-heading"><div><h3>出し入れの記録</h3><p>日本時間 JST · 新しい記録から表示 · 30秒ごとに更新</p></div></div><div id="social-guild-ledger" class="social-guild-ledger">${guildLedgerRows()}</div><div class="social-actions"><button id="social-guild-ledger-more" class="social-button" data-social="guild-treasury-more" ${!s.guildTreasury.cursor?'hidden':''}>記録の続きを表示</button></div></section>`;}
+function refreshGuildTreasuryView({rows=false}={}){if(s.tab!=='guild'||s.guildSection!=='treasury'||!s.user?.guildId||s.confirm)return;const t=s.guildTreasury,balances=$('#social-guild-balances'),ledger=$('#social-guild-ledger'),status=$('#social-guild-treasury-status'),more=$('#social-guild-ledger-more'),submit=$('#social-guild-transfer-confirm'),personal=$('#social-guild-personal-balance'),resource=$('#social-guild-resource')?.value||'gold';if(balances)patchSocial(balances,guildBalances());if(ledger&&rows){const top=body?.scrollTop||0;patchSocial(ledger,guildLedgerRows());if(body&&!global.SengokuStableDOM)body.scrollTop=top;}if(status){setSocialText(status,t.error||(treasuryBusy&&!t.loaded?'共有金庫を読み込んでいます…':!guildTransferAvailable()&&!global.SengokuSyncNotices?.isTransientStatus?.(s.syncStatus||global.SengokuCloudSync?.getStatus?.())?'この端末で保存・同期できる状態になると出し入れできます。':''));status.classList.toggle('is-error',Boolean(t.error));}if(more){if(!t.cursor&&document.activeElement===more)$('[data-social="guild-treasury-refresh"]')?.focus({preventScroll:true});more.hidden=!t.cursor;more.setAttribute('aria-disabled',String(treasuryBusy));}if(submit)submit.disabled=!guildTransferAvailable();if(personal)setSocialText(personal,`あなたの所持：${RES[resource]} ${num(personalGuildResource(resource))} · 共有金庫：${t.loaded?num(t.balance?.[resource]):'確認中'}`);}
 function guildTransferConfirmation(values){const context=guildContext(),direction=values.direction,resource=values.resource,amount=Number(values.amount);if(!['deposit','withdraw'].includes(direction)||!Object.hasOwn(RES,resource)||!Number.isSafeInteger(amount)||amount<1||amount>1000000)throw Error('資産と数量を確認してください。数量は1〜1,000,000の整数です。');if(!guildTransferAvailable())throw Error('この端末でゲームを保存・同期できる状態を確認してください。');const available=direction==='deposit'?personalGuildResource(resource):Number(s.guildTreasury.balance?.[resource])||0;if(amount>available)throw Error(direction==='deposit'?'あなたの所持数が不足しています。':'共有金庫の残高が不足しています。');const payload=Object.freeze({guildId:context.guildId,direction,resource,amount,requestId:crypto.randomUUID()});return{scope:'guild',title:direction==='deposit'?'共有金庫へ預けますか':'金庫から受け取って使用しますか',description:direction==='deposit'?'あなたの所持数から共有金庫へ移します。同盟の全メンバーが利用できる資産になります。':'共有金庫からあなたの所持数へ移します。受け取った資産はゲーム内で使用できます。',details:`<dl class="social-confirm-details"><dt>同盟</dt><dd>${esc(s.user.guildName)}</dd><dt>資産</dt><dd>${RES[resource]} ${num(amount)}</dd><dt>操作</dt><dd>${direction==='deposit'?'金庫へ預ける':'受け取って使用'}</dd></dl>`,confirmLabel:direction==='deposit'?'この数量を預ける':'受け取って使用',onConfirm:async()=>{requireGuildContext(context);if(!guildTransferAvailable())throw Error('保存・同期の状態をもう一度確認してください。');const result=await global.SengokuBridge.guildTransfer(payload);requireGuildContext(context);if(!result?.ok)throw Error(result?.message||'出し入れの結果を確認できませんでした。同じ確認画面から再試行できます。');clearConfirm();await loadGuildTreasury();refreshGuildTreasuryView({rows:true});toast(`${RES[resource]} ${num(amount)}を${direction==='deposit'?'共有金庫へ預けました。':'受け取りました。'}`);}};}
 function scheduleGuildLists(){clearTimeout(guildListTimer);guildListTimer=null;if(!disposed&&!document.hidden&&s.open&&(s.tab==='guild-rankings'||s.tab==='guild'&&s.guildSection==='treasury'&&s.user?.guildId))guildListTimer=setTimeout(()=>refresh({silent:true}),30000);}
 async function loadGuildTreasury({more=false}={}){
@@ -940,7 +971,7 @@ function ownCommanderSection(){
 function profileView(){return `<div class="social-profile-heading"><span id="social-profile-avatar" data-avatar-key="${esc(JSON.stringify([s.user.id,s.user.name,s.user.avatarVersion||null]))}">${socialAvatar(s.user,'profile')}</span><div><div class="social-eyebrow">YOUR IDENTITY</div><h2>${playerName(s.user.name,s.user.evaluation,s.user.id,s.user.appearance,s.user.avatarVersion,false)} ${role(s.user)}</h2><p>${esc(s.user.clan==='德川家'?'徳川家':s.user.clan||'浪人')} · ${s.user.guildName?esc(s.user.guildName):'同盟未所属'}</p><button type="button" class="social-text-button" data-social="evaluation-open">総合評価を見る</button><button type="button" class="social-text-button" data-social="premium-open">自分の外観を管理</button></div></div>${ownCommanderSection()}<div class="social-profile-id"><span>領主ID</span><code>${esc(s.user.id)}</code></div><div id="social-avatar-editor"></div>${profileNameView()}${global.SengokuResidency?.compact?.()||''}<section class="social-profile-section"><h3>同じ領主で、どの端末からも</h3><p>端末を接続すると、城・武将・資源・進行状況を常に自動同期します。</p><div data-sync-status>${syncStatusCard()}</div><div class="social-actions"><button class="social-button primary" data-social="sync-open">${icon('refresh')}端末を接続・確認</button><button class="social-button" data-social="identity-export">${icon('download')}領主データを書き出す</button><button class="social-button" data-social="recovery-open">${icon('upload')}引き継ぎ・復元</button><button class="social-button" data-social="recovery-export">${icon('download')}統合バックアップ</button></div><div class="social-notice">領主データには本人の認証情報が含まれます。自分の端末間で使ってください。</div></section>${s.user.isAdmin?`<section class="social-profile-section"><h3>運営のゲーム設定</h3><p>運営の本拠は江戸城に固定されます。德川家康Uは特別イラストで付与され、同じ領主IDの端末へ同期します。</p><div class="social-actions"><button class="social-button" data-social="game-settings">ゲーム設定を開く</button><button class="social-button" data-social="admin-restore">德川家康Uを復元</button></div></section>`:''}${s.user.isStaff?`<section class="social-profile-section staff-base-notice"><h3>德川家 · スタッフ共同拠点 · 京都御所</h3><p>スタッフの家は德川家、本拠は占領されない京都御所に固定されます。城郭と城下町の施設を全スタッフで共有し、共同普請の成長が各端末へ自動で反映されます。</p><p>普請を指示したスタッフが自分の資源と指令を支払います。資源・武将・研究・奉行はそれぞれの領主のものです。</p><button class="social-button" data-social="game-settings">ゲーム設定を開く</button></section>`:''}<div class="social-right"><button class="social-text-button danger" data-social="logout">この端末の接続を解除</button></div>`;}
 function linkForm(){return `<section class="social-profile-section"><h3>別の端末の領主につなぐ</h3><p>接続済みの端末で「端末同期」からコードを発行し、こちらへ入力してください。同じ領主の最新の進行を読み込みます。</p><form id="social-device-link-form" class="social-inline-form"><label class="social-sr-only" for="social-device-code">12文字の接続コード</label><input id="social-device-code" name="code" minlength="12" maxlength="18" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="12文字の接続コード" required><button class="social-button primary" type="submit">この領主につなぐ</button></form></section>`;}
 function syncStatusCard(){
- const v=s.syncStatus||global.SengokuCloudSync?.getStatus?.()||{},reason=v.reason||'',rawMessage=String(v.message||''),message=global.SengokuSyncNotices?.visibleText?.(rawMessage)??rawMessage;
+ const current=s.syncStatus||global.SengokuCloudSync?.getStatus?.()||{},retaining=current.linked&&current.ready&&['applying','conflict','lease-expired','hidden'].includes(current.reason)&&global.SengokuSyncNotices?.isTransientStatus?.(current),v=retaining&&s.syncNoticeStatus||current,reason=v.reason||'',rawMessage=String(v.message||''),message=global.SengokuSyncNotices?.visibleText?.(rawMessage)??rawMessage;
  const banned=v.banned===true||reason==='banned',reconnect=reason==='auth'&&message.includes('再接続してください');
  const follower=v.linked&&v.ready&&!v.writable&&reason==='follower';
  // Background saves and initial checks stay silent; this card is only for
@@ -948,7 +979,7 @@ function syncStatusCard(){
  if(!banned&&!reconnect&&!follower&&!['error','offline'].includes(reason))return '';
  const title=banned?'利用状態を確認してください':reconnect?'領主情報を再接続してください':reason==='offline'?'通信を確認してください':reason==='error'?'接続を確認してください':'操作端末の切り替え';
  const detail=follower?'この端末で操作する場合は、「この端末で続ける」から操作端末を切り替えてください。':message||(banned?'この領主は利用を停止されています。解除後に接続を再確認してください。':'通信環境を確認し、接続を再確認してください。');
- return `<div class="social-sync-status" role="status"><strong>${title}</strong><p class="social-sync-message" tabindex="0" title="${esc(detail)}">${esc(detail)}</p>${follower?'<button class="social-button" data-social="sync-takeover">この端末で続ける</button>':''}</div>`;
+ return `<div class="social-sync-status" role="status"><strong>${title}</strong><p class="social-sync-message" tabindex="0" title="${esc(detail)}">${esc(detail)}</p>${follower?`<button class="social-button" data-social="sync-takeover"${retaining?' disabled':''}>この端末で続ける</button>`:''}</div>`;
 }
 function syncView(){
  if(!s.identity)return `<div class="social-section-heading"><div><h2>端末をつないで、続きを。</h2><p>PCとスマートフォンで同じ領主の進行を自動保存・同期します。</p></div></div>${registerView()}`;
@@ -956,7 +987,19 @@ function syncView(){
  return `<div class="social-section-heading"><div><h2>どの端末でも、同じ戦記。</h2><p>${playerName(s.user?.name||'確認中の領主',s.user?.evaluation,s.user?.id,s.user?.appearance,s.user?.avatarVersion)} ${role(s.user)} · 進行・所持武将・城を自動同期します。</p></div><button class="social-icon-button" data-social="sync-refresh" aria-label="同期を確認">${icon('refresh')}</button></div><div data-sync-status>${syncStatusCard()}</div><div class="social-notice">同時に進行する端末は一つです。ほかの端末は最新の進行を自動表示します。「この端末で続ける」で切り替えられます。接続が切れた場合は、同期が戻るまで進行を一時停止します。</div><form id="social-device-name-form" class="social-inline-form"><label class="social-sr-only" for="social-device-name">この端末の名前</label><input id="social-device-name" name="name" maxlength="40" value="${esc(v.name)}" placeholder="例：自宅のパソコン" required><button class="social-button" type="submit">端末名を保存</button></form><section class="social-profile-section"><h3>もう一つの端末を接続</h3><p>新しい端末の「端末同期」に、この接続コードを入力してください。コードは10分間有効で、1回使うと失効します。</p><div class="social-actions"><button class="social-button primary" data-social="pair-create">接続コードを発行</button></div>${validCode?`<div class="social-pair-code"><code>${esc(code.code)}</code><button class="social-button small" data-social="pair-copy">コピー</button><p>${esc(date(code.expiresAt))} まで有効 · 自分の端末への接続用です。</p></div>`:''}</section>${linkForm()}<section class="social-profile-section"><h3>領主データで接続する</h3><p>保存してある領主データでも、同じ領主として接続できます。</p><div class="social-actions"><button class="social-button" data-social="identity-export">${icon('download')}領主データを書き出す</button><button class="social-button" data-social="recovery-open">${icon('upload')}引き継ぎ・復元</button><button class="social-button" data-social="recovery-export">${icon('download')}統合バックアップ</button></div></section><div class="social-right"><button class="social-text-button danger" data-social="logout">この端末の接続を解除</button></div>`;
 }
 function onlineView(){return `${global.SengokuLordProfile?.directory?.()||''}<div class="social-section-heading"><div><h2>いま集う領主たち</h2><p>接続中 ${num(s.onlineTotal)}人 · 10秒ごとに更新</p></div><button class="social-icon-button" data-social="online-refresh" aria-label="接続一覧を更新">${icon('refresh')}</button></div><p class="social-online-caption">領主名を選ぶとプロフィールと総大将を確認できます。未登録でも閲覧できます。</p>${s.onlineError?`<div class="social-feedback is-error">${esc(s.onlineError)}</div>`:''}<div class="social-card-list">${s.onlinePlayers.length?s.onlinePlayers.map(p=>`<article class="social-list-card" data-stable-key="${esc(p.id)}">${socialAvatar(p)}<div><h3>${linkedPlayerName(p)} ${role(p)}</h3><p>${esc(p.clan==='德川家'?'徳川家':p.clan||'浪人')}${p.guildName?' · '+esc(p.guildName):''}</p></div><span class="social-online-label">${String(p.id)===String(s.identity?.id)?'あなた':'接続中'}</span></article>`).join(''):empty(s.onlineLoaded?'現在接続中の領主はいません':'接続一覧を読み込んでいます',s.onlineLoaded?'領主として接続すると、この一覧に表示されます。':'しばらくお待ちください。','people')}</div>${s.onlineCursor?'<div class="social-actions"><button class="social-button" data-social="online-more">続きを表示</button></div>':''}`;}
-function renderSyncStatus(value){s.syncStatus=value;global.SengokuTroopGarrisons?.refreshIdentity?.();if(!dialog)return;dialog.querySelectorAll('[data-sync-status]').forEach(el=>{patchSocial(el,syncStatusCard());});refreshGuildTreasuryView();}
+function renderSyncStatus(value){
+ s.syncStatus=value;const current=value||{};
+ const retaining=current.linked&&current.ready&&['applying','conflict','lease-expired','hidden'].includes(current.reason)&&global.SengokuSyncNotices?.isTransientStatus?.(current);
+ if(!retaining)s.syncNoticeStatus=current;
+ const html=syncStatusCard(),writable=Boolean(current.writable&&(!current.leaseExpiresAt||Date.parse(current.leaseExpiresAt)>Date.now()+1000));
+ const resource=s.open&&s.tab==='guild'&&s.guildSection==='treasury'&&s.user?.guildId?$('#social-guild-resource')?.value||'gold':null;
+ const key=JSON.stringify([current.linked,current.ready,current.writable,writable,current.banned,current.rolePending,current.reason,current.awaitingStart,html,resource,resource?personalGuildResource(resource):null]);
+ // A save acknowledgement/renewed lease changes authority metadata only.
+ // Avoid redrawing other open dialogs for every successful background save.
+ if(s.syncUiKey===key)return;s.syncUiKey=key;
+ global.SengokuTroopGarrisons?.refreshIdentity?.();if(!dialog)return;
+ dialog.querySelectorAll('[data-sync-status]').forEach(el=>{patchSocial(el,html);});refreshGuildTreasuryView();
+}
 function guildIconEntity(){const guild=String(s.guild?.id)===String(s.user?.guildId)?s.guild:null,value={...(guild||{}),id:String(s.user?.guildId||''),name:s.user?.guildName||guild?.name||'同盟',iconVersion:guild&&Object.hasOwn(guild,'iconVersion')?guild.iconVersion:s.user?.guildIconVersion||null};return global.SengokuAllianceIcon?.resolve?.(value)||value;}
 function destroyGuildIconEditor(){guildIconGeneration++;const editor=guildIconEditor;guildIconEditor=null;editor?.control?.destroy?.();if(editor?.host)editor.host.textContent='';}
 function refreshGuildIcon(){
@@ -1621,7 +1664,8 @@ function premiumRequest(route,options={}){
  if(!s.user||!s.identity||recoveryHeld||s.accountAccessPending)throw Error('領主登録・ログイン後に利用できます。');
  if(s.accountBanned)throw accountBannedError();
  const owner=String(s.identity.id),epoch=authEpoch;
- return api(route,{...options,background:true,identityEpoch:epoch}).then(result=>{
+ const catalogQuery=global.SengokuPremiumCatalog?.version===3?'?catalog=3':'';
+ return api(route+catalogQuery,{...options,background:true,identityEpoch:epoch}).then(result=>{
   if(owner!==String(s.identity?.id)||epoch!==authEpoch||s.accountBanned)throw staleIdentity();
   return result;
  });
@@ -1647,7 +1691,7 @@ const normalized=text=>String(text??'').normalize('NFC').trim();
 const textLength=text=>Array.from(normalized(text)).length;
 const clone=value=>JSON.parse(JSON.stringify(value));
 const mergeMessages=(old,incoming)=>[...new Map([...old,...incoming].map(item=>[Number(item.seq),item])).values()].sort((a,b)=>a.seq-b.seq);
-const playerName=(name,evaluation,appearance=null,playerId='',avatarVersion,showAvatar=true)=>`<span class="player-evaluation-person">${showAvatar&&playerId?global.SengokuAvatar?.markup?.({id:playerId,name,avatarVersion},'inline')||'':''}<span class="player-evaluation-name" data-premium-player="${esc(playerId)}" data-premium-player-name="${esc(name)}">${global.SengokuPremiumRuntime?.nameMarkup?.(name,appearance)||esc(name)}</span>${global.SengokuEvaluationUI?.badge?.(evaluation)||''}${global.SengokuPublicCourt?.slot?.(playerId)||''}</span>`;
+const playerName=(name,evaluation,appearance=null,playerId='',avatarVersion,showAvatar=true)=>`<span class="player-evaluation-person">${showAvatar&&playerId?global.SengokuAvatar?.markup?.({id:playerId,name,avatarVersion},'inline')||'':''}${global.SengokuCityHonors?.slot?.(playerId)||''}<span class="player-evaluation-name" data-premium-player="${esc(playerId)}" data-premium-player-name="${esc(name)}">${global.SengokuPremiumRuntime?.nameMarkup?.(name,appearance)||esc(name)}</span>${global.SengokuEvaluationUI?.badge?.(evaluation)||''}${global.SengokuPublicCourt?.slot?.(playerId)||''}</span>`;
 const allianceName=guild=>`<span class="letters-alliance-name">${global.SengokuAllianceIcon?.markup?.(guild,'inline')||''}<span>${esc(guild?.name||'同盟')}</span></span>`;
 function threadTitle(thread,ownerId){
   if(thread.kind==='player')return thread.peer?playerName(thread.peer.name,thread.peer.evaluation,thread.peer.appearance,thread.peer.id,thread.peer.avatarVersion):esc(thread.title);
@@ -2094,7 +2138,7 @@ const STATUS={pending:'承認待ち',accepted:'成立',cancelled:'取消済み',
 const date=value=>{const time=new Date(value);return Number.isFinite(time.getTime())?time.toLocaleString('ja-JP',{timeZone:'Asia/Tokyo',year:'numeric',month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}):'';};
 const button=(label,action,extra='',primary=false)=>'<button type="button" class="trade-button'+(primary?' is-primary':'')+'" data-trade="'+action+'" '+extra+'>'+label+'</button>';
 const disabled=value=>value?' disabled':'';
-const peerMarkup=player=>'<strong class="player-evaluation-person">'+(player?.playerId?global.SengokuAvatar?.markup?.({id:player.playerId,name:player.name,avatarVersion:player.avatarVersion},'inline')||'':'')+'<span class="player-evaluation-name" data-premium-player="'+esc(player?.playerId||'')+'" data-premium-player-name="'+esc(player?.name||'交易先の領主')+'">'+(global.SengokuPremiumRuntime?.nameMarkup?.(player?.name||'交易先の領主',player?.appearance)||esc(player?.name||'交易先の領主'))+'</span>'+(global.SengokuEvaluationUI?.badge?.(player?.evaluation)||'')+(global.SengokuPublicCourt?.slot?.(player?.playerId)||'')+'</strong><code>'+esc(player?.playerId||'')+'</code>';
+const peerMarkup=player=>'<strong class="player-evaluation-person">'+(player?.playerId?global.SengokuAvatar?.markup?.({id:player.playerId,name:player.name,avatarVersion:player.avatarVersion},'inline')||'':'')+(global.SengokuCityHonors?.slot?.(player?.playerId)||'')+'<span class="player-evaluation-name" data-premium-player="'+esc(player?.playerId||'')+'" data-premium-player-name="'+esc(player?.name||'交易先の領主')+'">'+(global.SengokuPremiumRuntime?.nameMarkup?.(player?.name||'交易先の領主',player?.appearance)||esc(player?.name||'交易先の領主'))+'</span>'+(global.SengokuEvaluationUI?.badge?.(player?.evaluation)||'')+(global.SengokuPublicCourt?.slot?.(player?.playerId)||'')+'</strong><code>'+esc(player?.playerId||'')+'</code>';
 function tradeCard(trade,state){
   const sent=trade.sender.playerId===state.ownerId,peer=sent?trade.recipient:trade.sender;
   const blocked=!state.access.writable||state.sending||!!state.pending||state.loading,controls=[];
@@ -2153,7 +2197,7 @@ function ensureView(){
     const message=state.error||state.status;feedback.hidden=!message;feedback.classList.toggle('is-error',Boolean(state.error));feedback.setAttribute('role',state.error?'alert':'status');if(feedback.textContent!==message)feedback.textContent=message;
     access.hidden=!state.ownerId||state.access.writable;access.textContent=state.access.message;
     pending.hidden=!state.pending;
-    if(state.pending){const record=state.pending,summary=record.action==='propose'?'提供 '+assetText(record.data.offer)+' ／ 希望 '+assetText(record.data.want):ACTIONS[record.action];html(pending,'<div><strong>'+(state.sending?'交易の結果を確認しています…':'通信結果が未確認の操作があります')+'</strong><p>'+esc(record.target?.name||'交易先')+(global.SengokuPublicCourt?.slot?.(record.target?.playerId)||'')+' · '+esc(summary)+'</p><p>新しい操作の前に、同じ送信番号で結果を確認してください。</p></div>'+button('結果を確認・再試行','retry',disabled(state.sending||!state.access.writable)),(state.ownerId||'guest')+':pending:'+record.data.requestId); }
+    if(state.pending){const record=state.pending,summary=record.action==='propose'?'提供 '+assetText(record.data.offer)+' ／ 希望 '+assetText(record.data.want):ACTIONS[record.action];html(pending,'<div><strong>'+(state.sending?'交易の結果を確認しています…':'通信結果が未確認の操作があります')+'</strong><p>'+(global.SengokuCityHonors?.slot?.(record.target?.playerId)||'')+esc(record.target?.name||'交易先')+(global.SengokuPublicCourt?.slot?.(record.target?.playerId)||'')+' · '+esc(summary)+'</p><p>新しい操作の前に、同じ送信番号で結果を確認してください。</p></div>'+button('結果を確認・再試行','retry',disabled(state.sending||!state.access.writable)),(state.ownerId||'guest')+':pending:'+record.data.requestId); }
     content.hidden=showingConfirm;
     if(state.view==='compose'){content.removeAttribute('role');content.removeAttribute('aria-labelledby');}else{content.setAttribute('role','tabpanel');content.setAttribute('aria-labelledby','trade-tab-'+state.view);}
     if(changed){viewKey=key;main.scrollTop=0;if(!state.ownerId)html(content,'<section class="trade-empty"><h2>領主登録をして交易を始める</h2><p>同じ世界の領主に資産の交換を申し出られます。領主登録と端末同期を済ませてください。</p>'+button('領主登録・ログインへ','register','',true)+'</section>');else if(state.view==='compose')html(content,composeMarkup(state));else html(content,'<section class="trade-section-heading"><h2>'+LABELS[state.view]+'</h2><p>'+({incoming:'相手が提示した交換条件を確認し、承認または辞退できます。',outgoing:'提供した資産は承認待ちの間、お預りしています。不要になった申出は取り消せます。',claimable:'成立した交易の対価と、取消・辞退された申出の返還資産を受け取れます。過去の申出も、未受取の資産だけを表示します。',history:'送った申出と届いた申出の履歴です。日時は日本標準時（JST）で表示します。'})[state.view]+'</p></section><div class="trade-list" data-trade-list></div><div class="trade-pagination" data-trade-pagination></div>');}
@@ -2505,7 +2549,7 @@ function createController(options={}){
   function dispose(){disposed=true;epoch++;viewEpoch++;Object.assign(s,{results:[],bans:[],target:null,confirm:null,pending:null,open:false});}
   return{getState(){identity();return snapshot();},open,close,setQuery,setReason,search,select,prepare,cancelConfirm,confirm,retry,loadBans,loadMore:()=>loadBans({more:true}),refreshIdentity,dispose};
 }
-const who=value=>'<strong class="player-evaluation-person">'+(global.SengokuAvatar?.markup?.(value,'inline')||'')+'<span class="player-evaluation-name" data-premium-player="'+esc(value.id)+'" data-premium-player-name="'+esc(value.name)+'">'+(global.SengokuPremiumRuntime?.nameMarkup?.(value.name,value.appearance)||esc(value.name))+'</span>'+(global.SengokuEvaluationUI?.badge?.(value.evaluation)||'')+(global.SengokuPublicCourt?.slot?.(value.id)||'')+'</strong><code>'+esc(value.id)+'</code>';
+const who=value=>'<strong class="player-evaluation-person">'+(global.SengokuAvatar?.markup?.(value,'inline')||'')+(global.SengokuCityHonors?.slot?.(value.id)||'')+'<span class="player-evaluation-name" data-premium-player="'+esc(value.id)+'" data-premium-player-name="'+esc(value.name)+'">'+(global.SengokuPremiumRuntime?.nameMarkup?.(value.name,value.appearance)||esc(value.name))+'</span>'+(global.SengokuEvaluationUI?.badge?.(value.evaluation)||'')+(global.SengokuPublicCourt?.slot?.(value.id)||'')+'</strong><code>'+esc(value.id)+'</code>';
 function targetMarkup(value){
   const p=value.player,b=value.ban,counts=value.counts;
   return '<header><span class="moderation-eyebrow">操作する領主</span>'+who(p)+'<span class="moderation-status">'+(b.active?'BAN中':p.isAdmin?'運営・操作対象外':'利用中')+'</span></header><dl class="moderation-counts"><div><dt>チャットの本文</dt><dd>'+number(counts.chatMessages)+'件</dd></div><div><dt>書状の本文</dt><dd>'+number(counts.letterMessages)+'件</dd></div><div><dt>未成立の交易</dt><dd>'+number(counts.pendingTrades)+'件</dd></div></dl>'+(b.active?'<p class="moderation-note">BAN日時：'+esc(date(b.bannedAt))+' JST'+(b.reason?'<br>理由：'+esc(b.reason):'')+'</p>':'');
@@ -3572,7 +3616,7 @@ if(global.document.readyState==='loading')global.document.addEventListener('DOMC
     return ordinary + `<section class="events-section events-unification${achieved ? ' is-achieved' : ''}" aria-label="天下統一の達成条件"><span class="events-eyebrow">天下統一型の合戦</span><h3>${achieved ? '天下統一を達成 · 幕府開設権を獲得' : '天下統一を成し遂げ、幕府を開く'}</h3><p>3つの戦場すべてで1勝以上し、累計戦功${number(ending.requiredPoints)}点に到達すると、この催事で天下統一を達成します。</p><ul class="events-unification-steps">${ending.requiredStageIds.map(id => { const stage = plan.stages.find(item => item.id === id), done = cleared.includes(id); return `<li${done ? ' class="is-complete"' : ''}><span>${esc(stage?.name || id)}</span><strong>${done ? '勝利済み' : '1勝で達成'}</strong></li>`; }).join('')}<li${(progress?.points || 0) >= ending.requiredPoints ? ' class="is-complete"' : ''}><span>累計戦功</span><strong>${progress && !admin ? number(progress.points) + ' / ' : ''}${number(ending.requiredPoints)}点</strong></li></ul><p class="events-note">報酬は幕府を開く権利です。合戦名の選択だけでは付与されません。この催事の天下統一はイベント内の達成で、本領の城の所有は変わりません。</p>${achieved ? `<div class="events-unification-earned"><p>${unification.earnedAt ? date(unification.earnedAt) + ' JST に獲得。' : ''}獲得した功績を確認し、幕府を開設できます。</p><button type="button" class="events-button is-primary" data-events="shogunate">幕府の開設へ</button></div>` : ''}</section>`;
   }
   function personMarkup(player) {
-    const markup=`<span class="player-evaluation-person">${global.SengokuAvatar?.markup?.({ id: player.playerId, name: player.name, avatarVersion: player.avatarVersion }, 'inline') || ''}<span class="player-evaluation-name" data-premium-player="${esc(player.playerId)}" data-premium-player-name="${esc(player.name)}">${global.SengokuPremiumRuntime?.nameMarkup?.(player.name, player.appearance) || esc(player.name)}</span>${global.SengokuEvaluationUI?.badge?.(player.evaluation) || ''}${global.SengokuPublicCourt?.slot?.(player.playerId) || ''}</span>`;
+    const markup=`<span class="player-evaluation-person">${global.SengokuAvatar?.markup?.({ id: player.playerId, name: player.name, avatarVersion: player.avatarVersion }, 'inline') || ''}${global.SengokuCityHonors?.slot?.(player.playerId)||''}<span class="player-evaluation-name" data-premium-player="${esc(player.playerId)}" data-premium-player-name="${esc(player.name)}">${global.SengokuPremiumRuntime?.nameMarkup?.(player.name, player.appearance) || esc(player.name)}</span>${global.SengokuEvaluationUI?.badge?.(player.evaluation) || ''}${global.SengokuPublicCourt?.slot?.(player.playerId) || ''}</span>`;
     return global.SengokuLordProfile?.linkedName?.(player.playerId,player.name,markup)||markup;
   }
   function listMarkup(state, now) {
@@ -4499,6 +4543,13 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
   'use strict';
   const PREFERENCE_KEY = 'sengoku-navigation-preferences-v1';
   const FAVORITE_LIMIT = 6, RECENT_LIMIT = 5;
+  const DEFAULT_DOCK = ['view:town', 'view:map', 'view:army'];
+  const PURPOSES = [
+    ['develop', '城を育てる', '城と内政', ''],
+    ['battle', '合戦へ出る', '合戦と天下', '戦い'],
+    ['army', '武将を整える', '武将と軍団', ''],
+    ['records', '任務・報酬を探す', '交流・記録', '報酬']
+  ];
   const GROUPS = ['城と内政', '合戦と天下', '武将と軍団', '交流・記録', '設定・案内', 'その他'];
   const DETAILS = {
     'view:town': ['城と内政', '施設の増築と本拠の成長', 'まち 城下 施設 建設 建築 増築 育成 レベル上げ 資源 金銭 お金 兵糧 木材 石材'],
@@ -4555,11 +4606,14 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
     const dialog = doc.createElement('dialog');
     if (typeof dialog.showModal !== 'function') return null;
     let initialized = false, frame = 0, returnFocus = null, restoreFocus = true, entries = [], signature = '', pendingNavigation = null;
-    let favorites = [], recent = [], railSignature = '';
+    let favorites = [], recent = [], dockKeys = [...DEFAULT_DOCK], railSignature = '', dockOptionsSignature = '';
+    let rememberedScroll = 0;
     let backdropPointer = false;
     try {
       const saved = JSON.parse(win.localStorage?.getItem(PREFERENCE_KEY) || 'null');
       favorites = preferenceKeys(saved?.favorites, FAVORITE_LIMIT); recent = preferenceKeys(saved?.recent, RECENT_LIMIT);
+      const savedDock = preferenceKeys(saved?.dock, DEFAULT_DOCK.length).filter(key => !key.startsWith('help:'));
+      if (savedDock.length === DEFAULT_DOCK.length) dockKeys = savedDock;
     } catch (_) { /* Unavailable or malformed preferences must never block navigation. */ }
     const removers = [], observers = [], quickButtons = new Map();
     const raf = win.requestAnimationFrame?.bind(win) || (fn => win.setTimeout(fn, 16));
@@ -4625,27 +4679,77 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
     favoritesRail.className = 'navigation-favorites-rail'; favoritesRail.hidden = true;
     favoritesRail.setAttribute('aria-label', 'お気に入りの機能');
     const dock = doc.createElement('div'); dock.className = 'navigation-quick-dock';
-    for (const [key, label] of [['view:town', '城下町'], ['view:map', '天下地図'], ['view:army', '軍団編成'], ['menu', 'メニュー']]) {
+    for (const [slot, [key, label]] of [['view:town', '城下町'], ['view:map', '天下地図'], ['view:army', '軍団編成'], ['menu', 'メニュー']].entries()) {
       const button = doc.createElement('button'); button.type = 'button'; button.className = 'nav-item navigation-quick';
       button.setAttribute('data-navigation-quick', key);
       button.innerHTML = svg('menu') + '<span>' + label + '</span>';
       if (key === 'menu') { button.setAttribute('aria-haspopup', 'dialog'); button.setAttribute('aria-controls', 'navigation-dialog'); button.setAttribute('aria-expanded', 'false'); }
-      quickButtons.set(key, button); dock.appendChild(button);
+      quickButtons.set(key === 'menu' ? 'menu' : slot, button); dock.appendChild(button);
     }
     dialog.id = 'navigation-dialog'; dialog.className = 'navigation-dialog'; dialog.setAttribute('aria-labelledby', 'navigation-title');
     dialog.innerHTML = '<header class="navigation-dialog-header"><div><h2 id="navigation-title">すべてのメニュー</h2></div><button type="button" class="navigation-close" data-navigation-close aria-label="メニューを閉じる">' + svg('close') + '</button></header>' +
       '<div class="navigation-search-row"><label class="navigation-search"><span class="social-sr-only">メニューを検索</span>' + svg('search') + '<input id="navigation-query" type="search" placeholder="機能名や目的で検索" autocomplete="off" autocapitalize="off" spellcheck="false" aria-controls="navigation-results"></label><button type="button" class="navigation-clear" data-navigation-clear aria-label="検索を消去">消去</button></div>' +
-      '<div class="navigation-summary"><label class="navigation-category"><span class="social-sr-only">メニューの分類</span><select id="navigation-category" aria-controls="navigation-results"></select></label><p id="navigation-result-status" class="navigation-result-status" role="status" aria-live="polite"></p></div><div id="navigation-results" class="navigation-results"></div>' +
+      '<div class="navigation-summary"><label class="navigation-category"><span class="social-sr-only">メニューの分類</span><select id="navigation-category" aria-controls="navigation-results"></select></label><button type="button" class="navigation-filter-reset" data-navigation-reset>全条件をクリア</button><p id="navigation-result-status" class="navigation-result-status" role="status" aria-live="polite"></p></div>' +
+      '<div class="navigation-purpose-row" role="group" aria-label="目的から機能を探す">' + PURPOSES.map(([id,label]) => '<button type="button" data-navigation-purpose="' + id + '">' + label + '</button>').join('') + '</div>' +
+      '<details class="navigation-dock-editor"><summary>下のメニューをカスタマイズ</summary><div class="navigation-dock-settings"><p>スマホ・タブレットの下部に、よく使う機能を3つ置けます。</p><div class="navigation-dock-selects">' + DEFAULT_DOCK.map((_,slot) => '<label><span>左から' + (slot + 1) + '番目</span><select data-navigation-slot="' + slot + '" aria-label="下のメニュー 左から' + (slot + 1) + '番目"></select></label>').join('') + '</div><button type="button" class="navigation-dock-reset" data-navigation-reset-dock>初期配置に戻す</button></div></details>' +
+      '<div id="navigation-results" class="navigation-results"></div>' +
       '<footer class="navigation-dialog-footer"><span class="navigation-keyboard-hint">Ctrl / ⌘ K で開く · Esc で閉じる</span></footer>';
     const search = dialog.querySelector('#navigation-query'), results = dialog.querySelector('#navigation-results');
     const category = dialog.querySelector('#navigation-category');
     const status = dialog.querySelector('#navigation-result-status'), clearButton = dialog.querySelector('[data-navigation-clear]');
+    const resetButton = dialog.querySelector('[data-navigation-reset]'), purposes = dialog.querySelector('.navigation-purpose-row');
+    const slotSelects = [...dialog.querySelectorAll('[data-navigation-slot]')];
     function availableKeys(keys, current = entries) { return keys.filter(key => current.some(entry => entry.key === key)); }
     function persistPreferences() {
       try {
         if (!win.localStorage) return false;
-        win.localStorage.setItem(PREFERENCE_KEY, JSON.stringify({ favorites, recent })); return true;
+        win.localStorage.setItem(PREFERENCE_KEY, JSON.stringify({ favorites, recent, dock: dockKeys })); return true;
       } catch (_) { return false; }
+    }
+    function resolvedDock(current = entries) {
+      const allowed = new Set(current.filter(entry => entry.source).map(entry => entry.key));
+      const used = new Set();
+      return dockKeys.map((key, index) => {
+        const resolved = [key, DEFAULT_DOCK[index], ...DEFAULT_DOCK, ...allowed].find(value => allowed.has(value) && !used.has(value));
+        if (resolved) used.add(resolved);
+        return resolved || null;
+      });
+    }
+    function renderDockEditor() {
+      const options = entries.filter(entry => entry.source);
+      const next = JSON.stringify(options.map(entry => [entry.key, entry.label, entry.disabled]));
+      if (next !== dockOptionsSignature) {
+        dockOptionsSignature = next;
+        const markup = options.map(entry => '<option value="' + esc(entry.key) + '"' + (entry.disabled ? ' disabled' : '') + '>' + esc(entry.label) + '</option>').join('');
+        for (const select of slotSelects) select.innerHTML = markup;
+      }
+      const resolved = resolvedDock();
+      slotSelects.forEach((select, index) => { if (select.value !== resolved[index]) select.value = resolved[index] || ''; });
+    }
+    function setDockSlot(slot, key) {
+      if (!initialized || unavailable() || !Number.isInteger(slot) || slot < 0 || slot >= DEFAULT_DOCK.length) return false;
+      entries = collect();
+      if (!entries.some(entry => entry.key === key && entry.source && !entry.disabled)) return false;
+      const next = resolvedDock(), previous = next[slot], occupied = next.indexOf(key);
+      if (previous === key) return true;
+      if (occupied !== -1) next[occupied] = previous;
+      next[slot] = key;
+      if (next.some(value => !value)) return false;
+      dockKeys = next;
+      const stored = persistPreferences(); refresh(); renderDockEditor();
+      status.textContent = '下のメニューを変更しました。' + (stored ? ' この端末で使えます。' : ' この起動中のみ有効です。端末に保存できませんでした。');
+      return true;
+    }
+    function resetDock() {
+      if (!initialized || unavailable()) return false;
+      dockKeys = [...DEFAULT_DOCK];
+      const stored = persistPreferences(); refresh(); renderDockEditor();
+      status.textContent = '下のメニューを初期配置に戻しました。' + (stored ? '' : ' この起動中のみ有効です。');
+      return true;
+    }
+    function resetFilters() {
+      search.value = ''; category.value = ''; rememberedScroll = 0;
+      renderResults(true);
     }
     function renderFavoritesRail() {
       const pinned = availableKeys(favorites).map(key => entries.find(entry => entry.key === key));
@@ -4689,6 +4793,8 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
       const scroll = resetScroll ? 0 : results.scrollTop;
       status.textContent = search.value.trim() || category.value ? matches.length + '件見つかりました' : '全' + entries.length + '項目 · 星でお気に入りに追加';
       clearButton.disabled = !search.value;
+      resetButton.disabled = !search.value && !category.value;
+      purposes.hidden = Boolean(search.value.trim() || category.value);
       const groups = [];
       if (!search.value.trim() && !category.value && visibleFavorites.length) {
         const cards = visibleFavorites.map(key => entryMarkup(entries.find(entry => entry.key === key), 'favorites')).join('');
@@ -4732,21 +4838,24 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
       return true;
     }
     function expanded(value) { setAttr(trigger, 'aria-expanded', value); setAttr(quickButtons.get('menu'), 'aria-expanded', value); }
-    function close(restore = true) { restoreFocus = restore; expanded(false); if (dialog.open) dialog.close(); }
+    function close(restore = true) { restoreFocus = restore; expanded(false); if (dialog.open) { rememberedScroll = results.scrollTop; dialog.close(); } }
     function refresh() {
       frame = 0; if (!initialized) return;
       entries = collect();
       renderFavoritesRail();
-      for (const [key, button] of quickButtons) {
-        if (key === 'menu') continue;
+      const resolved = resolvedDock();
+      for (const [slot, button] of quickButtons) {
+        if (slot === 'menu') continue;
+        const key = resolved[slot];
+        setAttr(button, 'data-navigation-quick', key || 'unavailable');
         const entry = entries.find(entry => entry.key === key);
         button.disabled = !entry || entry.disabled;
         button.classList.toggle('active', entry?.current === true);
         setAttr(button, 'aria-current', entry?.current ? 'page' : null);
-        const markup = (entry?.icon || svg('menu')) + '<span>' + esc(entry?.label || key.slice(5)) + '</span>';
+        const markup = (entry?.icon || svg('menu')) + '<span>' + esc(entry?.label || '未使用') + '</span>';
         if (button.innerHTML !== markup) button.innerHTML = markup;
       }
-      if (dialog.open) { if (unavailable()) close(false); else renderResults(); }
+      if (dialog.open) { if (unavailable()) close(false); else { renderResults(); renderDockEditor(); } }
       finishNavigation();
     }
     function schedule() { if (initialized && !frame) frame = raf(refresh); }
@@ -4754,9 +4863,12 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
       if (!initialized || unavailable()) return false;
       if (dialog.open) return true;
       entries = collect(); returnFocus = from || doc.activeElement; restoreFocus = true;
+      const previousCategory = category.value;
       category.innerHTML = '<option value="">全分類</option>' + GROUPS.filter(group => entries.some(entry => entry.group === group)).map(group => '<option>' + esc(group) + '</option>').join('');
-      category.value = ''; search.value = ''; signature = ''; renderResults(); results.scrollTop = 0;
-      dialog.showModal(); expanded(true);
+      category.value = GROUPS.includes(previousCategory) ? previousCategory : '';
+      const scroll = rememberedScroll;
+      signature = ''; renderResults(); renderDockEditor();
+      dialog.showModal(); expanded(true); results.scrollTop = scroll;
       (touch() ? dialog.querySelector('[data-navigation-close]') : search).focus({ preventScroll: true });
       return true;
     }
@@ -4805,6 +4917,12 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
       const target = event.target.closest('[data-navigation-target]');
       if (target && !target.disabled) activate(target.getAttribute('data-navigation-target'));
       else if (event.target.closest('[data-navigation-close]')) close();
+      else if (event.target.closest('[data-navigation-reset-dock]')) resetDock();
+      else if (event.target.closest('[data-navigation-reset]')) { resetFilters(); search.focus({ preventScroll: true }); }
+      else if (event.target.closest('[data-navigation-purpose]')) {
+        const purpose = PURPOSES.find(([id]) => id === event.target.closest('[data-navigation-purpose]').getAttribute('data-navigation-purpose'));
+        if (purpose) { category.value = purpose[2]; search.value = purpose[3]; renderResults(true); category.focus({ preventScroll: true }); }
+      }
       else if (event.target.closest('[data-navigation-clear]')) { search.value = ''; renderResults(true); search.focus({ preventScroll: true }); }
       else if (event.target.closest('[data-navigation-clear-recent]')) { clearRecent(); search.focus({ preventScroll: true }); }
       else if (event.target.closest('[data-navigation-help]')) { remember(event.target.closest('[data-navigation-help]').getAttribute('data-navigation-help')); close(); }
@@ -4820,7 +4938,10 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
       }
       returnFocus = null;
     });
+    listen(dialog, 'cancel', () => { rememberedScroll = results.scrollTop; });
+    listen(results, 'scroll', () => { if (dialog.open) rememberedScroll = results.scrollTop; }, { passive: true });
     listen(search, 'input', () => renderResults(true));
+    for (const select of slotSelects) listen(select, 'change', () => { if (!setDockSlot(Number(select.getAttribute('data-navigation-slot')), select.value)) renderDockEditor(); });
     // Search results support keyboard travel without changing the native Tab order.
     listen(dialog, 'keydown', event => {
       if (!dialog.open || event.isComposing || event.ctrlKey || event.metaKey || event.altKey) return;
@@ -4863,7 +4984,7 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
       const utilityObserver = new win.MutationObserver(schedule);
       utilityObserver.observe(bottom, { childList: true }); observers.push(utilityObserver);
     }
-    return { open, close, refresh, activate, destroy, toggleFavorite, clearRecent, isOpen: () => dialog.open, getPreferences: () => ({ favorites: availableKeys(favorites, collect()), recent: availableKeys(recent, collect()) }), getEntries: () => collect().map(({ source, icon, ...entry }) => entry) };
+    return { open, close, refresh, activate, destroy, toggleFavorite, clearRecent, setDockSlot, resetDock, getDock: () => resolvedDock(collect()), isOpen: () => dialog.open, getPreferences: () => ({ favorites: availableKeys(favorites, collect()), recent: availableKeys(recent, collect()) }), getEntries: () => collect().map(({ source, icon, ...entry }) => entry) };
   }
   if (typeof module !== 'undefined' && module.exports) module.exports = { createNavigationUI, normalizeQuery, filterEntries };
   if (!global.document || global.SengokuNavigation) return;

@@ -2058,6 +2058,27 @@ details[open] > summary { color: var(--motion-accent); }
 
 .field-player-photo .social-avatar{width:100%;height:100%;border:0;border-radius:50%}.field-player-photo{border-radius:50%}.field-lord-heading{display:flex;align-items:center;gap:9px;min-width:0}.field-lord-heading>span:last-child{min-width:0;overflow-wrap:anywhere}.field-lord-heading .social-avatar{flex-shrink:0}
 
+/* City ownership honors sit between the portrait and the lord's name. */
+.city-honors-slot{display:inline-flex;align-items:center;justify-content:flex-start;flex:0 1 auto;flex-wrap:wrap;gap:3px;min-width:0;max-width:100%;vertical-align:middle}
+.city-honors-slot:empty{display:none}
+.city-honor{--city-honor-size:32px;position:relative;display:inline-grid;place-items:center;flex:0 0 var(--city-honor-size);width:var(--city-honor-size);height:var(--city-honor-size);isolation:isolate;vertical-align:middle;line-height:1}
+.city-honor img{position:relative;z-index:1;display:block;width:100%;height:100%;max-width:none;object-fit:contain;border:0;border-radius:0;background:transparent;filter:drop-shadow(0 1px 2px #0008)}
+.city-honor img[hidden]{display:none}
+.city-honor-fallback{display:none;place-items:center;width:24px;height:24px;border:1px solid #d7b467;border-radius:50%;background:radial-gradient(circle at 30% 20%,#78633b,#273039 70%);box-shadow:inset 0 0 0 2px #171f26;color:#ffe4ac;font:700 12px/1 serif}
+.city-honor[role=img] .city-honor-fallback{display:grid}
+.lord-public-name{display:flex;align-items:center;flex-wrap:wrap;gap:6px;min-width:0;max-width:100%}
+.lord-public-name .city-honor{--city-honor-size:36px}
+.lord-public-name .player-evaluation-name{white-space:normal;overflow-wrap:anywhere}
+.voice-person-name .city-honors-slot{margin-inline-end:5px;vertical-align:middle}
+.voice-person-name .city-honors-slot:empty{margin-inline-end:0}
+.voice-person-name .city-honor{--city-honor-size:24px}
+.field-map-owner-identity{position:absolute;right:1px;bottom:1px;z-index:3;display:inline-flex;align-items:center;gap:1px;max-width:calc(100% - 2px);pointer-events:none}
+.field-map-owner-identity .field-map-owner-avatar{position:relative;right:auto;bottom:auto;flex:0 0 22px;width:22px;height:22px;box-sizing:border-box}
+.field-map-owner-identity .city-honors-slot{flex:none;gap:0}
+.field-map-owner-identity .city-honor{--city-honor-size:22px}
+.sengoku-field .field-map-castle .field-castle-level{top:1px;bottom:auto;border:1px solid #d7c28e70;border-radius:3px;font-size:9px}
+@media(max-width:600px){.city-honor{--city-honor-size:28px}.city-honors-slot{gap:2px}.lord-public-name .city-honor{--city-honor-size:32px}.player-evaluation-person>.city-honors-slot{max-width:min(100%,148px)}}
+
 /* image-protect.css */
 /* Text, forms, photo cropping and game map pointer controls keep working. */
 [role="img"],img,svg image,canvas,.painted-art,.art-frame,.town-art,.town-board,.town-scene,.launch-art,.launch-visual,.launch-image,[data-art-url],[data-art-kind],[data-image-protected]{-webkit-touch-callout:none;-webkit-user-drag:none;-webkit-user-select:none;user-select:none}
@@ -3507,6 +3528,35 @@ body[data-page="premium"] :is(.site-brand small,.breadcrumbs,.copyright,.footer-
   .premium-product, .premium-stage { break-inside: avoid; }
 }
 
+/* The atelier collection: each verified product has the same preview and in-game art. */
+.premium-product-filters { display:flex;flex-wrap:wrap;gap:.5rem;margin:0 0 1.2rem; }
+.premium-product-filters button { min-height:44px;padding:.55rem 1rem;border:1px solid #b8c5cb55;border-radius:6px;background:#142532;color:#d9e3e5; }
+.premium-product-filters button[aria-pressed="true"] { border-color:#e3bb74;background:linear-gradient(125deg,#49392b,#252c30);color:#ffe7b9;box-shadow:inset 0 1px #fff2cf20; }
+.premium-products > [hidden] { display:none!important; }
+.premium-preview-options { max-height:28rem;overflow:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#9b865b #142230; }
+.premium-preview-options button { min-height:48px; }
+.premium-stage[data-premium-preview-slot="nameplate"] .premium-preview-banner { display:block; }
+.premium-stage[data-premium-preview-slot="badge"] .premium-preview-supporter { display:block; }
+.premium-stage[data-premium-preview-mode="vermilion-banner"] .premium-preview-nameplate { border:3px double #edbd75;background:linear-gradient(115deg,#501c25f5,#291920f5);box-shadow:inset 0 0 0 2px #f6d29216; }
+.premium-stage[data-premium-preview-mode="vermilion-banner"] .premium-preview-nameplate strong { color:#ffe0b1; }
+.premium-stage[data-premium-preview-mode="silver-banner"] .premium-preview-nameplate { border:3px double #c3d9ed;background:linear-gradient(115deg,#233b53f5,#112338f5);box-shadow:inset 0 0 0 2px #eef7ff19; }
+.premium-stage[data-premium-preview-mode="silver-banner"] .premium-preview-nameplate strong { color:#edf7ff; }
+.premium-stage[data-premium-preview-mode="sakura-town"] .premium-preview-nameplate { border-color:#e6b4bd;background:#342430e8; }
+.premium-stage[data-premium-preview-mode="snow-town"] .premium-preview-nameplate { border-color:#c7daec;background:#1c354be8; }
+.premium-swatch--vermilion-banner { background:linear-gradient(135deg,#d04a3c,#6b1927);border:2px solid #e1b264; }
+.premium-swatch--silver-banner { background:linear-gradient(135deg,#d9eaf7,#6486ac);border:2px solid #d9ebf8; }
+.premium-swatch--phoenix-medallion { background:radial-gradient(circle,#be3030 0 35%,#e6b458 38% 68%,#a56e2d 70%);border-color:#e7c581; }
+.premium-swatch--sakura-town { background:linear-gradient(135deg,#ffdce5,#b77b9a);border-color:#f0b8cf; }
+.premium-swatch--snow-town { background:linear-gradient(135deg,#f5fbff,#a7c5db);border-color:#dcecf9; }
+.premium-product-art--vermilion-banner { background:radial-gradient(ellipse at 50% 38%,#563039,#1c1926 72%); }
+.premium-product-art--silver-banner { background:radial-gradient(ellipse at 50% 38%,#40566f,#10212f 72%); }
+.premium-product-art--phoenix-medallion { background:radial-gradient(ellipse at 50% 38%,#55472c,#17212c 72%); }
+.premium-product-art--phoenix-medallion img { width:210px;height:210px; }
+.premium-product-art--sakura-town, .premium-product-art--snow-town { padding:0; }
+.premium-product-art--sakura-town img, .premium-product-art--snow-town img { max-height:none;object-fit:cover; }
+@media (min-width:1460px) { .premium-products { grid-template-columns:repeat(4,minmax(0,1fr)); } }
+@media (max-width:650px) { .premium-preview-options { max-height:19rem; } .premium-product-filters { gap:.4rem; } .premium-product-filters button { flex:1 0 auto;padding-inline:.8rem; } }
+
 /* premium-appearance.css */
 /* These decorations are driven by verified server appearance selections. */
 .sengoku-premium-name{display:inline-flex;align-items:center;flex-wrap:wrap;gap:.2em .35em;max-width:100%;min-width:0;vertical-align:middle;line-height:1.5}
@@ -3531,6 +3581,20 @@ body[data-page="premium"] :is(.site-brand small,.breadcrumbs,.copyright,.footer-
 .field-castle-visual.is-moonlit .field-castle-art{position:relative;z-index:1;filter:drop-shadow(0 2px 5px #8fb9e955)}
 @media(max-width:480px){.town-premium-lord{padding:8px 10px;gap:8px}.town-premium-lord .sengoku-premium-name{font-size:14px}.sengoku-premium-name.is-gilded{padding-right:.35em}.social-message-meta .sengoku-supporter-badge{width:27px!important;height:27px!important;flex-basis:27px}}
 @media(max-width:480px){.sengoku-owned-products{gap:2px}.sengoku-owned-product{width:26px;height:26px;flex-basis:26px}.sengoku-owned-product img{width:24px!important;height:24px!important}.sengoku-owned-product.is-supporter.is-equipped{width:28px;height:28px;flex-basis:28px}.sengoku-owned-product.is-supporter.is-equipped img{width:28px!important;height:28px!important}.social-message-meta strong,.field-player-copy>strong,.letters-message-name,.trade-person-name{min-width:0;max-width:100%;overflow-wrap:anywhere}}
+/* Paid variants share one equipped appearance per slot; ownership remains server-owned. */
+.sengoku-premium-name.is-vermilion-banner{color:#ffe3bb;border-color:#dcad63;background:linear-gradient(115deg,#501d27,#301925 65%,#643027);box-shadow:inset 0 0 0 2px #f6d79217,0 1px 5px #0002}
+.sengoku-premium-name.is-silver-banner{color:#edf6ff;border-color:#b8cfe1;background:linear-gradient(115deg,#28445e,#11273b 65%,#304859);box-shadow:inset 0 0 0 2px #ebf6ff18,0 1px 5px #0002}
+.sengoku-premium-name.is-silver-banner:after{border-color:#cfdfeb44}
+.sengoku-owned-products{flex-wrap:wrap;flex-shrink:1}
+.sengoku-owned-product.is-vermilion-banner img,.sengoku-owned-product.is-silver-banner img{padding:1px 4px}
+.sengoku-owned-product.is-silver-banner{border-color:#bbd4e89c}
+.sengoku-owned-product.is-sakura-town{border-color:#e0a8bd8c}
+.sengoku-owned-product.is-snow-town{border-color:#d9e7f28c}
+.sengoku-owned-product.is-sakura-town img,.sengoku-owned-product.is-snow-town img{object-fit:cover;object-position:39% 27%}
+.sengoku-owned-product.is-phoenix-medallion{border-color:transparent;background:transparent;box-shadow:none}
+.sengoku-owned-product.is-phoenix-medallion.is-equipped{width:32px;height:32px;flex-basis:32px}
+.sengoku-owned-product.is-phoenix-medallion.is-equipped img{width:32px!important;height:32px!important}
+@media(max-width:480px){.sengoku-owned-product.is-phoenix-medallion.is-equipped{width:28px;height:28px;flex-basis:28px}.sengoku-owned-product.is-phoenix-medallion.is-equipped img{width:28px!important;height:28px!important}}
 
 /* premium-admin.css */
 .premium-admin-dialog{--pa-line:#bba87a40;--pa-muted:#b8c3c7;box-sizing:border-box;width:min(920px,calc(100vw - 32px));height:min(850px,calc(100dvh - 40px));max-width:none;max-height:none;margin:auto;padding:0;border:1px solid #bfa47570;border-radius:18px;background:linear-gradient(145deg,#202e3b,#141f2c 70%);color:#f0ede5;font:400 16px/1.75 'Noto Sans JP',sans-serif;color-scheme:dark;box-shadow:0 24px 90px #000a;overflow:hidden}
@@ -4622,6 +4686,77 @@ html.sengoku-desktop-fit #app .navigation-favorites-rail:not([hidden]) {
 @media (forced-colors:active) {
   #app .navigation-favorite-shortcut { color: ButtonText; background: ButtonFace; border-color: ButtonText; }
   #app .navigation-favorite-shortcut.is-current { color: HighlightText; background: Highlight; }
+}
+
+/* Tasks lead into the existing finder; personal dock choices never issue a command. */
+.navigation-dialog .navigation-summary {
+  display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: center;
+  flex: none; gap: 4px 8px; padding: 8px 20px 0; min-width: 0;
+}
+.navigation-dialog .navigation-summary .navigation-category { min-width: 0; margin: 0; }
+.navigation-dialog .navigation-summary .navigation-result-status {
+  grid-column: 1 / -1; margin: 0 0 7px; min-height: 1.5em;
+}
+.navigation-dialog .navigation-filter-reset {
+  min-height: 44px; padding: 8px; border: 0; background: transparent;
+  color: #dec899; font: inherit; font-size: .875rem; cursor: pointer;
+  text-decoration: underline; text-underline-offset: 3px;
+}
+.navigation-dialog .navigation-filter-reset:disabled { opacity: .45; cursor: default; text-decoration: none; }
+.navigation-purpose-row {
+  display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 6px;
+  flex: none; padding: 0 20px 8px;
+}
+.navigation-purpose-row[hidden] { display: none; }
+.navigation-dialog .navigation-purpose-row button {
+  min-height: 44px; padding: 7px 8px; border: 1px solid #aa92635e; border-radius: 7px;
+  color: #ead9b3; background: #233542; background-image: none; font: inherit;
+  font-size: .875rem; line-height: 1.4; cursor: pointer;
+}
+.navigation-dock-editor {
+  flex: none; min-width: 0; margin: 0 20px 9px; border: 1px solid #b9a47735;
+  border-radius: 7px; background: #152630;
+}
+.navigation-dock-editor > summary {
+  min-height: 44px; padding: 10px 12px; color: #d8d6c8; font-size: .875rem;
+  line-height: 1.6; cursor: pointer;
+}
+.navigation-dock-editor[open] { max-height: min(260px,40dvh); overflow-y: auto; overscroll-behavior: contain; }
+.navigation-dock-settings { padding: 0 12px 10px; }
+.navigation-dock-settings > p { margin: 0 0 8px; color: #bfcbd0; font-size: .875rem; line-height: 1.6; }
+.navigation-dock-selects { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 8px; }
+.navigation-dock-selects label { display: grid; gap: 5px; min-width: 0; color: #d9c99f; font-size: .875rem; }
+.navigation-dialog :is(.navigation-category,.navigation-dock-selects) select {
+  box-sizing: border-box; width: 100%; min-width: 0; min-height: 44px;
+  padding: 8px 28px 8px 10px; border: 1px solid #8c9ba65b; border-radius: 6px;
+  color: #f4ecdb; background-color: #213440; font-family: inherit; font-size: 1rem;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='m4 6 4 4 4-4' fill='none' stroke='%23d5c296' stroke-width='1.5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 7px center; background-size: 16px;
+}
+.navigation-dialog .navigation-dock-reset {
+  min-height: 44px; margin-top: 5px; padding: 8px 0; border: 0;
+  color: #d9c69d; background: transparent; font: inherit; font-size: .875rem;
+  text-decoration: underline; text-underline-offset: 3px; cursor: pointer;
+}
+.navigation-dialog :is(select,summary):focus-visible { outline: 2px solid #f3d88f; outline-offset: -3px; }
+.navigation-dialog:has(.navigation-dock-editor[open]) .navigation-purpose-row { display: none; }
+@media (max-width:580px) {
+  .navigation-dialog .navigation-summary { padding-inline: 13px; }
+  .navigation-purpose-row { grid-template-columns: repeat(2,minmax(0,1fr)); padding-inline: 13px; }
+  .navigation-dock-editor { margin-inline: 13px; }
+  .navigation-dock-selects { grid-template-columns: minmax(0,1fr); }
+  .navigation-dock-selects label { grid-template-columns: 5.5em minmax(0,1fr); align-items: center; }
+}
+@media (max-height:500px) {
+  .navigation-purpose-row { display: flex; overflow-x: auto; scrollbar-width: thin; }
+  .navigation-dialog .navigation-purpose-row button { flex: 0 0 auto; }
+  .navigation-dock-editor[open] { max-height: 35dvh; }
+  .navigation-dialog .navigation-summary { padding-top: 3px; }
+  .navigation-dialog .navigation-summary .navigation-result-status { margin-bottom: 4px; }
+}
+@media (forced-colors:active) {
+  .navigation-dialog :is(.navigation-purpose-row button,.navigation-dock-editor,.navigation-dock-selects select) { color: ButtonText; background: ButtonFace; border-color: ButtonText; }
 }
 
 /* page-collections.css */
@@ -7278,5 +7413,305 @@ html:not(.sengoku-desktop-fit) #app.chronicle-shell #main .town-console-nav > bu
 @media (max-width:400px) {
   #modal .settings-hub .settings-row:where(:has(> #tips)) { grid-template-columns: minmax(0,1fr); gap: 6px; }
   #modal .settings-hub #tips { width: 100%; justify-self: stretch; }
+}
+
+/* town-command-tabs.css */
+/* One active command panel keeps the town readable without dropping live data. */
+#app.chronicle-shell #main .town-console > [role="tabpanel"][hidden] { display: none !important; }
+#app.chronicle-shell #main .town-console > [role="tabpanel"] { min-width: 0; scroll-margin-top: 76px; }
+#app.chronicle-shell #main .town-console-nav > [role="tab"] { min-height: 44px; }
+#app.chronicle-shell #main .town-console-nav > [aria-selected="true"] {
+  color: #ffebbf; border-color: #d9b46f; background: linear-gradient(135deg,#574632,#333832);
+  box-shadow: inset 0 -2px #d9b46f;
+}
+#app.chronicle-shell #main .town-console-nav > [role="tab"]:focus-visible {
+  outline: 2px solid #f4cd86; outline-offset: -4px;
+}
+#app.chronicle-shell #main .town-command-shortcuts {
+  display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 6px;
+  min-width: 0; padding: 10px; border-top: 1px solid #ba9c6454; background: #12222d;
+}
+#app.chronicle-shell #main .town-command-shortcuts > button {
+  display: flex; align-items: center; justify-content: center; gap: 7px;
+  min-width: 0; min-height: 44px; padding: 9px 7px; border: 1px solid #ab95624d;
+  border-radius: 6px; color: #f2dfba; background: #213440; background-image: none !important;
+  font: inherit; font-size: .875rem; line-height: 1.4; cursor: pointer;
+}
+#app.chronicle-shell #main .town-command-shortcuts .icon { width: 19px; height: 19px; flex: none; color: #dfba78; }
+#app.chronicle-shell #main .town-command-shortcuts > button:focus-visible { outline: 2px solid #f4cd86; outline-offset: -3px; }
+html.sengoku-desktop-fit #app.chronicle-shell #main .town-workspace .town-panel {
+  grid-template-rows: auto minmax(0,1fr) auto auto;
+}
+html.sengoku-desktop-fit #app.chronicle-shell #main .town-command-shortcuts { grid-row: 3; }
+html.sengoku-desktop-fit #app.chronicle-shell #main .town-workspace .town-premium-lord { grid-row: 4; }
+html:not(.sengoku-desktop-fit) #app.chronicle-shell #main .town-workspace > .town-console {
+  display: flex; flex-direction: column; order: 2; gap: 12px; min-width: 0; margin-top: 12px;
+}
+html:not(.sengoku-desktop-fit) #app.chronicle-shell #main .town-console-nav { order: 0; margin: 0; }
+html:not(.sengoku-desktop-fit) #app.chronicle-shell #main .town-console > [role="tabpanel"] { order: 1; margin-top: 0; }
+@media (max-width:580px) {
+  #app.chronicle-shell #main .town-command-shortcuts { grid-template-columns: repeat(2,minmax(0,1fr)); padding: 8px; }
+}
+@media (hover:hover) {
+  #app.chronicle-shell #main .town-command-shortcuts > button:hover { border-color: #deb770; background: #2b414e; }
+}
+@media (forced-colors:active) {
+  #app.chronicle-shell #main .town-console-nav > [aria-selected="true"] { color: HighlightText; background: Highlight; border-color: Highlight; }
+  #app.chronicle-shell #main .town-command-shortcuts > button { color: ButtonText; background: ButtonFace; border-color: ButtonText; }
+}
+
+/* shogun-polish.css */
+/* 戦国VS 5.1 — 漆、金箔、余白。 The game keeps its existing state and layout owners. */
+body:not(.at-title) {
+  --command-base: #0d1219;
+  --command-surface: #1a2730;
+  --command-raised: #24343d;
+  --command-inset: #101a22;
+  --command-ink: #f7eedc;
+  --command-muted: #c2cbcc;
+  --command-gold: #e5c28a;
+  --command-rule: #b79b6559;
+  --polished-wood: linear-gradient(120deg,#26353c,#17242c 72%);
+  --gold: #e2bb75;
+  background: #0d1219;
+}
+#app.chronicle-shell {
+  --mincho: "Yu Mincho","Hiragino Mincho ProN","Noto Serif CJK JP",serif;
+  font-feature-settings: "palt";
+}
+#app.chronicle-shell #main {
+  background: radial-gradient(ellipse at 95% 0%,#40545424,transparent 46%),#101920;
+  scrollbar-color: #82918b #111b22;
+}
+#app.chronicle-shell :is(.resource-amount,.resource-gain,.cost,.stat-row b,.collection-count,.pagination,.health-value) {
+  font-feature-settings: "tnum"; font-variant-numeric: tabular-nums;
+}
+/* Quiet surfaces make each action and original illustration easier to read. */
+#app.chronicle-shell :is(.button,.icon-button,.text-link),
+body:not(.at-title) :is(.modal,.navigation-dialog,.social-dialog,.premium-dialog) :is(.button,.icon-button) {
+  --button-wash-start: #283a42; --button-wash-end: #1c2a33;
+  background-image: linear-gradient(135deg,var(--button-wash-start),var(--button-wash-end)) !important;
+  box-shadow: inset 0 1px #ffebc00b,0 2px 4px #0002;
+  border-radius: 5px;
+}
+#app.chronicle-shell .button:is(.gold,.primary),
+body:not(.at-title) dialog .button:is(.gold,.primary) {
+  --button-wash-start: #b68c4b; --button-wash-end: #78582f;
+  color: #fff6e6; border-color: #d6b478;
+  box-shadow: inset 0 0 0 2px #563d2b33,inset 0 1px #ffe4ab66,0 3px 8px #0003;
+}
+#app.chronicle-shell .button.danger { --button-wash-start: #713833; --button-wash-end: #442a2b; }
+#app.chronicle-shell :is(.button,.icon-button):disabled { opacity: .58; cursor: not-allowed; }
+#app.chronicle-shell :is(input,select,textarea) {
+  background-color: #101c24; border-color: #97a59c59; color: #f4eddd;
+  border-radius: 5px; min-height: 44px;
+}
+#app.chronicle-shell input::placeholder { color: #b3c1c4; }
+#app.chronicle-shell :is(button,a,input,select,textarea):focus-visible,
+body:not(.at-title) dialog :is(button,a,input,select,textarea,summary):focus-visible {
+  outline: 3px solid #f0ca80; outline-offset: 2px;
+}
+#app.chronicle-shell :is(.panel,.building-card,.research-card,.castle-detail,.army-slot,.quest-row) {
+  border-color: #ac946351;
+  box-shadow: inset 0 1px #ffe8b50b,0 5px 16px #0000001c;
+}
+/* Fixed identity, independently scrollable navigation. */
+html.sengoku-desktop-fit #app.chronicle-shell .chronicle-rail {
+  display: flex; flex-direction: column; gap: 9px;
+  background: linear-gradient(160deg,#27343a,#14212b 54%,#101a22);
+  border-right: 1px solid #c2a36b60; overflow: hidden;
+}
+html.sengoku-desktop-fit #app.chronicle-shell .chronicle-rail > :not(#navigation) { flex-shrink: 0; }
+html.sengoku-desktop-fit #app.chronicle-shell .chronicle-rail .brand {
+  padding-block: 5px 12px; border-bottom-color: #c2a36b55;
+}
+html.sengoku-desktop-fit #app.chronicle-shell .clan-panel {
+  padding: 10px; border-radius: 5px; background: linear-gradient(130deg,#3b4038,#1b2b34);
+  box-shadow: inset 0 0 0 3px #cba9690b;
+}
+html.sengoku-desktop-fit #app.chronicle-shell .clan-panel .clan-line { gap: 10px; }
+html.sengoku-desktop-fit #app.chronicle-shell #navigation {
+  flex: 1 1 0; min-height: 80px; overflow-y: auto; overflow-x: hidden;
+  overscroll-behavior: contain; scrollbar-width: thin; scrollbar-gutter: stable;
+  padding-right: 3px; gap: 13px;
+}
+html.sengoku-desktop-fit #app.chronicle-shell .nav-section-name { color: #d3c29f; }
+html.sengoku-desktop-fit #app.chronicle-shell #navigation .nav-item {
+  min-height: 42px; border-radius: 4px; font-size: .925rem;
+}
+#app.chronicle-shell .sidebar .nav-item.active {
+  --button-wash-start: #5b4631; --button-wash-end: #31372f;
+  border-color: #cfb07580; border-inline-start: 3px solid #f1ce86;
+  color: #fff0cd; box-shadow: inset 0 1px #ffe1a115;
+}
+#app.chronicle-shell .sidebar .navigation-menu-trigger {
+  --button-wash-start: #3c4c51; --button-wash-end: #21323b;
+  border-color: #cbb0717d; min-height: 54px;
+}
+html.sengoku-desktop-fit #app.chronicle-shell .sidebar-bottom { border-top: 1px solid #bda27144; padding-top: 8px; }
+@media (max-height:760px) {
+  html.sengoku-desktop-fit #app.chronicle-shell .chronicle-rail { overflow-y: auto; }
+  html.sengoku-desktop-fit #app.chronicle-shell #navigation { flex: 0 0 auto; max-height: 40vh; min-height: 100px; }
+  html.sengoku-desktop-fit #app.chronicle-shell .clan-panel { padding-block: 7px; }
+}
+/* The resource ledger has stable columns and distinct, uncluttered materials. */
+#app.chronicle-shell .chronicle-ledger,
+html:not(.sengoku-desktop-fit) #app.chronicle-shell .chronicle-ledger {
+  background: linear-gradient(100deg,#27353d,#132029 72%);
+  border-bottom: 1px solid #c5a66d6b; box-shadow: 0 5px 18px #0003;
+}
+#app.chronicle-shell .chronicle-ledger .resource,
+html:not(.sengoku-desktop-fit) #app.chronicle-shell .chronicle-ledger .resource,
+html.sengoku-desktop-fit #app.chronicle-shell .header-balances .touch-header-stat {
+  background: linear-gradient(140deg,#35454b,#243740) !important;
+  border: 1px solid #9dada14d; border-top: 2px solid #d9b574;
+  border-radius: 5px; box-shadow: inset 0 1px #fff3d10b;
+}
+#app.chronicle-shell .chronicle-ledger .resource .resource-label { color: #dfd8c6; font-size: .875rem; }
+#app.chronicle-shell .chronicle-ledger .resource .resource-amount { color: #fff6de; letter-spacing: .015em; }
+#app.chronicle-shell .chronicle-ledger .resource-gain { color: #b6e0b6; }
+#app.chronicle-shell .chronicle-ledger .resource-gain.is-negative { color: #ffb7a4; }
+#app.chronicle-shell .calendar b { font-family: var(--mincho); }
+/* Chapter illustrations remain large while headers consume less of the page. */
+#app.chronicle-shell #main :is(.page-heading,.roaming-heading,.court-heading,.covert-heading) {
+  background: linear-gradient(120deg,#314047,#1b2c34 70%);
+  border-radius: 6px; border-color: #c0a17180; border-top: 2px solid #e3c08a;
+  box-shadow: 0 6px 20px #0003;
+}
+#app.chronicle-shell #main :is(.page-heading,.roaming-heading,.court-heading,.covert-heading) h1 {
+  font-family: var(--mincho); font-size: clamp(1.7rem,2.2vw,2.6rem);
+  font-weight: 700; letter-spacing: .075em; color: #fff0d4;
+}
+#app.chronicle-shell #main .chapter-copy { padding: 14px 20px; }
+#app.chronicle-shell #main .page-heading-actions { padding-block: 5px; background: #15232bbb; }
+#app.chronicle-shell #main .page-heading-actions .button { min-height: 36px; }
+#app.chronicle-shell #main .chapter-plate { box-shadow: inset 30px 0 35px -25px #1c2b35; }
+#app.chronicle-shell #main .realtime-strip { margin-bottom: 9px; background: #182a32; border-color: #b8b29527; }
+#app.chronicle-shell #main .expansion-entry { margin-block: 7px 10px; }
+#app.chronicle-shell #main .section-heading h2 { font-family: var(--mincho); letter-spacing: .045em; }
+/* The town reads as one panoramic command desk. */
+#app.chronicle-shell #main .town-workspace .town-panel {
+  border-radius: 6px; border-color: #d1b47a86;
+  background: radial-gradient(ellipse at center,#293938,#111d22);
+  box-shadow: inset 0 0 0 3px #e7c89008,0 12px 30px #0004;
+}
+#app.chronicle-shell #main .town-scene-heading {
+  background: linear-gradient(100deg,#38423b,#20313a);
+  border-bottom: 1px solid #d0b1735c;
+}
+#app.chronicle-shell #main .town-scene-name { font-family: var(--mincho); font-size: 1.45rem; letter-spacing: .09em; }
+#app.chronicle-shell #main .town-scene-board .hotspot .pin {
+  border: 1px solid #fcdf9b; color: #26332e;
+  background: linear-gradient(145deg,#fff0bd,#d9ad61);
+  box-shadow: 0 2px 8px #102229a6,inset 0 0 0 2px #68542f35;
+}
+#app.chronicle-shell #main .town-scene-board .hotspot .label {
+  color: #fff1cf; background: #182c32f5; border-color: #e4bc78cc;
+  border-radius: 4px; box-shadow: 0 2px 6px #0006;
+}
+#app.chronicle-shell #main .town-console-nav {
+  background: #111e27; border-color: #c5a46f73; border-radius: 5px;
+}
+#app.chronicle-shell #main .town-console-nav > button { background: #233740; color: #ddd9ca; }
+#app.chronicle-shell #main .town-console-nav > button[aria-selected="true"] {
+  background: linear-gradient(135deg,#b88f52,#785b37); border-color: #e2c28d; color: #fff8e8;
+  box-shadow: inset 0 0 0 2px #49342021; font-weight: 700;
+}
+#app.chronicle-shell #main .town-overview { padding: 0; background: #1b2c34; border-color: #c8a9726b; }
+#app.chronicle-shell #main .town-overview .page-heading { background: transparent; border-radius: 0; }
+#app.chronicle-shell #main .town-overview .town-castle-heading { padding: 13px 15px; }
+#app.chronicle-shell #main .town-overview :is(.durability-card,.residency-compact,.expansion-entry,.hint-entry,.level-guide-entry) { margin-inline: 12px; }
+#app.chronicle-shell #main .town-overview .hint-entry { padding: 12px; border-radius: 4px; }
+#app.chronicle-shell #main .town-overview .town-castle-upgrade-note { font-size: .875rem; line-height: 1.65; }
+#app.chronicle-shell #main .town-premium-lord { background: #192b33; border-color: #ceb07150; }
+#app.chronicle-shell #main .town-command-shortcuts {
+  background: linear-gradient(100deg,#2a3b40,#172a32); border-top-color: #c3a46b66;
+}
+/* Cards and collections have a clear edge without hiding the source artwork. */
+#app.chronicle-shell .officer-card { border-radius: 6px; border-color: #c5a76e7a; overflow: hidden; background: #1f3037; }
+#app.chronicle-shell .officer-card .officer-info { background: linear-gradient(145deg,#304146,#1c2d36); }
+#app.chronicle-shell .officer-card h3 { font-family: var(--mincho); color: #fff0cf; }
+#app.chronicle-shell .officer-subnav { border-color: #b9a17266; background: #24373d; }
+#app.chronicle-shell .catalog-filter-toolbar { border-color: #a4b29c46; background: #1e3038; }
+#app.chronicle-shell .catalog-filter-toolbar > .catalog-filter-heading { padding-bottom: 3px; }
+#app.chronicle-shell .catalog-filter-chips button.active,
+#app.chronicle-shell .tabs button.active { border-color: #ddbf85; color: #fff3d7; background-color: #635236; }
+#app.chronicle-shell .building-card:hover { border-color: #e9c589; }
+#app.chronicle-shell .research-card { border-radius: 6px; }
+#app.chronicle-shell .army-slot { border-radius: 6px; }
+#app.chronicle-shell .game-footer { border-top-color: #c4a46a55; background: #111e26; }
+body:not(.at-title) :is(.modal,.navigation-dialog,.social-dialog,.premium-dialog) {
+  border-color: #bca371a1; border-radius: 8px; box-shadow: 0 26px 90px #0009,inset 0 1px #ffe5b322;
+}
+body:not(.at-title) :is(.modal-header,.navigation-dialog-header,.premium-dialog-header) {
+  background: linear-gradient(110deg,#31423f,#192e38); border-bottom-color: #cfad706b;
+}
+body:not(.at-title) :is(.modal-header,.navigation-dialog-header,.premium-dialog-header) h2 { font-family: "Yu Mincho","Hiragino Mincho ProN",serif; letter-spacing: .07em; }
+body:not(.at-title) .premium-dialog :is(button,summary) {
+  background-image: linear-gradient(135deg,#2a3c42,#1a2d36) !important;
+}
+body:not(.at-title) .premium-dialog :is(button,summary)[aria-pressed="true"] {
+  background-image: linear-gradient(135deg,#6a4d34,#3d3b30) !important;
+}
+.navigation-purpose-row button { background: #243a42; border-color: #bba57566; }
+body:not(.at-title) .navigation-dialog-header h2 { color: #fff0d4; }
+body:not(.at-title) .navigation-dialog :is(button,summary) { background-image: linear-gradient(135deg,#2b3e45,#1b2d37) !important; }
+body:not(.at-title) .navigation-dialog .navigation-result.is-current { background-image: linear-gradient(135deg,#785637,#3c3c30) !important; }
+.navigation-dock-editor { border-color: #bba57555; background: #13252f; }
+/* Full title composition: the main artwork, start action and guides fit together. */
+#launch-screen.launch-screen { background: radial-gradient(ellipse at 75% 30%,#344542,#101b25 68%); }
+#launch-screen .edition-cover { border-color: #e0bd78a1; box-shadow: 0 22px 60px #050b1b6b; }
+#launch-screen .edition-mast { border-color: #b99d6b6b; }
+#launch-screen .edition-genre { color: #edc58a; }
+#launch-screen .edition-story { padding: clamp(23px,3.4vw,60px); }
+#launch-screen .edition-resume { background: linear-gradient(90deg,#263538d9,#18283160); border-color: #c5a06a63; }
+#launch-screen #launch-enter { --button-wash-start: #9f3829; --button-wash-end: #6d2924; background-image: linear-gradient(135deg,#ac4933,#772e26) !important; min-height: 56px; }
+#launch-screen .title-music-toggle { background: #152832e6; background-image: none !important; }
+#launch-screen .launch-guide-nav a { border-color: #ceae7182; box-shadow: inset 0 1px #fff1c515; }
+@media (min-width: 981px) and (min-height: 700px) {
+  #launch-screen .edition-shell { min-height: 100dvh; padding-inline: clamp(24px,3.5vw,64px); }
+  #launch-screen .edition-mast { min-height: 58px; }
+  #launch-screen .edition-cover { flex: 1 0 auto; min-height: 0; margin-top: 15px; }
+  #launch-screen .edition-story { padding-block: 22px; }
+  #launch-screen #launch-title { font-size: clamp(5.6rem,8.4vw,10rem); }
+  #launch-screen .launch-guide-nav { padding-block: 14px; gap: 16px; }
+  #launch-screen .launch-guide-nav a { min-height: 90px; padding: 12px 18px; }
+  #launch-screen .edition-foot { min-height: 36px; }
+}
+@media (min-width: 1025px) {
+  html.sengoku-desktop-fit #app.chronicle-shell #main { padding: 16px 20px; }
+  html.sengoku-desktop-fit #app.chronicle-shell #main[data-view="town"] { padding: 12px; }
+  html.sengoku-desktop-fit:not([data-layout-townratio]) #app.chronicle-shell #main .town-workspace.dashboard-grid { grid-template-columns: minmax(0,1fr) clamp(310px,30%,390px); gap: 14px; }
+}
+@media (max-width: 700px) {
+  #launch-screen .edition-story { padding: 0 16px 18px; }
+  #launch-screen .edition-print { aspect-ratio: 2; }
+  #launch-screen .launch-guide-nav { grid-template-columns: repeat(3,minmax(0,1fr)); gap: 6px; }
+  #launch-screen .launch-guide-nav a { min-height: 86px; padding: 9px 8px; align-items: end; }
+  #launch-screen .launch-guide-nav strong { font-size: .875rem; line-height: 1.5; }
+  #launch-screen .launch-guide-nav small { display: none; }
+  #launch-screen .launch-guide-nav img { width: 100%; }
+  #launch-screen .launch-guide-nav a::before { background: linear-gradient(0deg,#13232b,transparent 150%); }
+  #app.chronicle-shell #main .chapter-copy { padding: 12px; }
+  #app.chronicle-shell #main .page-heading h1 { font-size: 1.65rem; }
+  #app.chronicle-shell #main .page-heading-actions { padding-inline: 10px; }
+  #app.chronicle-shell #main .page-heading-actions .button { min-height: 40px; }
+  #app.chronicle-shell #main .town-scene-name { font-size: 1.2rem; }
+  #app.chronicle-shell #main .town-console-nav > button { min-height: 46px; }
+  #app.chronicle-shell :is(.catalog-filter-chips,.tabs) button { min-height: 44px; }
+  #app.chronicle-shell .chronicle-ledger .resource .resource-label { font-size: .8125rem; }
+  html.sengoku-navigation-ready:not(.sengoku-desktop-fit) #app.chronicle-shell .sidebar-bottom { background: #152731; border-top: 1px solid #d4b5789e; }
+  html.sengoku-navigation-ready:not(.sengoku-desktop-fit) #app.chronicle-shell .navigation-quick.active { color: #fff0c8; background: #5a4b35; border-color: #c7a46c; }
+  body:not(.at-title) dialog { max-height: calc(100dvh - 24px); }
+}
+@media (hover:hover) and (prefers-reduced-motion:no-preference) {
+  #app.chronicle-shell :is(.button,.icon-button,.building-card,.officer-card) { transition: border-color .16s,background-color .16s,box-shadow .16s; }
+  #app.chronicle-shell .button:not(:disabled):hover { border-color: #f0ce8c; box-shadow: inset 0 1px #ffebc024,0 3px 10px #0004; }
+  #app.chronicle-shell .officer-card:hover { border-color: #edca87; box-shadow: 0 8px 25px #0005; }
+}
+@media (forced-colors:active) {
+  #app.chronicle-shell :is(.button,.nav-item,.panel,.officer-card,.resource),
+  #launch-screen .title-music-toggle { background: Canvas !important; color: CanvasText; border: 1px solid CanvasText; box-shadow: none; }
+  #app.chronicle-shell #main .town-console-nav > button[aria-selected="true"] { background: Highlight; color: HighlightText; }
 }
 

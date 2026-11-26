@@ -7,6 +7,37 @@ const clamp=(n,min,max)=>Math.max(min,Math.min(max,n));
 const people=new Map(),VERSION=/^[a-f0-9]{64}$/,PLAYER=/^[A-Za-z0-9_-]{1,150}$/;
 let sequence=0;
 const cleanVersion=value=>typeof value==='string'&&VERSION.test(value)?value:null;
+// Public city honors are issued by the server. A name renderer, local save,
+// premium purchase or avatar upload cannot award a city to its caller.
+const CITY_HONORS=Object.freeze({edo:'江戸城',kyoto_gosho:'京都御所',nijo:'二条御所',osaka:'大坂城',nagoya:'名古屋城'});
+const cityHonors=new Map(),cityHonorVersions=new Map();
+let cityHonorFloor=0;
+const honorPlayerId=value=>typeof value==='string'?value:value?.playerId||value?.userId||value?.id||value?.sessionId;
+const validHonorPlayer=id=>typeof id==='string'&&(/^u_[A-Za-z0-9_]{1,96}$/.test(id)||/^vc_[a-f0-9]{32}$/.test(id));
+const honorFields=[['playerId','playerCityHonors'],['ownerId','ownerCityHonors'],['authorId','authorCityHonors'],['targetPlayerId','targetCityHonors'],['attackerPlayerId','attackerCityHonors'],['defenderPlayerId','defenderCityHonors'],['actorPlayerId','actorCityHonors'],['lordPlayerId','lordCityHonors'],['previousLordPlayerId','previousLordCityHonors']];
+function cleanCityHonors(value){
+ if(!Array.isArray(value))return[];
+ const ids=new Set(value.filter(row=>row&&typeof row==='object'&&Object.hasOwn(CITY_HONORS,row.id)).map(row=>row.id));
+ return Object.entries(CITY_HONORS).filter(([id])=>ids.has(id)).map(([id,cityName])=>({id,cityName,title:cityName+'の勲章'}));
+}
+function honorsFor(player){const id=honorPlayerId(player);return validHonorPlayer(id)?(cityHonors.get(id)||[]).map(row=>({...row})):[];}
+function honorLabel(row){return row.cityName+(row.id==='kyoto_gosho'?'の領主':'の城主');}
+function honorMarkup(rows){return rows.map(row=>{const label='都市勲章：'+honorLabel(row);return `<span class="city-honor" data-city-honor="${row.id}" data-stable-key="city-honor-${row.id}" title="${esc(label)}"><span class="city-honor-fallback" aria-hidden="true">${esc(Array.from(row.cityName)[0])}</span><img src="assets/city-honors/${row.id}-v1.webp" width="32" height="32" alt="${esc(label)}" decoding="async" loading="lazy" draggable="false"></span>`;}).join('');}
+function scopedHonors(player,cityId){const rows=honorsFor(player);return cityId?rows.filter(row=>row.id===cityId):rows;}
+function honorSlot(player,{cityId=''}={}){const id=honorPlayerId(player);if(!validHonorPlayer(id))return'';const rows=scopedHonors(id,cityId);return `<span class="city-honors-slot" data-city-honors-player="${esc(id)}"${cityId?` data-city-honors-city="${esc(cityId)}"`:''} data-city-honors-key="${rows.map(row=>row.id).join(',')}">${honorMarkup(rows)}</span>`;}
+function refreshCityHonors(root=global.document){
+ const nodes=[...(root?.matches?.('[data-city-honors-player]')?[root]:[]),...(root?.querySelectorAll?.('[data-city-honors-player]')||[])];
+ for(const node of nodes){const rows=scopedHonors(node.dataset.cityHonorsPlayer,node.dataset.cityHonorsCity),key=rows.map(row=>row.id).join(',');if(node.dataset.cityHonorsKey===key)continue;node.dataset.cityHonorsKey=key;const html=honorMarkup(rows);if(global.SengokuStableDOM)global.SengokuStableDOM.patch(node,html);else node.innerHTML=html;}
+}
+function observeCityHonors(payload,{requestSequence}={}){
+ const revision=Number.isSafeInteger(requestSequence)?requestSequence:beginRequest();sequence=Math.max(sequence,revision);if(revision<cityHonorFloor)return payload;
+ const seen=new Set(),skip=new Set(['save','state','entitlements','appearance','staffBase','cityHonors']);
+ const accept=(id,value)=>{if(!validHonorPlayer(id)||revision<(cityHonorVersions.get(id)||0))return;cityHonorVersions.set(id,revision);cityHonors.set(id,cleanCityHonors(value));if(cityHonors.size>4096){const oldest=cityHonors.keys().next().value;cityHonors.delete(oldest);cityHonorVersions.delete(oldest);}};
+ const visit=value=>{if(!value||typeof value!=='object'||seen.has(value))return;seen.add(value);if(Object.hasOwn(value,'cityHonors'))accept(honorPlayerId(value),value.cityHonors);for(const[idKey,honorsKey]of honorFields)if(Object.hasOwn(value,honorsKey))accept(value[idKey],value[honorsKey]);for(const[key,child]of Object.entries(value))if(!skip.has(key))visit(child);};
+ visit(payload);for(const job of Array.isArray(payload?.staffBase?.jobs)?payload.staffBase.jobs:[]){const person=job?.startedBy;if(person&&Object.hasOwn(person,'cityHonors'))accept(person.id,person.cityHonors);}
+ refreshCityHonors();return payload;
+}
+global.SengokuCityHonors=Object.freeze({slot:honorSlot,update:observeCityHonors,refresh:refreshCityHonors,resolve:honorsFor,text:player=>honorsFor(player).map(honorLabel).join('・'),clear(){cityHonors.clear();cityHonorVersions.clear();cityHonorFloor=beginRequest();refreshCityHonors();}});
 function beginRequest(){return ++sequence;}
 function current(user){const id=String(user?.playerId||user?.userId||user?.id||''),known=people.get(id);return {id,name:known?.name||String(user?.name||'領主'),avatarVersion:known?known.avatarVersion:cleanVersion(user?.avatarVersion)};}
 function imageURL(user){
@@ -35,7 +66,7 @@ function observe(payload,{requestSequence,pinnedUser}={}){
   for(const [idKey,nameKey,versionKey]of [['playerId','playerName','playerAvatarVersion'],['ownerId','ownerName','ownerAvatarVersion'],['authorId','authorName','authorAvatarVersion'],['targetPlayerId','targetName','targetAvatarVersion'],['attackerPlayerId','attackerName','attackerAvatarVersion'],['defenderPlayerId','defenderName','defenderAvatarVersion'],['actorPlayerId','actorName','actorAvatarVersion']])take(value,value[idKey],nameKey,versionKey);
   for(const [key,child]of Object.entries(value))if(!skip.has(key))visit(child);
  };
- visit(payload);refresh();return payload;
+ visit(payload);observeCityHonors(payload,{requestSequence:order});refresh();return payload;
 }
 function rename(user){const id=String(user?.id||'');if(!PLAYER.test(id)||typeof user.name!=='string')return;const prior=people.get(id);people.set(id,{name:user.name,avatarVersion:prior?prior.avatarVersion:cleanVersion(user.avatarVersion),sequence:prior?.sequence||0,nameSequence:beginRequest()});refresh();}
 function refresh(root=global.document){
@@ -105,6 +136,6 @@ function mountPhotoEditor(host,{user,request,onUser,adapter={}}={}){
  };
 }
 function mount(host,options){return mountPhotoEditor(host,options);}
-document.addEventListener('error',event=>{const image=event.target;if(image?.matches?.('img[data-avatar-image]')){image.hidden=true;image.parentElement?.classList.remove('has-photo');}},true);
+document.addEventListener('error',event=>{const image=event.target;if(image?.matches?.('img[data-avatar-image]')){image.hidden=true;image.parentElement?.classList.remove('has-photo');}else if(image?.matches?.('.city-honor img')){image.hidden=true;image.parentElement?.setAttribute?.('role','img');image.parentElement?.setAttribute?.('aria-label',image.alt);}},true);
 global.SengokuAvatar=Object.freeze({markup,mount,mountPhotoEditor,imageURL,observe,refresh,beginRequest,resolve:current,rename});
 })(window);

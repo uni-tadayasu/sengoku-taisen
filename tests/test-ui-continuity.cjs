@@ -56,6 +56,25 @@ await test('a user gesture invalidates a pending town console position between s
   draw().scrollTop=592;s.c.preserveInteraction(s.main,draw);pane.scrollTop=0;s.c.interactionEpoch++;
   s.c.preserveInteraction(s.main,draw);while(s.frames.length)s.frames.shift()();assert.equal(pane.scrollTop,0);
 });
+await test('real app preservation and StableDOM retain document/pane reading positions through phone, tablet and PC sync batches',()=>{
+  const stable=require('../stable-dom.js'),{setup}=require('./helpers/dom-model.cjs');
+  for(const [width,height,desktop]of [[390,844,false],[768,1024,false],[1440,900,true]]){
+    const {doc,host}=setup(),frames=[],scroller=desktop?host:doc.body;host.id='main';doc.getElementById=id=>doc.querySelector('#'+id);
+    doc.defaultView={innerWidth:width,innerHeight:height,visualViewport:{width,height,offsetTop:0,offsetLeft:0,scale:1}};
+    for(const node of [host,doc.body]){node.clientWidth=width;node.clientHeight=height;node.getBoundingClientRect=()=>({top:0,left:0,bottom:height,right:width,width,height});}
+    const html=revision=>Array.from({length:30},(_,i)=>`<article id="row-${i}" data-height="${i===0?100+revision:100}"><p>${i===12?'最新 '+revision:'報告 '+i}</p>${i===12?'<input id="draft" value="">':''}</article>`).join('');
+    const draw=revision=>{stable.patch(host,html(revision),{key:'town'});for(const [index,row]of [...host.querySelectorAll('article')].entries()){
+      const rect=(offset,h)=>{const before=[...host.querySelectorAll('article')].slice(0,index).reduce((sum,node)=>sum+Number(node.dataset.height),0),top=before-scroller.scrollTop+offset;return{top,left:0,bottom:top+h,right:width,width,height:h};};
+      row.getBoundingClientRect=()=>rect(0,Number(row.dataset.height));row.querySelector('p').getBoundingClientRect=()=>rect(10,20);const input=row.querySelector('input');if(input)input.getBoundingClientRect=()=>rect(40,24);
+    }};
+    draw(0);scroller.scrollTop=1150;scroller.scrollLeft=7;const row=doc.getElementById('row-12'),before=row.getBoundingClientRect().top,input=doc.getElementById('draft');input.value='入力途中の検索';input.setSelectionRange(1,4,'backward');input.focus();
+    const window={SengokuStableDOM:stable,scrollX:desktop?0:7,scrollY:desktop?0:1150,requestAnimationFrame:callback=>frames.push(callback),scrollTo(){assert.fail('StableDOM owns ancestor scrolling');}};
+    const c=load(context({currentView:'town',document:doc,window,$:selector=>doc.querySelector(selector)}),'interactionLocator','locateInteraction','preserveInteraction');
+    for(let revision=1;revision<=20;revision++)c.preserveInteraction(host,()=>draw(revision));while(frames.length)frames.shift()();
+    assert.equal(row.getBoundingClientRect().top,before,width+'px content anchor');assert.equal(scroller.scrollTop,1170);assert.equal(scroller.scrollLeft,7);assert.strictEqual(doc.activeElement,input);assert.strictEqual(doc.getElementById('draft'),input);assert.equal(input.value,'入力途中の検索');assert.deepEqual([input.selectionStart,input.selectionEnd,input.selectionDirection],[1,4,'backward']);assert.equal(row.querySelector('p').textContent,'最新 20');
+    c.preserveInteraction(host,()=>draw(21));scroller.scrollTop+=37;c.interactionEpoch++;while(frames.length)frames.shift()();assert.equal(scroller.scrollTop,1208,'a newer user gesture owns the next position');
+  }
+});
 await test('unchanged verified operator role does not rebuild the page or modal',()=>{
   let renders=0,modalRefresh=0;const c=load(context({game:{isAdmin:true,setAdminAccess(){return{ok:true,changed:false};}},syncAccess:{linked:true,ready:true},selectedCastle:'edo',activeModal:'building',preserveInteraction(){renders++;},refreshActiveModal(){modalRefresh++;}}),'setRoleAccess','setAdminAccess');
   for(let i=0;i<20;i++)assert(c.setAdminAccess(true).ok);assert.equal(renders,0);assert.equal(modalRefresh,0);

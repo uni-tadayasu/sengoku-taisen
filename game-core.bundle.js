@@ -6931,9 +6931,15 @@ global.setInterval?.(()=>{if(!global.document.hidden&&options.getContext)refresh
   for(let node=host.parentNode;node;node=node.parentNode){const state=states.get(node);if(!state)continue;const source=find(node,state.records);if(source&&(host.childNodes.length===0||source.children.some(entry=>entry.node.parentNode===host)))return source;}
   return null;
  }
+ function visibleViewport(doc,rect={}){
+  const view=doc?.defaultView,visual=view?.visualViewport;
+  const top=Number(visual?.offsetTop)||0,left=Number(visual?.offsetLeft)||0;
+  return{top,left,bottom:top+(visual?.height||view?.innerHeight||doc?.documentElement?.clientHeight||rect.height||0),right:left+(visual?.width||view?.innerWidth||doc?.documentElement?.clientWidth||rect.width||0)};
+ }
+ function viewportKey(host){const visual=host?.ownerDocument?.defaultView?.visualViewport;return visual?JSON.stringify([visual.width,visual.height,visual.offsetTop,visual.offsetLeft,visual.scale]):null;}
  function scrollViewport(node){
   const doc=node.ownerDocument,rect=node.getBoundingClientRect?.();if(!rect)return null;
-  if(node===doc?.scrollingElement){const view=doc.defaultView;return{top:0,left:0,bottom:view?.innerHeight||doc.documentElement?.clientHeight||rect.height,right:view?.innerWidth||doc.documentElement?.clientWidth||rect.width};}
+  if(node===doc?.scrollingElement)return visibleViewport(doc,rect);
   const top=rect.top+(node.clientTop||0),left=rect.left+(node.clientLeft||0);return{top,left,bottom:top+(node.clientHeight||rect.height),right:left+(node.clientWidth||rect.width)};
  }
  function scrollAnchors(node,host){
@@ -6941,7 +6947,7 @@ global.setInterval?.(()=>{if(!global.document.hidden&&options.getContext)refresh
   // numeric offset until it has a real content viewport again.
   if(!(node.clientHeight>0||node===node.ownerDocument?.scrollingElement&&node.ownerDocument?.defaultView?.innerHeight>0))return[];
   const viewport=scrollViewport(node);if(!viewport)return[];
-  const doc=node.ownerDocument,styleOf=doc?.defaultView?.getComputedStyle?.bind(doc.defaultView)||global.getComputedStyle?.bind(global),hidden=new Map();
+  const doc=node.ownerDocument,visible=visibleViewport(doc),clip={top:Math.max(viewport.top,visible.top),left:Math.max(viewport.left,visible.left),bottom:Math.min(viewport.bottom,visible.bottom),right:Math.min(viewport.right,visible.right)},styleOf=doc?.defaultView?.getComputedStyle?.bind(doc.defaultView)||global.getComputedStyle?.bind(global),hidden=new Map();
   const excluded=part=>{
    if(!part||part===node)return false;if(hidden.has(part))return hidden.get(part);
    const style=styleOf?.(part),position=style?.position||part.style?.getPropertyValue?.('position'),value=part.hidden===true||part.hasAttribute?.('hidden')||part.getAttribute?.('aria-hidden')==='true'||['absolute','fixed','sticky'].includes(position)||style?.display==='none'||['hidden','collapse'].includes(style?.visibility)||excluded(part.parentElement);
@@ -6952,7 +6958,7 @@ global.setInterval?.(()=>{if(!global.document.hidden&&options.getContext)refresh
    // Sample the visible viewport instead of measuring every row in a long
    // roster or construction ledger. Hit testing already accounts for clipping,
    // collapsed details and overlapping panes. Ancestors supply stable keys.
-   const view=doc.defaultView,left=Math.max(0,viewport.left),right=Math.min(view?.innerWidth||viewport.right,viewport.right),top=Math.max(0,viewport.top),bottom=Math.min(view?.innerHeight||viewport.bottom,viewport.bottom);
+   const {left,right,top,bottom}=clip;
    try{
     if(right>left&&bottom>top)for(const y of [1,12,32,64,128,(bottom-top)*.5,(bottom-top)*.75,bottom-top-2])for(const ratio of [.15,.5,.85]){
      const pointY=Math.min(bottom-1,top+Math.max(0,y)),pointX=left+(right-left)*ratio;
@@ -6966,12 +6972,14 @@ global.setInterval?.(()=>{if(!global.document.hidden&&options.getContext)refresh
    // visible content can anchor the ancestor; unrelated earlier headers cannot.
    if(!host.contains(part)&&!(host.compareDocumentPosition?.(part)&4))continue;
    if(keyOf(part)===null&&!['p','h1','h2','h3','li','tr','article','summary'].includes(tag(part))||excluded(part))continue;
-   const rect=part.getBoundingClientRect?.();if(!rect||rect.width<=0||rect.height<=0||rect.bottom<=viewport.top||rect.top>=viewport.bottom||rect.right<=viewport.left||rect.left>=viewport.right)continue;
-   candidates.push({node:part,top:rect.top-viewport.top,left:rect.left-viewport.left});
+   const rect=part.getBoundingClientRect?.();if(!rect||rect.width<=0||rect.height<=0||rect.bottom<=clip.top||rect.top>=clip.bottom||rect.right<=clip.left||rect.left>=clip.right)continue;
+   candidates.push({node:part,top:rect.top-viewport.top,left:rect.left-viewport.left,clipped:rect.top<clip.top});
   }
   // Prefer the visible text/control over a large section that merely contains
   // it. Keep alternatives so removing the first visible row is also stable.
-  return candidates.filter(item=>!candidates.some(other=>other!==item&&item.node.contains(other.node))).sort((a,b)=>Math.max(0,a.top)-Math.max(0,b.top)||Math.max(0,a.left)-Math.max(0,b.left)).slice(0,6);
+  // A sliver of a tall preceding card is a poor anchor: its top can stay fixed
+  // while text inside it grows and pushes the visible next card down.
+  return candidates.filter(item=>!candidates.some(other=>other!==item&&item.node.contains(other.node))).sort((a,b)=>Number(a.clipped)-Number(b.clipped)||Math.max(0,a.top)-Math.max(0,b.top)||Math.max(0,a.left)-Math.max(0,b.left)).slice(0,6);
  }
  function captureScroll(host){
   if(!host?.ownerDocument)return null;
@@ -6980,11 +6988,14 @@ global.setInterval?.(()=>{if(!global.document.hidden&&options.getContext)refresh
   for(let node=host.parentElement;node;node=node.parentElement)save(node);
   const scrolling=host.ownerDocument.scrollingElement;if(scrolling?.contains?.(host))save(scrolling);
   const depth=node=>{let result=0;for(;node;node=node.parentNode)result++;return result;};entries.sort((a,b)=>depth(b.node)-depth(a.node));
-  return{host,connected:host.isConnected,key:states.get(host)?.key,entries};
+  return{host,connected:host.isConnected,key:states.get(host)?.key,viewport:viewportKey(host),entries};
  }
  function restoreScroll(snapshot){
   if(!snapshot?.host)return false;const {host}=snapshot;
   if(snapshot.cancelled||snapshot.connected&&host.isConnected===false||snapshot.key!==undefined&&states.get(host)?.key!==snapshot.key)return false;
+  // Mobile keyboard/address-bar changes belong to the browser. A queued frame
+  // captured for the previous visible viewport must not undo its pan or resize.
+  if(snapshot.viewport!==viewportKey(host)){snapshot.cancelled=true;return false;}
   if(snapshot.entries.some(entry=>entry.applied&&(Math.abs((entry.node.scrollTop||0)-entry.appliedTop)>.5||Math.abs((entry.node.scrollLeft||0)-entry.appliedLeft)>.5))){snapshot.cancelled=true;return false;}
   for(const entry of snapshot.entries){
    const {node}=entry;if(entry.cancelled||node.isConnected===false||!(node===host||host.contains(node)||node.contains(host)))continue;
@@ -7047,7 +7058,11 @@ global.setInterval?.(()=>{if(!global.document.hidden&&options.getContext)refresh
  ]);
  function isRoutine(value){return routine.has(String(value??'').trim().replace(/[。.…]+$/u,''));}
  function visibleText(value){const text=String(value??'');return isRoutine(text)?'':text;}
- const api={isRoutine,visibleText};
+ // This classifies presentation only. The engine/cloud write guards continue
+ // to block every action until the current authority is ready.
+ const transientReasons=new Set(['','local','writer','pending','initializing','applying','conflict','lease-expired','hidden']);
+ function isTransientStatus(value){return Boolean(value)&&value.banned!==true&&value.rolePending!==true&&transientReasons.has(String(value.reason||''));}
+ const api={isRoutine,visibleText,isTransientStatus};
  global.SengokuSyncNotices=api;
  if(typeof module==='object'&&module.exports)module.exports=api;
 })(typeof window!=='undefined'?window:globalThis);

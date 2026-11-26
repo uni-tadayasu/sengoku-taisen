@@ -17,6 +17,7 @@ import {handleNotifications,dispatchNotifications,notificationSaveStatements} fr
 import {handleConquest,settleConquestMarches,conquestMarches} from './conquest.js';
 import {handleShogunate,campaignShogunateStatements} from './shogunate.js';
 import {resolvePublicCourtOffices} from './public-court.js';
+import {resolvePublicCityHonors} from './city-honors.js';
 import {messageRegister} from './message-addressing.js';
 import {handleAlliance,assertGuildJoinAllowed,treasuryGuard,treasuryContributionStatements,prepareRallyAttack,getAllianceDefense,rallyMarchStatements,rallyMarchCancellation} from './alliance.js';
 import {handleProtection,enrollProtection,prepareProtection,protectionBattleStatements,decorateProtectedTargets,protectionStatus} from './protection.js';
@@ -3122,7 +3123,7 @@ export default {
       if(authenticated)await requireAccountAccess(env.DB,authenticated);
       await verifyCourtResponse(env.DB,request);
       if(typeof ctx?.waitUntil==='function'&&path!==API+'/notifications/tick')ctx.waitUntil((async()=>{await backgroundMarchSweep(env,now);await dispatchNotifications(env,await getWorldClock(env.DB,now));})().catch(()=>{}));
-      const visible=await resolvePublicCourtOffices(env.DB,publicIdentities(resolved,request),now);
+      const visible=await resolvePublicCityHonors(env.DB,await resolvePublicCourtOffices(env.DB,publicIdentities(resolved,request),now),now,{getWorldClock,eventCastleCandidates});
       if(path.startsWith(API+'/players/')&&payload.player)await finishPublicProfiles(env.DB,visible,true);
       else if(path===API+'/players'&&!authenticated)await finishPublicProfiles(env.DB,visible,false);
       const defenseGuard=eventDefenseResponseGuards.get(request);

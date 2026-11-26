@@ -103,7 +103,7 @@ test('a new search or clearing a query starts at the first match while refresh r
   assert.equal(results.scrollTop, 245); assert(s.get('.navigation-favorites'));
 });
 
-test('the menu combines category and text filters and resets both on the next opening', () => {
+test('the menu retains combined filters and scroll on reopening and explicitly clears all conditions', () => {
   const s = fixture(); s.api.open();
   const category = s.get('#navigation-category'), query = s.get('#navigation-query'), results = s.get('#navigation-results');
   category.value = '合戦と天下'; category.dispatch('change');
@@ -111,8 +111,12 @@ test('the menu combines category and text filters and resets both on the next op
   assert.equal(results.querySelector('[data-navigation-target="view:officers"]'), null);
   query.value = '派遣'; query.dispatch('input'); assert(results.querySelector('[data-navigation-target="view:covert"]'));
   assert.equal(results.querySelector('[data-navigation-target="view:map"]'), null);
-  s.api.close(); s.api.open(); assert.equal(category.value, ''); assert.equal(query.value, '');
-  assert(results.querySelector('[data-navigation-target="view:officers"]'));
+  results.scrollTop = 145; s.api.close(); s.api.open();
+  assert.equal(category.value, '合戦と天下'); assert.equal(query.value, '派遣'); assert.equal(results.scrollTop, 145);
+  assert(results.querySelector('[data-navigation-target="view:covert"]'));
+  s.get('[data-navigation-reset]').click(); assert.equal(category.value, ''); assert.equal(query.value, '');
+  assert.equal(results.scrollTop, 0); assert(results.querySelector('[data-navigation-target="view:officers"]'));
+  assert.equal(s.doc.activeElement, query); assert(s.get('[data-navigation-reset]').disabled);
 });
 
 test('choosing a page delegates exactly once to its original control and updates the quick dock', () => {
@@ -128,7 +132,8 @@ test('disabled, removed and unknown routes cannot execute stale controls', () =>
   const s = fixture(); s.api.open(); const source = s.nav.querySelector('[data-view="army"]'); source.disabled = true;
   assert.equal(s.api.activate('view:army'), false); assert.deepEqual(s.calls, []); assert(s.api.isOpen());
   source.remove(); assert.equal(s.api.activate('view:army'), false); assert.equal(s.api.activate('action:attack'), false);
-  assert.deepEqual(s.calls, []); s.api.refresh(); assert(s.get('[data-navigation-quick="view:army"]').disabled);
+  assert.deepEqual(s.calls, []); s.api.refresh(); assert.equal(s.get('[data-navigation-quick="view:army"]'), null);
+  assert(!s.api.getDock().includes('view:army')); assert.deepEqual(s.calls, []);
 });
 
 test('new source destinations remain discoverable without maintaining a second route list', () => {
@@ -316,6 +321,81 @@ test('backdrop dismissal requires a pointer press outside and ignores dialog pad
   dialog.dispatch('pointerdown', s.get('#navigation-query')); dialog.dispatch('click', dialog, { clientX: 1, clientY: 1 }); assert(s.api.isOpen());
   dialog.dispatch('pointerdown', dialog); dialog.dispatch('click', dialog, { clientX: 1, clientY: 1 }); assert.equal(s.api.isOpen(), false);
   assert.deepEqual(s.calls, []);
+});
+
+
+test('personal dock selections swap duplicate slots, persist and delegate exactly once', () => {
+  const s = fixture({ touch: true }); s.api.open();
+  const first = s.get('[data-navigation-slot="0"]');
+  first.value = 'view:officers'; first.dispatch('change');
+  assert.deepEqual(s.api.getDock(), ['view:officers', 'view:map', 'view:army']);
+  assert.deepEqual(s.calls, []); assert(s.api.isOpen());
+  assert(s.api.setDockSlot(1, 'view:officers'));
+  assert.deepEqual(s.api.getDock(), ['view:map', 'view:officers', 'view:army']);
+  assert.equal(s.get('[data-navigation-slot="0"]').value, 'view:map');
+  assert.equal(s.get('[data-navigation-slot="1"]').value, 'view:officers');
+  assert.deepEqual(JSON.parse(s.storage.get(preferenceKey)).dock, ['view:map', 'view:officers', 'view:army']);
+  s.api.close(); s.get('[data-navigation-quick="view:officers"]').click(); s.drain();
+  assert.deepEqual(s.calls, ['view:officers']);
+  assert.equal(s.get('[data-navigation-quick="view:officers"]').getAttribute('aria-current'), 'page');
+  const next = fixture({ touch: true, storage: s.storage });
+  assert.deepEqual(next.api.getDock(), ['view:map', 'view:officers', 'view:army']);
+  next.api.open(); next.get('[data-navigation-reset-dock]').click();
+  assert.deepEqual(next.api.getDock(), ['view:town', 'view:map', 'view:army']);
+  assert.deepEqual(next.calls, []);
+});
+
+test('dock uses only live canonical sources and rejects unavailable or external destinations', () => {
+  const s = fixture(); s.api.open();
+  for (const [slot,key] of [[-1,'view:map'],[3,'view:map'],[0,'help:guide'],[0,'action:delete-save'],[0,'action:staff-hidden']]) {
+    assert.equal(s.api.setDockSlot(slot,key), false);
+  }
+  s.nav.querySelector('[data-view="officers"]').disabled = true;
+  assert.equal(s.api.setDockSlot(0,'view:officers'), false);
+  s.nav.querySelector('[data-view="officers"]').disabled = false;
+  assert(s.api.setDockSlot(0,'view:officers'));
+  s.nav.querySelector('[data-view="officers"]').hidden = true; s.api.refresh();
+  assert(!s.api.getDock().includes('view:officers')); assert.equal(s.get('[data-navigation-quick="view:officers"]'), null);
+  s.nav.querySelector('[data-view="officers"]').hidden = false; s.api.refresh();
+  assert.equal(s.api.getDock()[0], 'view:officers', 'Temporary availability must not destroy the saved preference');
+  s.nav.querySelector('[data-view="officers"]').disabled = true; s.api.refresh();
+  assert(s.get('[data-navigation-quick="view:officers"]').disabled);
+  s.get('[data-navigation-quick="view:officers"]').click(); assert.deepEqual(s.calls, []);
+});
+
+test('dock edits respect loading, title and other modal surfaces', () => {
+  const s = fixture();
+  for (const cls of ['at-title','is-loading']) {
+    s.doc.body.classList.add(cls); assert.equal(s.api.setDockSlot(0,'view:officers'), false); assert.equal(s.api.resetDock(), false); s.doc.body.classList.remove(cls);
+  }
+  const other = s.doc.createElement('dialog'); s.doc.body.append(other); other.showModal();
+  assert.equal(s.api.setDockSlot(0,'view:officers'), false); assert.equal(s.api.resetDock(), false);
+  assert.deepEqual(s.api.getDock(), ['view:town', 'view:map', 'view:army']); assert.deepEqual(s.calls, []);
+});
+
+test('dock accepts legacy preferences and survives malformed or denied storage', () => {
+  for (const dock of [['view:map','view:map','view:map'], ['<img>'], ['help:guide','view:map','view:army']]) {
+    const s = fixture({ storage: new Map([[preferenceKey, JSON.stringify({ dock })]]) });
+    assert.deepEqual(s.api.getDock(), ['view:town', 'view:map', 'view:army']);
+  }
+  const s = fixture({ storageDenied: true }); s.api.open();
+  assert(s.api.setDockSlot(0,'action:events')); assert.deepEqual(s.api.getDock(), ['action:events','view:map','view:army']);
+  assert(s.get('#navigation-result-status').textContent.includes('この起動中のみ'));
+  assert.deepEqual(s.calls, []);
+  s.api.close(); s.get('[data-navigation-quick="action:events"]').click();
+  assert.deepEqual(s.calls, ['action:events']);
+});
+
+test('purpose choices refine discovery without issuing game commands and reset restores all purposes', () => {
+  const s = fixture(); s.api.open();
+  const purposes = s.get('.navigation-purpose-row'); assert.equal(purposes.hidden, false);
+  s.get('[data-navigation-purpose="battle"]').click();
+  assert.equal(s.get('#navigation-category').value, '合戦と天下'); assert.equal(s.get('#navigation-query').value, '戦い');
+  assert(s.get('[data-navigation-target="view:roaming"]')); assert.equal(s.get('[data-navigation-target="view:officers"]'), null);
+  assert.equal(purposes.hidden, true); assert.deepEqual(s.calls, []);
+  s.get('[data-navigation-reset]').click(); assert.equal(purposes.hidden, false);
+  s.get('[data-navigation-purpose="records"]').click();
+  assert(s.get('[data-navigation-target="action:progress"]')); assert.deepEqual(s.calls, []);
 });
 
 let failed = 0;

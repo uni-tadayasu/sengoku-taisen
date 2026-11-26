@@ -1,0 +1,129 @@
+{
+  "preparedAtDateJST": "2026-11-26",
+  "purpose": "公知の作品情報を、リリース受付を公表している編集部へ個別に1通ずつ提供する。広告注文ではない。",
+  "deliveryStatus": "公開前の送信用原稿を準備済み・未送信。Ver.5.1.0の本番反映確認後にrootが送信する。",
+  "sourceVerifiedAtDateJST": "2026-11-26",
+  "releaseVersion": "5.1.0",
+  "preSendCheck": "Ver.5.1.0の公開完了と、城下町3タブ・スマホ3操作カスタマイズ・静かな同期・五都市の3D領主勲章・外観5商品と税込価格・最新城下町スクリーンショットの本番反映を確認してから送信する。公開未確認の間はprepared_not_sentを維持する。既送信の同内容を重複送信しない。",
+  "messages": [
+    {
+      "outlet": "ファミ通.com",
+      "to": "kgl-famitsu-release@ml.kadokawa.jp",
+      "source": "https://www.famitsu.com/contact",
+      "subject": "【更新情報】戦国ブラウザゲーム「戦国VS」Ver.5.1.0公開—城下町UI・スマホ操作を改善、外観5種を追加",
+      "body": "ファミ通.com 編集部 御中\n\nKASAI SOLUTIONS／戦国VSの開発・運営です。日本語の戦国ブラウザゲーム「戦国VS」のVer.5.1.0を、2026年11月26日に公開しました。ニュース・作品紹介の情報としてご案内いたします。\n\n【今回の更新】\n城下町の操作を「本拠」「施設」「報告」の3タブに整理しました。本拠の状況確認、施設の育成、領国の報告を切り替えて操作できます。また、スマートフォン・タブレットの下部には、よく使う3つの操作をプレイヤー自身で選んで配置できるようにしました。\n\n自動保存・同期の通常通知を抑え、入力中・閲覧中の画面が落ち着いて使えるよう更新処理を見直しました。また、江戸城・京都御所・二条御所・大坂城・名古屋城の領主には、都市ごとに異なるオリジナル3Dイラストの都市勲章を表示します。ほかのプレイヤーも、領主名の左・アイコンの右で確認できます。都市勲章はサーバーで確認した現在の領主に付く表示で、所有状況に応じて更新されます。有料の外観商品とは別の仕組みです。\n\n買い切りの外観アイテムを5種類追加しました。価格はいずれも税込です。\n・紅蓮の旗印：580円\n・白銀の旗印：580円\n・鳳凰の勲章：780円\n・桜雲の城下：980円\n・雪華の城下：980円\n\n追加商品は旗印・領主名の横に飾る勲章・城下町の背景を変更するもので、武将の能力、兵力、資源生産、指令回復を優遇する特典はありません。購入は任意です。\n\n公式紹介ページでは、初めての方向けの3ステップ案内、24秒の作品紹介動画、実ゲーム画面をまとめました。ゲームを始めるボタンや、紹介文・URLの共有操作も整えています。\n\n【ゲームの基本情報】\n「戦国VS」は、好きな城を本拠に選び、城下町の内政、武将の登用・軍団編成、城をめぐる合戦を楽しむ戦国戦略シミュレーションです。256人の武将、129の城と拠点、64種類の城下町施設を収録しています。\n\nPC・スマートフォン・タブレットのブラウザに対応し、アプリのインストールは不要です。城下町の育成・武将編成・合戦の基本プレイは無料で、有料の外観アイテムと月額支援は任意です。ひとりで試す場合は「端末だけで遊ぶ」を選べます。領主同士の対人戦・同盟・書状・交易は、領主登録後に利用できます。\n\n軍師AIが戦況から戦法や出陣兵数を提案します。ゲームUI・ガイドは日本語で、人物・城・勢力配置は史実を題材にしたゲーム独自の設定です。\n\n【確認用URL】\nゲーム本体：https://www.kasai-solutions-inc.com/\n作品紹介：https://www.kasai-solutions-inc.com/sengoku-vs/\n公式素材・実ゲーム画面：https://www.kasai-solutions-inc.com/press/\nYouTube紹介動画：https://www.youtube.com/watch?v=NWzewQEJyz0\n遊び方：https://www.kasai-solutions-inc.com/guide/\n料金・有料商品の範囲：https://www.kasai-solutions-inc.com/premium/\n\n素材ページには、画像・ロゴ、紹介文、実ゲーム画面4枚と紹介動画を掲載しています。動画・共有画像は公式イラストによる作品紹介で、実際の操作画面とは分けて案内しています。素材の利用にあたっては、作品名、公式URL、© KASAI SOLUTIONSの表記をお願いいたします。\n\n掲載をご検討いただけますと幸いです。確認事項がありましたら、本メールへの返信でお問い合わせください。\n\nKASAI SOLUTIONS／戦国VS\nhttps://www.kasai-solutions-inc.com/\n© KASAI SOLUTIONS",
+      "status": "prepared_not_sent",
+      "attachments": []
+    },
+    {
+      "outlet": "AUTOMATON",
+      "to": "press@automaton.am",
+      "source": "https://automaton-media.com/contact/",
+      "subject": "【情報提供】「戦国VS」Ver.5.1.0—城下町を3タブに整理、スマホの3操作を選べる戦国ブラウザ戦略",
+      "body": "AUTOMATON 編集部 御中\n\nKASAI SOLUTIONS／戦国VSの開発・運営です。日本語の戦国ブラウザゲーム「戦国VS」のVer.5.1.0を、2026年11月26日に公開しました。ニュース・作品紹介の情報としてご案内いたします。\n\n【今回の更新】\n城下町の操作を「本拠」「施設」「報告」の3タブに整理しました。本拠の状況確認、施設の育成、領国の報告を切り替えて操作できます。また、スマートフォン・タブレットの下部には、よく使う3つの操作をプレイヤー自身で選んで配置できるようにしました。\n\n自動保存・同期の通常通知を抑え、入力中・閲覧中の画面が落ち着いて使えるよう更新処理を見直しました。また、江戸城・京都御所・二条御所・大坂城・名古屋城の領主には、都市ごとに異なるオリジナル3Dイラストの都市勲章を表示します。ほかのプレイヤーも、領主名の左・アイコンの右で確認できます。都市勲章はサーバーで確認した現在の領主に付く表示で、所有状況に応じて更新されます。有料の外観商品とは別の仕組みです。\n\n買い切りの外観アイテムを5種類追加しました。価格はいずれも税込です。\n・紅蓮の旗印：580円\n・白銀の旗印：580円\n・鳳凰の勲章：780円\n・桜雲の城下：980円\n・雪華の城下：980円\n\n追加商品は旗印・領主名の横に飾る勲章・城下町の背景を変更するもので、武将の能力、兵力、資源生産、指令回復を優遇する特典はありません。購入は任意です。\n\n公式紹介ページでは、初めての方向けの3ステップ案内、24秒の作品紹介動画、実ゲーム画面をまとめました。ゲームを始めるボタンや、紹介文・URLの共有操作も整えています。\n\n【ゲームの基本情報】\n「戦国VS」は、好きな城を本拠に選び、城下町の内政、武将の登用・軍団編成、城をめぐる合戦を楽しむ戦国戦略シミュレーションです。256人の武将、129の城と拠点、64種類の城下町施設を収録しています。\n\nPC・スマートフォン・タブレットのブラウザに対応し、アプリのインストールは不要です。城下町の育成・武将編成・合戦の基本プレイは無料で、有料の外観アイテムと月額支援は任意です。ひとりで試す場合は「端末だけで遊ぶ」を選べます。領主同士の対人戦・同盟・書状・交易は、領主登録後に利用できます。\n\n軍師AIが戦況から戦法や出陣兵数を提案します。ゲームUI・ガイドは日本語で、人物・城・勢力配置は史実を題材にしたゲーム独自の設定です。\n\n【確認用URL】\nゲーム本体：https://www.kasai-solutions-inc.com/\n作品紹介：https://www.kasai-solutions-inc.com/sengoku-vs/\n公式素材・実ゲーム画面：https://www.kasai-solutions-inc.com/press/\nYouTube紹介動画：https://www.youtube.com/watch?v=NWzewQEJyz0\n遊び方：https://www.kasai-solutions-inc.com/guide/\n料金・有料商品の範囲：https://www.kasai-solutions-inc.com/premium/\n\n素材ページには、画像・ロゴ、紹介文、実ゲーム画面4枚と紹介動画を掲載しています。動画・共有画像は公式イラストによる作品紹介で、実際の操作画面とは分けて案内しています。素材の利用にあたっては、作品名、公式URL、© KASAI SOLUTIONSの表記をお願いいたします。\n\n掲載をご検討いただけますと幸いです。確認事項がありましたら、本メールへの返信でお問い合わせください。\n\nKASAI SOLUTIONS／戦国VS\nhttps://www.kasai-solutions-inc.com/\n© KASAI SOLUTIONS",
+      "status": "prepared_not_sent",
+      "attachments": []
+    },
+    {
+      "outlet": "GAME Watch",
+      "to": "game-watch@impress.co.jp",
+      "source": "https://game.watch.impress.co.jp/docs/common/contact.html",
+      "subject": "【ゲーム更新情報】「戦国VS」Ver.5.1.0公開：城下町3タブ・スマホ操作・五都市の領主勲章",
+      "body": "GAME Watch 編集部 御中\n\nKASAI SOLUTIONS／戦国VSです。PC・スマートフォン・タブレットのブラウザで遊べる戦国戦略ゲーム「戦国VS」のVer.5.1.0を、2026年11月26日に公開しました。ゲームの更新情報としてご案内いたします。\n\n今回の更新では、城下町の操作を「本拠」「施設」「報告」の3タブに整理し、スマホ・タブレットの下部に置く3つの操作をプレイヤー自身で選べるようにしました。\n\n自動保存・同期の通常通知を抑え、入力中・閲覧中の画面が落ち着いて使えるよう更新処理を見直しました。また、江戸城・京都御所・二条御所・大坂城・名古屋城の領主には、都市ごとに異なるオリジナル3Dイラストの都市勲章を表示します。ほかのプレイヤーも、領主名の左・アイコンの右で確認できます。都市勲章はサーバーで確認した現在の領主に付く表示で、所有状況に応じて更新されます。有料の外観商品とは別の仕組みです。\n\n任意購入の買い切り外観アイテムも5種類追加しました。紅蓮の旗印580円、白銀の旗印580円、鳳凰の勲章780円、桜雲の城下980円、雪華の城下980円で、すべて税込です。これらは旗印・名前の装飾・城下町の背景を変更する商品で、能力・兵力・資源生産・指令回復を優遇する特典はありません。\n\n「戦国VS」は、城下町の内政、武将の登用・編成、城をめぐる合戦を楽しむ日本語の戦国戦略シミュレーションです。256人の武将、129の城と拠点、64種類の城下町施設を収録しています。基本プレイは無料で、アプリのインストールは不要です。ひとりで試す場合は「端末だけで遊ぶ」を選べます。領主登録後には、対人戦・同盟・書状・交易を利用できます。有料の外観商品と月額支援は任意です。\n\nゲーム本体：https://www.kasai-solutions-inc.com/\n作品紹介：https://www.kasai-solutions-inc.com/sengoku-vs/\n公式素材・実ゲーム画面：https://www.kasai-solutions-inc.com/press/\n紹介動画（24秒）：https://www.youtube.com/watch?v=NWzewQEJyz0\n料金：https://www.kasai-solutions-inc.com/premium/\n\n素材ページには画像・ロゴ、作品概要、実ゲーム画面4枚と紹介動画を掲載しています。城下町のスクリーンショットは、撮影用デモ進行を使用したVer.5.1.0の名古屋城です。動画・共有画像は公式イラストによる作品紹介として、実際の操作画面と区別しています。紹介の際は作品名・公式URL・© KASAI SOLUTIONSの表記をお願いいたします。\n\nニュース・作品紹介の候補としてご検討いただけますと幸いです。確認事項は本メールへご返信ください。\n\nKASAI SOLUTIONS／戦国VS\nhttps://www.kasai-solutions-inc.com/\n© KASAI SOLUTIONS",
+      "status": "prepared_not_sent",
+      "attachments": []
+    },
+    {
+      "outlet": "Games Press",
+      "to": "inbox@gamespress.com",
+      "source": "https://www.gamespress.com/ja-JP/How-to-Submit-News",
+      "subject": "SENGOKU VS 5.1.0: updated castle-town UI, mobile controls and public city honors",
+      "body": "Hello Games Press team,\n\nPlease consider the following update announcement for your free editorial news submission service. The release is available now; there is no embargo. Downloadable artwork, actual game screenshots and fact sheets are linked below.\n\nSENGOKU VS 5.1.0 updates castle-town controls, customizable mobile navigation and public city honors\n\nNovember 26, 2026 — KASAI SOLUTIONS has released version 5.1.0 of SENGOKU VS (戦国VS), a Japanese-language Sengoku-era browser strategy game for desktop, smartphones and tablets.\n\nThe update organizes castle-town controls into three tabs: home base, facilities and reports. Players can choose the three actions shown in the bottom navigation on smartphones and tablets. Routine autosave and synchronization notifications have been reduced, with refresh behavior adjusted to preserve the interface while players read or type.\n\nCurrent lords of Edo Castle, Kyoto Imperial Palace, Nijo Palace, Osaka Castle and Nagoya Castle now receive distinct city honors illustrated with original 3D-style artwork. Other players can see these honors between the lord's avatar and name. City ownership is verified by the server, and the honors change with ownership. They are separate from optional paid cosmetic products.\n\nFive optional, one-time cosmetic purchases have also been added: 紅蓮の旗印 (vermilion banner), JPY 580; 白銀の旗印 (silver banner), JPY 580; 鳳凰の勲章 (phoenix medallion), JPY 780; 桜雲の城下 (cherry-blossom town), JPY 980; and 雪華の城下 (snow town), JPY 980. All listed prices include tax. These products change banners, name decorations or town scenery; they do not increase officer abilities, troop strength, resource production or command recovery.\n\nAbout SENGOKU VS\nPlayers develop a castle town, recruit and organize officers, and fight for castles in a strategy simulation inspired by Japan's Sengoku period. The game includes 256 officers, 129 castles and locations, and 64 facility types. Core gameplay is free and requires no app installation. A device-only mode lets players try the game without creating a lord account. Player-versus-player battles, alliances, letters and trading become available after lord registration. Cosmetic purchases and monthly support are optional. The game interface and official guide are in Japanese. Its characters, castles and faction arrangements use game-specific interpretations of historical material.\n\nPlay: https://www.kasai-solutions-inc.com/\nGame introduction: https://www.kasai-solutions-inc.com/sengoku-vs/\nPress assets and screenshots: https://www.kasai-solutions-inc.com/press/\nDownloadable press kit: https://www.kasai-solutions-inc.com/assets/promo/sengoku-vs-press-kit-20261126.zip\nEnglish fact sheet: https://www.kasai-solutions-inc.com/assets/promo/sengoku-vs-facts-en-20261126.txt\n24-second introduction video: https://www.youtube.com/watch?v=NWzewQEJyz0\nPricing and optional products: https://www.kasai-solutions-inc.com/premium/\n\nThe press kit contains artwork, logos, text and four actual game screenshots. The town screenshot shows Nagoya Castle in version 5.1.0 using demo progress; the other three captures are from version 5.0.5. The introduction video and social images use promotional illustrations and are identified separately from gameplay captures. Please credit SENGOKU VS, the official URL and © KASAI SOLUTIONS when using the supplied material.\n\nFor questions, please reply to this email.\n\nKASAI SOLUTIONS / SENGOKU VS\nhttps://www.kasai-solutions-inc.com/\n© KASAI SOLUTIONS",
+      "status": "prepared_not_sent",
+      "attachments": []
+    }
+  ],
+  "alternatives": [
+    {
+      "outlet": "4Gamer.net",
+      "url": "https://www.4gamer.net/secure/mail/form.php",
+      "category": "パブリッシャーおよびデベロッパーの皆様／ニュースリリースの送付について",
+      "notes": "正規フォーム。リリース用の公開メールアドレスは確認できていない。個人情報問い合わせ窓口を流用しない。"
+    }
+  ],
+  "implementationEvidence": {
+    "townTabs": {
+      "source": "app.js",
+      "labels": [
+        "本拠",
+        "施設",
+        "報告"
+      ],
+      "function": "townTabMarkup"
+    },
+    "mobileActions": {
+      "source": "navigation-ui.js",
+      "feature": "スマホ・タブレットの下部に置く3操作を選択・保存できる",
+      "persistentMenu": "メニューは別枠"
+    },
+    "cosmetics": {
+      "source": "premium-catalog.js",
+      "tax": "税込",
+      "payment": "買い切り",
+      "products": [
+        {
+          "name": "紅蓮の旗印",
+          "priceJPY": 580
+        },
+        {
+          "name": "白銀の旗印",
+          "priceJPY": 580
+        },
+        {
+          "name": "鳳凰の勲章",
+          "priceJPY": 780
+        },
+        {
+          "name": "桜雲の城下",
+          "priceJPY": 980
+        },
+        {
+          "name": "雪華の城下",
+          "priceJPY": 980
+        }
+      ],
+      "effects": "外観のみ。能力・兵力・資源生産・指令回復の優遇なし"
+    },
+    "existingGame": {
+      "officers": 256,
+      "locations": 129,
+      "facilityTypes": 64,
+      "basicPlay": "基本プレイ無料",
+      "localPlay": "端末だけで遊ぶを選べる",
+      "onlinePlay": "領主登録後に対人戦・同盟・書状・交易を利用できる"
+    },
+    "publication": "未確認。上記は作業ツリー上の実装確認。外部メールは本番公開後のみ。",
+    "cityHonors": {
+      "sources": [
+        "server/city-honors.js",
+        "avatar.js"
+      ],
+      "cities": [
+        "江戸城",
+        "京都御所",
+        "二条御所",
+        "大坂城",
+        "名古屋城"
+      ],
+      "art": "assets/city-honors/{id}-v1.webp",
+      "rule": "サーバーで確認した現在の領主にのみ表示。所有状況に応じて更新。課金商品とは別。"
+    },
+    "quietSync": {
+      "sources": [
+        "app.js",
+        "social.js"
+      ],
+      "feature": "通常の自動保存・同期通知を抑え、無変更の応答で表示を保つ"
+    }
+  }
+}

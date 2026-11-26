@@ -30,5 +30,7 @@ if __name__ == '__main__':
     # favicon design omits fine details; do not overwrite it by shrinking art.
     variants('castle-town', 'castle-town.webp', (400, 720, 1080, 1536))
     variants('moonlit-castle', 'premium/moonlit-castle-v1.png', (400, 720, 1080, 1536))
+    variants('sakura-town', 'premium/sakura-town-v1.webp', (400, 720, 1080, 1536))
+    variants('snow-town', 'premium/snow-town-v1.webp', (400, 720, 1080, 1536))
     variants('gold-banner', 'premium/gold-banner-v1.png', (160, 320, 512, 768), 82)
     variants('supporter-badge', 'premium/supporter-badge-v1.png', (48, 96, 224, 448, 640), 83)

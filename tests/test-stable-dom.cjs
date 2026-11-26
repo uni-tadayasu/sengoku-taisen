@@ -170,4 +170,21 @@ test('unavailable or failed native hit testing preserves the deterministic geome
  draw([['new',80],['a'],['b'],['c'],['d'],['e']]);assert.equal(pane.scrollTop,230);assert.equal(row.getBoundingClientRect().top,before);
 });
 
+test('mobile and tablet keyboard viewports anchor the content actually visible above the keyboard',()=>{
+ for(const width of [390,768]){
+  const {doc,host,pane}=scrollingList({documentScrolling:true});doc.defaultView.innerWidth=width;doc.defaultView.visualViewport={width,height:60,offsetTop:140,offsetLeft:0,scale:1};pane.scrollTop=150;
+  const row=host.querySelector('[data-row="d"]'),before=row.getBoundingClientRect().top,snapshot=captureScroll(host);
+  // A row above the visual viewport grows while the keyboard has panned the
+  // page. Anchoring a different, obscured row would leave this row displaced.
+  host.querySelector('[data-row="c"]').setAttribute('data-height','160');
+  assert(restoreScroll(snapshot));assert.equal(row.getBoundingClientRect().top,before,width+'px visible row');assert.equal(pane.scrollTop,210);
+ }
+});
+test('a keyboard/browser viewport change cancels delayed restoration without moving the document',()=>{
+ const {doc,host,pane}=scrollingList({documentScrolling:true});doc.defaultView.visualViewport={width:390,height:160,offsetTop:0,offsetLeft:0,scale:1};pane.scrollTop=150;
+ const snapshot=captureScroll(host);assert(restoreScroll(snapshot));doc.defaultView.visualViewport.offsetTop=40;doc.defaultView.visualViewport.height=120;
+ assert.equal(restoreScroll(snapshot),false);assert.equal(pane.scrollTop,150,'the browser owns its keyboard pan');
+ doc.defaultView.visualViewport.offsetTop=0;doc.defaultView.visualViewport.height=160;assert.equal(restoreScroll(snapshot),false,'an obsolete pending frame must not resume later');
+});
+
 for(const[name,run]of tests){run();console.log('PASS '+name);}console.log(`${tests.length} stable DOM scenarios passed with deterministic DOM fixtures; no browser launched.`);

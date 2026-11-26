@@ -8,7 +8,7 @@ const catalog = require('../premium-catalog.js');
 const { renderCatalog, createUI, normalizeContext, expiryLabel } = require('../premium.js');
 const root = path.resolve(__dirname, '..');
 const tests = [], test = (name, run) => tests.push([name, run]);
-const paymentBases = { 'gold-banner': 'https://buy.stripe.com/fZu6oI3Iwdcd5kn4Um9MY04', 'moonlit-castle': 'https://buy.stripe.com/dRmdRa6UI2xz6or1Ia9MY05', supporter: 'https://buy.stripe.com/7sY8wQdj6dcdbILaeG9MY06' };
+const paymentBases = { 'gold-banner': 'https://buy.stripe.com/fZu6oI3Iwdcd5kn4Um9MY04', 'moonlit-castle': 'https://buy.stripe.com/dRmdRa6UI2xz6or1Ia9MY05', supporter: 'https://buy.stripe.com/7sY8wQdj6dcdbILaeG9MY06', 'vermilion-banner': 'https://buy.stripe.com/aFa8wQ3Iw5JL1479aC9MY07', 'silver-banner': 'https://buy.stripe.com/aFacN65QE4FHeUXaeG9MY08', 'phoenix-medallion': 'https://buy.stripe.com/8x2aEY5QE5JL00386y9MY09', 'sakura-town': 'https://buy.stripe.com/3cI6oIfre5JLeUX5Yq9MY0a', 'snow-town': 'https://buy.stripe.com/28EaEYfrec893cfeuW9MY0b' };
 const checkoutURL = (id, reference = 'a'.repeat(32)) => paymentBases[id] + '?client_reference_id=' + reference;
 const drain = async () => { for (let i = 0; i < 8; i++) await Promise.resolve(); };
 const deferred = () => { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
@@ -106,13 +106,14 @@ function setup(initial = ready(), options = {}) {
 }
 function assertUnavailable(container) {
   assert.equal(container.querySelectorAll('[data-premium-equip]').length, 0);
-  const buttons = container.querySelectorAll('[data-premium-purchase]'); assert.equal(buttons.length, 3);
+  const buttons = container.querySelectorAll('[data-premium-purchase]'); assert.equal(buttons.length, 8);
   for (const button of buttons) { assert.equal(button.tagName, 'BUTTON'); assert.equal(button.disabled, true); assert.equal(button.getAttribute('href'), null); }
 }
 
-test('the three finished products have fixed prices, real artwork and no gameplay benefit', () => {
+test('the eight finished products have fixed prices, real artwork and no gameplay benefit', () => {
   assert.deepEqual(catalog.getProducts().map(product => [product.id, product.priceYen, product.billingPeriod, product.slot]), [
-    ['gold-banner', 480, 'one_time', 'nameplate'], ['moonlit-castle', 980, 'one_time', 'town'], ['supporter', 780, 'month', 'badge']
+    ['gold-banner', 480, 'one_time', 'nameplate'], ['moonlit-castle', 980, 'one_time', 'town'], ['supporter', 780, 'month', 'badge'],
+    ['vermilion-banner', 580, 'one_time', 'nameplate'], ['silver-banner', 580, 'one_time', 'nameplate'], ['phoenix-medallion', 780, 'one_time', 'badge'], ['sakura-town', 980, 'one_time', 'town'], ['snow-town', 980, 'one_time', 'town']
   ]);
   for (const product of catalog.getProducts()) {
     assert.equal(product.taxIncluded, true); assert.equal(product.priceIsTentative, false); assert.equal(product.transferable, false); assert.equal(product.gameplayBenefits, false);
@@ -132,7 +133,7 @@ test('only the correct product destination with one opaque reference is accepted
 test('the public page renders real artwork and game entry links, without direct checkout or ownership', () => {
   const html = renderCatalog({ catalog, surface: 'public', assetPrefix: '../', gamePrefix: '../', context: ready({ products: [{ id: 'gold-banner', owned: true, equipped: true }] }) });
   const { doc } = documentFixture(), section = doc.createElement('section'); section.innerHTML = html; doc.body.append(section);
-  const links = section.querySelectorAll('[data-premium-purchase]'); assert.equal(links.length, 3);
+  const links = section.querySelectorAll('[data-premium-purchase]'); assert.equal(links.length, 8);
   for (const [index, product] of catalog.getProducts().entries()) { assert.equal(links[index].tagName, 'A'); assert.equal(links[index].getAttribute('href'), '../?premium=' + product.id); assert(html.includes('../' + product.art.src)); }
   assert.doesNotMatch(html, /buy\.stripe\.com|data-premium-equip|data-premium-account|予定価格|販売準備中/);
   assert.match(section.textContent, /月額780円（税込）で自動更新/); assert.match(section.textContent, /現在の利用期間の末日/);
@@ -142,6 +143,27 @@ test('the public page renders real artwork and game entry links, without direct 
   assert.equal(preview.getAttribute('data-premium-selected'), 'gold-banner'); assert.equal(preview.querySelector('[data-premium-landscape]').getAttribute('src'), '../assets/castle-town.webp?v=4.9.10-20261123');
   preview.dispatch('click', preview.querySelector('[data-premium-preview="moonlit-castle"]'));
   assert.equal(preview.querySelector('[data-premium-landscape]').getAttribute('src'), '../assets/premium/moonlit-castle-v1.webp'); ui.dispose();
+});
+
+test('all five new previews use their actual asset and category filters keep every item reachable', () => {
+  const {doc}=documentFixture(),section=doc.createElement('section');
+  section.innerHTML=renderCatalog({catalog,surface:'public',assetPrefix:'../',gamePrefix:'../'});doc.body.append(section);
+  const ui=createUI({document:doc,catalog});ui.mount(section);
+  const container=section.querySelector('[data-premium-catalog]');
+  for(const id of ['vermilion-banner','silver-banner','phoenix-medallion','sakura-town','snow-town']){
+    const product=catalog.getProduct(id);
+    container.dispatch('click',container.querySelector('[data-premium-preview="'+id+'"]'));
+    const stage=container.querySelector('[data-premium-stage]');
+    assert.equal(stage.getAttribute('data-premium-preview-slot'),product.slot);
+    const picture=stage.querySelector(product.slot==='nameplate'?'.premium-preview-banner':product.slot==='badge'?'.premium-preview-supporter':'[data-premium-landscape]');
+    assert.equal(picture.getAttribute('src'),'../'+product.art.src);
+  }
+  for(const [slot,count] of [['nameplate',3],['town',3],['badge',2],['all',8]]){
+    const button=container.querySelector('[data-premium-filter="'+slot+'"]');container.dispatch('click',button);
+    const visible=container.querySelectorAll('[data-premium-slot]').filter(item=>!item.hidden);
+    assert.equal(visible.length,count);assert.equal(button.getAttribute('aria-pressed'),'true');
+  }
+  ui.dispose();
 });
 
 test('loading, unready, anonymous, offline, error and banned states never allow purchase or equip', async () => {

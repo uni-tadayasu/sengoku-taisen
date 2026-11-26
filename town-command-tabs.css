@@ -1,0 +1,43 @@
+/* One active command panel keeps the town readable without dropping live data. */
+#app.chronicle-shell #main .town-console > [role="tabpanel"][hidden] { display: none !important; }
+#app.chronicle-shell #main .town-console > [role="tabpanel"] { min-width: 0; scroll-margin-top: 76px; }
+#app.chronicle-shell #main .town-console-nav > [role="tab"] { min-height: 44px; }
+#app.chronicle-shell #main .town-console-nav > [aria-selected="true"] {
+  color: #ffebbf; border-color: #d9b46f; background: linear-gradient(135deg,#574632,#333832);
+  box-shadow: inset 0 -2px #d9b46f;
+}
+#app.chronicle-shell #main .town-console-nav > [role="tab"]:focus-visible {
+  outline: 2px solid #f4cd86; outline-offset: -4px;
+}
+#app.chronicle-shell #main .town-command-shortcuts {
+  display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 6px;
+  min-width: 0; padding: 10px; border-top: 1px solid #ba9c6454; background: #12222d;
+}
+#app.chronicle-shell #main .town-command-shortcuts > button {
+  display: flex; align-items: center; justify-content: center; gap: 7px;
+  min-width: 0; min-height: 44px; padding: 9px 7px; border: 1px solid #ab95624d;
+  border-radius: 6px; color: #f2dfba; background: #213440; background-image: none !important;
+  font: inherit; font-size: .875rem; line-height: 1.4; cursor: pointer;
+}
+#app.chronicle-shell #main .town-command-shortcuts .icon { width: 19px; height: 19px; flex: none; color: #dfba78; }
+#app.chronicle-shell #main .town-command-shortcuts > button:focus-visible { outline: 2px solid #f4cd86; outline-offset: -3px; }
+html.sengoku-desktop-fit #app.chronicle-shell #main .town-workspace .town-panel {
+  grid-template-rows: auto minmax(0,1fr) auto auto;
+}
+html.sengoku-desktop-fit #app.chronicle-shell #main .town-command-shortcuts { grid-row: 3; }
+html.sengoku-desktop-fit #app.chronicle-shell #main .town-workspace .town-premium-lord { grid-row: 4; }
+html:not(.sengoku-desktop-fit) #app.chronicle-shell #main .town-workspace > .town-console {
+  display: flex; flex-direction: column; order: 2; gap: 12px; min-width: 0; margin-top: 12px;
+}
+html:not(.sengoku-desktop-fit) #app.chronicle-shell #main .town-console-nav { order: 0; margin: 0; }
+html:not(.sengoku-desktop-fit) #app.chronicle-shell #main .town-console > [role="tabpanel"] { order: 1; margin-top: 0; }
+@media (max-width:580px) {
+  #app.chronicle-shell #main .town-command-shortcuts { grid-template-columns: repeat(2,minmax(0,1fr)); padding: 8px; }
+}
+@media (hover:hover) {
+  #app.chronicle-shell #main .town-command-shortcuts > button:hover { border-color: #deb770; background: #2b414e; }
+}
+@media (forced-colors:active) {
+  #app.chronicle-shell #main .town-console-nav > [aria-selected="true"] { color: HighlightText; background: Highlight; border-color: Highlight; }
+  #app.chronicle-shell #main .town-command-shortcuts > button { color: ButtonText; background: ButtonFace; border-color: ButtonText; }
+}

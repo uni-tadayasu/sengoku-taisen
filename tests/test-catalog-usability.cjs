@@ -56,13 +56,36 @@ test('IME waits for composition end, applies once and preserves the search field
  handlers.get('compositionend')({target});assert.equal(c.filter.q,'徳川');assert.equal(patches.length,1);
  handlers.get('input')({target,isComposing:false});assert.equal(patches.length,1);assert.equal(target.value,'徳川');
 });
-test('town shortcuts scroll only the nearest pane and keep sticky controls clear',()=>{
+test('town tabs switch a single accessible panel, preserve live content and scroll only when requested',()=>{
  for(const desktop of [true,false]){
-  const calls=[],root={scrollTop:100,scrollLeft:0,scrollTo:options=>calls.push(['root',options]),getBoundingClientRect:()=>({top:0})},nav={getBoundingClientRect:()=>({height:54})},target={getBoundingClientRect:()=>({top:500})},header={getBoundingClientRect:()=>({height:110})},announcement={getBoundingClientRect:()=>({height:48})};
-  const pane={parentElement:root,scrollTop:100,scrollLeft:0,scrollHeight:desktop?1000:0,clientHeight:desktop?400:0,contains:node=>node===target,querySelector:()=>nav,getBoundingClientRect:()=>({top:100}),scrollTo:options=>calls.push(['pane',options])};
-  const nodes={'#town-console':pane,'#town-facilities-section':target,'.topbar':header,'#announcement-bar':announcement};
-  const c={currentView:'town',interactionEpoch:0,document:{scrollingElement:root},$:selector=>nodes[selector],window:{getComputedStyle:node=>({overflowY:node===pane&&desktop?'auto':'visible',position:node===nav?(desktop?'sticky':'static'):node===header||node===announcement?'sticky':'static'})}};
-  vm.createContext(c);vm.runInContext(fn('jumpTownSection'),c);c.jumpTownSection('town-facilities-section');assert.equal(calls.length,1);assert.equal(calls[0][0],desktop?'pane':'root');assert.equal(calls[0][1].top,desktop?434:430);assert.equal(c.interactionEpoch,1);c.jumpTownSection('arbitrary-id');assert.equal(calls.length,1);c.currentView='map';c.jumpTownSection('town-facilities-section');assert.equal(calls.length,1);
+  const {host,doc}=setup(),calls=[],ids=['town-overview','town-facilities-section','town-reports-section'];
+  doc.documentElement={classList:{contains:()=>desktop}};
+  const c={currentView:'town',townSection:ids[0],townSections:ids,interactionEpoch:0,icon:()=>'',document:doc,$:selector=>host.querySelector(selector),refreshLiveControls(){calls.push(['live']);},refreshJobTimers(){},window:{getComputedStyle:node=>({overflowY:node.id==='main-scroll'?'auto':'visible',position:'static'})}};
+  vm.createContext(c);vm.runInContext(['townPanelAttributes','townTabMarkup','syncTownSections','jumpTownSection','townSectionKeydown'].map(fn).join('\n'),c);
+  const markup=()=>'<div id="main-scroll"><aside id="town-console"><nav class="town-console-nav" role="tablist">'+c.townTabMarkup()+'</nav>'+ids.map(id=>'<section id="'+id+'" '+c.townPanelAttributes(id)+'><button data-action="building">Live content '+id+'</button></section>').join('')+'</aside></div>';
+  host.innerHTML=markup();const pane=host.querySelector('#town-console'),root=doc.scrollingElement,nav=pane.querySelector('nav');
+  root.scrollTop=100;root.scrollLeft=0;root.scrollTo=options=>calls.push(['root',options]);pane.scrollTo=options=>calls.push(['pane',options]);
+  nav.getBoundingClientRect=()=>({top:500,height:54});
+  const facilities=host.querySelector('#town-facilities-section'),control=facilities.querySelector('button');
+  assert(facilities.hasAttribute('hidden'));assert(facilities.hasAttribute('inert'));
+  c.jumpTownSection('town-facilities-section');assert.equal(c.townSection,'town-facilities-section');
+  assert(!facilities.hasAttribute('hidden'));assert(!facilities.hasAttribute('inert'));assert.strictEqual(facilities.querySelector('button'),control);
+  assert.equal(host.querySelector('#town-facilities-section-tab').getAttribute('aria-selected'),'true');assert.equal(host.querySelector('#town-facilities-section-tab').getAttribute('tabindex'),'0');
+  for(const id of [ids[0],ids[2]]){assert(host.querySelector('#'+id).hasAttribute('hidden'));assert(host.querySelector('#'+id).hasAttribute('inert'));assert.equal(host.querySelector('#'+id+'-tab').getAttribute('tabindex'),'-1');}
+  const scrolling=calls.filter(([type])=>type!=='live');assert.equal(scrolling.length,1);assert.equal(scrolling[0][0],desktop?'pane':'root');assert.equal(scrolling[0][1].top,desktop?0:588);
+  control.textContent='Updated Lv.2';c.syncTownSections();assert.equal(control.textContent,'Updated Lv.2');assert.equal(calls.filter(([type])=>type!=='live').length,1,'Background reconciliation must never replay a scroll');
+  control.focus();c.jumpTownSection('town-reports-section',{scroll:false});assert.equal(doc.activeElement.id,'town-reports-section-tab');assert.equal(calls.filter(([type])=>type!=='live').length,1);
+  host.innerHTML=markup();assert(!host.querySelector('#town-reports-section').hasAttribute('hidden'),'A later render preserves the selected tab');assert(host.querySelector('#town-facilities-section').hasAttribute('hidden'));
+  const before=calls.length;c.jumpTownSection('arbitrary-id');c.currentView='map';c.jumpTownSection(ids[0]);assert.equal(calls.length,before);
  }
+});
+test('town tab keyboard travel wraps and respects modifiers without changing game actions',()=>{
+ const {host,doc}=setup(),ids=['town-overview','town-facilities-section','town-reports-section'],calls=[];
+ const c={townSection:ids[0],townSections:ids,icon:()=>'',jumpTownSection:(id,options)=>calls.push([id,options])};
+ vm.createContext(c);vm.runInContext(['townTabMarkup','townSectionKeydown'].map(fn).join('\n'),c);host.innerHTML='<nav class="town-console-nav">'+c.townTabMarkup()+'</nav>';
+ for(const [key,from,to] of [['ArrowRight',0,1],['ArrowLeft',0,2],['Home',2,0],['End',0,2]]){
+  const event={key,target:host.querySelector('#'+ids[from]+'-tab'),preventDefault(){this.defaultPrevented=true;}};c.townSectionKeydown(event);assert(event.defaultPrevented);assert.equal(calls.at(-1)[0],ids[to]);assert.equal(calls.at(-1)[1].scroll,false);assert.equal(calls.at(-1)[1].focus,true);
+ }
+ const before=calls.length;c.townSectionKeydown({key:'ArrowRight',ctrlKey:true,target:host.querySelector('button')});assert.equal(calls.length,before);
 });
 console.log(`${count} catalog usability and assignment regression checks passed.`);

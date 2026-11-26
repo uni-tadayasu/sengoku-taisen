@@ -12,13 +12,15 @@ const PRODUCTS={
   'moonlit-castle':{amount:980,mode:'payment',slot:'town',link:'plink_1UeEg9L3ZjL9QUmf0Jiw1Inq',price:'price_1UeEfwL3ZjL9QUmfMZSVlcyg',product:'prod_VfZpGdkUhwkdix',url:'https://buy.stripe.com/dRmdRa6UI2xz6or1Ia9MY05'},
   supporter:{amount:780,mode:'subscription',slot:'badge',link:'plink_1UeEiNL3ZjL9QUmf5805BE1t',price:'price_1UeEiFL3ZjL9QUmfkthlf1SJ',product:'prod_VfZr9Vag05JWrT',url:'https://buy.stripe.com/7sY8wQdj6dcdbILaeG9MY06'}
 };
+const EXTRA_PRODUCTS={"vermilion-banner":{"slot":"nameplate","amount":580,"mode":"payment","link":"plink_1Ufq0iL3ZjL9QUmfIWm7MlvY","price":"price_1Ufq0OL3ZjL9QUmf9LJWwrDP","url":"https://buy.stripe.com/aFa8wQ3Iw5JL1479aC9MY07","product":"prod_sengokuvs_20261126_vermilion_banner"},"silver-banner":{"slot":"nameplate","amount":580,"mode":"payment","link":"plink_1Ufq0jL3ZjL9QUmfnDoaBTMU","price":"price_1Ufq0VL3ZjL9QUmfZWpAzq76","url":"https://buy.stripe.com/aFacN65QE4FHeUXaeG9MY08","product":"prod_sengokuvs_20261126_silver_banner"},"phoenix-medallion":{"slot":"badge","amount":780,"mode":"payment","link":"plink_1Ufq0jL3ZjL9QUmfWThYEpqL","price":"price_1Ufq0WL3ZjL9QUmfgJALQNy2","url":"https://buy.stripe.com/8x2aEY5QE5JL00386y9MY09","product":"prod_sengokuvs_20261126_phoenix_medallion"},"sakura-town":{"slot":"town","amount":980,"mode":"payment","link":"plink_1Ufq0kL3ZjL9QUmfWmqjwuB7","price":"price_1Ufq0XL3ZjL9QUmfZn6HpE02","url":"https://buy.stripe.com/3cI6oIfre5JLeUX5Yq9MY0a","product":"prod_sengokuvs_20261126_sakura_town"},"snow-town":{"slot":"town","amount":980,"mode":"payment","link":"plink_1Ufq0lL3ZjL9QUmfn5BGoLuI","price":"price_1Ufq0XL3ZjL9QUmfT3rgvT9j","url":"https://buy.stripe.com/28EaEYfrec893cfeuW9MY0b","product":"prod_sengokuvs_20261126_snow_town"}};
+const configFor=key=>PRODUCTS[key]||EXTRA_PRODUCTS[key];
 const copy=value=>JSON.parse(JSON.stringify(value));
 const id=prefix=>prefix+crypto.randomUUID().replaceAll('-','');
 const unix=h=>Math.floor(h.now/1000);
 const post=(actor,body,expected=200)=>({method:'POST',token:actor?.token,body,expected});
-const premium=async(h,actor)=>(await h.api('/premium',{token:actor.token})).data;
+const premium=async(h,actor)=>(await h.api('/premium?catalog=3',{token:actor.token})).data;
 const product=(value,key)=>value.products.find(item=>item.id===key);
-const equip=(h,actor,key,slot=PRODUCTS[key]?.slot,expected=200)=>h.api('/premium/appearance',{method:'PUT',token:actor.token,body:{productId:key,slot},expected});
+const equip=(h,actor,key,slot=configFor(key)?.slot,expected=200)=>h.api('/premium/appearance?catalog=3',{method:'PUT',token:actor.token,body:{productId:key,slot},expected});
 const tables=h=>Object.fromEntries(h.sql.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'premium_%' ORDER BY name").all().map(({name})=>[name,h.sql.prepare('SELECT * FROM '+name).all().map(row=>JSON.stringify(row)).sort()]));
 const savedRows=h=>h.sql.prepare('SELECT * FROM player_saves ORDER BY user_id').all();
 const grants=(h,actor)=>h.sql.prepare('SELECT * FROM premium_grants WHERE user_id=?').all(actor.user.id);
@@ -35,7 +37,7 @@ function deliver(h,value,{expected=200,raw=JSON.stringify(value),timestamp=unix(
 async function order(h,actor,key){
   const result=(await h.api('/premium/checkout',post(actor,{productId:key}))).data;
   assert.equal(result.ok,true);assert.equal(result.productId,key);
-  const url=new URL(result.url),expected=new URL(PRODUCTS[key].url);
+  const url=new URL(result.url),expected=new URL(configFor(key).url);
   assert.equal(url.origin,expected.origin);assert.equal(url.pathname,expected.pathname);
   assert.deepEqual([...url.searchParams.keys()],['client_reference_id']);
   const reference=url.searchParams.get('client_reference_id');assert.match(reference,/^[A-Za-z0-9_-]{24,200}$/);
@@ -43,7 +45,7 @@ async function order(h,actor,key){
   return {reference,result};
 }
 function purchase(h,key,reference,{subscription=id('sub_'),customer=id('cus_'),start=unix(h),end=start+30*86400}={}){
-  const config=PRODUCTS[key],session=id('cs_live_'),intent=id('pi_'),chargeId=id('ch_'),invoice=id('in_');
+  const config=configFor(key),session=id('cs_live_'),intent=id('pi_'),chargeId=id('ch_'),invoice=id('in_');
   const checkout={id:session,object:'checkout.session',livemode:true,created:unix(h),payment_link:config.link,client_reference_id:reference,mode:config.mode,amount_total:config.amount,currency:'jpy',payment_status:'paid',status:'complete',payment_intent:config.mode==='payment'?intent:null,subscription:config.mode==='subscription'?subscription:null,invoice:config.mode==='subscription'?invoice:null,customer:config.mode==='subscription'?customer:null};
   const charge={id:chargeId,object:'charge',livemode:true,created:unix(h),payment_intent:intent,amount:config.amount,amount_captured:config.amount,amount_refunded:0,currency:'jpy',paid:true,captured:true,refunded:false,status:'succeeded'};
   const bill={id:invoice,object:'invoice',livemode:true,created:unix(h),customer,currency:'jpy',status:'paid',billing_reason:'subscription_cycle',amount_due:780,amount_paid:780,amount_remaining:0,amount_overpaid:0,subtotal:780,total:780,parent:{type:'subscription_details',subscription_details:{subscription}},lines:{object:'list',has_more:false,data:[{id:id('il_'),object:'line_item',amount:780,subtotal:780,currency:'jpy',quantity:1,quantity_decimal:'1',discount_amounts:[],taxes:[],parent:{type:'subscription_item_details',subscription_item_details:{subscription,subscription_item:id('si_'),proration:false}},pricing:{type:'price_details',price_details:{price:PRODUCTS.supporter.price,product:PRODUCTS.supporter.product},unit_amount_decimal:'780'},period:{start,end}}]},period_start:start-86400,period_end:start,status_transitions:{paid_at:unix(h)}};
@@ -92,7 +94,17 @@ await scope('readiness and account authentication are required before issuing a 
   await deliver(h,event(h,'unhandled.fixture',{id:id('fixture_')}),{expected:503});
   h.env.STRIPE_WEBHOOK_SECRET=SECRET;
   const current=await premium(h,actor);assert.equal(current.player.id,actor.user.id);assert.deepEqual(current.player.evaluation,actor.user.evaluation);assert.equal(current.ready,true);assert.equal(current.serverNow,new Date(h.now).toISOString());
-  assert.deepEqual(current.products.map(p=>p.id).sort(),Object.keys(PRODUCTS).sort());assert(current.products.every(p=>!p.owned));
+  assert.deepEqual(current.products.map(p=>p.id).sort(),[...Object.keys(PRODUCTS),...Object.keys(EXTRA_PRODUCTS)].sort());assert(current.products.every(p=>!p.owned));
+});
+
+await scope('legacy catalog clients retain the three-product response while the current release receives all eight',async h=>{
+  const actor=await h.session('旧版を使う領主');
+  const legacy=(await h.api('/premium',{token:actor.token})).data;
+  assert.deepEqual(legacy.products.map(item=>item.id),Object.keys(PRODUCTS));
+  const p=purchase(h,'gold-banner',(await order(h,actor,'gold-banner')).reference);await complete(h,p);await equip(h,actor,'gold-banner');
+  const owned=(await h.api('/premium',{token:actor.token})).data;
+  assert.equal(owned.products.length,3);assert.equal(product(owned,'gold-banner').owned,true);assert.equal(owned.appearance.nameplate,'gold-banner');
+  assert.equal((await premium(h,actor)).products.length,8);
 });
 
 await scope('webhook verification checks the raw body, signature age, live mode and supported snapshot version',async h=>{
@@ -398,6 +410,33 @@ await scope('historical names lose purchase marks on holds, refunds, BAN and exa
   h.now=payments.supporter.end*1000-1;assert.deepEqual((await appearance()).ownedProducts,['moonlit-castle','supporter']);
   h.now++;assert.deepEqual((await appearance()).ownedProducts,['moonlit-castle']);
   assert.equal(h.sql.prepare('SELECT result_json FROM field_battles WHERE id=?').get(battle.id).result_json,JSON.stringify(battle));
+});
+await scope('five new one-time cosmetics require matching paid evidence, switch within each slot, and revoke on refund',async h=>{
+  const actor=await h.session('新装の領主'),other=await h.session('別の領主'),payments={};
+  for(const [key,config] of Object.entries(EXTRA_PRODUCTS)){
+    const {reference}=await order(h,actor,key),p=purchase(h,key,reference);payments[key]=p;
+    await equip(h,other,key,config.slot,403);
+    await deliver(h,event(h,'checkout.session.completed',{...p.checkout,payment_status:'unpaid'}));
+    await deliver(h,event(h,'charge.succeeded',p.charge));
+    assert.equal(product(await premium(h,actor),key).owned,false);
+    const paid=event(h,'checkout.session.async_payment_succeeded',p.checkout);
+    await deliver(h,paid);await deliver(h,paid);
+    assert.equal(product(await premium(h,actor),key).owned,true);assert.equal(product(await premium(h,other),key).owned,false);
+    await equip(h,actor,key);
+    const equipped=await premium(h,actor);assert.equal(equipped.appearance[config.slot],key);
+    assert.equal(equipped.products.filter(item=>item.equipped&&configFor(item.id).slot===config.slot).length,1);
+    await h.api('/premium/checkout',post(actor,{productId:key},409));
+    assert.equal(grants(h,actor).filter(g=>g.product_id===key).length,1);
+  }
+  const before=await premium(h,actor);assert.equal(before.appearance.nameplate,'silver-banner');assert.equal(before.appearance.town,'snow-town');assert.equal(before.appearance.badge,'phoenix-medallion');
+  await equip(h,actor,'vermilion-banner');await equip(h,actor,'sakura-town');
+  const updated=await premium(h,actor);assert.equal(updated.appearance.nameplate,'vermilion-banner');assert.equal(updated.appearance.town,'sakura-town');
+  const p=payments['sakura-town'];
+  await deliver(h,event(h,'refund.created',{id:id('re_'),object:'refund',charge:p.chargeId,payment_intent:p.intent,amount:980,currency:'jpy',status:'succeeded'}));
+  const refunded=await premium(h,actor);assert.equal(product(refunded,'sakura-town').owned,false);assert.equal(refunded.appearance.town,null);assert.equal(product(refunded,'snow-town').owned,true);
+  assert.equal(refunded.appearance.nameplate,'vermilion-banner');assert.equal(refunded.appearance.badge,'phoenix-medallion');
+  await h.api('/premium/appearance',{method:'PUT',token:actor.token,body:{slot:'nameplate',productId:null}});
+  assert.equal((await premium(h,actor)).appearance.nameplate,null);
 });
 }finally{globalThis.fetch=originalFetch;}
 assert.equal(externalRequests,0,'Fixture suite must never make a real payment or external network request');

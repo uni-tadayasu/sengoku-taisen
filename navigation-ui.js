@@ -3,6 +3,13 @@
   'use strict';
   const PREFERENCE_KEY = 'sengoku-navigation-preferences-v1';
   const FAVORITE_LIMIT = 6, RECENT_LIMIT = 5;
+  const DEFAULT_DOCK = ['view:town', 'view:map', 'view:army'];
+  const PURPOSES = [
+    ['develop', '城を育てる', '城と内政', ''],
+    ['battle', '合戦へ出る', '合戦と天下', '戦い'],
+    ['army', '武将を整える', '武将と軍団', ''],
+    ['records', '任務・報酬を探す', '交流・記録', '報酬']
+  ];
   const GROUPS = ['城と内政', '合戦と天下', '武将と軍団', '交流・記録', '設定・案内', 'その他'];
   const DETAILS = {
     'view:town': ['城と内政', '施設の増築と本拠の成長', 'まち 城下 施設 建設 建築 増築 育成 レベル上げ 資源 金銭 お金 兵糧 木材 石材'],
@@ -59,11 +66,14 @@
     const dialog = doc.createElement('dialog');
     if (typeof dialog.showModal !== 'function') return null;
     let initialized = false, frame = 0, returnFocus = null, restoreFocus = true, entries = [], signature = '', pendingNavigation = null;
-    let favorites = [], recent = [], railSignature = '';
+    let favorites = [], recent = [], dockKeys = [...DEFAULT_DOCK], railSignature = '', dockOptionsSignature = '';
+    let rememberedScroll = 0;
     let backdropPointer = false;
     try {
       const saved = JSON.parse(win.localStorage?.getItem(PREFERENCE_KEY) || 'null');
       favorites = preferenceKeys(saved?.favorites, FAVORITE_LIMIT); recent = preferenceKeys(saved?.recent, RECENT_LIMIT);
+      const savedDock = preferenceKeys(saved?.dock, DEFAULT_DOCK.length).filter(key => !key.startsWith('help:'));
+      if (savedDock.length === DEFAULT_DOCK.length) dockKeys = savedDock;
     } catch (_) { /* Unavailable or malformed preferences must never block navigation. */ }
     const removers = [], observers = [], quickButtons = new Map();
     const raf = win.requestAnimationFrame?.bind(win) || (fn => win.setTimeout(fn, 16));
@@ -129,27 +139,77 @@
     favoritesRail.className = 'navigation-favorites-rail'; favoritesRail.hidden = true;
     favoritesRail.setAttribute('aria-label', 'お気に入りの機能');
     const dock = doc.createElement('div'); dock.className = 'navigation-quick-dock';
-    for (const [key, label] of [['view:town', '城下町'], ['view:map', '天下地図'], ['view:army', '軍団編成'], ['menu', 'メニュー']]) {
+    for (const [slot, [key, label]] of [['view:town', '城下町'], ['view:map', '天下地図'], ['view:army', '軍団編成'], ['menu', 'メニュー']].entries()) {
       const button = doc.createElement('button'); button.type = 'button'; button.className = 'nav-item navigation-quick';
       button.setAttribute('data-navigation-quick', key);
       button.innerHTML = svg('menu') + '<span>' + label + '</span>';
       if (key === 'menu') { button.setAttribute('aria-haspopup', 'dialog'); button.setAttribute('aria-controls', 'navigation-dialog'); button.setAttribute('aria-expanded', 'false'); }
-      quickButtons.set(key, button); dock.appendChild(button);
+      quickButtons.set(key === 'menu' ? 'menu' : slot, button); dock.appendChild(button);
     }
     dialog.id = 'navigation-dialog'; dialog.className = 'navigation-dialog'; dialog.setAttribute('aria-labelledby', 'navigation-title');
     dialog.innerHTML = '<header class="navigation-dialog-header"><div><h2 id="navigation-title">すべてのメニュー</h2></div><button type="button" class="navigation-close" data-navigation-close aria-label="メニューを閉じる">' + svg('close') + '</button></header>' +
       '<div class="navigation-search-row"><label class="navigation-search"><span class="social-sr-only">メニューを検索</span>' + svg('search') + '<input id="navigation-query" type="search" placeholder="機能名や目的で検索" autocomplete="off" autocapitalize="off" spellcheck="false" aria-controls="navigation-results"></label><button type="button" class="navigation-clear" data-navigation-clear aria-label="検索を消去">消去</button></div>' +
-      '<div class="navigation-summary"><label class="navigation-category"><span class="social-sr-only">メニューの分類</span><select id="navigation-category" aria-controls="navigation-results"></select></label><p id="navigation-result-status" class="navigation-result-status" role="status" aria-live="polite"></p></div><div id="navigation-results" class="navigation-results"></div>' +
+      '<div class="navigation-summary"><label class="navigation-category"><span class="social-sr-only">メニューの分類</span><select id="navigation-category" aria-controls="navigation-results"></select></label><button type="button" class="navigation-filter-reset" data-navigation-reset>全条件をクリア</button><p id="navigation-result-status" class="navigation-result-status" role="status" aria-live="polite"></p></div>' +
+      '<div class="navigation-purpose-row" role="group" aria-label="目的から機能を探す">' + PURPOSES.map(([id,label]) => '<button type="button" data-navigation-purpose="' + id + '">' + label + '</button>').join('') + '</div>' +
+      '<details class="navigation-dock-editor"><summary>下のメニューをカスタマイズ</summary><div class="navigation-dock-settings"><p>スマホ・タブレットの下部に、よく使う機能を3つ置けます。</p><div class="navigation-dock-selects">' + DEFAULT_DOCK.map((_,slot) => '<label><span>左から' + (slot + 1) + '番目</span><select data-navigation-slot="' + slot + '" aria-label="下のメニュー 左から' + (slot + 1) + '番目"></select></label>').join('') + '</div><button type="button" class="navigation-dock-reset" data-navigation-reset-dock>初期配置に戻す</button></div></details>' +
+      '<div id="navigation-results" class="navigation-results"></div>' +
       '<footer class="navigation-dialog-footer"><span class="navigation-keyboard-hint">Ctrl / ⌘ K で開く · Esc で閉じる</span></footer>';
     const search = dialog.querySelector('#navigation-query'), results = dialog.querySelector('#navigation-results');
     const category = dialog.querySelector('#navigation-category');
     const status = dialog.querySelector('#navigation-result-status'), clearButton = dialog.querySelector('[data-navigation-clear]');
+    const resetButton = dialog.querySelector('[data-navigation-reset]'), purposes = dialog.querySelector('.navigation-purpose-row');
+    const slotSelects = [...dialog.querySelectorAll('[data-navigation-slot]')];
     function availableKeys(keys, current = entries) { return keys.filter(key => current.some(entry => entry.key === key)); }
     function persistPreferences() {
       try {
         if (!win.localStorage) return false;
-        win.localStorage.setItem(PREFERENCE_KEY, JSON.stringify({ favorites, recent })); return true;
+        win.localStorage.setItem(PREFERENCE_KEY, JSON.stringify({ favorites, recent, dock: dockKeys })); return true;
       } catch (_) { return false; }
+    }
+    function resolvedDock(current = entries) {
+      const allowed = new Set(current.filter(entry => entry.source).map(entry => entry.key));
+      const used = new Set();
+      return dockKeys.map((key, index) => {
+        const resolved = [key, DEFAULT_DOCK[index], ...DEFAULT_DOCK, ...allowed].find(value => allowed.has(value) && !used.has(value));
+        if (resolved) used.add(resolved);
+        return resolved || null;
+      });
+    }
+    function renderDockEditor() {
+      const options = entries.filter(entry => entry.source);
+      const next = JSON.stringify(options.map(entry => [entry.key, entry.label, entry.disabled]));
+      if (next !== dockOptionsSignature) {
+        dockOptionsSignature = next;
+        const markup = options.map(entry => '<option value="' + esc(entry.key) + '"' + (entry.disabled ? ' disabled' : '') + '>' + esc(entry.label) + '</option>').join('');
+        for (const select of slotSelects) select.innerHTML = markup;
+      }
+      const resolved = resolvedDock();
+      slotSelects.forEach((select, index) => { if (select.value !== resolved[index]) select.value = resolved[index] || ''; });
+    }
+    function setDockSlot(slot, key) {
+      if (!initialized || unavailable() || !Number.isInteger(slot) || slot < 0 || slot >= DEFAULT_DOCK.length) return false;
+      entries = collect();
+      if (!entries.some(entry => entry.key === key && entry.source && !entry.disabled)) return false;
+      const next = resolvedDock(), previous = next[slot], occupied = next.indexOf(key);
+      if (previous === key) return true;
+      if (occupied !== -1) next[occupied] = previous;
+      next[slot] = key;
+      if (next.some(value => !value)) return false;
+      dockKeys = next;
+      const stored = persistPreferences(); refresh(); renderDockEditor();
+      status.textContent = '下のメニューを変更しました。' + (stored ? ' この端末で使えます。' : ' この起動中のみ有効です。端末に保存できませんでした。');
+      return true;
+    }
+    function resetDock() {
+      if (!initialized || unavailable()) return false;
+      dockKeys = [...DEFAULT_DOCK];
+      const stored = persistPreferences(); refresh(); renderDockEditor();
+      status.textContent = '下のメニューを初期配置に戻しました。' + (stored ? '' : ' この起動中のみ有効です。');
+      return true;
+    }
+    function resetFilters() {
+      search.value = ''; category.value = ''; rememberedScroll = 0;
+      renderResults(true);
     }
     function renderFavoritesRail() {
       const pinned = availableKeys(favorites).map(key => entries.find(entry => entry.key === key));
@@ -193,6 +253,8 @@
       const scroll = resetScroll ? 0 : results.scrollTop;
       status.textContent = search.value.trim() || category.value ? matches.length + '件見つかりました' : '全' + entries.length + '項目 · 星でお気に入りに追加';
       clearButton.disabled = !search.value;
+      resetButton.disabled = !search.value && !category.value;
+      purposes.hidden = Boolean(search.value.trim() || category.value);
       const groups = [];
       if (!search.value.trim() && !category.value && visibleFavorites.length) {
         const cards = visibleFavorites.map(key => entryMarkup(entries.find(entry => entry.key === key), 'favorites')).join('');
@@ -236,21 +298,24 @@
       return true;
     }
     function expanded(value) { setAttr(trigger, 'aria-expanded', value); setAttr(quickButtons.get('menu'), 'aria-expanded', value); }
-    function close(restore = true) { restoreFocus = restore; expanded(false); if (dialog.open) dialog.close(); }
+    function close(restore = true) { restoreFocus = restore; expanded(false); if (dialog.open) { rememberedScroll = results.scrollTop; dialog.close(); } }
     function refresh() {
       frame = 0; if (!initialized) return;
       entries = collect();
       renderFavoritesRail();
-      for (const [key, button] of quickButtons) {
-        if (key === 'menu') continue;
+      const resolved = resolvedDock();
+      for (const [slot, button] of quickButtons) {
+        if (slot === 'menu') continue;
+        const key = resolved[slot];
+        setAttr(button, 'data-navigation-quick', key || 'unavailable');
         const entry = entries.find(entry => entry.key === key);
         button.disabled = !entry || entry.disabled;
         button.classList.toggle('active', entry?.current === true);
         setAttr(button, 'aria-current', entry?.current ? 'page' : null);
-        const markup = (entry?.icon || svg('menu')) + '<span>' + esc(entry?.label || key.slice(5)) + '</span>';
+        const markup = (entry?.icon || svg('menu')) + '<span>' + esc(entry?.label || '未使用') + '</span>';
         if (button.innerHTML !== markup) button.innerHTML = markup;
       }
-      if (dialog.open) { if (unavailable()) close(false); else renderResults(); }
+      if (dialog.open) { if (unavailable()) close(false); else { renderResults(); renderDockEditor(); } }
       finishNavigation();
     }
     function schedule() { if (initialized && !frame) frame = raf(refresh); }
@@ -258,9 +323,12 @@
       if (!initialized || unavailable()) return false;
       if (dialog.open) return true;
       entries = collect(); returnFocus = from || doc.activeElement; restoreFocus = true;
+      const previousCategory = category.value;
       category.innerHTML = '<option value="">全分類</option>' + GROUPS.filter(group => entries.some(entry => entry.group === group)).map(group => '<option>' + esc(group) + '</option>').join('');
-      category.value = ''; search.value = ''; signature = ''; renderResults(); results.scrollTop = 0;
-      dialog.showModal(); expanded(true);
+      category.value = GROUPS.includes(previousCategory) ? previousCategory : '';
+      const scroll = rememberedScroll;
+      signature = ''; renderResults(); renderDockEditor();
+      dialog.showModal(); expanded(true); results.scrollTop = scroll;
       (touch() ? dialog.querySelector('[data-navigation-close]') : search).focus({ preventScroll: true });
       return true;
     }
@@ -309,6 +377,12 @@
       const target = event.target.closest('[data-navigation-target]');
       if (target && !target.disabled) activate(target.getAttribute('data-navigation-target'));
       else if (event.target.closest('[data-navigation-close]')) close();
+      else if (event.target.closest('[data-navigation-reset-dock]')) resetDock();
+      else if (event.target.closest('[data-navigation-reset]')) { resetFilters(); search.focus({ preventScroll: true }); }
+      else if (event.target.closest('[data-navigation-purpose]')) {
+        const purpose = PURPOSES.find(([id]) => id === event.target.closest('[data-navigation-purpose]').getAttribute('data-navigation-purpose'));
+        if (purpose) { category.value = purpose[2]; search.value = purpose[3]; renderResults(true); category.focus({ preventScroll: true }); }
+      }
       else if (event.target.closest('[data-navigation-clear]')) { search.value = ''; renderResults(true); search.focus({ preventScroll: true }); }
       else if (event.target.closest('[data-navigation-clear-recent]')) { clearRecent(); search.focus({ preventScroll: true }); }
       else if (event.target.closest('[data-navigation-help]')) { remember(event.target.closest('[data-navigation-help]').getAttribute('data-navigation-help')); close(); }
@@ -324,7 +398,10 @@
       }
       returnFocus = null;
     });
+    listen(dialog, 'cancel', () => { rememberedScroll = results.scrollTop; });
+    listen(results, 'scroll', () => { if (dialog.open) rememberedScroll = results.scrollTop; }, { passive: true });
     listen(search, 'input', () => renderResults(true));
+    for (const select of slotSelects) listen(select, 'change', () => { if (!setDockSlot(Number(select.getAttribute('data-navigation-slot')), select.value)) renderDockEditor(); });
     // Search results support keyboard travel without changing the native Tab order.
     listen(dialog, 'keydown', event => {
       if (!dialog.open || event.isComposing || event.ctrlKey || event.metaKey || event.altKey) return;
@@ -367,7 +444,7 @@
       const utilityObserver = new win.MutationObserver(schedule);
       utilityObserver.observe(bottom, { childList: true }); observers.push(utilityObserver);
     }
-    return { open, close, refresh, activate, destroy, toggleFavorite, clearRecent, isOpen: () => dialog.open, getPreferences: () => ({ favorites: availableKeys(favorites, collect()), recent: availableKeys(recent, collect()) }), getEntries: () => collect().map(({ source, icon, ...entry }) => entry) };
+    return { open, close, refresh, activate, destroy, toggleFavorite, clearRecent, setDockSlot, resetDock, getDock: () => resolvedDock(collect()), isOpen: () => dialog.open, getPreferences: () => ({ favorites: availableKeys(favorites, collect()), recent: availableKeys(recent, collect()) }), getEntries: () => collect().map(({ source, icon, ...entry }) => entry) };
   }
   if (typeof module !== 'undefined' && module.exports) module.exports = { createNavigationUI, normalizeQuery, filterEntries };
   if (!global.document || global.SengokuNavigation) return;

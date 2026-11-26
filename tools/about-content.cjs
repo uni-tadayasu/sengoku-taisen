@@ -17,9 +17,10 @@ function renderAboutContent(p, { section, table, site }) {
         ['利用料金', `基本プレイ無料。別売りの外観アイテム・月額支援は、<a href="${p.dir('premium')}">プレミアムの料金と内容</a>で確認できます。`],
         ['制作・著作権', 'KASAI SOLUTIONS']
       ])}
-      <p>有料商品は旗印・城下町の外観・サポーターバッジです。武将の能力、兵力、生産量や指令回復を優遇する特典はありません。</p>
+      <p>有料商品は旗印・城下町の外観・勲章・サポーターバッジです。武将の能力、兵力、生産量や指令回復を優遇する特典はありません。</p>
       <a class="chapter-link" href="${p.dir('sengoku-vs')}#before-you-play">初めての方向けの紹介・よくある質問</a>
       <a class="chapter-link" href="${p.dir('guide')}">戦国VSの遊び方を読む</a>
+      <a class="chapter-link" href="${p.dir('sengoku-vs')}#intro-video">24秒の作品紹介と実際のゲーム画面を見る</a>
     `),
     section('gameplay', '城下町・武将・領主交流', '選んだ城を育て、仲間と戦記を重ねる', `
       <h3>一城から始める内政と武将編成</h3>
@@ -71,7 +72,7 @@ function renderAboutContent(p, { section, table, site }) {
     `),
     section('artwork', '城と武将のイラスト', 'ゲームの世界を描く、独自の表現。', `
       <p>武将は和風アニメ調、城や施設は発展が伝わる建築イラストとして制作しています。衣装・兜・装飾・背景・建物の構成を描き分けた、本作用の表現です。人物の実際の容姿や、城郭の厳密な復元図を示すものではありません。</p>
-      <div class="art-feature"><figure><img src="${p.file('assets/responsive/moonlit-castle-720.webp')}" srcset="${[400,720,1080,1536].map(width => `${p.file(`assets/responsive/moonlit-castle-${width}.webp`)} ${width}w`).join(', ')}" sizes="(max-width: 650px) 90vw, (max-width: 900px) 50vw, 460px" alt="月明かりと灯籠に彩られた戦国VSの城下町" width="1536" height="1024" loading="lazy" decoding="async"><figcaption>月影の城下の完成イラスト</figcaption></figure><div><h3>一城に、あなたらしい彩りを。</h3><p>城下町の景色や領主の名札を、好きな外観に切り替えられます。金の刺繍を施した旗印、月明かりの城下町、黄金のサポーターバッジを用意しています。</p><p><a href="${p.dir('premium')}">外観コレクションと支援の案内</a>で、実際に使われるイラストを見比べられます。</p></div></div>
+      <div class="art-feature"><figure><img src="${p.file('assets/responsive/moonlit-castle-720.webp')}" srcset="${[400,720,1080,1536].map(width => `${p.file(`assets/responsive/moonlit-castle-${width}.webp`)} ${width}w`).join(', ')}" sizes="(max-width: 650px) 90vw, (max-width: 900px) 50vw, 460px" alt="月明かりと灯籠に彩られた戦国VSの城下町" width="1536" height="1024" loading="lazy" decoding="async"><figcaption>月影の城下の完成イラスト</figcaption></figure><div><h3>一城に、あなたらしい彩りを。</h3><p>城下町の景色や領主の名札を、好きな外観に切り替えられます。金・紅蓮・白銀の旗印、月影・桜雲・雪華の城下町、鳳凰の勲章、黄金のサポーターバッジを用意しています。</p><p><a href="${p.dir('premium')}">外観コレクションと支援の案内</a>で、実際に使われるイラストを見比べられます。</p></div></div>
       <ul class="source-list"><li><a href="${p.file('ARTWORK.md')}">イラストの構成と制作方針</a><small>画像数の数え方と、ランク・成長段階の構成。</small></li><li><a href="${p.file('SOURCES.md')}">武将の収録方針・人物資料</a><small>全国から選抜した256名と、人物・所属・能力の扱い。</small></li></ul>
     `),
     section('geography', '天下地図の資料', '日本の山河と、城跡の位置をたどる。', `

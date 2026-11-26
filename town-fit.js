@@ -119,7 +119,7 @@
       observer?.disconnect(); labelObserver?.disconnect(); scene = next; board = nextBoard;
       layoutLabels = createLabelLayout();
       if(board)labelObserver?.observe(board,{childList:true,subtree:true,characterData:true});
-      if (scene) for (const node of [main, scene, ...main.querySelectorAll('.town-panel,.town-visual,.page-heading,.realtime-strip,.sync-access-notice,.town-scene-heading,.scene-caption,.town-premium-lord')]) observer?.observe(node);
+      if (scene) for (const node of [main, scene, ...main.querySelectorAll('.town-panel,.town-visual,.page-heading,.realtime-strip,.sync-access-notice,.town-scene-heading,.scene-caption,.town-premium-lord,.town-command-shortcuts')]) observer?.observe(node);
     }
     if (!scene || !board || !scene.isConnected) return;
     const root = doc.documentElement;
@@ -131,7 +131,7 @@
       if (scene.closest('.town-workspace') && panel) {
         // The artwork gets the whole independent PC canvas. The command pane
         // may scroll or grow internally without changing this available height.
-        height = panelSceneHeight(panel.clientHeight, panel.querySelector('.town-scene-heading')?.offsetHeight, (panel.querySelector('.scene-caption')?.offsetHeight||0)+(panel.querySelector('.town-premium-lord')?.offsetHeight||0), manualHeight);
+        height = panelSceneHeight(panel.clientHeight, panel.querySelector('.town-scene-heading')?.offsetHeight, (panel.querySelector('.scene-caption')?.offsetHeight||0)+(panel.querySelector('.town-premium-lord')?.offsetHeight||0)+(panel.querySelector('.town-command-shortcuts')?.offsetHeight||0), manualHeight);
       } else {
         const mainBox = main.getBoundingClientRect(), sceneBox = scene.getBoundingClientRect();
         const preferred = manualHeight || parseFloat(rootStyle.getPropertyValue('--desktop-town-height')) || 460;

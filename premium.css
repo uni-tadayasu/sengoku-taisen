@@ -222,3 +222,32 @@ body[data-page="premium"] :is(.site-brand small,.breadcrumbs,.copyright,.footer-
   .premium-catalog, .premium-catalog :is(h2,h3,p,strong,th,td) { color: #111; }
   .premium-product, .premium-stage { break-inside: avoid; }
 }
+
+/* The atelier collection: each verified product has the same preview and in-game art. */
+.premium-product-filters { display:flex;flex-wrap:wrap;gap:.5rem;margin:0 0 1.2rem; }
+.premium-product-filters button { min-height:44px;padding:.55rem 1rem;border:1px solid #b8c5cb55;border-radius:6px;background:#142532;color:#d9e3e5; }
+.premium-product-filters button[aria-pressed="true"] { border-color:#e3bb74;background:linear-gradient(125deg,#49392b,#252c30);color:#ffe7b9;box-shadow:inset 0 1px #fff2cf20; }
+.premium-products > [hidden] { display:none!important; }
+.premium-preview-options { max-height:28rem;overflow:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#9b865b #142230; }
+.premium-preview-options button { min-height:48px; }
+.premium-stage[data-premium-preview-slot="nameplate"] .premium-preview-banner { display:block; }
+.premium-stage[data-premium-preview-slot="badge"] .premium-preview-supporter { display:block; }
+.premium-stage[data-premium-preview-mode="vermilion-banner"] .premium-preview-nameplate { border:3px double #edbd75;background:linear-gradient(115deg,#501c25f5,#291920f5);box-shadow:inset 0 0 0 2px #f6d29216; }
+.premium-stage[data-premium-preview-mode="vermilion-banner"] .premium-preview-nameplate strong { color:#ffe0b1; }
+.premium-stage[data-premium-preview-mode="silver-banner"] .premium-preview-nameplate { border:3px double #c3d9ed;background:linear-gradient(115deg,#233b53f5,#112338f5);box-shadow:inset 0 0 0 2px #eef7ff19; }
+.premium-stage[data-premium-preview-mode="silver-banner"] .premium-preview-nameplate strong { color:#edf7ff; }
+.premium-stage[data-premium-preview-mode="sakura-town"] .premium-preview-nameplate { border-color:#e6b4bd;background:#342430e8; }
+.premium-stage[data-premium-preview-mode="snow-town"] .premium-preview-nameplate { border-color:#c7daec;background:#1c354be8; }
+.premium-swatch--vermilion-banner { background:linear-gradient(135deg,#d04a3c,#6b1927);border:2px solid #e1b264; }
+.premium-swatch--silver-banner { background:linear-gradient(135deg,#d9eaf7,#6486ac);border:2px solid #d9ebf8; }
+.premium-swatch--phoenix-medallion { background:radial-gradient(circle,#be3030 0 35%,#e6b458 38% 68%,#a56e2d 70%);border-color:#e7c581; }
+.premium-swatch--sakura-town { background:linear-gradient(135deg,#ffdce5,#b77b9a);border-color:#f0b8cf; }
+.premium-swatch--snow-town { background:linear-gradient(135deg,#f5fbff,#a7c5db);border-color:#dcecf9; }
+.premium-product-art--vermilion-banner { background:radial-gradient(ellipse at 50% 38%,#563039,#1c1926 72%); }
+.premium-product-art--silver-banner { background:radial-gradient(ellipse at 50% 38%,#40566f,#10212f 72%); }
+.premium-product-art--phoenix-medallion { background:radial-gradient(ellipse at 50% 38%,#55472c,#17212c 72%); }
+.premium-product-art--phoenix-medallion img { width:210px;height:210px; }
+.premium-product-art--sakura-town, .premium-product-art--snow-town { padding:0; }
+.premium-product-art--sakura-town img, .premium-product-art--snow-town img { max-height:none;object-fit:cover; }
+@media (min-width:1460px) { .premium-products { grid-template-columns:repeat(4,minmax(0,1fr)); } }
+@media (max-width:650px) { .premium-preview-options { max-height:19rem; } .premium-product-filters { gap:.4rem; } .premium-product-filters button { flex:1 0 auto;padding-inline:.8rem; } }
