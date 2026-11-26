@@ -21,13 +21,28 @@ test('Edo has one placement slot and each other major city has two, with actual 
   assert(dom.host.textContent.includes(g.officer(ids[3]).name));assert(art.some(row=>row.id===ids[3]&&row.rank===g.officer(ids[3]).rank));assert.equal(JSON.stringify(g.state),before);
  }}finally{delete global.SengokuArt;}
 });
-test('army, governor and another branch assignments are unavailable with their actual location reasons',()=>{
+test('army and another branch assignments remain reserved, with actual location and capacity reasons',()=>{
  const {g,ids,branchId}=game();let dom=render(g,branchId),select=dom.$('[data-branch-commander-choice]');
- for(const[id,reason]of [[ids[0],/出陣軍団/],[ids[1],/奉行/],[ids[2],/支拠点/]]){
+ for(const[id,reason]of [[ids[0],/出陣軍団/],[ids[2],/支拠点/]]){
   assert(select.querySelector(`option[value="${id}"]`).disabled);assert(B.selectCommander(g,branchId,id));dom=render(g,branchId);assert(dom.$('[data-action="assign-branch-commander"]').disabled);assert.match(dom.$('[data-branch-commander-reason]').textContent,reason);
  }
  assert(B.selectCommander(g,branchId,ids[3]));dom=render(g,branchId);assert.equal(dom.$('[data-action="assign-branch-commander"]').disabled,false);assert.equal(dom.$('[data-action="assign-branch-commander"]').getAttribute('data-officer'),ids[3]);assert.match(dom.host.textContent,/配置と解除に指令・資材は使いません/);
  assert(g.assignBranchCommander(branchId,ids[3]).ok);assert(g.assignBranchCommander(branchId,ids[4]).ok);assert(B.selectCommander(g,branchId,ids[5]));dom=render(g,branchId);assert(dom.$('[data-action="assign-branch-commander"]').disabled);assert.match(dom.$('[data-branch-commander-reason]').textContent,/2名まで/);
+});
+test('governor transfer names the former facility before committing, preserving other posts and all resources',()=>{
+ const {g,ids,branchId}=game(),before=structuredClone(g.state),building=g.branchCommanderStatus(branchId).candidates.find(row=>row.id===ids[1]).fromBuildingName;
+ let dom=render(g,branchId),select=dom.$('[data-branch-commander-choice]'),option=select.querySelector(`option[value="${ids[1]}"]`);
+ assert.equal(option.disabled,false);assert(option.textContent.includes(building+'の奉行から異動'));
+ assert(B.selectCommander(g,branchId,ids[1]));dom=render(g,branchId);select=dom.$('[data-branch-commander-choice]');
+ const preview=dom.$('[data-branch-commander-transfer]'),button=dom.$('[data-action="assign-branch-commander"]');
+ assert(preview);assert(preview.textContent.includes(building+'の奉行を解除'));assert.match(preview.textContent,/元の施設は奉行が未配置/);assert.equal(button.disabled,false);
+ for(const control of [select,button])assert(control.getAttribute('aria-describedby').split(' ').includes(preview.id));
+ assert.deepEqual(g.state,before,'Selecting and previewing an officer must never transfer or spend anything');
+ const readonly=render(g,branchId,{writable:false,writableReason:'保存権限を確認してください。'});assert(readonly.$('[data-action="assign-branch-commander"]').disabled);assert.equal(readonly.$('[data-branch-commander-reason]').textContent,'保存権限を確認してください。');assert.deepEqual(g.state,before);
+ assert.equal(B.selectCommander(g,branchId,'unowned-officer'),false);assert.equal(B.commanderSelection(g,branchId),ids[1]);
+ assert(g.assignBranchCommander(branchId,ids[1]).ok);assert.equal(g.state.governors.farm,undefined);assert(g.branch(branchId).commanders.includes(ids[1]));
+ assert.deepEqual(g.state.army,before.army);assert.deepEqual(g.branch('nagoya_east').commanders,before.branches.find(row=>row.id==='nagoya_east').commanders);assert.deepEqual(g.state.resources,before.resources);assert.equal(g.state.command,before.command);assert.equal(g.state.troops,before.troops);
+ dom=render(g,branchId);assert.equal(dom.$('[data-branch-commander-transfer]'),null);assert(dom.$('[data-action="assign-branch-commander"]').disabled);assert.match(dom.$('[data-branch-commander-reason]').textContent,/配置済み/);
 });
 test('fallen branches keep removal available, while unavailable persistence blocks both mutations',()=>{
  const {g,ids,branchId}=game();assert(g.assignBranchCommander(branchId,ids[3]).ok);g.state.branches.find(row=>row.id===branchId).fallen=true;assert(B.selectCommander(g,branchId,ids[4]));
@@ -47,11 +62,14 @@ test('map and modal placement controls have unique labels and foreign branches e
  g.state.castles.nijo.owner='他家';assert.equal(B.renderCommanders(g,g.branch(branchId),{writable:true}),'');assert.equal(B.selectCommander(g,branchId,''),false);
 });
 
-test('automatic placement previews exact candidates and follows full, empty and read-only states',()=>{
+test('automatic placement previews exact candidates, preserves reserved posts and keeps optimal full formations available',()=>{
  const {g,branchId}=game(),plan=g.branchCommanderAutoPlan(branchId);assert(plan.ok);
+ const before=structuredClone(g.state);
  let dom=render(g,branchId),button=dom.$('[data-action="auto-assign-branch-commanders"]');assert(button&&!button.disabled);assert.equal(button.getAttribute('data-id'),branchId);
  for(const row of plan.assignments)assert(dom.$('[data-branch-auto-preview]').textContent.includes(row.name));
- assert(g.autoAssignBranchCommanders(branchId).ok);dom=render(g,branchId);assert(dom.$('[data-action="auto-assign-branch-commanders"]').disabled);assert.match(dom.$('[data-branch-auto-preview]').textContent,/空き枠/);
+ assert.deepEqual(g.state,before);assert(g.autoAssignBranchCommanders(branchId).ok);assert.equal(g.branch(branchId).commanders.length,2);assert.deepEqual(g.state.army,before.army);assert.deepEqual(g.branch('nagoya_east').commanders,before.branches.find(row=>row.id==='nagoya_east').commanders);assert.deepEqual(g.state.resources,before.resources);assert.equal(g.state.command,before.command);
+ dom=render(g,branchId);assert.equal(dom.$('[data-action="auto-assign-branch-commanders"]').disabled,false);assert.match(dom.$('[data-branch-auto-preview]').textContent,/配置を維持/);const optimal=structuredClone(g.state);assert.equal(g.autoAssignBranchCommanders(branchId).changed,false);assert.deepEqual(g.state,optimal);
+ g.state.branches.find(row=>row.id===branchId).fallen=true;dom=render(g,branchId);assert(dom.$('[data-action="auto-assign-branch-commanders"]').disabled);assert.match(dom.$('[data-branch-auto-preview]').textContent,/陥落/);
  const other=game();dom=render(other.g,other.branchId,{writable:false,writableReason:'同期を確認中です。'});assert(dom.$('[data-action="auto-assign-branch-commanders"]').disabled);assert.match(dom.$('[data-branch-auto-preview]').textContent,/同期/);
  const bulk=setup();stable.patch(bulk.host,B.renderAutoCommanders(other.g,'all',{writable:true}));assert.equal(bulk.$('button').getAttribute('data-id'),'all');assert.match(bulk.host.textContent,/全支拠点/);
 });

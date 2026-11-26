@@ -1,0 +1,226 @@
+/* 戦国VS 5.3 — one command desk, clear numbers, and comfortable reading. */
+#app.chronicle-shell {
+  --desk-surface: #17262e;
+  --desk-raised: #22343d;
+  --desk-rule: #b9a07448;
+  --desk-gold: #e9c78d;
+  --desk-copy: #f3eddf;
+  --desk-muted: #bfcacd;
+  font-family: -apple-system, BlinkMacSystemFont, "Hiragino Kaku Gothic ProN", "Yu Gothic", Meiryo, sans-serif;
+}
+#app.chronicle-shell #main {
+  background: radial-gradient(ellipse at 100% 0%,#3c56572b,transparent 48%),#101b23;
+}
+#app.chronicle-shell :is(.page-heading,.section-heading,.panel-heading) h2,
+#app.chronicle-shell .domain-briefing h2 { font-family: var(--mincho); }
+#app.chronicle-shell #main > .page-heading {
+  border-top: 2px solid var(--chapter-rule,#c8a16c);
+  background: linear-gradient(105deg,#2a3b43,#17262f 68%);
+  border-radius: 8px;
+}
+#app.chronicle-shell #main > .page-heading .eyebrow { color: #e3c99e; letter-spacing: .09em; }
+#app.chronicle-shell #main > .page-heading .subtitle { max-width: 64ch; color: #d4dcda; line-height: 1.7; }
+#app.chronicle-shell #main :is(.panel,.research-card,.building-card,.quest-row,.tactic-card) {
+  border-color: var(--desk-rule);
+  border-radius: 8px;
+}
+#app.chronicle-shell #main .panel-heading { gap: 10px; }
+#app.chronicle-shell #main .panel-heading h2 { line-height: 1.5; }
+#app.chronicle-shell #main .toolbar {
+  padding: 12px;
+  border: 1px solid #a8b4ae35;
+  border-radius: 8px;
+  background: #192b33;
+  gap: 10px;
+}
+#app.chronicle-shell #main .toolbar > :is(.search-box,.filter-control) { min-width: 0; }
+#app.chronicle-shell #main .toolbar :is(input,select) { border-color: #b8c0ae66; }
+#app.chronicle-shell #main .section-heading { margin-block: 22px 12px; gap: 7px 16px; }
+#app.chronicle-shell #main .section-heading h2 { color: #f3e2bd; }
+#app.chronicle-shell #main .section-heading small { color: #bfcacc; }
+#app.chronicle-shell .button { min-height: 42px; line-height: 1.5; }
+#app.chronicle-shell :is(.resource-amount,.domain-briefing strong,.domain-briefing-ledger-values,.economy-row dd) {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+/* The ledger is an inspectable control on touch screens as well as desktops. */
+#app.chronicle-shell .chronicle-ledger .resource-inspect {
+  font: inherit;
+  text-align: start;
+  color: var(--desk-copy);
+  cursor: pointer;
+  appearance: none;
+}
+#app.chronicle-shell .chronicle-ledger .resource-inspect .resource-label::after {
+  content: "›";
+  display: inline-block;
+  margin-left: 7px;
+  color: #e8c58a;
+  font: 700 1em/1 sans-serif;
+}
+#app.chronicle-shell .chronicle-ledger .resource-inspect:focus-visible {
+  outline: 3px solid #ffe1a0;
+  outline-offset: -3px;
+}
+@media (hover:hover) {
+  #app.chronicle-shell .chronicle-ledger .resource-inspect:hover {
+    border-color: #f1cd88;
+    box-shadow: inset 0 0 0 1px #f1cd8870;
+  }
+}
+
+/* Keep the town painting spacious while giving the command panel room to read. */
+@media (min-width:1025px) {
+  html.sengoku-desktop-fit:not([data-layout-townratio]) #app.chronicle-shell #main .town-workspace.dashboard-grid {
+    grid-template-columns: minmax(0,1fr) clamp(340px,35%,470px);
+    gap: 16px;
+  }
+  html.sengoku-desktop-fit #app.chronicle-shell #main .town-console { scrollbar-gutter: stable; }
+  html.sengoku-desktop-fit #app.chronicle-shell #main .town-console-nav { position: sticky; top: 0; z-index: 3; }
+}
+#app.chronicle-shell #main .town-overview { border-radius: 8px; }
+#app.chronicle-shell #main .town-overview .town-castle-heading { padding: 15px; }
+#app.chronicle-shell #main .town-overview .town-castle-heading-copy h1 { font-size: clamp(1.7rem,2vw,2.3rem); }
+#app.chronicle-shell #main .town-overview .town-castle-heading .eyebrow { font-size: .73rem; }
+#app.chronicle-shell #main .town-overview .town-castle-upgrade-detail { margin-top: 12px; padding-top: 11px; }
+#app.chronicle-shell #main .town-overview .town-castle-upgrade-note { line-height: 1.65; font-size: .82rem; }
+#app.chronicle-shell #main .town-overview .realtime-strip { margin: 0 12px 12px; }
+#app.chronicle-shell #main .town-overview .page-heading-actions { padding: 8px 15px; gap: 8px; }
+#app.chronicle-shell #main .town-overview .durability-card { margin-block: 13px; }
+#app.chronicle-shell #main .town-console-nav > button { border-radius: 5px; letter-spacing: .04em; }
+
+.domain-briefing {
+  min-width: 0;
+  margin: 13px 12px;
+  border: 1px solid #d7b87973;
+  border-radius: 8px;
+  background: #13232c;
+  overflow: hidden;
+}
+.domain-briefing > header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  justify-content: space-between;
+  gap: 5px 12px;
+  padding: 14px;
+  background: linear-gradient(110deg,#35453e,#20343d);
+  border-bottom: 1px solid #bda37545;
+}
+.domain-briefing-kicker { display: block; color: #d2bd96; font: 600 .65rem/1.4 Georgia,serif; letter-spacing: .15em; }
+#app #main .domain-briefing h2 { margin: 4px 0 0; color: #f9e5bd; font-size: 1.24rem; line-height: 1.4; letter-spacing: .06em; }
+.domain-briefing-caption { color: #d1dbd4; font-size: .72rem; line-height: 1.5; }
+.domain-briefing-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 1px; background: #92a2932c; }
+#app #main .domain-briefing-tile {
+  container-type: inline-size;
+  display: grid;
+  grid-template-rows: max-content max-content max-content;
+  align-content: start;
+  gap: 6px;
+  min-width: 0;
+  min-height: 112px;
+  padding: 13px;
+  border: 0;
+  border-radius: 0;
+  background: #1b2c35;
+  background-image: none !important;
+  color: #f7efdd;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+.domain-briefing-label { display: flex; align-items: center; gap: 6px; color: #c9d4d1; font-size: .77rem; line-height: 1.5; }
+.domain-briefing-label .icon { width: 16px; height: 16px; flex: none; color: #d6b577; }
+.domain-briefing-tile > strong { display: flex; align-items: baseline; flex-wrap: wrap; gap: 5px; font-size: 1.7rem; line-height: 1.1; }
+.domain-briefing-tile > strong > span { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
+.domain-briefing-long-number > span { font-size: 1rem; font-size: clamp(.875rem,11cqi,1.35rem); }
+.domain-briefing-tile strong small { font-size: .75rem; font-weight: 500; color: #b7c7c9; }
+.domain-briefing-detail { font-size: .7rem; line-height: 1.6; color: #bcc9ca; overflow-wrap: anywhere; }
+#app #main .domain-briefing-ledger {
+  display: grid;
+  grid-template-columns: minmax(0,1fr) max-content;
+  gap: 7px 10px;
+  min-width: 0;
+  width: 100%;
+  padding: 13px;
+  border: 0;
+  border-top: 1px solid #bca26d45;
+  border-bottom: 1px solid #bca26d25;
+  border-radius: 0;
+  background: #1c3036;
+  background-image: none !important;
+  color: #f0e5c9;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+.domain-briefing-ledger-title { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; font-size: .81rem; }
+.domain-briefing-ledger-title > .icon { width: 17px; height: 17px; color: #ddba76; }
+.domain-briefing-ledger-title small { color: #b5c4c4; font-size: .7rem; }
+.domain-briefing-ledger-values { grid-row: 2; grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 7px 18px; font-size: .78rem; }
+.domain-briefing-ledger-values b { margin-left: 4px; color: #c3e4c2; font-size: .95rem; }
+.domain-briefing-ledger-values .is-negative { color: #ffbb9e; }
+.domain-briefing-ledger-open { display: flex; align-items: center; gap: 2px; font-size: .71rem; color: #dfc394; }
+.domain-briefing-ledger-open .icon { width: 14px; height: 14px; }
+#app #main .domain-briefing-note { margin: 0; padding: 10px 13px; color: #bbcdcd; font-size: .72rem; line-height: 1.7; }
+#app #main .domain-briefing[data-tone="attention"] .domain-briefing-note { color: #f1c49e; background: #4f392a4a; }
+#app #main :is(.domain-briefing-tile,.domain-briefing-ledger):focus-visible { outline: 3px solid #f3ce8a; outline-offset: -3px; }
+@media (hover:hover) {
+  #app #main .domain-briefing-tile:hover { background-color: #2a424b; }
+  #app #main .domain-briefing-ledger:hover { background-color: #2c4548; }
+}
+
+/* Every resource has a readable drill-down, with no hover-only explanations. */
+.economy-details-view { min-width: 0; }
+.economy-details-intro { display: flex; align-items: center; gap: 15px; margin-bottom: 15px; padding: 14px; background: #22353b; border: 1px solid #c5a77850; border-radius: 8px; }
+.economy-details-intro > span { display: grid; place-items: center; flex: none; width: 42px; height: 42px; color: #edce8e; border: 1px solid #bca37266; border-radius: 50%; background: #172832; }
+.economy-details-intro .icon { width: 23px; height: 23px; }
+.economy-details-intro p { margin: 0; color: #d0d9d7; line-height: 1.75; font-size: .85rem; }
+#modal .economy-details-view .economy-resources { display: grid; grid-template-columns: minmax(0,1fr); gap: 12px; }
+#modal .economy-details-view .economy-resource[hidden] { display: none !important; }
+#modal .economy-details-view .panel-heading { display: none; }
+#modal .economy-details-view .economy-total { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 12px; color: #ccd9d9; font-size: .86rem; }
+#modal .economy-details-view .economy-total strong { color: #f5dfb4; font-size: 1.2rem; }
+.economy-resource-tabs { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 6px; margin-bottom: 14px; }
+#modal .economy-resource-tabs > button { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px; min-width: 0; min-height: 46px; padding: 9px 5px; border: 1px solid #bfa57470; border-radius: 5px; background: #1a2d37; background-image: none !important; color: #d6dfd8; font: inherit; font-size: .86rem; cursor: pointer; }
+#modal .economy-resource-tabs > button[aria-selected="true"] { color: #fff0ca; background: #5c5037; border-color: #eac58b; box-shadow: inset 0 -2px #eac58b; font-weight: 700; }
+.economy-resource-tabs .icon { width: 19px; height: 19px; flex: none; }
+#modal .economy-resource-tabs > button:focus-visible { outline: 3px solid #ffe2a0; outline-offset: -3px; }
+#modal .economy-details-view .economy-rules { margin-top: 12px; padding: 12px; border: 1px solid #bca27545; border-radius: 6px; }
+#modal .economy-details-view :is(.economy-rules,.economy-details) > summary { min-height: 28px; color: #e4ca9c; cursor: pointer; line-height: 1.7; }
+#modal .economy-details-view .economy-resource { min-width: 0; padding: 14px; border: 1px solid #9faa9a55; border-radius: 7px; background: #182932; }
+#modal .economy-details-view .economy-resource h3 { margin: 0 0 12px; color: #f0d19c; }
+#modal .economy-details-view .economy-resource dl { margin: 0; }
+#modal .economy-details-view .economy-row { display: grid; grid-template-columns: minmax(0,1.5fr) minmax(0,1fr); gap: 8px; padding-block: 5px; font-size: .82rem; line-height: 1.6; }
+#modal .economy-details-view .economy-row dd { margin: 0; text-align: right; overflow-wrap: anywhere; }
+#modal .economy-details-view .economy-row dt { color: #c4d0d0; }
+#modal .economy-details-view .economy-net { margin-top: 7px; border-top: 1px solid #baa47788; padding-top: 10px; color: #c5e5bc; font-weight: 700; }
+#modal .economy-details-view .economy-net .is-negative { color: #ffbca4; }
+#modal .economy-details-view[data-resource="gold"] [data-stable-key="economy-details-gold"],
+#modal .economy-details-view[data-resource="rice"] [data-stable-key="economy-details-rice"],
+#modal .economy-details-view[data-resource="wood"] [data-stable-key="economy-details-wood"],
+#modal .economy-details-view[data-resource="stone"] [data-stable-key="economy-details-stone"] { border-color: #e5c185; box-shadow: inset 0 0 0 1px #e5c1855c; }
+
+@media (max-width:700px) {
+  #app.chronicle-shell #main .toolbar { padding: 10px; gap: 8px; }
+  #app.chronicle-shell #main .section-heading { margin-block: 18px 10px; }
+  #app.chronicle-shell #main .town-overview .town-castle-heading { padding: 13px; }
+  #app.chronicle-shell #main .town-overview .page-heading-actions { padding: 8px 13px; }
+  .domain-briefing { margin: 12px 10px; }
+  .domain-briefing > header { padding: 12px; }
+  #app #main .domain-briefing-tile { min-height: 108px; padding: 12px; }
+  #modal .economy-details-view .economy-resources { grid-template-columns: minmax(0,1fr); }
+  .economy-details-intro { align-items: flex-start; padding: 12px; gap: 10px; }
+  .economy-details-intro p { font-size: .8rem; }
+}
+@media (max-width:360px) {
+  .domain-briefing-caption { width: 100%; }
+  #app #main .domain-briefing-tile { padding: 10px; }
+  .domain-briefing-tile > strong { font-size: 1.5rem; }
+  .domain-briefing-ledger-open { font-size: .67rem; }
+}
+@media (forced-colors:active) {
+  .domain-briefing,.domain-briefing > header,#app #main .domain-briefing-tile,#app #main .domain-briefing-ledger { border: 1px solid CanvasText; }
+  .domain-briefing-tile > strong,.domain-briefing-ledger-values b,#app #main .domain-briefing-note { color: CanvasText; }
+}

@@ -16,7 +16,7 @@ const previewUrl=name=>previewDir+name+'.webp?v='+previewRevision;
 const numberTag=value=>String(value).padStart(2,'0');
 const frames=Object.fromEntries(ranks.map(r=>[r,`assets/frames/rank-${r}.svg?v=4.9.10-20261123`]));
 const operatorPortrait={id:'of_b0616adde162',rank:'U',url:'assets/operator-ieyasu-u.webp?v=ieyasu-anime-u-20261123'};
-const cache=new Map(),loaded=new Set(),paintRequests=new WeakMap(),deferredTitle=new Set(),decorationRoots=new Set();let observer,scheduled=false;
+const cache=new Map(),loaded=new Set(),paintRequests=new WeakMap(),observedPaints=new WeakSet(),deferredTitle=new Set(),decorationRoots=new Set();let observer,scheduled=false;
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const icons={
  town:'M3 20h18M5 20V10l7-5 7 5v10M3 10h18M6 5l6-3 6 3M8 13h2v3H8m6-3h2v3h-2M10 20v-3h4v3',
@@ -89,12 +89,20 @@ function displaySource(el,rect){
  return nativeFits?{url:d.artNative,kind:'native'}:original;
 }
 function observePaint(el){
- if(observer){observer.observe(el);return;}
+ if(observer){if(!observedPaints.has(el)){observedPaints.add(el);observer.observe(el);}return;}
+ if(!canPaint(el))return;
  if(!global.innerWidth||!global.innerHeight){reveal(el);return;}
  const rect=el.getBoundingClientRect();
  if(rect.width&&rect.height&&rect.bottom>0&&rect.top<global.innerHeight+96&&rect.right>0&&rect.left<global.innerWidth)reveal(el,rect);
 }
+function unobservePaint(el){
+ if(observer&&observedPaints.has(el)){observer.unobserve(el);observedPaints.delete(el);}
+}
 function canPaint(el){
+ if(el.isConnected===false)return false;
+ // A closed dialog can keep hundreds of cards in the DOM. Do not measure or
+ // upgrade those images while another screen is open.
+ if(el.closest?.('[hidden],[inert],dialog:not([open])'))return false;
  return !global.SENGOKU_AT_TITLE||el.closest('#launch-screen, #public-lord-profile, #community-modal [data-own-commander]');
 }
 function reveal(el,rect){
@@ -125,11 +133,12 @@ function reveal(el,rect){
    if(source.kind==='original'&&preview&&!cache.has(canonical)){
     try{await load(preview);}catch(_){}
     if(!current())return;
+    if(!canPaint(el)){observePaint(el);return;}
     if(loaded.has(preview)&&el.dataset.artSmall===preview)paint({url:preview,kind:'small'});
     if(observer){
      const bounds=el.getBoundingClientRect();
      if(!canPaint(el)||!bounds.width||!bounds.height||bounds.bottom<=-96||bounds.top>=global.innerHeight+96||bounds.right<=0||bounds.left>=global.innerWidth){
-      observer.observe(el);return;
+      observePaint(el);return;
      }
     }
    }
@@ -137,7 +146,7 @@ function reveal(el,rect){
     if(source.url===canonical||!current())throw error;
     source={url:canonical,kind:'original'};await load(canonical);
    }
-   if(current())paint(source);
+   if(current()){if(canPaint(el))paint(source);else observePaint(el);}
   }catch(_){if(current()){el.classList.add('art-error');el.setAttribute('aria-busy','false');}}
   finally{if(paintRequests.get(el)===request){paintRequests.delete(el);delete el.dataset.artLoading;}}
  })();
@@ -188,6 +197,9 @@ function matching(root,selector){
 function decorate(root=document){
  if(root===document){scheduled=false;decorationRoots.clear();}
  matching(root,'[data-art-url]:not([data-art-observed])').forEach(el=>{el.dataset.artObserved='1';observePaint(el);});
+ // Dialogs may reuse detached controls. Their decoration is already present,
+ // but an unfinished background still needs a fresh visibility subscription.
+ matching(root,'[data-ghost-url]').forEach(el=>{if(!el.dataset.artReady||el.dataset.artSource!==el.dataset.ghostUrl)observePaint(el);});
  const selector='.button,.text-link,.launch-enter,.nav-item,.resource,.building-card,.facility-entry,.territory-row,.research-card,.quest-row,.tactic-card,.music-track,.settings-stack>.button,.social-tabs button,.social-list-card,.social-mail-row,.social-profile-section,.social-gift,.clan-choice,.gacha-banner,.title-feature,.panel,.notice,.officer-content';
  matching(root,selector).forEach(el=>{if(el.dataset.artEnhanced)return;el.dataset.artEnhanced='1';el.classList.add('illustrated-item');
   let type=el.dataset.artTheme||el.dataset.view||el.dataset.action||'council';if(type.includes('gacha')||type.includes('draw'))type='gacha';if(type.includes('music')||type==='sound')type='music';if(type.includes('save')||type.includes('export')||type.includes('import'))type='save';
@@ -214,12 +226,22 @@ function schedule(root=document){
  }
  if(scheduled)return;scheduled=true;requestAnimationFrame(flushDecorations);
 }
+function releaseDetachedPaints(root){
+ // Stable DOM reconciliation moves connected nodes between parents. Preserve
+ // those subscriptions, and only release trees that are really gone.
+ if(root.isConnected)return;
+ for(const el of matching(root,'[data-art-observed],[data-ghost-url]')){
+  unobservePaint(el);deferredTitle.delete(el);
+  delete el.dataset.artObserved;
+ }
+}
 function artworkMutations(records){
  for(const record of records){
   const changed=[...record.addedNodes,...record.removedNodes].some(node=>node.nodeType===1);
   if(!changed)continue;
   const target=record.target;
   if(target?.closest?.('.ui-motion-layer'))continue;
+  for(const node of record.removedNodes)if(node.nodeType===1)releaseDetachedPaints(node);
   if(target?.matches?.('button,.title-feature,.section-heading h2,.panel-heading h2,.social-profile-section h3'))schedule(target);
   for(const node of record.addedNodes)if(node.nodeType===1&&!node.matches?.('.ui-motion-layer,.ui-motion-clip,.ui-motion-wave'))schedule(node);
  }
@@ -239,7 +261,7 @@ async function readyCurrent(onProgress){
  flushDecorations();
  if(!global.SENGOKU_AT_TITLE){
   for(const el of deferredTitle){
-   if(el.isConnected&&observer){observer.unobserve(el);observer.observe(el);}
+   if(el.isConnected&&observer){unobservePaint(el);observePaint(el);}
   }
   deferredTitle.clear();
  }
@@ -255,9 +277,10 @@ async function readyCurrent(onProgress){
 function init(){
  if('IntersectionObserver'in global)observer=new IntersectionObserver(entries=>entries.forEach(entry=>{
   const el=entry.target;
+  if(!el.isConnected){unobservePaint(el);deferredTitle.delete(el);return;}
   if(!entry.isIntersecting){deferredTitle.delete(el);return;}
   if(!canPaint(el)){deferredTitle.add(el);return;}
-  deferredTitle.delete(el);reveal(el,entry.boundingClientRect);observer.unobserve(el);
+  deferredTitle.delete(el);reveal(el,entry.boundingClientRect);unobservePaint(el);
  }),{rootMargin:'96px'});
  let resizeFrame;
  const repaintVisible=()=>{

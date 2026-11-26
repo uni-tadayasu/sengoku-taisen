@@ -82,6 +82,7 @@
 .branch-commander-order>label{display:block;margin-bottom:7px;font-size:15px;line-height:1.6;color:#e3d5b4}
 .branch-commander-order>select{display:block;width:100%;max-width:100%;min-height:44px;margin:0 0 12px;padding:10px 30px 10px 10px;border:1px solid #b8a16c70;border-radius:5px;background:#0d2119;color:#eee8d6;font:400 16px/1.5 sans-serif;text-overflow:ellipsis}
 .branch-commander-preview{display:grid;grid-template-columns:64px minmax(0,1fr);align-items:center;gap:12px;padding:12px;margin-bottom:12px;border:1px solid #a7ae6d40;background:#0d1c166b;border-radius:5px}
+.branch-commander-transfer{grid-column:1/-1;margin:0;color:#dfc899;font-size:13px;line-height:1.8;overflow-wrap:anywhere}
 .branch-commander-order>.button{margin:0;min-height:44px;font-size:15px;line-height:1.6}
 .branch-commanders :is(button,select):focus-visible{outline:2px solid #eed299;outline-offset:3px}
 .branch-commanders button:disabled{opacity:.6;cursor:not-allowed}

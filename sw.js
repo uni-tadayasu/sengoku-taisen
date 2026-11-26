@@ -1,11 +1,11 @@
 /* 本体は先に保存。大きな絵巻は、実際に開いたものから保存します。 */
-const RELEASE='5.2.0-20261126';
+const RELEASE='5.3.0-20261126';
 const CACHE='sengoku-taisen-v'+RELEASE;
 const scopeURL=()=>self.registration?.scope||self.location.origin+'/';
 const currentMatch=(request,name=CACHE)=>caches.open(name).then(cache=>cache.match(request));
 const pages=new Set(['./','./guide/','./guide/data-recovery/','./about/','./premium/','./sengoku-vs/','./en/','./press/','./news/','./tools/music-audition.html']);
 const optionalCode=new Set([
-  './promotion.css','./promotion-share.js','./public-growth.js','./english-introduction.css','./guide.css','./share.css','./brand-discovery.css','./public-luxury.js','./public-luxury.css','./premium-catalog.js','./premium.js','./premium.css',
+  './promotion.css','./promotion-share.js','./public-growth.js','./english-introduction.css','./guide.css','./share.css','./brand-discovery.css','./public-luxury.js','./public-luxury.css','./public-search.js','./premium-catalog.js','./premium.js','./premium.css',
   './interaction-motion.js','./interaction-motion.css','./selection-lock.js','./selection-lock.css','./image-protect.js','./image-protect.css','./button-artwork.css',
   './premium-runtime.js','./premium-appearance.css','./music.js','./tools/music-audition.js','./map-data.js'
 ]);
@@ -33,6 +33,7 @@ function entryMime(url,response){
   const type=(response.headers.get('Content-Type')||'').split(';')[0].trim().toLowerCase(),path=new URL(url).pathname;
   if(path.endsWith('.js'))return ['text/javascript','application/javascript','application/x-javascript'].includes(type);
   if(path.endsWith('.css'))return type==='text/css';
+  if(path.endsWith('/public-search-index.json'))return type==='application/json';
   if(path.endsWith('.webmanifest'))return ['application/manifest+json','application/json','application/octet-stream'].includes(type);
   return type==='image/webp';
 }
@@ -145,9 +146,12 @@ self.addEventListener('fetch', event => {
   const versionQuery=!url.search||/^\?v=[A-Za-z0-9._-]{1,64}(?:&portrait=[A-Za-z0-9._-]{1,64})?$/.test(url.search);
   const artwork=versionQuery&&/^\.\/assets\/.+\.(?:webp|png|svg|jpe?g|avif|woff2?)$/i.test(relative);
   const code=versionQuery&&/^\.\/(?:[a-z0-9][a-z0-9.-]*\.(?:js|css|webmanifest)|tools\/music-audition\.js)$/i.test(relative);
+  // Only the generated public guide index is eligible. Saves, player JSON and
+  // API responses remain outside offline storage; the index loads on demand.
+  const publicSearch=versionQuery&&relative==='./public-search-index.json';
   const pageKey=relative.endsWith('/index.html')?relative.slice(0,-10):relative;
   const page=request.mode==='navigate'&&pages.has(pageKey);
-  if(!page&&!artwork&&!code)return;
+  if(!page&&!artwork&&!code&&!publicSearch)return;
 
   const indexURL=new URL('index.html',scopeURL()).href;
   const cacheKey=page?(pageKey==='./'?indexURL:new URL(pageKey,scopeURL()).href):request.url;
@@ -166,13 +170,13 @@ self.addEventListener('fetch', event => {
     const cacheName=await clientCache(event),cached=await currentMatch(cacheKey,cacheName).catch(()=>null);
     if(cached&&!refresh)return cached;
     try{
-      const remember=artwork||code&&optionalCode.has(relative)||page&&pageKey!=='./'&&!url.search;
+      const remember=artwork||publicSearch||code&&optionalCode.has(relative)||page&&pageKey!=='./'&&!url.search;
       // Cached resources are public. Never fill them using session cookies.
       const response=await fetch(request,remember?{credentials:'omit'}:undefined);
       // Only an install can replace the game's document. A manual reload may
       // show newer HTML while the tab still has an older worker, without
       // overwriting that worker's coherent offline entry.
-      if(remember&&mayStore(response)&&(!code||entryMime(request.url,response))){
+      if(remember&&mayStore(response)&&(!(code||publicSearch)||entryMime(request.url,response))){
         const copy=response.clone();
         event.waitUntil(caches.open(cacheName).then(cache=>cache.put(cacheKey,copy)).catch(()=>{}));
       }

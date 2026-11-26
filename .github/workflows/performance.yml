@@ -49,6 +49,8 @@ jobs:
         run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Verify compiled entry and offline loading
         run: npm run test:entry
+      - name: Check the command desk, navigation and deferred UI
+        run: npm run test:interface
       - name: Check shipped asset budgets and runtime parity
         run: |
           node tests/test-asset-budget.cjs

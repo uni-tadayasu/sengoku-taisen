@@ -103,6 +103,23 @@ test('button ripple layers do not remeasure the whole viewport',()=>{
  }
  h.mutations[0].callback([{type:'childList',target,addedNodes:[wave,{nodeType:1,matches:()=>false}],removedNodes:[]}]);assert.equal(h.pendingFrames(),1,'A real content insertion in the same batch still updates the viewport');
 });
+test('decoded artwork changes no viewport geometry while meaningful classes still do',()=>{
+ const h=harness();h.refresh();let classes='painted-art art-ready';
+ const target={nodeType:1,isConnected:true,closest:()=>null,getAttribute:name=>name==='class'?classes:null};
+ h.mutations[0].callback(Array.from({length:100},()=>({type:'attributes',attributeName:'class',oldValue:'painted-art',target})));
+ assert.equal(h.pendingFrames(),0,'A batch of completed portraits needs no shell measurement');
+ classes='art-error painted-art';h.mutations[0].callback([{type:'attributes',attributeName:'class',oldValue:'painted-art art-ready',target}]);assert.equal(h.pendingFrames(),0);
+ classes='painted-art art-ready expanded';h.mutations[0].callback([{type:'attributes',attributeName:'class',oldValue:'painted-art art-ready',target}]);assert.equal(h.pendingFrames(),1,'A class affecting real layout still refreshes');h.flush();
+});
+test('closed dialog changes stay idle but opening and closing still update shell geometry',()=>{
+ const h=harness();h.refresh();
+ const dialog={nodeType:1,isConnected:true,matches:selector=>selector==='dialog',closest:selector=>selector==='dialog:not([open])'?dialog:null};
+ const target={nodeType:1,isConnected:true,matches:()=>false,closest:selector=>selector==='dialog:not([open])'?dialog:null};
+ h.mutations[0].callback([{type:'childList',target,addedNodes:[{nodeType:1}],removedNodes:[]}]);assert.equal(h.pendingFrames(),0);
+ h.mutations[0].callback([{type:'attributes',target,attributeName:'class'}]);assert.equal(h.pendingFrames(),0);
+ h.mutations[0].callback([{type:'attributes',target:dialog,attributeName:'open'}]);assert.equal(h.pendingFrames(),1,'A close event still clears visible modal geometry');h.flush();
+ dialog.closest=()=>null;h.mutations[0].callback([{type:'attributes',target:dialog,attributeName:'open'}]);assert.equal(h.pendingFrames(),1,'An open event still fits the newly visible modal');h.flush();
+});
 test('text-caused header resizing still updates viewport through ResizeObserver',()=>{
  const h=harness({width:820});h.refresh();const observer=h.resizes[0];
  assert(observer.observed.some(entry=>entry.node===h.header));assert(observer.observed.some(entry=>entry.node===h.announcementNode));

@@ -38,14 +38,17 @@ function browser(initialSave,{linked=false,liveModal=false,travelUI}={}) {
     nodes.set(id,node);return node;
   }
   const document = {hidden:false,activeElement:null,querySelector:query,querySelectorAll:selector=>modalDOM?modalDOM.host.querySelectorAll(selector).map(decorate):[],getElementById:id=>query('#'+id),addEventListener:(type,fn)=>{if(!handlers.has(type))handlers.set(type,[]);handlers.get(type).push(fn);}};
-  if(modalDOM)Object.defineProperty(document,'activeElement',{get:()=>modalDOM.doc.activeElement,set:node=>{modalDOM.doc.activeElement=node;}});
+  if(modalDOM){
+    document.createElement=name=>modalDOM.doc.createElement(name);
+    Object.defineProperty(document,'activeElement',{get:()=>modalDOM.doc.activeElement,set:node=>{modalDOM.doc.activeElement=node;}});
+  }
   const c = {document,console,SengokuEngine,SENGOKU_DATA,SENGOKU_OFFICERS:roster,Date,Math,URL,Blob,URLSearchParams,
     localStorage:{getItem:key=>stored.has(key)?stored.get(key):null,setItem:(key,value)=>{if(failSave&&key===SAVE)throw Error('storage full');stored.set(key,value);},removeItem:key=>stored.delete(key)},
     crypto:require('node:crypto').webcrypto,navigator:{},location:{hash:'#town',protocol:'https:'},history:{replaceState(){}},performance:{now:()=>1000},
     setInterval:()=>1,setTimeout:()=>1,clearTimeout(){},scrollTo(){},scrollX:0,scrollY:0,
     addEventListener(){},dispatchEvent:event=>events.push(event.type),CustomEvent:class{constructor(type){this.type=type;}}
   };
-  if(modalDOM)c.SengokuStableDOM={patch(node,html,options){node._html=html;if(node===nodes.get('modal-content'))return stable.patch(modalDOM.host,html,options);node.innerHTML=html;return{artwork:false};},forget(node){if(node===nodes.get('modal-content'))stable.forget(modalDOM.host);}};
+  if(modalDOM)c.SengokuStableDOM={patch(node,html,options){node._html=html;if(node===nodes.get('modal-content'))return stable.patch(modalDOM.host,html,options);if(node.ownerDocument===modalDOM.doc)return stable.patch(node,html,options);node.innerHTML=html;return{artwork:false};},forget(node){if(node===nodes.get('modal-content'))stable.forget(modalDOM.host);}};
   if(travelUI)c.SengokuTravelUI=travelUI;
   c.window=c;vm.createContext(c);vm.runInContext(fs.readFileSync(path.join(__dirname,'../kamon.js'),'utf8'),c);vm.runInContext(source,c);
   async function event(type,target){for(const listener of handlers.get(type)||[])await listener({target});}
@@ -196,7 +199,9 @@ await test('quiet canonical refresh keeps the branch preference editable while c
  const build=b.c.document.querySelectorAll('[data-action="build-branch"]')[0];assert(build.disabled);const before=JSON.stringify(bridge.getState());await b.event('click',build);assert.equal(JSON.stringify(bridge.getState()),before,'Editing a preference does not unlock construction');
  select.value='west';await b.event('change',select);assert.equal(b.c.document.querySelectorAll('[data-action="build-branch"]')[0].dataset.direction,'west');assert.equal(b.c.document.querySelectorAll('[data-action="build-branch"]')[0].disabled,true);
  bridge.setSyncAccess({linked:true,ready:true,writable:true,rolePending:false,reason:'writer'});assert.strictEqual(b.query('#branch-direction-nijo'),select);assert.equal(select.disabled,false);assert.equal(select.value,'west');assert.strictEqual(b.c.document.activeElement,select);assert.equal(b.c.document.querySelectorAll('[data-action="build-branch"]')[0].disabled,false);
- select.disabled=true;bridge.setSyncAccess({linked:true,ready:true,writable:true});assert.equal(select.disabled,false,'Live refresh also repairs a stale disabled attribute without rebuilding the field');
+ select.disabled=true;bridge.setSyncAccess({linked:true,ready:true,writable:true});assert.equal(select.disabled,true,'An unchanged acknowledgement intentionally skips rescanning every live control');
+ bridge.setSyncAccess({linked:true,ready:true,writable:false,reason:'applying'});assert.equal(select.disabled,false,'An actual authority transition repairs a stale disabled attribute without rebuilding the field');
+ bridge.setSyncAccess({linked:true,ready:true,writable:true,reason:'writer'});assert.strictEqual(b.query('#branch-direction-nijo'),select);assert.equal(select.disabled,false);
 });
 await test('branch departure preserves its target, refunds a vanished defense, and renders branch-specific combat receipts',async()=>{
   let actions;
@@ -234,7 +239,7 @@ await test('court navigation and evaluation entry mount once, refresh in place a
   const b=browser(personal().exportSave()),bridge=b.c.SengokuBridge,trace=[];let options;
   b.c.SengokuCourt={mount(host,value){assert.equal(host.id,'court-field');options=value;trace.push('mount');return{refresh(){trace.push('refresh');},dispose(){trace.push('dispose');},controller:{selectSection(section){trace.push(section);}}};}};
   assert.match(b.nodes.get('navigation').innerHTML,/data-view="court"/);bridge.showEvaluation();assert.match(b.nodes.get('modal-content').innerHTML,/京都御所へ出向く/);
-  bridge.openCourt();assert.equal(b.nodes.get('main').dataset.view,'court');assert.equal(options.initialSection,'overview');assert.equal(b.nodes.get('modal').open,false);bridge.setSyncAccess({linked:false,ready:true,writable:true});assert.equal(trace.filter(x=>x==='mount').length,1);assert(trace.includes('refresh'));
+  bridge.openCourt();assert.equal(b.nodes.get('main').dataset.view,'court');assert.equal(options.initialSection,'overview');assert.equal(b.nodes.get('modal').open,false);bridge.setSyncAccess({linked:true,ready:true,writable:false,rolePending:false,reason:'follower'});assert.equal(trace.filter(x=>x==='mount').length,1);assert(trace.includes('refresh'),'A changed authority refreshes the existing court without remounting it');
   bridge.openCourt({management:true});assert.equal(trace.at(-1),'management');assert.equal(trace.filter(x=>x==='mount').length,1);
   await b.event('click',{disabled:false,dataset:{view:'town'},closest(){return this;}});assert.equal(trace.filter(x=>x==='dispose').length,1);bridge.openCourt({management:true});assert.equal(options.initialSection,'management');assert.equal(trace.filter(x=>x==='mount').length,2);
 });

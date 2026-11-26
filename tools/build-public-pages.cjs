@@ -47,6 +47,43 @@ function readingContent(page, paths) {
   });
 }
 
+function publicSearchIndex() {
+  const plain = html => html.replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ').replace(/&(?:amp|lt|gt|quot|#39|nbsp);/g, value => ({'&amp;':'&','&lt;':'<','&gt;':'>','&quot;':'"','&#39;':"'",'&nbsp;':' '})[value])
+    .replace(/\s+/g, ' ').trim();
+  const keywords = {
+    'first-steps':'始め方 初心者 はじめて スタート 城選び',
+    'castle-upgrades':'城の強化 レベルアップ 天守 城郭',
+    'officers':'ガチャ ガシャ 招集 編成 育成',
+    'save-and-sync':'セーブ バックアップ 機種変更 保存 同期',
+    'old-device':'機種変更 接続コード 引継ぎ 引き継ぎ',
+    'questions':'BGM 音楽 音量 ミュート ヘルプ',
+    'device-controls':'操作 メニュー 検索 スマートフォン タブレット PC',
+    'command-desk':'指揮台 状況 普請 進軍 帰還 任務 兵数 士気',
+    'resource-ledger':'帳簿 収支 収入 支出 資源 維持費 奉行 給与 修復'
+  };
+  const entries = [];
+  for (const page of pages.filter(item => item.toc && item.content)) {
+    const content = page.content(paths(page.file));
+    // Some contents entries point to a subheading inside a chapter. Include
+    // those real destinations too, rather than silently dropping them.
+    const starts = page.toc.map(([id, title]) => {
+      const match = new RegExp('<(?:section|h[1-6])\\b[^>]*\\bid="' + id + '"[^>]*>').exec(content);
+      if (!match) throw Error('Search destination is missing: ' + page.file + '#' + id);
+      return {id, title, index:match.index};
+    }).sort((a, b) => a.index - b.index);
+    for (let index = 0; index < starts.length; index++) {
+      const {id, title} = starts[index];
+      const segment = content.slice(starts[index].index, starts[index + 1]?.index ?? content.length)
+        .replace(/<div class="section-navigation"[\s\S]*$/, '');
+      const heading = segment.match(/<h[1-6]\b[^>]*>([\s\S]*?)<\/h[1-6]>/)?.[1] || '';
+      const body = plain(segment.replace(/<div class="section-kicker">[\s\S]*?<\/div>/, '').replace(/<h[1-6]\b[^>]*>[\s\S]*?<\/h[1-6]>/, ''));
+      entries.push({title, page:page.label, href:page.path.slice(1) + '#' + id, keywords:[keywords[id], plain(heading)].filter(Boolean).join(' '), body});
+    }
+  }
+  return JSON.stringify({schemaVersion:1, entries}) + '\n';
+}
+
 function paths(file) {
   const from = path.posix.dirname(file);
   return {
@@ -178,8 +215,18 @@ function guideContent(p) {
       ])}
       <p>「すべてのメニュー」の<strong>「機能名や目的で検索」</strong>には、例えば「兵」「報酬」「保存」などを入力できます。検索を消すと全項目へ戻ります。各項目の星で<strong>最大6件をお気に入り</strong>に登録できます。検索欄から上下の矢印キーで項目へ移り、Enterキーでも開けます。メニューの選択だけで、出陣や資源の消費は行いません。</p>
       <p>城下町の<strong>「本拠」「施設」「報告」</strong>を押すと、タブを切り替えて必要な操作欄を開けます。施設管理・軍団編成・天下地図・任務へ直接進むボタンも使えます。施設アイコンと施設名・Lvは、画面幅に応じて間隔を調整します。町並みが小さく、すべての表示を収められない場合は、町並みのそばにある施設一覧で名前とLvを確認できます。</p>
+      <h3 id="command-desk">「領国の指揮台」から、今の状況を確認</h3>
+      <p>城下町の<strong>「本拠」</strong>には、普請・部隊・任務・兵力をまとめた「領国の指揮台」があります。各欄を押すと、その状況を詳しく確認する画面へ進めます。</p>
+      ${table('領国の指揮台の見方', ['表示', '確認できること・開く画面'], [
+        ['普請・研究', '進行中と予約中の件数を表示します。押すと城下町の「報告」を開き、工事や研究の進み具合を確認できます。'],
+        ['進軍・帰還', '行軍一覧に表示される移動中の部隊数と、そのうち帰還中の数です。押すと行軍一覧で目的地や到着までの時間を確認できます。'],
+        ['達成済み任務', '軍議の領主任務のうち、達成済みで報酬を受け取っていない件数です。押すと「軍議」を開きます。'],
+        ['本隊の兵数', '本隊の兵数と、軍団に編成した武将の人数・士気を表示します。押すと「軍団編成」へ進めます。']
+      ])}
+      <p>日次・週次任務は、城下町の<strong>「今日の任務」</strong>から確認できます。指揮台の<strong>「毎月の収支」</strong>では金銭・兵糧の差引見込みを表示し、<a href="#resource-ledger">「内訳を見る」で資源ごとの帳簿を開けます</a>。</p>
       <h3>迷ったら「ヒント」、操作に困ったら「保存・設定」</h3>
       <p><strong>「ヒント」</strong>は今の領国に合う次の行動を案内します。<strong>「保存・設定」</strong>は「音・表示」「保存・引き継ぎ」「便利な機能」「戦役の設定」の4分類です。目的の項目を開き、音量やバックアップなどを確認できます。初めての人は、まず城下町の田畑・商家と軍団を整え、戦いの前に軍師の提案を確認すると進めやすくなります。</p>
+      <p>文字を読みやすくしたいときは、<strong>「保存・設定」→「音・表示」→「文字の大きさ」</strong>で「標準」「大きめ」を選べます。この表示設定は端末ごとに保存されます。</p>
       <p>入力欄で検索・絞り込みを使うときは、条件を解除すると元の一覧へ戻れます。画面を閉じるときは、その画面の<strong>「閉じる」</strong>を使ってください。保存・引き継ぎの操作は、<a href="${p.dir('guide/data-recovery')}">データ復元ガイド</a>で手順を確認できます。</p>
     `, 'section-town'),
     section('next-hints', '迷ったときの道しるべ', '次に何をするか、ヒントで確認', `
@@ -236,6 +283,10 @@ function guideContent(p) {
         ['<span class="resource-magatama">勾玉</span>', '武将招集に使用。月ごとの報酬、城の初回攻略、任務、ウォーキング、ゲームからの贈り物などで獲得します。']
       ], 'resource-table')}
       <p>各施設の詳細には必要資源と効果が表示されます。普請枠は城郭と施設で共通です。着工前に、何を先に完成させたいかを決めておくと進めやすくなります。</p>
+      <h3 id="resource-ledger">上部の資源から、毎月の収支を開く</h3>
+      <p>ゲーム画面の上部にある<strong>金銭・兵糧・木材・石材の表示</strong>を押すと、「毎月の収支」を開けます。城下町の指揮台にある「内訳を見る」からも、同じ帳簿を確認できます。</p>
+      <p>資源ごとに<strong>生産、兵の維持費、施設・城の維持費、奉行の給与、余剰生産の調整、拠点の修復費、差引</strong>を表示します。現在の編成・施設と次回の修復をもとにした月間の見込みです。「維持費・給与の対象と内訳」を開くと、奉行の人数・月給、兵の配置先、維持している完成レベルも確認できます。</p>
+      <p>赤字や不足が気になるときは、帳簿の<strong>「生産施設を見直す」「軍団を見直す」</strong>から、施設管理や軍団編成へ進んでください。</p>
       <h3>大きな黒字の増え方を調整</h3>
       <p>金銭・兵糧・木材・石材は、生産から兵士・施設の維持費と奉行の給与を引いて月間収支を計算します。黒字が<strong>金銭5,000・兵糧9,000・木材3,000・石材2,500</strong>を超える場合は、余剰生産を調整し、黒字が大きいほど資産の増加を緩やかにします。この数値は所持上限や収入の上限ではなく、調整を始める月額です。少ない黒字と赤字はそのまま計算します。調整後も増産分の25%を残す計算とし、大規模な領地でも施設強化が収入につながるようにしています（端数切り捨て）。</p>
       <p>ヘッダーと「毎月の収支」の差引には、現在の生産・維持費と次回の修復費を含めた月間の見込みを表示します。すでに持っている資産、合戦・任務・歩数の報酬、贈り物、交易の受取額は、この生産調整で減りません。各資産の所持上限は1億です。</p>
@@ -644,7 +695,7 @@ const pages = [
     eyebrow: '公式ゲームガイド', heading: '戦国VSの遊び方',
     lead: 'はじめての一城から、軍師と目指す天下統一まで。端末ごとの操作、城の育成、合戦の報酬、幕府の開設、データの引き継ぎを、知りたいことから確認できます。',
     heroAction: 'ゲームを開く', secondary: ['データ復元の案内', 'guide/data-recovery'],
-    toc: [['first-steps','城選び・初めての進め方'],['device-controls','PC・スマホ・タブレットの操作'],['next-hints','次の一手・上へ戻る'],['castle-upgrades','本拠・城郭のレベル上げ'],['resources','城下町と資源'],['construction','施設Lv・連続増築'],['officers','武将・軍団・勾玉'],['maps','二つの地図と外交'],['field-battles','報酬戦・占領戦・襲撃'],['residency','城の領主・家臣と継承'],['home-relocation','本拠移転・武将の引き継ぎ'],['marching','出陣から到着までの移動時間'],['branches','支城の普請予約・攻略順・修復'],['player-evaluation','総合評価・位階の称号'],['court','京都御所・参内と謁見'],['world-clock','共通時間・拠点リセット'],['community','同盟・接続一覧・役職'],['voice-chat','同盟の音声通話'],['trade','兵士・資産の輸出入'],['roaming','野良兵士とのCPU戦'],['covert','派遣部隊・偵察・駐留・反撃'],['letters','領主・同盟への書状'],['system-mail','勝敗・移転のシステムメール'],['strategy','軍師AI・自動進軍'],['timed-events','期間限定合戦・毎戦報酬'],['shogunate','天下統一・幕府の開設'],['walking','ウォーキング報酬'],['save-and-sync','保存と端末同期'],['questions','よくある質問']],
+    toc: [['first-steps','城選び・初めての進め方'],['device-controls','PC・スマホ・タブレットの操作'],['command-desk','領国の指揮台・状況の確認'],['next-hints','次の一手・上へ戻る'],['castle-upgrades','本拠・城郭のレベル上げ'],['resources','城下町と資源'],['resource-ledger','毎月の収支・資源の内訳'],['construction','施設Lv・連続増築'],['officers','武将・軍団・勾玉'],['maps','二つの地図と外交'],['field-battles','報酬戦・占領戦・襲撃'],['residency','城の領主・家臣と継承'],['home-relocation','本拠移転・武将の引き継ぎ'],['marching','出陣から到着までの移動時間'],['branches','支城の普請予約・攻略順・修復'],['player-evaluation','総合評価・位階の称号'],['court','京都御所・参内と謁見'],['world-clock','共通時間・拠点リセット'],['community','同盟・接続一覧・役職'],['voice-chat','同盟の音声通話'],['trade','兵士・資産の輸出入'],['roaming','野良兵士とのCPU戦'],['covert','派遣部隊・偵察・駐留・反撃'],['letters','領主・同盟への書状'],['system-mail','勝敗・移転のシステムメール'],['strategy','軍師AI・自動進軍'],['timed-events','期間限定合戦・毎戦報酬'],['shogunate','天下統一・幕府の開設'],['walking','ウォーキング報酬'],['save-and-sync','保存と端末同期'],['questions','よくある質問']],
     content: guideContent, closingTitle: 'さあ、城下町へ。', closingText: '最初の普請を選び、あなたの一手から戦記を始めましょう。'
   },
   {
@@ -698,7 +749,7 @@ function render(page) {
   const header = `<header class="site-header"><div class="site-header-inner page-width">
     <a class="site-brand" href="${p.dir('')}" aria-label="戦国VS ゲームのトップへ"><img src="${p.file(site.favicon.path)}" srcset="${[48,96,144].map(width => p.file(`assets/responsive/brand-${width}.webp`) + ` ${width}w`).join(', ')}" sizes="44px" alt="" width="44" height="44"><span><b>戦国VS</b><small>SENGOKU VS</small></span></a>
     <button class="public-nav-toggle" type="button" hidden aria-expanded="false" aria-controls="public-site-nav"><span class="menu-lines" aria-hidden="true"></span>メニュー</button>
-    <nav class="header-navigation" id="public-site-nav" aria-label="サイトの案内">${nav}<a class="nav-play" href="${p.dir('')}">ゲームを開く</a></nav>
+    <nav class="header-navigation" id="public-site-nav" aria-label="サイトの案内">${nav}<a class="public-search-trigger" href="${p.dir('guide')}#page-contents" data-public-search data-search-index="${p.file('public-search-index.json')}?v=${release}"><span class="public-search-symbol" aria-hidden="true"></span>ガイド検索</a><a class="nav-play" href="${p.dir('')}">ゲームを開く</a></nav>
   </div></header>`;
   const footer = `<footer class="site-footer"><div class="footer-inner page-width"><a class="footer-brand" href="${p.dir('')}">${esc(site.name)} <span>SENGOKU VS</span></a><nav class="footer-nav" aria-label="フッターの案内">${nav}<a href="${p.dir('press')}"${page.key === 'press' ? ' aria-current="page"' : ''}>紹介・掲載用素材</a><a href="${p.dir('en')}" lang="en" hreflang="en">English</a></nav><p class="copyright">© ${esc(site.publisher)}</p><p class="footer-note"><a href="${p.dir('about')}#copyright">著作権・作品資料</a>${['share','premium'].includes(page.key)?` <span>更新 <time datetime="${page.dateModified}">${modifiedLabel(page.dateModified)}</time></span>`: ''}</p></div></footer>`;
   const chapter = path.basename(page.artwork.path, '.webp');
@@ -742,10 +793,10 @@ ${['press','news'].includes(page.key) ? `  <link rel="stylesheet" href="${p.file
     <nav aria-label="パンくず"><ol class="breadcrumbs">${breadcrumbItems.map((item,i)=>`<li>${i===breadcrumbItems.length-1?`<span aria-current="page">${item.name}</span>`:`<a href="${item.href}">${item.name}</a>`}</li>`).join('')}</ol></nav>
     <section class="hero chapter-hero folio-hero" aria-labelledby="page-title">${artwork}<div class="hero-copy"><p class="eyebrow">${page.eyebrow}</p><h1 id="page-title">${page.heading}</h1><p class="hero-lead">${page.lead}</p><div class="hero-actions"><a class="action-link" href="${page.heroHref ? p.file(page.heroHref) : p.dir('')}"${page.heroHref ? ' download' : ''}>${page.heroAction}</a><a class="text-link" href="${secondaryHref}">${page.secondary[0]}</a></div></div></section>
 ${quickTopics(page.key, p)}
-    <div class="reading-layout"><aside id="page-contents" class="toc" tabindex="-1"><nav aria-label="このページの目次"><h2 class="toc-title">目次</h2><details class="toc-chapters" open><summary>すべての項目 <span>${page.toc.length}項目</span></summary><ul>${page.toc.map(([id,label])=>`<li><a href="#${id}">${label}</a></li>`).join('')}</ul></details></nav></aside><article class="article" aria-label="${page.label}の本文"><p class="article-updated">内容更新：<time datetime="${page.dateModified}">${modifiedLabel(page.dateModified)}</time></p>${readingContent(page, p)}</article></div>
+    <div class="reading-layout"><aside id="page-contents" class="toc" tabindex="-1"><nav aria-label="このページの目次"><h2 class="toc-title">目次</h2><details class="toc-chapters" open><summary>すべての項目 <span>${page.toc.length}項目</span></summary><ul>${page.toc.map(([id,label])=>`<li><a href="#${id}">${label}</a></li>`).join('')}</ul></details></nav></aside><article class="article" aria-label="${page.label}の本文"><div class="article-edition"><span>${page.label} <b>${String(page.toc.length).padStart(2, '0')}</b> 項目</span><p class="article-updated">内容更新 <time datetime="${page.dateModified}">${modifiedLabel(page.dateModified)}</time></p></div>${readingContent(page, p)}</article></div>
     <section class="closing"><div><h2>${page.closingTitle}</h2><p>${page.closingText}</p></div><a class="action-link" href="${p.dir('')}">ゲームを開く</a></section>
   </main>
-  <nav class="reading-actions" aria-label="読書中の案内"><a href="#page-contents">目次へ</a><a href="${p.dir('')}">ゲームを開く</a></nav>
+  <nav class="reading-actions" aria-label="読書中の案内"><a href="#page-contents">目次へ</a><a href="${p.dir('guide')}#page-contents" data-public-search>検索</a><a href="${p.dir('')}">ゲームを開く</a></nav>
   ${footer}
 </body>
 </html>
@@ -869,6 +920,7 @@ function sitemap() {
 // Compute everything before writing so malformed metadata cannot leave a
 // partially regenerated public surface. Unchanged files keep their mtime.
 const outputs = new Map(pages.map(page => [page.file, withButtonArtwork(render(page), paths(page.file).file('button-artwork.css'))]));
+outputs.set('public-search-index.json', publicSearchIndex());
 const englishPaths = paths('en/index.html');
 outputs.set('en/index.html', withButtonArtwork(renderEnglishPage({
   metadataHtml: metadataEntries('english').map(metaTag).join('\n  ') + `\n  <link rel="canonical" href="${canonical('english')}">\n  ${languageLinks('english')}`,
@@ -899,6 +951,7 @@ for (const [name, html] of outputs) {
   if (name.endsWith('.html')) {
     const currentBrand = html.replace(/assets\/responsive\/(brand|emblem)-(?:\d{8}-)?(\d+)\.webp/g, (_, kind, width) => `assets/responsive/${kind}-${brandEdition}-${width}.webp`);
     let themed = replaceHeadTag(currentBrand, 'meta', attrs => attrs.name === 'theme-color', `<meta name="theme-color" content="${esc(site.themeColor)}">`);
+    if (pages.some(page => page.file === name)) themed = themed.replace('</head>', `  <script defer src="${paths(name).file('public-search.js')}?v=${release}"></script>\n</head>`);
     if (name === 'index.html' || pages.some(page => page.file === name)) themed = replaceHeadTag(themed, 'link', attrs => attrs.rel === 'alternate' && attrs.type === 'application/rss+xml', `<link rel="alternate" type="application/rss+xml" title="戦国VS 公式更新情報" href="${origin}/news/feed.xml">`);
     const promotion = ['sengoku-vs/index.html', 'en/index.html'].includes(name);
     if (promotion) themed = withPromotion(themed, name);

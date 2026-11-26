@@ -82,10 +82,21 @@ function start(){
       // Real header size changes are handled by the ResizeObserver above.
       if(record.type==='childList'&&![...record.addedNodes,...record.removedNodes].some(child=>child.nodeType===1&&!child.matches?.('.ui-motion-layer,.ui-motion-clip,.ui-motion-wave')))return false;
       const node=record.target.nodeType===1?record.target:record.target.parentElement;
+      if(node?.isConnected===false)return false;
       if(node?.closest?.('.ui-motion-layer'))return false;
+      // Loading/error artwork only changes an absolute overlay/background.
+      // Hundreds of decoded portraits must not each remeasure the viewport.
+      if(record.type==='attributes'&&record.attributeName==='class'&&typeof record.oldValue==='string'){
+        const layoutClasses=value=>String(value||'').split(/\s+/).filter(name=>name&&name!=='art-ready'&&name!=='art-error').sort().join(' ');
+        if(layoutClasses(record.oldValue)===layoutClasses(node.getAttribute?.('class')))return false;
+      }
+      // Hidden conversations retain their content for a quick reopen. Their
+      // background changes have no effect on the visible game shell.
+      const closingDialog=record.type==='attributes'&&record.attributeName==='open'&&node?.matches?.('dialog');
+      if(!closingDialog&&node?.closest?.('dialog:not([open])'))return false;
       return !node?.closest?.('.sg-map,#calendar,#resources,#touch-header-status,[data-job-clock],[data-job-progress],#month-countdown,#month-progress');
     }))refresh();
-  });mutationObserver.observe(doc.body,{subtree:true,childList:true,attributes:true,attributeFilter:['class','hidden','open','data-view']});}
+  });mutationObserver.observe(doc.body,{subtree:true,childList:true,attributes:true,attributeOldValue:true,attributeFilter:['class','hidden','open','data-view']});}
   doc.fonts?.ready?.then(refresh).catch(()=>{});refresh();
 }
 function destroy(){

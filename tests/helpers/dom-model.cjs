@@ -78,7 +78,7 @@ function matchSelector(node,selector,scope){
  const parts=selector.match(/^[\w*-]+|\.[\w-]+|#[\w-]+|\[[^\]]+\]/g)||[];
  return parts.length>0&&parts.every(part=>{if(part==='*')return true;if(part[0]==='.')return node.classList.contains(part.slice(1));if(part[0]==='#')return node.id===part.slice(1);if(part[0]==='['){const match=part.slice(1,-1).match(/^([^=]+)(?:=["']?([^"']*)["']?)?$/);return match&&node.hasAttribute(match[1])&&(match[2]===undefined||node.getAttribute(match[1])===match[2]);}return node.localName===part;})||selector==='';
 }
-function serialize(node){if(node.nodeType===3)return node.nodeValue;if(node.nodeType===8)return'<!--'+node.nodeValue+'-->';return'<'+node.localName+node.attributes.map(a=>' '+a.name+'="'+a.value+'"').join('')+'>'+node.childNodes.map(serialize).join('')+'</'+node.localName+'>';}
+function serialize(node){if(node.nodeType===3)return node.nodeValue;if(node.nodeType===8)return'<!--'+node.nodeValue+'-->';const opening='<'+node.localName+node.attributes.map(a=>' '+a.name+'="'+a.value+'"').join('')+'>';if(node.namespaceURI===HTML&&/^(?:area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr)$/.test(node.localName))return opening;return opening+node.childNodes.map(serialize).join('')+'</'+node.localName+'>';}
 function parse(source,doc){
  const fragment=new Node(11,'#document-fragment',doc),stack=[fragment],voids=new Set(['input','img','br','hr','meta','link','source','area','wbr']);
  for(const token of source.match(/<!--[\s\S]*?-->|<[^>]+>|[^<]+/g)||[]){

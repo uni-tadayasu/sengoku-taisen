@@ -1,12 +1,13 @@
 {
   "name": "sengoku-vs-web",
-  "version": "5.2.0",
+  "version": "5.3.0",
   "private": true,
   "description": "Reproducible production assets for the Sengoku VS browser game",
   "scripts": {
     "build": "node tools/build-public-pages.cjs && node tools/build-game-entry.cjs",
     "check:build": "node tools/build-public-pages.cjs --check && node tools/build-game-entry.cjs --check",
-    "test:entry": "node tests/test-game-entry.cjs && node tests/test-release-assets.cjs && node tests/test-offline-entry-http.cjs"
+    "test:entry": "node tests/test-game-entry.cjs && node tests/test-release-assets.cjs && node tests/test-offline-entry-http.cjs && node tests/test-public-search-cache.cjs",
+    "test:interface": "node tests/test-command-center.cjs && node tests/test-navigation-ui.cjs && node tests/test-presentation.cjs && node tests/test-branch-commanders-ui.cjs && node tests/test-artwork-lifecycle.cjs && node tests/test-desktop-fit.cjs && node tests/test-social-viewport.cjs && node tests/test-public-search.cjs"
   },
   "devDependencies": {
     "esbuild": "0.28.2"

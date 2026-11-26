@@ -272,3 +272,84 @@ html.sengoku-desktop-fit #app .navigation-favorites-rail:not([hidden]) {
 @media (forced-colors:active) {
   .navigation-dialog :is(.navigation-purpose-row button,.navigation-dock-editor,.navigation-dock-selects select) { color: ButtonText; background: ButtonFace; border-color: ButtonText; }
 }
+
+/* A quiet ink-and-brass surface keeps the finder legible over the game. */
+dialog.navigation-dialog {
+  border-color: #b49b625e; border-top: 2px solid #d4b578; border-radius: 15px;
+  background: linear-gradient(145deg, #1b2d35, #111f27 65%, #14242b);
+  box-shadow: 0 28px 110px #02070bd1, 0 0 0 1px #ead5a410 inset;
+}
+.navigation-dialog .navigation-dialog-header {
+  align-items: center; padding-bottom: 15px;
+  background: linear-gradient(100deg, #d9b67309, transparent 75%);
+}
+.navigation-dialog .navigation-dialog-header h2 { color: #f7ecd6; letter-spacing: .035em; }
+.navigation-dialog .navigation-current-location {
+  display: flex; align-items: baseline; gap: 7px; margin-top: 4px;
+  color: #bdc9c9; font-size: 13px; line-height: 1.5; overflow-wrap: anywhere;
+}
+.navigation-current-location::before { content: ""; flex: none; width: 5px; height: 5px; border-radius: 50%; background: #cfaf71; }
+.navigation-dialog .navigation-search { border-color: #8a9b9f70; background: #0b1922a8; transition: border-color .15s ease, box-shadow .15s ease; }
+.navigation-dialog .navigation-search:focus-within { border-color: #e0c181; box-shadow: 0 0 0 3px #d9b67315; }
+.navigation-dialog .navigation-search input:focus-visible { outline: none; }
+.navigation-dialog .navigation-results { padding-top: 6px; border-top: 1px solid #c6b48c20; }
+.navigation-dialog .navigation-entry-row { border-color: #a2aaa438; background: #101f26; }
+.navigation-dialog .navigation-entry-row > .navigation-entry {
+  gap: 10px; background-color: #1e3039; background-image: none;
+  --button-wash-start: rgba(30, 48, 57, .98); --button-wash-end: rgba(23, 40, 49, .98);
+}
+.navigation-dialog .navigation-entry-row > .navigation-entry.is-current { background-color: #343c32; }
+.navigation-dialog .navigation-entry-icon {
+  width: 34px; height: 38px; border: 1px solid #c8ac6f35; border-radius: 8px;
+  background: linear-gradient(145deg, #d7b86c0d, #d7b86c03); color: #e3c586;
+}
+.navigation-dialog .navigation-entry-icon > .icon { width: 22px; height: 22px; }
+.navigation-dialog .navigation-entry-arrow { display: grid; place-items: center; flex: none; width: 12px; color: #a0b1b5; }
+.navigation-dialog .navigation-entry-arrow > .icon { width: 12px; height: 12px; }
+.navigation-dialog .navigation-entry-category { color: #c9b58a; font-size: 11px; font-weight: 500; line-height: 1.5; }
+.navigation-dialog .navigation-entry-copy mark { padding: 0; border-radius: 2px; color: #ffe6a4; background: #d1aa4429; box-decoration-break: clone; }
+.navigation-dialog .navigation-group-count {
+  display: inline-block; margin-left: 8px; min-width: 1.8em; padding: 1px 5px;
+  border: 1px solid #b8a06d33; border-radius: 4px; color: #c5c7b9;
+  font-size: 11px; font-weight: 500; line-height: 1.4; text-align: center; font-variant-numeric: tabular-nums;
+}
+.navigation-dialog .navigation-empty { display: grid; justify-items: center; gap: 8px; padding: 28px 14px; }
+.navigation-dialog .navigation-empty > .icon { width: 31px; height: 31px; margin-bottom: 3px; color: #cfb479; }
+.navigation-dialog .navigation-empty > p { max-width: 26em; margin: 0; line-height: 1.7; }
+.navigation-dialog .navigation-search-suggestions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 8px; }
+.navigation-dialog :is(.navigation-search-suggestions button,.navigation-search-recovery) {
+  min-height: 44px; padding: 9px 15px; border: 1px solid #cfb47960; border-radius: 8px;
+  color: #eadbb8; background: #293a3d; font: inherit; font-size: 14px; line-height: 1.5; cursor: pointer;
+}
+.navigation-dialog .navigation-empty-reset {
+  min-height: 44px; margin-top: 4px; padding: 8px 12px; border: 0;
+  color: #bfcdd0; background: transparent; font: inherit; font-size: 14px; cursor: pointer;
+  text-decoration: underline; text-underline-offset: 4px;
+}
+.navigation-dialog.is-filtered .navigation-dock-editor { display: none; }
+@media (hover:hover) {
+  .navigation-dialog .navigation-entry-row:has(.navigation-entry:hover) { border-color: #dfbc78; }
+  .navigation-dialog :is(.navigation-search-suggestions button,.navigation-search-recovery):hover { border-color: #e5c686; background: #354542; }
+}
+@media (max-width:580px) {
+  dialog.navigation-dialog { border-radius: 12px; }
+  .navigation-dialog .navigation-dialog-header { padding-bottom: 12px; }
+  .navigation-dialog .navigation-entry-row > .navigation-entry { padding: 11px 10px; gap: 9px; }
+  .navigation-dialog .navigation-entry-copy small { font-size: 13px; line-height: 1.55; }
+  .navigation-dialog .navigation-search-matches .navigation-group-heading > small { font-size: 11px; }
+}
+@media (max-height:500px) {
+  .navigation-dialog .navigation-dialog-header { padding-block: 7px; }
+  .navigation-dialog .navigation-current-location { display: none; }
+  .navigation-dialog .navigation-purpose-row { display: none; }
+  .navigation-dialog.is-filtered .navigation-entry-row > .navigation-entry { padding-block: 7px; }
+}
+@media (prefers-reduced-motion:reduce) {
+  .navigation-dialog .navigation-search { transition: none; }
+}
+@media (forced-colors:active) {
+  dialog.navigation-dialog { background: Canvas; border-color: CanvasText; }
+  .navigation-dialog :is(.navigation-entry-row,.navigation-search,.navigation-entry-icon) { border-color: CanvasText; background: Canvas; }
+  .navigation-dialog .navigation-entry-copy mark { color: HighlightText; background: Highlight; }
+  .navigation-dialog :is(.navigation-search-suggestions button,.navigation-search-recovery) { color: ButtonText; background: ButtonFace; border-color: ButtonText; }
+}

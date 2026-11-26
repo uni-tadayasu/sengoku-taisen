@@ -10,12 +10,12 @@ function node(extra = {}) {
   return { attributes, hasAttribute: key => attributes.has(key), setAttribute: (key, value) => attributes.set(key, value), removeAttribute: key => attributes.delete(key), ...extra };
 }
 function harness({ width = 390, height = 844, points = 0, coarse = false, tabs = null, mentionMenu = null } = {}) {
-  const vars = new Map(), frames = new Map(); let sequence = 0;
+  const vars = new Map(), frames = new Map(), mutations = [], queries = { dialog: 0, body: 0 }; let sequence = 0;
   const input = { value: '作戦を送ります', selectionStart: 3, selectionEnd: 3 }, send = {};
   const form = { contains: target => target === input || target === send };
-  const body = node({ querySelector: () => chat, querySelectorAll: () => [] });
+  const body = node({ querySelector: () => { queries.body++; return chat; }, querySelectorAll: () => [] });
   const chat = { parentElement: body, querySelector: () => form };
-  const dialog = node({ open: true, matches: selector => selector === '.social-dialog', querySelector: selector => selector === '.social-tabs' ? tabs : selector === '#social-chat-mention-menu' ? mentionMenu : body });
+  const dialog = node({ open: true, matches: selector => selector === '.social-dialog', querySelector: selector => { queries.dialog++; return selector === '.social-tabs' ? tabs : selector === '#social-chat-mention-menu' ? mentionMenu : body; } });
   const document = {
     body: {}, readyState: 'complete', activeElement: input,
     documentElement: { style: { getPropertyValue: key => vars.get(key), setProperty: (key, value) => vars.set(key, value), removeProperty: key => vars.delete(key) } },
@@ -28,7 +28,8 @@ function harness({ width = 390, height = 844, points = 0, coarse = false, tabs =
     matchMedia: () => ({ matches: coarse, addEventListener() {}, removeEventListener() {} }),
     addEventListener() {}, removeEventListener() {},
     requestAnimationFrame: callback => { frames.set(++sequence, callback); return sequence; },
-    cancelAnimationFrame: id => frames.delete(id)
+    cancelAnimationFrame: id => frames.delete(id),
+    MutationObserver: class { constructor(callback) { mutations.push(callback); } observe() {} disconnect() {} }
   };
   vm.runInNewContext(source, { window: environment });
   const api = environment.SengokuSocialViewport;
@@ -36,7 +37,7 @@ function harness({ width = 390, height = 844, points = 0, coarse = false, tabs =
     api.refresh(); let passes = 0;
     while (frames.size) { assert(++passes < 6); const callbacks = [...frames.values()]; frames.clear(); callbacks.forEach(callback => callback()); }
   }
-  return { environment, document, input, send, dialog, body, vars, api, refresh };
+  return { environment, document, input, send, dialog, body, vars, api, refresh, queries, mutate: records => mutations[0](records), pending: () => frames.size };
 }
 test('narrow mouse windows use a bounded chat history and visible composer', () => {
   for (const width of [320, 390, 768, 820, 1024]) {
@@ -112,6 +113,31 @@ test('reopening and resizing reveal the selected tab while closed dialogs never 
   h.dialog.open = false; tabs.scrollLeft = 0; h.refresh(); assert.equal(tabs.scrollLeft, 0);
   h.dialog.open = true; h.refresh(); assert.equal(tabs.scrollLeft, 608);
   tabs.clientWidth = 300; h.refresh(); assert.equal(tabs.scrollLeft, 808);
+  h.api.destroy();
+});
+test('background conversation updates never schedule layout for retained closed dialogs', () => {
+  const h = harness(); h.refresh();
+  const target = { nodeType: 1, closest: () => h.dialog, matches: () => false };
+  const text = { nodeType: 3 }, element = { nodeType: 1 };
+  for (let i = 0; i < 100; i++) h.mutate([{ type: 'childList', target, addedNodes: [text], removedNodes: [text] }]);
+  assert.equal(h.pending(), 0, 'Timestamp and counter text never schedules composer work');
+  h.mutate([{ type: 'childList', target, addedNodes: [element], removedNodes: [] }]);
+  assert.equal(h.pending(), 1, 'Replacing the visible chat/form still schedules one pass'); h.refresh();
+  h.dialog.open = false; h.refresh();
+  const settled = { ...h.queries };
+  for (let i = 0; i < 100; i++) {
+    h.mutate([{ type: 'childList', target, addedNodes: [element], removedNodes: [element] }]);
+    assert.equal(h.pending(), 0, 'Closed history updates remain idle');
+    h.refresh();
+  }
+  assert.deepEqual(h.queries, settled, 'Resize and focus updates skip already-cleared closed history');
+  assert.equal(h.input.value, '作戦を送ります'); assert.equal(h.input.selectionStart, 3);
+  h.dialog.open = true;
+  h.mutate([{ type: 'attributes', attributeName: 'open', target: { ...target, matches: () => true } }]);
+  assert.equal(h.pending(), 1); h.refresh();
+  assert(h.body.hasAttribute('data-touch-chat-layout'), 'Reopening restores the composer normally');
+  h.mutate([{ type: 'attributes', attributeName: 'aria-selected', target }]);
+  assert.equal(h.pending(), 1, 'Selecting another visible conversation tab remains responsive');
   h.api.destroy();
 });
 console.log(checks + ' compact conversation behavior checks passed.');

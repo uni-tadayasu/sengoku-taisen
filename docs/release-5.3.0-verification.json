@@ -1,0 +1,407 @@
+{
+  "recordedAt": "2026-11-26T07:53:12.876786+00:00",
+  "baseline": "37a2ea35f849dc44ba40e77dd4074295df47ca3c",
+  "total": 53,
+  "passed": 53,
+  "failed": 0,
+  "release": "5.3.0-20261126",
+  "commands": [
+    {
+      "command": "npm run test:entry",
+      "status": "PASS",
+      "exitCode": 0,
+      "seconds": 1.71
+    },
+    {
+      "command": "npm run test:interface",
+      "status": "PASS",
+      "exitCode": 0,
+      "seconds": 2.66
+    },
+    {
+      "command": "node tests/test-asset-budget.cjs",
+      "status": "PASS",
+      "exitCode": 0,
+      "seconds": 0.13
+    },
+    {
+      "command": "node tests/test-minified-runtime.cjs",
+      "status": "PASS",
+      "exitCode": 0,
+      "seconds": 0.46
+    },
+    {
+      "command": "node tests/test-stable-dom.cjs",
+      "status": "PASS",
+      "exitCode": 0,
+      "seconds": 2.07
+    },
+    {
+      "command": "node tests/test-world-map.cjs",
+      "status": "PASS",
+      "exitCode": 0,
+      "seconds": 0.23
+    },
+    {
+      "command": "node tests/test-ui-continuity.cjs",
+      "status": "PASS",
+      "exitCode": 0,
+      "seconds": 0.33
+    },
+    {
+      "command": "node tests/test-quiet-sync-layout.cjs",
+      "status": "PASS",
+      "exitCode": 0,
+      "seconds": 0.11
+    },
+    {
+      "command": "node tests/test-social-viewport.cjs",
+      "status": "PASS",
+      "exitCode": 0,
+      "seconds": 0.08
+    },
+    {
+      "command": "node tests/test-social-chat.cjs",
+      "status": "PASS",
+      "exitCode": 0,
+      "seconds": 0.55
+    },
+    {
+      "command": "node tests/test-social-avatar.cjs",
+      "status": "PASS",
+      "exitCode": 0,
+      "seconds": 0.24
+    },
+    {
+      "command": "node tests/test-profile-name-ui.cjs",
+      "status": "PASS",
+      "exitCode": 0,
+      "seconds": 0.11
+    },
+    {
+      "command": "node tests/test-responsive-text.cjs",
+      "status": "PASS",
+      "exitCode": 0,
+      "seconds": 0.2
+    },
+    {
+      "command": "node server/test-chat-replies.mjs",
+      "status": "PASS",
+      "exitCode": 0,
+      "seconds": 1.07
+    },
+    {
+      "command": "node server/test-promotion.mjs",
+      "status": "PASS",
+      "exitCode": 0,
+      "seconds": 0.87
+    },
+    {
+      "command": "node tests/test-covert-return-travel.cjs",
+      "status": "PASS",
+      "exitCode": 0,
+      "seconds": 0.17
+    },
+    {
+      "command": "node tests/test-travel-engine.cjs",
+      "status": "PASS",
+      "exitCode": 0,
+      "seconds": 0.58
+    },
+    {
+      "command": "node tests/test-covert-engine.cjs",
+      "status": "PASS",
+      "exitCode": 0,
+      "seconds": 0.17
+    },
+    {
+      "command": "node tests/test-covert-ui.cjs",
+      "status": "PASS",
+      "exitCode": 0,
+      "seconds": 0.26
+    },
+    {
+      "command": "node tests/test-covert-dom.cjs",
+      "status": "PASS",
+      "exitCode": 0,
+      "seconds": 0.9
+    },
+    {
+      "command": "node tests/test-travel-ui.cjs",
+      "status": "PASS",
+      "exitCode": 0,
+      "seconds": 0.25
+    },
+    {
+      "command": "node tests/test-alliance-strategy.cjs",
+      "status": "PASS",
+      "exitCode": 0,
+      "seconds": 0.11
+    },
+    {
+      "command": "node server/test-alliance-travel.mjs",
+      "status": "PASS",
+      "exitCode": 0,
+      "seconds": 2.09
+    },
+    {
+      "command": "node server/test-alliance-strategy.mjs",
+      "status": "PASS",
+      "exitCode": 0,
+      "seconds": 4.47
+    },
+    {
+      "command": "node server/test-covert.mjs",
+      "status": "PASS",
+      "exitCode": 0,
+      "seconds": 7.61
+    },
+    {
+      "command": "node server/test-battle-travel.mjs",
+      "status": "PASS",
+      "exitCode": 0,
+      "seconds": 5.96
+    },
+    {
+      "command": "node tools/build-public-pages.cjs --check",
+      "status": "PASS",
+      "exitCode": 0,
+      "seconds": 0.16
+    },
+    {
+      "command": "python3 tools/build-press-kit.py --check",
+      "status": "PASS",
+      "exitCode": 0,
+      "seconds": 0.32,
+      "initialStatus": "FAIL",
+      "resolution": "Regenerated the versioned press-kit README using the existing deterministic packager."
+    },
+    {
+      "command": "node tests/test-seo.cjs",
+      "status": "PASS",
+      "exitCode": 0,
+      "seconds": 0.32
+    },
+    {
+      "command": "node tests/test-public-search.cjs",
+      "status": "PASS",
+      "exitCode": 0,
+      "seconds": 0.62
+    },
+    {
+      "command": "node tests/test-public-pages.cjs",
+      "status": "PASS",
+      "exitCode": 0,
+      "seconds": 0.22
+    },
+    {
+      "command": "python3 tests/test-news-feed.py",
+      "status": "PASS",
+      "exitCode": 0,
+      "seconds": 0.08
+    },
+    {
+      "command": "node tests/test-promotion-sharing.cjs",
+      "status": "PASS",
+      "exitCode": 0,
+      "seconds": 0.08
+    },
+    {
+      "command": "node tests/test-public-growth.cjs",
+      "status": "PASS",
+      "exitCode": 0,
+      "seconds": 0.13
+    },
+    {
+      "command": "node tests/test-promotion-admin.cjs",
+      "status": "PASS",
+      "exitCode": 0,
+      "seconds": 0.11
+    },
+    {
+      "command": "node tests/test-promotion-invites.cjs",
+      "status": "PASS",
+      "exitCode": 0,
+      "seconds": 0.1
+    },
+    {
+      "command": "node tests/test-responsive-images.cjs",
+      "status": "PASS",
+      "exitCode": 0,
+      "seconds": 0.08
+    },
+    {
+      "command": "node tests/test-service-worker-brand.cjs",
+      "status": "PASS",
+      "exitCode": 0,
+      "seconds": 0.09
+    },
+    {
+      "command": "node tests/test-release-assets.cjs",
+      "status": "PASS",
+      "exitCode": 0,
+      "seconds": 0.08
+    },
+    {
+      "command": "node tests/test-page-security.cjs",
+      "status": "PASS",
+      "exitCode": 0,
+      "seconds": 0.08
+    },
+    {
+      "command": "node tools/build-game-entry.cjs --check",
+      "status": "PASS",
+      "exitCode": 0,
+      "seconds": 0.9
+    },
+    {
+      "command": "node --check tools/music-audition.js",
+      "status": "PASS",
+      "exitCode": 0,
+      "seconds": 0.07
+    },
+    {
+      "command": "node tests/test-supplied-recordings.cjs",
+      "status": "PASS",
+      "exitCode": 0,
+      "seconds": 0.15
+    },
+    {
+      "command": "node tests/test-music.mjs",
+      "status": "PASS",
+      "exitCode": 0,
+      "seconds": 2.23
+    },
+    {
+      "command": "node tests/test-music-time-of-day.mjs",
+      "status": "PASS",
+      "exitCode": 0,
+      "seconds": 1.23
+    },
+    {
+      "command": "node tests/test-settings-usability.cjs",
+      "status": "PASS",
+      "exitCode": 0,
+      "seconds": 0.47
+    },
+    {
+      "command": "node tests/test-title-entry.cjs",
+      "status": "PASS",
+      "exitCode": 0,
+      "seconds": 0.55
+    },
+    {
+      "command": "node tests/test-music-cache.cjs",
+      "status": "PASS",
+      "exitCode": 0,
+      "seconds": 0.11
+    },
+    {
+      "command": "npm run check:build",
+      "status": "PASS",
+      "exitCode": 0,
+      "seconds": 1.23
+    },
+    {
+      "command": "node tests/test-ui-helpers.cjs",
+      "status": "PASS",
+      "exitCode": 0,
+      "seconds": 0.49
+    },
+    {
+      "command": "node tests/test-economy-ui.cjs",
+      "status": "PASS",
+      "exitCode": 0,
+      "seconds": 0.29
+    },
+    {
+      "command": "node tests/test-public-luxury.cjs",
+      "status": "PASS",
+      "exitCode": 0,
+      "seconds": 0.85
+    },
+    {
+      "command": "node tests/test-staff-base-ui.cjs",
+      "status": "PASS",
+      "exitCode": 0,
+      "seconds": 1.15
+    }
+  ],
+  "browser": {
+    "standardGame": {
+      "routes": 12,
+      "viewports": 6,
+      "cases": 72,
+      "pageErrors": 0,
+      "horizontalOverflow": 0
+    },
+    "largeText": {
+      "titleAndRouteCases": 52,
+      "modals": 12,
+      "viewports": [
+        320,
+        390,
+        768,
+        1440
+      ],
+      "maxTroops": 100000000,
+      "customTownRatio": 80,
+      "pageErrors": 0
+    },
+    "commandLedger": {
+      "viewports": 5,
+      "checks": [
+        "live values",
+        "no resource mutation",
+        "one visible resource panel",
+        "arrow/Home/End tabs",
+        "hidden/inert panels",
+        "marches/army navigation"
+      ],
+      "pageErrors": 0
+    },
+    "publicPages": {
+      "routes": 7,
+      "viewports": 5,
+      "cases": 35,
+      "finalSearchTopics": 61,
+      "linksAndAssets": 851,
+      "nativeKeyboardRegressionWidths": [
+        320,
+        740,
+        1440
+      ]
+    }
+  },
+  "assetBudget": {
+    "rawBytes": 2901399,
+    "gzipBytes": 830378,
+    "rawLimit": 2950000,
+    "gzipLimit": 850000,
+    "baselineRawBytes": 2866980,
+    "baselineGzipBytes": 821222,
+    "scope": "Six game entry JavaScript/CSS bundles; excludes images, audio and on-demand public search index."
+  },
+  "serviceWorkerUpgrade": {
+    "from": "5.2.0-20261126",
+    "to": "5.3.0-20261126",
+    "actualBrowser": "Chromium on isolated local HTTP origin",
+    "updateButton": "新版を開く",
+    "offlineReload": "PASS",
+    "oldCacheRemovalAfterOldClientClosed": "PASS",
+    "unchangedLocalStorageKeys": 4,
+    "pageErrors": 0,
+    "externalWrites": 0,
+    "limitations": [
+      "CDN production propagation checked separately",
+      "No authenticated cloud account handover",
+      "Paused local campaign",
+      "Muted audio"
+    ]
+  },
+  "knownBaselineLimitations": [
+    "Legacy raw save import without officerHealth/worldClock returns server500; current browser-normalized export positive control returns200. No save row written in failing fixture.",
+    "Old Kyoto migration fixture retains an incompatible Lv64 construction job after shared projection, returning400.",
+    "Broad pre-existing test corpus includes outdated DTO, maintenance authority and elapsed-time fixtures; the 53 selected release commands are not a claim that every repository test passes."
+  ]
+}

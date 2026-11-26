@@ -73,6 +73,7 @@
     "shogun-polish.css",
     "field-responsive.css",
     "social-chat.css",
+    "command-center.css",
     "responsive-text.css"
   ],
   "game-preferences.bundle.js": [
@@ -96,7 +97,8 @@
     "music.js",
     "artwork.js",
     "kamon.js",
-    "world-map.js"
+    "world-map.js",
+    "command-center.js"
   ],
   "game-campaign.bundle.js": [
     "desktop-fit.js",

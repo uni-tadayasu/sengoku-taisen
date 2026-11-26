@@ -8,10 +8,12 @@
 }
 .presentation-setting-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
 }
+.presentation-text-row { margin-top: 16px; padding-top: 16px; border-top: 1px solid #d9b66f30; }
 .presentation-setting-row label { color: var(--text, #eee8da); font-size: 15px; font-weight: 600; }
 .presentation-setting-row .select { min-height: 44px; width: 132px; max-width: 55%; }
 .presentation-settings p {
@@ -19,6 +21,29 @@
   color: var(--muted, #bac4af);
   font-size: 13px;
   line-height: 1.75;
+}
+
+/* Change type, not the canvas or the scale of the game. The default adds no
+   overrides, so existing layouts and old motion-only preferences stay intact. */
+html[data-presentation-text="large"] { font-size: 18px; }
+html[data-presentation-text="large"] body { font-size: 1rem; }
+html[data-presentation-text="large"] #app #main :is(.subtitle,.notice,.facility-entry > p,.research-card > p,.tactic-card > p,.quest-content > p,.activity-item p,.economy-note,.economy-details p,.level-guide-body),
+html[data-presentation-text="large"] #modal :is(.modal-body > p,.notice,.settings-explanation,.settings-section-note,.level-guide-body),
+html[data-presentation-text="large"] .navigation-dialog .navigation-entry-copy small {
+  font-size: 1rem;
+  line-height: 1.75;
+}
+html[data-presentation-text="large"] #modal .presentation-settings :is(label,p) { font-size: .94rem; }
+html[data-presentation-text="large"] #app #main :is(.facility-entry,.research-card,.tactic-card,.quest-row) { min-width: 0; }
+@media (max-width:480px) {
+  .presentation-setting-row { display: grid; grid-template-columns: minmax(0,1fr); gap: 7px; }
+  .presentation-setting-row .select { width: 100%; max-width: 100%; min-width: 0; }
+}
+@media (max-width:360px) {
+  html[data-presentation-text="large"] #launch-screen .edition-mast { flex-wrap: wrap; gap: 4px; padding-bottom: 8px; }
+  html[data-presentation-text="large"] #launch-screen .edition-wordmark { white-space: nowrap; }
+  html[data-presentation-text="large"] #launch-screen .edition-mast nav { width: 100%; justify-content: space-between; gap: 8px; }
+  html[data-presentation-text="large"] #launch-screen .edition-mast nav > * { white-space: nowrap; }
 }
 html[data-presentation-motion="quiet"],
 html[data-presentation-motion="quiet"] *,

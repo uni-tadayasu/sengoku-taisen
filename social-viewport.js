@@ -18,6 +18,7 @@
   const coarse = global.matchMedia?.('(any-pointer: coarse)');
   const removers = [];
   const revealedTabs = new WeakMap();
+  const laidOutDialogs = new WeakSet();
   let frame = 0, observer, destroyed = false, started = false;
   const raf = global.requestAnimationFrame?.bind(global) || (callback => global.setTimeout(callback, 16));
   const caf = global.cancelAnimationFrame?.bind(global) || global.clearTimeout.bind(global);
@@ -55,6 +56,11 @@
     }
     const compactLayout = Number(global.navigator?.maxTouchPoints) > 0 || coarse?.matches === true || box.width <= 1024;
     for (const dialog of doc.querySelectorAll(selector)) {
+      // Clear a just-closed surface once. Background profile/chat updates must
+      // not keep traversing its retained history and form on every focus tick.
+      if (!dialog.open && !laidOutDialogs.has(dialog)) continue;
+      if (dialog.open) laidOutDialogs.add(dialog);
+      else laidOutDialogs.delete(dialog);
       const visible = compactLayout && dialog.open;
       const compact = visible && box.height < 560;
       attr(dialog, 'data-touch-compact', compact);
@@ -91,7 +97,16 @@
       observer = new global.MutationObserver(records => {
         if (records.some(record => {
           const target = record.target.nodeType === 1 ? record.target : record.target.parentElement;
-          return target?.matches?.(selector) || target?.closest?.(selector) || [...record.addedNodes || []].some(node => node.nodeType === 1 && (node.matches?.(selector) || node.querySelector?.(selector)));
+          const dialog = target?.closest?.(selector);
+          // Opening and closing require a pass even after `open` was removed.
+          // Updating plain text, timestamps or unread counters changes no
+          // viewport rules; real keyboard/viewport changes have own listeners.
+          if (record.type === 'attributes') return record.attributeName === 'open' && target?.matches?.(selector) || Boolean(dialog?.open);
+          if (![...record.addedNodes || [], ...record.removedNodes || []].some(node => node.nodeType === 1)) return false;
+          if (dialog) return dialog.open;
+          return [...record.addedNodes || []].some(node => node.nodeType === 1 && (
+            node.matches?.(selector) && node.open || [...node.querySelectorAll?.(selector) || []].some(surface => surface.open)
+          ));
         })) refresh();
       });
       observer.observe(doc.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['open', 'aria-selected'] });

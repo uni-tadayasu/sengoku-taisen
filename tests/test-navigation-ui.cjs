@@ -1,7 +1,7 @@
 /* Exercise the actual menu controller against canonical game controls. */
 'use strict';
 const assert = require('node:assert/strict');
-const { createNavigationUI, normalizeQuery, filterEntries } = require('../navigation-ui.js');
+const { createNavigationUI, normalizeQuery, filterEntries, highlightMatch } = require('../navigation-ui.js');
 const { documentFixture } = require('./test-events-ui.cjs');
 const tests = [], test = (name, run) => tests.push([name, run]);
 const views = [['town', '城下町'], ['facilities', '城下普請帳'], ['map', '天下地図'], ['field', '共通フィールド'], ['roaming', '野良兵戦'], ['covert', '派遣部隊'], ['court', '京都御所'], ['officers', '武将名鑑'], ['crests', '家紋帳'], ['army', '軍団編成'], ['research', '技術研究'], ['council', '軍議']];
@@ -396,6 +396,83 @@ test('purpose choices refine discovery without issuing game commands and reset r
   s.get('[data-navigation-reset]').click(); assert.equal(purposes.hidden, false);
   s.get('[data-navigation-purpose="records"]').click();
   assert(s.get('[data-navigation-target="action:progress"]')); assert.deepEqual(s.calls, []);
+});
+
+test('search prioritizes visible destination names and discovers travel, repair and payroll terms', () => {
+  const s = fixture();
+  assert.equal(filterEntries(s.api.getEntries(), '城下町')[0].key, 'view:town');
+  assert.equal(filterEntries(s.api.getEntries(), '武将')[0].key, 'view:officers');
+  for (const term of ['帰還', '移動時間', '到着']) {
+    const query = term === '移動時間' ? '移動 時間' : term;
+    assert(filterEntries(s.api.getEntries(), query).some(entry => entry.key === 'view:covert'));
+  }
+  for (const term of ['修復', '給料', '給与']) assert(filterEntries(s.api.getEntries(), term).some(entry => entry.key === 'view:facilities'));
+  s.api.open(); const input = s.get('#navigation-query');
+  input.value = '武将'; input.dispatch('input');
+  const results = s.get('#navigation-results');
+  assert.equal(results.querySelector('[data-navigation-target]').getAttribute('data-navigation-target'), 'view:officers');
+  assert(results.querySelector('mark')); assert(results.querySelector('.navigation-entry-category'));
+  assert(s.get('#navigation-dialog').classList.contains('is-filtered'));
+  s.get('[data-navigation-reset]').click(); assert(!s.get('#navigation-dialog').classList.contains('is-filtered'));
+  assert.deepEqual(s.calls, []);
+});
+
+test('search highlights remain escaped and handle overlapping words and normalized kana safely', () => {
+  assert.equal(highlightMatch('軍団編成', '軍 軍団'), '<mark>軍団</mark>編成');
+  assert.equal(highlightMatch('セーブを保存', 'せーぶ'), '<mark>セーブ</mark>を保存');
+  assert.equal(highlightMatch('ＡＩ軍師', 'ai'), '<mark>ＡＩ</mark>軍師');
+  assert.equal(highlightMatch('㍻の記録', '平成'), '㍻の記録');
+  const malicious = highlightMatch('<script>alert("x")</script>', 'script');
+  assert(!malicious.includes('<script>')); assert(malicious.includes('&lt;<mark>script</mark>&gt;'));
+});
+
+test('empty results can expand the category without losing the query or execute a destination', () => {
+  const s = fixture(); s.api.open();
+  const category = s.get('#navigation-category'), input = s.get('#navigation-query');
+  category.value = '城と内政'; category.dispatch('change');
+  input.value = '派遣'; input.dispatch('input');
+  const recover = s.get('[data-navigation-clear-category]'); assert(recover);
+  recover.click(); assert.equal(category.value, ''); assert.equal(input.value, '派遣');
+  assert.equal(s.doc.activeElement, input); assert(s.get('[data-navigation-target="view:covert"]'));
+  assert.deepEqual(s.calls, []); assert.equal(s.storageWrites.length, 0);
+  input.value = '該当しない機能'; input.dispatch('input');
+  assert.equal(s.get('[data-navigation-clear-category]'), null);
+  s.get('[data-navigation-suggestion="保存"]').click();
+  assert.equal(input.value, '保存'); assert.equal(category.value, ''); assert(s.get('[data-navigation-target="action:settings"]'));
+  assert.deepEqual(s.calls, []); assert.equal(s.storageWrites.length, 0);
+});
+
+test('Enter opens a unique live destination once and never treats IME or ambiguous input as navigation', () => {
+  const s = fixture(); s.api.open();
+  const input = s.get('#navigation-query'), dialog = s.get('#navigation-dialog'); input.focus();
+  for (const query of ['', '軍']) {
+    input.value = query; input.dispatch('input');
+    assert.equal(dialog.dispatch('keydown', input, { key: 'Enter' }).prevented, false);
+  }
+  input.value = '軍団編成'; input.dispatch('input');
+  for (const extra of [{ isComposing: true }, { keyCode: 229 }, { repeat: true }, { shiftKey: true }]) {
+    assert.equal(dialog.dispatch('keydown', input, { key: 'Enter', ...extra }).prevented, false);
+  }
+  assert.deepEqual(s.calls, []);
+  assert(dialog.dispatch('keydown', input, { key: 'Enter' }).prevented); s.drain();
+  assert.deepEqual(s.calls, ['view:army']); assert.equal(s.api.isOpen(), false);
+  s.api.open(); input.focus(); input.value = '派遣'; input.dispatch('input');
+  s.nav.querySelector('[data-view="covert"]').disabled = true;
+  assert.equal(dialog.dispatch('keydown', input, { key: 'Enter' }).prevented, false); assert(s.api.isOpen());
+  assert.deepEqual(s.calls, ['view:army']);
+  input.value = '遊び方'; input.dispatch('input');
+  assert.equal(dialog.dispatch('keydown', input, { key: 'Enter' }).prevented, false); assert(s.api.isOpen());
+});
+
+test('current location and category counts update from visible canonical controls without replacing the input', () => {
+  const s = fixture(); s.api.open(); const input = s.get('#navigation-query');
+  assert.equal(s.get('#navigation-current-location').textContent, '現在の画面：城下町');
+  assert(s.get('#navigation-category').textContent.includes('全分類 · 24項目'));
+  s.api.activate('view:army'); s.drain(); s.api.open();
+  assert.equal(s.get('#navigation-current-location').textContent, '現在の画面：軍団編成');
+  s.nav.querySelector('[data-view="officers"]').hidden = true; s.api.refresh();
+  assert(s.get('#navigation-category').textContent.includes('全分類 · 23項目'));
+  assert.equal(s.get('#navigation-query'), input); assert.deepEqual(s.calls, ['view:army']);
 });
 
 let failed = 0;
