@@ -650,10 +650,12 @@
     const main=$('#main');
     if(!main||!reveal)return;
     main.scrollTop=0;main.scrollLeft=0;
-    if(!document.documentElement.classList.contains('sengoku-desktop-fit')){
-      if(window.SengokuNavigation?.revealView)window.SengokuNavigation.revealView(view);
-      else main.scrollIntoView?.({block:'start',behavior:'instant'});
+    if(document.documentElement.classList.contains('sengoku-desktop-fit')){
+      window.scrollTo({top:0,left:0,behavior:'instant'});
+      return;
     }
+    if(window.SengokuNavigation?.revealView)window.SengokuNavigation.revealView(view);
+    else main.scrollIntoView?.({block:'start',behavior:'instant'});
   }
   function buildingOutput(id){return game.buildingSummary?game.buildingSummary(id):'';}
   function economyNumber(value,kind='net'){
