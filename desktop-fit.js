@@ -31,7 +31,7 @@ function mountLedger(){
   if(!balances||!ledgerActions)return;
   ledgerPreference=readLedgerPreference();groupLabel=ledgerActions.getAttribute('aria-label');
   ledgerButton=doc.createElement('button');ledgerButton.type='button';ledgerButton.className='ledger-disclosure';
-  ledgerButton.textContent='資産欄';ledgerButton.hidden=true;
+  ledgerButton.innerHTML='資産<span>欄</span>';ledgerButton.hidden=true;
   ledgerButton.setAttribute('aria-controls','resources touch-header-status');
   ledgerActions.insertBefore(ledgerButton,ledgerActions.firstChild);
   listen(ledgerButton,'click',()=>{

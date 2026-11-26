@@ -232,6 +232,53 @@ html:not(.sengoku-desktop-fit) #main .geographic-map-panel {
   height: max(260px,calc(var(--visible-height,100dvh) - var(--touch-header-height,0px) - var(--touch-announcement-height,0px) - var(--compact-dock-height,76px) - env(safe-area-inset-bottom,0px) - 12px));
 }
 html:not(.sengoku-desktop-fit) #main .geographic-map-panel .sg-map { min-height: 0; }
+
+/* On tablets the three town tabs can sit alongside the artwork instead of
+   below its entire facility list. Both columns stay in document flow. */
+@media (min-width:740px) {
+  html:not(.sengoku-desktop-fit) #app.chronicle-shell #main .town-workspace.dashboard-grid {
+    display: grid; grid-template-columns: minmax(0,1.25fr) minmax(0,1fr);
+    align-items: start; gap: 8px;
+  }
+  html:not(.sengoku-desktop-fit) #app.chronicle-shell #main .town-workspace > .town-visual { display: block; }
+  html:not(.sengoku-desktop-fit) #app.chronicle-shell #main .town-workspace > .town-console { margin: 0; }
+}
+
+@media (min-width:740px) and (max-height:760px) {
+  html.sengoku-desktop-fit #app.chronicle-shell #main .town-workspace.dashboard-grid { min-height: 18rem; }
+  #app.chronicle-shell #main .town-workspace .town-panel { display: grid; grid-template-columns: minmax(0,1fr) auto; }
+  #app.chronicle-shell #main .town-workspace .town-panel > * { grid-column: 1 / -1; }
+  @container town-panel (min-width:25rem) {
+    #app.chronicle-shell #main .town-workspace .town-panel .town-scene { grid-column: 1; grid-row: 2; align-self: center; }
+    #app.chronicle-shell #main .town-workspace .town-panel .town-command-shortcuts {
+      grid-column: 2; grid-row: 2; grid-template-columns: minmax(0,1fr);
+      align-content: center; gap: 2px; padding: 4px;
+    }
+    #app.chronicle-shell #main .town-command-shortcuts > button { min-height: 44px; padding: 4px 6px; }
+  }
+  #app.chronicle-shell #main > .page-heading { min-height: 0; margin-block-end: 6px; }
+  #app.chronicle-shell #main > .page-heading .chapter-copy {
+    flex-direction: row; flex-wrap: wrap; align-items: baseline; justify-content: start;
+    gap: 2px 12px; padding: 6px 12px;
+  }
+  #app.chronicle-shell #main > .page-heading .chapter-copy .eyebrow { width: 100%; margin: 0; }
+  #app.chronicle-shell #main > .page-heading .chapter-copy .subtitle { flex: 1 1 12rem; margin: 0; }
+}
+@media (max-width:580px) {
+  #app.chronicle-shell #main .town-workspace .town-command-shortcuts {
+    grid-template-columns: repeat(4,minmax(0,1fr)); gap: 3px; padding: 4px;
+  }
+  #app.chronicle-shell #main .town-workspace .town-command-shortcuts > button {
+    flex-direction: column; gap: 2px; padding: 4px 2px; overflow-wrap: anywhere;
+  }
+}
+@media (max-width:860px), (max-height:760px) {
+  #app.chronicle-shell #main .map-toolbar { gap: 4px 6px; margin-block: 6px; padding: 4px; }
+  #app.chronicle-shell #main .map-toolbar .search-box { flex: 1 1 9rem; min-width: min(100%,9rem); }
+  #app.chronicle-shell #main .map-toolbar > :is(.select,.button) { min-height: 44px; padding-block: 4px; }
+  /* The mounted map has these same two camera controls inside the canvas. */
+  #app.chronicle-shell #main:has(#world-map .sg-map-zoom) .map-toolbar > :is([data-action="map-fit"],[data-action="map-home"]) { display: none; }
+}
 @media (max-width: 700px) {
   #launch-screen .edition-story { padding: 0 16px 18px; }
   #launch-screen .edition-print { aspect-ratio: 2; }

@@ -274,7 +274,7 @@ body:not(.at-title) .officer-choice-unavailable { display: block; margin-top: 5p
 #app.chronicle-shell #main .army-slot-heading { background: #152633; border-bottom: 1px solid #9f85534d; }
 #app.chronicle-shell #main .army-illustrated-slot { overflow: hidden; }
 #app.chronicle-shell #main .army-card-copy { background: #192c39; }
-#app.chronicle-shell #main .army-card-copy h3 { color: #f7e9d0; }
+#app.chronicle-shell #main .army-slot-heading h3 { color: #f7e9d0; }
 #app.chronicle-shell #main .army-abilities { gap: 10px; }
 #app.chronicle-shell #main .army-ability { background: #0c1d2a; border: 1px solid #84979830; border-radius: 5px; padding: 7px; }
 #app.chronicle-shell #main .army-ability b { color: #edd4a4; }

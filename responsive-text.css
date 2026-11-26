@@ -80,6 +80,17 @@ html:not(.sengoku-desktop-fit) #app.chronicle-shell .chronicle-ledger .header-ba
   @container balances (max-width: 230px) {
     #app.chronicle-shell .chronicle-ledger .header-balances :is(#resources,#touch-header-status) > button { grid-column: 1 / -1; }
   }
+  /* Only the command counter has a short fixed value. Magatama gets
+     the same room as the four balances so nine digits remain visible. */
+  @container ledger (min-width:810px) {
+    html #app.chronicle-shell header.topbar.chronicle-ledger .header-balances {
+      grid-column: 2; grid-row: 1; gap: 2px;
+      grid-template-columns: repeat(4,minmax(0,1fr)) minmax(0,.55fr) minmax(0,1fr);
+    }
+    #app.chronicle-shell .chronicle-ledger .header-balances :is(#resources,#touch-header-status) > button {
+      grid-column: auto; row-gap: 1px; padding: 3px clamp(2px,.32cqi,5px);
+    }
+  }
 }
 
 /* Signed 100,000,000 occupies about 7.5em in the game's brush face. Query

@@ -74,7 +74,8 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 10px 14px;
+  gap: 6px;
+  padding: 6px 10px;
   border-bottom: 1px solid #d9b66f2e;
   background: #0f141770;
 }
@@ -84,11 +85,8 @@
   font-size: 13px;
   letter-spacing: .12em;
 }
-#main[data-view="army"] .army-slot-number {
-  color: #b39560;
-  font-family: var(--serif);
-  font-size: 16px;
-}
+#main[data-view="army"] .army-slot-heading > div { min-width: 0; }
+#main[data-view="army"] .army-slot-heading > .button { flex: none; margin: 0; min-width: 44px; min-height: 44px; }
 #main[data-view="army"] .army-portrait {
   display: block;
   position: relative;
@@ -135,7 +133,7 @@
   min-width: 0;
   padding: 16px 15px;
 }
-#main[data-view="army"] .army-card-copy h3 {
+#main[data-view="army"] .army-slot-heading h3 {
   margin: 0;
   color: #fff1cc;
   font-family: var(--serif);
@@ -193,7 +191,6 @@
   line-height: 1.5;
 }
 #main[data-view="army"] .army-officer-skill > .icon { width: 15px; height: 15px; }
-#main[data-view="army"] .army-card-copy > .button { margin-top: auto; min-height: 44px; font-size: 13px; }
 #main[data-view="army"] .army-vacancy-copy { margin: 0 0 18px; color: #b9b09b; font-size: 13px; line-height: 1.8; }
 #main[data-view="army"] .tactic-card { border-left: 3px solid #bda46b; }
 #main[data-view="army"] .tactic-card[data-tactic="assault"] { border-left-color: #bd705a; }
@@ -312,7 +309,7 @@
   #main[data-view="army"] .army-slot-heading { grid-column: 1 / -1; grid-row: 1; }
   #main[data-view="army"] .army-portrait { grid-column: 1; grid-row: 2; width: calc(100% - 18px); align-self: center; margin: 10px 0 10px 12px; }
   #main[data-view="army"] .army-card-copy { grid-column: 2; grid-row: 2; padding: 14px 12px; }
-  #main[data-view="army"] .army-card-copy h3 { font-size: 20px; }
+  #main[data-view="army"] .army-slot-heading h3 { font-size: 20px; }
   #main[data-view="army"] .army-officer-house { margin-bottom: 10px; font-size: 11px; }
   #main[data-view="army"] .army-officer-skill { margin-bottom: 12px; font-size: 11px; }
   #main[data-view="army"] .army-portrait-empty > .icon { width: 35px; height: 35px; }
@@ -333,7 +330,7 @@
 }
 @media (max-width: 360px) {
   #main[data-view="army"] .army-muster-overview strong { font-size: 20px; }
-  #main[data-view="army"] .army-card-copy h3 { font-size: 18px; }
+  #main[data-view="army"] .army-slot-heading h3 { font-size: 18px; }
   #main[data-view="army"] .army-illustrated-slot { grid-template-columns: 96px minmax(0, 1fr); }
   #main[data-view="army"] .army-portrait-empty > span { padding-inline: 8px; text-align: center; }
   #main[data-view="research"] .research-overview-metrics strong { font-size: 24px; }
@@ -356,4 +353,21 @@
   #main[data-view="research"] .research-overview { grid-template-columns: minmax(0, 1fr); gap: 20px; }
   #main[data-view="research"] .research-grid { grid-template-columns: minmax(0, 1fr); }
   #main[data-view="crests"] .kamon-catalog { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* Keep army status and its recommendation in one row when both panels fit. */
+#main[data-view="army"] .army-briefing {
+  display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,22rem),1fr));
+  align-items: stretch; gap: 8px; margin-bottom: 10px;
+}
+#app #main[data-view="army"] .army-briefing > section { margin: 0; }
+#app.chronicle-shell #main[data-view="army"] .army-muster-overview > div { padding: 6px 8px; }
+#app #main[data-view="army"] .army-planner-entry { padding: 7px 10px; gap: 6px 10px; }
+@media (max-height:760px) {
+  #main[data-view="army"] .army-portrait { width: min(100%,clamp(80px,15dvh,132px)); margin-block: 6px; }
+  #app.chronicle-shell #main[data-view="army"] .army-abilities {
+    grid-template-columns: repeat(auto-fit,minmax(min(100%,3.5rem),1fr)); gap: 4px;
+  }
+  #app.chronicle-shell #main[data-view="army"] .army-ability { display: block; padding: 4px; text-align: center; }
+  #main[data-view="army"] .army-ability > b { display: block; text-align: center; }
 }

@@ -46,6 +46,12 @@ assert.deepEqual(publicNames(shipped.scope),publicNames(source.scope));
 for(const name of publicNames(source.scope))assert.deepEqual(signature(shipped.scope[name]),signature(source.scope[name]),name+' public API');
 assert.deepEqual(shipped.registrations,source.registrations,'Deferred browser initialization order');
 for(const name of ['SENGOKU_OFFICERS','SENGOKU_RANKS','SENGOKU_ROSTER_META','SENGOKU_DATA','SENGOKU_MUSIC_TRACKS'])assert.deepEqual(plain(shipped.scope[name]),plain(source.scope[name]),name+' data');
+const originalCrests = source.scope.SengokuKamon.entries();
+const shippedCrests = shipped.scope.SengokuKamon.entries();
+assert.deepEqual(plain(shippedCrests), plain(originalCrests), 'All crest catalog data, including source IDs, remains identical');
+for (const crest of shippedCrests) {
+  assert(Object.isFrozen(crest) && Object.isFrozen(crest.sourceIds), 'A shipped crest and its source list remain immutable');
+}
 assert.equal(source.scope.SENGOKU_OFFICERS.length,256);
 assert.equal(source.scope.SENGOKU_DATA.castles.length,129);
 console.log('PASS '+publicNames(source.scope).length+' classic globals, function names, initialization order and real game data match after four bundles');

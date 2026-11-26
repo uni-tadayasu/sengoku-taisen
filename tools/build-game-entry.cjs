@@ -7,7 +7,7 @@ const path = require('node:path');
 const {createHash} = require('node:crypto');
 const {transformSync} = require('esbuild');
 const {minify_sync} = require('terser');
-const {packOfficerRoster} = require('./pack-officer-roster.cjs');
+const {packGameCatalog} = require('./pack-game-catalogs.cjs');
 const {gzipSync} = require('node:zlib');
 const {compactCss} = require('./compact-css.cjs');
 const groups = require('./game-entry.json');
@@ -32,7 +32,7 @@ for (const [name, sources] of Object.entries(groups)) {
   const isScript = name.endsWith('.js');
   const source = sources.map(file => {
     const text = fs.readFileSync(path.join(root, file), 'utf8');
-    return `/* ${file} */\n` + (file === 'officers-data.js' ? packOfficerRoster(text) : text);
+    return `/* ${file} */\n` + packGameCatalog(file, text);
   }).join(isScript ? '\n;\n' : '\n') + '\n';
   // Transform classic scripts without bundling or a module wrapper: their
   // globals, execution order and CSS cascade must remain unchanged. Keep

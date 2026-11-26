@@ -1,9 +1,15 @@
 'use strict';
 
-// Keep the readable roster as the source of truth. Share its repeated keys and
+// Keep the readable game catalogs as the source of truth. Share their repeated keys and
 // string values in the shipped script, then recreate the same ordinary objects.
-function packOfficerRoster(source) {
-  const assignment = /(window\.SENGOKU_OFFICERS\s*=\s*)(\[[\s\S]*?\])\s*;/;
+const assignments = {
+  'officers-data.js': /(window\.SENGOKU_OFFICERS\s*=\s*)(\[[\s\S]*?\])\s*;/,
+  'kamon.js': /(const catalog\s*=\s*)(\[[\s\S]*?\])\s*;/
+};
+
+function packGameCatalog(file, source) {
+  const assignment = assignments[file];
+  if (!assignment) return source;
   return source.replace(assignment, (original, prefix, literal) => {
     let rows;
     try { rows = JSON.parse(literal); } catch { return original; }
@@ -36,4 +42,4 @@ function packOfficerRoster(source) {
       ';return ' + JSON.stringify(encoded) + '.map(row=>({' + fields.join(',') + '}));})();';
   });
 }
-module.exports = {packOfficerRoster};
+module.exports = {packGameCatalog};

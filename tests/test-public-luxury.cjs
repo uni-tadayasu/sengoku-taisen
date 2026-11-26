@@ -134,6 +134,30 @@ test('scrolling reuses chapter geometry and a later layout change refreshes the 
   f.run(); f.drain();
   assert.equal(f.doc.querySelectorAll('.public-chapter-search').length, 1, 'Reinitialization cannot duplicate controls');
 });
+test('compact readers can go straight to the article or open its search and topic links', () => {
+  for (const file of ['guide/index.html', 'guide/data-recovery/index.html', 'about/index.html', 'press/index.html', 'news/index.html']) {
+    const f = fixture(file, { mobile: true }), toc = f.get('.toc-chapters'), topics = f.get('.quick-topics');
+    assert.equal(topics.open, false, file);
+    assert.equal(toc.open, false, file);
+    assert(toc.contains(f.get('.public-chapter-search')), file);
+    assert(topics.querySelector('summary') && topics.querySelector('li a'), file);
+    f.win.location = { hash: '#page-contents' };
+    f.dispatch('hashchange');
+    assert.equal(toc.open, true, 'A shared table-of-contents link should open the target');
+  }
+  const wide = fixture();
+  assert.equal(wide.get('.quick-topics').open, true);
+  assert.equal(wide.get('.toc-chapters').open, true);
+});
+test('English readers can expand the site menu and reach the game from the hero', () => {
+  const f = fixture('en/index.html', { mobile: true }), menu = f.get('.public-nav-toggle');
+  assert.equal(menu.hidden, false);
+  assert.equal(menu.getAttribute('aria-controls'), 'public-site-nav');
+  assert.equal(menu.getAttribute('aria-expanded'), 'false');
+  menu.dispatchEvent({ type: 'click' }); assert.equal(menu.getAttribute('aria-expanded'), 'true');
+  assert.equal(f.get('.english-actions .action-link').href, '../');
+  assert(f.get('.english-actions').nextSibling.textContent.includes('Choose your home castle'));
+});
 test('compact public navigation closes with outside click, keyboard escape and focus leaving the header', () => {
   const f = fixture('sengoku-vs/index.html', { mobile: true }), menu = f.get('.public-nav-toggle');
   menu.dispatchEvent({ type: 'click' }); assert.equal(menu.getAttribute('aria-expanded'), 'true');

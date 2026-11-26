@@ -149,6 +149,51 @@
   body:not(.public-luxury) .player button:hover:enabled { background: #9e3840; }
 }
 
+@media screen {
+  body.public-luxury .quick-topics summary {
+    min-height: 44px;
+    flex-wrap: nowrap;
+    cursor: pointer;
+    list-style: none;
+  }
+  .quick-topics summary::-webkit-details-marker { display: none; }
+  .quick-topics summary::after { content: "+"; flex: none; color: var(--folio-gold); font-size: 1.2rem; }
+  .quick-topics[open] summary::after { content: "−"; }
+  .quick-topics:not([open]) summary { padding-bottom: 0; border: 0; }
+  body.public-luxury .guide-quick-all { min-height: 44px; }
+  body.public-luxury .toc-chapters .public-chapter-search { margin: .4rem .75rem .75rem; }
+}
+@media screen and (max-width: 900px), screen and (max-height: 520px) {
+  body.public-luxury .guide-quick { margin-block: .6rem; padding: 0 .85rem; }
+  body.public-luxury .guide-quick h2 { font-size: 1.1rem; }
+  body.public-luxury .toc { padding: .35rem; }
+  body.public-luxury .article-edition { margin-bottom: .85rem; }
+  body.public-luxury .reading-layout { gap: .65rem; }
+}
+@media screen and (max-width: 650px) {
+  body.public-luxury .folio-hero .chapter-art {
+    height: clamp(4rem,12vh,7rem);
+    aspect-ratio: auto;
+  }
+  body.public-luxury .hero-copy,
+  body.english-introduction .english-hero-copy { padding: .75rem .9rem .9rem; }
+  body.public-luxury .hero-actions { gap: .35rem .5rem; margin-top: .55rem; }
+  body.public-luxury .hero-actions > a {
+    flex: 1 1 8rem;
+    width: auto;
+    min-height: 44px;
+    padding-inline: .55rem;
+  }
+  body.english-introduction .english-actions { margin-block: .7rem; gap: .35rem .75rem; }
+  body.english-introduction .english-actions a { min-height: 44px; }
+}
+@media screen and (max-height: 520px) and (min-width: 651px) {
+  body.public-luxury .folio-hero,
+  body.english-introduction .english-hero-art picture { min-height: 0; }
+  body.public-luxury .hero-copy,
+  body.english-introduction .english-hero-copy { padding: .8rem 1.1rem; }
+}
+
 /* Keep the space for wide tables and illustrations while bounding prose. */
 @media screen and (min-width: 65rem) {
   body.public-luxury .page-width,

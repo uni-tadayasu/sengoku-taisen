@@ -32,7 +32,20 @@
   const article = document.querySelector('.article');
   const toc = document.querySelector('.toc-chapters');
   if (!article || !toc) return;
-  if (window.matchMedia?.('(max-width: 900px)').matches) toc.open = false;
+  const topics = document.querySelector('.quick-topics');
+  const compactReader = window.matchMedia?.('(max-width: 900px), (max-height: 520px)');
+  function setIndexLayout() {
+    toc.open = !compactReader?.matches || window.location?.hash === '#page-contents';
+    if (topics) topics.open = !compactReader?.matches;
+  }
+  setIndexLayout();
+  compactReader?.addEventListener?.('change', setIndexLayout);
+  document.addEventListener('click', event => {
+    if (event.target.closest?.('a[href="#page-contents"]')) toc.open = true;
+  });
+  window.addEventListener('hashchange', () => {
+    if (window.location?.hash === '#page-contents') toc.open = true;
+  });
   const list = toc.querySelector('ul');
   const links = [...(list?.querySelectorAll('a[href^="#"]') || [])];
   const sections = links.map(link => ({ link, target: document.getElementById(link.hash.slice(1)) })).filter(entry => entry.target);
@@ -41,7 +54,7 @@
   const search = document.createElement('div');
   search.className = 'public-chapter-search';
   search.innerHTML = '<label for="public-chapter-query">知りたい項目を検索</label><div class="public-search-control"><input id="public-chapter-query" type="search" placeholder="城・武将・引き継ぎなど" autocomplete="off" aria-controls="public-chapter-list"><button class="public-search-clear" type="button" aria-label="検索条件を解除" disabled>解除</button></div><p class="public-search-status" role="status" aria-live="polite" aria-atomic="true"></p>';
-  toc.before(search);
+  list.before(search);
   list.id = 'public-chapter-list';
   const input = search.querySelector('input'), status = search.querySelector('[role="status"]'), clear = search.querySelector('button');
   const empty = document.createElement('p');
@@ -136,6 +149,7 @@
   window.addEventListener('pageshow', invalidate);
   window.addEventListener('load', invalidate);
   toc.addEventListener('toggle', invalidate);
+  topics?.addEventListener('toggle', invalidate);
   document.addEventListener('load', invalidate, true);
   if (window.ResizeObserver) new window.ResizeObserver(invalidate).observe(body);
   document.fonts?.ready?.then(invalidate).catch(() => {});

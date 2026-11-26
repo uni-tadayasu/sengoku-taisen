@@ -365,3 +365,23 @@ dialog.navigation-dialog {
 .navigation-filter-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr)); gap: 6px; }
 .navigation-filter-row { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 4px; }
 .navigation-dialog .navigation-filter-row [data-filter-remove] { color: #f1d5bf; background: #30282c; border-color: #9d8077; }
+
+@media (min-width: 760px) {
+  dialog.navigation-dialog[open] {
+    display: grid; grid-template-columns: minmax(0,1.15fr) minmax(0,1fr);
+    grid-template-rows: auto auto auto minmax(0,1fr) auto;
+  }
+  .navigation-dialog :is(.navigation-dialog-header,.navigation-results,.navigation-dialog-footer) { grid-column: 1 / -1; }
+  .navigation-dialog .navigation-search-row { grid-area: 2 / 1; align-self: start; }
+  .navigation-dialog .navigation-summary { grid-area: 2 / 2; padding-top: 0; }
+  .navigation-dialog .navigation-purpose-row { grid-area: 3 / 1; }
+  .navigation-dialog .navigation-dock-editor { grid-area: 3 / 2; align-self: start; }
+  .navigation-dialog .navigation-dock-editor[open] { grid-column: 1 / -1; }
+  .navigation-dialog .navigation-results { grid-row: 4; }
+  .navigation-dialog .navigation-dialog-footer { grid-row: 5; }
+}
+@media (max-height: 740px) {
+  .navigation-dialog .navigation-dialog-header { padding-block: 6px; }
+  .navigation-dialog .navigation-entry-row > .navigation-entry { min-height: 52px; padding-block: 5px; }
+  .navigation-dialog .navigation-group h3 { margin-block: 3px; }
+}

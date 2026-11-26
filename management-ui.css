@@ -176,3 +176,10 @@
   .comparison-stat-track i { background: Highlight; }
   .officer-comparison-table td.comparison-best { outline: 2px solid Highlight; outline-offset: -3px; }
 }
+
+#main .officer-card-heading { padding: 6px 10px; text-align: start; overflow-wrap: anywhere; }
+#main .officer-card-heading h3 { margin: 2px 0 0; font: 650 1.125rem/1.35 var(--serif); }
+#app.chronicle-shell #main .officer-compare-tray:has(.officer-compare-prompt) {
+  padding: 4px 8px; margin-bottom: 6px; gap: 4px 8px;
+}
+.officer-compare-prompt { flex: 1 1 8em; margin: 0; font-size: .875rem; }
