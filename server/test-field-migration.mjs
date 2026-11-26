@@ -2,6 +2,9 @@ import assert from 'node:assert/strict';
 import {harness} from './test-support.mjs';
 
 const h=harness(),checks=[],post=(p,body,expected=200)=>({method:'POST',token:p.token,body,expected});
+const OriginalDate=Date;
+// Canonical engine exports and Worker request times share the fixture clock.
+globalThis.Date=class extends OriginalDate{constructor(...args){super(...(args.length?args:[h.now]));}static now(){return h.now;}};
 const row=p=>h.sql.prepare('SELECT * FROM player_saves WHERE user_id=?').get(p.user.id);
 const read=p=>JSON.parse(row(p).save_json);
 const snapshot=async(p,expected=200)=>(await h.api('/sync?deviceId='+p.deviceId,{token:p.token,expected})).data;
@@ -28,7 +31,10 @@ try{
   assert.equal(loaded.save.state.castles.edo.level,64);assert.equal(loaded.save.state.castles.sunpu.level,32);
   const publicTargets=(await h.api('/field?limit=100')).data.targets.filter(t=>t.playerId===p.user.id&&['nijo','osaka','nagoya'].includes(t.targetCastleId));assert.equal(publicTargets.length,3);assert(publicTargets.every(t=>t.level===48&&t.keepLevel===32));
   checks.push('legacy levels 49, 63 and 64 read as 48 with all other state preserved');
-  const resaved=(await h.api('/sync',{method:'PUT',token:p.token,body:{deviceId:p.deviceId,revision:loaded.revision,save:loaded.save}})).data;assert.deepEqual(resaved.save,expected);assert.deepEqual((await snapshot(p)).save,resaved.save);checks.push('migrated save reuploads and reloads stably');
+  h.now+=1000;
+  const resaved=(await h.api('/sync',{method:'PUT',token:p.token,body:{deviceId:p.deviceId,revision:loaded.revision,save:loaded.save}})).data;
+  assert.equal(resaved.save.savedAt,new Date(h.now).toISOString());assert.notEqual(resaved.save.savedAt,expected.savedAt,'A new commit updates the export timestamp');
+  assert.deepEqual(resaved.save,{...expected,savedAt:new Date(h.now).toISOString()});assert.deepEqual((await snapshot(p)).save,resaved.save);checks.push('migrated state reuploads unchanged with a new save timestamp and reloads stably');
 
   const boundary=structuredClone(canonical);boundary.state.castles.nagoya.level=48;boundary.state.jobs.find(j=>j.kind==='castle').targetLevel=49;store(p,boundary);
   const migrated=await snapshot(p);assert.equal(migrated.save.state.castles.nagoya.level,48);assert.deepEqual(migrated.save.state.jobs,boundary.state.jobs.filter(j=>j.kind!=='castle'));assert.equal(row(p).save_json,JSON.stringify(boundary));checks.push('a historical level-48 to 49 job is removed even when its castle is already at the new cap');
@@ -57,4 +63,4 @@ try{
   checks.push('staff personal-home DTO projects legacy 64 as 48 without changing its backup');
   await h.api('/admin/staff',post(operator,{targetPlayerId:staff.user.id,action:'dismiss',requestId:crypto.randomUUID()}));const restored=await snapshot(staff);assert.equal(restored.save.state.home,'nijo');assert.equal(restored.save.state.castles.nijo.level,48);assert.deepEqual(restored.save.state.army,canonical.state.army);assert.deepEqual(restored.save.state.governors,canonical.state.governors);assert.deepEqual(restored.save.state.buildings,canonical.state.buildings);checks.push('staff dismissal preserves development and restores the migrated home safely');
   console.log(JSON.stringify({ok:true,calls:h.calls,checks},null,2));
-}finally{h.close();}
+}finally{globalThis.Date=OriginalDate;h.close();}

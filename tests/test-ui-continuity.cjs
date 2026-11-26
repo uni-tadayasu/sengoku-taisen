@@ -28,6 +28,18 @@ await test('explicit desktop navigation resets the content pane, while choosing 
   c.go('town');assert.equal(main.scrollTop,0);assert.equal(main.scrollLeft,0);assert.equal(c.currentView,'town');assert.equal(c.interactionEpoch,1);assert.equal(calls.at(-1).top,0);
   c.go('unknown');assert.equal(c.currentView,'town');assert.equal(c.interactionEpoch,1);
 });
+await test('moving between modal views restores a valid keyboard target without disturbing retained fields',()=>{
+  const stable=require('../stable-dom.js'),{doc,host}=require('./helpers/dom-model.cjs').setup();host.id='outside';
+  const dialog=doc.createElement('dialog');dialog.id='modal';const content=doc.createElement('div');content.id='modal-content';dialog.appendChild(content);doc.body.appendChild(dialog);
+  const c=load(context({document:doc,window:{SengokuStableDOM:stable},activeModal:'',activeModalContext:null,clearGachaPresentation(){},icon:()=>'',esc:String,$:selector=>doc.querySelector(selector)}),'patchHTML','modal');
+  c.modal('武将詳細','説明','<button id="open-compare">比較表へ</button>','','officer',{id:'first'});const open=content.querySelector('#open-compare');open.focus();
+  c.modal('武将比較','説明','<input id="compare-note" value=""><button id="open-detail">詳細</button>','','officer-comparison',{});
+  assert(!open.isConnected);assert.strictEqual(doc.activeElement,content.querySelector('[data-action="close"]'));assert(dialog.contains(doc.activeElement));
+  const note=content.querySelector('#compare-note');note.value='選択中';note.focus();note.setSelectionRange(1,3,'backward');
+  c.modal('武将比較','更新した説明','<input id="compare-note" value=""><button id="open-detail">詳細</button>','','officer-comparison',{});
+  assert.strictEqual(doc.activeElement,note);assert.equal(note.value,'選択中');assert.equal(note.selectionStart,1);assert.equal(note.selectionEnd,3);
+  const external=doc.createElement('input');host.appendChild(external);external.focus();c.modal('武将比較','最新','<input id="compare-note" value="">','','officer-comparison',{});assert.strictEqual(doc.activeElement,external,'background refresh does not take focus from another surface');
+});
 await test('sync redraw retains nested scroll offsets, draft text, keyboard focus and selected text',()=>{
   const s=surface(),old=s.draw();s.main.scrollTop=418;s.main.scrollLeft=9;old.detail.scrollTop=137;old.nested.scrollTop=52;s.dialog.scrollTop=24;old.search.value='犬山';old.draft.value='入力途中';old.search.selectionStart=1;old.search.selectionEnd=2;old.search.selectionDirection='backward';s.document.activeElement=old.search;
   let fresh;s.c.preserveInteraction(s.main,()=>{fresh=s.draw();s.main.scrollTop=0;s.dialog.scrollTop=0;});

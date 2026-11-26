@@ -14,6 +14,39 @@ const textInput=(name,placeholder,max=80,value='')=>'<input class="input" name="
 const amountInput=(name,value=1000,max=50000)=>'<input class="input" type="number" inputmode="numeric" min="1" max="'+max+'" step="1" name="'+name+'" value="'+value+'" required>';
 const options=(items,value)=>items.map(i=>'<option value="'+esc(i.id)+'"'+(String(i.id)===String(value)?' selected':'')+'>'+esc(i.name)+'</option>').join('');
 const select=(name,items,value)=>'<select class="input" name="'+name+'">'+options(items,value)+'</select>';
+// Keep only the current player's already-authorized journeys for the command
+// desk. This is an in-memory projection, never another request or a saved DTO.
+let ownTravelCache=null,ownTravelRevision=0;
+const ownTravelMutations=new Set();
+function accessIdentity(c={}){
+ const id=String(c.playerId||c.user?.id||'');
+ return{id,stamp:JSON.stringify([id,c.epoch,c.accountEpoch,c.guildEpoch,c.privilegeEpoch,c.user?.guildId||c.guildId||'',c.user?.guildRole||c.guildRole||'']),user:c.user||null};
+}
+function readableTravelContext(c){const who=accessIdentity(c);return Boolean(who.id&&who.user&&String(who.user.id)===who.id&&!c.pending&&!c.banned&&!who.user.isBanned);}
+const travelCampaign=getGame=>getGame?.()?.state?.walking?.campaignId||'';
+function retainOwnTravel(value,expected,getContext,getGame){
+ const current=getContext()||{},who=accessIdentity(current);
+ if(!value?.ok||!Array.isArray(value.units)||!readableTravelContext(current)||who.stamp!==expected.stamp||expected.revision!==ownTravelRevision||expected.campaignId!==travelCampaign(getGame)||Array.from(ownTravelMutations).some(mutation=>mutation.stamp===who.stamp))return;
+ if(String(value.guild?.id||'')!==String(current.user?.guildId||current.guildId||'')){invalidateOwnTravel(who.stamp);return;}
+ const serverNow=typeof value.serverNow==='string'?Date.parse(value.serverNow):value.serverNow;
+ if(ownTravelCache?.stamp===who.stamp&&Number.isFinite(serverNow)&&serverNow<ownTravelCache.serverNow)return;
+ const journeys=value.units.filter(unit=>String(unit?.ownerId||'')===who.id&&!unit.marchId&&['aid','rally'].includes(unit.kind)).map(unit=>{
+  const journey=unitJourney(unit);return journey?{...journey,allianceKind:unit.kind}:null;
+ }).filter(Boolean);
+ ownTravelCache={stamp:who.stamp,getContext,getGame,campaignId:expected.campaignId,fetchedAt:Date.now(),serverNow:Number.isFinite(serverNow)?serverNow:0,active:journeys};
+}
+// Invalidating a snapshot also retires earlier reads. A response captured before
+// recall, sign-out or access denial must not make old movements visible again.
+function invalidateOwnTravel(stamp){ownTravelRevision++;if(ownTravelCache?.stamp===stamp)ownTravelCache=null;}
+function beginOwnTravelMutation(stamp){const mutation={stamp};ownTravelMutations.add(mutation);invalidateOwnTravel(stamp);return mutation;}
+function finishOwnTravelMutation(mutation){if(ownTravelMutations.delete(mutation))invalidateOwnTravel(mutation.stamp);}
+function ownTravelSnapshot(){
+ const cache=ownTravelCache,context=global.SengokuSocial?.getExpansionContext?.()||cache?.getContext?.()||{},who=accessIdentity(context);
+ if(!readableTravelContext(context)){if(cache)invalidateOwnTravel(cache.stamp);return{available:false,status:context.pending||context.banned?'unavailable':'unregistered',active:[]};}
+ if(!cache)return{available:false,status:'unloaded',active:[]};
+ if(who.stamp!==cache.stamp||travelCampaign(cache.getGame)!==cache.campaignId){invalidateOwnTravel(cache.stamp);return{available:false,status:'unloaded',active:[]};}
+ return{available:true,status:'ready',fetchedAt:cache.fetchedAt,serverNow:cache.serverNow,active:JSON.parse(JSON.stringify(cache.active))};
+}
 function createController(opts={}){
  let alive=true,generation=0,loadSeq=0,targetSeq=0,who='',flight=null;
  const context=opts.getContext||(()=>global.SengokuSocial?.getExpansionContext?.()||{user:global.SengokuSocial?.getUser?.()});
@@ -22,15 +55,16 @@ function createController(opts={}){
  const storage=opts.storage||(()=>{try{return global.localStorage;}catch{return null;}})();
  let s={data:null,targets:[],fieldRules:null,loading:false,sending:false,error:'',message:'',pending:null};
  const key=id=>'sengoku-alliance-pending-v1:'+encodeURIComponent(id);
- const identity=()=>{const c=context()||{},id=String(c.playerId||c.user?.id||'');const stamp=JSON.stringify([id,c.epoch,c.accountEpoch,c.guildEpoch,c.privilegeEpoch,c.user?.guildId||c.guildId||'',c.user?.guildRole||c.guildRole||'']);if(who!==stamp){who=stamp;generation++;loadSeq++;targetSeq++;flight=null;s={data:null,targets:[],fieldRules:null,loading:false,sending:false,error:'',message:'',pending:null};try{const p=JSON.parse(storage?.getItem(key(id))||'null');if(p?.ownerId===id&&typeof p.route==='string'&&p.route.startsWith('/alliance/')&&typeof p.data?.requestId==='string')s.pending=p;}catch{}}return{id,stamp,user:c.user||null};};
+ const identity=()=>{const current=accessIdentity(context()||{}),{id,stamp}=current;if(who!==stamp){who=stamp;generation++;loadSeq++;targetSeq++;flight=null;s={data:null,targets:[],fieldRules:null,loading:false,sending:false,error:'',message:'',pending:null};try{const p=JSON.parse(storage?.getItem(key(id))||'null');if(p?.ownerId===id&&typeof p.route==='string'&&p.route.startsWith('/alliance/')&&typeof p.data?.requestId==='string')s.pending=p;}catch{}}return current;};
  const emit=()=>{if(alive)opts.onChange?.(snapshot());};
  const snapshot=()=>{const current=identity();return{...s,identity:current};};
  async function load(){
   const c=identity(),g=generation,ticket=++loadSeq;if(!c.id){s.error='領主を登録してから同盟作戦をご利用ください。';emit();return false;}
+  const observation={...c,revision:ownTravelRevision,campaignId:travelCampaign(opts.getGame)};
   s.loading=true;s.error='';emit();
-  try{const value=await request('/alliance');if(!alive||g!==generation||ticket!==loadSeq||identity().stamp!==c.stamp)return false;if(!value?.ok)throw Error(value?.error?.message||'同盟を読み込めませんでした。');s.data=value;if(value.marches)global.SengokuTravelUI?.ingest(value,{kind:'rally'});if(value.operations?.some(o=>o.kind==='attack'&&o.status==='planned')&&(opts.readField||global.SengokuSocial?.fieldRequest))await loadTargets();return alive&&g===generation&&identity().stamp===c.stamp;}
-  catch(e){if(alive&&g===generation)s.error=e.message||'同盟を読み込めませんでした。';return false;}
-  finally{if(alive&&g===generation){s.loading=false;emit();}}
+  try{const value=await request('/alliance');if(!alive||g!==generation||ticket!==loadSeq||identity().stamp!==c.stamp)return false;if(!value?.ok)throw Error(value?.error?.message||'同盟を読み込めませんでした。');s.data=value;retainOwnTravel(value,observation,context,opts.getGame);if(value.marches)global.SengokuTravelUI?.ingest(value,{kind:'rally'});if(value.operations?.some(o=>o.kind==='attack'&&o.status==='planned')&&(opts.readField||global.SengokuSocial?.fieldRequest))await loadTargets();return alive&&g===generation&&identity().stamp===c.stamp;}
+  catch(e){if(alive&&g===generation&&ticket===loadSeq&&identity().stamp===c.stamp){s.error=e.message||'同盟を読み込めませんでした。';if([401,403].includes(e.status))invalidateOwnTravel(c.stamp);}return false;}
+  finally{if(alive&&g===generation&&ticket===loadSeq&&identity().stamp===c.stamp){s.loading=false;emit();}}
  }
  async function loadTargets(){const c=identity(),g=generation,ticket=++targetSeq;try{const value=await (opts.readField?opts.readField():global.SengokuSocial.fieldRequest('/field'));if(!alive||identity().stamp!==c.stamp||g!==generation||ticket!==targetSeq)return false;s.targets=value?.targets||value?.players||[];s.fieldRules=value?.rules||null;emit();return true;}catch(e){if(alive&&identity().stamp===c.stamp&&g===generation&&ticket===targetSeq){s.error=e.message||'共通フィールドを読み込めませんでした。';emit();}return false;}}
  async function send(route,data={}){
@@ -38,13 +72,13 @@ function createController(opts={}){
   if(s.pending&&(s.pending.route!==route||data.requestId!==s.pending.data.requestId)){s.error='前の操作結果を先に再確認してください。';emit();return false;}
   const pending=s.pending||{ownerId:c.id,route,data:{...data,requestId:data.requestId||global.crypto.randomUUID()}};
   try{if(!storage)throw Error();storage.setItem(key(c.id),JSON.stringify(pending));if(storage.getItem(key(c.id))!==JSON.stringify(pending))throw Error();}catch{s.error='操作記録を保存できません。ブラウザの保存設定を確認してください。';emit();return false;}
-  s.pending=pending;s.sending=true;s.error='';s.message='';emit();const g=generation;
+  s.pending=pending;s.sending=true;s.loading=false;s.error='';s.message='';loadSeq++;const mutation=beginOwnTravelMutation(c.stamp);emit();const g=generation;
   flight=(async()=>{try{
    const value=await mutate(pending.route,pending.data);if(!alive||g!==generation||identity().stamp!==c.stamp)return false;if(value?.ok===false)throw Object.assign(Error(value.error?.message||value.message||'操作できませんでした。'),{status:409});
    const march=global.SengokuTravelUI?.commandMarch(value,pending.data.requestId);if(value.accepted===true&&!march)throw Error('出陣の受付内容を確認できません。同じ操作で確認してください。');if(march)global.SengokuTravelUI?.record(march);
-   storage.removeItem(key(c.id));s.pending=null;s.message=march?.status==='marching'?'集結軍が出陣しました。到着してから合戦を行い、生存兵は各参加者へ帰還します。':march?.status==='cancelled'?march.message||'集結軍の出陣が取り消されました。':value?.result?.message||(value?.battle?(value.battle.won?'集結軍が勝利しました。生存兵を受け取れます。':'集結軍は撤退しました。生存兵を受け取れます。'):'同盟の操作を反映しました。');opts.onMessage?.(s.message);await load();return true;
+   storage.removeItem(key(c.id));s.pending=null;finishOwnTravelMutation(mutation);s.message=march?.status==='marching'?'集結軍が出陣しました。到着してから合戦を行い、生存兵は各参加者へ帰還します。':march?.status==='cancelled'?march.message||'集結軍の出陣が取り消されました。':value?.result?.message||(value?.battle?(value.battle.won?'集結軍が勝利しました。生存兵を受け取れます。':'集結軍は撤退しました。生存兵を受け取れます。'):'同盟の操作を反映しました。');opts.onMessage?.(s.message);await load();return true;
   }catch(e){if(alive&&g===generation){s.error=e.message||'結果を確認できませんでした。同じ操作を再確認してください。';if(e.status>=400&&e.status<500&&![401,408,429].includes(e.status)){storage.removeItem(key(c.id));s.pending=null;}}return false;}
-  finally{if(alive&&g===generation){s.sending=false;flight=null;emit();}}
+  finally{finishOwnTravelMutation(mutation);if(alive&&g===generation){s.sending=false;flight=null;emit();}}
   })();return flight;
  }
  identity();
@@ -193,5 +227,5 @@ function open(options={}){
  const controller=mount(dialog.querySelector('.alliance-dialog-content'),options),close=()=>{controller.destroy();dialog.close();dialog.remove();opened=null;before?.focus?.();};
  dialog.querySelector('[data-alliance-close]').addEventListener('click',close);dialog.addEventListener('cancel',e=>{e.preventDefault();close();});dialog.showModal();opened={controller,close};return opened;
 }
-const api={createController,mount,open,parseDate,inputDate,operationCard,policyView,rallyAdvice,unitsView,unitJourney,unitCanClaim};global.SengokuAlliance=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;
+const api={createController,mount,open,parseDate,inputDate,operationCard,policyView,rallyAdvice,unitsView,unitJourney,unitCanClaim,ownTravelSnapshot};global.SengokuAlliance=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;
 })(typeof window!=='undefined'?window:globalThis);

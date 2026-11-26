@@ -5,7 +5,7 @@ const { createNavigationUI, normalizeQuery, filterEntries, highlightMatch } = re
 const { documentFixture } = require('./test-events-ui.cjs');
 const tests = [], test = (name, run) => tests.push([name, run]);
 const views = [['town', '城下町'], ['facilities', '城下普請帳'], ['map', '天下地図'], ['field', '共通フィールド'], ['roaming', '野良兵戦'], ['covert', '派遣部隊'], ['court', '京都御所'], ['officers', '武将名鑑'], ['crests', '家紋帳'], ['army', '軍団編成'], ['research', '技術研究'], ['council', '軍議']];
-const actions = [['events', '期間限定合戦'], ['progress', '成長手帳'], ['alliance-strategy', '同盟作戦'], ['conquest', '共有天下統一'], ['shogunate', '幕府の記録']];
+const actions = [['command-activity', '行動予定表'], ['events', '期間限定合戦'], ['progress', '成長手帳'], ['alliance-strategy', '同盟作戦'], ['conquest', '共有天下統一'], ['shogunate', '幕府の記録']];
 const preferenceKey = 'sengoku-navigation-preferences-v1';
 function fixture({ touch = false, unsupported = false, storage = new Map(), storageDenied = false } = {}) {
   const { doc } = documentFixture(), originalCreate = doc.createElement, calls = [], scrolls = [], frames = new Map(); let sequence = 0;
@@ -63,7 +63,7 @@ function delayedNavigation(s) {
 test('enhancement preserves all original destinations and never executes a game command while opening', () => {
   const s = fixture(), originals = [...s.nav.children, ...s.bottom.children.filter(node => node.tagName === 'BUTTON')];
   assert(s.api); assert(s.doc.documentElement.classList.contains('sengoku-navigation-ready'));
-  const entries = s.api.getEntries(); assert.equal(entries.length, 24);
+  const entries = s.api.getEntries(); assert.equal(entries.length, 25);
   for (const [id] of views) assert(entries.some(entry => entry.key === 'view:' + id));
   for (const [id] of actions) assert(entries.some(entry => entry.key === 'action:' + id));
   for (const id of ['settings', 'hints', 'premium', 'title-screen']) assert(entries.some(entry => entry.key === 'action:' + id));
@@ -78,6 +78,8 @@ test('search understands full-width letters, kana and multiple purpose words wit
   assert(filterEntries(s.api.getEntries(), 'ＮＰＣ').some(entry => entry.key === 'view:roaming'));
   assert(filterEntries(s.api.getEntries(), '軍師 ＡＩ').some(entry => entry.key === 'view:map'));
   assert(filterEntries(s.api.getEntries(), 'ばくふ').some(entry => entry.key === 'action:shogunate'));
+  assert(filterEntries(s.api.getEntries(), '帰還 予定').some(entry => entry.key === 'action:command-activity'));
+  assert(filterEntries(s.api.getEntries(), '比較').some(entry => entry.key === 'view:officers'));
   assert(filterEntries(s.api.getEntries(), 'ふしん').some(entry => entry.key === 'view:facilities' && entry.group === '城と内政'));
   assert(filterEntries(s.api.getEntries(), '育成').some(entry => entry.key === 'view:town'));
   assert(filterEntries(s.api.getEntries(), 'ぐんし').some(entry => entry.key === 'view:council'));
@@ -467,11 +469,11 @@ test('Enter opens a unique live destination once and never treats IME or ambiguo
 test('current location and category counts update from visible canonical controls without replacing the input', () => {
   const s = fixture(); s.api.open(); const input = s.get('#navigation-query');
   assert.equal(s.get('#navigation-current-location').textContent, '現在の画面：城下町');
-  assert(s.get('#navigation-category').textContent.includes('全分類 · 24項目'));
+  assert(s.get('#navigation-category').textContent.includes('全分類 · 25項目'));
   s.api.activate('view:army'); s.drain(); s.api.open();
   assert.equal(s.get('#navigation-current-location').textContent, '現在の画面：軍団編成');
   s.nav.querySelector('[data-view="officers"]').hidden = true; s.api.refresh();
-  assert(s.get('#navigation-category').textContent.includes('全分類 · 23項目'));
+  assert(s.get('#navigation-category').textContent.includes('全分類 · 24項目'));
   assert.equal(s.get('#navigation-query'), input); assert.deepEqual(s.calls, ['view:army']);
 });
 

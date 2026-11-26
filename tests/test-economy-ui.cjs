@@ -14,9 +14,9 @@ function harness(game=new E({seed:4910})){
   window:{SengokuStableDOM:stable,SengokuWorldClock:{snapshot:()=>({ready:true,mode:'shared',clock})}},startPending:false,activeModal:'',settings:{sound:false},
   getEvaluation:()=>({}),refreshEvaluationUI(){},evaluationEntry:()=>'',refreshTouchHeaderStatus(){},date:()=>({year:1560,month:1,season:'春'}),clanInfo:()=>({leader:'織田信長'}),clanCrest:()=>'',
   heading:title=>`<h1>${title}</h1>`,hasResources:cost=>D.resources.every(key=>game.state.resources[key]>=(cost?.[key]||0)),refreshLiveControls(){const income=game.income();c.refreshRecruitmentPreview(income,game.recruitmentBudget(income));},recruitLimitText:()=>'',costHtml:()=>'',portrait:()=>'',skillNames:{},
-  facilityCategory:'all',facilityQuery:'',categoryNames:{},staffBaseNotice:()=>'',governorAssignmentEntry:()=>'',facilitiesResults:()=>'<input id="facility-search-test" value="">'
+  facilityCategory:'all',facilityQuery:'',facilitySort:'default',facilityLayout:'cards',categoryNames:{},staffBaseNotice:()=>'',governorAssignmentEntry:()=>'',facilitiesResults:()=>'<input id="facility-search-test" value="">'
  };
- vm.createContext(c);vm.runInContext(['patchHTML','economyNumber','economyBalanceTitle','economyPanel','refreshEconomyPanels','facilityMaintenanceHtml','recruitmentPreviewHtml','refreshRecruitmentPreview','selectRecommendedRecruitment','selectMaximumRecruitment','maximumRecruitAmount','recruitLimitText','renderHeader','renderArmy','renderFacilities'].map(fn).join('\n'),c);
+ vm.createContext(c);vm.runInContext(['patchHTML','constructionJobs','facilityPlannerTools','economyNumber','economyBalanceTitle','economyPanel','refreshEconomyPanels','facilityMaintenanceHtml','recruitmentPreviewHtml','refreshRecruitmentPreview','selectRecommendedRecruitment','selectMaximumRecruitment','maximumRecruitAmount','recruitLimitText','renderHeader','renderArmy','renderFacilities'].map(fn).join('\n'),c);
  return{c,doc,host,game,clock};
 }
 let count=0;function test(name,run){run();count++;console.log('PASS '+name);}

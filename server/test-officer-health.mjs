@@ -60,7 +60,10 @@ try{
 
  await scope('a legacy canonical local-time save is compared after the same clock migration',async h=>{
   const p=await h.session('保存済み時刻の移行');p.deviceId='legacy-clock';await h.api('/sync/lease',post(p,{deviceId:p.deviceId}));
-  const local=h.fresh();local.state.turn=100;local.state.realtime.elapsed=0;delete local.state.worldClock;await put(h,p,local);
+  const local=h.fresh();local.state.turn=100;local.state.realtime.elapsed=0;delete local.state.worldClock;
+  // Simulate a save persisted by the pre-clock service. New uploads now attach
+  // every old format to the shared clock before the first write.
+  h.sql.prepare('UPDATE player_saves SET save_json=?,revision=revision+1 WHERE user_id=?').run(JSON.stringify(local),p.user.id);
   updateSave(h,p,s=>{s.officerHealth={version:1,asOfElapsedMs:6000000,values:Object.fromEntries(s.officers.map(id=>[id,23]))};});
   const current=await snapshot(h,p),game=GameEngine.fromSave(current.save,GAME_OFFICERS);assert(game.applyWorldClock(current.clock).ok);
   for(const id of game.state.officers)game.state.officerHealth.values[id]=100;

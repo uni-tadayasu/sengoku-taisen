@@ -74,6 +74,7 @@
     "field-responsive.css",
     "social-chat.css",
     "command-center.css",
+    "management-ui.css",
     "responsive-text.css"
   ],
   "game-preferences.bundle.js": [
@@ -98,7 +99,8 @@
     "artwork.js",
     "kamon.js",
     "world-map.js",
-    "command-center.js"
+    "command-center.js",
+    "management-model.js"
   ],
   "game-campaign.bundle.js": [
     "desktop-fit.js",

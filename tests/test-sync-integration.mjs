@@ -67,7 +67,7 @@ async function api(route,{method='GET',token,data}={}){
   if(data!==undefined)headers['Content-Type']='application/json';
   const response=await worker.fetch(new Request('https://integration.invalid/api/v1'+route,{method,headers,body:data===undefined?undefined:JSON.stringify(data)}),env,{});
   const result=await response.json();
-  requests.push({method,route,status:response.status});
+  requests.push({method,route,status:response.status,...(result.error?{error:result.error.code}:{})});
   if(!response.ok||result.ok===false){const error=new Error(result.error?.message||'Integration API failure');error.code=result.error?.code;error.status=response.status;throw error;}
   return result;
 }
@@ -123,6 +123,16 @@ function applyConfirmed(device,{maxSeconds=7200}={}){
   assert(Number.isSafeInteger(snapshot.clock.confirmedElapsedMs),'Display interpolation must expose the separately confirmed server time');
   return device.game.applyWorldClock({...snapshot.clock,elapsedMs:snapshot.clock.confirmedElapsedMs},{maxSeconds,deferCycleSettlement:device.access.linked});
 }
+async function restartCampaign(device,account,castleId){
+  // A current linked campaign starts through its authenticated endpoint. An
+  // unrelated fresh engine has no matching private maintenance authority.
+  const result=await api('/castles/residency/start',{method:'POST',token:account.token,data:{
+    requestId:crypto.randomUUID(),deviceId:device.cloud.getDevice().id,revision:device.cloud.getStatus().revision,
+    castleId,mode:'lord',clan:'織田家',difficulty:'normal'
+  }});
+  assert.equal(result.residency.role,'lord');assert((await device.cloud.refresh()).ok);
+  stateEqual(device.game.state,result.save.state);return result;
+}
 
 let checks=0;
 async function test(name,run){await run();checks++;console.log('PASS '+name);}
@@ -144,11 +154,14 @@ try{
   const c=makeDevice('other',E.fromSave(legacy.exportSave(),roster));
 
   await test('first writer uploads once and the second device pulls real engine state',async()=>{
+    const imported=JSON.parse(a.game.exportSave());assert.equal(imported.state.worldClock,undefined);
     await a.start(alice);
     assert.equal(a.cloud.getStatus().writable,true);
     assert.equal(a.cloud.getStatus().revision,1);
     assert.equal(writes(),1);
     const remote=await api('/sync',{token:alice.token});
+    stateEqual(remote.save.state.worldClock,{id:remote.clock.id,elapsedMs:remote.clock.elapsedMs});
+    stateEqual(remote.save.state.resources,imported.state.resources);stateEqual(remote.save.state.jobs,imported.state.jobs);
     assert.notEqual(JSON.stringify(remote.save.state),JSON.stringify(E.fromSave(remote.save,roster).state),'Fixture must expose server/engine key-order differences');
     assert.equal(browser.SengokuCloudSync.fingerprint(remote.save),browser.SengokuCloudSync.fingerprint(JSON.parse(a.game.exportSave())));
     await b.start(alice);
@@ -239,13 +252,18 @@ try{
     assert.equal(writes(),before,'Restoring the same entitlement must remain idempotent');
   });
 
-  await test('legacy first uploads join the real shared clock without retroactive production',async()=>{
-    assert.equal(b.game.state.worldClock,undefined);assert.equal(c.game.state.worldClock,undefined);
-    const beforeB=structuredClone(b.game.state.resources),beforeC=structuredClone(c.game.state.resources),jobs=structuredClone(b.game.state.jobs);
+  await test('attached uploads advance only the newly confirmed shared interval',async()=>{
+    assert.equal(b.game.state.worldClock.id,'world-v1');assert.equal(c.game.state.worldClock.id,'world-v1');
+    const projectedB=E.fromSave(b.game.exportSave(),roster),projectedC=E.fromSave(c.game.exportSave(),roster);
     await b.worldClock.start();await c.worldClock.start();
     assert.equal(b.worldClock.snapshot().clock.confirmedElapsedMs,c.worldClock.snapshot().clock.confirmedElapsedMs);
-    assert(applyConfirmed(b).migrated);assert(applyConfirmed(c).migrated);
-    stateEqual(b.game.state.resources,beforeB);stateEqual(c.game.state.resources,beforeC);stateEqual(b.game.state.jobs,jobs);
+    for(const [device,projected] of [[b,projectedB],[c,projectedC]]){
+      const sample=device.worldClock.snapshot().clock;
+      assert(sample.confirmedElapsedMs>projected.state.worldClock.elapsedMs,'The fixture includes a real elapsed interval after attachment');
+      assert(projected.applyWorldClock({...sample,elapsedMs:sample.confirmedElapsedMs}).ok);
+      const result=applyConfirmed(device);assert(result.ok&&!result.migrated,'Existing checkpoints advance without a second migration');
+      stateEqual(device.game.state,projected.state);
+    }
     b.persist();c.persist();assert((await b.cloud.flush()).ok);assert((await c.cloud.flush()).ok);
     await a.cloud.refresh();stateEqual(a.game.state,b.game.state);assert.equal(a.game.state.worldClock.id,'world-v1');
     const remote=await api('/sync',{token:alice.token});stateEqual(remote.save.state,b.game.state);assert.equal(remote.save.state.worldClock.elapsedMs,remote.clock.elapsedMs);
@@ -332,6 +350,11 @@ try{
     const arrivalClock=(await api('/world-clock')).clock;
     const attackerProjection=E.fromSave(departure.save,roster);
     attackerProjection.applyWorldClock(arrivalClock);
+    // The defender's canonical checkpoint advances during the march too.
+    // Project the saved state, excluding its unsent local construction, before
+    // checking battle debits against the real arrival-time economy.
+    const defenderProjection=E.fromSave({game:'sengoku-tento',version:2,state:beforeC},roster);
+    assert(defenderProjection.applyWorldClock(arrivalClock).ok);
     assert.equal(departure.save.state.command,beforeA.command-1);
     assert.equal(departure.save.state.resources.rice,beforeA.resources.rice-result.battle.foodCost);
     assert.equal(result.battle.defenderRevision,defenderRevision+1);
@@ -346,9 +369,9 @@ try{
     assert.equal(c.backups.length,backups+1,'A raid cannot silently discard a dirty local action');
     stateEqual(JSON.parse(c.backups.at(-1)).state,queued.state);
     assert.equal(c.game.state.jobs.length,beforeC.jobs.length,'The old dirty action must not be replayed over authoritative raid damage');
-    assert.equal(c.game.state.troops,beforeC.troops-result.battle.defenderLost.troops);
-    assert.equal(c.game.state.castles[c.game.state.home].troops,beforeC.castles[beforeC.home].troops-result.battle.defenderLost.garrison);
-    for(const resource of ['gold','rice','wood','stone'])assert.equal(c.game.state.resources[resource],beforeC.resources[resource]-result.battle.loot[resource]);
+    assert.equal(c.game.state.troops,defenderProjection.state.troops-result.battle.defenderLost.troops);
+    assert.equal(c.game.state.castles[c.game.state.home].troops,defenderProjection.state.castles[beforeC.home].troops-result.battle.defenderLost.garrison);
+    for(const resource of ['gold','rice','wood','stone'])assert.equal(c.game.state.resources[resource],defenderProjection.state.resources[resource]-result.battle.loot[resource]);
     stateEqual(c.game.state.officerVariants,beforeC.officerVariants);assert.equal(c.game.state.home,beforeC.home);
     const before=writes();await c.cloud.flush();assert.equal(writes(),before,'A replaced dirty save must not undo the raid on its next flush');
     const replay=await api('/field/attack',{method:'POST',token:alice.token,data:payload});
@@ -402,7 +425,7 @@ try{
     if(!current.running||current.speed!==1)await api('/world-clock',{method:'PATCH',token:operator.token,data:{running:true,speed:1,revision:current.revision}});
     const start=(await api('/world-clock')).clock,boundary=(Math.floor(start.elapsedMs/cycleMs)+1)*cycleMs;
     clock+=boundary-1000-start.elapsedMs;await a.cloud.takeOver();await a.worldClock.refresh();
-    a.game=makeGame({startCastle:'inuyama'});applyConfirmed(a);a.game.state.castles.inabayama.owner=a.game.state.clan;a.persist();assert((await a.cloud.flush()).ok);
+    await restartCampaign(a,alice,'inuyama');a.game.state.castles.inabayama.owner=a.game.state.clan;a.persist();assert((await a.cloud.flush()).ok);
     a.game.state.castles.odani.owner=a.game.state.clan;a.persist();
     clock+=1000;await a.worldClock.refresh();const result=applyConfirmed(a);assert(result.settlementRequired);a.persist();
     const baseline=a.cloud.getStatus().revision;assert((await a.cloud.refresh()).ok);
@@ -412,7 +435,7 @@ try{
   await test('an unchanged boundary checkpoint sends an explicit settlement rather than looping forever',async()=>{
     const cycleMs=672*60000,current=(await api('/world-clock')).clock,boundary=(Math.floor(current.elapsedMs/cycleMs)+1)*cycleMs;
     clock+=boundary-1-current.elapsedMs;await a.cloud.refresh();await a.worldClock.refresh();
-    a.game=makeGame({startCastle:'inuyama'});applyConfirmed(a);a.persist();assert((await a.cloud.flush()).ok);const beforeWrites=writes();
+    await restartCampaign(a,alice,'inuyama');a.persist();assert((await a.cloud.flush()).ok);const beforeWrites=writes();
     clock+=1;await a.worldClock.refresh();const result=applyConfirmed(a);assert(result.settlementRequired);assert.equal(result.changed,false);
     const beforeSettle=requests.filter(r=>r.route==='/sync/settle').length;
     assert((await a.cloud.refresh({settleCycle:true})).ok);assert.equal(writes(),beforeWrites);assert(requests.filter(r=>r.route==='/sync/settle').length>beforeSettle);
