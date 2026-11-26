@@ -377,6 +377,7 @@
       this._voices=new Set();this._sourceCount=0;this._droppedVoices=0;
       this._audioElement=null;this._streamDestination=null;this._audioSession=null;
       this._previousSessionType=null;this._ownsAudioSession=false;this._outputToken=0;this._pageActive=true;this._voiceActive=false;
+      this._normalizingRate=false;this._rateChangeHandler=()=>this._normalPlaybackRate();
       this._visibilityHandler=()=>this._onVisibility();
       this._pageHideHandler=()=>{this._pageActive=false;this._cancelPendingResume();this._clearScheduler();this._clearDaypartTimer();this._suspendOutput();};
       this._pageShowHandler=()=>{this._pageActive=true;return this._onVisibility();};
@@ -508,6 +509,21 @@
       try {if(this._audioSession?.type==='playback')this._audioSession.type=this._previousSessionType||'auto';}catch(_){}
       this._previousSessionType=null;
     }
+    _normalPlaybackRate(){
+      if(this._normalizingRate)return;this._normalizingRate=true;
+      try{
+        // A remembered media rate or external rate-change event must not
+        // speed up the score's sole MediaStream playback sink.
+        const element=this._audioElement;
+        if(element){if(element.defaultPlaybackRate!==1)element.defaultPlaybackRate=1;if(element.playbackRate!==1)element.playbackRate=1;if('preservesPitch' in element)element.preservesPitch=true;}
+        const now=this._context?.currentTime||0;
+        for(const session of this._sessions){const source=session.recording?.source;if(!source)continue;
+          if(source.playbackRate&&source.playbackRate.value!==1){source.playbackRate.cancelScheduledValues?.(now);source.playbackRate.setValueAtTime(1,now);}
+          if(source.detune&&source.detune.value!==0){source.detune.cancelScheduledValues?.(now);source.detune.setValueAtTime(0,now);}
+        }
+      }catch(_){/* Unsupported platform properties retain their native 1x default. */}
+      finally{this._normalizingRate=false;}
+    }
     _connectOutput(ctx){
       if(this._preparePlaybackSession()){this._master.connect(ctx.destination);return;}
       // Older browsers can use a media playback sink for the actual score.
@@ -521,6 +537,7 @@
           element.autoplay=false;element.controls=false;element.preload='none';
           element.setAttribute('playsinline','');element.setAttribute('webkit-playsinline','');
           this._master.connect(sink);this._streamDestination=sink;this._audioElement=element;
+          element.addEventListener?.('ratechange',this._rateChangeHandler);this._normalPlaybackRate();
           return;
         } catch(_){
           try {element?.pause();if(element)element.srcObject=null;sink?.disconnect();}catch(_){}
@@ -533,6 +550,7 @@
       const token=++this._outputToken;
       if(this._disposed||!this._context||this._hidden()||!this._volume)return false;
       this._preparePlaybackSession();
+      this._normalPlaybackRate();
       if(this._audioSession?.state==='interrupted')return false;
       // Invoke both before the first await, in the initiating tap/click.
       // A media play() delayed until after resume() can lose user activation.
@@ -629,7 +647,11 @@
       if(token!==this._token||this._disposed)return;
       this._clearScheduler();
       const same=id===this._currentId,position=same?this._resumePosition:0;
-      this._retire(this._session,.25);
+      const previous=this._session;this._retire(previous,.25);
+      // Keep at most the immediately preceding song's crossfade. Repeated
+      // scene changes must not stack three or more independently timed beats.
+      // On a same-song resume, even one old tail would be an audible echo.
+      this._finishRetiredSessions(same?null:previous);
       this._currentId=id;this._playing=true;this._resumePosition=0;
       const track=trackById.get(id),score=track.recordingOnly
         ?{events:[],secondsPerBeat:1,duration:track.duration,sections:[]}
@@ -654,7 +676,7 @@
       const ctx=this._context;if(!ctx)return;
       if(this._session)this._resumePosition=trackById.get(this._session.id).recordingOnly&&!this._session.recording
         ?this._session.position:Math.max(0,(ctx.currentTime-this._session.start)%this._session.score.duration);
-      this._retire(this._session,.25);this._session=null;
+      this._retire(this._session,.25);this._finishRetiredSessions(this._session);this._session=null;
       this._smoothGain(this._master.gain,0,.25);
       if(this._hidden()){this._suspendOutput();return;}
       // Pause the playback sink now, and release the category after the short
@@ -697,6 +719,7 @@
         if(!Number.isFinite(seconds)||seconds<1)throw new Error('音源の読み込みを完了できませんでした。再生ボタンでお試しください。');
         const source=ctx.createBufferSource(),gain=ctx.createGain(),now=ctx.currentTime;
         source.buffer=buffer;source.loop=true;source.loopStart=0;source.loopEnd=seconds;
+        source.playbackRate?.setValueAtTime(1,now);source.detune?.setValueAtTime(0,now);
         // Supplied recordings have no substitute synthesized score. Preserve
         // their complete decoded audio and start at the saved position only
         // once loading is complete, without skipping the opening while loading.
@@ -729,6 +752,16 @@
       if(s.recording)return;
       if(!events.length)return;
       this._pruneVoices(ctx.currentTime);
+      // A long callback suspension skips missed notes in one seek. Their
+      // written timestamps never get squeezed into a catch-up performance.
+      const earliest=ctx.currentTime-.025,elapsed=earliest-s.start;
+      if(elapsed>=0){
+        const cycle=Math.floor(elapsed/s.score.duration);
+        if(cycle>s.cycle){s.cycle=cycle;s.eventIndex=0;}
+        let low=s.eventIndex,high=events.length;
+        while(low<high){const middle=(low+high)>>>1,time=s.start+s.cycle*s.score.duration+events[middle].beat*s.score.secondsPerBeat;if(time<earliest)low=middle+1;else high=middle;}
+        s.eventIndex=low;
+      }
       let guard=0;
       while(guard++<512) {
         if(s.eventIndex>=events.length){s.eventIndex=0;s.cycle++;}
@@ -755,11 +788,21 @@
     _releaseSession(session){
       if(session.recording){
         const {source,gain}=session.recording;source.onended=null;
-        try{source.stop();source.disconnect();gain.disconnect();source.buffer=null;}catch(_){}
+        try{source.stop(this._context.currentTime);}catch(_){}
+        // Disconnect even if a platform rejects stopping an ended source, so
+        // a replaced recording cannot retain an audible connection.
+        try{source.disconnect();}catch(_){}try{gain.disconnect();}catch(_){}try{source.buffer=null;}catch(_){}
         session.recording=null;
       }
       try{session.bus.disconnect();session.roomBus?.disconnect();}catch(_){}
       this._sessions.delete(session);
+    }
+    _finishRetiredSessions(keep=null){
+      for(const session of [...this._sessions]){
+        if(session.active||session===keep)continue;
+        for(const voice of [...session.voices]){for(const source of voice.sources)try{source.stop(this._context.currentTime);}catch(_){}this._disconnectVoice(voice);}
+        this._releaseSession(session);
+      }
     }
     _disconnectVoice(voice){
       if(voice.closed)return;voice.closed=true;
@@ -974,7 +1017,7 @@
       global.removeEventListener?.('pageshow',this._pageShowHandler);
       this._audioSession?.removeEventListener?.('statechange',this._audioSessionHandler);
       this._releasePlaybackSession();++this._outputToken;
-      if(this._audioElement){this._audioElement.pause();this._audioElement.srcObject=null;this._audioElement=null;}
+      if(this._audioElement){this._audioElement.removeEventListener?.('ratechange',this._rateChangeHandler);this._audioElement.pause();this._audioElement.srcObject=null;this._audioElement=null;}
       for(const track of this._streamDestination?.stream?.getTracks?.()||[])track.stop();
       this._streamDestination?.disconnect();this._streamDestination=null;
       if(this._context){this._context.removeEventListener?.('statechange',this._contextStateHandler);for(const s of this._sessions)this._retire(s,0);await this._context.close().catch(()=>{});}
@@ -995,6 +1038,69 @@
     static automaticTrackId(scene,date){return automaticTrackId(scene,date);}
     static nextDaypartDelay(date){return nextDaypartDelay(date);}
   }
+  // Short interface sounds have their own output. Pausing a song or changing
+  // its volume never changes this bus, and effects never start a soundtrack.
+  class SengokuSoundEffects {
+    constructor({volume=10}={}){
+      this._volume=clamp(Number(volume)||0,0,100);this._context=null;this._gain=null;this._voices=new Set();this._epoch=0;this._pending=null;this._lastPlayed=-Infinity;this._voiceActive=false;this._pageActive=true;this._disposed=false;
+      this._visibilityHandler=()=>{if(this._hidden())this.stop();};
+      this._pageHideHandler=()=>{this._pageActive=false;this.stop();};
+      this._pageShowHandler=()=>{this._pageActive=true;};
+      global.document?.addEventListener?.('visibilitychange',this._visibilityHandler);
+      global.addEventListener?.('pagehide',this._pageHideHandler);global.addEventListener?.('pageshow',this._pageShowHandler);
+    }
+    get volume(){return this._volume;}
+    _hidden(){return this._voiceActive||!this._pageActive||global.document?.hidden===true;}
+    _setGain(){if(!this._gain||!this._context)return;const now=this._context.currentTime;this._gain.gain.cancelScheduledValues(now);this._gain.gain.setValueAtTime(this._hidden()?0:this._volume/100*.65,now);}
+    setVolume(value){this._volume=clamp(Number(value)||0,0,100);this._setGain();if(!this._volume)this.stop();}
+    setVoiceActive(value){this._voiceActive=value===true;if(this._voiceActive)return this.stop();this._setGain();return Promise.resolve();}
+    _ensureContext(){
+      if(this._context)return;
+      const AC=global.AudioContext||global.webkitAudioContext;if(!AC)throw Error('Web Audio unavailable');
+      this._context=new AC({latencyHint:'interactive'});this._gain=this._context.createGain();this._gain.connect(this._context.destination);this._setGain();
+    }
+    _release(voice){
+      if(!this._voices.delete(voice))return;
+      for(const source of voice.sources){source.onended=null;try{source.stop(this._context.currentTime);source.disconnect();}catch(_){}}
+      for(const node of voice.nodes)try{node.disconnect();}catch(_){}
+      if(!this._voices.size&&!this._pending)this._context?.suspend().catch(()=>{});
+    }
+    stop(){++this._epoch;this._pending=null;for(const voice of [...this._voices])this._release(voice);return this._context?.suspend().catch(()=>{})||Promise.resolve();}
+    async play(type='confirm'){
+      if(this._disposed||!this._volume||this._hidden())return false;
+      if(this._context)for(const voice of [...this._voices])if(voice.endTime<=this._context.currentTime)this._release(voice);
+      const requestedAt=Date.now();if(requestedAt-this._lastPlayed<70||this._voices.size>=12||this._pending&&requestedAt-this._pending.at<1000)return false;
+      const token=++this._epoch;this._pending={token,at:requestedAt};let deadlineTimer,timedOut=false;
+      try{
+        this._ensureContext();if(this._context.state!=='running'){
+          const resume=Promise.resolve(this._context.resume()).then(()=>{if(timedOut||token!==this._epoch){if(!this._voices.size&&(!this._pending||this._pending.token===token))this._context.suspend().catch(()=>{});return false;}return true;});
+          const resumed=await Promise.race([resume,new Promise(resolve=>{deadlineTimer=setTimeout(()=>{timedOut=true;if(token===this._epoch)++this._epoch;resolve(false);},1000);})]);if(!resumed)return false;
+        }
+        if(token!==this._epoch||this._disposed||!this._volume||this._hidden()||this._context.state!=='running'||Date.now()-requestedAt>1000){if(!this._voices.size&&!this._pending)this._context.suspend().catch(()=>{});return false;}
+        this._lastPlayed=Date.now();this._pending=null;this._setGain();
+        const ctx=this._context,notes=type==='victory'?[72,76,79]:type==='error'?[55,53]:[74,79],start=ctx.currentTime+.005;
+        for(let index=0;index<notes.length;index++){
+          const time=start+index*.075,envelope=ctx.createGain(),sources=[],nodes=[envelope];envelope.connect(this._gain);
+          envelope.gain.setValueAtTime(.0001,time);envelope.gain.linearRampToValueAtTime(.0272,time+.008);envelope.gain.exponentialRampToValueAtTime(.0001,time+.28);
+          for(const [multiple,level] of [[1,1],[2.01,.20],[3.98,.045]]){
+            const source=ctx.createOscillator();source.type='sine';source.frequency.setValueAtTime(frequency(notes[index])*multiple,time);
+            if(level===1)source.connect(envelope);else{const partial=ctx.createGain();partial.gain.value=level;source.connect(partial);partial.connect(envelope);nodes.push(partial);}sources.push(source);
+          }
+          const voice={sources,nodes,endTime:time+.30};this._voices.add(voice);let remaining=sources.length;
+          for(const source of sources){source.onended=()=>{if(--remaining===0)this._release(voice);};source.start(time);source.stop(time+.30);}
+        }
+        return true;
+      }catch(_){return false;}
+      finally{clearTimeout(deadlineTimer);if(this._pending?.token===token){this._pending=null;if(!this._voices.size)this._context?.suspend().catch(()=>{});}}
+    }
+    async dispose(){
+      if(this._disposed)return;this._disposed=true;await this.stop();
+      global.document?.removeEventListener?.('visibilitychange',this._visibilityHandler);
+      global.removeEventListener?.('pagehide',this._pageHideHandler);global.removeEventListener?.('pageshow',this._pageShowHandler);
+      try{this._gain?.disconnect();}catch(_){}if(this._context)await this._context.close().catch(()=>{});
+    }
+  }
+  global.SengokuSoundEffects=SengokuSoundEffects;
   global.SENGOKU_MUSIC_TRACKS=TRACKS;
   global.SengokuMusic=SengokuMusic;
 })(typeof window!=='undefined'?window:globalThis);

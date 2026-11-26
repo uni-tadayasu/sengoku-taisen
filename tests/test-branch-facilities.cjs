@@ -47,7 +47,9 @@ test('bonuses are additive, own active branches only, and never multiply main-to
 
 test('defense facilities affect only their branch and moat bonuses are reduced by siege technology and tactic',()=>{
  const g=ready('osaka',8);g.state.branches.push(record('osaka',8,'south'));const parent=g.defensePower('osaka'),baseline=g.branchDefense('osaka_north');g.state.branches[0].facilities={watchtower:8,moat:8};const normal=g.branchDefense('osaka_north');assert.equal(normal.power,Math.round((baseline.force+200)*(1+8*.08)*(1+g.castle('osaka').wall*.03)*1.14));assert.equal(g.branchDefense('osaka_south').power,baseline.power);assert.equal(g.defensePower('osaka'),parent);
- const siege=g.branchDefense('osaka_north','siege',5);assert.equal(siege.facilityMultiplier,1+.08+.06*.4*.5);assert(siege.power<normal.power);assert.deepEqual(E.prototype.branchDefense.call({branch:()=>g.branch('osaka_north'),castle:()=>g.castle('osaka')},'osaka_north','siege',5),siege);
+ const siege=g.branchDefense('osaka_north','siege',5);assert.equal(siege.facilityMultiplier,1+.08+.06*.4*.5);assert(siege.power<normal.power);
+ // Match the Worker adapter: it explicitly selects paid durability projection.
+ assert.deepEqual(E.prototype.branchDefense.call({branch:()=>g.branch('osaka_north'),castle:()=>g.castle('osaka'),_branchRecoveryMode:()=> 'paid'},'osaka_north','siege',5),siege);
 });
 
 test('falling cancels paid facility work, retains completed levels and restores their effects only after repair',()=>{

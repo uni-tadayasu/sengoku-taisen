@@ -4,9 +4,9 @@
   "name": "戦国VS",
   "alternateName": "SENGOKU VS",
   "publisher": "KASAI SOLUTIONS",
-  "release": "5.5.0-20261126",
-  "version": "5.5.0",
-  "dateModified": "2026-11-26",
+  "release": "5.6.0-20261127",
+  "version": "5.6.0",
+  "dateModified": "2026-11-27",
   "language": "ja",
   "locale": "ja_JP",
   "tagline": "一城から、天下へ。",
@@ -22,17 +22,18 @@
     "alt": "金色の「戦国VS」と「一城から、天下へ。」の文字、城下を望む軍扇の女武将と赤い軍旗"
   },
   "logo": {
-    "path": "assets/branding/sengoku-vs-icon-512-20261126.png",
+    "path": "assets/branding/sengoku-vs-icon-512-20261127.png",
     "width": 512,
-    "height": 512
+    "height": 512,
+    "vectorPath": "assets/branding/sengoku-vs-mark-20261127.svg"
   },
   "favicon": {
-    "path": "assets/branding/sengoku-vs-icon-192-20261126.png",
+    "path": "assets/branding/sengoku-vs-icon-192-20261127.png",
     "sizes": "192x192",
     "type": "image/png"
   },
   "faviconSmall": {
-    "path": "assets/branding/sengoku-vs-favicon-32-20261126.png",
+    "path": "assets/branding/sengoku-vs-favicon-32-20261127.png",
     "sizes": "32x32",
     "type": "image/png"
   },
@@ -47,25 +48,25 @@
     "type": "image/x-icon"
   },
   "appleTouchIcon": {
-    "path": "assets/branding/sengoku-vs-apple-touch-icon-180-20261126.png",
+    "path": "assets/branding/sengoku-vs-apple-touch-icon-180-20261127.png",
     "sizes": "180x180",
     "type": "image/png"
   },
   "appIcons": [
     {
-      "src": "assets/branding/sengoku-vs-icon-192-20261126.png",
+      "src": "assets/branding/sengoku-vs-icon-192-20261127.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "assets/branding/sengoku-vs-icon-512-20261126.png",
+      "src": "assets/branding/sengoku-vs-icon-512-20261127.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "assets/branding/sengoku-vs-maskable-512-20261126.png",
+      "src": "assets/branding/sengoku-vs-maskable-512-20261127.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
@@ -238,12 +239,12 @@
     }
   },
   "faviconSvg": {
-    "path": "assets/branding/sengoku-vs-favicon-20261126.svg",
+    "path": "assets/branding/sengoku-vs-favicon-20261127.svg",
     "sizes": "any",
     "type": "image/svg+xml"
   },
   "maskIcon": {
-    "path": "assets/branding/sengoku-vs-pinned-tab-20261126.svg",
+    "path": "assets/branding/sengoku-vs-pinned-tab-20261127.svg",
     "color": "#c7a35b"
   },
   "themeColor": "#131b22",

@@ -17,7 +17,7 @@ FILES = {
     f'text/sengoku-vs-posts-ja.txt': f'assets/promo/sengoku-vs-posts-ja-{EDITION}.txt',
     f'text/sengoku-vs-facts-en.txt': f'assets/promo/sengoku-vs-facts-en-{EDITION}.txt',
     f'text/sengoku-vs-video-copy-ja.txt': f'assets/promo/sengoku-vs-video-copy-ja-{EDITION}.txt',
-    'brand/sengoku-vs-mark.svg': f'assets/branding/sengoku-vs-mark-{EDITION}.svg',
+    'brand/sengoku-vs-mark.svg': SITE['logo']['vectorPath'],
     'brand/sengoku-vs-icon-512.png': SITE['logo']['path'],
     'images/sengoku-vs-main.jpg': SITE['ogImage']['path'],
 }

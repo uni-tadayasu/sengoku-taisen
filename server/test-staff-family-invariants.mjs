@@ -18,9 +18,10 @@ async function scope(name,run){
   const backup=p=>sql.prepare('SELECT * FROM staff_campaign_backups WHERE user_id=?').get(p.user.id);
   let admin;
   const role=async(p,action)=>(await api('/admin/staff',post(admin.token,{targetPlayerId:p.user.id,action,requestId:crypto.randomUUID()}))).data;
-  const create=async(name,clan='織田家',{extra=false}={})=>{
+  const create=async(name,clan='織田家',{extra=false,garrisonAtCapacity=false}={})=>{
     const p=await h.session(name,clan);p.device=p.user.id+'-writer';await api('/sync/lease',post(p.token,{deviceId:p.device}));
     const game=new E({officers,clan,startCastle:'himeji',seed:17});game.state.resources={gold:1000000,rice:1000000,wood:1000000,stone:1000000};game.state.buildings.farm=5;game.state.castles.himeji.level=12;
+    if(garrisonAtCapacity)game.state.castles.himeji.troops=1200+game.state.buildings.wall*300;
     if(extra){game.state.castles.kiyosu={...game.state.castles.kiyosu,owner:clan,level:5};game.state.castles.nijo={...game.state.castles.nijo,owner:clan,level:33};}
     game.applyWorldClock(await clock());await put(p,JSON.parse(game.exportSave()));return p;
   };
@@ -79,13 +80,16 @@ await scope('cycle reset and reverse transfer do not absorb ordinary Tokugawa CP
 });
 
 await scope('personal, legacy shared and fixed-family income use separate exact timestamp intervals',async c=>{
-  const {h,sql,at,sync,role,create,clock}=c,p=await create('家名切替の旧スタッフ','織田家'),original=(await sync(p)).save;
+  // Both one-minute intervals cross a monthly boundary. The default 1,200
+  // defenders grow there, changing upkeep mid-interval (previously 921 != 923).
+  // Start at the growth ceiling so exact income isolates the family timestamps.
+  const {h,sql,at,sync,role,create,clock}=c,p=await create('家名切替の旧スタッフ','織田家',{garrisonAtCapacity:true}),original=(await sync(p)).save;
   sql.prepare("INSERT INTO settings(key,value,updated_at) VALUES('staffClanPolicyStart','90000',?) ON CONFLICT(key) DO UPDATE SET value='90000'").run(h.now);
   at(30000);await role(p,'appoint');const response=await sync(p),base=response.staffBase;assert.equal(base.accessSinceElapsedMs,30000);assert.equal(base.clanSinceElapsedMs,90000);assert.equal(base.personalClan,'織田家');
   const game=E.fromSave(response.save,officers,{isStaff:true,staffBase:base}),ordinary=E.fromSave(original,officers);assert.equal(game.state.clan,'織田家');assert.equal(game.state.home,'himeji');
   const world=await clock();game.applyWorldClock({...world,elapsedMs:30000});ordinary.applyWorldClock({...world,elapsedMs:30000});assert.deepEqual(game.state.resources,ordinary.state.resources);assert.equal(game.state.clan,'織田家');assert.equal(game.state.home,'kyoto_gosho');
-  const privateRate=game.income().gold,gold=game.state.resources.gold,territory=owned(JSON.parse(game.exportSave()));game.applyWorldClock({...world,elapsedMs:90000});assert.equal(game.state.resources.gold-gold,privateRate);assert.equal(game.state.clan,'德川家');assert.deepEqual(owned(JSON.parse(game.exportSave())),territory);
-  const fixedRate=game.income().gold;assert(fixedRate<privateRate,'Oda bonus must stop at the rollout timestamp');const after=game.state.resources.gold;game.applyWorldClock({...world,elapsedMs:150000});assert.equal(game.state.resources.gold-after,fixedRate);
+  const privateRate=game.income().gold,gold=game.state.resources.gold,garrison=game.state.castles.himeji.troops,territory=owned(JSON.parse(game.exportSave()));game.applyWorldClock({...world,elapsedMs:90000});assert.equal(game.state.castles.himeji.troops,garrison,'The timestamp fixture keeps personal garrison upkeep constant');assert.equal(game.state.resources.gold-gold,privateRate);assert.equal(game.state.clan,'德川家');assert.deepEqual(owned(JSON.parse(game.exportSave())),territory);
+  const fixedRate=game.income().gold;assert(fixedRate<privateRate,'Oda bonus must stop at the rollout timestamp');const after=game.state.resources.gold;game.applyWorldClock({...world,elapsedMs:150000});assert.equal(game.state.castles.himeji.troops,garrison,'The fixed-family interval also keeps garrison upkeep constant');assert.equal(game.state.resources.gold-after,fixedRate);
   const oneBatch=E.fromSave(response.save,officers,{isStaff:true,staffBase:base});oneBatch.applyWorldClock({...world,elapsedMs:150000});assert.deepEqual(oneBatch.state.resources,game.state.resources);assert.equal(oneBatch.state.seed,game.state.seed);
   at(150000);await role(p,'dismiss');const restored=await sync(p);assert.equal(restored.save.state.clan,'織田家');assert.equal(restored.save.state.home,'himeji');assert.deepEqual(restored.save.state.resources,game.state.resources);E.fromSave(restored.save,officers);
 });

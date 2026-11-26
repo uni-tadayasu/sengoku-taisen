@@ -77,6 +77,9 @@
     "management-ui.css",
     "campaign-records.css",
     "command-polish.css",
+    "army-planner.css",
+    "cyber-wafu.css",
+    "typography-gyosho.css",
     "responsive-text.css"
   ],
   "game-preferences.bundle.js": [
@@ -103,7 +106,8 @@
     "world-map.js",
     "command-center.js",
     "management-model.js",
-    "campaign-records.js"
+    "campaign-records.js",
+    "army-planner.js"
   ],
   "game-campaign.bundle.js": [
     "desktop-fit.js",

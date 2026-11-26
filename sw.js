@@ -1,5 +1,5 @@
 /* 本体は先に保存。大きな絵巻は、実際に開いたものから保存します。 */
-const RELEASE='5.5.0-20261126';
+const RELEASE='5.6.0-20261127';
 const CACHE='sengoku-taisen-v'+RELEASE;
 const scopeURL=()=>self.registration?.scope||self.location.origin+'/';
 const currentMatch=(request,name=CACHE)=>caches.open(name).then(cache=>cache.match(request));
@@ -10,7 +10,7 @@ const optionalCode=new Set([
   './premium-runtime.js','./premium-appearance.css','./music.js','./tools/music-audition.js','./map-data.js'
 ]);
 const compactArtwork={cover:480,war:240,town:240,archive:240,brand:48,emblem:96};
-const compactURL=name=>'./assets/responsive/'+name+'-'+(name==='brand'||name==='emblem'?'20261126-':'')+compactArtwork[name]+'.webp';
+const compactURL=name=>'./assets/responsive/'+name+'-'+(name==='brand'||name==='emblem'?'20261127-':'')+compactArtwork[name]+'.webp';
 
 // The current HTML names the real hashed bundles. Require the matching release
 // before adopting it, even if a CDN serves the previous HTML during a rollout.
@@ -189,7 +189,7 @@ self.addEventListener('fetch', event => {
 self.addEventListener('push',event=>{
  let payload={};try{payload=event.data?.json()||{};}catch(_){}
  const title=typeof payload.title==='string'?payload.title.slice(0,100):'戦国VSのお知らせ';
- event.waitUntil(self.registration.showNotification(title,{body:typeof payload.body==='string'?payload.body.slice(0,240):'領国の報告を確認してください。',icon:'./assets/branding/sengoku-vs-icon-192-20261126.png',badge:'./assets/branding/sengoku-vs-badge-96-20261126.png',tag:'sengoku-update',renotify:false,data:{url:'/?notice=1'}}));
+ event.waitUntil(self.registration.showNotification(title,{body:typeof payload.body==='string'?payload.body.slice(0,240):'領国の報告を確認してください。',icon:'./assets/branding/sengoku-vs-icon-192-20261127.png',badge:'./assets/branding/sengoku-vs-badge-96-20261127.png',tag:'sengoku-update',renotify:false,data:{url:'/?notice=1'}}));
 });
 self.addEventListener('notificationclick',event=>{
  event.notification.close();event.waitUntil((async()=>{const clients=await self.clients.matchAll({type:'window',includeUncontrolled:true});for(const client of clients){if(new URL(client.url).origin===self.location.origin){await client.focus();client.postMessage({type:'sengoku-open-recap'});return;}}await self.clients.openWindow('./?notice=1');})());

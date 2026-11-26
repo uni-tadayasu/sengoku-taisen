@@ -13,10 +13,12 @@ const rows = Object.keys(groups).map(file => {
 });
 const totalBytes = rows.reduce((sum,row)=>sum+row.bytes,0);
 const totalGzipBytes = rows.reduce((sum,row)=>sum+row.gzipBytes,0);
-// v5.5 adds the resource planner, searchable records and live-control index.
+// v5.6 adds formation comparison, multi-goal plans, the operations board,
+// independent effects volume, aspect-preserving facility artwork, the cyber
+// theme and locally hosted calligraphic font declarations.
 // Allow their measured footprint explicitly while keeping a bounded entry;
 // runtime work reductions are measured separately, not inferred from bytes.
-const rawBudget=3025000,gzipBudget=870000;
+const rawBudget=3160000,gzipBudget=910000;
 assert(totalBytes <= rawBudget, `Initial bundles exceed the ${rawBudget} byte budget: ${totalBytes}`);
 assert(totalGzipBytes <= gzipBudget, `Initial bundles exceed the ${gzipBudget} gzip byte budget: ${totalGzipBytes}`);
 const html = fs.readFileSync(path.join(root,'index.html'),'utf8');

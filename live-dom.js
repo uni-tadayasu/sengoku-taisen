@@ -29,7 +29,16 @@
    }
    // A whole view may arrive as several nested records in one task. Visit its
    // outer tree once, while retaining connected nodes moved by StableDOM.
-   const roots=Array.from(added).filter(node=>belongs(node)&&!Array.from(added).some(other=>other!==node&&other.contains?.(node)));
+   const roots=[];
+   for(const node of added){
+    if(!belongs(node))continue;
+    // A long list can contribute thousands of sibling mutation records. Walk
+    // each short ancestor chain instead of comparing every inserted subtree
+    // against every other subtree. Descendants of another insertion are still
+    // queried exactly once through that outer insertion.
+    let nested=false;for(let parent=node.parentNode;parent;parent=parent.parentNode)if(added.has(parent)){nested=true;break;}
+    if(!nested)roots.push(node);
+   }
    for(const [selector,nodes]of cache){
     if(removed)for(const node of nodes)if(!belongs(node))nodes.delete(node);
     for(const root of roots){if(matches(root,selector))nodes.add(root);for(const node of root.querySelectorAll?.(selector)||[])nodes.add(node);}

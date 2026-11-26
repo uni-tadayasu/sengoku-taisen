@@ -103,3 +103,16 @@
   #modal .settings-hub .settings-row:where(:has(> #tips)) { grid-template-columns: minmax(0,1fr); gap: 6px; }
   #modal .settings-hub #tips { width: 100%; justify-self: stretch; }
 }
+
+/* Music and interface sounds keep independent labels and controls. */
+#modal .settings-hub .settings-effects { margin: 18px 0; padding: 16px 0 0; border-top: 1px solid #b5a17655; }
+#modal .settings-hub .settings-effects .settings-volume { grid-template-columns: max-content minmax(0,1fr) minmax(4ch,auto); }
+#modal .settings-hub #settings-effects-volume-value { white-space: nowrap; font-variant-numeric: tabular-nums; min-width: 4ch; }
+#modal .settings-hub .settings-effects-feedback { min-height: 1.5em; margin: 8px 0 0; color: #d8c695; font-size: .875rem; line-height: 1.6; }
+#modal .settings-hub [data-sound-preview] { min-height: 44px; }
+#modal .settings-hub #effects-volume { accent-color: #b9d1b5; }
+@media (max-width:400px) {
+  #modal .settings-hub .settings-effects .settings-volume { grid-template-columns: max-content minmax(0,1fr); }
+  #modal .settings-hub .settings-effects #effects-volume { grid-column: 1 / -1; grid-row: 2; }
+  #modal .settings-hub #settings-effects-volume-value { grid-column: 2; grid-row: 1; text-align: right; }
+}

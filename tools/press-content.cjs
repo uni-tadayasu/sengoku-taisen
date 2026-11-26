@@ -69,7 +69,7 @@ function renderPressContent(p, { section, table, site }) {
       <p>5種類とも1200×630pxのJPEGです。イラストを用いた紹介画像で、ゲームの操作画面を撮影したスクリーンショットとは異なります。</p>
       <ul class="press-media-grid">${media.map(([label, image]) => `<li><figure><img src="${esc(p.file(image.path))}" alt="${esc(image.alt)}" width="${image.width}" height="${image.height}" loading="lazy" decoding="async"><figcaption><strong>${esc(label)}</strong><span>JPEG · ${image.width}×${image.height}px</span></figcaption></figure>${link(image.path, `${label}の画像を保存（JPEG）`)}</li>`).join('')}</ul>
       <h3>ブランド紋章</h3>
-      <div class="press-logo"><img src="${esc(p.file(site.logo.path))}" alt="戦国VSの城・軍扇・旭日を組み合わせたブランド紋章" width="128" height="128" loading="lazy" decoding="async"><ul class="press-downloads"><li>${link('assets/branding/sengoku-vs-mark-20261126.svg', '紋章のベクターデータを保存（SVG）')}</li><li>${link(site.logo.path, '紋章の画像を保存（512×512px PNG）')}</li></ul></div>
+      <div class="press-logo"><img src="${esc(p.file(site.logo.path))}" alt="戦国VSの城・軍扇・旭日を組み合わせたブランド紋章" width="128" height="128" loading="lazy" decoding="async"><ul class="press-downloads"><li>${link(site.logo.vectorPath, '紋章のSVGデータを保存（画像内包）')}</li><li>${link(site.logo.path, '紋章の画像を保存（512×512px PNG）')}</li></ul></div>
       ${renderTrailer(p, { id: 'press-trailer', title: 'そのまま見られる、24秒の紹介動画。' })}
       <ul class="press-downloads"><li>${link('assets/promo/sengoku-vs-intro-ja-20261126.mp4', '紹介動画を保存（MP4）')}</li><li>${link('assets/promo/sengoku-vs-video-copy-ja-20261126.txt', '動画用のタイトル・説明文を保存（TXT）')}</li></ul>
       ${renderFirstSteps(p)}

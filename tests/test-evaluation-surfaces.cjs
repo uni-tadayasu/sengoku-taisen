@@ -1,6 +1,7 @@
 'use strict';
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
 const root=path.join(__dirname,'..'),evaluationSource=fs.readFileSync(path.join(root,'player-evaluation.js'),'utf8');
+const currentFavicon=JSON.parse(fs.readFileSync(path.join(root,'site-metadata.json'),'utf8')).faviconSmall.path;
 const evaluation={version:1,score:1200,maxScore:100000,rankId:'rank-one',rankName:'従八位下',rankIndex:2};
 const promoted={version:1,score:22000,maxScore:100000,rankId:'rank-two',rankName:'従五位上',rankIndex:9};
 const copy=value=>JSON.parse(JSON.stringify(value));
@@ -32,7 +33,7 @@ test('social DTO boundaries retain only public evaluation fields and unknown eva
   const event=h.test.cleanAchievement({id:'event',playerId:'other',playerName:'領主',title:'城郭を拡張',occurredAt:'2026-11-21T00:00:00Z',playerEvaluation:{...promoted,privateSave:'secret'}});
   assert.equal(event.playerId,'other');assert.deepEqual(copy(event.playerEvaluation),promoted);assert(!JSON.stringify(event).includes('secret'));
   for(const invalid of [undefined,null,{...evaluation,version:2},{...evaluation,score:NaN},{...evaluation,rankName:''}])assert.equal(badgeCount(h.test.playerCards([{id:'other',name:'未確認',evaluation:invalid}],'friend')),0);
-  const html=h.test.playerCards([{id:'other',name:'<img onerror="bad">',evaluation:{...evaluation,rankName:'<b>位階</b>'}}],'friend');assert(html.includes('&lt;img'));assert(html.includes('&lt;b&gt;'));assert.equal((html.match(/<img\b/g)||[]).length,1);assert(html.includes('src="assets/branding/sengoku-vs-favicon-32-20261121.png"'));assert(!/<img\b[^>]*\bonerror\s*=/.test(html));assert(!html.includes('<b>位階'));
+  const html=h.test.playerCards([{id:'other',name:'<img onerror="bad">',evaluation:{...evaluation,rankName:'<b>位階</b>'}}],'friend');assert(html.includes('&lt;img'));assert(html.includes('&lt;b&gt;'));assert.equal((html.match(/<img\b/g)||[]).length,1);assert(html.includes('src="'+currentFavicon+'"'));assert(!/<img\b[^>]*\bonerror\s*=/.test(html));assert(!html.includes('<b>位階'));
 });
 test('search, friends, guild people, treasury, staff, achievements and profile show the supplied player rank',()=>{
   const h=social(),t=h.test,p={id:'other',name:'相手',clan:'伊達家',evaluation:promoted,isStaff:true,online:true};

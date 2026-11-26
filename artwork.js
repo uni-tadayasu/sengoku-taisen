@@ -54,13 +54,14 @@ function tileInfo(kind,id,variant){
   sheetCell('facilities-'+numberTag(artLevel)+'-'+(Math.floor(index/32)+1),index%32,8,4);
  const native=artLevel===1||(!isCastle&&artLevel===2&&index<8)?
   sheetCell(kind+'-start-'+artLevel+'-'+numberTag(Math.floor(index/4)+1),index%4,2,2):null;
- return{small,native,portraitShape:portraitCell,url:`assets/${kind==='castle'?'castles':'facilities'}/${id}.webp${kind==='facility'?'?v='+facilityArtRevision:''}`,x:(cell%8)/7*100,y:Math.floor(cell/8)/3*100,name:item.name,level,artLevel,finalStage:level>32,portraitCell:kind==='facility'&&portraitFacilities.has(id)};
+ if(!isCastle){small.frame=[8,4,index%32,80,portraitCell?107:80].join(',');if(native)native.frame=[2,2,index%4,portraitCell?3:1,portraitCell?4:1].join(',');}
+ return{small,native,frame:isCastle?null:[8,4,cell,portraitCell?3:1,portraitCell?4:1].join(','),portraitShape:portraitCell,url:`assets/${kind==='castle'?'castles':'facilities'}/${id}.webp${kind==='facility'?'?v='+facilityArtRevision:''}`,x:(cell%8)/7*100,y:Math.floor(cell/8)/3*100,name:item.name,level,artLevel,finalStage:level>32,portraitCell:kind==='facility'&&portraitFacilities.has(id)};
 }
 function tile(kind,id,className='',variant=1){const t=tileInfo(kind,id,variant);if(!t)return'';
  const sources=Object.entries({small:t.small,native:t.native}).filter(([,sheet])=>sheet);
- const attributes=sources.map(([name,sheet])=>`data-art-${name}="${esc(sheet.url)}"`).join(' ');
+ const attributes=sources.map(([name,sheet])=>`data-art-${name}="${esc(sheet.url)}"${sheet.frame?` data-${name}-frame="${sheet.frame}"`:''}`).join(' ');
  const positions=sources.map(([name,sheet])=>`--${name}-x:${sheet.x}%;--${name}-y:${sheet.y}%;--${name}-size:${sheet.size}`).join(';');
- return `<span class="painted-art ${kind}-painting${t.portraitCell?' portrait-cell':''} ${esc(className)}" data-art-url="${esc(t.url)}" data-art-x="${t.x}" data-art-y="${t.y}" ${attributes} data-small-width="80" data-small-height="${t.portraitShape?107:80}" style="--tile-x:${t.x}%;--tile-y:${t.y}%;${positions}" role="img" aria-label="${esc(t.name)} ${t.level?'Lv.'+t.level+(t.finalStage?'・最終形態':''):t.rank+'ランク'}のオリジナルイラスト" aria-busy="true"><span class="art-surface" aria-hidden="true"></span><span class="art-loading" aria-hidden="true">${icon(kind==='officer'?'officers':kind==='castle'?'town':'facilities')}</span></span>`;
+ return `<span class="painted-art ${kind}-painting${t.portraitCell?' portrait-cell':''} ${esc(className)}" data-art-url="${esc(t.url)}" data-art-x="${t.x}" data-art-y="${t.y}"${t.frame?` data-art-frame="${t.frame}"`:''} ${attributes} data-small-width="80" data-small-height="${t.portraitShape?107:80}" style="--tile-x:${t.x}%;--tile-y:${t.y}%;${positions}" role="img" aria-label="${esc(t.name)} ${t.level?'Lv.'+t.level+(t.finalStage?'・最終形態':''):t.rank+'ランク'}のオリジナルイラスト" aria-busy="true"><span class="art-surface" aria-hidden="true"></span><span class="art-loading" aria-hidden="true">${icon(kind==='officer'?'officers':kind==='castle'?'town':'facilities')}</span></span>`;
 }
 function portrait(o){if(!o)return'';const rank=ranks.includes(o.rank)?o.rank:'D',special=o.id===operatorPortrait.id&&rank===operatorPortrait.rank;const painting=special?`<span class="painted-art painted-portrait operator-portrait" data-art-url="${operatorPortrait.url}" data-art-small="${previewUrl('operator-ieyasu-u-160')}" data-small-width="160" data-small-height="240" data-art-native="${previewUrl('operator-ieyasu-u-384')}" data-native-width="384" data-native-height="576" data-art-x="50" data-art-y="50" role="img" aria-label="束帯姿の晩年の徳川家康 Uランクの特別肖像" aria-busy="true"><span class="art-surface" aria-hidden="true"></span><span class="art-loading" aria-hidden="true">${icon('officers')}</span></span>`:tile('officer',o.id,'painted-portrait',rank);return `<span class="portrait-frame" data-rank="${rank}">${painting}<img class="rank-frame" src="${frames[rank]}" alt="" aria-hidden="true" loading="lazy"><b class="portrait-rank-badge" aria-hidden="true">${rank}</b></span>`;}
 function load(url){
@@ -75,14 +76,34 @@ function load(url){
  cache.set(url,promise);image.src=url;
  return promise;
 }
+// Fill a facility frame with one atlas cell. The SVG viewport clips before
+// scaling, so cover cropping cannot expose neighbouring cells or side mounts.
+function facilityFrame(value){
+ const values=String(value||'').split(',').map(Number);if(values.length!==5)return null;
+ const [columns,rows,index,width,height]=values;
+ if(!values.every(Number.isSafeInteger)||columns<1||rows<1||columns>32||rows>32||index<0||index>=columns*rows||width<1||height<1||width>1024||height>1024)return null;
+ return{x:(index%columns)*width,y:Math.floor(index/columns)*height,width,height,atlasWidth:columns*width,atlasHeight:rows*height};
+}
+function paintFacility(el,source){
+ if(!el.dataset.artFrame)return false;
+ const frame=facilityFrame(source.kind==='small'?el.dataset.smallFrame:source.kind==='native'?el.dataset.nativeFrame:el.dataset.artFrame);
+ const surface=el.querySelector(':scope > .art-surface');if(!frame||!surface)return false;
+ const signature=source.url+'|'+[frame.x,frame.y,frame.width,frame.height,frame.atlasWidth,frame.atlasHeight].join(',');
+ if(surface.dataset?.facilityFrame===signature&&surface.querySelector?.('.facility-art-viewport'))return true;
+ surface.style.backgroundImage='none';
+ surface.innerHTML=`<svg class="facility-art-viewport" viewBox="${frame.x} ${frame.y} ${frame.width} ${frame.height}" preserveAspectRatio="xMidYMid slice" aria-hidden="true" focusable="false"><image href="${esc(source.url)}" x="0" y="0" width="${frame.atlasWidth}" height="${frame.atlasHeight}" preserveAspectRatio="none"/></svg>`;
+ if(surface.dataset)surface.dataset.facilityFrame=signature;
+ return true;
+}
 function displaySource(el,rect){
  const d=el.dataset;
  if(!d.artUrl)return {url:d.ghostUrl,kind:'ghost'};
  const original={url:d.artUrl,kind:'original'};
  if(loaded.has(d.artUrl)||!d.artSmall||!rect?.width||!rect.height)return original;
  const density=global.devicePixelRatio||1;
- const width=rect.width*density*(el.classList.contains?.('portrait-cell') ? .75 : 1);
- const height=rect.height*density;
+ const frame=facilityFrame(d.artFrame),aspect=frame?frame.width/frame.height:null;
+ const width=(aspect?Math.max(rect.width,rect.height*aspect):rect.width)*density;
+ const height=(aspect?Math.max(rect.height,rect.width/aspect):rect.height)*density;
  const nativeFits=d.artNative&&(!d.nativeWidth||(width<=Number(d.nativeWidth)&&height<=Number(d.nativeHeight)));
  if(nativeFits&&loaded.has(d.artNative))return {url:d.artNative,kind:'native'};
  if(width<=Number(d.smallWidth)&&height<=Number(d.smallHeight))return {url:d.artSmall,kind:'small'};
@@ -108,7 +129,8 @@ function canPaint(el){
 function reveal(el,rect){
  if(!canPaint(el))return;
  const selected=displaySource(el,rect||el.getBoundingClientRect?.()),url=selected.url;
- if(!url||(el.dataset.artReady&&el.dataset.artSource===url))return;
+ if(!url)return;
+ if(el.dataset.artReady&&el.dataset.artSource===url){paintFacility(el,selected);return;}
  const active=paintRequests.get(el);
  if(el.dataset.artLoading&&active?.url===url)return active.done;
  const request={url},canonical=el.dataset.artUrl||el.dataset.ghostUrl;
@@ -117,7 +139,7 @@ function reveal(el,rect){
   (selected.kind!=='small'||el.dataset.artSmall===url)&&(selected.kind!=='native'||el.dataset.artNative===url);
  const paint=source=>{
   if(source.kind==='ghost')el.style.setProperty('--item-art',`url("${source.url}")`);
-  else (el.querySelector(':scope > .art-surface')||el).style.backgroundImage=`url("${source.url}")`;
+  else if(!paintFacility(el,source))(el.querySelector(':scope > .art-surface')||el).style.backgroundImage=`url("${source.url}")`;
   el.dataset.artSource=source.url;el.dataset.artSheet=source.kind;
   el.dataset.artReady='1';el.classList.add('art-ready');el.classList.remove('art-error');el.setAttribute('aria-busy','false');
  };
@@ -290,6 +312,6 @@ function init(){
  global.addEventListener?.('resize',repaintVisible);
  if(!observer)global.addEventListener?.('scroll',repaintVisible,{capture:true,passive:true});
  new MutationObserver(artworkMutations).observe(document.body,{childList:true,subtree:true});decorate();}
-global.SengokuArt={portrait,castle:(id,c='',level=1)=>tile('castle',id,c,level),facility:(id,c='',level=1)=>tile('facility',id,c,level),icon,tileInfo,load,readyCurrent,decorate,schedule,totalIllustrations:8224};
+global.SengokuArt={portrait,castle:(id,c='',level=1)=>tile('castle',id,c,level),facility:(id,c='',level=1)=>tile('facility',id,c,level),icon,tileInfo,facilityFrame,load,readyCurrent,decorate,schedule,totalIllustrations:8224};
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init,{once:true});else init();
 })(window);
