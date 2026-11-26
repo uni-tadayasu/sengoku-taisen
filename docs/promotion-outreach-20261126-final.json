@@ -7,7 +7,8 @@
     "Gamer's address was read from the official release-address image on its editorial contact page.",
     "Siliconera and Gematsu recipients were verified from their official editorial contact pages.",
     "No prior sent message to any of these three recipients was found before sending.",
-    "Sending a message is not evidence of editorial coverage or user growth."
+    "Sending a message is not evidence of editorial coverage or user growth.",
+    "A subsequent delivery failure for Siliconera was verified at 13:26 JST. Its sent timestamp is retained as an attempt; it is excluded from the current confirmed-send/form total. No retry was sent."
   ],
   "messages": [
     {
@@ -26,9 +27,16 @@
       "officialContactSource": "https://www.siliconera.com/contact-siliconera/",
       "subject": "Story tip: SENGOKU VS browser strategy game adds English introduction and game-screen media",
       "sentAt": "2026-11-26T13:23:29+09:00",
-      "status": "sent",
-      "verification": "Gmail SENT readback confirmed the recipient and subject",
-      "body": "Hello Siliconera editorial team,\n\nI’m sharing SENGOKU VS, a browser strategy game inspired by Japan’s Sengoku period, as a possible story for readers interested in Japanese games. We have just published an English introduction and a new 36-second introduction using actual game screens.\n\nThe game interface itself is currently Japanese-only. The English page explains the controls needed to start; it is not an English localization of the game.\n\nPlayers choose a home castle, develop its town, recruit and organize officers, and plan campaigns against computer-controlled factions. Registering a lord unlocks online battles, alliances, letters, trading and cross-device synchronization.\n\nKey facts:\n• 256 officers, 129 castles and locations, and 64 facility types.\n• Desktop, phone and tablet browsers; no app installation.\n• Basic play is free. Optional cosmetics and monthly support provide no combat or resource advantages.\n• A local personal campaign can be started without registering a lord.\n\nEnglish introduction:\nhttps://www.kasai-solutions-inc.com/en/?utm_source=press&utm_medium=email&utm_campaign=release_20261126&utm_content=siliconera\nPlay (Japanese): https://www.kasai-solutions-inc.com/\nOfficial images, screenshots, videos and English fact sheet:\nhttps://www.kasai-solutions-inc.com/press/#press-english\nMedia kit ZIP:\nhttps://www.kasai-solutions-inc.com/assets/promo/sengoku-vs-press-kit-20261126.zip\n\nThe 36-second video uses actual demo-progress screenshots with pans and zooms, Japanese text and music; it is not gameplay footage. Screenshot versions and usage credits are documented in the kit. Official illustrations use generative AI.\n\nThank you for considering the game for coverage.\n\nKASAI SOLUTIONS / SENGOKU VS\nhttps://www.kasai-solutions-inc.com/\n© KASAI SOLUTIONS"
+      "status": "delivery_failed",
+      "verification": "Gmail SENT readback confirmed sending, but a subsequent delivery failure confirms this message did not reach the recipient.",
+      "body": "Hello Siliconera editorial team,\n\nI’m sharing SENGOKU VS, a browser strategy game inspired by Japan’s Sengoku period, as a possible story for readers interested in Japanese games. We have just published an English introduction and a new 36-second introduction using actual game screens.\n\nThe game interface itself is currently Japanese-only. The English page explains the controls needed to start; it is not an English localization of the game.\n\nPlayers choose a home castle, develop its town, recruit and organize officers, and plan campaigns against computer-controlled factions. Registering a lord unlocks online battles, alliances, letters, trading and cross-device synchronization.\n\nKey facts:\n• 256 officers, 129 castles and locations, and 64 facility types.\n• Desktop, phone and tablet browsers; no app installation.\n• Basic play is free. Optional cosmetics and monthly support provide no combat or resource advantages.\n• A local personal campaign can be started without registering a lord.\n\nEnglish introduction:\nhttps://www.kasai-solutions-inc.com/en/?utm_source=press&utm_medium=email&utm_campaign=release_20261126&utm_content=siliconera\nPlay (Japanese): https://www.kasai-solutions-inc.com/\nOfficial images, screenshots, videos and English fact sheet:\nhttps://www.kasai-solutions-inc.com/press/#press-english\nMedia kit ZIP:\nhttps://www.kasai-solutions-inc.com/assets/promo/sengoku-vs-press-kit-20261126.zip\n\nThe 36-second video uses actual demo-progress screenshots with pans and zooms, Japanese text and music; it is not gameplay footage. Screenshot versions and usage credits are documented in the kit. Official illustrations use generative AI.\n\nThank you for considering the game for coverage.\n\nKASAI SOLUTIONS / SENGOKU VS\nhttps://www.kasai-solutions-inc.com/\n© KASAI SOLUTIONS",
+      "deliveryFailure": {
+        "notifiedAt": "2026-11-26T13:23:33+09:00",
+        "verifiedAt": "2026-11-26T13:26:00+09:00",
+        "verificationTimePrecision": "minute",
+        "reason": "配信不能通知を確認。宛先のGoogle Groupが存在しない、または外部送信権限がないとの通知。",
+        "retry": "not_retried"
+      }
     },
     {
       "outlet": "Gematsu",

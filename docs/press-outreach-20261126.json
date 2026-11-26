@@ -1,6 +1,6 @@
 {
   "preparedAtDateJST": "2026-11-26",
-  "recordContext": "午前の準備・送信時点の履歴を保持した記録。準備時の未公開表記より、publicationVerificationと送信時刻を実行結果として参照する。午後の新規11媒体と最新公開状態はdocs/promotion-session-20261126-afternoon.mdに記録。",
+  "recordContext": "午前の準備・送信時点の履歴を保持した記録。準備時の未公開表記より、publicationVerificationと送信時刻を実行結果として参照する。午後の11媒体への連絡試行・未達を含む結果と最新公開状態はdocs/promotion-session-20261126-afternoon.mdに記録。",
   "purpose": "公知の作品情報を、リリース受付を公表している編集部へ個別に1通ずつ提供する。広告注文ではない。",
   "deliveryStatus": "2026年11月26日09:38（日本時間）に4媒体へ個別送信し、Gmailの送信済み記録・宛先・件名を再確認。掲載・既読・到達人数は未確認。",
   "sourceVerifiedAtDateJST": "2026-11-26",
