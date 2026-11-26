@@ -31,9 +31,8 @@ const parseRules = source => [...withoutComments(source).matchAll(/([^{}]+)\{([^
   }))
 }));
 const rules = parseRules(css);
-function rulesInMaxWidth(width) {
+function scopedRules(query) {
   const source = withoutComments(css), result = [];
-  const query = new RegExp('@media\\s*\\(max-width:\\s*' + width + 'px\\)\\s*\\{', 'g');
   for (const match of source.matchAll(query)) {
     const start = match.index + match[0].length;
     let depth = 1, end = start;
@@ -42,12 +41,13 @@ function rulesInMaxWidth(width) {
       if (source[end] === '}') depth--;
       end++;
     }
-    assert.equal(depth, 0, 'Unclosed max-width media block: ' + width);
+    assert.equal(depth, 0, 'Unclosed conditional rule: ' + match[0]);
     result.push(...parseRules(source.slice(start, end - 1)));
   }
-  assert(result.length, 'Missing max-width media block: ' + width);
+  assert(result.length, 'Missing conditional rules: ' + query);
   return result;
 }
+const rulesInMaxWidth = width => scopedRules(new RegExp('@media\\s*\\(max-width:\\s*' + width + 'px\\)\\s*\\{', 'g'));
 function declarations(selector, scope = rules) {
   const matched = scope.filter(rule => rule.selectors.some(value => compact(value) === compact(selector)));
   assert(matched.length, 'Missing production rule: ' + selector);
@@ -164,9 +164,9 @@ test('action labels and territory totals remain available without changing map s
   }
 });
 
-test('phone breakpoints reserve brush-label height, a separate community slot and full resource totals', () => {
+test('phone breakpoints reserve brush-label height and a separate community slot', () => {
   const compactRoot = 'html.sengoku-navigation-ready:not(.sengoku-desktop-fit)';
-  const phone = rulesInMaxWidth(700), narrow = rulesInMaxWidth(360), resources = rulesInMaxWidth(480);
+  const phone = rulesInMaxWidth(700), narrow = rulesInMaxWidth(360);
   // The new brush face needs 68px buttons at a 16px root on the narrowest
   // phones. The shared dock reservation must scale with that text minimum.
   property(compactRoot, '--compact-dock-button-min', '4.75rem', phone);
@@ -178,9 +178,27 @@ test('phone breakpoints reserve brush-label height, a separate community slot an
     property(selector, 'grid-template-rows', '20px max-content', phone);
   }
   property(compactRoot + ' #app.chronicle-shell .sidebar-bottom', 'grid-template-columns', 'repeat(3,minmax(0,1fr)) minmax(0,1.3fr) var(--compact-dock-slot)', narrow);
-  for (const selector of ['html:not(.sengoku-desktop-fit) #app.chronicle-shell .topbar #resources .resource', 'html:not(.sengoku-desktop-fit) #app.chronicle-shell .topbar #touch-header-status > button']) {
-    property(selector, 'grid-column', 'span 3', resources);
+});
+
+test('the ledger can reflow with its available width and has a fallback for oversized amounts', () => {
+  const ledger = '#app.chronicle-shell .chronicle-ledger';
+  const container = ledger + ' .header-balances';
+  const card = container + ' :is(#resources,#touch-header-status) > button';
+  const containerName = declarations(container).container.split('/')[0].trim();
+  const condition = new RegExp('@container\\s+' + containerName + '\\s*\\(max-width:[^)]+\\)\\s*\\{', 'g');
+  const columns = scopedRules(condition)
+    .filter(rule => rule.selectors.includes(card))
+    .map(rule => compact(rule.declarations['grid-column'] || ''));
+  assert(columns.some(value => /^span[2-5]$/.test(value)), 'Six counters should share fewer columns when the ledger narrows');
+  assert(columns.includes('1/-1'), 'A very narrow ledger must allow a whole row per counter');
+  property(card, 'container-type', 'inline-size');
+  for (const selector of [ledger + ' #resources .resource-amount', ledger + ' #touch-header-status .touch-header-stat-value']) {
+    const sizing = declarations(selector);
+    assert.match(sizing['font-size'], /\dcqi\b/, 'Counter text must size against its own card');
+    property(selector, 'white-space', 'normal');
+    property(selector, 'overflow-wrap', 'anywhere');
   }
+  property(ledger + ' #resources .resource-amount > span', 'display', 'block');
 });
 
 console.log(count + ' responsive text structure checks passed. Rendered bounds require browser QA.');
