@@ -190,7 +190,7 @@ test('social metadata points to the real VS JPEG and the legacy card URL serves 
 
 test('public pages and nested 404 use the current favicon family, Apple icon and pinned-tab mark',()=>{
   const surfaces=[...pages,{path:'/tools/music-audition.html',url:site.origin+'/tools/music-audition.html',html:read('tools/music-audition.html')},{path:'/unknown/nested/page',url:site.origin+'/unknown/nested/page',html:read('404.html')}];
-  const icons=[site.faviconSmall,site.favicon,site.faviconIco,site.faviconSvg];
+  const icons=[site.faviconSearch,site.faviconSmall,site.favicon,site.faviconIco,site.faviconSvg];
   for(const page of surfaces){
     const links=tags(page.html,'link');
     for(const spec of icons){
@@ -247,7 +247,7 @@ test('root favicon contains real small-to-large PNG frames and Apple fallback ma
     assert(offset>=endOfPrevious&&size>0&&offset+size<=ico.length,'ICO payloads must not overlap or leave the file');endOfPrevious=offset+size;
     const png=ico.subarray(offset,offset+size);
     assert.deepEqual(pngSize(png),{width,height});
-    const source=[site.faviconSmall,site.favicon].find(icon=>icon.sizes===width+'x'+height);
+    const source=[site.faviconSearch,site.faviconSmall,site.favicon].find(icon=>icon.sizes===width+'x'+height);
     if(source)assert(png.equals(bytes(source.path)),'ICO artwork must match the standalone PNG');
     entries.push(width+'x'+height);
   }
@@ -277,7 +277,7 @@ test('search-image and social crawlers can fetch every public page, preview and 
       group.agents.push(value.toLowerCase());
     }else if(group&&['allow','disallow'].includes(field)&&value)group.rules.push({allow:field==='allow',value});
   }
-  const paths=new Set([...pages.map(page=>page.path),...pages.map(page=>'/'+(page.socialImage||site.ogImage).path),...[site.favicon,site.faviconSmall,site.faviconIco,site.faviconSvg,site.appleTouchIcon].map(icon=>'/'+icon.path),...site.appIcons.map(icon=>'/'+icon.src)]);
+  const paths=new Set([...pages.map(page=>page.path),...pages.map(page=>'/'+(page.socialImage||site.ogImage).path),...[site.faviconSearch,site.favicon,site.faviconSmall,site.faviconIco,site.faviconSvg,site.appleTouchIcon].map(icon=>'/'+icon.path),...site.appIcons.map(icon=>'/'+icon.src)]);
   for(const agent of ['googlebot-image','twitterbot','facebookexternalhit']){
     const specificity=group=>Math.max(0,...group.agents.map(token=>token!=='*'&&agent.startsWith(token)?token.length:0));
     const longest=Math.max(0,...groups.map(specificity));

@@ -36,6 +36,11 @@
     "sizes": "32x32",
     "type": "image/png"
   },
+  "faviconSearch": {
+    "path": "favicon.png",
+    "sizes": "96x96",
+    "type": "image/png"
+  },
   "faviconIco": {
     "path": "favicon.ico",
     "sizes": "16x16 32x32 48x48 96x96 192x192",

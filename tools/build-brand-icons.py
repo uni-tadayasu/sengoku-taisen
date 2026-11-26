@@ -106,6 +106,9 @@ def main():
         kind = 'favicon' if size <= 96 else 'icon'
         png(rendered, name(kind, size))
         renders[size] = rendered
+    # Keep one permanent, crawlable PNG URL for search results. It must always
+    # match the current 96px ICO frame, without release dates or query strings.
+    shutil.copyfile(name('favicon', 96), ROOT / 'favicon.png')
     apple = render(svg(apple=True), 720).resize((180, 180), Image.Resampling.LANCZOS).convert('RGB')
     png(apple, name('apple-touch-icon', 180))
     png(apple, ROOT / 'apple-touch-icon.png')

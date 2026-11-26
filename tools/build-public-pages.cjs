@@ -81,10 +81,10 @@ function languageLinks(key) {
   ).join('\n  ');
 }
 
-// Keep brand URLs stable between game releases; use a new pathname when the
-// artwork changes so browser/SNS image caches can fetch the new identity.
+// Search crawlers get a permanent root PNG URL, kept in sync with the current
+// brand by build-brand-icons.py. Dated exports remain available to browsers.
 function brandLinks(resolve) {
-  const links = [site.faviconIco, site.faviconSmall, site.favicon, site.faviconSvg].filter(Boolean).map(icon =>
+  const links = [site.faviconSearch, site.faviconIco, site.faviconSmall, site.favicon, site.faviconSvg].filter(Boolean).map(icon =>
     `<link rel="icon" href="${esc(resolve(icon.path))}" sizes="${esc(icon.sizes)}" type="${esc(icon.type)}">`
   ).concat(`<link rel="apple-touch-icon" href="${esc(resolve(site.appleTouchIcon.path))}" sizes="${esc(site.appleTouchIcon.sizes)}">`);
   if (site.maskIcon) links.push(`<link rel="mask-icon" href="${esc(resolve(site.maskIcon.path))}" color="${esc(site.maskIcon.color)}">`);
