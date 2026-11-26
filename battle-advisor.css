@@ -56,3 +56,18 @@
 .battle-advisor-alternatives .battle-advisor-comparison-deltas{gap:8px;margin-top:12px}
 .battle-advisor-alternatives .battle-advisor-comparison-deltas li{font-size:12px;line-height:1.8}
 @media(max-width:480px){.battle-advisor-readiness{padding:11px}.battle-advisor-readiness dl{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 9px}.battle-advisor-readiness dd{font-size:17px}.battle-advisor-comparison-scroll th,.battle-advisor-comparison-scroll td{padding:8px}.battle-advisor-comparison-scroll table{min-width:350px}}
+
+.battle-advisor-reserves{min-width:0;margin-top:14px;border:1px solid #acbdb64d;border-radius:8px;background:#101f2480}
+.battle-advisor-reserves summary{min-height:44px;padding:10px 13px;cursor:pointer;color:#e5e7d7;font-size:14px;line-height:1.65}
+.battle-advisor-reserves summary small{display:inline-block;margin-left:.55em;color:#cfbd93;font-size:13px;font-variant-numeric:tabular-nums}
+.battle-advisor-reserves form{padding:0 13px 13px}
+.battle-advisor-reserves form>p{margin:0 0 11px;color:#c5d2cc;font-size:13px;line-height:1.7}
+.battle-reserve-inputs{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,140px),1fr));gap:9px 14px;margin:0 0 12px}
+.battle-reserve-inputs label{min-width:0;display:grid;gap:4px;color:#e1e5d4;font-size:14px}
+.battle-reserve-inputs .input{width:100%;min-width:0;min-height:44px;margin:0;font-variant-numeric:tabular-nums}
+.battle-reserve-inputs small{color:#bdc9bc;font-size:13px}
+.battle-advisor-reserves form .battle-reserve-error{color:#f4c78f}
+.battle-reserve-error:empty{display:none}
+.battle-advisor-reserves .button{min-height:44px;max-width:100%}
+.battle-advisor-reserves :focus-visible{outline:2px solid #d8bf82;outline-offset:2px}
+@media(max-width:480px){.battle-advisor-reserves summary small{display:block;margin:2px 0 0}.battle-advisor-reserves .button{width:100%}.battle-reserve-inputs .input{font-size:16px}}

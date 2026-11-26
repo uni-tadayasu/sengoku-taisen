@@ -31,6 +31,46 @@
   const goal=advice.deterministic===true?(r.goalMet?'現在の条件では勝利予測':'現在の条件では敗北予測'):finite(advice.winChance)?`勝率の目安 ${number(r.minWinChance)}% ${r.goalMet?'に到達':'に未達'}`:'';
   return `<section class="battle-advisor-readiness" aria-label="出陣前の余力確認"><div class="battle-advisor-readiness-heading"><h4>出陣前の余力確認</h4><span>${esc(r.forecast)}</span></div>${goal?`<p class="battle-advisor-goal${r.goalMet?'':' is-below-goal'}">${esc(goal)}</p>`:''}${metrics.length?`<dl>${metrics.join('')}</dl>`:''}${warnings.length?`<ul class="battle-advisor-reserve-warnings">${warnings.map(value=>`<li>${esc(value)}</li>`).join('')}</ul>`:''}</section>`;
  }
+ function reserveMarkup(policy, disabled){
+  if(!policy)return '';
+  const {reserveTroops,reserveRice,troops,rice,assetCap}=policy;
+  if(![reserveTroops,reserveRice,troops,rice,assetCap].every(value=>Number.isSafeInteger(value)&&value>=0))return '';
+  return `<details class="battle-advisor-reserves" data-stable-key="advisor-reserves">
+   <summary>出陣後に残す兵・兵糧 <small>兵 ${number(reserveTroops)}人 ／ 兵糧 ${number(reserveRice)}</small></summary>
+   <form data-battle-reserves data-applied-troops="${reserveTroops}" data-applied-rice="${reserveRice}" data-asset-cap="${assetCap}">
+    <p>軍師が提案する兵数と戦法の条件です。出陣画面で兵数や戦法を手動変更すると、残る量も変わります。</p>
+    <div class="battle-reserve-inputs">
+     <label>残す兵数 <input class="input" type="text" inputmode="numeric" maxlength="16" data-battle-reserve="troops" value="${reserveTroops}"${disabled?' disabled':''}><small>手元の兵 ${number(troops)}人</small></label>
+     <label>残す兵糧 <input class="input" type="text" inputmode="numeric" maxlength="16" data-battle-reserve="rice" value="${reserveRice}"${disabled?' disabled':''}><small>手元の兵糧 ${number(rice)}</small></label>
+    </div>
+    <p class="battle-reserve-error" role="alert" data-battle-reserve-error></p>
+    <button type="submit" class="button" ${disabled?'disabled':''}>この条件で再提案</button>
+   </form>
+  </details>`;
+ }
+ function readReserveForm(form){
+  const values={};
+  const cap=Number(form.dataset.assetCap);
+  const error=form.querySelector('[data-battle-reserve-error]');
+  for(const key of ['troops','rice']){
+   const input=form.querySelector(`[data-battle-reserve="${key}"]`);
+   if(!input||input.disabled)return null;
+   const raw=String(input.value).trim().normalize('NFKC'),value=Number(raw);
+   if(!/^\d+$/.test(raw)||!Number.isSafeInteger(value)||!Number.isSafeInteger(cap)||value>cap){
+    const details=form.closest('details');
+    if(details)details.open=true;
+    input.setAttribute('aria-invalid','true');
+    error.textContent=`${key==='troops'?'残す兵数':'残す兵糧'}に0〜${number(cap)}の整数を入力してください。`;
+    input.focus();
+    return null;
+   }
+   input.removeAttribute('aria-invalid');
+   values[key]=value;
+  }
+  error.textContent='';
+  return {reserveTroops:values.troops,reserveRice:values.rice};
+ }
+
  function comparisonMarkup(advice,options={}){
   const alternatives=Array.isArray(advice.alternatives)?advice.alternatives.filter(v=>v&&typeof v==='object').slice(0,3):[];
   if(!alternatives.length)return '';
@@ -76,7 +116,7 @@
    if(finite(a.estimatedLoss))metrics.push(metric('予想損失',number(a.estimatedLoss)+'人'));
    if(finite(a.foodCost))metrics.push(metric(options.costLabel||'消費兵糧',number(a.foodCost)));
   }
-  return `<section class="battle-advisor${a.caution?' is-cautious':''}${ready?'':' is-unavailable'}" data-battle-advisor aria-label="軍師AIの提案"><header class="battle-advisor-heading"><div><span class="battle-advisor-label">軍師AI</span><h3>${a.caution?'戦力を整えるための軍議':'今回の一手'}</h3>${a.targetName?`<p>${esc(a.targetName)}</p>`:''}</div>${options.showStyles===false?'':`<label class="battle-advisor-style"><span>方針</span><select class="select" data-battle-advisor-style aria-label="軍師AIの方針"${options.disabled?' disabled':''}>${Object.entries(STYLES).map(([id,s])=>`<option value="${id}"${id===style?' selected':''}>${esc(s.name)}</option>`).join('')}</select></label>`}</header>${metrics.length?`<dl class="battle-advisor-metrics">${metrics.join('')}</dl>`:''}${ready?readinessMarkup(a):''}${reasons.length?`<ul class="battle-advisor-reasons">${reasons.map(reason=>`<li>${esc(reason)}</li>`).join('')}</ul>`:''}${ready?comparisonMarkup(a,options):''}<footer class="battle-advisor-footer"><button type="button" class="button gold" data-battle-advisor-action="${esc(action)}"${disabled?' disabled':''}>${esc(options.applyLabel||'この案を反映')}</button><p>${esc(options.note||'案を反映したあと、出陣内容を確認できます。')}</p></footer></section>`;
+  return `<section class="battle-advisor${a.caution?' is-cautious':''}${ready?'':' is-unavailable'}" data-battle-advisor aria-label="軍師AIの提案"><header class="battle-advisor-heading"><div><span class="battle-advisor-label">軍師AI</span><h3>${a.caution?'戦力を整えるための軍議':'今回の一手'}</h3>${a.targetName?`<p>${esc(a.targetName)}</p>`:''}</div>${options.showStyles===false?'':`<label class="battle-advisor-style"><span>方針</span><select class="select" data-battle-advisor-style aria-label="軍師AIの方針"${options.disabled?' disabled':''}>${Object.entries(STYLES).map(([id,s])=>`<option value="${id}"${id===style?' selected':''}>${esc(s.name)}</option>`).join('')}</select></label>`}</header>${reserveMarkup(options.reserves,options.disabled===true)}${metrics.length?`<dl class="battle-advisor-metrics">${metrics.join('')}</dl>`:''}${ready?readinessMarkup(a):''}${reasons.length?`<ul class="battle-advisor-reasons">${reasons.map(reason=>`<li>${esc(reason)}</li>`).join('')}</ul>`:''}${ready?comparisonMarkup(a,options):''}<footer class="battle-advisor-footer"><button type="button" class="button gold" data-battle-advisor-action="${esc(action)}"${disabled?' disabled':''}>${esc(options.applyLabel||'この案を反映')}</button><p>${esc(options.note||'案を反映したあと、出陣内容を確認できます。')}</p></footer></section>`;
  }
 
  function render(host,advice,options={}){
@@ -91,13 +131,30 @@
   const click=event=>{
    const button=event.target.closest?.('[data-battle-advisor-action]');
    if(!button||!host.contains(button)||button.disabled||button.dataset.battleAdvisorAction!==action)return;
-   event.preventDefault();const advice=options.getAdvice?.();
+   event.preventDefault();
+   const form=host.querySelector('[data-battle-reserves]');
+   if(form&&options.onReserveChange){
+    const reserves=readReserveForm(form);
+    if(!reserves)return;
+    if(reserves.reserveTroops!==Number(form.dataset.appliedTroops)||reserves.reserveRice!==Number(form.dataset.appliedRice)){
+     options.onReserveChange(reserves);
+     return;
+    }
+   }
+   const advice=options.getAdvice?.();
    if(!advice?.ok){options.onUnavailable?.(advice);return;}
    options.onApply?.(advice);
   };
   const change=event=>{const select=event.target;if(host.contains(select)&&select.matches?.('[data-battle-advisor-style]')&&!select.disabled&&Object.hasOwn(STYLES,select.value))options.onStyleChange?.(select.value);};
-  host.addEventListener('click',click);host.addEventListener('change',change);
-  return{dispose(){host.removeEventListener('click',click);host.removeEventListener('change',change);}};
+  const submit=event=>{
+   const form=event.target;
+   if(!form.matches?.('[data-battle-reserves]')||!host.contains(form))return;
+   event.preventDefault();
+   const reserves=readReserveForm(form);
+   if(reserves)options.onReserveChange?.(reserves);
+  };
+  host.addEventListener('click',click);host.addEventListener('change',change);host.addEventListener('submit',submit);
+  return{dispose(){host.removeEventListener('click',click);host.removeEventListener('change',change);host.removeEventListener('submit',submit);}};
  }
  const api={styles:STYLES,compare,readiness,markup,render,bind};global.SengokuBattleAdvisor=api;
  if(typeof module!=='undefined'&&module.exports)module.exports=api;
