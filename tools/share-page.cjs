@@ -2,18 +2,12 @@
 
 // Public introduction only: the game and its saved progress remain at the root.
 const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-const { renderTrailer, renderScreenshots, videoSchema } = require('./promotion-content.cjs');
+const { trailer, firstSteps, jadeTrailer, jadePlayer, renderScreenshots, videoSchema, invitationURL } = require('./promotion-content.cjs');
 
 function renderSharePage({ site, metadataHtml, jsonLd, iconHtml, header, footer, artwork }) {
   const page = site.pages.share, release = esc(site.release);
   const asset = name => `../${name}?v=${release}`;
-  // Only fixed campaign labels travel with a shared link. No player ID, account
-  // code, current URL parameters or browser state is copied into an invitation.
-  const campaignURL = (source, medium = 'referral', content = 'social') => {
-    const url = new URL(site.origin + page.path);
-    url.search = new URLSearchParams({utm_source:source, utm_medium:medium, utm_campaign:'player_invite', utm_content:content});
-    return url.href;
-  };
+  const campaignURL = (source, medium, content) => invitationURL(site, 'share', source, medium, content);
   const invitePresets = [
     {id:'social', label:'SNSで紹介', source:'share_text', text:'一城から、天下へ。城下町づくり・武将編成・合戦を楽しむ「戦国VS」。PC・スマホで基本プレイ無料、インストール不要。'},
     {id:'friend', label:'友だちを誘う', source:'friend', xText:'一緒に一城から始めてみませんか？城下町を育て、武将を率いる「戦国VS」。PC・スマホで基本プレイ無料、インストール不要。ひとりのCPU戦役から試せます。', text:'城下町を育てて、武将を率いて天下を目指す「戦国VS」。一緒に一城から始めてみませんか？PC・スマホのブラウザで基本プレイ無料。まずは「端末だけで遊ぶ」で試せて、領主登録後は同盟や交易も楽しめます。'},
@@ -68,7 +62,7 @@ function renderSharePage({ site, metadataHtml, jsonLd, iconHtml, header, footer,
         <h1 id="page-title">戦国VS</h1>
         <p class="share-tagline">${esc(site.tagline || '一城の志が、天下を動かす。')}</p>
         <p class="hero-lead">好きな城を選び、町を育て、武将を率いて次の一城へ。内政・軍団編成・攻城戦を楽しむ、日本語の戦国戦略シミュレーションです。軍師の助言を読み、自分の采配で領国を広げていきます。</p>
-        <div class="hero-actions"><a class="action-link" href="../">基本プレイ無料で始める</a><a class="text-link" href="#intro-video">24秒の紹介動画を見る</a></div>
+        <div class="hero-actions"><a class="action-link" href="../">基本プレイ無料で始める</a><a class="text-link" href="#jade-trailer">日本語・英語の紹介動画を見る</a></div>
         <p class="discovery-availability"><span class="availability-item">基本プレイ無料</span><span class="availability-divider" aria-hidden="true">/</span><span class="availability-item">インストール不要</span></p>
         <p class="share-platform">PC・スマホ・タブレットのブラウザに対応。<br>有料の外観アイテム・月額支援もあります。<a href="#before-you-play">始める前のQ&amp;A</a></p>
       </div>
@@ -86,7 +80,13 @@ function renderSharePage({ site, metadataHtml, jsonLd, iconHtml, header, footer,
       <p>個人の戦役では、天下地図のCPU勢力と城を争います。領主を登録すると、共通フィールドでの対人戦、同盟、書状、交易へ。初めてなら「端末だけで遊ぶ」から、一城を育てるところから始められます。</p>
     </section>
     <section id="first-castle" class="promotion-first-castle" aria-labelledby="first-castle-title"><div class="promotion-section-heading"><div><p class="section-kicker">はじめての方へ</p><h2 id="first-castle-title">最初の一歩は、城を選ぶだけ。</h2></div><a href="../guide/#first-steps">詳しい遊び方を読む</a></div><ol class="promotion-first-steps"><li><span>本拠を選ぶ</span><p>「城を選んで始める」で好きな一城へ。ひとりで試すなら「端末だけで遊ぶ」を選べます。</p></li><li><span>町と軍団を整える</span><p>田畑や商家を育て、武将を編成。迷ったら「次の一手」で、今できる準備を確認します。</p></li><li><span>次の城へ出陣する</span><p>天下地図で隣の城を選び、軍師の助言を読んで出陣。まずはCPU勢力との戦役から。</p></li></ol></section>
-    ${renderTrailer(p, { showScreenshots: true })}
+    <section class="promotion-trailer" id="jade-trailer" aria-labelledby="jade-trailer-title">
+      <div class="promotion-trailer-copy">
+        <h2 id="jade-trailer-title">${esc(jadeTrailer.title)}</h2><p>${esc(jadeTrailer.description)}</p>
+        <div class="promotion-actions"><a href="../">基本プレイ無料で始める</a><a class="promotion-secondary" href="#game-screens">ゲーム画面を大きく見る</a></div>
+        <p class="promotion-trailer-note" id="intro-video">YouTubeでも、<a href="${esc(trailer.url)}">絵巻で見る戦国VS（24秒）</a>と<a href="${esc(firstSteps.url)}">はじめての3手（36秒）</a>を視聴できます。</p>
+      </div>${jadePlayer(p.file, 'ja')}
+    </section>
     ${renderScreenshots(p)}
     <section class="share-journey" aria-labelledby="share-journey-title">
       <div class="share-section-heading"><p class="section-kicker">育てる・備える・進む</p><h2 id="share-journey-title">戦国VSでできること</h2></div>
@@ -125,7 +125,7 @@ function renderSharePage({ site, metadataHtml, jsonLd, iconHtml, header, footer,
     </section>
 
     <section id="share" class="promotion-panel" aria-labelledby="share-title" data-share-url="${esc(nativeURL)}" data-share-title="戦国VS｜一城から、天下へ。" data-share-text="${esc(shareText)}">
-      <div class="promotion-heading"><p class="section-kicker">戦国好きの友だちへ</p><h2 id="share-title">この一城を、誰かに紹介する。</h2><p>気になったら、遊び方や無料の範囲がわかる紹介ページを共有できます。</p></div>
+      <div class="promotion-heading"><p class="section-kicker">戦国好きの友だちへ</p><h2 id="share-title">この一城を、誰かに紹介する。</h2><p>遊び方と無料で遊べる範囲が分かる紹介ページを共有できます。海外の友人には<a href="../en/#share" hreflang="en">英語の紹介文とリンク</a>をどうぞ。</p></div>
       <div class="promotion-copy-block"><label for="game-share-url">公式の紹介ページ</label><div class="promotion-url-row"><input id="game-share-url" type="url" value="${esc(shareURL)}" readonly spellcheck="false"><button type="button" class="promotion-copy-button" data-copy-target="game-share-url" hidden>URLをコピー</button></div><p class="promotion-copy-status" role="status" aria-live="polite"></p></div>
       <div class="promotion-invite-presets" data-share-presets hidden role="group" aria-label="紹介文の用途"><p>紹介する相手に合わせて、文章を選べます。</p><div class="promotion-preset-options">${invitePresets.map((preset, index) => `<button type="button" data-share-preset="${preset.id}" data-share-text="${esc(preset.text)}" data-share-copy="${esc(messageFor(preset))}" data-share-native-url="${esc(campaignURL('native_share','referral',preset.id))}" data-share-x="${esc(xLink(preset))}" data-share-line="${esc(lineLink(preset))}" aria-pressed="${index === 0}" aria-controls="game-share-message">${preset.label}</button>`).join('')}</div></div>
       <div class="promotion-copy-block"><label for="game-share-message">紹介文とURLをまとめてコピー</label><textarea id="game-share-message" data-share-message class="press-copy-text" rows="5" readonly spellcheck="false">${esc(messageFor(invitePresets[0]))}</textarea><button type="button" class="promotion-copy-button" data-copy-target="game-share-message" hidden>紹介文をコピー</button><p class="promotion-copy-status" role="status" aria-live="polite"></p></div>

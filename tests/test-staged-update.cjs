@@ -111,6 +111,35 @@ async function manualTest(){
  assert.equal(calls.saves,0);assert.deepEqual(calls.visits,[]);
 }
 
+async function settingsUpdateTest(){
+ const {win,calls,node,stage,registration}=await bootFixture();
+ win.SengokuTitle.enter();
+ const dialog=node('modal'),host=node('modal-content');
+ host.innerHTML='<section id="settings-release-update"><span id="settings-release-version"></span><button id="settings-release-check"></button><button id="settings-release-open"></button><p id="settings-release-status"></p></section>';
+ const check=node('settings-release-check'),open=node('settings-release-open'),status=node('settings-release-status');
+ dialog.showModal();win.SengokuUpdates.renderSettings();
+ assert.match(node('settings-release-version').textContent,new RegExp(edition.split('-')[0]));
+ assert.equal(open.hidden,true);assert.equal(check.disabled,false);
+ const update=deferred();calls.update=()=>update.promise;
+ const checking=check.onclick();await settle();
+ assert.equal(check.disabled,true);assert.equal(node('game-update-menu-check').disabled,true);
+ update.resolve();await checking;assert.equal(check.disabled,false);assert.match(status.textContent,/新しい更新はありません/);
+ assert.deepEqual(calls.visits,[]);assert.equal(calls.saves,0);
+ await stage();assert.equal(open.hidden,false);assert.match(status.textContent,/9\.9\.9/);
+ assert.equal(win.SENGOKU_AT_TITLE,false);
+ calls.cached=false;await open.onclick();assert.equal(calls.saves,0);assert.match(status.textContent,/新版の準備/);
+ calls.cached=true;await open.onclick();assert.equal(calls.saves,1);assert.match(status.textContent,/保存失敗/);
+ const save=deferred();calls.save=()=>save.promise;
+ const pending=open.onclick();await settle();await open.onclick();assert.equal(calls.saves,2);
+ dialog.close();dialog.showModal();win.SengokuUpdates.renderSettings();save.resolve({ok:true});await pending;
+ assert.deepEqual(calls.visits,[],'Closing settings even briefly must cancel that update choice');
+ const replaced=deferred();calls.save=()=>replaced.promise;
+ const superseded=open.onclick();await settle();registration.waiting=null;replaced.resolve({ok:true});await superseded;
+ assert.deepEqual(calls.visits,[]);assert.equal(open.hidden,true);
+ await stage();calls.save=async()=>({ok:true});await open.onclick();
+ assert.deepEqual(calls.visits,[scope+'?room=kept&sengoku-version='+staged+'#town']);
+}
+
 async function workerTest(){
  const events={},old='sengoku-taisen-v'+edition,next='sengoku-taisen-v'+staged;
  const rows=new Map([[old,new Map([[url('index.html'),'OLD DOC'],[url('same.bundle.js?v=oldhash'),'OLD CODE']])],[next,new Map([[url('index.html'),'NEW DOC'],[url('same.bundle.js?v=newhash'),'NEW CODE']])]]);
@@ -157,4 +186,4 @@ async function saveTest(){
  ctx.saveChangedInAnotherTab=false;local=live;ctx.window.SengokuCloudSync.flush=async()=>({ok:false});assert(!(await ctx.check()).ok);
 }
 
-(async()=>{await bootTest();await navigationDuringSaveTest();await discoveryTest();await manualTest();await workerTest();await saveTest();console.log('PASS visible/online update discovery, focus and manual coalescing, saved gameplay-to-title choice, save-failure retention, chosen-tab staged offline load and older-tab continuity, including worker restart.');})().catch(error=>{console.error(error);process.exitCode=1;});
+(async()=>{await bootTest();await navigationDuringSaveTest();await discoveryTest();await manualTest();await settingsUpdateTest();await workerTest();await saveTest();console.log('PASS visible/online update discovery, focus and manual coalescing, saved gameplay-to-title choice, save-failure retention, chosen-tab staged offline load and older-tab continuity, including worker restart.');})().catch(error=>{console.error(error);process.exitCode=1;});

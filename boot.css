@@ -28,3 +28,10 @@
 #game-update-return{min-width:0;min-height:44px;padding:6px 8px;border:1px solid #c6b67966;border-radius:4px;background:#d5bb7620;color:#fff0cb;font-size:16px;line-height:1.4;overflow-wrap:anywhere}
 #game-update-return:is(:hover,:focus-visible){background:#d5bb7636;border-color:#e6ce88}
 #game-update-notice-status:not(:empty){flex-basis:100%;padding:3px 0;color:#fff0cb;font-size:15px;line-height:1.5;overflow-wrap:anywhere}
+
+
+#modal #settings-release-update { border: 1px solid #406973; border-inline-start: 3px solid #91ddc6; background: #102431; }
+#settings-release-update :is(h3,p) { margin: 0; }
+#settings-release-update button { min-height: 44px; white-space: normal; }
+#settings-release-update button[hidden], #settings-release-status:empty { display: none; }
+#settings-release-status { grid-column: 1 / -1; overflow-wrap: anywhere; }

@@ -42,6 +42,7 @@ function fixture(options = {}) {
   };
   if ('canShare' in options) navigator.canShare = () => options.canShare;
   const document = {
+    documentElement: {lang: options.language || 'ja'},
     querySelectorAll: selector => selector === '[data-copy-target]' ? [button] : [panel],
     getElementById: () => field,
     execCommand: () => { calls.copy++; return options.legacyCopy !== false; }
@@ -79,6 +80,12 @@ function fixture(options = {}) {
   await h.button.click();
   assert.equal(h.calls.focused, h.field, 'Keep the selected text available for manual copy');
   assert.match(h.copyStatus.textContent, /端末のコピー操作/);
+
+  const en = fixture({language: 'en', clipboardDenied: true, legacyCopy: false, shareError: 'NotAllowedError'});
+  await en.button.click();
+  assert.match(en.copyStatus.textContent, /Text selected/);
+  await en.native.click();
+  assert.match(en.shareStatus.textContent, /Copy link/);
 
   // An RSS address must remain copyable even when ordinary page text is locked.
   const news = fs.readFileSync(path.join(__dirname, '../news/index.html'), 'utf8');
