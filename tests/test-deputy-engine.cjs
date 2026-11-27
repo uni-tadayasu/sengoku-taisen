@@ -20,7 +20,7 @@ test('appointments move home progress and retain personal assets; dismissals res
   old.castles.inuyama={...old.castles.inuyama,troops:321,wall:7,level:8};old.resources.gold=12345;old.magatama=321;
   const assets=copy(old.resources),officers=copy(old.officerVariants),appointed=Engine.fromSave(g.exportSave(),g.roster,{isDeputy:true});
   assert.equal(appointed.state.home,'kagoshima');assert.equal(appointed.state.castles.kagoshima.troops,321);assert.equal(appointed.state.castles.kagoshima.level,8);
-  assert.notEqual(appointed.state.castles.inuyama.owner,appointed.state.clan);assert.deepEqual(appointed.state.resources,assets);assert.deepEqual(appointed.state.officerVariants,officers);
+  assert.notEqual(appointed.state.castles.inuyama.owner,appointed.state.clan);assert.deepEqual(appointed.state.resources,assets);assert.deepEqual(appointed.state.officerVariants,[...officers,D.deputyAssets.officerId+':U']);
   const again=Engine.fromSave(appointed.exportSave(),g.roster,{isDeputy:true});assert.deepEqual(again.state.castles.kagoshima,appointed.state.castles.kagoshima);
   const dismissed=Engine.fromSave(appointed.exportSave(),g.roster,{deputyReturnHome:'inuyama'});assert.equal(dismissed.state.home,'inuyama');assert.equal(dismissed.state.castles.inuyama.troops,321);assert.equal(dismissed.state.castles.inuyama.level,8);assert.deepEqual(dismissed.state.resources,assets);assert.equal(dismissed.state.magatama,321);
 });

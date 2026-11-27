@@ -93,11 +93,11 @@ html[data-presentation-motion="quiet"] .painted-art>.art-surface{transition:none
 
 
 /* Derivatives keep paint on the original node while its rank or level changes. */
-.painted-art[data-art-sheet="small"]:not(.operator-portrait)>.art-surface {
+.painted-art[data-art-sheet="small"]:not(.operator-portrait):not(.deputy-portrait)>.art-surface {
  background-size:var(--small-size);
  background-position:var(--small-x) var(--small-y);
 }
-.painted-art[data-art-sheet="native"]:not(.operator-portrait)>.art-surface {
+.painted-art[data-art-sheet="native"]:not(.operator-portrait):not(.deputy-portrait)>.art-surface {
  background-size:var(--native-size);
  background-position:var(--native-x) var(--native-y);
 }
@@ -106,3 +106,27 @@ html[data-presentation-motion="quiet"] .painted-art>.art-surface{transition:none
 .facility-painting > .art-surface,
 .facility-painting.portrait-cell > .art-surface { inset: 0; box-shadow: none; }
 .facility-art-viewport { display: block; width: 100%; height: 100%; overflow: hidden; }
+
+/* Shimazu's square original keeps its raised metalwork at every lazy image size. */
+.deputy-portrait { background-color:#240f11; }
+.deputy-portrait>.art-surface { background-size:cover; background-position:center; }
+.portrait-frame.deputy-relief-frame {
+ box-shadow:inset 0 0 0 1px #fff0b2,inset 0 0 0 4px #704c25,0 2px 0 #2b160e,0 8px 20px #0007;
+}
+.portrait-frame.deputy-relief-frame::after {
+ z-index:4;
+ box-shadow:inset 1px 1px 0 #ffedba,inset -2px -2px 0 #6e3e20,inset 0 0 0 4px #d4ab5b80,inset 0 0 18px #0b02035c;
+ background:linear-gradient(135deg,#fff3cb33 0%,transparent 17%,transparent 80%,#ad642b22);
+}
+#modal .officer-detail-portrait:has(.deputy-portrait) {
+ position:relative;
+ width:min(100%,280px);
+ height:auto;
+ flex:0 0 auto;
+ aspect-ratio:1;
+}
+#modal .officer-detail-portrait:has(.deputy-portrait)>.portrait-frame { position:absolute; inset:0; }
+#modal .officer-detail-portrait .deputy-portrait>.art-surface { background-size:contain; }
+@media(max-width:600px) {
+ .officer-detail-top:has(.deputy-portrait) { flex-direction:column; align-items:center; }
+}

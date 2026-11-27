@@ -36,8 +36,8 @@ import {requirePromotionOrigin,recordPromotion,readPromotionReport} from './prom
 import {readMusicBroadcast,handleAdminMusic} from './admin-music.js';
 import {lordSupportSql,guardLordSupport,ensureResidency,residencySnapshot,residencyDirectory,residencyStart,initialResidencyStatements,residencyTargetGuard,prepareResidencySuccession,prepareResidencyCpuLosses} from './residency.js';
 const API = '/api/v1';
-const API_VERSION = '5.12.2';
-const API_FEATURES = Object.freeze({trades:true,moderation:true,playerExpulsion:true,moderatedNameReuse:true,deputyOperator:true,kagoshimaProtected:true,premium:true,timedEvents:true,troopTrades:true,roamingBattles:true,roamingDeployment:true,covertDispatch:true,privatePlayerRoles:true,guildIcons:true,court:true,kyotoGosho:true,branches:true,branchBattles:true,branchFacilities:true,audioCalls:true,progression:true,armyPresets:true,allianceStrategy:true,sharedConquest:true,newcomerProtection:true,webPush:true,battleAdviser:true,battleCatalog:true,eventBattleRewards:true,shogunate:true,attackTravel:true,castleResidency:true,retainerCastleStats:true,residencyRelocation:true,maintenanceUpkeep:true,strongholdDurability:true,chatReplies:true,chatMentions:true,covertReturnTravel:true,allianceUnitTravel:true,legacySaveRecovery:true,displayNameVariants:true,courtOffices:true,serverSummons:true,loginRewards:true,paidRerolls:true,supporterChoices:true,premiumGrowthMetrics:true,adminMusicBroadcast:true,rankRiceProduction:true,shogunateApproval:true,imperialSuccession:true,retiredEmperor:true,regency:true,courtEventRoom:true,imperialSuccessionApproval:true});
+const API_VERSION = '5.12.3';
+const API_FEATURES = Object.freeze({trades:true,moderation:true,playerExpulsion:true,moderatedNameReuse:true,deputyOperator:true,deputyOfficer:true,kagoshimaProtected:true,premium:true,timedEvents:true,troopTrades:true,roamingBattles:true,roamingDeployment:true,covertDispatch:true,privatePlayerRoles:true,guildIcons:true,court:true,kyotoGosho:true,branches:true,branchBattles:true,branchFacilities:true,audioCalls:true,progression:true,armyPresets:true,allianceStrategy:true,sharedConquest:true,newcomerProtection:true,webPush:true,battleAdviser:true,battleCatalog:true,eventBattleRewards:true,shogunate:true,attackTravel:true,castleResidency:true,retainerCastleStats:true,residencyRelocation:true,maintenanceUpkeep:true,strongholdDurability:true,chatReplies:true,chatMentions:true,covertReturnTravel:true,allianceUnitTravel:true,legacySaveRecovery:true,displayNameVariants:true,courtOffices:true,serverSummons:true,loginRewards:true,paidRerolls:true,supporterChoices:true,premiumGrowthMetrics:true,adminMusicBroadcast:true,rankRiceProduction:true,shogunateApproval:true,imperialSuccession:true,retiredEmperor:true,regency:true,courtEventRoom:true,imperialSuccessionApproval:true});
 const MAX_BODY = 16 * 1024;
 const MAX_SAVE_BODY = 2 * 1024 * 1024;
 const MAX_AVATAR_BYTES = 48 * 1024;
@@ -355,11 +355,12 @@ function evaluationState(row,meta,now){
 // Rank is the strongest owned variant of the officer in the active formation's
 // first slot, just as GameEngine.officer(id) resolves the army screen.
 const officerNames=new Map(GAME_OFFICERS.map(officer=>[officer.id,officer.name]));
-function publicCommander(state){
+function publicCommander(state,user={}){
   const officerId=state?.army?.[0];
   if(!officerId)return null;
   const rank=RANKS.findLast(value=>state.officerVariants.includes(officerId+':'+value)),name=officerNames.get(officerId);
-  return rank&&name?{officerId,name,rank}:null;
+  const special=globalThis.SENGOKU_DATA.deputyAssets,deputyExclusive=!!user.is_deputy&&!user.is_admin&&!user.is_staff&&officerId===special?.officerId&&rank===special?.rank;
+  return rank&&name?{officerId,name,rank,...(deputyExclusive?{deputyExclusive:true}:{})}:null;
 }
 async function resolvePlayerEvaluations(db,payload,now){
   const refs=[],ids=new Set(),nameRefs=[],avatarRefs=[],avatarIds=new Set(),skip=new Set(['save','state','entitlements','appearance']);
@@ -410,7 +411,7 @@ async function resolvePlayerEvaluations(db,payload,now){
     try{
       const state=evaluationState(row,meta,now);
       evaluation=GameEngine.publicEvaluation(state,{officers:GAME_OFFICERS});
-      if(commanderIds.has(row.id))commanders.set(row.id,publicCommander(state));
+      if(commanderIds.has(row.id))commanders.set(row.id,publicCommander(state,row));
     }catch{/* Unreadable saves remain unverified. */}
     values.set(row.id,evaluation);
   }
@@ -1985,7 +1986,7 @@ async function syncSnapshot(db,row,user,deviceId,now,{settle=false}={}) {
     writerDeviceId:row?.writer_device_id||null,writerDeviceName:row?.writer_device_name||null,
     leaseExpiresAt:row?.lease_expires_at?iso(row.lease_expires_at):null,serverTime:iso(now),
     writable:!!deviceId&&row?.writer_device_id===deviceId&&Number(row.lease_expires_at)>now,
-    entitlements:{edo:!!user.is_admin,ieyasuU:!!user.is_admin,kagoshima:!!user.is_deputy}};
+    entitlements:{edo:!!user.is_admin,ieyasuU:!!user.is_admin,kagoshima:!!user.is_deputy,shimazuU:!!user.is_deputy&&!user.is_admin&&!user.is_staff}};
 }
 
 const FIELD_RULES=Object.freeze({minTroops:300,maxTroops:100000,commandCost:1,foodBase:150,foodPerTroop:.3,attackCooldownMs:60000,defenderProtectionMs:60000,proposalLifetimeMs:600000,allianceDurationMs:360000,maxLootPerResource:500,maxLootFraction:.05,maxDefenderLossFraction:.1,operatorProtected:false,staffProtected:false,targetCastles:true,specialBaseBattles:true,branchBattles:true,captureCastles:FIELD_CAPTURE_CASTLES,uncapturableCastles:['edo','kyoto_gosho','kagoshima'],victoryRewards:{gold:500,rice:500,wood:500,stone:500},

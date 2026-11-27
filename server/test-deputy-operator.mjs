@@ -51,7 +51,10 @@ await scope('appointment fixes Kagoshima as the deputy home and preserves person
  assert.equal(result.deputy.id,target.user.id);assert.equal(result.action,'appoint');assert(result.revision>0);
  const snapshot=await read(h,target,'/sync?deviceId='+target.deviceId);assert.equal(snapshot.user.isDeputy,true);assert.equal(snapshot.user.isAdmin,false);assert.equal(snapshot.user.isStaff,false);
  assert.equal(snapshot.save.state.home,'kagoshima');assert.equal(snapshot.save.state.cycle.home,'kagoshima');assert.equal(row(h,target).cycle_home,'kagoshima');assert.equal(snapshot.save.state.castles.kagoshima.owner,snapshot.save.state.clan);
- for(const key of ['clan','resources','buildings','tech','officers','officerVariants','magatama'])assert.deepEqual(snapshot.save.state[key],before.state[key],key+' must survive appointment');
+ for(const key of ['clan','resources','buildings','tech','magatama'])assert.deepEqual(snapshot.save.state[key],before.state[key],key+' must survive appointment');
+ const special=globalThis.SENGOKU_DATA.deputyAssets;
+ assert.deepEqual(snapshot.save.state.officers,[...new Set([...before.state.officers,special.officerId])]);
+ assert.deepEqual(snapshot.save.state.officerVariants,[...new Set([...before.state.officerVariants,special.officerId+':'+special.rank])]);
  assert.equal(member(h,target),undefined);assert.equal(seat(h,'kiyosu').lord_user_id,null);assert.deepEqual(member(h,retainer),retainerBefore);assert.deepEqual(row(h,retainer),retainerSave);
  const field=await read(h,target,'/field/me');assert.equal(field.self.homeCastleId,'kagoshima');assert.equal(field.self.battleMode,'reward');assert.equal(field.self.capturable,false);
  const directory=await read(h,null,'/castles/residency');assert.equal(directory.capacity,123);assert(!directory.castles.some(c=>c.castleId==='kagoshima'));await h.api('/castles/residency?castleId=kagoshima',{expected:400});

@@ -28,6 +28,7 @@
     "troop-garrisons.css",
     "moderation.css",
     "deputy-operator.css",
+    "deputy-officer.css",
     "walking.css",
     "governors.css",
     "strategy.css",
@@ -149,6 +150,7 @@
   ],
   "game-interface.bundle.js": [
     "live-dom.js",
+    "deputy-officer.js",
     "app.js",
     "hints-ui.js",
     "scroll-top.js",
