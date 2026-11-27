@@ -229,19 +229,24 @@ test('defeat and pending actions end in the old campaign without synthetic succe
   assert.deepEqual(load(g).state,g.state);
 });
 
-test('each retainer adds half of the starting castle while upgrades and other holdings keep their own contributions',()=>{
+test('each retainer adds half of the starting castle before rank production while other holdings keep their contributions',()=>{
   const g=fresh({clan:'武田家',startCastle:'kiyosu'}),s=g.state,home=s.home,other='inuyama';
   s.castles[other].owner=s.clan;s.castles[home].level=4;s.castles[home].wall=3;
-  const first=g.castleBenefits(home),otherBefore=g.castleBenefits(other),gross=g.income().gross,capacity=g.troopCapacity();
+  const first=g.castleBenefits(home),otherBefore=g.castleBenefits(other),initialIncome=g.income(),gross=initialIncome.gross,capacity=g.troopCapacity();
   const hp=g.castle(home).durability.max,otherHp=g.castle(other).durability.max,transferBefore=g.troopTransferStatus().endpoints.find(row=>row.id==='castle:'+home);
   const delta={gold:50,rice:85,wood:20,stone:15};
   for(const n of [1,2,3,3,1,0]){
     s.retainerSupport={castleId:home,count:n};
-    const benefits=g.castleBenefits(home),income=g.income().gross;
+    const benefits=g.castleBenefits(home),income=g.income();
     for(const key of D.resources){
       assert.equal(benefits[key],first[key]+n*delta[key]);
-      assert.equal(income[key],gross[key]+n*delta[key]);
+      if(key!=='rice')assert.equal(income.gross[key],gross[key]+n*delta[key]);
     }
+    const baseRice=initialIncome.rankRiceBonus.baseRice+n*delta.rice,percent=initialIncome.rankRiceBonus.percent;
+    assert.equal(income.rankRiceBonus.baseRice,baseRice,'retainers retain their exact +85 base rice contribution');
+    assert.equal(income.rankRiceBonus.percent,percent,'retainer count does not independently change court rank');
+    assert.equal(income.rankRiceBonus.amount,Math.floor(baseRice*percent/100));
+    assert.equal(income.gross.rice,baseRice+Math.floor(baseRice*percent/100),'rank applies once to total base production, including retainer income');
     assert.equal(g.troopCapacity(),capacity+n*250);
     assert.equal(g.castle(home).durability.max,hp+n*5000);
     assert.equal(E.retainerDefenseTroops(s,home),n*600);
