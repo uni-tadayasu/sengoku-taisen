@@ -60,7 +60,7 @@ let count = 0;
 function test(name, run) { run(); count++; console.log('PASS ' + name); }
 
 test('content corrections load after every legacy game layout and compile cleanly', () => {
-  assert.deepEqual(manifest['game-layout.bundle.css'].slice(-2), ['responsive-text.css', 'tablet-portrait.css']);
+  assert.deepEqual(manifest['game-layout.bundle.css'].slice(-3), ['responsive-text.css', 'tablet-layout.css', 'tablet-landscape.css']);
   const result = transformSync(css, { loader: 'css', minify: true, target: ['es2020'] });
   assert.equal(result.warnings.length, 0);
   assert(result.code.includes('overflow-wrap:anywhere'));
