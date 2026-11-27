@@ -148,7 +148,10 @@
     beatsPerBar:t.beats,duration:t.bars*t.beats*60/t.tempo,
     durationSeconds:Math.round(t.bars*t.beats*60/t.tempo),description:t.description
   }))]);
-  const trackById = new Map(TRACKS.map(track=>[track.id,track]));
+  const BROADCAST_TRACK = Object.freeze({id:'operation-broadcast',name:'運営放送 00004',title:'運営放送 00004',scene:'broadcast',recordingOnly:true,
+    recording:'assets/music/operation-broadcast.mp3',duration:202.12,durationSeconds:202,sampleRate:48000,description:'運営が全プレイヤーに向けて流す共通BGM。'});
+  const BROADCAST_PLAYLIST=Object.freeze([BROADCAST_TRACK,...TRACKS]);
+  const trackById = new Map([...TRACKS,BROADCAST_TRACK].map(track=>[track.id,track]));
   const byId = new Map(SCORES.map(t=>[t.id,t]));
   const compiled = new Map();
   const clamp = (n,a,b)=>Math.max(a,Math.min(b,n));
@@ -373,6 +376,7 @@
       this._currentId=null;this._session=null;this._playing=false;this._auto=true;
       this._timer=null;this._pauseTimer=null;this._token=0;this._resumePosition=0;this._disposed=false;
       this._daypartTimer=null;this._daypartSync=null;
+      this._manualId=null;this._broadcast=null;this._broadcastRevision=-1;this._broadcastClock=null;
       this._noise=null;this._drumCache=new Map();this._pluckCache=new Map();this._waveCache=new Map();this._sessions=new Set();
       this._voices=new Set();this._sourceCount=0;this._droppedVoices=0;
       this._audioElement=null;this._streamDestination=null;this._audioSession=null;
@@ -402,6 +406,30 @@
       global.addEventListener?.('pageshow',this._pageShowHandler);
     }
     get currentId(){return this._currentId;}
+    get currentTrack(){return trackById.get(this._currentId)||null;}
+    get broadcast(){return this._broadcast?{...this._broadcast}:null;}
+    _normalTrackId(){return this._auto?automaticTrackId(this._scene):this._manualId||(this._currentId!==BROADCAST_TRACK.id&&this._currentId)||SCORES[0].id;}
+    _broadcastPlan(){
+      const state=this._broadcast,clock=this._broadcastClock;if(!state?.enabled||!clock)return null;
+      const elapsed=Math.max(0,(clock.serverMs+Date.now()-clock.receivedAt-Date.parse(state.startedAt))/1000),tracks=state.mode==='continuous'?BROADCAST_PLAYLIST:[BROADCAST_TRACK];
+      const total=tracks.reduce((sum,track)=>sum+track.duration,0);let position=elapsed%total;
+      for(let i=0;i<tracks.length;i++){const track=tracks[i];if(position<track.duration||i===tracks.length-1)return{id:track.id,position,remaining:Math.max(.001,track.duration-position),revision:state.revision,mode:state.mode};position-=track.duration;}
+      return null;
+    }
+    async setBroadcast(value,serverNow){
+      if(this._disposed||!value||typeof value.enabled!=='boolean'||!['loop','continuous'].includes(value.mode)||!Number.isSafeInteger(value.revision)||value.revision<0||value.revision<=this._broadcastRevision)return false;
+      const serverMs=Date.parse(serverNow),startedMs=Date.parse(value.startedAt);
+      if(!Number.isFinite(serverMs)||value.enabled&&!Number.isFinite(startedMs))return false;
+      this._broadcast={enabled:value.enabled,mode:value.mode,revision:value.revision,startedAt:value.enabled?new Date(startedMs).toISOString():null,updatedAt:typeof value.updatedAt==='string'?value.updatedAt:null};
+      this._broadcastRevision=value.revision;this._broadcastClock={serverMs,receivedAt:Date.now()};this._clearDaypartTimer();
+      if(this._playing){
+        // A new server revision supersedes an in-flight transition. This does
+        // not change the player's own pause, mute, volume or manual selection.
+        ++this._token;this._daypartSync=null;
+        const change=this._syncDaypartTrack(true);if(change)await change.catch(error=>this._playbackFailed(error));
+      }
+      this._notifyState();return true;
+    }
     get playing(){return this._playing;}
     get auto(){return this._auto;}
     get volume(){return this._volume;}
@@ -439,13 +467,13 @@
     }
     _hidden(){return this._voiceActive||!this._pageActive||(typeof document!=='undefined'&&document.hidden);}
     _clearDaypartTimer(){clearTimeout(this._daypartTimer);this._daypartTimer=null;}
-    _canAutoSync(){return this._auto&&this._playing&&this._volume>0&&!this._hidden()&&!this._disposed&&this._audioSession?.state!=='interrupted';}
+    _canAutoSync(){return (this._auto||this._broadcast?.enabled)&&this._playing&&this._volume>0&&!this._hidden()&&!this._disposed&&this._audioSession?.state!=='interrupted';}
     _armDaypartTimer(){
       this._clearDaypartTimer();
-      if(!this._canAutoSync()||this._scene==='title')return;
+      if(!this._canAutoSync()||!this._broadcast?.enabled&&this._scene==='title')return;
       // Check at the boundary, with at most one quiet wall-clock check per
       // minute so a changed device clock/timezone does not leave a stale track.
-      const delay=Math.min(60000,nextDaypartDelay()+25);
+      const broadcast=this._broadcastPlan(),delay=broadcast?Math.min(60000,broadcast.remaining*1000+25):Math.min(60000,nextDaypartDelay()+25);
       this._daypartTimer=setTimeout(()=>{
         this._daypartTimer=null;
         if(!this._canAutoSync())return;
@@ -455,12 +483,12 @@
       },delay);
     }
     _syncDaypartTrack(forceResume=false){
-      if(!this._playing||!this._volume||this._hidden()||this._disposed||this._audioSession?.state==='interrupted'||!this._auto&&!forceResume)return null;
-      const id=this._auto?automaticTrackId(this._scene):this._currentId;if(id===this._currentId&&!forceResume)return null;
+      if(!this._playing||!this._volume||this._hidden()||this._disposed||this._audioSession?.state==='interrupted'||!this._auto&&!this._broadcast?.enabled&&!forceResume)return null;
+      const id=this._broadcastPlan()?.id||this._normalTrackId();if(id===this._currentId&&!forceResume)return null;
       if(this._daypartSync?.id===id)return this._daypartSync.promise;
       const pending={id,promise:null};this._daypartSync=pending;
       this._notifyState();
-      pending.promise=this.attemptPlayback(id).then(outcome=>{
+      pending.promise=this.attemptPlayback(this._normalTrackId()).then(outcome=>{
         if(outcome==='waiting')this._playbackFailed(Object.assign(new Error('音声の再生は操作を待っています。'),{name:'NotAllowedError'}));
         else if(outcome==='playing'&&!this._hidden()&&this._volume&&this._audioSession?.state!=='interrupted'){
           if(this._session?.recording)this._smoothGain(this._session.recording.gain.gain,1,.10);
@@ -607,7 +635,7 @@
       const data=this._noise.getChannelData(0);seed=9127;
       for(let i=0;i<data.length;i++){seed=(Math.imul(seed,1664525)+1013904223)>>>0;data[i]=((seed/4294967296)*2-1);}
     }
-    async attemptPlayback(id=this._auto?automaticTrackId(this._scene):this._currentId||SCORES[0].id){
+    async attemptPlayback(id=this._normalTrackId()){
       // Some autoplay policies keep resume() pending instead of rejecting it.
       // A single bounded attempt exposes that state without claiming playback
       // or allowing a late promise to override a later stop/track selection.
@@ -615,7 +643,7 @@
       // Even a same-track resume needs its own epoch: an earlier pending
       // attempt's deadline must never pause a newer successful gesture retry.
       ++this._token;
-      const attempt=this.play(id),token=this._token;
+      const target=this._broadcastPlan()?.id||id,attempt=this.play(id),token=this._token;
       try{
         const outcome=await Promise.race([
           attempt.then(()=> 'settled'),
@@ -625,14 +653,20 @@
           if(token!==this._token||this._disposed||!this._volume||this._hidden()||this._audioSession?.state==='interrupted')return 'cancelled';
           this.pause();await this._suspendOutput();return 'waiting';
         }
-        return this._playing&&this._currentId===id?'playing':'cancelled';
+        return this._playing&&(this._currentId===target||this._currentId===this._broadcastPlan()?.id)?'playing':'cancelled';
       }catch(error){if(error?.name==='NotAllowedError')return 'waiting';throw error;}
       finally{clearTimeout(timer);}
     }
-    async play(id=this._auto?automaticTrackId(this._scene):this._currentId||SCORES[0].id){
+    async play(id=this._normalTrackId()){
       if(this._disposed)throw new Error('Music player has been disposed.');
       if(!trackById.has(id))throw new RangeError(`Unknown music track: ${id}`);
-      if(this._playing&&this._currentId===id){
+      if(!this._auto&&id!==BROADCAST_TRACK.id)this._manualId=id;
+      const plan=this._broadcastPlan();return this._playTrack(plan?.id||id,plan);
+    }
+    async _playTrack(id,broadcast=null){
+      const current=this._session,elapsed=current&&this._context?Math.max(0,(this._context.currentTime-current.start)%current.score.duration):0;
+      const needsSeek=broadcast&&(current?.broadcastRevision!==broadcast.revision||Math.abs(elapsed-broadcast.position)>.35)||!broadcast&&current?.broadcastRevision!==undefined;
+      if(this._playing&&this._currentId===id&&!needsSeek){
         const token=this._token;
         try {if(await this._resumeOutput()){this._schedule();this._armDaypartTimer();}}
         catch(error){if(token!==this._token||this._disposed)return;this.pause();throw error;}
@@ -646,7 +680,12 @@
       catch(error){if(token!==this._token||this._disposed)return;this.pause();throw error;}
       if(token!==this._token||this._disposed)return;
       this._clearScheduler();
-      const same=id===this._currentId,position=same?this._resumePosition:0;
+      // The shared programme may have changed while autoplay was awaiting a
+      // gesture. Resolve it again before committing the newly resumed source.
+      const latest=this._broadcastPlan();
+      if((latest?.revision??null)!==(broadcast?.revision??null)||latest&&latest.id!==id)return this.play(this._normalTrackId());
+      broadcast=latest;
+      const same=id===this._currentId,position=broadcast?broadcast.position:same?this._resumePosition:0;
       const previous=this._session;this._retire(previous,.25);
       // Keep at most the immediately preceding song's crossfade. Repeated
       // scene changes must not stack three or more independently timed beats.
@@ -659,6 +698,7 @@
       const bus=ctx.createGain(),roomBus=ctx.createGain();bus.gain.value=0;roomBus.gain.value=0;bus.connect(this._compressor);roomBus.connect(this._reverb);
       const session={id,bus,roomBus,score,voices:new Set(),recording:null,recordingTried:false,active:true,start:ctx.currentTime+.055-position,position,eventIndex:0,cycle:0};
       while(session.eventIndex<score.events.length&&score.events[session.eventIndex].beat*score.secondsPerBeat<position)session.eventIndex++;
+      if(broadcast)session.broadcastRevision=broadcast.revision;
       this._session=session;this._sessions.add(session);
       bus.gain.linearRampToValueAtTime(1,ctx.currentTime+.25);
       roomBus.gain.linearRampToValueAtTime(1,ctx.currentTime+.25);
@@ -666,7 +706,7 @@
       if(!this._hidden()&&this._volume)this._schedule();
       else await this._suspendOutput();
       this._armDaypartTimer();
-      if(typeof this._onTrackChange==='function')this._onTrackChange(TRACKS.find(t=>t.id===id));
+      if(typeof this._onTrackChange==='function')this._onTrackChange(trackById.get(id));
       this._notifyState();
     }
     pause(){
@@ -718,12 +758,17 @@
         const seconds=track.recordingOnly?buffer.duration:Math.min(buffer.duration,track.duration);
         if(!Number.isFinite(seconds)||seconds<1)throw new Error('音源の読み込みを完了できませんでした。再生ボタンでお試しください。');
         const source=ctx.createBufferSource(),gain=ctx.createGain(),now=ctx.currentTime;
-        source.buffer=buffer;source.loop=true;source.loopStart=0;source.loopEnd=seconds;
+        const broadcast=session.broadcastRevision===undefined?null:this._broadcastPlan();
+        if(broadcast&&(broadcast.revision!==session.broadcastRevision||broadcast.id!==session.id)){
+          const change=this._syncDaypartTrack(true);if(change)await change;return;
+        }
+        source.buffer=buffer;source.loop=!broadcast||broadcast.mode==='loop';source.loopStart=0;source.loopEnd=seconds;
         source.playbackRate?.setValueAtTime(1,now);source.detune?.setValueAtTime(0,now);
         // Supplied recordings have no substitute synthesized score. Preserve
         // their complete decoded audio and start at the saved position only
         // once loading is complete, without skipping the opening while loading.
         if(track.recordingOnly){session.score.duration=seconds;session.start=now+.025-session.position;}
+        if(broadcast){session.position=broadcast.position%seconds;session.start=now+.025-session.position;}
         const start=Math.max(now+.025,session.start),offset=Math.max(0,start-session.start)%seconds;
         gain.gain.setValueAtTime(0,now);gain.gain.linearRampToValueAtTime(this._audioSession?.state==='interrupted'?0:1,start+.18);
         source.connect(gain);gain.connect(this._master);
@@ -1223,5 +1268,7 @@
   }
   global.SengokuSoundEffects=SengokuSoundEffects;
   global.SENGOKU_MUSIC_TRACKS=TRACKS;
+  global.SENGOKU_BROADCAST_TRACK=BROADCAST_TRACK;
+  global.SENGOKU_BROADCAST_PLAYLIST=BROADCAST_PLAYLIST;
   global.SengokuMusic=SengokuMusic;
 })(typeof window!=='undefined'?window:globalThis);

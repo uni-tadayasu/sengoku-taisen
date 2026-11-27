@@ -252,7 +252,7 @@ Resolved destructive sieges persist their damage and `battle.durability` receipt
 
 
 Base path: `/api/v1`. UTF-8 JSON, except public avatar image responses. JSON success always includes `ok: true`.
-All routes except GET `/config`, GET `/health`, GET `/online`, GET `/players`, GET `/players/:id/profile`, GET `/world-clock`, GET `/field`, GET `/guild/rankings`, GET `/achievements`, GET `/avatars/:userId`, POST `/session`, POST `/devices/link`, POST `/promotion/event`, and POST `/admin/recover` require `Authorization: Bearer <game-token>`. Administrator recovery requires the original operator registration key in its JSON body instead of an existing game token.
+All routes except GET `/config`, GET `/music`, GET `/health`, GET `/online`, GET `/players`, GET `/players/:id/profile`, GET `/world-clock`, GET `/field`, GET `/guild/rankings`, GET `/achievements`, GET `/avatars/:userId`, POST `/session`, POST `/devices/link`, POST `/promotion/event`, and POST `/admin/recover` require `Authorization: Bearer <game-token>`. Administrator recovery requires the original operator registration key in its JSON body instead of an existing game token.
 
 ## Promotion event counts and operator report
 
@@ -356,8 +356,9 @@ Chat GET and letter inbox/thread GET responses additionally include `playerEvalu
 
 | Method / path | Body / query | Result fields, in addition to `ok` |
 |---|---|---|
-| GET `/health` | none | `status:"ready"`, `version:"5.10.0"`, `features:{trades:true,moderation:true,premium:true,timedEvents:true,troopTrades:true,roamingBattles:true,roamingDeployment:true,covertDispatch:true,privatePlayerRoles:true}` |
-| GET `/config` | none | `version:"5.10.0"`, `features:{trades:true,moderation:true,premium:true,timedEvents:true,troopTrades:true,roamingBattles:true,roamingDeployment:true,covertDispatch:true,privatePlayerRoles:true}`, `announcement:string`, `onlineCount:number`, `clock` |
+| GET `/health` | none | `status:"ready"`, `version:"5.10.1"`, `features` including `adminMusicBroadcast:true` |
+| GET `/config` | none | `version:"5.10.1"`, `features` including `adminMusicBroadcast:true`, `announcement:string`, `onlineCount:number`, `clock`, `musicBroadcast`, `serverNow` |
+| GET `/music` | none | `musicBroadcast`, `serverNow` (read-only lightweight polling endpoint) |
 | POST `/session` | `{name?,clan?}` | `token:string`, `user` |
 | GET `/me` | none | `user`, `friends:user[]`, `requests:[{id,name,clan,avatarVersion,evaluation,direction:"incoming"|"outgoing",createdAt}]`, `unreadMail:number` |
 | PATCH `/profile` | `{name,expectedName?}` | `user` |
@@ -1024,6 +1025,60 @@ The first successful claim atomically reserves the single `adminUserId` setting.
 After registration another identity cannot claim, even with the key. The already registered identity can retry using its own bearer token. Use the separate `/admin/recover` flow to authenticate as the original identity after losing its local token; never retry `/admin/claim` on a replacement account as a recovery method.
 Never advertise management enrollment to ordinary players. Public `/config` does not expose registration or recovery capabilities. Only the authenticated admin receives `/me.management.recoveryAvailable`; bind it to that same `/me.user.id` and clear it on identity or role changes. Use the private `/me.user.isAdmin` to show authorized admin tools.
 Announcements are plain text, at most 300 characters; an empty string clears the announcement.
+
+### Global BGM broadcast
+
+Only the primary operator may use the management routes; support staff and normal
+players receive 403. All players, including unregistered title-screen visitors,
+receive the same public `musicBroadcast` in `GET /config`. This object contains
+only `{enabled:boolean,mode:"loop"|"continuous",revision:number,startedAt:ISO|null,
+updatedAt:ISO|null}`. `serverNow` is the server's real UTC time, independent of
+the shared game calendar, speed, pause state or the client's time zone. The
+initial state is OFF, loop mode, revision 0, and null timestamps. No user IDs,
+tokens, uploaded paths or arbitrary media URLs are exposed by this public state.
+
+`GET /music` returns only `{ok:true,musicBroadcast,serverNow}` with `no-store` and
+the same CORS allowlist. It does not authenticate, initialize the game clock,
+settle marches, send notifications or record activity; clients may poll this
+lightweight endpoint every five seconds while visible. Suspend polling while
+hidden, refresh on return, and back off after failures. Keep the existing slower
+`/config` polling interval for general public configuration.
+
+| Method / path | Body | Result fields, in addition to `ok` |
+|---|---|---|
+| GET `/admin/music` | none | `musicBroadcast`, `serverNow` |
+| POST `/admin/music` | `{enabled:boolean,mode:"loop"|"continuous",expectedRevision:nonnegativeInteger,requestId:UUID}` | `musicBroadcast`, `serverNow`, `requestId`, `appliedRevision`, `changed:boolean`, `idempotent:boolean` |
+
+Every field is required and unknown fields are rejected. In particular, clients
+cannot supply the real start time or a media URL. The request UUID is normalized
+to lowercase. A new accepted setting increments the shared revision and sets
+`updatedAt`. Enabling or changing the mode while enabled sets `startedAt` to the
+server time; disabling sets it to null. Saving an identical setting with the
+current revision does not change the revision, start time or update time.
+
+`loop` repeatedly plays the supplied 00004 recording. `continuous` starts with
+00004 and then follows the existing music catalogue in order, looping the
+playlist. The client uses `startedAt` and `serverNow` to join the current position
+when it connects or becomes visible. A global OFF restores normal local BGM
+selection. This control does not override a player's mute, volume, voice-call
+audio focus or the browser's gesture requirement.
+
+New operations use optimistic concurrency: a stale `expectedRevision` returns
+409 `MUSIC_REVISION_CONFLICT`. Read the current state before a new command.
+Retry an uncertain request with its unchanged UUID and body; the receipt and
+state update are committed in one D1 transaction. Reusing a UUID with different
+contents returns 409 `REQUEST_ID_REUSED`. A successful retry returns
+`idempotent:true` and the original `appliedRevision`, but `musicBroadcast` is the
+current shared state so a late retry cannot re-enable an already stopped
+broadcast. Clients must also ignore state snapshots older than their current
+revision. New valid commands are limited to 60 per minute per operator; an
+existing receipt can still be reconciled when that budget has been exhausted.
+
+Migration `0042_admin_music_broadcast` adds a singleton state and immutable
+operation receipts without changing existing player rows. The operator role and
+account access epoch are rechecked in the atomic write and before the response;
+an in-flight role removal or ban cannot modify the transport state. `/health`
+checks both tables before advertising this release as ready.
 
 ## Support staff appointment and removal
 

@@ -12,6 +12,7 @@ vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../music.js'),'utf8'),ca
 const supplied = ['shitaku','asakatsu','hirukatsu','yorukatsu'].map(id=>{
   const entry=catalog.SENGOKU_MUSIC_TRACKS.find(item=>item.id===id);assert(entry,id+' exists in the real player catalogue');return entry;
 });
+supplied.push(catalog.SENGOKU_BROADCAST_TRACK);
 const body = Uint8Array.from([12,21,33,46,57,62,74,84]);
 const cache = new Map(), events = {};
 let offline = false, policy = '', calls = 0, expectedTrack = track;
@@ -77,5 +78,5 @@ function dispatch(url, headers={}) {
     assert.equal(seek.status,206);assert.deepEqual([...new Uint8Array(await seek.arrayBuffer())],[74,84]);assert.equal(calls,1,entry.id+' plays and seeks from cache offline');
   }
   console.log('PASS complete and partial BGM playback, one download, offline seeking, bounded ranges and private response bypass.');
-  console.log('PASS all four supplied recording URLs use the same cache/range route and remain independent of release query values.');
+  console.log('PASS supplied and broadcast recording URLs use the same cache/range route and remain independent of release query values.');
 })().catch(error=>{console.error(error);process.exitCode=1;});

@@ -2,6 +2,7 @@
   "game-layout.bundle.css": [
     "styles.css",
     "social.css",
+    "music-broadcast.css",
     "cloud-sync.css",
     "readability.css",
     "gacha.css",
@@ -141,7 +142,8 @@
     "alliance.js",
     "conquest.js",
     "notifications.js",
-    "public-court.js"
+    "public-court.js",
+    "music-broadcast.js"
   ],
   "game-interface.bundle.js": [
     "live-dom.js",

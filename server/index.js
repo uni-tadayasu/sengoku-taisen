@@ -27,10 +27,11 @@ import {handleVacantGarrisons} from './vacant-garrisons.js';
 import {handleBranches,projectBranchState,applyBranchProgress,reconcileBranchProgress,branchProgressStatements,branchStateGuard,troopTransferGuard} from './branches.js';
 import {relocateResidence} from './relocation.js';
 import {requirePromotionOrigin,recordPromotion,readPromotionReport} from './promotion.js';
+import {readMusicBroadcast,handleAdminMusic} from './admin-music.js';
 import {lordSupportSql,guardLordSupport,ensureResidency,residencySnapshot,residencyDirectory,residencyStart,initialResidencyStatements,residencyTargetGuard,prepareResidencySuccession,prepareResidencyCpuLosses} from './residency.js';
 const API = '/api/v1';
-const API_VERSION = '5.10.0';
-const API_FEATURES = Object.freeze({trades:true,moderation:true,premium:true,timedEvents:true,troopTrades:true,roamingBattles:true,roamingDeployment:true,covertDispatch:true,privatePlayerRoles:true,guildIcons:true,court:true,kyotoGosho:true,branches:true,branchBattles:true,branchFacilities:true,audioCalls:true,progression:true,armyPresets:true,allianceStrategy:true,sharedConquest:true,newcomerProtection:true,webPush:true,battleAdviser:true,battleCatalog:true,eventBattleRewards:true,shogunate:true,attackTravel:true,castleResidency:true,retainerCastleStats:true,residencyRelocation:true,maintenanceUpkeep:true,strongholdDurability:true,chatReplies:true,chatMentions:true,covertReturnTravel:true,allianceUnitTravel:true,legacySaveRecovery:true,displayNameVariants:true,courtOffices:true,serverSummons:true,loginRewards:true,paidRerolls:true,supporterChoices:true,premiumGrowthMetrics:true});
+const API_VERSION = '5.10.1';
+const API_FEATURES = Object.freeze({trades:true,moderation:true,premium:true,timedEvents:true,troopTrades:true,roamingBattles:true,roamingDeployment:true,covertDispatch:true,privatePlayerRoles:true,guildIcons:true,court:true,kyotoGosho:true,branches:true,branchBattles:true,branchFacilities:true,audioCalls:true,progression:true,armyPresets:true,allianceStrategy:true,sharedConquest:true,newcomerProtection:true,webPush:true,battleAdviser:true,battleCatalog:true,eventBattleRewards:true,shogunate:true,attackTravel:true,castleResidency:true,retainerCastleStats:true,residencyRelocation:true,maintenanceUpkeep:true,strongholdDurability:true,chatReplies:true,chatMentions:true,covertReturnTravel:true,allianceUnitTravel:true,legacySaveRecovery:true,displayNameVariants:true,courtOffices:true,serverSummons:true,loginRewards:true,paidRerolls:true,supporterChoices:true,premiumGrowthMetrics:true,adminMusicBroadcast:true});
 const MAX_BODY = 16 * 1024;
 const MAX_SAVE_BODY = 2 * 1024 * 1024;
 const MAX_AVATAR_BYTES = 48 * 1024;
@@ -2628,6 +2629,8 @@ async function route(request, env, now) {
       if(Number(officeSchema?.trigger_count)!==20)throw Error('Court office migration incomplete');
       const rewardSchema=await stmt(db,'SELECT (SELECT starts_at FROM premium_reward_program WHERE id=1) AS reward_program,(SELECT COUNT(*) FROM premium_pass_receipts) AS passes,(SELECT COUNT(*) FROM premium_supporter_periods) AS supporter_periods,(SELECT COUNT(*) FROM premium_supporter_choices) AS supporter_choices,(SELECT COUNT(*) FROM reward_accounts) AS reward_accounts,(SELECT COUNT(*) FROM reward_campaigns) AS reward_campaigns,(SELECT COUNT(*) FROM reward_requests) AS reward_requests,(SELECT COUNT(*) FROM gacha_draws) AS gacha_draws,(SELECT COUNT(*) FROM gacha_daily_usage) AS gacha_daily_usage,(SELECT COUNT(*) FROM login_bonus_claims) AS login_rewards,(SELECT COUNT(*) FROM premium_daily_events) AS premium_metrics,(SELECT COUNT(*) FROM premium_daily_visitors) AS premium_visitors').first();
       if(!Number.isSafeInteger(Number(rewardSchema?.reward_program))||Number(rewardSchema.reward_program)<1)throw Error('Reward program migration incomplete');
+      await readMusicBroadcast(db);
+      await stmt(db,'SELECT request_id FROM music_broadcast_requests LIMIT 1').first();
       await stmt(db,'SELECT reply_to_id,mentions_json FROM messages LIMIT 1').first();
       await stmt(db,'SELECT home_castle_id,travel_phase,travel_json,return_travel_json,departed_elapsed_ms,arrives_elapsed_ms FROM alliance_units LIMIT 1').first();
       await stmt(db,'SELECT staging_castle_id FROM alliance_operations LIMIT 1').first();
@@ -2659,7 +2662,7 @@ async function route(request, env, now) {
       stmt(db, 'SELECT COUNT(DISTINCT user_id) AS count FROM player_presence WHERE online=1 AND last_seen>? AND NOT EXISTS(SELECT 1 FROM player_bans pb WHERE pb.user_id=player_presence.user_id AND pb.active=1)', now-ONLINE_WINDOW),
     ]);
     const settings = Object.fromEntries(rows(result[0]).map(r => [r.key,r.value]));
-    return {ok:true,version:API_VERSION,features:API_FEATURES,announcement:settings.announcement ?? WELCOME,onlineCount:Number(rows(result[1])[0]?.count || 0),clock:await getWorldClock(db,now)};
+    return {ok:true,version:API_VERSION,features:API_FEATURES,announcement:settings.announcement ?? WELCOME,onlineCount:Number(rows(result[1])[0]?.count || 0),clock:await getWorldClock(db,now),musicBroadcast:await readMusicBroadcast(db),serverNow:iso(now)};
   }
   if (path === '/online' && method === 'GET') {
     const cursor=url.searchParams.get('cursor')||'',limitText=url.searchParams.get('limit')||'50';
@@ -2736,6 +2739,7 @@ async function route(request, env, now) {
     return handleEvents({db,user,now,path,method,url,request,helpers:{eventGarrison,fieldAttackPower,registerDefenseResponseGuard:guard=>eventDefenseResponseGuards.set(request,guard),fail,readBody,budget,idField,textField,uid,hash,getUser,getSyncRow,requireAdmin,requireAccountAccess,roleCommitGuard,evaluationRef,fieldWriter,settleWriterCycle,getWorldClock,normalizeGameSave,syncSnapshot,syncLease:SYNC_LEASE,worldClockId:WORLD_CLOCK_ID}});
   }
   let user = await authenticate(request,db,now);
+  if(path==='/admin/music')return handleAdminMusic({db,user,request,method,now,helpers:{fail,readBody,budget,hash,requireAdmin,requireAccountAccess,roleCommitGuard,registerResponseGuard:guard=>courtResponseGuards.set(request,guard)}});
   const expansionContext={db,env,user,now,path,method,url,request,helpers:{fail,readBody,budget,idField,textField,uid,hash,getUser,getSyncRow,requireAdmin,requireAccountAccess,roleCommitGuard,accountCommitGuard,evaluationRef,fieldWriter,settleWriterCycle,getWorldClock,normalizeGameSave,syncSnapshot,staffBaseDto,reconcileCovertProgress,reconcileBranchProgress,branchStateGuard,branchProgressStatements,covertIncidentStatements,staffPersonalProgressStatement,saveAchievements,achievementStatement,syncLease:SYNC_LEASE,worldClockId:WORLD_CLOCK_ID}};
   if(path==='/castles/residency/relocate'&&method==='POST')return relocateResidence(expansionContext,await readBody(request));
   if(path==='/castles/residency/start'&&method==='POST')return residencyStart(expansionContext,await readBody(request));
@@ -3187,6 +3191,12 @@ export default {
         const headers=new Headers({'Access-Control-Allow-Methods':'GET,POST,PUT,PATCH,DELETE,OPTIONS','Access-Control-Allow-Headers':'Authorization,Content-Type','Access-Control-Max-Age':'600','Cache-Control':'no-store','Vary':'Origin','X-Content-Type-Options':'nosniff'});
         if(origin!==null) headers.set('Access-Control-Allow-Origin',origin);
         return new Response(null,{status:204,headers});
+      }
+      // A five-second audience poll must not perform gameplay maintenance,
+      // create a world-clock row, authenticate, or record player activity.
+      if(path===API+'/music'&&request.method==='GET'){
+        if(!env.DB?.prepare)fail(503,'SERVICE_UNAVAILABLE','通信サービスの準備中です。');
+        return response({ok:true,musicBroadcast:await readMusicBroadcast(env.DB),serverNow:iso(Date.now())},200,origin);
       }
       // Public discovery counters do not run gameplay projection, marches or
       // notification dispatch. A missing analytics migration affects only them.

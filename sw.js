@@ -1,5 +1,5 @@
 /* 本体は先に保存。大きな絵巻は、実際に開いたものから保存します。 */
-const RELEASE='5.10.0-20261127';
+const RELEASE='5.10.1-20261127';
 const CACHE='sengoku-taisen-v'+RELEASE;
 const scopeURL=()=>self.registration?.scope||self.location.origin+'/';
 const currentMatch=(request,name=CACHE)=>caches.open(name).then(cache=>cache.match(request));
@@ -9,7 +9,7 @@ const optionalCode=new Set([
   './operator-message-templates.js','./operator-template-picker.js','./operator-template-picker.css',
   './promotion.css','./promotion-share.js','./public-growth.js','./english-introduction.css','./guide.css','./share.css','./brand-discovery.css','./public-luxury.js','./public-luxury.css','./public-search.js','./variant-text.js','./premium-catalog.js','./premium.js','./premium.css',
   './interaction-motion.js','./interaction-motion.css','./selection-lock.js','./selection-lock.css','./image-protect.js','./image-protect.css','./button-artwork.css',
-  './premium-runtime.js','./premium-appearance.css','./music.js','./tools/music-audition.js','./map-data.js'
+  './premium-runtime.js','./premium-appearance.css','./music-broadcast.js','./music-broadcast.css','./music.js','./tools/music-audition.js','./map-data.js'
 ]);
 const compactArtwork={'neon-command':480,war:240,town:240,archive:240,brand:48,emblem:96};
 // Cache one small panorama per appearance and time of day. Offline players
@@ -113,7 +113,7 @@ async function clientCache(event){
 const musicFiles = new Set([
   'town-dawn','castle-evening','fields-green','market-breeze','world-march','mountain-road','officers-oath','council-lantern',
   'army-banner','research-stars','battle-storm','battle-siege','victory-horizon','defeat-moon','winter-silence','unification',
-  'shitaku','asakatsu','hirukatsu','yorukatsu'
+  'shitaku','asakatsu','hirukatsu','yorukatsu','operation-broadcast'
 ].map(id => './assets/music/' + id + '.mp3'));
 const loadingMusic = new Map();
 function mayStore(response) {

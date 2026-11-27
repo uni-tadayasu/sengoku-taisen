@@ -6,6 +6,12 @@ on:
     paths:
       - '.github/workflows/music.yml'
       - 'music.js'
+      - 'music-broadcast.js'
+      - 'music-broadcast.css'
+      - 'social.js'
+      - 'server/index.js'
+      - 'server/admin-music.js'
+      - 'server/drizzle/0042_admin_music_broadcast.sql'
       - 'app.js'
       - 'boot.js'
       - '*.bundle.js'
@@ -19,6 +25,7 @@ on:
       - 'tools/game-entry.json'
       - 'tests/*music*'
       - 'tests/test-supplied-recordings.cjs'
+      - 'tests/test-broadcast-recording.cjs'
       - 'tests/test-settings-usability.cjs'
       - 'tests/test-title-entry.cjs'
       - 'tests/helpers/**'
@@ -27,6 +34,12 @@ on:
     paths:
       - '.github/workflows/music.yml'
       - 'music.js'
+      - 'music-broadcast.js'
+      - 'music-broadcast.css'
+      - 'social.js'
+      - 'server/index.js'
+      - 'server/admin-music.js'
+      - 'server/drizzle/0042_admin_music_broadcast.sql'
       - 'app.js'
       - 'boot.js'
       - '*.bundle.js'
@@ -40,6 +53,7 @@ on:
       - 'tools/game-entry.json'
       - 'tests/*music*'
       - 'tests/test-supplied-recordings.cjs'
+      - 'tests/test-broadcast-recording.cjs'
       - 'tests/test-settings-usability.cjs'
       - 'tests/test-title-entry.cjs'
       - 'tests/helpers/**'
@@ -73,6 +87,12 @@ jobs:
         run: node tests/test-supplied-recordings.cjs
       - name: Check original scores and playback lifecycle
         run: node tests/test-music.mjs
+      - name: Check shared operator BGM playback and controls
+        run: |
+          node tests/test-music-broadcast.mjs
+          node tests/test-music-broadcast-ui.cjs
+          node tests/test-music-broadcast-integration.cjs
+          node tests/test-broadcast-recording.cjs
       - name: Check menu and time-of-day selection
         run: node tests/test-music-time-of-day.mjs
       - name: Check music preferences and save boundaries

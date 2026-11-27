@@ -30,7 +30,7 @@ function appFixture(hour,minute=0,second=0,options={}){
     toast:(...args)=>calls.push(['toast',...args]),modal:()=>calls.push('music-modal'),pageControls:()=>'',esc:String,
     mutationActions:new Set(),requireWritable:()=>true,$:()=>null,updateCatalogSearch:()=>false,updateBranchTroopDraft:()=>false
   });
-  const stateLine=appSource.split('\n').find(line=>line.startsWith('  let music=null,voiceAudioActive=false'));
+  const stateLine=appSource.split('\n').filter(line=>line.startsWith('  let music=null,voiceAudioActive=false')||line.startsWith('  let musicBroadcastState=')).join('\n');
   const start=appSource.indexOf('  function setVoiceActive(value)'),clickStart=appSource.indexOf("  document.addEventListener('click',async event=>");
   assert(start>=0&&clickStart>start,'production music helpers are loaded');
   const clickEnd=appSource.indexOf("\n  document.addEventListener('submit'",clickStart);

@@ -46,7 +46,11 @@ const totalGzipBytes = rows.reduce((sum,row)=>sum+row.gzipBytes,0);
 // gzip bytes, up 74,760 / 20,640 from v5.9.17. Keep only 2,905 raw /
 // 1,489 gzip bytes of headroom; the new
 // SVG artwork is a separate lazy resource and is not hidden in this allowance.
-const rawBudget=3478000,gzipBudget=969000;
+// v5.10.1 adds shared BGM playback, the operator controls and revision-aware
+// public configuration polling. Measured: 3,498,292 raw / 973,909 gzip bytes,
+// +23,197 / +6,398 from v5.10.0. Keep 2,708 raw / 1,391 gzip bytes of headroom.
+// The supplied MP3 is fetched on demand, outside these initial bundles.
+const rawBudget=3501000,gzipBudget=975300;
 assert(totalBytes <= rawBudget, `Initial bundles exceed the ${rawBudget} byte budget: ${totalBytes}`);
 assert(totalGzipBytes <= gzipBudget, `Initial bundles exceed the ${gzipBudget} gzip byte budget: ${totalGzipBytes}`);
 const html = fs.readFileSync(path.join(root,'index.html'),'utf8');
