@@ -25,7 +25,7 @@ async function status(ctx,snapshot=null){
  snapshot=snapshot||await h.syncSnapshot(db,await h.getSyncRow(db,user.id),current,ctx.url.searchParams.get('deviceId')||null,now);
  const empty={ok:true,...snapshot,campaignId:null,commandCost:1,command:{current:0,max:0},army:{troops:0,capacity:0,transportCapacity:0,recruitmentCapacity:0,recallCapacity:0},garrisons:[],availableCastles:[]};
  if(!snapshot.save)return empty;
- const campaignId=snapshot.save.state.walking.campaignId,game=GameEngine.fromSave(snapshot.save,GAME_OFFICERS,{isAdmin:!!current.is_admin,isStaff:!!current.is_staff,staffBase:snapshot.staffBase||null});
+ const campaignId=snapshot.save.state.walking.campaignId,game=GameEngine.fromSave(snapshot.save,GAME_OFFICERS,{isAdmin:!!current.is_admin,isDeputy:!!current.is_deputy,isStaff:!!current.is_staff,staffBase:snapshot.staffBase||null});
  const owned=rows(await stmt(db,'SELECT castle_id,troops FROM vacant_garrisons WHERE actor_id=? AND campaign_id=? AND troops>0 ORDER BY castle_id',user.id,campaignId).all());
  const occupied=rows(await stmt(db,`SELECT DISTINCT vg.castle_id FROM vacant_garrisons vg JOIN player_saves ps ON ps.user_id=vg.actor_id WHERE vg.actor_id<>? AND vg.troops>0 AND ${ACTIVE_CAMPAIGN}`,user.id).all());
  const blocked=new Set(occupied.map(row=>row.castle_id)),vacant=await h.listVacantCastles(db,current,snapshot.clock,now),vacantIds=new Set(vacant.map(row=>row.id)),ownByCastle=new Map(owned.map(row=>[row.castle_id,Number(row.troops)]));
@@ -83,7 +83,7 @@ async function mutation(ctx,action){
  const shared=user.is_staff&&!user.is_admin?await h.staffBaseDto(db,user,clock,ctx.now):null;
  const maintenanceAuthority=protectMaintenance(branch,await maintenanceContext(db,user.id,save,clock));
  if(maintenanceAuthority.hasMore||maintenanceAuthority.asOfElapsedMs>clock.elapsedMs)h.fail(409,'CLOCK_STALE','維持費の時間経過を同期しています。最新の保存へ同期してください。');
- const game=GameEngine.fromSave(save,GAME_OFFICERS,{isAdmin:!!user.is_admin,isStaff:!!user.is_staff,staffBase:shared,maintenanceAuthority,branchAuthority:{resolvedElapsedMs:branch.resolvedElapsedMs}});
+ const game=GameEngine.fromSave(save,GAME_OFFICERS,{isAdmin:!!user.is_admin,isDeputy:!!user.is_deputy,isStaff:!!user.is_staff,staffBase:shared,maintenanceAuthority,branchAuthority:{resolvedElapsedMs:branch.resolvedElapsedMs}});
  const advanced=game.applyWorldClock(clock,{maxSeconds:60,deferCycleSettlement:true});
  if(!advanced.ok||advanced.pending||advanced.settlementRequired)h.fail(409,'CLOCK_STALE','共通時計と本拠を同期してから兵を移動してください。');
  if(game.state.gameOver)h.fail(409,'GARRISON_UNAVAILABLE','本拠の状態を確認してから兵を移動してください。');

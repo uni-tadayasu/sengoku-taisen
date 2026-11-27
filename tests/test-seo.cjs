@@ -302,7 +302,7 @@ test('current battle limits and automatic mail are explained in public HTML with
   assert(article);assert(!/\bhidden\b|aria-hidden=["']true/.test(article[1]));
   const table=article[2].match(/<table\b[^>]*><caption>共通フィールドの城・成長上限・勝利時の扱い<\/caption>([\s\S]*?)<\/table>/)?.[1];assert(table);
   const rows=[...table.matchAll(/<tr>([\s\S]*?)<\/tr>/g)].slice(1).map(match=>normalized(match[1]));
-  assert.equal(rows.length,3);assert.match(rows[0],/^江戸城・京都御所江戸城Lv\.64／京都御所Lv\.128報酬戦/);assert(rows[0].includes('各500'));assert(rows[0].includes('占領できず'));
+  assert.equal(rows.length,3);assert.match(rows[0],/^江戸城・京都御所・鹿児島城江戸城Lv\.64／京都御所Lv\.128／鹿児島城Lv\.32報酬戦/);assert(rows[0].includes('各500'));assert(rows[0].includes('占領できず'));
   assert.match(rows[1],/^二条城・大坂城・名古屋城Lv\.48占領戦/);assert(rows[1].includes('自分の所領'));
   assert.match(rows[2],/^通常の本拠Lv\.32限定襲撃/);assert(rows[2].includes('攻撃側への占領移転はなく'));assert(rows[2].includes('家臣が待っている場合'));assert(rows[2].includes('入城順で次の領主へ交代'));
   const mail=article[2].match(/<section\b([^>]*\bid="system-mail"[^>]*)>([\s\S]*?)<\/section>/);assert(mail);assert(!/\bhidden\b|aria-hidden=["']true/.test(mail[1]));

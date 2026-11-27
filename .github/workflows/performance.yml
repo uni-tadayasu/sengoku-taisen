@@ -136,6 +136,14 @@ jobs:
           node server/test-legacy-save-recovery.mjs
           node server/test-world-clock.mjs
           node server/test-officer-health.mjs
+      - name: Verify expulsion, deputy appointment and protected Kagoshima
+        run: |
+          node server/test-expulsion.mjs
+          node server/test-deputy-operator.mjs
+          node server/test-deputy-projection.mjs
+          node tests/test-deputy-engine.cjs
+          node tests/test-deputy-sync.cjs
+          node tests/test-expulsion-sync.cjs
       - name: Verify authoritative sync, field migration and world cycles
         run: |
           node server/test-sync.mjs

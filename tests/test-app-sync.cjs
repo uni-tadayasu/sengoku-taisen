@@ -101,6 +101,13 @@ test('cloud payload cannot grant operator privileges without verified metadata',
   assert.equal(c.game.isAdmin,true);assert.equal(c.game.state.home,'edo');
   assert.equal(c.game.ownsVariant('of_b0616adde162','U'),true);
 });
+test('deputy cloud and recovery saves require verified metadata and preserve the personal clan',()=>{
+  const {c}=setup(),deputy=new SengokuEngine({officers:roster,clan:'伊達家',isDeputy:true,seed:17}),snapshot=JSON.parse(deputy.exportSave());
+  snapshot.state.isDeputy=true;
+  assert(c.applyCloudSave(snapshot,{isAdmin:false,isStaff:false,isDeputy:false,backup:false}).ok);assert.equal(c.game.isDeputy,false);assert.notEqual(c.game.state.home,'kagoshima');
+  assert(c.applyCloudSave(snapshot,{isAdmin:false,isStaff:false,isDeputy:true,backup:false}).ok);assert.equal(c.game.isDeputy,true);assert.equal(c.game.state.clan,'伊達家');assert.equal(c.game.state.home,'kagoshima');assert.equal(c.game.isAdmin,false);assert.equal(c.game.isStaff,false);
+  const ordinary=c.prepareRecoverySave(snapshot,{isDeputy:false}),verified=c.prepareRecoverySave(snapshot,{isDeputy:true});assert(ordinary.ok&&verified.ok);assert.notEqual(ordinary.save.state.home,'kagoshima');assert.equal(verified.save.state.home,'kagoshima');
+});
 test('operator restore is idempotent, writer-only and rolls back on save failure',()=>{
   const {c}=setup({admin:true});const key='of_b0616adde162:U';
   c.game.state.officerVariants=c.game.state.officerVariants.filter(v=>v!==key);

@@ -11,7 +11,7 @@ const drain=async()=>{for(let i=0;i<12;i++)await Promise.resolve();};
 const error=(message,status,code)=>Object.assign(Error(message),{status,code});
 const copy=value=>JSON.parse(JSON.stringify(value));
 const tests=[];const test=(name,run)=>tests.push({name,run});
-function target(id=TARGET,active=false){return{player:{id,name:id===TARGET?'対象の領主':'既にBAN中の領主',isAdmin:false,isStaff:false},ban:{active,revision:active?1:0,reason:active?'確認済みの理由':'',bannedAt:active?'2026-11-21T10:00:00Z':null,bannedBy:active?OWNER:null,updatedAt:'2026-11-21T10:00:00Z'},counts:{chatMessages:active?0:3,letterMessages:active?0:2,pendingTrades:active?0:1},canBan:!active,canUnban:active,contentRevision:0};}
+function target(id=TARGET,active=false){return{player:{id,name:id===TARGET?'対象の領主':'既にBAN中の領主',isAdmin:false,isStaff:false},ban:{active,revision:active?1:0,reason:active?'確認済みの理由':'',bannedAt:active?'2026-11-21T10:00:00Z':null,bannedBy:active?OWNER:null,updatedAt:'2026-11-21T10:00:00Z'},counts:{chatMessages:active?0:3,letterMessages:active?0:2,pendingTrades:active?0:1},canBan:!active,canUnban:active,canExpel:!active,expulsion:{revision:0,pending:false,castleId:'kiyosu',castleName:'清洲城',role:'lord',lordEpoch:2,expelledAt:null,reason:'',blockedReason:''},contentRevision:0};}
 function setup({storage=new Map(),server,user={id:OWNER,name:'運営',isAdmin:true,isStaff:false}}={}){
   const data=server||{targets:new Map([[TARGET,target()],[ 'u_banned',target('u_banned',true)]]),receipts:new Map(),contentRevision:0,mutations:0};
   let actor=user,epoch=1,privilege=1,serial=0,handler=null;
@@ -22,6 +22,14 @@ function setup({storage=new Map(),server,user={id:OWNER,name:'運営',isAdmin:tr
     if(url.pathname==='/admin/moderation/players')return{ok:true,players:[...data.targets.values()].map(item=>({...item.player,banned:item.ban.active}))};
     if(url.pathname==='/admin/moderation/target')return{ok:true,...view(url.searchParams.get('playerId'))};
     if(url.pathname==='/admin/moderation/bans')return{ok:true,bans:[...data.targets.values()].filter(item=>item.ban.active).map(item=>({player:copy(item.player),ban:copy(item.ban)})),nextCursor:null,contentRevision:data.contentRevision};
+    if(route==='/admin/moderation/expel'&&options.method==='POST'){
+      const {requestId,targetPlayerId,expectedRevision,expectedCastleId,expectedLordEpoch,reason}=options.data,prior=data.receipts.get(requestId);if(prior)return{ok:true,...view(targetPlayerId),receipt:copy(prior),idempotent:true};
+      const item=data.targets.get(targetPlayerId),ex=item.expulsion;
+      if(!item.canExpel||ex.revision!==expectedRevision||ex.castleId!==expectedCastleId||ex.lordEpoch!==expectedLordEpoch)throw error('拠点の所属が変わりました。確認し直してください。',409,'EXPULSION_CHANGED');
+      const receipt={action:'expel',requestId,actorPlayerId:actor.id,targetPlayerId,castleId:ex.castleId,castleName:ex.castleName,role:ex.role,released:ex.role==='lord',reason};
+      item.expulsion={...ex,revision:ex.revision+1,pending:true,role:null};item.canExpel=false;data.mutations++;data.receipts.set(requestId,receipt);
+      return{ok:true,...view(targetPlayerId),receipt:copy(receipt),idempotent:false};
+    }
     if(route==='/admin/moderation'&&options.method==='POST'){
       const {requestId,targetPlayerId,action,expectedRevision,reason}=options.data,prior=data.receipts.get(requestId);if(prior)return{ok:true,...view(targetPlayerId),receipt:copy(prior),idempotent:true};
       const item=data.targets.get(targetPlayerId);if(item.ban.revision!==expectedRevision)throw error('対象の状態が更新されました。',409,'MODERATION_REVISION_CONFLICT');
@@ -125,9 +133,43 @@ test('names, reasons and count data are validated and escaped in the destructive
   assert(!html.includes('<img'));assert(!html.includes('<script>'));assert(html.includes('&lt;img'));assert(html.includes('&lt;script&gt;'));assert(html.includes('未成立の交易を取消'));
 });
 
+test('expulsion reviews the current base and sends a separate action without deleting posts or banning',async()=>{
+  const h=setup();await h.controller.open();await h.controller.select(TARGET);
+  h.data.targets.get(TARGET).expulsion={...h.data.targets.get(TARGET).expulsion,castleId:'himeji',castleName:'姫路城',lordEpoch:8};
+  h.controller.setReason('長期未利用による拠点整理');await h.controller.prepare('expel');const record=h.controller.getState().confirm;
+  assert.equal(record.data.expectedCastleId,'himeji');assert.equal(record.data.expectedLordEpoch,8);assert.equal(record.data.expectedRevision,0);assert.equal(h.posts().length,0);
+  const markup=confirmationMarkup(record);assert(markup.includes('姫路城'));assert(markup.includes('他のプレイヤーがこの城を選べる'));assert(markup.includes('資産は現在残高と開始時の額の少ない方'));assert(markup.includes('施設・研究・戦役は初期化'));assert(!markup.includes('BANして投稿を削除'));
+  assert.equal(await h.controller.confirm(),true);assert.equal(h.posts()[0].route,'/admin/moderation/expel');assert(!Object.hasOwn(h.posts()[0].options.data,'action'));
+  const result=h.data.targets.get(TARGET);assert.equal(result.ban.active,false);assert.equal(result.counts.chatMessages,3);assert.equal(result.counts.letterMessages,2);assert.equal(result.expulsion.pending,true);assert.equal(h.controller.getState().view,'search');assert.match(h.controller.getState().status,/他のプレイヤーが選べる/);h.controller.dispose();
+});
+test('retainer expulsion explicitly preserves the current lord and other retainers',async()=>{
+  const h=setup();h.data.targets.get(TARGET).expulsion.role='retainer';await h.controller.open();await h.controller.select(TARGET);await h.controller.prepare('expel');
+  assert.match(confirmationMarkup(h.controller.getState().confirm),/現在の領主と他の家臣はそのまま/);assert(await h.controller.confirm());assert.match(h.controller.getState().status,/対象の家臣を除籍/);assert(!h.controller.getState().status.includes('領主枠を空け'));h.controller.dispose();
+});
+test('expulsion rejects a changed lord tenure and requires renewed review',async()=>{
+  const h=setup();await h.controller.open();await h.controller.select(TARGET);await h.controller.prepare('expel');h.data.targets.get(TARGET).expulsion.lordEpoch++;
+  assert.equal(await h.controller.confirm(),false);assert.equal(h.controller.getState().pending,null);assert.equal(h.controller.getState().confirm,null);assert.equal(h.data.mutations,0);
+  await h.controller.prepare('expel');assert.equal(h.controller.getState().confirm.data.expectedLordEpoch,3);assert(await h.controller.confirm());h.controller.dispose();
+});
+test('an uncertain expulsion reloads and retries the same reviewed base without a second mutation',async()=>{
+  const h=setup();await h.controller.open();await h.controller.select(TARGET);await h.controller.prepare('expel');
+  h.setHandler(async(route,options,base)=>{const result=await base(route,options);if(options.method==='POST')throw Error('reply lost');return result;});
+  assert.equal(await h.controller.confirm(),false);const pending=h.controller.getState().pending;assert(pending);assert.equal(h.data.mutations,1);h.controller.dispose();
+  const next=setup({storage:h.storage,server:h.data});await next.controller.open();assert(await next.controller.retry());assert.equal(h.data.mutations,1);
+  const expected={...pending.data};delete expected.action;assert.deepEqual(next.posts()[0].options.data,expected);assert.equal(next.controller.getState().pending,null);next.controller.dispose();
+});
+test('shared court and deputy roles cannot be expelled even when a malformed response enables the action',async()=>{
+  for(const role of ['isAdmin','isStaff','isDeputy']){
+    const h=setup();h.data.targets.get(TARGET).player[role]=true;await h.controller.open();await h.controller.select(TARGET);await h.controller.prepare('expel');assert.equal(h.controller.getState().confirm,null);assert.equal(h.posts().length,0);h.controller.dispose();
+  }
+  const item=target();item.expulsion.castleName='<img src=x onerror=attack()>';
+  assert(!confirmationMarkup({target:item,data:{action:'expel',expectedCastleId:'kiyosu'}}).includes('<img'));
+  item.expulsion.lordEpoch=-1;assert.equal(cleanTarget(item).canExpel,false);
+});
+
 function socialHarness(){
-  const requests=[],storage=new Map(),revisions=[],events={suspended:0,invalidated:0,letters:0,tradeDisposed:0},TOKEN='a'.repeat(64);let handler=async()=>({ok:true}),t;
-  const context={console,URL,URLSearchParams,AbortController,setTimeout,clearTimeout,crypto:crypto.webcrypto,document:{readyState:'loading',hidden:false,addEventListener(){},removeEventListener(){}},localStorage:{getItem:key=>storage.get(key)??null,setItem:(key,value)=>storage.set(key,value),removeItem:key=>storage.delete(key)},SENGOKU_API_BASE:'https://api.example.invalid',fetch:async(url,options)=>{requests.push({url,options});const result=await handler(url,options);return{ok:!result.__status,status:result.__status||200,json:async()=>result};},SengokuBridge:{setRoleAccess(){},setSyncAccess(){},toast(){}},SengokuLetters:{refreshIdentity(){events.letters++;},observeContentRevision:value=>revisions.push(value)},SengokuTrade:{dispose(){events.tradeDisposed++;},refreshIdentity(){}},SengokuModeration:{refreshIdentity(){}},SengokuCloudSync:{stop(){},start(){},invalidateAccountAccess(){events.invalidated++;t.acceptUser(null,{fromSync:true});},suspendAccount(value){events.suspended++;t.acceptUser({id:value.playerId,isBanned:true,isAdmin:false,isStaff:false},{fromSync:true});}}};
+  const requests=[],storage=new Map(),revisions=[],events={suspended:0,invalidated:0,letters:0,tradeDisposed:0,roles:[]},TOKEN='a'.repeat(64);let handler=async()=>({ok:true}),t;
+  const context={console,URL,URLSearchParams,AbortController,setTimeout,clearTimeout,crypto:crypto.webcrypto,document:{readyState:'loading',hidden:false,addEventListener(){},removeEventListener(){}},localStorage:{getItem:key=>storage.get(key)??null,setItem:(key,value)=>storage.set(key,value),removeItem:key=>storage.delete(key)},SENGOKU_API_BASE:'https://api.example.invalid',fetch:async(url,options)=>{requests.push({url,options});const result=await handler(url,options);return{ok:!result.__status,status:result.__status||200,json:async()=>result};},SengokuBridge:{setRoleAccess(value){events.roles.push(value);},setSyncAccess(){},toast(){}},SengokuLetters:{refreshIdentity(){events.letters++;},observeContentRevision:value=>revisions.push(value)},SengokuTrade:{dispose(){events.tradeDisposed++;},refreshIdentity(){}},SengokuModeration:{refreshIdentity(){}},SengokuCloudSync:{stop(){},start(){},invalidateAccountAccess(){events.invalidated++;t.acceptUser(null,{fromSync:true});},suspendAccount(value){events.suspended++;t.acceptUser({id:value.playerId,isBanned:true,isAdmin:false,isStaff:false},{fromSync:true});}}};
   context.window=context;vm.createContext(context);let source=fs.readFileSync(path.join(__dirname,'../social.js'),'utf8');source=source.replace('global.SengokuSocial={open','global.__moderationSocial={s,api,loadChat,renderMessages,acceptUser,markAccountBanned,observeContentRevision,adminView,tabs,setUI:value=>{dialog=value;}};global.SengokuSocial={open');vm.runInContext(source,context);t=context.__moderationSocial;t.s.identity={id:OWNER,token:TOKEN};t.s.user={id:OWNER,name:'運営',isAdmin:true,isStaff:false,guildId:null};storage.set('sengoku-online-identity-v1',JSON.stringify(t.s.identity));
   return{context,t,requests,storage,revisions,events,TOKEN,setHandler:value=>handler=value};
 }
@@ -177,6 +219,37 @@ test('non-sync ACCOUNT_ACCESS_CHANGED invalidates older responses and suspends w
   const count=h.requests.length;await assert.rejects(h.t.api('/sync/lease',{method:'POST',data:{}}),error=>error.code==='ACCOUNT_ACCESS_CHANGED');assert.equal(h.requests.length,count);assert.equal(h.context.SengokuSocial.getModerationContext().epoch,before);assert.equal(h.t.s.identity.token,h.TOKEN);
   h.setHandler(async()=>({ok:true,user:{id:OWNER,name:'運営',isAdmin:true}}));const latest=await h.t.api('/sync?deviceId=device');h.t.acceptUser(latest.user,{fromSync:true});
   assert.equal(h.t.s.accountAccessPending,null);await h.t.api('/sync/lease',{method:'POST',data:{deviceId:'device'}});assert.equal(h.requests.length,count+2);
+});
+
+test('BASE_EXPELLED invalidates a stale gameplay request without suspending the account',async()=>{
+  const h=socialHarness();h.setHandler(async()=>({__status:409,ok:false,error:{code:'BASE_EXPELLED',message:'拠点を選び直してください。'}}));
+  await assert.rejects(h.t.api('/sync',{method:'PUT',data:{save:{}}}),error=>error.code==='ACCOUNT_ACCESS_CHANGED');assert.equal(h.events.invalidated,1);assert.equal(h.events.suspended,0);assert.equal(h.t.s.accountBanned,null);assert.equal(h.t.s.identity.token,h.TOKEN);
+});
+test('deputy transport remains primary-only and rejects a late result after role loss',async()=>{
+  const h=socialHarness(),gate=deferred();assert(h.t.adminView().includes('サブ運営'));
+  await h.context.SengokuSocial.deputyRequest('/admin/deputy');assert(h.requests.at(-1).url.endsWith('/admin/deputy'));
+  assert.throws(()=>h.context.SengokuSocial.deputyRequest('/admin/deputy?all=1'),/操作/);
+  h.setHandler(()=>gate.promise);const task=h.context.SengokuSocial.deputyRequest('/admin/deputy',{method:'POST',data:{}});h.t.acceptUser({id:OWNER,name:'別役職',isAdmin:false,isDeputy:false});gate.resolve({ok:true,revision:1,deputy:null});await assert.rejects(task,error=>error.code==='STALE_IDENTITY');
+  h.t.acceptUser({id:OWNER,name:'サブ運営',isAdmin:false,isDeputy:true},{fromSync:true});h.t.acceptUser({id:OWNER,name:'サブ運営',isAdmin:false,isDeputy:true});
+  assert.equal(h.context.SengokuSocial.getUser().isDeputy,true);assert.equal(h.events.roles.at(-1).isDeputy,true);assert.equal(h.events.roles.at(-1).isAdmin,false);assert.equal(h.events.roles.at(-1).isStaff,false);
+  assert.throws(()=>h.context.SengokuSocial.deputyRequest('/admin/deputy'),/運営権限/);assert.throws(()=>h.context.SengokuSocial.moderationRequest('/admin/moderation/bans'),/運営権限/);
+  h.t.acceptUser({id:OWNER,name:'解任',isDeputy:false});assert.equal(h.events.invalidated,1);assert.equal(h.t.s.user,null);
+});
+test('the real deputy controller sends appointment and dismissal JSON through the social transport',async()=>{
+  const h=socialHarness(),Deputy=require('../deputy-operator.js'),person=target().player;let revision=0,deputy=null;
+  h.setHandler(async(url,options)=>{
+    const route=new URL(url).pathname.replace(/^\/api\/v1(?=\/)/,'');
+    if(route==='/admin/moderation/players')return{ok:true,players:[person]};
+    assert.equal(route,'/admin/deputy');
+    if(options.method==='POST'){
+      const body=JSON.parse(options.body);assert.equal(body.targetPlayerId,TARGET);assert.equal(body.expectedRevision,revision);assert.equal(typeof body.requestId,'string');assert(['appoint','dismiss'].includes(body.action));
+      revision++;deputy=body.action==='appoint'?{...person,isDeputy:true}:null;return{ok:true,revision,deputy,action:body.action,idempotent:false};
+    }
+    return{ok:true,revision,deputy};
+  });
+  const social=h.context.SengokuSocial,controller=Deputy.create({storage:h.context.localStorage,getUser:()=>social.getUser(),getContext:()=>social.getModerationContext(),uuid:()=> 'transport-operation-'+revision,request:(route,options)=>route==='/admin/deputy'?social.deputyRequest(route,options):social.moderationRequest(route,options)});
+  assert(await controller.mount(null),controller.getState().error);controller.setQuery('対象');assert(await controller.search());assert(controller.prepare('appoint',TARGET));assert(await controller.confirm());assert.equal(controller.getState().deputy.id,TARGET);
+  assert(controller.prepare('dismiss'));assert(await controller.confirm());assert.equal(controller.getState().deputy,null);assert.equal(revision,2);assert.equal(h.requests.filter(row=>row.options.method==='POST').length,2);controller.dispose();
 });
 
 (async()=>{for(const {name,run}of tests){await run();console.log('PASS '+name);}console.log(tests.length+' moderation, privacy, deletion and suspension UI checks passed. No network requests were made.');})().catch(error=>{console.error(error);process.exitCode=1;});

@@ -27,7 +27,7 @@ await scope('field departure escrows everything, short distance arrives exactly 
  await status(h,p);const replay=(await h.api('/field/attack',post(p,body))).data;assert(replay.battle);assert.equal(count(h,'field_battles'),1);assert.equal(state(h,p).troops,troops);assert.equal(row(h,p).lease_expires_at,0,'trusted arrival does not create a browser lease');
 });
 await scope('far destinations take longer and offline scheduled settlement continues after writer lease expires',async h=>{
- const p=await player(h,'遠距離の領主'),t=await enemy(h,'遠方の領主',s=>{s.castles.kagoshima.owner=s.clan;s.home='kagoshima';});
+ const p=await player(h,'遠距離の領主'),t=await enemy(h,'遠方の領主',s=>{s.castles.uchijo.owner=s.clan;s.home='uchijo';});
  const r=(await h.api('/field/attack',post(p,fieldBody(h,p,t)))).data;assert(r.march.distanceKm>500);assert(r.march.durationMs>250000);
  h.now+=30000;assert.equal((await status(h,p)).active.length,1);h.now+=r.march.durationMs;
  await worker.scheduled({},h.env,{});assert.equal(h.sql.prepare('SELECT status FROM battle_marches WHERE id=?').get(r.march.id).status,'resolved');assert.equal(count(h,'field_battles'),1);const final=await status(h,p);assert.equal(final.active.length,0);assert.equal(final.save.state.worldClock.elapsedMs,final.clock.elapsedMs);
@@ -154,7 +154,7 @@ await scope('a delayed offline scout sweep completes both legs against the origi
 await scope('older long covert journeys cannot starve a later short journey in the bounded background sweep',async h=>{
  await h.api('/world-clock');const long=[];let short;
  for(let i=0;i<14;i++){
-  h.now++;const p=await player(h,'派遣順序'+i,s=>{s.castles.nijo.owner=s.clan;s.castles.nijo.troops=50000;}),body=extra=>({requestId:crypto.randomUUID(),deviceId:p.deviceId,expectedRevision:row(h,p).revision,campaignId:state(h,p).walking.campaignId,sequence:state(h,p).covert.sequence,...extra});await h.api('/covert/hire',post(p,body({sourceCastleId:'nijo',count:10})));const departure=(await h.api('/covert/dispatch',post(p,body({sourceCastleId:'nijo',target:{kind:'castle',castleId:i<13?'kagoshima':'nijo'},count:5,mode:'scout'})))).data;
+  h.now++;const p=await player(h,'派遣順序'+i,s=>{s.castles.nijo.owner=s.clan;s.castles.nijo.troops=50000;}),body=extra=>({requestId:crypto.randomUUID(),deviceId:p.deviceId,expectedRevision:row(h,p).revision,campaignId:state(h,p).walking.campaignId,sequence:state(h,p).covert.sequence,...extra});await h.api('/covert/hire',post(p,body({sourceCastleId:'nijo',count:10})));const departure=(await h.api('/covert/dispatch',post(p,body({sourceCastleId:'nijo',target:{kind:'castle',castleId:i<13?'uchijo':'nijo'},count:5,mode:'scout'})))).data;
   if(i<13){assert(departure.march.durationMs>15000);long.push(p);}else{assert.equal(departure.march.durationMs,15000);short=p;}
  }
  h.now+=15000;await worker.scheduled({},h.env,{});

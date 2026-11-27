@@ -75,10 +75,10 @@ test('CPU capture writes damage without bypassing protected ownership',()=>{
 });
 test('local covert retaliation retains durability damage and its idempotent history receipt',()=>{
  const g=prepare(new E({officers:roster,seed:17,isAdmin:true})),request=()=>({requestId:'durability-covert-'+g.state.covert.sequence,campaignId:g.state.walking.campaignId,sequence:g.state.covert.sequence});
- assert(g.hireCovert('edo',100,request()).ok);const stationed=g.dispatchCovert('edo',{kind:'castle',castleId:'kagoshima'},50,'station',request());assert(stationed.ok,stationed.message);
+ assert(g.hireCovert('edo',100,request()).ok);const stationed=g.dispatchCovert('edo',{kind:'castle',castleId:'uchijo'},50,'station',request());assert(stationed.ok,stationed.message);
  g.state.turn=9;for(const c of D.castles)if(c.id!==g.state.home)g.state.castles[c.id].owner='在地衆';g.random=()=>0;g._cpuTurn();g.state.command=3;
- const owner=g.state.castles.kagoshima.owner,options=request(),incident=g.state.covert.incidents[0],result=g.retaliateCovert(stationed.result.stationId,incident.id,options);assert(result.ok,result.message);const battle=result.result.battle;
- assert(battle.durability.damage>0);assert(!battle.durability.captured);assert.equal(g.state.castles.kagoshima.owner,owner);assert.equal(g.castle('kagoshima').durability.current,battle.durability.after);
+ const owner=g.state.castles.uchijo.owner,options=request(),incident=g.state.covert.incidents[0],result=g.retaliateCovert(stationed.result.stationId,incident.id,options);assert(result.ok,result.message);const battle=result.result.battle;
+ assert(battle.durability.damage>0);assert(!battle.durability.captured);assert.equal(g.state.castles.uchijo.owner,owner);assert.equal(g.castle('uchijo').durability.current,battle.durability.after);
  const loaded=E.fromSave(g.exportSave(),roster,{isAdmin:true});assert.deepEqual(loaded.state.covert.history[0].battle.durability,battle.durability);const before=clone(loaded.state);assert(loaded.retaliateCovert(stationed.result.stationId,incident.id,options).idempotent);assert.deepEqual(loaded.state,before);
 });
 test('malformed imported durability and battle results are rejected',()=>{

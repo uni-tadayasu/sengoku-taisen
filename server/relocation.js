@@ -12,16 +12,16 @@ const castles=new Set(RESIDENCY_CASTLES.map(c=>c.id));
 const noGuard={sql:'1=1',args:[]};
 const notice='本拠移転で旧戦役の派遣を終了しました。';
 
-function closeReservations(db,userId,campaignId,now,nonce,gate,args,march,retiredCovert,dispatchIds,elapsedMs){
+export function closeReservations(db,userId,campaignId,now,nonce,gate,args,march,retiredCovert,dispatchIds,elapsedMs,message=notice){
  const changes=[];
  if(march){
-  changes.push(finishMarchStatement(db,march,'cancelled',{message:notice,battle:null},now,gate,args));
+  changes.push(finishMarchStatement(db,march,'cancelled',{message,battle:null},now,gate,args));
   if(march.kind==='rally')changes.push(...rallyMarchCancellation(db,march,gate,args));
  }
  if(retiredCovert)changes.push(
   stmt(db,'UPDATE covert_states SET state_json=?,updated_at=? WHERE actor_id=? AND campaign_id=? AND '+gate,JSON.stringify(retiredCovert),now,userId,campaignId,...args),
   stmt(db,`UPDATE covert_requests SET result_json=json_set(result_json,'$.accepted',json('false'),'$.status','cancelled','$.retiredCampaign',json('true'),'$.resolvedElapsedMs',?,'$.message',?)
-    WHERE actor_id=? AND campaign_id=? AND request_id IN (SELECT value FROM json_each(?)) AND ${gate}`,Math.floor(elapsedMs),notice,userId,campaignId,JSON.stringify(dispatchIds),...args)
+    WHERE actor_id=? AND campaign_id=? AND request_id IN (SELECT value FROM json_each(?)) AND ${gate}`,Math.floor(elapsedMs),message,userId,campaignId,JSON.stringify(dispatchIds),...args)
  );
  // A contingent in someone else's launched rally keeps its combat strength
  // until that battle resolves. Private survivors from the retired army lapse.
@@ -32,7 +32,7 @@ function closeReservations(db,userId,campaignId,now,nonce,gate,args,march,retire
   // bounded pool return routine handles them once, including any overflow.
   stmt(db,`UPDATE conquest_marches SET status='cancelled',commit_token=?,settled_at=?,return_troops=troops,return_supplies=supply_cost,
     result_json=json_set(result_json,'$.marching',json('false'),'$.cancelled',json('true'),'$.points',0,'$.message',?)
-    WHERE user_id=? AND status='marching' AND ${gate}`,nonce,now,'本拠移転のため進軍を中止しました。兵と補給は同盟へ返還します。',userId,...args),
+    WHERE user_id=? AND status='marching' AND ${gate}`,nonce,now,message+'兵と補給は同盟へ返還します。',userId,...args),
   stmt(db,`UPDATE conquest_requests SET result_json=(SELECT m.result_json FROM conquest_marches m WHERE m.user_id=conquest_requests.user_id AND m.request_id=conquest_requests.request_id)
     WHERE user_id=? AND EXISTS(SELECT 1 FROM conquest_marches m WHERE m.user_id=conquest_requests.user_id AND m.request_id=conquest_requests.request_id AND m.commit_token=?) AND ${gate}`,userId,nonce,...args),
   stmt(db,`UPDATE walking_sessions SET closed=1,last_seen_at=?,expires_at=? WHERE user_id=? AND closed=0 AND ${gate}`,now,now,userId,...args),
@@ -44,7 +44,7 @@ function closeReservations(db,userId,campaignId,now,nonce,gate,args,march,retire
 export async function relocateResidence(ctx,body){
  const {db,user,now,helpers:h}=ctx;
  await h.requireAccountAccess(db,user);
- if(user.is_admin||user.is_staff)h.fail(403,'RESIDENCY_PROTECTED','現在の立場では本拠を移せません。');
+ if(user.is_admin||user.is_staff||user.is_deputy)h.fail(403,'RESIDENCY_PROTECTED','現在の立場では本拠を移せません。');
  if(!body||Object.keys(body).some(k=>!['deviceId','revision','requestId','castleId'].includes(k))||!Number.isSafeInteger(body.revision)||body.revision<0||!castles.has(body.castleId))
   h.fail(400,'INVALID_INPUT','124の通常城から移転先を選んでください。');
  const device=h.idField(body.deviceId,'端末識別子'),requestId=h.idField(body.requestId,'操作番号'),target=body.castleId;
