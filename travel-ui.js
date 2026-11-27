@@ -112,11 +112,11 @@ const api={cleanTravel,cleanMarch,acceptedMarch,completedMarch,commandMarch,form
 global.SengokuTravelUI=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;
 if(!global.document?.createElement)return;
 const doc=global.document,subscribers=new Set(),countdownNodes=new Set();
-let options={},store=createStore(),launcher=null,dialog=null,returnFocus=null,polling=false,pollAt=0,serverOffset=0,scope='',seen=new Set(),initialized=false,selectedReport=null;
+let options={},store=createStore(),launcher=null,dialog=null,returnFocus=null,polling=false,pollAt=0,serverOffset=0,scope='',seen=new Set(),previousActive=new Set(),initialized=false,selectedReport=null;
 let refreshTimer=null,countdownObserver=null,countdownTracking=false,renderedShape='',dialogCounters=[],dialogProgress=[],dialogWaits=[],filters=cleanFilters();
 function context(){return options.getContext?.()||{};}
 function clocks(){const clock=global.SengokuWorldClock?.snapshot?.()?.clock;return{elapsedMs:clock?.elapsedMs??options.getElapsedMs?.(),running:clock?.running,speed:clock?.speed,realNowMs:Date.now()+serverOffset};}
-function checkScope(){const current=context(),next=String(current.scope||'');if(scope!==next){scope=next;store.reset(next);seen.clear();initialized=false;selectedReport=null;filters=cleanFilters();renderedShape='';pollAt=0;serverOffset=0;close();syncControls();}return current;}
+function checkScope(){const current=context(),next=String(current.scope||'');if(scope!==next){scope=next;store.reset(next);seen.clear();previousActive.clear();initialized=false;selectedReport=null;filters=cleanFilters();renderedShape='';pollAt=0;serverOffset=0;close();syncControls();}return current;}
 // Capture each local/remote state once within an update. Never retain a local
 // save snapshot across an asynchronous request, an action or a clock tick.
 function capture(){const current=checkScope(),clock=clocks();store.local(options.getLocal?.()||[]);return{current,clock,data:store.snapshot(clock)};}
@@ -221,7 +221,9 @@ async function poll(force=false){
  }catch(_){/* Show the existing march until its authoritative result is known. */}finally{polling=false;}
 }
 function refresh(){
- const frame=capture();for(const row of frame.data.history){if(initialized&&!seen.has(row.id))options.onArrival?.(clone(row));seen.add(row.id);}initialized=true;
+ const frame=capture();for(const row of frame.data.history){if(initialized&&!seen.has(row.id))options.onArrival?.(clone(row),previousActive.has(row.id));seen.add(row.id);}initialized=true;
+ // An initial server poll may include old reports. Sound only a march observed in flight.
+ previousActive.clear();if(!doc.hidden)for(const row of frame.data.active)previousActive.add(row.id);
  paint(frame);scheduleRefresh();void poll();
 }
 Object.assign(api,{
@@ -235,5 +237,5 @@ Object.assign(api,{
 });
 // The game clock normally calls refresh. Each call rearms this fallback, so a
 // guarded/stopped simulation still updates travel without two permanent timers.
-doc.addEventListener?.('visibilitychange',()=>{if(doc.hidden)scheduleRefresh();else if(options.getContext)refresh();});
+doc.addEventListener?.('visibilitychange',()=>{if(doc.hidden){previousActive.clear();scheduleRefresh();}else if(options.getContext)refresh();});
 })(typeof window!=='undefined'?window:globalThis);

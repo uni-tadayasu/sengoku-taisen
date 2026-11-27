@@ -1038,9 +1038,62 @@
     static automaticTrackId(scene,date){return automaticTrackId(scene,date);}
     static nextDaypartDelay(date){return nextDaypartDelay(date);}
   }
+  // Each strike has a body and a faster, separately damped upper mode. The
+  // pitch drop of a taiko skin differs from the almost stationary koto string.
+  // Wave, attack, decay, initial pitch ratio, upper mode ratio, level, decay ratio.
+  const effectTimbres={
+    wood: ['sine',     .002,.067,1.24, 2.78,.46,.30],
+    koto: ['triangle', .004,.305,1.015,2.01,.32,.55],
+    lute: ['sawtooth', .002,.171,1.037,3.02,.25,.32],
+    drum: ['sine',     .004,.268,1.64, 1.53,.43,.45],
+    bell: ['sine',     .004,.430,1.003,2.72,.34,.78],
+    wire: ['sine',     .011,.172,.86,  2.02,.19,.62]
+  };
+  // Original miniature scores. A stroke specifies instrument, MIDI note,
+  // onset in milliseconds, strength and (for electronic trails) pitch glide.
+  const effectScores={
+    tap:      [['wood',79,0,.72]],
+    navigate: [['koto',62,0,.86],['wire',69,64,.67,2]],
+    open:     [['koto',62,0,.8],['koto',69,55,.88],['bell',74,105,.55]],
+    close:    [['lute',69,0,.78],['wood',62,72,.68]],
+    toggle:   [['wood',81,0,.65],['wire',76,36,.64,2]],
+    adjust:   [['wire',76,0,.72,-1]],
+    map:      [['wire',62,0,.77,7],['bell',78,108,.7]],
+    select:   [['lute',74,0,.82],['wood',82,47,.61]],
+    build:    [['wood',64,0,.9],['wood',69,61,.7],['drum',48,130,.98]],
+    recruit:  [['lute',64,0,.86],['lute',67,65,.77],['koto',74,138,.95],['bell',81,156,.49]],
+    assign:   [['wood',72,0,.72],['koto',65,79,.95],['bell',72,79,.45]],
+    dispatch: [['drum',47,0,.92],['lute',62,71,.8],['wire',69,134,.75,5]],
+    trade:    [['bell',81,0,.7],['wood',74,48,.72],['bell',78,104,.65]],
+    message:  [['wood',83,0,.58],['bell',76,70,.8]],
+    battle:   [['drum',43,0,1],['wood',68,65,.86],['drum',48,137,.98],['wire',64,145,.66,-7]],
+    confirm:  [['koto',67,0,.86],['bell',74,76,.75]],
+    success:  [['koto',62,0,.8],['lute',67,66,.8],['bell',74,145,.8]],
+    reward:   [['bell',74,0,.72],['koto',69,60,.8],['bell',78,130,.72],['bell',81,190,.7]],
+    defeat:   [['drum',41,0,.96],['lute',62,108,.76],['wire',57,195,.72,-5]],
+    error:    [['wood',64,0,.78],['wire',63,42,.88,-5]],
+    victory:  [['drum',50,0,.9],['koto',67,61,.8],['koto',71,121,.8],['bell',79,189,.84]]
+  };
+  const effectOutcomes=new Set(['build','recruit','assign','dispatch','trade','success','reward','defeat','error','victory']);
+  let effectMixCurve;
   // Short interface sounds have their own output. Pausing a song or changing
   // its volume never changes this bus, and effects never start a soundtrack.
   class SengokuSoundEffects {
+    static get catalog(){
+      return [
+        ['tap','項目を押す'], ['navigate','画面を移る'],
+        ['open','詳細を開く'], ['close','詳細を閉じる'],
+        ['toggle','設定を切り替える'], ['adjust','数値を調整する'],
+        ['map','天下地図を開く'], ['select','城や武将を選ぶ'],
+        ['build','施設を普請する'], ['recruit','武将・兵を招集する'],
+        ['assign','奉行を任命する'], ['dispatch','部隊を派遣する'],
+        ['trade','資源を取引する'], ['message','書状・チャット'],
+        ['battle','合戦が始まる'], ['confirm','操作を確定する'],
+        ['success','行動が成功する'], ['reward','報酬を受け取る'],
+        ['victory','合戦に勝利する'], ['defeat','合戦から撤退する'],
+        ['error','操作できない']
+      ];
+    }
     constructor({volume=10}={}){
       this._volume=clamp(Number(volume)||0,0,100);this._context=null;this._gain=null;this._voices=new Set();this._epoch=0;this._pending=null;this._lastPlayed=-Infinity;this._voiceActive=false;this._pageActive=true;this._disposed=false;
       this._visibilityHandler=()=>{if(this._hidden())this.stop();};
@@ -1059,36 +1112,103 @@
       const AC=global.AudioContext||global.webkitAudioContext;if(!AC)throw Error('Web Audio unavailable');
       this._context=new AC({latencyHint:'interactive'});this._gain=this._context.createGain();this._gain.connect(this._context.destination);this._setGain();
     }
+    _effectOutput(){
+      if(this._mix)return this._mix;
+      if(this._context.createWaveShaper){
+        // Keep single strokes linear through ±.36. Even twelve simultaneous
+        // strikes stay below .475 before the independent volume control.
+        if(!effectMixCurve){
+          effectMixCurve=new Float32Array(1025);
+          for(let i=0;i<effectMixCurve.length;i++){
+            const x=i/512-1,excess=Math.max(0,Math.abs(x)-.36);
+            effectMixCurve[i]=Math.sign(x)*(Math.min(Math.abs(x),.36)+excess/(1+excess/.14));
+          }
+        }
+        this._mix=this._context.createWaveShaper();
+        this._mix.curve=effectMixCurve;
+      }else{
+        this._mix=this._context.createGain();
+        this._mix.gain.value=.088;
+      }
+      this._mix.connect(this._gain);
+      return this._mix;
+    }
     _release(voice){
       if(!this._voices.delete(voice))return;
-      for(const source of voice.sources){source.onended=null;try{source.stop(this._context.currentTime);source.disconnect();}catch(_){}}
+      for(const source of voice.sources){source.onended=null;try{source.stop(this._context.currentTime);}catch(_){}try{source.disconnect();}catch(_){}}
       for(const node of voice.nodes)try{node.disconnect();}catch(_){}
       if(!this._voices.size&&!this._pending)this._context?.suspend().catch(()=>{});
     }
     stop(){++this._epoch;this._pending=null;for(const voice of [...this._voices])this._release(voice);return this._context?.suspend().catch(()=>{})||Promise.resolve();}
-    async play(type='confirm'){
-      if(this._disposed||!this._volume||this._hidden())return false;
-      if(this._context)for(const voice of [...this._voices])if(voice.endTime<=this._context.currentTime)this._release(voice);
-      const requestedAt=Date.now();if(requestedAt-this._lastPlayed<70||this._voices.size>=12||this._pending&&requestedAt-this._pending.at<1000)return false;
-      const token=++this._epoch;this._pending={token,at:requestedAt};let deadlineTimer,timedOut=false;
+    _scheduleCue(type,start){
+      const score=Object.hasOwn(effectScores,type)?effectScores[type]:effectScores.confirm;
+      if(this._voices.size+score.length>12)return false;
+      const ctx=this._context,started=[];
+      try{
+        for(const [instrument,note,offset,strength,glide=0] of score){
+          const [wave,attack,decay,strikePitch,upperRatio,upperLevel,upperDecay]=effectTimbres[instrument];
+          const time=start+offset/1000,hz=frequency(note),endTime=time+decay+.008;
+          const voice={sources:[],nodes:[],endTime,token:this._epoch};
+          this._voices.add(voice);started.push(voice);
+          let output=this._effectOutput();
+          if(instrument==='lute'&&ctx.createWaveShaper){
+            const filter=ctx.createBiquadFilter();voice.nodes.push(filter);filter.type='lowpass';
+            filter.frequency.setValueAtTime(Math.min(ctx.sampleRate*.42,hz*9),time);
+            filter.frequency.exponentialRampToValueAtTime(hz*2.5,time+decay);
+            filter.connect(output);output=filter;
+          }
+          let remaining=2;
+          for(const [shape,ratio,level,length] of [[wave,1,1,decay],['sine',upperRatio,upperLevel,decay*upperDecay]]){
+            const source=ctx.createOscillator();voice.sources.push(source);
+            const envelope=ctx.createGain();voice.nodes.push(envelope);
+            const pitch=hz*ratio,settle=time+Math.min(length*.34,.043);
+            source.type=shape;source.frequency.setValueAtTime(pitch*strikePitch,time);
+            source.frequency.exponentialRampToValueAtTime(pitch,settle);
+            if(glide)source.frequency.exponentialRampToValueAtTime(pitch*2**(glide/12),time+length);
+            const peak=.292*strength*level;
+            envelope.gain.setValueAtTime(.0001,time);
+            envelope.gain.linearRampToValueAtTime(peak,time+attack);
+            envelope.gain.exponentialRampToValueAtTime(peak*.29,time+attack+length*.19);
+            envelope.gain.exponentialRampToValueAtTime(.0001,time+length);
+            source.connect(envelope);envelope.connect(output);
+            source.onended=()=>{if(--remaining===0)this._release(voice);};
+            source.start(time);source.stop(time+length+.008);
+          }
+        }
+        return true;
+      }catch(error){for(const voice of started)this._release(voice);throw error;}
+    }
+    play(type='confirm'){
+      if(this._disposed||!this._volume||this._hidden())return Promise.resolve(false);
+      const requestedAt=Date.now(),pending=this._pending;
+      const outcome=effectOutcomes.has(type);
+      if(pending&&requestedAt-pending.at<1000){
+        // A result arriving during mobile audio unlock replaces the incidental
+        // button sound and shares its promise, context and permission deadline.
+        if(outcome&&!effectOutcomes.has(pending.type)){pending.type=type;return pending.promise;}
+        return Promise.resolve(false);
+      }
+      const nearby=requestedAt-this._lastPlayed<70;
+      if(nearby&&(!outcome||effectOutcomes.has(this._lastType)))return Promise.resolve(false);
+      const request={token:++this._epoch,at:requestedAt,type};
+      this._pending=request;
+      if(this._context)for(const voice of [...this._voices]){
+        if(voice.endTime<=this._context.currentTime||nearby&&voice.token===this._lastToken)this._release(voice);
+      }
+      request.promise=this._startCue(request);
+      return request.promise;
+    }
+    async _startCue(request){
+      const {token,at}=request;let deadlineTimer,timedOut=false;
       try{
         this._ensureContext();if(this._context.state!=='running'){
           const resume=Promise.resolve(this._context.resume()).then(()=>{if(timedOut||token!==this._epoch){if(!this._voices.size&&(!this._pending||this._pending.token===token))this._context.suspend().catch(()=>{});return false;}return true;});
           const resumed=await Promise.race([resume,new Promise(resolve=>{deadlineTimer=setTimeout(()=>{timedOut=true;if(token===this._epoch)++this._epoch;resolve(false);},1000);})]);if(!resumed)return false;
         }
-        if(token!==this._epoch||this._disposed||!this._volume||this._hidden()||this._context.state!=='running'||Date.now()-requestedAt>1000){if(!this._voices.size&&!this._pending)this._context.suspend().catch(()=>{});return false;}
-        this._lastPlayed=Date.now();this._pending=null;this._setGain();
-        const ctx=this._context,tap=type==='tap',notes=tap?[79]:type==='victory'?[72,76,79]:type==='error'?[55,53]:[74,79],start=ctx.currentTime+.005,release=tap ? .09 : .28,lifetime=tap ? .11 : .30;
-        for(let index=0;index<notes.length;index++){
-          const time=start+index*.075,envelope=ctx.createGain(),sources=[],nodes=[envelope];envelope.connect(this._gain);
-          envelope.gain.setValueAtTime(.0001,time);envelope.gain.linearRampToValueAtTime(.0272,time+(tap ? .004 : .008));envelope.gain.exponentialRampToValueAtTime(.0001,time+release);
-          for(const [multiple,level] of [[1,1],[2.01,.20],[3.98,.045]]){
-            const source=ctx.createOscillator();source.type='sine';source.frequency.setValueAtTime(frequency(notes[index])*multiple,time);
-            if(level===1)source.connect(envelope);else{const partial=ctx.createGain();partial.gain.value=level;source.connect(partial);partial.connect(envelope);nodes.push(partial);}sources.push(source);
-          }
-          const voice={sources,nodes,endTime:time+lifetime};this._voices.add(voice);let remaining=sources.length;
-          for(const source of sources){source.onended=()=>{if(--remaining===0)this._release(voice);};source.start(time);source.stop(time+lifetime);}
-        }
+        if(token!==this._epoch||this._disposed||!this._volume||this._hidden()||this._context.state!=='running'||Date.now()-at>1000)return false;
+        this._setGain();
+        if(!this._scheduleCue(request.type,this._context.currentTime+.005))return false;
+        this._lastPlayed=Date.now();this._lastType=request.type;this._lastToken=token;
         return true;
       }catch(_){return false;}
       finally{clearTimeout(deadlineTimer);if(this._pending?.token===token){this._pending=null;if(!this._voices.size)this._context?.suspend().catch(()=>{});}}
@@ -1097,7 +1217,7 @@
       if(this._disposed)return;this._disposed=true;await this.stop();
       global.document?.removeEventListener?.('visibilitychange',this._visibilityHandler);
       global.removeEventListener?.('pagehide',this._pageHideHandler);global.removeEventListener?.('pageshow',this._pageShowHandler);
-      try{this._gain?.disconnect();}catch(_){}if(this._context)await this._context.close().catch(()=>{});
+      try{this._mix?.disconnect();this._gain?.disconnect();}catch(_){}if(this._context)await this._context.close().catch(()=>{});
     }
   }
   global.SengokuSoundEffects=SengokuSoundEffects;

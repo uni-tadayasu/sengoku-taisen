@@ -133,13 +133,13 @@ test('local facility build and upgrade each save a timed paid order and roll bac
 test('real delegated click actions carry the chosen facility through the mutation gate and branch transaction bridge',async()=>{
  const start=source.indexOf("  document.addEventListener('click',async event=>"),end=source.indexOf("  document.addEventListener('input'",start),mutations=source.match(/^  const mutationActions=.*$/m)?.[0];assert(start>=0&&end>start&&mutations);
  for(const action of ['build-branch-facility','upgrade-branch-facility']){
-  const h=setup();let click;h.c.document.addEventListener=(type,handler)=>{if(type==='click')click=handler;};vm.runInContext(mutations+'\n'+source.slice(start,end),h.c);
-  const node={dataset:{action,id:'edo_north',facility:'watchtower'},disabled:false,closest(){return this;}};
+  const h=setup();let click;const sounds=[];h.c.playNote=kind=>sounds.push(kind);h.c.document.addEventListener=(type,handler)=>{if(type==='click')click=handler;};vm.runInContext(mutations+'\n'+source.slice(start,end),h.c);
+  const node={dataset:{action,id:'edo_north',facility:'watchtower'},disabled:false,closest(selector){return selector.includes('[data-action]')?this:null;}};
   let finishRead;h.control.onGet=()=>new Promise(done=>{finishRead=done;});
   const first=click({target:node});await until(()=>typeof finishRead==='function');
   // A fresh DOM button can replace the first one during an intervening redraw.
   await click({target:{...node,disabled:false}});assert.equal(h.gets.length,1);assert.equal(h.posts.length,0);
-  finishRead({ok:true,campaignId:h.c.game.state.walking.campaignId,sequence:0});await first;
+  finishRead({ok:true,campaignId:h.c.game.state.walking.campaignId,sequence:0});await first;assert.deepEqual(sounds,['build']);
   assert.equal(h.c.branchBookingPending,false);assert.equal(h.posts.length,1);assert.equal(h.posts[0].route,'/branches/'+action.replace('-branch',''));assert.equal(h.posts[0].options.data.branchId,'edo_north');assert.equal(h.posts[0].options.data.facilityId,'watchtower');
   const blocked=setup();blocked.c.syncAccess.writable=false;blocked.c.document.addEventListener=(type,handler)=>{if(type==='click')click=handler;};vm.runInContext(mutations+'\n'+source.slice(start,end),blocked.c);node.disabled=false;await click({target:node});assert.equal(blocked.posts.length,0);
  }

@@ -636,14 +636,18 @@ function close(){global.SengokuPromotionAdmin?.close?.();s.open=false;cancelView
 async function selectTab(tab){if(tab==='letters'&&global.SengokuLetters){close();await global.SengokuLetters.openInbox();return;}if(tab==='trade'&&global.SengokuTrade){close();await global.SengokuTrade.openBox();return;}pauseRecentLogins();pauseGuildLists();clearTimeout(pollTimer);pollTimer=null;clearTimeout(onlineTimer);onlineTimer=null;s.tab=tabs().some(t=>t.id===tab)?tab:'world';s.openedMail=null;render();await refresh({view:true});}
 function downloadJSON(filename,data){const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download=filename;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
 async function claimGift(mailId){
- const epoch=authEpoch;const mail=s.mail.find(m=>String(m.id)===String(mailId));if(!mail?.gift)throw Error('この便りには贈り物がありません。');
- if(typeof global.SengokuBridge?.canReceiveGifts==='function'&&!global.SengokuBridge.canReceiveGifts())throw Error('ゲームの自動保存を利用できません。保存できるブラウザで受け取ってください。');
- if(typeof global.SengokuBridge?.applyGift!=='function')throw Error('ゲームの保存状態を確認できません。ゲームを再読み込みしてから受け取ってください。');
- const key=`${s.identity.id}:${mailId}`;let requestId=s.pending[key];
- if(!requestId){requestId=crypto.randomUUID();s.pending[key]=requestId;if(!saveJSON(CLAIMKEY,s.pending)){delete s.pending[key];throw Error('受け取りの記録を保存できません。ブラウザの保存設定を確認してください。');}}
- const r=await api('/mail/claim',{method:'POST',data:{mailId,requestId}});if(epoch!==authEpoch)throw staleIdentity();if(!r.receiptId||!r.gift)throw Error('受取結果を確認できませんでした。同じボタンで再確認してください。');
- const applied=await Promise.resolve(global.SengokuBridge.applyGift(r.gift,r.receiptId));if(epoch!==authEpoch)throw staleIdentity();if(!applied?.ok)throw Error(applied?.message||'ゲームへの反映を保存できませんでした。もう一度受け取りを確認してください。');
- delete s.pending[key];saveJSON(CLAIMKEY,s.pending);mail.claimed=true;toast(applied.already?'この贈り物は、すでにゲームへ反映されています。':'贈り物を受け取り、ゲームへ反映しました。');await loadMail();render();
+ const epoch=authEpoch;
+ try{
+  const mail=s.mail.find(m=>String(m.id)===String(mailId));if(!mail?.gift)throw Error('この便りには贈り物がありません。');
+  if(typeof global.SengokuBridge?.canReceiveGifts==='function'&&!global.SengokuBridge.canReceiveGifts())throw Error('ゲームの自動保存を利用できません。保存できるブラウザで受け取ってください。');
+  if(typeof global.SengokuBridge?.applyGift!=='function')throw Error('ゲームの保存状態を確認できません。ゲームを再読み込みしてから受け取ってください。');
+  const key=`${s.identity.id}:${mailId}`;let requestId=s.pending[key];
+  if(!requestId){requestId=crypto.randomUUID();s.pending[key]=requestId;if(!saveJSON(CLAIMKEY,s.pending)){delete s.pending[key];throw Error('受け取りの記録を保存できません。ブラウザの保存設定を確認してください。');}}
+  const r=await api('/mail/claim',{method:'POST',data:{mailId,requestId}});if(epoch!==authEpoch)throw staleIdentity();if(!r.receiptId||!r.gift)throw Error('受取結果を確認できませんでした。同じボタンで再確認してください。');
+  const applied=await Promise.resolve(global.SengokuBridge.applyGift(r.gift,r.receiptId));if(epoch!==authEpoch)throw staleIdentity();if(!applied?.ok)throw Error(applied?.message||'ゲームへの反映を保存できませんでした。もう一度受け取りを確認してください。');
+  delete s.pending[key];saveJSON(CLAIMKEY,s.pending);mail.claimed=true;if(!applied.already&&!r.alreadyClaimed)global.SengokuBridge?.playInterfaceSound?.('reward');toast(applied.already?'この贈り物は、すでにゲームへ反映されています。':'贈り物を受け取り、ゲームへ反映しました。');
+ }catch(error){if(epoch===authEpoch&&error.code!=='STALE_IDENTITY')global.SengokuBridge?.playInterfaceSound?.('error');throw error;}
+ await loadMail();render();
 }
 async function openMail(id){
  if(!s.open||s.tab!=='mail'||s.confirm||recoveryHeld||s.accountBanned||s.accountAccessPending||!s.identity||!s.user||String(s.identity.id)!==String(s.user.id))return;
@@ -748,7 +752,10 @@ async function submit(event){
   if(form.id==='social-chat-form'){
    const c=channel(),text=String(data.get('text')||'').trim();if(!c||!text)return;
    const key=chatKey(c),enhanced=chatEnhancements(),snapshot=enhanced?.prepare(text),extra=snapshot?{...(snapshot.replyToId?{replyToId:snapshot.replyToId}:{}),...(snapshot.mentionIds.length?{mentionIds:snapshot.mentionIds}:{})}:{};
-   await api('/chat',{method:'POST',data:{channel:c.channel,...(c.target?{target:c.target}:{}),text,...extra}});
+   const epoch=authEpoch;
+   try{await api('/chat',{method:'POST',data:{channel:c.channel,...(c.target?{target:c.target}:{}),text,...extra}});}
+   catch(error){if(epoch===authEpoch)global.SengokuBridge?.playInterfaceSound?.('error');throw error;}
+   if(epoch===authEpoch)global.SengokuBridge?.playInterfaceSound?.('message');
    if(snapshot)enhanced.sent(snapshot);else if(form.isConnected&&String(form.querySelector('[name=text]')?.value||'').trim()===text)form.reset();
    await loadChat();const current=channel(),input=$('#social-chat-input'),focus=document.activeElement;if(s.open&&dialog?.open&&current&&chatKey(current)===key&&input&&(focus===button||focus===input||chatHadFocus&&focus===document.body))input.focus({preventScroll:true});
   }

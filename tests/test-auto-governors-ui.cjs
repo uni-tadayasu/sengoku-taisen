@@ -45,7 +45,7 @@ function fullBranchFixture(){
 }
 function harness(game=create()){
   const stored=new Map([['save',game.exportSave()]]),writes=[],events=[],modals=[],toasts=[],handlers=new Map();
-  const flags={failSave:false},calls={render:0,header:0,sound:0},nodes=new Map([['#main',{}],['#save-indicator',{textContent:''}]]);
+  const flags={failSave:false},calls={render:0,header:0,sounds:[]},nodes=new Map([['#main',{}],['#save-indicator',{textContent:''}]]);
   const actionControl=()=>({dataset:{action:'auto-governors'},disabled:false,closest(selector){return selector==='[data-action]'||selector==='[data-action],[data-view]:not(#main)'?this:null;}});
   const controls=[0,1].map(index=>({...actionControl(),id:`governor-button-${index}`}));
   const c={game,SengokuEngine:E,staffBaseId:'kyoto_gosho',data:D,roster:plain(roster),state:()=>c.game.state,console,Date,Math,JSON,Number,String,Set,
@@ -58,7 +58,7 @@ function harness(game=create()){
     $:selector=>nodes.get(selector)||null,icon:()=>'',num:value=>Number(value||0).toLocaleString('ja-JP'),
     esc:value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char])),
     toast:(message,error)=>toasts.push({message,error}),modal:(title,subtitle,body,footer,kind)=>modals.push({title,subtitle,body,footer,kind}),
-    preserveInteraction:(_node,draw)=>draw(),renderHeader:()=>{calls.header++;},refreshTouchHeaderStatus(){},refreshBranchDeploymentPanels(){},refreshActiveModal(){},playNote:()=>{calls.sound++;},
+    preserveInteraction:(_node,draw)=>draw(),renderHeader:()=>{calls.header++;},refreshTouchHeaderStatus(){},refreshBranchDeploymentPanels(){},refreshActiveModal(){},playNote:sound=>{calls.sounds.push(sound);},
     render:()=>{calls.render++;c.lastMarkup=c.currentView==='facilities'?c.renderFacilities():c.renderTown();c.refreshLiveControls();},
     heading:()=>'',staffBaseNotice:()=>'',syncBanner:()=>'',walkingEntry:()=>'',jobsHtml:()=>'',logItems:()=>'',officerCrest:()=>'',pageControls:()=>'',
     constructionJobs:()=>[],currentJob:()=>null,castleLevelLimit:id=>c.game.castleLevelLimit(id),date:()=>({year:1560,month:1,season:'春'}),costHtml:()=>''
@@ -158,7 +158,7 @@ await test('a failed branch-first save restores branch commanders and governors 
   const {game}=branchFixture(),h=harness(game),before=plain(game.state),oldSave=h.stored.get('save'),governors=game.state.governors,branches=game.state.branches;
   h.flags.failSave=true;await h.click();
   assert.equal(h.game,game);assert.equal(h.game.state.governors,governors);assert.equal(h.game.state.branches,branches);assert.deepEqual(h.game.state,before);assert.equal(h.stored.get('save'),oldSave);
-  assert.equal(h.writes.length,0);assert.equal(h.events.length,0);assert.equal(h.modals.length,0);assert.equal(h.calls.sound,0);assert.equal(h.c.branchBookingPending,false);
+  assert.equal(h.writes.length,0);assert.equal(h.events.length,0);assert.equal(h.modals.length,0);assert.deepEqual(h.calls.sounds,['error']);assert.equal(h.c.branchBookingPending,false);
   assert(h.toasts.some(row=>row.error&&row.message.includes('操作前に戻しました')));
 });
 
@@ -168,7 +168,7 @@ await test('durable storage failure rolls back the exact governor map and never 
   const before=plain(h.game.state),governorReference=h.game.state.governors,storedBefore=h.stored.get('save');h.flags.failSave=true;
   await h.click();
   assert.deepEqual(h.game.state,before);assert.equal(h.game.state.governors,governorReference);assert.equal(h.stored.get('save'),storedBefore);
-  assert.equal(h.writes.length,0);assert.equal(h.events.length,0);assert.equal(h.modals.length,0);assert.equal(h.calls.sound,0);
+  assert.equal(h.writes.length,0);assert.equal(h.events.length,0);assert.equal(h.modals.length,0);assert.deepEqual(h.calls.sounds,['error']);
   assert(h.toasts.some(item=>item.error&&item.message.includes('操作前に戻しました')));
   assert.equal(h.c.saveEnabled,false);assert(h.controls.every(node=>node.disabled));
 });

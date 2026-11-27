@@ -30,6 +30,55 @@ let checks=0;async function test(name,run){await run();checks++;console.log('PAS
   }
   f.ui.dispose();
  });
+ await test('real game attributes route actions independently of ornament, labels and input device',()=>{
+  const f=fixture();
+  for(const [attribute,key] of [
+   ['id="launch-enter"','open'],['data-action="settings"','open'],['data-action="building"','build'],
+   ['data-action="open-gacha"','recruit'],['data-action="pick-governor"','assign'],
+   ['data-action="prepare-branch-battle"','battle'],['data-covert-action="prepare-dispatch"','dispatch'],
+   ['data-action="art-level-step"','adjust'],['data-action="choose-clan"','select'],
+   ['data-action="confirm-import"','confirm'],['data-navigation-target="army"','navigate'],
+   ['data-tutorial="next"','navigate'],['data-social-tab="world"','navigate'],
+   ['data-trade="propose"','trade'],['data-letter-action="thread"','message'],
+   ['data-map-action="zoom-in"','map'],['data-watch-close','close'],['class="ledger-disclosure"','toggle']
+  ]){
+   f.host.innerHTML='<button '+attribute+'><svg><path></path></svg></button>';
+   for(const detail of [1,0]){f.emit('click',f.query('path'),{detail});assert.equal(f.sounds.at(-1),key,attribute);}
+  }
+  f.host.innerHTML='<dialog open></dialog>';f.emit('cancel',f.query('dialog'));assert.equal(f.sounds.at(-1),'close');
+  f.ui.dispose();
+ });
+ await test('receipt-owned actions stay silent until the game reports their outcome',()=>{
+  const f=fixture();
+  for(const attr of ['data-action="upgrade"','data-action="claim-quest"','data-action="assign-army"','data-action="draw-officers"','data-action="recruit-troops"','data-action="attack"','data-trade="confirm"','data-progress-action="exchange"','data-social="mail-claim"','data-covert-action="submit"','data-roaming-action="submit"']){
+   f.host.innerHTML='<button '+attr+'>決定</button>';f.emit('click',f.query('button'));assert.equal(f.sounds.length,0,attr);
+  }
+  f.host.innerHTML='<form id="social-chat-form"><button type="submit">送信</button></form>';f.emit('click',f.query('button'));assert.equal(f.sounds.length,0);
+  f.ui.dispose();
+ });
+ await test('select and range announce only a committed change, once for a held arrow key',()=>{
+  const f=fixture();
+  for(const [html,key] of [['<select><option>甲</option></select>','select'],['<input type="range">','adjust']]){
+   f.host.innerHTML=html;const field=f.host.firstElementChild,initial=f.sounds.length;
+   for(let i=0;i<15;i++)f.emit('input',field);
+   f.emit('click',field);f.emit('change',field,{isTrusted:false});f.emit('change',field,{isComposing:true});assert.equal(f.sounds.length,initial);
+   f.emit('change',field);assert.equal(f.sounds.at(-1),key);
+   f.emit('keydown',field,{key:'ArrowRight'});f.emit('change',field);
+   for(let i=0;i<4;i++){f.emit('keydown',field,{key:'ArrowRight',repeat:true});f.emit('change',field);}
+   assert.equal(f.sounds.length,initial+1);f.emit('keyup',field,{key:'ArrowRight'});assert.equal(f.sounds.length,initial+2);assert.equal(f.sounds.at(-1),key);
+   field.disabled=true;f.emit('change',field);assert.equal(f.sounds.length,initial+2);
+  }
+  f.ui.dispose();
+ });
+ await test('captured map markers and wheel gestures each sound once',()=>{
+  const f=fixture();f.host.innerHTML='<div class="sg-map-surface"><button data-map-marker="edo" class="sg-map-marker"></button></div>';
+  const surface=f.query('.sg-map-surface'),marker=f.query('button');
+  f.emit('click',marker);assert.equal(f.sounds.length,0,'map handles the actual marker hit');
+  const up=f.emit('pointerup',surface,{pointerId:1});f.ui.mapGesture(up,marker);f.ui.mapGesture(up,marker);
+  const wheel=()=>f.ui.mapGesture(f.emit('wheel',surface),surface);
+  wheel();f.advance(100);wheel();f.advance(201);wheel();assert.deepEqual(f.sounds,['map','map','map']);
+  f.doc.hidden=true;f.ui.mapGesture(f.emit('pointerup',surface),marker);assert.equal(f.sounds.length,3);f.ui.dispose();
+ });
  await test('disabled, hidden, inert, closed and explicitly quiet controls are silent',()=>{
   const f=fixture();
   for(const markup of ['<button disabled>保留</button>','<div aria-disabled="true"><button>保留</button></div>','<div hidden><button>隠す</button></div>','<div inert><button>保留</button></div>','<div aria-hidden="true"><button>隠す</button></div>','<dialog><button>閉じた画面</button></dialog>','<button class="is-disabled">保留</button>','<button data-ui-sound="off">専用音</button>','<button data-sound-preview>音を試す</button>']){
@@ -85,7 +134,7 @@ let checks=0;async function test(name,run){await run();checks++;console.log('PAS
  const {fixture:audioFixture}=await import('./helpers/music-fixture.mjs');
  await test('tap is one short independent sound; same-click confirmation cannot double-play it',async()=>{
   const audio=audioFixture(),effects=new audio.context.SengokuSoundEffects({volume:20}),f=fixture(type=>effects.play(type));f.host.innerHTML='<button>普請</button>';f.emit('click',f.query('button'));const confirmation=effects.play('confirm');await drain();
-  assert.equal(await confirmation,false);assert.equal(effects._voices.size,1);assert.equal(audio.sources.size,3);assert([...audio.sources].every(source=>source.stopped-source.started<.12));assert.equal(effects._gain.gain.value,.13);
+  assert.equal(await confirmation,false);assert.equal(effects._voices.size,1);assert(audio.sources.size>=1&&audio.sources.size<=3,'one short UI voice uses at most three oscillators');assert([...audio.sources].every(source=>source.stopped-source.started<.12));assert.equal(effects._gain.gain.value,.13);
   effects._context.advance(1);assert.equal(effects._voices.size,0);assert.equal(effects._context.state,'suspended');f.ui.dispose();await effects.dispose();
  });
  await test('audition remains one confirmation and tap obeys mute, calls, visibility and delayed permission',async()=>{
