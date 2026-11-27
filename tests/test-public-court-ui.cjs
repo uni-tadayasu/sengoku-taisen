@@ -75,6 +75,16 @@ test('parent renders keep one current office beside the evaluation rank after as
     verify(title);render();verify(title);
    }
   }
+  for(const current of ['左大臣','右大臣']){
+   for(const staleOrder of [['左大臣','右大臣'],['右大臣','左大臣']]){
+    for(const slot of host.querySelectorAll('[data-court-player]')){
+     slot.innerHTML=staleOrder.map(title=>court.badgeTitle(title)).join('');
+     assert.equal(slot.textContent,staleOrder.join(''));
+    }
+    court.update({user:{id,courtOffice:{title:current,kind:'official'}}});
+    verify(current);render();verify(current);
+   }
+  }
  }finally{delete global.document;delete global.SengokuSocial;delete global.SengokuStableDOM;}
 });
 console.log(`${count} public court badge rendering scenarios passed.`);
