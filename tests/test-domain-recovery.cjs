@@ -42,14 +42,14 @@ function fixture({existing=true,cloud=null,isAdmin=true,operator=false}={}){
  const box={innerHTML:'',inert:false},tabs={innerHTML:'',inert:false},confirm={innerHTML:'',querySelector:()=>({focus(){}})};
  const doc={readyState:'loading',hidden:false,activeElement:null,addEventListener(){},removeEventListener(){},createElement:()=>({click(){}})};
  class TestURL extends URL{}TestURL.createObjectURL=blob=>{blobs.push(blob);return'blob:test';};TestURL.revokeObjectURL=()=>{};
- const context={console,URL:TestURL,URLSearchParams,AbortController,Blob,crypto:crypto.webcrypto,FormData:class{constructor(form){this.values={...form.values};}get(key){return this.values[key]??null;}delete(key){delete this.values[key];}},setTimeout,clearTimeout,document:doc,location:{origin:'https://www.kasai-solutions-inc.com'},
+ const context={console,TypeError,URL:TestURL,URLSearchParams,AbortController,Blob,crypto:crypto.webcrypto,FormData:class{constructor(form){this.values={...form.values};}get(key){return this.values[key]??null;}delete(key){delete this.values[key];}},setTimeout,clearTimeout,document:doc,location:{origin:'https://www.kasai-solutions-inc.com'},
  localStorage:{getItem:key=>storage.get(key)??null,setItem(key,value){if(key===IDKEY&&((blockIdentity&&JSON.parse(value).id===identity.id)||(blockRollback&&JSON.parse(value).id===oldIdentity.id)||(finalizeFailure&&JSON.parse(value).id===identity.id&&JSON.parse(value).pendingRecovery!==true)))throw Error('test storage blocked');storage.set(key,value);},removeItem:key=>storage.delete(key)},SENGOKU_API_BASE:'https://local.invalid',
  fetch:async(url,options)=>{const route=new URL(url).pathname.replace('/api/v1','');calls.push({route,method:options.method,headers:options.headers});if(handler)return handler(route,options);if(apiFailure)throw Error(apiFailure);if(route==='/me'&&delayMe)await new Promise(resolve=>{releaseMe=resolve;});const payload=route==='/me'?{ok:true,user:user(),friends:[],requests:[]}:route==='/sync'?{ok:true,user:user(),save:copy(remote),revision:remote?3:0,updatedAt:'2026-11-21T00:00:00Z'}:{ok:true};return{ok:true,status:200,json:async()=>payload};},
  SengokuCloudSync:{stop:options=>stops.push(options),start:session=>starts.push(session),flush:async()=>{},getStatus:()=>({ready,linked:existing,writable:existing,message:'test'}),getDevice:()=>({id:'device-test',name:'検証端末'})},
  SengokuBridge:{getSave:()=>copy(save),getState:()=>copy(save.state),setAdminAccess:value=>roles.push(value),setSyncAccess(){},toast:(message,error)=>feedback.push({message,error}),prepareRecoverySave:(value,meta)=>{prepared.push({value,meta});return prepareFailure?{ok:false,message:'test save invalid'}:{ok:true,save:copy(value),summary:{clan:value.state.clan,home:meta.isAdmin?'edo':value.state.home,turn:value.state.turn,officers:value.state.officers.length}};},applyRecoverySave:(value,meta)=>{applied.push({value,meta});if(applyFailure)return{ok:false,message:'test game storage failed'};storage.set(GAMEKEY,JSON.stringify(value));return{ok:true};}}};
  context.window=context;vm.createContext(context);
  vm.runInContext(fs.readFileSync(path.join(__dirname,'../domain-recovery.js'),'utf8'),context);
- let source=fs.readFileSync(path.join(__dirname,'../social.js'),'utf8');source=source.replace('global.SengokuSocial={open','global.__recoveryTest={s,verifyRecovery,recoveryConfirmation,recoveryView,submit,installIdentity,importRecoveryFiles,exportRecoveryBackup,restoreStoredIdentity,startCloud,acceptUser,canShowOperatorRecovery,refreshOperatorRecoveryAccess,connected,setUI:d=>{dialog=d;},setEpoch:v=>{authEpoch=v;},getRecovery:()=>recovery};global.SengokuSocial={open');vm.runInContext(source,context);
+ let source=fs.readFileSync(path.join(__dirname,'../social.js'),'utf8');source=source.replace('global.SengokuSocial={open','global.__recoveryTest={s,verifyRecovery,recoveryConfirmation,recoveryView,submit,installIdentity,importRecoveryFiles,exportRecoveryBackup,restoreStoredIdentity,startCloud,acceptUser,canShowOperatorRecovery,refreshOperatorRecoveryAccess,connected,close,selectTab,visibility,markAccountBanned,markAccountAccessChanged,setUI:d=>{dialog=d;},setEpoch:v=>{authEpoch=v;},getRecovery:()=>recovery};global.SengokuSocial={open');vm.runInContext(source,context);
  const t=context.__recoveryTest;if(existing){t.s.identity={...oldIdentity};t.s.user={id:oldIdentity.id,name:'以前の接続',isAdmin:false};}
  if(operator){t.s.identity={id:identity.id,token:oldIdentity.token};t.s.user={...user(),isAdmin:true,isStaff:false};t.s.configLoaded=true;t.s.management={playerId:identity.id,recoveryAvailable:true};t.s.connected=true;storage.set(IDKEY,JSON.stringify(t.s.identity));}
  return{t,context,storage,calls,starts,stops,roles,prepared,applied,feedback,blobs,user,flags:options=>{if('blockIdentity'in options)blockIdentity=options.blockIdentity;if('blockRollback'in options)blockRollback=options.blockRollback;if('finalizeFailure'in options)finalizeFailure=options.finalizeFailure;if('applyFailure'in options)applyFailure=options.applyFailure;if('prepareFailure'in options)prepareFailure=options.prepareFailure;if('apiFailure'in options)apiFailure=options.apiFailure;if('delayMe'in options)delayMe=options.delayMe;if('ready'in options)ready=options.ready;},remote:(value,admin=remoteAdmin)=>{remote=value;remoteAdmin=admin;},handler:value=>{handler=value;},release:()=>releaseMe?.()};
@@ -86,7 +86,7 @@ for(const scenario of [
 function mountRecovery(f){
  let markup='',input=null,form=null;
  const host={get innerHTML(){return markup;},set innerHTML(value){markup=value;input=value.includes('social-admin-recovery-form')?{value:''}:null;form=input?{id:'social-admin-recovery-form'}:null;},get textContent(){return markup;},set textContent(value){markup=String(value);input=null;form=null;},querySelector:selector=>selector==='[name=key]'?input:selector==='#social-admin-recovery-form'?form:null};
- f.t.setUI({querySelector:selector=>selector==='[data-operator-recovery]'?host:null});f.t.refreshOperatorRecoveryAccess();return host;
+ f.dialog={open:false,showModal(){this.open=true;},close(){this.open=false;},querySelector:selector=>selector==='[data-operator-recovery]'?host:null};f.t.setUI(f.dialog);f.t.refreshOperatorRecoveryAccess();return host;
 }
 for(const state of ['ordinary','staff','signed out','changed identity','offline']){
  const f=fixture({operator:true}),host=mountRecovery(f),input=host.querySelector('[name=key]');assert(input);input.value='synthetic-private-key';
@@ -95,6 +95,128 @@ for(const state of ['ordinary','staff','signed out','changed identity','offline'
  else if(state==='changed identity')f.t.installIdentity({id:'replacement-player',token:'r'.repeat(64)},{id:'replacement-player',isAdmin:true});
  else f.t.connected(false);
  check(()=>assert.equal(input.value,'',state));check(()=>assert.equal(host.querySelector('#social-admin-recovery-form'),null,state));check(()=>assert.equal(host.innerHTML,'',state));check(()=>assert(!f.t.recoveryView().includes('social-admin-recovery-form'),state));
+}
+
+// A deliberate reveal is scoped to this open recovery view, including a lost
+// identity or an old token that has already failed its initial verification.
+for(const kind of ['guest','ordinary','expired token']){
+ const f=fixture({existing:kind!=='guest'});if(kind==='expired token')f.t.acceptUser(null);
+ f.t.s.configLoaded=true;const before=[...f.storage],host=mountRecovery(f);
+ check(()=>assert.equal(host.innerHTML,''));check(()=>assert.equal(f.context.SengokuSocial.openOperatorRecovery(),true,kind));
+ check(()=>assert.equal(f.t.s.tab,'recovery'));check(()=>assert(host.innerHTML.includes('social-admin-recovery-form')));
+ check(()=>assert.equal(f.calls.length,0));check(()=>assert.deepEqual([...f.storage],before));check(()=>assert.equal(f.starts.length,0));
+ const input=host.querySelector('[name=key]');input.value='synthetic-private-key';f.t.close();
+ check(()=>assert.equal(input.value,''));check(()=>assert.equal(host.innerHTML,''));check(()=>assert.equal(f.t.canShowOperatorRecovery(),false));
+ check(()=>assert(!fixture({existing:kind!=='guest'}).t.recoveryView().includes('social-admin-recovery-form'),'fresh page does not retain intent'));
+}
+for(const state of ['banned','pending','interrupted']){
+ const f=fixture();f.t.s.configLoaded=true;mountRecovery(f);
+ if(state==='banned')f.t.markAccountBanned(f.t.s.user);else if(state==='pending')f.t.markAccountAccessChanged();else{f.storage.set(IDKEY,JSON.stringify({...oldIdentity,pendingRecovery:true}));f.t.restoreStoredIdentity();}
+ check(()=>assert.equal(f.context.SengokuSocial.openOperatorRecovery(),false,state));check(()=>assert.equal(f.t.canShowOperatorRecovery(),false));check(()=>assert.equal(f.calls.length,0));
+}
+// The same original-key endpoint handles guest recovery, without authorizing a
+// session, claiming a role, or changing an existing campaign before selection.
+for(const kind of ['guest','ordinary']){
+ const f=fixture({existing:kind==='ordinary',cloud:save}),previous=[...f.storage],requestIds=[];f.t.s.configLoaded=true;mountRecovery(f);f.context.SengokuSocial.openOperatorRecovery();let attempts=0;
+ const response=data=>({ok:true,status:200,json:async()=>data});
+ f.handler(async(route,options)=>{
+  if(route==='/admin/recover'){const payload=JSON.parse(options.body);assert.equal(payload.key,'synthetic-guest-key');assert.equal(options.method,'POST');assert.equal(options.headers.Authorization,undefined);requestIds.push(payload.requestId);if(++attempts===1)throw new TypeError('synthetic offline');return response({ok:true,user:f.user(),token:identity.token,recovered:true});}
+  if(route==='/me')return response({ok:true,user:f.user(),friends:[],requests:[]});
+  if(route==='/sync')return response({ok:true,user:f.user(),save,revision:3});
+  throw Error('unexpected recovery route: '+route);
+ });
+ const input={value:'synthetic-guest-key'},button={disabled:false,isConnected:true},form={id:'social-admin-recovery-form',values:{key:input.value},querySelector:selector=>selector==='[name=key]'?input:button,reset(){}};
+ await f.t.submit({target:form,submitter:button,preventDefault(){}});check(()=>assert.equal(input.value,''));check(()=>assert.equal(f.t.canShowOperatorRecovery(),true));
+ input.value='synthetic-guest-key';await f.t.submit({target:form,submitter:button,preventDefault(){}});
+ check(()=>assert.equal(requestIds[0],requestIds[1]));check(()=>assert.equal(f.t.getRecovery().verified,true));check(()=>assert.equal(f.t.getRecovery().kind,'admin-key'));
+ check(()=>assert.deepEqual([...f.storage],previous));check(()=>assert.equal(f.applied.length,0));check(()=>assert.equal(f.starts.length,0));check(()=>assert.equal(f.prepared.length,0));
+ check(()=>assert(f.t.recoveryView().includes('サーバーの進行で接続')));check(()=>assert(!JSON.stringify(f.t.getRecovery()).includes('synthetic-guest-key')));check(()=>assert(!f.t.recoveryView().includes(identity.token)));
+ f.t.close();check(()=>assert.equal(f.t.getRecovery(),null));check(()=>assert.deepEqual([...f.storage],previous));
+}
+// Revoking the entry invalidates an in-flight key response even if a new entry
+// is opened before it returns. Account restrictions remain authoritative.
+for(const change of ['close and reopen','native close','other tab','identity','role','banned','pending','hidden']){
+ const f=fixture(),before=[...f.storage];f.t.s.configLoaded=true;const host=mountRecovery(f);f.context.SengokuSocial.openOperatorRecovery();let release;
+ f.handler(()=>new Promise(resolve=>{release=resolve;}));
+ const input=host.querySelector('[name=key]');input.value='synthetic-race-key';
+ const form={id:'social-admin-recovery-form',values:{key:input.value},querySelector:()=>input,reset(){throw Error('stale response must not complete');}};
+ const pending=f.t.submit({target:form,preventDefault(){}});
+ if(change==='close and reopen'){f.t.close();f.context.SengokuSocial.openOperatorRecovery();}
+ else if(change==='native close')f.dialog.open=false;
+ else if(change==='other tab')await f.t.selectTab('sync');
+ else if(change==='identity')f.t.installIdentity({id:'newer-test',token:'n'.repeat(64)},{id:'newer-test'});
+ else if(change==='role')f.t.acceptUser({...f.t.s.user,isStaff:true},{fromSync:true});
+ else if(change==='banned')f.t.markAccountBanned(f.t.s.user);
+ else if(change==='pending')f.t.markAccountAccessChanged();
+ else{f.context.document.hidden=true;f.t.visibility();}
+ release({ok:true,status:200,json:async()=>({ok:true,user:f.user(),token:identity.token,recovered:true})});await pending;
+ check(()=>assert.equal(input.value,'',change));check(()=>assert.equal(f.t.getRecovery(),null,change));check(()=>assert.equal(f.applied.length,0,change));check(()=>assert.deepEqual([...f.storage],before,change));check(()=>assert.equal(f.calls.length,1,change));
+}
+// Server rejection (including no registered operator) never falls back to
+// initial registration, and a later close also cancels /me verification.
+for(const code of ['ADMIN_RECOVERY_FAILED','ADMIN_RECOVERY_UNAVAILABLE','ACCOUNT_BANNED']){
+ const f=fixture({existing:false});f.t.s.configLoaded=true;mountRecovery(f);f.context.SengokuSocial.openOperatorRecovery();
+ f.handler(async()=>({ok:false,status:403,json:async()=>({ok:false,error:{code,message:'synthetic rejection'}})}));
+ const input={value:'synthetic'},form={id:'social-admin-recovery-form',values:{key:input.value},querySelector:()=>input,reset(){}};await f.t.submit({target:form,preventDefault(){}});
+ check(()=>assert.deepEqual(f.calls.map(call=>call.route),['/admin/recover']));check(()=>assert.equal(f.t.getRecovery(),null));check(()=>assert.equal(f.starts.length,0));check(()=>assert.equal(f.storage.get(IDKEY),undefined));
+}
+{
+ const f=fixture({existing:false});f.t.s.configLoaded=true;mountRecovery(f);f.context.SengokuSocial.openOperatorRecovery();let release;
+ f.handler(async route=>route==='/admin/recover'?{ok:true,status:200,json:async()=>({ok:true,user:f.user(),token:identity.token,recovered:true})}:new Promise(resolve=>{release=resolve;}));
+ const input={value:'synthetic'},form={id:'social-admin-recovery-form',values:{key:input.value},querySelector:()=>input,reset(){}};
+ const pending=f.t.submit({target:form,preventDefault(){}});for(let i=0;i<12&&!release;i++)await Promise.resolve();assert(release);f.t.close();release({ok:true,status:200,json:async()=>({ok:true,user:f.user(),friends:[],requests:[]})});await pending;
+ check(()=>assert.equal(f.t.getRecovery(),null));check(()=>assert.equal(f.starts.length,0));check(()=>assert.equal(f.calls.filter(call=>call.route==='/sync').length,0));
+}
+
+// A game-save file may finish reading after the key recovery view was closed.
+// It must not resurrect that identity, even if a fresh entry is already open.
+for(const change of ['close and reopen','native close','hidden']){
+ const f=fixture({existing:false});f.t.s.configLoaded=true;mountRecovery(f);f.context.SengokuSocial.openOperatorRecovery();
+ await f.t.verifyRecovery({identity,kind:'admin-key'});const before=[...f.storage],callCount=f.calls.length;let release;
+ const raw=JSON.stringify(save),pending=f.t.importRecoveryFiles([{size:raw.length,text:()=>new Promise(resolve=>{release=resolve;})}]);assert(release);
+ if(change==='close and reopen'){f.t.close();f.context.SengokuSocial.openOperatorRecovery();}
+ else if(change==='native close')f.dialog.open=false;
+ else{f.context.document.hidden=true;f.t.visibility();}
+ release(raw);await pending;
+ check(()=>assert.equal(f.calls.length,callCount,change));check(()=>assert.equal(f.starts.length,0,change));check(()=>assert.equal(f.applied.length,0,change));check(()=>assert.deepEqual([...f.storage],before,change));
+ // A native close event will perform the cleanup; no file response can replace
+ // the existing stage in the interval before that event is dispatched.
+ check(()=>assert(change==='native close'?f.t.getRecovery()?.save===null:f.t.getRecovery()===null,change));
+}
+// File additions keep the key-authenticated identity's role checks and lifetime,
+// including a rejected file, a failed server check, and a successful retry.
+{
+ const f=fixture({existing:false});f.t.s.configLoaded=true;mountRecovery(f);f.context.SengokuSocial.openOperatorRecovery();
+ await f.t.verifyRecovery({identity,kind:'admin-key'});const original=f.t.getRecovery(),before=[...f.storage];
+ await f.t.importRecoveryFiles([{size:1,text:async()=>'{'}]);check(()=>assert.equal(f.t.getRecovery(),original));check(()=>assert.equal(original.kind,'admin-key'));
+ const raw=JSON.stringify(save),file={size:raw.length,text:async()=>raw};
+ f.remote(null,false);await f.t.importRecoveryFiles([file]);const rejected=f.t.getRecovery();
+ check(()=>assert.equal(rejected.kind,'admin-key'));check(()=>assert.equal(rejected.verified,false));check(()=>assert.match(rejected.error,/運営権限/));check(()=>assert.equal(f.prepared.length,0));
+ f.remote(null,true);await f.t.verifyRecovery(rejected);const retried=f.t.getRecovery();
+ check(()=>assert.equal(retried.kind,'admin-key'));check(()=>assert.equal(retried.verified,true));check(()=>assert.equal(retried.prepared.save.state.home,'edo'));
+ check(()=>assert.equal(f.starts.length,0));check(()=>assert.equal(f.applied.length,0));check(()=>assert.deepEqual([...f.storage],before));
+ f.t.close();check(()=>assert.equal(f.t.getRecovery(),null));
+}
+// Closing during the subsequent verification also cancels the file-derived
+// operator stage before any saved progress is fetched or installed.
+{
+ const f=fixture({existing:false});f.t.s.configLoaded=true;mountRecovery(f);f.context.SengokuSocial.openOperatorRecovery();
+ await f.t.verifyRecovery({identity,kind:'admin-key'});const syncCount=f.calls.filter(call=>call.route==='/sync').length;
+ f.flags({delayMe:true});const raw=JSON.stringify(save),pending=f.t.importRecoveryFiles([{size:raw.length,text:async()=>raw}]);
+ for(let i=0;i<12&&f.t.getRecovery()?.save===null;i++)await Promise.resolve();check(()=>assert.equal(f.t.getRecovery()?.kind,'admin-key'));check(()=>assert(f.t.getRecovery()?.save));
+ f.t.close();f.release();await pending;
+ check(()=>assert.equal(f.t.getRecovery(),null));check(()=>assert.equal(f.calls.filter(call=>call.route==='/sync').length,syncCount));check(()=>assert.equal(f.starts.length,0));
+}
+// Ordinary backup imports keep their established flow, and an independently
+// imported identity never inherits the previous key recovery's admin condition.
+for(const fromKey of [false,true]){
+ const f=fixture({existing:false});f.t.s.configLoaded=true;mountRecovery(f);if(fromKey)f.context.SengokuSocial.openOperatorRecovery();
+ await f.t.verifyRecovery({identity,kind:fromKey?'admin-key':'identity'});
+ const other={id:'ordinary-backup-test',token:'b'.repeat(64)},user={id:other.id,name:'別の領主',isAdmin:false,isStaff:false};
+ f.handler(async route=>({ok:true,status:200,json:async()=>route==='/me'?{ok:true,user,friends:[],requests:[]}:{ok:true,user,save:null,revision:0}}));
+ const files=[other,save].map(value=>{const raw=JSON.stringify(value);return{size:raw.length,text:async()=>raw};});await f.t.importRecoveryFiles(files);
+ const stage=f.t.getRecovery();check(()=>assert.equal(stage.identity.id,other.id));check(()=>assert.equal(stage.kind,'files'));check(()=>assert.equal(stage.verified,true));check(()=>assert.equal(stage.user.isAdmin,false));check(()=>assert.equal(f.starts.length,0));
+ f.t.close();check(()=>assert.equal(f.t.getRecovery(),stage));
 }
 
 // Identity alone never starts synchronization and never writes the current game.
@@ -242,5 +364,5 @@ for(const failure of ['blockIdentity','applyFailure']){
  const f=fixture({existing:false,isAdmin:false});f.context.SengokuBridge.hasStarted=()=>false;f.context.SengokuBridge.getSave=()=>null;
  await f.t.verifyRecovery({identity});check(()=>assert(!f.t.recoveryView().includes('江戸城から新しく始めて接続')));check(()=>assert(f.t.recoveryView().includes('ゲーム画面で最初の城を選んで')));check(()=>assert.throws(()=>f.t.recoveryConfirmation('new-admin'),/条件/));check(()=>assert.equal(f.starts.length,0));
 }
-console.log(`Domain recovery tests passed (${checks} assertions): origin migration guidance, complete/legacy files, authenticated role validation, cloud-first choices, no empty-cloud auto-upload, pairing/key recovery retries, transient key handling, verified-owner-only recovery controls, hidden form denial, DOM/input removal on demotion or account change, stale role/identity responses, pending interruption/rollback, explicit local-progress choice and private-token-free UI. No network requests were made.`);
+console.log(`Domain recovery tests passed (${checks} assertions): origin migration guidance, complete/legacy files, authenticated role validation, cloud-first choices, no empty-cloud auto-upload, pairing/key recovery retries, transient key handling, verified-owner defaults and deliberate guest recovery, hidden form denial, DOM/input removal on demotion or account change, stale role/identity responses, pending interruption/rollback, explicit local-progress choice and private-token-free UI. No network requests were made.`);
 })().catch(error=>{console.error(error);process.exitCode=1;});

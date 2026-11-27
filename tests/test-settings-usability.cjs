@@ -16,9 +16,10 @@ const init = source.slice(source.indexOf('  let settings={'), source.indexOf('  
 const clickStart = source.indexOf("  document.addEventListener('click',async event=>");
 const click = source.slice(clickStart, source.indexOf("\n  document.addEventListener('submit'", clickStart));
 const eventLine = type => source.split('\n').find(line => line.startsWith("  document.addEventListener('" + type + "',"));
-const actions = ['close', 'export-complete-backup', 'export-save', 'export-sync-backup', 'help', 'import-save', 'install', 'music', 'music-resume', 'new-game', 'notifications', 'open-gacha', 'open-recovery', 'open-sync', 'premium', 'progress', 'sound-settings', 'walking'];
+const actions = ['close', 'export-complete-backup', 'export-save', 'export-sync-backup', 'help', 'import-save', 'install', 'music', 'music-resume', 'new-game', 'notifications', 'open-gacha', 'open-recovery', 'open-sync', 'premium', 'progress', 'settings-version', 'sound-settings', 'walking'];
 function fixture({ preferences = {}, rawPreferences, role = 'player', linked = false, warning = '' } = {}) {
   const { doc, host } = setup(), handlers = new Map(), calls = [], writes = [];
+  const modalElement=doc.createElement('dialog');modalElement.id='modal';doc.body.append(modalElement);modalElement.append(host);
   const savedGame = '{"campaign":"keep-original-save","turn":71}';
   const storage = new Map([[saveKey, savedGame], [settingsKey, rawPreferences ?? JSON.stringify({audioPreferenceVersion:1,sound:false,...preferences})]]);
   doc.addEventListener = (type, callback) => { if (!handlers.has(type)) handlers.set(type, []); handlers.get(type).push(callback); };
@@ -39,7 +40,7 @@ function fixture({ preferences = {}, rawPreferences, role = 'player', linked = f
     requireWritable: () => c.writable,
     esc: value => String(value ?? '').replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[character])),
     num: value => Math.floor(Number(value) || 0).toLocaleString('ja-JP'), icon: () => '<span aria-hidden="true"></span>',
-    modal(title, description, body, footer, kind) { c.activeModal = kind; c.lastModal = { title, description, body, footer, kind }; host.innerHTML = body + footer; },
+    modal(title, description, body, footer, kind) { modalElement.open=true;c.activeModal = kind; c.lastModal = { title, description, body, footer, kind }; host.innerHTML = body + footer; },
     closeModal() { c.activeModal = ''; calls.push(['close']); }, stopStrategy: record('stop-strategy'),
     renderHeader: record('render-header'), render: record('render'), toast: record('toast'),
     exportSave: record('export-save'), exportSyncBackup: record('export-sync-backup'),
@@ -62,6 +63,7 @@ function fixture({ preferences = {}, rawPreferences, role = 'player', linked = f
     }
   };
   vm.createContext(c);
+  vm.runInContext(fs.readFileSync(require.resolve('../domain-recovery.js'),'utf8'),c);
   const musicState=source.split('\n').find(line=>line.startsWith('  let music=null,voiceAudioActive=false')).replace('let music=','var music=');
   vm.runInContext(init + '\nthis.settings = settings;\n' + musicState + '\n' + source.split('\n').find(line=>line.startsWith('  let musicBroadcastState=')) + '\n' + source.split('\n').find(line => line.startsWith('  const mutationActions=')) + '\n' +
     ['safeSettings', 'settingsModal', 'musicScene', 'musicStatusText', 'removeMusicGesture', 'broadcastMusicNotice', 'refreshMusicPlayback', 'musicPlaybackBlocked', 'musicPlaybackFailed', 'ensureAudio', 'sceneTrack', 'requestMusicPlayback', 'trustedGestureMusic', 'applyMusicVolume', 'startMusic', 'syncMusic', 'stopMusic', 'toggleSound'].map(fn).join('\n') + '\n' + click + '\n' + eventLine('input') + '\n' + eventLine('change'), c);
@@ -117,6 +119,43 @@ async function test(name, run) { await run(); passed++; console.log('PASS ' + na
     assert.equal(updates.doc.querySelector('#settings-release-open').textContent,'保存して新版を開く');
     assert.equal(updates.doc.querySelector('#settings-release-status').getAttribute('role'),'status');
     const linked = fixture({ linked: true }); linked.c.settingsModal(); assert.match(linked.host.textContent, /同時に操作できる端末は1台/);
+  });
+  await test('seven version taps reveal recovery once without changing a fresh or existing campaign', async () => {
+    for(const fresh of [true,false]){
+      const f=fixture();f.c.startPending=fresh;f.c.writable=false;
+      let clock=1000,reveals=0;const recovery=f.c.window.SengokuDomainRecovery,tap=recovery.tapOperatorRecoveryGesture;
+      recovery.tapOperatorRecoveryGesture=()=>tap(clock+=100);
+      f.c.window.SengokuSocial.openOperatorRecovery=()=>{reveals++;return true;};
+      f.c.settingsModal();const version=f.doc.querySelector('#settings-release-version');
+      assert.equal(version.localName,'button');assert.equal(version.getAttribute('type'),'button');
+      version.textContent='現在のバージョン 5.13.3';
+      for(let i=0;i<6;i++)await f.dispatch('click',version,{isTrusted:true});
+      assert.equal(reveals,0);assert.equal(f.c.activeModal,'settings');
+      // Updater text refreshes preserve the button and the sequence.
+      version.textContent='現在のバージョン 5.13.3';await f.dispatch('click',version,{isTrusted:true});
+      assert.equal(reveals,1);assert.equal(f.c.activeModal,'');
+      assert.equal(f.storage.get(saveKey),f.savedGame);assert.equal(f.writes.length,0);
+      assert.equal(f.c.startPending,fresh);assert(!f.host.innerHTML.includes('運営登録キー'));
+      assert(!f.calls.some(call=>['social','new-game-confirmation'].includes(call[0])));
+    }
+  });
+  await test('version gesture expires and resets across other actions, close, reload and untrusted clicks', async () => {
+    const f=fixture();let clock=1000,reveals=0;
+    const helper=f.c.window.SengokuDomainRecovery,tap=helper.tapOperatorRecoveryGesture;
+    helper.tapOperatorRecoveryGesture=()=>tap(clock+=100);
+    f.c.window.SengokuSocial.openOperatorRecovery=()=>{reveals++;return true;};
+    f.c.clearGachaPresentation=()=>{};f.c.syncMusic=()=>{};f.c.activeModalContext=null;
+    vm.runInContext(fn('closeModal'),f.c);
+    f.c.settingsModal();let version=f.doc.querySelector('#settings-release-version');
+    const taps=async count=>{for(let i=0;i<count;i++)await f.dispatch('click',version,{isTrusted:true});};
+    await taps(6);clock+=10001;await taps(1);assert.equal(reveals,0);
+    await f.dispatch('click',f.doc.querySelector('#tips'),{isTrusted:true});await taps(6);assert.equal(reveals,0);
+    f.c.closeModal();f.c.settingsModal();version=f.doc.querySelector('#settings-release-version');await taps(1);assert.equal(reveals,0);
+    for(let i=0;i<9;i++)await f.dispatch('click',version,{isTrusted:false});assert.equal(reveals,0);
+    await taps(5);assert.equal(reveals,0);await taps(1);assert.equal(reveals,1);
+    const fresh=fixture();for(let i=0;i<6;i++)assert.equal(fresh.c.window.SengokuDomainRecovery.tapOperatorRecoveryGesture(1000+i),false);
+    assert.equal(fresh.c.window.SengokuDomainRecovery.tapOperatorRecoveryGesture(1006),true);
+    assert.equal(f.writes.length,0);assert.equal(f.storage.get(saveKey),f.savedGame);
   });
   await test('volume feedback and audio update in place while only preferences are saved', async () => {
     const f = fixture(), before = JSON.stringify(f.game.state); f.c.settingsModal();
