@@ -10,6 +10,7 @@ const row=(h,p)=>h.sql.prepare('SELECT * FROM player_saves WHERE user_id=?').get
 const saved=(h,p)=>JSON.parse(row(h,p).save_json);
 const evaluate=state=>E.publicEvaluation(state,{officers});
 const zero=evaluate(null);
+const ordinaryCrest={id:'castle_lord',cityName:'一般拠点',title:'城主の紋章'};
 const json=value=>JSON.parse(JSON.stringify(value));
 function gameplay(h){return createHash('sha256').update(JSON.stringify(['player_saves','staff_campaign_backups','staff_base','field_battles','field_requests','cycle_receipts'].map(table=>h.sql.prepare('SELECT * FROM '+table+' ORDER BY 1').all()))).digest('hex');}
 async function scope(name,run){const h=harness();try{await run(h);checks.push(name);console.log('PASS '+name);}finally{calls+=h.calls;h.close();}}
@@ -68,7 +69,7 @@ await scope('empty chat deltas refresh recent same-room authors and do not expos
   await h.api('/guild',post(secret,{name:'秘密の部屋'}));await h.api('/chat',post(secret,{channel:'guild',text:'別室の発言'}));
   const upgraded=await update(h,a,s=>{s.prestige=20000;});assert(upgraded.user.evaluation.score>world.evaluation.score);
   const before=gameplay(h),read=(await h.api('/chat?channel=world&after='+world.id,{token:b.token})).data;
-  assert.deepEqual(read.messages,[]);assert.deepEqual(read.playerEvaluations,[{playerId:a.user.id,name:a.user.name,avatarVersion:null,courtOffice:null,cityHonors:[],evaluation:upgraded.user.evaluation,appearance:{nameplate:null,town:null,badge:null,ownedProducts:[]}}]);assert(!JSON.stringify(read).includes(secret.user.id));assert.equal(gameplay(h),before);
+  assert.deepEqual(read.messages,[]);assert.deepEqual(read.playerEvaluations,[{playerId:a.user.id,name:a.user.name,avatarVersion:null,courtOffice:null,cityHonors:[ordinaryCrest],evaluation:upgraded.user.evaluation,appearance:{nameplate:null,town:null,badge:null,ownedProducts:[]}}]);assert(!JSON.stringify(read).includes(secret.user.id));assert.equal(gameplay(h),before);
   const full=(await h.api('/chat?channel=world',{token:b.token})).data;assert.deepEqual(full.messages[0].evaluation,upgraded.user.evaluation);assert.equal(full.messages[0].text,world.text);
 });
 
@@ -131,7 +132,7 @@ await scope('committed PvP wins, field targets, history, system-mail participant
   const immutable=h.sql.prepare('SELECT result_json FROM field_requests WHERE actor_id=? AND request_id=?').get(a.user.id,body.requestId).result_json;assert(!immutable.includes('Evaluation'));
   const field=(await h.api('/field',{token:a.token})).data,before=gameplay(h);for(const p of field.targets)assert.deepEqual(p.evaluation,p.playerId===a.user.id?expectedA:expectedD);
   const history=(await h.api('/field/me?deviceId='+a.deviceId,{token:a.token})).data;assert.deepEqual(history.battles[0].attackerEvaluation,expectedA);
-  for(const actor of [a,d]){const mail=(await h.api('/mail',{token:actor.token})).data.mail[0];assert.equal(mail.source,'system');assert.deepEqual(mail.participants,[{playerId:a.user.id,name:a.user.name,avatarVersion:null,courtOffice:null,cityHonors:[{id:'nijo',cityName:'二条御所',title:'二条御所の勲章'}],side:'attacker',evaluation:expectedA,appearance:{nameplate:null,town:null,badge:null,ownedProducts:[]}},{playerId:d.user.id,name:d.user.name,avatarVersion:null,courtOffice:null,cityHonors:[],side:'defender',evaluation:expectedD,appearance:{nameplate:null,town:null,badge:null,ownedProducts:[]}}]);}
+  for(const actor of [a,d]){const mail=(await h.api('/mail',{token:actor.token})).data.mail[0];assert.equal(mail.source,'system');assert.deepEqual(mail.participants,[{playerId:a.user.id,name:a.user.name,avatarVersion:null,courtOffice:null,cityHonors:[{id:'nijo',cityName:'二条御所',title:'二条御所の勲章'},ordinaryCrest],side:'attacker',evaluation:expectedA,appearance:{nameplate:null,town:null,badge:null,ownedProducts:[]}},{playerId:d.user.id,name:d.user.name,avatarVersion:null,courtOffice:null,cityHonors:[ordinaryCrest],side:'defender',evaluation:expectedD,appearance:{nameplate:null,town:null,badge:null,ownedProducts:[]}}]);}
   const events=(await h.api('/achievements')).data.events.filter(e=>e.playerId===a.user.id);assert(events.length);for(const event of events)assert.deepEqual(event.playerEvaluation,expectedA);
   const replay=(await h.api('/field/attack',post(a,body))).data;assert(replay.idempotent);assert.deepEqual(replay.battle.attackerEvaluation,expectedA);assert.equal(gameplay(h),before);
   await h.api('/sync/lease',post(a,{deviceId:a.deviceId}));

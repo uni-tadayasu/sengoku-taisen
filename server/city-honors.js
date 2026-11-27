@@ -1,6 +1,7 @@
 // Public, non-purchasable distinctions for the current holders of the game's
-// five major cities and the currently appointed Kagoshima deputy. They never
-// grant authority or alter combat/save data.
+// five major cities, the appointed Kagoshima deputy and regular-base players.
+// They never grant authority or alter combat/save data.
+import {RESIDENCY_CASTLES} from './residency.js';
 const statement=(db,sql,...args)=>db.prepare(sql).bind(...args);
 const validId=value=>typeof value==='string'&&/^u_[A-Za-z0-9_]{1,96}$/.test(value);
 export const CITY_HONORS=Object.freeze([
@@ -11,6 +12,9 @@ export const CITY_HONORS=Object.freeze([
  {id:'nagoya',cityName:'名古屋城',title:'名古屋城の勲章'},
  {id:'kagoshima',cityName:'鹿児島城',title:'鹿児島城 不死身の紋章'}
 ].map(Object.freeze));
+export const CASTLE_LORD_HONOR=Object.freeze({id:'castle_lord',cityName:'一般拠点',title:'城主の紋章'});
+const PUBLIC_HONORS=Object.freeze([...CITY_HONORS,CASTLE_LORD_HONOR]);
+const regularCastleIds=JSON.stringify(RESIDENCY_CASTLES.map(castle=>castle.id));
 const SKIP=new Set(['save','state','entitlements','staffBase','appearance','courtOffice','cityHonors']);
 const FIELDS=[
  ['playerId','playerName','playerCityHonors'],
@@ -53,7 +57,7 @@ export async function resolvePublicCityHonors(db,payload,now,{getWorldClock,even
  if(!ids.size)return payload;
  const clock=await getWorldClock(db,now),selected=[...ids],queries=[];
  for(let offset=0;offset<selected.length;offset+=80){
-  const page=selected.slice(offset,offset+80),args=[...page,now,now,now];
+  const page=selected.slice(offset,offset+80),args=[...page,now,now,now,regularCastleIds,now];
   const branches=[
    `SELECT u.id AS player_id,'edo' AS city_id FROM users u
     WHERE u.id IN(SELECT id FROM visible) AND u.id=(SELECT value FROM settings WHERE key='adminUserId')
@@ -69,12 +73,24 @@ export async function resolvePublicCityHonors(db,payload,now,{getWorldClock,even
     WHERE u.id IN(SELECT id FROM visible) AND ds.appointed_at<=?
     AND u.id<>COALESCE((SELECT value FROM settings WHERE key='adminUserId'),'')
     AND NOT EXISTS(SELECT 1 FROM staff_members sm WHERE sm.user_id=u.id)
-    AND NOT EXISTS(SELECT 1 FROM player_bans b WHERE b.user_id=u.id AND b.active=1)`
+    AND NOT EXISTS(SELECT 1 FROM player_bans b WHERE b.user_id=u.id AND b.active=1)`,
+   // This is a distinction for every regular-base member, including retainers.
+   // The public household ledger, not a private campaign home or role flag,
+   // defines membership. Protected roles remain excluded even if a stale
+   // household row survives until the next residency reconciliation.
+   `SELECT u.id AS player_id,'castle_lord' AS city_id FROM users u
+    JOIN castle_residents cr ON cr.user_id=u.id JOIN castle_seats cs ON cs.castle_id=cr.castle_id
+    WHERE u.id IN(SELECT id FROM visible) AND cs.castle_id IN(SELECT value FROM json_each(?)) AND cr.joined_at<=?
+    AND u.id<>COALESCE((SELECT value FROM settings WHERE key='adminUserId'),'')
+    AND NOT EXISTS(SELECT 1 FROM staff_members sm WHERE sm.user_id=u.id)
+    AND NOT EXISTS(SELECT 1 FROM deputy_operator_state ds WHERE ds.user_id=u.id)
+    AND NOT EXISTS(SELECT 1 FROM player_bans b WHERE b.user_id=u.id AND b.active=1)
+    AND NOT EXISTS(SELECT 1 FROM player_expulsions pe WHERE pe.user_id=u.id AND pe.pending=1)`
   ];
   const visible=`/* public-city-honors */ WITH visible(id) AS (VALUES ${page.map(()=>'(?)').join(',')}) `;
   // D1 allows at most five SELECT terms in one compound statement. Keep the
-  // three appointment honors and three holdings in separate statements within
-  // this same atomic batch, so all six still use one ownership snapshot.
+  // three appointment honors plus household membership separate from the
+  // three holdings, so all distinctions use one atomic ownership snapshot.
   queries.push(statement(db,visible+branches.join(' UNION ALL '),...args));
   const holdings=[],holdingArgs=[...page];
   // Reuse the shared field's canonical ownership predicate. A captured outpost
@@ -97,6 +113,6 @@ export async function resolvePublicCityHonors(db,payload,now,{getWorldClock,even
  }
  // Always return [] for a former holder so all viewers can remove a stale
  // medal after capture, appointment change, account suspension or cycle reset.
- for(const ref of refs)ref.value[ref.key]=CITY_HONORS.filter(city=>owned.get(ref.id)?.has(city.id)).map(city=>({...city}));
+ for(const ref of refs)ref.value[ref.key]=PUBLIC_HONORS.filter(city=>owned.get(ref.id)?.has(city.id)).map(city=>({...city}));
  return payload;
 }

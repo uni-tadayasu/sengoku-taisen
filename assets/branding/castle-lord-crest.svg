@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="clc-title clc-description">
+  <title id="clc-title">城主の紋章</title>
+  <desc id="clc-description">金の天守を深紅の七宝と二重の金輪に据え、金の葉飾りと宝石で囲んだ、一般拠点のプレイヤーを表す戦国VS独自の紋章。</desc>
+  <defs>
+    <linearGradient id="clc-gold" x1=".15" y1="0" x2=".8" y2="1">
+      <stop stop-color="#fff6cc"/>
+      <stop offset=".28" stop-color="#edc36a"/>
+      <stop offset=".48" stop-color="#fff2b6"/>
+      <stop offset=".72" stop-color="#bd812f"/>
+      <stop offset="1" stop-color="#f2ce7a"/>
+    </linearGradient>
+    <linearGradient id="clc-relief" x1="0" y1="0" x2=".2" y2="1">
+      <stop stop-color="#fff9df"/>
+      <stop offset=".5" stop-color="#ffe19b"/>
+      <stop offset="1" stop-color="#b47b30"/>
+    </linearGradient>
+    <radialGradient id="clc-enamel" cx=".3" cy=".2" r=".9">
+      <stop stop-color="#b74440"/>
+      <stop offset=".5" stop-color="#6c202b"/>
+      <stop offset="1" stop-color="#220f20"/>
+    </radialGradient>
+    <linearGradient id="clc-gem" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#ffe9dd"/>
+      <stop offset=".35" stop-color="#ef8b69"/>
+      <stop offset=".7" stop-color="#b42e37"/>
+      <stop offset="1" stop-color="#591b2b"/>
+    </linearGradient>
+    <g id="clc-leaves" fill="url(#clc-gold)" stroke="#4f3520" stroke-width="1.7" stroke-linejoin="round">
+      <path d="M39 101C17 87 10 64 20 37" fill="none" stroke="#e8bc63" stroke-width="4"/>
+      <path d="M20 48C8 43 6 33 10 24C20 30 24 38 20 48Z"/>
+      <path d="M17 65C4 60 2 49 5 41C16 47 21 55 17 65Z"/>
+      <path d="M22 82C8 81 3 70 4 61C17 65 24 72 22 82Z"/>
+      <path d="M34 98C20 101 11 92 8 83C22 82 32 87 34 98Z"/>
+      <path d="M47 108C34 115 24 110 17 101C30 96 42 99 47 108Z"/>
+      <path d="M19 51C18 40 24 31 33 27C36 38 30 48 19 51Z"/>
+      <path d="M19 74C17 63 23 54 31 50C35 61 29 71 19 74Z"/>
+      <path d="M29 93C24 82 28 73 36 66C42 77 39 87 29 93Z"/>
+    </g>
+  </defs>
+  <!-- Large leaves and the three-tier keep remain legible at 22–36px. -->
+  <use href="#clc-leaves"/>
+  <use href="#clc-leaves" transform="translate(128 0) scale(-1 1)"/>
+  <path d="M42 28L40 12L54 20L64 4L74 20L88 12L86 28L64 38Z" fill="url(#clc-gold)" stroke="#4f3520" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M64 10L70 21L64 27L58 21Z" fill="url(#clc-gem)" stroke="#ffe5a3" stroke-width="1.5"/>
+  <path d="M42 98L36 115L53 111L64 124L75 111L92 115L86 98Z" fill="url(#clc-gold)" stroke="#4f3520" stroke-width="2" stroke-linejoin="round"/>
+  <circle cx="64" cy="65" r="41" fill="#392b24" stroke="#b57b32" stroke-width="2"/>
+  <circle cx="64" cy="64" r="38" fill="url(#clc-gold)"/>
+  <circle cx="64" cy="64" r="32.5" fill="url(#clc-enamel)" stroke="#704522" stroke-width="2"/>
+  <circle cx="64" cy="64" r="29" fill="none" stroke="#f4cb75" stroke-width="1.5"/>
+  <path d="M41 40A34 34 0 0 1 76 32" fill="none" stroke="#fff8da" stroke-width="2.2" stroke-linecap="round"/>
+  <g fill="url(#clc-relief)" stroke="#542a24" stroke-width="1.6" stroke-linejoin="round">
+    <path d="M52 48H76V61H52ZM46 62H82V78H46ZM42 79H86L91 88H37Z"/>
+    <path d="M45 50L64 37L83 50L77 52L64 45L51 52Z"/>
+    <path d="M38 65L64 50L90 65L84 68L64 59L44 68Z"/>
+    <path d="M33 80L64 65L95 80L88 83L64 74L40 83Z"/>
+  </g>
+  <path d="M62 44V49M54 59V63M74 59V63M51 74V78M77 74V78M62 80V86" stroke="#542a24" stroke-width="3.2"/>
+  <path d="M41 88H87" stroke="#fff4bf" stroke-width="2" stroke-linecap="round"/>
+  <g fill="url(#clc-gem)" stroke="#ffdda0" stroke-width="1.5">
+    <path d="M64 97L70 104L64 111L58 104Z"/>
+    <path d="M25 60L29 64L25 68L21 64Z"/>
+    <path d="M103 60L107 64L103 68L99 64Z"/>
+  </g>
+</svg>
