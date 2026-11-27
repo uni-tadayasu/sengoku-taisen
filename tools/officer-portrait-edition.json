@@ -15,7 +15,7 @@
   "subjectCount": 256,
   "rankCount": 8,
   "portraitCount": 2048,
-  "exclusivePortraitCount": 1,
+  "exclusivePortraitCount": 2,
   "sourceMethod": "Eight independently generated reference paintings were filled from blank 8×4 division guides and their ordered roster, with no prior-release painting used. Each lower-rank sheet is a freshly generated costume, pose and scene edition referencing only the corresponding new U sheet. The exclusive Ieyasu portrait was separately illustrated with three U-rank officer cards as direct style references and a portrait of him in later life as the character and costume reference. See the exclusive record for this asset's revision and art direction.",
   "baseInstruction": "Class: historical game character illustration. The flat 8 across, 4 down color guide provided is solely an exact atlas template. Replace each of its 32 rectangular areas with an entirely original, DIFFERENT premium cinematic illustrated character painting from scratch. Canvas must remain exactly 3:2 landscape containing EXACTLY EIGHT equal columns across and FOUR equal rows down. Each cell alone is a full 3:4 portrait. Fill all 32 cells to their edges; adjacent paintings meet directly as straight vertical/horizontal cuts with no frames, no gutters, no margins. Strictly one human HEAD per cell (32 heads total). Center head and upper body at 50% of each cell width, eyes about 37% from top, fully contain silhouettes and leave breathing space above headdresses. Heroic U tier: spectacularly designed individual lacquered Japanese armor or court robes, embroidery and patterned sleeves, sculptural helmets and unique expressive faces, varied poses and deep scene-specific backgrounds. Masterful modern Japanese anime/sumi-e crossover, strong sinuous black outlines, crisp painted facial modeling, open shapes, intentional contrast, rich lapis / vermilion / dark indigo / antique gilding. High-end Character design, natural mature faces, varying ages and facial hair, some handsome young warriors, clever ministers, elderly veterans, ordained monks, women specified. Each panel is a true character close-up from scalp to chest, not tiny people standing in a generic environment. Each officer is an independent character (not 32 costumes of one person); use individualized casting, head silhouette and PERSONALITY based on name. Favors graphic shadow and deliberate rim lighting, intricate period material, real human character without human photography, no generic 3D renders. No letters, writing, seals, ranks, badges, UI, panels within a portrait, or floating particles. Use these EXACT positions. Do not draw or print their names.",
   "tierInstruction": "Use case: identity-preserve. The single input is a just-painted set of 32 DIFFERENT characters in an exact 8 columns ACROSS × 4 rows DOWN gallery. Produce a NEW, separately painted rank edition from this visual reference for a premium Japanese historical collectible game. Redraw each as a new illustration; preserve all 32 people's gender, ages, striking facial features, hair, beard and recognizable face, precise 8×4 deployment, left-to-right row order and no padding. Replace the entire costumes, silhouette, poses, backdrops, props and scene LIGHTING according to the tier art direction below. Keep readable distinct attractive hand-drawn expressiveness within each established cell. Head chest or waist portrait, full head and headdress contained, face centered horizontally around 35-42% of cell height. Clothes individual and appropriate to officer identity, especially monks and women. Respect likeness of each input person, concentrated linework, layered Japanese pigment, rich engraved details, texture in broad shapes. Every cell must show a single person with one head, no other visible people in that cell. Exact same 3:2 total canvas, 32 contiguous borderless 3:4 portrait pictures. Front or 3/4 chests, intentionally varied faces, shoulder and hand pose; never add title, text, signatures, gutters, frames. Do not merely recolor the input: REMOVE the U rank crown/armor ensemble and build new period clothing and contrasting context specifically as follows:",
@@ -983,5 +983,49 @@
     "sourceSha256": "44555870b65625dc323d274463518dd7afe0edfbb34f68697e44c15dce0c6313",
     "promptSummary": "添付の晩年の徳川家康像を人物と衣装の参考に、ゲーム内のUランク武将3名の絵巻をアニメ作画の直接の参考に用いた。低めからの斜め向きの構図、鋭い金色の瞳と銀色の眉、黒い束帯と金の葵紋・朱の裏地を描く。松と紅葉、群青の空と白い天守を背景に、硬質なセル塗りと明快な輪郭線で仕上げる。",
     "artRevision": "ieyasu-anime-u-20261123"
+  },
+  "deputyExclusive": {
+    "name": "島津義久",
+    "subjectId": "of_45e0f4cb36ad",
+    "rank": "U",
+    "access": "deputy-only",
+    "requiredMarker": "deputyExclusive",
+    "file": "assets/deputy-shimazu-yoshihisa-u-relief.webp",
+    "size": [
+      1024,
+      1024
+    ],
+    "bytes": 455430,
+    "sha256": "7837aebf1bae3181ae9af5f69d10254c9f443db06b38e95912c81e3a42d00ac2",
+    "generator": "image_gen (built-in)",
+    "sourceGenerationId": "exec-12fe7b52-ad52-451d-a6ac-9559fa0af901",
+    "sourceSize": [
+      1254,
+      1254
+    ],
+    "sourceSha256": "48cf048513b3aef90b759a8efcc6e7b2601db1f0ccf6ffe4fbe4307e7f670a65",
+    "promptSummary": "サブ運営専用の総大将・島津義久の特別肖像。中央に威厳ある熟年の武将、黒漆の甲冑と金銀の浮彫レリーフ、兜と胴に丸十紋。深紅の背景と金の円形彫金、控えめなシアンの縁光。精密な3DCGとゲーム用キャラクターイラストの仕上げ。正方形、文字・UI・透かし無し。",
+    "artRevision": "shimazu-relief-u-20261127",
+    "deliveryConversion": "1254pxの原画から全体の構図を維持して1024pxへ縮小し、Pillow WebP quality=88 method=6で配信用圧縮。プレビューは配信原版を160px・384pxに縮小しquality=90 method=6で書き出す。合成や描画改変は無し。",
+    "previews": [
+      {
+        "file": "assets/art-previews/deputy-shimazu-yoshihisa-u-relief-160.webp",
+        "size": [
+          160,
+          160
+        ],
+        "bytes": 14480,
+        "sha256": "a24e0dee7f15503f58c18577a5b62ecc87ba6ac744834b431e09ec92a95bde58"
+      },
+      {
+        "file": "assets/art-previews/deputy-shimazu-yoshihisa-u-relief-384.webp",
+        "size": [
+          384,
+          384
+        ],
+        "bytes": 75172,
+        "sha256": "9fa4e4ee5d8799b0133371ae39d72873fd2e63ee9589633f296b09cdd236ac14"
+      }
+    ]
   }
 }

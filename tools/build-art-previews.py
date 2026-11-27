@@ -102,10 +102,12 @@ def build(dest):
         picture = cell(path, index if kind == 'officer' else 15)
         parts.append(picture.resize((96, 96), Image.Resampling.LANCZOS))
     write_grid(dest, 'controls', parts, 4, 4)
-    original = sheet('assets/operator-ieyasu-u.webp')
-    for width in (160, 384):
-        scaled = original.resize((width, width*3//2), Image.Resampling.LANCZOS)
-        scaled.save(dest / f'operator-ieyasu-u-{width}.webp', 'WEBP', quality=90, method=6)
+    for name in ('operator-ieyasu-u', 'deputy-shimazu-yoshihisa-u-relief'):
+        original = sheet(f'assets/{name}.webp')
+        for width in (160, 384):
+            height = round(width * original.height / original.width)
+            scaled = original.resize((width, height), Image.Resampling.LANCZOS)
+            scaled.save(dest / f'{name}-{width}.webp', 'WEBP', quality=90, method=6)
 
 
 if __name__ == '__main__':

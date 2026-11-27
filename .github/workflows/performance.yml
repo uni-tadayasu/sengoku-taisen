@@ -142,6 +142,7 @@ jobs:
         run: |
           node server/test-expulsion.mjs
           node server/test-deputy-operator.mjs
+          node server/test-deputy-officer.mjs
           node server/test-deputy-projection.mjs
           node tests/test-deputy-engine.cjs
           node tests/test-deputy-sync.cjs

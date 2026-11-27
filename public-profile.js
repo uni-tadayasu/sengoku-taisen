@@ -25,7 +25,7 @@ function commanderCard(commander){
   const officer=officers.get(commander.officerId);
   if(!officer||!ranks.has(commander.rank))return '<section class="lord-commander lord-commander-empty"><div><h3>総大将</h3><p>武将情報を確認できません</p></div></section>';
   const name=officer.name;
-  const portrait=global.SengokuArt?.portrait?.({...officer,rank:commander.rank})||'';
+  const portrait=global.SengokuArt?.portrait?.({...officer,rank:commander.rank,...(commander.deputyExclusive===true&&officer.id==='of_45e0f4cb36ad'&&commander.rank==='U'?{deputyExclusive:true}:{})})||'';
   return `<section class="lord-commander" data-officer-id="${esc(officer.id)}" data-officer-rank="${commander.rank}"><div class="lord-commander-portrait">${portrait}</div><div class="lord-commander-copy"><h3>総大将</h3><p class="lord-commander-name">${esc(name)}</p><p class="lord-commander-rank">ランク <b>${commander.rank}</b></p></div></section>`;
 }
 function paintCommander(host,commander,owner){patch(host,commanderCard(commander),owner);}

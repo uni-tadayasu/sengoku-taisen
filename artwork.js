@@ -16,6 +16,7 @@ const previewUrl=name=>previewDir+name+'.webp?v='+previewRevision;
 const numberTag=value=>String(value).padStart(2,'0');
 const frames=Object.fromEntries(ranks.map(r=>[r,`assets/frames/rank-${r}.svg?v=4.9.10-20261123`]));
 const operatorPortrait={id:'of_b0616adde162',rank:'U',url:'assets/operator-ieyasu-u.webp?v=ieyasu-anime-u-20261123'};
+const deputyPortrait={id:'of_45e0f4cb36ad',rank:'U',revision:'shimazu-relief-u-20261127',file:'deputy-shimazu-yoshihisa-u-relief'};
 const cache=new Map(),loaded=new Set(),paintRequests=new WeakMap(),observedPaints=new WeakSet(),deferredTitle=new Set(),decorationRoots=new Set();let observer,scheduled=false;
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const icons={
@@ -63,7 +64,21 @@ function tile(kind,id,className='',variant=1){const t=tileInfo(kind,id,variant);
  const positions=sources.map(([name,sheet])=>`--${name}-x:${sheet.x}%;--${name}-y:${sheet.y}%;--${name}-size:${sheet.size}`).join(';');
  return `<span class="painted-art ${kind}-painting${t.portraitCell?' portrait-cell':''} ${esc(className)}" data-art-url="${esc(t.url)}" data-art-x="${t.x}" data-art-y="${t.y}"${t.frame?` data-art-frame="${t.frame}"`:''} ${attributes} data-small-width="80" data-small-height="${t.portraitShape?107:80}" style="--tile-x:${t.x}%;--tile-y:${t.y}%;${positions}" role="img" aria-label="${esc(t.name)} ${t.level?'Lv.'+t.level+(t.finalStage?'・最終形態':''):t.rank+'ランク'}のオリジナルイラスト" aria-busy="true"><span class="art-surface" aria-hidden="true"></span><span class="art-loading" aria-hidden="true">${icon(kind==='officer'?'officers':kind==='castle'?'town':'facilities')}</span></span>`;
 }
-function portrait(o){if(!o)return'';const rank=ranks.includes(o.rank)?o.rank:'D',special=o.id===operatorPortrait.id&&rank===operatorPortrait.rank;const painting=special?`<span class="painted-art painted-portrait operator-portrait" data-art-url="${operatorPortrait.url}" data-art-small="${previewUrl('operator-ieyasu-u-160')}" data-small-width="160" data-small-height="240" data-art-native="${previewUrl('operator-ieyasu-u-384')}" data-native-width="384" data-native-height="576" data-art-x="50" data-art-y="50" role="img" aria-label="束帯姿の晩年の${esc(o.name||officers.get(o.id)?.name||'德川家康')} Uランクの特別肖像" aria-busy="true"><span class="art-surface" aria-hidden="true"></span><span class="art-loading" aria-hidden="true">${icon('officers')}</span></span>`:tile('officer',o.id,'painted-portrait',rank);return `<span class="portrait-frame" data-rank="${rank}">${painting}<img class="rank-frame" src="${frames[rank]}" alt="" aria-hidden="true" loading="lazy"><b class="portrait-rank-badge" aria-hidden="true">${rank}</b></span>`;}
+function portrait(o){
+ if(!o)return'';
+ const rank=ranks.includes(o.rank)?o.rank:'D',special=o.id===operatorPortrait.id&&rank===operatorPortrait.rank;
+ // The engine supplies this flag only for the current, verified deputy's view.
+ // An ordinary Shimazu U, another officer, or another rank keeps its atlas art.
+ const deputy=o.deputyExclusive===true&&o.id===deputyPortrait.id&&o.rank===deputyPortrait.rank;
+ let painting;
+ if(deputy){
+  const art=deputyPortrait,preview=width=>`${previewDir}${art.file}-${width}.webp?v=${art.revision}`;
+  painting=`<span class="painted-art painted-portrait deputy-portrait" data-art-url="assets/${art.file}.webp?v=${art.revision}" data-art-small="${preview(160)}" data-small-width="160" data-small-height="160" data-art-native="${preview(384)}" data-native-width="384" data-native-height="384" data-art-x="50" data-art-y="50" role="img" aria-label="サブ運営専用・総大将 島津義久 Uランクのレリーフ加工特別イラスト" aria-busy="true"><span class="art-surface" aria-hidden="true"></span><span class="art-loading" aria-hidden="true">${icon('officers')}</span></span>`;
+ }else if(special){
+  painting=`<span class="painted-art painted-portrait operator-portrait" data-art-url="${operatorPortrait.url}" data-art-small="${previewUrl('operator-ieyasu-u-160')}" data-small-width="160" data-small-height="240" data-art-native="${previewUrl('operator-ieyasu-u-384')}" data-native-width="384" data-native-height="576" data-art-x="50" data-art-y="50" role="img" aria-label="束帯姿の晩年の${esc(o.name||officers.get(o.id)?.name||'德川家康')} Uランクの特別肖像" aria-busy="true"><span class="art-surface" aria-hidden="true"></span><span class="art-loading" aria-hidden="true">${icon('officers')}</span></span>`;
+ }else painting=tile('officer',o.id,'painted-portrait',rank);
+ return `<span class="portrait-frame${deputy?' deputy-relief-frame':''}" data-rank="${rank}">${painting}<img class="rank-frame" src="${frames[rank]}" alt="" aria-hidden="true" loading="lazy"><b class="portrait-rank-badge" aria-hidden="true">${rank}</b></span>`;
+}
 function load(url){
  if(cache.has(url))return cache.get(url);
  const image=new Image();

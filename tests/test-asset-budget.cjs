@@ -66,7 +66,11 @@ const totalGzipBytes = rows.reduce((sum,row)=>sum+row.gzipBytes,0);
 // name through lost-response receipts, and explains released names. Measured
 // entry growth is 4,398 raw / 1,855 gzip bytes; no dependencies/assets added.
 // Retain a tight allowance for this reviewed UI rather than an open-ended cap.
-const rawBudget=3648000,gzipBudget=1013000;
+// v5.12.3 adds the deputy's all-100 commander, authenticated art routing,
+// restoration and deployment controls. Measured entry: 3,656,797 raw /
+// 1,014,785 gzip bytes, +8,867 / +2,438 from v5.12.2. Keep under 2.3 KB /
+// 1.3 KB headroom. The three on-demand portrait resolutions are separate.
+const rawBudget=3659000,gzipBudget=1016000;
 assert(totalBytes <= rawBudget, `Initial bundles exceed the ${rawBudget} byte budget: ${totalBytes}`);
 assert(totalGzipBytes <= gzipBudget, `Initial bundles exceed the ${gzipBudget} gzip byte budget: ${totalGzipBytes}`);
 const html = fs.readFileSync(path.join(root,'index.html'),'utf8');

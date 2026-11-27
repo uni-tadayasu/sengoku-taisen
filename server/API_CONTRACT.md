@@ -327,7 +327,7 @@ All returned timestamps are ISO strings. Treat names, messages, mail, and announ
 
 `GET /players/:id/profile` は、ゲスト、本人、ほかのプレイヤーに同じ公開プロフィールを返します。`player` の公開項目は `id`、`name`、`clan`、`guildId`、`guildName`、`guildRole`、`avatarVersion`、`evaluation`、`courtOffice`、`appearance`、`commander` です。`appearance` には既存の公開装備・購入マークを表示します。利用停止・存在しない領主は HTTP 404 `PLAYER_NOT_FOUND` となります。
 
-`commander` は確定した最新のセーブの軍団先頭にいる武将を示し、形式は `{officerId,name,rank}` です。武将名は人物図鑑と一致し、ランクはその武将について現在所有する最高ランクです。軍団の並べ替え・ランクの更新は、セーブが確定した後の取得から反映されます。軍団先頭が空、セーブがない、または確認できない場合は `null` です。古いセーブにはゲームと同じランク移行を適用します。本人の `GET /me` の `user.commander` にも同じ形式で反映します。
+`commander` は確定した最新のセーブの軍団先頭にいる武将を示し、形式は `{officerId,name,rank}` です。在任中のサブ運営が島津義久Uを先頭に配備している場合だけ、特別肖像用の `deputyExclusive:true` を追加します。この値は現在のサーバーの任命記録から判定し、セーブ内の役職フラグは参照しません。武将名は人物図鑑と一致し、ランクはその武将について現在所有する最高ランクです。軍団の並べ替え・ランクの更新は、セーブが確定した後の取得から反映されます。軍団先頭が空、セーブがない、または確認できない場合は `null` です。古いセーブにはゲームと同じランク移行を適用します。本人の `GET /me` の `user.commander` にも同じ形式で反映します。
 
 ゲスト用の `GET /players?q=…` は領主名の部分一致または完全な領主IDで最大30人を検索します。結果は軽量な公開名簿で、IDから個別プロフィールを開くと総大将を取得できます。ゲストの検索上限はIPごとに1分あたり20回、個別取得は60回です。超過時は HTTP 429 と `retryAfter` を返します。
 
@@ -585,7 +585,7 @@ All four routes return this snapshot shape on success:
   leaseExpiresAt: "2026-11-21T00:00:30.000Z", // or null
   serverTime: "2026-11-21T00:00:00.000Z",
   writable: true,
-  entitlements: {edo: false, ieyasuU: false},
+  entitlements: {edo: false, ieyasuU: false, kagoshima: false, shimazuU: false},
   staffBase: null, // current staff receive the separate shared base DTO below
   maintenanceAuthority, // private troop totals and sealed timeline; see upkeep section
   clock // current shared world clock, as specified above
@@ -2160,3 +2160,14 @@ Migration `0050_release_moderated_player_names` only adds triggers. New BANs and
 The browser persists the exact name together with uncertain operation receipts. A definite name conflict keeps the draft and generates a fresh request ID for an edited name. Names preserve compatibility ideographs, variation selectors and combining characters; input validation retains the existing 24-code-point limit.
 
 `server/test-moderated-player-names.mjs` covers populated pre-change data, all four claim paths, repeated sanctions, old Worker-shaped name updates, normalized simultaneous claims, identity/token/purchase isolation, restoration races and transaction rollback using local SQLite only.
+
+
+## Sub-operator Shimazu Yoshihisa
+
+The authenticated Kagoshima deputy receives the existing officer `of_45e0f4cb36ad` at rank `U` through the shared engine. The deputy-only runtime view has `deputyExclusive:true`, leadership/valor/intellect/politics of exactly 100, and the `commander` skill (総大将). The ordinary 256-officer roster and ordinary Shimazu Yoshihisa U remain available to other players at their existing stats and artwork. No imported role flag or custom stat field grants the special view.
+
+Appointment, existing-save reads and normal synchronization restore a missing officer/rank idempotently. The grant preserves resources, magatama, gacha history and the current army formation; repeating it does not heal an already owned officer or refund currency. The shared engine's explicit `restoreDeputyAssets({assignCommander:true})` operation additionally places him in army slot one through the existing army-assignment validation. Normal lease/revision-guarded sync persists this selection. No new management privilege or public write endpoint is introduced.
+
+Sync snapshots advertise `entitlements.shimazuU` only while the verified deputy role is current; health/config advertise `deputyOfficer`. Dismissal removes the special stats/art entitlement immediately while retaining the collected ordinary officer and U rank. Existing role-epoch and writer-lease guards reject stale campaign writes after appointment/dismissal. Shared field PvP retains the game's existing rank-and-health coefficient used for all officers; shared-engine battles and economic officer use consume the effective runtime stats.
+
+`server/test-deputy-officer.mjs` covers appointment, old deputy-save recovery, idempotent restore, sync persistence, army-slot assignment, public commander artwork, dismissal/reappointment, ordinary U ownership and forged save flags using isolated Worker/SQLite fixtures.
