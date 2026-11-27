@@ -1,7 +1,7 @@
 'use strict';
 const assert=require('node:assert/strict');
 const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path');
-const {planViewport,desktopMode}=require('../desktop-fit.js');
+const {planViewport,desktopMode,tabletPortraitMode}=require('../desktop-fit.js');
 const {setup}=require('./helpers/dom-model.cjs');
 const source=fs.readFileSync(path.join(__dirname,'../desktop-fit.js'),'utf8');
 const css=fs.readFileSync(path.join(__dirname,'../desktop-fit.css'),'utf8'),responsive=fs.readFileSync(path.join(__dirname,'../responsive-layout.css'),'utf8');
@@ -53,6 +53,79 @@ test('announcement cannot produce a negative or offscreen content rectangle',()=
 });
 test('touch tablets retain document flow with an attached fine pointer',()=>{
  assert.equal(desktopMode(true,0,false),true);assert.equal(desktopMode(false,0,false),false);assert.equal(desktopMode(true,5,false),false);assert.equal(desktopMode(true,0,true),false);assert.equal(desktopMode(false,5,true),false);
+});
+test('portrait tablet selection requires both a tablet width and touch input',()=>{
+ for(const [width,height]of [[600,960],[768,1024],[820,1180],[1024,1366],[1280,1920]]){
+  assert.equal(tabletPortraitMode(width,height,5,false),true,width+'px tablet with a mouse');
+  assert.equal(tabletPortraitMode(width,height,0,true),true,width+'px coarse pointer');
+  assert.equal(tabletPortraitMode(width,height,0,false),false,width+'px mouse-only window');
+ }
+ for(const [width,height]of [[390,844],[430,932],[599,960],[1281,1920],[1440,1920],[1024,768],[1180,820],[820,820]]){
+  assert.equal(tabletPortraitMode(width,height,5,true),false,width+'×'+height+' excluded');
+ }
+});
+test('device orientation keeps a portrait tablet selected while its keyboard reduces the layout height',()=>{
+ for(const orientation of ['portrait-primary','portrait-secondary'])assert.equal(tabletPortraitMode(820,480,5,true,orientation),true,orientation);
+ for(const orientation of ['landscape-primary','landscape-secondary'])assert.equal(tabletPortraitMode(820,1180,5,true,orientation),false,orientation);
+ assert.equal(tabletPortraitMode(390,480,5,true,'portrait-primary'),false,'Orientation must not admit a phone');
+ assert.equal(tabletPortraitMode(820,1180,0,false,'portrait-primary'),false,'Orientation must not admit a mouse-only PC');
+ assert.equal(tabletPortraitMode(820,1180,5,true,''),true,'Older browsers can use the layout dimensions');
+ assert.equal(tabletPortraitMode(1180,820,5,true,''),false);
+});
+test('portrait tablets retain native scale and document flow with or without an attached mouse',()=>{
+ for(const [width,height]of [[600,960],[768,1024],[820,1180],[1024,1366]])for(const fine of [false,true]){
+  const h=harness({width,height,touch:5,fine,coarse:!fine});h.refresh();
+  assert(h.classes.has('sengoku-tablet-portrait'),width+'×'+height);
+  assert(!h.classes.has('sengoku-desktop-fit'));
+  assert.equal(h.api.getStatus().tabletPortrait,true);assert.equal(h.api.getStatus().mode,'flow');assert.equal(h.api.getStatus().scale,1);
+  assert.equal(h.app.style.transform,'');assert.equal(h.app.dataset.desktopScale,undefined);
+  const state=JSON.stringify(h.api.getStatus());for(let i=0;i<5;i++)h.refresh();
+  assert.equal(JSON.stringify(h.api.getStatus()),state);assert.equal(h.bodyPane.scrollTop,170);
+ }
+});
+test('phone, landscape tablet, and mouse-only windows never receive the portrait tablet layout',()=>{
+ for(const options of [
+  {width:390,height:844,touch:5,fine:false,coarse:true},
+  {width:430,height:932,touch:5,fine:false,coarse:true},
+  {width:1180,height:820,touch:5,fine:false,coarse:true},
+  {width:1366,height:1024,touch:5,fine:true,coarse:false},
+  {width:768,height:1024,touch:0,fine:true,coarse:false},
+  {width:1024,height:1366,touch:0,fine:true,coarse:false},
+  {width:1440,height:900,touch:0,fine:true,coarse:false}
+ ]){
+  const h=harness(options);h.refresh();assert(!h.classes.has('sengoku-tablet-portrait'),JSON.stringify(options));
+  assert.equal(h.api.getStatus().tabletPortrait,false);
+ }
+});
+test('keyboard and visual viewport resizing preserve the tablet layout and focused input',()=>{
+ const h=harness({width:820,height:1180,touch:5,fine:false,coarse:true});
+ const input={value:'入力途中の検索',selectionStart:3,matches:selector=>selector.includes('#main input')};
+ h.environment.document.activeElement=input;h.refresh();assert(h.classes.has('sengoku-tablet-portrait'));
+ h.environment.visualViewport.height=480;h.refresh();
+ assert(h.classes.has('sengoku-tablet-portrait'),'Visual viewport height alone does not rotate the device');
+ assert(h.classes.has('sengoku-compact-input'));assert.equal(h.vars.get('--visible-height'),'480.000px');
+ h.environment.screen={orientation:{type:'portrait-primary'}};
+ h.environment.innerHeight=480;h.refresh();
+ assert(h.classes.has('sengoku-tablet-portrait'),'Device orientation also protects against layout viewport resizing');
+ assert.equal(h.environment.document.activeElement,input);assert.equal(input.value,'入力途中の検索');assert.equal(input.selectionStart,3);assert.equal(h.bodyPane.scrollTop,170);
+ h.resize(820,1180);assert(h.classes.has('sengoku-tablet-portrait'));assert(!h.classes.has('sengoku-compact-input'));
+});
+test('tablet rotation, split view, and destroy remove the dedicated class without stale geometry',()=>{
+ const h=harness({width:820,height:1180,touch:5,fine:true,coarse:false});
+ h.environment.screen={orientation:{type:'portrait-primary'}};h.refresh();assert(h.classes.has('sengoku-tablet-portrait'));
+ h.environment.screen.orientation.type='landscape-primary';h.resize(1180,820);assert(!h.classes.has('sengoku-tablet-portrait'));
+ h.environment.screen.orientation.type='portrait-primary';h.resize(820,1180);assert(h.classes.has('sengoku-tablet-portrait'));
+ h.resize(500,1180);assert(!h.classes.has('sengoku-tablet-portrait'),'Narrow tablet split view uses the phone flow');
+ h.resize(768,1024);assert(h.classes.has('sengoku-tablet-portrait'));assert.equal(h.app.style.transform,'');assert.equal(h.bodyPane.scrollTop,170);
+ h.api.destroy();assert(!h.classes.has('sengoku-tablet-portrait'));assert.equal(h.api.getStatus().tabletPortrait,false);
+ h.api.refresh();assert(!h.classes.has('sengoku-tablet-portrait'),'A destroyed viewport controller cannot re-enable the mode');
+});
+test('legacy device orientation keeps keyboard resizing distinct from rotation',()=>{
+ const h=harness({width:768,height:1024,touch:5,fine:false,coarse:true});
+ h.environment.orientation=0;h.refresh();assert(h.classes.has('sengoku-tablet-portrait'));
+ h.resize(768,420);assert(h.classes.has('sengoku-tablet-portrait'));
+ h.environment.orientation=90;h.resize(1024,768);assert(!h.classes.has('sengoku-tablet-portrait'));
+ h.environment.orientation=180;h.resize(768,1024);assert(h.classes.has('sengoku-tablet-portrait'));
 });
 test('phone and tablet widths use the same compact layout with a desktop mouse',()=>{
  for(const width of [320,360,390,430,768,820,1024]){

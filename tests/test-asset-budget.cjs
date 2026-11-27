@@ -70,7 +70,11 @@ const totalGzipBytes = rows.reduce((sum,row)=>sum+row.gzipBytes,0);
 // restoration and deployment controls. Measured entry: 3,656,797 raw /
 // 1,014,785 gzip bytes, +8,867 / +2,438 from v5.12.2. Keep under 2.3 KB /
 // 1.3 KB headroom. The three on-demand portrait resolutions are separate.
-const rawBudget=3659000,gzipBudget=1016000;
+// v5.12.4 adds touch-tablet portrait detection and scoped reflow rules. The
+// shipped entry is 3,670,170 raw / 1,016,759 gzip bytes (+13,373 / +1,974
+// from v5.12.3), with no new images, fonts or dependencies. Retain less than
+// 2 KB raw / 1.3 KB gzip headroom for this measured layout-only addition.
+const rawBudget=3672000,gzipBudget=1018000;
 assert(totalBytes <= rawBudget, `Initial bundles exceed the ${rawBudget} byte budget: ${totalBytes}`);
 assert(totalGzipBytes <= gzipBudget, `Initial bundles exceed the ${gzipBudget} gzip byte budget: ${totalGzipBytes}`);
 const html = fs.readFileSync(path.join(root,'index.html'),'utf8');
