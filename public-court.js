@@ -25,10 +25,16 @@
   for(const node of global.document?.querySelectorAll?.('[data-court-player]')||[]){
    const id=node.dataset.courtPlayer,current=node.dataset.courtSelf==='true'?selfOffice(id):office(id);
    // Keep the mounted artwork and its fallback state on unchanged polls.
-   if(current&&node.firstElementChild?.dataset?.courtSeal===OFFICES[current.title].seal)continue;
+   if(current&&node.childNodes?.length===1&&node.firstElementChild?.dataset?.courtSeal===OFFICES[current.title].seal)continue;
    if(!current&&node.childNodes?.length===0)continue;
    const html=current?badgeTitle(current.title):'';
-   if(node.innerHTML!==html)node.innerHTML=html;
+   // This slot owns its entire contents. Record replacements so its parent
+   // can reconcile the same badge after the asynchronously loaded office arrives.
+   const stable=global.SengokuStableDOM;
+   if(stable){
+    stable.forget(node);
+    stable.patch(node,html);
+   }else if(node.innerHTML!==html)node.innerHTML=html;
   }
  }
  function update(payload,{requestSequence}={}){
