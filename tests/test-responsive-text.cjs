@@ -104,7 +104,9 @@ test('territorial search controls can shrink inside the clipped geography frame'
   property('.cq-shell :is(label,input,select,textarea)', 'max-width', '100%');
   property('.cq-shell .cq-search', 'grid-template-columns', 'minmax(0,1fr)');
   assert.match(css, /@media\s*\(max-width:\s*480px\)[\s\S]*?\.cq-shell \.cq-search\s*\{\s*grid-template-columns:\s*minmax\(0,1fr\)/);
-  assert(read('conquest.js').includes('<div class="cq-search"><label>'));
+  const chooser = read('conquest.js');
+  assert.match(chooser, /<div class="cq-search">.*?<label for="cq-search">/);
+  assert.match(chooser, /<div class="cq-search-controls"><input id="cq-search".*?<button type="button"[^>]*data-cq="search-list"/);
 });
 
 test('recruiting results and major army/research totals cannot conceal long values', () => {

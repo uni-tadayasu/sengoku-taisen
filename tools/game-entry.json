@@ -87,8 +87,8 @@
     "raden-game.css",
     "raden-surfaces.css",
     "raden-motion.css",
-    "responsive-text.css",
-    "input-list.css"
+    "input-list.css",
+    "responsive-text.css"
   ],
   "game-preferences.bundle.js": [
     "viewport-lock.js",
