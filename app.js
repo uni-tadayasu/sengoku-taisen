@@ -814,7 +814,8 @@
     const cost=game.castleUpgradeCost(id);
     return {action:`<button type="button" class="button gold town-castle-level-up" id="home-castle-level-up" data-action="upgrade-castle" data-id="${esc(id)}" data-home-upgrade="true" aria-label="${esc(c.name)}の城郭をLv.${c.level+1}へ強化する" aria-describedby="home-castle-upgrade-cost home-castle-upgrade-hint">${icon('plus')}<span>レベルUP<small>Lv.${c.level+1}へ</small></span></button>`,detail:`<div class="town-castle-upgrade-detail" id="home-castle-upgrade-cost"><small class="town-castle-upgrade-label">城郭の${shared?'共同普請':'強化'}費用 · 指令1回</small>${costHtml(cost)}<p class="town-castle-upgrade-note" id="home-castle-upgrade-hint">${esc(homeCastleUpgradeHint(id))}</p></div>`};
   }
-  function townSceneArt(daypart=window.SengokuMusic?.daypart?.()||'night'){
+  function townSceneArt(daypart){
+    daypart=daypart||window.SengokuMusic?.daypart?.()||'night';
     const id=window.SengokuPremiumRuntime?.getAppearance?.().town;
     const selection=window.SengokuPremiumCatalog?.getProduct?.(id);
     const product=selection?.slot==='town'?selection:null;
