@@ -92,7 +92,7 @@ async function status(ctx,snapshot=null){
  if(!snapshot.save)return{...snapshot,campaignId:null,sequence:0,troopTransferSequence:0,troopTransfer:{commandCost:1,sequence:0,endpoints:[]},branchState:{branches:[],jobs:[]},parents:[]};
  const campaignId=snapshot.save.state.walking.campaignId,found=await branchStateGuard(db,user.id,campaignId);applyBranchProgress(snapshot.save,found.state,snapshot.clock);
  const shared=current.is_staff&&!current.is_admin?await h.staffBaseDto(db,current,snapshot.clock,now):null;
- const game=GameEngine.fromSave(snapshot.save,GAME_OFFICERS,{isAdmin:!!current.is_admin,isStaff:!!current.is_staff,staffBase:shared});
+ const game=GameEngine.fromSave(snapshot.save,GAME_OFFICERS,{isAdmin:!!current.is_admin,isDeputy:!!current.is_deputy,isStaff:!!current.is_staff,staffBase:shared});
  await h.requireAccountAccess(db,user);
  return{...snapshot,campaignId,sequence:found.sequence,troopTransferSequence:game.state.troopTransferSequence,troopTransfer:game.troopTransferStatus(),branchResolvedElapsedMs:found.resolvedElapsedMs,branchState:{branches:clone(snapshot.save.state.branches),jobs:clone(snapshot.save.state.jobs.filter(job=>job.kind==='branch'))},parents:PARENTS.map(id=>game.branchStatus(id))};
 }
@@ -134,7 +134,7 @@ async function mutation(ctx,action){
  const shared=user.is_staff&&!user.is_admin?await h.staffBaseDto(db,user,clock,ctx.now):null;
  const maintenanceAuthority=protectMaintenance(found,await maintenanceContext(db,user.id,save,clock));
  if(maintenanceAuthority.hasMore||maintenanceAuthority.asOfElapsedMs>clock.elapsedMs)h.fail(409,'CLOCK_STALE','維持費の時間経過を同期しています。最新の保存へ同期してください。');
- const game=GameEngine.fromSave(save,GAME_OFFICERS,{isAdmin:!!user.is_admin,isStaff:!!user.is_staff,staffBase:shared,maintenanceAuthority,branchAuthority:{resolvedElapsedMs:found.resolvedElapsedMs}});
+ const game=GameEngine.fromSave(save,GAME_OFFICERS,{isAdmin:!!user.is_admin,isDeputy:!!user.is_deputy,isStaff:!!user.is_staff,staffBase:shared,maintenanceAuthority,branchAuthority:{resolvedElapsedMs:found.resolvedElapsedMs}});
  game.applyWorldClock(clock,{maxSeconds:60});
  const result=action==='transfer-troops'?game.transferTroops(body.from,body.to,body.troops):action==='auto-assign-officers'?game.autoAssignGovernors():action==='auto-assign-commanders'?game.autoAssignBranchCommanders(body.branchId):action==='assign-commander'?game.assignBranchCommander(body.branchId,body.officerId):action==='remove-commander'?game.removeBranchCommander(body.branchId,body.officerId):action==='build'?game.buildBranch(body.parentCastleId,body.direction):action==='upgrade'?game.upgradeBranch(body.branchId):action==='repair'?game.repairBranch(body.branchId):action==='build-facility'?game.buildBranchFacility(body.branchId,body.facilityId):game.upgradeBranchFacility(body.branchId,body.facilityId);
  if(!result.ok)h.fail(409,result.code||'BRANCH_UNAVAILABLE',result.message);

@@ -82,7 +82,7 @@ async function mutate(ctx,kind){
   const saved=await h.settleWriterCycle(db,user,body.deviceId,body.expectedRevision,now),clock=await h.getWorldClock(db,now);
   const save=h.normalizeGameSave(JSON.parse(saved.save_json),user,now,{reading:true,clock}),campaignId=save.state.walking.campaignId;
   const shared=user.is_staff&&!user.is_admin?await h.staffBaseDto(db,user,clock,now):null;
-  const game=GameEngine.fromSave(save,GAME_OFFICERS,{isAdmin:!!user.is_admin,isStaff:!!user.is_staff,staffBase:shared});
+  const game=GameEngine.fromSave(save,GAME_OFFICERS,{isAdmin:!!user.is_admin,isDeputy:!!user.is_deputy,isStaff:!!user.is_staff,staffBase:shared});
   const s=game.state,nonce=crypto.randomUUID(),args=[user.id,body.requestId,nonce],calendar=rewardCalendar(now),pending=await pendingRow(db,user.id);
   const role=h.roleCommitGuard(user),conditions=[role.sql],conditionArgs=[...role.args],after=[];
   let receipt;
@@ -158,7 +158,7 @@ export async function protectRewardSync(db,user,save,before,h){
     // A renamed imported campaign is not a reset. Only a genuine initial
     // campaign may replace a managed save; progressed imports cannot bypass
     // the server-owned collection and currency by inventing a campaign ID.
-    const fresh=new GameEngine({officers:GAME_OFFICERS,clan:current.clan,startCastle:current.home,difficulty:current.difficulty,isAdmin:!!user.is_admin,isStaff:!!user.is_staff,seed:1}).state;
+    const fresh=new GameEngine({officers:GAME_OFFICERS,clan:current.clan,startCastle:current.home,difficulty:current.difficulty,isAdmin:!!user.is_admin,isDeputy:!!user.is_deputy,isStaff:!!user.is_staff,seed:1}).state;
     for(const reward of exchanged){if(!fresh.officers.includes(reward.officerId))fresh.officers.push(reward.officerId);const variant=reward.officerId+':'+reward.rank;if(!fresh.officerVariants.includes(variant))fresh.officerVariants.push(variant);}
     const sameSet=(a,b)=>a.length===b.length&&a.every(value=>b.includes(value));
     if(current.magatama>fresh.magatama||current.troops>fresh.troops||current.prestige>fresh.prestige||Object.keys(fresh.stats).some(key=>current.stats[key]!==fresh.stats[key])||current.gachaHistory.length||current.claimedQuests.length||current.giftReceipts.length||!sameSet(current.officers,fresh.officers)||!sameSet(current.officerVariants,fresh.officerVariants)||!sameSet(current.captureRewards,fresh.captureRewards)||Object.keys(fresh.resources).some(key=>current.resources[key]>fresh.resources[key])||Object.keys(fresh.buildings).some(key=>current.buildings[key]>fresh.buildings[key])||Object.keys(fresh.tech).some(key=>current.tech[key]>fresh.tech[key])||current.jobs.length||current.branches.length||current.castles[current.home]?.owner!==current.clan||Object.entries(current.castles).some(([id,row])=>row.owner===current.clan&&id!==current.home))changed();
@@ -168,7 +168,7 @@ export async function protectRewardSync(db,user,save,before,h){
   if(current.stats.gachaDraws!==prior.stats.gachaDraws||current.stats.gachaDuplicates!==prior.stats.gachaDuplicates||JSON.stringify(current.gachaHistory)!==JSON.stringify(prior.gachaHistory))changed();
   const variants=new Set(current.officerVariants);
   if(prior.officerVariants.some(value=>!variants.has(value)))changed();
-  const game=GameEngine.fromSave(save,GAME_OFFICERS,{isAdmin:!!user.is_admin,isStaff:!!user.is_staff});
+  const game=GameEngine.fromSave(save,GAME_OFFICERS,{isAdmin:!!user.is_admin,isDeputy:!!user.is_deputy,isStaff:!!user.is_staff});
   for(const value of current.officerVariants)if(!prior.officerVariants.includes(value)){const [id,rank]=value.split(':');if(rank!==game._baseGrantRank(id)&&!exchangeVariants.has(value))changed();}
   for(const key of ['claimedQuests','captureRewards','giftReceipts'])if(prior[key].some(value=>!current[key].includes(value)))changed();
   let earned=Math.max(0,current.turn-prior.turn)*data().gacha.monthlyReward;

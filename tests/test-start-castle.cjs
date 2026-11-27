@@ -84,7 +84,7 @@ async function reviewMove(b, castleId) {
 
 (async()=>{
 await test('every ordinary castle can be the sole first home, independently of the house',()=>{
-  const available=SENGOKU_DATA.castles.filter(c=>!c.majorCity);assert.equal(available.length,124);
+  const available=SENGOKU_DATA.castles.filter(c=>!c.majorCity&&c.id!=='kagoshima');assert.equal(available.length,123);
   for(const castle of available){const g=new SengokuEngine({clan:'織田家',startCastle:castle.id,officers:roster,seed:7});assert.equal(g.state.home,castle.id);assert.deepEqual(g.ownedCastles().map(c=>c.id),[castle.id]);assert.deepEqual(g.state.captureRewards,[castle.id]);assert.equal(g.state.castles[castle.id].troops,1200);}
   for(const clan of SENGOKU_DATA.clans){const g=new SengokuEngine({clan:clan.name,startCastle:'himeji',officers:roster});assert.equal(g.state.clan,clan.name);assert.equal(g.state.home,'himeji');assert(g.state.officers.every(id=>g.officer(id).clan===clan.name));}
 });
@@ -126,10 +126,10 @@ await test('a fresh title and a returning title defer all town markup until game
   assert.equal(resume.c.SengokuBridge.getState().home,'himeji');assert.equal(resume.nodes.get('main').innerHTML,old);
   resume.c.SENGOKU_AT_TITLE=false;resume.c.SengokuBridge.renderGameplay();assert.match(resume.nodes.get('main').innerHTML,/姫路城/);
 });
-await test('first bootstrap remains unsaved and opens an explicit 124-castle choice with recovery access',async()=>{
+await test('first bootstrap remains unsaved and opens an explicit 123-castle choice with recovery access',async()=>{
   const b=browser();assert.equal(b.c.SengokuBridge.hasStarted(),false);assert.equal(b.c.SengokuBridge.getSave(),null);assert(!b.stored.has(SAVE));assert.equal(b.events.length,0);
   assert.match(b.nodes.get('main').innerHTML,/はじまりの城を選ぶ/);b.c.SengokuBridge.openStartSelection();await b.click('choose-residency-mode','local');
-  const html=b.nodes.get('modal-content').innerHTML;assert.match(html,/以前の領主を復元/);assert.match(html,/data-action="open-recovery"/);assert.equal(b.query('#new-start-castle').value,'');for(const id of SENGOKU_DATA.majorCityIds)assert(!html.includes(`<option value="${id}"`));assert.match(html,/本拠にする城を一つ選択 · 124城/);
+  const html=b.nodes.get('modal-content').innerHTML;assert.match(html,/以前の領主を復元/);assert.match(html,/data-action="open-recovery"/);assert.equal(b.query('#new-start-castle').value,'');for(const id of SENGOKU_DATA.majorCityIds)assert(!html.includes(`<option value="${id}"`));assert.match(html,/本拠にする城を一つ選択 · 123城/);
   await b.click('start-new');assert.equal(b.c.SengokuBridge.hasStarted(),false);assert(!b.stored.has(SAVE));
 });
 await test('registration opens without a castle or clock and cancel returns to the uncommitted choices',async()=>{
@@ -150,7 +150,7 @@ await test('registration opens without a castle or clock and cancel returns to t
 await test('a personal campaign at an occupied online castle displays personal starting facts',async()=>{
   const b=browser(),castle=SENGOKU_DATA.castles.find(row=>row.id==='himeji');
   const occupied={castleId:castle.id,castleName:castle.name,region:castle.region,available:false,lord:{name:'共有の領主'},retainerCount:3};
-  b.c.SengokuResidency={loadDirectory:async()=>({capacity:124,occupied:124,full:true,castles:[occupied]}),choiceMode:()=>'retainer',choices:()=>[occupied]};
+  b.c.SengokuResidency={loadDirectory:async()=>({capacity:123,occupied:123,full:true,castles:[occupied]}),choiceMode:()=>'retainer',choices:()=>[occupied]};
   b.c.SengokuBridge.openStartSelection();await b.click('choose-residency-mode','local');
   b.query('#new-start-castle').value='himeji';await b.click('choose-clan','武田家');
   const preview=b.nodes.get('modal-content').innerHTML;assert.match(preview,/守備兵 1,200人/);
@@ -205,8 +205,8 @@ await test('the move selector excludes fixed homes, and reviewing or cancelling 
   await b.click('relocate-open');
   const selector = b.nodes.get('modal-content').innerHTML;
   assert.match(selector, /<option value="himeji"/);
-  for(const id of ['kiyosu', ...SENGOKU_DATA.majorCityIds]) assert(!selector.includes(`<option value="${id}"`));
-  assert.equal([...selector.matchAll(/<option value="[^"]+"/g)].length, 123);
+  for(const id of ['kiyosu', 'kagoshima', ...SENGOKU_DATA.majorCityIds]) assert(!selector.includes(`<option value="${id}"`));
+  assert.equal([...selector.matchAll(/<option value="[^"]+"/g)].length, 122);
   await b.click('close');
   await reviewMove(b, 'himeji');
   const confirmation = b.nodes.get('modal-content').innerHTML;
@@ -227,7 +227,7 @@ await test('the town and profile offer relocation only to established ordinary p
     assert.equal(b.query('#relocate-castle-select'), null);
   };
   await checkUnavailable(browser(undefined, {withResidency:true}));
-  for(const role of [{isAdmin:true},{isStaff:true}]) {
+  for(const role of [{isAdmin:true},{isStaff:true},{isDeputy:true}]) {
     const b = browser(seasonedCampaign().exportSave(), {withResidency:true});
     assert(b.c.SengokuResidency.compact().includes('data-action="relocate-open"'));
     b.c.SengokuBridge.setRoleAccess(role);

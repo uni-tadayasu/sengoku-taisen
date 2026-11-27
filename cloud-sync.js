@@ -128,7 +128,7 @@ function mergeRepairCorrection(sent,snapshot,current){
  }catch{return conflict;}
 }
 function upkeepStocks(state,user){
- return{army:state.troops,castles:Object.fromEntries(Object.entries(state.castles||{}).filter(([id,castle])=>castle.owner===state.clan&&(id!=='edo'||user?.isAdmin===true)&&(id!=='kyoto_gosho'||user?.isStaff===true&&user?.isAdmin!==true)).map(([id,castle])=>[id,castle.troops])),branches:Object.fromEntries((state.branches||[]).map(branch=>[branch.id,branch.stationedTroops||0]))};
+ return{army:state.troops,castles:Object.fromEntries(Object.entries(state.castles||{}).filter(([id,castle])=>castle.owner===state.clan&&(id!=='edo'||user?.isAdmin===true)&&(id!=='kyoto_gosho'||user?.isStaff===true&&user?.isAdmin!==true)&&(id!=='kagoshima'||user?.isDeputy===true&&user?.isAdmin!==true&&user?.isStaff!==true)).map(([id,castle])=>[id,castle.troops])),branches:Object.fromEntries((state.branches||[]).map(branch=>[branch.id,branch.stationedTroops||0]))};
 }
 function upkeepMap(stocks){
  if(!stocks||!stocks.castles||!stocks.branches||Array.isArray(stocks.castles)||Array.isArray(stocks.branches))return null;
@@ -230,7 +230,7 @@ function create(options={}){
  const device={...(options.device||makeDevice())},deviceStem=device.id.slice(0,36),now=options.now||(()=>Date.now()),hidden=options.hidden||(()=>Boolean(global.document?.hidden)),online=options.online||(()=>global.navigator?.onLine!==false),bridge=options.bridge||(()=>global.SengokuBridge),storage=options.storage||global.localStorage;
  const later=options.setTimeout||global.setTimeout.bind(global),cancel=options.clearTimeout||global.clearTimeout.bind(global);
  const listeners=new Set();let session=null,generation=0,queue=Promise.resolve(),initialized=false,applying=false,dirty=false,ack='',revision=0,leaseDeadline=0,lastLeaseAt=0,refreshPending=null,attempt=null,banned=false,banMessage='',accessRefreshPending=false;
- let pollTimer=null,saveTimer=null,presenceTimer=null,expiryTimer=null,branchAuthoritySnapshot=null,branchCorrectionPending=null,maintenanceAuthoritySnapshot=null;
+ let pollTimer=null,saveTimer=null,presenceTimer=null,expiryTimer=null,branchAuthoritySnapshot=null,branchCorrectionPending=null,maintenanceAuthoritySnapshot=null,expulsion=null;
  let status={linked:false,ready:true,writable:true,banned:false,reason:'local',message:'',revision:0,updatedAt:null,leaseExpiresAt:null,writerDeviceName:null,deviceName:device.name};
  const valid=g=>Boolean(session&&g===generation);
  const rolePending=()=>bridge()?.getRoleAccess?.().pending===true;
@@ -258,7 +258,7 @@ function create(options={}){
   }catch(_){return null;}
  }
  function emit(patch={}){
-  status={...status,...patch,banned,deviceName:device.name};
+  status={...status,...patch,banned,expulsion:expulsion?{...expulsion}:null,deviceName:device.name};
   if(banned)status={...status,linked:true,ready:false,writable:false,reason:'banned',message:banMessage,leaseExpiresAt:null,writerDeviceName:null};
   bridge()?.setSyncAccess?.({...status});
   for(const fn of listeners){try{fn({...status});}catch(_){}}
@@ -269,7 +269,7 @@ function create(options={}){
   const changed=!banned;
   if(changed){checkpoint();generation++;queue=Promise.resolve();refreshPending=null;initialized=false;applying=false;attempt=null;}
   banned=true;accessRefreshPending=false;banMessage=message||'この領主は利用を停止されています。解除後に接続を再確認してください。';leaseDeadline=0;clearTimers();emit();roleAccess({},true);
-  if(changed)session.onUser?.({id:session.id,isBanned:true,isAdmin:false,isStaff:false});
+  if(changed)session.onUser?.({id:session.id,isBanned:true,isAdmin:false,isStaff:false,isDeputy:false});
   schedulePoll();return true;
  }
  function invalidateAccountAccess({playerId,message}={}){
@@ -277,7 +277,7 @@ function create(options={}){
   checkpoint();generation++;queue=Promise.resolve();refreshPending=null;initialized=false;applying=false;attempt=null;leaseDeadline=0;accessRefreshPending=true;clearTimers();roleAccess({},true);session?.onUser?.(null);
   emit({linked:true,ready:false,writable:false,reason:'access-changed',message:message||'領主の利用状態が更新されました。最新の接続状態を確認しています。',leaseExpiresAt:null});schedulePoll();return true;
  }
- function roleAccess(user={},pending=false){if(pending){branchAuthoritySnapshot=null;branchCorrectionPending=null;maintenanceAuthoritySnapshot=null;}const current=bridge(),roles={isAdmin:user.isAdmin===true,isStaff:user.isStaff===true&&user.isAdmin!==true,pending};if(current?.setRoleAccess)current.setRoleAccess(roles);else current?.setAdminAccess?.(roles.isAdmin);}
+ function roleAccess(user={},pending=false){if(pending){branchAuthoritySnapshot=null;branchCorrectionPending=null;maintenanceAuthoritySnapshot=null;}const current=bridge(),roles={isAdmin:user.isAdmin===true,isStaff:user.isStaff===true&&user.isAdmin!==true,isDeputy:user.isDeputy===true&&user.isAdmin!==true&&user.isStaff!==true,pending};if(current?.setRoleAccess)current.setRoleAccess(roles);else current?.setAdminAccess?.(roles.isAdmin);}
  function applyStaffBase(snapshot,g){if(!valid(g)||snapshot.user?.isStaff!==true||snapshot.user?.isAdmin===true)return;const result=bridge()?.applyStaffBase?.(snapshot.staffBase||null);if(result?.ok===false)throw Error(result.message||'スタッフ共同拠点を確認できませんでした。');}
  function branchAuthorityMeta(snapshot){
   const meta={source:'cloud',playerId:String(snapshot.user?.id||''),branchCampaignId:String(snapshot.save?.state?.walking?.campaignId||''),branchResolvedElapsedMs:Number.isSafeInteger(snapshot.branchResolvedElapsedMs)&&snapshot.branchResolvedElapsedMs>=0?snapshot.branchResolvedElapsedMs:0},previous=branchAuthoritySnapshot;
@@ -315,7 +315,7 @@ function create(options={}){
  function olderBranchSnapshot(snapshot){const previous=branchAuthoritySnapshot;return Boolean(previous&&previous.meta.playerId===String(snapshot.user?.id)&&previous.meta.branchCampaignId===snapshot.save?.state?.walking?.campaignId&&previous.revision>snapshot.revision);}
  function observeBranchSnapshot(snapshot){
   const current=bridge(),role=current?.getRoleAccess?.(),campaignId=current?.getState?.()?.walking?.campaignId;
-  if(!session||!initialized||banned||accessRefreshPending||role?.pending||!snapshot?.user||snapshot.user.isBanned||String(snapshot.user.id)!==String(session.id)||!Number.isSafeInteger(snapshot.revision)||snapshot.revision<revision||branchAuthoritySnapshot&&snapshot.revision<branchAuthoritySnapshot.revision||!campaignId||snapshot.save?.state?.walking?.campaignId!==campaignId||role&&(Boolean(snapshot.user.isAdmin)!==role.isAdmin||Boolean(snapshot.user.isStaff&&!snapshot.user.isAdmin)!==role.isStaff))return{ok:false,ignored:true};
+  if(!session||!initialized||banned||accessRefreshPending||role?.pending||!snapshot?.user||snapshot.user.isBanned||String(snapshot.user.id)!==String(session.id)||!Number.isSafeInteger(snapshot.revision)||snapshot.revision<revision||branchAuthoritySnapshot&&snapshot.revision<branchAuthoritySnapshot.revision||!campaignId||snapshot.save?.state?.walking?.campaignId!==campaignId||role&&(Boolean(snapshot.user.isAdmin)!==role.isAdmin||Boolean(snapshot.user.isStaff&&!snapshot.user.isAdmin)!==role.isStaff||Boolean(snapshot.user.isDeputy&&!snapshot.user.isAdmin&&!snapshot.user.isStaff)!==Boolean(role.isDeputy)))return{ok:false,ignored:true};
   applyMaintenanceAuthority(snapshot,generation,{deferFutureBaseline:true});return applyBranchAuthority(snapshot,generation)||{ok:true};
  }
  function setRole(snapshot){
@@ -335,22 +335,22 @@ function create(options={}){
  function access(){
   const writable=initialized&&leaseDeadline>now()&&!hidden()&&online()&&!rolePending();
   const awaitingStart=bridge()?.hasStarted?.()===false,reason=!online()?'offline':hidden()?'hidden':rolePending()?'auth':writable?(awaitingStart?'awaiting-start':'writer'):'follower';
-  emit({linked:true,ready:initialized,writable,revision,reason,awaitingStart,leaseExpiresAt:leaseDeadline?new Date(leaseDeadline).toISOString():null,message:reason==='offline'?'通信が戻ると共通時刻までの進行を反映します。':reason==='hidden'?'この画面を開くと同期を再開します。':reason==='auth'?'領主の権限を確認しています。確認が終わるまで操作と保存を待機しています。':reason==='awaiting-start'?'開始する城を選ぶと、この領主の進行を保存します。':writable?'':`${status.writerDeviceName||'別の端末'}の進行を自動で反映しています。`});
+  emit({linked:true,ready:initialized,writable,revision,reason,awaitingStart,leaseExpiresAt:leaseDeadline?new Date(leaseDeadline).toISOString():null,message:reason==='offline'?'通信が戻ると共通時刻までの進行を反映します。':reason==='hidden'?'この画面を開くと同期を再開します。':reason==='auth'?'領主の権限を確認しています。確認が終わるまで操作と保存を待機しています。':reason==='awaiting-start'?(expulsion?'運営により拠点から追放されました。入城する城を選び直してください。':'開始する城を選ぶと、この領主の進行を保存します。'):writable?'':`${status.writerDeviceName||'別の端末'}の進行を自動で反映しています。`});
  }
  function schedulePoll(){if(pollTimer!==null)cancel(pollTimer);pollTimer=null;const g=generation;if(session&&!hidden())pollTimer=later(()=>{pollTimer=null;if(valid(g))refresh();},banned?30000:5000);}
  function enqueue(work){const g=generation;const task=queue.catch(()=>{}).then(()=>valid(g)?work(g):undefined);queue=task.catch(()=>{});return task;}
  async function request(g,route,opts={}){
   if(!valid(g))return null;if(banned&&!((opts.method||'GET')==='GET'&&route.startsWith('/sync?')))return null;
   const before=bridge()?.getRoleAccess?.();let result;
-  try{result=await session.request(route,{...opts,background:true});}catch(error){if(valid(g)){if(error?.code==='ACCOUNT_BANNED')suspendAccount({playerId:session.id,message:error.message});else if(error?.code==='ACCOUNT_ACCESS_CHANGED')invalidateAccountAccess({playerId:session.id,message:error.message});}throw error;}
+  try{result=await session.request(route,{...opts,background:true});}catch(error){if(valid(g)){if(error?.code==='ACCOUNT_BANNED')suspendAccount({playerId:session.id,message:error.message});else if(['ACCOUNT_ACCESS_CHANGED','BASE_EXPELLED'].includes(error?.code))invalidateAccountAccess({playerId:session.id,message:error.message});}throw error;}
   if(!valid(g))return null;
   const current=bridge()?.getRoleAccess?.();
-  if(before&&current&&before.epoch!==current.epoch&&result?.user&&(Boolean(result.user.isAdmin)!==current.isAdmin||Boolean(result.user.isStaff&&!result.user.isAdmin)!==current.isStaff)){const error=Error('役職が更新されたため、最新の権限と共同拠点を再確認しています。');error.code='STALE_ROLE';throw error;}
+  if(before&&current&&before.epoch!==current.epoch&&result?.user&&(Boolean(result.user.isAdmin)!==current.isAdmin||Boolean(result.user.isStaff&&!result.user.isAdmin)!==current.isStaff||Boolean(result.user.isDeputy&&!result.user.isAdmin&&!result.user.isStaff)!==Boolean(current.isDeputy))){const error=Error('役職が更新されたため、最新の権限と共同拠点を再確認しています。');error.code='STALE_ROLE';throw error;}
   return result;
  }
  async function apply(save,snapshot,g,{reason='remote',backup=false,backupRuntime=false}={}){
   if(!valid(g))return false;emit({writable:false,reason:'applying',message:'最新の進行を反映しています…'});applying=true;
-  try{const result=await bridge()?.applyCloudSave?.(save,{isAdmin:snapshot.user.isAdmin===true,isStaff:snapshot.user.isStaff===true&&snapshot.user.isAdmin!==true,staffBase:snapshot.staffBase||null,entitlements:snapshot.entitlements||{},...branchAuthorityMeta(snapshot),...maintenanceAuthorityMeta(snapshot),reason,backup,backupRuntime});if(!valid(g))return false;if(result!==true&&result?.ok!==true)throw Error(result?.message||'最新データをこの端末に保存できませんでした。');return true;}
+  try{const result=await bridge()?.applyCloudSave?.(save,{isAdmin:snapshot.user.isAdmin===true,isStaff:snapshot.user.isStaff===true&&snapshot.user.isAdmin!==true,isDeputy:snapshot.user.isDeputy===true&&snapshot.user.isAdmin!==true&&snapshot.user.isStaff!==true,staffBase:snapshot.staffBase||null,entitlements:snapshot.entitlements||{},...branchAuthorityMeta(snapshot),...maintenanceAuthorityMeta(snapshot),reason,backup,backupRuntime});if(!valid(g))return false;if(result!==true&&result?.ok!==true)throw Error(result?.message||'最新データをこの端末に保存できませんでした。');return true;}
   finally{if(valid(g))applying=false;}
  }
  async function snapshot(result,g,{force=false,reason='remote'}={}){
@@ -361,6 +361,17 @@ function create(options={}){
   if(olderBranchSnapshot(result))throw Error('支拠点の新しい更新を確認しています。最新の保存へ同期します。');
   if(banned){banned=false;banMessage='';status.banned=false;initialized=false;}
   setRole(result);const remote=result.save,remoteKey=remote?fingerprint(remote):'';
+  if(result.expulsion?.pending===true){
+   const value=result.expulsion;
+   if(remote!==null||!Number.isSafeInteger(value.revision)||value.revision<1||typeof value.castleId!=='string')throw Error('追放後の拠点状態を確認できませんでした。再接続してください。');
+   expulsion={pending:true,revision:value.revision,castleId:value.castleId,castleName:String(value.castleName||value.castleId),expelledAt:value.expelledAt||null};
+   emit({writable:false,reason:'applying',message:'追放後の拠点選択を準備しています。'});
+   const accepted=await bridge()?.applyExpulsion?.(expulsion,{source:'cloud',playerId:String(session.id)});if(!valid(g))return false;
+   if(accepted!==true&&accepted?.ok!==true||bridge()?.hasStarted?.()!==false)throw Error(accepted?.message||'拠点選択を読み込めませんでした。ページを更新してください。');
+   branchAuthoritySnapshot=branchCorrectionPending=maintenanceAuthoritySnapshot=null;ack='';dirty=false;attempt=null;revision=result.revision;initialized=true;checkpoint();
+   observeResidency(result);if(result.clock)global.SengokuWorldClock?.accept(result.clock);status.updatedAt=result.updatedAt||null;lease(result);access();return true;
+  }
+  expulsion=null;
   if(branchCorrectionPending&&result.writerDeviceId!==device.id){force=true;reason='branch-canonical';}
   if(remote&&!remoteKey)throw Error('同期データの形式を確認できませんでした。');
   if(remote&&(!initialized||force||result.revision>revision||remoteKey!==ack)){
@@ -465,12 +476,12 @@ function create(options={}){
  function schedulePresence(){if(presenceTimer!==null)cancel(presenceTimer);presenceTimer=null;const g=generation;if(session&&!banned&&!hidden())presenceTimer=later(async()=>{presenceTimer=null;if(!valid(g)||hidden())return;await presence(true);if(valid(g))schedulePresence();},20000);}
  function start(next){
   stop({pending:true});generation++;device.id=(deviceStem+'-'+(global.crypto?.randomUUID?.()||generation+'-'+now().toString(36))).slice(0,90);session={id:next.id,request:next.request,onUser:next.onUser};queue=Promise.resolve();initialized=false;applying=false;dirty=false;ack='';revision=0;leaseDeadline=0;lastLeaseAt=0;refreshPending=null;attempt=null;banned=false;banMessage='';accessRefreshPending=false;
-  emit({linked:true,ready:false,writable:false,reason:'initializing',message:'領主と最新の保存を確認しています…',revision:0,updatedAt:null,leaseExpiresAt:null,writerDeviceName:null});roleAccess({},true);
+  expulsion=null;emit({linked:true,ready:false,writable:false,reason:'initializing',message:'領主と最新の保存を確認しています…',revision:0,updatedAt:null,leaseExpiresAt:null,writerDeviceName:null});roleAccess({},true);
   if(!hidden()){presence(true);schedulePresence();return refresh();}access();return Promise.resolve({ok:false,hidden:true});
  }
  function stop({pending=false}={}){
   checkpoint();const previous=banned?null:session;generation++;session=null;clearTimers();queue=Promise.resolve();refreshPending=null;initialized=false;applying=false;dirty=false;ack='';revision=0;leaseDeadline=0;banned=false;banMessage='';accessRefreshPending=false;branchAuthoritySnapshot=null;branchCorrectionPending=null;maintenanceAuthoritySnapshot=null;
-  emit({linked:pending,ready:!pending,writable:!pending,reason:pending?'initializing':'local',message:pending?'領主と最新の保存を確認しています…':'',revision:0,updatedAt:null,leaseExpiresAt:null,writerDeviceName:null});roleAccess({},pending);
+  expulsion=null;emit({linked:pending,ready:!pending,writable:!pending,reason:pending?'initializing':'local',message:pending?'領主と最新の保存を確認しています…':'',revision:0,updatedAt:null,leaseExpiresAt:null,writerDeviceName:null});roleAccess({},pending);
   if(previous){for(const [route,data]of [['/presence',{deviceId:device.id,deviceName:device.name,online:false}],['/sync/release',{deviceId:device.id}]]){try{Promise.resolve(previous.request(route,{method:'POST',data,background:true,keepalive:true})).catch(()=>{});}catch(_){}}}
  }
  function visibilityChanged(){

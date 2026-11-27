@@ -204,7 +204,7 @@
     const nearest=ROWS.filter(c=>c[0]!==r[0]&&c[0]!==r[4]&&c[3]===current[3]).sort((a,b)=>Math.hypot(a[5]-current[5],a[6]-current[6])-Math.hypot(b[5]-current[5],b[6]-current[6]))[0];
     if(nearest)EDGES.push([r[0],nearest[0]]);
   }
-  const STAFF_BASE_ID='kyoto_gosho';
+  const STAFF_BASE_ID='kyoto_gosho',DEPUTY_BASE_ID='kagoshima';
   ROWS.push([STAFF_BASE_ID,'京都御所','山城','近畿','朝廷',39,63,2,1900]);
   EDGES.push([STAFF_BASE_ID,'nijo']);
   const MAJOR_CITY_IDS=Object.freeze(['edo',STAFF_BASE_ID,'nijo','osaka','nagoya']);
@@ -281,7 +281,7 @@
   const STAFF_CLAN=Object.freeze({...CLANS.find(c=>c.name==='徳川家'),name:ADMIN_ASSETS.clanName,leader:'徳川家康',home:STAFF_BASE_ID,description:'京都御所を共同本拠とする、スタッフの家。'});
   const GIFT_FIELDS=[...RESOURCES,'magatama'];
   // Role belongs to the authenticated runtime. It is never serialized in a save.
-  const ADMIN_ACCESS=new WeakMap(),STAFF_ACCESS=new WeakMap(),COURT_ACCESS=new WeakMap(),REGENT_ACCESS=new WeakMap(),BRANCH_AUTHORITY=new WeakMap(),MAINTENANCE_AUTHORITY=new WeakMap(),BRANCH_PARENT_LOSSES=new WeakMap(),HOME_DEFENSE_LOSSES=new WeakMap(),STAFF_VIEW=new WeakMap(),STAFF_ORIGIN=new WeakMap();
+  const ADMIN_ACCESS=new WeakMap(),STAFF_ACCESS=new WeakMap(),DEPUTY_ACCESS=new WeakMap(),COURT_ACCESS=new WeakMap(),REGENT_ACCESS=new WeakMap(),BRANCH_AUTHORITY=new WeakMap(),MAINTENANCE_AUTHORITY=new WeakMap(),BRANCH_PARENT_LOSSES=new WeakMap(),HOME_DEFENSE_LOSSES=new WeakMap(),STAFF_VIEW=new WeakMap(),STAFF_ORIGIN=new WeakMap();
   const UPKEEP_TRACKS=new WeakMap(),MAX_UPKEEP_TRACKS=128;
   const MAX_HOME_DEFENSE_LOSSES=256;
   const WORLD_CALENDAR=Object.freeze({startYear:1560,yearsPerCycle:56,monthsPerCycle:672,secondsPerMonth:60});
@@ -397,7 +397,7 @@
     if(changed){state.branches=branches;state.jobs=jobs;}
     return changed;
   }
-  const DATA = {version:2,assetCap:ASSET_CAP,maintenance:MAINTENANCE_RULES,durability:DURABILITY_RULES,staffBaseId:STAFF_BASE_ID,courtAdmission:COURT_ADMISSION,branchRules:BRANCH_RULES,branchFacilities:BRANCH_FACILITIES,gacha:GACHA,rankBonuses:RANK_BONUSES,adminAssets:ADMIN_ASSETS,adminClan:ADMIN_CLAN,staffClan:STAFF_CLAN,majorCityIds:MAJOR_CITY_IDS,worldCalendar:WORLD_CALENDAR,secondsPerMonth:60,secondsPerCommand:20,buildingLimit:32,ranks:RANKS,evaluationRanks:EVALUATION_RANKS,evaluationMax:EVALUATION_MAX,categories:CATEGORY_LABELS,clans:CLANS,buildings:BUILDINGS,techs:TECHS,castles:CASTLES,tactics:TACTICS,quests:QUESTS,resources:RESOURCES,covert:COVERT_RULES,roaming:{commandCost:1,minTroops:300,historyLimit:20,encounters:ROAMING_ENCOUNTERS,tactics:ROAMING_TACTICS}};
+  const DATA = {version:2,assetCap:ASSET_CAP,maintenance:MAINTENANCE_RULES,durability:DURABILITY_RULES,staffBaseId:STAFF_BASE_ID,deputyBaseId:DEPUTY_BASE_ID,courtAdmission:COURT_ADMISSION,branchRules:BRANCH_RULES,branchFacilities:BRANCH_FACILITIES,gacha:GACHA,rankBonuses:RANK_BONUSES,adminAssets:ADMIN_ASSETS,adminClan:ADMIN_CLAN,staffClan:STAFF_CLAN,majorCityIds:MAJOR_CITY_IDS,worldCalendar:WORLD_CALENDAR,secondsPerMonth:60,secondsPerCommand:20,buildingLimit:32,ranks:RANKS,evaluationRanks:EVALUATION_RANKS,evaluationMax:EVALUATION_MAX,categories:CATEGORY_LABELS,clans:CLANS,buildings:BUILDINGS,techs:TECHS,castles:CASTLES,tactics:TACTICS,quests:QUESTS,resources:RESOURCES,covert:COVERT_RULES,roaming:{commandCost:1,minTroops:300,historyLimit:20,encounters:ROAMING_ENCOUNTERS,tactics:ROAMING_TACTICS}};
   DATA.officerHealth=OFFICER_HEALTH_RULES;
   const clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
   const copy=o=>JSON.parse(JSON.stringify(o));
@@ -735,15 +735,15 @@
   }
   class SengokuEngine {
     constructor(options={}) {
-      ADMIN_ACCESS.set(this,options.isAdmin===true);STAFF_ACCESS.set(this,options.isStaff===true);COURT_ACCESS.set(this,options.isCourtEmperor===true&&options.isStaff===true&&options.isAdmin!==true);REGENT_ACCESS.set(this,options.isCourtRegent===true&&options.isAdmin!==true&&!this.isCourtEmperor);
+      ADMIN_ACCESS.set(this,options.isAdmin===true);STAFF_ACCESS.set(this,options.isStaff===true);DEPUTY_ACCESS.set(this,options.isDeputy===true);COURT_ACCESS.set(this,options.isCourtEmperor===true&&options.isStaff===true&&options.isAdmin!==true);REGENT_ACCESS.set(this,options.isCourtRegent===true&&options.isAdmin!==true&&!this.isCourtEmperor);
       this.roster = options.officers || root.SENGOKU_OFFICERS || [];
       this.officerMap = Object.assign(Object.create(null),Object.fromEntries(this.roster.map(o=>[o.id,o])));
       if(!this.isAdmin&&!this.isStaff&&options.clan===ADMIN_ASSETS.clanName)throw new Error('德川家は運営・スタッフ専用です。通常の徳川家は選択できます。');
       const personal=CLANS.find(c=>c.name===options.clan)||(this.isStaff?CLANS.find(c=>c.name==='徳川家'):CLANS[0]);
       const clan = this.isAdmin?ADMIN_CLAN:this.isStaff?STAFF_CLAN:personal;
       if(this.isStaff)STAFF_ORIGIN.set(this,{clan:personal.name,home:personal.home,cycleHome:personal.home});
-      if(!this.isAdmin&&!this.isStaff&&options.startCastle!==undefined&&(!CASTLES.some(c=>c.id===options.startCastle)||MAJOR_CITY_IDS.includes(options.startCastle)))throw new Error('開始する城を、大都市拠点（江戸・京都御所・二条・大坂・名古屋）以外の124城から一つ選んでください。');
-      const home=this.isAdmin?ADMIN_ASSETS.castleId:this.isStaff?STAFF_BASE_ID:options.startCastle??clan.home;
+      if(!this.isAdmin&&!this.isStaff&&!this.isDeputy&&options.startCastle!==undefined&&(!CASTLES.some(c=>c.id===options.startCastle)||MAJOR_CITY_IDS.includes(options.startCastle)||options.startCastle===DEPUTY_BASE_ID))throw new Error('大都市拠点とサブ運営専用の鹿児島城を除く123城から開始する城を選んでください。');
+      const home=this.isAdmin?ADMIN_ASSETS.castleId:this.isStaff?STAFF_BASE_ID:this.isDeputy?DEPUTY_BASE_ID:options.startCastle??clan.home;
       const difficulty=['easy','normal','hard'].includes(options.difficulty)?options.difficulty:'normal';
       const rosterClan=this.isAdmin||this.isStaff?'徳川家':clan.name,rosterLeader=this.isAdmin||this.isStaff?'徳川家康':clan.leader;
       const initial = this.roster.filter(o=>o.clan===rosterClan).sort((a,b)=>(b.name===rosterLeader?10000:b.lead+b.valor+b.politics)-(a.name===rosterLeader?10000:a.lead+a.valor+a.politics)).slice(0,4).map(o=>o.id);
@@ -775,9 +775,9 @@
     }
     relocateResidence(castleId,options={}){
       const previous=this.state,role=options?.role;
-      if(this.isAdmin||this.isStaff)return{ok:false,code:'RESIDENCY_FIXED_HOME',message:'役職に定められた本拠からは移転できません。'};
-      if(typeof castleId!=='string'||!Object.hasOwn(CASTLE_BY_ID,castleId)||MAJOR_CITY_IDS.includes(castleId))
-        return{ok:false,code:'INVALID_CASTLE',message:'大都市拠点以外の124城から移転先を選んでください。'};
+      if(this.isAdmin||this.isStaff||this.isDeputy)return{ok:false,code:'RESIDENCY_FIXED_HOME',message:'役職に定められた本拠からは移転できません。'};
+      if(typeof castleId!=='string'||!Object.hasOwn(CASTLE_BY_ID,castleId)||MAJOR_CITY_IDS.includes(castleId)||castleId===DEPUTY_BASE_ID)
+        return{ok:false,code:'INVALID_CASTLE',message:'大都市拠点と鹿児島城を除く123城から移転先を選んでください。'};
       // A defeated lord may already run the private realm from another holding,
       // while still registered in the former castle's public household.
       const registeredHome=options?.residencyCastleId??previous.home;
@@ -857,6 +857,7 @@
     }
     get isAdmin(){return ADMIN_ACCESS.get(this)===true;}
     get isStaff(){return !this.isAdmin&&STAFF_ACCESS.get(this)===true;}
+    get isDeputy(){return !this.isAdmin&&!this.isStaff&&DEPUTY_ACCESS.get(this)===true;}
     // Only verified runtime metadata supplies court authority. It is never
     // inferred from a save, evaluation rank, title, clan, or imported flags.
     get isCourtEmperor(){return this.isStaff&&COURT_ACCESS.get(this)===true;}
@@ -892,7 +893,7 @@
     // and territory resets cannot supply or replay them.
     takeHomeDefenseLosses(){const recorded=HOME_DEFENSE_LOSSES.get(this);HOME_DEFENSE_LOSSES.delete(this);return recorded?.campaignId===this.state.walking.campaignId?copy(recorded.losses):[];}
     _recordHomeDefenseLoss(castleId,sourceCastleId){
-      const s=this.state;if(castleId!==s.home||s.castles[castleId]?.owner!==s.clan||!CASTLE_BY_ID[sourceCastleId]||s.castles[sourceCastleId]?.owner===s.clan||['edo',STAFF_BASE_ID].includes(castleId))return;
+      const s=this.state;if(castleId!==s.home||s.castles[castleId]?.owner!==s.clan||!CASTLE_BY_ID[sourceCastleId]||s.castles[sourceCastleId]?.owner===s.clan||['edo',STAFF_BASE_ID,DEPUTY_BASE_ID].includes(castleId))return;
       const campaignId=s.walking.campaignId,cycle=Math.floor(s.turn/WORLD_CALENDAR.monthsPerCycle),id=`cpu-home:${campaignId}:${cycle}:${s.turn}:${sourceCastleId}:${castleId}`,prior=HOME_DEFENSE_LOSSES.get(this),losses=prior?.campaignId===campaignId?prior.losses:[];
       if(losses.length>=MAX_HOME_DEFENSE_LOSSES||losses.some(loss=>loss.id===id))return;
       losses.push({id,kind:'cpu',campaignId,cycle,turn:s.turn,occurredElapsedMs:Math.floor(s.turn*60000+s.realtime.elapsed*1000),castleId,sourceCastleId});
@@ -900,7 +901,7 @@
     }
     courtAttackPermission(sourceCastleId,targetCastleId){return sourceCastleId===STAFF_BASE_ID&&targetCastleId===ADMIN_ASSETS.castleId&&!this.canActForEmperor?{ok:false,code:'COURT_EDO_ATTACK_REQUIRED',message:'京都御所から江戸城へ攻められるのは、在任中の天皇または摂政です。現在の任命を確認してください。'}:{ok:true};}
     castleLevelLimit(id){return id===STAFF_BASE_ID?128:id==='edo'?64:MAJOR_CITY_IDS.includes(id)?48:32;}
-    canOwnCastle(id){return Boolean(CASTLE_BY_ID[id])&&(id!==ADMIN_ASSETS.castleId||this.isAdmin)&&(id!==STAFF_BASE_ID||this.isStaff);}
+    canOwnCastle(id){return Boolean(CASTLE_BY_ID[id])&&(id!==ADMIN_ASSETS.castleId||this.isAdmin)&&(id!==STAFF_BASE_ID||this.isStaff)&&(id!==DEPUTY_BASE_ID||this.isDeputy);}
     canOwnOfficerVariant(id,rank){return Boolean(this.baseOfficer(id))&&RANKS.includes(rank)&&(id!==ADMIN_ASSETS.officerId||rank!==ADMIN_ASSETS.rank||this.isAdmin);}
     _baseGrantRank(id){const o=this.baseOfficer(id),rank=o?.rank||o?.rarity;return id===ADMIN_ASSETS.officerId&&rank==='U'&&!this.isAdmin?'SSS':rank;}
     gachaPool(rank){return RANKS.includes(rank)?this.roster.filter(o=>this.canOwnOfficerVariant(o.id,rank)):[];}
@@ -991,19 +992,35 @@
     _enforceStaffHome(){
       const s=this.state;if(this.isStaff){if(s.clan!==STAFF_CLAN.name){const personal=CLANS.find(c=>c.name===s.clan);if(personal)STAFF_ORIGIN.set(this,{clan:personal.name,home:['edo',STAFF_BASE_ID].includes(s.home)?personal.home:s.home,cycleHome:['edo',STAFF_BASE_ID].includes(s.cycle.home)?personal.home:s.cycle.home});}const renamed=this._renameCampaignClan(STAFF_CLAN.name),changed=renamed||s.home!==STAFF_BASE_ID||s.castles[STAFF_BASE_ID].owner!==s.clan;s.home=STAFF_BASE_ID;s.cycle.home=STAFF_BASE_ID;s.castles[STAFF_BASE_ID].owner=s.clan;s.gameOver=false;return changed;}
       const source=s.castles[STAFF_BASE_ID],owned=source.owner===s.clan,wasHome=s.home===STAFF_BASE_ID;if(!owned&&!wasHome){if(s.cycle.home===STAFF_BASE_ID)s.cycle.home=s.home;return false;}
-      const canonical=CLANS.find(c=>c.name===s.clan)?.home||'kiyosu',choices=CASTLES.filter(c=>!['edo',STAFF_BASE_ID].includes(c.id)&&s.castles[c.id].owner===s.clan),fallback=choices.find(c=>c.id===canonical)?.id||choices[0]?.id||canonical;
+      const canonical=CLANS.find(c=>c.name===s.clan)?.home||'kiyosu',choices=CASTLES.filter(c=>!['edo',STAFF_BASE_ID,DEPUTY_BASE_ID].includes(c.id)&&s.castles[c.id].owner===s.clan),fallback=choices.find(c=>c.id===canonical)?.id||choices[0]?.id||canonical;
       if(wasHome){const destination=s.castles[fallback];for(const key of ['troops','wall','level'])destination[key]=Math.max(destination[key],source[key]);destination.level=Math.min(this.castleLevelLimit(fallback),destination.level);destination.owner=s.clan;s.home=fallback;}
       s.jobs=s.jobs.flatMap(job=>job.kind==='castle'&&job.id===STAFF_BASE_ID?(wasHome&&s.castles[fallback].level<this.castleLevelLimit(fallback)?[{...job,id:fallback,targetLevel:s.castles[fallback].level+1}]:[]):[job]);
       if(wasHome){const seen=new Map(),other=[];for(const job of s.jobs){if(job.kind!=='castle'){other.push(job);continue;}if(job.id===fallback){if(s.castles[fallback].level>=this.castleLevelLimit(fallback))continue;job.targetLevel=s.castles[fallback].level+1;}if(!seen.has(job.id)||job.remainingSeconds<seen.get(job.id).remainingSeconds)seen.set(job.id,job);}s.jobs=[...other,...seen.values()];}
       const original=CASTLE_BY_ID[STAFF_BASE_ID];s.castles[STAFF_BASE_ID]={owner:original.clan===s.clan?'在地衆':original.clan,troops:original.initialTroops,wall:original.wall,level:1};
       s.captureRewards=s.captureRewards.filter(id=>id!==STAFF_BASE_ID);if(wasHome&&!s.captureRewards.includes(fallback))s.captureRewards.push(fallback);if(s.cycle.home===STAFF_BASE_ID)s.cycle.home=fallback;return true;
     }
-    setRoleAccess({isAdmin=false,isStaff=false}={},options={}){
-      if(typeof isAdmin!=='boolean'||typeof isStaff!=='boolean')return fail('役職の認証状態が正しくありません。');
-      const changed=this.isAdmin!==isAdmin||this.isStaff!==(!isAdmin&&isStaff);if(changed){COURT_ACCESS.set(this,false);REGENT_ACCESS.set(this,false);BRANCH_AUTHORITY.delete(this);BRANCH_PARENT_LOSSES.delete(this);}if(this.isStaff&&(!isStaff||isAdmin))this._clearStaffProjection();STAFF_ACCESS.set(this,isStaff);
-      const result=this._setAdminAccess(isAdmin,options),migrated=this._enforceStaffHome();if(!this.isStaff){this.state.command=Math.min(this.state.command,this.commandMax());this.state.governors=Object.fromEntries(Object.entries(this.state.governors).filter(([id])=>this.state.buildings[id]>0));if(this.constructionChains()>this.constructionSlots())this.state.staffService={baseId:STAFF_BASE_ID};}this._updateCampaignOutcome();return {...result,isStaff:this.isStaff,changed:changed||result.changed||migrated};
+    _enforceDeputyHome(returnHome=null){
+      const s=this.state,id=DEPUTY_BASE_ID,source=s.castles[id],isHome=s.home===id,owned=source.owner===s.clan;
+      const reset=castleId=>{const original=CASTLE_BY_ID[castleId];s.castles[castleId]={owner:original.clan===s.clan?'在地衆':original.clan,troops:original.initialTroops,wall:original.wall,level:1};};
+      const move=(from,to)=>{const previous=s.castles[from];s.castles[to]={...copy(previous),owner:s.clan,level:Math.min(previous.level,this.castleLevelLimit(to))};reset(from);s.home=to;s.cycle.home=to;
+        s.jobs=s.jobs.flatMap(job=>job.kind==='castle'&&(job.id===from||job.id===to)?job.id===from&&s.castles[to].level<this.castleLevelLimit(to)?[{...job,id:to,targetLevel:s.castles[to].level+1}]:[]:[job]);
+        s.captureRewards=[...new Set([...s.captureRewards.filter(value=>value!==from&&value!==to),to])];delete s.retainerSupport;};
+      if(this.isDeputy){if(!isHome){move(s.home,id);s.gameOver=false;return true;}source.owner=s.clan;if(s.cycle)s.cycle.home=id;delete s.retainerSupport;s.gameOver=false;return !owned;}
+      if(!owned&&!isHome){if(s.cycle?.home===id)s.cycle.home=s.home;return false;}
+      const allowed=castleId=>CASTLE_BY_ID[castleId]&&!MAJOR_CITY_IDS.includes(castleId)&&castleId!==id;
+      // The recorded appointment home may be a conquered major city. Only an
+      // explicit return may use it; automatic migration stays in ordinary castles.
+      const restoredHome=CASTLE_BY_ID[returnHome]&&!['edo',STAFF_BASE_ID,id].includes(returnHome)?returnHome:null;
+      const canonical=CLANS.find(c=>c.name===s.clan)?.home||'kiyosu',fallback=restoredHome||CASTLES.find(c=>allowed(c.id)&&c.id===canonical)?.id||CASTLES.find(c=>allowed(c.id)&&s.castles[c.id].owner===s.clan)?.id||'kiyosu';
+      if(isHome)move(id,fallback);else{reset(id);s.jobs=s.jobs.filter(job=>job.kind!=='castle'||job.id!==id);s.captureRewards=s.captureRewards.filter(value=>value!==id);}
+      if(s.cycle?.home===id)s.cycle.home=s.home;return true;
     }
-    setAdminAccess(isAdmin,options={}){if(typeof isAdmin!=='boolean')return fail('運営の認証状態が正しくありません。');return this.setRoleAccess({isAdmin,isStaff:STAFF_ACCESS.get(this)===true},options);}
+    setRoleAccess({isAdmin=false,isStaff=false,isDeputy=false}={},options={}){
+      if(typeof isAdmin!=='boolean'||typeof isStaff!=='boolean'||typeof isDeputy!=='boolean')return fail('役職の認証状態が正しくありません。');
+      const changed=this.isAdmin!==isAdmin||this.isStaff!==(!isAdmin&&isStaff)||this.isDeputy!==(!isAdmin&&!isStaff&&isDeputy);if(changed){COURT_ACCESS.set(this,false);REGENT_ACCESS.set(this,false);BRANCH_AUTHORITY.delete(this);BRANCH_PARENT_LOSSES.delete(this);}if(this.isStaff&&(!isStaff||isAdmin))this._clearStaffProjection();STAFF_ACCESS.set(this,isStaff);DEPUTY_ACCESS.set(this,isDeputy);
+      const result=this._setAdminAccess(isAdmin,options),migrated=this._enforceStaffHome(),deputyMigrated=this._enforceDeputyHome(options.deputyReturnHome);if(!this.isStaff){this.state.command=Math.min(this.state.command,this.commandMax());this.state.governors=Object.fromEntries(Object.entries(this.state.governors).filter(([id])=>this.state.buildings[id]>0));if(this.constructionChains()>this.constructionSlots())this.state.staffService={baseId:STAFF_BASE_ID};}this._updateCampaignOutcome();return {...result,isStaff:this.isStaff,isDeputy:this.isDeputy,changed:changed||result.changed||migrated||deputyMigrated};
+    }
+    setAdminAccess(isAdmin,options={}){if(typeof isAdmin!=='boolean')return fail('運営の認証状態が正しくありません。');return this.setRoleAccess({isAdmin,isStaff:STAFF_ACCESS.get(this)===true,isDeputy:DEPUTY_ACCESS.get(this)===true},options);}
     applyStaffBase(base){
       if(!this.isStaff)return fail('スタッフの共同拠点へ接続してください。');
       if(base&&typeof base==='object'){
@@ -1436,7 +1453,7 @@
     upgradeCastleCount(){return CASTLES.reduce((count,castle)=>count+(this.canOwnCastle(castle.id)&&!(this.isStaff&&castle.id===STAFF_BASE_ID)&&this.state.castles[castle.id]?.owner===this.state.clan?1:0),0);}
     upgradeCostMultiplier(){return upgradeCostMultiplier(this.upgradeCastleCount());}
     scaleUpgradeCost(cost){return scaleUpgradeCost(cost,this.upgradeCastleCount());}
-    adjacentTargets(){const ids=new Set();for(const c of this.ownedCastles())for(const id of c.neighbors)if(this.canOwnCastle(id)&&this.state.castles[id].owner!==this.state.clan)ids.add(id);return [...ids].map(id=>this.castle(id));}
+    adjacentTargets(){const ids=new Set();for(const c of this.ownedCastles())for(const id of c.neighbors)if((this.canOwnCastle(id)||id===DEPUTY_BASE_ID)&&this.state.castles[id].owner!==this.state.clan)ids.add(id);return [...ids].map(id=>this.castle(id));}
     commandMax(){return 3+Math.floor(this.state.buildings.keep/8);}
     constructionSlots(){return 2+Math.floor(this.state.buildings.keep/8);}
     constructionChains(){return new Set(this.state.jobs.filter(j=>j.kind!=='research').map(j=>j.kind+':'+j.id)).size;}
@@ -1834,7 +1851,7 @@
     scout(castleId){const g=this._guard();if(g)return g;const c=this.castle(castleId);if(!c||c.owner===this.state.clan)return fail('偵察する敵城を選んでください。');if(!this.adjacentTargets().some(t=>t.id===castleId))return fail('偵察できるのは自領に隣接する敵城です。');const cost=this.scoutCost(castleId);if(!this._canPay(cost))return fail(`偵察には金銭${cost.gold}が必要です。`);this._pay(cost);this.state.scouted[castleId]=this.state.turn+3;return this._action(`${c.name}を偵察。3か月間、この城への攻撃力が10%増加します。`,'scout');}
     armyStats(ids=this.state.army){const arr=ids.map(id=>this.officer(id)).filter(Boolean),health=projectOfficerHealth(this.state);if(!arr.length)return{lead:35,valor:35,intellect:35,politics:35,count:0};return{...Object.fromEntries(['lead','valor','intellect','politics'].map(key=>[key,Math.round(arr.reduce((sum,o)=>sum+o[key]*officerCombatFactor({officerHealth:health},o.id),0)/arr.length)])),count:arr.length};}
     _covertElapsed(){return Math.floor(this.state.turn*60000+this.state.realtime.elapsed*1000);}
-    _covertSourceAvailable(id){return MAJOR_CITY_IDS.includes(id)&&this.state.castles[id]?.owner===this.state.clan&&(id!=='edo'||this.isAdmin)&&(id!==STAFF_BASE_ID||this.isStaff);}
+    _covertSourceAvailable(id){return MAJOR_CITY_IDS.includes(id)&&this.state.castles[id]?.owner===this.state.clan&&(id!=='edo'||this.isAdmin)&&(id!==STAFF_BASE_ID||this.isStaff)&&(id!==DEPUTY_BASE_ID||this.isDeputy);}
     covertStatus(){
       const s=this.state,c=s.covert||(s.covert=covertState(undefined,s.walking.campaignId)),capacity=Math.max(1,Math.min(COVERT_RULES.maxCount,Math.floor(this.troopCapacity()/COVERT_RULES.capacityDivisor)));
       const sources=MAJOR_CITY_IDS.filter(id=>this._covertSourceAvailable(id)||c.reserves[id]||c.stations.some(v=>v.sourceCastleId===id)||c.dispatches.some(v=>v.sourceCastleId===id)).map(id=>{const unitType=id==='edo'?'ninja':'ashigaru';return{castleId:id,name:CASTLE_BY_ID[id].name,unitType,unitName:unitType==='ninja'?'忍者':'足軽',reserve:c.reserves[id],stationed:c.stations.filter(v=>v.sourceCastleId===id).reduce((sum,v)=>sum+v.count,0),inTransit:c.dispatches.filter(v=>v.sourceCastleId===id).reduce((sum,v)=>sum+v.count,0),capacity,hireCost:copy(COVERT_RULES.hire[unitType]),available:this._covertSourceAvailable(id)};});
@@ -1980,7 +1997,7 @@
       const localGate=target.kind==='castle'?this.parentAttackPermission(target.castleId):{ok:true},remoteBranches=options.targetSnapshot?.activeBranches;if(!localGate.ok||target.kind==='player'&&(Array.isArray(remoteBranches)?remoteBranches.length>0:Number.isSafeInteger(remoteBranches)&&remoteBranches>0))return covertError('BRANCHES_REQUIRED','大都市拠点への反撃は、残っている支拠点をすべて先に陥落させてから実行できます。');
       const rule=COVERT_RULES.retaliate,foodCost=rule.riceBase+Math.ceil(station.count*rule.ricePerUnit);if(this.state.resources.rice<foodCost)return covertError('INSUFFICIENT_RESOURCES','反撃に必要な兵糧が足りません。');
       const deployed=station.count,attackPower=Math.max(1,Math.round(deployed*(station.unitType==='ninja'?3:2)*(1+this.state.tech.discipline*.06))),defensePower=Math.max(1,snapshot.defensePower),ratio=attackPower/defensePower;
-      const chance=clamp(.5+Math.log(ratio)*.35,.05,.95),won=this.random()<chance,ourLost=Math.min(deployed,Math.max(1,Math.ceil(deployed*(won?.08:.2)))),protectedTarget=['edo',STAFF_BASE_ID].includes(target.castleId);
+      const chance=clamp(.5+Math.log(ratio)*.35,.05,.95),won=this.random()<chance,ourLost=Math.min(deployed,Math.max(1,Math.ceil(deployed*(won?.08:.2)))),protectedTarget=['edo',STAFF_BASE_ID,DEPUTY_BASE_ID].includes(target.castleId);
       const defenderLost={troops:protectedTarget?0:Math.min(Math.floor(snapshot.troops*.1),Math.floor(deployed*(won?.08:.03))),garrison:protectedTarget?0:Math.min(Math.floor(snapshot.garrison*.1),Math.max(1,Math.floor(deployed*(won?.16:.06))))};
       if(npc)npc.troops=Math.max(0,npc.troops-defenderLost.garrison);
       station.count-=ourLost;if(!station.count)c.stations=c.stations.filter(v=>v.id!==stationId);incident.used=true;this._pay({rice:foodCost});
@@ -2127,7 +2144,7 @@
       const condition=c.durability.fortificationFactor,defensePower=(c.troops*(1+c.wall*.11*wallFactor*condition)+c.wall*130*wallFactor*condition)*(s.difficulty==='hard'?1.1:s.difficulty==='easy'?.9:1)*(1+(c.level-1)*.04*condition);
       const ratio=attackPower/Math.max(1,defensePower);
       const chance=ratio>=2.2?.99:ratio<=.45?.02:clamp(.5+Math.log(ratio)*.65,.05,.97);
-      const court=this.courtAttackPermission(s.home,castleId),branchGate=this.parentAttackPermission(castleId);let reason='';if(this._marchBusy())reason=this._marchBusy().message;else if(s.gameOver)reason='本拠を失っています。';else if(!court.ok)reason=court.message;else if(c.owner===s.clan)reason='この城はすでに自領です。';else if(!branchGate.ok)reason=branchGate.message;else if(!this.canOwnCastle(castleId))reason=castleId===STAFF_BASE_ID?'京都御所はスタッフ専用のため出陣できません。':'江戸城は運営専用のため出陣できません。';else if(!this.adjacentTargets().some(a=>a.id===castleId))reason='自領に隣接する城へ出陣できます。';else if((s.treaties[c.owner]||0)>s.turn)reason='同盟期間中の勢力には出陣できません。';else if(!Number.isSafeInteger(troops)||n<300||n>s.troops)reason='出陣兵数は300人以上、現在の兵数以下の整数で指定してください。';else if(!ctx&&s.command<1)reason='指示の回復をお待ちください（1倍速で20秒に1回）。';else if(!ctx&&s.resources.rice<foodCost)reason='出陣に必要な兵糧が足りません。';
+      const court=this.courtAttackPermission(s.home,castleId),branchGate=this.parentAttackPermission(castleId);let reason='';if(this._marchBusy())reason=this._marchBusy().message;else if(s.gameOver)reason='本拠を失っています。';else if(!court.ok)reason=court.message;else if(c.owner===s.clan)reason='この城はすでに自領です。';else if(!branchGate.ok)reason=branchGate.message;else if(!this.canOwnCastle(castleId)&&castleId!==DEPUTY_BASE_ID)reason=castleId===STAFF_BASE_ID?'京都御所はスタッフ専用のため出陣できません。':'江戸城は運営専用のため出陣できません。';else if(!this.adjacentTargets().some(a=>a.id===castleId))reason='自領に隣接する城へ出陣できます。';else if((s.treaties[c.owner]||0)>s.turn)reason='同盟期間中の勢力には出陣できません。';else if(!Number.isSafeInteger(troops)||n<300||n>s.troops)reason='出陣兵数は300人以上、現在の兵数以下の整数で指定してください。';else if(!ctx&&s.command<1)reason='指示の回復をお待ちください（1倍速で20秒に1回）。';else if(!ctx&&s.resources.rice<foodCost)reason='出陣に必要な兵糧が足りません。';
       return{ok:!reason,...(!court.ok?{code:court.code}:!branchGate.ok&&reason===branchGate.message?{code:branchGate.code,branchIds:branchGate.branchIds}:{}),message:reason||'出陣できます。',castleId,castleName:c.name,durability:c.durability,tactic,troops:n,enemyTroops:c.troops,attackPower:Math.round(attackPower),defensePower:Math.round(defensePower),winChance:Math.round(chance*100),foodCost,scouted:(s.scouted[castleId]||0)>s.turn,ratio,tactics:TACTICS,travel:this._attackTravel('castle',castleId)};
     }
     previewBranchBattle(branchId,tactic='balanced',troops=this.state.troops){
@@ -2231,7 +2248,7 @@
       if([...targets].some(id=>excluded.has(id))||[...regions].some(id=>excludeRegions.has(id)))return bad('目標と攻めない対象が重なっています。禁止対象を優先し、作戦を開始しません。');
       if(targets.size>1||regions.size>1)return bad('一度の作戦では、目標の城と地方をそれぞれ一つまで指定してください。');
       const targetCastleId=[...targets][0]||null,targetRegion=[...regions][0]||null;
-      if(targetCastleId&&['edo',STAFF_BASE_ID].includes(targetCastleId))return bad('江戸城・京都御所は保護された本拠のため、自動攻略の目標にはできません。');
+      if(targetCastleId&&['edo',STAFF_BASE_ID,DEPUTY_BASE_ID].includes(targetCastleId))return bad('江戸城・京都御所は保護された本拠のため、自動攻略の目標にはできません。');
       if(targetCastleId&&excludeRegions.has(CASTLE_BY_ID[targetCastleId].region))return bad('目標の城が、攻めない地方に含まれています。');
       if(targetCastleId&&targetRegion&&CASTLE_BY_ID[targetCastleId].region!==targetRegion)return bad('指定した城と地方が一致しません。目標を確認してください。');
       const defaults=STRATEGY_STYLES[style],policy={version:1,text,style,priority,hold,minWinChance:explicitWin??defaults.minWinChance,reserveTroops:explicitTroops??defaults.reserveTroops,reserveRice:explicitRice??defaults.reserveRice,maxBattles:explicitCount??5,targetCastleId,targetRegion,excludeCastleIds:[...excluded],excludeRegions:[...excludeRegions],excludeClans:[...excludeClans],anchor:strategyAnchor(this)};
@@ -2247,12 +2264,12 @@
       if(policy.hold||policy.maxBattles===0)return result('stop','STRATEGY_HOLD','攻撃せず待機する作戦です。');
       if(battles>=policy.maxBattles||s.stats.battles>=BATTLE_COUNTER_MAX)return result('stop','STRATEGY_LIMIT','設定した出陣回数に達しました。');
       if(s.gameOver)return result('stop','STRATEGY_DEFEATED','本拠を失ったため作戦を停止しました。');
-      const goals=policy.targetCastleId?[CASTLE_BY_ID[policy.targetCastleId]]:policy.targetRegion?CASTLES.filter(c=>c.region===policy.targetRegion&&!['edo',STAFF_BASE_ID].includes(c.id)):null;
+      const goals=policy.targetCastleId?[CASTLE_BY_ID[policy.targetCastleId]]:policy.targetRegion?CASTLES.filter(c=>c.region===policy.targetRegion&&!['edo',STAFF_BASE_ID,DEPUTY_BASE_ID].includes(c.id)):null;
       if(goals?.every(c=>s.castles[c.id].owner===s.clan))return result('stop','STRATEGY_TARGET_REACHED','指定した目標を制圧しました。');
       if(this.isStaff&&!STAFF_VIEW.get(this))return result('wait','STAFF_BASE_PENDING','京都御所の共同拠点を確認しています。');
       if(!s.realtime.running)return result('wait','STRATEGY_PAUSED','共通時間の再開を待っています。');
       if(s.command<1)return result('wait','STRATEGY_COMMAND','出陣に必要な指示の回復を待っています。');
-      const blocked=c=>['edo',STAFF_BASE_ID].includes(c.id)||!this.canOwnCastle(c.id)||policy.excludeCastleIds.includes(c.id)||policy.excludeRegions.includes(c.region)||policy.excludeClans.includes(s.castles[c.id].owner)||(s.treaties[s.castles[c.id].owner]||0)>s.turn;
+      const blocked=c=>['edo',STAFF_BASE_ID,DEPUTY_BASE_ID].includes(c.id)||!this.canOwnCastle(c.id)||policy.excludeCastleIds.includes(c.id)||policy.excludeRegions.includes(c.region)||policy.excludeClans.includes(s.castles[c.id].owner)||(s.treaties[s.castles[c.id].owner]||0)>s.turn;
       let targets=this.adjacentTargets().filter(c=>!blocked(c));
       let distances=null;
       if(goals){
@@ -2297,22 +2314,25 @@
     }
     attack(castleId,tactic='balanced',troops=this.state.troops){
       const p=this.previewBattle(castleId,tactic,troops);if(!p.ok)return{...fail(p.message),...(p.code?{code:p.code}:{})};
-      const s=this.state,c=this.castle(castleId),t=TACTICS.find(t=>t.id===tactic),random=this.random();
+      const s=this.state,c=this.castle(castleId),t=TACTICS.find(t=>t.id===tactic),random=this.random(),rewardOnly=castleId===DEPUTY_BASE_ID;
       const won=random<p.winChance/100;
       const lostRate=won?clamp(.08+.19/Math.max(.5,p.ratio),.08,.32):clamp(.27+.13/Math.max(.4,p.ratio),.27,.65);
       const medic=MARCH_CONTEXT.get(this)?.medic??this.state.army.some(id=>this.officer(id)?.skill==='medic');
       const ourLost=Math.min(p.troops,Math.max(30,Math.round(p.troops*lostRate*t.loss*(.92+this.random()*.16)*(medic?.9:1))));
-      const enemyLost=won?c.troops:Math.max(0,Math.min(c.troops-100,Math.round(c.troops*clamp(p.ratio*.32,.08,.65))));
+      const enemyLost=rewardOnly?0:won?c.troops:Math.max(0,Math.min(c.troops-100,Math.round(c.troops*clamp(p.ratio*.32,.08,.65))));
       this._pay({rice:p.foodCost});s.troops-=ourLost;s.stats.battles=Math.min(BATTLE_COUNTER_MAX,s.stats.battles+1);s.morale=clamp(s.morale+(won?5:-12),15,100);
       const rewards={gold:0,rice:0,magatama:0};
       const phases=[
         {title:'出陣',text:`${p.troops.toLocaleString()}の兵が${c.name}へ進軍。${t.name}を採用。`},
         {title:'開戦',text:`守備兵${c.troops.toLocaleString()}、城壁 Lv.${c.wall}。${p.scouted?'偵察で得た情報をもとに攻め手を定めた。':'敵の防備を見極めながら攻撃を開始した。'}`},
         {title:won?'突破':'激戦',text:won?'敵の守りを崩し、城門へと迫った。':'城兵の抵抗は強く、攻め手は消耗した。'},
-        {title:won?'落城':'撤退',text:won?`${c.name}を制圧。領国に新たな旗が上がった。`:'被害の拡大を防ぐため軍を撤収。兵と兵糧を整え、再起を図る。'}
+        {title:won?rewardOnly?'勝利報酬':'落城':'撤退',text:won?rewardOnly?`${c.name}に勝利。サブ運営拠点の領有を維持し、勝利報酬を受け取ります。`:`${c.name}を制圧。領国に新たな旗が上がった。`:'被害の拡大を防ぐため軍を撤収。兵と兵糧を整え、再起を図る。'}
       ];
       let capturedOfficer=null,garrison=0;
-      if(won){
+      if(won&&rewardOnly){
+        s.stats.wins=Math.min(BATTLE_COUNTER_MAX,s.stats.wins+1);s.prestige=Math.min(ASSET_CAP,s.prestige+20);
+        const gained=this._gain({gold:500,rice:500});rewards.gold=gained.gold;rewards.rice=gained.rice;
+      }else if(won){
         s.stats.wins=Math.min(BATTLE_COUNTER_MAX,s.stats.wins+1);s.prestige=Math.min(ASSET_CAP,s.prestige+20+c.wall*5);
         const firstCapture=!s.captureRewards.includes(castleId);
         const gained=this._gain({gold:450+c.wall*180,rice:500+c.wall*200,magatama:firstCapture?GACHA.firstCaptureReward:0});
@@ -2327,11 +2347,11 @@
         s.castles[castleId]={owner:s.clan,troops:garrison,wall:Math.max(1,c.wall-1),level:c.level};
         const candidates=this.roster.filter(o=>o.clan===c.owner&&!s.officers.includes(o.id));
         if(candidates.length){const chosen=candidates[Math.floor(this.random()*candidates.length)];this._grantOfficerVariant(chosen.id,this._baseGrantRank(chosen.id));capturedOfficer=chosen.id;phases.push({title:'帰順',text:`${chosen.name}が新たに家臣へ加わった。`});}
-      }else s.castles[castleId].troops=c.troops-enemyLost;
-      const durability=this._damageCastleDurability(castleId,{won,ratio:p.ratio,captured:won,before:c.durability});phases.push({title:'城郭の耐久',text:`耐久 ${durability.before.toLocaleString()} → ${durability.breachCurrent.toLocaleString()}。${won?'占領後は最大耐久の25%から修復を始めます。':'傷んだ防備は時間とともに修復されます。'}`});
-      const report={won,durability,castleId,castleName:c.name,ourBefore:p.troops,ourLost,enemyBefore:c.troops,enemyLost,phases,rewards,capturedOfficer,garrison,tactic,turn:s.turn};
+      }else if(!rewardOnly)s.castles[castleId].troops=c.troops-enemyLost;
+      const durability=rewardOnly?null:this._damageCastleDurability(castleId,{won,ratio:p.ratio,captured:won,before:c.durability});if(durability)phases.push({title:'城郭の耐久',text:`耐久 ${durability.before.toLocaleString()} → ${durability.breachCurrent.toLocaleString()}。${won?'占領後は最大耐久の25%から修復を始めます。':'傷んだ防備は時間とともに修復されます。'}`});
+      const report={won,...(durability?{durability}:{}),...(rewardOnly?{captured:false,battleMode:'reward'}:{}),castleId,castleName:c.name,ourBefore:p.troops,ourLost,enemyBefore:c.troops,enemyLost,phases,rewards,capturedOfficer,garrison,tactic,turn:s.turn};
       s.lastBattle=report;this._updateCampaignOutcome();
-      const text=won?`${c.name}を攻略！ ${garrison}人を守備兵として配置。${capturedOfficer?`${this.officer(capturedOfficer).name}が帰順。`:''}`:`${c.name}の攻城戦から撤退。兵${ourLost.toLocaleString()}人を失いました。`;
+      const text=won&&rewardOnly?`${c.name}への攻撃に勝利。城は占領せず、金銭${rewards.gold}・兵糧${rewards.rice}を受け取りました。`:won?`${c.name}を攻略！ ${garrison}人を守備兵として配置。${capturedOfficer?`${this.officer(capturedOfficer).name}が帰順。`:''}`:`${c.name}の攻城戦から撤退。兵${ourLost.toLocaleString()}人を失いました。`;
       const result=this._action(text,won?'victory':'defeat',{battle:report});
       if(s.won)this.log(`攻略対象の${this.unificationTarget()}城を統一。戦乱の世に、新しい天下が訪れました。`,'victory');
       return result;
@@ -2340,7 +2360,7 @@
     _cpuTurn(){
       const s=this.state;if(!SengokuEngine.cpuTurnDue(s.turn))return[];const events=[];
       const choices=[];
-      for(const c of CASTLES){const a=s.castles[c.id];if(a.owner===s.clan)continue;for(const tid of c.neighbors){const b=s.castles[tid];if((tid===ADMIN_ASSETS.castleId||tid===STAFF_BASE_ID)&&!(b.owner===s.clan&&(s.covert.stations.some(v=>v.sourceCastleId===tid)||this.activeBranches(tid).length)))continue;if(a.owner===b.owner)continue;if((s.treaties[a.owner]||0)>s.turn&&b.owner===s.clan)continue;choices.push({from:c.id,to:tid});}}
+      for(const c of CASTLES){const a=s.castles[c.id];if(a.owner===s.clan)continue;for(const tid of c.neighbors){const b=s.castles[tid];if((tid===ADMIN_ASSETS.castleId||tid===STAFF_BASE_ID||tid===DEPUTY_BASE_ID)&&!(b.owner===s.clan&&(s.covert.stations.some(v=>v.sourceCastleId===tid)||this.activeBranches(tid).length)))continue;if(a.owner===b.owner)continue;if((s.treaties[a.owner]||0)>s.turn&&b.owner===s.clan)continue;choices.push({from:c.id,to:tid});}}
       if(!choices.length)return events;
       const playerThreats=choices.filter(e=>s.castles[e.to].owner===s.clan),others=choices.filter(e=>s.castles[e.to].owner!==s.clan);
       const canRaid=playerThreats.length&&s.turn>=8&&this.random()<(s.difficulty==='hard'?.45:s.difficulty==='easy'?.16:.28);
@@ -2352,7 +2372,7 @@
         if((s.treaties[a.owner]||0)>s.turn)return events;
         this._recordCovertIncident(move.to,move.from);
         const branch=this.activeBranches(move.to)[0];if(branch){const defense=this.branchDefense(branch.id),attack=a.troops*(s.difficulty==='hard'?.85:s.difficulty==='easy'?.55:.7),held=defense.power>=attack*(.84+this.random()*.32);this.recordOfficerBattle({key:`defense:${s.walking.campaignId}:${s.turn}:${branch.id}`,won:held,role:'defense',army:branch.commanders||[]});a.troops=survivorsAfterLoss(a.troops,Math.round(defense.force*(held?.3:.1)),300);if(held){this._damageBranchDurability(branch.id,{won:false,ratio:attack/Math.max(1,defense.power)});events.push(`${a.owner}が${branch.name}へ侵攻しましたが、支拠点が守りを固めて撃退しました。`);}else{this._fallBranch(branch.id);events.push(`${a.owner}の攻撃で${branch.name}が陥落。親拠点の領有と守備資産は維持しました。`);}for(const event of events)this.log(event,'world');return events;}
-        if(['edo',STAFF_BASE_ID].includes(move.to)){events.push(a.owner+'が'+bc.name+'へ侵攻。城の領有と守備資産を維持しました。');for(const e of events)this.log(e,'world');return events;}
+        if(['edo',STAFF_BASE_ID,DEPUTY_BASE_ID].includes(move.to)){events.push(a.owner+'が'+bc.name+'へ侵攻。城の領有と守備資産を維持しました。');for(const e of events)this.log(e,'world');return events;}
         const home=move.to===s.home,reinforce=home?Math.round(s.troops*.45):Math.round(s.troops*.18),wall=home?s.buildings.wall:b.wall;
         const attack=a.troops*(s.difficulty==='hard'?.85:s.difficulty==='easy'?.55:.7),defense=this.defensePower(move.to);
         const beforeDurability=this.castle(move.to).durability,held=defense>=attack*(.84+this.random()*.32);
@@ -2577,7 +2597,7 @@
       if(!isObj(s)||s.version!==2||obj?.game&&obj.game!=='sengoku-tento')invalid();
       if(s.clan!==ADMIN_ASSETS.clanName&&!CLANS.some(c=>c.name===s.clan)||!CASTLE_BY_ID[s.home]||!['easy','normal','hard'].includes(s.difficulty))invalid();
       if(s.magatama===undefined)s.magatama=GACHA.initial;try{normalizeAssets(s);}catch(error){invalid();}
-      const g=new SengokuEngine({clan:s.clan===ADMIN_ASSETS.clanName?'徳川家':s.clan,difficulty:s.difficulty,officers,isAdmin:options?.isAdmin===true,isStaff:options?.isStaff===true,isCourtEmperor:options?.isCourtEmperor===true,isCourtRegent:options?.isCourtRegent===true});
+      const g=new SengokuEngine({clan:s.clan===ADMIN_ASSETS.clanName?'徳川家':s.clan,difficulty:s.difficulty,officers,isAdmin:options?.isAdmin===true,isStaff:options?.isStaff===true,isDeputy:options?.isDeputy===true,isCourtEmperor:options?.isCourtEmperor===true,isCourtRegent:options?.isCourtRegent===true});
       const oldMap=isObj(s.castles)&&!Object.hasOwn(s.castles,STAFF_BASE_ID)&&Object.keys(s.castles).length===CASTLES.length-1&&CASTLES.filter(c=>c.id!==STAFF_BASE_ID).every(c=>Object.hasOwn(s.castles,c.id));
       const legacyStaff=s.staffService?.baseId==='sunpu'||oldMap&&s.home==='sunpu'&&(s.clan===ADMIN_ASSETS.clanName||g.isStaff);
       if(oldMap){const original=CASTLE_BY_ID[STAFF_BASE_ID],scale={easy:.8,normal:1,hard:1.2}[s.difficulty];s.castles[STAFF_BASE_ID]={owner:original.clan===s.clan?'在地衆':original.clan,troops:Math.round(original.initialTroops*scale),wall:original.wall,level:1};}
@@ -2696,7 +2716,7 @@
       if(s.lastBattle?.durability!==undefined)try{s.lastBattle.durability=normalizeDurabilityBattle(s.lastBattle.durability);}catch{invalid();}
       if(s.lastBattle!==null&&s.lastBattle!==undefined){const b=s.lastBattle;if(!isObj(b)||typeof b.won!=='boolean'||!CASTLE_BY_ID[b.castleId]||!num(b.ourBefore)||!num(b.ourLost)||!num(b.enemyBefore)||!num(b.enemyLost)||!Array.isArray(b.phases)||b.phases.length>10||b.phases.some(p=>!isObj(p)||typeof p.title!=='string'||p.title.length>50||typeof p.text!=='string'||p.text.length>1000)||!isObj(b.rewards)||!num(b.rewards.gold)||!num(b.rewards.rice)||!num(b.rewards.magatama??0)||b.capturedOfficer!==null&&b.capturedOfficer!==undefined&&!g.officer(b.capturedOfficer))invalid();n.lastBattle={won:b.won,castleId:b.castleId,castleName:CASTLE_BY_ID[b.castleId].name,ourBefore:b.ourBefore,ourLost:b.ourLost,enemyBefore:b.enemyBefore,enemyLost:b.enemyLost,phases:copy(b.phases),rewards:{gold:b.rewards.gold,rice:b.rewards.rice,magatama:b.rewards.magatama??0},capturedOfficer:b.capturedOfficer||null,garrison:num(b.garrison)?b.garrison:0,tactic:TACTICS.some(t=>t.id===b.tactic)?b.tactic:'balanced',turn:num(b.turn,0,MAX_TURN)?b.turn:n.turn,...(b.durability?{durability:copy(b.durability)}:{})};if(b.branchId!==undefined){const site=BRANCH_BY_ID[b.branchId];if(!site||site.parentCastleId!==b.castleId||b.parentCastleId!==undefined&&b.parentCastleId!==site.parentCastleId||b.rewards.gold||b.rewards.rice||b.rewards.magatama||b.capturedOfficer||b.garrison)invalid();Object.assign(n.lastBattle,{branchId:site.id,parentCastleId:site.parentCastleId,castleName:site.name,captured:false});}}
       if(serviceSave&&!g.isStaff&&!g.isAdmin&&STAFF_ORIGIN.has(g))g._clearStaffProjection();
-      g._enforceAdminRestrictions();if(g.isAdmin)g.restoreAdminAssets();g._enforceStaffHome();if(g.isAdmin)n.cycle.home='edo';else if(n.cycle.home==='edo')n.cycle.home=n.home;if(g.isStaff&&options.staffBase)g.applyStaffBase(options.staffBase);if(legacyRepair)g._migrateLegacyRepair();g._updateCampaignOutcome();if(options.branchAuthority!==undefined){const authority=g.setBranchAuthority(options.branchAuthority);if(!authority.ok)throw new Error(authority.message);}if(options.maintenanceAuthority!==undefined){const authority=g.setMaintenanceAuthority(options.maintenanceAuthority);if(!authority.ok)throw new Error(authority.message);}return g;
+      g._enforceAdminRestrictions();if(g.isAdmin)g.restoreAdminAssets();g._enforceStaffHome();g._enforceDeputyHome(options.deputyReturnHome);if(g.isAdmin)n.cycle.home='edo';else if(n.cycle.home==='edo')n.cycle.home=n.home;if(g.isStaff&&options.staffBase)g.applyStaffBase(options.staffBase);if(legacyRepair)g._migrateLegacyRepair();g._updateCampaignOutcome();if(options.branchAuthority!==undefined){const authority=g.setBranchAuthority(options.branchAuthority);if(!authority.ok)throw new Error(authority.message);}if(options.maintenanceAuthority!==undefined){const authority=g.setMaintenanceAuthority(options.maintenanceAuthority);if(!authority.ok)throw new Error(authority.message);}return g;
     }
   }
   // Player progression is an optional, versioned section. Older saves receive

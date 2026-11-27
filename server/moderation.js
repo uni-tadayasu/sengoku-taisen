@@ -1,3 +1,6 @@
+import {ensureResidency} from './residency.js';
+import {moderationExpulsion} from './expulsion-state.js';
+import {expelPlayer} from './expulsion.js';
 // Only the current primary operator may change account access or remove posts.
 // Audit receipts contain counts and identifiers, never copies of deleted text.
 const moderationStmt=(db,sql,...params)=>db.prepare(sql).bind(...params);
@@ -9,6 +12,7 @@ const moderationBan=row=>({active:!!row?.active,revision:Number(row?.revision||0
 async function moderationRequire(ctx){const current=await ctx.helpers.getUser(ctx.db,ctx.user.id);ctx.helpers.requireAdmin(current||{});return current;}
 async function moderationTarget(ctx,id){
   const {db,user,helpers:h}=ctx;
+  await ensureResidency(db,ctx.now);
   const result=await db.batch([
     moderationStmt(db,'SELECT 1 AS allowed WHERE '+MODERATION_ADMIN,user.id),
     moderationStmt(db,h.userSelect+' WHERE u.id=? AND '+MODERATION_ADMIN,id,user.id),
@@ -21,7 +25,7 @@ async function moderationTarget(ctx,id){
   if(!moderationRows(result[0]).length)h.fail(403,'ADMIN_REQUIRED','運営専用の機能です。');
   const player=moderationRows(result[1])[0];if(!player)h.fail(404,'PLAYER_NOT_FOUND','対象の領主が見つかりません。');
   const ban=moderationBan(moderationRows(result[2])[0]),counts=moderationRows(result[3])[0],protectedPlayer=player.id===user.id||!!player.is_admin;
-  return {ok:true,player:h.mapUser(player,ctx.now),ban,counts:{chatMessages:Number(counts.chat_messages),letterMessages:Number(counts.letter_messages),pendingTrades:Number(counts.pending_trades)},canBan:!protectedPlayer&&!ban.active,canUnban:!protectedPlayer&&ban.active,contentRevision:Number(counts.content_revision)};
+  return {ok:true,player:h.mapUser(player,ctx.now),ban,...await moderationExpulsion(db,player),counts:{chatMessages:Number(counts.chat_messages),letterMessages:Number(counts.letter_messages),pendingTrades:Number(counts.pending_trades)},canBan:!protectedPlayer&&!ban.active,canUnban:!protectedPlayer&&ban.active,contentRevision:Number(counts.content_revision)};
 }
 async function moderationSearch(ctx){
   const {db,user,url,helpers:h}=ctx,q=h.textField(url.searchParams.get('q'),'検索語',90,{min:2}),pattern='%'+q.replaceAll('\\','\\\\').replaceAll('%','\\%').replaceAll('_','\\_')+'%';
@@ -96,6 +100,7 @@ export async function handleModeration(ctx){
   if(path==='/admin/moderation/players'&&method==='GET')return moderationSearch(ctx);
   if(path==='/admin/moderation/target'&&method==='GET')return moderationTarget(ctx,h.idField(ctx.url.searchParams.get('playerId'),'対象の領主'));
   if(path==='/admin/moderation/bans'&&method==='GET')return moderationBans(ctx);
+  if(path==='/admin/moderation/expel'&&method==='POST'){const result=await expelPlayer(ctx);return {...await moderationTarget(ctx,result.receipt.targetPlayerId),...result};}
   if(path==='/admin/moderation'&&method==='POST')return moderationChange(ctx);
   h.fail(404,'NOT_FOUND','その管理機能は見つかりませんでした。');
 }

@@ -26,7 +26,7 @@ async function eventGame(ctx,raw,now,snapshot=null){
  try{
   const {db,user,helpers:h}=ctx,current=snapshot?.user?{...user,is_admin:snapshot.user.isAdmin,is_staff:snapshot.user.isStaff}:user;
   const save=typeof raw==='string'?JSON.parse(raw):raw,clock=snapshot?.clock||await h.getWorldClock(db,now);
-  const game=GameEngine.fromSave(h.normalizeGameSave(save,current,now,{reading:true,clock}),GAME_OFFICERS,{isAdmin:!!current.is_admin,isStaff:!!current.is_staff});
+  const game=GameEngine.fromSave(h.normalizeGameSave(save,current,now,{reading:true,clock}),GAME_OFFICERS,{isAdmin:!!current.is_admin,isDeputy:!!current.is_deputy,isStaff:!!current.is_staff});
   if(game.state.march?.authority==='server')await restoreServerMarch(db,user.id,{state:game.state});
   game.state.officerHealth=GameEngine.projectOfficerHealth(game.state,clock.elapsedMs);
   if(current.is_staff&&!current.is_admin){
@@ -191,7 +191,7 @@ async function eventBattle(ctx,id){
  const save=h.normalizeGameSave(JSON.parse(savedRow.save_json),user,ctx.now,{reading:true,clock});
  await restoreServerMarch(db,user.id,save);
  save.state.officerHealth=GameEngine.projectOfficerHealth(save.state,clock.elapsedMs);
- const game=GameEngine.fromSave(save,GAME_OFFICERS,{isAdmin:!!user.is_admin,isStaff:!!user.is_staff});
+ const game=GameEngine.fromSave(save,GAME_OFFICERS,{isAdmin:!!user.is_admin,isDeputy:!!user.is_deputy,isStaff:!!user.is_staff});
  if(game.state.gameOver)h.fail(409,'BASE_UNAVAILABLE','本拠を失っている間はイベントに挑戦できません。');
  if(!save.state.worldClock)h.fail(409,'CLOCK_ANCHOR_REQUIRED','先に共通時計へ同期してください。');
  if(clock.elapsedMs-save.state.worldClock.elapsedMs>15000)h.fail(409,'CLOCK_STALE','共通時計と本拠を同期してから出陣してください。');

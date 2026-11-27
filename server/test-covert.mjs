@@ -64,7 +64,7 @@ async function incoming(h,attacker,defender,castleId='edo',{syncDefender=true}={
  const departure=(await h.api('/field/attack',post(attacker,{targetPlayerId:defender.user.id,targetCastleId:castleId,troops:1000,tactic:'balanced',requestId:crypto.randomUUID(),deviceId:attacker.deviceId,expectedRevision:row(h,attacker).revision}))).data;
  const battle=await settleFieldMarch(h,attacker,departure);if(syncDefender)await align(h,defender);return battle;
 }
-async function armed(h,source,target={kind:'castle',castleId:'kagoshima'}){
+async function armed(h,source,target={kind:'castle',castleId:'uchijo'}){
  await op(h,source,'hire',{sourceCastleId:'edo',count:400});
  return(await op(h,source,'dispatch',{sourceCastleId:'edo',target,count:300,mode:'station'})).result.stationId;
 }
@@ -88,7 +88,7 @@ try{
   assert.equal(r.result.foodCost,24);assert.equal(r.covert.reports.length,1);assert.equal(r.covert.sources[0].reserve,200);assert.deepEqual(r.result.report.snapshot.resources,save(h,d).state.resources);assert.equal(r.result.report.snapshot.army.count,3);
   const text=JSON.stringify(r.covert);for(const key of ['token_hash','is_admin','isAdmin','isStaff','staff_term','deviceId','writerDeviceId'])assert(!text.includes(key),key);assert.equal(row(h,d).save_json,targetSave);assert.equal(row(h,d).revision,targetRevision);assert.equal(count(h,'mail_campaigns'),mailCount);
   assert.equal((await h.api('/covert',{token:d.token})).data.covert.reports.length,0);
-  const distant=await op(h,p,'dispatch',{sourceCastleId:'edo',count:1,mode:'scout',target:{kind:'castle',castleId:'kagoshima'}});assert.equal(distant.result.report.target.castleId,'kagoshima');const scoutedUntil=Math.floor(distant.result.report.observedElapsedMs/60000)+3;assert.equal(distant.save.state.scouted.kagoshima,scoutedUntil>distant.save.state.turn?scoutedUntil:undefined);
+  const distant=await op(h,p,'dispatch',{sourceCastleId:'edo',count:1,mode:'scout',target:{kind:'castle',castleId:'uchijo'}});assert.equal(distant.result.report.target.castleId,'uchijo');const scoutedUntil=Math.floor(distant.result.report.observedElapsedMs/60000)+3;assert.equal(distant.save.state.scouted.uchijo,scoutedUntil>distant.save.state.turn?scoutedUntil:undefined);
   await op(h,p,'dispatch',{sourceCastleId:'edo',count:1,mode:'scout',target:{kind:'player',playerId:p.user.id,castleId:'edo'}},400);
   await op(h,p,'dispatch',{sourceCastleId:'edo',count:1,mode:'scout',target:{kind:'player',playerId:d.user.id,castleId:'kiyosu',isAdmin:true}},400);
  });
@@ -103,7 +103,7 @@ try{
   await op(h,p,'retaliate',{stationId,incidentId:'fake-attack'},409);
   const hit=await incoming(h,a,p);status=(await h.api('/covert',{token:p.token})).data;assert.equal(status.covert.incidents.length,1);assert.equal(status.covert.incidents[0].id,hit.id);assert(status.covert.incidents[0].available);assert.deepEqual(status.covert.incidents[0].stationIds,[stationId]);
   const before=save(h,p),request=body(h,p,{stationId,incidentId:hit.id}),r=(await h.api('/covert/retaliate',post(p,request))).data,b=r.result.battle,after=save(h,p);
-  assert.equal(b.captured,false);assert(b.ourLost>0);assert.equal(after.state.covert.stations[0].count,300-b.ourLost);assert.equal(after.state.castles.kagoshima.owner,before.state.castles.kagoshima.owner);assert.equal(after.state.castles.kagoshima.troops,before.state.castles.kagoshima.troops-b.defenderLost.garrison);assert.equal(after.state.resources.gold,before.state.resources.gold);assert.equal(after.state.resources.rice,before.state.resources.rice-r.result.foodCost);assert.equal(after.state.command,before.state.command-1);assert.equal(r.covert.incidents.length,0);
+  assert.equal(b.captured,false);assert(b.ourLost>0);assert.equal(after.state.covert.stations[0].count,300-b.ourLost);assert.equal(after.state.castles.uchijo.owner,before.state.castles.uchijo.owner);assert.equal(after.state.castles.uchijo.troops,before.state.castles.uchijo.troops-b.defenderLost.garrison);assert.equal(after.state.resources.gold,before.state.resources.gold);assert.equal(after.state.resources.rice,before.state.resources.rice-r.result.foodCost);assert.equal(after.state.command,before.state.command-1);assert.equal(r.covert.incidents.length,0);
   const stored=row(h,p).save_json;assert.equal((await h.api('/covert/retaliate',post(p,request))).data.idempotent,true);assert.equal(row(h,p).save_json,stored);await op(h,p,'retaliate',{stationId,incidentId:hit.id},409);
   assert.equal(h.sql.prepare('SELECT COUNT(*) AS n FROM covert_requests WHERE incident_id=?').get(hit.id).n,1);
  });
@@ -175,7 +175,7 @@ try{
   assert(all.some(t=>t.playerId===one.user.id));assert(all.some(t=>t.playerId===two.user.id&&t.castleId==='nijo'));assert(all.every(t=>!('isAdmin'in t)&&!('isStaff'in t)&&!('resources'in t)));
  });
  await scope('an incoming attack committed during station preparation cannot authorize that new station',async h=>{
-  const p=await fixture(h,'順序検証',{admin:true}),a=await fixture(h,'割込み襲撃',{home:'kawagoe'});await op(h,p,'hire',{sourceCastleId:'edo',count:100});const before=row(h,p).save_json,request=body(h,p,{sourceCastleId:'edo',count:50,mode:'station',target:{kind:'castle',castleId:'kagoshima'}});let hit;
+  const p=await fixture(h,'順序検証',{admin:true}),a=await fixture(h,'割込み襲撃',{home:'kawagoe'});await op(h,p,'hire',{sourceCastleId:'edo',count:100});const before=row(h,p).save_json,request=body(h,p,{sourceCastleId:'edo',count:50,mode:'station',target:{kind:'castle',castleId:'uchijo'}});let hit;
   h.beforeBatch=async statements=>{if(!statements[0]?.sql.includes('INSERT INTO covert_requests'))return;h.beforeBatch=null;hit=await incoming(h,a,p,'edo',{syncDefender:false});};
   await h.api('/covert/dispatch',post(p,request,409));assert.equal(row(h,p).save_json,before);assert.equal(count(h,'covert_requests'),1);assert.equal(save(h,p).state.covert.stations.length,0);
   await align(h,p);const retried={...request,expectedRevision:row(h,p).revision};const done=await finishDispatch(h,p,retried,(await h.api('/covert/dispatch',post(p,retried))).data);assert.equal(done.covert.incidents.length,0);await op(h,p,'retaliate',{stationId:done.result.stationId,incidentId:hit.id},409);
@@ -193,7 +193,7 @@ try{
   const settled=(await h.api('/sync/settle',post(p,{deviceId:p.deviceId,revision:row(h,p).revision}))).data;
   assert.equal(settled.save.state.cycle.index,1);assert(count(h,'covert_incidents')>0);
   const current=(await h.api('/covert',{token:p.token})).data,incident=current.covert.incidents.find(v=>v.kind==='cpu');assert(incident?.available);assert(incident.stationIds.includes(stationId));assert.equal(incident.sourceCastleId,'edo');
-  const historical=save(h,p),later=(await op(h,p,'dispatch',{sourceCastleId:'edo',count:50,mode:'station',target:{kind:'castle',castleId:'kagoshima'}})).result.stationId;
+  const historical=save(h,p),later=(await op(h,p,'dispatch',{sourceCastleId:'edo',count:50,mode:'station',target:{kind:'castle',castleId:'uchijo'}})).result.stationId;
   await op(h,p,'retaliate',{stationId:later,incidentId:incident.id},409);const r=await op(h,p,'retaliate',{stationId,incidentId:incident.id});assert(r.result.battle);const canonical=structuredClone(save(h,p).state.covert);
   await importAtCurrentClock(h,p,historical);assert.deepEqual(save(h,p).state.covert,canonical);await op(h,p,'retaliate',{stationId,incidentId:incident.id},409);assert.equal(h.sql.prepare('SELECT COUNT(*) AS n FROM covert_requests WHERE incident_id=?').get(incident.id).n,1);
   // Copying the real-looking incident to a new campaign still cannot authorize it.

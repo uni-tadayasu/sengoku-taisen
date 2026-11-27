@@ -100,7 +100,7 @@ async function mutate(ctx,kind){
  const intent=kind==='mission'?String(body.key||''):[body.officerId,body.rank];if(kind==='mission'&&(!intent||intent.length>180))h.fail(400,'INVALID_INPUT','任務を選んでください。');
  const digest=await h.hash(JSON.stringify([kind,intent])),prior=await stmt(db,'SELECT * FROM progress_receipts WHERE actor_id=? AND request_id=?',user.id,body.requestId).first();
  if(prior){if(prior.request_hash!==digest)h.fail(409,'REQUEST_ID_REUSED','この操作番号は別の報酬に使われています。');return result(ctx,body,prior);}
- const current=await saved(ctx,body),a=await account(ctx,current.save),view=await display(ctx,a),next=copy(current.save),shared=user.is_staff&&!user.is_admin?await h.staffBaseDto(db,user,current.clock,ctx.now):null,game=GameEngine.fromSave(next,GAME_OFFICERS,{isAdmin:!!user.is_admin,isStaff:!!user.is_staff,staffBase:shared});let key,receipt;
+ const current=await saved(ctx,body),a=await account(ctx,current.save),view=await display(ctx,a),next=copy(current.save),shared=user.is_staff&&!user.is_admin?await h.staffBaseDto(db,user,current.clock,ctx.now):null,game=GameEngine.fromSave(next,GAME_OFFICERS,{isAdmin:!!user.is_admin,isDeputy:!!user.is_deputy,isStaff:!!user.is_staff,staffBase:shared});let key,receipt;
  if(kind==='mission'){
   const mission=Object.values(view.missions).flat().find(m=>m.key===body.key);if(!mission)h.fail(409,'MISSION_EXPIRED','任務の期間が変わりました。最新の一覧を確認してください。');
   if(mission.claimed)h.fail(409,'MISSION_CLAIMED','この任務は受取済みです。');if(mission.progress<mission.target)h.fail(409,'MISSION_INCOMPLETE','達成条件がまだ満たされていません。');if(mission.kind==='daily'&&view.dailyClaimed>=3)h.fail(409,'DAILY_LIMIT','本日の選択任務3件は受取済みです。明日の任務をお待ちください。');

@@ -23,7 +23,7 @@ test('ordinary Tokugawa starts with Ieyasu SSS and cannot choose Edo',()=>{
   assert.equal(g.canOwnCastle('edo'),false);
   assert.equal(g.canOwnOfficerVariant(IEYASU,'U'),false);
   assert.equal(g.collection().totalVariants,2047);
-  assert.equal(g.unificationTarget(),127);
+  assert.equal(g.unificationTarget(),126);
   const before=structuredClone(g.state);
   assert.equal(g.selectAdminCastle().ok,false);
   assert.equal(g.restoreAdminAssets().ok,false);
@@ -92,7 +92,7 @@ test('every authenticated operator starts at fixed Edo and receives Ieyasu U onc
   assert(g.ownsVariant(IEYASU,'U'));
   assert.equal(g.gachaPool('U').length,256);
   assert.equal(g.collection().totalVariants,2048);
-  assert.equal(g.unificationTarget(),128);
+  assert.equal(g.unificationTarget(),127);
   const before=structuredClone(g.state);
   assert.equal(g.restoreAdminAssets().changed,false);
   assert.equal(g.restoreAdminAssets().changed,false);
@@ -257,17 +257,17 @@ test('legacy Ieyasu U history migrates to valid SSS history without duplicate ow
   assert.deepEqual(E.fromSave(migrated.exportSave(),roster).state,migrated.state);
 });
 
-test('ordinary campaign can conquer all 127 eligible castles and claim unification',()=>{
+test('ordinary campaign can conquer all 126 eligible castles and claim unification while Kagoshima stays a reward target',()=>{
   const g=create();g.state.resources.rice=9999999;
-  while(g.ownedCastles().length<127){
-    const target=g.adjacentTargets()[0];assert(target);assert.notEqual(target.id,'edo');assert.notEqual(target.id,'kyoto_gosho');
+  while(g.ownedCastles().length<126){
+    const target=g.adjacentTargets().find(c=>g.canOwnCastle(c.id));assert(target);assert.notEqual(target.id,'edo');assert.notEqual(target.id,'kyoto_gosho');assert.notEqual(target.id,'kagoshima');
     g.state.command=3;g.state.troops=50000;g.state.seed=1;
     const result=g.attack(target.id);assert(result.ok&&result.battle.won);
   }
   assert.equal(g.state.won,true);
-  assert.equal(g.questStatus('unify').target,127);
+  assert.equal(g.questStatus('unify').target,126);
   assert(g.claimQuest('unify').ok);
-  assert.equal(g.adjacentTargets().length,0);
+  assert.deepEqual(g.adjacentTargets().map(c=>c.id),['kagoshima']);assert.equal(g.canOwnCastle('kagoshima'),false);
   const before=structuredClone(g.state);
   assert.equal(g.attack('edo').ok,false);
   assert.equal(g.upgradeCastle('edo').ok,false);

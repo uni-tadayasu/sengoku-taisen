@@ -337,6 +337,20 @@
       "when": 1799193600000,
       "tag": "0047_imperial_succession_approval",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "6",
+      "when": 1799280000000,
+      "tag": "0048_player_expulsions",
+      "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "6",
+      "when": 1799280000001,
+      "tag": "0049_deputy_operator",
+      "breakpoints": true
     }
   ]
 }

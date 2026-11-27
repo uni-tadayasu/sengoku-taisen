@@ -54,7 +54,7 @@ export async function settleFieldMarch(h,actor,departure){
 export async function syncFieldWriter(h,actor){
  const {deviceId,token}=actor;
  const snap=(await h.api('/sync/lease',{method:'POST',token,body:{deviceId}})).data;
- const game=GameEngine.fromSave(snap.save,GAME_OFFICERS,{isAdmin:snap.user.isAdmin,isStaff:snap.user.isStaff,staffBase:snap.staffBase,maintenanceAuthority:snap.maintenanceAuthority});
+ const game=GameEngine.fromSave(snap.save,GAME_OFFICERS,{isAdmin:snap.user.isAdmin,isStaff:snap.user.isStaff,isDeputy:snap.user.isDeputy,staffBase:snap.staffBase,maintenanceAuthority:snap.maintenanceAuthority});
  const advanced=game.applyWorldClock(snap.clock);assert(advanced.ok&&!advanced.pending);
  return (await h.api('/sync',{method:'PUT',token,body:{deviceId,revision:snap.revision,save:JSON.parse(game.exportSave())}})).data;
 }

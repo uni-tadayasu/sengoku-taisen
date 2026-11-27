@@ -89,12 +89,12 @@ await scope('the last retainer can leave between a monthly repair and the lord s
  assert.equal(latest.castle('kiyosu').durability.max,10000);
  assert.equal(latest.castle('kiyosu').durability.current,500);
 });
-await scope('the last of 124 seats has one atomic winner and full castles still accept FIFO retainers',async h=>{
+await scope('the last of 123 seats has one atomic winner and full castles still accept FIFO retainers',async h=>{
  for(const c of RESIDENCY_CASTLES.filter(c=>c.id!=='kiyosu'))legacy(h,'legacy-'+c.id,c.id);
- const a=await account(h,'最後の席A'),b=await account(h,'最後の席B'),before=await directory(h);assert.equal(before.capacity,124);assert.equal(before.occupied,123);assert(!before.full);
+ const a=await account(h,'最後の席A'),b=await account(h,'最後の席B'),before=await directory(h);assert.equal(before.capacity,123);assert.equal(before.occupied,122);assert(!before.full);
  const outcomes=await Promise.all([a,b].map(p=>h.api('/castles/residency/start',post(p,startBody(h,p,'kiyosu'),null))));assert.deepEqual(outcomes.map(x=>x.response.status).sort(),[200,409]);const loser=outcomes[0].response.status===409?a:b;assert.equal(row(h,loser).save_json,null);
- const all=await directory(h);assert(all.full);assert.equal(all.occupied,124);assert(!all.castles.some(c=>['edo','kyoto_gosho','nijo','osaka','nagoya'].includes(c.castleId)));
- const joined=(await h.api('/castles/residency/start',post(loser,startBody(h,loser,'kiyosu','retainer')))).data;assert.equal(joined.residency.successionPosition,1);assert.equal(count(h,'castle_residents'),125);
+ const all=await directory(h);assert(all.full);assert.equal(all.occupied,123);assert(!all.castles.some(c=>['edo','kyoto_gosho','nijo','osaka','nagoya','kagoshima'].includes(c.castleId)));
+ const joined=(await h.api('/castles/residency/start',post(loser,startBody(h,loser,'kiyosu','retainer')))).data;assert.equal(joined.residency.successionPosition,1);assert.equal(count(h,'castle_residents'),124);
 });
 await scope('legacy duplicate migration is deterministic, skips a defeated incumbent, and preserves every personal save',async h=>{
  const dead=legacy(h,'legacy-a','kiyosu',{created:1,dead:true}),first=legacy(h,'legacy-b','kiyosu',{created:2}),second=legacy(h,'legacy-c','kiyosu',{created:2});
