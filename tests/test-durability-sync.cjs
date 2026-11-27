@@ -40,6 +40,23 @@ let checks=0;async function scope(name,run){const h=await harness();try{await ru
    assert((await h.sync.flush()).ok);assert.deepEqual(h.read().state,latest.state);h.hook=null;await h.sync.flush();
   }
  });
+ await scope('joining retainers during a save preserves canonical damage and later paid repair at the larger maximum',async h=>{
+  const id='kiyosu',condition=(current,max,at=0)=>({version:1,current,max,updatedElapsedMs:at});
+  h.mutate(g=>{g.state.retainerSupport={castleId:id,count:1};g.state.castles[id].durability=condition(4500,15000);g.state.resources.gold++;});
+  h.hook=result=>{
+   result.save.state.castles[id].durability=condition(2500,15000);
+   h.mutate(g=>{
+    g.state.retainerSupport.count=2;
+    const atAdmission=g.castle(id).durability;assert.equal(atAdmission.current,9500);
+    g.state.castles[id].durability=condition(atAdmission.current,atAdmission.max);
+    g._advanceRealtime(60);g.state.worldClock.elapsedMs=60000;
+   });
+  };
+  assert((await h.sync.flush()).ok);
+  const state=h.read().state,view=state.castles[id].durability;
+  assert.equal(state.retainerSupport.count,2);assert.equal(view.max,20000);
+  assert.equal(view.current,9500);assert.equal(state.repair.recovered.castles[id],2000);
+ });
  await scope('a restored branch repair completes at full durability during a delayed response',async h=>{
   h.mutate(g=>{g.state.castles.nijo.owner=g.state.clan;g.state.resources.gold++;});
   h.hook=result=>{result.save.state.branches=[{id:'nijo_north',parentCastleId:'nijo',direction:'north',level:2,fallen:true,durability:{version:1,current:0,max:6500,updatedElapsedMs:0}}];result.save.state.jobs=[{kind:'branch',id:'nijo_north',repair:true,targetLevel:2,total:1,totalSeconds:60,remaining:1,remainingSeconds:60,completesElapsedMs:60000}];h.mutate(g=>{g.state.worldClock.elapsedMs=90000;g.state.turn=1;g.state.realtime.elapsed=30;g.state.resources.gold+=9;});};

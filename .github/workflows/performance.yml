@@ -132,6 +132,11 @@ jobs:
           node server/test-field-migration.mjs
           node server/test-world-cycles.mjs
           node tests/test-sync-integration.mjs
+      - name: Verify player retainer bonuses and castle membership
+        run: |
+          node tests/test-residency-engine.cjs
+          node tests/test-residency-ui.cjs
+          node server/test-residency.mjs
       - name: Verify shared construction and private Kyoto migration
         run: |
           node tests/test-kyoto-gosho-engine.cjs

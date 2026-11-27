@@ -6,6 +6,10 @@
 
 全城に領主がいても、参加者は城を選んで家臣として入れる。空き城がある場合も、領主のいる城へ家臣として参加できる。領主交代は公開の所属だけを変更し、別プレイヤーの保存・兵・資源・武将・購入済み外観を移さない。新しい物語として入城し直す操作は、通常の新規戦役と同じく確認後に個人の進行を新しくする。
 
+## 家臣数による開始城の補正
+
+現在の領主が通常の開始城を領有している間、名簿の家臣1人につきその城の初期能力の50%を加算する。1人あたり最大耐久5,000、防衛時の守備兵600人分、兵収容上限250、月間の基礎生産は金銭50・兵糧85・木材20・石材15。防衛の加算は戦闘計算で適用し、移送や出陣に利用できる実兵の数は別に管理する。
+
 ## 一般プレイヤーの本拠移転
 
 城下町から、現在の本拠以外の通常城を選んで何度でも移転できる。移転先が空席なら領主、すでに領主がいれば加入順の末尾に家臣として入る。領主が退去した城では、残った家臣のうち最先の有資格者が領主を継ぐ。ほかの住人の所領・武将・資産は移転者の戦役から独立している。
@@ -27,7 +31,7 @@
 
 入城の本文は `deviceId,revision,requestId,castleId,mode,clan,difficulty`。`mode` は `lord` または `retainer`。サーバーが開始セーブを作り、所属の更新と同じトランザクションで保存する。応答には通常の同期情報と `admission` を含める。重複要求は保存の版・端末lease・現在の空き状況の検査より前に記録を照合し、同じ要求を二重に確定しない。
 
-`residency` は `castleId,castleName,role,joinedAt,eligible,successionPosition,lord,lordPlayerId,lordEpoch,revision` を含む。領主の `successionPosition` は0、継承可能な家臣は1以上、現在継げない家臣はnull。同期応答と `/field/me` にも本人の所属と `residencyRevision` を含める。画面は名簿の版を単調に取り込み、古い応答で昇格を巻き戻さない。
+`residency` は `castleId,castleName,role,retainerCount,joinedAt,eligible,successionPosition,lord,lordPlayerId,lordEpoch,revision` を含む。領主の `successionPosition` は0、継承可能な家臣は1以上、現在継げない家臣はnull。同期応答と `/field/me` にも本人の所属と `residencyRevision` を含める。画面は名簿の版を単調に取り込み、古い応答で昇格を巻き戻さない。
 
 ## 領主を継ぐ条件
 

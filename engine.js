@@ -30,10 +30,26 @@
   const MAINTENANCE_RULES=Object.freeze({troops:Object.freeze({gold:.04,rice:.12,wood:0,stone:0}),facilityLevel:Object.freeze({gold:2,rice:1,wood:1,stone:1}),castleRice:60,governorMonthlyGold:50});
   const OFFICER_HEALTH_RULES=Object.freeze({max:100,winCost:15,lossCost:25,recoveryPerMonth:10,minCombatFactor:.5});
   const DURABILITY_RULES=Object.freeze({recoveryFraction:.1,captureFraction:.25,minFortificationFactor:.25,repairCostPer100:Object.freeze({wood:5,stone:4})});
-  function durabilityMax({castleId,level=1,wall=1,branch=false}={}){
+  const INITIAL_CASTLE = Object.freeze({
+    garrison:1200, capacity:500,
+    income:Object.freeze({gold:100,rice:170,wood:40,stone:30})
+  });
+  const RETAINER_SHARE = 0.5;
+  function homeRetainerCount(state,castleId=state?.cycle?.home||state?.home){
+    const support=state?.retainerSupport;
+    if(!support||!castleId||support.castleId!==castleId||castleId!==(state.cycle?.home||state.home)||
+       MAJOR_CITY_IDS.includes(castleId)||state.castles?.[castleId]?.owner!==state.clan)return 0;
+    return Number.isSafeInteger(support.count)&&support.count>0?support.count:0;
+  }
+  function retainerDefenseTroops(state,castleId){
+    return Math.min(ASSET_CAP,INITIAL_CASTLE.garrison*RETAINER_SHARE*homeRetainerCount(state,castleId));
+  }
+  function durabilityMax({castleId,level=1,wall=1,branch=false,retainerCount=0}={}){
     const lv=Math.max(0,Math.min(branch?32:128,Math.floor(Number(level)||0))),w=Math.max(1,Math.min(32,Math.floor(Number(wall)||1)));
     if(branch)return lv?5000+(lv-1)*1500:0;
-    return (castleId===STAFF_BASE_ID?40000:castleId==='edo'?30000:MAJOR_CITY_IDS.includes(castleId)?20000:10000)+Math.max(0,lv-1)*2000+(w-1)*500;
+    const base=castleId===STAFF_BASE_ID?40000:castleId==='edo'?30000:MAJOR_CITY_IDS.includes(castleId)?20000:10000;
+    const count=Number.isSafeInteger(retainerCount)&&retainerCount>0?retainerCount:0;
+    return Math.min(ASSET_CAP,base*(1+RETAINER_SHARE*count)+Math.max(0,lv-1)*2000+(w-1)*500);
   }
   function normalizeDurability(raw){
     if(raw===undefined)return undefined;
@@ -741,7 +757,7 @@
         buildings:{...Object.fromEntries(EXTRA_FACILITIES.map(b=>[b.id,0])),keep:2,farm:2,market:2,lumber:1,quarry:1,barracks:2,wall:1,academy:1},
         jobs:[],branches:[],officers:initial,officerVariants:initial.map(id=>`${id}:${this._baseGrantRank(id)}`),army:initial.slice(0,3),governors:{},
         tech:Object.fromEntries(TECHS.map(t=>[t.id,0])),
-        castles:Object.fromEntries(CASTLES.map(c=>[c.id,{owner:c.id===home?clan.name:c.clan===clan.name?'在地衆':c.clan,troops:c.id===home?1200:Math.round(c.initialTroops*scale),wall:c.id===home?1:c.wall,level:1}])),
+        castles:Object.fromEntries(CASTLES.map(c=>[c.id,{owner:c.id===home?clan.name:c.clan===clan.name?'在地衆':c.clan,troops:c.id===home?INITIAL_CASTLE.garrison:Math.round(c.initialTroops*scale),wall:c.id===home?1:c.wall,level:1}])),
         treaties:{},scouted:{},log:[],claimedQuests:[],giftReceipts:[],walking:walkingState(undefined,newWalkingCampaign()),seed:((options.seed??Date.now())>>>0)||123456789,
         lastBattle:null,march:null,marchHistory:[],stats:{battles:0,wins:0,upgrades:0,recruited:0,researches:0,gachaDraws:0,gachaDuplicates:0,castleUpgrades:0},won:false,gameOver:false
       };
@@ -828,6 +844,8 @@
     static branchFacilityEffects(branch,elapsedMs=Infinity){return branchFacilityEffects(branch,elapsedMs);}
     static completeBranchFacility(branch,job,elapsedMs){return completeBranchFacility(branch,job,elapsedMs);}
     static branchUpgradeCost(parentCastleId,fromLevel){return branchUpgradeCost(parentCastleId,fromLevel);}
+    static homeRetainerCount(state,castleId){return homeRetainerCount(state,castleId);}
+    static retainerDefenseTroops(state,castleId){return retainerDefenseTroops(state,castleId);}
     static durabilityMax(options={}){return durabilityMax(options);}
     static normalizeDurability(raw){return normalizeDurability(raw);}
     static durabilityView(raw,options={}){return durabilityView(raw,options);}
@@ -1122,17 +1140,20 @@
       if(isNew)this.state.officerVariants.push(`${id}:${rank}`);
       return{isNew,isNewOfficer,upgraded:isNew&&!isNewOfficer&&RANKS.indexOf(rank)>RANKS.indexOf(previous)};
     }
+    _castleDurabilityOptions(id,row=this.state.castles[id]){
+      return {castleId:id,level:row.level,wall:row.wall,retainerCount:homeRetainerCount(this.state,id)};
+    }
     _castleRecoveryMode(id){return id!==STAFF_BASE_ID&&this.canOwnCastle(id)&&this.state.castles[id]?.owner===this.state.clan?'paid':'free';}
     _branchRecoveryMode(row){return this._castleRecoveryMode(row.parentCastleId);}
-    castle(id){const c=CASTLE_BY_ID[id],record=this.state.castles[id];return c?{...c,...record,durability:durabilityView(record.durability,{castleId:id,level:record.level,wall:record.wall,elapsedMs:elapsedMillis(this.state),recoveryMode:this._castleRecoveryMode(id)})}:null;}
+    castle(id){const c=CASTLE_BY_ID[id],record=this.state.castles[id];return c?{...c,...record,durability:durabilityView(record.durability,{...this._castleDurabilityOptions(id,record),elapsedMs:elapsedMillis(this.state),recoveryMode:this._castleRecoveryMode(id)})}:null;}
     _anchorCastleDurability(id,elapsedMs=elapsedMillis(this.state)){
       const row=this.state.castles[id];if(!row?.durability)return;
-      const view=durabilityView(row.durability,{castleId:id,level:row.level,wall:row.wall,elapsedMs,recoveryMode:this._castleRecoveryMode(id)});row.durability=normalizeDurability(view);
+      const view=durabilityView(row.durability,{...this._castleDurabilityOptions(id,row),elapsedMs,recoveryMode:this._castleRecoveryMode(id)});row.durability=normalizeDurability(view);
     }
     _damageCastleDurability(id,{won=false,ratio=1,captured=false,before}={}){
       const row=this.state.castles[id],view=before||this.castle(id)?.durability;if(!row||!view)return null;
       const result=durabilityAfterBattle(view,{won,ratio,captured,elapsedMs:elapsedMillis(this.state)});
-      if(captured){result.max=durabilityMax({castleId:id,level:row.level,wall:row.wall});result.after=Math.round(result.max*DURABILITY_RULES.captureFraction);result.record={...result.record,current:result.after,max:result.max};}
+      if(captured){result.max=durabilityMax(this._castleDurabilityOptions(id,row));result.after=Math.round(result.max*DURABILITY_RULES.captureFraction);result.record={...result.record,current:result.after,max:result.max};}
       row.durability=result.record;this._rememberStaffPersonalProgress();return result;
     }
     _anchorBranchDurability(id,elapsedMs=elapsedMillis(this.state)){
@@ -1155,7 +1176,7 @@
         const view=durabilityView(row.durability,{...options,elapsedMs,recoveryMode:'paid'});
         if(view.current<view.max)targets.push({kind,id,view,requestedHP:Math.min(view.repairPendingHP,view.recoveryPerMonth)});
       };
-      for(const castle of CASTLES){const row=this.state.castles[castle.id];if(this._castleRecoveryMode(castle.id)==='paid')add('castle',castle.id,row,{castleId:castle.id,level:row.level,wall:row.wall});}
+      for(const castle of CASTLES){const row=this.state.castles[castle.id];if(this._castleRecoveryMode(castle.id)==='paid')add('castle',castle.id,row,this._castleDurabilityOptions(castle.id,row));}
       for(const row of this.state.branches)if(row.level>0&&!row.fallen&&!row.retreating&&this._branchRecoveryMode(row)==='paid')add('branch',row.id,row,{castleId:row.parentCastleId,level:row.level,branch:true});
       return targets.sort((a,b)=>(a.kind+':'+a.id)<(b.kind+':'+b.id)?-1:1);
     }
@@ -1184,7 +1205,7 @@
     }
     _migrateLegacyRepair(){
       const at=elapsedMillis(this.state),anchor=(row,options)=>{if(row?.durability)row.durability={...normalizeDurability(durabilityView(row.durability,{...options,elapsedMs:at,recoveryMode:'free'})),repairPendingHP:0,repairRemainder:0};};
-      for(const castle of CASTLES){const row=this.state.castles[castle.id];if(this._castleRecoveryMode(castle.id)==='paid')anchor(row,{castleId:castle.id,level:row.level,wall:row.wall});}
+      for(const castle of CASTLES){const row=this.state.castles[castle.id];if(this._castleRecoveryMode(castle.id)==='paid')anchor(row,this._castleDurabilityOptions(castle.id,row));}
       for(const row of this.state.branches)if(this._branchRecoveryMode(row)==='paid')anchor(row,{castleId:row.parentCastleId,level:row.level,branch:true,fallen:row.fallen||row.retreating});
       this._rememberStaffPersonalProgress();
     }
@@ -1418,7 +1439,7 @@
     constructionSlots(){return 2+Math.floor(this.state.buildings.keep/8);}
     constructionChains(){return new Set(this.state.jobs.filter(j=>j.kind!=='research').map(j=>j.kind+':'+j.id)).size;}
     buildingMax(){return 32;}
-    troopCapacity(){const extra=EXTRA_FACILITIES.filter(b=>b.category==='military').reduce((a,b)=>a+this.state.buildings[b.id]*b.capacity*this._governorBonus(b.id),0);return Math.min(ASSET_CAP,Math.floor((1000+this.state.buildings.barracks*2000+this.state.buildings.keep*500+this.ownedCastleIds().length*500+extra)*this._governorBonus('barracks'))+this.branchFacilityBonuses().capacity);}
+    troopCapacity(){const extra=EXTRA_FACILITIES.filter(b=>b.category==='military').reduce((a,b)=>a+this.state.buildings[b.id]*b.capacity*this._governorBonus(b.id),0);return Math.min(ASSET_CAP,Math.floor((1000+this.state.buildings.barracks*2000+this.state.buildings.keep*500+(this.ownedCastleIds().length+homeRetainerCount(this.state)*RETAINER_SHARE)*INITIAL_CASTLE.capacity+extra)*this._governorBonus('barracks'))+this.branchFacilityBonuses().capacity);}
     log(text,kind='info'){this.state.log.unshift({turn:this.state.turn,text,kind});this.state.log=this.state.log.slice(0,160);}
     random(){const ctx=MARCH_CONTEXT.get(this);if(ctx){let x=ctx.seed>>>0;x^=x<<13;x^=x>>>17;x^=x<<5;ctx.seed=x>>>0;return(ctx.seed>>>0)/4294967296;}let x=this.state.seed>>>0;x^=x<<13;x^=x>>>17;x^=x<<5;this.state.seed=x>>>0;return(this.state.seed>>>0)/4294967296;}
     _guard(){if(this.isStaff&&!STAFF_VIEW.get(this))return fail('京都御所の共同拠点を確認しています。');if(this.state.gameOver)return fail('本拠を失いました。新しい物語を始めてください。');if(!MARCH_CONTEXT.has(this)&&this.state.command<1)return fail('指示を使い切りました。1倍速では20秒ごとに1回復します。');return null;}
@@ -1518,7 +1539,7 @@
     scoutCost(){return{gold:Math.max(20,Math.round(120/(1+this._facilityEffect('diplomacy'))))};}
     trainingCost(){return{gold:180,rice:250};}
     trainingGain(){return 14+(this.state.clan==='上杉家'?6:0)+Math.floor(this._facilityEffect('military')*4);}
-    defensePower(id){const c=this.castle(id);if(!c)return 0;const s=this.state,condition=c.durability.fortificationFactor;if(c.owner!==s.clan)return Math.round(c.troops*(1+c.wall*.16*condition)*(1+(c.level-1)*.04*condition));const home=id===s.home,reinforce=Math.round(s.troops*(home?.45:.18)),wall=home?s.buildings.wall:c.wall;return Math.round((c.troops+reinforce)*(1+wall*.16*condition)*(1+s.tech.discipline*.06)*(['徳川家',ADMIN_ASSETS.clanName].includes(s.clan)?1.15:1)*(home?this._governorBonus('wall'):1)*(1+this._facilityEffect('defense')*condition)*(1+(c.level-1)*.04*condition));}
+    defensePower(id){const c=this.castle(id);if(!c)return 0;const s=this.state,condition=c.durability.fortificationFactor;if(c.owner!==s.clan)return Math.round(c.troops*(1+c.wall*.16*condition)*(1+(c.level-1)*.04*condition));const home=id===s.home,reinforce=Math.round(s.troops*(home?.45:.18)),wall=home?s.buildings.wall:c.wall;return Math.round((c.troops+retainerDefenseTroops(s,id)+reinforce)*(1+wall*.16*condition)*(1+s.tech.discipline*.06)*(['徳川家',ADMIN_ASSETS.clanName].includes(s.clan)?1.15:1)*(home?this._governorBonus('wall'):1)*(1+this._facilityEffect('defense')*condition)*(1+(c.level-1)*.04*condition));}
 
     facilityUpkeep(id,level=this.state.buildings[id]){
       if(!BUILDINGS.some(facility=>facility.id===id)||!Number.isInteger(level)||level<0||level>32)return null;
@@ -1643,10 +1664,10 @@
     income({governors:assignments=this.state.governors}={}){
       // Explicit appointments let previews use the exact production ledger
       // without temporarily changing state or losing instance-bound authority.
-      const s=this.state,b=s.buildings,t=s.tech,governors=this._governorViews(assignments),owned=this.ownedCastleIds(),n=owned.length,expanded=owned.reduce((sum,id)=>sum+s.castles[id].level-1,0),branchIncome=this.branchFacilityBonuses().income;
-      const gold=Math.floor((180+b.keep*50+b.market*180*this._governorBonus('market',governors,assignments)+this._facilityEffect('gold',governors,assignments)+n*100+expanded*15)*(1+t.commerce*.12)*(s.clan==='織田家'?1.15:1))+branchIncome.gold;
-      const grossRice=Math.floor((b.farm*450*this._governorBonus('farm',governors,assignments)+this._facilityEffect('rice',governors,assignments)+n*170+expanded*20)*(1+t.cultivation*.12)*(s.clan==='北条家'?1.15:1))+branchIncome.rice;
-      const gross={gold,rice:grossRice,wood:Math.floor((b.lumber*170*this._governorBonus('lumber',governors,assignments)+this._facilityEffect('wood',governors,assignments)+n*40+expanded*5)*(1+t.forestry*.15))+branchIncome.wood,stone:Math.floor((b.quarry*130*this._governorBonus('quarry',governors,assignments)+this._facilityEffect('stone',governors,assignments)+n*30+expanded*5)*(1+t.masonry*.15))+branchIncome.stone};
+      const s=this.state,b=s.buildings,t=s.tech,governors=this._governorViews(assignments),owned=this.ownedCastleIds(),incomeShares=owned.length+homeRetainerCount(s)*RETAINER_SHARE,expanded=owned.reduce((sum,id)=>sum+s.castles[id].level-1,0),branchIncome=this.branchFacilityBonuses().income;
+      const gold=Math.floor((180+b.keep*50+b.market*180*this._governorBonus('market',governors,assignments)+this._facilityEffect('gold',governors,assignments)+incomeShares*INITIAL_CASTLE.income.gold+expanded*15)*(1+t.commerce*.12)*(s.clan==='織田家'?1.15:1))+branchIncome.gold;
+      const grossRice=Math.floor((b.farm*450*this._governorBonus('farm',governors,assignments)+this._facilityEffect('rice',governors,assignments)+incomeShares*INITIAL_CASTLE.income.rice+expanded*20)*(1+t.cultivation*.12)*(s.clan==='北条家'?1.15:1))+branchIncome.rice;
+      const gross={gold,rice:grossRice,wood:Math.floor((b.lumber*170*this._governorBonus('lumber',governors,assignments)+this._facilityEffect('wood',governors,assignments)+incomeShares*INITIAL_CASTLE.income.wood+expanded*5)*(1+t.forestry*.15))+branchIncome.wood,stone:Math.floor((b.quarry*130*this._governorBonus('quarry',governors,assignments)+this._facilityEffect('stone',governors,assignments)+incomeShares*INITIAL_CASTLE.income.stone+expanded*5)*(1+t.masonry*.15))+branchIncome.stone};
       const maintenance=this.maintenance({governors:assignments}),rawNet=Object.fromEntries(RESOURCES.map(key=>[key,gross[key]-maintenance.totalUpkeep[key]])),{net:operatingNet,surplusAdjustment}=balanceSurplus(rawNet);
       const untilMonth=60-s.realtime.elapsed,forecastResources=Object.fromEntries(RESOURCES.map(key=>{const accrued=s.realtime.incomeRemainders[key]+operatingNet[key]*untilMonth/60;return[key,clamp(s.resources[key]+Math.trunc(accrued+Math.sign(accrued)*1e-9),0,ASSET_CAP)];})),repair=this.repairQuote({resources:forecastResources}),repairUpkeep=repair.cost,net=Object.fromEntries(RESOURCES.map(key=>[key,operatingNet[key]-repairUpkeep[key]]));
       // Full production funds troops, facilities and salaries before excess savings
@@ -1667,7 +1688,8 @@
       const startsInSeconds=chain.reduce((sum,j)=>sum+j.remainingSeconds,0);this._pay(cost);this.state.jobs.push({kind:'building',id,remaining:cost.turns,total:cost.turns,remainingSeconds:cost.turns*60,totalSeconds:cost.turns*60,targetLevel:level+1});
       return this._action(`${b.name}をLv.${level+1}へ${chain.length?'連続増築として予約':'建設・増築開始'}。${chain.length?'前の工事に続いて着工し、':''}工期${cost.turns*60}秒（通常速度）。`,'build',{queued:chain.length>0,targetLevel:level+1,startsInSeconds});
     }
-    castleBenefits(id,level){const c=this.castle(id);if(!c)return null;const lv=level===undefined?c.level:level;if(!Number.isInteger(lv)||lv<1||lv>this.castleLevelLimit(id))return null;return{gold:100+(lv-1)*15,rice:170+(lv-1)*20,wood:40+(lv-1)*5,stone:30+(lv-1)*5,defensePercent:(lv-1)*4};}
+    castleBenefits(id,level){const c=this.castle(id);if(!c)return null;const lv=level===undefined?c.level:level;if(!Number.isInteger(lv)||lv<1||lv>this.castleLevelLimit(id))return null;const shares=1+homeRetainerCount(this.state,id)*RETAINER_SHARE;
+      return{gold:INITIAL_CASTLE.income.gold*shares+(lv-1)*15,rice:INITIAL_CASTLE.income.rice*shares+(lv-1)*20,wood:INITIAL_CASTLE.income.wood*shares+(lv-1)*5,stone:INITIAL_CASTLE.income.stone*shares+(lv-1)*5,defensePercent:(lv-1)*4};}
     castleUpgradeCost(id){const c=this.castle(id);if(!c)return null;const lv=c.level-1,mult=1+lv*.3+lv*lv*.015,turns=c.level>=16?3:c.level>=6?2:1;return this.scaleUpgradeCost({gold:Math.round(700*mult),rice:0,wood:Math.round(280*mult),stone:Math.round(400*mult),turns,seconds:turns*60});}
     upgradeCastle(id){
       if(this.isStaff&&id===STAFF_BASE_ID)return fail('京都御所の共同普請は通信で全スタッフへ反映します。');
@@ -2360,7 +2382,7 @@
         health.asOfElapsedMs=clamp(Math.round(health.asOfElapsedMs+delta),0,MAX_TURN*60000+59999);s.officerHealth=health;
         // Linking a campaign to a different clock changes the time origin; it
         // must not treat that offset as elapsed repair time.
-        for(const [castleId,row] of Object.entries(s.castles))if(row.durability){const view=durabilityView(row.durability,{castleId,level:row.level,wall:row.wall,elapsedMs:elapsedMillis(s),recoveryMode:this._castleRecoveryMode(castleId)});row.durability={...normalizeDurability(view),updatedElapsedMs:clock.elapsedMs};}
+        for(const [castleId,row] of Object.entries(s.castles))if(row.durability){const view=durabilityView(row.durability,{...this._castleDurabilityOptions(castleId,row),elapsedMs:elapsedMillis(s),recoveryMode:this._castleRecoveryMode(castleId)});row.durability={...normalizeDurability(view),updatedElapsedMs:clock.elapsedMs};}
         for(const row of s.branches)if(row.durability){const view=durabilityView(row.durability,{castleId:row.parentCastleId,level:row.level,branch:true,fallen:row.fallen||row.retreating,elapsedMs:elapsedMillis(s),recoveryMode:this._branchRecoveryMode(row)});row.durability={...normalizeDurability(view),updatedElapsedMs:clock.elapsedMs};}
 
         for(const job of s.jobs)if(job.kind==='branch'&&Number.isSafeInteger(job.completesElapsedMs)){
@@ -2406,7 +2428,7 @@
       const captured=CASTLES.filter(c=>c.id!==home&&s.castles[c.id].owner===s.clan&&this.canOwnCastle(c.id)).length;
       const reward={cycle:s.cycle.index,captured,gold:captured*1000,rice:captured*1000,magatama:captured*100};
       const homeBefore={...s.castles[home]},scale={easy:.8,normal:1,hard:1.2}[s.difficulty];
-      s.castles=Object.fromEntries(CASTLES.map(c=>[c.id,c.id===home?{...homeBefore,owner:s.clan,troops:Math.max(1200,homeBefore.troops),wall:Math.max(homeBefore.wall,s.buildings.wall)}:{owner:c.clan===s.clan?'在地衆':c.clan,troops:Math.round(c.initialTroops*scale),wall:c.wall,level:1}]));
+      s.castles=Object.fromEntries(CASTLES.map(c=>[c.id,c.id===home?{...homeBefore,owner:s.clan,troops:Math.max(INITIAL_CASTLE.garrison,homeBefore.troops),wall:Math.max(homeBefore.wall,s.buildings.wall)}:{owner:c.clan===s.clan?'在地衆':c.clan,troops:Math.round(c.initialTroops*scale),wall:c.wall,level:1}]));
       s.home=home;s.cycle={index,home,latestReward:reward};s.jobs=s.jobs.filter(job=>job.kind!=='castle'||job.id===home);this._pruneBranches();
       s.treaties={};s.scouted={};s.captureRewards=[home];s.lastBattle=null;s.won=false;s.gameOver=false;
       this._gain({gold:reward.gold,rice:reward.rice,magatama:reward.magatama});
@@ -2656,6 +2678,10 @@
       }}
       if(s.worldClock)n.worldClock={id:s.worldClock.id,elapsedMs:s.worldClock.elapsedMs};
       if(s.cycle!==undefined){const c=s.cycle,r=c?.latestReward;if(!isObj(c)||!num(c.index,0,Math.floor(MAX_TURN/WORLD_CALENDAR.monthsPerCycle))||!CASTLE_BY_ID[c.home]||r!==null&&(!isObj(r)||!num(r.cycle,0,c.index-1)||!num(r.captured,0,CASTLES.length-1)||r.gold!==r.captured*1000||r.rice!==r.captured*1000||r.magatama!==r.captured*100))invalid();n.cycle={index:c.index,home:c.home,latestReward:r===null?null:copy(r)};}else n.cycle={index:Math.floor(s.turn/WORLD_CALENDAR.monthsPerCycle),home:s.home,latestReward:null};
+      const retainerSupport=Object.hasOwn(options,'retainerSupport')?options.retainerSupport:s.retainerSupport;
+      if(retainerSupport&&CASTLE_BY_ID[retainerSupport.castleId]&&!MAJOR_CITY_IDS.includes(retainerSupport.castleId)&&Number.isSafeInteger(retainerSupport.count)&&retainerSupport.count>0){
+        n.retainerSupport={castleId:retainerSupport.castleId,count:retainerSupport.count};
+      }
       n.won=CASTLES.every(c=>n.castles[c.id].owner===n.clan);n.gameOver=!CASTLES.some(c=>n.castles[c.id].owner===n.clan);
       if(!n.gameOver&&n.castles[n.home].owner!==n.clan)invalid();if(n.gameOver)n.realtime.running=false;
       n.lastBattle=null;

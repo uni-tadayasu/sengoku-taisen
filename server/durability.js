@@ -8,7 +8,7 @@ const clone=value=>JSON.parse(JSON.stringify(value));
 const recoveryMode=(state,id)=>id!=='kyoto_gosho'&&state.castles[id]?.owner===state.clan?'paid':'free';
 export function castleDurability(state,castleId,elapsedMs=durabilityElapsed(state)){
  const row=state.castles[castleId],wall=row.wall;
- return GameEngine.durabilityView(row.durability,{castleId,level:row.level,wall,elapsedMs,recoveryMode:recoveryMode(state,castleId)});
+ return GameEngine.durabilityView(row.durability,{castleId,level:row.level,wall,retainerCount:GameEngine.homeRetainerCount(state,castleId),elapsedMs,recoveryMode:recoveryMode(state,castleId)});
 }
 export function branchDurability(branch,elapsedMs){
  return GameEngine.durabilityView(branch.durability,{castleId:branch.parentCastleId,level:branch.level,branch:true,fallen:branch.fallen||branch.retreating,elapsedMs});
@@ -25,7 +25,7 @@ export function normalizeRepairProgress(state,raw,{isAdmin=false}={}){
  const elapsedMs=durabilityElapsed(state),anchor=(row,options)=>{
   if(row?.durability)row.durability={...durabilityRecord(GameEngine.durabilityView(row.durability,{...options,elapsedMs,recoveryMode:'free'})),repairPendingHP:0,repairRemainder:0};
  };
- for(const [castleId,row]of Object.entries(state.castles))if(recoveryMode(state,castleId)==='paid'&&(castleId!=='edo'||isAdmin))anchor(row,{castleId,level:row.level,wall:row.wall});
+ for(const [castleId,row]of Object.entries(state.castles))if(recoveryMode(state,castleId)==='paid'&&(castleId!=='edo'||isAdmin))anchor(row,{castleId,level:row.level,wall:row.wall,retainerCount:GameEngine.homeRetainerCount(state,castleId)});
  for(const row of state.branches||[])if(recoveryMode(state,row.parentCastleId)==='paid'&&(row.parentCastleId!=='edo'||isAdmin))anchor(row,{castleId:row.parentCastleId,level:row.level,branch:true,fallen:row.fallen||row.retreating});
  return state.repair;
 }
@@ -39,12 +39,15 @@ function paidAnchor(raw,base,state,group,id,options){
 // simulated debit is never copied to the player's stock. Match its HP to the
 // accepted paid receipt instead, and never add the same repair a second time.
  const added=difference>0?Math.min(difference,view.repairPendingHP||0,view.max-view.current):Math.max(difference,-view.current);
- const current=view.current+added;
+ // If a smaller household removes more capacity than the remaining HP, part
+ // of a paid repair first offsets that loss. Preserve the absolute damage.
+ const current=Math.max(0,Math.min(view.max,raw.current+view.max-raw.max+added));
  return{...durabilityRecord(view),current,repairPendingHP:Math.min(view.max-current,Math.max(0,(view.repairPendingHP||0)-Math.max(0,added))),repairRemainder:view.repairRemainder||0};
 }
 // Completion deadlines are authoritative only when their jobs already existed
 // in the prior save. Queued jobs on the same structure run consecutively.
 function castleTimeline(state,castleId,target,at){
+ const retainerCount=GameEngine.homeRetainerCount(state,castleId);
  const source=state.castles[castleId],start=durabilityElapsed(state),ends=new Map(),events=[];
  let record=GameEngine.normalizeDurability(source.durability),level=source.level,wall=source.wall;
  for(const job of state.jobs||[]){
@@ -59,11 +62,11 @@ function castleTimeline(state,castleId,target,at){
  events.sort((a,b)=>a.at-b.at);
  for(const event of events){
   if(event.castle)level=Math.max(level,event.level);else wall=Math.max(wall,event.level);
-  if(record)record=durabilityRecord(GameEngine.durabilityView(record,{castleId,level,wall,elapsedMs:event.at,recoveryMode:recoveryMode(state,castleId)}));
+  if(record)record=durabilityRecord(GameEngine.durabilityView(record,{castleId,level,wall,retainerCount,elapsedMs:event.at,recoveryMode:recoveryMode(state,castleId)}));
  }
  // Unobserved construction may add capacity, but cannot claim repair at the
  // larger maximum before its completion has been established.
- if(record&&(level!==target.level||wall!==target.wall))record=durabilityRecord(GameEngine.durabilityView(record,{castleId,level:target.level,wall:target.wall,elapsedMs:at,recoveryMode:recoveryMode(state,castleId)}));
+ if(record&&(level!==target.level||wall!==target.wall))record=durabilityRecord(GameEngine.durabilityView(record,{castleId,level:target.level,wall:target.wall,retainerCount,elapsedMs:at,recoveryMode:recoveryMode(state,castleId)}));
  return record;
 }
 
@@ -103,7 +106,7 @@ export function reconcileCastleDurability(save,before,clock,{trustedStates=[]}={
    if(!authority||record.updatedElapsedMs>authority.record.updatedElapsedMs||record.updatedElapsedMs===authority.record.updatedElapsedMs&&record.current<authority.record.current)authority={state:proven,record,captured:current.owner!==old.owner};
   }
   if(authority)at=Math.max(at,authority.record.updatedElapsedMs);
-  const base=authority?.state||prior,options={castleId:id,level:row.level,wall:row.wall,elapsedMs:at,recoveryMode:recoveryMode(base,id)};
+  const base=authority?.state||prior,options={castleId:id,level:row.level,wall:row.wall,retainerCount:GameEngine.homeRetainerCount(state,id),elapsedMs:at,recoveryMode:recoveryMode(base,id)};
   const anchor=paidAnchor(castleTimeline(base,id,row,at),base,state,'castles',id,options),canonical=GameEngine.durabilityView(anchor,options),incoming=GameEngine.durabilityView(row.durability,options);
   const predatesCapture=authority?.captured&&Number(row.durability?.updatedElapsedMs||0)<authority.record.updatedElapsedMs;
   if(!predatesCapture&&incoming.current<canonical.current){
@@ -140,8 +143,11 @@ function validateRepairIncrease(state,prior,incoming,clock,proofs){
  for(const group of ['castles','branches'])for(const [id,value]of Object.entries(incoming.recovered[group])){
   const delta=value-(previous.recovered[group][id]||0);if(delta<=0)continue;
   if(!months)repairError('同じ月の修復を重複して保存できません。最新の保存へ同期してください。');
-  const old=group==='castles'?prior.castles[id]:(prior.branches||[]).find(row=>row.id===id),row=group==='castles'?state.castles[id]:(state.branches||[]).find(row=>row.id===id),options=group==='castles'?{castleId:id,level:Math.max(old?.level||1,row?.level||1),wall:Math.max(old?.wall||1,row?.wall||1)}:{castleId:row?.parentCastleId||old?.parentCastleId,level:Math.max(old?.level||0,row?.level||0),branch:true};
-  const maximum=GameEngine.durabilityMax(options),proven=Math.max(0,...proofs.map(proof=>count(proof,group,id)-(previous.recovered[group][id]||0))),work=Math.floor(maximum*elapsed/600000)+(old?.durability?.repairPendingHP||0)+1;
+  const old=group==='castles'?prior.castles[id]:(prior.branches||[]).find(row=>row.id===id),row=group==='castles'?state.castles[id]:(state.branches||[]).find(row=>row.id===id),options=group==='castles'?{castleId:id,retainerCount:GameEngine.homeRetainerCount(state,id),level:Math.max(old?.level||1,row?.level||1),wall:Math.max(old?.wall||1,row?.wall||1)}:{castleId:row?.parentCastleId||old?.parentCastleId,level:Math.max(old?.level||0,row?.level||0),branch:true};
+  // A repair may already have been paid while more retainers occupied the
+  // home. Its previous committed siege/repair anchor supplied that work rate.
+  const startingCastle=group==='castles'&&id===(prior.cycle?.home||prior.home);
+  const maximum=Math.max(GameEngine.durabilityMax(options),startingCastle?old?.durability?.max||0:0),proven=Math.max(0,...proofs.map(proof=>count(proof,group,id)-(previous.recovered[group][id]||0))),work=Math.floor(maximum*elapsed/600000)+(old?.durability?.repairPendingHP||0)+1;
   if(delta>Math.max(proven,Math.min(months*Math.round(maximum*.1),work)))repairError('修復量と経過した月を確認できません。最新の保存へ同期してください。');
   // A foreign battle can be newer than the defender's economic checkpoint.
   // The client may have paid using the superseded pre-siege anchor. Admit
@@ -161,7 +167,15 @@ function validateRepairIncrease(state,prior,incoming,clock,proofs){
 // scratch values: adopting them would charge an already-paid client twice.
 export function reconcilePaidRepairs(save,before,clock,{hasRepairReceipt=true,trustedStates=[],branchState=null,isAdmin=false,isStaff=false}={}){
  const state=save.state,submitted=hasRepairReceipt?clone(state.repair):null,startResources={wood:state.resources.wood,stone:state.resources.stone},prior=before?.state;
- if(!prior||state.walking.campaignId!==prior.walking.campaignId)return null;
+ if(!prior||state.walking.campaignId!==prior.walking.campaignId){
+  // Establish the first trusted anchor at the capacity of the actual seat.
+  const id=state.cycle?.home||state.home,row=state.castles[id];
+  if(row?.durability){
+   const view=castleDurability(state,id,row.durability.updatedElapsedMs);
+   if(row.durability.max!==view.max)row.durability=durabilityRecord(view);
+  }
+  return null;
+ }
  const previous=GameEngine.normalizeRepairState(prior.repair,prior.turn),client=GameEngine.normalizeRepairState(state.repair,state.turn),proofs=trustedStates.filter(value=>value?.walking?.campaignId===state.walking.campaignId);
  if(!proofs.length&&durabilityElapsed(state)>durabilityElapsed(prior)){
   try{

@@ -2,7 +2,7 @@ import {maintenanceContext,protectMaintenance} from './maintenance.js';
 // Durable main-army movement. Only the original departure transaction can
 // reserve troops; only a pending-row CAS can resolve or refund the escrow.
 import {GameEngine,GAME_OFFICERS} from './game-runtime.js';
-import {prepareResidencyCpuLosses} from './residency.js';
+import {guardLordSupport,prepareResidencyCpuLosses} from './residency.js';
 const S=(db,sql,...args)=>db.prepare(sql).bind(...args),R=x=>x?.results||[];
 export const MARCH_GATE="EXISTS(SELECT 1 FROM battle_marches WHERE id=? AND status='marching' AND commit_token=?)";
 export function marchDto(row,clock,now=Date.now()){
@@ -54,7 +54,7 @@ export async function advanceReservedMarch(ctx,saved,clock){
  const result=game.applyWorldClock(clock,{maxSeconds:86400,deferCycleSettlement:true});
  if(!result.ok||result.pending)h.fail(409,'MARCH_RETRY','進軍中の本拠を共通時刻へ同期しています。');
  const next=h.normalizeGameSave(JSON.parse(game.exportSave()),user,now,{clock}),guard={sql:branches.guard.sql+(shared?" AND EXISTS(SELECT 1 FROM staff_base WHERE id='kyoto_gosho' AND revision=?)":''),args:[...branches.guard.args,...(shared?[shared.revision]:[])]};
- return{save:next,before,game,branches:{...branches,guard},result,resolvedElapsedMs:next.state.worldClock?.elapsedMs||0};
+ return{save:next,before,game,branches:{...branches,guard:guardLordSupport(guard,user)},result,resolvedElapsedMs:next.state.worldClock?.elapsedMs||0};
 }
 export async function cancelBattleMarch(ctx,row,message,extraStatements=()=>[]){
  const {db,user,now,helpers:h}=ctx,current=await S(db,'SELECT * FROM battle_marches WHERE id=?',row.id).first();
