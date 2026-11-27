@@ -1,7 +1,7 @@
 'use strict';
 const assert=require('node:assert/strict');
 const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path');
-const {planViewport,desktopMode,tabletPortraitMode}=require('../desktop-fit.js');
+const {planViewport,desktopMode,tabletPortraitMode,tabletLandscapeMode}=require('../desktop-fit.js');
 const {setup}=require('./helpers/dom-model.cjs');
 const source=fs.readFileSync(path.join(__dirname,'../desktop-fit.js'),'utf8');
 const css=fs.readFileSync(path.join(__dirname,'../desktop-fit.css'),'utf8'),responsive=fs.readFileSync(path.join(__dirname,'../responsive-layout.css'),'utf8');
@@ -77,7 +77,7 @@ test('portrait tablets retain native scale and document flow with or without an 
   const h=harness({width,height,touch:5,fine,coarse:!fine});h.refresh();
   assert(h.classes.has('sengoku-tablet-portrait'),width+'×'+height);
   assert(!h.classes.has('sengoku-desktop-fit'));
-  assert.equal(h.api.getStatus().tabletPortrait,true);assert.equal(h.api.getStatus().mode,'flow');assert.equal(h.api.getStatus().scale,1);
+  assert.equal(h.api.getStatus().tabletPortrait,true);assert.equal(h.api.getStatus().tabletLandscape,false);assert.equal(h.api.getStatus().mode,'flow');assert.equal(h.api.getStatus().scale,1);
   assert.equal(h.app.style.transform,'');assert.equal(h.app.dataset.desktopScale,undefined);
   const state=JSON.stringify(h.api.getStatus());for(let i=0;i<5;i++)h.refresh();
   assert.equal(JSON.stringify(h.api.getStatus()),state);assert.equal(h.bodyPane.scrollTop,170);
@@ -127,11 +127,104 @@ test('legacy device orientation keeps keyboard resizing distinct from rotation',
  h.environment.orientation=90;h.resize(1024,768);assert(!h.classes.has('sengoku-tablet-portrait'));
  h.environment.orientation=180;h.resize(768,1024);assert(h.classes.has('sengoku-tablet-portrait'));
 });
+test('landscape tablets require touch input and enough physical screen width and height',()=>{
+ for(const [width,height,shortSide]of [[960,600,600],[1024,768,768],[1180,820,820],[1366,1024,1024],[1920,1200,1200]]){
+  assert.equal(tabletLandscapeMode(width,height,5,false,'landscape-primary',shortSide),true,width+'px tablet with a mouse');
+  assert.equal(tabletLandscapeMode(width,height,0,true,'landscape-primary',shortSide),true,width+'px coarse pointer');
+  assert.equal(tabletLandscapeMode(width,height,0,false,'landscape-primary',shortSide),false,width+'px mouse-only PC');
+  assert.equal(tabletLandscapeMode(width,height,5,true),true,width+'px without a screen API');
+ }
+ assert.equal(tabletLandscapeMode(960,520,5,true,'landscape-primary',600),true,'Browser chrome can reduce a 600px screen below 600px of content');
+});
+test('landscape tablet boundaries exclude phones, narrow windows, portrait devices, and invalid dimensions',()=>{
+ for(const [width,height,orientation,shortSide]of [
+  [959,700,'landscape-primary',768],
+  [1921,1200,'landscape-primary',1200],
+  [960,700,'landscape-primary',599],
+  [1000,700,'landscape-primary',430],
+  [1024,768,'portrait-primary',768],
+  [1024,768,'portrait-secondary',768],
+  [844,390,'landscape-primary',390],
+  [932,430,'landscape-primary',430],
+  [1024,1366,'',1024],
+  [1024,1024,'',1024],
+  [1024,0,'landscape-primary',768],
+  [NaN,768,'landscape-primary',768],
+  [Infinity,768,'landscape-primary',768],
+  [1024,Infinity,'landscape-primary',768]
+ ])assert.equal(tabletLandscapeMode(width,height,5,true,orientation,shortSide),false,String([width,height,orientation,shortSide]));
+ for(const shortSide of [0,-1,NaN,Infinity]){
+  assert.equal(tabletLandscapeMode(1024,768,5,true,'landscape-primary',shortSide),true,'Invalid screen size falls back to the layout viewport');
+  assert.equal(tabletLandscapeMode(1024,430,5,true,'landscape-primary',shortSide),false,'An unknown screen must not promote a short phone viewport');
+ }
+});
+test('known landscape orientation and screen dimensions survive a software keyboard',()=>{
+ for(const orientation of ['landscape-primary','landscape-secondary'])assert.equal(tabletLandscapeMode(1180,300,5,true,orientation,820),true,orientation);
+ assert.equal(tabletLandscapeMode(1180,300,5,true,'portrait-primary',820),false,'A portrait tablet with a keyboard must stay in its portrait layout');
+ assert.equal(tabletLandscapeMode(1180,300,5,true,'landscape-primary',430),false,'Orientation does not turn a phone into a tablet');
+ assert.equal(tabletLandscapeMode(1180,300,5,true,'',820),true,'Stable screen size also supports browsers without an orientation API');
+});
+test('landscape tablets use native-scale flow with touch alone or an attached fine pointer',()=>{
+ for(const [width,height,screenHeight]of [[960,520,600],[1024,768,768],[1180,820,820],[1366,1024,1024],[1920,1200,1200]])for(const fine of [false,true]){
+  const h=harness({width,height,touch:5,fine,coarse:!fine});
+  h.environment.screen={width,height:screenHeight,orientation:{type:'landscape-primary'}};h.refresh();
+  assert(h.classes.has('sengoku-tablet-landscape'),width+'×'+height);assert(!h.classes.has('sengoku-tablet-portrait'));assert(!h.classes.has('sengoku-desktop-fit'));
+  assert.equal(h.api.getStatus().tabletLandscape,true);assert.equal(h.api.getStatus().tabletPortrait,false);assert.equal(h.api.getStatus().mode,'flow');assert.equal(h.api.getStatus().scale,1);
+  assert.equal(h.app.style.transform,'');assert.equal(h.app.dataset.desktopScale,undefined);
+  const state=JSON.stringify(h.api.getStatus());for(let i=0;i<5;i++)h.refresh();
+  assert.equal(JSON.stringify(h.api.getStatus()),state);assert.equal(h.bodyPane.scrollTop,170);
+ }
+});
+test('landscape runtime uses both valid screen dimensions and otherwise falls back to layout dimensions',()=>{
+ for(const screen of [{width:1000,height:430},{width:430,height:1000}]){
+  const h=harness({width:1000,height:700,touch:5,fine:false,coarse:true});
+  h.environment.screen={...screen,orientation:{type:'landscape-primary'}};h.refresh();
+  assert(!h.classes.has('sengoku-tablet-landscape'),'Known phone screen is excluded even when its viewport is large');assert.equal(h.api.getStatus().tabletLandscape,false);
+ }
+ for(const screen of [{width:1024,height:0},{width:1024},{width:0,height:768},{width:NaN,height:768},{width:1024,height:Infinity},{}]){
+  const h=harness({width:1024,height:768,touch:5,fine:false,coarse:true});
+  h.environment.screen={...screen,orientation:{type:'landscape-primary'}};h.refresh();assert(h.classes.has('sengoku-tablet-landscape'));
+  h.resize(1024,430);assert(!h.classes.has('sengoku-tablet-landscape'),'A partial screen API is not enough to override the short-side fallback');
+ }
+});
+test('landscape keyboard resizing preserves the mode, draft, selection, and document reading position',()=>{
+ const h=harness({width:1180,height:820,touch:5,fine:false,coarse:true});
+ h.environment.screen={width:1180,height:820,orientation:{type:'landscape-primary'}};
+ const input={value:'同盟の作戦を入力中',selectionStart:4,matches:selector=>selector.includes('#main input')};
+ h.environment.document.activeElement=input;h.refresh();assert(h.classes.has('sengoku-tablet-landscape'));
+ h.environment.visualViewport.height=310;h.refresh();
+ assert(h.classes.has('sengoku-tablet-landscape'));assert(h.classes.has('sengoku-compact-input'));assert.equal(h.vars.get('--visible-height'),'310.000px');
+ h.environment.innerHeight=310;h.refresh();assert(h.classes.has('sengoku-tablet-landscape'),'A keyboard resizing the layout viewport retains the screen-based mode');
+ assert(!h.classes.has('sengoku-tablet-portrait'));assert.equal(h.environment.document.activeElement,input);assert.equal(input.value,'同盟の作戦を入力中');assert.equal(input.selectionStart,4);assert.equal(h.bodyPane.scrollTop,170);
+ h.resize(1180,820);assert(h.classes.has('sengoku-tablet-landscape'));assert(!h.classes.has('sengoku-compact-input'));
+});
+test('tablet modes are exclusive across rotation, split view, and destruction',()=>{
+ const h=harness({width:1024,height:1366,touch:5,fine:true,coarse:false});
+ h.environment.screen={width:1024,height:1366,orientation:{type:'portrait-primary'}};h.refresh();
+ assert(h.classes.has('sengoku-tablet-portrait'));assert(!h.classes.has('sengoku-tablet-landscape'));
+ h.environment.screen.orientation.type='landscape-primary';h.resize(1366,1024);
+ assert(h.classes.has('sengoku-tablet-landscape'));assert(!h.classes.has('sengoku-tablet-portrait'));
+ h.resize(900,1024);assert(!h.classes.has('sengoku-tablet-landscape'));assert(!h.classes.has('sengoku-tablet-portrait'),'Narrow landscape split view keeps the general compact flow');
+ h.resize(1366,1024);assert(h.classes.has('sengoku-tablet-landscape'));assert.equal(h.app.style.transform,'');assert.equal(h.bodyPane.scrollTop,170);
+ h.environment.screen.orientation.type='portrait-primary';h.resize(1024,1366);assert(h.classes.has('sengoku-tablet-portrait'));assert(!h.classes.has('sengoku-tablet-landscape'));
+ h.environment.screen.orientation.type='landscape-primary';h.resize(1366,1024);h.api.destroy();
+ assert(!h.classes.has('sengoku-tablet-landscape'));assert(!h.classes.has('sengoku-tablet-portrait'));assert.equal(h.api.getStatus().tabletLandscape,false);assert.equal(h.api.getStatus().tabletPortrait,false);
+ h.api.refresh();assert(!h.classes.has('sengoku-tablet-landscape'));
+});
+test('legacy landscape orientation retains keyboard handling and defers to the modern orientation API',()=>{
+ const h=harness({width:1024,height:768,touch:5,fine:false,coarse:true});
+ h.environment.screen={width:1024,height:768};h.environment.orientation=90;h.refresh();assert(h.classes.has('sengoku-tablet-landscape'));
+ h.resize(1024,300);assert(h.classes.has('sengoku-tablet-landscape'));
+ h.environment.orientation=-90;h.refresh();assert(h.classes.has('sengoku-tablet-landscape'));
+ h.environment.orientation=0;h.resize(768,1024);assert(h.classes.has('sengoku-tablet-portrait'));assert(!h.classes.has('sengoku-tablet-landscape'));
+ h.environment.orientation=90;h.environment.screen.orientation={type:'portrait-primary'};h.resize(1024,700);
+ assert(h.classes.has('sengoku-tablet-portrait'));assert(!h.classes.has('sengoku-tablet-landscape'),'Modern orientation wins over a stale legacy angle');
+});
 test('phone and tablet widths use the same compact layout with a desktop mouse',()=>{
  for(const width of [320,360,390,430,768,820,1024]){
   const h=harness({width});h.refresh();assert.equal(h.api.getStatus().mode,'flow',width+'px');assert(!h.classes.has('sengoku-desktop-fit'));assert.equal(h.app.dataset.desktopScale,undefined);assert.equal(h.app.style.transform,'');
  }
- for(const width of [1025,1280,1440,1920]){const h=harness({width});h.refresh();assert.equal(h.api.getStatus().mode,'desktop',width+'px');}
+ for(const width of [1025,1280,1440,1920]){const h=harness({width});h.refresh();assert.equal(h.api.getStatus().mode,'desktop',width+'px');assert.equal(h.api.getStatus().tabletLandscape,false);}
 });
 test('game text entry releases fixed navigation only when the keyboard occupies the visual viewport',()=>{
  const h=harness({width:390,height:844,touch:1,fine:false,coarse:true});

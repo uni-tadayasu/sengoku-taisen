@@ -25,8 +25,18 @@ function tabletPortraitMode(width,height,touchPoints=0,coarsePointer=false,orien
   if(/^landscape(?:-|$)/.test(orientationType))return false;
   return h>w;
 }
+function tabletLandscapeMode(width,height,touchPoints=0,coarsePointer=false,orientationType='',screenShortSide=0){
+  const w=Number(width),h=Number(height),shortSide=Number(screenShortSide);
+  if(!Number.isFinite(w)||!Number.isFinite(h)||h<=0||w<960||w>1920||!(Number(touchPoints)>0||coarsePointer))return false;
+  // Screen dimensions survive browser chrome and keyboard changes. Falling
+  // back to the layout short side still excludes landscape phones without it.
+  if((Number.isFinite(shortSide)&&shortSide>0?shortSide:Math.min(w,h))<600)return false;
+  if(/^portrait(?:-|$)/.test(orientationType))return false;
+  if(/^landscape(?:-|$)/.test(orientationType))return true;
+  return w>h;
+}
 const root=global.document?.documentElement,doc=global.document;
-let initialized=false,destroyed=false,pending=0,resizeObserver=null,mutationObserver=null,media=null,coarseMedia=null,status={active:false,mode:'flow',tabletPortrait:false,scale:1},listeners=[],navigationState='';
+let initialized=false,destroyed=false,pending=0,resizeObserver=null,mutationObserver=null,media=null,coarseMedia=null,status={active:false,mode:'flow',tabletPortrait:false,tabletLandscape:false,scale:1},listeners=[],navigationState='';
 // The resource ledger shares the viewport with the dock on small screens.
 const ledgerKey='sengoku-ledger-display-v1';
 let ledgerButton=null,balances=null,ledgerActions=null,groupLabel=null,ledgerPreference=null;
@@ -102,8 +112,12 @@ function update(){
   const active=desktopMode(media?.matches,global.navigator?.maxTouchPoints,coarseMedia?.matches,viewportWidth);
   const orientationType=global.screen?.orientation?.type||(Number.isFinite(global.orientation)?(Math.abs(global.orientation)%180===0?'portrait-primary':'landscape-primary'):'');
   const tabletPortrait=tabletPortraitMode(global.innerWidth,global.innerHeight,global.navigator?.maxTouchPoints,coarseMedia?.matches,orientationType);
+  const screenWidth=Number(global.screen?.width),screenHeight=Number(global.screen?.height);
+  const screenShortSide=Number.isFinite(screenWidth)&&Number.isFinite(screenHeight)&&screenWidth>0&&screenHeight>0?Math.min(screenWidth,screenHeight):0;
+  const tabletLandscape=tabletLandscapeMode(global.innerWidth,global.innerHeight,global.navigator?.maxTouchPoints,coarseMedia?.matches,orientationType,screenShortSide);
   root.classList.toggle('sengoku-desktop-fit',active);
   root.classList.toggle('sengoku-tablet-portrait',tabletPortrait);
+  root.classList.toggle('sengoku-tablet-landscape',tabletLandscape);
   root.classList.toggle('sengoku-short-viewport',viewportHeight<=500);
   // A keyboard can reduce visualViewport.height while the device stays upright.
   updateLedger(active,global.innerHeight);
@@ -140,7 +154,7 @@ function update(){
   const app=doc.getElementById('app');if(active&&app)app.dataset.desktopScale='1.000';
   for(const dialog of doc.querySelectorAll('dialog[open]:not(.game-loading)'))if(active)dialog.dataset.desktopScale='1.000';
   revealNavigation(active);
-  status={active,mode:active?'desktop':'flow',tabletPortrait,...plan,scale:1,naturalWidth:plan.layoutWidth,naturalHeight:plan.layoutHeight,visibleWidth:plan.availableWidth,visibleHeight:plan.availableHeight,atTitle};
+  status={active,mode:active?'desktop':'flow',tabletPortrait,tabletLandscape,...plan,scale:1,naturalWidth:plan.layoutWidth,naturalHeight:plan.layoutHeight,visibleWidth:plan.availableWidth,visibleHeight:plan.availableHeight,atTitle};
 }
 function refresh(){if(!root||destroyed)return;if(!initialized)start();if(!pending)pending=raf(update);}
 function start(){
@@ -174,14 +188,14 @@ function start(){
   doc.fonts?.ready?.then(refresh).catch(()=>{});refresh();
 }
 function destroy(){
-  destroyed=true;if(pending)caf(pending);pending=0;for(const remove of listeners)remove();listeners=[];resizeObserver?.disconnect();mutationObserver?.disconnect();root?.classList.remove('sengoku-desktop-fit');root?.classList.remove('sengoku-tablet-portrait');root?.classList.remove('sengoku-compact-input');root?.classList.remove('sengoku-short-viewport');
+  destroyed=true;if(pending)caf(pending);pending=0;for(const remove of listeners)remove();listeners=[];resizeObserver?.disconnect();mutationObserver?.disconnect();root?.classList.remove('sengoku-desktop-fit');root?.classList.remove('sengoku-tablet-portrait');root?.classList.remove('sengoku-tablet-landscape');root?.classList.remove('sengoku-compact-input');root?.classList.remove('sengoku-short-viewport');
   if(ledgerButton){balances.hidden=false;ledgerButton.remove();if(groupLabel===null)ledgerActions.removeAttribute('aria-label');else ledgerActions.setAttribute('aria-label',groupLabel);ledgerButton=null;}
   for(const node of doc?.querySelectorAll?.('#app,.launch-card,dialog[data-desktop-scale]')||[])clearLegacyGeometry(node);
   if(root)setVar('--touch-header-height','0px');
   if(root)setVar('--touch-announcement-height','0px');
-  status={active:false,mode:'flow',tabletPortrait:false,scale:1};
+  status={active:false,mode:'flow',tabletPortrait:false,tabletLandscape:false,scale:1};
 }
-const api={refresh,getStatus:()=>({...status}),destroy,computeFit,planViewport,desktopMode,tabletPortraitMode};
+const api={refresh,getStatus:()=>({...status}),destroy,computeFit,planViewport,desktopMode,tabletPortraitMode,tabletLandscapeMode};
 global.SengokuDesktopFit=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;
 if(doc){if(doc.readyState==='loading')doc.addEventListener('DOMContentLoaded',start,{once:true});else start();}
 })(typeof window!=='undefined'?window:globalThis);

@@ -1,0 +1,190 @@
+/* Landscape tablets share the native-size typography and safe gutters in
+   tablet-layout.css. Reflow the extra width into useful columns; do not turn
+   touch devices into the fixed-height desktop workspace. */
+html.sengoku-tablet-landscape {
+  --compact-dock-button-min: 3rem;
+  --compact-dock-height: calc(var(--compact-dock-button-min) + 14px);
+}
+html.sengoku-tablet-landscape #app.chronicle-shell #main {
+  container: tablet-content / inline-size;
+  padding-block: 8px 16px;
+}
+html.sengoku-tablet-landscape #app.chronicle-shell header.topbar.chronicle-ledger {
+  padding-block: 4px 6px;
+  gap: 4px 10px;
+}
+html.sengoku-tablet-landscape.sengoku-navigation-ready #app.chronicle-shell .sidebar {
+  padding-block: 5px;
+  grid-template-columns: minmax(0, 1fr) minmax(12rem, 24%);
+}
+html.sengoku-tablet-landscape.sengoku-navigation-ready #app.chronicle-shell .sidebar .navigation-menu-trigger {
+  min-height: 44px; padding-block: 5px;
+}
+html.sengoku-tablet-landscape.sengoku-navigation-ready #app.chronicle-shell .navigation-trigger-copy {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px;
+}
+html.sengoku-tablet-landscape #app.chronicle-shell #main :is(.page-heading, .roaming-heading, .court-heading, .covert-heading) {
+  grid-template-columns: minmax(0, 5fr) minmax(0, 1fr);
+  margin-bottom: 10px;
+}
+html.sengoku-tablet-landscape #app.chronicle-shell #main .chapter-copy,
+html.sengoku-tablet-landscape #app.chronicle-shell #main :is(.roaming-heading, .court-heading, .covert-heading) > div:first-child {
+  padding: 10px 14px;
+}
+html.sengoku-tablet-landscape #app.chronicle-shell #main :is(.page-heading, .roaming-heading, .court-heading, .covert-heading) h1 {
+  font-size: clamp(1.5rem, 2.3vw, 2rem);
+}
+html.sengoku-tablet-landscape #app.chronicle-shell #main .page-heading-actions {
+  padding: 6px 12px;
+}
+
+/* At wide tablet sizes the calendar and actions can join the balances.
+   The balances' own rem queries continue protecting enlarged numbers. */
+@media (min-width: 1440px) {
+  html.sengoku-tablet-landscape #app.chronicle-shell header.topbar.chronicle-ledger {
+    grid-template-columns: minmax(10rem, 13%) minmax(0, 1fr) auto;
+  }
+  html.sengoku-tablet-landscape #app.chronicle-shell header.topbar.chronicle-ledger .header-balances {
+    grid-column: 2; grid-row: 1;
+  }
+  html.sengoku-tablet-landscape #app.chronicle-shell header.topbar.chronicle-ledger .header-actions {
+    grid-column: 3; grid-row: 1;
+  }
+}
+
+/* The artwork and commands become peers when both have readable space.
+   Local console queries prevent its cards from inheriting a full-page grid. */
+html.sengoku-tablet-landscape #app.chronicle-shell #main .town-workspace > .town-visual {
+  display: block; min-height: 0;
+}
+html.sengoku-tablet-landscape #app.chronicle-shell #main .town-workspace > .town-console {
+  container: tablet-console / inline-size;
+  display: flex; flex-direction: column; gap: 10px;
+  height: auto; min-height: 0; padding: 0; overflow: visible;
+}
+html.sengoku-tablet-landscape #app.chronicle-shell #main .town-console > * {
+  flex: none; min-width: 0;
+}
+html.sengoku-tablet-landscape #app.chronicle-shell #main .town-panel .town-scene {
+  height: clamp(220px, 42svh, 540px);
+}
+html.sengoku-tablet-landscape #app.chronicle-shell #main .town-scene-heading {
+  padding-block: 6px;
+}
+html.sengoku-tablet-landscape #app.chronicle-shell #main :is(.town-command-shortcuts, .town-legend-grid) {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+html.sengoku-tablet-landscape #app.chronicle-shell #main .town-console :is(.buildings-grid, .town-status-panels) {
+  grid-template-columns: minmax(0, 1fr); gap: 10px;
+}
+html.sengoku-tablet-landscape #app.chronicle-shell #main .town-console :is(.building-card, .panel, .town-lord-panel) {
+  min-width: 0; max-width: 100%;
+}
+@container tablet-content (min-width: 50rem) {
+  html.sengoku-tablet-landscape #app.chronicle-shell #main .town-workspace.dashboard-grid {
+    grid-template-columns: minmax(0, 1.15fr) minmax(22rem, 1fr);
+    gap: 14px; align-items: start;
+  }
+}
+@container tablet-console (min-width: 23rem) {
+  html.sengoku-tablet-landscape #app.chronicle-shell #main .town-console .buildings-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@container tablet-console (min-width: 40rem) {
+  html.sengoku-tablet-landscape #app.chronicle-shell #main .town-console .town-status-panels {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@container town-panel (min-width: 40rem) {
+  html.sengoku-tablet-landscape #app.chronicle-shell #main :is(.town-command-shortcuts, .town-legend-grid) {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+/* Column counts follow each usable content width, including the user's
+   larger text setting. Cards retain natural height for names and descriptions. */
+html.sengoku-tablet-landscape #app.chronicle-shell #main :is(.officers-grid, .facility-catalog, .research-grid) {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr));
+  gap: 12px;
+}
+html.sengoku-tablet-landscape #app.chronicle-shell #main :is(.economy-resources, .territory-list.all-territories) {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
+}
+@container tablet-content (min-width: 62rem) {
+  html.sengoku-tablet-landscape #app.chronicle-shell #main :is(.world-layout-real, .field-workspace) {
+    grid-template-columns: minmax(0, 1fr) minmax(21rem, 30%);
+    align-items: start;
+  }
+  html.sengoku-tablet-landscape #app.chronicle-shell #main .council-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@container tablet-content (min-width: 70rem) {
+  html.sengoku-tablet-landscape #app.chronicle-shell #main .army-layout {
+    grid-template-columns: minmax(0, 1fr) minmax(21rem, 30%);
+    align-items: start;
+  }
+}
+html.sengoku-tablet-landscape #app.chronicle-shell #main .world-layout-real .castle-detail {
+  grid-template-columns: 96px minmax(0, 1fr); gap: 12px 14px;
+}
+html.sengoku-tablet-landscape #app.chronicle-shell #main .world-layout-real .castle-detail > .castle-banner {
+  grid-column: 1; grid-row: 1 / 4;
+  width: 96px; height: 96px; aspect-ratio: 1; min-width: 0; max-width: 100%;
+}
+html.sengoku-tablet-landscape #app.chronicle-shell #main .world-layout-real .castle-detail > .castle-info {
+  display: contents;
+}
+html.sengoku-tablet-landscape #app.chronicle-shell #main .world-layout-real .castle-info > * {
+  grid-column: 1 / -1; min-width: 0; max-width: 100%; margin-block: 0;
+}
+html.sengoku-tablet-landscape #app.chronicle-shell #main .world-layout-real .castle-info > .eyebrow {
+  grid-column: 2; grid-row: 1; margin: 0;
+}
+html.sengoku-tablet-landscape #app.chronicle-shell #main .world-layout-real .castle-info > h2 {
+  grid-column: 2; grid-row: 2; margin: 0;
+}
+html.sengoku-tablet-landscape #app.chronicle-shell #main .world-layout-real .castle-info > .castle-status {
+  grid-column: 2; grid-row: 3; justify-self: start;
+  white-space: normal; overflow-wrap: anywhere;
+}
+html.sengoku-tablet-landscape #app.chronicle-shell #main .world-layout-real .castle-info > .base-durability {
+  width: 100%;
+}
+html.sengoku-tablet-landscape #modal.modal {
+  max-width: 1280px;
+}
+html.sengoku-tablet-landscape #modal :is(.modal-header, .modal-footer) {
+  padding-block: 10px;
+}
+html.sengoku-tablet-landscape #modal .modal-body {
+  padding-block: 12px;
+}
+html.sengoku-tablet-landscape #modal :is(.settings-stack, .officer-choice-list) {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr));
+  gap: 12px;
+}
+
+/* A landscape cover keeps the introduction readable beside the key artwork. */
+html.sengoku-tablet-landscape #launch-screen .edition-cover {
+  container: tablet-cover / inline-size;
+  min-height: min(580px, 70svh);
+}
+html.sengoku-tablet-landscape #launch-screen .edition-story {
+  max-width: min(80%, 60rem); padding: 18px 22px;
+}
+html.sengoku-tablet-landscape #launch-screen #launch-title {
+  font-size: clamp(3.5rem, 6vw, 5.5rem); white-space: normal;
+}
+html.sengoku-tablet-landscape #launch-screen .edition-print img {
+  object-position: 72% 42%;
+}
+html.sengoku-tablet-landscape #launch-screen .launch-guide-nav a {
+  min-height: 64px;
+}
+@container tablet-cover (max-width: 45rem) {
+  html.sengoku-tablet-landscape #launch-screen .edition-story {
+    display: block; max-width: 100%;
+  }
+}

@@ -74,7 +74,11 @@ const totalGzipBytes = rows.reduce((sum,row)=>sum+row.gzipBytes,0);
 // shipped entry is 3,670,170 raw / 1,016,759 gzip bytes (+13,373 / +1,974
 // from v5.12.3), with no new images, fonts or dependencies. Retain less than
 // 2 KB raw / 1.3 KB gzip headroom for this measured layout-only addition.
-const rawBudget=3672000,gzipBudget=1018000;
+// v5.12.5 shares the tablet readability rules and adds landscape composition
+// and screen-aware orientation detection. Measured: 3,680,208 raw / 1,017,724
+// gzip bytes (+10,038 / +965 from v5.12.4), without new assets/dependencies.
+// Keep less than 2 KB raw / 1.3 KB gzip headroom for this measured addition.
+const rawBudget=3682000,gzipBudget=1019000;
 assert(totalBytes <= rawBudget, `Initial bundles exceed the ${rawBudget} byte budget: ${totalBytes}`);
 assert(totalGzipBytes <= gzipBudget, `Initial bundles exceed the ${gzipBudget} gzip byte budget: ${totalGzipBytes}`);
 const html = fs.readFileSync(path.join(root,'index.html'),'utf8');

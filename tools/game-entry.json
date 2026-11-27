@@ -94,7 +94,8 @@
     "raden-motion.css",
     "input-list.css",
     "responsive-text.css",
-    "tablet-portrait.css"
+    "tablet-layout.css",
+    "tablet-landscape.css"
   ],
   "game-preferences.bundle.js": [
     "viewport-lock.js",
