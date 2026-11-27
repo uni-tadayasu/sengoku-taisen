@@ -33,8 +33,8 @@ import {requirePromotionOrigin,recordPromotion,readPromotionReport} from './prom
 import {readMusicBroadcast,handleAdminMusic} from './admin-music.js';
 import {lordSupportSql,guardLordSupport,ensureResidency,residencySnapshot,residencyDirectory,residencyStart,initialResidencyStatements,residencyTargetGuard,prepareResidencySuccession,prepareResidencyCpuLosses} from './residency.js';
 const API = '/api/v1';
-const API_VERSION = '5.11.0';
-const API_FEATURES = Object.freeze({trades:true,moderation:true,premium:true,timedEvents:true,troopTrades:true,roamingBattles:true,roamingDeployment:true,covertDispatch:true,privatePlayerRoles:true,guildIcons:true,court:true,kyotoGosho:true,branches:true,branchBattles:true,branchFacilities:true,audioCalls:true,progression:true,armyPresets:true,allianceStrategy:true,sharedConquest:true,newcomerProtection:true,webPush:true,battleAdviser:true,battleCatalog:true,eventBattleRewards:true,shogunate:true,attackTravel:true,castleResidency:true,retainerCastleStats:true,residencyRelocation:true,maintenanceUpkeep:true,strongholdDurability:true,chatReplies:true,chatMentions:true,covertReturnTravel:true,allianceUnitTravel:true,legacySaveRecovery:true,displayNameVariants:true,courtOffices:true,serverSummons:true,loginRewards:true,paidRerolls:true,supporterChoices:true,premiumGrowthMetrics:true,adminMusicBroadcast:true,rankRiceProduction:true,shogunateApproval:true,imperialSuccession:true,retiredEmperor:true,regency:true,courtEventRoom:true});
+const API_VERSION = '5.11.1';
+const API_FEATURES = Object.freeze({trades:true,moderation:true,premium:true,timedEvents:true,troopTrades:true,roamingBattles:true,roamingDeployment:true,covertDispatch:true,privatePlayerRoles:true,guildIcons:true,court:true,kyotoGosho:true,branches:true,branchBattles:true,branchFacilities:true,audioCalls:true,progression:true,armyPresets:true,allianceStrategy:true,sharedConquest:true,newcomerProtection:true,webPush:true,battleAdviser:true,battleCatalog:true,eventBattleRewards:true,shogunate:true,attackTravel:true,castleResidency:true,retainerCastleStats:true,residencyRelocation:true,maintenanceUpkeep:true,strongholdDurability:true,chatReplies:true,chatMentions:true,covertReturnTravel:true,allianceUnitTravel:true,legacySaveRecovery:true,displayNameVariants:true,courtOffices:true,serverSummons:true,loginRewards:true,paidRerolls:true,supporterChoices:true,premiumGrowthMetrics:true,adminMusicBroadcast:true,rankRiceProduction:true,shogunateApproval:true,imperialSuccession:true,retiredEmperor:true,regency:true,courtEventRoom:true,imperialSuccessionApproval:true});
 const MAX_BODY = 16 * 1024;
 const MAX_SAVE_BODY = 2 * 1024 * 1024;
 const MAX_AVATAR_BYTES = 48 * 1024;
@@ -2652,6 +2652,8 @@ async function route(request, env, now) {
       await stmt(db,'SELECT (SELECT COUNT(*) FROM shogunate_approvals) AS approvals,(SELECT COUNT(*) FROM shogunate_approval_requests) AS approval_requests,(SELECT COUNT(*) FROM shogunate_palace_control) AS palace_control,(SELECT COUNT(*) FROM court_succession_requests) AS succession_requests,(SELECT COUNT(*) FROM court_retired_emperors) AS retired_emperors').first();
       const successionSchema=await stmt(db,"SELECT COUNT(*) AS triggers FROM sqlite_master WHERE type='trigger' AND name IN ('court_retirement_insert','court_retirement_update','court_retirement_delete')").first();
       if(Number(successionSchema?.triggers)!==3)throw Error('Imperial succession migration incomplete');
+      const successionApprovalSchema=await stmt(db,"SELECT (SELECT COUNT(*) FROM court_succession_nominations) AS nominations,(SELECT COUNT(*) FROM court_succession_nomination_requests) AS requests,(SELECT COUNT(*) FROM sqlite_master WHERE type='trigger' AND name LIKE 'court_succession_nomination_%') AS triggers").first();
+      if(Number(successionApprovalSchema?.triggers)!==9)throw Error('Imperial succession approval migration incomplete');
       const regencySchema=await stmt(db,"SELECT (SELECT COUNT(*) FROM court_regent) AS regent,(SELECT COUNT(*) FROM court_regency_requests) AS requests,(SELECT revision FROM court_regency_state WHERE id=1) AS revision,(SELECT COUNT(*) FROM sqlite_master WHERE type='trigger' AND name LIKE 'court_regency_%') AS trigger_count").first();
       if(!Number.isSafeInteger(Number(regencySchema?.revision))||Number(regencySchema?.trigger_count)!==11)throw Error('Regency migration incomplete');
       await stmt(db,'SELECT (SELECT COUNT(*) FROM court_event_room_events) AS room_events,(SELECT COUNT(*) FROM court_event_room_requests) AS room_requests').first();
@@ -2775,7 +2777,7 @@ async function route(request, env, now) {
   if(path==='/progress'||path.startsWith('/progress/'))return handleProgress(expansionContext);
   if(path==='/conquest'||path.startsWith('/conquest/'))return handleConquest(expansionContext);
   if(path==='/shogunate'||path.startsWith('/shogunate/'))return handleShogunate(expansionContext);
-  if(path==='/court/succession')return handleCourtSuccession({...expansionContext,helpers:{...expansionContext.helpers,mapUser}});
+  if(path==='/court/succession'||path.startsWith('/court/succession/')||path==='/admin/court/succession'||path.startsWith('/admin/court/succession/'))return handleCourtSuccession({...expansionContext,helpers:{...expansionContext.helpers,mapUser}});
   if(path==='/admin/court/regent')return handleRegency(expansionContext);
   if(path==='/court/events'||path.startsWith('/court/events/'))return handleCourtEvents(expansionContext);
   if(path==='/protection'||path.startsWith('/protection/'))return handleProtection(expansionContext);

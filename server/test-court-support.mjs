@@ -19,4 +19,12 @@ export async function fixture(h,name,{admin=false,staff=false,score=null,holding
  return player;
 }
 export const appoint=(h,player,expected=200,requestId=crypto.randomUUID())=>h.api('/admin/court/leader',post(h.operator,{requestId,targetPlayerId:player?.user.id??null},expected));
+export async function nominateSuccessor(h,emperor,target){
+ const directory=(await h.api('/court/succession',{token:emperor.token})).data,candidate=directory.candidates.find(person=>person.id===target.user.id);
+ assert(candidate,'The successor must be a current Kyoto member');
+ return(await h.api('/court/succession',post(emperor,{requestId:crypto.randomUUID(),targetPlayerId:target.user.id,targetTermId:candidate.termId,sourceAppointmentToken:directory.sourceAppointmentToken}))).data;
+}
+export async function certifySuccessor(h,admin,nomination){
+ return(await h.api('/admin/court/succession/'+nomination.id+'/approve',post(admin,{requestId:crypto.randomUUID(),expectedRevision:nomination.revision}))).data;
+}
 export function updateSave(h,player,change){const value=save(h,player);change(value.state);h.sql.prepare('UPDATE player_saves SET save_json=?,revision=revision+1 WHERE user_id=?').run(JSON.stringify(value),player.user.id);}

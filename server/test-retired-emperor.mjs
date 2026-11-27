@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
 import {readFileSync} from 'node:fs';
 import {harness} from './test-support.mjs';
-import {fixture,post,appoint,row,save,count} from './test-court-support.mjs';
+import {fixture,post,appoint,row,save,count,nominateSuccessor} from './test-court-support.mjs';
 import {messageRegister} from './message-addressing.js';
 
 let checks=0,calls=0;
@@ -13,7 +13,17 @@ async function family(h){
  await appoint(h,current);return{operator,current,next,other,ordinary};
 }
 const body=next=>({requestId:crypto.randomUUID(),targetPlayerId:next.user.id});
-const retire=(h,current,operation,expected=200)=>h.api('/court/succession',post(current,operation,expected));
+async function retire(h,current,operation,expected=200){
+ h.retirementIntents||=new Map();const key=current.user.id+':'+operation.requestId;
+ let intent=h.retirementIntents.get(key);
+ const checked=response=>{if(expected!==null)assert.equal(response.response.status,expected,JSON.stringify(response.data.error));return response;};
+ if(!intent){
+  const directory=await h.api('/court/succession',{token:current.token,expected:null});if(directory.response.status!==200)return checked(directory);
+  intent={...operation,targetTermId:directory.data.candidates.find(p=>p.id===operation.targetPlayerId)?.termId||'not-eligible',sourceAppointmentToken:directory.data.sourceAppointmentToken};h.retirementIntents.set(key,intent);
+ }
+ const submitted=await h.api('/court/succession',post(current,{...intent,targetPlayerId:operation.targetPlayerId},null));if(submitted.response.status!==200)return checked(submitted);
+ return checked(await h.api('/admin/court/succession/'+submitted.data.nomination.id+'/approve',post(h.operator,{requestId:'certify-'+operation.requestId,expectedRevision:0},null)));
+}
 const effects=h=>Object.fromEntries(['court_leader','staff_members','staff_campaign_backups','player_saves','court_retired_emperors','court_succession_requests'].map(table=>[table,h.sql.prepare('SELECT * FROM '+table).all()]));
 const isSuccession=statements=>statements.some(s=>s.sql.includes('INSERT INTO court_succession_requests'));
 const publicPerson=async(h,person)=>(await h.api('/players?q='+encodeURIComponent(person.user.name)+'&limit=50')).data.players.find(p=>p.id===person.user.id);
@@ -48,7 +58,7 @@ try{
   const f=await family(h);await h.api('/court/succession',{expected:401});
   for(const p of [f.operator,f.next,f.ordinary])await h.api('/court/succession',{token:p.token,expected:403});
   const list=(await h.api('/court/succession',{token:f.current.token})).data;
-  assert.equal(list.canAbdicate,true);assert.deepEqual(new Set(list.candidates.map(p=>p.id)),new Set([f.next.user.id,f.other.user.id]));
+  assert.equal(list.canNominate,true);assert.equal(list.canAbdicate,false);assert.equal(list.approvalRequired,true);assert.deepEqual(new Set(list.candidates.map(p=>p.id)),new Set([f.next.user.id,f.other.user.id]));
   for(const candidate of list.candidates){assert(candidate.termId);assert.equal(candidate.homeCastleId,'kyoto_gosho');}
   for(const p of [f.current,f.operator,f.ordinary])assert.equal((await retire(h,f.current,body(p),400)).data.error.code,'COURT_SUCCESSOR_REQUIRED');
   await retire(h,f.operator,body(f.next),403);
@@ -57,8 +67,8 @@ try{
  await scope('abdication atomically moves the crown and restores the predecessor ordinary campaign on sync',async h=>{
   const f=await family(h),beforeSave=save(h,f.current),beforeNext=row(h,f.next),backup=h.sql.prepare('SELECT * FROM staff_campaign_backups WHERE user_id=?').get(f.current.user.id);
   const result=(await retire(h,f.current,body(f.next))).data;
-  assert.equal(result.idempotent,false);assert.equal(result.needsSync,true);assert.equal(result.user.id,f.current.user.id);assert.equal(result.user.isStaff,false);assert.deepEqual(result.user.courtOffice,{title:'上皇',kind:'retired-emperor'});
-  assert.equal(result.receipt.successorPlayerId,f.next.user.id);assert.equal(result.receipt.retiredAt,h.now);
+  assert.equal(result.idempotent,false);assert.equal(result.needsSync,false);assert.equal(result.user,undefined);assert.equal(result.nomination.status,'approved');
+  assert.equal(result.receipt.targetPlayerId,f.next.user.id);assert.equal(result.receipt.resolvedAt,h.now);
   assert.equal(h.sql.prepare('SELECT user_id FROM court_leader').get().user_id,f.next.user.id);
   assert.equal(h.sql.prepare('SELECT COUNT(*) n FROM staff_members WHERE user_id=?').get(f.current.user.id).n,0);
   assert.equal(count(h,'court_retired_emperors'),1);assert.deepEqual(row(h,f.next),beforeNext);
@@ -85,7 +95,7 @@ try{
   const f=await family(h),operation=body(f.next);
   h.afterBatch=statements=>{if(!isSuccession(statements))return;h.afterBatch=null;throw Error('fixture response loss');};
   await retire(h,f.current,operation,500);const committed=effects(h),retry=(await retire(h,f.current,operation)).data;
-  assert.equal(retry.idempotent,true);assert.equal(retry.user.isStaff,false);assert.deepEqual(effects(h),committed);
+  assert.equal(retry.idempotent,true);assert.equal(retry.user,undefined);assert.equal(retry.nomination.status,'approved');assert.deepEqual(effects(h),committed);
   await retire(h,f.current,{...operation,targetPlayerId:f.other.user.id},409);
   await retire(h,f.current,body(f.other),403);assert.deepEqual(effects(h),committed);
  });
@@ -114,13 +124,13 @@ try{
   assert.equal(count(h,'court_retired_emperors'),0);assert.equal(count(h,'court_succession_requests'),0);assert.equal(row(h,f.current).save_json,saved);
   assert.equal(h.sql.prepare('SELECT COUNT(*) n FROM staff_members WHERE user_id=?').get(f.current.user.id).n,1);
  });
- await scope('competing successors yield exactly one crown transfer',async h=>{
-  const f=await family(h);let entered=0,release;const barrier=new Promise(resolve=>release=resolve);
+ await scope('competing certifications yield exactly one crown transfer',async h=>{
+  const f=await family(h),submitted=await nominateSuccessor(h,f.current,f.next);let entered=0,release;const barrier=new Promise(resolve=>release=resolve);
   h.beforeBatch=async statements=>{if(!isSuccession(statements))return;if(++entered===2){h.beforeBatch=null;release();}await barrier;};
-  const outcomes=await Promise.all([f.next,f.other].map(candidate=>retire(h,f.current,body(candidate),null)));
+  const outcomes=await Promise.all([1,2].map(()=>h.api('/admin/court/succession/'+submitted.nomination.id+'/approve',post(f.operator,{requestId:crypto.randomUUID(),expectedRevision:0},null))));
   assert.deepEqual(outcomes.map(outcome=>outcome.response.status).sort(),[200,409]);
   assert.equal(count(h,'court_retired_emperors'),1);assert.equal(count(h,'court_succession_requests'),1);
-  const winner=outcomes.find(outcome=>outcome.response.status===200).data.receipt.successorPlayerId;
+  const winner=outcomes.find(outcome=>outcome.response.status===200).data.receipt.targetPlayerId;
   assert.equal(h.sql.prepare('SELECT user_id FROM court_leader').get().user_id,winner);
  });
  await scope('candidate responses are withdrawn if the Emperor loses authority during decoration',async h=>{

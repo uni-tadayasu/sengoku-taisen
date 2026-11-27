@@ -54,7 +54,10 @@ const totalGzipBytes = rows.reduce((sum,row)=>sum+row.gzipBytes,0);
 // court event workshop. Twenty presets and the planning AI stay on the Worker;
 // the entry includes the reviewed draft interface and authorization handling.
 // Preserve a bounded footprint with less than 6 KB raw / 2 KB gzip headroom.
-const rawBudget=3590000,gzipBudget=998000;
+// v5.11.1 adds nomination, Chancellor certification/history, cancellation and
+// identity-safe receipt recovery. Measured entry: 3,604,849 raw / 1,000,627 gzip,
+// +19,564 / +4,364 from v5.11.0. Keep less than 5 KB raw / 2 KB gzip headroom.
+const rawBudget=3609000,gzipBudget=1002000;
 assert(totalBytes <= rawBudget, `Initial bundles exceed the ${rawBudget} byte budget: ${totalBytes}`);
 assert(totalGzipBytes <= gzipBudget, `Initial bundles exceed the ${gzipBudget} gzip byte budget: ${totalGzipBytes}`);
 const html = fs.readFileSync(path.join(root,'index.html'),'utf8');

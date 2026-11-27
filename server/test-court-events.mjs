@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
 import {harness} from './test-support.mjs';
-import {fixture,post,row,save,appoint,count} from './test-court-support.mjs';
+import {fixture,post,row,save,appoint,count,nominateSuccessor,certifySuccessor} from './test-court-support.mjs';
 import {listCourtEventTemplates} from './court-event-planner.js';
 
 const {cleanEvent}=createRequire(import.meta.url)('../events.js');
@@ -31,7 +31,9 @@ try{
   assert.equal((await h.api('/court',{token:ordinary.token})).data.features.eventRoom,false);
  });
  await scope('a retired Emperor at an ordinary castle cannot use the room through their former crown or title',async h=>{
-  const{admin,staff}=await setup(h),successor=await fixture(h,'譲位後の天皇',{staff:true});await appoint(h,staff);await h.api('/court/succession',post(staff,{targetPlayerId:successor.user.id,requestId:crypto.randomUUID()}));
+  const{admin,staff}=await setup(h),successor=await fixture(h,'譲位後の天皇',{staff:true});await appoint(h,staff);const nomination=(await nominateSuccessor(h,staff,successor)).nomination;
+  assert.equal(nomination.status,'pending');await directory(h,staff);assert.equal(h.sql.prepare('SELECT 1 FROM court_retired_emperors WHERE user_id=?').get(staff.user.id),undefined);
+  await certifySuccessor(h,admin,nomination);
   assert(h.sql.prepare('SELECT 1 FROM court_retired_emperors WHERE user_id=?').get(staff.user.id));const restored=(await h.api('/sync?deviceId='+staff.deviceId,{token:staff.token})).data;assert.equal(restored.user.isStaff,false);assert.notEqual(restored.save.state.home,'kyoto_gosho');
   await h.api('/court/events',{token:staff.token,expected:403});await draft(h,staff,body(),403);assert.equal((await h.api('/court',{token:staff.token})).data.features.eventRoom,false);
  });
