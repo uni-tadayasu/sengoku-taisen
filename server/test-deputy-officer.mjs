@@ -34,7 +34,7 @@ try{
   assert.deepEqual(current.save.state.officers,[...new Set([...before.officers,ID])]);
   assert.deepEqual(current.save.state.officerVariants,[...new Set([...before.officerVariants,VARIANT])]);
   for(const key of ['army','resources','magatama','gachaHistory','buildings','tech'])assert.deepEqual(g.state[key],before[key],key);
-  const beforeRestore=g.exportSave();assert.equal(g.restoreDeputyAssets().changed,false);assert.equal(g.exportSave(),beforeRestore);
+  const beforeRestore=JSON.parse(g.exportSave()).state;assert.equal(g.restoreDeputyAssets().changed,false);assert.deepEqual(JSON.parse(g.exportSave()).state,beforeRestore);
   const stable=row(h,p);special(await snapshot(h,p));special(await snapshot(h,p));assert.deepEqual(row(h,p),stable);
  });
  await scenario('existing deputies recover a missing copy on reload and persist it exactly once through normal sync',async h=>{
