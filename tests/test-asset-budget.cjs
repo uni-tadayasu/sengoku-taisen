@@ -87,7 +87,11 @@ const totalGzipBytes = rows.reduce((sum,row)=>sum+row.gzipBytes,0);
 // current deputy crest. Measured against v5.13.1: +2,996 raw / +777 gzip
 // (3,691,862 / 1,021,342). Retain the existing gzip ceiling and 2.1 KB raw
 // headroom. The 3,282-byte SVG crest is a separate, lazy image.
-const rawBudget=3694000,gzipBudget=1022000;
+// v5.13.3 adds a transient, deliberate operator-recovery entry and its
+// dialog/account/file-read cancellation guards. Measured against v5.13.2:
+// +4,191 raw / +1,016 gzip (3,696,053 / 1,022,358). Keep 1.9 KB raw / 642 gzip bytes of
+// headroom; no dependencies, images or server code are added.
+const rawBudget=3698000,gzipBudget=1023000;
 assert(totalBytes <= rawBudget, `Initial bundles exceed the ${rawBudget} byte budget: ${totalBytes}`);
 assert(totalGzipBytes <= gzipBudget, `Initial bundles exceed the ${gzipBudget} gzip byte budget: ${totalGzipBytes}`);
 const html = fs.readFileSync(path.join(root,'index.html'),'utf8');

@@ -9,6 +9,17 @@
     <ttl>60</ttl>
     <atom:link href="https://www.kasai-solutions-inc.com/news/feed.xml" rel="self" type="application/rss+xml"/>
     <item>
+      <title>Ver.5.13.3｜運営本人向けのデータ復旧経路を改善</title>
+      <link>https://www.kasai-solutions-inc.com/news/#v5-13-3</link>
+      <guid isPermaLink="true">https://www.kasai-solutions-inc.com/news/#v5-13-3</guid>
+      <dc:date>2026-11-28</dc:date>
+      <description>端末の領主情報を失った場合に、元の運営への再接続を確認できる入口を整えました。本人確認後に、サーバーの進行や保管したセーブを選べます。
+
+元の運営領主へ再接続：運営本人向けの復旧入口から、初回の登録キーをサーバーで照合します。元の領主IDを確認した後、使う進行を選んで接続できます。キーの確認だけで進行を上書きすることはありません。
+
+復旧画面を閉じると入力を消去：復旧用のキーは入力後に消去し、ブラウザの設定やバックアップへ保存しません。画面を閉じたときや接続する領主を切り替えたときにも、復旧の入力欄を閉じます。</description>
+    </item>
+    <item>
       <title>Ver.5.13.2｜天下地図の成長表示・スマホ操作・サブ運営の紋章を更新</title>
       <link>https://www.kasai-solutions-inc.com/news/#v5-13-2</link>
       <guid isPermaLink="true">https://www.kasai-solutions-inc.com/news/#v5-13-2</guid>
@@ -358,19 +369,6 @@ BANと分けて、拠点から追放：運営のプレイヤー管理で、対�
 読み込み前に2つの戦役を照合：勢力・本拠・進行年月・家臣・領有拠点・手持ち兵を横に並べ、資源も展開して比較できます。同じ戦役では進行月の差を案内し、保存日時がない古い記録にはその旨を示します。
 
 必要な時間帯と状態だけを表示：行動予定表を残り1分以内・5分以内・確定待ち・再開待ちで絞り込めます。検索語や予定の種類とも併用でき、共通時計の状態と実時間移動を考慮します。</description>
-    </item>
-    <item>
-      <title>Ver.5.9.2｜注目城の登録、予備兵・兵糧を残す軍議、出陣戦績の比較</title>
-      <link>https://www.kasai-solutions-inc.com/news/#v5-9-2</link>
-      <guid isPermaLink="true">https://www.kasai-solutions-inc.com/news/#v5-9-2</guid>
-      <dc:date>2026-11-27</dc:date>
-      <description>注目している城へすぐ戻り、守備に残す兵と兵糧を決めて出陣を計画できます。合戦後は、直近の戦績から武将の編成と損失を比較できます。
-
-天下地図の「注目城」：城を選んで登録すると、一覧から地方・勢力・兵数・自領との関係を確認して城の詳細へ戻れます。登録内容はこの端末の領主と戦役ごとに保存します。
-
-軍師に残したい兵と兵糧を指定：攻城戦・支拠点戦の準備で、出陣後に手元に残す最低兵数と兵糧を入力して軍師に再提案させられます。条件に合う案がないときは理由を表示します。
-
-出陣戦績を検索して2戦を比較：攻城戦・支拠点戦・野良兵戦の直近30戦を武将名・戦場・勝敗で絞り込めます。2戦の戦力・兵損・合戦時の見込み・編成を並べて確認し、結果をテキストで保存できます。</description>
     </item>
   </channel>
 </rss>

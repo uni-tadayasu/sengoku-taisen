@@ -146,6 +146,11 @@ jobs:
           node server/test-legacy-save-recovery.mjs
           node server/test-world-clock.mjs
           node server/test-officer-health.mjs
+      - name: Verify operator recovery and explicit progress choices
+        run: |
+          node tests/test-settings-usability.cjs
+          node tests/test-domain-recovery.cjs
+          node server/test-admin-recovery.mjs
       - name: Verify expulsion, deputy appointment and protected Kagoshima
         run: |
           node server/test-expulsion.mjs
