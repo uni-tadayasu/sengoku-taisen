@@ -165,7 +165,7 @@ test('known landscape orientation and screen dimensions survive a software keybo
  assert.equal(tabletLandscapeMode(1180,300,5,true,'',820),true,'Stable screen size also supports browsers without an orientation API');
 });
 test('landscape tablets use native-scale flow with touch alone or an attached fine pointer',()=>{
- for(const [width,height,screenHeight]of [[960,520,600],[1024,768,768],[1180,820,820],[1366,1024,1024],[1920,1200,1200]])for(const fine of [false,true]){
+ for(const [width,height,screenHeight]of [[960,520,600],[1024,768,768],[1180,820,820],[1194,834,834],[1280,800,800],[1366,1024,1024],[1920,1200,1200]])for(const fine of [false,true]){
   const h=harness({width,height,touch:5,fine,coarse:!fine});
   h.environment.screen={width,height:screenHeight,orientation:{type:'landscape-primary'}};h.refresh();
   assert(h.classes.has('sengoku-tablet-landscape'),width+'×'+height);assert(!h.classes.has('sengoku-tablet-portrait'));assert(!h.classes.has('sengoku-desktop-fit'));

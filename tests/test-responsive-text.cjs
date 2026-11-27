@@ -221,4 +221,117 @@ test('the clock, balances and controls share one header row on a landscape table
   property('#app.chronicle-shell .topbar.chronicle-ledger .header-actions', 'grid-row', '1', header);
 });
 
-console.log(count + ' responsive text structure checks passed. Rendered bounds require browser QA.');
+// A focused used-value check for the shared tablet dialog. These three modal
+// selectors have the same (1,2,1) specificity, so manifest order decides their
+// width/left cascade. This deliberately is not a browser layout implementation.
+const { viewportBox } = require('../social-viewport.js');
+const { tabletPortraitMode, tabletLandscapeMode } = require('../desktop-fit.js');
+const polishRules = parseRules(read('responsive-polish.css'));
+const tabletRules = parseRules(read('tablet-layout.css'));
+const landscapeRules = parseRules(read('tablet-landscape.css'));
+const tabletScope = 'html:is(.sengoku-tablet-portrait, .sengoku-tablet-landscape)';
+const sharedDialog = polishRules.filter(rule => rule.declarations['--dialog-width'] && rule.selectors.some(selector => selector.includes('#modal.modal')));
+assert.equal(sharedDialog.length, 1, 'The shared dialog geometry must have one source');
+const tabletDialog = declarations(tabletScope + ' #modal.modal', tabletRules);
+const landscapeDialog = declarations('html.sengoku-tablet-landscape #modal.modal', landscapeRules);
+const wideDialog = declarations('#modal:is(.start-castle-modal,.level-guide-modal,.officer-comparison-modal,.army-planner-modal)', polishRules);
+// All geometry fixtures below are wider than 701px. The later :root media rule
+// therefore applies, but the tablet root's (0,1,1) specificity beats :root.
+const tabletVariables = { ...declarations(':root', polishRules), ...declarations(tabletScope, tabletRules) };
+
+function pixels(value, variables, environment, viewport, depth = 0) {
+  assert(depth < 20, 'Cyclic dialog custom property: ' + value);
+  let expression = String(value);
+  for (let match; (match = /\b(var|env)\(/.exec(expression));) {
+    const start = match.index + match[0].length;
+    let end = start, nesting = 1;
+    while (end < expression.length && nesting) {
+      if (expression[end] === '(') nesting++;
+      if (expression[end] === ')') nesting--;
+      end++;
+    }
+    assert.equal(nesting, 0, 'Unclosed CSS function: ' + expression);
+    const [name, ...fallback] = splitSelectors(expression.slice(start, end - 1));
+    const replacement = (match[1] === 'var' ? variables : environment)[name] ?? (fallback.length ? fallback.join(',') : undefined);
+    assert.notEqual(replacement, undefined, 'Missing CSS value: ' + name);
+    expression = expression.slice(0, match.index) + '(' + pixels(replacement, variables, environment, viewport, depth + 1) + ')' + expression.slice(end);
+  }
+  expression = expression.replace(/(\d*\.?\d+)(px|d?vw|d?vh|%)/g, (_, number, unit) => String(Number(number) * (unit === 'px' ? 1 : /vh$/.test(unit) ? viewport.height / 100 : viewport.width / 100)))
+    .replace(/\bcalc\(/g, '(').replace(/\b(min|max)\(/g, 'Math.$1(');
+  // Only numeric arithmetic and the two explicitly allowed math functions can
+  // reach Function; declarations cannot execute JavaScript from a stylesheet.
+  assert.match(expression.replace(/\bMath\.(?:min|max)/g, ''), /^[\d\s.,()+*/-]+$/, 'Unsupported CSS length: ' + value);
+  const result = Function('"use strict"; return (' + expression + ');')();
+  assert(Number.isFinite(result), 'Non-finite CSS length: ' + value);
+  return result;
+}
+
+function tabletModalBounds(width, height, { visualViewport, safeLeft = 0, safeRight = 0, wide = false, beforeViewport = false, legacy = false } = {}) {
+  const landscape = tabletLandscapeMode(width, height, 5, true);
+  assert(landscape || tabletPortraitMode(width, height, 5, true), 'Fixture must select a tablet layout');
+  let tablet = tabletDialog, horizontal = landscapeDialog;
+  if (legacy) {
+    // Negative control: restore only the two old CSS declarations in memory.
+    // This leaves the actual production files and shared centering untouched.
+    tablet = { ...tabletDialog, width: 'calc(100% - 24px)', 'max-width': '1080px' };
+    horizontal = { ...landscapeDialog, 'max-width': '1280px' };
+    delete tablet['--dialog-preferred-width'];
+    delete horizontal['--dialog-preferred-width'];
+  }
+  const box = viewportBox(width, height, visualViewport);
+  const style = { ...(wide ? wideDialog : {}), ...sharedDialog[0].declarations, ...tablet, ...(landscape ? horizontal : {}) };
+  const variables = { ...tabletVariables, ...style };
+  if (!beforeViewport) for (const [name, value] of Object.entries(box)) variables['--social-viewport-' + name] = value + 'px';
+  const environment = { 'safe-area-inset-left': safeLeft + 'px', 'safe-area-inset-right': safeRight + 'px' };
+  const length = value => pixels(value, variables, environment, { width, height });
+  const actualWidth = Math.max(length(style['min-width'] || '0'), Math.min(length(style.width), length(style['max-width'])));
+  return { box, left: length(style.left), width: actualWidth, sharedWidth: length(variables['--dialog-width']), gutterLeft: length(variables['--compact-gutter-left']), gutterRight: length(variables['--compact-gutter-right']) };
+}
+
+function assertDialogFits(bounds, label) {
+  const { box, left, width, sharedWidth, gutterLeft, gutterRight } = bounds;
+  const detail = label + ' ' + JSON.stringify(bounds);
+  assert(Math.abs(width - sharedWidth) < .001, 'Width and centering must use the same dimension: ' + detail);
+  assert(left >= box.left + gutterLeft - .001, 'Dialog crossed the left safe gutter: ' + detail);
+  assert(left + width <= box.left + box.width - gutterRight + .001, 'Dialog crossed the right safe gutter: ' + detail);
+  const available = box.width - gutterLeft - gutterRight;
+  assert(Math.abs(left - (box.left + gutterLeft + (available - width) / 2)) < .001, 'Dialog is no longer centered: ' + detail);
+}
+
+const tabletSizes = [[1024, 768], [1180, 820], [1194, 834], [1280, 800], [1366, 1024], [768, 1024], [820, 1180], [1024, 1366]];
+test('tablet modal width and centering share the final cascade in both orientations', () => {
+  const sources = manifest['game-layout.bundle.css'];
+  assert(sources.indexOf('responsive-polish.css') < sources.indexOf('tablet-layout.css'));
+  assert(sources.indexOf('tablet-layout.css') < sources.indexOf('tablet-landscape.css'));
+  for (const [width, height] of tabletSizes) for (const wide of [false, true]) {
+    const bounds = tabletModalBounds(width, height, { wide });
+    assertDialogFits(bounds, width + '×' + height + (wide ? ' wide' : ' ordinary'));
+    assert.equal(bounds.gutterLeft, 12, 'The scoped tablet root beats the 22px :root media rule');
+  }
+});
+
+test('tablet dialogs fit a shifted visual viewport and asymmetric safe insets', () => {
+  for (const [width, height] of tabletSizes) for (const scale of [1, 1.25, 2]) {
+    const visualViewport = { width: width / scale - 48, height: height / scale, offsetLeft: 31, offsetTop: 17, scale };
+    assertDialogFits(tabletModalBounds(width, height, { visualViewport, safeLeft: 44, safeRight: 28 }), width + '×' + height + ' viewport scale ' + scale);
+  }
+});
+
+test('tablet dialogs recompute geometry through portrait landscape portrait and before viewport startup', () => {
+  for (const [width, height] of [[768, 1024], [820, 1180], [1024, 1366]]) {
+    const sequence = [[width, height], [height, width], [width, height]].map(([w, h]) => tabletModalBounds(w, h));
+    sequence.forEach((bounds, step) => assertDialogFits(bounds, width + 'px rotation step ' + step));
+    assert.deepEqual(sequence[2], sequence[0], 'Rotation must restore the portrait dimensions');
+    assertDialogFits(tabletModalBounds(height, width, { beforeViewport: true }), 'CSS fallback before viewport controller');
+  }
+});
+
+test('geometry regression detects the former tablet width-only override', () => {
+  for (const [width, height] of tabletSizes.filter(([w, h]) => w > h)) {
+    const broken = tabletModalBounds(width, height, { legacy: true });
+    assert(broken.left + broken.width > broken.box.left + broken.box.width, 'Negative control must reproduce the reported right overflow');
+    assert.throws(() => assertDialogFits(broken, 'legacy ' + width + '×' + height), /Width and centering must use the same dimension/);
+  }
+});
+
+console.log(count + ' responsive text and dialog geometry checks passed. Rendered bounds require browser QA.');
