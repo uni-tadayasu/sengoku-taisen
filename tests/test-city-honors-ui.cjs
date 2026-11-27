@@ -65,4 +65,49 @@ test('a revoked Kagoshima crest disappears in place and an older response cannot
  h.avatar.observe({id,cityHonors:[award('kagoshima')]},{requestSequence:old});assert.equal(first.innerHTML,'');assert.equal(h.api.resolve(id).length,0);
  assert.equal(h.scope.document.activeElement,focus);assert.equal(JSON.stringify([h.draft,h.scroll]),before);
 });
+test('the ordinary-base crest is issued only by observed public data with fixed artwork and text',()=>{
+ const h=setup(),id='u_castle_member',crest='assets/branding/castle-lord-crest.svg';
+ assert(!h.api.slot({id,homeCastleId:'inuyama',householdRole:'lord',isAdmin:false,isDeputy:false,cityHonors:[award('castle_lord')]}).includes('<img'));
+ h.avatar.observe({save:{state:{id,home:'inuyama',cityHonors:[award('castle_lord')]}},state:{id,cityHonors:[award('castle_lord')]},appearance:{id,cityHonors:[award('castle_lord')]},entitlements:{id,cityHonors:[award('castle_lord')]}});
+ assert.equal(h.api.resolve(id).length,0,'private saves, roles and purchases cannot award the public crest');
+ h.avatar.observe({player:{id,cityHonors:[award('castle_lord'),award('castle_lord'),award('../castle-lord'),award('__proto__')]}});
+ const html=h.api.slot(id);assert.equal((html.match(/data-city-honor=/g)||[]).length,1);
+ assert(html.includes('src="'+crest+'"'));assert(html.includes('alt="城主の紋章"'));assert(!html.includes('untrusted'));assert(!html.includes('../castle-lord'));
+ assert.equal(h.api.text(id),'城主の紋章');
+ h.avatar.observe({playerEvaluations:[{playerId:'u_castle_retainer',cityHonors:[award('castle_lord')]}],messages:[{authorId:'u_castle_author',authorCityHonors:[award('castle_lord')]}],participants:[{sessionId:'vc_'+'b'.repeat(32),cityHonors:[award('castle_lord')]}]});
+ for(const player of ['u_castle_retainer','u_castle_author','vc_'+'b'.repeat(32)])assert(h.api.slot(player).includes(crest),'every public identity format shares the crest');
+});
+test('ordinary crests appear between the avatar and name and coexist with city, paid and court honors',()=>{
+ const h=setup(),id='u_castle_lord',crest='assets/branding/castle-lord-crest.svg';
+ h.scope.SengokuPremiumRuntime={nameMarkup:name=>'<b data-premium-product="phoenix-medallion">'+name+'</b>'};
+ h.scope.SengokuPublicCourt={slot:()=>'<i data-court-seal="pine">左大臣</i>'};
+ vm.runInContext(read('field.js'),h.scope);
+ h.avatar.observe({id,cityHonors:[award('nagoya'),award('castle_lord')]});
+ const person={playerId:id,name:'城下町の領主',homeCastleId:'inuyama',homeCastleName:'犬山城',level:3,defenseTroops:1000};
+ const row=h.scope.SengokuField.publicRow(person);
+ assert(row.indexOf('data-player-avatar')<row.indexOf(crest));assert(row.indexOf(crest)<row.indexOf('data-premium-player'));
+ assert(row.includes('assets/city-honors/nagoya-v1.webp'));assert(row.indexOf(crest)<row.indexOf('assets/city-honors/nagoya-v1.webp'));
+ assert(row.includes('data-premium-product="phoenix-medallion"'));assert(row.includes('data-court-seal="pine"'));
+ const ordinary=h.api.slot(id,{cityId:'inuyama'});assert(ordinary.includes(crest));assert(!ordinary.includes('nagoya-v1.webp'));
+ const major=h.api.slot(id,{cityId:'nagoya'});assert(major.includes(crest));assert(major.includes('nagoya-v1.webp'));
+ const map=h.scope.SengokuField.castleAppearance(person,{marker:true});assert(map.includes(crest),'a scoped ordinary castle map marker retains the crest');
+ assert(map.indexOf('data-player-avatar')<map.indexOf(crest));
+ const cityMap=h.scope.SengokuField.castleAppearance({...person,targetCastleId:'nagoya'},{marker:true});
+ assert(cityMap.includes(crest));assert(!cityMap.includes('nagoya-v1.webp'),'compact markers retain one primary crest without overflowing; full rows keep all medals');
+ const compact=h.node(id);compact.dataset.cityHonorsCity='nagoya';compact.dataset.cityHonorsCompact='true';h.api.refresh();
+ assert(compact.innerHTML.includes(crest));assert(!compact.innerHTML.includes('nagoya-v1.webp'));
+ h.avatar.observe({id,cityHonors:[award('nagoya')]});assert(compact.innerHTML.includes('nagoya-v1.webp'));assert(!compact.innerHTML.includes(crest));
+});
+test('ordinary crests update in every mounted name when roles change without stale restoration or draft loss',()=>{
+ const h=setup(),id='u_changing_member',crest='assets/branding/castle-lord-crest.svg';
+ h.avatar.observe({id,cityHonors:[award('castle_lord')]});const first=h.node(id),second=h.node(id),focus=h.scope.document.activeElement,before=JSON.stringify([h.draft,h.scroll]);
+ const old=h.avatar.beginRequest(),appointed=h.avatar.beginRequest();h.avatar.observe({id,cityHonors:[award('kagoshima')]},{requestSequence:appointed});
+ for(const node of [first,second]){assert(!node.innerHTML.includes(crest));assert(node.innerHTML.includes('kagoshima-immortal-crest.svg'));}
+ h.avatar.observe({id,cityHonors:[award('castle_lord')]},{requestSequence:old});assert(!first.innerHTML.includes(crest));assert.equal(h.api.text(id),'鹿児島城 不死身の紋章');
+ const returned=h.avatar.beginRequest();h.avatar.observe({id,cityHonors:[award('castle_lord')]},{requestSequence:returned});
+ for(const node of [first,second]){assert(node.innerHTML.includes(crest));assert(!node.innerHTML.includes('kagoshima-immortal-crest.svg'));}
+ const revoked=h.avatar.beginRequest();h.avatar.observe({id,cityHonors:[]},{requestSequence:revoked});
+ h.avatar.observe({id,cityHonors:[award('castle_lord')]},{requestSequence:returned});assert.equal(first.innerHTML,'');assert.equal(second.innerHTML,'');
+ assert.equal(h.scope.document.activeElement,focus);assert.equal(JSON.stringify([h.draft,h.scroll]),before);
+});
 for(const {name,run}of tests){run();console.log('PASS '+name);}console.log(`${tests.length} city-honor checks passed; synthetic identities only.`);

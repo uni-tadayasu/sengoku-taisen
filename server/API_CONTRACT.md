@@ -1,5 +1,41 @@
 # 戦国VS（SENGOKU VS）通信API
 
+## Public ordinary-base crest (v5.13.4)
+
+Public identity projections can include the following item in `cityHonors`:
+
+```json
+{"id":"castle_lord","cityName":"一般拠点","title":"城主の紋章"}
+```
+
+This distinction applies to all committed ordinary-base members, including
+lords and retainers. Eligibility is read from `castle_residents` joined to
+`castle_seats`, limited to the canonical `RESIDENCY_CASTLES` catalog and
+memberships whose `joined_at` is not in the future. The current primary
+operator, deputy operator, Kyoto staff, actively banned accounts, and accounts
+with a pending expulsion are excluded even if a stale residency row remains.
+Ordinary-base members who hold a court office remain eligible. Private save
+fields, home/role labels in a response, and purchases neither grant nor remove
+this crest.
+
+The existing six city honors retain their meaning. The crest is appended to
+the server's honor array and can coexist with city-holding medals. Clients may
+place it first between the avatar and the player name. The same public
+projection decorates profiles, chat and other shared identities, including
+the existing flattened `playerCityHonors`, `authorCityHonors`,
+`ownerCityHonors`, and battle-identity fields. Anonymous and signed-in profile
+viewers receive the same distinction. Voice participants retain their
+session-only identity boundary; no player ID is added to that response.
+
+Role or residency changes remove the item on subsequent responses. An empty
+honor array explicitly clears any previous distinction. Clients preserve
+their existing response-order checks so a delayed response cannot restore a
+revoked crest. Projection reads do not modify saves, memberships, roles,
+balances, or gameplay permissions, and this release requires no migration.
+The two city-honor statements remain in one atomic batch: four compound
+SELECT terms and three respectively, with no more than 85 bindings per
+statement for an 80-identity page.
+
 ## Server summons, daily jade and paid-period choices (v5.10.0)
 
 Migrations `0040_paid_rewards.sql` and `0041_player_activity_metrics.sql` are

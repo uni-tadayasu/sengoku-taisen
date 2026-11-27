@@ -135,5 +135,12 @@
   html .sengoku-field .field-detail { padding: 16px; }
   .sengoku-field .field-actions { flex-wrap: wrap; }
   .sengoku-field .field-actions > .field-button { flex: 1 1 8rem; min-height: 44px; }
-  .sengoku-field .field-player-meta { max-width: 38%; }
+  /* Reserve the first line for the portrait, crest and readable player name. */
+  .sengoku-field .field-player-row { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px 10px; }
+  .sengoku-field .field-player-row > .field-player-mon { grid-column: 1; grid-row: 1; align-self: start; }
+  .sengoku-field .field-player-copy { grid-column: 2; }
+  .sengoku-field .field-player-copy .player-evaluation-person { display: flex; align-items: flex-start; }
+  .sengoku-field .field-player-copy .city-honors-slot { flex-shrink: 0; }
+  .sengoku-field .field-player-copy .player-evaluation-name { flex: 1 1 4em; white-space: normal; overflow-wrap: anywhere; }
+  .sengoku-field .field-player-meta { grid-column: 2; max-width: 100%; flex-direction: row; align-items: center; flex-wrap: wrap; gap: 4px 8px; }
 }

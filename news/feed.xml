@@ -9,6 +9,19 @@
     <ttl>60</ttl>
     <atom:link href="https://www.kasai-solutions-inc.com/news/feed.xml" rel="self" type="application/rss+xml"/>
     <item>
+      <title>Ver.5.13.4｜一般拠点のプレイヤーに「城主の紋章」を追加</title>
+      <link>https://www.kasai-solutions-inc.com/news/#v5-13-4</link>
+      <guid isPermaLink="true">https://www.kasai-solutions-inc.com/news/#v5-13-4</guid>
+      <dc:date>2026-11-28</dc:date>
+      <description>一般拠点に所属するプレイヤーの領主アイコンと名前の間に、金の天守を中心にした豪華な「城主の紋章」を表示します。他のプレイヤーからも、チャットやプロフィールなどで確認できます。
+
+金と深紅の城主の紋章：金の天守、二重の金輪、葉飾り、深紅の七宝と宝石を組み合わせた専用の紋章を追加しました。一般拠点に所属する領主と家臣に、領主アイコン、紋章、プレイヤー名の順で表示します。
+
+交流や地図でも共通表示：チャット、領主一覧、公開プロフィール、拠点の詳細、地図など、名前と勲章を共通表示する場所へ反映します。公開プロフィールでは、ログインしていない閲覧者にも紋章が見えます。
+
+現在の所属に合わせて切り替え：運営・サブ運営・京都御所のメンバーは一般拠点の紋章の対象外です。サブ運営への任命時には鹿児島城の紋章に切り替わり、一般拠点への復帰時には城主の紋章を表示します。</description>
+    </item>
+    <item>
       <title>Ver.5.13.3｜運営本人向けのデータ復旧経路を改善</title>
       <link>https://www.kasai-solutions-inc.com/news/#v5-13-3</link>
       <guid isPermaLink="true">https://www.kasai-solutions-inc.com/news/#v5-13-3</guid>
@@ -358,17 +371,6 @@ BANと分けて、拠点から追放：運営のプレイヤー管理で、対�
 城下町と軍議の操作盤：藍鉄の装甲、組子文様、家紋の額を取り入れました。選択中の画面を翡翠色、出陣などの主要操作を朱色、褒賞や資源を金色で示します。
 
 サイバー装飾の強さを変更：「音・表示」の「サイバー装飾」で標準・控えめを選べます。控えめでは枠の発光と背景文様を抑えます。選択は端末に保存され、次回のタイトル画面から反映されます。</description>
-    </item>
-    <item>
-      <title>Ver.5.9.3｜セーブ読み込み前の戦役比較と、行動予定表の時間絞り込み</title>
-      <link>https://www.kasai-solutions-inc.com/news/#v5-9-3</link>
-      <guid isPermaLink="true">https://www.kasai-solutions-inc.com/news/#v5-9-3</guid>
-      <dc:date>2026-11-27</dc:date>
-      <description>ファイルを読み込む前に現在の戦役との差を見比べられます。行動予定表では、まもなく終わる普請や部隊の到着、確定・再開を待っている予定を探せます。
-
-読み込み前に2つの戦役を照合：勢力・本拠・進行年月・家臣・領有拠点・手持ち兵を横に並べ、資源も展開して比較できます。同じ戦役では進行月の差を案内し、保存日時がない古い記録にはその旨を示します。
-
-必要な時間帯と状態だけを表示：行動予定表を残り1分以内・5分以内・確定待ち・再開待ちで絞り込めます。検索語や予定の種類とも併用でき、共通時計の状態と実時間移動を考慮します。</description>
     </item>
   </channel>
 </rss>
