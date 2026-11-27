@@ -17,6 +17,21 @@ const numberTag=value=>String(value).padStart(2,'0');
 const frames=Object.fromEntries(ranks.map(r=>[r,`assets/frames/rank-${r}.svg?v=4.9.10-20261123`]));
 const operatorPortrait={id:'of_b0616adde162',rank:'U',url:'assets/operator-ieyasu-u.webp?v=ieyasu-anime-u-20261123'};
 const deputyPortrait={id:'of_45e0f4cb36ad',rank:'U',revision:'shimazu-relief-u-20261127',file:'deputy-shimazu-yoshihisa-u-relief'};
+// A castle's identity belongs to the location, not the viewer's operator role.
+// Every mode shares these files; level changes keep the historical Goromon gate.
+function castleScene(id,daypart='day'){
+ if(id!=='kagoshima')return null;
+ daypart=['morning','day','night'].includes(daypart)?daypart:'day';
+ const label={morning:'朝',day:'昼',night:'夜'}[daypart],path='assets/responsive/kagoshima-town-'+daypart+'-';
+ return{id,daypart,label,special:true,name:'鹿児島城（鶴丸城）',width:1536,height:864,
+  src:path+'1536.webp',small:path+'400.webp',native:path+'720.webp',
+  srcset:[400,720,1080,1536].map(width=>path+width+'.webp '+width+'w').join(', '),
+  alt:label+'の鹿児島城（鶴丸城）。御楼門、石橋、水堀と石垣、城山を背にした御殿と城下町の特別イラスト'};
+}
+function castlePanorama(id,className='',daypart='day'){
+ const art=castleScene(id,daypart);if(!art)return'';
+ return `<figure class="special-castle-panorama ${esc(className)}" data-castle-scene="${art.id}"><img src="${art.small}" srcset="${art.srcset}" sizes="(max-width: 760px) 90vw, 640px" width="${art.width}" height="${art.height}" alt="${esc(art.alt)}" loading="lazy" decoding="async" draggable="false"><figcaption>鹿児島城（鶴丸城） · ${art.label}の特別絵巻</figcaption></figure>`;
+}
 const cache=new Map(),loaded=new Set(),paintRequests=new WeakMap(),observedPaints=new WeakSet(),deferredTitle=new Set(),decorationRoots=new Set();let observer,scheduled=false;
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const icons={
@@ -50,6 +65,8 @@ function tileInfo(kind,id,variant){
  const item=(kind==='castle'?castles:facilities).get(id);if(!item)return null;
  const limit=kind!=='castle'?32:id==='kyoto_gosho'?128:id==='edo'?64:(data.majorCityIds||['edo','kyoto_gosho','nijo','osaka','nagoya']).includes(id)?48:32;
  const level=Math.max(1,Math.min(limit,Math.round(Number(variant)||1))),artLevel=Math.min(32,level),cell=artLevel-1;
+ const special=kind==='castle'&&castleScene(id);
+ if(special)return{special:true,small:{url:special.small,x:50,y:50,size:'cover'},native:{url:special.native,x:50,y:50,size:'cover'},url:special.src,x:50,y:50,name:special.name,level,artLevel,finalStage:level>32};
  const index=item.index,isCastle=kind==='castle',portraitCell=!isCastle&&portraitFacilities.has(id);
  const small=isCastle?sheetCell('castles-'+numberTag(artLevel),index,16,9):
   sheetCell('facilities-'+numberTag(artLevel)+'-'+(Math.floor(index/32)+1),index%32,8,4);
@@ -59,6 +76,7 @@ function tileInfo(kind,id,variant){
  return{small,native,frame:isCastle?null:[8,4,cell,portraitCell?3:1,portraitCell?4:1].join(','),portraitShape:portraitCell,url:`assets/${kind==='castle'?'castles':'facilities'}/${id}.webp${kind==='facility'?'?v='+facilityArtRevision:''}`,x:(cell%8)/7*100,y:Math.floor(cell/8)/3*100,name:item.name,level,artLevel,finalStage:level>32,portraitCell:kind==='facility'&&portraitFacilities.has(id)};
 }
 function tile(kind,id,className='',variant=1){const t=tileInfo(kind,id,variant);if(!t)return'';
+ if(t.special)return `<span class="painted-art castle-painting special-castle-painting ${esc(className)}" data-castle-art="${esc(id)}" data-art-url="${esc(t.url)}" data-art-small="${esc(t.small.url)}" data-small-width="400" data-small-height="225" data-art-native="${esc(t.native.url)}" data-native-width="720" data-native-height="405" data-art-x="50" data-art-y="50" role="img" aria-label="${esc(t.name)} Lv.${t.level}・御楼門と城下町の特別絵巻" aria-busy="true"><span class="art-surface" aria-hidden="true"></span><span class="art-loading" aria-hidden="true">${icon('town')}</span></span>`;
  const sources=Object.entries({small:t.small,native:t.native}).filter(([,sheet])=>sheet);
  const attributes=sources.map(([name,sheet])=>`data-art-${name}="${esc(sheet.url)}"${sheet.frame?` data-${name}-frame="${sheet.frame}"`:''}`).join(' ');
  const positions=sources.map(([name,sheet])=>`--${name}-x:${sheet.x}%;--${name}-y:${sheet.y}%;--${name}-size:${sheet.size}`).join(';');
@@ -330,6 +348,6 @@ function init(){
  document.addEventListener('visibilitychange',()=>{if(!document.hidden)repaintVisible();});
  if(!observer)global.addEventListener?.('scroll',repaintVisible,{capture:true,passive:true});
  new MutationObserver(artworkMutations).observe(document.body,{childList:true,subtree:true});decorate();}
-global.SengokuArt={portrait,castle:(id,c='',level=1)=>tile('castle',id,c,level),facility:(id,c='',level=1)=>tile('facility',id,c,level),icon,tileInfo,facilityFrame,load,readyCurrent,decorate,schedule,totalIllustrations:8224};
+global.SengokuArt={portrait,castle:(id,c='',level=1)=>tile('castle',id,c,level),castleScene,castlePanorama,facility:(id,c='',level=1)=>tile('facility',id,c,level),icon,tileInfo,facilityFrame,load,readyCurrent,decorate,schedule,totalIllustrations:8224};
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init,{once:true});else init();
 })(window);

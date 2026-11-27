@@ -45,10 +45,11 @@ const vm=require('node:vm');
       'castle-town-raden','castle-town-raden-morning','castle-town-raden-day',
       'moonlit-castle','moonlit-castle-morning','moonlit-castle-day',
       'sakura-town','sakura-town-morning','sakura-town-night',
-      'snow-town','snow-town-day','snow-town-night'
+      'snow-town','snow-town-day','snow-town-night',
+      'kagoshima-town-morning','kagoshima-town-day','kagoshima-town-night'
     ];
     const installedArt=['neon-command-raden-480',...chapters.map(name=>name+'-jade-240'),'brand-'+brandEdition+'-48','emblem-'+brandEdition+'-96',...compactTowns.map(stem=>stem+'-400')];
-    assert.deepEqual([...stored.keys()].filter(key=>key.startsWith(scope+'assets/')).sort(),installedArt.map(stem=>scope+'assets/responsive/'+stem+'.webp').sort(),'Install compact entry illustrations and the twelve compact time-of-day panoramas');
+    assert.deepEqual([...stored.keys()].filter(key=>key.startsWith(scope+'assets/')).sort(),installedArt.map(stem=>scope+'assets/responsive/'+stem+'.webp').sort(),'Install compact entry illustrations and the fifteen compact time-of-day panoramas');
     const home=await (await emit('fetch',request('./','navigate'))).text();
     const scripts=[...home.matchAll(/(?:src|href)="([^"]+\.(?:js|css)(?:\?[^"]*)?)"/g)].map(m=>m[1].replaceAll('&amp;','&'));
     for(const file of scripts)assert((await (await emit('fetch',request(file))).arrayBuffer()).byteLength>100);

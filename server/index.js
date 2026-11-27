@@ -9,6 +9,7 @@ import {handleDeputyOperator} from './deputy-operator.js';
 import {expulsionSnapshot,EXPULSION_MESSAGE} from './expulsion-state.js';
 import {handlePremium,handlePremiumWebhook,resolvePremiumAppearances} from './premium.js';
 import {handleRewards,protectRewardSync,rewardArchiveStatements} from './rewards.js';
+import {applyFieldVictoryLoot,FIELD_LOOT_POLICY} from './field-loot.js';
 import {recordPlayerActivity} from './premium-metrics.js';
 import {handleEvents} from './events.js';
 import {handleRoaming,reconcileRoamingProgress,settleRoamingMarch} from './roaming.js';
@@ -36,7 +37,7 @@ import {requirePromotionOrigin,recordPromotion,readPromotionReport} from './prom
 import {readMusicBroadcast,handleAdminMusic} from './admin-music.js';
 import {lordSupportSql,guardLordSupport,ensureResidency,residencySnapshot,residencyDirectory,residencyStart,initialResidencyStatements,residencyTargetGuard,prepareResidencySuccession,prepareResidencyCpuLosses} from './residency.js';
 const API = '/api/v1';
-const API_VERSION = '5.12.5';
+const API_VERSION = '5.13.0';
 const API_FEATURES = Object.freeze({trades:true,moderation:true,playerExpulsion:true,moderatedNameReuse:true,deputyOperator:true,deputyOfficer:true,kagoshimaProtected:true,premium:true,timedEvents:true,troopTrades:true,roamingBattles:true,roamingDeployment:true,covertDispatch:true,privatePlayerRoles:true,guildIcons:true,court:true,kyotoGosho:true,branches:true,branchBattles:true,branchFacilities:true,audioCalls:true,progression:true,armyPresets:true,allianceStrategy:true,sharedConquest:true,newcomerProtection:true,webPush:true,battleAdviser:true,battleCatalog:true,eventBattleRewards:true,shogunate:true,attackTravel:true,castleResidency:true,retainerCastleStats:true,residencyRelocation:true,maintenanceUpkeep:true,strongholdDurability:true,chatReplies:true,chatMentions:true,covertReturnTravel:true,allianceUnitTravel:true,legacySaveRecovery:true,displayNameVariants:true,courtOffices:true,serverSummons:true,loginRewards:true,paidRerolls:true,supporterChoices:true,premiumGrowthMetrics:true,adminMusicBroadcast:true,rankRiceProduction:true,shogunateApproval:true,imperialSuccession:true,retiredEmperor:true,regency:true,courtEventRoom:true,imperialSuccessionApproval:true});
 const MAX_BODY = 16 * 1024;
 const MAX_SAVE_BODY = 2 * 1024 * 1024;
@@ -1091,20 +1092,21 @@ function systemMailEvent(requestId) {
 }
 function fieldBattleMailContent(battle,side,homes) {
   const attacker=side==='attacker',won=attacker?battle.won:!battle.won,captured=!!battle.capture?.captured,moved=homes.defenderBefore!==homes.defenderAfter;
+  const labels={gold:'金銭',rice:'兵糧',wood:'木材',stone:'石材'},amounts=value=>RESOURCES.map(key=>`${labels[key]}${Number(value?.[key]||0).toLocaleString('ja-JP')}`).join('・');
+  const transferLine=`${attacker?'獲得した戦利品':'資源の損失'}：${amounts(battle.loot)}。`;
   if(battle.battleMode==='branch'){
     const name=battle.branchName||battle.castleName,title=`【${attacker?won?'支拠点攻略':'支拠点攻撃・撤退':won?'支拠点防衛':'支拠点陥落'}】${name}`;
     const lines=[attacker?`${battle.defenderName}の${name}へ出陣しました。`:`${name}が${battle.attackerName}の攻撃を受けました。`,battle.branchFallen?'支拠点は陥落しました。修復が完了するまで親拠点を守る効果はありません。':'支拠点は攻撃を退けました。'];
     if(attacker)lines.push(`出陣兵${battle.troops.toLocaleString('ja-JP')}人、損失${battle.attackerLost.toLocaleString('ja-JP')}人、消費兵糧${battle.foodCost.toLocaleString('ja-JP')}。`);
-    lines.push('結果はすでに保存へ反映済みです。共有地図で残りの支拠点と本城の状態を確認できます。');return{title,body:lines.join('\n')};
+    lines.push(transferLine,'勝利時の報酬は相手の各資源の50%（端数切捨て・所持上限まで）です。','結果はすでに保存へ反映済みです。共有地図で残りの支拠点と本城の状態を確認できます。');return{title,body:lines.join('\n')};
   }
-  const labels={gold:'金銭',rice:'兵糧',wood:'木材',stone:'石材'},amounts=value=>RESOURCES.map(key=>`${labels[key]}${Number(value?.[key]||0).toLocaleString('ja-JP')}`).join('・');
   const mode={reward:'合戦',capture:'占領戦',raid:'襲撃'}[battle.battleMode];
   const lines=[attacker?`${battle.defenderName}の${battle.castleName}へ出陣しました。`:`${battle.attackerName}から${battle.castleName}を攻撃されました。`,
     `結果：${won?attacker?'勝利':'防衛勝利':attacker?'敗北・撤退':'敗北'}。`,`戦闘の種類：${mode}。`];
   if(attacker){
     lines.push(`出陣兵：${battle.troops.toLocaleString('ja-JP')}人。損失：${battle.attackerLost.toLocaleString('ja-JP')}人。`,`消費した兵糧：${battle.foodCost.toLocaleString('ja-JP')}。`);
-    if(battle.battleMode==='reward')lines.push(`勝利報酬：${amounts(battle.rewards)}。${battle.won?'所持上限を反映した実際の獲得量です。':'今回は勝利報酬がありません。'}`);
-    else lines.push(`戦利品：${amounts(battle.loot)}。`);
+    lines.push(transferLine,'勝利時の報酬は相手の各資源の50%（端数切捨て・所持上限まで）です。');
+    if(battle.lootCapacityLimited)lines.push('所持上限により受け取れない資源は相手に残っています。');
     if(captured){
       lines.push(battle.capture.newlyOwned?`${battle.castleName}を所領に加え、帰還兵のうち${battle.capture.garrison.toLocaleString('ja-JP')}人を守備兵として配置しました。`:`相手の${battle.castleName}の領有を解きました。あなたが既に所有していた同城の城郭・城兵・普請は継続します。`);
       lines.push(`あなたの本拠は${CASTLE_BY_ID[homes.attacker].name}のままです。`);
@@ -1133,7 +1135,8 @@ function fieldBattleMailBody(body,event,battle) {
   // or the participant names and outcomes embedded in a battle notification.
   if(event?.kind!=='field-battle'||!battle||event.battleId!==battle.id)return body;
   if(battle.id.startsWith('cb_')){
-    const report=battle.castleName+'が部隊の襲撃を受けました。'+(battle.won?'相手部隊が戦闘で優勢となりました。':'守備隊が相手部隊を退けました。')+'損失は軍団'+battle.defenderLost?.troops+'人・守備兵'+battle.defenderLost?.garrison+'人です。';
+    const resourceLine=battle.lootPolicy===FIELD_LOOT_POLICY.id?'資源の損失：'+[['gold','金銭'],['rice','兵糧'],['wood','木材'],['stone','石材']].map(([key,label])=>label+Number(battle.loot?.[key]||0).toLocaleString('ja-JP')).join('・')+'。':'';
+    const report=battle.castleName+'が部隊の襲撃を受けました。'+(battle.won?'相手部隊が戦闘で優勢となりました。':'守備隊が相手部隊を退けました。')+'損失は軍団'+battle.defenderLost?.troops+'人・守備兵'+battle.defenderLost?.garrison+'人です。'+resourceLine;
     return body===report+'拠点の領有は継続しています。'?report:body;
   }
   const labels=new Map([
@@ -1989,7 +1992,7 @@ async function syncSnapshot(db,row,user,deviceId,now,{settle=false}={}) {
     entitlements:{edo:!!user.is_admin,ieyasuU:!!user.is_admin,kagoshima:!!user.is_deputy,shimazuU:!!user.is_deputy&&!user.is_admin&&!user.is_staff}};
 }
 
-const FIELD_RULES=Object.freeze({minTroops:300,maxTroops:100000,commandCost:1,foodBase:150,foodPerTroop:.3,attackCooldownMs:60000,defenderProtectionMs:60000,proposalLifetimeMs:600000,allianceDurationMs:360000,maxLootPerResource:500,maxLootFraction:.05,maxDefenderLossFraction:.1,operatorProtected:false,staffProtected:false,targetCastles:true,specialBaseBattles:true,branchBattles:true,captureCastles:FIELD_CAPTURE_CASTLES,uncapturableCastles:['edo','kyoto_gosho','kagoshima'],victoryRewards:{gold:500,rice:500,wood:500,stone:500},
+const FIELD_RULES=Object.freeze({minTroops:300,maxTroops:100000,commandCost:1,foodBase:150,foodPerTroop:.3,attackCooldownMs:60000,defenderProtectionMs:60000,proposalLifetimeMs:600000,allianceDurationMs:360000,maxLootPerResource:50000000,maxLootFraction:FIELD_LOOT_POLICY.fraction,lootFraction:FIELD_LOOT_POLICY.fraction,lootPolicy:FIELD_LOOT_POLICY.id,maxDefenderLossFraction:.1,operatorProtected:false,staffProtected:false,targetCastles:true,specialBaseBattles:true,branchBattles:true,captureCastles:FIELD_CAPTURE_CASTLES,uncapturableCastles:['edo','kyoto_gosho','kagoshima'],victoryRewards:{gold:0,rice:0,wood:0,stone:0},
   tactics:[{id:'balanced',name:'正攻法',food:1,modifier:1,loss:1},{id:'assault',name:'総攻撃',food:1.25,modifier:1.18,loss:1.35},{id:'siege',name:'包囲戦',food:1.65,modifier:.97,loss:.8},{id:'ambush',name:'伏兵',food:1.1,modifier:1.06,loss:.95}]});
 // A new fixed home takes effect when the role changes, even while the stored save retains its former castle.
 const FIELD_FIXED_HOME_SQL="(u.id=(SELECT value FROM settings WHERE key='adminUserId') OR EXISTS(SELECT 1 FROM staff_members sm WHERE sm.user_id=u.id) OR EXISTS(SELECT 1 FROM deputy_operator_state ds WHERE ds.user_id=u.id))";
@@ -2100,7 +2103,7 @@ function mapFieldPlayer(row,viewer,relationship,clock,now,targetCastleId=null,in
   const defense=fieldDefense(state,'balanced',0,castleId),self=viewer?.id===row.id,relation=self?'self':fieldRelationStatus(relationship,viewer?.id,clock.elapsedMs);
   inspectDefense?.({castleId,isHome,garrisonTroops:castle.troops,fieldTroops:state.troops,homeContribution:Math.floor(state.troops*(isHome?.45:.18)),wallLevel:isHome?state.buildings.wall:castle.wall,castleLevel:castle.level,castleMaxLevel:castleLevelLimit(castleId),disciplineLevel:state.tech.discipline,armyCount:defense.army.officerCount,armyRankPower:defense.army.rankPower});
   const lastDefended=Math.max(row.last_defended_ms??-Infinity,battleMode==='reward'&&castleId==='kyoto_gosho'?(row.last_kyoto_gosho_defended_ms??-Infinity):-Infinity),protectedUntil=Number.isFinite(lastDefended)?lastDefended+FIELD_RULES.defenderProtectionMs:0;
-  const baseReason=!viewer?'領主として接続してください。':self?'自分の城です。':viewer.householdCastleId&&viewer.householdCastleId===row.household_id?'同じ城の領主・家臣には攻撃できません。':castleId==='edo'&&viewer.courtEdoDenied?COURT_EDO_REASON:cyclePending&&battleMode!=='reward'&&Number(row.lease_expires_at)>now?'この領主は領地を精算中です。':relation==='allied'?'同盟の期間中です。':protectedUntil>clock.elapsedMs?'襲撃後の保護期間です。':!clock.running?'世界の共通時間が停止中です。':'';
+  const baseReason=!viewer?'領主として接続してください。':self?'自分の城です。':viewer.householdCastleId&&viewer.householdCastleId===row.household_id?'同じ城の領主・家臣には攻撃できません。':castleId==='edo'&&viewer.courtEdoDenied?COURT_EDO_REASON:cyclePending&&Number(row.lease_expires_at)>now?'この領主は領地を精算中です。':relation==='allied'?'同盟の期間中です。':protectedUntil>clock.elapsedMs?'襲撃後の保護期間です。':!clock.running?'世界の共通時間が停止中です。':'';
   const branches=fieldBranches(row,castleId,castle,clock,cyclePending,home,baseReason),reason=baseReason||(branches.some(branch=>branch.level>0&&!branch.fallen)?'大都市拠点へ攻めるには、残っている支拠点をすべて先に陥落させてください。':'');
   return {playerId:row.id,name:row.name,clan,householdCastleId:row.household_id||null,householdRole:row.household_id?(row.household_lord===row.id?'lord':'retainer'):null,lordEpoch:Number(row.household_epoch||0),retainerCount:state.retainerSupport?.count||0,evaluation:evaluationRef(row.id),avatarVersion:row.avatar_version||null,homeCastleId:home,homeCastleName:CASTLE_BY_ID[home].name,targetCastleId:castleId,targetCastleName:CASTLE_BY_ID[castleId].name,isHome,battleMode,capturable:battleMode==='capture',majorCity:MAJOR_CITIES.includes(castleId),level:castle.level,keepLevel,durability:defense.durability,defenseTroops:defense.force,defensePower:defense.power,armySummary:defense.army,branches,isAdmin:!!row.is_admin,isDeputy:!!row.is_deputy,isStaff:!!row.is_staff&&!row.is_admin,self,online:row.presence_seen!==null&&Number(row.presence_seen)>now-ONLINE_WINDOW,relationship:relation,protectedUntilElapsedMs:protectedUntil,attackable:!reason,attackReason:reason};
 }
@@ -2502,12 +2505,12 @@ async function fieldAttack(db,user,raw,now,internal={}) {
   const attackerRow=flight?await getSyncRow(db,user.id):await settleWriterCycle(db,user,body.deviceId,body.expectedRevision,now);
   if(flight&&Number(attackerRow?.revision)!==body.expectedRevision)fail(409,'MARCH_RETRY','進軍中の本拠が更新されました。');
   let defenderRow=await getSyncRow(db,target.id);if(!defenderRow?.save_json)fail(404,'FIELD_PLAYER_NOT_FOUND','相手の本拠はまだ共有されていません。');
-  const initialHome=target.is_admin?'edo':target.is_staff?'kyoto_gosho':target.is_deputy?'kagoshima':JSON.parse(defenderRow.save_json).state.home;
-  const requestedCastle=flight?.target_castle_id||body.targetCastleId||initialHome,rewardOnly=fieldBattleMode(target,requestedCastle)==='reward';
-  if(!rewardOnly)defenderRow=await settlePlayerCycle(db,defenderRow,target,now,undefined,{deferActive:true});
+  // Every base now risks its owner's resources. Settle both campaigns before
+  // quoting a balance, including bases whose ownership and troops are protected.
+  defenderRow=await settlePlayerCycle(db,defenderRow,target,now,undefined,{deferActive:true});
   const clock=await getWorldClock(db,now);if(!clock.running)fail(409,'WORLD_PAUSED','世界の共通時間が停止中です。');
   const journey=flight?await advanceReservedMarch(marchContext(db,user,now),attackerRow,clock):null;
-  const defenderJourney=flight&&!rewardOnly?await advanceReservedMarch(marchContext(db,target,now),defenderRow,clock):null;
+  const defenderJourney=flight?await advanceReservedMarch(marchContext(db,target,now),defenderRow,clock):null;
   const attacker=journey?.save||normalizeGameSave(JSON.parse(attackerRow.save_json),user,now,{reading:true,clock}),defender=defenderJourney?.save||normalizeGameSave(JSON.parse(defenderRow.save_json),target,now,{reading:true,clock}),a=attacker.state,d=defender.state;
   if(flight&&(clock.elapsedMs<flight.arrives_ms||a.walking.campaignId!==flight.campaign_id||d.walking.campaignId!==flight.target_campaign_id||Math.floor(clock.elapsedMs/WORLD_CYCLE_MS)!==flightPayload.marker.cycle||a.clan!==flightPayload.marker.clan||a.castles[rally?a.home:flight.source_castle_id]?.owner!==a.clan))fail(409,'MARCH_TARGET_CHANGED','進軍中に物語・拠点・年月が変わったため帰還しました。');
   if(flight)a.march=null;
@@ -2523,7 +2526,7 @@ async function fieldAttack(db,user,raw,now,internal={}) {
   const branch=body.targetBranchId?d.branches.find(branch=>branch.id===body.targetBranchId&&branch.parentCastleId===castleId):null;
   if(body.targetBranchId&&(!branch||branch.level<1||branch.fallen||branch.retreating))fail(409,'BRANCH_TARGET_CHANGED','この支拠点は建設中、陥落済み、または配置が変更されています。地図を更新してください。');
   if(!body.targetBranchId&&d.branches.some(branch=>branch.parentCastleId===castleId&&branch.level>0&&!branch.fallen&&!branch.retreating))fail(409,'BRANCHES_REQUIRED','大都市拠点へ攻めるには、残っている支拠点をすべて先に陥落させてください。');
-  if(Number(attackerRow.cycle_index)<Math.floor(clock.elapsedMs/WORLD_CYCLE_MS)||!rewardOnly&&Number(defenderRow.cycle_index)<Math.floor(clock.elapsedMs/WORLD_CYCLE_MS))fail(409,'CYCLE_SETTLEMENT_REQUIRED','領地の精算中です。共有地図を更新してください。');
+  if(Number(attackerRow.cycle_index)<Math.floor(clock.elapsedMs/WORLD_CYCLE_MS)||Number(defenderRow.cycle_index)<Math.floor(clock.elapsedMs/WORLD_CYCLE_MS))fail(409,'CYCLE_SETTLEMENT_REQUIRED','領地の精算中です。共有地図を更新してください。');
   if(a.gameOver||d.gameOver)fail(409,'BASE_UNAVAILABLE','本拠を失っている領主とは戦えません。');
   if(!a.worldClock)fail(409,'CLOCK_ANCHOR_REQUIRED','先に共通時計へ同期してください。');
   if(!flight&&clock.elapsedMs-a.worldClock.elapsedMs>15000)fail(409,'CLOCK_STALE','共通時計と本拠を同期してから出陣してください。');
@@ -2537,7 +2540,8 @@ async function fieldAttack(db,user,raw,now,internal={}) {
   if(covertShield.last!==null&&Number(covertShield.last)+FIELD_RULES.defenderProtectionMs>clock.elapsedMs)fail(409,'TARGET_PROTECTED','相手は襲撃後の保護期間です。');
   const tactic=FIELD_RULES.tactics.find(t=>t.id===body.tactic),foodCost=Math.ceil(body.troops*FIELD_RULES.foodPerTroop*tactic.food)+FIELD_RULES.foodBase;
   if(body.troops>a.troops||!flight&&(a.command<1||a.resources.rice<foodCost))fail(409,'INSUFFICIENT_FORCE','兵数・指示・兵糧が足りません。');
-  const sharedGuard=sharedShield?await fieldStaffDefense(db,d,clock):{sql:'1=1',args:[]};
+  // Shared palace fortifications are a combat projection, not personal save data.
+  const defenseState=sharedShield?copy(d):d,sharedGuard=sharedShield?await fieldStaffDefense(db,defenseState,clock):{sql:'1=1',args:[]};
   if(!flight)return departFieldMarch({db,user,target,body,now,clock,attacker,attackerRow,defenderRow,defender,castleId,digest,foodCost,courtGuard,sharedGuard,attackerBranches,defenderBranches,protection,support,rally,residencyGuard});
   d.officerHealth=GameEngine.projectOfficerHealth(d,clock.elapsedMs);
   const defenderDurability=branch?branchDurability(branch,clock.elapsedMs):castleDurability(d,castleId,clock.elapsedMs);
@@ -2545,27 +2549,26 @@ async function fieldAttack(db,user,raw,now,internal={}) {
   if(!branch&&castleId!=='kyoto_gosho'&&d.castles[castleId].durability)d.castles[castleId].durability=durabilityRecord(defenderDurability);
   const attackProfile=flightPayload.attackProfile;
   const attackerBefore=journey?.before||copy(attacker),attackPower=fieldAttackPower(body.troops,attackProfile,tactic.modifier);
-  const defense=branch?fieldBranchDefense(d,branch,tactic.id,attackProfile.tech.siege):fieldDefense({...d,castles:{...d.castles,[castleId]:{...d.castles[castleId],troops:d.castles[castleId].troops+support.troops}}},tactic.id,attackProfile.tech.siege,castleId),ratio=attackPower/defense.power,chance=Math.max(.05,Math.min(.95,.5+Math.log(ratio)*.6));
+  const defense=branch?fieldBranchDefense(d,branch,tactic.id,attackProfile.tech.siege):fieldDefense({...defenseState,castles:{...defenseState.castles,[castleId]:{...defenseState.castles[castleId],troops:defenseState.castles[castleId].troops+support.troops}}},tactic.id,attackProfile.tech.siege,castleId),ratio=attackPower/defense.power,chance=Math.max(.05,Math.min(.95,.5+Math.log(ratio)*.6));
   const roll=rally?rally.roll:flightPayload.roll,won=roll<chance;
   const attackerLost=Math.min(body.troops,Math.max(1,Math.floor(body.troops*Math.min(.35,(won?.08+.06/Math.max(.3,ratio):.2+.06/Math.max(.3,ratio))*tactic.loss))));
-  const castle=d.castles[castleId],protectedAssets=battleMode==='reward'||!!branch,defenderLost=protectedAssets?{troops:0,garrison:0}:{troops:Math.min(Math.floor(d.troops*.1),Math.floor(body.troops*(won?.04:.015))),garrison:Math.min(Math.floor(castle.troops*.1),Math.floor(body.troops*(won?.08:.03)))};
+  const castle=d.castles[castleId],protectedForces=battleMode==='reward'||!!branch,defenderLost=protectedForces?{troops:0,garrison:0}:{troops:Math.min(Math.floor(d.troops*.1),Math.floor(body.troops*(won?.04:.015))),garrison:Math.min(Math.floor(castle.troops*.1),Math.floor(body.troops*(won?.08:.03)))};
   a.troops-=attackerLost;if(!flight){a.resources.rice-=foodCost;a.command-=1;}
-  if(!protectedAssets){d.troops-=defenderLost.troops;castle.troops-=defenderLost.garrison;d.morale=Math.max(0,d.morale-2);}
+  if(!protectedForces){d.troops-=defenderLost.troops;castle.troops-=defenderLost.garrison;d.morale=Math.max(0,d.morale-2);}
   const structuralDamage=battleMode==='reward'?null:GameEngine.durabilityAfterBattle(defenderDurability,{won,ratio,captured:won&&battleMode==='capture',elapsedMs:clock.elapsedMs});
   if(structuralDamage)(branch||castle).durability=structuralDamage.record;
   if(branch&&won){branch.fallen=true;d.jobs=d.jobs.filter(job=>job.kind!=='branch'||job.id!==branch.id);}
-  const loot={},rewards={};
-  for(const key of RESOURCES){
-    loot[key]=won&&!protectedAssets?Math.min(FIELD_RULES.maxLootPerResource,Math.floor(d.resources[key]*FIELD_RULES.maxLootFraction*(ratio>=8?0:ratio>=4?.25:1)),100000000-a.resources[key]):0;
-    rewards[key]=won&&battleMode==='reward'?Math.min(FIELD_RULES.victoryRewards[key],100000000-a.resources[key]):0;
-    if(loot[key])d.resources[key]-=loot[key];a.resources[key]+=loot[key]+rewards[key];
-  }
+  // The sole resource reward is a conserved transfer from the defeated owner.
+  // Branch and special-base victories use the same rule; force ratio never
+  // discounts it. Capacity overflow stays with the defender, never disappears.
+  const {loot,capacityLimited}=applyFieldVictoryLoot(a.resources,d.resources,won);
+  const rewards=Object.fromEntries(RESOURCES.map(key=>[key,0]));
   const captured=won&&battleMode==='capture',captureChange=captured?fieldCaptureCastle(a,d,castleId,body.troops,attackerLost):null;
   if(captureChange?.newlyOwned&&structuralDamage)a.castles[castleId].durability=structuralDamage.record;
   const capture={captured,castleId,castleName:CASTLE_BY_ID[castleId].name,attackerPlayerId:user.id,defenderPlayerId:target.id,defenderHomeCastleId:d.home,defenderHomeCastleName:CASTLE_BY_ID[d.home].name,newlyOwned:!!captureChange?.newlyOwned,garrison:captureChange?.garrison||0};
   if(battleMode!=='branch'){a.stats.battles=Math.min(10000000,a.stats.battles+1);if(won)a.stats.wins=Math.min(a.stats.battles,a.stats.wins+1);}
   a.morale=Math.max(0,Math.min(100,a.morale+(won?3:-5)));
-  const battle={id:uid('fb_'),requestId:body.requestId,attackerPlayerId:user.id,attackerName:user.name,defenderPlayerId:target.id,defenderName:target.name,castleId,castleName:CASTLE_BY_ID[castleId].name,battleMode,won,tactic:body.tactic,troops:body.troops,attackerLost,defenderLost,foodCost,loot,rewards,capture,attackPower,defensePower:defense.power,winChance:Math.round(chance*100),occurredElapsedMs:clock.elapsedMs,createdAt:iso(now),attackerRevision:Number(attackerRow.revision)+1,defenderRevision:Number(defenderRow.revision)+(battleMode==='reward'?0:1),nextAttackElapsedMs:clock.elapsedMs+FIELD_RULES.attackCooldownMs,defenderProtectedUntilElapsedMs:clock.elapsedMs+FIELD_RULES.defenderProtectionMs};
+  const battle={id:uid('fb_'),requestId:body.requestId,attackerPlayerId:user.id,attackerName:user.name,defenderPlayerId:target.id,defenderName:target.name,castleId,castleName:CASTLE_BY_ID[castleId].name,battleMode,won,tactic:body.tactic,troops:body.troops,attackerLost,defenderLost,foodCost,loot,rewards,lootPolicy:FIELD_LOOT_POLICY.id,lootFraction:FIELD_LOOT_POLICY.fraction,lootCapacityLimited:capacityLimited,capture,attackPower,defensePower:defense.power,winChance:Math.round(chance*100),occurredElapsedMs:clock.elapsedMs,createdAt:iso(now),attackerRevision:Number(attackerRow.revision)+1,defenderRevision:Number(defenderRow.revision)+1,nextAttackElapsedMs:clock.elapsedMs+FIELD_RULES.attackCooldownMs,defenderProtectedUntilElapsedMs:clock.elapsedMs+FIELD_RULES.defenderProtectionMs};
   if(structuralDamage)battle.durability=structuralDamage;
   const succession=won&&castleId===defenderHomeBefore&&!branch&&battleMode!=='reward'?await prepareResidencySuccession(db,{userId:target.id,castleId,battleId:battle.id,kind:'field',now}):{guard:{sql:'1=1',args:[]},succession:null,statements:()=>[]};
   if(succession.succession)battle.succession=succession.succession;
@@ -2575,11 +2578,11 @@ async function fieldAttack(db,user,raw,now,internal={}) {
   if(rally)rally.applyResult(battle,a);
   GameEngine.recordOfficerBattleState(a,{key:'field:'+battle.id,won,role:'siege',army:attackProfile.army,elapsedMs:clock.elapsedMs});
   if(battleMode!=='reward')GameEngine.recordOfficerBattleState(d,{key:'field:'+battle.id,won:!won,role:'defense',army:branch?branch.commanders:d.army,elapsedMs:clock.elapsedMs});
-  battle.analysis={attackPower,defensePower:defense.power,ratio,winChance:Math.round(chance*100),morale:attackProfile.morale,tactic:tactic.name,roll:Math.round(roll*10000)/10000,reinforcementTroops:branch?0:support.troops,lootScale:ratio>=8?0:ratio>=4?.25:1,explanation:won?'戦力と戦法を反映した確率判定で勝利しました。':chance>=.5?'自軍が有利な予想でしたが、確率判定で敗れました。':'敵の守備戦力が優勢でした。士気・研究・兵数・戦法を見直せます。'};
+  battle.analysis={attackPower,defensePower:defense.power,ratio,winChance:Math.round(chance*100),morale:attackProfile.morale,tactic:tactic.name,roll:Math.round(roll*10000)/10000,reinforcementTroops:branch?0:support.troops,lootScale:1,explanation:won?'戦力と戦法を反映した確率判定で勝利しました。':chance>=.5?'自軍が有利な予想でしたが、確率判定で敗れました。':'敵の守備戦力が優勢でした。士気・研究・兵数・戦法を見直せます。'};
   if(branch)Object.assign(battle,{branchId:branch.id,branchName:branchSite(branch.id).name,branchFallen:!!branch.fallen});
   a.log.unshift({turn:a.turn,text:`${target.name}の${battle.branchName||battle.castleName}へ出陣。${won?branch?'支拠点を陥落':captured?'城を占領':battleMode==='reward'?'勝利報酬を獲得':'戦利品を得て帰還':'撤退'}、兵${attackerLost}人を失いました。`,kind:'pvp'});a.log=a.log.slice(0,200);attacker.savedAt=iso(now);
-  if(battleMode!=='reward'){d.log.unshift({turn:d.turn,text:branch?`${battle.branchName}が${user.name}の攻撃を${won?'受けて陥落':'撃退'}しました。`:`${user.name}の襲撃を受け、兵${defenderLost.troops+defenderLost.garrison}人を失いました。${captured?battle.castleName+'を失い、'+capture.defenderHomeCastleName+'を本拠として継続します。':''}`,kind:'pvp'});d.log=d.log.slice(0,200);defender.savedAt=iso(now);}
-  const attackerNext=normalizeGameSave(attacker,user,now,{clock}),defenderNext=battleMode==='reward'?null:normalizeGameSave(defender,target,now,{clock});
+  {d.log.unshift({turn:d.turn,text:branch?`${battle.branchName}が${user.name}の攻撃を${won?'受けて陥落':'撃退'}しました。`:`${user.name}の襲撃を受け、兵${defenderLost.troops+defenderLost.garrison}人を失いました。${captured?battle.castleName+'を失い、'+capture.defenderHomeCastleName+'を本拠として継続します。':''}`,kind:'pvp'});d.log=d.log.slice(0,200);defender.savedAt=iso(now);}
+  const attackerNext=normalizeGameSave(attacker,user,now,{clock}),defenderNext=normalizeGameSave(defender,target,now,{clock});
   const attackerJson=JSON.stringify(attackerNext),defenderJson=defenderNext?JSON.stringify(defenderNext):null,resultJson=JSON.stringify(battle),nonce=crypto.randomUUID(),[first,second]=pair(user.id,target.id),roleGuard=roleCommitGuard(user),targetRoleGuard=roleCommitGuard(target);
   const gate='EXISTS(SELECT 1 FROM field_requests WHERE actor_id=? AND request_id=? AND commit_token=?)',gateArgs=[user.id,body.requestId,nonce];
   // The receipt gates both campaigns, personal staff metadata and the public

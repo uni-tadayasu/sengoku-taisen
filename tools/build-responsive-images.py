@@ -50,6 +50,9 @@ if __name__ == '__main__':
             if phase != original:
                 name = f'{theme}-{phase}'
                 variants(name, f'responsive/{name}-1536.webp', (400, 720, 1080), quality=73)
+    for phase in ('morning', 'day', 'night'):
+        name = 'kagoshima-town-' + phase
+        variants(name, f'responsive/{name}-1536.webp', (400, 720, 1080), quality=82)
     variants('moonlit-castle', 'premium/moonlit-castle-v1.png', (400, 720, 1080, 1536))
     variants('sakura-town', 'premium/sakura-town-v1.webp', (400, 720, 1080, 1536))
     variants('snow-town', 'premium/snow-town-v1.webp', (400, 720, 1080, 1536))

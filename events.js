@@ -429,7 +429,7 @@
     const selected = state.catalog.find(item => item.id === state.battleId);
     if (!selected) return '<p class="events-note">歴史上の合戦・城攻め・野良兵から戦いを選べます。名前を自由入力する必要はありません。</p>';
     const castle = targetCastle(selected);
-    return `<span class="events-eyebrow">${esc(CATEGORIES[selected.category] || selected.category)}</span><h3>${esc(selected.name)}</h3><p>${esc(selected.description)}</p>${castle ? `<p class="events-note">${esc(castle.name)}に領主がいる場合は、出陣時の守備戦力を敵戦力に用います。</p>` : ''}<p class="events-note">${selected.unificationEligible ? '天下統一型：3つの戦場すべての勝利と最終戦功を達成すると、幕府開設権を獲得できます。必要戦功は設計案で確認できます。' : '通常合戦：出陣ごとの資源報酬と、戦功に応じた褒賞を用意します。'}</p>`;
+    return `<span class="events-eyebrow">${esc(CATEGORIES[selected.category] || selected.category)}</span><h3>${esc(selected.name)}</h3>${global.SengokuArt?.castlePanorama?.(castle?.id,'events-castle-panorama')||''}<p>${esc(selected.description)}</p>${castle ? `<p class="events-note">${esc(castle.name)}に領主がいる場合は、出陣時の守備戦力を敵戦力に用います。</p>` : ''}<p class="events-note">${selected.unificationEligible ? '天下統一型：3つの戦場すべての勝利と最終戦功を達成すると、幕府開設権を獲得できます。必要戦功は設計案で確認できます。' : '通常合戦：出陣ごとの資源報酬と、戦功に応じた褒賞を用意します。'}</p>`;
   }
   function selectedAdvice(state) {
     const plan = state.event?.plan, stage = plan?.stages.find(item => item.id === state.stageId);
@@ -495,14 +495,14 @@
   }
   function opponentMarkup(opponent, { report = false } = {}) {
     if (!opponent) return '';
-    return `<section class="events-defender"><h4>${report ? '出陣時の守備' : esc(opponent.castleName) + 'の守備'}</h4><p>${report ? esc(opponent.castleName) + ' · ' : ''}領主 ${esc(opponent.lordName)}</p><dl class="events-result-stats"><div><dt>守備兵</dt><dd>${number(opponent.defenseTroops)}人</dd></div><div><dt>守備戦力</dt><dd>${number(opponent.defensePower)}</dd></div></dl></section>`;
+    return `<section class="events-defender">${global.SengokuArt?.castlePanorama?.(opponent.castleId,'events-castle-panorama')||''}<h4>${report ? '出陣時の守備' : esc(opponent.castleName) + 'の守備'}</h4><p>${report ? esc(opponent.castleName) + ' · ' : ''}領主 ${esc(opponent.lordName)}</p><dl class="events-result-stats"><div><dt>守備兵</dt><dd>${number(opponent.defenseTroops)}人</dd></div><div><dt>守備戦力</dt><dd>${number(opponent.defensePower)}</dd></div></dl></section>`;
   }
   function defenderView(event, defense = false) {
     const castle = !event.opponent && targetCastle(event.plan);
     const pending = Boolean(castle && event.opponent === undefined);
     const notice = pending ? `<p class="events-note">${esc(castle.name)}${defense ? 'の最新の守備戦力を確認してください。' : 'の守備戦力は出陣時に確認します。'}</p>`
       : castle ? `<p class="events-note">${esc(castle.name)}では各戦場の基本戦力を使います。</p>` : '';
-    return { markup: opponentMarkup(event.opponent) || notice, label: defense ? '守備戦力' : pending && event.status === 'draft' ? '設計時の敵戦力' : '敵戦力',
+    return { markup: opponentMarkup(event.opponent) || (global.SengokuArt?.castlePanorama?.(castle?.id,'events-castle-panorama')||'')+notice, label: defense ? '守備戦力' : pending && event.status === 'draft' ? '設計時の敵戦力' : '敵戦力',
       power: stage => event.opponent ? number(event.opponent.defensePower) : pending && event.status !== 'draft' ? '確認中' : number(stage.enemyPower),
       enemy: stage => event.opponent ? event.opponent.castleName + '守備隊' : stage.enemyName };
   }

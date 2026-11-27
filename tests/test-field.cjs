@@ -132,6 +132,48 @@ test('reward battle receipts show actual additional rewards without implying loo
   const defense=F.battleReportHtml(battle,'staff');assert(defense.includes('攻撃側の勝利報酬'));assert(defense.includes('合戦で敗北'));assert(!/占領|報酬戦|資源は維持/.test(defense));assert(!defense.includes('失った資源'));
   const loss={...battle,won:false,rewards:{gold:0,rice:0,wood:0,stone:0}};assert.equal(F.battleSummary(loss,'me').title,'合戦から撤退');assert(F.battleReportHtml(loss,'me').includes('勝利報酬はありません'));assert.equal(F.battleSummary(loss,'staff').title,'城を守り抜きました');
 });
+test('half-resource victory rules cover ordinary, special, capture and branch bases when the server advertises the policy',()=>{
+  const rules={...modernRules,branchBattles:true,lootPolicy:'half-resources-v1',lootFraction:.5};
+  const targets=[target('ordinary','kiyosu','kiyosu'),target('admin','edo','edo',{isAdmin:true}),target('staff','kyoto_gosho','kyoto_gosho',{isStaff:true}),target('deputy','kagoshima','kagoshima'),target('city','kiyosu','nijo'),target('admin','edo','edo',{targetBranchId:'edo_north',battleMode:'branch',capturable:false})];
+  for(const p of targets){
+    const policy=F.battlePolicy(p,rules);assert.notEqual(policy.mode,'protected');
+    assert.match(policy.description,/決着時点.*金銭・兵糧・木材・石材.*50%/);
+    assert.match(policy.description,/端数切り捨て/);assert.match(policy.description,/所持上限1億/);assert.match(policy.description,/入らない分は相手に残/);
+    assert.doesNotMatch(policy.description,/勾玉|占領不可|報酬戦/);
+  }
+  assert.doesNotMatch(F.battlePolicy(target('old','kiyosu','kiyosu'),modernRules).description,/50%/,'A stale server must not be advertised as already using the new policy');
+});
+test('new battle receipts show actual transferred resources to attacker, defender and observers in every base mode',()=>{
+  const base={id:'half-loot',attackerPlayerId:'me',defenderPlayerId:'other',attackerName:'攻撃',defenderName:'守備',castleId:'kagoshima',castleName:'鹿児島城',won:true,troops:1000,attackerLost:80,defenderLost:{troops:0,garrison:0},lootPolicy:'half-resources-v1',lootFraction:.5,lootCapacityLimited:false,loot:{gold:501,rice:302,wood:203,stone:104},rewards:{gold:0,rice:0,wood:0,stone:0},capture:{captured:false},analysis:{attackPower:9000,defensePower:1200,winChance:90,morale:100,tactic:'正攻法',reinforcementTroops:0,lootScale:1,explanation:'勝利'}};
+  for(const battleMode of ['raid','capture','reward','branch']){
+    const battle={...base,battleMode,...(battleMode==='branch'?{branchFallen:true,branchName:'江戸城 北支拠点'}:{})},before=JSON.stringify(battle);
+    for(const [viewer,heading] of [['me','勝利報酬・奪った資源'],['other','失った資源'],[undefined,'移動した資源']]){
+      const html=F.battleReportHtml(battle,viewer);
+      assert(html.includes(heading));assert(html.includes('data-field-reward-kind="loot"'));assert(!html.includes('data-field-reward-kind="reward"'));
+      for(const [label,amount] of [['金銭',501],['兵糧',302],['木材',203],['石材',104]])assert(html.includes(`<small>${label}<b>${amount}</b></small>`));
+      assert.match(html,/決着時点.*各50%/);assert.match(html,/勝利時の資源移転率/);assert(!html.includes('戦力差による戦利品係数'));assert(!html.includes('勾玉'));
+      assert(!html.includes('占領不可'));assert(!html.includes('受取上限に達した資源'));
+    }
+    assert.equal(JSON.stringify(battle),before,'Reports must never recompute or mutate the committed resource transfer');
+  }
+  const cap=F.battleReportHtml({...base,battleMode:'reward',lootCapacityLimited:true,loot:{gold:0,rice:0,wood:0,stone:0}},'me');
+  assert.match(cap,/残りは守備側に残っています/);assert(cap.includes('<small>金銭<b>0</b></small>'));assert(!cap.includes('<small>金銭<b>500</b></small>'));
+  const lost={...base,battleMode:'branch',won:false,loot:{gold:0,rice:0,wood:0,stone:0}};
+  assert.match(F.battleReportHtml(lost,'me'),/資源の移転はありません/);assert.equal(F.battleSummary(lost,'other').positive,true);
+  assert(!F.battleReportHtml({...base,battleMode:'raid',lootPolicy:undefined,lootFraction:undefined},'me').includes('data-field-loot-policy'));
+});
+test('Kagoshima artwork is identified for every viewer without requiring the deputy role',()=>{
+  const previous=global.SengokuArt;global.SengokuArt={castle:(id,className)=>`<span class="${className}" data-test-castle="${id}"></span>`};
+  try{
+    for(const identity of [{},{isDeputy:false},{isDeputy:true},{self:true},{isAdmin:true}]){
+      const p=target('lord','kagoshima','kagoshima',{...identity,keepLevel:8});
+      const detail=F.castleAppearance(p),marker=F.castleAppearance(p,{marker:true});
+      assert(detail.includes('data-test-castle="kagoshima"'));assert(detail.includes('鹿児島城<br>特別絵巻'));assert(detail.includes('鶴丸城・特別絵巻'));
+      assert(marker.includes('>鶴丸城</span>'));assert(marker.includes('is-kagoshima'));
+    }
+    assert(!F.castleAppearance(target('lord','kiyosu','kiyosu',{keepLevel:8})).includes('鶴丸城'));
+  }finally{if(previous===undefined)delete global.SengokuArt;else global.SengokuArt=previous;}
+});
 test('all 32 keep levels select different cells from the existing per-castle atlas',()=>{
   const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),{SENGOKU_DATA}=require('../engine.js');
   const scope={SENGOKU_DATA,document:{readyState:'loading',addEventListener(){}}};scope.window=scope;

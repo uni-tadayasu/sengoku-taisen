@@ -78,7 +78,12 @@ const totalGzipBytes = rows.reduce((sum,row)=>sum+row.gzipBytes,0);
 // and screen-aware orientation detection. Measured: 3,680,208 raw / 1,017,724
 // gzip bytes (+10,038 / +965 from v5.12.4), without new assets/dependencies.
 // Keep less than 2 KB raw / 1.3 KB gzip headroom for this measured addition.
-const rawBudget=3682000,gzipBudget=1019000;
+// v5.13 adds the Kagoshima scene selector/preview and half-resource battle
+// receipts across field and covert views. Measured entry: 3,688,804 raw /
+// 1,020,551 gzip bytes (+8,596 / +2,827 from v5.12.5). Keep less than
+// 2.2 KB raw / 1.5 KB gzip headroom. The responsive artwork is separate;
+// its compact offline variants are covered by the release-asset budget.
+const rawBudget=3691000,gzipBudget=1022000;
 assert(totalBytes <= rawBudget, `Initial bundles exceed the ${rawBudget} byte budget: ${totalBytes}`);
 assert(totalGzipBytes <= gzipBudget, `Initial bundles exceed the ${gzipBudget} gzip byte budget: ${totalGzipBytes}`);
 const html = fs.readFileSync(path.join(root,'index.html'),'utf8');

@@ -41,7 +41,7 @@ async function fight(h,actor,request){
   // Read metadata at the real arrival time so their maintenance seal and staff
   // projection cover that interval; neither control writes a player save.
   const transit=await advanceControl(h,actor),defender=h.fieldPlayers.get(request.targetPlayerId),targetCastle=request.targetCastleId||save(h,defender).state.home;
-  const defenderTransit=['edo','kyoto_gosho'].includes(targetCastle)?null:await advanceControl(h,defender);
+  const defenderTransit=await advanceControl(h,defender);
   const arrived=await status(h,actor),receipt=arrived.history.find(entry=>entry.id===departure.march.id);assert.equal(receipt?.status,'resolved');assert(receipt.battle);
   return {battle:receipt.battle,transit,defenderTransit};
 }
@@ -163,21 +163,23 @@ await scope('dismissal keeps legitimate personal-home growth while an older back
   assert.deepEqual(restored.castles.osaka,{owner:restored.clan,troops:6200,level:26,wall:12});assert.equal(restored.home,'osaka');
 });
 
-await scope('server reward amounts respect caps and do not borrow defender resources',async h=>{
+await scope('special-base loot respects capacity and leaves overflow with the defender',async h=>{
   const operator=await fixture(h,'報酬の運営',{admin:true}),actor=await fixture(h,'上限報酬の領主',{home:'kawagoe',mutate:s=>s.resources={gold:99999000,rice:100000000,wood:100000000,stone:99999700}}),before=row(h,operator);
-  const result=await outcome(true,()=>fight(h,actor,body(h,actor,operator,'edo')));assert.equal(result.battle.battleMode,'reward');assert.deepEqual(result.battle.rewards,Object.fromEntries(resources.map(key=>[key,Math.min(500,100000000-result.transit.resources[key])])));
-  for(const key of ['gold','stone'])assert(result.battle.rewards[key]>0&&result.battle.rewards[key]<500,key+' retains partial reward coverage: '+result.battle.rewards[key]);assert.equal(result.battle.rewards.rice,500);assert.equal(result.battle.rewards.wood,0);assert.deepEqual(result.battle.loot,zeros);assert.deepEqual(result.battle.defenderLost,{troops:0,garrison:0});assert.deepEqual(row(h,operator),before);assert.equal(result.battle.defenderRevision,before.revision);
-  for(const key of resources)assert.equal(save(h,actor).state.resources[key],result.transit.resources[key]+result.battle.rewards[key]);
+  const result=await outcome(true,()=>fight(h,actor,body(h,actor,operator,'edo')));assert.equal(result.battle.battleMode,'reward');assert.deepEqual(result.battle.rewards,zeros);
+  assert.deepEqual(result.battle.loot,Object.fromEntries(resources.map(key=>[key,Math.min(Math.floor(result.defenderTransit.resources[key]/2),100000000-result.transit.resources[key])])));
+  assert(result.battle.lootCapacityLimited);assert.equal(result.battle.loot.wood,0);assert.deepEqual(result.battle.defenderLost,{troops:0,garrison:0});assert.equal(result.battle.defenderRevision,before.revision+1);
+  for(const key of resources){assert.equal(save(h,actor).state.resources[key],result.transit.resources[key]+result.battle.loot[key]);assert.equal(save(h,operator).state.resources[key],result.defenderTransit.resources[key]-result.battle.loot[key]);}
 });
 
-await scope('Kyoto palace defense projects completed shared jobs without changing defender or shared data',async h=>{
+await scope('Kyoto defense uses shared development while debiting only the attacked member resources',async h=>{
   const operator=await fixture(h,'共通防御の運営',{admin:true}),defender=await fixture(h,'共通防御のスタッフ');await appoint(h,operator,defender);const actor=await fixture(h,'共通防御への攻撃者');
   const publicBase=(await h.api('/field?limit=100',{token:actor.token})).data.players.find(p=>p.playerId===defender.user.id),shared=JSON.parse(baseRow(h).state_json);
-  shared.castleLevel=63;shared.buildings.wall=31;shared.jobs=[{kind:'castle',id:'kyoto_gosho',targetLevel:64,completesElapsedMs:0},{kind:'building',id:'wall',targetLevel:32,completesElapsedMs:0}];h.sql.prepare("UPDATE staff_base SET state_json=?,revision=revision+1 WHERE id='kyoto_gosho'").run(JSON.stringify(shared));
+  shared.castleLevel=63;shared.buildings.wall=31;shared.jobs=[{jobId:'fixture-palace-castle',startedBy:{id:defender.user.id,name:'共同普請'},kind:'castle',id:'kyoto_gosho',targetLevel:64,completesElapsedMs:0},{jobId:'fixture-palace-wall',startedBy:{id:defender.user.id,name:'共同普請'},kind:'building',id:'wall',targetLevel:32,completesElapsedMs:0}];h.sql.prepare("UPDATE staff_base SET state_json=?,revision=revision+1 WHERE id='kyoto_gosho'").run(JSON.stringify(shared));
   const beforeBase=baseRow(h),before=row(h,defender),beforeBackup=backup(h,defender),privateState=save(h,defender).state;
   const result=await outcome(true,()=>fight(h,actor,body(h,actor,defender,'kyoto_gosho')));
-  const expected=Math.round((publicBase.defenseTroops+200)*(1+32*.11)*(1+privateState.tech.discipline*.06)*(1+63*.04)*publicBase.armySummary.rankPower);
-  assert.equal(result.battle.defensePower,expected);assert.deepEqual(baseRow(h),beforeBase);assert.deepEqual(row(h,defender),before);assert.deepEqual(backup(h,defender),beforeBackup);
+  const defenseTroops=result.defenderTransit.castles.kyoto_gosho.troops+Math.floor(result.defenderTransit.troops*.45);
+  const expected=Math.round((defenseTroops+200)*(1+32*.11)*(1+privateState.tech.discipline*.06)*(1+63*.04)*publicBase.armySummary.rankPower);
+  assert.equal(result.battle.defensePower,expected);assert.equal(row(h,defender).revision,before.revision+1);assert.deepEqual(save(h,defender).state.buildings,result.defenderTransit.buildings);for(const key of resources)assert.equal(save(h,defender).state.resources[key],result.defenderTransit.resources[key]-result.battle.loot[key]);const settledBase=JSON.parse(baseRow(h).state_json);assert.equal(settledBase.castleLevel,64);assert.equal(settledBase.buildings.wall,32);assert.deepEqual(settledBase.jobs,[]);
 });
 
 await scope('shared defense revision changes leave the entire reward pending for retry',async h=>{

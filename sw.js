@@ -1,5 +1,5 @@
 /* 本体は先に保存。大きな絵巻は、実際に開いたものから保存します。 */
-const RELEASE='5.12.5-20261128';
+const RELEASE='5.13.0-20261128';
 const CACHE='sengoku-taisen-v'+RELEASE;
 const scopeURL=()=>self.registration?.scope||self.location.origin+'/';
 const currentMatch=(request,name=CACHE)=>caches.open(name).then(cache=>cache.match(request));
@@ -18,7 +18,8 @@ const compactTownStems=new Set([
   'castle-town-raden','castle-town-raden-morning','castle-town-raden-day',
   'moonlit-castle','moonlit-castle-morning','moonlit-castle-day',
   'sakura-town','sakura-town-morning','sakura-town-night',
-  'snow-town','snow-town-day','snow-town-night'
+  'snow-town','snow-town-day','snow-town-night',
+  'kagoshima-town-morning','kagoshima-town-day','kagoshima-town-night'
 ]);
 const compactTownURL=stem=>'./assets/responsive/'+stem+'-400.webp';
 const brandEdition='20261127-jade';

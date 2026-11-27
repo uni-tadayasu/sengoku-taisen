@@ -73,6 +73,33 @@ test('station eligibility honors server stationIds and never enables retroactive
  value.incidents[0].stationIds=[st.id];await h.controller.reload();assert.equal(h.controller.snapshot().stations[0].incidents.length,1);assert(h.controller.prepare('retaliate',{stationId:st.id}));assert.deepEqual(h.controller.snapshot().confirmation.data,{stationId:st.id,incidentId:'incident-old'});
 });
 
+test('only player-target retaliation confirms the advertised half-resource reward; NPC and scouting orders stay unchanged',async()=>{
+ const h=setup(),st=await station(h,10);h.game.state.command=10;
+ const value=h.game.covertStatus(),target={kind:'player',playerId:'lord-defender',castleId:'odawara',name:'小田原城',playerName:'守備する領主'};
+ value.rules.lootPolicy='half-resources-v1';value.rules.lootFraction=.5;value.stations[0].target=target;
+ value.incidents=[{id:'incident-loot',sourceCastleId:'edo',kind:'field',occurredElapsedMs:st.createdElapsedMs,available:true,stationIds:[st.id],expiresElapsedMs:null}];
+ h.status={...h.status,linked:true,stamp:'loot-online'};h.loadHook=async()=>({ok:true,covert:value});await h.controller.reload();
+ const before=clone(h.game.state.resources);assert(h.controller.prepare('retaliate',{stationId:st.id}));
+ const text=h.controller.snapshot().confirmation.description;assert.match(text,/金銭・兵糧・木材・石材.*各50%/);assert.match(text,/端数切り捨て/);assert.match(text,/所持上限1億/);assert.match(text,/入らない分は相手に残ります/);assert.doesNotMatch(text,/勾玉/);assert.match(markup(h.controller.snapshot()),/対プレイヤー拠点での勝利報酬/);
+ h.controller.cancel();value.stations[0].target={kind:'castle',castleId:'odawara',name:'小田原城'};await h.controller.reload();assert(h.controller.prepare('retaliate',{stationId:st.id}));assert.doesNotMatch(h.controller.snapshot().confirmation.description,/50%/);
+ h.controller.cancel();value.targets.push(target);value.sources[0].reserve=5;await h.controller.reload();h.controller.update('targetId',targetKey(target));h.controller.update('countInput','5');h.controller.update('mode','scout');assert(h.controller.prepare('dispatch'));assert.doesNotMatch(h.controller.snapshot().confirmation.description,/勝利報酬|50%/);
+ assert.deepEqual(h.game.state.resources,before,'Confirmation never transfers resources locally');
+});
+
+test('player retaliation receipts and durable history show exact transfers, caps and zero-credit losses while rejecting malformed loot',()=>{
+ const h=setup(),data={requestId:'half-loot-receipt',campaignId:h.game.state.walking.campaignId,sequence:0,stationId:'station-loot',incidentId:'incident-loot'};
+ const receipt={...data,action:'retaliate',foodCost:40,commandCost:1,target:{kind:'player',playerId:'defender',castleId:'kagoshima',name:'鹿児島城'},battle:{won:true,captured:false,deployed:100,ourLost:10,survivors:90,attackPower:5000,defensePower:1500,defenderLost:{troops:0,garrison:0},lootPolicy:'half-resources-v1',lootFraction:.5,lootCapacityLimited:false,loot:{gold:501,rice:302,wood:203,stone:104}}};
+ const clean=cleanReceipt(receipt,'retaliate',data);assert.deepEqual(clean,receipt);assert.notStrictEqual(clean,receipt);
+ const snapshot=h.controller.snapshot();snapshot.receipt=clean;snapshot.covert.history=[clean];
+ const before=JSON.stringify(snapshot),html=markup(snapshot);assert.match(html,/反撃の戦果・資源/);assert.match(html,/勝利報酬・奪った資源/);assert.match(html,/各50%/);
+ for(const[label,amount]of [['金銭',501],['兵糧',302],['木材',203],['石材',104]])assert.equal(html.split(`<span>${label}<b>${amount}</b></span>`).length-1,2,'Result and history must each show the committed '+label+' amount');
+ assert.equal(JSON.stringify(snapshot),before,'Rendering must not recompute or mutate balances and receipts');
+ const capped=clone(receipt);capped.battle.loot={gold:0,rice:0,wood:0,stone:0};capped.battle.lootCapacityLimited=true;snapshot.receipt=capped;snapshot.covert.history=[];assert.match(markup(snapshot),/残りは相手に残っています/);assert.match(markup(snapshot),/<span>金銭<b>0<\/b><\/span>/);
+ const lost=clone(capped);lost.battle.won=false;lost.battle.lootCapacityLimited=false;assert(cleanReceipt(lost,'retaliate',data));snapshot.receipt=lost;assert.match(markup(snapshot),/敗北したため.*資源の移転はありません/);
+ for(const alter of [r=>r.battle.loot.gold=-1,r=>r.battle.loot.rice=Infinity,r=>r.battle.loot.wood=.5,r=>r.battle.loot.stone=100000001,r=>delete r.battle.loot.gold,r=>r.battle.lootFraction=.4,r=>r.battle.lootPolicy='unknown',r=>r.battle.won=false]){const bad=clone(receipt);alter(bad);assert.equal(cleanReceipt(bad,'retaliate',data),null);}
+ const legacy=clone(receipt);for(const key of ['loot','lootPolicy','lootFraction','lootCapacityLimited'])delete legacy.battle[key];assert(cleanReceipt(legacy,'retaliate',data));snapshot.receipt=legacy;assert(!markup(snapshot).includes('data-covert-loot-policy'));
+});
+
 test('Kyoto-origin retaliation at Edo uses the private Emperor or Regent capability while scouting and stationing remain available',async()=>{
  const h=setup(),st=await station(h,10);h.game.state.command=10;const value=h.game.covertStatus(),source=value.sources[0];source.castleId='kyoto_gosho';source.name='京都御所';source.reserve=20;source.unitType='ashigaru';source.unitName='足軽';value.stations[0].sourceCastleId='kyoto_gosho';value.stations[0].target={kind:'player',playerId:'operator',castleId:'edo',name:'江戸城',playerName:'領主'};value.incidents=[{id:'incident-kyoto',sourceCastleId:'kyoto_gosho',kind:'field',occurredElapsedMs:st.createdElapsedMs,available:true,stationIds:[st.id],expiresElapsedMs:null}];value.rules.canAttackEdoFromKyoto=false;
  h.status={...h.status,linked:true,stamp:'online'};h.loadHook=async()=>({ok:true,covert:value});await h.controller.reload();h.controller.update('sourceId','kyoto_gosho');h.controller.update('targetId',targetKey(value.targets.find(t=>t.castleId==='edo')));h.controller.update('countInput','5');
