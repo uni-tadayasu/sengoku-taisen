@@ -9,7 +9,7 @@ Date: 2026-11-28 (JST)
 - Keep text at its native size and use document scrolling. Separate the balances from the calendar and header actions; reflow the cards according to their actual container width and text size.
 - Use the available width for the town, headings, controls, lists, and forms. Preserve town-art aspect ratio and the separate community dock slot.
 - Bound modal geometry to the visible viewport, keeping the header and footer available while the body scrolls. Preserve the existing short-viewport fallback and social keyboard handling.
-- All new CSS selectors require `html.sengoku-tablet-portrait`. No server, gameplay, persistence format, image, font, or dependency changes are included.
+- All new CSS selectors require `html.sengoku-tablet-portrait`. No server behavior, gameplay, persistence format, image, font, or dependency changes are included. The repository's API version constant is aligned to 5.12.4 for its existing release-consistency checks; this UI release does not require a Worker redeployment.
 
 ## Local verification
 
@@ -24,9 +24,13 @@ Passed:
 - `node tests/test-ui-continuity.cjs` — 14 cases.
 - `node tests/test-minified-runtime.cjs` — 75 public globals and 62 campaign checkpoints, including save continuity/corruption recovery.
 - `node tests/test-asset-budget.cjs`
+- `node server/test-profile-name.mjs` — 9 scenarios / 143 API calls.
+- `node server/test-succession-approval.mjs` — 27 scenarios / 816 API calls.
 - `git diff --check`
 
 The complete interface/entry suites preceded the final small CSS refinements to mid-size balance alignment and the title descendant selector. The final generated bundle and build consistency were checked afterward.
+
+The first CI pass identified the stale API version constant in the profile-name, succession-approval, and reward health assertions. The constant was updated without changing the assertions or server behavior.
 
 ## Browser checks
 
