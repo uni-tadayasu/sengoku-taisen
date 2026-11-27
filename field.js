@@ -185,7 +185,7 @@ function mount(container,options={}){
   function listen(node,type,fn){node.addEventListener(type,fn);listeners.push(()=>node.removeEventListener(type,fn));}
   function structure(){
     map?.destroy();map=null;
-    container.innerHTML=`<div class="sengoku-field"><div class="field-toolbar"><div class="field-world-count"><span>SHARED WORLD</span><strong data-field-summary>領主の拠点を確認中</strong></div><label class="field-search">${icon('search')}<input type="search" data-field-input="search" aria-label="領主・城・勢力を検索" placeholder="領主・城・勢力を検索"></label><select data-field-input="filter" class="field-filter" aria-label="表示する領主"><option value="all">すべての領主</option><option value="online">接続中</option><option value="allied">同盟中</option></select><button type="button" class="field-icon-button" data-field-action="refresh" aria-label="共有フィールドを更新" title="更新">${icon('refresh')}</button></div><div class="field-feedback" data-field-feedback role="status" hidden></div><div class="field-workspace"><section class="field-map-column"><div class="geographic-map-panel field-map-panel"><div class="geographic-map-host" data-field-map></div></div><div class="field-list-heading"><h2>領主の本拠と所領</h2><span data-field-filter-label></span></div><div class="field-player-grid" data-field-players></div><div class="field-pagination" data-field-pagination></div></section><aside class="field-sidebar"><nav class="field-tabs" role="tablist" aria-label="共有フィールドの情報"><button type="button" data-field-action="tab" data-tab="base" role="tab">本拠</button><button type="button" data-field-action="tab" data-tab="diplomacy" role="tab">外交<span data-field-incoming></span></button><button type="button" data-field-action="tab" data-tab="reports" role="tab">合戦報告</button></nav><div class="field-detail" data-field-detail role="tabpanel"></div></aside></div><p class="field-footnote">登録された領主の本拠と所有大都市を、実際の城跡の位置に表示しています。本拠の絵は天守、所領の絵は城郭の成長に連動します。通常の城は現在の領主を表示します。「城の領主と家臣」でプレイヤー家臣と継承順を確認できます。名前や位階の横の役職名は、現在の公職を表します。</p></div>`;
+    container.innerHTML=`<div class="sengoku-field"><div class="field-toolbar"><div class="field-world-count"><span>SHARED WORLD</span><strong data-field-summary>領主の拠点を確認中</strong></div><label class="field-search">${icon('search')}<input type="search" data-field-input="search" aria-label="領主・城・勢力を検索" placeholder="領主・城・勢力を検索"></label><button type="button" class="field-button input-list-button" data-field-action="search-list" aria-label="領主・城・勢力の一覧から選ぶ">一覧</button><select data-field-input="filter" class="field-filter" aria-label="表示する領主"><option value="all">すべての領主</option><option value="online">接続中</option><option value="allied">同盟中</option></select><button type="button" class="field-icon-button" data-field-action="refresh" aria-label="共有フィールドを更新" title="更新">${icon('refresh')}</button></div><div class="field-feedback" data-field-feedback role="status" hidden></div><div class="field-workspace"><section class="field-map-column"><div class="geographic-map-panel field-map-panel"><div class="geographic-map-host" data-field-map></div></div><div class="field-list-heading"><h2>領主の本拠と所領</h2><span data-field-filter-label></span></div><div class="field-player-grid" data-field-players></div><div class="field-pagination" data-field-pagination></div></section><aside class="field-sidebar"><nav class="field-tabs" role="tablist" aria-label="共有フィールドの情報"><button type="button" data-field-action="tab" data-tab="base" role="tab">本拠</button><button type="button" data-field-action="tab" data-tab="diplomacy" role="tab">外交<span data-field-incoming></span></button><button type="button" data-field-action="tab" data-tab="reports" role="tab">合戦報告</button></nav><div class="field-detail" data-field-detail role="tabpanel"></div></aside></div><p class="field-footnote">登録された領主の本拠と所有大都市を、実際の城跡の位置に表示しています。本拠の絵は天守、所領の絵は城郭の成長に連動します。通常の城は現在の領主を表示します。「城の領主と家臣」でプレイヤー家臣と継承順を確認できます。名前や位階の横の役職名は、現在の公職を表します。</p></div>`;
   }
   function selectedRelation(){return cache.me?.relationships?.find(r=>r.targetPlayerId===current()?.playerId);}
   function validation(){return attackValidation({player:current(),me:cache.me,identity:opts.identity,access:access(),state:state(),troops:cache.troops,tactic:cache.tactic,rules:cache.rules,clock:clockSnapshot()});}
@@ -260,6 +260,25 @@ function mount(container,options={}){
     global.SengokuOfficerHealthUI?.refresh(host,opts.getGame?.()||global.SengokuBridge?.getGame?.());
     for(const button of container.querySelectorAll('[data-tab]'))button.setAttribute('aria-selected',String(button.dataset.tab===cache.tab));
   }
+  function matchesFieldFilter(player){
+    return (!cache.castleFilter||targetCastleId(player)===cache.castleFilter)&&
+      (cache.filter==='all'||cache.filter==='online'&&player.online||cache.filter==='allied'&&relationshipFor(player,cache.me,opts.identity)==='allied');
+  }
+  function openFieldList(trigger){
+    const candidates=new Map(),openedKey=key;
+    for(const player of cache.players.filter(matchesFieldFilter)){
+      for(const [value,detail] of [[player.name,'領主'],[targetCastleName(player),'城'],[player.clan,'勢力']]){
+        if(value&&!candidates.has(value))candidates.set(value,{value,label:value,detail});
+      }
+    }
+    global.SengokuInputList?.open({trigger,title:'領主・城・勢力の一覧',
+      options:[...candidates.values()].sort((a,b)=>a.label.localeCompare(b.label,'ja')),
+      hint:cache.nextCursor?'現在読み込み済みの領主を表示します。さらに探す場合は「さらに領主を読み込む」を押してください。':'',
+      emptyText:'表示条件に合う領主・城・勢力がありません。',
+      valid:()=>!destroyed&&key===openedKey,
+      onSelect(option){cache.query=option.value;cache.page=1;render();}
+    });
+  }
   function render(){
     if(destroyed)return;if(!container.querySelector('.sengoku-field'))structure();
     if(!current()){cache.selectedId=cache.players.length?targetKey(cache.players.find(p=>p.playerId===opts.identity?.id&&isHomeTarget(p))||cache.players[0]):'';cache.confirm=null;}
@@ -268,7 +287,7 @@ function mount(container,options={}){
     const error=container.querySelector('[data-field-feedback]');error.hidden=!cache.error&&!cache.busy;const feedback=cache.busy?'采配を反映しています…':cache.error;if(error.textContent!==feedback)error.textContent=feedback;
     container.querySelector('[data-field-action="refresh"]').disabled=cache.loading||cache.busy;
     const q=cache.query.normalize('NFKC').toLocaleLowerCase('ja-JP');
-    const filtered=cache.players.filter(p=>(!cache.castleFilter||targetCastleId(p)===cache.castleFilter)&&(cache.filter==='all'||cache.filter==='online'&&p.online||cache.filter==='allied'&&relationshipFor(p,cache.me,opts.identity)==='allied')&&(!q||[p.name,targetCastleName(p),p.clan].some(s=>String(s||'').normalize('NFKC').toLocaleLowerCase('ja-JP').includes(q))));
+    const filtered=cache.players.filter(p=>matchesFieldFilter(p)&&(!q||[p.name,targetCastleName(p),p.clan].some(s=>String(s||'').normalize('NFKC').toLocaleLowerCase('ja-JP').includes(q))));
     const pages=Math.max(1,Math.ceil(filtered.length/4));cache.page=Math.min(Math.max(1,cache.page),pages);
     const castleName=targetCastleName(cache.players.find(p=>targetCastleId(p)===cache.castleFilter));
     patchRegion('[data-field-filter-label]',`${cache.castleFilter?`<button class="field-inline-button" data-field-action="clear-castle">${esc(castleName||'本拠')}の領主 ${icon('close')}</button>`:`${num(filtered.length)}拠点${new Set(cache.players.map(p=>p.playerId)).size<cache.total?` · ${num(new Set(cache.players.map(p=>p.playerId)).size)} / ${num(cache.total)}領主を読込済み`:''}`}`);
@@ -308,6 +327,7 @@ function mount(container,options={}){
   }
   async function click(event){
     const button=event.target.closest?.('[data-field-action],[data-battle-advisor-action]');if(!button||!container.contains(button)||button.disabled)return;event.stopPropagation();if(button.dataset.battleAdvisorAction==='field-apply'){event.preventDefault();applyAdvice();return;}const action=button.dataset.fieldAction;
+    if(action==='search-list'){openFieldList(button);return;}
     if(action==='refresh'){await refresh();return;}if(action==='load-more'){await refresh({append:true});return;}
     if(action==='letter-player'||action==='letter-guild'){if(!opts.identity?.id){opts.onRegister?.();return;}if(global.SengokuLetters?.openCompose)await global.SengokuLetters.openCompose({playerId:button.dataset.playerId,destination:action==='letter-guild'?'guild':'player'});else message('書状を読み込めませんでした。画面を再読み込みしてください。',true);return;}
     if(action==='trade-player'){if(!opts.identity?.id){opts.onRegister?.();return;}if(global.SengokuTrade?.openCompose)await global.SengokuTrade.openCompose({playerId:button.dataset.playerId});else message('交易を読み込めませんでした。画面を再読み込みしてください。',true);return;}

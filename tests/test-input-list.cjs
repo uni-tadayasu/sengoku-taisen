@@ -1,0 +1,55 @@
+'use strict';
+const assert = require('node:assert/strict');
+const {setup} = require('./helpers/dom-model.cjs');
+require('../input-list.js');
+const {doc, host} = setup();
+const trigger = doc.createElement('button');
+host.append(trigger);
+const find = selector => doc.body.querySelector(selector);
+const event = (node, type) => node.dispatchEvent({type, stopPropagation() {}});
+const options = Array.from({length:90}, (_, i) => ({value:'c' + i, label:'城' + i, keywords:i === 55 ? 'ＡＢＣ' : ''}));
+const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+(async () => {
+  let result;
+  const open = extra => global.SengokuInputList.open({trigger, title:'城の一覧', options, onSelect:row=>{result=row.value;}, ...extra});
+  open();
+  let items = () => doc.body.querySelectorAll('[data-list-value]');
+  assert.equal(items().length, 40);
+  event(find('[data-list-more]'), 'click');
+  assert.equal(items().length, 80);
+  let input = find('#input-list-filter');
+  input.value='abc';event(input,'input');
+  assert.equal(items().length,1);
+  event(items()[0],'click');
+  assert.equal(result,'c55');
+  assert.equal(find('#sengoku-input-list'),null);
+
+  let pending = [], valid = true;
+  open({options:[], valid:()=>valid, load:(query,signal)=>new Promise((resolve,reject)=>pending.push({query,signal,resolve,reject}))});
+  input = find('#input-list-filter');
+  pending[0].resolve([{value:'u_one',label:'山田'}]);await pause(0);
+  input.value='山';event(input,'input');
+  assert.equal(items()[0].textContent,'山田','known names can be narrowed with one character');
+  await pause(200);
+  input.value='里';event(input,'input');await pause(200);
+  assert.equal(pending[1].signal.aborted,true);
+  pending[2].resolve([{value:'u_two',label:'里見'}]);
+  pending[1].resolve([{value:'stale',label:'過去の検索'}]);await pause(0);
+  assert.equal(items().length,1);
+  assert.equal(items()[0].textContent,'里見');
+  valid=false;event(items()[0],'click');
+  assert.equal(result,'c55','revoked selection never fills the destination');
+  assert.equal(find('#sengoku-input-list'),null);
+
+  pending=[];open({options:[],load:()=>new Promise((resolve,reject)=>pending.push({resolve,reject}))});
+  pending[0].reject(new Error('offline'));await pause(0);
+  assert.equal(find('[data-list-retry]').hidden,false);
+  event(find('[data-list-retry]'),'click');
+  pending[1].resolve([{value:'u3',label:'<b>領主</b>'}]);await pause(0);
+  assert.equal(items()[0].textContent,'<b>領主</b>');
+  assert.equal(items()[0].querySelector('b'),null);
+  event(find('[data-list-close]'),'click');
+  assert.equal(doc.activeElement,trigger);
+  console.log('PASS list filtering, paging, choosing, late results, revoked fields, network retry and cancel.');
+})().catch(error => {find('#sengoku-input-list')?.close();console.error(error);process.exitCode=1;});

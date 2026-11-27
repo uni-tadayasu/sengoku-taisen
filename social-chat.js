@@ -53,7 +53,7 @@
     function focusInput() { const input = find('#social-chat-input'); try { input?.focus({preventScroll:true}); } catch { input?.focus(); } }
     function form() {
       const state = draft();
-      return `<form id="social-chat-form" class="social-chat-form social-chat-enhanced"><div id="social-chat-compose-context" class="social-chat-compose-context" hidden><div id="social-chat-reply-preview" hidden></div><div id="social-chat-selected-mentions" class="social-chat-selected-mentions" hidden></div></div><div class="social-chat-compose-tools">${global.SengokuOperatorTemplatePicker?.launcher()||''}<button type="button" class="social-chat-tool" data-chat-action="mention-open"${capabilities().chatMentions ? '' : ' hidden'} aria-label="領主をメンションする">@ メンション</button><small id="social-chat-register">上位の領主へは敬語で送信します。</small><span id="social-chat-count" aria-live="off">${(state?.text || '').length}/300</span></div><label class="social-sr-only" for="social-chat-input">メッセージ</label><textarea id="social-chat-input" name="text" rows="2" maxlength="300" placeholder="メッセージを入力。@で宛先を選択" aria-describedby="social-chat-register social-chat-help" aria-autocomplete="list" aria-controls="social-chat-mention-list" aria-expanded="false" required>${esc(state?.text || '')}</textarea><div id="social-chat-mention-menu" class="social-chat-mention-menu" hidden><div class="social-chat-mention-heading"><span>メンションする領主を選択</span><button type="button" class="social-chat-tool" data-chat-action="mention-close" aria-label="メンション候補を閉じる">閉じる</button></div><div id="social-chat-mention-list" role="listbox" aria-label="メンション候補"></div><small id="social-chat-mention-status" role="status"></small></div><div class="social-chat-form-bottom"><span id="social-chat-help">送信ボタンで送信。パソコンではEnterで送信、Shift+Enterで改行。</span><button type="submit" class="social-button primary">送信</button></div></form>`;
+      return `<form id="social-chat-form" class="social-chat-form social-chat-enhanced"><div id="social-chat-compose-context" class="social-chat-compose-context" hidden><div id="social-chat-reply-preview" hidden></div><div id="social-chat-selected-mentions" class="social-chat-selected-mentions" hidden></div></div><div class="social-chat-compose-tools">${global.SengokuOperatorTemplatePicker?.launcher()||''}<button type="button" class="social-chat-tool" data-chat-action="mention-open"${capabilities().chatMentions ? '' : ' hidden'} aria-label="メンションする領主の一覧を開く">@ メンション一覧</button><small id="social-chat-register">上位の領主へは敬語で送信します。</small><span id="social-chat-count" aria-live="off">${(state?.text || '').length}/300</span></div><label class="social-sr-only" for="social-chat-input">メッセージ</label><textarea id="social-chat-input" name="text" rows="2" maxlength="300" placeholder="メッセージを入力。@で宛先を選択" aria-describedby="social-chat-register social-chat-help" aria-autocomplete="list" aria-controls="social-chat-mention-list" aria-expanded="false" required>${esc(state?.text || '')}</textarea><div id="social-chat-mention-menu" class="social-chat-mention-menu" hidden><div class="social-chat-mention-heading"><span>メンションする領主を選択</span><button type="button" class="social-chat-tool" data-chat-action="mention-close" aria-label="メンション候補を閉じる">閉じる</button></div><div id="social-chat-mention-list" role="listbox" aria-label="メンション候補"></div><small id="social-chat-mention-status" role="status"></small></div><div class="social-chat-form-bottom"><span id="social-chat-help">送信ボタンで送信。パソコンではEnterで送信、Shift+Enterで改行。</span><button type="submit" class="social-button primary">送信</button></div></form>`;
     }
     function setHTML(node, value) { if (node && node.innerHTML !== value) node.innerHTML = value; }
     function updateDecorations() {
@@ -130,12 +130,34 @@
     function choose(userId) {
       const state = draft(), input = find('#social-chat-input'), person = candidates.find(p => p.userId === String(userId));
       if (!state || !input || !person || !menuToken) return;
-      if (state.mentions.length >= 8) { options.notice?.('一度にメンションできるのは8人までです。', true); return; }
       const token = mentionToken(input.value, input.selectionStart); if (!token || token.start !== menuToken.start) { closeMenu(); return; }
-      const inserted = '@' + person.name + ' ', next = input.value.slice(0, token.start) + inserted + input.value.slice(token.end);
+      insertMention(person, input, state, token.start, token.end, '');
+    }
+    function insertMention(person, input, state, start, end, prefix) {
+      if (state.mentions.length >= 8) { options.notice?.('一度にメンションできるのは8人までです。', true); return; }
+      const inserted = prefix + '@' + person.name + ' ', next = input.value.slice(0, start) + inserted + input.value.slice(end);
       if (next.length > 300) { options.notice?.('メンションを含めて300文字以内にしてください。', true); return; }
       state.text = next; state.mentions.push(person); state.revision++; input.value = next; closeMenu(); updateDecorations(); focusInput();
-      input.setSelectionRange?.(token.start + inserted.length, token.start + inserted.length);
+      input.setSelectionRange?.(start + inserted.length, start + inserted.length);
+    }
+    function browseMentions(button, input, state) {
+      const c = context(), original = input.value, start = input.selectionStart ?? original.length, end = input.selectionEnd ?? start;
+      const token = start === end ? mentionToken(original, start) : null;
+      const insertAt = token?.start ?? start, prefix = insertAt && !/\s/.test(original[insertAt - 1]) ? ' ' : '';
+      const valid = () => button.isConnected && c?.key === context()?.key && capabilities().chatMentions &&
+        find('#social-chat-input') === input && !input.disabled && input.value === original && draft() === state;
+      const rows = items => people(items).filter(p => p.userId !== String(c.actorId) && !state.mentions.some(m => m.userId === p.userId))
+        .map(p => ({value:p.userId, label:p.name, detail:p.userId}));
+      const load = c.channel === 'world' ? async (query, signal) => {
+        if (!valid() || signal?.aborted || Array.from(query).length === 1 || query.length > 98) return [];
+        const found = query ? await options.search?.(query) : await global.SengokuSocial?.getOnlineCandidates?.();
+        return valid() && !signal?.aborted ? rows(found) : [];
+      } : undefined;
+      closeMenu();
+      global.SengokuInputList.open({trigger:button, title:'メンションする領主', options:rows(options.candidates?.(c)), valid, load,
+        emptyText:'この会話で選べる領主がいません。',
+        onSelect:entry=>{if(valid())insertMention({userId:entry.value,name:entry.label},input,state,insertAt,end,prefix);}
+      });
     }
     function click(event) {
       const button = event.target?.closest?.('[data-chat-action]');
@@ -152,6 +174,7 @@
       else if (action === 'mention-close') { closeMenu(); focusInput(); }
       else if (action === 'mention-pick') choose(button.dataset.chatUser);
       else if (action === 'mention-open' && input && capabilities().chatMentions) {
+        if (global.SengokuInputList) { browseMentions(button, input, state); return; }
         const start = input.selectionStart ?? input.value.length, end = input.selectionEnd ?? start;
         const prefix = start && !/\s/.test(input.value[start - 1]) ? ' @' : '@';
         if (input.value.length - (end - start) + prefix.length > 300) return;

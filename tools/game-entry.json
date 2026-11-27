@@ -87,6 +87,7 @@
     "raden-game.css",
     "raden-surfaces.css",
     "raden-motion.css",
+    "input-list.css",
     "responsive-text.css"
   ],
   "game-preferences.bundle.js": [
@@ -95,6 +96,7 @@
   ],
   "game-core.bundle.js": [
     "variant-text.js",
+    "input-list.js",
     "officers-data.js",
     "travel.js",
     "engine.js",

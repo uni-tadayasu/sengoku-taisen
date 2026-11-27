@@ -9,6 +9,17 @@
     <ttl>60</ttl>
     <atom:link href="https://www.kasai-solutions-inc.com/news/feed.xml" rel="self" type="application/rss+xml"/>
     <item>
+      <title>Ver.5.9.16｜入力欄の「一覧」から城・武将・領主を選択</title>
+      <link>https://www.kasai-solutions-inc.com/news/#v5-9-16</link>
+      <guid isPermaLink="true">https://www.kasai-solutions-inc.com/news/#v5-9-16</guid>
+      <dc:date>2026-11-27</dc:date>
+      <description>城名や領主の公開IDを調べて入力する手間を減らしました。対象の入力欄にある「一覧」から候補を検索して選べます。
+
+領主と宛先を選択：公開プロフィール、フレンド検索、交易相手、同盟の招待、チャットのメンション、運営便の宛先などに対応しました。候補を選ぶと入力欄に反映され、送信・招待は各画面で確認できます。
+
+城・施設・武将の候補：天下地図や城下普請帳、武将名鑑、軍団や奉行の編成では、現在の条件に合う候補を選べます。進軍と戦果、修復・守備台帳などでも城名を一覧から入力できます。</description>
+    </item>
+    <item>
       <title>Ver.5.9.15｜同じ朝廷の役職バッジが二つ並ぶ表示を修正</title>
       <link>https://www.kasai-solutions-inc.com/news/#v5-9-15</link>
       <guid isPermaLink="true">https://www.kasai-solutions-inc.com/news/#v5-9-15</guid>
@@ -400,17 +411,6 @@ BGMの切り替え・再開時の重複再生を修正：短時間の連続選�
 月替わりに耐久を修復：ゲーム内の月替わりに、最大耐久の10%まで修復します。回復100につき木材5・石材4を消費します。月の途中で受けた損傷は、経過時間に応じて修復作業量を計算します。
 
 資材に合わせて回復量を調整：資材が足りない場合は、修復が必要な拠点へ回復量に応じて配分します。満タン・未完成・陥落中・帰還待機中の拠点には日常修復費を掛けません。保存・再読み込みによる同じ月の二重請求を防ぎます。</description>
-    </item>
-    <item>
-      <title>Ver.5.0.7｜奉行の月給を導入。維持できる内政と軍備を考える</title>
-      <link>https://www.kasai-solutions-inc.com/news/#v5-0-7</link>
-      <guid isPermaLink="true">https://www.kasai-solutions-inc.com/news/#v5-0-7</guid>
-      <dc:date>2026-11-26</dc:date>
-      <description>施設の奉行へ月給を支払い、金銭収支を見ながら役目を任せる仕組みを追加しました。おまかせ配置も、任命後の給与負担を考慮します。
-
-奉行一人につき月額50金：建設済み施設の奉行に、ゲーム内1か月で金銭50を支払います。在任した時間に応じた計算で、任命を外した後や軍団・支拠点へ異動した後は給与が止まります。施設維持費とは別の内訳で確認できます。
-
-支拠点軍団と収支を見て配置：おまかせ配置では支拠点軍団の再編成を先に行い、残る武将から奉行を選びます。給与を含めた金銭収支が赤字になる場合は、外すと収支が改善する任命から調整します。手動での任命も利用できます。</description>
     </item>
   </channel>
 </rss>

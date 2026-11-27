@@ -32,7 +32,7 @@ function mount(game=prepared()) {
   const originalCreate=doc.createElement.bind(doc);
   doc.createElement=tag=>{const node=originalCreate(tag);Object.defineProperty(node,'className',{get:()=>node.getAttribute('class')||'',set:value=>node.setAttribute('class',value)});return node;};
   const win={document:doc,SENGOKU_DATA:D,setTimeout(){throw Error('The ledger must not poll');},setInterval(){throw Error('The ledger must not poll');}};
-  vm.runInNewContext(stableSource,{window:win});vm.runInNewContext(source,{window:win});
+  vm.runInNewContext(stableSource,{window:win});vm.runInNewContext(source,{window:win,Event:class{constructor(type,opts){this.type=type;Object.assign(this,opts);}}});
   host.innerHTML='<button id="ledger-launch">修復を確認</button>';const launch=host.querySelector('button');launch.focus();
   let current=game,access={playerId:'test-lord',roleEpoch:1},reads=0;
   const original=game.income;game.income=function(...args){reads++;return original.apply(this,args);};
@@ -128,6 +128,15 @@ test('an unconfirmed shared clock cannot borrow saved timing and recovers on exp
   clock={running:true,speed:2};click(h.dialog.querySelector('[data-defense-refresh]'));assert.match(h.dialog.querySelector('[data-defense-clock]').textContent,/約23秒/);
   clock=null;click(h.dialog.querySelector('[data-defense-refresh]'));assert.match(h.dialog.querySelector('[data-defense-clock]').textContent,/不明/);
   assert.deepEqual(game.state,before);h.ui.destroy();
+});
+test('owned site picker restores a matching row and expires with the ledger session',()=>{
+  const h=mount();let picker;h.win.SengokuInputList={open:options=>{picker=options;}};
+  h.open();const input=h.dialog.querySelector('[data-defense-query]');
+  input.value='該当なし';input.dispatchEvent({type:'input'});assert.equal(h.dialog.querySelectorAll('[data-defense-row]').length,0);
+  click(h.dialog.querySelector('[data-defense-input-list]'));assert(picker.options.length);
+  picker.onSelect(picker.options[0]);assert.equal(input.value,picker.options[0].value);
+  assert(h.dialog.querySelectorAll('[data-defense-row]').length);
+  assert(picker.valid());h.ui.close();assert.equal(picker.valid(),false);
 });
 test('mounted ledger computes only on open or explicit refresh and preserves search, selection and scroll',()=>{
   const h=mount(constrained());assert(h.open());assert.equal(h.reads,1);

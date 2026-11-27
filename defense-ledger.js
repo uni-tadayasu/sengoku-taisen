@@ -222,7 +222,7 @@
     node.innerHTML=`<header class="defense-ledger-header"><div><span>領国を守る</span><h2 id="defense-ledger-title">修復・守備台帳</h2><p id="defense-ledger-description">城と支拠点の損傷、守り、次の月替わりの修復をまとめて確認。</p></div><button type="button" class="button" data-defense-close>閉じる</button></header>
       <div class="defense-ledger-scroll" data-defense-scroll><section data-defense-summary aria-label="修復の見込み"></section><p class="defense-ledger-note" data-defense-note hidden></p>
       <section class="defense-ledger-tools" aria-label="拠点を探す"><div class="defense-ledger-update"><div><p data-defense-clock></p><p data-defense-update role="status"></p></div><button type="button" class="button gold" data-defense-refresh>最新の状況で再計算</button></div>
-      <label class="defense-ledger-search"><span>城名・国・領主を検索</span><input type="search" class="input" data-defense-query maxlength="100" autocomplete="off" placeholder="例：清洲、京都、本拠"></label><div class="defense-ledger-selects">${[['kind','拠点の種類',KINDS],['status','状態',STATUSES],['sort','表示順',SORTS]].map(([key,label,values])=>`<label><span>${label}</span><select class="select" data-defense-filter="${key}">${Object.entries(values).map(([value,name])=>`<option value="${value}">${name}</option>`).join('')}</select></label>`).join('')}</div><div class="defense-ledger-results"><p data-defense-count role="status" aria-live="polite"></p><button type="button" class="text-link" data-defense-reset>条件をリセット</button></div></section>
+      <div class="defense-ledger-search"><label for="defense-site-query">城名・国・領主を検索</label><input id="defense-site-query" type="search" class="input" data-defense-query maxlength="100" autocomplete="off" placeholder="例：清洲、京都、本拠"><button type="button" class="button small" data-defense-input-list aria-label="自領の拠点一覧から選ぶ">一覧</button></div><div class="defense-ledger-selects">${[['kind','拠点の種類',KINDS],['status','状態',STATUSES],['sort','表示順',SORTS]].map(([key,label,values])=>`<label><span>${label}</span><select class="select" data-defense-filter="${key}">${Object.entries(values).map(([value,name])=>`<option value="${value}">${name}</option>`).join('')}</select></label>`).join('')}</div><div class="defense-ledger-results"><p data-defense-count role="status" aria-live="polite"></p><button type="button" class="text-link" data-defense-reset>条件をリセット</button></div></section>
       <ul class="defense-ledger-list" data-defense-list></ul><div class="defense-ledger-empty" data-defense-empty hidden><strong>条件に合う拠点はありません</strong><p>城名や絞り込み条件を変えて確認できます。</p></div><button type="button" class="button defense-ledger-more" data-defense-more hidden>さらに24拠点を表示</button>
       <footer class="defense-ledger-footer"><p>今の領国で管理する拠点の一覧です。城の対CPU防衛力には本隊からの加勢が含まれます。支拠点の基準防衛力は通常戦法・攻撃側の破城技術なしの値です。共通フィールドの対人戦力とは条件が異なります。</p><p>普請の完成、追加の支出、合戦による損傷で見込みは変わります。陥落した支拠点には復旧工事が必要です。京都御所は共同の保護拠点で、資材を使う修復には含みません。</p></footer></div>`;
     node.addEventListener('cancel',event=>{event.preventDefault();close();});
@@ -239,13 +239,24 @@
         const rect=node.getBoundingClientRect();
         if(event.clientX<rect.left||event.clientX>rect.right||event.clientY<rect.top||event.clientY>rect.bottom){close();return;}
       }
-      const button=event.target.closest?.('[data-defense-close],[data-defense-refresh],[data-defense-reset],[data-defense-more],[data-defense-open]');
+      const button=event.target.closest?.('[data-defense-close],[data-defense-refresh],[data-defense-reset],[data-defense-more],[data-defense-open],[data-defense-input-list]');
       if(!button||button.disabled||!session)return;
       if(button.hasAttribute('data-defense-close'))return close();
       if(button.hasAttribute('data-defense-refresh'))return recompute();
       if(button.hasAttribute('data-defense-more')){session.limit+=PAGE_SIZE;renderRows();return;}
       if(button.hasAttribute('data-defense-reset')){session.filters=normalizedFilters();session.limit=PAGE_SIZE;node.querySelector('[data-defense-query]').value='';for(const field of node.querySelectorAll('[data-defense-filter]'))field.value=session.filters[field.dataset.defenseFilter];renderRows();return;}
       const game=activeGame();if(!game)return;
+      if(button.hasAttribute('data-defense-input-list')){
+        if(session.stale&&!recompute())return;
+        const owner=session,input=node.querySelector('[data-defense-query]');
+        const options=filter(session.model,{...session.filters,query:''}).map(row=>({
+          value:row.name,label:row.name,detail:[row.province,KINDS[row.kind],row.label].filter(Boolean).join('・'),keywords:row.owner
+        }));
+        global.SengokuInputList?.open({trigger:button,title:'自領の拠点一覧',options,
+          emptyText:'この条件に合う自領の拠点がありません。',valid:()=>session===owner&&node.open&&Boolean(activeGame()),
+          onSelect(option){input.value=option.value;input.dispatchEvent(new Event('input',{bubbles:true}));}});
+        return;
+      }
       const row=session.model.rows.find(row=>row.key===button.dataset.defenseOpen);
       if(!row)return;
       // A snapshot may outlive a conquest. Recheck the existing ownership guard

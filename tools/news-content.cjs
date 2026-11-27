@@ -44,7 +44,7 @@ function renderNewsContent(p, { section, site }) {
 function renderRss(site) {
   validateReleases(site);
   const page = site.origin + site.pages.news.path;
-  const items = releases.map(release => {
+  const items = releases.slice(0, 30).map(release => {
     const url = page + '#' + releaseId(release);
     const description = [release.summary, ...release.changes.map(item => item.title + '：' + item.text)].join('\n\n');
     // The source records a verified calendar date, not a guessed release time.

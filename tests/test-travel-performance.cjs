@@ -23,7 +23,7 @@ function fixture({rows=[march()],clock={elapsedMs:1000,running:true,speed:1},con
   MutationObserver:class{constructor(fn){mutations=fn;}observe(root){observations.push(root);}},
   setTimeout:(fn,ms)=>{timers.set(++timerId,{fn,ms});return timerId;},clearTimeout:id=>timers.delete(id)};
  class ClockDate extends Date{static now(){return now;}}
- vm.runInNewContext(source,{window:win,Date:ClockDate,JSON,Map,Set,Number,String,Object,Math});
+ vm.runInNewContext(source,{window:win,Event:class{constructor(type,opts){this.type=type;Object.assign(this,opts);}},Date:ClockDate,JSON,Map,Set,Number,String,Object,Math});
  const ui=win.SengokuTravelUI;
  ui.configure({getContext:()=>context,getLocal:()=>{counts.localReads++;return rows;},request,onArrival:()=>counts.arrivals++});
  function countText(node){const property=Object.getOwnPropertyDescriptor(Node.prototype,'textContent');Object.defineProperty(node,'textContent',{get:()=>property.get.call(node),set:value=>{counts.textWrites++;property.set.call(node,value);}});return node;}
@@ -57,6 +57,17 @@ let checks=0;async function test(name,run){await run();checks++;console.log('PAS
   counter.setAttribute('data-march-countdown','unit_one');f.mutate([{type:'attributes',target:counter,attributeName:'data-march-countdown'}]);f.reset();f.ui.refresh();
   assert.match(counter.textContent,/到着まで/);assert.equal(f.counts.textWrites,1);assert.equal(f.counts.bodyScans,0);
   counter.removeAttribute('data-march-countdown');f.mutate([{type:'attributes',target:counter,attributeName:'data-march-countdown'}]);counter.textContent='新しい表示';f.reset();f.clock.elapsedMs+=5000;f.ui.refresh();assert.equal(counter.textContent,'新しい表示');assert.equal(f.counts.textWrites,0);
+ });
+ await test('place list applies a known march endpoint and rejects a changed campaign',()=>{
+  const f=fixture();let picker;f.win.SengokuInputList={open:options=>{picker=options;}};
+  f.ui.open();const dialog=f.doc.querySelector('dialog'),input=dialog.querySelector('[data-travel-filter="query"]');
+  input.value='該当なし';input.dispatchEvent({type:'input'});
+  dialog.querySelector('[data-travel-input-list]').dispatchEvent({type:'click'});
+  assert.equal(picker.options.length,2);
+  const destination=picker.options.find(option=>option.detail==='目的地');
+  picker.onSelect(destination);assert.equal(input.value,destination.value);
+  assert.match(dialog.querySelector('[data-travel-result-count]').textContent,/1隊が移動中/);
+  assert(picker.valid());f.context.scope='other';assert.equal(picker.valid(),false);
  });
  await test('open list retains its countdown nodes and focus while the world is paused',()=>{
   const f=fixture();f.ui.open();const dialog=f.doc.querySelector('dialog'),body=dialog.querySelector('.travel-body'),counter=f.countText(dialog.querySelector('[data-travel-countdown]'));
