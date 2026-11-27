@@ -1,0 +1,137 @@
+/* Pearl inlay, seigaiha and red lacquer on the title and command trays. */
+@media (forced-colors: none) {
+  #launch-screen, body dialog, body .progress-dialog {
+    --raden-rim: linear-gradient(102deg,#ad874e,#fff1ba 13%,#72e1d4 32%,#acaddf 43%,#baf4d8 57%,#467d89 69%,#efce8f 86%,#99764a);
+    --raden-waves: repeating-radial-gradient(circle at 50% 100%,transparent 0 5px,#9ce3ca21 5px 6px,transparent 6px 8px) 0 0 / 42px 21px;
+    --raden-tray: linear-gradient(109deg,#04252d,#151e35 58%,#0b3a40);
+    --raden-stamp: linear-gradient(140deg,#a63436,#762536 65%,#481a2d);
+  }
+
+  #launch-screen.launch-screen {
+    background: radial-gradient(ellipse at 74% 4%,#735d892c,transparent 55%),
+      var(--raden-waves), linear-gradient(117deg,#071725,#11152c 54%,#0c292d);
+  }
+  #launch-screen :is(.edition-mast,.edition-foot) {
+    border-image: var(--raden-rim) 1;
+    background: linear-gradient(100deg,#05131be8,#17263bd9 65%,#0d272ce3);
+  }
+  /* A gold asanoha junction joins six luminous circuit traces in the mast. */
+  @media (min-width: 850px) {
+    #launch-screen .edition-mast {
+      background: url("assets/frames/raden-circuit.svg") 42% center / auto 68% no-repeat,
+        linear-gradient(100deg,#071323,#142337 67%,#10232f);
+    }
+  }
+  #launch-screen .edition-wordmark img {
+    border-color: #e6c384; border-radius: 28% 5%;
+    box-shadow: 0 0 0 2px #10232b,0 0 0 3px #6d9b90;
+  }
+  #launch-screen .edition-cover {
+    border-image: var(--raden-rim) 1; box-shadow: inset 0 0 0 1px #f7edbf55,0 4px 14px #020914a8;
+  }
+  #launch-screen .edition-cover::after {
+    background: var(--raden-rim) left top / 11% 2px no-repeat,
+      var(--raden-rim) right bottom / 11% 2px no-repeat,
+      repeating-linear-gradient(125deg,#afedd5 0 3px,transparent 3px 6px,#e5c58e 6px 8px,transparent 8px 12px) right top / clamp(28px,8%,96px) 4px no-repeat;
+  }
+  #launch-screen .edition-genre::before {
+    width: .9em; height: .9em; border: 1px solid #ffda99; border-radius: 2px;
+    background: var(--raden-stamp); box-shadow: inset 0 0 0 2px #8f3134; transform: rotate(45deg);
+  }
+  #launch-screen #launch-title {
+    color: #ffebba; text-shadow: 1px 2px #65503f,0 3px 10px #030917;
+  }
+  #launch-screen #launch-title span {
+    display: inline-block; vertical-align: .11em; padding: .06em .15em .1em;
+    font-size: .46em; line-height: 1; letter-spacing: -.08em;
+    color: #fff2c6; text-shadow: 1px 1px #441a36; background: var(--raden-stamp);
+    border: 1px solid #f1cd8c; border-radius: .14em .03em;
+    box-shadow: inset 0 0 0 2px #922c3c,inset 0 0 0 3px #ecc78a;
+  }
+  #launch-screen .edition-tagline { color: #b5ede0; }
+  #launch-screen #launch-enter.edition-enter {
+    color: #fff6d8; border-color: #f6cc87; border-inline-start-color: #f4e6b5;
+    border-radius: 9px 2px; background: linear-gradient(115deg,#a63a37,#8a2a39 64%,#602438) !important;
+    box-shadow: inset 0 1px #ffe1a8aa,inset 0 -2px #441832,0 4px 12px #030c18a3;
+  }
+  #launch-screen #launch-enter.edition-enter:hover:not(:disabled) {
+    background: linear-gradient(115deg,#bb4340,#942c3e 70%,#6c2840) !important;
+    border-color: #ffdfa3; color: #fff9df;
+  }
+  #launch-screen #launch-enter.edition-enter:active:not(:disabled) {
+    background: #712538 !important; color: #fff3d1; box-shadow: inset 0 2px 5px #45132a;
+  }
+  #launch-screen #launch-enter.edition-enter::after {
+    inset: 4px; border-color: #edc58f88; border-radius: 6px 1px;
+    background: var(--raden-rim) right bottom / 25% 2px no-repeat;
+  }
+  #launch-screen .edition-resume { border-image: var(--raden-rim) 1; background: #0c2330ee; }
+  #launch-screen .edition-resume::before { background: var(--raden-rim); }
+  #launch-screen .launch-guide-nav a { border-color: #b59b70; border-inline-start-color: var(--guide-edge); }
+  #launch-screen .launch-guide-nav a::after {
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+    background: var(--raden-rim) left bottom / 100% 2px no-repeat,
+      repeating-linear-gradient(135deg,#fae2ae 0 2px,transparent 2px 5px) right 6px top 5px / 18px 4px no-repeat;
+  }
+
+  body :is(dialog[class]:not(#game-loading),.progress-dialog) {
+    border-color: #bfa677; border-radius: 12px 4px; color: #e5eef0;
+    background: linear-gradient(135deg,#0c2630,#0b1827 62%,#132738);
+    box-shadow: inset 0 0 0 1px #8ae4d23b,0 12px 42px #01050dbf;
+  }
+  body :is(dialog[class],.progress-dialog) :is(header[class$="-header"],[class$="-dialog-top"],.residency-header),
+  body:not(.at-title) #modal .modal-header {
+    color: #f9e7b8; border-color: #bcaa7e;
+    background: var(--raden-rim) 0 100% / 100% 2px no-repeat,
+      linear-gradient(113deg,#0b2735eb 10%,#10243cc9 65%,transparent 94%),
+      var(--raden-waves), var(--raden-tray);
+  }
+  body :is(dialog[class],.progress-dialog) :is(header[class$="-header"],[class$="-dialog-top"]) :is(h1,h2),
+  body:not(.at-title) #modal .modal-header h2 { color: #ffe7b4; text-shadow: 0 1px #372134; }
+  body :is(dialog[class],.progress-dialog) :is(.modal-body,.social-body,.events-main,.progress-content,.cq-dialog-body,.alliance-dialog-content) {
+    background: linear-gradient(116deg,#101f32,#0b1c29 60%,#102532);
+  }
+  body :is(dialog[class],.progress-dialog) :is(footer,.modal-footer,.social-footer,.letters-footer),
+  body:not(.at-title) #modal .modal-footer {
+    background: var(--raden-rim) center top / 100% 1px no-repeat,linear-gradient(110deg,#0e2430,#191d33);
+  }
+  dialog :is(.social-tabs,.social-subtabs,.alliance-tabs,.cq-tabs,.travel-stage-tabs,.command-activity-filters,.variant-tabs),
+  .progress-dialog .progress-tabs { background: #0b1927; border-color: #7a806f; }
+  body :is(dialog,.progress-dialog) :is(.social-tabs,.social-subtabs,.alliance-tabs,.cq-tabs,.travel-stage-tabs,.command-activity-filters,.variant-tabs,.progress-tabs) button:is(.active,[aria-selected=true],[aria-pressed=true]) {
+    color: #f8f5d5; background: linear-gradient(105deg,#1d4950,#243246) !important;
+    border-color: #c3b48c; box-shadow: inset 0 -3px #8bedd5,inset 3px 0 #d2ad72;
+  }
+  #navigation-dialog .navigation-entry-row { border-color: #556d73; border-radius: 9px 3px; }
+  #navigation-dialog .navigation-entry-row > .navigation-entry {
+    background: linear-gradient(115deg,#173441,#17253a 74%); color: #eaf5ed;
+  }
+  #navigation-dialog .navigation-entry-row > .navigation-entry.is-current {
+    background: linear-gradient(115deg,#205357,#1d3648); box-shadow: inset 3px 0 #90f2d5;
+  }
+  #navigation-dialog .navigation-entry-icon, #community-modal .social-header-mon {
+    background: var(--raden-stamp); color: #ffe6bc; border: 1px solid #d9b47a; border-radius: 25% 5%;
+    box-shadow: inset 0 0 0 2px #65283b;
+  }
+  #navigation-dialog .navigation-search, #community-modal #social-chat-input {
+    background-color: #071c29; border-color: #75a9aa; box-shadow: inset 3px 0 #68cbbb;
+  }
+  #navigation-dialog .navigation-group h3, #community-modal .social-section-heading :is(h2,h3) { color: #eed298; }
+  #community-modal .social-message.own { border-inline-start: 3px solid #81dcca; }
+  #community-modal .social-chat-quote { border-color: #dfbe89; background-color: #172839; }
+  #modal .settings-hub .settings-group { border-color: #7b877b; border-radius: 10px 3px; background: #122331; }
+  #modal .settings-hub .settings-group > summary {
+    background: linear-gradient(105deg,#153845,#202a40 62%,#143e46) !important;
+    color: #fff1ce; box-shadow: inset 3px 0 #c7ac78;
+  }
+  #modal .settings-hub .settings-group[open] > summary {
+    background: linear-gradient(105deg,#245053,#24344e 76%,#203642) !important;
+    border-color: #84ac9d; box-shadow: inset 3px 0 #98e6cd;
+  }
+  #modal .settings-hub .settings-group > summary > .icon { color: #f6d296; }
+  #modal .settings-hub input[type="range"] { accent-color: #83e1cf; }
+  #modal #settings-release-update { border-color: #9d9477; border-inline-start-color: #d2958b; }
+  :is(dialog,#launch-screen,.progress-dialog) :focus-visible { outline-color: #adffe7; }
+}
+@media (forced-colors: none) {
+  html[data-cyber-fx="low"] :is(#launch-screen,dialog,.progress-dialog) { --raden-waves: none; }
+}

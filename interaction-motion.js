@@ -52,6 +52,7 @@ function wave(el, point) {
   const origin = layer.getBoundingClientRect(), style = global.getComputedStyle(el);
   const clip = doc.createElement('span'), ink = doc.createElement('span');
   clip.className = 'ui-motion-clip'; ink.className = 'ui-motion-wave';
+  if (el.closest('.hotspot,.sg-map-marker,.officer-card,.officer-choice,.army-slot,.town-command-shortcuts')) clip.setAttribute('data-raden-seal','');
   const x = Math.max(0, Math.min(rect.width, point ? point.x - rect.left : rect.width / 2));
   const y = Math.max(0, Math.min(rect.height, point ? point.y - rect.top : rect.height / 2));
   const radius = Math.max(12, Math.hypot(Math.max(x, rect.width - x), Math.max(y, rect.height - y)));
@@ -196,7 +197,7 @@ function clear() {
 }
 function init() {
   if (initialized || destroyed || !doc.body) return; initialized = true;
-  media = global.matchMedia?.('(prefers-reduced-motion: reduce)');
+  media = global.matchMedia?.('(prefers-reduced-motion: reduce), (forced-colors: active), (prefers-contrast: more)');
   main = doc.getElementById('main'); loader = doc.getElementById('game-loading'); lastView = main?.dataset.view;
   atTitle = doc.body.classList.contains('at-title'); loading = doc.body.classList.contains('is-loading') || Boolean(loader?.open);
   for (const [type, fn] of Object.entries({ pointerdown: pointerDown, pointermove: pointerMove, pointerup: pointerUp, pointercancel: pointerCancel, lostpointercapture: pointerCancel, click, keydown: keyDown, keyup: keyUp, change })) listen(doc, type, fn, { capture: true, passive: true });

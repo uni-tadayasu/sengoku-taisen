@@ -52,6 +52,11 @@ assert.deepEqual(plain(shippedCrests), plain(originalCrests), 'All crest catalog
 for (const crest of shippedCrests) {
   assert(Object.isFrozen(crest) && Object.isFrozen(crest.sourceIds), 'A shipped crest and its source list remain immutable');
 }
+const crestSources = shipped.scope.SengokuKamon.getSources();
+assert.deepEqual(plain(crestSources), plain(source.scope.SengokuKamon.getSources()), 'Crest references retain all original titles, URLs and source order');
+assert(crestSources.every(Object.isFrozen), 'Crest reference objects remain immutable');
+const costs = shipped.scope.SENGOKU_DATA.buildings.map(building => building.base);
+assert.equal(new Set(costs).size, costs.length, 'Every facility retains its own cost object');
 assert.equal(source.scope.SENGOKU_OFFICERS.length,256);
 assert.equal(source.scope.SENGOKU_DATA.castles.length,129);
 console.log('PASS '+publicNames(source.scope).length+' classic globals, function names, initialization order and real game data match after four bundles');

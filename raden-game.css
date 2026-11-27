@@ -1,0 +1,157 @@
+/* 戦国VS・螺鈿陣幕。扇の骨、青海波、金具と貝の薄片を漆面に描く。 */
+@media (forced-colors: none) {
+  #app.chronicle-shell {
+    --raden-pearl: linear-gradient(108deg,#58c5c4 1%,#94e4d1 17%,#bcb5e7 32%,#65c8ba 49%,#ecd09a 63%,#b1e8d3 82%,#669bb7);
+    --raden-wave: repeating-radial-gradient(ellipse at 50% 100%,transparent 0 5px,#79c9bb23 5.3px 6px,transparent 6.4px 10px) 0 100% / 46px 23px;
+    --raden-lacquer: linear-gradient(125deg,#192b37,#101729 36%,#0b1220 70%,#17272e);
+    --raden-fan: linear-gradient(93deg,#101828 16%,#122434dd 43%,#10212b44 72%,transparent),
+      repeating-radial-gradient(ellipse at 103% 128%,transparent 0 25px,#dbc29169 26px 27px,transparent 28px 30px),
+      repeating-conic-gradient(from 240deg at 103% 128%,transparent 0 11deg,#f2c7828a 11.2deg 11.7deg,transparent 12deg 15deg),
+      linear-gradient(118deg,#0e1828 45%,#195354 66%,#233f4b 81%,#5d4155);
+    --raden-frame: inset 0 1px #ffe4ab77,inset 1px 0 #afcfc72e,inset 0 -2px #020711,inset -1px 0 #6e8c8d50,0 3px 8px #01040a75;
+    --raden-selection: linear-gradient(123deg,#755443,#753c46 7%,#22334b 8%,#17494c 52%,#122731 87%,#316965 88%,#264451 96%,#101a29);
+  }
+
+  #app.chronicle-shell #main {
+    background: radial-gradient(ellipse at 89% 3%,#23434392,transparent 49%),
+      linear-gradient(142deg,#141b2b,#090e1b 43%,#0e1e24);
+    scrollbar-color:#678f90 #0b1420;
+  }
+  html #app.chronicle-shell .sidebar.chronicle-rail {
+    background: linear-gradient(180deg,#0c152a40,#091019e8 55%,#0b19285c),
+      var(--raden-wave),linear-gradient(108deg,#1d3740,#0e1428 75%,#253235);
+    border-color:#b4986b;
+    box-shadow:inset -1px 0 #efd59799,inset -4px 0 #0b1524,inset -5px 0 #55969076;
+  }
+  html #app.chronicle-shell .sidebar.chronicle-rail :is(.brand,.clan-panel) {
+    background: var(--raden-pearl) 0 100% / 100% 2px no-repeat,var(--raden-fan);
+    border-color:#b29772; box-shadow:var(--raden-frame);
+  }
+  #app.chronicle-shell .chronicle-rail .brand-crest {
+    background:conic-gradient(from 25deg,#d9c993,#174849,#bbabd3,#2f6266,#d9c993);
+    box-shadow:0 0 0 1px #ecc789,0 0 0 3px #0a1220,0 0 0 4px #74ac9b;
+  }
+  html #app.chronicle-shell .chronicle-rail .clan-panel { border-radius:2px 16px 2px 10px; }
+  html #app.chronicle-shell .sidebar.chronicle-rail .sidebar-bottom {
+    background:var(--raden-pearl) 0 0 / 100% 2px no-repeat,var(--raden-lacquer); border-color:#a89c78;
+  }
+  #app.chronicle-shell .clan-progress i,
+  #app.chronicle-shell #main :is(.progress,.progress-meter,.command-operation-track,.resource-plan-track) > i {
+    background:var(--raden-pearl); box-shadow:inset 0 -1px #122c3780;
+  }
+  #app.chronicle-shell .sidebar .nav-item:not(.active),
+  html.sengoku-desktop-fit #app.chronicle-shell #navigation .nav-item:not(.active) {
+    background:linear-gradient(112deg,#21333dba,#101b2cc4 80%,#1c2c369c) !important;
+    border-radius:2px 8px 2px 5px; box-shadow:inset 1px 0 #b99a5c70,inset 0 -1px #384550;
+  }
+  html #app.chronicle-shell .sidebar :is(#navigation,.sidebar-bottom) :is(.nav-item,.navigation-quick).active,
+  #app.chronicle-shell #main :is(.tabs,.town-console-nav,.facility-layout-switch,.catalog-filter-chips) button:is(.active,[aria-selected=true],[aria-pressed=true]) {
+    background:var(--raden-selection) !important; color:#fff5df; border-color:#d8ba88;
+    box-shadow:inset 3px 0 #ffc888,inset 0 -2px #88e9d3,inset 0 1px #f4deb158;
+  }
+  html #app.chronicle-shell .topbar.chronicle-ledger {
+    background:var(--raden-pearl) 0 100% / 100% 2px no-repeat,
+      linear-gradient(102deg,#17363b,#111c2e 36%,#101724 72%,#342838);
+    border-color:#ab9671; box-shadow:var(--raden-frame);
+  }
+  #app.chronicle-shell .chronicle-ledger .header-balances :is(#resources,#touch-header-status) > button {
+    background:linear-gradient(135deg,transparent 30%,var(--resource-accent,#7cddc9) 31% 35%,transparent 36% 48%,#a5bece80 49% 52%,transparent 53%) right top / 16px 16px no-repeat,
+      linear-gradient(90deg,var(--resource-accent,#8edac6),#698f9e 58%,#b99b76) 0 100% / 100% 2px no-repeat,
+      linear-gradient(110deg,#1c3440,#101b2d 68%,#192637) !important;
+    border-color:#777966; border-radius:2px 9px 2px 5px; box-shadow:inset 0 1px #c5e6da32;
+  }
+
+  #app.chronicle-shell #main :is(.page-heading,.roaming-heading,.court-heading,.covert-heading,.town-workspace .town-scene-heading,.town-castle-heading,.domain-briefing > header) {
+    background:var(--raden-pearl) 0 0 / 100% 3px no-repeat,var(--raden-fan);
+    border-color:#c1aa7b; border-radius:2px 14px 2px 9px; box-shadow:var(--raden-frame);
+  }
+  #app.chronicle-shell #main .town-workspace .town-scene-heading {
+    background: url("assets/frames/raden-circuit.svg") 64% center / min(35%,215px) auto no-repeat,
+      var(--raden-pearl) 0 0 / 100% 2px no-repeat,linear-gradient(103deg,#131829,#133344 68%,#101a2c);
+  }
+  /* Copper-and-pearl beacon plates use the existing facility hit targets.
+     The central glyph and the queued-work state stay distinct as the map scales. */
+  html[data-cyber-fx=full] #app.chronicle-shell #main .town-scene-board .hotspot .pin {
+    border-radius: 30% 8%; border-color:#89fff3; color:#bcfff2;
+    background: linear-gradient(140deg,#0d424b,#0a1b31 55%,#21454e);
+    box-shadow: inset 0 0 0 2px #07303d,inset 0 0 0 3px #49bcbd,0 0 0 1px #062432,0 0 7px #2de4d8b3;
+  }
+  html[data-cyber-fx=full] #app.chronicle-shell #main .town-scene-board .hotspot.has-job .pin {
+    color:#ffdf9e; border-color:#ffce7e; box-shadow:inset 0 0 0 2px #33253d,0 0 8px #ffbc68;
+  }
+  html[data-cyber-fx=full] #app.chronicle-shell #main .town-scene-board .hotspot .label {
+    background:linear-gradient(115deg,#133743,#10192b 64%,#28304a); border-color:#79dacf; color:#e9fff8;
+    border-radius:1px 7px; box-shadow:inset 2px 0 #80f8e5,0 2px 5px #020b1dd1;
+  }
+  #app.chronicle-shell #main :is(.town-castle-heading,.chapter-copy) { position:relative; isolation:isolate; }
+  #app.chronicle-shell #main :is(.town-castle-heading,.chapter-copy)::after {
+    content:""; position:absolute; z-index:-1; inset:10% 5% 10% auto; width:min(32%,115px);
+    background:var(--raden-pearl); opacity:.18; pointer-events:none;
+    mask:url("assets/branding/sengoku-vs-pinned-tab-20261127-jade.svg") center / contain no-repeat;
+  }
+  #app.chronicle-shell #main :is(.panel,.town-workspace .town-panel,.town-overview,.geographic-map-panel,.castle-detail,.officer-card,.army-slot,.research-card,.building-card,.facility-entry,.quest-row,.tactic-card,.roaming-panel,.field-card,.covert-panel,.court-panel,.army-muster-overview,.facility-planner-overview,.research-overview,.domain-briefing):where(:not(.active,.selected,.locked-building)) {
+    background:linear-gradient(135deg,transparent 29%,#b6d3c187 30% 32%,transparent 33% 49%,#b59975a8 50% 53%,transparent 54%) 100% 0 / 28px 27px no-repeat,var(--raden-lacquer) !important;
+    border-color:#827a68; border-radius:2px 13px 3px 8px; box-shadow:var(--raden-frame);
+  }
+  #app.chronicle-shell #main :is(.panel-heading,.section-heading,.facility-entry-heading) {
+    border-color:#91856d;
+    background:var(--raden-pearl) 0 100% / min(105px,28%) 2px no-repeat;
+  }
+  #app.chronicle-shell #main :is(.town-console-nav,.town-style-strip,.catalog-filter-toolbar,.officer-filter-bar,.castle-detail .realtime-strip,.toolbar) {
+    background:linear-gradient(114deg,#192938,#101a29 72%,#25343b); border-color:#867b66; box-shadow:inset 0 1px #dbc59b3b;
+  }
+  #app.chronicle-shell #main .town-panel .town-scene {
+    background:var(--raden-wave),linear-gradient(120deg,#184345,#15243a 38%,#17383d 76%,#372d3c);
+  }
+  #app.chronicle-shell #main .town-scene-backdrop { opacity:.24; }
+  #app.chronicle-shell #main :is(.town-scene-board,.sg-map)::after {
+    content:""; position:absolute; inset:1px; z-index:2; pointer-events:none;
+    background:linear-gradient(135deg,#f6d290 0 4px,transparent 5px 8px,#96c5af 9px 10px,transparent 11px) top left,
+      linear-gradient(315deg,#f6d290 0 4px,transparent 5px 8px,#96c5af 9px 10px,transparent 11px) bottom right;
+    background-size:19px 19px; background-repeat:no-repeat;
+    box-shadow:inset 0 0 0 1px #f1ca89a1,inset 0 0 0 3px #0f1c2966;
+  }
+  #app.chronicle-shell #main .town-scene-board .hotspot .pin {
+    background:linear-gradient(135deg,#4c3f47,#15353d 45%,#0d1928 78%,#54786f);
+    border-color:#ecc696; box-shadow:inset 0 0 0 2px #244953,0 1px 0 2px #081725,0 2px 6px #0008;
+  }
+  #app.chronicle-shell #main .town-scene-board .hotspot.has-job .pin { background:#11534a; border-color:#a8f6d9; }
+  #app.chronicle-shell #main .sg-map :is(.sg-map-heading,.sg-map-zoom,.sg-map-layers,.sg-watch-panel,.sg-map-tooltip) {
+    background:linear-gradient(125deg,#27353df7,#111a2df9 75%); border-color:#c2ab7f; box-shadow:var(--raden-frame);
+  }
+  #app.chronicle-shell #main :is(.facility-painting,.building-art,.officer-kamon,.portrait-frame,.territory-art) {
+    outline:1px solid #b9a279b8; outline-offset:-1px;
+  }
+  #app.chronicle-shell :is(.button,.icon-button,.ledger-disclosure):not(:disabled) {
+    background:linear-gradient(135deg,#293b46,#162632 52%,#202b3c) !important;
+    border-color:#8c8c76; border-radius:2px 8px 2px 6px; box-shadow:inset 0 1px #d6dfd844,inset 0 -2px #0a1420;
+  }
+  #app.chronicle-shell .button.primary:not(:disabled) {
+    background:linear-gradient(115deg,#963f41,#762535 64%,#9b4240 65%,#8f3438 74%,#672539) !important;
+    border-color:#efbb84; color:#fff5db; box-shadow:inset 2px 0 #f3a26e,inset 0 1px #ffd48d79,inset 0 -2px #531f30;
+  }
+  #app.chronicle-shell .button.gold:not(:disabled) {
+    background:linear-gradient(115deg,#f0d5a3,#e0b771 63%,#f6d6a2 65%,#c9a771 83%,#e4bb86) !important;
+    color:#25202a; border-color:#ffe4b1; box-shadow:inset 0 1px #fff4c8,inset 0 -2px #9c7850;
+  }
+  #app.chronicle-shell .button.danger:not(:disabled) { background:#55283a !important; color:#ffd7cc; border-color:#d28d85; }
+  #app.chronicle-shell .game-footer {
+    background:linear-gradient(90deg,#342733,#111a29 25%,#0c1420 72%,#193339); border-color:#947d59;
+  }
+  html[data-cyber-fx=low] #app.chronicle-shell {
+    --raden-fan:linear-gradient(110deg,#101a28,#173c43);
+    --raden-wave:linear-gradient(transparent,transparent);
+    --raden-frame:inset 0 1px #c6bc9c40;
+  }
+  html[data-cyber-fx=low] #app.chronicle-shell #main :is(.town-castle-heading,.chapter-copy)::after { content:none; }
+  /* Paper beneath the portrait uses ink for the stats, skill and health.
+     The army's separate lacquer cards use light lettering. */
+  #app #main .officer-card .officer-content { --paper-muted:#283f49; color:#192d37; }
+  #app #main .officer-card .officer-content .skill-tag .icon { color:#453a26; }
+  #app #main .officer-content .officer-health { color:#233b39; --officer-health-color:#255d43; }
+  #app #main .officer-content [data-health-status=tired] { --officer-health-color:#704312; }
+  #app #main .officer-content [data-health-status=exhausted] { --officer-health-color:#852c24; }
+  #app #main .officer-content [data-health-status=unknown] { --officer-health-color:#3f504d; }
+  #app #main .army-card-copy { color:#f1f5ef; }
+  #app #main .army-card-copy :is(.army-officer-house,.army-ability > span:first-child,.army-officer-skill) { color:#d6e8e4; }
+}

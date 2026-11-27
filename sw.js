@@ -1,5 +1,5 @@
 /* 本体は先に保存。大きな絵巻は、実際に開いたものから保存します。 */
-const RELEASE='5.9.10-20261127';
+const RELEASE='5.9.11-20261127';
 const CACHE='sengoku-taisen-v'+RELEASE;
 const scopeURL=()=>self.registration?.scope||self.location.origin+'/';
 const currentMatch=(request,name=CACHE)=>caches.open(name).then(cache=>cache.match(request));
@@ -12,7 +12,7 @@ const optionalCode=new Set([
 ]);
 const compactArtwork={'neon-command':480,war:240,town:240,archive:240,brand:48,emblem:96};
 const brandEdition='20261127-jade';
-const installedStems={war:'war-jade',town:'town-jade',archive:'archive-jade',brand:'brand-'+brandEdition,emblem:'emblem-'+brandEdition};
+const installedStems={'neon-command':'neon-command-raden',war:'war-jade',town:'town-jade',archive:'archive-jade',brand:'brand-'+brandEdition,emblem:'emblem-'+brandEdition};
 const compactURL=(family,stem)=>'./assets/responsive/'+(stem||installedStems[family]||family)+'-'+compactArtwork[family]+'.webp';
 
 // A staged tab can read a different edition while this worker still controls

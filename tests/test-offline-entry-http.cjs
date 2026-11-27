@@ -41,7 +41,7 @@ const vm=require('node:vm');
     const installRequests=requests.length,installBytes=[...stored.values()].reduce((sum,n)=>sum+n,0);
     const brandEdition=/-(\d{8}(?:-[a-z]+)?)\.png$/.exec(JSON.parse(await readFile(path.join(root,'site-metadata.json'),'utf8')).favicon.path)[1];
     const chapters=['war','town','archive'];
-    const installedArt=['neon-command-480',...chapters.map(name=>name+'-jade-240'),'brand-'+brandEdition+'-48','emblem-'+brandEdition+'-96'];
+    const installedArt=['neon-command-raden-480',...chapters.map(name=>name+'-jade-240'),'brand-'+brandEdition+'-48','emblem-'+brandEdition+'-96'];
     assert.deepEqual([...stored.keys()].filter(key=>key.startsWith(scope+'assets/')).sort(),installedArt.map(stem=>scope+'assets/responsive/'+stem+'.webp').sort(),'Install only the six compact illustrations');
     const home=await (await emit('fetch',request('./','navigate'))).text();
     const scripts=[...home.matchAll(/(?:src|href)="([^"]+\.(?:js|css)(?:\?[^"]*)?)"/g)].map(m=>m[1].replaceAll('&amp;','&'));
@@ -60,7 +60,8 @@ const vm=require('node:vm');
       assert.equal(actual.headers.get('Content-Type'),'image/webp',file);
       assert.deepEqual(Buffer.from(await actual.arrayBuffer()),Buffer.from(await expected.clone().arrayBuffer()),file);
     }
-    await matchesCompact('assets/responsive/neon-command-1536.webp','neon-command-480');
+    await matchesCompact('assets/responsive/neon-command-raden-1536.webp','neon-command-raden-480');
+    await matchesCompact('assets/responsive/neon-command-1536.webp','neon-command-raden-480');
     for(const name of chapters){
       const stem=name+'-jade';
       await matchesCompact('assets/responsive/'+stem+'-1200.webp',stem+'-240');

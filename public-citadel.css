@@ -1,34 +1,40 @@
-/* Official editions use a lacquer cover, illuminated brass fittings and a
-   warm reading surface. All decoration is static and uses existing artwork. */
+/* Raden shell, gold lacquer and vermilion seals frame the official editions.
+   Keep the patterned surfaces outside the long passages of Japanese and English. */
 @media screen and (forced-colors: none) {
   :root {
-    --folio-indigo: #091523;
-    --folio-panel: #102634;
-    --folio-gold: #f2d296;
-    --folio-jade: #96f3d5;
-    --folio-light: #edf3ec;
-    --folio-muted: #bfd2d2;
-    --folio-edge: #688588;
-    --folio-paper: #f6f4e9;
-    --folio-braid: repeating-linear-gradient(60deg,transparent 0 21px,#90e7ca13 21px 22px,transparent 22px 43px),
-      repeating-linear-gradient(-60deg,transparent 0 21px,#d9bc7b14 21px 22px,transparent 22px 43px);
-    --folio-lacquer: linear-gradient(115deg,#172f41,#0b1d2e 62%,#0a2026);
-    --folio-inlay: linear-gradient(90deg,#72dbc1 0 12%,#193743 12% 13%,#d9b477 13% 28%,#456772 28% 94%,#ac8758 94%);
+    --folio-indigo: #070e1c;
+    --folio-panel: #102333;
+    --folio-gold: #f3d79a;
+    --folio-jade: #95f2dc;
+    --folio-light: #f3f5ed;
+    --folio-muted: #c5d6d5;
+    --folio-paper: #f7f4e7;
+    --folio-braid: repeating-linear-gradient(60deg,transparent 0 23px,#69d1c018 23px 24px,transparent 24px 47px),
+      repeating-linear-gradient(-60deg,transparent 0 23px,#b7b0d215 23px 24px,transparent 24px 47px),
+      repeating-linear-gradient(90deg,transparent 0 26px,#c0a67712 26px 27px,transparent 27px 54px);
+    --folio-lacquer: linear-gradient(110deg,#183442 0%,#0b1a31 45%,#131a31 74%,#0d3036);
+    --folio-shell: linear-gradient(108deg,#7dcab5 0%,#baf2d7 18%,#84b9ce 35%,#baa8d7 49%,#8cd7c7 68%,#e3cb97 87%,#aebd90);
+    --folio-inlay: linear-gradient(90deg,#b39a68 0 6%,#283d47 6% 6.4%,#91d8ca 6.4%,#badfca 19%,#aca6ce 32%,#699eab 42%,#182f40 42% 43%,#ad955f 43% 82%,#4e757b 82% 82.5%,#6ebaa9 82.5%,#dac798);
+    --folio-circuit: radial-gradient(circle at 42px 9px,#b4ddcb95 0 1.4px,transparent 1.8px) right top / 94px 18px repeat-x,
+      linear-gradient(#79b7aa75,#79b7aa75) right 9px / 100% 1px no-repeat;
+    --folio-waves: url("assets/palace-pattern.svg");
+    --folio-seal: #823730;
   }
   body.public-luxury,
   body:not(.public-luxury) {
-    background: radial-gradient(ellipse at top left,#153443 0,transparent 39rem),var(--folio-indigo);
+    background: var(--folio-waves),radial-gradient(ellipse at 14% 0%,#193e49 0,transparent 46rem),
+      radial-gradient(ellipse at 92% 22rem,#252443 0,transparent 40rem),var(--folio-indigo);
   }
   body.public-luxury :is(.site-header,.site-footer),
   body:not(.public-luxury) .mast {
-    background: var(--folio-inlay) left bottom / 100% 2px no-repeat,var(--folio-braid),var(--folio-lacquer);
+    background: var(--folio-inlay) left bottom / 100% 2px no-repeat,var(--folio-circuit),var(--folio-braid),var(--folio-lacquer);
     border-color: #90744b;
   }
   body.public-luxury .site-brand img,
   body:not(.public-luxury) .mast .brand img {
-    border: 1px solid #c5a569;
+    border: 1px solid #dfc88b;
     border-radius: 22%;
-    box-shadow: 0 0 0 2px #0b1925,0 0 0 3px #41706e;
+    box-shadow: 0 0 0 2px #0b1925,0 0 0 3px #70a89f;
   }
   body.public-luxury .breadcrumbs,
   body.public-luxury .breadcrumbs a { color: var(--folio-muted); }
@@ -38,23 +44,23 @@
     background: var(--folio-inlay) left bottom / 100% 3px no-repeat,var(--folio-braid),var(--folio-lacquer);
     color: var(--folio-light);
     border: 1px solid #aa8e62;
-    border-radius: 3px 15px 3px 3px;
-    box-shadow: inset 0 0 0 3px #101e2b,inset 0 0 0 4px #577377,0 8px 20px #020a1247;
+    border-radius: 2px 18px 2px 2px;
+    box-shadow: inset 0 0 0 3px #0a1321,inset 0 0 0 4px #68858a,0 12px 24px -16px #01070d;
   }
   body.public-luxury :is(.hero-copy,.english-hero-copy,.lost-copy) {
-    background: linear-gradient(90deg,#0c1f2bea,#0b203099 75%,transparent);
+    background: var(--folio-waves),linear-gradient(90deg,#0a1d2deb,#0d2037ae 75%,transparent);
   }
-  body.public-luxury :is(.folio-hero,.english-hero,.lost-copy) h1 { color: #ffebba; }
+  body.public-luxury :is(.folio-hero,.english-hero,.lost-copy) h1 { color: #ffedc0; text-shadow: 0 2px 0 #030b14; }
   body.public-luxury :is(.folio-hero,.english-hero) h1 span { color: var(--folio-jade); }
   body.public-luxury :is(.folio-hero,.english-hero,.lost-copy) :is(.hero-lead,.english-availability,p:not(.section-kicker,.eyebrow)) { color: var(--folio-light); }
   body.public-luxury :is(.folio-hero,.english-hero,.lost-copy) :is(.text-link,.share-platform a,.english-ui-label,.eyebrow,.section-kicker,.lost-brand,.english-actions a:not(.action-link)) { color: var(--folio-jade); }
   body.public-luxury :is(.header-navigation .nav-play,.action-link,.reading-actions a:last-child) {
-    --button-wash-start: #8b303af7;
-    --button-wash-end: #652733f2;
+    --button-wash-start: #94382eee;
+    --button-wash-end: #571d30ef;
     background-color: #782d37;
     color: #fff5e6;
     border-color: #d19d76;
-    box-shadow: inset 2px 0 #eac394;
+    box-shadow: inset 2px 0 #f0ca88,inset -1px -1px #552332;
   }
   body.public-luxury :is(.header-navigation .nav-play,.action-link,.reading-actions a:last-child):hover {
     --button-wash-start: #a53f48f7;
@@ -65,13 +71,21 @@
   body.public-luxury .lost-copy :is(footer,footer a) { color: var(--folio-muted); }
   body.public-luxury .english-language-note { background: #173443; border-color: var(--folio-gold); }
   body.public-luxury :is(.chapter-art,.english-hero-art,.lost-art) { border-color: #bda372; }
-  body.public-luxury .chapter-art::after {
-    inset: 8px;
-    border: 1px solid #ffebba4d;
+  body.public-luxury .chapter-art::after,
+  body.public-luxury .english-hero-art::before {
+    content: "";
+    position: absolute;
+    z-index: 1;
+    inset: clamp(4px,1vw,10px);
+    pointer-events: none;
+    border: 1px solid #f3da9a66;
+    box-shadow: inset 0 0 0 1px #12233855;
     background:
-      linear-gradient(var(--folio-jade),var(--folio-jade)) left top / 26px 2px no-repeat,
+      radial-gradient(circle at 2px 2px,#b1f1da 0 1.5px,#173a3c 1.6px 2.8px,transparent 3px) 36px 5px / 6px 6px no-repeat,
+      linear-gradient(#92c9bf,#92c9bf) 10px 7px / 29px 1px no-repeat,
+      var(--folio-shell) left top / 46px 3px no-repeat,
       linear-gradient(var(--folio-jade),var(--folio-jade)) left top / 2px 22px no-repeat,
-      linear-gradient(var(--folio-gold),var(--folio-gold)) right bottom / 40px 2px no-repeat,
+      var(--folio-shell) right bottom / 58px 3px no-repeat,
       linear-gradient(var(--folio-gold),var(--folio-gold)) right bottom / 2px 22px no-repeat;
   }
   body.public-luxury :is(.folio-index,.english-content-counts,.toc,.premium-catalog,.reading-actions,.promotion-trailer) {
@@ -85,10 +99,10 @@
     background: #173a40;
     box-shadow: inset 3px 0 var(--folio-jade);
   }
-  body.public-luxury .public-reading-progress span { background: linear-gradient(90deg,#65ccb6,#f2c680); }
+  body.public-luxury .public-reading-progress span { background: var(--folio-shell); }
   body.public-luxury .guide-quick {
     padding: clamp(.85rem,2.2vw,1.75rem);
-    background: var(--folio-lacquer);
+    background: var(--folio-inlay) left top / 100% 2px no-repeat,var(--folio-braid),var(--folio-lacquer);
     border: 1px solid #577178;
     border-inline-start: 3px solid #a78b60;
   }
@@ -97,7 +111,7 @@
   body.public-luxury .guide-quick .guide-quick-all { color: var(--folio-jade); }
   body.public-luxury .guide-quick li a { border-color: #4c6873; background: #122938; }
   body.public-luxury .guide-quick li a:hover { background: #204148; }
-  body.public-luxury .guide-quick li a::before { background: #d6ae72; }
+  body.public-luxury .guide-quick li a::before { background: var(--folio-shell); }
   body.public-luxury .guide-quick li span { color: var(--folio-muted); }
 
   body.public-luxury .article {
@@ -107,21 +121,24 @@
   }
   body.public-luxury .article-section > h2 {
     gap: .65rem;
-    border-bottom: 1px solid #aca585;
+    color: #182e37;
+    border-bottom: 1px solid #ab9973;
+    background: linear-gradient(90deg,#286968,#779587 55%,#a1814c) left bottom / min(30%,12rem) 2px no-repeat;
     padding-block-end: .45rem;
   }
   body.public-luxury .article-section > h2::before {
     align-self: center;
     padding: .3em .4em;
-    border: 1px solid #756542;
-    background: #19333c;
-    color: #f5dfa6;
+    border: 1px solid #8f5036;
+    background: var(--folio-seal);
+    color: #fff1c9;
+    box-shadow: inset 0 0 0 2px #823730,inset 0 0 0 3px #d2a47c;
     font: 600 .55em/1.25 ui-monospace,monospace;
   }
   body.public-luxury .article :is(.callout,.step-list .step-marker) { border-inline-start-color: #246b67; }
   body.public-luxury .article .section-next { background: #e0e7dc; border-color: #7b998b; box-shadow: inset -3px 0 #41877a; }
   body.public-luxury .data-table-wrap { border-color: #89968a; scrollbar-color: #486d68 #e5e4d5; }
-  body.public-luxury .article thead th { background: #18343d; color: #f5e7c3; }
+  body.public-luxury .article thead th { background: var(--folio-braid),#18343d; color: #f5e7c3; }
   body.public-luxury .premium-page-return a:not(.action-link) { color: var(--folio-jade); }
   body.public-luxury :is(.share-journey,.share-support,.discovery-opening,.promotion-first-castle,.promotion-screens,.english-section,.english-closing) {
     padding: clamp(1.1rem,3vw,2.4rem);
@@ -137,16 +154,69 @@
   body:not(.public-luxury) :focus-visible { outline: 3px solid var(--folio-jade); outline-offset: -3px; }
   body.public-luxury .article :focus-visible { outline: 3px solid #15695f; outline-offset: 1px; }
 
+  body.public-luxury :is(.header-navigation,.promotion-section-nav) a:not(.nav-play) {
+    position: relative;
+  }
+  body.public-luxury :is(.header-navigation,.promotion-section-nav) a:not(.nav-play)::after {
+    content: "";
+    position: absolute;
+    inset: auto 12% 0;
+    height: 2px;
+    pointer-events: none;
+    transform: scaleX(0);
+    transform-origin: left;
+    background: var(--folio-shell);
+  }
+  body.public-luxury :is(.header-navigation,.promotion-section-nav) a:is(:hover,:focus-visible,[aria-current="page"])::after { transform: scaleX(1); }
+  body.public-luxury .eyebrow::before { background-color: var(--folio-seal); }
+  body.public-luxury :is(.english-screenshots figure>a,.press-media-grid img,.premium-stage-image,.lost-art),
+  body:not(.public-luxury) .jacket {
+    outline: 1px solid #c1b68d;
+    outline-offset: -4px;
+    box-shadow: 0 0 0 1px #30484e;
+  }
+  body.public-luxury .english-screenshots figure > a:focus-visible {
+    outline: 3px solid #16665c;
+    outline-offset: 2px;
+  }
+  body.public-luxury .public-search-heading {
+    background: var(--folio-inlay) left bottom / 100% 2px no-repeat,var(--folio-braid),var(--folio-lacquer);
+  }
+  body.public-luxury :is(.english-section,.promotion-section-heading,.share-section-heading) h2,
+  body.public-luxury .premium-section-heading h2 {
+    background: linear-gradient(90deg,#a75143 0 22%,#a58a54 22% 59%,#377a70 59%) left bottom / 3.4rem 2px no-repeat;
+    padding-block-end: .18em;
+  }
+  body.public-luxury .press-current-release { border-inline-start: 3px solid var(--folio-seal); }
+  body.public-luxury :is(.promotion-copy-button,.public-nav-toggle,.public-search-trigger,.toc-chapters summary,.quick-topics summary) {
+    --button-wash-start: #122d38f2;
+    --button-wash-end: #0a1629df;
+    color: var(--folio-light);
+  }
+
   /* The audition document is the one public edition with a dedicated album
      layout. Its long programme notes and native audio controls stay in flow. */
   body:not(.public-luxury) .album-copy { border-inline-start: 2px solid #9c815c; padding-inline-start: clamp(.7rem,1.6vw,1.35rem); }
   body:not(.public-luxury) :is(.album-type,.mast-guide,.save) { color: var(--folio-jade); }
   body:not(.public-luxury) .jacket { border-color: #d3b378; box-shadow: inset 0 0 0 3px #18353a,0 6px 14px #020a123d; }
-  body:not(.public-luxury) .selected { background: var(--folio-braid),linear-gradient(110deg,#1d3c47,#102536); color: var(--folio-gold); border-color: #ada077; }
+  body:not(.public-luxury) .selected { background: var(--folio-inlay) left top / 100% 3px no-repeat,var(--folio-waves),var(--folio-braid),var(--folio-lacquer); color: var(--folio-gold); border-color: #ada077; }
   body:not(.public-luxury) .selected::before { background: var(--folio-jade); }
   body:not(.public-luxury) .selected :is(small,#track-description) { color: var(--folio-muted); }
   body:not(.public-luxury) .player button { border-color: #d09b72; background: #862f37; color: #fff5e5; }
   body:not(.public-luxury) .player button:hover:enabled { background: #9e3840; }
+}
+
+/* A single inlay glint and short interaction transitions, with no idle animation. */
+@media screen and (forced-colors: none) and (prefers-reduced-motion: no-preference) {
+  @keyframes folio-frame-arrival {
+    from { opacity: .15; }
+    to { opacity: 1; }
+  }
+  body.public-luxury .chapter-art::after,
+  body.public-luxury .english-hero-art::before { animation: folio-frame-arrival 420ms ease-out both; }
+  body.public-luxury :is(.header-navigation,.promotion-section-nav) a::after { transition: transform 170ms ease-out; }
+  body.public-luxury :is(.action-link,.guide-quick a,.toc a,.public-nav-toggle,.promotion-copy-button),
+  body:not(.public-luxury) .player button { transition: background-color 150ms ease-out,border-color 150ms ease-out; }
 }
 
 @media screen {
