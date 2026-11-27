@@ -130,7 +130,7 @@
     const settings=normalizedFilters(raw),terms=normalize(settings.query).split(/\s+/).filter(Boolean);
     const rows=(model?.rows||[]).filter(row => (settings.kind==='all'||row.kind===settings.kind) &&
       (settings.status==='all'||settings.status==='damaged'&&row.missing>0||settings.status==='shortage'&&row.unfilled>0||settings.status==='rebuild'&&row.fallen&&!row.rebuilding&&!row.retreating||settings.status==='sound'&&row.status==='sound') &&
-      terms.every(term=>normalize([row.name,row.province,row.owner,row.home?'本拠':'',row.shared?'共同 京都御所':'',row.protected?'占領不可':'',row.label].join(' ')).includes(term)));
+      terms.every(term=>normalize([row.name,row.province,row.owner,row.home?'本拠':'',row.shared?'共同 京都御所':'',row.label].join(' ')).includes(term)));
     const compareName=(a,b)=>a.name.localeCompare(b.name,'ja')||a.key.localeCompare(b.key);
     const knownFirst=(a,b,key,descending=false)=>a[key]===null?(b[key]===null?0:1):b[key]===null?-1:(descending?b[key]-a[key]:a[key]-b[key]);
     return rows.sort((a,b) => settings.sort==='name'?compareName(a,b):settings.sort==='recovery'?knownFirst(a,b,'recovery',true)||compareName(a,b):
@@ -141,7 +141,7 @@
     const recovery=row.inactive?(row.rebuilding?'復旧工事の完成時に修復':row.retreating?'撤収の結果を詳細で確認':row.fallen?'自動修復の対象外':'建設完了後に稼働'):
       row.recovery===null?'回復見込みは不明':row.recoveryMode==='free'?`次の月替わり時点 ＋${num(row.recovery)}（資材不要）`:`次の月替わり ＋${num(row.recovery)}`;
     return `<li class="defense-ledger-card" data-stable-key="${esc(row.key)}" data-defense-row="${esc(row.key)}" data-state="${row.status}">
-      <header><div class="defense-ledger-card-labels"><span>${KINDS[row.kind]}</span>${row.home?'<span class="is-home">本拠</span>':''}${row.protected?'<span>占領不可</span>':''}${row.shared?'<span>共同拠点</span>':''}</div><span class="defense-ledger-state">${row.label}</span></header>
+      <header><div class="defense-ledger-card-labels"><span>${KINDS[row.kind]}</span>${row.home?'<span class="is-home">本拠</span>':''}${row.shared?'<span>共同拠点</span>':''}</div><span class="defense-ledger-state">${row.label}</span></header>
       <h3>${esc(row.name)}</h3><p class="defense-ledger-location">${esc(row.province)}${row.province?'国 · ':''}城郭・拠点 Lv.${num(row.level)}</p>
       <div class="defense-ledger-durability"><span>現在の耐久</span><strong>${num(row.current)}<small> / ${num(row.max)}</small></strong></div>
       ${percent===null?`<p class="defense-ledger-unknown">${row.max===0?'建設が完了すると耐久が備わります。':'耐久の情報を確認できません。'}</p>`:`<div class="defense-ledger-meter" role="meter" aria-label="${esc(row.name)}の耐久" aria-valuemin="0" aria-valuemax="${Math.max(1,row.max)}" aria-valuenow="${row.current}"><i style="width:${percent.toFixed(2)}%"></i></div>`}
@@ -224,7 +224,7 @@
       <section class="defense-ledger-tools" aria-label="拠点を探す"><div class="defense-ledger-update"><div><p data-defense-clock></p><p data-defense-update role="status"></p></div><button type="button" class="button gold" data-defense-refresh>最新の状況で再計算</button></div>
       <div class="defense-ledger-search"><label for="defense-site-query">城名・国・領主を検索</label><input id="defense-site-query" type="search" class="input" data-defense-query maxlength="100" autocomplete="off" placeholder="例：清洲、京都、本拠"><button type="button" class="button small" data-defense-input-list aria-label="自領の拠点一覧から選ぶ">一覧</button></div><div class="defense-ledger-selects">${[['kind','拠点の種類',KINDS],['status','状態',STATUSES],['sort','表示順',SORTS]].map(([key,label,values])=>`<label><span>${label}</span><select class="select" data-defense-filter="${key}">${Object.entries(values).map(([value,name])=>`<option value="${value}">${name}</option>`).join('')}</select></label>`).join('')}</div><div class="defense-ledger-results"><p data-defense-count role="status" aria-live="polite"></p><button type="button" class="text-link" data-defense-reset>条件をリセット</button></div></section>
       <ul class="defense-ledger-list" data-defense-list></ul><div class="defense-ledger-empty" data-defense-empty hidden><strong>条件に合う拠点はありません</strong><p>城名や絞り込み条件を変えて確認できます。</p></div><button type="button" class="button defense-ledger-more" data-defense-more hidden>さらに24拠点を表示</button>
-      <footer class="defense-ledger-footer"><p>今の領国で管理する拠点の一覧です。城の対CPU防衛力には本隊からの加勢が含まれます。支拠点の基準防衛力は通常戦法・攻撃側の破城技術なしの値です。共通フィールドの対人戦力とは条件が異なります。</p><p>普請の完成、追加の支出、合戦による損傷で見込みは変わります。陥落した支拠点には復旧工事が必要です。京都御所は共同の保護拠点で、資材を使う修復には含みません。</p></footer></div>`;
+      <footer class="defense-ledger-footer"><p>今の領国で管理する拠点の一覧です。城の対CPU防衛力には本隊からの加勢が含まれます。支拠点の基準防衛力は通常戦法・攻撃側の破城技術なしの値です。共通フィールドの対人戦力とは条件が異なります。</p><p>普請の完成、追加の支出、合戦による損傷で見込みは変わります。陥落した支拠点には復旧工事が必要です。京都御所の城郭は共同普請で育てます。</p></footer></div>`;
     node.addEventListener('cancel',event=>{event.preventDefault();close();});
     // Let native cancellation close this layer without clearing the base
     // detail dialog's refresh context in the app's document Escape handler.

@@ -45,7 +45,7 @@ function cleanTrade(value){
 function defaultAccess(){
   const sync=global.SengokuCloudSync?.getStatus?.(),bridge=global.SengokuBridge;
   const linked=sync?.linked===true,started=bridge?.hasStarted?.()!==false;
-  return{writable:Boolean(linked&&sync.ready&&sync.writable&&started&&bridge?.canReceiveGifts?.()),message:!linked?'領主登録と端末同期をすると交易できます。':!started?'はじめに本拠を選んでください。':sync.message||'操作端末と共通時刻を確認しています。'};
+  return{writable:Boolean(linked&&sync.ready&&sync.writable&&started&&bridge?.canReceiveGifts?.()),message:!linked?'領主登録と端末同期をすると交易できます。':!started?'はじめに本拠を選んでください。':sync.message||'共通時刻・操作結果を反映しています。準備が整うと送信できます。'};
 }
 function createController(options={}){
   const read=options.request||((route,value)=>global.SengokuSocial.tradeRequest(route,value));
@@ -57,7 +57,7 @@ function createController(options={}){
   let storage=options.storage;try{if(!storage)storage=global.localStorage;}catch{}
   let epoch=0,viewEpoch=0,searchEpoch=0,disposed=false,timer=null,writePromise=null;
   const draftDefaults=()=>({offerAsset:'gold',offerAmount:'100',wantAsset:'rice',wantAmount:'100'});
-  const s={ownerId:null,open:false,view:'incoming',trades:[],nextCursor:null,summary:{incomingPending:0,outgoingPending:0,claimable:0},rules:{maxAmount:MAX_AMOUNT,balanceLimit:BALANCE_LIMIT,maxPending:20},loaded:false,loading:false,loadingMore:false,searchBusy:false,sending:false,query:'',searchResults:[],target:null,draft:draftDefaults(),confirm:null,pending:null,error:'',status:'',change:'init'};
+  const s={ownerId:null,open:false,view:'incoming',trades:[],nextCursor:null,summary:{incomingPending:0,outgoingPending:0,claimable:0},rules:{maxAmount:MAX_AMOUNT,balanceLimit:BALANCE_LIMIT,maxPending:20},loaded:false,loading:false,loadingMore:false,searchBusy:false,accessChecking:false,sending:false,query:'',searchResults:[],target:null,draft:draftDefaults(),confirm:null,pending:null,error:'',status:'',change:'init'};
   const storageKey=owner=>STORE+encodeURIComponent(owner);
   function snapshot(){
     const balances=assets(getAssets(),BALANCE_LIMIT)||blankAssets(),access=getAccess()||{},capacity=getTroopTransportCapacity(),troopTransportCapacity=Number.isSafeInteger(capacity)&&capacity>=0?Math.min(capacity,TROOP_BALANCE_LIMIT):null;
@@ -80,15 +80,15 @@ function createController(options={}){
     const raw=getUser()?.id,id=raw===undefined||raw===null?null:String(raw);
     if(id===s.ownerId)return id;
     epoch++;viewEpoch++;searchEpoch++;cancel(timer);timer=null;writePromise=null;
-    Object.assign(s,{ownerId:id,view:'incoming',trades:[],nextCursor:null,summary:{incomingPending:0,outgoingPending:0,claimable:0},loaded:false,loading:false,loadingMore:false,searchBusy:false,sending:false,query:'',searchResults:[],target:null,draft:draftDefaults(),confirm:null,pending:id?storedPending(id):null,error:'',status:''});
+    Object.assign(s,{ownerId:id,view:'incoming',trades:[],nextCursor:null,summary:{incomingPending:0,outgoingPending:0,claimable:0},loaded:false,loading:false,loadingMore:false,searchBusy:false,accessChecking:false,sending:false,query:'',searchResults:[],target:null,draft:draftDefaults(),confirm:null,pending:id?storedPending(id):null,error:'',status:''});
     emit('identity');return id;
   }
   const current=(e,owner)=>!disposed&&epoch===e&&s.ownerId===owner&&String(getUser()?.id??'')===String(owner??'');
-  function requireAccess({retry=false}={}){
+  function requireAccess({retry=false,review=false}={}){
     identity();if(!s.ownerId)throw Error('領主登録・ログイン後に交易を利用できます。');
     if(s.sending)throw Error('前の交易の結果を確認しています。');
     if(s.pending&&!retry)throw Error('先の交易の結果を確認してから、新しい操作を行ってください。');
-    const access=getAccess();if(!access?.writable)throw Error(access?.message||'操作端末と保存・同期の状態を確認してください。');
+    const access=getAccess();if(!review&&!access?.writable)throw Error(access?.message||'操作端末と保存・同期の状態を確認してください。');
   }
   function sufficient(value){const own=assets(getAssets(),BALANCE_LIMIT)||blankAssets();return Object.keys(ASSETS).every(key=>(own[key]??0)>=(value[key]??0));}
   async function request(route){
@@ -97,7 +97,7 @@ function createController(options={}){
     if(result?.ok===false)throw Error(result.error?.message||'交易を読み込めませんでした。');
     return result;
   }
-  function schedule(){cancel(timer);timer=null;if(!disposed&&s.open&&s.ownerId&&visible())timer=later(()=>{timer=null;refresh();},15000);}
+  function schedule(){cancel(timer);timer=null;if(!disposed&&s.open&&s.ownerId&&visible())timer=later(()=>{timer=null;refresh();},s.view==='compose'||s.confirm?1000:15000);}
   function acceptSummary(result){
     for(const key of Object.keys(s.summary))if(Number.isSafeInteger(result.summary?.[key])&&result.summary[key]>=0)s.summary[key]=result.summary[key];
     for(const key of ['maxAmount','balanceLimit','maxPending'])if(Number.isSafeInteger(result.rules?.[key])&&result.rules[key]>0)s.rules[key]=Math.min(result.rules[key],key==='balanceLimit'?BALANCE_LIMIT:key==='maxAmount'?MAX_AMOUNT:1000);
@@ -156,14 +156,17 @@ function createController(options={}){
   }
   function prepareCreate(){
     try{
-      requireAccess();if(s.view!=='compose'||!s.target||s.target.playerId===s.ownerId)throw Error('交易先の領主を選んでください。');
+      if(s.confirm)return;
+      // Reviewing terms never transfers assets. A temporary clock/sync update
+      // must not prevent opening the review; sendRecord still requires access.
+      requireAccess({review:true});if(s.view!=='compose'||!s.target||s.target.playerId===s.ownerId)throw Error('交易先を「探す」または「一覧」から選んでください。領主名の入力だけでは宛先は確定しません。');
       const offer=blankAssets(),want=blankAssets(),d=s.draft,amount=Number(d.offerAmount),price=Number(d.wantAmount);
       if(!Object.hasOwn(ASSETS,d.offerAsset)||!Number.isSafeInteger(amount)||amount<1||amount>s.rules.maxAmount)throw Error('提供する資産の数量は1〜'+num(s.rules.maxAmount)+'の整数です。');
       offer[d.offerAsset]=amount;
       if(d.wantAsset!=='none'){if(!Object.hasOwn(ASSETS,d.wantAsset)||!Number.isSafeInteger(price)||price<1||price>s.rules.maxAmount)throw Error('希望する資産の数量は1〜'+num(s.rules.maxAmount)+'の整数です。');want[d.wantAsset]=price;}
       if(!sufficient(offer))throw Error('提供する資産の所持数が不足しています。');
       s.confirm={ownerId:s.ownerId,action:'propose',route:'/trades',data:{requestId:uuid(),targetPlayerId:s.target.playerId,offer,want},target:clone(s.target),give:offer,receive:want};
-      s.error='';s.status='';emit('confirm');
+      s.error='';s.status='';emit('confirm');schedule();
     }catch(error){s.error=error.message;emit();}
   }
   function actionAvailable(trade,action){
@@ -183,7 +186,7 @@ function createController(options={}){
       if(action==='accept'&&!sufficient(give))throw Error('相手に渡す資産の所持数が不足しています。');
       const state=snapshot(),overflow=overflowAsset(state,receive,give);
       if((action==='accept'||action==='claim')&&overflow)throw Error(overflowText(overflow,action==='claim',state));
-      s.confirm={ownerId:s.ownerId,action,route:'/trades/'+id+'/'+action,data:{requestId:uuid()},trade,target:trade.sender.playerId===s.ownerId?trade.recipient:trade.sender,give,receive};s.status='';emit('confirm');
+      s.confirm={ownerId:s.ownerId,action,route:'/trades/'+id+'/'+action,data:{requestId:uuid()},trade,target:trade.sender.playerId===s.ownerId?trade.recipient:trade.sender,give,receive};s.status='';emit('confirm');schedule();
     }catch(error){if(v===viewEpoch&&error.code!=='STALE_IDENTITY'){s.error=error.message;emit();}}
     finally{if(v===viewEpoch){s.loading=false;emit();}}
   }
@@ -227,9 +230,16 @@ function createController(options={}){
   function retry(){identity();return s.pending?sendRecord(clone(s.pending)):Promise.resolve(false);}
   function close(){s.open=false;cancel(timer);timer=null;emit('close');}
   async function refresh(){identity();emit('access');if(s.open&&s.view!=='compose'&&!s.confirm&&!s.sending)await loadList();schedule();}
+  async function refreshAccess(){
+    identity();if(!s.ownerId||s.sending||s.accessChecking)return;
+    const e=epoch,owner=s.ownerId;s.accessChecking=true;s.error='';emit('access');
+    try{await (options.refreshAccess?options.refreshAccess():global.SengokuCloudSync?.refresh?.());if(current(e,owner))s.status=getAccess()?.writable?'端末の接続を確認しました。':getAccess()?.message||'接続状態を確認してください。';}
+    catch(error){if(current(e,owner))s.error=error.message||'端末の接続を確認できませんでした。';}
+    finally{if(current(e,owner)){s.accessChecking=false;emit('access');schedule();}}
+  }
   function refreshIdentity(){identity();if(s.open)refresh();}
   function dispose(){disposed=true;epoch++;viewEpoch++;searchEpoch++;cancel(timer);timer=null;}
-  return{getState:snapshot,openBox,openCompose,setQuery,setDraft,searchRecipients,selectRecipient,prepareCreate,prepareAction,cancelConfirm,confirm,retry,close,refresh,refreshIdentity,loadMore:()=>loadList({more:true}),dispose};
+  return{getState:snapshot,openBox,openCompose,setQuery,setDraft,searchRecipients,selectRecipient,prepareCreate,prepareAction,cancelConfirm,confirm,retry,close,refresh,refreshAccess,refreshIdentity,loadMore:()=>loadList({more:true}),dispose};
 }
 
 const LABELS={incoming:'届いた申出',outgoing:'送った申出',claimable:'受取待ち',history:'履歴'};
@@ -267,11 +277,11 @@ function confirmationMarkup(record){
   })[record.action]||'内容を確認してください。';
   let terms='<dl class="trade-terms"><div><dt>今回あなたが渡す</dt><dd>'+esc(assetText(give))+'</dd></div><div><dt>'+(record.action==='propose'?'相手の承認後に受け取る':'今回あなたが受け取る')+'</dt><dd>'+esc(assetText(receive))+'</dd></div></dl>';
   if(record.action==='cancel'||record.action==='reject')terms='<dl class="trade-terms"><div><dt>申出の提供資産</dt><dd>'+esc(assetText(record.trade?.offer))+'</dd></div><div><dt>申出の希望資産</dt><dd>'+esc(assetText(record.trade?.want))+'</dd></div></dl>';
-  return '<div class="trade-confirm-copy"><span class="trade-eyebrow">実行する内容の確認</span><h2 id="trade-confirm-title" tabindex="-1">'+({propose:'この条件で申出を送りますか？',accept:'この交易を承認しますか？',reject:'この申出を辞退しますか？',cancel:'この申出を取り消しますか？',claim:'この資産を受け取りますか？'})[record.action]+'</h2><p class="trade-peer">相手の領主'+peerMarkup(record.target)+'</p>'+terms+'<p class="trade-confirm-note">'+note+'</p></div><div class="trade-confirm-actions">'+button('戻って確認する','confirm-back')+button(ACTIONS[record.action],'confirm','',true)+'</div>';
+  return '<div class="trade-confirm-copy"><span class="trade-eyebrow">実行する内容の確認</span><h2 id="trade-confirm-title" tabindex="-1">'+({propose:'この条件で申出を送りますか？',accept:'この交易を承認しますか？',reject:'この申出を辞退しますか？',cancel:'この申出を取り消しますか？',claim:'この資産を受け取りますか？'})[record.action]+'</h2><p class="trade-peer">相手の領主'+peerMarkup(record.target)+'</p>'+terms+'<p class="trade-confirm-note">'+note+'</p><p id="trade-confirm-access" class="trade-compose-note" data-trade-confirm-access role="status" aria-live="polite" hidden></p></div><div class="trade-confirm-actions">'+button('戻って確認する','confirm-back')+button('端末の接続を確認','access-check')+button(ACTIONS[record.action],'confirm','aria-describedby="trade-confirm-access"',true)+'</div>';
 }
 function composeMarkup(state){
   const options=Object.entries(ASSETS).map(([key,label])=>'<option value="'+key+'">'+label+'</option>').join('');
-  return '<section class="trade-compose"><div class="trade-section-heading"><h2>新しい交易の申出</h2><p>金銭・兵糧・木材・石材・勾玉に加え、兵士（輸出入）も交易できます。希望する資産を「なし」にすると、無償で提供できます。</p></div><form data-trade-form="search" class="trade-search"><label for="trade-recipient-query">相手の領主名、または公開ID</label><div><input id="trade-recipient-query" type="search" maxlength="90" autocomplete="off" spellcheck="false" placeholder="領主名で検索、または u_… を入力"><button type="submit" class="trade-button" data-trade-search>探す</button><button type="button" class="trade-button" data-trade="recipient-list" aria-label="交易先の領主一覧" aria-haspopup="dialog">一覧</button></div></form><div class="trade-search-results" data-trade-results></div><div class="trade-target" data-trade-target></div><form data-trade-form="compose"><div class="trade-asset-columns"><fieldset><legend>あなたが提供する資産</legend><label for="trade-offer-asset">資産</label><select id="trade-offer-asset" data-trade-draft="offerAsset">'+options+'</select><label for="trade-offer-amount">数量</label><input id="trade-offer-amount" data-trade-draft="offerAmount" type="number" inputmode="numeric" min="1" max="'+state.rules.maxAmount+'" step="1" required><p data-trade-available></p></fieldset><fieldset><legend>相手に希望する資産</legend><label for="trade-want-asset">資産</label><select id="trade-want-asset" data-trade-draft="wantAsset"><option value="none">なし（無償で提供）</option>'+options+'</select><label for="trade-want-amount">数量</label><input id="trade-want-amount" data-trade-draft="wantAmount" type="number" inputmode="numeric" min="1" max="'+state.rules.maxAmount+'" step="1" required><p>各資産1〜'+num(state.rules.maxAmount)+'。兵士の単位は人です。交換条件はあなたが決められます。</p></fieldset></div><p class="trade-troop-capacity" data-trade-troop-capacity hidden></p><p class="trade-compose-note">提供する資産・兵士は送信時に所持数から引かれ、一時預りになります。相手の承認後、対価を「受取待ち」から受領してください。兵士の輸入・返還は拠点の空き容量に関係なく受け入れ、本隊の兵数に加わります。保有上限を超える兵は受取待ちのまま保管されます。相手の承認前なら取り消せます。</p><button type="submit" class="trade-button is-primary" data-trade-prepare>申出を確認</button></form></section>';
+  return '<section class="trade-compose"><div class="trade-section-heading"><h2>新しい交易の申出</h2><p>金銭・兵糧・木材・石材・勾玉に加え、兵士（輸出入）も交易できます。希望する資産を「なし」にすると、無償で提供できます。</p></div><form data-trade-form="search" class="trade-search"><label for="trade-recipient-query">相手の領主名、または公開ID</label><div><input id="trade-recipient-query" type="search" maxlength="90" autocomplete="off" spellcheck="false" placeholder="領主名で検索、または u_… を入力"><button type="submit" class="trade-button" data-trade-search>探す</button><button type="button" class="trade-button" data-trade="recipient-list" aria-label="交易先の領主一覧" aria-haspopup="dialog">一覧</button></div></form><div class="trade-search-results" data-trade-results></div><div class="trade-target" data-trade-target></div><form data-trade-form="compose"><div class="trade-asset-columns"><fieldset><legend>あなたが提供する資産</legend><label for="trade-offer-asset">資産</label><select id="trade-offer-asset" data-trade-draft="offerAsset">'+options+'</select><label for="trade-offer-amount">数量</label><input id="trade-offer-amount" data-trade-draft="offerAmount" type="number" inputmode="numeric" min="1" max="'+state.rules.maxAmount+'" step="1" required><p data-trade-available></p></fieldset><fieldset><legend>相手に希望する資産</legend><label for="trade-want-asset">資産</label><select id="trade-want-asset" data-trade-draft="wantAsset"><option value="none">なし（無償で提供）</option>'+options+'</select><label for="trade-want-amount">数量</label><input id="trade-want-amount" data-trade-draft="wantAmount" type="number" inputmode="numeric" min="1" max="'+state.rules.maxAmount+'" step="1" required><p>各資産1〜'+num(state.rules.maxAmount)+'。兵士の単位は人です。交換条件はあなたが決められます。</p></fieldset></div><p class="trade-troop-capacity" data-trade-troop-capacity hidden></p><p class="trade-compose-note">提供する資産・兵士は送信時に所持数から引かれ、一時預りになります。相手の承認後、対価を「受取待ち」から受領してください。兵士の輸入・返還は拠点の空き容量に関係なく受け入れ、本隊の兵数に加わります。保有上限を超える兵は受取待ちのまま保管されます。相手の承認前なら取り消せます。</p><p id="trade-prepare-status" class="trade-compose-note" data-trade-prepare-status role="status" aria-live="polite" tabindex="-1"></p><div class="trade-card-actions"><button type="submit" class="trade-button is-primary" data-trade-prepare aria-describedby="trade-prepare-status">申出を確認</button>'+button('端末の接続を確認','access-check')+'</div></form></section>';
 }
 
 let instance=null;
@@ -310,7 +320,9 @@ function ensureView(){
       content.querySelector('[data-trade-available]').textContent='現在の所持数：'+(ASSETS[state.draft.offerAsset]||'資産')+' '+num(state.balances[state.draft.offerAsset])+(state.draft.offerAsset==='troops'?'人':'');
       for(const side of ['offer','want'])content.querySelector('label[for="trade-'+side+'-amount"]').textContent=state.draft[side+'Asset']==='troops'?'人数（人）':'数量';
       const troopNote=content.querySelector('[data-trade-troop-capacity]');troopNote.hidden=state.draft.offerAsset!=='troops'&&state.draft.wantAsset!=='troops';troopNote.textContent=troopCapacityText(state);
-      content.querySelector('[data-trade-prepare]').disabled=locked||state.searchBusy||!!state.pending||!state.target||!state.access.writable;
+      const prepareStatus=content.querySelector('[data-trade-prepare-status]');
+      prepareStatus.textContent=state.error||(state.searchBusy?'交易先を確認しています…':state.pending?'前の交易の結果を「結果を確認・再試行」で確認してください。':!state.target?'交易先を「探す」または「一覧」から選んでください。領主名の入力だけでは宛先は確定しません。':!state.access.writable?'条件の確認はできます。送信前に、'+state.access.message:'相手・数量・交換条件を次の画面で確認できます。まだ資産は移動しません。');
+      content.querySelector('[data-trade-prepare]').disabled=locked||state.searchBusy||!!state.pending;
     }else if(state.ownerId){
       const list=content.querySelector('[data-trade-list]'),focused=doc.activeElement,focusId=focused?.dataset?.id,focusKind=focused?.dataset?.kind;
       html(list,state.trades.length?state.trades.map(trade=>tradeCard(trade,state)).join(''):'<section class="trade-empty"><h3>'+(!state.loaded?'交易を確認しています…':'申出はまだありません')+'</h3><p>'+(!state.loaded?'接続状態を確認して読み込んでいます。':'「新しい申出」から、相手の領主に交易を持ちかけられます。')+'</p></section>');
@@ -324,7 +336,9 @@ function ensureView(){
       confirmHost.querySelector('[data-trade="confirm"]').disabled=state.sending||!!state.pending||!state.access.writable;
       confirmHost.querySelector('[data-trade="confirm"]').textContent=state.sending?'結果を確認しています…':ACTIONS[state.confirm.action];
       confirmHost.querySelector('[data-trade="confirm-back"]').disabled=state.sending;
+      const confirmAccess=confirmHost.querySelector('[data-trade-confirm-access]');confirmAccess.hidden=state.access.writable&&!state.error;confirmAccess.textContent=state.error||state.access.message;
     }else if(lastConfirmation){lastConfirmation='';html(confirmHost,'');if(confirmFocus?.isConnected&&!changed)confirmFocus.focus({preventScroll:true});confirmFocus=null;}
+    for(const control of dialog.querySelectorAll('[data-trade="access-check"]')){control.hidden=state.access.writable;control.disabled=state.sending||state.accessChecking;control.textContent=state.accessChecking?'接続を確認しています…':'端末の接続を確認';}
     if(changed&&!showingConfirm)content.querySelector('h2')?.setAttribute('tabindex','-1');
   }
   controller=createController({onChange:render});
@@ -360,6 +374,7 @@ function ensureView(){
     else if(action==='new')run(controller.openCompose());
     else if(action==='garrisons'){controller.close();global.SengokuTroopGarrisons?.open?.();}
     else if(action==='refresh')run(controller.refresh());
+    else if(action==='access-check')run(controller.refreshAccess());
     else if(action==='more')run(controller.loadMore());
     else if(action==='recipient-list')openRecipientList(target);
     else if(action==='recipient')run(controller.selectRecipient(target.dataset.playerId));
@@ -370,7 +385,16 @@ function ensureView(){
     else if(action==='register'){controller.close();global.SengokuSocial?.open?.('profile');}
   }
   function input(event){const target=event.target;if(target.id==='trade-recipient-query')controller.setQuery(target.value);else if(target.dataset.tradeDraft)controller.setDraft(target.dataset.tradeDraft,target.value);}
-  function submit(event){const form=event.target.closest('[data-trade-form]');if(!form)return;event.preventDefault();if(form.dataset.tradeForm==='search'){controller.setQuery(form.querySelector('input').value);run(controller.searchRecipients());}else controller.prepareCreate();}
+  function submit(event){
+    const form=event.target.closest('[data-trade-form]');if(!form)return;event.preventDefault();
+    if(form.dataset.tradeForm==='search'){controller.setQuery(form.querySelector('input').value);run(controller.searchRecipients());return;}
+    // Autofill and browser-restored values may not dispatch input/change.
+    // Capture the whole visible form before rendering any draft updates.
+    const fields=[...form.querySelectorAll('[data-trade-draft]')].map(input=>[input.dataset.tradeDraft,input.value]);
+    for(const [key,value] of fields)controller.setDraft(key,value);
+    controller.prepareCreate();const state=controller.getState();
+    if(state.error){const target=!state.target?content.querySelector('#trade-recipient-query'):content.querySelector('[data-trade-prepare-status]');target?.focus({preventScroll:true});target?.scrollIntoView?.({block:'nearest'});}
+  }
   function keydown(event){
     if(event.target.matches('[role="tab"]')&&['ArrowLeft','ArrowRight','Home','End'].includes(event.key)){
       const tabs=[...dialog.querySelectorAll('[role="tab"]')],position=tabs.indexOf(event.target),next=event.key==='Home'?0:event.key==='End'?tabs.length-1:(position+(event.key==='ArrowRight'?1:-1)+tabs.length)%tabs.length;

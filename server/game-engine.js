@@ -2248,7 +2248,7 @@
       if([...targets].some(id=>excluded.has(id))||[...regions].some(id=>excludeRegions.has(id)))return bad('目標と攻めない対象が重なっています。禁止対象を優先し、作戦を開始しません。');
       if(targets.size>1||regions.size>1)return bad('一度の作戦では、目標の城と地方をそれぞれ一つまで指定してください。');
       const targetCastleId=[...targets][0]||null,targetRegion=[...regions][0]||null;
-      if(targetCastleId&&['edo',STAFF_BASE_ID,DEPUTY_BASE_ID].includes(targetCastleId))return bad('江戸城・京都御所は保護された本拠のため、自動攻略の目標にはできません。');
+      if(targetCastleId&&['edo',STAFF_BASE_ID,DEPUTY_BASE_ID].includes(targetCastleId))return bad('この城は自動攻略の対象外です。共通フィールドで出陣条件を確認してください。');
       if(targetCastleId&&excludeRegions.has(CASTLE_BY_ID[targetCastleId].region))return bad('目標の城が、攻めない地方に含まれています。');
       if(targetCastleId&&targetRegion&&CASTLE_BY_ID[targetCastleId].region!==targetRegion)return bad('指定した城と地方が一致しません。目標を確認してください。');
       const defaults=STRATEGY_STYLES[style],policy={version:1,text,style,priority,hold,minWinChance:explicitWin??defaults.minWinChance,reserveTroops:explicitTroops??defaults.reserveTroops,reserveRice:explicitRice??defaults.reserveRice,maxBattles:explicitCount??5,targetCastleId,targetRegion,excludeCastleIds:[...excluded],excludeRegions:[...excludeRegions],excludeClans:[...excludeClans],anchor:strategyAnchor(this)};
@@ -2277,7 +2277,7 @@
         for(let i=0;i<queue.length;i++)for(const id of CASTLE_BY_ID[queue[i]].neighbors){const c=CASTLE_BY_ID[id];if(distances.has(id)||s.castles[id].owner!==s.clan&&blocked(c))continue;distances.set(id,distances.get(queue[i])+1);queue.push(id);}
         const distance=Math.min(...this.ownedCastles().map(c=>distances.get(c.id)??Infinity));
         targets=targets.filter(c=>(distances.get(c.id)??Infinity)<distance);
-        if(!Number.isFinite(distance)||!targets.length)return result('wait','STRATEGY_ROUTE_BLOCKED','保護城・同盟・除外対象を避けて目標へ進める経路がありません。');
+        if(!Number.isFinite(distance)||!targets.length)return result('wait','STRATEGY_ROUTE_BLOCKED','出陣条件・同盟・除外対象を考慮すると、目標へ進める経路がありません。');
       }
       if(!targets.length)return result(s.won?'stop':'wait',s.won?'STRATEGY_UNIFIED':'STRATEGY_NO_TARGET','条件を満たす隣接城がありません。');
       const maxDeploy=s.troops-policy.reserveTroops;
@@ -2326,7 +2326,7 @@
         {title:'出陣',text:`${p.troops.toLocaleString()}の兵が${c.name}へ進軍。${t.name}を採用。`},
         {title:'開戦',text:`守備兵${c.troops.toLocaleString()}、城壁 Lv.${c.wall}。${p.scouted?'偵察で得た情報をもとに攻め手を定めた。':'敵の防備を見極めながら攻撃を開始した。'}`},
         {title:won?'突破':'激戦',text:won?'敵の守りを崩し、城門へと迫った。':'城兵の抵抗は強く、攻め手は消耗した。'},
-        {title:won?rewardOnly?'勝利報酬':'落城':'撤退',text:won?rewardOnly?`${c.name}に勝利。サブ運営拠点の領有を維持し、勝利報酬を受け取ります。`:`${c.name}を制圧。領国に新たな旗が上がった。`:'被害の拡大を防ぐため軍を撤収。兵と兵糧を整え、再起を図る。'}
+        {title:won?rewardOnly?'勝利報酬':'落城':'撤退',text:won?rewardOnly?`${c.name}に勝利。勝利報酬を受け取ります。`:`${c.name}を制圧。領国に新たな旗が上がった。`:'被害の拡大を防ぐため軍を撤収。兵と兵糧を整え、再起を図る。'}
       ];
       let capturedOfficer=null,garrison=0;
       if(won&&rewardOnly){
@@ -2351,7 +2351,7 @@
       const durability=rewardOnly?null:this._damageCastleDurability(castleId,{won,ratio:p.ratio,captured:won,before:c.durability});if(durability)phases.push({title:'城郭の耐久',text:`耐久 ${durability.before.toLocaleString()} → ${durability.breachCurrent.toLocaleString()}。${won?'占領後は最大耐久の25%から修復を始めます。':'傷んだ防備は時間とともに修復されます。'}`});
       const report={won,...(durability?{durability}:{}),...(rewardOnly?{captured:false,battleMode:'reward'}:{}),castleId,castleName:c.name,ourBefore:p.troops,ourLost,enemyBefore:c.troops,enemyLost,phases,rewards,capturedOfficer,garrison,tactic,turn:s.turn};
       s.lastBattle=report;this._updateCampaignOutcome();
-      const text=won&&rewardOnly?`${c.name}への攻撃に勝利。城は占領せず、金銭${rewards.gold}・兵糧${rewards.rice}を受け取りました。`:won?`${c.name}を攻略！ ${garrison}人を守備兵として配置。${capturedOfficer?`${this.officer(capturedOfficer).name}が帰順。`:''}`:`${c.name}の攻城戦から撤退。兵${ourLost.toLocaleString()}人を失いました。`;
+      const text=won&&rewardOnly?`${c.name}への攻撃に勝利。金銭${rewards.gold}・兵糧${rewards.rice}を受け取りました。`:won?`${c.name}を攻略！ ${garrison}人を守備兵として配置。${capturedOfficer?`${this.officer(capturedOfficer).name}が帰順。`:''}`:`${c.name}の攻城戦から撤退。兵${ourLost.toLocaleString()}人を失いました。`;
       const result=this._action(text,won?'victory':'defeat',{battle:report});
       if(s.won)this.log(`攻略対象の${this.unificationTarget()}城を統一。戦乱の世に、新しい天下が訪れました。`,'victory');
       return result;
@@ -2371,8 +2371,8 @@
         if(s.turn*60000+s.realtime.elapsed*1000<=this.branchResolvedElapsedMs&&s.branches.some(branch=>branch.parentCastleId===move.to))return events;
         if((s.treaties[a.owner]||0)>s.turn)return events;
         this._recordCovertIncident(move.to,move.from);
-        const branch=this.activeBranches(move.to)[0];if(branch){const defense=this.branchDefense(branch.id),attack=a.troops*(s.difficulty==='hard'?.85:s.difficulty==='easy'?.55:.7),held=defense.power>=attack*(.84+this.random()*.32);this.recordOfficerBattle({key:`defense:${s.walking.campaignId}:${s.turn}:${branch.id}`,won:held,role:'defense',army:branch.commanders||[]});a.troops=survivorsAfterLoss(a.troops,Math.round(defense.force*(held?.3:.1)),300);if(held){this._damageBranchDurability(branch.id,{won:false,ratio:attack/Math.max(1,defense.power)});events.push(`${a.owner}が${branch.name}へ侵攻しましたが、支拠点が守りを固めて撃退しました。`);}else{this._fallBranch(branch.id);events.push(`${a.owner}の攻撃で${branch.name}が陥落。親拠点の領有と守備資産は維持しました。`);}for(const event of events)this.log(event,'world');return events;}
-        if(['edo',STAFF_BASE_ID,DEPUTY_BASE_ID].includes(move.to)){events.push(a.owner+'が'+bc.name+'へ侵攻。城の領有と守備資産を維持しました。');for(const e of events)this.log(e,'world');return events;}
+        const branch=this.activeBranches(move.to)[0];if(branch){const defense=this.branchDefense(branch.id),attack=a.troops*(s.difficulty==='hard'?.85:s.difficulty==='easy'?.55:.7),held=defense.power>=attack*(.84+this.random()*.32);this.recordOfficerBattle({key:`defense:${s.walking.campaignId}:${s.turn}:${branch.id}`,won:held,role:'defense',army:branch.commanders||[]});a.troops=survivorsAfterLoss(a.troops,Math.round(defense.force*(held?.3:.1)),300);if(held){this._damageBranchDurability(branch.id,{won:false,ratio:attack/Math.max(1,defense.power)});events.push(`${a.owner}が${branch.name}へ侵攻しましたが、支拠点が守りを固めて撃退しました。`);}else{this._fallBranch(branch.id);events.push(`${a.owner}の攻撃で${branch.name}が陥落しました。`);}for(const event of events)this.log(event,'world');return events;}
+        if(['edo',STAFF_BASE_ID,DEPUTY_BASE_ID].includes(move.to)){events.push(a.owner+'が'+bc.name+'へ侵攻。守備隊が応戦しました。');for(const e of events)this.log(e,'world');return events;}
         const home=move.to===s.home,reinforce=home?Math.round(s.troops*.45):Math.round(s.troops*.18),wall=home?s.buildings.wall:b.wall;
         const attack=a.troops*(s.difficulty==='hard'?.85:s.difficulty==='easy'?.55:.7),defense=this.defensePower(move.to);
         const beforeDurability=this.castle(move.to).durability,held=defense>=attack*(.84+this.random()*.32);

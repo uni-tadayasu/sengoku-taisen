@@ -37,7 +37,7 @@ function browser(initialSave,{linked=false,liveModal=false,travelUI}={}) {
     if(select){const options=[...select[1].matchAll(/<option\s+value="([^"]*)"([^>]*)>/g)];node.value=(options.find(m=>/\bselected\b/.test(m[2]))||options[0])?.[1]||'';}
     nodes.set(id,node);return node;
   }
-  const document = {hidden:false,activeElement:null,querySelector:query,querySelectorAll:selector=>modalDOM?modalDOM.host.querySelectorAll(selector).map(decorate):[],getElementById:id=>query('#'+id),addEventListener:(type,fn)=>{if(!handlers.has(type))handlers.set(type,[]);handlers.get(type).push(fn);}};
+  const document = {hidden:false,activeElement:null,documentElement:{classList:{contains:()=>false}},querySelector:query,querySelectorAll:selector=>modalDOM?modalDOM.host.querySelectorAll(selector).map(decorate):[],getElementById:id=>query('#'+id),addEventListener:(type,fn)=>{if(!handlers.has(type))handlers.set(type,[]);handlers.get(type).push(fn);}};
   if(modalDOM){
     document.createElement=name=>modalDOM.doc.createElement(name);
     Object.defineProperty(document,'activeElement',{get:()=>modalDOM.doc.activeElement,set:node=>{modalDOM.doc.activeElement=node;}});
@@ -52,7 +52,7 @@ function browser(initialSave,{linked=false,liveModal=false,travelUI}={}) {
   if(travelUI)c.SengokuTravelUI=travelUI;
   c.window=c;vm.createContext(c);vm.runInContext(fs.readFileSync(path.join(__dirname,'../kamon.js'),'utf8'),c);vm.runInContext(source,c);
   async function event(type,target){for(const listener of handlers.get(type)||[])await listener({target});}
-  async function click(action,id){const node={disabled:false,dataset:{action,id},closest(){return this;}};await event('click',node);}
+  async function click(action,id){const node={disabled:false,dataset:{action,id},closest(selector){return selector.includes('[data-action]')||selector.includes('[data-view]')?this:null;}};await event('click',node);}
   return {c,stored,events,nodes,query,click,event,failNextSave:()=>{failSave=true;}};
 }
 
@@ -91,7 +91,7 @@ await test('verified staff metadata fixes the house and Kyoto Gosho, preserves o
   assert.deepEqual(plain(bridge.getState().officers),plain(g.state.officers));assert.deepEqual(plain(bridge.getState().officerVariants),plain(g.state.officerVariants));
   assert(!bridge.getState().officerVariants.includes('of_b0616adde162:U'));
   const header=b.nodes.get('clan-panel').innerHTML;
-  assert.match(header,/<b>徳川家<\/b>/);assert.match(header,/徳川家康 の治世/);assert.match(header,/assets\/kamon\/tokugawa\.svg/);assert.match(header,/aria-label="徳川家：三つ葉葵"/);assert(!/運営|スタッフ/.test(header));
+  assert.match(header,/<b>德川家<\/b>/);assert.match(header,/徳川家康 の治世/);assert.match(header,/assets\/kamon\/tokugawa\.svg/);assert.match(header,/aria-label="德川家：三つ葉葵"/);assert(!/運営|スタッフ/.test(header));
   assert(!header.includes('織田信長'));assert(!header.includes('德川家康 の治世'));
   assert.equal(bridge.getState().buildings.farm,5);assert.equal(bridge.getState().castles.kyoto_gosho.level,63);
   assert.equal(bridge.getSave().state.buildings.farm,3);const before=plain(bridge.getSave().state),events=b.events.length;
@@ -143,7 +143,7 @@ await test('staff castle UI allows level 128 while facilities retain level 32',a
   const b=browser(personal().exportSave()),bridge=b.c.SengokuBridge,nearLimit=base();nearLimit.castleLevel=127;nearLimit.initial.castleLevel=127;bridge.setRoleAccess({isStaff:true});bridge.applyStaffBase(nearLimit);
   await b.click('staff-base-detail');let html=b.nodes.get('modal-content').innerHTML;
   assert.match(html,/Lv\.127 \/ 128/);assert.match(html,/Lv\.128へ共同普請する/);assert(!html.includes('最高のLv.32'));
-  assert.match(html,/自領 · 徳川家/);assert.match(html,/aria-label="徳川家：三つ葉葵"/);assert(!html.includes('江戸城を本拠'));
+  assert.match(html,/自領 · 德川家/);assert.match(html,/aria-label="德川家：三つ葉葵"/);assert(!html.includes('江戸城を本拠'));
   const complete=base(2);complete.castleLevel=128;complete.initial.castleLevel=128;bridge.applyStaffBase(complete);
   html=b.nodes.get('modal-content').innerHTML;assert.match(html,/最高のLv\.128/);assert(!html.includes('data-action="upgrade-castle"'));
   await b.click('building','farm');html=b.nodes.get('modal-content').innerHTML;assert.match(html,/Lv\.5 \/ 32/);assert.match(html,/共同普請する/);
@@ -176,7 +176,7 @@ await test('ordinary 徳川家 remains selectable without staff or operator acce
 });
 await test('real app branch construction pays once, retains its detail modal and refreshes the completed level',async()=>{
   const b=browser(personal().exportSave()),bridge=b.c.SengokuBridge;b.c.SengokuBranches=require('../branches.js');bridge.setRoleAccess({isAdmin:true});await b.click('level-guide-castle','edo');const before=plain(bridge.getState());assert.match(b.nodes.get('modal-content').innerHTML,/data-action="build-branch"/);
-  await b.event('click',{disabled:false,dataset:{action:'build-branch',id:'edo',direction:'north'},closest(){return this;}});const after=bridge.getState();assert.equal(after.branches[0].id,'edo_north');assert.equal(after.branches[0].level,0);assert.equal(after.command,before.command-1);assert(after.resources.gold<before.resources.gold);assert.equal(b.nodes.get('modal').open,true);assert.match(b.nodes.get('modal-content').innerHTML,/branch:edo_north:personal:1/);
+  await b.event('click',{disabled:false,dataset:{action:'build-branch',id:'edo',direction:'north'},closest(selector){return selector.includes('[data-action]')||selector.includes('[data-view]')?this:null;}});const after=bridge.getState();assert.equal(after.branches[0].id,'edo_north');assert.equal(after.branches[0].level,0);assert.equal(after.command,before.command-1);assert(after.resources.gold<before.resources.gold);assert.equal(b.nodes.get('modal').open,true);assert.match(b.nodes.get('modal-content').innerHTML,/branch:edo_north:personal:1/);
   const completed=plain(bridge.getSave());completed.state.jobs=completed.state.jobs.filter(job=>job.kind!=='branch');completed.state.branches[0].level=1;assert(bridge.applyCloudSave(completed,{isAdmin:true}).ok);assert.equal(b.nodes.get('modal').open,true);assert.match(b.nodes.get('modal-content').innerHTML,/Lv\.1 \/ 8/);assert.match(b.nodes.get('modal-content').innerHTML,/data-action="upgrade-branch"/);assert.match(b.nodes.get('modal-content').innerHTML,/data-action="build-branch"/);
 });
 await test('the complete Edo modal keeps four Lv8 defenses and removes only exhausted construction controls',async()=>{
@@ -218,7 +218,7 @@ await test('branch departure preserves its target, refunds a vanished defense, a
   assert(combat.ok);assert.equal(combat.battle.branchId,'nijo_east');assert.equal(combat.battle.captured,false);
   const before={troops:s.troops,command:s.command,battles:s.stats.battles};
   await b.click('prepare-branch-battle','nijo_east');let html=b.nodes.get('modal-content').innerHTML;
-  assert.match(html,/支拠点への出陣/);assert.match(html,/data-action="attack-branch"/);assert.match(html,/領地の占領・資源の獲得はありません/);
+  assert.match(html,/支拠点への出陣/);assert.match(html,/data-action="attack-branch"/);assert.doesNotMatch(html,/領地の占領・資源の獲得はありません/);
   await b.click('attack-branch');const march=bridge.getState().march;
   assert.equal(march.targetBranchId,'nijo_east');assert.equal(bridge.getState().lastBattle,null);
   assert.equal(actions.getLocal()[0].id,march.id);assert.equal(b.nodes.get('modal').open,false);
@@ -233,7 +233,45 @@ await test('branch departure preserves its target, refunds a vanished defense, a
   assert.equal(bridge.getState().stats.battles,before.battles);
   const completed={...march,status:'resolved',battle:combat.battle};
   assert.equal(actions.onReport(completed),true);assert.equal(b.nodes.get('modal').open,true);
-  html=b.nodes.get('modal-content').innerHTML;assert.match(html,/領地の占領・資源の獲得はありません/);assert.doesNotMatch(html,/領国に加わりました/);
+  html=b.nodes.get('modal-content').innerHTML;assert.doesNotMatch(html,/領地の占領・資源の獲得はありません/);assert.doesNotMatch(html,/領国に加わりました/);
+});
+await test('protected presentation keeps victory rewards and casualties visible without claiming a capture or changing saved records',()=>{
+  let actions;
+  const travelUI={...require('../travel-ui.js'),configure(options){actions=options;}},g=personal(),b=browser(g.exportSave(),{travelUI}),bridge=b.c.SengokuBridge;
+  const receipt={kind:'castle',status:'resolved',targetName:'鹿児島城',battle:{won:true,castleId:'kagoshima',castleName:'鹿児島城',captured:false,battleMode:'reward',ourBefore:1000,ourLost:120,enemyBefore:500,enemyLost:0,garrison:0,rewards:{gold:500,rice:500,magatama:0},phases:[{title:'勝利報酬',text:'鹿児島城に勝利。サブ運営拠点の領有を維持し、勝利報酬を受け取ります。'}]}};
+  const saved=plain(bridge.getSave().state),original=plain(receipt);
+  assert.equal(actions.onReport(receipt),true);
+  let html=b.nodes.get('modal-content').innerHTML;
+  assert.match(html,/鹿児島城との合戦に勝利しました/);assert.match(html,/120/);assert.match(html,/880/);assert.match(html,/500/);
+  assert.doesNotMatch(html,/占領|領有を維持|領国に加わりました|新領地の守備兵|城の守備隊へ配置/);
+  assert.deepEqual(plain(receipt),original);assert.deepEqual(plain(bridge.getSave().state),saved);
+  const captured={...receipt,battle:{...receipt.battle,castleId:'nijo',castleName:'二条城',captured:true,battleMode:'capture',garrison:100,phases:[]}};
+  assert.equal(actions.onReport(captured),true);html=b.nodes.get('modal-content').innerHTML;
+  assert.match(html,/二条城があなたの領国に加わりました/);assert.match(html,/城の守備隊へ配置/);assert.match(html,/780/);
+  const lost={...receipt,battle:{...receipt.battle,won:false,rewards:{gold:0,rice:0,magatama:0},phases:[]}};
+  assert.equal(actions.onReport(lost),true);html=b.nodes.get('modal-content').innerHTML;assert.match(html,/次の機会をうかがいましょう/);assert.doesNotMatch(html,/勝鬨|領国に加わりました|占領/);
+  assert.deepEqual(plain(bridge.getSave().state),saved);
+});
+await test('protected presentation formats exact legacy system records while preserving saves and unrelated text',async()=>{
+  const g=personal(),legacy=[
+    '鹿児島城への攻撃に勝利。城は占領せず、金銭500・兵糧400を受け取りました。',
+    '島津家が江戸城へ侵攻。城の領有と守備資産を維持しました。',
+    '上杉家の攻撃で二条城・東支拠点が陥落。親拠点の領有と守備資産は維持しました。'
+  ];
+  g.state.log=legacy.map((text,i)=>({turn:i,kind:i?'world':'battle',text}));
+  const b=browser(g.exportSave()),bridge=b.c.SengokuBridge;
+  const html=b.nodes.get('main').innerHTML;
+  assert.match(html,/鹿児島城への攻撃に勝利。金銭500・兵糧400を受け取りました/);
+  assert.match(html,/島津家が江戸城へ侵攻。守備隊が応戦しました/);
+  assert.match(html,/上杉家の攻撃で二条城・東支拠点が陥落しました/);
+  assert.doesNotMatch(html,/城は占領せず|城の領有と守備資産|親拠点の領有と守備資産/);
+  assert.deepEqual(plain(bridge.getSave().state.log).map(row=>row.text),legacy);
+  let formatText;b.c.SengokuCampaignRecords={open:options=>{formatText=options.formatText;}};await b.event('click',{disabled:false,dataset:{action:'campaign-records'},closest(selector){return selector.includes('[data-action]')?this:null;}});
+  assert.equal(formatText('江戸城・北支拠点が攻撃者の攻撃を受けて陥落しました。親拠点の領有・守備兵・資源は維持しています。'),'江戸城・北支拠点が攻撃者の攻撃を受けて陥落しました。');
+  assert.equal(formatText('名古屋城・西支拠点が攻撃者の攻撃を撃退しました。親拠点の領有・守備兵・資源は維持しています。'),'名古屋城・西支拠点が攻撃者の攻撃を撃退しました。');
+  assert.equal(formatText('攻撃者の襲撃を受け、兵200人を失いました。本拠の領有は継続しています。'),'攻撃者の襲撃を受け、兵200人を失いました。');
+  for(const value of ['占領不可という表示についての感想','未収録家が江戸城へ侵攻。城の領有と守備資産を維持しました。','引用：'+legacy[0],legacy[1]+'追記'])assert.equal(formatText(value),value);
+  assert.deepEqual(plain(bridge.getSave().state.log).map(row=>row.text),legacy);
 });
 await test('court navigation and evaluation entry mount once, refresh in place and dispose on leaving',async()=>{
   const b=browser(personal().exportSave()),bridge=b.c.SengokuBridge,trace=[];let options;
@@ -241,7 +279,7 @@ await test('court navigation and evaluation entry mount once, refresh in place a
   assert.match(b.nodes.get('navigation').innerHTML,/data-view="court"/);bridge.showEvaluation();assert.match(b.nodes.get('modal-content').innerHTML,/京都御所へ出向く/);
   bridge.openCourt();assert.equal(b.nodes.get('main').dataset.view,'court');assert.equal(options.initialSection,'overview');assert.equal(b.nodes.get('modal').open,false);bridge.setSyncAccess({linked:true,ready:true,writable:false,rolePending:false,reason:'follower'});assert.equal(trace.filter(x=>x==='mount').length,1);assert(trace.includes('refresh'),'A changed authority refreshes the existing court without remounting it');
   bridge.openCourt({management:true});assert.equal(trace.at(-1),'management');assert.equal(trace.filter(x=>x==='mount').length,1);
-  await b.event('click',{disabled:false,dataset:{view:'town'},closest(){return this;}});assert.equal(trace.filter(x=>x==='dispose').length,1);bridge.openCourt({management:true});assert.equal(options.initialSection,'management');assert.equal(trace.filter(x=>x==='mount').length,2);
+  await b.event('click',{disabled:false,dataset:{view:'town'},closest(selector){return selector.includes('[data-action]')||selector.includes('[data-view]')?this:null;}});assert.equal(trace.filter(x=>x==='dispose').length,1);bridge.openCourt({management:true});assert.equal(options.initialSection,'management');assert.equal(trace.filter(x=>x==='mount').length,2);
 });
 console.log(`${count} staff-base application UI scenarios passed. No network requests.`);
 })().catch(error=>{console.error(error);process.exitCode=1;});
