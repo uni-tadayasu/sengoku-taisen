@@ -6,7 +6,7 @@ The settings version control can deliberately reveal the existing original-opera
 
 The entry exists only for the current recovery view and account context. Closing the view, leaving it, hiding the page, or changing accounts invalidates the entry and clears the input. Delayed key responses and save-file reads are discarded after cancellation. Adding a game save to a key-verified identity retains the operator-role check and cancellation behavior; importing a separate identity uses the established backup workflow.
 
-The backend implementation, registration secret, existing sessions, live players, and live game saves are not changed by this release. A real operator recovery still requires the user to enter the original registration key and explicitly choose the progress to restore.
+The backend release marker is synchronized to 5.13.3, as required by the existing health/config version checks. The recovery implementation, registration secret, existing sessions, live players, and live game saves are not changed by this release. A real operator recovery still requires the user to enter the original registration key and explicitly choose the progress to restore.
 
 ## Local verification
 
@@ -14,7 +14,8 @@ The backend implementation, registration secret, existing sessions, live players
 - `node tests/test-settings-usability.cjs`: 10 checks, including the deliberate version gesture, expiry, other-action reset, and unchanged game saves.
 - `node server/test-admin-recovery.mjs`: 123 local HTTP calls using synthetic keys and identities; existing-owner-only authentication, immutable saved progress and old credentials, idempotent retries, revoked sessions, CORS, and rate limits.
 - `node tests/test-minified-runtime.cjs`: original/minified initialization parity and 62 campaign/save checkpoints.
-- Production entry remains within the existing release budget: 3,696,053 raw bytes / 1,022,358 gzip bytes. No runtime dependency, image, or server-code addition.
+- Production entry remains within the existing release budget: 3,696,053 raw bytes / 1,022,358 gzip bytes. No runtime dependency, image, or server behavior addition.
+- API release parity checks passed after synchronizing the release marker: profile-name (9 scenarios / 143 calls), succession approval (27 scenarios / 816 calls), and rewards (20 scenarios / 323 calls), all with local test data.
 - Recovery and settings checks are included in the GitHub Actions recovery job.
 
 ## Browser verification
@@ -25,4 +26,4 @@ These checks cover browser rendering at the stated dimensions, not physical iOS/
 
 ## Publication
 
-The release retains the existing GitHub Pages publication workflow. Backend redeployment and database migrations are not required for this frontend change. GitHub checks and the served release marker must be confirmed when the pull request is published.
+The release retains the existing GitHub Pages publication workflow and republishes the existing API Site with the synchronized release marker. No database migration is required. GitHub checks and the served release marker must be confirmed when the pull request is published.
