@@ -53,6 +53,8 @@ jobs:
         run: npm run test:entry
       - name: Check planning, comparison, navigation and deferred UI
         run: npm run test:interface
+      - name: Verify reward receipts, retries and account isolation
+        run: node tests/test-rewards.cjs
       - name: Check shipped asset budgets and runtime parity
         run: |
           node tests/test-asset-budget.cjs
@@ -132,6 +134,12 @@ jobs:
           node server/test-field-migration.mjs
           node server/test-world-cycles.mjs
           node tests/test-sync-integration.mjs
+      - name: Verify authoritative rewards and paid reward migration
+        run: |
+          node server/test-rewards.mjs
+          node server/test-paid-rewards-migration.mjs
+      - name: Verify payment totals, supporter renewal and observed player retention
+        run: node server/test-premium-metrics.mjs
       - name: Verify player retainer bonuses and castle membership
         run: |
           node tests/test-residency-engine.cjs

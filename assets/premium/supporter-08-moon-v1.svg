@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="960" viewBox="0 0 640 960" role="img" aria-labelledby="title description">
+  <title id="title">夏宵 月輪の旗印</title><desc id="description">夏宵の配色による満ちる月と重なる波紋で仕立てた旗印。季節の配色は12か月で巡ります。</desc>
+  <defs>
+    <linearGradient id="metal" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#fff5df"/><stop offset=".23" stop-color="#efc584"/><stop offset=".46" stop-color="#fff5df"/><stop offset=".7" stop-color="#976076"/><stop offset="1" stop-color="#efc584"/></linearGradient>
+    <linearGradient id="silk"><stop stop-color="#3b233a"/><stop offset=".18" stop-color="#976076"/><stop offset=".46" stop-color="#3b233a"/><stop offset=".82" stop-color="#976076"/><stop offset="1" stop-color="#3b233a"/></linearGradient>
+    <pattern id="brocade" width="48" height="48" patternUnits="userSpaceOnUse"><path d="m24 0 24 24-24 24L0 24Z" fill="none" stroke="#efc584" stroke-opacity=".2"/><path d="m24 15 9 9-9 9-9-9Z" fill="#efc584" fill-opacity=".11"/></pattern>
+    <filter id="shadow" x="-25%" y="-10%" width="155%" height="130%"><feGaussianBlur in="SourceAlpha" stdDeviation="7" result="blur"/><feOffset in="blur" dx="6" dy="10" result="offset"/><feFlood flood-color="#071019" flood-opacity=".5" result="color"/><feComposite in="color" in2="offset" operator="in" result="shadow"/><feMerge><feMergeNode in="shadow"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  </defs>
+  <g filter="url(#shadow)">
+    <rect x="82" y="65" width="18" height="846" rx="8" fill="url(#metal)"/><path d="M91 23 108 51 91 72 74 51Z" fill="url(#metal)"/>
+    <path d="M100 92H536V765L427 742 320 827 211 742 100 765Z" fill="url(#silk)" stroke="url(#metal)" stroke-width="9"/>
+    <path d="M114 110H522V744L427 723 320 806 211 723 114 744Z" fill="url(#brocade)" stroke="url(#metal)" stroke-width="2"/>
+    <path d="M132 129H504V719L427 702 320 781 211 702 132 719Z" fill="none" stroke="url(#metal)" stroke-width="1" opacity=".7"/>
+    <rect x="64" y="80" width="510" height="18" rx="7" fill="url(#metal)"/><circle cx="65" cy="89" r="13" fill="url(#metal)"/><circle cx="574" cy="89" r="13" fill="url(#metal)"/>
+    <path d="M166 165H474M166 181H474" stroke="url(#metal)" stroke-width="3"/>
+    <path d="m166 150 14 15-14 16m308-31-14 15 14 16" fill="none" stroke="url(#metal)" stroke-width="3"/>
+    <circle cx="320" cy="377" r="155" fill="#3b233a" fill-opacity=".79" stroke="url(#metal)" stroke-width="9"/>
+    <circle cx="320" cy="377" r="141" fill="none" stroke="url(#metal)" stroke-width="2"/>
+    <circle cx="320" cy="368" r="105" fill="url(#metal)"/>
+      <circle cx="351" cy="344" r="91" fill="#3b233a"/>
+      <circle cx="372" cy="318" r="22" fill="url(#metal)"/>
+      <path d="M217 431C250 406 280 406 312 431S375 456 423 419M231 452C265 428 295 432 324 451S378 471 409 450" fill="none" stroke="url(#metal)" stroke-width="5" stroke-linecap="round"/>
+      <g fill="none" stroke="url(#metal)" stroke-width="4"><path d="M257 598C278 578 297 578 320 598S362 618 383 598M257 621C278 601 297 601 320 621S362 641 383 621M281 643C294 635 307 635 320 643S346 651 359 643"/></g>
+      <circle cx="320" cy="558" r="9" fill="url(#metal)"/>
+    <path d="M176 681h65m-32-12v25m190-13h65m-32-12v25" fill="none" stroke="url(#metal)" stroke-width="3"/>
+    <path d="M211 752v29" stroke="url(#metal)" stroke-width="5"/><circle cx="211" cy="783" r="9" fill="url(#metal)"/><path d="m203 792-5 43 13-6 13 6-5-43Z" fill="url(#metal)"/><path d="M320 836v29" stroke="url(#metal)" stroke-width="5"/><circle cx="320" cy="867" r="9" fill="url(#metal)"/><path d="m312 876-5 43 13-6 13 6-5-43Z" fill="url(#metal)"/><path d="M427 752v29" stroke="url(#metal)" stroke-width="5"/><circle cx="427" cy="783" r="9" fill="url(#metal)"/><path d="m419 792-5 43 13-6 13 6-5-43Z" fill="url(#metal)"/>
+  </g>
+</svg>

@@ -954,8 +954,8 @@ function getExpansionContext(){
 }
 async function expansionRequest(route,options={}){
  const method=options.method||'GET',path=String(route).split('?')[0];
- const read=method==='GET'&&['/progress','/shogunate','/alliance','/conquest','/conquest/history','/protection','/notifications'].includes(path);
- const write=method==='POST'&&['/progress/claim','/progress/exchange','/progress/acknowledge','/shogunate/open','/alliance/policy','/alliance/apply','/alliance/invite','/alliance/membership','/alliance/operations/create','/alliance/operations/rsvp','/alliance/operations/assign','/alliance/operations/cancel','/alliance/operations/complete','/alliance/rally/join','/alliance/rally/launch','/alliance/reinforcements/send','/alliance/units/recall','/alliance/units/claim','/alliance/treasury/request','/alliance/treasury/approve','/alliance/treasury/claim','/conquest/join','/conquest/action','/protection/end','/notifications/preferences','/notifications/subscribe','/notifications/unsubscribe','/guild/join'].includes(path)&&route===path;
+ const read=method==='GET'&&['/rewards','/progress','/shogunate','/alliance','/conquest','/conquest/history','/protection','/notifications'].includes(path);
+ const write=method==='POST'&&['/rewards/login','/gacha/draw','/gacha/reroll','/gacha/choose','/progress/claim','/progress/exchange','/progress/acknowledge','/shogunate/open','/alliance/policy','/alliance/apply','/alliance/invite','/alliance/membership','/alliance/operations/create','/alliance/operations/rsvp','/alliance/operations/assign','/alliance/operations/cancel','/alliance/operations/complete','/alliance/rally/join','/alliance/rally/launch','/alliance/reinforcements/send','/alliance/units/recall','/alliance/units/claim','/alliance/treasury/request','/alliance/treasury/approve','/alliance/treasury/claim','/conquest/join','/conquest/action','/protection/end','/notifications/preferences','/notifications/subscribe','/notifications/unsubscribe','/guild/join'].includes(path)&&route===path;
  if(!read&&!write||typeof route!=='string'||route.length>500||route.includes('#'))throw Error('成長・同盟・大会の操作を確認してください。');
  const initial=getExpansionContext();if(!initial.user)throw Object.assign(Error(initial.banned?'この領主は利用停止中です。':'交流で領主登録・接続を確認してください。'),{code:'EXPANSION_IDENTITY_REQUIRED'});
  const scoped=path.startsWith('/alliance')||path.startsWith('/conquest');
@@ -1106,7 +1106,7 @@ function tradeRequest(route,options={}){
 }
 function premiumReviewRequest(route,options={}){
  const method=options.method||'GET';
- if(!(method==='GET'&&/^\/admin\/premium\/reviews(?:\?[^#]*)?$/.test(route)||method==='POST'&&route==='/admin/premium/reviews'))throw Error('購入の確認操作を確認してください。');
+ if(!(method==='GET'&&/^\/admin\/premium\/(?:reviews|metrics)(?:\?[^#]*)?$/.test(route)||method==='POST'&&route==='/admin/premium/reviews'))throw Error('購入の確認操作を確認してください。');
  if(!s.user?.isAdmin||!s.identity||recoveryHeld||s.accountAccessPending||s.accountBanned)throw Error('この操作には接続中の運営権限が必要です。');
  const owner=String(s.identity.id),epoch=authEpoch,privilege=privilegeEpoch;
  return api(route,{method,data:options.body??options.data,background:true,identityEpoch:epoch}).then(result=>{
@@ -1115,13 +1115,13 @@ function premiumReviewRequest(route,options={}){
  });
 }
 function premiumRequest(route,options={}){
- const method=options.method||'GET';
- if(!(route==='/premium'&&method==='GET'||route==='/premium/checkout'&&method==='POST'||route==='/premium/appearance'&&method==='PUT'))throw Error('有料商品の操作を確認してください。');
+ const method=options.method||'GET',parts=String(route).split('?'),path=parts[0];
+ if(parts.length>2||route.includes('#')||parts[1]&&!/^catalog=[34]$/.test(parts[1])||!(path==='/premium'&&method==='GET'||['/premium/checkout','/premium/supporter-choice','/premium/events'].includes(path)&&method==='POST'||path==='/premium/appearance'&&method==='PUT'))throw Error('有料商品の操作を確認してください。');
  if(!s.user||!s.identity||recoveryHeld||s.accountAccessPending)throw Error('領主登録・ログイン後に利用できます。');
  if(s.accountBanned)throw accountBannedError();
  const owner=String(s.identity.id),epoch=authEpoch;
- const catalogQuery=global.SengokuPremiumCatalog?.version===3?'?catalog=3':'';
- return api(route+catalogQuery,{...options,background:true,identityEpoch:epoch}).then(result=>{
+ const catalogQuery=global.SengokuPremiumCatalog?.version>=4?'?catalog=4':global.SengokuPremiumCatalog?.version===3?'?catalog=3':'';
+ return api(path+catalogQuery,{...options,background:true,identityEpoch:epoch}).then(result=>{
   if(owner!==String(s.identity?.id)||epoch!==authEpoch||s.accountBanned)throw staleIdentity();
   return result;
  });

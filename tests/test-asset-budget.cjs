@@ -40,7 +40,13 @@ const totalGzipBytes = rows.reduce((sum,row)=>sum+row.gzipBytes,0);
 // The catalog and dialog are lazy. Measured entry delta: +3,772 raw / +1,464 gzip.
 // v5.9.16 adds the shared candidate dialog and connects the individual editors.
 // Lists use existing game catalogs and on-demand online lookups.
-const rawBudget=3405000,gzipBudget=949000;
+// v5.10 adds resumable server-owned summons, login-reward status, the paid
+// reroll/choice interface, seasonal supporter catalog and operator payment/
+// retention metrics. Final shipped bundles measure 3,475,095 raw / 967,511
+// gzip bytes, up 74,760 / 20,640 from v5.9.17. Keep only 2,905 raw /
+// 1,489 gzip bytes of headroom; the new
+// SVG artwork is a separate lazy resource and is not hidden in this allowance.
+const rawBudget=3478000,gzipBudget=969000;
 assert(totalBytes <= rawBudget, `Initial bundles exceed the ${rawBudget} byte budget: ${totalBytes}`);
 assert(totalGzipBytes <= gzipBudget, `Initial bundles exceed the ${gzipBudget} gzip byte budget: ${totalGzipBytes}`);
 const html = fs.readFileSync(path.join(root,'index.html'),'utf8');

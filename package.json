@@ -1,6 +1,6 @@
 {
   "name": "sengoku-vs-web",
-  "version": "5.9.17",
+  "version": "5.10.0",
   "private": true,
   "description": "Reproducible production assets for the Sengoku VS browser game",
   "scripts": {

@@ -13,3 +13,58 @@
 @media(max-width:600px){.premium-admin-dialog{width:calc(100vw - 12px);height:calc(100dvh - 16px);border-radius:14px}.premium-admin-header{gap:12px;padding:13px 14px}.premium-admin-header h1{font-size:23px}.premium-admin-header>.premium-admin-button{padding:9px 12px;flex-shrink:0}.premium-admin-main{padding:18px 14px 22px}.premium-admin-intro{display:block;margin-bottom:20px}.premium-admin-intro>.premium-admin-button{margin-top:12px}.premium-admin-hold{padding:18px 0}.premium-admin-hold-heading{flex-wrap:wrap;gap:2px}.premium-admin-hold h2,.premium-admin-editor h2,.premium-admin-confirm h2,.premium-admin-pending h2{font-size:21px}.premium-admin-state{margin:0 0 7px}.premium-admin-identifiers{padding:12px}.premium-admin-identifiers>div{grid-template-columns:1fr;gap:2px}.premium-admin-players li{gap:2px;flex-direction:column}.premium-admin-hold-footer{align-items:flex-start;flex-direction:column;gap:4px}.premium-admin-editor,.premium-admin-confirm,.premium-admin-pending{padding:15px 13px}.premium-admin-actions{flex-direction:column-reverse}.premium-admin-actions .premium-admin-button{width:100%}.premium-admin-footer{padding:9px 12px;text-align:left}}
 html:not(.sengoku-desktop-fit) .premium-admin-dialog{position:fixed;inset:auto;left:calc(var(--social-viewport-left,0px) + 4px);top:calc(var(--social-viewport-top,0px) + 4px);width:calc(var(--social-viewport-width,100vw) - 8px);height:calc(var(--social-viewport-height,100dvh) - 8px);max-width:100%;max-height:none;margin:0}
 @media(max-height:540px){.premium-admin-header{padding-block:8px}.premium-admin-header h1{font-size:21px}.premium-admin-header .premium-admin-label,.premium-admin-footer{display:none}.premium-admin-main{padding-top:12px}}
+
+/* Observed metrics are optional reads and never substitute missing data with zero. */
+.premium-admin-metrics{margin:1rem 0 1.5rem;padding:1rem;border:1px solid #b5c7cf44;border-radius:7px;background:#152a35}
+.premium-admin-metrics>summary,.premium-admin-daily>summary{min-height:44px;cursor:pointer;padding:.45rem 0;color:#e5d0a6;line-height:1.8;font-weight:600}
+.premium-admin-metrics-heading{display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin:.7rem 0 1rem}
+.premium-admin-metrics-heading h2{margin:0;font-size:1.2rem}
+.premium-admin-metrics-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.75rem;margin:1rem 0}
+.premium-admin-metrics-grid>div{padding:.85rem;border:1px solid #b5c7cf33;border-radius:5px;background:#101f2b}
+.premium-admin-metrics-grid dt{font-size:.875rem;line-height:1.8;color:#bfcdd2}
+.premium-admin-metrics-grid dd{display:flex;align-items:baseline;gap:.5rem;flex-wrap:wrap;margin:.35rem 0 0;color:#f1dfb8}
+.premium-admin-metrics-grid strong{font:600 1.7rem/1.5 "Yu Mincho",serif;font-variant-numeric:tabular-nums}
+.premium-admin-metrics-grid span{font-size:.8rem;color:#c1c9c8}
+.premium-admin-metrics-explanation{padding:1rem;border-left:2px solid #c0ad78;background:#bda46808;color:#c3d0d3;font-size:.9rem;line-height:1.9}
+.premium-admin-metrics-explanation h3{font-size:1rem;color:#e7d7b6;margin:1rem 0 .5rem}
+.premium-admin-metrics-explanation h3:first-child{margin-top:0}
+.premium-admin-metrics-explanation p{margin:.4rem 0}
+.premium-admin-metrics-explanation .premium-admin-metric-rate{color:#e4edce;font-weight:600;font-size:1.15rem}
+.premium-admin-metrics-error{padding:.8rem;border-left:3px solid #cda58b;background:#8f553319;color:#efcbb0}
+.premium-admin-daily{margin-top:1rem}
+.premium-admin-metrics-table-wrap{overflow:auto;max-width:100%;border:1px solid #b5c7cf33}
+.premium-admin-metrics-table-wrap table{border-collapse:collapse;width:100%;min-width:620px;color:#cbd8dc;font-size:.8rem;font-variant-numeric:tabular-nums}
+.premium-admin-metrics-table-wrap caption{text-align:left;padding:.7rem;color:#b8c7ce}
+.premium-admin-metrics-table-wrap th,.premium-admin-metrics-table-wrap td{text-align:right;padding:.6rem;border-top:1px solid #b5c7cf33;white-space:nowrap}
+.premium-admin-metrics-table-wrap th:first-child{text-align:left}
+.premium-admin-metrics-table-wrap thead th{color:#e4d4af}
+@media(max-width:650px){.premium-admin-metrics-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.premium-admin-metrics{padding:.8rem}.premium-admin-metrics-grid>div{padding:.65rem}.premium-admin-metrics-grid strong{font-size:1.4rem}}
+.premium-admin-period{display:grid;gap:.35rem;margin-left:auto;color:#c7d3d4;font-size:.875rem}
+.premium-admin-period select{min-height:44px;max-width:100%;padding:.5rem 2rem .5rem .75rem;border:1px solid #a2bbb960;border-radius:7px;background:#101f2b url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='m1 1 5 5 5-5' fill='none' stroke='%23e4d4af' stroke-width='1.5'/%3E%3C/svg%3E") no-repeat right .75rem center/12px 8px;color:#f0ede5;font:inherit;font-size:1rem;appearance:none}
+.premium-admin-period select:focus-visible{outline:2px solid #ecd391;outline-offset:3px}
+.premium-admin-measure{margin:1rem 0;padding:1rem;border:1px solid #739c9e55;border-radius:9px;background:linear-gradient(140deg,#102730,#101e2b);overflow-wrap:anywhere}
+.premium-admin-measure h3{margin:0 0 .6rem;color:#ecd7a8;font-size:1.08rem;line-height:1.6}
+.premium-admin-measure>p{margin:.5rem 0;color:#c5d3d5;font-size:1rem;line-height:1.8}
+.premium-admin-measure .premium-admin-note{font-size:.875rem}
+.premium-admin-revenue-total{display:flex;align-items:baseline;gap:.6rem;flex-wrap:wrap;margin:.75rem 0;color:#a5e7d2}
+.premium-admin-revenue-total strong{font:600 clamp(1.8rem,5vw,2.6rem)/1.4 "Yu Mincho",serif;font-variant-numeric:tabular-nums}
+.premium-admin-revenue-total span{font-size:.875rem;color:#c3d0d0}
+.premium-admin-revenue-products{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.7rem;margin:.8rem 0 0}
+.premium-admin-revenue-products>div{display:grid;align-content:start;gap:.35rem;padding:.75rem;border:1px solid #95b8bd29;border-radius:6px;background:#081b2459}
+.premium-admin-revenue-products dt{color:#cbd9da;font-size:.875rem;line-height:1.7}
+.premium-admin-revenue-products dd{display:flex;align-items:baseline;gap:.5rem;flex-wrap:wrap;margin:0;color:#e7dcba;font-size:1rem;font-variant-numeric:tabular-nums}
+.premium-admin-revenue-products dd span{color:#b0c3c7;font-size:.875rem}
+.premium-admin-measure details>summary{min-height:44px;padding:.5rem 0;color:#dfcca3;cursor:pointer;font-size:1rem}
+.premium-admin-cohort-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.75rem;margin:1rem 0}
+.premium-admin-cohort{padding:.8rem;border:1px solid #81baa64d;border-radius:7px;background:#071a2059}
+.premium-admin-cohort h4{margin:0;color:#d6e5e0;font-size:1rem;line-height:1.7}
+.premium-admin-cohort p{margin:.5rem 0 0;color:#bdcdd0;font-size:.875rem;line-height:1.8}
+.premium-admin-cohort .premium-admin-metric-rate{color:#aee2ce;font-size:1.4rem;font-weight:600;font-variant-numeric:tabular-nums}
+.premium-admin-cohort .is-unobserved{font-size:1rem;color:#c1cdd1;font-weight:400}
+.premium-admin-fraction{display:flex;flex-wrap:wrap;gap:.4rem 1.2rem;margin:.7rem 0}
+.premium-admin-fraction>div{display:flex;align-items:baseline;gap:.5rem;flex-wrap:wrap}
+.premium-admin-fraction dt{color:#b5cace;font-size:.875rem}.premium-admin-fraction dd{margin:0;color:#ebdfba;font-size:1rem;font-variant-numeric:tabular-nums}
+@media(max-width:650px){.premium-admin-measure{padding:.85rem}.premium-admin-revenue-products{grid-template-columns:repeat(2,minmax(0,1fr))}.premium-admin-cohort-grid{grid-template-columns:1fr}.premium-admin-period{margin-left:0}.premium-admin-metrics-explanation{padding:.8rem;font-size:1rem}}
+@media(max-width:400px){.premium-admin-revenue-products{grid-template-columns:1fr}.premium-admin-metrics-heading{gap:.7rem}.premium-admin-metrics-heading h2{width:100%}.premium-admin-period{flex:1}.premium-admin-revenue-total strong{font-size:1.8rem}}
+
+.premium-admin-measure>.premium-admin-metric-rate{color:#b5e4cf;font-size:1.3rem;font-weight:600;font-variant-numeric:tabular-nums}

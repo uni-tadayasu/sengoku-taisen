@@ -2,6 +2,27 @@
 (function (root) {
   'use strict';
   const CONFIG = Object.freeze({ currency: 'JPY', locale: 'ja-JP', checkoutRequiresAccount: true });
+  // Twelve seasonal palettes are shared by all years. Each paid billing period
+  // grants one choice; the calendar month determines the three displayed styles.
+  const SUPPORTER_THEMES = Object.freeze([
+    ['初霞', '#152a3d', '#b4cee0', '#759cba', '#f3f8ff'],
+    ['梅香', '#391e34', '#e7b0cb', '#96516f', '#fff0f5'],
+    ['花雲', '#40232d', '#e8b5b7', '#ad6876', '#fff2e6'],
+    ['若葉', '#18372d', '#c3d49a', '#4d8d6b', '#f5f8df'],
+    ['青嵐', '#143a3e', '#a6d7cc', '#3d8f92', '#eafbf1'],
+    ['雨翠', '#1c2945', '#b4bde8', '#6977aa', '#f1f3ff'],
+    ['星涼', '#172944', '#dbd7a8', '#416e9e', '#fffce3'],
+    ['夏宵', '#3b233a', '#efc584', '#976076', '#fff5df'],
+    ['月白', '#253549', '#e3dcbb', '#7d93a7', '#ffffef'],
+    ['紅葉', '#44251e', '#e8bc83', '#ac6745', '#fff2d8'],
+    ['霜華', '#243947', '#c3e0e3', '#628b9b', '#f1fcff'],
+    ['雪灯', '#203530', '#e9d7b0', '#648d7e', '#fff9eb']
+  ].map(([name, background, border, accent, text]) => Object.freeze({ name, background, border, accent, text })));
+  const SUPPORTER_MOTIFS = Object.freeze({
+    flower: Object.freeze({ name: '花菱の旗印', description: '重なり合う花菱と細い唐草で仕立てた旗印' }),
+    moon: Object.freeze({ name: '月輪の旗印', description: '満ちる月と重なる波紋で仕立てた旗印' }),
+    star: Object.freeze({ name: '七星の旗印', description: '七つの星と幾何学の組紐で仕立てた旗印' })
+  });
   const PRODUCTS = Object.freeze([
     {
       id: 'gold-banner', name: '金彩の旗印', kind: 'cosmetic', slot: 'nameplate', priceYen: 480, billingPeriod: 'one_time',
@@ -21,11 +42,21 @@
     },
     {
       id: 'supporter', name: '戦国VSサポーター', kind: 'subscription', slot: 'badge', priceYen: 780, billingPeriod: 'month',
-      summary: '戦国VSの開発・運営を継続して応援する月額プラン。黄金の花輪と藍の宝石を、支援の証に。',
-      benefits: ['利用期間中に表示できるサポーターバッジ', '表示する・しないを選べる装備切り替え', '戦力や資産の優遇を付けない継続支援'],
+      summary: '月額780円で戦国VSを継続支援。利用中のバッジに加え、支払いが完了した各利用期間に、季節の旗印と名札を3種から1種選べます。',
+      benefits: ['支払済みの各利用期間につき、装飾3種から1種を確定で選択', '選んだ旗印と名札は解約後も所持・装備可能', '利用期間中に表示できるサポーターバッジ', '12か月の季節配色が毎年巡る、外観のみの特典'],
+      monthlyChoice: { count: 1, options: 3, permanent: true, paletteCycleMonths: 12 },
       previewKey: 'supporter', previewLabel: 'サポーターバッジ', previewDescription: '黄金の花輪と藍の宝石を組み合わせた、支援の証です。名札横のバッジは実際の32px表示の見本です。',
       art: { src: 'assets/premium/supporter-badge-v1.webp', width: 1254, height: 1254, alt: '藍の宝石を黄金の花と葉で囲んだサポーターメダリオン' },
       availability: 'available', taxIncluded: true, priceIsTentative: false, transferable: false, gameplayBenefits: false
+    },
+    {
+      id: 'reroll-pass-30d', name: '武将再抽選パス・30日', kind: 'pass', priceYen: 480, billingPeriod: 'one_time', durationDays: 30,
+      summary: '購入反映から実時間30日間、勾玉で1人招集した武将を1日3回まで再抽選。元の武将と新しい武将を見比べて、1人を選べます。',
+      benefits: ['1人招集を対象に、1日3回まで再抽選', '元の武将・再抽選した武将のどちらか1人を選択', '同じ招集結果の再抽選は1回まで。10人招集は対象外', '日本時間05:00に回数更新。未使用回数の繰越なし', '実時間30日で終了・自動更新なし・有効中の追加購入不可'],
+      rerollRules: { dailyLimit: 3, resetTimeZone: 'Asia/Tokyo', resetHour: 5, drawSize: 1, rerollsPerDraw: 1, chooseOriginalOrNew: true, carryOver: false, autoRenew: false },
+      previewKey: 'reroll-pass-30d', previewLabel: '武将再抽選パス', previewDescription: '1人招集の結果を1回だけ引き直し、元の武将と新しい武将から選ぶパスです。武将の獲得結果に影響する有料特典です。勾玉そのものは販売しません。',
+      art: { src: 'assets/premium/reroll-pass-30d-v1.svg', width: 640, height: 640, alt: '二枚の武将札をめぐる翡翠と金の矢印を描いた再抽選パスの意匠' },
+      availability: 'available', taxIncluded: true, priceIsTentative: false, transferable: false, gameplayBenefits: true
     },
     {
       "id": "vermilion-banner",
@@ -172,6 +203,7 @@
     'gold-banner': 'https://buy.stripe.com/fZu6oI3Iwdcd5kn4Um9MY04',
     'moonlit-castle': 'https://buy.stripe.com/dRmdRa6UI2xz6or1Ia9MY05',
     supporter: 'https://buy.stripe.com/7sY8wQdj6dcdbILaeG9MY06',
+    'reroll-pass-30d': 'https://buy.stripe.com/cNi4gAgvi8VX4gj2Me9MY0c',
     'vermilion-banner': 'https://buy.stripe.com/aFa8wQ3Iw5JL1479aC9MY07',
     'silver-banner': 'https://buy.stripe.com/aFacN65QE4FHeUXaeG9MY08',
     'phoenix-medallion': 'https://buy.stripe.com/8x2aEY5QE5JL00386y9MY09',
@@ -179,9 +211,29 @@
     'snow-town': 'https://buy.stripe.com/28EaEYfrec893cfeuW9MY0b'
   });
   const find = id => typeof id === 'string' ? PRODUCTS.find(product => product.id === id) : undefined;
-  const copy = product => ({ ...product, art: { ...product.art }, benefits: [...product.benefits] });
+  const copy = product => ({ ...product, art: { ...product.art }, benefits: [...product.benefits], ...(product.monthlyChoice ? { monthlyChoice: { ...product.monthlyChoice } } : {}), ...(product.rerollRules ? { rerollRules: { ...product.rerollRules } } : {}), ...(product.palette ? { palette: { ...product.palette } } : {}) });
+  function getSupporterChoices(periodKey) {
+    const match = typeof periodKey === 'string' && /^(\d{4})(0[1-9]|1[0-2])$/.exec(periodKey);
+    if (!match || Number(match[1]) < 2026) return [];
+    const theme = SUPPORTER_THEMES[Number(match[2]) - 1];
+    return Object.entries(SUPPORTER_MOTIFS).map(([motif, detail]) => ({
+      id: `supporter-${periodKey}-${motif}`, name: `${match[1]}年${Number(match[2])}月・${theme.name} ${detail.name}`,
+      kind: 'reward', slot: 'nameplate', billingPeriod: 'reward', acquisition: 'supporter_monthly_choice', periodKey, motif,
+      summary: `${detail.description}。${Number(match[2])}月の「${theme.name}」配色で、領主名も彩ります。`,
+      benefits: ['支払済みの対象期間の選択権で確定入手', '選択後は解約しても所持・装備可能', '武将の能力・兵力・資源への効果はありません'],
+      previewKey: `supporter-${periodKey}-${motif}`, previewLabel: `${theme.name} ${detail.name}`,
+      previewDescription: '旗印と名札の外観です。季節の配色は12か月で巡り、翌年も同じ意匠を使用します。',
+      art: { src: `assets/premium/supporter-${match[2]}-${motif}-v1.svg`, width: 640, height: 960, alt: `${theme.name}の配色による${detail.description}` },
+      palette: { background: theme.background, border: theme.border, accent: theme.accent, text: theme.text },
+      availability: 'reward', transferable: false, gameplayBenefits: false, permanent: true
+    }));
+  }
+  function getSupporterReward(id) {
+    const match = typeof id === 'string' && /^supporter-(\d{4}(?:0[1-9]|1[0-2]))-(flower|moon|star)$/.exec(id);
+    return match ? getSupporterChoices(match[1]).find(product => product.id === id) || null : null;
+  }
   const getProducts = () => PRODUCTS.map(copy);
-  const getProduct = id => { const product = find(id); return product ? copy(product) : null; };
+  const getProduct = id => { const product = find(id); return product ? copy(product) : getSupporterReward(id); };
 
   // Display information and caller-provided configuration never authorize a
   // bare payment link. The runtime obtains the account-bound destination.
@@ -200,7 +252,7 @@
     } catch { return ''; }
   }
 
-  const api = Object.freeze({ version: 3, config: CONFIG, getConfig: () => ({ ...CONFIG }), getProducts, getProduct, getPurchaseState, checkoutURL });
+  const api = Object.freeze({ version: 4, config: CONFIG, getConfig: () => ({ ...CONFIG }), getProducts, getProduct, getSupporterChoices, getSupporterReward, getPurchaseState, checkoutURL });
   root.SengokuPremiumCatalog = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis);

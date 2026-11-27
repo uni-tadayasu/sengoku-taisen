@@ -61,4 +61,26 @@ const notFound=fs.readFileSync(path.join(root,'404.html'),'utf8');assert(/conten
 for(const name of ['selection-lock.css','selection-lock.js'])assert(notFound.includes('/'+name+'?v='+site.release));
 assert(/<script\b[^>]*\bdefer\b[^>]*src="\/selection-lock\.js\?v=/.test(notFound));
 for(const match of notFound.matchAll(/<(?:link|script)\b[^>]*>/gi)){const a=tagAttrs(match[0]),href=a.href||a.src;if(!href)continue;const asset=new URL(href,origin+'/unknown/nested/page');if(asset.origin===origin)assert(fs.existsSync(path.join(root,asset.pathname)),'404 asset must resolve from a nested missing URL: '+href);}
+
+// Check the customer-facing explanation, including downloadable press copy.
+// Historical news and sent outreach records are not descriptions of today's offer.
+const visible=file=>fs.readFileSync(path.join(root,file),'utf8').replace(/<(script|style)\b[\s\S]*?<\/\1>/gi,' ').replace(/<[^>]+>/g,' ');
+const japaneseOffers=['premium/index.html','about/index.html','press/index.html','guide/index.html','sengoku-vs/index.html','assets/promo/sengoku-vs-facts-ja-20261126.txt'];
+const englishOffers=['en/index.html','assets/promo/sengoku-vs-facts-en-20261126.txt'];
+for(const file of japaneseOffers){
+ const text=visible(file);
+ assert(/再抽選/.test(text)&&/武将の獲得結果に影響/.test(text),'Paid acquisition benefit must be clear before play: '+file);
+ assert(!/戦力や(?:資源|資産)の優遇はありません|戦力を優遇する特典はありません|武将の能力、兵力、生産量や指令回復を優遇する特典はありません/.test(text),'Do not describe every paid product as having no gameplay benefit: '+file);
+}
+for(const file of englishOffers){
+ const text=visible(file);
+ assert(/reroll pass/i.test(text)&&/affects officer acquisition/i.test(text),'English readers need the paid acquisition distinction: '+file);
+ assert(!/Optional cosmetics and a monthly supporter badge do not provide combat or resource advantages|These purchases do not improve officer abilities/i.test(text),'Obsolete cosmetic-only monetization claim: '+file);
+}
+const premiumText=visible('premium/index.html');
+assert(/解約後も/.test(premiumText)&&/所持/.test(premiumText),'Selected supporter cosmetics survive cancellation');
+assert(/30日/.test(premiumText)&&/自動更新(?:は)?(?:なし|ありません)/.test(premiumText),'The pass term and non-renewal must be disclosed');
+assert(/05:00|朝5時/.test(premiumText),'The daily reroll reset is explained');
+assert(/再抽選/.test(site.pages.premium.description)&&/獲得結果に影響/.test(site.pages.premium.description),'Search previews must describe the same paid acquisition benefit');
 console.log(`PASS ${urls.length} canonical pages, ${graphs} JSON-LD blocks, ${links} local links/assets, static discovery, section links, crawler access, sitemap, domain and 404.`);
+console.log('PASS current Japanese/English pages and fact sheets disclose the paid reroll effect, permanent supporter cosmetics, pass term and daily reset without obsolete cosmetic-only claims.');

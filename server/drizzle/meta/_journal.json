@@ -281,6 +281,20 @@
       "when": 1798502400000,
       "tag": "0039_external_court_offices",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "6",
+      "when": 1798588800000,
+      "tag": "0040_paid_rewards",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "6",
+      "when": 1798675200000,
+      "tag": "0041_player_activity_metrics",
+      "breakpoints": true
     }
   ]
 }

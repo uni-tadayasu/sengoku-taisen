@@ -1,5 +1,7 @@
-// Server-owned cosmetic purchases. Stripe snapshots are verified and reduced
-// to immutable facts; game saves, currency, roles and writer leases are unused.
+import {rerollPassSnapshot,rewardCalendar} from './rewards.js';
+import {readPremiumGrowthMetrics,observePremiumPayments,readPremiumPaymentAccounts} from './premium-metrics.js';
+// Stripe snapshots are verified and reduced to immutable payment facts.
+// Purchased rights and permanent cosmetic choices never come from game saves.
 const PREMIUM_VERSION='2026-09-30.endive';
 const PREMIUM_PRODUCTS=Object.freeze([
   {id:'gold-banner',slot:'nameplate',amount:480,mode:'payment',link:'plink_1UeEdvL3ZjL9QUmfKwCpWsEI',price:'price_1UeEcRL3ZjL9QUmf6snR2y5b',stripeProduct:'prod_VfZlNZd8yjCf4t',url:'https://buy.stripe.com/fZu6oI3Iwdcd5kn4Um9MY04'},
@@ -9,12 +11,25 @@ const PREMIUM_PRODUCTS=Object.freeze([
   {"id":"silver-banner","slot":"nameplate","amount":580,"mode":"payment","link":"plink_1Ufq0jL3ZjL9QUmfnDoaBTMU","price":"price_1Ufq0VL3ZjL9QUmfZWpAzq76","stripeProduct":"prod_sengokuvs_20261126_silver_banner","url":"https://buy.stripe.com/aFacN65QE4FHeUXaeG9MY08"},
   {"id":"phoenix-medallion","slot":"badge","amount":780,"mode":"payment","link":"plink_1Ufq0jL3ZjL9QUmfWThYEpqL","price":"price_1Ufq0WL3ZjL9QUmfgJALQNy2","stripeProduct":"prod_sengokuvs_20261126_phoenix_medallion","url":"https://buy.stripe.com/8x2aEY5QE5JL00386y9MY09"},
   {"id":"sakura-town","slot":"town","amount":980,"mode":"payment","link":"plink_1Ufq0kL3ZjL9QUmfWmqjwuB7","price":"price_1Ufq0XL3ZjL9QUmfZn6HpE02","stripeProduct":"prod_sengokuvs_20261126_sakura_town","url":"https://buy.stripe.com/3cI6oIfre5JLeUX5Yq9MY0a"},
-  {"id":"snow-town","slot":"town","amount":980,"mode":"payment","link":"plink_1Ufq0lL3ZjL9QUmfn5BGoLuI","price":"price_1Ufq0XL3ZjL9QUmfT3rgvT9j","stripeProduct":"prod_sengokuvs_20261126_snow_town","url":"https://buy.stripe.com/28EaEYfrec893cfeuW9MY0b"}
+  {"id":"snow-town","slot":"town","amount":980,"mode":"payment","link":"plink_1Ufq0lL3ZjL9QUmfn5BGoLuI","price":"price_1Ufq0XL3ZjL9QUmfT3rgvT9j","stripeProduct":"prod_sengokuvs_20261126_snow_town","url":"https://buy.stripe.com/28EaEYfrec893cfeuW9MY0b"},
+  {id:'reroll-pass-30d',slot:null,amount:480,mode:'payment',durationDays:30,link:null,price:null,stripeProduct:null,url:null}
 ]);
 const premiumStmt=(db,sql,...values)=>db.prepare(sql).bind(...values);
 const premiumRows=result=>result?.results||[];
 const premiumEmpty=()=>({nameplate:null,town:null,badge:null,ownedProducts:[]});
-const premiumProduct=id=>PREMIUM_PRODUCTS.find(product=>product.id===id);
+function premiumProduct(id,env={}){
+  const base=PREMIUM_PRODUCTS.find(product=>product.id===id);
+  if(base?.id==='reroll-pass-30d')return {...base,link:env.SENGOKU_REROLL_PAYMENT_LINK_ID||base.link,price:env.SENGOKU_REROLL_PRICE_ID||base.price,stripeProduct:env.SENGOKU_REROLL_PRODUCT_ID||base.stripeProduct,url:env.SENGOKU_REROLL_PAYMENT_LINK_URL||base.url};
+  if(base)return base;
+  const reward=typeof id==='string'&&/^supporter-(20[2-9][0-9]|2[1-9][0-9]{2}|[3-9][0-9]{3})(0[1-9]|1[0-2])-(flower|moon|star)$/.exec(id);
+  return reward&&Number(reward[1])>=2026?{id,slot:'nameplate',mode:'reward'}:null;
+}
+const supporterChoices=key=>['flower','moon','star'].map(motif=>`supporter-${key}-${motif}`);
+const supporterMonth=now=>new Date(now+9*3600000).toISOString().slice(0,7).replace('-','');
+function premiumProductReady(product,env){
+  if(!premiumReady(env)||!premiumId(product.link,'plink_')||!premiumId(product.price,'price_')||!premiumId(product.stripeProduct,'prod_'))return false;
+  try{const url=new URL(product.url);return url.protocol==='https:'&&url.hostname==='buy.stripe.com'&&!url.port&&!url.username&&!url.password&&/^\/[A-Za-z0-9]+$/.test(url.pathname)&&!url.search&&!url.hash;}catch{return false;}
+}
 const premiumEncoder=new TextEncoder();
 const premiumGate='EXISTS(SELECT 1 FROM premium_events WHERE event_id=? AND commit_token=?)';
 const PREMIUM_REVIEWABLE=Object.freeze(['refund_review','dispute_review','fraud_review']);
@@ -34,6 +49,63 @@ function premiumPortal(env){
 }
 function premiumReference(){return 'pr_'+Array.from(crypto.getRandomValues(new Uint8Array(32)),byte=>byte.toString(16).padStart(2,'0')).join('');}
 function premiumShape(body,keys,h){if(Object.keys(body).some(key=>!keys.includes(key)))h.fail(400,'INVALID_INPUT','購入・外観の指定内容を確認してください。');}
+
+// Fulfillment may be retried after any delivery order or process interruption.
+// The unique financial source and paid-period keys make this idempotent.
+async function ensurePremiumBenefits(db,now,userId=null){
+  const pending=premiumRows(await premiumStmt(db,`SELECT DISTINCT p.user_id,p.source_id,s.payment_intent_id FROM premium_verified_payments p JOIN premium_sessions s ON s.session_id=p.source_id
+    WHERE p.product_id='reroll-pass-30d' ${userId?'AND p.user_id=?':''} AND NOT EXISTS(SELECT 1 FROM premium_pass_receipts r WHERE r.source_id=p.source_id OR r.payment_intent_id=s.payment_intent_id) ORDER BY p.starts_at,p.source_id LIMIT 100`,...(userId?[userId]:[])).all());
+  const statements=[];
+  for(const payment of pending){
+    const start=`MAX(?,COALESCE((SELECT MAX(r.expires_at) FROM premium_pass_receipts r JOIN premium_verified_payments v ON v.source_id=r.source_id AND v.user_id=r.user_id WHERE r.user_id=?),?))`;
+    statements.push(premiumStmt(db,`INSERT INTO premium_pass_receipts(source_id,user_id,payment_intent_id,starts_at,expires_at,fulfilled_at)
+      SELECT p.source_id,p.user_id,?,${start},${start}+2592000000,? FROM premium_verified_payments p WHERE p.source_id=? AND p.user_id=? AND p.product_id='reroll-pass-30d' ON CONFLICT DO NOTHING`,payment.payment_intent_id,now,payment.user_id,now,now,payment.user_id,now,now,payment.source_id,payment.user_id));
+  }
+  const periods=premiumRows(await premiumStmt(db,`SELECT DISTINCT p.user_id,p.subscription_id,p.period_start,p.period_end FROM premium_paid_supporter_periods p
+    WHERE p.period_end>(SELECT starts_at FROM premium_reward_program WHERE id=1) AND p.period_start<=? ${userId?'AND p.user_id=?':''}
+    AND NOT EXISTS(SELECT 1 FROM premium_supporter_periods r WHERE r.user_id=p.user_id AND r.subscription_id=p.subscription_id AND r.period_start=p.period_start AND r.period_end=p.period_end)
+    ORDER BY p.period_start LIMIT 100`,now,...(userId?[userId]:[])).all());
+  for(const period of periods)statements.push(premiumStmt(db,`WITH RECURSIVE months(n,key) AS (
+      SELECT 0,strftime('%Y%m',?) UNION ALL SELECT n+1,strftime('%Y%m',?,'+'||(n+1)||' months') FROM months WHERE n<1199)
+    INSERT INTO premium_supporter_periods(id,user_id,subscription_id,period_start,period_end,period_key,created_at)
+    SELECT ?,?,?,?,?,(SELECT key FROM months WHERE (SELECT COUNT(*) FROM premium_supporter_periods r WHERE r.user_id=? AND r.period_key=key)<3 ORDER BY n LIMIT 1),?
+    WHERE EXISTS(SELECT 1 FROM premium_paid_supporter_periods p WHERE p.user_id=? AND p.subscription_id=? AND p.period_start=? AND p.period_end=?)
+    AND ?>(SELECT starts_at FROM premium_reward_program WHERE id=1) AND ?<=? ON CONFLICT(user_id,subscription_id,period_start,period_end) DO NOTHING`,
+    supporterMonth(Number(period.period_start)).replace(/^(\d{4})(\d{2})$/,'$1-$2-01'),supporterMonth(Number(period.period_start)).replace(/^(\d{4})(\d{2})$/,'$1-$2-01'),
+    'srp_'+crypto.randomUUID().replaceAll('-',''),period.user_id,period.subscription_id,period.period_start,period.period_end,period.user_id,now,period.user_id,period.subscription_id,period.period_start,period.period_end,period.period_end,period.period_start,now));
+  if(statements.length)await db.batch(statements);
+  await observePremiumPayments(db,now,userId);
+}
+const supporterPeriodEligible=`EXISTS(SELECT 1 FROM premium_paid_supporter_periods p WHERE p.user_id=r.user_id AND p.subscription_id=r.subscription_id AND p.period_start=r.period_start AND p.period_end=r.period_end)`;
+async function supporterRewards(db,userId,now){
+  const periods=premiumRows(await premiumStmt(db,`SELECT r.*,c.product_id FROM premium_supporter_periods r LEFT JOIN premium_supporter_choices c ON c.period_id=r.id
+    WHERE r.user_id=? AND r.period_start<=? AND ${supporterPeriodEligible} ORDER BY r.period_start DESC,r.id`,userId,now).all());
+  return {periods:periods.map(row=>({periodId:row.id,periodKey:row.period_key,startsAt:new Date(Number(row.period_start)).toISOString(),endsAt:new Date(Number(row.period_end)).toISOString(),claimedProductId:row.product_id||null,choices:supporterChoices(row.period_key)}))};
+}
+async function supporterMonthExhausted(db,userId,now){
+  return Number((await premiumStmt(db,`SELECT COUNT(*) AS total FROM premium_supporter_periods r WHERE r.user_id=? AND r.period_key=? AND ${supporterPeriodEligible}`,userId,supporterMonth(now)).first())?.total||0)>=3;
+}
+async function supporterChoice(ctx){
+  const {db,user,now,request,helpers:h}=ctx,body=await h.readBody(request);premiumShape(body,['periodId','productId','requestId'],h);
+  const periodId=h.idField(body.periodId,'請求期間'),requestId=h.idField(body.requestId,'操作番号');
+  if(premiumProduct(body.productId)?.mode!=='reward')h.fail(400,'INVALID_PRODUCT','サポーターの選べる外観を指定してください。');
+  const digest=await h.hash(JSON.stringify([periodId,body.productId])),old=await premiumStmt(db,'SELECT * FROM premium_supporter_choices WHERE user_id=? AND request_id=?',user.id,requestId).first();
+  if(old){if(old.request_hash!==digest)h.fail(409,'REQUEST_ID_REUSED','この操作番号は別の外観選択に使われています。');return {...await premiumSnapshot(ctx),receipt:{periodId:old.period_id,productId:old.product_id},idempotent:true};}
+  await ensurePremiumBenefits(db,now,user.id);await h.budget(db,'premium:choice:'+user.id,30,60000,now);
+  const period=await premiumStmt(db,`SELECT r.* FROM premium_supporter_periods r WHERE r.id=? AND r.user_id=? AND r.period_start<=? AND ${supporterPeriodEligible}`,periodId,user.id,now).first();
+  if(!period)h.fail(403,'SUPPORTER_PERIOD_UNAVAILABLE','支払いが完了した対象期間を確認できません。購入状況を更新してください。');
+  if(!supporterChoices(period.period_key).includes(body.productId))h.fail(400,'INVALID_PRODUCT','この請求期間の3種類から外観を選んでください。');
+  const prior=await premiumStmt(db,'SELECT product_id FROM premium_supporter_choices WHERE period_id=?',periodId).first();
+  if(prior)h.fail(409,'SUPPORTER_REWARD_CLAIMED','この請求期間の外観は受け取り済みです。');
+  if((await premiumOwnership(db,user.id,now)).get(body.productId)?.owned||await premiumStmt(db,'SELECT 1 FROM premium_supporter_choices WHERE user_id=? AND product_id=?',user.id,body.productId).first())h.fail(409,'ALREADY_OWNED','この外観には受取履歴があります。別の外観を選んでください。選択権は消費していません。');
+  const access=h.accountCommitGuard(user),nonce=crypto.randomUUID(),result=await premiumStmt(db,`INSERT INTO premium_supporter_choices(period_id,user_id,product_id,request_id,request_hash,commit_token,created_at)
+    SELECT r.id,?,?,?,?,?,? FROM premium_supporter_periods r WHERE r.id=? AND r.user_id=? AND r.period_start<=? AND ${supporterPeriodEligible} AND ${access.sql}
+    AND NOT EXISTS(SELECT 1 FROM premium_grants g WHERE g.user_id=? AND g.product_id=? AND g.starts_at<=? AND (g.expires_at IS NULL OR g.expires_at>?))
+    ON CONFLICT DO NOTHING RETURNING period_id`,user.id,body.productId,requestId,digest,nonce,now,periodId,user.id,now,...access.args,user.id,body.productId,now,now).all();
+  await h.requireAccountAccess(db,user);
+  if(!premiumRows(result).length){const accepted=await premiumStmt(db,'SELECT * FROM premium_supporter_choices WHERE user_id=? AND request_id=?',user.id,requestId).first();if(accepted&&accepted.request_hash===digest)return {...await premiumSnapshot(ctx),receipt:{periodId:accepted.period_id,productId:accepted.product_id},idempotent:true};h.fail(409,'SUPPORTER_REWARD_CHANGED','支払いまたは外観の受取状況が更新されました。購入状況を更新してください。');}
+  return {...await premiumSnapshot(ctx),receipt:{periodId,productId:body.productId},idempotent:false};
+}
 
 async function premiumOwnership(db,userId,now){
   const records=premiumRows(await premiumStmt(db,`SELECT product_id,MAX(CASE WHEN expires_at IS NULL THEN 1 ELSE 0 END) AS permanent,MAX(expires_at) AS expires_at FROM premium_grants WHERE user_id=? AND starts_at<=? GROUP BY product_id`,userId,now).all());
@@ -59,20 +131,22 @@ async function premiumAppearanceRows(db,ids,now){
   }
   for(const [id,{selection,products}]of found){
     const appearance=premiumEmpty();
-    for(const product of PREMIUM_PRODUCTS)if(products.has(product.id)){
+    for(const productId of products){const product=premiumProduct(productId);if(product?.slot){
       appearance.ownedProducts.push(product.id);
       if(selection[product.slot]===product.id)appearance[product.slot]=product.id;
-    }
+    }}
     found.set(id,appearance);
   }
   return found;
 }
 async function premiumSnapshot(ctx){
-  const {db,user,now,env}=ctx,owned=await premiumOwnership(db,user.id,now),appearances=await premiumAppearanceRows(db,[user.id],now),appearance=appearances.get(user.id)||premiumEmpty(),ready=premiumReady(env),portalUrl=premiumPortal(env),subscriptionExists=await premiumSubscriptionExists(db,user.id,now);
+  const {db,user,now,env}=ctx;await ensurePremiumBenefits(db,now,user.id);
+  const owned=await premiumOwnership(db,user.id,now),appearances=await premiumAppearanceRows(db,[user.id],now),appearance=appearances.get(user.id)||premiumEmpty(),ready=premiumReady(env),portalUrl=premiumPortal(env),subscriptionExists=await premiumSubscriptionExists(db,user.id,now),exhausted=await supporterMonthExhausted(db,user.id,now),pass=await rerollPassSnapshot(db,user.id,now);
+  if(pass.active)owned.set('reroll-pass-30d',{owned:true,expiresAt:pass.expiresAt});
   // Older clients validate a fixed three-product response. Keep their existing
   // purchases visible during the rollout; the current catalog explicitly opts in.
-  const visibleProducts=new URL(ctx.request.url).searchParams.get('catalog')==='3'?PREMIUM_PRODUCTS:PREMIUM_PRODUCTS.slice(0,3);
-  return {ok:true,ready,player:{id:user.id,name:user.name,evaluation:ctx.helpers.evaluationRef(user.id)},products:visibleProducts.map(product=>{const value=owned.get(product.id)||{owned:false,expiresAt:null},blocked=product.mode==='subscription'&&subscriptionExists;return {id:product.id,owned:value.owned,equipped:appearance[product.slot]===product.id,expiresAt:value.expiresAt,canPurchase:ready&&!value.owned&&!blocked&&(product.mode!=='subscription'||!!portalUrl),purchaseBlockReason:blocked?'subscription_exists':value.owned?'owned':!ready?'preparing':product.mode==='subscription'&&!portalUrl?'portal_unavailable':null};}),appearance,portalUrl,serverNow:new Date(now).toISOString()};
+  const catalog=new URL(ctx.request.url).searchParams.get('catalog'),visibleProducts=catalog==='4'?PREMIUM_PRODUCTS:catalog==='3'?PREMIUM_PRODUCTS.slice(0,8):PREMIUM_PRODUCTS.slice(0,3);
+  return {ok:true,ready,player:{id:user.id,name:user.name,evaluation:ctx.helpers.evaluationRef(user.id)},products:visibleProducts.map(base=>{const product=premiumProduct(base.id,env),value=owned.get(product.id)||{owned:false,expiresAt:null},blocked=product.mode==='subscription'&&subscriptionExists,limited=product.id==='supporter'&&exhausted,configured=premiumProductReady(product,env);return {id:product.id,owned:value.owned,equipped:!!product.slot&&appearance[product.slot]===product.id,expiresAt:value.expiresAt,canPurchase:configured&&!value.owned&&!blocked&&!limited&&(product.mode!=='subscription'||!!portalUrl),purchaseBlockReason:blocked?'subscription_exists':limited?'monthly_choices_exhausted':value.owned?'owned':!configured?'preparing':product.mode==='subscription'&&!portalUrl?'portal_unavailable':null};}),appearance,portalUrl,serverNow:new Date(now).toISOString(),...(catalog==='4'?{rerollPass:pass,supporterRewards:await supporterRewards(db,user.id,now)}:{})};
 }
 
 function premiumReviewDto(row){return {id:row.id,scope:row.scope,objectId:row.object_id,revision:Number(row.expected_revision),eventId:row.expected_event_id,reason:row.reason,createdAt:new Date(Number(row.created_at)).toISOString()};}
@@ -126,12 +200,17 @@ export async function handlePremium(ctx){
     if(method==='POST')return premiumReviewRelease(ctx);
   }
   if(path==='/premium'&&method==='GET')return premiumSnapshot(ctx);
+  if(path==='/premium/supporter-choice'&&method==='POST')return supporterChoice(ctx);
+  if(path==='/premium/events'&&method==='POST')return premiumEvent(ctx);
+  if(path==='/admin/premium/metrics'&&method==='GET'){h.requireAdmin(user);return premiumMetrics(ctx);}
   if(path==='/premium/checkout'&&method==='POST'){
     const body=await h.readBody(request);premiumShape(body,['productId'],h);
-    const product=premiumProduct(body.productId);if(!product)h.fail(400,'INVALID_PRODUCT','この商品は販売対象ではありません。');
-    if(!premiumReady(env)||(product.mode==='subscription'&&!premiumPortal(env)))h.fail(503,'PREMIUM_NOT_READY','販売の準備中です。購入先の確認が終わるまでお待ちください。');
+    const product=premiumProduct(body.productId,env);if(!product||product.mode==='reward')h.fail(400,'INVALID_PRODUCT','この商品は販売対象ではありません。');
+    if(!premiumProductReady(product,env)||(product.mode==='subscription'&&!premiumPortal(env)))h.fail(503,'PREMIUM_NOT_READY','販売の準備中です。購入先の確認が終わるまでお待ちください。');
+    await ensurePremiumBenefits(db,now,user.id);
     await h.budget(db,'premium:checkout:'+user.id,20,60000,now);
     if(product.mode==='subscription'&&await premiumSubscriptionExists(db,user.id,now))h.fail(409,'SUBSCRIPTION_EXISTS','サポーター契約を確認中です。重複購入を避けるため、契約管理ページで更新・支払い・解約をご確認ください。');
+    if(product.id==='supporter'&&await supporterMonthExhausted(db,user.id,now))h.fail(409,'MONTHLY_CHOICES_EXHAUSTED','今月の3種類分の選択権を持っています。翌月の外観が始まってから再契約できます。');
     const owned=await premiumOwnership(db,user.id,now);if(owned.get(product.id)?.owned)h.fail(409,'ALREADY_OWNED','この商品は利用できます。外観の設定を確認してください。');
     const access=h.accountCommitGuard(user),reference=premiumReference();
     const result=await db.batch([
@@ -213,7 +292,7 @@ function premiumChargeLinks(plan,object,reason){const charge=premiumId(object.ch
 function premiumQuantity(line){return line.quantity===1&&(line.quantity_decimal===undefined||typeof line.quantity_decimal==='string'&&/^1(?:\.0{1,12})?$/.test(line.quantity_decimal));}
 
 async function premiumPlan(ctx,event,nonce){
-  const {db,now}=ctx,object=event.data.object,type=event.type,plan={db,now,event,nonce,statements:[],disposition:'accepted',reason:'verified_snapshot'};
+  const {db,now,env}=ctx,object=event.data.object,type=event.type,plan={db,now,event,nonce,statements:[],disposition:'accepted',reason:'verified_snapshot'};
   const reject=(reason,block=true)=>{
     const denied={...plan,statements:[],disposition:'quarantined',reason};
     // A later malformed snapshot of a known financial object cannot leave an
@@ -230,7 +309,7 @@ async function premiumPlan(ctx,event,nonce){
   };
   if(event.livemode!==true||object.livemode===false||event.account||event.api_version!==PREMIUM_VERSION)return reject('mode_account_or_version',false);
   if(type==='checkout.session.completed'||type==='checkout.session.async_payment_succeeded'){
-    const session=premiumId(object.id,'cs_'),reference=object.client_reference_id,link=premiumId(object.payment_link,'plink_'),product=PREMIUM_PRODUCTS.find(item=>item.link===link);
+    const session=premiumId(object.id,'cs_'),reference=object.client_reference_id,link=premiumId(object.payment_link,'plink_'),product=link?PREMIUM_PRODUCTS.map(item=>premiumProduct(item.id,env)).find(item=>item.link===link):null;
     if(!session||!product||typeof reference!=='string'||!/^pr_[a-f0-9]{64}$/.test(reference)||object.object!=='checkout.session'||object.status!=='complete'||object.mode!==product.mode||object.currency!=='jpy'||object.amount_total!==product.amount||!['paid','unpaid'].includes(object.payment_status))return reject('checkout_mismatch');
     const order=await premiumStmt(db,'SELECT user_id,product_id FROM premium_orders WHERE reference=?',reference).first();
     if(!order||order.product_id!==product.id)return reject('checkout_reference');
@@ -285,7 +364,7 @@ export async function handlePremiumWebhook(ctx){
   let event;try{event=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes));}catch{h.fail(400,'INVALID_WEBHOOK','通知JSONが正しくありません。');}
   if(!event||typeof event!=='object'||!premiumId(event.id,'evt_')||typeof event.type!=='string'||event.type.length>100||!event.data?.object||typeof event.data.object!=='object'||Array.isArray(event.data.object)||!premiumTimestamp(event.created))h.fail(400,'INVALID_WEBHOOK','通知の識別情報が正しくありません。');
   const digest=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),byte=>byte.toString(16).padStart(2,'0')).join(''),prior=await premiumStmt(db,'SELECT payload_hash,disposition FROM premium_events WHERE event_id=?',event.id).first();
-  if(prior){if(prior.payload_hash!==digest)h.fail(409,'STRIPE_EVENT_CONFLICT','同じ通知番号の内容が一致しません。');return {ok:true,received:true,duplicate:true,disposition:prior.disposition};}
+  if(prior){if(prior.payload_hash!==digest)h.fail(409,'STRIPE_EVENT_CONFLICT','同じ通知番号の内容が一致しません。');await ensurePremiumBenefits(db,now);return {ok:true,received:true,duplicate:true,disposition:prior.disposition};}
   const nonce=crypto.randomUUID(),plan=await premiumPlan(ctx,event,nonce),objectId=typeof event.data.object.id==='string'?event.data.object.id.slice(0,150):'';
   const result=await db.batch([
     premiumStmt(db,`INSERT INTO premium_events(event_id,event_type,object_id,payload_hash,disposition,reason,event_created,received_at,commit_token) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(event_id) DO NOTHING RETURNING event_id`,event.id,event.type,objectId,digest,plan.disposition,plan.reason,premiumTimestamp(event.created),now,nonce),
@@ -293,5 +372,47 @@ export async function handlePremiumWebhook(ctx){
     premiumStmt(db,'SELECT payload_hash,disposition FROM premium_events WHERE event_id=?',event.id)
   ]);
   const saved=premiumRows(result.at(-1))[0];if(saved?.payload_hash!==digest)h.fail(409,'STRIPE_EVENT_CONFLICT','同じ通知番号の内容が一致しません。');
+  await ensurePremiumBenefits(db,now);
   return {ok:true,received:true,duplicate:!premiumRows(result[0]).length,disposition:saved.disposition};
+}
+
+async function premiumEvent(ctx){
+  const {db,user,now,request,helpers:h}=ctx,body=await h.readBody(request);premiumShape(body,['event','productId'],h);
+  if(!['shop_view','checkout_start'].includes(body.event)||body.productId!==undefined&&!PREMIUM_PRODUCTS.some(product=>product.id===body.productId)||body.event==='checkout_start'&&!body.productId)h.fail(400,'INVALID_INPUT','記録するショップ操作を確認してください。');
+  // These are event counts, never unique visitor or purchase counts.
+  await h.budget(db,'premium:metrics:'+user.id,30,60000,now);const access=h.accountCommitGuard(user);
+  const day=rewardCalendar(now).day;
+  await db.batch([
+    premiumStmt(db,`INSERT INTO premium_daily_events(day,event,product_id,count) SELECT ?,?,?,1 WHERE ${access.sql} ON CONFLICT(day,event,product_id) DO UPDATE SET count=count+1`,day,body.event,body.productId||'',...access.args),
+    premiumStmt(db,`INSERT INTO premium_daily_visitors(user_id,day,event,product_id,first_at) SELECT ?,?,?,?,? WHERE ${access.sql} ON CONFLICT(user_id,day,event,product_id) DO NOTHING`,user.id,day,body.event,body.productId||'',now,...access.args)
+  ]);
+  await h.requireAccountAccess(db,user);return {ok:true};
+}
+async function premiumMetrics(ctx){
+  const {db,now,request,helpers:h}=ctx,raw=new URL(request.url).searchParams.get('days')||'14';
+  if(!/^\d{1,2}$/.test(raw)||Number(raw)<1||Number(raw)>90)h.fail(400,'INVALID_INPUT','集計期間は1〜90日で指定してください。');
+  const days=Number(raw),toDay=rewardCalendar(now).day,base=Date.parse(toDay+'T00:00:00Z'),fromDay=new Date(base-(days-1)*86400000).toISOString().slice(0,10),since=Date.parse(fromDay+'T00:00:00Z')-4*3600000;
+  const [eventRows,passRows,periodRows,loginRows,cohortRows,accountRows,visitorRows,paidRows]=await Promise.all([
+    premiumStmt(db,'SELECT day,event,SUM(count) AS total FROM premium_daily_events WHERE day>=? AND day<=? GROUP BY day,event',fromDay,toDay).all(),
+    premiumStmt(db,"SELECT strftime('%Y-%m-%d',r.fulfilled_at/1000,'unixepoch','+4 hours') AS day,COUNT(DISTINCT r.source_id) AS total FROM premium_pass_receipts r JOIN premium_verified_payments p ON p.source_id=r.source_id AND p.user_id=r.user_id WHERE r.fulfilled_at>=? AND r.fulfilled_at<=? GROUP BY day",since,now).all(),
+    premiumStmt(db,"SELECT strftime('%Y-%m-%d',confirmed_at/1000,'unixepoch','+4 hours') AS day,COUNT(*) AS total FROM (SELECT p.user_id,p.subscription_id,p.period_start,p.period_end,MIN(i.created_at) AS confirmed_at FROM premium_paid_supporter_periods p JOIN premium_invoices i ON i.invoice_id=p.source_id GROUP BY p.user_id,p.subscription_id,p.period_start,p.period_end) WHERE confirmed_at>=? AND confirmed_at<=? GROUP BY day",since,now).all(),
+    premiumStmt(db,'SELECT day,COUNT(DISTINCT user_id) AS accounts,COUNT(*) AS claims FROM login_bonus_claims WHERE day>=? AND day<=? GROUP BY day',fromDay,toDay).all(),
+    premiumStmt(db,`SELECT COUNT(*) AS cohort,SUM(CASE WHEN EXISTS(SELECT 1 FROM login_bonus_claims n WHERE n.user_id=f.user_id AND n.day=date(f.first_day,'+1 day')) THEN 1 ELSE 0 END) AS returned
+      FROM (SELECT user_id,MIN(day) AS first_day FROM login_bonus_claims GROUP BY user_id) f WHERE f.first_day>=? AND f.first_day<=date(?,'-2 day')`,fromDay,toDay).all(),
+    premiumStmt(db,'SELECT COUNT(DISTINCT user_id) AS total FROM login_bonus_claims WHERE day>=? AND day<=?',fromDay,toDay).all(),
+    premiumStmt(db,'SELECT user_id,event,MIN(first_at) AS first_at FROM premium_daily_visitors WHERE day>=? AND day<=? GROUP BY user_id,event',fromDay,toDay).all(),
+    readPremiumPaymentAccounts(db,since,now)
+  ]);
+  const daily=Array.from({length:days},(_,index)=>({day:new Date(base-(days-1-index)*86400000).toISOString().slice(0,10),shopViews:0,checkoutStarts:0,fulfilledPasses:0,paidSupporterPeriods:0,loginClaimAccounts:0,loginClaims:0})),byDay=new Map(daily.map(row=>[row.day,row]));
+  for(const row of premiumRows(eventRows)){const day=byDay.get(row.day);if(day)day[row.event==='shop_view'?'shopViews':'checkoutStarts']=Number(row.total);}
+  for(const row of premiumRows(passRows)){const day=byDay.get(row.day);if(day)day.fulfilledPasses=Number(row.total);}
+  for(const row of premiumRows(periodRows)){const day=byDay.get(row.day);if(day)day.paidSupporterPeriods=Number(row.total);}
+  for(const row of premiumRows(loginRows)){const day=byDay.get(row.day);if(day){day.loginClaimAccounts=Number(row.accounts);day.loginClaims=Number(row.claims);}}
+  const totals=Object.fromEntries(['shopViews','checkoutStarts','fulfilledPasses','paidSupporterPeriods','loginClaimAccounts','loginClaims'].map(key=>[key,daily.reduce((sum,row)=>sum+row[key],0)]));totals.loginClaimAccounts=Number(premiumRows(accountRows)[0]?.total||0);
+  const cohort=premiumRows(cohortRows)[0]||{},cohortAccounts=Number(cohort.cohort||0),returnedNextDay=Number(cohort.returned||0);
+  const viewers=new Map(premiumRows(visitorRows).filter(row=>row.event==='shop_view').map(row=>[row.user_id,Number(row.first_at)])),clickers=new Set(premiumRows(visitorRows).filter(row=>row.event==='checkout_start').map(row=>row.user_id)),paid=new Set(premiumRows(paidRows).map(row=>row.user_id)),converted=new Set(premiumRows(paidRows).filter(row=>viewers.has(row.user_id)&&row.paid_at!==null&&Number(row.paid_at)>=viewers.get(row.user_id)&&Number(row.charged_at)>=viewers.get(row.user_id)).map(row=>row.user_id));
+  Object.assign(totals,{uniqueShopAccounts:viewers.size,uniqueCheckoutAccounts:clickers.size,uniquePaidAccounts:paid.size,matchedPaidShopAccounts:converted.size});
+  const growth=await readPremiumGrowthMetrics({db,now,fromDay,toDay,products:PREMIUM_PRODUCTS});
+  if(!await premiumStmt(db,"SELECT 1 AS allowed FROM settings WHERE key='adminUserId' AND value=?",ctx.user.id).first())h.fail(403,'ADMIN_REQUIRED','運営専用の機能です。');
+  return {ok:true,days,fromDay,toDay,daily,totals,conversion:{definition:'集計期間中のショップ閲覧後に作成され、照合確認された有効な決済を持つ接続アカウントの割合。過去の決済を今回初めて観測しただけのものは含めません。',viewedAccounts:viewers.size,paidAfterViewAccounts:converted.size,rate:viewers.size?converted.size/viewers.size:null},retention:{definition:'初回ログイン報酬受取者の翌日再受取',cohortAccounts,returnedNextDay,rate:cohortAccounts?returnedNextDay/cohortAccounts:null,throughDay:new Date(base-2*86400000).toISOString().slice(0,10)},...growth,serverNow:new Date(now).toISOString()};
 }
