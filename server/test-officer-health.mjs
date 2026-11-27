@@ -191,11 +191,23 @@ try{
   assert.equal(returned.save.state.home,'inuyama');assert(returned.save.state.officers.every(id=>returned.save.state.officerHealth.values[id]===19));
  });
 
- await scope('event reference defenders and Edo reward defenders retain their stored health and revision',async h=>{
+ await scope('event references stay read-only and Edo resource loot preserves normal health recovery without combat fatigue',async h=>{
   const op=await fixture(h,'体力非更新の江戸',{admin:true}),p=await fixture(h,'参照戦の参加者',{startCastle:'kawagoe'}),target=await fixture(h,'長篠の参照先',{startCastle:'nagashino'}),event=await publish(h,op,'history:nagashino');setHealth(h,target,35);setHealth(h,op,25);
   const targetBefore=clone(row(h,target));await force(true,()=>eventFight(h,p,event));assert.deepEqual(clone(row(h,target)),targetBefore);
   const operatorBefore=clone(row(h,op)),departure=(await force(true,()=>h.api('/field/attack',post(p,attackBody(h,p,op,{targetCastleId:'edo'}))))).data;
-  const battle=await settleFieldMarch(h,p,departure);assert.equal(battle.battleMode,'reward');assert.deepEqual(clone(row(h,op)),operatorBefore);
+  h.now+=departure.march.remainingMs;
+  // Controls settle only elapsed campaign time. The protected defender keeps
+  // this recovered health while the real battle transfers its resource reward.
+  const arrivalState=async actor=>{
+   const view=await snapshot(h,actor),game=GameEngine.fromSave(view.save,GAME_OFFICERS,{isAdmin:view.user.isAdmin,isStaff:view.user.isStaff,isDeputy:view.user.isDeputy,staffBase:view.staffBase,maintenanceAuthority:view.maintenanceAuthority,branchAuthority:{resolvedElapsedMs:view.branchResolvedElapsedMs}});
+   const advanced=game.applyWorldClock(view.clock,{maxSeconds:86400,deferCycleSettlement:true});assert(advanced.ok&&!advanced.pending&&!advanced.settlementRequired);return JSON.parse(game.exportSave()).state;
+  };
+  const attackerControl=await arrivalState(p),defenderControl=await arrivalState(op),arrived=(await h.api('/marches?deviceId='+p.deviceId,{token:p.token})).data,receipt=arrived.history.find(entry=>entry.id===departure.march.id);
+  assert.equal(receipt?.status,'resolved');const battle=receipt.battle;assert.equal(battle.battleMode,'reward');assert(battle.won);assert.equal(battle.lootPolicy,'half-resources-v1');
+  assert.equal(row(h,op).revision,operatorBefore.revision+1);assert.equal(battle.defenderRevision,row(h,op).revision);assert.deepEqual(battle.defenderLost,{troops:0,garrison:0});
+  assert.deepEqual(health(h,op),defenderControl.officerHealth,'protected defenders receive ordinary recovery and no battle fatigue');assert(Object.values(health(h,op).values).every(value=>value>25));
+  const after=save(h,op).state;for(const key of ['castles','troops','army','officers','buildings'])assert.deepEqual(after[key],defenderControl[key],key+' stays protected through ordinary time progression');
+  for(const key of ['gold','rice','wood','stone']){const expected=Math.min(Math.floor(defenderControl.resources[key]/2),100000000-attackerControl.resources[key]);assert.equal(battle.loot[key],expected);assert.equal(after.resources[key],defenderControl.resources[key]-expected);assert.equal(save(h,p).state.resources[key],attackerControl.resources[key]+expected);assert.equal(battle.rewards[key],0);}
  });
  console.log(JSON.stringify({checks,apiCalls:calls}));
 }finally{globalThis.fetch=network;}

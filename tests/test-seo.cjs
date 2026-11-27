@@ -302,9 +302,12 @@ test('current battle limits and automatic mail are explained in public HTML with
   assert(article);assert(!/\bhidden\b|aria-hidden=["']true/.test(article[1]));
   const table=article[2].match(/<table\b[^>]*><caption>共通フィールドの城・成長上限・勝利時の扱い<\/caption>([\s\S]*?)<\/table>/)?.[1];assert(table);
   const rows=[...table.matchAll(/<tr>([\s\S]*?)<\/tr>/g)].slice(1).map(match=>normalized(match[1]));
-  assert.equal(rows.length,3);assert.match(rows[0],/^江戸城・京都御所・鹿児島城江戸城Lv\.64／京都御所Lv\.128／鹿児島城Lv\.32勝利すると/);assert(rows[0].includes('各500'));assert(rows[0].includes('所持上限'));assert(rows[0].includes('戦報で確認'));assert.doesNotMatch(rows[0],/報酬戦|占領不可|占領できず|占領されません/);
-  assert.match(rows[1],/^二条城・大坂城・名古屋城Lv\.48占領戦/);assert(rows[1].includes('自分の所領'));
-  assert.match(rows[2],/^通常の本拠Lv\.32守備側の兵損/);assert(rows[2].includes('10%以内'));assert(rows[2].includes('5%以内かつ500以内'));assert.doesNotMatch(rows[2],/攻撃側への占領移転はなく|領有を移さない/);assert(rows[2].includes('家臣が待っている場合'));assert(rows[2].includes('入城順で次の領主へ交代'));
+  assert.equal(rows.length,3);assert.match(rows[0],/^江戸城・京都御所・鹿児島城江戸城Lv\.64／京都御所Lv\.128／鹿児島城Lv\.32勝利すると/);assert(rows[0].includes('各50%'));assert(rows[0].includes('決着時'));assert(rows[0].includes('戦報で確認'));assert.doesNotMatch(rows[0],/報酬戦|占領不可|占領できず|占領されません/);
+  assert.match(rows[1],/^二条城・大坂城・名古屋城Lv\.48占領戦/);assert(rows[1].includes('自分の所領'));assert(rows[1].includes('各50%'));
+  assert.match(rows[2],/^通常の本拠Lv\.32守備側の兵損/);assert(rows[2].includes('10%以内'));assert(rows[2].includes('各50%'));assert.doesNotMatch(rows[2],/攻撃側への占領移転はなく|領有を移さない/);assert(rows[2].includes('家臣が待っている場合'));assert(rows[2].includes('入城順で次の領主へ交代'));
+  const battleText=normalized(article[2]);
+  for(const phrase of ['支拠点','対プレイヤー反撃','全プレイヤーに共通','端数は切り捨て','所持上限1億','上限に入らない分は相手に残り','勾玉・武将・兵数は奪取対象ではありません','敗北時は資源を奪いません'])assert(battleText.includes(phrase),phrase);
+  assert.doesNotMatch(table,/各500|5%以内かつ500以内/);
   const mail=article[2].match(/<section\b([^>]*\bid="system-mail"[^>]*)>([\s\S]*?)<\/section>/);assert(mail);assert(!/\bhidden\b|aria-hidden=["']true/.test(mail[1]));
   const text=normalized(mail[2].replace(/<(?:script|style)\b[\s\S]*?<\/(?:script|style)>/gi,''));
   for(const phrase of ['共通フィールドの対人戦','それぞれ1通','「交流」→「郵便」','未読','移転前と移転先','戦闘の確定時に反映済み','返信や贈り物の受取操作はありません','天下地図のCPU戦'])assert(text.includes(phrase),phrase);
