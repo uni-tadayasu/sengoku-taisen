@@ -69,6 +69,37 @@ const courtResponseGuards = new WeakMap();
 const chatResponseGuards = new WeakMap();
 const eventDefenseResponseGuards = new WeakMap();
 
+// Log only fixed diagnostic categories and source locations. Request bodies,
+// credentials, SQL text, arbitrary error messages and player data stay private.
+const DIAGNOSTIC_ROUTES=new Set(['/admin/recover','/achievements','/sync','/presence','/health','/config','/world-clock','/music','/session','/devices/link','/me']);
+const DIAGNOSTIC_SCHEMA=new Set(['users','user_sessions','rate_limits','player_saves','player_bans','player_expulsions','staff_members','staff_base','staff_campaign_backups','deputy_operator_state','achievement_events','world_clock','court_leader','court_contributions','court_external_offices','court_retired_emperors','court_regent','premium_appearances','user_avatars','guild_icons','term_id','appointed_at','cycle_index','cycle_home','revoked_at','pending','state_json','save_json']);
+function reportInternalFailure(error,request,stage){
+  try{
+    const messages=[error?.message,error?.cause?.message].filter(value=>typeof value==='string').join('\n');
+    let category='internal';
+    if(/no such (?:table|column)|has no column named/i.test(messages))category='database_schema';
+    else if(/too many|too large|too big|statement.*too long|expression tree|parser stack|SQLITE_TOOBIG|SQLITE_RANGE|SQLITE_FULL|exceeded.*limit/i.test(messages))category='database_limit';
+    else if(/malformed JSON|JSON (?:path|text)|bad JSON/i.test(messages))category='database_json';
+    else if(/constraint failed|SQLITE_CONSTRAINT/i.test(messages))category='database_constraint';
+    else if(/D1_TYPE_ERROR|bind|SQLITE_MISMATCH/i.test(messages))category='database_binding';
+    else if(/D1_ERROR|D1_EXEC_ERROR|SQLITE_|database/i.test(messages))category='database';
+    else if(error?.name==='TypeError')category='runtime_type';
+    else if(error?.name==='ReferenceError')category='runtime_reference';
+    else if(['OperationError','DataError','NotSupportedError'].includes(error?.name))category='runtime_crypto';
+    const path=new URL(request.url).pathname.slice(API.length),record={event:'sengoku_internal_failure',version:API_VERSION,route:DIAGNOSTIC_ROUTES.has(path)?path:'/other',stage,category};
+    const missing=/(?:no such (?:table|column):|has no column named)\s*([A-Za-z_][A-Za-z0-9_.]*)/i.exec(messages)?.[1]?.split('.').at(-1);
+    if(DIAGNOSTIC_SCHEMA.has(missing))record.schema=missing;
+    const stack=typeof error?.stack==='string'?error.stack:'',frames=[];
+    for(const line of stack.split('\n').filter(line=>/^\s+at\s/.test(line))){
+      const match=/(?:\b|\/)(index|worker)\.js:(\d{1,7}):(\d{1,7})\)?$/.exec(line);
+      if(match)frames.push({source:match[1]+'.js',line:Number(match[2]),column:Number(match[3])});
+      if(frames.length===3)break;
+    }
+    if(frames.length)record.frames=frames;
+    console.error(JSON.stringify(record));
+  }catch{/* Diagnostics must never replace the original error response. */}
+}
+
 class ApiError extends Error {
   constructor(status, code, message, retryAfter) {
     super(message); this.status = status; this.code = code; this.retryAfter = retryAfter;
@@ -3279,7 +3310,7 @@ async function route(request, env, now) {
 export default {
   async scheduled(_event,env,ctx){const now=Date.now(),context=marchContext(env.DB,null,now,env);const run=(async()=>{await settleShogunateApprovals(env.DB,now);await settleBattleMarches(context,{limit:24});await settleConquestMarches(context);await settleCovertDispatches(context,{limit:12});await settleAllianceUnits(context);await dispatchNotifications(env,await getWorldClock(env.DB,now));})();if(ctx?.waitUntil)ctx.waitUntil(run);else await run;},
   async fetch(request, env, ctx) {
-    let origin=null;
+    let origin=null,stage='request';
     try {
       const path=new URL(request.url).pathname;
       if(path==='/' && (request.method==='GET'||request.method==='HEAD')) {
@@ -3296,6 +3327,7 @@ export default {
       // A five-second audience poll must not perform gameplay maintenance,
       // create a world-clock row, authenticate, or record player activity.
       if(path===API+'/music'&&request.method==='GET'){
+        stage='music';
         if(!env.DB?.prepare)fail(503,'SERVICE_UNAVAILABLE','通信サービスの準備中です。');
         return response({ok:true,musicBroadcast:await readMusicBroadcast(env.DB),serverNow:iso(Date.now())},200,origin);
       }
@@ -3313,11 +3345,16 @@ export default {
       }
       if(path.startsWith(API+'/avatars/')&&request.method==='GET')return await getAvatar(request,env,origin);
       if(path.startsWith(API+'/guild-icons/')&&request.method==='GET')return await getGuildIcon(request,env,origin);
-      const now=Date.now(),payload=await route(request,env,now),evaluated=await resolvePlayerEvaluations(env.DB,payload,now),resolved=await resolvePremiumAppearances(env.DB,evaluated,now),authenticated=authenticatedRequests.get(request);
+      stage='route';const now=Date.now(),payload=await route(request,env,now);
+      stage='evaluations';const evaluated=await resolvePlayerEvaluations(env.DB,payload,now);
+      stage='premium';const resolved=await resolvePremiumAppearances(env.DB,evaluated,now),authenticated=authenticatedRequests.get(request);
+      stage='access';
       if(authenticated)await requireAccountAccess(env.DB,authenticated);
       await verifyCourtResponse(env.DB,request);
       if(typeof ctx?.waitUntil==='function'&&path!==API+'/notifications/tick')ctx.waitUntil((async()=>{await settleShogunateApprovals(env.DB,now);await backgroundMarchSweep(env,now);await dispatchNotifications(env,await getWorldClock(env.DB,now));})().catch(()=>{}));
-      const visible=await resolvePublicCityHonors(env.DB,await resolvePublicCourtOffices(env.DB,publicIdentities(resolved,request),now),now,{getWorldClock,eventCastleCandidates});
+      stage='public-court';const courtVisible=await resolvePublicCourtOffices(env.DB,publicIdentities(resolved,request),now);
+      stage='public-honors';const visible=await resolvePublicCityHonors(env.DB,courtVisible,now,{getWorldClock,eventCastleCandidates});
+      stage='response';
       if(path.startsWith(API+'/players/')&&payload.player)await finishPublicProfiles(env.DB,visible,true);
       else if(path===API+'/players'&&!authenticated)await finishPublicProfiles(env.DB,visible,false);
       const defenseGuard=eventDefenseResponseGuards.get(request);
@@ -3335,6 +3372,7 @@ export default {
     }catch(error){
       const authenticated=authenticatedRequests.get(request);if(authenticated)try{await requireAccountAccess(env.DB,authenticated);}catch(accessError){error=accessError;}
       if(error instanceof ApiError){const e={code:error.code,message:error.message};if(error.retryAfter)e.retryAfter=error.retryAfter;return response({ok:false,error:e},error.status,origin,error.retryAfter);}
+      reportInternalFailure(error,request,stage);
       return response({ok:false,error:{code:'INTERNAL_ERROR',message:'通信処理に失敗しました。少し時間をおいて再度お試しください。'}},500,origin);
     }
   }

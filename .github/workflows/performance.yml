@@ -94,6 +94,8 @@ jobs:
           node server/test-moderated-player-names.mjs
       - name: Verify public city honors and the current Kagoshima deputy
         run: node server/test-city-honors.mjs
+      - name: Verify production error diagnostics preserve private data
+        run: node server/test-internal-diagnostics.mjs
       - name: Verify shared BGM authorization, revisions and retries
         run: node server/test-admin-music.mjs
       - name: Verify anonymous promotion counters and operator authorization
