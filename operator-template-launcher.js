@@ -1,6 +1,6 @@
 (function (global) {
   'use strict';
-  const doc = global.document, resources = new Map();
+  const doc = global.document, resources = new Map(), loading = new WeakSet();
   const context = () => global.SengokuSocial?.getPromotionContext?.();
   const available = () => context()?.isAdmin === true;
   const label = '文書テンプレート';
@@ -32,9 +32,12 @@
   }
   doc?.addEventListener('click', async event => {
     const button = event.target.closest?.('[data-operator-template]');
-    if (!button || button.disabled || button.hasAttribute('aria-busy') || doc.getElementById('operator-template-dialog')) return;
+    // Artwork also updates aria-busy on these buttons. Track template loading
+    // separately so decoration cannot block a click or release its in-flight guard.
+    if (!button || button.disabled || loading.has(button) || doc.getElementById('operator-template-dialog')) return;
     const owner = context();
     if (!owner?.isAdmin) return;
+    loading.add(button);
     button.setAttribute('aria-busy', 'true');
     button.textContent = 'テンプレート読込中…';
     try {
@@ -47,7 +50,7 @@
           !doc.getElementById('operator-template-dialog')) global.SengokuOpenOperatorTemplatePicker(button);
     } catch {
       button.textContent = 'テンプレート読込失敗・再試行';
-    } finally { button.removeAttribute('aria-busy'); }
+    } finally { loading.delete(button); button.removeAttribute('aria-busy'); }
   });
   global.SengokuOperatorTemplatePicker = {launcher, available};
 })(typeof window !== 'undefined' ? window : globalThis);
