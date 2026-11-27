@@ -32,8 +32,8 @@ function harness(){
   vm.runInContext(`
     let startPending=false, syncAccess={linked:true,ready:true,rolePending:false}, evaluationOwnerId=${JSON.stringify(A)};
     let activeModal='',activeModalContext=null;
-    const game={evaluation:()=>window.__evaluation},data={evaluationRanks:[]};
-    const state=()=>({clan:'織田家'}),num=n=>String(n);
+    const game={evaluation:()=>window.__evaluation,income:()=>({rankRiceBonus:{percent:0,amount:0}})},data={evaluationRanks:[]};
+    const state=()=>({clan:'織田家'}),num=n=>String(n),economyNumber=n=>String(n);
     const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     const $=selector=>selector==='#modal'?{open:activeModal==='player-evaluation'}:null;
     const patchHTML=(node,html)=>{node.innerHTML=html;};

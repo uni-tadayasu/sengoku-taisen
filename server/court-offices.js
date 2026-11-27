@@ -10,6 +10,8 @@ const HOME="CASE WHEN json_valid(ps.save_json) THEN json_extract(ps.save_json,'$
 const TARGET=`NOT EXISTS(SELECT 1 FROM staff_members sm WHERE sm.user_id=u.id)
  AND u.id<>COALESCE((SELECT value FROM settings WHERE key='adminUserId'),'')
  AND NOT EXISTS(SELECT 1 FROM player_bans b WHERE b.user_id=u.id AND b.active=1)
+ AND NOT EXISTS(SELECT 1 FROM court_retired_emperors r WHERE r.user_id=u.id)
+ AND NOT EXISTS(SELECT 1 FROM court_regent g WHERE g.id=1 AND g.user_id=u.id)
  AND ${HOME} IS NOT NULL AND ${HOME} NOT IN ('edo','kyoto_gosho')`;
 const GATE='EXISTS(SELECT 1 FROM court_office_requests WHERE actor_id=? AND request_id=? AND commit_token=?)';
 const castleName=id=>globalThis.SENGOKU_DATA?.castles?.find(c=>c.id===id)?.name||id;

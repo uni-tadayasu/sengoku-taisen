@@ -699,7 +699,7 @@
   }
   let instance;
   const get = () => instance || (instance = createUI());
-  global.SengokuEvents = { open: settings => get().open(settings), close: () => instance?.close(), refreshAccess: () => instance?.refreshAccess(), dispose: () => { instance?.dispose(); instance = null; } };
+  global.SengokuEvents = { cleanPlan, cleanEvent, open: settings => get().open(settings), close: () => instance?.close(), refreshAccess: () => instance?.refreshAccess(), dispose: () => { instance?.dispose(); instance = null; } };
   if (typeof module !== 'undefined' && module.exports) module.exports = { createController, createUI, cleanPlan, cleanEvent, cleanProgress, cleanLeaderboard, cleanCatalog, selectedAdvice, adviserMarkup, defenseAdviserMarkup, outcomeMarkup, catalogOptionsMarkup, catalogSelectionMarkup, listMarkup, detailMarkup, progressMarkup, battleMarkup, leaderboardMarkup, confirmationMarkup, remaining, statusName };
   if (global.document) { if (global.document.readyState === 'loading') global.document.addEventListener('DOMContentLoaded', get, { once: true }); else get(); }
 })(typeof window !== 'undefined' ? window : globalThis);

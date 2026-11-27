@@ -15,9 +15,9 @@ const eventRows=result=>result?.results||[];
 const eventIso=value=>value===null||value===undefined?null:new Date(Number(value)).toISOString();
 const EVENT_ADMIN="EXISTS(SELECT 1 FROM settings WHERE key='adminUserId' AND value=?)";
 const EVENT_GATE='EXISTS(SELECT 1 FROM timed_event_requests WHERE actor_id=? AND request_id=? AND commit_token=?)';
-const eventStatus=(row,now)=>['draft','discarded'].includes(row.status)?row.status:row.ended_at!==null||row.status==='ended'||Number(row.ends_at)<=now?'ended':'active';
+export const eventStatus=(row,now)=>['draft','discarded'].includes(row.status)?row.status:row.ended_at!==null||row.status==='ended'||Number(row.ends_at)<=now?'ended':'active';
 
-function eventDto(row,now){
+export function eventDto(row,now){
  const status=eventStatus(row,now);
  return {id:row.id,name:row.name,durationDays:Number(row.duration_days),status,startsAt:eventIso(row.starts_at),endsAt:eventIso(row.ends_at),endedAt:eventIso(row.ended_at??(status==='ended'?row.ends_at:null)),createdAt:eventIso(row.created_at),plan:normalizeEventPlan(JSON.parse(row.plan_json))};
 }

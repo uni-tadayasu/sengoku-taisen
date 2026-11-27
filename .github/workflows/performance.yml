@@ -180,6 +180,22 @@ jobs:
         run: |
           node server/test-court-offices.mjs
           node server/test-court-office-messaging.mjs
+      - name: Verify imperial approvals, succession and delegated regency
+        run: |
+          node server/test-shogunate.mjs shogunate.js
+          node server/test-shogunate-approval.mjs
+          node server/test-retired-emperor.mjs
+          node server/test-regency.mjs
+          node server/test-regency-public.mjs
+          node tests/test-shogunate-ui.cjs
+          node tests/test-retired-emperor-ui.cjs
+      - name: Verify private court event room and bounded game AI
+        run: |
+          node server/test-court-event-planner.mjs
+          node server/test-court-events.mjs
+          node tests/test-court-event-room-ui.cjs
+          node tests/test-court-api.cjs
+          node server/test-events.mjs
       - name: Verify court privacy, public titles and Kyoto continuity
         run: |
           node server/test-court.mjs

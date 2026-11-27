@@ -124,7 +124,7 @@
     const station=covert.stations.find(s=>s.id===extra.stationId);if(!station)return fail('常駐中の部隊を選んでください。');unitName=station.unitName;data={stationId:station.id};
     if(action==='recall'){label=`${station.target.name}から帰還`;description=`${unitName}${num(station.count)}人が常駐を終え、派遣元へ移動します。到着してから待機部隊へ戻り、再派遣できます。追加の費用はありません。`;travel=global.SengokuTravel?.plan({sourceCastleId:station.target.castleId,targetCastleId:station.sourceCastleId});}
     else if(action==='retaliate'){
-     if(station.sourceCastleId===(global.SENGOKU_DATA?.staffBaseId||'kyoto_gosho')&&station.target.castleId==='edo'&&rules.canAttackEdoFromKyoto!==true)return fail('京都御所から江戸城へ反撃できるのは、在任中の天皇だけです。');
+     if(station.sourceCastleId===(global.SENGOKU_DATA?.staffBaseId||'kyoto_gosho')&&station.target.castleId==='edo'&&rules.canAttackEdoFromKyoto!==true)return fail('京都御所から江戸城へ反撃できるのは、在任中の天皇または摂政です。');
      if(!covert.sources.some(s=>s.castleId===station.sourceCastleId&&s.available))return fail('派遣元の領有を失っているため反撃できません。部隊を帰還させることはできます。');
      const incidentId=extra.incidentId||state.incidentSelections[station.id]||availableIncidents(station,who)[0]?.id,incident=availableIncidents(station,who).find(i=>i.id===incidentId);
      if(!incident)return fail('この部隊の常駐後に、派遣元が攻撃を受けると反撃を指示できます。');

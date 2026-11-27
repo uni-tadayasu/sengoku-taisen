@@ -1,7 +1,7 @@
 /* Visible current court offices, separate from a player's evaluation rank. */
 (function(global){
  'use strict';
- // The same eight offices are issued by the Kyoto court. The seal artwork is
+ // Current offices are issued by the Kyoto court. The seal artwork is
  // purely presentational and never grants or infers an appointment.
  const OFFICES=Object.freeze({
   参議:{kind:'official',seal:'fan',art:'<path d="M3 9q9-9 18 0l-9 12Z M7 7l5 14 5-14 M12 5v16"/>'},
@@ -11,7 +11,9 @@
   右大臣:{kind:'official',seal:'feather',art:'<path d="M4 20 18 6 M7 17c-1-7 4-13 14-14-1 9-6 16-14 14Z M11 13v-4 M11 13h5"/>'},
   左大臣:{kind:'official',seal:'pine',art:'<path d="M12 21v-8 m-1 5-5-4 M13 15l5-4 M6 9 2 13h8L6 9Z M17 6l-5 5h10l-5-5Z M11 2 7 6h8l-4-4Z"/>'},
   太政大臣:{kind:'chancellor',seal:'stamp',art:'<path d="M8 11V9c0-2 2-2 2-4a2 2 0 0 1 4 0c0 2 2 2 2 4v2 M5 12h14v5H5z M3 20h18 M9 15h6"/>'},
-  天皇:{kind:'emperor',seal:'sun',art:'<circle cx="12" cy="12" r="4"/><path d="M12 2v3 M12 19v3 M2 12h3 M19 12h3 M5 5l2 2 M17 17l2 2 M5 19l2-2 M17 7l2-2"/>'}
+  天皇:{kind:'emperor',seal:'sun',art:'<circle cx="12" cy="12" r="4"/><path d="M12 2v3 M12 19v3 M2 12h3 M19 12h3 M5 5l2 2 M17 17l2 2 M5 19l2-2 M17 7l2-2"/>'},
+  上皇:{kind:'retired-emperor',seal:'moon',lineOnly:true,art:'<circle cx="12" cy="12" r="9"/><path d="M15 5a7 7 0 1 0 4 11 7 7 0 0 1-4-11Z M7 20h10"/>'},
+  摂政:{kind:'regent',seal:'sceptre',lineOnly:true,art:'<path d="m12 2 4 5-4 5-4-5 4-5Z M12 12v9 M6 16h12 M8 21h8 M4 6l2 2 M20 6l-2 2"/>'}
  });
  const cache=new Map(),versions=new Map();
  let sequence=0,floor=0;
@@ -60,9 +62,9 @@
  }
  function badgeTitle(title){
   if(typeof title!=='string'||!Object.hasOwn(OFFICES,title))return '';
-  const {kind,seal,art}=OFFICES[title];
-  const relief=`<img class="public-court-relief" src="assets/court-badges/${seal}-relief.webp" width="24" height="24" alt="" decoding="async" loading="lazy" draggable="false">`;
-  const linework=`<svg class="public-court-linework" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round">${art}</svg>`;
+  const {kind,seal,art,lineOnly}=OFFICES[title];
+  const relief=lineOnly?'':`<img class="public-court-relief" src="assets/court-badges/${seal}-relief.webp" width="24" height="24" alt="" decoding="async" loading="lazy" draggable="false">`;
+  const linework=`<svg class="public-court-linework${lineOnly?' public-court-linework-only':''}" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round">${art}</svg>`;
   const icon=`<span class="public-court-icon" data-stable-key="court-seal-${seal}" aria-hidden="true">${relief}${linework}</span>`;
   return `<span class="public-court-badge public-court-${kind}" data-court-seal="${seal}" role="img" aria-label="役職：${title}" title="役職：${title}">${icon}<span class="public-court-title">${title}</span></span>`;
  }

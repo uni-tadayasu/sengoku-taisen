@@ -3,13 +3,16 @@
 import {PUBLIC_COURT_TITLES,resolvePublicCourtOffices} from './public-court.js';
 import {honorificText} from './honorific-text.js';
 
-const offices=['',...PUBLIC_COURT_TITLES.map(row=>row.title),'太政大臣','天皇'];
-const tier=person=>Math.max(0,offices.indexOf(person.courtOffice?.title||''));
+const offices=['',...PUBLIC_COURT_TITLES.map(row=>row.title),'太政大臣','摂政','天皇'];
+// Both imperial titles receive the same courtesy. This ordering never grants
+// the retired Emperor access to the reigning Emperor's approval functions.
+const tier=person=>person.courtOffice?.title==='上皇'?offices.indexOf('天皇'):Math.max(0,offices.indexOf(person.courtOffice?.title||''));
 const PUBLIC_PEER_LIMIT=32;
-const officials="SELECT value AS id FROM settings WHERE key='adminUserId' UNION SELECT user_id AS id FROM staff_members";
-// The public room reaches all current titles, including the six external
-// appointments. Keep the private court's recipients limited to its real staff.
-const publicOfficeHolders=officials+' UNION SELECT user_id AS id FROM court_external_offices';
+const officials="SELECT value AS id FROM settings WHERE key='adminUserId' UNION SELECT user_id AS id FROM staff_members UNION SELECT g.user_id AS id FROM court_regent g WHERE g.id=1 AND NOT EXISTS(SELECT 1 FROM court_retired_emperors r WHERE r.user_id=g.user_id)";
+// The public room reaches all current titles, including the external
+// appointments. The delegated regent can also answer private court audiences;
+// retired Emperors and ordinary external titles do not receive those powers.
+const publicOfficeHolders=officials+' UNION SELECT user_id AS id FROM court_external_offices UNION SELECT user_id AS id FROM court_retired_emperors';
 const active=id=>`NOT EXISTS(SELECT 1 FROM player_bans ban WHERE ban.user_id=${id} AND ban.active=1)`;
 
 function recipients(audience,senderId){
@@ -38,15 +41,18 @@ function audienceSnapshot(audience,senderId){
  // public rank and storing it, including a new guild member or a demotion.
  const seats=`SELECT u.id,ps.revision AS saveRevision,CASE WHEN s.value=u.id THEN 1 ELSE 0 END AS chancellor,
    sm.appointed_at,sm.term_id,leader.appointment_token,b.active,b.transition_token,b.updated_at AS backupUpdated,
-   COALESCE((SELECT SUM(c.points) FROM court_contributions c WHERE c.actor_id=u.id),0) AS merit
+   COALESCE((SELECT SUM(c.points) FROM court_contributions c WHERE c.actor_id=u.id),0) AS merit,
+   (SELECT r.succession_id FROM court_retired_emperors r WHERE r.user_id=u.id) AS retirement,
+   (SELECT g.appointment_token FROM court_regent g WHERE g.id=1 AND g.user_id=u.id) AS regency
    FROM users u JOIN (${recipientsQuery.sql} UNION SELECT ? AS id) people ON people.id=u.id
    LEFT JOIN player_saves ps ON ps.user_id=u.id LEFT JOIN staff_members sm ON sm.user_id=u.id
    LEFT JOIN court_leader leader ON leader.user_id=u.id LEFT JOIN settings s ON s.key='adminUserId'
    LEFT JOIN staff_campaign_backups b ON b.user_id=u.id WHERE ${active('u.id')} ORDER BY u.id`;
  const sql=`SELECT json_array((SELECT revision FROM world_clock WHERE id='world-v1'),
    (SELECT value FROM settings WHERE key='cyclePolicyStart'),(SELECT revision FROM staff_base WHERE id='kyoto_gosho'),
-   json_group_array(json_array(id,saveRevision,chancellor,appointed_at,term_id,appointment_token,active,transition_token,backupUpdated,merit)),
-   COALESCE((SELECT revision FROM court_office_state WHERE id=1),0)) AS version FROM (${seats})`;
+   json_group_array(json_array(id,saveRevision,chancellor,appointed_at,term_id,appointment_token,active,transition_token,backupUpdated,merit,retirement,regency)),
+   COALESCE((SELECT revision FROM court_office_state WHERE id=1),0),
+   COALESCE((SELECT revision FROM court_regency_state WHERE id=1),0)) AS version FROM (${seats})`;
  return {sql,args:[...recipientsQuery.args,senderId]};
 }
 

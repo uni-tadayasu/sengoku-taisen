@@ -87,12 +87,20 @@ test('Edo and Kyoto Gosho require both modern capabilities and an explicit non-c
     }
   }
 });
-test('Kyoto-origin Edo attacks require the private current Emperor capability, never a client title or score',()=>{
+test('Kyoto-origin Edo attacks require the private current Emperor or Regent capability, never a client title or score',()=>{
   const context={...ready(),rules:modernRules,player:target('operator','edo','edo',{isAdmin:true})};context.me.self={homeCastleId:'kyoto_gosho'};context.state.home='kyoto_gosho';context.state.title='天皇';context.state.evaluation={score:999999};
-  for(const flag of [undefined,false,'true',1]){context.me.attack.canAttackEdoFromKyoto=flag;const denied=F.attackValidation(context);assert.equal(denied.ok,false);assert.match(denied.message,/在任中の天皇だけ/);}
+  for(const flag of [undefined,false,'true',1]){context.me.attack.canAttackEdoFromKyoto=flag;const denied=F.attackValidation(context);assert.equal(denied.ok,false);assert.match(denied.message,/在任中の天皇または摂政/);}
   context.me.attack.canAttackEdoFromKyoto=true;assert.equal(F.attackValidation(context).ok,true);context.player.attackable=false;context.player.attackReason='任期が終了しました。';assert.equal(F.attackValidation(context).ok,false);assert.equal(F.attackValidation(context).message,'任期が終了しました。');
   context.player.attackable=true;context.me.self.homeCastleId='sunpu';context.me.attack.canAttackEdoFromKyoto=false;assert.equal(F.attackValidation(context).ok,true,'Other source castles retain their normal rules');
   context.me.self.homeCastleId='kyoto_gosho';context.player=target('ordinary','sunpu','sunpu');assert.equal(F.attackValidation(context).ok,true,'Sunpu remains an ordinary raid destination');
+});
+test('political Kyoto control displays escaped names without changing battle protection',()=>{
+ const control={castleId:'kyoto_gosho',rightId:'sg_control',controller:{id:'government-owner',name:'支配者'},governmentName:'<script>幕府</script>',controlledAt:12345};
+ const palace=target('palace-staff','kyoto_gosho','kyoto_gosho',{palaceControl:control});
+ const html=F.publicRow(palace,{rules:modernRules});assert.match(html,/&lt;script&gt;幕府&lt;\/script&gt;の支配下/);assert(!html.includes('<script>'));
+ const result=F.attackValidation({...ready(),player:palace,rules:modernRules});assert.equal(result.ok,true);assert.equal(result.battleMode,'reward');assert.equal(palace.capturable,false);
+ for(const value of [{...control,controlledAt:-1},{...control,governmentName:''}])assert(!F.publicRow({...palace,palaceControl:value},{rules:modernRules}).includes('の支配下'));
+ assert(!F.publicRow(target('ordinary','kiyosu','kiyosu',{palaceControl:control}),{rules:modernRules}).includes('の支配下'));
 });
 test('the three cities are capturable under ordinary, operator and staff defenders with all common guards intact',()=>{
   for(const castle of ['nijo','osaka','nagoya'])for(const role of [{},{isAdmin:true},{isStaff:true}]){

@@ -296,7 +296,7 @@ No cookies are used. Never put a token or pairing code in a URL. POST/PUT/PATCH/
 
 受信者に目上のプレイヤーが含まれると、サーバーが送信時に日本語の文章を敬語に整え、変換済みの本文を保存・配信します。個人チャットと個人書状では相手本人、同盟チャットと作戦の連絡事項では現在の同盟員、同盟書状では現在の同盟員と元の差出人、加入申請では承認担当者を比較します。謁見で領主が朝廷へ送る文は担当者全員を、担当者からの返信はその領主を宛先とします。運営チャットと直接配布する郵便も実際の宛先を使います。
 
-公開官職は、官職なし、参議、中納言、大納言、内大臣、右大臣、左大臣、太政大臣、天皇の順です。同じ官職の領主は公開評価の位階（無位から正一位まで）で比較します。個人・同盟宛ての相手が全員同格以下の場合は送った原文を届けます。世界・朝廷の公開チャット、全員宛ての告知・郵便では公開官職を確認し、官職を持たない送り主以外に保存データのある一般領主が33人以上いれば一律に敬語を使います。音声通話は対象外です。
+公開官職は、官職なし、参議、中納言、大納言、内大臣、右大臣、左大臣、太政大臣、摂政、上皇、天皇の順です。同じ官職の領主は公開評価の位階（無位から正一位まで）で比較します。個人・同盟宛ての相手が全員同格以下の場合は送った原文を届けます。世界・朝廷の公開チャット、全員宛ての告知・郵便では公開官職を確認し、官職を持たない送り主以外に保存データのある一般領主が33人以上いれば一律に敬語を使います。音声通話は対象外です。
 
 画面やクライアント側の設定でこの判定は無効にできません。書状で変換後の本文が1,000文字を超える場合、送信は成立せず、HTTP 400 と `POLITE_TEXT_TOO_LONG` を返します。受付番号のある送信を同じ入力で再送した場合は最初の確定結果を返します。書き込み中に位階・所属・宛先が変わった場合は、最新状態で再送してください。
 
@@ -1878,25 +1878,25 @@ Errors include400 `ROAMING_MAP_REQUIRED` for new template-only battles,400 `INVA
 
 ## Kyoto Gosho court (v3.22)
 
-All paths are below `/api/v1`, require an authenticated, non-banned account, and return the current global `contentRevision`. An ordinary player's **current** evaluation must reach `court-7` / 従五位 / 35,000 points. Current staff and the operator are admitted by their current server role. Evaluation and authority are rechecked against the same account/save/role generation before private results or writes are committed. A stale tab or imported role flag cannot retain access after demotion, BAN, a staff-term change or evaluation loss.
+All paths are below `/api/v1`, require an authenticated, non-banned account, and return the current global `contentRevision`. An ordinary player's **current** evaluation must reach `court-7` / 従五位 / 35,000 points. Current staff, the operator and the active Regent are admitted by their current server authority. Evaluation and authority are rechecked against the same account/save/role generation before private results or writes are committed. A stale tab or imported role flag cannot retain access after demotion, BAN, a staff-term change or evaluation loss.
 
 | Method and path | Body or visibility | Result |
 |---|---|---|
 | GET `/court` | Any authenticated player may check qualification | `eligible,requirement,evaluation,accessStamp,self,palace,features,thresholds,contentRevision` |
 | GET `/court/chat` | Admitted players | Current public court conversation |
 | POST `/court/chat` | `{requestId,text}`; text ≤300 characters | Committed message and idempotent replay |
-| GET `/court/audiences` | Requester's own threads; current staff/operator can respond | Visible audience threads |
+| GET `/court/audiences` | Requester's own threads; current staff/operator/Regent can respond | Visible audience threads |
 | POST `/court/audiences` | `{requestId,title,text}`; title ≤80, text ≤1,000 | New private audience thread |
 | GET `/court/audiences/:id` | Requester or current court responder | Authorized thread and replies |
 | POST `/court/audiences/:id/replies` | `{requestId,text}`; text ≤1,000 | Reply within the authorized thread |
-| GET `/staff/court` | Current staff/operator only | Actual private roster, titles, contribution and leader |
+| GET `/staff/court` | Current staff/operator/Regent only | Actual private roster, titles, contribution and leader |
 | POST `/admin/court/leader` | Operator only; `{requestId,targetPlayerId}`; null clears appointment | Current leader appointment |
 
 `self` carries the requesting player's own `title,merit,canRespond,canAppoint,isCourtEmperor`. Public staff/operator conversation authors are represented by the alias **朝廷**, without a public management roster or actual administrative account IDs. Only authorized private management views expose the current staff roster. Court messages do not grant currency, evaluation or contribution.
 
 A completed shared construction contributes its `targetLevel` once to its initiator. The unique completed job ID and staff term tie the ledger to real shared progress; verified historical completed jobs are backfilled once. Offices are 参議 at 0, 中納言 at 50, 大納言 at 200, 内大臣 at 500, 右大臣 at 1,000, and 左大臣 at 2,000 contribution points. The operator's 太政大臣 is fixed. An operator-appointed active staff leader becomes 天皇; the appointment token and staff term are checked again at combat commit. Dismissal or BAN invalidates the appointment, and reappointment as staff does not revive an old emperor appointment.
 
-**Kyoto Gosho → Edo attacks require the currently appointed 天皇**, including attacks against an Edo branch and covert retaliation. The same gate is checked after all asynchronous reads and within the combat transaction. It does not affect ordinary attacks originating from another home. Kyoto Gosho remains an attackable, uncapturable reward base with castle level 128 and facility level 32.
+**Kyoto Gosho → Edo attacks require the currently appointed 天皇 or 摂政**, including attacks against an Edo branch and covert retaliation. The same gate is checked after all asynchronous reads and within the combat transaction. It does not affect ordinary attacks originating from another home. Kyoto Gosho remains an attackable, uncapturable reward base with castle level 128 and facility level 32.
 
 Court writes use immutable per-player request IDs and a per-attempt commit nonce in the same D1 transaction as their data write. Same-intent retries return the committed result without duplicate messages or appointments. Existing moderation removes the targeted author's court text, scrubs their audience titles, preserves other participants' replies and durable request receipts, and increments the global content revision. Clients clear cached private views immediately on access loss and must not restore late responses from an earlier access stamp or content revision.
 
@@ -2029,3 +2029,71 @@ Deploy migrations `0031_branch_deployments` and `0032_vacant_garrisons` in journ
 - `dismiss` pins the current holder ID. The global directory revision is checked within the same batch as the request receipt and mutation. A stale confirmation returns 409. A repeated identical request ID returns the current directory and never replays the original mutation; reusing an ID with a different payload returns 409.
 - Kyoto promotion and role changes remove conflicting external appointments permanently. Losing office never changes ownership, troops, assets, or account permissions. Existing ordinary court admission remains based on rank.
 - The response is rechecked after asynchronous public-label decoration. Appointment revision also participates in honorific-message commit guards so changed recipients/titles cannot be accepted under an earlier speech register.
+
+## Imperial approval, succession and Regency (v5.11.0)
+
+Migrations `0043_shogunate_approval`, `0044_retired_emperor` and `0045_regency` are additive. Existing opened shogunates retain their original opening receipts and dates. The six merit/external minister seats remain unchanged. Political control of Kyoto is separate from staff membership, protected-base combat and the private ordinary campaigns of its members.
+
+### Shogunate approval
+
+`GET /shogunate` returns `{ok,shogunate}`. Its view contains `rights,current,campaign,serverNow,approvalWindowMs,canApprove,approvals,approvalsHasMore,pendingHasMore,palaceControl`.
+
+- `approvalWindowMs` is 259,200,000 (72 real hours). `serverNow` and all approval times are epoch milliseconds; game-clock speed and client clocks cannot extend the deadline.
+- Each right adds `approvalStatus` (`available`, `pending`, `approved`, `expired` or `legacy`) and nullable `requestedAt,deadlineAt,resolvedAt`.
+- The bounded 100-right view pins the current opened government, an explicitly requested receipt's right, and the oldest outstanding applications. `pendingHasMore` signals additional applications.
+- `approvals` is visible only to the current Emperor or Regent; each entry adds `applicant:{id,name}`. Its exact appointment token and account/role generation are rechecked after public-identity decoration.
+- `palaceControl` is null or `{castleId:"kyoto_gosho",rightId,controller:{id,name},governmentName,controlledAt}`. The same value is projected in `/court` as `palace.control` and onto Kyoto entries in `/field`.
+
+`POST /shogunate/open` accepts `{rightId,requestId}`. The owner must hold an unopened right. It creates an immutable pending receipt `{rightId,title,governmentName,status:"pending",requestedAt,deadlineAt,openedAt:null,rank:null}`. Receipt replay remains unchanged even after the application resolves; the accompanying current view shows its latest status.
+
+`POST /shogunate/approve` accepts `{rightId,requestId}`. The current Emperor or Regent may approve before `now < deadlineAt`. It returns `{ok,idempotent,approvalReceipt:{rightId,status:"approved",approvedAt},shogunate}`. The commit checks the exact authority token, applicant eligibility, pending status and deadline in the same transaction that opens the government.
+
+At `now >= deadlineAt`, an unapproved application expires, the government opens, and Kyoto becomes its political subordinate in one transaction. `controlledAt` records the exact deadline. Scheduled Worker execution, the existing notification tick, request background work, and court/field/shogunate reads settle due applications. A delayed older deadline cannot overwrite a newer controller. Suspended applicants receive no opening while suspended; a later eligible settlement still observes the original deadline and ordering.
+
+### Voluntary succession and 上皇
+
+`GET /court/succession` is restricted to the actual current Emperor. It returns `{ok,canAbdicate:true,candidates,serverNow}`; candidates are active non-operator Kyoto members other than the requesting Emperor, with `{id,name,termId,homeCastleId:"kyoto_gosho",homeCastleName:"京都御所"}`.
+
+`POST /court/succession` accepts `{requestId,targetPlayerId}`. A single transaction checks the current crown token, both account/staff generations and world-clock revision, records the predecessor as 上皇, transfers the crown, stamps the predecessor's staff departure, and removes their staff membership. Recording retirement before moving the crown prevents an intermediate merit-rank collision from revoking an unrelated minister.
+
+The result is `{ok,idempotent,receipt:{retiredPlayerId,retiredPlayerName,successorPlayerId,successorPlayerName,retiredAt},user,needsSync:true}`. A retry can retrieve the exact committed receipt after the predecessor has lost staff privileges; it requires current account access. The browser binds receipt adoption to the requesting identity and refreshes the authoritative save. Existing staff-campaign restoration returns the predecessor to their earlier ordinary home, preserving personal progression and assets. Normal home relocation remains available afterward.
+
+The actual Emperor remains based at Kyoto. 上皇 is a persistent title, never an externally appointable merit office, and grants no approval, staff or operator authority. A Regent cannot abdicate on the Emperor's behalf. A Kyoto Regent selected as successor becomes Emperor and their old regency is permanently cleared.
+
+### Regency / 摂政
+
+Only the current 太政大臣 manages this single office:
+
+| Method and path | Input | Result |
+|---|---|---|
+| GET `/admin/court/regent` | Optional literal `q` ≤80 characters and `limit` 1–50 | `{ok,canManage:true,revision,holder,candidates,query,hasMore}` |
+| POST `/admin/court/regent` | `{requestId,action:"appoint"\|"dismiss",targetPlayerId,expectedRevision}` | Fresh directory, `idempotent`, immutable `receipt:{action,targetPlayerId,revision,appointedAt}` |
+
+A person contains `{id,name,isStaff,homeCastleId,homeCastleName}`; the nullable holder adds `appointedAt`. Both ordinary established-base players and Kyoto staff are candidates. The current Emperor, 上皇, operator and banned accounts are excluded. A different holder requires dismissing the current holder first. Appointment and dismissal preserve staff flags, staff terms, base, saves and personal assets.
+
+The Regent can enter and respond in court regardless of evaluation, read the authorized roster and audiences, approve shogunate applications, and exercise the existing Kyoto-to-Edo battle permission. This grants neither operator management nor ordinary-player access to Kyoto shared-base construction. Crown succession still requires `courtEmperorAuthority`; delegated duties use the separate `courtImperialAuthority`.
+
+`GET /court` adds self flags `isCourtRegent,canActForEmperor,canApproveShogunate,isRetiredEmperor`. Actual `isCourtEmperor` remains false for a Regent. Browser authority is transient, identity-bound and derived only from authenticated admission; imported save/title/role fields cannot supply it.
+
+Regency transactions bind the exact revision, administrator generation and target state. Dismissal, BAN, becoming operator, retirement or crown accession permanently clears delegated authority where applicable. Regency releases the holder's old merit/external office and prevents duplicate visible offices. Public role DTOs add `{title:"摂政",kind:"regent"}` and `{title:"上皇",kind:"retired-emperor"}`. Court responder messages retain the neutral 朝廷 identity. Current title and regency revisions also participate in courtesy-conversion race guards.
+
+## Kyoto court event creation room (v5.11.0)
+
+The room is available only to current Kyoto staff, the current operator and the current Regent, including a Regent at an ordinary base. Rank, a former title, a browser flag or being a regular court visitor grants no room access. `GET /court` exposes `features.eventRoom` for current duty holders. The existing `/admin/events` API remains operator-only.
+
+| Method and path | Input | Result |
+|---|---|---|
+| GET `/court/events` | No query parameters | `{ok,canManage,serverNow,templates,events,hasMore,draftLimit,draftCount,activeEvent,generator}` |
+| GET `/court/events/:eventId` | Room-created event only | `{ok,canManage,serverNow,event}` |
+| POST `/court/events/generate` | `{requestId,generationMode:"template"\|"ai",templateId?,prompt?,durationDays}` | Committed private draft, immutable receipt and `idempotent` |
+| POST `/court/events/:eventId/publish` | `{requestId,expectedRevision}` | Start a reviewed room draft |
+| POST `/court/events/:eventId/end` | `{requestId,expectedRevision}` | End an active room event |
+| POST `/court/events/:eventId/discard` | `{requestId,expectedRevision}` | Discard an unpublished room draft |
+
+The template directory contains exactly 20 bounded Japanese game-event templates. Template mode requires a recognized template ID. AI mode selects and adapts a plan using the supplied purpose, terrain, tactical and difficulty words. Input is bounded to 600 characters and duration to 1–7 real days. The existing in-game planning AI produces a canonical `game-ai-v1` plan with three stages and five tactics, using the real battle catalogue, existing rewards and normal numerical bounds. Source metadata identifies the chosen template and explains the selection. This feature does not depend on external model credentials.
+
+Room events extend the canonical event DTO with `revision,creator:{id,name},source`. Drafts and source metadata stay within the room; public `/events` returns only published canonical event information. Creation never publishes an event. The client reviews the generated stages, difficulty, rewards and period, then asks for a separate publication confirmation.
+
+The room shares the existing limit of 30 drafts and one active event with operator-created events. Only room-created events are accessible through room management routes. Published room events use the existing command, battle, milestone mail, participation and shogunate-right machinery; the room cannot arbitrarily credit a player's assets.
+
+Migration `0046_court_event_room` adds `court_event_room_events` and `court_event_room_requests`; existing `timed_events.revision` remains the authority for collaboration conflicts. Each mutation atomically stores an exact per-actor request receipt and its canonical event change. Retries cannot duplicate a draft, publish twice, extend an existing period or resurrect a discarded event. The current staff/admin generation or Regent appointment token is checked at commit and again after asynchronous response decoration, including reads and receipt replay.
