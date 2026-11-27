@@ -46,7 +46,7 @@ function renderPressContent(p, { section, table, site }) {
         ['ジャンル', '戦国戦略シミュレーション・ブラウザゲーム'],
         ['公式URL', `<a href="${esc(origin)}/">${esc(origin)}/</a>`],
         ['紹介ページ', `<a href="${esc(p.dir('sengoku-vs'))}">${esc(origin)}/sengoku-vs/</a>`],
-        ['公開済み紹介動画', `<a href="${esc(trailer.url)}" target="_blank" rel="noopener noreferrer">絵巻で見る戦国VS</a>（24秒） · <a href="${esc(firstSteps.url)}" target="_blank" rel="noopener noreferrer">はじめての3手</a>（36秒）`],
+        ['公開済み紹介動画', `<a href="${esc(jadeTrailer.url)}" target="_blank" rel="noopener noreferrer">${esc(jadeTrailer.title)}</a>（${jadeTrailer.seconds}秒・日本語／英語字幕、公式イラストと実ゲーム画面）<br><a href="${esc(firstSteps.url)}" target="_blank" rel="noopener noreferrer">はじめての3手</a>（${firstSteps.seconds}秒・日本語、過去バージョンの実ゲーム静止画）<br><a href="${esc(trailer.url)}" target="_blank" rel="noopener noreferrer">絵巻で見る戦国VS</a>（24秒・日本語、公式イラスト）`],
         ['対応端末', 'PC・スマートフォン・タブレットのブラウザ。アプリのインストールは不要です。'],
         ['表示言語', '日本語。英語表記の作品名はSENGOKU VSです。ゲームUIと公式ガイドは日本語です。'],
         ['料金', `基本プレイ無料。別売りの外観アイテムと月額支援は任意です。<a href="${esc(p.dir('premium'))}">商品・料金の案内</a>`],

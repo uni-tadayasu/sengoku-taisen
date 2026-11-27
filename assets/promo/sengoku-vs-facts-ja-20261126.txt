@@ -1,6 +1,6 @@
 戦国VS（SENGOKU VS） 紹介・掲載用 基本情報
-更新日: 2026年11月26日
-公開版: Ver.5.1.1
+更新日: 2026年11月27日
+公開版: Ver.5.9.17
 
 キャッチコピー: 一城から、天下へ。
 制作・運営: KASAI SOLUTIONS
@@ -8,8 +8,21 @@
 ジャンル: 戦国戦略シミュレーション・ブラウザゲーム
 公式サイト: https://www.kasai-solutions-inc.com/
 ゲーム紹介: https://www.kasai-solutions-inc.com/sengoku-vs/
+英語の紹介・始め方: https://www.kasai-solutions-inc.com/en/
 紹介・掲載用素材: https://www.kasai-solutions-inc.com/press/
-公開済み紹介動画: https://www.youtube.com/watch?v=NWzewQEJyz0
+公開済み紹介動画:
+最新の紹介動画: 月夜の城下から、天下地図へ（28秒・日本語／英語字幕）
+https://www.youtube.com/watch?v=KFzGnhcSRIA
+公式イラストと実ゲーム画面を使った紹介です。
+
+はじめての3手（36秒・日本語）
+https://www.youtube.com/watch?v=j7TEhAidQjw
+過去バージョンの撮影用デモの実ゲーム静止画を使った紹介です。プレイ録画ではありません。
+
+絵巻で見る戦国VS（24秒・日本語）
+https://www.youtube.com/watch?v=NWzewQEJyz0
+公式イラストを使った作品紹介です。
+
 遊び方: https://www.kasai-solutions-inc.com/guide/
 引き継ぎ: https://www.kasai-solutions-inc.com/guide/data-recovery/
 更新情報: https://www.kasai-solutions-inc.com/news/

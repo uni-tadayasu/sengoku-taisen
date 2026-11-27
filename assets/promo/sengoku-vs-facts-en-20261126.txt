@@ -1,6 +1,6 @@
 SENGOKU VS — Official fact sheet
-Updated: 2026-11-26
-Version: 5.1.1
+Updated: 2026-11-27
+Version: 5.9.17
 
 SENGOKU VS is a Japanese-language browser strategy game by KASAI SOLUTIONS. Develop a castle town, recruit and organize officers, and choose how to expand your territory. Play a personal campaign against computer-controlled factions, or register a lord to join online battles, alliances, letters, and trading. Basic play is free, with optional cosmetic items and a monthly supporter badge. The game runs in desktop, smartphone, and tablet browsers; no app installation is needed. The game UI and official guides are currently in Japanese.
 
@@ -13,14 +13,18 @@ Price model: Basic play is free. Optional cosmetics and a monthly supporter badg
 Content: 256 officers, 129 castles and locations, and 64 facility types
 Play modes: Personal campaigns against computer-controlled factions; online battles, alliances, letters, and trading after registering a lord.
 Official website: https://www.kasai-solutions-inc.com/
-Game introduction: https://www.kasai-solutions-inc.com/sengoku-vs/
+English introduction and starting guide: https://www.kasai-solutions-inc.com/en/
+Japanese game introduction: https://www.kasai-solutions-inc.com/sengoku-vs/
 Press kit: https://www.kasai-solutions-inc.com/press/
-Published introduction video: https://www.youtube.com/watch?v=NWzewQEJyz0
+Latest introduction video: From a moonlit castle to the campaign map (28 seconds, Japanese and English captions)
+https://www.youtube.com/watch?v=KFzGnhcSRIA
+Your first three moves (36 seconds, Japanese): https://www.youtube.com/watch?v=j7TEhAidQjw
+Illustrated introduction (24 seconds, Japanese): https://www.youtube.com/watch?v=NWzewQEJyz0
 Official updates: https://www.kasai-solutions-inc.com/news/
 Updates RSS: https://www.kasai-solutions-inc.com/news/feed.xml
 
 
-The 24-second introduction uses official illustrations. Actual gameplay screenshots are provided separately in the press kit.
+The 28-second video combines official illustrations and actual game screens, with Japanese and English captions. The 36-second video uses demo-progress screenshots from earlier versions with pans and zooms; it is not gameplay footage. The 24-second video uses official illustrations. Versioned game screenshots are provided separately in the press kit. The game interface and full guides are currently Japanese only.
 Historical people and places inspire the game; character abilities, faction placement, and progression use the game’s own rules.
 Please include the title, official website, and copyright credit when introducing the game.
 Third-party source credits: https://www.kasai-solutions-inc.com/about/
