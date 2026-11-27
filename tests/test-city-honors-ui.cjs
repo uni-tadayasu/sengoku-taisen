@@ -44,4 +44,25 @@ test('field identities put honors after the portrait and before the name, preser
  const html=h.scope.SengokuField.publicRow({playerId:'u_lord',name:'領主の名前',homeCastleId:'edo',homeCastleName:'江戸城',level:3,defenseTroops:1000});
  assert(html.indexOf('data-player-avatar')<html.indexOf('data-city-honors-player'));assert(html.indexOf('data-city-honors-player')<html.indexOf('data-premium-player'));assert(html.includes('data-premium-product="phoenix-medallion"'));assert(html.includes('data-court-seal="sun"'));
 });
+test('the Kagoshima crest accepts only observed public honors and uses fixed SVG artwork and accessible text',()=>{
+ const h=setup(),id='u_deputy',crest='assets/branding/kagoshima-immortal-crest.svg';
+ assert(!h.api.slot({id,isDeputy:true,cityHonors:[award('kagoshima')]}).includes('<img'));
+ h.avatar.observe({save:{state:{id,isDeputy:true,cityHonors:[award('kagoshima')]}},entitlements:{id,cityHonors:[award('kagoshima')]},appearance:{id,cityHonors:[award('kagoshima')]}});
+ assert.equal(h.api.resolve(id).length,0);
+ h.avatar.observe({player:{id,cityHonors:[award('kagoshima'),award('kagoshima')]}});
+ const markup=h.api.slot(id);assert.equal((markup.match(/data-city-honor=/g)||[]).length,1);
+ assert(markup.includes('src="'+crest+'"'));assert(markup.includes('alt="鹿児島城 不死身の紋章"'));assert(!markup.includes('untrusted'));
+ assert.equal(h.api.text(id),'鹿児島城 不死身の紋章');assert(h.api.slot(id,{cityId:'kagoshima'}).includes(crest));assert(!h.api.slot(id,{cityId:'kyoto_gosho'}).includes(crest));
+ h.avatar.observe({id:'u_staff',cityHonors:[award('kyoto_gosho')]});assert(!h.api.slot('u_staff').includes(crest));
+ h.scope.SengokuPremiumRuntime={nameMarkup:name=>'<b>'+name+'</b>'};vm.runInContext(read('field.js'),h.scope);
+ const row=h.scope.SengokuField.publicRow({playerId:id,name:'鹿児島の領主',homeCastleId:'kagoshima',homeCastleName:'鹿児島城',level:4,defenseTroops:1000});
+ assert(row.indexOf('data-player-avatar')<row.indexOf('data-city-honors-player'));assert(row.indexOf(crest)<row.indexOf('data-premium-player'));
+});
+test('a revoked Kagoshima crest disappears in place and an older response cannot restore it',()=>{
+ const h=setup(),id='u_deputy';h.avatar.observe({id,cityHonors:[award('kagoshima')]});const first=h.node(id),second=h.node(id),focus=h.scope.document.activeElement,before=JSON.stringify([h.draft,h.scroll]);
+ const old=h.avatar.beginRequest(),current=h.avatar.beginRequest();h.avatar.observe({id,cityHonors:[]},{requestSequence:current});
+ assert.equal(first.innerHTML,'');assert.equal(second.innerHTML,'');
+ h.avatar.observe({id,cityHonors:[award('kagoshima')]},{requestSequence:old});assert.equal(first.innerHTML,'');assert.equal(h.api.resolve(id).length,0);
+ assert.equal(h.scope.document.activeElement,focus);assert.equal(JSON.stringify([h.draft,h.scroll]),before);
+});
 for(const {name,run}of tests){run();console.log('PASS '+name);}console.log(`${tests.length} city-honor checks passed; synthetic identities only.`);

@@ -46,7 +46,7 @@ home='uchijo';assert(context.townSceneArt().srcset.includes('snow-town'),'Ordina
 home='kagoshima';skin=null;assert(context.townSceneArt().special);
 home='uchijo';assert(context.townSceneArt().srcset.includes('castle-town-raden'));
 
-const mapStart=app.indexOf('  function campaignCastleAppearance('),mapEnd=app.indexOf('  function campaignCastleTooltip(',mapStart);
+const mapStart=app.indexOf('  function campaignCastleGrowth('),mapEnd=app.indexOf('  function campaignCastleTooltip(',mapStart);
 vm.runInContext(app.slice(mapStart,mapEnd),context);
 const marker=context.campaignCastleAppearance({id:'kagoshima',name:'鹿児島城',level:32,home:false,owner:'島津家'});
 assert(marker.html.includes('special-castle-painting'),'A viewer who owns a different castle sees the same art on the campaign map');

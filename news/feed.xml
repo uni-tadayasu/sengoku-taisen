@@ -9,6 +9,19 @@
     <ttl>60</ttl>
     <atom:link href="https://www.kasai-solutions-inc.com/news/feed.xml" rel="self" type="application/rss+xml"/>
     <item>
+      <title>Ver.5.13.2｜天下地図の成長表示・スマホ操作・サブ運営の紋章を更新</title>
+      <link>https://www.kasai-solutions-inc.com/news/#v5-13-2</link>
+      <guid isPermaLink="true">https://www.kasai-solutions-inc.com/news/#v5-13-2</guid>
+      <dc:date>2026-11-28</dc:date>
+      <description>本拠の天守の成長を天下地図へ反映。スマホの音量・設定・資産欄を横一列に揃え、サブ運営の領主アイコンと名前の間に鹿児島城「不死身」の紋章を追加します。
+
+本拠の天守と城郭を地図で確認：本拠の表示に天守と城郭の両レベルを反映し、完成済みの成長に合わせて地図・詳細・一覧の城の絵を揃えます。天守と城郭のうち高いレベルを外観に使うため、城郭が高い城の絵も小さく戻りません。
+
+スマホの3つの操作を横一列へ：ヘッダーの音量・設定・資産欄のボタンが折り返さず並ぶよう、操作に必要な幅を確保しました。各ボタンは44px以上の押せる領域を持ち、狭い画面でも資産欄の文字が縦に折り返されないようにしています。
+
+サブ運営に鹿児島城「不死身」の紋章：現在のサブ運営の領主アイコンと名前の間に、金と翡翠を基調とした鹿児島城「不死身」の紋章を表示します。交流や地図、領主のプロフィールなど、名前と勲章を共通表示する場所で確認できます。</description>
+    </item>
+    <item>
       <title>Ver.5.13.1｜タブレット横画面の子ウィンドウの位置を修正</title>
       <link>https://www.kasai-solutions-inc.com/news/#v5-13-1</link>
       <guid isPermaLink="true">https://www.kasai-solutions-inc.com/news/#v5-13-1</guid>
@@ -358,15 +371,6 @@ BANと分けて、拠点から追放：運営のプレイヤー管理で、対�
 軍師に残したい兵と兵糧を指定：攻城戦・支拠点戦の準備で、出陣後に手元に残す最低兵数と兵糧を入力して軍師に再提案させられます。条件に合う案がないときは理由を表示します。
 
 出陣戦績を検索して2戦を比較：攻城戦・支拠点戦・野良兵戦の直近30戦を武将名・戦場・勝敗で絞り込めます。2戦の戦力・兵損・合戦時の見込み・編成を並べて確認し、結果をテキストで保存できます。</description>
-    </item>
-    <item>
-      <title>Ver.5.9.1｜天下地図の読み込みデータを軽量化</title>
-      <link>https://www.kasai-solutions-inc.com/news/#v5-9-1</link>
-      <guid isPermaLink="true">https://www.kasai-solutions-inc.com/news/#v5-9-1</guid>
-      <dc:date>2026-11-27</dc:date>
-      <description>天下地図を初めて開く際に取得する地理データを小さくしました。全国129城の位置と街道の距離計算はこれまでと同じです。
-
-海岸線・県境・水系を軽いデータで表示：地図の線を描く座標を小数点以下6桁に整理しました。離島、県境、河川、湖の形を構成する全頂点を収録しています。</description>
     </item>
   </channel>
 </rss>

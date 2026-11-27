@@ -5,6 +5,10 @@ import {CITY_HONORS,resolvePublicCityHonors} from './city-honors.js';
 
 const ids=person=>(person.cityHonors||[]).map(honor=>honor.id);
 const profile=async(h,person,viewer)=>(await h.api('/players/'+person.user.id+'/profile',{token:viewer?.token})).data.player;
+async function changeDeputy(h,admin,person,action='appoint'){
+ const current=(await h.api('/admin/deputy',{token:admin.token})).data;
+ return(await h.api('/admin/deputy',post(admin,{targetPlayerId:person.user.id,action,requestId:crypto.randomUUID(),expectedRevision:current.revision}))).data;
+}
 let cases=0,calls=0,maxBindings=0;
 async function scenario(name,run){
  const h=harness(),batch=h.db.batch.bind(h.db);
@@ -12,13 +16,59 @@ async function scenario(name,run){
  try{await run(h);cases++;console.log('PASS '+name);}finally{calls+=h.calls;h.close();}
 }
 
-await scenario('only the existing five major cities have non-purchasable public honors',async()=>{
- assert.deepEqual(CITY_HONORS.map(city=>city.id),['edo','kyoto_gosho','nijo','osaka','nagoya']);
- assert.deepEqual(CITY_HONORS.map(city=>city.id).sort(),globalThis.SENGOKU_DATA.castles.filter(city=>city.majorCity).map(city=>city.id).sort());
+await scenario('five major cities and the appointed Kagoshima deputy have non-purchasable public honors',async()=>{
+ assert.deepEqual(CITY_HONORS.map(city=>city.id),['edo','kyoto_gosho','nijo','osaka','nagoya','kagoshima']);
+ assert.deepEqual(CITY_HONORS.filter(city=>city.id!=='kagoshima').map(city=>city.id).sort(),globalThis.SENGOKU_DATA.castles.filter(city=>city.majorCity).map(city=>city.id).sort());
+ assert.equal(CITY_HONORS.find(city=>city.id==='kagoshima').title,'鹿児島城 不死身の紋章');
  for(const city of CITY_HONORS){
   const castle=globalThis.SENGOKU_DATA.castles.find(c=>c.id===city.id);
   assert(castle);assert.equal(city.cityName,castle.name);assert(city.title.includes(city.cityName));
  }
+});
+
+await scenario('the Kagoshima crest follows current deputy appointments, separately from Kyoto and forged saves',async h=>{
+ const admin=await fixture(h,'鹿児島の紋章を任命する運営',{admin:true}),first=await fixture(h,'鹿児島の初代紋章',{startCastle:'inuyama'}),second=await fixture(h,'鹿児島の次代紋章',{startCastle:'himeji'}),staff=await fixture(h,'御所の紋章候補',{staff:true});
+ updateSave(h,second,state=>{state.cityHonors=[{id:'kagoshima'}];state.isDeputy=true;state.appearance={cityHonors:[{id:'kagoshima'}]};});
+ assert.deepEqual(ids(await profile(h,second)),[],'private deputy flags and purchased appearances cannot award this crest');
+ assert(!ids(await profile(h,admin)).includes('kagoshima'));assert(!ids(await profile(h,staff)).includes('kagoshima'));
+ await changeDeputy(h,admin,first);
+ const anonymous=await profile(h,first),authenticated=await profile(h,first,second);
+ assert.deepEqual(ids(anonymous),['kagoshima']);assert.deepEqual(ids(authenticated),['kagoshima']);
+ assert.equal(anonymous.cityHonors[0].title,'鹿児島城 不死身の紋章');
+ assert(!Object.hasOwn(anonymous,'isDeputy'),'the crest does not expose a new public privilege flag');
+ await changeDeputy(h,admin,first,'dismiss');
+ assert.deepEqual(ids(await profile(h,first)),[],'dismissal removes the former holder crest');
+ await changeDeputy(h,admin,second);
+ assert.deepEqual(ids(await profile(h,first)),[]);assert.deepEqual(ids(await profile(h,second)),['kagoshima']);
+});
+
+await scenario('Kagoshima public profiles, chat and field show the same crest without changing game data',async h=>{
+ const admin=await fixture(h,'鹿児島表示の運営',{admin:true}),deputy=await fixture(h,'鹿児島表示の領主',{startCastle:'inuyama'}),viewer=await fixture(h,'鹿児島表示の閲覧者',{startCastle:'himeji'});
+ await changeDeputy(h,admin,deputy);
+ await h.api('/chat',post(deputy,{channel:'world',text:'鹿児島城からの挨拶'}));
+ const before=h.sql.prepare('SELECT user_id,save_json,revision FROM player_saves ORDER BY user_id').all(),registry=h.sql.prepare('SELECT * FROM deputy_operator_state').all();
+ const chat=(await h.api('/chat?channel=world',{token:viewer.token})).data.messages.find(message=>message.userId===deputy.user.id);
+ const field=(await h.api('/field')).data.targets.filter(person=>person.playerId===deputy.user.id);
+ assert.deepEqual(ids(chat),['kagoshima']);assert(field.length);for(const person of field)assert.deepEqual(ids(person),['kagoshima']);
+ assert.deepEqual(ids(await profile(h,deputy)),['kagoshima']);
+ assert.deepEqual(h.sql.prepare('SELECT user_id,save_json,revision FROM player_saves ORDER BY user_id').all(),before);
+ assert.deepEqual(h.sql.prepare('SELECT * FROM deputy_operator_state').all(),registry);
+});
+
+await scenario('Kagoshima cannot retain a crest after suspension or an appointment removed during the response',async h=>{
+ const admin=await fixture(h,'鹿児島失効の運営',{admin:true}),deputy=await fixture(h,'鹿児島失効の領主',{startCastle:'inuyama'});
+ await changeDeputy(h,admin,deputy);
+ let changed=false;
+ h.beforeBatch=statements=>{if(changed||!statements.some(s=>s.sql.includes('public-city-honors')))return;changed=true;h.sql.prepare('UPDATE deputy_operator_state SET user_id=NULL,term_id=NULL,revision=revision+1 WHERE id=1').run();};
+ assert.deepEqual(ids(await profile(h,deputy)),[]);assert(changed,'the published badge must read the current appointment');
+ h.beforeBatch=null;
+ // Resolve an existing public identity even when a normal profile route
+ // would omit a suspended account. Legacy role/home labels remain untrusted.
+ h.sql.prepare('UPDATE deputy_operator_state SET user_id=?,term_id=?,appointed_at=? WHERE id=1').run(deputy.user.id,'test-ban-term',h.now);
+ h.sql.prepare('INSERT INTO player_bans(user_id,active,revision,banned_by,updated_at) VALUES(?,1,1,?,?)').run(deputy.user.id,admin.user.id,h.now);
+ const payload={player:{id:deputy.user.id,name:deputy.user.name,isDeputy:true,homeCastleId:'kagoshima',cityHonors:[{id:'kagoshima'}]}};
+ await resolvePublicCityHonors(h.db,payload,h.now,{getWorldClock:async()=>({}),eventCastleCandidates:()=>({source:'FROM users u WHERE ?=0 AND 0=1',cycle:1,params:[]})});
+ assert.deepEqual(ids(payload.player),[],'suspended holders never receive the crest');
 });
 
 await scenario('Edo follows its current office and Kyoto honors only the current term-bound emperor',async h=>{
