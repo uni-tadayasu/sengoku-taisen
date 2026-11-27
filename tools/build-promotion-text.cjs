@@ -34,7 +34,7 @@ output('sengoku-vs-facts-ja', `戦国VS（SENGOKU VS） 紹介・掲載用 基�
 ${publicLinks}
 
 対応端末: PC・スマートフォン・タブレットのブラウザ。アプリのインストール不要。
-表示言語: 日本語。SENGOKU VSは作品名の英字表記です。ゲームUIと公式ガイドは現在日本語です。
+表示言語: ゲームUIと詳細ガイドは日本語です。SENGOKU VSは作品名の英字表記で、英語の紹介・開始ガイドも利用できます。
 料金: 基本プレイ無料。有料の外観アイテムと月額支援は任意です。
 有料商品の内容: 旗印・城下町の外観・勲章・サポーターバッジ。武将の能力、兵力、生産量、指令回復の優遇はありません。
 料金・商品: ${site.origin}/premium/
@@ -77,7 +77,7 @@ ${copy.english}
 Title: SENGOKU VS (戦国VS)
 Developer and publisher: KASAI SOLUTIONS
 Genre: Browser strategy game inspired by Japan’s Sengoku period
-Language: Japanese
+Language: Japanese game interface and detailed guides. English introduction and starting guide available.
 Platforms: Desktop, smartphone, and tablet web browsers
 Price model: Basic play is free. Optional cosmetics and a monthly supporter badge do not provide combat or resource advantages.
 Content: 256 officers, 129 castles and locations, and 64 facility types
@@ -92,7 +92,7 @@ Your first three moves (${firstSteps.seconds} seconds, Japanese): ${firstSteps.u
 Illustrated introduction (24 seconds, Japanese): ${trailer.url}
 ${site.pages.news ? `Official updates: ${site.origin}${site.pages.news.path}\nUpdates RSS: ${site.origin}${site.pages.news.path}feed.xml\n` : ''}
 
-The ${jadeTrailer.seconds}-second video combines official illustrations and actual game screens, with Japanese and English captions. The ${firstSteps.seconds}-second video uses demo-progress screenshots from earlier versions with pans and zooms; it is not gameplay footage. The 24-second video uses official illustrations. Versioned game screenshots are provided separately in the press kit. The game interface and full guides are currently Japanese only.
+The ${jadeTrailer.seconds}-second video combines official illustrations and actual game screens, with Japanese and English captions. The ${firstSteps.seconds}-second video uses demo-progress screenshots from earlier versions with pans and zooms; it is not gameplay footage. The 24-second video uses official illustrations. Versioned game screenshots are provided separately in the press kit. The game interface and detailed guides are in Japanese; the English starting guide explains the first steps.
 Historical people and places inspire the game; character abilities, faction placement, and progression use the game’s own rules.
 Please include the title, official website, and copyright credit when introducing the game.
 Third-party source credits: ${site.origin}/about/
