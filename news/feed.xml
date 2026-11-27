@@ -9,6 +9,15 @@
     <ttl>60</ttl>
     <atom:link href="https://www.kasai-solutions-inc.com/news/feed.xml" rel="self" type="application/rss+xml"/>
     <item>
+      <title>Ver.5.13.1｜タブレット横画面の子ウィンドウの位置を修正</title>
+      <link>https://www.kasai-solutions-inc.com/news/#v5-13-1</link>
+      <guid isPermaLink="true">https://www.kasai-solutions-inc.com/news/#v5-13-1</guid>
+      <dc:date>2026-11-28</dc:date>
+      <description>タブレットを横向きにしたとき、子ウィンドウが右へずれて画面外にはみ出す不具合を修正しました。
+
+ウィンドウの幅と中央位置を統一：施設や武将の詳細、入力・確認などの子ウィンドウを、実際の幅に合わせて中央に配置します。画面の向きや表示領域が変わった場合も、左右の余白を確保して画面内に収めます。</description>
+    </item>
+    <item>
       <title>Ver.5.13.0｜鹿児島城の特別絵巻と資源50%の勝利報酬</title>
       <link>https://www.kasai-solutions-inc.com/news/#v5-13-0</link>
       <guid isPermaLink="true">https://www.kasai-solutions-inc.com/news/#v5-13-0</guid>
@@ -358,23 +367,6 @@ BANと分けて、拠点から追放：運営のプレイヤー管理で、対�
       <description>天下地図を初めて開く際に取得する地理データを小さくしました。全国129城の位置と街道の距離計算はこれまでと同じです。
 
 海岸線・県境・水系を軽いデータで表示：地図の線を描く座標を小数点以下6桁に整理しました。離島、県境、河川、湖の形を構成する全頂点を収録しています。</description>
-    </item>
-    <item>
-      <title>Ver.5.9.0｜予定表・資源計画から詳細へ直結し、建設条件と編成の確認を改善</title>
-      <link>https://www.kasai-solutions-inc.com/news/#v5-9-0</link>
-      <guid isPermaLink="true">https://www.kasai-solutions-inc.com/news/#v5-9-0</guid>
-      <dc:date>2026-11-27</dc:date>
-      <description>調べた予定や試算した目標から、その施設・城・研究の詳細へ直接進めるようになりました。建設できない理由と次の操作を表示し、編成セットの適用前にも最新の状態を確認します。
-
-行動予定表から目的の詳細へ：施設・城・支城・研究を選ぶと、その対象の詳細を直接開きます。同じ領主と戦役で開き直すと、検索語・絞り込み・表示件数・読んでいた位置を保ちます。日本語の変換途中には検索結果を差し替えません。
-
-資源計画から試算対象へ移動：施設や研究を選んだ計画に、対象名付きの詳細ボタンを追加しました。入力中の計画を保存してから移動し、同じ目標へ戻ると備蓄・予測の開閉と読んでいた位置も戻ります。
-
-建設できない理由と次の操作を表示：指令の回復待ち、資材の不足、天守の条件、普請枠の不足を施設詳細に表示します。天守の条件が足りない場合は天守へ、普請枠が埋まっている場合は行動予定表へ進めます。
-
-編成セットの適用直前に再確認：比較画面を開いた後に武将の能力・任命・軍団が変わっていた場合は、最新の比較へ更新してから確認します。支城に任命中の武将や削除済みの編成セットを、そのまま適用しないようにしました。
-
-天下地図の表示計算を削減：まとめて表示する城の候補から、距離が離れていて組にならない城を先に除外します。城のまとまり方と本拠・選択中の城の優先表示を保ちます。</description>
     </item>
   </channel>
 </rss>
