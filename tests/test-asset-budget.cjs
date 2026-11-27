@@ -38,7 +38,9 @@ const totalGzipBytes = rows.reduce((sum,row)=>sum+row.gzipBytes,0);
 // entry adds 12,648 raw / 4,793 gzip bytes over v5.9.11 and no audio samples.
 // v5.9.13 adds town phase switching and operator-only template launchers.
 // The catalog and dialog are lazy. Measured entry delta: +3,772 raw / +1,464 gzip.
-const rawBudget=3374000,gzipBudget=939000;
+// v5.9.16 adds the shared candidate dialog and connects the individual editors.
+// Lists use existing game catalogs and on-demand online lookups.
+const rawBudget=3405000,gzipBudget=949000;
 assert(totalBytes <= rawBudget, `Initial bundles exceed the ${rawBudget} byte budget: ${totalBytes}`);
 assert(totalGzipBytes <= gzipBudget, `Initial bundles exceed the ${gzipBudget} gzip byte budget: ${totalGzipBytes}`);
 const html = fs.readFileSync(path.join(root,'index.html'),'utf8');

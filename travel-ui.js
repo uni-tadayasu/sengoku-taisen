@@ -162,12 +162,27 @@ function ensure(){
  if(!launcher){launcher=doc.createElement('button');launcher.type='button';launcher.className='travel-launcher';launcher.setAttribute('aria-haspopup','dialog');launcher.setAttribute('aria-label','進軍中の部隊と戦果を確認');launcher.addEventListener('click',open);doc.body.appendChild(launcher);}
  if(!dialog){
   dialog=doc.createElement('dialog');dialog.className='travel-dialog';dialog.setAttribute('aria-labelledby','travel-title');
-  dialog.innerHTML=`<header><div><small>作戦状況</small><h2 id="travel-title">進軍と戦果</h2></div><button type="button" class="button small" data-travel-close>閉じる</button></header><div class="travel-tools"><div class="travel-summary" aria-label="部隊の状況"><div><span>移動中の兵</span><strong data-travel-summary="troops">0人</strong></div><div><span>帰還中</span><strong data-travel-summary="returning">0隊</strong></div><div><span>到着を確認中</span><strong data-travel-summary="awaiting">0隊</strong></div></div><div class="travel-stage-tabs" role="group" aria-label="移動状況で絞り込み">${Object.entries(stages).map(([key,label])=>`<button type="button" data-travel-stage="${key}" aria-pressed="${key==='all'}">${label}<span data-travel-stage-count="${key}"></span></button>`).join('')}</div><div class="travel-filters"><label class="travel-search"><span>城・任務を検索</span><input type="search" maxlength="100" placeholder="出発地・目的地の城名" data-travel-filter="query" autocomplete="off"></label><label><span>任務</span><select data-travel-filter="kind"><option value="all">すべての任務</option>${Object.entries(kinds).map(([key,label])=>`<option value="${key}">${label}</option>`).join('')}</select></label><label><span>並び順</span><select data-travel-filter="order">${Object.entries(orders).map(([key,label])=>`<option value="${key}">${label}</option>`).join('')}</select></label><button type="button" class="button small" data-travel-reset>絞り込み解除</button></div></div><div class="travel-body"></div>`;
+  dialog.innerHTML=`<header><div><small>作戦状況</small><h2 id="travel-title">進軍と戦果</h2></div><button type="button" class="button small" data-travel-close>閉じる</button></header><div class="travel-tools"><div class="travel-summary" aria-label="部隊の状況"><div><span>移動中の兵</span><strong data-travel-summary="troops">0人</strong></div><div><span>帰還中</span><strong data-travel-summary="returning">0隊</strong></div><div><span>到着を確認中</span><strong data-travel-summary="awaiting">0隊</strong></div></div><div class="travel-stage-tabs" role="group" aria-label="移動状況で絞り込み">${Object.entries(stages).map(([key,label])=>`<button type="button" data-travel-stage="${key}" aria-pressed="${key==='all'}">${label}<span data-travel-stage-count="${key}"></span></button>`).join('')}</div><div class="travel-filters"><div class="travel-search"><label for="travel-query">城・任務を検索</label><input id="travel-query" type="search" maxlength="100" placeholder="出発地・目的地の城名" data-travel-filter="query" autocomplete="off"><button type="button" class="button small" data-travel-input-list aria-label="出発地・目的地の一覧から選ぶ">一覧</button></div><label><span>任務</span><select data-travel-filter="kind"><option value="all">すべての任務</option>${Object.entries(kinds).map(([key,label])=>`<option value="${key}">${label}</option>`).join('')}</select></label><label><span>並び順</span><select data-travel-filter="order">${Object.entries(orders).map(([key,label])=>`<option value="${key}">${label}</option>`).join('')}</select></label><button type="button" class="button small" data-travel-reset>絞り込み解除</button></div></div><div class="travel-body"></div>`;
   dialog.addEventListener('click',event=>{
    if(event.target===dialog&&typeof event.clientX==='number'){const r=dialog.getBoundingClientRect();if(event.clientX<r.left||event.clientX>r.right||event.clientY<r.top||event.clientY>r.bottom){close();return;}}
-   const button=event.target.closest?.('[data-travel-close],[data-travel-report],[data-travel-back],[data-travel-stage],[data-travel-reset]');if(!button||!dialog.contains(button))return;
+   const button=event.target.closest?.('[data-travel-close],[data-travel-report],[data-travel-back],[data-travel-stage],[data-travel-reset],[data-travel-input-list]');if(!button||!dialog.contains(button))return;
    if(button.hasAttribute('data-travel-close'))return close();
    if(button.hasAttribute('data-travel-reset'))return resetFilters();
+   if(button.hasAttribute('data-travel-input-list')){
+    const {data,clock}=capture(),owner=scope,places=new Map();
+    for(const march of filterMarches([...data.active,...data.history],{...filters,query:''},clock)){
+     for(const [name,role] of [[march.sourceName,'出発地'],[march.targetName,'目的地']]){
+      if(!name)continue;
+      if(!places.has(name))places.set(name,new Set());
+      places.get(name).add(role);
+     }
+    }
+    const candidates=Array.from(places,([name,roles])=>({value:name,label:name,detail:Array.from(roles).join('・')}));
+    global.SengokuInputList?.open({trigger:button,title:'進軍・帰還の拠点一覧',options:candidates,
+     emptyText:'この条件に合う進軍・帰還の記録がありません。',valid:()=>dialog.open&&String(context().scope||'')===owner,
+     onSelect(option){const input=dialog.querySelector('[data-travel-filter="query"]');input.value=option.value;input.dispatchEvent(new Event('input',{bubbles:true}));}});
+    return;
+   }
    if(button.hasAttribute('data-travel-stage')){filters=cleanFilters({...filters,stage:button.dataset.travelStage});selectedReport=null;syncControls();paint();return;}
    if(button.hasAttribute('data-travel-back')){selectedReport=null;paint();return;}
    const frame=capture(),march=frame.data.history.find(row=>row.id===button.dataset.travelReport);if(!march)return;selectedReport=march;

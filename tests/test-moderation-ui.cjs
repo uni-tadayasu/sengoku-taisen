@@ -44,6 +44,27 @@ test('staff and ordinary users have no moderation data or outgoing requests',asy
     assert.equal(h.calls.length,0);const state=h.controller.getState();assert.equal(state.authorized,false);assert.equal(state.target,null);assert.equal(state.results.length,0);assert.equal(state.bans.length,0);h.controller.dispose();
   }
 });
+test('candidate browsing starts with known players, verifies the selected ID, and sends no moderation action',async()=>{
+  const h=setup(),online=deferred();let picker;
+  global.SengokuInputList={open:config=>{picker=config;}};
+  global.SengokuSocial={getKnownPlayers:()=>[{id:OWNER,name:'運営'},{id:TARGET,name:'同じ名前'},{id:'u_other',name:'同じ名前'}],getOnlineCandidates:()=>online.promise};
+  try{
+    await h.controller.open();h.controller.openCandidates({});
+    assert.deepEqual(picker.options.map(row=>row.value),[TARGET,'u_other']);
+    assert.notEqual(picker.options[0].detail,picker.options[1].detail);
+    assert.deepEqual(await picker.load('一'),[]);assert.equal(h.calls.length,0);
+    const filtered=await picker.load('対象');assert(filtered.some(row=>row.value===TARGET));
+    await picker.onSelect(filtered.find(row=>row.value===TARGET));
+    assert.equal(h.controller.getState().query,TARGET);assert.equal(h.controller.getState().target.player.id,TARGET);
+    assert.equal(h.controller.getState().confirm,null);assert.equal(h.posts().length,0);
+    h.controller.openCandidates({});const loading=picker.load('');
+    h.setUser({id:'u_staff',isStaff:true});online.resolve([{id:'u_new',name:'接続中'}]);
+    assert.deepEqual(await loading,[]);assert.equal(picker.valid(),false);
+    const before=h.calls.length;await picker.onSelect({value:'u_new'});assert.equal(h.calls.length,before);
+    picker=null;h.controller.openCandidates({});assert.equal(picker,null);
+  }finally{h.controller.dispose();delete global.SengokuSocial;delete global.SengokuInputList;}
+});
+
 test('BAN requires a fresh immutable target preview and a separate explicit confirmation',async()=>{
   const h=setup();await h.controller.open();h.controller.setQuery('対象');await h.controller.search();assert.equal(h.controller.getState().results.length,2);
   await h.controller.select(TARGET);h.controller.setReason('繰り返し確認した投稿');h.data.targets.get(TARGET).counts.chatMessages=7;

@@ -81,3 +81,7 @@ dialog.travel-dialog[open]{display:flex;flex-direction:column}
  .travel-filters input,.travel-filters select{min-height:38px;padding:7px 8px}
  .travel-body{padding-top:12px}
 }
+
+.travel-filters .travel-search { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:5px; }
+.travel-filters .travel-search > label { grid-column:1/-1; }
+.travel-filters .travel-search > .button { display:inline-flex; grid-column:auto; white-space:nowrap; }

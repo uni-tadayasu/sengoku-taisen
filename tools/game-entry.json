@@ -87,7 +87,8 @@
     "raden-game.css",
     "raden-surfaces.css",
     "raden-motion.css",
-    "responsive-text.css"
+    "responsive-text.css",
+    "input-list.css"
   ],
   "game-preferences.bundle.js": [
     "viewport-lock.js",
@@ -95,6 +96,7 @@
   ],
   "game-core.bundle.js": [
     "variant-text.js",
+    "input-list.js",
     "officers-data.js",
     "travel.js",
     "engine.js",

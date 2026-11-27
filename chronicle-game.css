@@ -476,3 +476,14 @@ html:not(.sengoku-desktop-fit) #app.chronicle-shell .chronicle-ledger .resource 
 #app.chronicle-shell :is(.resource-amount,#month-countdown,#command-count,[data-job-clock],[data-magatama-balance]){
   font-variant-numeric:tabular-nums;
 }
+
+/* Keep a candidate list beside its field on both archive and assignment screens. */
+:is(#main,.modal) .officer-filter-bar > .officer-list-search {
+  display: grid;
+  grid-template-columns: minmax(0,1fr) auto;
+  align-items: end;
+  gap: .4rem;
+}
+:is(#main,.modal) .officer-list-search > .officer-filter-search { grid-column: 1; }
+#main .search-box > .input-list-button { flex: 0 0 auto; min-width: 0; margin: 0; }
+#main .search-box:has(> .input-list-button) > input { min-width: 0; flex: 1 1 0; }

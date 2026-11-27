@@ -271,7 +271,7 @@ function confirmationMarkup(record){
 }
 function composeMarkup(state){
   const options=Object.entries(ASSETS).map(([key,label])=>'<option value="'+key+'">'+label+'</option>').join('');
-  return '<section class="trade-compose"><div class="trade-section-heading"><h2>新しい交易の申出</h2><p>金銭・兵糧・木材・石材・勾玉に加え、兵士（輸出入）も交易できます。希望する資産を「なし」にすると、無償で提供できます。</p></div><form data-trade-form="search" class="trade-search"><label for="trade-recipient-query">相手の領主名、または公開ID</label><div><input id="trade-recipient-query" type="search" maxlength="90" autocomplete="off" spellcheck="false" placeholder="領主名で検索、または u_… を入力"><button type="submit" class="trade-button" data-trade-search>探す</button></div></form><div class="trade-search-results" data-trade-results></div><div class="trade-target" data-trade-target></div><form data-trade-form="compose"><div class="trade-asset-columns"><fieldset><legend>あなたが提供する資産</legend><label for="trade-offer-asset">資産</label><select id="trade-offer-asset" data-trade-draft="offerAsset">'+options+'</select><label for="trade-offer-amount">数量</label><input id="trade-offer-amount" data-trade-draft="offerAmount" type="number" inputmode="numeric" min="1" max="'+state.rules.maxAmount+'" step="1" required><p data-trade-available></p></fieldset><fieldset><legend>相手に希望する資産</legend><label for="trade-want-asset">資産</label><select id="trade-want-asset" data-trade-draft="wantAsset"><option value="none">なし（無償で提供）</option>'+options+'</select><label for="trade-want-amount">数量</label><input id="trade-want-amount" data-trade-draft="wantAmount" type="number" inputmode="numeric" min="1" max="'+state.rules.maxAmount+'" step="1" required><p>各資産1〜'+num(state.rules.maxAmount)+'。兵士の単位は人です。交換条件はあなたが決められます。</p></fieldset></div><p class="trade-troop-capacity" data-trade-troop-capacity hidden></p><p class="trade-compose-note">提供する資産・兵士は送信時に所持数から引かれ、一時預りになります。相手の承認後、対価を「受取待ち」から受領してください。兵士の輸入・返還は拠点の空き容量に関係なく受け入れ、本隊の兵数に加わります。保有上限を超える兵は受取待ちのまま保管されます。相手の承認前なら取り消せます。</p><button type="submit" class="trade-button is-primary" data-trade-prepare>申出を確認</button></form></section>';
+  return '<section class="trade-compose"><div class="trade-section-heading"><h2>新しい交易の申出</h2><p>金銭・兵糧・木材・石材・勾玉に加え、兵士（輸出入）も交易できます。希望する資産を「なし」にすると、無償で提供できます。</p></div><form data-trade-form="search" class="trade-search"><label for="trade-recipient-query">相手の領主名、または公開ID</label><div><input id="trade-recipient-query" type="search" maxlength="90" autocomplete="off" spellcheck="false" placeholder="領主名で検索、または u_… を入力"><button type="submit" class="trade-button" data-trade-search>探す</button><button type="button" class="trade-button" data-trade="recipient-list" aria-label="交易先の領主一覧" aria-haspopup="dialog">一覧</button></div></form><div class="trade-search-results" data-trade-results></div><div class="trade-target" data-trade-target></div><form data-trade-form="compose"><div class="trade-asset-columns"><fieldset><legend>あなたが提供する資産</legend><label for="trade-offer-asset">資産</label><select id="trade-offer-asset" data-trade-draft="offerAsset">'+options+'</select><label for="trade-offer-amount">数量</label><input id="trade-offer-amount" data-trade-draft="offerAmount" type="number" inputmode="numeric" min="1" max="'+state.rules.maxAmount+'" step="1" required><p data-trade-available></p></fieldset><fieldset><legend>相手に希望する資産</legend><label for="trade-want-asset">資産</label><select id="trade-want-asset" data-trade-draft="wantAsset"><option value="none">なし（無償で提供）</option>'+options+'</select><label for="trade-want-amount">数量</label><input id="trade-want-amount" data-trade-draft="wantAmount" type="number" inputmode="numeric" min="1" max="'+state.rules.maxAmount+'" step="1" required><p>各資産1〜'+num(state.rules.maxAmount)+'。兵士の単位は人です。交換条件はあなたが決められます。</p></fieldset></div><p class="trade-troop-capacity" data-trade-troop-capacity hidden></p><p class="trade-compose-note">提供する資産・兵士は送信時に所持数から引かれ、一時預りになります。相手の承認後、対価を「受取待ち」から受領してください。兵士の輸入・返還は拠点の空き容量に関係なく受け入れ、本隊の兵数に加わります。保有上限を超える兵は受取待ちのまま保管されます。相手の承認前なら取り消せます。</p><button type="submit" class="trade-button is-primary" data-trade-prepare>申出を確認</button></form></section>';
 }
 
 let instance=null;
@@ -303,7 +303,7 @@ function ensureView(){
     if(changed){viewKey=key;main.scrollTop=0;if(!state.ownerId)html(content,'<section class="trade-empty"><h2>領主登録をして交易を始める</h2><p>同じ世界の領主に資産の交換を申し出られます。領主登録と端末同期を済ませてください。</p>'+button('領主登録・ログインへ','register','',true)+'</section>');else if(state.view==='compose')html(content,composeMarkup(state));else html(content,'<section class="trade-section-heading"><h2>'+LABELS[state.view]+'</h2><p>'+({incoming:'相手が提示した交換条件を確認し、承認または辞退できます。',outgoing:'提供した資産は承認待ちの間、お預りしています。不要になった申出は取り消せます。',claimable:'成立した交易の対価と、取消・辞退された申出の返還資産を受け取れます。過去の申出も、未受取の資産だけを表示します。',history:'送った申出と届いた申出の履歴です。日時は日本標準時（JST）で表示します。'})[state.view]+'</p></section><div class="trade-list" data-trade-list></div><div class="trade-pagination" data-trade-pagination></div>');}
     if(state.ownerId&&state.view==='compose'){
       const query=content.querySelector('#trade-recipient-query');if(doc.activeElement!==query&&query.value!==state.query)query.value=state.query;
-      query.disabled=locked||state.searchBusy;content.querySelector('[data-trade-search]').disabled=locked||state.searchBusy;
+      query.disabled=locked||state.searchBusy;content.querySelector('[data-trade-search]').disabled=locked||state.searchBusy;content.querySelector('[data-trade="recipient-list"]').disabled=locked||state.searchBusy;
       html(content.querySelector('[data-trade-results]'),state.searchResults.map(player=>'<button type="button" class="trade-recipient" data-trade="recipient" data-player-id="'+esc(player.playerId)+'"'+disabled(locked||state.searchBusy)+'>'+peerMarkup(player)+(player.clan?'<span>'+esc(player.clan)+'</span>':'')+'</button>').join(''));
       html(content.querySelector('[data-trade-target]'),state.target?'<span class="trade-eyebrow">選択した交易先</span>'+peerMarkup(state.target):'<p>'+(state.searchBusy?'交易先を確認しています…':'交易先を検索して選んでください。')+'</p>');
       for(const input of content.querySelectorAll('[data-trade-draft]')){const field=input.dataset.tradeDraft;if(doc.activeElement!==input&&input.value!==state.draft[field])input.value=state.draft[field];input.disabled=locked||!!state.pending||field==='wantAmount'&&state.draft.wantAsset==='none';}
@@ -334,6 +334,24 @@ function ensureView(){
     global.SengokuSocial?.close?.();global.SengokuLetters?.close?.();
     return action();
   }
+  function openRecipientList(trigger){
+    const owner=controller.getState().ownerId, social=global.SengokuSocial;
+    const valid=()=>trigger.isConnected&&!trigger.disabled&&dialog.open&&social.getUser()?.id===owner;
+    const rows=players=>(players||[]).map(person).filter(p=>p&&p.playerId!==owner)
+      .map(p=>({value:p.playerId,label:p.name,detail:p.playerId}));
+    global.SengokuInputList.open({
+      trigger,title:'交易先の領主一覧',options:rows(social.getKnownPlayers()),valid,
+      hint:'交流中・オンラインの領主を表示します。ほかの領主は名前を2文字以上、または公開IDで検索できます。',
+      load:async(query,signal)=>{
+        if(signal.aborted||!valid())return [];
+        const text=query.trim(),length=Array.from(text).length;
+        if(text&&(length<2||length>24&&!/^u_[A-Za-z0-9_]{1,88}$/.test(text)))return [];
+        const players=text?(await social.tradeRequest('/players?q='+encodeURIComponent(text))).players:await social.getOnlineCandidates();
+        return signal.aborted||!valid()?[]:rows(players);
+      },
+      onSelect:option=>{if(valid())run(controller.selectRecipient(option.value));}
+    });
+  }
   function click(event){
     const target=event.target.closest('[data-trade]');if(!target||target.disabled||!dialog.contains(target))return;
     const action=target.dataset.trade;
@@ -343,6 +361,7 @@ function ensureView(){
     else if(action==='garrisons'){controller.close();global.SengokuTroopGarrisons?.open?.();}
     else if(action==='refresh')run(controller.refresh());
     else if(action==='more')run(controller.loadMore());
+    else if(action==='recipient-list')openRecipientList(target);
     else if(action==='recipient')run(controller.selectRecipient(target.dataset.playerId));
     else if(action==='action')run(controller.prepareAction(target.dataset.id,target.dataset.kind));
     else if(action==='confirm')run(controller.confirm());

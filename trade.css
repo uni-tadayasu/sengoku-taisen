@@ -63,7 +63,8 @@
 .trade-search{margin-top:4px}
 .trade-search>label{display:block;margin-bottom:6px;color:#d9decb;font-size:14px}
 .trade-search>div{display:flex;gap:8px}
-.trade-search input{flex:1;width:100%}
+.trade-search input{flex:1;min-width:0;width:100%}
+.trade-search .trade-button{flex:none;white-space:nowrap}
 .trade-dialog input,.trade-dialog select{min-height:46px;width:100%;padding:9px 12px;border:1px solid #bdc8a84d;border-radius:9px;background:#0c2025;color:#f3f3e6;font-size:16px;line-height:1.5}
 .trade-dialog input::placeholder{color:#98aa9c;font-size:14px}
 .trade-dialog input:disabled,.trade-dialog select:disabled{opacity:.55}

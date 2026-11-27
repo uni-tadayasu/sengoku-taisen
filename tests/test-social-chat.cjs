@@ -50,6 +50,40 @@ function socialRig() {
 }
 let count=0;async function test(name,run) {await run();count++;console.log('PASS '+name);}
 (async()=>{
+await test('list choices populate a search field or one scoped mention without taking the next action',async()=>{
+  const b=socialRig();let picker;
+  b.context.SengokuInputList={open:config=>{picker=config;}};
+  b.context.Event=class {constructor(type){this.type=type;}};
+  b.switchTo('friends',other.userId);
+  const input=b.type('届けます');
+  b.click('[data-chat-action="mention-open"]');
+  assert.equal(input.value,'届けます');
+  assert.equal(picker.options.length,1);assert.equal(picker.options[0].value,other.userId);
+  assert.equal(picker.load,undefined,'Private rooms never request public mention candidates');
+  picker.onSelect(picker.options[0]);
+  assert.equal(input.value,'届けます @織田信長 ');
+  assert.deepEqual(Array.from(b.t.chatEnhancements().prepare().mentionIds),[other.userId]);
+  b.click('[data-social="player-list"]');
+  assert.equal(picker.options.filter(row=>row.value===other.userId).length,1);
+  assert.deepEqual(Object.keys(b.context.SengokuSocial.getKnownPlayers()[0]).sort(),['id','name']);
+  picker.onSelect(picker.options[0]);assert.equal(b.$('#social-player-query').value,other.userId);
+  b.switchTo('world');assert.equal(picker.valid(),false);
+  assert(!b.requests.some(item=>item.options.method==='POST'),'Choosing never sends a request or a message');
+});
+await test('operator mail selects the exact ID among identical names and retains the draft and gifts',()=>{
+ const b=socialRig();let picker;
+ b.context.SengokuInputList={open:value=>{picker=value;}};b.context.Event=class {constructor(type){this.type=type;}};
+ b.t.s.user.isAdmin=true;b.t.s.adminSection='mail';
+ b.t.s.onlinePlayers=[{id:'u_alpha',name:'同名',guildId:null},{id:'u_beta',name:'同名',guildId:'g_2'}];
+ b.switchTo('admin');
+ const input=b.$('#social-mail-body'),gift=b.$('[name=gold]');input.value='本文の下書き';gift.value='100';
+ b.click('[data-list-purpose="target"]');const choice=picker.options.find(row=>row.value==='u_beta');
+ assert.equal(choice.label,'同名');picker.onSelect(choice);
+ assert.equal(b.$('#social-mail-target').value,'u_beta');
+ assert.equal(input.value,'本文の下書き');assert.equal(gift.value,'100');assert(!b.t.s.confirm);
+ assert.deepEqual(Array.from(b.context.SengokuSocial.getKnownPlayers({unguildedOnly:true}),p=>p.id),['u_alpha']);
+ assert(!b.requests.some(item=>item.options.method==='POST'));
+});
 await test('untrusted text, recipient names and quoted parents remain plain text',()=>{
   assert.deepEqual(Chat.people([{id:'x',name:'初名'},{userId:'x',name:'更新名'},null,{id:{},name:'無効'}]),[{userId:'x',name:'更新名'}]);
   const malicious={userId:'u_" onclick="bad',name:'<img onerror=bad>'};

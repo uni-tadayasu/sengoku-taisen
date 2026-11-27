@@ -36,7 +36,26 @@ function linkedName(id,name,markup){
   return validId(id)?`<button type="button" class="lord-profile-name" data-public-profile="${esc(id)}" aria-label="${esc(name)}の公開プロフィールを見る">${markup}</button>`:markup;
 }
 function directory(){
-  return '<section class="lord-directory" data-public-player-search><form id="public-lord-search"><label for="public-lord-query">領主プロフィールを探す</label><div><input id="public-lord-query" name="q" maxlength="98" required placeholder="領主名または領主ID" autocomplete="off"><button type="submit" class="social-button">検索</button></div></form><p data-search-status role="status"></p><div data-search-list></div></section>';
+  return '<section class="lord-directory" data-public-player-search><form id="public-lord-search"><label for="public-lord-query">領主プロフィールを探す</label><div><input id="public-lord-query" name="q" maxlength="98" required placeholder="領主名または領主ID" autocomplete="off"><button type="button" class="social-button" data-profile-candidates aria-label="公開プロフィールの領主一覧" aria-haspopup="dialog">一覧</button><button type="submit" class="social-button">検索</button></div></form><p data-search-status role="status"></p><div data-search-list></div></section>';
+}
+function openCandidates(trigger){
+  const form=trigger.closest('form'),input=form?.querySelector('[name=q]'),social=global.SengokuSocial;
+  if(!input||!social)return;
+  const valid=()=>form.isConnected&&!trigger.closest('dialog:not([open]),[hidden],[inert]');
+  global.SengokuInputList?.open({
+    trigger,title:'公開プロフィールの領主一覧',options:[],valid,
+    hint:'接続中の領主から選べます。名前を2文字以上、または領主IDを入力すると公開プロフィールを検索できます。',
+    load:async(query,signal)=>{
+      const term=query.normalize('NFC').trim(),length=Array.from(term).length;
+      if(term&&!validId(term)&&(length<2||length>24))return [];
+      const rows=term?(await social.searchPublicPlayers(term)).players:await social.getOnlineCandidates();
+      if(signal?.aborted||!valid()||!Array.isArray(rows))return [];
+      return rows.filter(person=>validId(person?.id)&&typeof person.name==='string').map(person=>({
+        value:person.id,label:person.name,detail:person.id
+      }));
+    },
+    onSelect:option=>{if(valid()&&validId(option.value)){input.value=option.value;input.focus();}}
+  });
 }
 function ensureDialog(){
   if(dialog)return dialog;
@@ -126,9 +145,10 @@ function openShared(){
   if(validId(id))open(id,doc.getElementById('launch-enter'));
 }
 function click(event){
-  const button=event.target?.closest?.('[data-public-profile],[data-profile-close],[data-profile-retry],[data-profile-copy]');
+  const button=event.target?.closest?.('[data-public-profile],[data-profile-close],[data-profile-retry],[data-profile-copy],[data-profile-candidates]');
   if(!button||button.disabled)return;
-  if(button.hasAttribute('data-public-profile')){event.preventDefault();open(button.dataset.publicProfile,button);}
+  if(button.hasAttribute('data-profile-candidates'))openCandidates(button);
+  else if(button.hasAttribute('data-public-profile')){event.preventDefault();open(button.dataset.publicProfile,button);}
   else if(button.hasAttribute('data-profile-close'))dialog?.close();
   else if(button.hasAttribute('data-profile-copy'))copyLink();
   else if(selection)load(selection);

@@ -96,5 +96,30 @@ async function test(name,run){await run();count++;console.log('PASS '+name);}
   const counter=host.querySelector('[data-alliance-unit-countdown]'),input=host.querySelector('input[name="troops"]');assert(counter);assert(input);const before=counter.textContent;input.focus();input.value='735';host.scrollTop=250;
   elapsed+=1000;timers[0]();assert.strictEqual(host.querySelector('[data-alliance-unit-countdown]'),counter);assert.notEqual(counter.textContent,before);assert.strictEqual(doc.activeElement,input);assert.equal(input.value,'735');assert.equal(host.scrollTop,250);mounted.destroy();
  });
+ await test('invitation list fills the exact public ID and closes across alliance role changes',async()=>{
+  const {host,doc}=domSetup(),d=data(),contacts=[{id:'u_one',name:'自分'},{id:'u_member',name:'同盟員'},{id:'u_guest',name:'同名'},{id:'u_other',name:'同名'}];
+  d.guild.role='officer';d.members=[{id:'u_member',name:'同盟員'}];
+  let picker,membership=1,posts=0,query;
+  const social={
+   getKnownPlayers:opts=>{assert(opts.unguildedOnly);return contacts;},
+   getOnlineCandidates:async opts=>{assert(opts.unguildedOnly);return contacts;},
+   searchUnguildedPlayers:async term=>{query=term;return contacts.slice(2);}
+  };
+  const window={document:doc,SengokuSocial:social,SengokuInputList:{open:value=>{picker=value;}},setInterval:()=>1,clearInterval:()=>{}};
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../alliance.js'),'utf8'),{window,Intl,Date,FormData});
+  const getContext=()=>({playerId:'u_one',guildEpoch:membership,user:{id:'u_one',guildRole:'officer',guildId:'g_one'}});
+  const view=window.SengokuAlliance.mount(host,{getContext,storage:store(),request:async()=>d,mutate:()=>{posts++;}});
+  for(let i=0;i<30;i++)await Promise.resolve();
+  host.querySelector('[data-alliance="tab"][data-id="members"]').dispatchEvent({type:'click'});
+  host.querySelector('[data-alliance="invite-list"]').dispatchEvent({type:'click'});
+  const ids=options=>Array.from(options,row=>row.value);
+  assert.deepEqual(ids(picker.options),['u_guest','u_other']);assert.deepEqual(ids(await picker.load('')),ids(picker.options));
+  assert.equal((await picker.load('一')).length,0);assert.equal(query,undefined);
+  assert.deepEqual(ids(await picker.load('同名')),['u_guest','u_other']);assert.equal(query,'同名');
+  const field=host.querySelector('[name="playerId"]');
+  picker.onSelect(picker.options[1]);assert.equal(field.value,'u_other');assert.equal(posts,0);
+  membership++;assert.equal(picker.valid(),false);picker.onSelect(picker.options[0]);assert.equal(field.value,'u_other');
+  view.destroy();
+ });
  console.log('Alliance browser: '+count+' scenarios passed.');
 })().catch(error=>{console.error(error);process.exitCode=1;});

@@ -15,7 +15,7 @@ function fixture(){
  const request=async route=>{const url=new URL(route,'https://local.invalid');if(url.pathname==='/trades')return{ok:true,trades:url.searchParams.get('box')==='incoming'?[copy(row)]:[],nextCursor:null,summary:{incomingPending:1,outgoingPending:0,claimable:0},rules:{maxAmount:1000000,balanceLimit:100000000,maxPending:20}};if(url.pathname==='/trades/recipient')return{ok:true,player:{playerId:'u_peer',name:'交易先の領主'}};if(url.pathname==='/trades/'+ID)return{ok:true,trade:copy(row)};throw Error('Unexpected isolated read '+route);};
  const window={document:doc,SengokuStableDOM:stable,SengokuSocial:{getUser:()=>user,tradeRequest:request,close:()=>{}},SengokuCloudSync:{getStatus:()=>({linked:true,ready:true,writable:true,message:''}),subscribe:callback=>{onSync=callback;return()=>{};}},SengokuBridge:{hasStarted:()=>true,canReceiveGifts:()=>true,spendableAssets:()=>assets,troopTransportCapacity:()=>100000000,tradeRequest:()=>{throw Error('This render test never submits trades.');}},localStorage:{getItem:key=>saved.get(key)??null,setItem:(key,value)=>saved.set(key,value),removeItem:key=>saved.delete(key)},crypto:{randomUUID:()=> 'request_review'},setTimeout:()=>++timer,clearTimeout:()=>{}};
  vm.runInNewContext(source,{window,console,URL});const api=window.SengokuTrade;
- return{doc,api,row,assets,refresh:async()=>{onSync();await drain();},setUser:value=>{user=value;},dispose:()=>{api.dispose();Object.defineProperty(Node.prototype,'innerHTML',descriptor);}};
+ return{doc,api,row,assets,window,refresh:async()=>{onSync();await drain();},setUser:value=>{user=value;},dispose:()=>{api.dispose();Object.defineProperty(Node.prototype,'innerHTML',descriptor);}};
 }
 (async()=>{
  const h=fixture();
@@ -30,6 +30,34 @@ function fixture(){
   h.doc.querySelector('[data-trade-form="compose"]').dispatchEvent({type:'submit'});const confirm=h.doc.querySelector('[data-trade="confirm"]');assert(h.api.getState().confirm);confirm.focus();main.scrollTop=100;await h.refresh();assert.strictEqual(h.doc.querySelector('[data-trade="confirm"]'),confirm);assert.strictEqual(h.doc.activeElement,confirm);assert.equal(main.scrollTop,100);
   h.setUser({id:'u_other',name:'次の領主'});await h.refresh();assert(!input.isConnected);assert(!confirm.isConnected);assert.equal(h.api.getState().ownerId,'u_other');
   console.log('PASS draft selection and confirmation survive refresh, and account changes reset prior controls');
-  console.log('2 actual trade stability UI checks passed. No live requests.');
+  const own={id:'u_other',name:'次の領主'},known={id:'u_peer',name:'同名の領主'},online={id:'u_online',name:'同名の領主'};
+  const social=h.window.SengokuSocial;
+  social.getKnownPlayers=()=>[own,known];
+  social.getOnlineCandidates=async()=>[own,online];
+  const read=social.tradeRequest,seen=[];
+  social.tradeRequest=async route=>{
+   seen.push(route);
+   if(route==='/players?q='+encodeURIComponent(known.name))return{ok:true,players:[own,known,online]};
+   return read(route);
+  };
+  let picker;
+  h.window.SengokuInputList={open:options=>{picker=options;}};
+  await h.api.openCompose();
+  const listButton=h.doc.querySelector('[data-trade="recipient-list"]');
+  listButton.dispatchEvent({type:'click',bubbles:true});
+  assert.equal(picker.trigger,listButton);assert(picker.valid());
+  assert.deepEqual(copy(picker.options),[{value:known.id,label:known.name,detail:known.id}]);
+  const signal=new AbortController().signal;
+  assert.deepEqual(copy(await picker.load('',signal)).map(row=>row.value),[online.id]);
+  assert.deepEqual(copy(await picker.load(known.name,signal)).map(row=>row.value),[known.id,online.id]);
+  assert.equal(h.api.getState().target,null);
+  picker.onSelect(picker.options[0]);await drain();
+  assert.equal(h.api.getState().target.playerId,known.id);
+  assert.deepEqual(seen,['/players?q='+encodeURIComponent(known.name),'/trades/recipient?playerId='+known.id]);
+  assert.equal(h.api.getState().confirm,null);
+  h.setUser({id:'u_next',name:'交代'});assert(!picker.valid());
+  picker.onSelect(picker.options[0]);await drain();assert.equal(seen.length,2);
+  console.log('PASS trade recipient list preserves distinct IDs, excludes self, verifies choices and rejects stale account selection');
+  console.log('3 actual trade stability UI checks passed. No live requests.');
  }finally{h.dispose();}
 })().catch(error=>{console.error(error);process.exitCode=1;});

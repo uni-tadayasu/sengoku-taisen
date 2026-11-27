@@ -56,6 +56,32 @@ function createController(options={}){
     catch(error){if(e===epoch&&v===viewEpoch&&error.code!=='STALE_IDENTITY'){s.error=error.message;emit();}}
     finally{if(e===epoch&&v===viewEpoch){s.loading=false;emit();}}
   }
+  function openCandidates(trigger){
+    identity();
+    const owner=s.ownerId,e=epoch,view=viewEpoch;
+    const valid=()=>current(e,owner)&&view===viewEpoch&&s.open&&s.view==='search'&&!s.loading&&!s.sending&&!s.confirm;
+    if(!valid()||!global.SengokuInputList)return;
+    function choices(people){
+      const unique=new Map();
+      for(const person of people){
+        if(person?.id!==owner&&ID.test(String(person?.id||''))&&typeof person.name==='string'&&person.name)
+          unique.set(person.id,{value:person.id,label:person.name,detail:person.id});
+      }
+      return [...unique.values()];
+    }
+    return global.SengokuInputList.open({trigger,title:'管理する領主の一覧',
+      hint:'交流で確認した領主と接続中の領主を表示します。ほかの領主は名前を2文字以上、または公開IDで検索できます。',
+      options:choices([...(global.SengokuSocial?.getKnownPlayers?.()||[]),...s.results]),valid,
+      async load(value,signal){
+        const query=value.trim();
+        if(!valid()||signal?.aborted||query.length===1||query.length>90)return [];
+        const people=query?(await call('/admin/moderation/players?q='+encodeURIComponent(query))).players
+          :await global.SengokuSocial?.getOnlineCandidates?.();
+        return valid()&&!signal?.aborted&&Array.isArray(people)?choices(people):[];
+      },
+      onSelect(option){if(valid()){setQuery(option.value);return select(option.value);}}
+    });
+  }
   async function loadBans({more=false}={}){
     identity();if(!s.authorized||!s.open||s.view!=='bans'||s.sending||s.confirm||s.loading||s.loadingMore||more&&!s.nextCursor)return;
     const e=epoch,v=viewEpoch,cursor=more?s.nextCursor:null;s.loading=!more;s.loadingMore=more;s.error='';emit();
@@ -109,7 +135,7 @@ function createController(options={}){
   function retry(){identity();return s.pending?send(clone(s.pending)):Promise.resolve(false);}
   function refreshIdentity(){identity();}
   function dispose(){disposed=true;epoch++;viewEpoch++;Object.assign(s,{results:[],bans:[],target:null,confirm:null,pending:null,open:false});}
-  return{getState(){identity();return snapshot();},open,close,setQuery,setReason,search,select,prepare,cancelConfirm,confirm,retry,loadBans,loadMore:()=>loadBans({more:true}),refreshIdentity,dispose};
+  return{getState(){identity();return snapshot();},open,close,setQuery,setReason,search,openCandidates,select,prepare,cancelConfirm,confirm,retry,loadBans,loadMore:()=>loadBans({more:true}),refreshIdentity,dispose};
 }
 const who=value=>'<strong class="player-evaluation-person">'+(global.SengokuAvatar?.markup?.(value,'inline')||'')+(global.SengokuCityHonors?.slot?.(value.id)||'')+'<span class="player-evaluation-name" data-premium-player="'+esc(value.id)+'" data-premium-player-name="'+esc(value.name)+'">'+(global.SengokuPremiumRuntime?.nameMarkup?.(value.name,value.appearance)||esc(value.name))+'</span>'+(global.SengokuEvaluationUI?.badge?.(value.evaluation)||'')+(global.SengokuPublicCourt?.slot?.(value.id)||'')+'</strong><code>'+esc(value.id)+'</code>';
 function targetMarkup(value){
@@ -136,10 +162,10 @@ function ensure(){
     const feedback=$('[data-moderation-feedback]'),message=s.error||s.status;feedback.hidden=!message;feedback.classList.toggle('is-error',!!s.error);feedback.setAttribute('role',s.error?'alert':'status');if(feedback.textContent!==message)feedback.textContent=message;
     const pending=$('[data-moderation-pending]');pending.hidden=!s.pending;if(s.pending)html(pending,'<div><strong>'+(s.sending?'操作の結果を確認しています…':'通信結果が未確認です')+'</strong><p>'+who(s.pending.target.player)+' · '+(s.pending.data.action==='ban'?'BANと投稿削除':'BAN解除')+'</p><p>同じ送信番号で、すでに完了しているかを確認します。</p></div><button type="button" class="moderation-button" data-moderation="retry"'+(s.sending?' disabled':'')+'>結果を確認・再試行</button>');
     content.hidden=!!s.confirm;confirmHost.hidden=!s.confirm;
-    if(viewKey!==key){viewKey=key;html(content,s.view==='search'?'<section class="moderation-section"><h2>対象の領主を探す</h2><p>領主名または完全な公開IDで検索してください。対象を選ぶと、BAN状態と削除対象の件数を確認できます。</p><form data-moderation-form><label for="moderation-query">領主名・公開ID</label><div class="moderation-search"><input id="moderation-query" type="search" maxlength="90" autocomplete="off" spellcheck="false" placeholder="領主名、または u_…"><button type="submit" class="moderation-button">検索する</button></div></form><div class="moderation-results" data-moderation-results></div></section>':'<section class="moderation-section"><div class="moderation-section-heading"><h2>BAN中の領主</h2><button type="button" class="moderation-button" data-moderation="refresh">更新</button></div><p>領主の詳細を開いてBANを解除できます。削除済みの本文は復元されません。</p><div class="moderation-results" data-moderation-results></div><div class="moderation-more" data-moderation-more></div></section>');content.insertAdjacentHTML('beforeend','<section class="moderation-target" data-moderation-target hidden></section>');}
+    if(viewKey!==key){viewKey=key;html(content,s.view==='search'?'<section class="moderation-section"><h2>対象の領主を探す</h2><p>領主名または完全な公開IDで検索してください。対象を選ぶと、BAN状態と削除対象の件数を確認できます。</p><form data-moderation-form><label for="moderation-query">領主名・公開ID</label><div class="moderation-search"><input id="moderation-query" type="search" maxlength="90" autocomplete="off" spellcheck="false" placeholder="領主名、または u_…"><button type="button" class="moderation-button" data-moderation="candidates" aria-label="管理する領主の一覧">一覧</button><button type="submit" class="moderation-button">検索する</button></div></form><div class="moderation-results" data-moderation-results></div></section>':'<section class="moderation-section"><div class="moderation-section-heading"><h2>BAN中の領主</h2><button type="button" class="moderation-button" data-moderation="refresh">更新</button></div><p>領主の詳細を開いてBANを解除できます。削除済みの本文は復元されません。</p><div class="moderation-results" data-moderation-results></div><div class="moderation-more" data-moderation-more></div></section>');content.insertAdjacentHTML('beforeend','<section class="moderation-target" data-moderation-target hidden></section>');}
     const results=$('[data-moderation-results]');
     if(s.view==='search'){
-      const input=$('#moderation-query');if(doc.activeElement!==input&&input.value!==s.query)input.value=s.query;input.disabled=s.loading||locked;$('[data-moderation-form] button').disabled=s.loading||locked;
+      const input=$('#moderation-query');if(doc.activeElement!==input&&input.value!==s.query)input.value=s.query;input.disabled=s.loading||locked;for(const button of dialog.querySelectorAll('[data-moderation-form] button'))button.disabled=s.loading||locked;
       html(results,s.results.map(p=>'<button type="button" class="moderation-player" data-moderation="target" data-id="'+esc(p.id)+'"'+(s.loading||locked?' disabled':'')+'>'+who(p)+'<span>'+(p.banned?'BAN中':p.isAdmin?'運営':'利用中')+' · 詳細を確認</span></button>').join(''));
     }else{
       $('[data-moderation="refresh"]').disabled=s.loading||s.loadingMore||locked;
@@ -159,7 +185,7 @@ function ensure(){
   }
   controller=createController({onChange:render});
   const run=value=>Promise.resolve(value).catch(()=>{});
-  dialog.addEventListener('click',event=>{const node=event.target.closest('[data-moderation]');if(!node||node.disabled)return;const action=node.dataset.moderation;if(action==='close')controller.close();else if(action==='search-tab')run(controller.open('search'));else if(action==='bans-tab')run(controller.open('bans'));else if(action==='target')run(controller.select(node.dataset.id));else if(action==='refresh')run(controller.loadBans());else if(action==='more')run(controller.loadMore());else if(action==='prepare-ban'||action==='prepare-unban')run(controller.prepare(action.slice(8)));else if(action==='confirm')run(controller.confirm());else if(action==='back')controller.cancelConfirm();else if(action==='retry')run(controller.retry());});
+  dialog.addEventListener('click',event=>{const node=event.target.closest('[data-moderation]');if(!node||node.disabled)return;const action=node.dataset.moderation;if(action==='close')controller.close();else if(action==='search-tab')run(controller.open('search'));else if(action==='bans-tab')run(controller.open('bans'));else if(action==='candidates')run(controller.openCandidates(node));else if(action==='target')run(controller.select(node.dataset.id));else if(action==='refresh')run(controller.loadBans());else if(action==='more')run(controller.loadMore());else if(action==='prepare-ban'||action==='prepare-unban')run(controller.prepare(action.slice(8)));else if(action==='confirm')run(controller.confirm());else if(action==='back')controller.cancelConfirm();else if(action==='retry')run(controller.retry());});
   dialog.addEventListener('input',event=>{if(event.target.id==='moderation-query')controller.setQuery(event.target.value);else if(event.target.id==='moderation-reason')controller.setReason(event.target.value);});
   dialog.addEventListener('submit',event=>{if(event.target.matches('[data-moderation-form]')){event.preventDefault();controller.setQuery($('#moderation-query').value);run(controller.search());}});
   dialog.addEventListener('cancel',event=>{const state=controller.getState();if(state.confirm&&!state.sending){event.preventDefault();controller.cancelConfirm();}});

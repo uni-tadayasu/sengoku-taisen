@@ -18,11 +18,36 @@ function fixture(){
   $:selector=>nodes.get(selector),patchHTML:(node,html)=>{patches.push(node);if(node)node.innerHTML=html;},refreshLiveControls(){},syncWorldMap(){},updateBranchTroopDraft:()=>false,
   updateOfficerFilter(context,key,value){(context==='archive'?c.filter:c.choiceFilters[context])[key]=value;patches.push(context);}
  };
- vm.createContext(c);vm.runInContext(['catalogMatches','catalogChips','saveFacilityPreferences','resetCatalogFilters','updateCatalogSearch','facilitiesResults','territoryResults','crestResults','officerFilterDefaults','normalizeOfficerFilter','filterOfficerList','officerDuty','officerChoiceResults','officerCard'].map(fn).join('\n'),c);
+ vm.createContext(c);vm.runInContext(['catalogMatches','openCatalogInputList','filteredOfficers','catalogChips','saveFacilityPreferences','resetCatalogFilters','updateCatalogSearch','facilitiesResults','territoryRows','territoryResults','crestResults','officerFilterDefaults','normalizeOfficerFilter','filterOfficerList','officerDuty','officerChoiceRows','officerChoiceResults','officerCard'].map(fn).join('\n'),c);
  return{c,game,host,doc,nodes,handlers,patches};
 }
 test('catalog search accepts full-width characters, old Tokugawa spelling and multiple terms',()=>{
  const {c}=fixture();assert(c.catalogMatches('徳川家 江戸城 関東',' 德川　江戸 '));assert(c.catalogMatches('ABC 123','ａｂｃ　１２３'));assert(!c.catalogMatches('徳川家 江戸城','徳川 大坂'));assert(c.catalogMatches('田畑 農業 兵糧','農業 兵糧'));
+});
+test('catalog lists use all currently eligible names and select through the existing input handler',()=>{
+ const {c,game}=fixture();
+ const input={dataset:{},value:'古い文字',dispatchEvent(event){assert.equal(event.type,'input');assert.equal(event.bubbles,true);c.updateCatalogSearch(input);}};
+ c.Event=class{constructor(type,options){this.type=type;Object.assign(this,options);}};
+ c.document.getElementById=id=>input.id===id?input:null;
+ let chooser;
+ c.window.SengokuInputList={open:options=>{chooser=options;}};
+ c.window.SengokuKamon={entries:()=>[{clan:'武田家',name:'武田菱'},{clan:'織田家',name:'木瓜'}]};
+ function list(kind,id){input.id=id;c.openCatalogInputList({dataset:{kind,inputId:id}});assert(chooser.options.length);return chooser.options;}
+ c.crestQuery='松本';assert.equal(list('crest','crest-search').length,2);chooser.onSelect(chooser.options[0]);assert.equal(c.crestQuery,'武田家');
+ c.facilityCategory=D.buildings[0].category;c.facilityState='unbuilt';c.facilityQuery='古い検索';
+ const eligible=D.buildings.filter(b=>b.category===c.facilityCategory&&!game.state.buildings[b.id]);
+ const buildings=list('facility','facility-search');assert.deepEqual(new Set(buildings.map(o=>o.value)),new Set(eligible.map(b=>b.name)));
+ chooser.onSelect(buildings[0]);assert.equal(c.facilityQuery,buildings[0].value);assert.equal(c.facilityState,'unbuilt');
+ c.mapRegion=game.castle(game.state.home).region;c.territoryState='own';c.mapQuery='古い検索';
+ const castles=list('territory','castle-search');assert(castles.every(o=>game.ownedCastles().some(castle=>castle.region===c.mapRegion&&castle.name===o.value)));
+ chooser.onSelect(castles[0]);assert.equal(c.mapQuery,castles[0].value);assert.equal(c.territoryState,'own');
+ input.dataset={officerFilter:'q',officerContext:'archive'};c.filter={...c.officerFilterDefaults(),q:'古い検索'};
+ assert.equal(list('officer','officer-search').length,roster.length);
+ for(const mode of ['army','governor']){
+   input.dataset.officerContext=mode;c.choiceFilters[mode]={...c.officerFilterDefaults(mode),q:'古い検索'};
+   const officers=list('officer','choice-search');assert.equal(officers.length,game.state.officers.length);
+   chooser.onSelect(officers[0]);assert.equal(c.choiceFilters[mode].q,officers[0].value);
+ }
 });
 test('stationed officers are excluded from idle, shown with their branch and cannot be assigned elsewhere',()=>{
  const {c,game,host}=fixture(),id=roster.find(o=>!game.state.army.includes(o.id)).id;game._grantOfficerVariant(id,'S');game.state.branches=[{id:'edo_north',parentCastleId:'edo',direction:'north',level:2,commanders:[id]}];

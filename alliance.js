@@ -147,7 +147,7 @@ function membershipView(d,me){
  const canManage=['owner','officer'].includes(d.guild?.role);
  return'<section class="alliance-panel"><h2>同盟を探す</h2><div class="alliance-directory">'+d.directory.map(g=>'<article><h3>'+esc(g.name)+'</h3><p>'+num(g.members)+'人 / '+esc(labels[g.joinMode])+'</p><p>'+esc(g.description||'募集文は未設定')+'</p><small>'+esc(g.activity)+'</small>'+(!d.guild?'<div class="alliance-actions">'+(g.joinMode==='open'?button('join','参加する',g.id):g.joinMode==='approval'?applicationControl(g):'<span>盟主からの招待をお待ちください。</span>')+'</div>':'')+'</article>').join('')+'</div></section>'+
  '<section class="alliance-panel"><h2>加入申請・招待</h2>'+(d.applications.map(a=>'<article class="alliance-unit"><div><b>'+(global.SengokuCityHonors?.slot?.(a.playerId)||'')+esc(a.name)+(global.SengokuPublicCourt?.slot?.(a.playerId)||'')+' / '+esc(a.guildName)+'</b><p>'+esc(labels[a.status])+' · '+esc(a.message)+'</p></div><div class="alliance-actions">'+(a.playerId===me.id&&!d.guild&&['approved','invited'].includes(a.status)?button('join','この同盟へ参加',a.guildId):canManage&&a.status==='pending'?'<button class="button" data-alliance="application-approve" data-id="'+esc(a.playerId)+'" data-guild="'+esc(a.guildId)+'">承認</button><button class="button" data-alliance="application-deny" data-id="'+esc(a.playerId)+'" data-guild="'+esc(a.guildId)+'">辞退</button>':'')+'</div></article>').join('')||empty('申請・招待はありません。'))+'</section>'+
- (canManage?'<section class="alliance-panel"><h2>領主を招待</h2><p>交流で確認した領主の公開IDを入力してください。</p><form class="alliance-inline" data-alliance-form="invite">'+textInput('playerId','領主の公開ID',90)+'<button type="submit" class="button">招待を送る</button></form></section>':'');
+ (canManage?'<section class="alliance-panel"><h2>領主を招待</h2><p>一覧から領主を選ぶか、公開IDを入力してください。</p><form class="alliance-inline" data-alliance-form="invite">'+textInput('playerId','領主の公開ID',90)+button('invite-list','一覧','',' aria-haspopup="dialog" aria-label="同盟に招待する領主の一覧"')+'<button type="submit" class="button">招待を送る</button></form></section>':'');
 }
 function policyView(d,me){
  if(!d.guild)return empty('同盟へ参加すると金庫のルールと出金申請を確認できます。');
@@ -190,8 +190,35 @@ function mount(host,opts={}){
   drawMap();
  }
  function confirm(title,message,route,data,travel=null,purpose='battle'){confirmation={title,message,route,data,travel,purpose};render();host.querySelector('.alliance-confirm button')?.focus();}
+ function inviteList(trigger){
+  const form=trigger.closest('form'),input=form.querySelector('[name=playerId]'),social=global.SengokuSocial;
+  const context=opts.getContext||(()=>social?.getExpansionContext?.()||{}),owner=accessIdentity(context()).stamp;
+  const valid=()=>{
+   const access=context();
+   return !disposed&&tab==='members'&&trigger.isConnected&&!trigger.disabled&&!confirmation&&!model.sending&&!model.pending
+    &&readableTravelContext(access)&&accessIdentity(access).stamp===owner&&['owner','officer'].includes(model.data?.guild?.role);
+  };
+  if(!social||!valid())return;
+  const candidates=people=>{
+   const members=new Set([identity().id,...model.data.members.map(person=>person.id)]);
+   return people.filter(person=>/^u_[A-Za-z0-9_]{1,96}$/.test(person.id)&&person.name&&!person.guildId&&!members.has(person.id))
+    .map(person=>({value:person.id,label:person.name,detail:person.id}));
+  };
+  global.SengokuInputList?.open({
+   trigger,title:'同盟に招待する領主',options:candidates(social.getKnownPlayers({unguildedOnly:true})),valid,
+   hint:'知り合いと接続中の領主を表示します。名前を2文字以上入力して検索できます。招待できるのは同盟に未所属の領主です。',
+   load:async(query,signal)=>{
+    if(!valid()||signal?.aborted)return [];
+    const q=query.trim(),length=Array.from(q).length;
+    if(q&&(length<2||length>24&&!/^u_[A-Za-z0-9_]{1,96}$/.test(q)))return [];
+    const people=q?await social.searchUnguildedPlayers(q):await social.getOnlineCandidates({unguildedOnly:true});
+    return valid()&&!signal?.aborted?candidates(people):[];
+   },
+   onSelect:option=>{if(valid()){input.value=option.value;drafts.set(formKey(form),{playerId:option.value});input.focus();}}
+  });
+ }
  async function click(event){
-  const el=event.target.closest?.('[data-alliance],[data-battle-advisor-action]');if(!el||!host.contains(el)||el.disabled)return;let action=el.dataset.alliance,id=el.dataset.id;const d=model?.data,me=identity();if(el.dataset.battleAdvisorAction==='rally-review'){
+  const el=event.target.closest?.('[data-alliance],[data-battle-advisor-action]');if(!el||!host.contains(el)||el.disabled)return;let action=el.dataset.alliance,id=el.dataset.id;const d=model?.data,me=identity();if(action==='invite-list'){inviteList(el);return;}if(el.dataset.battleAdvisorAction==='rally-review'){
    event.preventDefault();if(!d||model.sending||model.pending)return;id=el.closest('[data-alliance-advisor-operation]')?.dataset.allianceAdvisorOperation;const operation=d.operations.find(o=>o.id===id),advice=rallyAdvice(operation,{data:d,me,targets:model.targets,game:opts.getGame?.(),rules:model.fieldRules,access:opts.getContext?.()||{}});if(!advice?.ok){opts.onMessage?.(advice?.message||'最新の集結状況を確認してください。');return;}action='launch';
   }if(action==='marches'){global.SengokuTravelUI?.open();return;}if(action==='tab'){tab=id;confirmation=null;render();return;}if(action==='refresh'){await controller.load();return;}if(action==='retry'){await controller.retry();return;}if(action==='targets'){await controller.loadTargets();return;}if(action==='dismiss'){confirmation=null;render();return;}
   if(action==='confirm'){const c=confirmation;confirmation=null;if(c){await controller.send(c.route,c.data);}return;}

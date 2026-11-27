@@ -135,6 +135,26 @@ test('identity changes discard delayed office reads and erase every private cand
 test('malformed office directories cannot grant actions and candidate content is escaped',async()=>{
  const h=fixture({admin:true,section:'management'});h.data.offices.chancellor.name='<operator>';h.data.offices.candidates[0].name='<script>unsafe</script>';h.data.offices.candidates[0].homeCastleName='<home>';await h.controller.load();const html=Court.markup(h.controller.snapshot());assert.match(html,/&lt;operator&gt;/);assert.match(html,/&lt;script&gt;unsafe&lt;\/script&gt;/);assert.doesNotMatch(html,/<script>|<home>/);for(const mutate of [data=>{data.revision='4';},data=>{data.canManage=false;},data=>{data.chancellor.fixed=false;},data=>{data.offices.pop();},data=>{data.offices.push(data.offices[0]);},data=>{data.offices[0].id='daijodaijin';}]){const data=clone(h.data.offices);mutate(data);assert.throws(()=>Court.cleanOffices(data));}
 });
+test('candidate list uses only the operator directory and choosing a name changes the search draft',async()=>{
+ const h=fixture({admin:true,section:'management'}),{host,$}=setup();let picker;
+ global.SengokuStableDOM=stable;global.SengokuInputList={open:value=>{picker=value;}};
+ const mounted=Court.mount(host,h.options);
+ try{
+  await until(()=>!!mounted.controller.snapshot().offices&&!mounted.controller.snapshot().officeLoading);
+  $('[data-court-action="office-candidates"]').dispatchEvent({type:'click'});
+  assert(picker.valid());
+  const visible=picker.options[0];mounted.controller.update('officePlayer',visible.value);
+  h.data.offices.candidates.push({...h.data.offices.candidates[0],id:'remote-same-name',homeCastleName:'駿府城'});
+  const found=await picker.load(visible.label),choice=found.find(row=>row.value==='remote-same-name');
+  assert(choice?.label&&choice?.value);picker.onSelect(choice);
+  assert.equal($('#court-office-search').value,choice.label);
+  assert.equal($('#court-office-player').value,choice.value);
+  assert.equal(mounted.controller.snapshot().officeCandidate.homeCastleName,'駿府城');
+  assert(!h.calls.some(call=>call.method==='POST'));
+  assert.equal(mounted.controller.snapshot().confirmation,null);
+  mounted.controller.selectSection('overview');assert(!picker.valid());
+ }finally{mounted.dispose();delete global.SengokuInputList;}
+});
 test('mounted office search keeps DOM, IME text, selection and focus during a directory refresh',async()=>{
  const h=fixture({admin:true,section:'management'}),{host,doc,$}=setup();global.SengokuStableDOM=stable;const mounted=Court.mount(host,h.options);await until(()=>!!mounted.controller.snapshot().offices&&!mounted.controller.snapshot().officeLoading);const select=$('#court-office-select'),player=$('#court-office-player'),search=$('#court-office-search');select.value='chunagon';select.dispatchEvent({type:'change'});player.value='lord-one';player.dispatchEvent({type:'change'});search.focus();search.value='変換途中の候補';search.setSelectionRange(2,5);host.scrollTop=217;h.data.offices.hasMore=true;h.advance(15000);mounted.refresh();await until(()=>!mounted.controller.snapshot().officeLoading&&mounted.controller.snapshot().offices.hasMore);assert.strictEqual($('#court-office-select'),select);assert.strictEqual($('#court-office-player'),player);assert.strictEqual($('#court-office-search'),search);assert.equal(player.value,'lord-one');assert.equal(select.value,'chunagon');assert.equal(search.value,'変換途中の候補');assert.equal(search.selectionStart,2);assert.strictEqual(doc.activeElement,search);assert.equal(host.scrollTop,217);search.value='新しい検索';search.dispatchEvent({type:'input'});$('.court-office-search').dispatchEvent({type:'submit'});await until(()=>!mounted.controller.snapshot().officeLoading&&mounted.controller.snapshot().offices.query==='新しい検索');$('[data-court-action="confirm-office"]').dispatchEvent({type:'click'});assert.equal(mounted.controller.snapshot().confirmation.kind,'office');assert.strictEqual(doc.activeElement,$('.court-confirm'));mounted.dispose();
 });
