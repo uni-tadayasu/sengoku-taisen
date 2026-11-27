@@ -246,7 +246,7 @@ Resolved destructive sieges persist their damage and `battle.durability` receipt
 - 実戦の参加者に勝利15・敗北25の消耗を適用します。既存の戦果キー、受付番号、保存更新番号とともに確定し、同じ結果の再送で重ねて消耗しません。
 - 待機中は60,000msあたり10回復します。行軍マーカーに保持した参加者は、軍団を入れ替えても行軍中の回復対象になりません。
 - `/sync` PUTでは既存の体力を基準時刻へ投影し、所有武将の復元・防衛の再演と調停します。古いセーブの体力欠落や高い残量をそのまま採用して、確定済みの消耗を戻すことはありません。
-- 個人武将が参加しない共有天下統一、イベントで守備力だけを参照する相手、既存の報酬戦で保存を変更しない守備側には消耗を追加しません。
+- 個人武将が参加しない共有天下統一、イベントで守備力だけを参照する相手、江戸城・京都御所・鹿児島城の報酬戦で保護される守備側には消耗を追加しません。
 
 既存の保存・戦果トランザクションを使用し、この機能に新しいD1テーブルはありません。
 
@@ -728,12 +728,13 @@ rules = {
   foodBase:150, foodPerTroop:0.3,
   attackCooldownMs:60000, defenderProtectionMs:60000,
   proposalLifetimeMs:600000, allianceDurationMs:360000,
-  maxLootPerResource:500, maxLootFraction:0.05,
+  maxLootPerResource:50000000, maxLootFraction:0.5,
+  lootPolicy:"half-resources-v1", lootFraction:0.5,
   maxDefenderLossFraction:0.1,
   targetCastles:true, specialBaseBattles:true,
   captureCastles:["nijo","osaka","nagoya"],
-  uncapturableCastles:["edo","kyoto_gosho"],
-  victoryRewards:{gold:500,rice:500,wood:500,stone:500},
+  uncapturableCastles:["edo","kyoto_gosho","kagoshima"],
+  victoryRewards:{gold:0,rice:0,wood:0,stone:0},
   tactics:[
     {id:"balanced",name:"正攻法",food:1,modifier:1,loss:1},
     {id:"assault",name:"総攻撃",food:1.25,modifier:1.18,loss:1.35},
@@ -749,11 +750,12 @@ The server derives combat strength from saved troops, morale, research, castle/w
 
 | Mode | Target | On a victory |
 |---|---|---|
-| `reward` | Actual operator Edo or staff Kyoto Gosho | Grant up to 500 each of gold/rice/wood/stone, limited by capacity. `rewards` records actual grants. `loot` and defender losses are zero; the battle commit does not write the defender save or shared base. No capture. |
-| `capture` | Explicitly selected, player-owned Nijo/Osaka/Nagoya | Transfer that player's city into the winner's campaign and remove it from the defender's ownership. The winner retains its home. Ordinary bounded loot/loss rules also apply. |
-| `raid` | Other ordinary player home; legacy home-only requests | No ownership transfer. Bounded resource loot and troop losses only. |
+| `reward` | Actual operator Edo, staff Kyoto Gosho or deputy Kagoshima | Transfer half of each defending player resource, limited by receiver capacity. The defender save/revision changes. Ownership, defending troops and facilities remain protected. |
+| `capture` | Explicitly selected, player-owned Nijo/Osaka/Nagoya | Transfer that player's city into the winner's campaign and remove it from the defender's ownership. The winner retains its home. The same half-resource loot and ordinary bounded troop-loss rules apply. |
+| `raid` | Other ordinary player home; legacy home-only requests | No ownership transfer. The same half-resource loot and bounded troop losses apply. |
+| `branch` | Selected intact branch of a player base | Mark the branch fallen, cancel its unfinished work and transfer half of each owner resource. Parent ownership and troops remain protected. |
 
-The attacker's loss is bounded to 35% of the sent force. For raid/capture, the defender loses at most 10% of mobile troops and 10% of the target garrison. Each victorious loot transfer is bounded to 5% of the saved defender balance and 500 units, then by receiver capacity; transfers balance between saves. Reward battles create the separately recorded reward without taking defender resources. Expedition rice is consumed. On a newly owned city capture, 15% of the surviving sent troops are assigned as its garrison and deducted from mobile troops; the remainder returns immediately. No extra troops are created.
+The attacker's loss is bounded to 35% of the sent force. For raid/capture, the defender loses at most 10% of mobile troops and 10% of the target garrison. For every player-target victory, each gold/rice/wood/stone transfer is `min(floor(defenderBalance * 0.5), 100000000 - attackerBalance)` after ordinary time settlement and expedition costs. Capacity overflow remains with the defender. The same amount is credited and debited atomically; losses transfer zero. Magatama is excluded. Combat power never discounts this reward. `loot` records the actual transfer, `rewards` contains four zero values for compatibility, and `lootCapacityLimited` indicates whether any half-share could not fit. CPU and event rewards retain their existing rules. Expedition rice is consumed. On a newly owned city capture, 15% of the surviving sent troops are assigned as its garrison and deducted from mobile troops; the remainder returns immediately. No extra troops are created.
 
 If the captured city was the defender's home, it retreats to an ordinary castle and updates both the saved cycle home and database cycle-home anchor atomically. Officers, army, governors, buildings, research and other campaign progress survive. The lost city's castle upgrade is removed or carried to the fallback home when valid; unrelated jobs remain. A player who already owns that historical city retains its existing higher castle development and valid upgrades. Staff personal campaign backups are updated with committed capture progress so a later dismissal cannot restore the lost holding. A newly owned city becomes a public holding target and can be attacked again.
 
@@ -765,7 +767,8 @@ battle = {
   defenderPlayerId:"u_…", defenderName:"…", castleId:"nijo", castleName:"二条城",
   battleMode:"capture", won:true, tactic:"balanced", troops:3000, attackerLost:300,
   defenderLost:{troops:120,garrison:150}, foodCost:1050,
-  loot:{gold:500,rice:500,wood:500,stone:500},
+  loot:{gold:25000,rice:20000,wood:15000,stone:10000},
+  lootPolicy:"half-resources-v1", lootFraction:0.5, lootCapacityLimited:false,
   rewards:{gold:0,rice:0,wood:0,stone:0},
   capture:{captured:true,castleId:"nijo",castleName:"二条城",
     attackerPlayerId:"u_…",defenderPlayerId:"u_…",
@@ -778,7 +781,7 @@ battle = {
 };
 ```
 
-`capture.captured` is false outside a confirmed capture victory; `newlyOwned:false` and `garrison:0` apply when no capture occurred. UI success must follow the committed `won` and capture fields, not merely the selected mode. Raid/capture increment both save revisions once, retaining the defender's lease. Reward battles increment only the actor's save revision. Normal time progression continues: for example, a staff actor's response snapshot may finish an already-due shared construction job. Defense projects that due job before combat, and the commit guards the observed shared revision; this natural completion is not battle damage or a battle grant. Battle records are private to the two participants. Campaign resources and upgrades still originate in validated client saves; this service is authoritative over player battle authorization, resolution and atomic settlement, not every campaign transition.
+`capture.captured` is false outside a confirmed capture victory; `newlyOwned:false` and `garrison:0` apply when no capture occurred. UI success must follow the committed `won` and capture fields, not merely the selected mode. Every player battle mode increments both save revisions once, retaining the defender's lease. Duplicate requests return the committed receipt without reapplying either side of the transfer, and stale save revisions are rejected. Normal time progression continues: for example, a staff actor's response snapshot may finish an already-due shared construction job. Defense projects that due job before combat, and the commit guards the observed shared revision; this natural completion is not battle damage or a battle grant. Battle records are private to the two participants. Campaign resources and upgrades still originate in validated client saves; this service is authoritative over player battle authorization, resolution and atomic settlement, not every campaign transition.
 
 ### Mutual diplomacy
 
@@ -1207,7 +1210,7 @@ Claim is atomic with a unique `(mailId,userId)` receipt. A second claim with the
 
 Each newly committed shared-field battle creates exactly two private messages in the existing **郵便** inbox: one for the attacker and one for the defending player. This includes raid, capture and reward battles, on both victory and defeat. The recipient's perspective determines the win/loss wording. The defender's notice explicitly reports being attacked. Neither party needs to be online, and each notice remains unread until that recipient calls `/mail/read`; reading the list or replaying the battle does not mark it read. `/me.unreadMail` includes these notices. The existing newest-200 inbox limit applies; stored notices are not deleted when they leave that list.
 
-The title and body record the opponent and castle, battle type, actual troop/resource losses, actual credited loot or rewards, and the ownership result. If a captured home moves to an ordinary castle, the same notice names the previous and replacement homes and explains retained facilities, army, governors, officers, research, surviving troops/resources, applicable construction progress and the replacement cycle home. An outpost loss does not claim that the home moved. Edo/Kyoto Gosho notices state that the battle causes no defending ownership, troop, resource, facility or formation loss; ordinary time progression and shared construction continue.
+The title and body record the opponent and castle, battle type, actual troop/resource losses, actual credited loot or rewards, and the ownership result. If a captured home moves to an ordinary castle, the same notice names the previous and replacement homes and explains retained facilities, army, governors, officers, research, surviving troops/resources, applicable construction progress and the replacement cycle home. An outpost loss does not claim that the home moved. Edo/Kyoto Gosho/Kagoshima notices report the actual resource transfer. Defending ownership, troops, facilities and formation stay protected; ordinary time progression and shared construction continue.
 
 Automatic notices have `source:"system"` and `event:{kind:"field-battle",battleId:"fb_…",side:"attacker"|"defender"}`. Existing and newly sent operator messages have `source:"operator"` and `event:null`, regardless of their title/body or extra input fields. Older clients can ignore these additive fields and display the same notices through the existing inbox. Notices have `gift:null`, cannot be replied to through mail, and return `NO_GIFT` from `/mail/claim`: all reported rewards were already credited by the battle and must not be granted again.
 
@@ -1831,7 +1834,7 @@ All `/covert` endpoints require the current player's bearer token. There is no p
 | POST `/covert/hire` | `sourceCastleId,count` | Pay the displayed gold/rice and one command; add units to the source reserve. |
 | POST `/covert/dispatch` | `sourceCastleId,count,mode,target` | `mode` is `scout` or `station`. Pay rice and one command; privately report the destination's game state. Scouts return to reserve; station units remain deployed. |
 | POST `/covert/recall` | `stationId` | Return surviving units to reserve without resource or command cost, including after the source is lost. |
-| POST `/covert/retaliate` | `stationId,incidentId` | Spend one eligible, unconsumed source-attack incident, rice and one command. Resolve the stationed force's attack without capture or loot. Survivors remain stationed. |
+| POST `/covert/retaliate` | `stationId,incidentId` | Spend one eligible, unconsumed source-attack incident, rice and one command. Resolve the stationed force's attack without capture. Player-target victories transfer half of each defending resource under the same capacity rule as field battles. CPU-target rewards are unchanged. Survivors remain stationed. |
 
 Every POST also requires `{requestId,deviceId,expectedRevision,campaignId,sequence}`. `campaignId` is the current `state.walking.campaignId`; `sequence` is the canonical dispatch sequence. Reject unknown body fields, non-integer counts and invalid targets. A target is `{kind:"castle",castleId}` or `{kind:"player",castleId,playerId}`. Display labels, target intelligence, incident eligibility and battle results are always server-derived. A successful write returns the current sync snapshot, `covert`, `result`, and `idempotent`.
 
@@ -1841,7 +1844,7 @@ Source ownership and applicable capabilities are checked against current authent
 
 A retaliation incident must belong to the actor's current campaign and source, and occur after that particular station was committed. Field incidents use immutable incoming battle rows with a campaign binding and monotonic row cursor; station commit also compares the current cursor to close the read/commit race. CPU incidents are created only while existing server-side campaign advancement runs and are inserted under that save transaction's gate; the station sequence cutoff excludes later deployments even at the same game timestamp. Client-only CPU claims in sync uploads are ignored. The returned `stationIds` is the eligibility list for each incident. One incident can fund at most one retaliation across all stations and imported saves.
 
-One D1 transaction gates the request receipt, actor save/revision, canonical force state, any defender loss and generic defender mail. It rechecks account access, actor writer lease, revisions, source roles, target roles/ownership, common clock, alliances and attack protection. Protected reward-battle targets retain their assets. Successful spying sends no target notification and performs no target mutation. Intelligence contains only numeric game resources, troop/garrison counts, castle/wall level, defensive power and aggregate army statistics; no credentials, private correspondence or site roles are returned. Retaliation uses generic battle mail and does not publish the actor's unit type or private station list.
+One D1 transaction gates the request receipt, actor save/revision, canonical force state, any defender loss and generic defender mail. It rechecks account access, actor writer lease, revisions, source roles, target roles/ownership, common clock, alliances and attack protection. Player-target results and private `covert.rules` expose `lootPolicy:"half-resources-v1"` and `lootFraction:0.5`; `result.battle.loot` and durable history record the actual four-resource transfer, with `lootCapacityLimited` when capacity limits the share. Protected reward-battle targets retain ownership, troops and facilities while paying this resource loot. Successful spying sends no target notification and performs no target mutation. Intelligence contains only numeric game resources, troop/garrison counts, castle/wall level, defensive power and aggregate army statistics; no credentials, private correspondence or site roles are returned. Retaliation uses generic battle mail and does not publish the actor's unit type or private station list.
 
 Both the UI controller and shared mutation bridge keep the original request ID when a reply is lost. A temporary synchronization preflight, authentication interruption, rate limit or network error must preserve that pending operation for later result confirmation. A definite server semantic rejection may retire its own operation. Replays return the original receipt and fresh current snapshot without applying costs or losses again. Account/campaign/role changes invalidate the displayed context and cannot redirect an old request to a different player.
 
@@ -1944,7 +1947,7 @@ The server-owned `resolved_elapsed_ms` cursor tracks branch progression across o
 
 Field target DTOs contain branch choices and a parent attack reason while any completed, unfallen branch remains. `POST /field/attack` accepts optional `targetBranchId` alongside `targetPlayerId,targetCastleId,troops,tactic` and the usual writer/request fields. All completed intact branches must fall before any player can attack the parent. The branch gate also applies to personal CPU invasions and covert retaliation. Kyoto Gosho has no branches and therefore no branch prerequisite. Branch defense is computed from the same engine helper on client and server.
 
-A successful branch attack returns `battleMode:"branch",branchId,branchName,branchFallen`; it clears that branch’s entire unfinished queue and marks it fallen, preserving its completed branch and facility levels. The attacker pays ordinary attack costs and troop losses. The branch encounter never captures territory, pays rewards or loot, transfers officers, damages parent troops/resources or changes shared Kyoto development. Attacker/defender save and branch sequence comparisons prevent concurrent repair, combat or save writes from reviving an obsolete defense. A parent battle keeps the established reward/capture/raid semantics after the branch prerequisite is satisfied.
+A successful branch attack returns `battleMode:"branch",branchId,branchName,branchFallen`; it clears that branch’s entire unfinished queue and marks it fallen, preserving its completed branch and facility levels. The attacker pays ordinary attack costs and troop losses. The branch encounter transfers half of the owner's four resources under the common capacity rule. It never captures territory, grants a separate fixed reward, transfers officers, damages parent troops or changes shared Kyoto development. Attacker/defender save and branch sequence comparisons prevent concurrent repair, combat or save writes from reviving an obsolete defense. A parent battle keeps the established reward/capture/raid semantics after the branch prerequisite is satisfied.
 
 `0019_kyoto_gosho_court` and `0020_branch_states` are append-only migrations. Deploy the exact frontend/server engine pair and include `court.js` and `branches.js` in the portable API bundle, with their D1 migrations and journal. Focused local tests cover qualification, contribution, appointment revocation, access races, moderation, branch deadlines, idempotency, rollback, repair and siege ordering without production messages or battles.
 
@@ -2142,7 +2145,7 @@ Appointment requires an established synchronized save, no active BAN or pending 
 
 Appointment backs up the prior home and personal campaign, leaves any normal castle seat vacant, removes normal resident membership and moves the saved personal home to Kagoshima. Officers, resources, facilities and research carry forward. Dismissal restores the prior home using current personal progress; a normal seat that is still vacant is reacquired as lord, otherwise the player joins that castle as retainer. Legacy legal major-city homes remain legal return destinations. Writer leases are revoked at either transition and clients must apply a fresh canonical sync snapshot before writing.
 
-Kagoshima is reserved regardless of whether the deputy slot is occupied. It is excluded from the normal 123-castle directory, initial selection, home relocation, retainer admission and ordinary unification requirements. CPU or player victories cannot change its owner. Online field combat uses the existing protected-base reward mode: gold, rice, wood and stone up to 500 each per victory subject to holdings caps, with the defender's troops, resources, officers and facilities unchanged. Local CPU campaign victories grant gold/rice rewards without occupation, a new garrison or officer capture. Authenticated deputy access fixes the home to Kagoshima and never grants primary-operator or Kyoto staff permissions. Ordinary imported Kagoshima ownership is migrated to a valid normal base; current ordinary writes claiming Kagoshima return `DEPUTY_ENTITLEMENT_REQUIRED`, and deputy writes claiming a different home return `DEPUTY_FIXED_HOME`.
+Kagoshima is reserved regardless of whether the deputy slot is occupied. It is excluded from the normal 123-castle directory, initial selection, home relocation, retainer admission and ordinary unification requirements. CPU or player victories cannot change its owner. Online field combat uses the protected-base reward mode with the common half-resource transfer: the attacker takes half of the deputy's gold, rice, wood and stone up to receiving capacity; the defender's troops, officers and facilities remain protected. Local CPU campaign victories grant gold/rice rewards without occupation, a new garrison or officer capture. Authenticated deputy access fixes the home to Kagoshima and never grants primary-operator or Kyoto staff permissions. Ordinary imported Kagoshima ownership is migrated to a valid normal base; current ordinary writes claiming Kagoshima return `DEPUTY_ENTITLEMENT_REQUIRED`, and deputy writes claiming a different home return `DEPUTY_FIXED_HOME`.
 
 
 ## v5.12.1 — Reusable names after moderation

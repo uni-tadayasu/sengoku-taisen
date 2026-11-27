@@ -34,11 +34,11 @@ try{
   await attack(h,staff,{...attackBody(h,staff,admin),sourceCastleId:'nijo',isCourtEmperor:true},400);assert.deepEqual(effects(h),before);
   const departure=(await attack(h,ordinary,attackBody(h,ordinary,admin))).data,battle=await settleFieldMarch(h,ordinary,departure);assert.equal(battle.battleMode,'reward');assert.equal(battle.capture.captured,false);
  });
- await scope('an appointed Emperor can duel Edo without changing its owner or assets and replay cannot attack twice',async h=>{
+ await scope('an appointed Emperor can duel Edo without changing its owner and transfer resources and replay cannot attack twice',async h=>{
   const admin=await fixture(h,'決闘の江戸',{admin:true}),staff=await fixture(h,'任命済みの天皇',{staff:true});await appoint(h,staff);
   const capability=(await h.api('/field/me?deviceId='+staff.deviceId,{token:staff.token})).data;assert.equal(capability.attack.canAttackEdoFromKyoto,true);const target=(await h.api('/field',{token:staff.token})).data.targets.find(t=>t.playerId===admin.user.id&&t.targetCastleId==='edo');assert.equal(target.attackable,true);
   const before=row(h,admin),palace=h.sql.prepare('SELECT * FROM staff_base').get(),body=attackBody(h,staff,admin),departure=(await force(true,()=>attack(h,staff,body))).data,result={battle:await settleFieldMarch(h,staff,departure)};
-  assert.equal(result.battle.won,true);assert.equal(result.battle.battleMode,'reward');assert.equal(result.battle.capture.captured,false);assert.deepEqual(result.battle.defenderLost,{troops:0,garrison:0});assert.deepEqual(row(h,admin),before);assert.deepEqual(h.sql.prepare('SELECT * FROM staff_base').get(),palace);assert.equal(save(h,staff).state.home,'kyoto_gosho');assert.notEqual(save(h,staff).state.castles.edo.owner,save(h,staff).state.clan);
+  assert.equal(result.battle.won,true);assert.equal(result.battle.battleMode,'reward');assert.equal(result.battle.capture.captured,false);assert.deepEqual(result.battle.defenderLost,{troops:0,garrison:0});assert.equal(row(h,admin).revision,before.revision+1);assert.equal(save(h,admin).state.home,'edo');assert.deepEqual(h.sql.prepare('SELECT * FROM staff_base').get(),palace);assert.equal(save(h,staff).state.home,'kyoto_gosho');assert.notEqual(save(h,staff).state.castles.edo.owner,save(h,staff).state.clan);
   await appoint(h,null);const committed=effects(h),replay=(await attack(h,staff,body)).data;assert.equal(replay.idempotent,true);assert.equal(replay.battle.id,result.battle.id);assert.deepEqual(effects(h),committed);assert.equal(count(h,'field_battles'),1);
  });
  await scope('field commit rejects revoke, replacement appointment, new staff term, and ban epoch without spending assets',async h=>{
@@ -87,7 +87,7 @@ try{
   const spy=await covert(h,staff,'dispatch',{sourceCastleId:'kyoto_gosho',target:{kind:'player',playerId:admin.user.id,castleId:'edo'},count:1,mode:'scout'});assert(spy.data.marching);h.now+=spy.data.march.remainingMs;
   const observed=(await h.api('/marches',{token:staff.token})).data;assert.equal(observed.save.state.covert.reports.at(-1).target.castleId,'edo');await syncFieldWriter(h,staff);
   updateSave(h,staff,s=>{s.command=3;});await appoint(h,staff);assert.equal((await h.api('/covert',{token:staff.token})).data.covert.rules.canAttackEdoFromKyoto,true);
-  const targetBefore=row(h,admin),body=covertBody(h,staff,{stationId,incidentId}),result=(await h.api('/covert/retaliate',post(staff,body))).data;assert(result.result.battle);assert.deepEqual(result.result.battle.defenderLost,{troops:0,garrison:0});assert.deepEqual(row(h,admin),targetBefore);assert.equal(count(h,'covert_battles'),1);
+  const targetBefore=row(h,admin),body=covertBody(h,staff,{stationId,incidentId}),result=(await h.api('/covert/retaliate',post(staff,body))).data;assert(result.result.battle);assert.deepEqual(result.result.battle.defenderLost,{troops:0,garrison:0});assert.equal(row(h,admin).revision,targetBefore.revision+1);assert.equal(save(h,admin).state.home,'edo');assert.equal(result.result.battle.lootPolicy,'half-resources-v1');assert.equal(count(h,'covert_battles'),1);
   await appoint(h,null);const after=effects(h),replay=(await h.api('/covert/retaliate',post(staff,body))).data;assert.equal(replay.idempotent,true);assert.deepEqual(effects(h),after);
  });
  await scope('a delayed stationed retaliation rechecks the latest appointment and binds it again at commit',async h=>{
@@ -102,7 +102,7 @@ try{
   const{staff,stationId,incidentId}=await provision(h,{targetKind:'castle'});const before=effects(h);await covert(h,staff,'retaliate',{stationId,incidentId},403);assert.deepEqual(effects(h),before);await appoint(h,staff);const result=await covert(h,staff,'retaliate',{stationId,incidentId});assert.equal(result.data.result.battle.captured,false);
  });
  await scope('staff dispatch from Nijo can retaliate at Edo without an Emperor appointment',async h=>{
-  const{admin,staff,stationId,incidentId}=await provision(h,{source:'nijo'});assert.equal(count(h,'court_leader'),0);const before=row(h,admin),result=(await covert(h,staff,'retaliate',{stationId,incidentId})).data;assert(result.result.battle);assert.deepEqual(result.result.battle.defenderLost,{troops:0,garrison:0});assert.deepEqual(row(h,admin),before);assert.equal(result.covert.rules.canAttackEdoFromKyoto,false);
+  const{admin,staff,stationId,incidentId}=await provision(h,{source:'nijo'});assert.equal(count(h,'court_leader'),0);const before=row(h,admin),result=(await covert(h,staff,'retaliate',{stationId,incidentId})).data;assert(result.result.battle);assert.deepEqual(result.result.battle.defenderLost,{troops:0,garrison:0});assert.equal(row(h,admin).revision,before.revision+1);assert.equal(save(h,admin).state.home,'edo');assert.equal(result.covert.rules.canAttackEdoFromKyoto,false);
  });
  await scope('a revoked capability is rejected after asynchronous response decoration',async h=>{
   await fixture(h,'表示検証の江戸',{admin:true});const staff=await fixture(h,'表示検証の天皇',{staff:true});await appoint(h,staff);

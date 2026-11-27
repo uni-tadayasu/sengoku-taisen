@@ -4,11 +4,15 @@
  'use strict';
  const KEY='sengoku-covert-pending-v1:',PAGE_SIZE=12,ACTIONS=['hire','dispatch','recall','retaliate'];
  const RESOURCE_NAMES={gold:'金銭',rice:'兵糧'},UNIT_NAMES={ninja:'忍者',ashigaru:'足軽'};
+ const LOOT_NAMES={gold:'金銭',rice:'兵糧',wood:'木材',stone:'石材'},HALF_LOOT_POLICY='half-resources-v1';
+ const HALF_LOOT_DESCRIPTION='対プレイヤー拠点での勝利報酬は、決着時点の相手の金銭・兵糧・木材・石材の各50%です（端数切り捨て）。各資源の所持上限1億まで受け取り、入らない分は相手に残ります。';
  const clone=value=>JSON.parse(JSON.stringify(value));
  const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
  const integer=(value,min=0,max=1e12)=>Number.isSafeInteger(value)&&value>=min&&value<=max;
  const identifier=value=>typeof value==='string'&&/^[A-Za-z0-9_-]{1,128}$/.test(value);
  const num=value=>Number.isFinite(value)?Math.floor(value).toLocaleString('ja-JP'):'—';
+ const halfResourceLoot=value=>value?.lootPolicy===HALF_LOOT_POLICY&&value?.lootFraction===.5;
+ const validHalfLoot=battle=>halfResourceLoot(battle)&&typeof battle.won==='boolean'&&battle.loot&&Object.keys(LOOT_NAMES).every(key=>integer(battle.loot[key],0,100000000)&&(battle.won||battle.loot[key]===0))&&(battle.lootCapacityLimited===undefined||typeof battle.lootCapacityLimited==='boolean');
  const text=value=>typeof value==='string'?value.slice(0,200):'';
  const targetKey=target=>target?JSON.stringify([target.kind,target.castleId,target.kind==='player'?target.playerId:'']):'';
  const targetBody=target=>target?.kind==='player'?{kind:'player',castleId:target.castleId,playerId:target.playerId}:{kind:'castle',castleId:target?.castleId};
@@ -52,7 +56,7 @@
    if(receipt.accepted===true||receipt.status==='cancelled')return clone(receipt);
   }
   if(action==='dispatch'&&(!receipt.report||!targetOK(receipt.report.target)||targetKey(receipt.report.target)!==targetKey(data.target)||receipt.report.sourceCastleId!==data.sourceCastleId||!receipt.report.snapshot||data.mode==='station'&&!identifier(receipt.stationId)))return null;
-  if(action==='retaliate'){const b=receipt.battle;if(!b||typeof b.won!=='boolean'||b.captured!==false||!integer(b.deployed,1)||!integer(b.ourLost,0,b.deployed)||b.survivors!==b.deployed-b.ourLost||!integer(b.attackPower)||!integer(b.defensePower)||!integer(b.defenderLost?.troops)||!integer(b.defenderLost?.garrison))return null;}
+  if(action==='retaliate'){const b=receipt.battle;if(!b||typeof b.won!=='boolean'||b.captured!==false||!integer(b.deployed,1)||!integer(b.ourLost,0,b.deployed)||b.survivors!==b.deployed-b.ourLost||!integer(b.attackPower)||!integer(b.defensePower)||!integer(b.defenderLost?.troops)||!integer(b.defenderLost?.garrison))return null;if((b.lootPolicy!==undefined||b.lootFraction!==undefined||b.loot!==undefined)&&!validHalfLoot(b))return null;}
   return clone(receipt);
  }
  function retaliationAdvice(station,{preview,reports=[],game,access={}}={}){
@@ -131,6 +135,7 @@
      if(station.target.kind==='castle'&&who.game?.ownedCastles?.().some(c=>c.id===station.target.castleId))return fail('自領の拠点には反撃できません。');
      data.incidentId=incident.id;costs.rice=rules.retaliate.riceBase+Math.ceil(station.count*rules.retaliate.ricePerUnit);costs.command=rules.commandCost;
      label=`${station.target.name}で反撃`;description=`常駐中の${unitName}${num(station.count)}人で反撃します。兵を失う可能性があります。この被攻撃記録は1度だけ使えます。`;
+     if(who.linked&&station.target.kind==='player'&&halfResourceLoot(rules))description+=HALF_LOOT_DESCRIPTION;
     }else return fail('操作を確認してください。');
    }
    const base={action,data,costs,label,description,unitName,travel,returnTravel};
@@ -207,12 +212,19 @@
   const purpose=preview.action==='recall'?'return':preview.data?.mode||'station',outbound=global.SengokuTravelUI?.preview(preview.travel,{purpose})||'',back=preview.returnTravel;
   return outbound+(back?`<p class="covert-round-trip">往路 <strong>${esc(global.SengokuTravelUI?.formatDuration(preview.travel.durationMs))}</strong> / 復路 <strong>${esc(global.SengokuTravelUI?.formatDuration(back.durationMs))}</strong> / 往復合計 <strong>${esc(global.SengokuTravelUI?.formatDuration(preview.travel.durationMs+back.durationMs))}</strong>（1倍速）</p>`:'');
  }
+ function halfLootMarkup(battle,{history=false}={}){
+  if(!validHalfLoot(battle))return'';
+  const amounts=Object.entries(LOOT_NAMES).map(([key,label])=>`<span>${label}<b>${num(battle.loot[key])}</b></span>`).join('');
+  const note=battle.won?'決着時点の相手資源の各50%を勝利報酬として移転します（端数切り捨て・各資源の所持上限1億まで）。表示額は実際の移転量です。':'敗北したため、勝利報酬による資源の移転はありません。';
+  const content=`<div data-covert-loot-policy="${HALF_LOOT_POLICY}"><h3>勝利報酬・奪った資源</h3><div class="covert-metrics">${amounts}</div><p>${note}${battle.lootCapacityLimited===true?'受取上限に達した資源は、入る分だけを移転しました。残りは相手に残っています。':''}</p></div>`;
+  return history?`<details class="covert-history-battle"><summary>反撃の戦果・資源</summary>${content}</details>`:content;
+ }
  function resultMarkup(receipt){
   if(!receipt)return'';if(receipt.status==='cancelled')return '<section class="covert-result" data-stable-key="covert-region:result" data-covert-region="result"><h2>派遣を取り消しました</h2><p>'+(receipt.march?.phase==='returning'?'帰還中の部隊を待機人数へ戻しました。':'部隊と出陣費用を戻しました。')+'最新の派遣元・派遣先を確認してください。</p></section>';
   if(receipt.accepted===true){const returning=receipt.march?.phase==='returning';return `<section class="covert-result" data-stable-key="covert-region:result" data-covert-region="result"><h2>${returning?'部隊が帰還中です':'部隊が出発しました'}</h2>${global.SengokuTravelUI?.preview(receipt.march?.travel||receipt.march,{purpose:returning?'return':receipt.mode||'station'})||''}<p>${returning?(receipt.report?'調査報告が届きました。':'常駐を終えました。')+'部隊は帰路を移動中です。派遣元へ到着してから再派遣できます。':'到着後に調査・常駐を行います。移動状況は画面下から確認できます。'}</p><button type="button" class="button" data-covert-action="marches">移動状況を確認</button></section>`;}
   const names={hire:'雇用を完了',dispatch:receipt.mode==='scout'?'調査と帰還を完了':'常駐を開始',recall:'部隊が帰還',retaliate:'反撃の結果'},battle=receipt.battle;
   const succession=battle?.succession,successionHtml=succession?`<div class="residency-succession"><strong>領主の継承</strong><p>${succession.lordPlayerId?`${esc(succession.castleName||receipt.target?.name||'この城')}は、先に仕えた家臣 ${global.SengokuCityHonors?.slot?.(succession.lordPlayerId)||''}${esc(succession.lordName||'プレイヤー')}${global.SengokuPublicCourt?.slot?.(succession.lordPlayerId)||''} が領主を引き継ぎました。前の領主 ${global.SengokuCityHonors?.slot?.(succession.previousLordPlayerId)||''}${esc(succession.previousLordName||'プレイヤー')}${global.SengokuPublicCourt?.slot?.(succession.previousLordPlayerId)||''} は家臣の最後尾に移ります。`:'領主の席は空席になりました。'} 部隊は帰還させてから新たな派遣先を選べます。</p><button type="button" class="button" data-residency-open="${esc(succession.castleId||'')}">城の領主と家臣</button></div>`:'';
-  return `<section class="covert-result" data-stable-key="covert-region:result" data-covert-region="result" tabindex="-1" aria-label="派遣の結果"><span class="eyebrow">RESULT</span><h2>${esc(names[receipt.action]||'操作を完了')}</h2>${receipt.target?`<p>${targetMarkup(receipt.target)}${targetOffice(receipt.target)}</p>`:''}${battle?`<div class="covert-metrics"><span>戦果<b>${battle.won?'勝利':'撤退'}</b></span><span>出陣<b>${num(battle.deployed)}人</b></span><span>損失<b>${num(battle.ourLost)}人</b></span><span>生存<b>${num(battle.survivors)}人</b></span></div><p>相手の損失：兵 ${num(battle.defenderLost?.troops||0)}人・守備兵 ${num(battle.defenderLost?.garrison||0)}人。生存兵は同じ拠点で常駐を続けます。</p>`:receipt.count?`<p>${num(receipt.count)}人の記録を反映しました。</p>`:''}${successionHtml}${costsMarkup({gold:receipt.goldCost||0,rice:receipt.foodCost,command:receipt.commandCost})}</section>`;
+  return `<section class="covert-result" data-stable-key="covert-region:result" data-covert-region="result" tabindex="-1" aria-label="派遣の結果"><span class="eyebrow">RESULT</span><h2>${esc(names[receipt.action]||'操作を完了')}</h2>${receipt.target?`<p>${targetMarkup(receipt.target)}${targetOffice(receipt.target)}</p>`:''}${battle?`<div class="covert-metrics"><span>戦果<b>${battle.won?'勝利':'撤退'}</b></span><span>出陣<b>${num(battle.deployed)}人</b></span><span>損失<b>${num(battle.ourLost)}人</b></span><span>生存<b>${num(battle.survivors)}人</b></span></div><p>相手の損失：兵 ${num(battle.defenderLost?.troops||0)}人・守備兵 ${num(battle.defenderLost?.garrison||0)}人。生存兵は同じ拠点で常駐を続けます。</p>`:receipt.count?`<p>${num(receipt.count)}人の記録を反映しました。</p>`:''}${halfLootMarkup(battle)}${successionHtml}${costsMarkup({gold:receipt.goldCost||0,rice:receipt.foodCost,command:receipt.commandCost})}</section>`;
  }
  function reportsMarkup(reports){
   const labels={level:'城郭Lv.',troops:'兵数',garrison:'守備兵',wall:'城壁',defensePower:'防衛力'};
@@ -228,7 +240,7 @@
   if(s.message)body+=`<p class="notice covert-message" data-stable-key="covert-region:message" data-covert-region="message" role="status">${esc(s.message)}</p>`;
   if(s.pending)body+=`<section class="covert-pending" data-stable-key="covert-region:action" data-covert-region="action" tabindex="-1"><h2>${s.sending?'操作の結果を確認しています':'未確認の操作があります'}</h2><p>同じ操作番号で結果を確認します。兵と資源を二重に消費しません。</p><button type="button" class="button gold" data-covert-action="submit"${disabled(!canWrite||s.sending)}>${s.sending?'結果を確認中…':'同じ操作の結果を確認'}</button></section>`;
   else if(s.confirmation)body+=`<section class="covert-confirm" data-stable-key="covert-region:action" data-covert-region="action" tabindex="-1" aria-label="派遣部隊の最終確認"><span class="eyebrow">CONFIRM ORDER</span><h2>${esc(s.confirmation.label)}</h2><p>${esc(s.confirmation.description)}</p>${travelMarkup(s.confirmation)}${costsMarkup(s.confirmation.costs)}<div class="covert-actions"><button type="button" class="button" data-covert-action="cancel">準備に戻る</button><button type="button" class="button gold" data-covert-action="submit"${disabled(!canWrite)}>確定して${s.confirmation.action==='hire'?'雇用':s.confirmation.action==='recall'?'帰還':s.confirmation.action==='retaliate'?'反撃':'派遣'}</button></div></section>`;
-  body+=`<details class="covert-help" data-stable-key="covert-region:help" data-covert-region="help"><summary>派遣部隊の仕組み・費用・反撃条件</summary><ol><li>所有する大都市を派遣元に選び、専用の兵を雇用します。江戸城は忍者、京都御所・二条城・大坂城・名古屋城は足軽です。軍団の兵士とは別に管理します。</li><li>「情報を調べる」は到着時にあなた専用の報告を届け、その後で帰路を移動します。調査・常駐への往路も、帰還の復路も距離に応じて時間が掛かります。部隊は派遣元へ到着してから再び使えます。常駐済みの部隊による反撃には、再移動の待ち時間はありません。</li><li>常駐後に派遣元が攻撃を受けると、${s.status.linked?'サーバーで確定した被攻撃（共通フィールドの合戦・サーバー進行中のCPU侵攻）':'その被攻撃記録'}を使って反撃を指示できます。1つの記録は1部隊・1回限り。反撃は自分で確定します。</li><li>雇用・派遣・反撃には表示された費用と指令を消費します。帰還は無料です。常駐中・移動中・帰還中の兵も雇用上限に含みます。</li></ol>${!s.status.linked?'<p>この端末では天下地図の拠点を調査できます。他の領主の拠点への派遣は、交流から領主を登録して接続すると利用できます。</p>':''}</details>`;
+  body+=`<details class="covert-help" data-stable-key="covert-region:help" data-covert-region="help"><summary>派遣部隊の仕組み・費用・反撃条件</summary><ol><li>所有する大都市を派遣元に選び、専用の兵を雇用します。江戸城は忍者、京都御所・二条城・大坂城・名古屋城は足軽です。軍団の兵士とは別に管理します。</li><li>「情報を調べる」は到着時にあなた専用の報告を届け、その後で帰路を移動します。調査・常駐への往路も、帰還の復路も距離に応じて時間が掛かります。部隊は派遣元へ到着してから再び使えます。常駐済みの部隊による反撃には、再移動の待ち時間はありません。</li><li>常駐後に派遣元が攻撃を受けると、${s.status.linked?'サーバーで確定した被攻撃（共通フィールドの合戦・サーバー進行中のCPU侵攻）':'その被攻撃記録'}を使って反撃を指示できます。1つの記録は1部隊・1回限り。反撃は自分で確定します。</li><li>雇用・派遣・反撃には表示された費用と指令を消費します。帰還は無料です。常駐中・移動中・帰還中の兵も雇用上限に含みます。</li>${s.status.linked&&halfResourceLoot(c?.rules)?`<li>${HALF_LOOT_DESCRIPTION}</li>`:''}</ol>${!s.status.linked?'<p>この端末では天下地図の拠点を調査できます。他の領主の拠点への派遣は、交流から領主を登録して接続すると利用できます。</p>':''}</details>`;
   if(!c){body+=`<section class="covert-panel covert-empty" data-stable-key="covert-region:loading" data-covert-region="loading" aria-busy="${s.loading}"><h2>${s.loading?'大都市拠点を確認しています':'部隊の情報を取得してください'}</h2><p>${s.loading?'所有する拠点と常駐部隊を読み込んでいます。':'接続と領主の保存状態を確認し、「最新情報を取得」を押してください。'}</p></section>`;return`<section class="covert-page" aria-label="派遣部隊">${body}</section>`;}
   if(!owned.length)body+=`<section class="covert-panel covert-locked" data-stable-key="covert-region:locked" data-covert-region="locked"><span class="covert-lock-mark" aria-hidden="true">◆</span><div><span class="eyebrow">MAJOR CITY REQUIRED</span><h2>大都市拠点の確保が必要です</h2><p>現在、派遣元にできる大都市を所有していません。天下地図と共通フィールドで、二条城・大坂城・名古屋城などの大都市拠点を確認してください。</p><div class="covert-actions"><button type="button" class="button gold" data-view="map">天下地図を開く</button><button type="button" class="button" data-view="field">共通フィールドを開く</button></div></div></section>`;
   else{
@@ -240,7 +252,7 @@
   if(!s.stations.length)body+=global.SengokuBattleAdvisor?.markup(retaliationAdvice(null),{showStyles:false,disabled:true,applyLabel:'常駐部隊を準備',note:'派遣元への攻撃後に、反撃の軍議を行えます。'})||'';
   body+=resultMarkup(s.receipt)+reportsMarkup(c.reports);
   const actionLabels={hire:'雇用',dispatch:'派遣',recall:'帰還',retaliate:'反撃'};
-  body+=`<section class="covert-panel covert-history" data-stable-key="covert-region:history" data-covert-region="history"><div class="covert-section-heading"><div><span class="eyebrow">PRIVATE RECORDS</span><h2>派遣の記録</h2></div><span>最新${c.rules.historyLimit||40}件</span></div>${c.history.length?`<ol>${c.history.map(item=>`<li><span class="covert-history-kind">${item.action==='dispatch'?(item.mode==='scout'?'調査':'常駐'):actionLabels[item.action]}</span><div><b>${item.target?targetMarkup(item.target):esc(sourceName(item.sourceCastleId)||'部隊の操作')}${targetOffice(item.target)}</b><small>${item.count?num(item.count)+'人 · ':''}${esc(clockLabel(item.occurredElapsedMs??item.createdElapsedMs))}</small></div></li>`).join('')}</ol>`:'<p class="covert-empty">部隊を雇用・派遣すると記録が残ります。</p>'}</section>`;
+  body+=`<section class="covert-panel covert-history" data-stable-key="covert-region:history" data-covert-region="history"><div class="covert-section-heading"><div><span class="eyebrow">PRIVATE RECORDS</span><h2>派遣の記録</h2></div><span>最新${c.rules.historyLimit||40}件</span></div>${c.history.length?`<ol>${c.history.map(item=>`<li><span class="covert-history-kind">${item.action==='dispatch'?(item.mode==='scout'?'調査':'常駐'):actionLabels[item.action]}</span><div><b>${item.target?targetMarkup(item.target):esc(sourceName(item.sourceCastleId)||'部隊の操作')}${targetOffice(item.target)}</b><small>${item.count?num(item.count)+'人 · ':''}${esc(clockLabel(item.occurredElapsedMs??item.createdElapsedMs))}</small>${item.action==='retaliate'?halfLootMarkup(item.battle,{history:true}):''}</div></li>`).join('')}</ol>`:'<p class="covert-empty">部隊を雇用・派遣すると記録が残ります。</p>'}</section>`;
   return`<section class="covert-page" aria-label="派遣部隊">${body}</section>`;
  }
  function mount(host,options={}){

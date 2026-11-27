@@ -19,6 +19,7 @@
 .sengoku-field .field-castle-visual>.field-castle-art,.sengoku-field .field-castle-visual>.field-castle-fallback{width:100%;height:100%;aspect-ratio:1}
 .sengoku-desktop-fit .field-base-heading>.field-castle-visual{width:100px;height:100px}
 .field-castle-level{position:absolute;z-index:2;left:0;right:0;bottom:0;display:block;padding:3px 4px;background:#102320ed;border-top:1px solid #e3cc8a65;color:#f1dcaa;text-align:center;font:600 10px/1.25 var(--sans,sans-serif);font-variant-numeric:tabular-nums;white-space:nowrap;pointer-events:none}
+.field-castle-visual.is-kagoshima:not(.field-map-castle) .field-castle-level{white-space:normal;font-size:12px;line-height:1.25}
 .sengoku-field .sg-map-marker.has-custom-art{width:48px;height:48px}
 .sengoku-field .sg-map-marker.has-custom-art .sg-map-marker-symbol{width:44px;height:44px;border:2px solid currentColor;border-radius:6px;background:#183533;box-shadow:0 0 0 2px #102e3699,0 2px 8px #081e26a8;overflow:hidden}
 .sengoku-field .sg-map-marker.has-custom-art.is-home .sg-map-marker-symbol{border-color:#ffdfa0;box-shadow:0 0 0 3px #ffdfa042,0 2px 8px #081e26a8}

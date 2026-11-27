@@ -175,7 +175,7 @@ await scope('active army marches and covert dispatches require return before app
  await reject(h,admin,await command(h,admin,spy));assert.equal(save(h,spy).state.home,'himeji');assert.equal((await registry(h,admin)).deputy,null);
 });
 
-await scope('a won online attack on Kagoshima pays one reward without capturing the home or harming its saved assets',async h=>{
+await scope('a won online attack on Kagoshima transfers resource loot once without capturing the home',async h=>{
  const admin=await operator(h),deputy=await player(h,'防衛するサブ運営'),attacker=await player(h,'鹿児島攻略の挑戦者','uchijo');await appoint(h,admin,deputy);
  tune(h,attacker,s=>{s.troops=10000;s.resources.rice=100000;s.buildings.keep=32;s.buildings.barracks=32;s.morale=100;});
  tune(h,deputy,s=>{s.troops=1;s.castles.kagoshima.troops=1;s.castles.kagoshima.wall=1;s.castles.kagoshima.level=1;s.buildings.wall=1;s.buildings.keep=1;s.army=[];});
@@ -184,8 +184,8 @@ await scope('a won online attack on Kagoshima pays one reward without capturing 
  crypto.getRandomValues=function(values){return values instanceof Uint32Array&&values.length===1?values.fill(0):originalRandom.call(crypto,values);};
  try{departure=(await h.api('/field/attack',post(attacker,body))).data;}finally{crypto.getRandomValues=originalRandom;}
  assert(departure.marching);h.now+=departure.march.remainingMs;
- const arrived=await read(h,attacker,'/marches?deviceId='+attacker.deviceId),receipt=arrived.history.find(m=>m.id===departure.march.id);assert.equal(receipt.status,'resolved');assert.equal(receipt.battle.won,true);assert.equal(receipt.battle.battleMode,'reward');assert(receipt.battle.rewards.gold>0);
- assert.equal(receipt.battle.capture.captured,false);assert.deepEqual(row(h,deputy),defended);assert.equal(save(h,deputy).state.castles.kagoshima.owner,save(h,deputy).state.clan);assert.equal((await registry(h,admin)).deputy.id,deputy.user.id);
+ const arrived=await read(h,attacker,'/marches?deviceId='+attacker.deviceId),receipt=arrived.history.find(m=>m.id===departure.march.id);assert.equal(receipt.status,'resolved');assert.equal(receipt.battle.won,true);assert.equal(receipt.battle.battleMode,'reward');assert(receipt.battle.loot.gold>0);assert.equal(receipt.battle.rewards.gold,0);assert.equal(receipt.battle.lootPolicy,'half-resources-v1');
+ assert.equal(receipt.battle.capture.captured,false);assert.equal(row(h,deputy).revision,defended.revision+1);for(const key of ['gold','rice','wood','stone']){const remaining=save(h,deputy).state.resources[key],transferred=receipt.battle.loot[key];assert.equal(transferred,Math.floor((remaining+transferred)/2));}assert.equal(save(h,deputy).state.castles.kagoshima.owner,save(h,deputy).state.clan);assert.equal((await registry(h,admin)).deputy.id,deputy.user.id);
  const after=row(h,attacker);const replay=(await h.api('/field/attack',post(attacker,body))).data;assert(replay.idempotent);assert.equal(replay.battle.id,receipt.battle.id);assert.deepEqual(row(h,attacker),after);
 });
 }finally{globalThis.fetch=originalFetch;}

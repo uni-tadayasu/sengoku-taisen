@@ -1,3 +1,4 @@
+import {applyFieldVictoryLoot,FIELD_LOOT_POLICY} from './field-loot.js';
 import {advanceReservedMarch} from './marches.js';
 import {maintenanceContext,protectMaintenance,externalTroopSnapshotStatements} from './maintenance.js';
 // Private, authoritative dispatch ledger. None of the information in this
@@ -59,7 +60,7 @@ async function status(ctx,snapshot=null){
  const emperor=await h.courtImperialAuthority(db,current);
  const game=GameEngine.fromSave(snapshot.save,GAME_OFFICERS,{isAdmin:!!current.is_admin,isDeputy:!!current.is_deputy,isStaff:!!current.is_staff,isCourtEmperor:emperor.isCourtEmperor,isCourtRegent:emperor.isCourtRegent,staffBase:shared});
  const covert=game.covertStatus(),listUrl=new URL(url);listUrl.searchParams.set('limit',url.searchParams.get('limit')||'100');
- covert.rules={...covert.rules,canAttackEdoFromKyoto:emperor.canActForEmperor};if(emperor.canActForEmperor)h.registerCourtGuard(emperor.guard);
+ covert.rules={...covert.rules,canAttackEdoFromKyoto:emperor.canActForEmperor,lootPolicy:FIELD_LOOT_POLICY.id,lootFraction:FIELD_LOOT_POLICY.fraction};if(emperor.canActForEmperor)h.registerCourtGuard(emperor.guard);
  const list=await h.getFieldList(db,current,listUrl,now);
  covert.targets.push(...list.targets.filter(t=>t.playerId!==user.id&&(!snapshot.residency?.castleId||t.householdCastleId!==snapshot.residency.castleId)).map(t=>({kind:'player',playerId:t.playerId,castleId:t.targetCastleId,name:t.targetCastleName,playerName:t.name})));
  covert.targetCursor=list.nextCursor;covert.playerTargetTotal=Math.max(0,list.total-1);covert.online=true;
@@ -102,19 +103,20 @@ async function playerTarget(ctx,targetSpec,clock,action,term=null){
  const rewardOnly=['edo','kyoto_gosho','kagoshima'].includes(targetSpec.castleId);
  // Spying stays read-only. A damaging counterattack first settles the owner's
  // unchanged troops/facilities to this time, then applies losses at that boundary.
- const journey=action==='retaliate'&&!rewardOnly?await advanceReservedMarch({...ctx,user:target,helpers:{...h,reconcileCovertProgress}},row,clock):null;
+ const journey=action==='retaliate'?await advanceReservedMarch({...ctx,user:target,helpers:{...h,reconcileCovertProgress}},row,clock):null;
  const save=journey?.save||h.normalizeGameSave(JSON.parse(row.save_json),target,now,{reading:true,clock}),s=save.state;
  const residency=await residencyTargetGuard(db,{attackerId:user.id,targetId:target.id,castleId:targetSpec.castleId,isHome:targetSpec.castleId===s.home,term,now,fail:h.fail});
  const branches=journey?.branches||await h.branchStateGuard(db,target.id,s.walking.campaignId);if(!journey)await h.reconcileBranchProgress(db,target.id,save,clock,{projectToClock:true});
  const cpuLosses=await prepareResidencyCpuLosses(db,{userId:target.id,events:journey?.game.takeHomeDefenseLosses?.()||[],now,state:s});
  branches.guard={sql:branches.guard.sql+' AND '+cpuLosses.guard.sql,args:[...branches.guard.args,...cpuLosses.guard.args]};
  if(targetSpec.castleId!==s.home&&(!['nijo','osaka','nagoya'].includes(targetSpec.castleId)||s.castles[targetSpec.castleId].owner!==s.clan))h.fail(409,'FIELD_TARGET_CHANGED','この領主の共有拠点ではありません。派遣先を更新してください。');
- if(s.gameOver||Number(row.cycle_index)<Math.floor(clock.elapsedMs/cycleMs)&&!rewardOnly)h.fail(409,'BASE_UNAVAILABLE','この拠点は領地の精算中です。');
- const sharedGuard=target.is_staff&&!target.is_admin&&targetSpec.castleId==='kyoto_gosho'?await h.fieldStaffDefense(db,s,clock):safe;
- const g=GameEngine.fromSave(save,GAME_OFFICERS,{isAdmin:!!target.is_admin,isDeputy:!!target.is_deputy,isStaff:!!target.is_staff}),castle=s.castles[targetSpec.castleId];
+ if(s.gameOver||Number(row.cycle_index)<Math.floor(clock.elapsedMs/cycleMs)&&(!rewardOnly||action==='retaliate'))h.fail(409,'BASE_UNAVAILABLE','この拠点は領地の精算中です。');
+ const palace=target.is_staff&&!target.is_admin&&targetSpec.castleId==='kyoto_gosho',defenseState=palace?structuredClone(s):s;
+ const sharedGuard=palace?await h.fieldStaffDefense(db,defenseState,clock):safe;
+ const g=GameEngine.fromSave(save,GAME_OFFICERS,{isAdmin:!!target.is_admin,isDeputy:!!target.is_deputy,isStaff:!!target.is_staff}),castle=defenseState.castles[targetSpec.castleId];
  const support=await getAllianceDefense(db,target,targetSpec.castleId,now),protection=action==='retaliate'?await prepareProtection(db,user,target,now,{reward:rewardOnly,fail:h.fail}):{guard:safe,shieldUntil:0};
- const supportedState={...s,worldClock:{...s.worldClock,elapsedMs:clock.elapsedMs},castles:{...s.castles,[targetSpec.castleId]:{...castle,troops:castle.troops+support.troops}}};
- const snapshot=GameEngine.normalizeCovertSnapshot({level:castle.level,troops:s.troops,garrison:castle.troops,wall:targetSpec.castleId===s.home?s.buildings.wall:castle.wall,defensePower:h.fieldDefense(supportedState,'balanced',0,targetSpec.castleId).power,resources:s.resources,army:g.armyStats()});
+ const supportedState={...defenseState,worldClock:{...s.worldClock,elapsedMs:clock.elapsedMs},castles:{...defenseState.castles,[targetSpec.castleId]:{...castle,troops:castle.troops+support.troops}}};
+ const snapshot=GameEngine.normalizeCovertSnapshot({level:castle.level,troops:s.troops,garrison:castle.troops,wall:targetSpec.castleId===s.home?defenseState.buildings.wall:castle.wall,defensePower:h.fieldDefense(supportedState,'balanced',0,targetSpec.castleId).power,resources:s.resources,army:g.armyStats()});
  snapshot.activeBranches=s.branches.filter(branch=>branch.parentCastleId===targetSpec.castleId&&branch.level>0&&!branch.fallen).map(branch=>branch.id);
  const canonicalTarget={kind:'player',playerId:target.id,castleId:targetSpec.castleId,name:castleMap.get(targetSpec.castleId).name,playerName:target.name};
  const role=journey?h.roleCommitGuard(target):guardLordSupport(h.roleCommitGuard(target),target),guards={sql:`EXISTS(SELECT 1 FROM player_saves WHERE user_id=? AND revision=? AND save_json IS NOT NULL) AND ${role.sql} AND ${sharedGuard.sql} AND ${branches.guard.sql} AND ${residency.sql}`,args:[target.id,row.revision,...role.args,...sharedGuard.args,...branches.guard.args,...residency.args]};
@@ -169,6 +171,13 @@ async function mutation(ctx,action){
  const now=Date.now(),nonce=crypto.randomUUID(),role=guardLordSupport(h.roleCommitGuard(user),user),gateArgs=[user.id,body.requestId,nonce];
  const incomingBattle=action==='retaliate'&&target?{battleMode:target.rewardOnly?'reward':'raid',id:'cb_'+crypto.randomUUID().replaceAll('-',''),attackerPlayerId:user.id,defenderPlayerId:target.target.id,castleId:targetSpec.castleId,castleName:castleMap.get(targetSpec.castleId).name,won:result.result.battle.won,defenderLost:result.result.battle.defenderLost,occurredElapsedMs:clock.elapsedMs}:null;
  if(incomingBattle&&!target.rewardOnly){const b=result.result.battle,damage=recordCastleSiege(target.save.state,targetSpec.castleId,{won:b.won,ratio:Number(b.attackPower||b.power||1)/Math.max(1,Number(b.defensePower||target.snapshot.defensePower||1)),elapsedMs:clock.elapsedMs});incomingBattle.durability=damage;b.durability=damage;}
+ if(incomingBattle){
+  const {loot,capacityLimited}=applyFieldVictoryLoot(game.state.resources,target.save.state.resources,incomingBattle.won);
+  const transfer={loot,lootPolicy:FIELD_LOOT_POLICY.id,lootFraction:FIELD_LOOT_POLICY.fraction,lootCapacityLimited:capacityLimited};
+  Object.assign(incomingBattle,transfer,{attackerRevision:Number(saved.revision)+1,defenderRevision:Number(target.row.revision)+1});
+  Object.assign(result.result.battle,transfer);
+  const entry=game.state.covert.history.find(item=>item.requestId===body.requestId);if(entry?.battle)Object.assign(entry.battle,structuredClone(transfer));
+ }
  const next=h.normalizeGameSave(JSON.parse(game.exportSave()),user,now,{clock});
  // _covertCommit returns a detached receipt. Keep the same authoritative
  // structural damage in the actor's durable history as in that receipt.
@@ -190,9 +199,9 @@ async function mutation(ctx,action){
  statements.push(...h.branchProgressStatements(db,user.id,next,now,gate,gateArgs,{resolvedElapsedMs:Math.min(clock.elapsedMs,next.state.worldClock?.elapsedMs||0)}));
  if(action==='retaliate'&&target){
   const b=result.result.battle,d=target.save.state,castle=d.castles[targetSpec.castleId];
-  if(!target.rewardOnly){
-   d.troops-=b.defenderLost.troops;castle.troops-=b.defenderLost.garrison;
-   d.log.unshift({turn:d.turn,text:'部隊の襲撃を受け、兵'+(b.defenderLost.troops+b.defenderLost.garrison)+'人を失いました。',kind:'pvp'});d.log=d.log.slice(0,200);
+  {
+   if(!target.rewardOnly){d.troops-=b.defenderLost.troops;castle.troops-=b.defenderLost.garrison;}
+   d.log.unshift({turn:d.turn,text:'部隊の襲撃を受け、兵'+(b.defenderLost.troops+b.defenderLost.garrison)+'人を失いました。'+(b.won?'資源の50%が戦利品として移転しました（相手の所持上限まで）。':''),kind:'pvp'});d.log=d.log.slice(0,200);
    const defenderNext=h.normalizeGameSave(target.save,target.target,now,{clock});
    statements.push(stmt(db,`UPDATE player_saves SET save_json=?,revision=revision+1,updated_at=? WHERE user_id=? AND ${gate}`,JSON.stringify(defenderNext),now,target.target.id,...gateArgs));
    statements.push(...h.branchProgressStatements(db,target.target.id,defenderNext,now,gate,gateArgs,{resolvedElapsedMs:clock.elapsedMs}),...covertIncidentStatements(db,target.target.id,defenderNext,now,gate,gateArgs),...target.cpuLosses.statements(gate,gateArgs));
@@ -201,7 +210,7 @@ async function mutation(ctx,action){
   const battle=incomingBattle;
   statements.push(...protectionBattleStatements(db,target.target.id,now,target.protection.shieldUntil,gate,gateArgs),...target.support.statements(battle,gate,gateArgs));
   statements.push(stmt(db,`INSERT INTO covert_battles(id,attacker_id,defender_id,occurred_elapsed_ms,result_json,created_at) SELECT ?,?,?,?,?,? WHERE ${gate}`,battle.id,user.id,target.target.id,clock.elapsedMs,JSON.stringify(battle),now,...gateArgs));
-  const title=battle.castleName+'の戦闘報告',mailBody=battle.castleName+'が部隊の襲撃を受けました。'+(b.won?'相手部隊が戦闘で優勢となりました。':'守備隊が相手部隊を退けました。')+'損失は軍団'+b.defenderLost.troops+'人・守備兵'+b.defenderLost.garrison+'人です。',mailRequest='system:covert:'+battle.id,mailHash=await h.hash(JSON.stringify([target.target.id,title,mailBody]));
+  const title=battle.castleName+'の戦闘報告',mailBody=battle.castleName+'が部隊の襲撃を受けました。'+(b.won?'相手部隊が戦闘で優勢となりました。':'守備隊が相手部隊を退けました。')+'損失は軍団'+b.defenderLost.troops+'人・守備兵'+b.defenderLost.garrison+'人です。資源の損失：'+[['gold','金銭'],['rice','兵糧'],['wood','木材'],['stone','石材']].map(([key,label])=>label+b.loot[key].toLocaleString('ja-JP')).join('・')+'。',mailRequest='system:covert:'+battle.id,mailHash=await h.hash(JSON.stringify([target.target.id,title,mailBody]));
   statements.push(stmt(db,`INSERT INTO mail_campaigns(id,sender_id,target_user_id,title,body,gift_json,request_id,payload_hash,created_at) SELECT ?,?,?,?,?,NULL,?,?,? WHERE ${gate}`,'m_sys_'+battle.id,user.id,target.target.id,title,mailBody,mailRequest,mailHash,now,...gateArgs));
  }
  if(successionPlan)statements.push(...successionPlan.statements(gate,gateArgs));

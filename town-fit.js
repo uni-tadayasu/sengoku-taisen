@@ -144,7 +144,7 @@
       style(scene, '--town-auto-height', height.toFixed(3) + 'px');
     } else scene.style.removeProperty('--town-auto-height');
     const image = board.querySelector('.town-scene-image');
-    const fit = fitRect(scene.clientWidth, scene.clientHeight, image?.naturalWidth || 1536, image?.naturalHeight || 1024);
+    const fit = fitRect(scene.clientWidth, scene.clientHeight, image?.naturalWidth || Number(image?.getAttribute('width')) || 1536, image?.naturalHeight || Number(image?.getAttribute('height')) || 1024);
     if (!fit.width || !fit.height) return;
     for (const key of ['width', 'height', 'left', 'top']) style(board, key, fit[key].toFixed(3) + 'px');
     const compact = fit.width < 620;

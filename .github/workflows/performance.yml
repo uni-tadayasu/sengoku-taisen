@@ -123,6 +123,12 @@ jobs:
           node server/test-alliance-strategy.mjs
           node server/test-covert.mjs
           node server/test-battle-travel.mjs
+      - name: Verify half-resource victory rewards and atomic balance transfers
+        run: |
+          node server/test-field-loot.mjs
+          node server/test-field.mjs
+          node server/test-field-capture.mjs
+          node server/test-field-mail.mjs
   save-recovery:
     runs-on: ubuntu-latest
     timeout-minutes: 5

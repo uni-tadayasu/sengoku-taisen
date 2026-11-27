@@ -1,0 +1,211 @@
+{
+  "created": "2026-11-28",
+  "title": "鹿児島城（鶴丸城）特別城下町イラスト",
+  "generator": "OpenAI built-in image_gen",
+  "method": "Day illustration generated using official photographs as architectural references; morning and night variants created by built-in image_gen edits of the same generated day image.",
+  "useCase": "historical-scene",
+  "purpose": "Dedicated Kagoshima Castle town artwork for Sengoku VS, shared across town, map, territory previews and battle/event displays.",
+  "sources": [
+    {
+      "title": "鹿児島県「天守を築かなかった城鹿児島城」",
+      "url": "https://www.pref.kagoshima.jp/ab10/2025kagoshimazyoshinpo.html",
+      "supports": [
+        "天守を築かなかった城造り"
+      ]
+    },
+    {
+      "title": "鹿児島県公式観光サイト「鹿児島城（鶴丸城）御楼門」",
+      "url": "https://www.kagoshima-kankou.com/guide/12332",
+      "supports": [
+        "背後の城山と麓の居館",
+        "居館の正面中央の御楼門",
+        "現存復元門の建築外観"
+      ]
+    },
+    {
+      "title": "鹿児島県公式観光サイト「鹿児島城跡」",
+      "url": "https://www.kagoshima-kankou.com/guide/70364",
+      "supports": [
+        "本丸を囲む石垣と堀",
+        "背後の城山"
+      ]
+    },
+    {
+      "title": "鹿児島県「御楼門と石橋」",
+      "url": "https://www.pref.kagoshima.jp/ab24/cms/documents/kagosimajou/goroumontoisibasi.html",
+      "documentUrl": "https://www.pref.kagoshima.jp/ab24/cms/documents/kagosimajou/documents/75917_20200322093557-1.pdf",
+      "supports": [
+        "二重二階造",
+        "木造本瓦葺き",
+        "屋根の鯱",
+        "門前の石橋"
+      ]
+    }
+  ],
+  "architecturalReferenceImages": [
+    "https://www.kagoshima-kankou.com/storage/tourism_attractions/12332/responsive_images/lwdNLVdHXrB5KFsuy60esEnUBEUQuwstKCepLiR1__1698_1130.jpg",
+    "https://www.kagoshima-kankou.com/storage/tourism_attractions/12332/responsive_images/AQAjb1wRQLUANFrYDQ3w5XltJmFYZX2ESzaSUaUj__1680_1120.jpg"
+  ],
+  "referenceImageUsage": "Official photographs were inspected as architecture references. They are not redistributed as game assets.",
+  "historicalFeatures": [
+    "鹿児島城には天守を描かない。",
+    "御楼門は幅の広い二重二階造で、木肌の下層・白漆喰と白い格子の上層・灰色の瓦屋根・鯱・脇門を表現。",
+    "門前の石橋、石垣、水堀、背後の城山を表現。"
+  ],
+  "reconstructionScope": "御楼門の主要形状と城郭の特徴は公式資料を参考にした。御殿・庭園・周辺の町並みの配置、植生、照明はゲーム向けの創作を含む復元イメージであり、特定年の街区を実測・考証に基づき完全再現したものではない。現代の黎明館や道路・案内板などは描かず、低層の歴史的建物として構成した。",
+  "prompts": {
+    "day": "Use case: historical-scene, architectural illustration with reference. Create one premium high-detail wide 16:9 CG game illustration of Kagoshima Castle (Tsurumaru Castle) and its historical castle town in clear DAYLIGHT. The two supplied photos are architecture references ONLY for the Goromon gate, stone bridge, moat, stone walls and wooded Shiroyama behind the castle. They are not targets for literal photographic reproduction. Re-create those exact recognizable gate features in a wholly new cinematic, slightly elevated three-quarter wide composition: monumental TWO-storey broad gate, natural golden-brown wooden lower floor, white plaster upper floor with prominent white lattice windows, two grey ceramic tiled roof levels, broad upper hipped/gabled roof and shachi ornaments; a small auxiliary gate on its right. Straight stone bridge over calm water leads through the gate. Dark grey dressed stone walls enclose sprawling low wooden palace buildings and a landscaped courtyard, backed by the lush green ridge of Shiroyama. Surrounding historical Satsuma samurai residences and traditional town roofs fill the foreground and edges. The main gate is near the visual center and clearly readable at thumbnail size. A sweeping vista but the gate and castle compound are the hero, not tiny background objects. Rich physically rendered stone, wood, white plaster and tiled roofs, finely crafted CG illustration with gentle painterly finish, cinematic sunlight, emerald foliage, blue sky with delicate clouds, calm moat reflections. Historical visual reconstruction for a Japanese strategy game, striking and dignified. The castle NEVER had a tall keep: ABSOLUTELY NO tenshu, no pagoda, no multilevel fantasy tower anywhere. Replace the modern museum in the photos with low historical palace roofs. Avoid modern people, modern roads, cars, signs, modern buildings, poles, cables, neon, UI, borders, captions, text, watermarks. No invented volcano behind Shiroyama. Edge-to-edge landscape art, no empty borders, no collage, no panels.",
+    "morning": "Use case: lighting-weather edit. Change ONLY the lighting, time of day, atmosphere and water reflections of this Kagoshima Castle (Tsurumaru Castle) illustration to a beautiful EARLY MORNING after sunrise. Keep the exact same 16:9 composition, camera, framing, building shapes, grey roofs, two-storey Goromon gate with white upper floor and natural wood lower floor, gate position, stone bridge, walls, moat, palace roofs, trees, plants and wooded Shiroyama ridge. The architecture and all object positions must be identical. Soft warm golden morning light, delicate peach and pale blue sky, faint cool mist close to the moat and lower wooded hillside, subtle rosy highlights on the white plaster and roof tiles, calm clear reflections. Premium detailed CG game illustration. Keep everything legible, dignified and realistic; do not over-orange the entire picture. Absolutely no tall castle keep, pagodas, new objects, new buildings, text, UI, borders, lettering or watermark. Full edge-to-edge art.",
+    "night": "Use case: lighting-weather edit. Change ONLY the lighting, time of day, atmosphere and water reflections of this Kagoshima Castle (Tsurumaru Castle) illustration to a beautiful clear NIGHT. Keep the exact same 16:9 composition, camera, framing, building shapes, grey roofs, two-storey Goromon gate with white upper floor and natural wood lower floor, gate position, stone bridge, walls, moat, palace roofs, trees, plants and wooded Shiroyama ridge. The architecture and all object positions must be identical. Deep indigo starry sky, cool blue moonlit highlights, warm amber light subtly emanating from the existing gate interior and existing palace windows; soft reflected amber and blue light in the calm moat. The white upper gate, tiled roofs, stone walls and bridge remain clearly readable, not black silhouettes. Premium high-detail cinematic CG game illustration. Restrained luxurious atmosphere, accurate traditional architecture. No big moon covering scenery, no new modern spotlights or neon, no fantasy magic effects, no new buildings, no tower, no castle keep, no pagoda, no text, UI, borders, lettering or watermark. Full edge-to-edge art."
+  },
+  "processing": {
+    "tool": "sharp",
+    "purpose": "Technical resizing and WebP encoding only; no manual repainting or stylistic changes after image_gen.",
+    "fit": "cover",
+    "position": "centre",
+    "kernel": "lanczos3",
+    "sizes": [
+      {
+        "width": 400,
+        "height": 225
+      },
+      {
+        "width": 720,
+        "height": 405
+      },
+      {
+        "width": 1080,
+        "height": 608
+      },
+      {
+        "width": 1536,
+        "height": 864
+      }
+    ],
+    "webpEffort": 6,
+    "qualityPolicy": "WebP quality 82 for widths 400/720/1080; quality 80 for width 1536. The 1536 assets retain architectural detail within an approved 500 KB ceiling; responsive srcset can serve smaller assets where appropriate.",
+    "originalPngInRepository": false
+  },
+  "assets": [
+    {
+      "phase": "morning",
+      "path": "assets/responsive/kagoshima-town-morning-400.webp",
+      "width": 400,
+      "height": 225,
+      "format": "webp",
+      "quality": 82,
+      "bytes": 28860,
+      "sourceGeneratedFile": "exec-36dbea3d-591a-4b0c-a2d8-c25cad25f0e2.png"
+    },
+    {
+      "phase": "morning",
+      "path": "assets/responsive/kagoshima-town-morning-720.webp",
+      "width": 720,
+      "height": 405,
+      "format": "webp",
+      "quality": 82,
+      "bytes": 98592,
+      "sourceGeneratedFile": "exec-36dbea3d-591a-4b0c-a2d8-c25cad25f0e2.png"
+    },
+    {
+      "phase": "morning",
+      "path": "assets/responsive/kagoshima-town-morning-1080.webp",
+      "width": 1080,
+      "height": 608,
+      "format": "webp",
+      "quality": 82,
+      "bytes": 214912,
+      "sourceGeneratedFile": "exec-36dbea3d-591a-4b0c-a2d8-c25cad25f0e2.png"
+    },
+    {
+      "phase": "morning",
+      "path": "assets/responsive/kagoshima-town-morning-1536.webp",
+      "width": 1536,
+      "height": 864,
+      "format": "webp",
+      "quality": 80,
+      "bytes": 353218,
+      "sourceGeneratedFile": "exec-36dbea3d-591a-4b0c-a2d8-c25cad25f0e2.png"
+    },
+    {
+      "phase": "day",
+      "path": "assets/responsive/kagoshima-town-day-400.webp",
+      "width": 400,
+      "height": 225,
+      "format": "webp",
+      "quality": 82,
+      "bytes": 34686,
+      "sourceGeneratedFile": "exec-54983876-b507-4502-865d-6073dacf9213.png"
+    },
+    {
+      "phase": "day",
+      "path": "assets/responsive/kagoshima-town-day-720.webp",
+      "width": 720,
+      "height": 405,
+      "format": "webp",
+      "quality": 82,
+      "bytes": 117962,
+      "sourceGeneratedFile": "exec-54983876-b507-4502-865d-6073dacf9213.png"
+    },
+    {
+      "phase": "day",
+      "path": "assets/responsive/kagoshima-town-day-1080.webp",
+      "width": 1080,
+      "height": 608,
+      "format": "webp",
+      "quality": 82,
+      "bytes": 251382,
+      "sourceGeneratedFile": "exec-54983876-b507-4502-865d-6073dacf9213.png"
+    },
+    {
+      "phase": "day",
+      "path": "assets/responsive/kagoshima-town-day-1536.webp",
+      "width": 1536,
+      "height": 864,
+      "format": "webp",
+      "quality": 80,
+      "bytes": 426282,
+      "sourceGeneratedFile": "exec-54983876-b507-4502-865d-6073dacf9213.png"
+    },
+    {
+      "phase": "night",
+      "path": "assets/responsive/kagoshima-town-night-400.webp",
+      "width": 400,
+      "height": 225,
+      "format": "webp",
+      "quality": 82,
+      "bytes": 28374,
+      "sourceGeneratedFile": "exec-003323b1-b694-42dd-a40a-ddd22a198635.png"
+    },
+    {
+      "phase": "night",
+      "path": "assets/responsive/kagoshima-town-night-720.webp",
+      "width": 720,
+      "height": 405,
+      "format": "webp",
+      "quality": 82,
+      "bytes": 98298,
+      "sourceGeneratedFile": "exec-003323b1-b694-42dd-a40a-ddd22a198635.png"
+    },
+    {
+      "phase": "night",
+      "path": "assets/responsive/kagoshima-town-night-1080.webp",
+      "width": 1080,
+      "height": 608,
+      "format": "webp",
+      "quality": 82,
+      "bytes": 213900,
+      "sourceGeneratedFile": "exec-003323b1-b694-42dd-a40a-ddd22a198635.png"
+    },
+    {
+      "phase": "night",
+      "path": "assets/responsive/kagoshima-town-night-1536.webp",
+      "width": 1536,
+      "height": 864,
+      "format": "webp",
+      "quality": 80,
+      "bytes": 352672,
+      "sourceGeneratedFile": "exec-003323b1-b694-42dd-a40a-ddd22a198635.png"
+    }
+  ]
+}

@@ -93,16 +93,23 @@ html[data-presentation-motion="quiet"] .painted-art>.art-surface{transition:none
 
 
 /* Derivatives keep paint on the original node while its rank or level changes. */
-.painted-art[data-art-sheet="small"]:not(.operator-portrait):not(.deputy-portrait)>.art-surface {
+.painted-art[data-art-sheet="small"]:not(.operator-portrait):not(.deputy-portrait):not(.special-castle-painting)>.art-surface {
  background-size:var(--small-size);
  background-position:var(--small-x) var(--small-y);
 }
-.painted-art[data-art-sheet="native"]:not(.operator-portrait):not(.deputy-portrait)>.art-surface {
+.painted-art[data-art-sheet="native"]:not(.operator-portrait):not(.deputy-portrait):not(.special-castle-painting)>.art-surface {
  background-size:var(--native-size);
  background-position:var(--native-x) var(--native-y);
 }
 
 /* Each facility uses its own atlas cell with proportional cover cropping. */
+.special-castle-painting { background-color:#172b24; box-shadow:inset 0 0 0 1px #f0cd87,0 0 16px #bf994c38; }
+.special-castle-painting>.art-surface { background-size:cover; background-position:50% 52%; }
+.special-castle-panorama { margin:12px 0; overflow:hidden; border:1px solid #d6b77791; border-radius:8px; background:#102622; }
+.special-castle-panorama img { display:block; width:100%; height:auto; aspect-ratio:16/9; object-fit:cover; }
+.special-castle-panorama figcaption { padding:9px 12px; color:#f3ddb0; font-size:.875rem; line-height:1.6; }
+.special-castle-note { color:#f3ddb0; font-size:.875rem; line-height:1.65; }
+
 .facility-painting > .art-surface,
 .facility-painting.portrait-cell > .art-surface { inset: 0; box-shadow: none; }
 .facility-art-viewport { display: block; width: 100%; height: 100%; overflow: hidden; }
@@ -130,3 +137,9 @@ html[data-presentation-motion="quiet"] .painted-art>.art-surface{transition:none
 @media(max-width:600px) {
  .officer-detail-top:has(.deputy-portrait) { flex-direction:column; align-items:center; }
 }
+
+/* The independent Kagoshima scene must never be cropped as an atlas cell. */
+.castle-banner:has([data-castle-art="kagoshima"]),
+.castle-detail .castle-banner:has([data-castle-art="kagoshima"]),
+.modal-body>.castle-banner:has([data-castle-art="kagoshima"]) { aspect-ratio:16/9; }
+.castle-detail-art.special-castle-painting { aspect-ratio:16/9; }

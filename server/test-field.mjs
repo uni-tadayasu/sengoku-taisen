@@ -55,7 +55,7 @@ try {
   assert(all.players.find(p=>p.playerId===a.user.id).self);assert(all.players.find(p=>p.playerId===a.user.id).online);
   assert.equal(all.players.find(p=>p.playerId===b.user.id).online,false);assert(all.players.find(p=>p.playerId===b.user.id).attackable);
   assert(all.players.every(p=>p.keepLevel===base.state.buildings.keep),'initial uploaded bases publish their completed keep level');
-  const publicText=JSON.stringify(publicList);for(const secret of ['token','writer_device','deviceName','resources','save_json','request_hash','commit_token'])assert(!publicText.includes(secret));
+  const publicText=JSON.stringify(publicList);for(const secret of ['token','writer_device','deviceName','resources','save_json','request_hash','commit_token'])assert(!publicText.includes(JSON.stringify(secret)+':'));
   assert((await me(a)).attack.ready);assert.equal((await me(missing)).self,null);assert.equal((await me(missing)).attack.ready,false);
   await api('/field?limit=101',{expected:400});await api('/field/me',{expected:401});
   await api('/field/attack',post(null,attackBody(a,b,1),401));
@@ -79,7 +79,7 @@ try {
   assert(battle.attackerLost<=Math.floor(request.troops*.35));assert(battle.defenderLost.troops<=defenderTransit.state.troops*.1);assert(battle.defenderLost.garrison<=defenderTransit.state.castles[beforeB.state.home].troops*.1);
   assert.equal(afterA.state.troops,transit.state.troops+request.troops-battle.attackerLost);assert.equal(afterB.state.troops,defenderTransit.state.troops-battle.defenderLost.troops);assert.equal(afterB.state.castles[beforeB.state.home].troops,defenderTransit.state.castles[beforeB.state.home].troops-battle.defenderLost.garrison);
   for(const key of ['worldClock','jobs','claimedQuests','magatama','buildings','tech'])assert.deepEqual(afterB.state[key],defenderTransit.state[key],key+' equals ordinary defender progress');
-  for(const resource of ['gold','rice','wood','stone']){assert(battle.loot[resource]<=500);assert(battle.loot[resource]<=defenderTransit.state.resources[resource]*.05);assert.equal(afterB.state.resources[resource],defenderTransit.state.resources[resource]-battle.loot[resource]);assert.equal(afterA.state.resources[resource]+afterB.state.resources[resource],transit.state.resources[resource]+defenderTransit.state.resources[resource]);}
+  for(const resource of ['gold','rice','wood','stone']){assert.equal(battle.loot[resource],battle.won?Math.min(Math.floor(defenderTransit.state.resources[resource]*.5),100000000-transit.state.resources[resource]):0);assert.equal(afterB.state.resources[resource],defenderTransit.state.resources[resource]-battle.loot[resource]);assert.equal(afterA.state.resources[resource]+afterB.state.resources[resource],transit.state.resources[resource]+defenderTransit.state.resources[resource]);}
   const replay=await attack(a,request);assert(replay.idempotent);assert.partialDeepStrictEqual(replay.battle,battle);assert.equal(replay.revision,3);assert.equal(battles(),1);assert.deepEqual(dbSave(a),afterA);assert.deepEqual(dbSave(b),afterB);
   assert.equal((await attack(a,{...request,targetPlayerId:c.user.id},409)).error.code,'REQUEST_ID_REUSED');
   assert.equal((await attack(a,attackBody(a,c,3),409)).error.code,'ATTACK_COOLDOWN');

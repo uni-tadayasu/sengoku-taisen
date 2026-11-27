@@ -11,14 +11,27 @@ const branchCommand=(h,p,action,extra,expected=200)=>h.api('/branches/'+action,p
 const attackBody=(h,p,target,parent='nijo',branchId)=>({requestId:crypto.randomUUID(),deviceId:p.deviceId,expectedRevision:row(h,p).revision,targetPlayerId:target.user.id,targetCastleId:parent,...(branchId?{targetBranchId:branchId}:{}),troops:1000,tactic:'balanced'});
 async function attack(h,p,target,parent='nijo',branchId,expected=200){
  const response=await h.api('/field/attack',post(p,attackBody(h,p,target,parent,branchId),expected));
- if(expected===200)response.data={...response.data,battle:await settleFieldMarch(h,p,response.data)};
+ if(expected===200){
+  const departure=response.data;h.now+=departure.march.remainingMs;
+  const beforeA=await advanceControl(h,p),beforeD=await advanceControl(h,target),arrived=await marches(h,p),receipt=arrived.history.find(entry=>entry.id===departure.march.id);
+  assert.equal(receipt?.status,'resolved');response.data={...departure,battle:receipt.battle,beforeA,beforeD};
+ }
  return response;
 }
 const marches=async(h,p)=>(await h.api('/marches?deviceId='+p.deviceId,{token:p.token})).data;
+async function advanceControl(h,p){
+ const view=(await h.api('/sync?deviceId='+p.deviceId,{token:p.token})).data;
+ const game=GameEngine.fromSave(view.save,GAME_OFFICERS,{isAdmin:view.user.isAdmin,isStaff:view.user.isStaff,isDeputy:view.user.isDeputy,staffBase:view.staffBase,maintenanceAuthority:view.maintenanceAuthority,branchAuthority:{resolvedElapsedMs:view.branchResolvedElapsedMs}});
+ const advanced=game.applyWorldClock(view.clock,{maxSeconds:86400,deferCycleSettlement:true});assert(advanced.ok&&!advanced.pending&&!advanced.settlementRequired);return JSON.parse(game.exportSave());
+}
+function assertResourceTransfer(h,p,target,result){
+ const {beforeA,beforeD,battle}=result;
+ for(const key of ['gold','rice','wood','stone']){const expected=battle.won?Math.min(Math.floor(beforeD.state.resources[key]/2),100000000-beforeA.state.resources[key]):0;assert.equal(battle.loot[key],expected);assert.equal(save(h,p).state.resources[key],beforeA.state.resources[key]+expected);assert.equal(save(h,target).state.resources[key],beforeD.state.resources[key]-expected);}
+}
 const clockAt=(h,at)=>h.sql.prepare('UPDATE world_clock SET base_elapsed_ms=?,anchor_real_ms=?,revision=revision+1').run(at,h.now);
 function align(h,p,at){updateSave(h,p,s=>{s.turn=Math.floor(at/60000);s.realtime.elapsed=at%60000/1000;s.worldClock.elapsedMs=at;s.command=3+Math.floor(s.buildings.keep/8);});}
 async function force(won,run){const old=crypto.getRandomValues;crypto.getRandomValues=function(value){return value instanceof Uint32Array&&value.length===1?value.fill(won?0:0xffffffff):old.call(crypto,value);};try{return await run();}finally{crypto.getRandomValues=old;}}
-const core=p=>({castles:p.state.castles,resources:p.state.resources,troops:p.state.troops,morale:p.state.morale,buildings:p.state.buildings,army:p.state.army,governors:p.state.governors,tech:p.state.tech});
+const core=p=>({castles:p.state.castles,troops:p.state.troops,morale:p.state.morale,buildings:p.state.buildings,army:p.state.army,governors:p.state.governors,tech:p.state.tech});
 const effects=h=>Object.fromEntries(['player_saves','branch_states','branch_requests','field_requests','field_battles','covert_requests','covert_battles','mail_campaigns'].map(table=>[table,h.sql.prepare('SELECT * FROM '+table).all()]));
 function seedBranches(h,p,branches,jobs=[]){
  const at=save(h,p).state.worldClock.elapsedMs;updateSave(h,p,s=>{s.branches=structuredClone(branches);s.jobs=[...s.jobs.filter(j=>j.kind!=='branch'),...jobs.map(job=>({...job,remainingSeconds:(job.completesElapsedMs-at)/1000,remaining:Math.ceil((job.completesElapsedMs-at)/60000)}))];});
@@ -36,8 +49,8 @@ try{
   const deadline=Math.max(...branchState(h,defender).jobs.map(j=>j.completesElapsedMs));clockAt(h,deadline);align(h,attacker,deadline);
   target=(await h.api('/field',{token:attacker.token})).data.targets.find(t=>t.playerId===defender.user.id&&t.targetCastleId==='nijo');assert.equal(target.attackable,false);assert(target.branches.every(b=>b.level===1&&!b.building&&b.attackable&&b.defensePower>0&&b.defenseTroops>0));assert.match(target.attackReason,/支拠点/);assert.equal((await h.api('/field')).data.rules.branchBattles,true);
   const before=effects(h),blocked=await attack(h,attacker,defender,'nijo',undefined,409);assert.equal(blocked.data.error.code,'BRANCHES_REQUIRED');assert.deepEqual(effects(h),before);
-  const mainBefore=core(save(h,defender)),actorBefore=save(h,attacker),first=(await force(true,()=>attack(h,attacker,defender,'nijo','nijo_north'))).data;
-  assert.equal(first.battle.battleMode,'branch');assert.equal(first.battle.branchId,'nijo_north');assert.equal(first.battle.branchFallen,true);assert.equal(first.battle.capture.captured,false);assert(Object.values(first.battle.loot).every(n=>n===0));assert(Object.values(first.battle.rewards).every(n=>n===0));assert.deepEqual(first.battle.defenderLost,{troops:0,garrison:0});assert.deepEqual(core(save(h,defender)),mainBefore);const incomeOnly=GameEngine.fromSave(first.save,GAME_OFFICERS);assert(incomeOnly.applyWorldClock((await h.api('/world-clock')).data.clock).ok);assert.equal(save(h,attacker).state.resources.gold,incomeOnly.state.resources.gold);
+  const actorBefore=save(h,attacker),first=(await force(true,()=>attack(h,attacker,defender,'nijo','nijo_north'))).data;
+  assert.equal(first.battle.battleMode,'branch');assert.equal(first.battle.branchId,'nijo_north');assert.equal(first.battle.branchFallen,true);assert.equal(first.battle.capture.captured,false);assert.equal(first.battle.lootPolicy,'half-resources-v1');assertResourceTransfer(h,attacker,defender,first);assert(Object.values(first.battle.rewards).every(n=>n===0));assert.deepEqual(first.battle.defenderLost,{troops:0,garrison:0});assert.deepEqual(core(save(h,defender)),core(first.beforeD));
   assert.deepEqual(save(h,attacker).state.stats,actorBefore.state.stats);assert.deepEqual(save(h,attacker).state.claimedQuests,actorBefore.state.claimedQuests);assert.equal(GameEngine.fromSave(save(h,attacker),GAME_OFFICERS).questStatus('first_battle').complete,false);
   const one=branchState(h,defender).branches;assert.equal(one.find(b=>b.id==='nijo_north').fallen,true);assert.equal(one.find(b=>b.id==='nijo_east').fallen,false);assert.equal((await attack(h,attacker,defender,'nijo',undefined,409)).data.error.code,'BRANCHES_REQUIRED');
   const nextEast=(await h.api('/world-clock')).data.clock.elapsedMs+60000;clockAt(h,nextEast);align(h,attacker,nextEast);await h.api('/sync/lease',post(attacker,{deviceId:attacker.deviceId}));await force(true,()=>attack(h,attacker,defender,'nijo','nijo_east'));
@@ -49,7 +62,7 @@ try{
   const defender=await fixture(h,'改竄対策の城主',{holdings:['nijo']}),attacker=await fixture(h,'改竄対策の攻め手',{startCastle:'sakamoto'});seedBranches(h,defender,[completed('nijo','north')]);
   const original=save(h,defender);for(const forged of [[],[{...completed('nijo','north'),fallen:true}],{untrusted:true}]){const imported=structuredClone(original);imported.state.branches=forged;imported.state.jobs=[];const saved=(await h.api('/sync',{method:'PUT',token:defender.token,body:{deviceId:defender.deviceId,revision:row(h,defender).revision,save:imported}})).data;assert.equal(saved.save.state.branches[0].fallen,false);}
   await force(true,()=>attack(h,attacker,defender,'nijo','nijo_north'));assert.equal(branchState(h,defender).branches[0].fallen,true);
-  const restored=(await h.api('/sync',{method:'PUT',token:defender.token,body:{deviceId:defender.deviceId,revision:row(h,defender).revision,save:original}})).data;assert.equal(restored.save.state.branches[0].fallen,true);assert.equal(branchState(h,defender).branches[0].fallen,true);
+  const current=save(h,defender);current.state.branches=original.state.branches;const restored=(await h.api('/sync',{method:'PUT',token:defender.token,body:{deviceId:defender.deviceId,revision:row(h,defender).revision,save:current}})).data;assert.equal(restored.save.state.branches[0].fallen,true);assert.equal(branchState(h,defender).branches[0].fallen,true);
  });
  await scope('defeat cancels an upgrade, repair keeps its completed level and does not block the parent until completion',async h=>{
   const defender=await fixture(h,'修復する城主',{holdings:['nijo']}),attacker=await fixture(h,'修復を監視する領主',{startCastle:'sakamoto'}),branch=completed('nijo','north',5),cost=GameEngine.branchUpgradeCost('nijo',5);
@@ -62,8 +75,8 @@ try{
  await scope('Edo branches retain protected main assets and Kyoto-origin assaults still require current Emperor authority',async h=>{
   const admin=await fixture(h,'支城を持つ江戸',{admin:true}),staff=await fixture(h,'支城を攻める御所担当',{staff:true}),ordinary=await fixture(h,'他地域の攻め手');seedBranches(h,admin,[completed('edo','west',8)]);
   const denied=(await h.api('/field',{token:staff.token})).data.targets.find(t=>t.playerId===admin.user.id&&t.targetCastleId==='edo');assert.equal(denied.branches[0].attackable,false);assert.match(denied.branches[0].attackReason,/天皇/);const before=effects(h);assert.equal((await attack(h,staff,admin,'edo','edo_west',403)).data.error.code,'COURT_EDO_ATTACK_REQUIRED');assert.deepEqual(effects(h),before);
-  await appoint(h,staff);const main=core(save(h,admin)),result=(await force(true,()=>attack(h,staff,admin,'edo','edo_west'))).data;assert.equal(result.battle.battleMode,'branch');assert.equal(result.battle.defenderRevision,row(h,admin).revision);assert.deepEqual(core(save(h,admin)),main);assert.equal(branchState(h,admin).branches[0].fallen,true);assert.equal(result.battle.rewards.gold,0);assert.equal(result.battle.capture.captured,false);
-  const nextMain=(await h.api('/world-clock')).data.clock.elapsedMs+60000;clockAt(h,nextMain);align(h,ordinary,nextMain);await h.api('/sync/lease',post(ordinary,{deviceId:ordinary.deviceId}));const mainBattle=(await force(true,()=>attack(h,ordinary,admin,'edo'))).data;assert.equal(mainBattle.battle.battleMode,'reward');assert.deepEqual(core(save(h,admin)),main);
+  await appoint(h,staff);const result=(await force(true,()=>attack(h,staff,admin,'edo','edo_west'))).data;assert.equal(result.battle.battleMode,'branch');assert.equal(result.battle.defenderRevision,row(h,admin).revision);assert.deepEqual(core(save(h,admin)),core(result.beforeD));assertResourceTransfer(h,staff,admin,result);assert.equal(branchState(h,admin).branches[0].fallen,true);assert.equal(result.battle.rewards.gold,0);assert.equal(result.battle.capture.captured,false);
+  const nextMain=(await h.api('/world-clock')).data.clock.elapsedMs+60000;clockAt(h,nextMain);align(h,ordinary,nextMain);await h.api('/sync/lease',post(ordinary,{deviceId:ordinary.deviceId}));const mainBattle=(await force(true,()=>attack(h,ordinary,admin,'edo'))).data;assert.equal(mainBattle.battle.battleMode,'reward');assert.deepEqual(core(save(h,admin)),core(mainBattle.beforeD));assertResourceTransfer(h,ordinary,admin,mainBattle);
  });
  await scope('a branch change, repair race or lost Emperor appointment aborts the complete field transaction',async h=>{
   const admin=await fixture(h,'競合する江戸',{admin:true}),staff=await fixture(h,'競合する攻め手',{staff:true});seedBranches(h,admin,[completed('edo','north')]);await appoint(h,staff);

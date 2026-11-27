@@ -32,7 +32,7 @@ const db={
   }
 };
 const env={DB:db,SENGOKU_ADMIN_KEY:crypto.randomUUID()+crypto.randomUUID()};
-let clock=1795219200000,calls=0;
+let clock=1795219200000,calls=0;const maintenanceByToken=new Map();
 const originalNow=Date.now;
 Date.now=()=>clock;
 const tick=(milliseconds)=>{clock+=milliseconds;};
@@ -40,12 +40,14 @@ const base=JSON.parse(readFileSync(new URL('./fixtures/valid-save.json',import.m
 const fresh=()=>structuredClone(base);
 const ieyasu='of_b0616adde162';
 async function api(path,{method='GET',token,body,expected=200,ip='192.0.2.1',rawBody}={}) {
+  if(path==='/sync'&&method==='PUT'&&body&&!Object.hasOwn(body,'maintenanceRevision')&&maintenanceByToken.has(token))body={...body,maintenanceRevision:maintenanceByToken.get(token).revision};
   const headers={Origin:'http://127.0.0.1:4173','CF-Connecting-IP':ip};
   if(token)headers.Authorization='Bearer '+token;
   if(body!==undefined||rawBody!==undefined)headers['Content-Type']='application/json';
   const request=new Request('https://communications.example/api/v1'+path,{method,headers,body:rawBody??(body===undefined?undefined:JSON.stringify(body))});
   const response=await worker.fetch(request,env,{});
   const text=await response.text(),data=text?JSON.parse(text):null;
+  if(token&&data?.maintenanceAuthority)maintenanceByToken.set(token,data.maintenanceAuthority);
   calls++;
   assert.equal(response.status,expected,JSON.stringify({path,expected,status:response.status,data,sqlError:db.lastError}));
   assert.equal(response.headers.get('cache-control'),'no-store');
@@ -61,6 +63,11 @@ const assign=async (operator,target,action,requestId=crypto.randomUUID(),expecte
 const me=async p=>(await api('/me',{token:p.token})).data.user;
 const adminRead=async (p,expected=200)=>(await api('/chat?channel=admin',{token:p?.token,expected})).data;
 const memberCount=id=>Number(database.prepare('SELECT COUNT(*) AS n FROM staff_members WHERE user_id=?').get(id).n);
+function progress(snapshot,clock){
+  const game=GameEngine.fromSave(snapshot.save,GAME_OFFICERS,{isAdmin:snapshot.user.isAdmin,isStaff:snapshot.user.isStaff,staffBase:snapshot.staffBase,maintenanceAuthority:snapshot.maintenanceAuthority});
+  const advanced=game.applyWorldClock(clock,{maxSeconds:86400,deferCycleSettlement:true});assert(advanced.ok&&!advanced.pending&&!advanced.settlementRequired);
+  return {state:JSON.parse(game.exportSave()).state,personal:game.getStaffPersonalProgress()};
+}
 try{
   const operator=await session('役職管理の運営'),a=await session('支援スタッフA'),b=await session('一般領主B'),c=await session('一般領主C');
   for(const p of [operator,a,b,c]){assert.equal(p.user.isAdmin,false);assert.equal(p.user.isStaff,false);}
@@ -81,14 +88,14 @@ try{
   const missingRequestId=(await api('/admin/staff',post(operator.token,{targetPlayerId:a.user.id,action:'appoint'},400))).data;assert.equal(missingRequestId.error.code,'INVALID_INPUT');assert.equal(memberCount(a.user.id),1);
   const naturalReplay=await assign(operator,a,'appoint');assert(naturalReplay.idempotent);assert.equal(naturalReplay.staff[0].appointedAt,appointed.staff[0].appointedAt);
   await assign(operator,b,'appoint',appointId,409);await assign(operator,a,'dismiss',appointId,409);
-  const staffLease=await lease(a.token,'staff-device');assert.equal(staffLease.user.isStaff,true);assert.deepEqual(staffLease.entitlements,{edo:false,ieyasuU:false});
+  const staffLease=await lease(a.token,'staff-device');assert.equal(staffLease.user.isStaff,true);assert.deepEqual(staffLease.entitlements,{edo:false,ieyasuU:false,kagoshima:false,shimazuU:false});
   const saved=(await api('/sync',write(a.token,'staff-device',0,fresh()))).data;
   assert.equal(saved.user.isAdmin,false);assert.equal(saved.user.isStaff,true);assert.equal(saved.save.state.home,'kyoto_gosho');assert(saved.staffBase?.protected);assert(!saved.save.state.officerVariants.includes(ieyasu+':U'));
   const edo=fresh();edo.state.home='edo';edo.state.castles.edo.owner=edo.state.clan;
   assert.equal((await api('/sync',write(a.token,'staff-device',1,edo,403))).data.error.code,'ADMIN_ENTITLEMENT_REQUIRED');
   const exclusive=fresh();exclusive.state.officers.push(ieyasu);exclusive.state.officerVariants.push(ieyasu+':U');
   await api('/sync',write(a.token,'staff-device',1,exclusive,403));
-  const forged=fresh();forged.state.isStaff=true;forged.state.isAdmin=true;forged.state.role='admin';
+  const forged=structuredClone(saved.save);forged.state.isStaff=true;forged.state.isAdmin=true;forged.state.role='admin';
   const stripped=(await api('/sync',write(a.token,'staff-device',saved.revision,forged))).data;assert.equal(stripped.save.state.isStaff,undefined);assert.equal(stripped.save.state.role,undefined);assert.equal(stripped.user.isAdmin,false);
   await api('/admin/staff',{token:a.token,expected:403});await assign(a,b,'appoint',crypto.randomUUID(),403);await assign(a,a,'dismiss',crypto.randomUUID(),403);
   await api('/admin/announcement',post(a.token,{text:'権限なし'},403));
@@ -113,13 +120,20 @@ try{
   let defeat;const random=crypto.getRandomValues;crypto.getRandomValues=array=>array.fill(0xffffffff);
   try{defeat=(await api('/field/attack',post(b.token,{targetPlayerId:a.user.id,targetCastleId:'kyoto_gosho',troops:300,tactic:'balanced',requestId:crypto.randomUUID(),deviceId:'ordinary-device',expectedRevision:attackerSaved.revision}))).data;}finally{crypto.getRandomValues=random;}
   assert(defeat.marching);assert.equal(defeat.battle,null);tick(defeat.march.remainingMs);
+  const arrivalClock=(await api('/world-clock')).data.clock,defenderArrival=progress((await api('/sync',{token:a.token})).data,arrivalClock),attackerArrival=progress((await api('/sync?deviceId=ordinary-device',{token:b.token})).data,arrivalClock);
   const arrived=(await api('/marches?deviceId=ordinary-device',{token:b.token})).data;
   assert.equal(arrived.history[0].id,defeat.march.id);assert.equal(arrived.history[0].status,'resolved');defeat={save:arrived.save,battle:arrived.history[0].battle};
-  assert.equal(defeat.battle.battleMode,'reward');assert.equal(defeat.battle.won,false);assert.equal(defeat.battle.defenderRevision,defenderBefore.revision);assert.deepEqual(defeat.battle.defenderLost,{troops:0,garrison:0});
+  assert.equal(defeat.battle.battleMode,'reward');assert.equal(defeat.battle.won,false);assert.equal(defeat.battle.defenderRevision,defenderBefore.revision+1);assert.deepEqual(defeat.battle.defenderLost,{troops:0,garrison:0});
   assert.deepEqual(defeat.battle.loot,{gold:0,rice:0,wood:0,stone:0});assert.deepEqual(defeat.battle.rewards,{gold:0,rice:0,wood:0,stone:0});
+  assert.equal(defeat.battle.lootPolicy,'half-resources-v1');assert.equal(defeat.battle.lootFraction,.5);assert.deepEqual(defeat.save.state.resources,attackerArrival.state.resources,'A defeated attacker receives no resources beyond ordinary progress');
   assert.equal(defeat.save.state.home,attackerSaved.save.state.home);assert.notEqual(defeat.save.state.castles.kyoto_gosho.owner,defeat.save.state.clan);
-  assert.deepEqual(database.prepare('SELECT * FROM player_saves WHERE user_id=?').get(a.user.id),defenderBefore,'Kyoto palace combat preserves the staff save and revision');
-  assert.deepEqual(database.prepare("SELECT * FROM staff_base WHERE id='kyoto_gosho'").get(),sharedBefore);assert.deepEqual(database.prepare('SELECT * FROM staff_campaign_backups WHERE user_id=?').get(a.user.id),backupBefore);
+  const defenderAfter=database.prepare('SELECT * FROM player_saves WHERE user_id=?').get(a.user.id),defenderState=JSON.parse(defenderAfter.save_json).state;
+  assert.equal(defenderAfter.revision,defeat.battle.defenderRevision);assert.deepEqual(defenderState.resources,defenderArrival.state.resources,'Defended resources retain ordinary time progression without any loot debit');
+  assert.deepEqual(defenderState.castles,defenderArrival.state.castles);assert.deepEqual(defenderState.buildings,defenderArrival.state.buildings);assert.equal(defenderState.troops,defenderArrival.state.troops);assert.equal(defenderState.magatama,defenderArrival.state.magatama);
+  assert.deepEqual(database.prepare("SELECT * FROM staff_base WHERE id='kyoto_gosho'").get(),sharedBefore);
+  const backupAfter=database.prepare('SELECT * FROM staff_campaign_backups WHERE user_id=?').get(a.user.id),personal=JSON.parse(backupAfter.save_json).state;
+  assert.equal(backupAfter.term_id,backupBefore.term_id);assert.equal(personal.home,JSON.parse(backupBefore.save_json).state.home);assert.deepEqual(personal.resources,JSON.parse(backupBefore.save_json).state.resources);
+  if(defenderArrival.personal)for(const key of ['level','wall','troops'])assert.equal(personal.castles[personal.home][key],defenderArrival.personal.castle[key],'Personal home '+key+' follows ordinary progress only');
   const code=(await api('/devices/pair-code',post(a.token,{}))).data.code;
   const linked=(await api('/devices/link',post(null,{code,deviceName:'スタッフの別端末'}))).data;assert(linked.user.isStaff);assert(!linked.user.isAdmin);await adminRead(linked);
   const dismissId=crypto.randomUUID(),dismissed=await assign(operator,a,'dismiss',dismissId);assert.equal(dismissed.idempotent,false);assert.equal(dismissed.user.isStaff,false);assert.equal(dismissed.staff.length,0);assert.equal(memberCount(a.user.id),0);
@@ -159,6 +173,6 @@ try{
   assert.equal((await me(b)).isStaff,memberCount(b.user.id)===1);assert.equal((await me(b)).isAdmin,false);
   const roster=(await api('/admin/staff',{token:operator.token})).data.staff;assert(roster.every(p=>p.isStaff&&!p.isAdmin));assert(!JSON.stringify(roster).includes('token'));
   assert.equal(database.prepare("SELECT value FROM settings WHERE key='adminUserId'").get().value,operator.user.id);
-  console.log(JSON.stringify({ok:true,calls,checks:['separate server-owned staff and operator roles','operator-only appoint and dismiss','no self appointment or authority-field escalation','idempotent and concurrent role operations','old retry cannot reverse later dismissal','staff chat read/write without public role badges','no privileged assets or administrative controls for staff','Kyoto palace reward-combat defeat leaves staff save, revision, shared base and personal backup untouched','paired devices inherit and lose staff access','private roles on me/sync and concealed roles on online/search/field','revocation between authentication and SQL read/write','transactional primary-operator guard','rollback and safe role-operation retry','single primary operator preserved']},null,2));
+  console.log(JSON.stringify({ok:true,calls,checks:['separate server-owned staff and operator roles','operator-only appoint and dismiss','no self appointment or authority-field escalation','idempotent and concurrent role operations','old retry cannot reverse later dismissal','staff chat read/write without public role badges','no privileged assets or administrative controls for staff','Kyoto palace defeat transfers no resources, commits ordinary defender progress and preserves troops, facilities, ownership and shared base','paired devices inherit and lose staff access','private roles on me/sync and concealed roles on online/search/field','revocation between authentication and SQL read/write','transactional primary-operator guard','rollback and safe role-operation retry','single primary operator preserved']},null,2));
 }finally{Date.now=originalNow;database.close();}
 

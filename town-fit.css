@@ -293,3 +293,7 @@ html:not(.sengoku-desktop-fit) #main .town-status-panels > .panel:last-child { g
   #main .town-castle-heading-row > :not(.town-castle-heading-copy) { grid-column: 1; grid-row: 4; width: 100%; min-width: 0; min-height: 44px; margin-top: 4px; }
   #main .town-castle-level-up small { display: inline-block; margin: 0 0 0 8px; }
 }
+
+/* Match the historical castle panorama on touch screens before it decodes. */
+#main .town-scene[data-town-castle="kagoshima"] { aspect-ratio:16/9; }
+html.sengoku-desktop-fit #main .town-scene[data-town-castle="kagoshima"] { aspect-ratio:auto; }

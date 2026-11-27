@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {harness,settleFieldMarch} from './test-support.mjs';
+import {harness} from './test-support.mjs';
 import {GameEngine,GAME_OFFICERS} from './game-runtime.js';
 
 // Every user, save, role, clock and shared base in this suite exists only in
@@ -42,6 +42,11 @@ const upgrade=(p,payload,expected=200)=>api('/staff/base/upgrade',post(p.token,p
 function barrier(){let entered=0,release;const gate=new Promise(done=>release=done);h.beforeBatch=async statements=>{if(statements.some(s=>s.sql.includes('INSERT INTO staff_base_requests'))){entered++;if(entered===2){h.beforeBatch=null;release();}await gate;}};return()=>entered;}
 function balances(p){const current=save(p);return{resources:structuredClone(current.state.resources),command:current.state.command,revision:player(p).revision};}
 function assertPaid(before,after,receipt){for(const kind of ['gold','rice','wood','stone'])assert.equal(after.resources[kind],before.resources[kind]-(receipt.cost[kind]||0),kind+' charged exactly once');assert.equal(after.command,before.command-1);assert.equal(after.revision,before.revision+1);}
+function progress(snapshot,clock){
+ const game=GameEngine.fromSave(snapshot.save,GAME_OFFICERS,{isAdmin:snapshot.user.isAdmin,isStaff:snapshot.user.isStaff,staffBase:snapshot.staffBase,maintenanceAuthority:snapshot.maintenanceAuthority});
+ const advanced=game.applyWorldClock(clock,{maxSeconds:86400,deferCycleSettlement:true});assert(advanced.ok&&!advanced.pending&&!advanced.settlementRequired);
+ return {state:JSON.parse(game.exportSave()).state,personal:game.getStaffPersonalProgress()};
+}
 let operator;
 try{
  operator=await h.session('共同普請の運営');await api('/admin/claim',post(operator.token,{key:h.env.SENGOKU_ADMIN_KEY}));
@@ -131,17 +136,34 @@ try{
 
  const visible=(await api('/field?limit=100',{token:ordinary.token})).data;
  for(const p of [a,b]){const row=visible.players.find(row=>row.playerId===p.user.id);assert(row);assert.equal(row.homeCastleId,'kyoto_gosho');assert.equal(row.level,128);assert.equal(Object.hasOwn(row,'isStaff'),false);assert.equal(row.attackable,true);assert.equal(row.battleMode,'reward');assert.equal(row.capturable,false);}
- for(const privateKey of ['staffBase','personalHome','personalBaseCastle','requestId','request_hash','resources'])assert(!JSON.stringify(visible).includes(privateKey));
+ for(const privateKey of ['staffBase','personalHome','personalBaseCastle','requestId','request_hash','resources'])assert(!JSON.stringify(visible).includes('"'+privateKey+'":'));
  await align(ordinary);
  const protectedBeforeAttack={base:baseRow(),a:player(a),b:player(b),backups:sql.prepare('SELECT * FROM staff_campaign_backups ORDER BY user_id').all()};
  const rewardAttack={targetPlayerId:a.user.id,targetCastleId:'kyoto_gosho',troops:300,tactic:'balanced',requestId:crypto.randomUUID(),deviceId:ordinary.deviceId,expectedRevision:player(ordinary).revision};
  let departure;const random=crypto.getRandomValues;crypto.getRandomValues=array=>array.fill(0);
  try{departure=(await api('/field/attack',post(ordinary.token,rewardAttack))).data;}finally{crypto.getRandomValues=random;}
- const battle=await settleFieldMarch(h,ordinary,departure);
- assert.equal(battle.battleMode,'reward');assert.equal(battle.won,true);assert.equal(battle.defenderRevision,protectedBeforeAttack.a.revision);
- assert.deepEqual(battle.defenderLost,{troops:0,garrison:0});assert.deepEqual(battle.loot,{gold:0,rice:0,wood:0,stone:0});assert.deepEqual(battle.rewards,{gold:500,rice:500,wood:500,stone:500});
+ assert(departure.marching);assert.equal(departure.battle,null);h.now+=departure.march.remainingMs;
+ const arrivalClock=(await api('/world-clock')).data.clock,defenderArrival=progress(await sync(a),arrivalClock),attackerArrival=progress(await sync(ordinary),arrivalClock);
+ const arrived=(await api('/marches?deviceId='+ordinary.deviceId,{token:ordinary.token})).data,battleReceipt=arrived.history.find(entry=>entry.id===departure.march.id);
+ assert.equal(battleReceipt?.status,'resolved');const battle=battleReceipt.battle;
+ assert.equal(battle.battleMode,'reward');assert.equal(battle.won,true);assert.equal(battle.defenderRevision,protectedBeforeAttack.a.revision+1);
+ assert.deepEqual(battle.defenderLost,{troops:0,garrison:0});assert.deepEqual(battle.rewards,{gold:0,rice:0,wood:0,stone:0});assert.equal(battle.lootPolicy,'half-resources-v1');assert.equal(battle.lootFraction,.5);
+ const defenderAfter=save(a).state,attackerAfter=save(ordinary).state;
+ for(const key of ['gold','rice','wood','stone']){
+  const amount=Math.min(Math.floor(defenderArrival.state.resources[key]/2),100000000-attackerArrival.state.resources[key]);
+  assert.equal(battle.loot[key],amount,key+' uses the target member balance at arrival');
+  assert.equal(defenderAfter.resources[key],defenderArrival.state.resources[key]-amount,key+' leaves the untransferred balance with the target');
+  assert.equal(attackerAfter.resources[key],attackerArrival.state.resources[key]+amount,key+' credits the same amount to the attacker');
+ }
+ assert.equal(player(a).revision,battle.defenderRevision);assert.deepEqual(defenderAfter.castles,defenderArrival.state.castles);assert.deepEqual(defenderAfter.buildings,defenderArrival.state.buildings);assert.equal(defenderAfter.troops,defenderArrival.state.troops);assert.equal(defenderAfter.magatama,defenderArrival.state.magatama);
  assert.equal(battle.defenderProtectedUntilElapsedMs,battle.occurredElapsedMs+60000);
- assert.deepEqual({base:baseRow(),a:player(a),b:player(b),backups:sql.prepare('SELECT * FROM staff_campaign_backups ORDER BY user_id').all()},protectedBeforeAttack,'Victory cannot change either staff save, the shared base, its revision or personal backups');
+ assert.deepEqual(baseRow(),protectedBeforeAttack.base,'Victory cannot change the shared facilities or their revision');assert.deepEqual(player(b),protectedBeforeAttack.b,'Another staff member keeps their entire private save and revision');
+ for(const before of protectedBeforeAttack.backups){
+  const after=sql.prepare('SELECT * FROM staff_campaign_backups WHERE user_id=?').get(before.user_id);
+  if(before.user_id!==a.user.id){assert.deepEqual(after,before,'Another staff member keeps their personal backup');continue;}
+  const personal=JSON.parse(after.save_json).state;assert.equal(after.term_id,before.term_id);assert.equal(personal.home,JSON.parse(before.save_json).state.home);assert.deepEqual(personal.resources,JSON.parse(before.save_json).state.resources);
+  if(defenderArrival.personal)for(const key of ['level','wall','troops'])assert.equal(personal.castles[personal.home][key],defenderArrival.personal.castle[key],'Target personal home '+key+' retains ordinary progress');
+ }
  const afterReward=(await api('/field?limit=100',{token:ordinary.token})).data;
  for(const p of [a,b]){const target=afterReward.players.find(row=>row.playerId===p.user.id);assert.equal(target.attackable,false);assert.equal(target.protectedUntilElapsedMs,battle.defenderProtectedUntilElapsedMs,'The Kyoto palace protection period also covers another staff member');}
  for(const p of [a,b]){await api('/sync/lease',post(p.token,{deviceId:p.deviceId}));await align(p);}
@@ -150,7 +172,7 @@ try{
  const promotedRace=await api('/field/attack',post(a.token,{targetPlayerId:ordinary.user.id,troops:300,tactic:'balanced',requestId:crypto.randomUUID(),deviceId:a.deviceId,expectedRevision:player(a).revision},409));
  assert.equal(h.beforeBatch,null,'The target is promoted as the march reservation commits');assert.equal(promotedRace.data.error.code,'MARCH_STATE_CHANGED');
  assert.deepEqual(balances(a),actorBefore);assert.deepEqual(player(ordinary),targetBefore);assert.equal(sql.prepare('SELECT COUNT(*) n FROM field_battles').get().n,battleCount);assert.equal(sql.prepare('SELECT COUNT(*) n FROM field_requests').get().n,fieldRequestCount);sql.prepare('DELETE FROM staff_members WHERE user_id=?').run(ordinary.user.id);
- checks.push('Kyoto palace reward victory preserves both staff saves/shared base/backups, shares its protection period, and rejects a staff promotion at departure with 409');
+ checks.push('Kyoto palace victory transfers half the targeted member resources, preserves other staff saves and shared facilities, shares its protection period, and rejects a staff promotion at departure with 409');
 
  const oldSource=await staffBase(b),oldReplay=body(b,'building','market'),accepted=(await upgrade(b,oldReplay)).data;await assign(b,'dismiss');
  await api('/staff/base',{token:b.token,expected:403});await upgrade(b,oldReplay,403);const dismissed=await sync(b);assert.equal(dismissed.user.isStaff,false);assert.equal(dismissed.staffBase,null);assert.equal(dismissed.save.state.home,'himeji');

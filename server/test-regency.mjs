@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
-import {harness,settleFieldMarch} from './test-support.mjs';
+import {resolve} from 'node:path';
+import {harness} from './test-support.mjs';
 import {fixture,post,save,row,appoint,nominateSuccessor,certifySuccessor} from './test-court-support.mjs';
+import {GameEngine,GAME_OFFICERS} from './game-runtime.js';
 
-const {cleanRegent}=createRequire(import.meta.url)('../court.js');
+const {cleanRegent}=createRequire(import.meta.url)(process.argv[2]?resolve(process.argv[2]):'../court.js');
 function validateDirectory(value){assert.doesNotThrow(()=>cleanRegent(value),'The actual court UI must accept the regent directory');return value;}
 
 let checks=0,calls=0;
@@ -19,6 +21,13 @@ async function application(h,name='幕府を願う領主'){
  const result=(await h.api('/shogunate/open',post(p,{rightId,requestId:crypto.randomUUID()}))).data;return{...p,rightId,result};
 }
 const approve=async(h,p,rightId,expected=200)=>(await h.api('/shogunate/approve',post(p,{rightId,requestId:crypto.randomUUID()},expected))).data;
+async function force(won,run){const original=crypto.getRandomValues;crypto.getRandomValues=function(value){return value instanceof Uint32Array&&value.length===1?value.fill(won?0:0xffffffff):original.call(crypto,value);};try{return await run();}finally{crypto.getRandomValues=original;}}
+async function progress(h,player){
+ const snapshot=(await h.api('/sync?deviceId='+player.deviceId,{token:player.token})).data;
+ const game=GameEngine.fromSave(snapshot.save,GAME_OFFICERS,{isAdmin:snapshot.user.isAdmin,isStaff:snapshot.user.isStaff,staffBase:snapshot.staffBase,maintenanceAuthority:snapshot.maintenanceAuthority,branchAuthority:{resolvedElapsedMs:snapshot.branchResolvedElapsedMs}});
+ const advanced=game.applyWorldClock(snapshot.clock,{maxSeconds:86400,deferCycleSettlement:true});assert(advanced.ok&&!advanced.pending&&!advanced.settlementRequired);
+ return JSON.parse(game.exportSave()).state;
+}
 const network=globalThis.fetch;globalThis.fetch=async()=>{throw Error('Regency tests must not contact a real service');};
 try{
  await scope('only the current Chancellor can manage one Regent and candidate search preserves ordinary/staff distinction',async h=>{
@@ -44,9 +53,21 @@ try{
   const field=(await h.api('/field/me?deviceId='+staff.deviceId,{token:staff.token})).data;assert.equal(field.attack.canAttackEdoFromKyoto,true);
   await h.api('/court/succession',{token:staff.token,expected:403});const p=await application(h);await approve(h,staff,p.rightId);assert.equal(h.sql.prepare('SELECT user_id FROM court_leader').get(),undefined);
  });
- await scope('an appointed Kyoto Regent can depart for Edo and resolve a protected reward battle without becoming Emperor',async h=>{
-  const{admin,staff}=await setup(h);await appointRegent(h,admin,staff);const defender=row(h,admin),body={requestId:crypto.randomUUID(),targetPlayerId:admin.user.id,targetCastleId:'edo',troops:1000,tactic:'balanced',deviceId:staff.deviceId,expectedRevision:row(h,staff).revision};
-  const departure=(await h.api('/field/attack',post(staff,body))).data;assert.equal(departure.marching,true);const battle=await settleFieldMarch(h,staff,departure);assert.equal(battle.battleMode,'reward');assert.equal(battle.capture.captured,false);assert.deepEqual(row(h,admin),defender);assert.equal(save(h,staff).state.home,'kyoto_gosho');assert.equal(h.sql.prepare('SELECT * FROM court_leader').get(),undefined);
+ for(const won of [false,true])await scope('an appointed Kyoto Regent resolves an Edo '+(won?'victory with half-resource loot':'defeat without resource loot')+' while preserving both court roles and protected assets',async h=>{
+  const{admin,staff}=await setup(h);await appointRegent(h,admin,staff);const palace=h.sql.prepare('SELECT * FROM staff_base').get(),body={requestId:crypto.randomUUID(),targetPlayerId:admin.user.id,targetCastleId:'edo',troops:1000,tactic:'balanced',deviceId:staff.deviceId,expectedRevision:row(h,staff).revision};
+  const departure=(await force(won,()=>h.api('/field/attack',post(staff,body)))).data;assert.equal(departure.marching,true);assert.equal(departure.battle,null);h.now+=departure.march.remainingMs;
+  const attackerArrival=await progress(h,staff),defenderArrival=await progress(h,admin),defender=row(h,admin);
+  const arrival=(await h.api('/marches?deviceId='+staff.deviceId,{token:staff.token})).data,receipt=arrival.history.find(m=>m.id===departure.march.id);assert.equal(receipt?.status,'resolved');const battle=receipt.battle;
+  assert.equal(battle.won,won);assert.equal(battle.battleMode,'reward');assert.equal(battle.capture.captured,false);assert.deepEqual(battle.defenderLost,{troops:0,garrison:0});assert.equal(battle.lootPolicy,'half-resources-v1');assert.equal(battle.lootFraction,.5);assert.deepEqual(battle.rewards,{gold:0,rice:0,wood:0,stone:0});
+  const attackerAfter=save(h,staff).state,defenderAfter=save(h,admin).state;
+  for(const key of ['gold','rice','wood','stone']){
+   const amount=won?Math.min(Math.floor(defenderArrival.resources[key]/2),100000000-attackerArrival.resources[key]):0;
+   assert.equal(battle.loot[key],amount,key+' uses the actual balance at arrival only on victory');
+   assert.equal(attackerAfter.resources[key],attackerArrival.resources[key]+amount,key+' credits exactly the transferred amount');
+   assert.equal(defenderAfter.resources[key],defenderArrival.resources[key]-amount,key+' debits exactly the transferred amount');
+  }
+  assert.equal(battle.defenderRevision,defender.revision+1);assert.equal(row(h,admin).revision,battle.defenderRevision);assert.deepEqual(defenderAfter.castles,defenderArrival.castles);assert.deepEqual(defenderAfter.buildings,defenderArrival.buildings);assert.equal(defenderAfter.troops,defenderArrival.troops);assert.equal(defenderAfter.magatama,defenderArrival.magatama);assert.deepEqual(h.sql.prepare('SELECT * FROM staff_base').get(),palace);
+  assert.equal(defenderAfter.home,'edo');assert.equal(attackerAfter.home,'kyoto_gosho');assert.notEqual(attackerAfter.castles.edo.owner,attackerAfter.clan);assert.equal(h.sql.prepare('SELECT * FROM court_leader').get(),undefined);assert.equal(h.sql.prepare('SELECT user_id FROM court_regent').get().user_id,staff.user.id);
  });
  await scope('a Regent revoked before Kyoto-to-Edo arrival gets their army back and no battle is committed',async h=>{
   const{admin,staff}=await setup(h);await appointRegent(h,admin,staff);const defender=row(h,admin),body={requestId:crypto.randomUUID(),targetPlayerId:admin.user.id,targetCastleId:'edo',troops:1000,tactic:'balanced',deviceId:staff.deviceId,expectedRevision:row(h,staff).revision};
