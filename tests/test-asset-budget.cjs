@@ -50,7 +50,11 @@ const totalGzipBytes = rows.reduce((sum,row)=>sum+row.gzipBytes,0);
 // public configuration polling. Measured: 3,498,292 raw / 973,909 gzip bytes,
 // +23,197 / +6,398 from v5.10.0. Keep 2,708 raw / 1,391 gzip bytes of headroom.
 // The supplied MP3 is fetched on demand, outside these initial bundles.
-const rawBudget=3501000,gzipBudget=975300;
+// v5.11 adds imperial approvals, succession/regency controls and the private
+// court event workshop. Twenty presets and the planning AI stay on the Worker;
+// the entry includes the reviewed draft interface and authorization handling.
+// Preserve a bounded footprint with less than 6 KB raw / 2 KB gzip headroom.
+const rawBudget=3590000,gzipBudget=998000;
 assert(totalBytes <= rawBudget, `Initial bundles exceed the ${rawBudget} byte budget: ${totalBytes}`);
 assert(totalGzipBytes <= gzipBudget, `Initial bundles exceed the ${gzipBudget} gzip byte budget: ${totalGzipBytes}`);
 const html = fs.readFileSync(path.join(root,'index.html'),'utf8');

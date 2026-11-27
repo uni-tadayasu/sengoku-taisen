@@ -48,16 +48,22 @@ export async function resolvePublicCourtOffices(db,payload,now=Date.now()){
    EXISTS(SELECT 1 FROM court_leader l WHERE l.id=1 AND l.user_id=u.id
     AND l.term_id=COALESCE(sm.term_id,'legacy:'||sm.appointed_at) AND l.updated_at<=?) AS emperor,
    COALESCE((SELECT SUM(c.points) FROM court_contributions c WHERE c.actor_id=u.id),0) AS merit,
-   (SELECT a.office_id FROM court_external_offices a WHERE a.user_id=u.id AND a.appointed_at<=?) AS external_office
+   (SELECT a.office_id FROM court_external_offices a WHERE a.user_id=u.id AND a.appointed_at<=?) AS external_office,
+   EXISTS(SELECT 1 FROM court_retired_emperors r WHERE r.user_id=u.id AND r.retired_at<=?) AS retired_emperor,
+   EXISTS(SELECT 1 FROM court_regent g WHERE g.id=1 AND g.user_id=u.id AND g.appointed_at<=?
+    AND NOT EXISTS(SELECT 1 FROM court_retired_emperors r WHERE r.user_id=u.id)) AS regent
    FROM users u LEFT JOIN staff_members sm ON sm.user_id=u.id
    WHERE u.id IN (${page.map(()=>'?').join(',')})
-    AND NOT EXISTS(SELECT 1 FROM player_bans b WHERE b.user_id=u.id AND b.active=1)`,now,now,now,...page));
+    AND NOT EXISTS(SELECT 1 FROM player_bans b WHERE b.user_id=u.id AND b.active=1)`,now,now,now,now,now,...page));
  }
  // One ordered batch supplies a consistent snapshot for every visible label.
  const result=await db.batch(queries),offices=new Map();
  for(const batch of result)for(const row of batch.results||[]){
   if(row.chancellor)offices.set(row.id,{title:'太政大臣',kind:'chancellor'});
-  else if(row.official){const title=row.emperor?'天皇':[...PUBLIC_COURT_TITLES].reverse().find(item=>Number(row.merit)>=item.minMerit).title;offices.set(row.id,{title,kind:row.emperor?'emperor':'official'});}
+  else if(row.official&&row.emperor)offices.set(row.id,{title:'天皇',kind:'emperor'});
+  else if(row.regent)offices.set(row.id,{title:'摂政',kind:'regent'});
+  else if(row.retired_emperor)offices.set(row.id,{title:'上皇',kind:'retired-emperor'});
+  else if(row.official){const title=[...PUBLIC_COURT_TITLES].reverse().find(item=>Number(row.merit)>=item.minMerit).title;offices.set(row.id,{title,kind:'official'});}
   else if(row.external_office){const office=COURT_OFFICES.find(definition=>definition.id===row.external_office);if(office)offices.set(row.id,{title:office.title,kind:'official'});}
  }
  for(const ref of refs)ref.value[ref.key]=offices.has(ref.id)?{...offices.get(ref.id)}:null;

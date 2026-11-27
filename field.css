@@ -37,3 +37,9 @@
 .sengoku-field .field-battle-report .field-battle-effect{margin:11px 0 8px;padding:9px 0;border-top:1px solid #b9c5a72e;border-bottom:1px solid #b9c5a72e;color:#d1dbc3;font-size:13px;line-height:1.7}
 .field-loot+.field-loot{margin-top:12px}.field-loot[data-field-reward-kind="reward"]>span{color:#e0cb93}
 @media(max-width:600px){.field-battle-mode,.sengoku-field .field-battle-report .field-battle-effect{font-size:14px}}
+
+/* Shared political control is distinct from each court member's garrison. */
+.field-palace-control{display:grid;gap:.45rem;margin:.75rem 0;padding:1rem;border:1px solid rgba(225,188,104,.65);border-radius:12px;background:linear-gradient(135deg,rgba(94,58,27,.48),rgba(17,40,51,.8));color:#fff4d6;overflow-wrap:anywhere}
+.field-palace-control strong{font-size:1.1rem;line-height:1.5}
+.field-palace-control span,.field-palace-control p{font-size:.9375rem;line-height:1.65;margin:0}
+.field-palace-label{color:#f3d38b!important;white-space:normal!important;overflow-wrap:anywhere}

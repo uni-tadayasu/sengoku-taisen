@@ -2401,7 +2401,7 @@
   }
   function applyCourtAccess(value,meta={}){
     const context=window.SengokuSocial?.getCourtContext?.(),valid=Boolean(value&&context?.user&&!context.pending&&!context.banned&&!syncAccess.rolePending&&context.playerId===meta.playerId&&context.epoch===meta.epoch&&context.privilegeEpoch===meta.privilegeEpoch&&context.accountEpoch===meta.accountEpoch);
-    game.setCourtAccess?.({isCourtEmperor:valid&&value.isCourtEmperor===true});return{ok:valid};
+    game.setCourtAccess?.({isCourtEmperor:valid&&value.isCourtEmperor===true,isCourtRegent:valid&&value.isCourtRegent===true});return{ok:valid};
   }
   function trustedBranchAuthority(meta={},candidate=game){
     const owner=String(window.SengokuSocial?.getUser?.()?.id||''),campaignId=candidate?.state?.walking?.campaignId;

@@ -6,18 +6,18 @@ const PLAYER='u_'+'1'.repeat(32),TOKEN='a'.repeat(64),THREAD='ca_'+'b'.repeat(32
 const payload={requestId:'00000000-0000-4000-8000-000000000001',text:'御所への言葉'};
 function deferred(){let resolve;const promise=new Promise(r=>resolve=r);return{promise,resolve};}
 function harness({guest=false,admin=false,staff=false}={}){
- const calls=[],authority=[];let transport=async()=>({data:{ok:true,self:{isCourtEmperor:false}}});
+ const calls=[],authority=[],syncs=[];let transport=async()=>({data:{ok:true,self:{isCourtEmperor:false}}});
  const scope={console,URL,URLSearchParams,AbortController,Date,Intl,setTimeout,clearTimeout,
   document:{readyState:'loading',hidden:false,addEventListener(){},removeEventListener(){}},
   localStorage:{getItem:()=>null,setItem(){},removeItem(){}},SENGOKU_API_BASE:'https://fixture.invalid',
   SengokuBridge:{setRoleAccess(){},applyCourtAccess:(value,context)=>authority.push({value:copy(value),context:context?copy(context):null})},
-  SengokuCloudSync:{getStatus:()=>({linked:true,ready:true,writable:false})},
+  SengokuCloudSync:{getStatus:()=>({linked:true,ready:true,writable:false}),refresh:async()=>{syncs.push(true);return{ok:true};}},
   fetch:async(url,options)=>{calls.push({url,method:options.method,headers:copy(options.headers),body:options.body?JSON.parse(options.body):null});const response=await transport(url,options),status=response.status||200;return{ok:status>=200&&status<300,status,json:async()=>response.data};}
  };
  scope.window=scope;vm.createContext(scope);
  vm.runInContext(source.replace('global.SengokuSocial={open','global.__courtApiTest={s,changeIdentity(){authEpoch++;s.identity={id:"other-player",token:"b".repeat(64)};s.user={id:"other-player",name:"別の領主",isAdmin:false,isStaff:false};},changeRole(){privilegeEpoch++;s.user.isStaff=!s.user.isStaff;},pending(){accountEpoch++;s.accountAccessPending={};},hold(){recoveryHeld=true;},clear(){clearAdminData();}};global.SengokuSocial={open'),scope);
  const control=scope.__courtApiTest;if(!guest){control.s.identity={id:PLAYER,token:TOKEN};control.s.user={id:PLAYER,name:'参内領主',isAdmin:admin,isStaff:staff,evaluation:{score:999999,rankName:'正一位'}};}
- return{api:scope.SengokuSocial,control,calls,authority,setTransport:value=>transport=value};
+ return{api:scope.SengokuSocial,control,calls,authority,syncs,setTransport:value=>transport=value};
 }
 const tests=[],test=(name,run)=>tests.push([name,run]);
 
@@ -73,6 +73,66 @@ test('an older admission response cannot restore Emperor access after a newer re
 });
 test('server admission and appointment errors retain their authoritative codes and do not grant access',async()=>{
  const h=harness();h.setTransport(async()=>({status:403,data:{ok:false,error:{code:'COURT_RANK_REQUIRED',message:'従五位から参内できます。'}}}));await assert.rejects(h.api.courtRequest('/court/chat',{method:'POST',data:payload}),error=>error.status===403&&error.code==='COURT_RANK_REQUIRED');assert.equal(h.authority.length,0);
+});
+
+
+test('Emperor approval and succession routes use the current bearer without extending other routes',async()=>{
+ const h=harness({staff:true});
+ await h.api.expansionRequest('/shogunate/approve',{method:'POST',data:{rightId:'sg_'+'a'.repeat(32),requestId:payload.requestId}});
+ await h.api.courtRequest('/court/succession');
+ for(const route of ['/court/succession?target=x','/court/succession/other'])await assert.rejects(h.api.courtRequest(route),error=>error.status===400);
+ assert.equal(h.calls.length,2);assert(h.calls.every(call=>call.headers.Authorization==='Bearer '+TOKEN));
+});
+const successionResponse=()=>({ok:true,needsSync:true,user:{id:PLAYER,name:'上皇となった領主',isAdmin:false,isStaff:false},receipt:{retiredPlayerId:PLAYER,retiredPlayerName:'上皇となった領主',successorPlayerId:'u_successor',successorPlayerName:'後継者',retiredAt:1795700000000}});
+test('confirmed abdication survives its own privilege loss and refreshes the ordinary campaign',async()=>{
+ const h=harness({staff:true}),pause=deferred();h.setTransport(()=>pause.promise);
+ const pending=h.api.courtRequest('/court/succession',{method:'POST',data:{requestId:payload.requestId,targetPlayerId:'u_successor'}});
+ h.control.changeRole();pause.resolve({data:successionResponse()});const result=await pending;
+ assert.equal(h.api.getUser().isStaff,false);await h.api.acceptCourtSuccession(result);
+ assert.equal(h.api.getUser().isStaff,false);assert.equal(h.syncs.length,1);assert.equal(h.authority.at(-1).value,null);
+ await assert.rejects(h.api.acceptCourtSuccession(result),error=>error.code==='STALE_IDENTITY');
+});
+test('abdication adoption rejects forged responses and responses belonging to another active account',async()=>{
+ const forged=harness({staff:true});await assert.rejects(forged.api.acceptCourtSuccession(successionResponse()),error=>error.code==='STALE_IDENTITY');assert.equal(forged.syncs.length,0);
+ const h=harness({staff:true});h.setTransport(async()=>({data:successionResponse()}));const result=await h.api.courtRequest('/court/succession',{method:'POST',data:{requestId:payload.requestId,targetPlayerId:'u_successor'}});h.control.changeIdentity();await assert.rejects(h.api.acceptCourtSuccession(result),error=>error.code==='STALE_IDENTITY');assert.equal(h.syncs.length,0);
+});
+test('ordinary former Emperor can retry an immutable succession receipt but new private candidate reads reject role races',async()=>{
+ const former=harness();former.setTransport(async()=>({data:successionResponse()}));const result=await former.api.courtRequest('/court/succession',{method:'POST',data:{requestId:payload.requestId,targetPlayerId:'u_successor'}});await former.api.acceptCourtSuccession(result);assert.equal(former.syncs.length,1);
+ const h=harness({staff:true}),pause=deferred();h.setTransport(()=>pause.promise);const read=h.api.courtRequest('/court/succession');h.control.changeRole();pause.resolve({data:{ok:true,canAbdicate:true,candidates:[]}});await assert.rejects(read,error=>error.code==='STALE_IDENTITY');
+});
+
+test('regent appointment routes require the operator and validate exact query boundaries',async()=>{
+ const options={method:'POST',data:{requestId:payload.requestId,action:'appoint',targetPlayerId:'u_other',expectedRevision:0}};
+ for(const roles of [{},{staff:true}]){const h=harness(roles);h.control.s.user.title='太政大臣';await assert.rejects(h.api.courtRequest('/admin/court/regent'),error=>error.status===403);await assert.rejects(h.api.courtRequest('/admin/court/regent',options),error=>error.status===403);assert.equal(h.calls.length,0);}
+ const h=harness({admin:true});await h.api.courtRequest('/admin/court/regent?q='+encodeURIComponent('一般の領主')+'&limit=20');await h.api.courtRequest('/admin/court/regent',options);assert.equal(h.calls.length,2);assert.deepEqual(h.calls[1].body,options.data);
+ for(const route of ['/admin/court/regent?q=x&q=y','/admin/court/regent?limit=51','/admin/court/regent?target=x','/admin/court/regent/other'])await assert.rejects(h.api.courtRequest(route),error=>error.status===400);
+ await assert.rejects(h.api.courtRequest('/admin/court/regent?q=x',options),error=>error.status===400);
+});
+test('ordinary Regent duties use verified admission without changing staff status or granting appointments',async()=>{
+ const h=harness();h.control.s.user.title='摂政';h.control.s.user.isCourtRegent=true;await assert.rejects(h.api.courtRequest('/staff/court'),error=>error.status===403);
+ h.setTransport(async()=>({data:{ok:true,self:{id:PLAYER,isCourtEmperor:false,isCourtRegent:true}}}));await h.api.courtRequest('/court');assert.equal(h.api.getCourtContext().isCourtRegent,true);assert.equal(h.api.getUser().isStaff,false);assert.equal(h.authority.at(-1).value.isCourtRegent,true);assert.equal(h.authority.at(-1).value.isCourtEmperor,false);
+ await h.api.courtRequest('/staff/court');await assert.rejects(h.api.courtRequest('/admin/court/regent'),error=>error.status===403);await assert.rejects(h.api.courtRequest('/admin/court/leader',{method:'POST',data:payload}),error=>error.status===403);
+ h.setTransport(async()=>({data:{ok:true,self:{id:PLAYER,isCourtRegent:false}}}));await h.api.courtRequest('/court');assert.equal(h.api.getCourtContext().isCourtRegent,false);await assert.rejects(h.api.courtRequest('/staff/court'),error=>error.status===403);
+});
+test('older Regent admission and another account cannot restore delegated roster access',async()=>{
+ const h=harness(),old=deferred(),latest=deferred();let number=0;h.setTransport(()=>++number===1?old.promise:latest.promise);const first=h.api.courtRequest('/court'),second=h.api.courtRequest('/court');latest.resolve({data:{ok:true,self:{id:PLAYER,isCourtRegent:false}}});await second;old.resolve({data:{ok:true,self:{id:PLAYER,isCourtRegent:true}}});await first;assert.equal(h.api.getCourtContext().isCourtRegent,false);
+ h.setTransport(async()=>({data:{ok:true,self:{id:PLAYER,isCourtRegent:true}}}));await h.api.courtRequest('/court');h.control.changeIdentity();assert.equal(h.api.getCourtContext().isCourtRegent,false);await assert.rejects(h.api.courtRequest('/staff/court'),error=>error.status===403);
+});
+
+test('court event room transport accepts only duty members and exact room routes',async()=>{
+ const ordinary=harness();ordinary.control.s.user.isCourtRegent=true;ordinary.control.s.user.title='天皇';await assert.rejects(ordinary.api.courtEventRequest('/court/events'),error=>error.status===403);assert.equal(ordinary.calls.length,0);
+ for(const roles of [{admin:true},{staff:true}]){const h=harness(roles),eventId='ev_'+'a'.repeat(32);await h.api.courtEventRequest('/court/events');await h.api.courtEventRequest('/court/events/'+eventId);await h.api.courtEventRequest('/court/events/generate',{method:'POST',data:{requestId:payload.requestId,mode:'ai',prompt:'初心者向け'}});await h.api.courtEventRequest('/court/events/'+eventId+'/publish',{method:'POST',data:{requestId:payload.requestId,expectedRevision:1}});assert.equal(h.calls.length,4);assert(h.calls.every(c=>c.headers.Authorization==='Bearer '+TOKEN));for(const route of ['/court/events?q=x','/admin/events','/court/events/../leader','/court/events/'+eventId+'/battle'])await assert.rejects(h.api.courtEventRequest(route),error=>error.status===400);}
+});
+test('ordinary Regent can enter event room through verified authority and a denial clears stale duty access',async()=>{
+ const h=harness();h.setTransport(async()=>({data:{ok:true,self:{id:PLAYER,isCourtRegent:true}}}));await h.api.courtRequest('/court');await h.api.courtEventRequest('/court/events');assert.equal(h.api.getUser().isStaff,false);
+ h.setTransport(async()=>({status:403,data:{ok:false,error:{code:'COURT_EVENT_ROLE_REQUIRED',message:'役職が変更されました。'}}}));await assert.rejects(h.api.courtEventRequest('/court/events'),error=>error.status===403);assert.equal(h.api.getCourtContext().isCourtRegent,false);assert.equal(h.authority.at(-1).value,null);const before=h.calls.length;await assert.rejects(h.api.courtEventRequest('/court/events'),error=>error.status===403);assert.equal(h.calls.length,before);
+});
+test('a commit-time Regent revocation conflict removes cached event room authority',async()=>{
+ const h=harness();h.setTransport(async()=>({data:{ok:true,self:{id:PLAYER,isCourtRegent:true}}}));await h.api.courtRequest('/court');assert.equal(h.api.getCourtContext().isCourtRegent,true);
+ h.setTransport(async()=>({status:409,data:{ok:false,error:{code:'COURT_EVENT_ACCESS_CHANGED',message:'御所の任命が変わりました。'}}}));await assert.rejects(h.api.courtEventRequest('/court/events'),error=>error.code==='COURT_EVENT_ACCESS_CHANGED');assert.equal(h.api.getCourtContext().isCourtRegent,false);assert.equal(h.authority.at(-1).value,null);
+});
+test('delayed private room results are discarded after account or staff-role changes',async()=>{
+ for(const change of ['changeIdentity','changeRole','pending','hold']){const h=harness({staff:true}),pause=deferred();h.setTransport(()=>pause.promise);const request=h.api.courtEventRequest('/court/events');h.control[change]();pause.resolve({data:{ok:true,events:[{name:'非公開の下書き'}]}});await assert.rejects(request,error=>error.code==='STALE_IDENTITY');}
 });
 
 (async()=>{for(const[name,run]of tests){await run();console.log('PASS '+name);}console.log(tests.length+' real social court transport checks passed. No live requests.');})().catch(error=>{console.error(error);process.exitCode=1;});

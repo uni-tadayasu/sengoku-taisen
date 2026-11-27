@@ -87,5 +87,17 @@ test('covert counterattack rechecks Emperor authority at execution; ordinary oth
  g.setCourtAccess({isCourtEmperor:true});const protectedEdo=clone(g.state.castles.edo),gold=g.state.resources.gold,result=g.retaliateCovert(station,incident,request(g));assert(result.ok);assert.deepEqual(g.state.castles.edo,protectedEdo);assert.equal(g.state.resources.gold,gold);assert.equal(result.result.battle.captured,false);
  const ordinary=rich(create());ordinary.state.castles.nijo.owner=ordinary.state.clan;assert(ordinary.hireCovert('nijo',100,request(ordinary)).ok);const other=ordinary.dispatchCovert('nijo',{kind:'castle',castleId:'edo'},50,'station',request(ordinary));assert(other.ok);ordinary._recordCovertIncident('nijo','sakamoto');ordinary.state.command=3;assert(ordinary.retaliateCovert(other.result.stationId,ordinary.state.covert.incidents[0].id,request(ordinary)).ok);
 });
+test('a verified Regent retains ordinary home and assets without receiving Emperor or staff status',()=>{
+ const g=rich(create()),before=raw(g).state;assert.equal(g.setCourtAccess({isCourtRegent:true}).ok,true);
+ assert.equal(g.isCourtRegent,true);assert.equal(g.isCourtEmperor,false);assert.equal(g.isStaff,false);assert.equal(g.canActForEmperor,true);assert.deepEqual(raw(g).state,before);assert.equal(g.canOwnCastle(BASE),false);
+ const trusted=E.fromSave(g.exportSave(),officers,{isCourtRegent:true});assert.equal(trusted.isCourtRegent,true);assert.equal(trusted.state.home,g.state.home);assert.deepEqual(trusted.state.resources,g.state.resources);
+ g.state.isCourtRegent=true;g.state.court={role:'regent'};const imported=E.fromSave(g.exportSave(),officers);assert.equal(imported.isCourtRegent,false);assert.equal(imported.canActForEmperor,false);
+ g.setCourtAccess();assert.equal(g.isCourtRegent,false);assert.deepEqual(g.state.resources,before.resources);
+});
+test('a Kyoto Regent can act for the Emperor only while the verified appointment remains current',()=>{
+ const g=rich(readyStaff()),home=g.state.home;assert.equal(g.courtAttackPermission(BASE,'edo').ok,false);g.setCourtAccess({isCourtRegent:true});assert.equal(g.isCourtEmperor,false);assert.equal(g.isCourtRegent,true);assert.equal(g.state.home,home);assert.equal(g.courtAttackPermission(BASE,'edo').ok,true);assert.equal(g.covertStatus().rules.canAttackEdoFromKyoto,true);
+ const loaded=E.fromSave(g.exportSave(),officers,{isStaff:true,isCourtRegent:true,staffBase:g.getStaffBase()});assert.equal(loaded.isCourtRegent,true);assert.equal(loaded.canOwnCastle('edo'),false);loaded.setCourtAccess();assert.equal(loaded.courtAttackPermission(BASE,'edo').ok,false);assert.equal(loaded.covertStatus().rules.canAttackEdoFromKyoto,false);
+ g.setRoleAccess({isStaff:false});assert.equal(g.isCourtRegent,false);assert.equal(g.setCourtAccess({isCourtRegent:true,isCourtEmperor:true}).ok,false);
+});
 assert.equal(fs.readFileSync(path.join(__dirname,'../engine.js'),'utf8'),fs.readFileSync(path.join(__dirname,'../server/game-engine.js'),'utf8'));
 console.log(`${total} Kyoto court, migration, personal progress, cap and protection groups passed; browser/Worker engines match.`);

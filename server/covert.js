@@ -56,10 +56,10 @@ async function status(ctx,snapshot=null){
  const current=await h.getUser(db,user.id),found=await canonical(db,user.id,snapshot.save.state.walking.campaignId);
  snapshot.save.state.covert=await incoming({...ctx,user:current},found.state);
  const shared=current.is_staff&&!current.is_admin?await h.staffBaseDto(db,current,snapshot.clock,now):null;
- const emperor=await h.courtEmperorAuthority(db,current);
- const game=GameEngine.fromSave(snapshot.save,GAME_OFFICERS,{isAdmin:!!current.is_admin,isStaff:!!current.is_staff,isCourtEmperor:emperor.isCourtEmperor,staffBase:shared});
+ const emperor=await h.courtImperialAuthority(db,current);
+ const game=GameEngine.fromSave(snapshot.save,GAME_OFFICERS,{isAdmin:!!current.is_admin,isStaff:!!current.is_staff,isCourtEmperor:emperor.isCourtEmperor,isCourtRegent:emperor.isCourtRegent,staffBase:shared});
  const covert=game.covertStatus(),listUrl=new URL(url);listUrl.searchParams.set('limit',url.searchParams.get('limit')||'100');
- covert.rules={...covert.rules,canAttackEdoFromKyoto:emperor.isCourtEmperor};if(emperor.isCourtEmperor)h.registerCourtGuard(emperor.guard);
+ covert.rules={...covert.rules,canAttackEdoFromKyoto:emperor.canActForEmperor};if(emperor.canActForEmperor)h.registerCourtGuard(emperor.guard);
  const list=await h.getFieldList(db,current,listUrl,now);
  covert.targets.push(...list.targets.filter(t=>t.playerId!==user.id&&(!snapshot.residency?.castleId||t.householdCastleId!==snapshot.residency.castleId)).map(t=>({kind:'player',playerId:t.playerId,castleId:t.targetCastleId,name:t.targetCastleName,playerName:t.name})));
  covert.targetCursor=list.nextCursor;covert.playerTargetTotal=Math.max(0,list.total-1);covert.online=true;
@@ -146,8 +146,8 @@ async function mutation(ctx,action){
  const found=await canonical(db,user.id,body.campaignId);save.state.covert=await incoming(ctx,found.state,body.incidentId);
  if(found.state.sequence!==body.sequence)h.fail(409,'COVERT_STATE_CHANGED','派遣部隊が更新されました。最新の状態を確認してください。');
  const shared=user.is_staff&&!user.is_admin?await h.staffBaseDto(db,user,clock,ctx.now):null;
- const emperor=await h.courtEmperorAuthority(db,user);
- const game=GameEngine.fromSave(save,GAME_OFFICERS,{isAdmin:!!user.is_admin,isStaff:!!user.is_staff,isCourtEmperor:emperor.isCourtEmperor,staffBase:shared});
+ const emperor=await h.courtImperialAuthority(db,user);
+ const game=GameEngine.fromSave(save,GAME_OFFICERS,{isAdmin:!!user.is_admin,isStaff:!!user.is_staff,isCourtEmperor:emperor.isCourtEmperor,isCourtRegent:emperor.isCourtRegent,staffBase:shared});
  const options={requestId:body.requestId,campaignId:body.campaignId,sequence:body.sequence};
  const station=body.stationId?game.state.covert.stations.find(s=>s.id===body.stationId):null;
  const targetSpec=action==='dispatch'?body.target:action==='retaliate'?station?.target:null;
@@ -235,7 +235,7 @@ export async function settleCovertDispatches(ctx,{actorId=null,limit=8}={}){
   const branches=await h.branchStateGuard(db,user.id,ledger.campaign_id);await h.reconcileBranchProgress(db,user.id,save,clock);save.state.covert=found.state;
   const maintenanceAuthority=protectMaintenance(branches,await maintenanceContext(db,user.id,save,clock));
   if(maintenanceAuthority.hasMore)continue;
-  const shared=user.is_staff&&!user.is_admin?await h.staffBaseDto(db,user,clock,now):null,emperor=await h.courtEmperorAuthority(db,user),game=GameEngine.fromSave(save,GAME_OFFICERS,{isAdmin:!!user.is_admin,isStaff:!!user.is_staff,isCourtEmperor:emperor.isCourtEmperor,staffBase:shared,maintenanceAuthority,branchAuthority:{resolvedElapsedMs:branches.resolvedElapsedMs}});
+  const shared=user.is_staff&&!user.is_admin?await h.staffBaseDto(db,user,clock,now):null,emperor=await h.courtImperialAuthority(db,user),game=GameEngine.fromSave(save,GAME_OFFICERS,{isAdmin:!!user.is_admin,isStaff:!!user.is_staff,isCourtEmperor:emperor.isCourtEmperor,isCourtRegent:emperor.isCourtRegent,staffBase:shared,maintenanceAuthority,branchAuthority:{resolvedElapsedMs:branches.resolvedElapsedMs}});
   const completed=[];for(const dispatch of [...game.state.covert.dispatches])if(dispatch.cycle!==Math.floor(clock.elapsedMs/cycleMs)){const result=game.cancelCovertDispatch(dispatch.id,'年月が変わったため派遣を取りやめました。',{authoritative:true});if(result)completed.push(result);}
   const advanced=completed.length?{ok:true}:game.applyWorldClock(clock,{maxSeconds:86400,deferCycleSettlement:true});if(!advanced.ok||advanced.pending||advanced.settlementRequired)continue;
   const targetSnapshots={},targetGuards=[];let playerTargets=0;const cursor=Number((await stmt(db,'SELECT COALESCE(MAX(rowid),0) AS cursor FROM field_battles').first()).cursor);

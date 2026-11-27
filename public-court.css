@@ -22,6 +22,7 @@
 .public-court-icon > .public-court-linework,
 .public-court-icon > .public-court-relief[hidden]{display:none}
 .public-court-relief[hidden] + .public-court-linework{display:block}
+.public-court-icon > .public-court-linework-only{display:block}
 .public-court-badge .public-court-title{color:inherit;font:inherit;letter-spacing:inherit}
 .public-court-badge[data-court-seal="scroll"]{--court-ground:#243849;--court-ink:#c7e9f4;--court-edge:#708a9b}
 .public-court-badge[data-court-seal="book"]{--court-ground:#443022;--court-ink:#f7d6a8;--court-edge:#9e7953}
@@ -30,6 +31,8 @@
 .public-court-badge[data-court-seal="pine"]{--court-ground:#314129;--court-ink:#dce9b3;--court-edge:#84906c}
 .public-court-chancellor{--court-ground:#41263a;--court-ink:#ffe0be;--court-edge:#b38381}
 .public-court-emperor{--court-ground:#50271f;--court-ink:#ffe4a8;--court-edge:#c8a566}
+.public-court-retired-emperor{--court-ground:#332748;--court-ink:#f5e2b2;--court-edge:#bd9b69}
+.public-court-regent{--court-ground:#173c42;--court-ink:#f5e2b2;--court-edge:#a99968}
 .social-profile-heading .public-court-self .public-court-badge{margin-inline-start:0;font-size:14px}
 .social-profile-heading .public-court-self,
 .player-evaluation-summary .public-court-slot,

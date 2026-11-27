@@ -13,7 +13,7 @@ const deferred = () => { let resolve, reject; const promise = new Promise((yes, 
 const drain = async () => { for (let i = 0; i < 20; i++) await Promise.resolve(); };
 const tests = [], test = (name, run) => tests.push([name, run]);
 function setup({ context = access(), storage = storageFixture(), server = { views: new Map([[OWNER, view()], [OTHER, view([right(OTHER_RIGHT, '別の領主の功績')])]]), receipts: new Map(), commits: 0 } } = {}) {
-  let who = copy(context), handler = null, flushHandler = null, uuidCalls = 0, flushes = 0;
+  let who = copy(context), handler = null, flushHandler = null, uuidCalls = 0, flushes = 0, elapsed = 0, onTick = null;
   const { doc, entry } = documentFixture(), calls = [], toasts = [];
   doc.body.appendChild = node => doc.body.append(node);
   const base = async (route, options = {}) => {
@@ -27,14 +27,14 @@ function setup({ context = access(), storage = storageFixture(), server = { view
     const receipt = { rightId: earned.id, governmentName: earned.governmentName, openedAt: earned.openedAt, rank: earned.rank, title: earned.title };
     server.receipts.set(id, copy(receipt)); server.commits++; return { ok: true, receipt, shogunate: copy(current) };
   };
-  const scope = { console, Date, Intl, JSON, Math, Promise, document: doc, localStorage: storage, crypto: { randomUUID: () => 'shogunate_request_' + ++uuidCalls },
+  const scope = { console, Date, Intl, JSON, Math, Promise, document: doc, localStorage: storage, performance: { now: () => elapsed }, setInterval: callback => { onTick = callback; return 1; }, clearInterval: () => { onTick = null; }, crypto: { randomUUID: () => 'shogunate_request_' + ++uuidCalls },
     SengokuSocial: { getExpansionContext: () => copy(who), expansionRequest: (route, options = {}) => { const call = { route, options: copy(options), owner: who.playerId }; calls.push(call); return handler ? handler(route, options, base) : base(route, options); } },
     SengokuCloudSync: { flush: async () => { flushes++; return flushHandler ? flushHandler() : { ok: true }; } },
     SengokuBridge: { toast: (...args) => toasts.push(args) }
   };
   scope.window = scope; vm.createContext(scope); vm.runInContext(source, scope);
   const api = scope.SengokuShogunate, get = selector => doc.querySelector(selector), click = action => { const node = get('[data-shogunate="' + action + '"]'); assert(node, 'Missing control ' + action); get('.shogunate-dialog').dispatch('click', node); };
-  return { api, scope, doc, entry, get, click, calls, server, storage, toasts, base, posts: () => calls.filter(call => call.options.method === 'POST'), uuidCalls: () => uuidCalls, flushes: () => flushes, setContext: value => { who = copy(value); }, context: () => copy(who), setHandler: value => { handler = value; }, setFlush: value => { flushHandler = value; } };
+  return { api, scope, doc, entry, get, click, calls, server, storage, toasts, base, posts: () => calls.filter(call => call.options.method === 'POST'), uuidCalls: () => uuidCalls, flushes: () => flushes, setContext: value => { who = copy(value); }, context: () => copy(who), setHandler: value => { handler = value; }, setFlush: value => { flushHandler = value; }, tick: ms => { elapsed += ms; onTick?.(); }, hasTimer: () => !!onTick };
 }
 
 test('opening and reviewing a right make no POST until the explicit final confirmation', async () => {
@@ -123,4 +123,108 @@ test('rights and government names are escaped before being rendered into the mod
   const s = setup(); s.server.views.get(OWNER).rights[0].title = '<img src=x onerror=alert(1)>'; await s.api.open(); assert(!s.get('.shogunate-content').innerHTML.includes('<img src=x')); assert(s.get('.shogunate-content').innerHTML.includes('&lt;img')); s.click('prepare'); assert(!s.get('.shogunate-content').innerHTML.includes('<img src=x')); s.api.close();
 });
 
+
+const WINDOW_MS = 72 * 60 * 60 * 1000;
+const modernRight = (status = 'available', id = RIGHT) => ({ ...right(id), approvalStatus: status, requestedAt: status === 'available' ? null : NOW, deadlineAt: status === 'available' ? null : NOW + WINDOW_MS, resolvedAt: ['approved','expired'].includes(status) ? NOW + WINDOW_MS : null, governmentName: status === 'available' ? null : '試験幕府', openedAt: ['approved','expired'].includes(status) ? NOW + WINDOW_MS : null, rank: ['approved','expired'].includes(status) ? '征夷大将軍' : null });
+const modernView = (rights = [modernRight()], extra = {}) => ({ ...view(rights), serverNow: NOW, approvalWindowMs: WINDOW_MS, canApprove: false, approvals: [], palaceControl: null, ...extra });
+function modernFixture({ emperor = false, storage, server } = {}) {
+  const s = setup({ ...(storage ? { storage } : {}), ...(server ? { server } : {}), context: { ...access(), user: { ...access().user, isStaff: emperor } } });
+  if (!server) {
+    s.server.views.set(OWNER, emperor ? modernView([], { canApprove: true, approvals: [{ ...modernRight('pending', OTHER_RIGHT), applicant: { id: OTHER, name: '申請した領主' } }] }) : modernView());
+    s.server.views.set(OTHER, modernView([modernRight('pending', OTHER_RIGHT)]));
+  }
+  const respond = async (route, options = {}) => {
+    const current = s.server.views.get(s.context().playerId);
+    if (options.method !== 'POST') return { ok: true, shogunate: copy(current) };
+    const body = options.data, key = s.context().playerId + ':' + route + ':' + body.requestId;
+    assert.deepEqual(Object.keys(body).sort(), ['requestId', 'rightId']);
+    if (s.server.receipts.has(key)) return { ok: true, idempotent: true, [route === '/shogunate/approve' ? 'approvalReceipt' : 'receipt']: copy(s.server.receipts.get(key)), shogunate: copy(current) };
+    let receipt;
+    if (route === '/shogunate/open') {
+      const earned = current.rights.find(r => r.id === body.rightId); assert.equal(earned.approvalStatus, 'available');
+      Object.assign(earned, modernRight('pending', earned.id));
+      receipt = { rightId: earned.id, title: earned.title, governmentName: earned.governmentName, status: 'pending', requestedAt: earned.requestedAt, deadlineAt: earned.deadlineAt, openedAt: null, rank: null };
+    } else {
+      assert.equal(route, '/shogunate/approve'); assert(current.canApprove);
+      const index = current.approvals.findIndex(r => r.id === body.rightId); assert(index >= 0);
+      current.approvals.splice(index, 1);
+      receipt = { rightId: body.rightId, status: 'approved', approvedAt: NOW + 1 };
+    }
+    s.server.receipts.set(key, copy(receipt)); s.server.commits++;
+    return { ok: true, [route === '/shogunate/approve' ? 'approvalReceipt' : 'receipt']: receipt, shogunate: copy(current) };
+  };
+  s.setHandler(respond); s.respond = respond; return s;
+}
+
+test('a modern opening submits a 72-hour application without prematurely granting the title', async () => {
+  const s = modernFixture(); await s.api.open(); s.click('prepare');
+  assert.match(s.get('.shogunate-confirm').textContent, /天皇へ幕府開設を申請/); assert.match(s.get('.shogunate-confirm').textContent, /京都御所もあなたの支配下/); assert.equal(s.posts().length, 0);
+  s.click('confirm'); await drain(); assert.equal(s.posts().length, 1); assert.equal(s.api.getState().hasPending, false);
+  assert.equal(s.get('.shogunate-current'), null); assert.equal(s.get('[data-shogunate="prepare"]'), null); assert.match(s.get('.shogunate-right-status').textContent, /天皇・摂政の承認待ち/);
+  assert.match(s.api.getState().message, /開設を申請しました/); assert.doesNotMatch(s.api.getState().message, /を開設しました/);
+  assert.match(s.get('.shogunate-deadline').textContent, /日本時間/); assert.match(s.get('[data-shogunate-deadline]').textContent, /残り 3日/); assert.equal(s.server.views.get(OWNER).current, null);
+  assert(s.hasTimer()); s.api.close(); assert(!s.hasTimer());
+});
+
+test('an immutable submission receipt still recovers after the Emperor has approved it', async () => {
+  const s = modernFixture(); await s.api.open();
+  s.setHandler(async (route, options) => { const result = await s.respond(route, options); if (options.method === 'POST') throw Error('lost'); return result; });
+  s.click('prepare'); s.click('confirm'); await drain(); assert(s.api.getState().hasPending);
+  const original = copy(s.posts()[0].options.data),record = modernRight('approved');
+  s.server.views.set(OWNER, modernView([record])); s.api.close();
+  const restored = modernFixture({ storage: s.storage, server: s.server }); await restored.api.open(); restored.click('retry'); await drain();
+  assert.deepEqual(restored.posts()[0].options.data, original); assert.equal(restored.api.getState().hasPending, false); assert.equal(restored.server.commits, 1); assert.match(restored.api.getState().message, /天皇承認済み/); assert(restored.get('.shogunate-current')); restored.api.close();
+});
+
+test('only the current Emperor receives approval controls and final confirmation sends the selected right', async () => {
+  const s = modernFixture({ emperor: true }); await s.api.open(); assert.match(s.get('.shogunate-approvals').textContent, /申請した領主/);
+  s.click('prepare-approval'); assert.equal(s.posts().length, 0); assert.match(s.get('.shogunate-confirm').textContent, /申請した領主の「試験幕府」/);
+  s.click('confirm'); await drain(); assert.equal(s.posts()[0].route, '/shogunate/approve'); assert.equal(s.posts()[0].options.data.rightId, OTHER_RIGHT); assert.equal(s.api.getState().hasPending, false); assert.match(s.api.getState().message, /承認しました/); assert.equal(s.get('[data-shogunate="prepare-approval"]'), null); s.api.close();
+  for (const role of [{ isStaff: true }, { isAdmin: true }]) {
+    const ordinary = modernFixture(); ordinary.setContext({ ...ordinary.context(), user: { ...ordinary.context().user, ...role } }); await ordinary.api.open(); assert.equal(ordinary.get('.shogunate-approvals'), null); assert.equal(ordinary.get('[data-shogunate="prepare-approval"]'), null); ordinary.api.close();
+  }
+});
+
+test('approval retries persist the operation kind and reuse the accepted receipt after a lost response', async () => {
+  const s = modernFixture({ emperor: true }); await s.api.open();
+  s.setHandler(async (route, options) => { const result = await s.respond(route, options); if (options.method === 'POST') throw Error('lost approval'); return result; });
+  s.click('prepare-approval'); s.click('confirm'); await drain(); const payload = copy(s.posts()[0].options.data);
+  assert(s.api.getState().hasPending); assert.equal(JSON.parse(s.storage.getItem(key(OWNER))).action, 'approve'); s.api.close();
+  const restored = modernFixture({ emperor: true, storage: s.storage, server: s.server }); await restored.api.open(); restored.click('retry'); await drain();
+  assert.equal(restored.posts()[0].route, '/shogunate/approve'); assert.deepEqual(restored.posts()[0].options.data, payload); assert.equal(restored.server.commits, 1); assert.equal(restored.api.getState().hasPending, false); assert.match(restored.api.getState().message, /承認した記録を確認/); restored.api.close();
+});
+
+test('server time anchors the visible countdown and deadline disables a reviewed approval', async () => {
+  const s = modernFixture({ emperor: true }); s.server.views.get(OWNER).serverNow = NOW + WINDOW_MS - 60000; await s.api.open(); s.click('prepare-approval');
+  assert.match(s.get('[data-shogunate-deadline]').textContent, /0日 0時間 1分/);
+  s.scope.Date = class extends Date { static now() { return NOW + WINDOW_MS * 10; } };
+  s.tick(30000); assert.equal(s.get('[data-shogunate="confirm"]').disabled, false); assert.match(s.get('[data-shogunate-deadline]').textContent, /0日 0時間 0分/);
+  s.tick(30000); assert.equal(s.get('[data-shogunate="confirm"]').disabled, true); s.click('confirm'); await drain(); assert.equal(s.posts().length, 0); assert.match(s.get('[data-shogunate-deadline]').textContent, /承認期限を過ぎました/); s.api.close();
+});
+
+test('expired applications display the established government and shared Kyoto controller safely', async () => {
+  const s = modernFixture(), record = modernRight('expired'); s.server.views.set(OWNER, modernView([record], { palaceControl: { castleId: 'kyoto_gosho', rightId: RIGHT, controller: { id: OWNER, name: '<領主>' }, governmentName: '<試験幕府>', controlledAt: record.deadlineAt } }));
+  await s.api.open(); assert.match(s.get('.shogunate-current').textContent, /承認期限切れで開設/); assert.match(s.get('.shogunate-palace').textContent, /支配下/); assert.match(s.get('.shogunate-content').innerHTML, /&lt;領主&gt;/); assert.doesNotMatch(s.get('.shogunate-content').innerHTML, /<領主>|<試験幕府>/); assert.equal(s.get('[data-shogunate="prepare"]'), null); s.api.close();
+});
+
+test('malformed pending dates and unauthorized queues never create actionable approval controls', async () => {
+  for (const mutate of [value => value.approvals[0].deadlineAt++, value => value.canApprove = false, value => value.approvals[0].rank = '征夷大将軍', value => value.serverNow = 'client-time']) {
+    const s = modernFixture({ emperor: true }); mutate(s.server.views.get(OWNER)); assert.equal(await s.api.open(), false); assert(s.api.getState().error); assert.equal(s.get('[data-shogunate="prepare-approval"]'), null); s.api.close();
+  }
+});
+
+test('appointment changes during approval suppress the late result and preserve its durable recovery', async () => {
+  const s = modernFixture({ emperor: true }), wait = deferred(); await s.api.open(); s.setHandler((route, options) => options.method === 'POST' ? wait.promise : s.respond(route, options));
+  s.click('prepare-approval'); s.click('confirm'); await drain(); const result = await s.respond('/shogunate/approve', s.posts()[0].options);
+  s.setContext({ ...s.context(), privilegeEpoch: 2 }); s.api.refreshAccess(); wait.resolve(result); await drain();
+  assert.equal(s.get('.shogunate-dialog'), null); assert.equal(s.api.getState().loaded, false); assert.equal(s.api.getState().message, ''); assert(s.storage.getItem(key(OWNER))); assert(!s.hasTimer());
+});
+
+
+test('an ordinary regent receives and approves the authoritative queue without a staff account role',async()=>{
+ const s=modernFixture();s.server.views.set(OWNER,modernView([],{canApprove:true,approvals:[{...modernRight('pending',OTHER_RIGHT),applicant:{id:OTHER,name:'申請した領主'}}]}));assert.equal(s.context().user.isStaff,false);await s.api.open();assert.match(s.get('.shogunate-approvals').textContent,/天皇・摂政/);s.click('prepare-approval');s.click('confirm');await drain();assert.equal(s.posts()[0].route,'/shogunate/approve');assert.equal(s.api.getState().hasPending,false);assert.match(s.api.getState().message,/承認しました/);assert.equal(s.context().user.isStaff,false);s.api.close();
+});
+test('revoked delegated approval removes a reviewed intent when the server capability is refreshed',async()=>{
+ const s=modernFixture();s.server.views.set(OWNER,modernView([],{canApprove:true,approvals:[{...modernRight('pending',OTHER_RIGHT),applicant:{id:OTHER,name:'申請した領主'}}]}));await s.api.open();s.click('prepare-approval');s.server.views.set(OWNER,modernView([]));s.click('reload');await drain();assert.equal(s.api.getState().hasConfirmation,false);assert.equal(s.get('.shogunate-approvals'),null);assert.equal(s.get('[data-shogunate="confirm"]'),null);assert.equal(s.posts().length,0);s.api.close();
+});
 (async () => { for (const [name, run] of tests) { await run(); console.log('PASS ' + name); } console.log(tests.length + ' shogunate UI checks passed; no live requests.'); })().catch(error => { console.error(error); process.exitCode = 1; });

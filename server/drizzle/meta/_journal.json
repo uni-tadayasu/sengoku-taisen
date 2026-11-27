@@ -302,6 +302,34 @@
       "when": 1798761600000,
       "tag": "0042_admin_music_broadcast",
       "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "6",
+      "when": 1798848000000,
+      "tag": "0043_shogunate_approval",
+      "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "6",
+      "when": 1798934400000,
+      "tag": "0044_retired_emperor",
+      "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "6",
+      "when": 1799020800000,
+      "tag": "0045_regency",
+      "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "6",
+      "when": 1799107200000,
+      "tag": "0046_court_event_room",
+      "breakpoints": true
     }
   ]
 }
