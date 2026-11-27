@@ -6,6 +6,8 @@ const path = require('node:path');
 const root = path.resolve(__dirname, '..');
 const site = require('../site-metadata.json');
 const { copy } = require('./press-content.cjs');
+const { releases } = require('./news-content.cjs');
+const latestRelease = releases.find(item => item.version === site.version) || releases[0];
 const { trailer, firstSteps, jadeTrailer } = require('./promotion-content.cjs');
 const args = process.argv.slice(2);
 if (args.length && (args.length !== 1 || args[0] !== '--check')) {
@@ -26,6 +28,8 @@ const publicLinks = `公式サイト: ${site.origin}/\nゲーム紹介: ${site.o
 output('sengoku-vs-facts-ja', `戦国VS（SENGOKU VS） 紹介・掲載用 基本情報
 更新日: ${updatedDateJapanese}
 公開版: Ver.${site.version}
+最新更新: ${latestRelease.title}
+${latestRelease.summary}
 
 キャッチコピー: 一城から、天下へ。
 制作・運営: KASAI SOLUTIONS
@@ -81,6 +85,7 @@ Language: Japanese game interface and detailed guides. English introduction and 
 Platforms: Desktop, smartphone, and tablet web browsers
 Price model: Basic play is free. Optional purchases include cosmetics, a ¥780/month supporter plan with one permanent cosmetic choice per paid billing period, and a ¥480 non-renewing 30-day officer reroll pass. The reroll pass affects officer acquisition; jade itself is not sold.
 Content: 256 officers, 129 castles and locations, and 64 facility types
+Court-rank benefit: Rice production gains 0–32% across 17 ranks. The bonus is calculated before upkeep and surplus adjustment, follows the current rank, and requires no purchase.
 Play modes: Personal campaigns against computer-controlled factions; online battles, alliances, letters, and trading after registering a lord.
 Official website: ${site.origin}/
 English introduction and starting guide: ${site.origin}/en/

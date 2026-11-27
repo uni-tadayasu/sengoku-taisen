@@ -20,9 +20,9 @@ test('paid views expose work without healing or spending, and NPC free recovery 
  const paid=E.durabilityView(record,{castleId:id,elapsedMs:60000}),free=E.durabilityView(record,{castleId:id,elapsedMs:60000,recoveryMode:'free'});
  assert.equal(paid.current,5000);assert.equal(paid.repairPendingHP,1000);assert.equal(paid.recoveryMode,'paid');
  assert.equal(free.current,6000);assert.equal(free.recoveryMode,'free');
- assert.deepEqual(income.operatingNet,{gold:530,rice:445,wood:197,stone:147});
+ assert.deepEqual(income.operatingNet,{gold:530,rice:466,wood:197,stone:147});
  assert.deepEqual(income.repairUpkeep,{gold:0,rice:0,wood:50,stone:40});
- assert.deepEqual(income.net,{gold:530,rice:445,wood:147,stone:107});
+ assert.deepEqual(income.net,{gold:530,rice:466,wood:147,stone:107});
  for(const key of D.resources)assert.equal(income.net[key],income.operatingNet[key]-income.repairUpkeep[key]);
  for(let i=0;i<10;i++){g.castle(id);g.income();g.maintenance();g.repairQuote();}
  assert.deepEqual(g.state,before);

@@ -68,6 +68,9 @@ html:not(.sengoku-desktop-fit) .clan-panel .player-evaluation-entry { width: aut
 .player-evaluation-next { margin: 10px 0 7px; }
 .player-evaluation-meter { height: 7px; overflow: hidden; border-radius: 5px; background: #ffffff12; }
 .player-evaluation-meter > i { display: block; height: 100%; border-radius: inherit; background: #d1b77b; }
+.player-evaluation-rice { display: flex; flex-wrap: wrap; gap: 5px 16px; margin-top: 12px; font-size: 14px; }
+.player-evaluation-rice strong { color: #f5e2b7; white-space: nowrap; }
+.player-evaluation-rice small { font-size: inherit; }
 .player-evaluation-notice { margin: 16px 0; color: #b5c1b8; font-size: 14px; }
 .player-evaluation-breakdown { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .player-evaluation-category { min-width: 0; padding: 13px; border: 1px solid #ffffff13; border-radius: 6px; background: #ffffff03; }
@@ -80,6 +83,7 @@ html:not(.sengoku-desktop-fit) .clan-panel .player-evaluation-entry { width: aut
 .player-evaluation-rank-list { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px 14px; }
 .player-evaluation-rank-list li { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 10px; padding: 7px 8px; border-bottom: 1px solid #ffffff0e; font-size: 14px; }
 .player-evaluation-rank-list li[aria-current="step"] { border-radius: 4px; color: #f3d79c; background: #cfad6320; }
+.player-evaluation-rank-bonus { flex-basis: 100%; color: #e8d4a7; font-size: 14px; }
 .player-evaluation-rank-list b { font-weight: 500; }
 .player-evaluation-rank-list span { color: #b9c6bc; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .player-evaluation-pending { padding: 12px 0; }

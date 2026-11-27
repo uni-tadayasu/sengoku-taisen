@@ -64,3 +64,7 @@
 #main .recruit-preview td { white-space: nowrap; }
 #main .recruit-preview td.is-negative { color: #ffaaa0; }
 #main .recruit-preview-note { margin-top: 10px; color: var(--muted); font-size: 13px; line-height: 1.65; }
+
+/* This is a subtotal already included in production, never another credit. */
+:is(#main, #modal) .economy-rank-rice dt { white-space: normal; color: #c8b984; }
+:is(#main, #modal) .economy-rank-rice dd { color: #e8d4a7; }

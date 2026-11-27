@@ -294,7 +294,7 @@
     ['従六位',25000],['正六位',30000],['従五位',35000],['正五位',40000],
     ['従四位',45000],['正四位',50000],['従三位',60000],['正三位',70000],
     ['従二位',80000],['正二位',90000],['従一位',95000],['正一位',98000]
-  ].map(([name,minScore],index)=>Object.freeze({id:`court-${index}`,name,index,minScore})));
+  ].map(([name,minScore],index)=>Object.freeze({id:`court-${index}`,name,index,minScore,riceBonusPercent:index*2})));
   const COVERT_RULES=Object.freeze({minCount:1,maxCount:20000,commandCost:1,stationLimit:1024,historyLimit:40,reportLimit:50,capacityDivisor:4,hire:{ninja:{gold:3,rice:2},ashigaru:{gold:1,rice:1}},scout:{riceBase:20,ricePerUnit:.2},station:{riceBase:30,ricePerUnit:.3},retaliate:{riceBase:50,ricePerUnit:.4}});
   const COURT_ADMISSION=Object.freeze({rankId:'court-7',rankName:'従五位',minScore:35000});
   const BRANCH_RULES=Object.freeze({commandCost:1,parents:Object.freeze([{id:'edo',maxBranches:4,maxLevel:8,facilitySlots:6},{id:'nijo',maxBranches:2,maxLevel:24,facilitySlots:12},{id:'osaka',maxBranches:2,maxLevel:24,facilitySlots:12},{id:'nagoya',maxBranches:2,maxLevel:24,facilitySlots:12}].map(Object.freeze)),directions:Object.freeze([{id:'north',name:'北'},{id:'east',name:'東'},{id:'south',name:'南'},{id:'west',name:'西'}].map(Object.freeze))});
@@ -548,7 +548,7 @@
       section('walking','歩行',Math.min(1000000,walkingSteps)/200,5000,'記録された累計歩数200歩につき1点。100万歩で最大5,000点。')
     ];
     const score=breakdown.reduce((sum,item)=>sum+item.score,0),rank=evaluationRank(score),next=EVALUATION_RANKS[rank.index+1];
-    return {version:1,score,maxScore:EVALUATION_MAX,rankId:rank.id,rankName:rank.name,rankIndex:rank.index,rankMinScore:rank.minScore,
+    return {version:1,score,maxScore:EVALUATION_MAX,rankId:rank.id,rankName:rank.name,rankIndex:rank.index,rankMinScore:rank.minScore,riceBonusPercent:rank.riceBonusPercent,
       nextRank:next?{...next}:null,toNext:next?next.minScore-score:0,
       progressPercent:next?Math.floor((score-rank.minScore)/(next.minScore-rank.minScore)*100):100,breakdown};
   }
@@ -1666,14 +1666,20 @@
       // without temporarily changing state or losing instance-bound authority.
       const s=this.state,b=s.buildings,t=s.tech,governors=this._governorViews(assignments),owned=this.ownedCastleIds(),incomeShares=owned.length+homeRetainerCount(s)*RETAINER_SHARE,expanded=owned.reduce((sum,id)=>sum+s.castles[id].level-1,0),branchIncome=this.branchFacilityBonuses().income;
       const gold=Math.floor((180+b.keep*50+b.market*180*this._governorBonus('market',governors,assignments)+this._facilityEffect('gold',governors,assignments)+incomeShares*INITIAL_CASTLE.income.gold+expanded*15)*(1+t.commerce*.12)*(s.clan==='織田家'?1.15:1))+branchIncome.gold;
-      const grossRice=Math.floor((b.farm*450*this._governorBonus('farm',governors,assignments)+this._facilityEffect('rice',governors,assignments)+incomeShares*INITIAL_CASTLE.income.rice+expanded*20)*(1+t.cultivation*.12)*(s.clan==='北条家'?1.15:1))+branchIncome.rice;
+      const baseRice=Math.floor((b.farm*450*this._governorBonus('farm',governors,assignments)+this._facilityEffect('rice',governors,assignments)+incomeShares*INITIAL_CASTLE.income.rice+expanded*20)*(1+t.cultivation*.12)*(s.clan==='北条家'?1.15:1))+branchIncome.rice;
+      // Derive the title from the same current progress used by the rank panel;
+      // never trust a saved title or amplify gifts, trades, or current reserves.
+      // Appointment previews evaluate their proposed governors without changing
+      // the live save. Production gets one bonus before upkeep and surplus taper.
+      const evaluation=evaluateState(assignments===s.governors?s:{...s,governors:assignments},{officers:this.roster});
+      const rankRiceBonus={rankId:evaluation.rankId,rankName:evaluation.rankName,rankIndex:evaluation.rankIndex,percent:evaluation.riceBonusPercent,baseRice,amount:Math.floor(baseRice*evaluation.riceBonusPercent/100)},grossRice=baseRice+rankRiceBonus.amount;
       const gross={gold,rice:grossRice,wood:Math.floor((b.lumber*170*this._governorBonus('lumber',governors,assignments)+this._facilityEffect('wood',governors,assignments)+incomeShares*INITIAL_CASTLE.income.wood+expanded*5)*(1+t.forestry*.15))+branchIncome.wood,stone:Math.floor((b.quarry*130*this._governorBonus('quarry',governors,assignments)+this._facilityEffect('stone',governors,assignments)+incomeShares*INITIAL_CASTLE.income.stone+expanded*5)*(1+t.masonry*.15))+branchIncome.stone};
       const maintenance=this.maintenance({governors:assignments}),rawNet=Object.fromEntries(RESOURCES.map(key=>[key,gross[key]-maintenance.totalUpkeep[key]])),{net:operatingNet,surplusAdjustment}=balanceSurplus(rawNet);
       const untilMonth=60-s.realtime.elapsed,forecastResources=Object.fromEntries(RESOURCES.map(key=>{const accrued=s.realtime.incomeRemainders[key]+operatingNet[key]*untilMonth/60;return[key,clamp(s.resources[key]+Math.trunc(accrued+Math.sign(accrued)*1e-9),0,ASSET_CAP)];})),repair=this.repairQuote({resources:forecastResources}),repairUpkeep=repair.cost,net=Object.fromEntries(RESOURCES.map(key=>[key,operatingNet[key]-repairUpkeep[key]]));
       // Full production funds troops, facilities and salaries before excess savings
       // taper. Existing sustainable forces and deficit signs never change just
       // because a developed town produces more than the ordinary savings rate.
-      return{...net,upkeep:maintenance.totalUpkeep.rice,grossRice,gross,rawNet,surplusAdjustment,operatingNet,repairUpkeep,repair,net,troopUpkeep:maintenance.troopUpkeep,facilityUpkeep:maintenance.facilityUpkeep,governorCount:maintenance.governorCount,governorSalary:maintenance.governorSalary,totalTroops:maintenance.totalTroops,troopBreakdown:maintenance.troops,facilityLevels:maintenance.facilities};
+      return{...net,upkeep:maintenance.totalUpkeep.rice,grossRice,rankRiceBonus,gross,rawNet,surplusAdjustment,operatingNet,repairUpkeep,repair,net,troopUpkeep:maintenance.troopUpkeep,facilityUpkeep:maintenance.facilityUpkeep,governorCount:maintenance.governorCount,governorSalary:maintenance.governorSalary,totalTroops:maintenance.totalTroops,troopBreakdown:maintenance.troops,facilityLevels:maintenance.facilities};
     }
     costs(id,fromLevel){const b=BUILDINGS.find(b=>b.id===id);if(fromLevel===undefined){const jobs=this.isStaff?STAFF_VIEW.get(this)?.base.jobs||[]:this.state.jobs;fromLevel=Math.max(this.state.buildings[id]??0,...jobs.filter(j=>j.kind==='building'&&j.id===id).map(j=>j.targetLevel));}if(!b||!Number.isInteger(fromLevel)||fromLevel<0||fromLevel>32)return null;const level=fromLevel,mult=1+level*.32+level*level*.025,turns=level>=16?3:level>=6||id==='keep'?2:1;return this.scaleUpgradeCost({gold:Math.round(b.base.gold*mult),wood:Math.round(b.base.wood*mult),stone:Math.round(b.base.stone*mult),rice:0,turns,seconds:turns*60});}
     upgrade(id){

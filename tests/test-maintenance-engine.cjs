@@ -24,7 +24,7 @@ test('initial four-resource income exposes actual gross, both expenses, net and 
  assert.equal(m.totalTroops,4600);assert.deepEqual(m.troops,{field:3400,marching:0,castleGarrisons:1200,branchGarrisons:0,retreating:0,covert:0,external:0});
  assert.deepEqual(m.facilities,{townLevels:12,castleLevels:1,branchLevels:0,branchFacilityLevels:0,totalLevels:13});
  assert.deepEqual(m.troopUpkeep,{gold:184,rice:552,wood:0,stone:0});assert.deepEqual(m.facilityUpkeep,{gold:26,rice:73,wood:13,stone:13});
- assert.deepEqual(income.gross,{gold:850,rice:1070,wood:210,stone:160});assert.deepEqual(income.net,{gold:640,rice:445,wood:197,stone:147});
+ assert.deepEqual(income.gross,{gold:850,rice:1091,wood:210,stone:160});assert.deepEqual(income.net,{gold:640,rice:466,wood:197,stone:147});assert.equal(income.rankRiceBonus.baseRice,1070);assert.equal(income.rankRiceBonus.amount,21);
  for(const key of D.resources){assert.equal(income[key],income.net[key]);assert.equal(income[key],income.gross[key]-income.troopUpkeep[key]-income.facilityUpkeep[key]);}
  assert.equal(income.upkeep,m.totalUpkeep.rice);assert.equal(income.grossRice,income.gross.rice);assert.deepEqual(income.troopBreakdown,m.troops);assert.deepEqual(income.facilityLevels,m.facilities);assert.deepEqual(g.state,before);
  g._advanceRealtime(60);for(const key of D.resources)assert.equal(g.state.resources[key],before.resources[key]+income[key],key);assert.equal(g.state.magatama,before.magatama+D.gacha.monthlyReward);assert.equal(g.state.prestige,before.prestige);
@@ -86,7 +86,7 @@ test('server-recorded branch facility completion times split both production and
 });
 
 test('all four expenses can make net negative, stop at zero without phantom debt, and leave special assets unchanged',()=>{
- const g=game();for(const b of D.buildings)if(['military','defense','research','diplomacy'].includes(b.category))g.state.buildings[b.id]=32;g.state.troops=E.ASSET_CAP;g.state.resources={gold:1,rice:1,wood:1,stone:1};
+ const g=game();for(const b of D.buildings)if(['military','defense','research','diplomacy'].includes(b.category))g.state.buildings[b.id]=32;g.state.buildings.farm=0;g.state.troops=E.ASSET_CAP;g.state.resources={gold:1,rice:1,wood:1,stone:1};
  const special={magatama:g.state.magatama,prestige:g.state.prestige};for(const key of D.resources)assert(g.income()[key]<0,key+' deficit');g.rebalanceTroopsForUpkeep();const balanced=g.income();g._advanceRealtime(5);
  for(const key of D.resources){assert.equal(g.state.resources[key],Math.max(0,1+Math.trunc(balanced[key]/12)));if(balanced[key]<0)assert.equal(g.state.realtime.incomeRemainders[key],0);}assert.equal(g.maintenance().totalTroops,0);g._advanceRealtime(5);assert.equal(g.state.magatama,special.magatama);assert.equal(g.state.prestige,special.prestige);
  g.state.buildings=copy(game().state.buildings);g.state.troops=0;g.state.castles[g.state.home].troops=0;const income=g.income(),before=copy(g.state.resources),carry=copy(g.state.realtime.incomeRemainders);g._advanceRealtime(5);for(const key of D.resources)assert.equal(g.state.resources[key],before[key]+Math.trunc(carry[key]+income[key]/12),key+' no carried debt');assert.equal(load(g).state.resources.gold,g.state.resources.gold);

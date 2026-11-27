@@ -31,6 +31,22 @@ test('army and construction ledger show the same four-resource production, costs
  }
 });
 
+test('rank food appears as an included production subtotal and mounted bonus labels follow promotion and growth',()=>{
+ const h=harness();h.game.state.prestige=20000;h.host.innerHTML=h.c.economyPanel('army');const panel=h.host.firstElementChild,bonus=h.game.income().rankRiceBonus;
+ const amount=panel.querySelector('[data-rank-rice-bonus="amount"]'),percent=panel.querySelector('[data-rank-rice-bonus="percent"]'),rank=panel.querySelector('[data-rank-rice-bonus="rankName"]');
+ assert(amount&&percent&&rank);assert.equal(amount.textContent,signed(bonus.amount));assert.equal(percent.textContent,`+${bonus.percent}%`);assert.equal(rank.textContent,bonus.rankName);
+ assert.equal(panel.querySelectorAll('[data-economy-rate]').length,28,'included subtotal must not become a second credited income row');
+ assert.equal(panel.querySelectorAll('[data-rank-rice-bonus="amount"]').length,1,'gold, wood and stone have no rank subtotal');
+ assert.match(panel.textContent,/上の「生産」に含まれて/);assert.match(panel.textContent,/維持費と余剰生産の調整前/);
+ assert.match(h.c.economyBalanceTitle('rice',h.game.income()),/うち位階/);assert(!h.c.economyBalanceTitle('gold',h.game.income()).includes('うち位階'));
+ const originalAmount=amount.textContent;h.game.state.buildings.farm+=1;h.c.refreshEconomyPanels(h.game.income());assert.strictEqual(panel.querySelector('[data-rank-rice-bonus="amount"]'),amount);assert.notEqual(amount.textContent,originalAmount);
+ h.game.state.prestige=0;h.c.refreshEconomyPanels(h.game.income());const lower=h.game.income().rankRiceBonus;assert.strictEqual(panel.querySelector('[data-rank-rice-bonus="percent"]'),percent);assert.equal(percent.textContent,`+${lower.percent}%`);assert.equal(rank.textContent,lower.rankName);
+ // The rank dialog is outside the ledger; its live amount still refreshes.
+ h.host.innerHTML='<section class="player-evaluation-rice"><strong data-rank-rice-bonus="amount">stale</strong><strong data-rank-rice-bonus="percent">stale</strong></section>';
+ h.c.refreshEconomyPanels(h.game.income());assert.equal(h.host.querySelector('[data-rank-rice-bonus="amount"]').textContent,signed(lower.amount));assert.equal(h.host.querySelector('[data-rank-rice-bonus="percent"]').textContent,`+${lower.percent}%`);
+ let removals=0;h.doc.onRemove=()=>{removals++;};h.c.refreshEconomyPanels(h.game.income());assert.equal(removals,0,'unchanged bonus labels never remount their text');
+});
+
 test('developed surplus is listed after unchanged fees and the header displays the amount actually earned',()=>{
  const h=harness();for(const row of D.buildings)h.game.state.buildings[row.id]=32;h.game.state.troops=100;
  h.host.innerHTML='<div id="resources"></div><div id="calendar"></div><div id="clan-panel"></div><button id="sound-button"></button>'+h.c.economyPanel('army');h.c.renderHeader();const income=h.game.income();

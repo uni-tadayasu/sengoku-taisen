@@ -30,8 +30,8 @@ import {requirePromotionOrigin,recordPromotion,readPromotionReport} from './prom
 import {readMusicBroadcast,handleAdminMusic} from './admin-music.js';
 import {lordSupportSql,guardLordSupport,ensureResidency,residencySnapshot,residencyDirectory,residencyStart,initialResidencyStatements,residencyTargetGuard,prepareResidencySuccession,prepareResidencyCpuLosses} from './residency.js';
 const API = '/api/v1';
-const API_VERSION = '5.10.1';
-const API_FEATURES = Object.freeze({trades:true,moderation:true,premium:true,timedEvents:true,troopTrades:true,roamingBattles:true,roamingDeployment:true,covertDispatch:true,privatePlayerRoles:true,guildIcons:true,court:true,kyotoGosho:true,branches:true,branchBattles:true,branchFacilities:true,audioCalls:true,progression:true,armyPresets:true,allianceStrategy:true,sharedConquest:true,newcomerProtection:true,webPush:true,battleAdviser:true,battleCatalog:true,eventBattleRewards:true,shogunate:true,attackTravel:true,castleResidency:true,retainerCastleStats:true,residencyRelocation:true,maintenanceUpkeep:true,strongholdDurability:true,chatReplies:true,chatMentions:true,covertReturnTravel:true,allianceUnitTravel:true,legacySaveRecovery:true,displayNameVariants:true,courtOffices:true,serverSummons:true,loginRewards:true,paidRerolls:true,supporterChoices:true,premiumGrowthMetrics:true,adminMusicBroadcast:true});
+const API_VERSION = '5.10.2';
+const API_FEATURES = Object.freeze({trades:true,moderation:true,premium:true,timedEvents:true,troopTrades:true,roamingBattles:true,roamingDeployment:true,covertDispatch:true,privatePlayerRoles:true,guildIcons:true,court:true,kyotoGosho:true,branches:true,branchBattles:true,branchFacilities:true,audioCalls:true,progression:true,armyPresets:true,allianceStrategy:true,sharedConquest:true,newcomerProtection:true,webPush:true,battleAdviser:true,battleCatalog:true,eventBattleRewards:true,shogunate:true,attackTravel:true,castleResidency:true,retainerCastleStats:true,residencyRelocation:true,maintenanceUpkeep:true,strongholdDurability:true,chatReplies:true,chatMentions:true,covertReturnTravel:true,allianceUnitTravel:true,legacySaveRecovery:true,displayNameVariants:true,courtOffices:true,serverSummons:true,loginRewards:true,paidRerolls:true,supporterChoices:true,premiumGrowthMetrics:true,adminMusicBroadcast:true,rankRiceProduction:true});
 const MAX_BODY = 16 * 1024;
 const MAX_SAVE_BODY = 2 * 1024 * 1024;
 const MAX_AVATAR_BYTES = 48 * 1024;
@@ -2075,7 +2075,9 @@ function eventCastleCandidates(castleId,clock){
   }
   const candidateSource=`FROM users u JOIN player_saves s ON s.user_id=u.id
     WHERE s.save_json IS NOT NULL AND NOT EXISTS(SELECT 1 FROM player_bans b WHERE b.user_id=u.id AND b.active=1)
-    AND (COALESCE(json_extract(s.save_json,'$.state.gameOver'),0)=0 OR ${FIELD_FIXED_HOME_SQL} OR ${EFFECTIVE_CYCLE_SQL}<?) AND ${predicate}`;
+    AND CASE WHEN json_valid(s.save_json) THEN
+      (COALESCE(json_extract(s.save_json,'$.state.gameOver'),0)=0 OR ${FIELD_FIXED_HOME_SQL} OR ${EFFECTIVE_CYCLE_SQL}<?) AND ${predicate}
+      ELSE 0 END`;
   return{cycle,ordinary,params,source:candidateSource};
 }
 async function eventGarrison(db,castleId,clock,now,viewerId=null){

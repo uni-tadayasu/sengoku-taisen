@@ -4,6 +4,7 @@ import {readFileSync} from 'node:fs';
 import {harness} from './test-support.mjs';
 
 const INITIAL={enabled:false,mode:'loop',revision:0,startedAt:null,updatedAt:null};
+const RELEASE_VERSION=JSON.parse(readFileSync(new URL('../site-metadata.json',import.meta.url),'utf8')).version;
 const BASE=Date.UTC(2026,10,27,6);
 const one=(h,sql,...params)=>h.sql.prepare(sql).get(...params);
 const run=(h,sql,...params)=>h.sql.prepare(sql).run(...params);
@@ -18,7 +19,7 @@ async function scope(name,fn){const h=harness();h.now=BASE;try{await fn(h);passe
 
 try{
 await scope('anonymous defaults, private management and no identity leakage',async h=>{
-  const initial=await publicState(h);assert.deepEqual(initial.musicBroadcast,INITIAL);assert.equal(initial.serverNow,new Date(BASE).toISOString());assert.equal(initial.features.adminMusicBroadcast,true);assert.equal(initial.version,'5.10.1');
+  const initial=await publicState(h);assert.deepEqual(initial.musicBroadcast,INITIAL);assert.equal(initial.serverNow,new Date(BASE).toISOString());assert.equal(initial.features.adminMusicBroadcast,true);assert.equal(initial.version,RELEASE_VERSION);
   const admin=await owner(h),guest=await h.session('一般領主');
   run(h,'INSERT INTO staff_members(user_id,appointed_by,appointed_at) VALUES(?,?,?)',guest.user.id,admin.user.id,h.now);
   assert.deepEqual((await read(h,admin)).musicBroadcast,INITIAL);
