@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {harness} from './test-support.mjs';
-import {fixture,post,appoint,row,save} from './test-court-support.mjs';
+import {fixture,post,appoint,row,save,nominateSuccessor,certifySuccessor} from './test-court-support.mjs';
 import {messageRegister} from './message-addressing.js';
 
 let checks=0,calls=0;
@@ -36,8 +36,10 @@ try{
  await scope('a Kyoto regent may succeed to the crown and regency never reappears after the new reign',async h=>{
   const operator=await fixture(h,'摂政継承の太政大臣',{admin:true}),current=await fixture(h,'摂政に譲る天皇',{staff:true}),next=await fixture(h,'継承する摂政',{staff:true});
   await appoint(h,current);assign(h,operator,next);
-  const result=(await h.api('/court/succession',post(current,{requestId:crypto.randomUUID(),targetPlayerId:next.user.id}))).data;
-  assert.equal(result.receipt.successorPlayerId,next.user.id);assert.equal(h.sql.prepare('SELECT COUNT(*) n FROM court_regent').get().n,0);
+  const nomination=(await nominateSuccessor(h,current,next)).nomination;
+  assert.deepEqual((await publicPerson(h,next)).courtOffice,{title:'摂政',kind:'regent'});assert.deepEqual((await publicPerson(h,current)).courtOffice,{title:'天皇',kind:'emperor'});
+  const result=await certifySuccessor(h,operator,nomination);
+  assert.equal(result.receipt.targetPlayerId,next.user.id);assert.equal(h.sql.prepare('SELECT COUNT(*) n FROM court_regent').get().n,0);
   assert.deepEqual((await publicPerson(h,next)).courtOffice,{title:'天皇',kind:'emperor'});
   assert.deepEqual((await publicPerson(h,current)).courtOffice,{title:'上皇',kind:'retired-emperor'});
   await appoint(h,null);assert.equal(h.sql.prepare('SELECT COUNT(*) n FROM court_regent').get().n,0);

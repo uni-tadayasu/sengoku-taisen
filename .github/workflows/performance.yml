@@ -185,6 +185,7 @@ jobs:
           node server/test-shogunate.mjs shogunate.js
           node server/test-shogunate-approval.mjs
           node server/test-retired-emperor.mjs
+          node server/test-succession-approval.mjs
           node server/test-regency.mjs
           node server/test-regency-public.mjs
           node tests/test-shogunate-ui.cjs

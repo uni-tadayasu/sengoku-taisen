@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
 import {harness,settleFieldMarch} from './test-support.mjs';
-import {fixture,post,save,row,appoint} from './test-court-support.mjs';
+import {fixture,post,save,row,appoint,nominateSuccessor,certifySuccessor} from './test-court-support.mjs';
 
 const {cleanRegent}=createRequire(import.meta.url)('../court.js');
 function validateDirectory(value){assert.doesNotThrow(()=>cleanRegent(value),'The actual court UI must accept the regent directory');return value;}
@@ -35,7 +35,7 @@ try{
   const court=(await h.api('/court',{token:ordinary.token})).data;assert.equal(court.self.title,'摂政');assert.equal(court.self.isCourtRegent,true);assert.equal(court.self.isCourtEmperor,false);assert.equal(court.self.canApproveShogunate,true);assert.equal(court.self.canRespond,true);assert.equal(court.self.canAppoint,false);assert.equal(court.eligible,true);await h.api('/staff/court',{token:ordinary.token});
   const message=(await h.api('/court/chat',post(ordinary,{requestId:crypto.randomUUID(),text:'朝廷の応対を行います。'}))).data.message;assert.equal(message.author.kind,'court');assert.equal(message.author.id,null);
   const applicant=await application(h),view=(await h.api('/shogunate',{token:ordinary.token})).data.shogunate;assert.equal(view.canApprove,true);assert(view.approvals.some(r=>r.id===applicant.rightId));await approve(h,ordinary,applicant.rightId);assert.equal(h.sql.prepare('SELECT status FROM shogunate_approvals WHERE right_id=?').get(applicant.rightId).status,'approved');
-  await h.api('/court/succession',{token:ordinary.token,expected:403});await h.api('/court/succession',post(ordinary,{requestId:crypto.randomUUID(),targetPlayerId:admin.user.id},403));await h.api('/admin/court/regent',{token:ordinary.token,expected:403});assert.deepEqual(row(h,ordinary),before);
+  await h.api('/court/succession',{token:ordinary.token,expected:403});await h.api('/court/succession',post(ordinary,{requestId:crypto.randomUUID(),targetPlayerId:admin.user.id,targetTermId:'forged-staff-term',sourceAppointmentToken:crypto.randomUUID()},403));await h.api('/admin/court/regent',{token:ordinary.token,expected:403});assert.deepEqual(row(h,ordinary),before);
  });
  await scope('a Kyoto Regent keeps the same staff term, home, assets and crown-only succession boundary',async h=>{
   const{admin,staff}=await setup(h),before=row(h,staff),term=h.sql.prepare('SELECT * FROM staff_members WHERE user_id=?').get(staff.user.id);await appointRegent(h,admin,staff);
@@ -70,7 +70,7 @@ try{
   const{admin,ordinary,staff}=await setup(h),successor=await fixture(h,'次代の御所担当',{staff:true}),empty=await h.session('本拠未登録');await appoint(h,staff);
   const reject=async p=>{const v=await directory(h,admin);const r=await h.api('/admin/court/regent',post(admin,{action:'appoint',targetPlayerId:p.user.id,expectedRevision:v.revision,requestId:crypto.randomUUID()},400));assert.equal(r.data.error.code,'REGENT_TARGET_REQUIRED');assert(!v.candidates.some(c=>c.id===p.user.id));};
   await reject(admin);await reject(staff);await reject(empty);
-  await h.api('/court/succession',post(staff,{requestId:crypto.randomUUID(),targetPlayerId:successor.user.id}));await reject(staff);await reject(successor);
+  const nomination=(await nominateSuccessor(h,staff,successor)).nomination;await certifySuccessor(h,admin,nomination);await reject(staff);await reject(successor);
   h.sql.prepare('INSERT INTO player_bans(user_id,active,revision,banned_by,updated_at) VALUES(?,1,1,?,?)').run(ordinary.user.id,admin.user.id,h.now);await reject(ordinary);
  });
  await scope('promotion removes the prior external office and dismissal does not resurrect it',async h=>{
@@ -85,7 +85,10 @@ try{
  });
  await scope('a Kyoto Regent may succeed the Emperor and accession permanently clears the old delegated appointment',async h=>{
   const{admin,staff}=await setup(h),emperor=await fixture(h,'譲位する天皇',{staff:true});await appoint(h,emperor);await appointRegent(h,admin,staff);
-  const candidates=(await h.api('/court/succession',{token:emperor.token})).data.candidates;assert(candidates.some(c=>c.id===staff.user.id));await h.api('/court/succession',post(emperor,{requestId:crypto.randomUUID(),targetPlayerId:staff.user.id}));
+  const nomination=(await nominateSuccessor(h,emperor,staff)).nomination;
+  assert.equal(nomination.status,'pending');assert.equal(h.sql.prepare('SELECT user_id FROM court_regent').get().user_id,staff.user.id);assert.equal(h.sql.prepare('SELECT user_id FROM court_leader').get().user_id,emperor.user.id);
+  const pendingInfo=(await h.api('/court',{token:staff.token})).data;assert.equal(pendingInfo.self.isCourtRegent,true);assert.equal(pendingInfo.self.isCourtEmperor,false);
+  await certifySuccessor(h,admin,nomination);
   assert.equal(h.sql.prepare('SELECT * FROM court_regent').get(),undefined);assert.equal((await directory(h,admin)).holder,null);const info=(await h.api('/court',{token:staff.token})).data;assert.equal(info.self.isCourtEmperor,true);assert.equal(info.self.isCourtRegent,false);assert.equal(info.self.title,'天皇');
   await appoint(h,null);const after=(await h.api('/court',{token:staff.token})).data;assert.equal(after.self.isCourtEmperor,false);assert.equal(after.self.isCourtRegent,false);assert.equal((await h.api('/shogunate',{token:staff.token})).data.shogunate.canApprove,false);
  });

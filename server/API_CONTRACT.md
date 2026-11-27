@@ -2050,15 +2050,36 @@ Migrations `0043_shogunate_approval`, `0044_retired_emperor` and `0045_regency` 
 
 At `now >= deadlineAt`, an unapproved application expires, the government opens, and Kyoto becomes its political subordinate in one transaction. `controlledAt` records the exact deadline. Scheduled Worker execution, the existing notification tick, request background work, and court/field/shogunate reads settle due applications. A delayed older deadline cannot overwrite a newer controller. Suspended applicants receive no opening while suspended; a later eligible settlement still observes the original deadline and ordering.
 
-### Voluntary succession and 上皇
+### Crown succession with chancellor certification / 太政大臣の認証 (v5.11.1)
 
-`GET /court/succession` is restricted to the actual current Emperor. It returns `{ok,canAbdicate:true,candidates,serverNow}`; candidates are active non-operator Kyoto members other than the requesting Emperor, with `{id,name,termId,homeCastleId:"kyoto_gosho",homeCastleName:"京都御所"}`.
+Migration `0047_imperial_succession_approval` adds pending nominations and decision receipts while preserving the completed succession and retirement ledgers from `0044_retired_emperor`. Nomination alone does not transfer the crown, remove staff membership, stamp a departure, change a saved campaign, or grant the retirement title. There is no nomination deadline or automatic approval; the shogunate's 72-hour deadline is unrelated.
 
-`POST /court/succession` accepts `{requestId,targetPlayerId}`. A single transaction checks the current crown token, both account/staff generations and world-clock revision, records the predecessor as 上皇, transfers the crown, stamps the predecessor's staff departure, and removes their staff membership. Recording retirement before moving the crown prevents an intermediate merit-rank collision from revoking an unrelated minister.
+Only the actual current Emperor can nominate a successor. Only the current operator / 太政大臣 can approve or reject. A Regent has neither power. The court self projection adds `canNominateSuccession` and `canApproveSuccession`; the API feature flag is `imperialSuccessionApproval`.
 
-The result is `{ok,idempotent,receipt:{retiredPlayerId,retiredPlayerName,successorPlayerId,successorPlayerName,retiredAt},user,needsSync:true}`. A retry can retrieve the exact committed receipt after the predecessor has lost staff privileges; it requires current account access. The browser binds receipt adoption to the requesting identity and refreshes the authoritative save. Existing staff-campaign restoration returns the predecessor to their earlier ordinary home, preserving personal progression and assets. Normal home relocation remains available afterward.
+| Method and path | Input | Result |
+|---|---|---|
+| GET `/court/succession` | Current Emperor only | `{ok,canNominate:true,approvalRequired:true,sourceAppointmentToken,candidates,pending,history,historyHasMore,serverNow}` |
+| POST `/court/succession` | `{requestId,targetPlayerId,targetTermId,sourceAppointmentToken}` | Creates a pending nomination without changing either person's role or base |
+| POST `/court/succession/:nominationId/cancel` | `{requestId,expectedRevision}`; current Emperor only | Cancels the current pending nomination |
+| GET `/admin/court/succession` | Current 太政大臣 only | `{ok,canApprove:true,pending,history,historyHasMore,serverNow}` |
+| POST `/admin/court/succession/:nominationId/approve` | `{requestId,expectedRevision}`; current 太政大臣 only | Certifies the nomination and atomically completes accession and abdication |
+| POST `/admin/court/succession/:nominationId/reject` | `{requestId,expectedRevision}`; current 太政大臣 only | Rejects the nomination without transferring the crown |
 
-The actual Emperor remains based at Kyoto. 上皇 is a persistent title, never an externally appointable merit office, and grants no approval, staff or operator authority. A Regent cannot abdicate on the Emperor's behalf. A Kyoto Regent selected as successor becomes Emperor and their old regency is permanently cleared.
+Emperor candidates are active non-operator Kyoto members other than the requesting Emperor, with `{id,name,termId,homeCastleId:"kyoto_gosho",homeCastleName:"京都御所"}`. The nomination request binds both the source crown appointment and the chosen candidate's staff term. The Emperor's `pending` is one nomination or `null`; the operator's `pending` is an array with at most one currently valid nomination. History is bounded to 20 entries and `historyHasMore` signals older records. `serverNow` is an ISO timestamp.
+
+A nomination contains `{id,status,revision,emperor:{id,name},successor:{id,name},nominatedAt,resolvedAt,resolvedBy,reason}`. Status is `pending`, `approved`, `rejected`, `cancelled`, or `invalidated`. Revision starts at 0 and advances to 1 on resolution. `nominatedAt` is epoch milliseconds; `resolvedAt` is epoch milliseconds or `null`. `resolvedBy` is `{id,name}` or `null`, and `reason` is a string or `null`.
+
+New mutations return `{ok,idempotent,receipt,nomination,needsSync:false}`. The immutable receipt contains `{action,nominationId,targetPlayerId,revision,status,nominatedAt,resolvedAt}`; nomination retries retain their original pending receipt while `nomination` reflects the current state. Decision retries never apply a second crown transfer. Reusing an operation ID for a different intent is rejected.
+
+Approval revalidates the current administrator, the exact nominated Emperor's appointment/account/staff generation, the candidate's eligibility and original staff term, the nomination revision, and the world-clock revision inside the commit. Leaving and rejoining Kyoto or changing the reigning Emperor makes the older nomination unusable. Retirement is recorded before the crown moves, preventing an intermediate merit-rank collision from removing an unrelated minister. The predecessor's staff departure is stamped at approval time, then their staff membership is removed. Existing authoritative synchronization returns the former Emperor to their ordinary home and restores their personal campaign, officers and assets.
+
+An approval response belongs to the administrator's operation. It does not return the former Emperor as the current user, and the browser must not adopt that other account's identity or save. The former Emperor receives their updated role and campaign through their own account synchronization.
+
+A new request using the old `{requestId,targetPlayerId}` immediate-abdication body is rejected with HTTP 400 `COURT_SUCCESSION_APPROVAL_REQUIRED`. Already completed pre-5.11.1 operations remain replayable as explicitly marked legacy approvals; they do not create another succession or require retroactive certification.
+
+While a valid nomination is pending, non-null appointment through `/admin/court/leader` is rejected with HTTP 409: the operator must first certify or reject the nomination. Explicit dismissal remains available and invalidates the pending nomination. Initial appointments, vacancy filling and ordinary appointments without a pending nomination retain their existing behavior.
+
+The actual Emperor remains based at Kyoto. 上皇 is a persistent title, never an externally appointable merit office, and grants no approval, staff or operator authority. A Kyoto Regent selected as successor keeps their regency while awaiting certification; accession permanently clears the old regency. Normal home relocation remains available to the retired Emperor after restoration.
 
 ### Regency / 摂政
 
