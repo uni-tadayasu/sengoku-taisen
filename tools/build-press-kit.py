@@ -37,8 +37,12 @@ README = f'''戦国VS / SENGOKU VS — 紹介・掲載用素材
 
 公式サイト: {SITE['origin']}/
 ゲーム紹介: {SITE['origin']}/sengoku-vs/
+英語の紹介・始め方: {SITE['origin']}/en/
 素材と最新情報: {SITE['origin']}/press/
-公開済み紹介動画: https://www.youtube.com/watch?v=NWzewQEJyz0
+最新の紹介動画: 月夜の城下から、天下地図へ（28秒・日本語／英語字幕）
+https://www.youtube.com/watch?v=KFzGnhcSRIA
+はじめての3手（36秒・日本語）: https://www.youtube.com/watch?v=j7TEhAidQjw
+絵巻で見る戦国VS（24秒・日本語）: https://www.youtube.com/watch?v=NWzewQEJyz0
 公開版: Ver.{SITE['version']}
 著作権表記: © KASAI SOLUTIONS
 
@@ -56,6 +60,14 @@ images/ は公式イラストによる紹介画像、screenshots/ は撮影用�
 
 video/ の36秒動画は、撮影用デモの実ゲーム静止画に移動・拡大を加えた紹介です。
 プレイ録画ではありません。全編に撮影用デモであることを表示しています。
+動画の画面は過去バージョンのものです。収録するスクリーンショット4枚とは
+撮影時期が異なります。詳細はvideo/の制作記録と素材情報を参照してください。
+
+最新の28秒動画は、公式イラストと実ゲーム画面を使った日英字幕つきの紹介です。
+容量を抑えるため、動画と字幕は次のURLから別途取得できます。
+MP4: {SITE['origin']}/assets/promo/sengoku-vs-jade-campaign-ja-en-20261127.mp4
+日本語字幕: {SITE['origin']}/assets/promo/sengoku-vs-jade-campaign-ja-en-20261127-ja.vtt
+English captions: {SITE['origin']}/assets/promo/sengoku-vs-jade-campaign-ja-en-20261127-en.vtt
 
 従来の24秒の公式イラスト紹介動画は、容量を抑えるため別配布です。
 {SITE['origin']}/assets/promo/sengoku-vs-intro-ja-{EDITION}.mp4
