@@ -11,7 +11,7 @@ function renderSharePage({ site, metadataHtml, jsonLd, iconHtml, header, footer,
   const invitePresets = [
     {id:'social', label:'SNSで紹介', source:'share_text', text:'一城から、天下へ。城下町づくり・武将編成・合戦を楽しむ「戦国VS」。PC・スマホで基本プレイ無料、インストール不要。'},
     {id:'friend', label:'友だちを誘う', source:'friend', xText:'一緒に一城から始めてみませんか？城下町を育て、武将を率いる「戦国VS」。PC・スマホで基本プレイ無料、インストール不要。ひとりのCPU戦役から試せます。', text:'城下町を育てて、武将を率いて天下を目指す「戦国VS」。一緒に一城から始めてみませんか？PC・スマホのブラウザで基本プレイ無料。まずは「端末だけで遊ぶ」で試せて、領主登録後は同盟や交易も楽しめます。'},
-    {id:'discord', label:'Discordに紹介', source:'discord', xText:'城下町を育て、武将を編成して攻城戦へ。「戦国VS」はPC・スマホで遊べる基本プレイ無料のブラウザ戦略ゲーム。領主登録後は同盟や交易も楽しめます。', text:'【ゲーム紹介】戦国ブラウザゲーム「戦国VS」。内政・武将編成・攻城戦を楽しめます。PC・スマホ・タブレット対応、基本プレイ無料。個人戦役はCPU戦、領主登録後は同盟や交易も利用できます。\n有料の外観アイテム・月額支援は任意です。遊び方・ゲーム画面はこちら。'}
+    {id:'discord', label:'Discordに紹介', source:'discord', xText:'城下町を育て、武将を編成して攻城戦へ。「戦国VS」はPC・スマホで遊べる基本プレイ無料のブラウザ戦略ゲーム。領主登録後は同盟や交易も楽しめます。', text:'【ゲーム紹介】戦国ブラウザゲーム「戦国VS」。内政・武将編成・攻城戦を楽しめます。PC・スマホ・タブレット対応、基本プレイ無料。個人戦役はCPU戦、領主登録後は同盟や交易も利用できます。\n有料の外観アイテム・月額支援・武将再抽選パスは任意です。遊び方・ゲーム画面はこちら。'}
   ];
   const shareURL = campaignURL('copy_link');
   const nativeURL = campaignURL('native_share');
@@ -64,7 +64,7 @@ function renderSharePage({ site, metadataHtml, jsonLd, iconHtml, header, footer,
         <p class="hero-lead">好きな城を選び、町を育て、武将を率いて次の一城へ。内政・軍団編成・攻城戦を楽しむ、日本語の戦国戦略シミュレーションです。軍師の助言を読み、自分の采配で領国を広げていきます。</p>
         <div class="hero-actions"><a class="action-link" href="../">基本プレイ無料で始める</a><a class="text-link" href="#jade-trailer">日本語・英語の紹介動画を見る</a></div>
         <p class="discovery-availability"><span class="availability-item">基本プレイ無料</span><span class="availability-divider" aria-hidden="true">/</span><span class="availability-item">インストール不要</span></p>
-        <p class="share-platform">PC・スマホ・タブレットのブラウザに対応。<br>有料の外観アイテム・月額支援もあります。<a href="#before-you-play">始める前のQ&amp;A</a></p>
+        <p class="share-platform">PC・スマホ・タブレットのブラウザに対応。<br>任意の外観・月額支援・武将再抽選パスがあります。<a href="#before-you-play">始める前のQ&amp;A</a></p>
       </div>
     </section>
 
@@ -116,7 +116,7 @@ function renderSharePage({ site, metadataHtml, jsonLd, iconHtml, header, footer,
     <section id="before-you-play" class="share-support discovery-faq" aria-labelledby="discovery-faq-title">
       <div class="share-section-heading"><p class="section-kicker">始める前に</p><h2 id="discovery-faq-title">戦国VSのよくある質問</h2></div>
       <div class="discovery-questions">
-        <section><h3>無料でどこまで遊べますか？</h3><div><p>城下町の育成、武将編成、合戦の基本プレイは無料です。有料商品は旗印や城下町の外観、勲章、月額サポーターのバッジで、武将の能力や兵力を強化したり、資産を増やしたりする特典はありません。</p><a class="share-detail-link" href="../premium/">外観の見本・料金・月額支援を見る</a></div></section>
+        <section><h3>無料でどこまで遊べますか？</h3><div><p>城下町の育成、武将編成、合戦の基本プレイは無料です。外観アイテムとサポーター特典は装飾です。武将再抽選パスは480円（税込）で実時間30日間、1人招集を1日3回まで引き直し、元と新しい武将から1人を選べるため、武将の獲得結果に影響します。勾玉そのものの販売はありません。月額サポーターは支払済み期間ごとに装飾を1種選べ、解約後も使えます。</p><a class="share-detail-link" href="../premium/">商品・再抽選の条件・料金を見る</a></div></section>
         <section><h3>アプリのインストールは必要ですか？</h3><div><p>インストールせず、このサイトから遊べます。PCはマウス、スマホ・タブレットはタップで操作できます。ゲームにはJavaScriptを、領主間の交流や同期にはインターネット接続を使います。</p><a class="share-detail-link" href="../guide/#device-controls">端末ごとの操作方法を読む</a></div></section>
         <section><h3>ひとりでも遊べますか？</h3><div><p>個人の戦役ではCPU勢力の城を攻略できます。初回は「端末だけで遊ぶ」を選べます。ほかの領主と合戦・同盟・交易を楽しむときは、領主を登録して共通フィールドへ進みます。</p><a class="share-detail-link" href="../guide/#first-steps">最初の城選びと進め方を読む</a></div></section>
         <section><h3>戦略ゲームが初めてでも始められますか？</h3><div><p>城下町の「次の一手」やメニューの「ヒント」で、今の領国に合う行動と理由を確認できます。軍師AIは戦況を比べ、出陣前の戦法や兵数を提案します。まずは田畑・商家と軍団を整えてみましょう。</p><a class="share-detail-link" href="../guide/#next-hints">ヒントと準備の進め方を読む</a></div></section>

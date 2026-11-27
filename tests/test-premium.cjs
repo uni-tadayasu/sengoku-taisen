@@ -76,7 +76,7 @@ function ready(extra = {}) {
 }
 function setup(initial = ready(), options = {}) {
   const { doc, entry } = documentFixture(), listeners = new Set(), windows = [], calls = [];
-  let context = initial, checkout = async id => ({ productId: id, url: checkoutURL(id) }), equip = async (id, slot) => {
+  let context = initial, claim = async () => context, checkout = async id => ({ productId: id, url: checkoutURL(id) }), equip = async (id, slot) => {
     const changed = catalog.getProducts().find(product => product.slot === slot)?.id;
     context = { ...context, products: context.products.map(product => product.id === changed ? { ...product, equipped: Boolean(id) } : product) };
     for (const listener of listeners) listener(context); return context;
@@ -87,6 +87,8 @@ function setup(initial = ready(), options = {}) {
     subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
     checkout(id) { calls.push(['checkout', id]); return checkout(id); },
     equip(id, slot) { calls.push(['equip', id, slot]); return equip(id, slot); },
+    claimSupporterReward(periodId, productId) { calls.push(['claim', periodId, productId]); return claim(periodId, productId); },
+    async trackEvent(event, productId) { calls.push(['event', event, productId]); return true; },
     openRegistration() { calls.push(['register']); }
   };
   const openWindow = () => {
@@ -101,22 +103,22 @@ function setup(initial = ready(), options = {}) {
   }
   return { doc, entry, ui, runtime, windows, calls, get, click, listeners, context: () => context,
     set(value) { context = value; for (const listener of listeners) listener(context); },
-    onCheckout(fn) { checkout = fn; }, onEquip(fn) { equip = fn; }
+    onCheckout(fn) { checkout = fn; }, onEquip(fn) { equip = fn; }, onClaim(fn) { claim = fn; }
   };
 }
 function assertUnavailable(container) {
   assert.equal(container.querySelectorAll('[data-premium-equip]').length, 0);
-  const buttons = container.querySelectorAll('[data-premium-purchase]'); assert.equal(buttons.length, 8);
+  const buttons = container.querySelectorAll('[data-premium-purchase]'); assert.equal(buttons.length, 9);
   for (const button of buttons) { assert.equal(button.tagName, 'BUTTON'); assert.equal(button.disabled, true); assert.equal(button.getAttribute('href'), null); }
 }
 
-test('the eight finished products have fixed prices, real artwork and no gameplay benefit', () => {
+test('the nine products have fixed prices, real artwork and truthful gameplay benefit flags', () => {
   assert.deepEqual(catalog.getProducts().map(product => [product.id, product.priceYen, product.billingPeriod, product.slot]), [
     ['gold-banner', 480, 'one_time', 'nameplate'], ['moonlit-castle', 980, 'one_time', 'town'], ['supporter', 780, 'month', 'badge'],
-    ['vermilion-banner', 580, 'one_time', 'nameplate'], ['silver-banner', 580, 'one_time', 'nameplate'], ['phoenix-medallion', 780, 'one_time', 'badge'], ['sakura-town', 980, 'one_time', 'town'], ['snow-town', 980, 'one_time', 'town']
+    ['reroll-pass-30d', 480, 'one_time', undefined], ['vermilion-banner', 580, 'one_time', 'nameplate'], ['silver-banner', 580, 'one_time', 'nameplate'], ['phoenix-medallion', 780, 'one_time', 'badge'], ['sakura-town', 980, 'one_time', 'town'], ['snow-town', 980, 'one_time', 'town']
   ]);
   for (const product of catalog.getProducts()) {
-    assert.equal(product.taxIncluded, true); assert.equal(product.priceIsTentative, false); assert.equal(product.transferable, false); assert.equal(product.gameplayBenefits, false);
+    assert.equal(product.taxIncluded, true); assert.equal(product.priceIsTentative, false); assert.equal(product.transferable, false); assert.equal(product.gameplayBenefits, product.id === 'reroll-pass-30d');
     assert(fs.existsSync(path.join(root, product.art.src))); assert.equal(product.purchaseUrl, undefined);
     assert.equal(catalog.getPurchaseState({ ...product, availability: 'available', purchaseUrl: checkoutURL(product.id) }, { launchEnabled: true }).enabled, false);
   }
@@ -133,7 +135,7 @@ test('only the correct product destination with one opaque reference is accepted
 test('the public page renders real artwork and game entry links, without direct checkout or ownership', () => {
   const html = renderCatalog({ catalog, surface: 'public', assetPrefix: '../', gamePrefix: '../', context: ready({ products: [{ id: 'gold-banner', owned: true, equipped: true }] }) });
   const { doc } = documentFixture(), section = doc.createElement('section'); section.innerHTML = html; doc.body.append(section);
-  const links = section.querySelectorAll('[data-premium-purchase]'); assert.equal(links.length, 8);
+  const links = section.querySelectorAll('[data-premium-purchase]'); assert.equal(links.length, 9);
   for (const [index, product] of catalog.getProducts().entries()) { assert.equal(links[index].tagName, 'A'); assert.equal(links[index].getAttribute('href'), '../?premium=' + product.id); assert(html.includes('../' + product.art.src)); }
   assert.doesNotMatch(html, /buy\.stripe\.com|data-premium-equip|data-premium-account|予定価格|販売準備中/);
   assert.match(section.textContent, /月額780円（税込）で自動更新/); assert.match(section.textContent, /現在の利用期間の末日/);
@@ -169,7 +171,7 @@ test('all five new previews use their actual asset and category filters keep eve
     const picture=stage.querySelector(product.slot==='nameplate'?'.premium-preview-banner':product.slot==='badge'?'.premium-preview-supporter':'[data-premium-landscape]');
     assert.equal(picture.getAttribute('src'),'../'+product.art.src);
   }
-  for(const [slot,count] of [['nameplate',3],['town',3],['badge',2],['all',8]]){
+  for(const [slot,count] of [['nameplate',3],['town',3],['badge',2],['pass',1],['all',9]]){
     const button=container.querySelector('[data-premium-filter="'+slot+'"]');container.dispatch('click',button);
     const visible=container.querySelectorAll('[data-premium-slot]').filter(item=>!item.hidden);
     assert.equal(visible.length,count);assert.equal(button.getAttribute('aria-pressed'),'true');
@@ -279,6 +281,81 @@ test('forged success parameters and local storage never grant ownership or mutat
   window.SengokuPremium.open('gold-banner'); await drain(); assertUnavailable(doc.querySelector('#premium-modal'));
   const element = doc.querySelector('[data-premium-catalog]'); element.dispatch('click', element.querySelector('[data-premium-preview="supporter"]')); doc.querySelector('#premium-modal').dispatch('click', element.querySelector('[data-premium-purchase="supporter"]'));
   assert.equal(JSON.stringify(game), before); assert.deepEqual(effects, []); assert.deepEqual(reads, []); window.SengokuPremium.dispose();
+});
+
+function supporterPeriod(claimedProductId = null) {
+  return { periodId: 'srp_fixture_202611', periodKey: '202611', startsAt: '2026-11-20T12:00:00.000Z', endsAt: '2026-12-20T12:00:00.000Z', claimedProductId, choices: catalog.getSupporterChoices('202611').map(item => item.id) };
+}
+
+test('active reroll pass displays its real deadline and daily remainder without offering equipment or duplicate checkout', async () => {
+  const value = ready();
+  value.products = value.products.map(product => product.id === 'reroll-pass-30d' ? { ...product, owned: true, canPurchase: true, expiresAt: '2026-12-27T04:00:00.000Z' } : product);
+  value.rerollPass = { active: true, expiresAt: '2026-12-27T04:00:00.000Z', dailyLimit: 3, usedToday: 2, remainingToday: 1, nextResetAt: '2026-11-27T20:00:00.000Z', countsVerified: true };
+  const s = setup(value); s.ui.open('reroll-pass-30d'); await drain();
+  const card = s.get('[data-premium-product="reroll-pass-30d"]');
+  assert.match(card.textContent, /残り 1 \/ 3 回/); assert.match(card.textContent, /2026年12月27日/); assert.match(card.textContent, /2026年11月28日 05:00/);
+  assert.match(card.textContent, /武将の獲得結果に影響する有料特典/); assert.match(card.textContent, /10人招集は対象外/); assert.match(card.textContent, /自動更新はありません/);
+  assert.equal(s.get('[data-premium-purchase="reroll-pass-30d"]').disabled, true);
+  assert.equal(s.get('[data-premium-equip="reroll-pass-30d"]'), null);
+  assert.equal(s.get('[data-premium-preview="reroll-pass-30d"]'), null);
+  s.click('[data-premium-purchase="reroll-pass-30d"]'); assert.equal(s.calls.some(call => call[0] === 'checkout'), false);
+  s.set({ ...value, rerollPass: { ...value.rerollPass, countsVerified: false } });
+  assert.match(s.get('[data-premium-product="reroll-pass-30d"]').textContent, /本日の残り回数は再確認/);
+  assert.doesNotMatch(s.get('[data-premium-product="reroll-pass-30d"]').textContent, /残り 1 \/ 3 回/);
+  s.ui.dispose();
+});
+
+test('pass purchase confirmation states real-time duration, single draw rules and paid gameplay effect before checkout', async () => {
+  const s = setup(); s.ui.open('reroll-pass-30d'); await drain();
+  s.click('[data-premium-purchase="reroll-pass-30d"]'); const note = s.get('[data-premium-confirm]').textContent;
+  assert.match(note, /480円 \/ 30日/); assert.match(note, /実時間30日間/); assert.match(note, /自動更新はありません/);
+  assert.match(note, /1日3回/); assert.match(note, /元の武将と新しい武将から1人/); assert.match(note, /05:00（日本時間）/); assert.match(note, /武将の獲得結果に影響/);
+  assert.equal(s.calls.filter(call => call[0] === 'checkout').length, 0);
+  s.ui.dispose();
+});
+
+test('a paid-period cosmetic is previewed, confirmed, received without optimism and kept after supporter cancellation', async () => {
+  const period = supporterPeriod(), id = period.choices[1];
+  const value = ready({ supporterRewards: { periods: [period] }, appearance: { nameplate: null, ownedProducts: [] } });
+  const s = setup(value), wait = deferred(); s.onClaim(() => wait.promise); s.ui.open('supporter'); await drain();
+  assert.equal(s.get('[data-premium-supporter]').querySelectorAll('[data-premium-reward-choice]').length, 3);
+  s.click('[data-premium-preview="' + id + '"]');
+  assert.equal(s.get('[data-premium-stage]').getAttribute('data-premium-preview-slot'), 'nameplate');
+  assert.equal(s.get('[data-premium-stage]').getAttribute('data-premium-reward-preview'), 'true');
+  assert.equal(s.get('.premium-preview-banner').getAttribute('src'), catalog.getProduct(id).art.src);
+  assert(s.get('[data-premium-stage]').getAttribute('style').includes(catalog.getProduct(id).palette.background));
+  s.click('[data-premium-reward-choice="' + id + '"]');
+  assert.match(s.get('[data-premium-confirm]').textContent, /確定後は別の外観に変更できません/);
+  assert.match(s.get('[data-premium-confirm]').textContent, /追加の支払いはありません/);
+  assert.equal(s.calls.filter(call => call[0] === 'claim').length, 0);
+  s.click('[data-premium-ui="claim-reward"]'); s.click('[data-premium-ui="claim-reward"]');
+  assert.deepEqual(s.calls.filter(call => call[0] === 'claim'), [['claim', period.periodId, id]]);
+  assert.equal(s.get('[data-premium-equip="' + id + '"]'), null);
+  const received = ready({ supporterRewards: { periods: [supporterPeriod(id)] }, appearance: { nameplate: null, ownedProducts: [id] } });
+  s.set(received); wait.resolve(received); await drain();
+  assert(s.get('[data-premium-equip="' + id + '"]')); assert.equal(s.get('[data-premium-reward-choice="' + id + '"]'), null);
+  assert.match(s.get('[data-premium-supporter]').textContent, /解約後も所持/);
+  assert.equal(s.context().products.find(product => product.id === 'supporter').owned, false);
+  s.click('[data-premium-equip="' + id + '"]'); await drain();
+  assert(s.calls.some(call => call[0] === 'equip' && call[1] === id && call[2] === 'nameplate'));
+  assert.equal(s.windows.length, 0); assert(!s.calls.some(call => call[0] === 'checkout')); s.ui.dispose();
+});
+
+test('changing account cancels a pending reward confirmation and clears old paid-period choices', async () => {
+  const period = supporterPeriod(), s = setup(ready({ supporterRewards: { periods: [period] } })); s.ui.open(); await drain();
+  s.click('[data-premium-reward-choice="' + period.choices[0] + '"]');
+  s.set(ready({ user: userB }));
+  assert.equal(s.get('[data-premium-confirm]').hidden, true); assert.equal(s.get('[data-premium-reward-choice]'), null);
+  assert.equal(s.calls.filter(call => call[0] === 'claim').length, 0); s.ui.dispose();
+});
+
+test('shop views and explicit checkout starts are measured without fabricated successful purchase events', async () => {
+  const s = setup(); s.ui.open(); await drain(); s.ui.refresh(); s.ui.refresh();
+  assert.equal(s.calls.filter(call => call[0] === 'event' && call[1] === 'shop_view').length, 1);
+  s.click('[data-premium-purchase="gold-banner"]'); assert.equal(s.calls.filter(call => call[0] === 'event' && call[1] === 'checkout_start').length, 0);
+  s.click('[data-premium-ui="checkout"]'); await drain();
+  assert.deepEqual(s.calls.filter(call => call[0] === 'event').map(call => call.slice(1)), [['shop_view', undefined], ['checkout_start', 'gold-banner']]);
+  assert.equal(s.context().products[0].owned, false); s.ui.dispose();
 });
 
 (async () => {

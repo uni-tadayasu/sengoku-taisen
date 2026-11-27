@@ -13,7 +13,7 @@ const clone = value => JSON.parse(JSON.stringify(value));
 const baseTime = Date.parse('2026-11-21T12:00:00.000Z');
 const ids = ['gold-banner', 'moonlit-castle', 'supporter'];
 const slots = { 'gold-banner': 'nameplate', 'moonlit-castle': 'town', supporter: 'badge', 'vermilion-banner': 'nameplate', 'silver-banner': 'nameplate', 'phoenix-medallion': 'badge', 'sakura-town': 'town', 'snow-town': 'town' };
-const allIds = Object.keys(slots);
+const allIds = [...Object.keys(slots), 'reroll-pass-30d'];
 const destinations = {
   'gold-banner': 'https://buy.stripe.com/fZu6oI3Iwdcd5kn4Um9MY04',
   'moonlit-castle': 'https://buy.stripe.com/dRmdRa6UI2xz6or1Ia9MY05',
@@ -27,7 +27,7 @@ function identity(id = 'player-a', epoch = 1) {
 function response(id = 'player-a', { owned = [], equipped = [], expiresAt = baseTime + 2000, ready = true } = {}) {
   return {
     ok: true, player: { id, name: '認証済みの領主' }, ready,
-    products: allIds.map(productId => ({ id: productId, owned: owned.includes(productId), equipped: equipped.includes(productId), canPurchase: !owned.includes(productId), expiresAt: productId === 'supporter' && owned.includes(productId) ? new Date(expiresAt).toISOString() : null, reason: '' })),
+    products: allIds.map(productId => ({ id: productId, owned: owned.includes(productId), equipped: equipped.includes(productId), canPurchase: !owned.includes(productId), expiresAt: ['supporter','reroll-pass-30d'].includes(productId) && owned.includes(productId) ? new Date(expiresAt).toISOString() : null, reason: '' })),
     appearance: Object.fromEntries(['nameplate', 'town', 'badge'].map(slot => [slot, allIds.find(productId => slots[productId] === slot && equipped.includes(productId)) || null])),
     portalUrl: '', serverNow: new Date(baseTime).toISOString()
   };
@@ -75,11 +75,11 @@ function fixture({ user = identity(), timers = false } = {}) {
   sandbox.window = sandbox;
   vm.createContext(sandbox);
   for (const [file, source] of sources) vm.runInContext(source, sandbox, { filename: file });
-  const runtime = sandbox.module.exports.createRuntime({ social, now: () => monotonic, noTimers: !timers, onChange: value => notifications.push(clone(value)) });
+  const runtime = sandbox.module.exports.createRuntime({ social, now: () => monotonic, noTimers: !timers, uuid: () => 'fixture_supporter_choice_0001', onChange: value => notifications.push(clone(value)) });
   async function load(value = response(who.user?.id || 'player-a')) {
     const count = calls.length, pending = runtime.refresh();
     assert.equal(calls.length, count + 1, 'Expected one fixture GET');
-    assert.equal(calls.at(-1).route, '/premium');
+    assert.equal(calls.at(-1).route, '/premium?catalog=4');
     calls.at(-1).resolve(value);
     return pending;
   }
@@ -432,6 +432,89 @@ test('every new SKU validates only its own account-bound Stripe destination', as
     const destination=await pending;assert.equal(destination.productId,id);assert.equal(destination.playerId,'player-a');
   }
   f.runtime.dispose();
+});
+
+function supporterSnapshot({ claimed = null, owned = Boolean(claimed), equipped = false, user = 'player-a' } = {}) {
+  const value = response(user);
+  value.supporterRewards = { periods: [{ periodId: 'srp_fixture_202611', periodKey: '202611', startsAt: '2026-11-01T12:00:00.000Z', endsAt: '2026-12-01T12:00:00.000Z', claimedProductId: claimed, choices: ['flower', 'moon', 'star'].map(motif => 'supporter-202611-' + motif) }] };
+  value.appearance = { ...noAppearance, nameplate: equipped ? claimed : null, ownedProducts: owned && claimed ? [claimed] : [] };
+  return value;
+}
+
+test('a 30-day pass is not equipment, disallows duplicate purchase and loses stale daily counts until server recheck', async () => {
+  const f = fixture(), value = response('player-a', { owned: ['reroll-pass-30d'], expiresAt: baseTime + 3000 });
+  value.rerollPass = { active: true, expiresAt: new Date(baseTime + 3000).toISOString(), dailyLimit: 3, usedToday: 2, remainingToday: 1, nextResetAt: new Date(baseTime + 1000).toISOString() };
+  value.products.find(p => p.id === 'reroll-pass-30d').canPurchase = true;
+  await f.load(value);
+  assert.equal(f.runtime.getContext().rerollPass.remainingToday, 1); assert.equal(f.runtime.getContext().rerollPass.countsVerified, true);
+  assert(!f.runtime.getAppearance().ownedProducts.includes('reroll-pass-30d'));
+  await noMutation(f, () => f.runtime.checkout('reroll-pass-30d'));
+  await noMutation(f, () => f.runtime.equip('reroll-pass-30d', 'badge'));
+  f.advance(1000); f.game.speed = 1000000; f.setWall(baseTime - 86400000 * 300);
+  assert.equal(f.runtime.getContext().rerollPass.countsVerified, false); assert.equal(f.runtime.getContext().rerollPass.remainingToday, 1, 'Do not guess a newly reset allowance');
+  f.advance(2000);
+  assert.equal(f.runtime.getContext().rerollPass.active, false); assert.equal(f.runtime.getContext().rerollPass.remainingToday, 0);
+  assert.equal(f.runtime.getContext().products.find(p => p.id === 'reroll-pass-30d').canPurchase, false, 'Server must recheck before a new paid pass');
+  f.runtime.dispose();
+});
+
+test('malformed pass counts never become a verified allowance', async () => {
+  for (const values of [{ usedToday: -1, remainingToday: 3 }, { usedToday: 2, remainingToday: 3 }, { usedToday: 0, remainingToday: '3' }]) {
+    const f = fixture(), value = response('player-a', { owned: ['reroll-pass-30d'] });
+    value.rerollPass = { active: true, expiresAt: new Date(baseTime + 2000).toISOString(), dailyLimit: 3, nextResetAt: new Date(baseTime + 1000).toISOString(), ...values };
+    await f.load(value); assert.equal(f.runtime.getContext().rerollPass, null); await noMutation(f, () => f.runtime.checkout('reroll-pass-30d')); f.runtime.dispose();
+  }
+});
+
+test('a supporter choice is authenticated, nonoptimistic, idempotent on retry and retained without an active subscription', async () => {
+  const f = fixture(), id = 'supporter-202611-moon', periodId = 'srp_fixture_202611';
+  await f.load(supporterSnapshot());
+  const copy = f.runtime.getContext(); copy.supporterRewards.periods[0].choices.push('supporter-202612-flower');
+  await noMutation(f, () => f.runtime.claimSupporterReward(periodId, 'supporter-202612-flower'));
+  await noMutation(f, () => f.runtime.claimSupporterReward('srp_missing', id));
+  const first = f.runtime.claimSupporterReward(periodId, id), failed = assert.rejects(first), call = f.calls.at(-1);
+  assert.equal(call.route, '/premium/supporter-choice?catalog=4');
+  assert.deepEqual(call.options, { method: 'POST', data: { periodId, productId: id, requestId: 'fixture_supporter_choice_0001' } });
+  assert(!f.runtime.getAppearance().ownedProducts.includes(id));
+  await noMutation(f, () => f.runtime.claimSupporterReward(periodId, id));
+  call.reject(Error('response was lost')); await failed;
+  await f.load(supporterSnapshot());
+  const retry = f.runtime.claimSupporterReward(periodId, id), retried = f.calls.at(-1);
+  assert.deepEqual(retried.options, call.options);
+  retried.resolve(supporterSnapshot({ claimed: id })); await retry;
+  assert(f.runtime.getAppearance().ownedProducts.includes(id));
+  assert.equal(f.runtime.getContext().products.find(p => p.id === 'supporter').owned, false);
+  await noMutation(f, () => f.runtime.claimSupporterReward(periodId, id));
+  const equip = f.runtime.equip(id, 'nameplate'); assert.equal(f.calls.at(-1).route, '/premium/appearance?catalog=4');
+  f.calls.at(-1).resolve(supporterSnapshot({ claimed: id, equipped: true })); await equip;
+  assert.equal(f.runtime.getAppearance().nameplate, id);
+  const html = f.sandbox.module.exports.nameMarkup('領主', f.runtime.getAppearance());
+  assert(html.includes('assets/premium/supporter-11-moon-v1.svg')); assert(html.includes('is-supporter-reward')); assert(html.includes('--supporter-background:#243947'));
+  f.advance(86400000 * 60); assert.equal(f.runtime.getAppearance().nameplate, id, 'Permanent reward survives time and subscription expiry');
+  f.runtime.dispose();
+});
+
+test('late supporter grants cannot cross accounts and inconsistent claim receipts cannot grant a reward', async () => {
+  const id = 'supporter-202611-flower', periodId = 'srp_fixture_202611';
+  const f = fixture(); await f.load(supporterSnapshot());
+  const pending = f.runtime.claimSupporterReward(periodId, id), rejected = assert.rejects(pending), old = f.calls.at(-1);
+  f.setIdentity(identity('player-b', 2)); const refresh = f.runtime.refreshIdentity(); f.calls.at(-1).resolve(response('player-b')); await refresh;
+  old.resolve(supporterSnapshot({ claimed: id })); await rejected;
+  assert.equal(f.runtime.getContext().user.id, 'player-b'); assert.deepEqual(clone(f.runtime.getAppearance()), noAppearance); f.runtime.dispose();
+  const other = fixture(); await other.load(supporterSnapshot());
+  const claim = other.runtime.claimSupporterReward(periodId, id), failure = assert.rejects(claim);
+  other.calls.at(-1).resolve(supporterSnapshot({ claimed: id, owned: false })); await failure;
+  closed(other.runtime); other.runtime.dispose();
+});
+
+test('metric events are explicitly named and do not alter any entitlement on success or failure', async () => {
+  const f = fixture(); await f.load(response());
+  const before = clone(f.runtime.getContext()), count = f.calls.length;
+  assert.equal(await f.runtime.trackEvent('purchase_success', 'gold-banner'), false); assert.equal(f.calls.length, count);
+  const view = f.runtime.trackEvent('shop_view'); assert.deepEqual(f.calls.at(-1).options, { method: 'POST', data: { event: 'shop_view' } });
+  f.calls.at(-1).resolve({ ok: true }); assert.equal(await view, true);
+  const click = f.runtime.trackEvent('checkout_start', 'gold-banner'); f.calls.at(-1).reject(Error('metrics offline')); assert.equal(await click, false);
+  assert.deepEqual(clone(f.runtime.getContext()), before); assert.deepEqual(f.effects, []); f.runtime.dispose();
 });
 
 (async () => {

@@ -35,8 +35,8 @@ ${publicLinks}
 
 対応端末: PC・スマートフォン・タブレットのブラウザ。アプリのインストール不要。
 表示言語: ゲームUIと詳細ガイドは日本語です。SENGOKU VSは作品名の英字表記で、英語の紹介・開始ガイドも利用できます。
-料金: 基本プレイ無料。有料の外観アイテムと月額支援は任意です。
-有料商品の内容: 旗印・城下町の外観・勲章・サポーターバッジ。武将の能力、兵力、生産量、指令回復の優遇はありません。
+料金: 基本プレイ無料。外観アイテム、月額サポーター、30日間の武将再抽選パスは任意です。
+有料商品の内容: 旗印・城下町の外観・勲章、月額サポーター、武将再抽選パス。外観アイテムとサポーター特典は装飾です。武将再抽選パスは480円（税込）で実時間30日間、1人招集を1日3回まで引き直し、元と新しい武将から1人を選べるため、武将の獲得結果に影響します。勾玉そのものの販売はありません。月額サポーターは780円（税込）で、支払済み期間ごとに装飾3種から1種を選び、解約後も所持・装備できます。
 料金・商品: ${site.origin}/premium/
 収録内容: 256人の武将、129の城と拠点、64種類の城下町施設。
 遊び方: 個人の戦役ではCPU勢力と対戦。領主を登録すると共通フィールドの対人戦・同盟・書状・交易を利用できます。
@@ -79,7 +79,7 @@ Developer and publisher: KASAI SOLUTIONS
 Genre: Browser strategy game inspired by Japan’s Sengoku period
 Language: Japanese game interface and detailed guides. English introduction and starting guide available.
 Platforms: Desktop, smartphone, and tablet web browsers
-Price model: Basic play is free. Optional cosmetics and a monthly supporter badge do not provide combat or resource advantages.
+Price model: Basic play is free. Optional purchases include cosmetics, a ¥780/month supporter plan with one permanent cosmetic choice per paid billing period, and a ¥480 non-renewing 30-day officer reroll pass. The reroll pass affects officer acquisition; jade itself is not sold.
 Content: 256 officers, 129 castles and locations, and 64 facility types
 Play modes: Personal campaigns against computer-controlled factions; online battles, alliances, letters, and trading after registering a lord.
 Official website: ${site.origin}/

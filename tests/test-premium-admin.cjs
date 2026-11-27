@@ -1,7 +1,7 @@
 'use strict';
 // Operator review fixtures only. No real payment, entitlement, account or network is used.
 const assert = require('node:assert/strict');
-const { createController, createUI, cleanHold, holdMarkup, confirmationMarkup } = require('../premium-admin.js');
+const { createController, createUI, cleanHold, cleanMetrics, holdMarkup, confirmationMarkup, metricsMarkup } = require('../premium-admin.js');
 const clone = value => JSON.parse(JSON.stringify(value));
 const tests = [], test = (name, run) => tests.push([name, run]);
 const deferred = () => { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
@@ -195,7 +195,138 @@ test('queued close events cannot clear a reopened dialog and clear/dispose remov
   const denied = uiSetup({ user: { ...ADMIN, isAdmin: false } }); assert.equal(await denied.ui.open(), false); assert.equal(denied.get('#premium-admin-modal'), null); assert.equal(denied.calls.length, 0); denied.ui.dispose(); denied.controller.dispose();
 });
 
-(async () => {
+function metricFixture(extra = {}) {
+  const totals = { shopViews: 10, checkoutStarts: 4, fulfilledPasses: 2, paidSupporterPeriods: 1, loginClaimAccounts: 7, loginClaims: 20, uniqueShopAccounts: 8, uniqueCheckoutAccounts: 3, uniquePaidAccounts: 3, matchedPaidShopAccounts: 2 };
+  return { ok: true, days: 60, fromDay: '2026-09-23', toDay: '2026-11-21', daily: [{ day: '2026-11-20', ...totals }], totals, conversion: { definition: '集計期間中にショップ閲覧後、支払いが確認できた接続アカウント', viewedAccounts: 8, paidAfterViewAccounts: 2, rate: .25 }, retention: { definition: '初回ログイン報酬受取者の翌日再受取', cohortAccounts: 5, returnedNextDay: 2, rate: .4, throughDay: '2026-11-19' }, ...extra };
+}
+
+// Artificial aggregate data for both automated checks and a clearly labelled UI preview.
+function extendedMetricFixture(extra = {}) {
+  const byProduct = ['gold-banner', 'moonlit-castle', 'supporter', 'reroll-pass-30d', 'vermilion-banner', 'silver-banner', 'phoenix-medallion', 'sakura-town', 'snow-town'].map(productId => ({ productId, validAmount: productId === 'supporter' ? 780 : productId === 'reroll-pass-30d' ? 480 : 0, validPayments: ['supporter', 'reroll-pass-30d'].includes(productId) ? 1 : 0, excludedAmount: productId === 'moonlit-castle' ? 980 : 0, excludedPayments: productId === 'moonlit-castle' ? 1 : 0 }));
+  return metricFixture({
+    revenue: { currency: 'JPY', taxIncluded: true, definition: '対象商品の確認済み支払いから、返金・取消・保留等の決済全額を除いた合計', dateBasis: 'Stripeチャージ作成日・JST05:00区切り', validAmount: 1260, validPayments: 2, excludedAmount: 980, excludedPayments: 1, unclassifiedExcludedAmount: 0, unclassifiedExcludedPayments: 0, byProduct },
+    supporterRenewal: { definition: '終了後7日までの観測を終えた有効支払期間のうち、同一契約の次の連続期間を期限内に支払った割合', graceDays: 7, observedSince: '2026-09-23T01:00:00.000Z', eligiblePeriods: 4, renewedPeriods: 3, rate: .75, throughDay: '2026-11-14' },
+    playerRetention: { definition: '集計期間内に初めて接続を観測した登録領主の、翌日・30日後のゲーム接続', observedSince: '2026-09-23T01:00:00.000Z', dayBoundary: 'Asia/Tokyo 05:00', cohortBasis: '初回の認証済みゲームAPI成功', segments: [
+      { segment: 'free', label: '無料', observedAccounts: 8, d1: { eligibleAccounts: 6, returnedAccounts: 3, rate: .5, throughDay: '2026-11-19' }, d30: { eligibleAccounts: 2, returnedAccounts: 0, rate: 0, throughDay: '2026-10-21' } },
+      { segment: 'paid', label: '課金', observedAccounts: 4, d1: { eligibleAccounts: 3, returnedAccounts: 2, rate: 2 / 3, throughDay: '2026-11-19' }, d30: { eligibleAccounts: 1, returnedAccounts: 1, rate: 1, throughDay: '2026-10-21' } }
+    ] }, ...extra
+  });
+}
+
+test('operator metrics retain real counts, distinct-account totals and correctly defined mature retention', () => {
+  const clean = cleanMetrics(metricFixture()); assert(clean); assert.equal(clean.totals.loginClaimAccounts, 7);
+  const html = metricsMarkup({ metrics: clean });
+  assert.match(html, /40\.0％/); assert.match(html, /イベント件数の比率/); assert.match(html, /人数ベースの購入率ではありません/);
+  assert.match(html, /同じ領主の複数商品/); assert.match(html, /初回受取者 5 アカウント/); assert.match(html, /翌日も受け取った領主 2 アカウント/);
+  assert.match(html, /通常のゲーム利用全体の継続率ではありません/); assert.match(html, /更新支払いも含みます/);
+  assert.equal(clean.totals.uniqueShopAccounts, 8); assert.equal(clean.totals.uniqueCheckoutAccounts, 3); assert.equal(clean.totals.uniquePaidAccounts, 3); assert.equal(clean.totals.matchedPaidShopAccounts, 2);
+  assert.match(html, /25\.0％/); assert.match(html, /閲覧した 8 アカウントのうち、閲覧後に支払いを確認した領主 2 アカウント/); assert.match(html, /同じ領主の複数回の閲覧・購入はそれぞれ1アカウント/);
+  assert.match(html, /サポーターの初回・更新支払いを含みます/);
+  const zero = Object.fromEntries(Object.keys(metricFixture().totals).map(key => [key, 0]));
+  const empty = cleanMetrics(metricFixture({ daily: [], totals: zero, conversion: { definition: '集計期間中にショップ閲覧後、支払いが確認できた接続アカウント', viewedAccounts: 0, paidAfterViewAccounts: 0, rate: null }, retention: { definition: '初回ログイン報酬受取者の翌日再受取', cohortAccounts: 0, returnedNextDay: 0, rate: null, throughDay: '2026-11-19' } }));
+  assert(empty); assert.match(metricsMarkup({ metrics: empty }), /閲覧記録なし/); assert.match(metricsMarkup({ metrics: empty }), /翌日まで観測を終えた対象者がまだいません/);
+  assert.match(metricsMarkup({ metrics: empty }), /閲覧した領主の記録なし/); assert.doesNotMatch(metricsMarkup({ metrics: empty }), /0\.0％/);
+  assert.match(metricsMarkup({ metrics: null }), /まだ取得していません/); assert(!metricsMarkup({ metrics: null }).includes('<strong>0</strong>'));
+  assert.match(metricsMarkup({ metrics: null, metricsError: '記録を取得できません' }), /role="alert"/);
+  for (const change of [value => { delete value.totals.fulfilledPasses; }, value => { value.totals.shopViews = -1; }, value => { value.retention.returnedNextDay = 6; }, value => { value.retention.rate = .9; }, value => { value.daily[0].day = '2026-13-01'; }]) {
+    const value = metricFixture(); change(value); assert.equal(cleanMetrics(value), null);
+  }
+});
+
+test('conversion validation distinguishes missing evidence, an empty denominator and an observed zero rate', () => {
+  const absent = metricFixture(); delete absent.conversion;
+  for (const key of ['uniqueShopAccounts', 'uniqueCheckoutAccounts', 'uniquePaidAccounts', 'matchedPaidShopAccounts']) delete absent.totals[key];
+  const legacy = cleanMetrics(absent); assert(legacy); assert.equal(legacy.conversion, null);
+  assert.match(metricsMarkup({ metrics: legacy }), /支払い確認率のデータが含まれていません/);
+  for (const change of [value => { value.conversion = null; }, value => { delete value.totals.uniquePaidAccounts; }, value => { value.conversion.viewedAccounts = 9; }, value => { value.conversion.paidAfterViewAccounts = 9; }, value => { value.conversion.rate = .5; }, value => { value.totals.uniquePaidAccounts = 1; }, value => { value.totals.uniqueCheckoutAccounts = 5; }]) {
+    const value = metricFixture(); change(value); assert.equal(cleanMetrics(value), null);
+  }
+  const zero = metricFixture(); zero.totals.matchedPaidShopAccounts = 0; zero.conversion.paidAfterViewAccounts = 0; zero.conversion.rate = 0;
+  const observed = cleanMetrics(zero); assert(observed); assert.match(metricsMarkup({ metrics: observed }), /0\.0％/); assert.match(metricsMarkup({ metrics: observed }), /閲覧した 8 アカウントのうち、閲覧後に支払いを確認した領主 0 アカウント/);
+});
+
+test('all nine products reconcile to valid payments while excluded amounts are not labelled as refunds or net sales', () => {
+  const value = cleanMetrics(extendedMetricFixture()); assert(value); assert.equal(value.revenue.byProduct.length, 9);
+  assert.equal(value.revenue.validAmount, 1260); assert.equal(value.revenue.excludedAmount, 980);
+  const html = metricsMarkup({ metrics: value });
+  for (const text of ['確認済み有効支払い合計', '1,260円', '全9商品・税込・手数料控除前', '1件・980円', '除外額は実際の返金額ではありません', '金彩の旗印', '月影の城下', '戦国VSサポーター', '武将再抽選パス・30日', '紅蓮の旗印', '白銀の旗印', '鳳凰の勲章', '桜雲の城下', '雪華の城下']) assert(html.includes(text), text);
+  assert.doesNotMatch(html, /純売上|総売上|入金額/);
+  const unknown = extendedMetricFixture(); Object.assign(unknown.revenue, { unclassifiedExcludedAmount: 480, unclassifiedExcludedPayments: 1, excludedAmount: 1460, excludedPayments: 2 });
+  const withUnknown = cleanMetrics(unknown); assert(withUnknown); const unknownHTML = metricsMarkup({ metrics: withUnknown });
+  assert.match(unknownHTML, /2件・1,460円/); assert.match(unknownHTML, /商品を特定できない除外分：1件・480円/); assert.match(unknownHTML, /商品別には割り当てていません/);
+  const legacy = cleanMetrics(metricFixture()); assert(legacy); assert.equal(legacy.revenue, null); assert.equal(legacy.supporterRenewal, null); assert.equal(legacy.playerRetention, null);
+  const oldHTML = metricsMarkup({ metrics: legacy }); assert.match(oldHTML, /支払額の集計が含まれていません/); assert.match(oldHTML, /更新率の集計が含まれていません/); assert.match(oldHTML, /ゲーム接続の再訪率が含まれていません/);
+});
+
+test('renewals and free versus paid return cohorts show real denominators and distinguish zero returns from immature cohorts', () => {
+  const fixture = extendedMetricFixture(), value = cleanMetrics(fixture); assert(value);
+  const html = metricsMarkup({ metrics: value });
+  for (const text of ['75.0％', '翌期間の支払い確認（分子）', '判定済みの有効支払期間（分母）', '3期間', '4期間', '無料・翌日', '課金・30日後', '50.0％', '66.7％', '100.0％', '再訪（分子）', '判定済み（分母）', '未登録・未接続・オフライン', '新規登録日の集計ではありません', 'その後の課金・返金で区分を変更しません']) assert(html.includes(text), text);
+  assert.match(html, /無料・30日後<\/h4><p[^>]*>0\.0％/);
+  assert.match(html, /期間内の初回観測 8アカウント · 経過日数待ち 6アカウント/);
+  fixture.supporterRenewal.eligiblePeriods = fixture.supporterRenewal.renewedPeriods = 0; fixture.supporterRenewal.rate = null;
+  for (const segment of fixture.playerRetention.segments) for (const key of ['d1', 'd30']) Object.assign(segment[key], { eligibleAccounts: 0, returnedAccounts: 0, rate: null });
+  const immature = cleanMetrics(fixture); assert(immature); const waiting = metricsMarkup({ metrics: immature });
+  assert.match(waiting, /未観測（終了後7日の判定を終えた対象期間なし）/); assert.match(waiting, /未観測（経過日数の判定待ち）/); assert.doesNotMatch(waiting, /無料・30日後<\/h4><p[^>]*>0\.0％/);
+  fixture.supporterRenewal.observedSince = null; fixture.playerRetention.observedSince = null; for (const segment of fixture.playerRetention.segments) segment.observedAccounts = 0;
+  const empty = cleanMetrics(fixture); assert(empty); assert.match(metricsMarkup({ metrics: empty }), /まだ接続の記録がありません/); assert.match(metricsMarkup({ metrics: empty }), /対象の初回接続記録なし/);
+  assert.match(metricsMarkup({ metrics: empty }), /まだ支払い確認の記録がありません/);
+});
+
+test('expanded metrics reject inconsistent money, duplicate products, impossible cohorts and mismatched rates', () => {
+  const changes = [
+    v => { v.revenue.currency = 'USD'; }, v => { v.revenue.taxIncluded = false; }, v => { v.revenue.validAmount++; }, v => { v.revenue.byProduct.pop(); }, v => { v.revenue.byProduct[0].productId = 'unknown'; }, v => { v.revenue.byProduct[0].productId = v.revenue.byProduct[1].productId; }, v => { v.revenue.byProduct[0].validPayments = -1; }, v => { v.revenue.unclassifiedExcludedAmount = 480; }, v => { v.revenue.unclassifiedExcludedPayments = -1; },
+    v => { v.supporterRenewal.renewedPeriods = 5; }, v => { v.supporterRenewal.rate = .9; }, v => { v.supporterRenewal.graceDays = 0; }, v => { v.supporterRenewal.throughDay = '2026-12-01'; }, v => { v.supporterRenewal.observedSince = null; }, v => { v.supporterRenewal.observedSince = '2026-02-30T00:00:00.000Z'; },
+    v => { v.playerRetention.segments.pop(); }, v => { v.playerRetention.segments[0].segment = 'paid'; }, v => { v.playerRetention.segments[0].d1.eligibleAccounts = 9; }, v => { v.playerRetention.segments[0].d30.returnedAccounts = 3; }, v => { v.playerRetention.segments[0].d1.rate = 0; }, v => { v.playerRetention.segments[0].d1 = { eligibleAccounts: 0, returnedAccounts: 0, rate: 0, throughDay: '2026-11-19' }; }, v => { v.playerRetention.segments[0].d30 = { eligibleAccounts: 7, returnedAccounts: 0, rate: 0, throughDay: '2026-10-21' }; }, v => { v.playerRetention.observedSince = null; }, v => { v.playerRetention.observedSince = 'unknown'; }, v => { v.playerRetention.dayBoundary = 'UTC midnight'; }
+  ];
+  for (const change of changes) { const value = extendedMetricFixture(); change(value); assert.equal(cleanMetrics(value), null, change.toString()); }
+  const injected = extendedMetricFixture(); injected.revenue.definition = '<script>bad()</script>'; injected.supporterRenewal.definition = '<img src=x onerror=bad()>'; injected.playerRetention.segments[0].label = '<svg onload=bad()>';
+  const html = metricsMarkup({ metrics: cleanMetrics(injected) }); assert.doesNotMatch(html, /<script>|<img|<svg/); assert.match(html, /&lt;script&gt;/); assert.match(html, /&lt;svg/);
+});
+
+test('period changes clear old counts, validate the selected range and discard an older range after reopening', async () => {
+  const s = setup(); await s.controller.open(); assert.equal(s.controller.getState().metricsDays, 60);
+  s.setHandler(async route => { const days = Number(new URL(route, 'https://fixture.invalid').searchParams.get('days')); return extendedMetricFixture({ days }); });
+  assert(await s.controller.loadMetrics()); assert.equal(s.controller.getState().metrics.days, 60);
+  const wait = deferred(); s.setHandler(() => wait.promise); const loading = s.controller.loadMetrics(14);
+  assert.equal(s.controller.getState().metrics, null); assert.equal(s.controller.getState().metricsDays, 14); assert.equal(await s.controller.loadMetrics(90), false);
+  s.controller.close(); s.setHandler(null); await s.controller.open();
+  s.setHandler(async route => { assert.equal(route, '/admin/premium/metrics?days=90'); return extendedMetricFixture({ days: 90 }); });
+  assert(await s.controller.loadMetrics(90)); wait.resolve(extendedMetricFixture({ days: 14 })); assert.equal(await loading, false);
+  assert.equal(s.controller.getState().metricsDays, 90); assert.equal(s.controller.getState().metrics.days, 90);
+  const calls = s.calls.length; assert.equal(await s.controller.loadMetrics(31), false); assert.equal(s.calls.length, calls);
+  s.setHandler(async () => extendedMetricFixture({ days: 14 })); assert.equal(await s.controller.loadMetrics(60), false); assert.equal(s.controller.getState().metrics, null); assert.match(s.controller.getState().metricsError, /形式を確認/); s.controller.dispose();
+});
+
+test('native period selector requests the chosen window and keeps every financial metric read only', async () => {
+  const s = uiSetup(); await s.ui.open(); const period = s.get('#premium-admin-metrics-period'); assert.equal(period.value, '60');
+  s.setHandler(async route => { assert.equal(route, '/admin/premium/metrics?days=30'); return extendedMetricFixture({ days: 30 }); });
+  period.value = '30'; s.get('#premium-admin-modal').dispatch('change', period); await drain();
+  assert.equal(s.ui.getState().metricsDays, 30); assert.match(s.get('[data-admin-metrics]').textContent, /直近60日/); assert.match(s.get('[data-admin-metrics]').textContent, /確認済み有効支払い合計/); assert.equal(s.posts().length, 0); s.ui.dispose();
+});
+
+test('metrics reads require current primary operator access and late results are removed on role or account changes', async () => {
+  const s = setup(); await s.controller.open();
+  s.setHandler(async route => { assert.equal(route, '/admin/premium/metrics?days=60'); return metricFixture(); });
+  assert(await s.controller.loadMetrics()); assert.equal(s.controller.getState().metrics.totals.fulfilledPasses, 2); assert.equal(s.posts().length, 0);
+  const wait = deferred(); s.setHandler(() => wait.promise); const loading = s.controller.loadMetrics();
+  assert.equal(s.controller.getState().metrics, null); assert.equal(await s.controller.loadMetrics(), false);
+  s.setUser({ ...ADMIN, isAdmin: false, isStaff: true }); s.controller.refreshIdentity();
+  wait.resolve(metricFixture()); assert.equal(await loading, false); assert.equal(s.controller.getState().metrics, null); assert.equal(s.controller.getState().open, false);
+  const count = s.calls.length; assert.equal(await s.controller.loadMetrics(), false); assert.equal(s.calls.length, count); s.controller.dispose();
+});
+
+test('native operator metric pane loads on request and presents failure separately from purchase holds', async () => {
+  const s = uiSetup(); await s.ui.open(); assert.match(s.get('[data-admin-metrics]').textContent, /まだ取得していません/);
+  s.setHandler(async route => { assert.equal(route, '/admin/premium/metrics?days=60'); return metricFixture(); });
+  s.click('metrics'); await drain(); assert.match(s.get('[data-admin-metrics]').textContent, /再抽選パスの購入確認/); assert.match(s.get('[data-admin-metrics]').textContent, /40\.0％/);
+  s.setHandler(async () => { throw Error('metrics unavailable'); }); s.click('metrics'); await drain();
+  assert.match(s.get('[data-admin-metrics]').textContent, /metrics unavailable/); assert(s.get('[data-admin-holds]').textContent.includes('cs_fixture'));
+  s.ui.close(); assert.equal(s.get('[data-admin-metrics]').textContent, ''); s.ui.dispose();
+});
+
+module.exports = { metricFixture, extendedMetricFixture };
+if (require.main === module) (async () => {
   let failed = 0;
   for (const [name, run] of tests) { try { await run(); console.log('PASS ' + name); } catch (error) { failed++; console.error('FAIL ' + name); console.error(error); } }
   console.log(JSON.stringify({ passed: tests.length - failed, failed, externalRequests: 0, realPayments: 0, entitlementGrants: 0, fixtureOnly: true })); if (failed) process.exitCode = 1;

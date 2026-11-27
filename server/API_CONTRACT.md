@@ -1,5 +1,215 @@
 # 戦国VS（SENGOKU VS）通信API
 
+## Server summons, daily jade and paid-period choices (v5.10.0)
+
+Migrations `0040_paid_rewards.sql` and `0041_player_activity_metrics.sql` are
+required. `/health` and `/config` advertise `serverSummons`, `loginRewards`,
+`paidRerolls`, `supporterChoices` and `premiumGrowthMetrics`. Health checks the
+reward, activity and payment-observation tables before reporting readiness.
+
+All routes below use the existing authenticated account. Game mutations require
+`{deviceId, expectedRevision, requestId}` in addition to the semantic fields in
+the table. The client flushes local changes and applies the returned canonical
+sync snapshot; it must not apply currency or officers a second time locally.
+Retries reuse the same request ID, including after reload or response loss.
+
+| Route | Additional input | Result |
+|---|---|---|
+| GET `/rewards` | none | `serverNow`, `login`, `rerollPass`, `pending` |
+| POST `/gacha/draw` | `count:1\|10` | sync snapshot, `rewards`, `receipt`, `idempotent` |
+| POST `/gacha/reroll` | `drawId` | sync snapshot and the two pending candidates |
+| POST `/gacha/choose` | `drawId`, `choice:"original"\|"rerolled"` | sync snapshot and one final officer result |
+| POST `/rewards/login` | none | sync snapshot and `{kind:"login",day,window,amount,balance}` |
+
+Normal singles cost 300 jade and ten-pulls cost 2,700. Rank probabilities remain
+D/C/B/A/S/SS/SSS/U = 25/25/20/15/8/4/2/1 percent, with an equal choice within each
+eligible rank. The server uses Web Crypto and rejection sampling; client seed,
+clock, selected rank and purchased-right fields are not accepted. Ten-pulls
+commit all ten results immediately and cannot be rerolled as a batch.
+
+A single draw with an active pass and remaining daily allowance reserves its
+300 jade and returns `pending:true` without adding an officer, history entry or
+duplicate refund. `pending` contains `{id,original:{officerId,rank},rerolled:null,
+rerolledAvailable,canReroll,cost,createdAt}`. One reroll per pending single is
+allowed, shared across devices, with at most three distinct singles per reward
+day. A reroll does not spend more jade. Choosing the original or new candidate
+adds exactly one card, advances draw statistics once, and pays the duplicate
+refund once if appropriate. The unchosen card is not acquired. A normal single
+without an available reroll commits immediately. GET `/rewards` restores a
+pending choice after disconnect. A revoked payment disallows choosing its
+pending alternate while preserving the original option; expiry alone does not
+invalidate an alternate already rolled during a valid term.
+
+Final draw receipts include `cost`, `results`, `refund`, `newCount`,
+`newOfficerCount`, `upgradedCount`, `balance`, `message`, `drawId`, `pending` and
+`kind`. Choosing has `cost:0` because the initial request already spent 300.
+The final `refund` is the actual credited amount after the asset cap.
+
+The real-time reward day changes at **05:00 JST**, independently of game time.
+Login windows are `morning` (05:00–11:59), `noon` (12:00–17:59) and `night`
+(18:00–04:59 next morning). Each grants up to 30 jade once, at most 90 per reward
+day. Midnight does not reopen night. `login` contains `day`, `window`, `amount`,
+`claimed`, `nextResetAt` and `windows:[{window,amount,claimed,creditedAmount}]`.
+At a full asset cap, `MAGATAMA_CAP` preserves the unclaimed slot. Partial capacity
+credits only the available amount and consumes that window. A new request after
+claiming returns `LOGIN_BONUS_CLAIMED`; the original request ID returns its
+unchanged receipt.
+
+### Premium catalog 4 and paid rights
+
+Use `?catalog=4` on `/premium`, `/premium/appearance` and
+`/premium/supporter-choice`. Catalog 4 returns the nine purchasable products plus
+`rerollPass` and `supporterRewards`. Catalog 3 retains its eight-product response;
+an omitted catalog retains the oldest three-product response. Reward cosmetics
+are included in `appearance.ownedProducts` and may be equipped in `nameplate`,
+but are not directly purchasable catalog items.
+
+`reroll-pass-30d` costs 480 JPY including tax, is a one-time payment, and grants
+30 real days from verified fulfillment. It has no automatic renewal. Its
+snapshot is `{active,expiresAt,dailyLimit:3,usedToday,remainingToday,nextResetAt}`.
+Normal checkout is blocked while active. If an already opened payment link
+produces another distinct successful payment, its full 30 days are queued after
+existing paid coverage; it does not increase the daily allowance. `expiresAt`
+includes continuous queued coverage. Repeated webhook deliveries never extend a
+term. Refund/dispute/fraud evidence revokes the corresponding right according to
+the existing financial hold rules.
+
+Pass sales require all four exact, non-secret environment mappings:
+`SENGOKU_REROLL_PAYMENT_LINK_ID`, `SENGOKU_REROLL_PAYMENT_LINK_URL`,
+`SENGOKU_REROLL_PRICE_ID`, `SENGOKU_REROLL_PRODUCT_ID`. Missing or malformed
+configuration leaves the pass in `preparing`; existing products remain usable.
+The URL must be a plain `https://buy.stripe.com/...` payment link. Existing
+signed-snapshot API version `2026-09-30.endive` is retained. Both completed and
+asynchronous-success checkout events are processed, gated on paid status and
+the matching captured-charge evidence. The success page grants nothing.
+
+The 780 JPY monthly `supporter` grants one permanent cosmetic selection per
+distinct paid subscription period. `supporterRewards.periods` contains
+`{periodId,periodKey,startsAt,endsAt,claimedProductId,choices}`; period IDs are
+opaque. POST `/premium/supporter-choice?catalog=4` accepts only
+`{periodId,productId,requestId}` and returns the premium snapshot, a receipt and
+`idempotent`. The three choices use `supporter-YYYYMM-{flower,moon,star}`.
+Cancellation preserves a selected cosmetic; payment reversal removes its
+financial entitlement. Existing active paid periods at rollout are eligible;
+fully ended periods before migration are not retroactively awarded. Duplicate
+invoices for the same subscription/start/end do not create more selections.
+
+Three paid periods may reserve one theme month per account. New supporter
+checkout is blocked as `monthly_choices_exhausted` when those three slots are
+already allocated. Exceptional fourth payments from old links are assigned the
+next theme month with an empty slot inside the fulfillment transaction. Their
+paid selection remains claimable immediately. Selecting an item with a prior
+selection record fails without consuming another period's choice. The art uses
+12 seasonal palettes that repeat annually; the period key identifies ownership.
+
+### Sync integrity and restore boundary
+
+After first use, an account's reward ledger survives imports, device changes,
+new stories and world cycles. `/sync` requires server draw statistics/history,
+preserves known officer variants, and bounds new jade by the existing monthly,
+quest, first-capture and verified-mail earnings. Other server-awarded rewards
+are already included in the revision-checked canonical save and are not replayed.
+A campaign ID change cannot bypass these checks. A genuine initial new story is
+allowed; the outgoing canonical campaign is archived atomically. A known
+campaign can be restored against its latest protected canonical state. An
+unrecognized progressed import, or a backup that rolls back protected summons,
+fails with `SERVER_REWARDS_REQUIRED` and must load the latest cloud save. Pending
+choices must be resolved before switching campaigns. The legacy local CPU and
+quest simulation is not a general server attestation of every gameplay action.
+
+### Monetization observation
+
+POST `/premium/events` accepts `{event:"shop_view"}` or
+`{event:"checkout_start",productId}`. The server records event totals separately
+from unique authenticated accounts. GET `/admin/premium/metrics?days=14` is
+primary-operator only and accepts 1–90 days, using the same 05:00 JST boundaries.
+It returns `fromDay`, `toDay`, `daily`, `totals`, `conversion`, `retention`,
+`revenue`, `supporterRenewal`, `playerRetention` and `serverNow`. The original
+fields retain their shapes. Daily rows contain `shopViews`, `checkoutStarts`, `fulfilledPasses`,
+`paidSupporterPeriods`, `loginClaimAccounts`, `loginClaims`. Totals additionally
+contain `uniqueShopAccounts`, `uniqueCheckoutAccounts`, `uniquePaidAccounts` and
+`matchedPaidShopAccounts`; period-wide account totals are distinct accounts,
+not sums of daily unique counts. Pass fulfillment uses actual confirmation time,
+including queued terms. Payment counts exclude currently revoked financial facts.
+
+`conversion:{definition,viewedAccounts,paidAfterViewAccounts,rate}` requires a
+currently valid payment with both its Stripe charge creation and its recorded
+complete-evidence confirmation at or after the recorded shop view. Both the
+view and charge are in the requested period. First observing an older purchase
+does not turn it into a new conversion. No confirmation time is inferred from
+an older session/invoice timestamp. It does not measure anonymous visitors or
+prove that the shop view caused the purchase.
+`retention:{definition,cohortAccounts,returnedNextDay,rate,throughDay}` measures
+next-day reward claiming after the first login-bonus claim, with only cohorts
+whose entire following reward day has ended. Empty denominators return `null`,
+not a fabricated zero rate. These aggregates cannot reconstruct earlier activity.
+
+`revenue` contains `{currency:"JPY",taxIncluded:true,definition,dateBasis,
+validAmount,validPayments,excludedAmount,excludedPayments,
+unclassifiedExcludedAmount,unclassifiedExcludedPayments,byProduct}`. The nine
+`byProduct` rows (including zero-valued rows) have `{productId,validAmount,
+validPayments,excludedAmount,excludedPayments}`. Amounts come from matched,
+captured JPY charge facts, not catalog price multiplied by grants. A payment
+intent is counted once across repeated sessions, charges and invoice-payment
+joins. Aggregation uses **Stripe charge creation time**, with 05:00 JST days;
+this is not the time that all webhook evidence arrived. Currently effective
+payments are valid. Complete payment evidence affected by refunds, disputes,
+cancel/review blocks or inconsistent associations is excluded at its entire
+recorded amount. Unmatched/unpaid evidence is outside both buckets. Association
+conflicts without a single product/user but with one consistent amount go to the
+unclassified excluded bucket rather than an invented product allocation.
+Conflicting amounts cannot establish a payment amount and remain unconfirmed,
+outside both monetary buckets; no minimum or maximum amount is substituted.
+Total excluded values equal
+the nine product sums plus the unclassified bucket. The legacy ledger does not
+retain exact refund amounts or processing fees: **never label this accounting
+net revenue or exact refunds deducted**. Term expiry or ordinary subscription
+cancellation alone does not erase an otherwise valid historical payment.
+
+`supporterRenewal` contains `{definition,graceDays:7,observedSince,
+eligiblePeriods,renewedPeriods,rate,throughDay}`. `observedSince` is ISO or null
+until payment verification is observed. Payment observation is initialized by
+the existing purchase/fulfillment flow, never by an operator report read. The
+first time a fully matched valid payment is observed is immutable, including
+on webhook retries, later holds/releases and repeated financial snapshots.
+Historic confirmation dates are not manufactured. One renewal opportunity is
+one user/subscription/start/end period, regardless of duplicate invoice records.
+The denominator contains valid paid periods ending within the requested date
+range and after observation began, with the full seven-day grace already over.
+An ordinary cancellation remains in the denominator. The numerator requires a
+valid next period in the **same subscription**, starting exactly at the previous
+period's end, with first confirmation no later than that end plus seven days.
+Confirmation at the exact boundary counts; one millisecond later does not.
+Revoked/held financial evidence is excluded. An empty denominator has null rate.
+
+`playerRetention` contains `{definition,observedSince,dayBoundary:
+"Asia/Tokyo 05:00",cohortBasis,segments}`. Both `free` and `paid` segment rows
+always exist, with `{segment,label,observedAccounts,d1,d30}`; each period value
+is `{eligibleAccounts,returnedAccounts,rate,throughDay}`. A cohort is an account's
+**first observed successful authenticated game API request after deployment**,
+not its registration date. A previously confirmed, currently valid payment
+history at that moment fixes `paid`; otherwise it fixes `free`. Later payment,
+expiry or refund does not rewrite the initial segment. New activity is a single
+daily row per account; retries/devices cannot multiply it. Public/anonymous
+requests, failed requests, payment webhooks and operator-report reads are not
+game observations. The program timestamp is fixed by the first real eligible
+request, or null if none exists; migration/report reads do not seed it.
+
+First-observation days must lie in the requested `fromDay..toDay` range. D1
+requires that the entire following day is over (`first_day <= toDay-2`) and a
+successful observed request on exactly day +1. D30 similarly uses
+`first_day <= toDay-31` and exactly day +30. A 14/30-day reporting window cannot
+have mature D30 cohorts; the UI offers 14/30/60/90 days and defaults to 60.
+Return days are not inferred from bonus claims, account creation or billing.
+No predeployment activity is backfilled. A bounded per-day cache suppresses
+repeat polling writes, while database primary keys enforce deduplication across
+isolates. Observation failure cannot fail an otherwise completed game request;
+health separately requires the new tables. The metric is observed connected
+account revisit, not all-player retention, time played or causal marketing lift.
+
+`node server/test-premium-metrics.mjs` exercises these contracts against the real
+Worker and local transactional SQLite, without production or external requests.
+
 ## Paid monthly stronghold repair (game v5.0.8)
 
 Personal owned castles and active branches now settle structural repair at each game-month boundary. Repair is limited to 10% of maximum durability per month and to available materials, at wood 5 and stone 4 per 100 recovered HP. Mid-month damage and capacity changes accrue work by elapsed time. Short budgets are divided proportionally across damaged eligible bases. Full, unfinished, fallen and retreating bases do not incur this charge. Fallen-branch reconstruction retains its separately quoted upfront construction price. NPC and shared-conquest recovery explicitly use `recoveryMode:"free"`; shared Kyoto never consumes a staff member's personal repair materials.
@@ -146,8 +356,8 @@ Chat GET and letter inbox/thread GET responses additionally include `playerEvalu
 
 | Method / path | Body / query | Result fields, in addition to `ok` |
 |---|---|---|
-| GET `/health` | none | `status:"ready"`, `version:"3.20.0"`, `features:{trades:true,moderation:true,premium:true,timedEvents:true,troopTrades:true,roamingBattles:true,roamingDeployment:true,covertDispatch:true,privatePlayerRoles:true}` |
-| GET `/config` | none | `version:"3.20.0"`, `features:{trades:true,moderation:true,premium:true,timedEvents:true,troopTrades:true,roamingBattles:true,roamingDeployment:true,covertDispatch:true,privatePlayerRoles:true}`, `announcement:string`, `onlineCount:number`, `clock` |
+| GET `/health` | none | `status:"ready"`, `version:"5.10.0"`, `features:{trades:true,moderation:true,premium:true,timedEvents:true,troopTrades:true,roamingBattles:true,roamingDeployment:true,covertDispatch:true,privatePlayerRoles:true}` |
+| GET `/config` | none | `version:"5.10.0"`, `features:{trades:true,moderation:true,premium:true,timedEvents:true,troopTrades:true,roamingBattles:true,roamingDeployment:true,covertDispatch:true,privatePlayerRoles:true}`, `announcement:string`, `onlineCount:number`, `clock` |
 | POST `/session` | `{name?,clan?}` | `token:string`, `user` |
 | GET `/me` | none | `user`, `friends:user[]`, `requests:[{id,name,clan,avatarVersion,evaluation,direction:"incoming"|"outgoing",createdAt}]`, `unreadMail:number` |
 | PATCH `/profile` | `{name,expectedName?}` | `user` |
@@ -1142,8 +1352,9 @@ Migration `0013_premium_purchases.sql` adds opaque purchase references, verified
 event receipts, normalized checkout/invoice/payment/charge facts, risk holds,
 subscription end times, cosmetic selections and operator review receipts.
 `premium_grants` is a database view over those facts. It is not supplied by the
-browser or by a game save. No premium operation changes game resources,
-magatama, combat, roles, save revisions, writer leases or world-clock progress.
+browser or by a game save. Cosmetic purchases do not change game resources,
+magatama or combat. Version 5.10.0 additionally offers the separately described
+reroll pass, which changes obtainable officer outcomes through server summons.
 
 ### Configuration and deployment
 
@@ -1199,10 +1410,11 @@ radar.early_fraud_warning.created
 radar.early_fraud_warning.updated
 ```
 
-The three allowed Payment Links, Prices, Products, JPY amounts and modes are
-fixed in `worker/premium.js`. They correspond to `gold-banner` (480 JPY,
-payment), `moonlit-castle` (980 JPY, payment) and `supporter` (780 JPY,
-subscription). The links must retain fixed quantity 1, exact tax-inclusive JPY
+The eight existing Payment Links, Prices, Products, JPY amounts and modes are
+fixed in `worker/premium.js`; the ninth, `reroll-pass-30d`, uses the four explicit
+environment mappings above. The original products include `gold-banner`
+(480 JPY, payment), `moonlit-castle` (980 JPY, payment) and `supporter`
+(780 JPY, subscription). Links must retain fixed quantity 1, exact tax-inclusive JPY
 totals and the corresponding product/price. Additional items, quantity changes,
 discounts or currency conversion do not satisfy this fulfillment contract.
 Changes to Stripe settings require matching server validation and tests before
