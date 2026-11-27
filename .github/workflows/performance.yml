@@ -89,7 +89,9 @@ jobs:
       - name: Verify chat replies, mentions and room authorization
         run: node server/test-chat-replies.mjs
       - name: Verify display-name variants and concurrent profile changes
-        run: node server/test-profile-name.mjs
+        run: |
+          node server/test-profile-name.mjs
+          node server/test-moderated-player-names.mjs
       - name: Verify shared BGM authorization, revisions and retries
         run: node server/test-admin-music.mjs
       - name: Verify anonymous promotion counters and operator authorization

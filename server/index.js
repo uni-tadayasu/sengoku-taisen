@@ -4,6 +4,7 @@ import {castleDurability,branchDurability,durabilityRecord,normalizeRepairProgre
 import {handleLetters} from './letters.js';
 import {handleTrades} from './trade.js';
 import {handleModeration} from './moderation.js';
+import {playerNameKey,releasedPlayerNameKey,playerNameReleased,playerNameConflict,releaseInactivePlayerNameStatement,requireAvailablePlayerName,PLAYER_NAME_TAKEN} from './player-names.js';
 import {handleDeputyOperator} from './deputy-operator.js';
 import {expulsionSnapshot,EXPULSION_MESSAGE} from './expulsion-state.js';
 import {handlePremium,handlePremiumWebhook,resolvePremiumAppearances} from './premium.js';
@@ -35,8 +36,8 @@ import {requirePromotionOrigin,recordPromotion,readPromotionReport} from './prom
 import {readMusicBroadcast,handleAdminMusic} from './admin-music.js';
 import {lordSupportSql,guardLordSupport,ensureResidency,residencySnapshot,residencyDirectory,residencyStart,initialResidencyStatements,residencyTargetGuard,prepareResidencySuccession,prepareResidencyCpuLosses} from './residency.js';
 const API = '/api/v1';
-const API_VERSION = '5.12.0';
-const API_FEATURES = Object.freeze({trades:true,moderation:true,playerExpulsion:true,deputyOperator:true,kagoshimaProtected:true,premium:true,timedEvents:true,troopTrades:true,roamingBattles:true,roamingDeployment:true,covertDispatch:true,privatePlayerRoles:true,guildIcons:true,court:true,kyotoGosho:true,branches:true,branchBattles:true,branchFacilities:true,audioCalls:true,progression:true,armyPresets:true,allianceStrategy:true,sharedConquest:true,newcomerProtection:true,webPush:true,battleAdviser:true,battleCatalog:true,eventBattleRewards:true,shogunate:true,attackTravel:true,castleResidency:true,retainerCastleStats:true,residencyRelocation:true,maintenanceUpkeep:true,strongholdDurability:true,chatReplies:true,chatMentions:true,covertReturnTravel:true,allianceUnitTravel:true,legacySaveRecovery:true,displayNameVariants:true,courtOffices:true,serverSummons:true,loginRewards:true,paidRerolls:true,supporterChoices:true,premiumGrowthMetrics:true,adminMusicBroadcast:true,rankRiceProduction:true,shogunateApproval:true,imperialSuccession:true,retiredEmperor:true,regency:true,courtEventRoom:true,imperialSuccessionApproval:true});
+const API_VERSION = '5.12.1';
+const API_FEATURES = Object.freeze({trades:true,moderation:true,playerExpulsion:true,moderatedNameReuse:true,deputyOperator:true,kagoshimaProtected:true,premium:true,timedEvents:true,troopTrades:true,roamingBattles:true,roamingDeployment:true,covertDispatch:true,privatePlayerRoles:true,guildIcons:true,court:true,kyotoGosho:true,branches:true,branchBattles:true,branchFacilities:true,audioCalls:true,progression:true,armyPresets:true,allianceStrategy:true,sharedConquest:true,newcomerProtection:true,webPush:true,battleAdviser:true,battleCatalog:true,eventBattleRewards:true,shogunate:true,attackTravel:true,castleResidency:true,retainerCastleStats:true,residencyRelocation:true,maintenanceUpkeep:true,strongholdDurability:true,chatReplies:true,chatMentions:true,covertReturnTravel:true,allianceUnitTravel:true,legacySaveRecovery:true,displayNameVariants:true,courtOffices:true,serverSummons:true,loginRewards:true,paidRerolls:true,supporterChoices:true,premiumGrowthMetrics:true,adminMusicBroadcast:true,rankRiceProduction:true,shogunateApproval:true,imperialSuccession:true,retiredEmperor:true,regency:true,courtEventRoom:true,imperialSuccessionApproval:true});
 const MAX_BODY = 16 * 1024;
 const MAX_SAVE_BODY = 2 * 1024 * 1024;
 const MAX_AVATAR_BYTES = 48 * 1024;
@@ -78,7 +79,7 @@ const rows = result => result?.results || [];
 const iso = n => new Date(Number(n)).toISOString();
 const pair = (a, b) => a < b ? [a, b] : [b, a];
 const uid = prefix => prefix + crypto.randomUUID().replaceAll('-', '');
-const nameKey = text => text.normalize('NFKC').toLocaleLowerCase('ja');
+const nameKey = playerNameKey;
 
 function textField(value, name, max, { optional = false, min = 1, preserveUnicode = false } = {}) {
   if (optional && (value === undefined || value === null || value === '')) return '';
@@ -464,7 +465,7 @@ async function verifyCourtResponse(db,request){const guard=courtResponseGuards.g
 
 function mapUser(row, now = Date.now()) {
   return {
-    id: row.id, name: row.name, clan: publicClan(row.clan,row.is_admin,row.is_staff,row.personal_clan), isAdmin: !!row.is_admin, isStaff: !!row.is_staff && !row.is_admin, isDeputy: !!row.is_deputy && !row.is_admin && !row.is_staff,
+    id: row.id, name: row.name, nameReleased: playerNameReleased(row), clan: publicClan(row.clan,row.is_admin,row.is_staff,row.personal_clan), isAdmin: !!row.is_admin, isStaff: !!row.is_staff && !row.is_admin, isDeputy: !!row.is_deputy && !row.is_admin && !row.is_staff,
     avatarVersion: row.avatar_version || null,evaluation:evaluationRef(row.id),
     guildId: row.guild_id || null, guildName: row.guild_name || null,guildIconVersion: row.guild_id ? row.guild_icon_version || null : null,
     guildRole: row.guild_id ? (row.owner_id === row.id ? 'owner' : row.is_guild_officer ? 'officer' : 'member') : null,
@@ -509,7 +510,7 @@ function applyLordSupport(state,user) {
     if (support.count>0) state.retainerSupport=support;
   }
 }
-const USER_SELECT = `SELECT u.id,u.name,u.clan,u.created_at,u.last_seen,${lordSupportSql('u.id')} AS retainer_support_json,gm.guild_id,g.name AS guild_name,g.owner_id,
+const USER_SELECT = `SELECT u.id,u.name,u.name_key,u.clan,u.created_at,u.last_seen,${lordSupportSql('u.id')} AS retainer_support_json,gm.guild_id,g.name AS guild_name,g.owner_id,
   (SELECT gi.version FROM guild_icons gi WHERE gi.guild_id=gm.guild_id) AS guild_icon_version,
   COALESCE((SELECT active FROM player_bans pb WHERE pb.user_id=u.id),0) AS ban_active,
   COALESCE((SELECT revision FROM player_bans pb WHERE pb.user_id=u.id),0) AS moderation_epoch,
@@ -2798,7 +2799,7 @@ async function route(request, env, now) {
     const clan = textField(body.clan, '勢力名', 24, {optional:true}) || '織田家';
     if(clan===ADMIN_CLAN)fail(403,'ADMIN_CLAN_REQUIRED','この家名は選択できません。徳川家を選択してください。');
     const id = uid('u_'), token = gameToken();
-    try { await stmt(db,'INSERT INTO users(id,name,name_key,clan,token_hash,created_at,last_seen) VALUES(?,?,?,?,?,?,?)',id,name,nameKey(name),clan,await hash(token),now,now).run(); }
+    try { await db.batch([releaseInactivePlayerNameStatement(db,name),stmt(db,'INSERT INTO users(id,name,name_key,clan,token_hash,created_at,last_seen) VALUES(?,?,?,?,?,?,?)',id,name,nameKey(name),clan,await hash(token),now,now)]); }
     catch (error) { if (/unique/i.test(String(error))) fail(409,'NAME_TAKEN','その領主名はすでに使われています。別の名前をお選びください。'); throw error; }
     const created=await getUser(db,id);if(body.newcomerProtection===true)await enrollProtection(db,created,now);
     return {ok:true,token,user:mapUser(created,now)};
@@ -3070,10 +3071,10 @@ async function route(request, env, now) {
     // that spelling in the concurrency guard, including an existing NFC name.
     if(!user.is_admin&&!user.is_staff&&typeof body.clan==='string'&&body.clan.normalize('NFC').trim()===ADMIN_CLAN)fail(403,'ADMIN_CLAN_REQUIRED','この家名は選択できません。徳川家を選択してください。');
     if(name!==user.name)await budget(db,'profile-name:'+user.id,20,60000,now);
-    const access=accountCommitGuard(user);let changed;
-    try { changed=await stmt(db,'UPDATE users SET name=?,name_key=? WHERE id=? AND '+access.sql+' AND (? IS NULL OR name=? OR name=?) RETURNING id',name,nameKey(name),user.id,...access.args,expectedName,expectedName,name).all(); }
-    catch (error) { if (/unique/i.test(String(error))) fail(409,'NAME_TAKEN','その領主名はすでに使われています。'); throw error; }
-    if(!rows(changed).length){await requireAccountAccess(db,user);fail(409,'PROFILE_CHANGED','別の端末で領主名が変更されました。最新の名前を確認してから、もう一度お試しください。');}
+    const access=accountCommitGuard(user),profileGate='EXISTS(SELECT 1 FROM users actor WHERE actor.id=? AND (? IS NULL OR actor.name=? OR actor.name=?)) AND '+access.sql,profileArgs=[user.id,expectedName,expectedName,name,...access.args];let changed;
+    try { changed=(await db.batch([releaseInactivePlayerNameStatement(db,name,profileGate,profileArgs),stmt(db,'UPDATE users SET name=?,name_key=? WHERE id=? AND '+access.sql+' AND (? IS NULL OR name=? OR name=?) AND NOT EXISTS(SELECT 1 FROM users named WHERE named.name_key=? AND named.id<>users.id) RETURNING id',name,user.expulsion_pending?releasedPlayerNameKey(user.id):nameKey(name),user.id,...access.args,expectedName,expectedName,name,nameKey(name))]))[1]; }
+    catch (error) { if (playerNameConflict(error)) fail(409,'NAME_TAKEN',PLAYER_NAME_TAKEN); throw error; }
+    if(!rows(changed).length){await requireAccountAccess(db,user);await requireAvailablePlayerName(db,user.id,name,fail);fail(409,'PROFILE_CHANGED','別の端末で領主名が変更されました。最新の名前を確認してから、もう一度お試しください。');}
     return {ok:true,user:mapUser(await getUser(db,user.id),now)};
   }
   if (path === '/chat' && method === 'GET') {
