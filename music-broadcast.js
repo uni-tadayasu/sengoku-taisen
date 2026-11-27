@@ -14,7 +14,7 @@
   }
   const displayDate = value => instant(value) ? new Date(value).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }) : 'まだ変更されていません';
   function markup(view = {}) {
-    if (!view.authorized) return '<section class="music-broadcast-panel"><h3>全員共通のBGM</h3><p>この設定は運営だけが変更できます。</p></section>';
+    if (!view.authorized) return '<section class="music-broadcast-panel"><h3>全員共通のBGM</h3><p>この領主では設定を変更できません。</p></section>';
     const music = clean(view.musicBroadcast) || emptyBroadcast();
     const locked = !view.loaded || view.loading || view.sending || Boolean(view.pending) || view.denied;
     const disabled = locked ? ' disabled' : '';
@@ -44,8 +44,8 @@
     function context() {
       let value; try { value = getContext(); } catch (_) { value = null; }
       const user = value?.user, identity = value?.identity;
-      const allowed = Boolean(user?.id && identity?.id && String(user.id) === String(identity.id) && user.isAdmin === true && user.isBanned !== true && !value?.pending && !value?.banned);
-      return { allowed, stamp: JSON.stringify([user?.id ?? null, user?.isAdmin === true, user?.isBanned === true, identity?.id ?? null, identity?.token ?? null, value?.epoch ?? null, value?.privilegeEpoch ?? null, value?.accountEpoch ?? null, Boolean(value?.pending), Boolean(value?.banned)]) };
+      const allowed = Boolean(user?.id && identity?.id && String(user.id) === String(identity.id) && (user.isAdmin === true || user.isDeputy === true) && user.canOperate !== false && value?.canOperate !== false && user.isBanned !== true && !value?.pending && !value?.banned);
+      return { allowed, stamp: JSON.stringify([user?.id ?? null, user?.isAdmin === true, user?.isDeputy === true, user?.canOperate, value?.canOperate, user?.isBanned === true, identity?.id ?? null, identity?.token ?? null, value?.epoch ?? null, value?.privilegeEpoch ?? null, value?.accountEpoch ?? null, Boolean(value?.pending), Boolean(value?.banned)]) };
     }
     function render() {
       if (!root || disposed) return;

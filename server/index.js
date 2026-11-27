@@ -6,6 +6,7 @@ import {handleTrades} from './trade.js';
 import {handleModeration} from './moderation.js';
 import {playerNameKey,releasedPlayerNameKey,playerNameReleased,playerNameConflict,releaseInactivePlayerNameStatement,requireAvailablePlayerName,PLAYER_NAME_TAKEN} from './player-names.js';
 import {handleDeputyOperator} from './deputy-operator.js';
+import {canOperate,operationGuard} from './operator-access.js';
 import {expulsionSnapshot,EXPULSION_MESSAGE} from './expulsion-state.js';
 import {handlePremium,handlePremiumWebhook,resolvePremiumAppearances} from './premium.js';
 import {handleRewards,protectRewardSync,rewardArchiveStatements} from './rewards.js';
@@ -37,8 +38,8 @@ import {requirePromotionOrigin,recordPromotion,readPromotionReport} from './prom
 import {readMusicBroadcast,handleAdminMusic} from './admin-music.js';
 import {lordSupportSql,guardLordSupport,ensureResidency,residencySnapshot,residencyDirectory,residencyStart,initialResidencyStatements,residencyTargetGuard,prepareResidencySuccession,prepareResidencyCpuLosses} from './residency.js';
 const API = '/api/v1';
-const API_VERSION = '5.13.4';
-const API_FEATURES = Object.freeze({trades:true,moderation:true,playerExpulsion:true,moderatedNameReuse:true,deputyOperator:true,deputyOfficer:true,kagoshimaProtected:true,premium:true,timedEvents:true,troopTrades:true,roamingBattles:true,roamingDeployment:true,covertDispatch:true,privatePlayerRoles:true,guildIcons:true,court:true,kyotoGosho:true,branches:true,branchBattles:true,branchFacilities:true,audioCalls:true,progression:true,armyPresets:true,allianceStrategy:true,sharedConquest:true,newcomerProtection:true,webPush:true,battleAdviser:true,battleCatalog:true,eventBattleRewards:true,shogunate:true,attackTravel:true,castleResidency:true,retainerCastleStats:true,residencyRelocation:true,maintenanceUpkeep:true,strongholdDurability:true,chatReplies:true,chatMentions:true,covertReturnTravel:true,allianceUnitTravel:true,legacySaveRecovery:true,displayNameVariants:true,courtOffices:true,serverSummons:true,loginRewards:true,paidRerolls:true,supporterChoices:true,premiumGrowthMetrics:true,adminMusicBroadcast:true,rankRiceProduction:true,shogunateApproval:true,imperialSuccession:true,retiredEmperor:true,regency:true,courtEventRoom:true,imperialSuccessionApproval:true});
+const API_VERSION = '5.14.0';
+const API_FEATURES = Object.freeze({trades:true,moderation:true,playerExpulsion:true,moderatedNameReuse:true,deputyOperator:true,deputyOperations:true,privateOperationsLabels:true,deputyOfficer:true,kagoshimaProtected:true,premium:true,timedEvents:true,troopTrades:true,roamingBattles:true,roamingDeployment:true,covertDispatch:true,privatePlayerRoles:true,guildIcons:true,court:true,kyotoGosho:true,branches:true,branchBattles:true,branchFacilities:true,audioCalls:true,progression:true,armyPresets:true,allianceStrategy:true,sharedConquest:true,newcomerProtection:true,webPush:true,battleAdviser:true,battleCatalog:true,eventBattleRewards:true,shogunate:true,attackTravel:true,castleResidency:true,retainerCastleStats:true,residencyRelocation:true,maintenanceUpkeep:true,strongholdDurability:true,chatReplies:true,chatMentions:true,covertReturnTravel:true,allianceUnitTravel:true,legacySaveRecovery:true,displayNameVariants:true,courtOffices:true,serverSummons:true,loginRewards:true,paidRerolls:true,supporterChoices:true,premiumGrowthMetrics:true,adminMusicBroadcast:true,rankRiceProduction:true,shogunateApproval:true,imperialSuccession:true,retiredEmperor:true,regency:true,courtEventRoom:true,imperialSuccessionApproval:true});
 const MAX_BODY = 16 * 1024;
 const MAX_SAVE_BODY = 2 * 1024 * 1024;
 const MAX_AVATAR_BYTES = 48 * 1024;
@@ -68,6 +69,10 @@ const authenticatedRequests = new WeakMap();
 const courtResponseGuards = new WeakMap();
 const chatResponseGuards = new WeakMap();
 const eventDefenseResponseGuards = new WeakMap();
+const operationsResponseGuards = new WeakMap();
+const operationsRoute=path=>/^\/admin\/(?:music|announcement|mail|moderation(?:\/.*)?|events(?:\/.*)?|premium(?:\/.*)?|promotion|roaming(?:\/.*)?)$/.test(path);
+function protectOperations(request,user){requireOperator(user);operationsResponseGuards.set(request,operationGuard(user));}
+async function verifyOperationsResponse(db,request){const guard=operationsResponseGuards.get(request);if(guard&&!await stmt(db,'SELECT 1 AS allowed WHERE '+guard.sql,...guard.args).first())fail(403,'OPERATIONAL_REQUIRED','管理機能の利用資格が変更されました。接続状態を確認してください。');}
 
 // Log only fixed diagnostic categories and source locations. Request bodies,
 // credentials, SQL text, arbitrary error messages and player data stay private.
@@ -498,7 +503,7 @@ async function verifyCourtResponse(db,request){const guard=courtResponseGuards.g
 
 function mapUser(row, now = Date.now()) {
   return {
-    id: row.id, name: row.name, nameReleased: playerNameReleased(row), clan: publicClan(row.clan,row.is_admin,row.is_staff,row.personal_clan), isAdmin: !!row.is_admin, isStaff: !!row.is_staff && !row.is_admin, isDeputy: !!row.is_deputy && !row.is_admin && !row.is_staff,
+    id: row.id, name: row.name, nameReleased: playerNameReleased(row), clan: publicClan(row.clan,row.is_admin,row.is_staff,row.personal_clan), isAdmin: !!row.is_admin, isStaff: !!row.is_staff && !row.is_admin, isDeputy: !!row.is_deputy && !row.is_admin && !row.is_staff, canOperate:canOperate(row),
     avatarVersion: row.avatar_version || null,evaluation:evaluationRef(row.id),
     guildId: row.guild_id || null, guildName: row.guild_name || null,guildIconVersion: row.guild_id ? row.guild_icon_version || null : null,
     guildRole: row.guild_id ? (row.owner_id === row.id ? 'owner' : row.is_guild_officer ? 'officer' : 'member') : null,
@@ -512,11 +517,11 @@ function publicClan(clan,isAdmin,isStaff=false,personalClan=null) { return isAdm
 // their controls. Save contents and role entitlements are private, not projected.
 function publicIdentities(payload,request){
   const path=new URL(request.url).pathname.slice(API.length),actor=authenticatedRequests.get(request);
-  const management=!!(actor&&(actor.is_admin&&path.startsWith('/admin/')||(actor.is_admin||actor.is_staff)&&path.startsWith('/staff/')));
+  const management=!!(actor&&(canOperate(actor)&&path.startsWith('/admin/')||(canOperate(actor)||actor.is_staff)&&path.startsWith('/staff/')));
   const linked=['/session','/devices/link','/admin/recover'].includes(path)&&typeof payload?.token==='string';
   const self=payload?.user&&(payload.user.id===actor?.id||linked)?payload.user:null;
   const privateKeys=new Set(['save','state','entitlements','staffBase']);
-  const roleKeys=new Set(['isAdmin','isStaff','isDeputy','is_deputy','isOperator','is_admin','is_staff','is_operator','staffTitle','siteRole','roleTitle','operatorProtected','staffProtected','adminPlayerId','adminUserId','operatorPlayerId','operatorUserId']);
+  const roleKeys=new Set(['canOperate','isAdmin','isStaff','isDeputy','is_deputy','isOperator','is_admin','is_staff','is_operator','staffTitle','siteRole','roleTitle','operatorProtected','staffProtected','adminPlayerId','adminUserId','operatorPlayerId','operatorUserId']);
   function visit(value){
     if(!value||typeof value!=='object')return value;
     if(Array.isArray(value))return value.map(visit);
@@ -786,10 +791,10 @@ async function authenticate(request, db, now) {
   authenticatedRequests.set(request,row);
   return row;
 }
+function requireOperator(user) { if (!canOperate(user)) fail(403,'OPERATIONAL_REQUIRED','この管理機能を利用する権限がありません。'); }
 function requireAdmin(user) { if (!user.is_admin) fail(403, 'ADMIN_REQUIRED', 'この機能を利用する権限がありません。'); }
-function requireStaffChat(user) { if(!user.is_admin&&!user.is_staff)fail(403,'STAFF_CHAT_REQUIRED','この会話を利用する権限がありません。'); }
-function requireStaff(user) { if(!user.is_admin&&!user.is_staff)fail(403,'STAFF_REQUIRED','この一覧を表示する権限がありません。'); }
-const STAFF_CHAT_GUARD="(EXISTS(SELECT 1 FROM settings WHERE key='adminUserId' AND value=?) OR EXISTS(SELECT 1 FROM staff_members WHERE user_id=?))";
+function requireStaffChat(user) { if(!canOperate(user)&&!user.is_staff)fail(403,'STAFF_CHAT_REQUIRED','この会話を利用する権限がありません。'); }
+function requireStaff(user) { if(!canOperate(user)&&!user.is_staff)fail(403,'STAFF_REQUIRED','この一覧を表示する権限がありません。'); }
 function recentLoginCursor(value,now) {
   const invalid=()=>fail(400,'INVALID_CURSOR','接続一覧の続きが無効です。最初から読み込み直してください。');
   if(typeof value!=='string'||value.length>512||!/^[A-Za-z0-9_-]+$/.test(value))invalid();
@@ -804,13 +809,13 @@ async function recentLogins(db,user,url,now) {
   if(!/^[1-9][0-9]?$/.test(limitText)||Number(limitText)>50)fail(400,'INVALID_INPUT','一覧の件数は1〜50件で指定してください。');
   const limit=Number(limitText),rawCursor=url.searchParams.get('cursor'),cursor=rawCursor===null?null:recentLoginCursor(rawCursor,now),asOf=cursor?.asOf??now,windowStart=now-RECENT_LOGIN_WINDOW;
   const continuation=cursor?' AND (u.last_seen<? OR (u.last_seen=? AND u.id>?))':'';
-  const params=[windowStart,asOf,user.id,user.id,...(cursor?[cursor.lastSeen,cursor.lastSeen,cursor.id]:[]),limit+1];
+  const access=roleCommitGuard(user),params=[windowStart,asOf,...access.args,...(cursor?[cursor.lastSeen,cursor.lastSeen,cursor.id]:[]),limit+1];
   // Authorization and both projections share one D1 transaction. Every data
   // SELECT independently checks the live role, including revocation after auth.
   const result=await db.batch([
-    stmt(db,'SELECT 1 AS allowed WHERE '+STAFF_CHAT_GUARD,user.id,user.id),
-    stmt(db,USER_SELECT+' WHERE u.last_seen>=? AND u.last_seen<=? AND '+STAFF_CHAT_GUARD+continuation+' ORDER BY u.last_seen DESC,u.id ASC LIMIT ?',...params),
-    stmt(db,'SELECT COUNT(*) AS count FROM users WHERE last_seen>=? AND last_seen<=? AND '+STAFF_CHAT_GUARD,windowStart,asOf,user.id,user.id),
+    stmt(db,'SELECT 1 AS allowed WHERE '+access.sql,...access.args),
+    stmt(db,USER_SELECT+' WHERE u.last_seen>=? AND u.last_seen<=? AND '+access.sql+continuation+' ORDER BY u.last_seen DESC,u.id ASC LIMIT ?',...params),
+    stmt(db,'SELECT COUNT(*) AS count FROM users WHERE last_seen>=? AND last_seen<=? AND '+access.sql,windowStart,asOf,...access.args),
   ]);
   if(!rows(result[0]).length)fail(403,'STAFF_REQUIRED','この一覧を表示する権限がありません。');
   const found=rows(result[1]),page=found.slice(0,limit),players=page.map(row=>({...mapUser(row,now),lastSeen:iso(row.last_seen)})),last=page.at(-1);
@@ -871,9 +876,10 @@ const MESSAGE_SELECT = `SELECT m.id,m.user_id,m.body,m.created_at,u.name,
  LEFT JOIN users pu ON pu.id=rp.user_id`;
 function chatAccessGuard(user,channel,target){
   const account=accountCommitGuard(user);
-  const channelSql=channel==='admin'?STAFF_CHAT_GUARD:channel==='guild'?GUILD_MEMBER_GUARD:channel==='friend'?"EXISTS(SELECT 1 FROM friendships WHERE user_a=? AND user_b=? AND status='accepted')":'1';
-  const channelArgs=channel==='admin'?[user.id,user.id]:channel==='guild'?[user.id,user.guild_id]:channel==='friend'?pair(user.id,idField(target,'友達の識別子')):[];
-  return {sql:channelSql+' AND '+account.sql,args:[...channelArgs,...account.args],code:channel==='admin'?'STAFF_CHAT_REQUIRED':channel==='friend'?'FRIENDSHIP_REQUIRED':'GUILD_REQUIRED'};
+  if(channel==='admin'){requireStaffChat(user);return {...roleCommitGuard(user),code:'STAFF_CHAT_REQUIRED'};}
+  const channelSql=channel==='guild'?GUILD_MEMBER_GUARD:channel==='friend'?"EXISTS(SELECT 1 FROM friendships WHERE user_a=? AND user_b=? AND status='accepted')":'1';
+  const channelArgs=channel==='guild'?[user.id,user.guild_id]:channel==='friend'?pair(user.id,idField(target,'友達の識別子')):[];
+  return {sql:channelSql+' AND '+account.sql,args:[...channelArgs,...account.args],code:channel==='friend'?'FRIENDSHIP_REQUIRED':'GUILD_REQUIRED'};
 }
 function chatMetadata(body){
   const replyToId=body.replyToId??null,mentionIds=body.mentionIds===undefined?[]:body.mentionIds;
@@ -883,7 +889,7 @@ function chatMetadata(body){
 }
 function chatContextGuard(user,channel,target,room,{replyToId,mentionIds}){
   const reply=replyToId===null?{sql:'1',args:[]}:{sql:'EXISTS(SELECT 1 FROM messages parent WHERE parent.id=? AND parent.room_key=? AND NOT EXISTS(SELECT 1 FROM player_bans banned WHERE banned.user_id=parent.user_id AND banned.active=1))',args:[replyToId,room]};
-  const scope=channel==='guild'?'EXISTS(SELECT 1 FROM guild_members gm WHERE gm.user_id=mu.id AND gm.guild_id=?)':channel==='friend'?'mu.id IN (?,?)':channel==='admin'?"(mu.id=(SELECT value FROM settings WHERE key='adminUserId') OR EXISTS(SELECT 1 FROM staff_members sm WHERE sm.user_id=mu.id))":'1';
+  const scope=channel==='guild'?'EXISTS(SELECT 1 FROM guild_members gm WHERE gm.user_id=mu.id AND gm.guild_id=?)':channel==='friend'?'mu.id IN (?,?)':channel==='admin'?"(mu.id=(SELECT value FROM settings WHERE key='adminUserId') OR EXISTS(SELECT 1 FROM staff_members sm WHERE sm.user_id=mu.id) OR EXISTS(SELECT 1 FROM deputy_operator_state ds WHERE ds.user_id=mu.id))":'1';
   const scopeArgs=channel==='guild'?[user.guild_id]:channel==='friend'?[user.id,idField(target,'友達の識別子')]:[];
   const mentions=mentionIds.length?{sql:'(SELECT COUNT(*) FROM json_each(?) wanted JOIN users mu ON mu.id=wanted.value WHERE NOT EXISTS(SELECT 1 FROM player_bans banned WHERE banned.user_id=mu.id AND banned.active=1) AND '+scope+')=?',args:[JSON.stringify(mentionIds),...scopeArgs,mentionIds.length]}:{sql:'1',args:[]};
   return {reply,mentions,sql:reply.sql+' AND '+mentions.sql,args:[...reply.args,...mentions.args]};
@@ -1419,8 +1425,8 @@ function normalizeGameSave(raw, user, now, {reading=false,clock=null}={}) {
   }
   if(n.cycle){if(user.is_admin)n.cycle.home='edo';else if(n.cycle.home==='edo')n.cycle.home=n.home;}
   if(!reading&&!staff&&(n.home==='kyoto_gosho'||n.castles.kyoto_gosho.owner===n.clan))fail(403,'STAFF_ENTITLEMENT_REQUIRED','この拠点は現在の利用権では使用できません。');
-  if(!reading&&!user.is_deputy&&(n.home==='kagoshima'||n.castles.kagoshima.owner===n.clan))fail(403,'DEPUTY_ENTITLEMENT_REQUIRED','鹿児島城はサブ運営専用の拠点です。最新の保存を読み込んでください。');
-  if(!reading&&user.is_deputy&&n.home!=='kagoshima')fail(403,'DEPUTY_FIXED_HOME','サブ運営の本拠は鹿児島城です。最新の保存を読み込んでください。');
+  if(!reading&&!user.is_deputy&&(n.home==='kagoshima'||n.castles.kagoshima.owner===n.clan))fail(403,'DEPUTY_ENTITLEMENT_REQUIRED','鹿児島城の所属条件を確認できません。最新の保存を読み込んでください。');
+  if(!reading&&user.is_deputy&&n.home!=='kagoshima')fail(403,'DEPUTY_FIXED_HOME','この領主の本拠は鹿児島城に固定されています。最新の保存を読み込んでください。');
   if(staff||serviceSave)n.staffService={baseId:'kyoto_gosho'};
   const roleState=GameEngine.fromSave({game:'sengoku-tento',version:2,state:n},GAME_OFFICERS,{isAdmin:!!user.is_admin,isDeputy:!!user.is_deputy,isStaff:staff,deputyReturnHome:user.deputy_return_home}).state;
   for(const key of Object.keys(roleState))n[key]=roleState[key];
@@ -2740,7 +2746,7 @@ async function route(request, env, now) {
   if (path === '/health' && method === 'GET') {
     try {
       await stmt(db, 'SELECT (SELECT COUNT(*) FROM users) AS count,EXISTS(SELECT 1 FROM trades) AS trade_schema,EXISTS(SELECT 1 FROM trade_requests) AS trade_request_schema,EXISTS(SELECT 1 FROM trade_deliveries) AS trade_delivery_schema,EXISTS(SELECT 1 FROM player_bans) AS ban_schema,EXISTS(SELECT 1 FROM moderation_requests) AS moderation_schema,(SELECT content_revision FROM moderation_state WHERE id=1) AS content_revision,EXISTS(SELECT 1 FROM premium_orders) AS premium_order_schema,EXISTS(SELECT 1 FROM premium_events) AS premium_event_schema,EXISTS(SELECT 1 FROM premium_grants) AS premium_grant_schema,EXISTS(SELECT 1 FROM premium_appearances) AS premium_appearance_schema,EXISTS(SELECT 1 FROM timed_events) AS timed_event_schema,EXISTS(SELECT 1 FROM timed_event_requests) AS timed_event_request_schema,EXISTS(SELECT 1 FROM timed_event_participants) AS timed_event_participant_schema,EXISTS(SELECT 1 FROM timed_event_rewards) AS timed_event_reward_schema,EXISTS(SELECT 1 FROM roaming_battles) AS roaming_battle_schema,EXISTS(SELECT 1 FROM covert_states) AS covert_state_schema,EXISTS(SELECT 1 FROM covert_requests) AS covert_request_schema,EXISTS(SELECT 1 FROM covert_battles) AS covert_battle_schema,EXISTS(SELECT 1 FROM covert_incidents) AS covert_incident_schema,EXISTS(SELECT 1 FROM roaming_deployment) AS roaming_deployment_schema,EXISTS(SELECT 1 FROM roaming_deployment_proposals) AS roaming_deployment_proposal_schema,EXISTS(SELECT 1 FROM roaming_deployment_requests) AS roaming_deployment_request_schema,EXISTS(SELECT 1 FROM roaming_unit_cooldowns) AS roaming_unit_cooldown_schema,EXISTS(SELECT 1 FROM court_contributions) AS court_contribution_schema,EXISTS(SELECT 1 FROM court_leader) AS court_leader_schema,EXISTS(SELECT 1 FROM court_chat) AS court_chat_schema,EXISTS(SELECT 1 FROM court_audience_threads) AS court_audience_schema,EXISTS(SELECT 1 FROM court_audience_messages) AS court_audience_message_schema,EXISTS(SELECT 1 FROM court_requests) AS court_request_schema,EXISTS(SELECT 1 FROM branch_states) AS branch_state_schema,EXISTS(SELECT 1 FROM branch_requests) AS branch_request_schema,EXISTS(SELECT 1 FROM deputy_operator_state) AS deputy_schema').first();
-      const voiceSchema=await stmt(db,"SELECT EXISTS(SELECT 1 FROM voice_sessions WHERE lease_until>=0) AS sessions,EXISTS(SELECT 1 FROM voice_signals WHERE acknowledged>=0) AS signals,EXISTS(SELECT 1 FROM voice_membership_epochs WHERE epoch>=1) AS membership,(SELECT COUNT(*) FROM sqlite_master WHERE type='trigger' AND name IN ('voice_guild_join','voice_guild_leave','voice_guild_move')) AS trigger_count").first();
+      const voiceSchema=await stmt(db,"SELECT EXISTS(SELECT 1 FROM voice_sessions WHERE lease_until>=0 AND deputy_term IS NOT NULL) AS sessions,EXISTS(SELECT 1 FROM voice_signals WHERE acknowledged>=0) AS signals,EXISTS(SELECT 1 FROM voice_membership_epochs WHERE epoch>=1) AS membership,(SELECT COUNT(*) FROM sqlite_master WHERE type='trigger' AND name IN ('voice_guild_join','voice_guild_leave','voice_guild_move')) AS trigger_count").first();
       if(Number(voiceSchema?.trigger_count)!==3)throw Error('Voice membership migration incomplete');
       const officeSchema=await stmt(db,"SELECT (SELECT COUNT(*) FROM court_office_appointments) AS appointments,(SELECT COUNT(*) FROM court_office_requests) AS requests,(SELECT COUNT(*) FROM court_office_state) AS state,(SELECT COUNT(*) FROM court_kyoto_offices) AS kyoto,(SELECT COUNT(*) FROM court_external_offices) AS external,(SELECT COUNT(*) FROM sqlite_master WHERE type='trigger' AND name LIKE 'court_office_%') AS trigger_count").first();
       if(Number(officeSchema?.trigger_count)!==20)throw Error('Court office migration incomplete');
@@ -2861,10 +2867,13 @@ async function route(request, env, now) {
 
   if(path==='/events'||path.startsWith('/events/')||path==='/admin/events'||path.startsWith('/admin/events/')){
     const user=method==='GET'&&!path.startsWith('/admin/')&&!request.headers.has('authorization')?null:await authenticate(request,db,now);
-    return handleEvents({db,user,now,path,method,url,request,helpers:{eventGarrison,fieldAttackPower,registerDefenseResponseGuard:guard=>eventDefenseResponseGuards.set(request,guard),fail,readBody,budget,idField,textField,uid,hash,getUser,getSyncRow,requireAdmin,requireAccountAccess,roleCommitGuard,evaluationRef,fieldWriter,settleWriterCycle,getWorldClock,normalizeGameSave,syncSnapshot,syncLease:SYNC_LEASE,worldClockId:WORLD_CLOCK_ID}});
+    if(path.startsWith('/admin/'))protectOperations(request,user);
+    return handleEvents({db,user,now,path,method,url,request,helpers:{eventGarrison,fieldAttackPower,registerDefenseResponseGuard:guard=>eventDefenseResponseGuards.set(request,guard),fail,readBody,budget,idField,textField,uid,hash,getUser,getSyncRow,requireOperator,requireAccountAccess,roleCommitGuard,evaluationRef,fieldWriter,settleWriterCycle,getWorldClock,normalizeGameSave,syncSnapshot,syncLease:SYNC_LEASE,worldClockId:WORLD_CLOCK_ID}});
   }
   let user = await authenticate(request,db,now);
-  if(path==='/admin/music')return handleAdminMusic({db,user,request,method,now,helpers:{fail,readBody,budget,hash,requireAdmin,requireAccountAccess,roleCommitGuard,registerResponseGuard:guard=>courtResponseGuards.set(request,guard)}});
+  if(operationsRoute(path)||path==='/world-clock'&&method==='PATCH')protectOperations(request,user);
+  if(path==='/staff/recent-logins'||path==='/staff/roaming'||path.startsWith('/staff/roaming/')){requireStaff(user);courtResponseGuards.set(request,{...roleCommitGuard(user),code:'STAFF_REQUIRED',message:'接続一覧の利用資格が変更されました。'});}
+  if(path==='/admin/music')return handleAdminMusic({db,user,request,method,now,helpers:{fail,readBody,budget,hash,requireOperator,requireAccountAccess,roleCommitGuard,registerResponseGuard:guard=>courtResponseGuards.set(request,guard)}});
   const expansionContext={db,env,user,now,path,method,url,request,helpers:{fail,readBody,budget,idField,textField,uid,hash,getUser,getSyncRow,requireAdmin,requireAccountAccess,roleCommitGuard,accountCommitGuard,courtEmperorAuthority,courtImperialAuthority,courtDutyAuthority,registerResponseGuard:guard=>courtResponseGuards.set(request,guard),evaluationRef,fieldWriter,settleWriterCycle,getWorldClock,normalizeGameSave,syncSnapshot,staffBaseDto,reconcileCovertProgress,reconcileBranchProgress,branchStateGuard,branchProgressStatements,covertIncidentStatements,staffPersonalProgressStatement,saveAchievements,achievementStatement,syncLease:SYNC_LEASE,worldClockId:WORLD_CLOCK_ID}};
   if(path==='/castles/residency/relocate'&&method==='POST')return relocateResidence(expansionContext,await readBody(request));
   if(path==='/castles/residency/start'&&method==='POST')return residencyStart(expansionContext,await readBody(request));
@@ -2882,9 +2891,9 @@ async function route(request, env, now) {
   if(path.startsWith('/voice/'))return handleVoice({db,env,user,now,path,method,url,request,helpers:{fail,readBody,budget,uid,hash,requireAccountAccess,roleCommitGuard,accountCommitGuard,registerResponseGuard:guard=>courtResponseGuards.set(request,guard)}});
   if(path==='/court'||path.startsWith('/court/')||path==='/staff/court'||path==='/admin/court/leader'||path==='/admin/court/offices')return handleCourt({db,user,now,path,method,url,request,helpers:{fail,readBody,budget,idField,textField,uid,hash,getUser,requireAccountAccess,roleCommitGuard,accountCommitGuard,evaluationRef,courtAccess,resolveMessageRegister,registerGuard:guard=>courtResponseGuards.set(request,guard)}});
   if (path === '/staff/roaming' || path.startsWith('/staff/roaming/') || path === '/admin/roaming' || path.startsWith('/admin/roaming/')) return handleRoamingDeployment({db,user,now,path,method,url,request,helpers:{fail,readBody,budget,idField,textField,hash,getUser,requireAccountAccess,roleCommitGuard}});
-  if(path==='/premium'||path.startsWith('/premium/')||path.startsWith('/admin/premium/'))return handlePremium({db,env,user,now,path,method,request,helpers:{fail,readBody,budget,accountCommitGuard,requireAccountAccess,requireAdmin,getUser,textField,idField,hash,uid,evaluationRef}});
+  if(path==='/premium'||path.startsWith('/premium/')||path.startsWith('/admin/premium/'))return handlePremium({db,env,user,now,path,method,request,helpers:{fail,readBody,budget,accountCommitGuard,requireAccountAccess,requireOperator,getUser,textField,idField,hash,uid,evaluationRef}});
   if(path==='/rewards'||path.startsWith('/rewards/')||path.startsWith('/gacha/'))return handleRewards({db,env,user,now,path,method,request,helpers:{fail,readBody,budget,idField,hash,getUser,getSyncRow,fieldWriter,settleWriterCycle,getWorldClock,normalizeGameSave,roleCommitGuard,syncSnapshot,requireAccountAccess,staffBaseDto,syncLease:SYNC_LEASE}});
-  if(path==='/admin/moderation'||path.startsWith('/admin/moderation/'))return handleModeration({...expansionContext,helpers:{...expansionContext.helpers,mapUser,userSelect:USER_SELECT}});
+  if(path==='/admin/moderation'||path.startsWith('/admin/moderation/'))return handleModeration({...expansionContext,helpers:{...expansionContext.helpers,requireOperator,mapUser,userSelect:USER_SELECT}});
   if (path === '/me/avatar' && method === 'PUT') return putAvatar(request,env,user,now);
   if (path === '/me/avatar' && method === 'DELETE') return deleteAvatar(request,env,user,now);
   if (path === '/guild/icon' && method === 'PUT') return putGuildIcon(request,env,user,now);
@@ -2913,14 +2922,14 @@ async function route(request, env, now) {
   if (path === '/field/attack' && method === 'POST') return fieldAttack(db,user,await readBody(request),now);
   if (path === '/field/diplomacy' && method === 'POST') return fieldDiplomacy(db,user,await readBody(request),now);
   if (path === '/world-clock' && method === 'PATCH') {
-    requireAdmin(user);
+    requireOperator(user);
     const body=await readBody(request);
     if(Object.keys(body).some(key=>!['revision','running','speed'].includes(key))||!Number.isSafeInteger(body.revision)||body.revision<0||body.running===undefined&&body.speed===undefined||body.running!==undefined&&typeof body.running!=='boolean'||body.speed!==undefined&&![1,2,4].includes(body.speed))fail(400,'INVALID_INPUT','共通時計の更新番号と、一時停止・速度（1・2・4）の変更を指定してください。');
     await budget(db,'world-clock-control:'+user.id,60,60000,now);
     const prior=await getWorldClockRow(db,now),current=mapWorldClock(prior,now);
     if(current.revision!==body.revision)fail(409,'CLOCK_REVISION_CONFLICT','共通時計が別の端末で更新されました。最新の時計を確認してください。');
-    const changed=await stmt(db,`UPDATE world_clock SET base_elapsed_ms=?,anchor_real_ms=?,running=?,speed=?,revision=revision+1
-      WHERE id=? AND revision=? RETURNING *`,current.elapsedMs,now,(body.running??current.running)?1:0,body.speed??current.speed,WORLD_CLOCK_ID,body.revision).first();
+    const access=operationGuard(user),changed=await stmt(db,`UPDATE world_clock SET base_elapsed_ms=?,anchor_real_ms=?,running=?,speed=?,revision=revision+1
+      WHERE id=? AND revision=? AND ${access.sql} RETURNING *`,current.elapsedMs,now,(body.running??current.running)?1:0,body.speed??current.speed,WORLD_CLOCK_ID,body.revision,...access.args).first();
     if(!changed)fail(409,'CLOCK_REVISION_CONFLICT','共通時計が別の端末で更新されました。最新の時計を確認してください。');
     return {ok:true,clock:mapWorldClock(changed,now)};
   }
@@ -3159,7 +3168,7 @@ async function route(request, env, now) {
     await budget(db,'chat:'+user.id,1,5000,now);
     const access=chatAccessGuard(user,channel,body.target),context=chatContextGuard(user,channel,body.target,room,metadata);
     if(metadata.replyToId!==null||metadata.mentionIds.length)await checkChatContext(db,user,access,context);
-    const audience=channel==='friend'?{kind:'person',id:idField(body.target,'友達の識別子')}:channel==='guild'?{kind:'guild',id:user.guild_id}:{kind:channel==='admin'?'officials':'public'};
+    const audience=channel==='friend'?{kind:'person',id:idField(body.target,'友達の識別子')}:channel==='guild'?{kind:'guild',id:user.guild_id}:{kind:channel==='admin'?'operations':'public'};
     const register=await resolveMessageRegister(db,user,audience,now),spoken=await register.write(text);
     const inserted=await stmt(db,'INSERT INTO messages(room_key,channel,user_id,body,created_at,reply_to_id,mentions_json) SELECT ?,?,?,?,?,?,? WHERE '+access.sql+' AND '+context.sql+' AND '+register.guard.sql+' RETURNING id',room,channel,user.id,spoken,now,metadata.replyToId,JSON.stringify(metadata.mentionIds),...access.args,...context.args,...register.guard.args).first();
     if(!inserted){await requireAccountAccess(db,user);await roomFor(db,await getUser(db,user.id),channel,body.target);await checkChatContext(db,user,access,context,{conflict:true});fail(409,'MESSAGE_AUDIENCE_CHANGED','宛先の状況が変わりました。もう一度送信してください。');}
@@ -3253,7 +3262,7 @@ async function route(request, env, now) {
     return {ok:true,user:mapUser(await getUser(db,user.id),now),alreadyAdmin:false};
   }
   if (path === '/admin/announcement' && method === 'POST') {
-    requireAdmin(user);
+    requireOperator(user);
     const body=await readBody(request),text=textField(body.text,'お知らせ',300,{min:0});
     const register=await resolveMessageRegister(db,user,{kind:'public'},now),spoken=await register.write(text),role=roleCommitGuard(user);
     const updated=await stmt(db,`INSERT INTO settings(key,value,updated_at) SELECT 'announcement',?,? WHERE ${role.sql} AND ${register.guard.sql} ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at RETURNING value`,spoken,now,...role.args,...register.guard.args).first();
@@ -3261,7 +3270,7 @@ async function route(request, env, now) {
     return {ok:true,announcement:updated.value};
   }
   if (path === '/admin/mail' && method === 'POST') {
-    requireAdmin(user);
+    requireOperator(user);
     const body=await readBody(request),target=body.target==='all'?null:idField(body.target,'送信先'),title=textField(body.title,'件名',60),content=textField(body.body,'本文',2000),gift=giftField(body.gift),requestId=idField(body.requestId,'リクエスト識別子');
     if(target) await userExists(db,target);
     const giftJson=gift?JSON.stringify(gift):null,payloadHash=await hash(JSON.stringify({target,title,body:content,gift}));
@@ -3337,10 +3346,11 @@ export default {
       if(path===API+'/admin/promotion'&&request.method==='GET'){
         if(!env.DB?.prepare||!env.DB?.batch)fail(503,'PROMOTION_UNAVAILABLE','紹介の集計を現在利用できません。ゲームはそのまま遊べます。');
         const now=Date.now(),user=await authenticate(request,env.DB,now);
-        const report=await readPromotionReport({db:env.DB,user,url:new URL(request.url),now,helpers:{fail,requireAdmin,budget}});
+        protectOperations(request,user);
+        const report=await readPromotionReport({db:env.DB,user,url:new URL(request.url),now,helpers:{fail,requireOperator,budget}});
         await requireAccountAccess(env.DB,user);
         // Recheck owner access after the final asynchronous account check.
-        if(!await stmt(env.DB,"SELECT 1 AS allowed FROM settings WHERE key='adminUserId' AND value=?",user.id).first())fail(403,'ADMIN_REQUIRED','運営専用の機能です。');
+        await verifyOperationsResponse(env.DB,request);
         return response(report,200,origin);
       }
       if(path.startsWith(API+'/avatars/')&&request.method==='GET')return await getAvatar(request,env,origin);
@@ -3355,6 +3365,7 @@ export default {
       stage='public-court';const courtVisible=await resolvePublicCourtOffices(env.DB,publicIdentities(resolved,request),now);
       stage='public-honors';const visible=await resolvePublicCityHonors(env.DB,courtVisible,now,{getWorldClock,eventCastleCandidates});
       stage='response';
+      await verifyOperationsResponse(env.DB,request);
       if(path.startsWith(API+'/players/')&&payload.player)await finishPublicProfiles(env.DB,visible,true);
       else if(path===API+'/players'&&!authenticated)await finishPublicProfiles(env.DB,visible,false);
       const defenseGuard=eventDefenseResponseGuards.get(request);
@@ -3368,6 +3379,7 @@ export default {
       // private access after the last such operation, immediately before send.
       await verifyChatResponse(env.DB,request);
       await verifyCourtResponse(env.DB,request);
+      await verifyOperationsResponse(env.DB,request);
       return response(visible,200,origin);
     }catch(error){
       const authenticated=authenticatedRequests.get(request);if(authenticated)try{await requireAccountAccess(env.DB,authenticated);}catch(accessError){error=accessError;}

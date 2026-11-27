@@ -91,7 +91,12 @@ const totalGzipBytes = rows.reduce((sum,row)=>sum+row.gzipBytes,0);
 // dialog/account/file-read cancellation guards. Measured against v5.13.2:
 // +4,191 raw / +1,016 gzip (3,696,053 / 1,022,358). Keep 1.9 KB raw / 642 gzip bytes of
 // headroom; no dependencies, images or server code are added.
-const rawBudget=3698000,gzipBudget=1023000;
+// v5.14 separates delegated operational access from personal role identity and
+// neutralizes public role wording while retaining crests and portraits.
+// Measured: 3,699,092 raw / 1,023,091 gzip bytes (+2,001 / +536 from
+// v5.13.4), with no new runtime dependencies or media assets. Keep less than
+// 2 KB raw / 1 KB gzip of measured headroom.
+const rawBudget=3701000,gzipBudget=1024000;
 assert(totalBytes <= rawBudget, `Initial bundles exceed the ${rawBudget} byte budget: ${totalBytes}`);
 assert(totalGzipBytes <= gzipBudget, `Initial bundles exceed the ${gzipBudget} gzip byte budget: ${totalGzipBytes}`);
 const html = fs.readFileSync(path.join(root,'index.html'),'utf8');

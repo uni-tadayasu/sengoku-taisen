@@ -13,7 +13,8 @@ function proposal(extra={}){return{id:'rdp_'+'1'.repeat(32),status:'pending',exp
 function setup({user=ADMIN,rows=[],storage,timeoutMs}={}){
  let ctx=context(user),current=deployment(),proposals=clone(rows),hook=null,ids=0,commits=0,readCount=0;
  const calls=[],changes=[],receipts=new Map(),stored=new Map(),memory=storage||{getItem:k=>stored.get(k)||null,setItem:(k,v)=>stored.set(k,v),removeItem:k=>stored.delete(k)};
- const dto=()=>({ok:true,deployment:clone(current),capabilities:{canApply:ctx.user?.isAdmin===true,canApprove:ctx.user?.isAdmin===true,canPropose:ctx.user?.isStaff===true&&!ctx.user?.isAdmin},proposals:proposals.filter(p=>ctx.user?.isAdmin||p.requester.id===ctx.user?.id).map(p=>({...clone(p),canApprove:p.status==='pending'&&p.expectedRevision===current.revision,canCancel:p.status==='pending'&&p.requester.id===ctx.user?.id})),serverNow:'2026-11-22T01:00:00Z'});
+ const operates=()=>ctx.user?.isAdmin===true||ctx.user?.isDeputy===true;
+ const dto=()=>({ok:true,deployment:clone(current),capabilities:{canApply:operates(),canApprove:operates(),canPropose:ctx.user?.isStaff===true&&!operates()},proposals:proposals.filter(p=>operates()||p.requester.id===ctx.user?.id).map(p=>({...clone(p),canApprove:p.status==='pending'&&p.expectedRevision===current.revision,canCancel:p.status==='pending'&&p.requester.id===ctx.user?.id})),serverNow:'2026-11-22T01:00:00Z'});
  function execute(route,settings){
   if(settings.method==='GET'){readCount++;return dto();}
   const b=settings.data,prior=receipts.get(b.requestId);if(prior)return{...dto(),...clone(prior),idempotent:true};
@@ -22,7 +23,7 @@ function setup({user=ADMIN,rows=[],storage,timeoutMs}={}){
   if(route==='/admin/roaming/deployment')action='apply';
   else if(route==='/staff/roaming/proposals')action='propose';
   else {action=route.split('/').at(-1);affected=proposals.find(p=>route.includes('/'+p.id+'/'));if(!affected||affected.status!=='pending')throw error(409,'ROAMING_PROPOSAL_CHANGED');}
-  if(['apply','approve','reject'].includes(action)&&!ctx.user.isAdmin)throw error(403);
+  if(['apply','approve','reject'].includes(action)&&!operates())throw error(403);
   if(action==='propose'&&!ctx.user.isStaff)throw error(403);
   if(action==='propose'){affected=proposal({id:'rdp_'+String(++ids).padStart(32,'0'),expectedRevision:b.expectedRevision,config:Object.fromEntries(['totalTroops','squadSize','respawnSeconds'].map(k=>[k,b[k]])),note:b.note,requester:clone(ctx.user)});proposals.unshift(affected);}
   if(action==='apply'||action==='approve'){
@@ -51,6 +52,20 @@ test('opening loads once; routine refresh and close/reopen keep form and avoid b
 test('admin applies only after explicit review and notifies the public map',async()=>{
  const h=setup();await h.controller.open();h.controller.update('totalTroops','500001');assert(h.controller.prepare('apply'));assert.equal(h.commits,0);assert.equal(h.calls.length,1);
  assert.match(confirmationMarkup(h.controller.snapshot().confirmation),/500,001/);assert(await h.controller.submit());assert.equal(h.commits,1);assert.equal(h.deployment.totalTroops,500001);assert.equal(h.deployment.totalSquads,501);assert.equal(h.changes.length,1);assert.equal(h.stored.size,0);assert.equal(h.controller.snapshot().pending,null);
+});
+test('deputy can apply and approve deployment while dismissal blocks a prepared operation',async()=>{
+ const deputy={id:'lord-deputy',name:'副担当',isAdmin:false,isDeputy:true},h=setup({user:deputy,rows:[proposal()]});
+ await h.controller.open();assert.equal(h.controller.snapshot().isAdmin,false);assert.equal(h.controller.snapshot().canOperate,true);
+ assert(h.controller.prepare('approve',h.rows[0].id));assert(await h.controller.submit());assert.equal(h.commits,1);
+ h.controller.update('totalTroops','600000');assert(h.controller.prepare('apply'));
+ h.context={...h.context,user:{...deputy,isDeputy:false}};h.controller.refresh();
+ assert.equal(h.controller.snapshot().authorized,false);assert.equal(h.controller.snapshot().deployment,null);
+ assert.equal(await h.controller.submit(),false);assert.equal(h.commits,1);h.controller.dispose();
+});
+test('late operations data is discarded after deputy dismissal',async()=>{
+ const h=setup({user:{id:'lord-deputy',isDeputy:true}}),pause=deferred(),response=h.dto();h.hook=()=>pause.promise;
+ const reading=h.controller.open();await drain();h.context={...h.context,user:{id:'lord-deputy'}};h.controller.refresh();
+ pause.resolve(response);await reading;assert.equal(h.controller.snapshot().authorized,false);assert.equal(h.controller.snapshot().deployment,null);h.controller.dispose();
 });
 test('staff submission preserves live deployment and records immutable reviewed values',async()=>{
  const h=setup({user:STAFF});await h.controller.open();assert.equal(h.controller.prepare('apply'),false);h.controller.update('totalTroops','640000');h.controller.update('note','近隣の戦闘数を増やす');assert(h.controller.prepare('propose'));

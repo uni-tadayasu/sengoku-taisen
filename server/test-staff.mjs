@@ -154,7 +154,7 @@ try{
   assert.equal(memberCount(a.user.id),0);
   await assign(operator,a,'appoint');tick(6000);
   const beforeMessages=Number(database.prepare("SELECT COUNT(*) AS n FROM messages WHERE room_key='admin'").get().n),realStatement=db.statement.bind(db);
-  db.statement=(sql,params)=>{const st=realStatement(sql,params);if(sql.startsWith('INSERT INTO messages')&&sql.includes('EXISTS(SELECT 1 FROM staff_members')&&params[2]===a.user.id){const first=st.first;st.first=async()=>{database.prepare('DELETE FROM staff_members WHERE user_id=?').run(a.user.id);return first();};}return st;};
+  db.statement=(sql,params)=>{const st=realStatement(sql,params);if(sql.startsWith('INSERT INTO messages')&&sql.includes('FROM staff_members')&&params[2]===a.user.id){const first=st.first;st.first=async()=>{database.prepare('DELETE FROM staff_members WHERE user_id=?').run(a.user.id);return first();};}return st;};
   try{await api('/chat',post(a.token,{channel:'admin',text:'送信直前の解除で拒否'},403));}finally{db.statement=realStatement;}
   assert.equal(Number(database.prepare("SELECT COUNT(*) AS n FROM messages WHERE room_key='admin'").get().n),beforeMessages);
 

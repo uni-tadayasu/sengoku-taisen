@@ -1,3 +1,4 @@
+import {operationGuard} from './operator-access.js';
 import {ensureResidency} from './residency.js';
 import {moderationExpulsion} from './expulsion-state.js';
 import {closeReservations} from './relocation.js';
@@ -7,21 +8,21 @@ import {GameEngine,GAME_OFFICERS} from './game-runtime.js';
 import {externalTroopSnapshotStatements} from './maintenance.js';
 
 const S=(db,sql,...args)=>db.prepare(sql).bind(...args);
-const ADMIN="EXISTS(SELECT 1 FROM settings WHERE key='adminUserId' AND value=?)";
+
 const GATE='EXISTS(SELECT 1 FROM expulsion_requests WHERE actor_id=? AND request_id=? AND commit_token=?)';
-const notice='運営による追放で旧戦役の派遣を終了しました。';
+const notice='管理操作による追放で旧戦役の派遣を終了しました。';
 
 // The review identifies a public seat term, while the commit also fences the
 // current private save, role, membership and progress. Nothing is erased from
 // the account or the BAN/content ledgers.
 export async function expelPlayer(ctx){
- const {db,user,now,helpers:h}=ctx,raw=await h.readBody(ctx.request);
+ const {db,user,now,helpers:h}=ctx,operator=operationGuard(user),raw=await h.readBody(ctx.request);
  if(!raw||Object.keys(raw).some(key=>!['targetPlayerId','requestId','reason','expectedRevision','expectedCastleId','expectedLordEpoch'].includes(key))||!Number.isSafeInteger(raw.expectedRevision)||raw.expectedRevision<0||!Number.isSafeInteger(raw.expectedLordEpoch)||raw.expectedLordEpoch<0)
   h.fail(400,'INVALID_INPUT','追放する領主と、確認した拠点の更新番号を指定してください。');
  const targetId=h.idField(raw.targetPlayerId,'対象の領主'),requestId=h.idField(raw.requestId,'操作番号'),castleId=h.idField(raw.expectedCastleId,'確認した拠点'),reason=h.textField(raw.reason,'管理メモ',300,{optional:true,min:0});
  if(targetId===user.id)h.fail(400,'INVALID_TARGET','運営本人は追放できません。');
  const digest=await h.hash(JSON.stringify([targetId,reason,raw.expectedRevision,castleId,raw.expectedLordEpoch]));
- const prior=async()=>{const row=await S(db,'SELECT request_hash,result_json FROM expulsion_requests WHERE actor_id=? AND request_id=? AND '+ADMIN,user.id,requestId,user.id).first();if(row&&row.request_hash!==digest)h.fail(409,'REQUEST_ID_REUSED','この操作番号は別の追放に使われています。');return row?JSON.parse(row.result_json):null;};
+ const prior=async()=>{const row=await S(db,'SELECT request_hash,result_json FROM expulsion_requests WHERE actor_id=? AND request_id=? AND '+operator.sql,user.id,requestId,...operator.args).first();if(row&&row.request_hash!==digest)h.fail(409,'REQUEST_ID_REUSED','この操作番号は別の追放に使われています。');return row?JSON.parse(row.result_json):null;};
  const previous=await prior();if(previous)return{receipt:previous,idempotent:true};
  await ensureResidency(db,now);
  const target=await h.getUser(db,targetId);if(!target)h.fail(404,'PLAYER_NOT_FOUND','対象の領主が見つかりません。');
@@ -48,8 +49,8 @@ export async function expelPlayer(ctx){
   AND NOT EXISTS(SELECT 1 FROM player_expulsions WHERE user_id=? AND pending=1)
   AND NOT EXISTS(SELECT 1 FROM deputy_operator_state WHERE id=1 AND user_id=ps.user_id)
   AND NOT EXISTS(SELECT 1 FROM staff_members WHERE user_id=?) AND ?<>COALESCE((SELECT value FROM settings WHERE key='adminUserId'),'')
-  AND ${ADMIN} AND ${access.sql} AND ${membership.sql} AND ${branch.guard.sql} AND ${progress.guard.sql}
-  ON CONFLICT(actor_id,request_id) DO NOTHING RETURNING result_json`,user.id,requestId,targetId,digest,nonce,JSON.stringify(receipt),now,castleId,targetId,row.revision,raw.expectedLordEpoch,state.role==='lord'?targetId:(await S(db,'SELECT lord_user_id FROM castle_seats WHERE castle_id=?',castleId).first())?.lord_user_id||'',targetId,raw.expectedRevision,targetId,targetId,targetId,user.id,...access.args,...membership.args,...branch.guard.args,...progress.guard.args),
+  AND ${operator.sql} AND ${access.sql} AND ${membership.sql} AND ${branch.guard.sql} AND ${progress.guard.sql}
+  ON CONFLICT(actor_id,request_id) DO NOTHING RETURNING result_json`,user.id,requestId,targetId,digest,nonce,JSON.stringify(receipt),now,castleId,targetId,row.revision,raw.expectedLordEpoch,state.role==='lord'?targetId:(await S(db,'SELECT lord_user_id FROM castle_seats WHERE castle_id=?',castleId).first())?.lord_user_id||'',targetId,raw.expectedRevision,targetId,targetId,targetId,...operator.args,...access.args,...membership.args,...branch.guard.args,...progress.guard.args),
   S(db,`INSERT INTO player_expulsions(user_id,revision,pending,castle_id,lord_epoch,role,source_save_json,reason,expelled_by,expelled_at,resumed_at)
    SELECT ?,?,1,?,?,?,?,?,?,?,NULL WHERE ${GATE}
    ON CONFLICT(user_id) DO UPDATE SET revision=excluded.revision,pending=1,castle_id=excluded.castle_id,lord_epoch=excluded.lord_epoch,role=excluded.role,source_save_json=excluded.source_save_json,reason=excluded.reason,expelled_by=excluded.expelled_by,expelled_at=excluded.expelled_at,resumed_at=NULL`,targetId,revision,castleId,raw.expectedLordEpoch,state.role,JSON.stringify(source),reason,user.id,now,...args),
@@ -66,6 +67,6 @@ export async function expelPlayer(ctx){
  statements.push(...externalTroopSnapshotStatements(db,[targetId],clock,GATE,args));
  const saved=(await db.batch(statements))[0].results?.[0];
  if(saved)return{receipt:JSON.parse(saved.result_json),idempotent:false};
- h.requireAdmin(await h.getUser(db,user.id)||{});const replay=await prior();if(replay)return{receipt:replay,idempotent:true};
+ h.requireOperator(await h.getUser(db,user.id)||{});const replay=await prior();if(replay)return{receipt:replay,idempotent:true};
  h.fail(409,'EXPULSION_CHANGED','対象の拠点・保存・役職が更新されました。最新の状態を確認してから追放してください。');
 }

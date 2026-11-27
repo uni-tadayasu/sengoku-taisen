@@ -148,8 +148,8 @@
     beatsPerBar:t.beats,duration:t.bars*t.beats*60/t.tempo,
     durationSeconds:Math.round(t.bars*t.beats*60/t.tempo),description:t.description
   }))]);
-  const BROADCAST_TRACK = Object.freeze({id:'operation-broadcast',name:'運営放送 00004',title:'運営放送 00004',scene:'broadcast',recordingOnly:true,
-    recording:'assets/music/operation-broadcast.mp3',duration:202.12,durationSeconds:202,sampleRate:48000,description:'運営が全プレイヤーに向けて流す共通BGM。'});
+  const BROADCAST_TRACK = Object.freeze({id:'operation-broadcast',name:'全体BGM 00004',title:'全体BGM 00004',scene:'broadcast',recordingOnly:true,
+    recording:'assets/music/operation-broadcast.mp3',duration:202.12,durationSeconds:202,sampleRate:48000,description:'全プレイヤーに向けて流す共通BGM。'});
   const BROADCAST_PLAYLIST=Object.freeze([BROADCAST_TRACK,...TRACKS]);
   const trackById = new Map([...TRACKS,BROADCAST_TRACK].map(track=>[track.id,track]));
   const byId = new Map(SCORES.map(t=>[t.id,t]));

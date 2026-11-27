@@ -1,5 +1,45 @@
 # 戦国VS（SENGOKU VS）通信API
 
+## Delegated operations (v5.14.0)
+
+Authenticated self identities now include `canOperate`. It is true for the current
+principal or current deputy, provided the account is neither banned nor awaiting
+re-entry after expulsion. `isAdmin` stays false for the deputy; the new capability
+does not change court authority, protected bases, officers, ownership or saves.
+The capability is removed from public identity projections together with the
+existing private role flags. Public court titles, city crests and special
+commander presentation retain their existing contracts; only operational role
+wording is hidden from public player-facing presentation.
+
+| Access | Routes |
+| --- | --- |
+| Principal and current deputy | `/admin/moderation*`, `/admin/music`, `/admin/events*`, `/admin/premium/*`, `/admin/promotion`, `/admin/announcement`, `/admin/mail`, `PATCH /world-clock`, operational `/admin/roaming/*` |
+| Existing staff plus principal and current deputy | Private `admin` chat/voice, `/staff/recent-logins`, `/staff/roaming` |
+| Principal only | `/admin/deputy`, `/admin/staff`, `/admin/court/*`; initial claim and key-based recovery retain their existing proof requirements |
+
+Ordinary operational denials use `OPERATIONAL_REQUIRED`. Chancellor/appointment
+checks continue to use their existing errors. Clients must not interpret a
+principal-only denial as removal of an otherwise valid deputy appointment.
+
+Operational queries and mutations check the authenticated role term, principal
+identity, staff term, BAN revision and expulsion revision against current server
+data. Revocation or dismissal followed by reappointment invalidates the old
+request. Private responses are checked again after asynchronous identity and
+activity work. Existing operation receipts and revision checks still prevent
+retries from duplicating mail, moderation, event or financial-review changes.
+
+Additive migration `0051_operations_voice_term.sql` adds `voice_sessions.deputy_term`
+with an empty default. The column binds each voice call to the deputy's current
+appointment and is checked for every roster/signaling operation. Existing rows
+and voice membership epochs remain in place; the health check requires this
+column before reporting readiness.
+
+`node server/test-deputy-operations.mjs` exercises the actual Worker with local
+transactional SQLite, including successful delegated operations, principal-only
+rejections, revocation races, stale voice sessions and public projection. No live
+player, outbound message, real payment or production database is used.
+
+
 ## Public ordinary-base crest (v5.13.4)
 
 Public identity projections can include the following item in `cityHonors`:

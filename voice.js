@@ -28,13 +28,13 @@ function createController(options={}){
 
  function context(){
   const c=getContext()||{},playerId=String(c.playerId||c.user?.id||''),authenticated=Boolean(c.user&&playerId&&String(c.user.id)===playerId&&!c.pending&&!c.banned);
-  return{...c,playerId,authenticated,key:JSON.stringify([playerId,c.epoch||0,c.privilegeEpoch||0,c.accountEpoch||0,c.guildEpoch||0,c.guildId||'',c.user?.isAdmin===true,c.user?.isStaff===true,!!c.pending,!!c.banned])};
+  return{...c,playerId,authenticated,key:JSON.stringify([playerId,c.epoch||0,c.privilegeEpoch||0,c.accountEpoch||0,c.guildEpoch||0,c.guildId||'',c.user?.isAdmin===true,c.user?.isStaff===true,c.user?.isDeputy===true,!!c.pending,!!c.banned])};
  }
- function permitted(c,channel){return c.authenticated&&(channel==='guild'?Boolean(c.guildId):channel==='admin'&&Boolean(c.user?.isAdmin||c.user?.isStaff));}
+ function permitted(c,channel){return c.authenticated&&(channel==='guild'?Boolean(c.guildId):channel==='admin'&&Boolean(c.user?.isAdmin||c.user?.isDeputy||c.user?.isStaff));}
  function supported(){return Boolean(options.createPeerConnection||global.RTCPeerConnection)&&Boolean(options.getUserMedia||global.navigator?.mediaDevices?.getUserMedia)&&Boolean(options.getUserMedia||global.isSecureContext!==false);}
  function snapshot(){
   const c=context(),peerStates={};for(const [id,p]of peers)peerStates[id]=p.status;
-  return{...clone(state),busy:Boolean(joinFlight||micFlight),peerStates,rooms:cacheAccessKey===c.key?Object.fromEntries([...roomCache].map(([key,value])=>[key,clone(value)])):{},supported:supported(),context:{authenticated:c.authenticated,guildId:c.guildId||'',isAdmin:c.user?.isAdmin===true,isStaff:c.user?.isStaff===true,key:c.key}};
+  return{...clone(state),busy:Boolean(joinFlight||micFlight),peerStates,rooms:cacheAccessKey===c.key?Object.fromEntries([...roomCache].map(([key,value])=>[key,clone(value)])):{},supported:supported(),context:{authenticated:c.authenticated,guildId:c.guildId||'',isAdmin:c.user?.isAdmin===true,isDeputy:c.user?.isDeputy===true,isStaff:c.user?.isStaff===true,key:c.key}};
  }
  function emit(){if(disposed)return;const value=snapshot();options.onChange?.(value);for(const fn of listeners)fn(value);}
  function schedule(key,fn,ms){if(timers.has(key))cancel(timers.get(key));timers.set(key,later(()=>{timers.delete(key);if(!disposed)void fn();},ms));}
@@ -87,7 +87,7 @@ function createController(options={}){
   track.enabled=!state.muted;track.onended=()=>{if(!current(g))return;state.muted=true;state.listenOnly=true;state.notice='マイクが切断されました。音声を聞き続けることはできます。';stream=null;emit();void heartbeat(g);};return track;
  }
  async function runJoin(channel,{listenOnly=false}={}){
-  const c=context();if(!CHANNELS.has(channel)||!permitted(c,channel)){state.error=channel==='guild'?'同盟に所属すると通話に参加できます。':'運営とスタッフのみが参加できる通話です。';emit();return false;}
+  const c=context();if(!CHANNELS.has(channel)||!permitted(c,channel)){state.error=channel==='guild'?'同盟に所属すると通話に参加できます。':'許可された担当者のみが参加できる通話です。';emit();return false;}
   if(!supported()){state.error='このブラウザでは音声通話を利用できません。HTTPSで開いたSafari・Chromeなどのブラウザでお試しください。';emit();return false;}
   const g=++generation;accessKey=c.key;activeOwner=c.playerId;if(cacheAccessKey!==c.key){cacheAccessKey=c.key;roomCache.clear();roomRequests.clear();}audioFocusOwned=true;try{onAudioFocus(true);}catch{}state={...state,phase:'joining',channel,room:null,sessionId:'',participants:[],muted:listenOnly===true,listenOnly:listenOnly===true,error:'',notice:'',playbackBlocked:false};emit();
   try{
@@ -223,7 +223,7 @@ function stateLabel(value){return value==='connected'?'通話中':value==='faile
 function actionButton(action,label,name,{primary=false,danger=false,disabled=false,pressed,compact=false}={}){return`<button type="button" class="voice-button${primary?' primary':''}${danger?' danger':''}${compact?' compact':''}" data-stable-key="voice-${action}" data-voice-action="${action}"${disabled?' disabled':''}${pressed===undefined?'':` aria-pressed="${pressed}"`} aria-label="${esc(label)}" title="${esc(label)}">${icon(name)}<span>${esc(label)}</span></button>`;}
 function controls(s,compact=false){return actionButton('mute',s.listenOnly?'マイクを使う':s.muted?'マイクをオン':'ミュート',s.muted?'muted':'mic',{disabled:s.busy,pressed:s.muted,compact})+actionButton('deafen',s.deafened?'相手の音声を再生':'相手の音声を消音',s.deafened?'quiet':'speaker',{pressed:s.deafened,compact})+actionButton('leave','退出','leave',{danger:true,compact});}
 function markup(s,{channel,title}={}){
- const active=s.phase!=='idle',same=active&&s.channel===channel,room=same?s.room:s.rooms[channel]?.room,participants=same?s.participants:s.rooms[channel]?.participants||[],allowed=s.context.authenticated&&(channel==='guild'?Boolean(s.context.guildId):s.context.isAdmin||s.context.isStaff);
+ const active=s.phase!=='idle',same=active&&s.channel===channel,room=same?s.room:s.rooms[channel]?.room,participants=same?s.participants:s.rooms[channel]?.participants||[],allowed=s.context.authenticated&&(channel==='guild'?Boolean(s.context.guildId):s.context.isAdmin||s.context.isDeputy||s.context.isStaff);
  const error=same||!active?s.error||s.rooms[channel]?.error||'':s.rooms[channel]?.error||'',roomFull=participants.length>=8&&!participants.some(p=>p.isSelf);
  const heading=title||room?.name||(channel==='admin'?'運営チャット':'同盟チャット');
  let body=`<section class="voice-panel" aria-label="${esc(heading)}の音声通話" data-voice-phase="${same?s.phase:'idle'}"><div class="voice-heading"><span class="voice-seal">${icon('phone')}</span><div><h4>音声通話</h4><p>${same&&s.phase==='active'?'チャットを閉じても通話を続けられます。':'同じ部屋の仲間と、声で話せます。'}</p></div><span class="voice-count" aria-label="参加者${participants.length}人、定員8人">${icon('people')}<b>${participants.length}</b><span>/ 8</span></span></div>`;

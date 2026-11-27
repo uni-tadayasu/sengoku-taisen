@@ -19,6 +19,7 @@ test('each current office pairs one accessible title with its own relief and lin
   assert(matching[0].includes(`src="${src}"`));
   assert.match(matching[0],/width="24" height="24" alt=""/);
   assert.doesNotMatch(html,/\son(?:load|error)=/);
+  assert.doesNotMatch(html,/運営/,'public office labels, including the chancellor, do not announce operator roles');
   const bytes=fs.readFileSync(path.join(__dirname,'..',src));
   assert.equal(bytes.toString('ascii',0,4),'RIFF');assert.equal(bytes.toString('ascii',8,12),'WEBP');
   files.add(bytes.toString('base64'));

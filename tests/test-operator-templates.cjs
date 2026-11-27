@@ -118,9 +118,22 @@ function composer(includeSubject) {
     assert.equal(doc.activeElement, body);
     form.remove();
   }
+  owner.isAdmin = false;
+  owner.canOperate = true;
+  owner.privilegeEpoch++;
+  assert(picker.available(), 'A deputy can open message templates without being the principal');
+  const deputy = composer(true);
+  await deputy.open();
+  assert($('#operator-template-dialog')?.open);
+  $('[data-template-apply]').dispatchEvent({type: 'click'});
+  assert.notEqual(deputy.form.querySelector('textarea').value, '元の本文');
+  assert.equal(owner.isAdmin, false);
+  deputy.form.remove();
   const revoked = composer(false);
   await revoked.open();
+  owner.canOperate = false;
   owner.isAdmin = false;
+  owner.privilegeEpoch++;
   $('[data-template-apply]').dispatchEvent({type: 'click'});
   assert($('[data-template-apply]').disabled);
   assert.equal(revoked.form.querySelector('textarea').value, '元の本文');

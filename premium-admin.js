@@ -93,7 +93,7 @@
     const snapshot = () => clone(state);
     const context = () => {
       const user = getUser(), value = getContext();
-      return { ownerId: typeof user?.id === 'string' ? user.id : null, allowed: Boolean(user?.id && user.isAdmin === true && user.isBanned !== true && value), stamp: JSON.stringify([user?.id || null, user?.isAdmin === true, user?.isBanned === true, value?.epoch ?? null, value?.privilegeEpoch ?? null]) };
+      return { ownerId: typeof user?.id === 'string' ? user.id : null, allowed: Boolean(user?.id && (user.isAdmin === true || user.isDeputy === true) && user.canOperate !== false && user.isBanned !== true && value), stamp: JSON.stringify([user?.id || null, user?.isAdmin === true, user?.isDeputy === true, user?.canOperate, user?.isBanned === true, value?.epoch ?? null, value?.privilegeEpoch ?? null]) };
     };
     function emit(change = 'status') { if (!disposed) { state.change = change; onChange(snapshot()); } }
     function reset(change = 'clear') {

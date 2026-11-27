@@ -19,6 +19,7 @@ function recipients(audience,senderId){
  switch(audience.kind){
   case 'person': return {sql:'SELECT ? AS id',args:[audience.id]};
   case 'officials': return {sql:officials,args:[]};
+  case 'operations': return {sql:"SELECT value AS id FROM settings WHERE key='adminUserId' UNION SELECT user_id AS id FROM staff_members UNION SELECT user_id AS id FROM deputy_operator_state WHERE id=1",args:[]};
   case 'guild':
   case 'guild-officers': {
    const managers=audience.kind==='guild-officers'?" AND (g.owner_id=gm.user_id OR EXISTS(SELECT 1 FROM guild_officers go WHERE go.guild_id=g.id AND go.user_id=gm.user_id))":'';

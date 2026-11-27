@@ -187,8 +187,8 @@
     const context = () => {
       const value = getContext() || {}, user = value.user;
       const playerId = typeof value.playerId === 'string' ? value.playerId : typeof user?.id === 'string' ? user.id : '';
-      const blocked = Boolean(value.pending || value.banned || user?.isBanned), signedIn = Boolean(playerId && user?.id === playerId && !blocked), authorized = signedIn && value.isAdmin === true && user?.isAdmin === true;
-      return { playerId, signedIn, authorized, blocked, connected: value.connected !== false, stamp: JSON.stringify([playerId, value.epoch ?? null, value.privilegeEpoch ?? null, value.accountEpoch ?? null, signedIn, authorized, blocked]) };
+      const blocked = Boolean(value.pending || value.banned || user?.isBanned), signedIn = Boolean(playerId && user?.id === playerId && !blocked), authorized = signedIn && (value.canOperate ?? value.isAdmin) === true && (user?.isAdmin === true || user?.isDeputy === true) && user?.canOperate !== false;
+      return { playerId, signedIn, authorized, blocked, connected: value.connected !== false, stamp: JSON.stringify([playerId, value.epoch ?? null, value.privilegeEpoch ?? null, value.accountEpoch ?? null, signedIn, authorized, blocked, user?.isAdmin === true, user?.isDeputy === true, user?.canOperate, value.canOperate]) };
     };
     function emit(change = 'status') { if (!disposed) { state.change = change; onChange(snapshot()); } }
     function pendingKey(owner) { return PENDING_KEY + encodeURIComponent(owner); }

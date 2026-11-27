@@ -1,3 +1,4 @@
+import {operationGuard} from './operator-access.js';
 // Aggregate event counts only. No visitor IDs, account IDs, IP addresses,
 // cookies, referrers, arbitrary URLs or raw request bodies enter this table.
 const SOURCES = new Set(['direct','x','line','youtube','press','friend','discord','copy_link','share_text','native_share','english','other']);
@@ -40,8 +41,8 @@ export async function recordPromotion({db,request,now,helpers}) {
 }
 
 export async function readPromotionReport({db,user,url,now,helpers}) {
-  const {fail,requireAdmin,budget} = helpers;
-  requireAdmin(user);
+  const {fail,requireOperator,budget} = helpers;
+  requireOperator(user);
   const values = url.searchParams.getAll('days');
   const raw = values[0] ?? '14';
   if (values.length > 1 || [...url.searchParams.keys()].some(key => key !== 'days') || !/^(?:[1-9]|[1-8][0-9]|90)$/.test(raw)) {
@@ -49,10 +50,9 @@ export async function readPromotionReport({db,user,url,now,helpers}) {
   }
   const days = Number(raw), todayStart = Math.floor((now + JST_MS) / DAY_MS) * DAY_MS - JST_MS;
   const start = todayStart - (days - 1) * DAY_MS, from = dayAt(start), to = dayAt(now);
-  // Every SELECT checks the current primary operator, including role changes
+  // Every SELECT checks the current operational role term, including changes
   // after authentication. Appointed staff receive no analytics access.
-  const guard = "EXISTS(SELECT 1 FROM settings WHERE key='adminUserId' AND value=?) AND NOT EXISTS(SELECT 1 FROM player_bans WHERE user_id=? AND active=1)";
-  const guardArgs = [user.id,user.id];
+  const {sql:guard,args:guardArgs}=operationGuard(user);
   if (!db?.prepare || !db?.batch) unavailable(fail);
   let result;
   try {
@@ -62,7 +62,7 @@ export async function readPromotionReport({db,user,url,now,helpers}) {
       statement(db,'SELECT day,source,event,count FROM promotion_daily WHERE day>=? AND day<=? AND '+guard+' ORDER BY day,source,event',from,to,...guardArgs),
       statement(db,'SELECT COUNT(*) AS total,COALESCE(SUM(CASE WHEN created_at>=? AND created_at<=? THEN 1 ELSE 0 END),0) AS created_in_range FROM users WHERE '+guard,start,now,...guardArgs)
     ]);
-    if (!rows(result[0]).length || !await statement(db,'SELECT 1 AS allowed WHERE '+guard,...guardArgs).first()) fail(403,'ADMIN_REQUIRED','運営専用の機能です。');
+    if (!rows(result[0]).length || !await statement(db,'SELECT 1 AS allowed WHERE '+guard,...guardArgs).first()) fail(403,'OPERATIONAL_REQUIRED','運営専用の機能です。');
   } catch (error) {
     if (error?.status === 403 || error?.status === 429) throw error;
     unavailable(fail);
