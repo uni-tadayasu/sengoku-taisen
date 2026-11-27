@@ -63,8 +63,8 @@ function fixture({ preferences = {}, rawPreferences, role = 'player', linked = f
   };
   vm.createContext(c);
   const musicState=source.split('\n').find(line=>line.startsWith('  let music=null,voiceAudioActive=false')).replace('let music=','var music=');
-  vm.runInContext(init + '\nthis.settings = settings;\n' + musicState + '\n' + source.split('\n').find(line => line.startsWith('  const mutationActions=')) + '\n' +
-    ['safeSettings', 'settingsModal', 'musicScene', 'musicStatusText', 'removeMusicGesture', 'refreshMusicPlayback', 'musicPlaybackBlocked', 'musicPlaybackFailed', 'ensureAudio', 'sceneTrack', 'requestMusicPlayback', 'trustedGestureMusic', 'applyMusicVolume', 'startMusic', 'syncMusic', 'stopMusic', 'toggleSound'].map(fn).join('\n') + '\n' + click + '\n' + eventLine('input') + '\n' + eventLine('change'), c);
+  vm.runInContext(init + '\nthis.settings = settings;\n' + musicState + '\n' + source.split('\n').find(line=>line.startsWith('  let musicBroadcastState=')) + '\n' + source.split('\n').find(line => line.startsWith('  const mutationActions=')) + '\n' +
+    ['safeSettings', 'settingsModal', 'musicScene', 'musicStatusText', 'removeMusicGesture', 'broadcastMusicNotice', 'refreshMusicPlayback', 'musicPlaybackBlocked', 'musicPlaybackFailed', 'ensureAudio', 'sceneTrack', 'requestMusicPlayback', 'trustedGestureMusic', 'applyMusicVolume', 'startMusic', 'syncMusic', 'stopMusic', 'toggleSound'].map(fn).join('\n') + '\n' + click + '\n' + eventLine('input') + '\n' + eventLine('change'), c);
   const dispatch = async (type, target, detail = {}) => { for (const handler of handlers.get(type) || []) await handler({ target, ...detail }); };
   const press = async action => { const node = doc.querySelector('[data-action="' + action + '"]'); assert(node, action); await dispatch('click', node.querySelector('strong') || node); };
   return { c, doc, host, game, calls, writes, storage, savedGame, dispatch, press };

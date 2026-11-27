@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
 import {harness,settleFieldMarch} from './test-support.mjs';
 
 // Isolated SQLite/Worker fixtures: no live account, payment or external request.
+const publishedVersion=JSON.parse(readFileSync(new URL('../package.json',import.meta.url),'utf8')).version;
 const post=(actor,body,expected=200)=>({method:'POST',token:actor?.token,body,expected});
 const rename=(h,actor,body,expected=200)=>h.api('/profile',{method:'PATCH',token:actor?.token,body,expected});
 const row=(h,actor)=>h.sql.prepare('SELECT * FROM users WHERE id=?').get(actor.user.id);
@@ -33,7 +35,7 @@ function paidFixture(h,actor){
 
 try{
 await scope('health and config advertise the deployed name-preservation capability',async h=>{
-  for(const route of ['/health','/config']){const result=(await h.api(route)).data;assert.equal(result.version,'5.10.0');assert.equal(result.features.displayNameVariants,true);}
+  for(const route of ['/health','/config']){const result=(await h.api(route)).data;assert.equal(result.version,publishedVersion);assert.equal(result.features.displayNameVariants,true);}
 });
 
 await scope('names preserve display spelling, Unicode limits and unique keys without trusting target or role fields',async h=>{

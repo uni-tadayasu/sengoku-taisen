@@ -1,0 +1,12 @@
+{
+  "title": "運営放送 00004",
+  "sourceName": "00004.mp3",
+  "path": "assets/music/operation-broadcast.mp3",
+  "bytes": 4631901,
+  "sha256": "e49be4d9323bb82de5bb5b7044fedd3a37cba026a1450f2c484c1460c35f1656",
+  "sourceSha256": "e49be4d9323bb82de5bb5b7044fedd3a37cba026a1450f2c484c1460c35f1656",
+  "decodedDuration": 202.12,
+  "sampleRate": 48000,
+  "channels": 2,
+  "preservation": "exact uploaded MP3 bytes, no recompression; replaces the earlier WAV attachment"
+}

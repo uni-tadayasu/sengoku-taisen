@@ -63,7 +63,11 @@ async function test(name,fn){await fn();passed++;console.log('PASS '+name);}
   await test('Japanese aliases, multiple words, and missing queries preserve safe text and real links',async()=>{
     const f=fixture();f.get('.public-search-trigger').click();await f.flush();
     await f.search('城の強化');assert.match(f.get('.public-search-results strong').textContent,/城郭/);
-    await f.search('ＢＧＭ');assert.equal(f.get('.public-search-results strong').textContent,'よくある質問');
+    // New release titles can legitimately outrank the FAQ. Test width
+    // normalization and the music alias against the same real result links.
+    await f.search('ＢＧＭ');const musicLinks=f.all('.public-search-results a').map(link=>link.href);assert(musicLinks.length>0);
+    await f.search('BGM');assert.deepEqual(f.all('.public-search-results a').map(link=>link.href),musicLinks);
+    await f.search('音楽');assert.deepEqual(f.all('.public-search-results a').map(link=>link.href),musicLinks);
     await f.search('せーぶ');assert.equal(f.get('.public-search-results strong').textContent,'保存と端末同期');
     await f.search('戦記');assert.match(f.get('.public-search-results a').href, /guide\/#campaign-records$/);
     await f.search('待ち時間');assert.match(f.get('.public-search-results a').href, /guide\/#resource-planner$/);
