@@ -229,4 +229,63 @@ test('defeat and pending actions end in the old campaign without synthetic succe
   assert.deepEqual(load(g).state,g.state);
 });
 
+test('each retainer adds half of the starting castle while upgrades and other holdings keep their own contributions',()=>{
+  const g=fresh({clan:'武田家',startCastle:'kiyosu'}),s=g.state,home=s.home,other='inuyama';
+  s.castles[other].owner=s.clan;s.castles[home].level=4;s.castles[home].wall=3;
+  const first=g.castleBenefits(home),otherBefore=g.castleBenefits(other),gross=g.income().gross,capacity=g.troopCapacity();
+  const hp=g.castle(home).durability.max,otherHp=g.castle(other).durability.max,transferBefore=g.troopTransferStatus().endpoints.find(row=>row.id==='castle:'+home);
+  const delta={gold:50,rice:85,wood:20,stone:15};
+  for(const n of [1,2,3,3,1,0]){
+    s.retainerSupport={castleId:home,count:n};
+    const benefits=g.castleBenefits(home),income=g.income().gross;
+    for(const key of D.resources){
+      assert.equal(benefits[key],first[key]+n*delta[key]);
+      assert.equal(income[key],gross[key]+n*delta[key]);
+    }
+    assert.equal(g.troopCapacity(),capacity+n*250);
+    assert.equal(g.castle(home).durability.max,hp+n*5000);
+    assert.equal(E.retainerDefenseTroops(s,home),n*600);
+    assert.equal(g.defensePower(home),Math.round((s.castles[home].troops+Math.round(s.troops*.45)+n*600)*(1+s.buildings.wall*.16)*(1+3*.04)));
+    assert.equal(g.troopTransferStatus().endpoints.find(row=>row.id==='castle:'+home).troops,transferBefore.troops);
+    assert.deepEqual(g.castleBenefits(other),otherBefore);assert.equal(g.castle(other).durability.max,otherHp);
+  }
+  s.retainerSupport={castleId:other,count:2};assert.equal(E.homeRetainerCount(s,other),0);
+  s.retainerSupport={castleId:home,count:2};s.castles[home].owner='在地衆';s.home=other;
+  assert.equal(E.homeRetainerCount(s,home),0);assert.equal(E.homeRetainerCount(s,other),0);
+});
+
+test('save replay preserves absolute castle damage, paid repairs, and the latest retainer count',()=>{
+  const g=fresh(),s=g.state,home=s.home;
+  s.retainerSupport={castleId:home,count:2};
+  const hit=g._damageCastleDurability(home,{ratio:1});assert.equal(hit.max,20000);
+  assert.equal(hit.damage,5000);
+  const saved=g.exportSave(),replayed=load(g);
+  assert.equal(replayed.castle(home).durability.current,15000);
+  assert.equal(replayed.repairQuote({elapsedMs:60000}).allocations[0].requestedHP,2000);
+  g.applyWorldClock(clock(0));replayed.applyWorldClock(clock(0));
+  g.applyWorldClock(clock(60000));replayed.applyWorldClock(clock(60000));
+  assert.deepEqual(replayed.state,g.state);
+  const reduced=E.fromSave(saved,officers,{retainerSupport:{castleId:home,count:1}});
+  assert.equal(reduced.castle(home).durability.current,10000);
+  assert.equal(reduced.castle(home).durability.max,15000);
+  const cleared=E.fromSave(saved,officers,{retainerSupport:null});
+  assert.equal(cleared.castle(home).durability.current,5000);assert.equal(E.homeRetainerCount(cleared.state),0);
+  assert(g.relocateResidence('sunpu',{role:'lord'}).ok);
+  assert.equal(E.homeRetainerCount(g.state),0);
+});
+
+test('retainer defenders can turn back a CPU attack without issuing transferable troops',()=>{
+  function attacked(n){
+    const g=vulnerable(),s=g.state;for(const row of Object.values(s.castles))if(row.owner!==s.clan)row.troops=900;
+    if(n)s.retainerSupport={castleId:s.home,count:n};
+    return {g,events:g._cpuTurn()};
+  }
+  const solo=attacked(0);assert.equal(solo.g.state.gameOver,true);
+  const supported=attacked(1);assert.equal(supported.g.state.gameOver,false);
+  assert(supported.events.some(text=>text.includes('撃退')));
+  assert(supported.g.state.castles.kiyosu.troops<=100);
+  assert.equal(supported.g.castle('kiyosu').durability.max,15000);
+  assert.deepEqual(supported.g.takeHomeDefenseLosses(),[]);
+});
+
 console.log(`Residency engine: ${count} tests passed.`);

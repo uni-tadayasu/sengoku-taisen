@@ -6,7 +6,7 @@ import {GameEngine,GAME_OFFICERS} from './game-runtime.js';
 import {recordCastleSiege} from './durability.js';
 import {prepareProtection,protectionBattleStatements} from './protection.js';
 import {getAllianceDefense} from './alliance.js';
-import {residencyTargetGuard,prepareResidencySuccession,prepareResidencyCpuLosses} from './residency.js';
+import {guardLordSupport,residencyTargetGuard,prepareResidencySuccession,prepareResidencyCpuLosses} from './residency.js';
 const stmt=(db,sql,...args)=>db.prepare(sql).bind(...args);
 const rows=value=>value?.results||[];
 const gate='EXISTS(SELECT 1 FROM covert_requests WHERE actor_id=? AND request_id=? AND commit_token=?)';
@@ -117,7 +117,7 @@ async function playerTarget(ctx,targetSpec,clock,action,term=null){
  const snapshot=GameEngine.normalizeCovertSnapshot({level:castle.level,troops:s.troops,garrison:castle.troops,wall:targetSpec.castleId===s.home?s.buildings.wall:castle.wall,defensePower:h.fieldDefense(supportedState,'balanced',0,targetSpec.castleId).power,resources:s.resources,army:g.armyStats()});
  snapshot.activeBranches=s.branches.filter(branch=>branch.parentCastleId===targetSpec.castleId&&branch.level>0&&!branch.fallen).map(branch=>branch.id);
  const canonicalTarget={kind:'player',playerId:target.id,castleId:targetSpec.castleId,name:castleMap.get(targetSpec.castleId).name,playerName:target.name};
- const role=h.roleCommitGuard(target),guards={sql:`EXISTS(SELECT 1 FROM player_saves WHERE user_id=? AND revision=? AND save_json IS NOT NULL) AND ${role.sql} AND ${sharedGuard.sql} AND ${branches.guard.sql} AND ${residency.sql}`,args:[target.id,row.revision,...role.args,...sharedGuard.args,...branches.guard.args,...residency.args]};
+ const role=journey?h.roleCommitGuard(target):guardLordSupport(h.roleCommitGuard(target),target),guards={sql:`EXISTS(SELECT 1 FROM player_saves WHERE user_id=? AND revision=? AND save_json IS NOT NULL) AND ${role.sql} AND ${sharedGuard.sql} AND ${branches.guard.sql} AND ${residency.sql}`,args:[target.id,row.revision,...role.args,...sharedGuard.args,...branches.guard.args,...residency.args]};
  if(action==='retaliate'){
   if(snapshot.activeBranches.length)h.fail(409,'BRANCHES_REQUIRED','大都市拠点へ反撃する前に、残っている支拠点をすべて陥落させてください。');
   const relation=await h.fieldRelation(db,user.id,target.id);if(h.fieldRelationStatus(relation,user.id,clock.elapsedMs)==='allied')h.fail(409,'ALLIED_TARGET','同盟期間中の相手には反撃できません。');
@@ -166,7 +166,7 @@ async function mutation(ctx,action){
  if(result.idempotent)h.fail(409,'COVERT_ALREADY_RECORDED','この操作は記録済みです。派遣画面を更新してください。');
  if(result.accepted&&result.march){const dispatch=game.state.covert.dispatches.find(v=>v.id===result.march.id);dispatch.authority='server';dispatch.departedElapsedMs=Math.floor(clock.elapsedMs);dispatch.arrivesElapsedMs=dispatch.departedElapsedMs+dispatch.travel.durationMs;const history=game.state.covert.history.find(v=>v.requestId===body.requestId);history.march=JSON.parse(JSON.stringify(dispatch));result.result.march=history.march;result.march=history.march;}
  await h.budget(db,'covert:'+user.id,60,60000,ctx.now);
- const now=Date.now(),nonce=crypto.randomUUID(),role=h.roleCommitGuard(user),gateArgs=[user.id,body.requestId,nonce];
+ const now=Date.now(),nonce=crypto.randomUUID(),role=guardLordSupport(h.roleCommitGuard(user),user),gateArgs=[user.id,body.requestId,nonce];
  const incomingBattle=action==='retaliate'&&target?{battleMode:target.rewardOnly?'reward':'raid',id:'cb_'+crypto.randomUUID().replaceAll('-',''),attackerPlayerId:user.id,defenderPlayerId:target.target.id,castleId:targetSpec.castleId,castleName:castleMap.get(targetSpec.castleId).name,won:result.result.battle.won,defenderLost:result.result.battle.defenderLost,occurredElapsedMs:clock.elapsedMs}:null;
  if(incomingBattle&&!target.rewardOnly){const b=result.result.battle,damage=recordCastleSiege(target.save.state,targetSpec.castleId,{won:b.won,ratio:Number(b.attackPower||b.power||1)/Math.max(1,Number(b.defensePower||target.snapshot.defensePower||1)),elapsedMs:clock.elapsedMs});incomingBattle.durability=damage;b.durability=damage;}
  const next=h.normalizeGameSave(JSON.parse(game.exportSave()),user,now,{clock});
@@ -252,7 +252,7 @@ export async function settleCovertDispatches(ctx,{actorId=null,limit=8}={}){
   }
   completed.push(...game.settleCovertDue({targetSnapshots,authoritative:true}));if(!completed.length)continue;
   const cpuLosses=await prepareResidencyCpuLosses(db,{userId:user.id,events:game.takeHomeDefenseLosses(),now,state:game.state});
-  const next=h.normalizeGameSave(JSON.parse(game.exportSave()),user,now,{clock}),nonce=crypto.randomUUID(),role=user.ban_active?safe:h.roleCommitGuard(user),guards=[role,branches.guard,cpuLosses.guard,...targetGuards,...(shared?[{sql:"EXISTS(SELECT 1 FROM staff_base WHERE id='kyoto_gosho' AND revision=?)",args:[shared.revision]}]:[])],commitGate='EXISTS(SELECT 1 FROM player_saves WHERE user_id=? AND cycle_commit=?)',args=[user.id,nonce];
+  const next=h.normalizeGameSave(JSON.parse(game.exportSave()),user,now,{clock}),nonce=crypto.randomUUID(),role=user.ban_active?safe:guardLordSupport(h.roleCommitGuard(user),user),guards=[role,branches.guard,cpuLosses.guard,...targetGuards,...(shared?[{sql:"EXISTS(SELECT 1 FROM staff_base WHERE id='kyoto_gosho' AND revision=?)",args:[shared.revision]}]:[])],commitGate='EXISTS(SELECT 1 FROM player_saves WHERE user_id=? AND cycle_commit=?)',args=[user.id,nonce];
   const statements=[stmt(db,`UPDATE player_saves SET save_json=?,revision=revision+1,updated_at=?,cycle_commit=? WHERE user_id=? AND revision=? AND EXISTS(SELECT 1 FROM covert_states WHERE actor_id=? AND campaign_id=? AND state_json=?) AND EXISTS(SELECT 1 FROM world_clock WHERE id=? AND revision=?) AND ${guards.map(g=>'('+g.sql+')').join(' AND ')} RETURNING user_id`,JSON.stringify(next),now,nonce,user.id,saved.revision,user.id,ledger.campaign_id,found.row.state_json,h.worldClockId,clock.revision,...guards.flatMap(g=>g.args)),stmt(db,`UPDATE covert_states SET sequence=?,state_json=?,updated_at=? WHERE actor_id=? AND campaign_id=? AND ${commitGate}`,next.state.covert.sequence,JSON.stringify(next.state.covert),now,user.id,ledger.campaign_id,...args),...h.branchProgressStatements(db,user.id,next,now,commitGate,args,{resolvedElapsedMs:Math.min(clock.elapsedMs,next.state.worldClock?.elapsedMs||0)}),...covertIncidentStatements(db,user.id,next,now,commitGate,args)];
   for(const result of completed){
    // The compact save history can roll over during a long return. Preserve

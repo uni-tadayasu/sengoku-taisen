@@ -7,6 +7,19 @@ const majors=new Set(['edo','kyoto_gosho','nijo','osaka','nagoya']);
 export const RESIDENCY_CASTLES=globalThis.SENGOKU_DATA.castles.filter(c=>!majors.has(c.id));
 const castles=new Map(RESIDENCY_CASTLES.map(c=>[c.id,c])),iso=n=>new Date(Number(n)).toISOString();
 const ordinary=(alias='u')=>`${alias}.id<>COALESCE((SELECT value FROM settings WHERE key='adminUserId'),'') AND NOT EXISTS(SELECT 1 FROM staff_members sm WHERE sm.user_id=${alias}.id) AND NOT EXISTS(SELECT 1 FROM player_bans pb WHERE pb.user_id=${alias}.id AND pb.active=1)`;
+export function retainerCountSql(castleExpr,lordExpr){
+ return `(SELECT COUNT(*) FROM castle_residents m_count JOIN users u_count ON u_count.id=m_count.user_id WHERE m_count.castle_id=${castleExpr} AND m_count.user_id<>COALESCE(${lordExpr},'') AND ${ordinary('u_count')})`;
+}
+// Project the lord's household even when the personal save has not advanced
+// since the last admission, departure, or succession.
+export function lordSupportSql(userExpr) {
+  return `(SELECT json_object('castleId',seat.castle_id,'count',${retainerCountSql('seat.castle_id','seat.lord_user_id')})
+    FROM castle_seats seat WHERE seat.lord_user_id=${userExpr})`;
+}
+export function guardLordSupport(guard,user) {
+  if (user.is_admin || user.is_staff || !Object.hasOwn(user,'retainer_support_json')) return guard;
+  return {sql:`${guard.sql} AND ${lordSupportSql('?')} IS ?`,args:[...guard.args,user.id,user.retainer_support_json]};
+}
 const eligibleResident=(member='m',user='u',save='ps')=>`${ordinary(user)} AND ${save}.save_json IS NOT NULL AND COALESCE(json_extract(${save}.save_json,'$.state.gameOver'),0)=0 AND json_extract(${save}.save_json,'$.state.home')=${member}.castle_id AND json_extract(${save}.save_json,'$.state.castles.'||${member}.castle_id||'.owner')=json_extract(${save}.save_json,'$.state.clan')`;
 const plainPerson=(row,evaluationRef=null)=>row?.id?{playerId:row.id,name:row.name,avatarVersion:row.avatar_version||null,...(evaluationRef?{evaluation:evaluationRef(row.id)}:{})}:null;
 const failDefault=(status,code,message)=>{const e=new Error(message);e.status=status;e.code=code;throw e;};
@@ -43,17 +56,18 @@ export async function ensureResidency(db,now=Date.now()){
 
 export async function residencySnapshot(db,userId,now=Date.now(),evaluationRef=null){
  const meta=await ensureResidency(db,now),row=userId?await S(db,`SELECT m.*,cs.lord_user_id,cs.lord_epoch,u.name AS lord_name,(SELECT version FROM user_avatars WHERE user_id=u.id) AS avatar_version,EXISTS(SELECT 1 FROM player_saves ownsave WHERE ownsave.user_id=m.user_id AND ${eligibleResident('m','self','ownsave')}) AS eligible,
+  ${retainerCountSql('cs.castle_id','cs.lord_user_id')} AS retainers,
   (SELECT COUNT(*) FROM castle_residents q JOIN users qu ON qu.id=q.user_id JOIN player_saves qs ON qs.user_id=q.user_id WHERE q.castle_id=m.castle_id AND q.user_id<>COALESCE(cs.lord_user_id,'') AND q.join_order<=m.join_order AND ${eligibleResident('q','qu','qs')}) AS position
   FROM castle_residents m JOIN users self ON self.id=m.user_id JOIN castle_seats cs ON cs.castle_id=m.castle_id LEFT JOIN users u ON u.id=cs.lord_user_id
   WHERE m.user_id=? AND ${ordinary('self')}`,userId).first():null;
  if(!row)return{residency:null,residencyRevision:Number(meta.revision)};
  const lord=plainPerson(row.lord_user_id?{id:row.lord_user_id,name:row.lord_name,avatar_version:row.avatar_version}:null,evaluationRef),role=row.lord_user_id===userId?'lord':'retainer';
- return{residency:{role,castleId:row.castle_id,castleName:castles.get(row.castle_id).name,joinedAt:iso(row.joined_at),eligible:!!row.eligible,successionPosition:role==='lord'?0:row.eligible?Number(row.position):null,lord,lordPlayerId:row.lord_user_id||null,lordEpoch:Number(row.lord_epoch),revision:Number(meta.revision)},residencyRevision:Number(meta.revision)};
+ return{residency:{role,castleId:row.castle_id,castleName:castles.get(row.castle_id).name,retainerCount:Number(row.retainers),joinedAt:iso(row.joined_at),eligible:!!row.eligible,successionPosition:role==='lord'?0:row.eligible?Number(row.position):null,lord,lordPlayerId:row.lord_user_id||null,lordEpoch:Number(row.lord_epoch),revision:Number(meta.revision)},residencyRevision:Number(meta.revision)};
 }
 
 export async function residencyDirectory({db,user=null,url,now,helpers:h}){
  const meta=await ensureResidency(db,now),list=R(await S(db,`SELECT cs.*,u.name,u.id,(SELECT version FROM user_avatars WHERE user_id=u.id) AS avatar_version,
-  (SELECT COUNT(*) FROM castle_residents m JOIN users mu ON mu.id=m.user_id WHERE m.castle_id=cs.castle_id AND m.user_id<>COALESCE(cs.lord_user_id,'') AND ${ordinary('mu')}) AS retainers
+  ${retainerCountSql('cs.castle_id','cs.lord_user_id')} AS retainers
   FROM castle_seats cs LEFT JOIN users u ON u.id=cs.lord_user_id ORDER BY cs.castle_id`).all());
  const mapped=list.map(row=>{const c=castles.get(row.castle_id);return{castleId:c.id,castleName:c.name,region:c.region||'',province:c.province||'',available:!row.lord_user_id,lord:plainPerson(row,h.evaluationRef),retainerCount:Number(row.retainers),lordEpoch:Number(row.lord_epoch),revision:Number(row.revision)};});
  const own=await residencySnapshot(db,user?.id,now,h.evaluationRef),occupied=mapped.filter(c=>!c.available).length;

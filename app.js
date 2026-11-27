@@ -91,7 +91,7 @@
   }else settings.sound=settings.sound!==false;
   const storedEffectsVolume=settings.effectsVolume,effectsDefault=settings.sound&&settings.volume>0?settings.volume:0;
   settings.effectsVolume=(typeof storedEffectsVolume==='number'||typeof storedEffectsVolume==='string'&&storedEffectsVolume.trim()!=='')&&Number.isFinite(Number(storedEffectsVolume))?Math.round(Math.max(0,Math.min(100,Number(storedEffectsVolume)))):effectsDefault;
-  try{const raw=localStorage.getItem(saveKey);startPending=raw===null;if(linkedAtStart&&raw!==null)pendingRoleSave=raw;game=raw!==null?SengokuEngine.fromSave(raw,roster):new SengokuEngine({clan:'織田家',officers:roster});}catch(e){game=new SengokuEngine({clan:'織田家',officers:roster});saveWarning='保存を読み込めなかったため、自動保存を止めて仮プレイを開始しました。既存の保存データは上書きしていません。新しい物語やセーブ読込を確定すると置き換わります。';saveEnabled=false;}
+  try{const raw=localStorage.getItem(saveKey);startPending=raw===null;if(linkedAtStart&&raw!==null)pendingRoleSave=raw;game=raw!==null?SengokuEngine.fromSave(raw,roster,{retainerSupport:null}):new SengokuEngine({clan:'織田家',officers:roster});}catch(e){game=new SengokuEngine({clan:'織田家',officers:roster});saveWarning='保存を読み込めなかったため、自動保存を止めて仮プレイを開始しました。既存の保存データは上書きしていません。新しい物語やセーブ読込を確定すると置き換わります。';saveEnabled=false;}
   if(!game?.state){$('#main').innerHTML='<div class="loading-screen">ゲームの読み込みに失敗しました。再読み込みしてください。</div>';return;}
   const state=()=>game.state;
   function clanInfo(){return game.isAdmin?data.adminClan:game.isStaff?data.staffClan:data.clans.find(c=>c.name===state().clan)||data.clans[0];}
@@ -123,7 +123,7 @@
         localCampaignRefreshPending=false;
         if(syncAccess.linked||syncAccess.rolePending||game.isAdmin||game.isStaff)return;
         const latest=localStorage.getItem(saveKey);if(!latest)return;
-        const next=SengokuEngine.fromSave(latest,roster);
+        const next=SengokuEngine.fromSave(latest,roster,{retainerSupport:null});
         if(next.state.walking.campaignId===state().walking.campaignId)return;
         game=next;lastLocalSaveRaw=latest;lastLocalSaveGame=game;selectedCastle='';lastRealtime=performance.now();saveCounter=0;
         retireLocalWalkingContext();closeModal();render();
@@ -1038,7 +1038,8 @@
   function castleDetail(id,surface='map'){
     const c=game.castle(id);if(!c)return '';
     const s=state(),allowed=game.canOwnCastle?.(id)!==false,own=c.owner===s.clan&&allowed,shared=game.isStaff&&id===staffBaseId,adj=game.adjacentTargets().some(t=>t.id===id),ally=(s.treaties[c.owner]||0)>s.turn,scouted=(s.scouted[id]||0)>s.turn,job=currentJob('castle',id),benefit=game.castleBenefits(id),cost=game.castleUpgradeCost(id),limit=castleLevelLimit(id),branchesBlock=game.parentAttackPermission?.(id)?.ok===false;
-    return `<div class="castle-banner">${window.SengokuArt?.castle(id,'castle-detail-art',c.level)||''}${icon('castle')}</div><div class="castle-info"><div class="eyebrow">${esc(c.region)} · ${esc(c.province)}国</div><h2>${esc(c.name)}</h2>${c.majorCity?`<span class="major-city-badge">${icon('castle')}大都市拠点${id==='edo'?' · 保護された拠点':id===staffBaseId?' · 共同拠点・占領不可':''}</span>`:''}<span class="castle-status ${own?'':'enemy'}">${clanCrest(c.owner,25)}${own?'自領':ally?'同盟勢力':'他勢力'} · ${esc(c.owner)}</span>${durabilityMarkup(c)}${durabilityHelp()}<div class="stat-row"><span>城郭レベル</span><b>Lv.${c.level} / ${limit}</b></div><div class="stat-row"><span>守備兵</span><b>${num(c.troops)} 人</b></div><div class="stat-row"><span>城壁</span><b>Lv.${c.wall}</b></div><div class="stat-row"><span>街道</span><b>${c.neighbors.length} 城に接続</b></div>${scouted?'<div class="stat-row"><span>偵察効果</span><b>攻撃力 +10%</b></div>':''}</div><button type="button" class="button small full level-guide-entry" data-action="level-guide" data-id="${id}">${icon('book')}レベル上げガイド</button><button class="button small full" data-action="preview-art" data-kind="castle" data-id="${id}">${icon('eye')}32段階の城郭を見る</button>${c.level>32?'<p class="subtitle">城郭は最終形態の姿で、さらに強化されています。</p>':''}${own?`<div class="castle-expansion"><h3>${icon('castle')}${shared?'京都御所の共同普請':'城郭の拡張'}</h3>${shared?'<p class="notice staff-base-note">城郭の成長は共同です。普請を指示するあなたが資源と指令1回を支払います。</p>':''}<p>城郭による防衛補正 +${benefit.defensePercent}%<br>領地の基礎収入：金銭${num(benefit.gold)}・兵糧${num(benefit.rice)} /月</p>${job?`<div class="notice">Lv.${job.targetLevel}へ${shared?'共同普請':'拡張'}中 · <span data-job-clock="${jobKey(job)}">${esc(jobClockText(job))}</span>${sharedJobAttribution(job)}</div><div class="progress"><i data-job-progress="${jobKey(job)}" style="width:${game.constructionProgress(job)}%"></i></div>`:c.level>=limit?`<div class="notice">城郭は最高のLv.${limit}です。</div>`:`${costHtml(cost)}<button class="button gold full${shared?' staff-base-upgrade':''}" data-action="upgrade-castle" data-id="${id}" ${shared&&!staffConstructionReady()?'disabled':''}>Lv.${c.level+1}へ${shared?'共同普請する':'拡張する'}</button>`}<small>${shared?'共同の':'個人の'}施設・城郭の普請枠を使用します。城郭レベルは天守などの施設レベルとは別に育ちます。</small></div><div class="notice">${id===s.home?'あなたの本拠です。城下町から施設も増築できます。':'この城を拠点として、さらに隣接する城へ進軍できます。領地収入は時間経過に応じて自動で加算されます。'}</div><button class="button gold full" data-view="town">${icon('castle')}城下町へ</button>`:!allowed?`<div class="notice">${id===staffBaseId?'京都御所は共同で成長する保護された御所です。':'江戸城は保護された本拠です。'}占領はできません。共通フィールドで報酬戦に挑めます。</div>${id===staffBaseId?'<button class="button gold full" data-view="court">京都御所へ出向く</button>':''}`:`<div><button class="button primary full" data-action="prepare-battle" data-id="${id}" ${!adj||ally||s.gameOver||branchesBlock?'disabled':''}>${icon('swords')}${branchesBlock?'支拠点を先に攻略':ally?'同盟期間中':adj?'この城へ出陣':'自領から遠い拠点'}</button><button class="button full" data-action="scout" data-id="${id}" ${!adj||s.command<1||scouted||s.gameOver?'disabled':''}>${icon('eye')}${scouted?'偵察済み':`偵察　金銭${game.scoutCost().gold}`}</button><button class="button ghost full" data-action="diplomacy-info" data-id="${id}" ${ally||s.gameOver?'disabled':''}>${icon('handshake')}${ally?`同盟あと${s.treaties[c.owner]-s.turn}か月`:'この勢力と同盟'}</button></div>`}${window.SengokuBranches?.render?.(game,id,{surface,writable:canMutate()&&saveEnabled&&!branchBookingPending,writableReason:branchBookingPending?'拠点の操作を確認しています。':!saveEnabled?'保存状態を確認してから普請してください。':syncMessage(),costHtml,jobKey,jobClockText})||''}`;
+    const supportTroops=game.constructor.retainerDefenseTroops?.(s,id)||0;
+    return `<div class="castle-banner">${window.SengokuArt?.castle(id,'castle-detail-art',c.level)||''}${icon('castle')}</div><div class="castle-info"><div class="eyebrow">${esc(c.region)} · ${esc(c.province)}国</div><h2>${esc(c.name)}</h2>${c.majorCity?`<span class="major-city-badge">${icon('castle')}大都市拠点${id==='edo'?' · 保護された拠点':id===staffBaseId?' · 共同拠点・占領不可':''}</span>`:''}<span class="castle-status ${own?'':'enemy'}">${clanCrest(c.owner,25)}${own?'自領':ally?'同盟勢力':'他勢力'} · ${esc(c.owner)}</span>${durabilityMarkup(c)}${durabilityHelp()}<div class="stat-row"><span>城郭レベル</span><b>Lv.${c.level} / ${limit}</b></div><div class="stat-row"><span>守備兵</span><b>${num(c.troops+supportTroops)} 人</b></div>${supportTroops?`<div class="stat-row"><span>うち家臣による守備兵力</span><b>${num(supportTroops)} 人</b></div>`:''}<div class="stat-row"><span>城壁</span><b>Lv.${c.wall}</b></div><div class="stat-row"><span>街道</span><b>${c.neighbors.length} 城に接続</b></div>${scouted?'<div class="stat-row"><span>偵察効果</span><b>攻撃力 +10%</b></div>':''}</div><button type="button" class="button small full level-guide-entry" data-action="level-guide" data-id="${id}">${icon('book')}レベル上げガイド</button><button class="button small full" data-action="preview-art" data-kind="castle" data-id="${id}">${icon('eye')}32段階の城郭を見る</button>${c.level>32?'<p class="subtitle">城郭は最終形態の姿で、さらに強化されています。</p>':''}${own?`<div class="castle-expansion"><h3>${icon('castle')}${shared?'京都御所の共同普請':'城郭の拡張'}</h3>${shared?'<p class="notice staff-base-note">城郭の成長は共同です。普請を指示するあなたが資源と指令1回を支払います。</p>':''}<p>城郭による防衛補正 +${benefit.defensePercent}%<br>領地の基礎収入：金銭${num(benefit.gold)}・兵糧${num(benefit.rice)}・木材${num(benefit.wood)}・石材${num(benefit.stone)} /月</p>${job?`<div class="notice">Lv.${job.targetLevel}へ${shared?'共同普請':'拡張'}中 · <span data-job-clock="${jobKey(job)}">${esc(jobClockText(job))}</span>${sharedJobAttribution(job)}</div><div class="progress"><i data-job-progress="${jobKey(job)}" style="width:${game.constructionProgress(job)}%"></i></div>`:c.level>=limit?`<div class="notice">城郭は最高のLv.${limit}です。</div>`:`${costHtml(cost)}<button class="button gold full${shared?' staff-base-upgrade':''}" data-action="upgrade-castle" data-id="${id}" ${shared&&!staffConstructionReady()?'disabled':''}>Lv.${c.level+1}へ${shared?'共同普請する':'拡張する'}</button>`}<small>${shared?'共同の':'個人の'}施設・城郭の普請枠を使用します。城郭レベルは天守などの施設レベルとは別に育ちます。</small></div><div class="notice">${id===s.home?'あなたの本拠です。城下町から施設も増築できます。':'この城を拠点として、さらに隣接する城へ進軍できます。領地収入は時間経過に応じて自動で加算されます。'}</div><button class="button gold full" data-view="town">${icon('castle')}城下町へ</button>`:!allowed?`<div class="notice">${id===staffBaseId?'京都御所は共同で成長する保護された御所です。':'江戸城は保護された本拠です。'}占領はできません。共通フィールドで報酬戦に挑めます。</div>${id===staffBaseId?'<button class="button gold full" data-view="court">京都御所へ出向く</button>':''}`:`<div><button class="button primary full" data-action="prepare-battle" data-id="${id}" ${!adj||ally||s.gameOver||branchesBlock?'disabled':''}>${icon('swords')}${branchesBlock?'支拠点を先に攻略':ally?'同盟期間中':adj?'この城へ出陣':'自領から遠い拠点'}</button><button class="button full" data-action="scout" data-id="${id}" ${!adj||s.command<1||scouted||s.gameOver?'disabled':''}>${icon('eye')}${scouted?'偵察済み':`偵察　金銭${game.scoutCost().gold}`}</button><button class="button ghost full" data-action="diplomacy-info" data-id="${id}" ${ally||s.gameOver?'disabled':''}>${icon('handshake')}${ally?`同盟あと${s.treaties[c.owner]-s.turn}か月`:'この勢力と同盟'}</button></div>`}${window.SengokuBranches?.render?.(game,id,{surface,writable:canMutate()&&saveEnabled&&!branchBookingPending,writableReason:branchBookingPending?'拠点の操作を確認しています。':!saveEnabled?'保存状態を確認してから普請してください。':syncMessage(),costHtml,jobKey,jobClockText})||''}`;
   }
 
   function levelGuideCastle(id){const s=state(),chosen=game.castle(id);return chosen&&chosen.owner===s.clan&&game.canOwnCastle?.(chosen.id)!==false?chosen:game.castle(s.home);}
@@ -1517,7 +1518,7 @@
       }else{
         const stored=JSON.parse(localStorage.getItem(saveKey)||'null');
         if(!sameRelocationCampaign(view,stored?.state))throw Error('この端末の本拠が更新されました。ゲームを開き直してください。');
-        const candidate=SengokuEngine.fromSave(game.exportSave(),roster);
+        const candidate=SengokuEngine.fromSave(game.exportSave(),roster,{retainerSupport:null});
         const result=candidate.relocateResidence(view.target,{role:'lord',worldClock:confirmedWorldClock()||undefined});
         if(!result.ok)throw Error(result.message);
         backupCurrentSave('residency-relocation',true);
@@ -1573,7 +1574,7 @@
   function prepareFileImport(raw,scope,{advance=false}={}){
     if(!scope||scope!==fileImportScope())throw fileImportFailure('領主・役職・物語が切り替わりました。現在の進行は変更していません。同期を確認してから、もう一度ファイルを選んでください。');
     if(!canMutate())throw fileImportFailure('端末同期と共通時刻の確認が終わってから、もう一度読み込んでください。現在の進行は変更していません。');
-    const candidate=SengokuEngine.fromSave(raw,roster,{isAdmin:game.isAdmin,isStaff:game.isStaff,staffBase:game.getStaffBase?.()});
+    const candidate=SengokuEngine.fromSave(raw,roster,{isAdmin:game.isAdmin,isStaff:game.isStaff,staffBase:game.getStaffBase?.(),retainerSupport:syncAccess.linked?window.SengokuResidency?.support?.()||null:null});
     if(syncAccess.linked){
       const owner=String(window.SengokuSocial?.getUser?.()?.id||''),context=window.SengokuSocial?.getCourtContext?.();
       if(!owner||context&&(!context.user||context.pending||context.banned||String(context.playerId)!==owner))throw fileImportFailure('接続中の領主を確認できません。現在の進行は変更していません。同期を確認してから、もう一度読み込んでください。');
@@ -2291,7 +2292,7 @@
     const previous=syncAccess,wasWritable=canMutate(),wasReady=previous.linked&&previous.ready,previousOwner=evaluationOwnerId;
     syncAccess={...previous,...access};
     globalThis.window?.SengokuDefenseLedger?.refreshAccess?.();
-    if(!syncAccess.linked||syncAccess.banned||['initializing','auth','access-changed'].includes(syncAccess.reason)){game.setBranchAuthority?.({resolvedElapsedMs:0});game.setMaintenanceAuthority?.(null);}
+    if(!syncAccess.linked||syncAccess.banned||['initializing','auth','access-changed'].includes(syncAccess.reason)){if(game.state)delete game.state.retainerSupport;game.setBranchAuthority?.({resolvedElapsedMs:0});game.setMaintenanceAuthority?.(null);}
     if(!syncAccess.linked)evaluationOwnerId='';else if(!wasReady&&syncAccess.ready&&!syncAccess.rolePending)evaluationOwnerId=String(window.SengokuSocial?.getUser?.()?.id||'');
     const writableChanged=wasWritable!==canMutate(),accessChanged=['linked','ready','writable','banned','rolePending','reason'].some(key=>previous[key]!==syncAccess[key]);
     const noticeChanged=previous.message!==syncAccess.message&&(syncAccess.banned||['auth','error','offline','follower','lease-expired'].includes(syncAccess.reason));
@@ -2308,14 +2309,14 @@
     // Unknown authentication is a read-only view, not a confirmed demotion.
     // Preserve the exact campaign before removing privileged projections.
     if(pending&&!wasPending&&!startPending&&saveEnabled){try{pendingRoleSave=game.exportSave();}catch(_){pendingRoleSave=null;saveEnabled=false;saveWarning='元のセーブを保護するため保存を停止しました。クラウドの進行を確認してください。';}}
-    syncAccess.rolePending=pending;if(pending){game.setBranchAuthority?.({resolvedElapsedMs:0});game.setMaintenanceAuthority?.(null);}
+    syncAccess.rolePending=pending;if((pending||isAdmin||isStaff)&&game.state)delete game.state.retainerSupport;if(pending){game.setBranchAuthority?.({resolvedElapsedMs:0});game.setMaintenanceAuthority?.(null);}
     const changed=game.isAdmin!==isAdmin||Boolean(game.isStaff)!==isStaff;
     if(changed||wasPending!==pending){roleEpoch++;staffBaseReady=false;stopStrategy();}
     globalThis.window?.SengokuDefenseLedger?.refreshAccess?.();
     if(!pending&&wasPending&&pendingRoleSave){
-      try{game=SengokuEngine.fromSave(pendingRoleSave,roster,{isAdmin,isStaff});pendingRoleSave=null;}
+      try{game=SengokuEngine.fromSave(pendingRoleSave,roster,{isAdmin,isStaff,retainerSupport:null});pendingRoleSave=null;}
       catch(_){syncAccess.rolePending=true;return{ok:false,message:'元のセーブを確認できるまで、操作と保存を待機しています。'};}
-    }else if(!pending&&(isAdmin||isStaff)&&changed&&syncAccess.linked&&!syncAccess.ready){try{const raw=localStorage.getItem(saveKey);if(raw)game=SengokuEngine.fromSave(raw,roster,{isAdmin,isStaff});}catch(_){}}
+    }else if(!pending&&(isAdmin||isStaff)&&changed&&syncAccess.linked&&!syncAccess.ready){try{const raw=localStorage.getItem(saveKey);if(raw)game=SengokuEngine.fromSave(raw,roster,{isAdmin,isStaff,retainerSupport:null});}catch(_){}}
     const result=game.setRoleAccess?game.setRoleAccess({isAdmin,isStaff}):game.setAdminAccess(isAdmin);
     if(!changed&&!result.changed&&wasPending===pending)return result;
     if(selectedCastle==='edo'&&!isAdmin||selectedCastle===staffBaseId&&!isStaff)selectedCastle='';
@@ -2355,7 +2356,7 @@
   }
   function applyCloudSave(snapshot,meta={}){
     try{
-      const candidate=SengokuEngine.fromSave(typeof snapshot==='string'?snapshot:JSON.stringify(snapshot),roster,{isAdmin:meta.isAdmin===true,isStaff:meta.isStaff===true,staffBase:meta.staffBase||null});
+      const candidate=SengokuEngine.fromSave(typeof snapshot==='string'?snapshot:JSON.stringify(snapshot),roster,{isAdmin:meta.isAdmin===true,isStaff:meta.isStaff===true,staffBase:meta.staffBase||null,retainerSupport:syncAccess.linked?window.SengokuResidency?.support?.()||null:null});
       candidate.setBranchAuthority?.(trustedBranchAuthority(meta,candidate)||{resolvedElapsedMs:0});
       const maintenance=trustedMaintenanceAuthority(meta,candidate);if(maintenance){const result=candidate.setMaintenanceAuthority?.(maintenance);if(result?.ok===false)throw Error(result.message||'維持費の台帳を確認できませんでした。');}
       if(meta.backup===true)backupCurrentSave(meta.reason||'cloud',meta.backupRuntime===true);
@@ -2372,7 +2373,7 @@
   }
   function prepareRecoverySave(snapshot,meta={}){
     try{
-      const candidate=SengokuEngine.fromSave(typeof snapshot==='string'?snapshot:JSON.stringify(snapshot),roster,{isAdmin:meta.isAdmin===true,isStaff:meta.isStaff===true,staffBase:meta.staffBase||null});
+      const candidate=SengokuEngine.fromSave(typeof snapshot==='string'?snapshot:JSON.stringify(snapshot),roster,{isAdmin:meta.isAdmin===true,isStaff:meta.isStaff===true,staffBase:meta.staffBase||null,retainerSupport:null});
       return{ok:true,save:JSON.parse(candidate.exportSave()),summary:{clan:candidate.state.clan,home:candidate.state.home,turn:candidate.state.turn,officers:candidate.state.officers.length}};
     }catch(error){return{ok:false,message:'ゲームの保存形式を確認できませんでした。戦国VSのセーブデータを選んでください。'};}
   }
@@ -2447,7 +2448,14 @@
     if(result.changed){saveCounter++;if(saveCounter>=10||wasCatchingUp||result.migrated||result.monthChanged||result.completed?.length||result.marchResults?.length||result.covertResults?.length){saveCounter=0;save({allowStrategy});}}
   }
   navigator.serviceWorker?.addEventListener?.('message',event=>{if(event.data?.type==='sengoku-open-recap'){noticeRecapPending=true;openPendingRecap();}});
-  window.SengokuResidency?.configure?.({getContext:()=>window.SengokuSocial?.getCourtContext?.()||{playerId:'',user:null},request:(...args)=>window.SengokuSocial.residencyRequest(...args),homeCastleId:()=>state().home,onChoose:newGameModal,onMessage:toast,onChange:change=>{if(change.before&&(change.before.role!==change.self?.role||change.before.castleId!==change.self?.castleId||change.before.lordEpoch!==change.self?.lordEpoch))stopStrategy();refreshPremiumAppearance();}});
+  function applyRetainerSupport(support){
+    const s=state(),before=s.retainerSupport;
+    const next=syncAccess.linked&&!syncAccess.rolePending&&!syncAccess.banned&&!game.isAdmin&&!game.isStaff&&support?.castleId===(s.cycle?.home||s.home)?support:null;
+    if(before?.castleId===next?.castleId&&before?.count===next?.count)return;
+    if(next)s.retainerSupport={castleId:next.castleId,count:next.count};else delete s.retainerSupport;
+    preserveInteraction($('#main'),render);refreshActiveModal();
+  }
+  window.SengokuResidency?.configure?.({getContext:()=>window.SengokuSocial?.getCourtContext?.()||{playerId:'',user:null},request:(...args)=>window.SengokuSocial.residencyRequest(...args),homeCastleId:()=>state().home,onSupport:applyRetainerSupport,onChoose:newGameModal,onMessage:toast,onChange:change=>{if(change.before&&(change.before.role!==change.self?.role||change.before.castleId!==change.self?.castleId||change.before.lordEpoch!==change.self?.lordEpoch))stopStrategy();refreshPremiumAppearance();}});
   configureTravel();configureProgress();setInterval(()=>{if(!document.hidden)primeProgress();},10000);
   setInterval(()=>{refreshTownArt();processWorldClock();},1000);
   // Apply a new clock sample before repainting controls. The mutation guards

@@ -40,6 +40,22 @@
   const sync=api.create({device:{id:'tab-'+crypto.randomUUID(),name:'端末 '+id},bridge:()=>bridge,now:()=>clock.time,hidden:()=>!visible,online:()=>connected,setTimeout:clock.set,clearTimeout:clock.clear,storage});
   return{sync,bridge,applied,access,roles,storage,start:who=>sync.start({id:who||id,request:svc.request(who||id),onUser(){}}),state:()=>clone(current),begin:next=>{if(next)current=clone(next);started=true;sync.notifySave();},mutate:fn=>{fn(current);sync.notifySave();},hidden:v=>{visible=!v;},online:v=>{connected=v;sync.connectionChanged();},role:()=>role};
  }
+ // A household may gain or lose members without changing this personal save.
+ {
+  const clock=new Clock(),svc=server(clock),owner=client(clock,svc);
+  await owner.start();
+  owner.mutate(s=>{s.resources.gold+=17;});
+  const revision=svc.get('u').revision,applied=owner.applied.length;
+  for(const count of [1,2,0]){
+   if(count)svc.get('u').save.state.retainerSupport={castleId:'kiyosu',count};
+   else delete svc.get('u').save.state.retainerSupport;
+   await owner.sync.refresh();
+   check(owner.state().resources.gold===117&&owner.applied.length===applied,'a same-revision household change preserves unsent personal progress');
+  }
+  await owner.sync.flush();
+  check(svc.get('u').revision===revision+1&&svc.get('u').save.state.resources.gold===117,'all edits still upload once at their original personal revision');
+  owner.sync.stop();
+ }
  // A speculative month is retried using the same writer lease. Local actions
  // entered while waiting survive both the rejected request and the later PUT.
  {

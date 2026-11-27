@@ -29,8 +29,10 @@ async function scenario(racingAppointment){
  try{
   const lord=await player(h,'継承前の領主','kiyosu'),heir=await player(h,'進軍中の家臣','kiyosu','retainer'),attacker=await player(h,'隣城の攻撃主','inuyama');
   h.now+=539000;const clock=(await h.api('/world-clock')).data.clock;
-  await checkpoint(h,lord,clock,s=>{s.troops=10;s.castles.kiyosu.troops=10;});
-  await checkpoint(h,attacker,clock,s=>{s.troops=5000;});
+  // Only the heir's private campaign should fall to the CPU at this month boundary.
+  const quietNeighbors=s=>{for(const castle of Object.values(s.castles))if(castle.owner!==s.clan)castle.troops=0;};
+  await checkpoint(h,lord,clock,s=>{quietNeighbors(s);s.troops=10;s.castles.kiyosu.troops=10;});
+  await checkpoint(h,attacker,clock,s=>{quietNeighbors(s);s.troops=5000;});
   await checkpoint(h,heir,clock,s=>{
    s.troops=1000;
    for(const castle of Object.values(s.castles))Object.assign(castle,{owner:'在地衆',troops:100000,wall:1,level:1});

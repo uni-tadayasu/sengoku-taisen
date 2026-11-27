@@ -34,6 +34,12 @@ try{
 await scope('admission is canonical, idempotent after later saves, preserves FIFO on restart, and hides retainers from field homes',async h=>{
  const lord=await player(h,'領主'),first=await player(h,'先着家臣','kiyosu','retainer'),second=await player(h,'後着家臣','kiyosu','retainer'),neighbor=await player(h,'隣城','inuyama'),order=member(h,first).join_order;
  const initialEpoch=seat(h).lord_epoch;assert.equal(first.initial.residency.successionPosition,1);assert.equal(second.initial.residency.successionPosition,2);
+ assert.equal(lord.initial.residency.retainerCount,0);
+ assert.equal(first.initial.residency.retainerCount,1);
+ assert.equal(second.initial.residency.retainerCount,2);
+ const lordSync=(await h.api('/sync?deviceId='+lord.deviceId,{token:lord.token})).data;
+ assert.equal(lordSync.residency.retainerCount,2);
+ assert.equal((await directory(h,lord)).castles.find(c=>c.castleId==='kiyosu').retainerCount,2);
  const incoming=save(h,first);incoming.state.resources.gold+=1;await upload(h,first,incoming);
  const replay=(await h.api('/castles/residency/start',post(first,first.admissionBody))).data;assert(replay.admission.idempotent);assert.equal(replay.save.state.resources.gold,incoming.state.resources.gold);assert.equal(member(h,first).join_order,order);
  await h.api('/castles/residency/start',post(first,startBody(h,first,'kiyosu','retainer')));assert.equal(member(h,first).join_order,order);assert.equal(seat(h).lord_epoch,initialEpoch);
@@ -41,6 +47,47 @@ await scope('admission is canonical, idempotent after later saves, preserves FIF
  const f=(await h.api('/field',{token:first.token})).data;assert.deepEqual(new Set(f.players.map(x=>x.playerId)),new Set([lord.user.id,neighbor.user.id]));assert.equal(f.players.find(x=>x.playerId===lord.user.id).attackable,false);
  assert.equal((await h.api('/field/me',{token:first.token})).data.residency.successionPosition,1);
  const denied=(await h.api('/field/attack',post(first,{deviceId:first.deviceId,expectedRevision:row(h,first).revision,requestId:crypto.randomUUID(),targetPlayerId:lord.user.id,targetCastleId:'kiyosu',troops:300,tactic:'balanced'},409))).data;assert.equal(denied.error.code,'HOUSEHOLD_ALLIED');assert.equal(count(h,'battle_marches'),0);
+});
+await scope('the lord receives linear castle support from the current household, including existing saves',async h=>{
+ const lord=await player(h,'城主');
+ const field=async p=>(await h.api('/field/me',{token:p.token})).data.self;
+ const original=await field(lord);
+ assert.equal(original.durability.max,10000);
+ const first=await player(h,'家臣一','kiyosu','retainer');
+ const withOne=await field(lord);
+ assert.equal(withOne.defenseTroops,original.defenseTroops+600);
+ assert.equal(withOne.durability.max,15000);
+ const second=await player(h,'家臣二','kiyosu','retainer');
+ const withTwo=await field(lord);
+ assert.equal(withTwo.defenseTroops,original.defenseTroops+1200);
+ assert.equal(withTwo.durability.max,20000);
+ const stale=save(h,lord);stale.state.retainerSupport={castleId:'inuyama',count:999};
+ const rebuilt=await upload(h,lord,stale);
+ assert.deepEqual(rebuilt.save.state.retainerSupport,{castleId:'kiyosu',count:2});
+ assert.equal(rebuilt.save.state.castles.kiyosu.troops,stale.state.castles.kiyosu.troops);
+ const retainerSave=save(h,first);retainerSave.state.retainerSupport={castleId:'kiyosu',count:999};
+ assert.equal((await upload(h,first,retainerSave)).save.state.retainerSupport,undefined);
+ await h.api('/castles/residency/start',post(first,startBody(h,first,'inuyama')));
+ assert.equal((await field(lord)).durability.max,15000);
+ await h.api('/castles/residency/start',post(second,startBody(h,second,'sunpu')));
+ const empty=await field(lord);
+ assert.equal(empty.durability.max,original.durability.max);
+ assert.equal(empty.defenseTroops,original.defenseTroops);
+});
+await scope('the last retainer can leave between a monthly repair and the lord saving its receipt',async h=>{
+ const lord=await player(h,'修復する城主'),retainer=await player(h,'月末の家臣','kiyosu','retainer');
+ tune(h,lord,state=>{state.castles.kiyosu.durability={version:1,max:15000,current:4000,updatedElapsedMs:0};});
+ h.sql.prepare('UPDATE world_clock SET base_elapsed_ms=60000,anchor_real_ms=?,revision=revision+1').run(h.now);
+ const snapshot=(await h.api('/sync?deviceId='+lord.deviceId,{token:lord.token})).data;
+ const game=GameEngine.fromSave(snapshot.save,GAME_OFFICERS,{maintenanceAuthority:snapshot.maintenanceAuthority});
+ assert(game.applyWorldClock(snapshot.clock).ok);
+ assert.equal(game.state.repair.recovered.castles.kiyosu,1500);
+ await h.api('/castles/residency/start',post(retainer,startBody(h,retainer,'inuyama')));
+ const result=await upload(h,lord,JSON.parse(game.exportSave()));
+ const latest=GameEngine.fromSave(result.save,GAME_OFFICERS);
+ assert.equal(latest.state.repair.recovered.castles.kiyosu,1500);
+ assert.equal(latest.castle('kiyosu').durability.max,10000);
+ assert.equal(latest.castle('kiyosu').durability.current,500);
 });
 await scope('the last of 124 seats has one atomic winner and full castles still accept FIFO retainers',async h=>{
  for(const c of RESIDENCY_CASTLES.filter(c=>c.id!=='kiyosu'))legacy(h,'legacy-'+c.id,c.id);
@@ -57,7 +104,7 @@ await scope('legacy duplicate migration is deterministic, skips a defeated incum
 });
 await scope('a winning field home defense defeat promotes an offline first retainer, appends the lord, and replays once',async h=>{
  const lord=await player(h,'敗れた領主'),first=await player(h,'最古の家臣','kiyosu','retainer'),second=await player(h,'次の家臣','kiyosu','retainer'),attacker=await player(h,'攻撃側','inuyama');h.sql.prepare('UPDATE player_saves SET lease_expires_at=0 WHERE user_id=?').run(first.user.id);const firstSave=row(h,first).save_json,secondSave=row(h,second).save_json;
- const departure=await attack(h,attacker,lord);h.now+=departure.data.march.remainingMs;const done=await status(h,attacker),battle=done.history[0].battle;assert(battle.won);assert.equal(battle.succession.lordPlayerId,first.user.id);assert.equal(seat(h).lord_user_id,first.user.id);assert.equal(row(h,first).save_json,firstSave);assert.equal(row(h,second).save_json,secondSave);
+ const departure=await attack(h,attacker,lord);h.now+=departure.data.march.remainingMs;const done=await status(h,attacker),battle=done.history[0].battle;assert(battle.won);assert.equal(battle.durability.max,20000);assert.equal(battle.succession.lordPlayerId,first.user.id);assert.equal(seat(h).lord_user_id,first.user.id);assert.equal(row(h,first).save_json,firstSave);assert.equal(row(h,second).save_json,secondSave);
  const d=await directory(h,lord,'?castleId=kiyosu');assert.deepEqual(d.roster.retainers.map(r=>r.playerId),[second.user.id,lord.user.id]);assert.equal(d.self.successionPosition,2);
  const replay=(await h.api('/field/attack',post(attacker,departure.body))).data;assert.equal(replay.battle.id,battle.id);assert.equal(count(h,'field_battles'),1);assert.equal(count(h,'castle_successions'),1);assert.equal(h.sql.prepare("SELECT COUNT(*) AS n FROM mail_campaigns WHERE request_id LIKE 'system:succession:%'").get().n,2);
 });

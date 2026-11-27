@@ -3,7 +3,7 @@ import {maintenanceContext,protectMaintenance} from './maintenance.js';
 // D1 transaction, so network retries never spend or reward a second time.
 import {GameEngine,GAME_OFFICERS} from './game-runtime.js';
 import {getRoamingDeployment} from './roaming-deployment.js';
-import {prepareResidencyCpuLosses} from './residency.js';
+import {guardLordSupport,prepareResidencyCpuLosses} from './residency.js';
 import {findMarch,activeMarch,marchRecord,serverMarchMarker,insertMarch,finishMarchStatement,replayMarch,MARCH_GATE} from './marches.js';
 
 const stmt=(db,sql,...args)=>db.prepare(sql).bind(...args);
@@ -80,7 +80,7 @@ async function battle(ctx){
  const now=ctx.now,native=JSON.parse(JSON.stringify(game.state.march)),record=marchRecord({user,requestId:body.requestId,kind:'roaming',save,travel:native.travel,targetName:unit.name||unit.castleName||unit.encounterName||body.encounterId,troops:body.troops,tactic:body.tactic,foodCost:native.foodCost,commandCost:native.commandCost??1,clock,now,digest,payload:{body,nativeMarch:native,deploymentRevision:deployment.revision,unit}});
  native.id=record.id;native.departedElapsedMs=record.departed_ms;native.arrivesElapsedMs=record.arrives_ms;
  const payload=JSON.parse(record.payload_json);payload.nativeMarch=native;record.payload_json=JSON.stringify(payload);game.state.march=serverMarchMarker(record);
- const next=h.normalizeGameSave(JSON.parse(game.exportSave()),user,now,{clock}),role=h.roleCommitGuard(user),args=[record.id,record.commit_token];
+ const next=h.normalizeGameSave(JSON.parse(game.exportSave()),user,now,{clock}),role=guardLordSupport(h.roleCommitGuard(user),user),args=[record.id,record.commit_token];
  const cpuLosses=await prepareResidencyCpuLosses(db,{userId:user.id,events:game.takeHomeDefenseLosses(),now,state:next.state});
  const sharedGuard=shared?{sql:"EXISTS(SELECT 1 FROM staff_base WHERE id='kyoto_gosho' AND revision=?)",args:[shared.revision]}:{sql:'1=1',args:[]};
  const guard=`EXISTS(SELECT 1 FROM player_saves ps WHERE ps.user_id=? AND ps.revision=? AND ps.writer_device_id=? AND ps.lease_expires_at>? AND COALESCE(json_extract(ps.save_json,'$.state.walking.campaignId'),'legacy_v1')=? AND COALESCE(json_extract(ps.save_json,'$.state.roaming.sequence'),0)=?) AND EXISTS(SELECT 1 FROM world_clock WHERE id=? AND revision=? AND running=1) AND ${role.sql} AND ${sharedGuard.sql} AND ${branchAccess.guard.sql} AND EXISTS(SELECT 1 FROM roaming_deployment WHERE id=1 AND revision=?) AND NOT EXISTS(SELECT 1 FROM roaming_unit_cooldowns WHERE deployment_revision=? AND unit_id=? AND respawn_at>?) AND ${cpuLosses.guard.sql}`;
@@ -111,7 +111,7 @@ export async function settleRoamingMarch(ctx,march){
  if(!outcome)h.fail(409,'MARCH_RETRY','到着した部隊の戦況を確認しています。');
  const battle=outcome.battle||null;if(outcome.status==='resolved'&&!battle)throw Error('Missing roaming arrival receipt');
  if(battle){battle.respawnAt=battle.won?now+deployment.respawnSeconds*1000:null;const history=game.state.roaming.history.find(x=>x.requestId===body.requestId);if(history)history.respawnAt=battle.respawnAt;}
- const next=h.normalizeGameSave(JSON.parse(game.exportSave()),user,now,{clock}),nonce=crypto.randomUUID(),role=h.roleCommitGuard(user),args=[march.id,nonce],commitGate="EXISTS(SELECT 1 FROM battle_marches WHERE id=? AND commit_token=? AND status IN ('resolved','cancelled'))";
+ const next=h.normalizeGameSave(JSON.parse(game.exportSave()),user,now,{clock}),nonce=crypto.randomUUID(),role=guardLordSupport(h.roleCommitGuard(user),user),args=[march.id,nonce],commitGate="EXISTS(SELECT 1 FROM battle_marches WHERE id=? AND commit_token=? AND status IN ('resolved','cancelled'))";
  const cpuLosses=await prepareResidencyCpuLosses(db,{userId:user.id,events:game.takeHomeDefenseLosses(),now,state:next.state});
  const result={battle,message:outcome.message||'野良兵のいる拠点へ到着し、合戦を終えました。',resolvedAt:new Date(now).toISOString()};
  const sharedGuard=shared?{sql:"EXISTS(SELECT 1 FROM staff_base WHERE id='kyoto_gosho' AND revision=?)",args:[shared.revision]}:{sql:'1=1',args:[]};

@@ -5,7 +5,10 @@ const NAME_KEY='sengoku-device-name-v1',PENDING_KEY='sengoku-sync-pending-v1';
 function fingerprint(save){
  if(!save||typeof save!=='object'||!save.state||typeof save.state!=='object')return'';
  const sorted=value=>Array.isArray(value)?value.map(sorted):value&&typeof value==='object'?Object.fromEntries(Object.keys(value).sort().map(key=>[key,sorted(value[key])])):value;
- return JSON.stringify(sorted(save.state));
+ // Household strength has its own roster revision. Admissions and departures
+ // must not invalidate the pending edits attached to this personal save.
+ const {retainerSupport,...personalState}=save.state;
+ return JSON.stringify(sorted(personalState));
 }
 function hash(value){let a=2166136261,b=3339675911;const imul=Math.imul;for(let i=0;i<value.length;i++){const code=value.charCodeAt(i);a=imul(a^code,16777619);b=imul(b^code,2246822519);}return(a>>>0).toString(16)+':'+(b>>>0).toString(16);}
 // Reconcile only the authoritative branch/parent delta. A resource tick or a
@@ -62,7 +65,10 @@ function mergeCastleDurabilityCorrection(sent,canonical,current){
   if(!before||!live||branch&&(before.parentCastleId!==after.parentCastleId||live.parentCastleId!==after.parentCastleId||live.fallen!==after.fallen||live.retreating!==after.retreating)||!branch&&(before.owner!==after.owner||live.owner!==after.owner)||same(before.durability,after.durability))continue;
   let record=after.durability;
   if(!same(live.durability,before.durability)&&engine?.durabilityView){
-   const owned=branch?c.castles?.[live.parentCastleId]?.owner===c.clan:live.owner===c.clan,options={castleId:branch?live.parentCastleId:id,level:live.level,...(branch?{branch:true,fallen:live.fallen||live.retreating}:{wall:live.wall}),elapsedMs:at,recoveryMode:owned?'paid':'free'};
+   const owned=branch?c.castles?.[live.parentCastleId]?.owner===c.clan:live.owner===c.clan;
+   // Compare every record at the same live capacity. A joining retainer can
+   // add capacity while a save is in flight without repairing structural damage.
+   const options={castleId:branch?live.parentCastleId:id,level:live.level,...(branch?{branch:true,fallen:live.fallen||live.retreating}:{wall:live.wall,retainerCount:engine.homeRetainerCount?.(c,id)||0}),elapsedMs:at,recoveryMode:owned?'paid':'free'};
    const paidLater=owned?Math.max(0,(c.repair?.recovered?.[kind]?.[id]||0)-(a.repair?.recovered?.[kind]?.[id]||0)):0;
    const paidCorrection=owned?(b.repair?.recovered?.[kind]?.[id]||0)-(a.repair?.recovered?.[kind]?.[id]||0):0;
    let authoritative=engine.durabilityView(record,options),local=engine.durabilityView(live.durability,options);

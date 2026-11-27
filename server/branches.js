@@ -1,6 +1,7 @@
 import {maintenanceContext,protectMaintenance} from './maintenance.js';
 // Authoritative branch construction and siege condition. A branch is attached
 // to its parent city; it never becomes an additional territory or reward city.
+import {guardLordSupport} from './residency.js';
 import {GameEngine,GAME_OFFICERS} from './game-runtime.js';
 import {prepareResidencyCpuLosses} from './residency.js';
 import {branchDurability,durabilityRecord} from './durability.js';
@@ -147,7 +148,7 @@ async function mutation(ctx,action){
   tail.completesElapsedMs=starts+tail.totalSeconds*1000;
  }
  await h.budget(db,'branches:'+user.id,60,60000,ctx.now);
- const now=Date.now(),next=h.normalizeGameSave(JSON.parse(game.exportSave()),user,now,{clock}),nonce=crypto.randomUUID(),role=h.roleCommitGuard(user),gateArgs=[user.id,body.requestId,nonce];
+ const now=Date.now(),next=h.normalizeGameSave(JSON.parse(game.exportSave()),user,now,{clock}),nonce=crypto.randomUUID(),role=guardLordSupport(h.roleCommitGuard(user),user),gateArgs=[user.id,body.requestId,nonce];
  // The immutable receipt table records build/upgrade/repair categories. The
  // exact facility/automatic assignment operation and target are bound by the request hash and
  // retained in result_json; reusing an ID across either scope still conflicts.
