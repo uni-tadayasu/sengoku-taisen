@@ -6,7 +6,7 @@
   <meta name="referrer" content="no-referrer">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex,nofollow">
-  <title>戦国VS 音楽帳｜支度・朝昼夜のBGMと全20曲の試聴</title>
+  <title>戦国VS 音楽帳｜BGM全20曲・和風サイバー効果音の試聴</title>
   <style>
     :root {
       color-scheme: dark;
@@ -66,7 +66,12 @@
     progress,audio { display: block; width: 100%; margin: .9rem 0 0; accent-color: var(--leaf); }
     progress { height: .55rem; }
     #status { color: #e1d8c7; font-size: .9rem; margin-top: .65rem; }
-    #status:empty { display: none; }
+    #status:empty, #effect-status:empty { display: none; }
+    #effects { margin-top: 1.25rem; border-top: 1px solid var(--line); scroll-margin-top: 1rem; }
+    #effects-heading { margin-block: .75rem; font-size: 1.16rem; }
+    #effect-volume { display: block; width: 100%; min-height: 44px; margin-top: .32rem; accent-color: var(--leaf); }
+    #effect-level { font-variant-numeric: tabular-nums; }
+    #effect-status { margin: .5rem 0 0; color: inherit; }
     .downloads { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem 1rem; margin: .9rem 0 .45rem; }
     .save,summary { display: inline-flex; align-items: center; min-height: 44px; line-height: 1.4; font-size: .9rem; }
     .save { gap: .4rem; color: #ecd2a3; }
@@ -116,7 +121,7 @@
   <link rel="apple-touch-icon" href="../assets/branding/sengoku-vs-apple-touch-icon-180-20261127-jade.png" sizes="180x180">
   <link rel="mask-icon" href="../assets/branding/sengoku-vs-pinned-tab-20261127-jade.svg" color="#c7a35b">
   <link rel="stylesheet" href="../public-theme.bundle.css?v=a3ebdd227861">
-  <script defer src="../variant-text.js?v=5.9.11-20261127"></script>
+  <script defer src="../variant-text.js?v=5.9.12-20261127"></script>
 </head>
 <body>
   <a class="skip-link" href="#player">選曲と再生へ移動</a>
@@ -157,12 +162,21 @@
           <a id="wav-save" class="save" href="#player" hidden>選択範囲をWAVで保存</a>
         </div>
         <details><summary>この曲の録音情報・音量</summary><pre id="metrics">録音形式を確認できます。</pre></details>
+        <section id="effects" aria-labelledby="effects-heading" hidden>
+          <h2 id="effects-heading">和風サイバー効果音</h2>
+          <div class="fields">
+            <label for="effect-choice">場面<select id="effect-choice"></select></label>
+            <label for="effect-volume">試聴音量 <output id="effect-level" for="effect-volume">10%</output><input id="effect-volume" type="range" min="0" max="100" step="1" value="10"></label>
+          </div>
+          <button type="button" id="effect-play">選んだ効果音を鳴らす</button>
+          <p id="effect-status" role="status"></p>
+        </section>
         <noscript><p>試聴にはJavaScriptが必要です。<a href="../guide/#music">ゲーム内の音楽設定を読む</a></p></noscript>
       </div>
     </section>
   </main>
   <footer>© KASAI SOLUTIONS · <a href="../en/" lang="en" hreflang="en">English</a></footer>
-  <script src="../music.js?v=5.9.11-20261127"></script>
-  <script src="music-audition.js?v=5.9.11-20261127"></script>
+  <script src="../music.js?v=5.9.12-20261127"></script>
+  <script src="music-audition.js?v=5.9.12-20261127"></script>
 </body>
 </html>

@@ -211,11 +211,11 @@ function createController(options={}){
         clearStored(record);s.pending=null;s.confirm=null;s.error='';
         s.status=({propose:'申出を送り、提供資産を預けました。相手の承認をお待ちください。',accept:'交易が成立しました。輸入した資産を所持数へ反映しました。',cancel:'申出を取り消しました。返還資産は「受取待ち」から受け取ってください。',reject:'申出を辞退しました。相手への返還資産は受取待ちになっています。',claim:'資産を受け取り、所持数へ反映しました。'})[record.action];
         if(record.action==='propose'){s.view='outgoing';s.target=null;s.draft=draftDefaults();}else if(record.action==='cancel'||record.action==='claim')s.view='claimable';
-        viewEpoch++;s.trades=[];s.loaded=false;s.nextCursor=null;emit('settled');return true;
+        viewEpoch++;s.trades=[];s.loaded=false;s.nextCursor=null;emit('settled');if(!result.idempotent)global.SengokuBridge?.playInterfaceSound?.(record.action==='claim'?'reward':'trade');return true;
       }catch(error){
         if(!current(e,owner))return false;
         if(error.status>=400&&error.status<500&&error.code!=='TRADE_RECONCILE_PENDING'){clearStored(record);s.pending=null;s.confirm=null;}
-        s.error=error.message||'通信が戻ってから、同じ送信番号で結果を確認してください。';emit('error');return false;
+        global.SengokuBridge?.playInterfaceSound?.('error');s.error=error.message||'通信が戻ってから、同じ送信番号で結果を確認してください。';emit('error');return false;
       }finally{if(current(e,owner)){s.sending=false;writePromise=null;emit();if(!s.pending)await loadList();schedule();}}
     });
     writePromise=promise;return promise;

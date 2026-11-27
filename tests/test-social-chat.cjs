@@ -24,13 +24,13 @@ function controllerRig(options = {}) {
   mount();return {doc,host,$,controller,notices,features,rows,type,click,key,switchTo,mount};
 }
 function socialRig() {
-  const {doc,host} = dom(), requests = [], feedback = [], timers = new Map();let timerId=0, handler=async()=>({ok:true,features:{chatReplies:true,chatMentions:true},messages:[],nextAfter:0}),coarse=false;
+  const {doc,host} = dom(), requests = [], feedback = [], sounds = [], timers = new Map();let timerId=0, handler=async()=>({ok:true,features:{chatReplies:true,chatMentions:true},messages:[],nextAfter:0}),coarse=false;
   doc.getElementById = id => doc.body.querySelector('#'+id);
   const context = {console,URL,URLSearchParams,AbortController,Intl,Date,crypto:require('node:crypto').webcrypto,document:doc,
     setTimeout:fn=>{timers.set(++timerId,fn);return timerId;},clearTimeout:id=>timers.delete(id),
     matchMedia:()=>({matches:coarse}),localStorage:{getItem:()=>null,setItem(){},removeItem(){}},SENGOKU_API_BASE:'https://api.example.invalid',
     FormData:class {constructor(form){this.form=form;}get(name){return this.form.querySelector('[name="'+name+'"]')?.value??null;}},
-    SengokuStableDOM:require('../stable-dom.js'),SengokuBridge:{setAdminAccess(){},setSyncAccess(){},toast:(text,error)=>feedback.push({text,error})},
+    SengokuStableDOM:require('../stable-dom.js'),SengokuBridge:{setAdminAccess(){},setSyncAccess(){},playInterfaceSound:kind=>sounds.push(kind),toast:(text,error)=>feedback.push({text,error})},
     SengokuCloudSync:{start(){},stop(){}},
     fetch:async(url,options)=>{requests.push({url,options});const state=context.__chatTest?.s,result=new URL(url).pathname.endsWith('/me')?{ok:true,user:state.user,friends:state.friends,requests:[]}:await handler(url,options);return {ok:!result.__status,status:result.__status||200,json:async()=>result};}
   };
@@ -46,7 +46,7 @@ function socialRig() {
   async function send() {const form=$('#social-chat-form');await t.submit({target:form,submitter:form.querySelector('[type="submit"]'),preventDefault(){}});}
   function key(key,extra={}) {const event={type:'keydown',key,...extra};$('#social-chat-input').dispatchEvent(event);return event;}
   function switchTo(tab,target) {t.s.tab=tab;if(target)t.s.friendId=target;t.render();}
-  return {t,context,doc,host,dialog,$,requests,feedback,timers,type,click,send,key,switchTo,setHandler:fn=>handler=fn,setCoarse:value=>coarse=value};
+  return {t,context,doc,host,dialog,$,requests,feedback,sounds,timers,type,click,send,key,switchTo,setHandler:fn=>handler=fn,setCoarse:value=>coarse=value};
 }
 let count=0;async function test(name,run) {await run();count++;console.log('PASS '+name);}
 (async()=>{
@@ -124,9 +124,9 @@ await test('real chat submits stable reply and mention IDs; failed sends preserv
   await b.send();const failed=JSON.parse(b.requests.find(r=>r.options.method==='POST').options.body);
   assert.deepEqual(failed,{channel:'world',text:'@織田信長',replyToId:12,mentionIds:[other.userId]});
   assert.equal(b.$('#social-chat-input').value,'@織田信長 ');assert.equal(b.t.chatEnhancements().prepare().replyToId,12);assert.equal(b.$('[type="submit"]').disabled,false);
-  assert(b.feedback.some(f=>f.error&&f.text.includes('削除')));
+  assert(b.feedback.some(f=>f.error&&f.text.includes('削除')));assert.deepEqual(b.sounds,['error']);
   b.click('[data-chat-action="reply-clear"]');b.setHandler(async()=>({ok:true,messages:[],nextAfter:12}));await b.send();
-  assert.equal(b.$('#social-chat-input').value,'');assert.equal(b.$('#social-chat-selected-mentions').hidden,true);
+  assert.equal(b.$('#social-chat-input').value,'');assert.equal(b.$('#social-chat-selected-mentions').hidden,true);assert.deepEqual(b.sounds,['error','message']);
 });
 await test('a delayed world send cannot clear or redirect the selected friend draft',async()=>{
   const b=socialRig(),pending=deferred();b.type('世界への投稿');b.click('[data-chat-action="reply"]');
@@ -162,7 +162,7 @@ await test('disabling a focused Send button returns focus after success without 
 await test('identity replacement clears private drafts and makes an old send response harmless',async()=>{
   const b=socialRig(),pending=deferred();b.type('以前の領主の下書き');b.setHandler((url,options)=>options.method==='POST'?pending.promise:{ok:true,messages:[],nextAfter:0});const send=b.send();
   b.t.installIdentity({id:'next',token:'b'.repeat(64)},{id:'next',name:'別の領主'});b.t.render();b.type('新しい領主の文');pending.resolve({ok:true});await send;
-  assert.equal(b.$('#social-chat-input').value,'新しい領主の文');assert.equal(b.t.chatEnhancements().prepare().replyToId,null);
+  assert.deepEqual(b.sounds,[]);assert.equal(b.$('#social-chat-input').value,'新しい領主の文');assert.equal(b.t.chatEnhancements().prepare().replyToId,null);
 });
 console.log(`${count} chat UI checks passed. Requests used an isolated mock API.`);
 })().catch(error=>{console.error(error);process.exitCode=1;});

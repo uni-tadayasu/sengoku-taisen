@@ -434,6 +434,14 @@ function mount(container,options={}){
     else{view={...baseView};fit(opts.region!=='all'?'region':['castles','home','selected'].includes(opts.initialView)?opts.initialView:'nation',false);}
     firstSize=false;render();remember();
   }
+  // The surface captures the pointer, so the browser's click may land on the
+  // surface instead of the city. Sound only a hit the map actually accepts.
+  function selectFromEvent(event,entry){
+    if(!entry)return;
+    global.SengokuUISounds?.mapGesture?.(event,entry.node);
+    selectMarker(entry.marker);
+  }
+  const soundViewGesture=event=>global.SengokuUISounds?.mapGesture?.(event,surface);
   function relative(event){const rect=surface.getBoundingClientRect();return[(event.clientX-rect.left)*width/Math.max(1,rect.width),(event.clientY-rect.top)*height/Math.max(1,rect.height)];}
   function pointerDown(event){
     if(event.button!==undefined&&event.button!==0)return;
@@ -447,29 +455,29 @@ function mount(container,options={}){
     const [x,y]=relative(event),previous=pointers.get(event.pointerId);
     if(!previous){const [lon,lat]=unproject(view.x+x/width*view.width,view.y+y/height*view.height);parts['position'].textContent=`${lat.toFixed(3)}° N  ${lon.toFixed(3)}° E`;return;}
     pointers.set(event.pointerId,{...previous,x,y});
-    if(pointers.size>=2&&gesture){const [a,b]=[...pointers.values()],distance=Math.max(1,Math.hypot(a.x-b.x,a.y-b.y)),factor=gesture.distance/distance,w=gesture.view.width*factor,h=gesture.view.height*factor,center=[(a.x+b.x)/2,(a.y+b.y)/2];setView({x:gesture.world[0]-center[0]/width*w,y:gesture.world[1]-center[1]/height*h,width:w,height:h});}
+    if(pointers.size>=2&&gesture){const [a,b]=[...pointers.values()],distance=Math.max(1,Math.hypot(a.x-b.x,a.y-b.y)),factor=gesture.distance/distance,w=gesture.view.width*factor,h=gesture.view.height*factor,center=[(a.x+b.x)/2,(a.y+b.y)/2];if(!gesture.sounded&&Math.abs(distance-gesture.distance)>5){gesture.sounded=true;soundViewGesture(event);}setView({x:gesture.world[0]-center[0]/width*w,y:gesture.world[1]-center[1]/height*h,width:w,height:h});}
     else if(pointers.size===1){if(Math.hypot(x-previous.startX,y-previous.startY)>5)dragged=true;if(dragged){surface.classList.add('is-dragging');setView({...view,x:view.x-(x-previous.x)/width*view.width,y:view.y-(y-previous.y)/height*view.height});}}
     event.preventDefault();
   }
   function pointerUp(event){
     const pointer=pointers.get(event.pointerId);if(!pointer)return;
     const clicked=!dragged&&pointers.size===1&&event.type!=='pointercancel';pointers.delete(event.pointerId);surface.releasePointerCapture?.(event.pointerId);gesture=null;
-    if(!pointers.size){surface.classList.remove('is-dragging');clickUntil=Date.now()+350;if(clicked&&pointer.marker)selectMarker(markersByKey.get(pointer.marker)?.marker);}
+    if(!pointers.size){surface.classList.remove('is-dragging');clickUntil=Date.now()+350;if(clicked&&pointer.marker)selectFromEvent(event,markersByKey.get(pointer.marker));}
     else for(const [id,p]of pointers)pointers.set(id,{...p,startX:p.x,startY:p.y});
     event.preventDefault();
   }
   listen(surface,'pointerdown',pointerDown);listen(surface,'pointermove',pointerMove);listen(surface,'pointerup',pointerUp);listen(surface,'pointercancel',pointerUp);
-  listen(surface,'wheel',event=>{event.preventDefault();hideTooltip();const delta=event.deltaY*(event.deltaMode===1?16:event.deltaMode===2?height:1);zoom(Math.exp(clamp(delta,-400,400)*.0018),relative(event));},{passive:false});
+  listen(surface,'wheel',event=>{event.preventDefault();if(event.deltaY)soundViewGesture(event);hideTooltip();const delta=event.deltaY*(event.deltaMode===1?16:event.deltaMode===2?height:1);zoom(Math.exp(clamp(delta,-400,400)*.0018),relative(event));},{passive:false});
   listen(surface,'keydown',event=>{
     if(event.target.closest?.('[data-map-marker]'))return;
     const pan=70,keys={ArrowLeft:[-pan,0],ArrowRight:[pan,0],ArrowUp:[0,-pan],ArrowDown:[0,pan]};
-    if(keys[event.key]){event.preventDefault();const [x,y]=keys[event.key];setView({...view,x:view.x+x/width*view.width,y:view.y+y/height*view.height});}
-    else if(['+','=','-','0','Home'].includes(event.key)){event.preventDefault();if(event.key==='Home')fit('home');else if(event.key==='0')fit('nation');else zoom(event.key==='-'?1.45:1/1.45,[width/2,height/2],true);}
+    if(keys[event.key]){event.preventDefault();soundViewGesture(event);const [x,y]=keys[event.key];setView({...view,x:view.x+x/width*view.width,y:view.y+y/height*view.height});}
+    else if(['+','=','-','0','Home'].includes(event.key)){event.preventDefault();soundViewGesture(event);if(event.key==='Home')fit('home');else if(event.key==='0')fit('nation');else zoom(event.key==='-'?1.45:1/1.45,[width/2,height/2],true);}
   });
   listen(container,'click',event=>{
     const control=event.target.closest?.('[data-map-action]');
     if(control){event.stopPropagation();const action=control.dataset.mapAction;hideTooltip();if(action==='zoom-in')zoom(1/1.55,[width/2,height/2],true);else if(action==='zoom-out')zoom(1.55,[width/2,height/2],true);else if(action==='labels'){labels=!labels;render();remember();}else if(action==='routes'){routes=!routes;render();remember();}else if(action==='terrain'){terrain=!terrain;render();remember();}else fit(action);return;}
-    const node=event.target.closest?.('[data-map-marker]');if(node&&(event.detail===0||Date.now()>clickUntil)){event.stopPropagation();selectMarker(markersByKey.get(node.dataset.mapMarker)?.marker);}
+    const node=event.target.closest?.('[data-map-marker]');if(node&&(event.detail===0||Date.now()>clickUntil)){event.stopPropagation();selectFromEvent(event,markersByKey.get(node.dataset.mapMarker));}
   });
   listen(markerLayer,'pointerover',event=>{const node=event.target.closest?.('[data-map-marker]');if(node&&!pointers.size){const entry=markersByKey.get(node.dataset.mapMarker);if(entry)showTooltip(entry.marker);}});
   listen(markerLayer,'focusin',event=>{const entry=markersByKey.get(event.target.dataset.mapMarker);if(entry)showTooltip(entry.marker);});

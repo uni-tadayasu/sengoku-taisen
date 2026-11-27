@@ -37,6 +37,32 @@ let checks=0;async function test(name,run){await run();checks++;console.log('PAS
   const f=app({audioPreferenceVersion:1,sound:false,volume:0,effectsVolume:20});f.c.settingsModal();await f.preview();assert.equal(f.c.music,null);assert.equal(f.audio.contexts.length,1);assert.equal(f.c.soundEffects._voices.size,2);assert.match(f.doc.querySelector('[data-sound-feedback]').textContent,/再生しました/);assert.equal(f.c.soundEffects._gain.gain.value,.13);assert.equal(f.c.settings.sound,false);assert.equal(f.c.settings.volume,0);
   await f.input(0);assert.equal(f.c.soundEffects._voices.size,0);assert.equal(f.c.soundEffects._gain.gain.value,0);assert(f.doc.querySelector('[data-sound-preview]').disabled);assert.match(f.doc.querySelector('#settings-effects-volume-value').textContent,/消音/);const before=f.audio.nodes.length;await f.preview();assert.equal(f.audio.nodes.length,before);await f.dispose();
  });
+ await test('the selected audition sends the intended instrument score to the independent bus',async()=>{
+  const f=app({audioPreferenceVersion:1,sound:false,volume:0,effectsVolume:20});f.c.settingsModal();
+  const chooser=f.doc.querySelector('#effects-preview-type');assert.equal(chooser.value,'confirm');
+  assert.equal(chooser.options.length,21);chooser.value='battle';await f.preview();
+  const direct=fixture(),effects=new direct.context.SengokuSoundEffects({volume:20});
+  assert(await effects.play('battle'));
+  const sources=audio=>[...audio.sources].map(n=>[n.type,n.started,n.stopped,n.frequency.events]);
+  assert.deepEqual(sources(f.audio),sources(direct));
+  assert.match(f.doc.querySelector('[data-sound-feedback]').textContent,/合戦が始まる/);assert.equal(f.c.music,null);
+  await effects.dispose();await f.dispose();
+ });
+ await test('audition stays silent while hidden or in a call and never writes preferences or saves',async()=>{
+  const f=app({audioPreferenceVersion:1,sound:false,volume:31,effectsVolume:19});
+  const gameBefore=JSON.stringify(f.game.state),prefsBefore=f.storage.get(settingsKey);
+  f.c.settingsModal();f.doc.querySelector('#effects-preview-type').value='victory';
+  f.c.setVoiceActive(true);await f.preview();
+  assert.match(f.doc.querySelector('[data-sound-feedback]').textContent,/通話中/);
+  f.c.setVoiceActive(false);f.doc.hidden=true;await f.preview();
+  assert.match(f.doc.querySelector('[data-sound-feedback]').textContent,/別タブ/);
+  assert.equal(f.audio.contexts.length,0);
+  assert.equal(f.storage.get(settingsKey),prefsBefore);
+  assert.equal(f.storage.get(saveKey),'original campaign');
+  assert.equal(JSON.stringify(f.game.state),gameBefore);
+  assert.equal(f.writes.length,0);
+  await f.dispose();
+ });
  await test('effect volume changes only its own gain and never changes BGM playback, gain or selected track',async()=>{
   const x=fixture(),music=new x.Music({volume:10}),effects=new x.context.SengokuSoundEffects({volume:10});music.setAuto(false);await music.play('town-dawn');const master=music._master.gain.value,track=music.currentId;await effects.play();assert.notEqual(effects._context,music._context);assert.equal(effects._gain.connections[0],effects._context.destination);
   effects.setVolume(80);assert.equal(effects._gain.gain.value,.52);assert.equal(music.volume,10);assert.equal(music.currentId,track);assert.equal(music._master.gain.value,master);music.pause();x.setNow(Date.now()+1000);assert.equal(await effects.play(),true);effects.setVolume(0);assert.equal(music.playing,false);await effects.dispose();await music.dispose();
@@ -55,7 +81,14 @@ let checks=0;async function test(name,run){await run();checks++;console.log('PAS
   const pending=p.play();x.runTimer(1000);assert.equal(await pending,false);assert.equal(p._voices.size,0);resolve();await flush();assert.equal(p._context.state,'suspended');assert.equal(p._voices.size,0);assert.equal(x.timers.size,0);await p.dispose();
  });
  await test('rapid effects are bounded and sources disconnect after the final note',async()=>{
-  const x=fixture(),p=new x.context.SengokuSoundEffects({volume:10});for(let i=0;i<100;i++)void p.play();await flush();assert.equal(p._voices.size,2);assert.equal(x.sources.size,6);p._context.advance(1);assert.equal(p._voices.size,0);assert.equal(p._context.state,'suspended');await p.dispose();assert(x.nodes.every(node=>node.connections.length===0));assert.equal(x.timers.size,0);
+  const x=fixture(),p=new x.context.SengokuSoundEffects({volume:10});
+  const accepted=await Promise.all(Array.from({length:100},()=>p.play('confirm')));
+  assert.equal(accepted.filter(Boolean).length,1);
+  assert.equal(p._voices.size,2);
+  const solo=fixture(),reference=new solo.context.SengokuSoundEffects({volume:10});
+  assert(await reference.play('confirm'));
+  assert.equal(x.sources.size,solo.sources.size,'Burst must allocate exactly one two-note confirmation');
+  await reference.dispose();p._context.advance(1);assert.equal(p._voices.size,0);assert.equal(p._context.state,'suspended');await p.dispose();assert(x.nodes.every(node=>node.connections.length===0));assert.equal(x.timers.size,0);
  });
  console.log(`${checks} independent sound effects volume, routing and preference checks passed.`);
 })().catch(error=>{console.error(error);process.exitCode=1;});

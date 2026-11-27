@@ -46,4 +46,14 @@ test('save failure restores currency, roster, history and RNG with no animation'
 test('navigation or identity changes retire timers without changing the saved rewards',()=>{
  const {c,game,modals,timers}=fixture();c.summonOfficers(1);const before=JSON.stringify(game.state),timer=[...timers.values()][0];c.closeModal();timer.callback();assert.equal(modals.length,1);assert.equal(JSON.stringify(game.state),before);c.summonOfficers(1);c.roleEpoch++;c.finishGachaPresentation();assert.equal(c.activeModal,'');assert.equal(c.gachaPresentation,null);assert.equal(modals.filter(x=>x.kind==='gacha-result').length,0);
 });
+test('summon outcomes sound once after the saved reveal and stay silent after leaving it',()=>{
+ for(const reduced of [false,true]){
+  const {c,timers}=fixture({reduced}),sounds=[];c.playNote=kind=>sounds.push(kind);c.summonOfficers(1);
+  const timer=[...timers.values()][0];if(!reduced)assert.deepEqual(sounds,[]);
+  c.finishGachaPresentation();timer?.callback();assert.deepEqual(sounds,['recruit']);
+ }
+ const {c,timers}=fixture(),sounds=[];c.playNote=kind=>sounds.push(kind);c.summonOfficers(1);
+ const timer=[...timers.values()][0];c.closeModal();timer.callback();assert.deepEqual(sounds,[]);
+ c.save=()=>false;c.summonOfficers(1);assert.deepEqual(sounds,['error']);
+});
 console.log(`${count} officer filtering and saved summon checks passed.`);

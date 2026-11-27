@@ -130,5 +130,33 @@
   });
   document.addEventListener('visibilitychange',()=>{if(document.hidden)audio.pause();});
   window.addEventListener('pagehide',event=>{audio.pause();clearTimeout(stopTimer);if(!event.persisted&&wavURL)URL.revokeObjectURL(wavURL);});
+  const Effects = window.SengokuSoundEffects;
+  if (Effects?.catalog?.length) {
+    const choice = $('effect-choice'), volume = $('effect-volume'), play = $('effect-play');
+    const feedback = $('effect-status');
+    let effects, auditionRequest = 0;
+    for (const [key, name] of Effects.catalog) choice.add(new Option(name, key));
+    $('effects').hidden = false;
+    choice.addEventListener('change', () => {
+      ++auditionRequest;
+      feedback.textContent = Number(volume.value) ? '' : '試聴音を消音しています。';
+    });
+    volume.addEventListener('input', () => {
+      ++auditionRequest;
+      const level = Number(volume.value);
+      $('effect-level').textContent = level + '%';
+      effects?.setVolume(level);
+      play.disabled = level === 0;
+      feedback.textContent = level === 0 ? '試聴音を消音しています。' : '';
+    });
+    play.addEventListener('click', async () => {
+      const request = ++auditionRequest;
+      effects ??= new Effects({volume: Number(volume.value)});
+      const label = choice.selectedOptions[0].textContent;
+      const played = await effects.play(choice.value);
+      if (request === auditionRequest)
+        feedback.textContent = played ? '「' + label + '」を鳴らしました。' : '音量を確認して、もう一度お試しください。';
+    });
+  }
   select();
 })();

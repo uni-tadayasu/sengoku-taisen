@@ -33,7 +33,10 @@ const totalGzipBytes = rows.reduce((sum,row)=>sum+row.gzipBytes,0);
 // responsive files; the smallest is 47,724 bytes and fits the offline art budget.
 // v5.9.5 uses named-function-preserving minification and a compact officer
 // roster. Keep the previous raw ceiling and tighten the shipped gzip ceiling.
-const rawBudget=3357000,gzipBudget=932000;
+// v5.9.12 synthesizes 21 scene-specific effects, routes intentional input
+// and confirmed game results, and provides in-game audition controls. The
+// entry adds 12,648 raw / 4,793 gzip bytes over v5.9.11 and no audio samples.
+const rawBudget=3370000,gzipBudget=937000;
 assert(totalBytes <= rawBudget, `Initial bundles exceed the ${rawBudget} byte budget: ${totalBytes}`);
 assert(totalGzipBytes <= gzipBudget, `Initial bundles exceed the ${gzipBudget} gzip byte budget: ${totalGzipBytes}`);
 const html = fs.readFileSync(path.join(root,'index.html'),'utf8');

@@ -206,7 +206,7 @@
   function toast(message,error=false){message=window.SengokuSyncNotices?.visibleText?.(message)??message;if(!message)return;clearTimeout(toastTimer);const el=$('#toast'),display=`toast show${error?' error':''}`;if(el.textContent!==message)el.textContent=message;if(el.className!==display)el.className=display;toastTimer=setTimeout(()=>el.classList.remove('show'),5200);}
   function closeModal(){clearGachaPresentation();const m=$('#modal');if(m.open)m.close();activeModal='';activeModalContext=null;syncMusic();}
   function modal(title,subtitle,body,footer='',kind='',context=null){const previousFocus=document.activeElement,restoreModalFocus=$('#modal').contains?.(previousFocus);if(kind!=='gacha-animation'&&kind!=='gacha-result')clearGachaPresentation();activeModal=kind;activeModalContext=context;$('#modal').setAttribute('aria-labelledby','modal-title');if(subtitle)$('#modal').setAttribute('aria-describedby','modal-description');else $('#modal').removeAttribute('aria-describedby');$('#modal').classList.toggle('gacha-modal',kind==='gacha-result'||kind==='gacha-odds'||kind==='gacha-animation');$('#modal').classList.toggle('start-castle-modal',kind==='new');$('#modal').classList.toggle('level-guide-modal',kind==='level-guide');$('#modal').classList.toggle('officer-comparison-modal',kind==='officer-comparison');$('#modal').classList.toggle('army-planner-modal',kind==='army-planner');$('#modal').classList.toggle('player-evaluation-modal',kind==='player-evaluation');if(!$('#modal').open)window.SengokuStableDOM?.forget($('#modal-content'));patchHTML($('#modal-content'),`<header class="modal-header"><div><h2 id="modal-title">${esc(title)}</h2>${subtitle?`<p id="modal-description">${esc(subtitle)}</p>`:''}</div><button class="icon-button" data-action="close" aria-label="閉じる">${icon('close')}</button></header><div class="modal-body">${body}</div>${footer?`<footer class="modal-footer">${footer}</footer>`:''}`,{key:[kind,context?.id,context?.mode,context?.target,context?.rank,context?.kind]});if(!$('#modal').open)$('#modal').showModal();refreshLiveControls();refreshJobTimers();if(restoreModalFocus&&!previousFocus?.isConnected)$('#modal .modal-header [data-action="close"]')?.focus?.({preventScroll:true});}
-  function perform(result,{close=true,quiet=false}={}){if(!result?.ok){toast(result?.message||'実行できませんでした。',true);return false;}if(close)closeModal();save();render();playNote(659,.075);if(!quiet)toast(result.message);return true;}
+  function perform(result,{close=true,quiet=false,sound='success'}={}){if(!result?.ok){playNote('error');toast(result?.message||'実行できませんでした。',true);return false;}if(close)closeModal();const saved=save();render();if(sound)playNote(saved===false?'error':sound);if(!quiet)toast(result.message);return true;}
   function hasResources(cost){return Object.keys(resNames).every(k=>state().resources[k]>=(cost?.[k]||0));}
   function costHtml(cost){
     const budget=state(),amounts={...budget.resources,magatama:budget.magatama};
@@ -405,7 +405,7 @@
     const ownerId=String(window.SengokuSocial?.getUser?.()?.id||'local');
     return{writable,reason,ownerId,linked:syncAccess.linked===true,online:navigator.onLine!==false,stamp:[ownerId,roleEpoch,state().roaming?.campaignId||state().campaignId||state().home].join(':')};
   }
-  function roamingOptions(){return{getGame:()=>game,getStatus:getRoamingAccess,request:(route,options)=>window.SengokuSocial.roamingRequest(route,options),mountManagement:host=>window.SengokuRoamingManagement?.mount(host,{getContext:()=>window.SengokuSocial?.getEventContext?.()||{},request:(route,options)=>window.SengokuSocial.roamingRequest(route,options),onDeploymentChanged:()=>roamingController?.controller?.loadDeployment?.()}),battle:requestRoamingBattle,onResult:()=>{renderHeader();refreshLiveControls({refreshHints:false});window.SengokuHintsUI?.refresh?.();playNote(659,.075);}};}
+  function roamingOptions(){return{getGame:()=>game,getStatus:getRoamingAccess,request:(route,options)=>window.SengokuSocial.roamingRequest(route,options),mountManagement:host=>window.SengokuRoamingManagement?.mount(host,{getContext:()=>window.SengokuSocial?.getEventContext?.()||{},request:(route,options)=>window.SengokuSocial.roamingRequest(route,options),onDeploymentChanged:()=>roamingController?.controller?.loadDeployment?.()}),battle:requestRoamingBattle,onResult:result=>{renderHeader();refreshLiveControls({refreshHints:false});window.SengokuHintsUI?.refresh?.();if(!result.idempotent){if(result.marching)playNote('dispatch');else if(!result.march&&typeof result.battle?.won==='boolean')playNote(result.battle.won?'victory':'defeat');}}};}
   async function requestRoamingBattle(payload){
     if(syncAccess.linked)return requestField('/roaming/battle',{method:'POST',data:payload});
     const access=getRoamingAccess();if(!access.writable)throw Error(access.reason||'出陣の準備を確認してください。');
@@ -437,7 +437,7 @@
     const access=getRoamingAccess(),user=window.SengokuSocial?.getUser?.();
     return {...access,readable:!access.linked||Boolean(user&&syncAccess.ready&&!syncAccess.rolePending&&!syncAccess.banned),stamp:[access.ownerId,roleEpoch,state().walking?.campaignId||state().home,access.linked].join(':')};
   }
-  function covertOptions(){return{getGame:()=>game,getStatus:getCovertAccess,load:cursor=>requestCovert('/covert'+(cursor?'?cursor='+encodeURIComponent(cursor)+'&limit=100':''),{method:'GET'}),mutate:(action,payload)=>requestCovert('/covert/'+action,{method:'POST',data:payload}),onResult:()=>{renderHeader();refreshLiveControls({refreshHints:false});window.SengokuHintsUI?.refresh?.();playNote(659,.075);}};}
+  function covertOptions(){return{getGame:()=>game,getStatus:getCovertAccess,load:cursor=>requestCovert('/covert'+(cursor?'?cursor='+encodeURIComponent(cursor)+'&limit=100':''),{method:'GET'}),mutate:(action,payload)=>requestCovert('/covert/'+action,{method:'POST',data:payload}),onResult:result=>{renderHeader();refreshLiveControls({refreshHints:false});window.SengokuHintsUI?.refresh?.();if(!result.idempotent)playNote(result.result?.accepted?'dispatch':'success');}};}
   async function requestCovert(route,{method='GET',data:payload}={}){
     const action=route.slice('/covert/'.length);
     if(!(method==='GET'&&/^\/covert(?:\?cursor=[A-Za-z0-9_%-]+&limit=100)?$/.test(route)||method==='POST'&&['hire','dispatch','recall','retaliate'].includes(action)&&route==='/covert/'+action))throw Error('派遣部隊の操作を確認してください。');
@@ -582,7 +582,7 @@
   function configureTravel(){window.SengokuTravelUI?.configure({
     getContext:()=>({scope:[window.SengokuSocial?.getUser?.()?.id||'local',state().walking?.campaignId||'',roleEpoch].join(':'),started:!startPending,linked:syncAccess.linked,ready:syncAccess.ready&&!syncAccess.rolePending&&!syncAccess.banned}),
     getLocal:localMarches,getElapsedMs:()=>state().worldClock?.elapsedMs??(state().turn*60000+(state().realtime?.elapsed||0)*1000),request:requestMarchStatus,
-    onArrival:march=>{toast(march.status==='cancelled'?march.message||'出陣を取り消しました。進軍状況から詳細を確認できます。':`${march.targetName}への部隊が到着しました。「戦果を確認」から結果を確認できます。`);renderHeader();refreshLiveControls();window.SengokuStrategy?.refreshAccess?.();},
+    onArrival:(march,wasMarching)=>{if(wasMarching&&march.status==='resolved'&&march.battle)playNote(march.battle.won?'victory':'defeat');toast(march.status==='cancelled'?march.message||'出陣を取り消しました。進軍状況から詳細を確認できます。':`${march.targetName}への部隊が到着しました。「戦果を確認」から結果を確認できます。`);renderHeader();refreshLiveControls();window.SengokuStrategy?.refreshAccess?.();},
     onReport:march=>{if(march.kind==='covert'){go('covert');return true;}if(!march.battle)return false;if(march.kind==='castle'){battleResult(march.battle);return true;}if(march.kind==='branch'){branchBattleResult(march.battle);return true;}if(march.kind==='roaming'&&window.SengokuRoaming?.reportMarkup){modal('野良兵戦の戦果',march.targetName,window.SengokuRoaming.reportMarkup(march.battle),`<button class="button primary" data-action="close">閉じる</button>`,'march-result');return true;}if(['field','rally'].includes(march.kind)&&window.SengokuField?.battleReportHtml){modal('到着後の合戦結果',march.targetName,window.SengokuField.battleReportHtml(march.battle,String(window.SengokuSocial?.getUser?.()?.id||'')),`<button class="button primary" data-action="close">閉じる</button>`,'march-result');return true;}return false;}
   });}
   function confirmDialog(title,text,confirmLabel){return new Promise(resolve=>{
@@ -601,7 +601,7 @@
     const mutation=(options.method||'GET')==='POST'&&/^\/(?:progress\/(?:claim|exchange)|alliance\/(?:rally\/(?:join|launch)|reinforcements\/send|units\/claim|treasury\/claim))$/.test(route);
     return mutation?requestField(route,options):window.SengokuSocial.expansionRequest(route,options);
   }
-  function configureProgress(){window.SengokuProgress?.configure({getGame:()=>game,getContext:getExpansionAccess,api:requestExpansion,mutate:fn=>{if(!requireWritable())return{ok:false,message:syncMessage()};const result=fn(game);perform(result,{close:false,quiet:true});return result;},navigate:go,notify:toast,openMail:()=>window.SengokuSocial?.open('mail')});}
+  function configureProgress(){window.SengokuProgress?.configure({getGame:()=>game,getContext:getExpansionAccess,api:requestExpansion,mutate:fn=>{if(!requireWritable())return{ok:false,message:syncMessage()};const result=fn(game);perform(result,{close:false,quiet:true,sound:null});return result;},navigate:go,notify:toast,openMail:()=>window.SengokuSocial?.open('mail')});}
   let primedProgressOwner='',progressPrimePending=false,noticeRecapPending=false;
   try{noticeRecapPending=new URLSearchParams(window.location.search).get('notice')==='1';}catch(_){}
   function openPendingRecap(){
@@ -638,8 +638,8 @@
     return requestField(route,{method,data:payload});
   }
   async function upgradeSharedBase(kind,id){
-    try{const result=await requestField('/staff/base/upgrade',{method:'POST',data:{kind,id}});playNote(659,.075);toast(result.receipt?.queued?`Lv.${result.receipt.targetLevel}への共同増築を予約しました。先の工事から順番に進みます。`:'共同普請の結果を反映しました。共同拠点に自動で共有されます。');}
-    catch(error){toast(error.message||'共同普請を確認できませんでした。',true);}
+    try{const result=await requestField('/staff/base/upgrade',{method:'POST',data:{kind,id}});if(!result?.idempotent)playNote('build');toast(result.receipt?.queued?`Lv.${result.receipt.targetLevel}への共同増築を予約しました。先の工事から順番に進みます。`:'共同普請の結果を反映しました。共同拠点に自動で共有されます。');}
+    catch(error){playNote('error');toast(error.message||'共同普請を確認できませんでした。',true);}
   }
   function getLocalCommander(){const officer=!startPending&&game.officer(state().army[0]);return officer?{officerId:officer.id,name:officer.name,rank:officer.rank}:null;}
   function go(view,{reveal=true}={}){
@@ -749,8 +749,8 @@
     try{
       const response=await requestBranches('/branches/auto-assign-officers',{method:'POST',data:{branchId:'all'}}),result=response?.result||response;
       if(!response?.ok||!result?.ok)throw Error(result?.message||response?.message||'武将を配置できませんでした。');
-      preserveInteraction($('#main'),render);refreshActiveModal();playNote(659,.075);governorAssignmentResult(result);
-    }catch(error){toast(error.message||'武将の配置結果を確認してください。',true);}
+      preserveInteraction($('#main'),render);refreshActiveModal();if(!response.idempotent)playNote(result.changed||result.changedCount||result.branchAssignedCount?'assign':'confirm');governorAssignmentResult(result);
+    }catch(error){playNote('error');toast(error.message||'武将の配置結果を確認してください。',true);}
     finally{branchBookingPending=false;refreshLiveControls();}
   }
   function saveFacilityPreferences(){try{window.SengokuManagement.savePreferences(localStorage,{query:facilityQuery,category:facilityCategory,state:facilityState,sort:facilitySort,layout:facilityLayout},Object.keys(categoryNames));}catch(_){/* Display preferences never block play when storage access is denied. */}}
@@ -1154,13 +1154,13 @@
   function individualOddsPage(){const pages=Math.max(1,Math.ceil(game.gachaPool(gachaOddsRank).length/10));gachaOddsPage=Math.max(1,Math.min(gachaOddsPage,pages));return `<div class="gacha-odds-table-wrap"><table class="gacha-odds-table"><thead><tr><th>武将</th><th>ランク</th><th>提供割合</th></tr></thead><tbody id="gacha-individual-odds">${gachaOfficerOddsRows(gachaOddsRank,gachaOddsPage)}</tbody></table></div>${pageControls('gacha-odds-page',gachaOddsPage,pages)}`;}
 
   function gachaOddsModal(){const odds=game.gachaOdds();modal('武将招集の提供割合',`${roster.length}名・8ランク · 招集対象 ${num(game.collection().totalVariants)}種 · 1回と10回の各枠は同じ確率です。`,`<div class="notice">先にランクを抽選し、そのランクの対象武将から等確率で1名を選びます。対象の人数と各絵巻の割合は、この一覧で確認できます。所持状況・天守レベルは抽選割合に影響しません。確定枠・天井・期間限定武将はありません。</div><div class="gacha-odds-table-wrap"><table class="gacha-odds-table"><thead><tr><th>ランク</th><th>ランク合計</th><th>人数</th><th>武将1名あたり</th></tr></thead><tbody>${odds.map(r=>`<tr><th class="rank-${r.rank}">${r.rank}</th><td>${r.rate}%</td><td>${r.count}名</td><td>${r.perOfficerRate.toFixed(4)}%</td></tr>`).join('')}</tbody></table></div><p class="subtitle">表示は小数第4位まで。厳密な個別割合は「ランク合計 ÷ そのランクの対象人数」です。同じ武将・同じランクの重複だけが勾玉${data.gacha.duplicateRefund}に変換されます。</p><details class="gacha-all-officers"><summary>ランク別・対象武将の個別提供割合</summary><label for="gacha-odds-rank" style="margin-top:17px">確認するランク</label><select id="gacha-odds-rank" class="select">${data.ranks.map(rank=>`<option value="${rank}" ${rank===gachaOddsRank?'selected':''}>${rank}ランク · ${game.gachaPool(rank).length}名</option>`).join('')}</select><div id="gacha-individual-list">${individualOddsPage()}</div></details>`,`<button class="button primary" data-action="close">招集画面へ戻る</button>`,'gacha-odds');}
-  function gachaResult(result){modal(result.results.length===10?'十連招集の結果':'武将招集の結果',`新規絵巻 ${result.newCount}枚 · 新たな家臣 ${result.newOfficerCount}名 · 重複変換 勾玉${num(result.refund)}`,`<div class="gacha-result-summary"><span>消費 ${icon('magatama')}${num(result.cost)}</span><span>現在の勾玉 <b data-magatama-balance>${num(state().magatama)}</b></span></div><div class="gacha-result-grid ${result.results.length===1?'single-draw':''}">${result.results.map(item=>`<div class="gacha-draw-result" data-rank="${item.rank}"><div class="gacha-result-label ${item.isNew?'new-officer':''}">${item.isNew?(item.isNewOfficer?'NEW · 新家臣・新絵巻':item.upgraded?'NEW · 上位絵巻':'NEW · 新たな絵巻'):`同一絵巻 · 勾玉+${item.duplicateRefund}`}</div>${officerCard(game.officer(item.officerId,item.rank))}</div>`).join('')}</div><p class="subtitle">絵巻を押すとそのランクの姿・能力・特技を確認できます。上位ランクを獲得すると軍団・奉行の能力が自動で向上します。下位ランクの新規獲得で能力が下がることはありません。</p>`,`<button class="button" data-action="close">招集画面へ</button><button class="button gold" data-view="army">${icon('swords')}軍団を編成</button>`,'gacha-result');playNote(784,.12);}
+  function gachaResult(result){modal(result.results.length===10?'十連招集の結果':'武将招集の結果',`新規絵巻 ${result.newCount}枚 · 新たな家臣 ${result.newOfficerCount}名 · 重複変換 勾玉${num(result.refund)}`,`<div class="gacha-result-summary"><span>消費 ${icon('magatama')}${num(result.cost)}</span><span>現在の勾玉 <b data-magatama-balance>${num(state().magatama)}</b></span></div><div class="gacha-result-grid ${result.results.length===1?'single-draw':''}">${result.results.map(item=>`<div class="gacha-draw-result" data-rank="${item.rank}"><div class="gacha-result-label ${item.isNew?'new-officer':''}">${item.isNew?(item.isNewOfficer?'NEW · 新家臣・新絵巻':item.upgraded?'NEW · 上位絵巻':'NEW · 新たな絵巻'):`同一絵巻 · 勾玉+${item.duplicateRefund}`}</div>${officerCard(game.officer(item.officerId,item.rank))}</div>`).join('')}</div><p class="subtitle">絵巻を押すとそのランクの姿・能力・特技を確認できます。上位ランクを獲得すると軍団・奉行の能力が自動で向上します。下位ランクの新規獲得で能力が下がることはありません。</p>`,`<button class="button" data-action="close">招集画面へ</button><button class="button gold" data-view="army">${icon('swords')}軍団を編成</button>`,'gacha-result');}
   function gachaScope(){return JSON.stringify([window.SengokuSocial?.getUser?.()?.id||'',state().walking?.campaignId||'',state().clan,state().home,roleEpoch]);}
   function clearGachaPresentation(){const previous=gachaPresentation;if(previous?.timer)clearTimeout(previous.timer);gachaPresentation=null;if(previous)refreshLiveControls();}
   function finishGachaPresentation(){
     const presentation=gachaPresentation;if(!presentation||presentation.phase!=='playing')return;
     if(presentation.scope!==gachaScope()){closeModal();return;}
-    clearTimeout(presentation.timer);presentation.timer=null;presentation.phase='results';gachaResult(presentation.result);
+    clearTimeout(presentation.timer);presentation.timer=null;presentation.phase='results';playNote('recruit');gachaResult(presentation.result);
   }
   function beginGachaPresentation(result){
     clearGachaPresentation();
@@ -1168,13 +1168,13 @@
     gachaPresentation={phase:'playing',result,scope:gachaScope(),timer:null};
     if(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches||window.SengokuPresentation?.getEffectiveMotion?.()==='quiet'){finishGachaPresentation();return;}
     modal(result.results.length===10?'十の縁、英傑招来':'英傑招来','新たな絵巻との出会い。',`<section class="gacha-reveal-stage" data-rank="${highest}"><div class="gacha-reveal-halo" aria-hidden="true"></div><img class="gacha-reveal-emblem" src="assets/emblem.webp" alt=""><div class="gacha-reveal-cards ${result.results.length===1?'single-draw':''}" aria-hidden="true">${result.results.map((item,index)=>`<span class="gacha-sealed-scroll" data-rank="${item.rank}" style="--reveal-index:${index}"><i>縁</i><b>${item.rank}</b></span>`).join('')}</div><h3 class="gacha-reveal-title">群雄、ここに集う。</h3><p role="status">${result.results.length}枚の絵巻を開いています…</p><div class="gacha-reveal-progress" aria-hidden="true"><span></span></div></section>`,`<button type="button" class="button gold" data-action="gacha-skip">演出をスキップ</button>`,'gacha-animation');
-    playNote(523,.1);const presentation=gachaPresentation;
+    const presentation=gachaPresentation;
     presentation.timer=setTimeout(()=>{if(gachaPresentation===presentation)finishGachaPresentation();},3200);
   }
   function summonOfficers(count){
     if(gachaDrawing||gachaPresentation)return;
     gachaDrawing=true;refreshLiveControls();
-    try{const result=drawDurableOfficers(count);if(result.ok)beginGachaPresentation(result);else toast(result.message,true);}
+    try{const result=drawDurableOfficers(count);if(result.ok)beginGachaPresentation(result);else{playNote('error');toast(result.message,true);}}
     finally{gachaDrawing=false;refreshLiveControls();}
   }
   function drawDurableOfficers(count){
@@ -1250,7 +1250,7 @@
     if(!check.ok){armyPlannerModal(context.config);toast(check.message,true);return;}
     const fresh=window.SengokuArmyPlanner.build(game,{...context.config,locked:context.plan.ids});
     if(!fresh.ok||armyPlanReviewKey(fresh)!==context.reviewKey){armyPlannerModal(context.config);toast('武将や任命が更新されました。新しい提案を確認してから採用してください。',true);return;}
-    perform(game.assignArmy(context.plan.ids));
+    perform(game.assignArmy(context.plan.ids),{sound:'assign'});
   }
   function officerChoiceResults(){
     const s=state(),list=filterOfficerList(game.officerViews?game.officerViews(s.officers):s.officers.map(id=>game.officer(id)),{...choiceFilters[choiceMode],ownership:'owned'},{rankMatches:true}),pages=Math.max(1,Math.ceil(list.length/8));choicePage=Math.max(1,Math.min(choicePage,pages));
@@ -1331,7 +1331,11 @@
     const group=(id,name,description,symbol,body,open=false)=>`<details class="settings-group" id="settings-${id}" ${(previousHub ? previousHub.querySelector('#settings-'+id)?.open : open) ? 'open' : ''}><summary>${icon(symbol)}<span><strong>${name}</strong><small>${description}</small></span><span class="settings-disclosure" aria-hidden="true"></span></summary><div class="settings-group-body">${body}</div></details>`;
     const musicVolume=`<div class="settings-row settings-volume"><label for="volume">BGM音量</label><input id="volume" type="range" min="0" max="100" step="1" value="${settings.volume}" aria-label="BGM音量"><output for="volume" id="settings-volume-value">${settings.volume}%</output></div>`;
     const effectsVolume=`<div class="settings-row settings-volume"><label for="effects-volume">効果音量</label><input id="effects-volume" type="range" min="0" max="100" step="1" value="${settings.effectsVolume}" aria-label="サウンド（効果音）の音量" aria-describedby="effects-volume-help"><output for="effects-volume" id="settings-effects-volume-value">${settings.effectsVolume}%${settings.effectsVolume===0?'・消音':''}</output></div>`;
-    const sound=`${compact?`<div class="settings-quick-volume">${musicVolume}${effectsVolume}</div>`: ''}<div class="settings-sound-controls"><div class="settings-music"><div class="settings-row settings-audio-row"><div><strong>BGM</strong><small>全20曲・トップは支度、ゲーム内は朝昼夜</small></div><button class="button ${settings.sound?'':'gold'} small" data-action="sound-settings">${musicStatusText()} · ${settings.sound?'停止':'再生'}</button></div>${compact?'':musicVolume}<button class="button small" data-action="music-resume" ${settings.sound&&(musicWaitingForGesture||musicFailure)?'':'hidden'}>BGMを再生</button><button class="button full" data-action="music">${icon('sound')}音楽帳で曲を選ぶ</button><p class="settings-explanation">起動時にBGMの再生を試みます。ブラウザの許可待ちでは、画面を操作すると再生を試みます。停止・音量の設定は次回も保持します。</p></div><section class="settings-effects" aria-labelledby="effects-volume-label"><div class="settings-row settings-audio-row"><div><strong id="effects-volume-label">サウンド（効果音）</strong><small>操作・招集・結果確認の音を調整</small></div><button type="button" class="button small" data-sound-preview${settings.effectsVolume===0?' disabled':''}>音を試す</button></div>${compact?'':effectsVolume}<p id="effects-volume-help" class="settings-explanation">BGMとは別に調整できます。0%で効果音を消音します。この端末の設定は次回も保持します。通話中・別タブでは一時停止します。</p><p class="settings-effects-feedback" data-sound-feedback role="status" aria-live="polite"></p></section></div>${window.SengokuPresentation?.settingsMarkup?.()||''}<div class="settings-row"><label for="tips">城下町のヒント</label><select id="tips" class="select"><option value="on" ${settings.tips?'selected':''}>表示する</option><option value="off" ${settings.tips?'':'selected'}>表示しない</option></select></div>`;
+    const previewType=previousHub?.querySelector('#effects-preview-type')?.value || 'confirm';
+    const effectOptions=(window.SengokuSoundEffects?.catalog || [['confirm','操作を確定する']])
+      .map(([key,label])=>`<option value="${esc(key)}"${key===previewType?' selected':''}>${esc(label)}</option>`).join('');
+    const audition=`<div class="settings-effects-preview" data-ui-sound="off"><label for="effects-preview-type">試聴する場面</label><select id="effects-preview-type" class="select">${effectOptions}</select><button type="button" class="button small" data-sound-preview${settings.effectsVolume===0?' disabled':''}>音を試す</button></div>`;
+    const sound=`${compact?`<div class="settings-quick-volume">${musicVolume}${effectsVolume}</div>`: ''}<div class="settings-sound-controls"><div class="settings-music"><div class="settings-row settings-audio-row"><div><strong>BGM</strong><small>全20曲・トップは支度、ゲーム内は朝昼夜</small></div><button class="button ${settings.sound?'':'gold'} small" data-action="sound-settings">${musicStatusText()} · ${settings.sound?'停止':'再生'}</button></div>${compact?'':musicVolume}<button class="button small" data-action="music-resume" ${settings.sound&&(musicWaitingForGesture||musicFailure)?'':'hidden'}>BGMを再生</button><button class="button full" data-action="music">${icon('sound')}音楽帳で曲を選ぶ</button><p class="settings-explanation">起動時にBGMの再生を試みます。ブラウザの許可待ちでは、画面を操作すると再生を試みます。停止・音量の設定は次回も保持します。</p></div><section class="settings-effects" aria-labelledby="effects-volume-label"><div class="settings-row settings-audio-row"><div><strong id="effects-volume-label">サウンド（効果音）</strong><small>琴・拍子木・太鼓・鈴で鳴る、操作や合戦の音</small></div></div>${compact?'':effectsVolume}${audition}<p id="effects-volume-help" class="settings-explanation">BGMとは別に調整できます。0%で効果音を消音します。この端末の設定は次回も保持します。通話中・別タブでは一時停止します。</p><p class="settings-effects-feedback" data-sound-feedback role="status" aria-live="polite"></p></section></div>${window.SengokuPresentation?.settingsMarkup?.()||''}<div class="settings-row"><label for="tips">城下町のヒント</label><select id="tips" class="select"><option value="on" ${settings.tips?'selected':''}>表示する</option><option value="off" ${settings.tips?'':'selected'}>表示しない</option></select></div>`;
     const saves=`<p class="settings-explanation">${syncAccess.linked?'領主の進行を、連携した端末間で引き継ぎます。同時に操作できる端末は1台です。':'このブラウザに進行を自動保存します。端末を変える前に、バックアップを書き出してください。'}</p><div class="settings-stack">${settingAction('export-complete-backup','領主と進行をまとめて書き出す','ログイン情報とセーブを一つのバックアップへ。','save')}${settingAction('open-recovery','引き継ぎ・データ復元','機種やドメインが変わった後、元の領主と進行へ。','upload')}${settingAction('open-sync','端末同期・引き継ぎ','端末の接続と引き継ぎを管理。','refresh')}</div><details class="settings-secondary"><summary>セーブファイルの個別操作</summary><div class="settings-stack">${settingAction('export-save','セーブデータを書き出す','現在の戦役をJSONファイルで保存。','download')}${settingAction('import-save','セーブデータを読み込む','内容を確認してから現在の進行へ反映。','upload')}${settingAction('export-sync-backup','同期・読込前のセーブを取り出す','置き換え前のバックアップを書き出す。','download')}</div></details><p class="settings-explanation">通信が切れても世界の時間は進み、再接続時に共通時刻へ追いつきます。接続の確認中は操作が待機します。</p>`;
     const convenience=`<div class="settings-stack">${settingAction('notifications','通知設定','合戦・書状・普請などを選択。静かな時間帯は日本時間で設定。','bell')}${settingAction('progress','成長手帳・留守中の報告','任務、編成セット、武将育成、歴代記録を確認。','book','data-tab="recap"')}${settingAction('walking','ウォーキング','歩数に応じて、5つの資産が増えます。','walking')}${settingAction('open-gacha','武将招集・勾玉',`所持 ${num(state().magatama)} · プレイで集める専用通貨。`,'magatama')}${settingAction('premium','有料版・支援','外観を見比べ、購入した装いを管理。','flag','aria-haspopup="dialog"')}${settingAction('install','ホーム画面に追加','スマホからアプリのように起動。','plus')}</div>`;
     const campaign=`<div class="settings-row"><span>現在の難易度</span><strong>${({easy:'初陣',normal:'戦国',hard:'修羅'})[state().difficulty]}</strong></div><p class="settings-explanation">各資産の所有上限は100,000,000です。施設の収容量と1回の出陣人数には別の上限があります。</p>${game.isAdmin?`<div class="notice admin-fixed-base">${icon('castle')}<strong>本拠：江戸城（固定）</strong><br>武将・施設・資源は連携した端末へ引き継ぎます。</div>${settingAction('restore-admin-assets','徳川家康 U を復元','資格を確認済み。重複して付与されません。','crown')}`:''}<div class="settings-new-campaign"><p>新しい勢力・難易度で始める場合は、次の画面で内容を確認できます。</p><button class="button danger full" data-action="new-game">${icon('refresh')}新しい物語を始める</button></div>`;
@@ -1652,7 +1656,7 @@
     if(!musicWaitingForGesture&&!musicStarting&&!music?.resuming)return;
     if(event.type==='pointerdown'&&event.pointerType&&event.pointerType!=='mouse')return;
     if(event.type==='keydown'&&(event.repeat||event.isComposing||event.ctrlKey||event.metaKey||event.altKey||['Shift','Control','Alt','Meta','Escape'].includes(event.key)))return;
-    if(event.target?.closest?.('[data-action="sound"],[data-action="sound-settings"],[data-action="music-stop"],[data-action="play-track"],[data-action="music-auto"],[data-action="music-resume"],[data-sound-preview],#volume,input[type="range"]'))return;
+    if(event.target?.closest?.('[data-action="sound"],[data-action="sound-settings"],[data-action="music-stop"],[data-action="play-track"],[data-action="music-auto"],[data-action="music-resume"],[data-sound-preview],.settings-effects-preview,#volume,input[type="range"]'))return;
     removeMusicGesture();void requestMusicPlayback();
   }
   function applyMusicVolume(value){
@@ -1692,7 +1696,15 @@
     try{if(!soundEffects)soundEffects=new window.SengokuSoundEffects({volume:settings.effectsVolume});soundEffects.setVolume(settings.effectsVolume);return soundEffects.play(typeof type==='string'?type:'confirm');}catch(_){return Promise.resolve(false);}
   }
   async function previewSoundEffect(){
-    const result=await playNote(),feedback=$('[data-sound-feedback]');if(feedback)feedback.textContent=result?'確認音を再生しました。':voiceAudioActive?'通話中は効果音を一時停止しています。':settings.effectsVolume===0?'効果音は消音中です。':'音を再生できませんでした。もう一度「音を試す」を押してください。';
+    const key=$('#effects-preview-type')?.value;
+    const [type,label]=window.SengokuSoundEffects?.catalog?.find(([id])=>id===key) || ['confirm','操作を確定する'];
+    const feedback=$('[data-sound-feedback]'),played=await playNote(type);
+    if(!feedback || feedback.isConnected===false)return;
+    if(played)feedback.textContent=`「${label}」の音を再生しました。`;
+    else if(voiceAudioActive)feedback.textContent='通話中は効果音を一時停止しています。';
+    else if(settings.effectsVolume===0)feedback.textContent='効果音は消音中です。';
+    else if(document.hidden)feedback.textContent='別タブを表示中は効果音を一時停止します。この画面に戻ってから試してください。';
+    else feedback.textContent='音を再生できませんでした。もう一度「音を試す」を押してください。';
   }
   function stopMusic(){
     settings.sound=false;++musicRequest;musicStarting=false;musicWaitingForGesture=false;musicFailure=false;
@@ -1749,15 +1761,15 @@
     case 'toggle-time':worldClockModal();break;
     case 'building':buildingModal(id);break;
     case 'staff-base-detail':staffBaseModal();break;
-    case 'upgrade':if(game.isStaff)await upgradeSharedBase('building',id);else{const result=upgradeDurableBuilding(id);toast(result.message,!result.ok);}break;
-    case 'upgrade-castle':if(game.isStaff&&id===staffBaseId)await upgradeSharedBase('castle',id);else perform(game.upgradeCastle(id));break;
+    case 'upgrade':if(game.isStaff)await upgradeSharedBase('building',id);else{const result=upgradeDurableBuilding(id);if(!result.ok)playNote('error');toast(result.message,!result.ok);}break;
+    case 'upgrade-castle':if(game.isStaff&&id===staffBaseId)await upgradeSharedBase('castle',id);else perform(game.upgradeCastle(id),{sound:'build'});break;
     case 'branch-troop-max':{const q=window.SengokuBranches?.troopTransferQuote?.(game,id);if(!branchBookingPending&&q?.maxTroops>0){window.SengokuBranches.setTroopTransferSelection(game,id,{troops:String(q.maxTroops)});refreshBranchDeploymentPanels();}break;}
-    case 'build-branch':case 'upgrade-branch':case 'repair-branch':case 'build-branch-facility':case 'upgrade-branch-facility':case 'assign-branch-commander':case 'remove-branch-commander':case 'auto-assign-branch-commanders':{if(branchBookingPending)break;branchBookingPending=true;node.disabled=true;try{refreshLiveControls();const action=a.replace('-branch',''),commander=action.endsWith('-commander')||action==='auto-assign-commanders',payload=action==='auto-assign-commanders'?{branchId:id}:action==='build'?{parentCastleId:id,direction:node.dataset.direction}:action.endsWith('-facility')?{branchId:id,facilityId:node.dataset.facility}:commander?{branchId:id,officerId:node.dataset.officer}:{branchId:id},result=await requestBranches('/branches/'+action,{method:'POST',data:payload});if(!result?.ok)throw Error(result?.message||'支拠点の操作を確定できませんでした。');preserveInteraction($('#main'),render);refreshActiveModal();toast(result.result?.message||result.message||(commander?'武将の配置を保存しました。':'支拠点の普請を開始しました。'));}catch(error){toast(error.message||'支拠点の結果を確認してください。',true);}finally{branchBookingPending=false;refreshLiveControls();}break;}
+    case 'build-branch':case 'upgrade-branch':case 'repair-branch':case 'build-branch-facility':case 'upgrade-branch-facility':case 'assign-branch-commander':case 'remove-branch-commander':case 'auto-assign-branch-commanders':{if(branchBookingPending)break;branchBookingPending=true;node.disabled=true;try{refreshLiveControls();const action=a.replace('-branch',''),commander=action.endsWith('-commander')||action==='auto-assign-commanders',payload=action==='auto-assign-commanders'?{branchId:id}:action==='build'?{parentCastleId:id,direction:node.dataset.direction}:action.endsWith('-facility')?{branchId:id,facilityId:node.dataset.facility}:commander?{branchId:id,officerId:node.dataset.officer}:{branchId:id},result=await requestBranches('/branches/'+action,{method:'POST',data:payload});if(!result?.ok)throw Error(result?.message||'支拠点の操作を確定できませんでした。');preserveInteraction($('#main'),render);refreshActiveModal();if(!result.idempotent)playNote(commander?'assign':'build');toast(result.result?.message||result.message||(commander?'武将の配置を保存しました。':'支拠点の普請を開始しました。'));}catch(error){playNote('error');toast(error.message||'支拠点の結果を確認してください。',true);}finally{branchBookingPending=false;refreshLiveControls();}break;}
     case 'preview-art':artPreviewModal(node.dataset.kind,id);break;
     case 'art-level-step':updateArtPreview((activeModalContext?.level||1)+Number(node.dataset.delta));break;
     case 'dismiss-tip':settings.tips=false;safeSettings();render();break;
     case 'council':go('council');break;
-    case 'claim-quest':perform(game.claimQuest(id));break;
+    case 'claim-quest':perform(game.claimQuest(id),{sound:'reward'});break;
     case 'officer':officerModal(id,node.dataset.rank);break;
     case 'officer-compare-toggle':toggleOfficerComparison(id,node.dataset.rank);break;
     case 'officer-compare-open':officerComparisonModal();break;
@@ -1794,7 +1806,7 @@
     case 'crests':go('crests');break;
     case 'crest-page':crestPage+=Number(node.dataset.delta);patchHTML($('#crest-results'),crestResults());window.SengokuDesktopFit?.refresh();break;
     case 'crest-detail':crestModal(id);break;
-    case 'recruit-officer':perform(game.recruitOfficer(id));break;
+    case 'recruit-officer':perform(game.recruitOfficer(id),{sound:'recruit'});break;
     case 'select-castle':if(!game.canOwnCastle?.(id)&&['edo',staffBaseId].includes(id)){toast(id===staffBaseId?'京都御所は保護された共同拠点です。':'江戸城は保護された拠点です。');break;}selectedCastle=id;render();break;
     case 'map-zoom':if(Number(node.dataset.delta)>0)worldMapController?.zoomIn();else worldMapController?.zoomOut();break;
     case 'map-home':worldMapController?.fit('home');break;
@@ -1804,7 +1816,7 @@
     case 'diplomacy':perform(game.diplomacy(id));break;
     case 'prepare-battle':battleModal(id);break;
     case 'prepare-branch-battle':{const branch=game.branch?.(id);if(branch)battleModal(branch.parentCastleId,false,id);break;}
-    case 'attack-branch':case 'attack':{node.disabled=true;try{const result=await departCampaign(a==='attack-branch'?'branch':'castle',a==='attack-branch'?battleBranchTarget:battleTarget,battleTactic,battleTroops);if(!result.ok){toast(result.message,true);break;}closeModal();render();window.SengokuTravelUI?.accept(result);toast(result.message||result.march?.message||(result.marching?'出陣しました。到着までの時間は画面下の進軍状況から確認できます。':'到着結果を確認しました。画面下から戦果を確認できます。'));}catch(error){toast(error.message||'出陣を確認できませんでした。',true);}finally{node.disabled=false;refreshLiveControls();}break;}
+    case 'attack-branch':case 'attack':{node.disabled=true;try{const result=await departCampaign(a==='attack-branch'?'branch':'castle',a==='attack-branch'?battleBranchTarget:battleTarget,battleTactic,battleTroops);if(!result.ok){playNote('error');toast(result.message,true);break;}if(result.marching&&!result.idempotent)playNote('dispatch');closeModal();render();window.SengokuTravelUI?.accept(result);toast(result.message||result.march?.message||(result.marching?'出陣しました。到着までの時間は画面下の進軍状況から確認できます。':'到着結果を確認しました。画面下から戦果を確認できます。'));}catch(error){playNote('error');toast(error.message||'出陣を確認できませんでした。',true);}finally{node.disabled=false;refreshLiveControls();}break;}
     case 'army-planner':armyPlannerModal();break;
     case 'army-plan-tactic':armyPlannerModal({tactic:id});break;
     case 'army-plan-lock':{const locks=activeModalContext?.config?.locked||[];armyPlannerModal({locked:locks.includes(id)?locks.filter(value=>value!==id):[...locks,id].slice(0,3)});break;}
@@ -1812,17 +1824,17 @@
     case 'army-plan-refresh':armyPlannerModal();break;
     case 'army-plan-apply':applyArmyPlan();break;
     case 'pick-army':pickOfficer('army',node.dataset.slot);break;
-    case 'assign-army':{const slot=Number(node.dataset.target),arr=[...state().army],old=arr[slot],existing=arr.indexOf(id);if(existing>=0){if(old)arr[existing]=old;else arr.splice(existing,1);}arr[slot]=id;perform(game.assignArmy(arr.filter(Boolean)));break;}
-    case 'remove-army':{const arr=[...state().army];arr.splice(Number(node.dataset.target),1);perform(game.assignArmy(arr));break;}
+    case 'assign-army':{const slot=Number(node.dataset.target),arr=[...state().army],old=arr[slot],existing=arr.indexOf(id);if(existing>=0){if(old)arr[existing]=old;else arr.splice(existing,1);}arr[slot]=id;perform(game.assignArmy(arr.filter(Boolean)),{sound:'assign'});break;}
+    case 'remove-army':{const arr=[...state().army];arr.splice(Number(node.dataset.target),1);perform(game.assignArmy(arr),{sound:'assign'});break;}
     case 'pick-governor':pickOfficer('governor',id);break;
     case 'auto-governors':await autoAssignGovernors();break;
-    case 'assign-governor':perform(game.assignGovernor(node.dataset.target,id));break;
-    case 'remove-governor':perform(game.assignGovernor(node.dataset.target,null));break;
+    case 'assign-governor':perform(game.assignGovernor(node.dataset.target,id),{sound:'assign'});break;
+    case 'remove-governor':perform(game.assignGovernor(node.dataset.target,null),{sound:'assign'});break;
     case 'recruit-max':selectMaximumRecruitment();break;
       case 'recruit-balanced':selectRecommendedRecruitment();break;
-    case 'recruit-troops':perform(game.recruitTroops(Number($('#recruit-amount').value)));break;
+    case 'recruit-troops':perform(game.recruitTroops(Number($('#recruit-amount').value)),{sound:'recruit'});break;
     case 'train':perform(game.train());break;
-    case 'research':perform(game.research(id));break;
+    case 'research':perform(game.research(id),{sound:'build'});break;
     case 'export-save':exportSave();break;
     case 'import-save':stopStrategy();$('#save-import').click();break;
     case 'confirm-import':confirmFileImport();break;
@@ -2093,7 +2105,7 @@
     if(!canMutate()||!saveEnabled)return{ok:false,message:!saveEnabled?'保存できる状態を確認してから増築してください。':syncMessage()};
     const before=JSON.parse(JSON.stringify(state())),result=game.upgrade(id);if(!result.ok)return result;
     if(!save()){game.state=before;renderHeader();refreshLiveControls();return{ok:false,message:'保存できなかったため増築の手配を取り消しました。資源と指令は元に戻しています。'};}
-    preserveInteraction($('#main'),render);refreshActiveModal();playNote(659,.075);return result;
+    preserveInteraction($('#main'),render);refreshActiveModal();playNote('build');return result;
   }
   function applyDurableGift(gift,receiptId){
     if(!canMutate())return{ok:false,retryable:true,message:syncMessage()};
@@ -2321,7 +2333,7 @@
     if(!save()){game.state=before;return{ok:false,message:'保存できなかったため、復元を取り消しました。'};}
     preserveInteraction($('#main'),render);refreshActiveModal();return result;
   }
-  window.SengokuBridge={playInterfaceSound:()=>playNote('tap'),troopGarrisons:requestTroopGarrisons,getTroopGarrisonAccess,canShowRelocation,prepareReleaseSwitch,getMarches:()=>window.SengokuTravelUI?.snapshot()||{active:[],history:[]},openMarches:()=>window.SengokuTravelUI?.open(),primeProgress,confirmProtectionExit,requestExpansion,getExpansionAccess,openProgress:tab=>openExpansion('progress',tab),startMusic,syncMusic,setVoiceActive,openCourt,applyCourtAccess,applyBranchAuthority,applyMaintenanceAuthority,getMaintenanceAuthority:()=>game.getMaintenanceAuthority?.()||null,getEventAccess,eventBattle:requestEventBattle,refreshPremiumAppearance,getHints,followHint,openHintHelp,getEvaluation,showEvaluation,getStrategyAccess,previewStrategy,beginStrategy,stepStrategy,stopStrategy,getState:()=>state(),getLocalCommander,hasStarted:()=>!startPending,getSave:getGameSave,getStoredSave,beginUpkeepSync,toast,canReceiveGifts:()=>saveEnabled&&canMutate(),applyGift:applyDurableGift,getWalkingAccess,beginLocalWalkingSession:payload=>localWalkingOperation('begin',payload),applyLocalWalkingProgress:payload=>localWalkingOperation('progress',payload),endLocalWalkingSession:payload=>localWalkingOperation('end',payload),startWalkingSession:payload=>requestWalking('/walking/start',payload),claimWalkingSteps:payload=>requestWalking('/walking/claim',payload),spendableAssets,troopCapacity:()=>game.troopCapacity(),troopTransportCapacity,tradeRequest:requestTrade,guildTransfer:payload=>requestField('/guild/treasury/transfer',{method:'POST',data:payload}),openSettings:settingsModal,renderGameplay:render,openStartSelection,openCastleAdmission:newGameModal,setSyncAccess,setRoleAccess,setAdminAccess,getRoleAccess:()=>({isAdmin:game.isAdmin===true,isStaff:game.isStaff===true,pending:syncAccess.rolePending===true,epoch:roleEpoch}),applyStaffBase,getStaffBase:()=>staffConstructionReady()?game.getStaffBase():null,applyCloudSave,prepareRecoverySave,prepareNewRecoverySave,applyRecoverySave,restoreAdminAssets};
+  window.SengokuBridge={playInterfaceSound:(type='tap')=>playNote(type),troopGarrisons:requestTroopGarrisons,getTroopGarrisonAccess,canShowRelocation,prepareReleaseSwitch,getMarches:()=>window.SengokuTravelUI?.snapshot()||{active:[],history:[]},openMarches:()=>window.SengokuTravelUI?.open(),primeProgress,confirmProtectionExit,requestExpansion,getExpansionAccess,openProgress:tab=>openExpansion('progress',tab),startMusic,syncMusic,setVoiceActive,openCourt,applyCourtAccess,applyBranchAuthority,applyMaintenanceAuthority,getMaintenanceAuthority:()=>game.getMaintenanceAuthority?.()||null,getEventAccess,eventBattle:requestEventBattle,refreshPremiumAppearance,getHints,followHint,openHintHelp,getEvaluation,showEvaluation,getStrategyAccess,previewStrategy,beginStrategy,stepStrategy,stopStrategy,getState:()=>state(),getLocalCommander,hasStarted:()=>!startPending,getSave:getGameSave,getStoredSave,beginUpkeepSync,toast,canReceiveGifts:()=>saveEnabled&&canMutate(),applyGift:applyDurableGift,getWalkingAccess,beginLocalWalkingSession:payload=>localWalkingOperation('begin',payload),applyLocalWalkingProgress:payload=>localWalkingOperation('progress',payload),endLocalWalkingSession:payload=>localWalkingOperation('end',payload),startWalkingSession:payload=>requestWalking('/walking/start',payload),claimWalkingSteps:payload=>requestWalking('/walking/claim',payload),spendableAssets,troopCapacity:()=>game.troopCapacity(),troopTransportCapacity,tradeRequest:requestTrade,guildTransfer:payload=>requestField('/guild/treasury/transfer',{method:'POST',data:payload}),openSettings:settingsModal,renderGameplay:render,openStartSelection,openCastleAdmission:newGameModal,setSyncAccess,setRoleAccess,setAdminAccess,getRoleAccess:()=>({isAdmin:game.isAdmin===true,isStaff:game.isStaff===true,pending:syncAccess.rolePending===true,epoch:roleEpoch}),applyStaffBase,getStaffBase:()=>staffConstructionReady()?game.getStaffBase():null,applyCloudSave,prepareRecoverySave,prepareNewRecoverySave,applyRecoverySave,restoreAdminAssets};
   let lastRealtime=performance.now(),saveCounter=0;
   document.addEventListener('visibilitychange',()=>{lastRealtime=performance.now();if(document.hidden)save();else{window.SengokuWorldClock?.refresh();processWorldClock();}});
   window.addEventListener('pagehide',()=>save());

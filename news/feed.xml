@@ -9,6 +9,19 @@
     <ttl>60</ttl>
     <atom:link href="https://www.kasai-solutions-inc.com/news/feed.xml" rel="self" type="application/rss+xml"/>
     <item>
+      <title>Ver.5.9.12｜琴・鼓・鈴と電子音で、操作と結果を耳でも判別できるように</title>
+      <link>https://www.kasai-solutions-inc.com/news/#v5-9-12</link>
+      <guid isPermaLink="true">https://www.kasai-solutions-inc.com/news/#v5-9-12</guid>
+      <dc:date>2026-11-27</dc:date>
+      <description>琴や撥弦、太鼓、鈴の響きに電子音を重ねた21種類の効果音が、画面移動から合戦の勝敗までを知らせます。ゲーム内設定と公式音楽帳で一つずつ試聴できます。
+
+操作と結果に場面別の音：メニューを開閉する音、城や武将を選ぶ音、建設・任命・出陣の音を聞き分けられるようにしました。合戦の勝敗や報酬には専用の音が鳴ります。
+
+効果音を選んで試聴：「保存・設定」の「音・表示」で、試したい場面の効果音を選べます。BGMと効果音は個別に音量を設定でき、効果音は0%で消音します。
+
+確定した行動に合わせて発音：普請・任命・派遣は処理の確定時に、合戦は新しい結果を受け取った時に鳴ります。過去の報告を開き直した時や、通話中・背景タブでは結果音を抑えます。</description>
+    </item>
+    <item>
       <title>Ver.5.9.11｜螺鈿の城下へ。漆・蒔絵・光の回路で戦国VSを全面刷新</title>
       <link>https://www.kasai-solutions-inc.com/news/#v5-9-11</link>
       <guid isPermaLink="true">https://www.kasai-solutions-inc.com/news/#v5-9-11</guid>

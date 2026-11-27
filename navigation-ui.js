@@ -511,7 +511,8 @@
       if (event.defaultPrevented || event.repeat || event.isComposing || event.altKey || event.shiftKey || !(event.ctrlKey || event.metaKey) || String(event.key).toLowerCase() !== 'k') return;
       const target = event.target;
       if (target?.isContentEditable || target?.closest?.('input, textarea, select, [contenteditable="true"], [contenteditable=""]') || unavailable()) return;
-      event.preventDefault(); open(target);
+      event.preventDefault();
+      if (!dialog.open && open(target)) global.SengokuUISounds?.shortcut?.(event, 'open');
     }
     function destroy() {
       close(false); initialized = false; pendingNavigation = null; if (frame) caf?.(frame); frame = 0;
@@ -594,7 +595,10 @@
         // Only an unambiguous, live in-game destination accepts Enter from search.
         // External guides keep their normal link activation and ambiguous input
         // stays in the field. In particular an IME confirmation never navigates.
-        if (target?.source && !target.disabled && activate(target.key)) event.preventDefault();
+        if (target?.source && !target.disabled && activate(target.key)) {
+          event.preventDefault();
+          global.SengokuUISounds?.shortcut?.(event, 'navigate');
+        }
         return;
       }
       if (!keys.includes(event.key) || (active !== search && !active?.hasAttribute?.('data-navigation-target') && !active?.hasAttribute?.('data-navigation-help'))) return;

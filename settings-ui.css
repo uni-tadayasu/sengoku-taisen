@@ -109,6 +109,15 @@
 #modal .settings-hub .settings-effects .settings-volume { grid-template-columns: max-content minmax(0,1fr) minmax(4ch,auto); }
 #modal .settings-hub #settings-effects-volume-value { white-space: nowrap; font-variant-numeric: tabular-nums; min-width: 4ch; }
 #modal .settings-hub .settings-effects-feedback { min-height: 1.5em; margin: 8px 0 0; color: #d8c695; font-size: .875rem; line-height: 1.6; }
+#modal .settings-effects-preview {
+  display: grid;
+  grid-template-columns: minmax(0,1fr) auto;
+  align-items: center;
+  gap: 4px 8px;
+  margin-block: 10px;
+}
+#modal .settings-effects-preview label { grid-column: 1 / -1; }
+#modal .settings-effects-preview select { min-width: 0; width: 100%; min-height: 44px; }
 #modal .settings-hub [data-sound-preview] { min-height: 44px; }
 #modal .settings-hub #effects-volume { accent-color: #b9d1b5; }
 @media (max-width:400px) {

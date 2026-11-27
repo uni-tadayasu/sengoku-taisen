@@ -118,7 +118,7 @@
     clear(who,record);state.pending=null;state.march=null;state.battle=b;if(completed)global.SengokuTravelUI?.record(completed);state.message=result.idempotent?'記録済みの戦果を確認しました。追加の消費や報酬はありません。':b.won?'敵部隊を撃退しました。戦果は本拠へ反映済みです。':'部隊は撤退しました。生存兵は本拠へ戻りました。';
     if(b.won&&b.unitId)cooldowns.set(b.unitId,Number(b.respawnAt)||now()+state.serverOffset+(state.deployment?.respawnSeconds||300)*1000);
     options.onResult?.(result);emit();if(read)void loadDeployment({background:true});return true;
-   }catch(error){if(!current(g,expected))return false;state.error=error.message||'通信結果を確認できませんでした。';if(Number(error.status)>=400&&Number(error.status)<500&&![401,403,408,429].includes(Number(error.status))&&error.retryable!==true&&!['ROAMING_SYNC_REQUIRED','ROAMING_RECONCILE_PENDING','ROAMING_CAMPAIGN_REQUIRED'].includes(error.code)){clear(who,record);state.pending=null;}return false;}
+   }catch(error){if(!current(g,expected))return false;global.SengokuBridge?.playInterfaceSound?.('error');state.error=error.message||'通信結果を確認できませんでした。';if(Number(error.status)>=400&&Number(error.status)<500&&![401,403,408,429].includes(Number(error.status))&&error.retryable!==true&&!['ROAMING_SYNC_REQUIRED','ROAMING_RECONCILE_PENDING','ROAMING_CAMPAIGN_REQUIRED'].includes(error.code)){clear(who,record);state.pending=null;}return false;}
    finally{if(current(g,expected)){state.sending=false;flight=null;emit();}}
    })();flight=operation;return operation;
   }

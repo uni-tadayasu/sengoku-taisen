@@ -70,6 +70,17 @@ let checks=0;async function test(name,run){await run();checks++;console.log('PAS
   assert.equal(f.counts.localReads,1);assert.equal(notifications,2);assert.equal(last.clock.speed,4);assert.equal(last.clock.elapsedMs,f.clock.elapsedMs);assert.equal(last.data.active.length,1);
   unsubscribe();f.ui.refresh();assert.equal(notifications,2);assert.equal(f.timers.size,1);
  });
+ await test('arrival sounds require an observed march and exclude synced history, repeats and campaign switches',()=>{
+  const f=fixture({rows:[]}),events=[];
+  f.ui.configure({onArrival:(row,wasMarching)=>events.push([row.id,wasMarching])});
+  const done=id=>march(id,{status:'resolved',battle:{won:true}});
+  f.rows([done('old'),march('live')]);f.ui.refresh();
+  f.rows([done('old'),done('live')]);f.ui.refresh();f.ui.refresh();
+  f.ui.open();f.ui.close();f.ui.refresh();
+  f.rows([march('away')]);f.ui.refresh();f.visibility(true);f.rows([done('away')]);f.visibility(false);
+  f.context.scope='other';f.rows([done('other')]);f.ui.refresh();
+  assert.deepEqual(events,[['old',false],['live',true],['away',false]]);
+ });
  await test('hidden tabs cancel the fallback and resume immediately without synthesizing an arrival',()=>{
   const f=fixture();f.ui.open();const dialog=f.doc.querySelector('dialog'),counter=dialog.querySelector('[data-travel-countdown]'),before=counter.textContent;f.reset();
   f.visibility(true);assert.equal(f.timers.size,0);assert.equal(f.counts.localReads,0);
