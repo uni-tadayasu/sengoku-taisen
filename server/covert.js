@@ -192,7 +192,7 @@ async function mutation(ctx,action){
   const b=result.result.battle,d=target.save.state,castle=d.castles[targetSpec.castleId];
   if(!target.rewardOnly){
    d.troops-=b.defenderLost.troops;castle.troops-=b.defenderLost.garrison;
-   d.log.unshift({turn:d.turn,text:'部隊の襲撃を受け、兵'+(b.defenderLost.troops+b.defenderLost.garrison)+'人を失いました。拠点の領有は継続しています。',kind:'pvp'});d.log=d.log.slice(0,200);
+   d.log.unshift({turn:d.turn,text:'部隊の襲撃を受け、兵'+(b.defenderLost.troops+b.defenderLost.garrison)+'人を失いました。',kind:'pvp'});d.log=d.log.slice(0,200);
    const defenderNext=h.normalizeGameSave(target.save,target.target,now,{clock});
    statements.push(stmt(db,`UPDATE player_saves SET save_json=?,revision=revision+1,updated_at=? WHERE user_id=? AND ${gate}`,JSON.stringify(defenderNext),now,target.target.id,...gateArgs));
    statements.push(...h.branchProgressStatements(db,target.target.id,defenderNext,now,gate,gateArgs,{resolvedElapsedMs:clock.elapsedMs}),...covertIncidentStatements(db,target.target.id,defenderNext,now,gate,gateArgs),...target.cpuLosses.statements(gate,gateArgs));
@@ -201,7 +201,7 @@ async function mutation(ctx,action){
   const battle=incomingBattle;
   statements.push(...protectionBattleStatements(db,target.target.id,now,target.protection.shieldUntil,gate,gateArgs),...target.support.statements(battle,gate,gateArgs));
   statements.push(stmt(db,`INSERT INTO covert_battles(id,attacker_id,defender_id,occurred_elapsed_ms,result_json,created_at) SELECT ?,?,?,?,?,? WHERE ${gate}`,battle.id,user.id,target.target.id,clock.elapsedMs,JSON.stringify(battle),now,...gateArgs));
-  const title=battle.castleName+'の戦闘報告',mailBody=battle.castleName+'が部隊の襲撃を受けました。'+(b.won?'相手部隊が戦闘で優勢となりました。':'守備隊が相手部隊を退けました。')+'損失は軍団'+b.defenderLost.troops+'人・守備兵'+b.defenderLost.garrison+'人です。拠点の領有は継続しています。',mailRequest='system:covert:'+battle.id,mailHash=await h.hash(JSON.stringify([target.target.id,title,mailBody]));
+  const title=battle.castleName+'の戦闘報告',mailBody=battle.castleName+'が部隊の襲撃を受けました。'+(b.won?'相手部隊が戦闘で優勢となりました。':'守備隊が相手部隊を退けました。')+'損失は軍団'+b.defenderLost.troops+'人・守備兵'+b.defenderLost.garrison+'人です。',mailRequest='system:covert:'+battle.id,mailHash=await h.hash(JSON.stringify([target.target.id,title,mailBody]));
   statements.push(stmt(db,`INSERT INTO mail_campaigns(id,sender_id,target_user_id,title,body,gift_json,request_id,payload_hash,created_at) SELECT ?,?,?,?,?,NULL,?,?,? WHERE ${gate}`,'m_sys_'+battle.id,user.id,target.target.id,title,mailBody,mailRequest,mailHash,now,...gateArgs));
  }
  if(successionPlan)statements.push(...successionPlan.statements(gate,gateArgs));

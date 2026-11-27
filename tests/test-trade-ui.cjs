@@ -61,7 +61,7 @@ test('name search requires choosing a specific public ID and never chooses a dup
 test('guests, followers, self targets, invalid integers, and insufficient assets cannot propose',async()=>{
   const h=setup();h.setUser(null);await h.controller.openBox();await h.controller.openCompose({playerId:PEER});assert.equal(h.calls.length,0);
   h.setUser({id:ME,name:'自分'});await h.controller.openCompose({playerId:ME});assert.equal(h.calls.length,0);assert.match(h.controller.getState().error,/自分以外/);
-  await h.controller.selectRecipient(PEER);h.setWritable(false);h.controller.prepareCreate();assert.match(h.controller.getState().error,/別の端末/);
+  await h.controller.selectRecipient(PEER);h.setWritable(false);h.controller.prepareCreate();assert(h.controller.getState().confirm,'followers may review terms without transferring assets');assert.equal(await h.controller.confirm(),false);assert.match(h.controller.getState().error,/別の端末/);h.controller.cancelConfirm();
   h.setWritable(true);for(const quantity of ['0','-1','1.5','1000001','9007199254740992','6000']){h.controller.setDraft('offerAmount',quantity);h.controller.prepareCreate();assert.equal(h.controller.getState().confirm,null);}
   assert.equal(h.posts().length,0);h.controller.dispose();
 });

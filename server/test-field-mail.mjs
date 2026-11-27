@@ -36,7 +36,7 @@ for(const mode of ['raid','capture','reward'])for(const won of [true,false])awai
   assert.equal(result.battle.battleMode,mode);assert.equal(a.length,1);assert.equal(d.length,1);assert.equal(count(h,'mail_campaigns'),2);assertNotice(a[0],result.battle,'attacker');assertNotice(d[0],result.battle,'defender');
   assert(a[0].title.includes(won?'勝利':'敗北'));assert(d[0].title.includes(won?'敗北':'勝利'));assert(d[0].body.includes('攻撃されました'));assert(a[0].body.includes('消費した兵糧'));assert(d[0].body.includes('資源の損失'));
   if(mode==='capture'&&won){assert(a[0].body.includes('所領に加え'));assert(d[0].body.includes('領有を失いました'));assert(d[0].body.includes('本拠は清洲城のまま'));assert(!d[0].body.includes('本拠の移転：'));}
-  if(mode==='reward'){assert.deepEqual(row(h,defender),prior);assert(a[0].body.includes('勝利報酬：'));assert(d[0].body.includes('この戦闘による資源・兵・施設・軍団・奉行の損失はありません'));if(won)assert(a[0].body.includes('金銭500・兵糧500・木材500・石材500'));}
+  if(mode==='reward'){assert.deepEqual(row(h,defender),prior);assert(a[0].body.includes('勝利報酬：'));assert.equal(result.battle.capture.captured,false);for(const mail of [a[0],d[0]]){assert(mail.body.includes('戦闘の種類：合戦。'));assert.doesNotMatch(mail.body,/占領|領有|損失はありません/);}if(won)assert(a[0].body.includes('金銭500・兵糧500・木材500・石材500'));}
   const before=row(h,actor);assert.equal((await h.api('/mail/claim',post(actor,{mailId:a[0].id,requestId:crypto.randomUUID()},400))).data.error.code,'NO_GIFT');assert.deepEqual(row(h,actor),before,'reading notification grants no repeated battle reward');assert.equal(count(h,'mail_receipts'),0);
 });
 
@@ -120,7 +120,24 @@ await scope('Kyoto palace notice is private to the attacked staff member and doe
   for(const p of [staff,otherStaff]){await h.api('/admin/staff',post(operator,{targetPlayerId:p.user.id,action:'appoint',requestId:crypto.randomUUID()}));await h.api('/sync?deviceId='+p.deviceId,{token:p.token});}
   const before=row(h,staff),other=row(h,otherStaff),shared=h.sql.prepare("SELECT * FROM staff_base WHERE id='kyoto_gosho'").get();
   const result=await outcome(true,()=>complete(h,actor,request(h,actor,staff,'kyoto_gosho')));assert.equal(result.battle.battleMode,'reward');assert.deepEqual(row(h,staff),before);assert.deepEqual(row(h,otherStaff),other);assert.deepEqual(h.sql.prepare("SELECT * FROM staff_base WHERE id='kyoto_gosho'").get(),shared);
-  assert.equal((await inbox(h,staff)).length,1);assert.equal((await inbox(h,otherStaff)).length,0);assert.equal((await inbox(h,operator)).length,0);assert((await inbox(h,staff))[0].body.includes('通常の時刻進行・共同普請は継続'));
+  assert.equal((await inbox(h,staff)).length,1);assert.equal((await inbox(h,otherStaff)).length,0);assert.equal((await inbox(h,operator)).length,0);assert.doesNotMatch((await inbox(h,staff))[0].body,/占領|領有|損失はありません/);
+});
+
+await scope('legacy system notices use neutral presentation without changing stored mail or operator content',async h=>{
+  const operator=await fixture(h,'旧通知の運営',{admin:true}),actor=await fixture(h,'旧通知の攻撃',{home:'inuyama'});
+  const {battle}=await outcome(true,()=>complete(h,actor,request(h,actor,operator,'edo')));
+  const actorMail=(await inbox(h,actor))[0],defenderMail=(await inbox(h,operator))[0];
+  const legacyAttacker=actorMail.body.replace('戦闘の種類：合戦。','戦闘の種類：報酬戦（占領なし）。')+'\nこの戦闘で城の領有と本拠は変わりません。';
+  const legacyDefender=defenderMail.body.replace('戦闘の種類：合戦。','戦闘の種類：報酬戦（占領なし）。')+`\n${battle.castleName}は占領されません。この戦闘による資源・兵・施設・軍団・奉行の損失はありません。通常の時刻進行・共同普請は継続します。`;
+  for(const [id,body]of [[actorMail.id,legacyAttacker],[defenderMail.id,legacyDefender]])h.sql.prepare('UPDATE mail_campaigns SET body=? WHERE id=?').run(body,id);
+  await h.api('/mail/read',post(actor,{mailId:actorMail.id}));
+  const sent=(await h.api('/admin/mail',post(operator,{target:actor.user.id,title:'手動で送った文書',body:legacyAttacker,gift:{gold:3},requestId:'legacy-copy'}))).data;
+  const stored=h.sql.prepare('SELECT * FROM mail_campaigns ORDER BY id').all(),save=row(h,actor);
+  const actual=(await inbox(h,actor)).find(mail=>mail.id===actorMail.id),manual=(await inbox(h,actor)).find(mail=>mail.id===sent.mailId),defense=(await inbox(h,operator))[0];
+  assert.equal(actual.body,actorMail.body);assert.equal(defense.body,defenderMail.body);assert.equal(actual.read,true);assert.equal(actual.claimed,false);assert.deepEqual(actual.event,actorMail.event);assert.deepEqual(actual.participants,actorMail.participants);
+  assert.equal(manual.source,'site');assert.equal(manual.body,legacyAttacker);assert.equal(manual.gift.gold,3);
+  assert.deepEqual(h.sql.prepare('SELECT * FROM mail_campaigns ORDER BY id').all(),stored);assert.deepEqual(row(h,actor),save);
+  assert.equal((await h.api('/mail/claim',post(actor,{mailId:actorMail.id,requestId:'legacy-no-claim'},400))).data.error.code,'NO_GIFT');
 });
 
 console.log(JSON.stringify({ok:true,calls,checks:checks.length},null,2));

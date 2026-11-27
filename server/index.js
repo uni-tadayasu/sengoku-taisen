@@ -36,7 +36,7 @@ import {requirePromotionOrigin,recordPromotion,readPromotionReport} from './prom
 import {readMusicBroadcast,handleAdminMusic} from './admin-music.js';
 import {lordSupportSql,guardLordSupport,ensureResidency,residencySnapshot,residencyDirectory,residencyStart,initialResidencyStatements,residencyTargetGuard,prepareResidencySuccession,prepareResidencyCpuLosses} from './residency.js';
 const API = '/api/v1';
-const API_VERSION = '5.12.1';
+const API_VERSION = '5.12.2';
 const API_FEATURES = Object.freeze({trades:true,moderation:true,playerExpulsion:true,moderatedNameReuse:true,deputyOperator:true,kagoshimaProtected:true,premium:true,timedEvents:true,troopTrades:true,roamingBattles:true,roamingDeployment:true,covertDispatch:true,privatePlayerRoles:true,guildIcons:true,court:true,kyotoGosho:true,branches:true,branchBattles:true,branchFacilities:true,audioCalls:true,progression:true,armyPresets:true,allianceStrategy:true,sharedConquest:true,newcomerProtection:true,webPush:true,battleAdviser:true,battleCatalog:true,eventBattleRewards:true,shogunate:true,attackTravel:true,castleResidency:true,retainerCastleStats:true,residencyRelocation:true,maintenanceUpkeep:true,strongholdDurability:true,chatReplies:true,chatMentions:true,covertReturnTravel:true,allianceUnitTravel:true,legacySaveRecovery:true,displayNameVariants:true,courtOffices:true,serverSummons:true,loginRewards:true,paidRerolls:true,supporterChoices:true,premiumGrowthMetrics:true,adminMusicBroadcast:true,rankRiceProduction:true,shogunateApproval:true,imperialSuccession:true,retiredEmperor:true,regency:true,courtEventRoom:true,imperialSuccessionApproval:true});
 const MAX_BODY = 16 * 1024;
 const MAX_SAVE_BODY = 2 * 1024 * 1024;
@@ -1092,12 +1092,12 @@ function fieldBattleMailContent(battle,side,homes) {
   const attacker=side==='attacker',won=attacker?battle.won:!battle.won,captured=!!battle.capture?.captured,moved=homes.defenderBefore!==homes.defenderAfter;
   if(battle.battleMode==='branch'){
     const name=battle.branchName||battle.castleName,title=`【${attacker?won?'支拠点攻略':'支拠点攻撃・撤退':won?'支拠点防衛':'支拠点陥落'}】${name}`;
-    const lines=[attacker?`${battle.defenderName}の${name}へ出陣しました。`:`${name}が${battle.attackerName}の攻撃を受けました。`,battle.branchFallen?'支拠点は陥落しました。修復が完了するまで親拠点を守る効果はありません。':'支拠点は攻撃を退けました。',`${battle.castleName}の領有・守備兵・資源は維持しています。支拠点の戦いでは、城の占領や戦利品・勝利報酬の獲得はありません。`];
+    const lines=[attacker?`${battle.defenderName}の${name}へ出陣しました。`:`${name}が${battle.attackerName}の攻撃を受けました。`,battle.branchFallen?'支拠点は陥落しました。修復が完了するまで親拠点を守る効果はありません。':'支拠点は攻撃を退けました。'];
     if(attacker)lines.push(`出陣兵${battle.troops.toLocaleString('ja-JP')}人、損失${battle.attackerLost.toLocaleString('ja-JP')}人、消費兵糧${battle.foodCost.toLocaleString('ja-JP')}。`);
     lines.push('結果はすでに保存へ反映済みです。共有地図で残りの支拠点と本城の状態を確認できます。');return{title,body:lines.join('\n')};
   }
   const labels={gold:'金銭',rice:'兵糧',wood:'木材',stone:'石材'},amounts=value=>RESOURCES.map(key=>`${labels[key]}${Number(value?.[key]||0).toLocaleString('ja-JP')}`).join('・');
-  const mode={reward:'報酬戦（占領なし）',capture:'占領戦',raid:'襲撃（占領なし）'}[battle.battleMode];
+  const mode={reward:'合戦',capture:'占領戦',raid:'襲撃'}[battle.battleMode];
   const lines=[attacker?`${battle.defenderName}の${battle.castleName}へ出陣しました。`:`${battle.attackerName}から${battle.castleName}を攻撃されました。`,
     `結果：${won?attacker?'勝利':'防衛勝利':attacker?'敗北・撤退':'敗北'}。`,`戦闘の種類：${mode}。`];
   if(attacker){
@@ -1108,12 +1108,11 @@ function fieldBattleMailContent(battle,side,homes) {
       lines.push(battle.capture.newlyOwned?`${battle.castleName}を所領に加え、帰還兵のうち${battle.capture.garrison.toLocaleString('ja-JP')}人を守備兵として配置しました。`:`相手の${battle.castleName}の領有を解きました。あなたが既に所有していた同城の城郭・城兵・普請は継続します。`);
       lines.push(`あなたの本拠は${CASTLE_BY_ID[homes.attacker].name}のままです。`);
       if(moved)lines.push(`相手の本拠は${CASTLE_BY_ID[homes.defenderBefore].name}から${CASTLE_BY_ID[homes.defenderAfter].name}へ移りました。`);
-    }else lines.push('この戦闘で城の領有と本拠は変わりません。');
+    }
     lines.push('戦闘の損失・消費・獲得はすでに保存へ反映済みです。このメールで追加の受け取り操作は不要です。');
   }else{
     lines.push(`損失：援軍${battle.defenderLost.troops.toLocaleString('ja-JP')}人・城兵${battle.defenderLost.garrison.toLocaleString('ja-JP')}人。`,`資源の損失：${amounts(battle.loot)}。`);
-    if(battle.battleMode==='reward')lines.push(`${battle.castleName}は占領されません。この戦闘による資源・兵・施設・軍団・奉行の損失はありません。通常の時刻進行・共同普請は継続します。`);
-    else if(captured){
+    if(captured){
       lines.push(`${battle.castleName}の領有を失いました。`);
       if(moved){
         lines.push(`本拠の移転：${CASTLE_BY_ID[homes.defenderBefore].name} → ${CASTLE_BY_ID[homes.defenderAfter].name}。`,
@@ -1121,11 +1120,31 @@ function fieldBattleMailContent(battle,side,homes) {
           `移転先の城郭はLv.${homes.defenderLevel}です（通常城の上限はLv.32）。城郭の普請は移転先の上限内で引き継ぎます。`,
           '次の周回も新しい本拠から再出発します。');
       }else lines.push(`本拠は${CASTLE_BY_ID[homes.defenderAfter].name}のままです。施設・軍団・奉行・所持武将・研究と、戦闘後に残った資源・兵を保持しています。`);
-    }else lines.push(`${battle.castleName}の領有と、本拠${CASTLE_BY_ID[homes.defenderAfter].name}を維持しています。`);
+    }
     lines.push('戦闘結果はすでに保存へ反映済みです。ゲームへ接続し直すと最新の状態を確認できます。');
   }
   const title=!attacker&&moved?`【敗北・本拠移転】${battle.castleName}`:`【${attacker?won?'戦闘勝利':'戦闘敗北':won?'防衛勝利':'被攻撃・敗北'}】${battle.castleName}`;
   return {title,body:lines.join('\n')};
+}
+function fieldBattleMailBody(body,event,battle) {
+  // Older system notices retain their stored body/hash for idempotent retries.
+  // Project only known server-authored lines; never rewrite operator messages
+  // or the participant names and outcomes embedded in a battle notification.
+  if(event?.kind!=='field-battle'||!battle||event.battleId!==battle.id)return body;
+  if(battle.id.startsWith('cb_')){
+    const report=battle.castleName+'が部隊の襲撃を受けました。'+(battle.won?'相手部隊が戦闘で優勢となりました。':'守備隊が相手部隊を退けました。')+'損失は軍団'+battle.defenderLost?.troops+'人・守備兵'+battle.defenderLost?.garrison+'人です。';
+    return body===report+'拠点の領有は継続しています。'?report:body;
+  }
+  const labels=new Map([
+    ['戦闘の種類：報酬戦（占領なし）。','戦闘の種類：合戦。'],
+    ['戦闘の種類：襲撃（占領なし）。','戦闘の種類：襲撃。'],
+  ]),omitted=new Set([
+    'この戦闘で城の領有と本拠は変わりません。',
+    `${battle.castleName}は占領されません。この戦闘による資源・兵・施設・軍団・奉行の損失はありません。通常の時刻進行・共同普請は継続します。`,
+    `${battle.castleName}の領有・守備兵・資源は維持しています。支拠点の戦いでは、城の占領や戦利品・勝利報酬の獲得はありません。`,
+    `${battle.castleName}の領有と、本拠${battle.capture?.defenderHomeCastleName}を維持しています。`,
+  ]);
+  return body.split('\n').filter(line=>!omitted.has(line)).map(line=>labels.get(line)||line).join('\n');
 }
 async function fieldBattleMailStatements(db,battle,homes,now,gate,args) {
   // Two private notices share the battle's commit nonce. They carry no gifts:
@@ -2558,7 +2577,7 @@ async function fieldAttack(db,user,raw,now,internal={}) {
   battle.analysis={attackPower,defensePower:defense.power,ratio,winChance:Math.round(chance*100),morale:attackProfile.morale,tactic:tactic.name,roll:Math.round(roll*10000)/10000,reinforcementTroops:branch?0:support.troops,lootScale:ratio>=8?0:ratio>=4?.25:1,explanation:won?'戦力と戦法を反映した確率判定で勝利しました。':chance>=.5?'自軍が有利な予想でしたが、確率判定で敗れました。':'敵の守備戦力が優勢でした。士気・研究・兵数・戦法を見直せます。'};
   if(branch)Object.assign(battle,{branchId:branch.id,branchName:branchSite(branch.id).name,branchFallen:!!branch.fallen});
   a.log.unshift({turn:a.turn,text:`${target.name}の${battle.branchName||battle.castleName}へ出陣。${won?branch?'支拠点を陥落':captured?'城を占領':battleMode==='reward'?'勝利報酬を獲得':'戦利品を得て帰還':'撤退'}、兵${attackerLost}人を失いました。`,kind:'pvp'});a.log=a.log.slice(0,200);attacker.savedAt=iso(now);
-  if(battleMode!=='reward'){d.log.unshift({turn:d.turn,text:branch?`${battle.branchName}が${user.name}の攻撃を${won?'受けて陥落':'撃退'}しました。親拠点の領有・守備兵・資源は維持しています。`:`${user.name}の襲撃を受け、兵${defenderLost.troops+defenderLost.garrison}人を失いました。${captured?battle.castleName+'を失い、'+capture.defenderHomeCastleName+'を本拠として継続します。':'本拠の領有は継続しています。'}`,kind:'pvp'});d.log=d.log.slice(0,200);defender.savedAt=iso(now);}
+  if(battleMode!=='reward'){d.log.unshift({turn:d.turn,text:branch?`${battle.branchName}が${user.name}の攻撃を${won?'受けて陥落':'撃退'}しました。`:`${user.name}の襲撃を受け、兵${defenderLost.troops+defenderLost.garrison}人を失いました。${captured?battle.castleName+'を失い、'+capture.defenderHomeCastleName+'を本拠として継続します。':''}`,kind:'pvp'});d.log=d.log.slice(0,200);defender.savedAt=iso(now);}
   const attackerNext=normalizeGameSave(attacker,user,now,{clock}),defenderNext=battleMode==='reward'?null:normalizeGameSave(defender,target,now,{clock});
   const attackerJson=JSON.stringify(attackerNext),defenderJson=defenderNext?JSON.stringify(defenderNext):null,resultJson=JSON.stringify(battle),nonce=crypto.randomUUID(),[first,second]=pair(user.id,target.id),roleGuard=roleCommitGuard(user),targetRoleGuard=roleCommitGuard(target);
   const gate='EXISTS(SELECT 1 FROM field_requests WHERE actor_id=? AND request_id=? AND commit_token=?)',gateArgs=[user.id,body.requestId,nonce];
@@ -3223,8 +3242,8 @@ async function route(request, env, now) {
     return {ok:true,mailId:saved.id,alreadySent:saved.id!==id};
   }
   if (path === '/mail' && method === 'GET') {
-    const result=await stmt(db,`SELECT m.id,m.title,m.body,m.gift_json,m.request_id,m.created_at,r.read_at,c.receipt_id,b.result_json AS battle_json FROM mail_campaigns m LEFT JOIN mail_reads r ON r.mail_id=m.id AND r.user_id=? LEFT JOIN mail_receipts c ON c.mail_id=m.id AND c.user_id=? LEFT JOIN field_battles b ON b.id=substr(m.request_id,14,35) AND (b.attacker_id=m.target_user_id OR b.defender_id=m.target_user_id) WHERE m.target_user_id IS NULL OR m.target_user_id=? ORDER BY m.created_at DESC,m.id DESC LIMIT 200`,user.id,user.id,user.id).all();
-    return {ok:true,mail:rows(result).map(r=>{const event=systemMailEvent(r.request_id),battle=event&&r.battle_json?JSON.parse(r.battle_json):null;return {id:r.id,title:r.title,body:r.body,gift:r.gift_json?JSON.parse(r.gift_json):null,read:r.read_at!==null,claimed:!!r.receipt_id,createdAt:iso(r.created_at),source:event?'system':'site',event,...(event?{participants:battle?['attacker','defender'].map(side=>({playerId:battle[side+'PlayerId'],name:battle[side+'Name'],side,evaluation:evaluationRef(battle[side+'PlayerId'])})):[]}:{} )};})};
+    const result=await stmt(db,`SELECT m.id,m.title,m.body,m.gift_json,m.request_id,m.created_at,r.read_at,c.receipt_id,b.result_json AS battle_json,cb.result_json AS covert_battle_json FROM mail_campaigns m LEFT JOIN mail_reads r ON r.mail_id=m.id AND r.user_id=? LEFT JOIN mail_receipts c ON c.mail_id=m.id AND c.user_id=? LEFT JOIN field_battles b ON b.id=substr(m.request_id,14,35) AND (b.attacker_id=m.target_user_id OR b.defender_id=m.target_user_id) LEFT JOIN covert_battles cb ON cb.id=substr(m.request_id,15,35) AND cb.defender_id=m.target_user_id WHERE m.target_user_id IS NULL OR m.target_user_id=? ORDER BY m.created_at DESC,m.id DESC LIMIT 200`,user.id,user.id,user.id).all();
+    return {ok:true,mail:rows(result).map(r=>{const event=systemMailEvent(r.request_id),battle=event&&r.battle_json?JSON.parse(r.battle_json):null,covertBattle=event&&r.covert_battle_json?JSON.parse(r.covert_battle_json):null;return {id:r.id,title:r.title,body:fieldBattleMailBody(r.body,event,battle||covertBattle),gift:r.gift_json?JSON.parse(r.gift_json):null,read:r.read_at!==null,claimed:!!r.receipt_id,createdAt:iso(r.created_at),source:event?'system':'site',event,...(event?{participants:battle?['attacker','defender'].map(side=>({playerId:battle[side+'PlayerId'],name:battle[side+'Name'],side,evaluation:evaluationRef(battle[side+'PlayerId'])})):[]}:{} )};})};
   }
   if (path === '/mail/read' && method === 'POST') {
     const body=await readBody(request),mailId=idField(body.mailId,'メール識別子');

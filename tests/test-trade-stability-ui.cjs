@@ -9,13 +9,13 @@ function fixture(){
  Object.defineProperty(Node.prototype,'innerHTML',{...descriptor,set(value){descriptor.set.call(this,value);decorate(this.localName==='template'?this.content:this);}});
  const create=doc.createElement.bind(doc);doc.createElement=name=>{const node=create(name);decorate(node);if(name==='dialog'){node.showModal=()=>{node.open=true;};node.close=()=>{node.open=false;node.dispatchEvent({type:'close',bubbles:false});};}return node;};
  doc.contains=node=>doc.body.contains(node);doc.removeEventListener=()=>{};
- let user={id:'u_me',name:'自分'},onSync=()=>{},timer=0;const saved=new Map();
+ let user={id:'u_me',name:'自分'},onSync=()=>{},timer=0,gameReady=true,connectionChecks=0;const saved=new Map(),timers=new Map(),writes=[];
  const row={id:ID,revision:1,status:'pending',sender:{playerId:'u_peer',name:'輸出する領主'},recipient:{playerId:'u_me',name:'自分'},offer:{gold:0,rice:0,wood:150,stone:0,magatama:0},want:{gold:0,rice:200,wood:0,stone:0,magatama:0},createdAt:'2026-11-23T12:00:00Z',updatedAt:'2026-11-23T12:00:00Z',delivery:null,canAccept:true,canReject:true,canCancel:false,canClaim:false};
  const assets={gold:5000,rice:5000,wood:5000,stone:5000,magatama:1000,troops:1200000};
  const request=async route=>{const url=new URL(route,'https://local.invalid');if(url.pathname==='/trades')return{ok:true,trades:url.searchParams.get('box')==='incoming'?[copy(row)]:[],nextCursor:null,summary:{incomingPending:1,outgoingPending:0,claimable:0},rules:{maxAmount:1000000,balanceLimit:100000000,maxPending:20}};if(url.pathname==='/trades/recipient')return{ok:true,player:{playerId:'u_peer',name:'交易先の領主'}};if(url.pathname==='/trades/'+ID)return{ok:true,trade:copy(row)};throw Error('Unexpected isolated read '+route);};
- const window={document:doc,SengokuStableDOM:stable,SengokuSocial:{getUser:()=>user,tradeRequest:request,close:()=>{}},SengokuCloudSync:{getStatus:()=>({linked:true,ready:true,writable:true,message:''}),subscribe:callback=>{onSync=callback;return()=>{};}},SengokuBridge:{hasStarted:()=>true,canReceiveGifts:()=>true,spendableAssets:()=>assets,troopTransportCapacity:()=>100000000,tradeRequest:()=>{throw Error('This render test never submits trades.');}},localStorage:{getItem:key=>saved.get(key)??null,setItem:(key,value)=>saved.set(key,value),removeItem:key=>saved.delete(key)},crypto:{randomUUID:()=> 'request_review'},setTimeout:()=>++timer,clearTimeout:()=>{}};
+ const window={document:doc,SengokuStableDOM:stable,SengokuSocial:{getUser:()=>user,tradeRequest:request,close:()=>{}},SengokuCloudSync:{getStatus:()=>({linked:true,ready:true,writable:true,message:''}),refresh:async()=>{connectionChecks++;gameReady=true;return{ok:true};},subscribe:callback=>{onSync=callback;return()=>{};}},SengokuBridge:{hasStarted:()=>true,canReceiveGifts:()=>gameReady,spendableAssets:()=>assets,troopTransportCapacity:()=>100000000,tradeRequest:(...args)=>{writes.push(args);throw Error('This render test never submits trades.');}},localStorage:{getItem:key=>saved.get(key)??null,setItem:(key,value)=>saved.set(key,value),removeItem:key=>saved.delete(key)},crypto:{randomUUID:()=> 'request_review'},setTimeout:(fn,ms)=>{timers.set(++timer,{fn,ms});return timer;},clearTimeout:id=>timers.delete(id)};
  vm.runInNewContext(source,{window,console,URL});const api=window.SengokuTrade;
- return{doc,api,row,assets,window,refresh:async()=>{onSync();await drain();},setUser:value=>{user=value;},dispose:()=>{api.dispose();Object.defineProperty(Node.prototype,'innerHTML',descriptor);}};
+ return{doc,api,row,assets,window,writes,get connectionChecks(){return connectionChecks;},refresh:async()=>{onSync();await drain();},setGameReady:value=>{gameReady=value;},tickAccess:async()=>{const scheduled=[...timers].find(([,job])=>job.ms===1000);assert(scheduled,'open forms schedule a local access recheck');timers.delete(scheduled[0]);scheduled[1].fn();await drain();},setUser:value=>{user=value;},dispose:()=>{api.dispose();Object.defineProperty(Node.prototype,'innerHTML',descriptor);}};
 }
 (async()=>{
  const h=fixture();
@@ -58,6 +58,22 @@ function fixture(){
   h.setUser({id:'u_next',name:'交代'});assert(!picker.valid());
   picker.onSelect(picker.options[0]);await drain();assert.equal(seen.length,2);
   console.log('PASS trade recipient list preserves distinct IDs, excludes self, verifies choices and rejects stale account selection');
-  console.log('3 actual trade stability UI checks passed. No live requests.');
+  await h.api.openCompose({playerId:'u_peer'});h.setGameReady(false);await h.refresh();
+  const review=h.doc.querySelector('[data-trade-prepare]'),offerAsset=h.doc.querySelector('#trade-offer-asset'),offerAmount=h.doc.querySelector('#trade-offer-amount'),wantAmount=h.doc.querySelector('#trade-want-amount');
+  assert.equal(review.disabled,false,'temporary game readiness does not lock a non-mutating review');assert.match(h.doc.querySelector('[data-trade-prepare-status]').textContent,/条件の確認はできます/);
+  offerAsset.value='troops';offerAmount.value='321';wantAmount.value='259';
+  h.doc.querySelector('[data-trade-form="compose"]').dispatchEvent({type:'submit'});
+  const checked=h.api.getState().confirm,send=h.doc.querySelector('[data-trade="confirm"]');assert.equal(checked.give.troops,321);assert.equal(checked.receive.rice,259);assert.equal(send.disabled,true);assert.match(h.doc.querySelector('[data-trade-confirm-access]').textContent,/共通時刻/);
+  send.dispatchEvent({type:'click',bubbles:true});await drain();assert.equal(h.writes.length,0,'a disabled final action cannot send during catch-up');
+  send.focus();main.scrollTop=180;h.setGameReady(true);await h.tickAccess();assert.strictEqual(h.doc.querySelector('[data-trade="confirm"]'),send);assert.equal(send.disabled,false);assert.strictEqual(h.doc.activeElement,send);assert.equal(main.scrollTop,180);assert.equal(h.connectionChecks,0,'automatic access rechecks do not make sync requests');
+  h.setGameReady(false);await h.tickAccess();const reconnect=h.doc.querySelector('[data-trade-confirm] [data-trade="access-check"]');assert.equal(reconnect.hidden,false);reconnect.dispatchEvent({type:'click',bubbles:true});await drain();assert.equal(h.connectionChecks,1);assert.equal(send.disabled,false);assert.equal(h.writes.length,0);
+  console.log('PASS temporary readiness cannot strand proposal review; actual visible values, final-send guards and local recovery remain intact');
+  h.doc.querySelector('[data-trade="confirm-back"]').dispatchEvent({type:'click',bubbles:true});await h.api.openCompose();
+  const query=h.doc.querySelector('#trade-recipient-query');query.value='名前だけ入力';query.dispatchEvent({type:'input'});
+  assert.equal(h.doc.querySelector('[data-trade-prepare]').disabled,false);
+  h.doc.querySelector('[data-trade-form="compose"]').dispatchEvent({type:'submit'});
+  assert.equal(h.api.getState().confirm,null);assert.equal(h.api.getState().target,null);assert.match(h.doc.querySelector('[data-trade-prepare-status]').textContent,/領主名の入力だけでは宛先は確定しません/);assert.strictEqual(h.doc.activeElement,query);assert(query.scrollIntoViewCalls>0);assert.equal(h.writes.length,0);
+  console.log('PASS a missing recipient has visible guidance beside review and focuses the chooser without guessing or sending');
+  console.log('5 actual trade stability UI checks passed. No live requests.');
  }finally{h.dispose();}
 })().catch(error=>{console.error(error);process.exitCode=1;});

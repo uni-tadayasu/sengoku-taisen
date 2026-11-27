@@ -200,7 +200,7 @@ test('explicit leader, office and dismissal confirmations scroll once while late
 });
 
 test('shared Kyoto sovereignty is visible to visitors with escaped government and ruler names',async()=>{
- const h=fixture({eligible:false});h.info.palace.control={castleId:'kyoto_gosho',controller:{id:'lord-one',name:'<支配領主>'},governmentName:'<試験幕府>',controlledAt:1795392000000};await h.controller.load();const html=Court.markup(h.controller.snapshot());assert.match(html,/&lt;試験幕府&gt;の支配下/);assert.match(html,/&lt;支配領主&gt;/);assert.doesNotMatch(html,/<支配領主>|<試験幕府>/);assert.match(html,/通常攻城での占領不可/);
+ const h=fixture({eligible:false});h.info.palace.control={castleId:'kyoto_gosho',controller:{id:'lord-one',name:'<支配領主>'},governmentName:'<試験幕府>',controlledAt:1795392000000};await h.controller.load();const html=Court.markup(h.controller.snapshot());assert.match(html,/&lt;試験幕府&gt;の支配下/);assert.match(html,/&lt;支配領主&gt;/);assert.doesNotMatch(html,/<支配領主>|<試験幕府>/);assert.match(html,/共同普請/);assert.doesNotMatch(html,/占領不可|占領されず/);
 });
 test('only the Emperor can nominate; the chancellor gets a separate certification panel',async()=>{
  for(const role of [{staff:true},{regent:true},{}]){const h=fixture(role);await h.controller.load();assert(!h.calls.some(row=>['/court/succession','/admin/court/succession'].includes(row.route)));assert.doesNotMatch(Court.markup(h.controller.snapshot()),/data-court-action="confirm-succession"|皇位継承の認証/);assert.equal(h.controller.confirmSuccession(),false);}

@@ -51,6 +51,7 @@ test('victory grants rewards without capturing or damaging the protected NPC bas
   const result=g.attack('kagoshima','balanced',10000);assert(result.ok);assert(result.battle.won);assert.equal(result.battle.captured,false);assert.equal(result.battle.battleMode,'reward');
   assert.deepEqual(g.state.castles.kagoshima,before);assert.equal(g.state.resources.gold,gold+500);assert.equal(result.battle.rewards.rice,500);assert.equal(result.battle.rewards.magatama,0);assert.deepEqual(g.state.officerVariants,roster);
   assert(!g.state.captureRewards.includes('kagoshima'));assert.equal(result.battle.garrison,0);
+  assert.doesNotMatch(result.message+result.battle.phases.map(phase=>phase.text).join(''),/占領|領有|サブ運営/);
   assert.doesNotThrow(()=>Engine.fromSave(g.exportSave(),g.roster));
 });
 test('defeat also keeps the protected castle and pays no victory reward',()=>{
