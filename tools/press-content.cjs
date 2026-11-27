@@ -10,7 +10,7 @@ const copy = {
   "x": "【開発・運営より】\n一城から、天下へ。『戦国VS』は、城下町づくり・武将編成・合戦を楽しむブラウザゲームです。PC・スマホ対応、基本プレイ無料・インストール不要。\nhttps://www.kasai-solutions-inc.com/sengoku-vs/\n#戦国VS #ブラウザゲーム\n© KASAI SOLUTIONS",
   "line": "開発・運営している「戦国VS」を紹介します。城下町を育て、武将を集めて編成し、城をめぐる合戦を楽しむゲームです。\n\nPC・スマホのブラウザで、インストールせず基本プレイ無料で遊べます。ひとりでCPU勢力との戦役を進めることも、領主を登録して同盟や交易を楽しむこともできます。有料の外観アイテム・月額支援は任意です。\n\n戦国や国づくりが好きなら、まずは紹介ページをのぞいてみてください。\nhttps://www.kasai-solutions-inc.com/sengoku-vs/\n© KASAI SOLUTIONS",
   "community": "KASAI SOLUTIONSより、制作・運営している日本語ブラウザゲーム「戦国VS」を紹介します。\n\n田畑や商家を育てる内政、武将の登用・軍団編成、城をめぐる合戦を組み合わせた戦国戦略シミュレーションです。個人の戦役ではCPU勢力と戦い、領主を登録すると対人戦・同盟・書状・交易も利用できます。256人の武将、129の城と拠点、64種類の施設を収録しています。\n\nPC・スマホ・タブレットに対応し、インストール不要で基本プレイ無料。有料商品は外観と月額支援で、戦力や資産の優遇はありません。初めての方には「次の一手」のヒントと、出陣前の軍師AIの助言があります。\n\n作品紹介・遊び方はこちらです。\nhttps://www.kasai-solutions-inc.com/sengoku-vs/\n© KASAI SOLUTIONS",
-  "english": "SENGOKU VS is a Japanese-language browser strategy game by KASAI SOLUTIONS. Develop a castle town, recruit and organize officers, and choose how to expand your territory. Play a personal campaign against computer-controlled factions, or register a lord to join online battles, alliances, letters, and trading. Basic play is free, with optional cosmetic items and a monthly supporter badge. The game runs in desktop, smartphone, and tablet browsers; no app installation is needed. The game UI and official guides are currently in Japanese."
+  "english": "SENGOKU VS is a Japanese-language browser strategy game by KASAI SOLUTIONS. Develop a castle town, recruit and organize officers, and choose how to expand your territory. Play a personal campaign against computer-controlled factions, or register a lord to join online battles, alliances, letters, and trading. Basic play is free, with optional cosmetic items and a monthly supporter badge. The game runs in desktop, smartphone, and tablet browsers; no app installation is needed. The game interface and detailed guides are in Japanese. The English introduction includes a starting guide."
 };
 const characters = value => Array.from(value.replace(/\r?\n/g, '')).length;
 
@@ -48,7 +48,7 @@ function renderPressContent(p, { section, table, site }) {
         ['紹介ページ', `<a href="${esc(p.dir('sengoku-vs'))}">${esc(origin)}/sengoku-vs/</a>`],
         ['公開済み紹介動画', `<a href="${esc(jadeTrailer.url)}" target="_blank" rel="noopener noreferrer">${esc(jadeTrailer.title)}</a>（${jadeTrailer.seconds}秒・日本語／英語字幕、公式イラストと実ゲーム画面）<br><a href="${esc(firstSteps.url)}" target="_blank" rel="noopener noreferrer">はじめての3手</a>（${firstSteps.seconds}秒・日本語、過去バージョンの実ゲーム静止画）<br><a href="${esc(trailer.url)}" target="_blank" rel="noopener noreferrer">絵巻で見る戦国VS</a>（24秒・日本語、公式イラスト）`],
         ['対応端末', 'PC・スマートフォン・タブレットのブラウザ。アプリのインストールは不要です。'],
-        ['表示言語', '日本語。英語表記の作品名はSENGOKU VSです。ゲームUIと公式ガイドは日本語です。'],
+        ['表示言語', `ゲームUIと詳細ガイドは日本語です。英語表記の作品名はSENGOKU VSで、<a href="${esc(p.dir('en'))}" lang="en" hreflang="en">English introduction and starting guide</a>（英語の紹介・開始ガイド）も利用できます。`],
         ['料金', `基本プレイ無料。別売りの外観アイテムと月額支援は任意です。<a href="${esc(p.dir('premium'))}">商品・料金の案内</a>`],
         ['収録内容', '256人の武将／129の城と拠点／64種類の城下町施設'],
         ['遊び方', '個人の戦役ではCPU勢力と対戦。領主を登録すると共通フィールドの対人戦・同盟・書状・交易を利用できます。'],
@@ -95,14 +95,15 @@ function renderPressContent(p, { section, table, site }) {
       <ul class="press-downloads"><li>${link('assets/promo/sengoku-vs-facts-ja-20261126.txt', '基本情報・紹介文を保存（日本語TXT）')}</li><li>${link('assets/promo/sengoku-vs-posts-ja-20261126.txt', '投稿文3種を保存（日本語TXT）')}</li></ul>
     `),
     section('press-english', 'For international readers', 'English fact sheet', `
-      <p class="press-language-note">海外向けに、作品の基本情報を英語でまとめています。ゲームUIと公式ガイドは現在、日本語です。</p>
+      <p class="press-language-note">海外向けに、作品の基本情報を英語でまとめています。ゲームUIと詳細ガイドは日本語で、英語の紹介・開始ガイドも用意しています。</p>
       <div class="press-english" lang="en">
         <p class="lead-paragraph">${esc(copy.english)}</p>
+        <p><a class="share-detail-link" href="${esc(p.dir('en'))}" hreflang="en">Read the English introduction and starting guide</a></p>
         ${table('SENGOKU VS at a glance', ['Item', 'Information'], [
           ['Title', 'SENGOKU VS (戦国VS)'],
           ['Developer and publisher', 'KASAI SOLUTIONS'],
           ['Genre', 'Browser strategy game inspired by Japan’s Sengoku period'],
-          ['Language', 'Japanese. The game UI and official guides are currently in Japanese.'],
+          ['Language', 'Japanese game interface and detailed guides. English introduction and starting guide available.'],
           ['Platforms', 'Desktop, smartphone, and tablet web browsers. No app installation required.'],
           ['Price model', 'Basic play is free. Optional cosmetics and a monthly supporter badge do not provide combat or resource advantages.'],
           ['Content', '256 officers, 129 castles and locations, and 64 facility types'],

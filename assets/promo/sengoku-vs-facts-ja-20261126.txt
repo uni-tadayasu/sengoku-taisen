@@ -29,7 +29,7 @@ https://www.youtube.com/watch?v=NWzewQEJyz0
 更新情報のRSS: https://www.kasai-solutions-inc.com/news/feed.xml
 
 対応端末: PC・スマートフォン・タブレットのブラウザ。アプリのインストール不要。
-表示言語: 日本語。SENGOKU VSは作品名の英字表記です。ゲームUIと公式ガイドは現在日本語です。
+表示言語: ゲームUIと詳細ガイドは日本語です。SENGOKU VSは作品名の英字表記で、英語の紹介・開始ガイドも利用できます。
 料金: 基本プレイ無料。有料の外観アイテムと月額支援は任意です。
 有料商品の内容: 旗印・城下町の外観・勲章・サポーターバッジ。武将の能力、兵力、生産量、指令回復の優遇はありません。
 料金・商品: https://www.kasai-solutions-inc.com/premium/
