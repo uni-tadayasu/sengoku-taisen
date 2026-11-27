@@ -50,4 +50,31 @@ test('shared construction and succession use only verified visible owners and di
  court.update({save:{staffBase:{jobs:[{startedBy:{id:'u_worker',courtOffice:right}}]}},staffBase:{state:{id:'u_worker',name:'private',courtOffice:left}}});
  assert.equal(court.text('u_worker'),'');
 });
+test('parent renders keep one current office beside the evaluation rank after asynchronous updates',()=>{
+ const {doc,host}=require('./helpers/dom-model.cjs').setup(),stable=require('../stable-dom.js');
+ const id='u_minister',self={getPublicCourtIdentity:()=>id};
+ const render=()=>stable.patch(host,['public','self'].map(mode=>`<div data-stable-key="${mode}"><b>従六位</b>${mode==='self'?court.selfSlot(id):court.slot(id)}</div>`).join(''));
+ const verify=(title)=>{
+  const rows=host.querySelectorAll('[data-stable-key="public"],[data-stable-key="self"]');
+  assert.equal(rows.length,2);
+  for(const row of rows){
+   assert.equal(row.querySelectorAll('[data-court-seal]').length,title?1:0);
+   assert.equal(row.textContent,'従六位'+(title||''));
+  }
+ };
+ Object.assign(global,{document:doc,SengokuSocial:self,SengokuStableDOM:stable});
+ try{
+  render();verify(null);
+  for(const title of ['右大臣','右大臣','左大臣',null]){
+   court.update({user:{id,courtOffice:title?{title,kind:'official'}:null}});
+   verify(title);render();verify(title);
+   if(title==='左大臣'){
+    // Recover slots a previous renderer already populated twice.
+    for(const slot of host.querySelectorAll('[data-court-player]'))slot.append(slot.firstElementChild.cloneNode(true));
+    court.update({user:{id,courtOffice:{title,kind:'official'}}});
+    verify(title);render();verify(title);
+   }
+  }
+ }finally{delete global.document;delete global.SengokuSocial;delete global.SengokuStableDOM;}
+});
 console.log(`${count} public court badge rendering scenarios passed.`);
