@@ -73,12 +73,22 @@ test('station eligibility honors server stationIds and never enables retroactive
  value.incidents[0].stationIds=[st.id];await h.controller.reload();assert.equal(h.controller.snapshot().stations[0].incidents.length,1);assert(h.controller.prepare('retaliate',{stationId:st.id}));assert.deepEqual(h.controller.snapshot().confirmation.data,{stationId:st.id,incidentId:'incident-old'});
 });
 
-test('Kyoto-origin retaliation at Edo uses the private Emperor capability while scouting and stationing remain available',async()=>{
+test('Kyoto-origin retaliation at Edo uses the private Emperor or Regent capability while scouting and stationing remain available',async()=>{
  const h=setup(),st=await station(h,10);h.game.state.command=10;const value=h.game.covertStatus(),source=value.sources[0];source.castleId='kyoto_gosho';source.name='京都御所';source.reserve=20;source.unitType='ashigaru';source.unitName='足軽';value.stations[0].sourceCastleId='kyoto_gosho';value.stations[0].target={kind:'player',playerId:'operator',castleId:'edo',name:'江戸城',playerName:'領主'};value.incidents=[{id:'incident-kyoto',sourceCastleId:'kyoto_gosho',kind:'field',occurredElapsedMs:st.createdElapsedMs,available:true,stationIds:[st.id],expiresElapsedMs:null}];value.rules.canAttackEdoFromKyoto=false;
  h.status={...h.status,linked:true,stamp:'online'};h.loadHook=async()=>({ok:true,covert:value});await h.controller.reload();h.controller.update('sourceId','kyoto_gosho');h.controller.update('targetId',targetKey(value.targets.find(t=>t.castleId==='edo')));h.controller.update('countInput','5');
  for(const mode of ['scout','station']){h.controller.update('mode',mode);assert(h.controller.prepare('dispatch'));h.controller.cancel();}
- assert.equal(h.controller.prepare('retaliate',{stationId:st.id}),false);assert.match(h.controller.snapshot().stations[0].retaliatePreview.message,/在任中の天皇だけ/);assert(h.controller.prepare('recall',{stationId:st.id}));h.controller.cancel();
+ assert.equal(h.controller.prepare('retaliate',{stationId:st.id}),false);assert.match(h.controller.snapshot().stations[0].retaliatePreview.message,/在任中の天皇または摂政/);assert(h.controller.prepare('recall',{stationId:st.id}));h.controller.cancel();
  value.rules.canAttackEdoFromKyoto=true;await h.controller.reload();assert(h.controller.prepare('retaliate',{stationId:st.id}));h.controller.cancel();value.rules.canAttackEdoFromKyoto=false;value.stations[0].target.castleId='odawara';await h.controller.reload();assert(h.controller.prepare('retaliate',{stationId:st.id}));
+});
+
+test('a Kyoto Regent without the Emperor role can prepare retaliation and loses that permission on dismissal',async()=>{
+ const game=new E({isStaff:true,isCourtRegent:true,seed:26}),h=setup({game});game.state.resources.gold=1000;game.state.resources.rice=1000;game.state.command=10;
+ const buildings=clone(game.state.buildings);assert(game.applyStaffBase({id:'kyoto_gosho',revision:1,castleLevel:1,buildings,initial:{castleLevel:1,buildings},history:[],jobs:[]}).ok);
+ assert.equal(game.isCourtEmperor,false);assert.equal(game.isCourtRegent,true);assert.equal(h.controller.snapshot().source.castleId,'kyoto_gosho');
+ await hire(h,10);h.controller.update('targetId',targetKey(h.controller.snapshot().covert.targets.find(t=>t.castleId==='edo')));h.controller.update('mode','station');h.controller.update('countInput','10');assert(h.controller.prepare('dispatch'));assert(await h.controller.submit());advanceDispatch(h);
+ const st=h.controller.snapshot().stations[0];assert.equal(st.sourceCastleId,'kyoto_gosho');assert.equal(st.target.castleId,'edo');game.state.command=10;game._recordCovertIncident('kyoto_gosho','edo');h.controller.refresh();
+ assert.equal(h.controller.snapshot().covert.rules.canAttackEdoFromKyoto,true);assert.equal(h.controller.snapshot().stations[0].retaliatePreview.ok,true);assert(h.controller.prepare('retaliate',{stationId:st.id}));assert.equal(h.controller.snapshot().confirmation.action,'retaliate');h.controller.cancel();
+ assert(game.setCourtAccess({isCourtRegent:false}).ok);h.controller.refresh();assert.equal(h.controller.snapshot().covert.rules.canAttackEdoFromKyoto,false);assert.equal(h.controller.prepare('retaliate',{stationId:st.id}),false);assert.match(h.controller.snapshot().stations[0].retaliatePreview.message,/在任中の天皇または摂政/);assert(h.controller.prepare('recall',{stationId:st.id}));assert.equal(h.calls,2,'reviewing and revoking retaliation never submits an attack');
 });
 
 test('a lost source disables new hire and dispatch while existing forces can return',async()=>{
