@@ -53,6 +53,12 @@ jobs:
         run: npm run test:entry
       - name: Check planning, comparison, navigation and deferred UI
         run: npm run test:interface
+      - name: Verify rank rice production and its displayed ledger
+        run: |
+          node tests/test-rank-rice-production.cjs
+          node tests/test-player-evaluation-ui.cjs
+          node tests/test-economy-ui.cjs
+          node tests/test-economy-balance.cjs
       - name: Verify reward receipts, retries and account isolation
         run: node tests/test-rewards.cjs
       - name: Check shipped asset budgets and runtime parity
@@ -154,6 +160,11 @@ jobs:
           node server/test-kyoto-migration.mjs
           node server/test-staff-base.mjs
           node server/test-construction-queues.mjs
+      - name: Verify authoritative rank production and save continuity
+        run: |
+          node server/test-economy-balance.mjs
+          node server/test-maintenance.mjs
+          node server/test-evaluation.mjs
 
   court-appointments:
     runs-on: ubuntu-latest

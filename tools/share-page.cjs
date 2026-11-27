@@ -3,13 +3,15 @@
 // Public introduction only: the game and its saved progress remain at the root.
 const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
 const { trailer, firstSteps, jadeTrailer, jadePlayer, renderScreenshots, videoSchema, invitationURL } = require('./promotion-content.cjs');
+const { releases, releaseId } = require('./news-content.cjs');
 
 function renderSharePage({ site, metadataHtml, jsonLd, iconHtml, header, footer, artwork }) {
   const page = site.pages.share, release = esc(site.release);
+  const latestRelease = releases.find(item => item.version === site.version) || releases[0];
   const asset = name => `../${name}?v=${release}`;
   const campaignURL = (source, medium, content) => invitationURL(site, 'share', source, medium, content);
   const invitePresets = [
-    {id:'social', label:'SNSで紹介', source:'share_text', text:'一城から、天下へ。城下町づくり・武将編成・合戦を楽しむ「戦国VS」。PC・スマホで基本プレイ無料、インストール不要。'},
+    {id:'social', label:'SNSで紹介', source:'share_text', text:'城下町を育て、武将を率いる「戦国VS」。位階による兵糧増産を追加。従八位+2%〜正一位+32%、購入不要。PC・スマホで基本プレイ無料、インストール不要。'},
     {id:'friend', label:'友だちを誘う', source:'friend', xText:'一緒に一城から始めてみませんか？城下町を育て、武将を率いる「戦国VS」。PC・スマホで基本プレイ無料、インストール不要。ひとりのCPU戦役から試せます。', text:'城下町を育てて、武将を率いて天下を目指す「戦国VS」。一緒に一城から始めてみませんか？PC・スマホのブラウザで基本プレイ無料。まずは「端末だけで遊ぶ」で試せて、領主登録後は同盟や交易も楽しめます。'},
     {id:'discord', label:'Discordに紹介', source:'discord', xText:'城下町を育て、武将を編成して攻城戦へ。「戦国VS」はPC・スマホで遊べる基本プレイ無料のブラウザ戦略ゲーム。領主登録後は同盟や交易も楽しめます。', text:'【ゲーム紹介】戦国ブラウザゲーム「戦国VS」。内政・武将編成・攻城戦を楽しめます。PC・スマホ・タブレット対応、基本プレイ無料。個人戦役はCPU戦、領主登録後は同盟や交易も利用できます。\n有料の外観アイテム・月額支援・武将再抽選パスは任意です。遊び方・ゲーム画面はこちら。'}
   ];
@@ -80,6 +82,10 @@ function renderSharePage({ site, metadataHtml, jsonLd, iconHtml, header, footer,
       <p>個人の戦役では、天下地図のCPU勢力と城を争います。領主を登録すると、共通フィールドでの対人戦、同盟、書状、交易へ。初めてなら「端末だけで遊ぶ」から、一城を育てるところから始められます。</p>
     </section>
     <section id="first-castle" class="promotion-first-castle" aria-labelledby="first-castle-title"><div class="promotion-section-heading"><div><p class="section-kicker">はじめての方へ</p><h2 id="first-castle-title">最初の一歩は、城を選ぶだけ。</h2></div><a href="../guide/#first-steps">詳しい遊び方を読む</a></div><ol class="promotion-first-steps"><li><span>本拠を選ぶ</span><p>「城を選んで始める」で好きな一城へ。ひとりで試すなら「端末だけで遊ぶ」を選べます。</p></li><li><span>町と軍団を整える</span><p>田畑や商家を育て、武将を編成。迷ったら「次の一手」で、今できる準備を確認します。</p></li><li><span>次の城へ出陣する</span><p>天下地図で隣の城を選び、軍師の助言を読んで出陣。まずはCPU勢力との戦役から。</p></li></ol></section>
+    <section class="discovery-opening" aria-labelledby="share-latest-update-title">
+      <div><p class="section-kicker">Ver.${esc(latestRelease.version)} · ${esc(latestRelease.date)}</p><h2 id="share-latest-update-title">${esc(latestRelease.title)}</h2></div>
+      <p>${esc(latestRelease.summary)} <a href="../news/#${esc(releaseId(latestRelease))}">今回の更新を読む</a> · <a href="../guide/#player-evaluation">位階と兵糧の加算率</a></p>
+    </section>
     <section class="promotion-trailer" id="jade-trailer" aria-labelledby="jade-trailer-title">
       <div class="promotion-trailer-copy">
         <h2 id="jade-trailer-title">${esc(jadeTrailer.title)}</h2><p>${esc(jadeTrailer.description)}</p>

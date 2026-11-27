@@ -49,6 +49,42 @@ async function victory(run){const old=crypto.getRandomValues;crypto.getRandomVal
 
 const originalFetch=globalThis.fetch;globalThis.fetch=async()=>{throw Error('Economy verification must not contact a real service');};
 try{
+ await scope('a pre-bonus save preserves earned rice and only future server time receives its current rank bonus once',async h=>{
+  const p=await fixture(h,'位階の増産を同期',{holdings:['nijo']});
+  updateSave(h,p,state=>{
+   state.governors={};state.troops=0;state.prestige=0;
+   for(const castle of Object.values(state.castles))if(castle.owner===state.clan)castle.troops=0;
+   const points=GameEngine.evaluateState(state,{officers:GAME_OFFICERS}).score;
+   state.prestige=(10000-points)*2;assert(state.prestige>=0&&state.prestige<=20000);
+  });
+  assert.equal((await h.api('/config')).data.features.rankRiceProduction,true);
+  const initial=await snapshot(h,p),rate=engine(initial).income();
+  assert.equal(rate.rankRiceBonus.rankName,'正八位');assert.equal(rate.rankRiceBonus.percent,4);
+  assert(rate.rankRiceBonus.amount>0);assert.equal(rate.surplusAdjustment.rice,0);
+  // A 5.10.1 client has already accrued this interval with the old production
+  // formula. Its unchanged schema and fractional carry must flush as earned.
+  h.now+=12000;const checkpoint=await renew(h,p),oldClient=engine(checkpoint);
+  assert(oldClient.applyWorldClock(checkpoint.clock).ok);
+  const oldSave=JSON.parse(oldClient.exportSave()),oldAccrued=(rate.operatingNet.rice-rate.rankRiceBonus.amount)/5;
+  oldSave.state.resources.rice=initial.save.state.resources.rice+Math.trunc(oldAccrued);
+  oldSave.state.realtime.incomeRemainders.rice=oldAccrued-Math.trunc(oldAccrued);
+  const flushed=await put(h,p,oldSave);
+  assert.deepEqual(flushed.save.state.resources,oldSave.state.resources,'upgrading never re-awards the elapsed interval');
+  assert.equal(flushed.save.state.realtime.incomeRemainders.rice,oldSave.state.realtime.incomeRemainders.rice);
+  const current=engine(flushed),income=current.income(),quote=current.branchQuote('nijo','north');assert(quote.ok);
+  h.now+=12000;
+  const body=branchBody(h,p,{parentCastleId:'nijo',direction:'north'}),built=(await h.api('/branches/build',post(p,body))).data;
+  const accrued=flushed.save.state.realtime.incomeRemainders.rice+income.operatingNet.rice/5;
+  assert.equal(built.save.state.resources.rice,flushed.save.state.resources.rice+Math.trunc(accrued));
+  const totalBefore=flushed.save.state.resources.rice+flushed.save.state.realtime.incomeRemainders.rice;
+  const totalAfter=built.save.state.resources.rice+built.save.state.realtime.incomeRemainders.rice;
+  assert(Math.abs(totalAfter-totalBefore-income.operatingNet.rice/5)<1e-7,'server applies the complete new rate exactly once');
+  assert.equal(built.save.state.worldClock.elapsedMs,initial.save.state.worldClock.elapsedMs+24000);
+  const committed=clone(row(h,p));assert((await h.api('/branches/build',post(p,body))).data.idempotent);assert.deepEqual(clone(row(h,p)),committed);
+  const synced=await put(h,p,built.save);assert.deepEqual(synced.save.state.resources,built.save.state.resources);
+  assert.equal(synced.save.state.realtime.incomeRemainders.rice,built.save.state.realtime.incomeRemainders.rice,'sync retries never credit the rank bonus separately');
+ });
+
  await scope('server action accrues salary-inclusive income once before charging a fixed construction price',async h=>{
   const p=await fixture(h,'黒字の増加速度',{holdings:['nijo']});rich(h,p);
   updateSave(h,p,state=>{const id=state.officers.find(value=>!state.army.includes(value));assert(id);state.governors={wall:id};});
@@ -103,8 +139,8 @@ try{
   const rewarded=(await h.api('/progress/claim',post(p,missionBody))).data;assert.deepEqual(rewarded.receipt.rewards,{gold:300,wood:150});
   assert.equal(rewarded.save.state.resources.gold,before.state.resources.gold+300);assert.equal(rewarded.save.state.resources.wood,before.state.resources.wood+150);
   const guild=(await h.api('/guild',post(p,{name:'資産調整の検証軍'}))).data.guild,held=clone(save(h,p).state.resources);
-  for(const direction of ['deposit','withdraw'])await h.api('/guild/treasury/transfer',post(p,{guildId:guild.id,direction,resource:'gold',amount:5000,requestId:crypto.randomUUID(),deviceId:p.deviceId,expectedRevision:row(h,p).revision}));
-  assert.deepEqual(save(h,p).state.resources,held);assert.equal(h.sql.prepare('SELECT gold FROM guild_treasuries WHERE guild_id=?').get(guild.id).gold,0);
+  for(const resource of ['gold','rice'])for(const direction of ['deposit','withdraw'])await h.api('/guild/treasury/transfer',post(p,{guildId:guild.id,direction,resource,amount:5000,requestId:crypto.randomUUID(),deviceId:p.deviceId,expectedRevision:row(h,p).revision}));
+  assert.deepEqual(save(h,p).state.resources,held);const treasury=h.sql.prepare('SELECT gold,rice FROM guild_treasuries WHERE guild_id=?').get(guild.id);assert.equal(treasury.gold,0);assert.equal(treasury.rice,0,'transferred and returned rice is never amplified by rank');
   assert((await h.api('/progress/claim',post(p,missionBody))).data.idempotent);assert.deepEqual(save(h,p).state.resources,held);
  });
 

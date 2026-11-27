@@ -4,8 +4,8 @@
   "name": "戦国VS",
   "alternateName": "SENGOKU VS",
   "publisher": "KASAI SOLUTIONS",
-  "release": "5.10.1-20261127",
-  "version": "5.10.1",
+  "release": "5.10.2-20261127",
+  "version": "5.10.2",
   "dateModified": "2026-11-27",
   "language": "ja",
   "locale": "ja_JP",
@@ -202,7 +202,7 @@
     "news": {
       "path": "/news/",
       "title": "戦国VS 更新情報｜操作改善・追加機能・公式のお知らせ",
-      "description": "戦国VSの公式更新情報。城下町の操作画面、大都市の都市勲章、拠点修復や奉行の給与など、遊び方に関わる主な変更を紹介します。詳しい攻略ガイドと公式素材へのリンク、RSSでの更新情報の購読はこちら。",
+      "description": "戦国VSの公式更新情報。位階に応じた兵糧の増産、全体BGM配信、朝昼夜の勾玉ボーナスなど、遊び方に関わる主な変更を紹介します。詳しい攻略ガイドと公式素材へのリンク、RSSでの更新情報の購読はこちら。",
       "dateModified": "2026-11-27",
       "artwork": {
         "path": "assets/chronicle/archive-jade.webp",

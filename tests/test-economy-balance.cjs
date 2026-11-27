@@ -7,8 +7,8 @@ const copy=value=>JSON.parse(JSON.stringify(value)),load=game=>{const result=E.f
 const clock=elapsedMs=>({id:'economy-balance-clock',elapsedMs,running:true,speed:1});
 let checks=0;function test(name,run){run();checks++;console.log('PASS '+name);}
 
-test('ordinary starting production stays intact and every ledger row reconciles',()=>{
- const game=fixture(),income=game.income();assert.deepEqual(income.net,{gold:530,rice:445,wood:197,stone:147});assert.deepEqual(income.net,income.rawNet);assert.deepEqual(income.surplusAdjustment,{gold:0,rice:0,wood:0,stone:0});
+test('ordinary starting production includes its current rank bonus and every ledger row reconciles',()=>{
+ const game=fixture(),income=game.income();assert.deepEqual(income.net,{gold:530,rice:466,wood:197,stone:147});assert.equal(income.rankRiceBonus.baseRice,1070);assert.equal(income.rankRiceBonus.amount,21);assert.deepEqual(income.net,income.rawNet);assert.deepEqual(income.surplusAdjustment,{gold:0,rice:0,wood:0,stone:0});
  for(const level of [4,8,16,32]){const income=fixture(level).income();for(const key of D.resources){assert.equal(income.rawNet[key],income.gross[key]-income.troopUpkeep[key]-income.facilityUpkeep[key]);assert.equal(income.net[key],income.rawNet[key]-income.surplusAdjustment[key]);assert.equal(income[key],income.net[key]);assert(income.surplusAdjustment[key]>=0);assert.equal(income.grossRice,income.gross.rice);}}
 });
 test('the surplus curve has no threshold jump, reversals or flat high-output ceiling',()=>{

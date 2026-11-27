@@ -17,7 +17,7 @@ function harness({linked=false,pending=false,game=new E({officers:roster,seed:17
       this._html=value;this.buttons=[...value.matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button>/g)].map(match=>{const node=new Node();node._html=match[2];for(const attr of match[1].matchAll(/([\w-]+)(?:="([^"]*)")?/g))node.attrs.set(attr[1],attr[2]??'');node.dataset.action=node.attrs.get('data-action');return node;});
       const details=/<details\b[^>]*id="player-evaluation-ranks"([^>]*)>/.exec(value);this.details=details?{open:/\bopen\b/.test(details[1])}:null;
     }
-    closest(){return this;}
+    closest(selector){return selector.split(',').some(part=>{const attr=/^\[([\w-]+)\]/.exec(part);return attr&&this.attrs.has(attr[1]);})?this:null;}
     insertAdjacentHTML(_position,value){this.innerHTML+=value;}
   }
   const names=['main','modal','modal-content','calendar','resources','clan-panel','sound-button','save-indicator','touch-header-status','touch-command-count','touch-command-limit','touch-command-info','touch-magatama-balance','touch-magatama-info'];
@@ -55,6 +55,14 @@ await test('unlinked local play opens all seven scores and seventeen ranks throu
   assert(h.dialog.open);assert(h.classes.has('player-evaluation-modal'));assert(!h.html().includes('まだ未確認の名前'));assert.equal((h.html().match(/data-evaluation-category=/g)||[]).length,7);assert.equal((h.html().match(/<li(?: |>|\b)/g)||[]).length,17);assert(h.html().includes('下がることも'));assert(h.html().includes('所持資源・残兵・消費額・発言数は点数に含めません'));assert(!/運営|スタッフ/.test(h.html()),'Public rank guidance does not advertise management roles');assert(h.html().includes('次の位階'));assert(h.html().indexOf('</section>')<h.html().indexOf('<footer class="modal-footer">'));
   await h.click('close');assert(!h.dialog.open);assert.equal(JSON.stringify(h.c.game.state),before);assert.equal(h.writes.length,0);assert.equal(h.c.game.isAdmin,false);
 });
+await test('rank details show the current monthly food bonus and every documented promotion rate',()=>{
+  const h=harness();h.c.game.state.prestige=20000;h.c.showEvaluation();const evaluation=h.c.game.evaluation(),bonus=h.c.game.income().rankRiceBonus,html=h.html();
+  assert(html.includes(`data-rank-rice-bonus="percent">+${bonus.percent}%`));assert(html.includes(`data-rank-rice-bonus="amount">${h.c.economyNumber(bonus.amount,'gross')}`));
+  assert.equal((html.match(/class="player-evaluation-rank-bonus"/g)||[]).length,17);
+  for(const rank of D.evaluationRanks)assert(html.includes(`兵糧 +${rank.riceBonusPercent}%`));
+  assert(html.includes(`${evaluation.nextRank.name}で兵糧 +${evaluation.nextRank.riceBonusPercent}%`));
+  assert(html.includes('維持費と余剰生産の調整を行う前'));assert(html.includes('備蓄や報酬は増えません'));assert(html.includes('昇格・降格すると加算率も変わります'));
+});
 await test('identity switching hides the previous campaign until the new user and save are both confirmed',async()=>{
   const h=harness({linked:true,pending:true});h.draw();assert.equal(h.c.getEvaluation(),null);await h.click('player-evaluation');assert(!h.html().includes('data-evaluation-category='));
   h.c.setSyncAccess({rolePending:false,ready:true,writable:true});const first=h.c.getEvaluation();assert(first);assert(h.html().includes('領主A'));
@@ -76,7 +84,7 @@ await test('live score changes preserve expanded rank guidance and never modify 
   h.c.game.state.prestige=0;h.c.refreshActiveModal();assert(h.nodes['modal-content'].details.open);assert.equal(h.writes.length,0);const expected=JSON.parse(before);expected.prestige=0;assert.deepEqual(plain(h.c.game.state),expected);
 });
 await test('fixed touch header keeps its four resource and two action cells while the narrow desktop keeps a page entry',()=>{
-  const h=harness();h.draw();assert.equal((h.nodes.resources.innerHTML.match(/class="resource"/g)||[]).length,4);assert(!h.nodes.resources.innerHTML.includes('player-evaluation'));assert(!h.nodes.calendar.innerHTML.includes('player-evaluation'));assert(!h.nodes['touch-header-status'].innerHTML.includes('player-evaluation'));
+  const h=harness();h.draw();assert.equal((h.nodes.resources.innerHTML.match(/class="resource(?:\s|")/g)||[]).length,4);assert(!h.nodes.resources.innerHTML.includes('player-evaluation'));assert(!h.nodes.calendar.innerHTML.includes('player-evaluation'));assert(!h.nodes['touch-header-status'].innerHTML.includes('player-evaluation'));
   assert.equal(h.nodes['touch-command-count'].textContent,String(h.c.game.state.command));assert.equal(h.nodes['touch-magatama-balance'].textContent,h.c.num(h.c.game.state.magatama));assert(h.nodes.main.innerHTML.includes('data-player-evaluation-self'),'the heading entry remains available when the desktop hides its clan panel');
   const css=fs.readFileSync(require.resolve('../player-evaluation.css'),'utf8');assert(!/\.topbar\b|#resources\b|#touch-header-status\b/.test(css),'evaluation styles cannot alter fixed-header geometry');assert(/\.player-evaluation-entry\s*\{[^}]*flex-wrap:\s*wrap[^}]*max-width:\s*100%/.test(css));assert(/\.player-evaluation-rank-list\s*\{\s*grid-template-columns:\s*minmax\(0,\s*1fr\)/.test(css),'rank guidance must collapse to one column on a phone');
   h.c.startPending=true;h.c.renderHeader();assert.equal(h.c.getEvaluation(),null);assert(h.nodes['touch-header-status'].hidden);assert(!h.nodes['clan-panel'].innerHTML.includes('player-evaluation'));assert(h.nodes.main.buttons.find(node=>node.dataset.action==='player-evaluation').hidden);
