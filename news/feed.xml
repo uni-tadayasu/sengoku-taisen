@@ -9,6 +9,15 @@
     <ttl>60</ttl>
     <atom:link href="https://www.kasai-solutions-inc.com/news/feed.xml" rel="self" type="application/rss+xml"/>
     <item>
+      <title>Ver.5.9.14｜城下町を開いたときの初回表示を修正</title>
+      <link>https://www.kasai-solutions-inc.com/news/#v5-9-14</link>
+      <guid isPermaLink="true">https://www.kasai-solutions-inc.com/news/#v5-9-14</guid>
+      <dc:date>2026-11-27</dc:date>
+      <description>朝・昼・夜の城下町を開くと内政画面が空白になる問題を修正しました。
+
+現在の時間帯で城下町を表示：ゲームを開始したときや、他の画面から城下町に移ったときに、施設の配置と時間帯に応じた風景を表示します。</description>
+    </item>
+    <item>
       <title>Ver.5.9.13｜朝・昼・夜の城下町と運営用の文書テンプレート100件</title>
       <link>https://www.kasai-solutions-inc.com/news/#v5-9-13</link>
       <guid isPermaLink="true">https://www.kasai-solutions-inc.com/news/#v5-9-13</guid>

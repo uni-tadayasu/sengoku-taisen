@@ -136,6 +136,30 @@ await test('all four town appearances follow the BGM clock in place even when so
   assert.equal(f.contexts.length,0);
 });
 
+await test('the shipped town renderer resolves a missing phase argument at game entry',()=>{
+  const bundle=fs.readFileSync(new URL('../game-interface.bundle.js',import.meta.url),'utf8');
+  // The build keeps named functions. Execute the shipped helper itself, including
+  // code generated for optional calls, without mounting the entire game shell.
+  const start=bundle.indexOf('function townSceneArt('),end=bundle.indexOf('function refreshTownArt(',start);
+  assert(start>=0&&end>start,'shipped town scene helpers are present');
+  const f=make(5),c=f.context;
+  let equipped=null;
+  c.SengokuPremiumRuntime={getAppearance:()=>({town:equipped})};
+  vm.runInContext(fs.readFileSync(new URL('../premium-catalog.js',import.meta.url),'utf8'),c);
+  vm.runInContext(bundle.slice(start,end),c,{filename:'shipped-town-scene.js'});
+  for(const [hour,phase,skin,stem] of [
+    [5,'morning',null,'castle-town-raden-morning'],
+    [12,'day','moonlit-castle','moonlit-castle-day'],
+    [18,'night','sakura-town','sakura-town-night'],
+    [6,'morning','snow-town','snow-town']
+  ]){
+    f.setNow(local(hour));equipped=skin;
+    const art=c.townSceneArt();
+    assert.equal(art.daypart,phase);
+    assert(art.srcset.includes('assets/responsive/'+stem+'-400.webp 400w'));
+  }
+});
+
 await test('an idle player does not start from a mode, clock or restoration event alone',async()=>{
   const f=make(4,59,59),player=new f.Music();player.setAuto(true);
   f.setNow(local(12));await f.listeners.get('visibilitychange')();await f.windowListeners.get('pageshow')();
