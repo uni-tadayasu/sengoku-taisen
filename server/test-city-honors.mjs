@@ -9,10 +9,18 @@ async function changeDeputy(h,admin,person,action='appoint'){
  const current=(await h.api('/admin/deputy',{token:admin.token})).data;
  return(await h.api('/admin/deputy',post(admin,{targetPlayerId:person.user.id,action,requestId:crypto.randomUUID(),expectedRevision:current.revision}))).data;
 }
-let cases=0,calls=0,maxBindings=0;
+let cases=0,calls=0,maxBindings=0,maxCompoundTerms=0;
 async function scenario(name,run){
  const h=harness(),batch=h.db.batch.bind(h.db);
- h.db.batch=statements=>{for(const s of statements){maxBindings=Math.max(maxBindings,s.params.length);assert(s.params.length<=100);}return batch(statements);};
+ h.db.batch=statements=>{for(const s of statements){
+  maxBindings=Math.max(maxBindings,s.params.length);assert(s.params.length<=100);
+  if(s.sql.includes('public-city-honors')){
+   // Cloudflare D1 limits a compound SELECT to five terms. Node SQLite's
+   // default is much larger, so explicitly enforce the production boundary.
+   const terms=s.sql.split(/\b(?:UNION(?:\s+ALL)?|INTERSECT|EXCEPT)\b/i).length;
+   maxCompoundTerms=Math.max(maxCompoundTerms,terms);assert(terms<=5,'D1 permits at most five compound SELECT terms');
+  }
+ }return batch(statements);};
  try{await run(h);cases++;console.log('PASS '+name);}finally{calls+=h.calls;h.close();}
 }
 
@@ -139,4 +147,4 @@ await scenario('private campaign identities are not decorated and anonymous cour
  assert.equal(result,payload);assert.equal(queried,false);assert(!Object.hasOwn(person,'cityHonors'));assert.deepEqual(payload.messages[0].author,{kind:'court',id:null,name:'朝廷'});
 });
 
-console.log(JSON.stringify({passed:cases,localHttpRequests:calls,maxBindings,externalRequests:0}));
+console.log(JSON.stringify({passed:cases,localHttpRequests:calls,maxBindings,maxCompoundTerms,externalRequests:0}));

@@ -71,6 +71,12 @@ export async function resolvePublicCityHonors(db,payload,now,{getWorldClock,even
     AND NOT EXISTS(SELECT 1 FROM staff_members sm WHERE sm.user_id=u.id)
     AND NOT EXISTS(SELECT 1 FROM player_bans b WHERE b.user_id=u.id AND b.active=1)`
   ];
+  const visible=`/* public-city-honors */ WITH visible(id) AS (VALUES ${page.map(()=>'(?)').join(',')}) `;
+  // D1 allows at most five SELECT terms in one compound statement. Keep the
+  // three appointment honors and three holdings in separate statements within
+  // this same atomic batch, so all six still use one ownership snapshot.
+  queries.push(statement(db,visible+branches.join(' UNION ALL '),...args));
+  const holdings=[],holdingArgs=[...page];
   // Reuse the shared field's canonical ownership predicate. A captured outpost
   // expires at the world-cycle boundary; a surviving personal home does not.
   // Existing shared-city co-holders remain eligible without inventing a new
@@ -79,10 +85,10 @@ export async function resolvePublicCityHonors(db,payload,now,{getWorldClock,even
   // in a private campaign or a caller-supplied deputy/home flag.
   for(const city of CITY_HONORS.filter(city=>['nijo','osaka','nagoya'].includes(city.id))){
    const candidate=eventCastleCandidates(city.id,clock);
-   branches.push(`SELECT u.id AS player_id,'${city.id}' AS city_id ${candidate.source} AND u.id IN(SELECT id FROM visible)`);
-   args.push(candidate.cycle,...candidate.params);
+   holdings.push(`SELECT u.id AS player_id,'${city.id}' AS city_id ${candidate.source} AND u.id IN(SELECT id FROM visible)`);
+   holdingArgs.push(candidate.cycle,...candidate.params);
   }
-  queries.push(statement(db,`/* public-city-honors */ WITH visible(id) AS (VALUES ${page.map(()=>'(?)').join(',')}) ${branches.join(' UNION ALL ')}`,...args));
+  queries.push(statement(db,visible+holdings.join(' UNION ALL '),...holdingArgs));
  }
  const result=await db.batch(queries),owned=new Map();
  for(const batch of result)for(const row of batch.results||[]){
