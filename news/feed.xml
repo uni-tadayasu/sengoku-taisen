@@ -9,6 +9,17 @@
     <ttl>60</ttl>
     <atom:link href="https://www.kasai-solutions-inc.com/news/feed.xml" rel="self" type="application/rss+xml"/>
     <item>
+      <title>Ver.5.15.0｜京都御所の正式官職と任命官職の表示を区別</title>
+      <link>https://www.kasai-solutions-inc.com/news/#v5-15-0</link>
+      <guid isPermaLink="true">https://www.kasai-solutions-inc.com/news/#v5-15-0</guid>
+      <dc:date>2026-11-28</dc:date>
+      <description>官職バッジに区分を添え、京都御所の正式官職と、一般拠点で任命された官職を見分けやすくしました。
+
+正式官職を明示：京都御所の参議・中納言・大納言・内大臣・右大臣・左大臣に「正式官職」を添え、一般拠点への任命には「任命官職」を表示します。役職の紋章は引き続き名前の近くに表示します。
+
+在任状況の反映を統一：役職の変更や拠点の移動に合わせて、地図・チャット・プロフィールなどの表示を更新します。同じ官職名のまま京都御所へ移った場合も、正式官職の表示へ切り替わります。</description>
+    </item>
+    <item>
       <title>Ver.5.14.0｜公開表示と操作の整合性を改善</title>
       <link>https://www.kasai-solutions-inc.com/news/#v5-14-0</link>
       <guid isPermaLink="true">https://www.kasai-solutions-inc.com/news/#v5-14-0</guid>
@@ -356,19 +367,6 @@ BANと分けて、拠点から追放：拠点からの追放を、BANによる�
 合戦・城下町・書院・御殿・音楽に新作イラスト：白馬が進む峠、月明かりの城下町、翡翠の山が浮かぶ絵図、御殿で対面する使者、蒔絵の琴を描きました。章の背景と公式ページでは画面の大きさに合う画像を読み込みます。
 
 公式ページの装いと配信を改善：攻略・復元・プレミアム・作品紹介・試聴などを黒漆、金の縁取り、翡翠色の光で統一。公開ページに必要なスタイルをまとめ、SNS共有画像と紹介素材も新しい表紙に更新しました。</description>
-    </item>
-    <item>
-      <title>Ver.5.9.5｜軽い天下地図とゲーム起動、資産欄の開閉・検索条件の保存</title>
-      <link>https://www.kasai-solutions-inc.com/news/#v5-9-5</link>
-      <guid isPermaLink="true">https://www.kasai-solutions-inc.com/news/#v5-9-5</guid>
-      <dc:date>2026-11-27</dc:date>
-      <description>天下地図の地形を小さなデータで配信し、ゲーム起動時のスクリプトも圧縮しました。縦に狭い画面では資産欄を畳み、いつもの機能検索は条件を保存して呼び出せます。
-
-地形と起動スクリプトの軽量化：繰り返し使う地理座標をまとめ、地図を開くときに22,779頂点を復元します。全国129城の記録と地形はそのままです。武将名簿とゲームのスクリプトも小さく配信します。
-
-端末の向きに合わせて資産欄を開閉：スマホ・タブレットや高さの小さいPC画面に「資産欄」を追加しました。短い横画面では初回は畳み、使いたいときに開けます。小さな画面で文字を大きくしたときは操作ボタンが折り返されます。
-
-自分の検索条件を保存：「すべてのメニュー」で検索語と分類の組み合わせを保存し、次からタップで再利用できます。保存内容はこの端末の領主・戦役ごとに分かれます。</description>
     </item>
   </channel>
 </rss>

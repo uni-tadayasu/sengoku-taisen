@@ -278,6 +278,7 @@ function create(options={}){
   emit({linked:true,ready:false,writable:false,reason:'access-changed',message:message||'領主の利用状態が更新されました。最新の接続状態を確認しています。',leaseExpiresAt:null});schedulePoll();return true;
  }
  function roleAccess(user={},pending=false){if(pending){branchAuthoritySnapshot=null;branchCorrectionPending=null;maintenanceAuthoritySnapshot=null;}const current=bridge(),roles={isAdmin:user.isAdmin===true,isStaff:user.isStaff===true&&user.isAdmin!==true,isDeputy:user.isDeputy===true&&user.isAdmin!==true&&user.isStaff!==true,pending};if(current?.setRoleAccess)current.setRoleAccess(roles);else current?.setAdminAccess?.(roles.isAdmin);}
+ function applyCourtProtection(snapshot,g){if(!valid(g)||String(snapshot.user?.id)!==String(session.id))return;return bridge()?.applyCourtProtection?.({source:'cloud',playerId:String(session.id),entitlements:{courtProtected:snapshot.entitlements?.courtProtected===true}});}
  function applyStaffBase(snapshot,g){if(!valid(g)||snapshot.user?.isStaff!==true||snapshot.user?.isAdmin===true)return;const result=bridge()?.applyStaffBase?.(snapshot.staffBase||null);if(result?.ok===false)throw Error(result.message||'スタッフ共同拠点を確認できませんでした。');}
  function branchAuthorityMeta(snapshot){
   const meta={source:'cloud',playerId:String(snapshot.user?.id||''),branchCampaignId:String(snapshot.save?.state?.walking?.campaignId||''),branchResolvedElapsedMs:Number.isSafeInteger(snapshot.branchResolvedElapsedMs)&&snapshot.branchResolvedElapsedMs>=0?snapshot.branchResolvedElapsedMs:0},previous=branchAuthoritySnapshot;
@@ -316,11 +317,11 @@ function create(options={}){
  function observeBranchSnapshot(snapshot){
   const current=bridge(),role=current?.getRoleAccess?.(),campaignId=current?.getState?.()?.walking?.campaignId;
   if(!session||!initialized||banned||accessRefreshPending||role?.pending||!snapshot?.user||snapshot.user.isBanned||String(snapshot.user.id)!==String(session.id)||!Number.isSafeInteger(snapshot.revision)||snapshot.revision<revision||branchAuthoritySnapshot&&snapshot.revision<branchAuthoritySnapshot.revision||!campaignId||snapshot.save?.state?.walking?.campaignId!==campaignId||role&&(Boolean(snapshot.user.isAdmin)!==role.isAdmin||Boolean(snapshot.user.isStaff&&!snapshot.user.isAdmin)!==role.isStaff||Boolean(snapshot.user.isDeputy&&!snapshot.user.isAdmin&&!snapshot.user.isStaff)!==Boolean(role.isDeputy)))return{ok:false,ignored:true};
-  applyMaintenanceAuthority(snapshot,generation,{deferFutureBaseline:true});return applyBranchAuthority(snapshot,generation)||{ok:true};
+  applyCourtProtection(snapshot,generation);applyMaintenanceAuthority(snapshot,generation,{deferFutureBaseline:true});return applyBranchAuthority(snapshot,generation)||{ok:true};
  }
  function setRole(snapshot){
   const user=snapshot?.user;if(!user||String(user.id)!==String(session?.id))throw Error('同期する領主を確認できませんでした。');
-  roleAccess(user);session.onUser?.(user);
+  roleAccess(user);session.onUser?.(user);applyCourtProtection(snapshot,generation);
  }
  function observeResidency(result){if(Number.isSafeInteger(result?.residencyRevision))global.SengokuResidency?.observe?.(result,{playerId:String(session?.id||''),revision:result.residencyRevision});}
  function lease(snapshot){
@@ -345,12 +346,12 @@ function create(options={}){
   try{result=await session.request(route,{...opts,background:true});}catch(error){if(valid(g)){if(error?.code==='ACCOUNT_BANNED')suspendAccount({playerId:session.id,message:error.message});else if(['ACCOUNT_ACCESS_CHANGED','BASE_EXPELLED'].includes(error?.code))invalidateAccountAccess({playerId:session.id,message:error.message});}throw error;}
   if(!valid(g))return null;
   const current=bridge()?.getRoleAccess?.();
-  if(before&&current&&before.epoch!==current.epoch&&result?.user&&(Boolean(result.user.isAdmin)!==current.isAdmin||Boolean(result.user.isStaff&&!result.user.isAdmin)!==current.isStaff||Boolean(result.user.isDeputy&&!result.user.isAdmin&&!result.user.isStaff)!==Boolean(current.isDeputy))){const error=Error('役職が更新されたため、最新の権限と共同拠点を再確認しています。');error.code='STALE_ROLE';throw error;}
+  if(before&&current&&before.epoch!==current.epoch&&result?.user&&(Boolean(result.user.isAdmin)!==current.isAdmin||Boolean(result.user.isStaff&&!result.user.isAdmin)!==current.isStaff||Boolean(result.user.isDeputy&&!result.user.isAdmin&&!result.user.isStaff)!==Boolean(current.isDeputy)||Object.hasOwn(current,'isCourtProtected')&&result.entitlements&&(result.entitlements.courtProtected===true)!==current.isCourtProtected)){const error=Error('役職が更新されたため、最新の権限と共同拠点を再確認しています。');error.code='STALE_ROLE';throw error;}
   return result;
  }
  async function apply(save,snapshot,g,{reason='remote',backup=false,backupRuntime=false}={}){
   if(!valid(g))return false;emit({writable:false,reason:'applying',message:'最新の進行を反映しています…'});applying=true;
-  try{const result=await bridge()?.applyCloudSave?.(save,{isAdmin:snapshot.user.isAdmin===true,isStaff:snapshot.user.isStaff===true&&snapshot.user.isAdmin!==true,isDeputy:snapshot.user.isDeputy===true&&snapshot.user.isAdmin!==true&&snapshot.user.isStaff!==true,staffBase:snapshot.staffBase||null,entitlements:snapshot.entitlements||{},...branchAuthorityMeta(snapshot),...maintenanceAuthorityMeta(snapshot),reason,backup,backupRuntime});if(!valid(g))return false;if(result!==true&&result?.ok!==true)throw Error(result?.message||'最新データをこの端末に保存できませんでした。');return true;}
+  try{const result=await bridge()?.applyCloudSave?.(save,{isAdmin:snapshot.user.isAdmin===true,isStaff:snapshot.user.isStaff===true&&snapshot.user.isAdmin!==true,isDeputy:snapshot.user.isDeputy===true&&snapshot.user.isAdmin!==true&&snapshot.user.isStaff!==true,staffBase:snapshot.staffBase||null,isCourtProtected:snapshot.entitlements?.courtProtected===true,entitlements:snapshot.entitlements||{},...branchAuthorityMeta(snapshot),...maintenanceAuthorityMeta(snapshot),reason,backup,backupRuntime});if(!valid(g))return false;if(result!==true&&result?.ok!==true)throw Error(result?.message||'最新データをこの端末に保存できませんでした。');return true;}
   finally{if(valid(g))applying=false;}
  }
  async function snapshot(result,g,{force=false,reason='remote'}={}){

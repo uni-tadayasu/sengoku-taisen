@@ -88,7 +88,7 @@ try{
   const missingRequestId=(await api('/admin/staff',post(operator.token,{targetPlayerId:a.user.id,action:'appoint'},400))).data;assert.equal(missingRequestId.error.code,'INVALID_INPUT');assert.equal(memberCount(a.user.id),1);
   const naturalReplay=await assign(operator,a,'appoint');assert(naturalReplay.idempotent);assert.equal(naturalReplay.staff[0].appointedAt,appointed.staff[0].appointedAt);
   await assign(operator,b,'appoint',appointId,409);await assign(operator,a,'dismiss',appointId,409);
-  const staffLease=await lease(a.token,'staff-device');assert.equal(staffLease.user.isStaff,true);assert.deepEqual(staffLease.entitlements,{edo:false,ieyasuU:false,kagoshima:false,shimazuU:false});
+  const staffLease=await lease(a.token,'staff-device');assert.equal(staffLease.user.isStaff,true);assert.deepEqual(staffLease.entitlements,{courtProtected:true,edo:false,ieyasuU:false,kagoshima:false,shimazuU:false});
   const saved=(await api('/sync',write(a.token,'staff-device',0,fresh()))).data;
   assert.equal(saved.user.isAdmin,false);assert.equal(saved.user.isStaff,true);assert.equal(saved.save.state.home,'kyoto_gosho');assert(saved.staffBase?.protected);assert(!saved.save.state.officerVariants.includes(ieyasu+':U'));
   const edo=fresh();edo.state.home='edo';edo.state.castles.edo.owner=edo.state.clan;

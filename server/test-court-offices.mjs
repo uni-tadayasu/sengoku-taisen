@@ -43,8 +43,8 @@ try{
   await fixture(h,'表示検証の運営',{admin:true});await fixture(h,'表示検証の担当',{staff:true});const player=await fixture(h,'表示検証の任命先',{score:35000});
   const result=(await action(h,'chunagon',player)).data;assert.equal(result.idempotent,false);assert.equal(seat(result,'chunagon').holder.id,player.user.id);assert.equal(seat(result,'chunagon').available,false);assert(seat(result,'chunagon').appointmentToken);
   const candidate=result.candidates.find(p=>p.id===player.user.id);assert.equal(candidate.officeId,'chunagon');assert.equal(candidate.courtOffice.title,'中納言');assert(candidate.homeCastleId);assert(candidate.homeCastleName);
-  const self=(await h.api('/court',{token:player.token})).data;assert.equal(self.self.title,'中納言');assert.equal(self.self.canAppoint,false);assert.equal(self.self.canRespond,false);
-  const publicUser=(await h.api('/players?q='+encodeURIComponent('表示検証の任命先')+'&limit=50')).data.players.find(p=>p.id===player.user.id);assert.deepEqual(publicUser.courtOffice,{title:'中納言',kind:'official'});assert(!Object.hasOwn(publicUser,'appointmentToken'));
+  const self=(await h.api('/court',{token:player.token})).data;assert.equal(self.self.title,'中納言');assert.equal(self.self.officeJurisdiction,'external');assert.equal(self.self.canAppoint,false);assert.equal(self.self.canRespond,false);
+  const publicUser=(await h.api('/players?q='+encodeURIComponent('表示検証の任命先')+'&limit=50')).data.players.find(p=>p.id===player.user.id);assert.deepEqual(publicUser.courtOffice,{title:'中納言',kind:'official',jurisdiction:'external'});assert(!Object.hasOwn(publicUser,'appointmentToken'));
   const current=(await h.api('/me',{token:player.token})).data.user;assert.equal(current.isAdmin,false);assert.equal(current.isStaff,false);
   await h.api('/staff/court',{token:player.token,expected:403});await h.api('/admin/court/offices',{token:player.token,expected:403});
   const message=(await h.api('/court/chat',post(player,{requestId:crypto.randomUUID(),text:'外部領主の参内'}))).data.message;assert.equal(message.author.kind,'visitor');assert.equal(message.author.id,player.user.id);

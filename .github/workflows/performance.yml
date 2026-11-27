@@ -132,6 +132,7 @@ jobs:
           node server/test-field-loot.mjs
           node server/test-field.mjs
           node server/test-field-capture.mjs
+          node server/test-court-base-protection.mjs
           node server/test-field-mail.mjs
   save-recovery:
     runs-on: ubuntu-latest
@@ -178,6 +179,8 @@ jobs:
       - name: Verify player retainer bonuses and castle membership
         run: |
           node tests/test-residency-engine.cjs
+          node tests/test-court-protection-engine.cjs
+          node tests/test-court-protection-sync.cjs
           node tests/test-residency-ui.cjs
           node server/test-residency.mjs
       - name: Verify shared construction and private Kyoto migration

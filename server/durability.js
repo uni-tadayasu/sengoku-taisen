@@ -165,7 +165,7 @@ function validateRepairIncrease(state,prior,incoming,clock,proofs){
 // construction, rewards and other local stock changes remain in the upload.
 // Replays prove battles with paid repairs enabled, but their resources are
 // scratch values: adopting them would charge an already-paid client twice.
-export function reconcilePaidRepairs(save,before,clock,{hasRepairReceipt=true,trustedStates=[],branchState=null,isAdmin=false,isStaff=false,isDeputy=false}={}){
+export function reconcilePaidRepairs(save,before,clock,{hasRepairReceipt=true,trustedStates=[],branchState=null,isAdmin=false,isStaff=false,isDeputy=false,isCourtProtected=false}={}){
  const state=save.state,submitted=hasRepairReceipt?clone(state.repair):null,startResources={wood:state.resources.wood,stone:state.resources.stone},prior=before?.state;
  if(!prior||state.walking.campaignId!==prior.walking.campaignId){
   // Establish the first trusted anchor at the capacity of the actual seat.
@@ -179,7 +179,7 @@ export function reconcilePaidRepairs(save,before,clock,{hasRepairReceipt=true,tr
  const previous=GameEngine.normalizeRepairState(prior.repair,prior.turn),client=GameEngine.normalizeRepairState(state.repair,state.turn),proofs=trustedStates.filter(value=>value?.walking?.campaignId===state.walking.campaignId);
  if(!proofs.length&&durabilityElapsed(state)>durabilityElapsed(prior)){
   try{
-   const game=GameEngine.fromSave(before,GAME_OFFICERS,{isAdmin,isStaff,isDeputy}),result=game.applyWorldClock({...clock,elapsedMs:Math.min(clock.elapsedMs,durabilityElapsed(state))},{maxSeconds:86400,deferCycleSettlement:true,rebalanceTroops:false});
+   const game=GameEngine.fromSave(before,GAME_OFFICERS,{isAdmin,isStaff,isDeputy,isCourtProtected}),result=game.applyWorldClock({...clock,elapsedMs:Math.min(clock.elapsedMs,durabilityElapsed(state))},{maxSeconds:86400,deferCycleSettlement:true,rebalanceTroops:false});
    if(result.ok&&!result.pending&&!result.settlementRequired)proofs.push(game.state);
   }catch{}
  }

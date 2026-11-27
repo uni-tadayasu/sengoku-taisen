@@ -91,7 +91,7 @@ await scope('public lists show current offices while concealing site authority f
   const {admin,staff,viewer}=await people(h);
   for(const actor of [admin,staff])await h.api('/presence',post(actor,{deviceId:actor.deviceId,online:true}));
   const online=(await h.api('/online')).data;publicOnly(online);assert.equal(online.players.length,2);
-  for(const person of online.players){assert.equal(person.clan,'徳川家');assert.deepEqual(person.courtOffice,person.id===admin.user.id?{title:'太政大臣',kind:'chancellor'}:{title:'参議',kind:'official'});}
+  for(const person of online.players){assert.equal(person.clan,'徳川家');assert.deepEqual(person.courtOffice,person.id===admin.user.id?{title:'太政大臣',kind:'chancellor'}:{title:'参議',kind:'official',jurisdiction:'kyoto'});}
   const search=(await h.api('/players?q='+encodeURIComponent('公開確認'),{token:viewer.token})).data;publicOnly(search);assert.equal(search.players.length,2);
   for(const actor of [admin,staff]){
     await h.api('/friends/request',post(actor,{userId:viewer.user.id}));
