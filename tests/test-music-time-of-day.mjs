@@ -96,6 +96,46 @@ await test('05:00, 12:00 and 18:00 use the device local clock, including midnigh
   }finally{if(originalTZ===undefined)delete process.env.TZ;else process.env.TZ=originalTZ;}
 });
 
+await test('all four town appearances follow the BGM clock in place even when sound is off',()=>{
+  const f=make(4,59,59),{host,$,doc}=setup(),c=f.context;
+  host.innerHTML='<div class="town-scene"><img class="town-scene-backdrop" alt=""><div class="town-scene-board"><img class="town-scene-image"><button id="town-marker">施設</button></div></div><span data-town-phase-label></span>';
+  let equipped=null;
+  c.$=$;c.currentView='town';
+  c.SengokuPremiumRuntime={getAppearance:()=>({town:equipped})};
+  vm.runInContext(fs.readFileSync(new URL('../premium-catalog.js',import.meta.url),'utf8'),c);
+  vm.runInContext(appSource.slice(appSource.indexOf('  function townSceneArt('),appSource.indexOf('  function premiumTownBanner(')),c);
+  const marker=$('#town-marker'),front=$('.town-scene-image'),back=$('.town-scene-backdrop');
+  marker.focus();
+  for(const [theme,original] of [['castle-town-raden','night'],['moonlit-castle','night'],['sakura-town','day'],['snow-town','morning']]){
+    equipped=theme==='castle-town-raden'?null:theme;
+    c.refreshTownArt(true); // Equipment can switch within the same time of day.
+    for(const [hour,phase,label] of [[5,'morning','朝'],[12,'day','昼'],[18,'night','夜']]){
+      f.setNow(local(hour));c.refreshTownArt();
+      const stem=theme+(phase===original?'':'-'+phase);
+      assert.equal(f.Music.daypart(),phase);
+      assert.equal($('.town-scene').dataset.townDaypart,phase);
+      assert.equal($('[data-town-phase-label]').textContent,label);
+      assert.match(front.alt,new RegExp(label));
+      assert.equal(back.getAttribute('alt'),'');
+      const srcset=[400,720,1080,1536].map(width=>'assets/responsive/'+stem+'-'+width+'.webp '+width+'w').join(', ');
+      assert.equal(front.getAttribute('srcset'),srcset);
+      assert.equal(back.getAttribute('srcset'),srcset);
+      for(const candidate of srcset.split(', ')){
+        const [file]=candidate.split(' ');
+        assert(fs.existsSync(new URL('../'+file,import.meta.url)),file);
+      }
+      assert.equal(front.getAttribute('src'),back.getAttribute('src'));
+      assert.equal($('.town-scene-image'),front);
+      assert.equal(doc.activeElement,marker);
+    }
+  }
+  f.document.hidden=true;f.setNow(local(5));c.refreshTownArt();
+  assert.equal($('.town-scene').dataset.townDaypart,'night');
+  f.document.hidden=false;c.refreshTownArt();
+  assert.equal($('.town-scene').dataset.townDaypart,'morning');
+  assert.equal(f.contexts.length,0);
+});
+
 await test('an idle player does not start from a mode, clock or restoration event alone',async()=>{
   const f=make(4,59,59),player=new f.Music();player.setAuto(true);
   f.setNow(local(12));await f.listeners.get('visibilitychange')();await f.windowListeners.get('pageshow')();

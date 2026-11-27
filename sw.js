@@ -1,16 +1,26 @@
 /* 本体は先に保存。大きな絵巻は、実際に開いたものから保存します。 */
-const RELEASE='5.9.12-20261127';
+const RELEASE='5.9.13-20261127';
 const CACHE='sengoku-taisen-v'+RELEASE;
 const scopeURL=()=>self.registration?.scope||self.location.origin+'/';
 const currentMatch=(request,name=CACHE)=>caches.open(name).then(cache=>cache.match(request));
 const pages=new Set(['./','./guide/','./guide/data-recovery/','./about/','./premium/','./sengoku-vs/','./en/','./press/','./news/','./tools/music-audition.html']);
 const optionalCode=new Set([
   './public-theme.bundle.css','./public-reading.bundle.css',
+  './operator-message-templates.js','./operator-template-picker.js','./operator-template-picker.css',
   './promotion.css','./promotion-share.js','./public-growth.js','./english-introduction.css','./guide.css','./share.css','./brand-discovery.css','./public-luxury.js','./public-luxury.css','./public-search.js','./variant-text.js','./premium-catalog.js','./premium.js','./premium.css',
   './interaction-motion.js','./interaction-motion.css','./selection-lock.js','./selection-lock.css','./image-protect.js','./image-protect.css','./button-artwork.css',
   './premium-runtime.js','./premium-appearance.css','./music.js','./tools/music-audition.js','./map-data.js'
 ]);
 const compactArtwork={'neon-command':480,war:240,town:240,archive:240,brand:48,emblem:96};
+// Cache one small panorama per appearance and time of day. Offline players
+// can cross a clock boundary without having visited that scene online.
+const compactTownStems=new Set([
+  'castle-town-raden','castle-town-raden-morning','castle-town-raden-day',
+  'moonlit-castle','moonlit-castle-morning','moonlit-castle-day',
+  'sakura-town','sakura-town-morning','sakura-town-night',
+  'snow-town','snow-town-day','snow-town-night'
+]);
+const compactTownURL=stem=>'./assets/responsive/'+stem+'-400.webp';
 const brandEdition='20261127-jade';
 const installedStems={'neon-command':'neon-command-raden',war:'war-jade',town:'town-jade',archive:'archive-jade',brand:'brand-'+brandEdition,emblem:'emblem-'+brandEdition};
 const compactURL=(family,stem)=>'./assets/responsive/'+(stem||installedStems[family]||family)+'-'+compactArtwork[family]+'.webp';
@@ -18,6 +28,9 @@ const compactURL=(family,stem)=>'./assets/responsive/'+(stem||installedStems[fam
 // A staged tab can read a different edition while this worker still controls
 // both tabs. Derive the compact filename from the requested artwork first.
 function compactAlternatives(relative){
+  const town=/^\.\/assets\/responsive\/([a-z-]+)-\d+\.webp$/.exec(relative)
+    || /^\.\/assets\/premium\/(moonlit-castle|sakura-town|snow-town)-v1\.webp$/.exec(relative);
+  if(town&&compactTownStems.has(town[1]))return [compactTownURL(town[1])];
   const responsive=relative.replace(/-panel-(?=\d+\.webp$)/,'-');
   const match=/^\.\/assets\/responsive\/(neon-command|war|town|archive|brand|emblem)((?:-[a-z]+|-\d{8}(?:-[a-z]+)?)?)-\d+\.webp$/.exec(responsive)
     || /^\.\/assets\/chronicle\/(war|town|archive)((?:-[a-z]+)?)\.webp$/.exec(relative);
@@ -42,7 +55,7 @@ function shellEntries(html){
     entries.add('./'+path.replace(/^\.\//,''));
   }
   if(!entries.has('./manifest.webmanifest?v='+RELEASE)||![...entries].some(url=>/\.js\?/.test(url)))throw Error('Release entry is unavailable');
-  return [...entries,...Object.keys(compactArtwork).map(name=>compactURL(name))];
+  return [...entries,...Object.keys(compactArtwork).map(name=>compactURL(name)),...Array.from(compactTownStems,compactTownURL)];
 }
 function entryMime(url,response){
   const type=(response.headers.get('Content-Type')||'').split(';')[0].trim().toLowerCase(),path=new URL(url).pathname;

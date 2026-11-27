@@ -1034,6 +1034,7 @@
       const t=byId.get(id);if(!t)throw new RangeError('Unknown track');const s=compile(t);
       return {id,duration:s.duration,eventCount:s.events.length,sections:s.sections.map(section=>({...section})),estimatedPeak:{...s.peak},voiceBudget:{voices:VOICE_LIMIT,sources:SOURCE_LIMIT},instruments:[...new Set(s.events.map(event=>event.type))],events:s.events.map(e=>({...e}))};
     }
+    static daypart(date){return trackById.get(daypartTrackId(date)).scene;}
     static daypartTrackId(date){return daypartTrackId(date);}
     static automaticTrackId(scene,date){return automaticTrackId(scene,date);}
     static nextDaypartDelay(date){return nextDaypartDelay(date);}

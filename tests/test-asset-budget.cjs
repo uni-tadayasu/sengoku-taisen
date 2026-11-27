@@ -36,7 +36,9 @@ const totalGzipBytes = rows.reduce((sum,row)=>sum+row.gzipBytes,0);
 // v5.9.12 synthesizes 21 scene-specific effects, routes intentional input
 // and confirmed game results, and provides in-game audition controls. The
 // entry adds 12,648 raw / 4,793 gzip bytes over v5.9.11 and no audio samples.
-const rawBudget=3370000,gzipBudget=937000;
+// v5.9.13 adds town phase switching and operator-only template launchers.
+// The catalog and dialog are lazy. Measured entry delta: +3,772 raw / +1,464 gzip.
+const rawBudget=3374000,gzipBudget=939000;
 assert(totalBytes <= rawBudget, `Initial bundles exceed the ${rawBudget} byte budget: ${totalBytes}`);
 assert(totalGzipBytes <= gzipBudget, `Initial bundles exceed the ${gzipBudget} gzip byte budget: ${totalGzipBytes}`);
 const html = fs.readFileSync(path.join(root,'index.html'),'utf8');
