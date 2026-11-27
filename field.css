@@ -29,7 +29,7 @@
 .sengoku-field .field-map-castle-art{width:100%;height:100%;border:0;border-radius:0}
 .sengoku-field .field-map-castle .field-castle-fallback{border:0;border-radius:0}
 .sengoku-field .field-map-castle .field-castle-fallback svg,.sengoku-field .field-map-castle .art-loading svg{width:23px;height:23px}
-.sengoku-field .field-map-castle .field-castle-level{left:auto;min-width:30px;padding:1px 3px;border:1px solid #d7c28e70;border-right:0;border-bottom:0;border-radius:3px 0 0 0;font-size:10px;line-height:1.15}
+.sengoku-field .field-map-castle[data-appearance-level] .field-castle-level{left:0;right:0;min-width:0;padding:1px;border:1px solid #d7c28e70;border-inline:0;border-bottom:0;border-radius:0;font-size:10px;line-height:1.15}
 @media(max-width:600px){.field-castle-visual{width:94px;height:94px}.field-castle-level{font-size:11px}.field-player-meta{max-width:150px}.field-player-meta small{white-space:normal}}
 
 /* The battle kind is declared before confirmation and repeated in the receipt. */

@@ -174,7 +174,7 @@ test('Kagoshima artwork is identified for every viewer without requiring the dep
     assert(!F.castleAppearance(target('lord','kiyosu','kiyosu',{keepLevel:8})).includes('鶴丸城'));
   }finally{if(previous===undefined)delete global.SengokuArt;else global.SengokuArt=previous;}
 });
-test('all 32 keep levels select different cells from the existing per-castle atlas',()=>{
+test('all 32 keep levels select different cells while a stronger completed castle keeps its developed artwork',()=>{
   const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),{SENGOKU_DATA}=require('../engine.js');
   const scope={SENGOKU_DATA,document:{readyState:'loading',addEventListener(){}}};scope.window=scope;
   vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../artwork.js'),'utf8'),scope);
@@ -183,15 +183,22 @@ test('all 32 keep levels select different cells from the existing per-castle atl
     for(const homeCastleId of ['kiyosu','edo','kyoto_gosho']){
       const cells=new Set();
       for(let keepLevel=1;keepLevel<=32;keepLevel++){
-        const p=F.normalizePlayers([player('a',homeCastleId,{level:64,keepLevel})])[0],html=F.castleAppearance(p),tile=scope.SengokuArt.tileInfo('castle',homeCastleId,keepLevel);
+        const p=F.normalizePlayers([player('a',homeCastleId,{level:1,keepLevel})])[0],html=F.castleAppearance(p),tile=scope.SengokuArt.tileInfo('castle',homeCastleId,keepLevel);
         assert(html.includes(`data-art-url="assets/castles/${homeCastleId}.webp"`));assert(html.includes(`data-field-keep-level="${keepLevel}"`));
         assert(html.includes(`data-art-x="${tile.x}"`));assert(html.includes(`data-art-y="${tile.y}"`));cells.add(tile.x+':'+tile.y);
       }
       assert.equal(cells.size,32,'Each keep level has its own existing artwork cell');
     }
+    for(const [id,castleLevel]of [['kiyosu',32],['edo',64],['kyoto_gosho',128]]){
+      const p=F.normalizePlayers([player('a',id,{level:castleLevel,keepLevel:1})])[0],before=JSON.stringify(p),html=F.castleAppearance(p,{marker:true}),last=scope.SengokuArt.tileInfo('castle',id,32);
+      assert(html.includes(`data-appearance-level="${castleLevel}"`));assert(html.includes(`>城郭${castleLevel}</span>`));assert(html.includes('天守 Lv.1 · 城郭 Lv.'+castleLevel));
+      assert(html.includes(`data-art-x="${last.x}"`));assert(html.includes(`data-art-y="${last.y}"`));assert.equal(JSON.stringify(p),before);
+    }
+    const branch=F.castleAppearance(F.branchTarget(target('a','edo','edo',{level:64,keepLevel:32,branches:[{id:'edo_north',level:3}]}),'edo_north'),{marker:true});
+    assert(branch.includes('data-appearance-level="3"'));assert(branch.includes('>Lv.3</span>'));assert(branch.includes('支拠点 Lv.3'));
     const missing=F.castleAppearance(player('a','edo',{level:64}));assert(missing.includes('data-field-keep-level="1"'));assert(missing.includes('天守 未取得'));
     const capturedCity=F.castleAppearance(F.normalizePlayers([target('a','kiyosu','nijo',{level:48,keepLevel:32})])[0],{marker:true}),lastCell=scope.SengokuArt.tileInfo('castle','nijo',32);
-    assert(capturedCity.includes('Lv.48'));assert(capturedCity.includes('data-field-keep-level="32"'));assert(capturedCity.includes(`data-art-x="${lastCell.x}"`));assert(capturedCity.includes(`data-art-y="${lastCell.y}"`));
+    assert(capturedCity.includes('城郭48'));assert(capturedCity.includes('data-field-keep-level="32"'));assert(capturedCity.includes(`data-art-x="${lastCell.x}"`));assert(capturedCity.includes(`data-art-y="${lastCell.y}"`));
     const unsafe=F.castleAppearance(player('a','missing" onclick="alert(1)',{name:'<script>',keepLevel:3}));assert(!unsafe.includes('onclick="alert'));assert(unsafe.includes('field-castle-fallback'));
   }finally{if(old===undefined)delete global.SengokuArt;else global.SengokuArt=old;}
 });

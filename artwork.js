@@ -55,6 +55,14 @@ function icon(name='default'){return `<svg class="item-icon" viewBox="0 0 24 24"
 function sheetCell(name,index,columns,rows){
  return {url:previewUrl(name),x:(index%columns)/(columns-1)*100,y:Math.floor(index/columns)/(rows-1)*100,size:columns*100+'% '+rows*100+'%'};
 }
+function castleGrowthInfo(id,{castleLevel=1,keepLevel,home=false}={}){
+ const limit=id==='kyoto_gosho'?128:id==='edo'?64:(data.majorCityIds||['nijo','osaka','nagoya']).includes(id)?48:32;
+ const numeric=value=>(typeof value==='number'||typeof value==='string'&&value.trim())&&Number.isFinite(Number(value))?Number(value):NaN;
+ const castle=Math.max(1,Math.min(limit,Math.round(numeric(castleLevel)||1))),rawKeep=numeric(keepLevel);
+ const keep=home&&Number.isInteger(rawKeep)&&rawKeep>=1?Math.min(32,rawKeep):null,level=Math.max(castle,keep||1),source=keep>castle?'天守':'城郭';
+ // Presentation only: neither completed level is promoted to the other.
+ return{castleLevel:castle,keepLevel:keep,level,source,label:source+' Lv.'+level,summary:(home?(keep===null?'天守 未取得':'天守 Lv.'+keep)+' · ':'')+'城郭 Lv.'+castle};
+}
 function tileInfo(kind,id,variant){
  if(kind==='officer'){
   const o=officers.get(id);if(!o)return null;const rank=ranks.includes(variant)?variant:o.rank;
@@ -348,6 +356,6 @@ function init(){
  document.addEventListener('visibilitychange',()=>{if(!document.hidden)repaintVisible();});
  if(!observer)global.addEventListener?.('scroll',repaintVisible,{capture:true,passive:true});
  new MutationObserver(artworkMutations).observe(document.body,{childList:true,subtree:true});decorate();}
-global.SengokuArt={portrait,castle:(id,c='',level=1)=>tile('castle',id,c,level),castleScene,castlePanorama,facility:(id,c='',level=1)=>tile('facility',id,c,level),icon,tileInfo,facilityFrame,load,readyCurrent,decorate,schedule,totalIllustrations:8224};
+global.SengokuArt={portrait,castle:(id,c='',level=1)=>tile('castle',id,c,level),castleScene,castlePanorama,castleGrowthInfo,facility:(id,c='',level=1)=>tile('facility',id,c,level),icon,tileInfo,facilityFrame,load,readyCurrent,decorate,schedule,totalIllustrations:8224};
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init,{once:true});else init();
 })(window);

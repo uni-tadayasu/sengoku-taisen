@@ -83,7 +83,11 @@ const totalGzipBytes = rows.reduce((sum,row)=>sum+row.gzipBytes,0);
 // 1,020,551 gzip bytes (+8,596 / +2,827 from v5.12.5). Keep less than
 // 2.2 KB raw / 1.5 KB gzip headroom. The responsive artwork is separate;
 // its compact offline variants are covered by the release-asset budget.
-const rawBudget=3691000,gzipBudget=1022000;
+// v5.13.2 adds completed castle growth labels, the phone action row and the
+// current deputy crest. Measured against v5.13.1: +2,996 raw / +777 gzip
+// (3,691,862 / 1,021,342). Retain the existing gzip ceiling and 2.1 KB raw
+// headroom. The 3,282-byte SVG crest is a separate, lazy image.
+const rawBudget=3694000,gzipBudget=1022000;
 assert(totalBytes <= rawBudget, `Initial bundles exceed the ${rawBudget} byte budget: ${totalBytes}`);
 assert(totalGzipBytes <= gzipBudget, `Initial bundles exceed the ${gzipBudget} gzip byte budget: ${totalGzipBytes}`);
 const html = fs.readFileSync(path.join(root,'index.html'),'utf8');

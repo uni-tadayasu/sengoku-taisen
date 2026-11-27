@@ -9,7 +9,7 @@ let sequence=0;
 const cleanVersion=value=>typeof value==='string'&&VERSION.test(value)?value:null;
 // Public city honors are issued by the server. A name renderer, local save,
 // premium purchase or avatar upload cannot award a city to its caller.
-const CITY_HONORS=Object.freeze({edo:'江戸城',kyoto_gosho:'京都御所',nijo:'二条御所',osaka:'大坂城',nagoya:'名古屋城'});
+const CITY_HONORS=Object.freeze({edo:'江戸城',kyoto_gosho:'京都御所',nijo:'二条御所',osaka:'大坂城',nagoya:'名古屋城',kagoshima:'鹿児島城'});
 const cityHonors=new Map(),cityHonorVersions=new Map();
 let cityHonorFloor=0;
 const honorPlayerId=value=>typeof value==='string'?value:value?.playerId||value?.userId||value?.id||value?.sessionId;
@@ -18,11 +18,11 @@ const honorFields=[['playerId','playerCityHonors'],['ownerId','ownerCityHonors']
 function cleanCityHonors(value){
  if(!Array.isArray(value))return[];
  const ids=new Set(value.filter(row=>row&&typeof row==='object'&&Object.hasOwn(CITY_HONORS,row.id)).map(row=>row.id));
- return Object.entries(CITY_HONORS).filter(([id])=>ids.has(id)).map(([id,cityName])=>({id,cityName,title:cityName+'の勲章'}));
+ return Object.entries(CITY_HONORS).filter(([id])=>ids.has(id)).map(([id,cityName])=>({id,cityName,title:id==='kagoshima'?'鹿児島城 不死身の紋章':cityName+'の勲章'}));
 }
 function honorsFor(player){const id=honorPlayerId(player);return validHonorPlayer(id)?(cityHonors.get(id)||[]).map(row=>({...row})):[];}
-function honorLabel(row){return row.cityName+(row.id==='kyoto_gosho'?'の領主':'の城主');}
-function honorMarkup(rows){return rows.map(row=>{const label='都市勲章：'+honorLabel(row);return `<span class="city-honor" data-city-honor="${row.id}" data-stable-key="city-honor-${row.id}" title="${esc(label)}"><span class="city-honor-fallback" aria-hidden="true">${esc(Array.from(row.cityName)[0])}</span><img src="assets/city-honors/${row.id}-v1.webp" width="32" height="32" alt="${esc(label)}" decoding="async" loading="lazy" draggable="false"></span>`;}).join('');}
+function honorLabel(row){return row.id==='kagoshima'?'鹿児島城 不死身の紋章':row.cityName+(row.id==='kyoto_gosho'?'の領主':'の城主');}
+function honorMarkup(rows){return rows.map(row=>{const label=(row.id==='kagoshima'?'':'都市勲章：')+honorLabel(row),src=row.id==='kagoshima'?'assets/branding/kagoshima-immortal-crest.svg':`assets/city-honors/${row.id}-v1.webp`;return `<span class="city-honor" data-city-honor="${row.id}" data-stable-key="city-honor-${row.id}" title="${esc(label)}"><span class="city-honor-fallback" aria-hidden="true">${esc(Array.from(row.cityName)[0])}</span><img src="${src}" width="32" height="32" alt="${esc(label)}" decoding="async" loading="lazy" draggable="false"></span>`;}).join('');}
 function scopedHonors(player,cityId){const rows=honorsFor(player);return cityId?rows.filter(row=>row.id===cityId):rows;}
 function honorSlot(player,{cityId=''}={}){const id=honorPlayerId(player);if(!validHonorPlayer(id))return'';const rows=scopedHonors(id,cityId);return `<span class="city-honors-slot" data-city-honors-player="${esc(id)}"${cityId?` data-city-honors-city="${esc(cityId)}"`:''} data-city-honors-key="${rows.map(row=>row.id).join(',')}">${honorMarkup(rows)}</span>`;}
 function refreshCityHonors(root=global.document){

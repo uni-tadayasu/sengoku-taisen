@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="kic-title kic-description">
+  <title id="kic-title">鹿児島城不死身の紋章</title>
+  <desc id="kic-description">翡翠の丸に十文字を、金の守護の翼と後光で囲んだ戦国VS独自の紋章。</desc>
+  <defs>
+    <linearGradient id="kic-gold" x1="0" y1="0" x2=".65" y2="1">
+      <stop stop-color="#fff3bd"/>
+      <stop offset=".32" stop-color="#e8bf62"/>
+      <stop offset=".6" stop-color="#fff0a8"/>
+      <stop offset="1" stop-color="#ad6e26"/>
+    </linearGradient>
+    <linearGradient id="kic-wing-gold" x1="0" y1="0" x2="0" y2="1">
+      <stop stop-color="#ffe7a2"/>
+      <stop offset=".5" stop-color="#e6b657"/>
+      <stop offset="1" stop-color="#91601e"/>
+    </linearGradient>
+    <radialGradient id="kic-jade" cx=".32" cy=".22" r=".85">
+      <stop stop-color="#42b69c"/>
+      <stop offset=".45" stop-color="#0e756c"/>
+      <stop offset="1" stop-color="#072f37"/>
+    </radialGradient>
+    <g id="kic-wing">
+      <path d="M37 41C25 36 15 26 7 15C6 30 11 43 21 53L5 45C9 60 17 68 29 74L14 72C21 87 33 94 48 96L48 78Z"
+        fill="url(#kic-wing-gold)" stroke="#183c38" stroke-width="2.5" stroke-linejoin="round"/>
+      <path d="M13 29C18 43 27 53 40 58M13 54C21 65 30 70 42 73M25 80C31 86 39 88 46 88"
+        fill="none" stroke="#0c5853" stroke-width="4" stroke-linecap="round"/>
+      <path d="M12 22C17 34 25 43 33 47" fill="none" stroke="#fff4bd" stroke-width="2.5" stroke-linecap="round"/>
+    </g>
+  </defs>
+
+  <!-- Broad gilded feathers stay distinct at the 28px identity-badge size. -->
+  <use href="#kic-wing"/>
+  <use href="#kic-wing" transform="translate(128 0) scale(-1 1)"/>
+
+  <!-- A rising aureole and a jade pendant complete the protective silhouette. -->
+  <path d="M45 31L42 13L55 21L64 4L73 21L86 13L83 31L64 42Z"
+    fill="url(#kic-gold)" stroke="#183c38" stroke-width="2.5" stroke-linejoin="round"/>
+  <path d="M64 12L69 27L64 31L59 27Z" fill="#0b7064"/>
+  <path d="M42 89L34 109L52 104L64 123L76 104L94 109L86 89Z"
+    fill="url(#kic-gold)" stroke="#183c38" stroke-width="2.5" stroke-linejoin="round"/>
+  <path d="M64 99L72 108L64 119L56 108Z" fill="url(#kic-jade)" stroke="#ffe6a4" stroke-width="2"/>
+
+  <!-- The central mon preserves the existing Shimazu circle-and-cross motif. -->
+  <circle cx="64" cy="63" r="37" fill="#123a39" stroke="#d3a44e" stroke-width="3"/>
+  <circle cx="64" cy="63" r="33" fill="url(#kic-gold)"/>
+  <circle cx="64" cy="63" r="28.5" fill="url(#kic-jade)" stroke="#5a4b29" stroke-width="1.5"/>
+  <circle cx="64" cy="63" r="23" fill="none" stroke="url(#kic-gold)" stroke-width="5.5"/>
+  <path d="M64 40V86M41 63H87" fill="none" stroke="url(#kic-gold)" stroke-width="6.5"/>
+  <path d="M43 40A31 31 0 0 1 64 32" fill="none" stroke="#fff6cb" stroke-width="2.5" stroke-linecap="round"/>
+  <path d="M40 64A24 24 0 0 0 64 87" fill="none" stroke="#8d632b" stroke-width="1.2" opacity=".65"/>
+
+  <!-- Four substantial settings suggest a ceremonial, enduring treasure. -->
+  <g fill="#dfffe0" stroke="#79612d" stroke-width="1.2">
+    <path d="M64 27L68 31L64 35L60 31Z"/>
+    <path d="M96 59L100 63L96 67L92 63Z"/>
+    <path d="M64 91L68 95L64 99L60 95Z"/>
+    <path d="M32 59L36 63L32 67L28 63Z"/>
+  </g>
+</svg>
