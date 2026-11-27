@@ -1,5 +1,11 @@
 # 戦国VS（SENGOKU VS）通信API
 
+## Current court ownership protection (v5.15.0)
+
+Authenticated sync responses include `entitlements.courtProtected`, derived from the fixed chancellor, `court_kyoto_offices`, or effective `court_external_offices`. It is not an account privilege and is never accepted from a save or request body. All owned holdings retain ownership on field/CPU defeat; non-voluntary lord succession and covert retaliation use the same authority. Damage and the existing half-resource loot policy continue. Appointment/dismissal races invalidate stale commits through the current role guard. Voluntary relocation and cycle resets remain available.
+
+Public six-office DTOs retain `{title, kind: "official"}` and add `jurisdiction: "kyoto" | "external"`. The former is displayed as 正式官職 and the latter as 任命官職. Other court title kinds remain unchanged. The new field is presentation data only; old clients remain compatible. No schema migration is required. See `test-court-base-protection.mjs` for the current-role, travel, concurrency and old-client contracts.
+
 ## Delegated operations (v5.14.0)
 
 Authenticated self identities now include `canOperate`. It is true for the current

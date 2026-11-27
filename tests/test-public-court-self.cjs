@@ -8,7 +8,7 @@ const path = require('node:path');
 const read = file => fs.readFileSync(path.join(__dirname, '..', file), 'utf8');
 const A = 'u_' + 'a'.repeat(32), B = 'u_' + 'b'.repeat(32);
 const chancellor = {title:'太政大臣',kind:'chancellor'};
-const official = {title:'左大臣',kind:'official'};
+const official = {title:'左大臣',kind:'official',jurisdiction:'kyoto'};
 const evaluation = {version:1,score:40000,maxScore:100000,rankId:'court-9',rankName:'正五位下',rankIndex:9,progressPercent:20,toNext:1000,nextRank:{name:'従四位下'},breakdown:[]};
 function harness(){
   const courtNodes=[],entryNodes=[];
@@ -71,7 +71,7 @@ test('own sidebar/page rank and evaluation details include the authoritative off
 test('office changes update mounted self slots and the open evaluation detail key',()=>{
   const h=harness(),slot=h.node(A),button=h.entry();h.connect();h.entries.show();h.entries.refresh();const oldKey=h.entries.key();
   h.court.update({playerId:A,playerCourtOffice:official});h.entries.refresh();
-  assert.match(slot.innerHTML,/左大臣/);assert.doesNotMatch(slot.innerHTML,/太政大臣/);
+  assert.match(slot.innerHTML,/京都御所の正式官職：左大臣/);assert.match(slot.innerHTML,/public-court-designation">正式官職/);assert.doesNotMatch(slot.innerHTML,/太政大臣/);
   assert(slot.innerHTML.includes('assets/court-badges/pine-relief.webp'));
   assert(!slot.innerHTML.includes('assets/court-badges/stamp-relief.webp'));
   assert.match(button.attrs['aria-label'],/役職 左大臣/);

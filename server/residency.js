@@ -3,6 +3,7 @@ import {playerNameKey,playerNameConflict,releaseInactivePlayerNameStatement,requ
 // Public castle households are separate from each player's private campaign.
 // Only committed admissions and proved home-defense defeats change this ledger.
 import {GameEngine,GAME_OFFICERS} from './game-runtime.js';
+import {readCourtProtection} from './court-protection.js';
 const S=(db,sql,...args)=>db.prepare(sql).bind(...args),R=x=>x?.results||[],safe={sql:'1=1',args:[]};
 const majors=new Set(['edo','kyoto_gosho','nijo','osaka','nagoya','kagoshima']);
 export const RESIDENCY_CASTLES=globalThis.SENGOKU_DATA.castles.filter(c=>!majors.has(c.id));
@@ -111,12 +112,17 @@ export async function residencyTargetGuard(db,{attackerId,targetId,castleId,isHo
 
 export async function prepareResidencySuccession(db,{userId,castleId,battleId,kind='field',now=Date.now()}){
  await ensureResidency(db,now);const empty={guard:safe,succession:null,statements:()=>[]};if(!castles.has(castleId))return empty;
+ // An office prevents involuntary loss of the public lord's seat, including
+ // ordinary-home raids and covert retaliation. Voluntary moves still work.
+ const protection=kind==='departure'?null:await readCourtProtection(db,userId);
+ if(protection?.protected)return{...empty,guard:protection.guard};
+ const protectGuard=guard=>protection?{sql:guard.sql+' AND '+protection.guard.sql,args:[...guard.args,...protection.guard.args]}:guard;
  const seat=await S(db,'SELECT cs.*,u.name FROM castle_seats cs JOIN users u ON u.id=cs.lord_user_id WHERE cs.castle_id=? AND cs.lord_user_id=?',castleId,userId).first();if(!seat)return empty;
  const candidate=await S(db,`SELECT m.*,u.name FROM castle_residents m JOIN users u ON u.id=m.user_id JOIN player_saves ps ON ps.user_id=m.user_id WHERE m.castle_id=? AND m.user_id<>? AND ${eligibleResident()} ORDER BY m.join_order LIMIT 1`,castleId,userId).first();
- const noCandidateGuard={sql:`EXISTS(SELECT 1 FROM castle_seats WHERE castle_id=? AND lord_user_id=? AND lord_epoch=?) AND NOT EXISTS(SELECT 1 FROM castle_residents m JOIN users u ON u.id=m.user_id JOIN player_saves ps ON ps.user_id=m.user_id WHERE m.castle_id=? AND m.user_id<>? AND ${eligibleResident()})`,args:[castleId,userId,seat.lord_epoch,castleId,userId]};
+ const noCandidateGuard=protectGuard({sql:`EXISTS(SELECT 1 FROM castle_seats WHERE castle_id=? AND lord_user_id=? AND lord_epoch=?) AND NOT EXISTS(SELECT 1 FROM castle_residents m JOIN users u ON u.id=m.user_id JOIN player_saves ps ON ps.user_id=m.user_id WHERE m.castle_id=? AND m.user_id<>? AND ${eligibleResident()})`,args:[castleId,userId,seat.lord_epoch,castleId,userId]});
  if(!candidate&&kind!=='cpu')return{...empty,guard:noCandidateGuard};
  const eventId=kind+':'+battleId,nonce=crypto.randomUUID(),elapsed=await residencyElapsed(db,now);
- const guard=candidate?{sql:`EXISTS(SELECT 1 FROM castle_seats WHERE castle_id=? AND lord_user_id=? AND lord_epoch=?) AND ?=(SELECT m.user_id FROM castle_residents m JOIN users u ON u.id=m.user_id JOIN player_saves ps ON ps.user_id=m.user_id WHERE m.castle_id=? AND m.user_id<>? AND ${eligibleResident()} ORDER BY m.join_order LIMIT 1)`,args:[castleId,userId,seat.lord_epoch,candidate.user_id,castleId,userId]}:noCandidateGuard;
+ const guard=candidate?protectGuard({sql:`EXISTS(SELECT 1 FROM castle_seats WHERE castle_id=? AND lord_user_id=? AND lord_epoch=?) AND ?=(SELECT m.user_id FROM castle_residents m JOIN users u ON u.id=m.user_id JOIN player_saves ps ON ps.user_id=m.user_id WHERE m.castle_id=? AND m.user_id<>? AND ${eligibleResident()} ORDER BY m.join_order LIMIT 1)`,args:[castleId,userId,seat.lord_epoch,candidate.user_id,castleId,userId]}):noCandidateGuard;
  const succession={castleId,castleName:castles.get(castleId).name,previousLordPlayerId:userId,previousLordName:seat.name,lordPlayerId:candidate?.user_id||null,lordName:candidate?.name||null,lordEpoch:Number(seat.lord_epoch)+1,reason:kind,...(!candidate?{vacant:true}:{})};
  const eventGate='EXISTS(SELECT 1 FROM castle_successions WHERE event_id=? AND commit_token=?)',eventArgs=[eventId,nonce],resultJson=JSON.stringify(succession),title=succession.castleName+'の領主継承',body=candidate?succession.castleName+(kind==='departure'?'の領主が新たな城へ移り、':'の防衛戦が敗北となり、')+'仕えた順番に従って'+candidate.name+'が領主を引き継ぎました。'+(kind==='departure'?'':seat.name+'は家臣の列の最後に加わります。')+'各プレイヤーの資産・武将・育成記録は引き続き本人が保持します。':succession.castleName+'が陥落し、引き継げる家臣がいないため領主の席が空きました。育成記録は保持されています。新たな物語を始める際に、空いている城か家臣として仕える城を選べます。';
  return{guard,succession,statements:(parentGate,parentArgs)=>[
@@ -136,6 +142,15 @@ export async function prepareResidencyCpuLosses(db,{userId,events,now=Date.now()
  // retry against that new term before storing a now-ineligible private home.
  const guard=seat?{sql:"EXISTS(SELECT 1 FROM castle_residents m JOIN castle_seats cs ON cs.castle_id=m.castle_id WHERE m.user_id=? AND cs.castle_id=? AND cs.lord_epoch=? AND COALESCE(cs.lord_user_id,'')=?)",args:[userId,seat.castle_id,seat.lord_epoch,seat.lord_user_id||'']}:{sql:'NOT EXISTS(SELECT 1 FROM castle_seats WHERE lord_user_id=?)',args:[userId]};
  if(seat?.lord_user_id!==userId)return{...empty,guard};
+ const protection=await readCourtProtection(db,userId);
+ if(protection.protected){
+  if(state&&losses.some(event=>event.castleId===seat.castle_id)&&state.castles?.[seat.castle_id]){
+   const castle=state.castles[seat.castle_id];if(castle.owner!==state.clan)castle.troops=0;
+   castle.owner=state.clan;state.home=seat.castle_id;state.gameOver=false;
+   const clock=await S(db,"SELECT running FROM world_clock WHERE id='world-v1'").first();if(state.realtime)state.realtime.running=!!clock?.running;
+  }
+  return{...empty,guard:{sql:guard.sql+' AND '+protection.guard.sql,args:[...guard.args,...protection.guard.args]}};
+ }
  const event=losses.find(e=>e.castleId===seat.castle_id&&Number(e.occurredElapsedMs)>Number(seat.lord_since_elapsed_ms));
  if(event)return prepareResidencySuccession(db,{userId,castleId:event.castleId,battleId:event.id,kind:'cpu',now});
  // An offline successor may replay a private defeat that happened before
@@ -167,7 +182,7 @@ export async function residencyStart(ctx,body){
  if(!expelled&&requestedName!==null)h.fail(400,'INVALID_INPUT','領主名の変更はプロフィールから行ってください。');
  const restoredName=requestedName??user.name;
  if(expelled)await requireAvailablePlayerName(db,user.id,restoredName,h.fail);
- const clock=await h.getWorldClock(db,now),game=expelled?GameEngine.fromSave(h.normalizeGameSave(JSON.parse(expelled.source_save_json),user,now,{reading:true,clock}),GAME_OFFICERS):new GameEngine({officers:GAME_OFFICERS,clan:body.clan,difficulty:body.difficulty,startCastle:body.castleId});
+ const clock=await h.getWorldClock(db,now),game=expelled?GameEngine.fromSave(h.normalizeGameSave(JSON.parse(expelled.source_save_json),user,now,{reading:true,clock}),GAME_OFFICERS,{isCourtProtected:!!user.is_court_protected}):new GameEngine({officers:GAME_OFFICERS,clan:body.clan,difficulty:body.difficulty,startCastle:body.castleId,isCourtProtected:!!user.is_court_protected});
  if(expelled){const moved=game.relocateResidence(body.castleId,{role:body.mode,worldClock:clock,residencyCastleId:''});if(!moved.ok)h.fail(409,moved.code,moved.message);}
  const anchored=game.applyWorldClock(clock);if(!anchored.ok||anchored.pending)h.fail(409,'CLOCK_STALE','共通時計を確認してから入城してください。');
  const save=h.normalizeGameSave(JSON.parse(game.exportSave()),user,now,{clock});save.state.cycle.latestReward=null;

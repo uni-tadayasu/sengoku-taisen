@@ -96,7 +96,11 @@ const totalGzipBytes = rows.reduce((sum,row)=>sum+row.gzipBytes,0);
 // Measured: 3,699,092 raw / 1,023,091 gzip bytes (+2,001 / +536 from
 // v5.13.4), with no new runtime dependencies or media assets. Keep less than
 // 2 KB raw / 1 KB gzip of measured headroom.
-const rawBudget=3701000,gzipBudget=1024000;
+// v5.15 adds transient court ownership protection and formal/appointed office
+// designations. Measured: 3,703,283 raw / 1,024,283 gzip, +4,191 / +1,192
+// over v5.14. No runtime dependencies or media assets are added. Retain
+// less than 1.8 KB raw / 0.8 KB gzip of headroom for this reviewed feature.
+const rawBudget=3705000,gzipBudget=1025000;
 assert(totalBytes <= rawBudget, `Initial bundles exceed the ${rawBudget} byte budget: ${totalBytes}`);
 assert(totalGzipBytes <= gzipBudget, `Initial bundles exceed the ${gzipBudget} gzip byte budget: ${totalGzipBytes}`);
 const html = fs.readFileSync(path.join(root,'index.html'),'utf8');

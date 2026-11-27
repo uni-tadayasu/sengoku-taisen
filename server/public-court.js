@@ -63,8 +63,8 @@ export async function resolvePublicCourtOffices(db,payload,now=Date.now()){
   else if(row.official&&row.emperor)offices.set(row.id,{title:'天皇',kind:'emperor'});
   else if(row.regent)offices.set(row.id,{title:'摂政',kind:'regent'});
   else if(row.retired_emperor)offices.set(row.id,{title:'上皇',kind:'retired-emperor'});
-  else if(row.official){const title=[...PUBLIC_COURT_TITLES].reverse().find(item=>Number(row.merit)>=item.minMerit).title;offices.set(row.id,{title,kind:'official'});}
-  else if(row.external_office){const office=COURT_OFFICES.find(definition=>definition.id===row.external_office);if(office)offices.set(row.id,{title:office.title,kind:'official'});}
+  else if(row.official){const title=[...PUBLIC_COURT_TITLES].reverse().find(item=>Number(row.merit)>=item.minMerit).title;offices.set(row.id,{title,kind:'official',jurisdiction:'kyoto'});}
+  else if(row.external_office){const office=COURT_OFFICES.find(definition=>definition.id===row.external_office);if(office)offices.set(row.id,{title:office.title,kind:'official',jurisdiction:'external'});}
  }
  for(const ref of refs)ref.value[ref.key]=offices.has(ref.id)?{...offices.get(ref.id)}:null;
  return payload;

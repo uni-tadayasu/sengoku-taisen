@@ -88,4 +88,38 @@ test('parent renders keep one current office beside the evaluation rank after as
   }
  }finally{delete global.document;delete global.SengokuSocial;delete global.SengokuStableDOM;}
 });
+test('official classifications stay visible and accessible without upgrading legacy or unrelated titles',()=>{
+ const kyoto={title:'右大臣',kind:'official',jurisdiction:'kyoto'},external={title:'右大臣',kind:'official',jurisdiction:'external'};
+ for(const [office,caption,label]of [[kyoto,'正式官職','京都御所の正式官職'],[external,'任命官職','太政大臣による任命官職']]){
+  const html=court.badge({courtOffice:office});
+  assert.match(html,new RegExp('public-court-designation">'+caption));
+  assert(html.includes(`aria-label="${label}：右大臣"`));
+  assert(html.includes(`title="${label}：右大臣"`));
+  assert.equal(court.text({courtOffice:office}),`右大臣（${label}）`);
+  assert.doesNotMatch(html,/名誉職|仮職|運営|スタッフ/);
+ }
+ for(const [title,kind]of [['天皇','emperor'],['太政大臣','chancellor'],['摂政','regent'],['上皇','retired-emperor']])assert.doesNotMatch(court.badge({courtOffice:{title,kind,jurisdiction:'kyoto'}}),/正式官職|任命官職/);
+ assert.doesNotMatch(court.badge({courtOffice:{title:'右大臣',kind:'official'}}),/正式官職|任命官職/);
+ assert.doesNotMatch(court.badge({courtOffice:{title:'右大臣',kind:'official',jurisdiction:'<img src=x>'}}),/正式官職|任命官職|<img src=x>/);
+});
+test('same-title appointment transfers update public and self badges while unchanged polling preserves artwork',()=>{
+ const {doc,host}=require('./helpers/dom-model.cjs').setup(),stable=require('../stable-dom.js'),id='u_transfer';
+ const render=()=>stable.patch(host,`<div data-stable-key="public">${court.slot(id)}</div><div data-stable-key="self">${court.selfSlot(id)}</div>`);
+ const verify=source=>{
+  const badges=host.querySelectorAll('[data-court-seal]');assert.equal(badges.length,source?2:0);
+  for(const badge of badges){assert.equal(badge.dataset.courtJurisdiction,source);assert.equal(badge.querySelector('.public-court-title').textContent,'右大臣');assert.equal(badge.querySelector('.public-court-designation').textContent,source==='kyoto'?'正式官職':'任命官職');}
+ };
+ Object.assign(global,{document:doc,SengokuStableDOM:stable,SengokuSocial:{getPublicCourtIdentity:()=>id}});
+ try{
+  render();court.update({id,name:'任官した領主',courtOffice:{title:'右大臣',kind:'official',jurisdiction:'external'}});verify('external');render();verify('external');
+  const badge=host.querySelector('[data-court-seal]'),relief=badge.querySelector('.public-court-relief');relief.hidden=true;
+  court.update({id,name:'任官した領主',courtOffice:{title:'右大臣',kind:'official',jurisdiction:'external'}});
+  assert.equal(host.querySelector('[data-court-seal]'),badge);assert.equal(relief.hidden,true);
+  const old=court.beginRequest(),current=court.beginRequest();
+  court.update({id,name:'御所に任官した領主',courtOffice:{title:'右大臣',kind:'official',jurisdiction:'kyoto'}},{requestSequence:current});verify('kyoto');render();verify('kyoto');
+  assert.equal(court.selfText(id),'右大臣（京都御所の正式官職）');
+  court.update({id,name:'古い在任情報',courtOffice:{title:'右大臣',kind:'official',jurisdiction:'external'}},{requestSequence:old});verify('kyoto');
+  court.update({id,name:'退任した領主',courtOffice:null});verify(null);render();verify(null);
+ }finally{delete global.document;delete global.SengokuStableDOM;delete global.SengokuSocial;}
+});
 console.log(`${count} public court badge rendering scenarios passed.`);

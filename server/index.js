@@ -27,6 +27,7 @@ import {handleNotifications,dispatchNotifications,notificationSaveStatements} fr
 import {handleConquest,settleConquestMarches,conquestMarches} from './conquest.js';
 import {handleShogunate,campaignShogunateStatements,settleShogunateApprovals,readPalaceControl} from './shogunate.js';
 import {resolvePublicCourtOffices} from './public-court.js';
+import {courtProtectionSql,retainCourtHoldings} from './court-protection.js';
 import {resolvePublicCityHonors} from './city-honors.js';
 import {messageRegister} from './message-addressing.js';
 import {handleAlliance,assertGuildJoinAllowed,treasuryGuard,treasuryContributionStatements,prepareRallyAttack,getAllianceDefense,rallyMarchStatements,rallyMarchCancellation,settleAllianceUnits} from './alliance.js';
@@ -38,7 +39,7 @@ import {requirePromotionOrigin,recordPromotion,readPromotionReport} from './prom
 import {readMusicBroadcast,handleAdminMusic} from './admin-music.js';
 import {lordSupportSql,guardLordSupport,ensureResidency,residencySnapshot,residencyDirectory,residencyStart,initialResidencyStatements,residencyTargetGuard,prepareResidencySuccession,prepareResidencyCpuLosses} from './residency.js';
 const API = '/api/v1';
-const API_VERSION = '5.14.0';
+const API_VERSION = '5.15.0';
 const API_FEATURES = Object.freeze({trades:true,moderation:true,playerExpulsion:true,moderatedNameReuse:true,deputyOperator:true,deputyOperations:true,privateOperationsLabels:true,deputyOfficer:true,kagoshimaProtected:true,premium:true,timedEvents:true,troopTrades:true,roamingBattles:true,roamingDeployment:true,covertDispatch:true,privatePlayerRoles:true,guildIcons:true,court:true,kyotoGosho:true,branches:true,branchBattles:true,branchFacilities:true,audioCalls:true,progression:true,armyPresets:true,allianceStrategy:true,sharedConquest:true,newcomerProtection:true,webPush:true,battleAdviser:true,battleCatalog:true,eventBattleRewards:true,shogunate:true,attackTravel:true,castleResidency:true,retainerCastleStats:true,residencyRelocation:true,maintenanceUpkeep:true,strongholdDurability:true,chatReplies:true,chatMentions:true,covertReturnTravel:true,allianceUnitTravel:true,legacySaveRecovery:true,displayNameVariants:true,courtOffices:true,serverSummons:true,loginRewards:true,paidRerolls:true,supporterChoices:true,premiumGrowthMetrics:true,adminMusicBroadcast:true,rankRiceProduction:true,shogunateApproval:true,imperialSuccession:true,retiredEmperor:true,regency:true,courtEventRoom:true,imperialSuccessionApproval:true});
 const MAX_BODY = 16 * 1024;
 const MAX_SAVE_BODY = 2 * 1024 * 1024;
@@ -548,7 +549,7 @@ function applyLordSupport(state,user) {
     if (support.count>0) state.retainerSupport=support;
   }
 }
-const USER_SELECT = `SELECT u.id,u.name,u.name_key,u.clan,u.created_at,u.last_seen,${lordSupportSql('u.id')} AS retainer_support_json,gm.guild_id,g.name AS guild_name,g.owner_id,
+const USER_SELECT = `SELECT u.id,u.name,u.name_key,u.clan,u.created_at,u.last_seen,${courtProtectionSql('u.id')} AS is_court_protected,${lordSupportSql('u.id')} AS retainer_support_json,gm.guild_id,g.name AS guild_name,g.owner_id,
   (SELECT gi.version FROM guild_icons gi WHERE gi.guild_id=gm.guild_id) AS guild_icon_version,
   COALESCE((SELECT active FROM player_bans pb WHERE pb.user_id=u.id),0) AS ban_active,
   COALESCE((SELECT revision FROM player_bans pb WHERE pb.user_id=u.id),0) AS moderation_epoch,
@@ -1428,7 +1429,7 @@ function normalizeGameSave(raw, user, now, {reading=false,clock=null}={}) {
   if(!reading&&!user.is_deputy&&(n.home==='kagoshima'||n.castles.kagoshima.owner===n.clan))fail(403,'DEPUTY_ENTITLEMENT_REQUIRED','鹿児島城の所属条件を確認できません。最新の保存を読み込んでください。');
   if(!reading&&user.is_deputy&&n.home!=='kagoshima')fail(403,'DEPUTY_FIXED_HOME','この領主の本拠は鹿児島城に固定されています。最新の保存を読み込んでください。');
   if(staff||serviceSave)n.staffService={baseId:'kyoto_gosho'};
-  const roleState=GameEngine.fromSave({game:'sengoku-tento',version:2,state:n},GAME_OFFICERS,{isAdmin:!!user.is_admin,isDeputy:!!user.is_deputy,isStaff:staff,deputyReturnHome:user.deputy_return_home}).state;
+  const roleState=GameEngine.fromSave({game:'sengoku-tento',version:2,state:n},GAME_OFFICERS,{isAdmin:!!user.is_admin,isDeputy:!!user.is_deputy,isStaff:staff,isCourtProtected:!!user.is_court_protected,deputyReturnHome:user.deputy_return_home}).state;
   for(const key of Object.keys(roleState))n[key]=roleState[key];
   if(s.cycle===undefined)delete n.cycle;
   n.resources=pick(n.resources,RESOURCES);
@@ -1508,7 +1509,7 @@ async function settlePlayerCycle(db,row,user,now,clock=undefined,{deferActive=tr
     const branchAccess=await branchStateGuard(db,user.id,save.state.walking.campaignId);await reconcileBranchProgress(db,user.id,save,clock);
     const staffBase=user.is_staff&&!user.is_admin?await staffBaseDto(db,user,clock,now):null;
     const maintenanceAuthority=protectMaintenance(branchAccess,await maintenanceContext(db,user.id,save,clock));
-    const game=GameEngine.fromSave(save,GAME_OFFICERS,{isAdmin:!!user.is_admin,isDeputy:!!user.is_deputy,isStaff:!!user.is_staff,staffBase,maintenanceAuthority,branchAuthority:{resolvedElapsedMs:branchAccess.resolvedElapsedMs}});
+    const game=GameEngine.fromSave(save,GAME_OFFICERS,{isAdmin:!!user.is_admin,isDeputy:!!user.is_deputy,isStaff:!!user.is_staff,isCourtProtected:!!user.is_court_protected,staffBase,maintenanceAuthority,branchAuthority:{resolvedElapsedMs:branchAccess.resolvedElapsedMs}});
     const target=Math.min(current*WORLD_CYCLE_MS,(index+2)*WORLD_CYCLE_MS);
     const result=game.applyWorldClock({...clock,elapsedMs:target},{maxSeconds:86400});
     if(!result.ok||!result.changed)return row;
@@ -1553,7 +1554,8 @@ function roleCommitGuard(user) {
     AND COALESCE((SELECT term_id FROM deputy_operator_state WHERE user_id=role_actor.id),'')=?
     AND NOT EXISTS(SELECT 1 FROM player_bans WHERE user_id=role_actor.id AND active=1)
     AND COALESCE((SELECT revision FROM player_bans WHERE user_id=role_actor.id),0)=?
-    AND COALESCE((SELECT revision FROM player_expulsions WHERE user_id=role_actor.id),0)=?)`,args:[user.id,user.is_admin?1:0,user.staff_term||'',user.deputy_term||'',Number(user.moderation_epoch||0),Number(user.expulsion_epoch||0)]};
+    AND COALESCE((SELECT revision FROM player_expulsions WHERE user_id=role_actor.id),0)=?
+    AND ${courtProtectionSql('role_actor.id')}=?)`,args:[user.id,user.is_admin?1:0,user.staff_term||'',user.deputy_term||'',Number(user.moderation_epoch||0),Number(user.expulsion_epoch||0),user.is_court_protected?1:0]};
 }
 async function requireCurrentStaffBase(db,user,{allowAdmin=false}={}) {await requireAccountAccess(db,user);const current=await getUser(db,user.id);if(!current||!(allowAdmin?current.is_admin||current.is_staff:current.is_staff&&!current.is_admin)||current.staff_term!==user.staff_term||(current.deputy_term||'')!==(user.deputy_term||'')||!!current.is_admin!==!!user.is_admin)fail(403,'STAFF_BASE_REQUIRED','スタッフの役職が変更されました。');return current;}
 const STAFF_TERM_SQL="COALESCE(sm.term_id,'legacy:'||sm.appointed_at)";
@@ -1614,7 +1616,7 @@ async function staffBaseDto(db,user,clock,now,row=undefined) {
 }
 async function tradeTroopCapacity(db,user,save,clock,now) {
   const staffBase=user.is_staff&&!user.is_admin?await staffBaseDto(db,user,clock,now):null;
-  const game=GameEngine.fromSave(save,GAME_OFFICERS,{isAdmin:!!user.is_admin,isDeputy:!!user.is_deputy,isStaff:!!user.is_staff,staffBase});
+  const game=GameEngine.fromSave(save,GAME_OFFICERS,{isAdmin:!!user.is_admin,isDeputy:!!user.is_deputy,isStaff:!!user.is_staff,isCourtProtected:!!user.is_court_protected,staffBase});
   return game.troopTransportCapacity();
 }
 function renameCampaignClan(state,clan) {if(state.clan===clan)return;const previous=state.clan;for(const castle of Object.values(state.castles)){if(castle.owner===previous)castle.owner=clan;else if(castle.owner===clan)castle.owner='在地衆';}state.clan=clan;delete state.treaties[clan];}
@@ -1643,10 +1645,10 @@ function restorePersonalCampaign(save,backup,user) {
 // save mutation, so failed/replayed operations cannot change either copy.
 // Server-evaluated progress carries exact surviving troops, including upkeep
 // reductions; only a plain legacy save retains the older growth-only merge.
-async function staffPersonalProgressStatement(db,user,save,now,gate,gateArgs,progress=null,capture=null,{exactHomeTroops=Boolean(progress)}={}) {
+async function staffPersonalProgressStatement(db,user,save,now,gate,gateArgs,progress=null,capture=null,{exactHomeTroops=Boolean(progress),committedCastleId=null}={}) {
   const backup=await stmt(db,'SELECT * FROM staff_campaign_backups WHERE user_id=? AND active=1',user.id).first();if(!backup)return null;
   const personal=JSON.parse(backup.save_json),home=personal.state.home,old=personal.state.castles[home];
-  const current=progress?.home===home?progress.castle:save.state.castles[home];
+  const current=committedCastleId===home?save.state.castles[home]:progress?.home===home?progress.castle:save.state.castles[home];
   if(current&&(current.owner===save.state.clan||progress&&current.owner===personal.state.clan)){for(const key of ['level','wall'])old[key]=Math.max(old[key],current[key]);old.troops=exactHomeTroops?current.troops:Math.max(old.troops,current.troops);
     // A battle modifies the exported save after the journey's private progress
     // snapshot. Its committed structural damage must win over that older view.
@@ -1666,7 +1668,7 @@ async function advanceDepartingStaff(db,row,user,backup,now,clock) {
   await reconcileCovertProgress(db,user.id,save);
   const branchAccess=await branchStateGuard(db,user.id,save.state.walking.campaignId);await reconcileBranchProgress(db,user.id,save,{...clock,elapsedMs:until});
   const maintenanceAuthority=protectMaintenance(branchAccess,await maintenanceContext(db,user.id,save,clock));
-  const base=await staffBaseDto(db,historical,clock,now),game=GameEngine.fromSave(save,GAME_OFFICERS,{isStaff:true,staffBase:base,maintenanceAuthority,branchAuthority:{resolvedElapsedMs:branchAccess.resolvedElapsedMs}});
+  const base=await staffBaseDto(db,historical,clock,now),game=GameEngine.fromSave(save,GAME_OFFICERS,{isStaff:true,isCourtProtected:!!user.is_court_protected,staffBase:base,maintenanceAuthority,branchAuthority:{resolvedElapsedMs:branchAccess.resolvedElapsedMs}});
   const result=game.applyWorldClock({...clock,elapsedMs:until},{maxSeconds:86400});
   if(result.maintenancePending&&!result.changed)fail(409,'STAFF_TRANSITION_PENDING','スタッフ任期中の進行を引き継いでいます。自動同期で続きを反映します。');
   if(!result.ok||!result.changed)return row;
@@ -1742,7 +1744,7 @@ async function staffBaseUpgrade(db,user,raw,now) {
   const shared=await sharedStaffBaseRow(db,clock,now);if(Number(shared.revision)!==body.baseRevision)fail(409,'STAFF_BASE_CHANGED','別のスタッフが共同拠点を更新しました。最新の京都御所を確認してください。');
   const base=await staffBaseDto(db,user,clock,now,shared),save=normalizeGameSave(JSON.parse(row.save_json),user,now,{reading:true,clock});
   if(!save.state.worldClock||clock.elapsedMs-save.state.worldClock.elapsedMs>15000)fail(409,'CLOCK_STALE','共通時刻と個人資源へ同期してから普請してください。');
-  const game=GameEngine.fromSave(save,GAME_OFFICERS,{isStaff:true,staffBase:base});game._projectStaffAt(clock.elapsedMs);
+  const game=GameEngine.fromSave(save,GAME_OFFICERS,{isStaff:true,isCourtProtected:!!user.is_court_protected,staffBase:base});game._projectStaffAt(clock.elapsedMs);
   const state=JSON.parse(shared.state_json),chain=state.jobs.filter(j=>j.kind===body.kind&&j.id===body.id).sort((a,b)=>a.targetLevel-b.targetLevel),tail=chain.at(-1),level=body.kind==='castle'?state.castleLevel:tail?.targetLevel??state.buildings[body.id],max=body.kind==='castle'?128:32;
   if(level>=max)fail(409,'BUILDING_MAX','最高レベルに到達しています。');
   if(body.kind==='castle'&&chain.length)fail(409,'STAFF_BUILDING_BUSY','この城郭の共同普請は進行中です。');
@@ -1929,7 +1931,7 @@ async function resolveSyncBranches(db,user,save,before,clock,now,{importedStatio
     applyBranchProgress(trusted,model,{...clock,elapsedMs:start});
     shared=user.is_staff&&!user.is_admin?await staffBaseDto(db,user,clock,now):null;
     const maintenanceAuthority=protectMaintenance(access,await maintenanceContext(db,user.id,trusted,clock));
-    const game=GameEngine.fromSave(trusted,GAME_OFFICERS,{isAdmin:!!user.is_admin,isDeputy:!!user.is_deputy,isStaff:!!user.is_staff,staffBase:shared,maintenanceAuthority});
+    const game=GameEngine.fromSave(trusted,GAME_OFFICERS,{isAdmin:!!user.is_admin,isDeputy:!!user.is_deputy,isStaff:!!user.is_staff,isCourtProtected:!!user.is_court_protected,staffBase:shared,maintenanceAuthority});
     // This replay proves branch/CPU transitions from an older checkpoint. The
     // complete incoming campaign is balanced only after every ledger is merged.
     const result=game.applyWorldClock({...clock,elapsedMs:target},{maxSeconds:86400,deferCycleSettlement:true,rebalanceTroops:false});
@@ -1987,7 +1989,7 @@ async function resolveSyncResidency(db,user,save,before,clock,now,branchAccess){
     trusted.state.worldClock={id:WORLD_CLOCK_ID,elapsedMs:start};trusted.state.turn=Math.floor(start/WORLD_MONTH_MS);trusted.state.realtime.elapsed=start%WORLD_MONTH_MS/1000;trusted.state.upkeep.settledTurn=Math.min(trusted.state.upkeep.settledTurn,trusted.state.turn);
     await reconcileCovertProgress(db,user.id,trusted);applyBranchProgress(trusted,branchAccess.state,{...clock,elapsedMs:start});
     const maintenanceAuthority=protectMaintenance(branchAccess,await maintenanceContext(db,user.id,trusted,clock));
-    const game=GameEngine.fromSave(trusted,GAME_OFFICERS,{maintenanceAuthority,branchAuthority:{resolvedElapsedMs:start}}),advanced=game.applyWorldClock({...clock,elapsedMs:target},{maxSeconds:86400,deferCycleSettlement:true,rebalanceTroops:false});
+    const game=GameEngine.fromSave(trusted,GAME_OFFICERS,{isCourtProtected:!!user.is_court_protected,maintenanceAuthority,branchAuthority:{resolvedElapsedMs:start}}),advanced=game.applyWorldClock({...clock,elapsedMs:target},{maxSeconds:86400,deferCycleSettlement:true,rebalanceTroops:false});
     if(!advanced.ok||advanced.pending||advanced.settlementRequired||advanced.maintenancePending&&game.state.worldClock.elapsedMs<target)fail(409,'RESIDENCY_CLOCK_STALE','城の防衛を共通時刻へ同期しています。最新の保存を確認してください。');
     events=game.takeHomeDefenseLosses?.()||[];resolved=Math.max(resolved,target);
     reconcileOfficerHealth(save,{state:game.state},clock);durabilityState=game.state;
@@ -1995,7 +1997,7 @@ async function resolveSyncResidency(db,user,save,before,clock,now,branchAccess){
   }
   if(member.lord_user_id===user.id){
     const claimed=save.state.home!==member.castle_id||save.state.gameOver||save.state.castles[member.castle_id].owner!==save.state.clan;
-    if(provenState){
+    if(provenState&&!user.is_court_protected){
       const source=provenState.castles[member.castle_id];save.state.castles[member.castle_id].owner=source.owner===save.state.clan?'在地衆':source.owner;
       const remaining=CASTLES.filter(c=>save.state.castles[c.id].owner===save.state.clan),preferred=remaining.find(c=>c.id===provenState.home)||remaining[0];
       if(preferred)save.state.home=preferred.id;save.state.gameOver=!remaining.length;save.state.realtime.running=clock.running&&!save.state.gameOver;
@@ -2015,7 +2017,7 @@ async function syncSnapshot(db,row,user,deviceId,now,{settle=false}={}) {
   await requireAccountAccess(db,authenticated);
   row=await settlePlayerCycle(db,row,user,now,clock,{deferActive:!settle,writerDeviceId:settle?deviceId:null});
   const staffBase=user.is_staff&&!user.is_admin?await staffBaseDto(db,user,clock,now):null;
-  const current=await getUser(db,user.id);if(current.is_admin!==user.is_admin||current.staff_term!==user.staff_term||(current.deputy_term||'')!==(user.deputy_term||''))fail(409,'STAFF_ROLE_CHANGED','役職が更新されました。もう一度同期してください。');
+  const current=await getUser(db,user.id);if(current.is_admin!==user.is_admin||current.staff_term!==user.staff_term||(current.deputy_term||'')!==(user.deputy_term||'')||!!current.is_court_protected!==!!user.is_court_protected)fail(409,'STAFF_ROLE_CHANGED','役職が更新されました。もう一度同期してください。');
   await requireAccountAccess(db,authenticated);
   const privateSave=row?.save_json?normalizeGameSave(JSON.parse(row.save_json),user,now,{reading:true,clock}):null;
   const maintenanceAuthority=(await maintenanceContext(db,user.id,privateSave,clock)).authority;
@@ -2026,14 +2028,14 @@ async function syncSnapshot(db,row,user,deviceId,now,{settle=false}={}) {
     writerDeviceId:row?.writer_device_id||null,writerDeviceName:row?.writer_device_name||null,
     leaseExpiresAt:row?.lease_expires_at?iso(row.lease_expires_at):null,serverTime:iso(now),
     writable:!!deviceId&&row?.writer_device_id===deviceId&&Number(row.lease_expires_at)>now,
-    entitlements:{edo:!!user.is_admin,ieyasuU:!!user.is_admin,kagoshima:!!user.is_deputy,shimazuU:!!user.is_deputy&&!user.is_admin&&!user.is_staff}};
+    entitlements:{courtProtected:!!user.is_court_protected,edo:!!user.is_admin,ieyasuU:!!user.is_admin,kagoshima:!!user.is_deputy,shimazuU:!!user.is_deputy&&!user.is_admin&&!user.is_staff}};
 }
 
 const FIELD_RULES=Object.freeze({minTroops:300,maxTroops:100000,commandCost:1,foodBase:150,foodPerTroop:.3,attackCooldownMs:60000,defenderProtectionMs:60000,proposalLifetimeMs:600000,allianceDurationMs:360000,maxLootPerResource:50000000,maxLootFraction:FIELD_LOOT_POLICY.fraction,lootFraction:FIELD_LOOT_POLICY.fraction,lootPolicy:FIELD_LOOT_POLICY.id,maxDefenderLossFraction:.1,operatorProtected:false,staffProtected:false,targetCastles:true,specialBaseBattles:true,branchBattles:true,captureCastles:FIELD_CAPTURE_CASTLES,uncapturableCastles:['edo','kyoto_gosho','kagoshima'],victoryRewards:{gold:0,rice:0,wood:0,stone:0},
   tactics:[{id:'balanced',name:'正攻法',food:1,modifier:1,loss:1},{id:'assault',name:'総攻撃',food:1.25,modifier:1.18,loss:1.35},{id:'siege',name:'包囲戦',food:1.65,modifier:.97,loss:.8},{id:'ambush',name:'伏兵',food:1.1,modifier:1.06,loss:.95}]});
 // A new fixed home takes effect when the role changes, even while the stored save retains its former castle.
 const FIELD_FIXED_HOME_SQL="(u.id=(SELECT value FROM settings WHERE key='adminUserId') OR EXISTS(SELECT 1 FROM staff_members sm WHERE sm.user_id=u.id) OR EXISTS(SELECT 1 FROM deputy_operator_state ds WHERE ds.user_id=u.id))";
-const FIELD_SELECT=`SELECT u.id,u.name,u.clan,u.last_seen,s.revision,s.lease_expires_at,s.cycle_home,
+const FIELD_SELECT=`SELECT u.id,u.name,u.clan,u.last_seen,${courtProtectionSql('u.id')} AS is_court_protected,s.revision,s.lease_expires_at,s.cycle_home,
   (SELECT castle_id FROM castle_residents WHERE user_id=u.id) AS household_id,
   (SELECT cs.lord_user_id FROM castle_seats cs JOIN castle_residents m ON m.castle_id=cs.castle_id WHERE m.user_id=u.id) AS household_lord,
   (SELECT cs.lord_epoch FROM castle_seats cs JOIN castle_residents m ON m.castle_id=cs.castle_id WHERE m.user_id=u.id) AS household_epoch,
@@ -2093,7 +2095,7 @@ function fieldBranches(row,castleId,castle,clock,cyclePending,home,baseReason){
     return{...branch,durability:branchDurability(branch,clock.elapsedMs),name:site.name,maxLevel:site.maxLevel,building:!!job,repairing:!!job?.repair,defenseTroops:defense?.force||0,defensePower:defense?.power||0,attackable:!reason,attackReason:reason};
   });
 }
-function fieldBattleMode(user,castleId,{legacy=false}={}) {return castleId==='edo'&&user.is_admin||castleId==='kyoto_gosho'&&user.is_staff&&!user.is_admin||castleId==='kagoshima'?'reward':!legacy&&FIELD_CAPTURE_CASTLES.includes(castleId)?'capture':'raid';}
+function fieldBattleMode(user,castleId,{legacy=false}={}) {return castleId==='edo'&&user.is_admin||castleId==='kyoto_gosho'&&user.is_staff&&!user.is_admin||castleId==='kagoshima'?'reward':!legacy&&!user.is_court_protected&&FIELD_CAPTURE_CASTLES.includes(castleId)?'capture':'raid';}
 function fieldRelationStatus(row,userId,elapsed) {
   if(!row||Number(row.expires_elapsed_ms)<=elapsed||Number(row.updated_elapsed_ms)<Math.floor(elapsed/WORLD_CYCLE_MS)*WORLD_CYCLE_MS)return 'neutral';
   if(row.status==='allied')return 'allied';
@@ -2430,7 +2432,7 @@ async function departCampaignMarch(ctx,raw){
   const court=await courtAttackAuthority(db,user,save.state.home,targetId),emperor=await courtImperialAuthority(db,user),shared=user.is_staff&&!user.is_admin?await staffBaseDto(db,user,clock,now):null;
   const maintenanceAuthority=protectMaintenance(branchAccess,await maintenanceContext(db,user.id,save,clock));
   if(maintenanceAuthority.hasMore||maintenanceAuthority.asOfElapsedMs>clock.elapsedMs)fail(409,'CLOCK_STALE','維持費の時間経過を同期しています。最新の保存へ同期してください。');
-  const game=GameEngine.fromSave(save,GAME_OFFICERS,{isAdmin:!!user.is_admin,isDeputy:!!user.is_deputy,isStaff:!!user.is_staff,isCourtEmperor:emperor.isCourtEmperor,isCourtRegent:emperor.isCourtRegent,staffBase:shared,maintenanceAuthority,branchAuthority:{resolvedElapsedMs:branchAccess.resolvedElapsedMs}});
+  const game=GameEngine.fromSave(save,GAME_OFFICERS,{isAdmin:!!user.is_admin,isDeputy:!!user.is_deputy,isStaff:!!user.is_staff,isCourtProtected:!!user.is_court_protected,isCourtEmperor:emperor.isCourtEmperor,isCourtRegent:emperor.isCourtRegent,staffBase:shared,maintenanceAuthority,branchAuthority:{resolvedElapsedMs:branchAccess.resolvedElapsedMs}});
   const advanced=game.applyWorldClock(clock,{maxSeconds:86400,deferCycleSettlement:true});if(!advanced.ok||advanced.pending||advanced.settlementRequired)fail(409,'CLOCK_STALE','共通時計と本拠を同期してください。');
   const result=body.kind==='branch'?game.departBranchAttack(body.targetId,body.tactic,body.troops):game.departAttack(body.targetId,body.tactic,body.troops);
   if(!result.ok)fail(409,result.code||'MARCH_UNAVAILABLE',result.message);
@@ -2452,7 +2454,7 @@ async function settleCampaignMarch(ctx,march){
   save.state.march=payload.nativeMarch;
   const maintenanceAuthority=protectMaintenance(branches,await maintenanceContext(db,user.id,save,clock));
   if(maintenanceAuthority.hasMore||maintenanceAuthority.asOfElapsedMs>clock.elapsedMs)fail(409,'MARCH_RETRY','維持費の時間経過を同期しています。');
-  const game=GameEngine.fromSave(save,GAME_OFFICERS,{isAdmin:!!user.is_admin,isDeputy:!!user.is_deputy,isStaff:!!user.is_staff,isCourtEmperor:emperor.isCourtEmperor,isCourtRegent:emperor.isCourtRegent,staffBase:shared,maintenanceAuthority,branchAuthority:{resolvedElapsedMs:branches.resolvedElapsedMs}});
+  const game=GameEngine.fromSave(save,GAME_OFFICERS,{isAdmin:!!user.is_admin,isDeputy:!!user.is_deputy,isStaff:!!user.is_staff,isCourtProtected:!!user.is_court_protected,isCourtEmperor:emperor.isCourtEmperor,isCourtRegent:emperor.isCourtRegent,staffBase:shared,maintenanceAuthority,branchAuthority:{resolvedElapsedMs:branches.resolvedElapsedMs}});
   const advanced=game.applyWorldClock(clock,{maxSeconds:86400,deferCycleSettlement:true});if(!advanced.ok||advanced.pending||advanced.settlementRequired)fail(409,'MARCH_RETRY','到着した部隊の本拠を同期しています。');
   game.resolveDueMarches();const outcome=game.state.marchHistory.find(x=>x.id===march.id);if(!outcome)fail(409,'MARCH_RETRY','到着した部隊の戦況を確認しています。');
   const next=normalizeGameSave(JSON.parse(game.exportSave()),user,now,{clock}),nonce=crypto.randomUUID(),role=guardLordSupport(roleCommitGuard(user),user),sharedGuard=shared?{sql:"EXISTS(SELECT 1 FROM staff_base WHERE id='kyoto_gosho' AND revision=?)",args:[shared.revision]}:{sql:'1=1',args:[]},cpuLosses=await prepareResidencyCpuLosses(db,{userId:user.id,events:game.takeHomeDefenseLosses?.()||[],now,state:next.state}),guards=[role,court,branches.guard,sharedGuard,cpuLosses.guard],result={battle:outcome.battle||null,message:outcome.message,resolvedAt:iso(now)},gate="EXISTS(SELECT 1 FROM battle_marches WHERE id=? AND commit_token=? AND status IN ('resolved','cancelled'))",args=[march.id,nonce];
@@ -2491,7 +2493,7 @@ async function anchorImportedSave(db,user,save,clock,now){
   // Local elapsed time must never be compared with the shared clock directly.
   // This first attachment moves the time basis without simulating elapsed
   // income/upkeep. World maintenance authority is checked after that move.
-  const shared=user.is_staff&&!user.is_admin?await staffBaseDto(db,user,clock,now):null,game=GameEngine.fromSave(save,GAME_OFFICERS,{isAdmin:!!user.is_admin,isDeputy:!!user.is_deputy,isStaff:!!user.is_staff,staffBase:shared});
+  const shared=user.is_staff&&!user.is_admin?await staffBaseDto(db,user,clock,now):null,game=GameEngine.fromSave(save,GAME_OFFICERS,{isAdmin:!!user.is_admin,isDeputy:!!user.is_deputy,isStaff:!!user.is_staff,isCourtProtected:!!user.is_court_protected,staffBase:shared});
   const migrated=game.applyWorldClock(clock);if(!migrated.ok||migrated.pending)fail(409,'CLOCK_ANCHOR_REQUIRED','共通時計を確認してから保存を同期してください。');
   game.state.cycle.latestReward=null;if(game.state.march?.authority==='local')game.state.march.cycle=game.state.cycle.index;
   Object.assign(save,JSON.parse(game.exportSave()));
@@ -2649,7 +2651,7 @@ async function fieldAttack(db,user,raw,now,internal={}) {
   if(defenderNext){statements.push(stmt(db,`UPDATE player_saves SET save_json=?,revision=revision+1,updated_at=?,cycle_home=? WHERE user_id=? AND ${gate}`,defenderJson,now,defenderNext.state.cycle?.home||defenderNext.state.home,target.id,...gateArgs));statements.push(...branchProgressStatements(db,target.id,defenderNext,now,gate,gateArgs,{resolvedElapsedMs:clock.elapsedMs}));}
   statements.push(...covertIncidentStatements(db,user.id,attackerNext,now,gate,gateArgs));
   const attackerPersonal=await staffPersonalProgressStatement(db,user,attackerNext,now,gate,gateArgs,journey?.game.getStaffPersonalProgress?.());if(attackerPersonal)statements.push(attackerPersonal);
-  if(defenderNext){const personal=await staffPersonalProgressStatement(db,target,defenderNext,now,gate,gateArgs,defenderJourney?.game.getStaffPersonalProgress?.(),captureChange);if(personal)statements.push(personal);
+  if(defenderNext){const personal=await staffPersonalProgressStatement(db,target,defenderNext,now,gate,gateArgs,defenderJourney?.game.getStaffPersonalProgress?.(),captureChange,{exactHomeTroops:true,committedCastleId:castleId});if(personal)statements.push(personal);
     if(defenderJourney){statements.push(...covertIncidentStatements(db,target.id,defenderNext,now,gate,gateArgs));for(const event of saveAchievements(defenderJourney.before,defenderNext))statements.push(achievementStatement(db,target.id,event,now,gate,gateArgs));}
   }
   for(const event of saveAchievements(attackerBefore,attackerNext))statements.push(achievementStatement(db,user.id,event,now,gate,gateArgs));
@@ -3047,10 +3049,11 @@ async function route(request, env, now) {
     await reconcileProgress(db,user.id,save,before);
     await reconcileCovertProgress(db,user.id,save);
     reconcileOfficerHealth(save,healthBefore,clock);
+    retainCourtHoldings(save,before,user,clock);
     const branchProgress=await resolveSyncBranches(db,user,save,before,clock,now,{importedStationedTroops}),branchAccess=branchProgress.access;
     const residencyProgress=await resolveSyncResidency(db,user,save,before,clock,now,branchAccess);cycleHome=save.state.cycle.home;
     let repairAdjustment;
-    try{repairAdjustment=reconcilePaidRepairs(save,healthBefore,clock,{hasRepairReceipt,trustedStates:[branchProgress.replayed?.state,residencyProgress.durabilityState].filter(Boolean),branchState:branchProgress.replayed?.state,isAdmin:!!user.is_admin,isDeputy:!!user.is_deputy,isStaff:!!user.is_staff});}
+    try{repairAdjustment=reconcilePaidRepairs(save,healthBefore,clock,{hasRepairReceipt,trustedStates:[branchProgress.replayed?.state,residencyProgress.durabilityState].filter(Boolean),branchState:branchProgress.replayed?.state,isAdmin:!!user.is_admin,isDeputy:!!user.is_deputy,isStaff:!!user.is_staff,isCourtProtected:!!user.is_court_protected});}
     catch(error){if(error.code==='REPAIR_STATE_CHANGED')fail(409,error.code,error.message);throw error;}
     // Settle one monthly receipt after the authoritative branch pools are
     // merged. An already-settled client may have recruited again afterwards;
@@ -3068,7 +3071,7 @@ async function route(request, env, now) {
     // must reach the appointment backup instead of being restored from it.
     const personalHome=shared?.personalHome,personalCastle=personalHome&&save.state.castles[personalHome];
     const sharedForBalance=hasMonthlyReceipt&&personalCastle?.owner===save.state.clan?{...shared,personalHomeCastle:{...shared.personalHomeCastle,troops:personalCastle.troops}}:shared;
-    const balanced=GameEngine.fromSave(save,GAME_OFFICERS,{isAdmin:!!user.is_admin,isDeputy:!!user.is_deputy,isStaff:!!user.is_staff,staffBase:sharedForBalance,maintenanceAuthority:balanceAuthority,branchAuthority:{resolvedElapsedMs:branchProgress.resolvedElapsedMs}});
+    const balanced=GameEngine.fromSave(save,GAME_OFFICERS,{isAdmin:!!user.is_admin,isDeputy:!!user.is_deputy,isStaff:!!user.is_staff,isCourtProtected:!!user.is_court_protected,staffBase:sharedForBalance,maintenanceAuthority:balanceAuthority,branchAuthority:{resolvedElapsedMs:branchProgress.resolvedElapsedMs}});
     // Receipts use the same migrated time origin as health and repair. Comparing
     // an old local month with the shared month would restore a future receipt.
     const upkeepBefore=upkeepTroopSnapshot(balanced),upkeepResult=reconcileMonthlyUpkeep(balanced,healthBefore,{hasMonthlyReceipt});

@@ -18,7 +18,7 @@ export function shogunateGrantStatements({db,userId,sourceType,sourceId,title,ba
 export async function shogunateEventRight(db,userId,eventId){return dto(await S(db,RIGHT_SELECT+" WHERE r.user_id=? AND r.source_type='event' AND r.source_id=?",userId,eventId).first());}
 
 export function campaignShogunateStatements({db,user,save,now,gateSql,gateArgs=[]}){
- const game=GameEngine.fromSave(save,GAME_OFFICERS,{isAdmin:!!user.is_admin,isDeputy:!!user.is_deputy,isStaff:!!user.is_staff}),proof=game.getUnificationProof();
+ const game=GameEngine.fromSave(save,GAME_OFFICERS,{isAdmin:!!user.is_admin,isDeputy:!!user.is_deputy,isStaff:!!user.is_staff,isCourtProtected:!!user.is_court_protected}),proof=game.getUnificationProof();
  if(!proof.achieved)return[];
  // Campaign ownership follows the existing validated-save authority model.
  // Recheck the exact committed campaign, cycle and all eligible castle owners.
@@ -90,7 +90,7 @@ async function view(ctx,requestedRightId=null){
  for(const right of priority){const index=selected.findIndex(r=>r.id===right.id);if(index<0)selected.push(right);else selected[index]=right;}
  while(selected.length>100){let index=selected.length-1;while(priorityIds.has(selected[index].id))index--;selected.splice(index,1);}
  const rights=selected.map(dto),current=await h.getSyncRow(db,user.id);let campaign=null;
- if(current?.save_json){const g=GameEngine.fromSave(JSON.parse(current.save_json),GAME_OFFICERS,{isAdmin:!!user.is_admin,isDeputy:!!user.is_deputy,isStaff:!!user.is_staff});const p=g.getUnificationProof();campaign={owned:p.owned,target:p.target,achieved:p.achieved,cycle:p.cycle};}
+ if(current?.save_json){const g=GameEngine.fromSave(JSON.parse(current.save_json),GAME_OFFICERS,{isAdmin:!!user.is_admin,isDeputy:!!user.is_deputy,isStaff:!!user.is_staff,isCourtProtected:!!user.is_court_protected});const p=g.getUnificationProof();campaign={owned:p.owned,target:p.target,achieved:p.achieved,cycle:p.cycle};}
  // The final response pass rechecks this exact appointment after decoration.
  if(authority.canActForEmperor)h.registerResponseGuard(authority.guard);
  return{rights,current:dto(opened),campaign,serverNow:ctx.now,approvalWindowMs:SHOGUNATE_APPROVAL_WINDOW_MS,canApprove:authority.canActForEmperor,approvals:rows(queue).slice(0,100).map(r=>({...dto(r),applicant:{id:r.user_id,name:r.applicant_name}})),approvalsHasMore:rows(queue).length>100,pendingHasMore,palaceControl};

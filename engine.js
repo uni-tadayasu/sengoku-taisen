@@ -282,7 +282,7 @@
   const STAFF_CLAN=Object.freeze({...CLANS.find(c=>c.name==='徳川家'),name:ADMIN_ASSETS.clanName,leader:'徳川家康',home:STAFF_BASE_ID,description:'京都御所を共同本拠とする、スタッフの家。'});
   const GIFT_FIELDS=[...RESOURCES,'magatama'];
   // Role belongs to the authenticated runtime. It is never serialized in a save.
-  const ADMIN_ACCESS=new WeakMap(),STAFF_ACCESS=new WeakMap(),DEPUTY_ACCESS=new WeakMap(),COURT_ACCESS=new WeakMap(),REGENT_ACCESS=new WeakMap(),BRANCH_AUTHORITY=new WeakMap(),MAINTENANCE_AUTHORITY=new WeakMap(),BRANCH_PARENT_LOSSES=new WeakMap(),HOME_DEFENSE_LOSSES=new WeakMap(),STAFF_VIEW=new WeakMap(),STAFF_ORIGIN=new WeakMap();
+  const ADMIN_ACCESS=new WeakMap(),STAFF_ACCESS=new WeakMap(),DEPUTY_ACCESS=new WeakMap(),COURT_ACCESS=new WeakMap(),REGENT_ACCESS=new WeakMap(),COURT_PROTECTION=new WeakMap(),BRANCH_AUTHORITY=new WeakMap(),MAINTENANCE_AUTHORITY=new WeakMap(),BRANCH_PARENT_LOSSES=new WeakMap(),HOME_DEFENSE_LOSSES=new WeakMap(),STAFF_VIEW=new WeakMap(),STAFF_ORIGIN=new WeakMap();
   const UPKEEP_TRACKS=new WeakMap(),MAX_UPKEEP_TRACKS=128;
   const MAX_HOME_DEFENSE_LOSSES=256;
   const WORLD_CALENDAR=Object.freeze({startYear:1560,yearsPerCycle:56,monthsPerCycle:672,secondsPerMonth:60});
@@ -736,7 +736,7 @@
   }
   class SengokuEngine {
     constructor(options={}) {
-      ADMIN_ACCESS.set(this,options.isAdmin===true);STAFF_ACCESS.set(this,options.isStaff===true);DEPUTY_ACCESS.set(this,options.isDeputy===true);COURT_ACCESS.set(this,options.isCourtEmperor===true&&options.isStaff===true&&options.isAdmin!==true);REGENT_ACCESS.set(this,options.isCourtRegent===true&&options.isAdmin!==true&&!this.isCourtEmperor);
+      ADMIN_ACCESS.set(this,options.isAdmin===true);STAFF_ACCESS.set(this,options.isStaff===true);DEPUTY_ACCESS.set(this,options.isDeputy===true);COURT_PROTECTION.set(this,options.isCourtProtected===true);COURT_ACCESS.set(this,options.isCourtEmperor===true&&options.isStaff===true&&options.isAdmin!==true);REGENT_ACCESS.set(this,options.isCourtRegent===true&&options.isAdmin!==true&&!this.isCourtEmperor);
       this.roster = options.officers || root.SENGOKU_OFFICERS || [];
       this.officerMap = Object.assign(Object.create(null),Object.fromEntries(this.roster.map(o=>[o.id,o])));
       if(!this.isAdmin&&!this.isStaff&&options.clan===ADMIN_ASSETS.clanName)throw new Error('德川家は運営・スタッフ専用です。通常の徳川家は選択できます。');
@@ -865,6 +865,8 @@
     get isCourtEmperor(){return this.isStaff&&COURT_ACCESS.get(this)===true;}
     get isCourtRegent(){return !this.isAdmin&&REGENT_ACCESS.get(this)===true;}
     get canActForEmperor(){return this.isCourtEmperor||this.isCourtRegent;}
+    get isCourtProtected(){return COURT_PROTECTION.get(this)===true;}
+    setCourtProtection(value=false){if(typeof value!=='boolean')return fail('役職の確認情報が正しくありません。');const changed=this.isCourtProtected!==value;COURT_PROTECTION.set(this,value);return{ok:true,changed,isCourtProtected:value};}
     setCourtAccess({isCourtEmperor=false,isCourtRegent=false}={}){if(typeof isCourtEmperor!=='boolean'||typeof isCourtRegent!=='boolean'||isCourtEmperor&&!this.isStaff||isCourtRegent&&this.isAdmin||isCourtEmperor&&isCourtRegent)return fail('現在の天皇・摂政の任命を確認してください。');const changed=this.isCourtEmperor!==isCourtEmperor||this.isCourtRegent!==isCourtRegent;COURT_ACCESS.set(this,isCourtEmperor);REGENT_ACCESS.set(this,isCourtRegent);return{ok:true,changed,isCourtEmperor:this.isCourtEmperor,isCourtRegent:this.isCourtRegent};}
     // A verified snapshot can contain newer branch outcomes than its campaign
     // clock. Keep their timeline outside saves so catch-up cannot apply those
@@ -895,7 +897,7 @@
     // and territory resets cannot supply or replay them.
     takeHomeDefenseLosses(){const recorded=HOME_DEFENSE_LOSSES.get(this);HOME_DEFENSE_LOSSES.delete(this);return recorded?.campaignId===this.state.walking.campaignId?copy(recorded.losses):[];}
     _recordHomeDefenseLoss(castleId,sourceCastleId){
-      const s=this.state;if(castleId!==s.home||s.castles[castleId]?.owner!==s.clan||!CASTLE_BY_ID[sourceCastleId]||s.castles[sourceCastleId]?.owner===s.clan||['edo',STAFF_BASE_ID,DEPUTY_BASE_ID].includes(castleId))return;
+      const s=this.state;if(this.isCourtProtected||castleId!==s.home||s.castles[castleId]?.owner!==s.clan||!CASTLE_BY_ID[sourceCastleId]||s.castles[sourceCastleId]?.owner===s.clan||['edo',STAFF_BASE_ID,DEPUTY_BASE_ID].includes(castleId))return;
       const campaignId=s.walking.campaignId,cycle=Math.floor(s.turn/WORLD_CALENDAR.monthsPerCycle),id=`cpu-home:${campaignId}:${cycle}:${s.turn}:${sourceCastleId}:${castleId}`,prior=HOME_DEFENSE_LOSSES.get(this),losses=prior?.campaignId===campaignId?prior.losses:[];
       if(losses.length>=MAX_HOME_DEFENSE_LOSSES||losses.some(loss=>loss.id===id))return;
       losses.push({id,kind:'cpu',campaignId,cycle,turn:s.turn,occurredElapsedMs:Math.floor(s.turn*60000+s.realtime.elapsed*1000),castleId,sourceCastleId});
@@ -1019,7 +1021,7 @@
     }
     setRoleAccess({isAdmin=false,isStaff=false,isDeputy=false}={},options={}){
       if(typeof isAdmin!=='boolean'||typeof isStaff!=='boolean'||typeof isDeputy!=='boolean')return fail('役職の認証状態が正しくありません。');
-      const changed=this.isAdmin!==isAdmin||this.isStaff!==(!isAdmin&&isStaff)||this.isDeputy!==(!isAdmin&&!isStaff&&isDeputy);if(changed){COURT_ACCESS.set(this,false);REGENT_ACCESS.set(this,false);BRANCH_AUTHORITY.delete(this);BRANCH_PARENT_LOSSES.delete(this);}if(this.isStaff&&(!isStaff||isAdmin))this._clearStaffProjection();STAFF_ACCESS.set(this,isStaff);DEPUTY_ACCESS.set(this,isDeputy);
+      const changed=this.isAdmin!==isAdmin||this.isStaff!==(!isAdmin&&isStaff)||this.isDeputy!==(!isAdmin&&!isStaff&&isDeputy);if(changed){COURT_ACCESS.set(this,false);REGENT_ACCESS.set(this,false);COURT_PROTECTION.set(this,false);BRANCH_AUTHORITY.delete(this);BRANCH_PARENT_LOSSES.delete(this);}if(this.isStaff&&(!isStaff||isAdmin))this._clearStaffProjection();STAFF_ACCESS.set(this,isStaff);DEPUTY_ACCESS.set(this,isDeputy);
       const result=this._setAdminAccess(isAdmin,options),migrated=this._enforceStaffHome(),deputyMigrated=this._enforceDeputyHome(options.deputyReturnHome),deputyRestored=this.isDeputy&&options.restoreAssets!==false?this.restoreDeputyAssets():null;if(!this.isStaff){this.state.command=Math.min(this.state.command,this.commandMax());this.state.governors=Object.fromEntries(Object.entries(this.state.governors).filter(([id])=>this.state.buildings[id]>0));if(this.constructionChains()>this.constructionSlots())this.state.staffService={baseId:STAFF_BASE_ID};}this._updateCampaignOutcome();return {...result,isStaff:this.isStaff,isDeputy:this.isDeputy,deputyRestored,changed:changed||result.changed||migrated||deputyMigrated||Boolean(deputyRestored?.changed)};
     }
     setAdminAccess(isAdmin,options={}){if(typeof isAdmin!=='boolean')return fail('運営の認証状態が正しくありません。');return this.setRoleAccess({isAdmin,isStaff:STAFF_ACCESS.get(this)===true,isDeputy:DEPUTY_ACCESS.get(this)===true},options);}
@@ -2398,8 +2400,13 @@
         this.recordOfficerBattle({key:`defense:${s.walking.campaignId}:${s.turn}:${move.from}:${move.to}`,won:held,role:'defense'});
         const fieldLoss=Math.min(s.troops,Math.round(reinforce*(held?.12:.3)));s.troops-=fieldLoss;
         if(held){b.troops=survivorsAfterLoss(b.troops,Math.round(b.troops*.18),100);a.troops=survivorsAfterLoss(a.troops,Math.round(attack*.3),300);s.prestige=Math.min(ASSET_CAP,s.prestige+5);events.push(`${a.owner}が${bc.name}へ侵攻。守備隊が撃退しました（援軍損失${fieldLoss}人）。`);}
+        else if(this.isCourtProtected){
+          const occupationForce=Math.max(250,Math.round(a.troops*.3));
+          b.troops=survivorsAfterLoss(b.troops,Math.round(b.troops*.35),0);a.troops=survivorsAfterLoss(a.troops,Math.round(occupationForce*.6),350);s.morale=clamp(s.morale-10,15,100);
+          events.push(`${a.owner}が${bc.name}へ侵攻。合戦の後、両軍は兵を引きました（援軍損失${fieldLoss}人）。`);
+        }
         else{this._recordHomeDefenseLoss(move.to,move.from);this._recordBranchParentLoss(move.to);b.owner=a.owner;this._pruneBranches();if(s.jobs.some(j=>j.kind==='castle'&&j.id===move.to)){s.jobs=s.jobs.filter(j=>j.kind!=='castle'||j.id!==move.to);events.push(`${bc.name}の落城により、進行中の城郭拡張は中止されました。`);}b.troops=Math.max(250,Math.round(a.troops*.3));a.troops=survivorsAfterLoss(a.troops,Math.round(b.troops*.6),350);s.morale=clamp(s.morale-10,15,100);events.push(`${a.owner}の侵攻により${bc.name}を失いました。`);if(!this.ownedCastles().length){s.gameOver=true;events.push('最後の城が陥落しました。設定から新しい物語を始められます。');}else if(home){s.home=this.ownedCastles()[0].id;events.push(`${CASTLE_BY_ID[s.home].name}へ本拠を移しました。`);}}
-        this._damageCastleDurability(move.to,{won:!held,ratio:attack/Math.max(1,defense),captured:!held,before:beforeDurability});
+        this._damageCastleDurability(move.to,{won:!held,ratio:attack/Math.max(1,defense),captured:!held&&!this.isCourtProtected,before:beforeDurability});
       }else{
         const beforeDurability=this.castle(move.to).durability,condition=beforeDurability.fortificationFactor,ratio=a.troops/Math.max(1,b.troops*(1+b.wall*.08*condition)*(1+(b.level-1)*.04*condition)),captured=this.random()<clamp(.32+(ratio-1)*.3,.1,.8);
         if(captured){const old=b.owner;b.owner=a.owner;b.troops=Math.max(450,Math.round(a.troops*.42));a.troops=survivorsAfterLoss(a.troops,Math.round(b.troops*.4),500);events.push(`${a.owner}が${old}の${bc.name}を攻略しました。`);}
@@ -2616,7 +2623,7 @@
       if(!isObj(s)||s.version!==2||obj?.game&&obj.game!=='sengoku-tento')invalid();
       if(s.clan!==ADMIN_ASSETS.clanName&&!CLANS.some(c=>c.name===s.clan)||!CASTLE_BY_ID[s.home]||!['easy','normal','hard'].includes(s.difficulty))invalid();
       if(s.magatama===undefined)s.magatama=GACHA.initial;try{normalizeAssets(s);}catch(error){invalid();}
-      const g=new SengokuEngine({clan:s.clan===ADMIN_ASSETS.clanName?'徳川家':s.clan,difficulty:s.difficulty,officers,isAdmin:options?.isAdmin===true,isStaff:options?.isStaff===true,isDeputy:options?.isDeputy===true,isCourtEmperor:options?.isCourtEmperor===true,isCourtRegent:options?.isCourtRegent===true});
+      const g=new SengokuEngine({clan:s.clan===ADMIN_ASSETS.clanName?'徳川家':s.clan,difficulty:s.difficulty,officers,isAdmin:options?.isAdmin===true,isStaff:options?.isStaff===true,isDeputy:options?.isDeputy===true,isCourtEmperor:options?.isCourtEmperor===true,isCourtRegent:options?.isCourtRegent===true,isCourtProtected:options?.isCourtProtected===true});
       const oldMap=isObj(s.castles)&&!Object.hasOwn(s.castles,STAFF_BASE_ID)&&Object.keys(s.castles).length===CASTLES.length-1&&CASTLES.filter(c=>c.id!==STAFF_BASE_ID).every(c=>Object.hasOwn(s.castles,c.id));
       const legacyStaff=s.staffService?.baseId==='sunpu'||oldMap&&s.home==='sunpu'&&(s.clan===ADMIN_ASSETS.clanName||g.isStaff);
       if(oldMap){const original=CASTLE_BY_ID[STAFF_BASE_ID],scale={easy:.8,normal:1,hard:1.2}[s.difficulty];s.castles[STAFF_BASE_ID]={owner:original.clan===s.clan?'在地衆':original.clan,troops:Math.round(original.initialTroops*scale),wall:original.wall,level:1};}

@@ -20,16 +20,20 @@
  const validId=value=>typeof value==='string'&&(/^(?:u_)[A-Za-z0-9_]{1,96}$/.test(value)||/^vc_[a-f0-9]{32}$/.test(value));
  const playerId=player=>typeof player==='string'?player:player?.playerId||player?.userId||player?.id||player?.sessionId;
  const escape=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
- const normalize=value=>value&&typeof value==='object'&&typeof value.title==='string'&&Object.hasOwn(OFFICES,value.title)&&OFFICES[value.title].kind===value.kind?{title:value.title,kind:value.kind}:null;
+ const jurisdiction=value=>value?.kind==='official'&&['kyoto','external'].includes(value.jurisdiction)?value.jurisdiction:'';
+ const normalize=value=>value&&typeof value==='object'&&typeof value.title==='string'&&Object.hasOwn(OFFICES,value.title)&&OFFICES[value.title].kind===value.kind?{title:value.title,kind:value.kind,...(jurisdiction(value)?{jurisdiction:jurisdiction(value)}:{})}:null;
+ const designation=value=>jurisdiction(value)==='kyoto'?'正式官職':jurisdiction(value)==='external'?'任命官職':'';
+ const description=value=>jurisdiction(value)==='kyoto'?'京都御所の正式官職':jurisdiction(value)==='external'?'太政大臣による任命官職':'役職';
+ const officeText=value=>value?value.title+(designation(value)?'（'+description(value)+'）':''):'';
  const FIELDS=[['playerId','playerCourtOffice'],['ownerId','ownerCourtOffice'],['authorId','authorCourtOffice'],['targetPlayerId','targetCourtOffice'],['attackerPlayerId','attackerCourtOffice'],['defenderPlayerId','defenderCourtOffice'],['actorPlayerId','actorCourtOffice'],['lordPlayerId','lordCourtOffice'],['previousLordPlayerId','previousLordCourtOffice']];
  const SKIP=new Set(['save','state','entitlements','staffBase','appearance','courtOffice']);
  function refresh(){
   for(const node of global.document?.querySelectorAll?.('[data-court-player]')||[]){
    const id=node.dataset.courtPlayer,current=node.dataset.courtSelf==='true'?selfOffice(id):office(id);
    // Keep the mounted artwork and its fallback state on unchanged polls.
-   if(current&&node.childNodes?.length===1&&node.firstElementChild?.dataset?.courtSeal===OFFICES[current.title].seal)continue;
+   if(current&&node.childNodes?.length===1&&node.firstElementChild?.dataset?.courtSeal===OFFICES[current.title].seal&&(node.firstElementChild?.dataset?.courtJurisdiction||'')===jurisdiction(current))continue;
    if(!current&&node.childNodes?.length===0)continue;
-   const html=current?badgeTitle(current.title):'';
+   const html=current?badgeTitle(current.title,current.jurisdiction):'';
    // This slot owns its entire contents. Record replacements so its parent
    // can reconcile the same badge after the asynchronously loaded office arrives.
    const stable=global.SengokuStableDOM;
@@ -60,20 +64,21 @@
   if(player&&Object.hasOwn(player,'courtOffice'))return normalize(player.courtOffice);
   return normalize(cache.get(playerId(player)));
  }
- function badgeTitle(title){
+ function badgeTitle(title,source){
   if(typeof title!=='string'||!Object.hasOwn(OFFICES,title))return '';
   const {kind,seal,art,lineOnly}=OFFICES[title];
+  const current={title,kind,jurisdiction:source},scope=jurisdiction(current),caption=designation(current),label=description(current)+'：'+title;
   const relief=lineOnly?'':`<img class="public-court-relief" src="assets/court-badges/${seal}-relief.webp" width="24" height="24" alt="" decoding="async" loading="lazy" draggable="false">`;
   const linework=`<svg class="public-court-linework${lineOnly?' public-court-linework-only':''}" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round">${art}</svg>`;
   const icon=`<span class="public-court-icon" data-stable-key="court-seal-${seal}" aria-hidden="true">${relief}${linework}</span>`;
-  return `<span class="public-court-badge public-court-${kind}" data-court-seal="${seal}" role="img" aria-label="役職：${title}" title="役職：${title}">${icon}<span class="public-court-title">${title}</span></span>`;
+  return `<span class="public-court-badge public-court-${kind}" data-court-seal="${seal}"${scope?` data-court-jurisdiction="${scope}"`:''} role="img" aria-label="${label}" title="${label}">${icon}<span class="public-court-labels">${caption?`<span class="public-court-designation">${caption}</span>`:''}<span class="public-court-title">${title}</span></span></span>`;
  }
  // Resource errors do not bubble. Capture them once for every newly mounted
  // office, so an uncached badge still has its own seal when playing offline.
  global.document?.addEventListener?.('error',event=>{
   if(event.target?.matches?.('img.public-court-relief'))event.target.hidden=true;
  },true);
- function badge(player){const current=office(player);return current?badgeTitle(current.title):'';}
+ function badge(player){const current=office(player);return current?badgeTitle(current.title,current.jurisdiction):'';}
  function slot(player){const id=playerId(player);return validId(id)?`<span class="public-court-slot" data-court-player="${escape(id)}">${badge(player)}</span>`:badge(player);}
  // Self badges follow the verified current connection, never an old campaign,
  // cached role flag, or a caller-supplied office on an arbitrary player object.
@@ -81,6 +86,6 @@
  function selfBadge(player){return badge({courtOffice:selfOffice(player)});}
  function selfSlot(player){const id=playerId(player);return validId(id)?`<span class="public-court-slot public-court-self" data-court-player="${escape(id)}" data-court-self="true">${selfBadge(id)}</span>`:'';}
  function forget(player){const id=playerId(player);if(!validId(id))return;versions.set(id,++sequence);cache.delete(id);refresh();}
- const api={update,office,badge,badgeTitle,slot,selfOffice,selfBadge,selfSlot,selfText:player=>selfOffice(player)?.title||'',forget,refresh,normalize,beginRequest:()=>++sequence,text:player=>office(player)?.title||'',clear(){cache.clear();versions.clear();floor=++sequence;refresh();}};global.SengokuPublicCourt=api;
+ const api={update,office,badge,badgeTitle,slot,selfOffice,selfBadge,selfSlot,selfText:player=>officeText(selfOffice(player)),forget,refresh,normalize,beginRequest:()=>++sequence,text:player=>officeText(office(player)),clear(){cache.clear();versions.clear();floor=++sequence;refresh();}};global.SengokuPublicCourt=api;
  if(typeof module!=='undefined'&&module.exports)module.exports=api;
 })(typeof window!=='undefined'?window:globalThis);
