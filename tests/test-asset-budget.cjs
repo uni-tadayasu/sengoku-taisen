@@ -62,7 +62,11 @@ const totalGzipBytes = rows.reduce((sum,row)=>sum+row.gzipBytes,0);
 // Measured entry: 3,640,347 raw / 1,009,482 gzip before the small legacy-home
 // restoration fix (+35,498 raw / +8,855 gzip from v5.11.1). Keep less than
 // 3 KB raw / 2 KB gzip headroom; no images, samples or new packages are added.
-const rawBudget=3643000,gzipBudget=1011000;
+// v5.12.1 adds free-name selection to unban/readmission, preserves the exact
+// name through lost-response receipts, and explains released names. Measured
+// entry growth is 4,398 raw / 1,855 gzip bytes; no dependencies/assets added.
+// Retain a tight allowance for this reviewed UI rather than an open-ended cap.
+const rawBudget=3648000,gzipBudget=1013000;
 assert(totalBytes <= rawBudget, `Initial bundles exceed the ${rawBudget} byte budget: ${totalBytes}`);
 assert(totalGzipBytes <= gzipBudget, `Initial bundles exceed the ${gzipBudget} gzip byte budget: ${totalGzipBytes}`);
 const html = fs.readFileSync(path.join(root,'index.html'),'utf8');

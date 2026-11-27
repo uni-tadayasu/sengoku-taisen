@@ -495,3 +495,7 @@ D1の一次資料:
 
 - https://developers.cloudflare.com/d1/worker-api/d1-database/
 - https://developers.cloudflare.com/d1/worker-api/prepared-statements/
+
+## v5.12.1 領主名の再利用
+
+`0050_release_moderated_player_names.sql` と `player-names.js` を含むWorkerを配置します。移行はトリガー追加のみで、既存ユーザーを一括変更しません。以前にBAN・追放された名前は、名前の取得を要求した処理の中で必要な1件だけ解放します。BAN解除・再入城で名前が重複する場合は別名が必要です。入力欄を含むブラウザーを配置する前に、対応APIを公開してください。公開ID・認証・購入・進行・管理履歴は元のアカウントに維持します。

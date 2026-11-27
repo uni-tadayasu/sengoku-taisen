@@ -110,7 +110,7 @@ await scope('expected names fence concurrent edits and response-loss retry canno
 await scope('BAN, BAN-unban generations and failed SQL prevent any delayed name write',async h=>{
   const operator=await admin(h),actor=await h.session('停止境界の名前');await moderate(h,operator,actor,'ban');
   await rename(h,actor,{name:'停止中の変更'},403);assert.equal(name(h,actor),actor.user.name);await moderate(h,operator,actor,'unban');
-  let intercepted=false;h.beforeStatement=async sql=>{if(sql.startsWith('UPDATE users SET name=')){h.beforeStatement=null;intercepted=true;await moderate(h,operator,actor,'ban');await moderate(h,operator,actor,'unban');}};
+  let intercepted=false;h.beforeBatch=async statements=>{if(statements.some(statement=>statement.sql.startsWith('UPDATE users SET name='))){h.beforeBatch=null;intercepted=true;await moderate(h,operator,actor,'ban');await moderate(h,operator,actor,'unban');}};
   assert.equal((await rename(h,actor,{name:'古い認証の変更',expectedName:actor.user.name},409)).data.error.code,'ACCOUNT_ACCESS_CHANGED');assert(intercepted);assert.equal(name(h,actor),actor.user.name);
   h.sql.exec("CREATE TRIGGER fixture_profile_failure BEFORE UPDATE OF name ON users BEGIN SELECT RAISE(ABORT,'fixture rename rollback'); END;");
   await rename(h,actor,{name:'失敗する変更'},500);assert.equal(name(h,actor),actor.user.name);h.sql.exec('DROP TRIGGER fixture_profile_failure');

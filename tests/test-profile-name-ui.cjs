@@ -69,6 +69,11 @@ test('twenty-four emoji are accepted without a UTF-16 maxlength truncating the i
 test('duplicate names keep the draft and current identity while restoring the controls',async()=>{
  const h=harness();h.enter('使用中の領主');h.setHandler(async()=>failure('NAME_TAKEN','その領主名は使用されています。'));await h.submit();assert.equal(h.input.value,'使用中の領主');assert.equal(h.t.s.profileNameEdit.value,'使用中の領主');assert.equal(h.t.s.user.name,'元の領主');assert(h.feedback.textContent.includes('使用されています'));assert.equal(h.input.disabled,false);assert.equal(h.button.disabled,false);assert.equal(h.requests.length,1);assert.equal(h.calls.sync,0);
 });
+test('a released name remains editable and an unchanged proposed name still reaches the authoritative profile endpoint',async()=>{
+ const h=harness();h.t.s.user.nameReleased=true;const html=h.t.profileView();assert(html.includes('名前が確保されるのは再入城の確定時'));assert.equal(h.scope.SengokuSocial.getUser().nameReleased,true);h.enter(h.original.name);
+ h.setHandler(async(url,options)=>{if(options.method==='PATCH'){assert.deepEqual(JSON.parse(options.body),{name:h.original.name,expectedName:h.original.name});h.setUser({...h.original,nameReleased:true});}return{ok:true,user:h.user(),friends:[],requests:[]};});
+ await h.submit();assert.equal(h.requests.filter(row=>row.options.method==='PATCH').length,1);assert.equal(h.t.s.user.nameReleased,true);assert.equal(h.t.s.user.id,h.id);assert.equal(h.input.disabled,false);
+});
 test('a concurrent device rename reloads the current name and never retries an old expectation automatically',async()=>{
  const h=harness();h.enter('希望の名前');let attempts=0;
  h.setHandler(async(url,options)=>{if(options.method==='PATCH'){attempts++;if(attempts===1){h.setUser({...h.original,name:'別端末の名前'});return failure('PROFILE_CHANGED','名前が変更されました。');}assert.equal(JSON.parse(options.body).expectedName,'別端末の名前');h.setUser({...h.original,name:'希望の名前'});}return{ok:true,user:h.user(),friends:[],requests:[]};});

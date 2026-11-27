@@ -6,6 +6,7 @@ const clone=value=>JSON.parse(JSON.stringify(value));
 const esc=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const number=value=>Math.max(0,Math.floor(Number(value)||0)).toLocaleString('ja-JP');
 const validCount=value=>Number.isSafeInteger(value)&&value>=0;
+const validName=value=>typeof value==='string'&&Array.from(value.trim()).length>=1&&Array.from(value.trim()).length<=24&&!/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/u.test(value);
 function player(value){const id=String(value?.id??value?.playerId??'');return ID.test(id)&&typeof value?.name==='string'?{id,name:value.name.slice(0,80),clan:String(value.clan||'').slice(0,60),isAdmin:value.isAdmin===true,isStaff:value.isStaff===true,isDeputy:value.isDeputy===true,banned:value.banned===true,avatarVersion:typeof value.avatarVersion==='string'&&/^[a-f0-9]{64}$/.test(value.avatarVersion)?value.avatarVersion:null,evaluation:global.SengokuEvaluationUI?.key?.(value.evaluation)?{version:value.evaluation.version,score:value.evaluation.score,maxScore:value.evaluation.maxScore,rankId:value.evaluation.rankId,rankName:value.evaluation.rankName,rankIndex:value.evaluation.rankIndex}:null,appearance:global.SengokuPremiumRuntime?.cleanAppearance?.(value.appearance)||null}:null;}
 function ban(value){return value&&typeof value.active==='boolean'&&validCount(value.revision)?{active:value.active,revision:value.revision,reason:String(value.reason||'').slice(0,300),bannedAt:value.bannedAt||null,bannedBy:value.bannedBy||null,updatedAt:value.updatedAt||null}:null;}
 function expulsion(value){if(!value||!validCount(value.revision)||typeof value.pending!=='boolean')return null;return{revision:value.revision,pending:value.pending,castleId:ID.test(String(value.castleId||''))?value.castleId:null,castleName:String(value.castleName||'').slice(0,100),role:['lord','retainer'].includes(value.role)?value.role:null,lordEpoch:validCount(value.lordEpoch)?value.lordEpoch:null,expelledAt:value.expelledAt||null,reason:String(value.reason||'').slice(0,300),blockedReason:String(value.blockedReason||'').slice(0,300)};}
@@ -28,7 +29,8 @@ function createController(options={}){
     const data=value?.data,chosen=target(value?.target);
     if(value?.ownerId!==owner||!chosen||!ID.test(String(data?.requestId||''))||!ID.test(String(data?.targetPlayerId||''))||data.targetPlayerId===owner||data.targetPlayerId!==chosen.player.id||!['ban','unban','expel'].includes(data.action)||!validCount(data.expectedRevision)||typeof data.reason!=='string'||data.reason.length>300||chosen.player.isAdmin)return null;
     if(data.action==='expel'&&(!chosen.canExpel||data.expectedRevision!==chosen.expulsion.revision||data.expectedCastleId!==chosen.expulsion.castleId||data.expectedLordEpoch!==chosen.expulsion.lordEpoch))return null;
-    return{ownerId:owner,target:chosen,data:{targetPlayerId:data.targetPlayerId,action:data.action,reason:data.reason,requestId:data.requestId,expectedRevision:data.expectedRevision,...(data.action==='expel'?{expectedCastleId:data.expectedCastleId,expectedLordEpoch:data.expectedLordEpoch}:{})},createdAt:String(value.createdAt||'')};
+    if(Object.hasOwn(data,'name')&&(data.action!=='unban'||!validName(data.name)||data.name!==data.name.trim()))return null;
+    return{ownerId:owner,target:chosen,data:{targetPlayerId:data.targetPlayerId,action:data.action,reason:data.reason,requestId:data.requestId,expectedRevision:data.expectedRevision,...(data.action==='expel'?{expectedCastleId:data.expectedCastleId,expectedLordEpoch:data.expectedLordEpoch}:{}),...(Object.hasOwn(data,'name')?{name:data.name}:{})},createdAt:String(value.createdAt||'')};
   }
   function readPending(owner){try{return validRecord(JSON.parse(storage.getItem(key(owner))||'null'),owner);}catch{return null;}}
   function persist(record){try{const value=JSON.stringify(record);storage.setItem(key(record.ownerId),value);return storage.getItem(key(record.ownerId))===value;}catch{return false;}}
@@ -51,6 +53,7 @@ function createController(options={}){
   function close(){s.open=false;emit('close');}
   function setQuery(value){if(s.confirm||s.sending)return;s.query=String(value||'').slice(0,90);}
   function setReason(value){if(s.confirm||s.sending||s.pending)return;s.reason=String(value||'').slice(0,300);}
+  function setRestoreName(value){if(s.confirm?.data.action!=='unban'||s.confirm.target.expulsion?.pending||s.sending||s.pending)return;s.confirm.data.name=String(value??'');}
   async function search(){
     identity();if(!s.authorized||s.sending||s.confirm)return;const query=s.query.trim();
     if(query.length<2||query.length>90){s.error='領主名を2文字以上、または完全な公開IDを入力してください。';emit();return;}
@@ -106,7 +109,7 @@ function createController(options={}){
       const checked=target(await call('/admin/moderation/target?playerId='+encodeURIComponent(s.target.player.id)));if(e!==epoch||v!==viewEpoch)return;requireAdmin();
       if(checked)s.target=checked;
       if(!checked||checked.player.id===s.ownerId||checked.player.isAdmin||!checked[action==='ban'?'canBan':action==='expel'?'canExpel':'canUnban'])throw Error('この領主に対して、その操作は現在実行できません。対象の状態を確認してください。');
-      s.target=checked;s.confirm={ownerId:s.ownerId,target:clone(checked),data:{targetPlayerId:checked.player.id,action,reason:s.reason.trim(),requestId:uuid(),expectedRevision:action==='expel'?checked.expulsion.revision:checked.ban.revision,...(action==='expel'?{expectedCastleId:checked.expulsion.castleId,expectedLordEpoch:checked.expulsion.lordEpoch}:{})},createdAt:new Date().toISOString()};s.status='';emit('confirm');
+      s.target=checked;s.confirm={ownerId:s.ownerId,target:clone(checked),data:{targetPlayerId:checked.player.id,action,reason:s.reason.trim(),requestId:uuid(),expectedRevision:action==='expel'?checked.expulsion.revision:checked.ban.revision,...(action==='expel'?{expectedCastleId:checked.expulsion.castleId,expectedLordEpoch:checked.expulsion.lordEpoch}:{}),...(action==='unban'&&!checked.expulsion?.pending?{name:checked.player.name}:{})},createdAt:new Date().toISOString()};s.status='';emit('confirm');
     }catch(error){if(e===epoch&&v===viewEpoch&&error.code!=='STALE_IDENTITY'){s.error=error.message;emit();}}
     finally{if(e===epoch&&v===viewEpoch){s.loading=false;emit();}}
   }
@@ -136,16 +139,16 @@ function createController(options={}){
         s.bans=[];s.nextCursor=null;s.loaded=false;viewEpoch++;emit('settled');return true;
       }catch(error){
         if(!current(e,owner)||error.code==='STALE_IDENTITY')return false;
-        if(error.status>=400&&error.status<500){clearPending(record);s.pending=null;s.confirm=null;}
+        if(error.status>=400&&error.status<500){clearPending(record);s.pending=null;s.confirm=error.code==='NAME_TAKEN'&&record.data.action==='unban'?{...clone(record),data:{...record.data,requestId:uuid()}}:null;}
         s.error=error.message||'通信結果が不明です。同じ送信番号で結果を確認してください。';emit('error');return false;
       }finally{if(current(e,owner)){s.sending=false;writePromise=null;emit();if(!s.pending&&s.view==='bans')await loadBans();}}
     });return writePromise;
   }
-  function confirm(){identity();return s.confirm&&!s.pending&&!s.sending?send(clone(s.confirm)):Promise.resolve(false);}
+  function confirm(){identity();if(!s.confirm||s.pending||s.sending)return Promise.resolve(false);if(Object.hasOwn(s.confirm.data,'name')){if(!validName(s.confirm.data.name)){s.error='復帰後の領主名は1〜24文字で入力してください。異体字の指定・結合文字も文字数に含まれます。';emit();return Promise.resolve(false);}s.confirm.data.name=s.confirm.data.name.trim();}return send(clone(s.confirm));}
   function retry(){identity();return s.pending?send(clone(s.pending)):Promise.resolve(false);}
   function refreshIdentity(){identity();}
   function dispose(){disposed=true;epoch++;viewEpoch++;Object.assign(s,{results:[],bans:[],target:null,confirm:null,pending:null,open:false});}
-  return{getState(){identity();return snapshot();},open,close,setQuery,setReason,search,openCandidates,select,prepare,cancelConfirm,confirm,retry,loadBans,loadMore:()=>loadBans({more:true}),refreshIdentity,dispose};
+  return{getState(){identity();return snapshot();},open,close,setQuery,setReason,setRestoreName,search,openCandidates,select,prepare,cancelConfirm,confirm,retry,loadBans,loadMore:()=>loadBans({more:true}),refreshIdentity,dispose};
 }
 const who=value=>'<strong class="player-evaluation-person">'+(global.SengokuAvatar?.markup?.(value,'inline')||'')+(global.SengokuCityHonors?.slot?.(value.id)||'')+'<span class="player-evaluation-name" data-premium-player="'+esc(value.id)+'" data-premium-player-name="'+esc(value.name)+'">'+(global.SengokuPremiumRuntime?.nameMarkup?.(value.name,value.appearance)||esc(value.name))+'</span>'+(global.SengokuEvaluationUI?.badge?.(value.evaluation)||'')+(global.SengokuPublicCourt?.slot?.(value.id)||'')+'</strong><code>'+esc(value.id)+'</code>';
 function targetMarkup(value){
@@ -157,7 +160,8 @@ function confirmationMarkup(record){
   const banning=record.data.action==='ban',expelling=record.data.action==='expel',p=record.target.player,c=record.target.counts,ex=record.target.expulsion;
   const title=expelling?'この領主を拠点から追放しますか？':banning?'この領主をBANして投稿を削除しますか？':'この領主のBANを解除しますか？';
   const effect=expelling?'<section class="moderation-residence"><span class="moderation-eyebrow">追放する拠点</span><strong>'+esc(ex?.castleName||record.data.expectedCastleId)+' · '+(ex?.role==='lord'?'領主':'家臣')+'</strong></section><p class="moderation-warning"><strong>'+(ex?.role==='lord'?'領主枠を空け、他のプレイヤーがこの城を選べるようにします。':'この家臣を拠点から除籍します。')+'</strong>'+(ex?.role==='lord'?'所属する他の家臣は残り、今回の追放では自動繰上げしません。':'現在の領主と他の家臣はそのままです。')+'対象は拠点の選び直しになり、以前の保存からこの所属を復元することはできません。</p><p class="moderation-note">アカウント・チャット・書状は保持され、利用停止にはなりません。再入城時は本拠移転と同じく、資産は現在残高と開始時の額の少ない方になり、施設・研究・戦役は初期化されます。武将の所持・育成と購入済み特典は引き継ぎます。</p>':banning?'<dl class="moderation-counts"><div><dt>チャット本文を削除</dt><dd>'+number(c.chatMessages)+'件</dd></div><div><dt>書状本文を削除</dt><dd>'+number(c.letterMessages)+'件</dd></div><div><dt>未成立の交易を取消</dt><dd>'+number(c.pendingTrades)+'件</dd></div></dl><p class="moderation-warning"><strong>本文の削除は取り消せません。</strong>対象本人が送った世界・同盟・フレンド・運営チャットと書状の本文を削除し、利用を停止します。ほかの人が送った本文は保持されます。BANを解除しても削除済みの本文は戻りません。</p><p class="moderation-note">件数は確認時点の値です。実行までに増えた対象の投稿も削除されます。未成立の交易は取り消され、預り資産は返還待ちになります。</p>':'<p class="moderation-warning"><strong>同じ公開IDの領主が利用を再開できます。</strong>BAN時に削除したチャット・書状の本文は復元されません。</p>';
-  return '<span class="moderation-eyebrow">実行する内容の確認</span><h2 id="moderation-confirm-title" tabindex="-1">'+title+'</h2><div class="moderation-person">'+who(p)+'</div>'+effect+(record.data.reason?'<p class="moderation-note">記録する理由：'+esc(record.data.reason)+'</p>':'')+'<div class="moderation-actions"><button type="button" class="moderation-button" data-moderation="back">戻って確認する</button><button type="button" class="moderation-button '+(expelling?'is-expel':banning?'is-danger':'is-primary')+'" data-moderation="confirm">'+(expelling?'この拠点から追放する':banning?'BANして投稿を削除':'BANを解除する')+'</button></div>';
+  const nameEffect=banning||expelling?'<p class="moderation-note">これまでの領主名は他のプレイヤーが使えるようになります。処分履歴と公開IDは残り、同じ名前を使う別のプレイヤーへ進行・購入済み特典・権限が移ることはありません。</p>':ex?.pending?'<p class="moderation-note">追放後の再入城待ちのため、名前は確保しません。本人が再入城する際に、空いている領主名を選びます。</p>':'<div class="moderation-section"><label for="moderation-restore-name">復帰後の領主名（1〜24文字）</label><input id="moderation-restore-name" type="text" autocomplete="nickname" minlength="1" aria-describedby="moderation-restore-name-help" value="'+esc(record.data.name??p.name)+'" required><p id="moderation-restore-name-help" class="moderation-note">以前の名前が他のプレイヤーに使われている場合は、新しい名前を入力してください。異体字の指定・結合文字も文字数に含まれます。公開ID・進行・購入済み特典は元の領主のままです。</p></div>';
+  return '<span class="moderation-eyebrow">実行する内容の確認</span><h2 id="moderation-confirm-title" tabindex="-1">'+title+'</h2><div class="moderation-person">'+who(p)+'</div>'+effect+nameEffect+(record.data.reason?'<p class="moderation-note">記録する理由：'+esc(record.data.reason)+'</p>':'')+'<div class="moderation-actions"><button type="button" class="moderation-button" data-moderation="back">戻って確認する</button><button type="button" class="moderation-button '+(expelling?'is-expel':banning?'is-danger':'is-primary')+'" data-moderation="confirm">'+(expelling?'この拠点から追放する':banning?'BANして投稿を削除':'BANを解除する')+'</button></div>';
 }
 let instance=null;
 function ensure(){
@@ -193,13 +197,13 @@ function ensure(){
       for(const control of targetNode.querySelectorAll('button'))control.disabled=locked||s.loading||!!s.pending;
       if(s.change==='target')targetNode.scrollIntoView({block:'nearest'});
     }
-    if(s.confirm){if(confirmKey!==s.confirm.data.requestId){confirmKey=s.confirm.data.requestId;confirmationFocus=doc.activeElement;html(confirmHost,confirmationMarkup(s.confirm));$('.moderation-main').scrollTop=0;$('#moderation-confirm-title').focus({preventScroll:true});}for(const button of confirmHost.querySelectorAll('button'))button.disabled=s.sending||button.dataset.moderation==='confirm'&&!!s.pending;}
+    if(s.confirm){if(confirmKey!==s.confirm.data.requestId){confirmKey=s.confirm.data.requestId;confirmationFocus=doc.activeElement;html(confirmHost,confirmationMarkup(s.confirm));$('.moderation-main').scrollTop=0;$('#moderation-confirm-title').focus({preventScroll:true});}for(const button of confirmHost.querySelectorAll('button'))button.disabled=s.sending||button.dataset.moderation==='confirm'&&!!s.pending;for(const input of confirmHost.querySelectorAll('input'))input.disabled=s.sending||!!s.pending;}
     else if(confirmKey){confirmKey='';html(confirmHost,'');if(confirmationFocus?.isConnected)confirmationFocus.focus({preventScroll:true});confirmationFocus=null;}
   }
   controller=createController({onChange:render});
   const run=value=>Promise.resolve(value).catch(()=>{});
   dialog.addEventListener('click',event=>{const node=event.target.closest('[data-moderation]');if(!node||node.disabled)return;const action=node.dataset.moderation;if(action==='close')controller.close();else if(action==='search-tab')run(controller.open('search'));else if(action==='bans-tab')run(controller.open('bans'));else if(action==='candidates')run(controller.openCandidates(node));else if(action==='target')run(controller.select(node.dataset.id));else if(action==='refresh')run(controller.loadBans());else if(action==='more')run(controller.loadMore());else if(action==='prepare-ban'||action==='prepare-unban'||action==='prepare-expel')run(controller.prepare(action.slice(8)));else if(action==='confirm')run(controller.confirm());else if(action==='back')controller.cancelConfirm();else if(action==='retry')run(controller.retry());});
-  dialog.addEventListener('input',event=>{if(event.target.id==='moderation-query')controller.setQuery(event.target.value);else if(event.target.id==='moderation-reason')controller.setReason(event.target.value);});
+  dialog.addEventListener('input',event=>{if(event.target.id==='moderation-query')controller.setQuery(event.target.value);else if(event.target.id==='moderation-reason')controller.setReason(event.target.value);else if(event.target.id==='moderation-restore-name')controller.setRestoreName(event.target.value);});
   dialog.addEventListener('submit',event=>{if(event.target.matches('[data-moderation-form]')){event.preventDefault();controller.setQuery($('#moderation-query').value);run(controller.search());}});
   dialog.addEventListener('cancel',event=>{const state=controller.getState();if(state.confirm&&!state.sending){event.preventDefault();controller.cancelConfirm();}});
   dialog.addEventListener('close',()=>{controller.close();if(returnFocus?.isConnected)returnFocus.focus({preventScroll:true});returnFocus=null;});

@@ -1,6 +1,7 @@
 import {ensureResidency} from './residency.js';
 import {moderationExpulsion} from './expulsion-state.js';
 import {expelPlayer} from './expulsion.js';
+import {playerNameKey,releasedPlayerNameKey,playerNameConflict,releaseInactivePlayerNameStatement,requireAvailablePlayerName,PLAYER_NAME_TAKEN} from './player-names.js';
 // Only the current primary operator may change account access or remove posts.
 // Audit receipts contain counts and identifiers, never copies of deleted text.
 const moderationStmt=(db,sql,...params)=>db.prepare(sql).bind(...params);
@@ -55,12 +56,15 @@ async function moderationPrior(ctx,requestId,digest){
 async function moderationResult(ctx,receipt,idempotent){return {...await moderationTarget(ctx,receipt.targetPlayerId),receipt,idempotent};}
 async function moderationChange(ctx){
   const {db,user,request,now,helpers:h}=ctx,raw=await h.readBody(request);
-  if(Object.keys(raw).some(key=>!['targetPlayerId','action','reason','requestId','expectedRevision'].includes(key))||!['ban','unban'].includes(raw.action)||!Number.isSafeInteger(raw.expectedRevision)||raw.expectedRevision<0)h.fail(400,'INVALID_INPUT','BAN・解除の対象と確認済みの更新番号を指定してください。');
+  if(Object.keys(raw).some(key=>!['targetPlayerId','action','reason','requestId','expectedRevision','name'].includes(key))||!['ban','unban'].includes(raw.action)||!Number.isSafeInteger(raw.expectedRevision)||raw.expectedRevision<0||Object.hasOwn(raw,'name')&&raw.action!=='unban')h.fail(400,'INVALID_INPUT','BAN・解除の対象と確認済みの更新番号を指定してください。');
   const targetId=h.idField(raw.targetPlayerId,'対象の領主'),requestId=h.idField(raw.requestId,'操作番号'),reason=h.textField(raw.reason,'管理メモ',300,{optional:true,min:0}),action=raw.action;
+  const requestedName=Object.hasOwn(raw,'name')?h.textField(raw.name,'復帰する領主名',24,{preserveUnicode:true}):null;
   if(targetId===user.id)h.fail(400,'INVALID_TARGET','運営本人をBAN・解除の対象にはできません。');
-  const digest=await h.hash(JSON.stringify([targetId,action,reason,raw.expectedRevision])),prior=await moderationPrior(ctx,requestId,digest);if(prior)return moderationResult(ctx,JSON.parse(prior.result_json),true);
+  const digest=await h.hash(JSON.stringify([targetId,action,reason,raw.expectedRevision,...(requestedName===null?[]:[requestedName])])),prior=await moderationPrior(ctx,requestId,digest);if(prior)return moderationResult(ctx,JSON.parse(prior.result_json),true);
   const target=await moderationTarget(ctx,targetId);if(target.player.isAdmin)h.fail(400,'INVALID_TARGET','運営をBAN・解除の対象にはできません。');
   if(target.ban.revision!==raw.expectedRevision||target.ban.active===(action==='ban'))h.fail(409,'MODERATION_CHANGED','BANの状態が更新されています。対象の最新状態を確認してください。');
+  const restoredName=requestedName??target.player.name;
+  if(action==='unban'&&!target.expulsion.pending)await requireAvailablePlayerName(db,targetId,restoredName,h.fail);
   await h.budget(db,'moderation:'+user.id,30,60000,now);
   const id=h.uid('mod_'),nonce=crypto.randomUUID(),gateArgs=[user.id,requestId,nonce],ban=action==='ban',revision=raw.expectedRevision+1;
   const statements=[moderationStmt(db,`INSERT INTO moderation_requests(id,actor_id,request_id,target_id,action,request_hash,commit_token,result_json,created_at)
@@ -73,6 +77,10 @@ async function moderationChange(ctx){
     moderationStmt(db,`INSERT INTO player_bans(user_id,active,revision,reason,banned_by,banned_at,updated_at) SELECT ?,?,?,?,?,?,? WHERE ${MODERATION_GATE}
       ON CONFLICT(user_id) DO UPDATE SET active=excluded.active,revision=excluded.revision,reason=excluded.reason,banned_by=excluded.banned_by,banned_at=CASE WHEN excluded.active=1 THEN excluded.banned_at ELSE player_bans.banned_at END,updated_at=excluded.updated_at`,targetId,ban?1:0,revision,reason,user.id,ban?now:null,now,...gateArgs)
   ];
+  if(!ban){
+    if(!target.expulsion.pending)statements.push(releaseInactivePlayerNameStatement(db,restoredName,MODERATION_GATE,gateArgs));
+    statements.push(moderationStmt(db,`UPDATE users SET name=?,name_key=CASE WHEN EXISTS(SELECT 1 FROM player_expulsions WHERE user_id=users.id AND pending=1) THEN ? ELSE ? END WHERE id=? AND ${MODERATION_GATE}`,restoredName,releasedPlayerNameKey(targetId),playerNameKey(restoredName),targetId,...gateArgs));
+  }
   if(ban)statements.push(
     moderationStmt(db,`UPDATE moderation_state SET content_revision=content_revision+1 WHERE id=1 AND ${MODERATION_GATE}`,...gateArgs),
     moderationStmt(db,`UPDATE base_letter_threads SET last_seq=COALESCE((SELECT MAX(seq) FROM base_letter_messages remaining WHERE remaining.thread_id=base_letter_threads.id AND remaining.sender_id<>?),0),updated_at=? WHERE id IN (SELECT thread_id FROM base_letter_messages WHERE sender_id=?) AND ${MODERATION_GATE}`,targetId,now,targetId,...gateArgs),
@@ -90,7 +98,9 @@ async function moderationChange(ctx){
     moderationStmt(db,`INSERT INTO trade_deliveries(trade_id,recipient_id,kind,assets_json,created_at,claimed_at) SELECT id,sender_id,'refund',offer_json,?,NULL FROM trades WHERE status='pending' AND (sender_id=? OR recipient_id=?) AND ${MODERATION_GATE}`,now,targetId,targetId,...gateArgs),
     moderationStmt(db,`UPDATE trades SET status='cancelled',revision=revision+1,updated_at=? WHERE status='pending' AND (sender_id=? OR recipient_id=?) AND ${MODERATION_GATE}`,now,targetId,targetId,...gateArgs)
   );
-  const saved=moderationRows((await db.batch(statements))[0])[0];
+  let result;
+  try{result=await db.batch(statements);}catch(error){if(playerNameConflict(error))h.fail(409,'NAME_TAKEN',PLAYER_NAME_TAKEN);throw error;}
+  const saved=moderationRows(result[0])[0];
   if(!saved){await moderationRequire(ctx);const replay=await moderationPrior(ctx,requestId,digest);if(replay)return moderationResult(ctx,JSON.parse(replay.result_json),true);const latest=await moderationTarget(ctx,targetId);if(latest.player.isAdmin)h.fail(400,'INVALID_TARGET','運営をBAN・解除の対象にはできません。');h.fail(409,'MODERATION_CHANGED','BANの状態または運営資格が更新されました。最新状態を確認してください。');}
   return moderationResult(ctx,JSON.parse(saved.result_json),false);
 }

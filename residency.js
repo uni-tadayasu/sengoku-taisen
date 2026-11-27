@@ -25,13 +25,14 @@ function choices(directory,mode){return(directory?.castles||[]).filter(row=>mode
 function choiceMode(directory,preferred='lord'){if(directory?.full)return'retainer';return['lord','retainer'].includes(preferred)?preferred:'lord';}
 function roleText(member){return member?.role==='lord'?'領主':member?.successionPosition===null||member?.eligible===false?'家臣 · 継承対象外':`家臣 · 継承順 ${member?.successionPosition||'確認中'}${member?.successionPosition?'番目':''}`;}
 function membershipText(member){return member?`${member.castleName} · ${roleText(member)}`:'';}
+function normalizeAdmissionName(value){const name=typeof value==='string'?value.trim():'';if(!name||Array.from(name).length>24||/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/u.test(name))throw Error('再入城する領主名は1〜24文字で入力してください。異体字の指定・結合文字も文字数に含まれます。');return name;}
 function createAdmission(options){
  const storage=options.storage,key='sengoku-residency-admission-v1:'+encodeURIComponent(String(options.playerId)),expulsionRevision=Number.isSafeInteger(options.expulsionRevision)&&options.expulsionRevision>0?options.expulsionRevision:0;
- const valid=record=>record&&record.playerId===String(options.playerId)&&(record.expulsionRevision||0)===expulsionRevision&&typeof record.requestId==='string'&&record.requestId.length>5&&castleId(record.choice?.castleId)&&['lord','retainer'].includes(record.choice?.mode)&&typeof record.choice?.clan==='string'&&['easy','normal','hard'].includes(record.choice?.difficulty);
+ const valid=record=>record&&record.playerId===String(options.playerId)&&(record.expulsionRevision||0)===expulsionRevision&&typeof record.requestId==='string'&&record.requestId.length>5&&castleId(record.choice?.castleId)&&['lord','retainer'].includes(record.choice?.mode)&&typeof record.choice?.clan==='string'&&['easy','normal','hard'].includes(record.choice?.difficulty)&&(!Object.hasOwn(record.choice,'name')||expulsionRevision>0&&normalizeAdmissionName(record.choice.name)===record.choice.name);
  function pending(){try{const record=JSON.parse(storage.getItem(key)||'null');return valid(record)?record:null;}catch(_){return null;}}
  function clear(record){try{const old=pending();if(old?.requestId===record.requestId)storage.removeItem(key);}catch(_){}}
  return{pending,async run(choice){
-  let record=pending();if(!record){record={playerId:String(options.playerId),requestId:options.uuid(),...(expulsionRevision?{expulsionRevision}:{}),choice:{castleId:choice.castleId,mode:choice.mode,clan:choice.clan,difficulty:choice.difficulty}};if(!valid(record))throw Error('入城する城と参加方法を確認してください。');storage.setItem(key,JSON.stringify(record));}
+  let record=pending();if(!record){record={playerId:String(options.playerId),requestId:options.uuid(),...(expulsionRevision?{expulsionRevision}:{}),choice:{castleId:choice.castleId,mode:choice.mode,clan:choice.clan,difficulty:choice.difficulty,...(expulsionRevision&&Object.hasOwn(choice,'name')?{name:normalizeAdmissionName(choice.name)}:{})}};if(!valid(record))throw Error('入城する城と参加方法を確認してください。');storage.setItem(key,JSON.stringify(record));}
   // Resolve any uncertain earlier admission before accepting another choice.
   options.onPending?.(copy(record));
   let received=false;
@@ -116,7 +117,7 @@ function open(id){const chosen=castleId(id||store.snapshot().self?.castleId||opt
 function refreshIdentity(){const before=store.owner();identity();renderSelf();if(before!==store.owner()&&dialog?.open)close();}
 function configure(value){opts={...opts,...value};identity();renderSelf();return api;}
 function click(event){const button=event.target?.closest?.('[data-residency-open],[data-residency-close],[data-residency-refresh],[data-residency-more],[data-residency-register],[data-residency-choose]');if(!button||button.disabled)return;event.preventDefault();if(button.hasAttribute('data-residency-open'))open(button.dataset.residencyOpen);else if(button.hasAttribute('data-residency-close'))close();else if(button.hasAttribute('data-residency-refresh'))loadRoster();else if(button.hasAttribute('data-residency-more'))loadRoster(true);else if(button.hasAttribute('data-residency-register'))global.SengokuSocial?.open?.('profile');else opts.onChoose?.();}
-const api={configure,observe,loadDirectory,open,close,compact,refreshIdentity,renderSelf,support(){identity();return store.support();},self:()=>store.snapshot().self,directory:()=>store.snapshot().directory,revision:()=>store.snapshot().revision,createStore,cleanMembership,cleanDirectory,choices,choiceMode,roleText,membershipText,createAdmission,createRelocation,personHtml};
+const api={configure,observe,loadDirectory,open,close,compact,refreshIdentity,renderSelf,support(){identity();return store.support();},self:()=>store.snapshot().self,directory:()=>store.snapshot().directory,revision:()=>store.snapshot().revision,createStore,cleanMembership,cleanDirectory,choices,choiceMode,roleText,membershipText,normalizeAdmissionName,createAdmission,createRelocation,personHtml};
 global.SengokuResidency=api;global.document?.addEventListener?.('click',click);
 if(typeof module!=='undefined'&&module.exports)module.exports=api;
 })(typeof window!=='undefined'?window:globalThis);

@@ -86,6 +86,30 @@ test('unban preserves the same player identity and explicitly leaves deleted con
   const confirm=h.controller.getState().confirm;assert.equal(confirm.data.targetPlayerId,'u_banned');assert(confirmationMarkup(confirm).includes('復元されません'));assert.equal(h.posts().length,0);
   assert(await h.controller.confirm());assert.equal(h.data.targets.get('u_banned').ban.active,false);assert.equal(h.data.targets.get('u_banned').counts.chatMessages,0);assert.equal(h.data.targets.get('u_banned').counts.letterMessages,0);assert(h.controller.getState().status.includes('同じ領主で利用を再開'));h.controller.dispose();
 });
+test('unban offers a name and a definite duplicate rejection keeps the draft editable under a new receipt',async()=>{
+  const h=setup();await h.controller.open('bans');await h.controller.select('u_banned');await h.controller.prepare('unban');
+  const first=h.controller.getState().confirm;assert.equal(first.data.name,'既にBAN中の領主');assert(confirmationMarkup(first).includes('id="moderation-restore-name"'));
+  let attempts=0;h.setHandler(async(route,options,base)=>{if(options.method==='POST'){attempts++;if(attempts===1)throw error('この名前は使用中です。新しい名前を入力してください。',409,'NAME_TAKEN');assert.equal(options.data.name,'葛\u{E0100}西');}return base(route,options);});
+  assert.equal(await h.controller.confirm(),false);let state=h.controller.getState();assert.equal(state.pending,null);assert.equal(state.confirm.data.name,first.data.name);assert.notEqual(state.confirm.data.requestId,first.data.requestId);assert.equal(h.data.mutations,0);assert.equal(h.data.targets.get('u_banned').ban.active,true);
+  h.controller.setRestoreName('  葛\u{E0100}西  ');assert(await h.controller.confirm());assert.equal(h.posts()[1].options.data.targetPlayerId,'u_banned');assert.equal(h.posts()[1].options.data.expectedRevision,first.data.expectedRevision);assert.notEqual(h.posts()[1].options.data.requestId,h.posts()[0].options.data.requestId);assert.equal(h.data.mutations,1);h.controller.dispose();
+});
+test('an uncertain unban preserves its exact chosen name and request across reload',async()=>{
+  const h=setup();await h.controller.open('bans');await h.controller.select('u_banned');await h.controller.prepare('unban');h.controller.setRestoreName('復帰Cafe\u0301');
+  h.setHandler(async(route,options,base)=>{const result=await base(route,options);if(options.method==='POST')throw Error('reply lost');return result;});
+  assert.equal(await h.controller.confirm(),false);const pending=h.controller.getState().pending;assert.equal(pending.data.name,'復帰Cafe\u0301');h.controller.setRestoreName('別の名前');assert.equal(h.controller.getState().pending.data.name,pending.data.name);h.controller.dispose();
+  const resumed=setup({storage:h.storage,server:h.data});await resumed.controller.open();assert(await resumed.controller.retry());assert.deepEqual(resumed.posts()[0].options.data,pending.data);assert.equal(h.data.mutations,1);resumed.controller.dispose();
+});
+test('unban for an expelled player leaves the name selection to readmission and rejects invalid name drafts locally',async()=>{
+  const h=setup();h.data.targets.get('u_banned').expulsion.pending=true;await h.controller.open('bans');await h.controller.select('u_banned');await h.controller.prepare('unban');h.controller.setRestoreName('まだ予約しない');
+  const record=h.controller.getState().confirm;assert(!Object.hasOwn(record.data,'name'));assert(!confirmationMarkup(record).includes('id="moderation-restore-name"'));assert(confirmationMarkup(record).includes('再入城する際'));assert(await h.controller.confirm());assert(!Object.hasOwn(h.posts()[0].options.data,'name'));h.controller.dispose();
+  const other=setup();await other.controller.open('bans');await other.controller.select('u_banned');await other.controller.prepare('unban');
+  for(const value of ['', '字'.repeat(25), '葛\u{E0100}'.repeat(13), '名\u0000前']){other.controller.setRestoreName(value);assert.equal(await other.controller.confirm(),false);assert.equal(other.posts().length,0);assert(other.controller.getState().confirm);assert.match(other.controller.getState().error,/1〜24文字/);}
+  other.controller.setRestoreName('🏯'.repeat(24));assert(await other.controller.confirm());assert.equal(other.posts()[0].options.data.name,'🏯'.repeat(24));other.controller.dispose();
+});
+test('moderation reviews explain name release and escape editable restoration names',()=>{
+  const chosen=target();for(const action of ['ban','expel']){const html=confirmationMarkup({target:chosen,data:{action,expectedCastleId:'kiyosu'}});assert(html.includes('これまでの領主名は他のプレイヤーが使える'));assert(html.includes('処分履歴と公開IDは残り'));}
+  const html=confirmationMarkup({target:target('u_banned',true),data:{action:'unban',name:'\"><img src=x>'}});assert(!html.includes('<img'));assert(html.includes('&quot;&gt;&lt;img'));assert(!html.includes('maxlength="24"'));
+});
 test('self and the primary operator are protected even if a malformed preview enables BAN',async()=>{
   const h=setup();h.data.targets.set(OWNER,{...target(OWNER),player:{id:OWNER,name:'自分',isAdmin:false},canBan:true});
   h.data.targets.set('u_other_admin',{...target('u_other_admin'),player:{id:'u_other_admin',name:'運営',isAdmin:true},canBan:true});
