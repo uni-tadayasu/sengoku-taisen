@@ -197,7 +197,7 @@ function socialHarness(){
   context.window=context;vm.createContext(context);let source=fs.readFileSync(path.join(__dirname,'../social.js'),'utf8');source=source.replace('global.SengokuSocial={open','global.__moderationSocial={s,api,loadChat,renderMessages,acceptUser,markAccountBanned,observeContentRevision,adminView,tabs,setUI:value=>{dialog=value;}};global.SengokuSocial={open');vm.runInContext(source,context);t=context.__moderationSocial;t.s.identity={id:OWNER,token:TOKEN};t.s.user={id:OWNER,name:'運営',isAdmin:true,isStaff:false,guildId:null};storage.set('sengoku-online-identity-v1',JSON.stringify(t.s.identity));
   return{context,t,requests,storage,revisions,events,TOKEN,setHandler:value=>handler=value};
 }
-test('only the primary operator sees the player-management entrance and can use its transport',async()=>{
+test('ordinary and staff-only players cannot use the operational management entrance or transport',async()=>{
   const h=socialHarness();assert(h.t.adminView().includes('プレイヤー管理'));assert(h.t.adminView().includes('data-id="moderation"'));
   await h.context.SengokuSocial.moderationRequest('/admin/moderation/target?playerId='+TARGET);assert.equal(h.requests.length,1);
   for(const user of [{id:OWNER,isAdmin:false,isStaff:true},{id:OWNER,isAdmin:false,isStaff:false}]){h.t.acceptUser(user);assert(!h.t.adminView().includes('プレイヤー管理'));assert.throws(()=>h.context.SengokuSocial.moderationRequest('/admin/moderation/bans'),/運営権限/);}
@@ -256,7 +256,7 @@ test('deputy transport remains primary-only and rejects a late result after role
   h.setHandler(()=>gate.promise);const task=h.context.SengokuSocial.deputyRequest('/admin/deputy',{method:'POST',data:{}});h.t.acceptUser({id:OWNER,name:'別役職',isAdmin:false,isDeputy:false});gate.resolve({ok:true,revision:1,deputy:null});await assert.rejects(task,error=>error.code==='STALE_IDENTITY');
   h.t.acceptUser({id:OWNER,name:'サブ運営',isAdmin:false,isDeputy:true},{fromSync:true});h.t.acceptUser({id:OWNER,name:'サブ運営',isAdmin:false,isDeputy:true});
   assert.equal(h.context.SengokuSocial.getUser().isDeputy,true);assert.equal(h.events.roles.at(-1).isDeputy,true);assert.equal(h.events.roles.at(-1).isAdmin,false);assert.equal(h.events.roles.at(-1).isStaff,false);
-  assert.throws(()=>h.context.SengokuSocial.deputyRequest('/admin/deputy'),/運営権限/);assert.throws(()=>h.context.SengokuSocial.moderationRequest('/admin/moderation/bans'),/運営権限/);
+  assert.throws(()=>h.context.SengokuSocial.deputyRequest('/admin/deputy'),/運営権限/);h.setHandler(async()=>({ok:true,bans:[]}));await h.context.SengokuSocial.moderationRequest('/admin/moderation/bans');assert.equal(h.context.SengokuSocial.getUser().isAdmin,false);assert.equal(h.context.SengokuSocial.getUser().canOperate,true);
   h.t.acceptUser({id:OWNER,name:'解任',isDeputy:false});assert.equal(h.events.invalidated,1);assert.equal(h.t.s.user,null);
 });
 test('the real deputy controller sends appointment and dismissal JSON through the social transport',async()=>{

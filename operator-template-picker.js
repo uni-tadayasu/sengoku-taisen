@@ -3,6 +3,7 @@
 
   const doc = global.document;
   const context = () => global.SengokuSocial?.getPromotionContext?.();
+  const permitted = value => value?.canOperate === true || value?.isAdmin === true;
   const normalize = text => text.normalize('NFKC').toLocaleLowerCase('ja');
   const identityKey = value => [value.playerId, value.epoch, value.accountEpoch, value.privilegeEpoch].join('/');
 
@@ -20,7 +21,7 @@
 
   function openPicker(button) {
     const owner = context(), form = button.form, catalog = global.SengokuOperatorMessageTemplates;
-    if (!owner?.isAdmin || !form || button.disabled || !catalog?.length) return;
+    if (!permitted(owner) || !form || button.disabled || !catalog?.length) return;
     const initial = fields(form);
     if (!initial.body || initial.body.disabled || initial.subject?.disabled) return;
 
@@ -79,7 +80,7 @@
     }, {once: true});
     apply.addEventListener('click', () => {
       const current = context(), targets = fields(form), row = catalog.find(item => item.id === list.value);
-      if (!current?.isAdmin || identityKey(current) !== ownerKey || !button.isConnected || !form.isConnected ||
+      if (!permitted(current) || identityKey(current) !== ownerKey || !button.isConnected || !form.isConnected ||
           button.disabled || form.closest('dialog:not([open]),[hidden],[inert]') || !targets.body ||
           targets.body.disabled || targets.subject?.disabled) {
         error.textContent = '入力画面か運営権限が更新されました。画面を閉じて宛先をご確認ください。';

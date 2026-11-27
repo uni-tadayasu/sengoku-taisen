@@ -50,11 +50,11 @@ test('broadcast data is typed, bounded and independent from arbitrary extra fiel
   assert.equal(clean({ ...OFF, revision: 1 }), null);
 });
 
-test('only the matching unbanned primary operator can make private requests', async () => {
+test('unverified, suspended and non-operational accounts cannot make private requests or see role labels', async () => {
   for (const actor of [null, { ...ADMIN, user: null }, { ...ADMIN, identity: null }, { ...ADMIN, user: { ...ADMIN.user, isAdmin: false, isStaff: true } }, { ...ADMIN, user: { ...ADMIN.user, isBanned: true } }, { ...ADMIN, identity: { ...ADMIN.identity, id: 'other' } }, { ...ADMIN, pending: true }, { ...ADMIN, banned: true }]) {
     const s = setup({ actor }); assert.equal(await s.controller.mount(s.view.host), false);
     assert.equal(await s.controller.setEnabled(true), false); assert.equal(await s.controller.setMode('continuous'), false); assert.equal(await s.controller.retry(), false);
-    assert.equal(s.calls.length, 0); assert.equal(s.view.$('[role="switch"]'), null); assert.match(s.view.host.textContent, /運営だけ/);
+    assert.equal(s.calls.length, 0); assert.equal(s.view.$('[role="switch"]'), null); assert.match(s.view.host.textContent, /この領主では設定を変更できません/); assert.doesNotMatch(s.view.host.textContent, /運営|サブ運営/);
     s.controller.dispose();
   }
 });

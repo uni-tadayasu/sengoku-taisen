@@ -67,9 +67,9 @@ async function scope(name,run){const h=harness();try{await run(h);checks++;calls
 
 await scope('only the current sole administrator can moderate, with strict input and protected operator identity',async h=>{
   const {admin,target,peer,other}=await fixture(h,{staff:true}),paths=['/admin/moderation/players?q='+target.user.id,'/admin/moderation/target?playerId='+target.user.id,'/admin/moderation/bans'];
-  for(const path of paths){await h.api(path,{expected:401});for(const actor of [target,peer])assert.equal((await h.api(path,{token:actor.token,expected:403})).data.error.code,'ADMIN_REQUIRED');}
+  for(const path of paths){await h.api(path,{expected:401});for(const actor of [target,peer])assert.equal((await h.api(path,{token:actor.token,expected:403})).data.error.code,'OPERATIONAL_REQUIRED');}
   await h.api('/admin/moderation',post(null,banBody(h,target),401));
-  for(const actor of [target,peer])assert.equal((await moderate(h,actor,other,'ban',{},403)).data.error.code,'ADMIN_REQUIRED');
+  for(const actor of [target,peer])assert.equal((await moderate(h,actor,other,'ban',{},403)).data.error.code,'OPERATIONAL_REQUIRED');
   for(const action of ['ban','unban'])assert.equal((await moderate(h,admin,admin,action,{},400)).data.error.code,'INVALID_TARGET');
   await moderate(h,admin,{user:{id:'u_missing'}},'ban',{},404);
   const before=snapshot(h);

@@ -34,6 +34,15 @@ const player=(id,name,selected)=>({id,name,clan:'上杉家',commander:selected,i
 let request,search,queries=[];
 context.SengokuSocial={getPublicProfile:id=>request(id),searchPublicPlayers:q=>{queries.push(q);return search(q);}};
 async function main(){
+ for(const [id,asset]of [['of_45e0f4cb36ad','deputy-shimazu-yoshihisa-u-relief'],['of_b0616adde162','operator-ieyasu-u']]){
+  const specialOfficer=context.SENGOKU_OFFICERS.find(person=>person.id===id);assert(specialOfficer);
+  const specialCommander={...commander(specialOfficer,'U'),deputyExclusive:true,isAdmin:true,isDeputy:true,canOperate:true};
+  const card=ui.commanderCard(specialCommander);
+  assert(card.includes(asset),'public profiles retain the verified special commander artwork');
+  assert.doesNotMatch(card,/運営/,'visible and accessible public commander labels omit operator roles');
+  const mounted=doc.createElement('div');ui.paintCommander(mounted,specialCommander,'u_special');
+  assert(mounted.innerHTML.includes(asset));assert.doesNotMatch(mounted.innerHTML,/運営/);
+ }
  host.innerHTML='<button id="launch-enter">城を選んで始める</button><main id="main"></main>';
  context.SENGOKU_AT_TITLE=true;context.location.search='?lord=u_shared';
  context.SengokuBridge={renderGameplay:()=>assert.fail('a public profile should not enter gameplay')};

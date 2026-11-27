@@ -13,7 +13,9 @@ const liveSession=alias=>`${alias}.lease_until>? AND EXISTS(SELECT 1 FROM users 
  AND COALESCE((SELECT revision FROM player_bans WHERE user_id=${alias}.user_id),0)=${alias}.moderation_epoch
  AND CASE WHEN ${alias}.user_id=COALESCE((SELECT value FROM settings WHERE key='adminUserId'),'') THEN 1 ELSE 0 END=${alias}.is_admin
  AND COALESCE((SELECT COALESCE(term_id,'legacy:'||appointed_at) FROM staff_members WHERE user_id=${alias}.user_id),'')=${alias}.staff_term
- AND ((${alias}.channel='admin' AND (${alias}.is_admin=1 OR ${alias}.staff_term<>'')) OR
+ AND COALESCE((SELECT term_id FROM deputy_operator_state WHERE user_id=${alias}.user_id),'')=${alias}.deputy_term
+ AND NOT EXISTS(SELECT 1 FROM player_expulsions WHERE user_id=${alias}.user_id AND pending=1)
+ AND ((${alias}.channel='admin' AND (${alias}.is_admin=1 OR ${alias}.staff_term<>'' OR ${alias}.deputy_term<>'')) OR
  (${alias}.channel='guild' AND EXISTS(SELECT 1 FROM guild_members gm JOIN voice_membership_epochs ve ON ve.user_id=gm.user_id WHERE gm.user_id=${alias}.user_id AND gm.guild_id=${alias}.guild_id AND ve.epoch=${alias}.membership_epoch)))`;
 const rosterSql=`SELECT v.id,u.name,v.muted,v.joined_at,v.user_id FROM voice_sessions v JOIN users u ON u.id=v.user_id WHERE v.room_key=? AND ${liveSession('v')}`;
 const rosterOrder=` ORDER BY v.joined_at,v.id LIMIT ${MAX_PARTICIPANTS}`;
@@ -65,7 +67,7 @@ async function iceConfiguration(env,session,now){
 async function roomContext(db,user,channel,helpers){
  const {fail,roleCommitGuard}=helpers,role=roleCommitGuard(user);
  if(channel==='admin'){
-  if(!user.is_admin&&!user.is_staff)fail(403,'STAFF_CHAT_REQUIRED','この通話を利用する権限がありません。');
+  if(!user.is_admin&&!user.is_staff&&!user.is_deputy)fail(403,'STAFF_CHAT_REQUIRED','この通話を利用する権限がありません。');
   return {room:{id:'voice:admin',channel,name:'運営チャット',maxParticipants:MAX_PARTICIPANTS},guildId:null,membershipEpoch:0,guard:role};
  }
  if(!user.guild_id)fail(403,'GUILD_REQUIRED','所属同盟の通話だけを利用できます。');
@@ -108,10 +110,10 @@ export async function handleVoice({db,env,user,now,path,method,url,request,helpe
   queryKeys(url,[],fail);const body=await readBody(request);strictKeys(body,['channel','muted'],fail);const channel=channelValue(body.channel,fail),muted=mutedValue(body.muted,fail),context=await roomContext(db,user,channel,helpers),id=uid('vc_');
   await budget(db,'voice-join:'+user.id,12,60000,now);
   const guard=context.guard,result=await db.batch([...cleanupStatements(db,now),
-   stmt(db,`INSERT INTO voice_sessions(id,user_id,room_key,channel,guild_id,membership_epoch,moderation_epoch,is_admin,staff_term,muted,joined_at,last_seen,lease_until)
-    SELECT ?,?,?,?,?,?,?,?,?,?,?,?,? WHERE ${guard.sql} AND (SELECT COUNT(*) FROM voice_sessions occupied WHERE occupied.room_key=? AND occupied.user_id<>? AND ${liveSession('occupied')})<?
-    ON CONFLICT(user_id) DO UPDATE SET id=excluded.id,room_key=excluded.room_key,channel=excluded.channel,guild_id=excluded.guild_id,membership_epoch=excluded.membership_epoch,moderation_epoch=excluded.moderation_epoch,is_admin=excluded.is_admin,staff_term=excluded.staff_term,muted=excluded.muted,joined_at=excluded.joined_at,last_seen=excluded.last_seen,lease_until=excluded.lease_until RETURNING id`,
-    id,user.id,context.room.id,channel,context.guildId,context.membershipEpoch,Number(user.moderation_epoch||0),user.is_admin?1:0,user.staff_term||'',muted,now,now,now+LEASE_MS,...guard.args,context.room.id,user.id,now,MAX_PARTICIPANTS),
+   stmt(db,`INSERT INTO voice_sessions(id,user_id,room_key,channel,guild_id,membership_epoch,moderation_epoch,is_admin,staff_term,deputy_term,muted,joined_at,last_seen,lease_until)
+    SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?,? WHERE ${guard.sql} AND (SELECT COUNT(*) FROM voice_sessions occupied WHERE occupied.room_key=? AND occupied.user_id<>? AND ${liveSession('occupied')})<?
+    ON CONFLICT(user_id) DO UPDATE SET id=excluded.id,room_key=excluded.room_key,channel=excluded.channel,guild_id=excluded.guild_id,membership_epoch=excluded.membership_epoch,moderation_epoch=excluded.moderation_epoch,is_admin=excluded.is_admin,staff_term=excluded.staff_term,deputy_term=excluded.deputy_term,muted=excluded.muted,joined_at=excluded.joined_at,last_seen=excluded.last_seen,lease_until=excluded.lease_until RETURNING id`,
+    id,user.id,context.room.id,channel,context.guildId,context.membershipEpoch,Number(user.moderation_epoch||0),user.is_admin?1:0,user.staff_term||'',user.deputy_term||'',muted,now,now,now+LEASE_MS,...guard.args,context.room.id,user.id,now,MAX_PARTICIPANTS),
    stmt(db,rosterSql+rosterOrder,context.room.id,now),
   ]);
   if(!rows(result[2]).length){await requireGuard(db,helpers,guard);fail(409,'VOICE_ROOM_FULL','この通話は8人までです。空きができてから参加してください。');}

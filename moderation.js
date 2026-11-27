@@ -22,7 +22,7 @@ function createController(options={}){
   let stamp='',epoch=0,viewEpoch=0,disposed=false,writePromise=null;
   const s={ownerId:null,authorized:false,open:false,view:'search',query:'',results:[],bans:[],nextCursor:null,target:null,reason:'',confirm:null,pending:null,loading:false,loadingMore:false,sending:false,loaded:false,error:'',status:'',change:'init'};
   const key=owner=>STORE+encodeURIComponent(owner);
-  const context=()=>{const user=getUser(),more=getContext();return{ownerId:user?.id?String(user.id):null,allowed:user?.isAdmin===true&&user.isBanned!==true,stamp:JSON.stringify([user?.id||null,user?.isAdmin===true,user?.isBanned===true,more?.epoch??null,more?.privilegeEpoch??null])};};
+  const context=()=>{const user=getUser(),more=getContext();return{ownerId:user?.id?String(user.id):null,allowed:(user?.isAdmin===true||user?.isDeputy===true)&&user.canOperate!==false&&user.isBanned!==true,stamp:JSON.stringify([user?.id||null,user?.isAdmin===true,user?.isDeputy===true,user?.canOperate,user?.isBanned===true,more?.epoch??null,more?.privilegeEpoch??null])};};
   const snapshot=()=>clone(s);
   function emit(change='status'){if(disposed)return;s.change=change;notify(snapshot());}
   function validRecord(value,owner){
@@ -165,7 +165,7 @@ function confirmationMarkup(record){
 }
 let instance=null;
 function ensure(){
-  if(instance)return instance;if(!global.document?.body||global.SengokuSocial?.getUser?.()?.isAdmin!==true)return null;
+  if(instance)return instance;const operator=global.SengokuSocial?.getUser?.();if(!global.document?.body||!(operator?.isAdmin===true||operator?.isDeputy===true)||operator.canOperate===false||operator.isBanned===true)return null;
   const doc=global.document,dialog=doc.createElement('dialog');dialog.id='moderation-modal';dialog.className='moderation-dialog';dialog.setAttribute('aria-labelledby','moderation-title');
   dialog.innerHTML='<header class="moderation-header"><div><span class="moderation-eyebrow">運営専用</span><h1 id="moderation-title">プレイヤー管理</h1></div><button type="button" class="moderation-button" data-moderation="close">閉じる</button></header><nav class="moderation-tabs" aria-label="管理画面"><button type="button" data-moderation="search-tab">領主を探す</button><button type="button" data-moderation="bans-tab">BAN中の一覧・解除</button></nav><div class="moderation-main"><p class="moderation-feedback" data-moderation-feedback role="status" aria-live="polite" hidden></p><div class="moderation-pending" data-moderation-pending hidden></div><div data-moderation-content></div><section class="moderation-confirm" data-moderation-confirm aria-labelledby="moderation-confirm-title" hidden></section></div><footer class="moderation-footer">運営本人だけが利用できます · 日時は日本標準時（JST）</footer>';
   doc.body.append(dialog);const $=selector=>dialog.querySelector(selector),content=$('[data-moderation-content]'),confirmHost=$('[data-moderation-confirm]');let controller,viewKey='',confirmKey='',returnFocus=null,confirmationFocus=null;

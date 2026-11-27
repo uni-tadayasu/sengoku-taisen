@@ -1,61 +1,62 @@
+import {operationGuard} from './operator-access.js';
 import {ensureResidency} from './residency.js';
 import {moderationExpulsion} from './expulsion-state.js';
 import {expelPlayer} from './expulsion.js';
 import {playerNameKey,releasedPlayerNameKey,playerNameConflict,releaseInactivePlayerNameStatement,requireAvailablePlayerName,PLAYER_NAME_TAKEN} from './player-names.js';
-// Only the current primary operator may change account access or remove posts.
+// Current operators may change account access or remove posts within their role term.
 // Audit receipts contain counts and identifiers, never copies of deleted text.
 const moderationStmt=(db,sql,...params)=>db.prepare(sql).bind(...params);
 const moderationRows=result=>result?.results||[];
 const moderationIso=value=>value===null||value===undefined?null:new Date(Number(value)).toISOString();
-const MODERATION_ADMIN="EXISTS(SELECT 1 FROM settings WHERE key='adminUserId' AND value=?)";
+
 const MODERATION_GATE='EXISTS(SELECT 1 FROM moderation_requests WHERE actor_id=? AND request_id=? AND commit_token=?)';
 const moderationBan=row=>({active:!!row?.active,revision:Number(row?.revision||0),reason:row?.reason||'',bannedAt:moderationIso(row?.banned_at),bannedBy:row?.banned_by||null,updatedAt:moderationIso(row?.updated_at)});
-async function moderationRequire(ctx){const current=await ctx.helpers.getUser(ctx.db,ctx.user.id);ctx.helpers.requireAdmin(current||{});return current;}
+async function moderationRequire(ctx){const current=await ctx.helpers.getUser(ctx.db,ctx.user.id);ctx.helpers.requireOperator(current||{});return current;}
 async function moderationTarget(ctx,id){
-  const {db,user,helpers:h}=ctx;
+  const {db,user,helpers:h}=ctx,access=operationGuard(user);
   await ensureResidency(db,ctx.now);
   const result=await db.batch([
-    moderationStmt(db,'SELECT 1 AS allowed WHERE '+MODERATION_ADMIN,user.id),
-    moderationStmt(db,h.userSelect+' WHERE u.id=? AND '+MODERATION_ADMIN,id,user.id),
-    moderationStmt(db,'SELECT * FROM player_bans WHERE user_id=? AND '+MODERATION_ADMIN,id,user.id),
+    moderationStmt(db,'SELECT 1 AS allowed WHERE '+access.sql,...access.args),
+    moderationStmt(db,h.userSelect+' WHERE u.id=? AND '+access.sql,id,...access.args),
+    moderationStmt(db,'SELECT * FROM player_bans WHERE user_id=? AND '+access.sql,id,...access.args),
     moderationStmt(db,`SELECT ((SELECT COUNT(*) FROM messages WHERE user_id=?)+(SELECT COUNT(*) FROM court_chat WHERE author_id=?)) AS chat_messages,
       ((SELECT COUNT(*) FROM base_letter_messages WHERE sender_id=?)+(SELECT COUNT(*) FROM court_audience_messages WHERE author_id=?)) AS letter_messages,
       (SELECT COUNT(*) FROM trades WHERE status='pending' AND (sender_id=? OR recipient_id=?)) AS pending_trades,
-      (SELECT content_revision FROM moderation_state WHERE id=1) AS content_revision WHERE ${MODERATION_ADMIN}`,id,id,id,id,id,id,user.id)
+      (SELECT content_revision FROM moderation_state WHERE id=1) AS content_revision WHERE ${access.sql}`,id,id,id,id,id,id,...access.args)
   ]);
-  if(!moderationRows(result[0]).length)h.fail(403,'ADMIN_REQUIRED','運営専用の機能です。');
+  if(!moderationRows(result[0]).length)h.fail(403,'OPERATIONAL_REQUIRED','運営専用の機能です。');
   const player=moderationRows(result[1])[0];if(!player)h.fail(404,'PLAYER_NOT_FOUND','対象の領主が見つかりません。');
   const ban=moderationBan(moderationRows(result[2])[0]),counts=moderationRows(result[3])[0],protectedPlayer=player.id===user.id||!!player.is_admin;
   return {ok:true,player:h.mapUser(player,ctx.now),ban,...await moderationExpulsion(db,player),counts:{chatMessages:Number(counts.chat_messages),letterMessages:Number(counts.letter_messages),pendingTrades:Number(counts.pending_trades)},canBan:!protectedPlayer&&!ban.active,canUnban:!protectedPlayer&&ban.active,contentRevision:Number(counts.content_revision)};
 }
 async function moderationSearch(ctx){
-  const {db,user,url,helpers:h}=ctx,q=h.textField(url.searchParams.get('q'),'検索語',90,{min:2}),pattern='%'+q.replaceAll('\\','\\\\').replaceAll('%','\\%').replaceAll('_','\\_')+'%';
+  const {db,user,url,helpers:h}=ctx,access=operationGuard(user),q=h.textField(url.searchParams.get('q'),'検索語',90,{min:2}),pattern='%'+q.replaceAll('\\','\\\\').replaceAll('%','\\%').replaceAll('_','\\_')+'%';
   const result=await db.batch([
-    moderationStmt(db,'SELECT 1 AS allowed WHERE '+MODERATION_ADMIN,user.id),
-    moderationStmt(db,h.userSelect+` WHERE (u.name LIKE ? ESCAPE '\\' OR u.id=?) AND ${MODERATION_ADMIN} ORDER BY u.last_seen DESC,u.name,u.id LIMIT 30`,pattern,q,user.id)
+    moderationStmt(db,'SELECT 1 AS allowed WHERE '+access.sql,...access.args),
+    moderationStmt(db,h.userSelect+` WHERE (u.name LIKE ? ESCAPE '\\' OR u.id=?) AND ${access.sql} ORDER BY u.last_seen DESC,u.name,u.id LIMIT 30`,pattern,q,...access.args)
   ]);
-  if(!moderationRows(result[0]).length)h.fail(403,'ADMIN_REQUIRED','運営専用の機能です。');
+  if(!moderationRows(result[0]).length)h.fail(403,'OPERATIONAL_REQUIRED','運営専用の機能です。');
   return {ok:true,players:moderationRows(result[1]).map(row=>({...h.mapUser(row,ctx.now),banned:!!row.ban_active,moderationRevision:Number(row.moderation_epoch||0)}))};
 }
 async function moderationBans(ctx){
-  const {db,user,url,helpers:h}=ctx,raw=url.searchParams.get('limit')||'20',cursor=url.searchParams.get('cursor');
+  const {db,user,url,helpers:h}=ctx,access=operationGuard(user),raw=url.searchParams.get('limit')||'20',cursor=url.searchParams.get('cursor');
   if(!/^\d{1,2}$/.test(raw)||Number(raw)<1||Number(raw)>50)h.fail(400,'INVALID_INPUT','BAN一覧の件数は1〜50で指定してください。');
   let point=null;if(cursor){try{if(!/^[A-Za-z0-9_-]{1,512}$/.test(cursor))throw new Error();point=JSON.parse(atob(cursor.replaceAll('-','+').replaceAll('_','/')));}catch{h.fail(400,'INVALID_CURSOR','BAN一覧の続きが正しくありません。');}if(!Array.isArray(point)||point.length!==2||!Number.isSafeInteger(point[0])||point[0]<0||typeof point[1]!=='string'||!/^u_[a-f0-9]{32}$/.test(point[1]))h.fail(400,'INVALID_CURSOR','BAN一覧の続きが正しくありません。');}
   const result=await db.batch([
-    moderationStmt(db,'SELECT 1 AS allowed,content_revision FROM moderation_state WHERE id=1 AND '+MODERATION_ADMIN,user.id),
-    moderationStmt(db,`SELECT member.*,b.active,b.revision,b.reason,b.banned_by,b.banned_at,b.updated_at FROM (${h.userSelect}) member JOIN player_bans b ON b.user_id=member.id WHERE b.active=1 AND ${MODERATION_ADMIN}${point?' AND (b.updated_at<? OR (b.updated_at=? AND b.user_id<?))':''} ORDER BY b.updated_at DESC,b.user_id DESC LIMIT ?`,user.id,...(point?[point[0],point[0],point[1]]:[]),Number(raw)+1)
+    moderationStmt(db,'SELECT 1 AS allowed,content_revision FROM moderation_state WHERE id=1 AND '+access.sql,...access.args),
+    moderationStmt(db,`SELECT member.*,b.active,b.revision,b.reason,b.banned_by,b.banned_at,b.updated_at FROM (${h.userSelect}) member JOIN player_bans b ON b.user_id=member.id WHERE b.active=1 AND ${access.sql}${point?' AND (b.updated_at<? OR (b.updated_at=? AND b.user_id<?))':''} ORDER BY b.updated_at DESC,b.user_id DESC LIMIT ?`,...access.args,...(point?[point[0],point[0],point[1]]:[]),Number(raw)+1)
   ]);
-  const access=moderationRows(result[0])[0];if(!access)h.fail(403,'ADMIN_REQUIRED','運営専用の機能です。');
+  const permission=moderationRows(result[0])[0];if(!permission)h.fail(403,'OPERATIONAL_REQUIRED','運営専用の機能です。');
   const found=moderationRows(result[1]),page=found.slice(0,Number(raw)),last=page.at(-1);
-  return {ok:true,bans:page.map(row=>({player:h.mapUser(row,ctx.now),ban:moderationBan(row)})),nextCursor:found.length>Number(raw)?btoa(JSON.stringify([Number(last.updated_at),last.id])).replaceAll('+','-').replaceAll('/','_').replaceAll('=',''):null,contentRevision:Number(access.content_revision)};
+  return {ok:true,bans:page.map(row=>({player:h.mapUser(row,ctx.now),ban:moderationBan(row)})),nextCursor:found.length>Number(raw)?btoa(JSON.stringify([Number(last.updated_at),last.id])).replaceAll('+','-').replaceAll('/','_').replaceAll('=',''):null,contentRevision:Number(permission.content_revision)};
 }
 async function moderationPrior(ctx,requestId,digest){
-  const prior=await moderationStmt(ctx.db,'SELECT * FROM moderation_requests WHERE actor_id=? AND request_id=? AND '+MODERATION_ADMIN,ctx.user.id,requestId,ctx.user.id).first();
+  const access=operationGuard(ctx.user),prior=await moderationStmt(ctx.db,'SELECT * FROM moderation_requests WHERE actor_id=? AND request_id=? AND '+access.sql,ctx.user.id,requestId,...access.args).first();
   if(prior&&prior.request_hash!==digest)ctx.helpers.fail(409,'REQUEST_ID_REUSED','この操作番号は別のBAN・解除に使われています。');return prior;
 }
 async function moderationResult(ctx,receipt,idempotent){return {...await moderationTarget(ctx,receipt.targetPlayerId),receipt,idempotent};}
 async function moderationChange(ctx){
-  const {db,user,request,now,helpers:h}=ctx,raw=await h.readBody(request);
+  const {db,user,request,now,helpers:h}=ctx,access=operationGuard(user),raw=await h.readBody(request);
   if(Object.keys(raw).some(key=>!['targetPlayerId','action','reason','requestId','expectedRevision','name'].includes(key))||!['ban','unban'].includes(raw.action)||!Number.isSafeInteger(raw.expectedRevision)||raw.expectedRevision<0||Object.hasOwn(raw,'name')&&raw.action!=='unban')h.fail(400,'INVALID_INPUT','BAN・解除の対象と確認済みの更新番号を指定してください。');
   const targetId=h.idField(raw.targetPlayerId,'対象の領主'),requestId=h.idField(raw.requestId,'操作番号'),reason=h.textField(raw.reason,'管理メモ',300,{optional:true,min:0}),action=raw.action;
   const requestedName=Object.hasOwn(raw,'name')?h.textField(raw.name,'復帰する領主名',24,{preserveUnicode:true}):null;
@@ -71,9 +72,9 @@ async function moderationChange(ctx){
     SELECT ?,?,?,?,?,?,?,json_object('id',?,'requestId',?,'action',?,'targetPlayerId',target.id,'targetName',target.name,'actorPlayerId',?,'reason',?,'moderationRevision',?,'contentRevision',(SELECT content_revision FROM moderation_state WHERE id=1)+?,
       'deleted',json_object('chatMessages',CASE WHEN ?=1 THEN ((SELECT COUNT(*) FROM messages WHERE user_id=target.id)+(SELECT COUNT(*) FROM court_chat WHERE author_id=target.id)) ELSE 0 END,'letterMessages',CASE WHEN ?=1 THEN ((SELECT COUNT(*) FROM base_letter_messages WHERE sender_id=target.id)+(SELECT COUNT(*) FROM court_audience_messages WHERE author_id=target.id)) ELSE 0 END),
       'cancelledTrades',CASE WHEN ?=1 THEN (SELECT COUNT(*) FROM trades WHERE status='pending' AND (sender_id=target.id OR recipient_id=target.id)) ELSE 0 END,'createdAt',?),?
-    FROM users target WHERE target.id=? AND target.id<>? AND target.id<>COALESCE((SELECT value FROM settings WHERE key='adminUserId'),'') AND ${MODERATION_ADMIN}
+    FROM users target WHERE target.id=? AND target.id<>? AND target.id<>COALESCE((SELECT value FROM settings WHERE key='adminUserId'),'') AND ${access.sql}
     AND COALESCE((SELECT revision FROM player_bans WHERE user_id=target.id),0)=? AND COALESCE((SELECT active FROM player_bans WHERE user_id=target.id),0)=?
-    ON CONFLICT(actor_id,request_id) DO NOTHING RETURNING result_json`,id,user.id,requestId,targetId,action,digest,nonce,id,requestId,action,user.id,reason,revision,ban?1:0,ban?1:0,ban?1:0,ban?1:0,moderationIso(now),now,targetId,user.id,user.id,raw.expectedRevision,ban?0:1),
+    ON CONFLICT(actor_id,request_id) DO NOTHING RETURNING result_json`,id,user.id,requestId,targetId,action,digest,nonce,id,requestId,action,user.id,reason,revision,ban?1:0,ban?1:0,ban?1:0,ban?1:0,moderationIso(now),now,targetId,user.id,...access.args,raw.expectedRevision,ban?0:1),
     moderationStmt(db,`INSERT INTO player_bans(user_id,active,revision,reason,banned_by,banned_at,updated_at) SELECT ?,?,?,?,?,?,? WHERE ${MODERATION_GATE}
       ON CONFLICT(user_id) DO UPDATE SET active=excluded.active,revision=excluded.revision,reason=excluded.reason,banned_by=excluded.banned_by,banned_at=CASE WHEN excluded.active=1 THEN excluded.banned_at ELSE player_bans.banned_at END,updated_at=excluded.updated_at`,targetId,ban?1:0,revision,reason,user.id,ban?now:null,now,...gateArgs)
   ];

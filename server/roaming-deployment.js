@@ -1,3 +1,4 @@
+import {canOperate} from './operator-access.js';
 // National CPU deployments are public; proposed changes and their authors are
 // visible only to authorized managers. An approval applies one immutable plan.
 import {GameEngine} from './game-runtime.js';
@@ -26,7 +27,7 @@ async function managementUser(ctx){
  if(!user)h.fail(401,'UNAUTHORIZED','接続中の領主を確認してください。');
  await h.requireAccountAccess(db,user);
  const fresh=await h.getUser(db,user.id);
- if(!fresh||!fresh.is_admin&&!fresh.is_staff||!!fresh.is_admin!==!!user.is_admin||fresh.staff_term!==user.staff_term)h.fail(403,'ROAMING_MANAGEMENT_REQUIRED','配置管理の権限が変更されました。接続状態を確認してください。');
+ if(!fresh||!canOperate(fresh)&&!fresh.is_staff||!!fresh.is_admin!==!!user.is_admin||fresh.staff_term!==user.staff_term||(fresh.deputy_term||'')!==(user.deputy_term||''))h.fail(403,'ROAMING_MANAGEMENT_REQUIRED','配置管理の権限が変更されました。接続状態を確認してください。');
  return fresh;
 }
 function configInput(raw,h){
@@ -45,7 +46,7 @@ function effectiveStatus(row,deployment){
 }
 function proposalDTO(row,user,deployment){
  const status=effectiveStatus(row,deployment);
- return {id:row.id,status,expectedRevision:Number(row.base_revision),config:JSON.parse(row.config_json),requestedAt:iso(row.created_at),note:row.note,requester:{id:row.requester_id,name:row.requester_name},reviewedAt:row.reviewed_at===null?null:iso(row.reviewed_at),appliedRevision:row.applied_revision===null?null:Number(row.applied_revision),canApprove:!!user.is_admin&&status==='pending',canCancel:!user.is_admin&&row.requester_id===user.id&&row.requester_term===user.staff_term&&status==='pending'};
+ return {id:row.id,status,expectedRevision:Number(row.base_revision),config:JSON.parse(row.config_json),requestedAt:iso(row.created_at),note:row.note,requester:{id:row.requester_id,name:row.requester_name},reviewedAt:row.reviewed_at===null?null:iso(row.reviewed_at),appliedRevision:row.applied_revision===null?null:Number(row.applied_revision),canApprove:canOperate(user)&&status==='pending',canCancel:!canOperate(user)&&row.requester_id===user.id&&row.requester_term===user.staff_term&&status==='pending'};
 }
 const proposalSelect=`SELECT p.*,u.name AS requester_name,
  (SELECT COALESCE(sm.term_id,'legacy:'||sm.appointed_at) FROM staff_members sm WHERE sm.user_id=p.requester_id) AS current_term,
@@ -54,12 +55,12 @@ const proposalSelect=`SELECT p.*,u.name AS requester_name,
  FROM roaming_deployment_proposals p JOIN users u ON u.id=p.requester_id`;
 async function manageResponse(ctx,receipt=null,idempotent=false){
  const user=await managementUser(ctx),deployment=await getRoamingDeployment(ctx.db);
- const records=rows(await stmt(ctx.db,proposalSelect+(user.is_admin?'': ' WHERE p.requester_id=?')+` ORDER BY CASE WHEN p.status='pending' AND p.base_revision=? AND ${activeProposal} THEN 0 ELSE 1 END,p.created_at DESC,p.id DESC LIMIT 100`,...(!user.is_admin?[user.id]:[]),deployment.revision).all());
+ const records=rows(await stmt(ctx.db,proposalSelect+(canOperate(user)?'': ' WHERE p.requester_id=?')+` ORDER BY CASE WHEN p.status='pending' AND p.base_revision=? AND ${activeProposal} THEN 0 ELSE 1 END,p.created_at DESC,p.id DESC LIMIT 100`,...(!canOperate(user)?[user.id]:[]),deployment.revision).all());
  const proposals=records.map(r=>proposalDTO(r,user,deployment));
  let proposal=receipt?.proposalId?proposals.find(p=>p.id===receipt.proposalId)||null:null;
- if(receipt?.proposalId&&!proposal){const row=await stmt(ctx.db,proposalSelect+' WHERE p.id=?'+(user.is_admin?'':' AND p.requester_id=?'),receipt.proposalId,...(!user.is_admin?[user.id]:[])).first();if(row)proposal=proposalDTO(row,user,deployment);}
+ if(receipt?.proposalId&&!proposal){const row=await stmt(ctx.db,proposalSelect+' WHERE p.id=?'+(canOperate(user)?'':' AND p.requester_id=?'),receipt.proposalId,...(!canOperate(user)?[user.id]:[])).first();if(row)proposal=proposalDTO(row,user,deployment);}
  await managementUser(ctx);
- return {ok:true,deployment,capabilities:{canApply:!!user.is_admin,canApprove:!!user.is_admin,canPropose:!!user.is_staff&&!user.is_admin},proposals,serverNow:iso(Date.now()),...(receipt?{receipt,proposal,idempotent}:{})};
+ return {ok:true,deployment,capabilities:{canApply:canOperate(user),canApprove:canOperate(user),canPropose:!!user.is_staff&&!canOperate(user)},proposals,serverNow:iso(Date.now()),...(receipt?{receipt,proposal,idempotent}:{})};
 }
 async function changed(ctx,expectedRevision){
  await managementUser(ctx);
@@ -68,8 +69,8 @@ async function changed(ctx,expectedRevision){
 }
 async function mutation(ctx,action,proposalId=null){
  const {db,helpers:h}=ctx,user=await managementUser(ctx);
- if(['apply','approve','reject'].includes(action)&&!user.is_admin)h.fail(403,'ADMIN_REQUIRED','この配置の反映には運営の承認が必要です。');
- if(['propose','cancel'].includes(action)&&(!user.is_staff||user.is_admin))h.fail(403,'STAFF_REQUIRED','スタッフとして申請する操作です。');
+ if(['apply','approve','reject'].includes(action)&&!canOperate(user))h.fail(403,'OPERATIONAL_REQUIRED','この配置の反映には運営の承認が必要です。');
+ if(['propose','cancel'].includes(action)&&(!user.is_staff||canOperate(user)))h.fail(403,'STAFF_REQUIRED','スタッフとして申請する操作です。');
  const raw=await h.readBody(ctx.request),configAction=['apply','propose'].includes(action);
  const allowed=configAction?['requestId','expectedRevision','totalTroops','squadSize','respawnSeconds','note']:['requestId','expectedRevision'];
  if(Object.keys(raw).some(k=>!allowed.includes(k)))h.fail(400,'INVALID_INPUT','配置変更の送信項目を確認してください。');

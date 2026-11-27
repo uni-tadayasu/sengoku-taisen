@@ -1,3 +1,4 @@
+import {operationGuard} from './operator-access.js';
 import {rerollPassSnapshot,rewardCalendar} from './rewards.js';
 import {readPremiumGrowthMetrics,observePremiumPayments,readPremiumPaymentAccounts} from './premium-metrics.js';
 // Stripe snapshots are verified and reduced to immutable payment facts.
@@ -178,14 +179,14 @@ async function premiumReviewRelease(ctx){
   const block=await premiumStmt(db,'SELECT * FROM premium_blocks WHERE scope=? AND object_id=?',body.scope,body.objectId).first();
   if(!block)h.fail(404,'PREMIUM_REVIEW_NOT_FOUND','この保留は見つかりませんでした。');
   if(!PREMIUM_REVIEWABLE.includes(block.reason))h.fail(403,'PREMIUM_REVIEW_FORBIDDEN','返金確定や不一致による利用権の失効は、この操作では解除できません。');
-  const access=h.accountCommitGuard(user),id=h.uid('prv_'),receiptGate='EXISTS(SELECT 1 FROM premium_reviews WHERE actor_id=? AND request_id=? AND id=?)';
+  const access=operationGuard(user),id=h.uid('prv_'),receiptGate='EXISTS(SELECT 1 FROM premium_reviews WHERE actor_id=? AND request_id=? AND id=?)';
   const result=await db.batch([
     premiumStmt(db,`INSERT INTO premium_reviews(id,actor_id,request_id,request_hash,scope,object_id,expected_revision,expected_event_id,reason,created_at)
-      SELECT ?,?,?,?,?,?,?,?,?,? FROM premium_blocks b WHERE b.scope=? AND b.object_id=? AND b.revision=? AND b.source_event_id=? AND b.reviewed_revision<b.revision AND b.reason IN ('refund_review','dispute_review','fraud_review') AND ${access.sql} AND EXISTS(SELECT 1 FROM settings WHERE key='adminUserId' AND value=?) ON CONFLICT(actor_id,request_id) DO NOTHING RETURNING id`,id,user.id,requestId,digest,body.scope,body.objectId,body.expectedRevision,body.expectedEventId,normalized.reason,now,body.scope,body.objectId,body.expectedRevision,body.expectedEventId,...access.args,user.id),
+      SELECT ?,?,?,?,?,?,?,?,?,? FROM premium_blocks b WHERE b.scope=? AND b.object_id=? AND b.revision=? AND b.source_event_id=? AND b.reviewed_revision<b.revision AND b.reason IN ('refund_review','dispute_review','fraud_review') AND ${access.sql} ON CONFLICT(actor_id,request_id) DO NOTHING RETURNING id`,id,user.id,requestId,digest,body.scope,body.objectId,body.expectedRevision,body.expectedEventId,normalized.reason,now,body.scope,body.objectId,body.expectedRevision,body.expectedEventId,...access.args),
     premiumStmt(db,`UPDATE premium_blocks SET reviewed_revision=revision WHERE scope=? AND object_id=? AND ${receiptGate}`,body.scope,body.objectId,user.id,requestId,id),
     premiumStmt(db,'SELECT * FROM premium_reviews WHERE actor_id=? AND request_id=?',user.id,requestId)
   ]);
-  await h.requireAccountAccess(db,user);h.requireAdmin(await h.getUser(db,user.id));
+  await h.requireAccountAccess(db,user);h.requireOperator(await h.getUser(db,user.id));
   const review=premiumRows(result[2])[0];
   if(!review)h.fail(409,'PREMIUM_REVIEW_CHANGED','新しい通知で保留の状態が変わりました。一覧を更新し、Stripeで最新の状態を確認してください。');
   if(review.request_hash!==digest)h.fail(409,'REQUEST_ID_REUSED','この操作番号は別の確認に使用されています。');
@@ -195,14 +196,14 @@ async function premiumReviewRelease(ctx){
 export async function handlePremium(ctx){
   const {db,user,now,env,path,method,request,helpers:h}=ctx;
   if(path==='/admin/premium/reviews'){
-    h.requireAdmin(user);
+    h.requireOperator(user);
     if(method==='GET')return premiumReviewList(ctx);
     if(method==='POST')return premiumReviewRelease(ctx);
   }
   if(path==='/premium'&&method==='GET')return premiumSnapshot(ctx);
   if(path==='/premium/supporter-choice'&&method==='POST')return supporterChoice(ctx);
   if(path==='/premium/events'&&method==='POST')return premiumEvent(ctx);
-  if(path==='/admin/premium/metrics'&&method==='GET'){h.requireAdmin(user);return premiumMetrics(ctx);}
+  if(path==='/admin/premium/metrics'&&method==='GET'){h.requireOperator(user);return premiumMetrics(ctx);}
   if(path==='/premium/checkout'&&method==='POST'){
     const body=await h.readBody(request);premiumShape(body,['productId'],h);
     const product=premiumProduct(body.productId,env);if(!product||product.mode==='reward')h.fail(400,'INVALID_PRODUCT','この商品は販売対象ではありません。');
@@ -413,6 +414,6 @@ async function premiumMetrics(ctx){
   const viewers=new Map(premiumRows(visitorRows).filter(row=>row.event==='shop_view').map(row=>[row.user_id,Number(row.first_at)])),clickers=new Set(premiumRows(visitorRows).filter(row=>row.event==='checkout_start').map(row=>row.user_id)),paid=new Set(premiumRows(paidRows).map(row=>row.user_id)),converted=new Set(premiumRows(paidRows).filter(row=>viewers.has(row.user_id)&&row.paid_at!==null&&Number(row.paid_at)>=viewers.get(row.user_id)&&Number(row.charged_at)>=viewers.get(row.user_id)).map(row=>row.user_id));
   Object.assign(totals,{uniqueShopAccounts:viewers.size,uniqueCheckoutAccounts:clickers.size,uniquePaidAccounts:paid.size,matchedPaidShopAccounts:converted.size});
   const growth=await readPremiumGrowthMetrics({db,now,fromDay,toDay,products:PREMIUM_PRODUCTS});
-  if(!await premiumStmt(db,"SELECT 1 AS allowed FROM settings WHERE key='adminUserId' AND value=?",ctx.user.id).first())h.fail(403,'ADMIN_REQUIRED','運営専用の機能です。');
+  const access=operationGuard(ctx.user);if(!await premiumStmt(db,'SELECT 1 AS allowed WHERE '+access.sql,...access.args).first())h.fail(403,'OPERATIONAL_REQUIRED','この管理機能の利用資格が変更されました。');
   return {ok:true,days,fromDay,toDay,daily,totals,conversion:{definition:'集計期間中のショップ閲覧後に作成され、照合確認された有効な決済を持つ接続アカウントの割合。過去の決済を今回初めて観測しただけのものは含めません。',viewedAccounts:viewers.size,paidAfterViewAccounts:converted.size,rate:viewers.size?converted.size/viewers.size:null},retention:{definition:'初回ログイン報酬受取者の翌日再受取',cohortAccounts,returnedNextDay,rate:cohortAccounts?returnedNextDay/cohortAccounts:null,throughDay:new Date(base-2*86400000).toISOString().slice(0,10)},...growth,serverNow:new Date(now).toISOString()};
 }

@@ -1,3 +1,4 @@
+import {operationGuard} from './operator-access.js';
 /* Operator-controlled public music. Audio assets and personal volume stay on
    the client; only the authoritative transport state is persisted here. */
 const stmt=(db,sql,...args)=>db.prepare(sql).bind(...args);
@@ -13,14 +14,14 @@ export function musicBroadcastDto(row){
 export async function readMusicBroadcast(db){return musicBroadcastDto(await stmt(db,STATE_SQL).first());}
 
 export async function handleAdminMusic({db,user,request,method,now,helpers:h}){
-  h.requireAdmin(user);
-  const guard=h.roleCommitGuard(user);
+  h.requireOperator(user);
+  const guard=operationGuard(user);
   const currentAccess=async()=>{
     await h.requireAccountAccess(db,user);
-    if(!await stmt(db,'SELECT 1 AS allowed WHERE '+guard.sql,...guard.args).first())h.fail(403,'ADMIN_REQUIRED','運営権限が変更されました。接続状態を確認してください。');
+    if(!await stmt(db,'SELECT 1 AS allowed WHERE '+guard.sql,...guard.args).first())h.fail(403,'OPERATIONAL_REQUIRED','運営権限が変更されました。接続状態を確認してください。');
   };
   // The shared response guard also runs after asynchronous identity decoration.
-  h.registerResponseGuard?.({...guard,code:'ADMIN_REQUIRED',message:'運営権限が変更されました。接続状態を確認してください。'});
+  h.registerResponseGuard?.({...guard,code:'OPERATIONAL_REQUIRED',message:'運営権限が変更されました。接続状態を確認してください。'});
   if(method==='GET'){
     const musicBroadcast=await readMusicBroadcast(db);await currentAccess();
     return {ok:true,musicBroadcast,serverNow:iso(now)};

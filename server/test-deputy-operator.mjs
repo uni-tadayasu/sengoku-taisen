@@ -58,7 +58,7 @@ await scope('appointment fixes Kagoshima as the deputy home and preserves person
  assert.equal(member(h,target),undefined);assert.equal(seat(h,'kiyosu').lord_user_id,null);assert.deepEqual(member(h,retainer),retainerBefore);assert.deepEqual(row(h,retainer),retainerSave);
  const field=await read(h,target,'/field/me');assert.equal(field.self.homeCastleId,'kagoshima');assert.equal(field.self.battleMode,'reward');assert.equal(field.self.capturable,false);
  const directory=await read(h,null,'/castles/residency');assert.equal(directory.capacity,123);assert(!directory.castles.some(c=>c.castleId==='kagoshima'));await h.api('/castles/residency?castleId=kagoshima',{expected:400});
- await h.api('/admin/moderation/bans',{token:target.token,expected:403});await h.api('/admin/deputy',{token:target.token,expected:403});
+ await h.api('/admin/moderation/bans',{token:target.token,expected:200});await h.api('/admin/deputy',{token:target.token,expected:403});
  const start=await h.api('/castles/residency/start',post(target,startBody(h,target,'inuyama'),null));assert(start.response.status>=400&&start.response.status<500);
  const move=await h.api('/castles/residency/relocate',post(target,{deviceId:target.deviceId,revision:row(h,target).revision,requestId:crypto.randomUUID(),castleId:'inuyama'},null));assert(move.response.status>=400&&move.response.status<500);
  assert.equal(save(h,target).state.home,'kagoshima');

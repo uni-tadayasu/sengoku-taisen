@@ -11,6 +11,15 @@ function setup(){
  return{scope,api,avatar,node,draft,scroll,listeners};
 }
 const tests=[];const test=(name,run)=>tests.push({name,run});
+test('Edo and Kagoshima honors retain their public artwork without operator role labels',()=>{
+ const h=setup();
+ for(const [id,asset,label]of [['edo','assets/city-honors/edo-v1.webp','江戸城の城主'],['kagoshima','assets/branding/kagoshima-immortal-crest.svg','鹿児島城 不死身の紋章']]){
+  const playerId='u_'+id;
+  h.avatar.observe({player:{id:playerId,isAdmin:true,isDeputy:true,cityHonors:[{id,cityName:'運営',title:'サブ運営'}]}});
+  const html=h.api.slot(playerId);assert(html.includes(asset));assert(html.includes(label));assert.equal(h.api.text(playerId),label);
+  assert.doesNotMatch(html,/運営/,'role flags and response text do not replace fixed public crest labels');
+ }
+});
 test('only accepted public API honors award a badge, with fixed safe artwork and labels',()=>{
  const h=setup();assert(!h.api.slot({id:'u_lord',cityHonors:[award('edo')]}).includes('<img'));
  h.avatar.observe({save:{id:'u_lord',cityHonors:[award('edo')]},state:{id:'u_lord',cityHonors:[award('osaka')]},appearance:{id:'u_lord',cityHonors:[award('nagoya')]}});

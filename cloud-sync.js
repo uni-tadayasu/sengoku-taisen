@@ -335,7 +335,7 @@ function create(options={}){
  function access(){
   const writable=initialized&&leaseDeadline>now()&&!hidden()&&online()&&!rolePending();
   const awaitingStart=bridge()?.hasStarted?.()===false,reason=!online()?'offline':hidden()?'hidden':rolePending()?'auth':writable?(awaitingStart?'awaiting-start':'writer'):'follower';
-  emit({linked:true,ready:initialized,writable,revision,reason,awaitingStart,leaseExpiresAt:leaseDeadline?new Date(leaseDeadline).toISOString():null,message:reason==='offline'?'通信が戻ると共通時刻までの進行を反映します。':reason==='hidden'?'この画面を開くと同期を再開します。':reason==='auth'?'領主の権限を確認しています。確認が終わるまで操作と保存を待機しています。':reason==='awaiting-start'?(expulsion?'運営により拠点から追放されました。入城する城を選び直してください。':'開始する城を選ぶと、この領主の進行を保存します。'):writable?'':`${status.writerDeviceName||'別の端末'}の進行を自動で反映しています。`});
+  emit({linked:true,ready:initialized,writable,revision,reason,awaitingStart,leaseExpiresAt:leaseDeadline?new Date(leaseDeadline).toISOString():null,message:reason==='offline'?'通信が戻ると共通時刻までの進行を反映します。':reason==='hidden'?'この画面を開くと同期を再開します。':reason==='auth'?'領主の権限を確認しています。確認が終わるまで操作と保存を待機しています。':reason==='awaiting-start'?(expulsion?'管理操作により拠点から追放されました。入城する城を選び直してください。':'開始する城を選ぶと、この領主の進行を保存します。'):writable?'':`${status.writerDeviceName||'別の端末'}の進行を自動で反映しています。`});
  }
  function schedulePoll(){if(pollTimer!==null)cancel(pollTimer);pollTimer=null;const g=generation;if(session&&!hidden())pollTimer=later(()=>{pollTimer=null;if(valid(g))refresh();},banned?30000:5000);}
  function enqueue(work){const g=generation;const task=queue.catch(()=>{}).then(()=>valid(g)?work(g):undefined);queue=task.catch(()=>{});return task;}

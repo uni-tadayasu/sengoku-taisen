@@ -92,7 +92,7 @@ await scope('concurrent retries commit once and concurrent distinct commands use
 await scope('role loss during atomic mutation cannot change broadcast state',async h=>{
   const a=await owner(h),other=await h.session('新しい管理者');
   h.beforeBatch=statements=>{if(!statements.some(s=>s.sql.startsWith('INSERT INTO music_broadcast_requests')))return;h.beforeBatch=null;run(h,"UPDATE settings SET value=? WHERE key='adminUserId'",other.user.id);};
-  assert.equal((await put(h,a,draft(),403)).data.error.code,'ADMIN_REQUIRED');assert.deepEqual((await publicState(h)).musicBroadcast,INITIAL);assert.equal(one(h,'SELECT COUNT(*) n FROM music_broadcast_requests').n,0);
+  assert.equal((await put(h,a,draft(),403)).data.error.code,'OPERATIONAL_REQUIRED');assert.deepEqual((await publicState(h)).musicBroadcast,INITIAL);assert.equal(one(h,'SELECT COUNT(*) n FROM music_broadcast_requests').n,0);
 });
 
 await scope('account ban and ban-lift epoch changes also block in-flight mutations',async h=>{

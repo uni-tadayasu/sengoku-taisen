@@ -24,7 +24,7 @@ function publicOnly(value,{self=null}={}){
   if(!value||typeof value!=='object')return;
   if(value===self)return;
   for(const [key,child]of Object.entries(value)){
-    assert(!['isAdmin','isStaff','isOperator','is_admin','is_staff','is_operator','staffTitle','siteRole','roleTitle','operatorProtected','staffProtected','adminPlayerId','adminUserId','operatorPlayerId','operatorUserId'].includes(key),'Public role field '+key);
+    assert(!['canOperate','isDeputy','isAdmin','isStaff','isOperator','is_admin','is_staff','is_operator','staffTitle','siteRole','roleTitle','operatorProtected','staffProtected','adminPlayerId','adminUserId','operatorPlayerId','operatorUserId'].includes(key),'Public role field '+key);
     if(key==='role')assert(!['admin','staff','operator'].includes(child),'Public role value '+child);
     if(key==='clan')assert.notEqual(child,'德川家');
     if(key==='kind')assert.notEqual(child,'staff-building');

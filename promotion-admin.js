@@ -42,8 +42,8 @@
     const snapshot = () => clone(state);
     const context = () => {
       const c = getContext();
-      return {allowed:Boolean(c?.user?.id && c.isAdmin===true && c.user.isAdmin===true && c.user.isBanned!==true && !c.pending && !c.banned),
-        stamp:JSON.stringify([c?.playerId,c?.user?.id,c?.isAdmin,c?.user?.isBanned,c?.pending,c?.banned,c?.epoch,c?.privilegeEpoch,c?.accountEpoch])};
+      return {allowed:Boolean(c?.user?.id && c.playerId===c.user.id && (c.canOperate??c.isAdmin)===true && (c.user.isAdmin===true||c.user.isDeputy===true) && c.user.canOperate!==false && c.user.isBanned!==true && !c.pending && !c.banned),
+        stamp:JSON.stringify([c?.playerId,c?.user?.id,c?.isAdmin,c?.canOperate,c?.user?.isAdmin,c?.user?.isDeputy,c?.user?.canOperate,c?.user?.isBanned,c?.pending,c?.banned,c?.epoch,c?.privilegeEpoch,c?.accountEpoch])};
     };
     function emit() { if (!disposed) onChange(snapshot()); }
     function clear() { const who=context();stamp=who.stamp;sequence++;state={...empty(),authorized:who.allowed};emit(); }

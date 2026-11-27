@@ -330,10 +330,17 @@ test('public discovery identifies only Sengoku VS and does not explain privilege
   for(const page of pages){
     const visible=normalized(page.html.replace(/<(?:script|style)\b[\s\S]*?<\/(?:script|style)>/gi,''));
     assert(!/双月のアルケイア|パチモン|Pachi Monsters|Archeia of the Twin Moons/i.test(visible),page.key+' contains a retired title');
-    assert(!/スタッフ|運営専用|運営の本拠|德川家|以前の領主・運営/.test(visible),page.key+' reveals privileged identity mappings');
+    assert(!/スタッフ|サブ運営|運営専用|運営の本拠|德川家|以前の領主・運営/.test(visible),page.key+' reveals privileged identity mappings');
     assert(!tags(page.html,'a').some(link=>/#operator(?:$|[?&])/.test(link.href||'')),page.key+' advertises private role recovery');
   }
   const guide=pages.find(page=>page.key==='guide');
+  const guideText=normalized(guide.html);
+  assert.doesNotMatch(guideText,/運営/,'public guide labels do not identify operator roles');
+  assert(guideText.includes('太政大臣・摂政・上皇・天皇の10種類のバッジ'),'all current public court titles remain documented');
+  const releases=JSON.parse(read('tools/news-releases.json'));
+  for(const release of releases)assert.doesNotMatch(JSON.stringify(release),/運営/,'release '+release.version+' publishes an operator role label');
+  assert(releases.find(release=>release.version==='5.13.2').changes.some(change=>change.title==='鹿児島城「不死身」の紋章'),'the public crest release remains documented');
+  assert(!/「交流(?:の間)?」[→・]\s*「運営」|「プレイヤー管理」|初回の運営登録キー/.test(guideText),'the public guide does not publish management entry instructions');
   for(const phrase of ['購入した商品の印','外観を通常に戻しても','有効な利用期間中'])assert(guide.html.includes(phrase),phrase);
 });
 

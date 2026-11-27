@@ -1,3 +1,4 @@
+import {operationGuard} from './operator-access.js';
 // Timed NPC battles spend the campaign's shared command through its current
 // writer revision. The save, battle receipt, points and mail commit together.
 import {GameEngine,GAME_OFFICERS} from './game-runtime.js';
@@ -13,7 +14,7 @@ const OWN_CASTLE_MESSAGE='自分が領主の拠点には出陣できません。
 const eventStmt=(db,sql,...params)=>db.prepare(sql).bind(...params);
 const eventRows=result=>result?.results||[];
 const eventIso=value=>value===null||value===undefined?null:new Date(Number(value)).toISOString();
-const EVENT_ADMIN="EXISTS(SELECT 1 FROM settings WHERE key='adminUserId' AND value=?)";
+
 const EVENT_GATE='EXISTS(SELECT 1 FROM timed_event_requests WHERE actor_id=? AND request_id=? AND commit_token=?)';
 export const eventStatus=(row,now)=>['draft','discarded'].includes(row.status)?row.status:row.ended_at!==null||row.status==='ended'||Number(row.ends_at)<=now?'ended':'active';
 
@@ -76,9 +77,9 @@ async function eventLeaderboard(ctx,id){
   ORDER BY p.points DESC,p.wins DESC,p.updated_at,p.user_id LIMIT 20`,id).all());
  return found.map((player,index)=>({rank:index+1,playerId:player.user_id,name:player.name,points:Number(player.points),wins:Number(player.wins),battles:Number(player.battles),evaluation:ctx.helpers.evaluationRef(player.user_id)}));
 }
-async function requireEventAdmin(ctx){
+async function requireEventOperator(ctx){
  await ctx.helpers.requireAccountAccess(ctx.db,ctx.user);
- const current=await ctx.helpers.getUser(ctx.db,ctx.user.id);ctx.helpers.requireAdmin(current||{});
+ const current=await ctx.helpers.getUser(ctx.db,ctx.user.id);ctx.helpers.requireOperator(current||{});
 }
 function eventBody(raw,allowed,h){
  if(Object.keys(raw).some(key=>!allowed.includes(key)))h.fail(400,'INVALID_INPUT','イベントの送信内容を確認してください。');
@@ -104,7 +105,7 @@ async function eventResult(ctx,receipt,idempotent,body=null){
   Object.assign(response,snapshot,{progress:await eventProgress(ctx,row,now,snapshot,defense),battle:result.battle,rewardMailIds:result.rewardMailIds||[]});
  }
  else{
-   await requireEventAdmin(ctx);
+   await requireEventOperator(ctx);
    response.event.opponent=(await eventDefense(ctx,response.event.plan,now)).opponent;
  }
  return response;
@@ -127,17 +128,17 @@ async function eventGenerate(ctx){
  const name=battle.name,digest=await h.hash(JSON.stringify(['generate',battleId,days])),prior=await eventPrior(ctx,requestId,digest);
  if(prior)return eventResult(ctx,prior,true);
  await h.budget(db,'event-design:'+user.id,20,60000,ctx.now);
- const id=h.uid('ev_'),plan=generateEventPlan({battleId,durationDays:days,seed:h.uid('seed_')}),nonce=crypto.randomUUID(),now=Date.now(),guard=h.roleCommitGuard(user),gateArgs=[user.id,requestId,nonce];
+ const id=h.uid('ev_'),plan=generateEventPlan({battleId,durationDays:days,seed:h.uid('seed_')}),nonce=crypto.randomUUID(),now=Date.now(),guard=operationGuard(user),gateArgs=[user.id,requestId,nonce];
  await db.batch([
   eventStmt(db,`INSERT INTO timed_event_requests(actor_id,request_id,event_id,action,request_hash,commit_token,result_json,created_at)
-   SELECT ?,?,?,'generate',?,?,?,? WHERE ${EVENT_ADMIN} AND ${guard.sql} AND (SELECT COUNT(*) FROM timed_events WHERE status='draft')<${MAX_DRAFTS}
-   ON CONFLICT(actor_id,request_id) DO NOTHING`,user.id,requestId,id,digest,nonce,JSON.stringify({eventId:id}),now,user.id,...guard.args),
+   SELECT ?,?,?,'generate',?,?,?,? WHERE ${guard.sql} AND (SELECT COUNT(*) FROM timed_events WHERE status='draft')<${MAX_DRAFTS}
+   ON CONFLICT(actor_id,request_id) DO NOTHING`,user.id,requestId,id,digest,nonce,JSON.stringify({eventId:id}),now,...guard.args),
   eventStmt(db,`INSERT INTO timed_events(id,creator_id,name,duration_days,status,plan_json,created_at)
    SELECT ?,?,?,?,'draft',?,? WHERE ${EVENT_GATE}`,id,user.id,name,days,JSON.stringify(plan),now,...gateArgs)
  ]);
  const saved=await eventPrior(ctx,requestId,digest);
  if(!saved){
-  await requireEventAdmin(ctx);
+  await requireEventOperator(ctx);
   const count=await eventStmt(db,"SELECT COUNT(*) AS count FROM timed_events WHERE status='draft'").first();
   if(Number(count.count)>=MAX_DRAFTS)h.fail(409,'EVENT_DRAFT_LIMIT','未開催の企画は30件までです。既存の企画を開催してから生成してください。');
   h.fail(409,'EVENT_CHANGED','領主の状態が更新されました。もう一度生成してください。');
@@ -153,13 +154,13 @@ async function eventChange(ctx,id,action){
  if(action==='discard'&&row.status!=='draft')h.fail(409,'EVENT_CHANGED','未開催の企画だけを破棄できます。');
  if(action==='end'&&eventStatus(row,now)!=='active')h.fail(409,'EVENT_ENDED','このイベントは開催中ではありません。');
  await h.budget(db,'event-manage:'+user.id,30,60000,now);
- const nonce=crypto.randomUUID(),guard=h.roleCommitGuard(user),gateArgs=[user.id,requestId,nonce],condition=action==='publish'
+ const nonce=crypto.randomUUID(),guard=operationGuard(user),gateArgs=[user.id,requestId,nonce],condition=action==='publish'
   ?"e.status='draft' AND NOT EXISTS(SELECT 1 FROM timed_events live WHERE live.status='active' AND live.ended_at IS NULL AND live.ends_at>?)"
   :action==='discard'?"e.status='draft'":"e.status='active' AND e.ended_at IS NULL AND e.starts_at<=? AND e.ends_at>?";
  await db.batch([
   eventStmt(db,`INSERT INTO timed_event_requests(actor_id,request_id,event_id,action,request_hash,commit_token,result_json,created_at)
-   SELECT ?,?,?,?,?,?,?,? FROM timed_events e WHERE e.id=? AND e.revision=? AND ${condition} AND ${EVENT_ADMIN} AND ${guard.sql}
-   ON CONFLICT(actor_id,request_id) DO NOTHING`,user.id,requestId,id,action,digest,nonce,JSON.stringify({eventId:id}),now,id,row.revision,...(action==='publish'?[now]:action==='end'?[now,now]:[]),user.id,...guard.args),
+   SELECT ?,?,?,?,?,?,?,? FROM timed_events e WHERE e.id=? AND e.revision=? AND ${condition} AND ${guard.sql}
+   ON CONFLICT(actor_id,request_id) DO NOTHING`,user.id,requestId,id,action,digest,nonce,JSON.stringify({eventId:id}),now,id,row.revision,...(action==='publish'?[now]:action==='end'?[now,now]:[]),...guard.args),
   action==='publish'
    ?eventStmt(db,`UPDATE timed_events SET status='active',starts_at=?,ends_at=?+duration_days*${DAY_MS},revision=revision+1 WHERE id=? AND ${EVENT_GATE}`,now,now,id,...gateArgs)
    :action==='discard'?eventStmt(db,`UPDATE timed_events SET status='discarded',revision=revision+1 WHERE id=? AND ${EVENT_GATE}`,id,...gateArgs)
@@ -167,7 +168,7 @@ async function eventChange(ctx,id,action){
  ]);
  const saved=await eventPrior(ctx,requestId,digest);
  if(!saved){
-  await requireEventAdmin(ctx);
+  await requireEventOperator(ctx);
   const current=await eventRow(ctx,id);
   if(action==='publish'&&current.status==='draft')h.fail(409,'EVENT_ALREADY_ACTIVE','別のイベントが開催中です。終了してから開催してください。');
   h.fail(409,'EVENT_CHANGED','イベントの開催状態が更新されました。最新の内容を確認してください。');
@@ -276,11 +277,11 @@ export async function handleEvents(ctx){
   return {ok:true,serverNow:eventIso(now),event:{...event,opponent:defense.opponent},progress:await eventProgress(ctx,row,now,null,defense),leaderboard:await eventLeaderboard(ctx,row.id)};
  }
  if(path==='/admin/events'||path.startsWith('/admin/events/')){
-  h.requireAdmin(user||{});await requireEventAdmin(ctx);
+  h.requireOperator(user||{});await requireEventOperator(ctx);
   if(path==='/admin/events'&&method==='GET'){
-   const found=eventRows(await eventStmt(db,`SELECT * FROM timed_events WHERE status<>'discarded' AND ${EVENT_ADMIN}
-    ORDER BY CASE WHEN status='active' AND ended_at IS NULL AND ends_at>? THEN 0 WHEN status='draft' THEN 1 ELSE 2 END,created_at DESC,id DESC LIMIT 50`,user.id,now).all());
-   await requireEventAdmin(ctx);
+   const access=operationGuard(user),found=eventRows(await eventStmt(db,`SELECT * FROM timed_events WHERE status<>'discarded' AND ${access.sql}
+    ORDER BY CASE WHEN status='active' AND ended_at IS NULL AND ends_at>? THEN 0 WHEN status='draft' THEN 1 ELSE 2 END,created_at DESC,id DESC LIMIT 50`,...access.args,now).all());
+   await requireEventOperator(ctx);
    return {ok:true,serverNow:eventIso(now),events:found.map(row=>eventDto(row,now))};
   }
   if(path==='/admin/events/generate'&&method==='POST')return eventGenerate(ctx);

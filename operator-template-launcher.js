@@ -2,7 +2,8 @@
   'use strict';
   const doc = global.document, resources = new Map(), loading = new WeakSet();
   const context = () => global.SengokuSocial?.getPromotionContext?.();
-  const available = () => context()?.isAdmin === true;
+  const permitted = value => value?.canOperate === true || value?.isAdmin === true;
+  const available = () => permitted(context());
   const label = '文書テンプレート';
   function launcher() {
     return available()
@@ -36,7 +37,7 @@
     // separately so decoration cannot block a click or release its in-flight guard.
     if (!button || button.disabled || loading.has(button) || doc.getElementById('operator-template-dialog')) return;
     const owner = context();
-    if (!owner?.isAdmin) return;
+    if (!permitted(owner)) return;
     loading.add(button);
     button.setAttribute('aria-busy', 'true');
     button.textContent = 'テンプレート読込中…';
@@ -44,7 +45,7 @@
       await Promise.all([load('operator-template-picker.css'), load('operator-message-templates.js'), load('operator-template-picker.js')]);
       const current = context();
       button.textContent = label;
-      if (current?.isAdmin && current.playerId === owner.playerId && current.epoch === owner.epoch &&
+      if (permitted(current) && current.playerId === owner.playerId && current.epoch === owner.epoch &&
           current.accountEpoch === owner.accountEpoch && current.privilegeEpoch === owner.privilegeEpoch &&
           button.isConnected && !button.disabled && !button.closest('dialog:not([open]),[hidden],[inert]') &&
           !doc.getElementById('operator-template-dialog')) global.SengokuOpenOperatorTemplatePicker(button);

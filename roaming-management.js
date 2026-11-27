@@ -26,13 +26,13 @@
   const getContext=options.getContext||(()=>global.SengokuSocial?.getEventContext?.()),request=options.request||((route,settings)=>global.SengokuSocial.roamingRequest(route,settings)),uuid=options.uuid||(()=>global.crypto.randomUUID());
   let storage;try{storage=options.storage??global.localStorage;}catch(_){}
   let disposed=false,stamp='',generation=0,readSequence=0,flight=null;
-  const empty=()=>({authorized:false,ownerId:'',isAdmin:false,open:false,loaded:false,loading:false,sending:false,deployment:null,capabilities:{canApply:false,canApprove:false,canPropose:false},proposals:[],form:{totalTroops:'',squadSize:'',respawnSeconds:'',note:''},dirty:false,page:1,confirmation:null,pending:null,error:'',message:'',change:'init'});
+  const empty=()=>({authorized:false,ownerId:'',isAdmin:false,canOperate:false,open:false,loaded:false,loading:false,sending:false,deployment:null,capabilities:{canApply:false,canApprove:false,canPropose:false},proposals:[],form:{totalTroops:'',squadSize:'',respawnSeconds:'',note:''},dirty:false,page:1,confirmation:null,pending:null,error:'',message:'',change:'init'});
   let state=empty();
-  function context(){const c=getContext()||{},u=c.user,admin=u?.isAdmin===true,staff=u?.isStaff===true&&!admin;return {ownerId:id(u?.id)?u.id:'',isAdmin:admin,isStaff:staff,allowed:!!u?.id&&(admin||staff)&&!c.pending&&!c.banned&&u.isBanned!==true&&c.connected!==false,stamp:JSON.stringify([u?.id||'',admin,staff,c.epoch??null,c.privilegeEpoch??null,c.accountEpoch??null,!!c.pending,!!c.banned,u?.isBanned===true,c.connected!==false])};}
+  function context(){const c=getContext()||{},u=c.user,admin=u?.isAdmin===true,deputy=u?.isDeputy===true,operations=admin||deputy,staff=u?.isStaff===true&&!operations;return {ownerId:id(u?.id)?u.id:'',isAdmin:admin,canOperate:operations,isStaff:staff,allowed:!!u?.id&&(operations||staff)&&!c.pending&&!c.banned&&u.isBanned!==true&&c.connected!==false,stamp:JSON.stringify([u?.id||'',admin,deputy,staff,c.epoch??null,c.privilegeEpoch??null,c.accountEpoch??null,!!c.pending,!!c.banned,u?.isBanned===true,c.connected!==false])};}
   const key=owner=>STORAGE_KEY+encodeURIComponent(owner);
   function validRecord(value,who){
    if(!value||value.ownerId!==who.ownerId||!Object.hasOwn(ACTION,value.action)||!id(value.body?.requestId)||!integer(value.body?.expectedRevision,1,1000000000)||!cleanDeployment(value.current))return false;
-   if(['apply','approve','reject'].includes(value.action)&&!who.isAdmin||value.action==='propose'&&!who.isStaff)return false;
+   if(['apply','approve','reject'].includes(value.action)&&!who.canOperate||value.action==='propose'&&!who.isStaff)return false;
    if(['apply','propose'].includes(value.action))return !!config(value.body)&&typeof value.body.note==='string'&&value.body.note.length<=300;
    return proposalId(value.proposalId)&&!!cleanProposal(value.proposal)&&value.proposalId===value.proposal.id;
   }
@@ -42,16 +42,16 @@
   }
   const snapshot=()=>clone(state);
   function emit(change='status'){if(!disposed){state.change=change;options.onChange?.(snapshot());}}
-  function identity(){const who=context();if(stamp!==who.stamp){stamp=who.stamp;generation++;readSequence++;flight=null;state={...empty(),authorized:who.allowed,ownerId:who.ownerId,isAdmin:who.isAdmin,pending:who.allowed?readPending(who):null};emit('identity');}return who;}
+  function identity(){const who=context();if(stamp!==who.stamp){stamp=who.stamp;generation++;readSequence++;flight=null;state={...empty(),authorized:who.allowed,ownerId:who.ownerId,isAdmin:who.isAdmin,canOperate:who.canOperate,pending:who.allowed?readPending(who):null};emit('identity');}return who;}
   const current=g=>!disposed&&g===generation&&context().stamp===stamp&&context().allowed;
   function notify(deployment){try{options.onDeploymentChanged?.(clone(deployment));}catch(_){}
   }
   function accept(result,{preserveForm=true,notifyChange=true}={}){
    const deployment=cleanDeployment(result?.deployment),who=context(),proposals=Array.isArray(result?.proposals)&&result.proposals.length<=100?result.proposals.map(cleanProposal):null;
-   if(result?.ok!==true||!deployment||!result.capabilities||!proposals||proposals.some(value=>!value)||!who.isAdmin&&proposals.some(value=>value.requester.id!==who.ownerId))throw Error('配置情報の応答を確認できませんでした。もう一度取得してください。');
+   if(result?.ok!==true||!deployment||!result.capabilities||!proposals||proposals.some(value=>!value)||!who.canOperate&&proposals.some(value=>value.requester.id!==who.ownerId))throw Error('配置情報の応答を確認できませんでした。もう一度取得してください。');
    const previous=state.deployment;
    state.deployment=deployment;state.proposals=proposals;state.loaded=true;
-   state.capabilities={canApply:who.isAdmin&&result.capabilities.canApply===true,canApprove:who.isAdmin&&result.capabilities.canApprove===true,canPropose:who.isStaff&&result.capabilities.canPropose===true};
+   state.capabilities={canApply:who.canOperate&&result.capabilities.canApply===true,canApprove:who.canOperate&&result.capabilities.canApprove===true,canPropose:who.isStaff&&result.capabilities.canPropose===true};
    state.page=Math.min(state.page,Math.max(1,Math.ceil(proposals.length/PAGE_SIZE)));
    if(!preserveForm||!state.dirty){state.form={...Object.fromEntries(FIELDS.map(field=>[field,String(deployment[field])])),note:''};state.dirty=false;}
    if(notifyChange&&previous&&previous.revision!==deployment.revision)notify(deployment);
@@ -141,19 +141,19 @@
   function render(s){
    if(!alive)return;
    if(!s.authorized){host.innerHTML='';host.hidden=true;shellStamp='';return;}
-   host.hidden=false;const key=s.ownerId+':'+s.isAdmin;
+   host.hidden=false;const key=s.ownerId+':'+s.canOperate;
    if(shellStamp!==key){host.innerHTML=shell(prefix);shellStamp=key;}
    const active=host.ownerDocument?.activeElement,owned=host.contains(active),details=$('details');if(details.open!==s.open)details.open=s.open;
-   $('[data-rm-role]').textContent=s.isAdmin?'運営用の設定・承認':'スタッフ用の配置申請';
-   $('[data-rm-intro]').textContent=s.isAdmin?'全国の配置を直接変更できます。スタッフから届いた申請も、内容を確認して承認できます。':'配置の変更を運営へ申請できます。運営が承認するまで、全国の配置は変わりません。';
+   $('[data-rm-role]').textContent=s.canOperate?'運営用の設定・承認':'スタッフ用の配置申請';
+   $('[data-rm-intro]').textContent=s.canOperate?'全国の配置を直接変更できます。スタッフから届いた申請も、内容を確認して承認できます。':'配置の変更を運営へ申請できます。運営が承認するまで、全国の配置は変わりません。';
    html($('[data-rm-current]'),s.deployment?`<p class="rm-current-label">現在の配置 · 第${s.deployment.revision}版</p>${metrics(s.deployment)}`:`<p class="rm-note">${s.loading?'現在の配置を確認しています…':'最新の配置を取得してください。'}</p>`);
    const message=s.error||s.message,feedback=$('[data-rm-feedback]');feedback.hidden=!message;feedback.textContent=message;feedback.dataset.error=String(!!s.error);feedback.setAttribute('role',s.error?'alert':'status');
    const locked=s.loading||s.sending||!!s.pending||!!s.confirmation||!s.loaded;
    $('[data-rm-action="reload"]').disabled=s.loading||s.sending||!!s.confirmation;
    const form=$('[data-rm-form]');form.hidden=!!s.confirmation||!!s.pending;
    for(const field of [...FIELDS,'note']){const input=form.elements.namedItem(field);if(input.value!==s.form[field])input.value=s.form[field];input.disabled=locked;}
-   const ready=s.isAdmin?s.capabilities.canApply:s.capabilities.canPropose,prepare=$('[data-rm-prepare]');prepare.disabled=locked||!ready;
-   const label=s.isAdmin?'配置内容を確認する':'申請内容を確認する';if(prepare.textContent!==label)prepare.textContent=label;
+   const ready=s.canOperate?s.capabilities.canApply:s.capabilities.canPropose,prepare=$('[data-rm-prepare]');prepare.disabled=locked||!ready;
+   const label=s.canOperate?'配置内容を確認する':'申請内容を確認する';if(prepare.textContent!==label)prepare.textContent=label;
    const value=config(Object.fromEntries(FIELDS.map(field=>[field,s.form[field].trim()===''?NaN:Number(s.form[field])]))),count=value?Math.ceil(value.totalTroops/value.squadSize):0,remainder=value?.totalTroops%value?.squadSize;
    $('[data-rm-calculation]').textContent=value?value.totalTroops===0?'総兵数0人：野良兵戦の相手を配置しません。':`${number(count)}部隊を全国へ配置します。${remainder?`最後の部隊は${number(remainder)}人です。`:''}`:'人数と再出現までの秒数を入力してください。';
    const confirm=$('[data-rm-confirm]');confirm.hidden=!s.confirmation;html(confirm,confirmationMarkup(s.confirmation));
@@ -173,7 +173,7 @@
   controller=createController({...options,onChange:render});
   const click=event=>{const button=event.target.closest?.('[data-rm-action]');if(!button||!host.contains(button)||button.disabled)return;event.preventDefault();const action=button.dataset.rmAction;if(action==='reload')void controller.reload();else if(action==='back'){focusIntent='back';controller.back();}else if(action==='submit')void controller.submit();else if(action==='previous'||action==='next')controller.page(controller.snapshot().page+(action==='next'?1:-1));else if(['approve','reject','cancel'].includes(action)){focusIntent='confirm';controller.prepare(action,button.dataset.rmProposal);}};
   const input=event=>{if(event.target.closest?.('[data-rm-form]'))controller.update(event.target.name,event.target.value);};
-  const submit=event=>{if(!event.target.matches?.('[data-rm-form]'))return;event.preventDefault();focusIntent='confirm';controller.prepare(controller.snapshot().isAdmin?'apply':'propose');};
+  const submit=event=>{if(!event.target.matches?.('[data-rm-form]'))return;event.preventDefault();focusIntent='confirm';controller.prepare(controller.snapshot().canOperate?'apply':'propose');};
   const toggle=event=>{if(!event.target.matches?.('.roaming-management'))return;const s=controller.snapshot();if(event.target.open&&!s.open)void controller.open();else if(!event.target.open&&s.open)controller.close();};
   host.addEventListener('click',click);host.addEventListener('input',input);host.addEventListener('submit',submit);host.addEventListener('toggle',toggle,true);render(controller.snapshot());
   return{controller,refresh:()=>controller.refresh(),refreshContext:()=>controller.refresh(),dispose(){alive=false;controller.dispose();host.removeEventListener('click',click);host.removeEventListener('input',input);host.removeEventListener('submit',submit);host.removeEventListener('toggle',toggle,true);host.innerHTML='';host.hidden=true;}};

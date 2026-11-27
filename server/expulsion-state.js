@@ -2,7 +2,7 @@
 // inferred from this table and no BAN flag is changed by an expulsion.
 const S=(db,sql,...args)=>db.prepare(sql).bind(...args);
 const name=id=>globalThis.SENGOKU_DATA?.castles.find(c=>c.id===id)?.name||id||'';
-export const EXPULSION_MESSAGE='運営により拠点から追放されました。最新状態を読み込み、拠点を選び直してください。';
+export const EXPULSION_MESSAGE='管理操作により拠点から追放されました。最新状態を読み込み、拠点を選び直してください。';
 export async function expulsionSnapshot(db,userId){
  const row=await S(db,'SELECT revision,pending,castle_id,expelled_at FROM player_expulsions WHERE user_id=?',userId).first();
  return row?{pending:!!row.pending,revision:Number(row.revision),castleId:row.castle_id,castleName:name(row.castle_id),expelledAt:new Date(Number(row.expelled_at)).toISOString()}:null;

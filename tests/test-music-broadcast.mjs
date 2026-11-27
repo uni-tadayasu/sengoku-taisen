@@ -23,7 +23,7 @@ await test('receiving a programme does not unpause or create an audio context fo
 });
 await test('late joiners seek by server time and retain 1x playback and the personal volume',async()=>{
  const f=make(100),p=new f.Music({volume:23});await p.setBroadcast(state(),iso(start+100000));
- assert.equal(await p.attemptPlayback('hirukatsu'),'playing');assert.equal(p.currentId,'operation-broadcast');assert.equal(p.currentTrack.name,'運営放送 00004');
+ assert.equal(await p.attemptPlayback('hirukatsu'),'playing');assert.equal(p.currentId,'operation-broadcast');assert.equal(p.currentTrack.name,'全体BGM 00004');
  await recording(f);assert(Math.abs(p._session.recording.source.offset-(100%DURATION))<.0001);assert.equal(p._session.recording.source.loop,true);assert.equal(p.volume,23);assert.equal(active(p).length,1);await p.dispose();
 });
 await test('duplicate and stale polls cannot restart a song, change mode or accept malformed programme data',async()=>{
