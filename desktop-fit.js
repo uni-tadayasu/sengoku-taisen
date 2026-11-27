@@ -16,8 +16,17 @@ function planViewport(width,height,announcementHeight=0){
   return{viewportWidth,viewportHeight,top,availableWidth,availableHeight,layoutWidth:availableWidth,layoutHeight:availableHeight,mapHeight:clamp(availableHeight-370,300,850),townHeight:clamp(availableHeight-355,240,680)};
 }
 function desktopMode(finePointer,touchPoints=0,coarsePointer=false,viewportWidth=Infinity){return Number(viewportWidth)>1024&&Boolean(finePointer)&&!(Number(touchPoints)>0||coarsePointer);}
+// Use the layout viewport and the device orientation, not the keyboard-sized
+// visual viewport. An attached mouse must not turn a tablet into a desktop.
+function tabletPortraitMode(width,height,touchPoints=0,coarsePointer=false,orientationType=''){
+  const w=Number(width),h=Number(height);
+  if(!Number.isFinite(w)||!Number.isFinite(h)||h<=0||w<600||w>1280||!(Number(touchPoints)>0||coarsePointer))return false;
+  if(/^portrait(?:-|$)/.test(orientationType))return true;
+  if(/^landscape(?:-|$)/.test(orientationType))return false;
+  return h>w;
+}
 const root=global.document?.documentElement,doc=global.document;
-let initialized=false,destroyed=false,pending=0,resizeObserver=null,mutationObserver=null,media=null,coarseMedia=null,status={active:false,mode:'flow',scale:1},listeners=[],navigationState='';
+let initialized=false,destroyed=false,pending=0,resizeObserver=null,mutationObserver=null,media=null,coarseMedia=null,status={active:false,mode:'flow',tabletPortrait:false,scale:1},listeners=[],navigationState='';
 // The resource ledger shares the viewport with the dock on small screens.
 const ledgerKey='sengoku-ledger-display-v1';
 let ledgerButton=null,balances=null,ledgerActions=null,groupLabel=null,ledgerPreference=null;
@@ -91,7 +100,10 @@ function update(){
   const viewport=global.visualViewport,viewportWidth=Math.min(global.innerWidth||Infinity,viewport?.width||Infinity),viewportHeight=Math.min(global.innerHeight||Infinity,viewport?.height||Infinity);
   if(!Number.isFinite(viewportWidth)||!Number.isFinite(viewportHeight)||viewportWidth<=0||viewportHeight<=0)return;
   const active=desktopMode(media?.matches,global.navigator?.maxTouchPoints,coarseMedia?.matches,viewportWidth);
+  const orientationType=global.screen?.orientation?.type||(Number.isFinite(global.orientation)?(Math.abs(global.orientation)%180===0?'portrait-primary':'landscape-primary'):'');
+  const tabletPortrait=tabletPortraitMode(global.innerWidth,global.innerHeight,global.navigator?.maxTouchPoints,coarseMedia?.matches,orientationType);
   root.classList.toggle('sengoku-desktop-fit',active);
+  root.classList.toggle('sengoku-tablet-portrait',tabletPortrait);
   root.classList.toggle('sengoku-short-viewport',viewportHeight<=500);
   // A keyboard can reduce visualViewport.height while the device stays upright.
   updateLedger(active,global.innerHeight);
@@ -128,7 +140,7 @@ function update(){
   const app=doc.getElementById('app');if(active&&app)app.dataset.desktopScale='1.000';
   for(const dialog of doc.querySelectorAll('dialog[open]:not(.game-loading)'))if(active)dialog.dataset.desktopScale='1.000';
   revealNavigation(active);
-  status={active,mode:active?'desktop':'flow',...plan,scale:1,naturalWidth:plan.layoutWidth,naturalHeight:plan.layoutHeight,visibleWidth:plan.availableWidth,visibleHeight:plan.availableHeight,atTitle};
+  status={active,mode:active?'desktop':'flow',tabletPortrait,...plan,scale:1,naturalWidth:plan.layoutWidth,naturalHeight:plan.layoutHeight,visibleWidth:plan.availableWidth,visibleHeight:plan.availableHeight,atTitle};
 }
 function refresh(){if(!root||destroyed)return;if(!initialized)start();if(!pending)pending=raf(update);}
 function start(){
@@ -136,6 +148,7 @@ function start(){
   media=global.matchMedia?.('(hover: hover) and (pointer: fine)');coarseMedia=global.matchMedia?.('(any-pointer: coarse)');
   mountLedger();
   listen(media,'change',refresh);listen(coarseMedia,'change',refresh);listen(global,'resize',refresh);listen(global,'orientationchange',refresh);listen(global.visualViewport,'resize',refresh);listen(global.visualViewport,'scroll',refresh);listen(doc,'focusin',refresh);listen(doc,'focusout',refresh);listen(doc,'visibilitychange',refresh);listen(doc,'fullscreenchange',refresh);
+  listen(global.screen?.orientation,'change',refresh);
   if(global.ResizeObserver){resizeObserver=new global.ResizeObserver(refresh);for(const node of doc.querySelectorAll('#announcement-bar,.topbar'))resizeObserver.observe(node);}
   if(global.MutationObserver){mutationObserver=new global.MutationObserver(records=>{
     if(records.some(record=>{
@@ -161,14 +174,14 @@ function start(){
   doc.fonts?.ready?.then(refresh).catch(()=>{});refresh();
 }
 function destroy(){
-  destroyed=true;if(pending)caf(pending);pending=0;for(const remove of listeners)remove();listeners=[];resizeObserver?.disconnect();mutationObserver?.disconnect();root?.classList.remove('sengoku-desktop-fit');root?.classList.remove('sengoku-compact-input');root?.classList.remove('sengoku-short-viewport');
+  destroyed=true;if(pending)caf(pending);pending=0;for(const remove of listeners)remove();listeners=[];resizeObserver?.disconnect();mutationObserver?.disconnect();root?.classList.remove('sengoku-desktop-fit');root?.classList.remove('sengoku-tablet-portrait');root?.classList.remove('sengoku-compact-input');root?.classList.remove('sengoku-short-viewport');
   if(ledgerButton){balances.hidden=false;ledgerButton.remove();if(groupLabel===null)ledgerActions.removeAttribute('aria-label');else ledgerActions.setAttribute('aria-label',groupLabel);ledgerButton=null;}
   for(const node of doc?.querySelectorAll?.('#app,.launch-card,dialog[data-desktop-scale]')||[])clearLegacyGeometry(node);
   if(root)setVar('--touch-header-height','0px');
   if(root)setVar('--touch-announcement-height','0px');
-  status={active:false,mode:'flow',scale:1};
+  status={active:false,mode:'flow',tabletPortrait:false,scale:1};
 }
-const api={refresh,getStatus:()=>({...status}),destroy,computeFit,planViewport,desktopMode};
+const api={refresh,getStatus:()=>({...status}),destroy,computeFit,planViewport,desktopMode,tabletPortraitMode};
 global.SengokuDesktopFit=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;
 if(doc){if(doc.readyState==='loading')doc.addEventListener('DOMContentLoaded',start,{once:true});else start();}
 })(typeof window!=='undefined'?window:globalThis);
