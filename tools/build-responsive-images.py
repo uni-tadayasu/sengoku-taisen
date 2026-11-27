@@ -43,6 +43,13 @@ if __name__ == '__main__':
     variants('castle-town', 'castle-town.webp', (400, 720, 1080, 1536))
     # The largest standard-town variant also serves as the fallback and master.
     variants('castle-town-raden', 'responsive/castle-town-raden-1536.webp', (400, 720, 1080), quality=73)
+    # The original four scenes supply one time of day for each appearance.
+    for theme, original in (('castle-town-raden', 'night'), ('moonlit-castle', 'night'),
+                            ('sakura-town', 'day'), ('snow-town', 'morning')):
+        for phase in ('morning', 'day', 'night'):
+            if phase != original:
+                name = f'{theme}-{phase}'
+                variants(name, f'responsive/{name}-1536.webp', (400, 720, 1080), quality=73)
     variants('moonlit-castle', 'premium/moonlit-castle-v1.png', (400, 720, 1080, 1536))
     variants('sakura-town', 'premium/sakura-town-v1.webp', (400, 720, 1080, 1536))
     variants('snow-town', 'premium/snow-town-v1.webp', (400, 720, 1080, 1536))

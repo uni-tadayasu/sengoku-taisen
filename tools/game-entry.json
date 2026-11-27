@@ -153,6 +153,7 @@
     "alliance-icon.js",
     "voice.js",
     "public-profile.js",
+    "operator-template-launcher.js",
     "social-chat.js",
     "social.js",
     "letters.js",

@@ -41,8 +41,14 @@ const vm=require('node:vm');
     const installRequests=requests.length,installBytes=[...stored.values()].reduce((sum,n)=>sum+n,0);
     const brandEdition=/-(\d{8}(?:-[a-z]+)?)\.png$/.exec(JSON.parse(await readFile(path.join(root,'site-metadata.json'),'utf8')).favicon.path)[1];
     const chapters=['war','town','archive'];
-    const installedArt=['neon-command-raden-480',...chapters.map(name=>name+'-jade-240'),'brand-'+brandEdition+'-48','emblem-'+brandEdition+'-96'];
-    assert.deepEqual([...stored.keys()].filter(key=>key.startsWith(scope+'assets/')).sort(),installedArt.map(stem=>scope+'assets/responsive/'+stem+'.webp').sort(),'Install only the six compact illustrations');
+    const compactTowns=[
+      'castle-town-raden','castle-town-raden-morning','castle-town-raden-day',
+      'moonlit-castle','moonlit-castle-morning','moonlit-castle-day',
+      'sakura-town','sakura-town-morning','sakura-town-night',
+      'snow-town','snow-town-day','snow-town-night'
+    ];
+    const installedArt=['neon-command-raden-480',...chapters.map(name=>name+'-jade-240'),'brand-'+brandEdition+'-48','emblem-'+brandEdition+'-96',...compactTowns.map(stem=>stem+'-400')];
+    assert.deepEqual([...stored.keys()].filter(key=>key.startsWith(scope+'assets/')).sort(),installedArt.map(stem=>scope+'assets/responsive/'+stem+'.webp').sort(),'Install compact entry illustrations and the twelve compact time-of-day panoramas');
     const home=await (await emit('fetch',request('./','navigate'))).text();
     const scripts=[...home.matchAll(/(?:src|href)="([^"]+\.(?:js|css)(?:\?[^"]*)?)"/g)].map(m=>m[1].replaceAll('&amp;','&'));
     for(const file of scripts)assert((await (await emit('fetch',request(file))).arrayBuffer()).byteLength>100);
@@ -69,6 +75,8 @@ const vm=require('node:vm');
       await matchesCompact('assets/chronicle/'+stem+'.webp',stem+'-240');
       await matchesCompact('assets/responsive/'+name+'-panel-640.webp',stem+'-240');
     }
+    for(const stem of compactTowns)await matchesCompact('assets/responsive/'+stem+'-1080.webp',stem+'-400');
+    for(const skin of ['moonlit-castle','sakura-town','snow-town'])await matchesCompact('assets/premium/'+skin+'-v1.webp',skin+'-400');
     await matchesCompact('assets/responsive/brand-'+brandEdition+'-144.webp','brand-'+brandEdition+'-48');
     await matchesCompact('assets/responsive/emblem-'+brandEdition+'-192.webp','emblem-'+brandEdition+'-96');
     assert.equal((await emit('fetch',request('assets/responsive/other-panel-900.webp'))).type,'error');

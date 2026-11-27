@@ -9,6 +9,17 @@
     <ttl>60</ttl>
     <atom:link href="https://www.kasai-solutions-inc.com/news/feed.xml" rel="self" type="application/rss+xml"/>
     <item>
+      <title>Ver.5.9.13｜朝・昼・夜の城下町と運営用の文書テンプレート100件</title>
+      <link>https://www.kasai-solutions-inc.com/news/#v5-9-13</link>
+      <guid isPermaLink="true">https://www.kasai-solutions-inc.com/news/#v5-9-13</guid>
+      <dc:date>2026-11-27</dc:date>
+      <description>城下町の風景が端末の時刻に合わせて変わります。運営は各メッセージの入力画面から文書を選び、日時・宛名・本文を整えて送信できます。
+
+朝・昼・夜の城下町：午前5時に朝、正午に昼、午後6時に夜の風景へ切り替わります。標準・月夜・桜・雪の各外観に対応し、BGMを消音中でも城下町に時刻が反映されます。
+
+運営用の文書テンプレート100件：御触書、システム便、書状、チャット、朝廷や同盟の連絡画面から使えます。分類や検索で文書を探し、見本を確認してから件名・本文を下書きに反映できます。</description>
+    </item>
+    <item>
       <title>Ver.5.9.12｜琴・鼓・鈴と電子音で、操作と結果を耳でも判別できるように</title>
       <link>https://www.kasai-solutions-inc.com/news/#v5-9-12</link>
       <guid isPermaLink="true">https://www.kasai-solutions-inc.com/news/#v5-9-12</guid>
