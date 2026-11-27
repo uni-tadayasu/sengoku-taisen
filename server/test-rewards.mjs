@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
 import {createHmac} from 'node:crypto';
+import {readFileSync} from 'node:fs';
 import {harness,syncFieldWriter} from './test-support.mjs';
 import {GameEngine,GAME_OFFICERS} from './game-runtime.js';
 import {rewardCalendar,protectRewardSync} from './rewards.js';
 
 // Only local signed Stripe fixtures and transactional in-memory SQLite.
+const publishedVersion=JSON.parse(readFileSync(new URL('../package.json',import.meta.url),'utf8')).version;
 const SECRET='whsec_rewards_local_fixture_not_a_real_secret';
 const API_VERSION='2026-09-30.endive',DAY=86400000;
 const PASS={id:'reroll-pass-30d',amount:480,mode:'payment',link:'plink_reroll_fixture',price:'price_reroll_fixture',product:'prod_reroll_fixture',url:'https://buy.stripe.com/fixtureReroll30'};
@@ -44,7 +46,7 @@ const originalFetch=globalThis.fetch;globalThis.fetch=async()=>{externalRequests
 async function scope(name,run){const h=harness();h.now=Date.UTC(2026,10,27,3);Object.assign(h.env,{STRIPE_WEBHOOK_SECRET:SECRET,SENGOKU_PREMIUM_ENABLED:'true',SENGOKU_STRIPE_PORTAL_URL:'https://billing.stripe.com/p/login/fixtureRewards123',SENGOKU_REROLL_PAYMENT_LINK_ID:PASS.link,SENGOKU_REROLL_PAYMENT_LINK_URL:PASS.url,SENGOKU_REROLL_PRICE_ID:PASS.price,SENGOKU_REROLL_PRODUCT_ID:PASS.product});h.sql.prepare('UPDATE premium_reward_program SET starts_at=?').run(h.now-1000);try{await run(h);passed++;console.log('PASS '+name);}catch(error){failed++;console.error('FAIL '+name);console.error(error);}finally{calls+=h.calls;h.close();}}
 try{
 await scope('health requires the reward migration and authentication/strict request shapes protect rewards',async h=>{
-  const health=(await h.api('/health')).data;assert.equal(health.version,'5.10.0');for(const key of ['serverSummons','loginRewards','paidRerolls','supporterChoices'])assert.equal(health.features[key],true);
+  const health=(await h.api('/health')).data;assert.equal(health.version,publishedVersion);for(const key of ['serverSummons','loginRewards','paidRerolls','supporterChoices'])assert.equal(health.features[key],true);
   for(const path of ['/rewards','/gacha/draw','/rewards/login'])await h.api(path,{method:path==='/rewards'?'GET':'POST',body:path==='/rewards'?undefined:{},expected:401});
   const a=await player(h);await action(h,a,'/gacha/draw',{count:1,day:'2000-01-01'},400);await action(h,a,'/rewards/login',{amount:999},400);
   h.sql.exec('DROP TABLE premium_daily_events');await h.api('/health',{expected:503});
