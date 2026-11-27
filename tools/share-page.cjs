@@ -11,7 +11,7 @@ function renderSharePage({ site, metadataHtml, jsonLd, iconHtml, header, footer,
   const asset = name => `../${name}?v=${release}`;
   const campaignURL = (source, medium, content) => invitationURL(site, 'share', source, medium, content);
   const invitePresets = [
-    {id:'social', label:'SNSで紹介', source:'share_text', text:'城下町を育て、武将を率いる「戦国VS」。位階による兵糧増産を追加。従八位+2%〜正一位+32%、購入不要。PC・スマホで基本プレイ無料、インストール不要。'},
+    {id:'social', label:'SNSで紹介', source:'share_text', xText:'城を育て、武将を率いて天下へ。「戦国VS」は基本プレイ無料の戦国ブラウザゲーム。PC・スマホでインストール不要。領主を登録すれば同盟や交易も楽しめます。', text:'城下町を育て、武将を編成して次の一城へ。「戦国VS」は基本プレイ無料の戦国ブラウザゲーム。PC・スマホ・タブレット対応、インストール不要。ひとりのCPU戦役は登録なしで始められ、領主を登録すれば同盟・世界チャット・交易も楽しめます。'},
     {id:'friend', label:'友だちを誘う', source:'friend', xText:'一緒に一城から始めてみませんか？城下町を育て、武将を率いる「戦国VS」。PC・スマホで基本プレイ無料、インストール不要。ひとりのCPU戦役から試せます。', text:'城下町を育てて、武将を率いて天下を目指す「戦国VS」。一緒に一城から始めてみませんか？PC・スマホのブラウザで基本プレイ無料。まずは「端末だけで遊ぶ」で試せて、領主登録後は同盟や交易も楽しめます。'},
     {id:'discord', label:'Discordに紹介', source:'discord', xText:'城下町を育て、武将を編成して攻城戦へ。「戦国VS」はPC・スマホで遊べる基本プレイ無料のブラウザ戦略ゲーム。領主登録後は同盟や交易も楽しめます。', text:'【ゲーム紹介】戦国ブラウザゲーム「戦国VS」。内政・武将編成・攻城戦を楽しめます。PC・スマホ・タブレット対応、基本プレイ無料。個人戦役はCPU戦、領主登録後は同盟や交易も利用できます。\n有料の外観アイテム・月額支援・武将再抽選パスは任意です。遊び方・ゲーム画面はこちら。'}
   ];
@@ -63,28 +63,25 @@ function renderSharePage({ site, metadataHtml, jsonLd, iconHtml, header, footer,
         <p class="eyebrow">公式ゲーム紹介</p>
         <h1 id="page-title">戦国VS</h1>
         <p class="share-tagline">${esc(site.tagline || '一城の志が、天下を動かす。')}</p>
-        <p class="hero-lead">好きな城を選び、町を育て、武将を率いて次の一城へ。内政・軍団編成・攻城戦を楽しむ、日本語の戦国戦略シミュレーションです。軍師の助言を読み、自分の采配で領国を広げていきます。</p>
+        <p class="hero-lead">好きな城を選び、町を育て、武将を率いて次の一城へ。ひとりでCPU勢力との戦役を進めるほか、領主を登録して同盟や交易を楽しめる、日本語の戦国戦略シミュレーションです。</p>
         <div class="hero-actions"><a class="action-link" href="../">基本プレイ無料で始める</a><a class="text-link" href="#jade-trailer">日本語・英語の紹介動画を見る</a></div>
         <p class="discovery-availability"><span class="availability-item">基本プレイ無料</span><span class="availability-divider" aria-hidden="true">/</span><span class="availability-item">インストール不要</span></p>
         <p class="share-platform">PC・スマホ・タブレットのブラウザに対応。<br>任意の外観・月額支援・武将再抽選パスがあります。<a href="#before-you-play">始める前のQ&amp;A</a></p>
       </div>
     </section>
 
-    <nav class="promotion-section-nav" aria-label="戦国VSの紹介を探す"><a href="#game-screens">ゲーム画面</a><a href="#first-castle">始め方</a><a href="#share-journey-title">できること</a><a href="#share">友だちに紹介</a></nav>
+    <nav class="promotion-section-nav" aria-label="戦国VSの紹介を探す"><a href="#game-screens">ゲーム画面</a><a href="#first-castle">始め方</a><a href="#play-together">仲間と遊ぶ</a><a href="#share">友だちに紹介</a></nav>
 
     <nav class="folio-index" aria-label="収録内容から探す">
       <a href="../about/#collection"><strong>256</strong><span>人の武将</span></a>
       <a href="../guide/#maps"><strong>129</strong><span>の城と拠点</span></a>
       <a href="../guide/#construction"><strong>64</strong><span>種類の城下町施設</span></a>
     </nav>
-    <section class="discovery-opening" aria-labelledby="discovery-opening-title">
-      <div><p class="section-kicker">遊び方を選ぶ</p><h2 id="discovery-opening-title">ひとりの戦役も、領主との交流も。</h2></div>
-      <p>個人の戦役では、天下地図のCPU勢力と城を争います。領主を登録すると、共通フィールドでの対人戦、同盟、書状、交易へ。初めてなら「端末だけで遊ぶ」から、一城を育てるところから始められます。</p>
-    </section>
     <section id="first-castle" class="promotion-first-castle" aria-labelledby="first-castle-title"><div class="promotion-section-heading"><div><p class="section-kicker">はじめての方へ</p><h2 id="first-castle-title">最初の一歩は、城を選ぶだけ。</h2></div><a href="../guide/#first-steps">詳しい遊び方を読む</a></div><ol class="promotion-first-steps"><li><span>本拠を選ぶ</span><p>「城を選んで始める」で好きな一城へ。ひとりで試すなら「端末だけで遊ぶ」を選べます。</p></li><li><span>町と軍団を整える</span><p>田畑や商家を育て、武将を編成。迷ったら「次の一手」で、今できる準備を確認します。</p></li><li><span>次の城へ出陣する</span><p>天下地図で隣の城を選び、軍師の助言を読んで出陣。まずはCPU勢力との戦役から。</p></li></ol></section>
-    <section class="discovery-opening" aria-labelledby="share-latest-update-title">
-      <div><p class="section-kicker">Ver.${esc(latestRelease.version)} · ${esc(latestRelease.date)}</p><h2 id="share-latest-update-title">${esc(latestRelease.title)}</h2></div>
-      <p>${esc(latestRelease.summary)} <a href="../news/#${esc(releaseId(latestRelease))}">今回の更新を読む</a> · <a href="../guide/#player-evaluation">位階と兵糧の加算率</a></p>
+    ${renderScreenshots(p)}
+    <section id="play-together" class="discovery-opening" aria-labelledby="discovery-opening-title">
+      <div><p class="section-kicker">仲間と遊ぶには</p><h2 id="discovery-opening-title">領主を登録して、世界の広場へ。</h2></div>
+      <p>ゲームの「交流」で「初めての方：新しく領主を登録する」を開き、領主名を入力して「新しい領主で接続」を選びます。登録後は「世界」で会話し、「同盟」の一覧から参加、または自分の同盟を創設できます。ひとりで試すときは、登録なしの「端末だけで遊ぶ」も選べます。<a href="../guide/#community">同盟・チャットの遊び方を読む</a></p>
     </section>
     <section class="promotion-trailer" id="jade-trailer" aria-labelledby="jade-trailer-title">
       <div class="promotion-trailer-copy">
@@ -93,7 +90,6 @@ function renderSharePage({ site, metadataHtml, jsonLd, iconHtml, header, footer,
         <p class="promotion-trailer-note" id="intro-video">YouTubeでも、<a href="${esc(trailer.url)}">絵巻で見る戦国VS（24秒）</a>と<a href="${esc(firstSteps.url)}">はじめての3手（36秒）</a>を視聴できます。</p>
       </div>${jadePlayer(p.file, 'ja')}
     </section>
-    ${renderScreenshots(p)}
     <section class="share-journey" aria-labelledby="share-journey-title">
       <div class="share-section-heading"><p class="section-kicker">育てる・備える・進む</p><h2 id="share-journey-title">戦国VSでできること</h2></div>
       <ol class="share-feature-list">
@@ -128,6 +124,11 @@ function renderSharePage({ site, metadataHtml, jsonLd, iconHtml, header, footer,
         <section><h3>戦略ゲームが初めてでも始められますか？</h3><div><p>城下町の「次の一手」やメニューの「ヒント」で、今の領国に合う行動と理由を確認できます。軍師AIは戦況を比べ、出陣前の戦法や兵数を提案します。まずは田畑・商家と軍団を整えてみましょう。</p><a class="share-detail-link" href="../guide/#next-hints">ヒントと準備の進め方を読む</a></div></section>
         <section><h3>PCとスマホで続きを遊べますか？</h3><div><p>領主を登録・連携すれば、同じ領主の進行を端末間で同期できます。新しい端末では接続コードや統合バックアップで引き継ぎます。操作する端末は同時に1台です。</p><a class="share-detail-link" href="../guide/data-recovery/">データの引き継ぎ・復元方法を読む</a></div></section>
       </div>
+    </section>
+
+    <section class="discovery-opening" aria-labelledby="share-latest-update-title">
+      <div><p class="section-kicker">Ver.${esc(latestRelease.version)} · ${esc(latestRelease.date)}</p><h2 id="share-latest-update-title">${esc(latestRelease.title)}</h2></div>
+      <p>${esc(latestRelease.summary)} <a href="../news/#${esc(releaseId(latestRelease))}">今回の更新を読む</a> · <a href="../news/">これまでの更新を見る</a></p>
     </section>
 
     <section id="share" class="promotion-panel" aria-labelledby="share-title" data-share-url="${esc(nativeURL)}" data-share-title="戦国VS｜一城から、天下へ。" data-share-text="${esc(shareText)}">
