@@ -25,7 +25,7 @@ CREST = BRANDING / 'sengoku-vs-icon-192-20261127-jade.png'
 # Framing follows the subject of the illustration. The caption has a consistent
 # left margin while right-hand detail remains visible in small timeline previews.
 CARDS = (
-    ('ogp', 'responsive/neon-command-1536.webp', '一城から、天下へ。', .32),
+    ('ogp', 'responsive/neon-command-raden-1536.webp', '一城から、天下へ。', .32),
     ('guide', 'chronicle/war-jade.webp', '攻略ガイド', .50),
     ('recovery', 'chronicle/archive-jade.webp', '引き継ぎ・復元', .50),
     ('about', 'chronicle/court-jade.webp', '作品概要', .50),
@@ -102,7 +102,8 @@ def draw_card(source, caption, focus):
 
 def main():
     for key, source, caption, focus in CARDS:
-        path = BRANDING / f'sengoku-vs-{key}-{EDITION}.jpg'
+        edition = 'v5911' if key == 'ogp' else EDITION
+        path = BRANDING / f'sengoku-vs-{key}-{edition}.jpg'
         card = draw_card(source, caption, focus)
         card.save(path, format='JPEG', quality=82, optimize=True, progressive=True, subsampling=2)
         print(f'{key}: {path.relative_to(ROOT)} ({path.stat().st_size:,} bytes)')

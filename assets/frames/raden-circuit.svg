@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 54" fill="none">
+  <defs>
+    <linearGradient id="shell" x2="1" y2=".3">
+      <stop stop-color="#5ce1cb"/><stop offset=".38" stop-color="#a5f6e6"/>
+      <stop offset=".55" stop-color="#c6aadc"/><stop offset=".76" stop-color="#83d6d0"/><stop offset="1" stop-color="#e8c178"/>
+    </linearGradient>
+  </defs>
+  <g stroke="url(#shell)" stroke-width="1.4" stroke-linejoin="round">
+    <path d="M2 27h44l8-8h38l10 8h37m42 0h43l14-14h59l11-8h10M2 34h44l8-8h21l14 14h32l18-13m42 0 16 16h45l12-12h58"/>
+    <path d="M58 9h30l10 10h27l12-12h9m28 0h34l10 10h16M228 46h20l9-9h24"/>
+  </g>
+  <g stroke="#ddbd83" stroke-linejoin="round">
+    <path d="m160 3 21 12v24l-21 12-21-12V15Z"/><path d="m160 9 15 9v18l-15 9-15-9V18Z"/>
+    <path d="m160 9 15 27h-30Zm15 9-15 27-15-27Zm-15-9v36m-15-27 30 18m-30 0 30-18"/>
+  </g>
+  <g fill="#b3f5da" stroke="#122833" stroke-width=".8">
+    <circle cx="3" cy="27" r="2.4"/><circle cx="58" cy="9" r="2.4"/><circle cx="75" cy="26" r="2"/>
+    <circle cx="102" cy="27" r="2"/><circle cx="139" cy="27" r="2.8"/><circle cx="181" cy="27" r="2.8"/>
+    <circle cx="228" cy="46" r="2.4"/><circle cx="281" cy="37" r="2.4"/><circle cx="312" cy="31" r="2.4"/>
+    <circle cx="318" cy="5" r="2"/><circle cx="160" cy="27" r="3"/>
+  </g>
+</svg>

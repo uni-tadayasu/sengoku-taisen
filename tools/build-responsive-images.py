@@ -41,6 +41,8 @@ if __name__ == '__main__':
     # Brand and emblem variants are built by build-brand-icons.py. Its small
     # favicon design omits fine details; do not overwrite it by shrinking art.
     variants('castle-town', 'castle-town.webp', (400, 720, 1080, 1536))
+    # The largest standard-town variant also serves as the fallback and master.
+    variants('castle-town-raden', 'responsive/castle-town-raden-1536.webp', (400, 720, 1080), quality=73)
     variants('moonlit-castle', 'premium/moonlit-castle-v1.png', (400, 720, 1080, 1536))
     variants('sakura-town', 'premium/sakura-town-v1.webp', (400, 720, 1080, 1536))
     variants('snow-town', 'premium/snow-town-v1.webp', (400, 720, 1080, 1536))

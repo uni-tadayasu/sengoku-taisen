@@ -2,7 +2,7 @@
 
 // Public editorial material only. No account, analytics or posting action runs here.
 const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-const { trailer, firstSteps, jadeTrailer, jadePlayer } = require('./promotion-content.cjs');
+const { captureManifest, screenCaptures, trailer, firstSteps, jadeTrailer, jadePlayer } = require('./promotion-content.cjs');
 const copy = {
   "short": "戦国VSは、城下町を育て、256人の武将を編成し、城をめぐる合戦を楽しむ戦国ブラウザゲーム。軍師の助言を読み、一城から天下統一へ。PC・スマホ・タブレットで、インストールせず基本プレイ無料で始められます。",
   "standard": "戦国VSは、内政・武将編成・攻城戦を楽しむ基本プレイ無料の戦国戦略シミュレーションです。124の開始候補から一城を選び、田畑や商家を育てて領国の力を蓄えます。256人の武将、129の城と拠点、64種類の施設を収録。個人の戦役ではCPU勢力と戦い、領主を登録すると同盟・書状・交易などの交流にも参加できます。軍師AIが戦況に合う準備や戦法を提案。PC・スマホ・タブレットのブラウザで遊べます。有料商品は外観アイテムと月額支援で、戦力を優遇する特典はありません。",
@@ -29,8 +29,8 @@ function renderPressContent(p, { section, table, site }) {
     ['プレミアム', site.pages.premium.socialImage]
   ];
   const screenshots = [
-    ['town', '城下町', '名古屋城の城下町。施設と本拠の状況が見える実ゲーム画面'],
-    ['map', '天下地図', '東海地方の城と地形、選択した城の情報が見える実ゲーム画面'],
+    ['town', '城下町', '螺鈿の灯る清洲城の城下町。施設と本拠の状況が見える実ゲーム画面'],
+    ['map', '天下地図', '日本の城と地形、選択した城の情報が見える実ゲーム画面'],
     ['officers', '武将名鑑', '所持武将の肖像・能力・任命先を確認する実ゲーム画面'],
     ['title', 'タイトル', '戦国VSのタイトルと開始ボタンが見える実ゲーム画面']
   ];
@@ -60,10 +60,10 @@ function renderPressContent(p, { section, table, site }) {
     section('press-media', '画像・ロゴ・動画', '掲載に使える公式素材', `
       <p>作品紹介の際は、作品名<strong>「戦国VS」</strong>、公式URL<strong>${esc(origin)}/</strong>、<strong>© KASAI SOLUTIONS</strong>を添えてください。人物・地図・家紋など第三者資料の出典は、<a href="${esc(p.dir('about'))}">作品概要と制作資料</a>で確認できます。</p>
       <h3>実際のゲーム画面</h3>
-      <p>撮影用デモ進行を使用した実ゲーム画面です。城下町は5.1.0の名古屋城で、公開御触書を表示しています。城下町・天下地図・武将名鑑・タイトルの4枚を用意しました。各画像は1363×936pxのJPEGです。</p>
+      <p>戦国VS Ver.${captureManifest.release}を、清洲城の撮影用デモ進行でプレイした実際の画面です。城下町・天下地図・武将名鑑・タイトルの4枚を用意しました。各画像は${screenCaptures.title.width}×${screenCaptures.title.height}pxのJPEGです。</p>
       <ul class="press-media-grid press-screenshot-grid">${screenshots.map(([key, label, alt]) => {
-        const path = `assets/promo/screenshots/sengoku-vs-${key}-20261126.jpg`;
-        return `<li><figure><img src="${esc(p.file(path))}" alt="${esc(alt)}" width="1363" height="936" loading="lazy" decoding="async"><figcaption><strong>${esc(label)}</strong><span>撮影用デモ進行の実画面 · JPEG</span></figcaption></figure>${link(path, `${label}の実画面を保存（JPEG）`)}</li>`;
+        const {path, width, height} = screenCaptures[key];
+        return `<li><figure><img src="${esc(p.file(path))}" alt="${esc(alt)}" width="${width}" height="${height}" loading="lazy" decoding="async"><figcaption><strong>${esc(label)}</strong><span>撮影用デモ進行の実画面 · JPEG</span></figcaption></figure>${link(path, `${label}の実画面を保存（JPEG）`)}</li>`;
       }).join('')}</ul>
       <h3>共有用画像</h3>
       <p>5種類とも1200×630pxのJPEGです。イラストを用いた紹介画像で、ゲームの操作画面を撮影したスクリーンショットとは異なります。</p>

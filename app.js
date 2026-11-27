@@ -815,10 +815,10 @@
     return {action:`<button type="button" class="button gold town-castle-level-up" id="home-castle-level-up" data-action="upgrade-castle" data-id="${esc(id)}" data-home-upgrade="true" aria-label="${esc(c.name)}の城郭をLv.${c.level+1}へ強化する" aria-describedby="home-castle-upgrade-cost home-castle-upgrade-hint">${icon('plus')}<span>レベルUP<small>Lv.${c.level+1}へ</small></span></button>`,detail:`<div class="town-castle-upgrade-detail" id="home-castle-upgrade-cost"><small class="town-castle-upgrade-label">城郭の${shared?'共同普請':'強化'}費用 · 指令1回</small>${costHtml(cost)}<p class="town-castle-upgrade-note" id="home-castle-upgrade-hint">${esc(homeCastleUpgradeHint(id))}</p></div>`};
   }
   function premiumTownProduct(){const id=window.SengokuPremiumRuntime?.getAppearance?.().town;const product=window.SengokuPremiumCatalog?.getProduct?.(id);return product?.slot==='town'?product:null;}
-  function premiumTownImage(){return premiumTownProduct()?.art?.src||'assets/castle-town.webp?v=4.9.10-20261123';}
-  function premiumTownDescription(){return premiumTownProduct()?.art?.alt||'山々と川、城郭、田畑や商家まで見渡せる城下町の全景';}
+  function premiumTownImage(){return premiumTownProduct()?.art?.src||'assets/responsive/castle-town-raden-1536.webp';}
+  function premiumTownDescription(){return premiumTownProduct()?.art?.alt||'翡翠色に光る屋根と橋、朱提灯の商家を見渡す、月夜の城下町';}
   function townSceneSources(src){
-    const name=src.includes('sakura-town')?'sakura-town':src.includes('snow-town')?'snow-town':src.includes('moonlit')?'moonlit-castle':'castle-town';
+    const name=src.includes('sakura-town')?'sakura-town':src.includes('snow-town')?'snow-town':src.includes('moonlit')?'moonlit-castle':'castle-town-raden';
     return [400,720,1080,1536].map(width=>`assets/responsive/${name}-${width}.webp ${width}w`).join(', ');
   }
   function premiumTownBanner(){const id=window.SengokuPremiumRuntime?.getAppearance?.().nameplate,product=window.SengokuPremiumCatalog?.getProduct?.(id);return product?.slot==='nameplate'?'<img src="'+esc(product.art.src)+'" alt="'+esc(product.name)+'" width="'+product.art.width+'" height="'+product.art.height+'" decoding="async" draggable="false">':'';}

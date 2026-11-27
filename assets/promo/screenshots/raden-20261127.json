@@ -1,0 +1,40 @@
+{
+  "date": "2026-11-27",
+  "release": "5.9.11",
+  "source": "Direct browser captures of the released game interface with local demo progress at Kiyosu Castle.",
+  "editing": "No compositing. JPEG captures of the game viewport.",
+  "files": [
+    {
+      "key": "title",
+      "path": "assets/promo/screenshots/sengoku-vs-title-20261127-raden.jpg",
+      "width": 1440,
+      "height": 900,
+      "bytes": 289542,
+      "sha256": "4494f4ba38ffd3d9683aacceb1f3d4085f3192a598acfcf71f432385dab31775"
+    },
+    {
+      "key": "town",
+      "path": "assets/promo/screenshots/sengoku-vs-town-20261127-raden.jpg",
+      "width": 1440,
+      "height": 900,
+      "bytes": 309480,
+      "sha256": "1918fd7fa2fa24d1226d87677611730cb85b4ff66c67dcaf76cd84c828983c4b"
+    },
+    {
+      "key": "officers",
+      "path": "assets/promo/screenshots/sengoku-vs-officers-20261127-raden.jpg",
+      "width": 1440,
+      "height": 900,
+      "bytes": 239445,
+      "sha256": "abf623ac55a7a1116df44acb09fe16945a827a449e881d48675f270c740f0853"
+    },
+    {
+      "key": "map",
+      "path": "assets/promo/screenshots/sengoku-vs-map-20261127-raden.jpg",
+      "width": 1440,
+      "height": 900,
+      "bytes": 205598,
+      "sha256": "dcd6248139966dc3c9438534de9d67dfb1aa0fc74035dda2b4fc92b05b40b82e"
+    }
+  ]
+}

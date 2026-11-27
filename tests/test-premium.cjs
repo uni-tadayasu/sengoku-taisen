@@ -140,9 +140,20 @@ test('the public page renders real artwork and game entry links, without direct 
   const ui = createUI({ document: doc, catalog, runtime: { getContext() { throw Error('Public page must not read account state'); } } });
   ui.mount(section); const preview = section.querySelector('[data-premium-catalog]');
   preview.dispatch('click', preview.querySelector('[data-premium-preview="gold-banner"]'));
-  assert.equal(preview.getAttribute('data-premium-selected'), 'gold-banner'); assert.equal(preview.querySelector('[data-premium-landscape]').getAttribute('src'), '../assets/castle-town.webp?v=4.9.10-20261123');
-  preview.dispatch('click', preview.querySelector('[data-premium-preview="moonlit-castle"]'));
-  assert.equal(preview.querySelector('[data-premium-landscape]').getAttribute('src'), '../assets/premium/moonlit-castle-v1.webp'); ui.dispose();
+  const landscape = preview.querySelector('[data-premium-landscape]');
+  assert.equal(preview.getAttribute('data-premium-selected'), 'gold-banner');
+  assert.equal(landscape.getAttribute('src'), '../assets/responsive/castle-town-raden-1536.webp');
+  assert.match(landscape.getAttribute('alt'), /翡翠/);
+  for (const width of [400,720,1080,1536]) {
+    assert(landscape.getAttribute('srcset').includes(`castle-town-raden-${width}.webp ${width}w`));
+  }
+  for (const product of catalog.getProducts().filter(item => item.slot === 'town')) {
+    preview.dispatch('click', preview.querySelector(`[data-premium-preview="${product.id}"]`));
+    assert.equal(landscape.getAttribute('src'), '../' + product.art.src);
+    assert.equal(landscape.getAttribute('alt'), product.art.alt);
+    assert(landscape.getAttribute('srcset').includes(`${product.id}-400.webp 400w`));
+  }
+  ui.dispose();
 });
 
 test('all five new previews use their actual asset and category filters keep every item reachable', () => {

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
   <url><loc>https://www.kasai-solutions-inc.com/</loc>
-    <image:image><image:loc>https://www.kasai-solutions-inc.com/assets/responsive/neon-command-1536.webp</image:loc></image:image>
+    <image:image><image:loc>https://www.kasai-solutions-inc.com/assets/responsive/neon-command-raden-1536.webp</image:loc></image:image>
     <image:image><image:loc>https://www.kasai-solutions-inc.com/assets/chronicle/war-jade.webp</image:loc></image:image>
     <image:image><image:loc>https://www.kasai-solutions-inc.com/assets/chronicle/town-jade.webp</image:loc></image:image>
     <image:image><image:loc>https://www.kasai-solutions-inc.com/assets/chronicle/archive-jade.webp</image:loc></image:image>
@@ -34,8 +34,8 @@
   </url>
   <url><loc>https://www.kasai-solutions-inc.com/en/</loc>
     <image:image><image:loc>https://www.kasai-solutions-inc.com/assets/chronicle/war-jade.webp</image:loc></image:image>
-    <image:image><image:loc>https://www.kasai-solutions-inc.com/assets/promo/screenshots/sengoku-vs-town-20261126.jpg</image:loc></image:image>
-    <image:image><image:loc>https://www.kasai-solutions-inc.com/assets/promo/screenshots/sengoku-vs-officers-20261126.jpg</image:loc></image:image>
-    <image:image><image:loc>https://www.kasai-solutions-inc.com/assets/promo/screenshots/sengoku-vs-map-20261126.jpg</image:loc></image:image>
+    <image:image><image:loc>https://www.kasai-solutions-inc.com/assets/promo/screenshots/sengoku-vs-town-20261127-raden.jpg</image:loc></image:image>
+    <image:image><image:loc>https://www.kasai-solutions-inc.com/assets/promo/screenshots/sengoku-vs-officers-20261127-raden.jpg</image:loc></image:image>
+    <image:image><image:loc>https://www.kasai-solutions-inc.com/assets/promo/screenshots/sengoku-vs-map-20261127-raden.jpg</image:loc></image:image>
   </url>
 </urlset>

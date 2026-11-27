@@ -58,16 +58,20 @@ function videoSchema(site) {
   };
 }
 
+const captureManifest = require('../assets/promo/screenshots/raden-20261127.json');
+const screenCaptures = Object.fromEntries(captureManifest.files.map(file => [file.key, file]));
+
 function renderScreenshots(p) {
   const shots = [
-    ['town', '城下町', '育てた町の姿と、領国のいまを一望。', '名古屋城の城下町。施設と本拠の状況を表示した実ゲーム画面'],
-    ['map', '天下地図', '山河の向こうへ、次の一城を選ぶ。', '東海地方の城と地形、選択した城の情報を表示した実ゲーム画面'],
+    ['town', '城下町', '育てた町の姿と、領国のいまを一望。', '螺鈿の灯る清洲城の城下町。施設と本拠の状況を表示した実ゲーム画面'],
+    ['map', '天下地図', '山河の向こうへ、次の一城を選ぶ。', '日本の城と地形、選択した城の情報を表示した実ゲーム画面'],
     ['officers', '武将名鑑', '能力と役目を見比べ、采配を決める。', '武将の肖像と能力、任命先を表示した実ゲーム画面']
   ];
   return `<section id="game-screens" class="promotion-screens" aria-labelledby="game-screens-title"><div class="promotion-section-heading"><div><p class="section-kicker">実際のゲーム画面</p><h2 id="game-screens-title">この画面から、天下を目指す。</h2></div><a href="${esc(p.dir('press'))}#press-media">紹介用の素材を見る</a></div><div class="promotion-screen-grid">${shots.map(([key, title, description, alt]) => {
-    const path = p.file(`assets/promo/screenshots/sengoku-vs-${key}-20261126.jpg`);
-    return `<figure><a href="${esc(path)}" target="_blank" rel="noopener noreferrer" aria-label="${esc(title)}の画面を大きく見る（新しいタブ）"><img src="${esc(path)}" width="1363" height="936" alt="${esc(alt)}" loading="lazy" decoding="async"></a><figcaption><h3>${esc(title)}</h3><p>${esc(description)}</p><a href="${esc(path)}" target="_blank" rel="noopener noreferrer">画面を大きく見る</a></figcaption></figure>`;
-  }).join('')}</div><p class="promotion-screens-note">2026年11月26日に撮影用デモ進行を使用した実ゲーム画面です。城下町は5.1.0の名古屋城で、公開御触書を表示しています。画面の表示は更新により変わる場合があります。</p></section>`;
+    const capture = screenCaptures[key];
+    const path = p.file(capture.path);
+    return `<figure><a href="${esc(path)}" target="_blank" rel="noopener noreferrer" aria-label="${esc(title)}の画面を大きく見る（新しいタブ）"><img src="${esc(path)}" width="${capture.width}" height="${capture.height}" alt="${esc(alt)}" loading="lazy" decoding="async"></a><figcaption><h3>${esc(title)}</h3><p>${esc(description)}</p><a href="${esc(path)}" target="_blank" rel="noopener noreferrer">画面を大きく見る</a></figcaption></figure>`;
+  }).join('')}</div><p class="promotion-screens-note">戦国VS Ver.${captureManifest.release}を、清洲城の撮影用デモ進行でプレイした実際の画面です。</p></section>`;
 }
 
 // Invitation destinations come only from the site's build metadata; game URLs
@@ -78,4 +82,4 @@ function invitationURL(site, page, source, medium = 'referral', content = 'socia
   return url.href;
 }
 
-module.exports = { invitationURL, trailer, firstSteps, jadeTrailer, jadePlayer, videoSchema, renderScreenshots };
+module.exports = { captureManifest, screenCaptures, invitationURL, trailer, firstSteps, jadeTrailer, jadePlayer, videoSchema, renderScreenshots };

@@ -4,8 +4,8 @@
   "name": "戦国VS",
   "alternateName": "SENGOKU VS",
   "publisher": "KASAI SOLUTIONS",
-  "release": "5.9.10-20261127",
-  "version": "5.9.10",
+  "release": "5.9.11-20261127",
+  "version": "5.9.11",
   "dateModified": "2026-11-27",
   "language": "ja",
   "locale": "ja_JP",
@@ -15,11 +15,11 @@
     "軍師とともに、天下統一を目指す戦国戦略ゲーム。"
   ],
   "ogImage": {
-    "path": "assets/branding/sengoku-vs-ogp-20261127.jpg",
+    "path": "assets/branding/sengoku-vs-ogp-v5911.jpg",
     "type": "image/jpeg",
     "width": 1200,
     "height": 630,
-    "alt": "「戦国VS 一城から、天下へ。」と天守紋。月夜の城下を背に、金の軍扇を持つ女武将が立つ"
+    "alt": "「戦国VS 一城から、天下へ。」と天守紋。螺鈿の三つ巴が輝く天守と、青緑の軍扇を構える女武将"
   },
   "logo": {
     "path": "assets/branding/sengoku-vs-icon-512-20261127-jade.png",
@@ -79,8 +79,8 @@
       "description": "戦国VS公式。城下町の内政、武将編成、城をめぐる合戦を楽しむ戦国戦略シミュレーション。軍師AIの助言、同盟・交易、端末間の引き継ぎに対応。PC・スマホ・タブレットで、インストールせず基本プレイ無料で始められます。",
       "dateModified": "2026-11-27",
       "artwork": {
-        "path": "assets/responsive/neon-command-1536.webp",
-        "alt": "月夜の天守と朱の軍旗を背に、翡翠色に光る甲冑をまとい金の軍扇を持つ女武将",
+        "path": "assets/responsive/neon-command-raden-1536.webp",
+        "alt": "螺鈿の三つ巴が光る天守の前で、黒漆の甲冑をまとった女武将が青緑の軍扇を構える",
         "width": 1536,
         "height": 1024
       },
@@ -225,16 +225,16 @@
         "height": 500
       },
       "socialImage": {
-        "path": "assets/branding/sengoku-vs-ogp-20261127.jpg",
+        "path": "assets/branding/sengoku-vs-ogp-v5911.jpg",
         "type": "image/jpeg",
         "width": 1200,
         "height": 630,
-        "alt": "A commander holds a gold fan above a moonlit castle town, beside the Sengoku VS title and its gold castle crest."
+        "alt": "A samurai commander carries a turquoise fan before a castle and an illuminated mother-of-pearl tomoe crest, with the Sengoku VS title."
       },
       "additionalImages": [
-        "assets/promo/screenshots/sengoku-vs-town-20261126.jpg",
-        "assets/promo/screenshots/sengoku-vs-officers-20261126.jpg",
-        "assets/promo/screenshots/sengoku-vs-map-20261126.jpg"
+        "assets/promo/screenshots/sengoku-vs-town-20261127-raden.jpg",
+        "assets/promo/screenshots/sengoku-vs-officers-20261127-raden.jpg",
+        "assets/promo/screenshots/sengoku-vs-map-20261127-raden.jpg"
       ]
     }
   },
@@ -247,6 +247,6 @@
     "path": "assets/branding/sengoku-vs-pinned-tab-20261127-jade.svg",
     "color": "#c7a35b"
   },
-  "themeColor": "#131b22",
-  "backgroundColor": "#131b22"
+  "themeColor": "#0c1524",
+  "backgroundColor": "#0c1524"
 }

@@ -1,0 +1,49 @@
+/* Light travels along the shell inlay on entry. A stroke on the existing
+   clipped input layer acknowledges each tap without moving its hit target. */
+@keyframes raden-edge {
+  from { background-position: -80% 0; opacity: 0; }
+  22% { opacity: 1; }
+  to { background-position: 180% 0; opacity: 0; }
+}
+@keyframes raden-blade {
+  from { transform: translateX(-120%) skewX(-23deg); opacity: 0; }
+  25% { opacity: .86; }
+  to { transform: translateX(390%) skewX(-23deg); opacity: 0; }
+}
+@keyframes raden-imprint {
+  from { scale: 1.18; rotate: -7deg; opacity: .35; }
+  60% { scale: .95; rotate: 1deg; opacity: 1; }
+  to { scale: 1; rotate: 0deg; opacity: 1; }
+}
+@media (prefers-reduced-motion:no-preference) and (forced-colors:none) and (prefers-contrast:no-preference) {
+  html[data-presentation-motion="standard"][data-cyber-fx="full"] {
+    --raden-edge-light: linear-gradient(95deg,transparent,#6edbc1 29%,#fff3b9 45%,#82f9de 52%,#9aa5dc 71%,transparent);
+  }
+  /* The class on body changes only when arriving at or leaving the title.
+     An open dialog also has a stable shell while its live contents update. */
+  html[data-presentation-motion="standard"][data-cyber-fx="full"] body.at-title #launch-screen .edition-wordmark img,
+  html[data-presentation-motion="standard"][data-cyber-fx="full"] #app.chronicle-shell [data-chronicle-entry] :is(.chapter-symbol,.scene-label i) {
+    animation: raden-imprint 290ms cubic-bezier(.2,.7,.3,1) both;
+  }
+  :where(html[data-presentation-motion="standard"][data-cyber-fx="full"] [data-chronicle-entry]) { position: relative; }
+  html[data-presentation-motion="standard"][data-cyber-fx="full"] :is(#app.chronicle-shell #main [data-chronicle-entry],dialog[open]:not(#game-loading))::after {
+    content: ""; position: absolute; inset: 0 0 auto; z-index: 2;
+    height: 3px; pointer-events: none; border: 0;
+    background: var(--raden-edge-light) -80% 0 / 42% 100% no-repeat;
+    animation: raden-edge 390ms cubic-bezier(.18,.7,.27,1) both;
+  }
+  html[data-presentation-motion="standard"][data-cyber-fx="full"] .ui-motion-clip::after {
+    content: ""; position: absolute; inset: 0 auto 0 0; width: 34%; pointer-events: none;
+    background: linear-gradient(90deg,transparent 25%,#92e9de52 51%,#fff3bdba 57%,#aaf2dc75 62%,transparent 88%);
+    animation: raden-blade 345ms cubic-bezier(.24,.68,.3,1) both;
+  }
+  /* The small vermilion double diamond belongs to the press overlay only.
+     The pressed facility, officer portrait or map marker stays stationary. */
+  html[data-presentation-motion="standard"][data-cyber-fx="full"] .ui-motion-clip[data-raden-seal]::before {
+    content: ""; position: absolute; top: 3px; right: 3px; width: 12px; aspect-ratio: 1;
+    pointer-events: none; border: 1px solid #ffc5a0; border-radius: 2px;
+    background: repeating-conic-gradient(from 45deg,#b44437 0 25%,#ffe0b7 0 50%) center / 7px 7px;
+    box-shadow: 0 0 0 1px #923a32;
+    animation: raden-imprint 220ms ease-out both;
+  }
+}

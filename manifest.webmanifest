@@ -7,8 +7,8 @@
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
-  "background_color": "#131b22",
-  "theme_color": "#131b22",
+  "background_color": "#0c1524",
+  "theme_color": "#0c1524",
   "icons": [
     {
       "src": "assets/branding/sengoku-vs-icon-192-20261127-jade.png",
