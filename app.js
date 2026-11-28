@@ -1797,7 +1797,7 @@
     return musicStarting||music?.playing?'読込中':'再生待機';
   }
   function removeMusicGesture(){
-    for(const type of ['pointerdown','click','keydown'])document.removeEventListener(type,trustedGestureMusic,true);
+    for(const type of ['click','keydown'])document.removeEventListener(type,trustedGestureMusic,true);
     musicGestureAvailable=false;
   }
   function broadcastMusicNotice(){const active=music?.broadcast||musicBroadcastState;return active?.enabled?'全体BGMの配信中です（'+(active.mode==='continuous'?'連続再生':'ループ再生')+'）。曲の選択は配信終了後に戻ります。停止・音量はいつでも変更できます。':'';}
@@ -1860,7 +1860,6 @@
   function trustedGestureMusic(event){
     if(event.isTrusted!==true||!musicGestureAvailable||!settings.sound||!settings.volume||voiceAudioActive||document.hidden)return;
     if(!musicWaitingForGesture&&!musicStarting&&!music?.resuming)return;
-    if(event.type==='pointerdown'&&event.pointerType&&event.pointerType!=='mouse')return;
     if(event.type==='keydown'&&(event.repeat||event.isComposing||event.ctrlKey||event.metaKey||event.altKey||['Shift','Control','Alt','Meta','Escape'].includes(event.key)))return;
     if(event.target?.closest?.('[data-action="sound"],[data-action="sound-settings"],[data-action="music-stop"],[data-action="play-track"],[data-action="music-auto"],[data-action="music-resume"],[data-sound-preview],.settings-effects-preview,#volume,input[type="range"]'))return;
     removeMusicGesture();void requestMusicPlayback();
@@ -1879,7 +1878,10 @@
   function startMusic(){
     if(musicStarted)return;musicStarted=true;refreshMusicPlayback();
     if(!settings.sound||!settings.volume)return;
-    for(const type of ['pointerdown','click','keydown'])document.addEventListener(type,trustedGestureMusic,true);
+    // A completed click or key press starts blocked BGM. Updating the BGM
+    // controls during a mouse press could move the title's start button out
+    // from under the pointer on short windows, so that first click was lost.
+    for(const type of ['click','keydown'])document.addEventListener(type,trustedGestureMusic,true);
     return requestMusicPlayback();
   }
   function syncMusic(){

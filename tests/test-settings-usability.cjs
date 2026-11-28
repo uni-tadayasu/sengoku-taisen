@@ -191,6 +191,18 @@ async function test(name, run) { await run(); passed++; console.log('PASS ' + na
     assert.match(f.doc.querySelector('[data-action="sound-settings"]').textContent,/再生中/);
     assert.equal(f.doc.querySelector('[data-action="music-resume"]').hidden,true);assert.equal(f.storage.get(saveKey),f.savedGame);
   });
+  await test('blocked BGM waits for a completed click, so a mouse press never moves the button being clicked', async () => {
+    const f=fixture({preferences:{sound:true,volume:44}});let attempts=0;
+    const Music=f.c.SengokuMusic;f.c.SengokuMusic=class extends Music{async attemptPlayback(id){attempts++;if(attempts===1)return 'waiting';return super.attemptPlayback(id);}};
+    await f.c.startMusic();assert.equal(attempts,1);assert.equal(f.c.musicWaitingForGesture,true);
+    const start=f.doc.createElement('button');start.id='launch-enter';f.doc.body.append(start);
+    await f.dispatch('pointerdown',start,{isTrusted:true,pointerType:'mouse'});
+    await f.dispatch('mousedown',start,{isTrusted:true});
+    assert.equal(attempts,1,'a press alone must not restyle the BGM controls under the pointer');assert.equal(f.c.musicWaitingForGesture,true);
+    await f.dispatch('click',start,{isTrusted:true});
+    assert.equal(attempts,2,'the completed click starts the blocked BGM');assert.equal(f.c.musicWaitingForGesture,false);assert.equal(f.c.music.playing,true);
+    assert.equal(f.storage.get(saveKey),f.savedGame);
+  });
   await test('all save and utility actions keep their established routes and import/new-game remain review steps', async () => {
     const expected = {
       'export-complete-backup': [['complete-backup']], 'export-save': [['export-save']], 'export-sync-backup': [['export-sync-backup']],
