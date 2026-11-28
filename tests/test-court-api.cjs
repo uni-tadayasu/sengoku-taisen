@@ -6,18 +6,18 @@ const PLAYER='u_'+'1'.repeat(32),TOKEN='a'.repeat(64),THREAD='ca_'+'b'.repeat(32
 const payload={requestId:'00000000-0000-4000-8000-000000000001',text:'御所への言葉'};
 function deferred(){let resolve;const promise=new Promise(r=>resolve=r);return{promise,resolve};}
 function harness({guest=false,admin=false,staff=false}={}){
- const calls=[],authority=[],syncs=[];let transport=async()=>({data:{ok:true,self:{isCourtEmperor:false}}});
+ const calls=[],authority=[],syncs=[],writer={linked:true,ready:true,writable:false,revision:12},device={id:'device-one'};let transport=async()=>({data:{ok:true,self:{isCourtEmperor:false}}});
  const scope={console,URL,URLSearchParams,AbortController,Date,Intl,setTimeout,clearTimeout,
   document:{readyState:'loading',hidden:false,addEventListener(){},removeEventListener(){}},
   localStorage:{getItem:()=>null,setItem(){},removeItem(){}},SENGOKU_API_BASE:'https://fixture.invalid',
   SengokuBridge:{setRoleAccess(){},applyCourtAccess:(value,context)=>authority.push({value:copy(value),context:context?copy(context):null})},
-  SengokuCloudSync:{getStatus:()=>({linked:true,ready:true,writable:false}),refresh:async()=>{syncs.push(true);return{ok:true};}},
+  SengokuCloudSync:{getStatus:()=>writer,getDevice:()=>device,refresh:async()=>{syncs.push(true);return{ok:true};}},
   fetch:async(url,options)=>{calls.push({url,method:options.method,headers:copy(options.headers),body:options.body?JSON.parse(options.body):null});const response=await transport(url,options),status=response.status||200;return{ok:status>=200&&status<300,status,json:async()=>response.data};}
  };
  scope.window=scope;vm.createContext(scope);
  vm.runInContext(source.replace('global.SengokuSocial={open','global.__courtApiTest={s,changeIdentity(){authEpoch++;s.identity={id:"other-player",token:"b".repeat(64)};s.user={id:"other-player",name:"別の領主",isAdmin:false,isStaff:false};},changeRole(){privilegeEpoch++;s.user.isStaff=!s.user.isStaff;},pending(){accountEpoch++;s.accountAccessPending={};},hold(){recoveryHeld=true;},clear(){clearAdminData();}};global.SengokuSocial={open'),scope);
  const control=scope.__courtApiTest;if(!guest){control.s.identity={id:PLAYER,token:TOKEN};control.s.user={id:PLAYER,name:'参内領主',isAdmin:admin,isStaff:staff,evaluation:{score:999999,rankName:'正一位'}};}
- return{api:scope.SengokuSocial,control,calls,authority,syncs,setTransport:value=>transport=value};
+ return{api:scope.SengokuSocial,control,calls,authority,syncs,writer,device,setTransport:value=>transport=value};
 }
 const tests=[],test=(name,run)=>tests.push([name,run]);
 
@@ -155,6 +155,23 @@ test('a commit-time Regent revocation conflict removes cached event room authori
 });
 test('delayed private room results are discarded after account or staff-role changes',async()=>{
  for(const change of ['changeIdentity','changeRole','pending','hold']){const h=harness({staff:true}),pause=deferred();h.setTransport(()=>pause.promise);const request=h.api.courtEventRequest('/court/events');h.control[change]();pause.resolve({data:{ok:true,events:[{name:'非公開の下書き'}]}});await assert.rejects(request,error=>error.code==='STALE_IDENTITY');}
+});
+
+test('formal membership requires explicit confirmation and the current writer but receipt lookup is read-only',async()=>{
+ const h=harness(),data={requestId:'membership-request-one',deviceId:'device-one',expectedRevision:12,expectedHomeCastleId:'kiyosu',confirmed:true};
+ await h.api.courtRequest('/court/membership');await assert.rejects(h.api.courtRequest('/court/membership',{method:'POST',data}),error=>error.code==='LOCAL_WRITER_CHANGED');
+ h.writer.writable=true;await h.api.courtRequest('/court/membership',{method:'POST',data});assert.deepEqual(h.calls.at(-1).body,data);
+ h.writer.writable=false;h.writer.revision=20;await h.api.courtRequest('/court/membership?receipt=1',{method:'POST',data});assert.deepEqual(h.calls.at(-1).body,data);assert.equal(h.calls.at(-1).headers.Authorization,'Bearer '+TOKEN);await h.api.courtRequest('/court/membership',{method:'POST',data,recoverMembership:true});assert.deepEqual(h.calls.at(-1).body,data);
+});
+test('membership confirmation, exact keys and receipt routes reject malformed or unreviewed commands',async()=>{
+ const h=harness(),data={requestId:'membership-request-one',deviceId:'device-one',expectedRevision:12,expectedHomeCastleId:'kiyosu',confirmed:true};h.writer.writable=true;
+ for(const invalid of [{...data,confirmed:false},{...data,other:true},{...data,expectedRevision:-1},{...data,expectedHomeCastleId:'../kiyosu'}])await assert.rejects(h.api.courtRequest('/court/membership',{method:'POST',data:invalid}),error=>error.status===400);
+ for(const route of ['/court/membership?receipt=0','/court/membership?receipt=1&receipt=1','/court/membership?other=1'])await assert.rejects(h.api.courtRequest(route,{method:'POST',data}),error=>error.status===400);
+ await assert.rejects(h.api.courtRequest('/court/membership?receipt=1'),error=>error.status===400);assert.equal(h.calls.length,0);
+});
+test('an account change cannot apply a delayed formal-membership snapshot to the next player',async()=>{
+ const h=harness(),pause=deferred(),data={requestId:'membership-request-one',deviceId:'device-one',expectedRevision:12,expectedHomeCastleId:'kiyosu',confirmed:true};h.writer.writable=true;h.setTransport(()=>pause.promise);
+ const pending=h.api.courtRequest('/court/membership',{method:'POST',data});h.control.changeIdentity();pause.resolve({data:{ok:true,user:{id:PLAYER,isStaff:true},revision:13}});await assert.rejects(pending,error=>error.code==='STALE_IDENTITY');
 });
 
 (async()=>{for(const[name,run]of tests){await run();console.log('PASS '+name);}console.log(tests.length+' real social court transport checks passed. No live requests.');})().catch(error=>{console.error(error);process.exitCode=1;});

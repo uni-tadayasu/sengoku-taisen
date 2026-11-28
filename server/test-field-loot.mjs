@@ -53,16 +53,22 @@ try{
     assert.deepEqual(applyFieldVictoryLoot({...zero},{...zero},true),{loot:zero,capacityLimited:false});
     assert.equal(FIELD_LOOT_POLICY.assetCap,100000000);
   });
-  for(const kind of ['ordinary','capture','operator','staff','deputy','branch'])await scope(kind+' victory transfers half, protects unrelated assets and sends matching notices',async h=>{
+  for(const kind of ['ordinary','territory','capture','operator','staff','deputy','branch'])await scope(kind+' victory transfers half, protects unrelated assets and sends matching notices',async h=>{
     const admin=await fixture(h,'運営'+kind,{admin:true});
-    const d=kind==='operator'||kind==='branch'?admin:await fixture(h,'守備'+kind,{staff:kind==='staff',holdings:kind==='capture'?['nijo']:[]});
+    const d=kind==='operator'||kind==='branch'?admin:await fixture(h,'守備'+kind,{staff:kind==='staff',holdings:kind==='capture'?['nijo']:kind==='territory'?['azuchi']:[]});
     if(kind==='deputy'){
       const state=(await h.api('/admin/deputy',{token:admin.token})).data;
       await h.api('/admin/deputy',post(admin,{targetPlayerId:d.user.id,action:'appoint',requestId:crypto.randomUUID(),expectedRevision:state.revision}));
     }
-    const a=await fixture(h,'攻撃'+kind,{startCastle:'inuyama'}),castleId=kind==='capture'?'nijo':save(h,d).state.home,branchId=kind==='branch'?seedBranch(h,d):null;
+    const a=await fixture(h,'攻撃'+kind,{startCastle:'inuyama'}),castleId=kind==='capture'?'nijo':kind==='territory'?'azuchi':save(h,d).state.home,branchId=kind==='branch'?seedBranch(h,d):null;
     const sharedBefore=h.sql.prepare('SELECT * FROM staff_base').get(),body=request(h,a,d,castleId,branchId),oldDefender=save(h,d),oldRevision=row(h,d).revision;
     const r=await fight(h,a,d,body);assert(r.battle.won);verifyTransfer(h,a,d,r);
+    if(kind==='territory'){
+      assert.equal(r.battle.castleId,'azuchi');assert.equal(r.battle.battleMode,'raid');assert.equal(r.battle.capture.captured,false);
+      assert.equal(save(h,d).state.home,r.beforeD.home);assert.equal(save(h,a).state.home,r.beforeA.home);
+      assert.equal(save(h,d).state.castles.azuchi.owner,r.beforeD.castles.azuchi.owner,'An occupied ordinary territory uses the established raid rule');
+      assert.equal(save(h,d).state.castles[r.beforeD.home].troops,r.beforeD.castles[r.beforeD.home].troops,'The selected outpost, not the home garrison, defends');
+    }
     if(['operator','staff','deputy','branch'].includes(kind)){
       assert.deepEqual(r.battle.defenderLost,{troops:0,garrison:0});assert.equal(r.battle.capture.captured,false);
       assert.deepEqual(save(h,d).state.castles,r.beforeD.castles,'special-base troops and ownership keep ordinary time progression');

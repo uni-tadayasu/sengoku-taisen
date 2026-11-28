@@ -5,7 +5,7 @@
 (function(global){
 'use strict';
 const SPECIAL=new Set(['edo','kyoto_gosho','nijo','osaka','nagoya','kagoshima']);
-const TTL=30000,MAX_PAGES=20;
+const TTL=30000,MAX_PAGES=20,MAX_PAGE_TARGETS=12800;
 const validId=value=>typeof value==='string'&&/^[A-Za-z0-9_-]{1,150}$/.test(value);
 const validText=value=>typeof value==='string'&&value.trim().length>0&&value.length<=300;
 const clone=value=>value==null?value:JSON.parse(JSON.stringify(value));
@@ -19,7 +19,7 @@ function palace(value){
   return value?.castleId==='kyoto_gosho'&&validText(value.governmentName)&&validId(value.controller?.id)&&validText(value.controller.name)
     ?{governmentName:value.governmentName,controller:{id:value.controller.id,name:value.controller.name}}:null;
 }
-function emptySource(){return{records:new Map(),relationships:new Map(),loaded:false,failed:false,revision:-1,palace:null};}
+function emptySource(){return{records:new Map(),relationships:new Map(),loaded:false,failed:false,revision:-1,palace:null,includesTerritories:false};}
 function createController(initial={}){
   let options={...initial},stamp=null,identity={playerId:'',blocked:false},generation=0,inFlight=null,lastAttempt=-Infinity;
   let directory=emptySource(),field=emptySource(),lastSignature='';
@@ -31,7 +31,17 @@ function createController(initial={}){
     return{playerId,blocked,stamp:JSON.stringify([value.epoch??0,value.accountEpoch??0,value.privilegeEpoch??0,playerId,userId,value.pending===true,value.banned===true])};
   }
   function describeCurrent(id){
-    const source=SPECIAL.has(id)?field:directory,record=source.records.get(id),owners=clone(record?.owners||[]),stale=source.failed&&source.loaded;
+    const special=SPECIAL.has(id),home=directory.records.get(id),holding=field.records.get(id);
+    const homeOwners=special?[]:home?.owners||[],holdingOwners=holding?.owners||[];
+    // The residency ledger establishes the real home lord, while the public
+    // field establishes additional occupied holdings. Retainer home rows are
+    // deliberately excluded by readField; personal campaign factions cannot
+    // turn a vacant seat into an owner by themselves.
+    const combined=new Map(homeOwners.map(owner=>[owner.playerId,owner]));
+    for(const owner of holdingOwners)if(!combined.has(owner.playerId))combined.set(owner.playerId,owner);
+    const owners=clone([...combined.values()]);
+    const stale=special?field.failed&&field.loaded:Boolean(homeOwners.length&&directory.failed||holdingOwners.length&&field.failed);
+    const complete=special?field.loaded&&!field.failed:Boolean(home&&!directory.failed&&field.loaded&&!field.failed&&field.includesTerritories);
     const outdated=stale?'前回確認した情報です。最新の領主は未確認です。':'';
     if(id==='kyoto_gosho'){
       const control=field.palace,details=['京都御所は朝廷の役職者が共有する領地です。'];
@@ -40,15 +50,15 @@ function createController(initial={}){
       if(outdated)details.push(outdated);else if(field.failed)details.push('公開領主の最新情報は未確認です。');
       return{status:'shared',label:'朝廷の共同領地',relation:'shared',owners,detail:details.join(' '),stale};
     }
-    if(!record&&!(SPECIAL.has(id)&&field.loaded))return{status:'unknown',label:'領主未確認',relation:'unknown',owners:[],detail:source.failed?'公開領主を確認できません。次の更新で再確認します。':'公開領主の情報を確認しています。',stale:false};
-    if(!owners.length)return{status:'vacant',label:SPECIAL.has(id)?'公開領主なし':'空き拠点',relation:'vacant',owners:[],detail:outdated||'現在の公開領主は未入城です。',stale};
+    if(!owners.length&&!complete)return{status:'unknown',label:'領主未確認',relation:'unknown',owners:[],detail:(special?field.failed:directory.failed||field.failed)?'公開領主を確認できません。次の更新で再確認します。':'公開領主の情報を確認しています。',stale:false};
+    if(!owners.length)return{status:'vacant',label:special?'公開領主なし':'空き拠点',relation:'vacant',owners:[],detail:special?'現在の公開領主は未入城です。':'本拠の領主・公開された占領領主はいません。',stale};
     const multiple=owners.length>1,own=!multiple&&owners[0].playerId===identity.playerId;
-    // The residency ledger alone establishes ordinary-castle ownership.
-    // Diplomacy may only supplement that owner by the exact public player id.
+    // Diplomacy may only supplement a confirmed owner by exact player id.
     const allied=!multiple&&field.loaded&&!field.failed&&field.relationships.get(owners[0].playerId)==='allied';
     const relation=multiple?'shared':own?'self':allied?'ally':'other';
     const uncertainRelation=!own&&!multiple&&field.failed?'同盟関係は未確認です。':'';
-    return{status:multiple?'shared':'known',label:'領主 '+owners[0].name+(multiple?` ほか${owners.length-1}名`:''),relation,owners,detail:[multiple?`公開領主：${owners.map(owner=>owner.name).join('、')}`:`公開領主：${owners[0].name}`,outdated,uncertainRelation].filter(Boolean).join(' · '),stale};
+    const origin=special?[]:[homeOwners.length?`本拠の領主：${homeOwners.map(owner=>owner.name).join('、')}`:'',holdingOwners.length?`占領領主：${holdingOwners.map(owner=>owner.name).join('、')}`:'',!home||directory.failed?'本拠の最新情報は未確認です。':'',!field.loaded||field.failed||!field.includesTerritories?'占領領地の最新情報は未確認です。':''];
+    return{status:multiple?'shared':'known',label:'領主 '+owners[0].name+(multiple?` ほか${owners.length-1}名`:''),relation,owners,detail:[multiple?`公開領主：${owners.map(owner=>owner.name).join('、')}`:`公開領主：${owners[0].name}`,...origin,outdated,uncertainRelation].filter(Boolean).join(' · '),stale};
   }
   function signature(){
     const ids=[...new Set([...SPECIAL,...directory.records.keys(),...field.records.keys()])].sort();
@@ -80,7 +90,7 @@ function createController(initial={}){
   }
   async function readField(epoch,initialStamp){
     if(typeof options.requestField!=='function')throw Error('Missing public field reader');
-    const records=new Map(),relationships=new Map(),cursors=new Set();let cursor='',control=null;
+    const records=new Map(),relationships=new Map(),cursors=new Set();let cursor='',control=null,includesTerritories=true;
     const maxPages=Number.isSafeInteger(options.maxPages)?Math.max(1,Math.min(MAX_PAGES,options.maxPages)):MAX_PAGES;
     for(let page=0;page<maxPages;page++){
       if(!isCurrent(epoch,initialStamp))throw Error('Identity changed');
@@ -88,7 +98,8 @@ function createController(initial={}){
       if(!isCurrent(epoch,initialStamp))throw Error('Identity changed');
       // Legacy home-only rows cannot establish that every major-city holding
       // has been read. Require the server's complete target projection.
-      if(!value||value.ok===false||!Array.isArray(value.targets)||value.targets.length>1000)throw Error('Invalid public field');
+      if(!value||value.ok===false||!Array.isArray(value.targets)||value.targets.length>MAX_PAGE_TARGETS)throw Error('Invalid public field');
+      includesTerritories=includesTerritories&&value.ownersIncludeTerritories===true;
       control=palace(value.palaceControl)||control;
       for(const row of value.targets){
         const castleId=row?.targetCastleId||row?.homeCastleId;
@@ -97,7 +108,7 @@ function createController(initial={}){
         // disagree after a diplomacy change, prefer an unconfirmed alliance.
         const relation=row.relationship==='allied'?'allied':'other';
         relationships.set(row.playerId,relationships.has(row.playerId)&&relationships.get(row.playerId)!==relation?'other':relation);
-        if(!SPECIAL.has(castleId))continue;
+        if(!SPECIAL.has(castleId)&&row.holdingKind!=='territory')continue;
         const owner=person(row);if(!owner)throw Error('Unconfirmed public lord');
         const record=records.get(castleId)||{owners:[]};
         const existing=record.owners.findIndex(item=>item.playerId===owner.playerId);
@@ -108,7 +119,7 @@ function createController(initial={}){
       const next=value.nextCursor;
       if(next==null||next===''){
         for(const record of records.values())record.owners.sort((a,b)=>a.playerId<b.playerId?-1:a.playerId>b.playerId?1:0);
-        return{records,relationships,loaded:true,failed:false,revision:0,palace:control};
+        return{records,relationships,loaded:true,failed:false,revision:0,palace:control,includesTerritories};
       }
       if(!validId(next)||cursors.has(next))throw Error('Incomplete public field');
       cursors.add(next);cursor=next;

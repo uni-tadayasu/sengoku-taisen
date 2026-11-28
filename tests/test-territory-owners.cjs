@@ -5,7 +5,8 @@ const person=(playerId,name=playerId)=>({playerId,name,avatarVersion:null});
 const seat=(castleId,lord=null)=>({castleId,available:lord===null,lord});
 const directory=(castles=[],revision=1)=>({revision,castles});
 const target=(castleId,id,name=id,extra={})=>({...person(id,name),homeCastleId:castleId,targetCastleId:castleId,...extra});
-const page=(targets=[],nextCursor=null,extra={})=>({ok:true,targets,nextCursor,...extra});
+const page=(targets=[],nextCursor=null,extra={})=>({ok:true,targets,nextCursor,ownersIncludeTerritories:true,...extra});
+const occupied=(castleId,id,name=id,extra={})=>target(castleId,id,name,{homeCastleId:'home_'+id,holdingKind:'territory',...extra});
 const deferred=()=>{let resolve,reject;const promise=new Promise((yes,no)=>{resolve=yes;reject=no;});return{promise,resolve,reject};};
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
 let tests=0;
@@ -14,6 +15,32 @@ async function test(name,run){await run();tests++;console.log('PASS '+name);}
   await test('ordinary public seats never infer ownership from campaign factions, retainers, or field duplicates',async()=>{
     const view=createController({getContext:()=>({playerId:'retainer',user:{id:'retainer'},epoch:1}),loadDirectory:async()=>({...directory([seat('kiyosu',person('lord','現在の城主')),seat('inuyama')]),self:{role:'retainer',castleId:'kiyosu'}}),requestField:async()=>page([target('kiyosu','retainer','家臣'),target('inuyama','retainer','個人戦役では自領')])});
     await view.ensure();assert.equal(view.describe('kiyosu').label,'領主 現在の城主');assert.equal(view.describe('kiyosu').relation,'other');assert.equal(view.describe('inuyama').status,'vacant');assert.equal(view.describe('unfetched').status,'unknown');
+  });
+  await test('an empty home seat shows its published field occupier and combines distinct lords by player id',async()=>{
+    const view=createController({getContext:()=>({playerId:'occupier'}),loadDirectory:async()=>directory([seat('inuyama'),seat('kiyosu',person('home_lord','本拠の城主'))]),requestField:async()=>page([occupied('inuyama','occupier','占領した領主'),occupied('inuyama','occupier','占領した領主'),occupied('kiyosu','occupier','占領した領主'),occupied('kiyosu','home_lord','古い表示名')])});
+    assert((await view.ensure()).ok);
+    const one=view.describe('inuyama');assert.equal(one.status,'known');assert.equal(one.label,'領主 占領した領主');assert.equal(one.relation,'self');assert.equal(one.owners.length,1);assert.match(one.detail,/占領領主：占領した領主/);
+    const combined=view.describe('kiyosu');assert.equal(combined.status,'shared');assert.deepEqual(combined.owners.map(owner=>owner.playerId),['home_lord','occupier']);assert.equal(combined.owners[0].name,'本拠の城主');
+  });
+  await test('ordinary vacancies require both complete current sources, including every field page capability',async()=>{
+    for(const mode of ['offline','legacy','legacy-later-page','directory-offline']){
+      let reads=0;const view=createController({loadDirectory:async()=>{if(mode==='directory-offline')throw Error('offline');return directory([seat('inuyama')]);},requestField:async()=>{reads++;if(mode==='offline')throw Error('offline');return page([],mode==='legacy-later-page'&&reads===1?'next':null,{ownersIncludeTerritories:mode!=='legacy'&&!(mode==='legacy-later-page'&&reads===2)});}});
+      await view.ensure();assert.equal(view.describe('inuyama').status,'unknown',mode);
+    }
+    const ready=createController({loadDirectory:async()=>directory([seat('inuyama')]),requestField:async()=>page()});await ready.ensure();assert.equal(ready.describe('inuyama').status,'vacant');
+  });
+  await test('a failed field refresh retains an occupied castle and only a complete refresh makes it vacant',async()=>{
+    let mode='occupied';const view=createController({loadDirectory:async()=>directory([seat('inuyama')]),requestField:async()=>{if(mode==='offline')throw Error('offline');return page(mode==='occupied'?[occupied('inuyama','u_lord','占領領主')]:[]);}});
+    await view.ensure();mode='offline';await view.ensure({force:true});assert.equal(view.describe('inuyama').label,'領主 占領領主');assert.equal(view.describe('inuyama').stale,true);
+    mode='vacant';await view.ensure({force:true});assert.equal(view.describe('inuyama').status,'vacant');assert.equal(view.describe('inuyama').stale,false);
+  });
+  await test('a current occupied holding remains visible while the home seat reader is unavailable',async()=>{
+    const view=createController({loadDirectory:async()=>{throw Error('offline');},requestField:async()=>page([occupied('inuyama','u_lord','公開領主',{relationship:'allied'})])});await view.ensure();const info=view.describe('inuyama');assert.equal(info.status,'known');assert.equal(info.relation,'ally');assert.equal(info.stale,false);assert.match(info.detail,/本拠の最新情報は未確認/);
+  });
+  await test('a hundred-player page can contain over a thousand holdings while oversized pages stay unknown',async()=>{
+    const targets=[];for(let player=0;player<100;player++)for(let castle=0;castle<11;castle++)targets.push(occupied('castle_'+castle,'u_'+player));
+    const view=createController({loadDirectory:async()=>directory([seat('castle_10')]),requestField:async()=>page(targets)});assert((await view.ensure()).ok);assert.equal(view.describe('castle_10').owners.length,100);
+    const bounded=createController({loadDirectory:async()=>directory([seat('inuyama')]),requestField:async()=>page(Array(12801).fill(occupied('inuyama','u_lord')))});assert.equal((await bounded.ensure()).ok,false);assert.equal(bounded.describe('inuyama').status,'unknown');
   });
   await test('major-city pagination includes all owners, deduplicates players, and reports alliances',async()=>{
     const routes=[];const view=createController({getContext:()=>({playerId:'u_self'}),loadDirectory:async()=>directory(),requestField:async(route,options)=>{routes.push(route);assert.equal(options.method,'GET');return routes.length===1?page([target('osaka','u_self','自分'),target('nagoya','u_ally','同盟領主',{relationship:'allied'})],'u_cursor'):page([target('osaka','u_other','別の領主'),target('osaka','u_self','自分')]);}});

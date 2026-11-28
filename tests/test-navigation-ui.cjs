@@ -347,6 +347,23 @@ test('personal dock selections swap duplicate slots, persist and delegate exactl
   assert.deepEqual(next.calls, []);
 });
 
+test('the shared field stays in the compact dock across customization and legacy preferences', () => {
+  const storage = new Map([[preferenceKey, JSON.stringify({ dock: ['view:field', 'view:officers', 'view:army'] })]]);
+  const s = fixture({ touch: true, storage });
+  const field = s.get('[data-navigation-quick="view:field"]');
+  assert(field); assert.equal(s.doc.querySelectorAll('[data-navigation-quick="view:field"]').length, 1);
+  assert.deepEqual(s.api.getDock(), ['view:town', 'view:officers', 'view:army']);
+  assert.equal(s.api.setDockSlot(0, 'view:field'), false);
+  assert(s.api.setDockSlot(0, 'view:research'));
+  assert.equal(s.get('[data-navigation-quick="view:field"]'), field);
+  field.click(); s.drain();
+  assert.deepEqual(s.calls, ['view:field']); assert.equal(field.getAttribute('aria-current'), 'page');
+  assert(s.api.resetDock());
+  assert.equal(s.get('[data-navigation-quick="view:field"]'), field);
+  assert.deepEqual([...s.get('.navigation-quick-dock').children].map(node => node.getAttribute('data-navigation-quick')),
+    ['view:town', 'view:map', 'view:field', 'view:army', 'menu']);
+});
+
 test('dock uses only live canonical sources and rejects unavailable or external destinations', () => {
   const s = fixture(); s.api.open();
   for (const [slot,key] of [[-1,'view:map'],[3,'view:map'],[0,'help:guide'],[0,'action:delete-save'],[0,'action:staff-hidden']]) {

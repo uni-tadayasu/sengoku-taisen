@@ -4,6 +4,7 @@
   const PREFERENCE_KEY = 'sengoku-navigation-preferences-v1';
   const FAVORITE_LIMIT = 6, RECENT_LIMIT = 5;
   const DEFAULT_DOCK = ['view:town', 'view:map', 'view:army'];
+  const FIELD_DOCK_KEY = 'view:field';
   const PURPOSES = [
     ['develop', '城を育てる', '城と内政', ''],
     ['battle', '合戦へ出る', '合戦と天下', '戦い'],
@@ -19,7 +20,7 @@
     'view:research': ['城と内政', '技術を研究して国力を高める', 'けんきゅう 内政 育成 レベル上げ 資源 強化 技術'],
     'view:court': ['城と内政', '京都御所への参内と朝廷との交流', 'きょうと ごしょ 位階 朝廷 参内 貢献'],
     'view:map': ['合戦と天下', '注目城を登録し、城・支城の攻略を考える', '注目城 お気に入り 城を登録 再訪 ちず マップ 天下 統一 城攻め 支城 戦い CPU 軍師 ぐんし AI 予備兵 温存 残す 兵糧 外交 同盟 交渉'],
-    'view:field': ['合戦と天下', 'ほかの領主の本拠と対人戦', 'フィールド オンライン 対人 戦い PvP プレイヤー 領主 城'],
+    'view:field': ['合戦と天下', 'ほかの領主の本拠・占領領地と対人戦', 'フィールド 共通 オンライン 対人 戦い PvP プレイヤー 領主 城 占領 領地 所領'],
     'view:roaming': ['合戦と天下', '野良兵との合戦と報酬', 'のら 野良兵 NPC CPU 戦う 戦い 報酬 軍師 ぐんし AI'],
     'view:covert': ['合戦と天下', '派遣・偵察の進行と帰還を確認', 'はけん 偵察 部隊 兵士 迎撃 反撃 移動 移動時間 行軍 行軍中 時間 到着 到着時間 帰還 帰還中 帰還時間 帰城 帰り 帰って 援軍 駐屯 撤収'],
     'action:events': ['合戦と天下', '開催中のイベント・戦功・報酬', 'イベント 期間 合戦 戦い 関ヶ原 関ケ原 報酬 軍師 ぐんし AI'],
@@ -182,19 +183,19 @@
     favoritesRail.className = 'navigation-favorites-rail'; favoritesRail.hidden = true;
     favoritesRail.setAttribute('aria-label', 'お気に入りの機能');
     const dock = doc.createElement('div'); dock.className = 'navigation-quick-dock';
-    for (const [slot, [key, label]] of [['view:town', '城下町'], ['view:map', '天下地図'], ['view:army', '軍団編成'], ['menu', 'メニュー']].entries()) {
+    for (const [slot, key, label] of [[0, 'view:town', '城下町'], [1, 'view:map', '天下地図'], ['field', FIELD_DOCK_KEY, '共通フィールド'], [2, 'view:army', '軍団編成'], ['menu', 'menu', 'メニュー']]) {
       const button = doc.createElement('button'); button.type = 'button'; button.className = 'nav-item navigation-quick';
       button.setAttribute('data-navigation-quick', key);
       button.innerHTML = svg('menu') + '<span>' + label + '</span>';
       if (key === 'menu') { button.setAttribute('aria-haspopup', 'dialog'); button.setAttribute('aria-controls', 'navigation-dialog'); button.setAttribute('aria-expanded', 'false'); }
-      quickButtons.set(key === 'menu' ? 'menu' : slot, button); dock.appendChild(button);
+      quickButtons.set(slot, button); dock.appendChild(button);
     }
     dialog.id = 'navigation-dialog'; dialog.className = 'navigation-dialog'; dialog.setAttribute('aria-labelledby', 'navigation-title');
     dialog.innerHTML = '<header class="navigation-dialog-header"><div><h2 id="navigation-title">すべてのメニュー</h2><p class="navigation-current-location" id="navigation-current-location"></p></div><button type="button" class="navigation-close" data-navigation-close aria-label="メニューを閉じる">' + svg('close') + '</button></header>' +
       '<div class="navigation-search-row"><label class="navigation-search"><span class="social-sr-only">メニューを検索</span>' + svg('search') + '<input id="navigation-query" type="search" placeholder="機能名や目的で検索" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="go" aria-controls="navigation-results" aria-describedby="navigation-result-status"></label><button type="button" class="navigation-clear" data-navigation-clear aria-label="検索を消去">消去</button></div>' +
       '<div class="navigation-summary"><label class="navigation-category"><span class="social-sr-only">メニューの分類</span><select id="navigation-category" aria-controls="navigation-results"></select></label><button type="button" class="navigation-filter-reset" data-navigation-reset>全条件をクリア</button><p id="navigation-result-status" class="navigation-result-status" role="status" aria-live="polite"></p></div>' +
       '<div class="navigation-purpose-row" role="group" aria-label="目的から機能を探す">' + PURPOSES.map(([id,label]) => '<button type="button" data-navigation-purpose="' + id + '">' + label + '</button>').join('') + '</div>' +
-      '<details class="navigation-dock-editor"><summary>下のメニューをカスタマイズ</summary><div class="navigation-dock-settings"><p>スマホ・タブレットの下部に、よく使う機能を3つ置けます。</p><div class="navigation-dock-selects">' + DEFAULT_DOCK.map((_,slot) => '<label><span>左から' + (slot + 1) + '番目</span><select data-navigation-slot="' + slot + '" aria-label="下のメニュー 左から' + (slot + 1) + '番目"></select></label>').join('') + '</div><button type="button" class="navigation-dock-reset" data-navigation-reset-dock>初期配置に戻す</button></div></details>' +
+      '<details class="navigation-dock-editor"><summary>下のメニューをカスタマイズ</summary><div class="navigation-dock-settings"><p>共通フィールド・メニュー・交流に加え、よく使う機能を3つ置けます。</p><div class="navigation-dock-selects">' + DEFAULT_DOCK.map((_,slot) => '<label><span>左から' + (slot < 2 ? slot + 1 : slot + 2) + '番目</span><select data-navigation-slot="' + slot + '" aria-label="下のメニュー 左から' + (slot < 2 ? slot + 1 : slot + 2) + '番目"></select></label>').join('') + '</div><button type="button" class="navigation-dock-reset" data-navigation-reset-dock>初期配置に戻す</button></div></details>' +
       '<div id="navigation-results" class="navigation-results"></div>' +
       '<footer class="navigation-dialog-footer"><span class="navigation-keyboard-hint">↑ ↓ で選択 · Enter で開く</span><span class="navigation-keyboard-hint">Ctrl / ⌘ K · Esc で閉じる</span></footer>';
     const search = dialog.querySelector('#navigation-query'), results = dialog.querySelector('#navigation-results');
@@ -225,7 +226,7 @@
       } catch (_) { return false; }
     }
     function resolvedDock(current = entries) {
-      const allowed = new Set(current.filter(entry => entry.source).map(entry => entry.key));
+      const allowed = new Set(current.filter(entry => entry.source && entry.key !== FIELD_DOCK_KEY).map(entry => entry.key));
       const used = new Set();
       return dockKeys.map((key, index) => {
         const resolved = [key, DEFAULT_DOCK[index], ...DEFAULT_DOCK, ...allowed].find(value => allowed.has(value) && !used.has(value));
@@ -234,7 +235,7 @@
       });
     }
     function renderDockEditor() {
-      const options = entries.filter(entry => entry.source);
+      const options = entries.filter(entry => entry.source && entry.key !== FIELD_DOCK_KEY);
       const next = JSON.stringify(options.map(entry => [entry.key, entry.label, entry.disabled]));
       if (next !== dockOptionsSignature) {
         dockOptionsSignature = next;
@@ -247,7 +248,7 @@
     function setDockSlot(slot, key) {
       if (!initialized || unavailable() || !Number.isInteger(slot) || slot < 0 || slot >= DEFAULT_DOCK.length) return false;
       entries = collect();
-      if (!entries.some(entry => entry.key === key && entry.source && !entry.disabled)) return false;
+      if (key === FIELD_DOCK_KEY || !entries.some(entry => entry.key === key && entry.source && !entry.disabled)) return false;
       const next = resolvedDock(), previous = next[slot], occupied = next.indexOf(key);
       if (previous === key) return true;
       if (occupied !== -1) next[occupied] = previous;
@@ -463,7 +464,7 @@
       const resolved = resolvedDock();
       for (const [slot, button] of quickButtons) {
         if (slot === 'menu') continue;
-        const key = resolved[slot];
+        const key = slot === 'field' ? FIELD_DOCK_KEY : resolved[slot];
         setAttr(button, 'data-navigation-quick', key || 'unavailable');
         const entry = entries.find(entry => entry.key === key);
         button.disabled = !entry || entry.disabled;

@@ -75,6 +75,27 @@
   check(inputs.length===2&&inputs.every(r=>r===previous)&&svc.get('u').save.state.resources.gold===107,'retry preserves the lease, base revision and latest local actions');
   owner.sync.stop();
  }
+ // An outdated cycle projection must recover the canonical inherited region
+ // before it can replace territory or repeat a save with missing metadata.
+ {
+  const clock=new Clock(),svc=server(clock),owner=client(clock,svc,'regional');
+  await owner.start();
+  const remote=svc.get('regional');remote.save.state.cycle={index:1,home:'kiyosu',retainedRegions:['四国']};
+  remote.save.state.castles={okou:{owner:'織田家',level:7},yuzuki:{owner:'織田家',level:4}};remote.revision++;
+  await owner.sync.refresh();const revision=remote.revision,puts=svc.puts().length;
+  svc.intercept(async({route,opts,process})=>{
+   if(route==='/sync'&&opts.method==='PUT'&&!opts.data.save.state.cycle.retainedRegions)
+    throw Object.assign(Error('地域継承に対応した最新の進行へ同期してください。'),{code:'REGION_INHERITANCE_REQUIRED',status:409});
+   return process();
+  });
+  owner.mutate(s=>{delete s.cycle.retainedRegions;s.castles.okou.owner='長宗我部家';});
+  const result=await owner.sync.flush();
+  check(!result.ok&&result.conflict,'an incompatible inherited-region save enters canonical conflict recovery');
+  check(owner.state().cycle.retainedRegions[0]==='四国'&&owner.state().castles.okou.owner==='織田家','canonical recovery preserves inherited territory and castle growth');
+  check(owner.applied.at(-1).meta.reason==='conflict'&&owner.applied.at(-1).meta.backup,'outdated local progress is backed up before region recovery');
+  await owner.sync.flush();check(remote.revision===revision&&svc.puts().length===puts,'recovery does not upload the rejected territory reset again');
+  owner.sync.stop();
+ }
  // Initial upload, linked follower, debounce and timestamp/key-order stability.
  const clock=new Clock(),svc=server(clock),a=client(clock,svc),b=client(clock,svc);
  const starting=a.start();check(!a.sync.getStatus().writable&&!a.sync.getStatus().ready,'pending identity starts read-only');await starting;

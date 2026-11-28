@@ -1,4 +1,18 @@
+## Regional inheritance at world-cycle boundaries
+
+The shared engine retains every capturable castle in a fully conquered region at each world-cycle boundary, excluding Edo, Kyoto Gosho and Kagoshima from the completion requirement. Castle development, garrisons, durability and valid construction/branch state survive. Partial regions reset as before, and completion is checked anew at each boundary. Existing per-cycle receipts pay the usual territory reward exactly once, including inherited territory.
+
+The server preserves `state.cycle.retainedRegions`, rejects older clients that would erase that history with `REGION_INHERITANCE_REQUIRED`, and projects the same retained ownership through full/compact fields, evaluations, guild totals and metropolitan event defenders. Voluntary Kyoto admission clears inherited holdings and metadata. `features.regionalInheritance` advertises support. This feature needs no additional database migration; the shared `game-engine.js` must match the frontend engine. Run `node server/test-regional-inheritance.mjs` for API integration coverage.
+
 # 戦国VS（SENGOKU VS）― 交流・同期・共通時計サーバー
+
+## v5.23.0 京都御所への正式加入
+
+従五位（総合評価35,000点）以上の一般領主は、現在の拠点・占領領地の放棄を確認して京都御所へ正式加入できます。既存の参内、一般拠点のまま行う共同普請とは別の操作です。`GET /court` の `membership` は加入可否、`GET /court/membership` は確認対象の本拠・所領・保存番号、`POST /court/membership` は確認付きの正式加入を扱います。位階・端末・保存・所属の条件をサーバーでも再照合します。
+
+加入は、本人の名前・資源・勾玉・武将・育成を保ち、京都御所を本拠とする新しい戦役へ切り替えます。旧領地の城郭・駐留兵・支拠点と城郭／支拠点普請は引き継ぎません。旧城に家臣がいれば先着順で城主を継承し、いなければ空席にします。進軍・派遣・同盟部隊への参加中は加入できません。応答を失った場合は同一要求の再送または `?receipt=1` の受理照会で回復し、二重加入や二重報酬を防ぎます。京都御所の役職と共同機能を使えますが、運営・サブ運営の管理権限は与えません。
+
+配備時は `drizzle/0056_court_membership.sql` と更新済み journal を含めます。既存の京都御所メンバーの保存には変更しません。`node server/test-court-membership.mjs` は境界位階、明示確認、旧領地解放、本人資産の保持、家臣継承、同時送信、応答消失、誤った端末・保存、進軍中、BAN競合、原子的失敗を実サービスへのアクセスなしで検証します。
 
 ## v5.22.0 フィールド表示と取得処理の軽量化
 

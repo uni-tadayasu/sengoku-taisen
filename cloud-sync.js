@@ -479,7 +479,7 @@ function create(options={}){
     if(!suspended)scheduleSave();
     return{ok:false,pending:true};
    }
-   if(['REVISION_CONFLICT','LEASE_REQUIRED','CYCLE_SETTLEMENT_REQUIRED','CLOCK_REWIND','MAINTENANCE_REFRESH_REQUIRED','COURT_ESTATE_REFRESH_REQUIRED'].includes(error.code)){await recoverConflict(g);return{ok:false,conflict:true};}throw error;}
+   if(['REVISION_CONFLICT','LEASE_REQUIRED','CYCLE_SETTLEMENT_REQUIRED','REGION_INHERITANCE_REQUIRED','CLOCK_REWIND','MAINTENANCE_REFRESH_REQUIRED','COURT_ESTATE_REFRESH_REQUIRED'].includes(error.code)){await recoverConflict(g);return{ok:false,conflict:true};}throw error;}
   finally{finishUpkeep?.();}
  }
  async function refreshCore(g,{takeOver=false,settleCycle=false}={}){
@@ -536,7 +536,7 @@ function create(options={}){
  function acceptSnapshot(result,{reason='residency-admission'}={}){return enqueue(async g=>{if(!valid(g)||banned||!result?.user||String(result.user.id)!==String(session.id))return{ok:false};if(!Number.isSafeInteger(result.revision)||result.revision<0)throw Error('入城後の保存番号を確認できませんでした。');if(result.revision<revision)return{ok:true,superseded:true};
   // A background sync may already have applied this move and subsequently
   // observed a lease transfer or unsaved gameplay at the same save revision.
-  if(reason==='residency-relocation'&&initialized&&result.revision===revision){observeResidency(result);return{ok:true,superseded:true};}
+  if(['residency-relocation','court-membership'].includes(reason)&&initialized&&result.revision===revision){observeResidency(result);return{ok:true,superseded:true};}
   const ok=await snapshot(result,g,{force:true,reason});if(ok)schedulePoll();return{ok};});}
  return{start,stop,refresh,acceptSnapshot,observeBranchSnapshot,suspendAccount,invalidateAccountAccess,takeOver:()=>refresh({takeOver:true}),flush,notifySave,visibilityChanged,connectionChanged,pageHidden,setDeviceName,getStatus:()=>({...status}),getDevice:()=>({...device}),subscribe:fn=>{listeners.add(fn);fn({...status});return()=>listeners.delete(fn);}};
 }

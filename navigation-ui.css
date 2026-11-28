@@ -17,6 +17,22 @@ html.sengoku-desktop-fit #app .navigation-quick-dock { display: none !important;
 html.sengoku-navigation-ready:not(.sengoku-desktop-fit) #app #navigation { display: none; }
 html.sengoku-navigation-ready:not(.sengoku-desktop-fit) #app .sidebar-bottom > .nav-item { display: none !important; }
 html.sengoku-navigation-ready:not(.sengoku-desktop-fit) #app .navigation-quick-dock { display: contents; }
+/* Reserve the last column for the existing, separately mounted community
+   launcher. The field shortcut stays visible beside the three personal slots. */
+html.sengoku-navigation-ready:not(.sengoku-desktop-fit) {
+  --compact-dock-slot: calc((100% - var(--dock-gutter-left) - var(--dock-gutter-right) - 20px) / 6.6);
+}
+html.sengoku-navigation-ready:not(.sengoku-desktop-fit) #app.chronicle-shell .sidebar-bottom {
+  grid-template-columns: repeat(2,minmax(0,1fr)) minmax(0,1.6fr) repeat(3,minmax(0,1fr));
+  grid-template-rows: auto;
+  gap: 4px;
+}
+@media (max-width:700px) {
+  html.sengoku-navigation-ready:not(.sengoku-desktop-fit) {
+    --compact-dock-slot: calc((100% - var(--dock-gutter-left) - var(--dock-gutter-right) - 10px) / 6.6);
+  }
+  html.sengoku-navigation-ready:not(.sengoku-desktop-fit) #app.chronicle-shell .sidebar-bottom { gap: 2px; }
+}
 html.sengoku-navigation-ready:not(.sengoku-desktop-fit) #app .navigation-menu-trigger { flex-direction: row; width: 100%; margin-top: 6px; min-height: 48px; padding: 8px 12px; }
 html.sengoku-navigation-ready:not(.sengoku-desktop-fit) #app .navigation-trigger-copy { display: flex; flex-wrap: wrap; align-items: baseline; gap: 3px 12px; }
 html.sengoku-navigation-ready:not(.sengoku-desktop-fit) #app .navigation-trigger-copy b { font-size: 15px; }
