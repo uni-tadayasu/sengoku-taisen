@@ -32,7 +32,18 @@ try{
  await h.api('/admin/recover',{method:'POST',body:{key:privateText,requestId:crypto.randomUUID()},expected:500});assert.equal(JSON.parse(logs.at(-1)).schema,undefined);
  h.beforeStatement=null;const count=logs.length;
  await h.api('/admin/recover',{method:'POST',body:{key:privateText,requestId:crypto.randomUUID()},expected:403});assert.equal(logs.length,count,'expected authentication errors are not diagnostics');
+ await h.api('/admin/claim',{method:'POST',token:actor.token,body:{key:h.env.SENGOKU_ADMIN_KEY}});
+ h.beforeStatement=query=>{if(query.startsWith('SELECT json_array('))throw failure('D1_ERROR: too many terms in compound SELECT');};
+ for(const [path,body] of [
+  ['/admin/announcement',{text:privateText}],
+  ['/admin/mail',{target:'all',title:privateText,body:privateText,requestId:crypto.randomUUID()}],
+  ['/chat',{channel:'world',text:privateText}]
+ ]){
+  const result=await h.api(path,{method:'POST',token:actor.token,body,expected:500}),record=JSON.parse(logs.at(-1));
+  assert.equal(result.data.error.message,responseText);assert.equal(record.route,path);assert.equal(record.stage,'route');assert.equal(record.category,'database_limit');
+ }
+ h.beforeStatement=null;
  const output=logs.join('\n');for(const secret of [privateText,actor.token,actor.user.id,'診断専用の非公開名','private.invalid','INSERT INTO','SELECT ','Bearer'])assert(!output.includes(secret),'diagnostics must not contain '+secret.slice(0,12));
- assert.equal(logs.length,5);
+ assert.equal(logs.length,8);
  console.log('Internal diagnostic tests passed: route and decorator stages, bounded categories/schema identifiers, numeric source positions, private-value exclusion and unchanged public errors. No external requests.');
 }finally{console.error=originalError;h.close();}

@@ -100,6 +100,8 @@ jobs:
         run: node server/test-city-honors.mjs
       - name: Verify production error diagnostics preserve private data
         run: node server/test-internal-diagnostics.mjs
+      - name: Verify public messages against D1 compound SELECT limits
+        run: node server/test-message-d1-limits.mjs
       - name: Verify shared BGM authorization, revisions and retries
         run: node server/test-admin-music.mjs
       - name: Verify anonymous promotion counters and operator authorization

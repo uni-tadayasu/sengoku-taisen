@@ -30,7 +30,10 @@ function recipients(audience,senderId){
    // A public room also reaches offline players. Read at most one more than
    // the peer limit from the save index, never decode the whole population.
    const ordinary=`SELECT ps.user_id AS id FROM player_saves ps WHERE ps.user_id<>? AND ps.save_json IS NOT NULL AND ${active('ps.user_id')} AND ps.user_id NOT IN (SELECT id FROM (${publicOfficeHolders}) WHERE id IS NOT NULL) ORDER BY ps.user_id LIMIT ${PUBLIC_PEER_LIMIT+1}`;
-   return {sql:`${publicOfficeHolders} UNION SELECT id FROM (${ordinary})`,args:[senderId]};
+   // D1 permits five terms in one compound SELECT. Keep the five office
+   // sources together so adding ordinary readers and the sender below stays
+   // within that limit, while UNION still deduplicates overlapping roles.
+   return {sql:`SELECT id FROM (${publicOfficeHolders}) UNION SELECT id FROM (${ordinary})`,args:[senderId]};
   }
   default: throw new Error('Unknown message audience');
  }
