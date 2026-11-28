@@ -9,6 +9,21 @@
     <ttl>60</ttl>
     <atom:link href="https://www.kasai-solutions-inc.com/news/feed.xml" rel="self" type="application/rss+xml"/>
     <item>
+      <title>Ver.5.23.1｜PCのメニューとタイトルの操作性を改善</title>
+      <link>https://www.kasai-solutions-inc.com/news/#v5-23-1</link>
+      <guid isPermaLink="true">https://www.kasai-solutions-inc.com/news/#v5-23-1</guid>
+      <dc:date>2026-11-28</dc:date>
+      <description>ノートPCの画面でも左のメニューを見渡しやすくし、開いている画面の項目を自動で表示します。タイトルの「城を選んで始める」は、BGMの準備中でも最初のクリックで開始できます。
+
+ノートPCで左のメニューを広く表示：高さ960px以下のPC画面では、下部の「タイトルへ」「保存・設定」などを2列にまとめ、各画面への移動ボタンを広く表示します。1366×768では表示できる移動先が1項目から約4項目に増えます。
+
+開いている画面の項目へ自動で移動：地図や指揮台から別の画面へ移ったときも、左のメニューが現在の画面の項目を見える位置へ移動します。自分でメニューを動かしている間は、定期更新で位置を戻しません。
+
+最初のクリックで開始：一部のウィンドウの大きさでは、BGMの準備に合わせてタイトルの表示が動き、最初のクリックが受け付けられないことがありました。BGMはクリックの完了後に開始し、ボタンの位置を保ちます。
+
+表示と読み上げの調整：位階の紋章を現在のブランドアイコンに統一し、技術研究の段階表示を読み上げに対応しました。「すべてのメニュー」の見出しも1行で表示します。</description>
+    </item>
+    <item>
       <title>Ver.5.23.0｜制覇した地域を次の周回へ。京都御所への正式加入と占領領地への攻撃にも対応</title>
       <link>https://www.kasai-solutions-inc.com/news/#v5-23-0</link>
       <guid isPermaLink="true">https://www.kasai-solutions-inc.com/news/#v5-23-0</guid>
@@ -376,15 +391,6 @@ BANと分けて、拠点から追放：拠点からの追放を、BANによる�
       <description>位階の横に「右大臣」などの役職が重複して表示される問題を修正しました。
 
 役職情報の更新に対応：城下町や交流画面を開いてから役職の情報が届いた場合も、一人の領主につき現在の役職を一つ表示します。</description>
-    </item>
-    <item>
-      <title>Ver.5.9.14｜城下町を開いたときの初回表示を修正</title>
-      <link>https://www.kasai-solutions-inc.com/news/#v5-9-14</link>
-      <guid isPermaLink="true">https://www.kasai-solutions-inc.com/news/#v5-9-14</guid>
-      <dc:date>2026-11-27</dc:date>
-      <description>朝・昼・夜の城下町を開くと内政画面が空白になる問題を修正しました。
-
-現在の時間帯で城下町を表示：ゲームを開始したときや、他の画面から城下町に移ったときに、施設の配置と時間帯に応じた風景を表示します。</description>
     </item>
   </channel>
 </rss>
