@@ -1,6 +1,7 @@
 // A server-owned achievement ledger. Rights never come from imported booleans.
 // Government approval and political sovereignty never change account roles.
 import {GameEngine,GAME_OFFICERS} from './game-runtime.js';
+import {handleShogunateGovernance} from './shogunate-governance.js';
 const S=(db,sql,...args)=>db.prepare(sql).bind(...args),rows=r=>r?.results||[];
 export const SHOGUNATE_APPROVAL_WINDOW_MS=3*24*60*60*1000;
 const RIGHT_SELECT='SELECT r.*,a.status AS approval_status,a.requested_at,a.deadline_at,a.resolved_at FROM shogunate_rights r LEFT JOIN shogunate_approvals a ON a.right_id=r.id';
@@ -125,6 +126,7 @@ async function approve(ctx,body){
 export async function handleShogunate(ctx){
  const {db,user,path,method,helpers:h,now}=ctx;await h.requireAccountAccess(db,user);
  await settleShogunateApprovals(db,now);
+ if(path==='/shogunate/governance'||path.startsWith('/shogunate/governance/'))return handleShogunateGovernance(ctx);
  if(path==='/shogunate'&&method==='GET'){await reconcileCampaign(ctx);return{ok:true,shogunate:await view(ctx)};}
  if(!['/shogunate/open','/shogunate/approve'].includes(path)||method!=='POST')h.fail(404,'NOT_FOUND','幕府の操作が見つかりません。');
  const body=await h.readBody(ctx.request);
