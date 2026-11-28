@@ -30,6 +30,8 @@ For an existing campaign with estate history, sync writes require its current `c
 
 Economic and troop-capacity paths in marches, branches, roaming, covert operations, alliance returns, residency, rewards, governance, maintenance and historical staff settlement receive the same verified context. The frontend caps its presentation clock to the projection horizon, in addition to the existing maintenance constraint.
 
+Winning pooled battles also append a residency succession fence. The complete receipt exposed a 103-parameter case under the D1 limit of 100. Combined role and estate guards now bind one JSON parameter while preserving every predicate, SQL null semantics, correlated outer rows and independently changing authority checks. A distinct SQL scope supports nested guards; quoted strings and comments are preserved when binding placeholders are replaced. Deterministic win and loss coverage prevents the former random battle outcome from hiding this case.
+
 ## Verification
 
 All gameplay tests use synthetic identities and isolated local databases. No live player's save was modified for QA.
@@ -38,6 +40,8 @@ All gameplay tests use synthetic identities and isolated local databases. No liv
 | --- | --- |
 | `server/test-court-estate.mjs` | 22 scenarios / 512 local API calls; largest statement 40 bindings |
 | `server/test-court-estate-economy.mjs` | 13 scenarios / 222 local API calls; largest statement 47 bindings |
+| `server/test-court-estate-guard.mjs` | 6 groups / 119 SQLite queries, including types, null, correlation, nested scopes, live fences and input rejection |
+| Deterministic pooled alliance battles | 9 scenarios / 432 local API calls; ordinary and Regent win/loss, response-loss recovery and capture; largest statement 87 bindings |
 | Estate engine | 12 groups, including ordinary-castle parity across clans and levels, exact time boundaries, stale authority, replay and staff transitions |
 | Estate UI / bridge / map / sync | 21 / 8 / 7 / 10 scenarios passed |
 | Existing staff base / Kyoto migration / court / regency / court offices / retired emperor / succession approval | 2,219 local API calls across seven suites, all passed |
@@ -61,6 +65,6 @@ The entry payload measures **3,834,645 raw / 1,059,272 gzip bytes**, an increase
 
 ## Packaging and publication
 
-Release metadata and generated frontend bundles use `5.20.0` / `5.20.0-20261128`. The existing public API Site was published successfully as **version 100**, from source commit `4c38091116747260066ba9c3df157dd0223b2e4b`, with all 56 matching Worker modules, migration 0055 and its journal entry. Existing public audience, D1, R2 and runtime configuration are preserved.
+Release metadata and generated frontend bundles use `5.20.0` / `5.20.0-20261128`. The existing public API Site was published successfully as **version 101**, from source commit `721862349a5af0f5e3076ad702017ebd9bfcfc2c`, with all 56 matching Worker modules, migration 0055 and its journal entry. This includes the compact transaction guard verified after the initial version 100 publication. Existing public audience, D1, R2 and runtime configuration are preserved.
 
 The deployed `/api/v1/health` returned `ok:true`, `status:"ready"`, `version:"5.20.0"` and `features.courtEstate:true`. Frontend pull-request checks, the merge commit and GitHub Pages deployment are recorded by GitHub after these local checks. API publication alone does not establish frontend publication.

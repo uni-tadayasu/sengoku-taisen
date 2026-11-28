@@ -219,6 +219,7 @@ jobs:
           node server/test-construction-queues.mjs
       - name: Verify court shared territory, appointments and construction recovery
         run: |
+          node server/test-court-estate-guard.mjs
           node server/test-court-estate.mjs
           node server/test-court-estate-economy.mjs
           node tests/test-court-estate-engine.cjs
