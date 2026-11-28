@@ -17,9 +17,9 @@ const castleName=id=>id?(globalThis.SENGOKU_DATA?.castles?.find(c=>c.id===id)?.n
 const person=row=>({id:row.id,name:row.name,isStaff:!!row.staff,homeCastleId:row.home||null,homeCastleName:castleName(row.home)});
 
 export async function courtRegentAuthority(db,user,roleCommitGuard){
- const role=roleCommitGuard(user),found=await S(db,`SELECT g.appointment_token FROM court_regent g
+ const role=roleCommitGuard(user),found=await S(db,`SELECT g.appointment_token,g.appointed_at FROM court_regent g
   WHERE g.id=1 AND g.user_id=? AND ${ELIGIBLE('g.user_id')} AND ${role.sql}`,user.id,...role.args).first(),token=found?.appointment_token||null;
- return{isCourtRegent:!!token,token,guard:{sql:`${role.sql} AND EXISTS(SELECT 1 FROM court_regent g WHERE g.id=1 AND g.user_id=? AND g.appointment_token=? AND ${ELIGIBLE('g.user_id')})`,args:[...role.args,user.id,token||'']}};
+ return{isCourtRegent:!!token,token,appointedAt:found?.appointed_at??null,guard:{sql:`${role.sql} AND EXISTS(SELECT 1 FROM court_regent g WHERE g.id=1 AND g.user_id=? AND g.appointment_token=? AND ${ELIGIBLE('g.user_id')})`,args:[...role.args,user.id,token||'']}};
 }
 function requireAdmin(ctx){if(!ctx.user.is_admin)ctx.helpers.fail(403,'ADMIN_REQUIRED','摂政の任命・解任は、太政大臣だけが行えます。');}
 async function checkAccess(ctx,guard){

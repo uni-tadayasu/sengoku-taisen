@@ -65,6 +65,14 @@ jobs:
           node tests/test-economy-balance.cjs
       - name: Verify reward receipts, retries and account isolation
         run: node tests/test-rewards.cjs
+      - name: Verify device notifications, consent and safe destinations
+        run: |
+          node tests/test-notifications-ui.cjs
+          node tests/test-notifications-sw.cjs
+          node tests/test-notification-entry.cjs
+          node tests/test-notification-social.cjs
+          node tests/test-court-notifications-ui.cjs
+          node tests/test-court-notification-app.cjs
       - name: Check shipped asset budgets and runtime parity
         run: |
           node tests/test-asset-budget.cjs
@@ -102,6 +110,12 @@ jobs:
         run: node server/test-internal-diagnostics.mjs
       - name: Verify public messages against D1 compound SELECT limits
         run: node server/test-message-d1-limits.mjs
+      - name: Verify private message delivery, device retries and Web Push encryption
+        run: |
+          node server/test-notifications.mjs
+          node server/test-message-notifications.mjs
+          node server/test-court-notifications.mjs
+          node server/test-web-push-compat.mjs
       - name: Verify shared BGM authorization, revisions and retries
         run: node server/test-admin-music.mjs
       - name: Verify anonymous promotion counters and operator authorization

@@ -26,7 +26,7 @@ function decrypt(client,body){
 function checkVapid(header,endpoint,now){
  const matched=/^vapid t=([^,]+), k=([A-Za-z0-9_-]+)$/.exec(header);assert(matched);assert.equal(matched[2],vapidEnv.WEB_PUSH_PUBLIC_KEY);
  const [head,body,signature]=matched[1].split('.'),metadata=JSON.parse(Buffer.from(head,'base64url')),claims=JSON.parse(Buffer.from(body,'base64url'));
- assert.deepEqual(metadata,{typ:'JWT',alg:'ES256'});assert.equal(claims.aud,new URL(endpoint).origin);assert.equal(claims.sub,vapidEnv.WEB_PUSH_SUBJECT);assert.equal(claims.exp,Math.floor(now/1000)+3600);
+ assert.deepEqual(metadata,{typ:'JWT',alg:'ES256'});assert.equal(claims.aud,new URL(endpoint).origin);assert.equal(claims.sub,vapidEnv.WEB_PUSH_SUBJECT);assert.equal(claims.exp,Math.floor(now/1000)+43200);
  assert.equal(Buffer.from(signature,'base64url').length,64);assert(verify('sha256',Buffer.from(head+'.'+body),{key:createPublicKey({key:publicJwk,format:'jwk'}),dsaEncoding:'ieee-p1363'},Buffer.from(signature,'base64url')));
 }
 async function scope(name,run){
@@ -35,7 +35,7 @@ async function scope(name,run){
  try{await run(h);scopes++;console.log('PASS '+name);}finally{globalThis.fetch=originalFetch;calls+=h.calls;h.close();}
 }
 async function setup(h,name='通知の領主',options={}){const player=await h.session(name),device=client();await h.api('/notifications/preferences',post(player,{...preference,...options}));await h.api('/notifications/subscribe',post(player,{subscription:device.subscription}));return{...player,device};}
-function mail(h,p,title='戦勝報告',createdAt=h.now){const id='mail_'+crypto.randomUUID();h.sql.prepare('INSERT INTO mail_campaigns(id,sender_id,target_user_id,title,body,request_id,payload_hash,created_at) VALUES(?,?,?,?,?,?,?,?)').run(id,p.user.id,p.user.id,title,'ロック画面に出してはいけない詳細',id,'hash',createdAt);return id;}
+function mail(h,p,title='戦勝報告',createdAt=h.now){const id='mail_'+crypto.randomUUID();h.sql.prepare('INSERT INTO mail_campaigns(id,sender_id,target_user_id,title,body,request_id,payload_hash,created_at) VALUES(?,?,?,?,?,?,?,?)').run(id,p.user.id,p.user.id,title,'ロック画面に出してはいけない詳細','system:test:'+id,'hash',createdAt);return id;}
 function ban(h,p){h.sql.prepare('INSERT INTO player_bans(user_id,active,revision,banned_by,updated_at) VALUES(?,1,1,?,?) ON CONFLICT(user_id) DO UPDATE SET active=1,revision=revision+1,updated_at=excluded.updated_at').run(p.user.id,p.user.id,h.now);}
 async function tick(h,clock={elapsedMs:0,running:true,speed:1},advance=60001){h.now+=advance;const result=await dispatchNotifications(h.env,clock);assert.equal(result.failed||0,0,JSON.stringify(result));return result;}
 function save(h,p,value){h.sql.prepare('INSERT INTO player_saves(user_id,save_json,revision,updated_at) VALUES(?,?,1,?) ON CONFLICT(user_id) DO UPDATE SET save_json=excluded.save_json,revision=player_saves.revision+1,updated_at=excluded.updated_at').run(p.user.id,JSON.stringify(value),h.now);}

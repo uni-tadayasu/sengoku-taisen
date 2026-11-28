@@ -248,6 +248,17 @@ function guideContent(p) {
       <p>メニュー・本文・ボタン・入力欄・英数字は、強い崩しを抑えた筆文字で表示します。髙・﨑・𠮷・德などを補完し、<strong>葛󠄀</strong>のように字形を指定した漢字は異体字対応の書体で描画します。名前や文章の文字列は変えずに表示します。</p>
       <p>入力欄で検索・絞り込みを使うときは、条件を解除すると元の一覧へ戻れます。画面を閉じるときは、その画面の<strong>「閉じる」</strong>を使ってください。保存・引き継ぎの操作は、<a href="${p.dir('guide/data-recovery')}">データ復元ガイド</a>で手順を確認できます。</p>
     `, 'section-town'),
+    section('device-notifications', '端末へのお知らせ', 'メッセージをPC・スマホ・タブレットで受け取る', `
+      <p class="lead-paragraph">端末通知を有効にすると、ゲームを閉じている間も、新しい書状・システム便・フレンドや同盟のチャット・御所の談話・拝謁の返信・御触書を受け取れます。通知は端末ごとに許可が必要です。</p>
+      <ol><li>通知を受け取る端末で、同じ領主への接続・端末同期を確認します。</li><li><strong>「保存・設定」→「便利な機能」→「通知設定」</strong>を開き、<strong>「この端末の通知をオン」</strong>を押します。</li><li>ブラウザやOSの確認で通知を<strong>「許可」</strong>し、<strong>「この端末にテスト通知」</strong>で受信を確かめます。</li></ol>
+      <h3>iPhone・iPadの場合</h3>
+      <p><strong>iOS・iPadOS 16.4以降</strong>が必要です。Safariなどでゲームを開き、共有メニューの<strong>「ホーム画面に追加」</strong>から追加します。<strong>「Webアプリとして開く」</strong>が表示される場合はオンにし、ホーム画面のゲームアイコンから開いて通知を許可してください。通常のブラウザタブだけでは利用できません。</p>
+      <h3>受け取る種類と端末を選ぶ</h3>
+      <p>世界チャットは必要な場合に個別にオンにできます。合戦・同盟作戦・普請や研究・イベントの通知も種類ごとに選択できます。1人につき最大5端末です。<strong>「この端末だけオフ」</strong>と<strong>「すべての端末の通知をオフ」</strong>を区別して操作してください。</p>
+      <p>初めて設定する場合は「届き次第」、休止時間なしです。日本時間の静かな時間帯や、5分・15分・1時間のまとめ通知へ変更できます。すでに保存した設定は維持します。設定の種類・休止時間・間隔は、同じ領主の通知端末で共通です。</p>
+      <p>通知の本文には会話や書状の内容を表示しません。通知を押して、ゲーム内の該当画面で確認できます。テスト通知の送信完了は配信サービスの受付を表し、端末での表示を保証するものではありません。届かない場合は、OS・ブラウザの通知設定、集中モード、省電力設定、通信状態を確認してください。</p>
+      <p><a href="https://webkit.org/blog/13878/web-push-for-web-apps-on-ios-and-ipados/" target="_blank" rel="noopener noreferrer">Apple WebKitのiPhone・iPad向け通知要件</a></p>
+    `, 'section-town'),
     section('next-hints', '迷ったときの道しるべ', '次に何をするか、ヒントで確認', `
       <p class="lead-paragraph">メニューの<strong>「ヒント」</strong>、または城下町の<strong>「次の一手」</strong>から、現在の領国に合うおすすめを確認できます。資源・兵糧収支・指令・普請・軍団・任務などの状況に応じて、優先する行動を並べます。</p>
       <p>まず上位3件を表示し、ほかの候補は展開できます。おすすめの理由と、必要な資産・不足分・待機時間を読み、それぞれのボタンから施設や軍団などの画面を開いてください。ヒントを開いたり案内先へ移動したりするだけで、資源の消費や出陣は行いません。</p>
@@ -825,7 +836,7 @@ const pages = [
     eyebrow: '公式ゲームガイド', heading: '戦国VSの遊び方',
     lead: 'はじめての一城から、軍師と目指す天下統一まで。端末ごとの操作、城の育成、合戦の報酬、幕府の開設、データの引き継ぎを、知りたいことから確認できます。',
     heroAction: 'ゲームを開く', secondary: ['データ復元の案内', 'guide/data-recovery'],
-    toc: [['first-steps','城選び・初めての進め方'],['device-controls','PC・スマホ・タブレットの操作'],['command-desk','領国の指揮台・状況の確認'],['campaign-records','戦記検索・書き出し'],['next-hints','次の一手・上へ戻る'],['castle-upgrades','本拠・城郭のレベル上げ'],['resources','城下町と資源'],['resource-planner','資源計画・複数目標と備蓄'],['resource-ledger','毎月の収支・資源の内訳'],['defense-ledger','修復・守備台帳・資材の見通し'],['construction','施設Lv・連続増築'],['officers','武将・軍団・勾玉'],['army-planner','軍師の編成提案・戦法別の比較'],['maps','二つの地図と外交'],['field-battles','合戦と勝利報酬'],['residency','城の領主・家臣と継承'],['home-relocation','本拠移転・武将の引き継ぎ'],['marching','出陣から到着までの移動時間'],['operations-board','進軍と戦果・部隊の検索'],['branches','支城の普請予約・攻略順・修復'],['player-evaluation','総合評価・位階と兵糧の増産'],['court','京都御所・参内と謁見'],['world-clock','共通時間・拠点リセット'],['community','同盟・接続一覧・役職'],['voice-chat','同盟の音声通話'],['trade','兵士・資産の輸出入'],['roaming','野良兵士とのCPU戦'],['covert','派遣部隊・偵察・駐留・反撃'],['letters','領主・同盟への書状'],['system-mail','勝敗・移転のシステムメール'],['strategy','軍師AI・自動進軍'],['timed-events','期間限定合戦・毎戦報酬'],['shogunate','天下統一・幕府の開設'],['walking','ウォーキング報酬'],['save-and-sync','保存と端末同期'],['questions','よくある質問']],
+    toc: [['first-steps','城選び・初めての進め方'],['device-controls','PC・スマホ・タブレットの操作'],['device-notifications','メッセージの端末通知'],['command-desk','領国の指揮台・状況の確認'],['campaign-records','戦記検索・書き出し'],['next-hints','次の一手・上へ戻る'],['castle-upgrades','本拠・城郭のレベル上げ'],['resources','城下町と資源'],['resource-planner','資源計画・複数目標と備蓄'],['resource-ledger','毎月の収支・資源の内訳'],['defense-ledger','修復・守備台帳・資材の見通し'],['construction','施設Lv・連続増築'],['officers','武将・軍団・勾玉'],['army-planner','軍師の編成提案・戦法別の比較'],['maps','二つの地図と外交'],['field-battles','合戦と勝利報酬'],['residency','城の領主・家臣と継承'],['home-relocation','本拠移転・武将の引き継ぎ'],['marching','出陣から到着までの移動時間'],['operations-board','進軍と戦果・部隊の検索'],['branches','支城の普請予約・攻略順・修復'],['player-evaluation','総合評価・位階と兵糧の増産'],['court','京都御所・参内と謁見'],['world-clock','共通時間・拠点リセット'],['community','同盟・接続一覧・役職'],['voice-chat','同盟の音声通話'],['trade','兵士・資産の輸出入'],['roaming','野良兵士とのCPU戦'],['covert','派遣部隊・偵察・駐留・反撃'],['letters','領主・同盟への書状'],['system-mail','勝敗・移転のシステムメール'],['strategy','軍師AI・自動進軍'],['timed-events','期間限定合戦・毎戦報酬'],['shogunate','天下統一・幕府の開設'],['walking','ウォーキング報酬'],['save-and-sync','保存と端末同期'],['questions','よくある質問']],
     content: guideContent, closingTitle: 'さあ、城下町へ。', closingText: '最初の普請を選び、あなたの一手から戦記を始めましょう。'
   },
   {
