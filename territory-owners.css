@@ -1,0 +1,115 @@
+/* Public castle ownership is separate from personal campaign control. */
+.territory-owner{
+  --owner-accent:#d9b572;
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  align-items:center;
+  gap:.38rem .65rem;
+  width:100%;
+  min-width:0;
+  max-width:100%;
+  box-sizing:border-box;
+  margin:.8rem 0;
+  padding:.75rem .85rem;
+  border:1px solid color-mix(in srgb,var(--owner-accent) 40%,transparent);
+  border-left:3px solid var(--owner-accent);
+  border-radius:.55rem;
+  background:linear-gradient(115deg,color-mix(in srgb,var(--owner-accent) 10%,#08171f),#08131c);
+  color:#f7f3e9;
+  text-align:left;
+  line-height:1.5;
+}
+.territory-owner.is-self{--owner-accent:#78ead5}
+.territory-owner.is-ally{--owner-accent:#9fcaff}
+.territory-owner.is-shared{--owner-accent:#dcc0ff}
+.territory-owner.is-vacant,.territory-owner.is-unknown,.territory-owner.is-stale{--owner-accent:#b6c4ca}
+.territory-owner-caption{
+  grid-column:1/-1;
+  color:var(--owner-accent);
+  font-size:.875rem;
+  font-weight:700;
+  letter-spacing:.08em;
+}
+.territory-owner-people,.territory-owner-person{
+  display:flex;
+  align-items:center;
+  flex-wrap:wrap;
+  gap:.35rem;
+  min-width:0;
+  max-width:100%;
+}
+.territory-owner-people{gap:.4rem .7rem}
+.territory-owner-person .social-avatar{flex:0 0 auto}
+.territory-owner-name{
+  min-width:0;
+  font-size:1rem;
+  font-weight:700;
+  overflow-wrap:anywhere;
+  color:#fff9ee;
+}
+.territory-owner-relation{
+  align-self:center;
+  padding:.15rem .5rem;
+  border:1px solid color-mix(in srgb,var(--owner-accent) 55%,transparent);
+  border-radius:1rem;
+  color:var(--owner-accent);
+  font-size:.8125rem;
+  white-space:nowrap;
+}
+.territory-owner .territory-owner-detail{
+  display:block;
+  grid-column:1/-1;
+  margin:.1rem 0 0;
+  color:#c3d2d7;
+  font-size:.875rem;
+  overflow-wrap:anywhere;
+}
+.territory-owner.is-compact{margin:.35rem 0;padding:.38rem .55rem;gap:.15rem .4rem}
+.territory-owner.is-compact .territory-owner-caption{grid-column:auto;font-size:.8125rem;letter-spacing:.02em}
+.territory-owner.is-compact .territory-owner-people{grid-column:1/-1;grid-row:2}
+.territory-owner.is-compact .territory-owner-relation{grid-column:2;grid-row:1;font-size:.8125rem}
+.territory-owner.is-compact .territory-owner-name{font-size:.9375rem}
+.territory-owner-more{font-size:.8125rem;color:#d1dce0;white-space:nowrap}
+.territory-owner-guide{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:.65rem 1rem;
+  margin:.7rem 0;
+  padding:.7rem .9rem;
+  border:1px solid #7ae1d137;
+  border-radius:.55rem;
+  background:#091e28cc;
+}
+.territory-owner-guide p{margin:0;min-width:0;line-height:1.5}
+.territory-owner-guide strong{display:block;font-size:.9375rem;color:#eafbf5}
+.territory-owner-guide p span{display:block;font-size:.875rem;color:#bdced5;overflow-wrap:anywhere}
+.territory-owner-guide .button{flex:0 0 auto}
+.all-territories .territory-row .territory-name{min-width:0}
+.castle-info>.territory-owner{margin-top:.65rem}
+/* Keep statistics below the identity so two-column tablet cards show names. */
+.sengoku-field .field-player-row{
+  display:grid;
+  grid-template-columns:35px minmax(0,1fr);
+  align-items:start;
+  gap:.4rem .65rem;
+}
+.sengoku-field .field-player-row>.field-player-copy{grid-column:2;min-width:0}
+.sengoku-field .field-player-row>.field-player-meta{
+  grid-column:2;
+  flex-direction:row;
+  flex-wrap:wrap;
+  justify-content:flex-start;
+  align-items:center;
+  gap:.25rem .65rem;
+}
+.sengoku-field .field-player-copy .field-owner-name{flex-wrap:wrap;white-space:normal;overflow:visible}
+.sengoku-field .field-owner-name>.player-evaluation-person{flex-wrap:wrap;overflow:visible;flex-basis:8em}
+.sengoku-field .field-owner-name .player-evaluation-name{min-width:0;white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere}
+@media(max-width:600px){
+  .territory-owner-guide{align-items:stretch;flex-direction:column;padding:.6rem .7rem}
+  .territory-owner-guide .button{align-self:flex-start}
+  .territory-owner{padding:.6rem .65rem}
+  .territory-owner:not(.is-compact) .territory-owner-people{grid-column:1/-1}
+  .territory-owner:not(.is-compact) .territory-owner-relation{grid-column:1/-1;justify-self:start}
+}

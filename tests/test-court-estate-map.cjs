@@ -12,10 +12,26 @@ function fixture() {
     staffConstructionReady: () => false, preserveInteraction: (_node, render) => render(), render: () => renders++, $: () => map,
     window: { SengokuCourtEstate: { holding: () => estate ? copy(estate) : null, ensure: () => probes++ }, SengokuWorldMap: { mount: (_node, options) => { latest = options; return { update: options => latest = options, destroy() {} }; } } }
   }, map = {};
-  vm.createContext(c); vm.runInContext(['courtEstateHolding', 'courtEstateCastle', 'courtEstateMapNotice', 'courtEstateDetail', 'refreshCourtEstateSurfaces', 'homeCastleAppearance', 'campaignCastleOwnerAppearance', 'campaignCastleGrowth', 'campaignCastleAppearance', 'campaignCastleTooltip', 'syncWorldMap', 'territoryRows', 'territoryResults', 'castleDetail', 'renderMap'].map(fn).join('\n'), c);
+  vm.createContext(c); vm.runInContext(['campaignOwnerInfo','campaignCastleOwnership','campaignOwnerMarkup','territoryOwnerGuide','courtEstateHolding', 'courtEstateCastle', 'courtEstateMapNotice', 'courtEstateDetail', 'refreshCourtEstateSurfaces', 'homeCastleAppearance', 'campaignCastleOwnerAppearance', 'campaignCastleGrowth', 'campaignCastleAppearance', 'campaignCastleTooltip', 'syncWorldMap', 'territoryRows', 'territoryResults', 'castleDetail', 'renderMap'].map(fn).join('\n'), c);
   return { c, game, latest: () => latest, probes: () => probes, renders: () => renders, estate: () => copy(estate), setEstate: value => estate = value };
 }
 const tests = [], test = (name, run) => tests.push([name, run]);
+test('public lords remain independent of personal campaign ownership and are searchable by their real names', () => {
+  const h=fixture(),id=h.game.state.home,before=JSON.stringify(h.game.state);
+  h.c.window.SengokuTerritoryOwners={ensure(){},describe:castleId=>castleId===id?{status:'known',label:'領主 現在の城主',relation:'other',owners:[{playerId:'u_current_lord',name:'現在の城主'}],detail:'公開領主'}:{status:'unknown',label:'領主情報を確認中',relation:'unknown',owners:[],detail:''}};
+  h.c.syncWorldMap();const marker=h.latest().castles.find(c=>c.id===id);
+  assert.equal(marker.owner,h.game.state.clan);assert.equal(marker.ownerLabel,'領主 現在の城主');assert.equal(marker.ownerRelation,'other');
+  const rows=h.c.territoryRows('現在の城主',new Set(),h.game.state);assert.equal(rows.length,1);assert.equal(rows[0].id,id);
+  h.c.mapQuery='現在の城主';const html=h.c.territoryResults();assert(html.includes('公開領主'));assert(html.includes('現在の城主'));assert(html.includes('戦役勢力'));assert(html.includes('他の領主'));
+  assert.equal(JSON.stringify(h.game.state),before);
+});
+test('public owner markup escapes names and shows every shared-city owner in the detail', () => {
+  const h=fixture(),names=['城主<svg/onload=alert(1)>','別の城主'],info={status:'shared',label:'領主 '+names[0]+' ほか1名',relation:'shared',owners:names.map((name,i)=>({playerId:'u_owner_'+i,name})),detail:'同じ城に2名の領主'};
+  h.c.window.SengokuTerritoryOwners={describe:()=>info};
+  const compact=h.c.campaignOwnerMarkup({id:'osaka'},true),detail=h.c.campaignOwnerMarkup({id:'osaka'});
+  assert(compact.includes('ほか1名'));assert(detail.includes('別の城主'));assert(detail.includes('&lt;svg/onload=alert(1)&gt;'));assert(!detail.includes('<svg/onload='));
+  const unknown=h.c.campaignOwnerMarkup({id:'kyoto_gosho'});assert(!unknown.includes('class="territory-owner-person"'),'Kyoto does not turn the first resident into its exclusive owner');
+});
 test('own territory rows and count include Kyoto while the real home, ownership and resources remain unchanged', () => {
   const h = fixture(), before = JSON.stringify(h.game.state), owned = h.game.ownedCastles().length;
   const rows = h.c.territoryRows('', new Set(), h.game.state), shared = rows.find(c => c.id === D.staffBaseId); assert(shared?.courtShared); assert.equal(rows.length, owned + 1); assert.equal(shared.level, 12); assert.equal(shared.sharedKeepLevel, 8);

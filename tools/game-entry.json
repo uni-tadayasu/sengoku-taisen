@@ -98,7 +98,8 @@
     "input-list.css",
     "responsive-text.css",
     "tablet-layout.css",
-    "tablet-landscape.css"
+    "tablet-landscape.css",
+    "territory-owners.css"
   ],
   "game-preferences.bundle.js": [
     "viewport-lock.js",
@@ -135,6 +136,7 @@
     "desktop-fit.js",
     "world-clock.js",
     "residency.js",
+    "territory-owners.js",
     "field.js",
     "roaming-management.js",
     "roaming.js",

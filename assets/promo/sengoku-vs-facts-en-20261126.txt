@@ -1,6 +1,6 @@
 SENGOKU VS — Official fact sheet
 Updated: 2026-11-28
-Version: 5.20.0
+Version: 5.21.0
 
 SENGOKU VS is a Japanese-language browser strategy game by KASAI SOLUTIONS. Choose a home castle, develop its town, recruit officers and plan your next campaign with advice from the in-game strategist. Try a personal campaign against computer-controlled factions without registering a lord, or register to join world chat, alliances, online battles, letters and trading. The game includes 256 officers, 129 castles and locations, and 64 facility types. Basic play is free in desktop, smartphone and tablet browsers, with no app installation. Optional purchases include cosmetics, monthly support with a permanent cosmetic choice per paid period, and a paid 30-day officer reroll pass that affects officer acquisition. The game interface and detailed guides are in Japanese. An English introduction and starting guide are available.
 

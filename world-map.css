@@ -39,6 +39,17 @@
 .sg-map-marker.is-disabled .sg-map-marker-symbol{opacity:.65;border-style:dashed}
 .sg-map-marker-label{position:absolute;padding:2px 7px;color:#f5f3df;border:1px solid #e2ecce1a;border-radius:3px;background:#102d34c7;font-size:14px;line-height:20px;font-weight:500;white-space:nowrap;pointer-events:none;text-shadow:0 1px 2px #10242a;box-shadow:0 2px 7px #0002}
 .sg-map-marker.is-selected .sg-map-marker-label,.sg-map-marker.is-home .sg-map-marker-label{color:#ffe8b2;border-color:#e7c78375;background:#2c382cd9;font-weight:600}
+.sg-map-marker-name,.sg-map-marker-owner{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sg-map-marker-owner[hidden]{display:none!important}
+.sg-map-marker.has-owner-label{--sg-owner-color:#e1e9d9}
+.sg-map-marker.has-owner-label[data-owner-relation="self"]{--sg-owner-color:#ffe0a1}
+.sg-map-marker.has-owner-label[data-owner-relation="ally"]{--sg-owner-color:#8ff2ed}
+.sg-map-marker.has-owner-label[data-owner-relation="shared"]{--sg-owner-color:#e3b9ff}
+.sg-map-marker.has-owner-label[data-owner-relation="vacant"],.sg-map-marker.has-owner-label[data-owner-relation="unknown"]{--sg-owner-color:#bfcfce}
+.sg-map-marker.has-owner-label .sg-map-marker-label{padding:3px 8px;border-left:3px solid var(--sg-owner-color);border-color:#7c999f;border-left-color:var(--sg-owner-color);background:#081d2df2;text-align:left;font-size:14px;line-height:18px;box-shadow:0 2px 9px #0005}
+.sg-map-marker.has-owner-label .sg-map-marker-name{font-size:14px;line-height:18px;font-weight:600;color:#fff3dc}
+.sg-map-marker.has-owner-label .sg-map-marker-owner{font-size:14px;line-height:20px;font-weight:500;color:var(--sg-owner-color)}
+.sg-map-tooltip .sg-map-tooltip-owner{color:#ffe0a1;font-weight:600;overflow-wrap:anywhere}
 .sg-map-marker.is-cluster{width:40px;height:40px;color:#d6e6d2}
 .sg-map-marker.is-cluster .sg-map-marker-symbol{width:33px;height:33px;border-radius:50%;background:#193e43e8;border-color:#b7cdc7b3;box-shadow:0 0 0 4px #b7cdc71f}
 .sg-map-marker.is-cluster.is-own .sg-map-marker-symbol{border-color:#ebcb84;color:#ffe3ac}

@@ -33,7 +33,7 @@ function harness(game=create()){
   const c={game,data:D,staffBaseId:D.staffBaseId,state:()=>c.game.state,currentView:'map',selectedCastle:game.state.home,mapRegion:'all',worldMapController:null,worldMapElement:null,
     staffConstructionReady:()=>Boolean(c.game.isStaff&&c.game.getStaffBase?.()),window:{SengokuArt:art,SengokuWorldMap:{mount(container,options){assert.equal(container,map);counts.mounts++;draw(options);return controller;}}},
     $:selector=>selector==='#world-map'?map:{},preserveInteraction:(_node,render)=>render(),render(){counts.renders++;},save(){assert.fail('Map rendering must not save game data');}};
-  vm.createContext(c);vm.runInContext(['courtEstateHolding','courtEstateCastle','courtEstateDetail','homeCastleAppearance','campaignCastleOwnerAppearance','campaignCastleGrowth','campaignCastleAppearance','campaignCastleTooltip','syncWorldMap'].map(fn).join('\n'),c);
+  vm.createContext(c);vm.runInContext(['campaignOwnerInfo','campaignCastleOwnership','campaignOwnerMarkup','territoryOwnerGuide','courtEstateHolding','courtEstateCastle','courtEstateDetail','homeCastleAppearance','campaignCastleOwnerAppearance','campaignCastleGrowth','campaignCastleAppearance','campaignCastleTooltip','syncWorldMap'].map(fn).join('\n'),c);
   function sync(){
     const before=JSON.stringify(c.game.state),save=savedState(c.game);c.syncWorldMap();
     assert.equal(JSON.stringify(c.game.state),before,'Rendering must preserve all runtime state, including army and governors');
