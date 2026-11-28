@@ -57,7 +57,9 @@ assert.deepEqual(plain(crestSources), plain(source.scope.SengokuKamon.getSources
 assert(crestSources.every(Object.isFrozen), 'Crest reference objects remain immutable');
 const costs = shipped.scope.SENGOKU_DATA.buildings.map(building => building.base);
 assert.equal(new Set(costs).size, costs.length, 'Every facility retains its own cost object');
-assert.equal(source.scope.SENGOKU_OFFICERS.length,256);
+assert.equal(source.scope.SENGOKU_OFFICERS.length,280);
+assert.equal(source.scope.SENGOKU_OFFICERS.filter(officer=>officer.courtNoble===true).length,24);
+assert.equal(source.scope.SENGOKU_OFFICERS.filter(officer=>officer.courtNoble!==true).length,256);
 assert.equal(source.scope.SENGOKU_DATA.castles.length,129);
 console.log('PASS '+publicNames(source.scope).length+' classic globals, function names, initialization order and real game data match after four bundles');
 

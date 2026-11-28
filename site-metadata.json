@@ -4,8 +4,8 @@
   "name": "戦国VS",
   "alternateName": "SENGOKU VS",
   "publisher": "KASAI SOLUTIONS",
-  "release": "5.24.0-20261128",
-  "version": "5.24.0",
+  "release": "5.25.0-20261128",
+  "version": "5.25.0",
   "dateModified": "2026-11-28",
   "language": "ja",
   "locale": "ja_JP",
@@ -171,7 +171,7 @@
     "about": {
       "path": "/about/",
       "title": "戦国VSの作品概要｜世界観・収録内容・制作資料",
-      "description": "戦国VSの世界観・対応端末・利用料金と、256人の武将、129の城と拠点、64種類の施設を紹介。人物・地図・家紋の資料、イラストの制作方針、KASAI SOLUTIONSの著作権表記を確認できます。",
+      "description": "戦国VSの世界観・対応端末・利用料金と、256人の武将と24人の公家、129の城と拠点、64種類の施設を紹介。人物・地図・家紋の資料、イラストの制作方針、KASAI SOLUTIONSの著作権表記を確認できます。",
       "dateModified": "2026-11-28",
       "artwork": {
         "path": "assets/chronicle/court-jade.webp",

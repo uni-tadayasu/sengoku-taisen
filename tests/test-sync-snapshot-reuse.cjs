@@ -12,7 +12,7 @@ function load(source){
  vm.runInNewContext(source,scope);return scope.SengokuCloudSync;
 }
 function largeSave(){
- const game=fixture(32,20);game.state.officers=officers.map(officer=>officer.id);game.state.officerVariants=officers.flatMap(officer=>SENGOKU_DATA.ranks.map(rank=>officer.id+':'+rank));
+ const game=fixture(32,20);game.state.officers=officers.map(officer=>officer.id);game.state.officerVariants=officers.flatMap(officer=>SENGOKU_DATA.ranks.filter(rank=>game.canOwnOfficerVariant(officer.id,rank)).map(rank=>officer.id+':'+rank));
  for(const id of game.state.officers)game.state.officerHealth[id]=100;
  return JSON.parse(game.exportSave());
 }

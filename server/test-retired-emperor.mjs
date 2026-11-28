@@ -106,7 +106,7 @@ try{
  });
  await scope('abdication never transiently revokes an unrelated external merit office',async h=>{
   const f=await family(h);
-  h.sql.prepare("INSERT INTO court_contributions(job_id,actor_id,staff_term,kind,target_id,target_level,points,completed_elapsed_ms,created_at) VALUES(?,?,?,'castle','kyoto_gosho',50,50,0,?)").run('retirement-merit',f.current.user.id,'fixture',h.now);
+  h.sql.prepare("INSERT INTO court_contributions(job_id,actor_id,staff_term,kind,target_id,target_level,points,completed_elapsed_ms,created_at) VALUES(?,?,?,'castle','kyoto_gosho',50,50,0,?)").run('retirement-merit',f.current.user.id,h.sql.prepare('SELECT term_id FROM staff_members WHERE user_id=?').get(f.current.user.id).term_id,h.now);
   const catalog=(await h.api('/admin/court/offices',{token:f.operator.token})).data;
   await h.api('/admin/court/offices',post(f.operator,{requestId:crypto.randomUUID(),action:'appoint',officeId:'chunagon',targetPlayerId:f.ordinary.user.id,expectedRevision:catalog.revision}));
   const before=h.sql.prepare('SELECT * FROM court_office_appointments').all();

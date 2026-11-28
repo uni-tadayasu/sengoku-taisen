@@ -75,7 +75,7 @@ try{
  });
  await scope('a Kyoto merit promotion closes a conflicting external grant in the completion transaction',async h=>{
   const{p}=await setup(h),member=await fixture(h,'功績が昇進する京都領主',{staff:true});
-  h.sql.prepare("INSERT INTO court_contributions(job_id,actor_id,staff_term,kind,target_id,target_level,points,completed_elapsed_ms,created_at) VALUES(?,?,NULL,'castle','kyoto_gosho',49,49,0,?)").run('synthetic_merit',member.user.id,h.now);
+  h.sql.prepare("INSERT INTO court_contributions(job_id,actor_id,staff_term,kind,target_id,target_level,points,completed_elapsed_ms,created_at) VALUES(?,?,?,'castle','kyoto_gosho',49,49,0,?)").run('synthetic_merit',member.user.id,h.sql.prepare('SELECT term_id FROM staff_members WHERE user_id=?').get(member.user.id).term_id,h.now);
   await office(h,p,'chunagon');const shared=(await h.api('/staff/base',{token:member.token})).data.staffBase;await h.api('/staff/base/upgrade',post(member,{requestId:crypto.randomUUID(),kind:'building',id:'farm',baseRevision:shared.revision,deviceId:member.deviceId,expectedRevision:row(h,member).revision}));
   h.now+=60000;await h.api('/staff/base',{token:member.token});assert.equal(ledger(h,p).active,0);assert.equal(ledger(h,p).last_effective_elapsed_ms,60000);h.now+=60000;const later=await snapshot(h,p);assert.deepEqual(later.courtEstateProjection.accessWindows,[{fromElapsedMs:0,toElapsedMs:60000}]);assert.equal(later.entitlements.courtProtected,false);
  });

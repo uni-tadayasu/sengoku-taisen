@@ -147,7 +147,14 @@ const totalGzipBytes = rows.reduce((sum,row)=>sum+row.gzipBytes,0);
 // Measured: 3,991,852 raw / 1,099,812 gzip bytes (+109,309 / +28,643 from
 // v5.23.1, about 2.82% / 2.67%). No media, fonts or runtime dependencies.
 // Keep 148 raw / 1,188 gzip bytes of headroom for the reviewed changes.
-const rawBudget=3992000,gzipBudget=1101000;
+// v5.25 adds 24 fixed-rank noble records, their verified exchange/recovery UI,
+// the formal-member town shortcut, explicit formal-admission status and
+// compact house-symbol metadata (the SVGs are fetched on demand).
+// Measured: 4,083,435 raw / 1,114,221 gzip bytes (+91,583 / +14,409 from
+// v5.24, about 2.29% / 1.31%). No fonts or runtime dependencies were added.
+// The 24 independent WebP portraits are loaded only on visible cards and are
+// separately bounded by test-court-noble-artwork.cjs, never entry preloads.
+const rawBudget=4085000,gzipBudget=1115000;
 assert(totalBytes <= rawBudget, `Initial bundles exceed the ${rawBudget} byte budget: ${totalBytes}`);
 assert(totalGzipBytes <= gzipBudget, `Initial bundles exceed the ${gzipBudget} gzip byte budget: ${totalGzipBytes}`);
 const html = fs.readFileSync(path.join(root,'index.html'),'utf8');

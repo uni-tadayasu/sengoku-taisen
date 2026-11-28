@@ -162,7 +162,7 @@ function parseJob(userId,id){
 async function queueCourtFacts(db,userId,preferences,now,resolve){
  if(!preferences.chat||typeof resolve!=='function')return{statements:[],access:null};
  const lower=Math.max(Number(preferences.since||0),Number(preferences.chat_since||now),now-86400000),reader=`NOT EXISTS(SELECT 1 FROM notification_chat_reads nr WHERE nr.user_id=? AND nr.room_key='court:chat' AND nr.last_message_id>=m.seq)`;
- const possibleOfficial=`(?=COALESCE((SELECT value FROM settings WHERE key='adminUserId'),'') OR EXISTS(SELECT 1 FROM staff_members WHERE user_id=?) OR EXISTS(SELECT 1 FROM court_regent WHERE user_id=?))`;
+ const possibleOfficial=`(?=COALESCE((SELECT value FROM settings WHERE key='adminUserId'),'') OR EXISTS(SELECT 1 FROM (SELECT user_id FROM staff_members UNION SELECT user_id FROM court_retained_memberships) members WHERE members.user_id=?) OR EXISTS(SELECT 1 FROM court_regent WHERE user_id=?))`;
  // Avoid projecting a complete game/save for subscribers with no court work.
  const pending=await stmt(db,`SELECT 1 AS needed WHERE
  EXISTS(SELECT 1 FROM notification_outbox WHERE user_id=? AND delivered_at IS NULL AND (id LIKE ? OR id LIKE ?)) OR
@@ -359,7 +359,7 @@ export async function dispatchMessageNotifications(env,clock=null,{path='',actor
  }else if(path==='/court/chat'){
   source=`p.chat=1 AND EXISTS(SELECT 1 FROM court_chat m WHERE m.author_id=? AND m.created_at>=? AND m.author_id<>p.user_id AND NOT EXISTS(SELECT 1 FROM notification_chat_reads nr WHERE nr.user_id=p.user_id AND nr.room_key='court:chat' AND nr.last_message_id>=m.seq))`;args=[actorId,start];
  }else if(path==='/court/audiences'||/^\/court\/audiences\/ca_[a-f0-9]{32}\/replies$/.test(path)){
-  source=`p.chat=1 AND EXISTS(SELECT 1 FROM court_audience_messages m JOIN court_audience_threads t ON t.id=m.thread_id WHERE m.author_id=? AND m.created_at>=? AND m.author_id<>p.user_id AND (t.requester_id=p.user_id OR p.user_id=COALESCE((SELECT value FROM settings WHERE key='adminUserId'),'') OR EXISTS(SELECT 1 FROM staff_members sm WHERE sm.user_id=p.user_id) OR EXISTS(SELECT 1 FROM court_regent r WHERE r.user_id=p.user_id)))`;args=[actorId,start];
+  source=`p.chat=1 AND EXISTS(SELECT 1 FROM court_audience_messages m JOIN court_audience_threads t ON t.id=m.thread_id WHERE m.author_id=? AND m.created_at>=? AND m.author_id<>p.user_id AND (t.requester_id=p.user_id OR p.user_id=COALESCE((SELECT value FROM settings WHERE key='adminUserId'),'') OR EXISTS(SELECT 1 FROM staff_members sm WHERE sm.user_id=p.user_id) OR EXISTS(SELECT 1 FROM court_retained_memberships cm WHERE cm.user_id=p.user_id) OR EXISTS(SELECT 1 FROM court_regent r WHERE r.user_id=p.user_id)))`;args=[actorId,start];
  }else if(/^\/(?:friends\/(?:request|respond)|alliance\/(?:apply|invite|membership|treasury\/(?:request|approve))|trades(?:\/tr_[a-f0-9]{32}\/(?:accept|reject|cancel))?|court\/negotiations(?:\/cn_[a-f0-9]{32}\/(?:counter|accept|reject|cancel))?)$/.test(path)){
   source=`p.chat=1 AND EXISTS(SELECT 1 FROM notification_social_events n WHERE n.actor_id=? AND n.created_at>=? AND n.user_id=p.user_id AND n.push_eligible=1 AND n.read_at IS NULL AND n.expires_at>? AND ${socialNotificationAccess()})`;args=[actorId,start,now];
  }else return{ok:true,sent:0,checked:0};

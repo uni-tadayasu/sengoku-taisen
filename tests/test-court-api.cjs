@@ -232,4 +232,30 @@ test('guest and stale account, role or verification transitions cannot receive a
  }
 });
 
+test('noble catalogue uses verified identity and exchange accepts only the current writer and server-priced officer id',async()=>{
+ const h=harness(),data={officerId:'kuge_konoe_sakihisa',requestId:'court-noble-request-1',deviceId:'device-one',expectedRevision:12};
+ await h.api.courtNobleRequest('/court/nobles',{auth:false,token:'forged'});
+ await assert.rejects(h.api.courtNobleRequest('/court/nobles/exchange',{method:'POST',data}),error=>error.code==='COURT_NOBLE_SYNC_REQUIRED');
+ h.writer.writable=true;await h.api.courtNobleRequest('/court/nobles/exchange',{method:'POST',data,auth:false,token:'forged'});
+ assert.equal(h.calls.length,2);assert(h.calls.every(call=>call.headers.Authorization==='Bearer '+TOKEN));assert.deepEqual(h.calls[1].body,data);
+ for(const invalid of [{...data,cost:0},{...data,rank:'U'},{...data,officerId:'admin_ieyasu'},{...data,deviceId:'other-device'},{...data,expectedRevision:11},{...data,requestId:'short'},{...data,expectedRevision:-1}])await assert.rejects(h.api.courtNobleRequest('/court/nobles/exchange',{method:'POST',data:invalid}));
+ assert.equal(h.calls.length,2);
+});
+test('noble request boundary rejects unrelated routes, unauthenticated identities and delayed account responses',async()=>{
+ const h=harness();
+ for(const route of ['/court/nobles?playerId=other','/court/nobles/../offices','/court/nobles#x','/court/nobles/exchange'])await assert.rejects(h.api.courtNobleRequest(route),error=>error.status===400);
+ await assert.rejects(h.api.courtNobleRequest('/court/nobles',{method:'POST'}),error=>error.status===400);
+ await assert.rejects(h.api.courtNobleRequest('/court/nobles',{data:{}}),error=>error.status===400);assert.equal(h.calls.length,0);
+ const guest=harness({guest:true});await assert.rejects(guest.api.courtNobleRequest('/court/nobles'),error=>error.status===403);assert.equal(guest.calls.length,0);
+ for(const change of ['changeIdentity','changeRole','pending','hold']){
+  const c=harness(),pause=deferred();c.setTransport(()=>pause.promise);const task=c.api.courtNobleRequest('/court/nobles');c.control[change]();pause.resolve({data:{ok:true,balance:99999,catalog:[]}});await assert.rejects(task,error=>error.code==='STALE_IDENTITY');
+ }
+});
+test('town membership flag comes only from the current server boolean, never from a retained lineage',async()=>{
+ const h=harness();h.control.s.user.courtLineage={houseId:'konoe',houseName:'近衛家'};assert.equal(h.api.getUser().courtMember,false);
+ h.control.s.user.courtMember=true;assert.equal(h.api.getUser().courtMember,true);
+ h.control.s.user.courtMember=false;assert.equal(h.api.getUser().courtMember,false);
+ h.control.s.user.courtMember='true';assert.equal(h.api.getUser().courtMember,false);
+});
+
 (async()=>{for(const[name,run]of tests){await run();console.log('PASS '+name);}console.log(tests.length+' real social court transport checks passed. No live requests.');})().catch(error=>{console.error(error);process.exitCode=1;});

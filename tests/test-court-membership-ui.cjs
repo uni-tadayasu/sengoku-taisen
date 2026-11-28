@@ -152,3 +152,16 @@ test('a changed office appointment token invalidates admission and the exact tok
  const h=harness();h.membership.officeAppointmentToken='appointment-one';await h.controller.load();await h.controller.confirmMembership();h.membership.officeAppointmentToken='appointment-two';assert.equal(await h.controller.submit('membership'),false);assert.equal(writes(h).length,0);assert.equal(h.controller.snapshot().confirmation,null);
  await h.controller.confirmMembership();h.hook=(route,args)=>{if(args.method==='POST')throw Error('通信断');return h.respond(route,args);};assert.equal(await h.controller.submit('membership'),false);const sent=copy(writes(h)[0].data);assert.equal(sent.expectedOfficeToken,'appointment-two');assert.equal(sent.expectedJoinMode,'kyoto');h.controller.dispose();h.controller=Court.createController(h.options);assert.deepEqual(h.controller.snapshot().pending.data,sent);assert.equal([...h.records.values()].map(JSON.parse)[0].version,3);h.controller.dispose();
 });
+
+test('every new formal member starts at Sangi and the previous appointed office ends while the home is retained',async()=>{
+ const h=harness();Object.assign(h.membership,{officeAppointmentToken:'current-right-minister-term',inheritedOffice:{id:'udaijin',title:'右大臣'},joinMode:'retained-base',destinationHomeCastleId:'kiyosu',destinationHomeCastleName:'清洲城',retainedCastles:[h.membership.ownedCastles[0]],retainedCastleCount:1,releasedCastles:[h.membership.ownedCastles[1]],releasedCastleCount:1});
+ await h.controller.load();assert(await h.controller.confirmMembership());let html=Court.markup(h.controller.snapshot());assert.match(html,/正式加入後の官職/);assert.match(html,/正式官職<\/span> 参議/);assert.match(html,/現在の「右大臣」は正式加入時に終了/);assert.match(html,/本拠を保持する場合も、官職は全員同じ条件で開始/);assert.equal(writes(h).length,0);
+ h.membership.inheritedOffice={id:'sadaijin',title:'左大臣'};assert.equal(await h.controller.submit('membership'),false);assert.equal(writes(h).length,0);h.controller.dispose();
+});
+test('malformed former office metadata cannot be shown in an enrollment review',async()=>{
+ for(const inheritedOffice of [{id:'udaijin',title:'左大臣'},{id:'emperor',title:'天皇'},{id:'udaijin',title:'<img src=x>'}]){const h=harness();h.membership.inheritedOffice=inheritedOffice;await h.controller.load();assert.equal(await h.controller.confirmMembership(),false);assert.equal(writes(h).length,0);h.controller.dispose();}
+});
+test('current retained membership displays one formal title in the membership panel',()=>{
+ const h=harness();h.info.membership={isMember:true,canJoin:false,reason:'',requirement};h.info.self.title='右大臣';h.info.self.officeJurisdiction='kyoto';
+ return h.controller.load().then(()=>{const {host}=require('./helpers/dom-model.cjs').setup();host.innerHTML=Court.markup(h.controller.snapshot());const panel=host.querySelector('.court-membership-formal-office');assert(panel);assert.equal((panel.textContent.match(/右大臣/g)||[]).length,1);assert.match(panel.textContent,/正式官職/);h.controller.dispose();});
+});

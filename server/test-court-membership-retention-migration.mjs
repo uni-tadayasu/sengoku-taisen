@@ -27,7 +27,7 @@ try{
  console.log('PASS 0059 preserves legacy and family-aware receipts, allows zero releases and keeps receipt uniqueness and foreign keys');
 }finally{db.close();}
 const h=harness();try{
- await h.api('/health');h.sql.exec('DROP TABLE court_retained_memberships');await h.api('/health',{expected:503});
- apply(h.sql,migration('0059_court_membership_retention').split('--> statement-breakpoint').at(-1));await h.api('/health');
+ await h.api('/health');const triggers=h.sql.prepare("SELECT sql FROM sqlite_master WHERE type='trigger' AND tbl_name='court_retained_memberships'").all();h.sql.exec('DROP TABLE court_retained_memberships');await h.api('/health',{expected:503});
+ apply(h.sql,migration('0059_court_membership_retention').split('--> statement-breakpoint').at(-1));await h.api('/health',{expected:503});for(const trigger of triggers)h.sql.exec(trigger.sql);await h.api('/health');
  console.log('PASS health requires the retained-membership migration before reporting ready');
 }finally{h.close();}

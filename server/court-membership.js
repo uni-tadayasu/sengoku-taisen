@@ -1,6 +1,7 @@
 // Voluntary Kyoto enrollment has its own receipt and commits the household
 // departure, role, personal campaign, and preserved progress atomically.
 import {GameEngine,GAME_OFFICERS} from './game-runtime.js';
+import {COURT_OFFICES} from './court-offices.js';
 import {ensureResidency,prepareResidencySuccession} from './residency.js';
 import {advanceReservedMarch} from './marches.js';
 import {closeReservations} from './relocation.js';
@@ -11,6 +12,7 @@ import {branchProgressStatements} from './branches.js';
 import {NOBLE_HOUSES,courtHouseId,courtHouseMembershipGuard,courtHouseMembershipStatement,publicCourtLineage} from './court-lineage.js';
 const S=(db,sql,...args)=>db.prepare(sql).bind(...args),copy=value=>JSON.parse(JSON.stringify(value));
 const REQUIREMENT=Object.freeze({rankId:'court-7',rankName:'従五位',minScore:35000});
+const STARTING_OFFICE=Object.freeze({id:'sangi',title:'参議',jurisdiction:'kyoto'});
 const CASTLES=globalThis.SENGOKU_DATA.castles,CASTLE_BY_ID=Object.fromEntries(CASTLES.map(c=>[c.id,c]));
 const RETAINED_CASTLES=new Set([...globalThis.SENGOKU_DATA.majorCityIds,globalThis.SENGOKU_DATA.deputyBaseId]);
 const GATE='EXISTS(SELECT 1 FROM court_membership_requests WHERE actor_id=? AND request_id=? AND commit_token=?)';
@@ -32,7 +34,7 @@ export async function courtMembershipDetails(ctx){
  const joinMode=user.is_admin||user.is_deputy||office||user.court_retained_term?'retained-base':'kyoto',destination=joinMode==='retained-base'?save?.state.home:null;
  const owned=save?CASTLES.filter(c=>save.state.castles[c.id].owner===save.state.clan).map(c=>({id:c.id,name:c.name})):[],keep=c=>RETAINED_CASTLES.has(c.id)||c.id===destination,retained=owned.filter(keep),released=owned.filter(c=>!keep(c));
  if(!save&&!status.isMember){status.canJoin=false;status.reason='先に本拠をクラウドへ保存してください。';}
- return{ok:true,membership:{...status,houses:NOBLE_HOUSES,houseId:publicCourtLineage(user)?.houseId||null,homeCastleId:save?.state.home||null,homeCastleName:CASTLE_BY_ID[save?.state.home]?.name||null,ownedCastleCount:owned.length,ownedCastles:owned,retainedCastleCount:retained.length,retainedCastles:retained,releasedCastleCount:released.length,releasedCastles:released,joinMode,officeAppointmentToken:office?.appointment_token||null,destinationHomeCastleId:destination||'kyoto_gosho',destinationHomeCastleName:CASTLE_BY_ID[destination||'kyoto_gosho'].name,expectedRevision:row?.save_json?Number(row.revision):null}};
+ return{ok:true,membership:{...status,houses:NOBLE_HOUSES,houseId:publicCourtLineage(user)?.houseId||null,homeCastleId:save?.state.home||null,homeCastleName:CASTLE_BY_ID[save?.state.home]?.name||null,ownedCastleCount:owned.length,ownedCastles:owned,retainedCastleCount:retained.length,retainedCastles:retained,releasedCastleCount:released.length,releasedCastles:released,joinMode,officeAppointmentToken:office?.appointment_token||null,inheritedOffice:office?{id:office.office_id,title:COURT_OFFICES.find(item=>item.id===office.office_id)?.title||null}:null,startingOffice:STARTING_OFFICE,destinationHomeCastleId:destination||'kyoto_gosho',destinationHomeCastleName:CASTLE_BY_ID[destination||'kyoto_gosho'].name,expectedRevision:row?.save_json?Number(row.revision):null}};
 }
 
 function clearTerritories(save,{retainedHome=null}={}){
@@ -63,7 +65,12 @@ export async function joinCourtMembership(ctx,body){
  // new admission; chosen families are bound into the v2 retry intent.
  const houseId=body.houseId===undefined?null:courtHouseId(body.houseId,h.fail),digest=await h.hash(JSON.stringify(body.expectedJoinMode!==undefined?['kyoto-membership-v3',origin,houseId,body.expectedJoinMode,body.expectedOfficeToken||null,true]:houseId?['kyoto-membership-v2',origin,houseId,true]:['kyoto-membership-v1',origin,true]));
  const prior=async()=>{const row=await S(db,'SELECT * FROM court_membership_requests WHERE actor_id=? AND request_id=?',user.id,requestId).first();if(row&&row.request_hash!==digest)h.fail(409,'REQUEST_ID_REUSED','この操作番号は別の正式加入に使用されています。');return row;};
- const respond=async(receipt,idempotent)=>{const current=await h.getUser(db,user.id),snapshot=await h.syncSnapshot(db,await h.getSyncRow(db,user.id),current,deviceId,now);return{...snapshot,membership:courtMembershipStatus(current,null),admission:{requestId,castleId:receipt.destination_home,joinMode:receipt.join_mode,destinationHomeCastleId:receipt.destination_home,previousHomeCastleId:receipt.source_home,retainedCastleCount:Number(receipt.retained_castle_count),releasedCastleCount:Number(receipt.released_castle_count),termId:receipt.term_id,houseId:receipt.house_id||null,idempotent}};};
+ const respond=async(receipt,idempotent)=>{
+  const current=await h.getUser(db,user.id),currentTerm=current.court_retained_term||current.staff_term,
+   formal=currentTerm===receipt.term_id?await S(db,'SELECT office_id FROM court_kyoto_offices WHERE user_id=?',user.id).first():null,
+   office=COURT_OFFICES.find(item=>item.id===formal?.office_id),snapshot=await h.syncSnapshot(db,await h.getSyncRow(db,user.id),current,deviceId,now);
+  return{...snapshot,membership:courtMembershipStatus(current,null),admission:{requestId,castleId:receipt.destination_home,joinMode:receipt.join_mode,destinationHomeCastleId:receipt.destination_home,previousHomeCastleId:receipt.source_home,retainedCastleCount:Number(receipt.retained_castle_count),releasedCastleCount:Number(receipt.released_castle_count),termId:receipt.term_id,houseId:receipt.house_id||null,inheritedOffice:null,startingOffice:STARTING_OFFICE,formalOffice:office?{id:office.id,title:office.title,jurisdiction:'kyoto'}:null,idempotent}};
+ };
  const previous=await prior();if(previous)return respond(previous,true);
  if(query.has('receipt'))h.fail(404,'COURT_MEMBERSHIP_RECEIPT_PENDING','この正式加入の受付はまだ確認できません。');
  if(!houseId)courtHouseId(body.houseId,h.fail);
@@ -106,6 +113,9 @@ export async function joinCourtMembership(ctx,body){
   S(db,`INSERT INTO staff_members(user_id,appointed_by,appointed_at,term_id,appointed_elapsed_ms) SELECT ?,?,?,?,? WHERE ${GATE}`,user.id,institution.value,now,termId,clock.elapsedMs,...args),
   S(db,`INSERT INTO staff_campaign_backups(user_id,term_id,save_json,joined_elapsed_ms,left_elapsed_ms,active,transition_token,updated_at)
    SELECT ?,?,?,?,NULL,1,?,? WHERE ${GATE} ON CONFLICT(user_id) DO UPDATE SET term_id=excluded.term_id,save_json=excluded.save_json,joined_elapsed_ms=excluded.joined_elapsed_ms,left_elapsed_ms=NULL,active=1,transition_token=excluded.transition_token,updated_at=excluded.updated_at`,user.id,termId,JSON.stringify(personal),clock.elapsedMs,nonce,now,...args));
+ // The admission receipt authorizes ending the former appointment. Its
+ // presence retains the home above, but never carries a higher formal rank.
+ if(office)statements.push(S(db,`DELETE FROM court_office_appointments WHERE user_id=? AND appointment_token=? AND ${GATE}`,user.id,office.appointment_token,...args));
  statements.push(...progress.statements(GATE,args,nonce),seedProgressCampaignStatement(db,user.id,next,GATE,args),
   ...branchProgressStatements(db,user.id,next,now,GATE,args,{resolvedElapsedMs:clock.elapsedMs}),
   ...closeReservations(db,user.id,before.state.walking.campaignId,now,nonce,GATE,args,null,null,[],clock.elapsedMs,'京都御所への正式加入により、旧領地の所属を終了しました。'),

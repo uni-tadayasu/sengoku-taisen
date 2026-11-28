@@ -2,17 +2,17 @@
 
 ## 京都御所への正式加入 — voluntary court membership
 
-Authenticated `GET /court` adds `membership:{isMember,canJoin,reason,requirement}`. The requirement is `rankId:"court-7"`, `rankName:"従五位"`, `minScore:35000`. A visit or an external court appointment does not enroll the player. Voluntary enrollment always requires the current server-evaluated score; the Regent's visit privileges do not bypass this threshold. Existing Kyoto members, the 太政大臣 and the deputy's fixed-base role cannot enroll again.
+Authenticated `GET /court` adds `membership:{isMember,canJoin,reason,requirement}`. The requirement is `rankId:"court-7"`, `rankName:"従五位"`, `minScore:35000`. A visit or an external court appointment does not enroll the player. Voluntary enrollment always requires the current server-evaluated score; the Regent's visit privileges do not bypass this threshold. Current Kyoto staff or a current retained-base membership cannot enroll again. Eligible primary/deputy operators and externally appointed ministers use the retained-base path.
 
-`GET /court/membership` returns `{ok:true,membership}` with the same status and `homeCastleId`, `homeCastleName`, `ownedCastleCount`, `ownedCastles:[{id,name}]`, and `expectedRevision`. Missing saves have null home/revision fields and cannot enroll. Use this after flushing local progress and before showing the destructive confirmation.
+`GET /court/membership` returns `{ok:true,membership}` with status, the five `houses`, the selected `houseId`, current home, owned/retained/released castle lists and counts, `joinMode`, destination home, `officeAppointmentToken`, former `inheritedOffice`, `startingOffice` and `expectedRevision`. Missing saves have null home/revision fields and cannot enroll. Refresh after flushing local progress before showing the confirmation.
 
-`POST /court/membership` accepts exactly `{requestId,deviceId,expectedRevision,expectedHomeCastleId,confirmed:true}`. The user must explicitly confirm relinquishing the displayed current home and owned territories. It verifies the writer lease, save and world-clock revisions, source home, rank, household succession, role/moderation epochs, shared-court economy and progress revisions at the receipt commit. A current main-army march, covert dispatch, conquest march or active alliance contingent returns `409 ARMY_MARCHING`; complete these commitments first. Client score, role, price or arbitrary save fields are rejected.
+New `POST /court/membership` accepts `{requestId,deviceId,expectedRevision,expectedHomeCastleId,confirmed:true,houseId,expectedJoinMode?,expectedOfficeToken?}`. The selected family must be one of the five canonical houses. A supplied mode and appointment token bind the confirmation to the same home-retention eligibility. The user confirms the displayed retained/released territory and formal admission. The commit verifies writer lease, save/world revisions, source home, rank, household succession, role/moderation epochs, current appointment, estate authority and progress revisions. A current main-army march, covert dispatch, conquest march or active alliance contingent returns `409 ARMY_MARCHING`; complete those commitments first. Client score, role, price and arbitrary save fields are rejected.
 
-One atomic D1 batch records the self-enrollment, releases the ordinary household and all old owned territory, promotes the oldest eligible retainer (or leaves the seat vacant), creates the Kyoto membership term, switches the authoritative campaign to Kyoto, records the retired source campaign and preserves progress. Resources, magatama, personal officers/variants/health, main army, research and personal facility development are retained. Relinquished castle levels/garrisons, branch states, and castle/branch construction queues are not carried into the new realm. The shared Kyoto facilities remain authoritative for Kyoto development. Old captured-reward and gift claims remain claimed. New campaign progress counters are seeded, so retained counters cannot grant recruitment/exchange points twice.
+One atomic D1 batch records enrollment and its new term. Ordinary entrants leave their previous household, with normal retainer succession, and move to Kyoto. An eligible retained-base entrant keeps their current home and household. Major cities and the retained home keep their owned castle/branch state; other ordinary territory is released. Resources, magatama, officers/variants/health, army, research and personal facilities are retained. The old campaign is retired and progress counters are seeded so they cannot generate a second recruitment/exchange grant. Shared Kyoto development remains authoritative. All new normal formal terms begin at **参議**, and any former external appointment ends atomically. Subsequent ranks use only the new term's completed shared construction; special imperial/operator titles retain their existing rules.
 
-The response contains the complete ordinary sync snapshot and `membership`, plus `admission:{requestId,castleId:"kyoto_gosho",previousHomeCastleId,releasedCastleCount,termId,idempotent}`. Apply the returned save/role/lease before enabling further actions. Repeat the original request to recover a lost response. `POST /court/membership?receipt=1` with the same body only looks up an accepted receipt and never initiates enrollment; it returns `404 COURT_MEMBERSHIP_RECEIPT_PENDING` if absent. Replaying after dismissal returns the current sync state and the original receipt, without restoring the old appointment or erasing a later campaign.
+The response contains the complete ordinary sync snapshot and `membership`, plus `admission:{requestId,castleId,joinMode,destinationHomeCastleId,previousHomeCastleId,retainedCastleCount,releasedCastleCount,termId,houseId,startingOffice,formalOffice,inheritedOffice:null,idempotent}`. Apply the returned save/role/lease before further operations. Repeat the original request to recover a lost response. `POST /court/membership?receipt=1` only looks up that receipt and returns `404 COURT_MEMBERSHIP_RECEIPT_PENDING` if absent. Legacy house-less receipts remain readable without assigning a new family. Replaying after the term ends returns current sync state with `formalOffice:null`; it never restores membership, a former appointment or an older campaign.
 
-Migration `0056_court_membership.sql` adds only the enrollment/retirement receipt table. Existing staff appointments and their backups are unchanged. The dedicated receipt identifies the requesting player; the existing membership's `appointed_by` field identifies the receiving court's current responsible official, and no administrator action is written to `staff_role_requests`. Membership confers the established Kyoto role and palace functions, without operator/deputy management or appointment authority. Old campaign uploads return `409 CAMPAIGN_RELOCATED`. Health checks require the new table before publication.
+Migrations `0056_court_membership`, `0058_court_lineage`, `0059_court_membership_retention` and `0063_court_formal_rank_terms` define the receipts, family identity, retained-base terms and formal merit projection. Migration0063 changes schema only, preserving established staff progression until their current term ends. The enrollment receipt identifies the requesting player, and no administrator action is fabricated in `staff_role_requests`. Formal membership confers Kyoto palace functions, without operator/deputy management or imperial appointment authority. Old campaign uploads return `409 CAMPAIGN_RELOCATED`. Health checks require the applicable tables, views and transition guards before publication.
 
 ## 共通フィールドの占領領地への出陣と地図の所有者一致
 
@@ -24,7 +24,7 @@ Submit the existing `POST /field/attack` envelope with both `targetPlayerId` and
 
 ## 京都御所の共同領地 — court estate (v5.20.0)
 
-`GET /court/estate` and `POST /court/estate/upgrade` grant role-bound shared development to the current 太政大臣, Kyoto members (including the Emperor), Regent, six valid externally appointed court officers, and Retired Emperors with a valid succession record. Ordinary-home participants retain their existing home, clan, personal buildings and owned castles. Kyoto remains the same single canonical `staff_base` shared with Kyoto members. This grant adds no staff membership, audience-response authority, event-room authority, appointment power, exclusive capture or independent army.
+`GET /court/estate` and `POST /court/estate/upgrade` grant role-bound shared development to the current 太政大臣, Kyoto members (including the Emperor), Regent, six valid externally appointed court officers, and Retired Emperors with a valid succession record. Ordinary-home participants retain their existing home, clan, personal buildings and owned castles. Kyoto remains the same single canonical `staff_base` shared with Kyoto members. The estate entitlement by itself adds no staff membership, audience-response authority, event-room authority, appointment power, exclusive capture or independent army; a formal retained-base member already has the normal palace functions through their separate membership.
 
 The authenticated GET returns `{ok:true,courtEstate,courtEstateProjection,clock}`. `courtEstate` contains:
 
@@ -48,7 +48,7 @@ The legacy `/staff/base` and `/staff/base/upgrade` contracts remain compatible a
 
 Deploy `0055_court_estate_economy.sql` before the API. It creates the canonical `court_estate_current` view, activation policy, per-player accounts and append-only snapshots. Existing ordinary role holders begin at the deployment's common-clock time. If a qualifying holder exists before the shared palace row has ever been opened, the migration or first appointment transaction initializes that same canonical palace at the activation boundary. Existing saves, shared levels, pending jobs, troops and resources are preserved.
 
-While a current ordinary Regent, external officer or Retired Emperor holds the palace, it contributes exactly one additional castle to the established economic formulas. An independently court-appointed deputy qualifies. At castle Lv.1 the base monthly contribution is gold 100, rice 170, wood 40 and stone 30, plus base troop capacity 500. Each further castle level adds gold 15, rice 20, wood 5 and stone 5. The ordinary territory-count construction multiplier applies; the normal castle upkeep is charged as well (per castle level: gold 2, rice 1, wood 1 and stone 1, plus rice 60 for the holding). Durations, command regeneration and construction slots retain their established formulas. The palace's 64 facilities remain a single shared Kyoto facility set; they do not become a second copy of an ordinary participant's personal town. Palace ownership is projected for these economic calculations and does not grant attack origins, an extra garrison, capture achievements or conquest completion. Kyoto members already receive the palace through their established shared projection, so it is never counted twice. There is no custom percentage discount.
+While a current ordinary Regent, external officer, formal retained-base member or Retired Emperor holds the palace, it contributes exactly one additional castle to the established economic formulas. An independently court-appointed deputy qualifies. At castle Lv.1 the base monthly contribution is gold 100, rice 170, wood 40 and stone 30, plus base troop capacity 500. Each further castle level adds gold 15, rice 20, wood 5 and stone 5. The ordinary territory-count construction multiplier applies; the normal castle upkeep is charged as well (per castle level: gold 2, rice 1, wood 1 and stone 1, plus rice 60 for the holding). Durations, command regeneration and construction slots retain their established formulas. The palace's 64 facilities remain a single shared Kyoto facility set; they do not become a second copy of an ordinary participant's personal town. Palace ownership is projected for these economic calculations and does not grant attack origins, an extra garrison, capture achievements or conquest completion. Kyoto-based staff already receive the palace through their established shared projection, so it is never counted twice. There is no custom percentage discount.
 
 Private sync snapshots and estate reads add `courtEstateProjection`, either null (no relevant history or no current saved campaign) or:
 
@@ -2133,9 +2133,9 @@ All paths are below `/api/v1`, require an authenticated, non-banned account, and
 | GET `/staff/court` | Current staff/operator/Regent only | Actual private roster, titles, contribution and leader |
 | POST `/admin/court/leader` | Operator only; `{requestId,targetPlayerId}`; null clears appointment | Current leader appointment |
 
-`self` carries the requesting player's own `title,merit,canRespond,canAppoint,isCourtEmperor`. Public staff/operator conversation authors are represented by the alias **朝廷**, without a public management roster or actual administrative account IDs. Only authorized private management views expose the current staff roster. Court messages do not grant currency, evaluation or contribution.
+`self` carries the requesting player's own `title,merit,canRespond,canAppoint,isCourtEmperor`. Public staff/operator conversation authors are represented by the alias **朝廷**, without a public management roster or actual administrative account IDs. Only authorized formal members, the current Regent and operator can read the private court roster. Court messages do not grant currency, evaluation or contribution.
 
-A completed shared construction contributes its `targetLevel` once to its initiator. The unique completed job ID and staff term tie the ledger to real shared progress; verified historical completed jobs are backfilled once. Offices are 参議 at 0, 中納言 at 50, 大納言 at 200, 内大臣 at 500, 右大臣 at 1,000, and 左大臣 at 2,000 contribution points. The operator's 太政大臣 is fixed. An operator-appointed active staff leader becomes 天皇; the appointment token and staff term are checked again at combat commit. Dismissal or BAN invalidates the appointment, and reappointment as staff does not revive an old emperor appointment.
+A completed shared construction contributes its `targetLevel` once to its initiator. The unique completed job ID and current staff or retained-membership term tie the ledger to real shared progress. New formal terms count only their own jobs; established pre-v5.25 staff terms retain their existing historical merit. Offices are 参議 at 0, 中納言 at 50, 大納言 at 200, 内大臣 at 500, 右大臣 at 1,000, and 左大臣 at 2,000 contribution points. The operator's 太政大臣 is fixed. An operator-appointed active staff leader becomes 天皇; the appointment token and staff term are checked again at combat commit. Dismissal or BAN invalidates the appointment, and reappointment as staff does not revive an old emperor appointment.
 
 **Kyoto Gosho → Edo attacks require the currently appointed 天皇 or 摂政**, including attacks against an Edo branch and covert retaliation. The same gate is checked after all asynchronous reads and within the combat transaction. It does not affect ordinary attacks originating from another home. Kyoto Gosho remains an attackable, uncapturable reward base with castle level 128 and facility level 32.
 
@@ -2341,7 +2341,7 @@ Regency transactions bind the exact revision, administrator generation and targe
 
 ## Kyoto court event creation room (v5.11.0)
 
-The room is available only to current Kyoto staff, the current operator and the current Regent, including a Regent at an ordinary base. Rank, a former title, a browser flag or being a regular court visitor grants no room access. `GET /court` exposes `features.eventRoom` for current duty holders. The existing `/admin/events` API remains operator-only.
+The room is available only to current formal Kyoto members (including retained-base membership), the current operator and the current Regent, including a Regent at an ordinary base. Rank, a former title, a browser flag or being a regular court visitor grants no room access. `GET /court` exposes `features.eventRoom` for current duty holders. The existing `/admin/events` API remains operator-only.
 
 | Method and path | Input | Result |
 |---|---|---|
@@ -2358,7 +2358,7 @@ Room events extend the canonical event DTO with `revision,creator:{id,name},sour
 
 The room shares the existing limit of 30 drafts and one active event with operator-created events. Only room-created events are accessible through room management routes. Published room events use the existing command, battle, milestone mail, participation and shogunate-right machinery; the room cannot arbitrarily credit a player's assets.
 
-Migration `0046_court_event_room` adds `court_event_room_events` and `court_event_room_requests`; existing `timed_events.revision` remains the authority for collaboration conflicts. Each mutation atomically stores an exact per-actor request receipt and its canonical event change. Retries cannot duplicate a draft, publish twice, extend an existing period or resurrect a discarded event. The current staff/admin generation or Regent appointment token is checked at commit and again after asynchronous response decoration, including reads and receipt replay.
+Migration `0046_court_event_room` adds `court_event_room_events` and `court_event_room_requests`; existing `timed_events.revision` remains the authority for collaboration conflicts. Each mutation atomically stores an exact per-actor request receipt and its canonical event change. Retries cannot duplicate a draft, publish twice, extend an existing period or resurrect a discarded event. The current staff/admin generation, retained-membership term or Regent appointment token is checked at commit and again after asynchronous response decoration, including reads and receipt replay.
 
 
 ## Base expulsion and Kagoshima deputy (v5.12.0)
@@ -2412,3 +2412,73 @@ Appointment, existing-save reads and normal synchronization restore a missing of
 Sync snapshots advertise `entitlements.shimazuU` only while the verified deputy role is current; health/config advertise `deputyOfficer`. Dismissal removes the special stats/art entitlement immediately while retaining the collected ordinary officer and U rank. Existing role-epoch and writer-lease guards reject stale campaign writes after appointment/dismissal. Shared field PvP retains the game's existing rank-and-health coefficient used for all officers; shared-engine battles and economic officer use consume the effective runtime stats.
 
 `server/test-deputy-officer.mjs` covers appointment, old deputy-save recovery, idempotent restore, sync persistence, army-slot assignment, public commander artwork, dismissal/reappointment, ordinary U ownership and forged save flags using isolated Worker/SQLite fixtures.
+
+
+## Kyoto court noble collection and formal appointments
+
+`GET /court/nobles` requires authentication and returns `catalog`, `total` (24),
+`ownedCount`, `balance` (magatama), `eligible`, and `reason`. Each immutable
+entry includes its officer ID, name, house, title, canonical rank, fixed cost,
+portrait, effective abilities, engine skill and skill description, and
+`owned`. The exchange uses existing current Kyoto admission rights: qualified
+visitors, current court authorities, and current formal members including
+members retaining their home castle. Reading the catalog does not debit funds.
+
+`POST /court/nobles/exchange` accepts exactly `officerId`, `requestId`,
+`deviceId`, and `expectedRevision`; it rejects client-supplied prices, ranks,
+or balances. SS/SSS/U cost 1,200/2,400/4,800 magatama respectively, with eight
+characters in each tier. A successful response is a normal cloud sync snapshot
+with `nobles`, `receipt` (`kind: court_noble`, officer ID/name/rank/cost/balance),
+and `idempotent`. The same operation ID can recover a lost response without
+spending again, even when its original save revision is stale. A different
+operation ID cannot buy a second copy of an owned noble.
+
+The existing `reward_requests` ledger stores the receipt. The unique operation
+ID, an officer-specific ownership exclusion, current writer revision/lease,
+current admission authority, world clock revision, and shared estate guard
+protect the single transaction containing receipt, debit and officer grant.
+No schema migration is needed. Dedicated errors are
+`COURT_NOBLE_ACCESS_REQUIRED`, `COURT_NOBLE_OWNED`, `COURT_NOBLE_SHORTAGE`,
+`COURT_NOBLE_STATE_CHANGED`, and `COURT_NOBLE_RECEIPT_REQUIRED`. Existing
+request reuse, writer, cycle and input validation errors remain applicable.
+
+The normal 256-person gacha pool is unchanged. The 24 new people have only
+their stated rank, are excluded from starters, normal gold recruitment, gacha,
+standard exchange and CPU surrender, and are restored from purchase receipts
+when older saves are synchronized. Their army, governor, health and progression
+behavior is the normal officer behavior. They remain owned after court access
+is revoked. Imported nobles without purchase receipts cannot enter cloud saves.
+
+Self/public identity DTOs now include `courtMember`, derived from a current
+Kyoto staff term or a current retained-base membership, independently of the
+persistent lineage. Every new ordinary formal member starts as **参議**.
+A prior external appointment is consumed in the admission transaction; it can
+preserve the player's home but does not carry its higher title or previous
+merit into the formal term. The preview exposes the former
+`inheritedOffice: {id,title}` and `startingOffice: {id:sangi,title:参議,
+jurisdiction:kyoto}`. Admission exposes `startingOffice`, `inheritedOffice:null`,
+and `formalOffice` for the current formal rank only while the receipt's exact
+term is current. An old receipt cannot restore membership or an appointment.
+The special Emperor, Chancellor, regent and retired-Emperor authorities keep
+their existing independent rules.
+
+Migration `0063_court_formal_rank_terms` is schema-only: it adds a term marker,
+current rank projection and triggers, and updates the existing office and
+estate views. New staff and retained membership terms use only construction
+contributions attributed to that exact term. Jobs ordered before admission
+or in a previous term do not count. Existing Kyoto staff without a new-term
+marker preserve established merit until that term ends. Retained membership
+uses its own term; 0/50/200/500/1,000/2,000 merit yields
+参議/中納言/大納言/内大臣/右大臣/左大臣. Imperial-house creation requires earned
+2,000 formal merit and the current term, not a former appointed left ministry.
+
+The administration directory excludes formal members from external candidates,
+marks their rank as `blockedByKyoto`, and exposes external holders with
+`holderJurisdiction` and `holder.officeJurisdiction`. A bounded authenticated
+runtime cleanup retires obsolete external rows held by pre-migration retained
+members; deletion of their membership also consumes those rows permanently.
+Formal retained members keep their home, shared Kyoto estate benefits,
+protection, conversations, audiences, roster and event-room access under an
+exact membership-term guard. Their public `courtOffice.jurisdiction` and
+personal `officeJurisdiction` are `kyoto`. No operator or imperial succession
+privilege is granted by this classification.

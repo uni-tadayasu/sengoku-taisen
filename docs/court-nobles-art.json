@@ -1,0 +1,249 @@
+{
+  "version": 1,
+  "generatedAt": "2026-11-28",
+  "tool": "built-in image_gen",
+  "style": "Original luxurious painterly CG interpretations for Sengoku VS; not documentary likenesses.",
+  "postprocess": "Source resized to 480x640 using Lanczos; WebP quality 82, method 6. No painted alterations.",
+  "portraits": [
+    {
+      "id": "kuge_asukai_masatsuna",
+      "name": "飛鳥井雅綱",
+      "asset": "assets/court-nobles/kuge_asukai_masatsuna.webp",
+      "width": 480,
+      "height": 640,
+      "prompt": "Use case: stylized-concept. Asset type: premium original character portrait in a Japanese Sengoku strategy game, one person only. 3:4 vertical head-and-torso composition. Beautiful highly detailed painterly CG illustration, restrained realistic anime design, natural Japanese human anatomy. Sumptuous silk texture, intricate gold brocade, gilded relief-like highlights, cinematic light and elegant violet shadows. Leave breathing room above the entire tall hat; clear face in upper third, readable as a small card. NO text, letters, logos, watermarks, outer card frame, armor or weapons. Subject and scene: Asukai Masatsuna, an energetic older Japanese court noble around 55, broad ruddy face, strong cheekbones, neatly trimmed dark grey beard, friendly resolute eyes. Black eboshi. Vivid moss green and golden-ochre court robes with intricate gold maple-leaf patterns. One hand rests on a traditional small cream leather kemari ball held at his side, the other holds a folding fan. Sunlit Kyoto court garden, gold fence and fresh green trees.",
+      "bytes": 102526,
+      "sha256": "7067d59ebcc88ebca0e5b629a0e350d327bced37fbb33f996c1f2141c2751435"
+    },
+    {
+      "id": "kuge_ichijo_akiyoshi",
+      "name": "一条昭良",
+      "asset": "assets/court-nobles/kuge_ichijo_akiyoshi.webp",
+      "width": 480,
+      "height": 640,
+      "prompt": "Use case: stylized-concept. Asset type: premium original character portrait in a Japanese Sengoku strategy game, one person only. 3:4 vertical head-and-torso composition. Beautiful highly detailed painterly CG illustration, restrained realistic anime design, natural Japanese human anatomy. Sumptuous silk texture, intricate gold brocade, gilded relief-like highlights, cinematic light and elegant violet shadows. Leave breathing room above the entire tall hat; clear face in upper third, readable as a small card. NO text, letters, logos, watermarks, outer card frame, armor or weapons. Subject and scene: Ichijo Akiyoshi, an elegant young Japanese court noble around 27, straight black hair beside the ears, smooth narrow chin, soft serious dark eyes, no beard. Low black formal kanmuri court cap with a delicate upright crown. Pale silver-blue and snow-white silk robes lavishly embroidered with gold plum branches. Holding a folded parchment document without markings. Snowy Kyoto courtyard, radiant gold screen and cool blue dawn light.",
+      "bytes": 71360,
+      "sha256": "fdab9afbd0e9d645c0bfeeeaaf3c003d9f980ccb8a84758efe916e2c9a32c3d9"
+    },
+    {
+      "id": "kuge_ichijo_kanefuyu",
+      "name": "一条兼冬",
+      "asset": "assets/court-nobles/kuge_ichijo_kanefuyu.webp",
+      "width": 480,
+      "height": 640,
+      "prompt": "Use case: stylized-concept. Asset type: premium original character portrait in a Japanese Sengoku strategy game, one person only. 3:4 vertical head-and-torso composition. Beautiful highly detailed painterly CG illustration, restrained realistic anime design, natural Japanese human anatomy. Sumptuous silk texture, intricate gold brocade, gilded relief-like highlights, cinematic light and elegant violet shadows. Leave breathing room above the entire tall hat; clear face in upper third, readable as a small card. NO text, letters, logos, watermarks, outer card frame, armor or weapons. Subject and scene: Ichijo Kanefuyu, a noble aged 24, round handsome face, calm gentle mouth, dark wide eyes, beardless, upright black eboshi. Deep burgundy robes with ivory sleeves and delicate gold chrysanthemum embroidery. Holding a fan closed diagonally across his chest. Warm red maple leaves visible through a Kyoto palace opening, gold screen glow.",
+      "bytes": 66542,
+      "sha256": "e35f981ddd181eb7f5290e5069e7a47ed4930e70666708a445a3a48140a139ca"
+    },
+    {
+      "id": "kuge_ichijo_uchimoto",
+      "name": "一条内基",
+      "asset": "assets/court-nobles/kuge_ichijo_uchimoto.webp",
+      "width": 480,
+      "height": 640,
+      "prompt": "Use case: stylized-concept. Asset type: premium original character portrait in a Japanese Sengoku strategy game, one person only. 3:4 vertical head-and-torso composition. Beautiful highly detailed painterly CG illustration, restrained realistic anime design, natural Japanese human anatomy. Sumptuous silk texture, intricate gold brocade, gilded relief-like highlights, cinematic light and elegant violet shadows. Leave breathing room above the entire tall hat; clear face in upper third, readable as a small card. NO text, letters, logos, watermarks, outer card frame, armor or weapons. Subject and scene: Ichijo Uchimoto, a mature noble around 48, long face, high cheekbones, clipped thin black moustache, quietly alert gaze. Tall black eboshi hat. Charcoal and violet silk robes with iridescent gold iris patterns, white underlayer. Holding a closed fan upright with one hand. Three-quarter pose to the left against a golden iris folding screen and moonlit violet palace doorway.",
+      "bytes": 63644,
+      "sha256": "749ef25ecfb3bbad952108f791b925ef84873ee51c8abf2b9561d2356f3b9488"
+    },
+    {
+      "id": "kuge_kajuji_harutoyo",
+      "name": "勧修寺晴豊",
+      "asset": "assets/court-nobles/kuge_kajuji_harutoyo.webp",
+      "width": 480,
+      "height": 640,
+      "prompt": "Use case: stylized-concept. Asset type: premium original character portrait in a Japanese Sengoku strategy game, one person only. 3:4 vertical head-and-torso composition. Beautiful highly detailed painterly CG illustration, restrained realistic anime design, natural Japanese human anatomy. Sumptuous silk texture, intricate gold brocade, gilded relief-like highlights, cinematic light and elegant violet shadows. Leave breathing room above the entire tall hat; clear face in upper third, readable as a small card. NO text, letters, logos, watermarks, outer card frame, armor or weapons. Subject and scene: Kajuji Harutoyo, a diplomatic Japanese court noble around 43, slim triangular face with a distinguished high forehead, finely curved dark eyebrows, clean-shaven serious expression. Formal black kanmuri court hat with raised central crown and subtle ribbons. Deep garnet and black silk ceremonial robes with gold geometric and flowing-vine brocade, cream collar. Holding a folded white dispatch at waist level. Kyoto audience hall with golden arches and red lacquer doors, late afternoon light.",
+      "bytes": 72190,
+      "sha256": "f2c79aaadf95b3e74adccd1417f16b880e6f2e7762e09598403221199edb6d16"
+    },
+    {
+      "id": "kuge_karasumaru_mitsuhiro",
+      "name": "烏丸光広",
+      "asset": "assets/court-nobles/kuge_karasumaru_mitsuhiro.webp",
+      "width": 480,
+      "height": 640,
+      "prompt": "Use case: stylized-concept. Asset type: premium original character portrait in a Japanese Sengoku strategy game, one person only. 3:4 vertical head-and-torso composition. Beautiful highly detailed painterly CG illustration, restrained realistic anime design, natural Japanese human anatomy. Sumptuous silk texture, intricate gold brocade, gilded relief-like highlights, cinematic light and elegant violet shadows. Leave breathing room above the entire tall hat; clear face in upper third, readable as a small card. NO text, letters, logos, watermarks, outer card frame, armor or weapons. Subject and scene: Karasumaru Mitsuhiro, a charismatic Japanese court poet around 42, lean weathered handsome face, short untidy moustache, lively mischievous dark eyes, slightly windswept black hair under elegant black eboshi. Rich black and teal silk court robes with broad flowing gold cloud embroidery. Holding an open fan in a relaxed casual gesture, body turned dramatically to left while facing viewer. Gilded Kyoto palace veranda, blue twilight and stylized dark pine silhouette.",
+      "bytes": 76336,
+      "sha256": "a7be051b30ccc481f03318a9ccd11399cb79cddb425062e185d43016066500e3"
+    },
+    {
+      "id": "kuge_konoe_nobutada",
+      "name": "近衛信尹",
+      "asset": "assets/court-nobles/kuge_konoe_nobutada.webp",
+      "width": 480,
+      "height": 640,
+      "prompt": "Use case: stylized-concept. Asset type: premium original character portrait in a Japanese Sengoku strategy game, one person only. 3:4 vertical head-and-torso composition. Beautiful highly detailed painterly CG illustration, restrained realistic anime design, natural Japanese human anatomy. Sumptuous silk texture, intricate gold brocade, gilded relief-like highlights, cinematic light and elegant violet shadows. Leave breathing room above the entire tall hat; clear face in upper third, readable as a small card. NO text, letters, logos, watermarks, outer card frame, armor or weapons. Subject and scene: Konoe Nobutada, a noble calligrapher around 35, long angular youthful beardless face, arched brows, intense creative eyes, black eboshi, pure white and lavender silk court robes decorated with golden cranes. Holding a calligraphy brush gracefully and an unmarked scroll, torso turned slightly to the left. Plum blossoms outside a gold lattice palace window.",
+      "bytes": 73090,
+      "sha256": "94f1b9b3de156cdcce47875993367600fc19644cc2a3a3b60dfe53d4cf34e2c8"
+    },
+    {
+      "id": "kuge_konoe_sakihisa",
+      "name": "近衛前久",
+      "asset": "assets/court-nobles/kuge_konoe_sakihisa.webp",
+      "width": 480,
+      "height": 640,
+      "prompt": "Use case: stylized-concept. Asset type: premium character portrait for Japanese Sengoku strategy game. Create one luxurious 3:4 vertical upper-body portrait of Konoe Sakihisa (近衛前久), a dignified Japanese court noble aged about 45, sharp dark eyes, refined oval face, short thin moustache, tall black eboshi court hat. Deep imperial purple sokutai silk robes with intricate woven gold paulownia brocade and ivory inner layers, holding a closed cypress ceremonial fan at his chest. Elegant Kyoto palace background, gold-leaf folding screen with soft iridescent purple mist and subtle rim lighting. Highly detailed polished painterly CG illustration, realistic anatomy with beautiful restrained anime character design, sumptuous embroidered fabric and rich relief-like golden highlights. Face centered in upper third, hat fully inside image, head and shoulders clearly readable at thumbnail size. Single person only. No samurai armor, no weapons, no text, no letters, no logos, no watermarks, no outer card frame.",
+      "bytes": 85410,
+      "sha256": "67ce42dc1ffe659dcfe4fbdcebc8936106a848b3dd7c37450474397e884769a5"
+    },
+    {
+      "id": "kuge_konoe_taneie",
+      "name": "近衛稙家",
+      "asset": "assets/court-nobles/kuge_konoe_taneie.webp",
+      "width": 480,
+      "height": 640,
+      "prompt": "Use case: stylized-concept. Asset type: premium original character portrait in a Japanese Sengoku strategy game, one person only. 3:4 vertical head-and-torso composition. Beautiful highly detailed painterly CG illustration, restrained realistic anime design, natural Japanese human anatomy. Sumptuous silk texture, intricate gold brocade, gilded relief-like highlights, cinematic light and elegant violet shadows. Leave breathing room above the entire tall hat; clear face in upper third, readable as a small card. NO text, letters, logos, watermarks, outer card frame, armor or weapons. Subject and scene: Konoe Taneie, a stately elderly court noble around 65, broad forehead, fine wrinkles, short silver beard, sober eyes, formal black kanmuri cap. Dark crimson silk ceremonial robes with black and gold paulownia brocade, both hands resting around a cypress fan. Facing front in a deep oxblood Kyoto palace interior, massive antique gold folding screen behind.",
+      "bytes": 72576,
+      "sha256": "07002e23cb6036fff468bfe74936e4a990a3d9246fbc46c6180dcddf8d1446ad"
+    },
+    {
+      "id": "kuge_kujo_kanetaka",
+      "name": "九条兼孝",
+      "asset": "assets/court-nobles/kuge_kujo_kanetaka.webp",
+      "width": 480,
+      "height": 640,
+      "prompt": "Use case: stylized-concept. Asset type: premium original character portrait in a Japanese Sengoku strategy game, one person only. 3:4 vertical head-and-torso composition. Beautiful highly detailed painterly CG illustration, restrained realistic anime design, natural Japanese human anatomy. Sumptuous silk texture, intricate gold brocade, gilded relief-like highlights, cinematic light and elegant violet shadows. Leave breathing room above the entire tall hat; clear face in upper third, readable as a small card. NO text, letters, logos, watermarks, outer card frame, armor or weapons. Subject and scene: Kujo Kanetaka, a commanding Japanese court noble around 45, strong square jaw, clean shaven, straight dark brows, serious gaze, black eboshi. Midnight blue and silver indigo sokutai robes with luxurious golden vine embroidery. Holding an open ivory folding fan slightly below chest, angled body but looking toward viewer. Illuminated golden palace doors, cool midnight mist.",
+      "bytes": 67624,
+      "sha256": "2f9d2d46ad992ea9226529c9e67fcf1a5b06d215d5230b5542faf13ed2518578"
+    },
+    {
+      "id": "kuge_kujo_tanemichi",
+      "name": "九条稙通",
+      "asset": "assets/court-nobles/kuge_kujo_tanemichi.webp",
+      "width": 480,
+      "height": 640,
+      "prompt": "Use case: stylized-concept. Asset type: premium original character portrait in a Japanese Sengoku strategy game, one person only. 3:4 vertical head-and-torso composition. Beautiful highly detailed painterly CG illustration, restrained realistic anime design, natural Japanese human anatomy. Sumptuous silk texture, intricate gold brocade, gilded relief-like highlights, cinematic light and elegant violet shadows. Leave breathing room above the entire tall hat; clear face in upper third, readable as a small card. NO text, letters, logos, watermarks, outer card frame, armor or weapons. Subject and scene: Kujo Tanemichi, a wise aristocratic scholar around 55, narrow face, long fine moustache and short pointed grey beard, warm focused eyes, tall black eboshi. Ivory and muted jade green court robes with small golden wisteria brocade. Holding a rolled parchment scroll across his lap. Three-quarter view toward the right, tranquil courtyard bamboo and amber lantern blur.",
+      "bytes": 56394,
+      "sha256": "887f1bf9acfe22553efad5c80fda9e9e191c2011d4283b860fc90fecc888fa11"
+    },
+    {
+      "id": "kuge_kujo_yukiie",
+      "name": "九条幸家",
+      "asset": "assets/court-nobles/kuge_kujo_yukiie.webp",
+      "width": 480,
+      "height": 640,
+      "prompt": "Use case: stylized-concept. Asset type: premium original character portrait in a Japanese Sengoku strategy game, one person only. 3:4 vertical head-and-torso composition. Beautiful highly detailed painterly CG illustration, restrained realistic anime design, natural Japanese human anatomy. Sumptuous silk texture, intricate gold brocade, gilded relief-like highlights, cinematic light and elegant violet shadows. Leave breathing room above the entire tall hat; clear face in upper third, readable as a small card. NO text, letters, logos, watermarks, outer card frame, armor or weapons. Subject and scene: Kujo Yukiie, a young elegant noble around 28, slender refined face, smooth skin, soft discerning dark eyes, tidy black sideburns and black eboshi. Rich turquoise and jade silk ceremonial robes with golden bamboo medallions, white collar. Holding a narrow wooden ceremonial tablet in one hand. Spring garden with gold clouds and an emerald palace screen.",
+      "bytes": 91988,
+      "sha256": "80688e0a973a3d57c0b93ce249228e7491894440767fa4873b7524bfd757fd38"
+    },
+    {
+      "id": "kuge_nijo_akizane",
+      "name": "二条昭実",
+      "asset": "assets/court-nobles/kuge_nijo_akizane.webp",
+      "width": 480,
+      "height": 640,
+      "prompt": "Use case: stylized-concept. Asset type: premium original character portrait in a Japanese Sengoku strategy game, one person only. 3:4 vertical head-and-torso composition. Beautiful highly detailed painterly CG illustration, restrained realistic anime design, natural Japanese human anatomy. Sumptuous silk texture, intricate gold brocade, gilded relief-like highlights, cinematic light and elegant violet shadows. Leave breathing room above the entire tall hat; clear face in upper third, readable as a small card. NO text, letters, logos, watermarks, outer card frame, armor or weapons. Subject and scene: Nijo Akizane, a reserved dignitary aged about 40, clean shaven angular face, high straight brows, slim dark eyes and slightly turned head. Black eboshi court hat. Wine purple and crimson silk robes with heavy golden flowing-water brocade. Cypress ceremonial tablet held against his chest. Ornate gold chrysanthemum screen and red lacquer palace pillars under warm lantern light.",
+      "bytes": 75106,
+      "sha256": "e32b72ca11eeccd02e14871a61f889277e068b37baced8acc44b1cdabd5ccbe7"
+    },
+    {
+      "id": "kuge_nijo_haruyoshi",
+      "name": "二条晴良",
+      "asset": "assets/court-nobles/kuge_nijo_haruyoshi.webp",
+      "width": 480,
+      "height": 640,
+      "prompt": "Use case: stylized-concept. Asset type: premium original character portrait in a Japanese Sengoku strategy game, one person only. 3:4 vertical head-and-torso composition. Beautiful highly detailed painterly CG illustration, restrained realistic anime design, natural Japanese human anatomy. Sumptuous silk texture, intricate gold brocade, gilded relief-like highlights, cinematic light and elegant violet shadows. Leave breathing room above the entire tall hat; clear face in upper third, readable as a small card. NO text, letters, logos, watermarks, outer card frame, armor or weapons. Subject and scene: Nijo Haruyoshi, a stern court elder about 60, broad square face, deep brow lines, short salt-and-pepper goatee and moustache. Tall black eboshi. Burnt orange and copper silk court robes with dark indigo collar and golden pine embroidery. Open fan with simple painted pine branches held low in front. Centered commanding posture, autumn Kyoto palace steps and gilded clouds behind.",
+      "bytes": 85346,
+      "sha256": "162a0196d6dae686fe2a6067c62c5b39816b691076441f19509405dd6b201901"
+    },
+    {
+      "id": "kuge_nijo_yasumichi",
+      "name": "二条康道",
+      "asset": "assets/court-nobles/kuge_nijo_yasumichi.webp",
+      "width": 480,
+      "height": 640,
+      "prompt": "Use case: stylized-concept. Asset type: premium original character portrait in a Japanese Sengoku strategy game, one person only. 3:4 vertical head-and-torso composition. Beautiful highly detailed painterly CG illustration, restrained realistic anime design, natural Japanese human anatomy. Sumptuous silk texture, intricate gold brocade, gilded relief-like highlights, cinematic light and elegant violet shadows. Leave breathing room above the entire tall hat; clear face in upper third, readable as a small card. NO text, letters, logos, watermarks, outer card frame, armor or weapons. Subject and scene: Nijo Yasumichi, a confident court noble about 30, broad handsome oval face and youthful determined eyes, clean shaven, hair neatly tucked under a rounded black eboshi. Deep peacock green robes with bright golden bamboo brocade and cream collar. Holding a neat folded white fan in both hands. Early morning green courtyard reflected in glowing gold palace doors.",
+      "bytes": 86094,
+      "sha256": "1c351898902b80b90fc021054bfbf1cf9f20549b703ecc9ba7d88fb20f927ff2"
+    },
+    {
+      "id": "kuge_ogimachisanjo_sanemochi",
+      "name": "正親町三条実望",
+      "asset": "assets/court-nobles/kuge_ogimachisanjo_sanemochi.webp",
+      "width": 480,
+      "height": 640,
+      "prompt": "Use case: stylized-concept. Asset type: premium original character portrait in a Japanese Sengoku strategy game, one person only. 3:4 vertical head-and-torso composition. Beautiful highly detailed painterly CG illustration, restrained realistic anime design, natural Japanese human anatomy. Sumptuous silk texture, intricate gold brocade, gilded relief-like highlights, cinematic light and elegant violet shadows. Leave breathing room above the entire tall hat; clear face in upper third, readable as a small card. NO text, letters, logos, watermarks, outer card frame, armor or weapons. Subject and scene: Ogimachisanjo Sanemochi, an imposing wise Japanese court noble around 50, broad angular face, deep-set intense dark eyes, high arched eyebrows, distinctive long black moustache and a small chin beard. Tall black eboshi. Royal amethyst and bronze-gold silk court robes with ornate golden peony and flowing-cloud embroidery, layered black and cream collar. Holding a cypress ceremonial tablet vertically, dignified frontal pose. Magnificent dark purple Kyoto palace hall and luminous golden peony screen.",
+      "bytes": 81304,
+      "sha256": "7077528e3e18f984ca055df3b907f073a21104523bac1eafee3ff00f11ac07e5"
+    },
+    {
+      "id": "kuge_reizei_tamekazu",
+      "name": "冷泉為和",
+      "asset": "assets/court-nobles/kuge_reizei_tamekazu.webp",
+      "width": 480,
+      "height": 640,
+      "prompt": "Use case: stylized-concept. Asset type: premium original character portrait in a Japanese Sengoku strategy game, one person only. 3:4 vertical head-and-torso composition. Beautiful highly detailed painterly CG illustration, restrained realistic anime design, natural Japanese human anatomy. Sumptuous silk texture, intricate gold brocade, gilded relief-like highlights, cinematic light and elegant violet shadows. Leave breathing room above the entire tall hat; clear face in upper third, readable as a small card. NO text, letters, logos, watermarks, outer card frame, armor or weapons. Subject and scene: Reizei Tamekazu, a thoughtful elderly Japanese poetry master around 62, delicate long face, lowered kindly eyes, very fine grey moustache and short beard, sober black eboshi. Soft pearl-grey, lavender and ivory silk court robes with glowing gold plum blossom brocade. Holding an unmarked cream poetry slip carefully with both hands. Quiet garden pavilion, blooming white plum and golden moonlit screen, silver-purple light.",
+      "bytes": 73742,
+      "sha256": "101ddd6d38ddf6e4e7847a529217142e2d9c5052c4030696e18158da6ccab8a4"
+    },
+    {
+      "id": "kuge_sanjonishi_kinieda",
+      "name": "三条西公条",
+      "asset": "assets/court-nobles/kuge_sanjonishi_kinieda.webp",
+      "width": 480,
+      "height": 640,
+      "prompt": "Use case: stylized-concept. Asset type: premium original character portrait in a Japanese Sengoku strategy game, one person only. 3:4 vertical head-and-torso composition. Beautiful highly detailed painterly CG illustration, restrained realistic anime design, natural Japanese human anatomy. Sumptuous silk texture, intricate gold brocade, gilded relief-like highlights, cinematic light and elegant violet shadows. Leave breathing room above the entire tall hat; clear face in upper third, readable as a small card. NO text, letters, logos, watermarks, outer card frame, armor or weapons. Subject and scene: Sanjonishi Kinieda, a contemplative Japanese court scholar aged around 58, high rounded forehead, narrow small dark eyes, clean shaven, composed soft smile. Formal black eboshi. Dark plum and silver court silk robes with intricate golden vines and pale blue collar. Holding a carefully folded unmarked poetry paper with elegant hands. Low-angle waist-up view in an ornate palace study, round gold window and purple evening glow.",
+      "bytes": 69880,
+      "sha256": "b0a6be769806c268b0f2884ae7d2aec74f84f308d7cc6298adf255aed67f2e60"
+    },
+    {
+      "id": "kuge_sanjonishi_saneki",
+      "name": "三条西実枝",
+      "asset": "assets/court-nobles/kuge_sanjonishi_saneki.webp",
+      "width": 480,
+      "height": 640,
+      "prompt": "Use case: stylized-concept. Asset type: premium original character portrait in a Japanese Sengoku strategy game, one person only. 3:4 vertical head-and-torso composition. Beautiful highly detailed painterly CG illustration, restrained realistic anime design, natural Japanese human anatomy. Sumptuous silk texture, intricate gold brocade, gilded relief-like highlights, cinematic light and elegant violet shadows. Leave breathing room above the entire tall hat; clear face in upper third, readable as a small card. NO text, letters, logos, watermarks, outer card frame, armor or weapons. Subject and scene: Sanjonishi Saneki, a court noble poet aged around 46, angular cheekbones, fine thin moustache, intelligent lifted dark brows, thoughtful direct gaze. Black eboshi. Deep cerulean-blue silk robes with exquisite gold wave and cloud embroidery. A small closed fan resting on his shoulder held elegantly in one hand. Golden screen showing a river and mountains, soft cool blue moonlight through lattice.",
+      "bytes": 69242,
+      "sha256": "7f90efaa8303675140092a6ef78932b4b5cfe6b7a441a2c03a5d021231c8120c"
+    },
+    {
+      "id": "kuge_sanjonishi_sanetaka",
+      "name": "三条西実隆",
+      "asset": "assets/court-nobles/kuge_sanjonishi_sanetaka.webp",
+      "width": 480,
+      "height": 640,
+      "prompt": "Use case: stylized-concept. Asset type: premium original character portrait in a Japanese Sengoku strategy game, one person only. 3:4 vertical head-and-torso composition. Beautiful highly detailed painterly CG illustration, restrained realistic anime design, natural Japanese human anatomy. Sumptuous silk texture, intricate gold brocade, gilded relief-like highlights, cinematic light and elegant violet shadows. Leave breathing room above the entire tall hat; clear face in upper third, readable as a small card. NO text, letters, logos, watermarks, outer card frame, armor or weapons. Subject and scene: Sanjonishi Sanetaka, a wise elderly Japanese literary noble around 75, distinctly long face with warm wrinkles, kindly bright eyes, flowing short white beard and swept grey side hair. Slightly curved black court eboshi. Rich deep olive silk robes with burnished gold maple and delicate cream inner layer. Holding a calligraphy brush over a rolled blank parchment below his chest, seated relaxed. Quiet Kyoto library with old lacquer writing boxes and gold leaf autumn folding screen.",
+      "bytes": 77186,
+      "sha256": "64afbd1bbb221b0fd8d056b299dc571c1f0c533938dc77bbc9fd0a8f3bd8cf6e"
+    },
+    {
+      "id": "kuge_takatsukasa_nobufusa",
+      "name": "鷹司信房",
+      "asset": "assets/court-nobles/kuge_takatsukasa_nobufusa.webp",
+      "width": 480,
+      "height": 640,
+      "prompt": "Use case: stylized-concept. Asset type: premium original character portrait in a Japanese Sengoku strategy game, one person only. 3:4 vertical head-and-torso composition. Beautiful highly detailed painterly CG illustration, restrained realistic anime design, natural Japanese human anatomy. Sumptuous silk texture, intricate gold brocade, gilded relief-like highlights, cinematic light and elegant violet shadows. Leave breathing room above the entire tall hat; clear face in upper third, readable as a small card. NO text, letters, logos, watermarks, outer card frame, armor or weapons. Subject and scene: Takatsukasa Nobufusa, distinguished noble about 50, strong lean cheekbones, narrow serious eyes, small pointed black beard with grey streak, neatly trimmed moustache. High black eboshi. Midnight navy and rich gold court robes with delicate golden hawk-feather embroidery, layered ivory collar. One hand holding a folded ceremonial fan downward. Gold-leaf hawk and pine screen, subdued sapphire palace light.",
+      "bytes": 74364,
+      "sha256": "552fad9a4607f07875a1aaa61de7766644ef4b8f8982a17e570bfe0598fc9035"
+    },
+    {
+      "id": "kuge_takatsukasa_nobuhisa",
+      "name": "鷹司信尚",
+      "asset": "assets/court-nobles/kuge_takatsukasa_nobuhisa.webp",
+      "width": 480,
+      "height": 640,
+      "prompt": "Use case: stylized-concept. Asset type: premium original character portrait in a Japanese Sengoku strategy game, one person only. 3:4 vertical head-and-torso composition. Beautiful highly detailed painterly CG illustration, restrained realistic anime design, natural Japanese human anatomy. Sumptuous silk texture, intricate gold brocade, gilded relief-like highlights, cinematic light and elegant violet shadows. Leave breathing room above the entire tall hat; clear face in upper third, readable as a small card. NO text, letters, logos, watermarks, outer card frame, armor or weapons. Subject and scene: Takatsukasa Nobuhisa, a brilliant young Japanese noble aged 25, slender face, fine straight eyebrows, calm confident gaze, no facial hair, long black hair tucked behind ears under black eboshi. Elegant warm rose and white silk court robes with delicate gold cranes and purple cords. Holding a golden closed fan across the lower chest, slight three-quarter turn to right. Sunset palace veranda, pink flowering branches and glittering gold screen.",
+      "bytes": 79088,
+      "sha256": "ad504092631b78286fee9af8076b833f464dd3f321f66e5e669aaa1433547b92"
+    },
+    {
+      "id": "kuge_yamashina_tokitsugu",
+      "name": "山科言継",
+      "asset": "assets/court-nobles/kuge_yamashina_tokitsugu.webp",
+      "width": 480,
+      "height": 640,
+      "prompt": "Use case: stylized-concept. Asset type: premium original character portrait in a Japanese Sengoku strategy game, one person only. 3:4 vertical head-and-torso composition. Beautiful highly detailed painterly CG illustration, restrained realistic anime design, natural Japanese human anatomy. Sumptuous silk texture, intricate gold brocade, gilded relief-like highlights, cinematic light and elegant violet shadows. Leave breathing room above the entire tall hat; clear face in upper third, readable as a small card. NO text, letters, logos, watermarks, outer card frame, armor or weapons. Subject and scene: Yamashina Tokitsugu, a friendly wise Japanese court noble around 60, broad softly rounded face, gentle smile, visible eye wrinkles, short greying moustache and a small pointed beard. Tall black eboshi. Amber-gold and dark brown silk robes, rich honeycomb and golden bamboo embroidery, white collar. Holding a small closed traditional bound book without text in both hands. Warm palace study filled with soft lantern light and burnished gold pine screens.",
+      "bytes": 73012,
+      "sha256": "94f42ce675bf17f275ec05a3b6349243188dc5b6c6038f82c074a3df1769193e"
+    },
+    {
+      "id": "kuge_yamashina_tokitsune",
+      "name": "山科言経",
+      "asset": "assets/court-nobles/kuge_yamashina_tokitsune.webp",
+      "width": 480,
+      "height": 640,
+      "prompt": "Use case: stylized-concept. Asset type: premium original character portrait in a Japanese Sengoku strategy game, one person only. 3:4 vertical head-and-torso composition. Beautiful highly detailed painterly CG illustration, restrained realistic anime design, natural Japanese human anatomy. Sumptuous silk texture, intricate gold brocade, gilded relief-like highlights, cinematic light and elegant violet shadows. Leave breathing room above the entire tall hat; clear face in upper third, readable as a small card. NO text, letters, logos, watermarks, outer card frame, armor or weapons. Subject and scene: Yamashina Tokitsune, a composed noble around 42, lean elongated oval face, thick straight eyebrows, short black moustache, alert dark eyes. Black eboshi with subtle black cloth pattern. Muted pale jade and white court robes with intricate gold wisteria embroidered accents. Holding an unrolled blank document at chest height while one hand lightly gestures. Kyoto courtyard with deep green foliage and elegant gilded sliding doors.",
+      "bytes": 78170,
+      "sha256": "1af8795c8c3c7318a27adb45e6b12799e4867f59cf50c1bbe22e64c12f4dd5de"
+    }
+  ]
+}

@@ -81,7 +81,7 @@ test('mounted recruitment buttons share one fresh batch and hidden panes do no q
  const ids=game.searchOfficers().filter(officer=>!game.state.officers.includes(officer.id)).slice(0,12).map(officer=>officer.id);
  const rows=ids.map(id=>'<article><button data-action="recruit-officer" data-id="'+id+'">登用</button><span data-recruit-reason="'+id+'"></span></article>').join('');
  const f=fixture('<section>'+rows+'</section><dialog>'+rows+'</dialog><section hidden>'+rows+'</section><section inert>'+rows+'</section>');
- const context={document:f.doc,window:{SengokuLiveDOM:f.registry},game,data:D,state:()=>game.state,currentView:'officers',saveEnabled:true,mutationActions:new Set(['recruit-officer']),canMutate:()=>true,
+ const context={document:f.doc,window:{SengokuLiveDOM:f.registry},game,data:D,state:()=>game.state,currentView:'officers',activeModal:'',saveEnabled:true,mutationActions:new Set(['recruit-officer']),canMutate:()=>true,
   $:()=>null,refreshTouchHeaderStatus(){},refreshBranchDeploymentPanels(){},hasResources:cost=>D.resources.every(key=>game.state.resources[key]>=(cost?.[key]||0)),num:String};
  vm.createContext(context);vm.runInContext(liveFunction(),context);
  let batches=0,individual=0,quoted=[];const batch=game.canRecruitOfficers.bind(game),single=game.canRecruitOfficer.bind(game);
@@ -96,7 +96,7 @@ test('mounted recruitment buttons share one fresh batch and hidden panes do no q
 test('visually present decorative ability bars update even when hidden from assistive reading',()=>{
  const game=new E({seed:19}),f=fixture('<span data-army-health-stat="lead"></span><div aria-hidden="true"><i data-army-health-stat-bar="lead"></i></div><section hidden><i data-army-health-stat-bar="lead"></i></section>');
  let lead=80;game.armyStats=()=>({lead});
- const context={document:f.doc,window:{SengokuLiveDOM:f.registry},game,data:D,state:()=>game.state,currentView:'army',saveEnabled:true,mutationActions:new Set(),canMutate:()=>true,
+ const context={document:f.doc,window:{SengokuLiveDOM:f.registry},game,data:D,state:()=>game.state,currentView:'army',activeModal:'',saveEnabled:true,mutationActions:new Set(),canMutate:()=>true,
   $:()=>null,refreshTouchHeaderStatus(){},refreshBranchDeploymentPanels(){},num:String};
  vm.createContext(context);vm.runInContext(liveFunction(),context);context.refreshLiveControls();
  const bars=f.host.querySelectorAll('[data-army-health-stat-bar]');assert.equal(bars[0].style.width,'80%');assert.equal(bars[1].style.width,undefined);
