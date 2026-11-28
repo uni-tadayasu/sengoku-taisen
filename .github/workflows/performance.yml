@@ -183,6 +183,7 @@ jobs:
           node server/test-castle-heritage-migration.mjs
           node server/test-castle-heritage.mjs
           node tests/test-castle-heritage-artwork.cjs
+          node tests/test-town-castle-scenes.cjs
           node tests/test-castle-scene-assets.cjs
       - name: Verify payment totals, supporter renewal and observed player retention
         run: node server/test-premium-metrics.mjs

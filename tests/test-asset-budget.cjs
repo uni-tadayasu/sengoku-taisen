@@ -101,10 +101,10 @@ const totalGzipBytes = rows.reduce((sum,row)=>sum+row.gzipBytes,0);
 // over v5.14. No runtime dependencies or media assets are added. Retain
 // less than 1.8 KB raw / 0.8 KB gzip of headroom for this reviewed feature.
 // v5.16 adds per-castle scene routing, target-owner appearance propagation,
-// the castle selector and the tenth product. Measured: 3,723,788 raw /
-// 1,030,036 gzip bytes, +20,505 / +5,753 over v5.15. The 128 responsive
+// the castle selector and the tenth product. Measured: 3,724,388 raw /
+// 1,030,121 gzip bytes, +21,105 / +5,838 over v5.15. The 128 responsive
 // scenes remain on-demand images; they are not fetched as part of this entry.
-// Retain less than 1.8 KB raw / 1 KB gzip headroom for the reviewed change.
+// Retain less than 1.2 KB raw / 1 KB gzip headroom for the reviewed change.
 const rawBudget=3725500,gzipBudget=1031000;
 assert(totalBytes <= rawBudget, `Initial bundles exceed the ${rawBudget} byte budget: ${totalBytes}`);
 assert(totalGzipBytes <= gzipBudget, `Initial bundles exceed the ${gzipBudget} gzip byte budget: ${totalGzipBytes}`);
