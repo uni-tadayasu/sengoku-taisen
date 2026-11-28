@@ -19,18 +19,32 @@ const operatorPortrait={id:'of_b0616adde162',rank:'U',url:'assets/operator-ieyas
 const deputyPortrait={id:'of_45e0f4cb36ad',rank:'U',revision:'shimazu-relief-u-20261127',file:'deputy-shimazu-yoshihisa-u-relief'};
 // A castle's identity belongs to the location, not the viewer's operator role.
 // Every mode shares these files; level changes keep the historical Goromon gate.
-function castleScene(id,daypart='day'){
- if(id!=='kagoshima')return null;
+function castleScene(id,daypart='day',appearance=null){
+ const castle=castles.get(id);if(!castle)return null;
+ const free=id==='kagoshima'||(data.majorCityIds||['edo','kyoto_gosho','nijo','osaka','nagoya']).includes(id);
+ // The caller supplies the castle owner's verified public appearance. Never
+ // consult the viewer's purchase state here: everyone sees that owner's town.
+ const heritage=appearance?.town==='castle-heritage'&&Array.isArray(appearance.ownedProducts)&&appearance.ownedProducts.includes('castle-heritage');
+ if(!free&&!heritage)return null;
  daypart=['morning','day','night'].includes(daypart)?daypart:'day';
+ if(id!=='kagoshima'){
+  const label={morning:'朝',day:'昼',night:'夜'}[daypart],path='assets/castle-scenes/'+id+'-';
+  return{id,daypart,label,special:true,scenery:'heritage',free,name:castle.name,width:1536,height:864,
+   src:path+'1536.webp',small:path+'400.webp',native:path+'720.webp',
+   srcset:[400,720,1080,1536].map(width=>path+width+'.webp '+width+'w').join(', '),
+   caption:castle.name+' · '+label+'の城郭絵巻',description:'城の特徴と周囲の地形をもとに描いた専用景観。朝・昼・夜の光で表情が変わります。',
+   alt:label+'の'+castle.name+'と周辺の景観を描いた城郭絵巻。ゲーム向けの創作復元イラスト'};
+ }
  const label={morning:'朝',day:'昼',night:'夜'}[daypart],path='assets/responsive/kagoshima-town-'+daypart+'-';
- return{id,daypart,label,special:true,name:'鹿児島城（鶴丸城）',width:1536,height:864,
+ return{id,daypart,label,special:true,scenery:'kagoshima',free:true,name:'鹿児島城（鶴丸城）',width:1536,height:864,
   src:path+'1536.webp',small:path+'400.webp',native:path+'720.webp',
   srcset:[400,720,1080,1536].map(width=>path+width+'.webp '+width+'w').join(', '),
+  caption:'鹿児島城（鶴丸城） · '+label+'の特別絵巻',description:'御楼門・石橋・石垣・水堀・城山をもとに描いた、鹿児島城の特別な城下町です。',
   alt:label+'の鹿児島城（鶴丸城）。御楼門、石橋、水堀と石垣、城山を背にした御殿と城下町の特別イラスト'};
 }
-function castlePanorama(id,className='',daypart='day'){
- const art=castleScene(id,daypart);if(!art)return'';
- return `<figure class="special-castle-panorama ${esc(className)}" data-castle-scene="${art.id}"><img src="${art.small}" srcset="${art.srcset}" sizes="(max-width: 760px) 90vw, 640px" width="${art.width}" height="${art.height}" alt="${esc(art.alt)}" loading="lazy" decoding="async" draggable="false"><figcaption>鹿児島城（鶴丸城） · ${art.label}の特別絵巻</figcaption></figure>`;
+function castlePanorama(id,className='',daypart='day',appearance=null){
+ const art=castleScene(id,daypart,appearance);if(!art)return'';
+ return `<figure class="special-castle-panorama ${esc(className)}" data-castle-scene="${esc(art.id)}"><span class="castle-panorama-scene" data-castle-scenery="${art.scenery}" data-castle-daypart="${art.daypart}"><img src="${art.small}" srcset="${art.srcset}" sizes="(max-width: 760px) 90vw, 640px" width="${art.width}" height="${art.height}" alt="${esc(art.alt)}" loading="lazy" decoding="async" draggable="false"></span><figcaption>${esc(art.caption)}</figcaption></figure>`;
 }
 const cache=new Map(),loaded=new Set(),paintRequests=new WeakMap(),observedPaints=new WeakSet(),deferredTitle=new Set(),decorationRoots=new Set();let observer,scheduled=false;
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -63,7 +77,7 @@ function castleGrowthInfo(id,{castleLevel=1,keepLevel,home=false}={}){
  // Presentation only: neither completed level is promoted to the other.
  return{castleLevel:castle,keepLevel:keep,level,source,label:source+' Lv.'+level,summary:(home?(keep===null?'天守 未取得':'天守 Lv.'+keep)+' · ':'')+'城郭 Lv.'+castle};
 }
-function tileInfo(kind,id,variant){
+function tileInfo(kind,id,variant,appearance=null){
  if(kind==='officer'){
   const o=officers.get(id);if(!o)return null;const rank=ranks.includes(variant)?variant:o.rank;
   const cell=o.index%32,small=sheetCell('officers-'+rank+'-'+numberTag(Math.floor(o.index/32)+1),cell,8,4);
@@ -73,8 +87,8 @@ function tileInfo(kind,id,variant){
  const item=(kind==='castle'?castles:facilities).get(id);if(!item)return null;
  const limit=kind!=='castle'?32:id==='kyoto_gosho'?128:id==='edo'?64:(data.majorCityIds||['edo','kyoto_gosho','nijo','osaka','nagoya']).includes(id)?48:32;
  const level=Math.max(1,Math.min(limit,Math.round(Number(variant)||1))),artLevel=Math.min(32,level),cell=artLevel-1;
- const special=kind==='castle'&&castleScene(id);
- if(special)return{special:true,small:{url:special.small,x:50,y:50,size:'cover'},native:{url:special.native,x:50,y:50,size:'cover'},url:special.src,x:50,y:50,name:special.name,level,artLevel,finalStage:level>32};
+ const special=kind==='castle'&&castleScene(id,'day',appearance);
+ if(special)return{special:true,scenery:special.scenery,small:{url:special.small,x:50,y:50,size:'cover'},native:{url:special.native,x:50,y:50,size:'cover'},url:special.src,x:50,y:50,name:special.name,level,artLevel,finalStage:level>32};
  const index=item.index,isCastle=kind==='castle',portraitCell=!isCastle&&portraitFacilities.has(id);
  const small=isCastle?sheetCell('castles-'+numberTag(artLevel),index,16,9):
   sheetCell('facilities-'+numberTag(artLevel)+'-'+(Math.floor(index/32)+1),index%32,8,4);
@@ -83,8 +97,8 @@ function tileInfo(kind,id,variant){
  if(!isCastle){small.frame=[8,4,index%32,80,portraitCell?107:80].join(',');if(native)native.frame=[2,2,index%4,portraitCell?3:1,portraitCell?4:1].join(',');}
  return{small,native,frame:isCastle?null:[8,4,cell,portraitCell?3:1,portraitCell?4:1].join(','),portraitShape:portraitCell,url:`assets/${kind==='castle'?'castles':'facilities'}/${id}.webp${kind==='facility'?'?v='+facilityArtRevision:''}`,x:(cell%8)/7*100,y:Math.floor(cell/8)/3*100,name:item.name,level,artLevel,finalStage:level>32,portraitCell:kind==='facility'&&portraitFacilities.has(id)};
 }
-function tile(kind,id,className='',variant=1){const t=tileInfo(kind,id,variant);if(!t)return'';
- if(t.special)return `<span class="painted-art castle-painting special-castle-painting ${esc(className)}" data-castle-art="${esc(id)}" data-art-url="${esc(t.url)}" data-art-small="${esc(t.small.url)}" data-small-width="400" data-small-height="225" data-art-native="${esc(t.native.url)}" data-native-width="720" data-native-height="405" data-art-x="50" data-art-y="50" role="img" aria-label="${esc(t.name)} Lv.${t.level}・御楼門と城下町の特別絵巻" aria-busy="true"><span class="art-surface" aria-hidden="true"></span><span class="art-loading" aria-hidden="true">${icon('town')}</span></span>`;
+function tile(kind,id,className='',variant=1,appearance=null){const t=tileInfo(kind,id,variant,appearance);if(!t)return'';
+ if(t.special)return `<span class="painted-art castle-painting special-castle-painting ${esc(className)}" data-castle-art="${esc(id)}" data-castle-scenery="${t.scenery}" data-art-url="${esc(t.url)}" data-art-small="${esc(t.small.url)}" data-small-width="400" data-small-height="225" data-art-native="${esc(t.native.url)}" data-native-width="720" data-native-height="405" data-art-x="50" data-art-y="50" role="img" aria-label="${esc(t.name)} Lv.${t.level}${t.finalStage?'・最終形態':''}・${t.scenery==='kagoshima'?'御楼門と城下町の特別絵巻':'城郭絵巻'}" aria-busy="true"><span class="art-surface" aria-hidden="true"></span><span class="art-loading" aria-hidden="true">${icon('town')}</span></span>`;
  const sources=Object.entries({small:t.small,native:t.native}).filter(([,sheet])=>sheet);
  const attributes=sources.map(([name,sheet])=>`data-art-${name}="${esc(sheet.url)}"${sheet.frame?` data-${name}-frame="${sheet.frame}"`:''}`).join(' ');
  const positions=sources.map(([name,sheet])=>`--${name}-x:${sheet.x}%;--${name}-y:${sheet.y}%;--${name}-size:${sheet.size}`).join(';');
@@ -356,6 +370,6 @@ function init(){
  document.addEventListener('visibilitychange',()=>{if(!document.hidden)repaintVisible();});
  if(!observer)global.addEventListener?.('scroll',repaintVisible,{capture:true,passive:true});
  new MutationObserver(artworkMutations).observe(document.body,{childList:true,subtree:true});decorate();}
-global.SengokuArt={portrait,castle:(id,c='',level=1)=>tile('castle',id,c,level),castleScene,castlePanorama,castleGrowthInfo,facility:(id,c='',level=1)=>tile('facility',id,c,level),icon,tileInfo,facilityFrame,load,readyCurrent,decorate,schedule,totalIllustrations:8224};
+global.SengokuArt={portrait,castle:(id,c='',level=1,appearance=null)=>tile('castle',id,c,level,appearance),castleScene,castlePanorama,castleGrowthInfo,facility:(id,c='',level=1)=>tile('facility',id,c,level),icon,tileInfo,facilityFrame,load,readyCurrent,decorate,schedule,totalIllustrations:8224};
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init,{once:true});else init();
 })(window);

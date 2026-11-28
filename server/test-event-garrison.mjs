@@ -11,7 +11,7 @@ async function publish(h,op,battleId){
 const sortie=(h,p,id,requestId=crypto.randomUUID(),expected=200)=>write(h,'/events/'+id+'/battle',p,{requestId,stageId:'stage-1',tactic:'balanced',deviceId:p.deviceId,expectedRevision:row(h,p).revision},expected);
 const field=async(h,p,owner,id)=>(await h.api('/field',{token:p.token})).data.targets.find(t=>t.playerId===owner.user.id&&t.targetCastleId===id);
 function atCommit(h,fn){h.beforeBatch=async statements=>{if(!statements[0]?.sql.includes("INSERT INTO timed_event_requests")||!statements[0].sql.includes("'battle'"))return;h.beforeBatch=null;await fn();};}
-const plain=o=>assert.deepEqual(Object.keys(o).sort(),['castleId','castleName','defensePower','defenseTroops','lordName'].sort());
+const plain=o=>assert.deepEqual(Object.keys(o).sort(),['castleId','castleName','defensePower','defenseTroops','lordName','castleOwnerId','castleAppearance'].sort());
 let cases=0,requests=0,maxBindings=0;
 async function scenario(label,run){
  const h=harness(),batch=h.db.batch.bind(h.db);

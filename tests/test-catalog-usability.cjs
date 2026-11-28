@@ -18,7 +18,7 @@ function fixture(){
   $:selector=>nodes.get(selector),patchHTML:(node,html)=>{patches.push(node);if(node)node.innerHTML=html;},refreshLiveControls(){},syncWorldMap(){},updateBranchTroopDraft:()=>false,
   updateOfficerFilter(context,key,value){(context==='archive'?c.filter:c.choiceFilters[context])[key]=value;patches.push(context);}
  };
- vm.createContext(c);vm.runInContext(['catalogMatches','openCatalogInputList','filteredOfficers','catalogChips','saveFacilityPreferences','resetCatalogFilters','updateCatalogSearch','facilitiesResults','territoryRows','territoryResults','crestResults','officerFilterDefaults','normalizeOfficerFilter','filterOfficerList','officerDuty','officerChoiceRows','officerChoiceResults','officerCard'].map(fn).join('\n'),c);
+ vm.createContext(c);vm.runInContext(['catalogMatches','openCatalogInputList','filteredOfficers','catalogChips','saveFacilityPreferences','resetCatalogFilters','updateCatalogSearch','facilitiesResults','territoryRows','homeCastleAppearance','campaignCastleOwnerAppearance','campaignCastleGrowth','territoryResults','crestResults','officerFilterDefaults','normalizeOfficerFilter','filterOfficerList','officerDuty','officerChoiceRows','officerChoiceResults','officerCard'].map(fn).join('\n'),c);
  return{c,game,host,doc,nodes,handlers,patches};
 }
 test('catalog search accepts full-width characters, old Tokugawa spelling and multiple terms',()=>{

@@ -8,7 +8,7 @@ context.window=context;vm.createContext(context);
 vm.runInContext(read('premium-catalog.js'),context);
 vm.runInContext(read('artwork.js'),context);
 const art=context.SengokuArt;
-for(const id of ['edo','nijo','uchijo','unknown'])assert.equal(art.castleScene(id),null);
+for(const id of ['uchijo','unknown'])assert.equal(art.castleScene(id),null);
 assert.equal(art.castleScene('kagoshima','invalid').daypart,'day');
 for(const period of ['morning','day','night']){
  const scene=art.castleScene('kagoshima',period);
@@ -35,7 +35,7 @@ for(const level of [1,2,16,32]){
 assert(!art.tileInfo('castle','uchijo',1).special);
 assert.equal(downloads,0,'Creating maps or hidden galleries never starts image downloads');
 
-const app=read('app.js'),start=app.indexOf('  function townSceneArt('),end=app.indexOf('  function refreshTownArt(',start);
+const app=read('app.js'),start=app.indexOf('  function homeCastleAppearance('),end=app.indexOf('  function refreshTownArt(',start);
 vm.runInContext(app.slice(start,end),context);
 for(const period of ['morning','day','night']){
  phase=period;const scene=context.townSceneArt();

@@ -23,6 +23,7 @@ test('protection is explicit transient authority and cannot be restored by saved
  const saved=JSON.parse(protectedGame.exportSave());assert(!JSON.stringify(saved).includes('courtProtected'));assert(!JSON.stringify(saved).includes('isCourtProtected'));
  saved.isCourtProtected=true;saved.state.isCourtProtected=true;saved.state.courtProtected=true;saved.state.entitlements={courtProtected:true};saved.state.courtOffice={title:'左大臣',kind:'official'};
  assert.equal(E.fromSave(saved,officers).isCourtProtected,false);
+ for(const title of ['天皇','摂政','上皇']){saved.state.courtOffice={title};saved.state.isCourtEmperor=true;saved.state.isCourtRegent=true;assert.equal(E.fromSave(saved,officers).isCourtProtected,false,title+' in an imported save is not authority');}
  assert.equal(E.fromSave(saved,officers,{isCourtProtected:true}).isCourtProtected,true);
  assert.equal(E.fromSave(saved,officers,{isCourtProtected:'true'}).isCourtProtected,false);
  assert.equal(fresh({isCourtProtected:1}).isCourtProtected,false);

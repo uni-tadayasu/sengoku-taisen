@@ -2,12 +2,12 @@
  * This adapter deliberately keeps entitlement state in memory only. */
 (function (global) {
   'use strict';
-  const slots = Object.freeze({ 'gold-banner': 'nameplate', 'moonlit-castle': 'town', supporter: 'badge', 'vermilion-banner': 'nameplate', 'silver-banner': 'nameplate', 'phoenix-medallion': 'badge', 'sakura-town': 'town', 'snow-town': 'town' });
+  const slots = Object.freeze({ 'gold-banner': 'nameplate', 'moonlit-castle': 'town', supporter: 'badge', 'vermilion-banner': 'nameplate', 'silver-banner': 'nameplate', 'phoenix-medallion': 'badge', 'sakura-town': 'town', 'snow-town': 'town', 'castle-heritage': 'town' });
   const passId = 'reroll-pass-30d';
   const productIds = Object.freeze([...Object.keys(slots), passId]);
   const rewardId = value => typeof value === 'string' && /^supporter-(20\d{2}(?:0[1-9]|1[0-2]))-(flower|moon|star)$/.test(value);
   const slotFor = id => slots[id] || (rewardId(id) ? 'nameplate' : null);
-  const productLabels = Object.freeze({ 'gold-banner': '金彩の旗印を所有', 'moonlit-castle': '月影の城下を所有', supporter: '戦国VSサポーター（有効）', 'vermilion-banner': '紅蓮の旗印を所有', 'silver-banner': '白銀の旗印を所有', 'phoenix-medallion': '鳳凰の勲章を所有', 'sakura-town': '桜雲の城下を所有', 'snow-town': '雪華の城下を所有' });
+  const productLabels = Object.freeze({ 'gold-banner': '金彩の旗印を所有', 'moonlit-castle': '月影の城下を所有', supporter: '戦国VSサポーター（有効）', 'vermilion-banner': '紅蓮の旗印を所有', 'silver-banner': '白銀の旗印を所有', 'phoenix-medallion': '鳳凰の勲章を所有', 'sakura-town': '桜雲の城下を所有', 'snow-town': '雪華の城下を所有', 'castle-heritage': '名城絵巻・全城対応を所有' });
   const assets = Object.freeze({
     town: 'assets/premium/moonlit-castle-v1.webp',
     banner: 'assets/premium/gold-banner-v1.webp',
@@ -150,7 +150,7 @@
       const current = () => !disposed && ownIdentity === currentIdentity().key && ownGeneration === generation;
       pending = (async () => {
         try {
-          const result = await social().premiumRequest('/premium?catalog=4');
+          const result = await social().premiumRequest('/premium?catalog=5');
           if (!current()) return snapshot();
           return receive(result, who);
         } catch (error) {
@@ -188,7 +188,7 @@
       const target = productId || snapshot().appearance[slot] || snapshot().appearance.ownedProducts.find(id => slotFor(id) === slot), who = requireReady(target, false);
       const ownIdentity = identity, ownGeneration = ++generation; pending = null; mutation = true;
       try {
-        const result = await social().premiumRequest('/premium/appearance?catalog=4', { method: 'PUT', data: { slot, productId } });
+        const result = await social().premiumRequest('/premium/appearance?catalog=5', { method: 'PUT', data: { slot, productId } });
         if (disposed || ownIdentity !== currentIdentity().key || ownGeneration !== generation) throw Error('接続する領主が変わりました。外観を確認し直してください。');
         return receive(result, who);
       } catch (error) {
@@ -211,7 +211,7 @@
       const requestId = choiceRequests.get(key), ownIdentity = identity, ownGeneration = ++generation;
       pending = null; mutation = true;
       try {
-        const result = await social().premiumRequest('/premium/supporter-choice?catalog=4', { method: 'POST', data: { periodId, productId, requestId } });
+        const result = await social().premiumRequest('/premium/supporter-choice?catalog=5', { method: 'POST', data: { periodId, productId, requestId } });
         if (disposed || ownIdentity !== currentIdentity().key || ownGeneration !== generation) throw Error('接続する領主が変わりました。受け取り状況を確認し直してください。');
         const confirmed = cleanSupporterRewards(result?.supporterRewards).periods.find(item => item.periodId === periodId);
         if (confirmed?.claimedProductId !== productId || !cleanAppearance(result?.appearance).ownedProducts.includes(productId)) throw Error('外観の受け取りを確認できません。購入状態を再確認してください。');
@@ -241,7 +241,7 @@
   }
   function productAsset(id) {
     if (rewardId(id)) return 'assets/premium/supporter-' + id.slice(14, 16) + '-' + id.split('-')[2] + '-v1.svg';
-    const extra = { 'vermilion-banner': 'assets/premium/vermilion-banner-v1.svg', 'silver-banner': 'assets/premium/silver-banner-v1.svg', 'phoenix-medallion': 'assets/premium/phoenix-medallion-v1.svg', 'sakura-town': 'assets/premium/sakura-town-v1.webp', 'snow-town': 'assets/premium/snow-town-v1.webp' };
+    const extra = { 'vermilion-banner': 'assets/premium/vermilion-banner-v1.svg', 'silver-banner': 'assets/premium/silver-banner-v1.svg', 'phoenix-medallion': 'assets/premium/phoenix-medallion-v1.svg', 'sakura-town': 'assets/premium/sakura-town-v1.webp', 'snow-town': 'assets/premium/snow-town-v1.webp', 'castle-heritage': 'assets/castle-scenes/himeji-400.webp' };
     return ({ 'gold-banner': assets.banner, 'moonlit-castle': assets.town, supporter: assets.badge })[id] || extra[id] || '';
   }
   function productLabel(id) {

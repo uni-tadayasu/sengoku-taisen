@@ -1,10 +1,17 @@
-// Occupation protection is a property of a current, effective court office.
-// Raw appointment rows and client-supplied badges never confer protection.
-// The Kyoto view already removes retired emperors and the separate regency.
+// Occupation protection follows current server-authorized court status.
+// The Kyoto view includes the Emperor, but excludes the separate Regent and
+// Retired Emperor titles. Resolve those records explicitly so their ordinary
+// homes remain protected after delegation, abdication or a voluntary move.
+// Client-supplied badges and historical nominations never confer protection.
 export function courtProtectionSql(userIdSql) {
  return `(${userIdSql}=COALESCE((SELECT value FROM settings WHERE key='adminUserId'),'')
   OR EXISTS(SELECT 1 FROM court_kyoto_offices cp_kyoto WHERE cp_kyoto.user_id=${userIdSql})
-  OR EXISTS(SELECT 1 FROM court_external_offices cp_external WHERE cp_external.user_id=${userIdSql}))`;
+  OR EXISTS(SELECT 1 FROM court_external_offices cp_external WHERE cp_external.user_id=${userIdSql})
+  OR ((EXISTS(SELECT 1 FROM court_regent cp_regent WHERE cp_regent.id=1 AND cp_regent.user_id=${userIdSql})
+    OR EXISTS(SELECT 1 FROM court_retired_emperors cp_retired JOIN court_succession_requests cp_succession ON cp_succession.commit_token=cp_retired.succession_id
+      AND cp_succession.actor_id=cp_retired.user_id AND cp_succession.target_id=cp_retired.successor_id WHERE cp_retired.user_id=${userIdSql}))
+   AND NOT EXISTS(SELECT 1 FROM player_bans cp_ban WHERE cp_ban.user_id=${userIdSql} AND cp_ban.active=1)
+   AND NOT EXISTS(SELECT 1 FROM player_expulsions cp_expulsion WHERE cp_expulsion.user_id=${userIdSql} AND cp_expulsion.pending=1)))`;
 }
 
 export async function readCourtProtection(db,userId) {

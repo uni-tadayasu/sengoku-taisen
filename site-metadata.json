@@ -4,8 +4,8 @@
   "name": "戦国VS",
   "alternateName": "SENGOKU VS",
   "publisher": "KASAI SOLUTIONS",
-  "release": "5.15.0-20261128",
-  "version": "5.15.0",
+  "release": "5.16.0-20261128",
+  "version": "5.16.0",
   "dateModified": "2026-11-28",
   "language": "ja",
   "locale": "ja_JP",
@@ -109,8 +109,8 @@
     "premium": {
       "path": "/premium/",
       "title": "戦国VS プレミアム｜外観・月額支援・武将再抽選パス",
-      "description": "戦国VSの外観アイテム、月額780円のサポーター、480円・30日間の武将再抽選パスを紹介。月額特典は毎支払期間に装飾を1種選んで永久所持。再抽選パスは1日3回まで武将の引き直しができ、獲得結果に影響します。すべて税込。基本プレイ無料。",
-      "dateModified": "2026-11-27",
+      "description": "戦国VSの外観・月額支援・武将再抽選パス。名城絵巻・全城対応は980円の買い切りで一般123城の景観を他のプレイヤーにも表示。サポーターは月額780円。480円・30日間の再抽選パスは1日3回まで武将を引き直せ、獲得結果に影響します。すべて税込。",
+      "dateModified": "2026-11-28",
       "artwork": {
         "path": "assets/chronicle/court-jade.webp",
         "alt": "翡翠色の格子と金屏風を備えた御殿で、使者二人が庭の水辺を背に向かい合う",

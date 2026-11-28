@@ -103,7 +103,7 @@ await test('all four town appearances follow the BGM clock in place even when so
   c.$=$;c.currentView='town';
   c.SengokuPremiumRuntime={getAppearance:()=>({town:equipped})};
   vm.runInContext(fs.readFileSync(new URL('../premium-catalog.js',import.meta.url),'utf8'),c);
-  vm.runInContext(appSource.slice(appSource.indexOf('  function townSceneArt('),appSource.indexOf('  function premiumTownBanner(')),c);
+  vm.runInContext(appSource.slice(appSource.indexOf('  function homeCastleAppearance('),appSource.indexOf('  function premiumTownBanner(')),c);
   const marker=$('#town-marker'),front=$('.town-scene-image'),back=$('.town-scene-backdrop');
   marker.focus();
   for(const [theme,original] of [['castle-town-raden','night'],['moonlit-castle','night'],['sakura-town','day'],['snow-town','morning']]){
@@ -140,10 +140,13 @@ await test('the shipped town renderer resolves a missing phase argument at game 
   const bundle=fs.readFileSync(new URL('../game-interface.bundle.js',import.meta.url),'utf8');
   // The build keeps named functions. Execute the shipped helper itself, including
   // code generated for optional calls, without mounting the entire game shell.
-  const start=bundle.indexOf('function townSceneArt('),end=bundle.indexOf('function refreshTownArt(',start);
+  const start=bundle.indexOf('function homeCastleAppearance('),end=bundle.indexOf('function refreshTownArt(',start);
   assert(start>=0&&end>start,'shipped town scene helpers are present');
   const f=make(5),c=f.context;
   let equipped=null;
+  // In the shipped app, state is a defined closure. The compiler therefore
+  // removes its typeof fallback; supply that same dependency in this fixture.
+  c.state=()=>({home:'himeji'});
   c.SengokuPremiumRuntime={getAppearance:()=>({town:equipped})};
   vm.runInContext(fs.readFileSync(new URL('../premium-catalog.js',import.meta.url),'utf8'),c);
   vm.runInContext(bundle.slice(start,end),c,{filename:'shipped-town-scene.js'});

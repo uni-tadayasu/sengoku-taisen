@@ -7,7 +7,7 @@ import {observePremiumPayments} from './premium-metrics.js';
 // Signature acceptance/rejection is covered by test-premium/test-rewards; no
 // test here contacts Stripe, reads a live database, or creates a real payment.
 const DAY=86400000,BASE=Date.UTC(2026,9,1,3);
-const PRICES={'gold-banner':480,'moonlit-castle':980,supporter:780,'vermilion-banner':580,'silver-banner':580,'phoenix-medallion':780,'sakura-town':980,'snow-town':980,'reroll-pass-30d':480};
+const PRICES={'gold-banner':480,'moonlit-castle':980,supporter:780,'vermilion-banner':580,'silver-banner':580,'phoenix-medallion':780,'sakura-town':980,'snow-town':980,'reroll-pass-30d':480,'castle-heritage':980};
 const id=prefix=>prefix+crypto.randomUUID().replaceAll('-','');
 const one=(h,sql,...values)=>h.sql.prepare(sql).get(...values);
 const run=(h,sql,...values)=>h.sql.prepare(sql).run(...values);
@@ -42,7 +42,7 @@ try{
 await scope('empty reports are owner-only, read-only and show unknown observation rates',async h=>{
   const admin=await operator(h),guest=await h.session('未観測の領主');
   const first=await report(h,admin),second=await report(h,admin);
-  assert.equal(first.revenue.byProduct.length,9);assert.equal(first.revenue.validAmount,0);assert.equal(first.supporterRenewal.rate,null);assert.equal(first.supporterRenewal.observedSince,null);assert.equal(first.playerRetention.observedSince,null);
+  assert.equal(first.revenue.byProduct.length,10);assert.deepEqual(first.revenue.byProduct.map(row=>row.productId),Object.keys(PRICES));assert.equal(first.revenue.validAmount,0);assert.equal(first.supporterRenewal.rate,null);assert.equal(first.supporterRenewal.observedSince,null);assert.equal(first.playerRetention.observedSince,null);
   for(const row of first.playerRetention.segments){assert.equal(row.observedAccounts,0);assert.equal(row.d1.rate,null);assert.equal(row.d30.rate,null);}
   for(const table of ['player_activity_program','player_activity_cohorts','player_activity_days','premium_metrics_program','premium_payment_observations'])assert.equal(one(h,'SELECT COUNT(*) n FROM '+table).n,0);
   assert.deepEqual(first.playerRetention,second.playerRetention);
@@ -51,18 +51,19 @@ await scope('empty reports are owner-only, read-only and show unknown observatio
   assert.equal(one(h,'SELECT COUNT(*) n FROM player_activity_cohorts').n,0);
 });
 
-await scope('all nine products use matched JPY payments, deduplicate joins and separate refunds or holds',async h=>{
+await scope('all ten products use matched JPY payments, deduplicate joins and separate refunds or holds',async h=>{
   const admin=await operator(h),a=await h.session('全商品の領主'),payments=new Map();
   for(const key of Object.keys(PRICES))payments.set(key,paid(h,a,key));
   let result=await report(h,admin),sum=Object.values(PRICES).reduce((a,b)=>a+b,0);
-  assert.equal(result.revenue.validPayments,9);assert.equal(result.revenue.validAmount,sum);assert.equal(result.revenue.currency,'JPY');assert.equal(result.revenue.taxIncluded,true);
+  assert.equal(result.revenue.validPayments,10);assert.equal(result.revenue.validAmount,sum);assert.equal(result.revenue.currency,'JPY');assert.equal(result.revenue.taxIncluded,true);
+  for(const row of result.revenue.byProduct)assert.deepEqual(row,{productId:row.productId,validAmount:PRICES[row.productId],validPayments:1,excludedAmount:0,excludedPayments:0});
   const gold=payments.get('gold-banner');paid(h,a,'gold-banner',{intent:gold.intent});
   const sub=payments.get('supporter');paid(h,a,'supporter',{intent:sub.intent,subscription:sub.subscription,customer:sub.customer,start:sub.start,end:sub.end});
-  result=await report(h,admin);assert.equal(result.revenue.validPayments,9);assert.equal(result.revenue.validAmount,sum,'Duplicated sessions, charges and invoice-payment joins are one payment intent');
+  result=await report(h,admin);assert.equal(result.revenue.validPayments,10);assert.equal(result.revenue.validAmount,sum,'Duplicated sessions, charges and invoice-payment joins are one payment intent');
   block(h,gold);block(h,payments.get('snow-town'),'dispute_review');
-  result=await report(h,admin);assert.equal(result.revenue.validPayments,7);assert.equal(result.revenue.validAmount,sum-480-980);assert.equal(result.revenue.excludedPayments,2);assert.equal(result.revenue.excludedAmount,1460);
+  result=await report(h,admin);assert.equal(result.revenue.validPayments,8);assert.equal(result.revenue.validAmount,sum-480-980);assert.equal(result.revenue.excludedPayments,2);assert.equal(result.revenue.excludedAmount,1460);
   paid(h,a,'reroll-pass-30d',{paidFlag:0});paid(h,a,'moonlit-castle',{captured:0});
-  result=await report(h,admin);assert.equal(result.revenue.validPayments,7);assert.equal(result.revenue.excludedPayments,2,'Incomplete evidence is not a valid or reversed confirmed payment');
+  result=await report(h,admin);assert.equal(result.revenue.validPayments,8);assert.equal(result.revenue.excludedPayments,2,'Incomplete evidence is not a valid or reversed confirmed payment');
   assert.match(result.revenue.definition,/純売上ではありません/);assert.match(result.revenue.dateBasis,/チャージ作成日/);
 });
 

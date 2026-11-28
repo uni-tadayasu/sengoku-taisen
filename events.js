@@ -80,7 +80,9 @@
   function cleanOpponent(value) {
     if (value === null) return null;
     if (!value || !identifier(value.castleId) || !text(value.castleName, 120) || !text(value.lordName, 120) || !integer(value.defenseTroops) || !integer(value.defensePower, 1, Number.MAX_SAFE_INTEGER)) return undefined;
-    return { castleId: value.castleId, castleName: value.castleName, lordName: value.lordName, defenseTroops: value.defenseTroops, defensePower: value.defensePower };
+    return { castleId: value.castleId, castleName: value.castleName, lordName: value.lordName, defenseTroops: value.defenseTroops, defensePower: value.defensePower,
+      ...(identifier(value.castleOwnerId)?{castleOwnerId:value.castleOwnerId}:{}),
+      ...(Object.hasOwn(value,'castleAppearance')?{castleAppearance:global.SengokuPremiumRuntime?.cleanAppearance?.(value.castleAppearance)||null}:{}) };
   }
   function cleanEvent(value, allowDraft = false) {
     const plan = cleanPlan(value?.plan);
@@ -495,7 +497,7 @@
   }
   function opponentMarkup(opponent, { report = false } = {}) {
     if (!opponent) return '';
-    return `<section class="events-defender">${global.SengokuArt?.castlePanorama?.(opponent.castleId,'events-castle-panorama')||''}<h4>${report ? '出陣時の守備' : esc(opponent.castleName) + 'の守備'}</h4><p>${report ? esc(opponent.castleName) + ' · ' : ''}領主 ${esc(opponent.lordName)}</p><dl class="events-result-stats"><div><dt>守備兵</dt><dd>${number(opponent.defenseTroops)}人</dd></div><div><dt>守備戦力</dt><dd>${number(opponent.defensePower)}</dd></div></dl></section>`;
+    return `<section class="events-defender">${global.SengokuArt?.castlePanorama?.(opponent.castleId,'events-castle-panorama',global.SengokuMusic?.daypart?.()||'day',opponent.castleAppearance||null)||''}<h4>${report ? '出陣時の守備' : esc(opponent.castleName) + 'の守備'}</h4><p>${report ? esc(opponent.castleName) + ' · ' : ''}領主 ${esc(opponent.lordName)}</p><dl class="events-result-stats"><div><dt>守備兵</dt><dd>${number(opponent.defenseTroops)}人</dd></div><div><dt>守備戦力</dt><dd>${number(opponent.defensePower)}</dd></div></dl></section>`;
   }
   function defenderView(event, defense = false) {
     const castle = !event.opponent && targetCastle(event.plan);

@@ -281,3 +281,15 @@ body[data-page="premium"] :is(.site-brand small,.breadcrumbs,.copyright,.footer-
   .premium-reward-period { padding: .75rem; }
   .premium-supporter-section { margin-top: 2rem; padding-top: 1.5rem; }
 }
+
+/* A bounded castle selector keeps the 129-scene collection out of the page's image payload. */
+.premium-castle-picker{display:grid;gap:.65rem;margin-block:1rem;padding:1rem;border:1px solid #9e8355;border-radius:.8rem;background:linear-gradient(140deg,#152b31,#101b28);color:#f5ead2}
+.premium-castle-picker label{font-size:1rem;font-weight:700;letter-spacing:.05em}
+.premium-castle-picker select{appearance:none;min-height:2.8rem;width:100%;max-width:100%;padding:.65rem 2.5rem .65rem .8rem;border:1px solid #c7a35b;border-radius:.5rem;background:#12232f url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='10' viewBox='0 0 14 10'%3E%3Cpath d='m2 2 5 5 5-5' fill='none' stroke='%23e9cf93' stroke-width='2'/%3E%3C/svg%3E") no-repeat right .85rem center;color:#fff4da;font:inherit;font-size:1rem;cursor:pointer}
+.premium-castle-picker select:focus-visible{outline:3px solid #86dec3;outline-offset:3px}
+.premium-castle-picker option{color:#fff4da;background:#12232f}
+.premium-castle-picker p{margin:0;font-size:.875rem;line-height:1.6;color:#cbd9d5}
+.premium-swatch--castle-heritage{background:linear-gradient(145deg,#edf0d9 0 25%,#47596a 25% 47%,#d9ad59 47% 53%,#234934 53%)}
+.premium-product-art--castle-heritage img{aspect-ratio:16/9;object-fit:cover}
+.premium-stage[data-premium-preview-mode="castle-heritage"] .premium-stage-image{aspect-ratio:16/9}
+.premium-product[hidden]{display:none!important}

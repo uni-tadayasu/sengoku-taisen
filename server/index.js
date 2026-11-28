@@ -39,7 +39,7 @@ import {requirePromotionOrigin,recordPromotion,readPromotionReport} from './prom
 import {readMusicBroadcast,handleAdminMusic} from './admin-music.js';
 import {lordSupportSql,guardLordSupport,ensureResidency,residencySnapshot,residencyDirectory,residencyStart,initialResidencyStatements,residencyTargetGuard,prepareResidencySuccession,prepareResidencyCpuLosses} from './residency.js';
 const API = '/api/v1';
-const API_VERSION = '5.15.0';
+const API_VERSION = '5.16.0';
 const API_FEATURES = Object.freeze({trades:true,moderation:true,playerExpulsion:true,moderatedNameReuse:true,deputyOperator:true,deputyOperations:true,privateOperationsLabels:true,deputyOfficer:true,kagoshimaProtected:true,premium:true,timedEvents:true,troopTrades:true,roamingBattles:true,roamingDeployment:true,covertDispatch:true,privatePlayerRoles:true,guildIcons:true,court:true,kyotoGosho:true,branches:true,branchBattles:true,branchFacilities:true,audioCalls:true,progression:true,armyPresets:true,allianceStrategy:true,sharedConquest:true,newcomerProtection:true,webPush:true,battleAdviser:true,battleCatalog:true,eventBattleRewards:true,shogunate:true,attackTravel:true,castleResidency:true,retainerCastleStats:true,residencyRelocation:true,maintenanceUpkeep:true,strongholdDurability:true,chatReplies:true,chatMentions:true,covertReturnTravel:true,allianceUnitTravel:true,legacySaveRecovery:true,displayNameVariants:true,courtOffices:true,serverSummons:true,loginRewards:true,paidRerolls:true,supporterChoices:true,premiumGrowthMetrics:true,adminMusicBroadcast:true,rankRiceProduction:true,shogunateApproval:true,imperialSuccession:true,retiredEmperor:true,regency:true,courtEventRoom:true,imperialSuccessionApproval:true});
 const MAX_BODY = 16 * 1024;
 const MAX_SAVE_BODY = 2 * 1024 * 1024;
@@ -432,7 +432,8 @@ async function resolvePlayerEvaluations(db,payload,now){
       CASE WHEN sm.user_id IS NOT NULL THEN 1 ELSE 0 END AS is_staff,COALESCE(sm.term_id,'legacy:'||sm.appointed_at) AS staff_term,
       EXISTS(SELECT 1 FROM deputy_operator_state ds WHERE ds.user_id=u.id) AS is_deputy,
       (SELECT ds.term_id FROM deputy_operator_state ds WHERE ds.user_id=u.id) AS deputy_term,
-      b.active AS backup_active,b.term_id AS backup_term,b.save_json AS backup_json
+      b.active AS backup_active,b.term_id AS backup_term,b.save_json AS backup_json,
+      (SELECT json_object('castleId',cr.castle_id,'lordPlayerId',cs.lord_user_id) FROM castle_residents cr JOIN castle_seats cs ON cs.castle_id=cr.castle_id WHERE cr.user_id=u.id) AS household_json
       FROM users u LEFT JOIN player_saves ps ON ps.user_id=u.id LEFT JOIN staff_members sm ON sm.user_id=u.id
       LEFT JOIN staff_campaign_backups b ON b.user_id=u.id WHERE u.id IN (${page.map(()=>'?').join(',')})`,...page));
   }
@@ -440,7 +441,7 @@ async function resolvePlayerEvaluations(db,payload,now){
   for(let offset=0;offset<otherNames.length;offset+=80){const page=otherNames.slice(offset,offset+80);queries.push(stmt(db,`SELECT u.id,u.name,
     (SELECT a.version FROM user_avatars a WHERE a.user_id=u.id AND NOT EXISTS(SELECT 1 FROM player_bans ban WHERE ban.user_id=u.id AND ban.active=1)) AS avatar_version
     FROM users u WHERE u.id IN (${page.map(()=>'?').join(',')})`,...page));}
-  const results=await db.batch(queries),meta=rows(results[0])[0]||{},values=new Map(),commanders=new Map(),names=new Map(),avatars=new Map(),empty=GameEngine.publicEvaluation(null,{officers:GAME_OFFICERS});
+  const results=await db.batch(queries),meta=rows(results[0])[0]||{},values=new Map(),commanders=new Map(),homes=new Map(),names=new Map(),avatars=new Map(),empty=GameEngine.publicEvaluation(null,{officers:GAME_OFFICERS});
   for(const result of results.slice(1))for(const row of rows(result)){
     names.set(row.id,row.name);avatars.set(row.id,row.avatar_version||null);
     if(!ids.has(row.id))continue;
@@ -450,12 +451,18 @@ async function resolvePlayerEvaluations(db,payload,now){
       const state=evaluationState(row,meta,now);
       evaluation=GameEngine.publicEvaluation(state,{officers:GAME_OFFICERS});
       if(commanderIds.has(row.id))commanders.set(row.id,publicCommander(state,row));
+      if(CASTLE_BY_ID[state.home]){
+        const household=row.household_json?JSON.parse(row.household_json):null;
+        const ownerId=!row.is_admin&&!row.is_staff&&!row.is_deputy&&household?.castleId===state.home?household.lordPlayerId:row.id;
+        homes.set(row.id,{homeCastleId:state.home,homeCastleName:CASTLE_BY_ID[state.home].name,homeCastleOwnerId:ownerId||null});
+      }
     }catch{/* Unreadable saves remain unverified. */}
     values.set(row.id,evaluation);
   }
   for(const ref of refs){
     ref.parent[ref.key]=values.has(ref.id)?values.get(ref.id):null;
     if(ref.key==='evaluation'&&Object.hasOwn(ref.parent,'commander'))ref.parent.commander=commanders.get(ref.id)||null;
+    if(ref.key==='evaluation'&&Object.hasOwn(ref.parent,'homeCastleOwnerId'))Object.assign(ref.parent,homes.get(ref.id)||{homeCastleId:null,homeCastleName:null,homeCastleOwnerId:null});
     // Refresh participant labels, including empty message deltas, without
     // rewriting historical receipts or user-authored message bodies.
     const nameField={evaluation:'name',ownerEvaluation:'ownerName',authorEvaluation:'authorName',attackerEvaluation:'attackerName',defenderEvaluation:'defenderName',targetEvaluation:'targetName',playerEvaluation:Object.hasOwn(ref.parent,'playerName')?'playerName':Object.hasOwn(ref.parent,'name')?'name':null}[ref.key];
@@ -581,7 +588,7 @@ async function readPlayerProfile(request,env,id,now){
   const row=await stmt(db,USER_SELECT+' WHERE u.id=? AND '+availablePlayer,id).first();
   if(!row)fail(404,'PLAYER_NOT_FOUND','領主のプロフィールが見つかりません。');
   const {name,clan,guildId,guildName,guildRole,avatarVersion,evaluation}=mapUser(row,now);
-  return {ok:true,player:{id,name,clan,guildId,guildName,guildRole,avatarVersion,evaluation,commander:null}};
+  return {ok:true,player:{id,name,clan,guildId,guildName,guildRole,avatarVersion,evaluation,commander:null,homeCastleId:null,homeCastleName:null,homeCastleOwnerId:null,homeCastleAppearance:null}};
 }
 async function searchPlayers(request,env,url,now){
   const db=env.DB,viewer=request.headers.has('authorization')?await authenticate(request,db,now):null;
@@ -2241,7 +2248,7 @@ async function eventGarrison(db,castleId,clock,now,viewerId=null){
   const aidArgs=[now,owner.id,castleId],reinforcements=Number((await stmt(db,aid,...aidArgs).first()).troops);
   guard.sql+=' AND ('+aid+')=?';guard.args.push(...aidArgs,reinforcements);
   applyFieldReinforcements(target,reinforcements);
-  return{opponent:{castleId,castleName:CASTLE_BY_ID[castleId].name,lordName:owner.name,defenseTroops:target.defenseTroops,defensePower:target.defensePower},guard,...personal,
+  return{opponent:{castleId,castleName:CASTLE_BY_ID[castleId].name,castleOwnerId:owner.id,lordName:owner.name,defenseTroops:target.defenseTroops,defensePower:target.defensePower},guard,...personal,
     defender:defenseProfile?{userId:owner.id,profile:{...defenseProfile,reinforcementTroops:reinforcements},clockRevision:clock.revision}:null};
 }
 function vacantCastleCondition(castleId,clock){
@@ -2754,6 +2761,8 @@ async function route(request, env, now) {
       if(Number(officeSchema?.trigger_count)!==20)throw Error('Court office migration incomplete');
       const rewardSchema=await stmt(db,'SELECT (SELECT starts_at FROM premium_reward_program WHERE id=1) AS reward_program,(SELECT COUNT(*) FROM premium_pass_receipts) AS passes,(SELECT COUNT(*) FROM premium_supporter_periods) AS supporter_periods,(SELECT COUNT(*) FROM premium_supporter_choices) AS supporter_choices,(SELECT COUNT(*) FROM reward_accounts) AS reward_accounts,(SELECT COUNT(*) FROM reward_campaigns) AS reward_campaigns,(SELECT COUNT(*) FROM reward_requests) AS reward_requests,(SELECT COUNT(*) FROM gacha_draws) AS gacha_draws,(SELECT COUNT(*) FROM gacha_daily_usage) AS gacha_daily_usage,(SELECT COUNT(*) FROM login_bonus_claims) AS login_rewards,(SELECT COUNT(*) FROM premium_daily_events) AS premium_metrics,(SELECT COUNT(*) FROM premium_daily_visitors) AS premium_visitors').first();
       if(!Number.isSafeInteger(Number(rewardSchema?.reward_program))||Number(rewardSchema.reward_program)<1)throw Error('Reward program migration incomplete');
+      const castleArtSchema=await stmt(db,"SELECT COUNT(*) AS ready FROM sqlite_master WHERE ((type='table' AND name IN ('premium_orders','premium_appearances')) OR (type='view' AND name='premium_verified_payments')) AND instr(sql,'castle-heritage')>0").first();
+      if(Number(castleArtSchema?.ready)!==3)throw Error('Castle appearance migration incomplete');
       await stmt(db,'SELECT (SELECT COUNT(*) FROM shogunate_approvals) AS approvals,(SELECT COUNT(*) FROM shogunate_approval_requests) AS approval_requests,(SELECT COUNT(*) FROM shogunate_palace_control) AS palace_control,(SELECT COUNT(*) FROM court_succession_requests) AS succession_requests,(SELECT COUNT(*) FROM court_retired_emperors) AS retired_emperors').first();
       const successionSchema=await stmt(db,"SELECT COUNT(*) AS triggers FROM sqlite_master WHERE type='trigger' AND name IN ('court_retirement_insert','court_retirement_update','court_retirement_delete')").first();
       if(Number(successionSchema?.triggers)!==3)throw Error('Imperial succession migration incomplete');

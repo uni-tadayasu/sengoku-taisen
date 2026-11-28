@@ -1,4 +1,4 @@
-/* The border contains the full 3:2 artwork; information sits outside the view. */
+/* The border contains the complete artwork; information sits outside the view. */
 #main .town-panel { min-width: 0; border: 1px solid #d9bd7838; border-radius: 14px; background: #152326; overflow: hidden; container: town-panel / inline-size; }
 #main .town-scene-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 13px; }
 #main .town-scene-heading .scene-label { position: static; min-width: 0; margin: 0; padding: 0; border: 0; background: none; backdrop-filter: none; font-size: 14px; }
@@ -295,5 +295,7 @@ html:not(.sengoku-desktop-fit) #main .town-status-panels > .panel:last-child { g
 }
 
 /* Match the historical castle panorama on touch screens before it decodes. */
-#main .town-scene[data-town-castle="kagoshima"] { aspect-ratio:16/9; }
-html.sengoku-desktop-fit #main .town-scene[data-town-castle="kagoshima"] { aspect-ratio:auto; }
+#main .town-scene[data-town-castle="kagoshima"],
+#main .town-scene[data-town-scenery="heritage"] { aspect-ratio:16/9; }
+html.sengoku-desktop-fit #main .town-scene[data-town-castle="kagoshima"],
+html.sengoku-desktop-fit #main .town-scene[data-town-scenery="heritage"] { aspect-ratio:auto; }

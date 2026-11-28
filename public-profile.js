@@ -76,7 +76,12 @@ function detail(person){
   const office=global.SengokuPublicCourt?.slot?.({playerId:person.id,courtOffice:person.courtOffice})||'';
   const evaluation=global.SengokuEvaluationUI?.badge?.(person.evaluation)||'';
   const guild=person.guildName?' · '+esc(person.guildName):'';
-  return `<div class="lord-public-identity">${avatar}<div><h3 class="lord-public-name">${global.SengokuCityHonors?.slot?.(person.id)||''}<span class="player-evaluation-name" data-premium-player="${esc(person.id)}" data-premium-player-name="${esc(person.name)}">${name}</span></h3><p>${esc(clanName(person.clan))}${guild}</p><div class="lord-public-badges">${office}${evaluation}</div></div></div><div data-public-commander>${commanderCard(person.commander)}</div>`;
+  const castle=global.SENGOKU_DATA?.castles?.find(item=>item.id===person.homeCastleId),phase=global.SengokuMusic?.daypart?.()||'day';
+  // This is the current lord's appearance, even on a retainer's profile. Do not
+  // fall back to the profile visitor or the retainer's personal purchases.
+  const scenery=castle?global.SengokuArt?.castlePanorama?.(castle.id,'lord-public-castle-art',phase,person.homeCastleAppearance||null)||'':'';
+  const castleSection=castle?`<section class="lord-public-castle"><h3>本拠 · ${esc(castle.name)}</h3>${scenery}</section>`:'';
+  return `<div class="lord-public-identity">${avatar}<div><h3 class="lord-public-name">${global.SengokuCityHonors?.slot?.(person.id)||''}<span class="player-evaluation-name" data-premium-player="${esc(person.id)}" data-premium-player-name="${esc(person.name)}">${name}</span></h3><p>${esc(clanName(person.clan))}${guild}</p><div class="lord-public-badges">${office}${evaluation}</div></div></div>${castleSection}<div data-public-commander>${commanderCard(person.commander)}</div>`;
 }
 function status(text,retry=false){
   const node=dialog.querySelector('[data-profile-status]');

@@ -13,7 +13,7 @@
   'use strict';
   const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
   const text = (value, maximum = 1000) => typeof value === 'string' ? value.slice(0, maximum) : '';
-  const slots = { 'gold-banner': 'nameplate', 'moonlit-castle': 'town', supporter: 'badge', 'vermilion-banner': 'nameplate', 'silver-banner': 'nameplate', 'phoenix-medallion': 'badge', 'sakura-town': 'town', 'snow-town': 'town' };
+  const slots = { 'gold-banner': 'nameplate', 'moonlit-castle': 'town', supporter: 'badge', 'vermilion-banner': 'nameplate', 'silver-banner': 'nameplate', 'phoenix-medallion': 'badge', 'sakura-town': 'town', 'snow-town': 'town', 'castle-heritage': 'town' };
   const passId = 'reroll-pass-30d';
   const ids = [...Object.keys(slots), passId];
   const isReward = value => typeof value === 'string' && /^supporter-20\d{2}(?:0[1-9]|1[0-2])-(flower|moon|star)$/.test(value);
@@ -23,7 +23,7 @@
   const standardPreview = { key: 'standard', label: 'いつもの城下町', description: '無料で遊べる通常の城下町です。景色や装いを見比べても、ゲームの状態は変わりません。' };
   const safePrefix = value => typeof value === 'string' && /^(?:\.{1,2}\/|\/)?(?:[a-zA-Z0-9_-]+\/)*$/.test(value) ? value : '';
   const safeId = value => text(value, 80).replace(/[^a-zA-Z0-9_-]/g, '-') || 'premium';
-  const assetPath = value => /^assets\/premium\/[a-z0-9-]+\.(?:webp|svg)$/.test(value || '') ? value : '';
+  const assetPath = value => /^assets\/(?:premium\/[a-z0-9-]+\.(?:webp|svg)|castle-scenes\/[a-z0-9_]+-(?:400|720|1080|1536)\.webp)$/.test(value || '') ? value : '';
   const priceLabel = product => `${product.priceYen.toLocaleString('ja-JP')}円${product.kind === 'subscription' ? ' / 月' : product.kind === 'pass' ? ' / 30日' : ''}`;
   const periodText = '月額780円（税込）で自動更新します。支払いが完了した各利用期間に、3種から1種の外観を確定で選べます。解約手続きをすると現在の利用期間の末日で終了し、期間終了までバッジを利用できます。選んだ外観は解約後も所持・装備できます。';
   const passText = '480円（税込）、購入反映から実時間30日間。自動更新はありません。1人招集の結果を1日3回まで、同じ結果につき1回だけ再抽選し、元の武将と新しい武将から1人を選びます。10人招集は対象外です。回数は毎日05:00（日本時間）に更新され、繰り越されません。有効期間中は追加購入できません。';
@@ -107,7 +107,7 @@
       return `<p class="premium-owned" tabindex="-1">${state.equipped ? '適用中' : product.kind === 'subscription' ? '利用期間中' : '所持しています'}</p>${expires ? `<p class="premium-expiry">利用期限：${esc(expires)}</p>` : ''}<button type="button" class="premium-purchase premium-equip" data-premium-equip="${product.id}"${state.equipped ? ' data-premium-remove' : ''}>${state.equipped ? '通常に戻す' : 'ゲームに適用'}</button>`;
     }
     const label = context.ready ? state.canPurchase ? '購入内容を確認' : '現在は購入できません' : context.status === 'loading' ? '購入状態を確認中' : context.status === 'anonymous' ? '領主の確認が必要です' : '購入を利用できません';
-    const blocked = context.ready && !state.canPurchase ? { subscription_exists: '継続中の契約があります。「支援の契約・解約を確認」から支払い・更新の状況をご確認ください。', monthly_choices_exhausted: 'この月の3種類分の選択権があります。翌月の外観が始まってから再契約できます。', preparing: '販売準備中です。購入先の確認が完了すると利用できます。', portal_unavailable: '契約管理の接続を確認中です。時間をおいて購入状態を再確認してください。' }[state.purchaseBlockReason] || '' : '';
+    const blocked = context.ready && !state.canPurchase ? { subscription_exists: '継続中の契約があります。「支援の契約・解約を確認」から支払い・更新の状況をご確認ください。', monthly_choices_exhausted: 'この月の3種類分の選択権があります。翌月の外観が始まってから再契約できます。', preparing: '販売準備中です。購入先の確認が完了すると利用できます。', portal_unavailable: '契約管理の接続を確認中です。時間をおいて購入状態を再確認してください。', castle_lord_required: '一般拠点の城主になると購入できます。家臣の本拠には、現在の城主が適用した景観を表示します。' }[state.purchaseBlockReason] || '' : '';
     return `<p class="premium-ownership">${context.ready ? state.purchaseBlockReason === 'subscription_exists' ? '契約状態の確認が必要です' : ['subscription', 'pass'].includes(product.kind) ? '現在は利用していません' : '未所持' : '所有状態は未確認です'}</p><button type="button" class="premium-purchase" data-premium-purchase="${product.id}"${state.canPurchase ? '' : ' disabled'}>${label}</button>${blocked ? `<p class="premium-availability">${esc(blocked)}</p>` : ''}`;
   }
   const artworkWidths = {
@@ -115,7 +115,20 @@
     'gold-banner': [160,320,512,768], 'supporter-badge': [48,96,224,448,640]
   };
   function artworkSources(prefix, name) {
+    if (name === 'castle-heritage') return castleSources(prefix, 'himeji');
     return (artworkWidths[name] || []).map(width => `${prefix}assets/responsive/${name}-${width}.webp ${width}w`).join(', ');
+  }
+  function castleSources(prefix, id) {
+    const stem = id === 'kagoshima' ? 'assets/responsive/kagoshima-town-day-' : `assets/castle-scenes/${id}-`;
+    return [400,720,1080,1536].map(width => `${prefix}${stem}${width}.webp ${width}w`).join(', ');
+  }
+  function castleOptions(catalog) {
+    return (catalog?.getCastleScenes?.() || []).filter(item => /^[a-z0-9_]+$/.test(item?.id || '') && typeof item?.name === 'string');
+  }
+  function castlePicker(catalog, id) {
+    const choices = castleOptions(catalog);
+    if (!choices.length) return '';
+    return `<div class="premium-castle-picker"><label for="${id}-castle">名城絵巻の城別プレビュー</label><select id="${id}-castle" data-premium-castle-select aria-describedby="${id}-castle-note">${choices.map(castle => `<option value="${castle.id}"${castle.id === 'himeji' ? ' selected' : ''}>${esc(castle.name)} · ${esc(castle.region)}</option>`).join('')}</select><p id="${id}-castle-note">一般123城に対応。実際の適用時には、城主の城に合わせて自動で切り替わります。</p></div>`;
   }
   function productSizes(id) {
     if (slots[id] === 'badge') return '195px';
@@ -128,7 +141,8 @@
   }
   function renderProduct(product, surface, context, idPrefix, assetPrefix, gamePrefix) {
     const id = `${idPrefix}-${product.id}`;
-    return `<article class="premium-product" data-premium-product="${product.id}" data-premium-slot="${product.slot}" aria-labelledby="${id}-name">${productArt(product, assetPrefix)}<div class="premium-product-content"><p class="premium-label">${product.kind === 'subscription' ? '月額の継続支援・毎支払い期間に選べる外観' : product.kind === 'pass' ? '30日間の再抽選特典・自動更新なし' : '買い切りの外観アイテム'}</p><h3 id="${id}-name">${esc(product.name)}</h3><p class="premium-product-summary">${esc(product.summary)}</p><p class="premium-price"><strong>${priceLabel(product)}</strong><span>税込${product.kind === 'subscription' ? '・自動更新' : product.kind === 'pass' ? '・実時間30日・更新なし' : '・買い切り'}</span></p>${product.kind === 'pass' ? '<p class="premium-gameplay-note">武将の獲得結果に影響する有料特典です。</p>' : ''}<details class="premium-product-details"><summary>商品に含まれるもの</summary><ul>${product.benefits.map(benefit => `<li>${esc(benefit)}</li>`).join('')}</ul><p>${product.kind === 'pass' ? '通常の1人招集には勾玉が必要です。再抽選では追加の勾玉を消費しません。排出率は通常の1人招集と同じで、希望の武将や高レアリティを保証しません。' : '外観の特典です。武将の能力や資産を追加しません。'}同じ領主で利用できます。別の領主への譲渡・交易はできません。</p></details>${product.kind === 'subscription' ? `<p class="premium-subscription-terms">${periodText}</p>` : product.kind === 'pass' ? `<p class="premium-subscription-terms">${passText}</p>` : ''}<div class="premium-product-actions">${product.kind !== 'pass' ? `<button type="button" class="premium-preview-link" data-premium-preview="${product.id}" data-premium-jump aria-pressed="false" disabled>表示例を見る</button>` : ''}<div class="premium-product-state" data-premium-product-state="${product.id}">${productStateMarkup(product, surface, context, gamePrefix)}</div></div></div></article>`;
+    const included = product.id === 'castle-heritage' && surface === 'game' && stateFor(context, product.id)?.purchaseBlockReason === 'castle_art_included';
+    return `<article class="premium-product"${included ? ' hidden' : ''} data-premium-included="${included}" data-premium-product="${product.id}" data-premium-slot="${product.slot}" aria-labelledby="${id}-name">${productArt(product, assetPrefix)}<div class="premium-product-content"><p class="premium-label">${product.kind === 'subscription' ? '月額の継続支援・毎支払い期間に選べる外観' : product.kind === 'pass' ? '30日間の再抽選特典・自動更新なし' : '買い切りの外観アイテム'}</p><h3 id="${id}-name">${esc(product.name)}</h3><p class="premium-product-summary">${esc(product.summary)}</p><p class="premium-price"><strong>${priceLabel(product)}</strong><span>税込${product.kind === 'subscription' ? '・自動更新' : product.kind === 'pass' ? '・実時間30日・更新なし' : '・買い切り'}</span></p>${product.kind === 'pass' ? '<p class="premium-gameplay-note">武将の獲得結果に影響する有料特典です。</p>' : ''}<details class="premium-product-details"><summary>商品に含まれるもの</summary><ul>${product.benefits.map(benefit => `<li>${esc(benefit)}</li>`).join('')}</ul><p>${product.kind === 'pass' ? '通常の1人招集には勾玉が必要です。再抽選では追加の勾玉を消費しません。排出率は通常の1人招集と同じで、希望の武将や高レアリティを保証しません。' : '外観の特典です。武将の能力や資産を追加しません。'}同じ領主で利用できます。別の領主への譲渡・交易はできません。</p></details>${product.kind === 'subscription' ? `<p class="premium-subscription-terms">${periodText}</p>` : product.kind === 'pass' ? `<p class="premium-subscription-terms">${passText}</p>` : ''}<div class="premium-product-actions">${product.kind !== 'pass' ? `<button type="button" class="premium-preview-link" data-premium-preview="${product.id}" data-premium-jump aria-pressed="false" disabled>表示例を見る</button>` : ''}<div class="premium-product-state" data-premium-product-state="${product.id}">${productStateMarkup(product, surface, context, gamePrefix)}</div></div></div></article>`;
   }
   function periodLabel(key) { return /^20\d{2}(?:0[1-9]|1[0-2])$/.test(key || '') ? `${key.slice(0, 4)}年${Number(key.slice(4))}月` : ''; }
   function supporterMarkup(catalog, context, surface, prefix, previewPeriodKey) {
@@ -162,10 +176,10 @@
 ${surface === 'game' ? `      <div class="premium-introduction"><p class="premium-label">外観コレクション・月額支援・30日再抽選パス</p><h2>一城の景色に、あなたらしい彩りを。</h2><p>一城を彩る外観、支払い期間ごとに永久外観を選べる月額支援、武将の1人招集を引き直せる30日パス。内容と期限を確かめて選べます。城を育て、武将を迎え、合戦や交易を重ねる基本プレイは無料です。</p></div>` : ''}
       ${surface === 'game' ? `<section class="premium-account" aria-label="接続中の領主と外観の管理" data-premium-account>${accountMarkup(context)}</section><p class="premium-feedback" role="status" data-premium-feedback hidden></p><section class="premium-confirm" data-premium-confirm hidden></section>` : '<p class="premium-public-note">購入・外観の適用はゲーム内で行います。見本はどなたでも切り替えられます。</p>'}
       <section class="premium-supporter-section" data-premium-supporter>${supporterMarkup(catalog, context, surface, assetPrefix, options.previewPeriodKey)}</section>
-      <section class="premium-preview-section" aria-labelledby="${id}-preview-heading"><div class="premium-section-heading"><p class="premium-label">同じ素材を、ゲームの装いに</p><h2 id="${id}-preview-heading">完成した外観を見比べる</h2><p>この下の切り替えは、カタログの見本だけに反映されます。</p></div><div class="premium-preview-layout"><figure class="premium-stage" data-premium-stage data-premium-preview-mode="${initial.key}" data-premium-preview-slot="${slots[initial.key] || 'standard'}"><div class="premium-stage-image"><img class="premium-stage-landscape" data-premium-landscape src="${esc(assetPrefix + landscape)}" srcset="${artworkSources(assetPrefix, selection?.slot === 'town' ? initial.key : 'castle-town-raden')}" sizes="(max-width: 650px) 88vw, (min-width: 1460px) 760px, 51vw" loading="lazy" alt="${esc(selection?.slot === 'town' ? selection.art.alt : standardTownAlt)}" width="1536" height="1024" decoding="async"><span class="premium-preview-watermark">プレビュー</span><img class="premium-preview-banner" src="${esc(assetPrefix + (selection?.slot === 'nameplate' ? selection.art.src : 'assets/premium/gold-banner-v1.webp'))}" srcset="${artworkSources(assetPrefix, selection?.slot === 'nameplate' ? selected : 'gold-banner')}" sizes="(max-width: 650px) 22vw, 160px" loading="lazy" alt="" width="1024" height="1536" aria-hidden="true"><div class="premium-preview-nameplate"><span class="premium-preview-nameplate-label">領主名の表示例</span><div class="premium-preview-name-row"><strong>あなたの一城</strong><img class="premium-preview-supporter" src="${esc(assetPrefix + (selection?.slot === 'badge' ? selection.art.src : 'assets/premium/supporter-badge-v1.webp'))}" srcset="${artworkSources(assetPrefix, selection?.slot === 'badge' && selected !== 'supporter' ? selected : 'supporter-badge')}" sizes="32px" loading="lazy" alt="サポーターバッジの32px表示例" width="32" height="32"></div></div></div><figcaption aria-live="polite" aria-atomic="true"><strong data-premium-preview-title>${esc(initial.label)}</strong><p data-premium-preview-description>${esc(initial.description)}</p></figcaption></figure><div class="premium-preview-controls"><div class="premium-preview-options" role="group" aria-label="外観イメージを選ぶ">${choices.map(choice => `<button type="button" data-premium-preview="${choice.key}" aria-pressed="${choice.key === initial.key ? 'true' : 'false'}" disabled><span class="premium-swatch premium-swatch--${choice.key}" aria-hidden="true"></span><span>${esc(choice.label)}</span></button>`).join('')}</div><p class="premium-preview-note">画像は実際に使われる素材です。プレビューを選んでも所持や装備の状態は変わりません。</p><noscript><p class="premium-preview-note">外観の切り替えには JavaScript を使います。商品内容はこのまま下で確認できます。</p></noscript></div></div></section>
+      <section class="premium-preview-section" aria-labelledby="${id}-preview-heading"><div class="premium-section-heading"><p class="premium-label">同じ素材を、ゲームの装いに</p><h2 id="${id}-preview-heading">完成した外観を見比べる</h2><p>この下の切り替えは、カタログの見本だけに反映されます。</p></div><div class="premium-preview-layout"><figure class="premium-stage" data-premium-stage data-premium-preview-mode="${initial.key}" data-premium-preview-slot="${slots[initial.key] || 'standard'}"><div class="premium-stage-image"><img class="premium-stage-landscape" data-premium-landscape src="${esc(assetPrefix + landscape)}" srcset="${artworkSources(assetPrefix, selection?.slot === 'town' ? initial.key : 'castle-town-raden')}" sizes="(max-width: 650px) 88vw, (min-width: 1460px) 760px, 51vw" loading="lazy" alt="${esc(selection?.slot === 'town' ? selection.art.alt : standardTownAlt)}" width="1536" height="${selection?.id === 'castle-heritage' ? 864 : 1024}" decoding="async"><span class="premium-preview-watermark">プレビュー</span><img class="premium-preview-banner" src="${esc(assetPrefix + (selection?.slot === 'nameplate' ? selection.art.src : 'assets/premium/gold-banner-v1.webp'))}" srcset="${artworkSources(assetPrefix, selection?.slot === 'nameplate' ? selected : 'gold-banner')}" sizes="(max-width: 650px) 22vw, 160px" loading="lazy" alt="" width="1024" height="1536" aria-hidden="true"><div class="premium-preview-nameplate"><span class="premium-preview-nameplate-label">領主名の表示例</span><div class="premium-preview-name-row"><strong>あなたの一城</strong><img class="premium-preview-supporter" src="${esc(assetPrefix + (selection?.slot === 'badge' ? selection.art.src : 'assets/premium/supporter-badge-v1.webp'))}" srcset="${artworkSources(assetPrefix, selection?.slot === 'badge' && selected !== 'supporter' ? selected : 'supporter-badge')}" sizes="32px" loading="lazy" alt="サポーターバッジの32px表示例" width="32" height="32"></div></div></div><figcaption aria-live="polite" aria-atomic="true"><strong data-premium-preview-title>${esc(initial.label)}</strong><p data-premium-preview-description>${esc(initial.description)}</p></figcaption></figure><div class="premium-preview-controls"><div class="premium-preview-options" role="group" aria-label="外観イメージを選ぶ">${choices.map(choice => `<button type="button" data-premium-preview="${choice.key}" aria-pressed="${choice.key === initial.key ? 'true' : 'false'}" disabled><span class="premium-swatch premium-swatch--${choice.key}" aria-hidden="true"></span><span>${esc(choice.label)}</span></button>`).join('')}</div><p class="premium-preview-note">画像は実際に使われる素材です。プレビューを選んでも所持や装備の状態は変わりません。</p>${castlePicker(catalog, id)}<noscript><p class="premium-preview-note">外観の切り替えには JavaScript を使います。商品内容はこのまま下で確認できます。</p></noscript></div></div></section>
       <section class="premium-products-section" aria-labelledby="${id}-products-heading"><div class="premium-section-heading"><h2 id="${id}-products-heading">外観・継続支援・再抽選パス</h2><p>外観は買い切り、サポーターは月額780円。再抽選パスは480円で実時間30日間、自動更新なしです。</p></div><div class="premium-product-filters" role="group" aria-label="商品の種類"><button type="button" data-premium-filter="all" aria-pressed="true">すべて</button><button type="button" data-premium-filter="nameplate" aria-pressed="false">旗印</button><button type="button" data-premium-filter="town" aria-pressed="false">城下町</button><button type="button" data-premium-filter="badge" aria-pressed="false">勲章・支援</button><button type="button" data-premium-filter="pass" aria-pressed="false">再抽選パス</button></div><div class="premium-products">${products.length ? products.map(product => renderProduct(product, surface, context, id, assetPrefix, gamePrefix)).join('') : '<p class="premium-empty">商品情報を読み込めませんでした。画面を再読み込みしてください。</p>'}</div></section>
       <section class="premium-comparison-section" aria-labelledby="${id}-comparison-heading"><div class="premium-section-heading"><h2 id="${id}-comparison-heading">無料プレイとの違い</h2><p>外観・サポーターは装いの特典です。再抽選パスには、武将の獲得結果に影響する有料特典があります。</p></div><div class="premium-comparison-wrap"><table class="premium-comparison"><caption>無料プレイ・外観と支援・再抽選パスの内容</caption><thead><tr><th scope="col">できること</th><th scope="col">無料プレイ</th><th scope="col">外観・サポーター</th><th scope="col">再抽選パス</th></tr></thead><tbody><tr><th scope="row">城下町・武将・合戦・交易</th><td>遊べます</td><td>遊べます</td><td>遊べます</td></tr><tr><th scope="row">城下町や領主表示の外観</th><td>通常の外観</td><td>購入・受け取り済みの装い</td><td>外観は含みません</td></tr><tr><th scope="row">支払済み期間の選べる永久外観</th><td>なし</td><td>サポーターは3種から1種</td><td>含みません</td></tr><tr><th scope="row">勾玉による1人招集の再抽選</th><td>なし</td><td>含みません</td><td>1日3回・元の武将との選択可</td></tr><tr><th scope="row">勾玉・資産の直接購入</th><td>なし</td><td>なし</td><td>なし</td></tr></tbody></table></div><p class="premium-comparison-note">勾玉そのものは販売しません。再抽選は通常の1人招集と同じ排出率で、希望の武将や高レアリティは保証しません。有料商品の交易・譲渡はできません。</p></section>
-      <section class="premium-faq-section" aria-labelledby="${id}-faq-heading"><div class="premium-section-heading"><h2 id="${id}-faq-heading">よくある質問</h2></div><div class="premium-faq"><details><summary>どこから購入できますか？</summary><p>ゲーム内の「保存・設定」から「有料版・支援」を開き、接続中の領主名・IDと商品を確認して購入画面へ進みます。購入手続きはStripeの画面で行います。通信や購入サービスを確認できない間は、購入ボタンを利用できません。</p></details><details><summary>購入後はどうやって外観を使いますか？</summary><p>ゲームへ戻り、「購入状態を再確認」を押してください。受け取りを確認すると、商品に「ゲームに適用」が表示されます。外観を元に戻すときは「通常に戻す」を選びます。購入画面から戻っただけで、未確認の権利が付くことはありません。</p></details><details><summary>月額サポーターの更新と解約は？</summary><p>${periodText}「支援の契約・解約を確認」から手続きできます。期間終了後はバッジが表示されなくなり、受け取り済みの支援特典と買い切りの外観は引き続き使えます。</p></details><details><summary>再抽選パスの使い方と利用期限は？</summary><p>${passText}利用中は重ねて購入できません。「武将招集」で1人招集した後に、再抽選するか、そのままの武将を迎えるかを選べます。パスの期限はゲームの速度設定やログイン日数にかかわらず進みます。</p></details><details><summary>プレビューを選ぶと、ゲームにも反映されますか？</summary><p>カタログの見本だけが切り替わります。ゲームへの適用は、購入状態を確認した後の別の操作です。見本の選択で資産やプレイ記録が変わることはありません。</p></details><details><summary>購入すると合戦や育成で有利になりますか？</summary><p>再抽選パスは武将の1人招集を引き直し、元と新しい武将を見比べて選べるため、獲得結果に影響します。外観アイテムとサポーターの特典は装飾です。勾玉・資産の直接販売や、武将能力・生産量・指令回復への倍率は含みません。</p></details></div></section><p class="premium-closing-note">自分らしい一城を楽しみながら、戦国VSのこれからを応援できます。</p>
+      <section class="premium-faq-section" aria-labelledby="${id}-faq-heading"><div class="premium-section-heading"><h2 id="${id}-faq-heading">よくある質問</h2></div><div class="premium-faq"><details><summary>「名城絵巻・全城対応」はどこに反映されますか？</summary><p>一般123城の専用景観を、城主の城下町・天下地図・城詳細・出陣と公開プロフィールに表示します。他のプレイヤーや同じ城の家臣にも、城主が適用した景観が見えます。税込980円の買い切りで、同じ領主なら本拠移転後も買い直しは不要です。各城を題材にしたゲーム用イラストで、建物の時代・復元表現には創作を含みます。</p></details><details><summary>どこから購入できますか？</summary><p>ゲーム内の「保存・設定」から「有料版・支援」を開き、接続中の領主名・IDと商品を確認して購入画面へ進みます。購入手続きはStripeの画面で行います。通信や購入サービスを確認できない間は、購入ボタンを利用できません。</p></details><details><summary>購入後はどうやって外観を使いますか？</summary><p>ゲームへ戻り、「購入状態を再確認」を押してください。受け取りを確認すると、商品に「ゲームに適用」が表示されます。外観を元に戻すときは「通常に戻す」を選びます。購入画面から戻っただけで、未確認の権利が付くことはありません。</p></details><details><summary>月額サポーターの更新と解約は？</summary><p>${periodText}「支援の契約・解約を確認」から手続きできます。期間終了後はバッジが表示されなくなり、受け取り済みの支援特典と買い切りの外観は引き続き使えます。</p></details><details><summary>再抽選パスの使い方と利用期限は？</summary><p>${passText}利用中は重ねて購入できません。「武将招集」で1人招集した後に、再抽選するか、そのままの武将を迎えるかを選べます。パスの期限はゲームの速度設定やログイン日数にかかわらず進みます。</p></details><details><summary>プレビューを選ぶと、ゲームにも反映されますか？</summary><p>カタログの見本だけが切り替わります。ゲームへの適用は、購入状態を確認した後の別の操作です。見本の選択で資産やプレイ記録が変わることはありません。</p></details><details><summary>購入すると合戦や育成で有利になりますか？</summary><p>再抽選パスは武将の1人招集を引き直し、元と新しい武将を見比べて選べるため、獲得結果に影響します。外観アイテムとサポーターの特典は装飾です。勾玉・資産の直接販売や、武将能力・生産量・指令回復への倍率は含みません。</p></details></div></section><p class="premium-closing-note">自分らしい一城を楽しみながら、戦国VSのこれからを応援できます。</p>
     </div>`;
   }
 
@@ -206,7 +220,11 @@ ${surface === 'game' ? `      <div class="premium-introduction"><p class="premiu
       setMarkup(body.querySelector('[data-premium-supporter]'), supporterMarkup(readCatalog(), value, 'game', safePrefix(options.assetPrefix || '')));
       for (const button of body.querySelectorAll('[data-premium-preview]')) button.disabled = false;
       if (confirmation && value.user?.id === confirmation.owner) setMarkup(body.querySelector('[data-premium-confirm-user]'), playerMarkup(value.user));
-      for (const product of productsFrom(readCatalog())) setMarkup(body.querySelector(`[data-premium-product-state="${product.id}"]`), productStateMarkup(product, 'game', value, ''));
+      for (const product of productsFrom(readCatalog())) {
+        setMarkup(body.querySelector(`[data-premium-product-state="${product.id}"]`), productStateMarkup(product, 'game', value, ''));
+        const card = body.querySelector(`[data-premium-product="${product.id}"]`);
+        if (card && product.id === 'castle-heritage') { const included = stateFor(value, product.id)?.purchaseBlockReason === 'castle_art_included'; card.setAttribute('data-premium-included', String(included)); const filter = body.querySelector('[data-premium-catalog]')?.getAttribute('data-premium-filter-active') || 'all'; card.hidden = included || !['all', 'town'].includes(filter); }
+      }
       for (const node of body.querySelectorAll('[data-premium-purchase]')) node.disabled = Boolean(busy) || !stateFor(value, node.getAttribute('data-premium-purchase'))?.canPurchase;
       for (const node of body.querySelectorAll('[data-premium-equip]')) node.disabled = Boolean(busy);
       for (const node of body.querySelectorAll('[data-premium-reward-choice]')) node.disabled = Boolean(busy) || !value.ready;
@@ -225,6 +243,10 @@ ${surface === 'game' ? `      <div class="premium-introduction"><p class="premiu
     function mountOne(element) {
       if (!element || mounts.has(element)) return false;
       const products = productsFrom(readCatalog()), choices = previewChoices(products), prefix = safePrefix(element.getAttribute('data-premium-asset-prefix') || '');
+      const castleList = castleOptions(readCatalog()), castleSelect = element.querySelector('[data-premium-castle-select]');
+      let castlePreviewId = 'himeji';
+      try { const home = global.SengokuBridge?.state?.()?.home; if (castleList.some(castle => castle.id === home)) castlePreviewId = home; } catch {}
+      if (castleSelect) castleSelect.value = castlePreviewId;
       const select = (key, jump = false) => {
         const reward = rewardProduct(readCatalog(), key);
         const choice = choices.find(item => item.key === key) || (reward ? { key, label: reward.previewLabel, description: reward.previewDescription } : null), stage = element.querySelector('[data-premium-stage]'); if (!choice || !stage) return false;
@@ -240,6 +262,18 @@ ${surface === 'game' ? `      <div class="premium-introduction"><p class="premiu
         if (ornament) { ornament.setAttribute('srcset', artworkSources(prefix, choice.key === 'supporter' ? 'supporter-badge' : choice.key)); ornament.setAttribute('src', prefix + product.art.src); ornament.setAttribute('alt', product.art.alt); }
         const title = element.querySelector('[data-premium-preview-title]'), description = element.querySelector('[data-premium-preview-description]');
         if (title) title.textContent = choice.label; if (description) description.textContent = choice.description;
+        if (key === 'castle-heritage') {
+          const castle = castleList.find(item => item.id === castlePreviewId);
+          if (castle) {
+            const stem = castle.id === 'kagoshima' ? 'assets/responsive/kagoshima-town-day-' : `assets/castle-scenes/${castle.id}-`;
+            image?.setAttribute('srcset', castleSources(prefix, castle.id));
+            image?.setAttribute('src', prefix + stem + '720.webp');
+            image?.setAttribute('alt', castle.name + 'の城郭と城下町を描いた専用絵巻');
+            image?.setAttribute('width', '1536'); image?.setAttribute('height', '864');
+            if (title) title.textContent = castle.name + ' · 専用絵巻';
+            if (description) description.textContent = castle.included ? castle.name + 'の建築と城下町を描いた専用景観です。' : '一般123城の専用景観が、980円の買い切りで利用できます。適用した城主の景観は、他のプレイヤーにも同じように表示されます。';
+          }
+        } else { image?.setAttribute('width', '1536'); image?.setAttribute('height', '1024'); }
         for (const button of element.querySelectorAll('[data-premium-preview]')) button.setAttribute('aria-pressed', String(button.getAttribute('data-premium-preview') === choice.key));
         if (jump) stage.scrollIntoView?.({ block: 'nearest', behavior: 'auto' }); return true;
       };
@@ -248,17 +282,22 @@ ${surface === 'game' ? `      <div class="premium-introduction"><p class="premiu
         if (filter && element.contains(filter)) {
           const value = filter.getAttribute('data-premium-filter');
           if (!['all', 'nameplate', 'town', 'badge', 'pass'].includes(value)) return;
-          event.preventDefault();
-          for (const item of element.querySelectorAll('[data-premium-slot]')) item.hidden = value !== 'all' && item.getAttribute('data-premium-slot') !== value;
+          event.preventDefault(); element.setAttribute('data-premium-filter-active', value);
+          for (const item of element.querySelectorAll('[data-premium-slot]')) item.hidden = item.getAttribute('data-premium-included') === 'true' || value !== 'all' && item.getAttribute('data-premium-slot') !== value;
           for (const item of element.querySelectorAll('[data-premium-filter]')) item.setAttribute('aria-pressed', String(item === filter));
           return;
         }
         const button = event.target?.closest?.('[data-premium-preview]'); if (!button || !element.contains(button) || button.disabled) return;
         event.preventDefault(); select(button.getAttribute('data-premium-preview'), button.hasAttribute('data-premium-jump'));
       };
+      const change = event => {
+        if (event.target !== castleSelect || !castleList.some(castle => castle.id === castleSelect.value)) return;
+        castlePreviewId = castleSelect.value; select('castle-heritage');
+      };
       element.addEventListener('click', click);
+      element.addEventListener('change', change);
       for (const button of element.querySelectorAll('[data-premium-preview]')) button.disabled = false;
-      mounts.set(element, { select, destroy() { element.removeEventListener?.('click', click); for (const button of element.querySelectorAll('[data-premium-preview]')) button.disabled = true; } });
+      mounts.set(element, { select, destroy() { element.removeEventListener?.('click', click); element.removeEventListener?.('change', change); for (const button of element.querySelectorAll('[data-premium-preview]')) button.disabled = true; } });
       select(element.getAttribute('data-premium-selected') || 'standard'); return true;
     }
     function mount(target = doc) {

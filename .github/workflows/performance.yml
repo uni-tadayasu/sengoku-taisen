@@ -14,6 +14,8 @@ on:
       - 'tools/game-entry.json'
       - 'tests/**'
       - 'server/**'
+      - 'assets/castle-scenes/**'
+      - 'docs/castle-scenes-20261128.json'
   push:
     branches: [main]
     paths:
@@ -27,6 +29,8 @@ on:
       - 'tools/game-entry.json'
       - 'tests/**'
       - 'server/**'
+      - 'assets/castle-scenes/**'
+      - 'docs/castle-scenes-20261128.json'
 
 permissions:
   contents: read
@@ -174,6 +178,13 @@ jobs:
         run: |
           node server/test-rewards.mjs
           node server/test-paid-rewards-migration.mjs
+      - name: Verify castle artwork purchases, public ownership and preserved payments
+        run: |
+          node server/test-castle-heritage-migration.mjs
+          node server/test-castle-heritage.mjs
+          node tests/test-castle-heritage-artwork.cjs
+          node tests/test-town-castle-scenes.cjs
+          node tests/test-castle-scene-assets.cjs
       - name: Verify payment totals, supporter renewal and observed player retention
         run: node server/test-premium-metrics.mjs
       - name: Verify player retainer bonuses and castle membership

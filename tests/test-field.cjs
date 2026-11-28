@@ -174,7 +174,7 @@ test('Kagoshima artwork is identified for every viewer without requiring the dep
     assert(!F.castleAppearance(target('lord','kiyosu','kiyosu',{keepLevel:8})).includes('鶴丸城'));
   }finally{if(previous===undefined)delete global.SengokuArt;else global.SengokuArt=previous;}
 });
-test('all 32 keep levels select different cells while a stronger completed castle keeps its developed artwork',()=>{
+test('ordinary keeps retain 32 growth cells while cities keep their dedicated scene and actual level labels',()=>{
   const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),{SENGOKU_DATA}=require('../engine.js');
   const scope={SENGOKU_DATA,document:{readyState:'loading',addEventListener(){}}};scope.window=scope;
   vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../artwork.js'),'utf8'),scope);
@@ -184,10 +184,10 @@ test('all 32 keep levels select different cells while a stronger completed castl
       const cells=new Set();
       for(let keepLevel=1;keepLevel<=32;keepLevel++){
         const p=F.normalizePlayers([player('a',homeCastleId,{level:1,keepLevel})])[0],html=F.castleAppearance(p),tile=scope.SengokuArt.tileInfo('castle',homeCastleId,keepLevel);
-        assert(html.includes(`data-art-url="assets/castles/${homeCastleId}.webp"`));assert(html.includes(`data-field-keep-level="${keepLevel}"`));
+        assert(html.includes(`data-art-url="${tile.url}"`));assert(html.includes(`data-field-keep-level="${keepLevel}"`));
         assert(html.includes(`data-art-x="${tile.x}"`));assert(html.includes(`data-art-y="${tile.y}"`));cells.add(tile.x+':'+tile.y);
       }
-      assert.equal(cells.size,32,'Each keep level has its own existing artwork cell');
+      assert.equal(cells.size,homeCastleId==='kiyosu'?32:1,'City identity stays constant while completed strength continues to grow');
     }
     for(const [id,castleLevel]of [['kiyosu',32],['edo',64],['kyoto_gosho',128]]){
       const p=F.normalizePlayers([player('a',id,{level:castleLevel,keepLevel:1})])[0],before=JSON.stringify(p),html=F.castleAppearance(p,{marker:true}),last=scope.SengokuArt.tileInfo('castle',id,32);

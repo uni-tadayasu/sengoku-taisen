@@ -13,14 +13,31 @@ const PREMIUM_PRODUCTS=Object.freeze([
   {"id":"phoenix-medallion","slot":"badge","amount":780,"mode":"payment","link":"plink_1Ufq0jL3ZjL9QUmfWThYEpqL","price":"price_1Ufq0WL3ZjL9QUmfgJALQNy2","stripeProduct":"prod_sengokuvs_20261126_phoenix_medallion","url":"https://buy.stripe.com/8x2aEY5QE5JL00386y9MY09"},
   {"id":"sakura-town","slot":"town","amount":980,"mode":"payment","link":"plink_1Ufq0kL3ZjL9QUmfWmqjwuB7","price":"price_1Ufq0XL3ZjL9QUmfZn6HpE02","stripeProduct":"prod_sengokuvs_20261126_sakura_town","url":"https://buy.stripe.com/3cI6oIfre5JLeUX5Yq9MY0a"},
   {"id":"snow-town","slot":"town","amount":980,"mode":"payment","link":"plink_1Ufq0lL3ZjL9QUmfn5BGoLuI","price":"price_1Ufq0XL3ZjL9QUmfT3rgvT9j","stripeProduct":"prod_sengokuvs_20261126_snow_town","url":"https://buy.stripe.com/28EaEYfrec893cfeuW9MY0b"},
-  {id:'reroll-pass-30d',slot:null,amount:480,mode:'payment',durationDays:30,link:null,price:null,stripeProduct:null,url:null}
+  {id:'reroll-pass-30d',slot:null,amount:480,mode:'payment',durationDays:30,link:null,price:null,stripeProduct:null,url:null},
+  {id:'castle-heritage',slot:'town',amount:980,mode:'payment',link:'plink_1UgZ3RL3ZjL9QUmf9UOolX4E',price:'price_1UgZ3IL3ZjL9QUmf26YHbrPH',stripeProduct:'prod_sengokuvs_20261128_castle_heritage',url:'https://buy.stripe.com/eVq7sM3IwgopcMP72u9MY0d'}
 ]);
 const premiumStmt=(db,sql,...values)=>db.prepare(sql).bind(...values);
 const premiumRows=result=>result?.results||[];
 const premiumEmpty=()=>({nameplate:null,town:null,badge:null,ownedProducts:[]});
+const CASTLE_ART_INCLUDED=new Set(['edo','kyoto_gosho','nijo','osaka','nagoya','kagoshima']);
+const castleLordGuard=`EXISTS(SELECT 1 FROM castle_residents art_member JOIN castle_seats art_seat ON art_seat.castle_id=art_member.castle_id JOIN player_saves art_save ON art_save.user_id=art_member.user_id
+  WHERE art_member.user_id=? AND art_seat.lord_user_id=? AND art_member.castle_id NOT IN ('edo','kyoto_gosho','nijo','osaka','nagoya','kagoshima')
+  AND json_extract(art_save.save_json,'$.state.home')=art_member.castle_id AND COALESCE(json_extract(art_save.save_json,'$.state.gameOver'),0)=0
+  AND json_extract(art_save.save_json,'$.state.castles.'||art_member.castle_id||'.owner')=json_extract(art_save.save_json,'$.state.clan'))`;
+async function castleHeritagePurchaseAccess(db,user){
+  const row=await premiumStmt(db,`SELECT json_extract(s.save_json,'$.state.home') AS home,
+    ${castleLordGuard} AS eligible FROM users u LEFT JOIN player_saves s ON s.user_id=u.id WHERE u.id=?`,user.id,user.id,user.id).first();
+  const home=user.is_admin?'edo':user.is_staff?'kyoto_gosho':user.is_deputy?'kagoshima':row?.home;
+  return {reason:CASTLE_ART_INCLUDED.has(home)?'castle_art_included':row?.eligible?null:'castle_lord_required',sql:castleLordGuard,args:[user.id,user.id]};
+}
+function requireCastleHeritagePurchase(access,h){
+  if(access.reason==='castle_art_included')h.fail(409,'CASTLE_ART_INCLUDED','この商品は現在の本拠では購入できません。');
+  if(access.reason)h.fail(409,'CASTLE_LORD_REQUIRED','一般拠点の城主になってから購入できます。家臣の城景観には、現在の城主の設定が表示されます。');
+}
 function premiumProduct(id,env={}){
   const base=PREMIUM_PRODUCTS.find(product=>product.id===id);
   if(base?.id==='reroll-pass-30d')return {...base,link:env.SENGOKU_REROLL_PAYMENT_LINK_ID||base.link,price:env.SENGOKU_REROLL_PRICE_ID||base.price,stripeProduct:env.SENGOKU_REROLL_PRODUCT_ID||base.stripeProduct,url:env.SENGOKU_REROLL_PAYMENT_LINK_URL||base.url};
+  if(base?.id==='castle-heritage')return {...base,link:env.SENGOKU_CASTLE_HERITAGE_PAYMENT_LINK_ID||base.link,price:env.SENGOKU_CASTLE_HERITAGE_PRICE_ID||base.price,stripeProduct:env.SENGOKU_CASTLE_HERITAGE_PRODUCT_ID||base.stripeProduct,url:env.SENGOKU_CASTLE_HERITAGE_PAYMENT_LINK_URL||base.url};
   if(base)return base;
   const reward=typeof id==='string'&&/^supporter-(20[2-9][0-9]|2[1-9][0-9]{2}|[3-9][0-9]{3})(0[1-9]|1[0-2])-(flower|moon|star)$/.exec(id);
   return reward&&Number(reward[1])>=2026?{id,slot:'nameplate',mode:'reward'}:null;
@@ -146,8 +163,9 @@ async function premiumSnapshot(ctx){
   if(pass.active)owned.set('reroll-pass-30d',{owned:true,expiresAt:pass.expiresAt});
   // Older clients validate a fixed three-product response. Keep their existing
   // purchases visible during the rollout; the current catalog explicitly opts in.
-  const catalog=new URL(ctx.request.url).searchParams.get('catalog'),visibleProducts=catalog==='4'?PREMIUM_PRODUCTS:catalog==='3'?PREMIUM_PRODUCTS.slice(0,8):PREMIUM_PRODUCTS.slice(0,3);
-  return {ok:true,ready,player:{id:user.id,name:user.name,evaluation:ctx.helpers.evaluationRef(user.id)},products:visibleProducts.map(base=>{const product=premiumProduct(base.id,env),value=owned.get(product.id)||{owned:false,expiresAt:null},blocked=product.mode==='subscription'&&subscriptionExists,limited=product.id==='supporter'&&exhausted,configured=premiumProductReady(product,env);return {id:product.id,owned:value.owned,equipped:!!product.slot&&appearance[product.slot]===product.id,expiresAt:value.expiresAt,canPurchase:configured&&!value.owned&&!blocked&&!limited&&(product.mode!=='subscription'||!!portalUrl),purchaseBlockReason:blocked?'subscription_exists':limited?'monthly_choices_exhausted':value.owned?'owned':!configured?'preparing':product.mode==='subscription'&&!portalUrl?'portal_unavailable':null};}),appearance,portalUrl,serverNow:new Date(now).toISOString(),...(catalog==='4'?{rerollPass:pass,supporterRewards:await supporterRewards(db,user.id,now)}:{})};
+  const catalog=new URL(ctx.request.url).searchParams.get('catalog'),visibleProducts=catalog==='5'?PREMIUM_PRODUCTS:catalog==='4'?PREMIUM_PRODUCTS.slice(0,9):catalog==='3'?PREMIUM_PRODUCTS.slice(0,8):PREMIUM_PRODUCTS.slice(0,3);
+  const castleAccess=catalog==='5'?await castleHeritagePurchaseAccess(db,user):null;
+  return {ok:true,ready,player:{id:user.id,name:user.name,evaluation:ctx.helpers.evaluationRef(user.id)},products:visibleProducts.map(base=>{const product=premiumProduct(base.id,env),value=owned.get(product.id)||{owned:false,expiresAt:null},blocked=product.mode==='subscription'&&subscriptionExists,limited=product.id==='supporter'&&exhausted,configured=premiumProductReady(product,env),castleReason=product.id==='castle-heritage'?castleAccess?.reason:null;return {id:product.id,owned:value.owned,equipped:!!product.slot&&appearance[product.slot]===product.id,expiresAt:value.expiresAt,canPurchase:configured&&!value.owned&&!blocked&&!limited&&!castleReason&&(product.mode!=='subscription'||!!portalUrl),purchaseBlockReason:blocked?'subscription_exists':limited?'monthly_choices_exhausted':value.owned?'owned':castleReason||(!configured?'preparing':product.mode==='subscription'&&!portalUrl?'portal_unavailable':null)};}),appearance,portalUrl,serverNow:new Date(now).toISOString(),...(['4','5'].includes(catalog)?{rerollPass:pass,supporterRewards:await supporterRewards(db,user.id,now)}:{})};
 }
 
 function premiumReviewDto(row){return {id:row.id,scope:row.scope,objectId:row.object_id,revision:Number(row.expected_revision),eventId:row.expected_event_id,reason:row.reason,createdAt:new Date(Number(row.created_at)).toISOString()};}
@@ -213,12 +231,15 @@ export async function handlePremium(ctx){
     if(product.mode==='subscription'&&await premiumSubscriptionExists(db,user.id,now))h.fail(409,'SUBSCRIPTION_EXISTS','サポーター契約を確認中です。重複購入を避けるため、契約管理ページで更新・支払い・解約をご確認ください。');
     if(product.id==='supporter'&&await supporterMonthExhausted(db,user.id,now))h.fail(409,'MONTHLY_CHOICES_EXHAUSTED','今月の3種類分の選択権を持っています。翌月の外観が始まってから再契約できます。');
     const owned=await premiumOwnership(db,user.id,now);if(owned.get(product.id)?.owned)h.fail(409,'ALREADY_OWNED','この商品は利用できます。外観の設定を確認してください。');
-    const access=h.accountCommitGuard(user),reference=premiumReference();
+    const castleAccess=product.id==='castle-heritage'?await castleHeritagePurchaseAccess(db,user):null;
+    if(castleAccess)requireCastleHeritagePurchase(castleAccess,h);
+    const accountAccess=h.accountCommitGuard(user),access=castleAccess?{sql:accountAccess.sql+' AND '+castleAccess.sql,args:[...accountAccess.args,...castleAccess.args]}:accountAccess,reference=premiumReference();
     const result=await db.batch([
       premiumStmt(db,`INSERT INTO premium_orders(reference,user_id,product_id,created_at) SELECT ?,?,?,? WHERE ${access.sql} ON CONFLICT(user_id,product_id) DO NOTHING`,reference,user.id,product.id,now,...access.args),
       premiumStmt(db,'SELECT reference FROM premium_orders WHERE user_id=? AND product_id=?',user.id,product.id)
     ]);
     await h.requireAccountAccess(db,user);
+    if(castleAccess)requireCastleHeritagePurchase(await castleHeritagePurchaseAccess(db,user),h);
     const order=premiumRows(result[1])[0];if(!order)h.fail(409,'PREMIUM_CHANGED','購入の準備をもう一度お試しください。');
     const url=new URL(product.url);url.searchParams.set('client_reference_id',order.reference);
     return {ok:true,productId:product.id,url:url.href};
@@ -246,13 +267,17 @@ export async function resolvePremiumAppearances(db,payload,now){
     if(!value||typeof value!=='object')return;
     const id=value.playerId||value.userId||value.id;
     if(typeof value.name==='string'||value.playerId&&Object.hasOwn(value,'evaluation'))add(value,id,'appearance');
+    // A retainer's profile shows the current lord's castle appearance while
+    // retaining that retainer's own nameplate and badges.
+    if(Object.hasOwn(value,'homeCastleOwnerId'))add(value,value.homeCastleOwnerId,'homeCastleAppearance');
     for(const [idKey,nameKey,key]of [
       ['playerId','playerName','playerAppearance'],
       ['ownerId','ownerName','ownerAppearance'],
       ['authorId','authorName','authorAppearance'],
       ['targetPlayerId','targetName','targetAppearance'],
       ['attackerPlayerId','attackerName','attackerAppearance'],
-      ['defenderPlayerId','defenderName','defenderAppearance']
+      ['defenderPlayerId','defenderName','defenderAppearance'],
+      ['castleOwnerId','lordName','castleAppearance']
     ])if(typeof value[nameKey]==='string')add(value,value[idKey],key);
     for(const [key,child]of Object.entries(value))if(!skip.has(key))visit(child);
   }
