@@ -1,5 +1,5 @@
 /* 本体は先に保存。大きな絵巻は、実際に開いたものから保存します。 */
-const RELEASE='5.15.0-20261128';
+const RELEASE='5.16.0-20261128';
 const CACHE='sengoku-taisen-v'+RELEASE;
 const scopeURL=()=>self.registration?.scope||self.location.origin+'/';
 const currentMatch=(request,name=CACHE)=>caches.open(name).then(cache=>cache.match(request));
@@ -29,6 +29,8 @@ const compactURL=(family,stem)=>'./assets/responsive/'+(stem||installedStems[fam
 // A staged tab can read a different edition while this worker still controls
 // both tabs. Derive the compact filename from the requested artwork first.
 function compactAlternatives(relative){
+  const castle=/^\.\/assets\/castle-scenes\/([a-z0-9_]+)-(?:400|720|1080|1536)\.webp$/.exec(relative);
+  if(castle)return ['./assets/castle-scenes/'+castle[1]+'-400.webp'];
   const town=/^\.\/assets\/responsive\/([a-z-]+)-\d+\.webp$/.exec(relative)
     || /^\.\/assets\/premium\/(moonlit-castle|sakura-town|snow-town)-v1\.webp$/.exec(relative);
   if(town&&compactTownStems.has(town[1]))return [compactTownURL(town[1])];

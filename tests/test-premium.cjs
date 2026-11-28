@@ -8,7 +8,7 @@ const catalog = require('../premium-catalog.js');
 const { renderCatalog, createUI, normalizeContext, expiryLabel } = require('../premium.js');
 const root = path.resolve(__dirname, '..');
 const tests = [], test = (name, run) => tests.push([name, run]);
-const paymentBases = { 'gold-banner': 'https://buy.stripe.com/fZu6oI3Iwdcd5kn4Um9MY04', 'moonlit-castle': 'https://buy.stripe.com/dRmdRa6UI2xz6or1Ia9MY05', supporter: 'https://buy.stripe.com/7sY8wQdj6dcdbILaeG9MY06', 'vermilion-banner': 'https://buy.stripe.com/aFa8wQ3Iw5JL1479aC9MY07', 'silver-banner': 'https://buy.stripe.com/aFacN65QE4FHeUXaeG9MY08', 'phoenix-medallion': 'https://buy.stripe.com/8x2aEY5QE5JL00386y9MY09', 'sakura-town': 'https://buy.stripe.com/3cI6oIfre5JLeUX5Yq9MY0a', 'snow-town': 'https://buy.stripe.com/28EaEYfrec893cfeuW9MY0b' };
+const paymentBases = { 'gold-banner': 'https://buy.stripe.com/fZu6oI3Iwdcd5kn4Um9MY04', 'moonlit-castle': 'https://buy.stripe.com/dRmdRa6UI2xz6or1Ia9MY05', supporter: 'https://buy.stripe.com/7sY8wQdj6dcdbILaeG9MY06', 'vermilion-banner': 'https://buy.stripe.com/aFa8wQ3Iw5JL1479aC9MY07', 'silver-banner': 'https://buy.stripe.com/aFacN65QE4FHeUXaeG9MY08', 'phoenix-medallion': 'https://buy.stripe.com/8x2aEY5QE5JL00386y9MY09', 'sakura-town': 'https://buy.stripe.com/3cI6oIfre5JLeUX5Yq9MY0a', 'snow-town': 'https://buy.stripe.com/28EaEYfrec893cfeuW9MY0b', 'castle-heritage': 'https://buy.stripe.com/eVq7sM3IwgopcMP72u9MY0d' };
 const checkoutURL = (id, reference = 'a'.repeat(32)) => paymentBases[id] + '?client_reference_id=' + reference;
 const drain = async () => { for (let i = 0; i < 8; i++) await Promise.resolve(); };
 const deferred = () => { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
@@ -23,6 +23,8 @@ class Element {
   hasAttribute(name) { return Object.hasOwn(this.attributes, name); }
   get disabled() { return this._disabled; }
   set disabled(value) { this._disabled = Boolean(value); if (this._disabled) this.attributes.disabled = ''; else delete this.attributes.disabled; }
+  get hidden() { return this.hasAttribute('hidden'); }
+  set hidden(value) { if (value) this.attributes.hidden = ''; else delete this.attributes.hidden; }
   get isConnected() { return this === this.document.body || this.document.body.contains(this); }
   get textContent() { return this._text + this.children.map(node => node.textContent).join(''); }
   set textContent(value) { this._text = String(value); for (const node of [...this.children]) node.remove(); }
@@ -99,7 +101,7 @@ function setup(initial = ready(), options = {}) {
   const get = selector => doc.querySelector(selector);
   function click(selector) {
     const element = get(selector); assert(element, 'Missing UI control: ' + selector);
-    const host = element.hasAttribute('data-premium-preview') ? get('[data-premium-catalog]') : get('#premium-modal'); host.dispatch('click', element);
+    const host = element.hasAttribute('data-premium-preview') || element.hasAttribute('data-premium-filter') ? get('[data-premium-catalog]') : get('#premium-modal'); host.dispatch('click', element);
   }
   return { doc, entry, ui, runtime, windows, calls, get, click, listeners, context: () => context,
     set(value) { context = value; for (const listener of listeners) listener(context); },
@@ -108,14 +110,14 @@ function setup(initial = ready(), options = {}) {
 }
 function assertUnavailable(container) {
   assert.equal(container.querySelectorAll('[data-premium-equip]').length, 0);
-  const buttons = container.querySelectorAll('[data-premium-purchase]'); assert.equal(buttons.length, 9);
+  const buttons = container.querySelectorAll('[data-premium-purchase]'); assert.equal(buttons.length, 10);
   for (const button of buttons) { assert.equal(button.tagName, 'BUTTON'); assert.equal(button.disabled, true); assert.equal(button.getAttribute('href'), null); }
 }
 
-test('the nine products have fixed prices, real artwork and truthful gameplay benefit flags', () => {
+test('the ten products have fixed prices, real artwork and truthful gameplay benefit flags', () => {
   assert.deepEqual(catalog.getProducts().map(product => [product.id, product.priceYen, product.billingPeriod, product.slot]), [
     ['gold-banner', 480, 'one_time', 'nameplate'], ['moonlit-castle', 980, 'one_time', 'town'], ['supporter', 780, 'month', 'badge'],
-    ['reroll-pass-30d', 480, 'one_time', undefined], ['vermilion-banner', 580, 'one_time', 'nameplate'], ['silver-banner', 580, 'one_time', 'nameplate'], ['phoenix-medallion', 780, 'one_time', 'badge'], ['sakura-town', 980, 'one_time', 'town'], ['snow-town', 980, 'one_time', 'town']
+    ['reroll-pass-30d', 480, 'one_time', undefined], ['vermilion-banner', 580, 'one_time', 'nameplate'], ['silver-banner', 580, 'one_time', 'nameplate'], ['phoenix-medallion', 780, 'one_time', 'badge'], ['sakura-town', 980, 'one_time', 'town'], ['snow-town', 980, 'one_time', 'town'], ['castle-heritage', 980, 'one_time', 'town']
   ]);
   for (const product of catalog.getProducts()) {
     assert.equal(product.taxIncluded, true); assert.equal(product.priceIsTentative, false); assert.equal(product.transferable, false); assert.equal(product.gameplayBenefits, product.id === 'reroll-pass-30d');
@@ -135,7 +137,7 @@ test('only the correct product destination with one opaque reference is accepted
 test('the public page renders real artwork and game entry links, without direct checkout or ownership', () => {
   const html = renderCatalog({ catalog, surface: 'public', assetPrefix: '../', gamePrefix: '../', context: ready({ products: [{ id: 'gold-banner', owned: true, equipped: true }] }) });
   const { doc } = documentFixture(), section = doc.createElement('section'); section.innerHTML = html; doc.body.append(section);
-  const links = section.querySelectorAll('[data-premium-purchase]'); assert.equal(links.length, 9);
+  const links = section.querySelectorAll('[data-premium-purchase]'); assert.equal(links.length, 10);
   for (const [index, product] of catalog.getProducts().entries()) { assert.equal(links[index].tagName, 'A'); assert.equal(links[index].getAttribute('href'), '../?premium=' + product.id); assert(html.includes('../' + product.art.src)); }
   assert.doesNotMatch(html, /buy\.stripe\.com|data-premium-equip|data-premium-account|予定価格|販売準備中/);
   assert.match(section.textContent, /月額780円（税込）で自動更新/); assert.match(section.textContent, /現在の利用期間の末日/);
@@ -152,18 +154,18 @@ test('the public page renders real artwork and game entry links, without direct 
   for (const product of catalog.getProducts().filter(item => item.slot === 'town')) {
     preview.dispatch('click', preview.querySelector(`[data-premium-preview="${product.id}"]`));
     assert.equal(landscape.getAttribute('src'), '../' + product.art.src);
-    assert.equal(landscape.getAttribute('alt'), product.art.alt);
-    assert(landscape.getAttribute('srcset').includes(`${product.id}-400.webp 400w`));
+    assert.equal(landscape.getAttribute('alt'), product.id === 'castle-heritage' ? '姫路城の城郭と城下町を描いた専用絵巻' : product.art.alt);
+    assert(landscape.getAttribute('srcset').includes(`${product.id === 'castle-heritage' ? 'himeji' : product.id}-400.webp 400w`));
   }
   ui.dispose();
 });
 
-test('all five new previews use their actual asset and category filters keep every item reachable', () => {
+test('all additional previews use their actual asset and category filters keep every item reachable', () => {
   const {doc}=documentFixture(),section=doc.createElement('section');
   section.innerHTML=renderCatalog({catalog,surface:'public',assetPrefix:'../',gamePrefix:'../'});doc.body.append(section);
   const ui=createUI({document:doc,catalog});ui.mount(section);
   const container=section.querySelector('[data-premium-catalog]');
-  for(const id of ['vermilion-banner','silver-banner','phoenix-medallion','sakura-town','snow-town']){
+  for(const id of ['vermilion-banner','silver-banner','phoenix-medallion','sakura-town','snow-town','castle-heritage']){
     const product=catalog.getProduct(id);
     container.dispatch('click',container.querySelector('[data-premium-preview="'+id+'"]'));
     const stage=container.querySelector('[data-premium-stage]');
@@ -171,7 +173,7 @@ test('all five new previews use their actual asset and category filters keep eve
     const picture=stage.querySelector(product.slot==='nameplate'?'.premium-preview-banner':product.slot==='badge'?'.premium-preview-supporter':'[data-premium-landscape]');
     assert.equal(picture.getAttribute('src'),'../'+product.art.src);
   }
-  for(const [slot,count] of [['nameplate',3],['town',3],['badge',2],['pass',1],['all',9]]){
+  for(const [slot,count] of [['nameplate',3],['town',4],['badge',2],['pass',1],['all',10]]){
     const button=container.querySelector('[data-premium-filter="'+slot+'"]');container.dispatch('click',button);
     const visible=container.querySelectorAll('[data-premium-slot]').filter(item=>!item.hidden);
     assert.equal(visible.length,count);assert.equal(button.getAttribute('aria-pressed'),'true');
@@ -356,6 +358,57 @@ test('shop views and explicit checkout starts are measured without fabricated su
   s.click('[data-premium-ui="checkout"]'); await drain();
   assert.deepEqual(s.calls.filter(call => call[0] === 'event').map(call => call.slice(1)), [['shop_view', undefined], ['checkout_start', 'gold-banner']]);
   assert.equal(s.context().products[0].owned, false); s.ui.dispose();
+});
+
+test('castle preview selects distinct named art without granting or changing equipment', async () => {
+  const entries = catalog.getCastleScenes();
+  assert.equal(entries.length, 129);
+  assert.equal(entries.filter(item => !item.included).length, 123);
+  assert.deepEqual(entries.filter(item => item.included).map(item => item.id).sort(), ['edo','kagoshima','kyoto_gosho','nagoya','nijo','osaka']);
+  const s = setup(); s.ui.open(); await drain();
+  const picker = s.get('[data-premium-castle-select]');
+  assert(picker); assert.equal(picker.querySelectorAll('option').length, 129);
+  picker.value = 'matsumoto'; s.get('[data-premium-catalog]').dispatch('change', picker);
+  assert.match(s.get('[data-premium-landscape]').getAttribute('src'), /castle-scenes\/matsumoto-720\.webp$/);
+  assert.match(s.get('[data-premium-preview-title]').textContent, /松本城/);
+  assert(!s.calls.some(call => ['equip','checkout'].includes(call[0])));
+  picker.value = 'kagoshima'; s.get('[data-premium-catalog]').dispatch('change', picker);
+  assert.match(s.get('[data-premium-landscape]').getAttribute('src'), /kagoshima-town-day-720\.webp$/);
+  assert.doesNotMatch(picker.textContent + s.get('[data-premium-preview-description]').textContent, /無料対象|購入不要|無料の専用|（無料）/);
+  picker.value = '../invalid'; s.get('[data-premium-catalog]').dispatch('change', picker);
+  assert.match(s.get('[data-premium-landscape]').getAttribute('src'), /kagoshima-town-day-720\.webp$/);
+  s.ui.dispose();
+});
+
+test('a location that already has its own scene receives no purchase solicitation or free-target announcement', async () => {
+  const initial = ready(); initial.products.find(item => item.id === 'castle-heritage').canPurchase = false;
+  initial.products.find(item => item.id === 'castle-heritage').purchaseBlockReason = 'castle_art_included';
+  const s = setup(initial); s.ui.open(); await drain();
+  const card = s.get('[data-premium-product="castle-heritage"]'); assert.equal(card.hidden, true);
+  s.click('[data-premium-filter="town"]'); assert.equal(card.hidden, true);
+  assert.doesNotMatch(s.get('[data-premium-preview-description]').textContent, /無料対象|購入不要/);
+  s.click('[data-premium-filter="nameplate"]'); s.set(ready()); assert.equal(card.hidden, true);
+  s.click('[data-premium-filter="town"]'); assert.equal(card.hidden, false);
+  s.set(initial); assert.equal(card.hidden, true);
+  const owned = ready(); Object.assign(owned.products.find(item => item.id === 'castle-heritage'), { owned: true, equipped: true, canPurchase: false, purchaseBlockReason: 'owned' });
+  s.set(owned); assert.equal(card.hidden, false);
+  assert.equal(s.get('[data-premium-purchase="castle-heritage"]'), null);
+  assert.equal(s.get('[data-premium-equip="castle-heritage"]').hasAttribute('data-premium-remove'), true);
+  s.ui.dispose();
+});
+
+test('an independently mounted game catalog keeps an included castle product hidden during filtering', () => {
+  const initial = ready(); Object.assign(initial.products.find(item => item.id === 'castle-heritage'), { canPurchase: false, purchaseBlockReason: 'castle_art_included' });
+  const { doc } = documentFixture(), section = doc.createElement('section');
+  section.innerHTML = renderCatalog({ catalog, surface: 'game', context: initial }); doc.body.append(section);
+  const ui = createUI({ document: doc, catalog }); ui.mount(section);
+  const container = section.querySelector('[data-premium-catalog]'), card = section.querySelector('[data-premium-product="castle-heritage"]');
+  assert.equal(card.hidden, true);
+  for (const slot of ['town', 'nameplate', 'all']) {
+    container.dispatch('click', container.querySelector(`[data-premium-filter="${slot}"]`));
+    assert.equal(card.hidden, true);
+  }
+  ui.dispose();
 });
 
 (async () => {

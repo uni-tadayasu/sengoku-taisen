@@ -1,8 +1,18 @@
 # 戦国VS（SENGOKU VS）通信API
 
-## Current court ownership protection (v5.15.0)
+## Castle-specific appearance and catalog 5 (v5.16.0)
 
-Authenticated sync responses include `entitlements.courtProtected`, derived from the fixed chancellor, `court_kyoto_offices`, or effective `court_external_offices`. It is not an account privilege and is never accepted from a save or request body. All owned holdings retain ownership on field/CPU defeat; non-voluntary lord succession and covert retaliation use the same authority. Damage and the existing half-resource loot policy continue. Appointment/dismissal races invalidate stale commits through the current role guard. Voluntary relocation and cycle resets remain available.
+`castle-heritage` (名城絵巻・全城対応) is a 980 JPY tax-inclusive one-time cosmetic in the `town` slot. New checkout requires a current lord seat at an eligible ordinary home, checked against the authoritative save and membership both before issuance and at commit. `canPurchase` and `purchaseBlockReason` describe current eligibility; clients must not infer it from a saved role. Ineligible checkout returns 409 `CASTLE_ART_INCLUDED` or `CASTLE_LORD_REQUIRED`. Verified ownership and equipment survive relocation or later membership changes. The existing explicit appearance selection endpoint equips or removes it.
+
+Use `?catalog=5` on the premium snapshot endpoints. It returns ten purchasable products, `rerollPass` and `supporterRewards`; catalog 4 retains nine products, catalog 3 retains eight, and omission retains the original three. Fulfillment still requires the existing signed live Stripe event, exact product/price/currency/amount and corroborating captured charge. Refund, dispute and fraud holds suppress both ownership and selected appearance on every read. The product identifiers in `premium.js` may be overridden through `SENGOKU_CASTLE_HERITAGE_{PRODUCT_ID,PRICE_ID,PAYMENT_LINK_ID,PAYMENT_LINK_URL}`.
+
+Public profile `player` adds `homeCastleId`, `homeCastleName`, `homeCastleOwnerId` and `homeCastleAppearance`, with `null` for an unverified home. `player.appearance` remains that person's own cosmetic presentation. A retainer's `homeCastleAppearance` belongs to the current lord; `/castles/residency` already supplies the same owner context as `lord.appearance`. Field targets retain their own `appearance`. Event garrison `opponent` adds `castleOwnerId` and `castleAppearance`. These safe projections are identical for guests and authenticated viewers and contain no billing identifiers. Rendering a paid castle requires both `town:"castle-heritage"` and that ID in the **target owner's** `ownedProducts`; the viewer's purchases must never authorize another lord's castle.
+
+Deploy migration `0052_castle_heritage.sql` with the appended journal entry. It expands the order and appearance constraints while preserving all existing receipts, selections, refund holds, seasonal choices and pass rights, and rebuilds the verified-payment views with the extra product. Previously applied migrations remain unchanged. Health returns 503 until the new product is present in both constraints and the verified-payment view. Local signed-fixture coverage is in `test-castle-heritage.mjs`; the nonempty upgrade and foreign-key checks are in `test-castle-heritage-migration.mjs`.
+
+## Current court ownership protection (v5.16.0)
+
+Authenticated sync responses include `entitlements.courtProtected`, derived from current server-authorized court state. Effective office views, the current singleton appointment and committed succession receipts are resolved together. A pending nomination does not create a completed succession, and historical appointment receipts do not retain a dismissed appointment. The protection value is never accepted from a save or request body. All owned holdings retain ownership on field/CPU defeat; non-voluntary lord succession and covert retaliation use the same authority. Damage and the existing half-resource loot policy continue. Appointment/dismissal races invalidate stale commits through the current role guard. Voluntary relocation and cycle resets remain available. Existing committed succession records remain valid after moving to another ordinary home.
 
 Public six-office DTOs retain `{title, kind: "official"}` and add `jurisdiction: "kyoto" | "external"`. The former is displayed as 正式官職 and the latter as 任命官職. Other court title kinds remain unchanged. The new field is presentation data only; old clients remain compatible. No schema migration is required. See `test-court-base-protection.mjs` for the current-role, travel, concurrency and old-client contracts.
 
@@ -137,11 +147,12 @@ credits only the available amount and consumes that window. A new request after
 claiming returns `LOGIN_BONUS_CLAIMED`; the original request ID returns its
 unchanged receipt.
 
-### Premium catalog 4 and paid rights
+### Premium catalogs and paid rights
 
-Use `?catalog=4` on `/premium`, `/premium/appearance` and
-`/premium/supporter-choice`. Catalog 4 returns the nine purchasable products plus
-`rerollPass` and `supporterRewards`. Catalog 3 retains its eight-product response;
+Use `?catalog=5` on `/premium`, `/premium/appearance` and
+`/premium/supporter-choice`. Catalog 5 returns ten purchasable products plus
+`rerollPass` and `supporterRewards`. Catalog 4 retains nine products and these
+two benefit objects. Catalog 3 retains its eight-product response;
 an omitted catalog retains the oldest three-product response. Reward cosmetics
 are included in `appearance.ownedProducts` and may be equipped in `nameplate`,
 but are not directly purchasable catalog items.
@@ -407,7 +418,7 @@ All returned timestamps are ISO strings. Treat names, messages, mail, and announ
 
 ### 公開プロフィールと総大将
 
-`GET /players/:id/profile` は、ゲスト、本人、ほかのプレイヤーに同じ公開プロフィールを返します。`player` の公開項目は `id`、`name`、`clan`、`guildId`、`guildName`、`guildRole`、`avatarVersion`、`evaluation`、`courtOffice`、`appearance`、`commander` です。`appearance` には既存の公開装備・購入マークを表示します。利用停止・存在しない領主は HTTP 404 `PLAYER_NOT_FOUND` となります。
+`GET /players/:id/profile` は、ゲスト、本人、ほかのプレイヤーに同じ公開プロフィールを返します。`player` の公開項目は `id`、`name`、`clan`、`guildId`、`guildName`、`guildRole`、`avatarVersion`、`evaluation`、`courtOffice`、`appearance`、`commander`、`homeCastleId`、`homeCastleName`、`homeCastleOwnerId`、`homeCastleAppearance` です。`appearance` には本人の公開装備・購入マークを表示し、`homeCastleAppearance` は現在の本拠城主の設定です。本拠を確認できない場合、本拠に関する4項目は `null` です。利用停止・存在しない領主は HTTP 404 `PLAYER_NOT_FOUND` となります。
 
 `commander` は確定した最新のセーブの軍団先頭にいる武将を示し、形式は `{officerId,name,rank}` です。在任中のサブ運営が島津義久Uを先頭に配備している場合だけ、特別肖像用の `deputyExclusive:true` を追加します。この値は現在のサーバーの任命記録から判定し、セーブ内の役職フラグは参照しません。武将名は人物図鑑と一致し、ランクはその武将について現在所有する最高ランクです。軍団の並べ替え・ランクの更新は、セーブが確定した後の取得から反映されます。軍団先頭が空、セーブがない、または確認できない場合は `null` です。古いセーブにはゲームと同じランク移行を適用します。本人の `GET /me` の `user.commander` にも同じ形式で反映します。
 
@@ -1554,7 +1565,9 @@ radar.early_fraud_warning.updated
 
 The eight existing Payment Links, Prices, Products, JPY amounts and modes are
 fixed in `worker/premium.js`; the ninth, `reroll-pass-30d`, uses the four explicit
-environment mappings above. The original products include `gold-banner`
+environment mappings above. The tenth, `castle-heritage`, uses its fixed identifiers
+with the optional environment overrides described in the v5.16.0 contract.
+The original products include `gold-banner`
 (480 JPY, payment), `moonlit-castle` (980 JPY, payment) and `supporter`
 (780 JPY, subscription). Links must retain fixed quantity 1, exact tax-inclusive JPY
 totals and the corresponding product/price. Additional items, quantity changes,
@@ -1620,19 +1633,22 @@ or an equivalent provider-side restriction. No duplicate grant creates game
 assets or transfers ownership between players.
 
 `PUT /premium/appearance` accepts only `{slot,productId}`. Valid pairings are
-`nameplate` / `gold-banner`, `town` / `moonlit-castle`, and `badge` / `supporter`.
+`nameplate` / `gold-banner`, `vermilion-banner`, `silver-banner` or an earned seasonal
+supporter choice; `town` / `moonlit-castle`, `sakura-town`, `snow-town` or
+`castle-heritage`; and `badge` / `supporter` or `phoenix-medallion`.
 `productId:null` removes that slot. The SQL statement verifies the current
 server-derived ownership and account epoch at commit time. Missing ownership is
 `PREMIUM_NOT_OWNED` (403). The response is the same snapshot as `GET /premium`.
 Selections are not stored in the importable save, and a revoked or expired
 selection is suppressed when read. `appearance.ownedProducts` is a duplicate-free
-array of currently valid purchases in the fixed order `gold-banner`,
-`moonlit-castle`, `supporter`. It is independent of equipment selection: an
+array of currently valid cosmetic rights, including earned seasonal choices;
+clients must not depend on its order. It is independent of equipment selection: an
 unequipped purchase remains visible, including before a selection row exists.
 An account without current rights has `[]`. Holds, confirmed refunds, bans and
 exact monthly expiry suppress the corresponding marks. A ban suppresses all
 marks; after an unban only the rights still valid at read time return. Site
-privileges never grant these purchase marks. This change needs no migration.
+privileges never grant these purchase marks. New product constraints are applied
+by the versioned migrations, including `0052_castle_heritage.sql`.
 
 Public identity DTOs receive only presentation data; no customer, invoice,
 charge, subscription, order reference, price, email or other private billing
@@ -1649,6 +1665,9 @@ details are exposed. The current-value fields are:
 | Battle result, replay or history participant | `attackerAppearance`, `defenderAppearance` |
 | Achievement event player | `playerAppearance` |
 | Chat/letter `playerEvaluations` update entry | `appearance` |
+| Public profile's current home owner | `homeCastleAppearance` |
+| Residency's current `lord` | `lord.appearance` |
+| Event garrison `opponent` | `castleAppearance` |
 
 Read-time projection updates historical names without rewriting stored posts,
 battle/financial receipts or saves. An empty chat/letter message delta still

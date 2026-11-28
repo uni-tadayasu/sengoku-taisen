@@ -109,6 +109,33 @@ html[data-presentation-motion="quiet"] .painted-art>.art-surface{transition:none
 .special-castle-panorama img { display:block; width:100%; height:auto; aspect-ratio:16/9; object-fit:cover; }
 .special-castle-panorama figcaption { padding:9px 12px; color:#f3ddb0; font-size:.875rem; line-height:1.6; }
 .special-castle-note { color:#f3ddb0; font-size:.875rem; line-height:1.65; }
+.castle-panorama-scene { position:relative; display:block; overflow:hidden; }
+.castle-panorama-scene::after { content:""; position:absolute; inset:0; pointer-events:none; }
+.castle-panorama-scene[data-castle-scenery="heritage"][data-castle-daypart="morning"]::after {
+ background:linear-gradient(145deg,#ffe3ac2e,transparent 50%,#99bbc51a); mix-blend-mode:soft-light;
+}
+.castle-panorama-scene[data-castle-scenery="heritage"][data-castle-daypart="night"] img {
+ filter:brightness(.69) saturate(.78);
+}
+.castle-panorama-scene[data-castle-scenery="heritage"][data-castle-daypart="night"]::after {
+ background:linear-gradient(160deg,#15296055,transparent 60%,#f4bc6b0d); mix-blend-mode:multiply;
+}
+#main .town-scene-light { position:absolute; inset:0; z-index:1; pointer-events:none; }
+#main .town-scene[data-town-scenery="heritage"][data-town-daypart="morning"] .town-scene-light {
+ background:linear-gradient(145deg,#ffe3ac2e,transparent 50%,#99bbc51a); mix-blend-mode:soft-light;
+}
+#main .town-scene[data-town-scenery="heritage"][data-town-daypart="night"] :is(.town-scene-image,.town-scene-backdrop) {
+ filter:brightness(.69) saturate(.78);
+}
+#main .town-scene[data-town-scenery="heritage"][data-town-daypart="night"] .town-scene-light {
+ background:linear-gradient(160deg,#15296055,transparent 60%,#f4bc6b0d); mix-blend-mode:multiply;
+}
+.lord-public-castle { margin-block:16px; min-width:0; }
+.lord-public-castle h3 { margin:0 0 8px; color:#f3ddb0; font-size:1rem; }
+.lord-public-castle-art { margin-block:8px; }
+.battle-castle-panorama { max-height:210px; }
+.battle-castle-panorama .castle-panorama-scene { max-height:168px; }
+.battle-castle-panorama img { max-height:168px; object-fit:cover; }
 
 .facility-painting > .art-surface,
 .facility-painting.portrait-cell > .art-surface { inset: 0; box-shadow: none; }

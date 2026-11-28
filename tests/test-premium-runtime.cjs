@@ -12,12 +12,12 @@ const test = (name, run) => tests.push([name, run]);
 const clone = value => JSON.parse(JSON.stringify(value));
 const baseTime = Date.parse('2026-11-21T12:00:00.000Z');
 const ids = ['gold-banner', 'moonlit-castle', 'supporter'];
-const slots = { 'gold-banner': 'nameplate', 'moonlit-castle': 'town', supporter: 'badge', 'vermilion-banner': 'nameplate', 'silver-banner': 'nameplate', 'phoenix-medallion': 'badge', 'sakura-town': 'town', 'snow-town': 'town' };
+const slots = { 'gold-banner': 'nameplate', 'moonlit-castle': 'town', supporter: 'badge', 'vermilion-banner': 'nameplate', 'silver-banner': 'nameplate', 'phoenix-medallion': 'badge', 'sakura-town': 'town', 'snow-town': 'town', 'castle-heritage': 'town' };
 const allIds = [...Object.keys(slots), 'reroll-pass-30d'];
 const destinations = {
   'gold-banner': 'https://buy.stripe.com/fZu6oI3Iwdcd5kn4Um9MY04',
   'moonlit-castle': 'https://buy.stripe.com/dRmdRa6UI2xz6or1Ia9MY05',
-  supporter: 'https://buy.stripe.com/7sY8wQdj6dcdbILaeG9MY06', 'vermilion-banner': 'https://buy.stripe.com/aFa8wQ3Iw5JL1479aC9MY07', 'silver-banner': 'https://buy.stripe.com/aFacN65QE4FHeUXaeG9MY08', 'phoenix-medallion': 'https://buy.stripe.com/8x2aEY5QE5JL00386y9MY09', 'sakura-town': 'https://buy.stripe.com/3cI6oIfre5JLeUX5Yq9MY0a', 'snow-town': 'https://buy.stripe.com/28EaEYfrec893cfeuW9MY0b'
+  supporter: 'https://buy.stripe.com/7sY8wQdj6dcdbILaeG9MY06', 'vermilion-banner': 'https://buy.stripe.com/aFa8wQ3Iw5JL1479aC9MY07', 'silver-banner': 'https://buy.stripe.com/aFacN65QE4FHeUXaeG9MY08', 'phoenix-medallion': 'https://buy.stripe.com/8x2aEY5QE5JL00386y9MY09', 'sakura-town': 'https://buy.stripe.com/3cI6oIfre5JLeUX5Yq9MY0a', 'snow-town': 'https://buy.stripe.com/28EaEYfrec893cfeuW9MY0b', 'castle-heritage': 'https://buy.stripe.com/eVq7sM3IwgopcMP72u9MY0d'
 };
 const reference = 'fixture_order_0123456789abcdef';
 const noAppearance = { nameplate: null, town: null, badge: null, ownedProducts: [] };
@@ -79,7 +79,7 @@ function fixture({ user = identity(), timers = false } = {}) {
   async function load(value = response(who.user?.id || 'player-a')) {
     const count = calls.length, pending = runtime.refresh();
     assert.equal(calls.length, count + 1, 'Expected one fixture GET');
-    assert.equal(calls.at(-1).route, '/premium?catalog=4');
+    assert.equal(calls.at(-1).route, '/premium?catalog=5');
     calls.at(-1).resolve(value);
     return pending;
   }
@@ -473,7 +473,7 @@ test('a supporter choice is authenticated, nonoptimistic, idempotent on retry an
   await noMutation(f, () => f.runtime.claimSupporterReward(periodId, 'supporter-202612-flower'));
   await noMutation(f, () => f.runtime.claimSupporterReward('srp_missing', id));
   const first = f.runtime.claimSupporterReward(periodId, id), failed = assert.rejects(first), call = f.calls.at(-1);
-  assert.equal(call.route, '/premium/supporter-choice?catalog=4');
+  assert.equal(call.route, '/premium/supporter-choice?catalog=5');
   assert.deepEqual(call.options, { method: 'POST', data: { periodId, productId: id, requestId: 'fixture_supporter_choice_0001' } });
   assert(!f.runtime.getAppearance().ownedProducts.includes(id));
   await noMutation(f, () => f.runtime.claimSupporterReward(periodId, id));
@@ -485,7 +485,7 @@ test('a supporter choice is authenticated, nonoptimistic, idempotent on retry an
   assert(f.runtime.getAppearance().ownedProducts.includes(id));
   assert.equal(f.runtime.getContext().products.find(p => p.id === 'supporter').owned, false);
   await noMutation(f, () => f.runtime.claimSupporterReward(periodId, id));
-  const equip = f.runtime.equip(id, 'nameplate'); assert.equal(f.calls.at(-1).route, '/premium/appearance?catalog=4');
+  const equip = f.runtime.equip(id, 'nameplate'); assert.equal(f.calls.at(-1).route, '/premium/appearance?catalog=5');
   f.calls.at(-1).resolve(supporterSnapshot({ claimed: id, equipped: true })); await equip;
   assert.equal(f.runtime.getAppearance().nameplate, id);
   const html = f.sandbox.module.exports.nameMarkup('領主', f.runtime.getAppearance());
@@ -515,6 +515,22 @@ test('metric events are explicitly named and do not alter any entitlement on suc
   f.calls.at(-1).resolve({ ok: true }); assert.equal(await view, true);
   const click = f.runtime.trackEvent('checkout_start', 'gold-banner'); f.calls.at(-1).reject(Error('metrics offline')); assert.equal(await click, false);
   assert.deepEqual(clone(f.runtime.getContext()), before); assert.deepEqual(f.effects, []); f.runtime.dispose();
+});
+
+test('castle heritage rights stay account-bound, validate the exact payment destination and revoke on refund', async () => {
+  const f = fixture(); await f.load(response('player-a', { owned: ['castle-heritage'], equipped: ['castle-heritage'] }));
+  assert.equal(f.calls[0].route, '/premium?catalog=5');
+  assert.equal(f.runtime.getAppearance().town, 'castle-heritage');
+  assert(f.runtime.getAppearance().ownedProducts.includes('castle-heritage'));
+  await noMutation(f, () => f.runtime.checkout('castle-heritage'));
+  const refresh = f.runtime.refresh(); f.calls.at(-1).resolve(response()); await refresh;
+  assert.equal(f.runtime.getAppearance().town, null);
+  assert(!f.runtime.getAppearance().ownedProducts.includes('castle-heritage'));
+  await noMutation(f, () => f.runtime.equip('castle-heritage'));
+  const checkout = f.runtime.checkout('castle-heritage');
+  f.calls.at(-1).resolve({ ok: true, productId: 'castle-heritage', url: destinations['castle-heritage'] + '?client_reference_id=' + reference });
+  assert.equal((await checkout).productId, 'castle-heritage');
+  assert.deepEqual(f.effects, []); f.runtime.dispose();
 });
 
 (async () => {

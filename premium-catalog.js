@@ -197,6 +197,36 @@
       "priceIsTentative": false,
       "transferable": false,
       "gameplayBenefits": false
+    },
+    {
+      "id": "castle-heritage",
+      "name": "名城絵巻・全城対応",
+      "kind": "cosmetic",
+      "slot": "town",
+      "priceYen": 980,
+      "billingPeriod": "one_time",
+      "summary": "あなたの城を、その城ならではの景観へ。一般123城の専用イラストをまとめて使える買い切り外観です。城下町・天下地図・出陣・公開プロフィールにも反映され、他のプレイヤーからも同じ景観が見えます。",
+      "benefits": [
+        "一般123城それぞれの専用イラストに対応",
+        "同じ領主の所有城に合わせて自動で景観を選択",
+        "城下町・天下地図・城詳細・出陣・公開プロフィールへ反映",
+        "一度の購入で利用期限なし。本拠移転後も買い直し不要",
+          "「ゲームに適用」で装備し、通常表示にも戻せます"
+      ],
+      "previewKey": "castle-heritage",
+      "previewLabel": "名城絵巻・全城対応",
+      "previewDescription": "城を選ぶと、その城専用の完成イラストを確認できます。見本の選択だけでは所持・装備状態は変わりません。",
+      "art": {
+        "src": "assets/castle-scenes/himeji-720.webp",
+        "width": 1536,
+        "height": 864,
+        "alt": "白漆喰の連立天守と石垣、城下町を描いた姫路城の専用絵巻"
+      },
+      "availability": "available",
+      "taxIncluded": true,
+      "priceIsTentative": false,
+      "transferable": false,
+      "gameplayBenefits": false
     }
   ].map(product => Object.freeze({ ...product, art: Object.freeze(product.art), benefits: Object.freeze(product.benefits) })));
   const destinations = Object.freeze({
@@ -208,8 +238,11 @@
     'silver-banner': 'https://buy.stripe.com/aFacN65QE4FHeUXaeG9MY08',
     'phoenix-medallion': 'https://buy.stripe.com/8x2aEY5QE5JL00386y9MY09',
     'sakura-town': 'https://buy.stripe.com/3cI6oIfre5JLeUX5Yq9MY0a',
-    'snow-town': 'https://buy.stripe.com/28EaEYfrec893cfeuW9MY0b'
+    'snow-town': 'https://buy.stripe.com/28EaEYfrec893cfeuW9MY0b',
+    'castle-heritage': 'https://buy.stripe.com/eVq7sM3IwgopcMP72u9MY0d'
   });
+  const castleScenes = Object.freeze([{"id":"ishikawa","name":"石川城","region":"東北","included":false},{"id":"sannohe","name":"三戸城","region":"東北","included":false},{"id":"minato","name":"湊城","region":"東北","included":false},{"id":"kakunodate","name":"角館城","region":"東北","included":false},{"id":"yamagata","name":"山形城","region":"東北","included":false},{"id":"yonezawa","name":"米沢城","region":"東北","included":false},{"id":"kurokawa","name":"黒川城","region":"東北","included":false},{"id":"odaka","name":"小高城","region":"東北","included":false},{"id":"ota","name":"太田城","region":"関東","included":false},{"id":"utsunomiya","name":"宇都宮城","region":"関東","included":false},{"id":"mayabashi","name":"厩橋城","region":"関東","included":false},{"id":"oshi","name":"忍城","region":"関東","included":false},{"id":"odawara","name":"小田原城","region":"関東","included":false},{"id":"kasugayama","name":"春日山城","region":"甲信越","included":false},{"id":"ueda","name":"上田城","region":"甲信越","included":false},{"id":"tsutsujigasaki","name":"躑躅ヶ崎館","region":"甲信越","included":false},{"id":"nanao","name":"七尾城","region":"北陸","included":false},{"id":"kanazawa","name":"金沢御坊","region":"北陸","included":false},{"id":"ichijodani","name":"一乗谷城","region":"北陸","included":false},{"id":"sunpu","name":"駿府城","region":"東海","included":false},{"id":"hikuma","name":"引馬城","region":"東海","included":false},{"id":"okazaki","name":"岡崎城","region":"東海","included":false},{"id":"kiyosu","name":"清洲城","region":"東海","included":false},{"id":"inabayama","name":"稲葉山城","region":"東海","included":false},{"id":"odani","name":"小谷城","region":"近畿","included":false},{"id":"kannonji","name":"観音寺城","region":"近畿","included":false},{"id":"sakamoto","name":"坂本城","region":"近畿","included":false},{"id":"nijo","name":"二条御所","region":"近畿","included":true},{"id":"akutagawa","name":"芥川山城","region":"近畿","included":false},{"id":"takaya","name":"高屋城","region":"近畿","included":false},{"id":"tottori","name":"鳥取城","region":"中国","included":false},{"id":"gassan","name":"月山富田城","region":"中国","included":false},{"id":"okayama","name":"岡山城","region":"中国","included":false},{"id":"yoshida","name":"吉田郡山城","region":"中国","included":false},{"id":"yamaguchi","name":"山口館","region":"中国","included":false},{"id":"takamatsu","name":"備中高松城","region":"中国","included":false},{"id":"oko","name":"岡豊城","region":"四国","included":false},{"id":"yuzuki","name":"湯築城","region":"四国","included":false},{"id":"shozui","name":"勝瑞城","region":"四国","included":false},{"id":"sogo","name":"十河城","region":"四国","included":false},{"id":"akizuki","name":"秋月城","region":"九州","included":false},{"id":"tachibana","name":"立花城","region":"九州","included":false},{"id":"funai","name":"府内館","region":"九州","included":false},{"id":"saga","name":"佐賀城","region":"九州","included":false},{"id":"hitoyoshi","name":"人吉城","region":"九州","included":false},{"id":"kumamoto","name":"隈本城","region":"九州","included":false},{"id":"obi","name":"飫肥城","region":"九州","included":false},{"id":"uchijo","name":"内城","region":"九州","included":false},{"id":"hirosaki","name":"弘前城","region":"東北","included":false},{"id":"nejo","name":"根城","region":"東北","included":false},{"id":"morioka","name":"盛岡城","region":"東北","included":false},{"id":"sendai","name":"仙台城","region":"東北","included":false},{"id":"kubota","name":"久保田城","region":"東北","included":false},{"id":"nihonmatsu","name":"二本松城","region":"東北","included":false},{"id":"shirakawa","name":"白河小峰城","region":"東北","included":false},{"id":"kunohe","name":"九戸城","region":"東北","included":false},{"id":"miharu","name":"三春城","region":"東北","included":false},{"id":"mukaihaguroyama","name":"向羽黒山城","region":"東北","included":false},{"id":"mito","name":"水戸城","region":"関東","included":false},{"id":"minowa","name":"箕輪城","region":"関東","included":false},{"id":"nitta_kanayama","name":"新田金山城","region":"関東","included":false},{"id":"hachigata","name":"鉢形城","region":"関東","included":false},{"id":"kawagoe","name":"川越城","region":"関東","included":false},{"id":"edo","name":"江戸城","region":"関東","included":true},{"id":"hachioji","name":"八王子城","region":"関東","included":false},{"id":"motosakura","name":"本佐倉城","region":"関東","included":false},{"id":"otaki","name":"大多喜城","region":"関東","included":false},{"id":"numata","name":"沼田城","region":"関東","included":false},{"id":"kofu","name":"甲府城","region":"甲信越","included":false},{"id":"kaizu","name":"海津城","region":"甲信越","included":false},{"id":"komoro","name":"小諸城","region":"甲信越","included":false},{"id":"matsumoto","name":"松本城","region":"甲信越","included":false},{"id":"takato","name":"高遠城","region":"甲信越","included":false},{"id":"shibata","name":"新発田城","region":"甲信越","included":false},{"id":"murakami","name":"村上城","region":"甲信越","included":false},{"id":"shinpu","name":"新府城","region":"甲信越","included":false},{"id":"toyama","name":"富山城","region":"北陸","included":false},{"id":"takaoka","name":"高岡城","region":"北陸","included":false},{"id":"maruoka","name":"丸岡城","region":"北陸","included":false},{"id":"echizen_ono","name":"越前大野城","region":"北陸","included":false},{"id":"kuniyoshi","name":"佐柿国吉城","region":"北陸","included":false},{"id":"iwamura","name":"岩村城","region":"東海","included":false},{"id":"yamanaka","name":"山中城","region":"東海","included":false},{"id":"kakegawa","name":"掛川城","region":"東海","included":false},{"id":"inuyama","name":"犬山城","region":"東海","included":false},{"id":"nagoya","name":"名古屋城","region":"東海","included":true},{"id":"nagashino","name":"長篠城","region":"東海","included":false},{"id":"gujo_hachiman","name":"郡上八幡城","region":"東海","included":false},{"id":"naegi","name":"苗木城","region":"東海","included":false},{"id":"ogaki","name":"大垣城","region":"東海","included":false},{"id":"takatenjin","name":"高天神城","region":"東海","included":false},{"id":"iga_ueno","name":"伊賀上野城","region":"近畿","included":false},{"id":"matsusaka","name":"松阪城","region":"近畿","included":false},{"id":"hikone","name":"彦根城","region":"近畿","included":false},{"id":"azuchi","name":"安土城","region":"近畿","included":false},{"id":"osaka","name":"大坂城","region":"近畿","included":true},{"id":"himeji","name":"姫路城","region":"近畿","included":false},{"id":"takeda_castle","name":"竹田城","region":"近畿","included":false},{"id":"takatori","name":"高取城","region":"近畿","included":false},{"id":"wakayama","name":"和歌山城","region":"近畿","included":false},{"id":"fukuchiyama","name":"福知山城","region":"近畿","included":false},{"id":"kishiwada","name":"岸和田城","region":"近畿","included":false},{"id":"yamato_koriyama","name":"大和郡山城","region":"近畿","included":false},{"id":"sumoto","name":"洲本城","region":"近畿","included":false},{"id":"bitchu_matsuyama","name":"備中松山城","region":"中国","included":false},{"id":"tsuyama","name":"津山城","region":"中国","included":false},{"id":"hiroshima","name":"広島城","region":"中国","included":false},{"id":"iwakuni","name":"岩国城","region":"中国","included":false},{"id":"hagi","name":"萩城","region":"中国","included":false},{"id":"matsue","name":"松江城","region":"中国","included":false},{"id":"yonago","name":"米子城","region":"中国","included":false},{"id":"mihara","name":"三原城","region":"中国","included":false},{"id":"shintakayama","name":"新高山城","region":"中国","included":false},{"id":"tsuwano","name":"津和野城","region":"中国","included":false},{"id":"tokushima","name":"徳島城","region":"四国","included":false},{"id":"sanuki_takamatsu","name":"高松城","region":"四国","included":false},{"id":"marugame","name":"丸亀城","region":"四国","included":false},{"id":"imabari","name":"今治城","region":"四国","included":false},{"id":"uwajima","name":"宇和島城","region":"四国","included":false},{"id":"kochi","name":"高知城","region":"四国","included":false},{"id":"kokura","name":"小倉城","region":"九州","included":false},{"id":"fukuoka","name":"福岡城","region":"九州","included":false},{"id":"nakatsu","name":"中津城","region":"九州","included":false},{"id":"oka","name":"岡城","region":"九州","included":false},{"id":"hizen_nagoya","name":"名護屋城","region":"九州","included":false},{"id":"hirado","name":"平戸城","region":"九州","included":false},{"id":"shimabara","name":"島原城","region":"九州","included":false},{"id":"kagoshima","name":"鹿児島城","region":"九州","included":true},{"id":"kyoto_gosho","name":"京都御所","region":"近畿","included":true}].map(item => Object.freeze(item)));
+  const getCastleScenes = () => castleScenes.map(item => ({ ...item }));
   const find = id => typeof id === 'string' ? PRODUCTS.find(product => product.id === id) : undefined;
   const copy = product => ({ ...product, art: { ...product.art }, benefits: [...product.benefits], ...(product.monthlyChoice ? { monthlyChoice: { ...product.monthlyChoice } } : {}), ...(product.rerollRules ? { rerollRules: { ...product.rerollRules } } : {}), ...(product.palette ? { palette: { ...product.palette } } : {}) });
   function getSupporterChoices(periodKey) {
@@ -252,7 +285,7 @@
     } catch { return ''; }
   }
 
-  const api = Object.freeze({ version: 4, config: CONFIG, getConfig: () => ({ ...CONFIG }), getProducts, getProduct, getSupporterChoices, getSupporterReward, getPurchaseState, checkoutURL });
+  const api = Object.freeze({ version: 5, getCastleScenes, config: CONFIG, getConfig: () => ({ ...CONFIG }), getProducts, getProduct, getSupporterChoices, getSupporterReward, getPurchaseState, checkoutURL });
   root.SengokuPremiumCatalog = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis);
