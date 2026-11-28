@@ -39,9 +39,9 @@ All gameplay tests use synthetic identities and isolated local databases. No liv
 | Suite | Result |
 | --- | --- |
 | `server/test-court-estate.mjs` | 22 scenarios / 512 local API calls; largest statement 40 bindings |
-| `server/test-court-estate-economy.mjs` | 13 scenarios / 222 local API calls; largest statement 47 bindings |
+| `server/test-court-estate-economy.mjs` | 13 scenarios / 222 local API calls; largest statement 40 bindings |
 | `server/test-court-estate-guard.mjs` | 6 groups / 119 SQLite queries, including types, null, correlation, nested scopes, live fences and input rejection |
-| Deterministic pooled alliance battles | 9 scenarios / 432 local API calls; ordinary and Regent win/loss, response-loss recovery and capture; largest statement 87 bindings |
+| Deterministic pooled alliance battles | 9 scenarios / 432 local API calls; ordinary win/loss, Regent victory, response-loss recovery and ordinary/Regent capture; largest statement 87 bindings |
 | Estate engine | 12 groups, including ordinary-castle parity across clans and levels, exact time boundaries, stale authority, replay and staff transitions |
 | Estate UI / bridge / map / sync | 21 / 8 / 7 / 10 scenarios passed |
 | Existing staff base / Kyoto migration / court / regency / court offices / retired emperor / succession approval | 2,219 local API calls across seven suites, all passed |
