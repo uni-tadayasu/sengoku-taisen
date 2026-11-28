@@ -217,6 +217,15 @@ jobs:
           node server/test-kyoto-migration.mjs
           node server/test-staff-base.mjs
           node server/test-construction-queues.mjs
+      - name: Verify court shared territory, appointments and construction recovery
+        run: |
+          node server/test-court-estate.mjs
+          node server/test-court-estate-economy.mjs
+          node tests/test-court-estate-engine.cjs
+          node tests/test-court-estate-ui.cjs
+          node tests/test-court-estate-bridge.cjs
+          node tests/test-court-estate-map.cjs
+          node tests/test-court-estate-sync.cjs
       - name: Verify authoritative rank production and save continuity
         run: |
           node server/test-economy-balance.mjs

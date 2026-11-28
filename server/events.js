@@ -1,3 +1,4 @@
+import {withCourtEstateGuard} from './court-estate-guard.js';
 import {operationGuard} from './operator-access.js';
 // Timed NPC battles spend the campaign's shared command through its current
 // writer revision. The save, battle receipt, points and mail commit together.
@@ -27,7 +28,8 @@ async function eventGame(ctx,raw,now,snapshot=null){
  try{
   const {db,user,helpers:h}=ctx,current=snapshot?.user?{...user,is_admin:snapshot.user.isAdmin,is_staff:snapshot.user.isStaff}:user;
   const save=typeof raw==='string'?JSON.parse(raw):raw,clock=snapshot?.clock||await h.getWorldClock(db,now);
-  const game=GameEngine.fromSave(h.normalizeGameSave(save,current,now,{reading:true,clock}),GAME_OFFICERS,{isAdmin:!!current.is_admin,isDeputy:!!current.is_deputy,isStaff:!!current.is_staff,isCourtProtected:!!current.is_court_protected});
+  const normalized=h.normalizeGameSave(save,current,now,{reading:true,clock}),courtEstate=await h.courtEstateContext(db,current,normalized,clock,now);
+  const game=GameEngine.fromSave(normalized,GAME_OFFICERS,{courtEstateProjection:courtEstate.projection,isAdmin:!!current.is_admin,isDeputy:!!current.is_deputy,isStaff:!!current.is_staff,isCourtProtected:!!current.is_court_protected});
   if(game.state.march?.authority==='server')await restoreServerMarch(db,user.id,{state:game.state});
   game.state.officerHealth=GameEngine.projectOfficerHealth(game.state,clock.elapsedMs);
   if(current.is_staff&&!current.is_admin){
@@ -192,7 +194,8 @@ async function eventBattle(ctx,id){
  const save=h.normalizeGameSave(JSON.parse(savedRow.save_json),user,ctx.now,{reading:true,clock});
  await restoreServerMarch(db,user.id,save);
  save.state.officerHealth=GameEngine.projectOfficerHealth(save.state,clock.elapsedMs);
- const game=GameEngine.fromSave(save,GAME_OFFICERS,{isAdmin:!!user.is_admin,isDeputy:!!user.is_deputy,isStaff:!!user.is_staff,isCourtProtected:!!user.is_court_protected});
+ const courtEstate=await h.courtEstateContext(db,user,save,clock,ctx.now);
+ const game=GameEngine.fromSave(save,GAME_OFFICERS,{courtEstateProjection:courtEstate.projection,isAdmin:!!user.is_admin,isDeputy:!!user.is_deputy,isStaff:!!user.is_staff,isCourtProtected:!!user.is_court_protected});
  if(game.state.gameOver)h.fail(409,'BASE_UNAVAILABLE','本拠を失っている間はイベントに挑戦できません。');
  if(!save.state.worldClock)h.fail(409,'CLOCK_ANCHOR_REQUIRED','先に共通時計へ同期してください。');
  if(clock.elapsedMs-save.state.worldClock.elapsedMs>15000)h.fail(409,'CLOCK_STALE','共通時計と本拠を同期してから出陣してください。');
@@ -201,7 +204,7 @@ async function eventBattle(ctx,id){
  if(defense.viewerOwnsTarget)h.fail(403,'EVENT_OWN_CASTLE',OWN_CASTLE_MESSAGE);
  const {opponent,guard:targetGuard}=defense;
  await h.budget(db,'event-battle:'+user.id,30,60000,ctx.now);
- const nonce=crypto.randomUUID(),guard=h.roleCommitGuard(user),gateArgs=[user.id,requestId,nonce];
+ const nonce=crypto.randomUUID(),guard=withCourtEstateGuard(h.roleCommitGuard(user),courtEstate),gateArgs=[user.id,requestId,nonce];
  if(eventStatus(row,now)!=='active')h.fail(409,'EVENT_ENDED','このイベントは終了しました。');
  const roll=crypto.getRandomValues(new Uint32Array(1))[0]/4294967296;
  const commandBefore=save.state.command;

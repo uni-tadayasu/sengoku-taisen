@@ -6,6 +6,7 @@ import {activeMarch} from './marches.js';
 import {prepareRelocationProgress} from './progress.js';
 import {GameEngine,GAME_OFFICERS} from './game-runtime.js';
 import {externalTroopSnapshotStatements} from './maintenance.js';
+import {courtEstateSnapshotStatements} from './court-estate-ledger.js';
 
 const S=(db,sql,...args)=>db.prepare(sql).bind(...args);
 
@@ -65,6 +66,7 @@ export async function expelPlayer(ctx){
   S(db,`UPDATE player_saves SET save_json=NULL,revision=revision+1,updated_at=?,writer_device_id=NULL,writer_device_name=NULL,lease_expires_at=0,cycle_commit=? WHERE user_id=? AND ${GATE}`,now,nonce,targetId,...args)
  ];
  statements.push(...externalTroopSnapshotStatements(db,[targetId],clock,GATE,args));
+ statements.push(...courtEstateSnapshotStatements(db,clock,GATE,args));
  const saved=(await db.batch(statements))[0].results?.[0];
  if(saved)return{receipt:JSON.parse(saved.result_json),idempotent:false};
  h.requireOperator(await h.getUser(db,user.id)||{});const replay=await prior();if(replay)return{receipt:replay,idempotent:true};

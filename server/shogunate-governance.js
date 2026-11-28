@@ -1,3 +1,4 @@
+import {withCourtEstateGuard} from './court-estate-guard.js';
 // Post-opening government development belongs to the account, never to an
 // importable save or a particular opening right. Every debit, reward, level and
 // immutable receipt is admitted together by one D1 transaction.
@@ -103,7 +104,8 @@ async function mutate(ctx){
  if(body.day!==calendar.day)h.fail(409,'GOVERNANCE_DAY_CHANGED','日本時間の朝5時を迎え、政務の日付が変わりました。最新の一覧を確認してください。');
  if(body.governanceRevision!==account.revision)h.fail(409,'GOVERNANCE_CHANGED','幕府の発展記録が更新されました。最新の一覧を確認してください。');
  const save=h.normalizeGameSave(JSON.parse(saved.save_json),user,now,{reading:true,clock}),shared=user.is_staff&&!user.is_admin?await h.staffBaseDto(db,user,clock,now):null;
- const game=GameEngine.fromSave(save,GAME_OFFICERS,{isAdmin:!!user.is_admin,isDeputy:!!user.is_deputy,isStaff:!!user.is_staff,isCourtProtected:!!user.is_court_protected,staffBase:shared}),next=copy(account.state),resources=resourceBalances(save);
+ const courtEstate=await h.courtEstateContext(db,user,save,clock,now);
+ const game=GameEngine.fromSave(save,GAME_OFFICERS,{courtEstateProjection:courtEstate.projection,isAdmin:!!user.is_admin,isDeputy:!!user.is_deputy,isStaff:!!user.is_staff,isCourtProtected:!!user.is_court_protected,staffBase:shared}),next=copy(account.state),resources=resourceBalances(save);
  let name,cost={},offeredReward={},renownOffered=0,claimKey;
  if(body.kind==='policy'){
   const policy=POLICIES.find(p=>p.id===body.targetId);name=policy.name;
@@ -128,7 +130,7 @@ async function mutate(ctx){
  game._pay(cost);const credited=game._gain(offeredReward),reward=Object.fromEntries(Object.keys(offeredReward).map(key=>[key,credited[key]]));next.renown+=renownGained;next.lastDay=calendar.day;
  const receipt={id:body.requestId,kind:body.kind,targetId:body.targetId,name,at:now,day:calendar.day,cost,reward,offeredReward,renownGained,renownOffered,governmentId:government.id};
  game.log(`幕府政務「${name}」を完了しました。${renownGained?' 威信 +'+renownGained+'。':''}`,'shogunate');
- const normalized=h.normalizeGameSave(JSON.parse(game.exportSave()),user,now,{clock}),nonce=crypto.randomUUID(),role=h.roleCommitGuard(user),args=[user.id,body.requestId,nonce];
+ const normalized=h.normalizeGameSave(JSON.parse(game.exportSave()),user,now,{clock}),nonce=crypto.randomUUID(),role=withCourtEstateGuard(h.roleCommitGuard(user),courtEstate),args=[user.id,body.requestId,nonce];
  const accountGuard=account.row?{sql:'EXISTS(SELECT 1 FROM shogunate_governance_accounts WHERE user_id=? AND revision=?)',args:[user.id,account.revision]}:{sql:'NOT EXISTS(SELECT 1 FROM shogunate_governance_accounts WHERE user_id=?)',args:[user.id]};
  const openedGuard=`EXISTS(SELECT 1 FROM shogunate_rights r WHERE r.id=? AND r.user_id=? AND r.opened_at=? AND NOT EXISTS(SELECT 1 FROM shogunate_rights newer WHERE newer.user_id=r.user_id AND (newer.opened_at>r.opened_at OR (newer.opened_at=r.opened_at AND newer.id>r.id))))`;
  const statements=[

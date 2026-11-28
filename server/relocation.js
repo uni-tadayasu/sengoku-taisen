@@ -75,7 +75,7 @@ export async function relocateResidence(ctx,body){
  if(walking)before.state.walking.serverSteps=Number(walking.total_steps);
  // Settle the old army's costs before the fresh campaign keeps capped assets.
  // The relocation receipt replaces the old realm and performs its succession.
- const journey=await advanceReservedMarch(ctx,row,clock),game=journey.game,oldCovert=game.state.covert.dispatches.length?GameEngine.fromSave(JSON.parse(game.exportSave()),GAME_OFFICERS,{maintenanceAuthority:game.getMaintenanceAuthority()}):null;
+ const journey=await advanceReservedMarch(ctx,row,clock),game=journey.game,oldCovert=game.state.covert.dispatches.length?GameEngine.fromSave(JSON.parse(game.exportSave()),GAME_OFFICERS,{maintenanceAuthority:game.getMaintenanceAuthority(),courtEstateProjection:game.getCourtEstateProjection()}):null;
  if(walking)game.state.walking.serverSteps=Number(walking.total_steps);
  const dispatchIds=[];
  if(oldCovert)for(const dispatch of [...oldCovert.state.covert.dispatches]){

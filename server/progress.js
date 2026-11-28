@@ -1,3 +1,4 @@
+import {withCourtEstateGuard} from './court-estate-guard.js';
 // Real-calendar goals and guaranteed collection progress. Claims and exchanges
 // are independent server receipts; importing a save cannot unclaim a reward.
 import {GameEngine,GAME_OFFICERS} from './game-runtime.js';
@@ -100,7 +101,7 @@ async function mutate(ctx,kind){
  const intent=kind==='mission'?String(body.key||''):[body.officerId,body.rank];if(kind==='mission'&&(!intent||intent.length>180))h.fail(400,'INVALID_INPUT','任務を選んでください。');
  const digest=await h.hash(JSON.stringify([kind,intent])),prior=await stmt(db,'SELECT * FROM progress_receipts WHERE actor_id=? AND request_id=?',user.id,body.requestId).first();
  if(prior){if(prior.request_hash!==digest)h.fail(409,'REQUEST_ID_REUSED','この操作番号は別の報酬に使われています。');return result(ctx,body,prior);}
- const current=await saved(ctx,body),a=await account(ctx,current.save),view=await display(ctx,a),next=copy(current.save),shared=user.is_staff&&!user.is_admin?await h.staffBaseDto(db,user,current.clock,ctx.now):null,game=GameEngine.fromSave(next,GAME_OFFICERS,{isAdmin:!!user.is_admin,isDeputy:!!user.is_deputy,isStaff:!!user.is_staff,isCourtProtected:!!user.is_court_protected,staffBase:shared});let key,receipt;
+ const current=await saved(ctx,body),a=await account(ctx,current.save),view=await display(ctx,a),next=copy(current.save),shared=user.is_staff&&!user.is_admin?await h.staffBaseDto(db,user,current.clock,ctx.now):null,courtEstate=await h.courtEstateContext(db,user,next,current.clock,ctx.now),game=GameEngine.fromSave(next,GAME_OFFICERS,{courtEstateProjection:courtEstate.projection,isAdmin:!!user.is_admin,isDeputy:!!user.is_deputy,isStaff:!!user.is_staff,isCourtProtected:!!user.is_court_protected,staffBase:shared});let key,receipt;
  if(kind==='mission'){
   const mission=Object.values(view.missions).flat().find(m=>m.key===body.key);if(!mission)h.fail(409,'MISSION_EXPIRED','任務の期間が変わりました。最新の一覧を確認してください。');
   if(mission.claimed)h.fail(409,'MISSION_CLAIMED','この任務は受取済みです。');if(mission.progress<mission.target)h.fail(409,'MISSION_INCOMPLETE','達成条件がまだ満たされていません。');if(mission.kind==='daily'&&view.dailyClaimed>=3)h.fail(409,'DAILY_LIMIT','本日の選択任務3件は受取済みです。明日の任務をお待ちください。');
@@ -111,7 +112,7 @@ async function mutate(ctx,kind){
   game._grantOfficerVariant(body.officerId,body.rank);a.data.spent+=cost;a.data.points-=cost;key='x:'+body.officerId+':'+body.rank;receipt={name:game.officer(body.officerId).name+' '+body.rank,officerId:body.officerId,rank:body.rank,cost};
  }
  game.log(kind==='mission'?`成長任務「${receipt.name}」の報酬を受け取りました。`:`絵巻の証で「${receipt.name}」を迎えました。`,'progress');
- const normalized=h.normalizeGameSave(JSON.parse(game.exportSave()),user,Date.now(),{clock:current.clock}),now=Date.now(),nonce=crypto.randomUUID(),guard=h.roleCommitGuard(user),gate='EXISTS(SELECT 1 FROM progress_receipts WHERE actor_id=? AND request_id=? AND commit_token=?)',args=[user.id,body.requestId,nonce];
+ const normalized=h.normalizeGameSave(JSON.parse(game.exportSave()),user,Date.now(),{clock:current.clock}),now=Date.now(),nonce=crypto.randomUUID(),guard=withCourtEstateGuard(h.roleCommitGuard(user),courtEstate),gate='EXISTS(SELECT 1 FROM progress_receipts WHERE actor_id=? AND request_id=? AND commit_token=?)',args=[user.id,body.requestId,nonce];
  await db.batch([
   stmt(db,`INSERT INTO progress_receipts(actor_id,request_id,claim_key,kind,request_hash,result_json,commit_token,created_at) SELECT ?,?,?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM player_saves WHERE user_id=? AND revision=? AND writer_device_id=? AND lease_expires_at>?) AND EXISTS(SELECT 1 FROM progress_accounts WHERE user_id=? AND revision=?) AND EXISTS(SELECT 1 FROM world_clock WHERE id=? AND revision=?) AND ${guard.sql} ON CONFLICT DO NOTHING`,user.id,body.requestId,key,kind,digest,JSON.stringify(receipt),nonce,now,user.id,body.expectedRevision,body.deviceId,now,user.id,a.row.revision,h.worldClockId,current.clock.revision,...guard.args),
   stmt(db,`UPDATE player_saves SET save_json=?,revision=revision+1,updated_at=?,lease_expires_at=? WHERE user_id=? AND ${gate}`,JSON.stringify(normalized),now,now+h.syncLease,user.id,...args),

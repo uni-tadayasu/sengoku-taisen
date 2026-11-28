@@ -1,3 +1,4 @@
+import {withCourtEstateGuard} from './court-estate-guard.js';
 import {applyFieldVictoryLoot,FIELD_LOOT_POLICY} from './field-loot.js';
 import {advanceReservedMarch} from './marches.js';
 import {maintenanceContext,protectMaintenance,externalTroopSnapshotStatements} from './maintenance.js';
@@ -58,7 +59,7 @@ async function status(ctx,snapshot=null){
  snapshot.save.state.covert=await incoming({...ctx,user:current},found.state);
  const shared=current.is_staff&&!current.is_admin?await h.staffBaseDto(db,current,snapshot.clock,now):null;
  const emperor=await h.courtImperialAuthority(db,current);
- const game=GameEngine.fromSave(snapshot.save,GAME_OFFICERS,{isAdmin:!!current.is_admin,isDeputy:!!current.is_deputy,isStaff:!!current.is_staff,isCourtProtected:!!current.is_court_protected,isCourtEmperor:emperor.isCourtEmperor,isCourtRegent:emperor.isCourtRegent,staffBase:shared});
+ const game=GameEngine.fromSave(snapshot.save,GAME_OFFICERS,{courtEstateProjection:snapshot.courtEstateProjection||null,isAdmin:!!current.is_admin,isDeputy:!!current.is_deputy,isStaff:!!current.is_staff,isCourtProtected:!!current.is_court_protected,isCourtEmperor:emperor.isCourtEmperor,isCourtRegent:emperor.isCourtRegent,staffBase:shared});
  const covert=game.covertStatus(),listUrl=new URL(url);listUrl.searchParams.set('limit',url.searchParams.get('limit')||'100');
  covert.rules={...covert.rules,canAttackEdoFromKyoto:emperor.canActForEmperor,lootPolicy:FIELD_LOOT_POLICY.id,lootFraction:FIELD_LOOT_POLICY.fraction};if(emperor.canActForEmperor)h.registerCourtGuard(emperor.guard);
  const list=await h.getFieldList(db,current,listUrl,now);
@@ -149,7 +150,8 @@ async function mutation(ctx,action){
  if(found.state.sequence!==body.sequence)h.fail(409,'COVERT_STATE_CHANGED','派遣部隊が更新されました。最新の状態を確認してください。');
  const shared=user.is_staff&&!user.is_admin?await h.staffBaseDto(db,user,clock,ctx.now):null;
  const emperor=await h.courtImperialAuthority(db,user);
- const game=GameEngine.fromSave(save,GAME_OFFICERS,{isAdmin:!!user.is_admin,isDeputy:!!user.is_deputy,isStaff:!!user.is_staff,isCourtProtected:!!user.is_court_protected,isCourtEmperor:emperor.isCourtEmperor,isCourtRegent:emperor.isCourtRegent,staffBase:shared});
+ const courtEstate=await h.courtEstateContext(db,user,save,clock,ctx.now);
+ const game=GameEngine.fromSave(save,GAME_OFFICERS,{courtEstateProjection:courtEstate.projection,isAdmin:!!user.is_admin,isDeputy:!!user.is_deputy,isStaff:!!user.is_staff,isCourtProtected:!!user.is_court_protected,isCourtEmperor:emperor.isCourtEmperor,isCourtRegent:emperor.isCourtRegent,staffBase:shared});
  const options={requestId:body.requestId,campaignId:body.campaignId,sequence:body.sequence};
  const station=body.stationId?game.state.covert.stations.find(s=>s.id===body.stationId):null;
  const targetSpec=action==='dispatch'?body.target:action==='retaliate'?station?.target:null;
@@ -168,7 +170,7 @@ async function mutation(ctx,action){
  if(result.idempotent)h.fail(409,'COVERT_ALREADY_RECORDED','この操作は記録済みです。派遣画面を更新してください。');
  if(result.accepted&&result.march){const dispatch=game.state.covert.dispatches.find(v=>v.id===result.march.id);dispatch.authority='server';dispatch.departedElapsedMs=Math.floor(clock.elapsedMs);dispatch.arrivesElapsedMs=dispatch.departedElapsedMs+dispatch.travel.durationMs;const history=game.state.covert.history.find(v=>v.requestId===body.requestId);history.march=JSON.parse(JSON.stringify(dispatch));result.result.march=history.march;result.march=history.march;}
  await h.budget(db,'covert:'+user.id,60,60000,ctx.now);
- const now=Date.now(),nonce=crypto.randomUUID(),role=guardLordSupport(h.roleCommitGuard(user),user),gateArgs=[user.id,body.requestId,nonce];
+ const now=Date.now(),nonce=crypto.randomUUID(),role=withCourtEstateGuard(guardLordSupport(h.roleCommitGuard(user),user),courtEstate),gateArgs=[user.id,body.requestId,nonce];
  const incomingBattle=action==='retaliate'&&target?{battleMode:target.rewardOnly?'reward':'raid',id:'cb_'+crypto.randomUUID().replaceAll('-',''),attackerPlayerId:user.id,defenderPlayerId:target.target.id,castleId:targetSpec.castleId,castleName:castleMap.get(targetSpec.castleId).name,won:result.result.battle.won,defenderLost:result.result.battle.defenderLost,occurredElapsedMs:clock.elapsedMs}:null;
  if(incomingBattle&&!target.rewardOnly){const b=result.result.battle,damage=recordCastleSiege(target.save.state,targetSpec.castleId,{won:b.won,ratio:Number(b.attackPower||b.power||1)/Math.max(1,Number(b.defensePower||target.snapshot.defensePower||1)),elapsedMs:clock.elapsedMs});incomingBattle.durability=damage;b.durability=damage;}
  if(incomingBattle){
@@ -244,9 +246,9 @@ export async function settleCovertDispatches(ctx,{actorId=null,limit=8}={}){
   const branches=await h.branchStateGuard(db,user.id,ledger.campaign_id);await h.reconcileBranchProgress(db,user.id,save,clock);save.state.covert=found.state;
   const maintenanceAuthority=protectMaintenance(branches,await maintenanceContext(db,user.id,save,clock));
   if(maintenanceAuthority.hasMore)continue;
-  const shared=user.is_staff&&!user.is_admin?await h.staffBaseDto(db,user,clock,now):null,emperor=await h.courtImperialAuthority(db,user),game=GameEngine.fromSave(save,GAME_OFFICERS,{isAdmin:!!user.is_admin,isDeputy:!!user.is_deputy,isStaff:!!user.is_staff,isCourtProtected:!!user.is_court_protected,isCourtEmperor:emperor.isCourtEmperor,isCourtRegent:emperor.isCourtRegent,staffBase:shared,maintenanceAuthority,branchAuthority:{resolvedElapsedMs:branches.resolvedElapsedMs}});
+  const shared=user.is_staff&&!user.is_admin?await h.staffBaseDto(db,user,clock,now):null,emperor=await h.courtImperialAuthority(db,user),courtEstate=await h.courtEstateContext(db,user,save,clock,now),game=GameEngine.fromSave(save,GAME_OFFICERS,{courtEstateProjection:courtEstate.projection,isAdmin:!!user.is_admin,isDeputy:!!user.is_deputy,isStaff:!!user.is_staff,isCourtProtected:!!user.is_court_protected,isCourtEmperor:emperor.isCourtEmperor,isCourtRegent:emperor.isCourtRegent,staffBase:shared,maintenanceAuthority,branchAuthority:{resolvedElapsedMs:branches.resolvedElapsedMs}});
   const completed=[];for(const dispatch of [...game.state.covert.dispatches])if(dispatch.cycle!==Math.floor(clock.elapsedMs/cycleMs)){const result=game.cancelCovertDispatch(dispatch.id,'年月が変わったため派遣を取りやめました。',{authoritative:true});if(result)completed.push(result);}
-  const advanced=completed.length?{ok:true}:game.applyWorldClock(clock,{maxSeconds:86400,deferCycleSettlement:true});if(!advanced.ok||advanced.pending||advanced.settlementRequired)continue;
+  const advanced=completed.length?{ok:true}:game.applyWorldClock(clock,{maxSeconds:86400,deferCycleSettlement:true});if(!advanced.ok||advanced.pending||advanced.courtEstatePending||advanced.settlementRequired)continue;
   const targetSnapshots={},targetGuards=[];let playerTargets=0;const cursor=Number((await stmt(db,'SELECT COALESCE(MAX(rowid),0) AS cursor FROM field_battles').first()).cursor);
   for(const dispatch of [...game.state.covert.dispatches]){
    if(dispatch.arrivesElapsedMs>clock.elapsedMs&&dispatch.cycle===game.state.cycle.index)continue;
@@ -261,7 +263,7 @@ export async function settleCovertDispatches(ctx,{actorId=null,limit=8}={}){
   }
   completed.push(...game.settleCovertDue({targetSnapshots,authoritative:true}));if(!completed.length)continue;
   const cpuLosses=await prepareResidencyCpuLosses(db,{userId:user.id,events:game.takeHomeDefenseLosses(),now,state:game.state});
-  const next=h.normalizeGameSave(JSON.parse(game.exportSave()),user,now,{clock}),nonce=crypto.randomUUID(),role=user.ban_active?safe:guardLordSupport(h.roleCommitGuard(user),user),guards=[role,branches.guard,cpuLosses.guard,...targetGuards,...(shared?[{sql:"EXISTS(SELECT 1 FROM staff_base WHERE id='kyoto_gosho' AND revision=?)",args:[shared.revision]}]:[])],commitGate='EXISTS(SELECT 1 FROM player_saves WHERE user_id=? AND cycle_commit=?)',args=[user.id,nonce];
+  const next=h.normalizeGameSave(JSON.parse(game.exportSave()),user,now,{clock}),nonce=crypto.randomUUID(),role=user.ban_active?safe:guardLordSupport(h.roleCommitGuard(user),user),guards=[role,courtEstate.guard,branches.guard,cpuLosses.guard,...targetGuards,...(shared?[{sql:"EXISTS(SELECT 1 FROM staff_base WHERE id='kyoto_gosho' AND revision=?)",args:[shared.revision]}]:[])],commitGate='EXISTS(SELECT 1 FROM player_saves WHERE user_id=? AND cycle_commit=?)',args=[user.id,nonce];
   const statements=[stmt(db,`UPDATE player_saves SET save_json=?,revision=revision+1,updated_at=?,cycle_commit=? WHERE user_id=? AND revision=? AND EXISTS(SELECT 1 FROM covert_states WHERE actor_id=? AND campaign_id=? AND state_json=?) AND EXISTS(SELECT 1 FROM world_clock WHERE id=? AND revision=?) AND ${guards.map(g=>'('+g.sql+')').join(' AND ')} RETURNING user_id`,JSON.stringify(next),now,nonce,user.id,saved.revision,user.id,ledger.campaign_id,found.row.state_json,h.worldClockId,clock.revision,...guards.flatMap(g=>g.args)),stmt(db,`UPDATE covert_states SET sequence=?,state_json=?,updated_at=? WHERE actor_id=? AND campaign_id=? AND ${commitGate}`,next.state.covert.sequence,JSON.stringify(next.state.covert),now,user.id,ledger.campaign_id,...args),...h.branchProgressStatements(db,user.id,next,now,commitGate,args,{resolvedElapsedMs:Math.min(clock.elapsedMs,next.state.worldClock?.elapsedMs||0)}),...covertIncidentStatements(db,user.id,next,now,commitGate,args)];
   for(const result of completed){
    // The compact save history can roll over during a long return. Preserve

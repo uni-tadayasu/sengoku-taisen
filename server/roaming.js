@@ -1,3 +1,4 @@
+import {withCourtEstateGuard} from './court-estate-guard.js';
 import {maintenanceContext,protectMaintenance} from './maintenance.js';
 // Authoritative CPU field battles. The receipt and campaign mutation are one
 // D1 transaction, so network retries never spend or reward a second time.
@@ -70,9 +71,10 @@ async function battle(ctx){
  const shared=user.is_staff&&!user.is_admin?await h.staffBaseDto(db,user,clock,ctx.now):null;
  const maintenanceAuthority=protectMaintenance(branchAccess,await maintenanceContext(db,user.id,save,clock));
  if(maintenanceAuthority.hasMore||maintenanceAuthority.asOfElapsedMs>clock.elapsedMs)h.fail(409,'CLOCK_STALE','維持費の時間経過を同期しています。最新の保存へ同期してください。');
- const game=GameEngine.fromSave(save,GAME_OFFICERS,{isAdmin:!!user.is_admin,isDeputy:!!user.is_deputy,isStaff:!!user.is_staff,isCourtProtected:!!user.is_court_protected,staffBase:shared,maintenanceAuthority,branchAuthority:{resolvedElapsedMs:branchAccess.resolvedElapsedMs}});
+ const courtEstate=await h.courtEstateContext(db,user,save,clock,ctx.now);
+ const game=GameEngine.fromSave(save,GAME_OFFICERS,{courtEstateProjection:courtEstate.projection,isAdmin:!!user.is_admin,isDeputy:!!user.is_deputy,isStaff:!!user.is_staff,isCourtProtected:!!user.is_court_protected,staffBase:shared,maintenanceAuthority,branchAuthority:{resolvedElapsedMs:branchAccess.resolvedElapsedMs}});
  const advanced=game.applyWorldClock(clock,{maxSeconds:86400,deferCycleSettlement:true});
- if(!advanced.ok||advanced.pending||advanced.settlementRequired)h.fail(409,'CLOCK_STALE','共通時計と本拠を同期してから出陣してください。');
+ if(!advanced.ok||advanced.pending||advanced.courtEstatePending||advanced.settlementRequired)h.fail(409,'CLOCK_STALE','共通時計と本拠を同期してから出陣してください。');
  const result=game.departRoamingBattle(body.encounterId,body.tactic,body.troops,{...body,deploymentUnit:unit});
  if(!result.ok)h.fail(409,result.code||'ROAMING_UNAVAILABLE',result.message);
  if(result.idempotent)h.fail(409,'ROAMING_ALREADY_RECORDED','この出陣は本拠に記録済みです。最新の戦果を確認してください。');
@@ -80,7 +82,7 @@ async function battle(ctx){
  const now=ctx.now,native=JSON.parse(JSON.stringify(game.state.march)),record=marchRecord({user,requestId:body.requestId,kind:'roaming',save,travel:native.travel,targetName:unit.name||unit.castleName||unit.encounterName||body.encounterId,troops:body.troops,tactic:body.tactic,foodCost:native.foodCost,commandCost:native.commandCost??1,clock,now,digest,payload:{body,nativeMarch:native,deploymentRevision:deployment.revision,unit}});
  native.id=record.id;native.departedElapsedMs=record.departed_ms;native.arrivesElapsedMs=record.arrives_ms;
  const payload=JSON.parse(record.payload_json);payload.nativeMarch=native;record.payload_json=JSON.stringify(payload);game.state.march=serverMarchMarker(record);
- const next=h.normalizeGameSave(JSON.parse(game.exportSave()),user,now,{clock}),role=guardLordSupport(h.roleCommitGuard(user),user),args=[record.id,record.commit_token];
+ const next=h.normalizeGameSave(JSON.parse(game.exportSave()),user,now,{clock}),role=withCourtEstateGuard(guardLordSupport(h.roleCommitGuard(user),user),courtEstate),args=[record.id,record.commit_token];
  const cpuLosses=await prepareResidencyCpuLosses(db,{userId:user.id,events:game.takeHomeDefenseLosses(),now,state:next.state});
  const sharedGuard=shared?{sql:"EXISTS(SELECT 1 FROM staff_base WHERE id='kyoto_gosho' AND revision=?)",args:[shared.revision]}:{sql:'1=1',args:[]};
  const guard=`EXISTS(SELECT 1 FROM player_saves ps WHERE ps.user_id=? AND ps.revision=? AND ps.writer_device_id=? AND ps.lease_expires_at>? AND COALESCE(json_extract(ps.save_json,'$.state.walking.campaignId'),'legacy_v1')=? AND COALESCE(json_extract(ps.save_json,'$.state.roaming.sequence'),0)=?) AND EXISTS(SELECT 1 FROM world_clock WHERE id=? AND revision=? AND running=1) AND ${role.sql} AND ${sharedGuard.sql} AND ${branchAccess.guard.sql} AND EXISTS(SELECT 1 FROM roaming_deployment WHERE id=1 AND revision=?) AND NOT EXISTS(SELECT 1 FROM roaming_unit_cooldowns WHERE deployment_revision=? AND unit_id=? AND respawn_at>?) AND ${cpuLosses.guard.sql}`;
@@ -104,14 +106,15 @@ export async function settleRoamingMarch(ctx,march){
  const shared=user.is_staff&&!user.is_admin?await h.staffBaseDto(db,user,clock,now):null;
  const maintenanceAuthority=protectMaintenance(branchAccess,await maintenanceContext(db,user.id,save,clock));
  if(maintenanceAuthority.hasMore||maintenanceAuthority.asOfElapsedMs>clock.elapsedMs)h.fail(409,'CLOCK_STALE','維持費の時間経過を同期しています。最新の保存へ同期してください。');
- save.state.march=payload.nativeMarch;const game=GameEngine.fromSave(save,GAME_OFFICERS,{isAdmin:!!user.is_admin,isDeputy:!!user.is_deputy,isStaff:!!user.is_staff,isCourtProtected:!!user.is_court_protected,staffBase:shared,maintenanceAuthority,branchAuthority:{resolvedElapsedMs:branchAccess.resolvedElapsedMs}});
+ const courtEstate=await h.courtEstateContext(db,user,save,clock,now);
+ save.state.march=payload.nativeMarch;const game=GameEngine.fromSave(save,GAME_OFFICERS,{courtEstateProjection:courtEstate.projection,isAdmin:!!user.is_admin,isDeputy:!!user.is_deputy,isStaff:!!user.is_staff,isCourtProtected:!!user.is_court_protected,staffBase:shared,maintenanceAuthority,branchAuthority:{resolvedElapsedMs:branchAccess.resolvedElapsedMs}});
  const advanced=game.applyWorldClock(clock,{maxSeconds:86400,deferCycleSettlement:true});
- if(!advanced.ok||advanced.pending||advanced.settlementRequired)h.fail(409,'MARCH_RETRY','到着時刻へ本拠を同期しています。');
+ if(!advanced.ok||advanced.pending||advanced.courtEstatePending||advanced.settlementRequired)h.fail(409,'MARCH_RETRY','到着時刻へ本拠を同期しています。');
  game.resolveDueMarches();const outcome=game.state.marchHistory.find(x=>x.id===march.id);
  if(!outcome)h.fail(409,'MARCH_RETRY','到着した部隊の戦況を確認しています。');
  const battle=outcome.battle||null;if(outcome.status==='resolved'&&!battle)throw Error('Missing roaming arrival receipt');
  if(battle){battle.respawnAt=battle.won?now+deployment.respawnSeconds*1000:null;const history=game.state.roaming.history.find(x=>x.requestId===body.requestId);if(history)history.respawnAt=battle.respawnAt;}
- const next=h.normalizeGameSave(JSON.parse(game.exportSave()),user,now,{clock}),nonce=crypto.randomUUID(),role=guardLordSupport(h.roleCommitGuard(user),user),args=[march.id,nonce],commitGate="EXISTS(SELECT 1 FROM battle_marches WHERE id=? AND commit_token=? AND status IN ('resolved','cancelled'))";
+ const next=h.normalizeGameSave(JSON.parse(game.exportSave()),user,now,{clock}),nonce=crypto.randomUUID(),role=withCourtEstateGuard(guardLordSupport(h.roleCommitGuard(user),user),courtEstate),args=[march.id,nonce],commitGate="EXISTS(SELECT 1 FROM battle_marches WHERE id=? AND commit_token=? AND status IN ('resolved','cancelled'))";
  const cpuLosses=await prepareResidencyCpuLosses(db,{userId:user.id,events:game.takeHomeDefenseLosses(),now,state:next.state});
  const result={battle,message:outcome.message||'野良兵のいる拠点へ到着し、合戦を終えました。',resolvedAt:new Date(now).toISOString()};
  const sharedGuard=shared?{sql:"EXISTS(SELECT 1 FROM staff_base WHERE id='kyoto_gosho' AND revision=?)",args:[shared.revision]}:{sql:'1=1',args:[]};

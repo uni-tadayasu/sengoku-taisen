@@ -1,5 +1,6 @@
 // External court offices are appointments, never account or staff privileges.
 // A revision binds each confirmation to the complete six-seat directory.
+import {courtEstateSnapshotStatements} from './court-estate-ledger.js';
 const stmt=(db,sql,...args)=>db.prepare(sql).bind(...args),rows=value=>value?.results||[];
 export const COURT_OFFICES=Object.freeze([
  {id:'sangi',title:'参議',minMerit:0},{id:'chunagon',title:'中納言',minMerit:50},
@@ -83,6 +84,7 @@ async function operation(ctx,access){
    ON CONFLICT(actor_id,request_id) DO NOTHING RETURNING request_id`,user.id,requestId,body.action,body.officeId,targetId,body.expectedRevision,digest,nonce,now,...access.guard.args,...targetGuard.args,body.expectedRevision,...conditions)];
   if(body.action==='appoint')statements.push(stmt(db,`INSERT INTO court_office_appointments(office_id,user_id,appointment_token,appointed_by,appointed_at) SELECT ?,?,?,?,? WHERE ${GATE}`,body.officeId,targetId,nonce,user.id,now,...args));
   else statements.push(stmt(db,`DELETE FROM court_office_appointments WHERE office_id=? AND user_id=? AND ${GATE}`,body.officeId,targetId,...args));
+  statements.push(...courtEstateSnapshotStatements(db,await h.getWorldClock(db,now),GATE,args));
   const result=await db.batch(statements);committed=!!rows(result[0]).length;
   if(!committed&&!await prior(ctx,requestId,digest)){await conflict(ctx,access,body);h.fail(409,'COURT_OFFICES_CHANGED','任命対象の状態が変わりました。一覧を更新してください。');}
  }

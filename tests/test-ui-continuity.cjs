@@ -4,7 +4,7 @@ const source=fs.readFileSync(path.join(__dirname,'../app.js'),'utf8');
 function fn(name){const start=source.indexOf(`  function ${name}(`);assert(start>=0,name);const first=source.indexOf('\n',start);if(source.slice(start,first).endsWith('}'))return source.slice(start,first);const end=source.indexOf('\n  }',start);assert(end>start,name);return source.slice(start,end+4);}
 let checks=0;
 async function test(name,run){await run();checks++;console.log('PASS '+name);}
-function context(extra={}){const c={console,Date,Math,WeakMap,Object,Number,String,interactionEpoch:0,interactionRestores:new WeakMap(),currentView:'map',refreshLiveControls(){},refreshJobTimers(){},$:()=>null,...extra};vm.createContext(c);return c;}
+function context(extra={}){const c={console,Date,Math,WeakMap,Object,Number,String,interactionEpoch:0,interactionRestores:new WeakMap(),currentView:'map',staffBaseId:'kyoto_gosho',refreshLiveControls(){},refreshJobTimers(){},$:()=>null,...extra};vm.createContext(c);return c;}
 function load(c,...names){vm.runInContext(names.map(fn).join('\n'),c);return c;}
 class Node {
   constructor(tag='DIV',id='',dataset={}){this.tagName=tag;this.id=id;this.dataset=dataset;this.children=[];this.parentElement=null;this.style={};this.scrollTop=0;this.scrollLeft=0;this.value='';this.checked=false;this.selectionStart=null;this.selectionEnd=null;}
@@ -92,7 +92,7 @@ await test('unchanged verified operator role does not rebuild the page or modal'
   for(let i=0;i<20;i++)assert(c.setAdminAccess(true).ok);assert.equal(renders,0);assert.equal(modalRefresh,0);
 });
 await test('map synchronization updates the existing controller and retains its camera',()=>{
-  const map={},controller={camera:{x:54,y:92,zoom:17},updates:0,destroyed:false,update(){this.updates++;},destroy(){this.destroyed=true;}},c=load(context({worldMapController:null,worldMapElement:null,selectedCastle:'himeji',mapRegion:'all',data:{castles:[{id:'himeji'}]},state:()=>({castles:{himeji:{}},clan:'織田家',home:'kiyosu',treaties:{},turn:30}),game:{isAdmin:false,adjacentTargets:()=>[]},window:{SengokuWorldMap:{mount:()=>controller}},$:()=>map}),'homeCastleAppearance','campaignCastleOwnerAppearance','campaignCastleGrowth','campaignCastleAppearance','campaignCastleTooltip','syncWorldMap');
+  const map={},controller={camera:{x:54,y:92,zoom:17},updates:0,destroyed:false,update(){this.updates++;},destroy(){this.destroyed=true;}},c=load(context({worldMapController:null,worldMapElement:null,selectedCastle:'himeji',mapRegion:'all',data:{castles:[{id:'himeji'}]},state:()=>({castles:{himeji:{}},clan:'織田家',home:'kiyosu',treaties:{},turn:30}),game:{isAdmin:false,adjacentTargets:()=>[]},window:{SengokuWorldMap:{mount:()=>controller}},$:()=>map}),'courtEstateHolding','courtEstateCastle','homeCastleAppearance','campaignCastleOwnerAppearance','campaignCastleGrowth','campaignCastleAppearance','campaignCastleTooltip','syncWorldMap');
   c.syncWorldMap();const before={...controller.camera};c.syncWorldMap();assert.equal(controller.updates,1);assert.deepEqual(controller.camera,before);assert.equal(controller.destroyed,false);c.currentView='town';c.syncWorldMap();assert.equal(controller.destroyed,true);assert.equal(c.worldMapController,null);
 });
 await test('elapsed construction uses actual progress and remaining time follows current speed or pause',()=>{

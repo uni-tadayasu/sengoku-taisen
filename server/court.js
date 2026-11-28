@@ -4,6 +4,7 @@ import {COURT_OFFICES,handleCourtOffices} from './court-offices.js';
 import {settleShogunateApprovals,readPalaceControl} from './shogunate.js';
 import {settleCourtSuccessionNominations} from './succession.js';
 import {recordNotificationCourtRead} from './notifications.js';
+import {courtEstateSnapshotStatements} from './court-estate-ledger.js';
 const stmt=(db,sql,...args)=>db.prepare(sql).bind(...args),rows=value=>value?.results||[],iso=value=>new Date(Number(value)).toISOString();
 const REQUIREMENT=Object.freeze({rankId:'court-7',rankName:'従五位',minScore:35000});
 const THRESHOLDS=Object.freeze(COURT_OFFICES.map(({title,minMerit})=>({title,minMerit})));
@@ -120,6 +121,7 @@ async function appoint(ctx,access){
  await h.budget(db,'court-leader:'+user.id,30,60000,now);const nonce=crypto.randomUUID(),args=[user.id,requestId,nonce],statements=[stmt(db,`INSERT INTO court_requests(actor_id,request_id,kind,request_hash,commit_token,entity_id,created_at) SELECT ?,?,'leader',?,?,?,? WHERE ${access.guard.sql} AND ${guard.sql} AND ${successionGuard} ON CONFLICT(actor_id,request_id) DO NOTHING RETURNING *`,user.id,requestId,digest,nonce,targetId,now,...access.guard.args,...guard.args)];
  if(target)statements.push(stmt(db,`INSERT INTO court_leader(id,user_id,term_id,appointment_token,appointed_by,updated_at) SELECT 1,?,?,?,?,? WHERE ${GATE} ON CONFLICT(id) DO UPDATE SET user_id=excluded.user_id,term_id=excluded.term_id,appointment_token=excluded.appointment_token,appointed_by=excluded.appointed_by,updated_at=excluded.updated_at`,target.id,target.staff_term,nonce,user.id,now,...args));
  else statements.push(stmt(db,`DELETE FROM court_leader WHERE id=1 AND ${GATE}`,...args));
+ statements.push(...courtEstateSnapshotStatements(db,await h.getWorldClock(db,now),GATE,args));
  const result=await db.batch(statements);committed=!!rows(result[0]).length;if(!committed&&!await prior(ctx,requestId,digest)){await allowed(ctx,access);if(targetId&&await stmt(db,"SELECT 1 AS pending FROM court_succession_nominations WHERE status='pending'").first())h.fail(409,'COURT_SUCCESSION_PENDING','後継者の指名が認証待ちです。指名の記録を確認してください。');h.fail(409,'COURT_LEADER_CHANGED','スタッフの任期または利用状態が変わりました。一覧を更新してください。');}}
  await settleCourtSuccessionNominations(db,now);
  return finish(ctx,access,{...await roster(ctx,access),idempotent:!committed});
