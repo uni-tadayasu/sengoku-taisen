@@ -4,7 +4,7 @@ import {createHash} from 'node:crypto';
 import {harness} from './test-support.mjs';
 import {GameEngine,GAME_OFFICERS} from './game-runtime.js';
 
-const publishedVersion=JSON.parse(readFileSync(new URL('../site-metadata.json',import.meta.url),'utf8')).version;
+const publishedVersion=JSON.parse(readFileSync(new URL('./package.json',import.meta.url),'utf8')).version;
 
 const DAY=86400000,checks=[];let calls=0,externalRequests=0;
 const originalFetch=globalThis.fetch;globalThis.fetch=async()=>{externalRequests++;throw Error('Timed event fixtures must stay local');};

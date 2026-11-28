@@ -3,7 +3,7 @@ import {createHmac} from 'node:crypto';
 import {readFileSync} from 'node:fs';
 import {harness} from './test-support.mjs';
 
-const publishedVersion=JSON.parse(readFileSync(new URL('../site-metadata.json',import.meta.url),'utf8')).version;
+const publishedVersion=JSON.parse(readFileSync(new URL('./package.json',import.meta.url),'utf8')).version;
 
 let scopes=0,calls=0;
 const post=(p,body,expected=200)=>({method:'POST',token:p?.token,body,expected});

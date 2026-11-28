@@ -6,7 +6,7 @@ import {readFileSync} from 'node:fs';
 import {harness,syncFieldWriter} from './test-support.mjs';
 import {fixture,post,appoint,row,save,count} from './test-court-support.mjs';
 
-const UI=createRequire(import.meta.url)('../court.js'),DAY=86400000,publishedVersion=JSON.parse(readFileSync(new URL('../site-metadata.json',import.meta.url),'utf8')).version;
+const UI=createRequire(import.meta.url)('../court.js'),DAY=86400000,publishedVersion=JSON.parse(readFileSync(new URL('./package.json',import.meta.url),'utf8')).version;
 let checks=0,calls=0;
 async function scope(name,run){const h=harness();try{await run(h);checks++;console.log('PASS '+name);}finally{calls+=h.calls;h.close();}}
 async function family(h){const admin=await fixture(h,'認証する太政大臣',{admin:true}),emperor=await fixture(h,'後継を指名する天皇',{staff:true}),target=await fixture(h,'指名される御所担当',{staff:true}),other=await fixture(h,'別の御所担当',{staff:true}),ordinary=await fixture(h,'一般拠点の領主',{startCastle:'inuyama'});await appoint(h,emperor);return{admin,emperor,target,other,ordinary};}
