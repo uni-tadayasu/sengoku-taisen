@@ -25,7 +25,7 @@ function harness(game=new E({seed:23})){
     window:{},document:{addEventListener:(type,listener)=>handlers.set(type,listener),querySelectorAll:selector=>selector==='[data-action]'?buttons:selector.includes('data-level-guide-section')?details.filter(d=>!selector.includes('[open]')||d.open):[]},$:selector=>nodes[selector]||null,
     esc:value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char])),icon:()=>'',num:value=>String(value),resNames:{gold:'金銭',rice:'兵糧',wood:'木材',stone:'石材'},resIcons:{},governorHelp:{},
     clearGachaPresentation(){},syncMusic(){},refreshTouchHeaderStatus(){},refreshBranchDeploymentPanels(){},canMutate:()=>flags.writable,requireWritable:()=>flags.writable,syncMessage:()=>'',toast(){},playNote(){},save:()=>{writes.push(game.exportSave());return true;},render(){},renderHeader(){},preserveInteraction:(_node,draw)=>draw(),
-    heading:()=>'',syncBanner:()=>'',governorAssignmentEntry:()=>'',facilityGovernorLabel:()=>'',buildingCard:()=>'',facilitiesResults:()=>'',officerCrest:()=>'',walkingEntry:()=>'',logItems:()=>'',date:()=>({season:'春'}),clanCrest:()=>'',
+    heading:()=>'',townCourtShortcut:()=>'',syncBanner:()=>'',governorAssignmentEntry:()=>'',facilityGovernorLabel:()=>'',buildingCard:()=>'',facilitiesResults:()=>'',officerCrest:()=>'',walkingEntry:()=>'',logItems:()=>'',date:()=>({season:'春'}),clanCrest:()=>'',
     upgradeSharedBase:async(kind,id)=>requests.push({kind,id})
   };
   const declaration=source.slice(source.indexOf('  const mutationActions='),source.indexOf('\n',source.indexOf('  const mutationActions=')));

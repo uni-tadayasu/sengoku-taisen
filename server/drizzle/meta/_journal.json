@@ -442,6 +442,13 @@
       "when": 1799280000014,
       "tag": "0062_court_vassal_integrity",
       "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "6",
+      "when": 1799280000015,
+      "tag": "0063_court_formal_rank_terms",
+      "breakpoints": true
     }
   ]
 }

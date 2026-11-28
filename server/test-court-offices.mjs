@@ -14,8 +14,9 @@ async function action(h,officeId,target,kind='appoint',options={}){
  return h.api('/admin/court/offices',post(options.actor||h.operator,body,options.expected??200));
 }
 function merit(h,staff,points){
+ const term=h.sql.prepare("SELECT COALESCE(term_id,'legacy:'||appointed_at) AS id FROM staff_members WHERE user_id=?").get(staff.user.id).id;
  let i=0;h.sql.prepare('DELETE FROM court_contributions WHERE actor_id=?').run(staff.user.id);
- while(points>0){const value=Math.min(128,points);h.sql.prepare("INSERT INTO court_contributions VALUES(?,?,?,'castle','kyoto_gosho',?,?,?,?)").run('office-merit-'+crypto.randomUUID(),staff.user.id,'staff-term',value,value,i++,h.now);points-=value;}
+ while(points>0){const value=Math.min(128,points);h.sql.prepare("INSERT INTO court_contributions VALUES(?,?,?,'castle','kyoto_gosho',?,?,?,?)").run('office-merit-'+crypto.randomUUID(),staff.user.id,term,value,value,i++,h.now);points-=value;}
 }
 const state=h=>({appointments:h.sql.prepare('SELECT * FROM court_office_appointments ORDER BY office_id').all(),requests:h.sql.prepare('SELECT * FROM court_office_requests ORDER BY request_id').all()});
 const offline=globalThis.fetch;globalThis.fetch=async()=>{throw Error('Court office tests must not contact a real service');};

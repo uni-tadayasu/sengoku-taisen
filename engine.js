@@ -405,6 +405,7 @@
   }
   const DATA = {version:2,assetCap:ASSET_CAP,maintenance:MAINTENANCE_RULES,durability:DURABILITY_RULES,staffBaseId:STAFF_BASE_ID,deputyBaseId:DEPUTY_BASE_ID,deputyAssets:DEPUTY_ASSETS,courtAdmission:COURT_ADMISSION,branchRules:BRANCH_RULES,branchFacilities:BRANCH_FACILITIES,gacha:GACHA,rankBonuses:RANK_BONUSES,adminAssets:ADMIN_ASSETS,adminClan:ADMIN_CLAN,staffClan:STAFF_CLAN,majorCityIds:MAJOR_CITY_IDS,worldCalendar:WORLD_CALENDAR,regionConquest:REGION_CONQUEST,secondsPerMonth:60,secondsPerCommand:20,buildingLimit:32,ranks:RANKS,evaluationRanks:EVALUATION_RANKS,evaluationMax:EVALUATION_MAX,categories:CATEGORY_LABELS,clans:CLANS,buildings:BUILDINGS,techs:TECHS,castles:CASTLES,tactics:TACTICS,quests:QUESTS,resources:RESOURCES,covert:COVERT_RULES,roaming:{commandCost:1,minTroops:300,historyLimit:20,encounters:ROAMING_ENCOUNTERS,tactics:ROAMING_TACTICS}};
   DATA.officerHealth=OFFICER_HEALTH_RULES;
+  DATA.courtNobles=(root.SENGOKU_OFFICERS||[]).filter(officer=>officer.courtNoble===true);
   const clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
   const copy=o=>JSON.parse(JSON.stringify(o));
   const int=n=>Math.floor(Number(n)||0);
@@ -789,8 +790,8 @@
       const home=this.isAdmin?ADMIN_ASSETS.castleId:this.isStaff?STAFF_BASE_ID:this.isDeputy?DEPUTY_BASE_ID:options.startCastle??clan.home;
       const difficulty=['easy','normal','hard'].includes(options.difficulty)?options.difficulty:'normal';
       const rosterClan=this.isAdmin||this.isStaff?'徳川家':clan.name,rosterLeader=this.isAdmin||this.isStaff?'徳川家康':clan.leader;
-      const initial = this.roster.filter(o=>o.clan===rosterClan).sort((a,b)=>(b.name===rosterLeader?10000:b.lead+b.valor+b.politics)-(a.name===rosterLeader?10000:a.lead+a.valor+a.politics)).slice(0,4).map(o=>o.id);
-      if (!initial.length) initial.push(...this.roster.slice(0,4).map(o=>o.id));
+      const initial = this.roster.filter(o=>!o.courtNoble&&o.clan===rosterClan).sort((a,b)=>(b.name===rosterLeader?10000:b.lead+b.valor+b.politics)-(a.name===rosterLeader?10000:a.lead+a.valor+a.politics)).slice(0,4).map(o=>o.id);
+      if (!initial.length) initial.push(...this.roster.filter(o=>!o.courtNoble).slice(0,4).map(o=>o.id));
       const scale={easy:.8,normal:1,hard:1.2}[difficulty];
       this.state={
         version:2,clan:clan.name,home,turn:0,difficulty,cycle:{index:0,home,latestReward:null,retainedRegions:[],protectedRegions:[],releasedCastles:[]},upkeep:{version:1,settledTurn:0,branchReductions:{}},repair:normalizeRepairState(undefined,0),
@@ -977,9 +978,9 @@
     courtAttackPermission(sourceCastleId,targetCastleId){return sourceCastleId===STAFF_BASE_ID&&targetCastleId===ADMIN_ASSETS.castleId&&!this.canActForEmperor?{ok:false,code:'COURT_EDO_ATTACK_REQUIRED',message:'京都御所から江戸城へ攻められるのは、在任中の天皇または摂政です。現在の任命を確認してください。'}:{ok:true};}
     castleLevelLimit(id){return id===STAFF_BASE_ID?128:id==='edo'?64:MAJOR_CITY_IDS.includes(id)?48:32;}
     canOwnCastle(id){return Boolean(CASTLE_BY_ID[id])&&(id!==ADMIN_ASSETS.castleId||this.isAdmin)&&(id!==STAFF_BASE_ID||this.isStaff)&&(id!==DEPUTY_BASE_ID||this.isDeputy);}
-    canOwnOfficerVariant(id,rank){return Boolean(this.baseOfficer(id))&&RANKS.includes(rank)&&(id!==ADMIN_ASSETS.officerId||rank!==ADMIN_ASSETS.rank||this.isAdmin);}
+    canOwnOfficerVariant(id,rank){const officer=this.baseOfficer(id);return Boolean(officer)&&RANKS.includes(rank)&&(!officer.courtNoble||rank===(officer.rank||officer.rarity))&&(id!==ADMIN_ASSETS.officerId||rank!==ADMIN_ASSETS.rank||this.isAdmin);}
     _baseGrantRank(id){const o=this.baseOfficer(id),rank=o?.rank||o?.rarity;return id===ADMIN_ASSETS.officerId&&rank==='U'&&!this.isAdmin?'SSS':rank;}
-    gachaPool(rank){return RANKS.includes(rank)?this.roster.filter(o=>this.canOwnOfficerVariant(o.id,rank)):[];}
+    gachaPool(rank){return RANKS.includes(rank)?this.roster.filter(o=>!o.courtNoble&&this.canOwnOfficerVariant(o.id,rank)):[];}
     unificationTarget(){return CASTLES.filter(c=>this.canOwnCastle(c.id)).length;}
     conqueredRegions(){return conqueredRegions(this.ownedCastleIds());}
     protectedRegions(){const known=new Set(this.state.cycle?.protectedRegions||[]);return REGION_CONQUEST.regions.filter(row=>known.has(row.region)).map(row=>row.region);}
@@ -1235,7 +1236,7 @@
     ownsVariant(id,rank){return this.canOwnOfficerVariant(id,rank)&&this.state.officerVariants.includes(`${id}:${rank}`);}
     ownedRanks(id){return RANKS.filter(rank=>this.ownsVariant(id,rank));}
     highestOwnedRank(id){for(let index=RANKS.length-1;index>=0;index--)if(this.ownsVariant(id,RANKS[index]))return RANKS[index];return null;}
-    collection(){return{officers:this.state.officers.length,variants:this.state.officerVariants.filter(key=>{const [id,rank]=key.split(':');return this.canOwnOfficerVariant(id,rank);}).length,totalVariants:RANKS.reduce((sum,rank)=>sum+this.gachaPool(rank).length,0)};}
+    collection(){return{officers:this.state.officers.length,variants:this.state.officerVariants.filter(key=>{const [id,rank]=key.split(':');return this.canOwnOfficerVariant(id,rank);}).length,totalVariants:RANKS.reduce((sum,rank)=>sum+this.gachaPool(rank).length,0)+this.roster.filter(o=>o.courtNoble).length};}
     _officerView(base,chosen,variantOwned){
       if(!base||!RANKS.includes(chosen))return null;
       // The special painting is an authenticated role entitlement. Its stats
@@ -1851,6 +1852,7 @@
     canRecruitOfficer(id,modifiers){
       const o=this.baseOfficer(id);if(!o)return{ok:false,reason:'武将が見つかりません。',cost:0,requiredLevel:1};
       const cost=this.recruitmentCost(id,modifiers),requiredLevel=o.clan===this.state.clan?1:(RANK_KEEP[this._baseGrantRank(id)]||1);
+      if(o.courtNoble)return{ok:false,reason:'京都御所の公家交換所で勾玉と交換できます。',cost:0,requiredLevel:1};
       if(this.state.officers.includes(id))return{ok:false,reason:'すでに家臣です。',cost,requiredLevel};
       if(this.state.buildings.keep<requiredLevel)return{ok:false,reason:`登用には天守 Lv.${requiredLevel} が必要です。`,cost,requiredLevel};
       if(this.state.command<1)return{ok:false,reason:'指示の回復をお待ちください（1倍速で20秒に1回）。',cost,requiredLevel};
@@ -2464,7 +2466,7 @@
         garrison=Math.min(300,Math.floor((p.troops-ourLost)*.18));garrison=Math.min(garrison,s.troops);s.troops-=garrison;
         const removedBranches=new Set(s.branches.filter(branch=>branch.parentCastleId===castleId).map(branch=>branch.id));s.branches=s.branches.filter(branch=>branch.parentCastleId!==castleId);s.jobs=s.jobs.filter(job=>job.kind!=='branch'||!removedBranches.has(job.id));
         s.castles[castleId]={owner:s.clan,troops:garrison,wall:Math.max(1,c.wall-1),level:c.level};
-        const candidates=this.roster.filter(o=>o.clan===c.owner&&!s.officers.includes(o.id));
+        const candidates=this.roster.filter(o=>!o.courtNoble&&o.clan===c.owner&&!s.officers.includes(o.id));
         if(candidates.length){const chosen=candidates[Math.floor(this.random()*candidates.length)];this._grantOfficerVariant(chosen.id,this._baseGrantRank(chosen.id));capturedOfficer=chosen.id;phases.push({title:'帰順',text:`${chosen.name}が新たに家臣へ加わった。`});}
       }else if(!rewardOnly)s.castles[castleId].troops=c.troops-enemyLost;
       const durability=rewardOnly?null:this._damageCastleDurability(castleId,{won,ratio:p.ratio,captured:won,before:c.durability});if(durability)phases.push({title:'城郭の耐久',text:`耐久 ${durability.before.toLocaleString()} → ${durability.breachCurrent.toLocaleString()}。${won?'占領後は最大耐久の25%から修復を始めます。':'傷んだ防備は時間とともに修復されます。'}`});
@@ -2820,7 +2822,7 @@
       s.gachaHistory=s.gachaHistory.map(v=>({officerId:v.officerId,rank:v.rank,isNew:v.isNew,isNewOfficer:v.isNewOfficer===undefined?v.isNew:v.isNewOfficer,upgraded:v.upgraded===undefined?false:v.upgraded,duplicateRefund:v.duplicateRefund,turn:v.turn}));
       if(s.gachaHistory.some(v=>typeof v.isNewOfficer!=='boolean'||typeof v.upgraded!=='boolean'||v.isNewOfficer&&!v.isNew||v.upgraded&&(!v.isNew||v.isNewOfficer)))invalid();
       if(s.officerVariants===undefined){const variants=new Set(s.officers.map(id=>`${id}:${g.baseOfficer(id).rank||g.baseOfficer(id).rarity}`));for(const v of s.gachaHistory)variants.add(`${v.officerId}:${v.rank}`);s.officerVariants=[...variants];}
-      const validVariants=new Map(g.roster.flatMap(o=>RANKS.map(rank=>[`${o.id}:${rank}`,o.id])));
+      const validVariants=new Map(g.roster.flatMap(o=>(o.courtNoble?[o.rank||o.rarity]:RANKS).map(rank=>[`${o.id}:${rank}`,o.id])));
       if(!Array.isArray(s.officerVariants)||s.officerVariants.length>g.roster.length*RANKS.length||new Set(s.officerVariants).size!==s.officerVariants.length||s.officerVariants.some(key=>typeof key!=='string'||!validVariants.has(key)||!s.officers.includes(validVariants.get(key)))||s.officers.some(id=>!RANKS.some(rank=>s.officerVariants.includes(`${id}:${rank}`)))||s.gachaHistory.some(v=>!s.officerVariants.includes(`${v.officerId}:${v.rank}`)))invalid();
       if(!num(s.stats.researches??0,0,10000000))invalid();s.stats.researches=s.stats.researches??Object.values(s.tech).reduce((a,b)=>a+b,0);
       if(!Array.isArray(s.log)||s.log.length>200||s.log.some(l=>!isObj(l)||!num(l.turn,0,MAX_TURN)||typeof l.text!=='string'||l.text.length>2000||typeof l.kind!=='string'||l.kind.length>30))invalid();

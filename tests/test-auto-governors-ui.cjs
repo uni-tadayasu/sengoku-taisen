@@ -15,7 +15,7 @@ function fn(name){
 function declaration(name){const start=source.indexOf(`  const ${name}=`);assert(start>=0,name);return source.slice(start,source.indexOf('\n',start));}
 function create({all=false}={}){
   const game=new E({officers:plain(roster),clan:'織田家',seed:17});
-  if(all){for(const officer of roster)game._grantOfficerVariant(officer.id,'S');for(const building of D.buildings)game.state.buildings[building.id]=16;}
+  if(all){for(const officer of roster)assert(game._grantOfficerVariant(officer.id,officer.courtNoble?officer.rank:'S'));for(const building of D.buildings)game.state.buildings[building.id]=16;}
   return game;
 }
 function staffFixture({projected=true}={}){
@@ -51,7 +51,7 @@ function harness(game=create()){
   const c={game,SengokuEngine:E,staffBaseId:'kyoto_gosho',data:D,roster:plain(roster),state:()=>c.game.state,console,Date,Math,JSON,Number,String,Set,
     syncAccess:{linked:false,ready:true,writable:true,rolePending:false},lastLocalSaveRaw:null,lastLocalSaveGame:null,localCampaignRefreshPending:false,saveKey:'save',saveEnabled:true,saveWarning:'',
     branchBookingPending:false,worldCatchingUp:false,worldSettlementPending:false,fieldActionPending:false,walkingActionPending:false,strategyActionPending:false,startPending:false,
-    staffBaseReady:game.isStaff&&Boolean(game.getStaffBase()),settings:{tips:false},currentView:'town',townSection:'town-overview',townSections:['town-overview','town-facilities-section','town-reports-section'],facilityCategory:'all',facilityQuery:'',facilityState:'all',facilityPage:1,facilitySort:'default',facilityLayout:'cards',
+    staffBaseReady:game.isStaff&&Boolean(game.getStaffBase()),settings:{tips:false},activeModal:'',currentView:'town',townSection:'town-overview',townSections:['town-overview','town-facilities-section','town-reports-section'],facilityCategory:'all',facilityQuery:'',facilityState:'all',facilityPage:1,facilitySort:'default',facilityLayout:'cards',
     document:{querySelectorAll:selector=>selector==='[data-action]'?controls:[],addEventListener:(type,listener)=>handlers.set(type,listener)},
     window:{SengokuDurabilityUI:durabilityUI,SengokuManagement:managementModel,dispatchEvent:event=>events.push(event.type)},CustomEvent:class{constructor(type){this.type=type;}},
     localStorage:{getItem:key=>stored.get(key)??null,setItem:(key,value)=>{if(flags.failSave)throw Error('QuotaExceededError');stored.set(key,value);writes.push({key,value});}},
@@ -60,7 +60,7 @@ function harness(game=create()){
     toast:(message,error)=>toasts.push({message,error}),modal:(title,subtitle,body,footer,kind)=>modals.push({title,subtitle,body,footer,kind}),
     preserveInteraction:(_node,draw)=>draw(),renderHeader:()=>{calls.header++;},refreshTouchHeaderStatus(){},refreshBranchDeploymentPanels(){},refreshActiveModal(){},playNote:sound=>{calls.sounds.push(sound);},
     render:()=>{calls.render++;c.lastMarkup=c.currentView==='facilities'?c.renderFacilities():c.renderTown();c.refreshLiveControls();},
-    heading:()=>'',staffBaseNotice:()=>'',syncBanner:()=>'',walkingEntry:()=>'',jobsHtml:()=>'',logItems:()=>'',officerCrest:()=>'',pageControls:()=>'',
+    heading:()=>'',townCourtShortcut:()=>'',staffBaseNotice:()=>'',syncBanner:()=>'',walkingEntry:()=>'',jobsHtml:()=>'',logItems:()=>'',officerCrest:()=>'',pageControls:()=>'',
     constructionJobs:()=>[],currentJob:()=>null,castleLevelLimit:id=>c.game.castleLevelLimit(id),date:()=>({year:1560,month:1,season:'春'}),costHtml:()=>''
   };
   vm.createContext(c);

@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="court-ichijo-group-title court-ichijo-group-description">
+  <title id="court-ichijo-group-title">一条家：扇と一筋の群章（創作）</title>
+  <desc id="court-ichijo-group-description">一条家の名鑑表示用に、扇と幾何学模様を組み合わせたゲーム独自の創作群章。史実の家紋を復刻したものではありません。</desc>
+  <g fill="none" stroke="#e8d5a7" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="128" cy="128" r="108" stroke-width="7"/>
+    <circle cx="128" cy="128" r="97" stroke-width="2"/>
+    <path d="m128 40 6 8-6 8-6-8zM88 55h12m56 0h12" stroke-width="3"/>
+    <path d="M48 125Q128 42 208 125L128 205Z" stroke-width="6"/>
+    <path d="m128 198-61-69m61 69-38-64m38 64-15-57m15 57 15-57m-15 57 38-64m-38 64 61-69" stroke-width="3" opacity=".78"/>
+    <path d="M69 143q59-33 118 0" stroke-width="2"/>
+    <g stroke-width="4.5"><circle cx="128" cy="112" r="20"/><path d="M114 112h28" stroke-width="7"/></g>
+    <circle cx="128" cy="205" r="6" fill="#e8d5a7" stroke="none"/>
+  </g>
+</svg>

@@ -16,7 +16,7 @@ const context={document:doc,data,settings:{tips:false},currentView:'town',townSe
   SengokuPremiumRuntime:{getAppearance:()=>appearance},SengokuMusic:{daypart:()=>phase},
   // Other dashboard panels are outside this regression; the complete town
   // template, owner resolver, artwork resolver and live art updater are real.
-  currentJob:()=>null,premiumTownBanner:()=>'',premiumLord:()=>'',townTabMarkup:()=>'',townPanelAttributes:()=>'',heading:()=>'',castleLevelLimit:()=>32,
+  currentJob:()=>null,premiumTownBanner:()=>'',premiumLord:()=>'',townCourtShortcut:()=>'',townTabMarkup:()=>'',townPanelAttributes:()=>'',heading:()=>'',castleLevelLimit:()=>32,
   durabilityMarkup:()=>'',governorAssignmentEntry:()=>'',buildingCard:()=>'',walkingEntry:()=>'',staffBaseNotice:()=>'',officerCrest:()=>'',constructionJobs:()=>[],logItems:()=>'',date:()=>({season:'冬'})};
 context.window=context;vm.createContext(context);
 vm.runInContext(fs.readFileSync(path.join(root,'premium-catalog.js'),'utf8'),context);

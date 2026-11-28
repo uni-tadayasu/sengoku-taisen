@@ -5,5 +5,5 @@
   "scripts": {
     "test": "node test-social.mjs"
   },
-  "version": "5.24.0"
+  "version": "5.25.0"
 }

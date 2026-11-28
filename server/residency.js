@@ -4,6 +4,7 @@ import {playerNameKey,playerNameConflict,releaseInactivePlayerNameStatement,requ
 // Public castle households are separate from each player's private campaign.
 // Only committed admissions and proved home-defense defeats change this ledger.
 import {GameEngine,GAME_OFFICERS} from './game-runtime.js';
+import {reconcileCourtNobles} from './court-nobles.js';
 import {readCourtProtection} from './court-protection.js';
 const S=(db,sql,...args)=>db.prepare(sql).bind(...args),R=x=>x?.results||[],safe={sql:'1=1',args:[]};
 const majors=new Set(['edo','kyoto_gosho','nijo','osaka','nagoya','kagoshima']);
@@ -189,6 +190,7 @@ export async function residencyStart(ctx,body){
  if(expelled){const moved=game.relocateResidence(body.castleId,{role:body.mode,worldClock:clock,residencyCastleId:''});if(!moved.ok)h.fail(409,moved.code,moved.message);}
  const anchored=game.applyWorldClock(clock);if(!anchored.ok||anchored.pending)h.fail(409,'CLOCK_STALE','共通時計を確認してから入城してください。');
  const save=h.normalizeGameSave(JSON.parse(game.exportSave()),user,now,{clock});save.state.cycle.latestReward=null;
+ await reconcileCourtNobles(db,user.id,save,h.fail);
  const nonce=crypto.randomUUID(),gate='EXISTS(SELECT 1 FROM castle_residency_requests WHERE actor_id=? AND request_id=? AND commit_token=?)',args=[user.id,body.requestId,nonce],role=withCourtEstateGuard(h.roleCommitGuard(user),courtEstate),memberGuard=old?{sql:'EXISTS(SELECT 1 FROM castle_residents WHERE user_id=? AND castle_id=? AND revision=?)',args:[user.id,old.castle_id,old.revision]}:{sql:'NOT EXISTS(SELECT 1 FROM castle_residents WHERE user_id=?)',args:[user.id]};
  const leaving=old?.lord_user_id===user.id&&old.castle_id!==body.castleId?await prepareResidencySuccession(db,{userId:user.id,castleId:old.castle_id,battleId:'departure:'+user.id+':'+body.requestId,kind:'departure',now}):null;
  const expulsionGuard=expelled?{sql:'EXISTS(SELECT 1 FROM player_expulsions WHERE user_id=? AND pending=1 AND revision=?) AND EXISTS(SELECT 1 FROM users WHERE id=? AND name=?)',args:[user.id,expelled.revision,user.id,user.name]}:{sql:'NOT EXISTS(SELECT 1 FROM player_expulsions WHERE user_id=? AND pending=1)',args:[user.id]};

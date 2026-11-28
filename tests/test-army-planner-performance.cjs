@@ -71,11 +71,11 @@ test('health near half-rounding boundaries and military-governor losses retain e
  game.state.buildings.dojo=32;game.state.buildings.stable=31;game.state.governors={dojo:list[5].id,stable:list[12].id};
  for(const tactic of Planner.TACTICS){agrees(game,{tactic,includeGovernors:true});agrees(game,{tactic,includeGovernors:true,locked:[list[5].id]});}
 });
-test('the full 256-officer collection searches fewer than one tenth of the possible trios',()=>{
+test('the full 280-officer collection searches fewer than one tenth of the possible trios',()=>{
  const game=developed(32,20);game.state.officers=officers.map(row=>row.id);game.state.officerVariants=officers.flatMap(row=>D.ranks.filter(rank=>game.canOwnOfficerVariant(row.id,rank)).map(rank=>row.id+':'+rank));
  game.state.officerHealth.values=Object.fromEntries(officers.map(row=>[row.id,100]));game.state.army=game.state.officers.slice(0,3);game.state.governors={};
- const full=256*255*254/6,before=copy(game.state);
- for(const tactic of Planner.TACTICS){const result=Planner.build(game,{tactic});assert(result.ok);assert.equal(result.candidateCount,256);assert(result.examined<full/10);assert(result.prunedCandidates>150);assert.equal(new Set(result.ids).size,3);assert.deepEqual(result.stats,game.armyStats(result.ids));}
+ const count=officers.length,full=count*(count-1)*(count-2)/6,before=copy(game.state);assert.equal(count,280);
+ for(const tactic of Planner.TACTICS){const result=Planner.build(game,{tactic});assert(result.ok);assert.equal(result.candidateCount,count);assert(result.examined<full/10);assert(result.prunedCandidates>150);assert.equal(new Set(result.ids).size,3);assert.deepEqual(result.stats,game.armyStats(result.ids));}
  assert.deepEqual(game.state,before);
 });
 console.log(`${checks} formation search groups passed; ${comparisons} independent exhaustive comparisons, with no saved-game changes or network requests.`);

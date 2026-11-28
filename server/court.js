@@ -11,7 +11,7 @@ const THRESHOLDS=Object.freeze(COURT_OFFICES.map(({title,minMerit})=>({title,min
 const TERM="COALESCE(sm.term_id,'legacy:'||sm.appointed_at)";
 const GATE='EXISTS(SELECT 1 FROM court_requests WHERE actor_id=? AND request_id=? AND commit_token=?)';
 const activeAuthor=alias=>`NOT EXISTS(SELECT 1 FROM player_bans pb WHERE pb.user_id=${alias} AND pb.active=1)`;
-const currentOfficial=alias=>`(${alias}=COALESCE((SELECT value FROM settings WHERE key='adminUserId'),'') OR EXISTS(SELECT 1 FROM staff_members sm WHERE sm.user_id=${alias}) OR EXISTS(SELECT 1 FROM court_regent r WHERE r.id=1 AND r.user_id=${alias}))`;
+const currentOfficial=alias=>`(${alias}=COALESCE((SELECT value FROM settings WHERE key='adminUserId'),'') OR EXISTS(SELECT 1 FROM staff_members sm WHERE sm.user_id=${alias}) OR EXISTS(SELECT 1 FROM court_retained_memberships cm WHERE cm.user_id=${alias}) OR EXISTS(SELECT 1 FROM court_regent r WHERE r.id=1 AND r.user_id=${alias}))`;
 const titleFor=(merit,operator,leader)=>operator?'太政大臣':leader?'天皇':[...THRESHOLDS].reverse().find(item=>merit>=item.minMerit).title;
 const officeJurisdiction=(title,kyoto,external=false)=>COURT_OFFICES.some(office=>office.title===title)?kyoto?'kyoto':external?'external':null:null;
 const limits=(raw,fallback,max,h)=>{if(raw===null)return fallback;if(!/^[1-9][0-9]*$/.test(raw)||Number(raw)>max)h.fail(400,'INVALID_INPUT',`表示件数は1〜${max}件で指定してください。`);return Number(raw);};
@@ -39,28 +39,29 @@ async function prior(ctx,requestId,digest){return sameRequest(await stmt(ctx.db,
 async function roster(ctx,access){
  requireOfficial(ctx,access);
  const result=await read(ctx,access,[stmt(ctx.db,`SELECT u.id,u.name,${TERM} AS term_id,
+  (SELECT term_id FROM court_retained_memberships cm WHERE cm.user_id=u.id) AS retained_term,
   CASE WHEN u.id=(SELECT value FROM settings WHERE key='adminUserId') THEN 1 ELSE 0 END AS operator,
   EXISTS(SELECT 1 FROM court_leader l WHERE l.user_id=u.id AND l.term_id=${TERM}) AS leader,
   EXISTS(SELECT 1 FROM court_regent r WHERE r.id=1 AND r.user_id=u.id) AS regent,
   EXISTS(SELECT 1 FROM court_retired_emperors r WHERE r.user_id=u.id) AS retired,
-  COALESCE((SELECT SUM(points) FROM court_contributions c WHERE c.actor_id=u.id),0) AS merit,
-  (SELECT COUNT(*) FROM court_contributions c WHERE c.actor_id=u.id) AS completed
+  COALESCE((SELECT merit FROM court_rank_progress p WHERE p.user_id=u.id),0) AS merit,
+  COALESCE((SELECT completed FROM court_rank_progress p WHERE p.user_id=u.id),0) AS completed
   FROM users u LEFT JOIN staff_members sm ON sm.user_id=u.id WHERE ${activeAuthor('u.id')} AND ${currentOfficial('u.id')} ORDER BY operator DESC,leader DESC,regent DESC,merit DESC,u.id`)]);
  const people=rows(result[0]).map(row=>{
   const title=row.regent&&!row.operator&&!row.leader?'摂政':row.retired&&!row.operator&&!row.leader?'上皇':titleFor(Number(row.merit),!!row.operator,!!row.leader);
-  return{id:row.id,name:row.name,title,officeJurisdiction:officeJurisdiction(title,!!row.term_id),merit:Number(row.merit),completedUpgrades:Number(row.completed),isLeader:!!row.leader&&!row.operator,termId:row.term_id||null};
+  return{id:row.id,name:row.name,title,officeJurisdiction:officeJurisdiction(title,!!row.term_id||!!row.retained_term),merit:Number(row.merit),completedUpgrades:Number(row.completed),isLeader:!!row.leader&&!row.operator,termId:row.term_id||row.retained_term||null,canBecomeEmperor:!!row.term_id&&!row.operator};
  });
  return{ok:true,roster:people,leaderId:people.find(row=>row.isLeader)?.id||null,thresholds:THRESHOLDS};
 }
 async function info(ctx,access){
  await settleShogunateApprovals(ctx.db,ctx.now);
  const palaceControl=await readPalaceControl(ctx.db);
- const result=await read(ctx,access,[stmt(ctx.db,`SELECT COALESCE((SELECT SUM(points) FROM court_contributions WHERE actor_id=?),0) AS merit,EXISTS(SELECT 1 FROM court_leader l JOIN staff_members sm ON sm.user_id=l.user_id WHERE l.user_id=? AND l.term_id=${TERM}) AS leader,(SELECT office_id FROM court_external_offices WHERE user_id=?) AS external_office,(SELECT appointment_token FROM court_external_offices WHERE user_id=?) AS external_token,EXISTS(SELECT 1 FROM court_retired_emperors WHERE user_id=?) AS retired`,ctx.user.id,ctx.user.id,ctx.user.id,ctx.user.id,ctx.user.id)]),self=rows(result[0])[0],state=access.shared;
- const title=ctx.user.is_admin?'太政大臣':self.leader?'天皇':access.regent.isCourtRegent?'摂政':self.retired?'上皇':ctx.user.is_staff?titleFor(Number(self.merit),false,false):COURT_OFFICES.find(office=>office.id===self.external_office)?.title||access.evaluation?.rankName||'無位';
+ const result=await read(ctx,access,[stmt(ctx.db,`SELECT COALESCE((SELECT merit FROM court_rank_progress WHERE user_id=?),0) AS merit,EXISTS(SELECT 1 FROM court_leader l JOIN staff_members sm ON sm.user_id=l.user_id WHERE l.user_id=? AND l.term_id=${TERM}) AS leader,(SELECT office_id FROM court_external_offices WHERE user_id=?) AS external_office,(SELECT appointment_token FROM court_external_offices WHERE user_id=?) AS external_token,EXISTS(SELECT 1 FROM court_retired_emperors WHERE user_id=?) AS retired`,ctx.user.id,ctx.user.id,ctx.user.id,ctx.user.id,ctx.user.id)]),self=rows(result[0])[0],state=access.shared;
+ const title=ctx.user.is_admin?'太政大臣':self.leader?'天皇':access.regent.isCourtRegent?'摂政':self.retired?'上皇':ctx.user.is_staff||ctx.user.court_retained_term?titleFor(Number(self.merit),false,false):COURT_OFFICES.find(office=>office.id===self.external_office)?.title||access.evaluation?.rankName||'無位';
  // Bind the title/capability to the same appointment observed for accessStamp.
  access.guard={sql:access.guard.sql+` AND COALESCE((SELECT l.appointment_token FROM court_leader l JOIN staff_members sm ON sm.user_id=l.user_id WHERE l.user_id=? AND l.term_id=${TERM} AND NOT EXISTS(SELECT 1 FROM settings WHERE key='adminUserId' AND value=l.user_id)),'')=?`,args:[...access.guard.args,ctx.user.id,access.emperor.token||'']};
  access.guard={sql:access.guard.sql+` AND COALESCE((SELECT appointment_token FROM court_external_offices WHERE user_id=?),'')=?`,args:[...access.guard.args,ctx.user.id,self.external_token||'']};
- return finish(ctx,access,{ok:true,eligible:access.eligible,requirement:REQUIREMENT,evaluation:access.evaluation,accessStamp:access.accessStamp,self:{id:ctx.user.id,name:ctx.user.name,title,officeJurisdiction:officeJurisdiction(title,!!ctx.user.is_staff,!!self.external_office),merit:Number(self.merit),canRespond:access.privileged,canAppoint:!!ctx.user.is_admin,isCourtEmperor:access.emperor.isCourtEmperor,isCourtRegent:access.regent.isCourtRegent,canActForEmperor:access.emperor.isCourtEmperor||access.regent.isCourtRegent,canApproveShogunate:access.emperor.isCourtEmperor||access.regent.isCourtRegent,canNominateSuccession:access.emperor.isCourtEmperor,canApproveSuccession:!!ctx.user.is_admin,isRetiredEmperor:!!self.retired&&!self.leader&&!ctx.user.is_admin},palace:{id:'kyoto_gosho',name:'京都御所',control:palaceControl,level:state.castleLevel,maxLevel:128,buildings:state.buildings,jobCount:state.jobs.length,updatedElapsedMs:state.updatedElapsedMs},features:{conversation:access.eligible,audience:access.eligible,roster:access.privileged,eventRoom:access.privileged},thresholds:THRESHOLDS,serverNow:iso(ctx.now)});
+ return finish(ctx,access,{ok:true,eligible:access.eligible,requirement:REQUIREMENT,evaluation:access.evaluation,accessStamp:access.accessStamp,self:{id:ctx.user.id,name:ctx.user.name,title,officeJurisdiction:officeJurisdiction(title,!!ctx.user.is_staff||!!ctx.user.court_retained_term,!!self.external_office),merit:Number(self.merit),canRespond:access.privileged,canAppoint:!!ctx.user.is_admin,isCourtEmperor:access.emperor.isCourtEmperor,isCourtRegent:access.regent.isCourtRegent,canActForEmperor:access.emperor.isCourtEmperor||access.regent.isCourtRegent,canApproveShogunate:access.emperor.isCourtEmperor||access.regent.isCourtRegent,canNominateSuccession:access.emperor.isCourtEmperor,canApproveSuccession:!!ctx.user.is_admin,isRetiredEmperor:!!self.retired&&!self.leader&&!ctx.user.is_admin},palace:{id:'kyoto_gosho',name:'京都御所',control:palaceControl,level:state.castleLevel,maxLevel:128,buildings:state.buildings,jobCount:state.jobs.length,updatedElapsedMs:state.updatedElapsedMs},features:{conversation:access.eligible,audience:access.eligible,roster:access.privileged,eventRoom:access.privileged},thresholds:THRESHOLDS,serverNow:iso(ctx.now)});
 }
 const messageSelect=table=>`SELECT m.*,u.name,CASE WHEN m.author_kind='court' OR ${currentOfficial('m.author_id')} THEN 1 ELSE 0 END AS official FROM ${table} m JOIN users u ON u.id=m.author_id`;
 function message(row,ctx){const official=!!row.official;return{id:row.id,seq:Number(row.seq),text:row.body,createdAt:iso(row.created_at),author:official?{kind:'court',id:null,name:'朝廷',avatarVersion:null,evaluation:null}:{kind:'visitor',id:row.author_id,name:row.name,evaluation:ctx.helpers.evaluationRef(row.author_id)},own:row.author_id===ctx.user.id};}

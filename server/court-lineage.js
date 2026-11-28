@@ -33,12 +33,11 @@ async function state(ctx,user=ctx.user){
   (SELECT imperial_house_name FROM court_lineages WHERE user_id=?) AS imperial_house_name,
   (SELECT original_clan FROM court_lineages WHERE user_id=?) AS original_clan,
   COALESCE((SELECT revision FROM court_lineages WHERE user_id=?),0) AS revision,
-  COALESCE((SELECT SUM(points) FROM court_contributions WHERE actor_id=?),0) AS merit,
-  (SELECT office_id FROM court_external_offices WHERE user_id=?) AS external_office`,user.id,user.id,user.id,user.id,user.id,user.id).first();
+  COALESCE((SELECT merit FROM court_rank_progress WHERE user_id=?),0) AS merit`,user.id,user.id,user.id,user.id,user.id).first();
  const isMember=member(user),house=BY_ID[row.house_id],imperial=!!row.imperial_house_name,
-  qualified=kyotoService(user)&&Number(row.merit)>=REQUIREMENT.minMerit||!!user.court_retained_term&&row.external_office==='sadaijin',
+  qualified=isMember&&!user.is_admin&&Number(row.merit)>=REQUIREMENT.minMerit,
   canChooseHouse=isMember&&!house,canCreateImperialHouse=!!house&&!imperial&&qualified;
- const reason=imperial?'宮家は創立済みです。':!isMember?'京都御所への正式加入が必要です。':!house?'先に五摂家から家柄を選んでください。':!qualified?'正式加入後、京都御所の朝廷功績2,000以上への昇格、または現在の左大臣への任命によって、宮家を創立できます。':'';
+ const reason=imperial?'宮家は創立済みです。':!isMember?'京都御所への正式加入が必要です。':!house?'先に五摂家から家柄を選んでください。':!qualified?'正式加入後、現在の在任期間で朝廷功績2,000を積み、左大臣へ昇格すると宮家を創立できます。':'';
  return{...(publicCourtLineage({...user,court_house_id:row.house_id,court_original_clan:row.original_clan,imperial_house_name:row.imperial_house_name})||{class:null,houseId:null,houseName:null,imperialHouseName:null,originalClan:null,needsHouseSelection:false}),revision:Number(row.revision),termId:term(user),canChooseHouse,canCreateImperialHouse,reason,requirement:REQUIREMENT};
 }
 export async function courtLineageStatus(ctx){return state(ctx);}
@@ -74,16 +73,14 @@ export async function handleCourtLineage(ctx){
   if(!choose&&await S(db,'SELECT 1 AS taken FROM court_lineages WHERE imperial_house_key=?',playerNameKey(name)).first())h.fail(409,'COURT_IMPERIAL_HOUSE_NAME_TAKEN','その宮家名はすでに使われています。別の名前を入力してください。');
   return current;
  };
- const current=await conflict(),external=!choose&&!kyotoService(user)?await S(db,"SELECT appointment_token FROM court_external_offices WHERE user_id=? AND office_id='sadaijin'",user.id).first():null;await h.budget(db,'court-lineage:'+user.id,15,60000,now);
+ const current=await conflict();await h.budget(db,'court-lineage:'+user.id,15,60000,now);
  const role=h.roleCommitGuard(user),nonce=crypto.randomUUID(),args=[user.id,requestId,nonce],revision=body.expectedRevision+1,chosen=choose?houseId:current.houseId,
   memberGuard="(EXISTS(SELECT 1 FROM court_retained_memberships cm WHERE cm.user_id=? AND cm.term_id=?) OR (EXISTS(SELECT 1 FROM staff_members sm WHERE sm.user_id=? AND COALESCE(sm.term_id,'legacy:'||sm.appointed_at)=?) AND NOT EXISTS(SELECT 1 FROM settings WHERE key='adminUserId' AND value=?)))",
   lineageGuard=choose?'NOT EXISTS(SELECT 1 FROM court_lineages WHERE user_id=?)':`EXISTS(SELECT 1 FROM court_lineages WHERE user_id=? AND revision=? AND house_id=? AND imperial_house_name IS NULL)
-   AND ((EXISTS(SELECT 1 FROM staff_members WHERE user_id=?) AND NOT EXISTS(SELECT 1 FROM settings WHERE key='adminUserId' AND value=?)
-    AND COALESCE((SELECT SUM(points) FROM court_contributions WHERE actor_id=?),0)>=?)
-    OR EXISTS(SELECT 1 FROM court_external_offices a JOIN court_retained_memberships m ON m.user_id=a.user_id
-      WHERE a.user_id=? AND a.office_id='sadaijin' AND a.appointment_token=? AND m.term_id=?))
+   AND NOT EXISTS(SELECT 1 FROM settings WHERE key='adminUserId' AND value=?)
+   AND EXISTS(SELECT 1 FROM court_rank_progress WHERE user_id=? AND term_id=? AND merit>=?)
    AND NOT EXISTS(SELECT 1 FROM court_lineages WHERE imperial_house_key=?)`,
-  lineageArgs=choose?[user.id]:[user.id,body.expectedRevision,chosen,user.id,user.id,user.id,REQUIREMENT.minMerit,user.id,external?.appointment_token||'',body.termId,playerNameKey(name)];
+  lineageArgs=choose?[user.id]:[user.id,body.expectedRevision,chosen,user.id,user.id,body.termId,REQUIREMENT.minMerit,playerNameKey(name)];
  const statements=[S(db,`INSERT INTO court_lineage_requests(actor_id,request_id,action,house_id,imperial_house_name,expected_revision,result_revision,term_id,request_hash,commit_token,created_at)
   SELECT ?,?,?,?,?,?,?,?,?,?,? WHERE ${role.sql} AND ${memberGuard} AND ${lineageGuard}
   ON CONFLICT(actor_id,request_id) DO NOTHING RETURNING *`,user.id,requestId,action,chosen,name,body.expectedRevision,revision,body.termId,digest,nonce,now,...role.args,user.id,body.termId,user.id,body.termId,user.id,...lineageArgs)];

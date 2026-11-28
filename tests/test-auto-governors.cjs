@@ -14,7 +14,7 @@ const save=game=>JSON.parse(game.exportSave());
 const facilities=game=>D.buildings.filter(b=>game.state.buildings[b.id]>0);
 const candidates=game=>game.state.officers.filter(id=>!game.state.army.includes(id));
 const close=(actual,expected,message)=>assert(Math.abs(actual-expected)<1e-9,message||`${actual} != ${expected}`);
-function ownAll(game){for(const o of game.roster)assert(game._grantOfficerVariant(o.id,'D'));return game;}
+function ownAll(game,{includeCourtNobles=true}={}){for(const o of game.roster)if(includeCourtNobles||!o.courtNoble)assert(game._grantOfficerVariant(o.id,o.courtNoble?o.rank:'D'));return game;}
 function fixture(roster,options={}){
   const game=create(roster,options);game.state.officers=roster.map(o=>o.id);
   game.state.officerVariants=roster.map(o=>o.id+':D');game.state.army=[];game.state.governors={};return game;
@@ -330,7 +330,7 @@ test('the existing local Worker accepts and preserves an ordinary batch with the
   try{
     const player=await h.session('一括奉行の保存検証'),deviceId='auto-governor-local';
     const lease=(await h.api('/sync/lease',{method:'POST',token:player.token,body:{deviceId,takeOver:true}})).data;
-    const game=ownAll(create());game.applyWorldClock((await h.api('/world-clock')).data.clock);
+    const game=ownAll(create(),{includeCourtNobles:false});game.applyWorldClock((await h.api('/world-clock')).data.clock);
     for(const b of D.buildings)game.state.buildings[b.id]=Math.max(1,game.state.buildings[b.id]);
     game.state.buildings.market=32;
     game.state.army=game.state.officers.slice(0,3).reverse();game.autoAssignGovernors();
@@ -348,7 +348,7 @@ test('the existing local Worker preserves staff assignments on shared-only facil
     const admin=await h.session('一括奉行の運営');await h.api('/admin/claim',{method:'POST',token:admin.token,body:{key:h.env.SENGOKU_ADMIN_KEY}});
     const player=await h.session('一括奉行のスタッフ'),deviceId='staff-auto-governor-local';
     const lease=(await h.api('/sync/lease',{method:'POST',token:player.token,body:{deviceId,takeOver:true}})).data;
-    const personal=ownAll(create());personal.applyWorldClock((await h.api('/world-clock')).data.clock);
+    const personal=ownAll(create(),{includeCourtNobles:false});personal.applyWorldClock((await h.api('/world-clock')).data.clock);
     await h.api('/sync',{method:'PUT',token:player.token,body:{deviceId,revision:lease.revision,save:save(personal)}});
     await h.api('/admin/staff',{method:'POST',token:admin.token,body:{targetPlayerId:player.user.id,action:'appoint',requestId:crypto.randomUUID()}});
     await h.api('/sync?deviceId='+deviceId,{token:player.token});

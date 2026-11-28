@@ -71,14 +71,14 @@ try{
   const retry=await request(h,p),committed=stable(h);h.beforeBatch=statements=>{if(!statements.some(s=>s.sql.startsWith('INSERT INTO court_membership_requests')))return;h.beforeBatch=null;statements.push(h.db.prepare('UPDATE missing_retention_table SET value=1'));};
   await join(h,p,retry,500);assert.deepEqual(stable(h),committed);
  });
- await scope('appointed officials retain ordinary homes, their offices and both lord and retainer household relationships',async h=>{
+ await scope('appointed officials start as formal Sangi while retaining ordinary homes and both lord and retainer household relationships',async h=>{
   const admin=await fixture(h,'任命官職加入の責任者',{admin:true}),lord=await fixture(h,'本拠の任命城主',{score:35000,holdings:['nagoya','inabayama']}),retainer=await fixture(h,'本拠の任命家臣',{score:35000,holdings:['osaka','sunpu']});
   for(const [p,officeId]of [[lord,'sangi'],[retainer,'chunagon']]){
    const directory=(await h.api('/admin/court/offices',{token:admin.token})).data;await h.api('/admin/court/offices',post(admin,{requestId:crypto.randomUUID(),action:'appoint',officeId,targetPlayerId:p.user.id,expectedRevision:directory.revision}));
    const detail=await preview(h,p),body=await request(h,p),before=save(h,p),residents=h.sql.prepare("SELECT * FROM castle_residents WHERE castle_id='kiyosu' ORDER BY user_id").all(),seat=h.sql.prepare("SELECT * FROM castle_seats WHERE castle_id='kiyosu'").get(),office=h.sql.prepare('SELECT * FROM court_external_offices WHERE user_id=?').get(p.user.id);
    assert.equal(detail.joinMode,'retained-base');assert.equal(detail.destinationHomeCastleId,'kiyosu');assert.equal(detail.officeAppointmentToken,office.appointment_token);assert(detail.retainedCastles.some(c=>c.id==='kiyosu'));
    const result=(await join(h,p,body)).data;assert.equal(result.save.state.home,'kiyosu');assert.deepEqual(result.save.state.castles.kiyosu,before.state.castles.kiyosu);assert.equal(result.user.isStaff,false);assert.equal(result.user.isAdmin,false);assert.equal(result.user.canOperate,false);assert.equal(result.admission.joinMode,'retained-base');assert.equal(result.admission.destinationHomeCastleId,'kiyosu');
-   assert.deepEqual(h.sql.prepare("SELECT * FROM castle_residents WHERE castle_id='kiyosu' ORDER BY user_id").all(),residents);assert.deepEqual(h.sql.prepare("SELECT * FROM castle_seats WHERE castle_id='kiyosu'").get(),seat);assert.deepEqual(h.sql.prepare('SELECT * FROM court_external_offices WHERE user_id=?').get(p.user.id),office);
+   assert.deepEqual(h.sql.prepare("SELECT * FROM castle_residents WHERE castle_id='kiyosu' ORDER BY user_id").all(),residents);assert.deepEqual(h.sql.prepare("SELECT * FROM castle_seats WHERE castle_id='kiyosu'").get(),seat);assert.equal(h.sql.prepare('SELECT * FROM court_external_offices WHERE user_id=?').get(p.user.id),undefined);assert.equal(h.sql.prepare('SELECT COUNT(*) AS n FROM court_office_appointments WHERE user_id=?').get(p.user.id).n,0);assert.deepEqual(result.admission.formalOffice,{id:'sangi',title:'参議',jurisdiction:'kyoto'});
    assert.notEqual(result.save.state.castles[p===lord?'inabayama':'sunpu'].owner,result.save.state.clan);assert.equal(result.save.state.castles[p===lord?'nagoya':'osaka'].owner,result.save.state.clan);assert.equal(result.membership.isMember,true);
   }
  });

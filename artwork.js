@@ -1,4 +1,4 @@
-/* 戦国VS：8,224点の原画を、表示するセルだけ遅延読込する。 */
+/* 戦国VS：既存8,224点と公家24人の原画を、表示する分だけ遅延読込する。 */
 (function(global){
 'use strict';
 const ranks=['D','C','B','A','S','SS','SSS','U'];
@@ -80,6 +80,7 @@ function castleGrowthInfo(id,{castleLevel=1,keepLevel,home=false}={}){
 function tileInfo(kind,id,variant,appearance=null){
  if(kind==='officer'){
   const o=officers.get(id);if(!o)return null;const rank=ranks.includes(variant)?variant:o.rank;
+  if(o.courtNoble===true){const url=`assets/court-nobles/${o.id}.webp`;return{courtNoble:true,portraitShape:true,url,small:{url,x:50,y:35,size:'cover'},native:null,x:50,y:35,name:o.name,rank};}
   const cell=o.index%32,small=sheetCell('officers-'+rank+'-'+numberTag(Math.floor(o.index/32)+1),cell,8,4);
   const native=rank===o.rank?sheetCell('officer-base-'+numberTag(Math.floor(o.index/4)+1),o.index%4,2,2):null;
   return{small,native,portraitShape:true,url:`assets/illustrations/officers-${rank}-${String(Math.floor(o.index/32)+1).padStart(2,'0')}.webp?v=${officerArtRevision}`,x:(cell%8)/7*100,y:Math.floor(cell/8)/3*100,name:o.name,rank};
@@ -98,6 +99,7 @@ function tileInfo(kind,id,variant,appearance=null){
  return{small,native,frame:isCastle?null:[8,4,cell,portraitCell?3:1,portraitCell?4:1].join(','),portraitShape:portraitCell,url:`assets/${kind==='castle'?'castles':'facilities'}/${id}.webp${kind==='facility'?'?v='+facilityArtRevision:''}`,x:(cell%8)/7*100,y:Math.floor(cell/8)/3*100,name:item.name,level,artLevel,finalStage:level>32,portraitCell:kind==='facility'&&portraitFacilities.has(id)};
 }
 function tile(kind,id,className='',variant=1,appearance=null){const t=tileInfo(kind,id,variant,appearance);if(!t)return'';
+ if(t.courtNoble)return `<span class="painted-art officer-painting court-noble-painting ${esc(className)}" data-art-url="${esc(t.url)}" data-art-small="${esc(t.url)}" data-small-width="480" data-small-height="640" data-art-x="50" data-art-y="35" style="--tile-x:50%;--tile-y:35%;--small-x:50%;--small-y:35%;--small-size:cover" role="img" aria-label="${esc(t.name)} ${t.rank}ランクの公家専用イラスト" aria-busy="true"><span class="art-surface" aria-hidden="true"></span><span class="art-loading" aria-hidden="true">${icon('officers')}</span></span>`;
  if(t.special)return `<span class="painted-art castle-painting special-castle-painting ${esc(className)}" data-castle-art="${esc(id)}" data-castle-scenery="${t.scenery}" data-art-url="${esc(t.url)}" data-art-small="${esc(t.small.url)}" data-small-width="400" data-small-height="225" data-art-native="${esc(t.native.url)}" data-native-width="720" data-native-height="405" data-art-x="50" data-art-y="50" role="img" aria-label="${esc(t.name)} Lv.${t.level}${t.finalStage?'・最終形態':''}・${t.scenery==='kagoshima'?'御楼門と城下町の特別絵巻':'城郭絵巻'}" aria-busy="true"><span class="art-surface" aria-hidden="true"></span><span class="art-loading" aria-hidden="true">${icon('town')}</span></span>`;
  const sources=Object.entries({small:t.small,native:t.native}).filter(([,sheet])=>sheet);
  const attributes=sources.map(([name,sheet])=>`data-art-${name}="${esc(sheet.url)}"${sheet.frame?` data-${name}-frame="${sheet.frame}"`:''}`).join(' ');
@@ -117,7 +119,7 @@ function portrait(o){
  }else if(special){
   painting=`<span class="painted-art painted-portrait operator-portrait" data-art-url="${operatorPortrait.url}" data-art-small="${previewUrl('operator-ieyasu-u-160')}" data-small-width="160" data-small-height="240" data-art-native="${previewUrl('operator-ieyasu-u-384')}" data-native-width="384" data-native-height="576" data-art-x="50" data-art-y="50" role="img" aria-label="束帯姿の晩年の${esc(o.name||officers.get(o.id)?.name||'德川家康')} Uランクの特別肖像" aria-busy="true"><span class="art-surface" aria-hidden="true"></span><span class="art-loading" aria-hidden="true">${icon('officers')}</span></span>`;
  }else painting=tile('officer',o.id,'painted-portrait',rank);
- return `<span class="portrait-frame${deputy?' deputy-relief-frame':''}" data-rank="${rank}">${painting}<img class="rank-frame" src="${frames[rank]}" alt="" aria-hidden="true" loading="lazy"><b class="portrait-rank-badge" aria-hidden="true">${rank}</b></span>`;
+ return `<span class="portrait-frame${deputy?' deputy-relief-frame':''}${officers.get(o.id)?.courtNoble===true?' court-noble-portrait-frame':''}" data-rank="${rank}">${painting}<img class="rank-frame" src="${frames[rank]}" alt="" aria-hidden="true" loading="lazy"><b class="portrait-rank-badge" aria-hidden="true">${rank}</b></span>`;
 }
 function load(url){
  if(cache.has(url))return cache.get(url);
@@ -377,6 +379,6 @@ function init(){
  document.addEventListener('visibilitychange',()=>{if(!document.hidden)repaintVisible();});
  if(!observer)global.addEventListener?.('scroll',repaintVisible,{capture:true,passive:true});
  new MutationObserver(artworkMutations).observe(document.body,{childList:true,subtree:true});decorate();}
-global.SengokuArt={portrait,castle:(id,c='',level=1,appearance=null)=>tile('castle',id,c,level,appearance),castleScene,castlePanorama,castleGrowthInfo,facility:(id,c='',level=1)=>tile('facility',id,c,level),icon,tileInfo,facilityFrame,load,readyCurrent,decorate,schedule,totalIllustrations:8224};
+global.SengokuArt={portrait,castle:(id,c='',level=1,appearance=null)=>tile('castle',id,c,level,appearance),castleScene,castlePanorama,castleGrowthInfo,facility:(id,c='',level=1)=>tile('facility',id,c,level),icon,tileInfo,facilityFrame,load,readyCurrent,decorate,schedule,totalIllustrations:8224+roster.filter(o=>o.courtNoble===true).length};
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init,{once:true});else init();
 })(window);

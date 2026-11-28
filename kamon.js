@@ -1508,7 +1508,152 @@
       "ashina"
     ],
     "url": "assets/kamon/ashina.svg"
+  },
+  {
+    "id": "court-konoe-group",
+    "clan": "近衛家",
+    "name": "扇と星輪の群章",
+    "motif": "court-fan-konoe",
+    "kind": "group",
+    "status": "unverified",
+    "description": "京都御所の公家名鑑で近衛家を識別するために独自に描いた創作群章。",
+    "note": "扇と幾何学模様によるゲーム用の創作群章。史実の家紋・特定人物の使用紋とは区別して表示。",
+    "sourceIds": [],
+    "url": "assets/kamon/court-konoe-group.svg"
+  },
+  {
+    "id": "court-kujo-group",
+    "clan": "九条家",
+    "name": "扇と九星の群章",
+    "motif": "court-fan-kujo",
+    "kind": "group",
+    "status": "unverified",
+    "description": "京都御所の公家名鑑で九条家を識別するために独自に描いた創作群章。",
+    "note": "扇と幾何学模様によるゲーム用の創作群章。史実の家紋・特定人物の使用紋とは区別して表示。",
+    "sourceIds": [],
+    "url": "assets/kamon/court-kujo-group.svg"
+  },
+  {
+    "id": "court-ichijo-group",
+    "clan": "一条家",
+    "name": "扇と一筋の群章",
+    "motif": "court-fan-ichijo",
+    "kind": "group",
+    "status": "unverified",
+    "description": "京都御所の公家名鑑で一条家を識別するために独自に描いた創作群章。",
+    "note": "扇と幾何学模様によるゲーム用の創作群章。史実の家紋・特定人物の使用紋とは区別して表示。",
+    "sourceIds": [],
+    "url": "assets/kamon/court-ichijo-group.svg"
+  },
+  {
+    "id": "court-nijo-group",
+    "clan": "二条家",
+    "name": "扇と双輪の群章",
+    "motif": "court-fan-nijo",
+    "kind": "group",
+    "status": "unverified",
+    "description": "京都御所の公家名鑑で二条家を識別するために独自に描いた創作群章。",
+    "note": "扇と幾何学模様によるゲーム用の創作群章。史実の家紋・特定人物の使用紋とは区別して表示。",
+    "sourceIds": [],
+    "url": "assets/kamon/court-nijo-group.svg"
+  },
+  {
+    "id": "court-takatsukasa-group",
+    "clan": "鷹司家",
+    "name": "扇と羽雲の群章",
+    "motif": "court-fan-takatsukasa",
+    "kind": "group",
+    "status": "unverified",
+    "description": "京都御所の公家名鑑で鷹司家を識別するために独自に描いた創作群章。",
+    "note": "扇と幾何学模様によるゲーム用の創作群章。史実の家紋・特定人物の使用紋とは区別して表示。",
+    "sourceIds": [],
+    "url": "assets/kamon/court-takatsukasa-group.svg"
+  },
+  {
+    "id": "court-sanjonishi-group",
+    "clan": "三条西家",
+    "name": "扇と三霞の群章",
+    "motif": "court-fan-sanjonishi",
+    "kind": "group",
+    "status": "unverified",
+    "description": "京都御所の公家名鑑で三条西家を識別するために独自に描いた創作群章。",
+    "note": "扇と幾何学模様によるゲーム用の創作群章。史実の家紋・特定人物の使用紋とは区別して表示。",
+    "sourceIds": [],
+    "url": "assets/kamon/court-sanjonishi-group.svg"
+  },
+  {
+    "id": "court-yamashina-group",
+    "clan": "山科家",
+    "name": "扇と重山の群章",
+    "motif": "court-fan-yamashina",
+    "kind": "group",
+    "status": "unverified",
+    "description": "京都御所の公家名鑑で山科家を識別するために独自に描いた創作群章。",
+    "note": "扇と幾何学模様によるゲーム用の創作群章。史実の家紋・特定人物の使用紋とは区別して表示。",
+    "sourceIds": [],
+    "url": "assets/kamon/court-yamashina-group.svg"
+  },
+  {
+    "id": "court-kajuji-group",
+    "clan": "勧修寺家",
+    "name": "扇と宝珠の群章",
+    "motif": "court-fan-kajuji",
+    "kind": "group",
+    "status": "unverified",
+    "description": "京都御所の公家名鑑で勧修寺家を識別するために独自に描いた創作群章。",
+    "note": "扇と幾何学模様によるゲーム用の創作群章。史実の家紋・特定人物の使用紋とは区別して表示。",
+    "sourceIds": [],
+    "url": "assets/kamon/court-kajuji-group.svg"
+  },
+  {
+    "id": "court-karasumaru-group",
+    "clan": "烏丸家",
+    "name": "扇と翼輪の群章",
+    "motif": "court-fan-karasumaru",
+    "kind": "group",
+    "status": "unverified",
+    "description": "京都御所の公家名鑑で烏丸家を識別するために独自に描いた創作群章。",
+    "note": "扇と幾何学模様によるゲーム用の創作群章。史実の家紋・特定人物の使用紋とは区別して表示。",
+    "sourceIds": [],
+    "url": "assets/kamon/court-karasumaru-group.svg"
+  },
+  {
+    "id": "court-reizei-group",
+    "clan": "冷泉家",
+    "name": "扇と泉波の群章",
+    "motif": "court-fan-reizei",
+    "kind": "group",
+    "status": "unverified",
+    "description": "京都御所の公家名鑑で冷泉家を識別するために独自に描いた創作群章。",
+    "note": "扇と幾何学模様によるゲーム用の創作群章。史実の家紋・特定人物の使用紋とは区別して表示。",
+    "sourceIds": [],
+    "url": "assets/kamon/court-reizei-group.svg"
+  },
+  {
+    "id": "court-asukai-group",
+    "clan": "飛鳥井家",
+    "name": "扇と飛羽の群章",
+    "motif": "court-fan-asukai",
+    "kind": "group",
+    "status": "unverified",
+    "description": "京都御所の公家名鑑で飛鳥井家を識別するために独自に描いた創作群章。",
+    "note": "扇と幾何学模様によるゲーム用の創作群章。史実の家紋・特定人物の使用紋とは区別して表示。",
+    "sourceIds": [],
+    "url": "assets/kamon/court-asukai-group.svg"
+  },
+  {
+    "id": "court-ogimachisanjo-group",
+    "clan": "正親町三条家",
+    "name": "扇と連菱の群章",
+    "motif": "court-fan-ogimachisanjo",
+    "kind": "group",
+    "status": "unverified",
+    "description": "京都御所の公家名鑑で正親町三条家を識別するために独自に描いた創作群章。",
+    "note": "扇と幾何学模様によるゲーム用の創作群章。史実の家紋・特定人物の使用紋とは区別して表示。",
+    "sourceIds": [],
+    "url": "assets/kamon/court-ogimachisanjo-group.svg"
   }
+
 ];
   const sources = [
   {

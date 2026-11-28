@@ -45,9 +45,10 @@ export async function resolvePublicCourtOffices(db,payload,now=Date.now()){
   queries.push(statement(db,`/* public-court-office */ SELECT u.id,
    CASE WHEN u.id=(SELECT value FROM settings WHERE key='adminUserId') THEN 1 ELSE 0 END AS chancellor,
    CASE WHEN sm.user_id IS NOT NULL AND sm.appointed_at<=? THEN 1 ELSE 0 END AS official,
+   EXISTS(SELECT 1 FROM court_retained_memberships cm WHERE cm.user_id=u.id) AS retained_member,
    EXISTS(SELECT 1 FROM court_leader l WHERE l.id=1 AND l.user_id=u.id
     AND l.term_id=COALESCE(sm.term_id,'legacy:'||sm.appointed_at) AND l.updated_at<=?) AS emperor,
-   COALESCE((SELECT SUM(c.points) FROM court_contributions c WHERE c.actor_id=u.id),0) AS merit,
+   COALESCE((SELECT merit FROM court_rank_progress p WHERE p.user_id=u.id),0) AS merit,
    (SELECT a.office_id FROM court_external_offices a WHERE a.user_id=u.id AND a.appointed_at<=?) AS external_office,
    EXISTS(SELECT 1 FROM court_retired_emperors r WHERE r.user_id=u.id AND r.retired_at<=?) AS retired_emperor,
    EXISTS(SELECT 1 FROM court_regent g WHERE g.id=1 AND g.user_id=u.id AND g.appointed_at<=?
@@ -63,7 +64,7 @@ export async function resolvePublicCourtOffices(db,payload,now=Date.now()){
   else if(row.official&&row.emperor)offices.set(row.id,{title:'天皇',kind:'emperor'});
   else if(row.regent)offices.set(row.id,{title:'摂政',kind:'regent'});
   else if(row.retired_emperor)offices.set(row.id,{title:'上皇',kind:'retired-emperor'});
-  else if(row.official){const title=[...PUBLIC_COURT_TITLES].reverse().find(item=>Number(row.merit)>=item.minMerit).title;offices.set(row.id,{title,kind:'official',jurisdiction:'kyoto'});}
+  else if(row.official||row.retained_member){const title=[...PUBLIC_COURT_TITLES].reverse().find(item=>Number(row.merit)>=item.minMerit).title;offices.set(row.id,{title,kind:'official',jurisdiction:'kyoto'});}
   else if(row.external_office){const office=COURT_OFFICES.find(definition=>definition.id===row.external_office);if(office)offices.set(row.id,{title:office.title,kind:'official',jurisdiction:'external'});}
  }
  for(const ref of refs)ref.value[ref.key]=offices.has(ref.id)?{...offices.get(ref.id)}:null;

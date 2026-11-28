@@ -9,6 +9,7 @@ export const COURT_OFFICES=Object.freeze([
 ]);
 const HOME="CASE WHEN json_valid(ps.save_json) THEN json_extract(ps.save_json,'$.state.home') END";
 const TARGET=`NOT EXISTS(SELECT 1 FROM staff_members sm WHERE sm.user_id=u.id)
+ AND NOT EXISTS(SELECT 1 FROM court_retained_memberships cm WHERE cm.user_id=u.id)
  AND u.id<>COALESCE((SELECT value FROM settings WHERE key='adminUserId'),'')
  AND NOT EXISTS(SELECT 1 FROM player_bans b WHERE b.user_id=u.id AND b.active=1)
  AND NOT EXISTS(SELECT 1 FROM court_retired_emperors r WHERE r.user_id=u.id)
@@ -41,7 +42,7 @@ async function directory(ctx,access){
  if(!snapshot)ctx.helpers.fail(503,'SERVICE_UNAVAILABLE','太政官の任命制度を準備しています。');
  access.guard={sql:access.guard.sql+' AND EXISTS(SELECT 1 FROM court_office_state WHERE id=1 AND revision=?)',args:[...access.guard.args,Number(snapshot.revision)]};
  return{ok:true,revision:Number(snapshot.revision),canManage:true,chancellor:{id:snapshot.id,name:snapshot.name,title:'太政大臣',fixed:true},
-  offices:COURT_OFFICES.map(definition=>{const holder=holders.get(definition.id),blockedByKyoto=kyoto.has(definition.id);return{id:definition.id,title:definition.title,available:!blockedByKyoto&&!holder,blockedByKyoto,holder:holder?person(holder):null,appointmentToken:holder?.appointment_token||null};}),
+  offices:COURT_OFFICES.map(definition=>{const holder=holders.get(definition.id),blockedByKyoto=kyoto.has(definition.id);return{id:definition.id,title:definition.title,available:!blockedByKyoto&&!holder,blockedByKyoto,holder:holder?{...person(holder),officeJurisdiction:'external'}:null,holderJurisdiction:holder?'external':null,appointmentToken:holder?.appointment_token||null};}),
   candidates:found.slice(0,limit).map(row=>({...person(row),officeId:row.office_id||null,courtOffice:row.office_id?{id:row.office_id,title:COURT_OFFICES.find(def=>def.id===row.office_id).title}:null})),query:q,hasMore:found.length>limit};
 }
 async function prior(ctx,requestId,digest){
@@ -95,6 +96,10 @@ export async function handleCourtOffices(ctx,access){
  // The deployment migration is schema-only. Initialize the singleton through
  // the ordinary authenticated runtime before any appointment can be created.
  await stmt(ctx.db,'INSERT INTO court_office_state(id,revision) VALUES(1,0) ON CONFLICT(id) DO NOTHING').run();
+ // Retained memberships created before formal term ranks were introduced may
+ // still have an obsolete appointment row. Retire at most six such seats at
+ // runtime; the schema migration never rewrites existing player records.
+ await stmt(ctx.db,'DELETE FROM court_office_appointments WHERE user_id IN (SELECT user_id FROM court_retained_memberships) OR office_id IN (SELECT office_id FROM court_kyoto_offices)').run();
  if(ctx.method==='GET')return directory(ctx,access);
  if(ctx.method==='POST')return operation(ctx,access);
  ctx.helpers.fail(405,'METHOD_NOT_ALLOWED','この操作には対応していません。');

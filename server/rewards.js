@@ -150,7 +150,7 @@ export async function protectRewardSync(db,user,save,before,h){
   const current=save.state,pending=await pendingRow(db,user.id);let prior=before.state,archive=null;
   const same=current.walking.campaignId===prior.walking.campaignId;
   const changed=()=>h.fail(409,'SERVER_REWARDS_REQUIRED','招集・報酬はサーバーで確定します。最新版へ更新し、最新のクラウド保存を読み込んでください。');
-  const exchanged=rows(await stmt(db,"SELECT result_json FROM progress_receipts WHERE actor_id=? AND kind='exchange'",user.id).all()).map(row=>JSON.parse(row.result_json)),exchangeVariants=new Set(exchanged.map(row=>row.officerId+':'+row.rank));
+  const exchanged=rows(await stmt(db,"SELECT result_json FROM progress_receipts WHERE actor_id=? AND kind='exchange' UNION ALL SELECT result_json FROM reward_requests WHERE actor_id=? AND kind='court_noble'",user.id,user.id).all()).map(row=>JSON.parse(row.result_json)),exchangeVariants=new Set(exchanged.map(row=>row.officerId+':'+row.rank));
   if(!same){
     if(pending)h.fail(409,'GACHA_PENDING','物語を切り替える前に、保留中の招集結果を選んでください。');
     archive={campaignId:prior.walking.campaignId,save:copy(before)};

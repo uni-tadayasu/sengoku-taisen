@@ -10,8 +10,9 @@ const status=async(h,p)=>(await h.api('/court',{token:p.token})).data.lineage;
 const request=async(h,p,extra={})=>{const current=await status(h,p);return{requestId:crypto.randomUUID(),expectedRevision:current.revision,termId:current.termId,confirmed:true,...extra};};
 const choose=async(h,p,houseId='konoe')=>(await h.api('/court/house',post(p,await request(h,p,{houseId})))).data;
 function merit(h,p,points){
+ const term=h.sql.prepare("SELECT COALESCE((SELECT term_id FROM court_retained_memberships WHERE user_id=?),(SELECT COALESCE(term_id,'legacy:'||appointed_at) FROM staff_members WHERE user_id=?)) AS id").get(p.user.id,p.user.id).id;
  h.sql.prepare('DELETE FROM court_contributions WHERE actor_id=?').run(p.user.id);
- while(points>0){const value=Math.min(points,128);h.sql.prepare("INSERT INTO court_contributions VALUES(?,?,?,'castle','kyoto_gosho',?,?,0,?)").run(crypto.randomUUID(),p.user.id,'fixture-term',value,value,h.now);points-=value;}
+ while(points>0){const value=Math.min(points,128);h.sql.prepare("INSERT INTO court_contributions VALUES(?,?,?,'castle','kyoto_gosho',?,?,0,?)").run(crypto.randomUUID(),p.user.id,term,value,value,h.now);points-=value;}
 }
 const lineage=h=>h.sql.prepare('SELECT * FROM court_lineages ORDER BY user_id').all();
 const receipts=h=>h.sql.prepare('SELECT * FROM court_lineage_requests ORDER BY actor_id,request_id').all();
@@ -142,35 +143,36 @@ try{
   assert.equal(h.sql.prepare('SELECT COUNT(*) AS n FROM staff_members WHERE user_id=?').get(p.user.id).n,0);
   const me=(await h.api('/me',{token:p.token})).data.user;assert.equal(me.isAdmin,true);assert.equal(me.isStaff,false);assert.equal(me.courtLineage.houseId,'kujo');
  });
- await scope('a current appointed left minister can found a house only after formal membership with a selected family',async h=>{
+ await scope('a former appointed left minister starts at Sangi and earns imperial-house eligibility in the formal term',async h=>{
   const admin=await fixture(h,'任命加入の責任者',{admin:true}),p=await fixture(h,'正式加入する任命左大臣',{score:35000}),origin=save(h,p).state.home;
   h.sql.prepare('INSERT INTO court_office_appointments(office_id,user_id,appointment_token,appointed_by,appointed_at) VALUES(?,?,?,?,?)').run('sadaijin',p.user.id,crypto.randomUUID(),admin.user.id,h.now);
   assert.equal((await h.api('/court',{token:p.token})).data.self.title,'左大臣');assert.equal((await status(h,p)).canCreateImperialHouse,false);
   await h.api('/court/imperial-house',post(p,{requestId:crypto.randomUUID(),expectedRevision:0,termId:'not-enrolled',confirmed:true,name:'未加入宮'},409));assert.equal(lineage(h).length,0);
   const joined=(await h.api('/court/membership',post(p,await membership(h,p,'nijo')))).data;
   assert.equal(joined.admission.joinMode,'retained-base');assert.equal(joined.save.state.home,origin);assert.equal(joined.user.isStaff,false);assert.equal(joined.user.isAdmin,false);assert.equal(joined.user.courtLineage.houseId,'nijo');
-  const current=await status(h,p);assert.equal(current.canCreateImperialHouse,true);assert.equal(current.class,'kuge');
+  const current=await status(h,p);assert.equal(current.canCreateImperialHouse,false);assert.equal(current.class,'kuge');assert.equal((await h.api('/court',{token:p.token})).data.self.title,'参議');
+  merit(h,p,1999);assert.equal((await status(h,p)).canCreateImperialHouse,false);merit(h,p,2000);assert.equal((await status(h,p)).canCreateImperialHouse,true);
   const body=await request(h,p,{name:'任命宮'}),created=(await h.api('/court/imperial-house',post(p,body))).data;assert.equal(created.lineage.class,'imperial');assert.equal(created.lineage.originalClan,'織田家');
-  const court=(await h.api('/court',{token:p.token})).data;assert.equal(court.self.title,'左大臣');assert.equal(court.self.canRespond,false);assert.equal(court.self.isCourtEmperor,false);assert.equal(court.self.canActForEmperor,false);
+  const court=(await h.api('/court',{token:p.token})).data;assert.equal(court.self.title,'左大臣');assert.equal(court.self.canRespond,true);assert.equal(court.self.officeJurisdiction,'kyoto');assert.equal(court.self.isCourtEmperor,false);assert.equal(court.self.canActForEmperor,false);
   h.sql.prepare('DELETE FROM court_office_appointments WHERE user_id=?').run(p.user.id);
   const replay=(await h.api('/court/imperial-house?receipt=1',post(p,body))).data;assert.equal(replay.idempotent,true);assert.equal(replay.lineage.class,'imperial');assert.equal(replay.lineage.imperialHouseName,'任命宮');
   assert.equal(h.sql.prepare('SELECT COUNT(*) AS n FROM staff_members WHERE user_id=?').get(p.user.id).n,0);
  });
- await scope('appointed-left-minister creation rechecks the valid appointment, its token and Kyoto seat conflicts at commit',async h=>{
-  const admin=await fixture(h,'任命失効の責任者',{admin:true}),kyoto=await fixture(h,'京都側の同職確認',{staff:true});
-  for(const kind of ['dismiss','replace','downgrade','kyoto']){
-   merit(h,kyoto,0);const p=await fixture(h,'任命失効'+kind,{score:35000});
+ await scope('retained formal merit and the exact current term are rechecked at imperial-house commit',async h=>{
+  const admin=await fixture(h,'正式在任確認の責任者',{admin:true});
+  for(const kind of ['dismiss','replace','merit','ban']){
+   const p=await fixture(h,'正式在任失効'+kind,{score:35000});
    h.sql.prepare('INSERT INTO court_office_appointments(office_id,user_id,appointment_token,appointed_by,appointed_at) VALUES(?,?,?,?,?)').run('sadaijin',p.user.id,crypto.randomUUID(),admin.user.id,h.now);
-   await h.api('/court/membership',post(p,await membership(h,p)));const body=await request(h,p,{name:'失効'+kind+'宮'}),before=receipts(h).length;
+   await h.api('/court/membership',post(p,await membership(h,p)));merit(h,p,2000);const body=await request(h,p,{name:'失効'+kind+'宮'}),before=receipts(h).length;
    h.beforeBatch=statements=>{if(!statements.some(s=>s.sql.startsWith('INSERT INTO court_lineage_requests')))return;h.beforeBatch=null;
-    if(kind==='dismiss')h.sql.prepare('DELETE FROM court_office_appointments WHERE user_id=?').run(p.user.id);
-    if(kind==='replace')h.sql.prepare('UPDATE court_office_appointments SET appointment_token=? WHERE user_id=?').run(crypto.randomUUID(),p.user.id);
-    if(kind==='downgrade')h.sql.prepare("UPDATE court_office_appointments SET office_id='udaijin' WHERE user_id=?").run(p.user.id);
-    if(kind==='kyoto')merit(h,kyoto,2000);
+    if(kind==='dismiss')h.sql.prepare('DELETE FROM court_retained_memberships WHERE user_id=?').run(p.user.id);
+    if(kind==='replace')h.sql.prepare('UPDATE court_retained_memberships SET term_id=? WHERE user_id=?').run(crypto.randomUUID(),p.user.id);
+    if(kind==='merit')merit(h,p,1999);
+    if(kind==='ban')h.sql.prepare('INSERT INTO player_bans(user_id,active,revision,banned_by,banned_at,updated_at) VALUES(?,1,1,?,?,?)').run(p.user.id,admin.user.id,h.now,h.now);
    };
-   await h.api('/court/imperial-house',post(p,body,kind==='replace'?409:403));
+   await h.api('/court/imperial-house',post(p,body,kind==='dismiss'||kind==='replace'?409:403));
    assert.equal(receipts(h).length,before);assert.equal(h.sql.prepare('SELECT imperial_house_name FROM court_lineages WHERE user_id=?').get(p.user.id).imperial_house_name,null);
-   h.sql.prepare('DELETE FROM court_office_appointments WHERE user_id=?').run(p.user.id);
+   merit(h,p,0);
   }
  });
  console.log(`Court lineage: ${checks} scenarios, ${calls} API calls, max ${maxBindings} D1 bindings`);

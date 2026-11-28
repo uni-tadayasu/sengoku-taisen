@@ -17,15 +17,18 @@ export async function courtEstateAuthority(db,user,h){
   (SELECT g.appointment_token FROM court_regent g WHERE g.id=1 AND g.user_id=?) AS regent_token,
   (SELECT a.office_id FROM court_external_offices a WHERE a.user_id=?) AS office_id,
   (SELECT a.appointment_token FROM court_external_offices a WHERE a.user_id=?) AS office_token,
-  (${RETIRED}) AS retired_token`,user.id,user.id,user.id,user.id,user.id).first();
+  (${RETIRED}) AS retired_token,
+  (SELECT k.office_id FROM court_kyoto_offices k WHERE k.user_id=?) AS formal_office`,user.id,user.id,user.id,user.id,user.id,user.id).first();
  let role=null,proof='';
  if(user.is_admin){role={id:'chancellor',title:'太政大臣'};proof=String(found.admin_since??'');guard.sql+=' AND EXISTS(SELECT 1 FROM settings WHERE key=\'adminUserId\' AND value=? AND updated_at=?)';guard.args.push(user.id,found.admin_since??-1);}
  else if(user.is_staff){role={id:'kyoto',title:'京都御所所属'};proof=user.staff_term||'';}
  else if(found.regent_token){role={id:'regent',title:'摂政'};proof=found.regent_token;guard.sql+=' AND EXISTS(SELECT 1 FROM court_regent WHERE id=1 AND user_id=? AND appointment_token=?)';guard.args.push(user.id,proof);}
  else if(found.office_token&&COURT_OFFICES.some(office=>office.id===found.office_id)){role={id:found.office_id,title:COURT_OFFICES.find(office=>office.id===found.office_id).title,jurisdiction:'external'};proof=found.office_token;guard.sql+=' AND EXISTS(SELECT 1 FROM court_external_offices WHERE user_id=? AND office_id=? AND appointment_token=?)';guard.args.push(user.id,role.id,proof);}
  else if(found.retired_token){role={id:'retired-emperor',title:'上皇'};proof=found.retired_token;guard.sql+=` AND (${RETIRED})=?`;guard.args.push(user.id,proof);}
+ else if(user.court_retained_term&&COURT_OFFICES.some(office=>office.id===found.formal_office)){role={id:found.formal_office,title:COURT_OFFICES.find(office=>office.id===found.formal_office).title,jurisdiction:'kyoto'};proof=user.court_retained_term;}
+ if(user.court_retained_term){guard.sql+=' AND EXISTS(SELECT 1 FROM court_retained_memberships WHERE user_id=? AND term_id=?)';guard.args.push(user.id,user.court_retained_term);}
  guard.sql+=' AND NOT EXISTS(SELECT 1 FROM player_expulsions WHERE user_id=? AND pending=1)';guard.args.push(user.id);
- const eligible=!!role&&!user.expulsion_pending,accessStamp=await h.hash(JSON.stringify(['court-estate-v1',user.id,role?.id||'',proof,user.staff_term||'',user.deputy_term||'',Number(user.moderation_epoch||0),Number(user.expulsion_epoch||0)]));
+ const eligible=!!role&&!user.expulsion_pending,accessStamp=await h.hash(JSON.stringify(['court-estate-v1',user.id,role?.id||'',proof,user.staff_term||'',user.court_retained_term||'',user.deputy_term||'',Number(user.moderation_epoch||0),Number(user.expulsion_epoch||0)]));
  return{eligible,canDevelop:eligible,role,accessStamp,guard:{...guard,code:'COURT_ESTATE_ACCESS_CHANGED',message:ACCESS_MESSAGE}};
 }
 
