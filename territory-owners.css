@@ -113,3 +113,8 @@
   .territory-owner:not(.is-compact) .territory-owner-people{grid-column:1/-1}
   .territory-owner:not(.is-compact) .territory-owner-relation{grid-column:1/-1;justify-self:start}
 }
+
+/* The private court shortcut shares the list heading without squeezing labels. */
+.field-list-heading{flex-wrap:wrap}
+.field-list-heading [data-field-action="own-court"]{flex:0 0 auto}
+.field-list-heading [data-field-action="own-court"][hidden]{display:none}

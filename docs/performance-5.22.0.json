@@ -1,0 +1,44 @@
+{
+  "scenario": {
+    "officers": 256,
+    "variants": 2047,
+    "castles": 100,
+    "facilityLevel": 32,
+    "governors": 64,
+    "trials": 7,
+    "iterationsPerTrial": 400,
+    "unit": "milliseconds/read",
+    "comparison": "same normalized state; median; local Node runtime; no live players or requests"
+  },
+  "measurements": {
+    "evaluation": {
+      "beforeMs": 0.60847174,
+      "afterMs": 0.4637743475000002,
+      "reductionPercent": 23.78046226107392
+    },
+    "income": {
+      "beforeMs": 0.8052341950000005,
+      "afterMs": 0.6973668999999996,
+      "reductionPercent": 13.395766805457242
+    },
+    "syncSnapshot": {
+      "beforeMs": 0.8191362249999997,
+      "afterMs": 0.27662464750000254,
+      "reductionPercent": 66.22971380614958
+    },
+    "adjacentTargets": {
+      "beforeMs": 0.049878000000003336,
+      "afterMs": 0.0226866925000013,
+      "reductionPercent": 54.51563314487393
+    },
+    "questBriefing": {
+      "beforeMs": 0.093668889999999,
+      "afterMs": 0.02137686250000115,
+      "reductionPercent": 77.17826857988669
+    }
+  },
+  "storageBytes": {
+    "readable": 86040,
+    "compact": 60397
+  }
+}

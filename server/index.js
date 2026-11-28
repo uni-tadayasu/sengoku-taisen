@@ -42,8 +42,8 @@ import {requirePromotionOrigin,recordPromotion,readPromotionReport} from './prom
 import {readMusicBroadcast,handleAdminMusic} from './admin-music.js';
 import {lordSupportSql,guardLordSupport,ensureResidency,residencySnapshot,residencyDirectory,residencyStart,initialResidencyStatements,residencyTargetGuard,prepareResidencySuccession,prepareResidencyCpuLosses} from './residency.js';
 const API = '/api/v1';
-const API_VERSION = '5.20.0';
-const API_FEATURES = Object.freeze({trades:true,moderation:true,playerExpulsion:true,moderatedNameReuse:true,deputyOperator:true,deputyOperations:true,privateOperationsLabels:true,deputyOfficer:true,kagoshimaProtected:true,premium:true,timedEvents:true,troopTrades:true,roamingBattles:true,roamingDeployment:true,covertDispatch:true,privatePlayerRoles:true,guildIcons:true,court:true,kyotoGosho:true,branches:true,branchBattles:true,branchFacilities:true,audioCalls:true,progression:true,armyPresets:true,allianceStrategy:true,sharedConquest:true,newcomerProtection:true,webPush:true,messagePush:true,pushDeviceTest:true,battleAdviser:true,battleCatalog:true,eventBattleRewards:true,shogunate:true,shogunateGovernance:true,attackTravel:true,castleResidency:true,retainerCastleStats:true,residencyRelocation:true,maintenanceUpkeep:true,strongholdDurability:true,chatReplies:true,chatMentions:true,covertReturnTravel:true,allianceUnitTravel:true,legacySaveRecovery:true,displayNameVariants:true,courtOffices:true,serverSummons:true,loginRewards:true,paidRerolls:true,supporterChoices:true,premiumGrowthMetrics:true,adminMusicBroadcast:true,rankRiceProduction:true,shogunateApproval:true,imperialSuccession:true,retiredEmperor:true,regency:true,courtEventRoom:true,imperialSuccessionApproval:true,courtEstate:true});
+const API_VERSION = '5.22.0';
+const API_FEATURES = Object.freeze({trades:true,moderation:true,playerExpulsion:true,moderatedNameReuse:true,deputyOperator:true,deputyOperations:true,privateOperationsLabels:true,deputyOfficer:true,kagoshimaProtected:true,premium:true,timedEvents:true,troopTrades:true,roamingBattles:true,roamingDeployment:true,covertDispatch:true,privatePlayerRoles:true,guildIcons:true,court:true,kyotoGosho:true,branches:true,branchBattles:true,branchFacilities:true,audioCalls:true,progression:true,armyPresets:true,allianceStrategy:true,sharedConquest:true,newcomerProtection:true,webPush:true,messagePush:true,pushDeviceTest:true,battleAdviser:true,battleCatalog:true,eventBattleRewards:true,shogunate:true,shogunateGovernance:true,attackTravel:true,castleResidency:true,retainerCastleStats:true,residencyRelocation:true,maintenanceUpkeep:true,strongholdDurability:true,chatReplies:true,chatMentions:true,covertReturnTravel:true,allianceUnitTravel:true,legacySaveRecovery:true,displayNameVariants:true,courtOffices:true,serverSummons:true,loginRewards:true,paidRerolls:true,supporterChoices:true,premiumGrowthMetrics:true,adminMusicBroadcast:true,rankRiceProduction:true,shogunateApproval:true,imperialSuccession:true,retiredEmperor:true,regency:true,courtEventRoom:true,imperialSuccessionApproval:true,courtEstate:true,fieldTerritories:true,fieldOwnerProjection:true,courtEstateField:true});
 const MAX_BODY = 16 * 1024;
 const MAX_SAVE_BODY = 2 * 1024 * 1024;
 const MAX_AVATAR_BYTES = 48 * 1024;
@@ -70,6 +70,9 @@ const WELCOME = '戦国VSへようこそ。城を育て、仲間と語らい、�
 const BASE_ORIGINS = new Set(['https://uni-tadayasu.github.io', 'https://www.kasai-solutions-inc.com', 'http://127.0.0.1:4173', 'null']);
 const encoder = new TextEncoder();
 const authenticatedRequests = new WeakMap();
+// This gate only coalesces optional maintenance inside one Worker isolate.
+// The database tick and each settler's commit guards remain authoritative.
+const backgroundPolls = new WeakMap();
 const courtResponseGuards = new WeakMap();
 const courtEstateProjectionGuards = new WeakMap();
 const chatResponseGuards = new WeakMap();
@@ -1233,6 +1236,7 @@ const RESOURCES = ["gold","rice","wood","stone"];
 const GACHA = {"initial":3000,"duplicateRefund":50};
 const CASTLE_BY_ID = Object.assign(Object.create(null), Object.fromEntries(CASTLES.map(v => [v.id,v])));
 const OFFICER_BY_ID = Object.assign(Object.create(null), Object.fromEntries(OFFICERS.map(v => [v.id,v])));
+const VALID_OFFICER_VARIANTS = new Map(OFFICERS.flatMap(officer=>RANKS.map(rank=>[officer.id+':'+rank,officer.id])));
 const CLAN_HOMES = {'織田家':'kiyosu','武田家':'tsutsujigasaki','上杉家':'kasugayama','徳川家':'okazaki','毛利家':'yoshida','島津家':'uchijo','伊達家':'yonezawa','北条家':'odawara'};
 const copy = value => JSON.parse(JSON.stringify(value));
 const pick = (object, keys) => Object.fromEntries(keys.map(key => [key,object[key]]));
@@ -1315,9 +1319,11 @@ function normalizeGameSave(raw, user, now, {reading=false,clock=null}={}) {
   if(!isObj(s.castles)||Object.keys(s.castles).length!==CASTLES.length||!CASTLES.every(c=>{const v=s.castles[c.id];if(isObj(v)&&v.level===undefined)v.level=1;return isObj(v)&&validOwner.has(v.owner)&&num(v.troops,0,100000000)&&num(v.wall,1,32)&&num(v.level,1,incomingCastleLimit(c.id));}))invalid();
   try{for(const castle of Object.values(s.castles)){if(castle.durability!==undefined)castle.durability=GameEngine.normalizeDurability(castle.durability);}}catch{invalid();}
   if(!reading&&clock&&s.worldClock&&Object.values(s.castles).some(castle=>castle.durability?.updatedElapsedMs>clock.elapsedMs))invalid();
-  if(!Array.isArray(s.officers)||s.officers.length>g.roster.length||new Set(s.officers).size!==s.officers.length||s.officers.some(id=>typeof id!=='string'||!g.officer(id)))invalid();
-  if(!Array.isArray(s.army)||s.army.length>3||new Set(s.army).size!==s.army.length||s.army.some(id=>!s.officers.includes(id)))invalid();
-  if(!isObj(s.governors)||Object.keys(s.governors).some(id=>!BUILDINGS.some(b=>b.id===id)||!staff&&s.buildings[id]<1)||Object.values(s.governors).some(id=>!s.officers.includes(id)||s.army.includes(id))||new Set(Object.values(s.governors)).size!==Object.values(s.governors).length)invalid();
+  if(!Array.isArray(s.officers)||s.officers.length>g.roster.length)invalid();
+  const ownedOfficers=new Set(s.officers);
+  if(ownedOfficers.size!==s.officers.length||s.officers.some(id=>typeof id!=='string'||!g.officer(id)))invalid();
+  if(!Array.isArray(s.army)||s.army.length>3||new Set(s.army).size!==s.army.length||s.army.some(id=>!ownedOfficers.has(id)))invalid();
+  if(!isObj(s.governors)||Object.keys(s.governors).some(id=>!BUILDINGS.some(b=>b.id===id)||!staff&&s.buildings[id]<1)||Object.values(s.governors).some(id=>!ownedOfficers.has(id)||s.army.includes(id))||new Set(Object.values(s.governors)).size!==Object.values(s.governors).length)invalid();
   const scalar=(v,min,max)=>typeof v==='number'&&Number.isFinite(v)&&v>=min&&v<=max;
   if(s.realtime===undefined)s.realtime={running:true,speed:1,elapsed:0,commandProgress:0,incomeRemainders:{gold:0,rice:0,wood:0,stone:0}};
   const rt=s.realtime;
@@ -1359,12 +1365,14 @@ function normalizeGameSave(raw, user, now, {reading=false,clock=null}={}) {
   if(!isObj(s.stats)||!['battles','wins','upgrades','recruited'].every(k=>num(s.stats[k],0,10000000))||s.stats.wins>s.stats.battles)invalid();
   for(const key of ['gachaDraws','gachaDuplicates','castleUpgrades']){if(s.stats[key]===undefined)s.stats[key]=0;if(!num(s.stats[key],0,10000000))invalid();}if(s.stats.gachaDuplicates>s.stats.gachaDraws)invalid();
   if(s.gachaHistory===undefined)s.gachaHistory=[];
-  if(!Array.isArray(s.gachaHistory)||s.gachaHistory.length>50||s.gachaHistory.length>s.stats.gachaDraws||s.gachaHistory.some(v=>!isObj(v)||!g.baseOfficer(v.officerId)||!s.officers.includes(v.officerId)||!RANKS.includes(v.rank)||typeof v.isNew!=='boolean'||v.duplicateRefund!==(v.isNew?0:GACHA.duplicateRefund)||!num(v.turn,0,s.turn)))invalid();
+  if(!Array.isArray(s.gachaHistory)||s.gachaHistory.length>50||s.gachaHistory.length>s.stats.gachaDraws||s.gachaHistory.some(v=>!isObj(v)||!g.baseOfficer(v.officerId)||!ownedOfficers.has(v.officerId)||!RANKS.includes(v.rank)||typeof v.isNew!=='boolean'||v.duplicateRefund!==(v.isNew?0:GACHA.duplicateRefund)||!num(v.turn,0,s.turn)))invalid();
   s.gachaHistory=s.gachaHistory.map(v=>({officerId:v.officerId,rank:v.rank,isNew:v.isNew,isNewOfficer:v.isNewOfficer===undefined?v.isNew:v.isNewOfficer,upgraded:v.upgraded===undefined?false:v.upgraded,duplicateRefund:v.duplicateRefund,turn:v.turn}));
   if(s.gachaHistory.some(v=>typeof v.isNewOfficer!=='boolean'||typeof v.upgraded!=='boolean'||v.isNewOfficer&&!v.isNew||v.upgraded&&(!v.isNew||v.isNewOfficer)))invalid();
   if(s.officerVariants===undefined){const variants=new Set(s.officers.map(id=>`${id}:${g.baseOfficer(id).rank||g.baseOfficer(id).rarity}`));for(const v of s.gachaHistory)variants.add(`${v.officerId}:${v.rank}`);s.officerVariants=[...variants];}
-  const validVariants=new Map(g.roster.flatMap(o=>RANKS.map(rank=>[`${o.id}:${rank}`,o.id])));
-  if(!Array.isArray(s.officerVariants)||s.officerVariants.length>g.roster.length*RANKS.length||new Set(s.officerVariants).size!==s.officerVariants.length||s.officerVariants.some(key=>typeof key!=='string'||!validVariants.has(key)||!s.officers.includes(validVariants.get(key)))||s.officers.some(id=>!RANKS.some(rank=>s.officerVariants.includes(`${id}:${rank}`)))||s.gachaHistory.some(v=>!s.officerVariants.includes(`${v.officerId}:${v.rank}`)))invalid();
+  const validVariants=VALID_OFFICER_VARIANTS;
+  if(!Array.isArray(s.officerVariants)||s.officerVariants.length>g.roster.length*RANKS.length)invalid();
+  const ownedVariants=new Set(s.officerVariants);
+  if(ownedVariants.size!==s.officerVariants.length||s.officerVariants.some(key=>typeof key!=='string'||!validVariants.has(key)||!ownedOfficers.has(validVariants.get(key)))||s.officers.some(id=>!RANKS.some(rank=>ownedVariants.has(`${id}:${rank}`)))||s.gachaHistory.some(v=>!ownedVariants.has(`${v.officerId}:${v.rank}`)))invalid();
   if(!num(s.stats.researches??0,0,10000000))invalid();s.stats.researches=s.stats.researches??Object.values(s.tech).reduce((a,b)=>a+b,0);
   if(!Array.isArray(s.log)||s.log.length>200||s.log.some(l=>!isObj(l)||!num(l.turn,0,MAX_TURN)||typeof l.text!=='string'||l.text.length>2000||typeof l.kind!=='string'||l.kind.length>30))invalid();
   // Only retain known, validated fields; do not merge arbitrary imported object keys.
@@ -2137,21 +2145,30 @@ function mapFieldRelationship(row,userId,elapsed,targetName='') {
   if(status==='neutral')return null;
   return {targetPlayerId:row.user_a===userId?row.user_b:row.user_a,targetName,targetEvaluation:evaluationRef(row.user_a===userId?row.user_b:row.user_a),status,expiresElapsedMs:Number(row.expires_elapsed_ms),remainingMs:Math.max(0,Number(row.expires_elapsed_ms)-elapsed),proposedBy:row.proposed_by,revision:Number(row.revision)};
 }
-function mapFieldPlayer(row,viewer,relationship,clock,now,targetCastleId=null,inspectDefense=null) {
-  const castles=JSON.parse(row.castles_json),cyclePending=Number(row.cycle_index)<Math.floor(clock.elapsedMs/WORLD_CYCLE_MS),rawHome=cyclePending?(row.cycle_home||row.original_home||row.home_id):row.home_id;
+// Resolve public home migrations once. The compact owner reader only loads
+// the castle JSON for rare legacy identities that need a replacement home.
+function fieldPlayerIdentity(row,clock,{withCastles=false}={}){
+  const cyclePending=Number(row.cycle_index)<Math.floor(clock.elapsedMs/WORLD_CYCLE_MS),rawHome=cyclePending?(row.cycle_home||row.original_home||row.home_id):row.home_id;
   const legacyService=rawHome==='sunpu'&&(row.service_base_id==='sunpu'||!!row.personal_home),storedHome=legacyService?'kyoto_gosho':rawHome;
-  // Old saves remain untouched until their own synchronization. Project the
-  // new palace defensively so a legacy 128-castle map is still readable.
-  if(!castles.kyoto_gosho){castles.kyoto_gosho=initialCastle('kyoto_gosho');if((row.is_staff&&!row.is_admin||legacyService)&&row.home_id==='sunpu'){castles.kyoto_gosho={...castles.sunpu};castles.sunpu=initialCastle('sunpu');}}
   const clan=publicClan(row.game_clan,row.is_admin,row.is_staff,row.personal_clan);
   const canonical=CLAN_HOMES[clan]||'kiyosu',reserved=['edo','kyoto_gosho','kagoshima'],legacyDeputy=!row.is_admin&&!row.is_staff&&!row.is_deputy&&row.home_id==='kagoshima';
-  // Project the same migration as the authorized save reader until this
-  // ordinary player's next sync persists the released Kagoshima residence.
-  if(legacyDeputy){castles[canonical]={...castles.kagoshima,owner:row.game_clan};castles.kagoshima=initialCastle('kagoshima');if(castles.kagoshima.owner===row.game_clan)castles.kagoshima.owner='在地衆';}
-  const alternatives=CASTLES.filter(c=>!reserved.includes(c.id)&&castles[c.id].owner===row.game_clan);
-  const replacement=alternatives.find(c=>c.id===canonical)?.id||alternatives[0]?.id||canonical;
+  let castles=null;
+  function readCastles(){
+    if(castles)return castles;
+    castles=JSON.parse(row.castles_json||'{}');
+    if(!castles.kyoto_gosho){castles.kyoto_gosho=initialCastle('kyoto_gosho');if((row.is_staff&&!row.is_admin||legacyService)&&row.home_id==='sunpu'){castles.kyoto_gosho={...castles.sunpu};castles.sunpu=initialCastle('sunpu');}}
+    if(legacyDeputy){castles[canonical]={...castles.kagoshima,owner:row.game_clan};castles.kagoshima=initialCastle('kagoshima');if(castles.kagoshima.owner===row.game_clan)castles.kagoshima.owner='在地衆';}
+    return castles;
+  }
   const ordinaryHome=legacyDeputy?canonical:!reserved.includes(row.home_id)?row.home_id:null;
+  const needsReplacement=!row.is_admin&&!row.is_staff&&!row.is_deputy&&reserved.includes(storedHome)&&!(row.personal_home&&!reserved.includes(row.personal_home))&&!ordinaryHome;
+  const alternatives=withCastles||needsReplacement?CASTLES.filter(c=>!reserved.includes(c.id)&&readCastles()[c.id]?.owner===row.game_clan):[];
+  const replacement=alternatives.find(c=>c.id===canonical)?.id||alternatives[0]?.id||canonical;
   const home=row.is_admin?'edo':row.is_staff?'kyoto_gosho':row.is_deputy?'kagoshima':reserved.includes(storedHome)?row.personal_home&&!reserved.includes(row.personal_home)?row.personal_home:ordinaryHome||replacement:storedHome;
+  return{home,clan,storedHome,cyclePending,alternatives,castles:withCastles?readCastles():castles};
+}
+function mapFieldPlayer(row,viewer,relationship,clock,now,targetCastleId=null,inspectDefense=null) {
+  const {castles,cyclePending,storedHome,clan,alternatives,home}=fieldPlayerIdentity(row,clock,{withCastles:true});
   const castleId=targetCastleId||home,isHome=castleId===home,battleMode=fieldBattleMode(row,castleId);
   const castle={...(!isHome?castles[castleId]:!row.is_admin&&storedHome==='edo'&&!alternatives.length&&castles.edo.owner===row.game_clan?castles.edo:castles[home])};
   if(isHome&&row.is_admin&&storedHome!=='edo')for(const key of ['troops','wall','level'])castle[key]=Math.max(castle[key],castles[storedHome][key]);
@@ -2176,10 +2193,25 @@ function mapFieldPlayer(row,viewer,relationship,clock,now,targetCastleId=null,in
   const branches=fieldBranches(row,castleId,castle,clock,cyclePending,home,baseReason),reason=baseReason||(branches.some(branch=>branch.level>0&&!branch.fallen)?'大都市拠点へ攻めるには、残っている支拠点をすべて先に陥落させてください。':'');
   return {playerId:row.id,name:row.name,clan,householdCastleId:row.household_id||null,householdRole:row.household_id?(row.household_lord===row.id?'lord':'retainer'):null,lordEpoch:Number(row.household_epoch||0),retainerCount:state.retainerSupport?.count||0,evaluation:evaluationRef(row.id),avatarVersion:row.avatar_version||null,homeCastleId:home,homeCastleName:CASTLE_BY_ID[home].name,targetCastleId:castleId,targetCastleName:CASTLE_BY_ID[castleId].name,isHome,battleMode,capturable:battleMode==='capture',majorCity:MAJOR_CITIES.includes(castleId),level:castle.level,keepLevel,durability:defense.durability,defenseTroops:defense.force,defensePower:defense.power,armySummary:defense.army,branches,isAdmin:!!row.is_admin,isDeputy:!!row.is_deputy,isStaff:!!row.is_staff&&!row.is_admin,self,online:row.presence_seen!==null&&Number(row.presence_seen)>now-ONLINE_WINDOW,relationship:relation,protectedUntilElapsedMs:protectedUntil,attackable:!reason,attackReason:reason};
 }
-function mapFieldTargets(row,viewer,relationship,clock,now,inspectDefense=null) {
-  const home=mapFieldPlayer(row,viewer,relationship,clock,now,null,inspectDefense),castles=JSON.parse(row.castles_json);
-  const outposts=Number(row.cycle_index)<Math.floor(clock.elapsedMs/WORLD_CYCLE_MS)?[]:FIELD_CAPTURE_CASTLES.filter(id=>id!==home.homeCastleId&&castles[id]?.owner===row.game_clan);
-  return [...(MAJOR_CITIES.includes(home.homeCastleId)||home.householdRole==='lord'&&home.householdCastleId===home.homeCastleId?[home]:[]),...outposts.map(id=>mapFieldPlayer(row,viewer,relationship,clock,now,id,inspectDefense))];
+function fieldHoldingTarget(row,home,castleId,castle,{courtEstate=false}={}){
+  const level=Math.max(1,Math.min(castleLevelLimit(castleId),Number(castle?.level)||1));
+  return{playerId:home.playerId,name:home.name,clan:home.clan,avatarVersion:home.avatarVersion,evaluation:evaluationRef(row.id),homeCastleId:home.homeCastleId,homeCastleName:home.homeCastleName,
+    targetCastleId:castleId,targetCastleName:CASTLE_BY_ID[castleId].name,isHome:false,level,keepLevel:level,keepLevelKnown:false,majorCity:MAJOR_CITIES.includes(castleId),
+    self:home.self,online:home.online,relationship:home.relationship,householdCastleId:home.householdCastleId,
+    displayOnly:true,holdingKind:courtEstate?'court-estate':'territory',battleMode:null,capturable:false,attackable:false,branches:[],
+    ...(courtEstate?{courtEstateMember:true,canDevelopCourtEstate:true}:{}),
+    attackReason:courtEstate?'京都御所の共同領地です。共同普請から発展させられます。':'この領主が個人戦役で占領した領地です。共有合戦の出陣先には含まれません。'};
+}
+function mapFieldTargets(row,viewer,relationship,clock,now,inspectDefense=null,preparedHome=null,{includeHoldings=false}={}) {
+  const home=preparedHome||mapFieldPlayer(row,viewer,relationship,clock,now,null,inspectDefense),castles=JSON.parse(row.castles_json);
+  const cyclePending=Number(row.cycle_index)<Math.floor(clock.elapsedMs/WORLD_CYCLE_MS);
+  const outposts=cyclePending?[]:[...FIELD_CAPTURE_CASTLES.map(id=>CASTLE_BY_ID[id]),...(includeHoldings?CASTLES.filter(c=>!MAJOR_CITIES.includes(c.id)):[])].filter(c=>c.id!==home.homeCastleId&&castles[c.id]?.owner===row.game_clan);
+  const targets=MAJOR_CITIES.includes(home.homeCastleId)||home.householdRole==='lord'&&home.householdCastleId===home.homeCastleId?[home]:[];
+  for(const castle of outposts){
+    if(FIELD_CAPTURE_CASTLES.includes(castle.id))targets.push(mapFieldPlayer(row,viewer,relationship,clock,now,castle.id,inspectDefense));
+    else if(includeHoldings)targets.push(fieldHoldingTarget(row,home,castle.id,castles[castle.id]));
+  }
+  return targets;
 }
 async function fieldRelation(db,a,b) {const [first,second]=pair(a,b);return stmt(db,'SELECT * FROM field_relations WHERE user_a=? AND user_b=?',first,second).first();}
 async function fieldOwnRelations(db,userId,elapsed) {
@@ -2195,7 +2227,69 @@ const FIELD_PERSONAL_HOME_SQL=`CASE WHEN json_extract(s.save_json,'$.state.home'
 const FIELD_CYCLE_HOME_SQL=`CASE WHEN COALESCE(s.cycle_home,json_extract(s.save_json,'$.state.cycle.home')) IN ('edo','kyoto_gosho','kagoshima') THEN ${FIELD_PERSONAL_HOME_SQL} ELSE COALESCE(s.cycle_home,json_extract(s.save_json,'$.state.cycle.home'),${FIELD_PERSONAL_HOME_SQL}) END`;
 const FIELD_PUBLIC_HOME_SQL=`(${FIELD_FIXED_HOME_SQL} OR ${FIELD_PERSONAL_HOME_SQL} IN ('nijo','osaka','nagoya')
   OR EXISTS(SELECT 1 FROM castle_seats cs WHERE cs.lord_user_id=u.id AND cs.castle_id=${FIELD_PERSONAL_HOME_SQL}))`;
-const FIELD_PUBLIC_TARGET_SQL="("+FIELD_PUBLIC_HOME_SQL+" OR EXISTS(SELECT 1 FROM json_each(s.save_json,'$.state.castles') c WHERE c.key IN ('nijo','osaka','nagoya') AND json_extract(c.value,'$.owner')=json_extract(s.save_json,'$.state.clan')))";
+const FIELD_PUBLIC_TARGET_SQL="("+FIELD_PUBLIC_HOME_SQL+" OR ("+EFFECTIVE_CYCLE_SQL+">=? AND EXISTS(SELECT 1 FROM json_each(s.save_json,'$.state.castles') c WHERE c.key IN ('nijo','osaka','nagoya') AND json_extract(c.value,'$.owner')=json_extract(s.save_json,'$.state.clan'))))";
+// Ordinary campaign holdings are presentation-only. A saved private campaign
+// cannot add shared battle targets or bypass the public household ledger.
+const FIELD_DISPLAY_TARGET_SQL=`(${FIELD_PUBLIC_HOME_SQL} OR (${EFFECTIVE_CYCLE_SQL}>=? AND EXISTS(
+  SELECT 1 FROM json_each(s.save_json,'$.state.castles') own WHERE own.key<>${FIELD_PERSONAL_HOME_SQL}
+  AND own.key NOT IN ('edo','kyoto_gosho','kagoshima') AND json_extract(own.value,'$.owner')=json_extract(s.save_json,'$.state.clan'))))`;
+const FIELD_OWNER_SELECT=`/* compact-field-owners */ SELECT u.id,u.name,
+  (SELECT version FROM user_avatars WHERE user_id=u.id) AS avatar_version,
+  CASE WHEN u.id=(SELECT value FROM settings WHERE key='adminUserId') THEN 1 ELSE 0 END AS is_admin,
+  EXISTS(SELECT 1 FROM staff_members sm WHERE sm.user_id=u.id) AS is_staff,
+  EXISTS(SELECT 1 FROM deputy_operator_state ds WHERE ds.user_id=u.id) AS is_deputy,
+  (SELECT castle_id FROM castle_residents WHERE user_id=u.id) AS household_id,
+  (SELECT cs.lord_user_id FROM castle_seats cs JOIN castle_residents m ON m.castle_id=cs.castle_id WHERE m.user_id=u.id) AS household_lord,
+  (SELECT json_extract(b.save_json,'$.state.clan') FROM staff_campaign_backups b WHERE b.user_id=u.id AND b.active=1) AS personal_clan,
+  (SELECT json_extract(b.save_json,'$.state.home') FROM staff_campaign_backups b WHERE b.user_id=u.id AND b.active=1) AS personal_home,
+  ${EFFECTIVE_CYCLE_SQL} AS cycle_index,s.cycle_home,
+  json_extract(s.save_json,'$.state.cycle.home') AS original_home,
+  json_extract(s.save_json,'$.state.staffService.baseId') AS service_base_id,
+  json_extract(s.save_json,'$.state.clan') AS game_clan,json_extract(s.save_json,'$.state.home') AS home_id,
+  CASE WHEN NOT ${FIELD_FIXED_HOME_SQL} AND (json_extract(s.save_json,'$.state.home') IN ('edo','kyoto_gosho','sunpu','kagoshima')
+    OR COALESCE(s.cycle_home,json_extract(s.save_json,'$.state.cycle.home')) IN ('edo','kyoto_gosho','sunpu','kagoshima'))
+    THEN json_extract(s.save_json,'$.state.castles') ELSE NULL END AS castles_json,
+  ${FIELD_CAPTURE_CASTLES.map(id=>`json_extract(s.save_json,'$.state.castles.${id}.owner')=json_extract(s.save_json,'$.state.clan') AS owns_${id}`).join(',')}
+  FROM users u JOIN player_saves s ON s.user_id=u.id
+  WHERE s.save_json IS NOT NULL AND NOT EXISTS(SELECT 1 FROM player_bans pb WHERE pb.user_id=u.id AND pb.active=1)
+    AND (COALESCE(json_extract(s.save_json,'$.state.gameOver'),0)=0 OR ${FIELD_FIXED_HOME_SQL} OR ${EFFECTIVE_CYCLE_SQL}<?)`;
+function mapFieldOwnerTargets(row,viewer,relationship,clock){
+  const {home,cyclePending}=fieldPlayerIdentity(row,clock),ids=[];
+  if(MAJOR_CITIES.includes(home)||row.household_lord===row.id&&row.household_id===home)ids.push(home);
+  if(!cyclePending)for(const id of FIELD_CAPTURE_CASTLES)if(id!==home&&row['owns_'+id])ids.push(id);
+  const relation=viewer?.id===row.id?'self':fieldRelationStatus(relationship,viewer?.id,clock.elapsedMs);
+  return ids.map(id=>({playerId:row.id,name:row.name,avatarVersion:row.avatar_version||null,homeCastleId:home,targetCastleId:id,relationship:relation}));
+}
+async function appendViewerCourtEstate(db,viewer,url,now,clock,targets,found,request,{compact=false,estateAccess=null}={}){
+  // Only the viewing player gets this additional display. Other ordinary-home
+  // court participants are not published as a new Kyoto resident directory.
+  if(!viewer||url.searchParams.get('cursor')||!viewer.is_admin&&!viewer.is_staff&&!viewer.is_court_protected)return;
+  const access=estateAccess||await courtEstateAuthority(db,viewer,{requireAccountAccess,roleCommitGuard,hash});
+  if(!access.eligible)return;
+  const existing=targets.find(target=>target.playerId===viewer.id&&target.targetCastleId==='kyoto_gosho');
+  if(existing){existing.canDevelopCourtEstate=true;existing.courtEstateMember=true;}
+  else{
+    const row=found.find(item=>item.id===viewer.id)||await stmt(db,(compact?FIELD_OWNER_SELECT:FIELD_SELECT)+' AND u.id=?',Math.floor(clock.elapsedMs/WORLD_CYCLE_MS),viewer.id).first();
+    if(!row)return;
+    if(compact){const {home}=fieldPlayerIdentity(row,clock);targets.push({playerId:row.id,name:row.name,avatarVersion:row.avatar_version||null,homeCastleId:home,targetCastleId:'kyoto_gosho',relationship:'self',displayOnly:true,holdingKind:'court-estate',canDevelopCourtEstate:true,courtEstateMember:true});}
+    else{const home=mapFieldPlayer(row,viewer,null,clock,now);targets.push(fieldHoldingTarget(row,home,'kyoto_gosho',{level:row.staff_castle_level||1},{courtEstate:true}));}
+  }
+  await assertCourtEstateAccess(db,viewer,access,{requireAccountAccess,fail});
+  if(request)courtResponseGuards.set(request,access.guard);
+}
+async function getFieldOwners(db,viewer,url,now,request){
+  const cursor=url.searchParams.get('cursor')||'',limitText=url.searchParams.get('limit')||'100';
+  if(cursor)idField(cursor,'共有地図の続き');
+  if(!/^\d{1,3}$/.test(limitText)||Number(limitText)<1||Number(limitText)>100)fail(400,'INVALID_INPUT','一覧の件数は1～100件で指定してください。');
+  await settleShogunateApprovals(db,now);await ensureResidency(db,now);
+  const limit=Number(limitText),clock=await getWorldClock(db,now);await cyclePolicy(db,clock,now);
+  const relations=viewer?await fieldOwnRelations(db,viewer.id,clock.elapsedMs):[],byPlayer=new Map(relations.map(relation=>[relation.user_a===viewer.id?relation.user_b:relation.user_a,relation]));
+  const cycle=Math.floor(clock.elapsedMs/WORLD_CYCLE_MS);
+  const found=rows(await stmt(db,FIELD_OWNER_SELECT+' AND '+FIELD_PUBLIC_TARGET_SQL+' AND u.id>? ORDER BY u.id LIMIT ?',cycle,cycle,cursor,limit+1).all());
+  const targets=found.slice(0,limit).flatMap(row=>mapFieldOwnerTargets(row,viewer,byPlayer.get(row.id),clock));
+  await appendViewerCourtEstate(db,viewer,url,now,clock,targets,found.slice(0,limit),request,{compact:true});
+  return{ok:true,view:'owners',targets,palaceControl:await readPalaceControl(db),nextCursor:found.length>limit?found[limit-1].id:null,clock};
+}
 // Resolve a named event against the same published castle and field defense
 // as the world map. A disputed major city has no single defending lord.
 function eventCastleCandidates(castleId,clock){
@@ -2301,7 +2395,7 @@ function applyFieldReinforcements(target,troops){
   target.reinforcementTroops=troops;
   if(troops){target.defensePower=Math.round(target.defensePower*(target.defenseTroops+troops)/Math.max(1,target.defenseTroops));target.defenseTroops+=troops;}
 }
-async function getFieldList(db,viewer,url,now) {
+async function getFieldList(db,viewer,url,now,request=null) {
   await settleShogunateApprovals(db,now);
   await ensureResidency(db,now);
   const cursor=url.searchParams.get('cursor')||'',limitText=url.searchParams.get('limit')||'50';
@@ -2309,21 +2403,32 @@ async function getFieldList(db,viewer,url,now) {
   if(!/^\d{1,3}$/.test(limitText)||Number(limitText)<1||Number(limitText)>100)fail(400,'INVALID_INPUT','一覧の件数は1～100件で指定してください。');
   if(viewer)viewer={...viewer,householdCastleId:(await residencySnapshot(db,viewer.id,now)).residency?.castleId||null,courtEdoDenied:!!viewer.is_staff&&!viewer.is_admin&&!(await courtImperialAuthority(db,viewer)).canActForEmperor};
   const limit=Number(limitText),clock=await getWorldClock(db,now),relations=viewer?await fieldOwnRelations(db,viewer.id,clock.elapsedMs):[];await cyclePolicy(db,clock,now);const currentCycle=Math.floor(clock.elapsedMs/WORLD_CYCLE_MS);await sharedStaffBaseRow(db,clock,now);
-  const result=await db.batch([stmt(db,FIELD_SELECT+' AND '+FIELD_PUBLIC_TARGET_SQL+' AND u.id>? ORDER BY u.id LIMIT ?',currentCycle,cursor,limit+1),stmt(db,'SELECT COUNT(*) AS count FROM ('+FIELD_SELECT+' AND '+FIELD_PUBLIC_HOME_SQL+')',currentCycle)]);
-  const found=rows(result[0]),players=found.slice(0,limit).map(row=>mapFieldPlayer(row,viewer,relations.find(r=>r.user_a===row.id||r.user_b===row.id),clock,now)).filter(home=>MAJOR_CITIES.includes(home.homeCastleId)||home.householdRole==='lord'&&home.householdCastleId===home.homeCastleId);
-  const targets=found.slice(0,limit).flatMap(row=>mapFieldTargets(row,viewer,relations.find(r=>r.user_a===row.id||r.user_b===row.id),clock,now));
+  const estateAccess=viewer&&(viewer.is_admin||viewer.is_staff||viewer.is_court_protected)?await courtEstateAuthority(db,viewer,{requireAccountAccess,roleCommitGuard,hash}):null;
+  // The displayed population and its count use the same predicate, including
+  // a qualified viewer whose personal home is a retainer's shared residence.
+  const displayWhere='('+FIELD_DISPLAY_TARGET_SQL+' OR (?=1 AND u.id=?))',displayArgs=[currentCycle,currentCycle,estateAccess?.eligible?1:0,viewer?.id||''];
+  const result=await db.batch([stmt(db,FIELD_SELECT+' AND '+displayWhere+' AND u.id>? ORDER BY u.id LIMIT ?',...displayArgs,cursor,limit+1),stmt(db,'SELECT COUNT(*) AS count FROM ('+FIELD_SELECT+' AND '+displayWhere+')',...displayArgs)]);
+  const found=rows(result[0]),players=[],targets=[],byPlayer=new Map(relations.map(relation=>[relation.user_a===viewer?.id?relation.user_b:relation.user_a,relation]));
+  for(const row of found.slice(0,limit)){
+    const relation=byPlayer.get(row.id),home=mapFieldPlayer(row,viewer,relation,clock,now);
+    if(MAJOR_CITIES.includes(home.homeCastleId)||home.householdRole==='lord'&&home.householdCastleId===home.homeCastleId)players.push(home);
+    targets.push(...mapFieldTargets(row,viewer,relation,clock,now,null,home,{includeHoldings:true}));
+  }
+  await appendViewerCourtEstate(db,viewer,url,now,clock,targets,found.slice(0,limit),request,{estateAccess});
   // Aggregate only currently stationed, authorized reinforcements. A single
   // query covers the page; combat validates the same membership epochs again.
   const aids=rows(await stmt(db,`SELECT u.target_id,u.castle_id,SUM(u.troops) AS troops FROM alliance_units u
     JOIN guild_members a ON a.user_id=u.owner_id AND a.guild_id=u.guild_id
     JOIN guild_members d ON d.user_id=u.target_id AND d.guild_id=u.guild_id
     WHERE u.kind='aid' AND u.state='stationed' AND u.expires_at>?
+    AND u.target_id IN (SELECT value FROM json_each(?))
     AND COALESCE((SELECT epoch FROM voice_membership_epochs WHERE user_id=u.owner_id),0)=u.owner_epoch
     AND COALESCE((SELECT epoch FROM voice_membership_epochs WHERE user_id=u.target_id),0)=u.target_epoch
     AND NOT EXISTS(SELECT 1 FROM player_bans b WHERE b.user_id IN (u.owner_id,u.target_id) AND b.active=1)
-    GROUP BY u.target_id,u.castle_id`,now).all());
-  for(const player of [...players,...targets]){const aid=aids.find(v=>v.target_id===player.playerId&&v.castle_id===player.targetCastleId),troops=Number(aid?.troops||0);applyFieldReinforcements(player,troops);}
-  await decorateProtectedTargets(db,[...players,...targets],viewer,now);
+    GROUP BY u.target_id,u.castle_id`,now,JSON.stringify(found.slice(0,limit).map(row=>row.id))).all());
+  const aidByTarget=new Map(aids.map(aid=>[aid.target_id+':'+aid.castle_id,Number(aid.troops)||0]));
+  for(const player of new Set([...players,...targets]))if(!player.displayOnly)applyFieldReinforcements(player,aidByTarget.get(player.playerId+':'+player.targetCastleId)||0);
+  await decorateProtectedTargets(db,[...new Set([...players,...targets])].filter(target=>!target.displayOnly),viewer,now);
   const palaceControl=await readPalaceControl(db);
   for(const player of [...players,...targets])if((player.targetCastleId||player.homeCastleId)==='kyoto_gosho')player.palaceControl=palaceControl;
   return {ok:true,players,targets,palaceControl,total:Number(rows(result[1])[0].count),nextCursor:found.length>limit?found[limit-1].id:null,clock,rules:FIELD_RULES};
@@ -2545,6 +2650,7 @@ async function backgroundMarchSweep(env,now){
   // the same settlers; an open browser is never needed to retain progress.
   const tick=await stmt(env.DB,"INSERT INTO settings(key,value,updated_at) VALUES('battleMarchTick',?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at WHERE settings.updated_at<=? RETURNING key",String(now),now,now-1000).first();
   if(!tick)return;
+  await settleShogunateApprovals(env.DB,now);
   const context=marchContext(env.DB,null,now,env);await settleBattleMarches(context,{limit:8});await settleConquestMarches(context);await settleCovertDispatches(context,{limit:4});await settleAllianceUnits(context);
 }
 async function marchStatus(ctx,url){
@@ -2825,7 +2931,7 @@ async function route(request, env, now) {
   }
   if (path === '/field' && method === 'GET') {
     const viewer=request.headers.has('authorization')?await authenticate(request,db,now):null;
-    return getFieldList(db,viewer,url,now);
+    return url.searchParams.get('view')==='owners'?getFieldOwners(db,viewer,url,now,request):getFieldList(db,viewer,url,now,request);
   }
   if (path === '/config' && method === 'GET') {
     const result = await db.batch([
@@ -3419,6 +3525,12 @@ export default {
       if(path.startsWith(API+'/avatars/')&&request.method==='GET')return await getAvatar(request,env,origin);
       if(path.startsWith(API+'/guild-icons/')&&request.method==='GET')return await getGuildIcon(request,env,origin);
       stage='route';const now=Date.now(),payload=await route(request,env,now);
+      if(path===API+'/field'&&new URL(request.url).searchParams.get('view')==='owners'){
+        stage='premium';const owners=await resolvePremiumAppearances(env.DB,payload,now),viewer=authenticatedRequests.get(request);
+        if(viewer)await requireAccountAccess(env.DB,viewer);
+        await verifyCourtResponse(env.DB,request);
+        return response(owners,200,origin);
+      }
       stage='evaluations';const evaluated=await resolvePlayerEvaluations(env.DB,payload,now);
       stage='premium';const resolved=await resolvePremiumAppearances(env.DB,evaluated,now),authenticated=authenticatedRequests.get(request);
       stage='access';
@@ -3427,7 +3539,15 @@ export default {
       await verifyCourtEstateResponse(env.DB,payload);
       // Message writes use only their targeted dispatch below, so one Worker
       // invocation cannot spend the D1 query budget on two notification sweeps.
-      if(typeof ctx?.waitUntil==='function'&&path!==API+'/notifications/tick')ctx.waitUntil((async()=>{await settleShogunateApprovals(env.DB,now);await backgroundMarchSweep(env,now);if(!messageNotificationWrite)await dispatchNotifications(env,await getWorldClock(env.DB,now),{courtAccess:(userId,at)=>notificationCourtAccess(env.DB,userId,at)});})().catch(()=>{}));
+      if(typeof ctx?.waitUntil==='function'&&path!==API+'/notifications/tick'){
+        const previous=backgroundPolls.get(env.DB);
+        // Bursts from hundreds of readers do not compete for identical tick
+        // writes. No player state, response, permission or payment is cached.
+        if(!previous||now<previous.startedAt||now>=previous.nextAt){
+          const window={startedAt:now,nextAt:now+1000};backgroundPolls.set(env.DB,window);
+          ctx.waitUntil((async()=>{await backgroundMarchSweep(env,now);if(!messageNotificationWrite)await dispatchNotifications(env,await getWorldClock(env.DB,now),{courtAccess:(userId,at)=>notificationCourtAccess(env.DB,userId,at)});})().catch(()=>{if(backgroundPolls.get(env.DB)===window)backgroundPolls.delete(env.DB);}));
+        }
+      }
       stage='public-court';const courtVisible=await resolvePublicCourtOffices(env.DB,publicIdentities(resolved,request),now);
       stage='public-honors';const visible=await resolvePublicCityHonors(env.DB,courtVisible,now,{getWorldClock,eventCastleCandidates});
       stage='response';

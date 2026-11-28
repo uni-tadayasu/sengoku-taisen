@@ -15,6 +15,7 @@ Object.defineProperty(Node.prototype, 'className', {
 });
 const matches = Node.prototype.matches;
 Node.prototype.matches = function (selector, scope) {
+  if (selector.includes('.edition-mast') && selector.includes('input:not')) this.ownerDocument.ambientCandidateChecks = (this.ownerDocument.ambientCandidateChecks || 0) + 1;
   // The shared renderer fixture does not otherwise need this pseudo class.
   return matches.call(this, selector.replace(/:disabled\b/g, '[disabled]'), scope);
 };
@@ -69,7 +70,7 @@ function fixture(markup, {intersection = true} = {}) {
       this.callback(elements.filter(el => this.observed.has(el)).map(target => ({target, isIntersecting: visible, intersectionRatio: visible ? 1 : 0})));
     }
   }
-  doc.onAttributeChange = record => notify({type: 'attributes', target: record.node, attributeName: record.name});
+  doc.onAttributeChange = record => notify({type: 'attributes', target: record.node, attributeName: record.name, oldValue: record.before});
   const win = events({
     document: doc, navigator: {connection}, MutationObserver,
     matchMedia(query) { queries.push(query); return query === '(pointer: coarse)' ? coarse : quiet; },
@@ -194,6 +195,44 @@ function fixture(markup, {intersection = true} = {}) {
   f.byId('front').open = false; f.byId('other-button').focus(); f.visible();
   assert(f.byId('other-button').hasAttribute(marker));
   assert.equal(f.byId('front-button').hasAttribute(marker), false);
+  f.win.SengokuAmbientMotion.destroy();
+}
+
+{
+  const f = fixture('<section id="list">' + Array.from({length: 960}, (_, i) => '<button id="large-' + i + '">命令</button>').join('') + '</section>');
+  f.flush();
+  const controls = [f.byId('large-0'), f.byId('large-1'), f.byId('large-2')];
+  f.io.emit(controls); f.flush();
+  f.doc.ambientCandidateChecks = 0;
+  f.io.emit([controls[0]], false); f.flush();
+  assert(f.doc.ambientCandidateChecks <= 2, 'Changing one intersection only rechecks the 2 visible candidates, not 960 retained controls.');
+  assert.equal(f.marked().length, 2);
+  f.io.emit(controls.slice(1));
+  assert.equal(f.timers.size, 0, 'Repeated unchanged intersections do not schedule work.');
+  f.doc.ambientCandidateChecks = 0;
+  f.byId('list').classList.add('art-ready');
+  assert.equal(f.timers.size, 0, 'Decoded panel artwork must not traverse the retained list.');
+  assert.equal(f.doc.ambientCandidateChecks, 0);
+  f.byId('list').setAttribute('hidden', ''); f.flush();
+  assert.equal(f.marked().length, 0, 'Ancestor visibility still pauses all affected candidates.');
+  f.byId('list').removeAttribute('hidden'); f.flush();
+  assert.equal(f.marked().length, 2);
+  f.win.SengokuAmbientMotion.destroy();
+}
+
+{
+  const f = fixture('<section id="container"><button id="candidate">操作</button></section><span id="late">後から追加</span>');
+  f.visible();
+  const container = f.byId('container'), control = f.byId('candidate'), late = f.byId('late');
+  container.classList.add('hotspot'); f.flush();
+  assert.equal(control.hasAttribute(marker), false, 'Adding an exclusion to an ancestor releases descendant work.');
+  assert.equal(f.io.observed.has(control), false);
+  container.classList.remove('hotspot'); f.visible();
+  assert(control.hasAttribute(marker), 'Removing an exclusion restores descendant admission.');
+  late.setAttribute('role','button'); f.visible();
+  assert(late.hasAttribute(marker), 'A new interactive role is registered without a subtree rescan.');
+  late.setAttribute('role','separator'); f.flush();
+  assert.equal(late.hasAttribute(marker), false);
   f.win.SengokuAmbientMotion.destroy();
 }
 

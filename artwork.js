@@ -290,17 +290,24 @@ function decorate(root=document){
 }
 function flushDecorations(){
  if(!scheduled)return;
- scheduled=false;const roots=[...decorationRoots];decorationRoots.clear();
- for(const root of roots)if(root===document||root.isConnected)decorate(root);
+ scheduled=false;const roots=new Set(decorationRoots);decorationRoots.clear();
+ for(const root of roots){
+  if(root!==document&&!root.isConnected)continue;
+  // The same render can add hundreds of sibling controls. Collapse nested
+  // records once by walking their short parent chains, not by comparing each
+  // new subtree with every earlier sibling (quadratic work).
+  let covered=root!==document&&roots.has(document);
+  for(let parent=root.parentNode;parent&&!covered;parent=parent.parentNode)if(roots.has(parent))covered=true;
+  if(!covered)decorate(root);
+ }
 }
 function schedule(root=document){
  if(!root?.querySelectorAll||root!==document&&!root.isConnected)return;
  // A replacement row only needs its own artwork. Preserve the broad explicit
  // decorate() API, but never rescan a roster because one button gained an icon.
  if(!decorationRoots.has(document)){
-  let covered=false;
-  for(const pending of decorationRoots){if(pending===root||pending.contains?.(root)){covered=true;break;}}
-  if(!covered){for(const pending of decorationRoots)if(root===document||root.contains?.(pending))decorationRoots.delete(pending);decorationRoots.add(root);}
+  if(root===document)decorationRoots.clear();
+  decorationRoots.add(root);
  }
  if(scheduled)return;scheduled=true;requestAnimationFrame(flushDecorations);
 }

@@ -549,21 +549,28 @@
       if(at<1||!ownedSet.has(id)||index<0)continue;
       highestRanks.set(id,Math.max(index,highestRanks.get(id)??-1));
     }
-    const officers=new Map(owned.map(id=>{
+    // The collection contributes a count and its top 30 ranks. Only the three
+    // active commanders and appointed governors need ability calculations;
+    // copying every owned officer on each production tick does unrelated work.
+    // Everything here is scoped to this read so direct rank/role edits are fresh.
+    const rankCounts=Array(RANKS.length).fill(0);
+    for(const id of owned){
       const base=officerMap.get(id),rankIndex=highestRanks.get(id)??Math.max(0,RANKS.indexOf(base.rank||base.rarity));
-      const bonus=RANK_BONUSES[RANKS[rankIndex]];
-      return [id,{...base,rankIndex,...Object.fromEntries(['lead','valor','intellect','politics'].map(stat=>[stat,evaluationNumber(evaluationNumber(base[stat],100)+bonus,100)]))}];
-    }));
+      highestRanks.set(id,rankIndex);rankCounts[rankIndex]++;
+    }
+    const ability=(id,stat)=>evaluationNumber(evaluationNumber(officerMap.get(id)[stat],100)+RANK_BONUSES[RANKS[highestRanks.get(id)]],100);
     const holdings=typeof s.clan==='string'&&s.clan?CASTLES.filter(c=>s.castles?.[c.id]?.owner===s.clan):[];
     const castleLevels=holdings.reduce((sum,c)=>sum+evaluationNumber(s.castles[c.id].level,c.id===STAFF_BASE_ID?128:c.id==='edo'?64:MAJOR_CITY_IDS.includes(c.id)?48:32),0);
     const buildingLevels=BUILDINGS.reduce((sum,b)=>sum+evaluationNumber(s.buildings?.[b.id],32),0);
-    const rarityTotal=[...officers.values()].map(o=>o.rankIndex+1).sort((a,b)=>b-a).slice(0,30).reduce((sum,n)=>sum+n,0);
-    const army=[...new Set(Array.isArray(s.army)?s.army:[])].filter(id=>officers.has(id)).slice(0,3);
-    const armyAbility=army.reduce((sum,id)=>{const o=officers.get(id);return sum+o.lead+o.valor+o.intellect;},0);
+    let rarityTotal=0,remainingRanks=30;
+    for(let index=rankCounts.length-1;index>=0&&remainingRanks>0;index--){const count=Math.min(remainingRanks,rankCounts[index]);rarityTotal+=count*(index+1);remainingRanks-=count;}
+    const army=[...new Set(Array.isArray(s.army)?s.army:[])].filter(id=>ownedSet.has(id)).slice(0,3);
+    const armyAbility=army.reduce((sum,id)=>sum+ability(id,'lead')+ability(id,'valor')+ability(id,'intellect'),0);
     const assigned=new Set(army);let governorQuality=0;
     for(const building of BUILDINGS){
-      const id=s.governors?.[building.id],officer=officers.get(id);
-      if(!officer||assigned.has(id)||evaluationNumber(s.buildings?.[building.id],32)<1)continue;
+      const id=s.governors?.[building.id];
+      if(!ownedSet.has(id)||assigned.has(id)||evaluationNumber(s.buildings?.[building.id],32)<1)continue;
+      const officer={politics:ability(id,'politics'),skill:officerMap.get(id).skill};
       assigned.add(id);governorQuality+=Math.min(1,Math.max(0,(governorBonusForCategory(building.category,officer)-1)/.35));
     }
     const techLevels=TECHS.reduce((sum,t)=>sum+evaluationNumber(s.tech?.[t.id],t.max),0);
@@ -1533,7 +1540,7 @@
     upgradeCastleCount(){return CASTLES.reduce((count,castle)=>count+(this.canOwnCastle(castle.id)&&!(this.isStaff&&castle.id===STAFF_BASE_ID)&&this.state.castles[castle.id]?.owner===this.state.clan?1:0),this._courtEstateLevelAt()>0?1:0);}
     upgradeCostMultiplier(){return upgradeCostMultiplier(this.upgradeCastleCount());}
     scaleUpgradeCost(cost){return scaleUpgradeCost(cost,this.upgradeCastleCount());}
-    adjacentTargets(){const ids=new Set();for(const c of this.ownedCastles())for(const id of c.neighbors)if((this.canOwnCastle(id)||id===DEPUTY_BASE_ID)&&this.state.castles[id].owner!==this.state.clan)ids.add(id);return [...ids].map(id=>this.castle(id));}
+    adjacentTargets(){const ids=new Set();for(const ownId of this.ownedCastleIds())for(const id of CASTLE_BY_ID[ownId].neighbors)if((this.canOwnCastle(id)||id===DEPUTY_BASE_ID)&&this.state.castles[id].owner!==this.state.clan)ids.add(id);return [...ids].map(id=>this.castle(id));}
     commandMax(){return 3+Math.floor(this.state.buildings.keep/8);}
     constructionSlots(){return 2+Math.floor(this.state.buildings.keep/8);}
     constructionChains(){return new Set(this.state.jobs.filter(j=>j.kind!=='research').map(j=>j.kind+':'+j.id)).size;}
@@ -1695,7 +1702,7 @@
     }
     upkeepTroopSnapshot(){
       const s=this.state;
-      return{army:s.troops,castles:Object.fromEntries(this.ownedCastles().map(c=>[c.id,c.troops])),branches:Object.fromEntries(s.branches.map(b=>[b.id,b.stationedTroops||0]))};
+      return{army:s.troops,castles:Object.fromEntries(this.ownedCastleIds().map(id=>[id,s.castles[id].troops])),branches:Object.fromEntries(s.branches.map(b=>[b.id,b.stationedTroops||0]))};
     }
     beginUpkeepTracking(){
       const tracking={records:[],overflow:false},active=UPKEEP_TRACKS.get(this)||new Set();let finished=false;
@@ -2663,7 +2670,7 @@
     }
     // Compatibility/testing helper. The game UI uses tick(), pause and speed controls only.
     nextTurn(){if(this.state.worldClock)return fail('年月は全プレイヤー共通の時刻で進みます。');if(this.state.gameOver)return fail('最後の城を失っています。新しい物語を始めてください。');return this._advanceRealtime(60);}
-    questStatus(id){const q=QUESTS.find(q=>q.id===id);if(!q)return{complete:false,claimed:false,progress:0,target:0};const s=this.state,target=id==='unify'?this.unificationTarget():q.target;let progress=0;switch(id){case'first_upgrade':progress=s.stats.upgrades;break;case'first_recruit':progress=s.stats.recruited;break;case'first_battle':progress=s.stats.wins;break;case'three_castles':case'ten_castles':case'unify':progress=this.ownedCastles().length;break;case'five_officers':progress=s.officers.length;break;case'technology':progress=s.stats.researches;break;}return{complete:progress>=target,claimed:s.claimedQuests.includes(id),progress:Math.min(target,progress),target};}
+    questStatus(id){const q=QUESTS.find(q=>q.id===id);if(!q)return{complete:false,claimed:false,progress:0,target:0};const s=this.state,target=id==='unify'?this.unificationTarget():q.target;let progress=0;switch(id){case'first_upgrade':progress=s.stats.upgrades;break;case'first_recruit':progress=s.stats.recruited;break;case'first_battle':progress=s.stats.wins;break;case'three_castles':case'ten_castles':case'unify':progress=this.ownedCastleIds().length;break;case'five_officers':progress=s.officers.length;break;case'technology':progress=s.stats.researches;break;}return{complete:progress>=target,claimed:s.claimedQuests.includes(id),progress:Math.min(target,progress),target};}
     claimQuest(id){
       const q=QUESTS.find(q=>q.id===id);if(!q)return fail('目標が見つかりません。');
       const status=this.questStatus(id);if(status.claimed)return fail('この報酬は受け取り済みです。');if(!status.complete)return fail('まだ目標を達成していません。');
@@ -2673,7 +2680,8 @@
       const message=`「${q.name}」の報酬を受け取りました。${limited?'所持上限に達した資産は、空きのある分まで加算しました。':''}`;
       this.log(message,'quest');return{ok:true,message,rewards};
     }
-    exportSave(){this._pruneBranches();this._rememberStaffPersonalProgress();const state=copy(this.state),view=this.isStaff?STAFF_VIEW.get(this):null;if(view){state.buildings=copy(view.personalBuildings);state.castles[STAFF_BASE_ID].level=view.personalBaseLevel;state.castles[STAFF_BASE_ID].wall=view.personalBaseWall;}if(this.isStaff){const origin=STAFF_ORIGIN.get(this),homeCastle=view?.personalHomeCastle||origin?.homeCastle;state.staffService={baseId:STAFF_BASE_ID,...(origin?{personalClan:origin.clan,personalHome:origin.home,personalCycleHome:origin.cycleHome}:{}),...(homeCastle?{personalHomeCastle:copy(homeCastle)}:{})};}normalizeAssets(state);return JSON.stringify({game:'sengoku-tento',version:2,savedAt:new Date().toISOString(),state},null,2);}
+    exportSnapshot(){this._pruneBranches();this._rememberStaffPersonalProgress();const state=copy(this.state),view=this.isStaff?STAFF_VIEW.get(this):null;if(view){state.buildings=copy(view.personalBuildings);state.castles[STAFF_BASE_ID].level=view.personalBaseLevel;state.castles[STAFF_BASE_ID].wall=view.personalBaseWall;}if(this.isStaff){const origin=STAFF_ORIGIN.get(this),homeCastle=view?.personalHomeCastle||origin?.homeCastle;state.staffService={baseId:STAFF_BASE_ID,...(origin?{personalClan:origin.clan,personalHome:origin.home,personalCycleHome:origin.cycleHome}:{}),...(homeCastle?{personalHomeCastle:copy(homeCastle)}:{})};}normalizeAssets(state);return{game:'sengoku-tento',version:2,savedAt:new Date().toISOString(),state};}
+    exportSave({compact=false}={}){return JSON.stringify(this.exportSnapshot(),null,compact?undefined:2);}
     static fromSave(raw,officers,options={}){
       let obj;try{obj=typeof raw==='string'?JSON.parse(raw):copy(raw);}catch(e){throw new Error('セーブデータを読み取れません。JSONファイルを選んでください。');}
       const s=obj?.state||obj,legacyRepair=s?.repair===undefined;
