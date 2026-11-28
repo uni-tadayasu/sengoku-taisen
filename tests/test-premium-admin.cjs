@@ -202,9 +202,9 @@ function metricFixture(extra = {}) {
 
 // Artificial aggregate data for both automated checks and a clearly labelled UI preview.
 function extendedMetricFixture(extra = {}) {
-  const byProduct = ['gold-banner', 'moonlit-castle', 'supporter', 'reroll-pass-30d', 'vermilion-banner', 'silver-banner', 'phoenix-medallion', 'sakura-town', 'snow-town'].map(productId => ({ productId, validAmount: productId === 'supporter' ? 780 : productId === 'reroll-pass-30d' ? 480 : 0, validPayments: ['supporter', 'reroll-pass-30d'].includes(productId) ? 1 : 0, excludedAmount: productId === 'moonlit-castle' ? 980 : 0, excludedPayments: productId === 'moonlit-castle' ? 1 : 0 }));
+  const byProduct = ['gold-banner', 'moonlit-castle', 'supporter', 'reroll-pass-30d', 'vermilion-banner', 'silver-banner', 'phoenix-medallion', 'sakura-town', 'snow-town', 'castle-heritage'].map(productId => ({ productId, validAmount: productId === 'supporter' ? 780 : productId === 'reroll-pass-30d' ? 480 : productId === 'castle-heritage' ? 980 : 0, validPayments: ['supporter', 'reroll-pass-30d', 'castle-heritage'].includes(productId) ? 1 : 0, excludedAmount: productId === 'moonlit-castle' ? 980 : 0, excludedPayments: productId === 'moonlit-castle' ? 1 : 0 }));
   return metricFixture({
-    revenue: { currency: 'JPY', taxIncluded: true, definition: '対象商品の確認済み支払いから、返金・取消・保留等の決済全額を除いた合計', dateBasis: 'Stripeチャージ作成日・JST05:00区切り', validAmount: 1260, validPayments: 2, excludedAmount: 980, excludedPayments: 1, unclassifiedExcludedAmount: 0, unclassifiedExcludedPayments: 0, byProduct },
+    revenue: { currency: 'JPY', taxIncluded: true, definition: '全商品の確認済み支払いから、返金・取消・保留等の決済全額を除いた合計', dateBasis: 'Stripeチャージ作成日・JST05:00区切り', validAmount: 2240, validPayments: 3, excludedAmount: 980, excludedPayments: 1, unclassifiedExcludedAmount: 0, unclassifiedExcludedPayments: 0, byProduct },
     supporterRenewal: { definition: '終了後7日までの観測を終えた有効支払期間のうち、同一契約の次の連続期間を期限内に支払った割合', graceDays: 7, observedSince: '2026-09-23T01:00:00.000Z', eligiblePeriods: 4, renewedPeriods: 3, rate: .75, throughDay: '2026-11-14' },
     playerRetention: { definition: '集計期間内に初めて接続を観測した登録領主の、翌日・30日後のゲーム接続', observedSince: '2026-09-23T01:00:00.000Z', dayBoundary: 'Asia/Tokyo 05:00', cohortBasis: '初回の認証済みゲームAPI成功', segments: [
       { segment: 'free', label: '無料', observedAccounts: 8, d1: { eligibleAccounts: 6, returnedAccounts: 3, rate: .5, throughDay: '2026-11-19' }, d30: { eligibleAccounts: 2, returnedAccounts: 0, rate: 0, throughDay: '2026-10-21' } },
@@ -245,12 +245,14 @@ test('conversion validation distinguishes missing evidence, an empty denominator
   const observed = cleanMetrics(zero); assert(observed); assert.match(metricsMarkup({ metrics: observed }), /0\.0％/); assert.match(metricsMarkup({ metrics: observed }), /閲覧した 8 アカウントのうち、閲覧後に支払いを確認した領主 0 アカウント/);
 });
 
-test('all nine products reconcile to valid payments while excluded amounts are not labelled as refunds or net sales', () => {
-  const value = cleanMetrics(extendedMetricFixture()); assert(value); assert.equal(value.revenue.byProduct.length, 9);
-  assert.equal(value.revenue.validAmount, 1260); assert.equal(value.revenue.excludedAmount, 980);
+test('all ten products including castle heritage reconcile to valid payments while excluded amounts are not labelled as refunds or net sales', () => {
+  const value = cleanMetrics(extendedMetricFixture()); assert(value); assert.equal(value.revenue.byProduct.length, 10);
+  assert.equal(value.revenue.validAmount, 2240); assert.equal(value.revenue.validPayments, 3); assert.equal(value.revenue.excludedAmount, 980); assert.equal(value.revenue.excludedPayments, 1);
+  assert.deepEqual(value.revenue.byProduct.find(row => row.productId === 'castle-heritage'), { productId: 'castle-heritage', validAmount: 980, validPayments: 1, excludedAmount: 0, excludedPayments: 0 });
   const html = metricsMarkup({ metrics: value });
-  for (const text of ['確認済み有効支払い合計', '1,260円', '全9商品・税込・手数料控除前', '1件・980円', '除外額は実際の返金額ではありません', '金彩の旗印', '月影の城下', '戦国VSサポーター', '武将再抽選パス・30日', '紅蓮の旗印', '白銀の旗印', '鳳凰の勲章', '桜雲の城下', '雪華の城下']) assert(html.includes(text), text);
-  assert.doesNotMatch(html, /純売上|総売上|入金額/);
+  for (const text of ['確認済み有効支払い合計', '2,240円', '全商品・税込・手数料控除前', '全商品の内訳', '1件・980円', '除外額は実際の返金額ではありません', '金彩の旗印', '月影の城下', '戦国VSサポーター', '武将再抽選パス・30日', '紅蓮の旗印', '白銀の旗印', '鳳凰の勲章', '桜雲の城下', '雪華の城下', '名城絵巻・全城対応']) assert(html.includes(text), text);
+  assert.match(html, /名城絵巻・全城対応<\/dt><dd><strong>980円<\/strong><span>有効 1件/);
+  assert.doesNotMatch(html, /純売上|総売上|入金額|全\d+商品/);
   const unknown = extendedMetricFixture(); Object.assign(unknown.revenue, { unclassifiedExcludedAmount: 480, unclassifiedExcludedPayments: 1, excludedAmount: 1460, excludedPayments: 2 });
   const withUnknown = cleanMetrics(unknown); assert(withUnknown); const unknownHTML = metricsMarkup({ metrics: withUnknown });
   assert.match(unknownHTML, /2件・1,460円/); assert.match(unknownHTML, /商品を特定できない除外分：1件・480円/); assert.match(unknownHTML, /商品別には割り当てていません/);
@@ -275,7 +277,7 @@ test('renewals and free versus paid return cohorts show real denominators and di
 
 test('expanded metrics reject inconsistent money, duplicate products, impossible cohorts and mismatched rates', () => {
   const changes = [
-    v => { v.revenue.currency = 'USD'; }, v => { v.revenue.taxIncluded = false; }, v => { v.revenue.validAmount++; }, v => { v.revenue.byProduct.pop(); }, v => { v.revenue.byProduct[0].productId = 'unknown'; }, v => { v.revenue.byProduct[0].productId = v.revenue.byProduct[1].productId; }, v => { v.revenue.byProduct[0].validPayments = -1; }, v => { v.revenue.unclassifiedExcludedAmount = 480; }, v => { v.revenue.unclassifiedExcludedPayments = -1; },
+    v => { v.revenue.currency = 'USD'; }, v => { v.revenue.taxIncluded = false; }, v => { v.revenue.validAmount++; }, v => { v.revenue.byProduct.pop(); v.revenue.validAmount -= 980; v.revenue.validPayments--; }, v => { v.revenue.byProduct[0].productId = 'unknown'; }, v => { v.revenue.byProduct[0].productId = v.revenue.byProduct[1].productId; }, v => { v.revenue.byProduct[0].productId = 'castle-heritage'; }, v => { v.revenue.byProduct.find(row => row.productId === 'castle-heritage').validAmount = -1; v.revenue.validAmount -= 981; }, v => { v.revenue.byProduct[0].validPayments = -1; }, v => { v.revenue.unclassifiedExcludedAmount = 480; }, v => { v.revenue.unclassifiedExcludedPayments = -1; },
     v => { v.supporterRenewal.renewedPeriods = 5; }, v => { v.supporterRenewal.rate = .9; }, v => { v.supporterRenewal.graceDays = 0; }, v => { v.supporterRenewal.throughDay = '2026-12-01'; }, v => { v.supporterRenewal.observedSince = null; }, v => { v.supporterRenewal.observedSince = '2026-02-30T00:00:00.000Z'; },
     v => { v.playerRetention.segments.pop(); }, v => { v.playerRetention.segments[0].segment = 'paid'; }, v => { v.playerRetention.segments[0].d1.eligibleAccounts = 9; }, v => { v.playerRetention.segments[0].d30.returnedAccounts = 3; }, v => { v.playerRetention.segments[0].d1.rate = 0; }, v => { v.playerRetention.segments[0].d1 = { eligibleAccounts: 0, returnedAccounts: 0, rate: 0, throughDay: '2026-11-19' }; }, v => { v.playerRetention.segments[0].d30 = { eligibleAccounts: 7, returnedAccounts: 0, rate: 0, throughDay: '2026-10-21' }; }, v => { v.playerRetention.observedSince = null; }, v => { v.playerRetention.observedSince = 'unknown'; }, v => { v.playerRetention.dayBoundary = 'UTC midnight'; }
   ];
@@ -302,7 +304,7 @@ test('native period selector requests the chosen window and keeps every financia
   const s = uiSetup(); await s.ui.open(); const period = s.get('#premium-admin-metrics-period'); assert.equal(period.value, '60');
   s.setHandler(async route => { assert.equal(route, '/admin/premium/metrics?days=30'); return extendedMetricFixture({ days: 30 }); });
   period.value = '30'; s.get('#premium-admin-modal').dispatch('change', period); await drain();
-  assert.equal(s.ui.getState().metricsDays, 30); assert.match(s.get('[data-admin-metrics]').textContent, /直近60日/); assert.match(s.get('[data-admin-metrics]').textContent, /確認済み有効支払い合計/); assert.equal(s.posts().length, 0); s.ui.dispose();
+  assert.equal(s.ui.getState().metricsDays, 30); assert.match(s.get('[data-admin-metrics]').textContent, /直近60日/); assert.match(s.get('[data-admin-metrics]').textContent, /確認済み有効支払い合計/); assert.match(s.get('[data-admin-metrics]').textContent, /名城絵巻・全城対応/); assert.match(s.get('[data-admin-metrics]').textContent, /2,240円/); assert.equal(s.posts().length, 0); s.ui.dispose();
 });
 
 test('metrics reads require current primary operator access and late results are removed on role or account changes', async () => {
