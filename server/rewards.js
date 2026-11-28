@@ -1,3 +1,4 @@
+import {withCourtEstateGuard} from './court-estate-guard.js';
 import {GameEngine,GAME_OFFICERS} from './game-runtime.js';
 
 // Paid rights, daily limits and selections live outside importable saves.
@@ -82,9 +83,10 @@ async function mutate(ctx,kind){
   const saved=await h.settleWriterCycle(db,user,body.deviceId,body.expectedRevision,now),clock=await h.getWorldClock(db,now);
   const save=h.normalizeGameSave(JSON.parse(saved.save_json),user,now,{reading:true,clock}),campaignId=save.state.walking.campaignId;
   const shared=user.is_staff&&!user.is_admin?await h.staffBaseDto(db,user,clock,now):null;
-  const game=GameEngine.fromSave(save,GAME_OFFICERS,{isAdmin:!!user.is_admin,isDeputy:!!user.is_deputy,isStaff:!!user.is_staff,isCourtProtected:!!user.is_court_protected,staffBase:shared});
+  const courtEstate=await h.courtEstateContext(db,user,save,clock,now);
+  const game=GameEngine.fromSave(save,GAME_OFFICERS,{courtEstateProjection:courtEstate.projection,isAdmin:!!user.is_admin,isDeputy:!!user.is_deputy,isStaff:!!user.is_staff,isCourtProtected:!!user.is_court_protected,staffBase:shared});
   const s=game.state,nonce=crypto.randomUUID(),args=[user.id,body.requestId,nonce],calendar=rewardCalendar(now),pending=await pendingRow(db,user.id);
-  const role=h.roleCommitGuard(user),conditions=[role.sql],conditionArgs=[...role.args],after=[];
+  const role=withCourtEstateGuard(h.roleCommitGuard(user),courtEstate),conditions=[role.sql],conditionArgs=[...role.args],after=[];
   let receipt;
   if(kind==='draw'){
     if(pending)h.fail(409,'GACHA_PENDING','保留中の招集結果を選んでから、次の招集へ進んでください。');

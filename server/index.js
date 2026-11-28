@@ -1,3 +1,4 @@
+import {withCourtEstateGuard} from './court-estate-guard.js';
 import {maintenanceContext,protectMaintenance,externalTroopSnapshotStatements,MAINTENANCE_REFRESH_MESSAGE} from './maintenance.js';
 import {GameEngine, GAME_OFFICERS} from './game-runtime.js';
 import {castleDurability,branchDurability,durabilityRecord,normalizeRepairProgress,reconcilePaidRepairs} from './durability.js';
@@ -21,6 +22,8 @@ import {handleCourt} from './court.js';
 import {handleCourtSuccession} from './succession.js';
 import {handleRegency,courtRegentAuthority} from './regency.js';
 import {handleCourtEvents} from './court-events.js';
+import {handleCourtEstate,courtEstateAuthority,assertCourtEstateAccess,courtEstatePricingGame} from './court-estate.js';
+import {readCourtEstateContext,courtEstateSnapshotStatements,COURT_ESTATE_REFRESH_MESSAGE} from './court-estate-ledger.js';
 import {handleVoice} from './voice.js';
 import {handleProgress,reconcileProgress} from './progress.js';
 import {handleNotifications,dispatchNotifications,dispatchMessageNotifications,notificationSaveStatements,notificationAnnouncementStatements,recordNotificationChatRead} from './notifications.js';
@@ -39,8 +42,8 @@ import {requirePromotionOrigin,recordPromotion,readPromotionReport} from './prom
 import {readMusicBroadcast,handleAdminMusic} from './admin-music.js';
 import {lordSupportSql,guardLordSupport,ensureResidency,residencySnapshot,residencyDirectory,residencyStart,initialResidencyStatements,residencyTargetGuard,prepareResidencySuccession,prepareResidencyCpuLosses} from './residency.js';
 const API = '/api/v1';
-const API_VERSION = '5.19.0';
-const API_FEATURES = Object.freeze({trades:true,moderation:true,playerExpulsion:true,moderatedNameReuse:true,deputyOperator:true,deputyOperations:true,privateOperationsLabels:true,deputyOfficer:true,kagoshimaProtected:true,premium:true,timedEvents:true,troopTrades:true,roamingBattles:true,roamingDeployment:true,covertDispatch:true,privatePlayerRoles:true,guildIcons:true,court:true,kyotoGosho:true,branches:true,branchBattles:true,branchFacilities:true,audioCalls:true,progression:true,armyPresets:true,allianceStrategy:true,sharedConquest:true,newcomerProtection:true,webPush:true,messagePush:true,pushDeviceTest:true,battleAdviser:true,battleCatalog:true,eventBattleRewards:true,shogunate:true,shogunateGovernance:true,attackTravel:true,castleResidency:true,retainerCastleStats:true,residencyRelocation:true,maintenanceUpkeep:true,strongholdDurability:true,chatReplies:true,chatMentions:true,covertReturnTravel:true,allianceUnitTravel:true,legacySaveRecovery:true,displayNameVariants:true,courtOffices:true,serverSummons:true,loginRewards:true,paidRerolls:true,supporterChoices:true,premiumGrowthMetrics:true,adminMusicBroadcast:true,rankRiceProduction:true,shogunateApproval:true,imperialSuccession:true,retiredEmperor:true,regency:true,courtEventRoom:true,imperialSuccessionApproval:true});
+const API_VERSION = '5.20.0';
+const API_FEATURES = Object.freeze({trades:true,moderation:true,playerExpulsion:true,moderatedNameReuse:true,deputyOperator:true,deputyOperations:true,privateOperationsLabels:true,deputyOfficer:true,kagoshimaProtected:true,premium:true,timedEvents:true,troopTrades:true,roamingBattles:true,roamingDeployment:true,covertDispatch:true,privatePlayerRoles:true,guildIcons:true,court:true,kyotoGosho:true,branches:true,branchBattles:true,branchFacilities:true,audioCalls:true,progression:true,armyPresets:true,allianceStrategy:true,sharedConquest:true,newcomerProtection:true,webPush:true,messagePush:true,pushDeviceTest:true,battleAdviser:true,battleCatalog:true,eventBattleRewards:true,shogunate:true,shogunateGovernance:true,attackTravel:true,castleResidency:true,retainerCastleStats:true,residencyRelocation:true,maintenanceUpkeep:true,strongholdDurability:true,chatReplies:true,chatMentions:true,covertReturnTravel:true,allianceUnitTravel:true,legacySaveRecovery:true,displayNameVariants:true,courtOffices:true,serverSummons:true,loginRewards:true,paidRerolls:true,supporterChoices:true,premiumGrowthMetrics:true,adminMusicBroadcast:true,rankRiceProduction:true,shogunateApproval:true,imperialSuccession:true,retiredEmperor:true,regency:true,courtEventRoom:true,imperialSuccessionApproval:true,courtEstate:true});
 const MAX_BODY = 16 * 1024;
 const MAX_SAVE_BODY = 2 * 1024 * 1024;
 const MAX_AVATAR_BYTES = 48 * 1024;
@@ -68,6 +71,7 @@ const BASE_ORIGINS = new Set(['https://uni-tadayasu.github.io', 'https://www.kas
 const encoder = new TextEncoder();
 const authenticatedRequests = new WeakMap();
 const courtResponseGuards = new WeakMap();
+const courtEstateProjectionGuards = new WeakMap();
 const chatResponseGuards = new WeakMap();
 const eventDefenseResponseGuards = new WeakMap();
 const operationsResponseGuards = new WeakMap();
@@ -401,7 +405,7 @@ function publicCommander(state,user={}){
   return rank&&name?{officerId,name,rank,...(deputyExclusive?{deputyExclusive:true}:{})}:null;
 }
 async function resolvePlayerEvaluations(db,payload,now){
-  const refs=[],ids=new Set(),nameRefs=[],avatarRefs=[],avatarIds=new Set(),skip=new Set(['save','state','entitlements','appearance']);
+  const refs=[],ids=new Set(),nameRefs=[],avatarRefs=[],avatarIds=new Set(),skip=new Set(['save','state','entitlements','appearance','courtEstateProjection']);
   const isPlayerId=id=>typeof id==='string'&&/^u_[A-Za-z0-9_]{1,96}$/.test(id);
   const avatarRef=(value,id,key='avatarVersion')=>{if(isPlayerId(id)){avatarRefs.push({value,id,key});avatarIds.add(id);}};
   function visit(value,parent,key){
@@ -511,6 +515,7 @@ async function courtAccess(db,user,now){
 }
 async function notificationCourtAccess(db,userId,now){const user=await getUser(db,userId);return user&&!user.ban_active?courtAccess(db,user,now):null;}
 async function verifyCourtResponse(db,request){const guard=courtResponseGuards.get(request);if(!guard)return;if(!await stmt(db,'SELECT 1 AS allowed WHERE '+guard.sql,...guard.args).first())fail(409,guard.code||'COURT_ACCESS_CHANGED',guard.message||'朝廷の利用資格または会話の状態が変わりました。最新の内容を確認してください。');}
+async function verifyCourtEstateResponse(db,payload){const projection=payload?.courtEstateProjection,guard=projection&&courtEstateProjectionGuards.get(projection);if(guard&&!await stmt(db,'SELECT 1 AS allowed WHERE '+guard.sql,...guard.args).first())fail(409,'COURT_ESTATE_REFRESH_REQUIRED',COURT_ESTATE_REFRESH_MESSAGE);}
 
 function mapUser(row, now = Date.now()) {
   return {
@@ -531,7 +536,7 @@ function publicIdentities(payload,request){
   const management=!!(actor&&(canOperate(actor)&&path.startsWith('/admin/')||(canOperate(actor)||actor.is_staff)&&path.startsWith('/staff/')));
   const linked=['/session','/devices/link','/admin/recover'].includes(path)&&typeof payload?.token==='string';
   const self=payload?.user&&(payload.user.id===actor?.id||linked)?payload.user:null;
-  const privateKeys=new Set(['save','state','entitlements','staffBase']);
+  const privateKeys=new Set(['save','state','entitlements','staffBase','courtEstateProjection']);
   const roleKeys=new Set(['canOperate','isAdmin','isStaff','isDeputy','is_deputy','isOperator','is_admin','is_staff','is_operator','staffTitle','siteRole','roleTitle','operatorProtected','staffProtected','adminPlayerId','adminUserId','operatorPlayerId','operatorUserId']);
   function visit(value){
     if(!value||typeof value!=='object')return value;
@@ -999,7 +1004,7 @@ async function guildTransfer(db,user,raw,now) {
   if(!state.worldClock)fail(409,'CLOCK_ANCHOR_REQUIRED','先に共通時計へ同期してください。');
   if(clock.elapsedMs-state.worldClock.elapsedMs>15000)fail(409,'CLOCK_STALE','共通時計と本拠を同期してから入出庫してください。');
   const treasury=await ensureTreasury(db,body.guildId);if(!treasury)fail(403,'GUILD_REQUIRED','同盟の所属が変更されました。');
-  const policyGuard=await treasuryGuard({db,user,now,helpers:{fail,accountCommitGuard,requireAccountAccess}},body);
+  const policyGuard=await treasuryGuard({db,user,now,helpers:{courtEstateContext,courtEstateSnapshotStatements,getWorldClock,fail,accountCommitGuard,requireAccountAccess}},body);
   const key=body.resource,personal=key==='magatama'?state.magatama:state.resources[key],pooled=Number(treasury[key]),deposit=body.direction==='deposit',delta=deposit?-body.amount:body.amount;
   if(deposit?personal<body.amount:pooled<body.amount)fail(409,'INSUFFICIENT_ASSETS',deposit?'手持ちの資産が足りません。':'同盟の共有資産が足りません。');
   if(personal+delta>GUILD_ASSET_LIMIT||pooled-delta>GUILD_ASSET_LIMIT)fail(409,'ASSET_LIMIT','保管できる資産の上限を超えます。');
@@ -1519,13 +1524,14 @@ async function settlePlayerCycle(db,row,user,now,clock=undefined,{deferActive=tr
     const branchAccess=await branchStateGuard(db,user.id,save.state.walking.campaignId);await reconcileBranchProgress(db,user.id,save,clock);
     const staffBase=user.is_staff&&!user.is_admin?await staffBaseDto(db,user,clock,now):null;
     const maintenanceAuthority=protectMaintenance(branchAccess,await maintenanceContext(db,user.id,save,clock));
-    const game=GameEngine.fromSave(save,GAME_OFFICERS,{isAdmin:!!user.is_admin,isDeputy:!!user.is_deputy,isStaff:!!user.is_staff,isCourtProtected:!!user.is_court_protected,staffBase,maintenanceAuthority,branchAuthority:{resolvedElapsedMs:branchAccess.resolvedElapsedMs}});
+    const estateEconomy=await courtEstateContext(db,user,save,clock,now);
+    const game=GameEngine.fromSave(save,GAME_OFFICERS,{courtEstateProjection:estateEconomy.projection,isAdmin:!!user.is_admin,isDeputy:!!user.is_deputy,isStaff:!!user.is_staff,isCourtProtected:!!user.is_court_protected,staffBase,maintenanceAuthority,branchAuthority:{resolvedElapsedMs:branchAccess.resolvedElapsedMs}});
     const target=Math.min(current*WORLD_CYCLE_MS,(index+2)*WORLD_CYCLE_MS);
     const result=game.applyWorldClock({...clock,elapsedMs:target},{maxSeconds:86400});
     if(!result.ok||!result.changed)return row;
     const next=normalizeGameSave(JSON.parse(game.exportSave()),user,now,{clock});next.savedAt=iso(now);
     const cpuLosses=await prepareResidencyCpuLosses(db,{userId:user.id,events:game.takeHomeDefenseLosses?.()||[],now,state:next.state});
-    const rewards=result.cycleRewards||[],nonce=crypto.randomUUID(),serialized=JSON.stringify(next),roleGuard=guardLordSupport(roleCommitGuard(user),user);
+    const rewards=result.cycleRewards||[],nonce=crypto.randomUUID(),serialized=JSON.stringify(next),roleGuard=withCourtEstateGuard(guardLordSupport(roleCommitGuard(user),user),estateEconomy);
     const gate='EXISTS(SELECT 1 FROM player_saves WHERE user_id=? AND cycle_commit=?)',gateParams=[user.id,nonce];
     const batch=[stmt(db,`UPDATE player_saves SET save_json=?,revision=revision+1,updated_at=?,cycle_index=?,cycle_home=?,cycle_commit=?
       WHERE user_id=? AND revision=? AND cycle_index=?
@@ -1607,7 +1613,8 @@ async function sharedStaffBaseRow(db,clock,now) {
     state.history.sort((a,b)=>a.effectiveElapsedMs-b.effectiveElapsedMs);state.jobs=state.jobs.filter(job=>job.completesElapsedMs>clock.elapsedMs);
     const nonce=crypto.randomUUID(),gate="EXISTS(SELECT 1 FROM staff_base WHERE id='kyoto_gosho' AND commit_token=?)";
     const statements=[stmt(db,"UPDATE staff_base SET state_json=?,revision=revision+1,commit_token=?,updated_at=? WHERE id='kyoto_gosho' AND revision=? AND EXISTS(SELECT 1 FROM world_clock WHERE id=? AND revision=?) RETURNING *",JSON.stringify(state),nonce,now,row.revision,WORLD_CLOCK_ID,clock.revision)];
-    for(const job of due){const name=job.kind==='castle'?'京都御所':globalThis.SENGOKU_DATA.buildings.find(b=>b.id===job.id).name;statements.push(achievementStatement(db,job.startedBy.id,{key:'staff-build:'+job.jobId,kind:'staff-building',targetId:job.id,targetName:name,value:job.targetLevel,title:`京都御所の${job.kind==='castle'?'城郭':name} Lv.${job.targetLevel}の共同普請を達成`,detail:'全スタッフの共同拠点へ成長が反映されました。'},now,gate,[nonce]));statements.push(stmt(db,`INSERT INTO court_contributions(job_id,actor_id,staff_term,kind,target_id,target_level,points,completed_elapsed_ms,created_at) SELECT ?,?,?,?,?,?,?,?,? WHERE ${gate} ON CONFLICT(job_id) DO NOTHING`,job.jobId,job.startedBy.id,job.startedBy.termId||null,job.kind,job.id,job.targetLevel,job.targetLevel,job.completesElapsedMs,now,nonce));}
+    for(const job of due){const name=job.kind==='castle'?'京都御所':globalThis.SENGOKU_DATA.buildings.find(b=>b.id===job.id).name;statements.push(achievementStatement(db,job.startedBy.id,{key:'staff-build:'+job.jobId,kind:'staff-building',targetId:job.id,targetName:name,value:job.targetLevel,title:`京都御所の${job.kind==='castle'?'城郭':name} Lv.${job.targetLevel}の共同普請を達成`,detail:'京都御所の共同領地へ成長が反映されました。'},now,gate,[nonce]));statements.push(stmt(db,`INSERT INTO court_contributions(job_id,actor_id,staff_term,kind,target_id,target_level,points,completed_elapsed_ms,created_at) SELECT ?,?,?,?,?,?,?,?,? WHERE ${gate} ON CONFLICT(job_id) DO NOTHING`,job.jobId,job.startedBy.id,job.startedBy.termId||null,job.kind,job.id,job.targetLevel,job.targetLevel,job.completesElapsedMs,now,nonce));}
+    statements.push(...courtEstateSnapshotStatements(db,clock,gate,[nonce]));
     const result=await db.batch(statements);if(rows(result[0])[0])return rows(result[0])[0];row=await stmt(db,"SELECT * FROM staff_base WHERE id='kyoto_gosho'").first();clock=await getWorldClock(db,now);
   }
   return row;
@@ -1624,9 +1631,11 @@ async function staffBaseDto(db,user,clock,now,row=undefined) {
   if(personalHomeCastle&&FIELD_CAPTURE_CASTLES.includes(personal.home)&&Number.isInteger(personalHomeCastle.level)&&personalHomeCastle.level>=49&&personalHomeCastle.level<=64)personalHomeCastle.level=48;
   return {id:'kyoto_gosho',revision:Number(row.revision),protected:true,...state,accessSinceElapsedMs:accessSince,clanSinceElapsedMs:clanSince,...(personal?{personalClan:personal.clan,personalHome:personal.home,personalCycleHome:personal.cycle?.home||personal.home,personalHomeCastle,personalBaseCastle:copy(personal.castles.kyoto_gosho||initialCastle('kyoto_gosho'))}:{})};
 }
+async function courtEstateContext(db,user,save,clock,now){const context=await readCourtEstateContext(db,user,save,clock,now,{staffBaseDto,hash});if(context.projection)courtEstateProjectionGuards.set(context.projection,context.guard);return context;}
 async function tradeTroopCapacity(db,user,save,clock,now) {
   const staffBase=user.is_staff&&!user.is_admin?await staffBaseDto(db,user,clock,now):null;
-  const game=GameEngine.fromSave(save,GAME_OFFICERS,{isAdmin:!!user.is_admin,isDeputy:!!user.is_deputy,isStaff:!!user.is_staff,isCourtProtected:!!user.is_court_protected,staffBase});
+  const estateEconomy=await courtEstateContext(db,user,save,clock,now);
+  const game=GameEngine.fromSave(save,GAME_OFFICERS,{courtEstateProjection:estateEconomy.projection,isAdmin:!!user.is_admin,isDeputy:!!user.is_deputy,isStaff:!!user.is_staff,isCourtProtected:!!user.is_court_protected,staffBase});
   return game.troopTransportCapacity();
 }
 function renameCampaignClan(state,clan) {if(state.clan===clan)return;const previous=state.clan;for(const castle of Object.values(state.castles)){if(castle.owner===previous)castle.owner=clan;else if(castle.owner===clan)castle.owner='在地衆';}state.clan=clan;delete state.treaties[clan];}
@@ -1678,11 +1687,12 @@ async function advanceDepartingStaff(db,row,user,backup,now,clock) {
   await reconcileCovertProgress(db,user.id,save);
   const branchAccess=await branchStateGuard(db,user.id,save.state.walking.campaignId);await reconcileBranchProgress(db,user.id,save,{...clock,elapsedMs:until});
   const maintenanceAuthority=protectMaintenance(branchAccess,await maintenanceContext(db,user.id,save,clock));
-  const base=await staffBaseDto(db,historical,clock,now),game=GameEngine.fromSave(save,GAME_OFFICERS,{isStaff:true,isCourtProtected:!!user.is_court_protected,staffBase:base,maintenanceAuthority,branchAuthority:{resolvedElapsedMs:branchAccess.resolvedElapsedMs}});
+  const estateEconomy=await courtEstateContext(db,user,save,clock,now);
+  const base=await staffBaseDto(db,historical,clock,now),game=GameEngine.fromSave(save,GAME_OFFICERS,{courtEstateProjection:estateEconomy.projection,isStaff:true,isCourtProtected:!!user.is_court_protected,staffBase:base,maintenanceAuthority,branchAuthority:{resolvedElapsedMs:branchAccess.resolvedElapsedMs}});
   const result=game.applyWorldClock({...clock,elapsedMs:until},{maxSeconds:86400});
-  if(result.maintenancePending&&!result.changed)fail(409,'STAFF_TRANSITION_PENDING','スタッフ任期中の進行を引き継いでいます。自動同期で続きを反映します。');
+  if((result.maintenancePending||result.courtEstatePending)&&!result.changed)fail(409,'STAFF_TRANSITION_PENDING','スタッフ任期中の進行を引き継いでいます。自動同期で続きを反映します。');
   if(!result.ok||!result.changed)return row;
-  const next=normalizeGameSave(JSON.parse(game.exportSave()),historical,now,{reading:true,clock}),nonce=crypto.randomUUID(),roleGuard=roleCommitGuard(user),rewards=result.cycleRewards||[];
+  const next=normalizeGameSave(JSON.parse(game.exportSave()),historical,now,{reading:true,clock}),nonce=crypto.randomUUID(),roleGuard=withCourtEstateGuard(roleCommitGuard(user),estateEconomy),rewards=result.cycleRewards||[];
   const gate='EXISTS(SELECT 1 FROM player_saves WHERE user_id=? AND cycle_commit=?)',args=[user.id,nonce];
   const statements=[stmt(db,`UPDATE player_saves SET save_json=?,revision=revision+1,updated_at=?,cycle_index=?,cycle_home=?,cycle_commit=?
     WHERE user_id=? AND revision=? AND ${roleGuard.sql} AND ${branchAccess.guard.sql} AND EXISTS(SELECT 1 FROM staff_campaign_backups WHERE user_id=? AND active=1 AND term_id=?)
@@ -1696,7 +1706,7 @@ async function advanceDepartingStaff(db,row,user,backup,now,clock) {
   if(rewards.length)statements.push(stmt(db,`DELETE FROM field_relations WHERE (user_a=? OR user_b=?) AND updated_elapsed_ms<? AND ${gate}`,user.id,user.id,next.state.cycle.index*WORLD_CYCLE_MS,...args));
   const changed=rows((await db.batch(statements))[0])[0];
   if(!changed)fail(409,'STAFF_ROLE_CHANGED','役職と個人進行が更新されました。もう一度同期してください。');
-  if(result.pending||result.maintenancePending&&next.state.worldClock.elapsedMs<until)fail(409,'STAFF_TRANSITION_PENDING','スタッフ任期中の進行を引き継いでいます。自動同期で続きを反映します。');
+  if(result.pending||(result.maintenancePending||result.courtEstatePending)&&next.state.worldClock.elapsedMs<until)fail(409,'STAFF_TRANSITION_PENDING','スタッフ任期中の進行を引き継いでいます。自動同期で続きを反映します。');
   return changed;
 }
 
@@ -1740,44 +1750,49 @@ async function ensureStaffCampaign(db,user,now,clock=undefined,{deferClanMigrati
   }
   fail(409,'STAFF_ROLE_CHANGED','スタッフの役職と本拠を再確認してください。');
 }
-async function staffBaseUpgrade(db,user,raw,now) {
-  if(!user.is_staff||user.is_admin)fail(403,'STAFF_BASE_REQUIRED','スタッフとして京都御所へ接続してください。');
-  if(Object.keys(raw).some(k=>!['kind','id','requestId','deviceId','expectedRevision','baseRevision'].includes(k))||!['building','castle'].includes(raw.kind))fail(400,'INVALID_INPUT','共同普請の指定が正しくありません。');
+async function staffBaseUpgrade(db,user,raw,now,estateAccess=null) {
+  const estate=!!estateAccess,estateHelpers={requireAccountAccess,fail},requireCurrent=async()=>{if(estate)await assertCourtEstateAccess(db,user,estateAccess,estateHelpers);else await requireCurrentStaffBase(db,user);};
+  if(estate)await requireCurrent();else if(!user.is_staff||user.is_admin)fail(403,'STAFF_BASE_REQUIRED','スタッフとして京都御所へ接続してください。');
+  if(!raw||Array.isArray(raw)||Object.keys(raw).some(k=>!['kind','id','requestId','deviceId','expectedRevision','baseRevision',...(estate?['accessStamp']:[])].includes(k))||!['building','castle'].includes(raw.kind))fail(400,'INVALID_INPUT','共同普請の指定が正しくありません。');
   const body={...raw,id:idField(raw.kind==='castle'&&raw.id==='sunpu'?'kyoto_gosho':raw.id,'普請する施設'),requestId:idField(raw.requestId,'操作番号'),deviceId:idField(raw.deviceId,'端末')};
   if(!Number.isSafeInteger(body.expectedRevision)||body.expectedRevision<0||!Number.isSafeInteger(body.baseRevision)||body.baseRevision<0||body.kind==='castle'&&body.id!=='kyoto_gosho'||body.kind==='building'&&!BUILDINGS.some(b=>b.id===body.id))fail(400,'INVALID_INPUT','共同普請の対象と更新番号を確認してください。');
-  const digest=await hash(JSON.stringify([body.kind,body.id,body.baseRevision])),legacyDigest=body.kind==='castle'?await hash(JSON.stringify([body.kind,'sunpu',body.baseRevision])):digest;
+  if(estate&&body.accessStamp!==estateAccess.accessStamp)fail(409,'COURT_ESTATE_ACCESS_CHANGED','京都御所の共同領有資格が変わりました。最新の役職を確認してください。');
+  const digest=await hash(JSON.stringify(estate?['court-estate-v1',body.kind,body.id,body.baseRevision,body.accessStamp]:[body.kind,body.id,body.baseRevision])),legacyDigest=!estate&&body.kind==='castle'?await hash(JSON.stringify([body.kind,'sunpu',body.baseRevision])):digest;
   const prior=await stmt(db,'SELECT * FROM staff_base_requests WHERE actor_id=? AND request_id=?',user.id,body.requestId).first();
-  if(prior){user=await requireCurrentStaffBase(db,user);if(![digest,legacyDigest].includes(prior.request_hash))fail(409,'REQUEST_ID_REUSED','この操作番号は別の共同普請に使われています。');return {...await syncSnapshot(db,await getSyncRow(db,user.id),user,body.deviceId,now),receipt:JSON.parse(prior.result_json),idempotent:true};}
+  if(prior){await requireCurrent();if(![digest,legacyDigest].includes(prior.request_hash))fail(409,'REQUEST_ID_REUSED','この操作番号は別の共同普請に使われています。');return {...await syncSnapshot(db,await getSyncRow(db,user.id),user,body.deviceId,now),receipt:JSON.parse(prior.result_json),idempotent:true};}
   await budget(db,'staff-build:'+user.id,30,60000,now);
   const row=await settleWriterCycle(db,user,body.deviceId,body.expectedRevision,now),clock=await getWorldClock(db,now);
   if(!clock.running)fail(409,'WORLD_PAUSED','共通時間を再開してから普請してください。');
   const shared=await sharedStaffBaseRow(db,clock,now);if(Number(shared.revision)!==body.baseRevision)fail(409,'STAFF_BASE_CHANGED','別のスタッフが共同拠点を更新しました。最新の京都御所を確認してください。');
   const base=await staffBaseDto(db,user,clock,now,shared),save=normalizeGameSave(JSON.parse(row.save_json),user,now,{reading:true,clock});
   if(!save.state.worldClock||clock.elapsedMs-save.state.worldClock.elapsedMs>15000)fail(409,'CLOCK_STALE','共通時刻と個人資源へ同期してから普請してください。');
-  const game=GameEngine.fromSave(save,GAME_OFFICERS,{isStaff:true,isCourtProtected:!!user.is_court_protected,staffBase:base});game._projectStaffAt(clock.elapsedMs);
+  const estateEconomy=await courtEstateContext(db,user,save,clock,now);
+  if(estateEconomy.projection?.asOfElapsedMs<clock.elapsedMs)fail(409,'COURT_ESTATE_REFRESH_REQUIRED',COURT_ESTATE_REFRESH_MESSAGE);
+  const game=GameEngine.fromSave(save,GAME_OFFICERS,{courtEstateProjection:estateEconomy.projection,isAdmin:!!user.is_admin,isStaff:!!user.is_staff,isDeputy:!!user.is_deputy,isCourtProtected:!!user.is_court_protected,staffBase:user.is_staff&&!user.is_admin?base:null});if(game.isStaff)game._projectStaffAt(clock.elapsedMs);
+  const pricing=estate?courtEstatePricingGame(save,user,base,clock,estateEconomy.projection):game;
   const state=JSON.parse(shared.state_json),chain=state.jobs.filter(j=>j.kind===body.kind&&j.id===body.id).sort((a,b)=>a.targetLevel-b.targetLevel),tail=chain.at(-1),level=body.kind==='castle'?state.castleLevel:tail?.targetLevel??state.buildings[body.id],max=body.kind==='castle'?128:32;
   if(level>=max)fail(409,'BUILDING_MAX','最高レベルに到達しています。');
   if(body.kind==='castle'&&chain.length)fail(409,'STAFF_BUILDING_BUSY','この城郭の共同普請は進行中です。');
   if(!chain.length&&new Set(state.jobs.map(j=>j.kind+':'+j.id)).size>=2+Math.floor(state.buildings.keep/8))fail(409,'STAFF_BUILDING_SLOTS','共同普請の枠が埋まっています。');
-  if(body.kind==='building'&&!game.buildingUnlock(body.id).ok)fail(409,'BUILDING_LOCKED',game.buildingUnlock(body.id).reason);
-  const cost=body.kind==='castle'?game.castleUpgradeCost('kyoto_gosho'):game.costs(body.id,level);if(game.state.command<1)fail(409,'COMMAND_REQUIRED','指示の回復をお待ちください。');
+  if(body.kind==='building'&&!pricing.buildingUnlock(body.id).ok)fail(409,'BUILDING_LOCKED',pricing.buildingUnlock(body.id).reason);
+  const cost=body.kind==='castle'?pricing.castleUpgradeCost('kyoto_gosho'):pricing.costs(body.id,level);if(game.state.command<1)fail(409,'COMMAND_REQUIRED','指示の回復をお待ちください。');
   if(RESOURCES.some(k=>game.state.resources[k]<(cost[k]||0)))fail(409,'INSUFFICIENT_ASSETS','共同普請に必要な個人資源が足りません。');
   const startedElapsedMs=tail?Math.max(clock.elapsedMs,tail.completesElapsedMs):clock.elapsedMs;
   game._pay(cost);game.state.command--;const job={jobId:uid('sb_'),kind:body.kind,id:body.id,targetLevel:level+1,totalSeconds:cost.seconds,queuedAtElapsedMs:clock.elapsedMs,startedElapsedMs,completesElapsedMs:startedElapsedMs+cost.seconds*1000,startedBy:{id:user.id,name:user.name,termId:user.staff_term}};
   state.jobs.push(job);state.updatedElapsedMs=clock.elapsedMs;
-  const receipt={requestId:body.requestId,jobId:job.jobId,staffTerm:user.staff_term,kind:body.kind,id:body.id,targetLevel:job.targetLevel,cost:pick(cost,RESOURCES),queued:job.startedElapsedMs>clock.elapsedMs,queuePosition:chain.length,queuedAtElapsedMs:clock.elapsedMs,startedElapsedMs:job.startedElapsedMs,completesElapsedMs:job.completesElapsedMs,baseRevision:Number(shared.revision)+1,playerRevision:Number(row.revision)+1};
+  const receipt={requestId:body.requestId,jobId:job.jobId,staffTerm:user.staff_term,...(estate?{accessStamp:estateAccess.accessStamp}:{}),kind:body.kind,id:body.id,targetLevel:job.targetLevel,cost:pick(cost,RESOURCES),queued:job.startedElapsedMs>clock.elapsedMs,queuePosition:chain.length,queuedAtElapsedMs:clock.elapsedMs,startedElapsedMs:job.startedElapsedMs,completesElapsedMs:job.completesElapsedMs,baseRevision:Number(shared.revision)+1,playerRevision:Number(row.revision)+1};
   game.log(`京都御所の${body.kind==='castle'?'城郭':globalThis.SENGOKU_DATA.buildings.find(b=>b.id===body.id).name} Lv.${job.targetLevel}へ共同普請を${receipt.queued?'予約':'開始'}しました。`,'staff-build');
-  const next=normalizeGameSave(JSON.parse(game.exportSave()),user,now,{clock}),nonce=crypto.randomUUID(),gate='EXISTS(SELECT 1 FROM staff_base_requests WHERE actor_id=? AND request_id=? AND commit_token=?)',gateArgs=[user.id,body.requestId,nonce],access=accountCommitGuard(user);
+  const next=normalizeGameSave(JSON.parse(game.exportSave()),user,now,{clock}),nonce=crypto.randomUUID(),gate='EXISTS(SELECT 1 FROM staff_base_requests WHERE actor_id=? AND request_id=? AND commit_token=?)',gateArgs=[user.id,body.requestId,nonce],access=withCourtEstateGuard(accountCommitGuard(user),estateEconomy),constructionGuard=estate?estateAccess.guard:{sql:STAFF_MEMBER_GUARD,args:[user.id,user.staff_term,user.id]};
   const result=await db.batch([
     stmt(db,`INSERT INTO staff_base_requests(actor_id,request_id,request_hash,commit_token,result_json,created_at)
       SELECT ?,?,?,?,?,? FROM player_saves ps JOIN staff_base sb ON sb.id='kyoto_gosho'
       WHERE ps.user_id=? AND ps.revision=? AND ps.writer_device_id=? AND ps.lease_expires_at>? AND sb.revision=?
-      AND ${STAFF_MEMBER_GUARD} AND ${access.sql} AND EXISTS(SELECT 1 FROM world_clock WHERE id=? AND revision=? AND running=1)
-      ON CONFLICT(actor_id,request_id) DO NOTHING RETURNING request_id`,user.id,body.requestId,digest,nonce,JSON.stringify(receipt),now,user.id,row.revision,body.deviceId,now,shared.revision,user.id,user.staff_term,user.id,...access.args,WORLD_CLOCK_ID,clock.revision),
+      AND ${constructionGuard.sql} AND ${access.sql} AND EXISTS(SELECT 1 FROM world_clock WHERE id=? AND revision=? AND running=1)
+      ON CONFLICT(actor_id,request_id) DO NOTHING RETURNING request_id`,user.id,body.requestId,digest,nonce,JSON.stringify(receipt),now,user.id,row.revision,body.deviceId,now,shared.revision,...constructionGuard.args,...access.args,WORLD_CLOCK_ID,clock.revision),
     stmt(db,`UPDATE player_saves SET save_json=?,revision=revision+1,updated_at=?,lease_expires_at=? WHERE user_id=? AND ${gate}`,JSON.stringify(next),now,now+SYNC_LEASE,user.id,...gateArgs),
     stmt(db,`UPDATE staff_base SET state_json=?,revision=revision+1,commit_token=?,updated_at=? WHERE id='kyoto_gosho' AND ${gate}`,JSON.stringify(state),nonce,now,...gateArgs)
   ]);
-  if(!rows(result[0]).length){const accepted=await stmt(db,'SELECT * FROM staff_base_requests WHERE actor_id=? AND request_id=?',user.id,body.requestId).first();if(accepted&&accepted.request_hash===digest){await requireCurrentStaffBase(db,user);return {...await syncSnapshot(db,await getSyncRow(db,user.id),await getUser(db,user.id),body.deviceId,now),receipt:JSON.parse(accepted.result_json),idempotent:true};}const current=await getUser(db,user.id);if(!current.is_staff||current.is_admin||current.staff_term!==user.staff_term||(current.deputy_term||'')!==(user.deputy_term||''))fail(403,'STAFF_BASE_REQUIRED','スタッフの役職が変更されました。');fieldWriter(await getSyncRow(db,user.id),body.deviceId,body.expectedRevision,now);fail(409,'STAFF_BASE_CHANGED','共同拠点が更新されました。最新の状態を確認してください。');}
+  if(!rows(result[0]).length){const accepted=await stmt(db,'SELECT * FROM staff_base_requests WHERE actor_id=? AND request_id=?',user.id,body.requestId).first();if(accepted&&accepted.request_hash===digest){await requireCurrent();return {...await syncSnapshot(db,await getSyncRow(db,user.id),await getUser(db,user.id),body.deviceId,now),receipt:JSON.parse(accepted.result_json),idempotent:true};}await requireCurrent();fieldWriter(await getSyncRow(db,user.id),body.deviceId,body.expectedRevision,now);fail(409,'STAFF_BASE_CHANGED','共同拠点が更新されました。最新の状態を確認してください。');}
   return {...await syncSnapshot(db,await getSyncRow(db,user.id),user,body.deviceId,now),receipt,idempotent:false};
 }
 
@@ -1924,7 +1939,7 @@ async function resolveSyncBranches(db,user,save,before,clock,now,{importedStatio
   if(!access.row&&(importedStationedTroops||save.state.branches.some(branch=>Number(branch.stationedTroops)>0)))fail(409,'TROOP_IMPORT_RECALL_REQUIRED','初回の同期前に支拠点の駐留兵を本隊または自領の城へ戻してください。接続済みの場合は、端末同期で領主データを書き出してからこの端末の接続を解除し、兵を戻した後に同じ領主データで再接続できます。現在の端末の保存は保持しています。');
   if(movement.row||before?.state.walking.campaignId===campaignId){if((save.state.troopTransferSequence||0)!==movement.sequence)fail(409,'TROOP_STATE_CHANGED','兵の配置が更新されています。最新の保存へ同期してから、もう一度操作してください。');}
   else save.state.troopTransferSequence=0;
-  let model=copy(access.state),resolvedElapsedMs=access.resolvedElapsedMs,replayed=null,shared=null;
+  let model=copy(access.state),resolvedElapsedMs=access.resolvedElapsedMs,replayed=null,shared=null,estateEconomy=null;
   const parentLosses=new Map();let ownershipCorrected=false;
   const incomingElapsed=Math.min(clock.elapsedMs,Number(save.state.worldClock?.elapsedMs||0));
   if(access.row&&model.branches.length&&before?.state.walking.campaignId===save.state.walking.campaignId&&before.state.worldClock){
@@ -1941,11 +1956,12 @@ async function resolveSyncBranches(db,user,save,before,clock,now,{importedStatio
     applyBranchProgress(trusted,model,{...clock,elapsedMs:start});
     shared=user.is_staff&&!user.is_admin?await staffBaseDto(db,user,clock,now):null;
     const maintenanceAuthority=protectMaintenance(access,await maintenanceContext(db,user.id,trusted,clock));
-    const game=GameEngine.fromSave(trusted,GAME_OFFICERS,{isAdmin:!!user.is_admin,isDeputy:!!user.is_deputy,isStaff:!!user.is_staff,isCourtProtected:!!user.is_court_protected,staffBase:shared,maintenanceAuthority});
+    estateEconomy=await courtEstateContext(db,user,trusted,clock,now);
+    const game=GameEngine.fromSave(trusted,GAME_OFFICERS,{courtEstateProjection:estateEconomy.projection,isAdmin:!!user.is_admin,isDeputy:!!user.is_deputy,isStaff:!!user.is_staff,isCourtProtected:!!user.is_court_protected,staffBase:shared,maintenanceAuthority});
     // This replay proves branch/CPU transitions from an older checkpoint. The
     // complete incoming campaign is balanced only after every ledger is merged.
     const result=game.applyWorldClock({...clock,elapsedMs:target},{maxSeconds:86400,deferCycleSettlement:true,rebalanceTroops:false});
-    if(!result.ok||result.pending||result.settlementRequired||result.maintenancePending&&game.state.worldClock.elapsedMs<target)fail(409,'BRANCH_CLOCK_STALE','支拠点の時間経過を同期しています。最新の保存へ同期してください。');
+    if(!result.ok||result.pending||result.courtEstatePending||result.settlementRequired||result.maintenancePending&&game.state.worldClock.elapsedMs<target)fail(409,'BRANCH_CLOCK_STALE','支拠点の時間経過を同期しています。最新の保存へ同期してください。');
     replayed=JSON.parse(game.exportSave());
     reconcileOfficerHealth(save,replayed,clock);
     for(const loss of game.takeBranchParentLosses())parentLosses.set(loss.parentCastleId,loss);
@@ -1978,7 +1994,7 @@ async function resolveSyncBranches(db,user,save,before,clock,now,{importedStatio
   if(save.state.branches.some(branch=>(branch.commanders||[]).some(id=>save.state.army.includes(id))))fail(400,'INVALID_SAVE','本隊と支拠点には別の武将を配置してください。');
   const guard=access.row?{sql:`EXISTS(SELECT 1 FROM world_clock WHERE id=? AND revision=?)${shared?" AND EXISTS(SELECT 1 FROM staff_base WHERE id='kyoto_gosho' AND revision=?)":''}`,args:[WORLD_CLOCK_ID,clock.revision,...(shared?[shared.revision]:[])]}:{sql:'1=1',args:[]};
   guard.sql+=' AND '+movement.guard.sql;guard.args.push(...movement.guard.args);
-  return{access,resolvedElapsedMs,replayed,guard};
+  return{access,resolvedElapsedMs,replayed,guard:estateEconomy?withCourtEstateGuard(guard,estateEconomy):guard};
 }
 // A shared seat may change only from a server-simulated home defense, never
 // from the ownership, home, game-over flag or log of an uploaded save.
@@ -1999,8 +2015,10 @@ async function resolveSyncResidency(db,user,save,before,clock,now,branchAccess){
     trusted.state.worldClock={id:WORLD_CLOCK_ID,elapsedMs:start};trusted.state.turn=Math.floor(start/WORLD_MONTH_MS);trusted.state.realtime.elapsed=start%WORLD_MONTH_MS/1000;trusted.state.upkeep.settledTurn=Math.min(trusted.state.upkeep.settledTurn,trusted.state.turn);
     await reconcileCovertProgress(db,user.id,trusted);applyBranchProgress(trusted,branchAccess.state,{...clock,elapsedMs:start});
     const maintenanceAuthority=protectMaintenance(branchAccess,await maintenanceContext(db,user.id,trusted,clock));
-    const game=GameEngine.fromSave(trusted,GAME_OFFICERS,{isCourtProtected:!!user.is_court_protected,maintenanceAuthority,branchAuthority:{resolvedElapsedMs:start}}),advanced=game.applyWorldClock({...clock,elapsedMs:target},{maxSeconds:86400,deferCycleSettlement:true,rebalanceTroops:false});
-    if(!advanced.ok||advanced.pending||advanced.settlementRequired||advanced.maintenancePending&&game.state.worldClock.elapsedMs<target)fail(409,'RESIDENCY_CLOCK_STALE','城の防衛を共通時刻へ同期しています。最新の保存を確認してください。');
+    const estateEconomy=await courtEstateContext(db,user,trusted,clock,now);
+    Object.assign(seatGuard,withCourtEstateGuard(seatGuard,estateEconomy));
+    const game=GameEngine.fromSave(trusted,GAME_OFFICERS,{courtEstateProjection:estateEconomy.projection,isCourtProtected:!!user.is_court_protected,maintenanceAuthority,branchAuthority:{resolvedElapsedMs:start}}),advanced=game.applyWorldClock({...clock,elapsedMs:target},{maxSeconds:86400,deferCycleSettlement:true,rebalanceTroops:false});
+    if(!advanced.ok||advanced.pending||advanced.courtEstatePending||advanced.settlementRequired||advanced.maintenancePending&&game.state.worldClock.elapsedMs<target)fail(409,'RESIDENCY_CLOCK_STALE','城の防衛を共通時刻へ同期しています。最新の保存を確認してください。');
     events=game.takeHomeDefenseLosses?.()||[];resolved=Math.max(resolved,target);
     reconcileOfficerHealth(save,{state:game.state},clock);durabilityState=game.state;
     if(events.some(event=>event.castleId===member.castle_id&&Number(event.occurredElapsedMs)>Number(member.lord_since_elapsed_ms)))provenState=game.state;
@@ -2033,12 +2051,14 @@ async function syncSnapshot(db,row,user,deviceId,now,{settle=false}={}) {
   const maintenanceAuthority=(await maintenanceContext(db,user.id,privateSave,clock)).authority;
   let branchResolvedElapsedMs=0;
   if(privateSave){await restoreServerMarch(db,user.id,privateSave);await reconcileCovertProgress(db,user.id,privateSave);const branches=await branchStateGuard(db,user.id,privateSave.state.walking.campaignId);applyBranchProgress(privateSave,branches.state,clock);branchResolvedElapsedMs=branches.resolvedElapsedMs;}
-  return {ok:true,user:mapUser(user,now),staffBase:publicStaffBase(staffBase),save:privateSave,clock,maintenanceAuthority,branchResolvedElapsedMs,expulsion:await expulsionSnapshot(db,user.id),...await residencySnapshot(db,user.id,now,evaluationRef),
+  const estateEconomy=await courtEstateContext(db,user,privateSave,clock,now),role=roleCommitGuard(user);
+  if(!await stmt(db,'SELECT 1 AS allowed WHERE '+role.sql+' AND '+estateEconomy.guard.sql,...role.args,...estateEconomy.guard.args).first())fail(409,'COURT_ESTATE_REFRESH_REQUIRED',COURT_ESTATE_REFRESH_MESSAGE);
+  return {ok:true,user:mapUser(user,now),staffBase:publicStaffBase(staffBase),courtEstateProjection:estateEconomy.projection,save:privateSave,clock,maintenanceAuthority,branchResolvedElapsedMs,expulsion:await expulsionSnapshot(db,user.id),...await residencySnapshot(db,user.id,now,evaluationRef),
     revision:Number(row?.revision||0),updatedAt:row?.updated_at?iso(row.updated_at):null,
     writerDeviceId:row?.writer_device_id||null,writerDeviceName:row?.writer_device_name||null,
     leaseExpiresAt:row?.lease_expires_at?iso(row.lease_expires_at):null,serverTime:iso(now),
     writable:!!deviceId&&row?.writer_device_id===deviceId&&Number(row.lease_expires_at)>now,
-    entitlements:{courtProtected:!!user.is_court_protected,edo:!!user.is_admin,ieyasuU:!!user.is_admin,kagoshima:!!user.is_deputy,shimazuU:!!user.is_deputy&&!user.is_admin&&!user.is_staff}};
+    entitlements:{courtProtected:!!user.is_court_protected,courtEstate:!user.expulsion_pending&&(!!user.is_court_protected||!!user.is_staff),edo:!!user.is_admin,ieyasuU:!!user.is_admin,kagoshima:!!user.is_deputy,shimazuU:!!user.is_deputy&&!user.is_admin&&!user.is_staff}};
 }
 
 const FIELD_RULES=Object.freeze({minTroops:300,maxTroops:100000,commandCost:1,foodBase:150,foodPerTroop:.3,attackCooldownMs:60000,defenderProtectionMs:60000,proposalLifetimeMs:600000,allianceDurationMs:360000,maxLootPerResource:50000000,maxLootFraction:FIELD_LOOT_POLICY.fraction,lootFraction:FIELD_LOOT_POLICY.fraction,lootPolicy:FIELD_LOOT_POLICY.id,maxDefenderLossFraction:.1,operatorProtected:false,staffProtected:false,targetCastles:true,specialBaseBattles:true,branchBattles:true,captureCastles:FIELD_CAPTURE_CASTLES,uncapturableCastles:['edo','kyoto_gosho','kagoshima'],victoryRewards:{gold:0,rice:0,wood:0,stone:0},
@@ -2402,7 +2422,7 @@ async function fieldStaffDefense(db,state,clock) {
   return row?{sql:"EXISTS(SELECT 1 FROM staff_base WHERE id='kyoto_gosho' AND revision=?)",args:[row.revision]}:{sql:"NOT EXISTS(SELECT 1 FROM staff_base WHERE id='kyoto_gosho')",args:[]};
 }
 function marchContext(db,user,now,env=null){
-  return {db,user,now,env,helpers:{fail,readBody,budget,idField,textField,uid,hash,getUser,getSyncRow,requireAdmin,requireAccountAccess,roleCommitGuard,accountCommitGuard,evaluationRef,fieldWriter,settleWriterCycle,getWorldClock,normalizeGameSave,syncSnapshot,staffBaseDto,reconcileCovertProgress,reconcileBranchProgress,branchStateGuard,branchProgressStatements,covertIncidentStatements,staffPersonalProgressStatement,saveAchievements,achievementStatement,getFieldList,fieldStaffDefense,fieldDefense,fieldRelation,fieldRelationStatus,courtEmperorAuthority,courtImperialAuthority,courtAttackAuthority,registerCourtGuard:()=>{},syncLease:SYNC_LEASE,worldClockId:WORLD_CLOCK_ID}};
+  return {db,user,now,env,helpers:{courtEstateContext,courtEstateSnapshotStatements,getWorldClock,fail,readBody,budget,idField,textField,uid,hash,getUser,getSyncRow,requireAdmin,requireAccountAccess,roleCommitGuard,accountCommitGuard,evaluationRef,fieldWriter,settleWriterCycle,getWorldClock,normalizeGameSave,syncSnapshot,staffBaseDto,reconcileCovertProgress,reconcileBranchProgress,branchStateGuard,branchProgressStatements,covertIncidentStatements,staffPersonalProgressStatement,saveAchievements,achievementStatement,getFieldList,fieldStaffDefense,fieldDefense,fieldRelation,fieldRelationStatus,courtEmperorAuthority,courtImperialAuthority,courtAttackAuthority,registerCourtGuard:()=>{},syncLease:SYNC_LEASE,worldClockId:WORLD_CLOCK_ID}};
 }
 async function departFieldMarch({db,user,target,body,now,clock,attacker,attackerRow,defenderRow,defender,castleId,digest,foodCost,courtGuard,sharedGuard,attackerBranches,defenderBranches,protection,support,rally,residencyGuard}){
   const a=attacker.state,site=body.targetBranchId?branchSite(body.targetBranchId):null;
@@ -2442,14 +2462,15 @@ async function departCampaignMarch(ctx,raw){
   const court=await courtAttackAuthority(db,user,save.state.home,targetId),emperor=await courtImperialAuthority(db,user),shared=user.is_staff&&!user.is_admin?await staffBaseDto(db,user,clock,now):null;
   const maintenanceAuthority=protectMaintenance(branchAccess,await maintenanceContext(db,user.id,save,clock));
   if(maintenanceAuthority.hasMore||maintenanceAuthority.asOfElapsedMs>clock.elapsedMs)fail(409,'CLOCK_STALE','維持費の時間経過を同期しています。最新の保存へ同期してください。');
-  const game=GameEngine.fromSave(save,GAME_OFFICERS,{isAdmin:!!user.is_admin,isDeputy:!!user.is_deputy,isStaff:!!user.is_staff,isCourtProtected:!!user.is_court_protected,isCourtEmperor:emperor.isCourtEmperor,isCourtRegent:emperor.isCourtRegent,staffBase:shared,maintenanceAuthority,branchAuthority:{resolvedElapsedMs:branchAccess.resolvedElapsedMs}});
-  const advanced=game.applyWorldClock(clock,{maxSeconds:86400,deferCycleSettlement:true});if(!advanced.ok||advanced.pending||advanced.settlementRequired)fail(409,'CLOCK_STALE','共通時計と本拠を同期してください。');
+  const estateEconomy=await courtEstateContext(db,user,save,clock,now);
+  const game=GameEngine.fromSave(save,GAME_OFFICERS,{courtEstateProjection:estateEconomy.projection,isAdmin:!!user.is_admin,isDeputy:!!user.is_deputy,isStaff:!!user.is_staff,isCourtProtected:!!user.is_court_protected,isCourtEmperor:emperor.isCourtEmperor,isCourtRegent:emperor.isCourtRegent,staffBase:shared,maintenanceAuthority,branchAuthority:{resolvedElapsedMs:branchAccess.resolvedElapsedMs}});
+  const advanced=game.applyWorldClock(clock,{maxSeconds:86400,deferCycleSettlement:true});if(!advanced.ok||advanced.pending||advanced.courtEstatePending||advanced.settlementRequired)fail(409,'CLOCK_STALE','共通時計と本拠を同期してください。');
   const result=body.kind==='branch'?game.departBranchAttack(body.targetId,body.tactic,body.troops):game.departAttack(body.targetId,body.tactic,body.troops);
   if(!result.ok)fail(409,result.code||'MARCH_UNAVAILABLE',result.message);
   const native=copy(game.state.march),record=marchRecord({user,requestId:body.requestId,kind:body.kind,save,travel:native.travel,targetName:body.kind==='branch'?branchSite(body.targetId).name:CASTLE_BY_ID[targetId].name,troops:body.troops,tactic:body.tactic,foodCost:native.foodCost,clock,now,digest,payload:{body,nativeMarch:native}});
   native.id=record.id;native.departedElapsedMs=record.departed_ms;native.arrivesElapsedMs=record.arrives_ms;
   const payload=JSON.parse(record.payload_json);payload.nativeMarch=native;record.payload_json=JSON.stringify(payload);game.state.march=serverMarchMarker(record);
-  const next=normalizeGameSave(JSON.parse(game.exportSave()),user,now,{clock}),role=guardLordSupport(roleCommitGuard(user),user),sharedGuard=shared?{sql:"EXISTS(SELECT 1 FROM staff_base WHERE id='kyoto_gosho' AND revision=?)",args:[shared.revision]}:{sql:'1=1',args:[]},cpuLosses=await prepareResidencyCpuLosses(db,{userId:user.id,events:game.takeHomeDefenseLosses?.()||[],now,state:next.state}),guards=[role,court,branchAccess.guard,sharedGuard,cpuLosses.guard],args=[record.id,record.commit_token];
+  const next=normalizeGameSave(JSON.parse(game.exportSave()),user,now,{clock}),role=guardLordSupport(roleCommitGuard(user),user),sharedGuard=shared?{sql:"EXISTS(SELECT 1 FROM staff_base WHERE id='kyoto_gosho' AND revision=?)",args:[shared.revision]}:{sql:'1=1',args:[]},cpuLosses=await prepareResidencyCpuLosses(db,{userId:user.id,events:game.takeHomeDefenseLosses?.()||[],now,state:next.state}),guards=[role,estateEconomy.guard,court,branchAccess.guard,sharedGuard,cpuLosses.guard],args=[record.id,record.commit_token];
   const guard=`EXISTS(SELECT 1 FROM player_saves WHERE user_id=? AND revision=? AND writer_device_id=? AND lease_expires_at>?) AND EXISTS(SELECT 1 FROM world_clock WHERE id=? AND revision=? AND running=1) AND ${guards.map(g=>'('+g.sql+')').join(' AND ')}`;
   const personal=await staffPersonalProgressStatement(db,user,next,now,MARCH_GATE,args,game.getStaffPersonalProgress?.());
   await db.batch([insertMarch(db,record,guard,[user.id,saved.revision,body.deviceId,now,WORLD_CLOCK_ID,clock.revision,...guards.flatMap(g=>g.args)]),stmt(db,`UPDATE player_saves SET save_json=?,revision=revision+1,updated_at=?,lease_expires_at=? WHERE user_id=? AND ${MARCH_GATE}`,JSON.stringify(next),now,now+SYNC_LEASE,user.id,...args),...branchProgressStatements(db,user.id,next,now,MARCH_GATE,args,{resolvedElapsedMs:clock.elapsedMs}),...covertIncidentStatements(db,user.id,next,now,MARCH_GATE,args),...cpuLosses.statements(MARCH_GATE,args),...(personal?[personal]:[])]);
@@ -2464,17 +2485,18 @@ async function settleCampaignMarch(ctx,march){
   save.state.march=payload.nativeMarch;
   const maintenanceAuthority=protectMaintenance(branches,await maintenanceContext(db,user.id,save,clock));
   if(maintenanceAuthority.hasMore||maintenanceAuthority.asOfElapsedMs>clock.elapsedMs)fail(409,'MARCH_RETRY','維持費の時間経過を同期しています。');
-  const game=GameEngine.fromSave(save,GAME_OFFICERS,{isAdmin:!!user.is_admin,isDeputy:!!user.is_deputy,isStaff:!!user.is_staff,isCourtProtected:!!user.is_court_protected,isCourtEmperor:emperor.isCourtEmperor,isCourtRegent:emperor.isCourtRegent,staffBase:shared,maintenanceAuthority,branchAuthority:{resolvedElapsedMs:branches.resolvedElapsedMs}});
-  const advanced=game.applyWorldClock(clock,{maxSeconds:86400,deferCycleSettlement:true});if(!advanced.ok||advanced.pending||advanced.settlementRequired)fail(409,'MARCH_RETRY','到着した部隊の本拠を同期しています。');
+  const estateEconomy=await courtEstateContext(db,user,save,clock,now);
+  const game=GameEngine.fromSave(save,GAME_OFFICERS,{courtEstateProjection:estateEconomy.projection,isAdmin:!!user.is_admin,isDeputy:!!user.is_deputy,isStaff:!!user.is_staff,isCourtProtected:!!user.is_court_protected,isCourtEmperor:emperor.isCourtEmperor,isCourtRegent:emperor.isCourtRegent,staffBase:shared,maintenanceAuthority,branchAuthority:{resolvedElapsedMs:branches.resolvedElapsedMs}});
+  const advanced=game.applyWorldClock(clock,{maxSeconds:86400,deferCycleSettlement:true});if(!advanced.ok||advanced.pending||advanced.courtEstatePending||advanced.settlementRequired)fail(409,'MARCH_RETRY','到着した部隊の本拠を同期しています。');
   game.resolveDueMarches();const outcome=game.state.marchHistory.find(x=>x.id===march.id);if(!outcome)fail(409,'MARCH_RETRY','到着した部隊の戦況を確認しています。');
-  const next=normalizeGameSave(JSON.parse(game.exportSave()),user,now,{clock}),nonce=crypto.randomUUID(),role=guardLordSupport(roleCommitGuard(user),user),sharedGuard=shared?{sql:"EXISTS(SELECT 1 FROM staff_base WHERE id='kyoto_gosho' AND revision=?)",args:[shared.revision]}:{sql:'1=1',args:[]},cpuLosses=await prepareResidencyCpuLosses(db,{userId:user.id,events:game.takeHomeDefenseLosses?.()||[],now,state:next.state}),guards=[role,court,branches.guard,sharedGuard,cpuLosses.guard],result={battle:outcome.battle||null,message:outcome.message,resolvedAt:iso(now)},gate="EXISTS(SELECT 1 FROM battle_marches WHERE id=? AND commit_token=? AND status IN ('resolved','cancelled'))",args=[march.id,nonce];
+  const next=normalizeGameSave(JSON.parse(game.exportSave()),user,now,{clock}),nonce=crypto.randomUUID(),role=guardLordSupport(roleCommitGuard(user),user),sharedGuard=shared?{sql:"EXISTS(SELECT 1 FROM staff_base WHERE id='kyoto_gosho' AND revision=?)",args:[shared.revision]}:{sql:'1=1',args:[]},cpuLosses=await prepareResidencyCpuLosses(db,{userId:user.id,events:game.takeHomeDefenseLosses?.()||[],now,state:next.state}),guards=[role,estateEconomy.guard,court,branches.guard,sharedGuard,cpuLosses.guard],result={battle:outcome.battle||null,message:outcome.message,resolvedAt:iso(now)},gate="EXISTS(SELECT 1 FROM battle_marches WHERE id=? AND commit_token=? AND status IN ('resolved','cancelled'))",args=[march.id,nonce];
   const statements=[stmt(db,`UPDATE battle_marches SET status=?,result_json=?,commit_token=?,revision=revision+1,updated_at=? WHERE id=? AND status='marching' AND revision=? AND arrives_ms<=? AND EXISTS(SELECT 1 FROM player_saves WHERE user_id=? AND revision=?) AND EXISTS(SELECT 1 FROM world_clock WHERE id=? AND revision=?) AND ${guards.map(g=>'('+g.sql+')').join(' AND ')} RETURNING id`,outcome.status,JSON.stringify(result),nonce,now,march.id,march.revision,clock.elapsedMs,user.id,saved.revision,WORLD_CLOCK_ID,clock.revision,...guards.flatMap(g=>g.args)),stmt(db,`UPDATE player_saves SET save_json=?,revision=revision+1,updated_at=? WHERE user_id=? AND ${gate}`,JSON.stringify(next),now,user.id,...args),...branchProgressStatements(db,user.id,next,now,gate,args,{resolvedElapsedMs:clock.elapsedMs}),...covertIncidentStatements(db,user.id,next,now,gate,args),...campaignShogunateStatements({db,user,save:next,now,gateSql:gate,gateArgs:args})];
   statements.push(...cpuLosses.statements(gate,args));
   for(const event of saveAchievements(save,next))statements.push(achievementStatement(db,user.id,event,now,gate,args));
   const personal=await staffPersonalProgressStatement(db,user,next,now,gate,args,game.getStaffPersonalProgress?.());if(personal)statements.push(personal);
   const done=await db.batch(statements);if(!rows(done[0]).length)fail(409,'MARCH_RETRY','到着時の本拠が更新されました。再確認しています。');
 }
-const MARCH_RETRY_ERRORS=new Set(['MARCH_RETRY','CLOCK_STALE','MAINTENANCE_REFRESH_REQUIRED','WORLD_CLOCK_CHANGED','REVISION_CONFLICT','FIELD_STATE_CHANGED','BRANCH_STATE_CHANGED','STAFF_BASE_CHANGED','CYCLE_SETTLEMENT_REQUIRED','WORLD_PAUSED']);
+const MARCH_RETRY_ERRORS=new Set(['MARCH_RETRY','CLOCK_STALE','MAINTENANCE_REFRESH_REQUIRED','COURT_ESTATE_REFRESH_REQUIRED','WORLD_CLOCK_CHANGED','REVISION_CONFLICT','FIELD_STATE_CHANGED','BRANCH_STATE_CHANGED','STAFF_BASE_CHANGED','CYCLE_SETTLEMENT_REQUIRED','WORLD_PAUSED']);
 async function settleBattleMarches(ctx,{actorId=null,limit=12}={}){
   const {db,now}=ctx,clock=await getWorldClock(db,now);if(!clock.running)return;
   const due=rows(await stmt(db,`SELECT * FROM battle_marches WHERE status='marching' AND arrives_ms<=?${actorId?' AND actor_id=?':''} ORDER BY arrives_ms,id LIMIT ?`,clock.elapsedMs,...(actorId?[actorId]:[]),Math.min(40,limit)).all());
@@ -2739,21 +2761,22 @@ async function staffOperation(db,user,body,now) {
       AND EXISTS(SELECT 1 FROM settings WHERE key='adminUserId' AND value=?) AND (?='dismiss' OR (NOT EXISTS(SELECT 1 FROM deputy_operator_state WHERE user_id=target.id) AND NOT EXISTS(SELECT 1 FROM player_expulsions WHERE user_id=target.id AND pending=1)))
       ON CONFLICT(actor_id,request_id) DO NOTHING RETURNING request_id`,user.id,requestId,targetId,body.action,nonce,now,targetId,user.id,user.id,body.action),
     ...(body.action==='dismiss'?[stmt(db,`UPDATE staff_campaign_backups SET left_elapsed_ms=COALESCE(left_elapsed_ms,?),updated_at=? WHERE user_id=? AND active=1 AND ${guard}`,roleClock.elapsedMs,now,targetId,user.id,requestId,nonce)]:[]),
-    mutation
+    mutation,
+    ...courtEstateSnapshotStatements(db,roleClock,guard,[user.id,requestId,nonce])
   ]);
   if(!rows(result[0]).length) {
     const current=check(await stmt(db,'SELECT target_id,action FROM staff_role_requests WHERE actor_id=? AND request_id=?',user.id,requestId).first());
     if(!current){requireAdmin(await getUser(db,user.id));await userExists(db,targetId);if(body.action==='appoint'&&(await getUser(db,targetId)).expulsion_pending)fail(409,'EXPULSION_PENDING','追放後の拠点を選び直してから、京都御所へ任命してください。');fail(409,'STAFF_CHANGED','役職が更新されました。もう一度確認してください。');}
     return respond(true);
   }
-  return respond(!rows(result.at(-1)).length);
+  return respond(!rows(result[body.action==='dismiss'?2:1]).length);
 }
 
 async function route(request, env, now) {
   const url = new URL(request.url), path = url.pathname.slice(API.length), method = request.method;
   const db = env.DB;
   if (!db?.prepare || !db?.batch) fail(503, 'SERVICE_UNAVAILABLE', '通信サービスの準備中です。');
-  if(path==='/premium/stripe/webhook'&&method==='POST')return handlePremiumWebhook({db,env,now,request,helpers:{fail}});
+  if(path==='/premium/stripe/webhook'&&method==='POST')return handlePremiumWebhook({db,env,now,request,helpers:{courtEstateContext,courtEstateSnapshotStatements,getWorldClock,fail}});
   if(path==='/notifications/tick'&&method==='POST'){await budget(db,'notification-tick',2,60000,now);await settleShogunateApprovals(db,now);return dispatchNotifications(env,await getWorldClock(db,now),{courtAccess:(userId,at)=>notificationCourtAccess(db,userId,at)});}
   if (path === '/health' && method === 'GET') {
     try {
@@ -2768,6 +2791,7 @@ async function route(request, env, now) {
       if(Number(castleArtSchema?.ready)!==3)throw Error('Castle appearance migration incomplete');
       await stmt(db,'SELECT (SELECT COUNT(*) FROM shogunate_approvals) AS approvals,(SELECT COUNT(*) FROM shogunate_approval_requests) AS approval_requests,(SELECT COUNT(*) FROM shogunate_palace_control) AS palace_control,(SELECT COUNT(*) FROM court_succession_requests) AS succession_requests,(SELECT COUNT(*) FROM court_retired_emperors) AS retired_emperors').first();
       await stmt(db,'SELECT (SELECT COUNT(*) FROM shogunate_governance_accounts) AS governance_accounts,(SELECT COUNT(*) FROM shogunate_governance_requests) AS governance_requests').first();
+      await stmt(db,'SELECT (SELECT COUNT(*) FROM court_estate_policy) AS estate_policy,(SELECT COUNT(*) FROM court_estate_current) AS estate_current,(SELECT COUNT(*) FROM court_estate_accounts) AS estate_accounts,(SELECT COUNT(*) FROM court_estate_snapshots) AS estate_snapshots').first();
       const successionSchema=await stmt(db,"SELECT COUNT(*) AS triggers FROM sqlite_master WHERE type='trigger' AND name IN ('court_retirement_insert','court_retirement_update','court_retirement_delete')").first();
       if(Number(successionSchema?.triggers)!==3)throw Error('Imperial succession migration incomplete');
       const successionApprovalSchema=await stmt(db,"SELECT (SELECT COUNT(*) FROM court_succession_nominations) AS nominations,(SELECT COUNT(*) FROM court_succession_nomination_requests) AS requests,(SELECT COUNT(*) FROM sqlite_master WHERE type='trigger' AND name LIKE 'court_succession_nomination_%') AS triggers").first();
@@ -2793,11 +2817,11 @@ async function route(request, env, now) {
   const profile=method==='GET'&&/^\/players\/([^/]+)\/profile$/.exec(path);
   if(profile)return readPlayerProfile(request,env,profile[1],now);
   if (path === '/achievements' && method === 'GET') return publicAchievements(db,url,now);
-  if (method === 'GET' && (path === '/roaming/deployment' || path === '/roaming/map')) return handleRoamingDeployment({db,now,path,method,url,request,helpers:{fail,idField}});
+  if (method === 'GET' && (path === '/roaming/deployment' || path === '/roaming/map')) return handleRoamingDeployment({db,now,path,method,url,request,helpers:{courtEstateContext,courtEstateSnapshotStatements,getWorldClock,fail,idField}});
   if (path === '/guild/rankings' && method === 'GET') return guildRankings(db,url,now);
   if (path === '/castles/residency' && method === 'GET') {
     const user=request.headers.has('authorization')?await authenticate(request,db,now):null;
-    return residencyDirectory({db,user,url,now,helpers:{fail,evaluationRef}});
+    return residencyDirectory({db,user,url,now,helpers:{courtEstateContext,courtEstateSnapshotStatements,getWorldClock,fail,evaluationRef}});
   }
   if (path === '/field' && method === 'GET') {
     const viewer=request.headers.has('authorization')?await authenticate(request,db,now):null;
@@ -2884,32 +2908,42 @@ async function route(request, env, now) {
   if(path==='/events'||path.startsWith('/events/')||path==='/admin/events'||path.startsWith('/admin/events/')){
     const user=method==='GET'&&!path.startsWith('/admin/')&&!request.headers.has('authorization')?null:await authenticate(request,db,now);
     if(path.startsWith('/admin/'))protectOperations(request,user);
-    return handleEvents({db,user,now,path,method,url,request,helpers:{eventGarrison,fieldAttackPower,registerDefenseResponseGuard:guard=>eventDefenseResponseGuards.set(request,guard),fail,readBody,budget,idField,textField,uid,hash,getUser,getSyncRow,requireOperator,requireAccountAccess,roleCommitGuard,evaluationRef,fieldWriter,settleWriterCycle,getWorldClock,normalizeGameSave,syncSnapshot,syncLease:SYNC_LEASE,worldClockId:WORLD_CLOCK_ID}});
+    return handleEvents({db,user,now,path,method,url,request,helpers:{courtEstateContext,courtEstateSnapshotStatements,getWorldClock,eventGarrison,fieldAttackPower,registerDefenseResponseGuard:guard=>eventDefenseResponseGuards.set(request,guard),fail,readBody,budget,idField,textField,uid,hash,getUser,getSyncRow,requireOperator,requireAccountAccess,roleCommitGuard,evaluationRef,fieldWriter,settleWriterCycle,getWorldClock,normalizeGameSave,syncSnapshot,syncLease:SYNC_LEASE,worldClockId:WORLD_CLOCK_ID}});
   }
   let user = await authenticate(request,db,now);
   if(operationsRoute(path)||path==='/world-clock'&&method==='PATCH')protectOperations(request,user);
   if(path==='/staff/recent-logins'||path==='/staff/roaming'||path.startsWith('/staff/roaming/')){requireStaff(user);courtResponseGuards.set(request,{...roleCommitGuard(user),code:'STAFF_REQUIRED',message:'接続一覧の利用資格が変更されました。'});}
-  if(path==='/admin/music')return handleAdminMusic({db,user,request,method,now,helpers:{fail,readBody,budget,hash,requireOperator,requireAccountAccess,roleCommitGuard,registerResponseGuard:guard=>courtResponseGuards.set(request,guard)}});
-  const expansionContext={db,env,user,now,path,method,url,request,helpers:{fail,readBody,budget,idField,textField,uid,hash,getUser,getSyncRow,requireAdmin,requireAccountAccess,roleCommitGuard,accountCommitGuard,courtAccess,courtEmperorAuthority,courtImperialAuthority,courtDutyAuthority,registerResponseGuard:guard=>courtResponseGuards.set(request,guard),evaluationRef,fieldWriter,settleWriterCycle,getWorldClock,normalizeGameSave,syncSnapshot,staffBaseDto,reconcileCovertProgress,reconcileBranchProgress,branchStateGuard,branchProgressStatements,covertIncidentStatements,staffPersonalProgressStatement,saveAchievements,achievementStatement,syncLease:SYNC_LEASE,worldClockId:WORLD_CLOCK_ID}};
+  if(path==='/admin/music')return handleAdminMusic({db,user,request,method,now,helpers:{courtEstateContext,courtEstateSnapshotStatements,getWorldClock,fail,readBody,budget,hash,requireOperator,requireAccountAccess,roleCommitGuard,registerResponseGuard:guard=>courtResponseGuards.set(request,guard)}});
+  const expansionContext={db,env,user,now,path,method,url,request,helpers:{courtEstateContext,courtEstateSnapshotStatements,getWorldClock,fail,readBody,budget,idField,textField,uid,hash,getUser,getSyncRow,requireAdmin,requireAccountAccess,roleCommitGuard,accountCommitGuard,courtAccess,courtEmperorAuthority,courtImperialAuthority,courtDutyAuthority,registerResponseGuard:guard=>courtResponseGuards.set(request,guard),evaluationRef,fieldWriter,settleWriterCycle,getWorldClock,normalizeGameSave,syncSnapshot,staffBaseDto,reconcileCovertProgress,reconcileBranchProgress,branchStateGuard,branchProgressStatements,covertIncidentStatements,staffPersonalProgressStatement,saveAchievements,achievementStatement,syncLease:SYNC_LEASE,worldClockId:WORLD_CLOCK_ID}};
   if(path==='/castles/residency/relocate'&&method==='POST')return relocateResidence(expansionContext,await readBody(request));
   if(path==='/castles/residency/start'&&method==='POST')return residencyStart(expansionContext,await readBody(request));
   if(path==='/marches'&&method==='GET')return marchStatus(expansionContext,url);
   if(path==='/marches/campaign'&&method==='POST')return departCampaignMarch(expansionContext,await readBody(request));
-  if(path==='/alliance'||path.startsWith('/alliance/'))return handleAlliance({...expansionContext,helpers:{...expansionContext.helpers,fieldAttack,guildTransfer,resolveMessageRegister}});
+  if(path==='/alliance'||path.startsWith('/alliance/'))return handleAlliance({...expansionContext,helpers:{courtEstateContext,courtEstateSnapshotStatements,getWorldClock,...expansionContext.helpers,fieldAttack,guildTransfer,resolveMessageRegister}});
   if(path==='/progress'||path.startsWith('/progress/'))return handleProgress(expansionContext);
   if(path==='/conquest'||path.startsWith('/conquest/'))return handleConquest(expansionContext);
   if(path==='/shogunate'||path.startsWith('/shogunate/'))return handleShogunate(expansionContext);
-  if(path==='/court/succession'||path.startsWith('/court/succession/')||path==='/admin/court/succession'||path.startsWith('/admin/court/succession/'))return handleCourtSuccession({...expansionContext,helpers:{...expansionContext.helpers,mapUser}});
+  if(path==='/court/succession'||path.startsWith('/court/succession/')||path==='/admin/court/succession'||path.startsWith('/admin/court/succession/'))return handleCourtSuccession({...expansionContext,helpers:{courtEstateContext,courtEstateSnapshotStatements,getWorldClock,...expansionContext.helpers,mapUser}});
   if(path==='/admin/court/regent')return handleRegency(expansionContext);
+  if(path==='/court/estate'||path.startsWith('/court/estate/'))return handleCourtEstate({...expansionContext,helpers:{courtEstateContext,courtEstateSnapshotStatements,getWorldClock,...expansionContext.helpers,staffBaseUpgrade}});
   if(path==='/court/events'||path.startsWith('/court/events/'))return handleCourtEvents(expansionContext);
   if(path==='/protection'||path.startsWith('/protection/'))return handleProtection(expansionContext);
   if(path==='/notifications'||path.startsWith('/notifications/'))return handleNotifications(expansionContext);
-  if(path.startsWith('/voice/'))return handleVoice({db,env,user,now,path,method,url,request,helpers:{fail,readBody,budget,uid,hash,requireAccountAccess,roleCommitGuard,accountCommitGuard,registerResponseGuard:guard=>courtResponseGuards.set(request,guard)}});
-  if(path==='/court'||path.startsWith('/court/')||path==='/staff/court'||path==='/admin/court/leader'||path==='/admin/court/offices')return handleCourt({db,user,now,path,method,url,request,helpers:{fail,readBody,budget,idField,textField,uid,hash,getUser,requireAccountAccess,roleCommitGuard,accountCommitGuard,evaluationRef,courtAccess,resolveMessageRegister,registerGuard:guard=>courtResponseGuards.set(request,guard)}});
-  if (path === '/staff/roaming' || path.startsWith('/staff/roaming/') || path === '/admin/roaming' || path.startsWith('/admin/roaming/')) return handleRoamingDeployment({db,user,now,path,method,url,request,helpers:{fail,readBody,budget,idField,textField,hash,getUser,requireAccountAccess,roleCommitGuard}});
-  if(path==='/premium'||path.startsWith('/premium/')||path.startsWith('/admin/premium/'))return handlePremium({db,env,user,now,path,method,request,helpers:{fail,readBody,budget,accountCommitGuard,requireAccountAccess,requireOperator,getUser,textField,idField,hash,uid,evaluationRef}});
-  if(path==='/rewards'||path.startsWith('/rewards/')||path.startsWith('/gacha/'))return handleRewards({db,env,user,now,path,method,request,helpers:{fail,readBody,budget,idField,hash,getUser,getSyncRow,fieldWriter,settleWriterCycle,getWorldClock,normalizeGameSave,roleCommitGuard,syncSnapshot,requireAccountAccess,staffBaseDto,syncLease:SYNC_LEASE}});
-  if(path==='/admin/moderation'||path.startsWith('/admin/moderation/'))return handleModeration({...expansionContext,helpers:{...expansionContext.helpers,requireOperator,mapUser,userSelect:USER_SELECT}});
+  if(path.startsWith('/voice/'))return handleVoice({db,env,user,now,path,method,url,request,helpers:{courtEstateContext,courtEstateSnapshotStatements,getWorldClock,fail,readBody,budget,uid,hash,requireAccountAccess,roleCommitGuard,accountCommitGuard,registerResponseGuard:guard=>courtResponseGuards.set(request,guard)}});
+  if(path==='/court'||path.startsWith('/court/')||path==='/staff/court'||path==='/admin/court/leader'||path==='/admin/court/offices'){
+    const result=await handleCourt({db,user,now,path,method,url,request,helpers:{courtEstateContext,courtEstateSnapshotStatements,getWorldClock,fail,readBody,budget,idField,textField,uid,hash,getUser,requireAccountAccess,roleCommitGuard,accountCommitGuard,evaluationRef,courtAccess,resolveMessageRegister,registerGuard:guard=>courtResponseGuards.set(request,guard)}});
+    if(path==='/court'&&method==='GET'){
+      const estate=await courtEstateAuthority(db,user,expansionContext.helpers);
+      result.self.canDevelopEstate=estate.eligible;result.features.estate=estate.eligible;
+      result.accessStamp=await hash(JSON.stringify([result.accessStamp,estate.accessStamp]));
+      if(estate.eligible){const prior=courtResponseGuards.get(request);courtResponseGuards.set(request,prior?{sql:'('+prior.sql+') AND ('+estate.guard.sql+')',args:[...prior.args,...estate.guard.args],code:estate.guard.code,message:estate.guard.message}:estate.guard);}
+    }
+    return result;
+  }
+  if (path === '/staff/roaming' || path.startsWith('/staff/roaming/') || path === '/admin/roaming' || path.startsWith('/admin/roaming/')) return handleRoamingDeployment({db,user,now,path,method,url,request,helpers:{courtEstateContext,courtEstateSnapshotStatements,getWorldClock,fail,readBody,budget,idField,textField,hash,getUser,requireAccountAccess,roleCommitGuard}});
+  if(path==='/premium'||path.startsWith('/premium/')||path.startsWith('/admin/premium/'))return handlePremium({db,env,user,now,path,method,request,helpers:{courtEstateContext,courtEstateSnapshotStatements,getWorldClock,fail,readBody,budget,accountCommitGuard,requireAccountAccess,requireOperator,getUser,textField,idField,hash,uid,evaluationRef}});
+  if(path==='/rewards'||path.startsWith('/rewards/')||path.startsWith('/gacha/'))return handleRewards({db,env,user,now,path,method,request,helpers:{courtEstateContext,courtEstateSnapshotStatements,getWorldClock,fail,readBody,budget,idField,hash,getUser,getSyncRow,fieldWriter,settleWriterCycle,getWorldClock,normalizeGameSave,roleCommitGuard,syncSnapshot,requireAccountAccess,staffBaseDto,syncLease:SYNC_LEASE}});
+  if(path==='/admin/moderation'||path.startsWith('/admin/moderation/'))return handleModeration({...expansionContext,helpers:{courtEstateContext,courtEstateSnapshotStatements,getWorldClock,...expansionContext.helpers,requireOperator,mapUser,userSelect:USER_SELECT}});
   if (path === '/me/avatar' && method === 'PUT') return putAvatar(request,env,user,now);
   if (path === '/me/avatar' && method === 'DELETE') return deleteAvatar(request,env,user,now);
   if (path === '/guild/icon' && method === 'PUT') return putGuildIcon(request,env,user,now);
@@ -2919,21 +2953,21 @@ async function route(request, env, now) {
   if (path === '/guild/treasury/transfer' && method === 'POST') return guildTransfer(db,user,await readBody(request),now);
   if (path === '/guild/members/role' && method === 'POST') return guildManage(db,user,await readBody(request),false,now);
   if (path === '/guild/members/remove' && method === 'POST') return guildManage(db,user,await readBody(request),true,now);
-  if (path === '/admin/deputy') return handleDeputyOperator({db,user,now,path,method,url,request,helpers:{fail,readBody,budget,idField,hash,requireAdmin,getUser,mapUser,getSyncRow,getWorldClock,normalizeGameSave,roleCommitGuard,ensureStaffCampaign}});
+  if (path === '/admin/deputy') return handleDeputyOperator({db,user,now,path,method,url,request,helpers:{courtEstateContext,courtEstateSnapshotStatements,getWorldClock,fail,readBody,budget,idField,hash,requireAdmin,getUser,mapUser,getSyncRow,getWorldClock,normalizeGameSave,roleCommitGuard,ensureStaffCampaign}});
   if (path === '/admin/staff' && method === 'GET') { requireAdmin(user);return {ok:true,staff:await staffRoster(db,now)}; }
   if (path === '/admin/staff' && method === 'POST') return staffOperation(db,user,await readBody(request),now);
   if (path === '/staff/base' && method === 'GET') {
     user=await requireCurrentStaffBase(db,user,{allowAdmin:true});const clock=await getWorldClock(db,now);await ensureStaffCampaign(db,user,now,clock);const staffBase=await staffBaseDto(db,user,clock,now);await requireCurrentStaffBase(db,user,{allowAdmin:true});return {ok:true,staffBase:publicStaffBase(staffBase),clock};
   }
   if (path === '/staff/base/upgrade' && method === 'POST') return staffBaseUpgrade(db,user,await readBody(request),now);
-  if (path === '/troop-garrisons' || path.startsWith('/troop-garrisons/')) return handleVacantGarrisons({db,user,now,path,method,url,request,helpers:{vacantCastleGuard,listVacantCastles,fail,readBody,budget,idField,hash,getUser,getSyncRow,fieldWriter,settleWriterCycle,getWorldClock,normalizeGameSave,roleCommitGuard,syncSnapshot,requireAccountAccess,staffBaseDto,covertIncidentStatements,staffPersonalProgressStatement,registerResponseGuard:guard=>courtResponseGuards.set(request,{...guard,code:'BRANCH_ACCESS_CHANGED',message:'支拠点の利用資格が変わりました。最新の拠点と接続状態を確認してください。'}),syncLease:SYNC_LEASE,worldClockId:WORLD_CLOCK_ID}});
-  if (path === '/branches' || path.startsWith('/branches/')) return handleBranches({db,user,now,path,method,url,request,helpers:{fail,readBody,budget,idField,hash,getUser,getSyncRow,fieldWriter,settleWriterCycle,getWorldClock,normalizeGameSave,roleCommitGuard,syncSnapshot,requireAccountAccess,staffBaseDto,covertIncidentStatements,staffPersonalProgressStatement,registerResponseGuard:guard=>courtResponseGuards.set(request,{...guard,code:'BRANCH_ACCESS_CHANGED',message:'支拠点の利用資格が変わりました。最新の拠点と接続状態を確認してください。'}),syncLease:SYNC_LEASE,worldClockId:WORLD_CLOCK_ID}});
+  if (path === '/troop-garrisons' || path.startsWith('/troop-garrisons/')) return handleVacantGarrisons({db,user,now,path,method,url,request,helpers:{courtEstateContext,courtEstateSnapshotStatements,getWorldClock,vacantCastleGuard,listVacantCastles,fail,readBody,budget,idField,hash,getUser,getSyncRow,fieldWriter,settleWriterCycle,getWorldClock,normalizeGameSave,roleCommitGuard,syncSnapshot,requireAccountAccess,staffBaseDto,covertIncidentStatements,staffPersonalProgressStatement,registerResponseGuard:guard=>courtResponseGuards.set(request,{...guard,code:'BRANCH_ACCESS_CHANGED',message:'支拠点の利用資格が変わりました。最新の拠点と接続状態を確認してください。'}),syncLease:SYNC_LEASE,worldClockId:WORLD_CLOCK_ID}});
+  if (path === '/branches' || path.startsWith('/branches/')) return handleBranches({db,user,now,path,method,url,request,helpers:{courtEstateContext,courtEstateSnapshotStatements,getWorldClock,fail,readBody,budget,idField,hash,getUser,getSyncRow,fieldWriter,settleWriterCycle,getWorldClock,normalizeGameSave,roleCommitGuard,syncSnapshot,requireAccountAccess,staffBaseDto,covertIncidentStatements,staffPersonalProgressStatement,registerResponseGuard:guard=>courtResponseGuards.set(request,{...guard,code:'BRANCH_ACCESS_CHANGED',message:'支拠点の利用資格が変わりました。最新の拠点と接続状態を確認してください。'}),syncLease:SYNC_LEASE,worldClockId:WORLD_CLOCK_ID}});
   if (path === '/walking/start' && method === 'POST') return walkingStart(db,user,await readBody(request),now);
   if (path === '/walking/claim' && method === 'POST') return walkingClaim(db,user,await readBody(request),now);
-  if (path === '/covert' || path.startsWith('/covert/')) return handleCovert({db,user,now,path,method,url,request,helpers:{fail,readBody,budget,idField,hash,getUser,getSyncRow,fieldWriter,settleWriterCycle,getWorldClock,normalizeGameSave,roleCommitGuard,syncSnapshot,requireAccountAccess,staffBaseDto,getFieldList,fieldStaffDefense,fieldDefense,fieldRelation,fieldRelationStatus,courtEmperorAuthority,courtImperialAuthority,courtAttackAuthority,reconcileBranchProgress,branchStateGuard,branchProgressStatements,staffPersonalProgressStatement,saveAchievements,achievementStatement,registerCourtGuard:guard=>courtResponseGuards.set(request,guard),syncLease:SYNC_LEASE,worldClockId:WORLD_CLOCK_ID}});
-  if (path === '/roaming/battle' && method === 'POST' || path === '/roaming/history' && method === 'GET') return handleRoaming({...expansionContext,helpers:{...expansionContext.helpers,reconcileBranchProgress,branchStateGuard,branchProgressStatements,covertIncidentStatements}});
-  if (path === '/letters' || path.startsWith('/letters/')) return handleLetters({db,user,now,path,method,url,request,helpers:{fail,readBody,budget,idField,textField,uid,mapUser,getUser,evaluationRef,evaluationUpdates,accountCommitGuard,requireAccountAccess,contentRevisionInput,resolveMessageRegister}});
-  if (path === '/trades' || path.startsWith('/trades/')) return handleTrades({db,user,now,path,method,url,request,helpers:{fail,readBody,budget,idField,uid,mapUser,getUser,getSyncRow,hash,fieldWriter,settleWriterCycle,getWorldClock,normalizeGameSave,roleCommitGuard,syncSnapshot,requireAccountAccess,tradeTroopCapacity,staffBaseDto,reconcileCovertProgress,reconcileBranchProgress,branchStateGuard,branchProgressStatements,covertIncidentStatements,staffPersonalProgressStatement,saveAchievements,achievementStatement,syncLease:SYNC_LEASE,worldClockId:WORLD_CLOCK_ID}});
+  if (path === '/covert' || path.startsWith('/covert/')) return handleCovert({db,user,now,path,method,url,request,helpers:{courtEstateContext,courtEstateSnapshotStatements,getWorldClock,fail,readBody,budget,idField,hash,getUser,getSyncRow,fieldWriter,settleWriterCycle,getWorldClock,normalizeGameSave,roleCommitGuard,syncSnapshot,requireAccountAccess,staffBaseDto,getFieldList,fieldStaffDefense,fieldDefense,fieldRelation,fieldRelationStatus,courtEmperorAuthority,courtImperialAuthority,courtAttackAuthority,reconcileBranchProgress,branchStateGuard,branchProgressStatements,staffPersonalProgressStatement,saveAchievements,achievementStatement,registerCourtGuard:guard=>courtResponseGuards.set(request,guard),syncLease:SYNC_LEASE,worldClockId:WORLD_CLOCK_ID}});
+  if (path === '/roaming/battle' && method === 'POST' || path === '/roaming/history' && method === 'GET') return handleRoaming({...expansionContext,helpers:{courtEstateContext,courtEstateSnapshotStatements,getWorldClock,...expansionContext.helpers,reconcileBranchProgress,branchStateGuard,branchProgressStatements,covertIncidentStatements}});
+  if (path === '/letters' || path.startsWith('/letters/')) return handleLetters({db,user,now,path,method,url,request,helpers:{courtEstateContext,courtEstateSnapshotStatements,getWorldClock,fail,readBody,budget,idField,textField,uid,mapUser,getUser,evaluationRef,evaluationUpdates,accountCommitGuard,requireAccountAccess,contentRevisionInput,resolveMessageRegister}});
+  if (path === '/trades' || path.startsWith('/trades/')) return handleTrades({db,user,now,path,method,url,request,helpers:{courtEstateContext,courtEstateSnapshotStatements,getWorldClock,fail,readBody,budget,idField,uid,mapUser,getUser,getSyncRow,hash,fieldWriter,settleWriterCycle,getWorldClock,normalizeGameSave,roleCommitGuard,syncSnapshot,requireAccountAccess,tradeTroopCapacity,staffBaseDto,reconcileCovertProgress,reconcileBranchProgress,branchStateGuard,branchProgressStatements,covertIncidentStatements,staffPersonalProgressStatement,saveAchievements,achievementStatement,syncLease:SYNC_LEASE,worldClockId:WORLD_CLOCK_ID}});
   if (path === '/field/me' && method === 'GET') return fieldMe(db,user,url,now,request);
   if (path === '/field/attack' && method === 'POST') return fieldAttack(db,user,await readBody(request),now);
   if (path === '/field/diplomacy' && method === 'POST') return fieldDiplomacy(db,user,await readBody(request),now);
@@ -3031,6 +3065,10 @@ async function route(request, env, now) {
     let healthBefore=before;
     if(before&&!before.state.worldClock&&save.state.worldClock){healthBefore=copy(before);await anchorImportedSave(db,user,healthBefore,clock,now);}
     const maintenance=await maintenanceContext(db,user.id,before||save,clock);
+    const estateEconomy=await courtEstateContext(db,user,before||save,clock,now);
+    if(before&&estateEconomy.projection&&body.courtEstateProof!==estateEconomy.projection.proof)fail(409,'COURT_ESTATE_REFRESH_REQUIRED',COURT_ESTATE_REFRESH_MESSAGE);
+    if(estateEconomy.projection&&save.state.worldClock?.elapsedMs>estateEconomy.projection.asOfElapsedMs)fail(409,'COURT_ESTATE_REFRESH_REQUIRED',COURT_ESTATE_REFRESH_MESSAGE);
+    const estateBalance=before?.state.walking.campaignId===save.state.walking.campaignId?estateEconomy:await courtEstateContext(db,user,save,clock,now);
     if(before&&body.maintenanceRevision!==maintenance.authority.revision)fail(409,'MAINTENANCE_REFRESH_REQUIRED',MAINTENANCE_REFRESH_MESSAGE);
     if(before?.state.worldClock&&save.state.worldClock&&save.state.worldClock.elapsedMs<before.state.worldClock.elapsedMs)fail(409,'CLOCK_REWIND','古い時刻のセーブで維持費の確定済み区間を巻き戻せません。最新データへ同期してください。');
     if(save.state.worldClock&&save.state.worldClock.elapsedMs>maintenance.authority.asOfElapsedMs)fail(409,'MAINTENANCE_REFRESH_REQUIRED',MAINTENANCE_REFRESH_MESSAGE);
@@ -3067,7 +3105,7 @@ async function route(request, env, now) {
     const branchProgress=await resolveSyncBranches(db,user,save,before,clock,now,{importedStationedTroops}),branchAccess=branchProgress.access;
     const residencyProgress=await resolveSyncResidency(db,user,save,before,clock,now,branchAccess);cycleHome=save.state.cycle.home;
     let repairAdjustment;
-    try{repairAdjustment=reconcilePaidRepairs(save,healthBefore,clock,{hasRepairReceipt,trustedStates:[branchProgress.replayed?.state,residencyProgress.durabilityState].filter(Boolean),branchState:branchProgress.replayed?.state,isAdmin:!!user.is_admin,isDeputy:!!user.is_deputy,isStaff:!!user.is_staff,isCourtProtected:!!user.is_court_protected});}
+    try{repairAdjustment=reconcilePaidRepairs(save,healthBefore,clock,{courtEstateProjection:estateBalance.projection,hasRepairReceipt,trustedStates:[branchProgress.replayed?.state,residencyProgress.durabilityState].filter(Boolean),branchState:branchProgress.replayed?.state,isAdmin:!!user.is_admin,isDeputy:!!user.is_deputy,isStaff:!!user.is_staff,isCourtProtected:!!user.is_court_protected});}
     catch(error){if(error.code==='REPAIR_STATE_CHANGED')fail(409,error.code,error.message);throw error;}
     // Settle one monthly receipt after the authoritative branch pools are
     // merged. An already-settled client may have recruited again afterwards;
@@ -3085,7 +3123,7 @@ async function route(request, env, now) {
     // must reach the appointment backup instead of being restored from it.
     const personalHome=shared?.personalHome,personalCastle=personalHome&&save.state.castles[personalHome];
     const sharedForBalance=hasMonthlyReceipt&&personalCastle?.owner===save.state.clan?{...shared,personalHomeCastle:{...shared.personalHomeCastle,troops:personalCastle.troops}}:shared;
-    const balanced=GameEngine.fromSave(save,GAME_OFFICERS,{isAdmin:!!user.is_admin,isDeputy:!!user.is_deputy,isStaff:!!user.is_staff,isCourtProtected:!!user.is_court_protected,staffBase:sharedForBalance,maintenanceAuthority:balanceAuthority,branchAuthority:{resolvedElapsedMs:branchProgress.resolvedElapsedMs}});
+    const balanced=GameEngine.fromSave(save,GAME_OFFICERS,{courtEstateProjection:estateBalance.projection,isAdmin:!!user.is_admin,isDeputy:!!user.is_deputy,isStaff:!!user.is_staff,isCourtProtected:!!user.is_court_protected,staffBase:sharedForBalance,maintenanceAuthority:balanceAuthority,branchAuthority:{resolvedElapsedMs:branchProgress.resolvedElapsedMs}});
     // Receipts use the same migrated time origin as health and repair. Comparing
     // an old local month with the shared month would restore a future receipt.
     const upkeepBefore=upkeepTroopSnapshot(balanced),upkeepResult=reconcileMonthlyUpkeep(balanced,healthBefore,{hasMonthlyReceipt});
@@ -3096,7 +3134,7 @@ async function route(request, env, now) {
     const serialized=JSON.stringify(save),nonce=crypto.randomUUID(),roleGuard=guardLordSupport(roleCommitGuard(user),user);
     const statements=[stmt(db,`UPDATE player_saves SET save_json=?,revision=revision+1,updated_at=?,lease_expires_at=?,cycle_index=?,cycle_home=?,cycle_commit=?
       WHERE user_id=? AND revision=? AND writer_device_id=? AND lease_expires_at>?
-      AND (?=1 OR json_type(save_json,'$.state.worldClock') IS NULL) AND (?=0 OR NOT EXISTS(SELECT 1 FROM battle_marches WHERE actor_id=? AND status='marching')) AND ${roleGuard.sql} AND ${branchAccess.guard.sql} AND ${branchProgress.guard.sql} AND ${residencyProgress.guard.sql} AND ${maintenance.guard.sql} AND ${sharedGuard.sql} RETURNING *`,serialized,now,now+SYNC_LEASE,cycleIndex,cycleHome,nonce,user.id,body.revision,deviceId,now,save.state.worldClock?1:0,importedMarch?1:0,user.id,...roleGuard.args,...branchAccess.guard.args,...branchProgress.guard.args,...residencyProgress.guard.args,...maintenance.guard.args,...sharedGuard.args)];
+      AND (?=1 OR json_type(save_json,'$.state.worldClock') IS NULL) AND (?=0 OR NOT EXISTS(SELECT 1 FROM battle_marches WHERE actor_id=? AND status='marching')) AND ${roleGuard.sql} AND ${branchAccess.guard.sql} AND ${branchProgress.guard.sql} AND ${residencyProgress.guard.sql} AND ${maintenance.guard.sql} AND ${sharedGuard.sql} AND ${estateEconomy.guard.sql} RETURNING *`,serialized,now,now+SYNC_LEASE,cycleIndex,cycleHome,nonce,user.id,body.revision,deviceId,now,save.state.worldClock?1:0,importedMarch?1:0,user.id,...roleGuard.args,...branchAccess.guard.args,...branchProgress.guard.args,...residencyProgress.guard.args,...maintenance.guard.args,...sharedGuard.args,...estateEconomy.guard.args)];
     const gate='EXISTS(SELECT 1 FROM player_saves WHERE user_id=? AND cycle_commit=?)';
     statements.push(...rewardArchiveStatements(db,user.id,rewardArchive,now,gate,[user.id,nonce]));
     statements.push(...residencyProgress.statements(gate,[user.id,nonce]));
@@ -3115,6 +3153,7 @@ async function route(request, env, now) {
       const current=await getSyncRow(db,user.id);
       if(!current||current.writer_device_id!==deviceId||Number(current.lease_expires_at)<=now)fail(409,'LEASE_REQUIRED','プレイ端末の同期権限が切れました。接続状態を確認してください。');
       if(!await stmt(db,'SELECT 1 WHERE '+maintenance.guard.sql,...maintenance.guard.args).first())fail(409,'MAINTENANCE_REFRESH_REQUIRED',MAINTENANCE_REFRESH_MESSAGE);
+      if(!await stmt(db,'SELECT 1 WHERE '+estateEconomy.guard.sql,...estateEconomy.guard.args).first())fail(409,'COURT_ESTATE_REFRESH_REQUIRED',COURT_ESTATE_REFRESH_MESSAGE);
       if(Number(current.revision)===body.revision&&!save.state.worldClock&&current.save_json&&JSON.parse(current.save_json).state?.worldClock)fail(409,'CLOCK_ANCHOR_REQUIRED','この領主は共通時計へ移行済みです。共通時計に対応した最新版から保存してください。');
       fail(409,'REVISION_CONFLICT','新しいセーブが届いています。最新データを読み込んでから再開してください。');
     }
@@ -3223,7 +3262,7 @@ async function route(request, env, now) {
     if (user.guild_id===guildId) return {ok:true,user:mapUser(user,now)};
     if (user.guild_id) fail(409,'ALREADY_IN_GUILD','所属中の同盟を脱退してから参加してください。');
     if (!await stmt(db,'SELECT id FROM guilds WHERE id=?',guildId).first()) fail(404,'GUILD_NOT_FOUND','その同盟は見つかりませんでした。');
-    const access=accountCommitGuard(user),joinGuard=await assertGuildJoinAllowed({db,user,now,helpers:{fail}},guildId);await stmt(db,`INSERT INTO guild_members(user_id,guild_id,joined_at) SELECT ?,?,? WHERE EXISTS(SELECT 1 FROM guilds WHERE id=?) AND (SELECT COUNT(*) FROM guild_members WHERE guild_id=?)<? AND ${access.sql} AND ${joinGuard.sql} ON CONFLICT(user_id) DO NOTHING`,user.id,guildId,now,guildId,guildId,MAX_GUILD_MEMBERS,...access.args,...joinGuard.args).run();
+    const access=accountCommitGuard(user),joinGuard=await assertGuildJoinAllowed({db,user,now,helpers:{courtEstateContext,courtEstateSnapshotStatements,getWorldClock,fail}},guildId);await stmt(db,`INSERT INTO guild_members(user_id,guild_id,joined_at) SELECT ?,?,? WHERE EXISTS(SELECT 1 FROM guilds WHERE id=?) AND (SELECT COUNT(*) FROM guild_members WHERE guild_id=?)<? AND ${access.sql} AND ${joinGuard.sql} ON CONFLICT(user_id) DO NOTHING`,user.id,guildId,now,guildId,guildId,MAX_GUILD_MEMBERS,...access.args,...joinGuard.args).run();
     const current=await getUser(db,user.id);
     if (current.guild_id!==guildId) fail(409,'GUILD_UNAVAILABLE','同盟が満員か、すでに別の同盟へ参加しています。');
     return {ok:true,user:mapUser(current,now)};
@@ -3277,6 +3316,7 @@ async function route(request, env, now) {
       stmt(db,`INSERT INTO settings(key,value,updated_at) VALUES('adminUserId',?,?) ON CONFLICT(key) DO NOTHING`,user.id,now),
       stmt(db,`SELECT value FROM settings WHERE key='adminUserId'`),
       stmt(db,`UPDATE staff_campaign_backups SET left_elapsed_ms=COALESCE(left_elapsed_ms,?),updated_at=? WHERE user_id=? AND active=1 AND EXISTS(SELECT 1 FROM settings WHERE key='adminUserId' AND value=?)`,claimClock.elapsedMs,now,user.id,user.id),
+      ...courtEstateSnapshotStatements(db,claimClock,"EXISTS(SELECT 1 FROM settings WHERE key='adminUserId' AND value=?)",[user.id]),
     ]);
     if(rows(result[1])[0]?.value!==user.id) fail(409,'ADMIN_CLAIMED','運営者は登録済みです。');
     return {ok:true,user:mapUser(await getUser(db,user.id),now),alreadyAdmin:false};
@@ -3365,12 +3405,12 @@ export default {
       }
       // Public discovery counters do not run gameplay projection, marches or
       // notification dispatch. A missing analytics migration affects only them.
-      if(path===API+'/promotion/event'&&request.method==='POST')return response(await recordPromotion({db:env.DB,request,now:Date.now(),helpers:{fail,readBody,budget}}),200,origin);
+      if(path===API+'/promotion/event'&&request.method==='POST')return response(await recordPromotion({db:env.DB,request,now:Date.now(),helpers:{courtEstateContext,courtEstateSnapshotStatements,getWorldClock,fail,readBody,budget}}),200,origin);
       if(path===API+'/admin/promotion'&&request.method==='GET'){
         if(!env.DB?.prepare||!env.DB?.batch)fail(503,'PROMOTION_UNAVAILABLE','紹介の集計を現在利用できません。ゲームはそのまま遊べます。');
         const now=Date.now(),user=await authenticate(request,env.DB,now);
         protectOperations(request,user);
-        const report=await readPromotionReport({db:env.DB,user,url:new URL(request.url),now,helpers:{fail,requireOperator,budget}});
+        const report=await readPromotionReport({db:env.DB,user,url:new URL(request.url),now,helpers:{courtEstateContext,courtEstateSnapshotStatements,getWorldClock,fail,requireOperator,budget}});
         await requireAccountAccess(env.DB,user);
         // Recheck owner access after the final asynchronous account check.
         await verifyOperationsResponse(env.DB,request);
@@ -3384,6 +3424,7 @@ export default {
       stage='access';
       if(authenticated)await requireAccountAccess(env.DB,authenticated);
       await verifyCourtResponse(env.DB,request);
+      await verifyCourtEstateResponse(env.DB,payload);
       // Message writes use only their targeted dispatch below, so one Worker
       // invocation cannot spend the D1 query budget on two notification sweeps.
       if(typeof ctx?.waitUntil==='function'&&path!==API+'/notifications/tick')ctx.waitUntil((async()=>{await settleShogunateApprovals(env.DB,now);await backgroundMarchSweep(env,now);if(!messageNotificationWrite)await dispatchNotifications(env,await getWorldClock(env.DB,now),{courtAccess:(userId,at)=>notificationCourtAccess(env.DB,userId,at)});})().catch(()=>{}));
@@ -3404,6 +3445,7 @@ export default {
       // private access after the last such operation, immediately before send.
       await verifyChatResponse(env.DB,request);
       await verifyCourtResponse(env.DB,request);
+      await verifyCourtEstateResponse(env.DB,payload);
       await verifyOperationsResponse(env.DB,request);
       // Committed messages start their delivery without waiting for a periodic
       // tick. Notification errors never turn a successful message into a retry.

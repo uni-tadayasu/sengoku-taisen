@@ -118,7 +118,11 @@ const totalGzipBytes = rows.reduce((sum,row)=>sum+row.gzipBytes,0);
 // 3,783,957 raw / 1,045,513 gzip bytes (+38,400 / +9,762 from v5.18),
 // including compact phone/tablet layouts. No media or dependencies are added.
 // Keep 1,043 raw / 687 gzip bytes of headroom for this reviewed feature.
-const rawBudget=3785000,gzipBudget=1046200;
+// v5.20 adds court shared holdings, ordinary-castle economic projection with
+// appointment windows, shared construction UI and save-proof recovery.
+// Measured: 3,834,645 raw / 1,059,272 gzip (+50,688 / +13,759 from v5.19).
+// No new media, font or runtime dependency. Keep 1,355 raw / 728 gzip headroom.
+const rawBudget=3836000,gzipBudget=1060000;
 assert(totalBytes <= rawBudget, `Initial bundles exceed the ${rawBudget} byte budget: ${totalBytes}`);
 assert(totalGzipBytes <= gzipBudget, `Initial bundles exceed the ${gzipBudget} gzip byte budget: ${totalGzipBytes}`);
 const html = fs.readFileSync(path.join(root,'index.html'),'utf8');

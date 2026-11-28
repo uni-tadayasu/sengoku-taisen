@@ -2,6 +2,7 @@ import {operationGuard} from './operator-access.js';
 import {ensureResidency} from './residency.js';
 import {moderationExpulsion} from './expulsion-state.js';
 import {expelPlayer} from './expulsion.js';
+import {courtEstateSnapshotStatements} from './court-estate-ledger.js';
 import {playerNameKey,releasedPlayerNameKey,playerNameConflict,releaseInactivePlayerNameStatement,requireAvailablePlayerName,PLAYER_NAME_TAKEN} from './player-names.js';
 // Current operators may change account access or remove posts within their role term.
 // Audit receipts contain counts and identifiers, never copies of deleted text.
@@ -99,6 +100,7 @@ async function moderationChange(ctx){
     moderationStmt(db,`INSERT INTO trade_deliveries(trade_id,recipient_id,kind,assets_json,created_at,claimed_at) SELECT id,sender_id,'refund',offer_json,?,NULL FROM trades WHERE status='pending' AND (sender_id=? OR recipient_id=?) AND ${MODERATION_GATE}`,now,targetId,targetId,...gateArgs),
     moderationStmt(db,`UPDATE trades SET status='cancelled',revision=revision+1,updated_at=? WHERE status='pending' AND (sender_id=? OR recipient_id=?) AND ${MODERATION_GATE}`,now,targetId,targetId,...gateArgs)
   );
+  statements.push(...courtEstateSnapshotStatements(db,await h.getWorldClock(db,now),MODERATION_GATE,gateArgs));
   let result;
   try{result=await db.batch(statements);}catch(error){if(playerNameConflict(error))h.fail(409,'NAME_TAKEN',PLAYER_NAME_TAKEN);throw error;}
   const saved=moderationRows(result[0])[0];

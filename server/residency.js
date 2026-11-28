@@ -1,4 +1,5 @@
 import {externalTroopSnapshotStatements} from './maintenance.js';
+import {withCourtEstateGuard} from './court-estate-guard.js';
 import {playerNameKey,playerNameConflict,releaseInactivePlayerNameStatement,requireAvailablePlayerName,PLAYER_NAME_TAKEN} from './player-names.js';
 // Public castle households are separate from each player's private campaign.
 // Only committed admissions and proved home-defense defeats change this ledger.
@@ -183,10 +184,12 @@ export async function residencyStart(ctx,body){
  const restoredName=requestedName??user.name;
  if(expelled)await requireAvailablePlayerName(db,user.id,restoredName,h.fail);
  const clock=await h.getWorldClock(db,now),game=expelled?GameEngine.fromSave(h.normalizeGameSave(JSON.parse(expelled.source_save_json),user,now,{reading:true,clock}),GAME_OFFICERS,{isCourtProtected:!!user.is_court_protected}):new GameEngine({officers:GAME_OFFICERS,clan:body.clan,difficulty:body.difficulty,startCastle:body.castleId,isCourtProtected:!!user.is_court_protected});
+ const courtEstate=await h.courtEstateContext(db,user,JSON.parse(game.exportSave()),clock,now);
+ const estateApplied=game.setCourtEstateProjection(courtEstate.projection);if(!estateApplied.ok)h.fail(409,'COURT_ESTATE_REFRESH_REQUIRED',estateApplied.message);
  if(expelled){const moved=game.relocateResidence(body.castleId,{role:body.mode,worldClock:clock,residencyCastleId:''});if(!moved.ok)h.fail(409,moved.code,moved.message);}
  const anchored=game.applyWorldClock(clock);if(!anchored.ok||anchored.pending)h.fail(409,'CLOCK_STALE','共通時計を確認してから入城してください。');
  const save=h.normalizeGameSave(JSON.parse(game.exportSave()),user,now,{clock});save.state.cycle.latestReward=null;
- const nonce=crypto.randomUUID(),gate='EXISTS(SELECT 1 FROM castle_residency_requests WHERE actor_id=? AND request_id=? AND commit_token=?)',args=[user.id,body.requestId,nonce],role=h.roleCommitGuard(user),memberGuard=old?{sql:'EXISTS(SELECT 1 FROM castle_residents WHERE user_id=? AND castle_id=? AND revision=?)',args:[user.id,old.castle_id,old.revision]}:{sql:'NOT EXISTS(SELECT 1 FROM castle_residents WHERE user_id=?)',args:[user.id]};
+ const nonce=crypto.randomUUID(),gate='EXISTS(SELECT 1 FROM castle_residency_requests WHERE actor_id=? AND request_id=? AND commit_token=?)',args=[user.id,body.requestId,nonce],role=withCourtEstateGuard(h.roleCommitGuard(user),courtEstate),memberGuard=old?{sql:'EXISTS(SELECT 1 FROM castle_residents WHERE user_id=? AND castle_id=? AND revision=?)',args:[user.id,old.castle_id,old.revision]}:{sql:'NOT EXISTS(SELECT 1 FROM castle_residents WHERE user_id=?)',args:[user.id]};
  const leaving=old?.lord_user_id===user.id&&old.castle_id!==body.castleId?await prepareResidencySuccession(db,{userId:user.id,castleId:old.castle_id,battleId:'departure:'+user.id+':'+body.requestId,kind:'departure',now}):null;
  const expulsionGuard=expelled?{sql:'EXISTS(SELECT 1 FROM player_expulsions WHERE user_id=? AND pending=1 AND revision=?) AND EXISTS(SELECT 1 FROM users WHERE id=? AND name=?)',args:[user.id,expelled.revision,user.id,user.name]}:{sql:'NOT EXISTS(SELECT 1 FROM player_expulsions WHERE user_id=? AND pending=1)',args:[user.id]};
  const statements=[S(db,`INSERT INTO castle_residency_requests(actor_id,request_id,request_hash,commit_token,castle_id,mode,created_at)
@@ -202,6 +205,7 @@ export async function residencyStart(ctx,body){
  statements.push(S(db,`UPDATE users SET clan=? WHERE id=? AND ${gate}`,save.state.clan,user.id,...args));
  if(expelled)statements.push(S(db,`UPDATE player_expulsions SET pending=0,source_save_json=NULL,resumed_at=?,revision=revision+1 WHERE user_id=? AND pending=1 AND ${gate}`,now,user.id,...args));
  if(expelled)statements.push(releaseInactivePlayerNameStatement(db,restoredName,gate,args),S(db,`UPDATE users SET name=?,name_key=? WHERE id=? AND ${gate}`,restoredName,playerNameKey(restoredName),user.id,...args));
+ if(expelled)statements.push(...h.courtEstateSnapshotStatements(db,clock,gate,args));
  statements.push(...externalTroopSnapshotStatements(db,[user.id],clock,gate,args));
  let result;
  try{result=await db.batch(statements);}catch(error){if(playerNameConflict(error))h.fail(409,'NAME_TAKEN',PLAYER_NAME_TAKEN);throw error;}

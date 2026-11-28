@@ -1,5 +1,6 @@
 // The Emperor nominates a current Kyoto member; only the Chancellor can
 // certify that nomination and atomically perform the completed abdication.
+import {courtEstateSnapshotStatements} from './court-estate-ledger.js';
 const S=(db,sql,...args)=>db.prepare(sql).bind(...args),rows=value=>value?.results||[];
 const TERM="COALESCE(sm.term_id,'legacy:'||sm.appointed_at)";
 const GATE='EXISTS(SELECT 1 FROM court_succession_nomination_requests WHERE actor_id=? AND request_id=? AND commit_token=?)';
@@ -148,6 +149,7 @@ async function decide(ctx,id,action){
    S(db,`UPDATE staff_campaign_backups SET left_elapsed_ms=COALESCE(left_elapsed_ms,?),updated_at=? WHERE user_id=? AND active=1 AND ${GATE}`,clock.elapsedMs,now,row.emperor_id,...args),
    S(db,`DELETE FROM staff_members WHERE user_id=? AND ${GATE}`,row.emperor_id,...args)
   );
+  statements.push(...courtEstateSnapshotStatements(db,clock,GATE,args));
  }
  const result=await db.batch(statements),accepted=await prior(ctx,requestId,digest);
  if(!accepted){await checkAccess(ctx,access.guard);await settleCourtSuccessionNominations(db,now);h.fail(409,'COURT_SUCCESSION_CHANGED','指名・在任状況または共通時計が変わりました。最新の記録を確認してください。');}

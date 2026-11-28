@@ -35,7 +35,24 @@ async function policy(h,p,change={}){
 async function operation(h,p,target,change={}){
  return (await command(h,p,'operations/create',{kind:target?'attack':'gather',title:'秘密の東門作戦',note:'同盟だけに共有',targetPlayerId:target?.user.id||null,castleId:target?read(h,target).state.home:'osaka',tactic:'balanced',startsAt:h.now,expiresAt:h.now+3600000,...change})).result.operationId;
 }
-async function scenario(name,run){const h=harness(),batch=h.db.batch.bind(h.db);let maxBindings=0;h.db.batch=statements=>{for(const statement of statements){maxBindings=Math.max(maxBindings,statement.params.length);assert(statement.params.length<=100,'D1 binding limit exceeded: '+statement.params.length);}return batch(statements);};try{await run(h);reports.push({name,calls:h.calls,maxBindings});}finally{h.close();}}
+function selectRallyOutcome(h,operationId,won){
+ // Set only the private fixture's entropy, before departure. Both outcomes
+ // exercise the real battle calculation and its different commit guards.
+ const roster=h.sql.prepare("SELECT id,troops FROM alliance_units WHERE operation_id=? AND state='stationed' ORDER BY id").all(operationId).map(u=>[u.id,u.troops]);
+ for(let i=0;i<10000;i++){
+  const seed='pooled-battle-fixture-'+i,hex=createHash('sha256').update(JSON.stringify(['alliance-battle-v1',seed,operationId,roster])).digest('hex'),roll=parseInt(hex.slice(0,8),16)/4294967296;
+  if(won?roll<.05:roll>=.95){h.sql.prepare('UPDATE alliance_operations SET resolution_seed=? WHERE id=?').run(seed,operationId);return;}
+ }
+ assert.fail('Unable to select the requested fixture battle outcome');
+}
+async function appointRegent(h,p){
+ const admin=await h.session('集結検証の太政大臣');await h.api('/admin/claim',post(admin,{key:h.env.SENGOKU_ADMIN_KEY}));
+ const current=(await h.api('/admin/court/regent',{token:admin.token})).data;
+ await h.api('/admin/court/regent',post(admin,{requestId:crypto.randomUUID(),action:'appoint',targetPlayerId:p.user.id,expectedRevision:current.revision}));
+ const snap=(await h.api('/sync?deviceId='+p.deviceId,{token:p.token})).data;
+ assert(snap.courtEstateProjection?.accessWindows.some(window=>window.toElapsedMs===null));assert.equal(snap.user.isStaff,false);assert.equal(snap.save.state.home,'kiyosu');
+}
+async function scenario(name,run){const h=harness(),batch=h.db.batch.bind(h.db);let maxBindings=0;h.db.batch=statements=>{for(const statement of statements){maxBindings=Math.max(maxBindings,statement.params.length);assert(statement.params.length<=100,'D1 binding limit exceeded: '+statement.params.length);}return batch(statements);};try{await run(h);assert(maxBindings<=100,'D1 binding limit exceeded: '+maxBindings);reports.push({name,calls:h.calls,maxBindings});}catch(error){assert(maxBindings<=100,'D1 binding limit exceeded: '+maxBindings);throw error;}finally{h.close();}}
 const armyHelpers={idField:v=>v,fail:(status,code,message)=>{throw Object.assign(Error(message),{status,code});}};
 
 await scenario('Private plans, assignments, join approvals, one-use invitations and policy races',async h=>{
@@ -129,12 +146,14 @@ await scenario('Troop escrow is atomic, replayable, capacity-safe and survives l
  assert.equal(unit(h,lostCastleAid).troops,300);await travelComplete(h,member);await command(h,member,'units/claim',{unitId:lostCastleAid});
 });
 
-await scenario('A real pooled battle consumes only escrow, allocates losses and recovers a lost response once',async h=>{
+for(const [won,courtHolder] of [[true,false],[false,false],[true,true]])await scenario('A '+(won?'winning':'losing')+' '+(courtHolder?'Regent ':'')+'pooled battle consumes only escrow, allocates losses and recovers a lost response once',async h=>{
  const [leader,ally,enemy]=await players(h,['共同出陣の主将','共同出陣の仲間','共同出陣の敵'],['kiyosu','okazaki','inuyama']),g=await guild(h,leader,'共同出陣試験');await join(h,ally,g);
+ if(courtHolder)await appointRegent(h,leader);
  const op=await operation(h,leader,enemy);
  const first=(await command(h,leader,'rally/join',{operationId:op,troops:1200})).result.unitId;
  const second=(await command(h,ally,'rally/join',{operationId:op,troops:1800})).result.unitId;
  await travelComplete(h,leader,ally);
+ selectRallyOutcome(h,op,won);
  const before=read(h,leader).state.troops,enemyBefore=read(h,enemy).state.troops,launch=body(h,leader,{operationId:op});
  const u={id:leader.user.id,guild_id:g},one=await prepareRallyAttack(h.db,u,op,h.now,armyHelpers),two=await prepareRallyAttack(h.db,u,op,h.now,armyHelpers);
  assert.equal(one.troops,3000);assert.equal(one.roll,two.roll);
@@ -142,7 +161,7 @@ await scenario('A real pooled battle consumes only escrow, allocates losses and 
  const departure=(await h.api('/alliance/rally/launch',post(leader,launch))).data;assert(departure.marching);assert.equal(departure.battle,null);
  assert.equal(h.sql.prepare('SELECT COUNT(*) n FROM field_battles').get().n,0);h.now+=departure.march.remainingMs;await h.api('/marches',{token:leader.token});assert(responseLost);
  const replay=(await h.api('/alliance/rally/launch',post(leader,{...launch,expectedRevision:0,deviceId:'different-device'}))).data;
- assert.equal(replay.idempotent,true);assert.equal(replay.battle.troops,3000);
+ assert.equal(replay.idempotent,true);assert.equal(replay.battle.troops,3000);assert.equal(replay.battle.won,won);
  assert.equal(read(h,leader).state.troops,before,'leader cannot keep the participants surviving force');
  assert.equal(unit(h,first).troops+unit(h,second).troops+replay.battle.attackerLost+replay.battle.capture.garrison,3000);
  assert.equal(read(h,enemy).state.troops,enemyBefore-replay.battle.defenderLost.troops);
@@ -176,8 +195,9 @@ await scenario('Stationed aid changes real defense; membership and zero-support 
  await join(h,empty,g);assert.equal(h.sql.prepare('SELECT 1 AS ok WHERE '+zero.guard.sql).get(...zero.guard.args),undefined);
 });
 
-await scenario('Rallies honor target protection and intact branches, and escrow funds the captured garrison',async h=>{
+for(const courtHolder of [false,true])await scenario((courtHolder?'Regent rallies':'Rallies')+' honor target protection and intact branches, and escrow funds the captured garrison',async h=>{
  const [leader,ally,enemy]=await players(h,['包囲作戦の主将','包囲作戦の仲間','支城の城主'],['kiyosu','okazaki','inuyama']),g=await guild(h,leader,'城郭集結試験');await join(h,ally,g);
+ if(courtHolder)await appointRegent(h,leader);
  edit(h,enemy,s=>{s.castles.nijo={owner:s.clan,troops:100,wall:1,level:1};});
  const branch={id:'nijo_north',parentCastleId:'nijo',direction:'north',level:1,fallen:false},seed=fallen=>{
   const branches=[{...branch,fallen}];edit(h,enemy,s=>{s.branches=branches;});

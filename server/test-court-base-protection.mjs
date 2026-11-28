@@ -62,8 +62,8 @@ async function depart(h,a,d,castleId){return win(async()=>(await h.api('/field/a
 async function settle(h,a,departure){h.now+=departure.march.remainingMs;const result=await status(h,a),receipt=result.history.find(item=>item.id===departure.march.id);assert.equal(receipt?.status,'resolved');return receipt.battle;}
 async function transit(h,p){
  const snap=(await h.api('/sync?deviceId='+p.deviceId,{token:p.token})).data;
- const game=GameEngine.fromSave(snap.save,GAME_OFFICERS,{isAdmin:snap.user.isAdmin,isStaff:snap.user.isStaff,isCourtProtected:!!snap.entitlements?.courtProtected,staffBase:snap.staffBase,maintenanceAuthority:snap.maintenanceAuthority,branchAuthority:{resolvedElapsedMs:snap.branchResolvedElapsedMs}});
- const moved=game.applyWorldClock(snap.clock,{maxSeconds:86400,deferCycleSettlement:true});assert(moved.ok&&!moved.pending);return game.state;
+ const game=GameEngine.fromSave(snap.save,GAME_OFFICERS,{isAdmin:snap.user.isAdmin,isStaff:snap.user.isStaff,isCourtProtected:!!snap.entitlements?.courtProtected,staffBase:snap.staffBase,maintenanceAuthority:snap.maintenanceAuthority,courtEstateProjection:snap.courtEstateProjection,branchAuthority:{resolvedElapsedMs:snap.branchResolvedElapsedMs}});
+ const moved=game.applyWorldClock(snap.clock,{maxSeconds:86400,deferCycleSettlement:true});assert(moved.ok&&!moved.pending&&!moved.courtEstatePending);return game.state;
 }
 async function retainer(h,lord,name='仕える家臣'){
  await h.api('/castles/residency?castleId='+save(h,lord).state.home,{token:lord.token});
@@ -87,7 +87,13 @@ function legacyCpuDefeat(h,p){
  h.sql.prepare('UPDATE world_clock SET base_elapsed_ms=539000,anchor_real_ms=?,revision=revision+1').run(h.now);h.now+=1000;
  return advanced;
 }
-const upload=(h,p,value,expected=200)=>h.api('/sync',{method:'PUT',token:p.token,body:{deviceId:p.deviceId,revision:row(h,p).revision,save:value},expected});
+async function upload(h,p,value,expected=200){
+ // These cases exercise an older gameplay save's CPU-defeat claim, using the
+ // current authenticated transport envelope. Keep that claimed defeat intact;
+ // refreshing authority must not replace it with the server's undamaged save.
+ const snap=(await h.api('/sync?deviceId='+p.deviceId,{token:p.token})).data;
+ return h.api('/sync',{method:'PUT',token:p.token,body:{deviceId:p.deviceId,revision:snap.revision,maintenanceRevision:snap.maintenanceAuthority.revision,courtEstateProof:snap.courtEstateProjection?.proof??null,save:value},expected});
+}
 const originalFetch=globalThis.fetch;globalThis.fetch=async()=>{throw Error('Court base tests must never access a real service');};
 try{
  await scope('the current Emperor retains verified occupation protection without exposing a new public role flag',async h=>{
@@ -105,7 +111,7 @@ try{
   assert.equal(battle.won,true);assert.equal(battle.capture.captured,false);assert.equal(battle.battleMode,'raid');assert.equal(battle.succession,undefined);
   assert.equal(save(h,defender).state.castles[castleId].owner,save(h,defender).state.clan);assert.deepEqual(seat(h,home),before);assert.equal(battle.lootFraction,.5);assert(battle.loot.gold>0);
  });
- for(const role of ['regent','retired'])await scope(role+' protects its ordinary home against an actual old-client CPU defeat upload',async h=>{
+ for(const role of ['regent','retired'])await scope(role+' protects its ordinary home against a legacy CPU-defeat save with the current sync envelope',async h=>{
   await player(h,'皇室同期の太政大臣',{admin:true});const lord=await player(h,'皇室同期の城主');await protectAs(h,lord,role);
   const home=save(h,lord).state.home;await retainer(h,lord);const oldClient=legacyCpuDefeat(h,lord),before=seat(h,home),done=(await upload(h,lord,oldClient)).data;
   assert.equal(done.entitlements.courtProtected,true);assert.equal(done.save.state.home,home);assert.equal(done.save.state.castles[home].owner,done.save.state.clan);assert.equal(done.save.state.gameOver,false);assert.deepEqual(seat(h,home),before);assert.equal(done.residency.role,'lord');
@@ -198,7 +204,7 @@ try{
   const before=seat(h,'kiyosu'),result=(await h.api('/covert/retaliate',post(actor,covertBody({stationId:station.id,incidentId:incident})))).data;
   assert.equal(result.result.battle.won,true);assert.equal(result.result.battle.succession,undefined);assert.deepEqual(seat(h,'kiyosu'),before);assert.equal(count(h,'castle_successions'),0);assert.equal(save(h,defender).state.castles.kiyosu.owner,save(h,defender).state.clan);
  });
- await scope('an old client CPU-defeat upload retains an appointed home and its lord seat',async h=>{
+ await scope('a legacy CPU-defeat save with the current sync envelope retains an appointed home and its lord seat',async h=>{
   await player(h,'旧端末保全の太政大臣',{admin:true});const lord=await player(h,'旧端末の在任城主'),heir=await retainer(h,lord);await appoint(h,lord);
   const heirBefore=row(h,heir).save_json,oldClient=legacyCpuDefeat(h,lord),done=(await upload(h,lord,oldClient)).data;
   assert.equal(done.entitlements.courtProtected,true);assert.equal(done.save.state.home,'kiyosu');assert.equal(done.save.state.cycle.home,'kiyosu');assert.equal(done.save.state.castles.kiyosu.owner,done.save.state.clan);assert.equal(done.save.state.gameOver,false);assert.equal(done.residency.role,'lord');assert.equal(seat(h,'kiyosu').lord_user_id,lord.user.id);assert.equal(row(h,heir).save_json,heirBefore);assert.equal(count(h,'castle_successions'),0);

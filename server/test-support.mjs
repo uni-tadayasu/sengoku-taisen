@@ -9,7 +9,7 @@ import {GameEngine,GAME_OFFICERS} from './game-runtime.js';
 export function harness(){
  const sql=new DatabaseSync(':memory:');sql.exec('PRAGMA foreign_keys=ON');
  for(const entry of JSON.parse(readFileSync(new URL('./drizzle/meta/_journal.json',import.meta.url))).entries)for(const statement of readFileSync(new URL('./drizzle/'+entry.tag+'.sql',import.meta.url),'utf8').split('--> statement-breakpoint').map(s=>s.trim()).filter(Boolean))sql.exec(statement);
- const h={sql,maintenanceByToken:new Map(),calls:0,now:1795219200000,beforeStatement:null,beforeBatch:null,afterBatch:null};
+ const h={sql,maintenanceByToken:new Map(),courtEstateByToken:new Map(),calls:0,now:1795219200000,beforeStatement:null,beforeBatch:null,afterBatch:null};
  const db={prepare(query){return this.statement(query,[]);},statement(query,params){const execute=async()=>{if(h.beforeStatement)await h.beforeStatement(query,params);return sql.prepare(query).all(...params);};return{sql:query,params,bind(...values){return db.statement(query,values);},async first(){return (await execute())[0]||null;},async all(){return{success:true,results:await execute()};},async run(){await execute();return{success:true,results:[]};}};},async batch(statements){if(h.beforeBatch)await h.beforeBatch(statements);sql.exec('BEGIN IMMEDIATE');let result;try{result=statements.map(s=>({success:true,results:sql.prepare(s.sql).all(...s.params)}));sql.exec('COMMIT');}catch(error){sql.exec('ROLLBACK');throw error;}if(h.afterBatch)await h.afterBatch(statements,result);return result;}};
  const objects=new Map(),bucket={objects,beforePut:null,afterPut:null,beforeGet:null,afterGet:null,beforeDelete:null,deletes:[],async put(key,value,options){if(this.beforePut)await this.beforePut(key,value);const bytes=new Uint8Array(value);objects.set(key,{bytes,options});if(this.afterPut)await this.afterPut(key,bytes);return{key,size:bytes.length};},async get(key){if(this.beforeGet)await this.beforeGet(key);const found=objects.get(key),bytes=found?.bytes.slice();if(this.afterGet)await this.afterGet(key);return bytes?{key,size:bytes.length,body:new Response(bytes).body}:null;},async delete(key){this.deletes.push(key);if(this.beforeDelete)await this.beforeDelete(key);objects.delete(key);}};
  h.env={DB:db,BUCKET:bucket,SENGOKU_ADMIN_KEY:'local-fixture-'+crypto.randomUUID()};h.db=db;h.bucket=bucket;
@@ -17,10 +17,12 @@ export function harness(){
   // Existing fixtures speak the current sync envelope; rawBody still permits
   // explicit old-client / missing-authority protocol tests.
   if(path==='/sync'&&method==='PUT'&&body&&!Object.hasOwn(body,'maintenanceRevision')&&h.maintenanceByToken.has(token))body={...body,maintenanceRevision:h.maintenanceByToken.get(token).revision};
+  if(path==='/sync'&&method==='PUT'&&body&&!Object.hasOwn(body,'courtEstateProof')&&h.courtEstateByToken.get(token))body={...body,courtEstateProof:h.courtEstateByToken.get(token).proof};
   const requestHeaders={...headers,'CF-Connecting-IP':headers['CF-Connecting-IP']||'192.0.2.35'};if(origin!==null)requestHeaders.Origin=origin;if(token)requestHeaders.Authorization='Bearer '+token;if(body!==undefined||rawBody!==undefined)requestHeaders['Content-Type']='application/json';
   const response=await worker.fetch(new Request('https://local.invalid/api/v1'+path,{method,headers:requestHeaders,body:rawBody??(body===undefined?undefined:JSON.stringify(body))}),h.env,{});h.calls++;
   const isImage=response.headers.get('content-type')==='image/jpeg',data=isImage?null:response.status===204?null:await response.json();
   if(token&&data?.maintenanceAuthority)h.maintenanceByToken.set(token,data.maintenanceAuthority);
+  if(token&&data&&Object.hasOwn(data,'courtEstateProjection'))h.courtEstateByToken.set(token,data.courtEstateProjection);
   if(expected!==null)assert.equal(response.status,expected,JSON.stringify({path,expected,status:response.status,error:data?.error}));
   assert.equal(response.headers.get('cache-control'),'no-store');assert.equal(response.headers.get('x-content-type-options'),'nosniff');
   return {data,response,bytes:isImage?new Uint8Array(await response.arrayBuffer()):null};
@@ -54,7 +56,7 @@ export async function settleFieldMarch(h,actor,departure){
 export async function syncFieldWriter(h,actor){
  const {deviceId,token}=actor;
  const snap=(await h.api('/sync/lease',{method:'POST',token,body:{deviceId}})).data;
- const game=GameEngine.fromSave(snap.save,GAME_OFFICERS,{isAdmin:snap.user.isAdmin,isStaff:snap.user.isStaff,isDeputy:snap.user.isDeputy,staffBase:snap.staffBase,maintenanceAuthority:snap.maintenanceAuthority});
+ const game=GameEngine.fromSave(snap.save,GAME_OFFICERS,{isAdmin:snap.user.isAdmin,isStaff:snap.user.isStaff,isDeputy:snap.user.isDeputy,staffBase:snap.staffBase,maintenanceAuthority:snap.maintenanceAuthority,courtEstateProjection:snap.courtEstateProjection});
  const advanced=game.applyWorldClock(snap.clock);assert(advanced.ok&&!advanced.pending);
  return (await h.api('/sync',{method:'PUT',token,body:{deviceId,revision:snap.revision,save:JSON.parse(game.exportSave())}})).data;
 }

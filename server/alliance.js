@@ -261,11 +261,12 @@ async function unitsAction(ctx,b,action){
  }
  if(unit.state!=='returning'||unit.travel_phase&&unit.travel_phase!=='arrived')h.fail(409,'UNIT_NOT_RETURNED','部隊の帰還が完了してから受け取れます。');
  const s=await saved(ctx,b),shared=user.is_staff&&!user.is_admin&&h.staffBaseDto?await h.staffBaseDto(db,user,s.clock,ctx.now):null;
- const game=GameEngine.fromSave(s.save,GAME_OFFICERS,{isAdmin:!!user.is_admin,isDeputy:!!user.is_deputy,isStaff:!!user.is_staff,isCourtProtected:!!user.is_court_protected,staffBase:shared});
+ const courtEstate=await h.courtEstateContext(db,user,s.save,s.clock,ctx.now);
+ const game=GameEngine.fromSave(s.save,GAME_OFFICERS,{courtEstateProjection:courtEstate.projection,isAdmin:!!user.is_admin,isDeputy:!!user.is_deputy,isStaff:!!user.is_staff,isCourtProtected:!!user.is_court_protected,staffBase:shared});
  const room=Math.max(0,Math.min(ASSET_LIMIT,game.availableTroopCapacity?game.availableTroopCapacity():game.troopCapacity())-s.save.state.troops),amount=Math.min(unit.troops,room);
  if(unit.troops>0&&amount<=0)h.fail(409,'TROOP_CAPACITY','本隊の収容力が不足しています。兵舎を増築するか本隊に空きを作ってください。残りの兵は保管されます。');
  s.save.state.troops+=amount;
- return commit(ctx,b,action,and(unitGuard(unit),s.guard),(gate,args)=>[
+ return commit(ctx,b,action,and(unitGuard(unit),s.guard,courtEstate.guard),(gate,args)=>[
  saveStatement(ctx,b,s.save,gate,args),
  stmt(db,'UPDATE alliance_units SET troops=troops-?,state=?,revision=revision+1 WHERE id=? AND '+gate,amount,amount===unit.troops?'claimed':'returning',unit.id,...args),...s.extra(gate,args),
  ],{receivedTroops:amount,remainingTroops:unit.troops-amount,message:amount+'人が本隊へ帰還しました。'+(unit.troops>amount?'収容できない兵は受取待ちに残しています。':'')});

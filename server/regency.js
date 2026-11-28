@@ -1,5 +1,6 @@
 // A Regent acts for the Emperor without acquiring staff membership or moving
 // home. The current appointment token is checked again at each write/response.
+import {courtEstateSnapshotStatements} from './court-estate-ledger.js';
 const S=(db,sql,...args)=>db.prepare(sql).bind(...args),rows=value=>value?.results||[];
 const TERM="COALESCE(sm.term_id,'legacy:'||sm.appointed_at)";
 const CROWN=alias=>`EXISTS(SELECT 1 FROM court_leader l JOIN staff_members sm ON sm.user_id=l.user_id WHERE l.id=1 AND l.user_id=${alias} AND l.term_id=${TERM})`;
@@ -78,6 +79,7 @@ async function operation(ctx,guard){
   ON CONFLICT(actor_id,request_id) DO NOTHING RETURNING request_id`,user.id,requestId,body.action,targetId,body.expectedRevision,digest,nonce,JSON.stringify(receipt),now,...guard.args,...targetGuard.args,body.expectedRevision,targetId)];
  if(body.action==='appoint')statements.push(S(db,`INSERT INTO court_regent(id,user_id,appointment_token,appointed_by,appointed_at) SELECT 1,?,?,?,? WHERE ${GATE}`,targetId,nonce,user.id,now,...args));
  else statements.push(S(db,`DELETE FROM court_regent WHERE id=1 AND user_id=? AND ${GATE}`,targetId,...args));
+ statements.push(...courtEstateSnapshotStatements(db,await h.getWorldClock(db,now),GATE,args));
  const result=await db.batch(statements),accepted=await prior(ctx,requestId,digest);
  if(!accepted){await conflict(ctx,guard,body);h.fail(409,'REGENT_ACCESS_CHANGED','任命対象の状態が変わりました。一覧を更新してください。');}
  return{...await directory(ctx,guard),idempotent:!rows(result[0]).length,receipt:JSON.parse(accepted.result_json)};

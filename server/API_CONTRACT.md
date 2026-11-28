@@ -1,5 +1,60 @@
 # 戦国VS（SENGOKU VS）通信API
 
+## 京都御所の共同領地 — court estate (v5.20.0)
+
+`GET /court/estate` and `POST /court/estate/upgrade` grant role-bound shared development to the current 太政大臣, Kyoto members (including the Emperor), Regent, six valid externally appointed court officers, and Retired Emperors with a valid succession record. Ordinary-home participants retain their existing home, clan, personal buildings and owned castles. Kyoto remains the same single canonical `staff_base` shared with Kyoto members. This grant adds no staff membership, audience-response authority, event-room authority, appointment power, exclusive capture or independent army.
+
+The authenticated GET returns `{ok:true,courtEstate,courtEstateProjection,clock}`. `courtEstate` contains:
+
+- `version:1`, `eligible:true`, `canDevelop:true`, opaque `accessStamp`, `role:{id,title,jurisdiction?}`, and `holding:{id:"kyoto_gosho",name:"京都御所",shared:true,ownership:"shared",homePreserved:true}`.
+- `home:{id,name}` for the participant's unchanged actual base; `base:{revision,castleLevel,maxCastleLevel:128,buildings,jobs,updatedElapsedMs}`. The 64 shared facility levels end at 32. Jobs contain their public initiator ID/name and shared completion times, without the initiator's staff-term token.
+- The payer's four `resources`, `command`, shared construction `slots:{used,max}`, ISO `serverNow`, and 65 server-quoted `actions` (the castle plus 64 facilities).
+- `effects:{active,castleId:"kyoto_gosho",castleLevel,holdingCount,baseIncome:{gold,rice,wood,stone},baseTroopCapacity,facilityUpkeep:{gold,rice,wood,stone}}` describes the current extra ordinary-castle contribution. Inactive holders receive zeros. These are the existing castle's base figures before the participant's ordinary technology, clan, governor, rank, upkeep and savings calculations; the client does not apply a second multiplier.
+- Each action has `kind`, `id`, `name`, `category`, completed `level`, `reservedLevel`, `maxLevel`, `targetLevel`, explicit four-resource `cost`, `seconds`, `queued`, `enabled`, `reason`, and `code`. At the maximum reserved level, `targetLevel` and `cost` are null, `seconds` is zero, and the action is disabled. Facility prerequisites and construction slots use the shared keep, while the payer's established personal territorial multiplier determines the price.
+
+POST accepts exactly `{requestId,kind,id,baseRevision,accessStamp,deviceId,expectedRevision}`. The established expansion bridge flushes personal progress and supplies writer/save revisions. `kind` is `castle` with `id:"kyoto_gosho"`, or `building` with a valid facility ID. Do not submit a price, level, role flag or save projection. The response contains the normal authoritative sync snapshot, the fresh `courtEstate` and `clock`, an immutable `receipt`, and `idempotent`. Apply its save before enabling further operations.
+
+The receipt retains the existing shared-construction fields (`requestId`, `jobId`, `kind`, `id`, `targetLevel`, `cost`, queue/completion times, `baseRevision`, `playerRevision`) and adds the accepted `accessStamp`. The same ID and semantic request recovers an accepted operation without a second debit. The semantic hash includes the quoted base revision and appointment stamp. A stale writer revision is allowed only when replaying an already accepted receipt. A new appointment never revives an old pending request.
+
+The current appointment token, role/membership epoch, account/ban/expulsion state, writer lease, personal save revision, shared revision and world-clock revision are checked in the existing ordered D1 transaction. The transaction writes one resource/command debit, one canonical shared job, and one receipt. It rolls back all effects on failure. The construction price is evaluated in a separate engine instance using shared levels; that instance is never exported as the ordinary payer's save. Responses recheck the original authority after assembling data and after identity decoration. Revocation removes access immediately while completed and already funded shared construction remain for the other holders.
+
+`GET /court` adds `self.canDevelopEstate` and `features.estate`, including when an external officer is below the ordinary visitor rank. Its existing admission, chat, audience, roster and event-room permissions are unchanged. A private sync snapshot adds `entitlements.courtEstate` as a discovery hint only; it is never accepted as authorization. `/health` advertises `features.courtEstate:true`.
+
+The legacy `/staff/base` and `/staff/base/upgrade` contracts remain compatible and do not grant ordinary appointees staff-only access. New unauthorized reads/writes return `403 COURT_ESTATE_REQUIRED`; changed appointment proofs return `409 COURT_ESTATE_ACCESS_CHANGED`. Existing construction, writer, balance, clock and idempotency errors still apply. The isolated `server/test-court-estate.mjs` suite covers ordinary and Kyoto holders, all six offices, low-rank admission, retirement, personal-save preservation, shared completion, replay, rollback, competing writes and final-response revocation.
+
+### Ordinary-base holding effects and appointment history
+
+Deploy `0055_court_estate_economy.sql` before the API. It creates the canonical `court_estate_current` view, activation policy, per-player accounts and append-only snapshots. Existing ordinary role holders begin at the deployment's common-clock time. If a qualifying holder exists before the shared palace row has ever been opened, the migration or first appointment transaction initializes that same canonical palace at the activation boundary. Existing saves, shared levels, pending jobs, troops and resources are preserved.
+
+While a current ordinary Regent, external officer or Retired Emperor holds the palace, it contributes exactly one additional castle to the established economic formulas. An independently court-appointed deputy qualifies. At castle Lv.1 the base monthly contribution is gold 100, rice 170, wood 40 and stone 30, plus base troop capacity 500. Each further castle level adds gold 15, rice 20, wood 5 and stone 5. The ordinary territory-count construction multiplier applies; the normal castle upkeep is charged as well (per castle level: gold 2, rice 1, wood 1 and stone 1, plus rice 60 for the holding). Durations, command regeneration and construction slots retain their established formulas. The palace's 64 facilities remain a single shared Kyoto facility set; they do not become a second copy of an ordinary participant's personal town. Palace ownership is projected for these economic calculations and does not grant attack origins, an extra garrison, capture achievements or conquest completion. Kyoto members already receive the palace through their established shared projection, so it is never counted twice. There is no custom percentage discount.
+
+Private sync snapshots and estate reads add `courtEstateProjection`, either null (no relevant history or no current saved campaign) or:
+
+```json
+{
+  "version": 1,
+  "campaignId": "the-current-campaign",
+  "revision": 1,
+  "proof": "opaque-server-proof",
+  "asOfElapsedMs": 60000,
+  "accessWindows": [{"fromElapsedMs": 30000, "toElapsedMs": null}],
+  "base": {
+    "id": "kyoto_gosho",
+    "revision": 0,
+    "createdElapsedMs": 30000,
+    "initial": {"castleLevel": 1},
+    "history": [],
+    "jobs": []
+  }
+}
+```
+
+The access `revision` is monotonic per player; `base.revision` independently tracks shared construction. `proof` binds the player, campaign and both revisions. It stays stable across unchanged polls and does not include the time horizon. Windows are half-open: an appointment contributes from `fromElapsedMs`, and stops exactly at a non-null `toElapsedMs`. Only castle events are exposed in this projection: completed history has `{kind:"castle",id:"kyoto_gosho",level,effectiveElapsedMs}` and pending jobs have `{kind:"castle",id:"kyoto_gosho",targetLevel,completesElapsedMs}`. Historical ended windows remain available after dismissal so a server checkpoint can settle legitimate past production without continuing future benefits. History is anchored to the saved clock; exceptionally long histories return `hasMore:true` with an earlier verified horizon for incremental catch-up.
+
+Appointments, dismissals, staff promotion, Emperor succession, BAN, expulsion/re-entry and merit-based office conflicts record their final canonical state in the same receipt-gated transaction as the source change. Their timestamps use the common game clock, including pauses and speed changes. Reading an authority seals its verified time horizon, so a competing transition cannot rewrite an already issued past interval. The engine splits time advancement at appointment, removal, palace-creation and castle-completion boundaries and stops at `asOfElapsedMs` with `courtEstatePending:true`. Pass the verified projection through the engine option/setter before applying clock catch-up; never recover it from uploaded game state.
+
+`PUT /sync` additionally sends top-level `courtEstateProof` from the last applied private projection. A player with relevant history must supply the current proof; a missing, stale or commit-raced proof returns `409 COURT_ESTATE_REFRESH_REQUIRED` without changing the personal save. Recover by applying the complete authoritative server save and new projection before replaying time. Merely replacing metadata on already advanced stale balances is insufficient. For an intentional import/new campaign, the proof is checked against the current server campaign; an accepted response returns the projection bound to the new campaign. The private projection, windows and proof are never persisted inside or granted by an imported save. The API health check requires the new ledger tables and view. `server/test-court-estate-economy.mjs` covers numeric parity, exact role intervals, clock pause, all ordinary court roles, shared completion, stale-proof rollback, role cascades and populated migration preservation.
+
 ## 幕府政庁 — post-opening governance (v5.19.0)
 
 Migration `0054_shogunate_governance.sql` adds `shogunate_governance_accounts` and immutable `shogunate_governance_requests`. It changes no existing player, opening right, court appointment, base ownership or save. `/health` requires both tables and advertises `features.shogunateGovernance:true`.

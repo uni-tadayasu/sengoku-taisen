@@ -230,7 +230,7 @@ function create(options={}){
  const device={...(options.device||makeDevice())},deviceStem=device.id.slice(0,36),now=options.now||(()=>Date.now()),hidden=options.hidden||(()=>Boolean(global.document?.hidden)),online=options.online||(()=>global.navigator?.onLine!==false),bridge=options.bridge||(()=>global.SengokuBridge),storage=options.storage||global.localStorage;
  const later=options.setTimeout||global.setTimeout.bind(global),cancel=options.clearTimeout||global.clearTimeout.bind(global);
  const listeners=new Set();let session=null,generation=0,queue=Promise.resolve(),initialized=false,applying=false,dirty=false,ack='',revision=0,leaseDeadline=0,lastLeaseAt=0,refreshPending=null,attempt=null,banned=false,banMessage='',accessRefreshPending=false;
- let pollTimer=null,saveTimer=null,presenceTimer=null,expiryTimer=null,branchAuthoritySnapshot=null,branchCorrectionPending=null,maintenanceAuthoritySnapshot=null,expulsion=null;
+ let pollTimer=null,saveTimer=null,presenceTimer=null,expiryTimer=null,branchAuthoritySnapshot=null,branchCorrectionPending=null,maintenanceAuthoritySnapshot=null,courtEstateProjectionSnapshot=null,expulsion=null;
  let status={linked:false,ready:true,writable:true,banned:false,reason:'local',message:'',revision:0,updatedAt:null,leaseExpiresAt:null,writerDeviceName:null,deviceName:device.name};
  const valid=g=>Boolean(session&&g===generation);
  const rolePending=()=>bridge()?.getRoleAccess?.().pending===true;
@@ -277,8 +277,36 @@ function create(options={}){
   checkpoint();generation++;queue=Promise.resolve();refreshPending=null;initialized=false;applying=false;attempt=null;leaseDeadline=0;accessRefreshPending=true;clearTimers();roleAccess({},true);session?.onUser?.(null);
   emit({linked:true,ready:false,writable:false,reason:'access-changed',message:message||'領主の利用状態が更新されました。最新の接続状態を確認しています。',leaseExpiresAt:null});schedulePoll();return true;
  }
- function roleAccess(user={},pending=false){if(pending){branchAuthoritySnapshot=null;branchCorrectionPending=null;maintenanceAuthoritySnapshot=null;}const current=bridge(),roles={isAdmin:user.isAdmin===true,isStaff:user.isStaff===true&&user.isAdmin!==true,isDeputy:user.isDeputy===true&&user.isAdmin!==true&&user.isStaff!==true,pending};if(current?.setRoleAccess)current.setRoleAccess(roles);else current?.setAdminAccess?.(roles.isAdmin);}
- function applyCourtProtection(snapshot,g){if(!valid(g)||String(snapshot.user?.id)!==String(session.id))return;return bridge()?.applyCourtProtection?.({source:'cloud',playerId:String(session.id),entitlements:{courtProtected:snapshot.entitlements?.courtProtected===true}});}
+ function roleAccess(user={},pending=false){if(pending){branchAuthoritySnapshot=null;branchCorrectionPending=null;maintenanceAuthoritySnapshot=null;courtEstateProjectionSnapshot=null;}const current=bridge(),roles={isAdmin:user.isAdmin===true,isStaff:user.isStaff===true&&user.isAdmin!==true,isDeputy:user.isDeputy===true&&user.isAdmin!==true&&user.isStaff!==true,pending};if(current?.setRoleAccess)current.setRoleAccess(roles);else current?.setAdminAccess?.(roles.isAdmin);}
+ function applyCourtProtection(snapshot,g){if(!valid(g)||String(snapshot.user?.id)!==String(session.id))return;return bridge()?.applyCourtProtection?.({source:'cloud',playerId:String(session.id),entitlements:{courtProtected:snapshot.entitlements?.courtProtected===true,...(typeof snapshot.entitlements?.courtEstate==='boolean'?{courtEstate:snapshot.entitlements.courtEstate}:{})}});}
+ function courtEstateProjectionMeta(snapshot){
+  const playerId=String(snapshot.user?.id||''),campaignId=String(snapshot.save?.state?.walking?.campaignId||''),raw=snapshot.courtEstateProjection,previous=courtEstateProjectionSnapshot,same=previous&&previous.playerId===playerId&&previous.campaignId===campaignId;
+  if(raw!=null&&(raw.version!==1||raw.campaignId!==campaignId||!Number.isSafeInteger(raw.revision)||raw.revision<0||!Number.isSafeInteger(raw.base?.revision)||raw.base.revision<0||!Number.isSafeInteger(raw.asOfElapsedMs)||raw.asOfElapsedMs<0||typeof raw.proof!=='string'||!raw.proof))throw Error('京都御所の領地効果を確認できませんでした。同期を再確認します。');
+  let projection=raw||null;
+  if(same&&previous.projection){
+   const old=previous.projection;
+   // A role's historical windows persist after dismissal. An older queued
+   // snapshot cannot remove them or reinstate a superseded appointment.
+   if(!projection||projection.revision<old.revision||projection.revision===old.revision&&(projection.base.revision<old.base.revision||projection.base.revision===old.base.revision&&projection.asOfElapsedMs<old.asOfElapsedMs))projection=old;
+  }
+  courtEstateProjectionSnapshot={playerId,campaignId,projection:projection?JSON.parse(JSON.stringify(projection)):null};
+  return{source:'cloud',playerId,courtEstateCampaignId:campaignId,courtEstateProjection:projection?JSON.parse(JSON.stringify(projection)):null};
+ }
+ function applyCourtEstateProjection(snapshot,g){
+  if(!valid(g)||String(snapshot.user?.id)!==String(session.id))return;
+  const result=bridge()?.applyCourtEstateProjection?.(courtEstateProjectionMeta(snapshot));
+  if(result?.ok===false&&!result.ignored)throw Error(result.message||'京都御所の領地効果を反映できませんでした。');
+  return result;
+ }
+ function courtEstateReplayRequired(snapshot){
+  const current=bridge(),live=current?.getState?.(),canonical=snapshot.save?.state,previous=current?.getCourtEstateProjection?.()||courtEstateProjectionSnapshot?.projection||null,next=snapshot.courtEstateProjection||null;
+  if(!initialized||!live?.walking?.campaignId||live.walking.campaignId!==canonical?.walking?.campaignId||(previous?.proof||null)===(next?.proof||null))return false;
+  if(previous&&next&&(next.revision<previous.revision||next.revision===previous.revision&&next.base.revision<previous.base.revision))return false;
+  const elapsed=state=>state.worldClock?.elapsedMs??state.turn*60000+(state.realtime?.elapsed||0)*1000;
+  // A new proof must not validate balances already advanced using an older
+  // entitlement. Restore the canonical checkpoint and retain a local backup.
+  return elapsed(live)>elapsed(canonical)&&(typeof current?.courtEstateProjectionRequiresReplay!=='function'||current.courtEstateProjectionRequiresReplay(next,{fromElapsedMs:elapsed(canonical)}));
+ }
  function applyStaffBase(snapshot,g){if(!valid(g)||snapshot.user?.isStaff!==true||snapshot.user?.isAdmin===true)return;const result=bridge()?.applyStaffBase?.(snapshot.staffBase||null);if(result?.ok===false)throw Error(result.message||'スタッフ共同拠点を確認できませんでした。');}
  function branchAuthorityMeta(snapshot){
   const meta={source:'cloud',playerId:String(snapshot.user?.id||''),branchCampaignId:String(snapshot.save?.state?.walking?.campaignId||''),branchResolvedElapsedMs:Number.isSafeInteger(snapshot.branchResolvedElapsedMs)&&snapshot.branchResolvedElapsedMs>=0?snapshot.branchResolvedElapsedMs:0},previous=branchAuthoritySnapshot;
@@ -317,7 +345,7 @@ function create(options={}){
  function observeBranchSnapshot(snapshot){
   const current=bridge(),role=current?.getRoleAccess?.(),campaignId=current?.getState?.()?.walking?.campaignId;
   if(!session||!initialized||banned||accessRefreshPending||role?.pending||!snapshot?.user||snapshot.user.isBanned||String(snapshot.user.id)!==String(session.id)||!Number.isSafeInteger(snapshot.revision)||snapshot.revision<revision||branchAuthoritySnapshot&&snapshot.revision<branchAuthoritySnapshot.revision||!campaignId||snapshot.save?.state?.walking?.campaignId!==campaignId||role&&(Boolean(snapshot.user.isAdmin)!==role.isAdmin||Boolean(snapshot.user.isStaff&&!snapshot.user.isAdmin)!==role.isStaff||Boolean(snapshot.user.isDeputy&&!snapshot.user.isAdmin&&!snapshot.user.isStaff)!==Boolean(role.isDeputy)))return{ok:false,ignored:true};
-  applyCourtProtection(snapshot,generation);applyMaintenanceAuthority(snapshot,generation,{deferFutureBaseline:true});return applyBranchAuthority(snapshot,generation)||{ok:true};
+  applyCourtProtection(snapshot,generation);if(courtEstateReplayRequired(snapshot)){void refresh();return{ok:true,deferred:true};}applyCourtEstateProjection(snapshot,generation);applyMaintenanceAuthority(snapshot,generation,{deferFutureBaseline:true});return applyBranchAuthority(snapshot,generation)||{ok:true};
  }
  function setRole(snapshot){
   const user=snapshot?.user;if(!user||String(user.id)!==String(session?.id))throw Error('同期する領主を確認できませんでした。');
@@ -351,7 +379,7 @@ function create(options={}){
  }
  async function apply(save,snapshot,g,{reason='remote',backup=false,backupRuntime=false}={}){
   if(!valid(g))return false;emit({writable:false,reason:'applying',message:'最新の進行を反映しています…'});applying=true;
-  try{const result=await bridge()?.applyCloudSave?.(save,{isAdmin:snapshot.user.isAdmin===true,isStaff:snapshot.user.isStaff===true&&snapshot.user.isAdmin!==true,isDeputy:snapshot.user.isDeputy===true&&snapshot.user.isAdmin!==true&&snapshot.user.isStaff!==true,staffBase:snapshot.staffBase||null,isCourtProtected:snapshot.entitlements?.courtProtected===true,entitlements:snapshot.entitlements||{},...branchAuthorityMeta(snapshot),...maintenanceAuthorityMeta(snapshot),reason,backup,backupRuntime});if(!valid(g))return false;if(result!==true&&result?.ok!==true)throw Error(result?.message||'最新データをこの端末に保存できませんでした。');return true;}
+  try{const result=await bridge()?.applyCloudSave?.(save,{isAdmin:snapshot.user.isAdmin===true,isStaff:snapshot.user.isStaff===true&&snapshot.user.isAdmin!==true,isDeputy:snapshot.user.isDeputy===true&&snapshot.user.isAdmin!==true&&snapshot.user.isStaff!==true,staffBase:snapshot.staffBase||null,isCourtProtected:snapshot.entitlements?.courtProtected===true,entitlements:snapshot.entitlements||{},...branchAuthorityMeta(snapshot),...maintenanceAuthorityMeta(snapshot),...courtEstateProjectionMeta(snapshot),reason,backup,backupRuntime});if(!valid(g))return false;if(result!==true&&result?.ok!==true)throw Error(result?.message||'最新データをこの端末に保存できませんでした。');return true;}
   finally{if(valid(g))applying=false;}
  }
  async function snapshot(result,g,{force=false,reason='remote'}={}){
@@ -361,6 +389,7 @@ function create(options={}){
   if(!result.user||String(result.user.id)!==String(session.id))throw Error('同期する領主を確認できませんでした。');
   if(olderBranchSnapshot(result))throw Error('支拠点の新しい更新を確認しています。最新の保存へ同期します。');
   if(banned){banned=false;banMessage='';status.banned=false;initialized=false;}
+  const estateReplay=courtEstateReplayRequired(result);if(estateReplay){force=true;reason='court-estate-authority';}
   setRole(result);const remote=result.save,remoteKey=remote?fingerprint(remote):'';
   if(result.expulsion?.pending===true){
    const value=result.expulsion;
@@ -369,7 +398,7 @@ function create(options={}){
    emit({writable:false,reason:'applying',message:'追放後の拠点選択を準備しています。'});
    const accepted=await bridge()?.applyExpulsion?.(expulsion,{source:'cloud',playerId:String(session.id)});if(!valid(g))return false;
    if(accepted!==true&&accepted?.ok!==true||bridge()?.hasStarted?.()!==false)throw Error(accepted?.message||'拠点選択を読み込めませんでした。ページを更新してください。');
-   branchAuthoritySnapshot=branchCorrectionPending=maintenanceAuthoritySnapshot=null;ack='';dirty=false;attempt=null;revision=result.revision;initialized=true;checkpoint();
+   branchAuthoritySnapshot=branchCorrectionPending=maintenanceAuthoritySnapshot=courtEstateProjectionSnapshot=null;ack='';dirty=false;attempt=null;revision=result.revision;initialized=true;checkpoint();
    observeResidency(result);if(result.clock)global.SengokuWorldClock?.accept(result.clock);status.updatedAt=result.updatedAt||null;lease(result);access();return true;
   }
   expulsion=null;
@@ -381,13 +410,13 @@ function create(options={}){
    // Reopen only an unsent save whose exact server baseline is still authoritative.
    // A changed baseline always goes through the bridge's local-backup path.
    const resume=!force&&canResume(remoteKey,result.revision);
-   if(!await apply(resume||remote,result,g,{reason:resume?'resume':!initialized?'initial':reason,backup:resume?Boolean(before)&&before!==fingerprint(resume):backup,backupRuntime:Boolean(branchCorrectionPending)}))return false;
+   if(!await apply(resume||remote,result,g,{reason:resume?'resume':!initialized?'initial':reason,backup:resume?Boolean(before)&&before!==fingerprint(resume):backup,backupRuntime:Boolean(branchCorrectionPending)||estateReplay}))return false;
    branchCorrectionPending=null;ack=remoteKey;dirty=fingerprint(local())!==ack;
   }else if(!remote&&!initialized){ack='';dirty=Boolean(localSnapshot().save);}
   else if(remote&&branchCorrectionPending){const corrected=mergeBranchCorrection(branchCorrectionPending,remote,local());if(corrected.changed){if(!await apply(corrected.save,result,g,{reason:'branch-canonical'}))return false;}if(!corrected.pending)branchCorrectionPending=null;dirty=fingerprint(local())!==ack;}
   // The branch ledger may be newer than the player's economic checkpoint. Its
   // trusted cursor must reach the engine before a clock notification can catch up.
-  applyMaintenanceAuthority(result,g);applyBranchAuthority(result,g);observeResidency(result);if(result.clock)global.SengokuWorldClock?.accept(result.clock);
+  applyCourtEstateProjection(result,g);applyMaintenanceAuthority(result,g);applyBranchAuthority(result,g);observeResidency(result);if(result.clock)global.SengokuWorldClock?.accept(result.clock);
   applyStaffBase(result,g);revision=result.revision;initialized=true;attempt=null;checkpoint();status.updatedAt=result.updatedAt||null;lease(result);access();return true;
  }
  function fail(error,g){
@@ -415,13 +444,18 @@ function create(options={}){
    if(hasAuthorityReader&&maintenanceAuthoritySnapshot?.campaignId&&(!authority||authority.campaignId!==save.state.walking?.campaignId))throw Object.assign(Error('兵の維持費を最新の保存と照合しています。'),{code:'MAINTENANCE_REFRESH_REQUIRED'});
    const maintenanceRevision=authority&&authority.campaignId===save.state.walking?.campaignId?authority.revision:undefined;
    const maintenanceRulesVersion=Number(global.SengokuEngine?.maintenanceRulesVersion)||1;
+   const courtProjection=currentBridge?.getCourtEstateProjection?.()||courtEstateProjectionSnapshot?.projection;
+   // Replacement campaigns still prove the last accepted server baseline;
+   // the response supplies a fresh projection bound to the new campaign.
+   const courtEstateProof=courtProjection?.proof;
    finishUpkeep=currentBridge?.beginUpkeepSync?.()||null;
-   const result=await request(g,'/sync',{method:'PUT',data:{deviceId:device.id,revision,save,maintenanceRulesVersion,...(Number.isSafeInteger(maintenanceRevision)?{maintenanceRevision}:{})},keepalive});if(!result)return{ok:false};
+   const result=await request(g,'/sync',{method:'PUT',data:{deviceId:device.id,revision,save,maintenanceRulesVersion,...(Number.isSafeInteger(maintenanceRevision)?{maintenanceRevision}:{}),...(typeof courtEstateProof==='string'?{courtEstateProof}:{})},keepalive});if(!result)return{ok:false};
    if(!Number.isSafeInteger(result.revision)||result.revision<=revision||!fingerprint(result.save))throw Error('自動保存の結果を確認できませんでした。');
-   setRole(result);const journal=finishUpkeep?.(),canonical=fingerprint(result.save),currentSave=local(),current=fingerprint(currentSave),staleBranch=olderBranchSnapshot(result);let effective=result;
+   const estateReplay=courtEstateReplayRequired(result);setRole(result);const journal=finishUpkeep?.(),canonical=fingerprint(result.save),currentSave=local(),current=fingerprint(currentSave),staleBranch=olderBranchSnapshot(result);let effective=result;
    // A save response must never erase actions performed while that request was in flight.
    if(staleBranch&&(result.upkeepAdjustment||result.repairAdjustment)){await recoverConflict(g);return{ok:false,conflict:true};}
-   if(staleBranch)branchCorrectionPending=save;
+   if(estateReplay){if(!await apply(result.save,result,g,{reason:'court-estate-authority',backup:true,backupRuntime:true}))return{ok:false};branchCorrectionPending=null;}
+   else if(staleBranch)branchCorrectionPending=save;
    else if(current===sent&&canonical!==current){if(!await apply(result.save,result,g,{reason:'canonical',backup:false}))return{ok:false};branchCorrectionPending=null;}
    else if(result.upkeepAdjustment){
     const corrected=mergeUpkeepCorrection(save,result,currentSave,journal);
@@ -436,7 +470,7 @@ function create(options={}){
     if(home&&journal?.current&&!journal.overflow&&save.state.walking?.campaignId===preserved.state.walking?.campaignId&&save.state.clan===preserved.state.clan&&journal.records.some(record=>(record.before.castles[home]||0)>(record.after.castles[home]||0)))effective=staffSnapshotWithTroops(result,preserved.state);
     branchCorrectionPending=corrected.pending?save:null;if(condition.conflict||repair.conflict){if(!await apply(result.save,result,g,{reason:'repair-conflict',backup:true,backupRuntime:true}))return{ok:false};branchCorrectionPending=null;effective=result;}else if((corrected.changed||monthly.changed||condition.changed||repair.changed)&&!await apply(preserved,effective,g,{reason:repair.changed?'repair-canonical':corrected.changed?'branch-canonical':monthly.changed?'upkeep-month':'durability-canonical',backup:false}))return{ok:false};
    }
-   if(!valid(g))return{ok:false};applyMaintenanceAuthority(effective,g);applyBranchAuthority(effective,g);observeResidency(effective);if(effective.clock)global.SengokuWorldClock?.accept(effective.clock);applyStaffBase(effective,g);revision=result.revision;ack=canonical;const latest=localSnapshot();dirty=latest.key!==ack;initialized=true;attempt=null;checkpoint(latest);status.updatedAt=result.updatedAt||null;lease(result);access();if(dirty&&!suspended)scheduleSave();return{ok:true};
+   if(!valid(g))return{ok:false};applyCourtEstateProjection(effective,g);applyMaintenanceAuthority(effective,g);applyBranchAuthority(effective,g);observeResidency(effective);if(effective.clock)global.SengokuWorldClock?.accept(effective.clock);applyStaffBase(effective,g);revision=result.revision;ack=canonical;const latest=localSnapshot();dirty=latest.key!==ack;initialized=true;attempt=null;checkpoint(latest);status.updatedAt=result.updatedAt||null;lease(result);access();if(dirty&&!suspended)scheduleSave();return{ok:true};
   }catch(error){
    if(!valid(g))return{ok:false};
    if(error.code==='DEFENSE_CLOCK_PENDING'){
@@ -445,7 +479,7 @@ function create(options={}){
     if(!suspended)scheduleSave();
     return{ok:false,pending:true};
    }
-   if(['REVISION_CONFLICT','LEASE_REQUIRED','CYCLE_SETTLEMENT_REQUIRED','CLOCK_REWIND','MAINTENANCE_REFRESH_REQUIRED'].includes(error.code)){await recoverConflict(g);return{ok:false,conflict:true};}throw error;}
+   if(['REVISION_CONFLICT','LEASE_REQUIRED','CYCLE_SETTLEMENT_REQUIRED','CLOCK_REWIND','MAINTENANCE_REFRESH_REQUIRED','COURT_ESTATE_REFRESH_REQUIRED'].includes(error.code)){await recoverConflict(g);return{ok:false,conflict:true};}throw error;}
   finally{finishUpkeep?.();}
  }
  async function refreshCore(g,{takeOver=false,settleCycle=false}={}){
@@ -481,7 +515,7 @@ function create(options={}){
   if(!hidden()){presence(true);schedulePresence();return refresh();}access();return Promise.resolve({ok:false,hidden:true});
  }
  function stop({pending=false}={}){
-  checkpoint();const previous=banned?null:session;generation++;session=null;clearTimers();queue=Promise.resolve();refreshPending=null;initialized=false;applying=false;dirty=false;ack='';revision=0;leaseDeadline=0;banned=false;banMessage='';accessRefreshPending=false;branchAuthoritySnapshot=null;branchCorrectionPending=null;maintenanceAuthoritySnapshot=null;
+  checkpoint();const previous=banned?null:session;generation++;session=null;clearTimers();queue=Promise.resolve();refreshPending=null;initialized=false;applying=false;dirty=false;ack='';revision=0;leaseDeadline=0;banned=false;banMessage='';accessRefreshPending=false;branchAuthoritySnapshot=null;branchCorrectionPending=null;maintenanceAuthoritySnapshot=null;courtEstateProjectionSnapshot=null;
   expulsion=null;emit({linked:pending,ready:!pending,writable:!pending,reason:pending?'initializing':'local',message:pending?'領主と最新の保存を確認しています…':'',revision:0,updatedAt:null,leaseExpiresAt:null,writerDeviceName:null});roleAccess({},pending);
   if(previous){for(const [route,data]of [['/presence',{deviceId:device.id,deviceName:device.name,online:false}],['/sync/release',{deviceId:device.id}]]){try{Promise.resolve(previous.request(route,{method:'POST',data,background:true,keepalive:true})).catch(()=>{});}catch(_){}}}
  }
