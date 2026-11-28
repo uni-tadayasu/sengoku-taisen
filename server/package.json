@@ -2,5 +2,8 @@
   "name": "sengoku-tento-social-worker",
   "private": true,
   "type": "module",
-  "scripts": {"test": "node test-social.mjs"}
+  "scripts": {
+    "test": "node test-social.mjs"
+  },
+  "version": "5.16.1"
 }

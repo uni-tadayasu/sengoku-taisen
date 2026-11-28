@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 import {harness} from './test-support.mjs';
 
 const INITIAL={enabled:false,mode:'loop',revision:0,startedAt:null,updatedAt:null};
-const RELEASE_VERSION=JSON.parse(readFileSync(new URL('../site-metadata.json',import.meta.url),'utf8')).version;
+const RELEASE_VERSION=JSON.parse(readFileSync(new URL('./package.json',import.meta.url),'utf8')).version;
 const BASE=Date.UTC(2026,10,27,6);
 const one=(h,sql,...params)=>h.sql.prepare(sql).get(...params);
 const run=(h,sql,...params)=>h.sql.prepare(sql).run(...params);

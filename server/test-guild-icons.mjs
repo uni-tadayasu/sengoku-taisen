@@ -3,7 +3,7 @@ import {readFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import {harness} from './test-support.mjs';
 
-const publishedVersion=JSON.parse(readFileSync(new URL('../site-metadata.json',import.meta.url),'utf8')).version;
+const publishedVersion=JSON.parse(readFileSync(new URL('./package.json',import.meta.url),'utf8')).version;
 
 const h=harness(),{api,sql,bucket}=h;
 const fixture=name=>new Uint8Array(readFileSync(new URL('./fixtures/avatar/'+name+'.jpg',import.meta.url)));

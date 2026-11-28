@@ -6,7 +6,7 @@ import {GameEngine,GAME_OFFICERS} from './game-runtime.js';
 import {rewardCalendar,protectRewardSync} from './rewards.js';
 
 // Only local signed Stripe fixtures and transactional in-memory SQLite.
-const publishedVersion=JSON.parse(readFileSync(new URL('../package.json',import.meta.url),'utf8')).version;
+const publishedVersion=JSON.parse(readFileSync(new URL('./package.json',import.meta.url),'utf8')).version;
 const SECRET='whsec_rewards_local_fixture_not_a_real_secret';
 const API_VERSION='2026-09-30.endive',DAY=86400000;
 const PASS={id:'reroll-pass-30d',amount:480,mode:'payment',link:'plink_reroll_fixture',price:'price_reroll_fixture',product:'prod_reroll_fixture',url:'https://buy.stripe.com/fixtureReroll30'};

@@ -3,7 +3,7 @@ import {readFileSync} from 'node:fs';
 import {harness,settleFieldMarch} from './test-support.mjs';
 
 // Isolated SQLite/Worker fixtures: no live account, payment or external request.
-const publishedVersion=JSON.parse(readFileSync(new URL('../package.json',import.meta.url),'utf8')).version;
+const publishedVersion=JSON.parse(readFileSync(new URL('./package.json',import.meta.url),'utf8')).version;
 const post=(actor,body,expected=200)=>({method:'POST',token:actor?.token,body,expected});
 const rename=(h,actor,body,expected=200)=>h.api('/profile',{method:'PATCH',token:actor?.token,body,expected});
 const row=(h,actor)=>h.sql.prepare('SELECT * FROM users WHERE id=?').get(actor.user.id);
