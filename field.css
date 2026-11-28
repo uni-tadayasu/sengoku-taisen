@@ -44,3 +44,22 @@
 .field-palace-control strong{font-size:1.1rem;line-height:1.5}
 .field-palace-control span,.field-palace-control p{font-size:.9375rem;line-height:1.65;margin:0}
 .field-palace-label{color:#f3d38b!important;white-space:normal!important;overflow-wrap:anywhere}
+
+/* Ownership is readable in text as well as color, including shared court bases. */
+.sengoku-field .field-owner-relation{--field-owner-color:#ffc8b1;display:inline-flex;align-items:center;justify-content:center;flex:none;max-width:100%;padding:.12rem .45rem;border:1px solid currentColor;border-radius:4px;color:var(--field-owner-color);background:#12202cee;font-size:.875rem;line-height:1.5;font-weight:600;white-space:nowrap}
+.sengoku-field .field-owner-relation.is-self{--field-owner-color:#ffe1a3}
+.sengoku-field .field-owner-relation.is-ally{--field-owner-color:#99ece1}
+.sengoku-field .field-owner-relation.is-shared{--field-owner-color:#dec0ff}
+.sengoku-field .field-player-copy .field-owner-name{display:flex;align-items:center;gap:.4rem;min-width:0}
+.sengoku-field .field-owner-caption{flex:none;color:#d5dfdf;font-size:.875rem;line-height:1.5;font-weight:500}
+.sengoku-field .field-owner-name>.player-evaluation-person{flex:1;min-width:0;overflow:hidden}
+.sengoku-field .field-player-copy .field-owner-location{margin-top:.25rem;font-size:.875rem;line-height:1.65;white-space:normal;overflow-wrap:anywhere;color:#e0e7e0}
+.sengoku-field .field-owner-location>.field-owner-relation{margin-right:.4rem;vertical-align:middle}
+.sengoku-field .field-ownership-banner{display:flex;align-items:center;gap:.65rem;min-width:0;margin:0 0 1rem;padding:.75rem;border:1px solid #ffc8b155;border-inline-start:3px solid #ffc8b1;border-radius:6px;background:linear-gradient(125deg,#55352e70,#10222df0)}
+.sengoku-field .field-ownership-banner.is-self{border-color:#ffe1a366;border-inline-start-color:#ffe1a3;background:linear-gradient(125deg,#66522355,#10222df0)}
+.sengoku-field .field-ownership-banner.is-ally{border-color:#99ece166;border-inline-start-color:#99ece1;background:linear-gradient(125deg,#1c655555,#10222df0)}
+.sengoku-field .field-ownership-banner.is-shared{border-color:#dec0ff66;border-inline-start-color:#dec0ff;background:linear-gradient(125deg,#543a7055,#10222df0)}
+.sengoku-field .field-ownership-banner>div{min-width:0;flex:1}
+.sengoku-field .field-ownership-banner strong{display:block;color:#fff7e7;font-size:1rem;line-height:1.5;overflow-wrap:anywhere}
+.sengoku-field .field-ownership-banner>div>span{display:block;margin-top:.2rem;color:#d5dfdf;font-size:.875rem;line-height:1.55;overflow-wrap:anywhere}
+@media(max-width:600px){.sengoku-field .field-ownership-banner{align-items:flex-start}.sengoku-field .field-player-copy .field-owner-name{flex-wrap:wrap;gap:.15rem .4rem}.sengoku-field .field-owner-name>.player-evaluation-person{flex-basis:7em}}

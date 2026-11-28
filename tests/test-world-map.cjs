@@ -120,6 +120,26 @@ test('selected and home labels never cover castle artwork in the narrow Kiyosu h
     }
   }
 });
+test('two-line owner labels reserve their full height and stay inside narrow viewports without covering castles',()=>{
+  const overlaps=(a,b)=>a.x<b.x+b.width&&a.x+a.width>b.x&&a.y<b.y+b.height&&a.y+a.height>b.y;
+  for(const [width,height]of [[280,400],[341,520],[768,420]]){
+    const points=[{id:'home',name:'本拠の城',ownerLabel:'領主 寿史葛西と長い領主名の表示確認',ownerRelation:'self',x:width/2,y:height/2,home:true},{id:'other',name:'隣の城',ownerLabel:'領主 隣国の領主',ownerRelation:'other',x:width/2+80,y:height/2+100}];
+    const markers=M.layoutMarkers(points,{x:0,y:0,width,height},width,height,{markerSize:56,distance:0});
+    assert(markers.find(marker=>marker.id==='home').label,'The home label is visible at every viewport size');
+    const boxes=markers.filter(marker=>marker.label).map(marker=>({x:marker.sx+marker.label.x,y:marker.sy+marker.label.y,width:marker.label.width,height:marker.label.height}));
+    for(const box of boxes){assert.equal(box.height,46);assert(box.x>=0&&box.x+box.width<=width&&box.y>=0&&box.y+box.height<=height);for(const marker of markers)assert(!overlaps(box,{x:marker.sx-28,y:marker.sy-28,width:56,height:56}));}
+    for(let i=0;i<boxes.length;i++)for(let j=i+1;j<boxes.length;j++)assert(!overlaps(boxes[i],boxes[j]));
+  }
+});
+test('ownership stays available in artwork labels, collapsed regions and parent-owned branch targets',()=>{
+  const parent={id:'nijo',name:'二条城',ownerLabel:'領主 カサイ',ownerRelation:'self',sx:300,sy:250,priority:90,own:true};
+  const label=M.markerPresentation(parent,{markerAppearance:()=>({html:'<span>城</span>',label:'二条城 城郭 Lv.4'})}).label;
+  assert(label.includes('領主 カサイ'));
+  const collapsed=M.markerPresentation({cluster:true,points:[parent,{name:'大坂城',ownerLabel:'領主 サカイ'}]});
+  assert(collapsed.label.includes('二条城 · 領主 カサイ'));assert(collapsed.label.includes('大坂城 · 領主 サカイ'));
+  const branches=M.layoutBranches([parent],[{id:'nijo_north',parentCastleId:'nijo',direction:'north',level:2,name:'北支拠点'}]);
+  assert.equal(branches[0].ownerLabel,parent.ownerLabel);assert.equal(branches[0].ownerRelation,'self');assert(M.markerPresentation(branches[0]).label.includes('領主 カサイ'));
+});
 test('map scale uses latitude-correct ground distance and useful metric units',()=>{
   const view={x:-500,y:-300,width:1000,height:600},scale=M.scaleForView(view,1000);
   near(scale.latitude,36);assert(scale.pixels>20&&scale.pixels<=100);assert(scale.label.endsWith(' km'));
@@ -181,5 +201,21 @@ test('stable castle artwork and map elements are reused for 60 camera frames, th
   castles[0].level=9;controller.update({castles});flush();assert.equal(presentations,2);assert.match(marker.innerHTML,/城郭 9/);assert.equal(marker.getAttribute('aria-label'),'本拠 Lv.9');
   presentations=0;controller.update({cacheMarkerPresentation:false});flush();const first=presentations;controller.fit('nation',false);flush();assert(presentations>first,'Camera-dependent callbacks preserve their original live contract');
   controller.destroy();
+});
+test('visible owner text is safe and follows the latest owner without replacing map nodes or losing full accessible names',()=>{
+  const fs=require('node:fs'),vm=require('node:vm'),{setup,Node}=require('./helpers/dom-model.cjs'),{doc,host}=setup();
+  if(!Object.getOwnPropertyDescriptor(Node.prototype,'lastElementChild'))Object.defineProperty(Node.prototype,'lastElementChild',{get(){return [...this.childNodes].reverse().find(node=>node.nodeType===1)||null;}});
+  const previousBounds=Node.prototype.getBoundingClientRect;Node.prototype.getBoundingClientRect=()=>({top:0,left:0,bottom:600,right:800,width:800,height:600});
+  let stamp=1,frameId=0;const frames=new Map();
+  const win={document:doc,performance:{now:()=>stamp},requestAnimationFrame:callback=>{frames.set(++frameId,callback);return frameId;},cancelAnimationFrame:id=>frames.delete(id),addEventListener(){},removeEventListener(){},matchMedia:()=>({matches:true})};
+  vm.runInNewContext(fs.readFileSync(require.resolve('../world-map.js'),'utf8'),{window:win});
+  const castles=[{id:'a',name:'清洲城',owner:'織田家',ownerLabel:'領主 カサイ',ownerRelation:'self'}],geography={bounds:[130,30,145,42],land:{type:'Polygon',coordinates:[[[130,30],[145,30],[145,42],[130,42],[130,30]]]},castles:{a:[135,35]}};
+  const controller=win.SengokuWorldMap.mount(host,{stateKey:'owner-test',geography,castles,homeId:'a',cacheMarkerPresentation:true,markerAppearance:()=>({html:'<b>城郭 1</b>',label:'清洲城 城郭 Lv.1'})}),flush=()=>{let limit=100;while(frames.size){assert(limit-->0);const queued=[...frames.values()];frames.clear();stamp+=16;for(const fn of queued)fn(stamp);}};
+  flush();const marker=host.querySelector('[data-map-marker="a"]'),name=marker.querySelector('.sg-map-marker-name'),owner=marker.querySelector('.sg-map-marker-owner');
+  assert.equal(name.textContent,'清洲城');assert.equal(owner.textContent,'領主 カサイ');assert.equal(owner.hidden,false);assert.equal(marker.dataset.ownerRelation,'self');
+  const next='領主 <img src=x onerror=alert(1)> 長い新領主名';castles[0].ownerLabel=next;castles[0].ownerRelation='other';controller.update({castles});flush();
+  assert.strictEqual(host.querySelector('[data-map-marker="a"]'),marker);assert.strictEqual(marker.querySelector('.sg-map-marker-owner'),owner);assert.equal(owner.textContent,next);assert.equal(owner.querySelector('img'),null);assert.equal(marker.dataset.ownerRelation,'other');assert(marker.getAttribute('aria-label').includes(next));assert(marker.getAttribute('title').includes(next));
+  delete castles[0].ownerLabel;delete castles[0].ownerRelation;controller.update({castles});flush();assert.equal(owner.textContent,'');assert.equal(owner.hidden,true);assert.equal(marker.getAttribute('aria-label'),'清洲城 城郭 Lv.1');assert.equal(marker.classList.contains('has-owner-label'),false);
+  controller.destroy();Node.prototype.getBoundingClientRect=previousBounds;
 });
 console.log(`${count} real-geography projection, interaction and layout checks passed.`);

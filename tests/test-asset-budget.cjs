@@ -122,7 +122,11 @@ const totalGzipBytes = rows.reduce((sum,row)=>sum+row.gzipBytes,0);
 // appointment windows, shared construction UI and save-proof recovery.
 // Measured: 3,834,645 raw / 1,059,272 gzip (+50,688 / +13,759 from v5.19).
 // No new media, font or runtime dependency. Keep 1,355 raw / 728 gzip headroom.
-const rawBudget=3836000,gzipBudget=1060000;
+// v5.21 adds public-lord labels, identity-safe ownership reads, owner search
+// and readable field cards. Measured: 3,855,799 raw / 1,064,565 gzip bytes,
+// +21,154 / +5,293 over v5.20. No media, font or runtime dependency is added.
+// Keep 1,701 raw / 935 gzip bytes of headroom for this reviewed feature.
+const rawBudget=3857500,gzipBudget=1065500;
 assert(totalBytes <= rawBudget, `Initial bundles exceed the ${rawBudget} byte budget: ${totalBytes}`);
 assert(totalGzipBytes <= gzipBudget, `Initial bundles exceed the ${gzipBudget} gzip byte budget: ${totalGzipBytes}`);
 const html = fs.readFileSync(path.join(root,'index.html'),'utf8');

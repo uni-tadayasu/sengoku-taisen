@@ -13,6 +13,36 @@ test('co-located players share one exact marker while remaining individually sel
   const people=F.normalizePlayers([player('a'),player('b'),player('op','edo',{isAdmin:true,attackable:false})]),coords={kiyosu:{lon:136.8432,lat:35.2162},edo:{lon:139.7528,lat:35.6852}};
   const groups=F.groupBases(people,coords,[],{id:'a'});assert.equal(groups.length,2);assert.deepEqual(groups[0].players.map(p=>p.playerId),['a','b']);assert.deepEqual(groups[0].geo,coords.kiyosu);assert.equal(groups[0].owner,'あなたの領地');assert.equal(groups[1].reachable,false);assert.equal(F.groupBases(people,{},[]).length,0);
 });
+test('ownership labels use verified player identity rather than the shared clan name',()=>{
+  const coords={kiyosu:{lon:136.8432,lat:35.2162}},make=(p,identity)=>F.groupBases(F.normalizePlayers([p]),coords,[],identity)[0];
+  const other=make(player('other','kiyosu',{name:'葛西',clan:'織田家'}),{id:'me',clan:'織田家'});
+  assert.equal(other.ownerLabel,'領主 葛西');assert.equal(other.ownerRelation,'other');
+  assert.equal(make(player('me'),{id:'me'}).ownerRelation,'self');
+  assert.equal(make(player('ally','kiyosu',{relationship:'allied'}),{id:'me'}).ownerRelation,'ally');
+  assert.equal(F.ownershipFor(player('other'),{identity:{id:'me'}}).badge,'他領');
+});
+test('a co-located map label identifies the displayed lord without claiming exclusive ownership',()=>{
+  const coords={kiyosu:{lon:136.8432,lat:35.2162}},people=F.normalizePlayers([player('a','kiyosu',{name:'甲'}),player('b','kiyosu',{name:'乙'})]);
+  const first=F.groupBases(people,coords,[],{id:'a'})[0],selected=F.groupBases(people,coords,[],{id:'a'},'b:kiyosu')[0];
+  assert.equal(first.ownerLabel,'領主 甲 ほか1名');assert.equal(first.ownerRelation,'shared');
+  assert.equal(selected.ownerLabel,'領主 乙 ほか1名');assert.equal(selected.ownerRelation,'shared');
+  assert(F.markerAppearance(selected).label.includes('領主 乙 ほか1名'));
+});
+test('Kyoto ownership stays shared and distinguishes its government from a stationed lord',()=>{
+  const coords={kyoto_gosho:{lon:135.7621,lat:35.0254}},member=target('member','kyoto_gosho','kyoto_gosho',{name:'駐在者'});
+  const shared=F.groupBases(F.normalizePlayers([member]),coords,[],{id:'member'})[0];
+  assert.equal(shared.ownerLabel,'朝廷の共同領地');assert.equal(shared.ownerRelation,'shared');
+  assert.equal(F.ownershipFor(member,{identity:{id:'member'}}).title,'朝廷の共同領地');
+  const control={castleId:'kyoto_gosho',controller:{id:'ruler',name:'<支配者>'},governmentName:'<幕府>',controlledAt:12345},controlled={...member,palaceControl:control};
+  const group=F.groupBases(F.normalizePlayers([controlled]),coords,[],{id:'member'})[0];
+  assert.equal(group.ownerLabel,'支配者 <支配者>');assert.equal(group.ownerRelation,'shared');
+  const banner=F.ownershipBanner(controlled,{identity:{id:'member'}});assert(banner.includes('&lt;幕府&gt;の支配下'));assert(banner.includes('支配者 &lt;支配者&gt;'));assert(!banner.includes('駐在者の領地'));assert(!banner.includes('<支配者>'));
+});
+test('public ownership cards and banners keep names escaped and never expose internal roles',()=>{
+  const lord=player('deputy','kagoshima',{name:'<img src=x onerror=alert(1)>',isDeputy:true,isAdmin:true}),row=F.publicRow(lord,{identity:{id:'me'}}),banner=F.ownershipBanner(lord,{identity:{id:'me'}});
+  assert(row.includes('field-owner-caption">領主'));assert(row.includes('field-owner-relation is-other">他領'));
+  assert(banner.includes('&lt;img src=x onerror=alert(1)&gt;の領地'));assert(!banner.includes('<img src=x'));assert(!/運営|サブ運営|占領不可/.test(row+banner));
+});
 test('raid food costs follow the authoritative four tactic formulas',()=>{
   assert.equal(F.foodCost(1000,'balanced'),450);assert.equal(F.foodCost(1000,'assault'),525);assert.equal(F.foodCost(1000,'siege'),645);assert.equal(F.foodCost(1000,'ambush'),480);assert.equal(F.foodCost(1000,'unknown'),null);
 });
@@ -230,6 +260,13 @@ async function liveRefreshTest(){
     assert.equal(detail.htmlWrites,unchangedWrites+1,'A changed keep level must replace the detail once');assert.equal(focusCalls,1);assert.deepEqual(selection,[1,3]);
     people=[people[0],{...people[1],keepLevel:undefined}];await controller.refresh();assert.equal(maps.at(-1).castles[0].keepLevel,1);
     assert(nodes.get('[data-field-detail]').innerHTML.includes('天守 未取得'));
+    people=[people[0],{...people[1],name:'改名した領主'}];await controller.refresh();
+    assert.equal(maps.at(-1).castles[0].ownerLabel,'領主 改名した領主 ほか1名');
+    assert(nodes.get('[data-field-detail]').innerHTML.includes('改名した領主の領地'));assert(nodes.get('[data-field-players]').innerHTML.includes('改名した領主'));
+    people=[player('successor','kiyosu',{name:'後継者',keepLevel:8})];await controller.refresh();
+    assert.equal(maps.at(-1).castles[0].ownerLabel,'領主 後継者');assert.equal(maps.at(-1).castles[0].ownerRelation,'other');
+    assert(nodes.get('[data-field-detail]').innerHTML.includes('後継者の領地'));assert(!nodes.get('[data-field-detail]').innerHTML.includes('改名した領主'));
+    assert(!nodes.get('[data-field-players]').innerHTML.includes('改名した領主'));
   }finally{controller.destroy();}
   count++;console.log('PASS a shared-information refresh updates selected self/other castle artwork without losing selection');
 }
