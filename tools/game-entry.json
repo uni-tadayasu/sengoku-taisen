@@ -92,6 +92,7 @@
     "raden-game.css",
     "raden-surfaces.css",
     "raden-motion.css",
+    "ambient-motion.css",
     "input-list.css",
     "responsive-text.css",
     "tablet-layout.css",
@@ -181,6 +182,7 @@
     "boot.js",
     "layout-controls.js",
     "interaction-motion.js",
+    "ambient-motion.js",
     "image-protect.js",
     "navigation-ui.js",
     "ui-sounds.js"

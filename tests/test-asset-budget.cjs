@@ -109,7 +109,11 @@ const totalGzipBytes = rows.reduce((sum,row)=>sum+row.gzipBytes,0);
 // notification entry. Measured: 3,735,337 raw / 1,032,941 gzip bytes
 // (+10,903 / +2,822 from v5.16), including deferred court navigation.
 // Keep under 1.8 KB raw / 0.8 KB gzip headroom; no new media or dependencies.
-const rawBudget=3737000,gzipBudget=1033700;
+// v5.18 adds observer-limited ambient decoration and its display-setting copy.
+// Measured: 3,745,557 raw / 1,035,751 gzip (+10,220 / +2,810 from v5.17).
+// No new images, fonts, libraries or animation-frame loop are introduced.
+// Retain less than 1.7 KB raw / 0.9 KB gzip headroom for this reviewed addition.
+const rawBudget=3747000,gzipBudget=1036500;
 assert(totalBytes <= rawBudget, `Initial bundles exceed the ${rawBudget} byte budget: ${totalBytes}`);
 assert(totalGzipBytes <= gzipBudget, `Initial bundles exceed the ${gzipBudget} gzip byte budget: ${totalGzipBytes}`);
 const html = fs.readFileSync(path.join(root,'index.html'),'utf8');
