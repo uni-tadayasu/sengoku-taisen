@@ -72,7 +72,7 @@ function setup(options={}) {
     queueWorldProgress:()=>control.queued++,preserveInteraction:()=>{},closeModal:()=>{},updateBattlePreview:()=>{},syncMusic:()=>{},
   };
   vm.createContext(context);
-  vm.runInContext(['confirmedWorldClock','clockIsApplied','canMutate','syncMessage','requireWritable','changedLocalCampaign','save','backupCurrentSave','trustedBranchAuthority','applyBranchAuthority','trustedMaintenanceAuthority','applyMaintenanceAuthority','trustedCourtProtection','applyCourtProtection','trustedCourtEstateProjection','courtEstateHolding','applyCloudSave','applyDurableGift','restoreAdminAssets','processWorldClock','requestField','requestBranches'].map(fn).join('\n'),context);
+  vm.runInContext(['confirmedWorldClock','clockIsApplied','canMutate','syncMessage','requireWritable','changedLocalCampaign','save','backupCurrentSave','trustedBranchAuthority','applyBranchAuthority','trustedMaintenanceAuthority','applyMaintenanceAuthority','trustedCourtProtection','trustedSentoAccess','applyCourtProtection','trustedCourtEstateProjection','courtEstateHolding','applyCloudSave','applyDurableGift','restoreAdminAssets','processWorldClock','requestField','requestBranches'].map(fn).join('\n'),context);
   return {c:context,control,stored,trace,posts,gets,events,clockAccepts};
 }
 

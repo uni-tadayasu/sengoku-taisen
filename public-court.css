@@ -35,6 +35,7 @@
 .public-court-chancellor{--court-ground:#41263a;--court-ink:#ffe0be;--court-edge:#b38381}
 .public-court-emperor{--court-ground:#50271f;--court-ink:#ffe4a8;--court-edge:#c8a566}
 .public-court-retired-emperor{--court-ground:#332748;--court-ink:#f5e2b2;--court-edge:#bd9b69}
+.public-court-cloistered-emperor{--court-ground:#2d2546;--court-ink:#f8e4b8;--court-edge:#c4aa78;box-shadow:inset 0 0 0 1px #ecd2a333,0 0 .45em #b3934629}
 .public-court-regent{--court-ground:#173c42;--court-ink:#f5e2b2;--court-edge:#a99968}
 .social-profile-heading .public-court-self .public-court-badge{margin-inline-start:0;font-size:14px}
 .social-profile-heading .public-court-self,
@@ -52,3 +53,4 @@
   .public-court-icon > .public-court-relief{display:none}
   .public-court-icon > .public-court-linework{display:block}
 }
+

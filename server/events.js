@@ -29,7 +29,8 @@ async function eventGame(ctx,raw,now,snapshot=null){
   const {db,user,helpers:h}=ctx,current=snapshot?.user?{...user,is_admin:snapshot.user.isAdmin,is_staff:snapshot.user.isStaff}:user;
   const save=typeof raw==='string'?JSON.parse(raw):raw,clock=snapshot?.clock||await h.getWorldClock(db,now);
   const normalized=h.normalizeGameSave(save,current,now,{reading:true,clock}),courtEstate=await h.courtEstateContext(db,current,normalized,clock,now);
-  const game=GameEngine.fromSave(normalized,GAME_OFFICERS,{courtEstateProjection:courtEstate.projection,isAdmin:!!current.is_admin,isDeputy:!!current.is_deputy,isStaff:!!current.is_staff,isCourtProtected:!!current.is_court_protected});
+  const game=GameEngine.fromSave(normalized,GAME_OFFICERS,{courtEstateProjection:courtEstate.projection,isSento:!!current.is_sento,isAdmin:!!current.is_admin,isDeputy:!!current.is_deputy,isStaff:!!current.is_staff,isCourtProtected:!!current.is_court_protected});
+  game.eventElapsedMs=clock.elapsedMs;
   if(game.state.march?.authority==='server')await restoreServerMarch(db,user.id,{state:game.state});
   game.state.officerHealth=GameEngine.projectOfficerHealth(game.state,clock.elapsedMs);
   if(current.is_staff&&!current.is_admin){
@@ -45,8 +46,10 @@ async function eventDefense(ctx,plan,now,clock=null){
  if(!id)return {opponent:null,guard:{sql:'1=1',args:[]},viewerOwnsTarget:false,clockRevision:null};
  return ctx.helpers.eventGarrison(ctx.db,id,clock||await ctx.helpers.getWorldClock(ctx.db,now),now,ctx.user?.id);
 }
-function eventForces(ctx,game,opponent){
- return opponent?{attackPower:ctx.helpers.fieldAttackPower(game.state.troops,game.state),defensePower:opponent.defensePower}:undefined;
+function eventForces(ctx,game,opponent,elapsedMs=game.eventElapsedMs){
+ if(!opponent)return undefined;
+ const palaceCombatEffects=game.courtEstateCombatEffects(elapsedMs);
+ return{attackPower:ctx.helpers.fieldAttackPower(game.state.troops,{...game.state,palaceCombatEffects}),defensePower:opponent.defensePower};
 }
 async function eventProgress(ctx,row,now,snapshot=null,defense=null){
  if(!ctx.user)return null;
@@ -195,7 +198,7 @@ async function eventBattle(ctx,id){
  await restoreServerMarch(db,user.id,save);
  save.state.officerHealth=GameEngine.projectOfficerHealth(save.state,clock.elapsedMs);
  const courtEstate=await h.courtEstateContext(db,user,save,clock,ctx.now);
- const game=GameEngine.fromSave(save,GAME_OFFICERS,{courtEstateProjection:courtEstate.projection,isAdmin:!!user.is_admin,isDeputy:!!user.is_deputy,isStaff:!!user.is_staff,isCourtProtected:!!user.is_court_protected});
+ const game=GameEngine.fromSave(save,GAME_OFFICERS,{courtEstateProjection:courtEstate.projection,isSento:!!user.is_sento,isAdmin:!!user.is_admin,isDeputy:!!user.is_deputy,isStaff:!!user.is_staff,isCourtProtected:!!user.is_court_protected});
  if(game.state.gameOver)h.fail(409,'BASE_UNAVAILABLE','本拠を失っている間はイベントに挑戦できません。');
  if(!save.state.worldClock)h.fail(409,'CLOCK_ANCHOR_REQUIRED','先に共通時計へ同期してください。');
  if(clock.elapsedMs-save.state.worldClock.elapsedMs>15000)h.fail(409,'CLOCK_STALE','共通時計と本拠を同期してから出陣してください。');
@@ -208,7 +211,7 @@ async function eventBattle(ctx,id){
  if(eventStatus(row,now)!=='active')h.fail(409,'EVENT_ENDED','このイベントは終了しました。');
  const roll=crypto.getRandomValues(new Uint32Array(1))[0]/4294967296;
  const commandBefore=save.state.command;
- const fieldForces=eventForces(ctx,game,opponent);
+ const fieldForces=eventForces(ctx,game,opponent,clock.elapsedMs);
  const battle={...resolveEventBattle(plan,{stageId,tactic,army:game.armyStats(),morale:game.state.morale,fieldForces,enemyName:opponent?opponent.castleName+'守備隊':undefined},roll),opponent,id:h.uid('eb_'),requestId,commandCost:COMMAND_COST,commandBefore,commandAfter:commandBefore-COMMAND_COST,playerRevision:Number(savedRow.revision)+1,createdAt:eventIso(now)};
  // The catalogue plan alone supplies the reward. It shares the command/save
  // revision and receipt transaction, so retrying cannot grant it twice.

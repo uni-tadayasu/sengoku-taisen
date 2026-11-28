@@ -18,8 +18,18 @@ export async function fixture(h,name,{admin=false,staff=false,score=null,holding
  if(staff){assert(h.operator);await h.api('/admin/staff',post(h.operator,{targetPlayerId:player.user.id,action:'appoint',requestId:crypto.randomUUID()}));await h.api('/sync?deviceId='+player.deviceId,{token:player.token});}
  return player;
 }
-export const appoint=(h,player,expected=200,requestId=crypto.randomUUID())=>h.api('/admin/court/leader',post(h.operator,{requestId,targetPlayerId:player?.user.id??null},expected));
+// Historical court tests focus on their own capability, not the separate
+// earned lineage workflow. Crown fixtures now explicitly have royal ancestry.
+export function makeImperial(h,player){
+ const name='試験'+player.user.id.slice(-12)+'宮';
+ h.sql.prepare(`INSERT INTO court_lineages(user_id,house_id,original_clan,imperial_house_name,imperial_house_key,revision,created_at,updated_at)
+  VALUES(?,'konoe','織田家',?,?,1,?,?) ON CONFLICT(user_id) DO UPDATE SET
+  imperial_house_name=COALESCE(court_lineages.imperial_house_name,excluded.imperial_house_name),
+  imperial_house_key=COALESCE(court_lineages.imperial_house_key,excluded.imperial_house_key)`).run(player.user.id,name,name,h.now,h.now);
+}
+export const appoint=(h,player,expected=200,requestId=crypto.randomUUID())=>{if(player&&expected===200)makeImperial(h,player);return h.api('/admin/court/leader',post(h.operator,{requestId,targetPlayerId:player?.user.id??null},expected));};
 export async function nominateSuccessor(h,emperor,target){
+ makeImperial(h,target);
  const directory=(await h.api('/court/succession',{token:emperor.token})).data,candidate=directory.candidates.find(person=>person.id===target.user.id);
  assert(candidate,'The successor must be a current Kyoto member');
  return(await h.api('/court/succession',post(emperor,{requestId:crypto.randomUUID(),targetPlayerId:target.user.id,targetTermId:candidate.termId,sourceAppointmentToken:directory.sourceAppointmentToken}))).data;

@@ -61,8 +61,9 @@ function castlePoints(castles,coordinates,options={}){
     if(!Number.isFinite(lon)||!Number.isFinite(lat)||lon<120||lon>151||lat<20||lat>48)return[];
     const [x,y]=project(lon,lat),own=castle.owner===options.clan,ally=(options.treaties?.[castle.owner]||0)>(options.turn||0);
     const sharedCourt=castle.id===(global.SENGOKU_DATA?.staffBaseId||'kyoto_gosho')&&options.canAccessCourtEstate===true&&castle.courtShared===true;
-    const restrictedLabel=sharedCourt?'共同領地':['edo',global.SENGOKU_DATA?.staffBaseId||'kyoto_gosho'].includes(castle.id)?'選択不可':'';
-    const restricted=castle.id==='edo'&&options.isAdmin!==true||castle.id===(global.SENGOKU_DATA?.staffBaseId||'kyoto_gosho')&&(options.isStaff!==true||options.isAdmin===true)&&!sharedCourt;
+    const sento=castle.id===(global.SENGOKU_DATA?.retiredBaseId||'sento_gosho');
+    const restrictedLabel=sharedCourt?'共同領地':sento?'上皇・法皇の御所':['edo',global.SENGOKU_DATA?.staffBaseId||'kyoto_gosho'].includes(castle.id)?'選択不可':'';
+    const restricted=castle.id==='edo'&&options.isAdmin!==true||castle.id===(global.SENGOKU_DATA?.staffBaseId||'kyoto_gosho')&&(options.isStaff!==true||options.isAdmin===true)&&!sharedCourt||sento&&options.isSento!==true;
     return[{...castle,lon,lat,x,y,own,ally,selected:castle.id===options.selectedId,home:castle.id===options.homeId,restrictedLabel,disabled:castle.disabled===true||restricted&&options.allowRestrictedSelection!==true,accuracy:source.accuracy||castle.accuracy||'',sourceURL:source.sourceURL||source.sourceUrl||''}];
   });
 }
@@ -512,3 +513,4 @@ const api={mount,prepareGeography,project,unproject,projectBounds,geometryPath,f
 if(typeof module!=='undefined'&&module.exports)module.exports=api;
 global.SengokuWorldMap=api;
 })(typeof window!=='undefined'?window:globalThis);
+

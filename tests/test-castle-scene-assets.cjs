@@ -63,20 +63,20 @@ function dimensions(bytes, file) {
 }
 
 const castles = new Map(data.castles.map(castle => [castle.id, castle]));
-assert.equal(castles.size, 129);
-const targetIds = [...castles.keys()].filter(id => id !== 'kagoshima').sort();
+assert.equal(castles.size, 130);
+const targetIds = [...castles.keys()].filter(id => id !== 'kagoshima' && id !== 'sento_gosho').sort();
 assert.equal(targetIds.length, 128);
 const options = catalog.getCastleScenes();
-assert.equal(new Set(options.map(item => item.id)).size, 129, 'Duplicate or missing preview options');
+assert.equal(new Set(options.map(item => item.id)).size, 130, 'Duplicate or missing preview options');
 assert.deepEqual(options.map(item => item.id).sort(), [...castles.keys()].sort());
 for (const item of options) {
   const castle = castles.get(item.id);
   assert.equal(item.name, castle.name, item.id + ' preview name');
   assert.equal(item.region, castle.region, item.id + ' preview region');
-  assert.equal(item.included, item.id === 'kagoshima' || data.majorCityIds.includes(item.id), item.id);
+  assert.equal(item.included, item.id === 'kagoshima' || item.id === 'sento_gosho' || data.majorCityIds.includes(item.id), item.id);
 }
 assert.equal(options.filter(item => !item.included).length, 123);
-console.log('PASS all 129 castle IDs, names, regions and preview availability match the game');
+console.log('PASS all 130 castle IDs, names, regions and preview availability match the game');
 
 const context = { SENGOKU_DATA: data, document: { readyState: 'loading', addEventListener() {} } };
 context.window = context;
@@ -97,6 +97,16 @@ for (const phase of phases) {
   }
 }
 console.log('PASS Kagoshima retains all 12 original responsive images and three time-of-day scenes');
+
+for (const phase of phases) {
+  const sento = context.SengokuArt.castleScene('sento_gosho', phase);
+  const palace = context.SengokuArt.castleScene('kyoto_gosho', phase);
+  assert.equal(sento.id, 'sento_gosho'); assert.equal(sento.name, '仙洞御所');
+  assert.equal(sento.free, true); assert.equal(sento.sharedIllustrationOf, 'kyoto_gosho');
+  assert.equal(sento.src, palace.src); assert.equal(sento.srcset, palace.srcset);
+  assert.match(sento.description, /共通の御所/);
+}
+console.log('PASS Sento uses the declared common palace art with its own identity and no new asset requests');
 
 const manifestPath = 'docs/castle-scenes-20261128.json';
 const manifest = JSON.parse(read(manifestPath));

@@ -10,8 +10,9 @@ const num=value=>integer(value).toLocaleString('ja-JP');
 const playerName=(name,evaluation,appearance=null,playerId='',avatarVersion,showAvatar=true)=>`<span class="player-evaluation-person">${showAvatar&&playerId?global.SengokuAvatar?.markup?.({id:playerId,name,avatarVersion},'inline')||'':''}${global.SengokuCityHonors?.slot?.(playerId)||''}<span class="player-evaluation-name" data-premium-player="${esc(playerId)}" data-premium-player-name="${esc(name)}">${global.SengokuPremiumRuntime?.nameMarkup?.(name,appearance)||esc(name)}</span>${global.SengokuEvaluationUI?.badge?.(evaluation)||''}${global.SengokuPublicCourt?.slot?.(playerId)||''}</span>`;
 const playerText=(name,evaluation,appearance=null,playerId='')=>{const label=global.SengokuEvaluationUI?.label?.(evaluation),owned=global.SengokuPremiumRuntime?.ownershipLabel?.(appearance);return String(name||'領主')+(global.SengokuCityHonors?.text?.(playerId)?`［${global.SengokuCityHonors.text(playerId)}］`:'')+(label?`（${label}）`:'')+(owned?`［${owned}］`:'')+(global.SengokuPublicCourt?.text?.(playerId)?`［${global.SengokuPublicCourt.text(playerId)}］`:'');};
 const STAFF_BASE_ID=global.SENGOKU_DATA?.staffBaseId||'kyoto_gosho';
-const castleLevelLimit=id=>id===STAFF_BASE_ID?128:id==='edo'?64:['nijo','osaka','nagoya'].includes(id)?48:32;
-const REWARD_CASTLES=['edo',STAFF_BASE_ID,global.SENGOKU_DATA?.deputyBaseId||'kagoshima'],CAPTURE_CASTLES=['nijo','osaka','nagoya'];
+const RETIRED_BASE_ID=global.SENGOKU_DATA?.retiredBaseId||'sento_gosho';
+const castleLevelLimit=id=>[STAFF_BASE_ID,RETIRED_BASE_ID].includes(id)?128:id==='edo'?64:['nijo','osaka','nagoya'].includes(id)?48:32;
+const REWARD_CASTLES=['edo',STAFF_BASE_ID,RETIRED_BASE_ID,global.SENGOKU_DATA?.deputyBaseId||'kagoshima'],CAPTURE_CASTLES=['nijo','osaka','nagoya'];
 const HALF_LOOT_POLICY='half-resources-v1';
 const HALF_LOOT_DESCRIPTION='勝利報酬は、決着時点の相手の金銭・兵糧・木材・石材の各50%です（端数切り捨て）。各資源の所持上限1億まで受け取り、入らない分は相手に残ります。';
 const halfResourceLoot=value=>value?.lootPolicy===HALF_LOOT_POLICY&&value?.lootFraction===.5;
@@ -29,6 +30,7 @@ function normalizeDurability(raw){
 }
 function durabilityMarkup(raw,options={}){return global.SengokuDurabilityUI?.markup(raw,options)||'';}
 function palaceControl(player){
+ if(player?.shogunateIndependent===true)return null;
  const value=player?.palaceControl;
  if(targetCastleId(player)!==STAFF_BASE_ID||!value||value.castleId!==STAFF_BASE_ID||typeof value.governmentName!=='string'||!value.governmentName||value.governmentName.length>160||typeof value.controller?.id!=='string'||typeof value.controller?.name!=='string'||!Number.isSafeInteger(value.controlledAt)||value.controlledAt<0)return null;
  return value;
@@ -429,3 +431,4 @@ function mount(container,options={}){
 }
 const api={mount,normalizePlayers,normalizeBranches,branchTarget,groupBases,targetKey,targetCastleId,targetCastleName,isHomeTarget,isCourtEstate,holdingLabel,battlePolicy,battleSummary,battleReportHtml,keepLevelInfo,castleAppearance,markerAppearance,foodCost,remainingLabel,relationshipFor,ownershipFor,ownershipBanner,attackValidation,estimateBattle,battleAdvice,publicRow};global.SengokuField=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;
 })(typeof window!=='undefined'?window:globalThis);
+

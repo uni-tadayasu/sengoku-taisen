@@ -68,6 +68,14 @@ test('dense chains never merge distant provinces into one unbounded cluster',()=
   assert.equal(markers.flatMap(m=>m.points).length,50);assert(markers.length>=16);
   for(const marker of markers)for(const a of marker.points)for(const b of marker.points)assert(Math.hypot(a.sx-b.sx,a.sy-b.sy)<27);
 });
+test('Sento residence requires its own confirmed residence right',()=>{
+  const castles=[{id:'sento_gosho',name:'仙洞御所',owner:'織田家'}],coords={sento_gosho:{lon:135.7645453,lat:35.0232295}};
+  const point=options=>M.castlePoints(castles,coords,options)[0];
+  for(const options of [{},{isStaff:true},{isAdmin:true},{isSento:false},{isSento:'true'}])assert.equal(point(options).disabled,true);
+  assert.equal(point({isSento:true}).disabled,false);
+  assert.equal(point({isSento:true}).restrictedLabel,'上皇・法皇の御所');
+  assert.equal(point({allowRestrictedSelection:true}).disabled,false,'The public field can inspect the residence without owning it');
+});
 test('ordinary castle labels do not overlap other chosen label boxes',()=>{
   const points=Array.from({length:8},(_,i)=>({id:'p'+i,name:'テスト城'+i,x:100+i*65,y:200+(i%2)*60}));
   const markers=M.layoutMarkers(points,{x:0,y:0,width:800,height:600},800,600,{distance:0});
@@ -146,15 +154,15 @@ test('map scale uses latitude-correct ground distance and useful metric units',(
   const expectedPerPixel=6378137*Math.PI/180*Math.cos(36*Math.PI/180)/100;
   near(scale.meters/scale.pixels,expectedPerPixel,1e-7);
 });
-test('the shipped geography provides all 129 actual castle positions and offline terrain',()=>{
+test('the shipped geography provides all 130 actual castle positions and offline terrain',()=>{
   const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),scope={};
   vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../map-data.js'),'utf8'),scope);
   const geography=scope.SENGOKU_GEOGRAPHY,{SENGOKU_DATA:data}=require('../engine.js');
   const points=M.castlePoints(data.castles,geography.castles,{clan:'織田家'});
-  assert.equal(points.length,129);assert.equal(new Set(points.map(p=>p.id)).size,129);assert.equal(geography.prefectures.features.length,47);
+  assert.equal(points.length,130);assert.equal(new Set(points.map(p=>p.id)).size,130);assert.equal(geography.prefectures.features.length,47);
   const coast=M.geometryPath(geography.land);assert(coast.length>10000);assert(!coast.includes('NaN'));assert.equal(geography.terrain.kind,'color');assert(fs.existsSync(path.join(__dirname,'..',geography.terrain.url)));
   const bounds=M.projectBounds(geography.bounds),view=M.fitBounds(bounds,800,400,28),markers=M.layoutMarkers(points,view,800,400);
-  assert.equal(markers.flatMap(m=>m.points).length,129);assert(markers.length>8,'Japan must retain regional detail at its initial overview');
+  assert.equal(markers.flatMap(m=>m.points).length,130);assert(markers.length>8,'Japan must retain regional detail at its initial overview');
   assert(markers.every(m=>m.points.length<32),'no cluster should span most of the country');
 });
 test('camera-only redraws reuse routes while fresh ownership, access and regional data invalidate them',()=>{

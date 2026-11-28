@@ -1,4 +1,6 @@
-// Court lineage is a public identity, never a source of account permissions.
+// Court lineage is a public identity and imperial eligibility, never a source
+// of account administration permissions. Completed succession is also proof
+// of royal ancestry for legacy Emperors who did not yet establish a house.
 // It survives dismissal, succession and campaign changes for the same user ID.
 import {playerNameKey} from './player-names.js';
 const S=(db,sql,...args)=>db.prepare(sql).bind(...args);
@@ -13,14 +15,28 @@ const kyotoService=user=>!!user.is_staff&&!user.is_admin;
 const member=user=>!!user.court_retained_term||kyotoService(user);
 const term=user=>user.court_retained_term||(kyotoService(user)?user.staff_term||null:null);
 
+export const courtImperialFamilySql=userId=>`(EXISTS(SELECT 1 FROM court_lineages ic_lineage WHERE ic_lineage.user_id=${userId} AND ic_lineage.imperial_house_name IS NOT NULL AND length(trim(ic_lineage.imperial_house_name))>0)
+ OR EXISTS(SELECT 1 FROM court_succession_requests ic_history WHERE ic_history.actor_id=${userId}))`;
+export const courtImperialMemberTermSql=userId=>`COALESCE((SELECT COALESCE(ic_staff.term_id,'legacy:'||ic_staff.appointed_at) FROM staff_members ic_staff WHERE ic_staff.user_id=${userId}),(SELECT ic_member.term_id FROM court_retained_memberships ic_member WHERE ic_member.user_id=${userId}))`;
+export const courtImperialCandidateSql=(userId,termSql=null)=>`${courtImperialFamilySql(userId)} AND ${courtImperialMemberTermSql(userId)} IS NOT NULL${termSql?` AND ${courtImperialMemberTermSql(userId)}=${termSql}`:''}`;
+export const isCourtImperialFamily=user=>!!user.imperial_heritage||!!BY_ID[user.court_house_id]&&typeof user.imperial_house_name==='string'&&!!user.imperial_house_name.trim();
+export const courtImperialMemberTerm=user=>user.is_staff?user.staff_term||null:user.court_retained_term||null;
+// Retained-home members enter palace service on coronation. The established
+// staff synchronizer preserves their personal campaign for their abdication.
+export function courtImperialAdmissionStatement(db,userId,memberTerm,appointedBy,now,elapsedMs,gate,args){
+ return S(db,`INSERT INTO staff_members(user_id,appointed_by,appointed_at,term_id,appointed_elapsed_ms)
+  SELECT ?,?,?,?,? WHERE ${gate} AND NOT EXISTS(SELECT 1 FROM staff_members WHERE user_id=?)
+  AND EXISTS(SELECT 1 FROM court_retained_memberships WHERE user_id=? AND term_id=?) ON CONFLICT(user_id) DO NOTHING`,userId,appointedBy,now,memberTerm,elapsedMs,...args,userId,userId,memberTerm);
+}
+
 export function courtHouseId(value,fail){
  if(typeof value!=='string'||!Object.hasOwn(BY_ID,value))fail(400,'COURT_HOUSE_REQUIRED','近衛家・九条家・一条家・二条家・鷹司家から家柄を選んでください。');
  return value;
 }
 export function publicCourtLineage(user){
- const house=BY_ID[user.court_house_id],isMember=member(user);
- if(!house&&!isMember)return null;
- return{class:house&&user.imperial_house_name?'imperial':'kuge',houseId:house?.id||null,houseName:house?.name||null,imperialHouseName:house?user.imperial_house_name||null:null,originalClan:house?user.court_original_clan||null:null,needsHouseSelection:isMember&&!house};
+ const house=BY_ID[user.court_house_id],isMember=member(user),imperial=isCourtImperialFamily(user);
+ if(!house&&!isMember&&!imperial)return null;
+ return{class:imperial?'imperial':'kuge',houseId:house?.id||null,houseName:house?.name||null,imperialHouseName:house?user.imperial_house_name||null:null,originalClan:house?user.court_original_clan||null:null,needsHouseSelection:isMember&&!house};
 }
 export function courtHouseMembershipGuard(userId,houseId){
  return{sql:'(NOT EXISTS(SELECT 1 FROM court_lineages WHERE user_id=?) OR EXISTS(SELECT 1 FROM court_lineages WHERE user_id=? AND house_id=?))',args:[userId,userId,houseId]};

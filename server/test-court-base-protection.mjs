@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {harness} from './test-support.mjs';
 import {GameEngine,GAME_OFFICERS} from './game-runtime.js';
 import {COURT_OFFICES} from './court-offices.js';
-import {nominateSuccessor,certifySuccessor} from './test-court-support.mjs';
+import {nominateSuccessor,certifySuccessor,makeImperial} from './test-court-support.mjs';
 import {readCourtProtection} from './court-protection.js';
 
 const post=(p,body,expected=200)=>({method:'POST',token:p.token,body,expected});
@@ -43,14 +43,13 @@ async function regent(h,p,action='appoint'){
 async function retiredEmperor(h,p){
  await h.api('/admin/staff',post(h.operator,{targetPlayerId:p.user.id,action:'appoint',requestId:crypto.randomUUID()}));
  await h.api('/sync?deviceId='+p.deviceId,{token:p.token});
+ makeImperial(h,p);
  await h.api('/admin/court/leader',post(h.operator,{requestId:crypto.randomUUID(),targetPlayerId:p.user.id}));
  const successor=await player(h,'即位する御所の領主',{home:'himeji',staff:true});
  const nomination=(await nominateSuccessor(h,p,successor)).nomination;
  await certifySuccessor(h,h.operator,nomination);
  const restored=(await h.api('/sync?deviceId='+p.deviceId,{token:p.token})).data;
- assert.equal(restored.user.isStaff,false);assert.equal(restored.entitlements.courtProtected,true);
- // Retired Emperors can choose an ordinary base after leaving Kyoto.
- await h.api('/castles/residency/relocate',post(p,{deviceId:p.deviceId,revision:row(h,p).revision,requestId:crypto.randomUUID(),castleId:'okazaki'}));
+ assert.equal(restored.user.isStaff,false);assert.equal(restored.entitlements.courtProtected,true);assert.equal(restored.save.state.home,'sento_gosho');
  return p;
 }
 async function protectAs(h,p,role){if(role==='regent')await regent(h,p);else await retiredEmperor(h,p);}
@@ -98,21 +97,22 @@ const originalFetch=globalThis.fetch;globalThis.fetch=async()=>{throw Error('Cou
 try{
  await scope('the current Emperor retains verified occupation protection without exposing a new public role flag',async h=>{
   await player(h,'天皇保全の太政大臣',{admin:true});const emperor=await player(h,'在位する天皇',{staff:true});
-  await h.api('/admin/court/leader',post(h.operator,{requestId:crypto.randomUUID(),targetPlayerId:emperor.user.id}));
+  makeImperial(h,emperor);await h.api('/admin/court/leader',post(h.operator,{requestId:crypto.randomUUID(),targetPlayerId:emperor.user.id}));
   const snap=(await h.api('/sync?deviceId='+emperor.deviceId,{token:emperor.token})).data;assert.equal(snap.entitlements.courtProtected,true);assert.equal(snap.save.state.home,'kyoto_gosho');
   const visible=(await h.api('/field')).data.players.find(p=>p.playerId===emperor.user.id);assert.equal(visible.capturable,false);assert.equal(visible.homeCastleId,'kyoto_gosho');
   assert(!Object.hasOwn(visible,'isCourtProtected'));assert(!Object.hasOwn(visible,'courtProtected'));assert(!Object.hasOwn(visible,'entitlements'));
  });
- for(const role of ['regent','retired'])for(const targetKind of ['home','outpost'])await scope(role+' retains '+targetKind+' ownership and its lord seat after an actual winning attack',async h=>{
+ for(const role of ['regent','retired'])for(const targetKind of ['home','outpost'])await scope(role+' retains '+targetKind+' ownership after an actual winning attack',async h=>{
   await player(h,'皇室保全の太政大臣',{admin:true});const actor=await player(h,'皇室拠点への攻撃者',{home:'inuyama'}),defender=await player(h,'皇室の拠点領主');
-  await protectAs(h,defender,role);const home=save(h,defender).state.home;await retainer(h,defender);
+  await protectAs(h,defender,role);const home=save(h,defender).state.home;if(role==='regent')await retainer(h,defender);
   tune(h,defender,s=>{s.resources={gold:50000,rice:50000,wood:50000,stone:50000};s.castles.nijo={owner:s.clan,troops:100,wall:1,level:1};s.castles[home].troops=100;s.castles[home].wall=1;s.buildings.wall=1;s.army=[];s.troops=100;});
   const castleId=targetKind==='home'?home:'nijo',before=seat(h,home),battle=await settle(h,actor,await depart(h,actor,defender,castleId));
-  assert.equal(battle.won,true);assert.equal(battle.capture.captured,false);assert.equal(battle.battleMode,'raid');assert.equal(battle.succession,undefined);
+  const sento=role==='retired'&&targetKind==='home';assert.equal(battle.won,true);assert.equal(battle.capture.captured,false);assert.equal(battle.battleMode,sento?'reward':'raid');assert.equal(battle.succession,undefined);
+  if(sento){assert.deepEqual(battle.defenderLost,{troops:0,garrison:0});assert.equal(seat(h,home),undefined);}
   assert.equal(save(h,defender).state.castles[castleId].owner,save(h,defender).state.clan);assert.deepEqual(seat(h,home),before);assert.equal(battle.lootFraction,.5);assert(battle.loot.gold>0);
  });
- for(const role of ['regent','retired'])await scope(role+' protects its ordinary home against a legacy CPU-defeat save with the current sync envelope',async h=>{
-  await player(h,'皇室同期の太政大臣',{admin:true});const lord=await player(h,'皇室同期の城主');await protectAs(h,lord,role);
+ await scope('Regent protects its ordinary home against a legacy CPU-defeat save with the current sync envelope',async h=>{
+  await player(h,'皇室同期の太政大臣',{admin:true});const lord=await player(h,'皇室同期の城主');await regent(h,lord);
   const home=save(h,lord).state.home;await retainer(h,lord);const oldClient=legacyCpuDefeat(h,lord),before=seat(h,home),done=(await upload(h,lord,oldClient)).data;
   assert.equal(done.entitlements.courtProtected,true);assert.equal(done.save.state.home,home);assert.equal(done.save.state.castles[home].owner,done.save.state.clan);assert.equal(done.save.state.gameOver,false);assert.deepEqual(seat(h,home),before);assert.equal(done.residency.role,'lord');
  });
@@ -137,7 +137,7 @@ try{
  });
  await scope('a pending succession nomination does not protect a former Emperor after administrative dismissal',async h=>{
   await player(h,'退位未承認の太政大臣',{admin:true});const emperor=await player(h,'退位未承認の天皇',{staff:true}),successor=await player(h,'指名のみの後継者',{home:'himeji',staff:true});
-  await h.api('/admin/court/leader',post(h.operator,{requestId:crypto.randomUUID(),targetPlayerId:emperor.user.id}));
+  makeImperial(h,emperor);await h.api('/admin/court/leader',post(h.operator,{requestId:crypto.randomUUID(),targetPlayerId:emperor.user.id}));
   const nominated=await nominateSuccessor(h,emperor,successor);assert.equal(nominated.nomination.status,'pending');
   assert.equal(count(h,'court_succession_requests'),0);assert.equal(count(h,'court_retired_emperors'),0);
   await h.api('/admin/staff',post(h.operator,{requestId:crypto.randomUUID(),targetPlayerId:emperor.user.id,action:'dismiss'}));

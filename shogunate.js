@@ -55,7 +55,7 @@
   const approvals=(value.approvals||[]).map(row=>{const right=cleanRight(row);return right?.approvalStatus==='pending'&&playerId(row.applicant?.id)&&text(row.applicant?.name,80)?{...right,applicant:{id:row.applicant.id,name:row.applicant.name}}:null;});
   if(approvals.some(r=>!r)||new Set(approvals.map(r=>r.id)).size!==approvals.length||approvals.length&&value.canApprove!==true)return null;
   const palaceControl=value.palaceControl==null?null:cleanControl(value.palaceControl);if(value.palaceControl!=null&&!palaceControl)return null;
-  return{rights,current:opened,campaign,serverNow:modern?value.serverNow:null,approvalWindowMs:WINDOW_MS,canApprove:value.canApprove===true,approvals,approvalsHasMore:value.approvalsHasMore===true,pendingHasMore:value.pendingHasMore===true,palaceControl};
+  return{rights,current:opened,campaign,serverNow:modern?value.serverNow:null,approvalWindowMs:WINDOW_MS,canApprove:value.canApprove===true,approvals,approvalsHasMore:value.approvalsHasMore===true,pendingHasMore:value.pendingHasMore===true,shogunateIndependent:value.shogunateIndependent===true,palaceControl:value.shogunateIndependent===true?null:palaceControl};
  }
  function cleanReceipt(value,record,view){
   if(!value||value.rightId!==record.rightId||!text(value.governmentName,160)||!text(value.title))return null;
@@ -71,9 +71,10 @@
  function refreshAccess(){identity();}
  function render(){if(!dialog)return;const body=dialog.querySelector('.shogunate-content'),rights=data?.rights||[],locked=busy||!!pending;
   body.innerHTML=`<p class="shogunate-status ${error?'is-error':''}" role="${error?'alert':'status'}">${esc(error||message||'')}</p>${pending?`<p class="notice">${pending.action==='approve'?'幕府承認':'幕府開設申請'}の結果を確認しています。同じ操作番号で確認するため、二重に処理されることはありません。</p><button class="button" data-shogunate="retry" ${busy?'disabled':''}>結果を確認する</button>`:''}
+  ${data?.shogunateIndependent?'<section class="shogunate-palace"><small>上皇・法皇の独立</small><h3>幕府から独立しています</h3><p>上皇・法皇は幕府の支配下に入りません。一般拠点へ移転した後も、この身分を保持します。</p></section>':''}
   ${data?.palaceControl?`<section class="shogunate-palace"><small>京都御所の支配</small><h3>${esc(data.palaceControl.governmentName)}の支配下</h3><p>支配領主：${esc(data.palaceControl.controller.name)} · ${esc(deadline(data.palaceControl.controlledAt))}から</p><p>開設申請が3日以内に承認されなかったため、京都御所はこの幕府の支配下に入りました。</p></section>`:''}
   ${data?.current?`<section class="shogunate-current"><small>${esc(statusLabel(data.current))}</small><h3>${esc(data.current.governmentName)}</h3><p>征夷大将軍 · ${esc(date(data.current.openedAt))} 開設</p><p>${esc(data.current.title)}</p><button class="button gold" data-shogunate="governance">幕府政庁を開く</button><p class="shogunate-governance-hint">国策・公共事業・日次政務で、開設した幕府を発展させられます。</p></section>`:''}
-  <p>幕府開設権を使い、天皇へ開設を申請します。天皇または摂政が承認すると幕府が開かれ、「征夷大将軍」の称号が記録されます。</p><p class="notice shogunate-rule">承認期限は申請から現実時間で3日間（72時間）です。期限までに承認されなければ幕府が開かれ、京都御所も申請した領主の支配下に入ります。ログアウト中も期限は進みます。</p>
+  <p>幕府開設権を使い、天皇へ開設を申請します。天皇または摂政が承認すると幕府が開かれ、「征夷大将軍」の称号が記録されます。</p><p class="notice shogunate-rule">承認期限は申請から現実時間で3日間（72時間）です。期限までに承認されなければ幕府が開かれ、京都御所も申請した領主の支配下に入ります。上皇・法皇は支配の対象になりません。ログアウト中も期限は進みます。</p>
   ${data?.canApprove?`<section class="shogunate-approvals" aria-labelledby="shogunate-approvals-title"><h3 id="shogunate-approvals-title">天皇・摂政への幕府開設申請</h3><p>天皇または摂政として、各申請の期限内に承認してください。</p>${data.approvals.length?data.approvals.map(r=>`<article class="shogunate-right shogunate-approval"><div><h4>${esc(r.governmentName)}</h4><p>申請者：${esc(r.applicant.name)} · ${esc(r.title)}</p>${waitNotice(r)}</div><button class="button gold" data-shogunate="prepare-approval" data-right="${esc(r.id)}" data-shogunate-approval-deadline="${r.deadlineAt}" ${locked||r.deadlineAt<=serverTime()?'disabled':''}>承認内容を確認</button></article>`).join(''):'<p class="court-empty">承認待ちの申請はありません。</p>'}${data.approvalsHasMore?'<p>期限の近い100件を表示しています。承認後に記録を更新すると続きが表示されます。</p>':''}</section>`:''}
   ${data?.campaign?`<p class="notice">天下地図の統一対象：${data.campaign.owned} / ${data.campaign.target} 城</p>`:''}
   <h3>幕府開設権</h3>${data?.pendingHasMore?'<p>承認待ちの申請は期限の近いものから表示しています。承認後に記録を更新すると続きが表示されます。</p>':''}${rights.length?rights.map(r=>`<article class="shogunate-right"><div><h4>${esc(r.title)}</h4><p>${esc(({campaign:'天下地図',event:'期間限定合戦',conquest:'共有天下統一大会'})[r.sourceType])} · ${esc(date(r.earnedAt))} 達成</p><p class="shogunate-right-status">${esc(r.governmentName?r.governmentName+' · ':'')}${esc(statusLabel(r))}</p>${r.approvalStatus==='pending'?waitNotice(r):''}</div>${r.approvalStatus==='available'?`<button class="button gold" data-shogunate="prepare" data-right="${esc(r.id)}" ${locked?'disabled':''}>開設を申請</button>`:''}</article>`).join(''):`<div class="notice">${busy?'統一の記録を確認しています。':'幕府開設権はまだありません。天下地図の全対象城を制覇するか、天下統一が結末となるイベントの達成条件を満たしてください。共有天下統一大会では、全城制覇時に同じ同盟で参戦・支援した領主が獲得します。'}</div>`}
@@ -140,3 +141,4 @@
  }
  global.SengokuShogunate={open,close,refreshAccess,getState:()=>{identity();return{busy,hasPending:!!pending,loaded:!!data,owner:ownerId,hasConfirmation:!!confirmation,error,message};}};
 })(typeof window!=='undefined'?window:globalThis);
+

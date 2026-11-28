@@ -21,6 +21,12 @@ const deputyPortrait={id:'of_45e0f4cb36ad',rank:'U',revision:'shimazu-relief-u-2
 // Every mode shares these files; level changes keep the historical Goromon gate.
 function castleScene(id,daypart='day',appearance=null){
  const castle=castles.get(id);if(!castle)return null;
+ // The imperial residence uses the existing common palace illustration.
+ // Resolve its own identity first; access to this art grants no residence rights.
+ if(id===(data.retiredBaseId||'sento_gosho')){
+  const palace=castleScene(data.staffBaseId||'kyoto_gosho',daypart,appearance);if(!palace)return null;
+  return{...palace,id,name:castle.name,sharedIllustrationOf:palace.id,free:true,caption:castle.name+' · '+palace.label+'の御所絵巻',description:'上皇・法皇の拠点を表す共通の御所イラストです。',alt:palace.label+'の御所を描いた、仙洞御所のゲーム用共通イラスト'};
+ }
  const free=id==='kagoshima'||(data.majorCityIds||['edo','kyoto_gosho','nijo','osaka','nagoya']).includes(id);
  // The caller supplies the castle owner's verified public appearance. Never
  // consult the viewer's purchase state here: everyone sees that owner's town.
@@ -70,7 +76,7 @@ function sheetCell(name,index,columns,rows){
  return {url:previewUrl(name),x:(index%columns)/(columns-1)*100,y:Math.floor(index/columns)/(rows-1)*100,size:columns*100+'% '+rows*100+'%'};
 }
 function castleGrowthInfo(id,{castleLevel=1,keepLevel,home=false}={}){
- const limit=id==='kyoto_gosho'?128:id==='edo'?64:(data.majorCityIds||['nijo','osaka','nagoya']).includes(id)?48:32;
+ const limit=['kyoto_gosho','sento_gosho'].includes(id)?128:id==='edo'?64:(data.majorCityIds||['nijo','osaka','nagoya']).includes(id)?48:32;
  const numeric=value=>(typeof value==='number'||typeof value==='string'&&value.trim())&&Number.isFinite(Number(value))?Number(value):NaN;
  const castle=Math.max(1,Math.min(limit,Math.round(numeric(castleLevel)||1))),rawKeep=numeric(keepLevel);
  const keep=home&&Number.isInteger(rawKeep)&&rawKeep>=1?Math.min(32,rawKeep):null,level=Math.max(castle,keep||1),source=keep>castle?'天守':'城郭';
@@ -86,7 +92,7 @@ function tileInfo(kind,id,variant,appearance=null){
   return{small,native,portraitShape:true,url:`assets/illustrations/officers-${rank}-${String(Math.floor(o.index/32)+1).padStart(2,'0')}.webp?v=${officerArtRevision}`,x:(cell%8)/7*100,y:Math.floor(cell/8)/3*100,name:o.name,rank};
  }
  const item=(kind==='castle'?castles:facilities).get(id);if(!item)return null;
- const limit=kind!=='castle'?32:id==='kyoto_gosho'?128:id==='edo'?64:(data.majorCityIds||['edo','kyoto_gosho','nijo','osaka','nagoya']).includes(id)?48:32;
+ const limit=kind!=='castle'?32:['kyoto_gosho','sento_gosho'].includes(id)?128:id==='edo'?64:(data.majorCityIds||['edo','kyoto_gosho','nijo','osaka','nagoya']).includes(id)?48:32;
  const level=Math.max(1,Math.min(limit,Math.round(Number(variant)||1))),artLevel=Math.min(32,level),cell=artLevel-1;
  const special=kind==='castle'&&castleScene(id,'day',appearance);
  if(special)return{special:true,scenery:special.scenery,small:{url:special.small,x:50,y:50,size:'cover'},native:{url:special.native,x:50,y:50,size:'cover'},url:special.src,x:50,y:50,name:special.name,level,artLevel,finalStage:level>32};
@@ -382,3 +388,4 @@ function init(){
 global.SengokuArt={portrait,castle:(id,c='',level=1,appearance=null)=>tile('castle',id,c,level,appearance),castleScene,castlePanorama,castleGrowthInfo,facility:(id,c='',level=1)=>tile('facility',id,c,level),icon,tileInfo,facilityFrame,load,readyCurrent,decorate,schedule,totalIllustrations:8224+roster.filter(o=>o.courtNoble===true).length};
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init,{once:true});else init();
 })(window);
+

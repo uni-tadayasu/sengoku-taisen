@@ -258,4 +258,17 @@ test('town membership flag comes only from the current server boolean, never fro
  h.control.s.user.courtMember='true';assert.equal(h.api.getUser().courtMember,false);
 });
 
+test('retirement reads and confirmed ordination use authenticated exact routes without granting Emperor authority',async()=>{
+ const h=harness(),command={requestId:payload.requestId,expectedRevision:0,successionId:'succession-one',confirmed:true};
+ await h.api.courtRequest('/court/retirement');await h.api.courtRequest('/court/retirement/ordain',{method:'POST',data:command});assert.equal(h.calls.length,2);assert(h.calls.every(row=>row.headers.Authorization==='Bearer '+TOKEN));assert.deepEqual(h.calls[1].body,command);assert.equal(h.authority.length,0);
+});
+test('ordination rejects unconfirmed, broadened, malformed and queried commands before HTTP',async()=>{
+ const h=harness(),command={requestId:payload.requestId,expectedRevision:0,successionId:'succession-one',confirmed:true};
+ for(const data of [{...command,confirmed:false},{...command,expectedRevision:-1},{...command,successionId:'../other'},{...command,playerId:PLAYER},{...command,requestId:''}])await assert.rejects(h.api.courtRequest('/court/retirement/ordain',{method:'POST',data}),error=>error.status===400);
+ for(const [route,method]of [['/court/retirement?playerId='+PLAYER,'GET'],['/court/retirement/ordain?receipt=1','POST'],['/court/retirement/ordain','GET'],['/court/retirement','POST']])await assert.rejects(h.api.courtRequest(route,{method,data:command}),error=>error.status===400);assert.equal(h.calls.length,0);
+});
+test('a delayed ordination result cannot be adopted by another identity',async()=>{
+ const h=harness(),wait=deferred();h.setTransport(()=>wait.promise);const request=h.api.courtRequest('/court/retirement/ordain',{method:'POST',data:{requestId:payload.requestId,expectedRevision:0,successionId:'succession-one',confirmed:true}});h.control.changeIdentity();wait.resolve({data:{ok:true,retirement:{title:'法皇'}}});await assert.rejects(request,error=>error.code==='STALE_IDENTITY');assert.equal(h.authority.length,0);
+});
 (async()=>{for(const[name,run]of tests){await run();console.log('PASS '+name);}console.log(tests.length+' real social court transport checks passed. No live requests.');})().catch(error=>{console.error(error);process.exitCode=1;});
+

@@ -6,7 +6,7 @@ import {honorificText} from './honorific-text.js';
 const offices=['',...PUBLIC_COURT_TITLES.map(row=>row.title),'太政大臣','摂政','天皇'];
 // Both imperial titles receive the same courtesy. This ordering never grants
 // the retired Emperor access to the reigning Emperor's approval functions.
-const tier=person=>person.courtOffice?.title==='上皇'?offices.indexOf('天皇'):Math.max(0,offices.indexOf(person.courtOffice?.title||''));
+const tier=person=>['上皇','法皇'].includes(person.courtOffice?.title)?offices.indexOf('天皇'):Math.max(0,offices.indexOf(person.courtOffice?.title||''));
 const PUBLIC_PEER_LIMIT=32;
 const officials="SELECT value AS id FROM settings WHERE key='adminUserId' UNION SELECT user_id AS id FROM staff_members UNION SELECT user_id AS id FROM court_retained_memberships UNION SELECT g.user_id AS id FROM court_regent g WHERE g.id=1 AND NOT EXISTS(SELECT 1 FROM court_retired_emperors r WHERE r.user_id=g.user_id)";
 // The public room reaches all current titles, including the external

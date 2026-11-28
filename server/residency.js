@@ -7,10 +7,10 @@ import {GameEngine,GAME_OFFICERS} from './game-runtime.js';
 import {reconcileCourtNobles} from './court-nobles.js';
 import {readCourtProtection} from './court-protection.js';
 const S=(db,sql,...args)=>db.prepare(sql).bind(...args),R=x=>x?.results||[],safe={sql:'1=1',args:[]};
-const majors=new Set(['edo','kyoto_gosho','nijo','osaka','nagoya','kagoshima']);
+const majors=new Set(['edo','kyoto_gosho','nijo','osaka','nagoya','kagoshima','sento_gosho']);
 export const RESIDENCY_CASTLES=globalThis.SENGOKU_DATA.castles.filter(c=>!majors.has(c.id));
 const castles=new Map(RESIDENCY_CASTLES.map(c=>[c.id,c])),iso=n=>new Date(Number(n)).toISOString();
-const ordinary=(alias='u')=>`${alias}.id<>COALESCE((SELECT value FROM settings WHERE key='adminUserId'),'') AND NOT EXISTS(SELECT 1 FROM staff_members sm WHERE sm.user_id=${alias}.id) AND NOT EXISTS(SELECT 1 FROM deputy_operator_state ds WHERE ds.user_id=${alias}.id) AND NOT EXISTS(SELECT 1 FROM player_bans pb WHERE pb.user_id=${alias}.id AND pb.active=1) AND NOT EXISTS(SELECT 1 FROM player_expulsions pe WHERE pe.user_id=${alias}.id AND pe.pending=1)`;
+const ordinary=(alias='u')=>`${alias}.id<>COALESCE((SELECT value FROM settings WHERE key='adminUserId'),'') AND NOT EXISTS(SELECT 1 FROM staff_members sm WHERE sm.user_id=${alias}.id) AND NOT EXISTS(SELECT 1 FROM deputy_operator_state ds WHERE ds.user_id=${alias}.id) AND NOT EXISTS(SELECT 1 FROM court_retirement_holders r WHERE r.user_id=${alias}.id) AND NOT EXISTS(SELECT 1 FROM player_bans pb WHERE pb.user_id=${alias}.id AND pb.active=1) AND NOT EXISTS(SELECT 1 FROM player_expulsions pe WHERE pe.user_id=${alias}.id AND pe.pending=1)`;
 export function retainerCountSql(castleExpr,lordExpr){
  return `(SELECT COUNT(*) FROM castle_residents m_count JOIN users u_count ON u_count.id=m_count.user_id WHERE m_count.castle_id=${castleExpr} AND m_count.user_id<>COALESCE(${lordExpr},'') AND ${ordinary('u_count')})`;
 }
@@ -21,7 +21,7 @@ export function lordSupportSql(userExpr) {
     FROM castle_seats seat WHERE seat.lord_user_id=${userExpr})`;
 }
 export function guardLordSupport(guard,user) {
-  if (user.is_admin || user.is_staff || user.is_deputy || !Object.hasOwn(user,'retainer_support_json')) return guard;
+  if (user.is_admin || user.is_sento || user.is_staff || user.is_deputy || !Object.hasOwn(user,'retainer_support_json')) return guard;
   return {sql:`${guard.sql} AND ${lordSupportSql('?')} IS ?`,args:[...guard.args,user.id,user.retainer_support_json]};
 }
 const eligibleResident=(member='m',user='u',save='ps')=>`${ordinary(user)} AND ${save}.save_json IS NOT NULL AND COALESCE(json_extract(${save}.save_json,'$.state.gameOver'),0)=0 AND json_extract(${save}.save_json,'$.state.home')=${member}.castle_id AND json_extract(${save}.save_json,'$.state.castles.'||${member}.castle_id||'.owner')=json_extract(${save}.save_json,'$.state.clan')`;
@@ -91,7 +91,7 @@ export async function residencyDirectory({db,user=null,url,now,helpers:h}){
 // moves an existing membership, changes FIFO order, or trusts imported role data.
 export async function initialResidencyStatements(db,{user,save,now,gateSql,gateArgs}){
  await ensureResidency(db,now);const castleId=save.state.home;
- if(user.is_admin||user.is_staff||user.is_deputy||!castles.has(castleId)||await S(db,'SELECT 1 AS found FROM castle_residents WHERE user_id=? UNION ALL SELECT 1 FROM player_expulsions WHERE user_id=? AND pending=1',user.id,user.id).first())return[];
+ if(user.is_admin||user.is_sento||user.is_staff||user.is_deputy||!castles.has(castleId)||await S(db,'SELECT 1 AS found FROM castle_residents WHERE user_id=? UNION ALL SELECT 1 FROM player_expulsions WHERE user_id=? AND pending=1',user.id,user.id).first())return[];
  const absent='NOT EXISTS(SELECT 1 FROM castle_residents WHERE user_id=?)',eligible=`${gateSql} AND ${absent}`;
  return[
   S(db,`UPDATE castle_residency_meta SET sequence=sequence+1,revision=revision+1 WHERE id=1 AND ${eligible}`,...gateArgs,user.id),
@@ -166,7 +166,7 @@ export async function prepareResidencyCpuLosses(db,{userId,events,now=Date.now()
 
 export async function residencyStart(ctx,body){
  const {db,user,now,helpers:h}=ctx;await h.requireAccountAccess(db,user);await ensureResidency(db,now);
- if(user.is_admin||user.is_staff||user.is_deputy)h.fail(403,'RESIDENCY_PROTECTED','現在の拠点の利用資格では、通常城の領主・家臣を選び直せません。');
+ if(user.is_admin||user.is_sento||user.is_staff||user.is_deputy)h.fail(403,'RESIDENCY_PROTECTED','現在の拠点の利用資格では、通常城の領主・家臣を選び直せません。');
  if(!body||Object.keys(body).some(k=>!['deviceId','revision','requestId','castleId','mode','clan','difficulty','name'].includes(k))||!Number.isSafeInteger(body.revision)||body.revision<0||!['lord','retainer'].includes(body.mode)||!castles.has(body.castleId)||!['easy','normal','hard'].includes(body.difficulty)||!globalThis.SENGOKU_DATA.clans.some(c=>c.name===body.clan))h.fail(400,'INVALID_INPUT','開始する城・身分・勢力・難易度を選んでください。');
  for(const key of ['deviceId','requestId','castleId'])h.idField(body[key],key);
  const requestedName=Object.hasOwn(body,'name')?h.textField(body.name,'再入城する領主名',24,{preserveUnicode:true}):null;

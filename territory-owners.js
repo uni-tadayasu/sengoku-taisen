@@ -4,7 +4,7 @@
  */
 (function(global){
 'use strict';
-const SPECIAL=new Set(['edo','kyoto_gosho','nijo','osaka','nagoya','kagoshima']);
+const SPECIAL=new Set(['edo','kyoto_gosho','sento_gosho','nijo','osaka','nagoya','kagoshima']);
 const TTL=30000,MAX_PAGES=20,MAX_PAGE_TARGETS=12800;
 const validId=value=>typeof value==='string'&&/^[A-Za-z0-9_-]{1,150}$/.test(value);
 const validText=value=>typeof value==='string'&&value.trim().length>0&&value.length<=300;
@@ -152,3 +152,4 @@ const api=createController();api.createController=createController;
 global.SengokuTerritoryOwners=api;
 if(typeof module!=='undefined'&&module.exports)module.exports=api;
 })(typeof window!=='undefined'?window:globalThis);
+

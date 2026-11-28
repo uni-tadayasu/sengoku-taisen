@@ -25,7 +25,7 @@ assert.equal(conquestBattle({troops:100,garrison:1000,wall:2}).won,false);
 
 await scope('authenticated access, equal guild entry grants and idempotent registration',async h=>{
  await h.api('/conquest',{expected:401});
- const solo=await h.session('未所属の領主'),view=await read(h,solo);assert.equal(view.castles.length,129);assert.equal(view.self.eligible,false);assert.equal(view.guild,null);
+ const solo=await h.session('未所属の領主'),view=await read(h,solo);assert.equal(view.castles.length,129);assert.equal(view.self.eligible,false);assert.equal(view.guild,null);assert(!view.castles.some(c=>c.id==='sento_gosho'||c.neighbors.includes('sento_gosho')));
  await join(h,solo,view,crypto.randomUUID(),403);
  const {players:[a,b]}=await guild(h,'平等出発',2),id=crypto.randomUUID();
  const first=(await join(h,a,null,id)).data,second=(await join(h,a,first,id)).data;assert.equal(second.idempotent,true);assert.equal(first.guild.troops,12000);assert.equal(first.guild.supplies,6000);

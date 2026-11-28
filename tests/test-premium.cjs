@@ -362,15 +362,20 @@ test('shop views and explicit checkout starts are measured without fabricated su
 
 test('castle preview selects distinct named art without granting or changing equipment', async () => {
   const entries = catalog.getCastleScenes();
-  assert.equal(entries.length, 129);
+  assert.equal(entries.length, 130);
   assert.equal(entries.filter(item => !item.included).length, 123);
-  assert.deepEqual(entries.filter(item => item.included).map(item => item.id).sort(), ['edo','kagoshima','kyoto_gosho','nagoya','nijo','osaka']);
+  assert.deepEqual(entries.filter(item => item.included).map(item => item.id).sort(), ['edo','kagoshima','kyoto_gosho','nagoya','nijo','osaka','sento_gosho']);
   const s = setup(); s.ui.open(); await drain();
   const picker = s.get('[data-premium-castle-select]');
-  assert(picker); assert.equal(picker.querySelectorAll('option').length, 129);
+  assert(picker); assert.equal(picker.querySelectorAll('option').length, 130);
   picker.value = 'matsumoto'; s.get('[data-premium-catalog]').dispatch('change', picker);
   assert.match(s.get('[data-premium-landscape]').getAttribute('src'), /castle-scenes\/matsumoto-720\.webp$/);
   assert.match(s.get('[data-premium-preview-title]').textContent, /松本城/);
+  assert(!s.calls.some(call => ['equip','checkout'].includes(call[0])));
+  picker.value = 'sento_gosho'; s.get('[data-premium-catalog]').dispatch('change', picker);
+  assert.match(s.get('[data-premium-landscape]').getAttribute('src'), /castle-scenes\/kyoto_gosho-720\.webp$/);
+  assert.match(s.get('[data-premium-preview-title]').textContent, /仙洞御所/);
+  assert.match(s.get('[data-premium-preview-description]').textContent, /共通の御所/);
   assert(!s.calls.some(call => ['equip','checkout'].includes(call[0])));
   picker.value = 'kagoshima'; s.get('[data-premium-catalog]').dispatch('change', picker);
   assert.match(s.get('[data-premium-landscape]').getAttribute('src'), /kagoshima-town-day-720\.webp$/);

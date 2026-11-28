@@ -60,7 +60,7 @@ assert.equal(new Set(costs).size, costs.length, 'Every facility retains its own 
 assert.equal(source.scope.SENGOKU_OFFICERS.length,280);
 assert.equal(source.scope.SENGOKU_OFFICERS.filter(officer=>officer.courtNoble===true).length,24);
 assert.equal(source.scope.SENGOKU_OFFICERS.filter(officer=>officer.courtNoble!==true).length,256);
-assert.equal(source.scope.SENGOKU_DATA.castles.length,129);
+assert.equal(source.scope.SENGOKU_DATA.castles.length,130);
 console.log('PASS '+publicNames(source.scope).length+' classic globals, function names, initialization order and real game data match after four bundles');
 
 let checkpoints=0;

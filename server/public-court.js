@@ -50,12 +50,14 @@ export async function resolvePublicCourtOffices(db,payload,now=Date.now()){
     AND l.term_id=COALESCE(sm.term_id,'legacy:'||sm.appointed_at) AND l.updated_at<=?) AS emperor,
    COALESCE((SELECT merit FROM court_rank_progress p WHERE p.user_id=u.id),0) AS merit,
    (SELECT a.office_id FROM court_external_offices a WHERE a.user_id=u.id AND a.appointed_at<=?) AS external_office,
-   EXISTS(SELECT 1 FROM court_retired_emperors r WHERE r.user_id=u.id AND r.retired_at<=?) AS retired_emperor,
+   EXISTS(SELECT 1 FROM court_retired_emperors r JOIN court_succession_requests cr ON cr.commit_token=r.succession_id AND cr.actor_id=r.user_id AND cr.target_id=r.successor_id WHERE r.user_id=u.id AND r.retired_at<=?) AS retired_emperor,
+   EXISTS(SELECT 1 FROM court_cloistered_emperors c JOIN court_retired_emperors r ON r.user_id=c.user_id AND r.succession_id=c.succession_id
+    JOIN court_succession_requests cr ON cr.commit_token=r.succession_id AND cr.actor_id=r.user_id AND cr.target_id=r.successor_id WHERE c.user_id=u.id AND c.ordained_at<=?) AS cloistered_emperor,
    EXISTS(SELECT 1 FROM court_regent g WHERE g.id=1 AND g.user_id=u.id AND g.appointed_at<=?
     AND NOT EXISTS(SELECT 1 FROM court_retired_emperors r WHERE r.user_id=u.id)) AS regent
    FROM users u LEFT JOIN staff_members sm ON sm.user_id=u.id
    WHERE u.id IN (${page.map(()=>'?').join(',')})
-    AND NOT EXISTS(SELECT 1 FROM player_bans b WHERE b.user_id=u.id AND b.active=1)`,now,now,now,now,now,...page));
+    AND NOT EXISTS(SELECT 1 FROM player_bans b WHERE b.user_id=u.id AND b.active=1)`,now,now,now,now,now,now,...page));
  }
  // One ordered batch supplies a consistent snapshot for every visible label.
  const result=await db.batch(queries),offices=new Map();
@@ -63,6 +65,7 @@ export async function resolvePublicCourtOffices(db,payload,now=Date.now()){
   if(row.chancellor)offices.set(row.id,{title:'太政大臣',kind:'chancellor'});
   else if(row.official&&row.emperor)offices.set(row.id,{title:'天皇',kind:'emperor'});
   else if(row.regent)offices.set(row.id,{title:'摂政',kind:'regent'});
+  else if(row.retired_emperor&&row.cloistered_emperor)offices.set(row.id,{title:'法皇',kind:'cloistered-emperor'});
   else if(row.retired_emperor)offices.set(row.id,{title:'上皇',kind:'retired-emperor'});
   else if(row.official||row.retained_member){const title=[...PUBLIC_COURT_TITLES].reverse().find(item=>Number(row.merit)>=item.minMerit).title;offices.set(row.id,{title,kind:'official',jurisdiction:'kyoto'});}
   else if(row.external_office){const office=COURT_OFFICES.find(definition=>definition.id===row.external_office);if(office)offices.set(row.id,{title:office.title,kind:'official',jurisdiction:'external'});}

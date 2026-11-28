@@ -227,4 +227,9 @@ test('an ordinary regent receives and approves the authoritative queue without a
 test('revoked delegated approval removes a reviewed intent when the server capability is refreshed',async()=>{
  const s=modernFixture();s.server.views.set(OWNER,modernView([],{canApprove:true,approvals:[{...modernRight('pending',OTHER_RIGHT),applicant:{id:OTHER,name:'申請した領主'}}]}));await s.api.open();s.click('prepare-approval');s.server.views.set(OWNER,modernView([]));s.click('reload');await drain();assert.equal(s.api.getState().hasConfirmation,false);assert.equal(s.get('.shogunate-approvals'),null);assert.equal(s.get('[data-shogunate="confirm"]'),null);assert.equal(s.posts().length,0);s.api.close();
 });
+test('the server-issued independence flag shows retired rulers outside Kyoto control',async()=>{
+ const s=modernFixture(),record=modernRight('expired');s.server.views.set(OWNER,modernView([record],{shogunateIndependent:true,palaceControl:{castleId:'kyoto_gosho',rightId:RIGHT,controller:{id:OWNER,name:'支配領主'},governmentName:'試験幕府',controlledAt:record.deadlineAt}}));
+ await s.api.open();assert.match(s.get('.shogunate-palace').textContent,/幕府から独立/);assert.doesNotMatch(s.get('.shogunate-palace').textContent,/試験幕府の支配下/);assert.match(s.get('.shogunate-content').textContent,/上皇・法皇は支配の対象になりません/);s.api.close();
+});
 (async () => { for (const [name, run] of tests) { await run(); console.log('PASS ' + name); } console.log(tests.length + ' shogunate UI checks passed; no live requests.'); })().catch(error => { console.error(error); process.exitCode = 1; });
+

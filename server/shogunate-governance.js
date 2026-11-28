@@ -105,7 +105,7 @@ async function mutate(ctx){
  if(body.governanceRevision!==account.revision)h.fail(409,'GOVERNANCE_CHANGED','幕府の発展記録が更新されました。最新の一覧を確認してください。');
  const save=h.normalizeGameSave(JSON.parse(saved.save_json),user,now,{reading:true,clock}),shared=user.is_staff&&!user.is_admin?await h.staffBaseDto(db,user,clock,now):null;
  const courtEstate=await h.courtEstateContext(db,user,save,clock,now);
- const game=GameEngine.fromSave(save,GAME_OFFICERS,{courtEstateProjection:courtEstate.projection,isAdmin:!!user.is_admin,isDeputy:!!user.is_deputy,isStaff:!!user.is_staff,isCourtProtected:!!user.is_court_protected,staffBase:shared}),next=copy(account.state),resources=resourceBalances(save);
+ const game=GameEngine.fromSave(save,GAME_OFFICERS,{courtEstateProjection:courtEstate.projection,isSento:!!user.is_sento,isAdmin:!!user.is_admin,isDeputy:!!user.is_deputy,isStaff:!!user.is_staff,isCourtProtected:!!user.is_court_protected,staffBase:shared}),next=copy(account.state),resources=resourceBalances(save);
  let name,cost={},offeredReward={},renownOffered=0,claimKey;
  if(body.kind==='policy'){
   const policy=POLICIES.find(p=>p.id===body.targetId);name=policy.name;

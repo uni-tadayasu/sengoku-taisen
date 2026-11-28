@@ -4,7 +4,10 @@ import {GameEngine} from './game-runtime.js';
 import {conquestShogunateStatements} from './shogunate.js';
 
 const DAY=86400000,JST=9*3600000,WEEK=7*DAY;
-const CASTLES=globalThis.SENGOKU_DATA.castles;
+const ALL_CASTLES=globalThis.SENGOKU_DATA.castles,ALL_BY_ID=new Map(ALL_CASTLES.map(c=>[c.id,c]));
+// The dedicated imperial residence can stage an army, but never becomes a
+// guild-capturable objective in this separate shared battlefield.
+const CASTLES=ALL_CASTLES.filter(c=>!c.imperialResidence);
 const BY_ID=new Map(CASTLES.map(c=>[c.id,c]));
 const STRATEGIC=new Set(['edo','kyoto_gosho','nijo','osaka','nagoya']);
 const RULES=Object.freeze({startTroops:12000,startSupplies:6000,maxTroops:100000000,maxSupplies:100000000,replenishMs:1800000,replenishTroops:400,replenishSupplies:1000,memberCooldownMs:20000,attackCooldownMs:30000,captureProtectionMs:300000,maxGarrison:100000000,maxStock:100000000,maxWall:5});
@@ -94,7 +97,7 @@ async function snapshot(ctx,season=null){
  if(activeGuild&&currentMembership?.guild_id!==activeGuild.guild_id)h.fail(409,'CONQUEST_MEMBERSHIP_CHANGED','同盟の所属が変わりました。大会を開き直してください。');
  const owned=R(castleResult).filter(c=>c.owner_guild_id===activeGuild?.guild_id).map(c=>c.castle_id);
  return{ok:true,serverNow:iso(now),season:seasonDto(season,now),rules:{...RULES,travel:{baseSeconds:15,secondsPerKm:.5,timeBasis:'real'},normalCampaignUnaffected:true,timezone:'Asia/Tokyo',schedule:'毎週土曜 00:00〜月曜 00:00（日本時間）',tactics:Object.entries(TACTICS).map(([id,t])=>({id,name:t.name})),scoreDescription:'領地価値×100＋初攻略城数×25＋防衛成功×20＋支援戦功（上限2,000）'},
-  castles:R(castleResult).map(row=>{const c=BY_ID.get(row.castle_id);return{id:c.id,name:c.name,province:c.province,region:c.region,x:c.x,y:c.y,neighbors:c.neighbors.slice(),strategic:STRATEGIC.has(c.id),value:STRATEGIC.has(c.id)?4:1,ownerGuildId:row.owner_guild_id,ownerName:row.guild_name||null,garrison:Number(row.garrison),wall:Number(row.wall),durability:castleDurability(row,clock),stock:row.owner_guild_id===activeGuild?.guild_id?Number(row.stock):null,revision:Number(row.revision),protectedUntil:iso(Number(row.protected_until)),mine:row.owner_guild_id===activeGuild?.guild_id};}),standings,
+  castles:R(castleResult).filter(row=>BY_ID.has(row.castle_id)).map(row=>{const c=BY_ID.get(row.castle_id);return{id:c.id,name:c.name,province:c.province,region:c.region,x:c.x,y:c.y,neighbors:c.neighbors.filter(id=>BY_ID.has(id)),strategic:STRATEGIC.has(c.id),value:STRATEGIC.has(c.id)?4:1,ownerGuildId:row.owner_guild_id,ownerName:row.guild_name||null,garrison:Number(row.garrison),wall:Number(row.wall),durability:castleDurability(row,clock),stock:row.owner_guild_id===activeGuild?.guild_id?Number(row.stock):null,revision:Number(row.revision),protectedUntil:iso(Number(row.protected_until)),mine:row.owner_guild_id===activeGuild?.guild_id};}),standings,
   marches,self:{playerId:user.id,stagingCastleId,joined:Boolean(member),lockedGuildId:member?.guild_id||null,currentGuildId:guildMembership?.guild_id||null,currentGuildName:guildMembership?.name||null,eligible:Boolean(guildMembership)&&(!member||member.guild_id===guildMembership.guild_id),points:memberScore(member),title:honor(memberScore(member)),nextActionAt:iso(Number(member?.last_action_at||0)+RULES.memberCooldownMs)},
   guild:activeGuild?{id:activeGuild.guild_id,name:activeGuild.guild_name,revision:Number(activeGuild.revision),troops:reserves.troops,supplies:reserves.supplies,nextReplenishAt:iso(reserves.replenishedAt+RULES.replenishMs),nextAttackAt:iso(Number(activeGuild.last_attack_at)+RULES.attackCooldownMs),ownedCastleIds:owned}:null,contributions:roster,records,history:past.seasons,best:past.best};
 }
@@ -133,12 +136,12 @@ export function conquestBattle({troops,tactic='balanced',garrison,wall,castleId,
 const MARCH_GATE='EXISTS(SELECT 1 FROM conquest_marches WHERE id=? AND commit_token=? AND status=?)';
 function marchDto(row,now=Date.now()){
  const result=JSON.parse(row.result_json||'{}');
- return{id:row.id,requestId:row.request_id,kind:'conquest',status:row.status,timeBasis:'real',seasonId:row.season_id,guildId:row.guild_id,actorPlayerId:row.user_id,sourceCastleId:row.source_castle_id,sourceName:BY_ID.get(row.source_castle_id)?.name||'集結地',targetCastleId:row.target_castle_id,targetName:BY_ID.get(row.target_castle_id)?.name||'戦場',distanceKm:Number(row.distance_km),durationMs:Number(row.duration_ms),departedAtMs:Number(row.departed_at),arrivesAtMs:Number(row.arrives_at),remainingMs:row.status==='marching'?Math.max(0,Number(row.arrives_at)-now):0,troops:Number(row.troops),tactic:row.tactic,returnPendingTroops:Number(row.return_troops),returnPendingSupplies:Number(row.return_supplies),message:result.message||'',...(result.battle?{battle:result.battle}:{})};
+ return{id:row.id,requestId:row.request_id,kind:'conquest',status:row.status,timeBasis:'real',seasonId:row.season_id,guildId:row.guild_id,actorPlayerId:row.user_id,sourceCastleId:row.source_castle_id,sourceName:ALL_BY_ID.get(row.source_castle_id)?.name||'集結地',targetCastleId:row.target_castle_id,targetName:BY_ID.get(row.target_castle_id)?.name||'戦場',distanceKm:Number(row.distance_km),durationMs:Number(row.duration_ms),departedAtMs:Number(row.departed_at),arrivesAtMs:Number(row.arrives_at),remainingMs:row.status==='marching'?Math.max(0,Number(row.arrives_at)-now):0,troops:Number(row.troops),tactic:row.tactic,returnPendingTroops:Number(row.return_troops),returnPendingSupplies:Number(row.return_supplies),message:result.message||'',...(result.battle?{battle:result.battle}:{})};
 }
 async function stagingCastle(ctx){
  const row=await ctx.helpers.getSyncRow(ctx.db,ctx.user.id);
  let home;try{home=JSON.parse(row?.save_json||'null')?.state?.home;}catch{}
- return BY_ID.has(home)?home:'kiyosu';
+ return ctx.user.is_sento?'sento_gosho':ALL_BY_ID.has(home)?home:'kiyosu';
 }
 export async function conquestMarches(ctx){
  const {db,user}=ctx;if(!user)return{active:[],history:[]};

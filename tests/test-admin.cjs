@@ -211,7 +211,7 @@ test('legacy Edo-only campaign migrates its castle progress and retains the whol
   const raw=JSON.parse(source.exportSave()),original=structuredClone(raw);
   const migrated=E.fromSave(raw,roster);
   assert.deepEqual(raw,original,'import must not mutate the input object');
-  assert.equal(Object.keys(migrated.state.castles).length,129);
+  assert.equal(Object.keys(migrated.state.castles).length,130);
   assert.equal(migrated.state.home,'okazaki');
   assert.deepEqual(migrated.state.castles.okazaki,{...source.state.castles.edo,owner:'徳川家'});
   assert.deepEqual(migrated.state.resources,source.state.resources);

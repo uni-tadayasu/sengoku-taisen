@@ -10,9 +10,15 @@
   const text = (v, max = 500) => typeof v === 'string' && v.length > 0 && v.length <= max;
   const id = v => typeof v === 'string' && /^[A-Za-z0-9_-]{1,120}$/.test(v);
   const assets = value => value && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).every(k => Object.hasOwn(ASSETS, k)) && Object.keys(ASSETS).every(k => integer(value[k], 0, 100000000)) ? Object.fromEntries(Object.keys(ASSETS).map(k => [k, value[k]])) : null;
+  function cleanEnhancements(value) {
+    if (!value || value.active !== true || value.mode !== 'maximum' || !integer(value.castleLevel, 1, 128) || !value.buildings || typeof value.buildings !== 'object' || Array.isArray(value.buildings) || !Object.keys(value.buildings).length || Object.keys(value.buildings).length > 100 || Object.entries(value.buildings).some(([key, level]) => !id(key) || !integer(level, 0, 32))) return null;
+    return { active: true, mode: 'maximum', castleLevel: value.castleLevel, buildings: clone(value.buildings) };
+  }
   function cleanEffects(value) {
     if (!value || typeof value.active !== 'boolean' || value.castleId !== 'kyoto_gosho' || !integer(value.castleLevel, value.active ? 1 : 0, 128) || !integer(value.holdingCount, 0, 1) || value.holdingCount !== (value.active ? 1 : 0) || !assets(value.baseIncome) || !integer(value.baseTroopCapacity, 0, 100000000) || !assets(value.facilityUpkeep)) return null;
-    return { active: value.active, castleId: 'kyoto_gosho', castleLevel: value.castleLevel, holdingCount: value.holdingCount, baseIncome: assets(value.baseIncome), baseTroopCapacity: value.baseTroopCapacity, facilityUpkeep: assets(value.facilityUpkeep) };
+    const enhancements = value.enhancements == null ? null : cleanEnhancements(value.enhancements);
+    if (value.enhancements != null && !enhancements) return null;
+    return { active: value.active, castleId: 'kyoto_gosho', castleLevel: value.castleLevel, holdingCount: value.holdingCount, baseIncome: assets(value.baseIncome), baseTroopCapacity: value.baseTroopCapacity, facilityUpkeep: assets(value.facilityUpkeep), ...(enhancements ? { enhancements } : {}) };
   }
   function cleanData(v) {
     if (!v || v.version !== 1 || v.eligible !== true || typeof v.canDevelop !== 'boolean' || !text(v.accessStamp, 1200) || !id(v.role?.id) || !text(v.role.title, 100) || v.holding?.id !== 'kyoto_gosho' || v.holding.shared !== true || v.holding.ownership !== 'shared' || v.holding.homePreserved !== true || !id(v.home?.id) || !text(v.home.name, 100) || !assets(v.resources) || !integer(v.command, 0, 100000000) || !integer(v.slots?.used) || !integer(v.slots?.max, 1, 100) || !Number.isFinite(Date.parse(v.serverNow))) return null;
@@ -58,8 +64,10 @@
   const duration = seconds => { const n = Math.max(0, Math.ceil(seconds)); return n >= 3600 ? Math.floor(n / 3600) + '時間 ' + Math.ceil(n % 3600 / 60) + '分' : n >= 60 ? Math.floor(n / 60) + '分 ' + n % 60 + '秒' : n + '秒'; };
   const costMarkup = v => `<dl class="estate-cost">${Object.entries(ASSETS).filter(([k]) => v?.[k] > 0).map(([k, name]) => `<div${data.resources[k] < v[k] ? ' class="is-short"' : ''}><dt>${name}</dt><dd>${amount(v[k])}</dd></div>`).join('')}</dl>`;
   function effectsMarkup() {
-    const effects = data?.effects; if (!effects?.active) return '';
-    return `<section class="estate-effects" aria-labelledby="estate-effects-title"><h3 id="estate-effects-title">一般拠点と同じ領地効果</h3><p>京都御所1城分の収入・兵数上限・維持費を、あなたの領地に加算します。</p><h4>城郭の基礎収入 / 月</h4><dl>${Object.entries(ASSETS).map(([k, name]) => `<div><dt>${name}</dt><dd>+${amount(effects.baseIncome[k])}</dd></div>`).join('')}</dl><p class="estate-effects-note">表示は勢力・技術・位階の補正前です。実際の収支は城下町の財政に反映されます。</p><p>兵数上限の基礎加算 <b>+${amount(effects.baseTroopCapacity)}人</b></p><p>拠点維持費 / 月：${esc(costText(effects.facilityUpkeep))}</p><p class="estate-effects-note">領有城数による強化費用の倍率にも1城として数えます。京都御所の施設効果は、本拠の施設へ重複して加算しません。</p></section>`;
+    const effects = data?.effects; if (!effects?.active && !effects?.enhancements?.active) return '';
+    const enhancements = effects.enhancements;
+    const inherited = enhancements ? `<section class="estate-effects estate-inherited-effects" aria-labelledby="estate-inherited-title"><h3 id="estate-inherited-title">京都御所の強化を継承</h3><p>上皇・法皇は専用拠点の仙洞御所と京都御所の城郭・施設を比べ、高い方のレベルを能力計算に適用します。</p><h4>継承元の京都御所</h4><dl><div><dt>城郭</dt><dd>Lv.${enhancements.castleLevel}</dd></div>${[['keep', '天守'], ['wall', '城壁']].filter(([key]) => Object.hasOwn(enhancements.buildings, key)).map(([key, name]) => `<div><dt>${name}</dt><dd>Lv.${enhancements.buildings[key]}</dd></div>`).join('')}</dl><p class="estate-effects-note">個人の拠点・施設の育成記録はそのまま保持します。同じ施設の効果を二重には加算しません。</p></section>` : '';
+    return `${inherited}${effects.active ? `<section class="estate-effects" aria-labelledby="estate-effects-title"><h3 id="estate-effects-title">一般拠点と同じ領地効果</h3><p>京都御所1城分の収入・兵数上限・維持費を、あなたの領地に加算します。</p><h4>城郭の基礎収入 / 月</h4><dl>${Object.entries(ASSETS).map(([k, name]) => `<div><dt>${name}</dt><dd>+${amount(effects.baseIncome[k])}</dd></div>`).join('')}</dl><p class="estate-effects-note">表示は勢力・技術・位階の補正前です。実際の収支は城下町の財政に反映されます。</p><p>兵数上限の基礎加算 <b>+${amount(effects.baseTroopCapacity)}人</b></p><p>拠点維持費 / 月：${esc(costText(effects.facilityUpkeep))}</p><p class="estate-effects-note">領有城数による強化費用の倍率にも1城として数えます。${enhancements ? '上皇・法皇には、上記の城郭・施設の強化も適用されます。' : '京都御所の施設効果は、本拠の施設へ重複して加算しません。'}</p></section>` : ''}`;
   }
   function actionCard(a) {
     const chain = data.base.jobs.filter(j => j.kind === a.kind && j.id === a.id);
@@ -164,3 +172,4 @@
   }
   global.SengokuCourtEstate = { open, close, refresh: load, refreshAccess: () => { const old = identityKey; identity(); if (old !== identityKey) notify(); }, updateAccess, ensure, holding, prepare, confirm: () => execute(), retry: () => execute(true), cleanData, getState: () => { identity(); return { data: clone(data), clock: clone(clock), busy, owner, pending: clone(pending), hasConfirmation: Boolean(confirmation), error, message, tab }; } };
 })(typeof window !== 'undefined' ? window : globalThis);
+

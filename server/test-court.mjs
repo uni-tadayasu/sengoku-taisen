@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {harness} from './test-support.mjs';
 import {honorificText} from './honorific-text.js';
-import {fixture,post,row,save,count,appoint,updateSave} from './test-court-support.mjs';
+import {fixture,post,row,save,count,appoint,updateSave,makeImperial} from './test-court-support.mjs';
 
 let checks=0,calls=0;
 async function scope(name,run){const h=harness();try{await run(h);checks++;console.log('PASS '+name);}finally{calls+=h.calls;h.close();}}
@@ -65,7 +65,7 @@ try{
   await h.api('/admin/staff',post(admin,{requestId:crypto.randomUUID(),targetPlayerId:staff.user.id,action:'appoint'}));assert.equal((await info(h,staff)).data.self.title,'参議');
  });
  await scope('appointment guards a target demotion or replacement while the write is suspended',async h=>{
-  await fixture(h,'競合任命の運営',{admin:true});const staff=await fixture(h,'競合任命の担当',{staff:true});
+  await fixture(h,'競合任命の運営',{admin:true});const staff=await fixture(h,'競合任命の担当',{staff:true});makeImperial(h,staff);
   const before=count(h,'court_requests');h.beforeBatch=statements=>{if(!statements.some(s=>s.sql.includes('INSERT INTO court_requests')))return;h.beforeBatch=null;h.sql.prepare('UPDATE staff_members SET term_id=? WHERE user_id=?').run('replacement-term',staff.user.id);};
   const result=await appoint(h,staff,409);assert.equal(result.data.error.code,'COURT_LEADER_CHANGED');assert.equal(count(h,'court_requests'),before);assert.equal(count(h,'court_leader'),0);
  });

@@ -74,7 +74,7 @@ function setup(options={}) {
     queueWorldProgress:()=>control.queued++,preserveInteraction:()=>{},closeModal:()=>{},updateBattlePreview:()=>{},syncMusic:()=>{},
   };
   vm.createContext(context);
-  vm.runInContext(['confirmedWorldClock','clockIsApplied','canMutate','syncMessage','requireWritable','save','backupCurrentSave','trustedBranchAuthority','applyBranchAuthority','trustedMaintenanceAuthority','applyMaintenanceAuthority','trustedCourtProtection','applyCourtProtection','trustedCourtEstateProjection','applyCloudSave','applyDurableGift','restoreAdminAssets','processWorldClock','getPendingCastleRelease','validCourtNegotiationAcceptance','requestCourtNegotiation','requestField','requestExpansion'].map(fn).join('\n'),context);
+  vm.runInContext(['confirmedWorldClock','clockIsApplied','canMutate','syncMessage','requireWritable','save','backupCurrentSave','trustedBranchAuthority','applyBranchAuthority','trustedMaintenanceAuthority','applyMaintenanceAuthority','trustedCourtProtection','trustedSentoAccess','applyCourtProtection','trustedCourtEstateProjection','applyCloudSave','applyDurableGift','restoreAdminAssets','processWorldClock','getPendingCastleRelease','validCourtNegotiationAcceptance','requestCourtNegotiation','requestField','requestExpansion'].map(fn).join('\n'),context);
   return {c:context,control,stored,trace,posts,gets,events,clockAccepts};
 }
 const tests=[];

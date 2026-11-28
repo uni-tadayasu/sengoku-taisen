@@ -22,6 +22,7 @@ async function court(h){
  const operator=await h.session('太政大臣'),emperor=await h.session('承認する天皇'),staff=await h.session('一般の御所担当');
  await h.api('/admin/claim',post(operator,{key:h.env.SENGOKU_ADMIN_KEY}));
  for(const p of [emperor,staff])await h.api('/admin/staff',post(operator,{targetPlayerId:p.user.id,action:'appoint',requestId:crypto.randomUUID()}));
+ h.sql.prepare("INSERT INTO court_lineages(user_id,house_id,imperial_house_name,imperial_house_key,revision,created_at,updated_at) VALUES(?,'konoe','承認宮','承認宮',1,?,?)").run(emperor.user.id,h.now,h.now);
  await h.api('/admin/court/leader',post(operator,{targetPlayerId:emperor.user.id,requestId:crypto.randomUUID()}));
  return{operator,emperor,staff};
 }

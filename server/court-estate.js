@@ -9,6 +9,7 @@ const copy=value=>JSON.parse(JSON.stringify(value));
 const ACCESS_MESSAGE='京都御所の共同領有資格が変わりました。最新の役職を確認してください。';
 const RETIRED=`SELECT r.succession_id FROM court_retired_emperors r JOIN court_succession_requests s
  ON s.commit_token=r.succession_id AND s.actor_id=r.user_id AND s.target_id=r.successor_id WHERE r.user_id=?`;
+const CLOISTERED=`SELECT c.ordained_at FROM court_cloistered_emperors c JOIN court_retired_emperors r ON r.user_id=c.user_id AND r.succession_id=c.succession_id WHERE c.user_id=?`;
 
 export async function courtEstateAuthority(db,user,h){
  await h.requireAccountAccess(db,user);
@@ -18,13 +19,14 @@ export async function courtEstateAuthority(db,user,h){
   (SELECT a.office_id FROM court_external_offices a WHERE a.user_id=?) AS office_id,
   (SELECT a.appointment_token FROM court_external_offices a WHERE a.user_id=?) AS office_token,
   (${RETIRED}) AS retired_token,
-  (SELECT k.office_id FROM court_kyoto_offices k WHERE k.user_id=?) AS formal_office`,user.id,user.id,user.id,user.id,user.id,user.id).first();
+  (${CLOISTERED}) AS ordained_at,
+  (SELECT k.office_id FROM court_kyoto_offices k WHERE k.user_id=?) AS formal_office`,user.id,user.id,user.id,user.id,user.id,user.id,user.id).first();
  let role=null,proof='';
  if(user.is_admin){role={id:'chancellor',title:'太政大臣'};proof=String(found.admin_since??'');guard.sql+=' AND EXISTS(SELECT 1 FROM settings WHERE key=\'adminUserId\' AND value=? AND updated_at=?)';guard.args.push(user.id,found.admin_since??-1);}
- else if(user.is_staff){role={id:'kyoto',title:'京都御所所属'};proof=user.staff_term||'';}
+ else if(user.is_staff&&!user.is_sento){role={id:'kyoto',title:'京都御所所属'};proof=user.staff_term||'';}
  else if(found.regent_token){role={id:'regent',title:'摂政'};proof=found.regent_token;guard.sql+=' AND EXISTS(SELECT 1 FROM court_regent WHERE id=1 AND user_id=? AND appointment_token=?)';guard.args.push(user.id,proof);}
  else if(found.office_token&&COURT_OFFICES.some(office=>office.id===found.office_id)){role={id:found.office_id,title:COURT_OFFICES.find(office=>office.id===found.office_id).title,jurisdiction:'external'};proof=found.office_token;guard.sql+=' AND EXISTS(SELECT 1 FROM court_external_offices WHERE user_id=? AND office_id=? AND appointment_token=?)';guard.args.push(user.id,role.id,proof);}
- else if(found.retired_token){role={id:'retired-emperor',title:'上皇'};proof=found.retired_token;guard.sql+=` AND (${RETIRED})=?`;guard.args.push(user.id,proof);}
+ else if(found.retired_token){role=found.ordained_at!==null?{id:'cloistered-emperor',title:'法皇'}:{id:'retired-emperor',title:'上皇'};proof=found.retired_token;guard.sql+=` AND (${RETIRED})=? AND COALESCE((${CLOISTERED}),-1)=?`;guard.args.push(user.id,proof,user.id,found.ordained_at??-1);}
  else if(user.court_retained_term&&COURT_OFFICES.some(office=>office.id===found.formal_office)){role={id:found.formal_office,title:COURT_OFFICES.find(office=>office.id===found.formal_office).title,jurisdiction:'kyoto'};proof=user.court_retained_term;}
  if(user.court_retained_term){guard.sql+=' AND EXISTS(SELECT 1 FROM court_retained_memberships WHERE user_id=? AND term_id=?)';guard.args.push(user.id,user.court_retained_term);}
  guard.sql+=' AND NOT EXISTS(SELECT 1 FROM player_expulsions WHERE user_id=? AND pending=1)';guard.args.push(user.id);
@@ -34,14 +36,14 @@ export async function courtEstateAuthority(db,user,h){
 
 export async function assertCourtEstateAccess(db,user,access,h){
  await h.requireAccountAccess(db,user);
- if(!access?.eligible)h.fail(403,'COURT_ESTATE_REQUIRED','京都御所の共同領地は、摂政・任命太政官・上皇・京都御所所属者・太政大臣が利用できます。');
+ if(!access?.eligible)h.fail(403,'COURT_ESTATE_REQUIRED','京都御所の共同領地は、摂政・任命太政官・上皇・法皇・京都御所所属者・太政大臣が利用できます。');
  if(!await S(db,'SELECT 1 AS allowed WHERE '+access.guard.sql,...access.guard.args).first())h.fail(409,'COURT_ESTATE_ACCESS_CHANGED',ACCESS_MESSAGE);
 }
 
 // This instance exists only to quote the shared facilities. It is never
 // exported as the payer's save, so personal buildings and holdings stay intact.
 export function courtEstatePricingGame(save,user,base,clock,courtEstateProjection=null){
- const game=GameEngine.fromSave(save,GAME_OFFICERS,{courtEstateProjection,isAdmin:!!user.is_admin,isStaff:!!user.is_staff,isDeputy:!!user.is_deputy,isCourtProtected:!!user.is_court_protected,staffBase:user.is_staff&&!user.is_admin?base:null});
+ const game=GameEngine.fromSave(save,GAME_OFFICERS,{courtEstateProjection,isSento:!!user.is_sento,isAdmin:!!user.is_admin,isStaff:!!user.is_staff,isDeputy:!!user.is_deputy,isCourtProtected:!!user.is_court_protected,staffBase:user.is_staff&&!user.is_admin?base:null});
  if(game.isStaff)game._projectStaffAt(clock.elapsedMs);
  // Quotes concern the present holding count, even if a viewer's private save
  // is still waiting to catch up. No resources are accrued in this instance.
@@ -74,7 +76,7 @@ export async function courtEstateSnapshot(ctx,access,snapshot=null){
  snapshot=snapshot||await h.syncSnapshot(db,await h.getSyncRow(db,user.id),user,null,now);
  if(!snapshot.save)h.fail(409,'SAVE_REQUIRED','本拠を確定してから京都御所の共同領地を開いてください。');
  const clock=snapshot.clock,base=await h.staffBaseDto(db,user,clock,now),state=base;
- const payer=GameEngine.fromSave(snapshot.save,GAME_OFFICERS,{courtEstateProjection:snapshot.courtEstateProjection||null,isAdmin:!!user.is_admin,isStaff:!!user.is_staff,isDeputy:!!user.is_deputy,isCourtProtected:!!user.is_court_protected,staffBase:user.is_staff&&!user.is_admin?base:null});
+ const payer=GameEngine.fromSave(snapshot.save,GAME_OFFICERS,{courtEstateProjection:snapshot.courtEstateProjection||null,isSento:!!user.is_sento,isAdmin:!!user.is_admin,isStaff:!!user.is_staff,isDeputy:!!user.is_deputy,isCourtProtected:!!user.is_court_protected,staffBase:user.is_staff&&!user.is_admin?base:null});
  if(payer.isStaff)payer._projectStaffAt(clock.elapsedMs);
  const pricing=courtEstatePricingGame(snapshot.save,user,base,clock,snapshot.courtEstateProjection||null),definitions=[{kind:'castle',id:'kyoto_gosho'},...globalThis.SENGOKU_DATA.buildings.map(b=>({kind:'building',id:b.id}))];
  const homeId=snapshot.save.state.home,homeName=globalThis.SENGOKU_DATA.castles.find(c=>c.id===homeId)?.name||homeId;

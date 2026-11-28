@@ -21,7 +21,7 @@ function createStore(){
   return{ok:true,changed,before:copy(before),self:copy(self),revision};
  }};
 }
-function choices(directory,mode){return(directory?.castles||[]).filter(row=>mode==='retainer'?!row.available&&!!row.lord:row.available);}
+function choices(directory,mode){return(directory?.castles||[]).filter(row=>row.castleId!=='sento_gosho'&&(mode==='retainer'?!row.available&&!!row.lord:row.available));}
 function choiceMode(directory,preferred='lord'){if(directory?.full)return'retainer';return['lord','retainer'].includes(preferred)?preferred:'lord';}
 function roleText(member){return member?.role==='lord'?'領主':member?.successionPosition===null||member?.eligible===false?'家臣 · 継承対象外':`家臣 · 継承順 ${member?.successionPosition||'確認中'}${member?.successionPosition?'番目':''}`;}
 function membershipText(member){return member?`${member.castleName} · ${roleText(member)}`:'';}
@@ -96,7 +96,7 @@ function supportText(count){
  const n=integer(count);
  return `プレイヤー家臣 ${n.toLocaleString('ja-JP')}人 · 本拠の初期値に +${(n*50).toLocaleString('ja-JP')}%。1人につき、城がもつ守備兵力・最大耐久・兵の収容力・4資源の月間生産に、入城時の基礎値の50%を加算します。増えた守備兵力は本拠の防衛戦に参加します。`;
 }
-function selfHtml(){const c=context(),member=store.snapshot().self;if(c.user?.isAdmin||c.user?.isStaff||c.user?.isDeputy)return'';const move=global.SengokuBridge?.canShowRelocation?.()?'<button type="button" class="button small" data-action="relocate-open" aria-haspopup="dialog">本拠を移す</button>':'';if(member)return`<div class="residency-self-copy"><span>城の所属</span><strong>${esc(member.castleName)}</strong><p>${esc(roleText(member))}</p>${member.role==='lord'?`<small>${supportText(member.retainerCount)}</small>`:''}${member.role==='retainer'&&(member.successionPosition===null||member.eligible===false)?'<small>本拠の戦役を再開すると継承対象になります。</small>':''}</div><button type="button" class="button small" data-residency-open="${esc(member.castleId)}">城の領主と家臣</button>${move}`;return`<div class="residency-self-copy"><span>城の所属</span><p>${c.user?'入城状況を確認できます。':'未登録の進行は、この端末の個人の戦役です。'}</p></div><button type="button" class="button small" ${c.user?'data-residency-choose':'data-residency-register'}>${c.user?'入城する城を選ぶ':'領主登録・ログイン'}</button>${move}`;}
+function selfHtml(){const c=context(),member=store.snapshot().self;if(c.user?.isSento||global.SengokuBridge?.getRoleAccess?.().isSento)return'<div class="residency-self-copy"><span>上皇・法皇の専用拠点</span><strong>仙洞御所</strong><p>在位中は仙洞御所を本拠とし、幕府から独立します。</p></div>';if(c.user?.isAdmin||c.user?.isStaff||c.user?.isDeputy)return'';const move=global.SengokuBridge?.canShowRelocation?.()?'<button type="button" class="button small" data-action="relocate-open" aria-haspopup="dialog">本拠を移す</button>':'';if(member)return`<div class="residency-self-copy"><span>城の所属</span><strong>${esc(member.castleName)}</strong><p>${esc(roleText(member))}</p>${member.role==='lord'?`<small>${supportText(member.retainerCount)}</small>`:''}${member.role==='retainer'&&(member.successionPosition===null||member.eligible===false)?'<small>本拠の戦役を再開すると継承対象になります。</small>':''}</div><button type="button" class="button small" data-residency-open="${esc(member.castleId)}">城の領主と家臣</button>${move}`;return`<div class="residency-self-copy"><span>城の所属</span><p>${c.user?'入城状況を確認できます。':'未登録の進行は、この端末の個人の戦役です。'}</p></div><button type="button" class="button small" ${c.user?'data-residency-choose':'data-residency-register'}>${c.user?'入城する城を選ぶ':'領主登録・ログイン'}</button>${move}`;}
 function compact(){identity();return`<section class="residency-self-panel" data-residency-self aria-label="城の所属">${selfHtml()}</section>`;}
 function renderSelf(){for(const host of global.document?.querySelectorAll?.('[data-residency-self]')||[]){const html=selfHtml();host.hidden=!html;if(global.SengokuStableDOM)global.SengokuStableDOM.patch(host,html);else if(host.innerHTML!==html)host.innerHTML=html;}}
 function rosterHtml(){const directory=store.snapshot().directory,castle=directory?.castles.find(row=>row.castleId===dialogCastle),name=castle?.castleName||global.SENGOKU_DATA?.castles?.find(row=>row.id===dialogCastle)?.name||dialogCastle;
@@ -121,3 +121,4 @@ const api={configure,observe,loadDirectory,open,close,compact,refreshIdentity,re
 global.SengokuResidency=api;global.document?.addEventListener?.('click',click);
 if(typeof module!=='undefined'&&module.exports)module.exports=api;
 })(typeof window!=='undefined'?window:globalThis);
+

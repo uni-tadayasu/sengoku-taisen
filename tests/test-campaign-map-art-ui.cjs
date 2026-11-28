@@ -48,7 +48,7 @@ let checks=0;
 function test(name,run){run();checks++;console.log('PASS '+name);}
 
 test('campaign mount supplies all castles, castle levels, home badges and accessible battle context without changing saves',()=>{
-  const h=harness(),s=h.c.game.state,batch=h.sync();assert.equal(batch.options.markerSize,56);assert.equal(batch.points.length,129);
+  const h=harness(),s=h.c.game.state,batch=h.sync();assert.equal(batch.options.markerSize,56);assert.equal(batch.points.length,130);
   assert.equal(h.counts.mounts,1);assert.equal(s.army.length,3);assert(s.governors.keep);
   const home=h.appearance(s.home);assert(home.custom);assert(home.html.includes('class="campaign-map-castle-art"')||home.html.includes(' campaign-map-castle-art"'));
   assert(home.html.includes('data-castle-level="1"'));assert(home.html.includes('data-castle-expanded="false"'));assert(home.html.includes('campaign-map-home-mark'));
@@ -59,6 +59,7 @@ test('campaign mount supplies all castles, castle levels, home badges and access
   assert(enemy.tooltip.detail.includes(target.troops.toLocaleString('ja-JP')+'兵'));
   assert(enemy.tooltip.detail.includes(point.lat.toFixed(4)+'°N '+point.lon.toFixed(4)+'°E'));
   for(const id of ['edo','kyoto_gosho']){assert(h.appearance(id).label.includes('選択不可'));assert(!/運営|スタッフ/.test(h.appearance(id).label));assert(batch.points.find(point=>point.id===id).disabled);}
+  assert(h.appearance('sento_gosho').label.includes('上皇・法皇の御所'));assert(batch.points.find(point=>point.id==='sento_gosho').disabled);
 });
 
 test('real castle construction keeps the current cell until completion and updates it through the existing controller',()=>{
@@ -171,7 +172,7 @@ test('shared growth presentation normalizes malformed inputs and never promotes 
 test('clusters and unavailable artwork retain normal map symbols, castle coverage and tooltips',()=>{
   const h=harness(),batch=h.sync(),bounds=M.projectBounds(geography.bounds),view=M.fitBounds(bounds,800,500,28);
   const layout=M.layoutMarkers(batch.points,view,800,500,{markerSize:batch.options.markerSize,distance:60}),cluster=layout.find(marker=>marker.cluster);assert(cluster);
-  assert.equal(layout.flatMap(marker=>marker.points).length,129);
+  assert.equal(layout.flatMap(marker=>marker.points).length,130);
   const clustered=M.markerPresentation(cluster,batch.options);assert.equal(clustered.custom,false);assert.equal(clustered.html,`<b>${cluster.points.length}</b>`);
   assert.equal(h.c.campaignCastleAppearance(cluster),null);assert.equal(h.c.campaignCastleAppearance({id:'missing',level:5}),null);
   const home=batch.points.find(point=>point.home);h.c.window.SengokuArt=undefined;

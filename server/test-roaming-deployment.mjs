@@ -36,7 +36,7 @@ const originalFetch=globalThis.fetch;globalThis.fetch=async()=>{throw Error('Dep
 try{
  await scope('public deployment and local maps expose exact counts, cooldowns and no management identities',async h=>{
   const {admin,staff,ordinary}=await roles(h),d=(await h.api('/roaming/deployment')).data;
-  assert.equal(d.deployment.revision,1);assert.equal(d.deployment.totalTroops,384000);assert.equal(d.deployment.totalSquads,384);assert.equal(d.castles.length,129);
+  assert.equal(d.deployment.revision,1);assert.equal(d.deployment.totalTroops,384000);assert.equal(d.deployment.totalSquads,384);assert.equal(d.castles.length,129);assert(!d.castles.some(c=>c.castleId==='sento_gosho'));
   assert.equal(d.castles.reduce((n,c)=>n+c.squads,0),384);assert.equal(d.castles.reduce((n,c)=>n+c.troops,0),384000);
   const map=(await h.api('/roaming/map?castleId=edo')).data;assert.equal(map.units.length,3);assert(map.units.every(u=>u.castleId==='edo'&&u.available&&u.respawnAt===null));
   for(const source of [d,map]){const json=JSON.stringify(source);for(const hidden of ['requester','isAdmin','isStaff',admin.user.id,staff.user.id])assert(!json.includes(hidden),hidden);}

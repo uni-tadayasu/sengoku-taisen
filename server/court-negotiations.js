@@ -5,6 +5,7 @@ import {socialNotificationStatement} from './social-notifications.js';
 import {advanceReservedMarch} from './marches.js';
 import {ensureResidency,prepareResidencyCpuLosses} from './residency.js';
 import {externalTroopSnapshotStatements} from './maintenance.js';
+import {shogunateServiceAllowedSql} from './shogunate-independence.js';
 const S=(db,sql,...args)=>db.prepare(sql).bind(...args),R=result=>result?.results||[];
 const HOUSES=Object.fromEntries(NOBLE_HOUSES.map(h=>[h.id,h.name]));
 const RESOURCES=Object.freeze(['gold','rice','wood','stone']);
@@ -24,15 +25,15 @@ const warriorEligible=id=>`${active(id)} AND ${unexpelled(id)}
  AND EXISTS(SELECT 1 FROM player_saves ns WHERE ns.user_id=${id} AND ns.save_json IS NOT NULL AND COALESCE(json_extract(ns.save_json,'$.state.gameOver'),0)=0 AND json_extract(ns.save_json,'$.state.home') NOT IN ('edo','kyoto_gosho','kagoshima'))
  AND NOT EXISTS(SELECT 1 FROM castle_residents nr JOIN castle_seats nc ON nc.castle_id=nr.castle_id WHERE nr.user_id=${id} AND nc.lord_user_id IS NOT NULL AND nc.lord_user_id<>${id})`;
 const SELECT=`SELECT n.*,nl.name AS lord_name,nw.name AS warrior_name,nw.clan AS warrior_clan,cl.house_id,cl.imperial_house_name,
- (${lordEligible('n.lord_id')}) AS lord_eligible,(${warriorEligible('n.warrior_id')}) AS warrior_eligible
+ (${lordEligible('n.lord_id')}) AS lord_eligible,(${warriorEligible('n.warrior_id')} AND ${shogunateServiceAllowedSql('n.lord_id','n.warrior_id')}) AS warrior_eligible
  FROM court_negotiations n JOIN users nl ON nl.id=n.lord_id JOIN users nw ON nw.id=n.warrior_id LEFT JOIN court_lineages cl ON cl.user_id=n.lord_id`;
 
 // One bounded projection per already-selected identity, with no negotiation
 // amounts, request IDs, saved states or campaign metadata in the public DTO.
 export function courtRelationsSql(id){
- return `json_object('suzerain',json((SELECT json_object('id',cr_person.id,'name',cr_person.name,'houseId',cl.house_id,'imperialHouseName',cl.imperial_house_name) FROM court_vassals v JOIN users cr_person ON cr_person.id=v.lord_id JOIN court_lineages cl ON cl.user_id=cr_person.id WHERE v.vassal_id=${id} AND ${active('cr_person.id')})),
- 'vassals',json(COALESCE((SELECT json_group_array(json(p.person)) FROM (SELECT json_object('id',cr_person.id,'name',cr_person.name,'clan',cr_person.clan) AS person FROM court_vassals v JOIN users cr_person ON cr_person.id=v.vassal_id WHERE v.lord_id=${id} AND ${active('cr_person.id')} ORDER BY v.created_at,v.vassal_id LIMIT 50) p),'[]')),
- 'vassalCount',(SELECT COUNT(*) FROM court_vassals v JOIN users cr_person ON cr_person.id=v.vassal_id WHERE v.lord_id=${id} AND ${active('cr_person.id')}))`;
+ return `json_object('suzerain',json((SELECT json_object('id',cr_person.id,'name',cr_person.name,'houseId',cl.house_id,'imperialHouseName',cl.imperial_house_name) FROM court_vassals v JOIN users cr_person ON cr_person.id=v.lord_id JOIN court_lineages cl ON cl.user_id=cr_person.id WHERE v.vassal_id=${id} AND ${active('cr_person.id')} AND ${shogunateServiceAllowedSql('v.lord_id','v.vassal_id')})),
+ 'vassals',json(COALESCE((SELECT json_group_array(json(p.person)) FROM (SELECT json_object('id',cr_person.id,'name',cr_person.name,'clan',cr_person.clan) AS person FROM court_vassals v JOIN users cr_person ON cr_person.id=v.vassal_id WHERE v.lord_id=${id} AND ${active('cr_person.id')} AND ${shogunateServiceAllowedSql('v.lord_id','v.vassal_id')} ORDER BY v.created_at,v.vassal_id LIMIT 50) p),'[]')),
+ 'vassalCount',(SELECT COUNT(*) FROM court_vassals v JOIN users cr_person ON cr_person.id=v.vassal_id WHERE v.lord_id=${id} AND ${active('cr_person.id')} AND ${shogunateServiceAllowedSql('v.lord_id','v.vassal_id')}))`;
 }
 export function publicCourtRelations(row){
  const value=row?.court_relations_json?JSON.parse(row.court_relations_json):null,s=value?.suzerain;
@@ -67,7 +68,7 @@ function bodyFor(raw,action,h){
 }
 async function eligibility(ctx,lordId,warriorId=null){
  const r=await S(ctx.db,`SELECT EXISTS(SELECT 1 FROM users nq WHERE nq.id=? AND ${lordEligible('nq.id')}) AS lord,
-  EXISTS(SELECT 1 FROM users nq WHERE nq.id=? AND ${warriorEligible('nq.id')}) AS warrior`,lordId,warriorId||'').first();
+  EXISTS(SELECT 1 FROM users nq JOIN users nl ON nl.id=? WHERE nq.id=? AND ${warriorEligible('nq.id')} AND ${shogunateServiceAllowedSql('nl.id','nq.id')}) AS warrior`,lordId,lordId,warriorId||'').first();
  return {lord:!!r.lord,warrior:!!r.warrior};
 }
 async function requireEligible(ctx,lordId,warriorId){const result=await eligibility(ctx,lordId,warriorId);if(lordId===warriorId||!result.lord||!result.warrior)ctx.helpers.fail(409,'COURT_NEGOTIATION_INELIGIBLE','家柄選択済みの公家・皇族と、ほかの主君に仕えていない武家の間で交渉できます。');}
@@ -123,7 +124,7 @@ async function commit(ctx,body,digest,id,action){
   guards=[h.roleCommitGuard(user)],payments=[];
  let clock=null;
  if(propose||action==='counter'||action==='accept'){
-  const other=user.id===lordId?warrior:lord;guards.push(h.roleCommitGuard(other),{sql:`EXISTS(SELECT 1 FROM users nq WHERE nq.id=? AND ${lordEligible('nq.id')}) AND EXISTS(SELECT 1 FROM users nq WHERE nq.id=? AND ${warriorEligible('nq.id')})`,args:[lordId,warriorId]});
+  const other=user.id===lordId?warrior:lord;guards.push(h.roleCommitGuard(other),{sql:`EXISTS(SELECT 1 FROM users nq WHERE nq.id=? AND ${lordEligible('nq.id')}) AND EXISTS(SELECT 1 FROM users nq JOIN users nl ON nl.id=? WHERE nq.id=? AND ${warriorEligible('nq.id')} AND ${shogunateServiceAllowedSql('nl.id','nq.id')})`,args:[lordId,lordId,warriorId]});
  }
  if(action==='accept'){
   const own=await h.settleWriterCycle(db,user,body.deviceId,body.expectedRevision,now);clock=await h.getWorldClock(db,now);

@@ -42,7 +42,7 @@ try{
 
  await scope('legacy staff 128-castle cloud saves and private dispatch sources project to Kyoto without rewriting a read',async h=>{
   await fixture(h,'移転の運営',{admin:true});const staff=await fixture(h,'移転する担当',{staff:true}),canonical=save(h,staff),old=structuredClone(canonical);
-  old.state.home='sunpu';old.state.cycle.home='sunpu';old.state.staffService={baseId:'sunpu'};old.state.castles.sunpu={owner:old.state.clan,level:63,wall:17,troops:6789};delete old.state.castles.kyoto_gosho;
+  old.state.home='sunpu';old.state.cycle.home='sunpu';old.state.staffService={baseId:'sunpu'};old.state.castles.sunpu={owner:old.state.clan,level:63,wall:17,troops:6789};delete old.state.castles.kyoto_gosho;delete old.state.castles.sento_gosho;
   old.state.jobs=[{kind:'castle',id:'sunpu',targetLevel:64,total:1,remaining:1,totalSeconds:60,remainingSeconds:40}];old.state.captureRewards=[...old.state.captureRewards.filter(id=>id!=='kyoto_gosho'),'sunpu'];
   const legacyCovert=structuredClone(old.state.covert);legacyCovert.reserves.sunpu=123;delete legacyCovert.reserves.kyoto_gosho;
   h.sql.prepare('UPDATE player_saves SET save_json=?,cycle_home=? WHERE user_id=?').run(JSON.stringify(old),'sunpu',staff.user.id);
@@ -50,7 +50,7 @@ try{
   const durable=row(h,staff),backup=h.sql.prepare('SELECT * FROM staff_campaign_backups WHERE user_id=?').get(staff.user.id);
   const field=(await h.api('/field',{token:staff.token})).data.players.find(p=>p.playerId===staff.user.id);assert.equal(field.homeCastleId,'kyoto_gosho');assert(Number.isFinite(field.defensePower));
   const result=(await h.api('/sync?deviceId='+staff.deviceId,{token:staff.token})).data,s=result.save.state;
-  assert.equal(Object.keys(s.castles).length,129);assert.equal(s.home,'kyoto_gosho');assert.equal(s.cycle.home,'kyoto_gosho');assert.equal(s.staffService.baseId,'kyoto_gosho');assert.equal(s.castles.kyoto_gosho.level,63);assert.equal(s.castles.kyoto_gosho.troops,6789);assert.equal(s.jobs[0].id,'kyoto_gosho');assert.equal(s.jobs[0].targetLevel,64);assert.equal(s.covert.reserves.kyoto_gosho,123);assert.equal(s.covert.reserves.sunpu,undefined);assert(!s.captureRewards.includes('sunpu'));assert(s.captureRewards.includes('kyoto_gosho'));
+  assert.equal(Object.keys(s.castles).length,130);assert.equal(s.home,'kyoto_gosho');assert.equal(s.cycle.home,'kyoto_gosho');assert.equal(s.staffService.baseId,'kyoto_gosho');assert.equal(s.castles.kyoto_gosho.level,63);assert.equal(s.castles.kyoto_gosho.troops,6789);assert.equal(s.jobs[0].id,'kyoto_gosho');assert.equal(s.jobs[0].targetLevel,64);assert.equal(s.covert.reserves.kyoto_gosho,123);assert.equal(s.covert.reserves.sunpu,undefined);assert(!s.captureRewards.includes('sunpu'));assert(s.captureRewards.includes('kyoto_gosho'));
   assert.deepEqual(s.resources,old.state.resources);assert.equal(s.castles.sunpu.level,1);assert.notEqual(s.castles.sunpu.owner,s.clan);assert.deepEqual(row(h,staff),durable);assert.deepEqual(h.sql.prepare('SELECT * FROM staff_campaign_backups WHERE user_id=?').get(staff.user.id),backup);
   assert(result.staffBase.personalBaseCastle);assert.equal(result.staffBase.personalSunpu,undefined);
   const put=(await h.api('/sync',{method:'PUT',token:staff.token,body:{deviceId:staff.deviceId,revision:durable.revision,save:result.save}})).data;assert.equal(put.save.state.home,'kyoto_gosho');assert.equal(put.save.state.covert.reserves.kyoto_gosho,123);

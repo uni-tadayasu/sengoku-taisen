@@ -44,7 +44,7 @@ export function closeReservations(db,userId,campaignId,now,nonce,gate,args,march
 export async function relocateResidence(ctx,body){
  const {db,user,now,helpers:h}=ctx;
  await h.requireAccountAccess(db,user);
- if(user.is_admin||user.is_staff||user.is_deputy)h.fail(403,'RESIDENCY_PROTECTED','現在の立場では本拠を移せません。');
+ if(user.is_admin||user.is_sento||user.is_staff||user.is_deputy)h.fail(403,'RESIDENCY_PROTECTED','現在の立場では本拠を移せません。');
  if(!body||Object.keys(body).some(k=>!['deviceId','revision','requestId','castleId'].includes(k))||!Number.isSafeInteger(body.revision)||body.revision<0||!castles.has(body.castleId))
   h.fail(400,'INVALID_INPUT','124の通常城から移転先を選んでください。');
  const device=h.idField(body.deviceId,'端末識別子'),requestId=h.idField(body.requestId,'操作番号'),target=body.castleId;

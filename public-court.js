@@ -13,6 +13,7 @@
   太政大臣:{kind:'chancellor',seal:'stamp',art:'<path d="M8 11V9c0-2 2-2 2-4a2 2 0 0 1 4 0c0 2 2 2 2 4v2 M5 12h14v5H5z M3 20h18 M9 15h6"/>'},
   天皇:{kind:'emperor',seal:'sun',art:'<circle cx="12" cy="12" r="4"/><path d="M12 2v3 M12 19v3 M2 12h3 M19 12h3 M5 5l2 2 M17 17l2 2 M5 19l2-2 M17 7l2-2"/>'},
   上皇:{kind:'retired-emperor',seal:'moon',lineOnly:true,art:'<circle cx="12" cy="12" r="9"/><path d="M15 5a7 7 0 1 0 4 11 7 7 0 0 1-4-11Z M7 20h10"/>'},
+  法皇:{kind:'cloistered-emperor',seal:'lotus',lineOnly:true,art:'<circle cx="12" cy="12" r="10"/><path d="M12 5c-4 4-4 7 0 11 4-4 4-7 0-11Z M12 16c-5 0-8-4-7-7 4 0 7 3 7 7Z M12 16c5 0 8-4 7-7-4 0-7 3-7 7Z M6 19h12"/>'},
   摂政:{kind:'regent',seal:'sceptre',lineOnly:true,art:'<path d="m12 2 4 5-4 5-4-5 4-5Z M12 12v9 M6 16h12 M8 21h8 M4 6l2 2 M20 6l-2 2"/>'}
  });
  const HOUSES=Object.freeze({konoe:'近衛家',kujo:'九条家',ichijo:'一条家',nijo:'二条家',takatsukasa:'鷹司家'});
@@ -24,10 +25,10 @@
   if(houseId!=null&&!houseName)return null;
   if(value.class==='kuge')return{class:'kuge',className:'公家',houseId:houseName?houseId:null,houseName,originalClan,imperialHouseName:null,needsHouseSelection:!houseName};
   const name=value.imperialHouseName;
-  if(!houseName||typeof name!=='string'||!name.trim()||Array.from(name).length>80||/[\u0000-\u001f\u007f]/u.test(name))return null;
+  if(name!==null&&(!houseName||typeof name!=='string'||!name.trim()||Array.from(name).length>80||/[\u0000-\u001f\u007f]/u.test(name)))return null;
   return{class:'imperial',className:'皇族',houseId,houseName,originalClan,imperialHouseName:name,needsHouseSelection:false};
  }
- const lineageText=player=>{const value=lineage(player);return value?value.className+' · '+(value.imperialHouseName||value.houseName||'家柄未選択'):'';};
+ const lineageText=player=>{const value=lineage(player);return value?value.className+(value.imperialHouseName||value.houseName?' · '+(value.imperialHouseName||value.houseName):value.class==='imperial'?'':' · 家柄未選択'):'';};
  const lineageMarkup=player=>{const value=lineage(player);return value?`<span class="public-court-lineage" data-court-class="${value.class}">${escape(lineageText(player))}</span>`:'';};
  const cache=new Map(),versions=new Map();
  let sequence=0,floor=0;
@@ -118,3 +119,4 @@
  const api={lineage,lineageText,lineageMarkup,relations,relationsMarkup,update,office,badge,badgeTitle,slot,selfOffice,selfBadge,selfSlot,selfText:player=>officeText(selfOffice(player)),forget,refresh,normalize,beginRequest:()=>++sequence,text:player=>officeText(office(player)),clear(){cache.clear();versions.clear();floor=++sequence;refresh();}};global.SengokuPublicCourt=api;
  if(typeof module!=='undefined'&&module.exports)module.exports=api;
 })(typeof window!=='undefined'?window:globalThis);
+

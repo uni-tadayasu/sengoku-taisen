@@ -119,6 +119,7 @@
     return (artworkWidths[name] || []).map(width => `${prefix}assets/responsive/${name}-${width}.webp ${width}w`).join(', ');
   }
   function castleSources(prefix, id) {
+    if (id === 'sento_gosho') id = 'kyoto_gosho';
     const stem = id === 'kagoshima' ? 'assets/responsive/kagoshima-town-day-' : `assets/castle-scenes/${id}-`;
     return [400,720,1080,1536].map(width => `${prefix}${stem}${width}.webp ${width}w`).join(', ');
   }
@@ -265,13 +266,19 @@ ${surface === 'game' ? `      <div class="premium-introduction"><p class="premiu
         if (key === 'castle-heritage') {
           const castle = castleList.find(item => item.id === castlePreviewId);
           if (castle) {
-            const stem = castle.id === 'kagoshima' ? 'assets/responsive/kagoshima-town-day-' : `assets/castle-scenes/${castle.id}-`;
+            const artId = castle.id === 'sento_gosho' ? 'kyoto_gosho' : castle.id;
+            const stem = artId === 'kagoshima' ? 'assets/responsive/kagoshima-town-day-' : `assets/castle-scenes/${artId}-`;
             image?.setAttribute('srcset', castleSources(prefix, castle.id));
             image?.setAttribute('src', prefix + stem + '720.webp');
             image?.setAttribute('alt', castle.name + 'の城郭と城下町を描いた専用絵巻');
             image?.setAttribute('width', '1536'); image?.setAttribute('height', '864');
             if (title) title.textContent = castle.name + ' · 専用絵巻';
             if (description) description.textContent = castle.included ? castle.name + 'の建築と城下町を描いた専用景観です。' : '一般123城の専用景観が、980円の買い切りで利用できます。適用した城主の景観は、他のプレイヤーにも同じように表示されます。';
+            if (castle.id === 'sento_gosho') {
+              image?.setAttribute('alt', '仙洞御所の拠点を表す共通の御所イラスト');
+              if (title) title.textContent = '仙洞御所 · 御所絵巻';
+              if (description) description.textContent = '上皇・法皇の拠点を表す共通の御所イラストです。';
+            }
           }
         } else { image?.setAttribute('width', '1536'); image?.setAttribute('height', '1024'); }
         for (const button of element.querySelectorAll('[data-premium-preview]')) button.setAttribute('aria-pressed', String(button.getAttribute('data-premium-preview') === choice.key));
@@ -422,3 +429,4 @@ ${surface === 'game' ? `      <div class="premium-introduction"><p class="premiu
   }
   return { renderCatalog, createUI, normalizeContext, expiryLabel };
 });
+

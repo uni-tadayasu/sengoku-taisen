@@ -59,7 +59,7 @@ async function conflict(ctx,guard,body){
   if(holder?.user_id!==body.targetPlayerId)ctx.helpers.fail(409,'REGENT_REVISION_CONFLICT','解任対象の在任状況が変わりました。一覧を更新してください。');
  }else{
   if(holder)ctx.helpers.fail(409,'REGENT_OCCUPIED','摂政は在任中です。交代する場合は、先に現在の摂政を解任してください。');
-  if(!await S(ctx.db,`SELECT u.id ${PEOPLE} WHERE u.id=? AND ${TARGET}`,body.targetPlayerId).first())ctx.helpers.fail(400,'REGENT_TARGET_REQUIRED','天皇・上皇・太政大臣以外の、一般拠点または京都御所で活動中の領主を選んでください。');
+  if(!await S(ctx.db,`SELECT u.id ${PEOPLE} WHERE u.id=? AND ${TARGET}`,body.targetPlayerId).first())ctx.helpers.fail(400,'REGENT_TARGET_REQUIRED','天皇・上皇・法皇・太政大臣以外の、一般拠点または京都御所で活動中の領主を選んでください。');
  }
 }
 async function operation(ctx,guard){

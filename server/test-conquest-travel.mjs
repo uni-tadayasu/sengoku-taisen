@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {harness} from './test-support.mjs';
 import {conquestBattle} from './conquest.js';
+import {fixture,appoint,nominateSuccessor,certifySuccessor} from './test-court-support.mjs';
 
 const SAT=Date.parse('2026-11-21T03:00:00Z');
 let scopes=0,calls=0;
@@ -15,6 +16,18 @@ const pending=(h,id)=>h.sql.prepare('SELECT * FROM conquest_marches WHERE id=?')
 const count=(h,table)=>h.sql.prepare('SELECT COUNT(*) n FROM '+table).get().n;
 const far=d=>d.castles.filter(c=>!c.strategic).sort((a,b)=>globalThis.SengokuTravel.plan({sourceCastleId:'kiyosu',targetCastleId:b.id}).durationMs-globalThis.SengokuTravel.plan({sourceCastleId:'kiyosu',targetCastleId:a.id}).durationMs)[0];
 function barrier(h,match){let entered=0,release;const ready=new Promise(r=>release=r);h.beforeBatch=async statements=>{if(!statements.some(match))return;if(++entered===2){h.beforeBatch=null;release();}await ready;};}
+
+await scope('Sento remains a real imperial staging home without becoming a guild conquest target',async h=>{
+ const admin=await fixture(h,'仙洞出陣の太政大臣',{admin:true}),retired=await fixture(h,'仙洞から出陣する上皇',{staff:true}),successor=await fixture(h,'仙洞出陣の後継者',{staff:true});
+ await appoint(h,retired);const nominated=await nominateSuccessor(h,retired,successor);await certifySuccessor(h,admin,nominated.nomination);
+ await h.api('/sync/lease',post(retired,{deviceId:retired.deviceId}));await h.api('/guild',post(retired,{name:'仙洞出陣同盟'}));
+ let d=await read(h,retired);await h.api('/conquest/join',post(retired,{seasonId:d.season.id,requestId:crypto.randomUUID()}));d=await read(h,retired);
+ assert.equal(d.self.stagingCastleId,'sento_gosho');assert.equal(d.castles.length,129);assert(!d.castles.some(c=>c.id==='sento_gosho'||c.neighbors.includes('sento_gosho')));assert.equal(castle(h,d.season.id,'sento_gosho'),undefined);
+ const rejected=await depart(h,retired,{...action(d,'inuyama'),castleId:'sento_gosho'},400);assert.equal(rejected.data.error.code,'INVALID_INPUT');assert.equal(count(h,'conquest_marches'),0);
+ const launched=(await depart(h,retired,action(d,'inuyama'))).data,route=globalThis.SengokuTravel.plan({sourceCastleId:'sento_gosho',targetCastleId:'inuyama'});
+ assert.equal(launched.march.sourceCastleId,'sento_gosho');assert.equal(launched.march.sourceName,'仙洞御所');assert.equal(launched.march.durationMs,route.durationMs);assert.equal(launched.march.distanceKm,route.distanceKm);
+ assert.equal((await read(h,retired)).marches.active[0].sourceName,'仙洞御所');
+});
 
 await scope('distance-based departure reserves full troops and resolves only at arrival, once',async h=>{
  const {players:[a]}=await guild(h,'距離検証');const d=await read(h,a),body=action(d,'inuyama'),before=castle(h,d.season.id,'inuyama');

@@ -74,7 +74,7 @@ function negotiationOwner(person){
   const social=global.SengokuSocial,self=social?.getUser?.(),context=social?.getCourtContext?.(),court=global.SengokuPublicCourt;
   if(!global.SengokuBridge?.openCourtNegotiations||!validId(self?.id)||!validId(person?.id)||self.id===person.id||!context?.user||context.user.id!==self.id||context.playerId!==self.id||context.pending||context.banned||self.isBanned||self.nameReleased)return '';
   const lineage=court?.lineage?.(self),own=court?.relations?.(self),target=court?.relations?.(person);
-  if(!lineage?.houseId||lineage.needsHouseSelection||own?.suzerain||own?.vassals.some(row=>row.id===person.id)||person.courtLineage!=null||person.isAdmin===true||person.isStaff===true||person.isDeputy===true||['edo','kyoto_gosho','kagoshima'].includes(person.homeCastleId)||person.homeCastleOwnerId&&person.homeCastleOwnerId!==person.id||person.courtRelations?.suzerain||target?.suzerain||target?.vassalCount)return '';
+  if(!lineage?.houseId||lineage.needsHouseSelection||own?.suzerain||own?.vassals.some(row=>row.id===person.id)||person.courtLineage!=null||person.isAdmin===true||person.isStaff===true||person.isDeputy===true||['edo','kyoto_gosho','kagoshima','sento_gosho'].includes(person.homeCastleId)||person.homeCastleOwnerId&&person.homeCastleOwnerId!==person.id||person.courtRelations?.suzerain||target?.suzerain||target?.vassalCount)return '';
   return self.id;
 }
 function detail(person){
@@ -208,3 +208,4 @@ doc.addEventListener('click',click);doc.addEventListener('submit',search);doc.ad
 if(doc.readyState==='complete')queueMicrotask(openShared);else doc.addEventListener('DOMContentLoaded',openShared,{once:true});
 global.SengokuLordProfile={open,commanderCard,paintCommander,profileButton,linkedName,directory,dispose};
 })(typeof window!=='undefined'?window:globalThis);
+

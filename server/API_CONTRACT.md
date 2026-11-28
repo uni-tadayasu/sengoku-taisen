@@ -1,5 +1,23 @@
 # 戦国VS（SENGOKU VS）通信API
 
+## Imperial retirement and Sento residence (v5.26.0)
+
+The latest retirement rules replace the unconditional retirement behavior documented for v5.11.1 below. Only currently enrolled imperial-family members can become the next Emperor. A retained-home formal member is eligible; the original membership term and imperial qualification are revalidated when nominating and approving.
+
+Retired Emperor (`retired-emperor`, 上皇) and Cloistered Emperor (`cloistered-emperor`, 法皇) share **one global seat**. Approval determines the outgoing Emperor's result atomically: an empty seat grants 上皇; either existing title occupies the seat and the outgoing Emperor returns to 皇族. Ordination changes the existing holder's title to 法皇 without freeing or creating a seat. The family identity and verified historical succession receipts survive either outcome.
+
+`GET /court/retirement` returns `{ok,retirement,capacity,serverNow}`. `capacity.shared` is `{limit:1,count,available,holder}` with a nullable holder `{id,name,kind,title}`. `capacity.retired` and `capacity.cloistered` remain per-title statistics for compatible clients; their availability does not imply separate seats. `retirement` includes `kind`, `title`, `isRetiredEmperor`, `isCloisteredEmperor`, `isReturnedImperial`, `canOrdain`, `canRelocate`, `shogunateIndependent`, `revision`, `successionId`, timestamps and a reason. A verified 上皇/法皇 has `base:{id:"sento_gosho",name:"仙洞御所",fixed:true}` and cannot use ordinary home relocation while holding the seat.
+
+`POST /court/retirement/ordain` requires `{requestId,expectedRevision,successionId,confirmed:true}`. Only the current verified 上皇 may ordain. The transition and its receipt commit atomically; replay recovers a lost response without changing the current title again. A receipt from an older reign cannot recreate a retired title after reaccession. Current imperial appointments and protected operator roles retain their precedence.
+
+On retirement, Kyoto service and retained-home membership end together. An 上皇 moves to the dedicated 仙洞御所; an outgoing Emperor who returns to 皇族 restores the previous ordinary home. Personal assets and development are preserved. The ordinary starting-home and relocation selectors do not offer 仙洞御所, and client-provided titles, ownership or saved homes cannot grant residence rights.
+
+Verified 上皇/法皇 are independent of shogunate palace control and cannot enter a shogun's vassal relationship. The field attaches `shogunateIndependent:true` and omits individual palace control. They retain Kyoto shared-estate access and its current development effects at 仙洞御所. Effect calculations use the higher personal/palace level for each building and applicable fortification; they never overwrite personal building levels or add the same enhancement twice. Authenticated estate projection includes bounded development history so future construction cannot increase past production. Returned 皇族 receive neither retirement independence nor enhancement inheritance from that historical status alone.
+
+Existing eligible retirement records are also normalized to one global seat, ordered by `retired_at` and then `user_id`. The earliest holder retains the seat; later holders return to imperial-family status while their immutable succession history, family identity and personal assets remain intact.
+
+Migrations `0064_imperial_retirement` and `0065_imperial_palace_enhancements` define the verified holder view, shared seat transition guards, ordination receipts and palace enhancement history. Historical receipts remain immutable. Inactive records from a past reign cannot become additional active holders when an Emperor is dismissed or their membership term changes.
+
 ## 京都御所への正式加入 — voluntary court membership
 
 Authenticated `GET /court` adds `membership:{isMember,canJoin,reason,requirement}`. The requirement is `rankId:"court-7"`, `rankName:"従五位"`, `minScore:35000`. A visit or an external court appointment does not enroll the player. Voluntary enrollment always requires the current server-evaluated score; the Regent's visit privileges do not bypass this threshold. Current Kyoto staff or a current retained-base membership cannot enroll again. Eligible primary/deputy operators and externally appointed ministers use the retained-base path.

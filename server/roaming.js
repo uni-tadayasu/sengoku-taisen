@@ -72,7 +72,7 @@ async function battle(ctx){
  const maintenanceAuthority=protectMaintenance(branchAccess,await maintenanceContext(db,user.id,save,clock));
  if(maintenanceAuthority.hasMore||maintenanceAuthority.asOfElapsedMs>clock.elapsedMs)h.fail(409,'CLOCK_STALE','維持費の時間経過を同期しています。最新の保存へ同期してください。');
  const courtEstate=await h.courtEstateContext(db,user,save,clock,ctx.now);
- const game=GameEngine.fromSave(save,GAME_OFFICERS,{courtEstateProjection:courtEstate.projection,isAdmin:!!user.is_admin,isDeputy:!!user.is_deputy,isStaff:!!user.is_staff,isCourtProtected:!!user.is_court_protected,staffBase:shared,maintenanceAuthority,branchAuthority:{resolvedElapsedMs:branchAccess.resolvedElapsedMs}});
+ const game=GameEngine.fromSave(save,GAME_OFFICERS,{courtEstateProjection:courtEstate.projection,isSento:!!user.is_sento,isAdmin:!!user.is_admin,isDeputy:!!user.is_deputy,isStaff:!!user.is_staff,isCourtProtected:!!user.is_court_protected,staffBase:shared,maintenanceAuthority,branchAuthority:{resolvedElapsedMs:branchAccess.resolvedElapsedMs}});
  const advanced=game.applyWorldClock(clock,{maxSeconds:86400,deferCycleSettlement:true});
  if(!advanced.ok||advanced.pending||advanced.courtEstatePending||advanced.settlementRequired)h.fail(409,'CLOCK_STALE','共通時計と本拠を同期してから出陣してください。');
  const result=game.departRoamingBattle(body.encounterId,body.tactic,body.troops,{...body,deploymentUnit:unit});
@@ -107,7 +107,7 @@ export async function settleRoamingMarch(ctx,march){
  const maintenanceAuthority=protectMaintenance(branchAccess,await maintenanceContext(db,user.id,save,clock));
  if(maintenanceAuthority.hasMore||maintenanceAuthority.asOfElapsedMs>clock.elapsedMs)h.fail(409,'CLOCK_STALE','維持費の時間経過を同期しています。最新の保存へ同期してください。');
  const courtEstate=await h.courtEstateContext(db,user,save,clock,now);
- save.state.march=payload.nativeMarch;const game=GameEngine.fromSave(save,GAME_OFFICERS,{courtEstateProjection:courtEstate.projection,isAdmin:!!user.is_admin,isDeputy:!!user.is_deputy,isStaff:!!user.is_staff,isCourtProtected:!!user.is_court_protected,staffBase:shared,maintenanceAuthority,branchAuthority:{resolvedElapsedMs:branchAccess.resolvedElapsedMs}});
+ save.state.march=payload.nativeMarch;const game=GameEngine.fromSave(save,GAME_OFFICERS,{courtEstateProjection:courtEstate.projection,isSento:!!user.is_sento,isAdmin:!!user.is_admin,isDeputy:!!user.is_deputy,isStaff:!!user.is_staff,isCourtProtected:!!user.is_court_protected,staffBase:shared,maintenanceAuthority,branchAuthority:{resolvedElapsedMs:branchAccess.resolvedElapsedMs}});
  const advanced=game.applyWorldClock(clock,{maxSeconds:86400,deferCycleSettlement:true});
  if(!advanced.ok||advanced.pending||advanced.courtEstatePending||advanced.settlementRequired)h.fail(409,'MARCH_RETRY','到着時刻へ本拠を同期しています。');
  game.resolveDueMarches();const outcome=game.state.marchHistory.find(x=>x.id===march.id);

@@ -302,7 +302,7 @@ test('current battle limits and automatic mail are explained in public HTML with
   assert(article);assert(!/\bhidden\b|aria-hidden=["']true/.test(article[1]));
   const table=article[2].match(/<table\b[^>]*><caption>共通フィールドの城・成長上限・勝利時の扱い<\/caption>([\s\S]*?)<\/table>/)?.[1];assert(table);
   const rows=[...table.matchAll(/<tr>([\s\S]*?)<\/tr>/g)].slice(1).map(match=>normalized(match[1]));
-  assert.equal(rows.length,4);assert.match(rows[0],/^江戸城・京都御所・鹿児島城江戸城Lv\.64／京都御所Lv\.128／鹿児島城Lv\.32勝利すると/);assert(rows[0].includes('各50%'));assert(rows[0].includes('決着時'));assert(rows[0].includes('戦報で確認'));assert.doesNotMatch(rows[0],/報酬戦|占領不可|占領できず|占領されません/);
+  assert.equal(rows.length,4);assert.match(rows[0],/^江戸城・京都御所・仙洞御所・鹿児島城江戸城Lv\.64／京都御所・仙洞御所Lv\.128／鹿児島城Lv\.32勝利すると/);assert(rows[0].includes('各50%'));assert(rows[0].includes('決着時'));assert(rows[0].includes('戦報で確認'));assert.doesNotMatch(rows[0],/報酬戦|占領不可|占領できず|占領されません/);
   assert.match(rows[1],/^二条城・大坂城・名古屋城Lv\.48占領戦/);assert(rows[1].includes('自分の所領'));assert(rows[1].includes('各50%'));
   assert.match(rows[2],/^通常の本拠Lv\.32守備側の兵損/);assert(rows[2].includes('10%以内'));assert(rows[2].includes('各50%'));assert.doesNotMatch(rows[2],/攻撃側への占領移転はなく|領有を移さない/);assert(rows[2].includes('家臣が待っている場合'));assert(rows[2].includes('入城順で次の領主へ交代'));
   assert.match(rows[3],/^通常の占領領地Lv\.32選択した領主の所領を襲撃します。/);assert(rows[3].includes('守備側の兵損は各兵数の10%以内'));assert(rows[3].includes('相手の4資源の各50%'));assert(rows[3].includes('この襲撃では城の領有者は変わりません。'));

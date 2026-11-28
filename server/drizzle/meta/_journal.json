@@ -449,6 +449,20 @@
       "when": 1799280000015,
       "tag": "0063_court_formal_rank_terms",
       "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "6",
+      "when": 1799280000016,
+      "tag": "0064_imperial_retirement",
+      "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "6",
+      "when": 1799280000017,
+      "tag": "0065_imperial_palace_enhancements",
+      "breakpoints": true
     }
   ]
 }

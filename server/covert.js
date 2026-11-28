@@ -59,7 +59,7 @@ async function status(ctx,snapshot=null){
  snapshot.save.state.covert=await incoming({...ctx,user:current},found.state);
  const shared=current.is_staff&&!current.is_admin?await h.staffBaseDto(db,current,snapshot.clock,now):null;
  const emperor=await h.courtImperialAuthority(db,current);
- const game=GameEngine.fromSave(snapshot.save,GAME_OFFICERS,{courtEstateProjection:snapshot.courtEstateProjection||null,isAdmin:!!current.is_admin,isDeputy:!!current.is_deputy,isStaff:!!current.is_staff,isCourtProtected:!!current.is_court_protected,isCourtEmperor:emperor.isCourtEmperor,isCourtRegent:emperor.isCourtRegent,staffBase:shared});
+ const game=GameEngine.fromSave(snapshot.save,GAME_OFFICERS,{courtEstateProjection:snapshot.courtEstateProjection||null,isSento:!!current.is_sento,isAdmin:!!current.is_admin,isDeputy:!!current.is_deputy,isStaff:!!current.is_staff,isCourtProtected:!!current.is_court_protected,isCourtEmperor:emperor.isCourtEmperor,isCourtRegent:emperor.isCourtRegent,staffBase:shared});
  const covert=game.covertStatus(),listUrl=new URL(url);listUrl.searchParams.set('limit',url.searchParams.get('limit')||'100');
  covert.rules={...covert.rules,canAttackEdoFromKyoto:emperor.canActForEmperor,lootPolicy:FIELD_LOOT_POLICY.id,lootFraction:FIELD_LOOT_POLICY.fraction};if(emperor.canActForEmperor)h.registerCourtGuard(emperor.guard);
  const list=await h.getFieldList(db,current,listUrl,now);
@@ -101,7 +101,7 @@ async function playerTarget(ctx,targetSpec,clock,action,term=null){
  if(!target||target.ban_active)h.fail(404,'FIELD_PLAYER_NOT_FOUND','相手の共有拠点が見つかりません。');
  let row=await h.getSyncRow(db,target.id);
  if(!row?.save_json)h.fail(404,'FIELD_PLAYER_NOT_FOUND','相手の本拠はまだ共有されていません。');
- const rewardOnly=['edo','kyoto_gosho','kagoshima'].includes(targetSpec.castleId);
+ const rewardOnly=['edo','kyoto_gosho','kagoshima','sento_gosho'].includes(targetSpec.castleId);
  // Spying stays read-only. A damaging counterattack first settles the owner's
  // unchanged troops/facilities to this time, then applies losses at that boundary.
  const journey=action==='retaliate'?await advanceReservedMarch({...ctx,user:target,helpers:{...h,reconcileCovertProgress}},row,clock):null;
@@ -112,15 +112,18 @@ async function playerTarget(ctx,targetSpec,clock,action,term=null){
  branches.guard={sql:branches.guard.sql+' AND '+cpuLosses.guard.sql,args:[...branches.guard.args,...cpuLosses.guard.args]};
  if(targetSpec.castleId!==s.home&&(!['nijo','osaka','nagoya'].includes(targetSpec.castleId)||s.castles[targetSpec.castleId].owner!==s.clan))h.fail(409,'FIELD_TARGET_CHANGED','この領主の共有拠点ではありません。派遣先を更新してください。');
  if(s.gameOver||Number(row.cycle_index)<Math.floor(clock.elapsedMs/cycleMs)&&(!rewardOnly||action==='retaliate'))h.fail(409,'BASE_UNAVAILABLE','この拠点は領地の精算中です。');
- const palace=target.is_staff&&!target.is_admin&&targetSpec.castleId==='kyoto_gosho',defenseState=palace?structuredClone(s):s;
+ const palace=target.is_staff&&!target.is_admin&&targetSpec.castleId==='kyoto_gosho',defenseState=palace?structuredClone(s):{...s};
  const sharedGuard=palace?await h.fieldStaffDefense(db,defenseState,clock):safe;
- const g=GameEngine.fromSave(save,GAME_OFFICERS,{isAdmin:!!target.is_admin,isDeputy:!!target.is_deputy,isStaff:!!target.is_staff,isCourtProtected:!!target.is_court_protected}),castle=defenseState.castles[targetSpec.castleId];
+ const courtEstate=await h.courtEstateContext(db,target,save,clock,now);
+ const g=GameEngine.fromSave(save,GAME_OFFICERS,{courtEstateProjection:courtEstate.projection,isSento:!!target.is_sento,isAdmin:!!target.is_admin,isDeputy:!!target.is_deputy,isStaff:!!target.is_staff,isCourtProtected:!!target.is_court_protected}),castle=defenseState.castles[targetSpec.castleId],palaceCombatEffects=g.courtEstateCombatEffects(clock.elapsedMs);
+ if(palaceCombatEffects)defenseState.palaceCombatEffects=palaceCombatEffects;
  const support=await getAllianceDefense(db,target,targetSpec.castleId,now),protection=action==='retaliate'?await prepareProtection(db,user,target,now,{reward:rewardOnly,fail:h.fail}):{guard:safe,shieldUntil:0};
  const supportedState={...defenseState,worldClock:{...s.worldClock,elapsedMs:clock.elapsedMs},castles:{...defenseState.castles,[targetSpec.castleId]:{...castle,troops:castle.troops+support.troops}}};
- const snapshot=GameEngine.normalizeCovertSnapshot({level:castle.level,troops:s.troops,garrison:castle.troops,wall:targetSpec.castleId===s.home?defenseState.buildings.wall:castle.wall,defensePower:h.fieldDefense(supportedState,'balanced',0,targetSpec.castleId).power,resources:s.resources,army:g.armyStats()});
+ const isHome=targetSpec.castleId===s.home;
+ const snapshot=GameEngine.normalizeCovertSnapshot({level:isHome&&palaceCombatEffects?Math.max(castle.level,palaceCombatEffects.castleLevel):castle.level,troops:s.troops,garrison:castle.troops,wall:isHome?Math.max(defenseState.buildings.wall,palaceCombatEffects?.wall||0):castle.wall,defensePower:h.fieldDefense(supportedState,'balanced',0,targetSpec.castleId).power,resources:s.resources,army:g.armyStats()});
  snapshot.activeBranches=s.branches.filter(branch=>branch.parentCastleId===targetSpec.castleId&&branch.level>0&&!branch.fallen).map(branch=>branch.id);
  const canonicalTarget={kind:'player',playerId:target.id,castleId:targetSpec.castleId,name:castleMap.get(targetSpec.castleId).name,playerName:target.name};
- const role=journey?h.roleCommitGuard(target):guardLordSupport(h.roleCommitGuard(target),target),guards={sql:`EXISTS(SELECT 1 FROM player_saves WHERE user_id=? AND revision=? AND save_json IS NOT NULL) AND ${role.sql} AND ${sharedGuard.sql} AND ${branches.guard.sql} AND ${residency.sql}`,args:[target.id,row.revision,...role.args,...sharedGuard.args,...branches.guard.args,...residency.args]};
+ const role=withCourtEstateGuard(journey?h.roleCommitGuard(target):guardLordSupport(h.roleCommitGuard(target),target),courtEstate),guards={sql:`EXISTS(SELECT 1 FROM player_saves WHERE user_id=? AND revision=? AND save_json IS NOT NULL) AND ${role.sql} AND ${sharedGuard.sql} AND ${branches.guard.sql} AND ${residency.sql}`,args:[target.id,row.revision,...role.args,...sharedGuard.args,...branches.guard.args,...residency.args]};
  if(action==='retaliate'){
   if(snapshot.activeBranches.length)h.fail(409,'BRANCHES_REQUIRED','大都市拠点へ反撃する前に、残っている支拠点をすべて陥落させてください。');
   const relation=await h.fieldRelation(db,user.id,target.id);if(h.fieldRelationStatus(relation,user.id,clock.elapsedMs)==='allied')h.fail(409,'ALLIED_TARGET','同盟期間中の相手には反撃できません。');
@@ -151,7 +154,7 @@ async function mutation(ctx,action){
  const shared=user.is_staff&&!user.is_admin?await h.staffBaseDto(db,user,clock,ctx.now):null;
  const emperor=await h.courtImperialAuthority(db,user);
  const courtEstate=await h.courtEstateContext(db,user,save,clock,ctx.now);
- const game=GameEngine.fromSave(save,GAME_OFFICERS,{courtEstateProjection:courtEstate.projection,isAdmin:!!user.is_admin,isDeputy:!!user.is_deputy,isStaff:!!user.is_staff,isCourtProtected:!!user.is_court_protected,isCourtEmperor:emperor.isCourtEmperor,isCourtRegent:emperor.isCourtRegent,staffBase:shared});
+ const game=GameEngine.fromSave(save,GAME_OFFICERS,{courtEstateProjection:courtEstate.projection,isSento:!!user.is_sento,isAdmin:!!user.is_admin,isDeputy:!!user.is_deputy,isStaff:!!user.is_staff,isCourtProtected:!!user.is_court_protected,isCourtEmperor:emperor.isCourtEmperor,isCourtRegent:emperor.isCourtRegent,staffBase:shared});
  const options={requestId:body.requestId,campaignId:body.campaignId,sequence:body.sequence};
  const station=body.stationId?game.state.covert.stations.find(s=>s.id===body.stationId):null;
  const targetSpec=action==='dispatch'?body.target:action==='retaliate'?station?.target:null;
@@ -246,7 +249,7 @@ export async function settleCovertDispatches(ctx,{actorId=null,limit=8}={}){
   const branches=await h.branchStateGuard(db,user.id,ledger.campaign_id);await h.reconcileBranchProgress(db,user.id,save,clock);save.state.covert=found.state;
   const maintenanceAuthority=protectMaintenance(branches,await maintenanceContext(db,user.id,save,clock));
   if(maintenanceAuthority.hasMore)continue;
-  const shared=user.is_staff&&!user.is_admin?await h.staffBaseDto(db,user,clock,now):null,emperor=await h.courtImperialAuthority(db,user),courtEstate=await h.courtEstateContext(db,user,save,clock,now),game=GameEngine.fromSave(save,GAME_OFFICERS,{courtEstateProjection:courtEstate.projection,isAdmin:!!user.is_admin,isDeputy:!!user.is_deputy,isStaff:!!user.is_staff,isCourtProtected:!!user.is_court_protected,isCourtEmperor:emperor.isCourtEmperor,isCourtRegent:emperor.isCourtRegent,staffBase:shared,maintenanceAuthority,branchAuthority:{resolvedElapsedMs:branches.resolvedElapsedMs}});
+  const shared=user.is_staff&&!user.is_admin?await h.staffBaseDto(db,user,clock,now):null,emperor=await h.courtImperialAuthority(db,user),courtEstate=await h.courtEstateContext(db,user,save,clock,now),game=GameEngine.fromSave(save,GAME_OFFICERS,{courtEstateProjection:courtEstate.projection,isSento:!!user.is_sento,isAdmin:!!user.is_admin,isDeputy:!!user.is_deputy,isStaff:!!user.is_staff,isCourtProtected:!!user.is_court_protected,isCourtEmperor:emperor.isCourtEmperor,isCourtRegent:emperor.isCourtRegent,staffBase:shared,maintenanceAuthority,branchAuthority:{resolvedElapsedMs:branches.resolvedElapsedMs}});
   const completed=[];for(const dispatch of [...game.state.covert.dispatches])if(dispatch.cycle!==Math.floor(clock.elapsedMs/cycleMs)){const result=game.cancelCovertDispatch(dispatch.id,'年月が変わったため派遣を取りやめました。',{authoritative:true});if(result)completed.push(result);}
   const advanced=completed.length?{ok:true}:game.applyWorldClock(clock,{maxSeconds:86400,deferCycleSettlement:true});if(!advanced.ok||advanced.pending||advanced.courtEstatePending||advanced.settlementRequired)continue;
   const targetSnapshots={},targetGuards=[];let playerTargets=0;const cursor=Number((await stmt(db,'SELECT COALESCE(MAX(rowid),0) AS cursor FROM field_battles').first()).cursor);

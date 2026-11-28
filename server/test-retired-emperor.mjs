@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
 import {readFileSync} from 'node:fs';
 import {harness} from './test-support.mjs';
-import {fixture,post,appoint,row,save,count,nominateSuccessor} from './test-court-support.mjs';
+import {fixture,post,appoint,row,save,count,nominateSuccessor,makeImperial} from './test-court-support.mjs';
 import {messageRegister} from './message-addressing.js';
 
 let checks=0,calls=0;
@@ -10,7 +10,7 @@ async function scope(name,test){const h=harness();try{await test(h);checks++;con
 async function family(h){
  const operator=await fixture(h,'皇位継承の太政大臣',{admin:true});
  const current=await fixture(h,'退位する天皇',{staff:true}),next=await fixture(h,'次代の御所担当',{staff:true}),other=await fixture(h,'別の御所担当',{staff:true}),ordinary=await fixture(h,'通常城の領主');
- await appoint(h,current);return{operator,current,next,other,ordinary};
+ await appoint(h,current);makeImperial(h,next);makeImperial(h,other);return{operator,current,next,other,ordinary};
 }
 const body=next=>({requestId:crypto.randomUUID(),targetPlayerId:next.user.id});
 async function retire(h,current,operation,expected=200){
@@ -64,7 +64,7 @@ try{
   await retire(h,f.operator,body(f.next),403);
   assert.equal(count(h,'court_succession_requests'),0);assert.equal(count(h,'court_retired_emperors'),0);
  });
- await scope('abdication atomically moves the crown and restores the predecessor ordinary campaign on sync',async h=>{
+ await scope('abdication atomically moves the crown and moves the predecessor personal campaign to Sento on sync',async h=>{
   const f=await family(h),beforeSave=save(h,f.current),beforeNext=row(h,f.next),backup=h.sql.prepare('SELECT * FROM staff_campaign_backups WHERE user_id=?').get(f.current.user.id);
   const result=(await retire(h,f.current,body(f.next))).data;
   assert.equal(result.idempotent,false);assert.equal(result.needsSync,false);assert.equal(result.user,undefined);assert.equal(result.nomination.status,'approved');
@@ -75,8 +75,8 @@ try{
   assert.equal(h.sql.prepare('SELECT save_json FROM staff_campaign_backups WHERE user_id=?').get(f.current.user.id).save_json,backup.save_json);
   assert.notEqual(h.sql.prepare('SELECT left_elapsed_ms FROM staff_campaign_backups WHERE user_id=?').get(f.current.user.id).left_elapsed_ms,null);
   const restored=(await h.api('/sync?deviceId='+f.current.deviceId,{token:f.current.token})).data;
-  assert.equal(restored.user.isStaff,false);assert.equal(restored.save.state.home,JSON.parse(backup.save_json).state.home);
-  assert(!['edo','kyoto_gosho'].includes(restored.save.state.home));
+  assert.equal(restored.user.isStaff,false);assert.equal(restored.save.state.home,'sento_gosho');assert.equal(restored.save.state.cycle.home,'sento_gosho');
+  assert.equal(h.sql.prepare('SELECT save_json FROM staff_campaign_backups WHERE user_id=?').get(f.current.user.id).save_json,backup.save_json);
   for(const key of ['resources','officers','officerVariants'])assert.deepEqual(restored.save.state[key],beforeSave.state[key],key+' remains personal property');
   assert.equal((await h.api('/court',{token:f.current.token})).data.self.title,'上皇');
   const newCourt=(await h.api('/court',{token:f.next.token})).data;assert.equal(newCourt.self.title,'天皇');assert.equal(newCourt.self.isCourtEmperor,true);

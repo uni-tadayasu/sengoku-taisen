@@ -277,7 +277,7 @@ function create(options={}){
   checkpoint();generation++;queue=Promise.resolve();refreshPending=null;initialized=false;applying=false;attempt=null;leaseDeadline=0;accessRefreshPending=true;clearTimers();roleAccess({},true);session?.onUser?.(null);
   emit({linked:true,ready:false,writable:false,reason:'access-changed',message:message||'領主の利用状態が更新されました。最新の接続状態を確認しています。',leaseExpiresAt:null});schedulePoll();return true;
  }
- function roleAccess(user={},pending=false){if(pending){branchAuthoritySnapshot=null;branchCorrectionPending=null;maintenanceAuthoritySnapshot=null;courtEstateProjectionSnapshot=null;}const current=bridge(),roles={isAdmin:user.isAdmin===true,isStaff:user.isStaff===true&&user.isAdmin!==true,isDeputy:user.isDeputy===true&&user.isAdmin!==true&&user.isStaff!==true,pending};if(current?.setRoleAccess)current.setRoleAccess(roles);else current?.setAdminAccess?.(roles.isAdmin);}
+ function roleAccess(user={},pending=false,entitlements=null){if(pending){branchAuthoritySnapshot=null;branchCorrectionPending=null;maintenanceAuthoritySnapshot=null;courtEstateProjectionSnapshot=null;}const current=bridge(),roles={isAdmin:user.isAdmin===true,isStaff:user.isStaff===true&&user.isAdmin!==true,isDeputy:user.isDeputy===true&&user.isAdmin!==true&&user.isStaff!==true,isSento:!pending&&entitlements?.sentoGosho===true,pending};if(current?.setRoleAccess)current.setRoleAccess(roles);else current?.setAdminAccess?.(roles.isAdmin);}
  function applyCourtProtection(snapshot,g){if(!valid(g)||String(snapshot.user?.id)!==String(session.id))return;return bridge()?.applyCourtProtection?.({source:'cloud',playerId:String(session.id),entitlements:{courtProtected:snapshot.entitlements?.courtProtected===true,...(typeof snapshot.entitlements?.courtEstate==='boolean'?{courtEstate:snapshot.entitlements.courtEstate}:{})}});}
  function courtEstateProjectionMeta(snapshot){
   const playerId=String(snapshot.user?.id||''),campaignId=String(snapshot.save?.state?.walking?.campaignId||''),raw=snapshot.courtEstateProjection,previous=courtEstateProjectionSnapshot,same=previous&&previous.playerId===playerId&&previous.campaignId===campaignId;
@@ -290,7 +290,7 @@ function create(options={}){
    if(!projection||projection.revision<old.revision||projection.revision===old.revision&&(projection.base.revision<old.base.revision||projection.base.revision===old.base.revision&&projection.asOfElapsedMs<old.asOfElapsedMs))projection=old;
   }
   courtEstateProjectionSnapshot={playerId,campaignId,projection:projection?JSON.parse(JSON.stringify(projection)):null};
-  return{source:'cloud',playerId,courtEstateCampaignId:campaignId,courtEstateProjection:projection?JSON.parse(JSON.stringify(projection)):null};
+  return{source:'cloud',playerId,sentoGoshoCampaignId:campaignId,courtEstateCampaignId:campaignId,courtEstateProjection:projection?JSON.parse(JSON.stringify(projection)):null};
  }
  function applyCourtEstateProjection(snapshot,g){
   if(!valid(g)||String(snapshot.user?.id)!==String(session.id))return;
@@ -344,12 +344,12 @@ function create(options={}){
  function olderBranchSnapshot(snapshot){const previous=branchAuthoritySnapshot;return Boolean(previous&&previous.meta.playerId===String(snapshot.user?.id)&&previous.meta.branchCampaignId===snapshot.save?.state?.walking?.campaignId&&previous.revision>snapshot.revision);}
  function observeBranchSnapshot(snapshot){
   const current=bridge(),role=current?.getRoleAccess?.(),campaignId=current?.getState?.()?.walking?.campaignId;
-  if(!session||!initialized||banned||accessRefreshPending||role?.pending||!snapshot?.user||snapshot.user.isBanned||String(snapshot.user.id)!==String(session.id)||!Number.isSafeInteger(snapshot.revision)||snapshot.revision<revision||branchAuthoritySnapshot&&snapshot.revision<branchAuthoritySnapshot.revision||!campaignId||snapshot.save?.state?.walking?.campaignId!==campaignId||role&&(Boolean(snapshot.user.isAdmin)!==role.isAdmin||Boolean(snapshot.user.isStaff&&!snapshot.user.isAdmin)!==role.isStaff||Boolean(snapshot.user.isDeputy&&!snapshot.user.isAdmin&&!snapshot.user.isStaff)!==Boolean(role.isDeputy)))return{ok:false,ignored:true};
+  if(!session||!initialized||banned||accessRefreshPending||role?.pending||!snapshot?.user||snapshot.user.isBanned||String(snapshot.user.id)!==String(session.id)||!Number.isSafeInteger(snapshot.revision)||snapshot.revision<revision||branchAuthoritySnapshot&&snapshot.revision<branchAuthoritySnapshot.revision||!campaignId||snapshot.save?.state?.walking?.campaignId!==campaignId||role&&(Boolean(snapshot.user.isAdmin)!==role.isAdmin||Boolean(snapshot.user.isStaff&&!snapshot.user.isAdmin)!==role.isStaff||Boolean(snapshot.user.isDeputy&&!snapshot.user.isAdmin&&!snapshot.user.isStaff)!==Boolean(role.isDeputy)||(snapshot.entitlements?.sentoGosho===true)!==Boolean(role.isSento)))return{ok:false,ignored:true};
   applyCourtProtection(snapshot,generation);if(courtEstateReplayRequired(snapshot)){void refresh();return{ok:true,deferred:true};}applyCourtEstateProjection(snapshot,generation);applyMaintenanceAuthority(snapshot,generation,{deferFutureBaseline:true});return applyBranchAuthority(snapshot,generation)||{ok:true};
  }
  function setRole(snapshot){
   const user=snapshot?.user;if(!user||String(user.id)!==String(session?.id))throw Error('同期する領主を確認できませんでした。');
-  roleAccess(user);session.onUser?.(user);applyCourtProtection(snapshot,generation);
+  roleAccess(user,false,snapshot.entitlements);session.onUser?.(user);applyCourtProtection(snapshot,generation);
  }
  function observeResidency(result){if(Number.isSafeInteger(result?.residencyRevision))global.SengokuResidency?.observe?.(result,{playerId:String(session?.id||''),revision:result.residencyRevision});}
  function lease(snapshot){
@@ -545,3 +545,4 @@ global.addEventListener?.('sengoku:game-saved',()=>sync.notifySave());
 global.addEventListener?.('online',()=>sync.connectionChanged());global.addEventListener?.('offline',()=>sync.connectionChanged());global.addEventListener?.('pagehide',()=>sync.pageHidden());global.addEventListener?.('pageshow',()=>sync.visibilityChanged());
 global.document?.addEventListener?.('visibilitychange',()=>sync.visibilityChanged());
 })(window);
+

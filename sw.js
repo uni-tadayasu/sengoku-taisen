@@ -1,5 +1,5 @@
 /* 本体は先に保存。大きな絵巻は、実際に開いたものから保存します。 */
-const RELEASE='5.25.0-20261128';
+const RELEASE='5.26.0-20261128';
 const CACHE='sengoku-taisen-v'+RELEASE;
 const scopeURL=()=>self.registration?.scope||self.location.origin+'/';
 const currentMatch=(request,name=CACHE)=>caches.open(name).then(cache=>cache.match(request));
@@ -233,3 +233,4 @@ self.addEventListener('push',event=>{
 self.addEventListener('notificationclick',event=>{
  event.notification.close();event.waitUntil((async()=>{const destination=notificationDestination(event.notification.data?.destination),entry=notificationEntry(destination),root=new URL('./',scopeURL()),clients=await self.clients.matchAll({type:'window',includeUncontrolled:true});for(const client of clients){try{const url=new URL(client.url);if(url.origin===root.origin&&[root.pathname,root.pathname+'index.html'].includes(url.pathname)){await client.focus();client.postMessage(destination==='recap'?{type:'sengoku-open-recap'}:{type:'sengoku-open-notification',destination});return;}}catch(_){}}await self.clients.openWindow(entry);})());
 });
+

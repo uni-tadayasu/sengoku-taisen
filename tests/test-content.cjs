@@ -24,7 +24,7 @@ for (const clan of SENGOKU_DATA.clans) {
   assert(game.state.officers.some(id => game.officer(id).name === clan.leader));
   assert.deepEqual(SengokuEngine.fromSave(game.exportSave(),roster).state, game.state);
 }
-assert.equal(SENGOKU_DATA.castles.length, 129);
+assert.equal(SENGOKU_DATA.castles.length, 130);
 assert.equal(SENGOKU_DATA.buildings.length, 64);
 assert.equal(SENGOKU_DATA.buildingLimit, 32);
 console.log('PASS actual roster: 280 unique people, 8 exact rank counts, all 8 playable families, and game-save roundtrips.');

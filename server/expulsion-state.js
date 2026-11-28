@@ -14,6 +14,6 @@ export async function moderationExpulsion(db,target){
   LEFT JOIN castle_residents m ON m.user_id=u.id LEFT JOIN castle_seats s ON s.castle_id=COALESCE(m.castle_id,json_extract(p.save_json,'$.state.home'))
   WHERE u.id=?`,target.id).first();
  const pending=!!row?.pending,castleId=pending?row.castle_id:row?.current_castle||null;
- const blockedReason=target.is_admin?'運営本人は追放できません。':target.is_staff?'京都御所のメンバーは、先にスタッフを解任してください。':target.is_deputy?'サブ運営は、先にサブ運営を解任してください。':target.ban_active?'BANを解除してから追放してください。':pending?'この領主は拠点の選び直しを待っています。':!row?.save_json||!castleId?'追放できる通常城の拠点がありません。':'';
+ const blockedReason=target.is_admin?'運営本人は追放できません。':target.is_sento?'上皇・法皇の本拠は仙洞御所に固定されています。':target.is_staff?'京都御所のメンバーは、先にスタッフを解任してください。':target.is_deputy?'サブ運営は、先にサブ運営を解任してください。':target.ban_active?'BANを解除してから追放してください。':pending?'この領主は拠点の選び直しを待っています。':!row?.save_json||!castleId?'追放できる通常城の拠点がありません。':'';
  return {canExpel:!blockedReason,expulsion:{revision:Number(row?.revision||0),pending,castleId,castleName:name(castleId),role:castleId?(pending?row.role:row.lord_user_id===target.id?'lord':'retainer'):null,lordEpoch:Number(pending?row.lord_epoch:row?.current_epoch||0),expelledAt:row?.expelled_at?new Date(Number(row.expelled_at)).toISOString():null,reason:row?.reason||'',blockedReason}};
 }

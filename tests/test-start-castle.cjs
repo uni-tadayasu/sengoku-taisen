@@ -84,15 +84,22 @@ async function reviewMove(b, castleId) {
 
 (async()=>{
 await test('every ordinary castle can be the sole first home, independently of the house',()=>{
-  const available=SENGOKU_DATA.castles.filter(c=>!c.majorCity&&c.id!=='kagoshima');assert.equal(available.length,123);
+  const available=SENGOKU_DATA.castles.filter(c=>!c.majorCity&&!c.imperialResidence&&c.id!=='kagoshima');assert.equal(available.length,123);
   for(const castle of available){const g=new SengokuEngine({clan:'織田家',startCastle:castle.id,officers:roster,seed:7});assert.equal(g.state.home,castle.id);assert.deepEqual(g.ownedCastles().map(c=>c.id),[castle.id]);assert.deepEqual(g.state.captureRewards,[castle.id]);assert.equal(g.state.castles[castle.id].troops,1200);}
   for(const clan of SENGOKU_DATA.clans){const g=new SengokuEngine({clan:clan.name,startCastle:'himeji',officers:roster});assert.equal(g.state.clan,clan.name);assert.equal(g.state.home,'himeji');assert(g.state.officers.every(id=>g.officer(id).clan===clan.name));}
 });
 await test('ordinary players cannot start at the five major cities or unknown/inherited castle keys',()=>{
-  for(const id of ['edo','kyoto_gosho','nijo','osaka','nagoya','missing','',null,123,{},'toString','__proto__','constructor'])assert.throws(()=>new SengokuEngine({startCastle:id,officers:roster}));
+  for(const id of ['edo','kyoto_gosho','sento_gosho','nijo','osaka','nagoya','missing','',null,123,{},'toString','__proto__','constructor'])assert.throws(()=>new SengokuEngine({startCastle:id,officers:roster}));
 });
 await test('verified operators always begin with Edo and the exclusive Ieyasu U',()=>{
   for(const request of ['himeji','kiyosu','edo','toString']){const g=new SengokuEngine({clan:'武田家',startCastle:request,officers:roster,isAdmin:true});assert.equal(g.state.home,'edo');assert.deepEqual(g.ownedCastles().map(c=>c.id),['edo']);assert(g.ownsVariant('of_b0616adde162','U'));assert.equal(g.officer('of_b0616adde162','U').name,'德川家康');}
+});
+await test('verified Sento residents begin at the dedicated palace while ordinary imports cannot claim it',()=>{
+  for(const request of ['himeji','sento_gosho']){
+    const game=new SengokuEngine({clan:'伊達家',startCastle:request,officers:roster,isSento:true});
+    assert.equal(game.isSento,true);assert.equal(game.state.home,'sento_gosho');assert.equal(game.state.clan,'伊達家');
+    const imported=SengokuEngine.fromSave(game.exportSave(),roster);assert.equal(imported.isSento,false);assert.notEqual(imported.state.home,'sento_gosho');
+  }
 });
 await test('selected homes round-trip and existing legacy campaigns keep their holdings and resources',()=>{
   const selected=new SengokuEngine({clan:'上杉家',startCastle:'himeji',officers:roster,seed:19});
@@ -199,13 +206,18 @@ await test('operator recovery preview is non-mutating, then confirmed recovery r
 await test('operator identity changes an open first-start chooser to the fixed Edo choice',async()=>{
   const b=browser();b.c.SengokuBridge.openStartSelection();b.c.SengokuBridge.setAdminAccess(true);const html=b.nodes.get('modal-content').innerHTML;assert.match(html,/本拠 · 江戸城固定/);assert.equal(b.query('#new-start-castle'),null);await b.click('start-new');assert.equal(b.c.SengokuBridge.getState().home,'edo');assert.equal(Object.values(b.c.SengokuBridge.getState().castles).filter(c=>c.owner===b.c.SengokuBridge.getState().clan).length,1);
 });
+await test('the dedicated Sento choice keeps the personal house and offers no ordinary castle selector',async()=>{
+  const b=browser();b.c.SengokuBridge.openStartSelection();b.c.SengokuBridge.setRoleAccess({isSento:true});
+  const html=b.nodes.get('modal-content').innerHTML;assert.match(html,/仙洞御所固定/);assert.match(html,/現在の家名を引き継ぎます/);assert.equal(b.query('#new-start-castle'),null);
+  await b.click('start-new');assert.equal(b.c.SengokuBridge.getState().home,'sento_gosho');assert.equal(b.c.SengokuBridge.getRoleAccess().isSento,true);
+});
 await test('the move selector excludes fixed homes, and reviewing or cancelling keeps the complete campaign',async()=>{
   const b = browser(seasonedCampaign().exportSave(), {withResidency:true}), original = b.stored.get(SAVE);
   assert(b.nodes.get('main').innerHTML.includes('data-action="relocate-open"'));
   await b.click('relocate-open');
   const selector = b.nodes.get('modal-content').innerHTML;
   assert.match(selector, /<option value="himeji"/);
-  for(const id of ['kiyosu', 'kagoshima', ...SENGOKU_DATA.majorCityIds]) assert(!selector.includes(`<option value="${id}"`));
+  for(const id of ['kiyosu', 'kagoshima', 'sento_gosho', ...SENGOKU_DATA.majorCityIds]) assert(!selector.includes(`<option value="${id}"`));
   assert.equal([...selector.matchAll(/<option value="[^"]+"/g)].length, 122);
   await b.click('close');
   await reviewMove(b, 'himeji');
@@ -227,7 +239,7 @@ await test('the town and profile offer relocation only to established ordinary p
     assert.equal(b.query('#relocate-castle-select'), null);
   };
   await checkUnavailable(browser(undefined, {withResidency:true}));
-  for(const role of [{isAdmin:true},{isStaff:true},{isDeputy:true}]) {
+  for(const role of [{isAdmin:true},{isStaff:true},{isDeputy:true},{isSento:true}]) {
     const b = browser(seasonedCampaign().exportSave(), {withResidency:true});
     assert(b.c.SengokuResidency.compact().includes('data-action="relocate-open"'));
     b.c.SengokuBridge.setRoleAccess(role);

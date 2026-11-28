@@ -7,7 +7,7 @@ const create=options=>new E({officers,seed:713,...options}),raw=g=>JSON.parse(g.
 const rich=g=>{for(const k of D.resources)g.state.resources[k]=900000;g.state.command=3;return g;};
 const request=g=>({requestId:'gosho-request-'+g.state.covert.sequence,campaignId:g.state.walking.campaignId,sequence:g.state.covert.sequence});
 function oldSave(game,{staff=false}={}){
- const save=raw(game),s=save.state,former=s.castles[BASE];delete s.castles[BASE];
+ const save=raw(game),s=save.state,former=s.castles[BASE];delete s.castles[BASE];delete s.castles.sento_gosho;
  if(staff){s.castles.sunpu=former;s.home=s.home===BASE?'sunpu':s.home;s.cycle.home=s.cycle.home===BASE?'sunpu':s.cycle.home;s.staffService={...s.staffService,baseId:'sunpu'};s.captureRewards=s.captureRewards.map(id=>id===BASE?'sunpu':id);s.jobs=s.jobs.map(job=>job.kind==='castle'&&job.id===BASE?{...job,id:'sunpu'}:job);}
  s.covert.reserves.sunpu=s.covert.reserves[BASE];delete s.covert.reserves[BASE];
  const move=value=>{if(value?.sourceCastleId===BASE)value.sourceCastleId='sunpu';if(value?.report)move(value.report);};
@@ -19,14 +19,14 @@ function baseFor(personal,{level=1,access=0,history=[],jobs=[]}={}){
 }
 const readyStaff=()=>{const personal=create();return E.fromSave(personal.exportSave(),officers,{isStaff:true,staffBase:baseFor(personal)});};
 let total=0;function test(name,run){run();total++;console.log('PASS '+name);}
-test('Kyoto is a distinct 129th court beside Nijo and Sunpu stays an ordinary starting castle',()=>{
- assert.equal(D.castles.length,129);assert.equal(D.staffBaseId,BASE);assert.deepEqual(D.majorCityIds,['edo',BASE,'nijo','osaka','nagoya']);assert.deepEqual(D.courtAdmission,{rankId:'court-7',rankName:'従五位',minScore:35000});assert.equal(E.evaluationRank(34999).name,'正六位');assert.equal(E.evaluationRank(35000).id,'court-7');
- const court=D.castles.find(c=>c.id===BASE),sunpu=D.castles.find(c=>c.id==='sunpu');assert.equal(court.name,'京都御所');assert.deepEqual(court.neighbors,['nijo']);assert(D.castles.find(c=>c.id==='nijo').neighbors.includes(BASE));assert.equal(sunpu.name,'駿府城');assert.equal(sunpu.clan,'今川家');assert.equal(sunpu.majorCity,false);
+test('Kyoto remains distinct from Nijo and Sento while Sunpu stays an ordinary starting castle',()=>{
+ assert.equal(D.castles.length,130);assert.equal(D.staffBaseId,BASE);assert.deepEqual(D.majorCityIds,['edo',BASE,'nijo','osaka','nagoya']);assert.deepEqual(D.courtAdmission,{rankId:'court-7',rankName:'従五位',minScore:35000});assert.equal(E.evaluationRank(34999).name,'正六位');assert.equal(E.evaluationRank(35000).id,'court-7');
+ const court=D.castles.find(c=>c.id===BASE),sunpu=D.castles.find(c=>c.id==='sunpu');assert.equal(court.name,'京都御所');assert.deepEqual(court.neighbors,['nijo','sento_gosho']);assert(D.castles.find(c=>c.id==='nijo').neighbors.includes(BASE));assert.equal(sunpu.name,'駿府城');assert.equal(sunpu.clan,'今川家');assert.equal(sunpu.majorCity,false);
  const normal=create({startCastle:'sunpu'});assert.equal(normal.state.home,'sunpu');assert.equal(normal.castleLevelLimit('sunpu'),32);assert(normal.canOwnCastle('sunpu'));assert(!normal.canOwnCastle(BASE));assert.throws(()=>create({startCastle:BASE}));assert.equal(create({isStaff:true}).state.home,BASE);assert.equal(create({isAdmin:true,isStaff:true}).state.home,'edo');
 });
-test('a complete old128 ordinary save adds only Kyoto and preserves every existing castle and player asset',()=>{
+test('a complete old128 ordinary save adds Kyoto and Sento without changing existing castles or player assets',()=>{
  const g=rich(create({startCastle:'himeji'}));assert(g.upgrade('farm').ok);g.state.resources.gold=123456;g.state.troops=5432;const save=oldSave(g),before=clone(save.state),loaded=E.fromSave(save,officers),after=raw(loaded).state;
- const added=after.castles[BASE];delete after.castles[BASE];assert.deepEqual(after.castles,before.castles);assert.equal(added.owner,'朝廷');for(const key of ['resources','troops','buildings','officers','army','jobs','home','cycle','captureRewards','stats','seed'])assert.deepEqual(after[key],before[key],key);assert.equal(loaded.state.covert.reserves[BASE],0);assert(!Object.hasOwn(loaded.state.covert.reserves,'sunpu'));
+ const added=after.castles[BASE],sento=after.castles.sento_gosho;assert.equal(sento.owner,'朝廷');delete after.castles[BASE];delete after.castles.sento_gosho;assert.deepEqual(after.castles,before.castles);assert.equal(added.owner,'朝廷');for(const key of ['resources','troops','buildings','officers','army','jobs','home','cycle','captureRewards','stats','seed'])assert.deepEqual(after[key],before[key],key);assert.equal(loaded.state.covert.reserves[BASE],0);assert(!Object.hasOwn(loaded.state.covert.reserves,'sunpu'));
  assert.deepEqual(save.state,before,'Loading never mutates caller input');
  for(const change of [s=>delete s.castles.kiyosu,s=>{s.castles.invented=s.castles.edo;delete s.castles.edo;},s=>s.castles.invented=clone(s.castles.edo)]){const bad=clone(save);change(bad.state);assert.throws(()=>E.fromSave(bad,officers));}
 });

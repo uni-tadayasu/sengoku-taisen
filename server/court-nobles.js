@@ -65,7 +65,7 @@ async function exchange(ctx){
  if((await courtNobleReceipts(db,user.id)).some(receipt=>receipt.officerId===officer.id)||save.state.officers.includes(officer.id)){const accepted=await prior(ctx,body,digest);if(accepted)return result(ctx,accepted,body.deviceId,true);h.fail(409,'COURT_NOBLE_OWNED','この公家はすでに迎えています。勾玉は消費していません。');}
  if(save.state.magatama<officer.cost)h.fail(409,'COURT_NOBLE_SHORTAGE',`勾玉が${(officer.cost-save.state.magatama).toLocaleString('ja-JP')}不足しています。`);
  const shared=user.is_staff&&!user.is_admin?await h.staffBaseDto(db,user,clock,now):null,estate=await h.courtEstateContext(db,user,save,clock,now);
- const game=GameEngine.fromSave(save,GAME_OFFICERS,{courtEstateProjection:estate.projection,isAdmin:!!user.is_admin,isDeputy:!!user.is_deputy,isStaff:!!user.is_staff,isCourtProtected:!!user.is_court_protected,staffBase:shared});
+ const game=GameEngine.fromSave(save,GAME_OFFICERS,{courtEstateProjection:estate.projection,isSento:!!user.is_sento,isAdmin:!!user.is_admin,isDeputy:!!user.is_deputy,isStaff:!!user.is_staff,isCourtProtected:!!user.is_court_protected,staffBase:shared});
  game.state.magatama-=officer.cost;
  const acquired=game._grantOfficerVariant(officer.id,officer.rank);
  if(!acquired?.isNewOfficer)h.fail(409,'COURT_NOBLE_OWNED','この公家はすでに迎えています。勾玉は消費していません。');

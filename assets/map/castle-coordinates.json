@@ -409,6 +409,20 @@
     "note": "京都市上京区京都御苑。二条御所の旧二条城跡とは別の施設。"
   },
   {
+    "id": "sento_gosho",
+    "name": "仙洞御所",
+    "lat": 35.0232295,
+    "lon": 135.7645453,
+    "accuracy": "宮内庁の京都仙洞御所アクセス案内に埋め込まれた徒歩経路の到着点。入口の案内点であり、御所全体の測量中心ではない。",
+    "sourceURL": "https://kyoto-gosho.kunaicho.go.jp/sento-gosho/access",
+    "sourceTitle": "アクセス - 京都仙洞御所（丸太町駅からの徒歩経路）",
+    "sourceOrganization": "宮内庁京都事務所",
+    "sourceType": "official-published-location",
+    "coordinateBasis": "official-route-destination",
+    "retrievedAt": "2026-11-28",
+    "note": "京都御苑内の上皇・法皇専用拠点として使用。身分・定員と拠点の能力はゲーム設定。"
+  },
+  {
     "id": "akutagawa",
     "name": "芥川山城",
     "lat": 34.881,

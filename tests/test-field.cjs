@@ -5,7 +5,7 @@ let count=0;function test(name,fn){fn();count++;console.log('PASS '+name);}
 const player=(id,home='kiyosu',more={})=>({playerId:id,name:'領主'+id,clan:'織田家',homeCastleId:home,homeCastleName:'清洲城',level:3,defenseTroops:1200,defensePower:4200,attackable:true,relationship:'neutral',...more});
 const ready=()=>({identity:{id:'me'},access:{writable:true},state:{troops:5000,command:3,resources:{rice:9000}},player:player('other'),me:{attack:{ready:true,availableTroops:5000,minTroops:300,maxTroops:100000,command:3,rice:9000},relationships:[]},troops:1000,tactic:'balanced'});
 const modernRules={targetCastles:true,specialBaseBattles:true};
-const target=(id,home,castle,more={})=>player(id,home,{targetCastleId:castle,targetCastleName:{edo:'江戸城',kyoto_gosho:'京都御所',kagoshima:'鹿児島城',nijo:'二条城',osaka:'大坂城',nagoya:'名古屋城',kiyosu:'清洲城'}[castle],isHome:home===castle,battleMode:['edo','kyoto_gosho','kagoshima'].includes(castle)?'reward':['nijo','osaka','nagoya'].includes(castle)?'capture':'raid',capturable:['nijo','osaka','nagoya'].includes(castle),...more});
+const target=(id,home,castle,more={})=>player(id,home,{targetCastleId:castle,targetCastleName:{edo:'江戸城',kyoto_gosho:'京都御所',sento_gosho:'仙洞御所',kagoshima:'鹿児島城',nijo:'二条城',osaka:'大坂城',nagoya:'名古屋城',kiyosu:'清洲城'}[castle],isHome:home===castle,battleMode:['edo','kyoto_gosho','sento_gosho','kagoshima'].includes(castle)?'reward':['nijo','osaka','nagoya'].includes(castle)?'capture':'raid',capturable:['nijo','osaka','nagoya'].includes(castle),...more});
 test('public bases contain only real valid accounts and never fabricate empty records',()=>{
   assert.deepEqual(F.normalizePlayers({players:[]}),[]);const result=F.normalizePlayers({players:[player('a'),player('a'),{name:'no id'},player('b','edo',{isAdmin:true,attackable:false})]});assert.equal(result.length,2);assert.equal(result[1].playerId,'b');assert.equal(result[1].attackable,false);
 });
@@ -43,6 +43,17 @@ test('public ownership cards and banners keep names escaped and never expose int
   assert(row.includes('field-owner-caption">領主'));assert(row.includes('field-owner-relation is-other">他領'));
   assert(banner.includes('&lt;img src=x onerror=alert(1)&gt;の領地'));assert(!banner.includes('<img src=x'));assert(!/運営|サブ運営|占領不可/.test(row+banner));
 });
+test('retired sovereign independence overrides stale palace control without freeing ordinary members',()=>{
+  const control={castleId:'kyoto_gosho',controller:{id:'ruler',name:'支配領主'},governmentName:'試験幕府',controlledAt:12345};
+  const ordinary=target('member','kyoto_gosho','kyoto_gosho',{palaceControl:control});
+  const independent={...ordinary,playerId:'retired',shogunateIndependent:true};
+  const banner=F.ownershipBanner(independent,{identity:{id:'me'}}),row=F.publicRow(independent);
+  assert(!banner.includes('試験幕府'));assert(!row.includes('試験幕府'));
+  const group=F.groupBases(F.normalizePlayers([independent]),{kyoto_gosho:{lon:135.7621,lat:35.0254}},[],{id:'me'})[0];
+  assert.equal(group.ownerLabel,'朝廷の共同領地');
+  assert(F.ownershipBanner(ordinary,{identity:{id:'me'}}).includes('試験幕府の支配下'));
+  assert(F.publicRow({...independent,shogunateIndependent:false}).includes('試験幕府の支配下'));
+});
 test('raid food costs follow the authoritative four tactic formulas',()=>{
   assert.equal(F.foodCost(1000,'balanced'),450);assert.equal(F.foodCost(1000,'assault'),525);assert.equal(F.foodCost(1000,'siege'),645);assert.equal(F.foodCost(1000,'ambush'),480);assert.equal(F.foodCost(1000,'unknown'),null);
 });
@@ -69,8 +80,8 @@ test('protected bases keep their action restrictions without disclosing operator
   context.player=player('legacy','kyoto_gosho');assert.equal(F.attackValidation(context).ok,false,'The reserved castle stays protected while a legacy player snapshot is migrating');
   const operator=F.normalizePlayers([player('operator','edo',{isStaff:true,isAdmin:true})])[0];assert.equal(operator.isStaff,false);assert(!F.publicRow(operator).includes('運営'));assert(F.publicRow(operator).includes('領主'));
 });
-test('Edo caps at 64, Kyoto Gosho at 128, the three capturable cities at 48, and ordinary castles at 32',()=>{
-  for(const [id,limit]of [['edo',64],['kyoto_gosho',128],['nijo',48],['osaka',48],['nagoya',48]]){const [p]=F.normalizePlayers([player(id,id,{level:999})]);assert.equal(p.level,limit);assert(F.publicRow(p).includes('城郭 Lv.'+limit));}
+test('Edo caps at 64, Kyoto Gosho and Sento Gosho at 128, the three capturable cities at 48, and ordinary castles at 32',()=>{
+  for(const [id,limit]of [['edo',64],['kyoto_gosho',128],['sento_gosho',128],['nijo',48],['osaka',48],['nagoya',48]]){const [p]=F.normalizePlayers([player(id,id,{level:999})]);assert.equal(p.level,limit);assert(F.publicRow(p).includes('城郭 Lv.'+limit));}
   assert.equal(F.normalizePlayers([player('a','kiyosu',{level:64})])[0].level,32);assert.equal(F.normalizePlayers([player('sunpu','sunpu',{level:999})])[0].level,32);
   assert.equal(F.normalizePlayers([player('a','kyoto_gosho',{level:999})])[0].level,128);
   const shared=F.groupBases(F.normalizePlayers([player('a','kyoto_gosho',{level:128,isStaff:true,attackable:false}),player('b','kyoto_gosho',{level:128,isStaff:true,attackable:false})]),{kyoto_gosho:{lon:135.7621,lat:35.0254}});
@@ -107,8 +118,8 @@ test('a lord and castle jointly identify targets while old home-only responses r
   const city=groups.find(g=>g.id==='nijo');assert.deepEqual(city.players.map(p=>p.playerId),['a','b']);assert.equal(city.isHome,false);assert.equal(city.homeCastleId,'kiyosu');
   const selected=F.groupBases(people,coords,[],{id:'a'},'b:nijo',modernRules).find(g=>g.id==='nijo');assert.equal(selected.level,48);assert.equal(selected.displayLevelLabel,'城郭 Lv.3','The selected lord keeps their own level in a shared-city tooltip');
 });
-test('Edo, Kyoto Gosho and Kagoshima require both modern capabilities and an explicit non-capturable reward battle',()=>{
-  for(const castle of ['edo','kyoto_gosho','kagoshima']){
+test('Edo, Kyoto Gosho, Sento Gosho and Kagoshima require both modern capabilities and an explicit non-capturable reward battle',()=>{
+  for(const castle of ['edo','kyoto_gosho','sento_gosho','kagoshima']){
     const p=target('other',castle,castle,{isAdmin:castle==='edo',isStaff:castle==='kyoto_gosho'}),context={...ready(),rules:modernRules,player:p};
     const valid=F.attackValidation(context);assert.equal(valid.ok,true);assert.equal(valid.battleMode,'reward');assert.equal(valid.payload.targetCastleId,castle);assert.equal(valid.payload.targetPlayerId,'other');
     const copy=JSON.stringify(p),policy=F.battlePolicy(p,modernRules),row=F.publicRow(p,{rules:modernRules});assert.equal(policy.label,'合戦');assert.doesNotMatch(policy.tag+policy.description+row,/占領|報酬戦|領有.{0,12}維持/);assert.equal(JSON.stringify(p),copy);
@@ -304,7 +315,7 @@ async function pvpUiTest(){
   const detail=()=>nodes.get('[data-field-detail]').innerHTML;
   const send=(action,more={})=>listeners.get('click')({target:{closest:()=>({dataset:{fieldAction:action,...more}})},stopPropagation(){}});
   const select=key=>send('select-player',{targetId:key});
-  const receipt=(castle,mode,won=true)=>({ok:true,battle:{id:'battle-'+castle,attackerPlayerId:'me',defenderPlayerId:mode==='reward'?'operator':'enemy',attackerName:'あなた',defenderName:'相手',castleId:castle,castleName:{edo:'江戸城',kyoto_gosho:'京都御所',kagoshima:'鹿児島城',nijo:'二条城',osaka:'大坂城'}[castle],battleMode:mode,won,troops:1000,attackerLost:100,defenderLost:{troops:0,garrison:0},loot:{gold:mode==='capture'?70:0,rice:0,wood:0,stone:0},rewards:{gold:mode==='reward'&&won?500:0,rice:0,wood:0,stone:0},capture:{captured:mode==='capture'&&won,castleId:castle,newlyOwned:true,defenderHomeCastleId:'odawara',defenderHomeCastleName:'小田原城'}}});
+  const receipt=(castle,mode,won=true)=>({ok:true,battle:{id:'battle-'+castle,attackerPlayerId:'me',defenderPlayerId:mode==='reward'?'operator':'enemy',attackerName:'あなた',defenderName:'相手',castleId:castle,castleName:{edo:'江戸城',kyoto_gosho:'京都御所',sento_gosho:'仙洞御所',kagoshima:'鹿児島城',nijo:'二条城',osaka:'大坂城'}[castle],battleMode:mode,won,troops:1000,attackerLost:100,defenderLost:{troops:0,garrison:0},loot:{gold:mode==='capture'?70:0,rice:0,wood:0,stone:0},rewards:{gold:mode==='reward'&&won?500:0,rice:0,wood:0,stone:0},capture:{captured:mode==='capture'&&won,castleId:castle,newlyOwned:true,defenderHomeCastleId:'odawara',defenderHomeCastleName:'小田原城'}}});
   try{
     await controller.refresh();await select('enemy:nijo');assert(detail().includes('二条城'));assert(detail().includes('所領'));assert(detail().includes('城郭上限 Lv.48'));
     await send('attack');assert.equal(requests.length,0,'An attack always needs a confirmation for this exact target');
@@ -361,3 +372,4 @@ async function sustainedFieldPolling(){
   count++;console.log('PASS forty field polls retain focused player rows and artwork, then update a reordered roster in place');
 }
 liveRefreshTest().then(pvpUiTest).then(sustainedFieldPolling).then(()=>console.log(count+' shared-field presentation and action-guard checks passed.')).catch(error=>{console.error(error);process.exitCode=1;});
+

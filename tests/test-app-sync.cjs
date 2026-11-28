@@ -34,7 +34,7 @@ function setup({admin=false}={}) {
     queueWorldProgress:()=>{},preserveInteraction:()=>{}, closeModal:()=>{}, updateBattlePreview:()=>{}
   };
   vm.createContext(context);
-  vm.runInContext(['confirmedWorldClock','clockIsApplied','canMutate','syncMessage','changedLocalCampaign','save','backupCurrentSave','trustedBranchAuthority','applyBranchAuthority','trustedMaintenanceAuthority','applyMaintenanceAuthority','trustedCourtProtection','applyCourtProtection','trustedCourtEstateProjection','courtEstateHolding','applyCloudSave','prepareRecoverySave','applyRecoverySave','applyDurableGift','restoreAdminAssets'].map(fn).join('\n'),context);
+  vm.runInContext(['confirmedWorldClock','clockIsApplied','canMutate','syncMessage','changedLocalCampaign','save','backupCurrentSave','trustedBranchAuthority','applyBranchAuthority','trustedMaintenanceAuthority','applyMaintenanceAuthority','trustedCourtProtection','trustedSentoAccess','applyCourtProtection','trustedCourtEstateProjection','courtEstateHolding','applyCloudSave','prepareRecoverySave','applyRecoverySave','applyDurableGift','restoreAdminAssets'].map(fn).join('\n'),context);
   return {c:context,stored,events};
 }
 let count=0;

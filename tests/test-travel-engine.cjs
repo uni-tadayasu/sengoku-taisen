@@ -15,9 +15,9 @@ const weakTarget=g=>{const id=target(g);g.state.castles[id].troops=100;g.state.c
 const pending=(g,n=1500)=>{const id=weakTarget(g),result=g.departAttack(id,'balanced',n);assert(result.ok,result.message);return result.march;};
 const clock=(elapsedMs,more={})=>({id:'test-world',elapsedMs,running:true,speed:1,...more});
 
-test('all 129 map coordinates are shared; near routes take less time and remote routes are not capped',()=>{
+test('all 130 map coordinates are shared; near routes take less time and remote routes are not capped',()=>{
   const ctx={window:{}};vm.runInNewContext(fs.readFileSync(require.resolve('../map-data.js'),'utf8'),ctx);const geodata=ctx.window.SENGOKU_GEOGRAPHY.castles;
-  assert.equal(Object.keys(Travel.coordinates).length,129);for(const c of D.castles){assert.equal(Travel.coordinates[c.id].lat,geodata[c.id].lat);assert.equal(Travel.coordinates[c.id].lon,geodata[c.id].lon);}
+  assert.equal(Object.keys(Travel.coordinates).length,130);for(const c of D.castles){assert.equal(Travel.coordinates[c.id].lat,geodata[c.id].lat);assert.equal(Travel.coordinates[c.id].lon,geodata[c.id].lon);}
   const near=Travel.plan({sourceCastleId:'kiyosu',targetCastleId:'inuyama'}),far=Travel.plan({sourceCastleId:'kiyosu',targetCastleId:'edo'}),remote=Travel.plan({sourceCastleId:'ishikawa',targetCastleId:'uchijo'});
   assert(near.distanceKm<far.distanceKm&&near.durationMs<far.durationMs);assert(remote.durationMs>600000);assert.equal(near.durationMs,26000);assert.equal(far.durationMs,150000);
   assert.equal(Travel.plan({sourceCastleId:'kiyosu',targetCastleId:'kiyosu'}).durationMs,15000);

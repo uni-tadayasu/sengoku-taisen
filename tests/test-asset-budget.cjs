@@ -154,7 +154,13 @@ const totalGzipBytes = rows.reduce((sum,row)=>sum+row.gzipBytes,0);
 // v5.24, about 2.29% / 1.31%). No fonts or runtime dependencies were added.
 // The 24 independent WebP portraits are loaded only on visible cards and are
 // separately bounded by test-court-noble-artwork.cjs, never entry preloads.
-const rawBudget=4085000,gzipBudget=1115000;
+// v5.26 adds shared-seat imperial retirement, the Sento residence, verified
+// palace enhancement projection and succession/ordination confirmations.
+// Measured: 4,116,235 raw / 1,122,924 gzip bytes (+32,800 / +8,703 from
+// v5.25, about 0.80% / 0.78%). Sento reuses the existing palace illustration;
+// no images, fonts or runtime dependencies are added. Retain 1,765 raw /
+// 776 gzip bytes of headroom for this reviewed feature set.
+const rawBudget=4118000,gzipBudget=1123700;
 assert(totalBytes <= rawBudget, `Initial bundles exceed the ${rawBudget} byte budget: ${totalBytes}`);
 assert(totalGzipBytes <= gzipBudget, `Initial bundles exceed the ${gzipBudget} gzip byte budget: ${totalGzipBytes}`);
 const html = fs.readFileSync(path.join(root,'index.html'),'utf8');

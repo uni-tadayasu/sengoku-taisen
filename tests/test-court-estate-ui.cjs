@@ -55,6 +55,23 @@ test('standard castle effects show authoritative base income, capacity and upkee
   const s = setup(); await s.api.open(); const panel = s.get('.estate-effects'); assert(panel); assert(panel.textContent.includes('一般拠点と同じ領地効果')); assert(panel.textContent.includes('+265')); assert(panel.textContent.includes('+390')); assert(panel.textContent.includes('+500人')); assert(panel.textContent.includes('補正前')); assert(panel.textContent.includes('拠点維持費')); assert(panel.textContent.includes('金銭 24')); assert(!panel.textContent.includes('10％')); assert(!panel.textContent.includes('軽減'));
   s.server.snapshot.effects = { active: false, castleId: 'kyoto_gosho', castleLevel: 0, holdingCount: 0, baseIncome: { gold: 0, rice: 0, wood: 0, stone: 0 }, baseTroopCapacity: 0, facilityUpkeep: { gold: 0, rice: 0, wood: 0, stone: 0 } }; await s.api.refresh({ silent: true }); assert.equal(s.get('.estate-effects'), null); s.api.close();
 });
+test('retired titles display the verified palace enhancement source and maximum-level rule after relocation', async () => {
+  for (const [id, title] of [['retired-emperor', '上皇'], ['cloistered-emperor', '法皇']]) {
+    const snapshot = view(); snapshot.role = { id, title }; snapshot.effects.enhancements = { active: true, mode: 'maximum', castleLevel: 12, buildings: copy(snapshot.base.buildings) };
+    const s = setup({ snapshot }); await s.api.open(); const panel = s.get('.estate-inherited-effects');
+    assert(panel); assert(panel.textContent.includes('京都御所の強化を継承')); assert(panel.textContent.includes('高い方のレベル')); assert(panel.textContent.includes('個人の拠点・施設の育成記録')); assert(panel.textContent.includes('二重には加算しません')); assert(panel.textContent.includes('Lv.12')); assert(panel.textContent.includes('Lv.8'));
+    assert.deepEqual(copy(s.api.holding().effects.enhancements), snapshot.effects.enhancements); assert.equal(s.api.holding().home.id, 'kiyosu'); assert.equal(s.posts().length, 0);
+    delete s.server.snapshot.effects.enhancements; await s.api.refresh({ silent: true }); assert.equal(s.get('.estate-inherited-effects'), null); assert.equal(s.api.holding().effects.enhancements, undefined); s.api.close();
+  }
+});
+test('a title alone cannot manufacture enhancement authority and malformed enhancement metadata is rejected', async () => {
+  const snapshot = view(); snapshot.role = { id: 'cloistered-emperor', title: '法皇' }; const s = setup({ snapshot }); await s.api.open(); assert.equal(s.get('.estate-inherited-effects'), null); assert.equal(s.api.holding().effects.enhancements, undefined);
+  const valid = { active: true, mode: 'maximum', castleLevel: 12, buildings: { keep: 8, wall: 3 } };
+  for (const invalid of [{ ...valid, active: false }, { ...valid, mode: 'sum' }, { ...valid, castleLevel: 129 }, { ...valid, buildings: {} }, { ...valid, buildings: { keep: 33 } }, { ...valid, buildings: { keep: -1 } }, { ...valid, buildings: { '<img>': 1 } }]) {
+    const bad = copy(snapshot); bad.effects.enhancements = invalid; assert.equal(s.api.cleanData(bad), null);
+  }
+  const validRaw = copy(snapshot); validRaw.effects.enhancements = { ...valid, secret: 'private-marker' }; assert(!JSON.stringify(s.api.cleanData(validRaw)).includes('private-marker')); s.api.close();
+});
 test('authoritative role dismissal removes the standard holding effects display immediately', async () => { const s = setup(); await s.api.open(); assert(s.get('.estate-effects')); s.api.updateAccess(false); assert.equal(s.get('.estate-effects'), null); assert.equal(s.api.holding(), null); s.api.close(); });
 test('ordinary regent keeps their home, reviews exact cost, and posts only after explicit confirmation', async () => {
   const s = setup(); assert(await s.api.open()); assert.equal(s.posts().length, 0); assert(s.get('.estate-holdings').textContent.includes('清洲城')); assert(s.get('.estate-holdings').textContent.includes('京都御所'));

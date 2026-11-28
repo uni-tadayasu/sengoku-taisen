@@ -2,6 +2,7 @@
 // Government approval and political sovereignty never change account roles.
 import {GameEngine,GAME_OFFICERS} from './game-runtime.js';
 import {handleShogunateGovernance} from './shogunate-governance.js';
+import {shogunateIndependenceSql,readShogunateIndependence} from './shogunate-independence.js';
 const S=(db,sql,...args)=>db.prepare(sql).bind(...args),rows=r=>r?.results||[];
 export const SHOGUNATE_APPROVAL_WINDOW_MS=3*24*60*60*1000;
 const RIGHT_SELECT='SELECT r.*,a.status AS approval_status,a.requested_at,a.deadline_at,a.resolved_at FROM shogunate_rights r LEFT JOIN shogunate_approvals a ON a.right_id=r.id';
@@ -19,7 +20,7 @@ export function shogunateGrantStatements({db,userId,sourceType,sourceId,title,ba
 export async function shogunateEventRight(db,userId,eventId){return dto(await S(db,RIGHT_SELECT+" WHERE r.user_id=? AND r.source_type='event' AND r.source_id=?",userId,eventId).first());}
 
 export function campaignShogunateStatements({db,user,save,now,gateSql,gateArgs=[]}){
- const game=GameEngine.fromSave(save,GAME_OFFICERS,{isAdmin:!!user.is_admin,isDeputy:!!user.is_deputy,isStaff:!!user.is_staff,isCourtProtected:!!user.is_court_protected}),proof=game.getUnificationProof();
+ const game=GameEngine.fromSave(save,GAME_OFFICERS,{isSento:!!user.is_sento,isAdmin:!!user.is_admin,isDeputy:!!user.is_deputy,isStaff:!!user.is_staff,isCourtProtected:!!user.is_court_protected}),proof=game.getUnificationProof();
  if(!proof.achieved)return[];
  // Campaign ownership follows the existing validated-save authority model.
  // Recheck the exact committed campaign, cycle and all eligible castle owners.
@@ -30,7 +31,7 @@ export function campaignShogunateStatements({db,user,save,now,gateSql,gateArgs=[
 }
 
 export function conquestShogunateStatements({db,seasonId,guildId,title,now,gateSql,gateArgs=[]}){
- const count=globalThis.SENGOKU_DATA.castles.length;
+ const count=globalThis.SENGOKU_DATA.castles.filter(c=>!c.imperialResidence).length;
  // Every participating contributor still in this guild at the decisive capture
  // earns the same achievement, including support contributors.
  return[S(db,`INSERT INTO shogunate_rights(id,user_id,source_type,source_id,title,earned_at)
@@ -66,21 +67,22 @@ export async function settleShogunateApprovals(db,now=Date.now()){
  }
  return{checked:due.length,settled};
 }
-export async function readPalaceControl(db){
- const row=await S(db,"SELECT c.*,u.name FROM shogunate_palace_control c JOIN users u ON u.id=c.controller_id WHERE c.castle_id='kyoto_gosho'").first();
+export async function readPalaceControl(db,subjectUserId=null){
+ const exemption=subjectUserId===null?'':` AND NOT EXISTS(SELECT 1 FROM users si_subject WHERE si_subject.id=? AND ${shogunateIndependenceSql('si_subject.id')})`;
+ const row=await S(db,"SELECT c.*,u.name FROM shogunate_palace_control c JOIN users u ON u.id=c.controller_id WHERE c.castle_id='kyoto_gosho'"+exemption,...(subjectUserId===null?[]:[subjectUserId])).first();
  return row?{castleId:row.castle_id,rightId:row.right_id,controller:{id:row.controller_id,name:row.name},governmentName:row.government_name,controlledAt:Number(row.controlled_at)}:null;
 }
 
 async function view(ctx,requestedRightId=null){
  const {db,user,helpers:h}=ctx,authority=await h.courtImperialAuthority(db,user);
- const [history,opened,requested,pending,queue,palaceControl]=await Promise.all([
+ const [history,opened,requested,pending,queue,palaceControl,shogunateIndependent]=await Promise.all([
   S(db,RIGHT_SELECT+' WHERE r.user_id=? ORDER BY r.earned_at DESC,r.id DESC LIMIT 100',user.id).all(),
   S(db,RIGHT_SELECT+' WHERE r.user_id=? AND r.opened_at IS NOT NULL ORDER BY r.opened_at DESC,r.id DESC LIMIT 1',user.id).first(),
   requestedRightId?S(db,RIGHT_SELECT+' WHERE r.user_id=? AND r.id=?',user.id,requestedRightId).first():null,
   S(db,RIGHT_SELECT+" WHERE r.user_id=? AND a.status='pending' ORDER BY a.deadline_at,r.id LIMIT 101",user.id).all(),
   authority.canActForEmperor?S(db,`SELECT r.*,a.status AS approval_status,a.requested_at,a.deadline_at,a.resolved_at,u.name AS applicant_name FROM shogunate_approvals a JOIN shogunate_rights r ON r.id=a.right_id JOIN users u ON u.id=r.user_id
    WHERE a.status='pending' AND ${activeApplicant('r.user_id')} AND ${authority.guard.sql} ORDER BY a.deadline_at,a.right_id LIMIT 101`,...authority.guard.args).all():null,
-  readPalaceControl(db)
+  readPalaceControl(db,user.id),readShogunateIndependence(db,user.id)
  ]),selected=rows(history),priority=[...(opened?[opened]:[]),...(requested&&requested.id!==opened?.id?[requested]:[])],priorityIds=new Set(priority.map(r=>r.id));
  // Keep unresolved applications visible after receipt delivery and reload,
  // even when subsequent earned rights would push them outside the history.
@@ -91,10 +93,10 @@ async function view(ctx,requestedRightId=null){
  for(const right of priority){const index=selected.findIndex(r=>r.id===right.id);if(index<0)selected.push(right);else selected[index]=right;}
  while(selected.length>100){let index=selected.length-1;while(priorityIds.has(selected[index].id))index--;selected.splice(index,1);}
  const rights=selected.map(dto),current=await h.getSyncRow(db,user.id);let campaign=null;
- if(current?.save_json){const g=GameEngine.fromSave(JSON.parse(current.save_json),GAME_OFFICERS,{isAdmin:!!user.is_admin,isDeputy:!!user.is_deputy,isStaff:!!user.is_staff,isCourtProtected:!!user.is_court_protected});const p=g.getUnificationProof();campaign={owned:p.owned,target:p.target,achieved:p.achieved,cycle:p.cycle};}
+ if(current?.save_json){const g=GameEngine.fromSave(JSON.parse(current.save_json),GAME_OFFICERS,{isSento:!!user.is_sento,isAdmin:!!user.is_admin,isDeputy:!!user.is_deputy,isStaff:!!user.is_staff,isCourtProtected:!!user.is_court_protected});const p=g.getUnificationProof();campaign={owned:p.owned,target:p.target,achieved:p.achieved,cycle:p.cycle};}
  // The final response pass rechecks this exact appointment after decoration.
  if(authority.canActForEmperor)h.registerResponseGuard(authority.guard);
- return{rights,current:dto(opened),campaign,serverNow:ctx.now,approvalWindowMs:SHOGUNATE_APPROVAL_WINDOW_MS,canApprove:authority.canActForEmperor,approvals:rows(queue).slice(0,100).map(r=>({...dto(r),applicant:{id:r.user_id,name:r.applicant_name}})),approvalsHasMore:rows(queue).length>100,pendingHasMore,palaceControl};
+ return{rights,current:dto(opened),campaign,serverNow:ctx.now,approvalWindowMs:SHOGUNATE_APPROVAL_WINDOW_MS,canApprove:authority.canActForEmperor,approvals:rows(queue).slice(0,100).map(r=>({...dto(r),applicant:{id:r.user_id,name:r.applicant_name}})),approvalsHasMore:rows(queue).length>100,pendingHasMore,palaceControl,shogunateIndependent};
 }
 async function reconcileCampaign(ctx){
  const {db,user,helpers:h}=ctx,row=await h.getSyncRow(db,user.id);if(!row?.save_json)return;

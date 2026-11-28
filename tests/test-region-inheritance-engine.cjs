@@ -3,7 +3,7 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('nod
 const {SengokuEngine:E,SENGOKU_DATA:D}=require('../engine.js');
 const scope={window:{}};vm.runInNewContext(fs.readFileSync(require.resolve('../officers-data.js'),'utf8'),scope);
 const officers=JSON.parse(JSON.stringify(scope.window.SENGOKU_OFFICERS));
-const protectedIds=['edo','kyoto_gosho','kagoshima'],cycleMs=672*60000;
+const protectedIds=['edo','kyoto_gosho','kagoshima','sento_gosho'],cycleMs=672*60000;
 const fresh=(options={})=>new E({officers,seed:1489,difficulty:'normal',startCastle:'ishikawa',...options});
 const clone=structuredClone,clock=elapsedMs=>({id:'region-inheritance-test',elapsedMs,running:true,speed:1});
 const regionIds=region=>D.castles.filter(c=>c.region===region&&!protectedIds.includes(c.id)).map(c=>c.id);

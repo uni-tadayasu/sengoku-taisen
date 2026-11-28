@@ -15,7 +15,7 @@ context.window=context;context.global=context;vm.createContext(context);
 vm.runInContext(read('premium-catalog.js'),context);
 vm.runInContext(read('artwork.js'),context);
 const art=context.SengokuArt;
-const ordinary=D.castles.filter(c=>!c.majorCity&&c.id!=='kagoshima');
+const ordinary=D.castles.filter(c=>!c.majorCity&&!c.imperialResidence&&c.id!=='kagoshima');
 assert.equal(ordinary.length,123);
 assert.equal(new Set(ordinary.map(c=>art.castleScene(c.id,'day',paid()).src)).size,123);
 for(const castle of ordinary){

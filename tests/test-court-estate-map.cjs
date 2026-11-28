@@ -12,10 +12,17 @@ function fixture() {
     staffConstructionReady: () => false, preserveInteraction: (_node, render) => render(), render: () => renders++, $: () => map,
     window: { SengokuCourtEstate: { holding: () => estate ? copy(estate) : null, ensure: () => probes++ }, SengokuWorldMap: { mount: (_node, options) => { latest = options; return { update: options => latest = options, destroy() {} }; } } }
   }, map = {};
-  c.castleReleaseAction=()=>'';c.castleReleasePending=false;vm.createContext(c); vm.runInContext(['campaignOwnerInfo','campaignCastleOwnership','campaignOwnerMarkup','territoryOwnerGuide','courtEstateHolding', 'courtEstateCastle', 'courtEstateMapNotice', 'courtEstateDetail', 'refreshCourtEstateSurfaces', 'homeCastleAppearance', 'campaignCastleOwnerAppearance', 'campaignCastleGrowth', 'campaignCastleAppearance', 'campaignCastleTooltip', 'syncWorldMap', 'territoryRows', 'territoryResults', 'castleDetail', 'renderMap'].map(fn).join('\n'), c);
+  c.castleReleaseAction=()=>'';c.castleReleasePending=false;vm.createContext(c); vm.runInContext(['campaignOwnerInfo','campaignCastleOwnership','campaignOwnerMarkup','territoryOwnerGuide','courtEstateHolding', 'courtEstateInheritanceMarkup', 'courtEstateCastle', 'courtEstateMapNotice', 'courtEstateDetail', 'refreshCourtEstateSurfaces', 'homeCastleAppearance', 'campaignCastleOwnerAppearance', 'campaignCastleGrowth', 'campaignCastleAppearance', 'campaignCastleTooltip', 'syncWorldMap', 'territoryRows', 'territoryResults', 'castleDetail', 'renderMap'].map(fn).join('\n'), c);
   return { c, game, latest: () => latest, probes: () => probes, renders: () => renders, estate: () => copy(estate), setEstate: value => estate = value };
 }
 const tests = [], test = (name, run) => tests.push([name, run]);
+test('map and holding details explain inheritance only when private effects include the verified enhancement', () => {
+  const h = fixture(), original = JSON.stringify(h.game.state), estate = h.estate(); estate.role = { id: 'cloistered-emperor', title: '法皇' }; h.setEstate(estate);
+  assert(!h.c.courtEstateMapNotice().includes('京都御所の強化を継承')); assert(!h.c.courtEstateDetail().includes('京都御所の強化を継承'));
+  estate.effects.enhancements = { active: true, mode: 'maximum', castleLevel: estate.castleLevel, buildings: copy(estate.buildings) }; h.setEstate(estate);
+  for (const html of [h.c.courtEstateMapNotice(), h.c.courtEstateDetail()]) { assert(html.includes('京都御所の強化を継承')); assert(html.includes('高い方の城郭・施設レベル')); }
+  h.setEstate(null); assert.equal(h.c.courtEstateMapNotice(), ''); assert.equal(h.c.courtEstateDetail(), ''); assert.equal(JSON.stringify(h.game.state), original);
+});
 test('public lords remain independent of personal campaign ownership and are searchable by their real names', () => {
   const h=fixture(),id=h.game.state.home,before=JSON.stringify(h.game.state);
   h.c.window.SengokuTerritoryOwners={ensure(){},describe:castleId=>castleId===id?{status:'known',label:'領主 現在の城主',relation:'other',owners:[{playerId:'u_current_lord',name:'現在の城主'}],detail:'公開領主'}:{status:'unknown',label:'領主情報を確認中',relation:'unknown',owners:[],detail:''}};

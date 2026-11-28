@@ -42,7 +42,7 @@ async function change(ctx){
   const normalized=h.normalizeGameSave(raw,target,now,{reading:true,clock});
    const courtEstate=await h.courtEstateContext(db,target,normalized,clock,now);
    Object.assign(targetRole,withCourtEstateGuard(targetRole,courtEstate));
-   const engine=GameEngine.fromSave(normalized,GAME_OFFICERS,{isDeputy:appoint,deputyReturnHome:originalHome,courtEstateProjection:courtEstate.projection});
+   const engine=GameEngine.fromSave(normalized,GAME_OFFICERS,{isSento:!!target.is_sento,isDeputy:appoint,deputyReturnHome:originalHome,courtEstateProjection:courtEstate.projection});
   if(!appoint&&backup){const old=JSON.parse(backup.save_json).state.castles[engine.state.home],home=engine.state.castles[engine.state.home];if(old)for(const key of ['wall','level'])home[key]=Math.min(key==='level'?engine.castleLevelLimit(engine.state.home):32,Math.max(home[key],old[key]));}
   const save=h.normalizeGameSave(JSON.parse(engine.exportSave()),future,now,{reading:true,clock});save.savedAt=iso(now);save.state.realtime.running=clock.running&&!save.state.gameOver;
   const receipt={targetPlayerId:targetId,action:body.action,revision:body.expectedRevision+1,homeCastleId:save.state.home,createdAt:iso(now)};
