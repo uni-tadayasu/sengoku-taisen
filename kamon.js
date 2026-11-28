@@ -1020,6 +1020,18 @@
     "url": "assets/kamon/court-group.svg"
   },
   {
+    "id": "sento-group",
+    "clan": "仙洞御所",
+    "name": "宮門と光輪の群章",
+    "motif": "palacegate",
+    "kind": "group",
+    "status": "unverified",
+    "description": "仙洞御所に属する特別キャラクターの表示に、朝廷と共通の創作群章を使用。",
+    "note": "朝廷表示用の宮門と光輪を再利用した創作群章。史実の皇室紋章や後白河法皇の使用紋を復刻したものではない。",
+    "sourceIds": [],
+    "url": "assets/kamon/court-group.svg"
+  },
+  {
     "id": "asahina",
     "clan": "朝比奈家",
     "name": "左三つ巴",

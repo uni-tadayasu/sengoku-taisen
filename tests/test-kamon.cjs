@@ -56,6 +56,9 @@ assert.match(kamon.get('津軽家').name, /旗印/);
 assert(kamon.get('津軽家').sourceIds.includes('tsugaru'));
 assert.equal(kamon.url('徳川'), kamon.url('徳川家'));
 assert.equal(kamon.url('芦名家'), kamon.url('蘆名家'));
+assert.equal(kamon.get('仙洞御所').kind, 'group', 'The special reward affiliation has an explicit original group symbol');
+assert.equal(kamon.url('仙洞御所'), kamon.url('朝廷'), 'Sento reuses the established court symbol');
+assert.match(kamon.get('仙洞御所').note, /後白河法皇/);
 
 // Caller input cannot inject HTML, CSS declarations, or a network URL.
 const dangerous = '<img src=x onerror="alert(1)">';

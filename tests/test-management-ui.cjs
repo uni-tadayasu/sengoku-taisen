@@ -153,6 +153,14 @@ test('a denied localStorage getter leaves facility controls and in-memory prefer
  c.facilityQuery='田';assert.doesNotThrow(()=>c.saveFacilityPreferences());assert.equal(c.facilityQuery,'田');
 });
 
+test('Sento ledger lists exactly twelve own facilities with twenty-stage limits while stored legacy growth is retained',()=>{
+ const f=fixture(),{c,game,host}=f;game.setSentoAccess(true);for(const building of data.buildings)game.state.buildings[building.id]=32;
+ c.facilityLayout='list';f.mountFacilities();const entries=host.querySelectorAll('[data-facility-entry]');assert.equal(entries.length,12);assert.deepEqual(entries.map(node=>node.dataset.facilityEntry),game.buildingCatalog().map(row=>row.id));
+ assert(entries.every(node=>node.querySelector('.facility-seal').textContent==='20/ 20'));assert.equal(game.state.buildings.gold_mine,32);assert.match(host.querySelector('.catalog-result-summary').textContent,/12.*12施設/);
+ c.heading=(title,subtitle,description)=>'<h1>'+title+'</h1><p>'+subtitle+'</p><p>'+description+'</p>';c.economyPanel=()=>'';c.staffBaseNotice=()=>'';c.governorAssignmentEntry=()=>'';
+ vm.runInContext(fn('renderFacilities'),c);const markup=c.renderFacilities();assert.match(markup,/仙洞御所の普請帳/);assert.match(markup,/12種類の施設を、各20段階/);assert.match(markup,/全施設の上限はLv.20/);assert(!markup.includes('各32段階'));
+});
+
 test('planner counts construction chains once, includes castle/branch slots and excludes research',()=>{
  const {c,game,host}=fixture();game.state.jobs=[{kind:'building',id:'farm',targetLevel:2,totalSeconds:60,remainingSeconds:30},{kind:'building',id:'farm',targetLevel:3,totalSeconds:60,remainingSeconds:60},{kind:'castle',id:game.state.home,targetLevel:2,totalSeconds:60,remainingSeconds:40},{kind:'research',id:data.techs[0].id,targetLevel:1,totalSeconds:60,remainingSeconds:20}];
  const original=game.constructionJobs.bind(game);game.constructionJobs=()=>[...original(),{kind:'branch',id:'nagoya_north',targetLevel:1,totalSeconds:60,remainingSeconds:40}];

@@ -2500,3 +2500,10 @@ protection, conversations, audiences, roster and event-room access under an
 exact membership-term guard. Their public `courtOffice.jurisdiction` and
 personal `officeJurisdiction` are `kyoto`. No operator or imperial succession
 privilege is granted by this classification.
+
+
+## v5.27.0 — Sento facility limits and cloistered Emperor reward
+
+`SENGOKU_DATA.sentoRules` defines 12 facility IDs and limit 20. `/sync` rejects new Sento construction beyond this catalogue/limit with `409 SENTO_UPGRADE_LIMIT`. Historical completed levels and previously paid targets from the same campaign remain valid; the active personal facility effects are capped by the shared engine. Kyoto estate inheritance remains separate. Ordinary and Kyoto players retain their existing limits.
+
+`GET /court/retirement` includes `retirement.reward: { officerId: "special_goshirakawa_hoo", name: "後白河法皇", rank: "U", earned, earnedAt }`. The reward comes from a confirmed ordination linked to the actor's actual succession, independent of current office. Sync reconstructs the one fixed U variant from that receipt, including historical ordinations. Forged ownership or a gacha entry fails with `409 CLOISTERED_REWARD_REQUIRED`. The existing ledgers are reused; no migration is required.

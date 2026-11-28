@@ -33,8 +33,10 @@
       const current = byBuilding.get(job.id);
       if (!current || job.targetLevel < current.targetLevel) byBuilding.set(job.id, job);
     }
-    return buildings.map((building, index) => {
-      const level = Number(state.buildings?.[building.id]) || 0;
+    const allowed = game.buildingCatalog?.();
+    const ids = allowed ? new Set(allowed.map(building => building.id)) : null;
+    return buildings.filter(building => !ids || ids.has(building.id)).map((building, index) => {
+      const level = Number(game.buildingLevel?.(building.id) ?? state.buildings?.[building.id]) || 0;
       const maximum = Number(game.buildingMax?.(building.id)) || 32;
       const unlock = game.buildingUnlock?.(building.id) || { ok: true };
       const job = byBuilding.get(building.id) || null;

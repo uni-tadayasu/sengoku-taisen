@@ -3,6 +3,7 @@
 // D1 transaction; receipts survive campaign resets and revoked court access.
 import {withCourtEstateGuard} from './court-estate-guard.js';
 import {GameEngine,GAME_OFFICERS} from './game-runtime.js';
+import {reconcileCloisteredReward} from './cloistered-reward.js';
 
 const S=(db,sql,...args)=>db.prepare(sql).bind(...args);
 const rows=result=>result?.results||[];
@@ -26,7 +27,7 @@ export async function reconcileCourtNobles(db,userId,save,fail){
   const pair=officer.id+':'+officer.rank;if(!state.officerVariants.includes(pair))state.officerVariants.push(pair);
   if(state.officerHealth&&!Object.hasOwn(state.officerHealth.values,officer.id))state.officerHealth.values[officer.id]=100;
  }
- return save;
+ return reconcileCloisteredReward(db,userId,save,fail);
 }
 async function catalog(ctx,{save=null,access=null}={}){
  const {db,user,now,helpers:h}=ctx;

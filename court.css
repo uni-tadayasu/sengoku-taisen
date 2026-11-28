@@ -61,3 +61,9 @@
 .court-retirement-enhancements h3{font-size:1.05rem;color:#f0d6a3;margin:0 0 .5rem}
 .court-retirement-enhancements p{font-size:1rem;line-height:1.8;margin:0}
 @media(max-width:520px){.court-retirement-summary{grid-template-columns:1fr}.court-retirement .court-actions>button{width:100%;white-space:normal}}
+
+/* Reserve the special portrait size while the court refreshes in place. */
+.court-cloistered-reward{display:flex;align-items:center;gap:1rem;margin:1rem 0;padding:1rem;border:1px solid #b79754;border-radius:14px;background:linear-gradient(120deg,rgba(112,71,125,.18),rgba(184,143,66,.1))}
+.court-cloistered-reward>img{flex:0 0 96px;width:96px;height:128px;object-fit:cover;border-radius:10px;border:1px solid #d9be78}
+.court-cloistered-reward>div{min-width:0}.court-cloistered-reward h3{margin:.4rem 0}.court-cloistered-reward h3 b{color:var(--gold)}.court-cloistered-reward p{overflow-wrap:anywhere}
+@media(max-width:420px){.court-cloistered-reward{align-items:flex-start;gap:.75rem;padding:.75rem}.court-cloistered-reward>img{flex-basis:72px;width:72px;height:96px}}

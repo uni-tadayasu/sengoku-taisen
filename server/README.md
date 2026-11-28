@@ -1,3 +1,11 @@
+## Ver.5.27.0 — 仙洞御所の12施設・Lv.20、法皇就任褒賞、更新の安定化
+
+仙洞御所の個人施設は天守・田畑・商家・伐採所・採石場・兵舎・城壁・学問所・水田・詰所・蔵書院・茶室の12種類、各Lv.20までです。表示・普請予約・能力計算とクラウド保存の新規強化制限を一致させます。旧来の個人育成値と支払い済みの工事は記録として保持し、京都御所から受ける確認済みの強化効果は既存の最大値合成で継承します。
+
+法皇就任の確定記録により、特別キャラクター「後白河法皇 U」（統率・武勇・知略・政治100、特技・総大将）を一度だけ獲得します。通常招集・登用・公家交換所の対象外です。すでに法皇となった領主も対象となり、身分変更・新戦役・古い保存の復元でも取得記録を引き継ぎます。専用肖像は `assets/imperial/special_goshirakawa_hoo.webp`、生成内容は `docs/cloistered-portrait-20261128.json` に記録しています。
+
+京都御所の施設画面を安定した差分更新へ変更し、開いた詳細・フォーカス・表示位置・読み込み済み画像を維持します。朝廷画面のスクロール位置の二重復元を解消し、独立した管理情報を並列取得します。操作権延長は取得済みの完全な応答を再利用し、連続した保存データの取得を1回減らします。
+
 ## Regional inheritance at world-cycle boundaries
 
 The shared engine retains every capturable castle in a fully conquered region at each world-cycle boundary, excluding Edo, Kyoto Gosho and Kagoshima from the completion requirement. Castle development, garrisons, durability and valid construction/branch state survive. Partial regions reset as before, and completion is checked anew at each boundary. Existing per-cycle receipts pay the usual territory reward exactly once, including inherited territory.

@@ -57,9 +57,15 @@ assert.deepEqual(plain(crestSources), plain(source.scope.SengokuKamon.getSources
 assert(crestSources.every(Object.isFrozen), 'Crest reference objects remain immutable');
 const costs = shipped.scope.SENGOKU_DATA.buildings.map(building => building.base);
 assert.equal(new Set(costs).size, costs.length, 'Every facility retains its own cost object');
-assert.equal(source.scope.SENGOKU_OFFICERS.length,280);
+assert.equal(source.scope.SENGOKU_OFFICERS.length,281);
 assert.equal(source.scope.SENGOKU_OFFICERS.filter(officer=>officer.courtNoble===true).length,24);
-assert.equal(source.scope.SENGOKU_OFFICERS.filter(officer=>officer.courtNoble!==true).length,256);
+assert.equal(source.scope.SENGOKU_OFFICERS.filter(officer=>officer.courtNoble!==true&&officer.cloisteredReward!==true).length,256);
+const cloisteredRewards=source.scope.SENGOKU_OFFICERS.filter(officer=>officer.cloisteredReward===true);
+assert.equal(cloisteredRewards.length,1,'The permanent cloistered reward is a separate roster category');
+assert.equal(cloisteredRewards[0].id,'special_goshirakawa_hoo');
+assert.notEqual(cloisteredRewards[0].courtNoble,true,'The permanent reward is not a court exchange character');
+assert.equal(cloisteredRewards[0].rank,'U');
+assert.deepEqual(['lead','valor','intellect','politics'].map(key=>cloisteredRewards[0][key]),[100,100,100,100]);
 assert.equal(source.scope.SENGOKU_DATA.castles.length,130);
 console.log('PASS '+publicNames(source.scope).length+' classic globals, function names, initialization order and real game data match after four bundles');
 

@@ -23,11 +23,13 @@ import {handleCovert,reconcileCovertProgress,covertIncidentStatements,settleCove
 import {handleCourt} from './court.js';
 import {courtMembershipStatus,courtMembershipDetails,joinCourtMembership} from './court-membership.js';
 import {handleCourtNobles,reconcileCourtNobles} from './court-nobles.js';
+import {readCloisteredReward,applyCloisteredReward} from './cloistered-reward.js';
 import {publicCourtLineage,courtLineageStatus,handleCourtLineage} from './court-lineage.js';
 import {courtRelationsSql,publicCourtRelations,handleCourtNegotiations} from './court-negotiations.js';
 import {releaseFieldCastle,releasePersonalCastle} from './field-release.js';
 import {handleCourtSuccession} from './succession.js';
 import {handleCourtRetirement} from './retirement.js';
+import {assertSentoUpgradeTransition} from './sento-upgrades.js';
 import {handleRegency,courtRegentAuthority} from './regency.js';
 import {handleCourtEvents} from './court-events.js';
 import {handleCourtEstate,courtEstateAuthority,assertCourtEstateAccess,courtEstatePricingGame} from './court-estate.js';
@@ -52,8 +54,8 @@ import {requirePromotionOrigin,recordPromotion,readPromotionReport} from './prom
 import {readMusicBroadcast,handleAdminMusic} from './admin-music.js';
 import {lordSupportSql,guardLordSupport,ensureResidency,residencySnapshot,residencyDirectory,residencyStart,initialResidencyStatements,residencyTargetGuard,prepareResidencySuccession,prepareResidencyCpuLosses} from './residency.js';
 const API = '/api/v1';
-const API_VERSION = '5.26.0';
-const API_FEATURES = Object.freeze({trades:true,moderation:true,playerExpulsion:true,moderatedNameReuse:true,deputyOperator:true,deputyOperations:true,privateOperationsLabels:true,deputyOfficer:true,kagoshimaProtected:true,premium:true,timedEvents:true,troopTrades:true,roamingBattles:true,roamingDeployment:true,covertDispatch:true,privatePlayerRoles:true,guildIcons:true,court:true,kyotoGosho:true,branches:true,branchBattles:true,branchFacilities:true,audioCalls:true,progression:true,armyPresets:true,allianceStrategy:true,sharedConquest:true,newcomerProtection:true,webPush:true,messagePush:true,pushDeviceTest:true,battleAdviser:true,battleCatalog:true,eventBattleRewards:true,shogunate:true,shogunateGovernance:true,attackTravel:true,castleResidency:true,retainerCastleStats:true,residencyRelocation:true,maintenanceUpkeep:true,strongholdDurability:true,chatReplies:true,chatMentions:true,covertReturnTravel:true,allianceUnitTravel:true,legacySaveRecovery:true,displayNameVariants:true,courtOffices:true,serverSummons:true,loginRewards:true,paidRerolls:true,supporterChoices:true,premiumGrowthMetrics:true,adminMusicBroadcast:true,rankRiceProduction:true,shogunateApproval:true,imperialSuccession:true,retiredEmperor:true,regency:true,courtEventRoom:true,imperialSuccessionApproval:true,courtEstate:true,fieldTerritories:true,fieldOwnerProjection:true,courtEstateField:true,courtMembership:true,fieldTerritoryAttacks:true,unifiedTerritoryOwners:true,regionalInheritance:true,regionalProtection:true,communityNotifications:true,manualChatRead:true,courtLineage:true,imperialHouse:true,fieldRelease:true,courtNegotiations:true,courtNobles:true,imperialSuccessionEligibility:true,cloisteredEmperor:true,imperialRetirementSlots:true,retiredShogunateIndependence:true,sentoGosho:true,imperialPalaceEnhancements:true});
+const API_VERSION = '5.27.0';
+const API_FEATURES = Object.freeze({trades:true,moderation:true,playerExpulsion:true,moderatedNameReuse:true,deputyOperator:true,deputyOperations:true,privateOperationsLabels:true,deputyOfficer:true,kagoshimaProtected:true,premium:true,timedEvents:true,troopTrades:true,roamingBattles:true,roamingDeployment:true,covertDispatch:true,privatePlayerRoles:true,guildIcons:true,court:true,kyotoGosho:true,branches:true,branchBattles:true,branchFacilities:true,audioCalls:true,progression:true,armyPresets:true,allianceStrategy:true,sharedConquest:true,newcomerProtection:true,webPush:true,messagePush:true,pushDeviceTest:true,battleAdviser:true,battleCatalog:true,eventBattleRewards:true,shogunate:true,shogunateGovernance:true,attackTravel:true,castleResidency:true,retainerCastleStats:true,residencyRelocation:true,maintenanceUpkeep:true,strongholdDurability:true,chatReplies:true,chatMentions:true,covertReturnTravel:true,allianceUnitTravel:true,legacySaveRecovery:true,displayNameVariants:true,courtOffices:true,serverSummons:true,loginRewards:true,paidRerolls:true,supporterChoices:true,premiumGrowthMetrics:true,adminMusicBroadcast:true,rankRiceProduction:true,shogunateApproval:true,imperialSuccession:true,retiredEmperor:true,regency:true,courtEventRoom:true,imperialSuccessionApproval:true,courtEstate:true,fieldTerritories:true,fieldOwnerProjection:true,courtEstateField:true,courtMembership:true,fieldTerritoryAttacks:true,unifiedTerritoryOwners:true,regionalInheritance:true,regionalProtection:true,communityNotifications:true,manualChatRead:true,courtLineage:true,imperialHouse:true,fieldRelease:true,courtNegotiations:true,courtNobles:true,imperialSuccessionEligibility:true,cloisteredEmperor:true,imperialRetirementSlots:true,retiredShogunateIndependence:true,sentoGosho:true,sentoFacilityUpgrades:true,imperialPalaceEnhancements:true,cloisteredReward:true});
 const MAX_BODY = 16 * 1024;
 const MAX_SAVE_BODY = 2 * 1024 * 1024;
 const MAX_AVATAR_BYTES = 48 * 1024;
@@ -1258,13 +1260,13 @@ const CLANS = [{"name":"織田家"},{"name":"武田家"},{"name":"上杉家"},{"
 const TECHS = [{"id":"cultivation","max":5},{"id":"commerce","max":5},{"id":"forestry","max":5},{"id":"masonry","max":5},{"id":"conscription","max":5},{"id":"discipline","max":5},{"id":"gunnery","max":5},{"id":"siege","max":5}];
 const QUESTS = [{"id":"first_upgrade"},{"id":"first_recruit"},{"id":"first_battle"},{"id":"three_castles"},{"id":"five_officers"},{"id":"technology"},{"id":"ten_castles"},{"id":"unify"}];
 const TACTICS = [{"id":"balanced"},{"id":"assault"},{"id":"siege"},{"id":"ambush"}];
-const OFFICERS = GAME_OFFICERS.map(({id,rank,rarity,courtNoble})=>({id,rank,rarity,courtNoble}));
+const OFFICERS = GAME_OFFICERS.map(({id,rank,rarity,courtNoble,cloisteredReward})=>({id,rank,rarity,courtNoble,cloisteredReward}));
 const RANKS = ["D","C","B","A","S","SS","SSS","U"];
 const RESOURCES = ["gold","rice","wood","stone"];
 const GACHA = {"initial":3000,"duplicateRefund":50};
 const CASTLE_BY_ID = Object.assign(Object.create(null), Object.fromEntries(CASTLES.map(v => [v.id,v])));
 const OFFICER_BY_ID = Object.assign(Object.create(null), Object.fromEntries(OFFICERS.map(v => [v.id,v])));
-const VALID_OFFICER_VARIANTS = new Map(OFFICERS.flatMap(officer=>(officer.courtNoble?[officer.rank||officer.rarity]:RANKS).map(rank=>[officer.id+':'+rank,officer.id])));
+const VALID_OFFICER_VARIANTS = new Map(OFFICERS.flatMap(officer=>(officer.courtNoble||officer.cloisteredReward?[officer.rank||officer.rarity]:RANKS).map(rank=>[officer.id+':'+rank,officer.id])));
 const CLAN_HOMES = {'織田家':'kiyosu','武田家':'tsutsujigasaki','上杉家':'kasugayama','徳川家':'okazaki','毛利家':'yoshida','島津家':'uchijo','伊達家':'yonezawa','北条家':'odawara'};
 const copy = value => JSON.parse(JSON.stringify(value));
 const pick = (object, keys) => Object.fromEntries(keys.map(key => [key,object[key]]));
@@ -2099,12 +2101,14 @@ async function syncSnapshot(db,row,user,deviceId,now,{settle=false}={}) {
   const current=await getUser(db,user.id);if(current.is_admin!==user.is_admin||current.staff_term!==user.staff_term||(current.deputy_term||'')!==(user.deputy_term||'')||!!current.is_court_protected!==!!user.is_court_protected)fail(409,'STAFF_ROLE_CHANGED','役職が更新されました。もう一度同期してください。');
   await requireAccountAccess(db,authenticated);
   const privateSave=row?.save_json?normalizeGameSave(JSON.parse(row.save_json),user,now,{reading:true,clock}):null;
+  const cloisteredReward=await readCloisteredReward(db,user.id);
+  if(privateSave)applyCloisteredReward(privateSave,cloisteredReward,fail);
   const maintenanceAuthority=(await maintenanceContext(db,user.id,privateSave,clock)).authority;
   let branchResolvedElapsedMs=0;
   if(privateSave){await restoreServerMarch(db,user.id,privateSave);await reconcileCovertProgress(db,user.id,privateSave);const branches=await branchStateGuard(db,user.id,privateSave.state.walking.campaignId);applyBranchProgress(privateSave,branches.state,clock);branchResolvedElapsedMs=branches.resolvedElapsedMs;}
   const estateEconomy=await courtEstateContext(db,user,privateSave,clock,now),role=roleCommitGuard(user);
   if(!await stmt(db,'SELECT 1 AS allowed WHERE '+role.sql+' AND '+estateEconomy.guard.sql,...role.args,...estateEconomy.guard.args).first())fail(409,'COURT_ESTATE_REFRESH_REQUIRED',COURT_ESTATE_REFRESH_MESSAGE);
-  return {ok:true,user:mapUser(user,now),staffBase:publicStaffBase(staffBase),courtEstateProjection:estateEconomy.projection,save:privateSave,clock,maintenanceAuthority,branchResolvedElapsedMs,expulsion:await expulsionSnapshot(db,user.id),...await residencySnapshot(db,user.id,now,evaluationRef),
+  return {ok:true,user:mapUser(user,now),staffBase:publicStaffBase(staffBase),courtEstateProjection:estateEconomy.projection,cloisteredReward,save:privateSave,clock,maintenanceAuthority,branchResolvedElapsedMs,expulsion:await expulsionSnapshot(db,user.id),...await residencySnapshot(db,user.id,now,evaluationRef),
     revision:Number(row?.revision||0),updatedAt:row?.updated_at?iso(row.updated_at):null,
     writerDeviceId:row?.writer_device_id||null,writerDeviceName:row?.writer_device_name||null,
     leaseExpiresAt:row?.lease_expires_at?iso(row.lease_expires_at):null,serverTime:iso(now),
@@ -3271,6 +3275,7 @@ async function route(request, env, now) {
     // The private return address is a consequence of the server-side title
     // transition. An upload cannot reserve an unowned castle for a later exit.
     if(user.is_sento)save.state.imperialResidence=copy(before?.state.imperialResidence||{returnHome:CLAN_HOMES[user.clan]||'kiyosu'});
+    assertSentoUpgradeTransition(before,save,user,fail);
     // All first-time local imports need the same time-origin migration. Older
     // saves also lack officerHealth; leaving those on their local calendar
     // makes the shared upkeep authority appear older than their progress.

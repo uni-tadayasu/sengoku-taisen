@@ -14,5 +14,5 @@ for(const noble of nobles){
 }
 assert.equal(hashes.size,24,'each court character has distinct original artwork');assert.equal(downloads,0,'building catalogue markup must not preload all portraits');
 assert(fs.readFileSync(path.join(root,'artwork.css'),'utf8').includes('.painted-art.court-noble-painting>.art-surface { background-size:cover;'),'independent images cannot be stretched as 8x4 atlas sheets');
-assert.equal(scope.SengokuArt.totalIllustrations,8248);
+assert.equal(scope.SengokuArt.totalIllustrations,8249,'8,224 ordinary illustrations, 24 court nobles and the dedicated cloistered reward portrait');
 console.log('PASS 24 distinct optimized noble portraits, shared gallery artwork, atlas isolation and lazy loading.');

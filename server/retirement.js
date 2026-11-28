@@ -1,6 +1,7 @@
 // Retirement and ordination are backed by the completed imperial succession
 // ledger. A name, client save or court-house label can never grant a title.
 import {readShogunateIndependence} from './shogunate-independence.js';
+import {readCloisteredReward,CLOISTERED_REWARD} from './cloistered-reward.js';
 const S=(db,sql,...args)=>db.prepare(sql).bind(...args);
 const GATE='EXISTS(SELECT 1 FROM court_ordination_requests WHERE actor_id=? AND request_id=? AND commit_token=?)';
 const OCCUPIED='上皇・法皇は共通で定員1名です。現在の上皇本人だけが、同じ枠のまま法皇になれます。';
@@ -31,7 +32,7 @@ export async function courtRetirementStatus(ctx){
  const reason=inactive?'天皇が皇位を譲った後に利用できます。':isCloisteredEmperor?'法皇として仙洞御所を本拠に、幕府の支配を受けずに活動できます。':isReturnedImperial?'皇族に戻って退位しています。一般拠点へ移転できます。':!canOrdain?OCCUPIED:'出家すると同じ共通枠のまま法皇になります。本拠は仙洞御所を継続し、資産と幕府からの独立を引き継ぎます。';
  return{kind,title:{none:null,imperial:'皇族','retired-emperor':'上皇','cloistered-emperor':'法皇'}[kind],isRetiredEmperor,isCloisteredEmperor,isReturnedImperial,
   canOrdain,canRelocate,base:isRetiredEmperor?{id:'sento_gosho',name:'仙洞御所',fixed:true}:null,shogunateIndependent:isRetiredEmperor&&await readShogunateIndependence(db,user.id),
-  revision:inactive?0:Number(row.retirement_revision),successionId:inactive?null:row.commit_token,retiredAt:inactive?null:Number(row.created_at),ordainedAt:isCloisteredEmperor?Number(row.ordained_at):null,capacity,reason};
+  revision:inactive?0:Number(row.retirement_revision),successionId:inactive?null:row.commit_token,retiredAt:inactive?null:Number(row.created_at),ordainedAt:isCloisteredEmperor?Number(row.ordained_at):null,capacity,reason,reward:await readCloisteredReward(db,user.id)};
 }
 async function reply(ctx,receipt=null,idempotent=false){
  const current=await ctx.helpers.getUser(ctx.db,ctx.user.id);await ctx.helpers.requireAccountAccess(ctx.db,current);
@@ -63,7 +64,7 @@ async function ordain(ctx){
   return state;
  };
  await conflict();await h.budget(db,'court-ordination:'+user.id,12,60000,now);
- const guard=h.roleCommitGuard(user),nonce=crypto.randomUUID(),args=[user.id,body.requestId,nonce],receipt={requestId:body.requestId,action:'ordain',successionId:body.successionId,revision:1,ordainedAt:now,title:'法皇'};
+ const guard=h.roleCommitGuard(user),nonce=crypto.randomUUID(),args=[user.id,body.requestId,nonce],receipt={requestId:body.requestId,action:'ordain',successionId:body.successionId,revision:1,ordainedAt:now,title:'法皇',reward:{...CLOISTERED_REWARD}};
  const result=await db.batch([
   S(db,`INSERT INTO court_ordination_requests(actor_id,request_id,succession_id,request_hash,commit_token,result_json,created_at)
    SELECT ?,?,?,?,?,?,? WHERE ${guard.sql}

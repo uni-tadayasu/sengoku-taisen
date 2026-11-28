@@ -15,7 +15,7 @@ function fn(name){
 function declaration(name){const start=source.indexOf(`  const ${name}=`);assert(start>=0,name);return source.slice(start,source.indexOf('\n',start));}
 function create({all=false}={}){
   const game=new E({officers:plain(roster),clan:'織田家',seed:17});
-  if(all){for(const officer of roster)assert(game._grantOfficerVariant(officer.id,officer.courtNoble?officer.rank:'S'));for(const building of D.buildings)game.state.buildings[building.id]=16;}
+  if(all){for(const officer of roster)assert(game._grantOfficerVariant(officer.id,(officer.courtNoble||officer.cloisteredReward)?officer.rank:'S'));for(const building of D.buildings)game.state.buildings[building.id]=16;}
   return game;
 }
 function staffFixture({projected=true}={}){
