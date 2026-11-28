@@ -1,5 +1,6 @@
 import {withCourtEstateGuard} from './court-estate-guard.js';
 import {GameEngine,GAME_OFFICERS} from './game-runtime.js';
+import {reconcileCloisteredReward} from './cloistered-reward.js';
 
 // Paid rights, daily limits and selections live outside importable saves.
 // Every receipt and save mutation is committed in one ordered D1 transaction.
@@ -162,6 +163,7 @@ export async function protectRewardSync(db,user,save,before,h){
     // the server-owned collection and currency by inventing a campaign ID.
     const fresh=new GameEngine({officers:GAME_OFFICERS,clan:current.clan,startCastle:current.home,difficulty:current.difficulty,isSento:!!user.is_sento,isAdmin:!!user.is_admin,isDeputy:!!user.is_deputy,isStaff:!!user.is_staff,isCourtProtected:!!user.is_court_protected,seed:1}).state;
     for(const reward of exchanged){if(!fresh.officers.includes(reward.officerId))fresh.officers.push(reward.officerId);const variant=reward.officerId+':'+reward.rank;if(!fresh.officerVariants.includes(variant))fresh.officerVariants.push(variant);}
+    await reconcileCloisteredReward(db,user.id,{state:fresh},h.fail);
     const sameSet=(a,b)=>a.length===b.length&&a.every(value=>b.includes(value));
     if(current.magatama>fresh.magatama||current.troops>fresh.troops||current.prestige>fresh.prestige||Object.keys(fresh.stats).some(key=>current.stats[key]!==fresh.stats[key])||current.gachaHistory.length||current.claimedQuests.length||current.giftReceipts.length||!sameSet(current.officers,fresh.officers)||!sameSet(current.officerVariants,fresh.officerVariants)||!sameSet(current.captureRewards,fresh.captureRewards)||Object.keys(fresh.resources).some(key=>current.resources[key]>fresh.resources[key])||Object.keys(fresh.buildings).some(key=>current.buildings[key]>fresh.buildings[key])||Object.keys(fresh.tech).some(key=>current.tech[key]>fresh.tech[key])||current.jobs.length||current.branches.length||current.castles[current.home]?.owner!==current.clan||Object.entries(current.castles).some(([id,row])=>row.owner===current.clan&&id!==current.home))changed();
       return archive;

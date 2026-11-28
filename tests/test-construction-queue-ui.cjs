@@ -78,6 +78,13 @@ test('each queued stage has its own clock and stays at zero progress until it ac
 test('level 32 is the last reservation and the displayed facility remains at its completed level',()=>{
  const h=harness();h.game.state.buildings.farm=30;upgrade(h);upgrade(h);h.c.buildingModal('farm');assert.equal(h.game.state.buildings.farm,30);assert.equal(h.c.buildingTailLevel('farm'),32);assert.match(h.html(),/Lv\.32まで予約済み/);assert(!h.footer().includes('data-action="upgrade"'));h.controls.push({dataset:{action:'upgrade',id:'farm'}});h.c.refreshLiveControls();assert.equal(h.controls[0].disabled,true);
 });
+test('Sento details use their own twenty-stage limit and do not expose an unavailable legacy facility',()=>{
+ const h=harness(new SengokuEngine({isSento:true,seed:7}));h.game.state.buildings.farm=19;h.game.state.buildings.gold_mine=31;
+ h.c.buildingModal('farm');assert.match(h.calls.modal.at(-1)[0],/19 \/ 20/);assert.match(h.html(),/20段階の姿を見る/);assert(!h.html().includes('32段階'));
+ upgrade(h,'farm');h.c.buildingModal('farm');assert.match(h.html(),/Lv\.20まで予約済み/);assert(!h.footer().includes('data-action="upgrade"'));
+ const count=h.calls.modal.length;h.c.buildingModal('gold_mine');assert.equal(h.calls.modal.length,count);assert.equal(h.c.buildingAvailability('gold_mine').ok,false);
+ h.game.state.jobs=[];h.game.state.buildings.farm=32;h.c.buildingModal('farm');assert.match(h.calls.modal.at(-1)[0],/20 \/ 20/);assert.equal(h.game.state.buildings.farm,32,'legacy growth stays stored while the own facility display is capped');
+});
 test('failed durability restores the resources, command and complete queue without redrawing or adding a receipt',()=>{
  const h=harness();upgrade(h);h.game.state.command=h.game.commandMax();const before=plain(h.game.state),saved=h.calls.saved.length,renders=h.calls.render;h.flags.failSave=true;const result=h.c.upgradeDurableBuilding('farm');assert.equal(result.ok,false);assert.deepEqual(plain(h.game.state),before);assert.equal(h.calls.saved.length,saved);assert.equal(h.calls.render,renders);
 });

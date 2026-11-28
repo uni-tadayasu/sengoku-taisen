@@ -11,6 +11,25 @@ function fingerprint(save){
  return JSON.stringify(sorted(personalState));
 }
 function hash(value){let a=2166136261,b=3339675911;const imul=Math.imul;for(let i=0;i<value.length;i++){const code=value.charCodeAt(i);a=imul(a^code,16777619);b=imul(b^code,2246822519);}return(a>>>0).toString(16)+':'+(b>>>0).toString(16);}
+// The server may project an earned, permanent reward before the personal save
+// revision changes. Admit only this known additive grant; economic, campaign
+// and authority changes still use the ordinary canonical recovery path.
+function mergeCloisteredReward(sent,snapshot,current,{exact=false}={}){
+ const id='special_goshirakawa_hoo',pair=id+':U',receipt=snapshot.cloisteredReward,a=sent?.state,b=snapshot.save?.state,c=current?.state;
+ if(receipt?.officerId!==id||receipt.rank!=='U'||receipt.earned!==true||!Number.isSafeInteger(receipt.earnedAt)||receipt.earnedAt<0||![a,b,c].every(state=>Array.isArray(state?.officers)&&Array.isArray(state?.officerVariants)))return null;
+ const values=state=>state.officerHealth?.values,healthMap=state=>values(state)&&typeof values(state)==='object'&&!Array.isArray(values(state));
+ const add={officer:!a.officers.includes(id),variant:!a.officerVariants.includes(pair),health:healthMap(a)&&!Object.hasOwn(values(a),id)};
+ if(!Object.values(add).some(Boolean)||!b.officers.includes(id)||!b.officerVariants.includes(pair)||add.health&&values(b)?.[id]!==100)return null;
+ function grant(save){
+  const next=JSON.parse(JSON.stringify(save)),state=next.state;let changed=false;
+  if(add.officer&&!state.officers.includes(id)){state.officers.push(id);changed=true;}
+  if(add.variant&&!state.officerVariants.includes(pair)){state.officerVariants.push(pair);changed=true;}
+  if(add.health&&healthMap(state)&&!Object.hasOwn(values(state),id)){values(state)[id]=100;changed=true;}
+  return{save:next,changed};
+ }
+ if(exact&&fingerprint(grant(sent).save)!==fingerprint(snapshot.save))return null;
+ return grant(current);
+}
 // Reconcile only the authoritative branch/parent delta. A resource tick or a
 // new ordinary action must not prevent that delta, or be rolled back by it.
 function mergeBranchCorrection(sent,canonical,current,{troopsSeparate=false}={}){
@@ -405,12 +424,13 @@ function create(options={}){
   if(branchCorrectionPending&&result.writerDeviceId!==device.id){force=true;reason='branch-canonical';}
   if(remote&&!remoteKey)throw Error('同期データの形式を確認できませんでした。');
   if(remote&&(!initialized||force||result.revision>revision||remoteKey!==ack)){
-   let before='',unreadable=false;try{before=fingerprint(local());}catch(_){unreadable=true;}
+   let beforeSave=null,before='',unreadable=false;try{beforeSave=local();before=fingerprint(beforeSave);}catch(_){unreadable=true;}
    const backup=unreadable||Boolean(before)&&(!initialized||force||(dirty&&before!==remoteKey));
+   const reward=!force&&initialized&&!branchCorrectionPending&&result.revision===revision&&result.writable===true&&result.writerDeviceId===device.id&&leaseDeadline>now()&&!rolePending()&&ack&&before&&before!==ack?mergeCloisteredReward({state:JSON.parse(ack)},result,beforeSave,{exact:true}):null;
    // Reopen only an unsent save whose exact server baseline is still authoritative.
    // A changed baseline always goes through the bridge's local-backup path.
    const resume=!force&&canResume(remoteKey,result.revision);
-   if(!await apply(resume||remote,result,g,{reason:resume?'resume':!initialized?'initial':reason,backup:resume?Boolean(before)&&before!==fingerprint(resume):backup,backupRuntime:Boolean(branchCorrectionPending)||estateReplay}))return false;
+   if(!await apply(resume||reward?.save||remote,result,g,{reason:resume?'resume':reward?'cloistered-reward':!initialized?'initial':reason,backup:resume?Boolean(before)&&before!==fingerprint(resume):reward?false:backup,backupRuntime:Boolean(branchCorrectionPending)||estateReplay}))return false;
    branchCorrectionPending=null;ack=remoteKey;dirty=fingerprint(local())!==ack;
   }else if(!remote&&!initialized){ack='';dirty=Boolean(localSnapshot().save);}
   else if(remote&&branchCorrectionPending){const corrected=mergeBranchCorrection(branchCorrectionPending,remote,local());if(corrected.changed){if(!await apply(corrected.save,result,g,{reason:'branch-canonical'}))return false;}if(!corrected.pending)branchCorrectionPending=null;dirty=fingerprint(local())!==ack;}
@@ -470,7 +490,10 @@ function create(options={}){
     if(home&&journal?.current&&!journal.overflow&&save.state.walking?.campaignId===preserved.state.walking?.campaignId&&save.state.clan===preserved.state.clan&&journal.records.some(record=>(record.before.castles[home]||0)>(record.after.castles[home]||0)))effective=staffSnapshotWithTroops(result,preserved.state);
     branchCorrectionPending=corrected.pending?save:null;if(condition.conflict||repair.conflict){if(!await apply(result.save,result,g,{reason:'repair-conflict',backup:true,backupRuntime:true}))return{ok:false};branchCorrectionPending=null;effective=result;}else if((corrected.changed||monthly.changed||condition.changed||repair.changed)&&!await apply(preserved,effective,g,{reason:repair.changed?'repair-canonical':corrected.changed?'branch-canonical':monthly.changed?'upkeep-month':'durability-canonical',backup:false}))return{ok:false};
    }
-   if(!valid(g))return{ok:false};applyCourtEstateProjection(effective,g);applyMaintenanceAuthority(effective,g);applyBranchAuthority(effective,g);observeResidency(effective);if(effective.clock)global.SengokuWorldClock?.accept(effective.clock);applyStaffBase(effective,g);revision=result.revision;ack=canonical;const latest=localSnapshot();dirty=latest.key!==ack;initialized=true;attempt=null;checkpoint(latest);status.updatedAt=result.updatedAt||null;lease(result);access();if(dirty&&!suspended)scheduleSave();return{ok:true};
+   if(!valid(g))return{ok:false};
+   const reward=String(result.user?.id)===String(session.id)?mergeCloisteredReward(save,result,local()):null;
+   if(reward?.changed&&!await apply(reward.save,effective,g,{reason:'cloistered-reward',backup:false}))return{ok:false};
+   applyCourtEstateProjection(effective,g);applyMaintenanceAuthority(effective,g);applyBranchAuthority(effective,g);observeResidency(effective);if(effective.clock)global.SengokuWorldClock?.accept(effective.clock);applyStaffBase(effective,g);revision=result.revision;ack=canonical;const latest=localSnapshot();dirty=latest.key!==ack;initialized=true;attempt=null;checkpoint(latest);status.updatedAt=result.updatedAt||null;lease(result);access();if(dirty&&!suspended)scheduleSave();return{ok:true};
   }catch(error){
    if(!valid(g))return{ok:false};
    if(error.code==='DEFENSE_CLOCK_PENDING'){
@@ -489,7 +512,17 @@ function create(options={}){
    try{const settled=await request(g,'/sync/settle',{method:'POST',data:{deviceId:device.id,revision}});if(!settled||!await snapshot(settled,g))return{ok:false};}
    catch(error){if(['REVISION_CONFLICT','LEASE_REQUIRED'].includes(error.code)){await recoverConflict(g);return{ok:false,conflict:true};}throw error;}
   }
-  const resumePresence=banned||accessRefreshPending;let result=await request(g,'/sync?deviceId='+encodeURIComponent(device.id));if(!result||!await snapshot(result,g))return{ok:false};
+  const resumePresence=banned||accessRefreshPending;
+  // Renewing our still-valid lease already returns the complete authoritative
+  // snapshot. Do not wait for the same large save twice on every renewal.
+  // Initial sessions and followers continue to read before claiming a lease.
+  const renewFirst=initialized&&!resumePresence&&!rolePending()&&!takeOver&&!settleCycle&&leaseDeadline>now()&&now()-lastLeaseAt>=10000;
+  let result;
+  if(renewFirst){
+   try{result=await request(g,'/sync/lease',{method:'POST',data:{deviceId:device.id,deviceName:device.name,takeOver:false}});if(result)lastLeaseAt=now();}
+   catch(error){if(error.code!=='LEASE_HELD')throw error;const latest=await request(g,'/sync?deviceId='+encodeURIComponent(device.id));if(latest)await snapshot(latest,g);return{ok:false,held:true};}
+  }else result=await request(g,'/sync?deviceId='+encodeURIComponent(device.id));
+  if(!result||!await snapshot(result,g))return{ok:false};
   if(resumePresence&&!banned){accessRefreshPending=false;await presence(true);if(!valid(g))return{ok:false};schedulePresence();}
   const until=Date.parse(result.leaseExpiresAt),server=Date.parse(result.serverTime)||now(),other=result.writerDeviceId&&result.writerDeviceId!==device.id&&until>server;
   if(takeOver||!other&&(leaseDeadline<=now()||now()-lastLeaseAt>=10000)){

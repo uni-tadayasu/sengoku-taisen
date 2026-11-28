@@ -317,5 +317,19 @@ test('the court roster and appointment directory explain formal and appointed of
  const staff=fixture({staff:true});await staff.controller.load();assert.equal(staff.controller.snapshot().info.self.officeJurisdiction,'kyoto');staff.controller.dispose();
  const external=fixture();external.info.self.title='中納言';external.info.self.officeJurisdiction='external';await external.controller.load();assert.equal(external.controller.snapshot().info.self.officeJurisdiction,'external');external.controller.dispose();
 });
+test('independent court management reads begin together and late account results are discarded',async()=>{
+ for(const switchAccount of [false,true]){
+  const h=fixture({admin:true,section:'management'}),waiting=new Map();h.hook=(route,args)=>{if(route==='/court')return h.respond(route,args);const pending=deferred();waiting.set(route,{...pending,args});return pending.promise;};
+  const loading=h.controller.load();await until(()=>waiting.size===4);assert.equal(h.calls.length,5);assert(waiting.has('/staff/court'));assert(waiting.has('/admin/court/succession'));assert([...waiting.keys()].some(route=>route.startsWith('/admin/court/offices?')));assert([...waiting.keys()].some(route=>route.startsWith('/admin/court/regent?')));
+  if(switchAccount){h.context={...h.context,epoch:2,playerId:'different-account',user:{id:'different-account'}};h.controller.snapshot();}
+  for(const [route,pending]of waiting)pending.resolve(h.respond(route,pending.args));assert.equal(await loading,!switchAccount);
+  if(switchAccount){assert.equal(h.controller.snapshot().roster,null);assert.equal(h.controller.snapshot().offices,null);assert.equal(h.controller.snapshot().regent,null);}else{assert(h.controller.snapshot().roster);assert(h.controller.snapshot().offices);assert(h.controller.snapshot().regent);}
+ }
+});
+test('court render keeps the anchor correction supplied by StableDOM',async()=>{
+ const h=fixture(),{host}=setup(),main=host.closest('main'),previous=global.SengokuStableDOM;let corrected=false;
+ global.SengokuStableDOM={patch:(node,html,options)=>{const result=stable.patch(node,html,options);if(corrected)main.scrollTop=144;return result;}};
+ const mounted=Court.mount(host,h.options);try{await until(()=>mounted.controller.snapshot().info&&!mounted.controller.snapshot().loading);main.scrollTop=200;corrected=true;mounted.refresh();assert.equal(main.scrollTop,144);}finally{mounted.dispose();global.SengokuStableDOM=previous;}
+});
 (async()=>{for(const[name,run]of tests){await run();console.log('PASS '+name);}console.log(tests.length+' court UI, privacy, admission and mounted DOM checks passed. No live requests.');})().catch(error=>{console.error(error);process.exitCode=1;});
 

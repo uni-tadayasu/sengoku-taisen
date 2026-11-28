@@ -17,7 +17,7 @@ function portraitRanks(){
  vm.runInContext(fs.readFileSync(path.join(game,'officers-data.js'),'utf8'),scope);
  vm.runInContext(source,scope);
  const ranks=scope.SENGOKU_RANKS,roster=scope.SENGOKU_OFFICERS;
- for(const officer of roster)for(const rank of ranks){
+ for(const officer of roster)for(const rank of officer.courtNoble||officer.cloisteredReward?[officer.rank]:ranks){
   const html=scope.SengokuArt.portrait({...officer,rank});
   assert(html.includes(`aria-hidden="true">${rank}</b>`));
   assert(html.includes(`${rank}ランク`));
@@ -35,7 +35,7 @@ function portraitRanks(){
   }
  }
  assert(!artScope.officerCrest(null).includes('portrait-rank-badge'));
- console.log('PASS 2,048 ranked portraits, exclusive Ieyasu, compact crests and offline fallback identify the displayed variant');
+ console.log('PASS 2,048 ordinary ranked portraits, fixed-rank court/reward portraits, exclusive Ieyasu, compact crests and offline fallback identify the displayed variant');
 }
 function headerIconSlots(){
  const {doc,host,$}=require('./helpers/dom-model.cjs').setup();

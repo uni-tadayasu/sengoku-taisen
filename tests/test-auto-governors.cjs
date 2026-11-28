@@ -14,7 +14,7 @@ const save=game=>JSON.parse(game.exportSave());
 const facilities=game=>D.buildings.filter(b=>game.state.buildings[b.id]>0);
 const candidates=game=>game.state.officers.filter(id=>!game.state.army.includes(id));
 const close=(actual,expected,message)=>assert(Math.abs(actual-expected)<1e-9,message||`${actual} != ${expected}`);
-function ownAll(game,{includeCourtNobles=true}={}){for(const o of game.roster)if(includeCourtNobles||!o.courtNoble)assert(game._grantOfficerVariant(o.id,o.courtNoble?o.rank:'D'));return game;}
+function ownAll(game,{includeCourtNobles=true}={}){for(const o of game.roster)if(includeCourtNobles||!o.courtNoble&&!o.cloisteredReward)assert(game._grantOfficerVariant(o.id,(o.courtNoble||o.cloisteredReward)?o.rank:'D'));return game;}
 function fixture(roster,options={}){
   const game=create(roster,options);game.state.officers=roster.map(o=>o.id);
   game.state.officerVariants=roster.map(o=>o.id+':D');game.state.army=[];game.state.governors={};return game;

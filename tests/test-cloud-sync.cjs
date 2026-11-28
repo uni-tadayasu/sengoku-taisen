@@ -40,6 +40,66 @@
   const sync=api.create({device:{id:'tab-'+crypto.randomUUID(),name:'端末 '+id},bridge:()=>bridge,now:()=>clock.time,hidden:()=>!visible,online:()=>connected,setTimeout:clock.set,clearTimeout:clock.clear,storage});
   return{sync,bridge,applied,access,roles,storage,start:who=>sync.start({id:who||id,request:svc.request(who||id),onUser(){}}),state:()=>clone(current),begin:next=>{if(next)current=clone(next);started=true;sync.notifySave();},mutate:fn=>{fn(current);sync.notifySave();},hidden:v=>{visible=!v;},online:v=>{connected=v;sync.connectionChanged();},role:()=>role};
  }
+ // A renewal response carries the same authoritative save, so an established
+ // writer needs one network round trip and one apply even when state changed.
+ {
+  const clock=new Clock(),svc=server(clock),writer=client(clock,svc,'renewal');
+  await writer.start();const remote=svc.get('renewal');remote.save.state.resources.gold=205;remote.revision++;
+  clock.time+=10000;const from=svc.log.length,applied=writer.applied.length;
+  await writer.sync.refresh();const refreshCalls=svc.log.slice(from).filter(call=>call.route.startsWith('/sync'));
+  check(refreshCalls.length===1&&refreshCalls[0].route==='/sync/lease','renewal uses its complete snapshot without a preceding duplicate GET');
+  check(writer.applied.length===applied+1&&writer.state().resources.gold===205&&writer.sync.getStatus().writable,'single-response renewal applies newer canonical state and restores writer access');
+  writer.sync.stop();
+ }
+ // A takeover between polls must still return the previous writer to follower
+ // mode, preserving the new writer's save rather than issuing a blind PUT.
+ {
+  const clock=new Clock(),svc=server(clock),former=client(clock,svc,'renewal-race');await former.start();
+  const current=svc.get('renewal-race');current.writer='new-writer';current.until=clock.time+30000;current.save.state.resources.gold=412;current.revision++;
+  clock.time+=10000;const from=svc.log.length,puts=svc.puts().length;const result=await former.sync.refresh(),calls=svc.log.slice(from);
+  check(result.held===true&&calls.filter(call=>call.route==='/sync/lease').length===1&&calls.filter(call=>call.route.startsWith('/sync?')).length===1,'a rejected fast renewal reads the current authoritative owner');
+  check(!former.sync.getStatus().writable&&former.state().resources.gold===412&&svc.puts().length===puts,'renewal race keeps the winning writer state without uploading stale progress');former.sync.stop();
+ }
+ // Faster renewal does not extend local authority while the server is stalled.
+ {
+  const clock=new Clock(),svc=server(clock),writer=client(clock,svc,'renewal-timeout');await writer.start();clock.time+=10000;
+  let resolve;const pending=new Promise(yes=>{resolve=yes;});svc.intercept(async call=>{if(call.route==='/sync/lease')await pending;return call.process();});
+  const flight=writer.sync.refresh();await settle();await clock.advance(20000);
+  check(!writer.sync.getStatus().writable,'the lease watchdog expires authority during a hanging direct renewal');resolve();await flight;writer.sync.stop();
+ }
+ const rewardId='special_goshirakawa_hoo',rewardPair=rewardId+':U';
+ const rewardReceipt={officerId:rewardId,rank:'U',earned:true,earnedAt:1000};
+ function award(save){const s=save?.state;if(!s)return;if(!s.officers.includes(rewardId))s.officers.push(rewardId);if(!s.officerVariants.includes(rewardPair))s.officerVariants.push(rewardPair);if(s.officerHealth?.values&&!Object.hasOwn(s.officerHealth.values,rewardId))s.officerHealth.values[rewardId]=100;}
+ function rewardState(){return{version:2,castle:'kiyosu',clan:'織田家',resources:{gold:100,rice:50},officers:[],officerVariants:[],officerHealth:{values:{}},walking:{campaignId:'campaign-original'},army:[],jobs:[],month:1};}
+ function projectReward(svc,{receipt=rewardReceipt,hold}={}){svc.intercept(async call=>{const result=await call.process();if(result.save){award(result.save);result.cloisteredReward=clone(receipt);if(call.opts?.method==='PUT')award(svc.get(call.id).save);if(hold)await hold(call,result);}return result;});}
+ // A read-only entitlement projection must not replace the current writer's
+ // pending economy, formation, queue, or a newly started local campaign.
+ for(const mode of ['read','renewal','new-campaign','existing-health']){
+  const clock=new Clock(),svc=server(clock),owner=client(clock,svc,'reward-'+mode,{state:rewardState()});await owner.start();
+  owner.mutate(s=>{s.resources.gold=117;s.army=['custom-officer'];s.jobs=[{id:'farm',targetLevel:2}];if(mode==='new-campaign')s.walking.campaignId='campaign-new';if(mode==='existing-health'){s.officers.push(rewardId);s.officerVariants.push(rewardPair);s.officerHealth.values[rewardId]=37;}});
+  projectReward(svc);const before=svc.get('reward-'+mode).revision;if(mode==='renewal')clock.time+=10000;await owner.sync.refresh();
+  const state=owner.state(),stored=svc.get('reward-'+mode).save.state;
+  check(state.resources.gold===117&&state.army[0]==='custom-officer'&&state.jobs[0].id==='farm'&&state.walking.campaignId===(mode==='new-campaign'?'campaign-new':'campaign-original'),mode+' reward adoption preserves every pending ordinary field');
+  check(state.officers.filter(id=>id===rewardId).length===1&&state.officerVariants.filter(pair=>pair===rewardPair).length===1&&state.officerHealth.values[rewardId]===(mode==='existing-health'?37:100),mode+' adds the fixed reward once without replenishing existing health');
+  check(stored.resources.gold===117&&stored.officerVariants.includes(rewardPair)&&svc.get('reward-'+mode).revision===before+1&&owner.applied.some(item=>item.meta.reason==='cloistered-reward'&&!item.meta.backup),mode+' persists the merged progress through normal revision-checked PUT');owner.sync.stop();
+ }
+ // Awards accepted during a PUT also preserve actions made while its response
+ // was in flight, then upload those actions at the acknowledged revision.
+ {
+  const clock=new Clock(),svc=server(clock),owner=client(clock,svc,'reward-flight',{state:rewardState()});await owner.start();let release,held=false;const gate=new Promise(resolve=>{release=resolve;});
+  projectReward(svc,{hold:async call=>{if(call.opts?.method==='PUT'&&!held){held=true;await gate;}}});owner.mutate(s=>{s.resources.gold=110;});const flight=owner.sync.flush();await settle();owner.mutate(s=>{s.resources.gold=119;s.army=['later-officer'];});release();await flight;
+  check(owner.state().resources.gold===119&&owner.state().army[0]==='later-officer'&&owner.state().officerVariants.includes(rewardPair),'in-flight award merges only the verified grant over later actions');await owner.sync.flush();
+  check(svc.get('reward-flight').save.state.resources.gold===119&&svc.get('reward-flight').save.state.officers.filter(id=>id===rewardId).length===1,'later progress and the permanent reward persist together once acknowledged');owner.sync.stop();
+ }
+ // Other server changes, authority recovery, or an unverified receipt must
+ // retain canonical replacement and backup behavior, never a generic merge.
+ for(const mode of ['ordinary-change','newer-revision','unverified','different-writer','forced']){
+  const clock=new Clock(),svc=server(clock),id='reward-guard-'+mode,owner=client(clock,svc,id,{state:rewardState()});await owner.start();owner.mutate(s=>{s.resources.gold=117;});
+  const remote=svc.get(id);if(mode==='ordinary-change')remote.save.state.resources.rice=321;if(mode==='newer-revision')remote.revision++;if(mode==='different-writer'){remote.writer='another-device';remote.until=clock.time+30000;}
+  projectReward(svc,{receipt:mode==='unverified'?{...rewardReceipt,earned:false,earnedAt:null}:rewardReceipt});
+  if(mode==='forced'){const result=await svc.request(id)('/sync?deviceId='+owner.sync.getDevice().id);await owner.sync.acceptSnapshot(result,{reason:'conflict'});}else await owner.sync.refresh();
+  check(owner.state().resources.gold===100&&owner.applied.at(-1).meta.backup&&owner.applied.at(-1).meta.reason!=='cloistered-reward',mode+' keeps full canonical recovery rather than admitting unrelated local changes');owner.sync.stop();
+ }
  // A household may gain or lose members without changing this personal save.
  {
   const clock=new Clock(),svc=server(clock),owner=client(clock,svc);

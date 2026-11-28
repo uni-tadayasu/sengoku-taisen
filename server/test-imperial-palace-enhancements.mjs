@@ -27,7 +27,12 @@ try{
   const{retired}=await setup(h),s=await snapshot(h,retired),g=engine(s),baseline=engine(s,ordinaryProjection(s.courtEstateProjection)),original=structuredClone(s.save.state),shared=g.courtEstateEffects().enhancements;
   assert.equal(s.user.isSento,true);assert.equal(s.entitlements.sentoGosho,true);assert.equal(g.state.home,'sento_gosho');assert.equal(g.state.cycle.home,'sento_gosho');assert.equal(g.isStaff,false);assert.equal(g.isSento,true);assert.equal(s.residency,null);
   assert.equal(shared.mode,'maximum');assert.equal(shared.castleLevel,7);assert.equal(shared.buildings.dojo,4);assert.equal(g.effectiveBuildings().keep,16,'stronger personal keep survives');assert.equal(g.effectiveBuildings().farm,6);assert.equal(g.effectiveCastleLevel(g.state.home),7);
-  const reference=engine(s,ordinaryProjection(s.courtEstateProjection));reference.state.buildings=structuredClone(g.effectiveBuildings());reference.state.castles[reference.state.home].level=7;
+  // The formula oracle supplies the expected combined levels directly. A
+  // second Sento personal save would correctly cap inherited-only facilities,
+  // so it cannot stand in for a verified Kyoto projection.
+  const reference=engine(s,ordinaryProjection(s.courtEstateProjection)),sentoIds=new Set(globalThis.SENGOKU_DATA.sentoRules.facilityIds),expectedBuildings=Object.fromEntries(globalThis.SENGOKU_DATA.buildings.map(building=>[building.id,Math.max(sentoIds.has(building.id)?Math.min(20,original.buildings[building.id]):0,shared.buildings[building.id])]));
+  assert.deepEqual(g.effectiveBuildings(),expectedBuildings);assert.equal(g.buildingLevel('dojo'),0);assert.equal(g.effectiveBuildings().dojo,4);
+  reference.effectiveBuildings=()=>expectedBuildings;reference.state.castles[reference.state.home].level=7;
   assert.equal(g.troopCapacity(),reference.troopCapacity());assert.equal(g._facilityEffect('military'),reference._facilityEffect('military'));assert.equal(g._facilityEffect('defense'),reference._facilityEffect('defense'));assert.equal(g.defensePower(g.state.home),reference.defensePower(reference.state.home));
   for(const key of ['gold','wood','stone'])assert.equal(g.income().gross[key],reference.income().gross[key]);assert.equal(g.income().rankRiceBonus.baseRice,reference.income().rankRiceBonus.baseRice);assert.deepEqual(g.maintenance().facilityUpkeep,reference.maintenance().facilityUpkeep);
   assert(g.troopCapacity()>baseline.troopCapacity());assert(g.defensePower(g.state.home)>baseline.defensePower(baseline.state.home));assert(g.income().rankRiceBonus.baseRice>baseline.income().rankRiceBonus.baseRice);assert(g.researchCost('commerce').gold<baseline.researchCost('commerce').gold);assert(g.diplomacyCost().gold<baseline.diplomacyCost().gold);
@@ -36,6 +41,14 @@ try{
   const dto=(await h.api('/court/estate',{token:retired.token})).data.courtEstate;assert.equal(dto.home.id,'sento_gosho');assert.deepEqual(dto.effects.enhancements,shared);
   const health=(await h.api('/health')).data;assert.equal(health.features.sentoGosho,true);assert.equal(health.features.imperialPalaceEnhancements,true);
   metrics.stats={home:'sento_gosho',troopCapacityBefore:baseline.troopCapacity(),troopCapacityAfter:g.troopCapacity(),defenseBefore:baseline.defensePower(baseline.state.home),defenseAfter:g.defensePower(g.state.home),baseRiceBefore:baseline.income().rankRiceBonus.baseRice,baseRiceAfter:g.income().rankRiceBonus.baseRice};
+ });
+ await scope('Kyoto inherited facilities retain their full limits beyond the Sento personal catalogue',async h=>{
+  const{retired}=await setup(h);seedPalace(h,{farm:30,dojo:28,main_gate:24});
+  const s=await snapshot(h,retired),g=engine(s),before=structuredClone(g.state.buildings);
+  assert.equal(g.buildingCatalog().length,12);assert.equal(g.buildingMax('farm'),20);assert.equal(g.buildingMax('dojo'),0);
+  assert.equal(g.effectiveBuildings().farm,30);assert.equal(g.effectiveBuildings().dojo,28);assert.equal(g.effectiveBuildings().main_gate,24);
+  const plain=engine(s,ordinaryProjection(s.courtEstateProjection));assert.equal(plain.effectiveBuildings().dojo,0);assert(g._facilityEffect('military')>plain._facilityEffect('military'));assert(g.defensePower(g.state.home)>plain.defensePower(plain.state.home));
+  assert.deepEqual(g.state.buildings,before);assert.deepEqual(save(h,retired).state.buildings,before);
  });
  await scope('completed palace upgrades reach the retired holder at their exact completion boundary',async h=>{
   const{retired}=await setup(h),initial=await snapshot(h,retired),oldProjection=structuredClone(initial.courtEstateProjection),oldFarm=engine(initial).effectiveBuildings().farm;

@@ -16,7 +16,7 @@ test('authenticated deputies receive all-100 Yoshihisa with the commander specia
   assert.deepEqual(officer.baseStats,{lead:100,valor:100,intellect:100,politics:100});assert.equal(officer.rankBonus,0);
   assert.equal(g.state.officers.filter(value=>value===id).length,1);assert.equal(g.state.officerVariants.filter(value=>value===key).length,1);
   assert.deepEqual(g.officerViews([id])[0],officer);assert.deepEqual(g.officerViews([id],'U')[0],officer);
-  assert.equal(globalThis.SENGOKU_OFFICERS.length,280);assert.equal(g.collection().totalVariants,2071);
+  assert.equal(globalThis.SENGOKU_OFFICERS.length,281);assert.equal(g.collection().totalVariants,2072);
 });
 
 test('ordinary Yoshihisa and lower paintings retain their original abilities and availability',()=>{

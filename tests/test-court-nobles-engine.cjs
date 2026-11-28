@@ -5,7 +5,7 @@ const Engine=globalThis.SengokuEngine,D=globalThis.SENGOKU_DATA,roster=globalThi
 const make=options=>new Engine({clan:'織田家',seed:12345,...options});
 let checks=0;function test(name,fn){fn();checks++;console.log('PASS '+name);}
 test('24 distinct court nobles have complete canonical data and balanced fixed-price tiers',()=>{
- assert.equal(roster.length,280);assert.equal(nobles.length,24);assert.equal(D.courtNobles.length,24);assert.equal(new Set(nobles.map(o=>o.name)).size,24);assert.equal(new Set(nobles.map(o=>o.id)).size,24);
+ assert.equal(roster.length,281);assert.equal(nobles.length,24);assert.equal(D.courtNobles.length,24);assert.equal(new Set(nobles.map(o=>o.name)).size,24);assert.equal(new Set(nobles.map(o=>o.id)).size,24);
  for(const [rank,cost] of [['SS',1200],['SSS',2400],['U',4800]]){const tier=nobles.filter(o=>o.rank===rank);assert.equal(tier.length,8);assert(tier.every(o=>o.cost===cost));}
  assert(nobles.every(o=>o.skillName&&o.skillDescription&&o.title&&o.house&&o.portrait==='assets/court-nobles/'+o.id+'.webp'));
 });
@@ -20,7 +20,7 @@ test('only each canonical rank is ownable and purchased nobles persist through s
  const forged=JSON.parse(g.exportSave());forged.state.officerVariants.push(nobles[0].id+':D');assert.throws(()=>Engine.fromSave(forged,roster));
 });
 test('new collection totals include 24 guaranteed portraits without changing 2047 ordinary outcomes',()=>{
- const g=make();assert.equal(D.ranks.reduce((total,rank)=>total+g.gachaPool(rank).length,0),2047);assert.equal(g.collection().totalVariants,2071);assert.equal(make({isAdmin:true}).collection().totalVariants,2072);
+ const g=make();assert.equal(D.ranks.reduce((total,rank)=>total+g.gachaPool(rank).length,0),2047);assert.equal(g.collection().totalVariants,2072);assert.equal(make({isAdmin:true}).collection().totalVariants,2073);
 });
 test('court interior skills improve actual production and acquired officers accept military assignments',()=>{
  const g=make(),farmer=nobles.find(o=>o.skill==='farmer');g._grantOfficerVariant(farmer.id,farmer.rank);const before=g.income().grossRice;assert.equal(g.assignGovernor('farm',farmer.id).ok,true);assert(g.income().grossRice>before);

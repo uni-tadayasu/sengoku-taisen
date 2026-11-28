@@ -160,7 +160,15 @@ const totalGzipBytes = rows.reduce((sum,row)=>sum+row.gzipBytes,0);
 // v5.25, about 0.80% / 0.78%). Sento reuses the existing palace illustration;
 // no images, fonts or runtime dependencies are added. Retain 1,765 raw /
 // 776 gzip bytes of headroom for this reviewed feature set.
-const rawBudget=4118000,gzipBudget=1123700;
+// v5.27 limits the Sento catalogue to 12/20, adds the fixed-U ordination reward,
+// preserves interaction during court refreshes and eliminates duplicate lease
+// reads. The final build measures 4,128,593 raw / 1,126,585 gzip bytes,
+// +12,358 / +3,661 from v5.26 (about 0.30% / 0.33%), with shared dedicated-
+// portrait markup. Keep 1,407 raw / 415 gzip bytes of headroom against that
+// measurement. The single new WebP remains lazy and is
+// separately capped at 120 KB by test-cloistered-artwork.cjs; no fonts or runtime
+// dependencies are added. These bounds still measure transfer size, not speed.
+const rawBudget=4130000,gzipBudget=1127000;
 assert(totalBytes <= rawBudget, `Initial bundles exceed the ${rawBudget} byte budget: ${totalBytes}`);
 assert(totalGzipBytes <= gzipBudget, `Initial bundles exceed the ${gzipBudget} gzip byte budget: ${totalGzipBytes}`);
 const html = fs.readFileSync(path.join(root,'index.html'),'utf8');

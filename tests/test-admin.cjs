@@ -22,7 +22,7 @@ test('ordinary Tokugawa starts with Ieyasu SSS and cannot choose Edo',()=>{
   assert.equal(g.ownsVariant(IEYASU,'U'),false);
   assert.equal(g.canOwnCastle('edo'),false);
   assert.equal(g.canOwnOfficerVariant(IEYASU,'U'),false);
-  assert.equal(g.collection().totalVariants,2071);
+  assert.equal(g.collection().totalVariants,2072);
   assert.equal(g.unificationTarget(),126);
   const before=structuredClone(g.state);
   assert.equal(g.selectAdminCastle().ok,false);
@@ -91,7 +91,7 @@ test('every authenticated operator starts at fixed Edo and receives Ieyasu U onc
   assert.equal(g.ownedCastles().length,1);
   assert(g.ownsVariant(IEYASU,'U'));
   assert.equal(g.gachaPool('U').length,256);
-  assert.equal(g.collection().totalVariants,2072);
+  assert.equal(g.collection().totalVariants,2073);
   assert.equal(g.unificationTarget(),127);
   const before=structuredClone(g.state);
   assert.equal(g.restoreAdminAssets().changed,false);

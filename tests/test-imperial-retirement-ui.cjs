@@ -99,4 +99,24 @@ test('a past accepted ordination receipt never restores a retired title after th
 test('an admission snapshot carries its verified retirement state without an extra retirement request',async()=>{
  const h=fixture();h.info.retirement=clone(h.state.record);await h.controller.load();assert.equal(h.controller.snapshot().retirement.title,'上皇');assert.deepEqual(h.calls.map(row=>row.route),['/court']);
 });
+test('the verified ordination reward is shown with reserved portrait space and never granted by UI flags',async()=>{
+ const reward={officerId:'special_goshirakawa_hoo',name:'後白河法皇',rank:'U',earned:false,earnedAt:null},h=fixture({record:retired({reward})});await h.controller.load();
+ let html=Court.markup(h.controller.snapshot());assert.match(html,/後白河法皇/);assert.match(html,/width="96" height="128"/);assert.match(html,/統率100・武勇100・知略100・政治100/);assert.match(html,/法皇就任の特別褒賞/);assert.doesNotMatch(html,/獲得済み/);
+ const calls=[],previous=global.SengokuCloudSync;global.SengokuCloudSync={refresh:async()=>{calls.push('sync');return{ok:true};}};
+ h.hook=async(route,args)=>{const value=await h.respond(route,args);if(route==='/court/retirement/ordain'){h.state.record.reward={...reward,earned:true,earnedAt:TIME+1000};value.retirement.reward=clone(h.state.record.reward);}return value;};
+ try{h.controller.confirmRetirement();assert.equal(await h.controller.submit('retirement'),true);assert.deepEqual(calls,['sync']);html=Court.markup(h.controller.snapshot());assert.match(html,/法皇就任の褒賞・獲得済み/);assert.match(html,/軍団・奉行に配置/);assert.match(h.controller.snapshot().message,/後白河法皇 U/);}finally{global.SengokuCloudSync=previous;}
+ const valid=packet(retired({reward}));for(const patch of [{officerId:'of_fake'},{rank:'SSS'},{earned:true},{earnedAt:TIME}])assert.throws(()=>Court.cleanRetirement({...valid,retirement:{...valid.retirement,reward:{...reward,...patch}}}));
+});
+test('ordination saves writable local progress first and a failed save or identity switch sends no command',async()=>{
+ for(const mode of ['success','failed','switched']){
+  const h=fixture(),previous=global.SengokuCloudSync,events=[];await h.controller.load();h.controller.confirmRetirement();
+  global.SengokuCloudSync={getStatus:()=>({writable:true}),flush:async()=>{events.push('flush');if(mode==='switched')h.context={...h.context,epoch:2,playerId:'other',user:{id:'other'}};return{ok:mode!=='failed',message:'保存を再確認してください'};},refresh:async()=>{events.push('refresh');return{ok:true};}};
+  h.hook=(route,args)=>{if(args.method==='POST')events.push('post');return h.respond(route,args);};
+  try{assert.equal(await h.controller.submit('retirement'),mode==='success');assert.deepEqual(events,mode==='success'?['flush','post','refresh']:['flush']);assert.equal(h.calls.filter(row=>row.method==='POST').length,mode==='success'?1:0);if(mode==='failed')assert.match(h.controller.snapshot().error,/保存を再確認/);}finally{global.SengokuCloudSync=previous;}
+ }
+});
+test('a completed ordination keeps its receipt when character synchronization needs a later retry',async()=>{
+ const h=fixture(),previous=global.SengokuCloudSync;await h.controller.load();h.controller.confirmRetirement();global.SengokuCloudSync={refresh:async()=>({ok:false,message:'offline'})};
+ try{assert.equal(await h.controller.submit('retirement'),true);assert.equal(h.controller.snapshot().retirement.title,'法皇');assert.equal(h.controller.snapshot().pending,null);assert.match(h.controller.snapshot().message,/次回の同期時に再確認/);assert.equal(h.calls.filter(row=>row.method==='POST').length,1);}finally{global.SengokuCloudSync=previous;}
+});
 (async()=>{for(const [name,run]of tests){await run();console.log('PASS '+name);}console.log(`${tests.length} imperial retirement UI checks passed.`);})().catch(error=>{console.error(error);process.exitCode=1;});

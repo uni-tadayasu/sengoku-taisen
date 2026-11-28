@@ -1,0 +1,9 @@
+{
+  "character": "後白河法皇",
+  "officerId": "special_goshirakawa_hoo",
+  "file": "assets/imperial/special_goshirakawa_hoo.webp",
+  "generator": "built-in image_gen",
+  "use": "法皇就任記念のUランク専用肖像。歴史資料の復元図ではなくゲーム用の創作イラスト。",
+  "prompt": "Use case: stylized-concept. Asset type: exclusive character portrait for the existing Japanese strategy browser game 戦国VS. Create one luxurious, painterly CG illustration of 後白河法皇, a dignified elderly Japanese cloistered emperor with a shaved head, refined calm face and authoritative gaze, dressed in richly embroidered ivory and deep-purple Buddhist imperial robes with subtle gold brocade, holding a prayer-bead necklace. Single character, no other people. Refined Japanese palace interior and golden lotus halo motifs behind him, elegant shimmering gold relief details. Centered chest-up to waist-up portrait, face and both shoulders completely inside a safe central crop, comfortable headroom, portrait orientation 3:4. Hand-painted anime realism matching premium Sengoku collectible officer artwork, nuanced shading, highly polished skin and textile detail, dark warm background for readable silhouette. No text, no lettering, no stats, no frame, no watermark; the game supplies all UI. Authoritative and serene, not caricatured.",
+  "distribution": {"width": 480, "height": 640, "format": "webp", "quality": 84, "metadata": "stripped"}
+}
