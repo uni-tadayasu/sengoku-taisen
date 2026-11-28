@@ -59,11 +59,11 @@ test('protected office bases are excluded from Kanto Kinki and Kyushu completion
   }
 });
 
-test('region completion is reevaluated at each boundary and losing one castle releases that incomplete region',()=>{
+test('a conquered region remains protected at later boundaries while an incomplete region resets',()=>{
   const g=fresh();conquer(g,'四国');settle(g,1);
-  g.state.castles.yuzuki.owner='在地衆';assert.deepEqual(g.state.cycle.retainedRegions,['四国']);assert.deepEqual(g.conqueredRegions(),[]);
-  const reward=settle(g,2);assert.equal(reward.captured,9);
-  assert.deepEqual(g.state.cycle.retainedRegions,[]);assert.deepEqual(g.ownedCastleIds(),['ishikawa']);assert.deepEqual(g.state.captureRewards,['ishikawa']);
+  own(g,'nanao');assert.deepEqual(g.state.cycle.retainedRegions,['四国']);assert.deepEqual(g.protectedRegions(),['四国']);
+  const reward=settle(g,2);assert.equal(reward.captured,11);
+  assert.deepEqual(g.state.cycle.retainedRegions,['四国']);assert.deepEqual(g.protectedRegions(),['四国']);assert.deepEqual(new Set(g.ownedCastleIds()),new Set(['ishikawa',...regionIds('四国')]));assert(!g.state.captureRewards.includes('nanao'));
 });
 
 test('retained castle queues and branch troops facilities damage and queues survive, released branches withdraw',()=>{
@@ -103,13 +103,13 @@ test('all nine regions retain unification proof and won state across settlement 
   assert.equal(g.state.cycle.retainedRegions.length,9);const h=E.fromSave(g.exportSave(),officers);assert.equal(h.state.won,true);assert.equal(h.getUnificationProof().achieved,true);
 });
 
-test('legacy saves default to no inherited history, malformed regions fail and live losses remain loadable',()=>{
+test('legacy saves default to no inherited history and only complete regions gain protection during migration',()=>{
   const g=fresh(),legacy=JSON.parse(g.exportSave());delete legacy.state.cycle.retainedRegions;
   assert.deepEqual(E.fromSave(legacy,officers).state.cycle.retainedRegions,[]);delete legacy.state.cycle;assert.deepEqual(E.fromSave(legacy,officers).state.cycle.retainedRegions,[]);
   conquer(g,'東海');conquer(g,'四国');settle(g,1);const saved=JSON.parse(g.exportSave());
   for(const value of [null,'東海',['未知'],['東海','東海'],[1],{},Array(10).fill('東海')]){const bad=clone(saved);bad.state.cycle.retainedRegions=value;assert.throws(()=>E.fromSave(bad,officers));}
-  saved.state.cycle.retainedRegions=['四国','東海'];saved.state.castles.yuzuki.owner='在地衆';
-  const restored=E.fromSave(saved,officers);assert.deepEqual(restored.state.cycle.retainedRegions,['東海','四国']);assert.deepEqual(restored.conqueredRegions(),['東海']);assert.equal(restored.state.castles.yuzuki.owner,'在地衆');
+  saved.state.cycle.retainedRegions=['四国','東海'];delete saved.state.cycle.protectedRegions;saved.state.castles.yuzuki.owner='在地衆';
+  const restored=E.fromSave(saved,officers);assert.deepEqual(restored.state.cycle.retainedRegions,['東海','四国']);assert.deepEqual(restored.conqueredRegions(),['東海']);assert.deepEqual(restored.protectedRegions(),['東海']);assert.equal(restored.state.castles.yuzuki.owner,'在地衆');
 });
 
 test('a pre-appointment boundary retains completed regions under the personal home before Kyoto becomes active',()=>{

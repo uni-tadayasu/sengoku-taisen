@@ -73,6 +73,51 @@ async function test(name,run){await run();checks++;console.log('PASS '+name);}
   const one=f.clock.refresh(),two=f.clock.refresh(),three=f.clock.refresh();await drain();assert.equal(f.requests.length,2);
   reply(f.response(f.sample()));await Promise.all([one,two,three]);assert.equal(f.requests.length,2);assert.equal(f.timers.size,1);f.clock.stop();
  });
+ await test('command freshness reuses a confirmed sample for five seconds without advancing its authority',async()=>{
+  const f=fixture();await f.clock.start();f.clock.accept(f.sample());await f.advance(4999);
+  for(let i=0;i<4;i++){
+   const current=await f.clock.ensureFresh();assert.equal(current.ready,true);assert.equal(current.ageMs,4999);
+   assert.equal(current.clock.confirmedElapsedMs,600000);assert.equal(current.clock.elapsedMs,604999);
+  }
+  assert.equal(f.requests.length,1);assert.equal(f.nextPoll(),7000,'reusing a sample does not postpone the public fallback');
+  await f.advance(2);const updated=await f.clock.ensureFresh();assert.equal(f.requests.length,2);assert.equal(updated.clock.confirmedElapsedMs,605001);f.clock.stop();
+ });
+ await test('command freshness applies explicit age limits to accepted server samples only',async()=>{
+  const f=fixture();await f.clock.start();f.clock.accept(f.sample({revision:3}));await f.advance(4900);
+  assert.equal(f.clock.accept(f.sample({revision:2})),false);await f.advance(101);
+  f.fetch(()=>Promise.resolve(f.response(f.sample({revision:3}))));await f.clock.ensureFresh();assert.equal(f.requests.length,2,'a rejected young reply does not replace the older confirmed sample');
+  f.clock.accept(f.sample({revision:3}));await f.advance(1001);await f.clock.ensureFresh({maxAgeMs:1000});assert.equal(f.requests.length,3);
+  f.clock.accept(f.sample({revision:3}));await f.advance(6000);await f.clock.ensureFresh({maxAgeMs:10000});assert.equal(f.requests.length,3);
+  await f.clock.ensureFresh({maxAgeMs:Infinity});assert.equal(f.requests.length,4,'an invalid age limit cannot make the default deadline unlimited');f.clock.stop();
+ });
+ await test('command freshness retries after an error even while the old sample is ready',async()=>{
+  const f=fixture();await f.clock.start();f.clock.accept(f.sample());f.fetch(()=>Promise.reject(Error('upstream failure')));await f.clock.refresh();
+  assert.equal(f.clock.snapshot().ready,true);assert.equal(f.requests.length,2);
+  f.fetch(()=>Promise.resolve(f.response(f.sample({running:false,revision:2}))));const current=await f.clock.ensureFresh();
+  assert.equal(f.requests.length,3);assert.equal(current.clock.running,false);assert.equal(current.clock.revision,2);
+  await f.clock.ensureFresh();assert.equal(f.requests.length,3,'a confirmed paused world is reusable');
+  f.fetch(()=>Promise.reject(Error('another failure')));await f.clock.refresh();f.clock.accept(f.sample({speed:4,revision:3}));
+  assert.equal((await f.clock.ensureFresh()).clock.speed,4);assert.equal(f.requests.length,4,'a later valid sync sample clears the earlier transport error');f.clock.stop();
+ });
+ await test('command freshness joins foreground and connectivity checks instead of bypassing them',async()=>{
+  const f=fixture();await f.clock.start();f.clock.accept(f.sample());f.hidden(true);f.clock.visibility();await f.advance(10);f.clock.accept(f.sample());
+  let reply,finished=false;f.fetch(()=>new Promise(resolve=>{reply=resolve;}));f.hidden(false);f.clock.visibility();
+  const returned=f.clock.ensureFresh().then(value=>{finished=true;return value;});await drain();assert.equal(f.requests.length,2);assert.equal(finished,false);
+  reply(f.response(f.sample({running:false,revision:2})));assert.equal((await returned).clock.running,false);
+  f.online(false);await f.clock.refresh();assert.equal((await f.clock.ensureFresh()).ready,false);assert.equal(f.requests.length,2);
+  f.online(true);const reconnect=f.clock.refresh(),joined=f.clock.ensureFresh();await drain();assert.equal(f.requests.length,3);
+  reply(f.response(f.sample({running:true,speed:4,revision:3})));await reconnect;assert.equal((await joined).clock.speed,4);f.clock.stop();
+ });
+ await test('command freshness cannot extend the readiness deadline or restart hidden and stopped polling',async()=>{
+  const f=fixture();await f.clock.start();f.clock.accept(f.sample());f.hidden(true);f.clock.visibility();await f.advance(15001);
+  assert.equal((await f.clock.ensureFresh({maxAgeMs:60000})).ready,false);assert.equal(f.requests.length,1);assert.equal(f.timers.size,0);
+  let reply;f.fetch(()=>new Promise(resolve=>{reply=resolve;}));f.hidden(false);f.clock.visibility();const pending=f.clock.ensureFresh({maxAgeMs:60000});await drain();assert.equal(f.requests.length,2);
+  reply(f.response(f.sample()));assert.equal((await pending).ready,true);f.clock.stop();await f.clock.ensureFresh({maxAgeMs:0});assert.equal(f.requests.length,2);assert.equal(f.timers.size,0);
+ });
+ await test('offline commands retain the local clock without attempting a network revalidation',async()=>{
+  let time=0,requests=0;const clock=create({offline:true,now:()=>time,initialState:()=>({turn:2,realtime:{elapsed:3}}),fetch:()=>{requests++;throw Error('must stay local');}});
+  await clock.start();time=60000;const current=await clock.ensureFresh({maxAgeMs:0});assert.equal(current.mode,'offline');assert.equal(current.ready,true);assert.equal(current.clock.confirmedElapsedMs,183000);assert.equal(requests,0);clock.stop();
+ });
  await test('a delayed older public result cannot erase a newer sync sample or its deadline',async()=>{
   const f=fixture();let reply;f.fetch(()=>new Promise(resolve=>{reply=resolve;}));const started=f.clock.start();await drain();
   await f.advance(1000);f.clock.accept(f.sample({revision:2,speed:4}));await f.advance(1000);

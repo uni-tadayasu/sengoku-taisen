@@ -157,7 +157,8 @@ function policyView(d,me){
 }
 function contributionsView(d){return'<section class="alliance-panel"><h2>同盟への貢献</h2><p>集結への兵の提供、攻撃、防衛援軍、金庫への寄付を記録します。</p>'+(d.contributions.map(c=>'<article class="alliance-contribution"><div><b>'+(global.SengokuCityHonors?.slot?.(c.playerId)||'')+esc(c.name)+(global.SengokuPublicCourt?.slot?.(c.playerId)||'')+'</b><span>'+esc(labels[c.kind]||c.kind)+' '+num(c.amount)+'</span></div><p>'+esc(c.detail)+'</p><small>'+esc(date(c.createdAt))+'</small></article>').join('')||empty('貢献記録はまだありません。'))+'</section>';}
 function mount(host,opts={}){
- let tab='operations',disposed=false,model=null,confirmation=null,map=null,mapHost=null,selectedCastle='',timer=null,identityTimer=null,lastIdentity='',lastPollAt=Date.now();
+ const validTab=value=>['operations','units','members','policy','contributions'].includes(value);
+ let tab=validTab(opts.tab)?opts.tab:'operations',disposed=false,model=null,confirmation=null,map=null,mapHost=null,selectedCastle='',timer=null,identityTimer=null,lastIdentity='',lastPollAt=Date.now();
  const drafts=new Map(),formKey=form=>form.dataset.allianceForm+':'+(form.dataset.id||'');
  const controller=createController({...opts,onChange:s=>{model=s;render();}}),identity=()=>model?.identity||{};
  function drawMap(){
@@ -168,7 +169,7 @@ function mount(host,opts={}){
   const options={stateKey:'alliance-private-'+d.guild.id,castles,clan:'同盟作戦',allowRestrictedSelection:true,isAdmin:true,selectedId:selectedCastle,region:'all',markerSize:32,onSelect:id=>{selectedCastle=id;map?.update({selectedId:id});const relevant=active.filter(o=>o.castleId===id);opts.onMessage?.(relevant.length?relevant.map(o=>o.title).join(' / '):'この城に同盟作戦はありません。');},markerAppearance:marker=>{const plans=byCastle.get(marker.id);return plans?{html:'<span class="alliance-map-pin">'+esc(labels[plans[0].kind])+'<b>'+plans.length+'</b></span>',label:marker.name+'：'+plans.map(p=>p.title).join('、')}:null;}};
   if(mapHost!==el){map?.destroy();map=global.SengokuWorldMap.mount(el,options);mapHost=el;}else map.update(options);
  }
- function render(){
+ function render({force=false}={}){
   if(disposed||!model)return;const d=model.data,me=identity(),tabs=[['operations','作戦・集結'],['units','援軍・帰還'],['members','募集・加入'],['policy','金庫管理'],['contributions','貢献記録']];
   if(lastIdentity!==me.stamp){lastIdentity=me.stamp;drafts.clear();confirmation=null;map?.destroy();map=null;mapHost=null;}
   const openedDetails=[...host.querySelectorAll('details[open]')].map(el=>el.querySelector('summary')?.textContent);
@@ -181,7 +182,7 @@ function mount(host,opts={}){
   else content+='<div class="alliance-body"'+(model.sending?' aria-busy="true"':'')+'>'+(
    tab==='operations'?operationsView(d,me,model.targets,{game:opts.getGame?.(),rules:model.fieldRules,access:opts.getContext?.()||{},blocked:model.sending||Boolean(model.pending)}):tab==='units'?unitsView(d,me):tab==='members'?membershipView(d,me):tab==='policy'?policyView(d,me):contributionsView(d))+'</div>';
   const active=global.document?.activeElement,editing=active&&host.contains(active)&&/^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName);
-  if(editing&&!confirmation&&!model.sending&&d&&host.querySelector('.alliance-body')){global.SengokuOfficerHealthUI?.refresh(host,opts.getGame?.());return;}
+  if(!force&&editing&&!confirmation&&!model.sending&&d&&host.querySelector('.alliance-body')){global.SengokuOfficerHealthUI?.refresh(host,opts.getGame?.());return;}
   if(global.SengokuStableDOM)global.SengokuStableDOM.patch(host,content);else host.innerHTML=content;
   global.SengokuOfficerHealthUI?.refresh(host,opts.getGame?.());
   host.querySelectorAll('form[data-alliance-form]').forEach(form=>{const draft=drafts.get(formKey(form));if(draft)for(const el of form.elements){if(el.name&&Object.hasOwn(draft,el.name))el.value=draft[el.name];}});
@@ -189,6 +190,7 @@ function mount(host,opts={}){
   if(model.sending||model.pending)host.querySelectorAll('.alliance-body button,.alliance-body input,.alliance-body select,.alliance-body textarea').forEach(el=>el.disabled=true);
   drawMap();
  }
+ function selectTab(next){if(disposed||!validTab(next))return false;tab=next;confirmation=null;render({force:true});return true;}
  function confirm(title,message,route,data,travel=null,purpose='battle'){confirmation={title,message,route,data,travel,purpose};render();host.querySelector('.alliance-confirm button')?.focus();}
  function inviteList(trigger){
   const form=trigger.closest('form'),input=form.querySelector('[name=playerId]'),social=global.SengokuSocial;
@@ -220,7 +222,7 @@ function mount(host,opts={}){
  async function click(event){
   const el=event.target.closest?.('[data-alliance],[data-battle-advisor-action]');if(!el||!host.contains(el)||el.disabled)return;let action=el.dataset.alliance,id=el.dataset.id;const d=model?.data,me=identity();if(action==='invite-list'){inviteList(el);return;}if(el.dataset.battleAdvisorAction==='rally-review'){
    event.preventDefault();if(!d||model.sending||model.pending)return;id=el.closest('[data-alliance-advisor-operation]')?.dataset.allianceAdvisorOperation;const operation=d.operations.find(o=>o.id===id),advice=rallyAdvice(operation,{data:d,me,targets:model.targets,game:opts.getGame?.(),rules:model.fieldRules,access:opts.getContext?.()||{}});if(!advice?.ok){opts.onMessage?.(advice?.message||'最新の集結状況を確認してください。');return;}action='launch';
-  }if(action==='marches'){global.SengokuTravelUI?.open();return;}if(action==='tab'){tab=id;confirmation=null;render();return;}if(action==='refresh'){await controller.load();return;}if(action==='retry'){await controller.retry();return;}if(action==='targets'){await controller.loadTargets();return;}if(action==='dismiss'){confirmation=null;render();return;}
+  }if(action==='marches'){global.SengokuTravelUI?.open();return;}if(action==='tab'){selectTab(id);return;}if(action==='refresh'){await controller.load();return;}if(action==='retry'){await controller.retry();return;}if(action==='targets'){await controller.loadTargets();return;}if(action==='dismiss'){confirmation=null;render();return;}
   if(action==='confirm'){const c=confirmation;confirmation=null;if(c){await controller.send(c.route,c.data);}return;}
   if(action==='map-focus'){selectedCastle=id;map?.update({selectedId:id});map?.fit('selected',true);host.querySelector('[data-alliance-map]')?.scrollIntoView({behavior:'smooth',block:'nearest'});return;}
   if(!d||model.sending||model.pending)return;
@@ -251,11 +253,11 @@ function mount(host,opts={}){
  host.classList.add('alliance-screen');host.addEventListener('click',click);host.addEventListener('submit',submit);host.addEventListener('input',edit);host.addEventListener('change',edit);
  void controller.load();timer=global.setInterval(()=>{if(global.document.hidden)return;const d=model?.data,clock=allianceClock(d);for(const node of host.querySelectorAll('[data-alliance-unit-countdown]')){const journey=unitJourney(d?.units.find(u=>u.id===node.dataset.allianceUnitCountdown));if(journey)node.textContent=global.SengokuTravelUI.countdown(journey,clock);}const interval=d?.units.some(u=>u.phase==='outbound'||u.phase==='returning')?10000:30000;if(Date.now()-lastPollAt>=interval&&!model?.loading&&!model?.sending&&!model?.pending&&!host.querySelector('input:focus,textarea:focus,select:focus')){lastPollAt=Date.now();void controller.load();}},1000);
  identityTimer=global.setInterval(()=>{const next=controller.snapshot();if(next.identity.stamp!==lastIdentity){model=next;render();void controller.load();}},1000);
- return{refresh:()=>controller.load(),destroy(){disposed=true;global.clearInterval(timer);global.clearInterval(identityTimer);controller.dispose();map?.destroy();host.removeEventListener('click',click);host.removeEventListener('submit',submit);host.removeEventListener('input',edit);host.removeEventListener('change',edit);},controller};
+ return{refresh:()=>controller.load(),selectTab,destroy(){disposed=true;global.clearInterval(timer);global.clearInterval(identityTimer);controller.dispose();map?.destroy();host.removeEventListener('click',click);host.removeEventListener('submit',submit);host.removeEventListener('input',edit);host.removeEventListener('change',edit);},controller};
 }
 let opened=null;
 function open(options={}){
- if(opened){opened.controller.refresh();return opened;}
+ if(opened){if(options.tab)opened.controller.selectTab(options.tab);opened.controller.refresh();return opened;}
  const before=global.document.activeElement,dialog=global.document.createElement('dialog');dialog.className='alliance-dialog';dialog.innerHTML='<div class="alliance-dialog-top"><b>同盟作戦本部</b><button type="button" class="button" data-alliance-close aria-label="同盟作戦を閉じる">閉じる</button></div><div class="alliance-dialog-content"></div>';global.document.body.append(dialog);
  const controller=mount(dialog.querySelector('.alliance-dialog-content'),options),close=()=>{controller.destroy();dialog.close();dialog.remove();opened=null;before?.focus?.();};
  dialog.querySelector('[data-alliance-close]').addEventListener('click',close);dialog.addEventListener('cancel',e=>{e.preventDefault();close();});dialog.showModal();opened={controller,close};return opened;

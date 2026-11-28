@@ -225,8 +225,10 @@
    const {node}=entry;if(entry.cancelled||node.isConnected===false||!(node===host||host.contains(node)||node.contains(host)))continue;
    // Later layout passes may reuse this snapshot, but a user scroll (or another
    // explicit scroll) after our first restore owns the new position.
-   let top=entry.top,left=entry.left;const viewport=scrollViewport(node),anchor=viewport&&entry.anchors.find(item=>node.contains(item.node)&&item.node.isConnected!==false);
-   if(anchor){const rect=anchor.node.getBoundingClientRect?.();if(rect&&rect.height>0&&rect.width>0){if(entry.top)top=(node.scrollTop||0)+rect.top-viewport.top-anchor.top;if(entry.left)left=(node.scrollLeft||0)+rect.left-viewport.left-anchor.left;}}
+   // No layout measurement is needed when a pane was at its origin or had
+   // no measurable anchor. Most header and navigation updates use this path.
+   let top=entry.top,left=entry.left;const anchor=entry.anchors.find(item=>node.contains(item.node)&&item.node.isConnected!==false),viewport=anchor?scrollViewport(node):null;
+   if(anchor&&viewport){const rect=anchor.node.getBoundingClientRect?.();if(rect&&rect.height>0&&rect.width>0){if(entry.top)top=(node.scrollTop||0)+rect.top-viewport.top-anchor.top;if(entry.left)left=(node.scrollLeft||0)+rect.left-viewport.left-anchor.left;}}
    if(Math.abs((node.scrollTop||0)-top)>.5||Math.abs((node.scrollLeft||0)-left)>.5){
     const position={top:Math.max(0,top),left:Math.max(0,left),behavior:'instant'};let applied=false;
     if(typeof node.scrollTo==='function')try{node.scrollTo(position);applied=true;}catch(_){}
@@ -234,6 +236,15 @@
    }
    entry.applied=true;entry.appliedTop=node.scrollTop||0;entry.appliedLeft=node.scrollLeft||0;
   }
+  return true;
+ }
+ function resumeScroll(snapshot){
+  // A second synchronous render can legitimately move a shared scroller via
+  // its own DOM patch. Validate the previous frame before that render starts,
+  // then accept its layout adjustments while keeping the original anchors.
+  // User scrolling, navigation and viewport changes still cancel restoration.
+  if(!restoreScroll(snapshot))return false;
+  for(const entry of snapshot.entries)entry.applied=false;
   return true;
  }
  function patch(host,source,settings={}){
@@ -261,5 +272,5 @@
   restoreScroll(scroll);
   stats.changed=stats.added+stats.removed+stats.moved+stats.text+stats.attributes>0;return stats;
  }
- const api={patch,captureScroll,restoreScroll,forget:host=>{forgotten.add(host);return states.delete(host);}};global.SengokuStableDOM=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;
+ const api={patch,captureScroll,restoreScroll,resumeScroll,forget:host=>{forgotten.add(host);return states.delete(host);}};global.SengokuStableDOM=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;
 })(typeof window!=='undefined'?window:globalThis);

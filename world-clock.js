@@ -42,10 +42,23 @@
    }catch(error){if(gen===generation&&!stopped){lastError='共通時刻へ再接続しています。';nextPollAt=Math.max(nextPollAt,now()+POLL_MS);emit();}}finally{if(timeout)cancel?.(timeout);if(gen===generation){pending=null;schedule();}}
    return snapshot();});pending=task;return task;
   }
+  function ensureFresh({maxAgeMs=POLL_MS}={}){
+   // A foreground/connection refresh may be checking a pause or speed change.
+   // Join it even when the previous sample is young; explicit refreshes retain
+   // their existing force-revalidation semantics.
+   if(pending)return pending;
+   const current=snapshot(),limit=Number.isFinite(maxAgeMs)?Math.max(0,Math.min(MAX_SAMPLE_AGE_MS,maxAgeMs)):POLL_MS;
+   if(offline)return Promise.resolve(current);
+   // ageMs is measured from the last accepted server sample, not from the
+   // extrapolated calendar. Rejected samples and failed requests cannot renew
+   // this shortcut, and callers cannot extend the clock's readiness deadline.
+   if(!stopped&&!hidden()&&!lastError&&current.mode==='shared'&&current.ready&&current.ageMs<=limit)return Promise.resolve(current);
+   return refresh();
+  }
   function start(){if(!stopped)return refresh();stopped=false;generation++;if(offline){const s=options.initialState?.()||global.SengokuBridge?.getState?.();sample={id:'offline-world-v1',elapsedMs:Math.max(0,Math.floor(s?.worldClock?.elapsedMs??((s?.turn||0)*60000+(s?.realtime?.elapsed||0)*1000))),running:true,speed:1,revision:0,serverTime:new Date().toISOString()};received=now();emit();return Promise.resolve(snapshot());}return refresh();}
   function stop(){stopped=true;generation++;pending=null;if(timer!==null)cancel?.(timer);timer=null;}
   function visibility(){if(stopped)return;if(hidden()){if(timer!==null)cancel?.(timer);timer=null;}else refresh();}
-  return{start,stop,refresh,snapshot,accept,calendar,subscribe(fn){listeners.add(fn);fn(snapshot());return()=>listeners.delete(fn);},visibility};
+  return{start,stop,refresh,ensureFresh,snapshot,accept,calendar,subscribe(fn){listeners.add(fn);fn(snapshot());return()=>listeners.delete(fn);},visibility};
  }
  const api=create();api.create=create;api.CALENDAR=CALENDAR;global.SengokuWorldClock=api;
  if(typeof module!=='undefined'&&module.exports)module.exports={create,calendar,CALENDAR};

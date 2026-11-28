@@ -28,15 +28,15 @@ const court = (playerId, extra = {}) => territory(playerId, 'kyoto_gosho', {
   holdingKind:'court-estate', canDevelopCourtEstate:true, level:24, ...extra
 });
 
-function fixture(initialTargets, {identity = {id:'me'}} = {}) {
+function fixture(initialTargets, {identity = {id:'me'}, paginate = false} = {}) {
   const {doc, host} = setup();
   doc.hidden = false;
   doc.addEventListener = doc.removeEventListener = () => {};
   const listeners = new Map();
   const add = host.addEventListener.bind(host);
   host.addEventListener = (type, handler) => { listeners.set(type, handler); add(type, handler); };
-  const maps = [], posts = [], opened = [], messages = [];
-  let targets = copy(initialTargets), updates = 0, detailRefreshes = 0, adviceCalls = 0;
+  const maps = [], posts = [], opened = [], messages = [], requests = [];
+  let targets = copy(initialTargets), updates = 0, detailRefreshes = 0, adviceCalls = 0, failureCursor = null, mapMounts = 0;
   const local = {home:'kiyosu', troops:5000, command:3, resources:{rice:9000, gold:1000}, army:[], tech:{}, morale:80};
   const castleIds = [...new Set(['kiyosu', 'odawara', 'sunpu', 'kyoto_gosho', ...initialTargets.flatMap(p => [p.homeCastleId, p.targetCastleId])])];
   const geography = {castles:Object.fromEntries(castleIds.map((id, i) => [id, {lon:130 + i % 12, lat:30 + Math.floor(i / 12) % 10}]))};
@@ -45,6 +45,7 @@ function fixture(initialTargets, {identity = {id:'me'}} = {}) {
     SENGOKU_DATA:{staffBaseId:'kyoto_gosho', deputyBaseId:'kagoshima', castles:castleIds.map(id => ({id, name:names[id] || id}))},
     SengokuStableDOM:StableDOM,
     SengokuWorldMap:{mount(_container, options) {
+      mapMounts++;
       maps.push(options);
       return {update(next) { updates++; maps.push(next); }, destroy() {}};
     }},
@@ -57,7 +58,7 @@ function fixture(initialTargets, {identity = {id:'me'}} = {}) {
   };
   scope.window = scope;
   vm.runInNewContext(source, scope);
-  const controller = scope.SengokuField.mount(host, {
+  const mountOptions = {
     stateKey:'territory-fixture', identity, geography,
     getSyncStatus:() => ({writable:true}), getState:() => local,
     onMessage:(message, error) => messages.push({message, error}),
@@ -67,9 +68,18 @@ function fixture(initialTargets, {identity = {id:'me'}} = {}) {
         rules, relationships:[], battles:[], self:{homeCastleId:'kiyosu'},
         attack:{ready:true, availableTroops:5000, minTroops:300, maxTroops:100000, command:3, rice:9000}
       };
+      requests.push(route);
+      if (paginate) {
+        const params = new URLSearchParams(route.split('?')[1]), cursor = params.get('cursor') || '', limit = Number(params.get('limit')) || 25;
+        if (cursor === failureCursor) throw Error('続きの本拠を取得できませんでした。');
+        // The real API pages owners; one owner can contribute many holdings.
+        const owners = [...new Set(targets.map(p => p.playerId))].sort(), available = owners.filter(id => id > cursor), page = new Set(available.slice(0, limit));
+        return {targets:copy(targets.filter(p => page.has(p.playerId))), players:[], total:owners.length, nextCursor:available.length > limit ? available[limit - 1] : null, rules};
+      }
       return {targets:copy(targets), players:[], total:new Set(targets.map(p => p.playerId)).size, rules};
     }
-  });
+  };
+  let controller = scope.SengokuField.mount(host, mountOptions);
   async function send(action, data = {}, {force = false} = {}) {
     let button = host.querySelectorAll('[data-field-action="' + action + '"]').find(node => Object.entries(data).every(([key, value]) => node.dataset[key] === String(value)));
     let synthetic = false;
@@ -89,9 +99,12 @@ function fixture(initialTargets, {identity = {id:'me'}} = {}) {
     listeners.get(target.tagName === 'SELECT' ? 'change' : 'input')({target});
   }
   return {
-    doc, host, local, scope, controller, maps, posts, opened, messages, input, send,
+    doc, host, local, scope, get controller() { return controller; }, maps, posts, opened, messages, requests, input, send,
     select:targetId => send('select-player', {targetId}, {force:true}),
     replace:next => { targets = copy(next); }, latest:() => maps.at(-1),
+    failPage:cursor => { failureCursor = cursor; },
+    mounts:() => mapMounts,
+    reopen:() => { controller.destroy(); controller = scope.SengokuField.mount(host, mountOptions); },
     updates:() => updates, details:() => detailRefreshes, advice:() => adviceCalls,
     detail:() => host.querySelector('[data-field-detail]'),
     rows:() => host.querySelectorAll('[data-field-players] [data-field-action="select-player"]'),
@@ -170,6 +183,42 @@ test('an attackable occupied territory opens the battle controls and sends its e
     assert.equal(f.posts[0].data.targetCastleId, 'inuyama');
     assert.equal(f.posts[0].data.tactic, 'balanced');
     assert.equal(f.posts[0].data.troops, 1000);
+  } finally { f.controller.destroy(); }
+});
+
+test('regional protection labels the exact holding and allows an explicit noncapturing battle after confirmation', async () => {
+  for (const target of [
+    home('other', 'sunpu', {regionProtected:true, protectedRegion:'東海', battleMode:'reward', capturable:false}),
+    territory('other', 'osaka', {displayOnly:false, defenseTroops:900, defensePower:3500, regionProtected:true, protectedRegion:'近畿', battleMode:'reward', capturable:false})
+  ]) {
+    const f = fixture([home('me'), target]);
+    try {
+      await f.controller.refresh(); await f.select(target.playerId + ':' + target.targetCastleId);
+      assert.match(f.detail().querySelector('[data-field-region-protected]').textContent, /地域保護.*占領は移りません/);
+      assert.equal(f.detail().querySelector('[data-field-battle-mode]').dataset.fieldBattleMode, 'reward');
+      assert(f.rows().find(row => row.dataset.targetId === 'other:' + target.targetCastleId).textContent.includes(target.protectedRegion + 'の地域保護'));
+      assert(f.detail().querySelector('[data-field-action="confirm-attack"]'));
+      await f.send('attack', {}, {force:true}); assert.equal(f.posts.length, 0);
+      await f.send('confirm-attack'); assert.match(f.detail().querySelector('.field-confirm').textContent, /占領は移りません/);
+      await f.send('attack'); assert.equal(f.posts.length, 1);
+      assert.equal(f.posts[0].data.targetPlayerId, 'other'); assert.equal(f.posts[0].data.targetCastleId, target.targetCastleId);
+    } finally { f.controller.destroy(); }
+  }
+});
+
+test('a changed or unverified regional protection status invalidates an existing attack confirmation', async () => {
+  const target = territory('other', 'osaka', {displayOnly:false, defenseTroops:900, defensePower:3500, regionProtected:true, protectedRegion:'近畿', battleMode:'reward', capturable:false});
+  const f = fixture([home('me'), target]);
+  try {
+    await f.controller.refresh(); await f.select('other:osaka'); await f.send('confirm-attack');
+    f.replace([home('me'), {...target, regionProtected:false, protectedRegion:null, battleMode:'capture', capturable:true}]);
+    await f.controller.refresh({background:true}); await f.send('attack', {}, {force:true}); assert.equal(f.posts.length, 0);
+    assert.equal(f.detail().querySelector('[data-field-region-protected]'), null);
+    assert.equal(f.detail().querySelector('[data-field-battle-mode]').dataset.fieldBattleMode, 'capture');
+    await f.send('confirm-attack');
+    f.replace([home('me'), {...target, regionProtected:'true'}]); await f.controller.refresh({background:true});
+    assert.equal(f.detail().querySelector('[data-field-action="confirm-attack"]'), null);
+    await f.send('attack', {}, {force:true}); assert.equal(f.posts.length, 0);
   } finally { f.controller.destroy(); }
 });
 
@@ -309,6 +358,125 @@ test('search, filters and four-row pagination avoid map and detail recomputation
     assert.equal(f.latest().castles.find(c => c.id === 'territory-0').level, 31);
     assert.match(f.detail().textContent, /改名された城/);
     assert.match(f.detail().textContent, /城郭 Lv\.31/);
+  } finally { f.controller.destroy(); }
+});
+
+const pagedOwners = () => Array.from({length:60}, (_, i) => home('p' + String(i + 1).padStart(3, '0'), i === 28 ? 'odawara' : 'kiyosu'));
+
+test('each field entry starts at home while mounted updates retain a selected rival', async () => {
+  const f = fixture([home('me'), home('other', 'odawara')]);
+  try {
+    await f.controller.refresh();
+    assert.equal(f.latest().initialView, 'home'); assert.equal(f.latest().restoreView, false);
+    assert.equal(f.latest().homeId, 'kiyosu'); assert.equal(f.latest().selectedId, 'kiyosu');
+    await f.select('other:odawara');
+    await f.send('tab', {tab:'diplomacy'});
+    const mounts = f.mounts();
+    f.controller.update({identity:{id:'me'}});
+    await f.controller.refresh({background:true});
+    assert.equal(f.latest().selectedId, 'odawara');
+    assert.equal(f.host.querySelector('[data-tab="diplomacy"]').getAttribute('aria-selected'), 'true');
+    assert.equal(f.mounts(), mounts, 'Sync updates the existing map without replaying its entry camera.');
+    f.reopen();
+    assert.equal(f.mounts(), mounts + 1);
+    assert.equal(f.latest().homeId, 'kiyosu'); assert.equal(f.latest().selectedId, 'kiyosu');
+    assert.equal(f.latest().initialView, 'home'); assert.equal(f.latest().restoreView, false);
+    assert.equal(f.host.querySelector('[data-tab="base"]').getAttribute('aria-selected'), 'true');
+  } finally { f.controller.destroy(); }
+});
+
+test('the local home is available before the public owner page and late self data does not steal selection', async () => {
+  const f = fixture([home('other', 'odawara')]);
+  try {
+    assert.equal(f.maps[0].homeId, 'kiyosu', 'The initial map can center on static home coordinates before list loading.');
+    assert.equal(f.maps[0].initialView, 'home'); assert.equal(f.maps[0].restoreView, false);
+    await f.controller.refresh();
+    assert.equal(f.latest().selectedId, 'kiyosu');
+    assert(!f.latest().castles.some(c => c.players.some(p => p.playerId === 'me')), 'Do not fabricate a public home row.');
+    await f.select('other:odawara');
+    f.replace([home('me'), home('other', 'odawara')]);
+    await f.controller.refresh({background:true});
+    assert.equal(f.latest().selectedId, 'odawara', 'A deliberate selection wins over a later arrival of self metadata.');
+    f.local.home = 'sunpu';
+    f.reopen();
+    assert.equal(f.latest().homeId, 'sunpu', 'Reentry uses the current personal home rather than an older cached list location.');
+    assert.equal(f.latest().selectedId, 'sunpu', 'An older cached home must not override the current home selection.');
+  } finally { f.controller.destroy(); }
+});
+
+test('background refresh retains loaded owner pages, the selected lord and list controls', async () => {
+  const targets = [...pagedOwners(), territory('p002', 'sunpu'), territory('p002', 'inuyama')];
+  const f = fixture(targets, {identity:{id:'p001'}, paginate:true});
+  const all = () => f.latest().castles.flatMap(c => c.players);
+  try {
+    await f.controller.refresh();
+    assert.equal(new Set(all().map(p => p.playerId)).size, 25);
+    await f.send('load-more');
+    assert.equal(new Set(all().map(p => p.playerId)).size, 50);
+    f.input('search', '領主p'); f.input('filter', 'online');
+    for (let i = 0; i < 7; i++) await f.send('page', {delta:1});
+    await f.select('p029:odawara');
+    const rows = f.rows(), search = f.host.querySelector('[data-field-input="search"]');
+    const pagination = f.host.querySelector('[data-field-pagination]').textContent;
+    f.replace(targets.map(p => p.playerId === 'p029' ? {...p, keepLevel:17} : p));
+    const calls = f.requests.length;
+    await f.controller.refresh({background:true});
+    assert.deepEqual(f.requests.slice(calls), ['/field?limit=25', '/field?limit=25&cursor=p025']);
+    assert.equal(new Set(all().map(p => p.playerId)).size, 50);
+    assert.equal(f.latest().selectedId, 'odawara');
+    assert.match(f.detail().textContent, /領主p029の領地/);
+    assert.match(f.detail().textContent, /天守 Lv\.17/);
+    assert.equal(f.host.querySelector('[data-field-input="search"]'), search);
+    assert.equal(search.value, '領主p');
+    assert.equal(f.host.querySelector('[data-field-input="filter"]').value, 'online');
+    assert.equal(f.host.querySelector('[data-field-pagination]').textContent, pagination);
+    assert.deepEqual(f.rows(), rows, 'The visible rows remain mounted on the same page.');
+    await f.send('load-more');
+    assert.equal(f.requests.at(-1), '/field?limit=25&cursor=p050');
+    assert.equal(new Set(all().map(p => p.playerId)).size, 60);
+  } finally { f.controller.destroy(); }
+});
+
+test('loaded-range refresh removes departed owners and lost holdings instead of keeping stale rows', async () => {
+  const targets = [...pagedOwners(), territory('p029', 'sunpu')];
+  const f = fixture(targets, {identity:{id:'p001'}, paginate:true});
+  try {
+    await f.controller.refresh(); await f.send('load-more'); await f.select('p029:sunpu');
+    f.replace(targets.filter(p => p.playerId !== 'p028' && !(p.playerId === 'p029' && p.targetCastleId === 'sunpu')));
+    await f.controller.refresh({background:true});
+    const players = f.latest().castles.flatMap(c => c.players);
+    assert(!players.some(p => p.playerId === 'p028'));
+    assert(!players.some(p => p.playerId === 'p029' && p.targetCastleId === 'sunpu'));
+    assert(players.some(p => p.playerId === 'p029' && p.targetCastleId === 'odawara'));
+    assert.equal(f.latest().selectedId, 'kiyosu', 'An actually removed selected holding may fall back to the home.');
+    assert.equal(f.latest().castles.find(c => c.id === 'kiyosu').displayPlayerId, 'p001');
+    await f.send('load-more');
+    assert.equal(f.requests.at(-1), '/field?limit=25&cursor=p051', 'Use the refreshed continuation after an owner leaves.');
+    assert.equal(new Set(f.latest().castles.flatMap(c => c.players.map(p => p.playerId))).size, 59);
+  } finally { f.controller.destroy(); }
+});
+
+test('a later-page failure keeps the current selection until a complete loaded-range refresh succeeds', async () => {
+  const targets = pagedOwners(), f = fixture(targets, {identity:{id:'p001'}, paginate:true});
+  const all = () => f.latest().castles.flatMap(c => c.players);
+  try {
+    await f.controller.refresh(); await f.send('load-more'); await f.select('p029:odawara');
+    const previous = f.detail().innerHTML;
+    f.replace(targets.filter(p => p.playerId !== 'p029').map(p => p.playerId === 'p001' ? {...p, name:'更新された領主'} : p));
+    f.failPage('p025');
+    await f.controller.refresh({background:true});
+    assert.equal(new Set(all().map(p => p.playerId)).size, 50);
+    assert.equal(f.latest().selectedId, 'odawara');
+    assert.equal(f.detail().innerHTML, previous);
+    assert.equal(all().find(p => p.playerId === 'p001').name, '領主p001', 'Do not expose a partially refreshed prefix.');
+    assert.match(f.host.querySelector('[data-field-feedback]').textContent, /続きの本拠を取得できませんでした/);
+    f.failPage(null);
+    await f.controller.refresh({background:true});
+    assert.equal(new Set(all().map(p => p.playerId)).size, 50);
+    assert(!all().some(p => p.playerId === 'p029'));
+    assert.equal(all().find(p => p.playerId === 'p001').name, '更新された領主');
+    assert.equal(f.latest().selectedId, 'kiyosu');
+    assert.equal(f.host.querySelector('[data-field-feedback]').hidden, true);
   } finally { f.controller.destroy(); }
 });
 

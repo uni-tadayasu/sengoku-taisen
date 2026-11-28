@@ -12,7 +12,7 @@ function fixture() {
     staffConstructionReady: () => false, preserveInteraction: (_node, render) => render(), render: () => renders++, $: () => map,
     window: { SengokuCourtEstate: { holding: () => estate ? copy(estate) : null, ensure: () => probes++ }, SengokuWorldMap: { mount: (_node, options) => { latest = options; return { update: options => latest = options, destroy() {} }; } } }
   }, map = {};
-  vm.createContext(c); vm.runInContext(['campaignOwnerInfo','campaignCastleOwnership','campaignOwnerMarkup','territoryOwnerGuide','courtEstateHolding', 'courtEstateCastle', 'courtEstateMapNotice', 'courtEstateDetail', 'refreshCourtEstateSurfaces', 'homeCastleAppearance', 'campaignCastleOwnerAppearance', 'campaignCastleGrowth', 'campaignCastleAppearance', 'campaignCastleTooltip', 'syncWorldMap', 'territoryRows', 'territoryResults', 'castleDetail', 'renderMap'].map(fn).join('\n'), c);
+  c.castleReleaseAction=()=>'';c.castleReleasePending=false;vm.createContext(c); vm.runInContext(['campaignOwnerInfo','campaignCastleOwnership','campaignOwnerMarkup','territoryOwnerGuide','courtEstateHolding', 'courtEstateCastle', 'courtEstateMapNotice', 'courtEstateDetail', 'refreshCourtEstateSurfaces', 'homeCastleAppearance', 'campaignCastleOwnerAppearance', 'campaignCastleGrowth', 'campaignCastleAppearance', 'campaignCastleTooltip', 'syncWorldMap', 'territoryRows', 'territoryResults', 'castleDetail', 'renderMap'].map(fn).join('\n'), c);
   return { c, game, latest: () => latest, probes: () => probes, renders: () => renders, estate: () => copy(estate), setEstate: value => estate = value };
 }
 const tests = [], test = (name, run) => tests.push([name, run]);
@@ -61,7 +61,7 @@ test('the map requires both verified access and the explicit shared projection b
 });
 test('authenticated sync entitlement hints affect only the matching current player and cloud source', () => {
   const hints = [], c = { roleEpoch: 1, trustedCourtProtection: () => null, game: { setCourtProtection: () => ({ ok: true, changed: false }) }, window: { SengokuSocial: { getUser: () => ({ id: 'current-player' }) }, SengokuCourtEstate: { updateAccess: value => hints.push(value) } } };
-  vm.createContext(c); vm.runInContext(fn('applyCourtProtection'), c);
+  c.castleReleaseAction=()=>'';c.castleReleasePending=false;vm.createContext(c); vm.runInContext(fn('applyCourtProtection'), c);
   for (const meta of [{ source: 'local', playerId: 'current-player', entitlements: { courtEstate: true } }, { source: 'cloud', playerId: 'other-player', entitlements: { courtEstate: true } }, { source: 'cloud', playerId: 'current-player', entitlements: { courtEstate: 'true' } }]) c.applyCourtProtection(meta);
   assert.equal(hints.length, 0); c.applyCourtProtection({ source: 'cloud', playerId: 'current-player', entitlements: { courtEstate: true } }); c.applyCourtProtection({ source: 'cloud', playerId: 'current-player', entitlements: { courtEstate: false } }); assert.deepEqual(hints, [true, false]);
 });

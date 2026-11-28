@@ -15,11 +15,40 @@
   上皇:{kind:'retired-emperor',seal:'moon',lineOnly:true,art:'<circle cx="12" cy="12" r="9"/><path d="M15 5a7 7 0 1 0 4 11 7 7 0 0 1-4-11Z M7 20h10"/>'},
   摂政:{kind:'regent',seal:'sceptre',lineOnly:true,art:'<path d="m12 2 4 5-4 5-4-5 4-5Z M12 12v9 M6 16h12 M8 21h8 M4 6l2 2 M20 6l-2 2"/>'}
  });
+ const HOUSES=Object.freeze({konoe:'近衛家',kujo:'九条家',ichijo:'一条家',nijo:'二条家',takatsukasa:'鷹司家'});
+ // Family and social class are public presentation, separate from appointments.
+ // Only an explicit server DTO supplies them; a title or saved clan cannot.
+ function lineage(player){
+  const value=player?.courtLineage;if(!value||!['kuge','imperial'].includes(value.class))return null;
+  const houseId=value.houseId,houseName=Object.hasOwn(HOUSES,houseId)?HOUSES[houseId]:null,originalClan=typeof value.originalClan==='string'&&value.originalClan.trim()&&Array.from(value.originalClan).length<=80&&!/[\u0000-\u001f\u007f]/u.test(value.originalClan)?value.originalClan:null;
+  if(houseId!=null&&!houseName)return null;
+  if(value.class==='kuge')return{class:'kuge',className:'公家',houseId:houseName?houseId:null,houseName,originalClan,imperialHouseName:null,needsHouseSelection:!houseName};
+  const name=value.imperialHouseName;
+  if(!houseName||typeof name!=='string'||!name.trim()||Array.from(name).length>80||/[\u0000-\u001f\u007f]/u.test(name))return null;
+  return{class:'imperial',className:'皇族',houseId,houseName,originalClan,imperialHouseName:name,needsHouseSelection:false};
+ }
+ const lineageText=player=>{const value=lineage(player);return value?value.className+' · '+(value.imperialHouseName||value.houseName||'家柄未選択'):'';};
+ const lineageMarkup=player=>{const value=lineage(player);return value?`<span class="public-court-lineage" data-court-class="${value.class}">${escape(lineageText(player))}</span>`:'';};
  const cache=new Map(),versions=new Map();
  let sequence=0,floor=0;
  const validId=value=>typeof value==='string'&&(/^(?:u_)[A-Za-z0-9_]{1,96}$/.test(value)||/^vc_[a-f0-9]{32}$/.test(value));
  const playerId=player=>typeof player==='string'?player:player?.playerId||player?.userId||player?.id||player?.sessionId;
  const escape=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+ const relationName=value=>typeof value==='string'&&value.trim()&&Array.from(value).length<=80&&!/[\u0000-\u001f\u007f]/u.test(value)?value:null;
+ function relations(player){
+  const value=player?.courtRelations,self=playerId(player),seen=new Set();
+  const person=entry=>entry&&validId(entry.id)&&entry.id.startsWith('u_')&&entry.id!==self&&relationName(entry.name)?{id:entry.id,name:entry.name,clan:relationName(entry.clan),houseName:relationName(entry.houseName),imperialHouseName:relationName(entry.imperialHouseName)}:null;
+  const suzerain=person(value?.suzerain),vassals=[];
+  for(const entry of Array.isArray(value?.vassals)?value.vassals.slice(0,50):[]){const member=person(entry);if(member&&!seen.has(member.id)&&member.id!==suzerain?.id){seen.add(member.id);vassals.push(member);}}
+  const vassalCount=Number.isSafeInteger(value?.vassalCount)&&value.vassalCount>=vassals.length?value.vassalCount:vassals.length;
+  return{suzerain,vassals,vassalCount};
+ }
+ function relationsMarkup(player){
+  const value=relations(player);if(!value.suzerain&&!value.vassalCount)return '';
+  const linked=entry=>`<button type="button" class="lord-profile-name" data-public-profile="${escape(entry.id)}" aria-label="${escape(entry.name)}の公開プロフィールを見る">${escape(entry.name)}</button>`;
+  const lord=value.suzerain,house=lord&&(lord.imperialHouseName||lord.houseName||lord.clan);
+  return `<section class="lord-public-relations" aria-label="公家と武家の主従関係"><h3>主従関係</h3>${lord?`<p>主君：${linked(lord)}${house?' · '+escape(house):''}</p>`:''}${value.vassalCount?`<p>支配下の武家：${value.vassalCount.toLocaleString('ja-JP')}人</p><ul>${value.vassals.map(member=>`<li>${linked(member)}${member.clan?' · '+escape(member.clan):''}</li>`).join('')}</ul>${value.vassalCount>value.vassals.length?'<p>このプロフィールには最大50人を表示しています。</p>':''}`:''}</section>`;
+ }
  const jurisdiction=value=>value?.kind==='official'&&['kyoto','external'].includes(value.jurisdiction)?value.jurisdiction:'';
  const normalize=value=>value&&typeof value==='object'&&typeof value.title==='string'&&Object.hasOwn(OFFICES,value.title)&&OFFICES[value.title].kind===value.kind?{title:value.title,kind:value.kind,...(jurisdiction(value)?{jurisdiction:jurisdiction(value)}:{})}:null;
  const designation=value=>jurisdiction(value)==='kyoto'?'正式官職':jurisdiction(value)==='external'?'任命官職':'';
@@ -86,6 +115,6 @@
  function selfBadge(player){return badge({courtOffice:selfOffice(player)});}
  function selfSlot(player){const id=playerId(player);return validId(id)?`<span class="public-court-slot public-court-self" data-court-player="${escape(id)}" data-court-self="true">${selfBadge(id)}</span>`:'';}
  function forget(player){const id=playerId(player);if(!validId(id))return;versions.set(id,++sequence);cache.delete(id);refresh();}
- const api={update,office,badge,badgeTitle,slot,selfOffice,selfBadge,selfSlot,selfText:player=>officeText(selfOffice(player)),forget,refresh,normalize,beginRequest:()=>++sequence,text:player=>officeText(office(player)),clear(){cache.clear();versions.clear();floor=++sequence;refresh();}};global.SengokuPublicCourt=api;
+ const api={lineage,lineageText,lineageMarkup,relations,relationsMarkup,update,office,badge,badgeTitle,slot,selfOffice,selfBadge,selfSlot,selfText:player=>officeText(selfOffice(player)),forget,refresh,normalize,beginRequest:()=>++sequence,text:player=>officeText(office(player)),clear(){cache.clear();versions.clear();floor=++sequence;refresh();}};global.SengokuPublicCourt=api;
  if(typeof module!=='undefined'&&module.exports)module.exports=api;
 })(typeof window!=='undefined'?window:globalThis);

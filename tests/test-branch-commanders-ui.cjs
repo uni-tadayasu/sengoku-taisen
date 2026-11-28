@@ -73,4 +73,55 @@ test('automatic placement previews exact candidates, preserves reserved posts an
  const other=game();dom=render(other.g,other.branchId,{writable:false,writableReason:'同期を確認中です。'});assert(dom.$('[data-action="auto-assign-branch-commanders"]').disabled);assert.match(dom.$('[data-branch-auto-preview]').textContent,/同期/);
  const bulk=setup();stable.patch(bulk.host,B.renderAutoCommanders(other.g,'all',{writable:true}));assert.equal(bulk.$('button').getAttribute('data-id'),'all');assert.match(bulk.host.textContent,/全支拠点/);
 });
+test('routine sync retains branch instructions and previews through apply and recovery without collapsing rows',()=>{
+ const previous=global.SengokuSyncNotices;global.SengokuSyncNotices=require('../sync-notices.js');
+ try{
+  const {g,branchId}=game(),before=JSON.stringify(g.state),dom=setup();
+  const paint=helpers=>stable.patch(dom.host,B.render(g,'nijo',helpers),{key:'branch-sync'});
+  const selector='[data-branch-commander-reason],[data-branch-auto-preview],[data-branch-troop-reason],[data-branch-order-reason]';
+  paint({writable:true});const rows=dom.host.querySelectorAll(selector).map(node=>({node,text:node.textContent,hidden:node.hasAttribute('hidden')}));
+  assert(rows.length>10);assert(rows.some(row=>row.text.includes('配置する武将')));assert(rows.some(row=>row.text.includes('使い切りました')));
+  const picker=dom.$('[data-branch-commander-choice]');picker.focus();dom.host.scrollTop=330;
+  for(const writableReason of ['最新の進行を反映しています…','別の更新を確認したため、最新の保存を読み込んでいます。','進行権を確認しています…']){
+   paint({writable:false,writableReason});const pending=dom.host.querySelectorAll(selector);
+   rows.forEach((row,index)=>{assert.strictEqual(pending[index],row.node);assert.equal(pending[index].textContent,row.text);assert.equal(pending[index].hasAttribute('hidden'),row.hidden);});
+   assert(dom.$('[data-action="assign-branch-commander"]').disabled);assert(dom.$('[data-action="auto-assign-branch-commanders"]').disabled);assert(dom.$('[data-branch-troop-submit]').disabled);
+   assert(dom.host.querySelectorAll('.branch-facility-action').every(node=>node.disabled));assert.strictEqual(dom.doc.activeElement,picker);assert.equal(dom.host.scrollTop,330);
+   assert.equal(B.commanderReason(g,branchId,{writable:false,writableReason}),writableReason,'the authoritative write reason remains blocked');
+   paint({writable:true});rows.forEach(row=>{assert.equal(row.node.textContent,row.text);assert.equal(row.node.hasAttribute('hidden'),row.hidden);});
+  }
+  assert.equal(JSON.stringify(g.state),before);
+ }finally{if(previous===undefined)delete global.SengokuSyncNotices;else global.SengokuSyncNotices=previous;}
+});
+test('sync keeps legal order previews visible while every real write stays blocked until recovery',()=>{
+ const previous=global.SengokuSyncNotices;global.SengokuSyncNotices=require('../sync-notices.js');
+ try{
+  const {g,branchId,ids}=game();g.state.buildings.keep=10;g.state.command=g.commandMax();g.state.resources={gold:1000000,rice:1000000,wood:1000000,stone:1000000};g.state.troops=4000;
+  assert(B.selectCommander(g,branchId,ids[3]));assert(B.setTroopTransferSelection(g,'nijo',{from:'army',to:'castle:nijo',troops:'20'}));assert(B.troopTransferQuote(g,'nijo').ok);
+  const dom=setup(),paint=helpers=>stable.patch(dom.host,B.render(g,'nijo',helpers),{key:'legal-branch-sync'}),selectors=['[data-action="assign-branch-commander"]','[data-action="auto-assign-branch-commanders"]','[data-branch-troop-submit]','[data-branch-facility="farm"] .branch-facility-action','[data-action="upgrade-branch"]'];
+  paint({writable:true});for(const selector of selectors)assert.equal(dom.$(selector).disabled,false,selector);
+  const preview=dom.$('[data-branch-auto-preview]'),text=preview.textContent;assert(text);
+  const pending={writable:false,writableReason:'最新の進行を反映しています…'};paint(pending);
+  for(const selector of selectors)assert.equal(dom.$(selector).disabled,true,selector);assert.equal(preview.textContent,text);
+  for(const reason of [B.commanderReason(g,branchId,pending),B.autoCommanderReason(g,branchId,pending),B.troopTransferReason(g,'nijo',pending),B.facilityReason(g,branchId,'farm',pending)])assert.equal(reason,pending.writableReason);
+  paint({writable:true});for(const selector of selectors)assert.equal(dom.$(selector).disabled,false,selector);
+ }finally{if(previous===undefined)delete global.SengokuSyncNotices;else global.SengokuSyncNotices=previous;}
+});
+test('real write failures and changed gameplay requirements still update branch guidance during sync',()=>{
+ const previous=global.SengokuSyncNotices;global.SengokuSyncNotices=require('../sync-notices.js');
+ try{
+  const {g,branchId}=game(),dom=setup(),paint=helpers=>stable.patch(dom.host,B.render(g,'nijo',helpers),{key:'branch-sync-errors'});
+  for(const writableReason of ['通信が切れています。','別の端末で操作中です。','保存領域を利用できません。']){
+   paint({writable:false,writableReason});
+   for(const selector of ['[data-branch-commander-reason]','[data-branch-auto-preview]','[data-branch-troop-reason]','.branch-facility-reason']){
+    const node=dom.$(selector);assert.equal(node.textContent,writableReason);assert.equal(node.hasAttribute('hidden'),false);
+   }
+  }
+  const pending={writable:false,writableReason:'最新の進行を反映しています…'};paint(pending);
+  const facility=dom.$('.branch-facility-reason');assert.match(facility.textContent,/使い切りました/);
+  g.state.command=g.commandMax();g.state.resources.gold=0;paint(pending);assert.match(facility.textContent,/資源/);
+  g.state.branches.find(row=>row.id===branchId).fallen=true;paint(pending);assert.match(dom.$('[data-branch-commander-reason]').textContent,/陥落/);assert(dom.$('[data-action="assign-branch-commander"]').disabled);
+ }finally{if(previous===undefined)delete global.SengokuSyncNotices;else global.SengokuSyncNotices=previous;}
+});
+
 (async()=>{for(const[name,run]of tests){await run();console.log('PASS '+name);}console.log(tests.length+' branch officer UI checks passed. No live requests.');})().catch(error=>{console.error(error);process.exitCode=1;});

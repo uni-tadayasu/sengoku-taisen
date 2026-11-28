@@ -81,7 +81,7 @@ const selected={id:'castle:himeji',name:'姫路城の戦い',category:'castle',d
 assert(!events.catalogSelectionMarkup({catalog:[selected],battleId:selected.id}).includes('castle-scenes/himeji'),'A neutral event catalog does not assume the viewer owns the castle');
 console.log('PASS event opponent normalization, readback appearance and neutral battle catalog isolation');
 
-const profile=read('public-profile.js'),profileFunctions=['detail'];
+const profile=read('public-profile.js'),profileFunctions=['negotiationOwner','detail'];
 context.commanderCard=()=>'';context.clanName=clan=>clan||'浪人';
 for(const name of profileFunctions){const start=profile.indexOf('function '+name+'('),end=profile.indexOf('\nfunction ',start+1);vm.runInContext(profile.slice(start,end),context);}
 const person={id:'u_retainer',name:'家臣',clan:'織田家',homeCastleId:'himeji',appearance:unowned(),homeCastleAppearance:paid()};

@@ -793,7 +793,7 @@
       if (!initial.length) initial.push(...this.roster.slice(0,4).map(o=>o.id));
       const scale={easy:.8,normal:1,hard:1.2}[difficulty];
       this.state={
-        version:2,clan:clan.name,home,turn:0,difficulty,cycle:{index:0,home,latestReward:null,retainedRegions:[]},upkeep:{version:1,settledTurn:0,branchReductions:{}},repair:normalizeRepairState(undefined,0),
+        version:2,clan:clan.name,home,turn:0,difficulty,cycle:{index:0,home,latestReward:null,retainedRegions:[],protectedRegions:[],releasedCastles:[]},upkeep:{version:1,settledTurn:0,branchReductions:{}},repair:normalizeRepairState(undefined,0),
         resources:{gold:difficulty==='easy'?4400:3200,rice:5400,wood:1800,stone:1200},
         troops:3400,troopTransferSequence:0,morale:80,prestige:0,command:3,magatama:GACHA.initial,captureRewards:[home],gachaHistory:[],
         realtime:{running:true,speed:1,elapsed:0,commandProgress:0,incomeRemainders:{gold:0,rice:0,wood:0,stone:0}},
@@ -968,7 +968,7 @@
     // and territory resets cannot supply or replay them.
     takeHomeDefenseLosses(){const recorded=HOME_DEFENSE_LOSSES.get(this);HOME_DEFENSE_LOSSES.delete(this);return recorded?.campaignId===this.state.walking.campaignId?copy(recorded.losses):[];}
     _recordHomeDefenseLoss(castleId,sourceCastleId){
-      const s=this.state;if(this.isCourtProtected||castleId!==s.home||s.castles[castleId]?.owner!==s.clan||!CASTLE_BY_ID[sourceCastleId]||s.castles[sourceCastleId]?.owner===s.clan||['edo',STAFF_BASE_ID,DEPUTY_BASE_ID].includes(castleId))return;
+      const s=this.state;if(this.isCourtProtected||this.isRegionProtectedCastle(castleId)||castleId!==s.home||s.castles[castleId]?.owner!==s.clan||!CASTLE_BY_ID[sourceCastleId]||s.castles[sourceCastleId]?.owner===s.clan||['edo',STAFF_BASE_ID,DEPUTY_BASE_ID].includes(castleId))return;
       const campaignId=s.walking.campaignId,cycle=Math.floor(s.turn/WORLD_CALENDAR.monthsPerCycle),id=`cpu-home:${campaignId}:${cycle}:${s.turn}:${sourceCastleId}:${castleId}`,prior=HOME_DEFENSE_LOSSES.get(this),losses=prior?.campaignId===campaignId?prior.losses:[];
       if(losses.length>=MAX_HOME_DEFENSE_LOSSES||losses.some(loss=>loss.id===id))return;
       losses.push({id,kind:'cpu',campaignId,cycle,turn:s.turn,occurredElapsedMs:Math.floor(s.turn*60000+s.realtime.elapsed*1000),castleId,sourceCastleId});
@@ -982,6 +982,26 @@
     gachaPool(rank){return RANKS.includes(rank)?this.roster.filter(o=>this.canOwnOfficerVariant(o.id,rank)):[];}
     unificationTarget(){return CASTLES.filter(c=>this.canOwnCastle(c.id)).length;}
     conqueredRegions(){return conqueredRegions(this.ownedCastleIds());}
+    protectedRegions(){const known=new Set(this.state.cycle?.protectedRegions||[]);return REGION_CONQUEST.regions.filter(row=>known.has(row.region)).map(row=>row.region);}
+    releasedCastles(){const known=new Set(this.state.cycle?.releasedCastles||[]);return CASTLES.filter(c=>known.has(c.id)).map(c=>c.id);}
+    isRegionProtectedCastle(id){return this.state.castles[id]?.owner===this.state.clan&&!this.state.cycle?.releasedCastles?.includes(id)&&REGION_CONQUEST.regions.some(row=>row.castleIds.includes(id)&&this.state.cycle?.protectedRegions?.includes(row.region));}
+    recordRegionConquests(capturedCastleId=null){
+      if(capturedCastleId&&this.state.castles[capturedCastleId]?.owner===this.state.clan)this.state.cycle.releasedCastles=this.releasedCastles().filter(id=>id!==capturedCastleId);
+      const before=this.protectedRegions(),complete=new Set([...before,...this.conqueredRegions()]);
+      const regions=REGION_CONQUEST.regions.filter(row=>complete.has(row.region)).map(row=>row.region),added=regions.filter(region=>!before.includes(region));
+      this.state.cycle.protectedRegions=regions;return{changed:added.length>0,regions:[...regions],added};
+    }
+    canReleaseCastle(id){return Boolean(CASTLE_BY_ID[id])&&this.state.castles[id]?.owner===this.state.clan&&id!==this.state.home&&!['edo',STAFF_BASE_ID,DEPUTY_BASE_ID].includes(id);}
+    releaseCastle(id){
+      if(!this.canReleaseCastle(id))return{...fail('自分の本拠と江戸城・京都御所・鹿児島城を除く、占領中の城を選んでください。'),code:'CASTLE_RELEASE_UNAVAILABLE'};
+      const s=this.state,covert=s.covert;if((covert?.stations||[]).some(unit=>unit.sourceCastleId===id)||(covert?.dispatches||[]).some(unit=>unit.sourceCastleId===id)||s.march?.sourceCastleId===id)return{...fail('この城に関係する配置・派遣部隊を帰還させてから手放してください。'),code:'CASTLE_RELEASE_UNITS_PENDING'};
+      const original=CASTLE_BY_ID[id],castle=s.castles[id],branches=s.branches.filter(branch=>branch.parentCastleId===id),branchIds=new Set(branches.map(branch=>branch.id)),removed=job=>job.kind==='castle'&&job.id===id||job.kind==='branch'&&branchIds.has(job.id),summary={castleId:id,castleName:original.name,removedBranchCount:branches.length,removedJobCount:s.jobs.filter(removed).length,lostGarrisonTroops:castle.troops,lostBranchTroops:branches.reduce((total,branch)=>total+(branch.stationedTroops||0),0),lostReserveTroops:Number(covert?.reserves?.[id]||0)};
+      s.castles[id]={owner:original.clan===s.clan?'在地衆':original.clan,troops:Math.round(original.initialTroops*({easy:.8,normal:1,hard:1.2}[s.difficulty]||1)),wall:original.wall,level:1};
+      s.branches=s.branches.filter(branch=>!branchIds.has(branch.id));s.jobs=s.jobs.filter(job=>!removed(job));
+      if(summary.lostReserveTroops){covert.reserves[id]=0;covert.sequence++;}
+      const released=new Set([...this.releasedCastles(),id]);s.cycle.releasedCastles=CASTLES.filter(c=>released.has(c.id)).map(c=>c.id);if(s.cycle.home===id)s.cycle.home=s.home;
+      this._updateCampaignOutcome();const message=`${original.name}を手放しました。城郭・守備兵・支拠点・普請を失い、この城は自ら攻略し直すまで地域保護と周回継承から外れます。`;this.log(message,'territory');return{ok:true,...summary,message};
+    }
     getUnificationProof(){
       // Recompute from eligible holdings. Saved flags, battle names and event
       // results never establish campaign unification or change runtime roles.
@@ -1007,11 +1027,11 @@
       const edo=s.castles[ADMIN_ASSETS.castleId],wasHome=s.home===ADMIN_ASSETS.castleId,ownedEdo=edo.owner===s.clan;
       if(wasHome||ownedEdo){
         const canonical=this.isStaff?STAFF_BASE_ID:CLANS.find(c=>c.name===s.clan)?.home||'okazaki';
-        const other=CASTLES.filter(c=>c.id!==ADMIN_ASSETS.castleId&&s.castles[c.id].owner===s.clan);
-        const fallback=other.find(c=>c.id===canonical)?.id||other[0]?.id||canonical;
+        const released=new Set(this.releasedCastles()),other=CASTLES.filter(c=>c.id!==ADMIN_ASSETS.castleId&&!released.has(c.id)&&s.castles[c.id].owner===s.clan);
+        const fallback=other.find(c=>c.id===canonical)?.id||other[0]?.id||(!released.has(canonical)?canonical:CASTLES.find(c=>!['edo',STAFF_BASE_ID,DEPUTY_BASE_ID].includes(c.id)&&!released.has(c.id))?.id)||canonical;
         // An older Edo-only campaign keeps its garrison and castle progress at
         // the clan's normal home; no other game progress is discarded.
-        if(ownedEdo&&!other.length){s.castles[fallback]={...edo,owner:s.clan,level:Math.min(edo.level,this.castleLevelLimit(fallback))};if(!s.captureRewards.includes(fallback))s.captureRewards.push(fallback);}
+        if(ownedEdo&&!other.length&&!released.has(fallback)){s.castles[fallback]={...edo,owner:s.clan,level:Math.min(edo.level,this.castleLevelLimit(fallback))};if(!s.captureRewards.includes(fallback))s.captureRewards.push(fallback);}
         if(wasHome)s.home=fallback;if(s.cycle?.home==='edo')s.cycle.home=fallback;
         if(ownedEdo){const original=CASTLE_BY_ID[ADMIN_ASSETS.castleId];s.castles[ADMIN_ASSETS.castleId]={owner:original.clan===s.clan?'在地衆':original.clan,troops:original.initialTroops,wall:original.wall,level:1};}
         changed=true;
@@ -1061,34 +1081,40 @@
     _renameCampaignClan(clan){const s=this.state;if(s.clan===clan)return false;const previous=s.clan;for(const castle of Object.values(s.castles)){if(castle.owner===previous)castle.owner=clan;else if(castle.owner===clan)castle.owner='在地衆';}s.clan=clan;delete s.treaties[clan];return true;}
     _clearStaffProjection(){const view=STAFF_VIEW.get(this),origin=STAFF_ORIGIN.get(this);if(view){this._rememberStaffPersonalProgress();this.state.buildings=copy(view.personalBuildings);this.state.castles[STAFF_BASE_ID].level=view.personalBaseLevel;this.state.castles[STAFF_BASE_ID].wall=view.personalBaseWall;}
       const personalClan=view?.personalClan||origin?.clan;if(CLANS.some(c=>c.name===personalClan))this._renameCampaignClan(personalClan);
-      const home=view?.personalHome||origin?.home;if(CASTLE_BY_ID[home]&&!['edo',STAFF_BASE_ID].includes(home)){const s=this.state,previous=view?.personalHomeCastle||origin?.homeCastle||s.castles[home];if(s.castles[home].owner!==s.clan)s.castles[home]=copy(previous);else for(const key of ['troops','wall','level'])s.castles[home][key]=Math.max(s.castles[home][key],previous[key]);s.castles[home].level=Math.min(this.castleLevelLimit(home),s.castles[home].level);s.castles[home].owner=s.clan;s.home=home;s.cycle.home=view?.personalCycleHome||origin.cycleHome;}
+      const home=view?.personalHome||origin?.home;if(CASTLE_BY_ID[home]&&!['edo',STAFF_BASE_ID].includes(home)&&!this.releasedCastles().includes(home)){const s=this.state,previous=view?.personalHomeCastle||origin?.homeCastle||s.castles[home];if(s.castles[home].owner!==s.clan)s.castles[home]=copy(previous);else for(const key of ['troops','wall','level'])s.castles[home][key]=Math.max(s.castles[home][key],previous[key]);s.castles[home].level=Math.min(this.castleLevelLimit(home),s.castles[home].level);s.castles[home].owner=s.clan;s.home=home;const cycleHome=view?.personalCycleHome||origin?.cycleHome;s.cycle.home=this.releasedCastles().includes(cycleHome)?home:cycleHome||home;}
       if(this.state.staffService)this.state.staffService={baseId:STAFF_BASE_ID};
       STAFF_VIEW.delete(this);STAFF_ORIGIN.delete(this);
     }
     _enforceStaffHome(){
       const s=this.state;if(this.isStaff){if(s.clan!==STAFF_CLAN.name){const personal=CLANS.find(c=>c.name===s.clan);if(personal)STAFF_ORIGIN.set(this,{clan:personal.name,home:['edo',STAFF_BASE_ID].includes(s.home)?personal.home:s.home,cycleHome:['edo',STAFF_BASE_ID].includes(s.cycle.home)?personal.home:s.cycle.home});}const renamed=this._renameCampaignClan(STAFF_CLAN.name),changed=renamed||s.home!==STAFF_BASE_ID||s.castles[STAFF_BASE_ID].owner!==s.clan;s.home=STAFF_BASE_ID;s.cycle.home=STAFF_BASE_ID;s.castles[STAFF_BASE_ID].owner=s.clan;s.gameOver=false;return changed;}
       const source=s.castles[STAFF_BASE_ID],owned=source.owner===s.clan,wasHome=s.home===STAFF_BASE_ID;if(!owned&&!wasHome){if(s.cycle.home===STAFF_BASE_ID)s.cycle.home=s.home;return false;}
-      const canonical=CLANS.find(c=>c.name===s.clan)?.home||'kiyosu',choices=CASTLES.filter(c=>!['edo',STAFF_BASE_ID,DEPUTY_BASE_ID].includes(c.id)&&s.castles[c.id].owner===s.clan),fallback=choices.find(c=>c.id===canonical)?.id||choices[0]?.id||canonical;
-      if(wasHome){const destination=s.castles[fallback];for(const key of ['troops','wall','level'])destination[key]=Math.max(destination[key],source[key]);destination.level=Math.min(this.castleLevelLimit(fallback),destination.level);destination.owner=s.clan;s.home=fallback;}
-      s.jobs=s.jobs.flatMap(job=>job.kind==='castle'&&job.id===STAFF_BASE_ID?(wasHome&&s.castles[fallback].level<this.castleLevelLimit(fallback)?[{...job,id:fallback,targetLevel:s.castles[fallback].level+1}]:[]):[job]);
+      const canonical=CLANS.find(c=>c.name===s.clan)?.home||'kiyosu',released=new Set(this.releasedCastles()),usable=c=>!['edo',STAFF_BASE_ID,DEPUTY_BASE_ID].includes(c.id)&&!released.has(c.id),choices=CASTLES.filter(c=>usable(c)&&s.castles[c.id].owner===s.clan),fallback=choices.find(c=>c.id===canonical)?.id||choices[0]?.id||(!released.has(canonical)?canonical:CASTLES.find(usable)?.id)||canonical;
+      if(wasHome){if(!released.has(fallback)){const destination=s.castles[fallback];for(const key of ['troops','wall','level'])destination[key]=Math.max(destination[key],source[key]);destination.level=Math.min(this.castleLevelLimit(fallback),destination.level);destination.owner=s.clan;}s.home=fallback;}
+      s.jobs=s.jobs.flatMap(job=>job.kind==='castle'&&job.id===STAFF_BASE_ID?(wasHome&&!released.has(fallback)&&s.castles[fallback].level<this.castleLevelLimit(fallback)?[{...job,id:fallback,targetLevel:s.castles[fallback].level+1}]:[]):[job]);
       if(wasHome){const seen=new Map(),other=[];for(const job of s.jobs){if(job.kind!=='castle'){other.push(job);continue;}if(job.id===fallback){if(s.castles[fallback].level>=this.castleLevelLimit(fallback))continue;job.targetLevel=s.castles[fallback].level+1;}if(!seen.has(job.id)||job.remainingSeconds<seen.get(job.id).remainingSeconds)seen.set(job.id,job);}s.jobs=[...other,...seen.values()];}
       const original=CASTLE_BY_ID[STAFF_BASE_ID];s.castles[STAFF_BASE_ID]={owner:original.clan===s.clan?'在地衆':original.clan,troops:original.initialTroops,wall:original.wall,level:1};
-      s.captureRewards=s.captureRewards.filter(id=>id!==STAFF_BASE_ID);if(wasHome&&!s.captureRewards.includes(fallback))s.captureRewards.push(fallback);if(s.cycle.home===STAFF_BASE_ID)s.cycle.home=fallback;return true;
+      s.captureRewards=s.captureRewards.filter(id=>id!==STAFF_BASE_ID);if(wasHome&&!released.has(fallback)&&!s.captureRewards.includes(fallback))s.captureRewards.push(fallback);if(s.cycle.home===STAFF_BASE_ID)s.cycle.home=fallback;return true;
     }
     _enforceDeputyHome(returnHome=null){
       const s=this.state,id=DEPUTY_BASE_ID,source=s.castles[id],isHome=s.home===id,owned=source.owner===s.clan;
       const reset=castleId=>{const original=CASTLE_BY_ID[castleId];s.castles[castleId]={owner:original.clan===s.clan?'在地衆':original.clan,troops:original.initialTroops,wall:original.wall,level:1};};
-      const move=(from,to)=>{const previous=s.castles[from];s.castles[to]={...copy(previous),owner:s.clan,level:Math.min(previous.level,this.castleLevelLimit(to))};reset(from);s.home=to;s.cycle.home=to;
-        s.jobs=s.jobs.flatMap(job=>job.kind==='castle'&&(job.id===from||job.id===to)?job.id===from&&s.castles[to].level<this.castleLevelLimit(to)?[{...job,id:to,targetLevel:s.castles[to].level+1}]:[]:[job]);
-        s.captureRewards=[...new Set([...s.captureRewards.filter(value=>value!==from&&value!==to),to])];delete s.retainerSupport;};
+      const move=(from,to)=>{const previous=s.castles[from],destination=s.castles[to],keepFrom=this.isRegionProtectedCastle(from),keepTo=this.isRegionProtectedCastle(to);
+        // Appointment moves the garrison once. A conquered former home keeps
+        // its ownership and works; dismissal merges into that surviving castle.
+        s.castles[to]=keepTo?{...copy(destination),owner:s.clan,troops:Math.min(ASSET_CAP,destination.troops+previous.troops),wall:Math.max(destination.wall,previous.wall),level:Math.min(Math.max(destination.level,previous.level),this.castleLevelLimit(to))}:{...copy(previous),owner:s.clan,level:Math.min(previous.level,this.castleLevelLimit(to))};
+        if(keepFrom)previous.troops=0;else reset(from);s.home=to;s.cycle.home=to;
+        if(keepFrom)s.jobs=s.jobs.filter(job=>job.kind!=='castle'||job.id!==to);
+        else if(keepTo){const work=s.jobs.find(job=>job.kind==='castle'&&job.id===to)||s.jobs.find(job=>job.kind==='castle'&&job.id===from);s.jobs=s.jobs.filter(job=>job.kind!=='castle'||job.id!==from&&job.id!==to);if(work&&s.castles[to].level<this.castleLevelLimit(to))s.jobs.push({...work,id:to,targetLevel:s.castles[to].level+1});}
+        else s.jobs=s.jobs.flatMap(job=>job.kind==='castle'&&(job.id===from||job.id===to)?job.id===from&&s.castles[to].level<this.castleLevelLimit(to)?[{...job,id:to,targetLevel:s.castles[to].level+1}]:[]:[job]);
+        s.captureRewards=[...new Set([...s.captureRewards.filter(value=>(keepFrom||value!==from)&&value!==to),to])];delete s.retainerSupport;};
       if(this.isDeputy){if(!isHome){move(s.home,id);s.gameOver=false;return true;}source.owner=s.clan;if(s.cycle)s.cycle.home=id;delete s.retainerSupport;s.gameOver=false;return !owned;}
       if(!owned&&!isHome){if(s.cycle?.home===id)s.cycle.home=s.home;return false;}
       const allowed=castleId=>CASTLE_BY_ID[castleId]&&!MAJOR_CITY_IDS.includes(castleId)&&castleId!==id;
       // The recorded appointment home may be a conquered major city. Only an
       // explicit return may use it; automatic migration stays in ordinary castles.
-      const restoredHome=CASTLE_BY_ID[returnHome]&&!['edo',STAFF_BASE_ID,id].includes(returnHome)?returnHome:null;
-      const canonical=CLANS.find(c=>c.name===s.clan)?.home||'kiyosu',fallback=restoredHome||CASTLES.find(c=>allowed(c.id)&&c.id===canonical)?.id||CASTLES.find(c=>allowed(c.id)&&s.castles[c.id].owner===s.clan)?.id||'kiyosu';
-      if(isHome)move(id,fallback);else{reset(id);s.jobs=s.jobs.filter(job=>job.kind!=='castle'||job.id!==id);s.captureRewards=s.captureRewards.filter(value=>value!==id);}
+      const released=new Set(this.releasedCastles()),restoredHome=CASTLE_BY_ID[returnHome]&&!['edo',STAFF_BASE_ID,id].includes(returnHome)&&!released.has(returnHome)?returnHome:null;
+      const canonical=CLANS.find(c=>c.name===s.clan)?.home||'kiyosu',fallback=restoredHome||CASTLES.find(c=>allowed(c.id)&&!released.has(c.id)&&c.id===canonical)?.id||CASTLES.find(c=>allowed(c.id)&&!released.has(c.id)&&s.castles[c.id].owner===s.clan)?.id||CASTLES.find(c=>!['edo',STAFF_BASE_ID,id].includes(c.id)&&!released.has(c.id))?.id||canonical;
+      if(isHome&&!released.has(fallback))move(id,fallback);else{reset(id);s.jobs=s.jobs.filter(job=>job.kind!=='castle'||job.id!==id);s.captureRewards=s.captureRewards.filter(value=>value!==id);if(isHome)s.home=fallback;}
       if(s.cycle?.home===id)s.cycle.home=s.home;return true;
     }
     setRoleAccess({isAdmin=false,isStaff=false,isDeputy=false}={},options={}){
@@ -2443,7 +2469,7 @@
       }else if(!rewardOnly)s.castles[castleId].troops=c.troops-enemyLost;
       const durability=rewardOnly?null:this._damageCastleDurability(castleId,{won,ratio:p.ratio,captured:won,before:c.durability});if(durability)phases.push({title:'城郭の耐久',text:`耐久 ${durability.before.toLocaleString()} → ${durability.breachCurrent.toLocaleString()}。${won?'占領後は最大耐久の25%から修復を始めます。':'傷んだ防備は時間とともに修復されます。'}`});
       const report={won,...(durability?{durability}:{}),...(rewardOnly?{captured:false,battleMode:'reward'}:{}),castleId,castleName:c.name,ourBefore:p.troops,ourLost,enemyBefore:c.troops,enemyLost,phases,rewards,capturedOfficer,garrison,tactic,turn:s.turn};
-      s.lastBattle=report;this._updateCampaignOutcome();
+      s.lastBattle=report;if(won&&!rewardOnly)this.recordRegionConquests(castleId);this._updateCampaignOutcome();
       const text=won&&rewardOnly?`${c.name}への攻撃に勝利。金銭${rewards.gold}・兵糧${rewards.rice}を受け取りました。`:won?`${c.name}を攻略！ ${garrison}人を守備兵として配置。${capturedOfficer?`${this.officer(capturedOfficer).name}が帰順。`:''}`:`${c.name}の攻城戦から撤退。兵${ourLost.toLocaleString()}人を失いました。`;
       const result=this._action(text,won?'victory':'defeat',{battle:report});
       if(s.won)this.log(`攻略対象の${this.unificationTarget()}城を統一。戦乱の世に、新しい天下が訪れました。`,'victory');
@@ -2468,17 +2494,17 @@
         if(['edo',STAFF_BASE_ID,DEPUTY_BASE_ID].includes(move.to)){events.push(a.owner+'が'+bc.name+'へ侵攻。守備隊が応戦しました。');for(const e of events)this.log(e,'world');return events;}
         const home=move.to===s.home,reinforce=home?Math.round(s.troops*.45):Math.round(s.troops*.18),wall=home?s.buildings.wall:b.wall;
         const attack=a.troops*(s.difficulty==='hard'?.85:s.difficulty==='easy'?.55:.7),defense=this.defensePower(move.to);
-        const beforeDurability=this.castle(move.to).durability,held=defense>=attack*(.84+this.random()*.32);
+        const beforeDurability=this.castle(move.to).durability,held=defense>=attack*(.84+this.random()*.32),protectedOwnership=this.isCourtProtected||this.isRegionProtectedCastle(move.to);
         this.recordOfficerBattle({key:`defense:${s.walking.campaignId}:${s.turn}:${move.from}:${move.to}`,won:held,role:'defense'});
         const fieldLoss=Math.min(s.troops,Math.round(reinforce*(held?.12:.3)));s.troops-=fieldLoss;
         if(held){b.troops=survivorsAfterLoss(b.troops,Math.round(b.troops*.18),100);a.troops=survivorsAfterLoss(a.troops,Math.round(attack*.3),300);s.prestige=Math.min(ASSET_CAP,s.prestige+5);events.push(`${a.owner}が${bc.name}へ侵攻。守備隊が撃退しました（援軍損失${fieldLoss}人）。`);}
-        else if(this.isCourtProtected){
+        else if(protectedOwnership){
           const occupationForce=Math.max(250,Math.round(a.troops*.3));
           b.troops=survivorsAfterLoss(b.troops,Math.round(b.troops*.35),0);a.troops=survivorsAfterLoss(a.troops,Math.round(occupationForce*.6),350);s.morale=clamp(s.morale-10,15,100);
           events.push(`${a.owner}が${bc.name}へ侵攻。合戦の後、両軍は兵を引きました（援軍損失${fieldLoss}人）。`);
         }
         else{this._recordHomeDefenseLoss(move.to,move.from);this._recordBranchParentLoss(move.to);b.owner=a.owner;this._pruneBranches();if(s.jobs.some(j=>j.kind==='castle'&&j.id===move.to)){s.jobs=s.jobs.filter(j=>j.kind!=='castle'||j.id!==move.to);events.push(`${bc.name}の落城により、進行中の城郭拡張は中止されました。`);}b.troops=Math.max(250,Math.round(a.troops*.3));a.troops=survivorsAfterLoss(a.troops,Math.round(b.troops*.6),350);s.morale=clamp(s.morale-10,15,100);events.push(`${a.owner}の侵攻により${bc.name}を失いました。`);if(!this.ownedCastles().length){s.gameOver=true;events.push('最後の城が陥落しました。設定から新しい物語を始められます。');}else if(home){s.home=this.ownedCastles()[0].id;events.push(`${CASTLE_BY_ID[s.home].name}へ本拠を移しました。`);}}
-        this._damageCastleDurability(move.to,{won:!held,ratio:attack/Math.max(1,defense),captured:!held&&!this.isCourtProtected,before:beforeDurability});
+        this._damageCastleDurability(move.to,{won:!held,ratio:attack/Math.max(1,defense),captured:!held&&!protectedOwnership,before:beforeDurability});
       }else{
         const beforeDurability=this.castle(move.to).durability,condition=beforeDurability.fortificationFactor,ratio=a.troops/Math.max(1,b.troops*(1+b.wall*.08*condition)*(1+(b.level-1)*.04*condition)),captured=this.random()<clamp(.32+(ratio-1)*.3,.1,.8);
         if(captured){const old=b.owner;b.owner=a.owner;b.troops=Math.max(450,Math.round(a.troops*.42));a.troops=survivorsAfterLoss(a.troops,Math.round(b.troops*.4),500);events.push(`${a.owner}が${old}の${bc.name}を攻略しました。`);}
@@ -2550,14 +2576,16 @@
       this._cancelMarch('周回の切り替えにより出陣を中止し、兵と出陣費用を戻しました。');if(this._cancelCovertDispatches)this._cancelCovertDispatches('周回の切り替えにより派遣部隊が帰還しました。');
       this._rememberStaffPersonalProgress();
       const view=this.isStaff?STAFF_VIEW.get(this):null,beforeAppointment=view&&s.turn*60000+s.realtime.elapsed*1000<(view.base.accessSinceElapsedMs||0);
-      const home=this.isAdmin?ADMIN_ASSETS.castleId:beforeAppointment?view.personalCycleHome:this.isStaff?STAFF_BASE_ID:s.cycle.home;
+      const releasedCastles=this.releasedCastles(),released=new Set(releasedCastles),cycleHome=released.has(s.cycle.home)?s.home:s.cycle.home;
+      let home=this.isAdmin?ADMIN_ASSETS.castleId:beforeAppointment?view.personalCycleHome:this.isStaff?STAFF_BASE_ID:cycleHome;
+      if(released.has(home))home=CASTLES.find(c=>this.canOwnCastle(c.id)&&!released.has(c.id)&&s.castles[c.id].owner===s.clan)?.id||CASTLES.find(c=>this.canOwnCastle(c.id)&&!released.has(c.id))?.id||home;
       const captured=CASTLES.filter(c=>c.id!==home&&s.castles[c.id].owner===s.clan&&this.canOwnCastle(c.id)).length;
       const reward={cycle:s.cycle.index,captured,gold:captured*1000,rice:captured*1000,magatama:captured*100};
-      const retainedRegions=this.conqueredRegions(),retained=new Set([home,...REGION_CONQUEST.regions.filter(region=>retainedRegions.includes(region.region)).flatMap(region=>region.castleIds)]);
+      this.recordRegionConquests();const protectedRegions=this.protectedRegions(),retainedRegions=[...protectedRegions],retained=new Set([home,...REGION_CONQUEST.regions.filter(region=>retainedRegions.includes(region.region)).flatMap(region=>region.castleIds)].filter(id=>!released.has(id)));
       const homeBefore={...s.castles[home]},scale={easy:.8,normal:1,hard:1.2}[s.difficulty];
-      s.castles=Object.fromEntries(CASTLES.map(c=>[c.id,c.id===home?{...homeBefore,owner:s.clan,troops:Math.max(INITIAL_CASTLE.garrison,homeBefore.troops),wall:Math.max(homeBefore.wall,s.buildings.wall)}:retained.has(c.id)?copy(s.castles[c.id]):{owner:c.clan===s.clan?'在地衆':c.clan,troops:Math.round(c.initialTroops*scale),wall:c.wall,level:1}]));
-      s.home=home;s.cycle={index,home,latestReward:reward,retainedRegions};s.jobs=s.jobs.filter(job=>job.kind!=='castle'||retained.has(job.id));
-      s.treaties={};s.scouted={};s.captureRewards=[...retained];s.lastBattle=null;this._updateCampaignOutcome();
+      s.castles=Object.fromEntries(CASTLES.map(c=>[c.id,c.id===home&&!released.has(home)?{...homeBefore,owner:s.clan,troops:Math.max(INITIAL_CASTLE.garrison,homeBefore.troops),wall:Math.max(homeBefore.wall,s.buildings.wall)}:retained.has(c.id)?copy(s.castles[c.id]):{owner:c.clan===s.clan?'在地衆':c.clan,troops:Math.round(c.initialTroops*scale),wall:c.wall,level:1}]));
+      s.home=home;s.cycle={index,home,latestReward:reward,retainedRegions,protectedRegions,releasedCastles};s.jobs=s.jobs.filter(job=>job.kind!=='castle'||retained.has(job.id));
+      s.treaties={};s.scouted={};s.captureRewards=[...new Set([...retained,...s.captureRewards.filter(id=>released.has(id))])];s.lastBattle=null;this._updateCampaignOutcome();
       this._gain({gold:reward.gold,rice:reward.rice,magatama:reward.magatama});
       this.log(`領地を精算しました。占領${captured}城の報酬：勾玉${reward.magatama}・金銭${reward.gold}・兵糧${reward.rice}。${retainedRegions.length?`制覇した${retainedRegions.join('・')}の領土を引き継ぎ、`:''}${CASTLE_BY_ID[home].name}から再出発します。`,'cycle');
       return reward;
@@ -2807,10 +2835,11 @@
       }}
       if(s.worldClock)n.worldClock={id:s.worldClock.id,elapsedMs:s.worldClock.elapsedMs};
       if(s.cycle!==undefined){
-        const c=s.cycle,r=c?.latestReward,retained=c?.retainedRegions===undefined?[]:c.retainedRegions;
-        if(!isObj(c)||!num(c.index,0,Math.floor(MAX_TURN/WORLD_CALENDAR.monthsPerCycle))||!CASTLE_BY_ID[c.home]||!Array.isArray(retained)||retained.length>REGION_CONQUEST.regions.length||new Set(retained).size!==retained.length||retained.some(region=>!REGION_CONQUEST.regions.some(row=>row.region===region))||r!==null&&(!isObj(r)||!num(r.cycle,0,c.index-1)||!num(r.captured,0,CASTLES.length-1)||r.gold!==r.captured*1000||r.rice!==r.captured*1000||r.magatama!==r.captured*100))invalid();
-        n.cycle={index:c.index,home:c.home,latestReward:r===null?null:copy(r),retainedRegions:REGION_CONQUEST.regions.filter(row=>retained.includes(row.region)).map(row=>row.region)};
-      }else n.cycle={index:Math.floor(s.turn/WORLD_CALENDAR.monthsPerCycle),home:s.home,latestReward:null,retainedRegions:[]};
+        const c=s.cycle,r=c?.latestReward,retained=c?.retainedRegions===undefined?[]:c.retainedRegions,complete=conqueredRegions(Object.keys(n.castles).filter(id=>n.castles[id].owner===n.clan)),protectedRegions=c?.protectedRegions===undefined?complete:c.protectedRegions,releasedCastles=c?.releasedCastles===undefined?[]:c.releasedCastles;
+        const validRegions=regions=>Array.isArray(regions)&&regions.length<=REGION_CONQUEST.regions.length&&new Set(regions).size===regions.length&&regions.every(region=>REGION_CONQUEST.regions.some(row=>row.region===region));
+        if(!isObj(c)||!num(c.index,0,Math.floor(MAX_TURN/WORLD_CALENDAR.monthsPerCycle))||!CASTLE_BY_ID[c.home]||!validRegions(retained)||!validRegions(protectedRegions)||!Array.isArray(releasedCastles)||releasedCastles.length>CASTLES.length||new Set(releasedCastles).size!==releasedCastles.length||releasedCastles.some(id=>!CASTLES.some(c=>c.id===id)||['edo',STAFF_BASE_ID,DEPUTY_BASE_ID].includes(id))||r!==null&&(!isObj(r)||!num(r.cycle,0,c.index-1)||!num(r.captured,0,CASTLES.length-1)||r.gold!==r.captured*1000||r.rice!==r.captured*1000||r.magatama!==r.captured*100))invalid();
+        n.cycle={index:c.index,home:c.home,latestReward:r===null?null:copy(r),retainedRegions:REGION_CONQUEST.regions.filter(row=>retained.includes(row.region)).map(row=>row.region),protectedRegions:REGION_CONQUEST.regions.filter(row=>protectedRegions.includes(row.region)).map(row=>row.region),releasedCastles:CASTLES.filter(c=>releasedCastles.includes(c.id)).map(c=>c.id)};
+      }else n.cycle={index:Math.floor(s.turn/WORLD_CALENDAR.monthsPerCycle),home:s.home,latestReward:null,retainedRegions:[],protectedRegions:conqueredRegions(Object.keys(n.castles).filter(id=>n.castles[id].owner===n.clan)),releasedCastles:[]};
       const retainerSupport=Object.hasOwn(options,'retainerSupport')?options.retainerSupport:s.retainerSupport;
       if(retainerSupport&&CASTLE_BY_ID[retainerSupport.castleId]&&!MAJOR_CITY_IDS.includes(retainerSupport.castleId)&&Number.isSafeInteger(retainerSupport.count)&&retainerSupport.count>0){
         n.retainerSupport={castleId:retainerSupport.castleId,count:retainerSupport.count};

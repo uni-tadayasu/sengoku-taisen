@@ -3,7 +3,7 @@ import {harness} from './test-support.mjs';
 import {GAME_OFFICERS} from './game-runtime.js';
 
 const officerNames=new Map(GAME_OFFICERS.map(officer=>[officer.id,officer.name]));
-const profileKeys=['id','name','clan','guildId','guildName','guildRole','avatarVersion','evaluation','courtOffice','appearance','commander','cityHonors','homeCastleId','homeCastleName','homeCastleOwnerId','homeCastleAppearance'].sort();
+const profileKeys=['id','name','clan','guildId','guildName','guildRole','avatarVersion','evaluation','courtOffice','courtLineage','courtRelations','appearance','commander','cityHonors','homeCastleId','homeCastleName','homeCastleOwnerId','homeCastleAppearance'].sort();
 const publicCommander=(officerId,rank)=>({officerId,name:officerNames.get(officerId),rank});
 let passed=0;
 async function scenario(name,run){

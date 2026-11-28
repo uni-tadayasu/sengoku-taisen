@@ -158,20 +158,78 @@ test('delayed private room results are discarded after account or staff-role cha
 });
 
 test('formal membership requires explicit confirmation and the current writer but receipt lookup is read-only',async()=>{
- const h=harness(),data={requestId:'membership-request-one',deviceId:'device-one',expectedRevision:12,expectedHomeCastleId:'kiyosu',confirmed:true};
+ const h=harness(),data={requestId:'membership-request-one',deviceId:'device-one',expectedRevision:12,expectedHomeCastleId:'kiyosu',expectedJoinMode:'kyoto',expectedOfficeToken:null,houseId:'konoe',confirmed:true};
  await h.api.courtRequest('/court/membership');await assert.rejects(h.api.courtRequest('/court/membership',{method:'POST',data}),error=>error.code==='LOCAL_WRITER_CHANGED');
  h.writer.writable=true;await h.api.courtRequest('/court/membership',{method:'POST',data});assert.deepEqual(h.calls.at(-1).body,data);
  h.writer.writable=false;h.writer.revision=20;await h.api.courtRequest('/court/membership?receipt=1',{method:'POST',data});assert.deepEqual(h.calls.at(-1).body,data);assert.equal(h.calls.at(-1).headers.Authorization,'Bearer '+TOKEN);await h.api.courtRequest('/court/membership',{method:'POST',data,recoverMembership:true});assert.deepEqual(h.calls.at(-1).body,data);
 });
 test('membership confirmation, exact keys and receipt routes reject malformed or unreviewed commands',async()=>{
- const h=harness(),data={requestId:'membership-request-one',deviceId:'device-one',expectedRevision:12,expectedHomeCastleId:'kiyosu',confirmed:true};h.writer.writable=true;
- for(const invalid of [{...data,confirmed:false},{...data,other:true},{...data,expectedRevision:-1},{...data,expectedHomeCastleId:'../kiyosu'}])await assert.rejects(h.api.courtRequest('/court/membership',{method:'POST',data:invalid}),error=>error.status===400);
+ const h=harness(),data={requestId:'membership-request-one',deviceId:'device-one',expectedRevision:12,expectedHomeCastleId:'kiyosu',expectedJoinMode:'kyoto',expectedOfficeToken:null,houseId:'konoe',confirmed:true};h.writer.writable=true;
+ for(const invalid of [{...data,confirmed:false},{...data,expectedJoinMode:'other'},{...data,expectedOfficeToken:''},{...data,other:true},{...data,expectedRevision:-1},{...data,expectedHomeCastleId:'../kiyosu'}])await assert.rejects(h.api.courtRequest('/court/membership',{method:'POST',data:invalid}),error=>error.status===400);
  for(const route of ['/court/membership?receipt=0','/court/membership?receipt=1&receipt=1','/court/membership?other=1'])await assert.rejects(h.api.courtRequest(route,{method:'POST',data}),error=>error.status===400);
  await assert.rejects(h.api.courtRequest('/court/membership?receipt=1'),error=>error.status===400);assert.equal(h.calls.length,0);
 });
 test('an account change cannot apply a delayed formal-membership snapshot to the next player',async()=>{
- const h=harness(),pause=deferred(),data={requestId:'membership-request-one',deviceId:'device-one',expectedRevision:12,expectedHomeCastleId:'kiyosu',confirmed:true};h.writer.writable=true;h.setTransport(()=>pause.promise);
+ const h=harness(),pause=deferred(),data={requestId:'membership-request-one',deviceId:'device-one',expectedRevision:12,expectedHomeCastleId:'kiyosu',expectedJoinMode:'kyoto',expectedOfficeToken:null,houseId:'konoe',confirmed:true};h.writer.writable=true;h.setTransport(()=>pause.promise);
  const pending=h.api.courtRequest('/court/membership',{method:'POST',data});h.control.changeIdentity();pause.resolve({data:{ok:true,user:{id:PLAYER,isStaff:true},revision:13}});await assert.rejects(pending,error=>error.code==='STALE_IDENTITY');
+});
+
+test('legacy membership without a house can only look up a prior receipt',async()=>{
+ const h=harness(),data={requestId:'legacy-membership-request',deviceId:'device-one',expectedRevision:12,expectedHomeCastleId:'kiyosu',confirmed:true};h.writer.writable=true;
+ await assert.rejects(h.api.courtRequest('/court/membership',{method:'POST',data}),error=>error.status===400);
+ await h.api.courtRequest('/court/membership?receipt=1',{method:'POST',data});assert.deepEqual(h.calls[0].body,data);
+});
+test('family and imperial-house commands use exact authenticated routes and read-only receipt recovery',async()=>{
+ const h=harness({staff:true}),base={requestId:'lineage-request-one',expectedRevision:3,termId:'current-term',confirmed:true};
+ for(const [route,extra]of [['/court/house',{houseId:'kujo'}],['/court/imperial-house',{name:'花霞宮'}]]){
+  const data={...base,...extra};await h.api.courtRequest(route,{method:'POST',data});await h.api.courtRequest(route+'?receipt=1',{method:'POST',data});
+  assert.deepEqual(h.calls.at(-1).body,data);assert.equal(h.calls.at(-1).headers.Authorization,'Bearer '+TOKEN);
+ }
+ assert.equal(h.writer.writable,false);assert.equal(h.calls.length,4);
+});
+test('invalid family choices, unconfirmed house names and broadened lineage routes never reach HTTP',async()=>{
+ const h=harness({staff:true}),base={requestId:'lineage-request-one',expectedRevision:3,termId:'current-term',confirmed:true};
+ for(const [route,data]of [['/court/house',{...base,houseId:'other'}],['/court/house',{...base,houseId:'konoe',confirmed:false}],['/court/house',{...base,houseId:'konoe',isAdmin:true}],['/court/imperial-house',{...base,name:'宮'}],['/court/imperial-house',{...base,name:'空白宮 '}],['/court/imperial-house',{...base,name:'改行\n宮'}],['/court/imperial-house',{...base,name:'宮'.repeat(21)}]])await assert.rejects(h.api.courtRequest(route,{method:'POST',data}),error=>error.status===400);
+ for(const route of ['/court/house?receipt=0','/court/house?receipt=1&receipt=1','/court/imperial-house?playerId=other','/court/house/../imperial-house'])await assert.rejects(h.api.courtRequest(route,{method:'POST',data:{...base,houseId:'konoe'}}),error=>error.status===400);
+ await assert.rejects(h.api.courtRequest('/court/house'),error=>error.status===400);assert.equal(h.calls.length,0);
+});
+test('lineage results cannot cross account or role changes and do not grant Emperor authority',async()=>{
+ for(const change of ['changeIdentity','changeRole','pending','hold']){
+  const h=harness({staff:true}),pause=deferred();h.setTransport(()=>pause.promise);const pending=h.api.courtRequest('/court/imperial-house',{method:'POST',data:{requestId:'imperial-request-one',expectedRevision:3,termId:'current-term',confirmed:true,name:'花霞宮'}});h.control[change]();pause.resolve({data:{ok:true,lineage:{class:'imperial',houseId:'konoe',imperialHouseName:'花霞宮'}}});await assert.rejects(pending,error=>error.code==='STALE_IDENTITY');assert.equal(h.authority.length,0);
+ }
+});
+
+const NEGOTIATION='cn_'+'8'.repeat(32),TARGET='u_'+'2'.repeat(32),negotiationOffer={gold:800,rice:0,wood:30,stone:0},negotiationProposal={requestId:'negotiation-request-one',targetPlayerId:TARGET,offer:negotiationOffer,confirmed:true};
+test('court negotiation reads, proposals and counters use private authentication without requiring a writer or rank',async()=>{
+ const h=harness();h.control.s.user.evaluation={score:0};
+ for(const route of ['/court/negotiations','/court/negotiations?box=history&limit=50&cursor=next_page','/court/negotiations/recipient?playerId='+TARGET,'/court/negotiations/'+NEGOTIATION])await h.api.courtNegotiationRequest(route);
+ await h.api.courtNegotiationRequest('/court/negotiations',{method:'POST',data:negotiationProposal,auth:false,token:'forged'});
+ for(const action of ['counter','reject','cancel'])await h.api.courtNegotiationRequest('/court/negotiations/'+NEGOTIATION+'/'+action,{method:'POST',data:{requestId:'negotiation-'+action,proposalRevision:2,confirmed:true,...(action==='counter'?{offer:negotiationOffer}:{})}});
+ assert.equal(h.calls.length,8);assert(h.calls.every(call=>call.headers.Authorization==='Bearer '+TOKEN));assert.equal(h.authority.length,0);assert.equal(h.syncs.length,0);
+});
+test('negotiation acceptance requires the active writer while receipt lookup remains read-only on followers',async()=>{
+ const h=harness(),data={requestId:'accept-negotiation',proposalRevision:3,confirmed:true,deviceId:'device-one',expectedRevision:12},route='/court/negotiations/'+NEGOTIATION+'/accept';
+ await assert.rejects(h.api.courtNegotiationRequest(route,{method:'POST',data}),error=>error.code==='COURT_NEGOTIATION_SYNC_REQUIRED');assert.equal(h.calls.length,0);
+ await h.api.courtNegotiationRequest(route+'?receipt=1',{method:'POST',data});assert.equal(h.calls.length,1);assert.equal(h.syncs.length,0);
+ h.writer.writable=true;await h.api.courtNegotiationRequest(route,{method:'POST',data});assert.deepEqual(h.calls[1].body,data);
+ for(const patch of [{expectedRevision:11},{deviceId:'other-device'}])await assert.rejects(h.api.courtNegotiationRequest(route,{method:'POST',data:{...data,...patch}}),error=>error.code==='COURT_NEGOTIATION_SYNC_REQUIRED');assert.equal(h.calls.length,2);
+});
+test('negotiation validation rejects route escapes, unknown resources, stale proposal shapes and unconfirmed terms',async()=>{
+ const h=harness();for(const route of ['/court/negotiations?box=all','/court/negotiations?limit=0','/court/negotiations?limit=51','/court/negotiations?box=active&box=history','/court/negotiations?cursor=%00','/court/negotiations/recipient','/court/negotiations/recipient?playerId='+TARGET+'&role=admin','/court/negotiations/../admin','/court/negotiations#history'])await assert.rejects(h.api.courtNegotiationRequest(route),error=>error.status===400);
+ for(const patch of [{confirmed:false},{targetPlayerId:PLAYER},{targetPlayerId:'../other'},{offer:{gold:0}},{offer:{iron:1}},{offer:{gold:1000001}},{offer:{gold:0.5}},{offer:{gold:1,stone:null}},{offer:[]},{isAdmin:true}])await assert.rejects(h.api.courtNegotiationRequest('/court/negotiations',{method:'POST',data:{...negotiationProposal,...patch}}),error=>error.status===400);
+ for(const action of ['counter','accept','reject','cancel'])await assert.rejects(h.api.courtNegotiationRequest('/court/negotiations/'+NEGOTIATION+'/'+action,{method:'POST',data:{requestId:'invalid-revision',proposalRevision:0,confirmed:true}}),error=>error.status===400);
+ await assert.rejects(h.api.courtNegotiationRequest('/court/negotiations?receipt=1&receipt=1',{method:'POST',data:negotiationProposal}),error=>error.status===400);assert.equal(h.calls.length,0);
+});
+test('all negotiation commands support exact receipt recovery without granting court privileges',async()=>{
+ const h=harness(),base='/court/negotiations';await h.api.courtNegotiationRequest(base+'?receipt=1',{method:'POST',data:negotiationProposal});
+ for(const action of ['counter','accept','reject','cancel'])await h.api.courtNegotiationRequest(base+'/'+NEGOTIATION+'/'+action+'?receipt=1',{method:'POST',data:{requestId:'receipt-'+action,proposalRevision:4,confirmed:true,...(action==='counter'?{offer:negotiationOffer}:action==='accept'?{deviceId:'device-one',expectedRevision:0}:{})}});
+ assert.equal(h.calls.length,5);assert.equal(h.authority.length,0);assert(h.calls.every(call=>call.url.endsWith('?receipt=1')));
+});
+test('guest and stale account, role or verification transitions cannot receive another identity negotiation',async()=>{
+ const guest=harness({guest:true});await assert.rejects(guest.api.courtNegotiationRequest('/court/negotiations'),error=>error.status===403);assert.equal(guest.calls.length,0);
+ for(const change of ['changeIdentity','changeRole','pending','hold']){
+  const h=harness(),pause=deferred();h.setTransport(()=>pause.promise);const pending=h.api.courtNegotiationRequest('/court/negotiations',{method:'POST',data:negotiationProposal});h.control[change]();pause.resolve({data:{ok:true,negotiation:{id:NEGOTIATION}}});await assert.rejects(pending,error=>error.code==='STALE_IDENTITY');assert.equal(h.authority.length,0);
+ }
 });
 
 (async()=>{for(const[name,run]of tests){await run();console.log('PASS '+name);}console.log(tests.length+' real social court transport checks passed. No live requests.');})().catch(error=>{console.error(error);process.exitCode=1;});

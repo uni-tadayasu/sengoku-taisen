@@ -54,12 +54,13 @@ function setup(options={}) {
   };
   social.guildRequest=async(route,opts)=>{const call={route,options:clone(opts)};posts.push(call);trace.push('send-guild');return control.onPost?control.onPost(call):{ok:true,receipt:{id:'guild-transfer-1'}};};
   social.expansionRequest=async(route,opts={})=>{const call={route,options:clone({method:'GET',...opts})};if(call.options.method==='GET'){gets.push(call);trace.push('get-expansion');return control.onGet?control.onGet(call):{ok:true};}posts.push(call);trace.push('send-expansion');return control.onPost?control.onPost(call):{ok:true,revision:control.status.revision,receipt:{id:'expansion-1'}};};
+  social.courtNegotiationRequest=async(route,opts={})=>{const call={route,options:clone({method:'GET',...opts})};if(call.options.method==='GET'){gets.push(call);trace.push('get-negotiation');return control.onGet?control.onGet(call):{ok:true,negotiations:[]};}posts.push(call);trace.push('send-negotiation');return control.onPost?control.onPost(call):{ok:true};};
   context={
     game,roster,SengokuEngine,staffBaseId:'kyoto_gosho',URLSearchParams,Date,JSON,Math,Promise,
     state:()=>context.game.state,
     syncAccess:{...control.status},saveKey:'save',backupKey:'backups',saveEnabled:true,saveWarning:'',
     worldCatchingUp:false,worldSettlementPending:false,worldSettlementRetryAt:0,worldCatchupTimer:null,worldClockStatusKey:'',fieldActionPending:false,walkingActionPending:false,strategyActionPending:false,startPending:false,
-    selectedCastle:'',lastRealtime:0,saveCounter:0,importedGame:null,activeModal:'',
+    selectedCastle:'',lastRealtime:0,saveCounter:0,importedGame:null,activeModal:'',roleEpoch:0,
     localStorage:{get length(){return stored.size;},key:index=>[...stored.keys()][index]??null,getItem:key=>stored.get(key)||null,setItem:(key,value)=>{if(control.storageError)throw Error('storage unavailable');stored.set(key,value);},removeItem:key=>stored.delete(key)},
     crypto:{randomUUID:()=>{control.uuidCalls++;return 'test-request-'+control.uuidCalls;}},
     window:{SengokuSocial:social,SengokuCloudSync:sync,
@@ -73,7 +74,7 @@ function setup(options={}) {
     queueWorldProgress:()=>control.queued++,preserveInteraction:()=>{},closeModal:()=>{},updateBattlePreview:()=>{},syncMusic:()=>{},
   };
   vm.createContext(context);
-  vm.runInContext(['confirmedWorldClock','clockIsApplied','canMutate','syncMessage','requireWritable','save','backupCurrentSave','trustedBranchAuthority','applyBranchAuthority','trustedMaintenanceAuthority','applyMaintenanceAuthority','trustedCourtProtection','applyCourtProtection','trustedCourtEstateProjection','applyCloudSave','applyDurableGift','restoreAdminAssets','processWorldClock','requestField','requestExpansion'].map(fn).join('\n'),context);
+  vm.runInContext(['confirmedWorldClock','clockIsApplied','canMutate','syncMessage','requireWritable','save','backupCurrentSave','trustedBranchAuthority','applyBranchAuthority','trustedMaintenanceAuthority','applyMaintenanceAuthority','trustedCourtProtection','applyCourtProtection','trustedCourtEstateProjection','applyCloudSave','applyDurableGift','restoreAdminAssets','processWorldClock','getPendingCastleRelease','validCourtNegotiationAcceptance','requestCourtNegotiation','requestField','requestExpansion'].map(fn).join('\n'),context);
   return {c:context,control,stored,trace,posts,gets,events,clockAccepts};
 }
 const tests=[];
@@ -121,6 +122,16 @@ test('confirmed shared time is reflected before flushing, without applying specu
   h.control.onFlush=async()=>{seen=JSON.parse(h.stored.get('save'));return{ok:true};};
   await h.c.requestField('/field/me',{method:'POST',data:{}});
   assert.equal(seen.state.worldClock.elapsedMs,120000);assert.equal(seen.state.turn,2);assert.equal(h.posts.length,1);
+});
+
+test('a recently confirmed clock removes the extra pre-command GET while retaining save and reconciliation',async()=>{
+  const h=setup();let checks=0;
+  h.c.window.SengokuWorldClock.ensureFresh=async options=>{checks++;assert.equal(options.maxAgeMs,5000);return{ok:true};};
+  await h.c.requestField('/field/me',{method:'POST',data:{}});
+  assert.equal(checks,1);assert.equal(h.trace.includes('clock-refresh'),false);
+  assert.equal(h.posts.length,1);assert.equal(h.control.flushes,1);assert.equal(h.control.refreshes,1);
+  assert(h.trace.indexOf('save')<h.trace.indexOf('flush'));assert(h.trace.indexOf('flush')<h.trace.indexOf('send'));
+  assert.equal(h.c.fieldActionPending,false);
 });
 
 test('a lost legacy response replays its original body overnight despite a new UI request ID',async()=>{
@@ -376,6 +387,109 @@ for(const [route,payload]of expansionCases){
 test('expansion reads bypass the writer flow and a changed account cannot finish another owner claim',async()=>{
  const h=setup();await h.c.requestExpansion('/progress');assert.equal(h.gets[0].route,'/progress');assert.equal(h.control.flushes,0);
  const flush=deferred();h.control.onFlush=()=>flush.promise;const task=h.c.requestExpansion('/progress/claim',{method:'POST',data:{key:'d:20000:build'}});await until(()=>h.control.flushes===1);h.control.user={...h.control.user,id:'player-other'};flush.resolve({ok:true});await assert.rejects(task,e=>e.code==='STALE_IDENTITY');assert.equal(h.posts.length,0);assert.equal(expansionRecords(h).length,0);assert.equal(h.c.fieldActionPending,false);
+});
+
+const releaseRecords=h=>[...h.stored.entries()].filter(([key])=>key.startsWith('sengoku-castle-release-pending-v1:'));
+const releaseBody={castleId:'nijo',confirmed:true};
+const releaseReply=(call,revision=8,idempotent=false)=>({ok:true,revision,release:{requestId:call.options.data.requestId,castleId:call.options.data.castleId,castleName:'二条城',removedBranchCount:1,idempotent}});
+test('castle release persists its campaign and waits for authoritative reconciliation before clearing confirmation',async()=>{
+ const h=setup(),response=deferred(),refresh=deferred();h.control.onPost=()=>response.promise;h.control.onRefresh=()=>refresh.promise;
+ const before=JSON.stringify(h.c.game.state),task=h.c.requestField('/field/release',{method:'POST',data:{...releaseBody,requestId:'release-first'}});
+ await until(()=>h.posts.length===1);assert.deepEqual(h.trace.slice(0,4),['clock-refresh','save','flush','send']);assert.equal(h.c.canMutate(),false);
+ const record=JSON.parse(releaseRecords(h)[0][1]);assert.equal(record.releaseCampaignId,h.c.game.state.walking.campaignId);assert.equal(record.requestId,'release-first');assert.equal(h.c.getPendingCastleRelease('nijo').requestId,'release-first');assert.equal(h.c.getPendingCastleRelease('nagoya'),null);
+ await assert.rejects(h.c.requestField('/field/release',{method:'POST',data:releaseBody}));assert.equal(h.posts.length,1);assert.equal(JSON.stringify(h.c.game.state),before);
+ response.resolve(releaseReply(h.posts[0]));await until(()=>h.control.refreshes===1);assert.equal(JSON.parse(releaseRecords(h)[0][1]).committed,true);assert.equal(h.c.canMutate(),false);
+ h.control.status.revision=8;refresh.resolve({ok:true});const result=await task;assert.equal(result.effectiveRequestId,'release-first');assert.equal(releaseRecords(h).length,0);assert.equal(h.c.fieldActionPending,false);
+});
+test('a lost release response recovers by receipt only after reload and never executes a second release',async()=>{
+ const h=setup();let executed=0,receipt;h.control.onPost=async call=>{executed++;receipt=releaseReply(call);throw Error('release response lost');};
+ await assert.rejects(h.c.requestField('/field/release',{method:'POST',data:releaseBody}),/response lost/);const original=h.c.getPendingCastleRelease('nijo').requestId;
+ const reopened=setup({stored:h.stored});reopened.control.status.revision=10;reopened.control.onPost=async call=>{assert.equal(call.route,'/field/release?receipt=1');assert.equal(call.options.data.requestId,original);return{...receipt,release:{...receipt.release,idempotent:true}};};
+ const result=await reopened.c.requestField('/field/release',{method:'POST',data:{...releaseBody,requestId:'different-ui-id'}});assert.equal(result.effectiveRequestId,original);assert.equal(executed,1);assert.equal(reopened.posts.length,1);assert.equal(releaseRecords(reopened).length,0);
+});
+test('an unreceived release may retry the original request only after an empty receipt in the same campaign',async()=>{
+ const h=setup();h.control.onPost=async()=>{throw Error('offline before acceptance');};await assert.rejects(h.c.requestField('/field/release',{method:'POST',data:releaseBody}));const id=h.c.getPendingCastleRelease('nijo').requestId;
+ const reopened=setup({stored:h.stored});reopened.control.onPost=async call=>{assert.equal(call.options.data.requestId,id);if(call.route.endsWith('?receipt=1'))throw Object.assign(Error('not accepted'),{status:404,code:'FIELD_RELEASE_RECEIPT_PENDING'});reopened.control.status.revision=8;return releaseReply(call);};
+ await reopened.c.requestField('/field/release',{method:'POST',data:releaseBody});assert.deepEqual(reopened.posts.map(call=>call.route),['/field/release?receipt=1','/field/release']);assert.equal(reopened.control.uuidCalls,0);assert.equal(releaseRecords(reopened).length,0);
+});
+test('a prior campaign or missing campaign release confirmation cannot be replayed against a new holding',async()=>{
+ for(const unknown of [false,true]){
+  const h=setup();h.control.onPost=async()=>{throw Error('offline');};await assert.rejects(h.c.requestField('/field/release',{method:'POST',data:releaseBody}));
+  if(unknown){const [key,raw]=releaseRecords(h)[0],record=JSON.parse(raw);delete record.releaseCampaignId;h.stored.set(key,JSON.stringify(record));}
+  const reopened=setup({stored:h.stored});reopened.c.game.state.walking.campaignId='new-campaign';reopened.control.onPost=async call=>{assert.equal(call.route,'/field/release?receipt=1');throw Object.assign(Error('not accepted'),{status:404,code:'FIELD_RELEASE_RECEIPT_PENDING'});};
+  await assert.rejects(reopened.c.requestField('/field/release',{method:'POST',data:releaseBody}),error=>error.code==='FIELD_RELEASE_CONFIRMATION_EXPIRED');assert.equal(reopened.posts.length,1);assert.equal(releaseRecords(reopened).length,0);assert.equal(reopened.c.fieldActionPending,false);
+ }
+});
+test('an accepted prior-campaign release is recoverable without applying its old campaign state',async()=>{
+ const h=setup();let receipt;h.control.onPost=async call=>{receipt=releaseReply(call);throw Error('lost');};await assert.rejects(h.c.requestField('/field/release',{method:'POST',data:releaseBody}));
+ const reopened=setup({stored:h.stored});reopened.c.game.state.walking.campaignId='new-campaign';reopened.control.status.revision=15;reopened.control.onPost=async call=>{assert.equal(call.route,'/field/release?receipt=1');return{...receipt,release:{...receipt.release,idempotent:true}};};
+ await reopened.c.requestField('/field/release',{method:'POST',data:releaseBody});assert.equal(reopened.c.game.state.walking.campaignId,'new-campaign');assert.equal(reopened.posts.length,1);assert.equal(releaseRecords(reopened).length,0);
+});
+test('a mismatched release receipt remains pending and cannot be reported as success',async()=>{
+ for(const change of [r=>r.release.requestId='wrong-id',r=>r.release.castleId='nagoya',r=>r.release.removedBranchCount=-1,r=>delete r.revision,r=>delete r.release.idempotent]){
+  const h=setup();h.control.onPost=async call=>{const result=releaseReply(call);change(result);return result;};
+  await assert.rejects(h.c.requestField('/field/release',{method:'POST',data:releaseBody}),error=>error.code==='FIELD_RELEASE_RECEIPT_INVALID');assert.equal(releaseRecords(h).length,1);assert.equal(h.c.fieldActionPending,false);
+ }
+});
+test('release reconciliation failure keeps the committed receipt and prevents uncertain re-execution',async()=>{
+ const h=setup();h.control.onPost=async call=>releaseReply(call,30);h.control.onRefresh=async()=>({ok:false});await assert.rejects(h.c.requestField('/field/release',{method:'POST',data:releaseBody}),error=>error.code==='FIELD_RELEASE_RECONCILE_PENDING');
+ const id=h.c.getPendingCastleRelease('nijo').requestId;assert.equal(JSON.parse(releaseRecords(h)[0][1]).committed,true);
+ h.control.onPost=async call=>{assert.equal(call.route,'/field/release?receipt=1');throw Object.assign(Error('receipt temporarily unavailable'),{status:404,code:'FIELD_RELEASE_RECEIPT_PENDING'});};
+ await assert.rejects(h.c.requestField('/field/release',{method:'POST',data:releaseBody}),error=>error.code==='FIELD_RELEASE_RECEIPT_PENDING'&&error.retryable);assert.equal(h.c.getPendingCastleRelease('nijo').requestId,id);assert.equal(h.posts.length,2);
+});
+test('account, appointed role and campaign transitions invalidate a release before it is sent',async()=>{
+ for(const change of [h=>h.control.user.id='player-b',h=>h.c.roleEpoch++,h=>h.c.game.state.walking.campaignId='new-campaign']){
+  const h=setup(),flush=deferred();h.control.onFlush=()=>flush.promise;const task=h.c.requestField('/field/release',{method:'POST',data:releaseBody});await until(()=>h.control.flushes===1);change(h);flush.resolve({ok:true});
+  await assert.rejects(task,error=>error.code==='STALE_IDENTITY');assert.equal(h.posts.length,0);assert.equal(releaseRecords(h).length,0);assert.equal(h.c.fieldActionPending,false);
+ }
+});
+test('release recovery cannot cross identity during a deferred receipt lookup or leak another account entry',async()=>{
+ const h=setup();h.control.onPost=async()=>{throw Error('offline');};await assert.rejects(h.c.requestField('/field/release',{method:'POST',data:releaseBody}));const lookup=deferred();h.control.onPost=()=>lookup.promise;
+ const retry=h.c.requestField('/field/release',{method:'POST',data:releaseBody});await until(()=>h.posts.length===2);h.control.user.id='other-player';assert.equal(h.c.getPendingCastleRelease(),null);lookup.reject(Object.assign(Error('empty'),{status:404,code:'FIELD_RELEASE_RECEIPT_PENDING'}));
+ await assert.rejects(retry,error=>error.code==='STALE_IDENTITY');assert.equal(h.posts.length,2);assert.equal(releaseRecords(h).length,1);
+});
+test('a later attack never silently replays a pending castle release',async()=>{
+ const h=setup();h.control.onPost=async()=>{throw Error('offline');};await assert.rejects(h.c.requestField('/field/release',{method:'POST',data:releaseBody}));h.control.onPost=async call=>{assert.equal(call.route,'/field/attack');return{ok:true,revision:7};};
+ await h.c.requestField('/field/attack',{method:'POST',data:{targetId:'player-b',troops:900}});assert.equal(releaseRecords(h).length,1);assert.equal(h.posts.length,2);
+});
+
+const negotiationId='cn_'+'8'.repeat(32),acceptRoute='/court/negotiations/'+negotiationId+'/accept',acceptBody={requestId:'accept-original-request',proposalRevision:3,confirmed:true};
+const acceptanceRecords=h=>[...h.stored.entries()].filter(([key])=>key.startsWith('sengoku-court-negotiation-accept-pending-v1:'));
+const acceptanceReply=(call,revision=8)=>({ok:true,revision,idempotent:false,receipt:{requestId:call.options.data.requestId,negotiationId,action:'accept',revision:call.options.data.proposalRevision+1,lordId:'player-a',warriorId:'player-b',offer:{gold:400,rice:0,wood:50,stone:0}}});
+test('only acceptance pays through the writer bridge; negotiation reads and terms require no local save',async()=>{
+ const h=setup();h.control.clockReady=false;h.control.status.writable=false;await h.c.requestCourtNegotiation('/court/negotiations');await h.c.requestCourtNegotiation('/court/negotiations',{method:'POST',data:{requestId:'terms-only',targetPlayerId:'player-b',offer:{gold:400},confirmed:true}});
+ assert.equal(h.control.flushes,0);assert.equal(h.control.refreshes,0);assert.equal(h.events.length,0);assert.equal(h.posts.length,1);assert.equal(h.gets.length,1);assert.equal(acceptanceRecords(h).length,0);
+});
+test('negotiation acceptance freezes mutations, flushes current resources and waits for canonical payment',async()=>{
+ const h=setup(),response=deferred(),refresh=deferred();h.control.onPost=()=>response.promise;h.control.onRefresh=()=>refresh.promise;const before=h.c.game.state.resources.gold;
+ const task=h.c.requestCourtNegotiation(acceptRoute,{method:'POST',data:acceptBody});await until(()=>h.posts.length===1);assert.deepEqual(h.trace.slice(0,4),['clock-refresh','save','flush','send-negotiation']);assert.equal(h.posts[0].options.data.expectedRevision,7);assert.equal(h.posts[0].options.data.deviceId,'tab-a');assert.equal(h.c.game.state.resources.gold,before);assert.equal(h.c.canMutate(),false);
+ const stored=JSON.parse(acceptanceRecords(h)[0][1]);assert.equal(stored.requestId,acceptBody.requestId);assert.equal(stored.negotiationCampaignId,h.c.game.state.walking.campaignId);
+ response.resolve(acceptanceReply(h.posts[0]));await until(()=>h.control.refreshes===1);assert.equal(h.c.canMutate(),false);assert.equal(JSON.parse(acceptanceRecords(h)[0][1]).committed,true);h.control.status.revision=8;refresh.resolve({ok:true});
+ const result=await task;assert.equal(result.effectiveRequestId,acceptBody.requestId);assert.equal(acceptanceRecords(h).length,0);assert.equal(h.c.fieldActionPending,false);
+});
+test('acceptance receipt recovery works on a follower without clock refresh or another payment and clears the matching bridge record',async()=>{
+ const h=setup();let receipt;h.control.onPost=async call=>{receipt=acceptanceReply(call);throw Error('payment reply lost');};await assert.rejects(h.c.requestCourtNegotiation(acceptRoute,{method:'POST',data:acceptBody}),/reply lost/);assert.equal(acceptanceRecords(h).length,1);
+ const reopened=setup({stored:h.stored});reopened.control.status.writable=false;reopened.control.clockReady=false;reopened.control.onPost=async call=>{assert.equal(call.route,acceptRoute+'?receipt=1');assert.equal(call.options.data.expectedRevision,7);assert.equal(call.options.data.deviceId,'tab-a');return{...receipt,idempotent:true};};reopened.control.onRefresh=async()=>{reopened.control.status.revision=8;return{ok:true};};
+ await reopened.c.requestCourtNegotiation(acceptRoute+'?receipt=1',{method:'POST',data:acceptBody});assert.equal(reopened.posts.length,1);assert.equal(reopened.control.flushes,0);assert.equal(reopened.events.length,0);assert.equal(reopened.trace.includes('clock-refresh'),false);assert.equal(acceptanceRecords(reopened).length,0);assert.equal(reopened.c.fieldActionPending,false);
+});
+test('a saved acceptance checks its receipt before reposting and expires across campaigns',async()=>{
+ for(const changed of [false,true]){
+  const h=setup();h.control.onPost=async()=>{throw Error('not delivered');};await assert.rejects(h.c.requestCourtNegotiation(acceptRoute,{method:'POST',data:acceptBody}));const reopened=setup({stored:h.stored});if(changed)reopened.c.game.state.walking.campaignId='later-campaign';
+  reopened.control.onPost=async call=>{assert.equal(call.options.data.requestId,acceptBody.requestId);if(call.route.endsWith('?receipt=1'))throw Object.assign(Error('not accepted'),{status:404,code:'COURT_NEGOTIATION_RECEIPT_PENDING'});reopened.control.status.revision=8;return acceptanceReply(call);};
+  const task=reopened.c.requestCourtNegotiation(acceptRoute,{method:'POST',data:acceptBody});if(changed){await assert.rejects(task,error=>error.code==='COURT_NEGOTIATION_CONFIRMATION_EXPIRED');assert.equal(reopened.posts.length,1);}else{await task;assert.deepEqual(reopened.posts.map(call=>call.route),[acceptRoute+'?receipt=1',acceptRoute]);}assert.equal(acceptanceRecords(reopened).length,0);
+ }
+});
+test('mismatched negotiation receipts and incomplete reconciliation cannot finish acceptance',async()=>{
+ for(const change of [r=>r.receipt.negotiationId='cn_'+'9'.repeat(32),r=>r.receipt.revision=9,r=>r.receipt.action='counter',r=>r.receipt.lordId='unrelated',r=>r.receipt.offer.gold=-1]){
+  const h=setup();h.control.onPost=async call=>{const result=acceptanceReply(call);change(result);return result;};await assert.rejects(h.c.requestCourtNegotiation(acceptRoute,{method:'POST',data:acceptBody}),error=>error.code==='COURT_NEGOTIATION_RECEIPT_INVALID');assert.equal(acceptanceRecords(h).length,1);
+ }
+ const h=setup();h.control.onPost=async call=>acceptanceReply(call);h.control.onRefresh=async()=>({ok:false});await assert.rejects(h.c.requestCourtNegotiation(acceptRoute,{method:'POST',data:acceptBody}),error=>error.code==='COURT_NEGOTIATION_RECONCILE_PENDING');assert.equal(JSON.parse(acceptanceRecords(h)[0][1]).committed,true);
+ await assert.rejects(h.c.requestCourtNegotiation(acceptRoute+'?receipt=1',{method:'POST',data:acceptBody}),error=>error.code==='COURT_NEGOTIATION_RECONCILE_PENDING');assert.equal(acceptanceRecords(h).length,1);assert.equal(h.c.fieldActionPending,false);
+});
+test('account, role and campaign changes invalidate delayed acceptance receipts without clearing pending work',async()=>{
+ for(const change of [h=>h.control.user.id='different-player',h=>h.c.roleEpoch++,h=>h.c.game.state.walking.campaignId='different-campaign']){
+  const h=setup(),response=deferred();h.control.onPost=()=>response.promise;const task=h.c.requestCourtNegotiation(acceptRoute+'?receipt=1',{method:'POST',data:acceptBody});await until(()=>h.posts.length===1);change(h);response.resolve(acceptanceReply(h.posts[0]));await assert.rejects(task,error=>error.code==='STALE_IDENTITY');assert.equal(h.control.refreshes,0);assert.equal(h.c.fieldActionPending,false);
+ }
 });
 
 (async()=>{

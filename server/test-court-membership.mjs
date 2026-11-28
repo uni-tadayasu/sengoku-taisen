@@ -3,9 +3,9 @@ import {harness} from './test-support.mjs';
 import {fixture,post,row,save,updateSave} from './test-court-support.mjs';
 let checks=0,calls=0,maxBindings=0;
 const details=async(h,p)=>(await h.api('/court/membership',{token:p.token})).data.membership;
-const request=async(h,p,extra={})=>{const preview=await details(h,p);return{requestId:crypto.randomUUID(),deviceId:p.deviceId,expectedRevision:preview.expectedRevision,expectedHomeCastleId:preview.homeCastleId,confirmed:true,...extra};};
+const request=async(h,p,extra={})=>{const preview=await details(h,p);return{requestId:crypto.randomUUID(),deviceId:p.deviceId,expectedRevision:preview.expectedRevision,expectedHomeCastleId:preview.homeCastleId,confirmed:true,houseId:'konoe',...extra};};
 const join=(h,p,body,expected=200,query='')=>h.api('/court/membership'+query,post(p,body,expected));
-const dbState=h=>JSON.stringify(['court_membership_requests','staff_members','staff_campaign_backups','castle_residents','castle_seats','player_saves'].map(t=>[t,h.sql.prepare('SELECT * FROM '+t).all()]));
+const dbState=h=>JSON.stringify(['court_membership_requests','court_retained_memberships','court_lineages','staff_members','staff_campaign_backups','branch_states','castle_residents','castle_seats','player_saves'].map(t=>[t,h.sql.prepare('SELECT * FROM '+t).all()]));
 async function scope(name,run){const h=harness(),batch=h.db.batch.bind(h.db);h.db.batch=statements=>{for(const s of statements){maxBindings=Math.max(maxBindings,s.params.length);assert(s.params.length<=100,'D1 bind limit: '+s.params.length+' '+s.sql.slice(0,90));}return batch(statements);};try{await run(h);checks++;console.log('PASS '+name);}finally{calls+=h.calls;h.close();}}
 const fetch=globalThis.fetch;globalThis.fetch=async()=>{throw Error('Membership tests must not contact a real service');};
 try{
@@ -17,7 +17,7 @@ try{
   const body=await request(h,high);await join(h,high,{...body,confirmed:false},400);await join(h,high,{...body,score:999999,isAdmin:true},400);
   assert.equal(h.sql.prepare('SELECT COUNT(*) AS n FROM court_membership_requests').get().n,0);
  });
- await scope('enrollment releases every owned territory and preserves identity, assets, officers and collected progress',async h=>{
+ await scope('enrollment releases ordinary territory and keeps major cities, identity, assets, officers and collected progress',async h=>{
   const admin=await fixture(h,'正式加入責任者',{admin:true}),player=await fixture(h,'正式加入者',{score:35000});
   updateSave(h,player,s=>{s.castles.nijo.owner=s.clan;s.castles.nijo.level=8;s.castles.inabayama.owner=s.clan;s.stats.gachaDraws=20;});
   const before=save(h,player),preview=await details(h,player),body=await request(h,player),joined=(await join(h,player,body)).data;
@@ -25,8 +25,9 @@ try{
   assert.equal(joined.save.state.home,'kyoto_gosho');assert.equal(joined.save.state.cycle.home,'kyoto_gosho');assert.equal(joined.membership.isMember,true);
   assert.deepEqual(joined.save.state.resources,before.state.resources);assert.equal(joined.save.state.magatama,before.state.magatama);
   assert.deepEqual(joined.save.state.officers,before.state.officers);assert.deepEqual(joined.save.state.officerVariants,before.state.officerVariants);assert.deepEqual(joined.save.state.tech,before.state.tech);
-  assert.deepEqual(Object.entries(joined.save.state.castles).filter(([,c])=>c.owner===joined.save.state.clan).map(([id])=>id),['kyoto_gosho']);
-  assert.notEqual(joined.save.state.walking.campaignId,before.state.walking.campaignId);assert.equal(joined.admission.releasedCastleCount,preview.ownedCastleCount);
+  assert.deepEqual(Object.entries(joined.save.state.castles).filter(([,c])=>c.owner===joined.save.state.clan).map(([id])=>id).sort(),['kyoto_gosho','nijo']);assert.equal(joined.save.state.castles.nijo.level,8);
+  assert.deepEqual(preview.retainedCastles.map(c=>c.id),['nijo']);assert.deepEqual(preview.releasedCastles.map(c=>c.id).sort(),['inabayama','kiyosu']);assert.equal(preview.joinMode,'kyoto');assert.equal(preview.destinationHomeCastleId,'kyoto_gosho');
+  assert.notEqual(joined.save.state.walking.campaignId,before.state.walking.campaignId);assert.equal(joined.admission.releasedCastleCount,preview.releasedCastleCount);assert.equal(joined.admission.retainedCastleCount,1);assert.equal(joined.admission.joinMode,'kyoto');assert.equal(joined.admission.destinationHomeCastleId,'kyoto_gosho');
   assert.equal(h.sql.prepare('SELECT COUNT(*) AS n FROM castle_residents WHERE user_id=?').get(player.user.id).n,0);
   assert.equal(h.sql.prepare('SELECT lord_user_id FROM castle_seats WHERE castle_id=?').get(before.state.home).lord_user_id,null);
   assert.equal((await h.api('/court',{token:player.token})).data.self.title,'参議');
@@ -43,6 +44,20 @@ try{
   await details(h,lord);const departed=(await join(h,lord,await request(h,lord))).data;assert.equal(departed.admission.previousHomeCastleId,'kiyosu');
   assert.equal(h.sql.prepare("SELECT lord_user_id FROM castle_seats WHERE castle_id='kiyosu'").get().lord_user_id,retainer.user.id);
   assert.equal(h.sql.prepare('SELECT COUNT(*) AS n FROM castle_residents WHERE user_id=?').get(lord.user.id).n,0);
+ });
+ await scope('Kyoto admission keeps only the major cities of protected regions and dismissal cannot recreate their entitlements',async h=>{
+  const admin=await fixture(h,'制覇領地の受入責任者',{admin:true}),player=await fixture(h,'制覇領地を手放す加入者',{score:35000,startCastle:'ishikawa'}),tokai=globalThis.SENGOKU_DATA.regionConquest.regions.find(region=>region.region==='東海').castleIds;
+  updateSave(h,player,s=>{for(const id of tokai)s.castles[id].owner=s.clan;s.castles.nagoya.level=8;s.castles.nagoya.wall=6;s.castles.nijo.owner=s.clan;s.cycle.protectedRegions=['東海'];s.cycle.retainedRegions=['東海'];s.jobs.push({kind:'castle',id:'nagoya',targetLevel:9,total:1,totalSeconds:60,remaining:1,remainingSeconds:50});});
+  const preview=await details(h,player);assert.equal(preview.ownedCastleCount,tokai.length+2);assert.deepEqual(preview.ownedCastles.map(c=>c.id).sort(),[...tokai,'ishikawa','nijo'].sort());
+  assert.deepEqual(preview.retainedCastles.map(c=>c.id).sort(),['nagoya','nijo']);assert.equal(preview.retainedCastleCount,2);assert.equal(preview.releasedCastleCount,tokai.length);
+  const joined=(await join(h,player,await request(h,player))).data;assert.equal(joined.admission.releasedCastleCount,tokai.length);assert.equal(joined.admission.retainedCastleCount,2);assert.equal(joined.save.state.home,'kyoto_gosho');assert.deepEqual(joined.save.state.cycle.protectedRegions,[]);assert.deepEqual(joined.save.state.cycle.retainedRegions,[]);
+  for(const id of [...tokai.filter(id=>id!=='nagoya'),'ishikawa']){assert.notEqual(joined.save.state.castles[id].owner,joined.save.state.clan,id);assert.equal(joined.save.state.castles[id].level,1,id);}
+  for(const id of ['nagoya','nijo'])assert.equal(joined.save.state.castles[id].owner,joined.save.state.clan,id);assert.equal(joined.save.state.castles.nagoya.level,8);assert.equal(joined.save.state.castles.nagoya.wall,6);assert(joined.save.state.jobs.some(job=>job.kind==='castle'&&job.id==='nagoya'));
+  const backup=JSON.parse(h.sql.prepare('SELECT save_json FROM staff_campaign_backups WHERE user_id=?').get(player.user.id).save_json);assert(['nagoya','nijo'].includes(backup.state.home));assert.deepEqual(backup.state.cycle.protectedRegions,[]);assert.deepEqual(backup.state.cycle.retainedRegions,[]);assert.deepEqual(Object.entries(backup.state.castles).filter(([,c])=>c.owner===backup.state.clan).map(([id])=>id).sort(),['nagoya','nijo']);
+  await h.api('/admin/staff',post(admin,{targetPlayerId:player.user.id,action:'dismiss',requestId:crypto.randomUUID()}));
+  const restored=(await h.api('/sync?deviceId='+player.deviceId,{token:player.token})).data;assert.equal(restored.user.isStaff,false);assert.equal(restored.save.state.home,backup.state.home);assert.deepEqual(restored.save.state.cycle.protectedRegions,[]);assert.deepEqual(restored.save.state.cycle.retainedRegions,[]);
+  for(const id of tokai.filter(id=>id!=='nagoya'))assert.notEqual(restored.save.state.castles[id].owner,restored.save.state.clan,id);assert.equal(restored.save.state.castles.nagoya.level,8);
+  const reconnected=(await h.api('/sync?deviceId='+player.deviceId,{token:player.token})).data;assert.deepEqual(reconnected.save.state.cycle.protectedRegions,[]);for(const id of tokai.filter(id=>id!=='nagoya'))assert.notEqual(reconnected.save.state.castles[id].owner,reconnected.save.state.clan,id);
  });
  await scope('lost responses and retries never re-enroll, charge, or erase a later campaign',async h=>{
   const admin=await fixture(h,'再送受入責任者',{admin:true}),player=await fixture(h,'再送加入者',{score:35000}),body=await request(h,player);

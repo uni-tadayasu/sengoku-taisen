@@ -23,7 +23,7 @@ Object.defineProperty(Node.prototype,'hidden',{configurable:true,get(){return th
 Node.prototype.select=function(){this.setSelectionRange(0,this.value.length);};
 const context={document:doc,URL,URLSearchParams,AbortController,queueMicrotask,location:{origin:'https://game.example',pathname:'/',search:'?token=private&test=other'},navigator:{clipboard:{writeText:async url=>{if(blockClipboard)throw Error('denied');clipboard=url;}}},setTimeout:fn=>{timers.set(++tick,fn);return tick;},clearTimeout:id=>timers.delete(id)};
 context.window=context;vm.createContext(context);
-for(const file of ['officers-data.js','artwork.js','stable-dom.js'])vm.runInContext(read(file),context);
+for(const file of ['officers-data.js','artwork.js','stable-dom.js','public-court.js'])vm.runInContext(read(file),context);
 const existingStartHandlers=new Set(listeners.get('DOMContentLoaded'));
 vm.runInContext(read('public-profile.js'),context);
 const profileStart=[...listeners.get('DOMContentLoaded')].find(handler=>!existingStartHandlers.has(handler));
@@ -72,8 +72,17 @@ async function main(){
  request=id=>({player:player(id,'鬼<王>',commander(other,'A'))});await refresh();
  assert(artUpdates>artBaseline,'a changed portrait must be scheduled even if its image node was retained');
  assert.equal(body.querySelector('[data-officer-id]').dataset.officerId,other.id);assert.match(body.innerHTML,/officers-A-/);
+ request=id=>({player:{...player(id,'鬼<王>',null),courtLineage:{class:'kuge',houseId:'konoe',houseName:'偽の家柄',imperialHouseName:null,originalClan:'島津家'}}});await refresh();
+ assert.match(body.textContent,/公家 · 近衛家/);assert.match(body.textContent,/出身家：島津家/);assert(!body.textContent.includes('偽の家柄'));
+ request=id=>({player:{...player(id,'鬼<王>',null),courtLineage:{class:'imperial',houseId:'kujo',imperialHouseName:'<花霞宮>',originalClan:'島津家'}}});await refresh();
+ assert.match(body.textContent,/皇族 · <花霞宮>/);assert.match(body.textContent,/出身家：島津家/);assert.equal(body.querySelector('花霞宮'),null);assert.match(context.SengokuPublicCourt.lineageMarkup({courtLineage:{class:'imperial',houseId:'kujo',imperialHouseName:'<花霞宮>'}}),/皇族 · &lt;花霞宮&gt;/);
+ request=id=>({player:{...player(id,'武家の領主',null),courtRelations:{suzerain:{id:'u_kuge',name:'近衛の公家',houseName:'近衛家',imperialHouseName:null},vassals:[],vassalCount:0}}});await refresh();
+ assert.match(body.textContent,/主従関係/);assert.match(body.textContent,/主君：近衛の公家 · 近衛家/);assert.equal(body.querySelector('[data-public-profile="u_kuge"]').textContent,'近衛の公家');assert(!body.textContent.includes('支払'));
+ const relationNode=body.querySelector('.lord-public-relations');close.focus();body.scrollTop=27;await refresh();assert.equal(body.querySelector('.lord-public-relations'),relationNode);assert.equal(body.scrollTop,27);assert.equal(doc.activeElement,close);
+ request=id=>({player:{...player(id,'公家の領主',null),courtRelations:{suzerain:null,vassals:[{id:'u_samurai',name:'武家<甲>',clan:'島津家'}],vassalCount:1}}});await refresh();
+ assert.match(body.textContent,/支配下の武家：1人/);assert.match(body.textContent,/武家<甲> · 島津家/);assert.equal(body.querySelector('甲'),null);assert.equal(body.querySelector('[data-public-profile="u_samurai"]').textContent,'武家<甲>');
  request=id=>({player:player(id,'鬼<王>',null)});await refresh();
- assert.match(body.textContent,/未編成/);assert.equal(body.querySelector('[data-art-url]'),null);
+ assert.match(body.textContent,/未編成/);assert.equal(body.querySelector('[data-art-url]'),null);assert.equal(body.querySelector('.lord-public-relations'),null);
  await emit('click',dialog.querySelector('[data-profile-copy]'));await settle();
  assert.equal(clipboard,'https://game.example/?lord=u_b');
  blockClipboard=true;await emit('click',dialog.querySelector('[data-profile-copy]'));await settle();
@@ -81,6 +90,34 @@ async function main(){
  request=()=>Promise.reject(Object.assign(Error('not found'),{status:404}));await refresh();
  assert.equal(body.textContent,'');assert(dialog.querySelector('.lord-profile-share').hidden);assert.match(dialog.querySelector('[data-profile-status]').textContent,/閲覧できません/);
  await emit('click',close);assert.equal(dialog.open,false);assert.equal(doc.activeElement,opener);
+
+ // A public profile selects only an opponent. The court checks eligibility
+ // and requires a separate offer review before any negotiation is sent.
+ const noRelations=()=>({suzerain:null,vassals:[],vassalCount:0});
+ const noble=()=>({id:'u_negotiator',name:'近衛の公家',courtLineage:{class:'kuge',houseId:'konoe'},courtRelations:noRelations()});
+ const warrior=()=>({...player('u_warrior','島津<武家>',null),isAdmin:false,isStaff:false,isDeputy:false,courtLineage:null,courtRelations:noRelations(),homeCastleId:'kiyosu',homeCastleOwnerId:'u_warrior'});
+ let viewer=noble(),opponent=warrior(),auth={},negotiationReads=0;const openedNegotiations=[];
+ context.SengokuSocial.getUser=()=>viewer;
+ context.SengokuSocial.getCourtContext=()=>({playerId:viewer?.id||'',user:viewer?{id:viewer.id}:null,pending:false,banned:false,...auth});
+ context.SengokuBridge.openCourtNegotiations=id=>{assert.equal(dialog.open,false,'public profile closes before the court navigation');openedNegotiations.push(id);return true;};
+ request=()=>{negotiationReads++;return{player:opponent};};
+ await ui.open(opponent.id,opener);let negotiate=body.querySelector('[data-profile-negotiation]');assert(negotiate);assert.equal(negotiate.textContent,'武家との交渉');assert.equal(negotiate.dataset.profileNegotiation,'u_warrior');assert.equal(negotiate.getAttribute('aria-label'),'島津<武家>への主従交渉を開く');assert.equal(body.querySelector('武家'),null);assert.equal(openedNegotiations.length,0);
+ viewer.courtLineage={class:'imperial',houseId:'konoe',imperialHouseName:'桜宮'};await ui.open(opponent.id,opener);assert(body.querySelector('[data-profile-negotiation]'),'a registered imperial family can select a warrior too');
+ for(const change of [()=>viewer=null,()=>viewer.courtLineage=null,()=>viewer.courtLineage={class:'kuge',houseId:null},()=>viewer.courtLineage={class:'kuge',houseId:'invalid'},()=>viewer.id=opponent.id,()=>auth.pending=true,()=>auth.banned=true,()=>auth.playerId='u_other',()=>viewer.courtRelations.suzerain={id:'u_other',name:'主君'},()=>viewer.courtRelations.vassals=[{id:opponent.id,name:opponent.name,clan:'島津家'}],()=>opponent.courtLineage={class:'kuge',houseId:'kujo'},()=>opponent.courtLineage={class:'kuge',houseId:null},()=>opponent.courtLineage={class:'imperial',houseId:'kujo',imperialHouseName:'葵宮'},()=>opponent.courtRelations.suzerain={id:'u_other',name:'既存の主君'},()=>opponent.courtRelations.vassalCount=1,()=>opponent.homeCastleOwnerId='u_other',()=>opponent.homeCastleId='kyoto_gosho',()=>opponent.isDeputy=true]){
+   viewer=noble();opponent=warrior();auth={};change();await ui.open(opponent.id,opener);assert.equal(body.querySelector('[data-profile-negotiation]'),null,'unqualified, same-player and existing-relation profiles have no proposal entry');
+ }
+ viewer=noble();opponent=warrior();auth={};await ui.open(opponent.id,opener);negotiate=body.querySelector('[data-profile-negotiation]');assert(negotiate);
+ viewer=null;await emit('click',negotiate);assert.equal(openedNegotiations.length,0);assert(dialog.open,'sign-out invalidates an existing button without navigating');
+ viewer={...noble(),id:'u_different_account'};await emit('click',negotiate);assert.equal(openedNegotiations.length,0,'an old account button cannot select an opponent for the replacement account');
+ viewer=noble();auth.banned=true;await emit('click',negotiate);assert.equal(openedNegotiations.length,0);auth={};
+ const originalClose=dialog.close,newCourtFocus=doc.createElement('button');newCourtFocus.textContent='交渉の相手';doc.body.append(newCourtFocus);let delayedClose=0;
+ dialog.close=()=>{dialog.open=false;delayedClose++;};context.SengokuBridge.openCourtNegotiations=id=>{assert.equal(dialog.open,false);openedNegotiations.push(id);newCourtFocus.focus();return true;};
+ let finishProfile;request=()=>{negotiationReads++;return new Promise(resolve=>finishProfile=resolve);};const lateRead=ui.open(opponent.id,opener),readsBeforeClick=negotiationReads;
+ await emit('click',negotiate);assert.deepEqual(openedNegotiations,['u_warrior']);assert.equal(negotiationReads,readsBeforeClick,'navigation does not wait for another profile request');assert.equal(delayedClose,1);assert.equal(doc.activeElement,newCourtFocus);await emit('click',negotiate);assert.equal(openedNegotiations.length,1,'a repeated click cannot navigate twice');
+ dialog.dispatchEvent({type:'close'});assert.equal(doc.activeElement,newCourtFocus,'the queued public close event does not restore old focus over the court');finishProfile({player:{...opponent,name:'遅延プロフィール'}});await lateRead;assert.equal(dialog.open,false);assert(!body.textContent.includes('遅延プロフィール'));assert.equal(doc.activeElement,newCourtFocus);await emit('visibilitychange',doc);assert.equal(negotiationReads,readsBeforeClick,'closed profile polls stay dormant after navigation');
+ dialog.close=originalClose;newCourtFocus.remove();delete context.SengokuSocial.getUser;delete context.SengokuSocial.getCourtContext;delete context.SengokuBridge.openCourtNegotiations;
+ console.log('PASS registered noble/imperial profile negotiation entry, exact opponent, eligibility exclusions, live identity checks, close-before-navigation, double clicks and late response/focus guards');
+
  host.innerHTML=ui.directory();const form=doc.getElementById('public-lord-search'),input=form.querySelector('[name=q]'),list=host.querySelector('[data-search-list]');
  let resolveSearch;search=q=>q==='上杉'?new Promise(resolve=>resolveSearch=resolve):Promise.resolve({players:[player('u_az','伊達甲',null)]});
  input.value='上杉';const pending=emit('submit',form);await emit('submit',form);assert.deepEqual(queries,['上杉']);input.value='伊達';await emit('submit',form);

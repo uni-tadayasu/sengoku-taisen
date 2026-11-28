@@ -141,7 +141,13 @@ const totalGzipBytes = rows.reduce((sum,row)=>sum+row.gzipBytes,0);
 // Measured: 3,882,543 raw / 1,071,169 gzip bytes, +1,231 / +150 from v5.23.0
 // (about 0.03% / 0.01%). No media, fonts or runtime dependencies are added.
 // Keep 957 raw / 631 gzip bytes of headroom for these reviewed fixes.
-const rawBudget=3883500,gzipBudget=1071800;
+// v5.24 adds permanent regional protection, voluntary castle release, court
+// families and negotiated vassalage, alongside a durable community inbox,
+// stable reading/input positions and reduced synchronous click work.
+// Measured: 3,991,852 raw / 1,099,812 gzip bytes (+109,309 / +28,643 from
+// v5.23.1, about 2.82% / 2.67%). No media, fonts or runtime dependencies.
+// Keep 148 raw / 1,188 gzip bytes of headroom for the reviewed changes.
+const rawBudget=3992000,gzipBudget=1101000;
 assert(totalBytes <= rawBudget, `Initial bundles exceed the ${rawBudget} byte budget: ${totalBytes}`);
 assert(totalGzipBytes <= gzipBudget, `Initial bundles exceed the ${gzipBudget} gzip byte budget: ${totalGzipBytes}`);
 const html = fs.readFileSync(path.join(root,'index.html'),'utf8');

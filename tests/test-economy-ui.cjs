@@ -11,7 +11,7 @@ function harness(game=new E({seed:4910})){
  const {doc,host}=setup(),clock={calendar:{elapsed:0,turn:0},speed:1,running:true};
  const c={game,data:D,state:()=>game.state,document:doc,$:selector=>doc.querySelector(selector),num:format,esc:value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char])),
   resNames:{gold:'金銭',rice:'兵糧',wood:'木材',stone:'石材'},resIcons:{gold:'coins',rice:'wheat',wood:'tree',stone:'mountain'},icon:name=>`<svg data-icon-name="${name}"></svg>`,
-  window:{SengokuStableDOM:stable,SengokuWorldClock:{snapshot:()=>({ready:true,mode:'shared',clock})}},startPending:false,activeModal:'',settings:{sound:false},
+  window:{SengokuStableDOM:stable,SengokuWorldClock:{snapshot:()=>({ready:true,mode:'shared',clock})}},syncAccess:{linked:false,ready:false,rolePending:false,banned:false},startPending:false,activeModal:'',settings:{sound:false},
   getEvaluation:()=>({}),refreshEvaluationUI(){},evaluationEntry:()=>'',refreshTouchHeaderStatus(){},date:()=>({year:1560,month:1,season:'春'}),clanInfo:()=>({leader:'織田信長'}),clanCrest:()=>'',
   heading:title=>`<h1>${title}</h1>`,hasResources:cost=>D.resources.every(key=>game.state.resources[key]>=(cost?.[key]||0)),refreshLiveControls(){const income=game.income();c.refreshRecruitmentPreview(income,game.recruitmentBudget(income));},recruitLimitText:()=>'',costHtml:()=>'',portrait:()=>'',skillNames:{},
   facilityCategory:'all',facilityQuery:'',facilitySort:'default',facilityLayout:'cards',categoryNames:{},staffBaseNotice:()=>'',governorAssignmentEntry:()=>'',facilitiesResults:()=>'<input id="facility-search-test" value="">'

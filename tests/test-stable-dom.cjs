@@ -4,6 +4,13 @@ const assert=require('node:assert/strict'),{patch,forget,captureScroll,restoreSc
 const tests=[],test=(name,run)=>tests.push([name,run]);
 const {setup}=require('./helpers/dom-model.cjs');
 
+test('unscrolled resource updates do not force geometry reads on header ancestors',()=>{
+ const {doc,host,$}=setup(),html=n=>`<div id="resource"><b>${n}</b></div>`;patch(host,html(1));
+ let reads=0;for(let node=host;node;node=node.parentElement)node.getBoundingClientRect=()=>{reads++;return{top:0,left:0,bottom:100,right:100,width:100,height:100};};
+ const result=patch(host,html(2));assert.equal(result.text,1);assert.equal($('#resource').textContent,'2');assert.equal(reads,0);
+ const snapshot=captureScroll(host);host.scrollTop=12;assert(restoreScroll(snapshot));assert.equal(host.scrollTop,0);assert.equal(reads,0);
+});
+
 test('equal generated HTML is a true no-op after runtime artwork and icons are added',()=>{
  const {doc,host,$}=setup(),source='<button class="button" data-action="save"><span>保存</span></button>';patch(host,source,{key:'header'});const button=$('button'),label=$('span'),icon=doc.createElement('svg');button.insertBefore(icon,button.firstChild);button.setAttribute('data-art-ready','1');button.setAttribute('data-button-art-enhanced','1');button.classList.add('illustrated-item','art-ready');button.style.setProperty('--item-art','url("loaded.webp")');const result=patch(host,source,{key:'header'});assert.equal(result.changed,false);assert.strictEqual($('button'),button);assert.strictEqual($('span'),label);assert.strictEqual(button.firstChild,icon);assert(button.classList.contains('art-ready'));assert.equal(button.style.getPropertyValue('--item-art'),'url("loaded.webp")');
 });

@@ -146,6 +146,22 @@ test('the three cities are capturable under ordinary, operator and staff defende
     assert.equal(F.attackValidation(context).ok,false,'A modern capture-city home cannot silently fall back to a raid when its contract is incomplete');
   }
 });
+test('regional protection permits only an explicit authoritative reward battle and explains that occupation cannot change',()=>{
+  for(const castle of ['kiyosu','odawara','nijo','osaka','nagoya']){
+    const p=target('other','kiyosu',castle,{regionProtected:true,protectedRegion:'東海',battleMode:'reward',capturable:false}),context={...ready(),rules:modernRules,player:p},policy=F.battlePolicy(p,modernRules);
+    assert.equal(policy.mode,'reward');assert.match(policy.tag,/地域保護/);assert.match(policy.description,/占領は移りません/);assert.equal(F.attackValidation(context).ok,true);assert.equal(F.attackValidation(context).battleMode,'reward');assert.equal(F.attackValidation(context).payload.targetCastleId,castle);assert.match(F.publicRow(p,{rules:modernRules}),/東海の地域保護/);
+    for(const change of [{rules:{}},{rules:{targetCastles:true}},{player:{...p,regionProtected:undefined}},{player:{...p,regionProtected:'true'}},{player:{...p,regionProtected:false}},{player:{...p,battleMode:undefined}},{player:{...p,battleMode:'capture',capturable:true}},{player:{...p,battleMode:'raid'}},{player:{...p,capturable:undefined}},{player:{...p,capturable:true}}])assert.equal(F.attackValidation({...context,...change}).ok,false,castle+' '+JSON.stringify(change));
+    for(const change of [{player:{...p,attackable:false}},{player:{...p,playerId:'me'}},{access:{writable:false}},{access:{writable:true,fieldPending:true}},{me:{...context.me,relationships:[{targetPlayerId:'other',status:'allied'}]}}])assert.equal(F.attackValidation({...context,...change}).ok,false);
+  }
+});
+test('regional protection normalization is strict, labels are escaped, and branch battles retain their separate outcome',()=>{
+  const base=target('other','kiyosu','kiyosu',{battleMode:'reward',capturable:false,protectedRegion:'東海'});
+  for(const flag of [undefined,null,false,0,1,'true']){const p=F.normalizePlayers([{...base,regionProtected:flag}])[0];assert.equal(p.regionProtected,false);assert.equal(p.protectedRegion,null);assert.equal(F.battlePolicy(p,modernRules).mode,'protected');}
+  const p=F.normalizePlayers([{...base,regionProtected:true,protectedRegion:' 東海 '}])[0];assert.equal(p.regionProtected,true);assert.equal(p.protectedRegion,'東海');assert.equal(F.battlePolicy(p,modernRules).mode,'reward');
+  const escaped=F.publicRow({...p,protectedRegion:'<script>東海</script>'},{rules:modernRules});assert.match(escaped,/&lt;script&gt;東海&lt;\/script&gt;/);assert(!escaped.includes('<script>'));
+  const branch={...p,targetCastleId:'nagoya',targetBranchId:'nagoya_north',targetBranchName:'北支拠点',battleMode:'branch'};const branchPolicy=F.battlePolicy(branch,{...modernRules,branchBattles:true});assert.equal(branchPolicy.mode,'branch');assert.match(branchPolicy.description,/支拠点が陥落/);assert.doesNotMatch(branchPolicy.description,/占領は移りません/);
+  assert.equal(F.battlePolicy({...p,displayOnly:true},modernRules).mode,'protected');
+});
 test('report outcome follows the committed victory and capture fields instead of implying every victory captures a city',()=>{
   const base={id:'battle',attackerPlayerId:'me',defenderPlayerId:'other',attackerName:'攻撃',defenderName:'守備',castleId:'nijo',castleName:'二条城',won:true,battleMode:'capture',troops:1000,attackerLost:80,defenderLost:{troops:50,garrison:20},loot:{gold:91,rice:82,wood:73,stone:64},rewards:{gold:0,rice:0,wood:0,stone:0},capture:{captured:true,castleId:'nijo',newlyOwned:true,garrison:138,defenderHomeCastleId:'kiyosu',defenderHomeCastleName:'清洲城'}};
   const original=JSON.stringify(base),won=F.battleSummary(base,'me');assert.equal(won.captured,true);assert.equal(won.title,'城を占領');assert.equal(won.positive,true);

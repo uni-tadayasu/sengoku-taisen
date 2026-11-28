@@ -8,7 +8,7 @@ const esc=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&
 const validId=id=>typeof id==='string'&&/^u_[A-Za-z0-9_]{1,96}$/.test(id);
 const clanName=clan=>clan||'浪人';
 const searches=new WeakMap();
-let dialog=null,selection=null,sequence=0,timer=null,opener=null,activeRead=null;
+let dialog=null,selection=null,profile=null,sequence=0,timer=null,opener=null,activeRead=null;
 function patch(host,html,key){
   if(global.SengokuStableDOM){
     const result=global.SengokuStableDOM.patch(host,html,{key});
@@ -64,24 +64,32 @@ function ensureDialog(){
   dialog.addEventListener('close',()=>{
     // A queued close event may arrive after the same dialog was reopened.
     if(dialog.open)return;
-    sequence++;clearTimeout(timer);timer=null;selection=null;
+    sequence++;clearTimeout(timer);timer=null;selection=null;profile=null;
     const target=opener;opener=null;
     if(target?.isConnected&&doc.activeElement!==target)target.focus({preventScroll:true});
   });
   doc.body.append(dialog);return dialog;
+}
+function negotiationOwner(person){
+  const social=global.SengokuSocial,self=social?.getUser?.(),context=social?.getCourtContext?.(),court=global.SengokuPublicCourt;
+  if(!global.SengokuBridge?.openCourtNegotiations||!validId(self?.id)||!validId(person?.id)||self.id===person.id||!context?.user||context.user.id!==self.id||context.playerId!==self.id||context.pending||context.banned||self.isBanned||self.nameReleased)return '';
+  const lineage=court?.lineage?.(self),own=court?.relations?.(self),target=court?.relations?.(person);
+  if(!lineage?.houseId||lineage.needsHouseSelection||own?.suzerain||own?.vassals.some(row=>row.id===person.id)||person.courtLineage!=null||person.isAdmin===true||person.isStaff===true||person.isDeputy===true||['edo','kyoto_gosho','kagoshima'].includes(person.homeCastleId)||person.homeCastleOwnerId&&person.homeCastleOwnerId!==person.id||person.courtRelations?.suzerain||target?.suzerain||target?.vassalCount)return '';
+  return self.id;
 }
 function detail(person){
   const name=global.SengokuPremiumRuntime?.nameMarkup?.(person.name,person.appearance)||esc(person.name);
   const avatar=global.SengokuAvatar?.markup?.(person,'profile')||'';
   const office=global.SengokuPublicCourt?.slot?.({playerId:person.id,courtOffice:person.courtOffice})||'';
   const evaluation=global.SengokuEvaluationUI?.badge?.(person.evaluation)||'';
-  const guild=person.guildName?' · '+esc(person.guildName):'';
+  const guild=person.guildName?' · '+esc(person.guildName):'',lineage=global.SengokuPublicCourt?.lineageText?.(person)||'',origin=global.SengokuPublicCourt?.lineage?.(person)?.originalClan||null;
   const castle=global.SENGOKU_DATA?.castles?.find(item=>item.id===person.homeCastleId),phase=global.SengokuMusic?.daypart?.()||'day';
   // This is the current lord's appearance, even on a retainer's profile. Do not
   // fall back to the profile visitor or the retainer's personal purchases.
   const scenery=castle?global.SengokuArt?.castlePanorama?.(castle.id,'lord-public-castle-art',phase,person.homeCastleAppearance||null)||'':'';
   const castleSection=castle?`<section class="lord-public-castle"><h3>本拠 · ${esc(castle.name)}</h3>${scenery}</section>`:'';
-  return `<div class="lord-public-identity">${avatar}<div><h3 class="lord-public-name">${global.SengokuCityHonors?.slot?.(person.id)||''}<span class="player-evaluation-name" data-premium-player="${esc(person.id)}" data-premium-player-name="${esc(person.name)}">${name}</span></h3><p>${esc(clanName(person.clan))}${guild}</p><div class="lord-public-badges">${office}${evaluation}</div></div></div>${castleSection}<div data-public-commander>${commanderCard(person.commander)}</div>`;
+  const actor=negotiationOwner(person),negotiation=actor?`<div class="social-actions"><button type="button" class="social-button" data-profile-negotiation="${esc(person.id)}" data-profile-negotiator="${esc(actor)}" aria-label="${esc(person.name)}への主従交渉を開く">武家との交渉</button></div>`:'';
+  return `<div class="lord-public-identity">${avatar}<div><h3 class="lord-public-name">${global.SengokuCityHonors?.slot?.(person.id)||''}<span class="player-evaluation-name" data-premium-player="${esc(person.id)}" data-premium-player-name="${esc(person.name)}">${name}</span></h3><p>${esc(lineage||clanName(person.clan))}${guild}</p>${lineage?`<p class="lord-public-origin">出身家：${esc(origin||'記録なし')}</p>`:''}<div class="lord-public-badges">${office}${evaluation}</div></div></div>${global.SengokuPublicCourt?.relationsMarkup?.(person)||''}${negotiation}${castleSection}<div data-public-commander>${commanderCard(person.commander)}</div>`;
 }
 function status(text,retry=false){
   const node=dialog.querySelector('[data-profile-status]');
@@ -108,11 +116,11 @@ async function readProfile(id,generation){
     const result=await global.SengokuSocial.getPublicProfile(id);
     if(!current())return;
     if(!result?.player||result.player.id!==id)throw Error('領主を確認できません');
-    patch(host,detail(result.player),id);dialog.querySelector('.lord-profile-share').hidden=false;status('');
+    profile=result.player;patch(host,detail(profile),id);dialog.querySelector('.lord-profile-share').hidden=false;status('');
   }catch(error){
     if(!current())return;
     if(error?.status===404||error?.status===403){
-      dialog.querySelector('.lord-profile-share').hidden=true;patch(host,'',id);status('この領主の公開プロフィールは現在閲覧できません。');return;
+      profile=null;dialog.querySelector('.lord-profile-share').hidden=true;patch(host,'',id);status('この領主の公開プロフィールは現在閲覧できません。');return;
     }
     status('公開プロフィールを更新できませんでした。通信状態を確認して再読み込みしてください。',true);
   }
@@ -122,7 +130,7 @@ function open(id,trigger){
   if(!validId(id))return;
   ensureDialog();
   if(dialog.open&&selection===id)return load(id);
-  sequence++;clearTimeout(timer);opener=trigger||doc.activeElement;selection=id;
+  sequence++;clearTimeout(timer);opener=trigger||doc.activeElement;selection=id;profile=null;
   dialog.querySelector('.lord-profile-share').hidden=true;dialog.querySelector('[data-profile-url]').parentElement.hidden=true;
   dialog.querySelector('[data-copy-status]').textContent='';
   patch(dialog.querySelector('[data-profile-body]'),'',id);status('公開プロフィールを読み込んでいます。');
@@ -150,9 +158,17 @@ function openShared(){
   if(validId(id))open(id,doc.getElementById('launch-enter'));
 }
 function click(event){
-  const button=event.target?.closest?.('[data-public-profile],[data-profile-close],[data-profile-retry],[data-profile-copy],[data-profile-candidates]');
+  const button=event.target?.closest?.('[data-public-profile],[data-profile-close],[data-profile-retry],[data-profile-copy],[data-profile-candidates],[data-profile-negotiation]');
   if(!button||button.disabled)return;
-  if(button.hasAttribute('data-profile-candidates'))openCandidates(button);
+  if(button.hasAttribute('data-profile-negotiation')){
+    event.preventDefault();const id=button.dataset.profileNegotiation;
+    if(!dialog?.open||!dialog.contains(button)||selection!==id||profile?.id!==id||!button.dataset.profileNegotiator||negotiationOwner(profile)!==button.dataset.profileNegotiator)return;
+    // Close and invalidate public reads before navigating. The queued close
+    // event must not restore focus over the new court screen.
+    sequence++;clearTimeout(timer);timer=null;selection=null;profile=null;opener=null;dialog.close();
+    global.SengokuBridge.openCourtNegotiations(id);
+  }
+  else if(button.hasAttribute('data-profile-candidates'))openCandidates(button);
   else if(button.hasAttribute('data-public-profile')){event.preventDefault();open(button.dataset.publicProfile,button);}
   else if(button.hasAttribute('data-profile-close'))dialog?.close();
   else if(button.hasAttribute('data-profile-copy'))copyLink();
@@ -184,7 +200,7 @@ function visibility(){
   if(!doc.hidden&&selection&&dialog?.open)load(selection);
 }
 function dispose(){
-  sequence++;clearTimeout(timer);selection=null;opener=null;
+  sequence++;clearTimeout(timer);selection=null;profile=null;opener=null;
   doc.removeEventListener('DOMContentLoaded',openShared);doc.removeEventListener('click',click);doc.removeEventListener('submit',search);doc.removeEventListener('visibilitychange',visibility);
   if(dialog?.open)dialog.close();dialog?.remove();
 }
