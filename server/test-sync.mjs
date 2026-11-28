@@ -75,7 +75,7 @@ try {
   assert.equal((await api('/config')).data.onlineCount,0,'registration is not foreground presence');
   const initial=(await api('/sync?deviceId=deviceA',{token:alice.token})).data;
   assert.equal(initial.save,null);assert.equal(initial.revision,0);assert.equal(initial.writerDeviceId,null);assert.equal(initial.writable,false);
-  assert.deepEqual(initial.entitlements,{courtProtected:false,edo:false,ieyasuU:false,kagoshima:false,shimazuU:false});
+  assert.deepEqual(initial.entitlements,{courtProtected:false,courtEstate:false,edo:false,ieyasuU:false,kagoshima:false,shimazuU:false});
   let firstLease=await lease(alice.token,'deviceA');
   assert.equal(firstLease.writable,true);assert.equal(Date.parse(firstLease.leaseExpiresAt)-clock,30000);
   const busy=await api('/sync/lease',post(alice.token,{deviceId:'deviceB'},409));assert.equal(busy.data.error.code,'LEASE_HELD');
@@ -134,7 +134,7 @@ try {
   await api('/sync',{method:'PUT',token:alice.token,rawBody:' '.repeat(2*1024*1024+1),expected:413});
   assert.equal((await api('/sync',{token:alice.token})).data.revision,beforeBad.revision);
   await api('/admin/claim',post(operator.token,{key:env.SENGOKU_ADMIN_KEY}));
-  const opLease=await lease(operator.token,'operatorA');assert.deepEqual(opLease.entitlements,{courtProtected:true,edo:true,ieyasuU:true,kagoshima:false,shimazuU:false});
+  const opLease=await lease(operator.token,'operatorA');assert.deepEqual(opLease.entitlements,{courtProtected:true,courtEstate:true,edo:true,ieyasuU:true,kagoshima:false,shimazuU:false});
   const opSave=(await api('/sync',write(operator.token,'operatorA',0,fresh()))).data;
   assert.equal(opSave.user.isAdmin,true);assert.equal(opSave.save.state.home,'edo');
   assert.equal(opSave.user.clan,'德川家');assert.equal(opSave.save.state.clan,'德川家');
@@ -152,7 +152,7 @@ try {
   database.prepare('UPDATE player_saves SET save_json=? WHERE user_id=?').run(JSON.stringify(legacy),operator.user.id);
   database.prepare("UPDATE settings SET value=? WHERE key='adminUserId'").run(bob.user.id);
   const revoked=(await api('/sync?deviceId=operatorA',{token:operator.token})).data;
-  assert.equal(revoked.user.isAdmin,false);assert.deepEqual(revoked.entitlements,{courtProtected:false,edo:false,ieyasuU:false,kagoshima:false,shimazuU:false});
+  assert.equal(revoked.user.isAdmin,false);assert.deepEqual(revoked.entitlements,{courtProtected:false,courtEstate:false,edo:false,ieyasuU:false,kagoshima:false,shimazuU:false});
   assert.equal(revoked.revision,3);assert.equal(revoked.writerDeviceId,'operatorA');assert.equal(revoked.leaseExpiresAt,selectedEdo.leaseExpiresAt);
   assert.equal(revoked.save.state.clan,'徳川家');assert.equal(revoked.save.state.home,'okazaki');assert.equal(revoked.save.state.castles.okazaki.level,17);assert.equal(revoked.save.state.castles.okazaki.troops,3210);
   assert.notEqual(revoked.save.state.castles.edo.owner,revoked.save.state.clan);assert(!revoked.save.state.captureRewards.includes('edo'));

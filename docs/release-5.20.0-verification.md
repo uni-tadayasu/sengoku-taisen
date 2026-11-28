@@ -42,6 +42,7 @@ All gameplay tests use synthetic identities and isolated local databases. No liv
 | Estate UI / bridge / map / sync | 21 / 8 / 7 / 10 scenarios passed |
 | Existing staff base / Kyoto migration / court / regency / court offices / retired emperor / succession approval | 2,219 local API calls across seven suites, all passed |
 | Existing branches / troop trades | 17 / 13 groups and 360 / 176 local API calls passed |
+| Court base protection / field mail | 30 / 16 scenarios and 519 / 218 local API calls passed |
 | Territory pricing / Kyoto engine / maintenance / court protection / rank rice / economy balance | 10 / 16 / 14 / 7 / 6 / 9 groups passed |
 | Complete interface gate | `npm run test:interface` passed |
 | Reproducible build and entry | `npm run build`, `npm run check:build`, `npm run test:entry` passed |
@@ -50,9 +51,11 @@ All gameplay tests use synthetic identities and isolated local databases. No liv
 
 Coverage includes resource and command shortages, level and queue limits, receipt replay, simultaneous actors, failed batches, stale writers and saves, all appointed offices, role-token replacement, offline intervals, a paused world, shared castle completion, facility separation, ordinary-to-Kyoto transitions, merit-driven office loss, bans, campaign replacement, and two populated migration fixtures with foreign-key and personal-state preservation.
 
+The broader CI pass identified three existing test fixtures that needed the new contract: strict entitlement expectations now include `courtEstate`, extracted evaluation UI loads the real projection helper, and legacy CPU-defeat uploads retain their old gameplay data while sending the current authenticated transport proof. These are test-only changes. The missing/stale/racing-proof rejection tests continue to pass. All 22 browser-assets commands after the interface gate also passed locally, including notifications, rewards and list/map/input continuity.
+
 The broad legacy `tests/test-engine.cjs` still fails after its first 18 passing cases in the existing operator-conquers-128-castles fixture. The identical failure was independently reproduced with the exact unchanged parent engine loaded in memory. The focused engine and economic suites above pass with the new implementation.
 
-A synthetic browser fixture used the real estate module and server DTO without enabling writes. The initial desktop and 390px phone views were inspected. Final browser control became unavailable with a CDP focus-emulation timeout and a disconnected native accessibility provider, so final tablet and confirmation views are not claimed as verified. Independent source review found no synchronous render loop; the real server fixture passes the client sanitizer for all 65 actions, 64 facilities, the pending job and ordinary effects. Automated UI, synchronization and entry checks passed.
+A synthetic browser fixture used the real estate module, shipped styles and server DTO without enabling writes. Final layouts were inspected at desktop width and in 390×844 phone, 768×1024 tablet and 1024×768 landscape frames. The home/holding cards, ordinary effects, facility categories, queued farm level, castle and facility cost confirmations, and shared job progress were checked. Phone confirmation actions remain fully visible and usable, and tablet layouts fit their frames. A stale browser tab initially failed with a CDP focus-emulation timeout; a fresh tab in the same browser recovered, after which these visual checks completed. The real server fixture also passes the client sanitizer for all 65 actions, 64 facilities, the pending job and ordinary effects. This is browser fixture verification, not physical-device testing.
 
 The entry payload measures **3,834,645 raw / 1,059,272 gzip bytes**, an increase of **50,688 / 13,759 bytes** over v5.19.0. The reviewed allowance is **3,836,000 raw / 1,060,000 gzip bytes**. No new dependency, image or audio asset is required.
 
