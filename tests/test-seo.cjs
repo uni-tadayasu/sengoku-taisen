@@ -337,7 +337,7 @@ test('public discovery identifies only Sengoku VS and does not explain privilege
   const guide=pages.find(page=>page.key==='guide');
   const guideText=normalized(guide.html);
   assert.doesNotMatch(guideText,/運営/,'public guide labels do not identify operator roles');
-  assert(guideText.includes('太政大臣・摂政・上皇・天皇の10種類のバッジ'),'all current public court titles remain documented');
+  assert(guideText.includes('太政大臣・摂政・上皇・法皇・天皇の11種類のバッジ'),'all current public court titles remain documented');
   const releases=JSON.parse(read('tools/news-releases.json'));
   for(const release of releases)assert.doesNotMatch(JSON.stringify(release),/運営/,'release '+release.version+' publishes an operator role label');
   assert(releases.find(release=>release.version==='5.13.2').changes.some(change=>change.title==='鹿児島城「不死身」の紋章'),'the public crest release remains documented');
