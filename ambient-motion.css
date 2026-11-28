@@ -1,0 +1,114 @@
+/* 螺鈿の灯 — a quiet, continuous current through the existing lacquer UI.
+   Only decorative paint moves. Text, portraits, hit areas and map coordinates
+   keep their original geometry. The observer limits active, visible surfaces. */
+.ambient-atmosphere { display: none; }
+
+@keyframes ambient-lantern {
+  from { transform: translate3d(-1%, -.7%, 0); opacity: .44; }
+  to { transform: translate3d(1%, .7%, 0); opacity: .78; }
+}
+@keyframes ambient-seigaiha {
+  from { transform: translate3d(0, 7px, 0); opacity: .10; }
+  to { transform: translate3d(0, -7px, 0); opacity: .19; }
+}
+/* Missing end keyframes intentionally interpolate back to each component's
+   own border colour, preserving gold, vermilion and selected-state styling. */
+@keyframes ambient-inlay {
+  50% { border-top-color: var(--ambient-glint, #8ac6bb); }
+}
+@keyframes ambient-rim {
+  from { opacity: .50; }
+  to { opacity: .88; }
+}
+@keyframes ambient-crest {
+  from { opacity: .12; }
+  to { opacity: .23; }
+}
+@keyframes ambient-trace {
+  from { background-position: -45% 0; }
+  to { background-position: 145% 0; }
+}
+@keyframes ambient-rail {
+  from { background-position: 0 -45%; }
+  to { background-position: 0 145%; }
+}
+
+@media (prefers-reduced-motion: no-preference) and (forced-colors: none) and (prefers-contrast: no-preference) {
+  html[data-presentation-motion="standard"][data-cyber-fx="full"][data-ambient-running="true"] .ambient-atmosphere {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 91;
+    overflow: hidden;
+    contain: strict;
+    pointer-events: none;
+    user-select: none;
+  }
+  .ambient-atmosphere::before, .ambient-atmosphere::after {
+    content: "";
+    position: absolute;
+    inset: -3%;
+    pointer-events: none;
+  }
+  html[data-ambient-running="true"] .ambient-atmosphere::before {
+    background: radial-gradient(ellipse at 1% 42%, #59dccb1c, transparent 35%),
+      radial-gradient(ellipse at 98% 19%, #a48cdf1a, transparent 37%),
+      radial-gradient(ellipse at 63% 105%, #e5bb7212, transparent 31%);
+    animation: ambient-lantern 24s ease-in-out -9s infinite alternate;
+  }
+  html[data-ambient-running="true"] .ambient-atmosphere::after {
+    background: repeating-radial-gradient(circle at 50% 100%, transparent 0 13px, #89e8d64d 14px 15px, transparent 16px 28px) 0 0 / 112px 56px;
+    mask-image: linear-gradient(90deg, #000, transparent 17% 83%, #000);
+    animation: ambient-seigaiha 32s ease-in-out -16s infinite alternate;
+  }
+
+  /* One narrow edge per visible UI element: no text flashing, full-card
+     shadows, image filters or continuously moving controls. */
+  html[data-presentation-motion="standard"][data-cyber-fx="full"][data-ambient-running="true"] [data-ambient-visible="true"]:not(:disabled):not([aria-disabled="true"]):not([aria-busy="true"]):not(:focus-within):not(:hover) {
+    animation: ambient-inlay 16s ease-in-out var(--ambient-phase, -3s) infinite;
+  }
+  [data-ambient-visible="true"]:nth-child(3n + 1) { --ambient-glint: #a3b5cf; --ambient-phase: -8s; }
+  [data-ambient-visible="true"]:nth-child(3n + 2) { --ambient-phase: -13s; }
+  [data-ambient-visible="true"]:is(.gold,.resource,.clan-panel,.brand,.chapter-symbol,.edition-enter,.primary) { --ambient-glint: #e2cb9b; }
+  [data-ambient-visible="true"]:is(.danger,.is-danger,[aria-invalid="true"]) { --ambient-glint: #e4a095; }
+
+  /* The existing frame and crest art softly catch the light; their pseudo
+     elements, backgrounds and masks remain owned by the original theme. */
+  html[data-presentation-motion="standard"][data-cyber-fx="full"][data-ambient-running="true"] :is(.town-scene-board,.sg-map,.edition-cover)[data-ambient-visible="true"]::after {
+    pointer-events: none;
+    animation: ambient-rim 12s ease-in-out -4s infinite alternate;
+  }
+  html[data-presentation-motion="standard"][data-cyber-fx="full"][data-ambient-running="true"] :is(.chapter-copy,.town-castle-heading)[data-ambient-visible="true"]:not([data-chronicle-entry])::after {
+    pointer-events: none;
+    animation: ambient-crest 15s ease-in-out -6s infinite alternate;
+  }
+
+  /* These two unused shell pseudo elements are fine inlay strips, never
+     overlays on content. Their owners already establish positioned boxes. */
+  html[data-presentation-motion="standard"][data-cyber-fx="full"][data-ambient-running="true"] .chronicle-ledger[data-ambient-visible="true"]::before {
+    content: "";
+    position: absolute;
+    inset: 0 0 auto;
+    height: 2px;
+    z-index: 2;
+    pointer-events: none;
+    opacity: .48;
+    background: linear-gradient(90deg, transparent, #75e3cf, #f3d9a5, #a59bd3, transparent) -45% 0 / 28% 100% no-repeat;
+    animation: ambient-trace 19s linear -5s infinite;
+  }
+  html[data-presentation-motion="standard"][data-cyber-fx="full"][data-ambient-running="true"] .chronicle-rail[data-ambient-visible="true"]::after {
+    content: "";
+    position: absolute;
+    inset: 0 0 0 auto;
+    width: 2px;
+    pointer-events: none;
+    opacity: .45;
+    background: linear-gradient(transparent, #b6a3d3, #85e1cb, #e5c487, transparent) 0 -45% / 100% 24% no-repeat;
+    animation: ambient-rail 23s linear -11s infinite;
+  }
+  @media (hover: none), (pointer: coarse) {
+    html[data-ambient-running="true"] .ambient-atmosphere { opacity: .65; }
+    html[data-ambient-running="true"] .ambient-atmosphere::before { animation-duration: 30s; }
+    html[data-ambient-running="true"] .ambient-atmosphere::after { display: none; }
+  }
+}

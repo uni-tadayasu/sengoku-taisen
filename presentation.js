@@ -35,7 +35,7 @@
     const effective = () => systemReduced() || preference === 'quiet' ? 'quiet' : 'standard';
     const note = () => systemReduced()
       ? '端末の設定に合わせて、現在は演出を控えめにしています。'
-      : '控えめでは光の動きや画面の切り替え演出を抑えます。端末の設定を優先します。';
+      : '標準では和柄や枠に淡い光がゆっくり巡ります。控えめで常時演出を停止します。端末の設定を優先します。';
     function updateControls() {
       for (const control of doc.querySelectorAll?.('[data-presentation-select]') || []) {
         if (control.value !== preference) control.value = preference;
@@ -105,7 +105,7 @@
         '<select id="presentation-cyber-fx" class="select" data-presentation-cyber-select aria-describedby="presentation-cyber-note">' +
         '<option value="full"' + (cyberFx === 'full' ? ' selected' : '') + '>標準</option>' +
         '<option value="low"' + (cyberFx === 'low' ? ' selected' : '') + '>控えめ</option></select></div>' +
-        '<p id="presentation-cyber-note">控えめにすると、枠の発光と背景の文様が弱まります。</p>' +
+        '<p id="presentation-cyber-note">控えめにすると、常時アニメーションを停止し、枠の発光と背景の文様を弱めます。</p>' +
         '<div class="presentation-setting-row presentation-text-row"><label id="presentation-text-label" for="presentation-text-size">文字の大きさ</label>' +
         '<select id="presentation-text-size" class="select" data-presentation-text-select aria-describedby="presentation-text-note">' +
         '<option value="standard"' + (textSize === 'standard' ? ' selected' : '') + '>標準</option>' +
