@@ -10,6 +10,7 @@ function fn(name){const start=app.search(new RegExp('^  (?:async )?function '+na
 function appHarness(){
  const storage=memory(),sent=[],applied=[],messages=[],control={owner:'self',revision:3,onPost:null,refreshes:0,closed:0,saveCalls:0,rendered:0};
  const ctx={console,Promise,Date,Math,JSON,roleEpoch:1,startPending:false,residencyStartPending:false,fieldActionPending:false,newStartCastle:choice.castleId,newResidencyMode:choice.mode,newClan:choice.clan,newResidencyError:'',newResidencyDirectory:null,activeModal:'new',selectedCastle:'old',filter:{page:2},currentView:'map',localStorage:storage,crypto:{randomUUID:()=> 'admission_'+(sent.length+1)},history:{replaceState(){}},refreshLiveControls(){},queueWorldProgress(){},save(){control.saveCalls++;return true;},retireLocalWalkingContext(){},closeModal(){control.closed++;ctx.activeModal='';},render(){control.rendered++;},toast:m=>messages.push(m),drawNewGame(){},preserveInteraction(_host,draw){draw();},$:()=>({scrollTop:4,scrollLeft:5,textContent:''}),game:{state:{marker:'old-personal-campaign',resources:{gold:500}}}};
+ ctx.syncAccess={linked:true,expulsion:null};
  const receipt=body=>({ok:true,user:{id:'self'},revision:control.revision+1,residency:member(),residencyRevision:2,save:{state:{marker:'accepted-personal-campaign',home:body.castleId,clan:body.clan,difficulty:body.difficulty}},admission:{requestId:body.requestId,mode:body.mode,castleId:body.castleId}});
  const sync={getStatus:()=>({ready:true,writable:true,revision:control.revision}),getDevice:()=>({id:'device'}),flush:async()=>({ok:true}),refresh:async()=>{control.refreshes++;return{ok:true};},acceptSnapshot:async result=>{applied.push(clone(result));ctx.game.state=clone(result.save.state);control.revision=result.revision;return{ok:true};}};
  ctx.window={SengokuResidency:{...Residency,loadDirectory:async()=>({revision:3,castles:[]})},SengokuCloudSync:sync,SengokuSocial:{getUser:()=>({id:control.owner}),residencyRequest:async(route,args)=>{sent.push({route,data:clone(args.data)});return control.onPost?control.onPost(args.data):receipt(args.data);}}};
@@ -25,7 +26,8 @@ async function cloudHarness(){
  await sync.start({id:'self',request:async(route)=>route.startsWith('/sync?')||route==='/sync/lease'?control.remote||snapshot():{ok:true}});
  assert.equal(sync.getStatus().ready,true);assert.equal(sync.getStatus().writable,true);return{sync,control,applied,observations,snapshot};
 }
-let count=0;async function test(name,run){await run();count++;console.log('PASS '+name);}
+let count=0,finished=false;async function test(name,run){await run();count++;console.log('PASS '+name);}
+process.on('beforeExit',()=>{if(!finished&&!process.exitCode){console.error('Residency bridge test stopped before completing all scenarios.');process.exitCode=1;}});
 (async()=>{
  await test('registered admission keeps the current campaign untouched until the server accepts',async()=>{const h=appHarness(),wait=deferred(),posted=deferred();h.control.onPost=async body=>{posted.resolve();return wait.promise;};const pending=h.ctx.startRegisteredGame(choice);await posted.promise;assert.equal(h.ctx.game.state.marker,'old-personal-campaign');assert.equal(h.applied.length,0);assert.equal(h.ctx.residencyStartPending,true);assert.equal(h.ctx.fieldActionPending,true);wait.resolve(h.receipt(h.sent[0].data));assert.equal(await pending,true);assert.equal(h.applied.length,1);assert.equal(h.ctx.game.state.marker,'accepted-personal-campaign');assert.equal(h.ctx.game.state.difficulty,'hard');assert.equal(h.control.closed,1);assert.equal(h.ctx.residencyStartPending,false);assert.equal(h.ctx.fieldActionPending,false);});
  await test('an occupied-seat conflict keeps the old campaign and personal choices available',async()=>{const h=appHarness();h.control.onPost=async()=>{throw Object.assign(Error('選択した城は入城済みです。'),{status:409,code:'CASTLE_OCCUPIED'});};assert.equal(await h.ctx.startRegisteredGame({...choice,mode:'lord'}),false);assert.equal(h.ctx.game.state.marker,'old-personal-campaign');assert.equal(h.applied.length,0);assert.equal(h.ctx.newStartCastle,'kiyosu');assert.equal(h.ctx.newClan,'織田家');assert.match(h.ctx.newResidencyError,/入城済み/);assert.equal(h.control.closed,0);assert.equal(h.control.refreshes,1);assert.equal([...h.storage.values.keys()].length,0);});
@@ -34,16 +36,16 @@ let count=0;async function test(name,run){await run();count++;console.log('PASS 
  await test('cloud bridge applies a confirmed canonical admission with a backup and residency revision',async()=>{const h=await cloudHarness(),before=h.applied.length,next=h.snapshot(2,'lord',12);assert.equal((await h.sync.acceptSnapshot(next)).ok,true);assert.equal(h.applied.length,before+1);assert.equal(h.control.current.state.marker,'revision-2');assert.equal(h.applied.at(-1).meta.reason,'residency-admission');assert.equal(h.applied.at(-1).meta.backup,true);assert.equal(h.observations.at(-1).meta.revision,12);assert.equal(h.sync.getStatus().revision,2);});
  await test('a delayed admission receipt cannot replace a newer synced campaign or membership',async()=>{const h=await cloudHarness();await h.sync.acceptSnapshot(h.snapshot(5,'lord',20));const before=h.applied.length,observed=h.observations.length,result=await h.sync.acceptSnapshot(h.snapshot(2,'retainer',10));assert.equal(result.ok,true);assert.equal(result.superseded,true);assert.equal(h.applied.length,before);assert.equal(h.observations.length,observed);assert.equal(h.control.current.state.marker,'revision-5');});
  await test('the cloud bridge rejects a different identity and propagates canonical empty membership',async()=>{const h=await cloudHarness(),before=h.applied.length;assert.equal((await h.sync.acceptSnapshot({...h.snapshot(2),user:{id:'other'}})).ok,false);assert.equal(h.applied.length,before);assert.equal((await h.sync.acceptSnapshot(h.snapshot(3,null,21))).ok,true);assert.equal(h.observations.at(-1).value.residency,null);assert.equal(h.observations.at(-1).meta.revision,21);});
- await test('a delayed relocation receipt at the same save revision cannot restore a superseded writer lease',async()=>{
+ for(const reason of ['residency-relocation','court-membership'])await test('a delayed '+reason+' receipt cannot restore a superseded writer lease',async()=>{
   const h=await cloudHarness(),oldWriter=h.snapshot(2);
   h.control.remote={...oldWriter,writerDeviceId:'another-device',writerDeviceName:'新しい端末',writable:false,
     serverTime:new Date(105000).toISOString(),leaseExpiresAt:new Date(135000).toISOString()};
   assert((await h.sync.refresh()).ok);
   assert.equal(h.sync.getStatus().writable,false);
   const applied=h.applied.length;
-  await h.sync.acceptSnapshot(oldWriter,{reason:'residency-relocation'});
+  await h.sync.acceptSnapshot(oldWriter,{reason});
   assert.equal(h.sync.getStatus().writable,false,'the newer lease belongs to the other tab');
   assert.equal(h.applied.length,applied,'the already synchronized save must not be replaced again');
  });
- console.log(`Residency bridge: ${count} scenarios passed; no production requests.`);
+ finished=true;console.log(`Residency bridge: ${count} scenarios passed; no production requests.`);
 })().catch(error=>{console.error(error);process.exitCode=1;});

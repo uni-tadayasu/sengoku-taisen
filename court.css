@@ -5,6 +5,27 @@
 @media(prefers-reduced-motion:reduce){.court-page *{scroll-behavior:auto!important;transition:none!important}}
 .court-roster-name{display:flex;flex-wrap:wrap;gap:.45em;align-items:center}.court-roster-name .public-court-badge,.court-thresholds .public-court-badge{margin-inline-start:0}
 .court-office-designation{display:inline-block;padding:.1em .35em;border:1px solid currentColor;border-radius:.3em;font:inherit;line-height:1.3}
+/* Formal membership makes the home and territory release reviewable. */
+.court-membership{border-color:#90c6dc66;background:linear-gradient(130deg,#143037dd,#162a27f0)}
+.court-membership>p,.court-membership-confirm>p,.court-membership-effects p{font-size:16px;line-height:1.75}
+.court-membership>.button{margin-top:12px}
+.court-membership .court-membership-requirement{color:#e8d7a7;font-size:15px}
+.court-membership-reason{color:#f1cbad}
+.court-membership-confirm{background:linear-gradient(130deg,#343a2c,#21332f);border-color:#e0c37d;scroll-margin-block:20px;scroll-margin-block-end:calc(var(--compact-dock-height,76px) + env(safe-area-inset-bottom,0px) + 20px)}
+.court-membership-confirm h3{font-size:clamp(18px,2.3vw,24px);line-height:1.65;color:#f4ddb0;overflow-wrap:anywhere}
+.court-membership-summary{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin:20px 0}
+.court-membership-summary>div{padding:13px 16px;background:#0b202a70;border:1px solid #92b6a636;border-radius:8px;min-width:0}
+.court-membership-summary dt{font-size:14px;color:#bacdc3}
+.court-membership-summary dd{margin:5px 0 0;font-size:20px;color:#f2e4c5;overflow-wrap:anywhere}
+.court-membership-effects{display:grid;gap:10px;margin:18px 0}
+.court-membership-effects p{margin:0;padding-inline-start:14px;border-inline-start:2px solid #cba96780}
+.court-membership-effects strong{display:block;color:#e6d2a0;margin-bottom:3px}
+.court-membership-castles{padding-block:14px;border-block:1px solid #b8b28342;margin-block:16px}
+.court-membership-castles summary{font-size:15px}
+.court-membership-castles ul{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:7px 18px;padding-inline-start:22px;font-size:15px;line-height:1.7}
+.court-membership-confirm .court-actions{margin-top:20px;align-items:stretch}
+.court-membership-confirm .court-actions>.button{flex:1 1 180px;font-size:16px}
+@media(max-width:650px){.court-membership-confirm{padding:16px}.court-membership-summary{gap:8px}.court-membership-summary>div{padding:10px}.court-membership-summary dd{font-size:18px}.court-membership>.button{width:100%}.court-membership-confirm .court-actions>.button{flex-basis:100%}}
 /* Appointments stay within the court's existing private management surface. */
 .court-office-management>p,.court-office-holder p,.court-fixed-office p,.court-office-selection{font-size:16px;line-height:1.75}.court-fixed-office{display:grid;gap:5px;padding:16px 18px;margin:16px 0;border:1px solid #d0b76d88;border-radius:9px;background:linear-gradient(115deg,#56513250,#16313c88)}.court-fixed-office>div{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}.court-fixed-office strong{color:#f2db9a;font-size:20px}.court-fixed-office span{color:#f4efdf;font-size:18px;overflow-wrap:anywhere}.court-fixed-office p{margin:0}.court-office-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:20px 0}.court-office-row{display:flex;flex-direction:column;gap:12px;padding:17px;border:1px solid var(--court-line);border-radius:9px;background:#10262a80}.court-office-row.is-selected{border-color:#7cd4dc;background:#16404670}.court-office-row>header{display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap}.court-office-row h3{margin:0;font-size:20px}.court-office-status{font-size:14px;line-height:1.5;color:#c8d0c5}.court-office-status.is-available{color:#9fe7d0}.court-office-holder{display:grid;gap:4px;flex:1 1 auto;overflow-wrap:anywhere}.court-office-holder strong{font-size:17px;color:#f4ecd5}.court-office-holder>span{font-size:14px;color:var(--court-muted)}.court-office-holder p{margin:0}.court-office-row>.button{width:100%;margin-top:auto;font-size:14px}.court-office-management .court-office-policy{font-size:14px;line-height:1.8}.court-office-appointment{padding:20px;margin-top:22px;border:1px solid var(--court-line);border-radius:10px;background:#11252b66}.court-office-appointment>h3{font-size:21px}.court-office-search{margin:18px 0 0}.court-office-search>div{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px}.court-office-search .button{min-width:130px;font-size:16px}.court-office-search p{font-size:14px;line-height:1.7}.court-office-appointment>.button{margin-top:16px;font-size:16px}.court-office-selection strong{color:#f6dba3}.court-office-management .court-office-stale{color:#ffcead;font-size:16px}.court-office-management .court-confirm p{font-size:16px}.court-office-management select{appearance:none;background-image:linear-gradient(45deg,transparent 50%,#dbd3ad 50%),linear-gradient(135deg,#dbd3ad 50%,transparent 50%);background-position:calc(100% - 19px) 50%,calc(100% - 14px) 50%;background-size:5px 5px;background-repeat:no-repeat;padding-inline-end:38px}.court-office-management select option:disabled{color:#98a6a3}
 @media(max-width:1000px){.court-office-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}

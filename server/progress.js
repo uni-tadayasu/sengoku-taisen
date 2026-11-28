@@ -59,6 +59,12 @@ export async function prepareRelocationProgress(db,userId,save,now){
     ON CONFLICT(user_id,campaign_id) DO UPDATE SET observed_json=excluded.observed_json`,userId,campaign,JSON.stringify(seen),...args)
  ]};
 }
+// A membership transition preserves earned counters. Seed the new campaign's
+// observation so keeping those counters cannot grant recruitment points twice.
+export function seedProgressCampaignStatement(db,userId,save,gate,args){
+ return stmt(db,`INSERT INTO progress_campaigns(user_id,campaign_id,observed_json) SELECT ?,?,? WHERE ${gate}
+  ON CONFLICT(user_id,campaign_id) DO NOTHING`,userId,save.state.walking.campaignId,JSON.stringify(metrics(save)),...args);
+}
 async function account(ctx,save,{ack=false}={}){
  const {db,user,helpers:h}=ctx,now=Date.now(),campaignId=save.state.walking.campaignId,current=metrics(save),global=await globalMetrics(db,user.id);
  await stmt(db,'INSERT INTO progress_accounts(user_id,data_json,commit_token,updated_at) VALUES(?,?,?,?) ON CONFLICT(user_id) DO NOTHING',user.id,JSON.stringify(initial(now,save,global)),'init',now).run();

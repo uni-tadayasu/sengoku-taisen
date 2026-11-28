@@ -98,6 +98,11 @@ jobs:
       - uses: actions/setup-node@v7.1.0
         with:
           node-version: '24'
+      - name: Verify formal Kyoto membership, released territory and recovery
+        run: |
+          node server/test-court-membership.mjs
+          node tests/test-court-membership-ui.cjs
+          node tests/test-residency-bridge.cjs
       - name: Verify chat replies, mentions and room authorization
         run: node server/test-chat-replies.mjs
       - name: Verify display-name variants and concurrent profile changes
@@ -190,6 +195,9 @@ jobs:
           node server/test-sync.mjs
           node server/test-field-migration.mjs
           node server/test-world-cycles.mjs
+          node server/test-regional-inheritance.mjs
+          node tests/test-region-inheritance-engine.cjs
+          node tests/test-cloud-sync.cjs
           node tests/test-sync-integration.mjs
       - name: Verify authoritative rewards and paid reward migration
         run: |

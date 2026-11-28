@@ -56,13 +56,60 @@ await scope('public targets retain battle rules while displaying ordinary occupi
   const a=await fixture(h,'一覧の領主',{home:'inuyama'}),b=await fixture(h,'所領の領主',{holdings:['nijo','osaka','nagoya','azuchi']});
   const list=(await h.api('/field?limit=100',{token:a.token})).data,targets=list.targets.filter(t=>t.playerId===b.user.id);
   assert.equal(list.total,2);assert.equal(list.players.length,2);assert.equal(list.rules.targetCastles,true);assert.equal(list.rules.specialBaseBattles,true);
-  assert.deepEqual(targets.filter(t=>!t.displayOnly).map(t=>t.targetCastleId),['kiyosu','nijo','osaka','nagoya']);
-  const holding=targets.find(t=>t.targetCastleId==='azuchi');assert(holding?.displayOnly);assert.equal(holding.holdingKind,'territory');assert.equal(holding.attackable,false);assert.equal(holding.capturable,false);assert.equal(holding.battleMode,null);
-  assert.equal(targets[0].battleMode,'raid');for(const t of targets.slice(1).filter(t=>!t.displayOnly)){assert.equal(t.homeCastleId,'kiyosu');assert.equal(t.isHome,false);assert.equal(t.battleMode,'capture');assert.equal(t.capturable,true);assert.equal(t.keepLevel,9);assert.equal(t.level,9);}
+  assert.deepEqual(targets.filter(t=>!t.displayOnly).map(t=>t.targetCastleId),['kiyosu','nijo','osaka','nagoya','azuchi']);
+  const holding=targets.find(t=>t.targetCastleId==='azuchi');assert.equal(holding.displayOnly,false);assert.equal(holding.holdingKind,'territory');assert.equal(holding.attackable,true);assert.equal(holding.capturable,false);assert.equal(holding.battleMode,'raid');assert(holding.defensePower>0);
+  assert.equal(targets[0].battleMode,'raid');for(const t of targets.slice(1).filter(t=>t.holdingKind!=='territory')){assert.equal(t.homeCastleId,'kiyosu');assert.equal(t.isHome,false);assert.equal(t.battleMode,'capture');assert.equal(t.capturable,true);assert.equal(t.keepLevel,9);assert.equal(t.level,9);}
   assert.equal(new Set(list.targets.map(t=>t.playerId+':'+t.targetCastleId)).size,list.targets.length);
   const page=(await h.api('/field?limit=1',{token:a.token})).data;assert(page.targets.every(t=>t.playerId===page.players[0].playerId));assert.equal(page.total,2);
-  for(const id of ['azuchi','odani','edo','kyoto_gosho'])assert.equal((await attack(h,a,body(h,a,b,id),409)).error.code,'FIELD_TARGET_CHANGED');
+  for(const id of ['odani','edo','kyoto_gosho','kagoshima'])assert.equal((await attack(h,a,body(h,a,b,id),409)).error.code,'FIELD_TARGET_CHANGED');
   await attack(h,a,body(h,a,b,'unknown'),400);assert.equal(count(h,'field_battles'),0);
+});
+
+for(const kind of ['self','household','guild','allied','beginner','recovery'])await scope('ordinary occupied territory keeps the '+kind+' attack guard without spending',async h=>{
+  const actor=await fixture(h,'所領検査の攻め手',{home:'inuyama',holdings:kind==='self'?['azuchi']:[]});
+  const defender=kind==='self'?actor:await fixture(h,'所領検査の守り手',{home:kind==='household'?'inuyama':'kiyosu',holdings:['azuchi']});
+  if(kind==='guild'){
+    h.sql.prepare('INSERT INTO guilds(id,name,name_key,owner_id,created_at) VALUES(?,?,?,?,?)').run('territory_guild','所領の同盟','territory_guild',actor.user.id,h.now);
+    for(const player of [actor,defender])h.sql.prepare('INSERT INTO guild_members(user_id,guild_id,joined_at) VALUES(?,?,?)').run(player.user.id,'territory_guild',h.now);
+  }
+  if(kind==='allied'){
+    const [first,second]=[actor.user.id,defender.user.id].sort();
+    h.sql.prepare("INSERT INTO field_relations(user_a,user_b,status,proposed_by,expires_elapsed_ms,updated_elapsed_ms,revision,updated_at) VALUES(?,?,'allied',?,600000,0,1,?)").run(first,second,actor.user.id,h.now);
+  }
+  if(kind==='beginner'||kind==='recovery')h.sql.prepare('INSERT INTO pvp_protection(user_id,beginner_until,recovery_until,revision) VALUES(?,?,?,1)').run(defender.user.id,kind==='beginner'?h.now+86400000:0,kind==='recovery'?h.now+7200000:0);
+  const displayed=(await h.api('/field?limit=100',{token:actor.token})).data.targets.find(t=>t.playerId===defender.user.id&&t.targetCastleId==='azuchi');
+  assert(displayed);assert.equal(displayed.attackable,false);
+  const before=save(h,actor),rejected=await attack(h,actor,body(h,actor,defender,'azuchi'),kind==='self'?400:409);
+  const codes={self:'INVALID_TARGET',household:'HOUSEHOLD_ALLIED',guild:'SAME_GUILD_TARGET',allied:'ALLIED_TARGET',beginner:'TARGET_REALTIME_PROTECTED',recovery:'TARGET_REALTIME_PROTECTED'};
+  assert.equal(rejected.error.code,codes[kind]);assert.deepEqual(save(h,actor),before);assert.equal(count(h,'battle_marches'),0);assert.equal(count(h,'field_battles'),0);
+});
+
+await scope('ordinary territory ownership changing before departure prevents the escrow transaction',async h=>{
+  const actor=await fixture(h,'所領の出陣者',{home:'inuyama'}),defender=await fixture(h,'出陣時の所領主',{holdings:['azuchi']}),before=save(h,actor);
+  h.beforeBatch=items=>{
+    if(!items[0]?.sql.startsWith('INSERT INTO battle_marches'))return;
+    h.beforeBatch=null;const changed=save(h,defender);changed.state.castles.azuchi.owner='在地衆';
+    h.sql.prepare('UPDATE player_saves SET save_json=?,revision=revision+1 WHERE user_id=?').run(JSON.stringify(changed),defender.user.id);
+  };
+  const rejected=await attack(h,actor,body(h,actor,defender,'azuchi'),409);
+  assert.equal(rejected.error.code,'MARCH_STATE_CHANGED');assert.deepEqual(save(h,actor),before);assert.equal(count(h,'battle_marches'),0);
+  const targets=(await h.api('/field?limit=100',{token:actor.token})).data.targets;
+  assert(!targets.some(t=>t.playerId===defender.user.id&&t.targetCastleId==='azuchi'));
+});
+
+await scope('ordinary territory ownership changing during travel cancels and refunds instead of attacking the home',async h=>{
+  const actor=await fixture(h,'移動中の攻め手',{home:'inuyama'}),defender=await fixture(h,'移動中の所領主',{holdings:['azuchi']});
+  const request=body(h,actor,defender,'azuchi'),sent=await attack(h,actor,request);
+  assert.equal(sent.march.targetCastleId,'azuchi');assert.equal(sent.march.targetPlayerId,defender.user.id);assert(sent.march.remainingMs>0);
+  const changed=save(h,defender);changed.state.castles.azuchi.owner='在地衆';
+  h.sql.prepare('UPDATE player_saves SET save_json=?,revision=revision+1 WHERE user_id=?').run(JSON.stringify(changed),defender.user.id);
+  const beforeDefender=row(h,defender);h.now+=sent.march.remainingMs;
+  const arrived=await status(h,actor),receipt=arrived.history.find(entry=>entry.id===sent.march.id);
+  assert.equal(receipt?.status,'cancelled');assert.equal(receipt.battle,null);assert.equal(count(h,'field_battles'),0);assert.equal(count(h,'field_requests'),0);
+  assert.deepEqual(row(h,defender),beforeDefender,'An invalidated target must not damage or debit the defending player');
+  const stored=h.sql.prepare('SELECT result_json FROM battle_marches WHERE id=?').get(sent.march.id),result=JSON.parse(stored.result_json);
+  assert.equal(result.refund.troops,request.troops);assert(result.refund.rice>0);assert.equal(result.refund.command,1);
+  const replay=await attack(h,actor,request);assert.equal(replay.march.status,'cancelled');assert.equal(count(h,'battle_marches'),1);
 });
 
 await scope('major outpost capture preserves homes and development, survives stale sync and replays once',async h=>{

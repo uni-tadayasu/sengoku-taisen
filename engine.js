@@ -286,6 +286,11 @@
   const UPKEEP_TRACKS=new WeakMap(),MAX_UPKEEP_TRACKS=128;
   const MAX_HOME_DEFENSE_LOSSES=256;
   const WORLD_CALENDAR=Object.freeze({startYear:1560,yearsPerCycle:56,monthsPerCycle:672,secondsPerMonth:60});
+  // Regional conquest is shared by players and the authoritative server.
+  // Office-only bases never make an otherwise complete region unattainable.
+  const REGION_PROTECTED_CASTLES=Object.freeze([ADMIN_ASSETS.castleId,STAFF_BASE_ID,DEPUTY_BASE_ID]);
+  const REGION_CONQUEST=Object.freeze({protectedCastleIds:REGION_PROTECTED_CASTLES,regions:Object.freeze([...new Set(CASTLES.map(c=>c.region))].map(region=>Object.freeze({region,castleIds:Object.freeze(CASTLES.filter(c=>c.region===region&&!REGION_PROTECTED_CASTLES.includes(c.id)).map(c=>c.id))})))});
+  function conqueredRegions(ownedCastleIds=[]){const owned=new Set(ownedCastleIds);return REGION_CONQUEST.regions.filter(region=>region.castleIds.length>0&&region.castleIds.every(id=>owned.has(id))).map(region=>region.region);}
   const MAX_TURN=999999999;
   // Court titles are game progression, independent of account/guild permissions.
   // Keep this single scoring contract in the shared browser/Worker engine.
@@ -398,7 +403,7 @@
     if(changed){state.branches=branches;state.jobs=jobs;}
     return changed;
   }
-  const DATA = {version:2,assetCap:ASSET_CAP,maintenance:MAINTENANCE_RULES,durability:DURABILITY_RULES,staffBaseId:STAFF_BASE_ID,deputyBaseId:DEPUTY_BASE_ID,deputyAssets:DEPUTY_ASSETS,courtAdmission:COURT_ADMISSION,branchRules:BRANCH_RULES,branchFacilities:BRANCH_FACILITIES,gacha:GACHA,rankBonuses:RANK_BONUSES,adminAssets:ADMIN_ASSETS,adminClan:ADMIN_CLAN,staffClan:STAFF_CLAN,majorCityIds:MAJOR_CITY_IDS,worldCalendar:WORLD_CALENDAR,secondsPerMonth:60,secondsPerCommand:20,buildingLimit:32,ranks:RANKS,evaluationRanks:EVALUATION_RANKS,evaluationMax:EVALUATION_MAX,categories:CATEGORY_LABELS,clans:CLANS,buildings:BUILDINGS,techs:TECHS,castles:CASTLES,tactics:TACTICS,quests:QUESTS,resources:RESOURCES,covert:COVERT_RULES,roaming:{commandCost:1,minTroops:300,historyLimit:20,encounters:ROAMING_ENCOUNTERS,tactics:ROAMING_TACTICS}};
+  const DATA = {version:2,assetCap:ASSET_CAP,maintenance:MAINTENANCE_RULES,durability:DURABILITY_RULES,staffBaseId:STAFF_BASE_ID,deputyBaseId:DEPUTY_BASE_ID,deputyAssets:DEPUTY_ASSETS,courtAdmission:COURT_ADMISSION,branchRules:BRANCH_RULES,branchFacilities:BRANCH_FACILITIES,gacha:GACHA,rankBonuses:RANK_BONUSES,adminAssets:ADMIN_ASSETS,adminClan:ADMIN_CLAN,staffClan:STAFF_CLAN,majorCityIds:MAJOR_CITY_IDS,worldCalendar:WORLD_CALENDAR,regionConquest:REGION_CONQUEST,secondsPerMonth:60,secondsPerCommand:20,buildingLimit:32,ranks:RANKS,evaluationRanks:EVALUATION_RANKS,evaluationMax:EVALUATION_MAX,categories:CATEGORY_LABELS,clans:CLANS,buildings:BUILDINGS,techs:TECHS,castles:CASTLES,tactics:TACTICS,quests:QUESTS,resources:RESOURCES,covert:COVERT_RULES,roaming:{commandCost:1,minTroops:300,historyLimit:20,encounters:ROAMING_ENCOUNTERS,tactics:ROAMING_TACTICS}};
   DATA.officerHealth=OFFICER_HEALTH_RULES;
   const clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
   const copy=o=>JSON.parse(JSON.stringify(o));
@@ -788,7 +793,7 @@
       if (!initial.length) initial.push(...this.roster.slice(0,4).map(o=>o.id));
       const scale={easy:.8,normal:1,hard:1.2}[difficulty];
       this.state={
-        version:2,clan:clan.name,home,turn:0,difficulty,cycle:{index:0,home,latestReward:null},upkeep:{version:1,settledTurn:0,branchReductions:{}},repair:normalizeRepairState(undefined,0),
+        version:2,clan:clan.name,home,turn:0,difficulty,cycle:{index:0,home,latestReward:null,retainedRegions:[]},upkeep:{version:1,settledTurn:0,branchReductions:{}},repair:normalizeRepairState(undefined,0),
         resources:{gold:difficulty==='easy'?4400:3200,rice:5400,wood:1800,stone:1200},
         troops:3400,troopTransferSequence:0,morale:80,prestige:0,command:3,magatama:GACHA.initial,captureRewards:[home],gachaHistory:[],
         realtime:{running:true,speed:1,elapsed:0,commandProgress:0,incomeRemainders:{gold:0,rice:0,wood:0,stone:0}},
@@ -976,6 +981,7 @@
     _baseGrantRank(id){const o=this.baseOfficer(id),rank=o?.rank||o?.rarity;return id===ADMIN_ASSETS.officerId&&rank==='U'&&!this.isAdmin?'SSS':rank;}
     gachaPool(rank){return RANKS.includes(rank)?this.roster.filter(o=>this.canOwnOfficerVariant(o.id,rank)):[];}
     unificationTarget(){return CASTLES.filter(c=>this.canOwnCastle(c.id)).length;}
+    conqueredRegions(){return conqueredRegions(this.ownedCastleIds());}
     getUnificationProof(){
       // Recompute from eligible holdings. Saved flags, battle names and event
       // results never establish campaign unification or change runtime roles.
@@ -2547,12 +2553,13 @@
       const home=this.isAdmin?ADMIN_ASSETS.castleId:beforeAppointment?view.personalCycleHome:this.isStaff?STAFF_BASE_ID:s.cycle.home;
       const captured=CASTLES.filter(c=>c.id!==home&&s.castles[c.id].owner===s.clan&&this.canOwnCastle(c.id)).length;
       const reward={cycle:s.cycle.index,captured,gold:captured*1000,rice:captured*1000,magatama:captured*100};
+      const retainedRegions=this.conqueredRegions(),retained=new Set([home,...REGION_CONQUEST.regions.filter(region=>retainedRegions.includes(region.region)).flatMap(region=>region.castleIds)]);
       const homeBefore={...s.castles[home]},scale={easy:.8,normal:1,hard:1.2}[s.difficulty];
-      s.castles=Object.fromEntries(CASTLES.map(c=>[c.id,c.id===home?{...homeBefore,owner:s.clan,troops:Math.max(INITIAL_CASTLE.garrison,homeBefore.troops),wall:Math.max(homeBefore.wall,s.buildings.wall)}:{owner:c.clan===s.clan?'在地衆':c.clan,troops:Math.round(c.initialTroops*scale),wall:c.wall,level:1}]));
-      s.home=home;s.cycle={index,home,latestReward:reward};s.jobs=s.jobs.filter(job=>job.kind!=='castle'||job.id===home);this._pruneBranches();
-      s.treaties={};s.scouted={};s.captureRewards=[home];s.lastBattle=null;s.won=false;s.gameOver=false;
+      s.castles=Object.fromEntries(CASTLES.map(c=>[c.id,c.id===home?{...homeBefore,owner:s.clan,troops:Math.max(INITIAL_CASTLE.garrison,homeBefore.troops),wall:Math.max(homeBefore.wall,s.buildings.wall)}:retained.has(c.id)?copy(s.castles[c.id]):{owner:c.clan===s.clan?'在地衆':c.clan,troops:Math.round(c.initialTroops*scale),wall:c.wall,level:1}]));
+      s.home=home;s.cycle={index,home,latestReward:reward,retainedRegions};s.jobs=s.jobs.filter(job=>job.kind!=='castle'||retained.has(job.id));
+      s.treaties={};s.scouted={};s.captureRewards=[...retained];s.lastBattle=null;this._updateCampaignOutcome();
       this._gain({gold:reward.gold,rice:reward.rice,magatama:reward.magatama});
-      this.log(`領地を精算しました。占領${captured}城の報酬：勾玉${reward.magatama}・金銭${reward.gold}・兵糧${reward.rice}。${CASTLE_BY_ID[home].name}から再出発します。`,'cycle');
+      this.log(`領地を精算しました。占領${captured}城の報酬：勾玉${reward.magatama}・金銭${reward.gold}・兵糧${reward.rice}。${retainedRegions.length?`制覇した${retainedRegions.join('・')}の領土を引き継ぎ、`:''}${CASTLE_BY_ID[home].name}から再出発します。`,'cycle');
       return reward;
     }
     constructionProgress(job){return job&&job.totalSeconds>0?clamp((1-job.remainingSeconds/job.totalSeconds)*100,0,100):0;}
@@ -2799,7 +2806,11 @@
         STAFF_ORIGIN.set(g,{clan,home,cycleHome,...(homeCastle?{homeCastle}:{})});n.staffService={baseId:STAFF_BASE_ID,personalClan:clan,personalHome:home,personalCycleHome:cycleHome,...(homeCastle?{personalHomeCastle:copy(homeCastle)}:{})};
       }}
       if(s.worldClock)n.worldClock={id:s.worldClock.id,elapsedMs:s.worldClock.elapsedMs};
-      if(s.cycle!==undefined){const c=s.cycle,r=c?.latestReward;if(!isObj(c)||!num(c.index,0,Math.floor(MAX_TURN/WORLD_CALENDAR.monthsPerCycle))||!CASTLE_BY_ID[c.home]||r!==null&&(!isObj(r)||!num(r.cycle,0,c.index-1)||!num(r.captured,0,CASTLES.length-1)||r.gold!==r.captured*1000||r.rice!==r.captured*1000||r.magatama!==r.captured*100))invalid();n.cycle={index:c.index,home:c.home,latestReward:r===null?null:copy(r)};}else n.cycle={index:Math.floor(s.turn/WORLD_CALENDAR.monthsPerCycle),home:s.home,latestReward:null};
+      if(s.cycle!==undefined){
+        const c=s.cycle,r=c?.latestReward,retained=c?.retainedRegions===undefined?[]:c.retainedRegions;
+        if(!isObj(c)||!num(c.index,0,Math.floor(MAX_TURN/WORLD_CALENDAR.monthsPerCycle))||!CASTLE_BY_ID[c.home]||!Array.isArray(retained)||retained.length>REGION_CONQUEST.regions.length||new Set(retained).size!==retained.length||retained.some(region=>!REGION_CONQUEST.regions.some(row=>row.region===region))||r!==null&&(!isObj(r)||!num(r.cycle,0,c.index-1)||!num(r.captured,0,CASTLES.length-1)||r.gold!==r.captured*1000||r.rice!==r.captured*1000||r.magatama!==r.captured*100))invalid();
+        n.cycle={index:c.index,home:c.home,latestReward:r===null?null:copy(r),retainedRegions:REGION_CONQUEST.regions.filter(row=>retained.includes(row.region)).map(row=>row.region)};
+      }else n.cycle={index:Math.floor(s.turn/WORLD_CALENDAR.monthsPerCycle),home:s.home,latestReward:null,retainedRegions:[]};
       const retainerSupport=Object.hasOwn(options,'retainerSupport')?options.retainerSupport:s.retainerSupport;
       if(retainerSupport&&CASTLE_BY_ID[retainerSupport.castleId]&&!MAJOR_CITY_IDS.includes(retainerSupport.castleId)&&Number.isSafeInteger(retainerSupport.count)&&retainerSupport.count>0){
         n.retainerSupport={castleId:retainerSupport.castleId,count:retainerSupport.count};
@@ -2844,6 +2855,7 @@
     if(!Array.isArray(raw.recentKeys)||raw.recentKeys.length>60||raw.recentKeys.some(k=>typeof k!=='string'||k.length>150))bad();out.recentKeys=[...new Set(raw.recentKeys)];return out;
   }
   SengokuEngine.normalizePlayerProgress=normalizePlayerProgress;
+  SengokuEngine.conqueredRegions=conqueredRegions;
   SengokuEngine.officerHealthRules=OFFICER_HEALTH_RULES;
   SengokuEngine.economyRules=ECONOMY_RULES;
   SengokuEngine.maintenanceRulesVersion=1;

@@ -144,7 +144,7 @@ test('action labels and territory totals remain available without changing map s
   property(dock, 'height', 'auto');
   property(dock, 'min-height', 'var(--compact-dock-button-min)');
   property(dock, 'grid-template-rows', '20px max-content');
-  property('html.sengoku-navigation-ready:not(.sengoku-desktop-fit)', '--compact-dock-button-min', '4.25rem');
+  property('html.sengoku-navigation-ready:not(.sengoku-desktop-fit)', '--compact-dock-button-min', '4.5rem');
   property('html.sengoku-navigation-ready:not(.sengoku-desktop-fit)', '--compact-dock-height', 'calc(var(--compact-dock-button-min) + .8125rem)');
   assert(read('responsive-polish.css').includes('padding-bottom: calc(var(--compact-dock-height) + 20px + env(safe-area-inset-bottom, 0px))'));
   for (const selector of ['#app #main .button', '#modal .button', '.cq-shell .cq-button', '.events-dialog .events-button', '.moderation-dialog .moderation-button']) {
@@ -169,17 +169,19 @@ test('action labels and territory totals remain available without changing map s
 test('phone breakpoints reserve brush-label height and a separate community slot', () => {
   const compactRoot = 'html.sengoku-navigation-ready:not(.sengoku-desktop-fit)';
   const phone = rulesInMaxWidth(700), narrow = rulesInMaxWidth(360);
-  // The new brush face needs 68px buttons at a 16px root on the narrowest
+  // The six-button row needs 72px buttons at a 16px root on the narrowest
   // phones. The shared dock reservation must scale with that text minimum.
   property(compactRoot, '--compact-dock-button-min', '4.75rem', phone);
   property(compactRoot, '--compact-dock-height', 'calc(var(--compact-dock-button-min) + .8125rem)', phone);
-  property(compactRoot, '--compact-dock-button-min', '4.25rem', narrow);
+  property(compactRoot, '--compact-dock-button-min', '4.5rem', narrow);
   for (const selector of [compactRoot + ' #app.chronicle-shell .sidebar-bottom .navigation-quick', compactRoot + ' body:not(.at-title) .social-launcher']) {
     property(selector, 'height', 'auto', phone);
     property(selector, 'min-height', 'var(--compact-dock-button-min)', phone);
     property(selector, 'grid-template-rows', '20px max-content', phone);
   }
-  property(compactRoot + ' #app.chronicle-shell .sidebar-bottom', 'grid-template-columns', 'repeat(3,minmax(0,1fr)) minmax(0,1.3fr) var(--compact-dock-slot)', narrow);
+  const dockSelector = compactRoot + ' #app.chronicle-shell .sidebar-bottom';
+  property(dockSelector, 'grid-template-columns', 'repeat(2,minmax(0,1fr)) minmax(0,1.6fr) repeat(3,minmax(0,1fr))', parseRules(read('navigation-ui.css')));
+  assert(!narrow.some(rule => rule.selectors.includes(dockSelector) && rule.declarations['grid-template-columns']), 'Narrow text rules must retain the six-slot dock and its reserved community slot');
 });
 
 test('the ledger can reflow with its available width and has a fallback for oversized amounts', () => {

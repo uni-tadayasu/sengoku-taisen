@@ -8,7 +8,7 @@ const {setup} = require('./helpers/dom-model.cjs');
 const StableDOM = require('../stable-dom.js');
 const source = fs.readFileSync(require.resolve('../field.js'), 'utf8');
 const copy = value => JSON.parse(JSON.stringify(value));
-const rules = {targetCastles:true, specialBaseBattles:true, branchBattles:true};
+const rules = {targetCastles:true, specialBaseBattles:true, occupiedTerritoryBattles:true, branchBattles:true};
 const names = {kiyosu:'清洲城', odawara:'小田原城', sunpu:'駿府城', inuyama:'犬山城', kyoto_gosho:'京都御所', osaka:'大坂城'};
 const home = (playerId, castleId = 'kiyosu', extra = {}) => ({
   playerId, name:'領主' + playerId, clan:'織田家', homeCastleId:castleId,
@@ -148,6 +148,59 @@ test('the same castle keeps each owner selectable and uses that owner in the map
       assert(f.detail().textContent.includes('城郭 Lv.' + level));
       assert(f.rows().find(row => row.dataset.targetId === id + ':inuyama').getAttribute('aria-pressed') === 'true');
     }
+  } finally { f.controller.destroy(); }
+});
+
+test('an attackable occupied territory opens the battle controls and sends its exact owner and castle after confirmation', async () => {
+  const target = territory('other', 'inuyama', {displayOnly:false, defenseTroops:900, defensePower:3500, battleMode:'raid', capturable:false});
+  const f = fixture([home('me'), target]);
+  try {
+    await f.controller.refresh(); await f.select('other:inuyama');
+    assert.match(f.detail().textContent, /この城は占領領地です/);
+    assert(f.detail().querySelector('[data-field-input="troops"]'));
+    assert(f.detail().querySelector('[data-field-action="confirm-attack"]'));
+    await f.send('attack', {}, {force:true});
+    assert.equal(f.posts.length, 0, 'Departure requires the confirmation step');
+    await f.send('confirm-attack');
+    assert.match(f.detail().textContent, /犬山城へ出陣しますか/);
+    await f.send('attack');
+    assert.equal(f.posts.length, 1);
+    assert.equal(f.posts[0].route, '/field/attack');
+    assert.equal(f.posts[0].data.targetPlayerId, 'other');
+    assert.equal(f.posts[0].data.targetCastleId, 'inuyama');
+    assert.equal(f.posts[0].data.tactic, 'balanced');
+    assert.equal(f.posts[0].data.troops, 1000);
+  } finally { f.controller.destroy(); }
+});
+
+test('switching occupied-territory owners invalidates confirmation and self or protected territories cannot submit', async () => {
+  const active = (id, extra = {}) => territory(id, 'inuyama', {displayOnly:false, defenseTroops:900, defensePower:3500, battleMode:'raid', capturable:false, ...extra});
+  const f = fixture([home('me'), active('first'), active('second'), active('me')]);
+  try {
+    await f.controller.refresh(); await f.select('first:inuyama'); await f.send('confirm-attack');
+    await f.select('second:inuyama'); await f.send('attack', {}, {force:true});
+    assert.equal(f.posts.length, 0, 'A new defender needs a new confirmation');
+    await f.select('me:inuyama');
+    assert(!f.detail().querySelector('[data-field-action="confirm-attack"]'));
+    await f.send('confirm-attack', {}, {force:true}); await f.send('attack', {}, {force:true});
+    assert.equal(f.posts.length, 0, 'A player cannot attack their own occupied territory');
+    f.replace([home('me'), active('first', {attackable:false, attackReason:'復興保護中です。'})]);
+    await f.controller.refresh(); await f.select('first:inuyama');
+    await f.send('confirm-attack', {}, {force:true}); await f.send('attack', {}, {force:true});
+    assert.equal(f.posts.length, 0, 'The authoritative protection status must be respected');
+  } finally { f.controller.destroy(); }
+});
+
+test('a server-authorized noncapturing major-city battle remains selectable without revealing internal office protection', async () => {
+  const target = {...home('other', 'odawara'), targetCastleId:'osaka', targetCastleName:'大坂城', battleMode:'raid', capturable:false, isStaff:true};
+  const f = fixture([home('me'), target]);
+  try {
+    await f.controller.refresh(); await f.select('other:osaka');
+    assert(f.detail().querySelector('[data-field-action="confirm-attack"]'));
+    assert.doesNotMatch(f.detail().textContent, /占領できない|占領不可|運営|スタッフ/);
+    await f.send('confirm-attack'); await f.send('attack');
+    assert.equal(f.posts[0].data.targetCastleId, 'osaka');
+    assert.equal(f.posts[0].data.targetPlayerId, 'other');
   } finally { f.controller.destroy(); }
 });
 

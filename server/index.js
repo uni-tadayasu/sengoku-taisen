@@ -1,6 +1,7 @@
 import {withCourtEstateGuard} from './court-estate-guard.js';
 import {maintenanceContext,protectMaintenance,externalTroopSnapshotStatements,MAINTENANCE_REFRESH_MESSAGE} from './maintenance.js';
 import {GameEngine, GAME_OFFICERS} from './game-runtime.js';
+import {regionNames,inheritedCastleIds,inheritedStateCastles,anyInheritedRegionSql,inheritedCastleSql,inheritedCastleCountSql,reconcileRegionInheritance} from './region-inheritance.js';
 import {castleDurability,branchDurability,durabilityRecord,normalizeRepairProgress,reconcilePaidRepairs} from './durability.js';
 import {handleLetters} from './letters.js';
 import {handleTrades} from './trade.js';
@@ -19,6 +20,7 @@ import {marchDto,findMarch,activeMarch,battleMarches,serverMarchMarker,restoreSe
 import {handleRoamingDeployment} from './roaming-deployment.js';
 import {handleCovert,reconcileCovertProgress,covertIncidentStatements,settleCovertDispatches,covertMarches} from './covert.js';
 import {handleCourt} from './court.js';
+import {courtMembershipStatus,courtMembershipDetails,joinCourtMembership} from './court-membership.js';
 import {handleCourtSuccession} from './succession.js';
 import {handleRegency,courtRegentAuthority} from './regency.js';
 import {handleCourtEvents} from './court-events.js';
@@ -42,8 +44,8 @@ import {requirePromotionOrigin,recordPromotion,readPromotionReport} from './prom
 import {readMusicBroadcast,handleAdminMusic} from './admin-music.js';
 import {lordSupportSql,guardLordSupport,ensureResidency,residencySnapshot,residencyDirectory,residencyStart,initialResidencyStatements,residencyTargetGuard,prepareResidencySuccession,prepareResidencyCpuLosses} from './residency.js';
 const API = '/api/v1';
-const API_VERSION = '5.22.0';
-const API_FEATURES = Object.freeze({trades:true,moderation:true,playerExpulsion:true,moderatedNameReuse:true,deputyOperator:true,deputyOperations:true,privateOperationsLabels:true,deputyOfficer:true,kagoshimaProtected:true,premium:true,timedEvents:true,troopTrades:true,roamingBattles:true,roamingDeployment:true,covertDispatch:true,privatePlayerRoles:true,guildIcons:true,court:true,kyotoGosho:true,branches:true,branchBattles:true,branchFacilities:true,audioCalls:true,progression:true,armyPresets:true,allianceStrategy:true,sharedConquest:true,newcomerProtection:true,webPush:true,messagePush:true,pushDeviceTest:true,battleAdviser:true,battleCatalog:true,eventBattleRewards:true,shogunate:true,shogunateGovernance:true,attackTravel:true,castleResidency:true,retainerCastleStats:true,residencyRelocation:true,maintenanceUpkeep:true,strongholdDurability:true,chatReplies:true,chatMentions:true,covertReturnTravel:true,allianceUnitTravel:true,legacySaveRecovery:true,displayNameVariants:true,courtOffices:true,serverSummons:true,loginRewards:true,paidRerolls:true,supporterChoices:true,premiumGrowthMetrics:true,adminMusicBroadcast:true,rankRiceProduction:true,shogunateApproval:true,imperialSuccession:true,retiredEmperor:true,regency:true,courtEventRoom:true,imperialSuccessionApproval:true,courtEstate:true,fieldTerritories:true,fieldOwnerProjection:true,courtEstateField:true});
+const API_VERSION = '5.23.0';
+const API_FEATURES = Object.freeze({trades:true,moderation:true,playerExpulsion:true,moderatedNameReuse:true,deputyOperator:true,deputyOperations:true,privateOperationsLabels:true,deputyOfficer:true,kagoshimaProtected:true,premium:true,timedEvents:true,troopTrades:true,roamingBattles:true,roamingDeployment:true,covertDispatch:true,privatePlayerRoles:true,guildIcons:true,court:true,kyotoGosho:true,branches:true,branchBattles:true,branchFacilities:true,audioCalls:true,progression:true,armyPresets:true,allianceStrategy:true,sharedConquest:true,newcomerProtection:true,webPush:true,messagePush:true,pushDeviceTest:true,battleAdviser:true,battleCatalog:true,eventBattleRewards:true,shogunate:true,shogunateGovernance:true,attackTravel:true,castleResidency:true,retainerCastleStats:true,residencyRelocation:true,maintenanceUpkeep:true,strongholdDurability:true,chatReplies:true,chatMentions:true,covertReturnTravel:true,allianceUnitTravel:true,legacySaveRecovery:true,displayNameVariants:true,courtOffices:true,serverSummons:true,loginRewards:true,paidRerolls:true,supporterChoices:true,premiumGrowthMetrics:true,adminMusicBroadcast:true,rankRiceProduction:true,shogunateApproval:true,imperialSuccession:true,retiredEmperor:true,regency:true,courtEventRoom:true,imperialSuccessionApproval:true,courtEstate:true,fieldTerritories:true,fieldOwnerProjection:true,courtEstateField:true,courtMembership:true,fieldTerritoryAttacks:true,unifiedTerritoryOwners:true,regionalInheritance:true});
 const MAX_BODY = 16 * 1024;
 const MAX_SAVE_BODY = 2 * 1024 * 1024;
 const MAX_AVATAR_BYTES = 48 * 1024;
@@ -392,7 +394,8 @@ function evaluationState(row,meta,now){
     // Match the public field's pending-cycle view without advancing months,
     // granting rewards, changing leases or settling anyone's persisted save.
     const home=authorizedCycleHome(row,state,restored?state.cycle?.home:row.cycle_home);
-    for(const [id,castle]of Object.entries(state.castles))if(id!==home&&castle.owner===state.clan)castle.owner='在地衆';
+    const retained=inheritedStateCastles(state);
+    for(const [id,castle]of Object.entries(state.castles))if(id!==home&&!retained.has(id)&&castle.owner===state.clan)castle.owner='在地衆';
     state.castles[home].owner=state.clan;state.home=home;
   }
   return state;
@@ -1091,11 +1094,15 @@ async function guildLeave(env,user,body,now) {
   return {ok:true,user:mapUser(current,now)};
 }
 const EFFECTIVE_CYCLE_SQL="COALESCE(s.cycle_index,MAX(COALESCE((SELECT CAST(value AS INTEGER) FROM settings WHERE key='cyclePolicyStart'),0),CAST(COALESCE(json_extract(s.save_json,'$.state.worldClock.elapsedMs'),0)/40320000 AS INTEGER)))";
+const GUILD_CYCLE_HOME_SQL=`CASE WHEN gm.user_id=(SELECT value FROM settings WHERE key='adminUserId') THEN 'edo'
+ WHEN EXISTS(SELECT 1 FROM staff_members sm WHERE sm.user_id=gm.user_id) THEN 'kyoto_gosho'
+ WHEN EXISTS(SELECT 1 FROM deputy_operator_state ds WHERE ds.user_id=gm.user_id) THEN 'kagoshima'
+ ELSE COALESCE(s.cycle_home,json_extract(s.save_json,'$.state.cycle.home'),json_extract(s.save_json,'$.state.home')) END`;
 const GUILD_RANKINGS=`WITH totals AS (
   SELECT g.id,g.name,g.owner_id,owner.name AS owner_name,g.created_at,COUNT(gm.user_id) AS member_count,
     (SELECT gi.version FROM guild_icons gi WHERE gi.guild_id=g.id) AS icon_version,
     COALESCE(SUM(COALESCE(json_extract(s.save_json,'$.state.prestige'),0)),0) AS total_prestige,
-    COALESCE(SUM(CASE WHEN s.save_json IS NULL THEN 0 WHEN ${EFFECTIVE_CYCLE_SQL}<? THEN 1 ELSE
+    COALESCE(SUM(CASE WHEN s.save_json IS NULL THEN 0 WHEN ${EFFECTIVE_CYCLE_SQL}<? THEN 1+${inheritedCastleCountSql(GUILD_CYCLE_HOME_SQL)} ELSE
       (SELECT COUNT(*) FROM json_each(s.save_json,'$.state.castles') c
         WHERE json_extract(c.value,'$.owner')=json_extract(s.save_json,'$.state.clan')
         AND (c.key<>'edo' OR gm.user_id=(SELECT value FROM settings WHERE key='adminUserId'))
@@ -1384,7 +1391,7 @@ function normalizeGameSave(raw, user, now, {reading=false,clock=null}={}) {
   n.officerHealth=GameEngine.normalizeOfficerHealth(s.officerHealth,n);
   if(!reading&&clock&&s.officerHealth===undefined&&n.officerHealth)n.officerHealth.asOfElapsedMs=Math.min(n.officerHealth.asOfElapsedMs,clock.elapsedMs);
   if(!n.officerHealth||!reading&&clock&&n.worldClock&&n.officerHealth.asOfElapsedMs>clock.elapsedMs)invalid();
-  if(s.cycle!==undefined){const c=s.cycle,r=c?.latestReward;if(!isObj(c)||!num(c.index,0,Math.floor(MAX_TURN/WORLD_CYCLE_MONTHS))||!CASTLE_BY_ID[c.home]||r!==null&&(!isObj(r)||!num(r.cycle,0,c.index-1)||!num(r.captured,0,127)||r.gold!==r.captured*1000||r.rice!==r.captured*1000||r.magatama!==r.captured*100))invalid();n.cycle={index:c.index,home:c.home,latestReward:r===null?null:pick(r,['cycle','captured','gold','rice','magatama'])};}
+  if(s.cycle!==undefined){const c=s.cycle,r=c?.latestReward,retained=c?.retainedRegions===undefined?[]:c.retainedRegions;if(!isObj(c)||!num(c.index,0,Math.floor(MAX_TURN/WORLD_CYCLE_MONTHS))||!CASTLE_BY_ID[c.home]||r!==null&&(!isObj(r)||!num(r.cycle,0,c.index-1)||!num(r.captured,0,127)||r.gold!==r.captured*1000||r.rice!==r.captured*1000||r.magatama!==r.captured*100)||!Array.isArray(retained)||retained.length>regionNames.length||new Set(retained).size!==retained.length||retained.some(region=>!regionNames.includes(region)))invalid();n.cycle={index:c.index,home:c.home,latestReward:r===null?null:pick(r,['cycle','captured','gold','rice','magatama']),retainedRegions:regionNames.filter(region=>retained.includes(region))};}
   try{normalizeRepairProgress(n,s.repair,{isAdmin:!!user.is_admin});}catch{invalid();}
   n.won=CASTLES.every(c=>!user.is_admin&&c.id==='edo'||n.castles[c.id].owner===n.clan);n.gameOver=!CASTLES.some(c=>n.castles[c.id].owner===n.clan);
   if(!n.gameOver&&n.castles[n.home].owner!==n.clan)invalid();if(n.gameOver)n.realtime.running=false;
@@ -1519,14 +1526,14 @@ async function settlePlayerCycle(db,row,user,now,clock=undefined,{deferActive=tr
     let save=normalizeGameSave(JSON.parse(row.save_json),user,now,{reading:true,clock});
     if(row.cycle_index===null||row.cycle_index===undefined){
       const index=Math.max(policy,Math.floor((save.state.worldClock?.elapsedMs??clock.elapsedMs)/WORLD_CYCLE_MS)),home=authorizedCycleHome(user,save.state,save.state.home);
-      save.state.cycle={index,home,latestReward:null};
+      save.state.cycle={index,home,latestReward:null,retainedRegions:[]};
       const roleGuard=roleCommitGuard(user);const updated=await stmt(db,`UPDATE player_saves SET save_json=?,cycle_index=?,cycle_home=?,revision=revision+1,updated_at=? WHERE user_id=? AND revision=? AND cycle_index IS NULL AND ${roleGuard.sql} RETURNING *`,JSON.stringify(save),index,home,now,user.id,row.revision,...roleGuard.args).first();
       if(updated)row=updated;else{row=await getSyncRow(db,user.id);continue;}
     }
     if(Number(row.cycle_index)>=current||writerDeviceId&&(row.writer_device_id!==writerDeviceId||Number(row.lease_expires_at)<=now)||deferActive&&Number(row.lease_expires_at)>now)return row;
     save=normalizeGameSave(JSON.parse(row.save_json),user,now,{reading:true,clock});
     const index=Number(row.cycle_index),home=authorizedCycleHome(user,save.state,row.cycle_home);
-    save.state.cycle={index,home,latestReward:save.state.cycle?.latestReward||null};
+    save.state.cycle={index,home,latestReward:save.state.cycle?.latestReward||null,retainedRegions:save.state.cycle?.retainedRegions||[]};
     if(!save.state.worldClock){const elapsed=index*WORLD_CYCLE_MS+(save.state.turn%WORLD_CYCLE_MONTHS)*WORLD_MONTH_MS+Math.floor(save.state.realtime.elapsed*1000);save.state.turn=Math.floor(elapsed/WORLD_MONTH_MS);save.state.realtime.elapsed=(elapsed%WORLD_MONTH_MS)/1000;save.state.worldClock={id:WORLD_CLOCK_ID,elapsedMs:elapsed};save.state.upkeep.settledTurn=save.state.turn;}
     await reconcileCovertProgress(db,user.id,save);
     const branchAccess=await branchStateGuard(db,user.id,save.state.walking.campaignId);await reconcileBranchProgress(db,user.id,save,clock);
@@ -2069,7 +2076,7 @@ async function syncSnapshot(db,row,user,deviceId,now,{settle=false}={}) {
     entitlements:{courtProtected:!!user.is_court_protected,courtEstate:!user.expulsion_pending&&(!!user.is_court_protected||!!user.is_staff),edo:!!user.is_admin,ieyasuU:!!user.is_admin,kagoshima:!!user.is_deputy,shimazuU:!!user.is_deputy&&!user.is_admin&&!user.is_staff}};
 }
 
-const FIELD_RULES=Object.freeze({minTroops:300,maxTroops:100000,commandCost:1,foodBase:150,foodPerTroop:.3,attackCooldownMs:60000,defenderProtectionMs:60000,proposalLifetimeMs:600000,allianceDurationMs:360000,maxLootPerResource:50000000,maxLootFraction:FIELD_LOOT_POLICY.fraction,lootFraction:FIELD_LOOT_POLICY.fraction,lootPolicy:FIELD_LOOT_POLICY.id,maxDefenderLossFraction:.1,operatorProtected:false,staffProtected:false,targetCastles:true,specialBaseBattles:true,branchBattles:true,captureCastles:FIELD_CAPTURE_CASTLES,uncapturableCastles:['edo','kyoto_gosho','kagoshima'],victoryRewards:{gold:0,rice:0,wood:0,stone:0},
+const FIELD_RULES=Object.freeze({minTroops:300,maxTroops:100000,commandCost:1,foodBase:150,foodPerTroop:.3,attackCooldownMs:60000,defenderProtectionMs:60000,proposalLifetimeMs:600000,allianceDurationMs:360000,maxLootPerResource:50000000,maxLootFraction:FIELD_LOOT_POLICY.fraction,lootFraction:FIELD_LOOT_POLICY.fraction,lootPolicy:FIELD_LOOT_POLICY.id,maxDefenderLossFraction:.1,operatorProtected:false,staffProtected:false,targetCastles:true,specialBaseBattles:true,occupiedTerritoryBattles:true,branchBattles:true,captureCastles:FIELD_CAPTURE_CASTLES,uncapturableCastles:['edo','kyoto_gosho','kagoshima'],victoryRewards:{gold:0,rice:0,wood:0,stone:0},
   tactics:[{id:'balanced',name:'正攻法',food:1,modifier:1,loss:1},{id:'assault',name:'総攻撃',food:1.25,modifier:1.18,loss:1.35},{id:'siege',name:'包囲戦',food:1.65,modifier:.97,loss:.8},{id:'ambush',name:'伏兵',food:1.1,modifier:1.06,loss:.95}]});
 // A new fixed home takes effect when the role changes, even while the stored save retains its former castle.
 const FIELD_FIXED_HOME_SQL="(u.id=(SELECT value FROM settings WHERE key='adminUserId') OR EXISTS(SELECT 1 FROM staff_members sm WHERE sm.user_id=u.id) OR EXISTS(SELECT 1 FROM deputy_operator_state ds WHERE ds.user_id=u.id))";
@@ -2113,15 +2120,16 @@ function fieldArmy(army,variants,state) {
 function fieldAttackPower(troops,profile,modifier=1){
   return Math.max(1,Math.round(troops*(.7+.5*profile.morale/100)*(1+profile.tech.discipline*.06+profile.tech.gunnery*.05)*fieldArmy(profile.army,profile.officerVariants,profile).rankPower*modifier));
 }
-function fieldDefense(s,tactic='balanced',siege=0,castleId=s.home) {
-  const home=s.castles[castleId],isHome=castleId===s.home,force=home.troops+GameEngine.retainerDefenseTroops(s,castleId)+Math.floor(s.troops*(isHome?.45:.18)),army=fieldArmy(s.army,s.officerVariants,s);
+function fieldDefense(s,tactic='balanced',siege=0,castleId=s.home,armyProfile=null) {
+  const home=s.castles[castleId],isHome=castleId===s.home,force=home.troops+GameEngine.retainerDefenseTroops(s,castleId)+Math.floor(s.troops*(isHome?.45:.18)),army=armyProfile||fieldArmy(s.army,s.officerVariants,s);
   const durability=castleDurability(s,castleId),fortification=durability.fortificationFactor,wallFactor=Math.max(.2,1-siege*.12)*(tactic==='siege'?.5:1);
   return {force,power:Math.max(1,Math.round((force+200)*(1+(isHome?s.buildings.wall:home.wall)*.11*wallFactor*fortification)*(1+s.tech.discipline*.06)*(1+(home.level-1)*.04*fortification)*army.rankPower)),army,durability};
 }
 function fieldBranchDefense(state,branch,tactic='balanced',siege=0){const projected={...branch,durability:branchDurability(branch,state.worldClock?.elapsedMs??branch.durability?.updatedElapsedMs??0)};return GameEngine.prototype.branchDefense.call({branch:id=>id===branch.id?projected:null,castle:id=>state.castles[id],_branchRecoveryMode:()=> 'paid'},branch.id,tactic,siege);}
-function fieldBranches(row,castleId,castle,clock,cyclePending,home,baseReason){
+function fieldBranches(row,castleId,castle,clock,cyclePending,home,baseReason,retained){
+  if(!['edo','nijo','osaka','nagoya'].includes(castleId))return[];
   const stored=row.branches_json?JSON.parse(row.branches_json):{branches:[],jobs:[]};
-  if(cyclePending&&castleId!==home)return[];
+  if(cyclePending&&castleId!==home&&!retained?.has(castleId))return[];
   const branches=stored.branches.filter(branch=>branch.parentCastleId===castleId&&!branch.retreating);
   if(!branches.length)return[];
   const ids=new Set(branches.map(branch=>branch.id));
@@ -2167,8 +2175,15 @@ function fieldPlayerIdentity(row,clock,{withCastles=false}={}){
   const home=row.is_admin?'edo':row.is_staff?'kyoto_gosho':row.is_deputy?'kagoshima':reserved.includes(storedHome)?row.personal_home&&!reserved.includes(row.personal_home)?row.personal_home:ordinaryHome||replacement:storedHome;
   return{home,clan,storedHome,cyclePending,alternatives,castles:withCastles?readCastles():castles};
 }
-function mapFieldPlayer(row,viewer,relationship,clock,now,targetCastleId=null,inspectDefense=null) {
-  const {castles,cyclePending,storedHome,clan,alternatives,home}=fieldPlayerIdentity(row,clock,{withCastles:true});
+function fieldPlayerProjection(row,clock){
+  const identity=fieldPlayerIdentity(row,clock,{withCastles:true});
+  const combat={army:JSON.parse(row.army_json||'[]'),officerVariants:JSON.parse(row.variants_json||'[]'),officers:JSON.parse(row.officers_json||'[]'),officerHealth:JSON.parse(row.officer_health_json||'null')||undefined,turn:Number(row.game_turn)||0,realtime:JSON.parse(row.realtime_json||'null')||{elapsed:0},march:JSON.parse(row.march_json||'null')};
+  combat.officerHealth=GameEngine.projectOfficerHealth(combat,clock.elapsedMs);
+  const retained=identity.cyclePending?inheritedStateCastles({clan:row.game_clan,castles:identity.castles}):new Set();
+  return{...identity,retained,combat,armyProfile:fieldArmy(combat.army,combat.officerVariants,combat)};
+}
+function mapFieldPlayer(row,viewer,relationship,clock,now,targetCastleId=null,inspectDefense=null,projection=null) {
+  const {castles,cyclePending,storedHome,clan,alternatives,home,combat,armyProfile,retained}=projection||fieldPlayerProjection(row,clock);
   const castleId=targetCastleId||home,isHome=castleId===home,battleMode=fieldBattleMode(row,castleId);
   const castle={...(!isHome?castles[castleId]:!row.is_admin&&storedHome==='edo'&&!alternatives.length&&castles.edo.owner===row.game_clan?castles.edo:castles[home])};
   if(isHome&&row.is_admin&&storedHome!=='edo')for(const key of ['troops','wall','level'])castle[key]=Math.max(castle[key],castles[storedHome][key]);
@@ -2181,16 +2196,15 @@ function mapFieldPlayer(row,viewer,relationship,clock,now,targetCastleId=null,in
   const rawKeepLevel=!isHome?castle.level:row.is_staff&&!row.is_admin?row.staff_keep_level:row.keep_level;
   const keepLevel=Number.isFinite(rawKeepLevel)?Math.max(1,Math.min(32,Math.floor(rawKeepLevel))):1;
   if(cyclePending&&isHome&&battleMode!=='reward'){castle.troops=Math.max(1200,castle.troops);castle.wall=Math.max(castle.wall,Number(row.wall));}
-  const state={clan:castle.owner,home,cycle:{home:authorizedCycleHome(row,{home,cycle:{home:row.original_home}},row.cycle_home)},troops:Number(row.troops),castles:{[castleId]:castle},buildings:{wall:isHome&&row.is_staff&&!row.is_admin?castle.wall:Number(row.wall)},tech:{discipline:Number(row.discipline)},army:JSON.parse(row.army_json||'[]'),officerVariants:JSON.parse(row.variants_json||'[]')};
-  Object.assign(state,{officers:JSON.parse(row.officers_json||'[]'),officerHealth:JSON.parse(row.officer_health_json||'null')||undefined,turn:Number(row.game_turn)||0,realtime:JSON.parse(row.realtime_json||'null')||{elapsed:0},march:JSON.parse(row.march_json||'null')});
+  const state={...combat,clan:castle.owner,home,cycle:{home:authorizedCycleHome(row,{home,cycle:{home:row.original_home}},row.cycle_home)},troops:Number(row.troops),castles:{[castleId]:castle},buildings:{wall:isHome&&row.is_staff&&!row.is_admin?castle.wall:Number(row.wall)},tech:{discipline:Number(row.discipline)}};
   if (castle.owner===row.game_clan || cyclePending&&isHome) applyLordSupport(state,row);
   if(!row.repair_type&&castleId!=='kyoto_gosho'&&castle.durability)castle.durability={...durabilityRecord(GameEngine.durabilityView(castle.durability,{castleId,level:castle.level,wall:castle.wall,retainerCount:GameEngine.homeRetainerCount(state,castleId),elapsedMs:state.turn*60000+Math.round(state.realtime.elapsed*1000),recoveryMode:'free'})),repairPendingHP:0,repairRemainder:0};
-  state.officerHealth=GameEngine.projectOfficerHealth(state,clock.elapsedMs);state.worldClock={elapsedMs:clock.elapsedMs};
-  const defense=fieldDefense(state,'balanced',0,castleId),self=viewer?.id===row.id,relation=self?'self':fieldRelationStatus(relationship,viewer?.id,clock.elapsedMs);
+  state.worldClock={elapsedMs:clock.elapsedMs};
+  const defense=fieldDefense(state,'balanced',0,castleId,armyProfile),self=viewer?.id===row.id,relation=self?'self':fieldRelationStatus(relationship,viewer?.id,clock.elapsedMs);
   inspectDefense?.({castleId,isHome,garrisonTroops:castle.troops,fieldTroops:state.troops,homeContribution:Math.floor(state.troops*(isHome?.45:.18)),wallLevel:isHome?state.buildings.wall:castle.wall,castleLevel:castle.level,castleMaxLevel:castleLevelLimit(castleId),disciplineLevel:state.tech.discipline,armyCount:defense.army.officerCount,armyRankPower:defense.army.rankPower});
   const lastDefended=Math.max(row.last_defended_ms??-Infinity,battleMode==='reward'&&castleId==='kyoto_gosho'?(row.last_kyoto_gosho_defended_ms??-Infinity):-Infinity),protectedUntil=Number.isFinite(lastDefended)?lastDefended+FIELD_RULES.defenderProtectionMs:0;
   const baseReason=!viewer?'領主として接続してください。':self?'自分の城です。':viewer.householdCastleId&&viewer.householdCastleId===row.household_id?'同じ城の領主・家臣には攻撃できません。':castleId==='edo'&&viewer.courtEdoDenied?COURT_EDO_REASON:cyclePending&&Number(row.lease_expires_at)>now?'この領主は領地を精算中です。':relation==='allied'?'同盟の期間中です。':protectedUntil>clock.elapsedMs?'襲撃後の保護期間です。':!clock.running?'世界の共通時間が停止中です。':'';
-  const branches=fieldBranches(row,castleId,castle,clock,cyclePending,home,baseReason),reason=baseReason||(branches.some(branch=>branch.level>0&&!branch.fallen)?'大都市拠点へ攻めるには、残っている支拠点をすべて先に陥落させてください。':'');
+  const branches=fieldBranches(row,castleId,castle,clock,cyclePending,home,baseReason,retained),reason=baseReason||(branches.some(branch=>branch.level>0&&!branch.fallen)?'大都市拠点へ攻めるには、残っている支拠点をすべて先に陥落させてください。':'');
   return {playerId:row.id,name:row.name,clan,householdCastleId:row.household_id||null,householdRole:row.household_id?(row.household_lord===row.id?'lord':'retainer'):null,lordEpoch:Number(row.household_epoch||0),retainerCount:state.retainerSupport?.count||0,evaluation:evaluationRef(row.id),avatarVersion:row.avatar_version||null,homeCastleId:home,homeCastleName:CASTLE_BY_ID[home].name,targetCastleId:castleId,targetCastleName:CASTLE_BY_ID[castleId].name,isHome,battleMode,capturable:battleMode==='capture',majorCity:MAJOR_CITIES.includes(castleId),level:castle.level,keepLevel,durability:defense.durability,defenseTroops:defense.force,defensePower:defense.power,armySummary:defense.army,branches,isAdmin:!!row.is_admin,isDeputy:!!row.is_deputy,isStaff:!!row.is_staff&&!row.is_admin,self,online:row.presence_seen!==null&&Number(row.presence_seen)>now-ONLINE_WINDOW,relationship:relation,protectedUntilElapsedMs:protectedUntil,attackable:!reason,attackReason:reason};
 }
 function fieldHoldingTarget(row,home,castleId,castle,{courtEstate=false}={}){
@@ -2202,14 +2216,15 @@ function fieldHoldingTarget(row,home,castleId,castle,{courtEstate=false}={}){
     ...(courtEstate?{courtEstateMember:true,canDevelopCourtEstate:true}:{}),
     attackReason:courtEstate?'京都御所の共同領地です。共同普請から発展させられます。':'この領主が個人戦役で占領した領地です。共有合戦の出陣先には含まれません。'};
 }
-function mapFieldTargets(row,viewer,relationship,clock,now,inspectDefense=null,preparedHome=null,{includeHoldings=false}={}) {
-  const home=preparedHome||mapFieldPlayer(row,viewer,relationship,clock,now,null,inspectDefense),castles=JSON.parse(row.castles_json);
+function mapFieldTargets(row,viewer,relationship,clock,now,inspectDefense=null,preparedHome=null,{includeHoldings=false,projection=fieldPlayerProjection(row,clock)}={}) {
+  const home=preparedHome||mapFieldPlayer(row,viewer,relationship,clock,now,null,inspectDefense,projection),castles=projection.castles;
   const cyclePending=Number(row.cycle_index)<Math.floor(clock.elapsedMs/WORLD_CYCLE_MS);
-  const outposts=cyclePending?[]:[...FIELD_CAPTURE_CASTLES.map(id=>CASTLE_BY_ID[id]),...(includeHoldings?CASTLES.filter(c=>!MAJOR_CITIES.includes(c.id)):[])].filter(c=>c.id!==home.homeCastleId&&castles[c.id]?.owner===row.game_clan);
+  const outposts=[...FIELD_CAPTURE_CASTLES.map(id=>CASTLE_BY_ID[id]),...(includeHoldings?CASTLES.filter(c=>!MAJOR_CITIES.includes(c.id)):[])].filter(c=>c.id!==home.homeCastleId&&castles[c.id]?.owner===row.game_clan&&(!cyclePending||projection.retained.has(c.id)));
   const targets=MAJOR_CITIES.includes(home.homeCastleId)||home.householdRole==='lord'&&home.householdCastleId===home.homeCastleId?[home]:[];
   for(const castle of outposts){
-    if(FIELD_CAPTURE_CASTLES.includes(castle.id))targets.push(mapFieldPlayer(row,viewer,relationship,clock,now,castle.id,inspectDefense));
-    else if(includeHoldings)targets.push(fieldHoldingTarget(row,home,castle.id,castles[castle.id]));
+    const target=mapFieldPlayer(row,viewer,relationship,clock,now,castle.id,inspectDefense,projection);
+    if(!FIELD_CAPTURE_CASTLES.includes(castle.id))Object.assign(target,{holdingKind:'territory',displayOnly:false,keepLevelKnown:false});
+    targets.push(target);
   }
   return targets;
 }
@@ -2227,10 +2242,9 @@ const FIELD_PERSONAL_HOME_SQL=`CASE WHEN json_extract(s.save_json,'$.state.home'
 const FIELD_CYCLE_HOME_SQL=`CASE WHEN COALESCE(s.cycle_home,json_extract(s.save_json,'$.state.cycle.home')) IN ('edo','kyoto_gosho','kagoshima') THEN ${FIELD_PERSONAL_HOME_SQL} ELSE COALESCE(s.cycle_home,json_extract(s.save_json,'$.state.cycle.home'),${FIELD_PERSONAL_HOME_SQL}) END`;
 const FIELD_PUBLIC_HOME_SQL=`(${FIELD_FIXED_HOME_SQL} OR ${FIELD_PERSONAL_HOME_SQL} IN ('nijo','osaka','nagoya')
   OR EXISTS(SELECT 1 FROM castle_seats cs WHERE cs.lord_user_id=u.id AND cs.castle_id=${FIELD_PERSONAL_HOME_SQL}))`;
-const FIELD_PUBLIC_TARGET_SQL="("+FIELD_PUBLIC_HOME_SQL+" OR ("+EFFECTIVE_CYCLE_SQL+">=? AND EXISTS(SELECT 1 FROM json_each(s.save_json,'$.state.castles') c WHERE c.key IN ('nijo','osaka','nagoya') AND json_extract(c.value,'$.owner')=json_extract(s.save_json,'$.state.clan'))))";
-// Ordinary campaign holdings are presentation-only. A saved private campaign
-// cannot add shared battle targets or bypass the public household ledger.
-const FIELD_DISPLAY_TARGET_SQL=`(${FIELD_PUBLIC_HOME_SQL} OR (${EFFECTIVE_CYCLE_SQL}>=? AND EXISTS(
+// Both public maps include ordinary occupied territories. Their owner is the
+// exact player/castle pair; the residency ledger still decides home lordship.
+const FIELD_DISPLAY_TARGET_SQL=`(${FIELD_PUBLIC_HOME_SQL} OR ${anyInheritedRegionSql} OR (${EFFECTIVE_CYCLE_SQL}>=? AND EXISTS(
   SELECT 1 FROM json_each(s.save_json,'$.state.castles') own WHERE own.key<>${FIELD_PERSONAL_HOME_SQL}
   AND own.key NOT IN ('edo','kyoto_gosho','kagoshima') AND json_extract(own.value,'$.owner')=json_extract(s.save_json,'$.state.clan'))))`;
 const FIELD_OWNER_SELECT=`/* compact-field-owners */ SELECT u.id,u.name,
@@ -2249,16 +2263,18 @@ const FIELD_OWNER_SELECT=`/* compact-field-owners */ SELECT u.id,u.name,
   CASE WHEN NOT ${FIELD_FIXED_HOME_SQL} AND (json_extract(s.save_json,'$.state.home') IN ('edo','kyoto_gosho','sunpu','kagoshima')
     OR COALESCE(s.cycle_home,json_extract(s.save_json,'$.state.cycle.home')) IN ('edo','kyoto_gosho','sunpu','kagoshima'))
     THEN json_extract(s.save_json,'$.state.castles') ELSE NULL END AS castles_json,
-  ${FIELD_CAPTURE_CASTLES.map(id=>`json_extract(s.save_json,'$.state.castles.${id}.owner')=json_extract(s.save_json,'$.state.clan') AS owns_${id}`).join(',')}
+  (SELECT json_group_array(owned.key) FROM json_each(s.save_json,'$.state.castles') owned
+    WHERE owned.key NOT IN ('edo','kyoto_gosho','kagoshima') AND json_extract(owned.value,'$.owner')=json_extract(s.save_json,'$.state.clan')) AS holdings_json
   FROM users u JOIN player_saves s ON s.user_id=u.id
   WHERE s.save_json IS NOT NULL AND NOT EXISTS(SELECT 1 FROM player_bans pb WHERE pb.user_id=u.id AND pb.active=1)
     AND (COALESCE(json_extract(s.save_json,'$.state.gameOver'),0)=0 OR ${FIELD_FIXED_HOME_SQL} OR ${EFFECTIVE_CYCLE_SQL}<?)`;
 function mapFieldOwnerTargets(row,viewer,relationship,clock){
   const {home,cyclePending}=fieldPlayerIdentity(row,clock),ids=[];
   if(MAJOR_CITIES.includes(home)||row.household_lord===row.id&&row.household_id===home)ids.push(home);
-  if(!cyclePending)for(const id of FIELD_CAPTURE_CASTLES)if(id!==home&&row['owns_'+id])ids.push(id);
+  const owned=JSON.parse(row.holdings_json||'[]'),retained=cyclePending?inheritedCastleIds(owned):null;
+  for(const id of owned)if(id!==home&&CASTLE_BY_ID[id]&&!['edo','kyoto_gosho','kagoshima'].includes(id)&&(!cyclePending||retained.has(id)))ids.push(id);
   const relation=viewer?.id===row.id?'self':fieldRelationStatus(relationship,viewer?.id,clock.elapsedMs);
-  return ids.map(id=>({playerId:row.id,name:row.name,avatarVersion:row.avatar_version||null,homeCastleId:home,targetCastleId:id,relationship:relation}));
+  return ids.map(id=>({playerId:row.id,name:row.name,avatarVersion:row.avatar_version||null,homeCastleId:home,targetCastleId:id,relationship:relation,...(id!==home&&!MAJOR_CITIES.includes(id)?{holdingKind:'territory'}:{})}));
 }
 async function appendViewerCourtEstate(db,viewer,url,now,clock,targets,found,request,{compact=false,estateAccess=null}={}){
   // Only the viewing player gets this additional display. Other ordinary-home
@@ -2285,10 +2301,10 @@ async function getFieldOwners(db,viewer,url,now,request){
   const limit=Number(limitText),clock=await getWorldClock(db,now);await cyclePolicy(db,clock,now);
   const relations=viewer?await fieldOwnRelations(db,viewer.id,clock.elapsedMs):[],byPlayer=new Map(relations.map(relation=>[relation.user_a===viewer.id?relation.user_b:relation.user_a,relation]));
   const cycle=Math.floor(clock.elapsedMs/WORLD_CYCLE_MS);
-  const found=rows(await stmt(db,FIELD_OWNER_SELECT+' AND '+FIELD_PUBLIC_TARGET_SQL+' AND u.id>? ORDER BY u.id LIMIT ?',cycle,cycle,cursor,limit+1).all());
+  const found=rows(await stmt(db,FIELD_OWNER_SELECT+' AND '+FIELD_DISPLAY_TARGET_SQL+' AND u.id>? ORDER BY u.id LIMIT ?',cycle,cycle,cursor,limit+1).all());
   const targets=found.slice(0,limit).flatMap(row=>mapFieldOwnerTargets(row,viewer,byPlayer.get(row.id),clock));
   await appendViewerCourtEstate(db,viewer,url,now,clock,targets,found.slice(0,limit),request,{compact:true});
-  return{ok:true,view:'owners',targets,palaceControl:await readPalaceControl(db),nextCursor:found.length>limit?found[limit-1].id:null,clock};
+  return{ok:true,view:'owners',ownersIncludeTerritories:true,targets,palaceControl:await readPalaceControl(db),nextCursor:found.length>limit?found[limit-1].id:null,clock};
 }
 // Resolve a named event against the same published castle and field defense
 // as the world map. A disputed major city has no single defending lord.
@@ -2308,10 +2324,10 @@ function eventCastleCandidates(castleId,clock){
   }else if(castleId==='kyoto_gosho'){
     predicate="u.id<>COALESCE((SELECT value FROM settings WHERE key='adminUserId'),'') AND EXISTS(SELECT 1 FROM staff_members sm WHERE sm.user_id=u.id)";
   }else{
-    // A prior cycle's captured outposts disappear from the map. The personal
-    // home survives, while service members defend their fixed residence.
+    // Fully conquered regions retain their outposts at the boundary. Other
+    // old holdings disappear, and service members keep their fixed home.
     predicate=`((NOT ${FIELD_FIXED_HOME_SQL} AND (CASE WHEN ${EFFECTIVE_CYCLE_SQL}<? THEN ${FIELD_CYCLE_HOME_SQL} ELSE ${FIELD_PERSONAL_HOME_SQL} END)=?)
-       OR (${EFFECTIVE_CYCLE_SQL}>=? AND json_extract(s.save_json,?)=json_extract(s.save_json,'$.state.clan')))`;
+       OR ((${EFFECTIVE_CYCLE_SQL}>=? OR ${inheritedCastleSql(castleId)}) AND json_extract(s.save_json,?)=json_extract(s.save_json,'$.state.clan')))`;
     params=[cycle,castleId,cycle,'$.state.castles.'+castleId+'.owner'];
   }
   const candidateSource=`FROM users u JOIN player_saves s ON s.user_id=u.id
@@ -2410,9 +2426,9 @@ async function getFieldList(db,viewer,url,now,request=null) {
   const result=await db.batch([stmt(db,FIELD_SELECT+' AND '+displayWhere+' AND u.id>? ORDER BY u.id LIMIT ?',...displayArgs,cursor,limit+1),stmt(db,'SELECT COUNT(*) AS count FROM ('+FIELD_SELECT+' AND '+displayWhere+')',...displayArgs)]);
   const found=rows(result[0]),players=[],targets=[],byPlayer=new Map(relations.map(relation=>[relation.user_a===viewer?.id?relation.user_b:relation.user_a,relation]));
   for(const row of found.slice(0,limit)){
-    const relation=byPlayer.get(row.id),home=mapFieldPlayer(row,viewer,relation,clock,now);
+    const relation=byPlayer.get(row.id),projection=fieldPlayerProjection(row,clock),home=mapFieldPlayer(row,viewer,relation,clock,now,null,null,projection);
     if(MAJOR_CITIES.includes(home.homeCastleId)||home.householdRole==='lord'&&home.householdCastleId===home.homeCastleId)players.push(home);
-    targets.push(...mapFieldTargets(row,viewer,relation,clock,now,null,home,{includeHoldings:true}));
+    targets.push(...mapFieldTargets(row,viewer,relation,clock,now,null,home,{includeHoldings:true,projection}));
   }
   await appendViewerCourtEstate(db,viewer,url,now,clock,targets,found.slice(0,limit),request,{estateAccess});
   // Aggregate only currently stationed, authorized reinforcements. A single
@@ -2699,7 +2715,7 @@ async function fieldAttack(db,user,raw,now,internal={}) {
   const protection=await prepareProtection(db,user,target,now,{reward:battleMode==='reward',fail});
   const support=await getAllianceDefense(db,target,castleId,now);
   if(rally)a.troops+=rally.troops;else if(flight)a.troops+=Number(flight.troops);
-  if(castleId!==d.home&&(!FIELD_CAPTURE_CASTLES.includes(castleId)||d.castles[castleId].owner!==d.clan))fail(409,'FIELD_TARGET_CHANGED','この領主の攻撃可能な城ではありません。共有地図を更新してください。');
+  if(castleId!==d.home&&(['edo','kyoto_gosho','kagoshima'].includes(castleId)||d.castles[castleId]?.owner!==d.clan))fail(409,'FIELD_TARGET_CHANGED','この領主の攻撃可能な城ではありません。共有地図を更新してください。');
   const branch=body.targetBranchId?d.branches.find(branch=>branch.id===body.targetBranchId&&branch.parentCastleId===castleId):null;
   if(body.targetBranchId&&(!branch||branch.level<1||branch.fallen||branch.retreating))fail(409,'BRANCH_TARGET_CHANGED','この支拠点は建設中、陥落済み、または配置が変更されています。地図を更新してください。');
   if(!body.targetBranchId&&d.branches.some(branch=>branch.parentCastleId===castleId&&branch.level>0&&!branch.fallen&&!branch.retreating))fail(409,'BRANCHES_REQUIRED','大都市拠点へ攻めるには、残っている支拠点をすべて先に陥落させてください。');
@@ -2911,6 +2927,7 @@ async function route(request, env, now) {
       await stmt(db,'SELECT (SELECT chat FROM notification_preferences LIMIT 1) AS chat,(SELECT worldChat FROM notification_preferences LIMIT 1) AS world_chat,(SELECT announcement FROM notification_preferences LIMIT 1) AS announcement,(SELECT chat_since FROM notification_preferences LIMIT 1) AS chat_since,(SELECT worldChat_since FROM notification_preferences LIMIT 1) AS world_chat_since,(SELECT announcement_since FROM notification_preferences LIMIT 1) AS announcement_since,(SELECT source_scope FROM notification_outbox LIMIT 1) AS notification_scope,(SELECT destination FROM notification_outbox LIMIT 1) AS notification_destination,(SELECT COUNT(*) FROM notification_chat_reads) AS notification_reads,(SELECT COUNT(*) FROM notification_announcements) AS notification_announcements,(SELECT COUNT(*) FROM notification_delivery_receipts) AS notification_receipts,(SELECT COUNT(*) FROM notification_court_access) AS notification_court_access').first();
       await stmt(db,'SELECT home_castle_id,travel_phase,travel_json,return_travel_json,departed_elapsed_ms,arrives_elapsed_ms FROM alliance_units LIMIT 1').first();
       await stmt(db,'SELECT staging_castle_id FROM alliance_operations LIMIT 1').first();
+      await stmt(db,'SELECT source_campaign_id,term_id FROM court_membership_requests LIMIT 1').first();
       await stmt(db,'SELECT (SELECT started_at FROM player_activity_program WHERE id=1) AS activity_started,(SELECT first_day FROM player_activity_cohorts LIMIT 1) AS cohort,(SELECT day FROM player_activity_days LIMIT 1) AS activity_day,(SELECT started_at FROM premium_metrics_program WHERE id=1) AS payment_started,(SELECT confirmed_at FROM premium_payment_observations LIMIT 1) AS payment_confirmed').first();
       await stmt(db,'SELECT (SELECT COUNT(*) FROM progress_accounts) AS progression,(SELECT COUNT(*) FROM alliance_operations) AS alliance,(SELECT COUNT(*) FROM conquest_seasons) AS conquest,(SELECT COUNT(*) FROM pvp_protection) AS protection,(SELECT COUNT(*) FROM notification_outbox) AS notifications,(SELECT COUNT(*) FROM shogunate_rights) AS shogunate,(SELECT COUNT(*) FROM shogunate_requests) AS shogunate_requests,(SELECT COUNT(*) FROM battle_marches) AS battle_marches,(SELECT COUNT(*) FROM conquest_marches) AS conquest_marches,(SELECT COUNT(*) FROM player_expulsions) AS player_expulsions,(SELECT COUNT(*) FROM expulsion_requests) AS expulsion_requests,(SELECT COUNT(*) FROM expelled_campaigns) AS expelled_campaigns,(SELECT COUNT(*) FROM castle_seats) AS castle_residency,(SELECT COUNT(*) FROM castle_successions) AS castle_successions,(SELECT 1 FROM castle_retired_campaigns LIMIT 1) AS retired_campaign,(SELECT campaign_retired FROM alliance_units LIMIT 1) AS retired_unit,(SELECT COUNT(*) FROM external_troop_accounts) AS maintenance_accounts,(SELECT COUNT(*) FROM external_troop_snapshots) AS maintenance_snapshots').first();
     } catch { fail(503, 'SERVICE_UNAVAILABLE', '通信サービスの準備中です。'); }
@@ -3022,6 +3039,8 @@ async function route(request, env, now) {
   if(path==='/admin/music')return handleAdminMusic({db,user,request,method,now,helpers:{courtEstateContext,courtEstateSnapshotStatements,getWorldClock,fail,readBody,budget,hash,requireOperator,requireAccountAccess,roleCommitGuard,registerResponseGuard:guard=>courtResponseGuards.set(request,guard)}});
   const expansionContext={db,env,user,now,path,method,url,request,helpers:{courtEstateContext,courtEstateSnapshotStatements,getWorldClock,fail,readBody,budget,idField,textField,uid,hash,getUser,getSyncRow,requireAdmin,requireAccountAccess,roleCommitGuard,accountCommitGuard,courtAccess,courtEmperorAuthority,courtImperialAuthority,courtDutyAuthority,registerResponseGuard:guard=>courtResponseGuards.set(request,guard),evaluationRef,fieldWriter,settleWriterCycle,getWorldClock,normalizeGameSave,syncSnapshot,staffBaseDto,reconcileCovertProgress,reconcileBranchProgress,branchStateGuard,branchProgressStatements,covertIncidentStatements,staffPersonalProgressStatement,saveAchievements,achievementStatement,syncLease:SYNC_LEASE,worldClockId:WORLD_CLOCK_ID}};
   if(path==='/castles/residency/relocate'&&method==='POST')return relocateResidence(expansionContext,await readBody(request));
+  if(path==='/court/membership'&&method==='GET')return courtMembershipDetails(expansionContext);
+  if(path==='/court/membership'&&method==='POST')return joinCourtMembership(expansionContext,await readBody(request));
   if(path==='/castles/residency/start'&&method==='POST')return residencyStart(expansionContext,await readBody(request));
   if(path==='/marches'&&method==='GET')return marchStatus(expansionContext,url);
   if(path==='/marches/campaign'&&method==='POST')return departCampaignMarch(expansionContext,await readBody(request));
@@ -3039,6 +3058,7 @@ async function route(request, env, now) {
   if(path==='/court'||path.startsWith('/court/')||path==='/staff/court'||path==='/admin/court/leader'||path==='/admin/court/offices'){
     const result=await handleCourt({db,user,now,path,method,url,request,helpers:{courtEstateContext,courtEstateSnapshotStatements,getWorldClock,fail,readBody,budget,idField,textField,uid,hash,getUser,requireAccountAccess,roleCommitGuard,accountCommitGuard,evaluationRef,courtAccess,resolveMessageRegister,registerGuard:guard=>courtResponseGuards.set(request,guard)}});
     if(path==='/court'&&method==='GET'){
+      result.membership=courtMembershipStatus(user,result.evaluation);
       const estate=await courtEstateAuthority(db,user,expansionContext.helpers);
       result.self.canDevelopEstate=estate.eligible;result.features.estate=estate.eligible;
       result.accessStamp=await hash(JSON.stringify([result.accessStamp,estate.accessStamp]));
@@ -3178,7 +3198,7 @@ async function route(request, env, now) {
     if(before&&body.maintenanceRevision!==maintenance.authority.revision)fail(409,'MAINTENANCE_REFRESH_REQUIRED',MAINTENANCE_REFRESH_MESSAGE);
     if(before?.state.worldClock&&save.state.worldClock&&save.state.worldClock.elapsedMs<before.state.worldClock.elapsedMs)fail(409,'CLOCK_REWIND','古い時刻のセーブで維持費の確定済み区間を巻き戻せません。最新データへ同期してください。');
     if(save.state.worldClock&&save.state.worldClock.elapsedMs>maintenance.authority.asOfElapsedMs)fail(409,'MAINTENANCE_REFRESH_REQUIRED',MAINTENANCE_REFRESH_MESSAGE);
-    if(before?.state.walking.campaignId!==save.state.walking.campaignId&&await stmt(db,'SELECT 1 FROM castle_retired_campaigns WHERE actor_id=? AND campaign_id=? UNION ALL SELECT 1 FROM expelled_campaigns WHERE user_id=? AND campaign_id=?',user.id,save.state.walking.campaignId,user.id,save.state.walking.campaignId).first())
+    if(before?.state.walking.campaignId!==save.state.walking.campaignId&&await stmt(db,'SELECT 1 FROM castle_retired_campaigns WHERE actor_id=? AND campaign_id=? UNION ALL SELECT 1 FROM expelled_campaigns WHERE user_id=? AND campaign_id=? UNION ALL SELECT 1 FROM court_membership_requests WHERE actor_id=? AND source_campaign_id=?',user.id,save.state.walking.campaignId,user.id,save.state.walking.campaignId,user.id,save.state.walking.campaignId).first())
       fail(409,'CAMPAIGN_RELOCATED','この戦役は本拠移転で終了しています。現在の本拠へ同期してください。');
     const covertPending=before?.state.walking.campaignId!==save.state.walking.campaignId?await stmt(db,"SELECT 1 AS pending FROM covert_states WHERE actor_id=? AND campaign_id=? AND json_array_length(state_json,'$.dispatches')>0",user.id,before?.state.walking.campaignId||'').first():null;if(covertPending)fail(409,'ARMY_MARCHING','派遣部隊が進軍中です。到着後に物語を切り替えてください。');
     const pendingArmy=await activeMarch(db,user.id);
@@ -3198,7 +3218,8 @@ async function route(request, env, now) {
       // An explicit fresh campaign may choose a new ordinary starting home.
       if(!user.is_admin&&!user.is_staff&&save.state.home!==before?.state.home&&Object.values(save.state.stats).every(v=>v===0)&&Object.values(save.state.castles).filter(c=>c.owner===save.state.clan).length===1&&!MAJOR_CITIES.includes(save.state.home))cycleHome=save.state.home;
     }
-    save.state.cycle={index:Number(cycleIndex),home:cycleHome,latestReward:before?.state.cycle?.latestReward||null};
+    const retainedRegions=reconcileRegionInheritance(save,before,fail);
+    save.state.cycle={index:Number(cycleIndex),home:cycleHome,latestReward:before?.state.cycle?.latestReward||null,retainedRegions};
     // The receipt ledger is outside imported game saves. Restoring an older save
     // never tops up currency or rewinds previously credited online steps.
     const walkingLedger=await stmt(db,'SELECT total_steps FROM walking_accounts WHERE user_id=?',user.id).first();

@@ -39,12 +39,7 @@
 }
 @media (max-width:360px) {
   html.sengoku-navigation-ready:not(.sengoku-desktop-fit) {
-    --compact-dock-button-min: 4.25rem;
-  }
-  /* Give the four-kana menu label extra width and retain the fifth slot for
-     the separate community launcher, so neither control covers the other. */
-  html.sengoku-navigation-ready:not(.sengoku-desktop-fit) #app.chronicle-shell .sidebar-bottom {
-    grid-template-columns: repeat(3,minmax(0,1fr)) minmax(0,1.3fr) var(--compact-dock-slot);
+    --compact-dock-button-min: 4.5rem;
   }
 }
 
