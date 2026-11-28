@@ -16,7 +16,12 @@ for(const rank of D.evaluationRanks){
 }
 assert.equal(images.size,1,'all ranks use the same supplied artwork with their own frames');
 const file=path.resolve(__dirname,'..',[...images][0]);assert(file.startsWith(path.resolve(__dirname,'..')+path.sep));
-assert.equal(crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex'),'8b3df1f73217f9cb0308be17b758bc6c476e631fe4c31990c0c43b8831f5a030','the badge preserves the exact supplied image');
+// The rank emblem follows the current official small favicon (site-metadata.json),
+// so a brand refresh cannot leave player badges on a retired mark.
+const metadata=JSON.parse(fs.readFileSync(path.resolve(__dirname,'../site-metadata.json'),'utf8'));
+assert.equal([...images][0],metadata.faviconSmall.path,'the badge uses the current official favicon');
+const bytes=fs.readFileSync(file);assert.equal(bytes.toString('ascii',1,4),'PNG');assert.equal(bytes.readUInt32BE(16),32);assert.equal(bytes.readUInt32BE(20),32);
+assert.equal(crypto.createHash('sha256').update(bytes).digest('hex'),'a5a3ddc9fee66a552de54570ae68c6ea664b8ec701b39eb0ef921d31b80ff0ec','the badge preserves the exact supplied image');
 const game=new E({seed:21}),before=JSON.stringify(game.state);UI.badge(game.evaluation());assert.equal(JSON.stringify(game.state),before);assert.equal(JSON.stringify(D.evaluationRanks),snapshot);
 for(const value of [null,{}, {version:1,rankIndex:16,rankName:'正一位'}, {...game.evaluation(),rankIndex:17}, {...game.evaluation(),score:NaN}])assert.equal(UI.badge(value),'','unconfirmed ranks must not display the emblem');
 console.log('PASS all 17 court ranks show the unchanged supplied emblem, accessible labels, compact noninteractive badges and unchanged scoring.');

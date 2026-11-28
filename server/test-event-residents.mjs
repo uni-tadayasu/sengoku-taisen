@@ -40,9 +40,12 @@ async function expectedDefender(observer, resident) {
   const field = await get('/field?limit=100', observer);
   const defender = field.targets.find(t=>t.playerId===resident.user.id && t.targetCastleId===target);
   assert(defender, 'the current castle resident must also appear on the shared field');
+  // The castle's verified owner and public appearance select its scenery for
+  // every viewer (v5.16.0), so the event opponent carries both.
+  assert.deepEqual(defender.appearance, {nameplate:null,town:null,badge:null,ownedProducts:[]});
   return {
-    castleId:target, castleName:'姫路城', lordName:resident.user.name,
-    defenseTroops:defender.defenseTroops, defensePower:defender.defensePower
+    castleId:target, castleName:'姫路城', castleOwnerId:resident.user.id, lordName:resident.user.name,
+    defenseTroops:defender.defenseTroops, defensePower:defender.defensePower, castleAppearance:defender.appearance
   };
 }
 

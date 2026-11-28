@@ -1,0 +1,71 @@
+name: Run every regression test
+
+# The targeted workflows check the areas a change touches. This workflow also
+# runs every remaining test file, so older regression tests stay current.
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/full-suite.yml'
+      - 'package*.json'
+      - '*.js'
+      - '*.css'
+      - '*.html'
+      - '**/*.html'
+      - '*.json'
+      - 'assets/**'
+      - 'tools/**'
+      - 'tests/**'
+      - 'server/**'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/full-suite.yml'
+      - 'package*.json'
+      - '*.js'
+      - '*.css'
+      - '*.html'
+      - '**/*.html'
+      - '*.json'
+      - 'assets/**'
+      - 'tools/**'
+      - 'tests/**'
+      - 'server/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: full-suite-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  browser-and-engine:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install pinned build tooling
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Check generated files
+        run: npm run check:build
+      - name: Run every browser, engine and public page test
+        run: node tools/run-test-suite.cjs tests
+  worker-api:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: '24'
+      - name: Run every Worker API test against isolated SQLite fixtures
+        run: node tools/run-test-suite.cjs server --jobs 4

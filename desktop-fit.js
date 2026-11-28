@@ -95,13 +95,22 @@ function clearLegacyGeometry(node){
 }
 function revealNavigation(active){
   const navigation=doc.getElementById('navigation'),selected=navigation?.querySelector?.('.nav-item.active');
-  if(active||!navigation||!selected){navigationState='';return;}
-  const key=(selected.dataset?.view||'')+':'+navigation.clientWidth;
+  if(!navigation||!selected){navigationState='';return;}
+  // Reveal only when the destination or the menu size changes, so periodic
+  // refreshes never undo a player's deliberate browsing of other entries.
+  const key=(active?'rail:':'strip:')+(selected.dataset?.view||'')+':'+(active?navigation.clientHeight:navigation.clientWidth);
   if(key===navigationState)return;
   navigationState=key;
-  if(navigation.scrollWidth<=navigation.clientWidth)return;
-  // Move only the menu strip; scrollIntoView would also jump the page/header.
+  // Move only the menu; scrollIntoView would also jump the page/header.
   const bounds=navigation.getBoundingClientRect(),item=selected.getBoundingClientRect();
+  if(active){
+    // The desktop rail scrolls vertically on short windows (e.g. 1366×768).
+    if(!(navigation.scrollHeight>navigation.clientHeight))return;
+    if(item.top<bounds.top+4)navigation.scrollTop+=item.top-bounds.top-4;
+    else if(item.bottom>bounds.bottom-4)navigation.scrollTop+=item.bottom-bounds.bottom+4;
+    return;
+  }
+  if(navigation.scrollWidth<=navigation.clientWidth)return;
   if(item.left<bounds.left+4)navigation.scrollLeft+=item.left-bounds.left-4;
   else if(item.right>bounds.right-4)navigation.scrollLeft+=item.right-bounds.right+4;
 }

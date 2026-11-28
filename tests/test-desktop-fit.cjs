@@ -285,6 +285,16 @@ test('horizontal menu reveals a new selection without resetting deliberate menu 
  h.navigation.scrollLeft=20;h.refresh();assert.equal(h.navigation.scrollLeft,20,'Periodic refresh must let the player browse other menu entries');
  h.selected.dataset.view='covert';h.selected.left=420;h.selected.right=520;h.refresh();assert.equal(h.navigation.scrollLeft,164);
 });
+test('desktop rail reveals the current destination vertically without fighting deliberate browsing',()=>{
+ const h=harness({width:1366,height:768}),nav=h.navigation,item=h.selected;
+ Object.assign(nav,{clientHeight:190,scrollHeight:1130,scrollTop:0,getBoundingClientRect:()=>({left:0,right:200,top:375,bottom:565})});
+ item.getBoundingClientRect=function(){return{left:0,right:200,top:this.top-nav.scrollTop,bottom:this.bottom-nav.scrollTop};};
+ item.dataset.view='council';item.top=1145;item.bottom=1187;h.refresh();
+ assert.equal(h.api.getStatus().mode,'desktop');assert.equal(nav.scrollTop,626,'the active destination is scrolled just inside the rail');assert.equal(nav.scrollLeft,0);assert.equal(h.bodyPane.scrollTop,170);
+ nav.scrollTop=40;h.refresh();assert.equal(nav.scrollTop,40,'Periodic refresh must let the player browse other menu entries');
+ item.dataset.view='town';item.top=400;item.bottom=442;h.refresh();assert.equal(nav.scrollTop,21,'an entry above the visible rail is revealed at its top edge');
+ nav.scrollHeight=180;item.dataset.view='army';item.top=900;item.bottom=942;h.refresh();assert.equal(nav.scrollTop,21,'a rail without overflow is never scrolled');
+});
 test('short-window headers reserve scroll space only while they are sticky',()=>{
  const h=harness({width:820,height:390});h.refresh();assert.equal(h.vars.get('--touch-header-height'),'164.000px');assert.equal(h.vars.get('--touch-announcement-height'),'37.000px');
  h.header.position='relative';h.announcementNode.position='relative';h.refresh();assert.equal(h.vars.get('--touch-header-height'),'0.000px');assert.equal(h.vars.get('--touch-announcement-height'),'0.000px');assert.equal(h.api.getStatus().mode,'flow');

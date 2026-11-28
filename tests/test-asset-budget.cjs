@@ -136,7 +136,12 @@ const totalGzipBytes = rows.reduce((sum,row)=>sum+row.gzipBytes,0);
 // Measured: 3,881,312 raw / 1,071,019 gzip bytes, +21,052 / +5,167 from v5.22
 // (about 0.55% / 0.48%). No media, fonts or runtime dependencies are added.
 // Keep 1,188 raw / 681 gzip bytes of headroom for this reviewed feature set.
-const rawBudget=3882500,gzipBudget=1071700;
+// v5.23.1 pairs the desktop rail utilities on short windows, reveals the
+// current destination in the rail and starts blocked BGM on a completed click.
+// Measured: 3,882,543 raw / 1,071,169 gzip bytes, +1,231 / +150 from v5.23.0
+// (about 0.03% / 0.01%). No media, fonts or runtime dependencies are added.
+// Keep 957 raw / 631 gzip bytes of headroom for these reviewed fixes.
+const rawBudget=3883500,gzipBudget=1071800;
 assert(totalBytes <= rawBudget, `Initial bundles exceed the ${rawBudget} byte budget: ${totalBytes}`);
 assert(totalGzipBytes <= gzipBudget, `Initial bundles exceed the ${gzipBudget} gzip byte budget: ${totalGzipBytes}`);
 const html = fs.readFileSync(path.join(root,'index.html'),'utf8');
