@@ -515,7 +515,9 @@ test('allied, overwhelming, unaffordable and already unified targets never recei
     if (scenario === 'unified') {
       for (const castle of data.castles) if (game.canOwnCastle(castle.id)) game.state.castles[castle.id].owner = game.state.clan;
       game.state.won = true;
-      assert.equal(game.adjacentTargets().length, 0);
+      // Kagoshima is the deputy's protected castle: still attackable for rewards, never ownable.
+      assert.deepEqual(game.adjacentTargets().map(target => target.id), ['kagoshima']);
+      assert.equal(game.canOwnCastle('kagoshima'), false);
     }
     assert.equal(build(game).items.some(item => item.id.startsWith('battle:')), false, scenario);
   }

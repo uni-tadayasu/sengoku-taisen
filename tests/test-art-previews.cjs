@@ -15,9 +15,18 @@ function grid(sheet,cell,columns,rows){
  measure(sheet.url);assert.equal(sheet.size,columns*100+'% '+rows*100+'%');
  assert.equal(sheet.x,(cell%columns)/(columns-1)*100);assert.equal(sheet.y,Math.floor(cell/columns)/(rows-1)*100);
 }
+const specialScenes=new Set();
 for(const [kind,id,variant,index,column,row] of manifest.illustrations){
  const subjects=manifest.subjects[kind],subject=subjects.findIndex(s=>s.id===id);
  const t=scope.SengokuArt.tileInfo(kind,id,variant);
+ // Major cities and Kagoshima use their dedicated location scenery at every
+ // level instead of the shared atlas cell; verify that local, bounded scene.
+ if(kind==='castle'&&t.special){
+  const scene=scope.SengokuArt.castleScene(id,'day');assert(scene&&scene.special);
+  assert.equal(t.url,scene.src);assert.equal(t.small.url,scene.small);assert.equal(t.native.url,scene.native);assert.equal(t.small.size,'cover');
+  for(const url of [scene.src,scene.small,scene.native])assert(fs.existsSync(path.join(root,url)),url);
+  specialScenes.add(id);continue;
+ }
  assert.equal(t.url.split('?')[0],manifest.atlases[index].file);
  assert.equal(t.x,column/7*100);assert.equal(t.y,row/3*100);
  const last=kind==='castle',cols=last?16:8,rows=last?9:4;
@@ -26,7 +35,8 @@ for(const [kind,id,variant,index,column,row] of manifest.illustrations){
  assert.equal(Boolean(t.native),native);
  if(native){grid(t.native,subject%4,2,2);nativeNames.add(t.native.url);}
 }
-assert.equal(names.size,160);assert.equal(nativeNames.size,115);
+assert.deepEqual([...specialScenes].sort(),['edo','kagoshima','kyoto_gosho','nagoya','nijo','osaka']);
+assert.equal(names.size,160);assert.equal(nativeNames.size,114);
 const controls=measure('assets/art-previews/controls.webp');
 const buttons=file('button-artwork.css').toString();
 assert(buttons.includes('assets/responsive/castle-town-400.webp'));
@@ -40,6 +50,6 @@ for(const attribute of ['small','native']){
  const url=new RegExp('data-art-'+attribute+'="([^"]+)"').exec(ieyasu)[1];
  assert(url.includes('operator-ieyasu-u-'));assert(measure(url)<110000);
 }
-assert.equal(sizes.size,278);
-console.log('PASS 8,224 canonical cells, 160 small sheets, 115 native groups, unique city and officer locations');
+assert.equal(sizes.size,277);
+console.log('PASS 8,224 canonical cells, 160 small sheets, 114 native groups, 6 dedicated city scenes, unique city and officer locations');
 console.log('PASS initial eight facilities '+town+' bytes, shared action scenery '+controls+' bytes');

@@ -125,7 +125,8 @@ try{
  await scope('branch status never returns stale operator or staff controls after a late demotion',async h=>{
   const admin=await fixture(h,'支拠点表示の運営',{admin:true}),staff=await fixture(h,'支拠点表示の担当',{staff:true,holdings:['nijo']}),replacement=await fixture(h,'支拠点表示の新しい運営');
   for(const [player,change] of [[staff,()=>h.sql.prepare('DELETE FROM staff_members WHERE user_id=?').run(staff.user.id)],[admin,()=>h.sql.prepare("UPDATE settings SET value=? WHERE key='adminUserId'").run(replacement.user.id)]]){
-   h.beforeStatement=query=>{if(!query.startsWith('SELECT 1 AS allowed WHERE ')||!query.includes('staff_members'))return;h.beforeStatement=null;change();};const result=await h.api('/branches?deviceId='+player.deviceId,{token:player.token,expected:409});assert.equal(result.data.error.code,'BRANCH_ACCESS_CHANGED');assert.match(result.data.error.message,/支拠点/);assert.equal(result.data.parents,undefined);
+   h.beforeStatement=query=>{if(!query.startsWith('SELECT 1 AS allowed WHERE ')||!query.includes('staff_members'))return;h.beforeStatement=null;change();};const result=await h.api('/branches?deviceId='+player.deviceId,{token:player.token,expected:409});// Either guard may observe the demotion first; both refuse without stale controls.
+   assert(['BRANCH_ACCESS_CHANGED','COURT_ESTATE_REFRESH_REQUIRED'].includes(result.data.error.code),result.data.error.code);assert.match(result.data.error.message,result.data.error.code==='BRANCH_ACCESS_CHANGED'?/支拠点/:/京都御所/);assert.equal(result.data.parents,undefined);
   }
  });
 }finally{globalThis.fetch=network;}

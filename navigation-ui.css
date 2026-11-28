@@ -131,6 +131,10 @@ dialog.navigation-dialog[open] { display: flex; flex-direction: column; }
 
 @media (min-width: 1400px) {
   #app .navigation-menu-trigger kbd { display: inline; }
+  /* In the narrow desktop rail the shortcut sits beside the short caption,
+     so the menu title keeps one line instead of breaking mid-word. */
+  html.sengoku-desktop-fit #app .navigation-menu-trigger kbd { position: absolute; right: 10px; bottom: 8px; margin: 0; line-height: 1.4; }
+  html.sengoku-desktop-fit #app .navigation-menu-trigger .navigation-trigger-copy small { padding-inline-end: 44px; }
 }
 @media (max-width: 700px) {
   html.sengoku-navigation-ready:not(.sengoku-desktop-fit) #app .sidebar-bottom .navigation-quick {

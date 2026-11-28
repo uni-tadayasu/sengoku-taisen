@@ -74,7 +74,10 @@ test('Edo holds one commander and other major branches two, with durable owned I
 });
 
 test('commander conflicts are explicit across branches, army, governors, auto assignment and malformed imports',()=>{
- const g=fixture(),ids=g.state.officers.slice(0,3);rejected(g,()=>g.assignBranchCommander('nijo_north',ids[0]));g.assignArmy([]);g.assignGovernor('farm',ids[0]);rejected(g,()=>g.assignBranchCommander('nijo_north',ids[0]));assert(g.assignBranchCommander('nijo_north',ids[1]).ok);
+ const g=fixture(),ids=g.state.officers.slice(0,3);rejected(g,()=>g.assignBranchCommander('nijo_north',ids[0]),'BRANCH_COMMANDER_UNAVAILABLE');g.assignArmy([]);g.assignGovernor('farm',ids[0]);
+ // A governor is transferred explicitly: the farm post is vacated in the same step.
+ const transferred=g.assignBranchCommander('nijo_north',ids[0]);assert(transferred.ok);assert.match(transferred.message,/田畑の奉行から転任/);assert.equal(g.state.governors.farm,undefined);assert.deepEqual(g.branch('nijo_north').commanders,[ids[0]]);
+ assert(g.removeBranchCommander('nijo_north',ids[0]).ok);assert(g.assignBranchCommander('nijo_north',ids[1]).ok);
  rejected(g,()=>g.assignBranchCommander('osaka_north',ids[1]));rejected(g,()=>g.assignArmy([ids[1]]));rejected(g,()=>g.assignGovernor('farm',ids[1]));g.autoAssignGovernors();assert(!Object.values(g.state.governors).includes(ids[1]));
  const raw=JSON.parse(g.exportSave());for(const change of [s=>s.branches[0].commanders=['foreign'],s=>s.branches[0].commanders=[ids[1],ids[1]],s=>s.branches[1].commanders=[ids[1]],s=>s.army=[ids[1]],s=>s.governors.farm=ids[1],s=>s.branches[0].commanders=[...ids]]){const bad=clone(raw);change(bad.state);assert.throws(()=>E.fromSave(bad,officers));}
  g.state.castles.nijo.owner='在地衆';g._pruneBranches();assert.equal(g.branch('nijo_north'),null);assert(g.assignArmy([ids[1]]).ok);

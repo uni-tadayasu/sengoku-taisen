@@ -4,7 +4,7 @@
   const escape=value=>String(value).replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
   const number=value=>value.toLocaleString('ja-JP');
   // Match the small-size mark used by the current official favicon family.
-  const emblem='assets/branding/sengoku-vs-favicon-32-20261127.png';
+  const emblem='assets/branding/sengoku-vs-favicon-32-20261127-jade.png';
   function known(value){
     return Boolean(value&&value.version===1&&Number.isSafeInteger(value.score)&&value.score>=0&&value.score<=100000&&value.maxScore===100000&&Number.isSafeInteger(value.rankIndex)&&value.rankIndex>=0&&value.rankIndex<17&&typeof value.rankId==='string'&&value.rankId.length>0&&value.rankId.length<=64&&typeof value.rankName==='string'&&value.rankName.trim().length>0&&value.rankName.length<=32);
   }

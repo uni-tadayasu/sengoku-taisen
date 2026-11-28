@@ -86,7 +86,7 @@ test('general help and the persistent hint entry open read-only guidance',()=>{
   const h=setup(),before=JSON.stringify(h.game.state);h.c.openHintHelp();assert.deepEqual(h.calls,[['close-hints'],['close-modal'],['help']]);h.calls.length=0;
   let handler;h.c.document={addEventListener:(type,fn)=>{if(type==='click')handler=fn;}};h.c.mutationActions=new Set();
   const start=source.indexOf("  document.addEventListener('click',async event=>"),end=source.indexOf("  document.addEventListener('input'",start);vm.runInContext(source.slice(start,end),h.c);
-  const node={disabled:false,dataset:{action:'hints'},closest(){return this;}};handler({target:node});assert.deepEqual(h.calls,[['close-modal'],['open-hints']]);assert.equal(JSON.stringify(h.game.state),before);
+  const node={disabled:false,dataset:{action:'hints'},closest(selector){return /\[data-action\]/.test(selector)?this:null;}};handler({target:node});assert.deepEqual(h.calls,[['close-modal'],['open-hints']]);assert.equal(JSON.stringify(h.game.state),before);
   const index=fs.readFileSync(require.resolve('../index.html'),'utf8');assert.match(index,/class="nav-item" data-action="hints"/);assert(source.includes('data-hint-entry'));
 });
 test('a missing optional hint module leaves general help available without breaking the game',()=>{

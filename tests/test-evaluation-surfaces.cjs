@@ -12,7 +12,7 @@ function node(){let html='';return{htmlWrites:0,get innerHTML(){return html;},se
 function noNestedButtons(html){for(const [,inside]of html.matchAll(/<button\b[^>]*>([\s\S]*?)<\/button>/g))assert(!/<button\b/.test(inside),'Player badges must be non-interactive inside existing buttons');}
 function badgeCount(html){return [...html.matchAll(/class="player-evaluation-badge"/g)].length;}
 function social(){
-  const nodes=new Map(),slots=[],requests=[],editors=[],actor={id:'actor',name:'本人',clan:'織田家',isAdmin:false,isStaff:false,guildId:null,evaluation:copy(evaluation)};let handler=async()=>({ok:true}),openedEvaluation=0;
+  const nodes=new Map(),slots=[],requests=[],editors=[],actor={id:'actor',name:'本人',clan:'織田家',isAdmin:false,isStaff:false,isDeputy:false,guildId:null,evaluation:copy(evaluation)};let handler=async()=>({ok:true}),openedEvaluation=0;
   for(const id of ['social-tabs','social-confirm-host','social-avatar-editor','social-profile-avatar','social-message-list','social-chat-input','social-friend-list','social-friend-requests','social-identity-file'])nodes.set('#'+id,node());
   nodes.set('[data-social-chat-title]',node());
   const body=node(),dialog={open:true,querySelector:selector=>nodes.get(selector)||null,querySelectorAll:selector=>selector==='[data-player-evaluation]'?slots:[],close(){this.open=false;},remove(){}};
@@ -109,7 +109,9 @@ test('non-equipped purchases appear across social people, friends, guilds, news,
   t.s.mail=[{id:'mail',source:'system',title:'贈り物',body:'利用者の本文を保持します。',gift:{gold:1},createdAt:'2026-11-21T00:00:00Z',participants:[{playerId:p.id,name:p.name,side:'defender',evaluation,appearance:copy(allOwned)}]}];t.s.openedMail='mail';
   const surfaces=[t.onlineView(),t.playerCards([p],'friend'),t.friendRequestRows(),t.friendsView(),t.guildView(),t.guildRankingRows(),t.guildLedgerRows(),t.achievementRows(),t.mailView(),t.chatView({player:p,caption:'本文'})];
   t.s.user.guildId='guild';t.s.user.guildName='旗の仲間';t.s.guildSection='members';surfaces.push(t.guildView());
-  for(const html of surfaces){assert(purchaseCount(html)>=3);assert(!html.includes('class="social-role'));assert(!html.includes('>德川家<'));assert(html.includes('&lt;甲斐の城主&gt;'));noNestedButtons(html);}
+  for(const html of surfaces){assert(purchaseCount(html)>=3);assert(!html.includes('class="social-role'));assert(html.includes('&lt;甲斐の城主&gt;'));noNestedButtons(html);}
+  // The server's public projection supplies the operator house name when roles are visible (v5.14.0).
+  assert(surfaces[1].includes('<p>德川家</p>'),'the supplied public house name is displayed unchanged');
   h.scope.SengokuPremiumRuntime.getAppearance=()=>copy(allOwned);assert.equal(purchaseCount(t.profileView()),3);
   assert.equal(purchaseCount(t.playerCards([{...p,appearance:undefined}],'friend')),0,'A role alone must not create a purchase indicator');
 });
@@ -132,7 +134,7 @@ test('empty letter deltas refresh current ownership on old authors and peers wit
 test('field and trade show current server ownership for parties and ignore role flags when rendering a name',()=>{
   global.SengokuPremiumRuntime={...premiumUI(),getAppearance:()=>copy(noAppearance)};global.SengokuEvaluationUI=require('../player-evaluation.js');const field=require('../field.js'),trade=require('../trade.js');
   const [p]=field.normalizePlayers([{playerId:'other',name:'相手',clan:'德川家',homeCastleId:'kiyosu',homeCastleName:'清洲城',level:4,evaluation,appearance:copy(allOwned),isAdmin:true,isStaff:true}]);
-  const row=field.publicRow(p);assert.equal(purchaseCount(row),3);assert(!/運営|スタッフ|德川家/.test(row));noNestedButtons(row);
+  const row=field.publicRow(p);assert.equal(purchaseCount(row),3);assert(!/運営|スタッフ/.test(row));assert(row.includes('<small>德川家</small>'),'the supplied public house name is displayed unchanged');noNestedButtons(row);
   const marker=field.groupBases([p],{kiyosu:{lon:136.84,lat:35.21}})[0];assert(field.markerAppearance(marker).label.includes('月影の城下を所有'));
   const battle={attackerPlayerId:'actor',attackerName:'本人',attackerAppearance:copy(noAppearance),defenderPlayerId:'other',defenderName:'相手',defenderAppearance:copy(allOwned),won:true,battleMode:'raid'};
   assert.equal(purchaseCount(field.battleReportHtml(battle,'actor')),3);

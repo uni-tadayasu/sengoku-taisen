@@ -145,26 +145,36 @@ test('existing automatic strategy rechecks its full state token and campaign sco
 
 test('unification proof ignores saved victory flags and checks every eligible holding',()=>{
   const g=game();g.state.won=true;
-  const before=unchanged(g,()=>g.getUnificationProof());assert.equal(before.achieved,false);assert.equal(before.owned,1);assert.equal(before.target,127);assert.equal(before.campaignId,g.state.walking.campaignId);
+  const before=unchanged(g,()=>g.getUnificationProof());assert.equal(before.achieved,false);assert.equal(before.owned,1);assert.equal(before.target,126);assert.equal(before.campaignId,g.state.walking.campaignId);
   for(const id of before.targetCastleIds)g.state.castles[id].owner=g.state.clan;g.state.won=false;
-  const proof=unchanged(g,()=>g.getUnificationProof());assert.equal(proof.achieved,true);assert.equal(proof.owned,127);assert.equal(proof.target,127);assert(!proof.targetCastleIds.includes('edo'));assert(!proof.targetCastleIds.includes('kyoto_gosho'));
+  const proof=unchanged(g,()=>g.getUnificationProof());assert.equal(proof.achieved,true);assert.equal(proof.owned,126);assert.equal(proof.target,126);assert(!proof.targetCastleIds.includes('edo'));assert(!proof.targetCastleIds.includes('kyoto_gosho'));assert(!proof.targetCastleIds.includes('kagoshima'));
   g.state.castles.inuyama.owner='在地衆';assert.equal(g.getUnificationProof().achieved,false);
 });
 
 test('unification proof uses verified roles and returns independent arrays',()=>{
-  for(const [options,role,target,included,excluded]of [[{},'player',127,'kiyosu','edo'],[{isAdmin:true},'admin',128,'edo','kyoto_gosho'],[{isStaff:true},'staff',128,'kyoto_gosho','edo']]){
+  for(const [options,role,target,included,excluded]of [[{},'player',126,'kiyosu','edo'],[{isAdmin:true},'admin',127,'edo','kyoto_gosho'],[{isStaff:true},'staff',127,'kyoto_gosho','edo']]){
     const g=game(options);g.state.isAdmin=true;g.state.isStaff=true;g.state.isCourtEmperor=true;
     const p=unchanged(g,()=>g.getUnificationProof());assert.equal(p.role,role);assert.equal(p.target,target);assert(p.targetCastleIds.includes(included));assert(!p.targetCastleIds.includes(excluded));
     p.targetCastleIds.length=0;p.ownedCastleIds.length=0;assert.equal(g.getUnificationProof().target,target);assert.equal(g.getUnificationProof().owned,1);
   }
 });
 
-test('cycle settlement removes the current unification proof and keeps the existing payout',()=>{
+test('cycle settlement keeps the existing payout and inherits a fully unified realm',()=>{
   const g=game(),proof=g.getUnificationProof();for(const id of proof.targetCastleIds)g.state.castles[id].owner=g.state.clan;
   assert.equal(g.getUnificationProof().achieved,true);const before={gold:g.state.resources.gold,rice:g.state.resources.rice,magatama:g.state.magatama};
   const reward=g._settleCycle(1),after=unchanged(g,()=>g.getUnificationProof());
-  assert.equal(reward.captured,126);assert.equal(after.cycle,1);assert.equal(after.achieved,false);assert.equal(after.owned,1);assert.equal(after.campaignId,proof.campaignId);
-  assert.equal(g.state.resources.gold,before.gold+126000);assert.equal(g.state.resources.rice,before.rice+126000);assert.equal(g.state.magatama,before.magatama+12600);
+  // Every region is complete, so regional inheritance keeps the proof (v5.23.0).
+  assert.equal(reward.captured,125);assert.equal(after.cycle,1);assert.equal(after.achieved,true);assert.equal(after.owned,126);assert.equal(after.campaignId,proof.campaignId);
+  assert.equal(g.state.resources.gold,before.gold+125000);assert.equal(g.state.resources.rice,before.rice+125000);assert.equal(g.state.magatama,before.magatama+12500);
+});
+
+test('cycle settlement releases incomplete regions and removes their unification proof',()=>{
+  const g=game(),proof=g.getUnificationProof(),home=g.state.home;for(const id of proof.targetCastleIds)g.state.castles[id].owner=g.state.clan;
+  const regions=new Map();for(const id of proof.targetCastleIds){const region=data.castles.find(c=>c.id===id).region;if(id!==home&&!regions.has(region))regions.set(region,id);}
+  for(const id of regions.values())g.state.castles[id].owner='在地衆';
+  const owned=g.getUnificationProof().owned;assert.equal(g.getUnificationProof().achieved,false);
+  const reward=g._settleCycle(1),after=unchanged(g,()=>g.getUnificationProof());
+  assert.equal(reward.captured,owned-1);assert.equal(after.cycle,1);assert.equal(after.achieved,false);assert.equal(after.owned,1);assert.equal(after.campaignId,proof.campaignId);
 });
 
 test('advice and proof preserve the existing version two save contract',()=>{

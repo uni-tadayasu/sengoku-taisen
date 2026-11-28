@@ -75,9 +75,12 @@ try{
   const pending=(await h.api('/marches?deviceId='+a.deviceId,{token:a.token})).data;assert(pending.active.some(x=>x.id===departure.march.id));assert.deepEqual(structuredClone(row(h,d)),before);assert.equal(h.sql.prepare('SELECT COUNT(*) AS n FROM field_requests').get().n,0);
   const resolved=(await h.api('/marches?deviceId='+a.deviceId,{token:a.token})).data,battle=resolved.history.find(x=>x.id===departure.march.id).battle;assert.deepEqual(save(h,d).state.castles.nijo.durability,battle.durability.record);assert.equal(h.sql.prepare('SELECT COUNT(*) AS n FROM field_requests').get().n,1);
  });
- await scope('protected reward battles do not damage or rewrite the defending special base',async h=>{
-  const d=await fixture(h,'耐久江戸',{admin:true}),a=await fixture(h,'耐久報酬攻撃',{startCastle:'sakamoto'}),before=structuredClone(row(h,d)),battle=await fight(h,a,attackBody(h,a,d,{targetCastleId:'edo'}),true);
-  assert.equal(battle.battleMode,'reward');assert.equal(battle.durability,undefined);assert.deepEqual(structuredClone(row(h,d)),before);
+ await scope('protected reward battles transfer resources without damaging the defending special base',async h=>{
+  const d=await fixture(h,'耐久江戸',{admin:true}),a=await fixture(h,'耐久報酬攻撃',{startCastle:'sakamoto'}),before=structuredClone(save(h,d).state.castles.edo),battle=await fight(h,a,attackBody(h,a,d,{targetCastleId:'edo'}),true);
+  assert.equal(battle.battleMode,'reward');assert.equal(battle.durability,undefined);
+  // The victory still transfers half of the defender's resources (v5.13.0), so
+  // the save advances; the special base itself keeps its owner, works and structure.
+  const after=save(h,d).state.castles.edo;assert.equal(after.owner,before.owner);assert.equal(after.wall,before.wall);assert.equal(after.level,before.level);assert.deepEqual(after.durability,before.durability);
  });
  console.log(checks+' durability integration groups passed across '+calls+' local Worker calls.');
 }finally{globalThis.fetch=network;}

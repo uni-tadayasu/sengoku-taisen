@@ -67,10 +67,12 @@ await scope('public field pages project newly assigned fixed homes without chang
     for(let i=0;i<expected.length;i++){
       const page=(await h.api('/field?limit=1'+(cursor?'&cursor='+cursor:''),{token:viewer?.token})).data;
       publicOnly(page);assert.equal(page.total,expected.length);assert.equal(page.players.length,1);
-      players.push(...page.players.map(p=>[p.playerId,p.homeCastleId]));targets.push(...page.targets.map(p=>[p.playerId,p.targetCastleId]));
+      players.push(...page.players.map(p=>[p.playerId,p.homeCastleId]));targets.push(...page.targets.map(p=>[p.playerId,p.targetCastleId,p.isHome===true]));
       cursor=page.nextCursor;assert.equal(Boolean(cursor),i<expected.length-1);
     }
-    assert.deepEqual(players,expected);assert.deepEqual(targets,expected);
+    assert.deepEqual(players,expected);assert.deepEqual(targets.filter(row=>row[2]).map(row=>row.slice(0,2)),expected);
+    // Starting castles kept in the unchanged personal saves are listed as occupied territory (v5.22.0), never as homes.
+    assert.deepEqual(targets.filter(row=>!row[2]).map(row=>row.slice(0,2)).sort(),[[operator.user.id,'kiyosu'],[office.user.id,'himeji']].sort());
   }
   assert.deepEqual(h.sql.prepare('SELECT user_id,save_json,revision FROM player_saves ORDER BY user_id').all(),before);
   const palace=(await h.api('/sync',{token:office.token})).data,deviceId='map-'+office.user.id;

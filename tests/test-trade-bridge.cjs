@@ -38,7 +38,7 @@ function setup({stored=new Map()}={}){
     CustomEvent:class{constructor(type){this.type=type;}},performance:{now:()=>1000},document:{hidden:false},$:()=>null,
     setTimeout:()=>1,clearTimeout(){},toast(){},render(){},renderHeader(){},refreshLiveControls(){},refreshJobTimers(){},refreshActiveModal(){},queueWorldProgress:()=>control.queued++,preserveInteraction(){},closeModal(){},updateBattlePreview(){},syncMusic(){},
   };
-  vm.createContext(c);vm.runInContext(['confirmedWorldClock','clockIsApplied','canMutate','syncMessage','requireWritable','save','backupCurrentSave','trustedBranchAuthority','applyBranchAuthority','trustedMaintenanceAuthority','applyMaintenanceAuthority','trustedCourtProtection','applyCourtProtection','applyCloudSave','applyDurableGift','processWorldClock','requestField','requestTrade','spendableAssets'].map(fn).join('\n'),c);
+  vm.createContext(c);vm.runInContext(['confirmedWorldClock','clockIsApplied','canMutate','syncMessage','requireWritable','save','backupCurrentSave','trustedBranchAuthority','applyBranchAuthority','trustedMaintenanceAuthority','applyMaintenanceAuthority','trustedCourtProtection','applyCourtProtection','trustedCourtEstateProjection','courtEstateHolding','applyCloudSave','applyDurableGift','processWorldClock','requestField','requestTrade','spendableAssets'].map(fn).join('\n'),c);
   return{c,control,stored,trace,posts,events,acceptedClocks};
 }
 let checks=0;async function test(name,run){await run();checks++;console.log('PASS '+name);}
