@@ -400,6 +400,48 @@
       "when": 1799280000008,
       "tag": "0056_court_membership",
       "breakpoints": true
+    },
+    {
+      "idx": 57,
+      "version": "6",
+      "when": 1799280000009,
+      "tag": "0057_community_notifications",
+      "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "6",
+      "when": 1799280000010,
+      "tag": "0058_court_lineage",
+      "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "6",
+      "when": 1799280000011,
+      "tag": "0059_court_membership_retention",
+      "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "6",
+      "when": 1799280000012,
+      "tag": "0060_field_release",
+      "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "6",
+      "when": 1799280000013,
+      "tag": "0061_court_negotiations",
+      "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "6",
+      "when": 1799280000014,
+      "tag": "0062_court_vassal_integrity",
+      "breakpoints": true
     }
   ]
 }

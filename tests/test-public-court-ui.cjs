@@ -122,4 +122,16 @@ test('same-title appointment transfers update public and self badges while uncha
   court.update({id,name:'退任した領主',courtOffice:null});verify(null);render();verify(null);
  }finally{delete global.document;delete global.SengokuStableDOM;delete global.SengokuSocial;}
 });
-console.log(`${count} public court badge rendering scenarios passed.`);
+test('public suzerainty displays verified identities without private negotiation data or role authority',()=>{
+ const player={id:'u_self',courtRelations:{suzerain:{id:'u_lord',name:'公家<甲>',houseName:'近衛家',imperialHouseName:'<桜宮>',token:'secret',payment:{gold:500}},vassals:[],vassalCount:0}};
+ const relation=court.relations(player),html=court.relationsMarkup(player);
+ assert.equal(relation.suzerain.name,'公家<甲>');assert.equal(relation.suzerain.token,undefined);assert.equal(relation.suzerain.payment,undefined);
+ assert.match(html,/data-public-profile="u_lord"/);assert.match(html,/公家&lt;甲&gt;/);assert.match(html,/&lt;桜宮&gt;/);assert(!html.includes('secret'));assert(!html.includes('500'));assert.equal(court.office(player),null);
+ assert.deepEqual(court.relations({id:'u_self',courtRelations:{suzerain:{id:'u_self',name:'self'},vassals:[{id:'../secret',name:'invalid'},{id:'u_self',name:'self'},{id:'u_ok',name:'乙'},{id:'u_ok',name:'duplicate'},{id:'u_control',name:'bad\nname'}]}}),{suzerain:null,vassals:[{id:'u_ok',name:'乙',clan:null,houseName:null,imperialHouseName:null}],vassalCount:1});
+});
+test('large vassal rosters keep a public total and a bounded linked preview',()=>{
+ const player={id:'u_lord',courtRelations:{suzerain:null,vassals:Array.from({length:70},(_,i)=>({id:'u_v'+i,name:'領主'+i,clan:'武家'})),vassalCount:70}};
+ assert.equal(court.relations(player).vassals.length,50);assert.equal(court.relations(player).vassalCount,70);const html=court.relationsMarkup(player);assert.match(html,/支配下の武家：70人/);assert.match(html,/最大50人/);assert.equal((html.match(/data-public-profile=/g)||[]).length,50);
+ assert.equal(court.relationsMarkup({id:'u_empty'}),'');
+});
+console.log(`${count} public court badge and relationship rendering scenarios passed.`);

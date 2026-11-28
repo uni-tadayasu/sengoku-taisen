@@ -9,7 +9,7 @@ function setup(){
   const c={game,data:D,state:()=>game.state,startPending:false,syncAccess:{linked:false,ready:true,writable:true,rolePending:false,reason:'local'},saveEnabled:true,roleEpoch:0,worldCatchingUp:false,worldSettlementPending:false,fieldActionPending:false,walkingActionPending:false,strategyActionPending:false,selectedCastle:'',officerSection:'archive',
     canMutate:()=>flags.writable,staffConstructionReady:()=>flags.staffReady,clockIsApplied:()=>flags.clockApplied,syncMessage:()=>c.syncAccess.message||'同期を確認中',
     window:{SengokuHints:{build(_game,context){assert.equal(_game,game);captured.push(context);return model;}},SengokuHintsUI:{close:()=>calls.push(['close-hints']),open:()=>calls.push(['open-hints'])},SengokuSocial:{getUser:()=>({id:'test-lord'}),open:tab=>calls.push(['social',tab])}},
-    closeModal:()=>calls.push(['close-modal']),go:view=>calls.push(['view',view]),buildingModal:id=>calls.push(['building',id]),castleUpgradeModal:id=>calls.push(['castle',id]),levelGuideModal:id=>calls.push(['guide',id]),newGameModal:()=>calls.push(['new']),settingsModal:()=>calls.push(['settings']),pickOfficer:(mode,slot)=>calls.push(['army-slot',mode,slot]),helpModal:()=>calls.push(['help'])
+    closeModal:()=>calls.push(['close-modal']),go:(view,options)=>calls.push(options?['view',view,JSON.parse(JSON.stringify(options))]:['view',view]),buildingModal:id=>calls.push(['building',id]),castleUpgradeModal:id=>calls.push(['castle',id]),levelGuideModal:id=>calls.push(['guide',id]),newGameModal:()=>calls.push(['new']),settingsModal:()=>calls.push(['settings']),pickOfficer:(mode,slot)=>calls.push(['army-slot',mode,slot]),helpModal:()=>calls.push(['help'])
   };
   vm.createContext(c);vm.runInContext(['getHints','followHint','openHintHelp'].map(fn).join('\n'),c);
   return{c,game,calls,captured,flags,model,set(action,id='current'){model.items=[{id,title:'候補',action}];calls.length=0;}};
@@ -68,7 +68,7 @@ test('valid hints open existing views or details after closing the hint dialog, 
 });
 test('an enemy castle hint selects its map detail and never starts an attack',()=>{
   const h=setup(),target=h.game.adjacentTargets()[0];assert(target);h.set({kind:'castle',id:target.id});const before=JSON.stringify(h.game.state);
-  assert.equal(h.c.followHint('current').ok,true);assert.equal(h.c.selectedCastle,target.id);assert.deepEqual(h.calls.at(-1),['view','map']);assert.equal(JSON.stringify(h.game.state),before);
+  assert.equal(h.c.followHint('current').ok,true);assert.deepEqual(h.calls.at(-1),['view','map',{castleId:target.id}]);assert.equal(JSON.stringify(h.game.state),before);
 });
 test('new-campaign hints only open selection for an unstarted or ended campaign',()=>{
   const h=setup();h.set({kind:'new'});assert.equal(h.c.followHint('current').ok,false);assert.deepEqual(h.calls,[]);

@@ -38,7 +38,7 @@ const allianceData=()=>({ok:true,serverNow:now,guild:{id:'g_one',name:'同盟',r
  });
  await test('mounted field applies a fresh proposal, clears old confirmation and never attacks automatically',async()=>{
   const {host,$}=dom(),s=state(),writes=[],c=field.mount(host,{stateKey:'advisor-fixture',identity:{id:'u_self'},getState:()=>s,getSyncStatus:()=>({writable:true}),request:async(route,args)=>{if(args.method!=='GET'){writes.push(route);throw Error('No mutation expected');}return route==='/field/me'?me():{targets:[target()],total:1,rules,clock:{running:true,elapsedMs:1000}}}});
-  await c.refresh();await flush();assert($('[data-battle-advisor-action="field-apply"]'));click($('[data-field-action="confirm-attack"]'));assert($('.field-confirm'));click($('[data-battle-advisor-action="field-apply"]'));assert.equal($('.field-confirm'),null);assert(Number($('[data-field-input="troops"]').value)>=300);assert.equal(writes.length,0);
+  await c.refresh();await flush();click($('[data-field-action="select-player"][data-target-id="u_enemy:kiyosu"]'));assert($('[data-battle-advisor-action="field-apply"]'));click($('[data-field-action="confirm-attack"]'));assert($('.field-confirm'));click($('[data-battle-advisor-action="field-apply"]'));assert.equal($('.field-confirm'),null);assert(Number($('[data-field-input="troops"]').value)>=300);assert.equal(writes.length,0);
   s.resources.rice=0;assert.equal(c.applyAdvice(),false);assert.equal(writes.length,0);c.destroy();
  });
  await test('conquest compares exact previews and selects a stocked, adjacent source without mutations',()=>{

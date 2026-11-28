@@ -29,11 +29,16 @@ test('when there is no game window, notification clicks open only the local reca
  const f=fixture();f.control.windows=[{url:'https://other.example.invalid/',focus:()=>{throw Error('foreign tab');}}];await f.click();assert.deepEqual(f.opened,['./?notice=1']);assert.deepEqual(f.trace,['close','match','open']);
 });
 test('chat and mail notifications preserve only an allowed screen and tap into the game',async()=>{
- for(const destination of ['mail','letters','world','guild','friends','admin','news','notifications','courtChat','courtAudiences']){
+ for(const destination of ['mail','letters','world','guild','friends','admin','news','trade','notifications','courtChat','courtAudiences','courtNegotiations']){
   const f=fixture();await f.emit('push',{data:{json:()=>({title:'戦国VS',destination,url:'https://untrusted.invalid/'})}});
   assert.deepEqual(f.shown[0].options.data,{destination});assert.equal(f.shown[0].options.tag,'sengoku-'+destination);
   await f.emit('notificationclick',{notification:{data:f.shown[0].options.data,close:()=>{}}});assert.deepEqual(f.opened,['./?notice='+destination]);
  }
+});
+test('each new community delivery alerts while keeping one notification card per destination',async()=>{
+ const f=fixture();for(const title of ['最初の会話','次の会話'])await f.emit('push',{data:{json:()=>({title,destination:'friends'})}});
+ assert.equal(f.shown.length,2);assert.equal(f.shown[0].options.tag,f.shown[1].options.tag);assert(f.shown.every(n=>n.options.renotify===true));
+ await f.emit('push',{data:{json:()=>({title:'会話と郵便のまとめ',destination:'recap',renotify:true})}});assert.equal(f.shown.at(-1).options.renotify,true);assert.equal(f.shown.at(-1).options.tag,'sengoku-update');
 });
 test('a notification never focuses an unrelated guide page and respects a subdirectory game scope',async()=>{
  const f=fixture({scope:'https://game.example.invalid/game/'}),received=[];

@@ -60,7 +60,7 @@ test('message notifications wait for account readiness then open only their auth
 });
 
 test('court notifications wait for the mounted module and account readiness, then use the court entry',async()=>{
- for(const destination of ['courtChat','courtAudiences']){
+ for(const destination of ['courtChat','courtAudiences','courtNegotiations']){
   const f=fixture({url:'https://game.example.invalid/?notice='+destination,writable:false});
   const court=f.context.window.SengokuCourt;delete f.context.window.SengokuCourt;await f.entry.primeProgress();assert.equal(f.opened.length,0);assert.equal(f.entry.pending(),true);
   f.context.window.SengokuCourt=court;f.context.syncAccess.rolePending=true;await f.entry.primeProgress();assert.equal(f.opened.length,0);

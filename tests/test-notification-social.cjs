@@ -35,8 +35,8 @@ test('a mail notification returns to the inbox instead of an earlier selected le
 });
 test('notification routing retains the actual open path for letters and whitelists destinations',()=>{
  const f=fixture();f.api.openNotification('letters');assert.deepEqual(f.letters,['inbox']);
- for(const destination of ['world','news']){f.api.openNotification(destination);assert.equal(f.s.tab,destination);}
- for(const destination of ['moderation','promotion','trade','https://example.invalid',null,{}]){f.api.openNotification(destination);assert.equal(f.s.tab,'mail');}
+ for(const destination of ['world','news','notifications','trade']){f.api.openNotification(destination);assert.equal(f.s.tab,destination);}
+ for(const destination of ['moderation','promotion','https://example.invalid',null,{}]){f.api.openNotification(destination);assert.equal(f.s.tab,'mail');}
  assert.deepEqual(f.letters,['inbox']);
 });
 test('notification entry keeps authorization, ban and pending-access guards',()=>{

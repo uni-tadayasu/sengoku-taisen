@@ -277,7 +277,10 @@ function mount(container,options={}){
   const id='sengoku-geography-'+(++sequence),stored=savedViews.get(key);
   let width=800,height=600,baseView=fitBounds(countryBounds,width,height,28),view={...baseView},points=[],markersByKey=new Map(),frame=0,animation=0,destroyed=false,region=opts.region;
   let labels=stored?.labels!==false,routes=stored?.routes===true,terrain=stored?.terrain!==false,pointers=new Map(),gesture=null,dragged=false,clickUntil=0;
-  let firstSize=true,tooltipKey=null,lastView=stored?.camera||null,routePoints=null,routeRegion='',routeContent='',countText='',presentationVersion=0;
+  // Entry can deliberately start at home while retaining the player's layer
+  // choices. Only the first measured mount uses this; live updates and later
+  // resizes keep the camera the player is currently exploring.
+  let firstSize=true,tooltipKey=null,lastView=opts.restoreView===false?null:stored?.camera||null,routePoints=null,routeRegion='',routeContent='',countText='',presentationVersion=0;
   const sourceList=(geography.sources||[]).map(source=>{const url=safeUrl(source.url||source.href);return url?`<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(source.label||source.name||'地図出典')}</a>`:'';}).filter(Boolean).join('<span>·</span>');
   const terrainEntries=Array.isArray(geography.terrain)?geography.terrain:geography.terrain?.images||geography.terrain?.layers||[geography.terrain].filter(Boolean);
   const terrainHtml=terrainEntries.map(layer=>{
@@ -323,7 +326,10 @@ function mount(container,options={}){
   function fit(target='nation',animate=true){
     let bounds;
     if(target==='home'||target==='selected'){
-      const point=points.find(p=>p.id===(target==='home'?opts.homeId:opts.selectedId));if(!point)return false;
+      // The public field can load before the home owner's page arrives. Its
+      // known castle coordinates are enough to center the view; no marker or
+      // ownership information is fabricated for an unloaded home.
+      const point=points.find(p=>p.id===(target==='home'?opts.homeId:opts.selectedId))||(target==='home'?castlePoints([{id:opts.homeId}],coordinates(),opts)[0]:null);if(!point)return false;
       const zoomLevel=Number.isFinite(opts.focusZoom)?clamp(opts.focusZoom,1,128):Math.max(14,Math.min(40,baseView.width/view.width));bounds={x:point.x-baseView.width/zoomLevel/2,y:point.y-baseView.height/zoomLevel/2,width:baseView.width/zoomLevel,height:baseView.height/zoomLevel};
       setView(bounds,{animate});return true;
     }

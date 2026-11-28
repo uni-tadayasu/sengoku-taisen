@@ -43,7 +43,7 @@ test('officer artwork, public profiles and the owner profile retain source names
  const commander={officerId:officer.id,rank:'U'},person={id:'u_variant',name:'神葛\u{E0100}城',clan:'德川家',commander};
  assert(context.SengokuLordProfile.commanderCard(commander).includes('>德川家康</p>'));
  const detail=context.__publicVariantDetail(person);assert(detail.includes('>德川家</p>'));assert(detail.includes(esc(person.name)));
- context.__displayTest.s.user=person;context.__displayTest.s.identity={id:person.id};const own=context.__displayTest.profileView();assert(own.includes('>德川家 · '));assert(own.includes('value="'+esc(person.name)+'"'));
+ context.__displayTest.s.user=person;context.__displayTest.s.identity={id:person.id};const own=context.__displayTest.profileView();assert.match(own,/<span data-social-lineage>德川家<\/span>/);assert(!own.includes('<span data-social-lineage>徳川家</span>'));assert(own.includes('value="'+esc(person.name)+'"'));
 });
 
 const app=read('app.js'),functions=['clanCrest','officerCrest'].map(name=>{const line=app.split('\n').find(row=>row.startsWith('  function '+name+'('));assert(line,'Missing live app renderer '+name);return line;}).join('\n');

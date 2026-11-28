@@ -89,14 +89,14 @@ try{
   const second=(await h.api('/field?view=owners&limit=1&cursor='+first.nextCursor,{token:lord.token})).data;
   assert.equal(second.nextCursor,null);assert.deepEqual([...first.targets,...second.targets].map(target=>target.playerId+':'+target.targetCastleId).sort(),compact.targets.map(target=>target.playerId+':'+target.targetCastleId).sort());
  });
- await scope('old clients cannot erase the inherited map, while normal territorial loss remains possible',async h=>{
+ await scope('old clients cannot erase inherited protection or upload a loss inside the conquered region',async h=>{
   const p=await fixture(h,'古い保存に戻さない領主',['東海']);at(h,CYCLE);const result=(await settle(h,p)).data;
   const legacy=structuredClone(result.save);delete legacy.state.cycle.retainedRegions;
   for(const [id,castle]of Object.entries(legacy.state.castles))if(id!==legacy.state.home&&castle.owner===legacy.state.clan)castle.owner='在地衆';
   const previous=row(h,p).save_json,rejected=await put(h,p,legacy,409);assert.equal(rejected.data.error.code,'REGION_INHERITANCE_REQUIRED');assert.equal(row(h,p).save_json,previous);
   const forged=structuredClone(result.save);forged.state.cycle.retainedRegions=[];assert.equal((await put(h,p,forged,409)).data.error.code,'REGION_INHERITANCE_REQUIRED');
-  const lost=structuredClone(result.save);lost.state.castles.inabayama.owner='斎藤家';const accepted=(await put(h,p,lost)).data;
-  assert.equal(accepted.save.state.castles.inabayama.owner,'斎藤家');assert.deepEqual(accepted.save.state.cycle.retainedRegions,['東海']);assert.equal(receipts(h,p).length,1);
+  const lost=structuredClone(result.save);lost.state.castles.inabayama.owner='斎藤家';const refused=(await put(h,p,lost,409)).data;assert.equal(refused.error.code,'REGION_INHERITANCE_REQUIRED');
+  const accepted=(await put(h,p,result.save)).data;assert.equal(accepted.save.state.castles.inabayama.owner,accepted.save.state.clan);assert.deepEqual(accepted.save.state.cycle.protectedRegions,['東海']);assert.equal(receipts(h,p).length,1);
   const stale=await h.api('/sync',{method:'PUT',token:p.token,body:{deviceId:p.deviceId,revision:accepted.revision,save:p.snapshot.save},expected:409});assert(['CLOCK_REWIND','CYCLE_SETTLEMENT_REQUIRED'].includes(stale.data.error.code));
  });
  await scope('regional settlement commits exactly once under concurrent requests and rolls back atomically on failure',async h=>{
@@ -120,14 +120,24 @@ try{
   const ledger=receipts(h,p);assert.equal(ledger.length,5);assert.deepEqual(ledger.map(receipt=>receipt.cycle_index),[0,1,2,3,4]);assert(ledger.every(receipt=>receipt.captured===ids(['四国']).length&&receipt.gold===10000&&receipt.magatama===1000));
   const revision=current.revision;await h.api('/sync',{token:p.token});assert.equal(row(h,p).revision,revision);assert.equal(receipts(h,p).length,5);
  });
- await scope('voluntary Kyoto admission surrenders inherited holdings and blocks their retired campaign from returning',async h=>{
+ await scope('a single released city leaves all remaining protected holdings visible while settlement is pending',async h=>{
+  const p=await fixture(h,'返還後も東海を引き継ぐ領主',['東海'],{prepare:s=>{s.captureRewards=[...new Set([...s.captureRewards,...ids(['東海'])])];}});
+  await h.api('/field/release',post(p,{requestId:crypto.randomUUID(),deviceId:p.deviceId,expectedRevision:row(h,p).revision,castleId:'nagoya',confirmed:true}));
+  const guild=(await h.api('/guild',post(p,{name:'返還後の地域継承軍団'}))).data.guild,before=row(h,p),expected=ids(['東海']).filter(id=>id!=='nagoya').sort();at(h,CYCLE);
+  for(const view of ['/field?limit=100','/field?view=owners&limit=100'])assert.deepEqual(fields((await h.api(view,{token:p.token})).data,p),expected,view);
+  assert.equal((await h.api('/guild/rankings')).data.guilds.find(g=>g.id===guild.id).ownedCastles,expected.length);
+  assert.equal(row(h,p).revision,before.revision);assert.equal(row(h,p).save_json,before.save_json);
+  const result=(await settle(h,p)).data;assert.deepEqual(result.save.state.cycle.protectedRegions,['東海']);assert.deepEqual(result.save.state.cycle.releasedCastles,['nagoya']);assert.deepEqual(owned(result.save.state),expected);assert(result.save.state.captureRewards.includes('nagoya'));
+  for(const view of ['/field?limit=100','/field?view=owners&limit=100'])assert.deepEqual(fields((await h.api(view,{token:p.token})).data,p),expected,view);
+ });
+ await scope('voluntary Kyoto admission surrenders protected holdings and blocks its retired campaign from returning',async h=>{
   await courtFixture(h,'継承放棄の受入責任者',{admin:true});const p=await courtFixture(h,'領地を放棄して入る領主',{score:35000});
-  updateSave(h,p,s=>{for(const id of ids(['東海']))s.castles[id].owner=s.clan;s.cycle.retainedRegions=['東海'];});
+  updateSave(h,p,s=>{for(const id of ids(['東海']))s.castles[id].owner=s.clan;s.cycle.retainedRegions=['東海'];s.cycle.protectedRegions=['東海'];s.cycle.releasedCastles=['nijo'];});
   const old=save(h,p),details=(await h.api('/court/membership',{token:p.token})).data.membership;
-  const joined=(await h.api('/court/membership',post(p,{requestId:crypto.randomUUID(),deviceId:p.deviceId,expectedRevision:details.expectedRevision,expectedHomeCastleId:details.homeCastleId,confirmed:true}))).data;
-  assert.deepEqual(joined.save.state.cycle.retainedRegions,[]);assert.deepEqual(owned(joined.save.state),['kyoto_gosho']);
-  const backup=JSON.parse(h.sql.prepare('SELECT save_json FROM staff_campaign_backups WHERE user_id=?').get(p.user.id).save_json);assert.deepEqual(backup.state.cycle.retainedRegions,[]);
-  for(const view of ['/field?limit=100','/field?view=owners&limit=100'])assert.deepEqual(fields((await h.api(view,{token:p.token})).data,p),['kyoto_gosho']);
+  const joined=(await h.api('/court/membership',post(p,{requestId:crypto.randomUUID(),deviceId:p.deviceId,expectedRevision:details.expectedRevision,expectedHomeCastleId:details.homeCastleId,confirmed:true,houseId:'konoe'}))).data;
+  assert.deepEqual(joined.save.state.cycle.retainedRegions,[]);assert.deepEqual(joined.save.state.cycle.protectedRegions,[]);assert.deepEqual(joined.save.state.cycle.releasedCastles,[]);assert.deepEqual(owned(joined.save.state),['kyoto_gosho','nagoya']);
+  const backup=JSON.parse(h.sql.prepare('SELECT save_json FROM staff_campaign_backups WHERE user_id=?').get(p.user.id).save_json);assert.deepEqual(backup.state.cycle.retainedRegions,[]);assert.deepEqual(backup.state.cycle.protectedRegions,[]);assert.deepEqual(backup.state.cycle.releasedCastles,[]);assert.deepEqual(owned(backup.state),['nagoya']);
+  for(const view of ['/field?limit=100','/field?view=owners&limit=100'])assert.deepEqual(fields((await h.api(view,{token:p.token})).data,p),['kyoto_gosho','nagoya']);
   assert.equal((await put(h,p,old,409)).data.error.code,'CAMPAIGN_RELOCATED');
  });
  console.log(JSON.stringify({ok:true,checks,calls,maxBindings}));

@@ -4,6 +4,7 @@ import {GameEngine,GAME_OFFICERS} from './game-runtime.js';
 import {marchDto,advanceReservedMarch} from './marches.js';
 import {prepareResidencyCpuLosses} from './residency.js';
 import {externalTroopSnapshotStatements} from './maintenance.js';
+import {socialNotificationStatement} from './social-notifications.js';
 const stmt=(db,sql,...args)=>db.prepare(sql).bind(...args);
 const rows=result=>result?.results||[];
 const clone=value=>JSON.parse(JSON.stringify(value));
@@ -171,7 +172,10 @@ async function application(ctx,b,action){
   else{if(!['approve','deny'].includes(b.decision))h.fail(400,'INVALID_INPUT','承認か辞退を選んでください。');const old=await stmt(db,"SELECT * FROM alliance_applications WHERE guild_id=? AND user_id=? AND status='pending' AND expires_at>?",guildId,targetId,now).first();if(!old)h.fail(409,'APPLICATION_CHANGED','申請が見つからないか、期限切れです。');state=b.decision==='approve'?'approved':'denied';guard=and(guard,{sql:"EXISTS(SELECT 1 FROM alliance_applications WHERE guild_id=? AND user_id=? AND revision=? AND status='pending')",args:[guildId,targetId,old.revision]});message=old.message;}
   guard=and(guard,officerGuard(m),h.accountCommitGuard(target),state==='denied'?emptyGuard():{sql:'NOT EXISTS(SELECT 1 FROM guild_members WHERE user_id=?)',args:[targetId]});
  }
- return commit(ctx,b,action,guard,(gate,args)=>[stmt(db,'INSERT INTO alliance_applications(guild_id,user_id,status,message,created_at,updated_at,expires_at,revision) SELECT ?,?,?,?,?,?,?,1 WHERE '+gate+' ON CONFLICT(guild_id,user_id) DO UPDATE SET status=excluded.status,message=excluded.message,updated_at=excluded.updated_at,expires_at=excluded.expires_at,revision=alliance_applications.revision+1',guildId,targetId,state,message,now,now,now+7*DAY,...args)],{message:state==='pending'?'加入申請を送りました。':state==='invited'?'招待を送りました。':state==='approved'?'申請を承認しました。本人が参加すると加入が完了します。':'申請を辞退しました。'});
+ return commit(ctx,b,action,guard,(gate,args)=>[
+  stmt(db,'INSERT INTO alliance_applications(guild_id,user_id,status,message,created_at,updated_at,expires_at,revision) SELECT ?,?,?,?,?,?,?,1 WHERE '+gate+' ON CONFLICT(guild_id,user_id) DO UPDATE SET status=excluded.status,message=excluded.message,updated_at=excluded.updated_at,expires_at=excluded.expires_at,revision=alliance_applications.revision+1',guildId,targetId,state,message,now,now,now+7*DAY,...args),
+  socialNotificationStatement(db,{key:'alliance:'+user.id+':'+b.requestId,actorId:user.id,kind:{pending:'guild-application',invited:'guild-invitation',approved:'guild-approved',denied:'guild-declined'}[state],guildId,subjectId:targetId,audience:state==='pending'?'officer':'person',...(state==='pending'?{}:{userId:targetId}),sourceRevision:{sql:'(SELECT revision FROM alliance_applications WHERE guild_id=? AND user_id=?)',args:[guildId,targetId]},expiresAt:now+7*DAY},now,gate,args)
+ ],{message:state==='pending'?'加入申請を送りました。':state==='invited'?'招待を送りました。':state==='approved'?'申請を承認しました。本人が参加すると加入が完了します。':'申請を辞退しました。'});
 }
 async function getOperation(ctx,b){const o=await stmt(ctx.db,'SELECT * FROM alliance_operations WHERE id=? AND guild_id=?',id(ctx.helpers,b.operationId,'作戦'),ctx.user.guild_id).first();if(!o)ctx.helpers.fail(404,'OPERATION_NOT_FOUND','所属同盟の作戦が見つかりません。');return o;}
 function opGuard(o){return{sql:'EXISTS(SELECT 1 FROM alliance_operations WHERE id=? AND revision=? AND status=?)',args:[o.id,o.revision,o.status]};}
@@ -277,13 +281,19 @@ async function withdrawAction(ctx,b,action){
   if(!['gold','rice','wood','stone','magatama'].includes(b.resource))h.fail(400,'INVALID_INPUT','出金する資産を選んでください。');
   const amount=integer(h,b.amount,'出金数量',1,1000000),transferRequestId=id(h,b.transferRequestId,'出金の操作番号'),wid='aw_'+crypto.randomUUID().replaceAll('-','');
   const limit={sql:"(SELECT COUNT(*) FROM alliance_withdrawals WHERE actor_id=? AND status='pending' AND expires_at>?)<10",args:[user.id,now]};
-  return commit(ctx,b,action,and(memberGuard(m),limit),(gate,args)=>[stmt(db,"INSERT INTO alliance_withdrawals(id,guild_id,actor_id,actor_epoch,transfer_request_id,resource,amount,status,created_at,expires_at) SELECT ?,?,?,?,?,?,?,'pending',?,? WHERE "+gate,wid,m.guild_id,user.id,m.epoch,transferRequestId,b.resource,amount,now,now+DAY,...args)],{withdrawalId:wid,message:'盟主へ出金申請を送りました。承認後、この画面から受け取れます。'});
+  return commit(ctx,b,action,and(memberGuard(m),limit),(gate,args)=>[
+   stmt(db,"INSERT INTO alliance_withdrawals(id,guild_id,actor_id,actor_epoch,transfer_request_id,resource,amount,status,created_at,expires_at) SELECT ?,?,?,?,?,?,?,'pending',?,? WHERE "+gate,wid,m.guild_id,user.id,m.epoch,transferRequestId,b.resource,amount,now,now+DAY,...args),
+   socialNotificationStatement(db,{key:'alliance:'+user.id+':'+b.requestId,actorId:user.id,kind:'treasury-request',audience:'owner',guildId:m.guild_id,sourceId:wid,expiresAt:now+DAY},now,gate,args)
+  ],{withdrawalId:wid,message:'盟主へ出金申請を送りました。承認後、この画面から受け取れます。'});
  }
  if(m.owner_id!==user.id)h.fail(403,'GUILD_ROLE_REQUIRED','盟主だけが出金申請を承認できます。');
  const w=await stmt(db,"SELECT * FROM alliance_withdrawals WHERE id=? AND guild_id=? AND status='pending' AND expires_at>?",id(h,b.withdrawalId,'出金申請'),m.guild_id,now).first();
  if(!w)h.fail(409,'WITHDRAWAL_CHANGED','出金申請は処理済みか期限切れです。');if(!['approve','deny'].includes(b.decision))h.fail(400,'INVALID_INPUT','承認または辞退を選んでください。');
  const target=await membership(db,w.actor_id,m.guild_id);if(!target||target.epoch!==w.actor_epoch)h.fail(409,'GUILD_MEMBERSHIP_CHANGED','申請者の所属が変わっています。');
- return commit(ctx,b,action,and(officerGuard(m,true),memberGuard(target),{sql:"EXISTS(SELECT 1 FROM alliance_withdrawals WHERE id=? AND revision=? AND status='pending')",args:[w.id,w.revision]}),(gate,args)=>[stmt(db,'UPDATE alliance_withdrawals SET status=?,approved_by=?,revision=revision+1 WHERE id=? AND '+gate,b.decision==='approve'?'approved':'denied',user.id,w.id,...args)],{message:b.decision==='approve'?'出金を承認しました。申請者が受取操作を行うと移動します。':'出金申請を辞退しました。'});
+ return commit(ctx,b,action,and(officerGuard(m,true),memberGuard(target),{sql:"EXISTS(SELECT 1 FROM alliance_withdrawals WHERE id=? AND revision=? AND status='pending')",args:[w.id,w.revision]}),(gate,args)=>[
+  stmt(db,'UPDATE alliance_withdrawals SET status=?,approved_by=?,revision=revision+1 WHERE id=? AND '+gate,b.decision==='approve'?'approved':'denied',user.id,w.id,...args),
+  socialNotificationStatement(db,{key:'alliance:'+user.id+':'+b.requestId,actorId:user.id,userId:w.actor_id,kind:b.decision==='approve'?'treasury-approved':'treasury-declined',audience:'member',guildId:m.guild_id,sourceId:w.id,expiresAt:w.expires_at},now,gate,args)
+ ],{message:b.decision==='approve'?'出金を承認しました。申請者が受取操作を行うと移動します。':'出金申請を辞退しました。'});
 }
 
 // Called only by the internal fifth argument to fieldAttack. The caller first

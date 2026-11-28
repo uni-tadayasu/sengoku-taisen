@@ -1,4 +1,5 @@
 import {maintenanceContext,externalTroopSnapshotStatements} from './maintenance.js';
+import {socialNotificationStatement} from './social-notifications.js';
 import {advanceReservedMarch} from './marches.js';
 import {prepareResidencyCpuLosses} from './residency.js';
 // Player-to-player trade keeps offered assets in escrow. Only the actor's own
@@ -169,6 +170,7 @@ async function tradeMutate(ctx,id=null,action='propose'){
   if(changesSave)statements.push(...await tradeSaveStatements(ctx,actor,body,gateArgs,log));
   if(delivery)statements.push(tradeStmt(db,`INSERT INTO trade_deliveries(trade_id,recipient_id,kind,assets_json,created_at,claimed_at) SELECT ?,?,?,?,?,NULL WHERE ${TRADE_GATE}`,id,row.sender_id,delivery.kind,JSON.stringify(delivery.assets),now,...gateArgs));
   if(action==='claim')statements.push(tradeStmt(db,`UPDATE trade_deliveries SET claimed_at=? WHERE trade_id=? AND recipient_id=? AND ${TRADE_GATE}`,now,id,user.id,...gateArgs));
+  if(action!=='claim')statements.push(socialNotificationStatement(db,{key:'trade:'+id+':'+tradeRevision,actorId:user.id,userId:propose?target.id:action==='cancel'?row.recipient_id:row.sender_id,kind:propose?'trade-offer':action==='accept'?'trade-accepted':action==='cancel'?'trade-cancelled':'trade-rejected',sourceId:id},now,TRADE_GATE,gateArgs));
   statements.push(...externalTroopSnapshotStatements(db,[user.id,row?.sender_id],actor.clock,TRADE_GATE,gateArgs));
   if(!tradeRows((await db.batch(statements))[0]).length)return tradeCommitFailure(ctx,body,digest,actor,id,action);
   return tradeResult(ctx,body,receipt,false);

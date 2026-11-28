@@ -1,4 +1,5 @@
 import {allowedPushEndpoint,pushDecode,sendWebPush} from './web-push.js';
+import {socialNotificationAccess,socialNotificationContent,readSocialNotifications} from './social-notifications.js';
 const stmt=(db,sql,...args)=>db.prepare(sql).bind(...args),rows=r=>r?.results||[];
 const legacyTypes=['battle','letter','operation','construction','event'],messageTypes=['chat','worldChat','announcement'],types=[...legacyTypes,...messageTypes];
 const defaults={enabled:false,battle:true,letter:true,operation:true,construction:true,event:true,chat:true,worldChat:false,announcement:true,quietStart:0,quietEnd:0,digestMinutes:0};
@@ -39,15 +40,41 @@ const chatAudience=recipient=>`m.user_id<>${recipient} AND ${activeAuthor('m.use
  (m.channel='admin' AND m.room_key='admin' AND (${recipient}=COALESCE((SELECT value FROM settings WHERE key='adminUserId'),'') OR EXISTS(SELECT 1 FROM staff_members sm WHERE sm.user_id=${recipient} AND sm.appointed_at<=m.created_at) OR EXISTS(SELECT 1 FROM deputy_operator_state ds WHERE ds.user_id=${recipient} AND ds.appointed_at<=m.created_at))))`;
 const chatScope=recipient=>`CASE m.channel
  WHEN 'guild' THEN COALESCE((SELECT gm.guild_id||':'||gm.joined_at FROM guild_members gm WHERE gm.user_id=${recipient}),'')
- WHEN 'friend' THEN COALESCE((SELECT f.created_at||':'||f.updated_at FROM friendships f WHERE (f.user_a=${recipient} OR f.user_b=${recipient}) AND 'friend:'||f.user_a||':'||f.user_b=m.room_key),'')
+ WHEN 'friend' THEN COALESCE((SELECT CASE WHEN f.notification_key<>'' THEN f.notification_key||':' ELSE '' END||f.created_at||':'||f.updated_at FROM friendships f WHERE (f.user_a=${recipient} OR f.user_b=${recipient}) AND 'friend:'||f.user_a||':'||f.user_b=m.room_key),'')
  WHEN 'admin' THEN CASE WHEN ${recipient}=COALESCE((SELECT value FROM settings WHERE key='adminUserId'),'') THEN 'owner:'||COALESCE((SELECT updated_at FROM settings WHERE key='adminUserId'),0)
  ELSE COALESCE((SELECT 'staff:'||COALESCE(sm.term_id,'legacy:'||sm.appointed_at) FROM staff_members sm WHERE sm.user_id=${recipient}),(SELECT 'deputy:'||ds.term_id FROM deputy_operator_state ds WHERE ds.user_id=${recipient}),'') END ELSE 'world' END`;
 const unreadChat=recipient=>`NOT EXISTS(SELECT 1 FROM notification_chat_reads nr WHERE nr.user_id=${recipient} AND nr.room_key=m.room_key AND nr.last_message_id>=m.id)`;
+const directedChat=recipient=>`(EXISTS(SELECT 1 FROM json_each(m.mentions_json) mentioned WHERE mentioned.value=${recipient}) OR EXISTS(SELECT 1 FROM messages reply WHERE reply.id=m.reply_to_id AND reply.room_key=m.room_key AND reply.user_id=${recipient}))`;
 export async function recordNotificationChatRead(db,userId,room,lastMessageId,now,guard){
  if(!Number.isSafeInteger(lastMessageId)||lastMessageId<=0)return;
  await stmt(db,`INSERT INTO notification_chat_reads(user_id,room_key,last_message_id,updated_at)
  SELECT ?,?,MAX(m.id),? FROM messages m WHERE m.room_key=? AND m.id<=? AND ${guard.sql} HAVING MAX(m.id) IS NOT NULL
  ON CONFLICT(user_id,room_key) DO UPDATE SET last_message_id=MAX(notification_chat_reads.last_message_id,excluded.last_message_id),updated_at=excluded.updated_at`,userId,room,now,room,lastMessageId,...guard.args).run();
+}
+export async function recordNotificationChatDelivery(db,userId,room,lastMessageId,now,guard){
+ if(!Number.isSafeInteger(lastMessageId)||lastMessageId<=0)return;
+ await stmt(db,`INSERT INTO notification_chat_deliveries(user_id,room_key,last_message_id,updated_at)
+ SELECT ?,?,MAX(m.id),? FROM messages m WHERE m.room_key=? AND m.id<=? AND ${guard.sql} HAVING MAX(m.id) IS NOT NULL
+ ON CONFLICT(user_id,room_key) DO UPDATE SET last_message_id=MAX(notification_chat_deliveries.last_message_id,excluded.last_message_id),updated_at=excluded.updated_at`,userId,room,now,room,lastMessageId,...guard.args).run();
+}
+export function notificationChatSummaryStatement(db,userId,now){
+ // Start from rooms this player can enter, so a closed community panel needs
+ // only one indexed summary, not a background fetch for every conversation.
+ return stmt(db,`WITH rooms(room_key,target) AS (
+  SELECT 'world',NULL UNION ALL SELECT 'guild:'||guild_id,NULL FROM guild_members WHERE user_id=?
+  UNION ALL SELECT 'friend:'||user_a||':'||user_b,CASE WHEN user_a=? THEN user_b ELSE user_a END FROM friendships WHERE (user_a=? OR user_b=?) AND status='accepted'
+  UNION ALL SELECT 'admin',NULL WHERE ?=COALESCE((SELECT value FROM settings WHERE key='adminUserId'),'') OR EXISTS(SELECT 1 FROM staff_members WHERE user_id=?) OR EXISTS(SELECT 1 FROM deputy_operator_state WHERE user_id=?)
+ ) SELECT m.channel,r.target,COUNT(*) AS unread_count,MAX(m.id) AS latest_id FROM rooms r
+ JOIN users recipient ON recipient.id=? JOIN messages m ON m.room_key=r.room_key
+ LEFT JOIN notification_chat_reads nr ON nr.user_id=recipient.id AND nr.room_key=r.room_key
+ WHERE m.id>MAX(COALESCE(nr.last_message_id,0),(SELECT last_message_id FROM notification_chat_baseline WHERE id=1))
+ AND m.created_at>=MAX(?,recipient.created_at) AND ${chatAudience('recipient.id')}
+ GROUP BY m.channel,r.target`,userId,userId,userId,userId,userId,userId,userId,userId,now-7*86400000);
+}
+export function notificationChatSummary(result){
+ const summary={world:0,guild:0,admin:0,friends:{},total:0,latestId:0};
+ for(const row of rows(result)){const count=Number(row.unread_count)||0;if(row.channel==='friend')summary.friends[row.target]=count;else if(['world','guild','admin'].includes(row.channel))summary[row.channel]=count;else continue;summary.total+=count;summary.latestId=Math.max(summary.latestId,Number(row.latest_id)||0);}
+ return summary;
 }
 export function notificationAnnouncementStatements(db,userId,now,gate='1=1',args=[]){
  return[stmt(db,`INSERT INTO notification_announcements(id,sender_id,created_at) SELECT ?,?,? WHERE ${gate} AND EXISTS(SELECT 1 FROM settings WHERE key='announcement' AND updated_at=? AND length(trim(value))>0) ON CONFLICT(id) DO UPDATE SET sender_id=excluded.sender_id`,'na_'+now,userId,now,...args,now)];
@@ -153,28 +180,35 @@ async function queueCourtFacts(db,userId,preferences,now,resolve){
 }
 async function queueFacts(db,userId,since,now,clock,preferences={},messageOnly=false,courtResolver=null){
  const statements=[],messageGuard='EXISTS(SELECT 1 FROM notification_preferences np WHERE np.user_id=? AND np.updated_at=?)',messageArgs=[userId,preferences.updated_at];
- const mail=rows(await stmt(db,"SELECT id,title,created_at FROM mail_campaigns m WHERE (target_user_id=? OR target_user_id IS NULL) AND (sender_id<>? OR request_id LIKE 'system:%') AND created_at>=? AND NOT EXISTS(SELECT 1 FROM mail_reads r WHERE r.mail_id=m.id AND r.user_id=?) AND NOT EXISTS(SELECT 1 FROM notification_outbox n WHERE n.id='mail:'||?||':'||m.id) ORDER BY created_at,id LIMIT 20",userId,userId,since,userId,userId).all());
- for(const m of mail){const category=/戦闘|襲撃|戦勝|防衛|敗北|勝利|落城/.test(m.title)?'battle':'letter';statements.push(...notificationStatements(db,userId,category,'mail:'+userId+':'+m.id,category==='battle'?'本拠に合戦の報告が届きました':'新しいシステム便が届きました','ゲーム内の郵便で詳細を確認できます。',m.created_at,now,messageGuard,messageArgs,'','mail'));}
- const letters=rows(await stmt(db,`SELECT m.id,m.created_at FROM base_letter_messages m JOIN base_letter_threads t ON t.id=m.thread_id WHERE m.sender_id<>? AND m.created_at>=? AND ((t.kind='player' AND (t.user_a=? OR t.user_b=?)) OR (t.kind='guild' AND (t.sender_id=? OR EXISTS(SELECT 1 FROM guild_members WHERE user_id=? AND guild_id=t.guild_id)))) AND NOT EXISTS(SELECT 1 FROM base_letter_reads r WHERE r.thread_id=t.id AND r.user_id=? AND r.last_seq>=m.seq) ORDER BY m.created_at DESC LIMIT 20`,userId,since,userId,userId,userId,userId,userId).all());
+ const categorySince=category=>Math.max(since,Number(preferences[category+'_since']??preferences.updated_at)||0),battleMail="(m.gift_json IS NULL AND (m.title LIKE '%戦闘%' OR m.title LIKE '%襲撃%' OR m.title LIKE '%戦勝%' OR m.title LIKE '%防衛%' OR m.title LIKE '%敗北%' OR m.title LIKE '%勝利%' OR m.title LIKE '%落城%'))";
+ const mail=rows(await stmt(db,`SELECT id,title,gift_json,created_at FROM mail_campaigns m WHERE (target_user_id=? OR target_user_id IS NULL) AND (sender_id<>? OR request_id LIKE 'system:%')
+ AND ((?=1 AND ${battleMail} AND created_at>=?) OR (?=1 AND NOT ${battleMail} AND created_at>=?))
+ AND NOT EXISTS(SELECT 1 FROM mail_reads r WHERE r.mail_id=m.id AND r.user_id=?) AND NOT EXISTS(SELECT 1 FROM notification_outbox n WHERE n.id='mail:'||?||':'||m.id) ORDER BY created_at,id LIMIT 20`,userId,userId,preferences.battle?1:0,categorySince('battle'),preferences.letter?1:0,categorySince('letter'),userId,userId).all());
+ for(const m of mail){const category=!m.gift_json&&/戦闘|襲撃|戦勝|防衛|敗北|勝利|落城/.test(m.title)?'battle':'letter';statements.push(...notificationStatements(db,userId,category,'mail:'+userId+':'+m.id,m.gift_json?'贈り物付きの郵便が届きました':category==='battle'?'本拠に合戦の報告が届きました':'新しいシステム便が届きました','ゲーム内の郵便で詳細を確認できます。',m.created_at,now,messageGuard,messageArgs,'','mail'));}
+ const letters=preferences.letter?rows(await stmt(db,`SELECT m.id,m.created_at FROM base_letter_messages m JOIN base_letter_threads t ON t.id=m.thread_id WHERE m.sender_id<>? AND m.created_at>=? AND ((t.kind='player' AND (t.user_a=? OR t.user_b=?)) OR (t.kind='guild' AND (t.sender_id=? OR EXISTS(SELECT 1 FROM guild_members WHERE user_id=? AND guild_id=t.guild_id)))) AND NOT EXISTS(SELECT 1 FROM base_letter_reads r WHERE r.thread_id=t.id AND r.user_id=? AND r.last_seq>=m.seq) AND NOT EXISTS(SELECT 1 FROM notification_outbox n WHERE n.id='letter:'||?||':'||m.id) ORDER BY m.seq LIMIT 20`,userId,categorySince('letter'),userId,userId,userId,userId,userId,userId).all()):[];
  for(const m of letters)statements.push(...notificationStatements(db,userId,'letter','letter:'+userId+':'+m.id,'新しい書状が届きました','領主の書状から内容を確認できます。',m.created_at,now,messageGuard,messageArgs,'','letters'));
  // Each newly enabled message category starts from its own consent time. Saving
  // quiet hours does not replay history or move that category's starting point.
  const messageSince=Math.max(Number(preferences.since||0),now-86400000);
  if(preferences.chat||preferences.worldChat){
-  const chat=rows(await stmt(db,`SELECT m.id,m.channel,m.created_at,${chatScope('recipient.id')} AS source_scope FROM messages m JOIN users recipient ON recipient.id=?
-   WHERE m.created_at>=? AND ((m.channel='world' AND ?=1 AND m.created_at>=?) OR (m.channel<>'world' AND ?=1 AND m.created_at>=?))
+  const chat=rows(await stmt(db,`SELECT m.id,m.channel,m.created_at,${chatScope('recipient.id')} AS source_scope,${directedChat('recipient.id')} AS directed FROM messages m JOIN users recipient ON recipient.id=?
+   WHERE m.created_at>=? AND ((m.channel='world' AND ?=1 AND m.created_at>=?) OR ((m.channel<>'world' OR ${directedChat('recipient.id')}) AND ?=1 AND m.created_at>=?))
    AND ${chatAudience('recipient.id')} AND ${unreadChat('recipient.id')}
    AND NOT EXISTS(SELECT 1 FROM notification_outbox n WHERE n.id='chat:'||recipient.id||':'||m.id) ORDER BY m.id LIMIT 30`,userId,messageSince,preferences.worldChat?1:0,Number(preferences.worldChat_since||now),preferences.chat?1:0,Number(preferences.chat_since||now)).all());
-  for(const m of chat)statements.push(...notificationStatements(db,userId,m.channel==='world'?'worldChat':'chat','chat:'+userId+':'+m.id,m.channel==='world'?'世界チャットに新着があります':'新しいチャットが届きました','ゲーム内の交流で確認できます。',m.created_at,now,messageGuard,messageArgs,m.source_scope,{world:'world',guild:'guild',friend:'friends',admin:'admin'}[m.channel]));
+  for(const m of chat){const directed=m.directed&&preferences.chat&&m.created_at>=Number(preferences.chat_since||now);statements.push(...notificationStatements(db,userId,m.channel==='world'&&!directed?'worldChat':'chat','chat:'+userId+':'+m.id,m.channel==='world'?(directed?'世界チャットで呼びかけが届きました':'世界チャットに新着があります'):'新しいチャットが届きました','ゲーム内の交流で確認できます。',m.created_at,now,messageGuard,messageArgs,m.source_scope,{world:'world',guild:'guild',friend:'friends',admin:'admin'}[m.channel]));}
  }
  if(preferences.announcement){
   const announcement=await stmt(db,`SELECT a.id,a.created_at FROM notification_announcements a JOIN settings s ON s.key='announcement' AND s.updated_at=a.created_at WHERE a.sender_id<>? AND a.created_at>=? AND length(trim(s.value))>0 AND NOT EXISTS(SELECT 1 FROM notification_outbox n WHERE n.id='announcement:'||?||':'||a.id) ORDER BY a.created_at DESC LIMIT 1`,userId,Math.max(messageSince,Number(preferences.announcement_since||now)),userId).first();
   if(announcement)statements.push(...notificationStatements(db,userId,'announcement','announcement:'+userId+':'+announcement.id,'新しい御触書が届きました','ゲーム内のお知らせで確認できます。',announcement.created_at,now,messageGuard,messageArgs,'','news'));
  }
  const court=await queueCourtFacts(db,userId,preferences,now,courtResolver);statements.push(...court.statements);
+ if(preferences.chat){
+  const social=rows(await stmt(db,`SELECT n.* FROM notification_social_events n WHERE n.user_id=? AND n.push_eligible=1 AND n.read_at IS NULL AND n.created_at>=? AND n.expires_at>? AND ${socialNotificationAccess()} AND NOT EXISTS(SELECT 1 FROM notification_outbox o WHERE o.id='social:'||n.user_id||':'||n.id) ORDER BY n.seq LIMIT 20`,userId,Math.max(messageSince,Number(preferences.chat_since||now)),now).all());
+  for(const n of social){const content=socialNotificationContent(n.kind);if(content)statements.push(...notificationStatements(db,userId,'chat','social:'+userId+':'+n.id,content.title,content.body,n.created_at,now,messageGuard,messageArgs,'',content.destination));}
+ }
  if(messageOnly){if(statements.length)await db.batch(statements);return{saveRevision:null,courtAccess:court.access};}
- const events=rows(await stmt(db,"SELECT id,starts_at,ends_at FROM timed_events WHERE status='active' AND ends_at>? AND (starts_at>=? OR ends_at<=?)",now,since,now+3600000).all());
- for(const e of events){if(e.starts_at>=since)statements.push(...notificationStatements(db,userId,'event','event:start:'+userId+':'+e.id,'期間限定合戦が始まりました','期間限定合戦から戦場と報酬を確認できます。',e.starts_at,now));statements.push(...notificationStatements(db,userId,'event','event:end:'+userId+':'+e.id,'期間限定合戦がまもなく終了します','残りの戦功目標を確認しましょう。',e.ends_at-3600000,now));}
+ const events=rows(await stmt(db,"SELECT id,starts_at,ends_at FROM timed_events WHERE status='active' AND ends_at>? AND (starts_at>=? OR ends_at<=?)",now,categorySince('event'),now+3600000).all());
+ for(const e of events){if(e.starts_at>=categorySince('event'))statements.push(...notificationStatements(db,userId,'event','event:start:'+userId+':'+e.id,'期間限定合戦が始まりました','期間限定合戦から戦場と報酬を確認できます。',e.starts_at,now));statements.push(...notificationStatements(db,userId,'event','event:end:'+userId+':'+e.id,'期間限定合戦がまもなく終了します','残りの戦功目標を確認しましょう。',e.ends_at-3600000,now));}
  const saveRow=await stmt(db,'SELECT save_json,revision FROM player_saves WHERE user_id=?',userId).first(),state=stateOf(saveRow?.save_json),jobs=state?pendingJobs(state):[];
  if(jobs.length&&clock&&!state.gameOver)statements.push(jobStatement(db,userId,state,jobs,now,clock,'EXISTS(SELECT 1 FROM player_saves WHERE user_id=? AND revision=?)',[userId,saveRow.revision]));
  // A cancelled construction, a lost castle or a new campaign must not leave a
@@ -198,6 +232,7 @@ async function queueFacts(db,userId,since,now,clock,preferences={},messageOnly=f
 }
 function sourceGate(userId,message,now,snapshot){
  const prefix=kind=>kind+':'+userId+':',id=message.id;
+ if(id.startsWith(prefix('social')))return{sql:`EXISTS(SELECT 1 FROM notification_social_events n WHERE n.id=? AND n.user_id=? AND n.push_eligible=1 AND n.read_at IS NULL AND n.expires_at>? AND ${socialNotificationAccess()})`,args:[id.slice(prefix('social').length),userId,now]};
  if(id.startsWith(prefix('court-chat'))||id.startsWith(prefix('court-audience'))){
   const access=snapshot.courtAccess;
   if(!access)return{sql:'0',args:[],deferred:true,court:true};
@@ -206,7 +241,7 @@ function sourceGate(userId,message,now,snapshot){
   return{sql:`EXISTS(SELECT 1 FROM court_audience_messages m JOIN court_audience_threads t ON t.id=m.thread_id WHERE m.id=? AND m.author_id<>? AND m.created_at>=? AND (?=1 OR t.requester_id=?) AND ${activeAuthor('m.author_id')} AND ${activeAuthor('t.requester_id')} AND NOT EXISTS(SELECT 1 FROM notification_chat_reads nr WHERE nr.user_id=? AND nr.room_key='court:audience:'||t.id AND nr.last_message_id>=m.seq))`,args:[id.slice(prefix('court-audience').length),userId,access.notificationSince,access.privileged?1:0,userId,userId],court:true};
  }
  if(id.startsWith(prefix('mail')))return{sql:"EXISTS(SELECT 1 FROM mail_campaigns m WHERE m.id=? AND (m.target_user_id=? OR m.target_user_id IS NULL) AND (m.sender_id<>? OR m.request_id LIKE 'system:%') AND NOT EXISTS(SELECT 1 FROM mail_reads r WHERE r.mail_id=m.id AND r.user_id=?))",args:[id.slice(prefix('mail').length),userId,userId,userId]};
- if(id.startsWith(prefix('chat')))return{sql:`EXISTS(SELECT 1 FROM messages m JOIN users recipient ON recipient.id=? WHERE m.id=? AND ${chatAudience('recipient.id')} AND ${unreadChat('recipient.id')} AND ${chatScope('recipient.id')}=?)`,args:[userId,Number(id.slice(prefix('chat').length)),message.source_scope]};
+ if(id.startsWith(prefix('chat')))return{sql:`EXISTS(SELECT 1 FROM messages m JOIN users recipient ON recipient.id=? WHERE m.id=? AND ${chatAudience('recipient.id')} AND ${unreadChat('recipient.id')} AND ${chatScope('recipient.id')}=?${message.category==='chat'?` AND (m.channel<>'world' OR ${directedChat('recipient.id')})`:''})`,args:[userId,Number(id.slice(prefix('chat').length)),message.source_scope]};
  if(id.startsWith(prefix('announcement')))return{sql:`EXISTS(SELECT 1 FROM notification_announcements a JOIN settings s ON s.key='announcement' AND s.updated_at=a.created_at WHERE a.id=? AND a.sender_id<>? AND length(trim(s.value))>0)`,args:[id.slice(prefix('announcement').length),userId]};
  if(id.startsWith(prefix('letter')))return{sql:`EXISTS(SELECT 1 FROM base_letter_messages m JOIN base_letter_threads t ON t.id=m.thread_id WHERE m.id=? AND m.sender_id<>? AND ((t.kind='player' AND (t.user_a=? OR t.user_b=?)) OR (t.kind='guild' AND (t.sender_id=? OR EXISTS(SELECT 1 FROM guild_members WHERE user_id=? AND guild_id=t.guild_id)))) AND NOT EXISTS(SELECT 1 FROM base_letter_reads r WHERE r.thread_id=t.id AND r.user_id=? AND r.last_seq>=m.seq))`,args:[id.slice(prefix('letter').length),userId,userId,userId,userId,userId,userId]};
  if(id.startsWith(prefix('operation')))return{sql:`EXISTS(SELECT 1 FROM alliance_operations o JOIN guild_members m ON m.guild_id=o.guild_id AND m.user_id=? WHERE o.id=? AND o.status='planned' AND o.starts_at<=? AND o.starts_at>? AND o.expires_at>?)`,args:[userId,id.slice(prefix('operation').length),now+300000,now-900000,now]};
@@ -225,10 +260,10 @@ function sourceGate(userId,message,now,snapshot){
 }
 function deliveryPayload(messages){
  const destinations=[...new Set(messages.map(m=>m.destination||'recap'))];
- return{title:messages.length===1?messages[0].title:'戦国VS：'+messages.length+'件のお知らせ',body:messages.length===1?messages[0].body:[...new Set(messages.map(m=>m.title))].slice(0,3).join(' ／ '),tag:'sengoku-update',url:'/?notice=1',destination:destinations.length===1?destinations[0]:'recap'};
+ return{title:messages.length===1?messages[0].title:'戦国VS：'+messages.length+'件のお知らせ',body:messages.length===1?messages[0].body:[...new Set(messages.map(m=>m.title))].slice(0,3).join(' ／ '),tag:'sengoku-update',url:'/?notice=1',destination:destinations.length===1?destinations[0]:'recap',renotify:destinations.some(destination=>!['recap','notifications'].includes(destination))};
 }
 async function deliverUser(env,p,clock,now,{messageOnly=false,courtAccess=null}={}){
- const db=env.DB,snapshot=await queueFacts(db,p.user_id,Math.max(p.since,Math.min(p.updated_at,now),now-86400000),now,clock,p,messageOnly,courtAccess);
+ const db=env.DB,snapshot=await queueFacts(db,p.user_id,Math.max(p.since,now-86400000),now,clock,p,messageOnly,courtAccess);
  if(notificationQuiet(p,now))return{sent:0,failed:0};
  const categories=types.filter(k=>p[k]&&(!messageOnly||['battle','letter',...messageTypes].includes(k)));if(!categories.length)return{sent:0,failed:0};
  const subscriptions=rows(await stmt(db,'SELECT * FROM notification_subscriptions WHERE user_id=? ORDER BY created_at DESC LIMIT 5',p.user_id).all());
@@ -303,6 +338,7 @@ export async function dispatchNotifications(env,clock=null,{courtAccess=null}={}
   for(const r of delivered){if(r.status==='fulfilled'){sent+=r.value.sent;failed+=r.value.failed;}else failed++;}
  }
  await stmt(db,"DELETE FROM notification_outbox WHERE category<>'construction' AND created_at<? AND (delivered_at IS NOT NULL OR due_at<?)",now-7*86400000,now-7*86400000).run();
+ await stmt(db,'DELETE FROM notification_social_events WHERE expires_at<=?',now).run();
  return{ok:true,sent,failed,checked};
 }
 // A committed message can wake its own recipients immediately, independently
@@ -313,7 +349,7 @@ export async function dispatchMessageNotifications(env,clock=null,{path='',actor
  path=path.replace(/^\/api\/v1/,'');const now=Date.now(),start=Math.max(now-300000,Math.min(now,Number(since)||now));
  let source,args;
  if(path==='/chat'){
-  source=`EXISTS(SELECT 1 FROM messages m WHERE m.user_id=? AND m.created_at>=? AND ((m.channel='world' AND p.worldChat=1) OR (m.channel<>'world' AND p.chat=1)) AND ${chatAudience('p.user_id')} AND ${unreadChat('p.user_id')})`;args=[actorId,start];
+  source=`EXISTS(SELECT 1 FROM messages m WHERE m.user_id=? AND m.created_at>=? AND ((m.channel='world' AND p.worldChat=1) OR ((m.channel<>'world' OR ${directedChat('p.user_id')}) AND p.chat=1)) AND ${chatAudience('p.user_id')} AND ${unreadChat('p.user_id')})`;args=[actorId,start];
  }else if(path==='/admin/announcement'){
   source="p.announcement=1 AND EXISTS(SELECT 1 FROM notification_announcements a WHERE a.sender_id=? AND a.created_at>=? AND a.sender_id<>p.user_id)";args=[actorId,start];
  }else if(path==='/admin/mail'){
@@ -324,6 +360,8 @@ export async function dispatchMessageNotifications(env,clock=null,{path='',actor
   source=`p.chat=1 AND EXISTS(SELECT 1 FROM court_chat m WHERE m.author_id=? AND m.created_at>=? AND m.author_id<>p.user_id AND NOT EXISTS(SELECT 1 FROM notification_chat_reads nr WHERE nr.user_id=p.user_id AND nr.room_key='court:chat' AND nr.last_message_id>=m.seq))`;args=[actorId,start];
  }else if(path==='/court/audiences'||/^\/court\/audiences\/ca_[a-f0-9]{32}\/replies$/.test(path)){
   source=`p.chat=1 AND EXISTS(SELECT 1 FROM court_audience_messages m JOIN court_audience_threads t ON t.id=m.thread_id WHERE m.author_id=? AND m.created_at>=? AND m.author_id<>p.user_id AND (t.requester_id=p.user_id OR p.user_id=COALESCE((SELECT value FROM settings WHERE key='adminUserId'),'') OR EXISTS(SELECT 1 FROM staff_members sm WHERE sm.user_id=p.user_id) OR EXISTS(SELECT 1 FROM court_regent r WHERE r.user_id=p.user_id)))`;args=[actorId,start];
+ }else if(/^\/(?:friends\/(?:request|respond)|alliance\/(?:apply|invite|membership|treasury\/(?:request|approve))|trades(?:\/tr_[a-f0-9]{32}\/(?:accept|reject|cancel))?|court\/negotiations(?:\/cn_[a-f0-9]{32}\/(?:counter|accept|reject|cancel))?)$/.test(path)){
+  source=`p.chat=1 AND EXISTS(SELECT 1 FROM notification_social_events n WHERE n.actor_id=? AND n.created_at>=? AND n.user_id=p.user_id AND n.push_eligible=1 AND n.read_at IS NULL AND n.expires_at>? AND ${socialNotificationAccess()})`;args=[actorId,start,now];
  }else return{ok:true,sent:0,checked:0};
  const records=rows(await stmt(env.DB,`SELECT p.*,MIN(s.created_at) AS since FROM notification_preferences p JOIN notification_subscriptions s ON s.user_id=p.user_id WHERE p.enabled=1 AND ${activeAuthor('p.user_id')} AND ${source} GROUP BY p.user_id ORDER BY p.user_id LIMIT 12`,...args).all());
  let sent=0,failed=0,checked=0;
@@ -337,12 +375,13 @@ export async function handleNotifications(ctx){
  const {db,user,env,now,path,method,helpers:h}=ctx;await h.requireAccountAccess(db,user);
  if(path==='/notifications'&&method==='GET'){const p=await stmt(db,'SELECT * FROM notification_preferences WHERE user_id=?',user.id).first();return{ok:true,configured:configured(env),publicKey:configured(env)?env.WEB_PUSH_PUBLIC_KEY:null,preferences:dto(p),devices:Number((await stmt(db,'SELECT COUNT(*) AS n FROM notification_subscriptions WHERE user_id=?',user.id).first())?.n||0),serverNow:now};}
  const body=await h.readBody(ctx.request);await h.budget(db,'notifications:'+user.id,30,60000,now);const guard=h.accountCommitGuard(user);
+ if(path==='/notifications/read'&&method==='POST')return readSocialNotifications(ctx,body);
  if(path==='/notifications/preferences'&&method==='POST'){
   if(legacyTypes.some(k=>typeof body[k]!=='boolean')||messageTypes.some(k=>Object.hasOwn(body,k)&&typeof body[k]!=='boolean')||typeof body.enabled!=='boolean'||!Number.isInteger(body.quietStart)||body.quietStart<0||body.quietStart>23||!Number.isInteger(body.quietEnd)||body.quietEnd<0||body.quietEnd>23||![0,5,15,60].includes(body.digestMinutes))h.fail(400,'NOTIFICATION_SETTINGS','通知の種類・日本時間の休止時間・間隔を確認してください。');
   const previous=dto(await stmt(db,'SELECT * FROM notification_preferences WHERE user_id=?',user.id).first()),preferences={...previous,...body};
-  const fields=['user_id','enabled',...types,'quiet_start','quiet_end','digest_minutes','updated_at',...messageTypes.map(k=>k+'_since')];
-  const args=[user.id,preferences.enabled?1:0,...types.map(k=>preferences[k]?1:0),preferences.quietStart,preferences.quietEnd,preferences.digestMinutes,now,...messageTypes.map(()=>now),...guard.args],disabled=types.filter(k=>!preferences.enabled||!preferences[k]);
-  const updates=['enabled',...types,'quiet_start','quiet_end','digest_minutes'].map(k=>k+'=excluded.'+k).concat('updated_at=MAX(notification_preferences.updated_at+1,excluded.updated_at)',messageTypes.map(k=>`${k}_since=CASE WHEN (notification_preferences.enabled=0 OR notification_preferences.${k}=0) AND excluded.enabled=1 AND excluded.${k}=1 THEN excluded.${k}_since ELSE notification_preferences.${k}_since END`));
+  const fields=['user_id','enabled',...types,'quiet_start','quiet_end','digest_minutes','updated_at',...types.map(k=>k+'_since')];
+  const args=[user.id,preferences.enabled?1:0,...types.map(k=>preferences[k]?1:0),preferences.quietStart,preferences.quietEnd,preferences.digestMinutes,now,...types.map(()=>now),...guard.args],disabled=types.filter(k=>!preferences.enabled||!preferences[k]);
+  const updates=['enabled',...types,'quiet_start','quiet_end','digest_minutes'].map(k=>k+'=excluded.'+k).concat('updated_at=MAX(notification_preferences.updated_at+1,excluded.updated_at)',types.map(k=>`${k}_since=CASE WHEN (notification_preferences.enabled=0 OR notification_preferences.${k}=0) AND excluded.enabled=1 AND excluded.${k}=1 THEN excluded.${k}_since ELSE notification_preferences.${k}_since END`));
   const statements=[stmt(db,`INSERT INTO notification_preferences(${fields.join(',')}) SELECT ${fields.map(()=>'?').join(',')} WHERE ${guard.sql} ON CONFLICT(user_id) DO UPDATE SET ${updates.join(',')}`,...args)];
   if(disabled.length)statements.push(stmt(db,`DELETE FROM notification_outbox WHERE user_id=? AND delivered_at IS NULL AND category IN(${disabled.map(()=>'?').join(',')}) AND ${guard.sql}`,user.id,...disabled,...guard.args));
   await db.batch(statements);await h.requireAccountAccess(db,user);

@@ -23,7 +23,7 @@ Object.defineProperty(Node.prototype,'hidden',{configurable:true,get(){return th
 Node.prototype.select=function(){this.setSelectionRange(0,this.value.length);};
 const context={document:doc,URL,URLSearchParams,AbortController,queueMicrotask,location:{origin:'https://game.example',pathname:'/',search:'?token=private&test=other'},navigator:{clipboard:{writeText:async url=>{if(blockClipboard)throw Error('denied');clipboard=url;}}},setTimeout:fn=>{timers.set(++tick,fn);return tick;},clearTimeout:id=>timers.delete(id)};
 context.window=context;vm.createContext(context);
-for(const file of ['officers-data.js','artwork.js','stable-dom.js'])vm.runInContext(read(file),context);
+for(const file of ['officers-data.js','artwork.js','stable-dom.js','public-court.js'])vm.runInContext(read(file),context);
 const existingStartHandlers=new Set(listeners.get('DOMContentLoaded'));
 vm.runInContext(read('public-profile.js'),context);
 const profileStart=[...listeners.get('DOMContentLoaded')].find(handler=>!existingStartHandlers.has(handler));
@@ -72,8 +72,17 @@ async function main(){
  request=id=>({player:player(id,'鬼<王>',commander(other,'A'))});await refresh();
  assert(artUpdates>artBaseline,'a changed portrait must be scheduled even if its image node was retained');
  assert.equal(body.querySelector('[data-officer-id]').dataset.officerId,other.id);assert.match(body.innerHTML,/officers-A-/);
+ request=id=>({player:{...player(id,'鬼<王>',null),courtLineage:{class:'kuge',houseId:'konoe',houseName:'偽の家柄',imperialHouseName:null,originalClan:'島津家'}}});await refresh();
+ assert.match(body.textContent,/公家 · 近衛家/);assert.match(body.textContent,/出身家：島津家/);assert(!body.textContent.includes('偽の家柄'));
+ request=id=>({player:{...player(id,'鬼<王>',null),courtLineage:{class:'imperial',houseId:'kujo',imperialHouseName:'<花霞宮>',originalClan:'島津家'}}});await refresh();
+ assert.match(body.textContent,/皇族 · <花霞宮>/);assert.match(body.textContent,/出身家：島津家/);assert.equal(body.querySelector('花霞宮'),null);assert.match(context.SengokuPublicCourt.lineageMarkup({courtLineage:{class:'imperial',houseId:'kujo',imperialHouseName:'<花霞宮>'}}),/皇族 · &lt;花霞宮&gt;/);
+ request=id=>({player:{...player(id,'武家の領主',null),courtRelations:{suzerain:{id:'u_kuge',name:'近衛の公家',houseName:'近衛家',imperialHouseName:null},vassals:[],vassalCount:0}}});await refresh();
+ assert.match(body.textContent,/主従関係/);assert.match(body.textContent,/主君：近衛の公家 · 近衛家/);assert.equal(body.querySelector('[data-public-profile="u_kuge"]').textContent,'近衛の公家');assert(!body.textContent.includes('支払'));
+ const relationNode=body.querySelector('.lord-public-relations');close.focus();body.scrollTop=27;await refresh();assert.equal(body.querySelector('.lord-public-relations'),relationNode);assert.equal(body.scrollTop,27);assert.equal(doc.activeElement,close);
+ request=id=>({player:{...player(id,'公家の領主',null),courtRelations:{suzerain:null,vassals:[{id:'u_samurai',name:'武家<甲>',clan:'島津家'}],vassalCount:1}}});await refresh();
+ assert.match(body.textContent,/支配下の武家：1人/);assert.match(body.textContent,/武家<甲> · 島津家/);assert.equal(body.querySelector('甲'),null);assert.equal(body.querySelector('[data-public-profile="u_samurai"]').textContent,'武家<甲>');
  request=id=>({player:player(id,'鬼<王>',null)});await refresh();
- assert.match(body.textContent,/未編成/);assert.equal(body.querySelector('[data-art-url]'),null);
+ assert.match(body.textContent,/未編成/);assert.equal(body.querySelector('[data-art-url]'),null);assert.equal(body.querySelector('.lord-public-relations'),null);
  await emit('click',dialog.querySelector('[data-profile-copy]'));await settle();
  assert.equal(clipboard,'https://game.example/?lord=u_b');
  blockClipboard=true;await emit('click',dialog.querySelector('[data-profile-copy]'));await settle();

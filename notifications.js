@@ -1,7 +1,7 @@
 /* Optional browser Push: opt-in from a user gesture, with server-side preferences. */
 (function(global){
  'use strict';
- const LABELS={letter:'書状・システム便',chat:'フレンド・同盟の会話、御所の談話・拝謁',worldChat:'世界チャットの投稿',announcement:'御触書・全体のお知らせ',battle:'襲撃・合戦の結果',operation:'同盟の集合・作戦',construction:'普請・研究の完成',event:'イベントの開始・終了'};
+ const LABELS={letter:'書状・システム便',chat:'フレンド・同盟・運営の会話、申請・招待・交易、自分への呼びかけ・返信、御所の談話・拝謁',worldChat:'世界チャットの投稿',announcement:'御触書・全体のお知らせ',battle:'襲撃・合戦の結果',operation:'同盟の集合・作戦',construction:'普請・研究の完成',event:'イベントの開始・終了'};
  const escape=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
  const ownerKey='sengoku-push-owner-v1';
  let opts={},dialog=null,record=null,device=null,busy=false,message='',stamp='',sequence=0,view=0,previousFocus=null;
@@ -33,7 +33,7 @@
   const p=record?.preferences,canTest=usable()&&record?.configured&&p?.enabled&&device?.registered&&permission()==='granted';
   const help=needsInstall()?'<section class="notification-help" aria-label="iPhone・iPadの通知設定"><h3>iPhone・iPadで受け取るには</h3><p>iOS・iPadOS 16.4以降が必要です。Safariの共有メニューから「ホーム画面に追加」し、追加した戦国VSのアイコンを開いて、この画面で通知をオンにしてください。</p></section>':!supported()?'<p class="notice">このブラウザではプッシュ通知を利用できません。対応するブラウザ、またはホーム画面へ追加したアプリから設定してください。ゲーム内の郵便と報告は利用できます。</p>':'';
   const html=`<form><header><div><small>お知らせ</small><h2 id="notification-title">端末への通知</h2></div><button type="button" class="button" data-notification="close" aria-label="閉じる">×</button></header>
-   <p>新しいメッセージや出来事を、許可した端末へお知らせします。ゲームを閉じていても受け取れます。メッセージの本文や送信者名は通知に表示しません。</p>
+   <p>新しいメッセージや出来事を、許可した端末へお知らせします。ゲームを閉じていても受け取れます。メッセージの本文や送信者名は通知に表示しません。</p><p class="notification-note">ゲーム内の未読表示と交流の「通知」は、端末への通知をオフにしていても利用できます。</p>
    <div class="notification-status" role="status" aria-live="polite">${escape(message)}</div>${help}
    ${permission()==='denied'?'<p class="notice">通知がブロックされています。この端末のブラウザ設定で戦国VSの通知を許可してください。ホーム画面アプリの場合は、端末の「設定」→「通知」も確認してください。変更後に「端末を再確認」を押してください。</p>':''}
    ${p?`<div class="notification-device"><p class="notification-state">この端末：<strong>${escape(deviceState())}</strong></p><p>全端末共通の配信：<strong>${p.enabled?'オン':'オフ'}</strong> · 登録端末 ${Number(record.devices)||0} / 5</p><p class="notification-note">通知の許可と端末の登録は、それぞれの端末で行ってください。</p></div>

@@ -1,5 +1,5 @@
 /* 本体は先に保存。大きな絵巻は、実際に開いたものから保存します。 */
-const RELEASE='5.23.1-20261128';
+const RELEASE='5.24.0-20261128';
 const CACHE='sengoku-taisen-v'+RELEASE;
 const scopeURL=()=>self.registration?.scope||self.location.origin+'/';
 const currentMatch=(request,name=CACHE)=>caches.open(name).then(cache=>cache.match(request));
@@ -221,12 +221,14 @@ self.addEventListener('fetch', event => {
 
 });
 // The browser decrypts the authenticated Web Push payload before this event.
-const notificationDestination=value=>['mail','letters','world','guild','friends','admin','news','notifications','courtChat','courtAudiences'].includes(value)?value:'recap';
+const notificationDestination=value=>['mail','letters','world','guild','friends','admin','news','trade','notifications','courtChat','courtAudiences','courtNegotiations'].includes(value)?value:'recap';
 const notificationEntry=destination=>'./?notice='+(destination==='recap'?'1':destination);
 self.addEventListener('push',event=>{
  let payload={};try{payload=event.data?.json()||{};}catch(_){}
  const title=typeof payload.title==='string'?payload.title.slice(0,100):'戦国VSのお知らせ',destination=notificationDestination(payload.destination);
- event.waitUntil(self.registration.showNotification(title,{body:typeof payload.body==='string'?payload.body.slice(0,240):'領国の報告を確認してください。',icon:'./assets/branding/sengoku-vs-icon-192-'+brandEdition+'.png',badge:'./assets/branding/sengoku-vs-badge-96-'+brandEdition+'.png',tag:destination==='recap'?'sengoku-update':'sengoku-'+destination,renotify:false,data:destination==='recap'?{url:'/?notice=1'}:{destination}}));
+ // Retain one card per screen while alerting for newly delivered community
+ // messages; a previous, still-open card must not silently swallow the next.
+ event.waitUntil(self.registration.showNotification(title,{body:typeof payload.body==='string'?payload.body.slice(0,240):'領国の報告を確認してください。',icon:'./assets/branding/sengoku-vs-icon-192-'+brandEdition+'.png',badge:'./assets/branding/sengoku-vs-badge-96-'+brandEdition+'.png',tag:destination==='recap'?'sengoku-update':'sengoku-'+destination,renotify:payload.renotify===true||!['recap','notifications'].includes(destination),data:destination==='recap'?{url:'/?notice=1'}:{destination}}));
 });
 self.addEventListener('notificationclick',event=>{
  event.notification.close();event.waitUntil((async()=>{const destination=notificationDestination(event.notification.data?.destination),entry=notificationEntry(destination),root=new URL('./',scopeURL()),clients=await self.clients.matchAll({type:'window',includeUncontrolled:true});for(const client of clients){try{const url=new URL(client.url);if(url.origin===root.origin&&[root.pathname,root.pathname+'index.html'].includes(url.pathname)){await client.focus();client.postMessage(destination==='recap'?{type:'sengoku-open-recap'}:{type:'sengoku-open-notification',destination});return;}}catch(_){}}await self.clients.openWindow(entry);})());
