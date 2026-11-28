@@ -113,7 +113,12 @@ const totalGzipBytes = rows.reduce((sum,row)=>sum+row.gzipBytes,0);
 // Measured: 3,745,557 raw / 1,035,751 gzip (+10,220 / +2,810 from v5.17).
 // No new images, fonts, libraries or animation-frame loop are introduced.
 // Retain less than 1.7 KB raw / 0.9 KB gzip headroom for this reviewed addition.
-const rawBudget=3747000,gzipBudget=1036500;
+// v5.19 adds the shogunate government: policies, public works, daily duties,
+// renown, milestones and account-safe receipt recovery. Measured entry:
+// 3,783,957 raw / 1,045,513 gzip bytes (+38,400 / +9,762 from v5.18),
+// including compact phone/tablet layouts. No media or dependencies are added.
+// Keep 1,043 raw / 687 gzip bytes of headroom for this reviewed feature.
+const rawBudget=3785000,gzipBudget=1046200;
 assert(totalBytes <= rawBudget, `Initial bundles exceed the ${rawBudget} byte budget: ${totalBytes}`);
 assert(totalGzipBytes <= gzipBudget, `Initial bundles exceed the ${gzipBudget} gzip byte budget: ${totalGzipBytes}`);
 const html = fs.readFileSync(path.join(root,'index.html'),'utf8');

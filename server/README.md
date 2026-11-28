@@ -1,5 +1,13 @@
 # 戦国VS（SENGOKU VS）― 交流・同期・共通時計サーバー
 
+## v5.19.0 幕府政庁
+
+開設済み幕府の領主へ、4政策・3系統各Lv.5の公共事業・3件の日次政務・威信5段階・達成褒賞・履歴を提供します。`GET /shogunate/governance` と `POST /shogunate/governance/action` を追加し、既存の幕府申請・朝廷承認ルートから政庁へ委譲します。
+
+`0054_shogunate_governance.sql` とjournalをWorkerに同時配備してください。台帳は領主単位、日次は日本時間05:00で区切ります。資源、政庁revision、受付結果と履歴は1回の原子的な処理で確定し、古いセーブ・別端末・追加開設によって同日の報酬を再受領できません。新機能の効果は政務報酬に含め、既存の拠点保護・太政官・天皇・摂政・上皇の権限を変更しません。
+
+配備後は `/api/v1/health` の `version: "5.19.0"` と `features.shogunateGovernance: true` を確認します。`server/test-shogunate-governance.mjs`、`tests/test-shogunate-governance-ui.cjs`、`tests/test-shogunate-governance-bridge.cjs` が新機能の動作・通信再試行・同期の検証です。
+
 ## v5.17.0 メッセージの端末通知
 
 書状・システム便に加え、フレンド・同盟・現在の参加資格がある非公開チャット、御所の談話・拝謁の新着と返信、個別選択の世界チャット、御触書をWeb Pushへ連動します。メッセージが確定した成功リクエストから、対象の通知登録者へ配信を起動します。直送の対象数・時間を上限内に抑え、残りと再試行は既存の定期配信が処理します。

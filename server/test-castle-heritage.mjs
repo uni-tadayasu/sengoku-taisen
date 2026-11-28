@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
 import {createHmac} from 'node:crypto';
+import {readFileSync} from 'node:fs';
 import {harness} from './test-support.mjs';
 import {fixture,post,row,updateSave} from './test-court-support.mjs';
 
 // Signed local Stripe fixtures only. The entire suite forbids external fetch.
+const publishedVersion=JSON.parse(readFileSync(new URL('./package.json',import.meta.url),'utf8')).version;
 const SECRET='whsec_local_castle_heritage_fixture_only',PRODUCT='castle-heritage';
 const LINK='plink_1UgZ3RL3ZjL9QUmf9UOolX4E',PRICE='price_1UgZ3IL3ZjL9QUmf26YHbrPH';
 const id=prefix=>prefix+crypto.randomUUID().replaceAll('-','');
@@ -44,7 +46,7 @@ async function scenario(name,run){
 }
 try{
 await scenario('health readiness requires the new product constraints and verified payment view',async h=>{
-  assert.equal((await h.api('/health')).data.version,'5.17.0');
+  assert.equal((await h.api('/health')).data.version,publishedVersion);
   const view=h.sql.prepare("SELECT sql FROM sqlite_master WHERE type='view' AND name='premium_verified_payments'").get().sql;
   h.sql.exec('DROP VIEW premium_verified_payments');h.sql.exec(view.replace(",'castle-heritage'",''));
   assert.equal((await h.api('/health',{expected:503})).data.error.code,'SERVICE_UNAVAILABLE');

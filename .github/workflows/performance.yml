@@ -241,6 +241,10 @@ jobs:
         run: |
           node server/test-shogunate.mjs shogunate.js
           node server/test-shogunate-approval.mjs
+          node server/test-shogunate-governance.mjs
+          node server/test-shogunate-governance-migration.mjs
+          node tests/test-shogunate-governance-ui.cjs
+          node tests/test-shogunate-governance-bridge.cjs
           node server/test-retired-emperor.mjs
           node server/test-succession-approval.mjs
           node server/test-regency.mjs

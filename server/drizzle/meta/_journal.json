@@ -379,6 +379,13 @@
       "when": 1799280000005,
       "tag": "0053_message_notifications",
       "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "6",
+      "when": 1799280000006,
+      "tag": "0054_shogunate_governance",
+      "breakpoints": true
     }
   ]
 }

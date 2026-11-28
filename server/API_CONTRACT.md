@@ -1,5 +1,44 @@
 # 戦国VS（SENGOKU VS）通信API
 
+## 幕府政庁 — post-opening governance (v5.19.0)
+
+Migration `0054_shogunate_governance.sql` adds `shogunate_governance_accounts` and immutable `shogunate_governance_requests`. It changes no existing player, opening right, court appointment, base ownership or save. `/health` requires both tables and advertises `features.shogunateGovernance:true`.
+
+`GET /shogunate/governance` returns `{ok:true,governance}`. It requires the authenticated account but is available before founding as a locked snapshot. An opened right belonging to that account unlocks the government; the latest is selected by `opened_at DESC,id DESC`. Pending applications do not unlock it. Existing approved, expired and legacy openings all qualify. The enclosing shogunate handler settles genuine 72-hour deadlines before reading this endpoint.
+
+The version-1 governance DTO contains:
+
+- `available`, `reason`, `government:{id,name,rank:"征夷大将軍",openedAt}` (or `null`), numeric `serverNow`, and `calendar:{day,nextResetAt,resetHour:5,timeZone:"Asia/Tokyo"}`. `day` is an ISO date; timestamps are epoch milliseconds.
+- `revision` (0 before the first government action), `policyId`, `policyChangedToday`, `resources:{gold,rice,wood,stone,magatama}`, `dailyReward` and `renown:{points,level,name,levelStart,nextLevelAt,totalLevels:5,cap:1500}`.
+- Four `policies:{id,name,description,selected,canSelect,reason,reward}`; three `projects:{id,name,description,effect,level,maxLevel,cost,renownReward,canUpgrade,reason}`; three `duties:{id,name,description,cost,reward,renownReward,claimed,canComplete,reason}`; five `milestones:{id,name,description,progress,target,eligible,claimed,reward,canClaim,reason}`. Resource maps are sparse, including empty maps; all amounts are nonnegative safe integers.
+- At most 30 recent immutable `history` records. Locked snapshots retain the same top-level shape, with default level/policy, zero resources and empty catalog/history arrays.
+
+`POST /shogunate/governance/action` accepts exactly `{kind,targetId,day,governanceRevision,requestId,deviceId,expectedRevision}`. Allowed kinds are `policy`, `project`, `duty`, and `milestone`. The client submits no price, reward, renown, role or opening right. The semantic request hash covers kind, target and day; writer/government revision changes do not prevent recovery of an already committed operation. Successful writes return the existing full sync snapshot, `governance`, `receipt` and `idempotent`. Apply the returned save through the normal expansion-write synchronization path before enabling further actions.
+
+Each receipt is `{id,kind,targetId,name,at,day,cost,reward,offeredReward,renownGained,renownOffered,governmentId}`. `id` is the submitted request ID. `cost` is the exact debit; `reward` and `renownGained` are the amounts actually credited after caps. History uses the same fields. Replays return the original receipt and a fresh authoritative save; an operation number reused for a different semantic request returns `REQUEST_ID_REUSED`.
+
+| Action | Rule |
+| --- | --- |
+| `policy`: `balanced`, `agriculture`, `commerce`, `construction` | Initial policy is 文武均衡. Change once per real day, resetting at 05:00 JST. Policy affects the daily government reward only. Base gold/rice/wood/stone are respectively 600/600/300/300, 300/1200/150/150, 1200/300/150/150, and 300/300/600/600. Base magatama is 20. |
+| `project`: `granary`, `roads`, `academy` | Each starts at Lv.0 and ends at Lv.5. Next level *L* costs gold 3,000×L, rice 1,000×L, wood 1,500×L and stone 1,000×L, with 20×L renown. Every level adds respectively rice 120, gold 120, or wood 60 plus stone 60 to daily government rewards. |
+| `duty`: `audience` | Once daily. Grants the current policy/project reward and 10 renown. Government level above Lv.1 adds 5 magatama per level. |
+| `duty`: `relief`, `inspection` | Each once daily. Spend respectively rice 2,000 or gold 2,000 for 15 renown. At maximum renown the action rejects without debiting assets. |
+| `milestone`: `first_work` | Total project levels ≥1: gold 1,000 and magatama 30. |
+| `milestone`: `all_works` | All three projects at least Lv.1: wood 1,000, stone 1,000, magatama 60. |
+| `milestone`: `renown_300` | Renown ≥300: rice 2,000, magatama 80. |
+| `milestone`: `master_works` | All three projects Lv.5: gold 3,000, magatama 200. |
+| `milestone`: `renown_1500` | Renown 1,500: each of the four resources 2,000, magatama 150. |
+
+Renown levels start at 0/100/300/700/1,500 and are named 開府/政道整備/領国振興/泰平への道/天下泰平. All five milestones are once per account. Government state and daily receipt keys are per account, so additional opening rights, campaign changes, home relocation, cycle resets and imported saves cannot grant extra daily actions or erase development. The accepted day never moves backwards. Every action checks its displayed day, including projects and milestones, so a stale confirmation after 05:00 JST must refresh.
+
+The commit admits the current role/account generation, writer device and unexpired lease, exact save revision, world-clock revision, government revision (or the still-absent initial row), and the exact latest opened right. One ordered D1 batch commits the immutable receipt, normalized game save and government ledger; any failed statement rolls everything back. No court-office table is written and no global combat or production multiplier is added. Foreign, fabricated and pending rights cannot authorize government actions.
+
+Resource credits use the existing 100,000,000-per-asset cap. Partial credit consumes the action and records only the amount added. An audience action can still grant renown when all assets are full; it rejects without consuming the daily slot when all rewards and renown are full. A milestone with every offered asset full also retains its unclaimed slot. The UI presents offered rewards before confirmation and actual credit afterwards.
+
+Expected errors include `SHOGUNATE_REQUIRED`, `GOVERNANCE_DAY_CHANGED`, `GOVERNANCE_CHANGED`, `GOVERNANCE_POLICY_SELECTED`, `GOVERNANCE_POLICY_LIMIT`, `GOVERNANCE_PROJECT_MAX`, `GOVERNANCE_SHORTAGE`, `GOVERNANCE_CLAIMED`, `GOVERNANCE_MILESTONE_INCOMPLETE`, `GOVERNANCE_REWARD_CAP`, `GOVERNANCE_RENOWN_CAP`, `INVALID_INPUT`, `REQUEST_ID_REUSED`, and existing account/writer errors. Day, resource or state rejections preserve the save and action ledger. Network uncertainty keeps the original request ID for explicit recovery.
+
+Local API coverage is in `test-shogunate-governance.mjs`, with existing shogunate/approval tests preserving the founding and imperial-role contracts.
+
 ## Message Push and current-device notifications (v5.17.0)
 
 Migration `0053_message_notifications.sql` preserves existing preferences, endpoints and queued records while adding `chat`, `worldChat`, `announcement`, category consent times, room read cursors, authoritative court admission checkpoints, announcement publication metadata and per-device delivery receipts. New users keep notifications disabled until explicit consent; first-time delivery timing is immediate/no quiet hours. World chat defaults false. Existing timing and enabled state are retained. An old preferences request that omits the three new booleans preserves their current values.
