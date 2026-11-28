@@ -77,16 +77,21 @@ try{
  checks++;console.log('PASS admin/deputy notices and clearing, world chat, global mail and readback');
 
  const previous=(await h.api('/admin/announcement',post(admin,{text:'保存済みの御触書です。'}))).data.announcement;
+ const noticeBefore=h.sql.prepare('SELECT * FROM notification_announcements ORDER BY id').all();
  let changed=false;
- h.beforeStatement=(sql,params)=>{
+ const changeAudience=(sql,params)=>{
   capture(sql,params);
   if(changed||!sql.startsWith("INSERT INTO settings(key,value,updated_at) SELECT 'announcement'"))return;
   changed=true;h.sql.prepare('DELETE FROM court_office_appointments WHERE user_id=?').run(external.user.id);
  };
+ h.beforeStatement=changeAudience;
+ h.beforeBatch=queries=>{for(const query of queries)changeAudience(query.sql,query.params);};
  const rejected=(await h.api('/admin/announcement',post(admin,{text:'競合した本文です。'},409))).data;
  assert(changed);assert.equal(rejected.error.code,'MESSAGE_AUDIENCE_CHANGED');
  assert.equal((await h.api('/config')).data.announcement,previous,'A stale audience cannot overwrite the previous announcement');
+ assert.deepEqual(h.sql.prepare('SELECT * FROM notification_announcements ORDER BY id').all(),noticeBefore,'A rejected announcement cannot leave a notification fact');
  h.beforeStatement=capture;
+ h.beforeBatch=queries=>{for(const query of queries)capture(query.sql,query.params);};
  const retried=(await h.api('/admin/announcement',post(admin,{text:'再確認した御触書です。'}))).data;
  assert.equal((await h.api('/config')).data.announcement,retried.announcement);
  checks++;console.log('PASS audience changes reject the write atomically and a fresh retry succeeds');

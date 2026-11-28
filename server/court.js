@@ -3,6 +3,7 @@
 import {COURT_OFFICES,handleCourtOffices} from './court-offices.js';
 import {settleShogunateApprovals,readPalaceControl} from './shogunate.js';
 import {settleCourtSuccessionNominations} from './succession.js';
+import {recordNotificationCourtRead} from './notifications.js';
 const stmt=(db,sql,...args)=>db.prepare(sql).bind(...args),rows=value=>value?.results||[],iso=value=>new Date(Number(value)).toISOString();
 const REQUIREMENT=Object.freeze({rankId:'court-7',rankName:'従五位',minScore:35000});
 const THRESHOLDS=Object.freeze(COURT_OFFICES.map(({title,minMerit})=>({title,minMerit})));
@@ -65,6 +66,7 @@ function message(row,ctx){const official=!!row.official;return{id:row.id,seq:Num
 async function chat(ctx,access){
  const {db,url,helpers:h}=ctx,after=integer(url.searchParams.get('after'),h),known=integer(url.searchParams.get('contentRevision'),h),limit=limits(url.searchParams.get('limit'),50,50,h),current=access.contentRevision,reset=known!==current;
  const delta=after&&!reset,result=await read(ctx,access,[stmt(db,messageSelect('court_chat')+` WHERE ${activeAuthor('m.author_id')} ${delta?'AND m.seq>?':''} ORDER BY m.seq ${delta?'ASC':'DESC'} LIMIT ?`,...(delta?[after]:[]),limit+1)]),found=rows(result[0]),selected=found.slice(0,limit);if(!delta)selected.reverse();
+ if(selected.length)await recordNotificationCourtRead(db,ctx.user.id,'chat',null,Math.max(...selected.map(row=>Number(row.seq))),ctx.now,access.guard,access.privileged);
  return finish(ctx,access,{ok:true,messages:selected.map(row=>message(row,ctx)),hasMore:found.length>limit,reset,contentRevision:current});
 }
 async function chatWrite(ctx,access){
@@ -90,6 +92,7 @@ async function audienceList(ctx,access){
 async function audienceRead(ctx,access,id){
  const {db,url,helpers:h}=ctx,row=await getThread(ctx,access,id),before=integer(url.searchParams.get('before'),h),limit=limits(url.searchParams.get('limit'),50,50,h),scope=threadScope(ctx,access),current=access.contentRevision;
  const result=await read(ctx,access,[stmt(db,messageSelect('court_audience_messages')+` JOIN court_audience_threads t ON t.id=m.thread_id WHERE m.thread_id=? AND ${scope.sql} AND ${activeAuthor('t.requester_id')} AND ${activeAuthor('m.author_id')} ${before?'AND m.seq<?':''} ORDER BY m.seq DESC LIMIT ?`,id,...scope.args,...(before?[before]:[]),limit+1)]),found=rows(result[0]),page=found.slice(0,limit).reverse();
+ if(page.length)await recordNotificationCourtRead(db,ctx.user.id,'audience',id,Math.max(...page.map(row=>Number(row.seq))),ctx.now,access.guard,access.privileged);
  return finish(ctx,access,{ok:true,thread:thread(row),messages:page.map(item=>message(item,ctx)),hasOlder:found.length>limit,nextBefore:found.length>limit?page[0]?.seq:null,contentRevision:current});
 }
 async function audienceWrite(ctx,access,id=null){

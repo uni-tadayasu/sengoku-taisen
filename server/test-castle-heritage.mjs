@@ -44,7 +44,7 @@ async function scenario(name,run){
 }
 try{
 await scenario('health readiness requires the new product constraints and verified payment view',async h=>{
-  assert.equal((await h.api('/health')).data.version,'5.16.1');
+  assert.equal((await h.api('/health')).data.version,'5.17.0');
   const view=h.sql.prepare("SELECT sql FROM sqlite_master WHERE type='view' AND name='premium_verified_payments'").get().sql;
   h.sql.exec('DROP VIEW premium_verified_payments');h.sql.exec(view.replace(",'castle-heritage'",''));
   assert.equal((await h.api('/health',{expected:503})).data.error.code,'SERVICE_UNAVAILABLE');

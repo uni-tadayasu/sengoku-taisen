@@ -3,9 +3,9 @@
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
 const source=fs.readFileSync(path.join(__dirname,'../sw.js'),'utf8'),clone=value=>JSON.parse(JSON.stringify(value));
 const deferred=()=>{let resolve;const promise=new Promise(r=>resolve=r);return{resolve,promise};};
-function fixture(){
+function fixture(options={}){
  const handlers=new Map(),shown=[],opened=[],trace=[],control={windows:[],onShow:null};
- const self={location:{origin:'https://game.example.invalid'},addEventListener:(name,fn)=>handlers.set(name,fn),registration:{showNotification:async(title,options)=>{shown.push({title,options:clone(options)});if(control.onShow)await control.onShow();}},clients:{matchAll:async options=>{assert.deepEqual(clone(options),{type:'window',includeUncontrolled:true});trace.push('match');return control.windows;},openWindow:async url=>{opened.push(url);trace.push('open');}}};
+ const self={location:{origin:'https://game.example.invalid'},addEventListener:(name,fn)=>handlers.set(name,fn),registration:{scope:options.scope,showNotification:async(title,options)=>{shown.push({title,options:clone(options)});if(control.onShow)await control.onShow();}},clients:{matchAll:async options=>{assert.deepEqual(clone(options),{type:'window',includeUncontrolled:true});trace.push('match');return control.windows;},openWindow:async url=>{opened.push(url);trace.push('open');}}};
  vm.runInNewContext(source,{self,URL,Response,console},{filename:'sw.js'});
  function emit(type,data={}){let waiting;const event={...data,waitUntil:value=>waiting=value};handlers.get(type)(event);assert(waiting&&typeof waiting.then==='function','event extends its lifetime through asynchronous work');return waiting;}
  const click=()=>emit('notificationclick',{notification:{data:{url:'https://untrusted.example.invalid/'},close:()=>trace.push('close')}});
@@ -27,5 +27,22 @@ test('notification clicks close immediately, await the existing game focus and r
 });
 test('when there is no game window, notification clicks open only the local recap entry',async()=>{
  const f=fixture();f.control.windows=[{url:'https://other.example.invalid/',focus:()=>{throw Error('foreign tab');}}];await f.click();assert.deepEqual(f.opened,['./?notice=1']);assert.deepEqual(f.trace,['close','match','open']);
+});
+test('chat and mail notifications preserve only an allowed screen and tap into the game',async()=>{
+ for(const destination of ['mail','letters','world','guild','friends','admin','news','notifications','courtChat','courtAudiences']){
+  const f=fixture();await f.emit('push',{data:{json:()=>({title:'戦国VS',destination,url:'https://untrusted.invalid/'})}});
+  assert.deepEqual(f.shown[0].options.data,{destination});assert.equal(f.shown[0].options.tag,'sengoku-'+destination);
+  await f.emit('notificationclick',{notification:{data:f.shown[0].options.data,close:()=>{}}});assert.deepEqual(f.opened,['./?notice='+destination]);
+ }
+});
+test('a notification never focuses an unrelated guide page and respects a subdirectory game scope',async()=>{
+ const f=fixture({scope:'https://game.example.invalid/game/'}),received=[];
+ f.control.windows=[{url:'https://game.example.invalid/guide/',focus:()=>{throw Error('unrelated guide');}},{url:'https://game.example.invalid/game/?old=1',focus:async()=>{},postMessage:value=>received.push(clone(value))}];
+ await f.emit('notificationclick',{notification:{data:{destination:'letters'},close:()=>{}}});
+ assert.deepEqual(received,[{type:'sengoku-open-notification',destination:'letters'}]);assert.equal(f.opened.length,0);
+});
+test('a closing game tab does not prevent another game window or the safe entry from opening',async()=>{
+ const f=fixture();f.control.windows=[{url:'https://game.example.invalid/',focus:async()=>{throw Error('closed');}}];
+ await f.emit('notificationclick',{notification:{data:{destination:'javascript:bad'},close:()=>{}}});assert.deepEqual(f.opened,['./?notice=1']);
 });
 (async()=>{let failed=0;for(const[name,run]of tests){try{await run();console.log('PASS '+name);}catch(error){failed++;console.error('FAIL '+name+'\n'+error.stack);}}console.log(`${tests.length-failed}/${tests.length} Service Worker notification scenarios passed.`);if(failed)process.exitCode=1;})().catch(error=>{console.error(error);process.exitCode=1;});

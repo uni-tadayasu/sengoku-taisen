@@ -9,6 +9,19 @@
     <ttl>60</ttl>
     <atom:link href="https://www.kasai-solutions-inc.com/news/feed.xml" rel="self" type="application/rss+xml"/>
     <item>
+      <title>Ver.5.17.0｜メッセージの端末通知に対応</title>
+      <link>https://www.kasai-solutions-inc.com/news/#v5-17-0</link>
+      <guid isPermaLink="true">https://www.kasai-solutions-inc.com/news/#v5-17-0</guid>
+      <dc:date>2026-11-28</dc:date>
+      <description>書状・郵便・チャット・御触書を、通知を許可したPC・スマホ・タブレットへ届けます。ゲームを閉じている間も受信でき、通知から該当画面へ移動できます。
+
+通知するメッセージを選択：フレンド・同盟のチャット、御所の談話・拝謁の返信、書状、システム便、御触書に対応します。世界チャットは別の設定で選べます。会話や書状の本文は端末通知に表示しません。
+
+端末ごとの登録と受信確認：通知設定で現在の端末の状態を確認し、テスト通知を送れます。この端末だけの停止と、すべての端末の停止を選べます。最大5端末まで登録できます。
+
+iPhone・iPadの設定手順：iOS・iPadOS 16.4以降では、ホーム画面に追加したゲームから通知を許可します。通知設定に端末に合わせた手順を表示します。通知を初めて設定する場合は届き次第・休止時間なしとし、以前に保存した設定は維持します。</description>
+    </item>
+    <item>
       <title>Ver.5.16.0｜城ごとの景観と「名城絵巻・全城対応」を追加</title>
       <link>https://www.kasai-solutions-inc.com/news/#v5-16-0</link>
       <guid isPermaLink="true">https://www.kasai-solutions-inc.com/news/#v5-16-0</guid>
@@ -358,15 +371,6 @@ BANと分けて、拠点から追放：拠点からの追放を、BANによる�
 プレイ中の設定画面から更新：歯車の「保存・設定」を開くと、現在のバージョンと「更新を確認」が表示されます。新版の準備ができたら「保存して新版を開く」を選べます。切り替える前に進行の保存と同期を確認します。
 
 日本語・英語で友人を招待：「すべてのメニュー」から「友人に戦国VSを紹介」を開くと、日本語・英語の紹介文と公式リンクを共有できます。海外向けには、日本語のゲーム画面で最初の城を選ぶ方法も英語で案内します。</description>
-    </item>
-    <item>
-      <title>Ver.5.9.7｜資産欄の大きな残高を最後の桁まで表示</title>
-      <link>https://www.kasai-solutions-inc.com/news/#v5-9-7</link>
-      <guid isPermaLink="true">https://www.kasai-solutions-inc.com/news/#v5-9-7</guid>
-      <dc:date>2026-11-27</dc:date>
-      <description>金銭・兵糧・木材・石材が上限付近になったとき、資産カードの右端で数字が欠ける表示を修正しました。
-
-桁数に合わせた資産表示：資産欄に100,000,000などの長い残高が並んでも、金額と増減をそれぞれのカード内で読めるように調整しました。</description>
     </item>
   </channel>
 </rss>
