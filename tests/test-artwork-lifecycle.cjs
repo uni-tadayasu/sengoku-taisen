@@ -49,6 +49,29 @@ const deadline=setTimeout(()=>{throw Error('Artwork lifecycle checks did not set
  assert.equal(image.dataset.artReady,'1');assert(!f.observed.has(image));
  console.log('PASS 240 detached targets released, reused dialogs restored, connected moves preserved, stale callbacks ignored.');
 
+ const large=fixture('<section id="large"></section>'),list=large.$('#large');
+ const rows=Array.from({length:600},()=>{const node=large.doc.createElement('section');node.innerHTML='<button>選択</button>';list.append(node);return node;});
+ let comparisons=0;
+ for(const node of rows){
+  // Browser isConnected is constant time; avoid counting the fixture's
+  // recursive emulation as work done by the production queue.
+  for(const connected of [node,node.firstElementChild])Object.defineProperty(connected,'isConnected',{get:()=>true});
+  const contains=node.contains.bind(node);node.contains=target=>{comparisons++;return contains(target);};
+ }
+ // Queue descendants before ancestors, and many independent siblings. They
+ // must be decorated exactly once without an all-pairs containment scan.
+ const records=rows.flatMap(node=>[
+  {target:node,removedNodes:[],addedNodes:[node.firstElementChild]},
+  {target:list,removedNodes:[],addedNodes:[node]}
+ ]);
+ comparisons=0;large.mutate(records);
+ assert(comparisons<=rows.length*4,'Queueing 600 sibling additions must use bounded ancestor walks, not pairwise subtree comparisons.');
+ assert.equal(large.frames.length,1,'A large insertion shares one decoration frame.');
+ large.frames.shift()();
+ assert.equal(list.querySelectorAll('button svg').length,600);
+ assert.equal(large.observed.size,600);
+ console.log('PASS 600 sibling insertions coalesced in one frame with no quadratic subtree comparisons.');
+
  const hidden=fixture('<dialog id="closed"><span data-art-url="closed.webp"></span></dialog><section hidden><span data-art-url="hidden.webp"></span></section><section inert><span data-art-url="inert.webp"></span></section><dialog open><span id="visible" data-art-url="visible.webp"></span></dialog>');
  const reads=[];
  for(const node of hidden.doc.querySelectorAll('[data-art-url]'))node.getBoundingClientRect=()=>{reads.push(node.dataset.artUrl);return{top:0,left:0,right:80,bottom:100,width:80,height:100};};

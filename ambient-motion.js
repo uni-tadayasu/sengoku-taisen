@@ -12,9 +12,9 @@
   const candidates = shells + ',' + controls + ',' + cards;
   const excluded = 'svg,.sg-map-marker,.hotspot,[data-layout-handle],.layout-resize-handle,[role="separator"],.loading-mon,.ui-motion-layer,.ambient-atmosphere';
   const hidden = '[hidden],[inert],[aria-hidden="true"],dialog:not([open])';
-  const tracked = new Map(), active = new Set(), pending = new Set(), removers = [];
+  const tracked = new Map(), visible = new Set(), active = new Set(), pending = new Set(), changed = new Set(), removers = [];
   let atmosphere, intersections, subtree, preferences, timer = 0;
-  let running = false, disposed = false, suspended = false, rescan = false, saturated = false;
+  let running = false, disposed = false, suspended = false, rescan = false, saturated = false, prune = false;
   let quiet, coarse;
   try { quiet = global.matchMedia?.('(prefers-reduced-motion: reduce), (forced-colors: active), (prefers-contrast: more)'); } catch (_) {}
   try { coarse = global.matchMedia?.('(pointer: coarse)'); } catch (_) {}
@@ -45,12 +45,13 @@
   }
   function unmark(el) { if (el.hasAttribute(marker)) el.removeAttribute(marker); }
   function untrack(el) {
-    intersections?.unobserve(el); tracked.delete(el); active.delete(el); unmark(el);
+    intersections?.unobserve(el); tracked.delete(el); visible.delete(el); active.delete(el); unmark(el);
   }
+  function bucket(el) { return el.matches(shells) ? 0 : el.matches(controls) ? 1 : 2; }
   function register(el) {
-    if (!selectable(el) || tracked.has(el)) return;
+    if (tracked.has(el) || !selectable(el)) return;
     if (tracked.size >= limit) { saturated = true; return; }
-    tracked.set(el, { visible: false, bucket: el.matches(shells) ? 0 : el.matches(controls) ? 1 : 2 });
+    tracked.set(el, { bucket: bucket(el) });
     intersections.observe(el);
   }
   function discover(host) {
@@ -65,8 +66,10 @@
     const buckets = [[], [], []], dialogs = doc.querySelectorAll('dialog[open]');
     const dialog = doc.activeElement?.closest?.('dialog[open]') || dialogs[dialogs.length - 1];
     const cap = coarse?.matches ? 40 : 64;
-    for (const [el, record] of tracked) {
-      if (record.visible && eligible(el, dialog)) buckets[record.bucket].push(el);
+    // Retained dialogs and long lists can contain 1,000 tracked surfaces.
+    // Viewport changes only need to reconsider the intersecting subset.
+    for (const el of visible) {
+      if (eligible(el, dialog)) buckets[tracked.get(el).bucket].push(el);
     }
     const chosen = new Set();
     function admit(el) {
@@ -88,7 +91,16 @@
   function flush() {
     timer = 0;
     if (!running || disposed) return;
-    for (const el of tracked.keys()) if (!selectable(el)) untrack(el);
+    if (prune) {
+      prune = false;
+      for (const el of tracked.keys()) if (!selectable(el)) untrack(el);
+    }
+    for (const el of changed) {
+      if (!selectable(el)) { if (tracked.has(el)) untrack(el); }
+      else if (tracked.has(el)) tracked.get(el).bucket = bucket(el);
+      else register(el);
+    }
+    changed.clear();
     if (saturated && tracked.size < limit) { rescan = true; saturated = false; }
     if (rescan) { rescan = false; pending.clear(); discover(doc.body); }
     else {
@@ -102,17 +114,30 @@
     reconcile();
   }
   function mutations(records) {
-    let changed = false;
+    let work = false;
     for (const record of records) {
-      if (record.target === atmosphere || record.target.closest?.(excluded)) continue;
+      if (record.target === atmosphere || record.target.closest?.('.ui-motion-layer,.ambient-atmosphere')) continue;
       if (record.type === 'attributes') {
-        pending.add(record.target); changed = true;
+        const name = record.attributeName, target = record.target;
+        if (name === 'class') {
+          // Image decoding changes paint only. It must not rescan a panel or
+          // re-admit every visible control for each completed portrait.
+          const classes = value => String(value || '').split(/\s+/).filter(name => name && name !== 'art-ready' && name !== 'art-error').sort().join(' ');
+          if (record.oldValue !== undefined && classes(record.oldValue) === classes(target.getAttribute('class'))) continue;
+          // Only these classes change membership of descendant candidates.
+          const descendants = /(?:^|\s)(?:launch-guide-nav|sg-map-marker|hotspot|layout-resize-handle|loading-mon)(?:\s|$)/;
+          if (descendants.test(record.oldValue || '') || descendants.test(target.getAttribute('class') || '')) { pending.add(target); prune = true; }
+        }
+        if (['class', 'open', 'role', 'type', 'data-layout-handle'].includes(name)) changed.add(target);
+        if (name === 'role' || name === 'data-layout-handle') { pending.add(target); prune = true; }
+        work = true;
       } else {
-        for (const node of record.addedNodes) if (node.nodeType === 1 && node !== atmosphere) { pending.add(node); changed = true; }
-        if (Array.from(record.removedNodes).some(node => node.nodeType === 1 && node !== atmosphere)) changed = true;
+        if (record.target.closest?.(excluded)) continue;
+        for (const node of record.addedNodes) if (node.nodeType === 1 && node !== atmosphere) { pending.add(node); work = true; }
+        if (Array.from(record.removedNodes).some(node => node.nodeType === 1 && node !== atmosphere)) { prune = true; work = true; }
       }
     }
-    if (changed) schedule();
+    if (work) schedule();
   }
   function stop() {
     running = false;
@@ -120,7 +145,7 @@
     global.clearTimeout(timer); timer = 0;
     subtree?.disconnect(); intersections?.disconnect();
     for (const el of tracked.keys()) unmark(el);
-    tracked.clear(); active.clear(); pending.clear(); saturated = false; rescan = false;
+    tracked.clear(); visible.clear(); active.clear(); pending.clear(); changed.clear(); saturated = false; rescan = false; prune = false;
   }
   function sync() {
     if (!allowed() || !doc.body) { stop(); return; }
@@ -134,19 +159,24 @@
     root.setAttribute('data-ambient-running', 'true');
     // Older browsers keep the ambient backdrop without polling UI geometry.
     if (!intersections) return;
-    subtree?.observe(doc.body, { subtree: true, childList: true, attributes: true,
-      attributeFilter: ['class', 'hidden', 'open', 'inert', 'aria-hidden', 'disabled', 'aria-disabled', 'aria-busy'] });
+    subtree?.observe(doc.body, { subtree: true, childList: true, attributes: true, attributeOldValue: true,
+      attributeFilter: ['class', 'hidden', 'open', 'inert', 'aria-hidden', 'disabled', 'aria-disabled', 'aria-busy', 'role', 'type', 'data-layout-handle'] });
     rescan = true; schedule();
   }
   function refresh() { if (running && intersections) rescan = true; sync(); }
   if (typeof global.IntersectionObserver === 'function') {
     intersections = new global.IntersectionObserver(entries => {
       if (!running || disposed) return;
+      let work = false;
       for (const entry of entries) {
-        const record = tracked.get(entry.target);
-        if (record) record.visible = entry.isIntersecting && entry.intersectionRatio > 0;
+        const el = entry.target;
+        if (!tracked.has(el)) continue;
+        const showing = entry.isIntersecting && entry.intersectionRatio > 0;
+        if (visible.has(el) === showing) continue;
+        if (showing) visible.add(el); else visible.delete(el);
+        work = true;
       }
-      schedule();
+      if (work) schedule();
     }, { threshold: [0, .01] });
   }
   if (typeof global.MutationObserver === 'function') {

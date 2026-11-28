@@ -152,6 +152,7 @@ jobs:
           node server/test-field-loot.mjs
           node server/test-field.mjs
           node server/test-field-capture.mjs
+          node server/test-field-owners.mjs
           node server/test-court-base-protection.mjs
           node server/test-field-mail.mjs
   save-recovery:

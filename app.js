@@ -162,7 +162,7 @@
     if(startPending||!canMutate(allowClockCatchup,false,allowStrategy)||!saveEnabled)return false;
     try{
       if(!syncAccess.linked&&!replaceCampaign&&changedLocalCampaign())return false;
-      const raw=game.exportSave();localStorage.setItem(saveKey,raw);
+      const raw=game.exportSave({compact:true});localStorage.setItem(saveKey,raw);
       if(!syncAccess.linked){lastLocalSaveRaw=raw;lastLocalSaveGame=game;}
       window.dispatchEvent(new CustomEvent('sengoku:game-saved'));return true;
     }catch(e){
@@ -170,7 +170,7 @@
       toast(saveWarning,true);return false;
     }
   }
-  function getGameSave(){if(startPending)return null;if(!saveEnabled)throw Error('元のセーブを読み込み・保存できないため、仮の進行は同期しません。');return JSON.parse(syncAccess.rolePending&&pendingRoleSave?pendingRoleSave:game.exportSave());}
+  function getGameSave(){if(startPending)return null;if(!saveEnabled)throw Error('元のセーブを読み込み・保存できないため、仮の進行は同期しません。');if(syncAccess.rolePending&&pendingRoleSave)return JSON.parse(pendingRoleSave);return game.exportSnapshot?.()||JSON.parse(game.exportSave());}
   function beginUpkeepSync(){
     const original=game,epoch=roleEpoch,finish=game.beginUpkeepTracking();let result;
     return()=>result||(result={...finish(),current:game===original&&roleEpoch===epoch});
@@ -2567,7 +2567,7 @@
       candidate.setBranchAuthority?.(trustedBranchAuthority(meta,candidate)||{resolvedElapsedMs:0});
       const maintenance=trustedMaintenanceAuthority(meta,candidate);if(maintenance){const result=candidate.setMaintenanceAuthority?.(maintenance);if(result?.ok===false)throw Error(result.message||'維持費の台帳を確認できませんでした。');}
       if(meta.backup===true)backupCurrentSave(meta.reason||'cloud',meta.backupRuntime===true);
-      localStorage.setItem(saveKey,candidate.exportSave());
+      localStorage.setItem(saveKey,candidate.exportSave({compact:true}));
       const wasPending=startPending;window.SengokuBranches?.transferSelection?.(game,candidate);game=candidate;staffBaseReady=game.isStaff===true&&Boolean(game.getStaffBase?.());pendingRoleSave=null;syncAccess.rolePending=false;startPending=false;expulsionContext='';saveEnabled=true;saveWarning='';lastRealtime=performance.now();saveCounter=0;
       if(selectedCastle==='edo'&&!game.isAdmin||selectedCastle===staffBaseId&&!game.isStaff&&!courtEstateHolding())selectedCastle='';
       if(meta.reason==='initial'||meta.reason==='conflict')importedGame=null;

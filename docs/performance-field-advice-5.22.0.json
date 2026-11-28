@@ -1,0 +1,31 @@
+{
+  "benchmark": "field.battleAdvice",
+  "runtime": "v24.22.3",
+  "comparison": "synthetic fixture; isolated Node VM; median milliseconds per advice; not browser FPS or multi-user latency",
+  "reproduce": "node tools/benchmark-field-advice.cjs /path/to/prior/field.js",
+  "differentialScenarios": 100,
+  "differentialSeed": 1397,
+  "fixture": {
+    "officers": 256,
+    "variants": 2048,
+    "army": 3
+  },
+  "before": {
+    "healthReads": 396,
+    "candidates": 128,
+    "rankCollectionReads": 132
+  },
+  "after": {
+    "healthReads": 3,
+    "candidates": 128,
+    "rankCollectionReads": 1
+  },
+  "measurement": {
+    "warmup": 20,
+    "trials": 7,
+    "iterations": 50,
+    "medianBeforeMs": 20.490296339999986,
+    "medianAfterMs": 3.3540502800000103,
+    "reductionPercent": 83.63103088239663
+  }
+}

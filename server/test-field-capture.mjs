@@ -52,12 +52,13 @@ function beforeFieldCommit(h,hook){h.beforeBatch=statements=>{if(!statements[0]?
 const status=async(h,p)=>(await h.api('/marches?deviceId='+p.deviceId,{token:p.token})).data;
 function barrier(h,sql='INSERT INTO field_requests'){let entered=0,release;const wait=new Promise(r=>release=r);h.beforeBatch=async statements=>{if(!statements[0]?.sql.includes(sql))return;if(++entered===2){h.beforeBatch=null;release();}await wait;};return()=>entered;}
 
-await scope('public target identities contain homes and owned major outposts only',async h=>{
+await scope('public targets retain battle rules while displaying ordinary occupied holdings',async h=>{
   const a=await fixture(h,'一覧の領主',{home:'inuyama'}),b=await fixture(h,'所領の領主',{holdings:['nijo','osaka','nagoya','azuchi']});
   const list=(await h.api('/field?limit=100',{token:a.token})).data,targets=list.targets.filter(t=>t.playerId===b.user.id);
   assert.equal(list.total,2);assert.equal(list.players.length,2);assert.equal(list.rules.targetCastles,true);assert.equal(list.rules.specialBaseBattles,true);
-  assert.deepEqual(targets.map(t=>t.targetCastleId),['kiyosu','nijo','osaka','nagoya']);
-  assert.equal(targets[0].battleMode,'raid');for(const t of targets.slice(1)){assert.equal(t.homeCastleId,'kiyosu');assert.equal(t.isHome,false);assert.equal(t.battleMode,'capture');assert.equal(t.capturable,true);assert.equal(t.keepLevel,9);assert.equal(t.level,9);}
+  assert.deepEqual(targets.filter(t=>!t.displayOnly).map(t=>t.targetCastleId),['kiyosu','nijo','osaka','nagoya']);
+  const holding=targets.find(t=>t.targetCastleId==='azuchi');assert(holding?.displayOnly);assert.equal(holding.holdingKind,'territory');assert.equal(holding.attackable,false);assert.equal(holding.capturable,false);assert.equal(holding.battleMode,null);
+  assert.equal(targets[0].battleMode,'raid');for(const t of targets.slice(1).filter(t=>!t.displayOnly)){assert.equal(t.homeCastleId,'kiyosu');assert.equal(t.isHome,false);assert.equal(t.battleMode,'capture');assert.equal(t.capturable,true);assert.equal(t.keepLevel,9);assert.equal(t.level,9);}
   assert.equal(new Set(list.targets.map(t=>t.playerId+':'+t.targetCastleId)).size,list.targets.length);
   const page=(await h.api('/field?limit=1',{token:a.token})).data;assert(page.targets.every(t=>t.playerId===page.players[0].playerId));assert.equal(page.total,2);
   for(const id of ['azuchi','odani','edo','kyoto_gosho'])assert.equal((await attack(h,a,body(h,a,b,id),409)).error.code,'FIELD_TARGET_CHANGED');

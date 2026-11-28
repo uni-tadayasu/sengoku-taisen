@@ -84,7 +84,7 @@ function createController(initial={}){
     const maxPages=Number.isSafeInteger(options.maxPages)?Math.max(1,Math.min(MAX_PAGES,options.maxPages)):MAX_PAGES;
     for(let page=0;page<maxPages;page++){
       if(!isCurrent(epoch,initialStamp))throw Error('Identity changed');
-      const value=await options.requestField('/field?limit=100'+(cursor?'&cursor='+encodeURIComponent(cursor):''),{method:'GET'});
+      const value=await options.requestField('/field?view=owners&limit=100'+(cursor?'&cursor='+encodeURIComponent(cursor):''),{method:'GET'});
       if(!isCurrent(epoch,initialStamp))throw Error('Identity changed');
       // Legacy home-only rows cannot establish that every major-city holding
       // has been read. Require the server's complete target projection.

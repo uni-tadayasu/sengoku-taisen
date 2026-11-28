@@ -126,7 +126,12 @@ const totalGzipBytes = rows.reduce((sum,row)=>sum+row.gzipBytes,0);
 // and readable field cards. Measured: 3,855,799 raw / 1,064,565 gzip bytes,
 // +21,154 / +5,293 over v5.20. No media, font or runtime dependency is added.
 // Keep 1,701 raw / 935 gzip bytes of headroom for this reviewed feature.
-const rawBudget=3857500,gzipBudget=1065500;
+// v5.22 reduces repeated runtime work and adds occupied-territory/viewer-court
+// controls. Measured: 3,860,260 raw / 1,065,852 gzip bytes (+4,461 / +1,287
+// from v5.21, about 0.12%). This is a runtime/response optimization, not an
+// entry-download reduction. No new media, fonts or dependencies. Keep only
+// 940 raw / 648 gzip bytes of headroom for the reviewed field controls.
+const rawBudget=3861200,gzipBudget=1066500;
 assert(totalBytes <= rawBudget, `Initial bundles exceed the ${rawBudget} byte budget: ${totalBytes}`);
 assert(totalGzipBytes <= gzipBudget, `Initial bundles exceed the ${gzipBudget} gzip byte budget: ${totalGzipBytes}`);
 const html = fs.readFileSync(path.join(root,'index.html'),'utf8');
